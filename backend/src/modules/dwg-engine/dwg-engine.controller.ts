@@ -1,0 +1,92 @@
+import {
+  Controller, Post, Get, UploadedFile,
+  UseGuards, UseInterceptors, Query,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { DwgEngineService } from './dwg-engine.service';
+
+@Controller('dwg-engine')
+@UseGuards(JwtAuthGuard)
+export class DwgEngineController {
+  constructor(private readonly dwgEngine: DwgEngineService) {}
+
+  /**
+   * Layer listesi cikar (hizli, uzunluk hesaplamaz).
+   * file_id doner — bu ID ile /parse cagirilabilir.
+   */
+  @Post('layers')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  async listLayers(@UploadedFile() file: Express.Multer.File) {
+    if (!file) {
+      return { error: 'Dosya yuklenemedi' };
+    }
+    return this.dwgEngine.listLayers(file.buffer, file.originalname);
+  }
+
+  /**
+   * DWG/DXF parse edip layer bazinda metraj cikarir.
+   *
+   * file_id varsa: cache'teki dosya kullanilir (dosya yuklemeye gerek yok).
+   * file_id yoksa: dosya yuklenmeli (geriye uyumlu).
+   */
+  @Post('parse')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  async parseDwg(
+    @UploadedFile() file: Express.Multer.File,
+    @Query('discipline') discipline?: string,
+    @Query('scale') scale?: string,
+    @Query('file_id') fileId?: string,
+    @Query('selected_layers') selectedLayers?: string,
+    @Query('layer_hat_tipi') layerHatTipi?: string,
+  ) {
+    // file_id varsa dosya gerekmez, yoksa dosya zorunlu
+    if (!fileId && !file) {
+      return { error: 'file_id veya dosya yuklenmeli' };
+    }
+
+    // selected_layers JSON array parse
+    let parsedLayers: string[] | undefined;
+    if (selectedLayers) {
+      try {
+        parsedLayers = JSON.parse(selectedLayers);
+      } catch {
+        return { error: 'selected_layers gecersiz JSON formati' };
+      }
+    }
+
+    // layer_hat_tipi JSON object parse
+    let parsedHatTipi: Record<string, string> | undefined;
+    if (layerHatTipi) {
+      try {
+        parsedHatTipi = JSON.parse(layerHatTipi);
+      } catch {
+        return { error: 'layer_hat_tipi gecersiz JSON formati' };
+      }
+    }
+
+    return this.dwgEngine.parseDwg(
+      file?.buffer ?? null,
+      file?.originalname ?? '',
+      discipline || 'mechanical',
+      parseFloat(scale || '0.001') || 0.001,
+      fileId,
+      parsedLayers,
+      parsedHatTipi,
+    );
+  }
+
+  @Post('convert')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  async convertToDxf(@UploadedFile() file: Express.Multer.File) {
+    if (!file) return { error: 'Dosya yuklenemedi' };
+    return this.dwgEngine.convertToDxf(file.buffer, file.originalname);
+  }
+
+  @Get('health')
+  async health() {
+    const ok = await this.dwgEngine.healthCheck();
+    return { status: ok ? 'ok' : 'unavailable', service: 'dwg-engine' };
+  }
+}
