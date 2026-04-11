@@ -17,13 +17,31 @@ class LayerListResult(BaseModel):
     warnings: list[str] = []
 
 
+# ── Topoloji Analizi (Faz 2) ──
+
+class PipeSegment(BaseModel):
+    segment_id: int
+    layer: str
+    diameter: str = ""      # "Ø200", "DN50", "2\"", "Belirtilmemis"
+    length: float = 0.0     # metre cinsinden
+    line_count: int = 0
+
+
+class BranchPoint(BaseModel):
+    x: float
+    y: float
+    connections: int         # kac cizgi bulusuyor
+    point_type: str = ""     # "tee", "elbow", "end"
+
+
 # ── Metraj Hesaplama ──
 
 class LayerMetraj(BaseModel):
     layer: str          # "YANGIN TESİSATI HİDRANT HATTI"
     length: float       # metre cinsinden toplam uzunluk
     line_count: int     # kac cizgi parcasi
-    hat_tipi: str = ""  # yangin, sihhi, isitma, sogutma, dogalgaz, elektrik, sprinkler, diger
+    hat_tipi: str = ""  # kullanicinin verdigi hat ismi
+    segments: list[PipeSegment] = []  # Faz 2: cap bazli alt dagılım
 
 
 class MetrajResult(BaseModel):
@@ -31,3 +49,4 @@ class MetrajResult(BaseModel):
     total_length: float = 0.0
     total_layers: int = 0
     warnings: list[str] = []
+    branch_points: list[BranchPoint] = []  # Faz 2: dallanma noktalari

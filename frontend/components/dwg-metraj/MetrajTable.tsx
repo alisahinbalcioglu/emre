@@ -3,11 +3,20 @@
 import React from 'react';
 import { AlertCircle } from 'lucide-react';
 
+export interface PipeSegment {
+  segment_id: number;
+  layer: string;
+  diameter: string;
+  length: number;
+  line_count: number;
+}
+
 export interface LayerMetraj {
   layer: string;
   length: number;
   line_count: number;
   hat_tipi?: string;
+  segments?: PipeSegment[];
 }
 
 export interface MetrajResult {

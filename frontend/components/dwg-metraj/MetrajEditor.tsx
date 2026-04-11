@@ -32,16 +32,33 @@ const nextId = () => `row-${_nextId++}`;
 function metrajToRows(data: MetrajResult): MetrajRow[] {
   const rows: MetrajRow[] = [];
   for (const l of data.layers || []) {
-    rows.push({
-      id: nextId(),
-      name: l.layer,
-      diameter: '',
-      qty: l.length.toFixed(2),
-      unit: 'm',
-      source: 'project',
-      category: 'Boru',
-      hatTipi: l.hat_tipi ?? '',
-    });
+    // Segment varsa: her cap icin ayri satir
+    if (l.segments && l.segments.length > 0) {
+      for (const seg of l.segments) {
+        rows.push({
+          id: nextId(),
+          name: l.hat_tipi || l.layer,
+          diameter: seg.diameter || '',
+          qty: seg.length.toFixed(2),
+          unit: 'm',
+          source: 'project',
+          category: 'Boru',
+          hatTipi: l.hat_tipi ?? '',
+        });
+      }
+    } else {
+      // Segment yoksa: layer = satir (eski davranis)
+      rows.push({
+        id: nextId(),
+        name: l.hat_tipi || l.layer,
+        diameter: '',
+        qty: l.length.toFixed(2),
+        unit: 'm',
+        source: 'project',
+        category: 'Boru',
+        hatTipi: l.hat_tipi ?? '',
+      });
+    }
   }
   return rows;
 }

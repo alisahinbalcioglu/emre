@@ -1,9 +1,9 @@
 """
-DWG Engine v2.1 — Layer secim + file cache destegi.
+DWG Engine v2.2 — Layer secim + file cache + topoloji analizi.
 
 Akis:
   1. POST /layers   → DWG yukle, layer listesi don (hizli, uzunluk yok), file_id dondur
-  2. POST /parse    → file_id ile sadece secilen layer'larin uzunlugunu hesapla
+  2. POST /parse    → file_id ile secilen layer'larin metrajini hesapla + cap dagilimi
   3. POST /convert  → DWG→DXF base64 (viewer icin)
 """
 
@@ -17,12 +17,13 @@ import ezdxf
 from fastapi import FastAPI, UploadFile, File, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from converter import convert_dwg_to_dxf
+from topology import analyze_topology
 from models import (
     LayerInfo, LayerListResult,
     LayerMetraj, MetrajResult,
 )
 
-app = FastAPI(title="MetaPrice DWG Engine", version="2.1.0")
+app = FastAPI(title="MetaPrice DWG Engine", version="2.2.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -239,6 +240,18 @@ def analyze_dxf_metraj(
             layer_data[layer]["length"] += total_len
             layer_data[layer]["count"] += seg_count
 
+    # ── Topoloji analizi: cap bazli segment dagilimi ──
+    topo_segments, branch_points, topo_warnings = analyze_topology(
+        dxf_path, selected_layers, scale,
+    )
+
+    # Segmentleri layer bazinda grupla
+    layer_segments: dict[str, list] = {}
+    for seg in topo_segments:
+        if seg.layer not in layer_segments:
+            layer_segments[seg.layer] = []
+        layer_segments[seg.layer].append(seg)
+
     # Sonuc olustur
     _hat_tipi_map = hat_tipi_map or {}
     layers = [
@@ -247,6 +260,7 @@ def analyze_dxf_metraj(
             length=round(data["length"], 2),
             line_count=data["count"],
             hat_tipi=_hat_tipi_map.get(layer, ""),
+            segments=layer_segments.get(layer, []),
         )
         for layer, data in sorted(layer_data.items())
         if data["length"] > 0.01  # 1cm'den kisa layer'lari atla
@@ -254,7 +268,7 @@ def analyze_dxf_metraj(
 
     total = sum(l.length for l in layers)
 
-    warnings: list[str] = []
+    warnings: list[str] = topo_warnings
     if not layers:
         warnings.append("Secilen layer'larda hicbir cizgi tespit edilemedi")
 
@@ -263,6 +277,7 @@ def analyze_dxf_metraj(
         total_length=round(total, 2),
         total_layers=len(layers),
         warnings=warnings,
+        branch_points=branch_points,
     )
 
 
@@ -275,7 +290,7 @@ def health():
     return {
         "status": "ok",
         "service": "dwg-engine",
-        "version": "2.1",
+        "version": "2.2",
         "cached_files": len(_file_cache),
     }
 
