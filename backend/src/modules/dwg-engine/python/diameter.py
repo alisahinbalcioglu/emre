@@ -44,6 +44,13 @@ _EQUIPMENT_KEYWORDS = {
 }
 _MATERIAL_DESC_PATTERN = re.compile(r'HDPE|PPR|PE\s*100|PN\s*\d+', re.IGNORECASE)
 
+# Fitting/baglanti parcasi adet text'leri — cap olarak algilanmamali
+# Ornekler: "n=4 1\"", "n=1 ¾\"", "2 adet ½\"", "x3 DN20"
+_FITTING_COUNT_PATTERN = re.compile(
+    r'(?:^|\s)(?:n\s*[=:]\s*\d+|[xX]\s*\d+|\d+\s*(?:adet|ad\.|pcs?|piece))',
+    re.IGNORECASE,
+)
+
 
 def _autocad_decode(text: str) -> str:
     text = text.replace("%%188", "¼").replace("%%189", "½").replace("%%190", "¾")
@@ -58,6 +65,10 @@ def _parse_diameter(text: str) -> str | None:
     if any(kw in upper for kw in _EQUIPMENT_KEYWORDS):
         if not _MATERIAL_DESC_PATTERN.search(text):
             return None
+    # Fitting/baglanti parcasi adet text'leri → cap DEGIL
+    # "n=4 1\"", "n=1 ¾\"", "2 adet ½\"" gibi
+    if _FITTING_COUNT_PATTERN.search(text):
+        return None
     # Compound text: "4"s:34;Ø100" → parcalara bol, her birini dene
     parts = re.split(r'[;,]', text)
     for part in parts:

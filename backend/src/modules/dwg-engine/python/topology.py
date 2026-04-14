@@ -21,16 +21,19 @@ def walk_and_propagate(
     graph: PipeGraph,
     edge_diameters: dict[int, str],
     edge_distances: dict[int, float] | None = None,
+    edge_sources: dict[int, str] | None = None,
 ) -> list[dict]:
     """
     Pipe-Walker: boru ağında yürür, çap yayar.
 
     edge_diameters: {edge_idx: çap} — ok veya text'ten gelen kesin çaplar.
     edge_distances: {edge_idx: mesafe} — eslestirme mesafesi (guvenilirlik).
+    edge_sources: {edge_idx: kaynak} — "arrow"/"text"/"walker" takibi.
     Diğer edge'ler komşudan miras alır (tee'ye kadar).
     Tee yoksa + uzak text ise miras korunur (devam eden boru ayni captir).
     """
     _dists = edge_distances or {}
+    _sources = edge_sources if edge_sources is not None else {}
     adj = graph.adj
     split_nodes = graph.tees
     visited: set[int] = set()
@@ -84,6 +87,10 @@ def walk_and_propagate(
                     if not current_diameter and edge_diam:
                         # Henuz cap atanmamis — ilk cap'i al
                         current_diameter = edge_diam
+                    elif current_diameter and not edge_diam:
+                        # Miras: bu edge'e walker cap'i yay
+                        if edge.idx not in _sources:
+                            _sources[edge.idx] = "walker"
 
                     if not seg_layer:
                         seg_layer = edge.layer
@@ -140,6 +147,9 @@ def walk_and_propagate(
                     if is_cont and i == continuation_idx and edge.layer == seg_layer:
                         # Ayni layer + duz devam -> cap miras
                         branch_diam = edge_diam or current_diameter
+                        # Walker miras kaynagi isaretle
+                        if not edge_diam and current_diameter and edge.idx not in _sources:
+                            _sources[edge.idx] = "walker"
                     else:
                         # Farkli layer veya branch -> miras YAPMA
                         branch_diam = edge_diam
@@ -291,6 +301,7 @@ def analyze_topology(
     scale: float = 0.001,
     material_type_map: dict[str, str] | None = None,
     cap_layers: list[str] | None = None,
+    hat_tipi_map: dict[str, str] | None = None,
 ) -> tuple[list[PipeSegment], list[BranchPoint], list[str]]:
     """
     Ana orkestratör. Eski API ile uyumlu.
@@ -314,6 +325,7 @@ def analyze_topology(
         for layer in selected_layers:
             result = analyze_topology(
                 dxf_path, [layer], scale, material_type_map, cap_layers,
+                hat_tipi_map=hat_tipi_map,
             )
             all_segs.extend(result[0])
             all_bps.extend(result[1])
@@ -353,14 +365,16 @@ def analyze_topology(
 
     # 2. Cap layer'ları tespit et
     if cap_layers is None:
-        # Otomatik: layer adında "cap" veya "çap" geçenler
+        # Otomatik: genis keyword seti
         import ezdxf
         doc = ezdxf.readfile(dxf_path)
         all_layers = set()
         for e in doc.modelspace():
             if hasattr(e.dxf, 'layer'):
                 all_layers.add(e.dxf.layer)
-        cap_layers = [l for l in all_layers if 'cap' in l.lower()]
+        _cap_keywords = ['cap', 'çap', 'dim', 'diameter', 'anno', 'text']
+        cap_layers = [l for l in all_layers
+                      if any(kw in l.lower() for kw in _cap_keywords)]
         if cap_layers:
             warnings.append(f"Otomatik cap layer: {cap_layers}")
         else:
@@ -391,171 +405,58 @@ def analyze_topology(
         other_raw = [(rc[0] + _offset, rc[1], rc[2], rc[3], rc[4])
                      for rc in _other_graph.raw_coords]
 
-    # 4. Her pipe_type grubu icin ayri cap analizi
-    #    Pis su (metric) ve temiz su (imperial) ayni cap layer'i paylasir
-    #    ama farkli formatta text'ler kullanir.
-    from collections import Counter
+    # 4. Çap atama — diameter_assigner.py (5 kural harfiyen)
+    from diameter_assigner import assign_diameters
 
-    # Layer'lari pipe_type'a gore grupla
-    type_groups: dict[str, list[str]] = defaultdict(list)
-    for layer in selected_layers:
-        pt = detect_pipe_type(layer)
-        type_groups[pt].append(layer)
+    # hat_tipi_map → pipe_type
+    _hat_map = hat_tipi_map or {}
 
-    # Her grubun edge idx'lerini bul
-    edge_layer_map = {e.idx: e.layer for e in graph.edges}
+    def _resolve_pipe_type(layer_name: str) -> str:
+        ht = _hat_map.get(layer_name, "").lower()
+        if ht:
+            if any(kw in ht for kw in ['pis', 'atik', 'yagmur', 'yamur', 'yağmur']):
+                return "metric"
+            if any(kw in ht for kw in ['temiz', 'gri', 'sicak', 'sıcak', 'sprinkler', 'dolap']):
+                return "imperial"
+            if 'hidrant' in ht:
+                return "all"
+        return detect_pipe_type(layer_name)
 
-    edge_diameters: dict[int, str] = {}
-    edge_distances: dict[int, float] = {}  # eslestirme mesafesi (guvenilirlik icin)
-    total_arrow = 0
-    total_text = 0
+    # Tek layer — pipe_type belirle
+    layer = selected_layers[0]
+    pipe_type = _resolve_pipe_type(layer)
 
-    for pipe_type, layers_in_group in type_groups.items():
-        group_edge_idxs = {e.idx for e in graph.edges if e.layer in set(layers_in_group)}
-        group_raw = [rc for rc in graph.raw_coords if rc[0] in group_edge_idxs]
-
-        # Çap text'leri (bu grup icin format filtreli)
-        texts = extract_diameters(dxf_path, cap_layers, pipe_type=pipe_type)
-
-        # Ok takibi (other_pipes: baska layer borulari — cross-system check)
-        arrow_caps: dict[int, str] = {}
-        if cap_layers:
-            arrow_caps = trace_arrows(dxf_path, cap_layers, texts, group_raw, other_pipes=other_raw)
-        total_arrow += len(arrow_caps)
-
-        # Yakin text (mesafe bilgisiyle, other_pipes: cross-system check)
-        text_caps, text_dists = match_nearby_texts(texts, group_raw, other_pipes=other_raw)
-        total_text += len(text_caps)
-
-        # Birlestir: 1) ok ustun (kesin, format gecerliyse), 2) yakin text yedek
-        from diameter import _is_metric, _is_imperial
-        for eidx, cap in text_caps.items():
-            if eidx not in edge_diameters:
-                edge_diameters[eidx] = cap
-                edge_distances[eidx] = text_dists[eidx]
-        for eidx, cap in arrow_caps.items():
-            # Ok sonucu format + gecerlilik validasyonundan gecmeli
-            ok_valid = True
-            if pipe_type == "metric" and not _is_metric(cap):
-                ok_valid = False
-            elif pipe_type == "imperial" and _is_metric(cap):
-                ok_valid = False
-            # Pis su gecersiz caplar (ok da olsa reddet)
-            layer = edge_layer_map.get(eidx, "")
-            if pipe_type == "metric" and "pis" in layer.lower() and cap in PISSU_INVALID_CAPS:
-                ok_valid = False
-            if ok_valid:
-                edge_diameters[eidx] = cap  # ok HER ZAMAN ustun (kisa ok kurali)
-                edge_distances[eidx] = 0.0
-
-        warnings.append(f"{pipe_type} ({', '.join(layers_in_group)}): {len(texts)} text, {len(arrow_caps)} ok, {len(text_caps)} yakin")
-
-    matched_len = sum(
-        e.length for e in graph.edges if e.idx in edge_diameters
-    ) * scale
-    total_len = sum(e.length for e in graph.edges) * scale
-    warnings.append(
-        f"Cap atanan: {len(edge_diameters)}/{len(graph.edges)} edge "
-        f"({matched_len:.1f}m / {total_len:.1f}m)"
+    edge_caps, edge_sources, edge_dists, assign_warnings = assign_diameters(
+        dxf_path, graph, pipe_type, layer, cap_layers, other_pipes=other_raw,
     )
+    warnings.extend(assign_warnings)
 
-    # 8. Walker: çap yayma
-    raw_segments = walk_and_propagate(graph, edge_diameters, edge_distances)
+    # ── Edge final çapları ──
+    edge_final_diameters: dict[int, str] = {}
+    for e in graph.edges:
+        edge_final_diameters[e.idx] = edge_caps.get(e.idx, "Belirtilmemis")
 
-    # 9. Backfill DEVRE DISI — kullanici PipeMapViewer'da kendisi duzeltir
-    # _backfill(raw_segments)
-
-    # 9b. Format dogrulama: yanlis format cap'i temizle
-    #     Walker veya backfill cross-layer cap sizdirabilir
-    from diameter import _is_metric, _is_imperial
-
-    for seg in raw_segments:
-        d = seg["diameter"]
-        if d == "Belirtilmemis" or not d:
-            continue
-        layer = seg["layer"]
-        pt = detect_pipe_type(layer)
-        if pt == "metric" and not _is_metric(d):
-            seg["diameter"] = "Belirtilmemis"
-        elif pt == "imperial" and _is_metric(d):
-            seg["diameter"] = "Belirtilmemis"
-        # Pis su layer'inda Ø25, Ø32, Ø63 reddet
-        elif pt == "metric" and "pis" in layer.lower() and d in PISSU_INVALID_CAPS:
-            seg["diameter"] = "Belirtilmemis"
-
-    # 10. Malzeme tipi
+    # ── Malzeme tipi ──
     _mat_map = material_type_map or {}
-    for seg in raw_segments:
-        layer = seg["layer"]
-        seg["material_type"] = _mat_map.get(layer, "")
 
-    # 11. Merge + scale (metraj icin)
-    merged_segments = merge_segments(raw_segments, scale)
+    # ── Merge segments (metraj tablosu için) ──
+    raw_segments_for_merge: list[dict] = []
+    for e in graph.edges:
+        raw_segments_for_merge.append({
+            "length": e.length,
+            "layer": e.layer,
+            "diameter": edge_final_diameters[e.idx],
+            "line_count": 1,
+            "material_type": _mat_map.get(e.layer, ""),
+        })
 
-    # 12. Edge-bazli segment listesi (frontend harita icin)
-    #     Her edge = ayri tiklanabilir segment, kendi capi ile
+    merged_segments = merge_segments(raw_segments_for_merge, scale)
+
+    # ── Edge-bazlı segment listesi (PipeMapViewer için) ──
     raw_coords_map = {rc[0]: [round(rc[1], 1), round(rc[2], 1),
                               round(rc[3], 1), round(rc[4], 1)]
                       for rc in graph.raw_coords}
 
-    # Her edge'in final capini belirle
-    edge_final_diameters: dict[int, str] = {}
-    for e in graph.edges:
-        edge_final_diameters[e.idx] = edge_diameters.get(e.idx, "Belirtilmemis")
-
-    # 9b validasyonunu edge_final_diameters'a da uygula
-    # (raw_segments duzeltildi ama edge_final_diameters orijinal edge_diameters'dan okundu)
-    for e in graph.edges:
-        d = edge_final_diameters[e.idx]
-        if d == "Belirtilmemis" or not d:
-            continue
-        pt = detect_pipe_type(e.layer)
-        if pt == "metric" and not _is_metric(d):
-            edge_final_diameters[e.idx] = "Belirtilmemis"
-        elif pt == "imperial" and _is_metric(d):
-            edge_final_diameters[e.idx] = "Belirtilmemis"
-        elif pt == "metric" and "pis" in e.layer.lower() and d in PISSU_INVALID_CAPS:
-            edge_final_diameters[e.idx] = "Belirtilmemis"
-
-    # Tee olmayan duz gecislerde cap tutarliligi: cap DEGISMEZ
-    # Birden fazla pass yaparak tum zincir boyunca yay
-    # Ok ile atanmis cap (edge_distances=0) en guvenilir
-    for _pass in range(len(graph.edges)):
-        changed = False
-        for node, neighbors in graph.adj.items():
-            if node in graph.tees:
-                continue
-            if len(neighbors) != 2:
-                continue
-            e1, e2 = neighbors[0][1], neighbors[1][1]
-            if e1.layer != e2.layer:
-                continue
-            d1 = edge_final_diameters.get(e1.idx, "Belirtilmemis")
-            d2 = edge_final_diameters.get(e2.idx, "Belirtilmemis")
-            if d1 == d2:
-                continue
-            # Tee yok + ayni layer → cap ayni olmali
-            dist1 = edge_distances.get(e1.idx, 9999)
-            dist2 = edge_distances.get(e2.idx, 9999)
-            if d1 == "Belirtilmemis":
-                edge_final_diameters[e1.idx] = d2
-                changed = True
-            elif d2 == "Belirtilmemis":
-                edge_final_diameters[e2.idx] = d1
-                changed = True
-            else:
-                # Ikisi de atanmis ama farkli — daha guvenilir olan kazanir
-                # Ok (dist=0) > yakin text < uzak text
-                if dist1 < dist2:
-                    edge_final_diameters[e2.idx] = d1
-                    changed = True
-                else:
-                    edge_final_diameters[e1.idx] = d2
-                    changed = True
-        if not changed:
-            break
-
-    # Her edge'i ayri PipeSegment olarak olustur (tiklanabilir harita icin)
     edge_segments: list[PipeSegment] = []
     for e in graph.edges:
         coord = raw_coords_map.get(e.idx)
@@ -564,14 +465,14 @@ def analyze_topology(
         edge_segments.append(PipeSegment(
             segment_id=e.idx,
             layer=e.layer,
-            diameter=edge_final_diameters.get(e.idx, "Belirtilmemis"),
+            diameter=edge_final_diameters[e.idx],
             length=round(e.length * scale, 2),
             line_count=1,
-            material_type=(_mat_map.get(e.layer, "")),
+            material_type=_mat_map.get(e.layer, ""),
             coords=[coord],
         ))
 
-    # merged_segments'e de coords ekle (metraj tablosu icin)
+    # merged_segments'e coords ekle
     for ps in merged_segments:
         coords = []
         for e in graph.edges:
@@ -580,7 +481,7 @@ def analyze_topology(
                     coords.append(raw_coords_map[e.idx])
         ps.coords = coords
 
-    # Ozet
+    # Özet
     total = sum(s.length for s in merged_segments)
     unmatched = sum(s.length for s in merged_segments if s.diameter == "Belirtilmemis")
     if unmatched > 0:

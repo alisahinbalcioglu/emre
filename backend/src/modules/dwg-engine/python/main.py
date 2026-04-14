@@ -158,6 +158,7 @@ def analyze_dxf_metraj(
     scale: float = 0.001,
     selected_layers: list[str] | None = None,
     hat_tipi_map: dict[str, str] | None = None,
+    material_type_map: dict[str, str] | None = None,
 ) -> MetrajResult:
     """
     DXF dosyasini parse edip layer bazinda boru uzunlugu hesaplar.
@@ -241,9 +242,19 @@ def analyze_dxf_metraj(
             layer_data[layer]["count"] += seg_count
 
     # ── Topoloji analizi: cap bazli segment dagilimi ──
-    topo_segments, branch_points, topo_warnings = analyze_topology(
+    topo_result = analyze_topology(
         dxf_path, selected_layers, scale,
+        material_type_map=material_type_map,
+        hat_tipi_map=hat_tipi_map,
     )
+    topo_segments = topo_result[0]
+    branch_points = topo_result[1]
+    topo_warnings = topo_result[2]
+    edge_segments = topo_result[3] if len(topo_result) > 3 else []
+
+    # Arka plan cizgileri (secili layer'lar haric tum entity'ler)
+    from graph import extract_background_lines
+    background_lines = extract_background_lines(dxf_path, exclude_layers=selected_layers)
 
     # Segmentleri layer bazinda grupla
     layer_segments: dict[str, list] = {}
@@ -278,6 +289,8 @@ def analyze_dxf_metraj(
         total_layers=len(layers),
         warnings=warnings,
         branch_points=branch_points,
+        edge_segments=edge_segments,
+        background_lines=background_lines,
     )
 
 
@@ -331,6 +344,7 @@ async def parse_dwg(
     scale: float = Query(0.001),
     selected_layers: str = Query("", description="JSON array: secilen layer isimleri"),
     layer_hat_tipi: str = Query("{}", description="JSON object: {layer: hat_tipi} eslestirmesi"),
+    layer_material_type: str = Query("{}", description="JSON object: {layer: material_type} eslestirmesi"),
 ):
     """
     DWG/DXF dosyasini parse edip layer bazinda metraj cikarir.
@@ -373,6 +387,16 @@ async def parse_dwg(
         except json.JSONDecodeError:
             raise HTTPException(400, "layer_hat_tipi gecersiz JSON formati. Ornek: {\"LAYER1\": \"yangin\"}")
 
+    # layer_material_type JSON object parse
+    mat_type_map: dict[str, str] | None = None
+    if layer_material_type and layer_material_type != "{}":
+        try:
+            parsed_mat = json.loads(layer_material_type)
+            if isinstance(parsed_mat, dict) and len(parsed_mat) > 0:
+                mat_type_map = {str(k): str(v) for k, v in parsed_mat.items()}
+        except json.JSONDecodeError:
+            raise HTTPException(400, "layer_material_type gecersiz JSON formati")
+
     # ── Analiz et ──
     try:
         result = analyze_dxf_metraj(
@@ -380,6 +404,7 @@ async def parse_dwg(
             scale=scale,
             selected_layers=sel_layers,
             hat_tipi_map=hat_tipi_map,
+            material_type_map=mat_type_map,
         )
         return result
 

@@ -24,7 +24,7 @@ from diameter import DiameterText
 MAX_ARROW_TEXT_DISTANCE = 80.0
 MAX_ARROW_PIPE_DISTANCE = 200.0
 MAX_TEXT_PIPE_DISTANCE = 200.0
-MIN_ARROW_LENGTH = 15.0
+MIN_ARROW_LENGTH = 5.0
 TEXT_CLUSTER_DISTANCE = 300.0
 
 
@@ -107,42 +107,45 @@ def trace_arrows(
                 best_x, best_y = dt.position.x, dt.position.y
         return best_val, best_dist, best_x, best_y
 
-    # ── Adım 1: TÜM okları topla (filtre yok, hepsini al) ──
+    # ── Adım 1: TÜM okları topla ──
+    # TÜM entity tiplerini ok olarak tara: LINE, LWPOLYLINE, LEADER, MULTILEADER
+    # Layer filtresi YOK — text'e yakınlık kontrolü zaten gereksizleri eler
     # (arrow_len, diameter, text_x, text_y, pipe_x, pipe_y)
     all_arrows: list[tuple[float, str, float, float, float, float]] = []
+    _debug_stats = {"lwpoly": 0, "line": 0, "leader": 0, "skipped_short": 0, "skipped_notext": 0}
 
-    # LWPOLYLINE okları
+    def _try_add_arrow(start_x, start_y, end_x, end_y, arrow_len, src):
+        """Ortak ok ekleme mantığı: bir ucu text'e yakın → ok."""
+        if arrow_len < MIN_ARROW_LENGTH:
+            _debug_stats["skipped_short"] += 1
+            return
+        s_val, s_dist, s_tx, s_ty = _find_text_at_point(start_x, start_y)
+        e_val, e_dist, e_tx, e_ty = _find_text_at_point(end_x, end_y)
+        if not s_val and not e_val:
+            _debug_stats["skipped_notext"] += 1
+            return
+        if s_dist < e_dist and s_val:
+            all_arrows.append((arrow_len, s_val, s_tx, s_ty, end_x, end_y))
+        elif e_val:
+            all_arrows.append((arrow_len, e_val, e_tx, e_ty, start_x, start_y))
+        _debug_stats[src] += 1
+
+    # LWPOLYLINE okları — TÜM layer'lardan (filtre yok)
     for entity in msp.query('LWPOLYLINE'):
-        if entity.dxf.layer not in cap_set:
-            continue
         pts = list(entity.get_points(format='xy'))
         if len(pts) < 2:
             continue
-
         start_x, start_y = pts[0]
         end_x, end_y = pts[-1]
-
-        s_val, s_dist, s_tx, s_ty = _find_text_at_point(start_x, start_y)
-        e_val, e_dist, e_tx, e_ty = _find_text_at_point(end_x, end_y)
-
-        if not s_val and not e_val:
-            continue
-
-        if s_dist < e_dist and s_val:
-            pipe_x, pipe_y = end_x, end_y
-            diameter = s_val
-            text_x, text_y = s_tx, s_ty
-        elif e_val:
-            pipe_x, pipe_y = start_x, start_y
-            diameter = e_val
-            text_x, text_y = e_tx, e_ty
-        else:
-            continue
-
         arrow_len = _polyline_length(pts)
-        if arrow_len < MIN_ARROW_LENGTH:
-            continue  # arrowhead mark, gercek ok degil
-        all_arrows.append((arrow_len, diameter, text_x, text_y, pipe_x, pipe_y))
+        _try_add_arrow(start_x, start_y, end_x, end_y, arrow_len, "lwpoly")
+
+    # LINE okları — TÜM layer'lardan
+    for entity in msp.query('LINE'):
+        s = entity.dxf.start
+        e = entity.dxf.end
+        line_len = _point_dist(s.x, s.y, e.x, e.y)
+        _try_add_arrow(s.x, s.y, e.x, e.y, line_len, "line")
 
     # LEADER / MULTILEADER
     for entity in msp:
@@ -179,13 +182,15 @@ def trace_arrows(
         if not arrow_tip or not tail_tip:
             continue
 
-        text_val, _, t_x, t_y = _find_text_at_point(tail_tip[0], tail_tip[1])
-        if not text_val:
-            continue
-
         leader_len = _point_dist(arrow_tip[0], arrow_tip[1], tail_tip[0], tail_tip[1])
         if leader_len < MIN_ARROW_LENGTH:
+            _debug_stats["skipped_short"] += 1
             continue
+        text_val, _, t_x, t_y = _find_text_at_point(tail_tip[0], tail_tip[1])
+        if not text_val:
+            _debug_stats["skipped_notext"] += 1
+            continue
+        _debug_stats["leader"] += 1
         all_arrows.append((leader_len, text_val, t_x, t_y, arrow_tip[0], arrow_tip[1]))
 
     # ── Adım 2: Kural 1 uygula ──
@@ -248,21 +253,6 @@ def trace_arrows(
             else:
                 pipe_ranks[-1].append(pd)
 
-        # Bizim boru hangi rank'ta?
-        own_rank = -1
-        own_pipe_eidx = -1
-        for rank_idx, rank_group in enumerate(pipe_ranks):
-            for _, eidx, is_own in rank_group:
-                if is_own:
-                    own_rank = rank_idx
-                    own_pipe_eidx = eidx
-                    break
-            if own_rank >= 0:
-                break
-
-        if own_rank < 0:
-            continue  # bu cluster'da bizim boru yok
-
         # Okları uzunluğa göre sırala
         arrows_sorted = sorted(cluster, key=lambda x: x[0])
 
@@ -274,17 +264,21 @@ def trace_arrows(
             else:
                 arrow_ranks[-1].append(arrow)
 
-        # Bizim boru rank N'deyse → N'inci ok rank'ının çapını al
-        if own_rank < len(arrow_ranks):
-            # Bu rank'taki okların çoğunluk çapı
-            from collections import Counter
-            cap_counter = Counter(a[1] for a in arrow_ranks[own_rank])
+        # TÜM own pipe'ları rank'larına göre eşle
+        # Boru Rank N → Ok Rank N'in çapını al
+        from collections import Counter
+        for rank_idx, rank_group in enumerate(pipe_ranks):
+            if rank_idx >= len(arrow_ranks):
+                break  # ok rank'ı bitti
+            # Bu ok rank'ının dominant çapı
+            cap_counter = Counter(a[1] for a in arrow_ranks[rank_idx])
             dominant_cap = cap_counter.most_common(1)[0][0]
 
-            if own_pipe_eidx not in arrow_map:
-                arrow_map[own_pipe_eidx] = dominant_cap
+            for _, eidx, is_own in rank_group:
+                if is_own and eidx not in arrow_map:
+                    arrow_map[eidx] = dominant_cap
 
-    return arrow_map
+    return arrow_map, _debug_stats
 
 
 def match_nearby_texts(
