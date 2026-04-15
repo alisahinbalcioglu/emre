@@ -404,62 +404,46 @@ class PipeMatcher:
             # ADIM 2: Oklari boya gore sirala (kisa → uzun)
             group.sort(key=lambda a: a.length)
 
-            # ADIM 3a: Aday havuzu — ok uclarinin dokundugu/yakin oldugu borular
-            candidate_ids: set[str] = set()
-            for arrow in group:
-                ax, ay = arrow.end
-                # Her active boruya ok ucunun mesafesi
-                best_pipe: Pipe | None = None
-                best_d = float("inf")
-                for pipe in active:
-                    if pipe.id in matched_ids:
-                        continue
-                    d = _perp_dist(
-                        ax, ay,
-                        pipe.start[0], pipe.start[1],
-                        pipe.end[0], pipe.end[1],
-                    )
-                    if d < best_d:
-                        best_d = d
-                        best_pipe = pipe
-
-                if best_pipe is None or best_d > MAX_ARROW_PIPE_DIST:
-                    continue
-
-                # Cross-system: ok ucu noise'a daha yakinsa → ok dışarıda
-                hits_noise = False
-                for n in noise:
-                    nd = _perp_dist(
-                        ax, ay,
-                        n.start[0], n.start[1],
-                        n.end[0], n.end[1],
-                    )
-                    if nd < best_d:
-                        hits_noise = True
-                        break
-                if hits_noise:
-                    continue
-
-                candidate_ids.add(best_pipe.id)
-
-            if not candidate_ids:
-                continue
-
-            # ADIM 3b: Adaylari text mesafesine gore sirala (yakin → uzak)
+            # ADIM 3: Aday havuzu — text'in cevresindeki active borular
+            # (Ok-merkezli filtre YOK. Ok ucu nereye gidiyor diye bakmaz.
+            #  Mesafe sadece "alakasiz cok uzak borulari ele" amaçli ön koşul.
+            #  Atama karari SADECE indekse gore.)
             candidates: list[tuple[Pipe, float]] = []
             for pipe in active:
-                if pipe.id not in candidate_ids:
+                if pipe.id in matched_ids:
                     continue
                 d = _perp_dist(
                     tx, ty,
                     pipe.start[0], pipe.start[1],
                     pipe.end[0], pipe.end[1],
                 )
+                if d > MAX_FALLBACK_DIST:  # ön koşul: text'e makul mesafede
+                    continue
+
+                # Cross-system: text noise'a belirgin daha yakinsa → aday değil
+                hits_noise = False
+                for n in noise:
+                    nd = _perp_dist(
+                        tx, ty,
+                        n.start[0], n.start[1],
+                        n.end[0], n.end[1],
+                    )
+                    if nd + 20.0 < d:
+                        hits_noise = True
+                        break
+                if hits_noise:
+                    continue
+
                 candidates.append((pipe, d))
 
+            if not candidates:
+                continue
+
+            # ADIM 3b: Adaylari text mesafesine gore sirala (yakin → uzak)
             candidates.sort(key=lambda x: x[1])
 
-            # ADIM 4: INDEKS ESLEME — ok[i] → aday[i]
+            # ADIM 4: SAF INDEKS ESLEME — ok[i] → aday[i]
+            # Mesafe ATAMA KARARI VERMEZ. Sadece sıralı indeks.
             count = min(len(group), len(candidates))
             for i in range(count):
                 arrow_i = group[i]
@@ -468,11 +452,11 @@ class PipeMatcher:
                 if pipe_i.id in matched_ids:
                     continue
 
-                # ADIM 5: Aci bariyeri — paralel okleri eleme
+                # ADIM 5: Aci bariyeri — paralel okleri eleme (yatay/dikey karışmasın)
                 if not _passes_angle_barrier(arrow_i, pipe_i):
                     continue
 
-                # ADIM 6: Cap = text.value (arrow.diameter YOKSAYILIR)
+                # ADIM 6: Cap = text.value
                 diameter = text.value
                 if not validate_text_for_layer(diameter, self._selected_layer):
                     continue
