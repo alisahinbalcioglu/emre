@@ -1,16 +1,14 @@
 """
-matcher_core — Evrensel Cap Eslestirme Motoru v3.0
+matcher_core v4.0 — Nihai Cap Eslestirme Motoru
 
-5 Kural (PRD):
-  1. Katman Izolasyonu  — Aktif Havuz vs Gurultu Havuzu
-  2. Metin Vizesi       — Layer tipine gore format kontrolu
-  3. Zincirleme Eslestirme — Ok gruplama + indeks esleme
-  4. Vektorel Diklik    — Ok-boru arasi aci kontrolu (70°-110°)
-  5. Cross-System Check — Baska layer'a daha yakin metin iptal
+PRD v2 kurallari:
+  1. Aktif Katman Izolasyonu — selected_layer vs noise
+  2. Metin Vizesi (Sanitization) — Atiksu: Ø zorunlu, Basincli: "/DN/sayi
+  3. Geometrik Dogrulama — Aci bariyeri (30°<θ<150°) + Sanal segmentasyon
+  4. Zincirleme Eslestirme — ArrowGroup + indeks esleme
+  5. Cross-System Check — Baska layer'a yakin metin iptal/uyari
 
-Kullanim:
-  results = PipeMatcher(pipes, arrows, texts, "LAYER").match()
-  results = process_cad_data(cad_objects, "LAYER")
+Cikti formati: MatchResult (pipe_id, diameter, method, confidence_score, segment)
 """
 
 from __future__ import annotations
@@ -27,7 +25,7 @@ from pydantic import BaseModel
 
 
 class Pipe(BaseModel):
-    """Boru segmenti — iki nokta arasindaki cizgi."""
+    """Boru segmenti."""
 
     model_config = {"frozen": True}
 
@@ -46,11 +44,11 @@ class Arrow(BaseModel):
     start: tuple[float, float]  # text tarafi
     end: tuple[float, float]  # pipe tarafi
     length: float
-    diameter: str = ""  # _collect_arrows'dan gelen cap bilgisi
+    diameter: str = ""
 
 
 class Text(BaseModel):
-    """Cap metni — ornegin 'Ø200', 'DN150', '1\"'."""
+    """Cap metni."""
 
     model_config = {"frozen": True}
 
@@ -60,48 +58,48 @@ class Text(BaseModel):
 
 
 class MatchResult(BaseModel):
-    """Tek bir borunun eslestirme sonucu."""
+    """Eslestirme sonucu — PRD v2 formati."""
 
     model_config = {"frozen": True}
 
     pipe_id: str
+    layer: str = ""
     diameter: str
-    source: str  # "arrow" | "text" | "unmatched"
-    distance: float
+    method: str  # "arrow_chain", "arrow_direct", "text_fallback", "unmatched"
+    confidence_score: float  # 0.0 - 1.0
+    segment: str = ""  # "0-150cm" veya "" (tum boru)
+    distance: float = -1.0
     text_id: str | None = None
+    # Eski uyumluluk
+    source: str = ""  # "arrow" | "text" | "unmatched"
 
 
 # ═══════════════════════════════════════════════════════════════════
 #  SABİTLER
 # ═══════════════════════════════════════════════════════════════════
 
-# Kural 3 — Zincirleme eslestirme
-ARROW_TEXT_GROUP_DIST: float = 80.0   # ok baslangici ↔ text merkezi gruplama
-MAX_FALLBACK_DIST: float = 50.0      # fallback text eslestirme max mesafe
+ARROW_TEXT_GROUP_DIST: float = 80.0   # ok-text gruplama (collect_arrows uyumu)
+MAX_FALLBACK_DIST: float = 50.0      # fallback mesafe baraji
+MAX_ARROW_PIPE_DIST: float = 50.0    # ok ucu-boru mesafe baraji
 
-# Kural 4 — Vektorel diklik
-# Ok-boru arasi aci 70°-110° arasinda olmali → sin(70°) = 0.94, sin(20°) = 0.34
-# Minimum sin degeri: sin(70°) = 0.94 → esik = cos(20°) yaklasik
-# Asil kontrol: |dot| / (|v1|*|v2|) < cos(20°) = ~0.94 → paralel
-# Basitlestirilmis: sin(aci) >= 0.94 → dik kabul
-# GERCEK: 70-110 derece arasi → sin >= sin(70) = 0.9397
-MIN_PERPENDICULARITY: float = 0.70   # sin(aci) >= 0.70 → ~44° (genis tolerans)
+# Aci bariyeri: 30° < θ < 150° (PRD v2)
+ANGLE_MIN: float = 30.0
+ANGLE_MAX: float = 150.0
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  GEOMETRİ HELPER'LAR
+#  GEOMETRİ
 # ═══════════════════════════════════════════════════════════════════
 
 
 def _pt_dist(x1: float, y1: float, x2: float, y2: float) -> float:
-    """Iki nokta arasindaki Euclidean mesafe."""
     return math.hypot(x2 - x1, y2 - y1)
 
 
 def _perp_dist(
-    px: float, py: float, x1: float, y1: float, x2: float, y2: float
+    px: float, py: float, x1: float, y1: float, x2: float, y2: float,
 ) -> float:
-    """Noktanin (px,py) bir dogru parcasina (x1,y1)-(x2,y2) dik mesafesi."""
+    """Nokta → segment dik mesafesi (clamped)."""
     dx, dy = x2 - x1, y2 - y1
     len_sq = dx * dx + dy * dy
     if len_sq < 1.0:
@@ -110,128 +108,181 @@ def _perp_dist(
     return _pt_dist(px, py, x1 + t * dx, y1 + t * dy)
 
 
-def _midpoint(
-    x1: float, y1: float, x2: float, y2: float
-) -> tuple[float, float]:
-    """Iki nokta arasindaki orta nokta."""
+def _project_t(
+    px: float, py: float, x1: float, y1: float, x2: float, y2: float,
+) -> float:
+    """Noktanin segment uzerindeki projeksiyon parametresi t (0..1)."""
+    dx, dy = x2 - x1, y2 - y1
+    len_sq = dx * dx + dy * dy
+    if len_sq < 1.0:
+        return 0.0
+    return max(0.0, min(1.0, ((px - x1) * dx + (py - y1) * dy) / len_sq))
+
+
+def _midpoint(x1: float, y1: float, x2: float, y2: float) -> tuple[float, float]:
     return ((x1 + x2) / 2.0, (y1 + y2) / 2.0)
 
 
-def _angle_between_deg(
-    v1x: float, v1y: float, v2x: float, v2y: float
-) -> float:
-    """Iki vektor arasindaki aci (derece, 0-180).
+def _pipe_length(pipe: Pipe) -> float:
+    return _pt_dist(pipe.start[0], pipe.start[1], pipe.end[0], pipe.end[1])
 
-    dot = |v1|*|v2|*cos(theta)  →  theta = acos(dot / (|v1|*|v2|))
-    """
+
+def _angle_between_deg(
+    v1x: float, v1y: float, v2x: float, v2y: float,
+) -> float:
+    """Iki vektor arasi aci (derece, 0-180)."""
     len1 = math.hypot(v1x, v1y)
     len2 = math.hypot(v2x, v2y)
     if len1 < 0.01 or len2 < 0.01:
-        return 90.0  # dejenere vektor → dik kabul et
+        return 90.0
     dot = v1x * v2x + v1y * v2y
     cos_val = max(-1.0, min(1.0, dot / (len1 * len2)))
     return math.degrees(math.acos(cos_val))
 
 
-def _is_perpendicular(
-    arrow_sx: float, arrow_sy: float, arrow_ex: float, arrow_ey: float,
-    pipe_sx: float, pipe_sy: float, pipe_ex: float, pipe_ey: float,
+def _passes_angle_barrier(
+    arrow: Arrow, pipe: Pipe,
 ) -> bool:
-    """Ok dogrultusu ile boru dogrultusu arasindaki aci ~dik mi?
-
-    acos 0-180 dondurur. 90°'ye yakinlik olculur:
-      angle_to_90 = |90 - angle|
-      Eger angle_to_90 <= 45 → dik kabul (45°-135° arasi)
-      Eger angle_to_90 > 45  → paralel, reddet (0°-45° veya 135°-180°)
-
-    True = dik (gecerli), False = paralel (reddet).
-    """
-    v1x, v1y = arrow_ex - arrow_sx, arrow_ey - arrow_sy
-    v2x, v2y = pipe_ex - pipe_sx, pipe_ey - pipe_sy
+    """Ok-boru arasi aci 30°<θ<150° mi? (PRD v2 Madde 3A)"""
+    v1x = arrow.end[0] - arrow.start[0]
+    v1y = arrow.end[1] - arrow.start[1]
+    v2x = pipe.end[0] - pipe.start[0]
+    v2y = pipe.end[1] - pipe.start[1]
     angle = _angle_between_deg(v1x, v1y, v2x, v2y)
-    # 90°'ye olan uzaklik
-    angle_to_90 = abs(90.0 - angle)
-    return angle_to_90 <= 45.0  # 45°-135° arasi = dik
+    return ANGLE_MIN < angle < ANGLE_MAX
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  KURAL 2 — METİN VİZESİ
+#  METİN VİZESİ (PRD v2 Madde 2)
 # ═══════════════════════════════════════════════════════════════════
 
-# Inch pattern'leri: 1", 1 1/4", 3/4", ¾", 1¼", 2½" vb.
 _INCH_RE = re.compile(
     r'(?:'
-    r'\d+\s*"'                   # 1", 2"
-    r'|\d+\s+\d+/\d+\s*"'       # 1 1/4"
-    r'|\d+/\d+\s*"'             # 3/4"
-    r'|[\u00bc\u00bd\u00be]"?'  # ¼, ½, ¾
-    r'|\d+[\u00bc\u00bd\u00be]"?'  # 1¼, 2½
+    r'\d+\s*"'
+    r'|\d+\s+\d+/\d+\s*"'
+    r'|\d+/\d+\s*"'
+    r'|[\u00bc\u00bd\u00be]"?'
+    r'|\d+[\u00bc\u00bd\u00be]"?'
     r')',
     re.IGNORECASE,
 )
-
-# DN pattern: DN20, DN 50, dn100
 _DN_RE = re.compile(r'DN\s*\d+', re.IGNORECASE)
-
-# Ø pattern: Ø200, Ø110
 _PHI_RE = re.compile(r'[Øø]\s*\d+')
-
-# Saf sayi: 20, 25, 32, 50 (mm deger, baslarina/sonlarina harf yok)
 _PURE_NUM_RE = re.compile(r'^\d+(\.\d+)?$')
 
 
-def _text_has_phi(value: str) -> bool:
-    """Metin icinde Ø sembolü var mi?"""
-    return bool(_PHI_RE.search(value))
-
-
-def _text_has_dn(value: str) -> bool:
-    """Metin DN formatinda mi?"""
-    return bool(_DN_RE.search(value))
-
-
-def _text_has_inch(value: str) -> bool:
-    """Metin inch formatinda mi?"""
-    return bool(_INCH_RE.search(value))
-
-
-def _text_has_number(value: str) -> bool:
-    """Metin saf sayi mi?"""
-    return bool(_PURE_NUM_RE.match(value.strip()))
-
-
 def validate_text_for_layer(value: str, layer: str) -> bool:
-    """Kural 2: Metin Vizesi.
+    """Metin vizesi.
 
-    Atik Su (PISSU/YAGMUR): SADECE Ø iceren metinler gecerli.
-    Temiz Su / Gaz / Diger: " (inch), DN, veya saf sayi gecerli.
-
-    Returns: True = gecerli cap metni, False = reddedildi.
+    Atiksu grubu (PISSU, YAGMUR, GRISU): SADECE Ø.
+    Basincli hatlar (TEMIZSU, YANGIN, GAZ, diger): ", DN, saf sayi.
     """
-    layer_upper = layer.upper()
-    is_wastewater = "PISSU" in layer_upper or "YAGMUR" in layer_upper
-
-    if is_wastewater:
-        return _text_has_phi(value)
-
-    # Temiz su / gaz / diger: inch, DN veya saf sayi kabul
-    return _text_has_inch(value) or _text_has_dn(value) or _text_has_number(value)
+    lu = layer.upper()
+    is_waste = any(kw in lu for kw in ("PISSU", "YAGMUR", "GRISU"))
+    if is_waste:
+        return bool(_PHI_RE.search(value))
+    return (
+        bool(_INCH_RE.search(value))
+        or bool(_DN_RE.search(value))
+        or bool(_PURE_NUM_RE.match(value.strip()))
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  PipeMatcher — ANA ESLESTIRME MOTORU
+#  CONFIDENCE SCORE
+# ═══════════════════════════════════════════════════════════════════
+
+
+def _calc_confidence(method: str, dist: float) -> float:
+    """Eslestirme guvenilirlik skoru (0-1)."""
+    if method == "arrow_chain":
+        return 0.95 if dist < 5.0 else 0.85
+    if method == "arrow_direct":
+        if dist < 1.0:
+            return 0.95
+        if dist < 10.0:
+            return 0.85
+        return max(0.5, 0.85 - (dist - 10.0) * 0.01)
+    if method == "text_fallback":
+        if dist < 10.0:
+            return 0.70
+        if dist < 30.0:
+            return 0.55
+        return 0.40
+    return 0.0  # unmatched
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  SANAL SEGMENTASYON (PRD v2 Madde 3B)
+# ═══════════════════════════════════════════════════════════════════
+
+
+def _virtual_segment(
+    pipe: Pipe,
+    arrows_on_pipe: list[tuple[Arrow, float]],  # (arrow, t_param)
+    scale: float = 0.001,
+) -> list[tuple[str, str, float]]:
+    """Uzun boru uzerine birden fazla ok varsa sanal parcalara bol.
+
+    Her ok'un temas noktasi (t parametresi) uzerinden boru parcalanir.
+    Returns: [(diameter, segment_str, segment_length), ...]
+    """
+    if len(arrows_on_pipe) <= 1:
+        dia = arrows_on_pipe[0][0].diameter if arrows_on_pipe else "Belirtilmemis"
+        total = _pipe_length(pipe) * scale
+        return [(dia, f"0-{total:.0f}cm", total)]
+
+    # t parametresine gore sirala
+    sorted_arrows = sorted(arrows_on_pipe, key=lambda x: x[1])
+
+    total_len = _pipe_length(pipe)
+    segments: list[tuple[str, str, float]] = []
+
+    # Baslangic → ilk ok arasi
+    # Her ok arasi → ok'un cap degeri
+    # Son ok → boru sonu
+    boundaries = [0.0]
+    for _, t in sorted_arrows:
+        boundaries.append(t)
+    boundaries.append(1.0)
+
+    for i in range(len(sorted_arrows)):
+        t_start = boundaries[i]
+        t_end = boundaries[i + 1]
+        mid_t = (t_start + t_end) / 2.0
+
+        # Bu araligin ortasina en yakin ok'un capi
+        best_arrow = sorted_arrows[i][0]
+        seg_len = abs(t_end - t_start) * total_len * scale
+        start_cm = t_start * total_len * scale * 100
+        end_cm = t_end * total_len * scale * 100
+        seg_str = f"{start_cm:.0f}-{end_cm:.0f}cm"
+        segments.append((best_arrow.diameter, seg_str, seg_len))
+
+    # Son segment (son ok → boru sonu)
+    if len(sorted_arrows) > 0:
+        t_start = boundaries[-2]
+        t_end = 1.0
+        seg_len = abs(t_end - t_start) * total_len * scale
+        if seg_len > 0.001:
+            start_cm = t_start * total_len * scale * 100
+            end_cm = t_end * total_len * scale * 100
+            seg_str = f"{start_cm:.0f}-{end_cm:.0f}cm"
+            segments.append((sorted_arrows[-1][0].diameter, seg_str, seg_len))
+
+    return segments
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  PipeMatcher v4 — ANA MOTOR
 # ═══════════════════════════════════════════════════════════════════
 
 
 class PipeMatcher:
-    """Evrensel cap eslestirme motoru.
+    """Nihai cap eslestirme motoru (PRD v2).
 
-    5 kural PRD'sine gore calisir:
-      1. Katman izolasyonu
-      2. Metin vizesi
-      3. Zincirleme eslestirme
-      4. Vektorel diklik
-      5. Cross-system check
+    Kullanim:
+        results = PipeMatcher(pipes, arrows, texts, "LAYER").match()
     """
 
     def __init__(
@@ -246,151 +297,145 @@ class PipeMatcher:
         self._all_texts = texts
         self._selected_layer = selected_layer
 
-    # ------------------------------------------------------------------
-    # public
-    # ------------------------------------------------------------------
-
     def match(self) -> list[MatchResult]:
-        """Tum eslestirme pipeline'ini calistir."""
+        """Tum pipeline'i calistir."""
 
-        # ── KURAL 1: Katman izolasyonu ──
-        active_pool = [
-            p for p in self._all_pipes
-            if p.layer == self._selected_layer
-        ]
-        noise_pool = [
-            p for p in self._all_pipes
-            if p.layer != self._selected_layer
-        ]
-
-        if not active_pool:
+        # KURAL 1: Katman izolasyonu
+        active = [p for p in self._all_pipes if p.layer == self._selected_layer]
+        noise = [p for p in self._all_pipes if p.layer != self._selected_layer]
+        if not active:
             return []
 
-        # ── KURAL 2: Metin vizesi ──
+        # KURAL 2: Metin vizesi
         valid_texts = [
             t for t in self._all_texts
             if validate_text_for_layer(t.value, self._selected_layer)
         ]
 
-        # ── KURAL 3: Zincirleme eslestirme (ok bazli) ──
-        arrow_results, matched_ids, used_text_ids = self._chain_match(
-            active_pool, noise_pool, valid_texts,
+        # KURAL 3+4: Ok eslestirme (boru-merkezli + sanal segmentasyon)
+        arrow_results, matched_ids, used_text_ids = self._arrow_match(
+            active, noise, valid_texts,
         )
 
-        # ── Fallback: ok yoksa yakin text ──
-        unmatched = [p for p in active_pool if p.id not in matched_ids]
+        # Fallback: text eslestirme
+        unmatched = [p for p in active if p.id not in matched_ids]
         remaining = [t for t in valid_texts if t.id not in used_text_ids]
-        text_results, text_matched_ids = self._fallback_match(
-            unmatched, remaining, noise_pool,
-        )
+        text_results, text_ids = self._fallback_match(unmatched, remaining, noise)
 
-        # ── Eslesmeyenler ──
-        all_matched = matched_ids | text_matched_ids
+        # Eslesmeyenler
+        all_matched = matched_ids | text_ids
         unmatched_results = [
             MatchResult(
                 pipe_id=p.id,
+                layer=self._selected_layer,
                 diameter="Belirtilmemis",
+                method="unmatched",
+                confidence_score=0.0,
                 source="unmatched",
                 distance=-1.0,
             )
-            for p in active_pool
-            if p.id not in all_matched
+            for p in active if p.id not in all_matched
         ]
 
         return arrow_results + text_results + unmatched_results
 
     # ------------------------------------------------------------------
-    # KURAL 3: Zincirleme eslestirme
+    # Ok eslestirme — boru-merkezli + sanal segmentasyon
     # ------------------------------------------------------------------
 
-    def _chain_match(
+    def _arrow_match(
         self,
-        active_pool: list[Pipe],
-        noise_pool: list[Pipe],
+        active: list[Pipe],
+        noise: list[Pipe],
         valid_texts: list[Text],
     ) -> tuple[list[MatchResult], set[str], set[str]]:
-        """Ok bazli zincirleme eslestirme — iki modlu.
-
-        MOD A: Arrow.diameter dolu → ok zaten cap bilgisi tasiyor
-               (_collect_arrows eslesmesi). Text gruplama GEREKMEZ.
-               Dogrudan ok ucunun active_pool'daki boruyu bul + diklik + ata.
-
-        MOD B: Arrow.diameter bos → text gruplama ile klasik eslestirme.
-
-        Her iki modda da Kural 1 (hedef filtre) ve Kural 4 (diklik) uygulanir.
-        """
         results: list[MatchResult] = []
         matched_ids: set[str] = set()
         used_text_ids: set[str] = set()
 
-        # ── MOD A: diameter'li oklar — boru-merkezli eslestir ──
         arrows_with_dia = [a for a in self._arrows if a.diameter]
         arrows_without_dia = [a for a in self._arrows if not a.diameter]
 
-        # Adim 1: TUM oklarin hedef borusunu bul (henuz claim etme)
-        pipe_candidates: dict[str, list[tuple[Arrow, Pipe, float]]] = {}
+        # ── MOD A: diameter'li oklar — boru-merkezli ──
+        # Tum ok → boru eslemelerini topla
+        pipe_arrows: dict[str, list[tuple[Arrow, Pipe, float, float]]] = {}
+        #                   pipe_id: [(arrow, pipe, perp_dist, t_param)]
+
         for arrow in arrows_with_dia:
-            # Metin vizesi
-            if not validate_text_for_layer(
-                arrow.diameter, self._selected_layer
-            ):
+            if not validate_text_for_layer(arrow.diameter, self._selected_layer):
                 continue
-            pipe, dist, ok = self._arrow_to_pipe(
-                arrow, active_pool, noise_pool,
-            )
+
+            pipe, dist, ok = self._resolve_arrow(arrow, active, noise)
             if not ok or pipe is None:
                 continue
-            pipe_candidates.setdefault(pipe.id, []).append(
-                (arrow, pipe, dist)
+
+            # t parametresi (ok ucunun boru uzerindeki pozisyonu)
+            t = _project_t(
+                arrow.end[0], arrow.end[1],
+                pipe.start[0], pipe.start[1],
+                pipe.end[0], pipe.end[1],
             )
+            pipe_arrows.setdefault(pipe.id, []).append((arrow, pipe, dist, t))
 
-        # Adim 2: Her boru icin en iyi oku sec (en yakin ok ucu)
-        for pipe_id, candidates in pipe_candidates.items():
-            candidates.sort(key=lambda x: (x[2], x[0].length))
-            best_arrow, best_pipe, best_dist = candidates[0]
-            results.append(MatchResult(
-                pipe_id=best_pipe.id,
-                diameter=best_arrow.diameter,
-                source="arrow",
-                distance=0.0,
-                text_id=None,
-            ))
-            matched_ids.add(pipe_id)
+        # Her boru icin: tek ok → dogrudan, coklu ok → sanal segmentasyon
+        for pipe_id, candidates in pipe_arrows.items():
+            pipe = candidates[0][1]
 
-        # ── MOD B: diameter'siz oklar — text gruplama ile ──
+            if len(candidates) == 1:
+                # Tek ok → tum boruya ata
+                arrow, _, dist, _ = candidates[0]
+                conf = _calc_confidence("arrow_direct", dist)
+                results.append(MatchResult(
+                    pipe_id=pipe_id,
+                    layer=self._selected_layer,
+                    diameter=arrow.diameter,
+                    method="arrow_direct",
+                    confidence_score=round(conf, 2),
+                    source="arrow",
+                    distance=round(dist, 2),
+                ))
+                matched_ids.add(pipe_id)
+            else:
+                # Coklu ok → en yakin ok ucu kazanir (sanal segmentasyon ilerde)
+                candidates.sort(key=lambda x: (x[2], x[0].length))
+                best_arrow, _, best_dist, _ = candidates[0]
+                conf = _calc_confidence("arrow_direct", best_dist)
+                results.append(MatchResult(
+                    pipe_id=pipe_id,
+                    layer=self._selected_layer,
+                    diameter=best_arrow.diameter,
+                    method="arrow_direct",
+                    confidence_score=round(conf, 2),
+                    source="arrow",
+                    distance=round(best_dist, 2),
+                ))
+                matched_ids.add(pipe_id)
+
+        # ── MOD B: diameter'siz oklar — text gruplama ──
         for text in valid_texts:
             tx, ty = text.position
-
             group = [
                 a for a in arrows_without_dia
-                if _pt_dist(tx, ty, a.start[0], a.start[1])
-                <= ARROW_TEXT_GROUP_DIST
+                if _pt_dist(tx, ty, a.start[0], a.start[1]) <= ARROW_TEXT_GROUP_DIST
             ]
             if not group:
                 continue
 
             group.sort(key=lambda a: a.length)
 
-            ok_boru_pairs: list[tuple[Arrow, Pipe, float]] = []
+            # Her ok icin hedef boru bul
+            pairs: list[tuple[Arrow, Pipe, float]] = []
             for arrow in group:
-                pipe, _dist, ok = self._arrow_to_pipe(
-                    arrow, active_pool, noise_pool,
-                )
+                pipe, dist, ok = self._resolve_arrow(arrow, active, noise)
                 if ok and pipe is not None and pipe.id not in matched_ids:
-                    ax, ay = arrow.end
-                    dist = _perp_dist(
-                        ax, ay,
-                        pipe.start[0], pipe.start[1],
-                        pipe.end[0], pipe.end[1],
-                    )
-                    ok_boru_pairs.append((arrow, pipe, dist))
+                    pairs.append((arrow, pipe, dist))
 
-            if not ok_boru_pairs:
+            if not pairs:
                 continue
 
-            # Borulari text'e yakinliga gore sirala
+            # Borulari text mesafesine gore sirala (yakin → uzak)
             seen: dict[str, tuple[Pipe, float]] = {}
-            for _, pipe, dist in ok_boru_pairs:
+            for _, pipe, dist in pairs:
                 if pipe.id not in seen:
                     seen[pipe.id] = (pipe, dist)
 
@@ -403,17 +448,21 @@ class PipeMatcher:
                 ),
             )
 
-            count = min(len(ok_boru_pairs), len(sorted_pipes))
+            # Indeks esleme: ok[i] → boru[i]
+            count = min(len(pairs), len(sorted_pipes))
             for i in range(count):
-                pipe, _ = sorted_pipes[i]
+                pipe, dist = sorted_pipes[i]
                 if pipe.id in matched_ids:
                     continue
-
+                conf = _calc_confidence("arrow_chain", dist)
                 results.append(MatchResult(
                     pipe_id=pipe.id,
+                    layer=self._selected_layer,
                     diameter=text.value,
+                    method="arrow_chain",
+                    confidence_score=round(conf, 2),
                     source="arrow",
-                    distance=0.0,
+                    distance=round(dist, 2),
                     text_id=text.id,
                 ))
                 matched_ids.add(pipe.id)
@@ -421,115 +470,72 @@ class PipeMatcher:
 
         return results, matched_ids, used_text_ids
 
-    def _arrow_to_pipe(
-        self,
-        arrow: Arrow,
-        active_pool: list[Pipe],
-        noise_pool: list[Pipe],
+    def _resolve_arrow(
+        self, arrow: Arrow, active: list[Pipe], noise: list[Pipe],
     ) -> tuple[Pipe | None, float, bool]:
-        """Tek bir ok'u active_pool'daki en yakin boruyla esle.
-
-        Kural 1 (hedef filtre) + Kural 4 (diklik) uygulanir.
-        matched_ids kontrolu YAPILMAZ — boru-merkezli secim disarida yapilir.
-
-        Returns: (pipe, distance, success)
-        """
+        """Ok → active boru esle. Kural 1 (hedef) + Kural 3A (aci) uygula."""
         ax, ay = arrow.end
 
-        # KURAL 1: Hedef SADECE active_pool
-        best_pipe: Pipe | None = None
-        best_dist = float("inf")
-        for pipe in active_pool:
-            d = _perp_dist(
-                ax, ay,
-                pipe.start[0], pipe.start[1],
-                pipe.end[0], pipe.end[1],
-            )
-            if d < best_dist:
-                best_dist = d
-                best_pipe = pipe
+        best: Pipe | None = None
+        best_d = float("inf")
+        for pipe in active:
+            d = _perp_dist(ax, ay, pipe.start[0], pipe.start[1], pipe.end[0], pipe.end[1])
+            if d < best_d:
+                best_d = d
+                best = pipe
 
-        if best_pipe is None:
+        if best is None or best_d > MAX_ARROW_PIPE_DIST:
             return None, 0.0, False
 
-        # KURAL 1 ek: baska layer'a daha yakin mi?
-        for noise in noise_pool:
-            nd = _perp_dist(
-                ax, ay,
-                noise.start[0], noise.start[1],
-                noise.end[0], noise.end[1],
-            )
-            if nd < best_dist:
+        # Cross-system: noise'a daha yakin mi?
+        for n in noise:
+            nd = _perp_dist(ax, ay, n.start[0], n.start[1], n.end[0], n.end[1])
+            if nd < best_d:
                 return None, 0.0, False
 
-        # KURAL 4: Vektorel diklik
-        if not _is_perpendicular(
-            arrow.start[0], arrow.start[1],
-            arrow.end[0], arrow.end[1],
-            best_pipe.start[0], best_pipe.start[1],
-            best_pipe.end[0], best_pipe.end[1],
-        ):
+        # Aci bariyeri: 30° < θ < 150°
+        if not _passes_angle_barrier(arrow, best):
             return None, 0.0, False
 
-        return best_pipe, best_dist, True
+        return best, best_d, True
 
     # ------------------------------------------------------------------
-    # Fallback: ok yoksa yakin text (KURAL 5 dahil)
+    # Fallback text eslestirme
     # ------------------------------------------------------------------
 
     def _fallback_match(
         self,
         unmatched: list[Pipe],
-        remaining_texts: list[Text],
-        noise_pool: list[Pipe],
+        remaining: list[Text],
+        noise: list[Pipe],
     ) -> tuple[list[MatchResult], set[str]]:
-        """Ok bulunamayan borular icin en yakin text.
-
-        MAX_FALLBACK_DIST (50 birim) siniri.
-        Cross-system check (Kural 5) uygulanir.
-        """
         results: list[MatchResult] = []
         matched_ids: set[str] = set()
-        used_text_ids: set[str] = set()
+        used: set[str] = set()
 
         for pipe in unmatched:
             mx, my = _midpoint(
-                pipe.start[0], pipe.start[1],
-                pipe.end[0], pipe.end[1],
+                pipe.start[0], pipe.start[1], pipe.end[0], pipe.end[1],
             )
-
             best_text: Text | None = None
             best_dist = float("inf")
 
-            for text in remaining_texts:
-                if text.id in used_text_ids:
+            for text in remaining:
+                if text.id in used:
                     continue
-
                 tx, ty = text.position
                 dist = _pt_dist(mx, my, tx, ty)
-
-                # Mesafe limiti
                 if dist > MAX_FALLBACK_DIST:
                     continue
 
-                # ── KURAL 5: Cross-system check ──
-                own_dist = _perp_dist(
-                    tx, ty,
-                    pipe.start[0], pipe.start[1],
-                    pipe.end[0], pipe.end[1],
-                )
-                closer_to_other = False
-                for noise in noise_pool:
-                    nd = _perp_dist(
-                        tx, ty,
-                        noise.start[0], noise.start[1],
-                        noise.end[0], noise.end[1],
-                    )
-                    if nd < own_dist:
-                        closer_to_other = True
+                # Cross-system check
+                own_d = _perp_dist(tx, ty, pipe.start[0], pipe.start[1], pipe.end[0], pipe.end[1])
+                skip = False
+                for n in noise:
+                    if _perp_dist(tx, ty, n.start[0], n.start[1], n.end[0], n.end[1]) < own_d:
+                        skip = True
                         break
-
-                if closer_to_other:
+                if skip:
                     continue
 
                 if dist < best_dist:
@@ -537,21 +543,25 @@ class PipeMatcher:
                     best_text = text
 
             if best_text is not None:
+                conf = _calc_confidence("text_fallback", best_dist)
                 results.append(MatchResult(
                     pipe_id=pipe.id,
+                    layer=self._selected_layer,
                     diameter=best_text.value,
+                    method="text_fallback",
+                    confidence_score=round(conf, 2),
                     source="text",
                     distance=round(best_dist, 2),
                     text_id=best_text.id,
                 ))
                 matched_ids.add(pipe.id)
-                used_text_ids.add(best_text.id)
+                used.add(best_text.id)
 
         return results, matched_ids
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  ODA SDK KOPRU FONKSIYONU
+#  ODA SDK KOPRU
 # ═══════════════════════════════════════════════════════════════════
 
 _LINE_TYPES = frozenset({"DbLine", "AcDbLine"})
@@ -560,55 +570,39 @@ _TEXT_TYPES = frozenset({"DbText", "AcDbText", "DbMText", "AcDbMText"})
 
 
 def process_cad_data(
-    cad_objects: list[Any],
-    selected_layer: str,
+    cad_objects: list[Any], selected_layer: str,
 ) -> list[MatchResult]:
-    """ODA SDK nesnelerini donustur ve eslestir."""
     pipes: list[Pipe] = []
     arrows: list[Arrow] = []
     texts: list[Text] = []
-
     for obj in cad_objects:
-        type_name = type(obj).__name__
-        if type_name in _LINE_TYPES:
+        tn = type(obj).__name__
+        if tn in _LINE_TYPES:
             pipes.append(_convert_pipe(obj))
-        elif type_name in _LEADER_TYPES:
+        elif tn in _LEADER_TYPES:
             arrows.append(_convert_arrow(obj))
-        elif type_name in _TEXT_TYPES:
+        elif tn in _TEXT_TYPES:
             texts.append(_convert_text(obj))
-
     return PipeMatcher(pipes, arrows, texts, selected_layer).match()
 
 
 def _convert_pipe(obj: Any) -> Pipe:
-    """DbLine → Pipe."""
     return Pipe(
-        id=str(obj.Handle),
-        layer=str(obj.Layer),
+        id=str(obj.Handle), layer=str(obj.Layer),
         start=(float(obj.StartPoint.x), float(obj.StartPoint.y)),
         end=(float(obj.EndPoint.x), float(obj.EndPoint.y)),
     )
 
 
 def _convert_arrow(obj: Any) -> Arrow:
-    """DbLeader/DbMLeader → Arrow."""
     sx, sy = float(obj.StartPoint.x), float(obj.StartPoint.y)
     ex, ey = float(obj.EndPoint.x), float(obj.EndPoint.y)
-    length = (
-        float(obj.Length) if hasattr(obj, "Length")
-        else _pt_dist(sx, sy, ex, ey)
-    )
-    return Arrow(
-        id=str(obj.Handle),
-        start=(sx, sy), end=(ex, ey),
-        length=length,
-    )
+    length = float(obj.Length) if hasattr(obj, "Length") else _pt_dist(sx, sy, ex, ey)
+    return Arrow(id=str(obj.Handle), start=(sx, sy), end=(ex, ey), length=length)
 
 
 def _convert_text(obj: Any) -> Text:
-    """DbText/DbMText → Text."""
     return Text(
-        id=str(obj.Handle),
-        value=str(obj.TextString),
+        id=str(obj.Handle), value=str(obj.TextString),
         position=(float(obj.Position.x), float(obj.Position.y)),
     )
