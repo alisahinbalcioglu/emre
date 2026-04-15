@@ -38,6 +38,7 @@ class Arrow(BaseModel):
     start: tuple[float, float]
     end: tuple[float, float]
     length: float
+    diameter: str = ""  # _collect_arrows'dan gelen cap bilgisi
 
 
 class Text(BaseModel):
@@ -66,10 +67,10 @@ class MatchResult(BaseModel):
 # Sabitler
 # ---------------------------------------------------------------------------
 
-ARROW_TEXT_GROUP_DIST: float = 15.0  # ok'u text'e baglama esigi
+ARROW_TEXT_GROUP_DIST: float = 80.0  # ok'u text'e baglama esigi (diameter_assigner ile uyumlu)
 MAX_FALLBACK_DIST: float = 50.0  # fallback text eslestirme max mesafe
 ARROW_TOUCH_DIST: float = 1.0  # ok ucu boruya "deger" sayilma esigi
-MIN_PERPENDICULARITY: float = 0.30  # ok-boru arasi min sin(aci) (~17°)
+MIN_PERPENDICULARITY: float = 0.15  # ok-boru arasi min sin(aci) (~8.5°, diagonal ok'lar icin)
 
 
 # ---------------------------------------------------------------------------
@@ -344,14 +345,19 @@ class PipeMatcher:
             # Zincirleme eslestirme: ok[i] → boru[i]
             pair_count = min(len(valid_pairs), len(sorted_pipes))
             for i in range(pair_count):
+                arrow_i = valid_pairs[i][0]
                 pipe, _ = sorted_pipes[i]
                 if pipe.id in matched_pipe_ids:
                     continue
 
+                # Arrow.diameter varsa kullan (_collect_arrows eslesmesi)
+                # yoksa text.value'ya dusus yap
+                diameter = arrow_i.diameter if arrow_i.diameter else text.value
+
                 results.append(
                     MatchResult(
                         pipe_id=pipe.id,
-                        diameter=text.value,
+                        diameter=diameter,
                         source="arrow",
                         distance=0.0,
                         text_id=text.id,

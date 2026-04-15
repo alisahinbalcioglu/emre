@@ -271,6 +271,7 @@ def _graph_to_matcher_inputs(
             start=(a["text_x"], a["text_y"]),
             end=(a["pipe_x"], a["pipe_y"]),
             length=a["length"],
+            diameter=a.get("diameter", ""),
         ))
 
     # diameter texts → Text
@@ -363,21 +364,14 @@ def _walker_propagate(
                     edge_caps[e2.idx] = d1
                     edge_sources[e2.idx] = "walker"
                     changed = True
-                else:
-                    # arrow her zaman kazanır
-                    edge_caps[e2.idx] = d1
-                    edge_sources[e2.idx] = "walker"
-                    changed = True
+                # else: diger taraf zaten atanmis → ezme (yanlis cap yayilimini onle)
                 continue
             if src2 == "arrow":
                 if d1 == "Belirtilmemis":
                     edge_caps[e1.idx] = d2
                     edge_sources[e1.idx] = "walker"
                     changed = True
-                else:
-                    edge_caps[e1.idx] = d2
-                    edge_sources[e1.idx] = "walker"
-                    changed = True
+                # else: diger taraf zaten atanmis → ezme
                 continue
 
             # Belirtilmemiş → komşudan al
