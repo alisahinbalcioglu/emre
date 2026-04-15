@@ -68,6 +68,8 @@ class MatchResult(BaseModel):
 
 ARROW_TEXT_GROUP_DIST: float = 15.0  # ok'u text'e baglama esigi
 MAX_FALLBACK_DIST: float = 50.0  # fallback text eslestirme max mesafe
+ARROW_TOUCH_DIST: float = 1.0  # ok ucu boruya "deger" sayilma esigi
+MIN_PERPENDICULARITY: float = 0.30  # ok-boru arasi min sin(aci) (~17°)
 
 
 # ---------------------------------------------------------------------------
@@ -105,6 +107,28 @@ def _midpoint(
 ) -> tuple[float, float]:
     """Iki nokta arasindaki orta nokta."""
     return ((x1 + x2) / 2.0, (y1 + y2) / 2.0)
+
+
+def _sin_angle_between(
+    ax: float, ay: float, bx: float, by: float,
+    px: float, py: float, qx: float, qy: float,
+) -> float:
+    """Iki vektorun arasindaki acinin sin degeri (0..1).
+
+    Vektor 1: (ax,ay)→(bx,by)  (ok dogrultusu)
+    Vektor 2: (px,py)→(qx,qy)  (boru dogrultusu)
+
+    sin(aci) = |cross| / (|v1| * |v2|)
+    0 = paralel, 1 = dik.
+    """
+    v1x, v1y = bx - ax, by - ay
+    v2x, v2y = qx - px, qy - py
+    len1 = math.hypot(v1x, v1y)
+    len2 = math.hypot(v2x, v2y)
+    if len1 < 0.01 or len2 < 0.01:
+        return 1.0  # dejenere vektor → engelleme
+    cross = abs(v1x * v2y - v1y * v2x)
+    return cross / (len1 * len2)
 
 
 # ---------------------------------------------------------------------------
@@ -217,9 +241,10 @@ class PipeMatcher:
     ) -> tuple[list[MatchResult], set[str], set[str]]:
         """Her text etrafindaki ok grubunu borularla zincirle.
 
-        Cross-system check: ok ucu baska layer borusuna daha yakinsa
-        o ok atlanir — sadece selected_layer borularina isaret eden
-        oklar eslestirme havuzuna girer.
+        3 kati kural:
+          1. Zorunlu hedef filtresi — ok ucu selected_layer disindaysa iptal
+          2. Vektorel yon kontrolu — ok boruya dik gelmiyorsa reddet
+          3. Mesafe agirlikli siralama — temas (< 1 birim) uzunluktan once
 
         Returns:
             (results, matched_pipe_ids, used_text_ids)
@@ -227,6 +252,9 @@ class PipeMatcher:
         results: list[MatchResult] = []
         matched_pipe_ids: set[str] = set()
         used_text_ids: set[str] = set()
+
+        all_pipes = list(own_pipes) + list(other_pipes)
+        own_ids = {p.id for p in own_pipes}
 
         for text in valid_texts:
             tx, ty = text.position
@@ -242,65 +270,81 @@ class PipeMatcher:
             if not group:
                 continue
 
-            # oklari uzunluga gore sirala (kisa → uzun)
-            group.sort(key=lambda a: a.length)
+            # --- Her ok icin: hedef boru bul + 3 kural uygula ---
+            valid_pairs: list[tuple[Arrow, Pipe, float]] = []
+            #                       ok,    boru, ok_ucu_boru_mesafesi
 
-            # her ok'un pipe-end'inin degdigi borulari bul
-            # SADECE own_pipes (selected_layer) hedef havuzunda
-            target_pipes: list[tuple[Pipe, float]] = []
             for arrow in group:
                 ax, ay = arrow.end
 
-                # --- own_pipes icinde en yakin boruyu bul ---
-                best_own_pipe: Pipe | None = None
-                best_own_dist = float("inf")
-
-                for pipe in own_pipes:
-                    if pipe.id in matched_pipe_ids:
-                        continue
+                # KURAL 1 — Zorunlu hedef filtresi
+                # Ok ucunun TUM borulara (own + other) en yakin olani bul
+                abs_best_pipe: Pipe | None = None
+                abs_best_dist = float("inf")
+                for pipe in all_pipes:
                     d = _perp_dist(
                         ax, ay,
                         pipe.start[0], pipe.start[1],
                         pipe.end[0], pipe.end[1],
                     )
-                    if d < best_own_dist:
-                        best_own_dist = d
-                        best_own_pipe = pipe
+                    if d < abs_best_dist:
+                        abs_best_dist = d
+                        abs_best_pipe = pipe
 
-                if best_own_pipe is None:
+                # Ok ucu selected_layer disina carptiysa → TUM OKU IPTAL
+                if abs_best_pipe is None or abs_best_pipe.id not in own_ids:
                     continue
 
-                # --- cross-system check: baska layer daha yakin mi? ---
-                arrow_hits_other = False
-                for other in other_pipes:
-                    other_dist = _perp_dist(
-                        ax, ay,
-                        other.start[0], other.start[1],
-                        other.end[0], other.end[1],
-                    )
-                    if other_dist < best_own_dist:
-                        arrow_hits_other = True
-                        break
+                # Zaten eslesmis boruyu atla
+                if abs_best_pipe.id in matched_pipe_ids:
+                    continue
 
-                if not arrow_hits_other:
-                    target_pipes.append((best_own_pipe, best_own_dist))
+                # KURAL 2 — Vektorel yon kontrolu
+                # Ok dogrultusu ile boru dogrultusu arasindaki sin(aci)
+                sin_a = _sin_angle_between(
+                    arrow.start[0], arrow.start[1],
+                    arrow.end[0], arrow.end[1],
+                    abs_best_pipe.start[0], abs_best_pipe.start[1],
+                    abs_best_pipe.end[0], abs_best_pipe.end[1],
+                )
+                if sin_a < MIN_PERPENDICULARITY:
+                    continue  # paralel → yatay boru dikey oku kapamaz
 
-            if not target_pipes:
+                valid_pairs.append((arrow, abs_best_pipe, abs_best_dist))
+
+            if not valid_pairs:
                 continue
 
-            # hedef borulari text'e olan mesafeye gore sirala (yakin → uzak)
-            target_pipes.sort(
+            # KURAL 3 — Mesafe agirlikli siralama
+            # Oncelik: temas (dist < 1) → uzunluk (kisa → uzun)
+            # Temas eden oklar her zaman uzunluk sirasinin ONUNDE
+            valid_pairs.sort(
+                key=lambda item: (
+                    0 if item[2] < ARROW_TOUCH_DIST else 1,  # temas → 0
+                    item[2],                                   # mesafe
+                    item[0].length,                            # uzunluk
+                )
+            )
+
+            # Hedef borulari text'e olan mesafeye gore sirala (yakin → uzak)
+            seen_pipes: dict[str, tuple[Pipe, float]] = {}
+            for _, pipe, dist in valid_pairs:
+                if pipe.id not in seen_pipes:
+                    seen_pipes[pipe.id] = (pipe, dist)
+
+            sorted_pipes = sorted(
+                seen_pipes.values(),
                 key=lambda item: _perp_dist(
                     tx, ty,
                     item[0].start[0], item[0].start[1],
                     item[0].end[0], item[0].end[1],
-                )
+                ),
             )
 
-            # zincirleme eslestirme: arrow[i] → pipe[i]
-            pair_count = min(len(group), len(target_pipes))
+            # Zincirleme eslestirme: ok[i] → boru[i]
+            pair_count = min(len(valid_pairs), len(sorted_pipes))
             for i in range(pair_count):
-                pipe, _ = target_pipes[i]
+                pipe, _ = sorted_pipes[i]
                 if pipe.id in matched_pipe_ids:
                     continue
 
