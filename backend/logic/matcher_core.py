@@ -379,10 +379,10 @@ class PipeMatcher:
             # ADIM 2: Oklari boya gore sirala (kisa → uzun)
             group.sort(key=lambda a: a.length)
 
-            # ADIM 3: Active_pool'dan aday borulari al
-            # Aday kriteri: text MAX_FALLBACK_DIST icinde olmali
-            # Cross-system: text noise'a daha yakinsa aday degil
-            candidates: list[tuple[Pipe, float]] = []
+            # ADIM 3: Active_pool'dan boru listesi
+            # MESAFE SADECE SIRALAMA ICIN — hicbir filtreleme yok
+            # Cross-system check: noise pool topolojik kontrol
+            pipe_list: list[tuple[Pipe, float]] = []
             for pipe in active:
                 if pipe.id in matched_ids:
                     continue
@@ -391,10 +391,8 @@ class PipeMatcher:
                     pipe.start[0], pipe.start[1],
                     pipe.end[0], pipe.end[1],
                 )
-                if d > MAX_FALLBACK_DIST:
-                    continue
 
-                # Cross-system check (text bazli)
+                # Cross-system: text noise'a daha yakinsa → aday disi
                 skip = False
                 for n in noise:
                     nd = _perp_dist(
@@ -408,24 +406,25 @@ class PipeMatcher:
                 if skip:
                     continue
 
-                candidates.append((pipe, d))
+                pipe_list.append((pipe, d))
 
-            if not candidates:
+            if not pipe_list:
                 continue
 
-            # Aday borulari text'e yakinliga gore sirala (yakin → uzak)
-            candidates.sort(key=lambda x: x[1])
+            # Text'e yakindan uzaga sirala (SADECE LISTELEMEK ICIN)
+            pipe_list.sort(key=lambda x: x[1])
 
             # ADIM 4: SAF INDEKS ESLEME — ok[i] → boru[i]
-            count = min(len(group), len(candidates))
+            # Mesafe kararda YOK, sadece indeks kararda.
+            count = min(len(group), len(pipe_list))
             for i in range(count):
                 arrow_i = group[i]
-                pipe_i, dist_i = candidates[i]
+                pipe_i, dist_i = pipe_list[i]
 
                 if pipe_i.id in matched_ids:
                     continue
 
-                # ADIM 5: Aci bariyeri — eslestirme sonrasi dogrulama
+                # ADIM 5: Aci bariyeri — paralel okleri eleme
                 if not _passes_angle_barrier(arrow_i, pipe_i):
                     continue
 
