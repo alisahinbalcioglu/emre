@@ -78,8 +78,8 @@ class MatchResult(BaseModel):
 #  SABİTLER
 # ═══════════════════════════════════════════════════════════════════
 
-ARROW_TEXT_GROUP_DIST: float = 20.0   # ok-text gruplama (PRD v2: 20 birim)
-MAX_FALLBACK_DIST: float = 50.0      # fallback mesafe baraji
+ARROW_TEXT_GROUP_DIST: float = 100.0  # ok-text gruplama maksimum mesafe
+MAX_FALLBACK_DIST: float = 150.0     # fallback text-to-edge perp mesafe esigi
 MAX_ARROW_PIPE_DIST: float = 50.0    # ok ucu-boru mesafe baraji
 
 # Aci bariyeri: 30° < θ < 150° (PRD v2)
@@ -344,36 +344,52 @@ class PipeMatcher:
         noise: list[Pipe],
         valid_texts: list[Text],
     ) -> tuple[list[MatchResult], set[str], set[str]]:
-        """Zincirleme eslestirme — HIBRIT ADIM 3.
+        """Zincirleme eslestirme — 1 ok → 1 text + text.value kullan.
 
-        Aday havuzu: ok uclarinin dokundugu/yakin oldugu borular
-          (MAX_ARROW_PIPE_DIST icinde)
-        Siralama: adaylari text mesafesine gore yakin→uzak
-        Atama: ok[i] → aday[i]  (indeks, mesafe degil)
+        Kritik: arrow.diameter YOKSAYILIR (yanlis olabilir).
+        Cap bilgisi SADECE text.value'dan alinir.
 
         Akis:
-          1. Text'e yakin oklari grupla (ARROW_TEXT_GROUP_DIST)
+          0. Her ok icin EN YAKIN gecerli text'i bul (1 ok → 1 text)
+          1. Her text icin kendisine bagli oklari topla
           2. Oklari boya gore sirala (kisa → uzun)
-          3a. Aday havuzu: grup okkarinin uclarinin degdigi active borular
-              (cross-system: ok ucu noise'a daha yakinsa ok disarida)
-          3b. Adaylari text mesafesine gore sirala (yakin → uzak)
+          3a. Aday havuzu: grup oklarinin uclarinin degdigi active borular
+          3b. Adaylari text mesafesine gore sirala
           4. ok[i] → aday[i]  (indeks esleme)
-          5. Aci bariyeri: paralel eslesmeleri reddet
-          6. Cap: arrow.diameter varsa o, yoksa text.value
+          5. Aci bariyeri: paralel reddet
+          6. Cap = text.value
         """
         results: list[MatchResult] = []
         matched_ids: set[str] = set()
         used_text_ids: set[str] = set()
 
+        # ADIM 0: Her ok → en yakin gecerli text (ARROW_TEXT_GROUP_DIST icinde)
+        arrow_to_text: dict[str, Text] = {}
+        for arrow in self._arrows:
+            best_text: Text | None = None
+            best_d = ARROW_TEXT_GROUP_DIST
+            for text in valid_texts:
+                d = _pt_dist(
+                    text.position[0], text.position[1],
+                    arrow.start[0], arrow.start[1],
+                )
+                if d < best_d:
+                    best_d = d
+                    best_text = text
+            if best_text is not None:
+                arrow_to_text[arrow.id] = best_text
+
+        # Text bazinda oklari grupla
+        text_arrows: dict[str, list[Arrow]] = {}
+        for arrow in self._arrows:
+            text = arrow_to_text.get(arrow.id)
+            if text is None:
+                continue
+            text_arrows.setdefault(text.id, []).append(arrow)
+
         for text in valid_texts:
             tx, ty = text.position
-
-            # ADIM 1: Text'e yakin oklari grupla
-            group = [
-                a for a in self._arrows
-                if _pt_dist(tx, ty, a.start[0], a.start[1])
-                <= ARROW_TEXT_GROUP_DIST
-            ]
+            group = text_arrows.get(text.id, [])
             if not group:
                 continue
 
@@ -448,8 +464,8 @@ class PipeMatcher:
                 if not _passes_angle_barrier(arrow_i, pipe_i):
                     continue
 
-                # ADIM 6: Cap belirleme
-                diameter = arrow_i.diameter if arrow_i.diameter else text.value
+                # ADIM 6: Cap = text.value (arrow.diameter YOKSAYILIR)
+                diameter = text.value
                 if not validate_text_for_layer(diameter, self._selected_layer):
                     continue
 
@@ -484,9 +500,6 @@ class PipeMatcher:
         used: set[str] = set()
 
         for pipe in unmatched:
-            mx, my = _midpoint(
-                pipe.start[0], pipe.start[1], pipe.end[0], pipe.end[1],
-            )
             best_text: Text | None = None
             best_dist = float("inf")
 
@@ -494,22 +507,33 @@ class PipeMatcher:
                 if text.id in used:
                     continue
                 tx, ty = text.position
-                dist = _pt_dist(mx, my, tx, ty)
-                if dist > MAX_FALLBACK_DIST:
+
+                # Text → pipe SEGMENT'E dik mesafe (orta nokta degil!)
+                # Uzun borularda orta noktaya mesafe yaniltici
+                own_d = _perp_dist(
+                    tx, ty,
+                    pipe.start[0], pipe.start[1],
+                    pipe.end[0], pipe.end[1],
+                )
+                if own_d > MAX_FALLBACK_DIST:
                     continue
 
                 # Cross-system check
-                own_d = _perp_dist(tx, ty, pipe.start[0], pipe.start[1], pipe.end[0], pipe.end[1])
                 skip = False
                 for n in noise:
-                    if _perp_dist(tx, ty, n.start[0], n.start[1], n.end[0], n.end[1]) < own_d:
+                    nd = _perp_dist(
+                        tx, ty,
+                        n.start[0], n.start[1],
+                        n.end[0], n.end[1],
+                    )
+                    if nd < own_d:
                         skip = True
                         break
                 if skip:
                     continue
 
-                if dist < best_dist:
-                    best_dist = dist
+                if own_d < best_dist:
+                    best_dist = own_d
                     best_text = text
 
             if best_text is not None:
