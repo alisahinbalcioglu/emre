@@ -323,31 +323,39 @@ class PipeMatcher:
         matched_ids: set[str] = set()
         used_text_ids: set[str] = set()
 
-        # ── MOD A: diameter'li oklar — dogrudan eslestir ──
+        # ── MOD A: diameter'li oklar — boru-merkezli eslestir ──
         arrows_with_dia = [a for a in self._arrows if a.diameter]
         arrows_without_dia = [a for a in self._arrows if not a.diameter]
 
+        # Adim 1: TUM oklarin hedef borusunu bul (henuz claim etme)
+        pipe_candidates: dict[str, list[tuple[Arrow, Pipe, float]]] = {}
         for arrow in arrows_with_dia:
-            pipe, ok = self._arrow_to_pipe(
-                arrow, active_pool, noise_pool, matched_ids,
-            )
-            if not ok or pipe is None:
-                continue
-
-            # Metin vizesi: arrow.diameter gecerli mi bu layer icin?
+            # Metin vizesi
             if not validate_text_for_layer(
                 arrow.diameter, self._selected_layer
             ):
                 continue
+            pipe, dist, ok = self._arrow_to_pipe(
+                arrow, active_pool, noise_pool,
+            )
+            if not ok or pipe is None:
+                continue
+            pipe_candidates.setdefault(pipe.id, []).append(
+                (arrow, pipe, dist)
+            )
 
+        # Adim 2: Her boru icin en iyi oku sec (en yakin ok ucu)
+        for pipe_id, candidates in pipe_candidates.items():
+            candidates.sort(key=lambda x: (x[2], x[0].length))
+            best_arrow, best_pipe, best_dist = candidates[0]
             results.append(MatchResult(
-                pipe_id=pipe.id,
-                diameter=arrow.diameter,
+                pipe_id=best_pipe.id,
+                diameter=best_arrow.diameter,
                 source="arrow",
                 distance=0.0,
                 text_id=None,
             ))
-            matched_ids.add(pipe.id)
+            matched_ids.add(pipe_id)
 
         # ── MOD B: diameter'siz oklar — text gruplama ile ──
         for text in valid_texts:
@@ -365,10 +373,10 @@ class PipeMatcher:
 
             ok_boru_pairs: list[tuple[Arrow, Pipe, float]] = []
             for arrow in group:
-                pipe, ok = self._arrow_to_pipe(
-                    arrow, active_pool, noise_pool, matched_ids,
+                pipe, _dist, ok = self._arrow_to_pipe(
+                    arrow, active_pool, noise_pool,
                 )
-                if ok and pipe is not None:
+                if ok and pipe is not None and pipe.id not in matched_ids:
                     ax, ay = arrow.end
                     dist = _perp_dist(
                         ax, ay,
@@ -418,12 +426,13 @@ class PipeMatcher:
         arrow: Arrow,
         active_pool: list[Pipe],
         noise_pool: list[Pipe],
-        matched_ids: set[str],
-    ) -> tuple[Pipe | None, bool]:
+    ) -> tuple[Pipe | None, float, bool]:
         """Tek bir ok'u active_pool'daki en yakin boruyla esle.
 
         Kural 1 (hedef filtre) + Kural 4 (diklik) uygulanir.
-        Returns: (pipe, success)
+        matched_ids kontrolu YAPILMAZ — boru-merkezli secim disarida yapilir.
+
+        Returns: (pipe, distance, success)
         """
         ax, ay = arrow.end
 
@@ -431,8 +440,6 @@ class PipeMatcher:
         best_pipe: Pipe | None = None
         best_dist = float("inf")
         for pipe in active_pool:
-            if pipe.id in matched_ids:
-                continue
             d = _perp_dist(
                 ax, ay,
                 pipe.start[0], pipe.start[1],
@@ -443,7 +450,7 @@ class PipeMatcher:
                 best_pipe = pipe
 
         if best_pipe is None:
-            return None, False
+            return None, 0.0, False
 
         # KURAL 1 ek: baska layer'a daha yakin mi?
         for noise in noise_pool:
@@ -453,7 +460,7 @@ class PipeMatcher:
                 noise.end[0], noise.end[1],
             )
             if nd < best_dist:
-                return None, False
+                return None, 0.0, False
 
         # KURAL 4: Vektorel diklik
         if not _is_perpendicular(
@@ -462,9 +469,9 @@ class PipeMatcher:
             best_pipe.start[0], best_pipe.start[1],
             best_pipe.end[0], best_pipe.end[1],
         ):
-            return None, False
+            return None, 0.0, False
 
-        return best_pipe, True
+        return best_pipe, best_dist, True
 
     # ------------------------------------------------------------------
     # Fallback: ok yoksa yakin text (KURAL 5 dahil)
