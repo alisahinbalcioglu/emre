@@ -382,33 +382,9 @@ def analyze_topology(
             cap_layers = None
             warnings.append("Cap layer bulunamadi, tum layer'lardan text araniyor")
 
-    # 3. Diger boru layer'larinin koordinatlari (cross-system check icin)
-    #    Ok/text eslestirmede baska layer'in borusuna daha yakin olani filtreler
-    import ezdxf as _ezdxf
-    _doc = _ezdxf.readfile(dxf_path)
-    _all_dxf_layers = set()
-    for _ent in _doc.modelspace():
-        if hasattr(_ent.dxf, 'layer'):
-            _all_dxf_layers.add(_ent.dxf.layer)
-    _pipe_keywords = ['sihhi', 'su', 'yangin', 'temiz', 'pis', 'gri', 'yagmur']
-    _sel_set = set(selected_layers)
-    other_pipe_layers = [
-        l for l in _all_dxf_layers
-        if l not in _sel_set and 'cap' not in l.lower()
-        and any(kw in l.lower() for kw in _pipe_keywords)
-    ]
-    other_raw: list[tuple] = []
-    if other_pipe_layers:
-        _other_graph = build_graph(dxf_path, other_pipe_layers)
-        # Index offset: own edge'lerle cakmamasi icin 100000 ekle
-        _offset = 100000
-        other_raw = [(rc[0] + _offset, rc[1], rc[2], rc[3], rc[4])
-                     for rc in _other_graph.raw_coords]
-
-    # 4. Çap atama — diameter_assigner.py (5 kural harfiyen)
+    # Pipe type'i once belirle (cross-system filtresi icin gerekli)
     from diameter_assigner import assign_diameters
 
-    # hat_tipi_map → pipe_type
     _hat_map = hat_tipi_map or {}
 
     def _resolve_pipe_type(layer_name: str) -> str:
@@ -422,9 +398,41 @@ def analyze_topology(
                 return "all"
         return detect_pipe_type(layer_name)
 
-    # Tek layer — pipe_type belirle
     layer = selected_layers[0]
     pipe_type = _resolve_pipe_type(layer)
+
+    # 3. Diger boru layer'larinin koordinatlari (cross-system check icin)
+    #    Sadece AYNI format'taki noise layer'lar dikkate alinir.
+    #    imperial layer icin metric (pis/yagmur) noise filtrelenir (format uyusmaz).
+    import ezdxf as _ezdxf
+    _doc = _ezdxf.readfile(dxf_path)
+    _all_dxf_layers = set()
+    for _ent in _doc.modelspace():
+        if hasattr(_ent.dxf, 'layer'):
+            _all_dxf_layers.add(_ent.dxf.layer)
+    _pipe_keywords = ['sihhi', 'su', 'yangin', 'temiz', 'pis', 'gri', 'yagmur']
+    _sel_set = set(selected_layers)
+    other_pipe_layers = []
+    for l in _all_dxf_layers:
+        if l in _sel_set or 'cap' in l.lower():
+            continue
+        if not any(kw in l.lower() for kw in _pipe_keywords):
+            continue
+        # Format uyumu kontrolu: farkli format layer'lari cross-system'e dahil etme
+        other_pt = _resolve_pipe_type(l)
+        if pipe_type == "imperial" and other_pt == "metric":
+            continue  # temiz su icin pissu/yagmur noise degil
+        if pipe_type == "metric" and other_pt == "imperial":
+            continue  # pissu icin temiz su noise degil
+        other_pipe_layers.append(l)
+    other_raw: list[tuple] = []
+    if other_pipe_layers:
+        _other_graph = build_graph(dxf_path, other_pipe_layers)
+        _offset = 100000
+        other_raw = [(rc[0] + _offset, rc[1], rc[2], rc[3], rc[4])
+                     for rc in _other_graph.raw_coords]
+
+    # 4. Çap atama — diameter_assigner.py (5 kural harfiyen)
 
     edge_caps, edge_sources, edge_dists, assign_warnings = assign_diameters(
         dxf_path, graph, pipe_type, layer, cap_layers, other_pipes=other_raw,

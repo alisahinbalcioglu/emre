@@ -518,7 +518,8 @@ class PipeMatcher:
                 if own_d > MAX_FALLBACK_DIST:
                     continue
 
-                # Cross-system check
+                # Cross-system check — tolerans: noise own'dan en az 20 birim daha yakin olmali
+                # Aksi halde imperial-imperial rekabetinde own'a ata
                 skip = False
                 for n in noise:
                     nd = _perp_dist(
@@ -526,7 +527,7 @@ class PipeMatcher:
                         n.start[0], n.start[1],
                         n.end[0], n.end[1],
                     )
-                    if nd < own_d:
+                    if nd + 20.0 < own_d:  # noise "belirgin biçimde" daha yakin
                         skip = True
                         break
                 if skip:
