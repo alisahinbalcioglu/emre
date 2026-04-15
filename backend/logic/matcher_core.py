@@ -344,20 +344,21 @@ class PipeMatcher:
         noise: list[Pipe],
         valid_texts: list[Text],
     ) -> tuple[list[MatchResult], set[str], set[str]]:
-        """Zincirleme eslestirme — SAF INDEKS ESLEME.
+        """Zincirleme eslestirme — HIBRIT ADIM 3.
 
-        HIC BIR boru-merkezli arama YOK.
-        Mesafe 0.0 muafiyeti YOK.
-        Mesafe sadece ADAYLIK icin (hangi borular text etrafinda).
-        ATAMA karari SADECE indekse gore.
+        Aday havuzu: ok uclarinin dokundugu/yakin oldugu borular
+          (MAX_ARROW_PIPE_DIST icinde)
+        Siralama: adaylari text mesafesine gore yakin→uzak
+        Atama: ok[i] → aday[i]  (indeks, mesafe degil)
 
         Akis:
           1. Text'e yakin oklari grupla (ARROW_TEXT_GROUP_DIST)
-          2. Oklari boya gore sirala (kisa → uzun) → ok[0], ok[1], ..., ok[n]
-          3. Text'e yakin borulari sirala (yakin → uzak) → boru[0], boru[1], ..., boru[m]
-             (Cross-system check: text noise'a daha yakinsa aday degil)
-          4. ok[i] → boru[i]  (MESAFE YOK, DOKUNMA YOK, sadece indeks)
-          5. Aci bariyeri: eslestirme sonrasi paralelse reddet
+          2. Oklari boya gore sirala (kisa → uzun)
+          3a. Aday havuzu: grup okkarinin uclarinin degdigi active borular
+              (cross-system: ok ucu noise'a daha yakinsa ok disarida)
+          3b. Adaylari text mesafesine gore sirala (yakin → uzak)
+          4. ok[i] → aday[i]  (indeks esleme)
+          5. Aci bariyeri: paralel eslesmeleri reddet
           6. Cap: arrow.diameter varsa o, yoksa text.value
         """
         results: list[MatchResult] = []
@@ -379,47 +380,66 @@ class PipeMatcher:
             # ADIM 2: Oklari boya gore sirala (kisa → uzun)
             group.sort(key=lambda a: a.length)
 
-            # ADIM 3: Active_pool'dan boru listesi
-            # MESAFE SADECE SIRALAMA ICIN — hicbir filtreleme yok
-            # Cross-system check: noise pool topolojik kontrol
-            pipe_list: list[tuple[Pipe, float]] = []
+            # ADIM 3a: Aday havuzu — ok uclarinin dokundugu/yakin oldugu borular
+            candidate_ids: set[str] = set()
+            for arrow in group:
+                ax, ay = arrow.end
+                # Her active boruya ok ucunun mesafesi
+                best_pipe: Pipe | None = None
+                best_d = float("inf")
+                for pipe in active:
+                    if pipe.id in matched_ids:
+                        continue
+                    d = _perp_dist(
+                        ax, ay,
+                        pipe.start[0], pipe.start[1],
+                        pipe.end[0], pipe.end[1],
+                    )
+                    if d < best_d:
+                        best_d = d
+                        best_pipe = pipe
+
+                if best_pipe is None or best_d > MAX_ARROW_PIPE_DIST:
+                    continue
+
+                # Cross-system: ok ucu noise'a daha yakinsa → ok dışarıda
+                hits_noise = False
+                for n in noise:
+                    nd = _perp_dist(
+                        ax, ay,
+                        n.start[0], n.start[1],
+                        n.end[0], n.end[1],
+                    )
+                    if nd < best_d:
+                        hits_noise = True
+                        break
+                if hits_noise:
+                    continue
+
+                candidate_ids.add(best_pipe.id)
+
+            if not candidate_ids:
+                continue
+
+            # ADIM 3b: Adaylari text mesafesine gore sirala (yakin → uzak)
+            candidates: list[tuple[Pipe, float]] = []
             for pipe in active:
-                if pipe.id in matched_ids:
+                if pipe.id not in candidate_ids:
                     continue
                 d = _perp_dist(
                     tx, ty,
                     pipe.start[0], pipe.start[1],
                     pipe.end[0], pipe.end[1],
                 )
+                candidates.append((pipe, d))
 
-                # Cross-system: text noise'a daha yakinsa → aday disi
-                skip = False
-                for n in noise:
-                    nd = _perp_dist(
-                        tx, ty,
-                        n.start[0], n.start[1],
-                        n.end[0], n.end[1],
-                    )
-                    if nd < d:
-                        skip = True
-                        break
-                if skip:
-                    continue
+            candidates.sort(key=lambda x: x[1])
 
-                pipe_list.append((pipe, d))
-
-            if not pipe_list:
-                continue
-
-            # Text'e yakindan uzaga sirala (SADECE LISTELEMEK ICIN)
-            pipe_list.sort(key=lambda x: x[1])
-
-            # ADIM 4: SAF INDEKS ESLEME — ok[i] → boru[i]
-            # Mesafe kararda YOK, sadece indeks kararda.
-            count = min(len(group), len(pipe_list))
+            # ADIM 4: INDEKS ESLEME — ok[i] → aday[i]
+            count = min(len(group), len(candidates))
             for i in range(count):
                 arrow_i = group[i]
-                pipe_i, dist_i = pipe_list[i]
+                pipe_i, dist_i = candidates[i]
 
                 if pipe_i.id in matched_ids:
                     continue

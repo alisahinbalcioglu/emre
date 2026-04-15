@@ -54,7 +54,7 @@ PISSU_INVALID_CAPS = {"Ø25", "Ø32", "Ø40", "Ø63"}
 
 # Ok algılama
 MIN_ARROW_LENGTH = 20.0   # arrowhead mark'ları 3-8 birim, gerçek oklar 30+
-MAX_ARROW_TEXT_DIST = 20.0    # ok ucu ↔ text arası max mesafe (PRD v2: 20 birim)
+MAX_ARROW_TEXT_DIST = 50.0    # ok ucu ↔ text arası max mesafe
 TEXT_CLUSTER_DIST = 300.0     # aynı text bölgesi sayılma mesafesi
 PIPE_RANK_GAP = 5.0           # boru rank geçiş eşiği (birim)
 ARROW_RANK_GAP = 20.0         # ok rank geçiş eşiği (birim)
