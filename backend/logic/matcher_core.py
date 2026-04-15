@@ -344,16 +344,21 @@ class PipeMatcher:
         noise: list[Pipe],
         valid_texts: list[Text],
     ) -> tuple[list[MatchResult], set[str], set[str]]:
-        """Zincirleme eslestirme (PRD v2 Madde 4).
+        """Zincirleme eslestirme — SAF INDEKS ESLEME.
 
-        TUM oklar text gruplama uzerinden gecer.
+        HIC BIR boru-merkezli arama YOK.
+        Mesafe 0.0 muafiyeti YOK.
+        Mesafe sadece ADAYLIK icin (hangi borular text etrafinda).
+        ATAMA karari SADECE indekse gore.
 
-        1. Her text icin yakin oklari grupla (ARROW_TEXT_GROUP_DIST)
-        2. Oklari boya gore sirala (kisa → uzun)
-        3. Her okun hedef borusunu bul (SADECE active, aci bariyeri)
-        4. Borulari text'e yakinliga gore sirala
-        5. Indeks esleme: ok[0]→boru[0], ok[1]→boru[1]
-        6. Capi: Arrow.diameter varsa o, yoksa text.value
+        Akis:
+          1. Text'e yakin oklari grupla (ARROW_TEXT_GROUP_DIST)
+          2. Oklari boya gore sirala (kisa → uzun) → ok[0], ok[1], ..., ok[n]
+          3. Text'e yakin borulari sirala (yakin → uzak) → boru[0], boru[1], ..., boru[m]
+             (Cross-system check: text noise'a daha yakinsa aday degil)
+          4. ok[i] → boru[i]  (MESAFE YOK, DOKUNMA YOK, sadece indeks)
+          5. Aci bariyeri: eslestirme sonrasi paralelse reddet
+          6. Cap: arrow.diameter varsa o, yoksa text.value
         """
         results: list[MatchResult] = []
         matched_ids: set[str] = set()
@@ -362,7 +367,7 @@ class PipeMatcher:
         for text in valid_texts:
             tx, ty = text.position
 
-            # Adim 1: Text'e yakin TUM oklari grupla
+            # ADIM 1: Text'e yakin oklari grupla
             group = [
                 a for a in self._arrows
                 if _pt_dist(tx, ty, a.start[0], a.start[1])
@@ -371,132 +376,79 @@ class PipeMatcher:
             if not group:
                 continue
 
-            # Adim 2: Boya gore sirala (kisa → uzun)
+            # ADIM 2: Oklari boya gore sirala (kisa → uzun)
             group.sort(key=lambda a: a.length)
 
-            # Adim 3: Her ok icin hedef boru bul
-            pairs: list[tuple[Arrow, Pipe, float]] = []
-            for arrow in group:
-                pipe, dist, ok = self._resolve_arrow(arrow, active, noise)
-                if ok and pipe is not None and pipe.id not in matched_ids:
-                    pairs.append((arrow, pipe, dist))
+            # ADIM 3: Active_pool'dan aday borulari al
+            # Aday kriteri: text MAX_FALLBACK_DIST icinde olmali
+            # Cross-system: text noise'a daha yakinsa aday degil
+            candidates: list[tuple[Pipe, float]] = []
+            for pipe in active:
+                if pipe.id in matched_ids:
+                    continue
+                d = _perp_dist(
+                    tx, ty,
+                    pipe.start[0], pipe.start[1],
+                    pipe.end[0], pipe.end[1],
+                )
+                if d > MAX_FALLBACK_DIST:
+                    continue
 
-            if not pairs:
+                # Cross-system check (text bazli)
+                skip = False
+                for n in noise:
+                    nd = _perp_dist(
+                        tx, ty,
+                        n.start[0], n.start[1],
+                        n.end[0], n.end[1],
+                    )
+                    if nd < d:
+                        skip = True
+                        break
+                if skip:
+                    continue
+
+                candidates.append((pipe, d))
+
+            if not candidates:
                 continue
 
-            # Adim 4: Borulari text'e yakinliga gore sirala (yakin → uzak)
-            seen: dict[str, tuple[Pipe, float]] = {}
-            for _, pipe, dist in pairs:
-                if pipe.id not in seen:
-                    seen[pipe.id] = (pipe, dist)
+            # Aday borulari text'e yakinliga gore sirala (yakin → uzak)
+            candidates.sort(key=lambda x: x[1])
 
-            sorted_pipes = sorted(
-                seen.values(),
-                key=lambda item: _perp_dist(
-                    tx, ty,
-                    item[0].start[0], item[0].start[1],
-                    item[0].end[0], item[0].end[1],
-                ),
-            )
-
-            # Adim 5+6: Indeks esleme — ok[i] → boru[i]
-            # Ayni boruya birden fazla ok gelirse → sanal segmentasyon
-            pipe_arrow_map: dict[str, list[tuple[Arrow, Pipe, float]]] = {}
-            count = min(len(pairs), len(sorted_pipes))
+            # ADIM 4: SAF INDEKS ESLEME — ok[i] → boru[i]
+            count = min(len(group), len(candidates))
             for i in range(count):
-                pipe, dist = sorted_pipes[i]
-                arrow_i = pairs[i][0]
-                diameter = arrow_i.diameter if arrow_i.diameter else text.value
+                arrow_i = group[i]
+                pipe_i, dist_i = candidates[i]
 
+                if pipe_i.id in matched_ids:
+                    continue
+
+                # ADIM 5: Aci bariyeri — eslestirme sonrasi dogrulama
+                if not _passes_angle_barrier(arrow_i, pipe_i):
+                    continue
+
+                # ADIM 6: Cap belirleme
+                diameter = arrow_i.diameter if arrow_i.diameter else text.value
                 if not validate_text_for_layer(diameter, self._selected_layer):
                     continue
 
-                pipe_arrow_map.setdefault(pipe.id, []).append(
-                    (arrow_i, pipe, dist)
-                )
-
-            for pipe_id, arrow_list in pipe_arrow_map.items():
-                if pipe_id in matched_ids:
-                    continue
-
-                pipe = arrow_list[0][1]
-
-                if len(arrow_list) == 1:
-                    # Tek ok → tum boru tek cap
-                    arr, _, dist = arrow_list[0]
-                    dia = arr.diameter if arr.diameter else text.value
-                    conf = _calc_confidence("arrow_chain", dist)
-                    results.append(MatchResult(
-                        pipe_id=pipe_id,
-                        layer=self._selected_layer,
-                        diameter=dia,
-                        method="arrow_chain",
-                        confidence_score=round(conf, 2),
-                        source="arrow",
-                        distance=round(dist, 2),
-                        text_id=text.id,
-                    ))
-                else:
-                    # Coklu ok → sanal segmentasyon
-                    seg_arrows = []
-                    for arr, p, d in arrow_list:
-                        t = _project_t(
-                            arr.end[0], arr.end[1],
-                            p.start[0], p.start[1],
-                            p.end[0], p.end[1],
-                        )
-                        seg_arrows.append((arr, t))
-
-                    segments = _virtual_segment(pipe, seg_arrows)
-                    for dia, seg_str, seg_len in segments:
-                        if not validate_text_for_layer(dia, self._selected_layer):
-                            continue
-                        conf = _calc_confidence("arrow_chain", 0.0)
-                        results.append(MatchResult(
-                            pipe_id=pipe_id,
-                            layer=self._selected_layer,
-                            diameter=dia,
-                            method="arrow_chain",
-                            confidence_score=round(conf, 2),
-                            segment=seg_str,
-                            source="arrow",
-                            distance=0.0,
-                            text_id=text.id,
-                        ))
-
-                matched_ids.add(pipe_id)
+                conf = _calc_confidence("arrow_chain", dist_i)
+                results.append(MatchResult(
+                    pipe_id=pipe_i.id,
+                    layer=self._selected_layer,
+                    diameter=diameter,
+                    method="arrow_chain",
+                    confidence_score=round(conf, 2),
+                    source="arrow",
+                    distance=round(dist_i, 2),
+                    text_id=text.id,
+                ))
+                matched_ids.add(pipe_i.id)
                 used_text_ids.add(text.id)
 
         return results, matched_ids, used_text_ids
-
-    def _resolve_arrow(
-        self, arrow: Arrow, active: list[Pipe], noise: list[Pipe],
-    ) -> tuple[Pipe | None, float, bool]:
-        """Ok → active boru esle. Kural 1 (hedef) + Kural 3A (aci) uygula."""
-        ax, ay = arrow.end
-
-        best: Pipe | None = None
-        best_d = float("inf")
-        for pipe in active:
-            d = _perp_dist(ax, ay, pipe.start[0], pipe.start[1], pipe.end[0], pipe.end[1])
-            if d < best_d:
-                best_d = d
-                best = pipe
-
-        if best is None or best_d > MAX_ARROW_PIPE_DIST:
-            return None, 0.0, False
-
-        # Cross-system: noise'a daha yakin mi?
-        for n in noise:
-            nd = _perp_dist(ax, ay, n.start[0], n.start[1], n.end[0], n.end[1])
-            if nd < best_d:
-                return None, 0.0, False
-
-        # Aci bariyeri: 30° < θ < 150°
-        if not _passes_angle_barrier(arrow, best):
-            return None, 0.0, False
-
-        return best, best_d, True
 
     # ------------------------------------------------------------------
     # Fallback text eslestirme
