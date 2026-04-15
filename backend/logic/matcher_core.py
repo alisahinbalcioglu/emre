@@ -78,7 +78,7 @@ class MatchResult(BaseModel):
 #  SABİTLER
 # ═══════════════════════════════════════════════════════════════════
 
-ARROW_TEXT_GROUP_DIST: float = 80.0   # ok-text gruplama (collect_arrows uyumu)
+ARROW_TEXT_GROUP_DIST: float = 20.0   # ok-text gruplama (PRD v2: 20 birim)
 MAX_FALLBACK_DIST: float = 50.0      # fallback mesafe baraji
 MAX_ARROW_PIPE_DIST: float = 50.0    # ok ucu-boru mesafe baraji
 
@@ -405,32 +405,71 @@ class PipeMatcher:
             )
 
             # Adim 5+6: Indeks esleme — ok[i] → boru[i]
+            # Ayni boruya birden fazla ok gelirse → sanal segmentasyon
+            pipe_arrow_map: dict[str, list[tuple[Arrow, Pipe, float]]] = {}
             count = min(len(pairs), len(sorted_pipes))
             for i in range(count):
                 pipe, dist = sorted_pipes[i]
-                if pipe.id in matched_ids:
-                    continue
-
-                # Cap: arrow.diameter varsa kullan, yoksa text.value
                 arrow_i = pairs[i][0]
                 diameter = arrow_i.diameter if arrow_i.diameter else text.value
 
-                # Metin vizesi kontrolu
                 if not validate_text_for_layer(diameter, self._selected_layer):
                     continue
 
-                conf = _calc_confidence("arrow_chain", dist)
-                results.append(MatchResult(
-                    pipe_id=pipe.id,
-                    layer=self._selected_layer,
-                    diameter=diameter,
-                    method="arrow_chain",
-                    confidence_score=round(conf, 2),
-                    source="arrow",
-                    distance=round(dist, 2),
-                    text_id=text.id,
-                ))
-                matched_ids.add(pipe.id)
+                pipe_arrow_map.setdefault(pipe.id, []).append(
+                    (arrow_i, pipe, dist)
+                )
+
+            for pipe_id, arrow_list in pipe_arrow_map.items():
+                if pipe_id in matched_ids:
+                    continue
+
+                pipe = arrow_list[0][1]
+
+                if len(arrow_list) == 1:
+                    # Tek ok → tum boru tek cap
+                    arr, _, dist = arrow_list[0]
+                    dia = arr.diameter if arr.diameter else text.value
+                    conf = _calc_confidence("arrow_chain", dist)
+                    results.append(MatchResult(
+                        pipe_id=pipe_id,
+                        layer=self._selected_layer,
+                        diameter=dia,
+                        method="arrow_chain",
+                        confidence_score=round(conf, 2),
+                        source="arrow",
+                        distance=round(dist, 2),
+                        text_id=text.id,
+                    ))
+                else:
+                    # Coklu ok → sanal segmentasyon
+                    seg_arrows = []
+                    for arr, p, d in arrow_list:
+                        t = _project_t(
+                            arr.end[0], arr.end[1],
+                            p.start[0], p.start[1],
+                            p.end[0], p.end[1],
+                        )
+                        seg_arrows.append((arr, t))
+
+                    segments = _virtual_segment(pipe, seg_arrows)
+                    for dia, seg_str, seg_len in segments:
+                        if not validate_text_for_layer(dia, self._selected_layer):
+                            continue
+                        conf = _calc_confidence("arrow_chain", 0.0)
+                        results.append(MatchResult(
+                            pipe_id=pipe_id,
+                            layer=self._selected_layer,
+                            diameter=dia,
+                            method="arrow_chain",
+                            confidence_score=round(conf, 2),
+                            segment=seg_str,
+                            source="arrow",
+                            distance=0.0,
+                            text_id=text.id,
+                        ))
+
+                matched_ids.add(pipe_id)
                 used_text_ids.add(text.id)
 
         return results, matched_ids, used_text_ids

@@ -54,7 +54,7 @@ PISSU_INVALID_CAPS = {"Ø25", "Ø32", "Ø40", "Ø63"}
 
 # Ok algılama
 MIN_ARROW_LENGTH = 20.0   # arrowhead mark'ları 3-8 birim, gerçek oklar 30+
-MAX_ARROW_TEXT_DIST = 80.0    # ok ucu ↔ text arası max mesafe
+MAX_ARROW_TEXT_DIST = 20.0    # ok ucu ↔ text arası max mesafe (PRD v2: 20 birim)
 TEXT_CLUSTER_DIST = 300.0     # aynı text bölgesi sayılma mesafesi
 PIPE_RANK_GAP = 5.0           # boru rank geçiş eşiği (birim)
 ARROW_RANK_GAP = 20.0         # ok rank geçiş eşiği (birim)
@@ -323,17 +323,16 @@ def _walker_propagate(
     edge_sources: dict[int, str],
 ) -> None:
     """
-    KURAL 3: Walker Propagation (Ok ve Text Yoksa).
+    Walker Propagation — SADECE bos borulari doldur.
 
-    - Tee olmayan düz devam → önceki borunun çapını miras al
-    - Tee'de → sadece devam yönüne miras, dallara yapma
-    - Güvenilirlik: uzak text (dist>50) varsa miras korunsun
+    PRD v2 sirasi:
+      1. Atanmis caplar ASLA ezilmez (arrow, text, walker farketmez)
+      2. Sadece "Belirtilmemis" edge'ler komsu captan miras alir
+      3. Tee olmayan duz devamda yayilir
+      4. Ayni layer zorunlu
 
-    In-place günceller: edge_caps, edge_sources
+    In-place gunceller: edge_caps, edge_sources
     """
-    DIST_THRESHOLD = DIST_TRUST_THRESHOLD
-
-    # Birden fazla pass: tüm zincir boyunca yay
     for _pass in range(len(graph.edges)):
         changed = False
         for node, neighbors in graph.adj.items():
@@ -348,33 +347,11 @@ def _walker_propagate(
 
             d1 = edge_caps.get(e1.idx, "Belirtilmemis")
             d2 = edge_caps.get(e2.idx, "Belirtilmemis")
+
             if d1 == d2:
                 continue
 
-            src1 = edge_sources.get(e1.idx, "")
-            src2 = edge_sources.get(e2.idx, "")
-            dist1 = edge_dists.get(e1.idx, 9999)
-            dist2 = edge_dists.get(e2.idx, 9999)
-
-            # Arrow DOKUNULMAZ
-            if src1 == "arrow" and src2 == "arrow":
-                continue
-            if src1 == "arrow":
-                if d2 == "Belirtilmemis":
-                    edge_caps[e2.idx] = d1
-                    edge_sources[e2.idx] = "walker"
-                    changed = True
-                # else: diger taraf zaten atanmis → ezme (yanlis cap yayilimini onle)
-                continue
-            if src2 == "arrow":
-                if d1 == "Belirtilmemis":
-                    edge_caps[e1.idx] = d2
-                    edge_sources[e1.idx] = "walker"
-                    changed = True
-                # else: diger taraf zaten atanmis → ezme
-                continue
-
-            # Belirtilmemiş → komşudan al
+            # SADECE bos olani doldur — atanmis capi ASLA ezme
             if d1 == "Belirtilmemis" and d2 != "Belirtilmemis":
                 edge_caps[e1.idx] = d2
                 edge_sources[e1.idx] = "walker"
@@ -383,22 +360,7 @@ def _walker_propagate(
                 edge_caps[e2.idx] = d1
                 edge_sources[e2.idx] = "walker"
                 changed = True
-            else:
-                # İkisi de atanmış ama farklı
-                # Walker mirası + uzak text → miras korunsun
-                if src1 == "walker" and dist2 > DIST_THRESHOLD:
-                    continue
-                if src2 == "walker" and dist1 > DIST_THRESHOLD:
-                    continue
-                # Daha güvenilir (yakın mesafe) kazanır
-                if dist1 < dist2:
-                    edge_caps[e2.idx] = d1
-                    edge_sources[e2.idx] = "walker"
-                    changed = True
-                elif dist2 < dist1:
-                    edge_caps[e1.idx] = d2
-                    edge_sources[e1.idx] = "walker"
-                    changed = True
+            # else: ikisi de atanmis ama farkli → DOKUNMA
 
         if not changed:
             break
