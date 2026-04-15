@@ -30,6 +30,8 @@ KURAL 5 — Belirtilmemiş Kalan
 """
 
 import math
+import os
+import sys
 from collections import Counter, defaultdict
 
 import ezdxf
@@ -40,11 +42,18 @@ from diameter import (
     _is_metric, _is_imperial,
 )
 
+# matcher_core import — backend/logic/ dizininden
+sys.path.insert(
+    0,
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "logic"),
+)
+from matcher_core import Pipe as MCPipe, Arrow as MCArrow, Text as MCText, PipeMatcher, MatchResult
+
 # ── Sabitler ──
 PISSU_INVALID_CAPS = {"Ø25", "Ø32", "Ø40", "Ø63"}
 
 # Ok algılama
-MIN_ARROW_LENGTH = 5.0
+MIN_ARROW_LENGTH = 20.0   # arrowhead mark'ları 3-8 birim, gerçek oklar 30+
 MAX_ARROW_TEXT_DIST = 80.0    # ok ucu ↔ text arası max mesafe
 TEXT_CLUSTER_DIST = 300.0     # aynı text bölgesi sayılma mesafesi
 PIPE_RANK_GAP = 5.0           # boru rank geçiş eşiği (birim)
@@ -104,17 +113,24 @@ def _format_valid(cap: str, pipe_type: str, layer: str) -> bool:
 #  KURAL 1 — OK EŞLEŞTİRME
 # ═══════════════════════════════════════════════
 
-def _collect_arrows(dxf_path: str, diameter_texts: list[DiameterText]) -> list[dict]:
+def _collect_arrows(
+    dxf_path: str,
+    diameter_texts: list[DiameterText],
+    cap_layers: list[str] | None = None,
+) -> list[dict]:
     """
-    DXF'teki TÜM okları topla: LINE, LWPOLYLINE, LEADER, MULTILEADER.
-    Layer filtresi YOK — text yakınlık kontrolü gereksizleri eler.
+    DXF'teki okları topla: LINE, LWPOLYLINE (cap layer'lardan), LEADER, MULTILEADER.
+
+    LWPOLYLINE ve LINE: sadece cap_layers'dan (boru layer'ları ok değil!).
+    LEADER/MULTILEADER: tüm layer'lardan (zaten ok entity'si).
 
     Döndürür: [{length, diameter, text_x, text_y, pipe_x, pipe_y}, ...]
     """
     doc = ezdxf.readfile(dxf_path)
     msp = doc.modelspace()
+    cap_set = set(cap_layers) if cap_layers else None
     stats = {"line": 0, "lwpoly": 0, "leader": 0,
-             "skip_short": 0, "skip_notext": 0, "total_scanned": 0}
+             "skip_short": 0, "skip_notext": 0, "skip_layer": 0, "total_scanned": 0}
 
     def _nearest_text(x, y):
         best_val, best_d = "", MAX_ARROW_TEXT_DIST
@@ -149,13 +165,19 @@ def _collect_arrows(dxf_path: str, diameter_texts: list[DiameterText]) -> list[d
                            "pipe_x": sx, "pipe_y": sy})
         stats[src] += 1
 
-    # LINE
+    # LINE — sadece cap layer'lardan (boru LINE'ları ok değil)
     for ent in msp.query('LINE'):
+        if cap_set and ent.dxf.layer not in cap_set:
+            stats["skip_layer"] += 1
+            continue
         s, e = ent.dxf.start, ent.dxf.end
         _try_add(s.x, s.y, e.x, e.y, _pt_dist(s.x, s.y, e.x, e.y), "line")
 
-    # LWPOLYLINE
+    # LWPOLYLINE — sadece cap layer'lardan (boru LWPOLYLINE'ları ok değil)
     for ent in msp.query('LWPOLYLINE'):
+        if cap_set and ent.dxf.layer not in cap_set:
+            stats["skip_layer"] += 1
+            continue
         pts = list(ent.get_points(format='xy'))
         if len(pts) < 2:
             continue
@@ -195,158 +217,98 @@ def _collect_arrows(dxf_path: str, diameter_texts: list[DiameterText]) -> list[d
     return arrows, stats
 
 
-def _arrow_match(
-    arrows: list[dict],
-    own_coords: list[tuple[int, float, float, float, float]],
-    other_coords: list[tuple[int, float, float, float, float]],
-    pipe_type: str,
+MAX_ARROW_PIPE_SNAP = 30.0  # ok ucu ile boru arası max snap mesafesi (legacy ref)
+
+
+# ═══════════════════════════════════════════════
+#  KURAL 1+2 — matcher_core KÖPRÜ FONKSİYONLARI
+# ═══════════════════════════════════════════════
+
+def _graph_to_matcher_inputs(
+    graph: PipeGraph,
+    collected_arrows: list[dict],
+    diameter_texts: list[DiameterText],
     layer: str,
-) -> tuple[dict[int, str], dict[int, float]]:
+    other_coords: list[tuple[int, float, float, float, float]] | None = None,
+) -> tuple[list[MCPipe], list[MCArrow], list[MCText]]:
+    """PipeGraph + toplanan oklar + text'ler → matcher_core sinifarina donustur.
+
+    Tum layer'lardaki borulari dahil eder (cross-system check icin).
     """
-    KURAL 1: Ok Eşleştirme.
+    # raw_coords: (edge_idx, x1, y1, x2, y2)
+    raw_map: dict[int, tuple[float, float, float, float]] = {
+        rc[0]: (rc[1], rc[2], rc[3], rc[4]) for rc in graph.raw_coords
+    }
 
-    1. Okları text pozisyonuna göre grupla (cluster)
-    2. Her cluster için:
-       a. Tüm boruların text'e mesafesini ölç → rank'la (yakın→uzak)
-       b. Okları uzunluğa göre sırala → rank'la (kısa→uzun)
-       c. Boru Rank N → Ok Rank N'in çapını al
-    3. Format + geçersiz çap kontrolü → geçerliyse ata
+    # own edges → Pipe
+    pipes: list[MCPipe] = []
+    for edge in graph.edges:
+        coords = raw_map.get(edge.idx)
+        if coords is None:
+            continue
+        pipes.append(MCPipe(
+            id=str(edge.idx),
+            layer=edge.layer,
+            start=(coords[0], coords[1]),
+            end=(coords[2], coords[3]),
+        ))
 
-    Döndürür: (edge_idx→çap, edge_idx→mesafe)
+    # other layer pipes → Pipe (cross-system icin)
+    if other_coords:
+        for eidx, x1, y1, x2, y2 in other_coords:
+            pipes.append(MCPipe(
+                id=f"other_{eidx}",
+                layer="__other__",
+                start=(x1, y1),
+                end=(x2, y2),
+            ))
+
+    # collected arrows → Arrow
+    arrows: list[MCArrow] = []
+    for i, a in enumerate(collected_arrows):
+        arrows.append(MCArrow(
+            id=str(i),
+            start=(a["text_x"], a["text_y"]),
+            end=(a["pipe_x"], a["pipe_y"]),
+            length=a["length"],
+        ))
+
+    # diameter texts → Text
+    texts: list[MCText] = []
+    for i, dt in enumerate(diameter_texts):
+        texts.append(MCText(
+            id=str(i),
+            value=dt.value,
+            position=(dt.position.x, dt.position.y),
+        ))
+
+    return pipes, arrows, texts
+
+
+def _matcher_results_to_edge_maps(
+    results: list[MatchResult],
+) -> tuple[dict[int, str], dict[int, str], dict[int, float]]:
+    """MatchResult listesini eski assign_diameters donusune cevir.
+
+    Dondurur: (edge_caps, edge_sources, edge_dists)
     """
-    if not arrows:
-        return {}, {}
+    edge_caps: dict[int, str] = {}
+    edge_sources: dict[int, str] = {}
+    edge_dists: dict[int, float] = {}
 
-    all_pipes = list(own_coords) + list(other_coords)
-    own_set = {rc[0] for rc in own_coords}
-
-    # Okları text pozisyonuna göre cluster'la
-    clusters: list[list[dict]] = []
-    for a in arrows:
-        placed = False
-        for cl in clusters:
-            for c in cl:
-                if _pt_dist(a["text_x"], a["text_y"],
-                            c["text_x"], c["text_y"]) < TEXT_CLUSTER_DIST:
-                    cl.append(a)
-                    placed = True
-                    break
-            if placed:
-                break
-        if not placed:
-            clusters.append([a])
-
-    cap_map: dict[int, str] = {}
-    dist_map: dict[int, float] = {}
-
-    for cl in clusters:
-        if not cl:
+    for r in results:
+        # other_ ile baslayan pipe_id'leri atla (cross-system pipes)
+        if r.pipe_id.startswith("other_"):
+            continue
+        if r.source == "unmatched":
             continue
 
-        # Text merkez noktası
-        tx = sum(a["text_x"] for a in cl) / len(cl)
-        ty = sum(a["text_y"] for a in cl) / len(cl)
+        eidx = int(r.pipe_id)
+        edge_caps[eidx] = r.diameter
+        edge_sources[eidx] = r.source
+        edge_dists[eidx] = r.distance
 
-        # Tüm boruların text'e mesafesi
-        pipe_dists: list[tuple[float, int, bool]] = []
-        for eidx, x1, y1, x2, y2 in all_pipes:
-            d = _perp_dist(tx, ty, x1, y1, x2, y2)
-            pipe_dists.append((d, eidx, eidx in own_set))
-        pipe_dists.sort()
-
-        # Boru rank'la (>PIPE_RANK_GAP fark = yeni rank)
-        pipe_ranks: list[list[tuple[float, int, bool]]] = []
-        for pd in pipe_dists:
-            if not pipe_ranks or pd[0] - pipe_ranks[-1][0][0] > PIPE_RANK_GAP:
-                pipe_ranks.append([pd])
-            else:
-                pipe_ranks[-1].append(pd)
-
-        # Okları uzunluğa göre sırala + rank'la
-        sorted_arrows = sorted(cl, key=lambda a: a["length"])
-        arrow_ranks: list[list[dict]] = []
-        for a in sorted_arrows:
-            if not arrow_ranks or a["length"] - arrow_ranks[-1][0]["length"] > ARROW_RANK_GAP:
-                arrow_ranks.append([a])
-            else:
-                arrow_ranks[-1].append(a)
-
-        # Boru Rank N → Ok Rank N'in dominant çapını al
-        for rank_idx, rank_group in enumerate(pipe_ranks):
-            if rank_idx >= len(arrow_ranks):
-                break
-            # Bu ok rank'ının dominant çapı
-            dominant = Counter(a["diameter"] for a in arrow_ranks[rank_idx]).most_common(1)[0][0]
-
-            for _, eidx, is_own in rank_group:
-                if is_own and eidx not in cap_map:
-                    # KURAL 4: Format kontrolü
-                    if _format_valid(dominant, pipe_type, layer):
-                        cap_map[eidx] = dominant
-                        dist_map[eidx] = 0.0  # ok = en güvenilir
-
-    return cap_map, dist_map
-
-
-# ═══════════════════════════════════════════════
-#  KURAL 2 — YAKIN TEXT
-# ═══════════════════════════════════════════════
-
-def _text_match(
-    diameter_texts: list[DiameterText],
-    own_coords: list[tuple[int, float, float, float, float]],
-    other_coords: list[tuple[int, float, float, float, float]],
-    pipe_type: str,
-    layer: str,
-    already_assigned: set[int],
-) -> tuple[dict[int, str], dict[int, float]]:
-    """
-    KURAL 2: Yakın Text (Ok Yoksa).
-    Sadece ok ile atanMAMIŞ edge'ler için.
-
-    - pipe-centric: her boru için en yakın text
-    - cross-system: text başka layer borusuna daha yakınsa → atla
-    """
-    own_set = {rc[0] for rc in own_coords}
-    all_pipes = list(own_coords) + list(other_coords)
-
-    cap_map: dict[int, str] = {}
-    dist_map: dict[int, float] = {}
-
-    for eidx, x1, y1, x2, y2 in own_coords:
-        if eidx in already_assigned:
-            continue  # ok ile zaten atandı → ATLA
-
-        best_val, best_dist = "", MAX_TEXT_PIPE_DIST
-        for dt in diameter_texts:
-            d = _perp_dist(dt.position.x, dt.position.y, x1, y1, x2, y2)
-            if d >= best_dist:
-                continue
-
-            # Cross-system check: bu text'in en yakın borusu biz miyiz?
-            if other_coords:
-                nearest_eidx = -1
-                nearest_d = d  # bizim mesafemiz baseline
-                for oeidx, ox1, oy1, ox2, oy2 in all_pipes:
-                    od = _perp_dist(dt.position.x, dt.position.y, ox1, oy1, ox2, oy2)
-                    if od < nearest_d:
-                        nearest_d = od
-                        nearest_eidx = oeidx
-                if nearest_eidx >= 0 and nearest_eidx not in own_set:
-                    continue  # text başka layer borusuna daha yakın → atla
-
-            # KURAL 4: Format kontrolü
-            if not _format_valid(dt.value, pipe_type, layer):
-                continue
-
-            best_dist = d
-            best_val = dt.value
-
-        if best_val:
-            cap_map[eidx] = best_val
-            dist_map[eidx] = best_dist
-
-    return cap_map, dist_map
+    return edge_caps, edge_sources, edge_dists
 
 
 # ═══════════════════════════════════════════════
@@ -485,43 +447,40 @@ def assign_diameters(
     texts = extract_diameters(dxf_path, cap_layers, pipe_type=pipe_type)
     warnings.append(f"Text: {len(texts)} adet ({pipe_type} format)")
 
-    # ── KURAL 1: Ok Eşleştirme ──
-    arrows, arrow_stats = _collect_arrows(dxf_path, texts)
-    arrow_caps, arrow_dists = _arrow_match(
-        arrows, own_coords, other_coords, pipe_type, layer,
-    )
+    # ── KURAL 1+2: matcher_core ile Ok + Text Eşleştirme ──
+    collected_arrows, arrow_stats = _collect_arrows(dxf_path, texts, cap_layers)
 
     warnings.append(
-        f"Ok: {len(arrow_caps)} eslesti | "
+        f"Ok: toplanan={len(collected_arrows)} | "
         f"line={arrow_stats['line']} lwpoly={arrow_stats['lwpoly']} "
         f"leader={arrow_stats['leader']} | "
         f"skip: kisa={arrow_stats['skip_short']} textsiz={arrow_stats['skip_notext']} "
         f"(toplam taranan={arrow_stats['total_scanned']})"
     )
 
-    # ── KURAL 2: Yakın Text (ok ile atanmamışlar için) ──
-    text_caps, text_dists = _text_match(
-        texts, own_coords, other_coords, pipe_type, layer,
-        already_assigned=set(arrow_caps.keys()),
+    # PipeGraph → matcher_core siniflarına dönüştür
+    mc_pipes, mc_arrows, mc_texts = _graph_to_matcher_inputs(
+        graph, collected_arrows, texts, layer, other_coords,
     )
 
-    warnings.append(f"Yakin text: {len(text_caps)} eslesti")
+    # PipeMatcher çalıştır (ok + text + cross-system check)
+    match_results = PipeMatcher(mc_pipes, mc_arrows, mc_texts, layer).match()
 
-    # ── Birleştir: kaynak takibi ──
-    edge_caps: dict[int, str] = {}
-    edge_sources: dict[int, str] = {}
-    edge_dists: dict[int, float] = {}
+    # MatchResult → eski edge dict formatına dönüştür
+    edge_caps, edge_sources, edge_dists = _matcher_results_to_edge_maps(
+        match_results,
+    )
 
-    for eidx, cap in arrow_caps.items():
-        edge_caps[eidx] = cap
-        edge_sources[eidx] = "arrow"
-        edge_dists[eidx] = arrow_dists[eidx]
+    # Format validasyonu (matcher_core'un Ø filtresi dışında kalan durumlar)
+    for eidx in list(edge_caps.keys()):
+        if not _format_valid(edge_caps[eidx], pipe_type, layer):
+            del edge_caps[eidx]
+            edge_sources.pop(eidx, None)
+            edge_dists.pop(eidx, None)
 
-    for eidx, cap in text_caps.items():
-        if eidx not in edge_caps:  # ok zaten atadıysa dokunma
-            edge_caps[eidx] = cap
-            edge_sources[eidx] = "text"
-            edge_dists[eidx] = text_dists[eidx]
+    n_arrow = sum(1 for s in edge_sources.values() if s == "arrow")
+    n_text = sum(1 for s in edge_sources.values() if s == "text")
+    warnings.append(f"matcher_core: ok={n_arrow} text={n_text}")
 
     # ── KURAL 3: Walker Propagation ──
     _walker_propagate(graph, edge_caps, edge_dists, edge_sources)
