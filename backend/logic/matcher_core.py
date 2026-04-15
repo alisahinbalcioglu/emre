@@ -80,7 +80,7 @@ class MatchResult(BaseModel):
 
 ARROW_TEXT_GROUP_DIST: float = 100.0  # ok-text gruplama maksimum mesafe
 MAX_FALLBACK_DIST: float = 150.0     # fallback text-to-edge perp mesafe esigi
-MAX_ARROW_PIPE_DIST: float = 50.0    # ok ucu-boru mesafe baraji
+MAX_ARROW_PIPE_DIST: float = 100.0   # ok ucu-boru mesafe baraji
 
 # Aci bariyeri: 30° < θ < 150° (PRD v2)
 ANGLE_MIN: float = 30.0
