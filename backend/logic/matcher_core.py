@@ -65,7 +65,7 @@ class MatchResult(BaseModel):
     pipe_id: str
     layer: str = ""
     diameter: str
-    method: str  # "arrow_chain", "arrow_direct", "text_fallback", "unmatched"
+    method: str  # "arrow_chain", "text_fallback", "unmatched"
     confidence_score: float  # 0.0 - 1.0
     segment: str = ""  # "0-150cm" veya "" (tum boru)
     distance: float = -1.0
@@ -197,12 +197,7 @@ def _calc_confidence(method: str, dist: float) -> float:
     """Eslestirme guvenilirlik skoru (0-1)."""
     if method == "arrow_chain":
         return 0.95 if dist < 5.0 else 0.85
-    if method == "arrow_direct":
-        if dist < 1.0:
-            return 0.95
-        if dist < 10.0:
-            return 0.85
-        return max(0.5, 0.85 - (dist - 10.0) * 0.01)
+    # arrow_direct kaldirildi — tum eslesmeler arrow_chain uzerinden
     if method == "text_fallback":
         if dist < 10.0:
             return 0.70
@@ -312,7 +307,7 @@ class PipeMatcher:
             if validate_text_for_layer(t.value, self._selected_layer)
         ]
 
-        # KURAL 3+4: Ok eslestirme (boru-merkezli + sanal segmentasyon)
+        # KURAL 3+4: Ok eslestirme (text gruplama + zincirleme)
         arrow_results, matched_ids, used_text_ids = self._arrow_match(
             active, noise, valid_texts,
         )
@@ -351,7 +346,7 @@ class PipeMatcher:
     ) -> tuple[list[MatchResult], set[str], set[str]]:
         """Zincirleme eslestirme (PRD v2 Madde 4).
 
-        TUM oklar text gruplama uzerinden gecer. MOD A yok.
+        TUM oklar text gruplama uzerinden gecer.
 
         1. Her text icin yakin oklari grupla (ARROW_TEXT_GROUP_DIST)
         2. Oklari boya gore sirala (kisa → uzun)
