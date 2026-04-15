@@ -97,21 +97,21 @@ def _polyline_len(pts):
 # ═══════════════════════════════════════════════
 
 def _format_valid(cap: str, pipe_type: str, layer: str) -> bool:
-    """Çap, layer tipine uygun mu? PRD v2:
-       - PISSU/YAGMUR/GRISU: SADECE Ø
-       - Diger (temiz/yangin/gaz/sicak): Ø, inch, DN — hepsi kabul
+    """Çap, layer tipine uygun mu? (PRD v2 - gri su düzeltmesi)
+       - PISSU/YAGMUR: SADECE Ø (basinçsiz drenaj)
+       - Diger (temiz/yangin/gaz/sicak/GRISU): Ø, inch, DN — hepsi kabul
     """
     if not cap or cap == "Belirtilmemis":
         return False
     layer_l = layer.lower()
-    is_waste = any(k in layer_l for k in ('pis', 'yagmur', 'gri'))
+    # Sadece pis su ve yagmur kesin atiksu
+    is_waste = ('pis' in layer_l or 'yagmur' in layer_l or 'yağmur' in layer_l)
     if is_waste:
-        # Atiksu: SADECE metric
         if not _is_metric(cap):
             return False
         if cap in PISSU_INVALID_CAPS:
             return False
-    # Basincli hatlar: tum format'lar (Ø, inch, DN) kabul
+    # Basincli hatlar (gri su dahil): tum format'lar kabul
     return True
 
 

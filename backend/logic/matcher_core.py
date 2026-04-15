@@ -172,17 +172,22 @@ _PURE_NUM_RE = re.compile(r'^\d+(\.\d+)?$')
 
 
 def validate_text_for_layer(value: str, layer: str) -> bool:
-    """Metin vizesi (PRD v2).
+    """Metin vizesi (PRD v2 - gri su d\u00fczeltmesi).
 
-    Atiksu grubu (PISSU, YAGMUR, GRISU): SADECE Ø.
-    Basincli hatlar (TEMIZSU, YANGIN, GAZ): Ø, inch, DN, saf sayi — HEPSI.
-       (Temiz su tesisatinda Ø100 ana hat + 1¼" dal karisik kullanilir)
+    Atiksu grubu (PISSU, YAGMUR): SADECE Ø.
+       (Sadece basincsiz drenaj sistemleri)
+    Basincli hatlar (TEMIZSU, YANGIN, GAZ, GRISU, SICAK SU): HEPSI kabul.
+       (Gri su = lavabo/dus donusum suyu, basincli kullanim → inch+Ø karisik)
     """
-    lu = layer.upper()
-    is_waste = any(kw in lu for kw in ("PISSU", "YAGMUR", "GRISU"))
+    lu = layer.upper().replace("\u0130", "I")  # i\u0307 → I normalize
+    # Sadece pis su ve yagmur kesin atiksu
+    is_waste = (
+        ("PISSU" in lu or "PIS SU" in lu)
+        or ("YAGMUR" in lu or "Y\u00c2\u011eMUR" in lu or "Y\u011eMR" in lu)
+    )
     if is_waste:
         return bool(_PHI_RE.search(value))
-    # Basincli hatlar: tum format'lar kabul (PRD v2)
+    # Diger tum hatlar (temiz, gri, sicak, yangin, gaz): tum format'lar kabul
     return (
         bool(_PHI_RE.search(value))
         or bool(_INCH_RE.search(value))
