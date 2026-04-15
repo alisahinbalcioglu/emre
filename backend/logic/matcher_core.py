@@ -340,7 +340,7 @@ class PipeMatcher:
         return arrow_results + text_results + unmatched_results
 
     # ------------------------------------------------------------------
-    # Ok eslestirme — boru-merkezli + sanal segmentasyon
+    # Ok eslestirme — SADECE text gruplama + zincirleme indeks esleme
     # ------------------------------------------------------------------
 
     def _arrow_match(
@@ -349,81 +349,37 @@ class PipeMatcher:
         noise: list[Pipe],
         valid_texts: list[Text],
     ) -> tuple[list[MatchResult], set[str], set[str]]:
+        """Zincirleme eslestirme (PRD v2 Madde 4).
+
+        TUM oklar text gruplama uzerinden gecer. MOD A yok.
+
+        1. Her text icin yakin oklari grupla (ARROW_TEXT_GROUP_DIST)
+        2. Oklari boya gore sirala (kisa → uzun)
+        3. Her okun hedef borusunu bul (SADECE active, aci bariyeri)
+        4. Borulari text'e yakinliga gore sirala
+        5. Indeks esleme: ok[0]→boru[0], ok[1]→boru[1]
+        6. Capi: Arrow.diameter varsa o, yoksa text.value
+        """
         results: list[MatchResult] = []
         matched_ids: set[str] = set()
         used_text_ids: set[str] = set()
 
-        arrows_with_dia = [a for a in self._arrows if a.diameter]
-        arrows_without_dia = [a for a in self._arrows if not a.diameter]
-
-        # ── MOD A: diameter'li oklar — boru-merkezli ──
-        # Tum ok → boru eslemelerini topla
-        pipe_arrows: dict[str, list[tuple[Arrow, Pipe, float, float]]] = {}
-        #                   pipe_id: [(arrow, pipe, perp_dist, t_param)]
-
-        for arrow in arrows_with_dia:
-            if not validate_text_for_layer(arrow.diameter, self._selected_layer):
-                continue
-
-            pipe, dist, ok = self._resolve_arrow(arrow, active, noise)
-            if not ok or pipe is None:
-                continue
-
-            # t parametresi (ok ucunun boru uzerindeki pozisyonu)
-            t = _project_t(
-                arrow.end[0], arrow.end[1],
-                pipe.start[0], pipe.start[1],
-                pipe.end[0], pipe.end[1],
-            )
-            pipe_arrows.setdefault(pipe.id, []).append((arrow, pipe, dist, t))
-
-        # Her boru icin: tek ok → dogrudan, coklu ok → sanal segmentasyon
-        for pipe_id, candidates in pipe_arrows.items():
-            pipe = candidates[0][1]
-
-            if len(candidates) == 1:
-                # Tek ok → tum boruya ata
-                arrow, _, dist, _ = candidates[0]
-                conf = _calc_confidence("arrow_direct", dist)
-                results.append(MatchResult(
-                    pipe_id=pipe_id,
-                    layer=self._selected_layer,
-                    diameter=arrow.diameter,
-                    method="arrow_direct",
-                    confidence_score=round(conf, 2),
-                    source="arrow",
-                    distance=round(dist, 2),
-                ))
-                matched_ids.add(pipe_id)
-            else:
-                # Coklu ok → en yakin ok ucu kazanir (sanal segmentasyon ilerde)
-                candidates.sort(key=lambda x: (x[2], x[0].length))
-                best_arrow, _, best_dist, _ = candidates[0]
-                conf = _calc_confidence("arrow_direct", best_dist)
-                results.append(MatchResult(
-                    pipe_id=pipe_id,
-                    layer=self._selected_layer,
-                    diameter=best_arrow.diameter,
-                    method="arrow_direct",
-                    confidence_score=round(conf, 2),
-                    source="arrow",
-                    distance=round(best_dist, 2),
-                ))
-                matched_ids.add(pipe_id)
-
-        # ── MOD B: diameter'siz oklar — text gruplama ──
         for text in valid_texts:
             tx, ty = text.position
+
+            # Adim 1: Text'e yakin TUM oklari grupla
             group = [
-                a for a in arrows_without_dia
-                if _pt_dist(tx, ty, a.start[0], a.start[1]) <= ARROW_TEXT_GROUP_DIST
+                a for a in self._arrows
+                if _pt_dist(tx, ty, a.start[0], a.start[1])
+                <= ARROW_TEXT_GROUP_DIST
             ]
             if not group:
                 continue
 
+            # Adim 2: Boya gore sirala (kisa → uzun)
             group.sort(key=lambda a: a.length)
 
-            # Her ok icin hedef boru bul
+            # Adim 3: Her ok icin hedef boru bul
             pairs: list[tuple[Arrow, Pipe, float]] = []
             for arrow in group:
                 pipe, dist, ok = self._resolve_arrow(arrow, active, noise)
@@ -433,7 +389,7 @@ class PipeMatcher:
             if not pairs:
                 continue
 
-            # Borulari text mesafesine gore sirala (yakin → uzak)
+            # Adim 4: Borulari text'e yakinliga gore sirala (yakin → uzak)
             seen: dict[str, tuple[Pipe, float]] = {}
             for _, pipe, dist in pairs:
                 if pipe.id not in seen:
@@ -448,17 +404,26 @@ class PipeMatcher:
                 ),
             )
 
-            # Indeks esleme: ok[i] → boru[i]
+            # Adim 5+6: Indeks esleme — ok[i] → boru[i]
             count = min(len(pairs), len(sorted_pipes))
             for i in range(count):
                 pipe, dist = sorted_pipes[i]
                 if pipe.id in matched_ids:
                     continue
+
+                # Cap: arrow.diameter varsa kullan, yoksa text.value
+                arrow_i = pairs[i][0]
+                diameter = arrow_i.diameter if arrow_i.diameter else text.value
+
+                # Metin vizesi kontrolu
+                if not validate_text_for_layer(diameter, self._selected_layer):
+                    continue
+
                 conf = _calc_confidence("arrow_chain", dist)
                 results.append(MatchResult(
                     pipe_id=pipe.id,
                     layer=self._selected_layer,
-                    diameter=text.value,
+                    diameter=diameter,
                     method="arrow_chain",
                     confidence_score=round(conf, 2),
                     source="arrow",
