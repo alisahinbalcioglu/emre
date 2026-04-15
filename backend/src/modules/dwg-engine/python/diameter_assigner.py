@@ -97,15 +97,21 @@ def _polyline_len(pts):
 # ═══════════════════════════════════════════════
 
 def _format_valid(cap: str, pipe_type: str, layer: str) -> bool:
-    """Çap, boru tipine uygun mu? Her zaman kontrol edilir."""
+    """Çap, layer tipine uygun mu? PRD v2:
+       - PISSU/YAGMUR/GRISU: SADECE Ø
+       - Diger (temiz/yangin/gaz/sicak): Ø, inch, DN — hepsi kabul
+    """
     if not cap or cap == "Belirtilmemis":
         return False
-    if pipe_type == "metric" and not _is_metric(cap):
-        return False
-    if pipe_type == "imperial" and _is_metric(cap):
-        return False
-    if pipe_type == "metric" and "pis" in layer.lower() and cap in PISSU_INVALID_CAPS:
-        return False
+    layer_l = layer.lower()
+    is_waste = any(k in layer_l for k in ('pis', 'yagmur', 'gri'))
+    if is_waste:
+        # Atiksu: SADECE metric
+        if not _is_metric(cap):
+            return False
+        if cap in PISSU_INVALID_CAPS:
+            return False
+    # Basincli hatlar: tum format'lar (Ø, inch, DN) kabul
     return True
 
 

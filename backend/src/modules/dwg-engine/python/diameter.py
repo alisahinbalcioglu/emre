@@ -94,17 +94,14 @@ def _is_imperial(value: str) -> bool:
 
 def _format_ok(value: str, pipe_type: str) -> bool:
     """
-    Format filtresi. pipe_type:
-    - "metric": sadece Ø kabul (pis su, yağmur)
-    - "imperial": sadece DN/inch kabul (temiz, gri, sprinkler, dolap)
-    - "all": hepsini kabul (hidrant, bilinmeyen)
+    Format filtresi (PRD v2):
+    - "metric": SADECE Ø kabul (pis su, yağmur)
+    - "imperial": HER format kabul (temiz/yangin/gaz hattinda Ø100 + 1¼" karisik)
+    - "all": hepsi
     """
-    if pipe_type == "all":
-        return True
     if pipe_type == "metric":
         return _is_metric(value)
-    if pipe_type == "imperial":
-        return _is_imperial(value)
+    # imperial veya all: tum format'lar (Ø, DN, inch) kabul
     return True
 
 

@@ -172,17 +172,20 @@ _PURE_NUM_RE = re.compile(r'^\d+(\.\d+)?$')
 
 
 def validate_text_for_layer(value: str, layer: str) -> bool:
-    """Metin vizesi.
+    """Metin vizesi (PRD v2).
 
     Atiksu grubu (PISSU, YAGMUR, GRISU): SADECE Ø.
-    Basincli hatlar (TEMIZSU, YANGIN, GAZ, diger): ", DN, saf sayi.
+    Basincli hatlar (TEMIZSU, YANGIN, GAZ): Ø, inch, DN, saf sayi — HEPSI.
+       (Temiz su tesisatinda Ø100 ana hat + 1¼" dal karisik kullanilir)
     """
     lu = layer.upper()
     is_waste = any(kw in lu for kw in ("PISSU", "YAGMUR", "GRISU"))
     if is_waste:
         return bool(_PHI_RE.search(value))
+    # Basincli hatlar: tum format'lar kabul (PRD v2)
     return (
-        bool(_INCH_RE.search(value))
+        bool(_PHI_RE.search(value))
+        or bool(_INCH_RE.search(value))
         or bool(_DN_RE.search(value))
         or bool(_PURE_NUM_RE.match(value.strip()))
     )
