@@ -76,7 +76,7 @@ class MatchResult(BaseModel):
 # ═══════════════════════════════════════════════════════════════════
 
 # Kural 3 — Zincirleme eslestirme
-ARROW_TEXT_GROUP_DIST: float = 20.0   # ok baslangici ↔ text merkezi gruplama
+ARROW_TEXT_GROUP_DIST: float = 80.0   # ok baslangici ↔ text merkezi gruplama
 MAX_FALLBACK_DIST: float = 50.0      # fallback text eslestirme max mesafe
 
 # Kural 4 — Vektorel diklik
@@ -137,16 +137,21 @@ def _is_perpendicular(
     arrow_sx: float, arrow_sy: float, arrow_ex: float, arrow_ey: float,
     pipe_sx: float, pipe_sy: float, pipe_ex: float, pipe_ey: float,
 ) -> bool:
-    """Ok dogrultusu ile boru dogrultusu arasindaki aci 70°-110° mi?
+    """Ok dogrultusu ile boru dogrultusu arasindaki aci ~dik mi?
 
-    True = dik (gecerli eslestirme), False = paralel (reddet).
+    acos 0-180 dondurur. 90°'ye yakinlik olculur:
+      angle_to_90 = |90 - angle|
+      Eger angle_to_90 <= 45 → dik kabul (45°-135° arasi)
+      Eger angle_to_90 > 45  → paralel, reddet (0°-45° veya 135°-180°)
+
+    True = dik (gecerli), False = paralel (reddet).
     """
     v1x, v1y = arrow_ex - arrow_sx, arrow_ey - arrow_sy
     v2x, v2y = pipe_ex - pipe_sx, pipe_ey - pipe_sy
     angle = _angle_between_deg(v1x, v1y, v2x, v2y)
-    # 70°-110° arasi VEYA 70°-110° + 180° (ters yon) = ayni sey
-    # acos zaten 0-180 dondurur, paralel=0° veya 180°
-    return 70.0 <= angle <= 110.0
+    # 90°'ye olan uzaklik
+    angle_to_90 = abs(90.0 - angle)
+    return angle_to_90 <= 45.0  # 45°-135° arasi = dik
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -304,90 +309,78 @@ class PipeMatcher:
         noise_pool: list[Pipe],
         valid_texts: list[Text],
     ) -> tuple[list[MatchResult], set[str], set[str]]:
-        """Ok bazli zincirleme eslestirme.
+        """Ok bazli zincirleme eslestirme — iki modlu.
 
-        1. Metin merkezine 20 birim yakinliktaki oklari grupla
-        2. Oklari boya gore sirala (kisa → uzun)
-        3. Her okun ucunun SADECE active_pool'daki en yakin boruyu bul
-        4. Indeks esleme: ok[0]→boru[0], ok[1]→boru[1]
+        MOD A: Arrow.diameter dolu → ok zaten cap bilgisi tasiyor
+               (_collect_arrows eslesmesi). Text gruplama GEREKMEZ.
+               Dogrudan ok ucunun active_pool'daki boruyu bul + diklik + ata.
 
-        Kural 4 (diklik) ve Kural 1 (hedef filtre) her ok icin uygulanir.
+        MOD B: Arrow.diameter bos → text gruplama ile klasik eslestirme.
+
+        Her iki modda da Kural 1 (hedef filtre) ve Kural 4 (diklik) uygulanir.
         """
         results: list[MatchResult] = []
         matched_ids: set[str] = set()
         used_text_ids: set[str] = set()
-        active_ids = {p.id for p in active_pool}
 
+        # ── MOD A: diameter'li oklar — dogrudan eslestir ──
+        arrows_with_dia = [a for a in self._arrows if a.diameter]
+        arrows_without_dia = [a for a in self._arrows if not a.diameter]
+
+        for arrow in arrows_with_dia:
+            pipe, ok = self._arrow_to_pipe(
+                arrow, active_pool, noise_pool, matched_ids,
+            )
+            if not ok or pipe is None:
+                continue
+
+            # Metin vizesi: arrow.diameter gecerli mi bu layer icin?
+            if not validate_text_for_layer(
+                arrow.diameter, self._selected_layer
+            ):
+                continue
+
+            results.append(MatchResult(
+                pipe_id=pipe.id,
+                diameter=arrow.diameter,
+                source="arrow",
+                distance=0.0,
+                text_id=None,
+            ))
+            matched_ids.add(pipe.id)
+
+        # ── MOD B: diameter'siz oklar — text gruplama ile ──
         for text in valid_texts:
             tx, ty = text.position
 
-            # Adim 1: Metin merkezine yakin oklari grupla
             group = [
-                a for a in self._arrows
+                a for a in arrows_without_dia
                 if _pt_dist(tx, ty, a.start[0], a.start[1])
                 <= ARROW_TEXT_GROUP_DIST
             ]
             if not group:
                 continue
 
-            # Adim 2: Oklari boya gore sirala (kisa → uzun)
             group.sort(key=lambda a: a.length)
 
-            # Adim 3: Her ok icin hedef boru bul
             ok_boru_pairs: list[tuple[Arrow, Pipe, float]] = []
-
             for arrow in group:
-                ax, ay = arrow.end  # ok'un boru tarafi ucu
-
-                # ── KURAL 1: Hedef SADECE active_pool ──
-                best_pipe: Pipe | None = None
-                best_dist = float("inf")
-
-                for pipe in active_pool:
-                    if pipe.id in matched_ids:
-                        continue
-                    d = _perp_dist(
+                pipe, ok = self._arrow_to_pipe(
+                    arrow, active_pool, noise_pool, matched_ids,
+                )
+                if ok and pipe is not None:
+                    ax, ay = arrow.end
+                    dist = _perp_dist(
                         ax, ay,
                         pipe.start[0], pipe.start[1],
                         pipe.end[0], pipe.end[1],
                     )
-                    if d < best_dist:
-                        best_dist = d
-                        best_pipe = pipe
-
-                if best_pipe is None:
-                    continue
-
-                # ── KURAL 1 ek: ok ucu baska layer'a daha yakin mi? ──
-                skip = False
-                for noise in noise_pool:
-                    nd = _perp_dist(
-                        ax, ay,
-                        noise.start[0], noise.start[1],
-                        noise.end[0], noise.end[1],
-                    )
-                    if nd < best_dist:
-                        skip = True
-                        break
-                if skip:
-                    continue
-
-                # ── KURAL 4: Vektorel diklik kontrolu ──
-                if not _is_perpendicular(
-                    arrow.start[0], arrow.start[1],
-                    arrow.end[0], arrow.end[1],
-                    best_pipe.start[0], best_pipe.start[1],
-                    best_pipe.end[0], best_pipe.end[1],
-                ):
-                    continue
-
-                ok_boru_pairs.append((arrow, best_pipe, best_dist))
+                    ok_boru_pairs.append((arrow, pipe, dist))
 
             if not ok_boru_pairs:
                 continue
 
-            # Hedef borulari text'e olan mesafeye gore sirala (yakin → uzak)
-            # Duplicate pipe'lari cikar, ilk geceni al
+            # Borulari text'e yakinliga gore sirala
             seen: dict[str, tuple[Pipe, float]] = {}
             for _, pipe, dist in ok_boru_pairs:
                 if pipe.id not in seen:
@@ -402,21 +395,15 @@ class PipeMatcher:
                 ),
             )
 
-            # Adim 4: Indeks esleme — ok[i] → boru[i]
             count = min(len(ok_boru_pairs), len(sorted_pipes))
             for i in range(count):
-                arrow_i = ok_boru_pairs[i][0]
                 pipe, _ = sorted_pipes[i]
-
                 if pipe.id in matched_ids:
                     continue
 
-                # Arrow.diameter varsa kullan, yoksa text.value
-                diameter = arrow_i.diameter if arrow_i.diameter else text.value
-
                 results.append(MatchResult(
                     pipe_id=pipe.id,
-                    diameter=diameter,
+                    diameter=text.value,
                     source="arrow",
                     distance=0.0,
                     text_id=text.id,
@@ -425,6 +412,59 @@ class PipeMatcher:
                 used_text_ids.add(text.id)
 
         return results, matched_ids, used_text_ids
+
+    def _arrow_to_pipe(
+        self,
+        arrow: Arrow,
+        active_pool: list[Pipe],
+        noise_pool: list[Pipe],
+        matched_ids: set[str],
+    ) -> tuple[Pipe | None, bool]:
+        """Tek bir ok'u active_pool'daki en yakin boruyla esle.
+
+        Kural 1 (hedef filtre) + Kural 4 (diklik) uygulanir.
+        Returns: (pipe, success)
+        """
+        ax, ay = arrow.end
+
+        # KURAL 1: Hedef SADECE active_pool
+        best_pipe: Pipe | None = None
+        best_dist = float("inf")
+        for pipe in active_pool:
+            if pipe.id in matched_ids:
+                continue
+            d = _perp_dist(
+                ax, ay,
+                pipe.start[0], pipe.start[1],
+                pipe.end[0], pipe.end[1],
+            )
+            if d < best_dist:
+                best_dist = d
+                best_pipe = pipe
+
+        if best_pipe is None:
+            return None, False
+
+        # KURAL 1 ek: baska layer'a daha yakin mi?
+        for noise in noise_pool:
+            nd = _perp_dist(
+                ax, ay,
+                noise.start[0], noise.start[1],
+                noise.end[0], noise.end[1],
+            )
+            if nd < best_dist:
+                return None, False
+
+        # KURAL 4: Vektorel diklik
+        if not _is_perpendicular(
+            arrow.start[0], arrow.start[1],
+            arrow.end[0], arrow.end[1],
+            best_pipe.start[0], best_pipe.start[1],
+            best_pipe.end[0], best_pipe.end[1],
+        ):
+            return None, False
+
+        return best_pipe, True
 
     # ------------------------------------------------------------------
     # Fallback: ok yoksa yakin text (KURAL 5 dahil)
