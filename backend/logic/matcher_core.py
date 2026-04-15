@@ -151,7 +151,7 @@ class PipeMatcher:
 
         # Adim 1 — ok bazli eslestirme
         arrow_results, matched_pipe_ids, used_text_ids = self._arrow_match(
-            own_pipes, valid_texts
+            own_pipes, valid_texts, other_pipes
         )
 
         # Adim 2 — yakinlik bazli fallback
@@ -213,8 +213,13 @@ class PipeMatcher:
         self,
         own_pipes: list[Pipe],
         valid_texts: list[Text],
+        other_pipes: list[Pipe],
     ) -> tuple[list[MatchResult], set[str], set[str]]:
         """Her text etrafindaki ok grubunu borularla zincirle.
+
+        Cross-system check: ok ucu baska layer borusuna daha yakinsa
+        o ok atlanir — sadece selected_layer borularina isaret eden
+        oklar eslestirme havuzuna girer.
 
         Returns:
             (results, matched_pipe_ids, used_text_ids)
@@ -241,11 +246,14 @@ class PipeMatcher:
             group.sort(key=lambda a: a.length)
 
             # her ok'un pipe-end'inin degdigi borulari bul
+            # SADECE own_pipes (selected_layer) hedef havuzunda
             target_pipes: list[tuple[Pipe, float]] = []
             for arrow in group:
                 ax, ay = arrow.end
-                best_pipe: Pipe | None = None
-                best_dist = float("inf")
+
+                # --- own_pipes icinde en yakin boruyu bul ---
+                best_own_pipe: Pipe | None = None
+                best_own_dist = float("inf")
 
                 for pipe in own_pipes:
                     if pipe.id in matched_pipe_ids:
@@ -255,12 +263,27 @@ class PipeMatcher:
                         pipe.start[0], pipe.start[1],
                         pipe.end[0], pipe.end[1],
                     )
-                    if d < best_dist:
-                        best_dist = d
-                        best_pipe = pipe
+                    if d < best_own_dist:
+                        best_own_dist = d
+                        best_own_pipe = pipe
 
-                if best_pipe is not None:
-                    target_pipes.append((best_pipe, best_dist))
+                if best_own_pipe is None:
+                    continue
+
+                # --- cross-system check: baska layer daha yakin mi? ---
+                arrow_hits_other = False
+                for other in other_pipes:
+                    other_dist = _perp_dist(
+                        ax, ay,
+                        other.start[0], other.start[1],
+                        other.end[0], other.end[1],
+                    )
+                    if other_dist < best_own_dist:
+                        arrow_hits_other = True
+                        break
+
+                if not arrow_hits_other:
+                    target_pipes.append((best_own_pipe, best_own_dist))
 
             if not target_pipes:
                 continue
