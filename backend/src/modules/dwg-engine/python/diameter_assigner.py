@@ -374,6 +374,76 @@ def _find_collinear_pair(
     return best_pair
 
 
+def _collinear_chain_dominant(
+    graph: PipeGraph,
+    edge_caps: dict[int, str],
+) -> None:
+    """Aynı kolinear zincirdeki edge'lerin çaplarını mutabık yap.
+
+    Mantık: Bir fiziksel boru tee'ler aracılığıyla birden fazla edge'e
+    bölünmüş olabilir. Kolinear zincirde (aynı doğrultuda devam eden)
+    farklı çaplar atanmışsa → zincirdeki toplam uzunluğa göre DOMINANT
+    çap tüm zincire uygulanır.
+
+    Örnek:
+      edge15 (11462, Ø125) ve edge19 (11159, Ø200) kolinear → aynı boru.
+      Uzunluk dağılımı: Ø200=11159, Ø125=11462 → dengesiz, ama aslında
+      aynı zincirdeki diğer edge'ler de Ø200 → Ø200 dominant olacak.
+    """
+    # Union-Find ile kolinear zincirleri bul
+    parent = {e.idx: e.idx for e in graph.edges}
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a, b):
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    # Her node'da (düz veya tee) kolinear çift bul, birleştir
+    for node, neighbors in graph.adj.items():
+        if node in graph.tees and len(neighbors) >= 3:
+            pair = _find_collinear_pair(node, neighbors)
+            if pair is None:
+                continue
+            e1, e2 = pair
+        elif node not in graph.tees and len(neighbors) == 2:
+            e1, e2 = neighbors[0][1], neighbors[1][1]
+        else:
+            continue
+        if e1.layer == e2.layer:
+            union(e1.idx, e2.idx)
+
+    # Her zincir için dominant çap (uzunluk ağırlıklı)
+    chain_caps: dict[int, dict[str, float]] = {}
+    chain_layers: dict[int, str] = {}
+    for e in graph.edges:
+        root = find(e.idx)
+        cap = edge_caps.get(e.idx, "Belirtilmemis")
+        if cap == "Belirtilmemis":
+            continue
+        chain_caps.setdefault(root, {})
+        chain_caps[root][cap] = chain_caps[root].get(cap, 0.0) + e.length
+        chain_layers[root] = e.layer
+
+    # Dominant olmayan çapı dominant'a çevir (sadece farklılık varsa)
+    for root, cap_lens in chain_caps.items():
+        if len(cap_lens) < 2:
+            continue  # zincirde tek çap var, dokunma
+        # En uzun toplam çap
+        dominant = max(cap_lens.items(), key=lambda x: x[1])[0]
+        # Bu zincirin tüm edge'lerini bul
+        for e in graph.edges:
+            if find(e.idx) == root:
+                cur = edge_caps.get(e.idx, "Belirtilmemis")
+                if cur != "Belirtilmemis" and cur != dominant:
+                    edge_caps[e.idx] = dominant
+
+
 def _walker_propagate(
     graph: PipeGraph,
     edge_caps: dict[int, str],
@@ -381,35 +451,34 @@ def _walker_propagate(
     edge_sources: dict[int, str],
 ) -> None:
     """
-    Kolinear Walker — ana hat devamlılığını koruyarak yayılır.
+    Kolinear Walker + Kolinear Zincir Dominanti.
 
     Kurallar:
-      1. Atanmis caplar ASLA ezilmez
-      2. Sadece "Belirtilmemis" edge'ler komsu captan miras alir
-      3. DÜZ DEVAM (degree=2): her zaman yayılır
-      4. TEE (degree≥3): kolinear çift (aynı doğrultu) varsa yayılır,
-         branch yönüne asla yayılmaz
-      5. Ayni layer zorunlu
+      1. Boş edge'ler komşu captan miras alır
+      2. DÜZ DEVAM (degree=2): yayılır
+      3. TEE (degree≥3): kolinear çift varsa yayılır, branch'e yayılmaz
+      4. Aynı layer zorunlu
+      5. Kolinear zincirde FARKLI çap atanmışsa: zincir dominantı
+         (uzunluk ağırlıklı) tüm zincire uygulanır — ayrı edge'lere
+         bölünmüş aynı fiziksel borunun çap tutarsızlığı düzelir.
 
-    In-place gunceller: edge_caps, edge_sources
+    In-place günceller: edge_caps, edge_sources
     """
+    # Önce boş edge'leri doldur
     for _pass in range(len(graph.edges)):
         changed = False
         for node, neighbors in graph.adj.items():
             # Hangi edge çifti arasında yayılacağını belirle
             if node in graph.tees and len(neighbors) >= 3:
-                # Tee: sadece kolinear çift arasında yayıl
                 pair = _find_collinear_pair(node, neighbors)
                 if pair is None:
                     continue
                 e1, e2 = pair
             elif node not in graph.tees and len(neighbors) == 2:
-                # Düz devam
                 e1, e2 = neighbors[0][1], neighbors[1][1]
             else:
                 continue
 
-            # Aynı layer zorunlu (cross-layer contamination önle)
             if e1.layer != e2.layer:
                 continue
 
@@ -418,7 +487,7 @@ def _walker_propagate(
             if d1 == d2:
                 continue
 
-            # SADECE bos olani doldur — atanmis capi ASLA ezme
+            # SADECE bos olani doldur
             if d1 == "Belirtilmemis" and d2 != "Belirtilmemis":
                 edge_caps[e1.idx] = d2
                 edge_sources[e1.idx] = "walker"
