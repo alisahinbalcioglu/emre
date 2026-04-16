@@ -375,6 +375,11 @@ def analyze_topology(
         _cap_keywords = ['cap', 'çap', 'dim', 'diameter', 'anno', 'text']
         cap_layers = [l for l in all_layers
                       if any(kw in l.lower() for kw in _cap_keywords)]
+        # Seçilen boru layer'larını da cap havuzuna ekle — bazı çizimlerde
+        # text'ler boru layer'ının kendisinde olabiliyor (ör. HDPE 100 PN 16 Ø200)
+        for sl in selected_layers:
+            if sl not in cap_layers:
+                cap_layers.append(sl)
         if cap_layers:
             warnings.append(f"Otomatik cap layer: {cap_layers}")
         else:
