@@ -6,6 +6,7 @@ Walker: edge-by-edge yürür, tee'de dallanır, çap miras alır.
 """
 
 import math
+import re
 from collections import defaultdict
 
 from graph import Point, Edge, PipeGraph, build_graph
@@ -15,6 +16,86 @@ from models import PipeSegment, BranchPoint
 
 # Pis su icin gecersiz caplar (kesinlikle olmaz)
 PISSU_INVALID_CAPS = {"Ø25", "Ø32", "Ø40", "Ø63"}
+
+# ─────────────────────────────────────────────────────────
+# Akıllı cap layer eşleştirme (hat-specific vs shared mode)
+# ─────────────────────────────────────────────────────────
+
+_TR_TOKEN_NORM = str.maketrans(
+    "ığçşöüâîûİÇŞĞÖÜ",
+    "igcsouaiuIcsgou",
+)
+_CAP_KEYWORDS = ('cap', 'çap', 'dim', 'diameter', 'anno', 'text')
+_CAP_TOKENS = {'cap', 'dim', 'diameter', 'anno', 'text', 'dimension'}
+_STOPWORDS = {'a', 've', 'ile', 'ana', 'hat', 'the', 'of', 'system'}
+
+
+def _tokenize_layer(name: str) -> set[str]:
+    """Layer adını Türkçe-friendly token'lara ayır."""
+    s = name.lower().translate(_TR_TOKEN_NORM).lower()
+    tokens = re.findall(r'[a-z0-9]+', s)
+    return {t for t in tokens if t not in _STOPWORDS and len(t) >= 2}
+
+
+def _is_cap_layer(layer_name: str) -> bool:
+    low = layer_name.lower()
+    return any(kw in low for kw in _CAP_KEYWORDS)
+
+
+def _classify_cap_layers(
+    all_cap_layers: list[str],
+    all_pipe_layers: list[str],
+) -> tuple[dict[str, list[str]], list[str]]:
+    """Her cap layer'ın hangi pipe layer'larına hitap ettiğini belirle.
+
+    Returns:
+      pipe_to_specific_caps: {pipe_layer: [sadece-ona-ait cap layer'lar]}
+      shared_caps: birden fazla pipe'a hitap eden cap layer'lar
+    """
+    cap_to_pipes: dict[str, list[str]] = {}
+    for cap in all_cap_layers:
+        cap_toks = _tokenize_layer(cap) - _CAP_TOKENS
+        if not cap_toks:
+            cap_to_pipes[cap] = []
+            continue
+        matches = []
+        for pipe in all_pipe_layers:
+            pipe_toks = _tokenize_layer(pipe)
+            if cap_toks & pipe_toks:
+                matches.append(pipe)
+        cap_to_pipes[cap] = matches
+
+    pipe_to_specific: dict[str, list[str]] = {p: [] for p in all_pipe_layers}
+    shared: list[str] = []
+    for cap, pipes in cap_to_pipes.items():
+        if len(pipes) == 1:
+            pipe_to_specific[pipes[0]].append(cap)
+        elif len(pipes) >= 2:
+            shared.append(cap)
+    return pipe_to_specific, shared
+
+
+def _resolve_cap_layers_for(
+    pipe_layer: str,
+    all_layers: list[str],
+) -> list[str] | None:
+    """Seçilen pipe layer için cap layer havuzu çöz.
+
+    Returns:
+      list[str] → hat-specific mode (sadece bu cap'lerden text al)
+      None     → shared mode (tüm layer'lardan, geometrik eşleşme)
+    """
+    all_cap = [l for l in all_layers if _is_cap_layer(l)]
+    all_pipe = [l for l in all_layers if not _is_cap_layer(l)]
+
+    pipe_to_specific, _shared = _classify_cap_layers(all_cap, all_pipe)
+    specific = pipe_to_specific.get(pipe_layer, [])
+
+    if specific:
+        # MOD A: hat-specific — sadece kendi cap'i + pipe layer'ın kendisi
+        # (pipe layer'da yazılı text'ler olabilir)
+        return list(dict.fromkeys(specific + [pipe_layer]))
+    return None  # MOD B: shared
 
 
 def walk_and_propagate(
@@ -363,12 +444,19 @@ def analyze_topology(
             connections=degree[pt], point_type="end",
         ))
 
-    # 2. Cap layer filtresi KALDIRILDI
-    # Text'in hangi layer'da yazıldığı ÖNEMLİ DEĞİL. Boruya geometrik
-    # yakınlıkla eşleşir. Parse filtresi (_parse_diameter) garbage text'leri
-    # zaten eler. Cross-system check başka layer'a yakın text'leri ayıklar.
+    # 2. Akıllı cap layer seçimi (hat-specific vs shared)
+    #    - Her hat için ayrı cap layer varsa (temizsu_cap, pissu_cap) → sadece o cap kullanılır
+    #    - Tek ortak cap layer varsa → tüm layer'lardan (geometrik eşleşme)
     if cap_layers is None:
-        warnings.append("Text arama: TÜM layer'lardan (filtresiz)")
+        import ezdxf as _ezdxf_cap
+        _doc_cap = _ezdxf_cap.readfile(dxf_path)
+        _all_layers = list({e.dxf.layer for e in _doc_cap.modelspace() if hasattr(e.dxf, 'layer')})
+        resolved = _resolve_cap_layers_for(selected_layers[0], _all_layers)
+        if resolved is not None:
+            cap_layers = resolved
+            warnings.append(f"Hat-specific cap: {resolved}")
+        else:
+            warnings.append("Shared cap — tüm layer'lardan (geometrik)")
 
     # Pipe type'i once belirle (cross-system filtresi icin gerekli)
     from diameter_assigner import assign_diameters
