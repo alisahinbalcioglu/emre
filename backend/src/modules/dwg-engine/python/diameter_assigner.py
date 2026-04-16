@@ -319,8 +319,60 @@ def _matcher_results_to_edge_maps(
 
 
 # ═══════════════════════════════════════════════
-#  KURAL 3 — WALKER PROPAGATION
+#  KURAL 3 — KOLINEAR WALKER PROPAGATION
 # ═══════════════════════════════════════════════
+
+# Kolinearite esigi: cos(180° - 15°) ≈ -0.966
+# Iki edge node'dan cikis vektorleri arasindaki dot < COLINEAR_COS ise
+# kolinear sayilir (ayni doğrultuda devam eden ana hat)
+_COLINEAR_COS = -0.966  # ~15° tolerans
+
+
+def _edge_direction_from_node(edge: Edge, node: Point) -> tuple[float, float]:
+    """Edge'in node'dan uzaklaşan yön vektörü (normalize)."""
+    if edge.node_a == node:
+        dx = edge.node_b.x - node.x
+        dy = edge.node_b.y - node.y
+    else:
+        dx = edge.node_a.x - node.x
+        dy = edge.node_a.y - node.y
+    length = math.hypot(dx, dy)
+    if length < 1e-6:
+        return (0.0, 0.0)
+    return (dx / length, dy / length)
+
+
+def _find_collinear_pair(
+    node: Point,
+    neighbors: list[tuple[Point, Edge]],
+) -> tuple[Edge, Edge] | None:
+    """Tee node'da aynı doğrultuda devam eden edge çiftini bul.
+
+    İki edge'in node'dan çıkış vektörleri zıt yönlü olmalı
+    (dot product < _COLINEAR_COS). Bu, fiziksel ana hattın tee'den
+    kesintisiz geçtiği anlamına gelir.
+
+    Returns: (edge1, edge2) en kolinear çift, yoksa None
+    """
+    edges_dirs = []
+    for _, edge in neighbors:
+        d = _edge_direction_from_node(edge, node)
+        if d == (0.0, 0.0):
+            continue
+        edges_dirs.append((edge, d))
+
+    best_pair: tuple[Edge, Edge] | None = None
+    best_dot = _COLINEAR_COS
+    for i in range(len(edges_dirs)):
+        e1, d1 = edges_dirs[i]
+        for j in range(i + 1, len(edges_dirs)):
+            e2, d2 = edges_dirs[j]
+            dot = d1[0] * d2[0] + d1[1] * d2[1]
+            if dot < best_dot:
+                best_dot = dot
+                best_pair = (e1, e2)
+    return best_pair
+
 
 def _walker_propagate(
     graph: PipeGraph,
@@ -329,31 +381,40 @@ def _walker_propagate(
     edge_sources: dict[int, str],
 ) -> None:
     """
-    Walker Propagation — SADECE bos borulari doldur.
+    Kolinear Walker — ana hat devamlılığını koruyarak yayılır.
 
-    PRD v2 sirasi:
-      1. Atanmis caplar ASLA ezilmez (arrow, text, walker farketmez)
+    Kurallar:
+      1. Atanmis caplar ASLA ezilmez
       2. Sadece "Belirtilmemis" edge'ler komsu captan miras alir
-      3. Tee olmayan duz devamda yayilir
-      4. Ayni layer zorunlu
+      3. DÜZ DEVAM (degree=2): her zaman yayılır
+      4. TEE (degree≥3): kolinear çift (aynı doğrultu) varsa yayılır,
+         branch yönüne asla yayılmaz
+      5. Ayni layer zorunlu
 
     In-place gunceller: edge_caps, edge_sources
     """
     for _pass in range(len(graph.edges)):
         changed = False
         for node, neighbors in graph.adj.items():
-            if node in graph.tees:
-                continue
-            if len(neighbors) != 2:
+            # Hangi edge çifti arasında yayılacağını belirle
+            if node in graph.tees and len(neighbors) >= 3:
+                # Tee: sadece kolinear çift arasında yayıl
+                pair = _find_collinear_pair(node, neighbors)
+                if pair is None:
+                    continue
+                e1, e2 = pair
+            elif node not in graph.tees and len(neighbors) == 2:
+                # Düz devam
+                e1, e2 = neighbors[0][1], neighbors[1][1]
+            else:
                 continue
 
-            e1, e2 = neighbors[0][1], neighbors[1][1]
+            # Aynı layer zorunlu (cross-layer contamination önle)
             if e1.layer != e2.layer:
                 continue
 
             d1 = edge_caps.get(e1.idx, "Belirtilmemis")
             d2 = edge_caps.get(e2.idx, "Belirtilmemis")
-
             if d1 == d2:
                 continue
 
