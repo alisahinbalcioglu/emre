@@ -363,29 +363,12 @@ def analyze_topology(
             connections=degree[pt], point_type="end",
         ))
 
-    # 2. Cap layer'ları tespit et
+    # 2. Cap layer filtresi KALDIRILDI
+    # Text'in hangi layer'da yazıldığı ÖNEMLİ DEĞİL. Boruya geometrik
+    # yakınlıkla eşleşir. Parse filtresi (_parse_diameter) garbage text'leri
+    # zaten eler. Cross-system check başka layer'a yakın text'leri ayıklar.
     if cap_layers is None:
-        # Otomatik: genis keyword seti
-        import ezdxf
-        doc = ezdxf.readfile(dxf_path)
-        all_layers = set()
-        for e in doc.modelspace():
-            if hasattr(e.dxf, 'layer'):
-                all_layers.add(e.dxf.layer)
-        _cap_keywords = ['cap', 'çap', 'dim', 'diameter', 'anno', 'text']
-        cap_layers = [l for l in all_layers
-                      if any(kw in l.lower() for kw in _cap_keywords)]
-        # Seçilen boru layer'larını da cap havuzuna ekle — bazı çizimlerde
-        # text'ler boru layer'ının kendisinde olabiliyor (ör. HDPE 100 PN 16 Ø200)
-        for sl in selected_layers:
-            if sl not in cap_layers:
-                cap_layers.append(sl)
-        if cap_layers:
-            warnings.append(f"Otomatik cap layer: {cap_layers}")
-        else:
-            # Cap layer bulunamadi — tum layer'lardan text ara
-            cap_layers = None
-            warnings.append("Cap layer bulunamadi, tum layer'lardan text araniyor")
+        warnings.append("Text arama: TÜM layer'lardan (filtresiz)")
 
     # Pipe type'i once belirle (cross-system filtresi icin gerekli)
     from diameter_assigner import assign_diameters
