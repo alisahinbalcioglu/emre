@@ -496,8 +496,9 @@ class PipeMatcher:
             best_dist = float("inf")
 
             for text in remaining:
-                if text.id in used:
-                    continue
+                # NOT: text.id tekrarinin kontrolu yapilmaz.
+                # Ayni text BIRDEN FAZLA boruya atanabilir cunku
+                # fiziksel boru bircok edge'e bolunmus olabilir.
                 tx, ty = text.position
 
                 # Text → pipe SEGMENT'E dik mesafe (orta nokta degil!)
