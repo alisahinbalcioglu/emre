@@ -168,6 +168,19 @@ def extract_diameters(
             try:
                 insert_pos = entity.dxf.insert
                 ix, iy = insert_pos.x, insert_pos.y
+                rotation_rad = math.radians(getattr(entity.dxf, 'rotation', 0.0) or 0.0)
+                xscale = getattr(entity.dxf, 'xscale', 1.0) or 1.0
+                yscale = getattr(entity.dxf, 'yscale', 1.0) or 1.0
+                cos_r = math.cos(rotation_rad)
+                sin_r = math.sin(rotation_rad)
+
+                def _local_to_world(lx: float, ly: float) -> tuple[float, float]:
+                    # Block-local (lx,ly) → INSERT transform (scale + rotate + translate)
+                    sx_l = lx * xscale
+                    sy_l = ly * yscale
+                    wx = sx_l * cos_r - sy_l * sin_r + ix
+                    wy = sx_l * sin_r + sy_l * cos_r + iy
+                    return (wx, wy)
 
                 if hasattr(entity, 'attribs'):
                     for attrib in entity.attribs:
@@ -195,7 +208,13 @@ def extract_diameters(
                             bt = _autocad_decode(bt)
                             diameter = _parse_diameter(bt)
                             if diameter and _format_ok(diameter, pipe_type):
-                                results.append(DiameterText(value=diameter, position=Point(ix, iy), layer=elayer))
+                                # Text'in block-local pozisyonunu world'e dönüştür
+                                try:
+                                    local_pos = bent.dxf.insert
+                                    wx, wy = _local_to_world(local_pos.x, local_pos.y)
+                                except Exception:
+                                    wx, wy = ix, iy
+                                results.append(DiameterText(value=diameter, position=Point(wx, wy), layer=elayer))
             except Exception:
                 pass
 
