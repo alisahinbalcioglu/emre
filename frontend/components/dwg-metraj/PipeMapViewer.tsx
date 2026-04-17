@@ -13,6 +13,8 @@ export interface EdgeSegment {
   line_count: number;
   material_type: string;
   coords: number[][];
+  /** Dal (branch) grup kimligi — ayni dalin tum edge'leri ayni branch_id tasir. */
+  branch_id?: string;
 }
 
 export interface BranchPoint {
@@ -120,6 +122,8 @@ export default function PipeMapViewer({
 
   // -- Interaction state --
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  /** Secili dal (branch) grubu. branch_id varsa tum dal birden secilir. */
+  const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
   const [popover, setPopover] = useState<{
     segmentId: number;
     screenX: number;
@@ -265,6 +269,7 @@ export default function PipeMapViewer({
       const target = e.target as SVGElement;
       if (target.tagName !== 'svg' && target.tagName !== 'rect') return;
       setSelectedId(null);
+      setSelectedBranchId(null);
     },
     [viewBox],
   );
@@ -353,26 +358,41 @@ export default function PipeMapViewer({
     (e: React.MouseEvent, segmentId: number) => {
       e.stopPropagation();
       setSelectedId(segmentId);
+      // Tiklanan segmentin dali varsa tum dali sec
+      const clicked = segments.find((s) => s.segment_id === segmentId);
+      setSelectedBranchId(clicked?.branch_id || null);
       setPopover({
         segmentId,
         screenX: e.clientX,
         screenY: e.clientY,
       });
     },
-    [],
+    [segments],
   );
 
   // -- Change diameter --
+  // Dal (branch_id) secili ise o dalin TUM edge'lerine ayni cap uygulanir.
+  // Degilse sadece tiklanan segment guncellenir (fallback).
   const handleDiameterChange = useCallback((segmentId: number, newDiameter: string) => {
-    setSegments((prev) =>
-      prev.map((s) => (s.segment_id === segmentId ? { ...s, diameter: newDiameter } : s)),
-    );
+    setSegments((prev) => {
+      const clicked = prev.find((s) => s.segment_id === segmentId);
+      const branchId = clicked?.branch_id;
+      if (branchId) {
+        return prev.map((s) =>
+          s.branch_id === branchId ? { ...s, diameter: newDiameter } : s,
+        );
+      }
+      return prev.map((s) =>
+        s.segment_id === segmentId ? { ...s, diameter: newDiameter } : s,
+      );
+    });
   }, []);
 
   // -- Close popover --
   const closePopover = useCallback(() => {
     setPopover(null);
     setSelectedId(null);
+    setSelectedBranchId(null);
   }, []);
 
   // -- Toggle legend filter --
@@ -552,7 +572,11 @@ export default function PipeMapViewer({
             {segments.map((seg) => {
               const color = getColor(seg.diameter);
               const faded = isFaded(seg.diameter);
-              const isSelected = selectedId === seg.segment_id;
+              // Dal (branch) secili ise o dalin TUM edge'leri glow olur.
+              // Dal yoksa tekil segment seciminde sadece tiklanan edge glow.
+              const isSelected = selectedBranchId
+                ? seg.branch_id === selectedBranchId
+                : selectedId === seg.segment_id;
 
               return (
                 <g key={seg.segment_id}>

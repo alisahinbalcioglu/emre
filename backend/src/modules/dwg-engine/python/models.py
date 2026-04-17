@@ -25,6 +25,9 @@ class PipeSegment(BaseModel):
     diameter: str = ""      # "Ø200", "DN50", "2\"", "Belirtilmemis"
     length: float = 0.0     # metre cinsinden
     line_count: int = 0
+    material_type: str = "" # "Siyah Boru", "HDPE", "PPR-C", "Galvaniz Boru", vb.
+    coords: list[list[float]] = []  # [[x1,y1,x2,y2], ...] her edge'in koordinatlari
+    branch_id: str = ""     # Dal (branch) grup kimligi — ayni dalin tum edge'leri ayni branch_id tasir
 
 
 class BranchPoint(BaseModel):
@@ -50,3 +53,5 @@ class MetrajResult(BaseModel):
     total_layers: int = 0
     warnings: list[str] = []
     branch_points: list[BranchPoint] = []  # Faz 2: dallanma noktalari
+    edge_segments: list[PipeSegment] = []  # Her edge ayri tiklanabilir segment
+    background_lines: list[list[float]] = []  # Arka plan cizgileri [[x1,y1,x2,y2], ...]

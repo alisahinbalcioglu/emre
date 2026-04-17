@@ -97,6 +97,99 @@ def _resolve_cap_layers_for(
     return None  # MOD B: shared
 
 
+def compute_edge_branches(graph) -> dict[int, str]:
+    """
+    Her edge'i bir 'dal' (branch) grubuna ata. Union-Find ile kolinear
+    zincirleri birlestir.
+
+    Kurallar:
+    - Degree-2 node (sadece 2 edge bulusuyor, tee degil): iki edge ayni dal.
+    - Tee (degree >= 3): o noktada bulusan edge'ler arasinda kolinear cift
+      (180 +/- 15 derece) varsa onlar ayni dal, diger edge'ler ayri dal.
+    - Tek dal = iki tee arasindaki kolinear zincir VEYA bir tee'den dead-end'e
+      kadar olan kolinear uzanti.
+
+    Frontend bu branch_id'yi grup secim ve toplu cap atama icin kullanir.
+    """
+    # Union-Find
+    parent: dict[int, int] = {e.idx: e.idx for e in graph.edges}
+
+    def find(x: int) -> int:
+        root = x
+        while parent[root] != root:
+            root = parent[root]
+        # Path compression
+        while parent[x] != root:
+            parent[x], x = root, parent[x]
+        return root
+
+    def union(x: int, y: int) -> None:
+        rx, ry = find(x), find(y)
+        if rx != ry:
+            parent[rx] = ry
+
+    COLLINEAR_DOT_MAX = -0.966  # 180 +/- 15 derece
+
+    for node, neighbors in graph.adj.items():
+        edge_list = [e for _, e in neighbors]
+        if len(edge_list) < 2:
+            continue  # dead-end, tek edge
+
+        if node not in graph.tees and len(edge_list) == 2:
+            # Degree-2: iki edge otomatik ayni dal
+            union(edge_list[0].idx, edge_list[1].idx)
+            continue
+
+        # Tee (degree >= 3): kolinear cift bul
+        dirs: list[tuple[int, float, float]] = []
+        for e in edge_list:
+            if e.node_a == node:
+                dx = e.node_b.x - node.x
+                dy = e.node_b.y - node.y
+            else:
+                dx = e.node_a.x - node.x
+                dy = e.node_a.y - node.y
+            length = math.sqrt(dx * dx + dy * dy)
+            if length > 1e-9:
+                dirs.append((e.idx, dx / length, dy / length))
+
+        # Her edge icin en iyi kolinear esi bul (dot en negatif)
+        used: set[int] = set()
+        for i in range(len(dirs)):
+            idx_i, dx_i, dy_i = dirs[i]
+            if idx_i in used:
+                continue
+            best_j = -1
+            best_dot = COLLINEAR_DOT_MAX
+            for j in range(len(dirs)):
+                if i == j:
+                    continue
+                idx_j, dx_j, dy_j = dirs[j]
+                if idx_j in used:
+                    continue
+                dot = dx_i * dx_j + dy_i * dy_j
+                if dot < best_dot:
+                    best_dot = dot
+                    best_j = j
+            if best_j >= 0:
+                union(idx_i, dirs[best_j][0])
+                used.add(idx_i)
+                used.add(dirs[best_j][0])
+
+    # Her root'a bir branch_id ata (deterministik: edge idx siralamasiyla)
+    roots_to_branch: dict[int, str] = {}
+    counter = 0
+    result: dict[int, str] = {}
+    for e in sorted(graph.edges, key=lambda x: x.idx):
+        root = find(e.idx)
+        if root not in roots_to_branch:
+            counter += 1
+            roots_to_branch[root] = f"b_{counter}"
+        result[e.idx] = roots_to_branch[root]
+
+    return result
+
+
 def walk_and_propagate(
     graph: PipeGraph,
     edge_diameters: dict[int, str],
@@ -535,6 +628,9 @@ def analyze_topology(
 
     merged_segments = merge_segments(raw_segments_for_merge, scale)
 
+    # ── Dal (branch) hesapla — her edge'e branch_id ata ──
+    edge_branches = compute_edge_branches(graph)
+
     # ── Edge-bazlı segment listesi (PipeMapViewer için) ──
     raw_coords_map = {rc[0]: [round(rc[1], 1), round(rc[2], 1),
                               round(rc[3], 1), round(rc[4], 1)]
@@ -553,6 +649,7 @@ def analyze_topology(
             line_count=1,
             material_type=_mat_map.get(e.layer, ""),
             coords=[coord],
+            branch_id=edge_branches.get(e.idx, ""),
         ))
 
     # merged_segments'e coords ekle
