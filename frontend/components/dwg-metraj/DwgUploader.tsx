@@ -6,8 +6,10 @@ import { cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
 import api from '@/lib/api';
 import { MetrajResult } from './MetrajTable';
-import MetrajEditor from './MetrajEditor';
+import MetrajTabs from './MetrajTabs';
 import LayerSelector, { type LayerInfo, type LayerSelection } from './LayerSelector';
+import PipeMapTabs from './PipeMapTabs';
+import { type EdgeSegment, type BranchPoint } from './PipeMapViewer';
 
 interface DwgUploaderProps {
   onMetrajApproved: (metraj: MetrajResult, fileName: string) => void;
@@ -43,6 +45,10 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
   const [extractingLayers, setExtractingLayers] = useState(false);
   const [layerList, setLayerList] = useState<LayerInfo[] | null>(null);
   const [fileId, setFileId] = useState<string | null>(null);
+
+  // Cap dogrulama asamasi (PipeMapViewer)
+  const [mapMode, setMapMode] = useState(false);
+  const [selectedLayerNames, setSelectedLayerNames] = useState<string[]>([]);
 
   // Dashboard'dan gelen dosyayi otomatik isle
   const initialFileProcessed = useRef(false);
@@ -132,10 +138,16 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
 
     try {
       const selectedNames = selected.map((s) => s.layer);
+      setSelectedLayerNames(selectedNames);
       const hatTipiMap: Record<string, string> = {};
+      const materialTypeMap: Record<string, string> = {};
       for (const s of selected) {
         // Hat ismi varsa onu kullan, yoksa layer adini kullan
         hatTipiMap[s.layer] = s.hatIsmi || s.layer;
+        // Malzeme tipi secildiyse gonder
+        if (s.materialType) {
+          materialTypeMap[s.layer] = s.materialType;
+        }
       }
 
       const params = new URLSearchParams({
@@ -144,6 +156,7 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
         file_id: fileId ?? '',
         selected_layers: JSON.stringify(selectedNames),
         layer_hat_tipi: JSON.stringify(hatTipiMap),
+        layer_material_type: JSON.stringify(materialTypeMap),
       });
 
       // file_id varsa dosya gondermiyoruz — bos FormData yeterli
@@ -151,11 +164,16 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
       const res = await api.post<MetrajResult>(
         `/dwg-engine/parse?${params.toString()}`,
         formData,
-        { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 },
+        { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 300000 },
       );
 
       setMetraj(res.data);
       setLayerList(null); // Layer secim ekranini kapat
+
+      // Edge segments varsa cap dogrulama haritasini goster
+      if (res.data.edge_segments && res.data.edge_segments.length > 0) {
+        setMapMode(true);
+      }
 
       toast({
         title: 'Metraj hesaplandi',
@@ -179,6 +197,8 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
     setError(null);
     setUploading(false);
     setExtractingLayers(false);
+    setMapMode(false);
+    setSelectedLayerNames([]);
   };
 
   const handleFileSelect = (f: File) => {
@@ -211,6 +231,48 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
     e.target.value = '';
   };
 
+  // ── RENDER: Cap dogrulama haritasi ──
+  if (metraj && mapMode && metraj.edge_segments && metraj.edge_segments.length > 0) {
+    const edgeSegs: EdgeSegment[] = metraj.edge_segments.map(s => ({
+      segment_id: s.segment_id,
+      layer: s.layer,
+      diameter: s.diameter ?? '',
+      length: s.length,
+      line_count: s.line_count,
+      material_type: s.material_type ?? '',
+      coords: s.coords ?? [],
+    }));
+    const bps: BranchPoint[] = (metraj.branch_points ?? [])
+      .filter(bp => bp.point_type === 'tee')
+      .map(bp => ({
+        x: bp.x,
+        y: bp.y,
+        connections: bp.connections,
+        point_type: bp.point_type,
+      }));
+
+    return (
+      <PipeMapTabs
+        segments={edgeSegs}
+        branchPoints={bps}
+        backgroundLines={metraj.background_lines ?? []}
+        layerNames={selectedLayerNames}
+        onAllApproved={(corrected) => {
+          // Tüm layer'lar onaylandı — MetrajEditor/MetrajTabs'a geç
+          setMapMode(false);
+          toast({
+            title: 'Çaplar onaylandı',
+            description: `${corrected.length} segment, ${selectedLayerNames.length} hat`,
+          });
+        }}
+        onBack={() => {
+          setMapMode(false);
+          setMetraj(null);
+        }}
+      />
+    );
+  }
+
   // ── RENDER: Metraj sonucu (son adim) ──
   if (metraj) {
     return (
@@ -228,19 +290,35 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
           </button>
         </div>
 
-        <MetrajEditor
+        <MetrajTabs
           data={metraj}
           fileName={file?.name ?? 'dwg-file'}
-          onApprove={(rows) => {
+          onAllApproved={(rows) => {
+            // Satirlari hat tipine gore grupla, her grubun segmentlerini olustur
+            const layerMap = new Map<string, { rows: typeof rows; hatTipi: string }>();
+            for (const r of rows) {
+              const key = (r as any).hatTipi || r.name;
+              if (!layerMap.has(key)) layerMap.set(key, { rows: [], hatTipi: key });
+              layerMap.get(key)!.rows.push(r);
+            }
+
             const approvedMetraj: MetrajResult = {
-              layers: rows.map((r) => ({
-                layer: r.name,
-                length: parseFloat(r.qty) || 0,
+              layers: Array.from(layerMap.values()).map(({ rows: groupRows, hatTipi }) => ({
+                layer: hatTipi,
+                length: groupRows.reduce((sum, r) => sum + (parseFloat(r.qty) || 0), 0),
                 line_count: 0,
-                hat_tipi: (r as any).hatTipi ?? '',
+                hat_tipi: hatTipi,
+                segments: groupRows.map((r, i) => ({
+                  segment_id: i + 1,
+                  layer: hatTipi,
+                  diameter: r.diameter || '',
+                  length: parseFloat(r.qty) || 0,
+                  line_count: 0,
+                  material_type: (r as any).materialType ?? '',
+                })),
               })),
               total_length: rows.reduce((sum, r) => sum + (parseFloat(r.qty) || 0), 0),
-              total_layers: rows.length,
+              total_layers: layerMap.size,
               warnings: [],
             };
             onMetrajApproved(approvedMetraj, file?.name ?? 'dwg-metraj');

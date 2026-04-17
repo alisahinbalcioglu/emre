@@ -1,0 +1,101 @@
+/* Fill Handle — Alt kenar cizgisi yaklasimi */
+
+/* Fillable hucrelerde alt kenar cizgisi */
+.fill-handle-cell {
+  position: relative;
+}
+
+.fill-handle-cell::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  bottom: 0;
+  height: 3px;
+  background: #3b82f6;
+  border-radius: 2px 2px 0 0;
+  opacity: 0;
+  cursor: s-resize;
+  transition: opacity 0.15s;
+  z-index: 5;
+}
+
+.fill-handle-cell:hover::after {
+  opacity: 1;
+}
+
+/* Suruklenirken hedef hucreler highlight */
+.fill-handle-highlight {
+  background-color: rgba(59, 130, 246, 0.08) !important;
+  box-shadow: inset 0 0 0 1.5px rgba(59, 130, 246, 0.3);
+}
+
+/* Suruklenirken cursor her yerde s-resize */
+body.fill-handle-dragging,
+body.fill-handle-dragging * {
+  cursor: s-resize !important;
+  user-select: none !important;
+}
+
+/* Sadece kaynak ve hedef hucreler yansin */
+.fill-handle-source::after {
+  opacity: 1 !important;
+  background: #2563eb !important;
+  height: 3px;
+}
+
+.fill-handle-highlight::after {
+  opacity: 1 !important;
+  background: #93c5fd !important;
+  height: 2px;
+}
+
+/* ── AG-Grid genel stil iyilestirmeleri ── */
+
+.ag-theme-alpine .ag-header {
+  border-bottom: 2px solid #e2e8f0;
+}
+
+.ag-theme-alpine .ag-header-cell {
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.ag-theme-alpine .ag-row:hover {
+  background-color: #fafbfc !important;
+}
+
+.ag-theme-alpine .ag-cell {
+  border-right: 1px solid #f1f5f9;
+}
+
+/* Pinned bottom (GENEL TOPLAM) */
+.ag-theme-alpine .ag-floating-bottom {
+  border-top: 2px solid #1e293b;
+}
+
+.ag-theme-alpine .ag-floating-bottom .ag-row {
+  background: #1e293b !important;
+}
+
+.ag-theme-alpine .ag-floating-bottom .ag-cell {
+  color: white;
+  font-weight: 600;
+  border-right-color: #334155;
+}
+
+/* MetaPrice sistem kolonlari — acik mor arka plan */
+.ag-theme-alpine .ag-cell[col-id="_malzKar"],
+.ag-theme-alpine .ag-cell[col-id="_marka"],
+.ag-theme-alpine .ag-cell[col-id="_iscKar"],
+.ag-theme-alpine .ag-cell[col-id="_firma"] {
+  background-color: #fafbff;
+}
+
+.ag-theme-alpine .ag-header-cell[col-id="_malzKar"],
+.ag-theme-alpine .ag-header-cell[col-id="_marka"],
+.ag-theme-alpine .ag-header-cell[col-id="_iscKar"],
+.ag-theme-alpine .ag-header-cell[col-id="_firma"] {
+  background-color: #eef2ff;
+}

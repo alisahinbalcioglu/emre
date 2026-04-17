@@ -15,7 +15,18 @@ export interface LayerSelection {
   layer: string;
   selected: boolean;
   hatIsmi: string; // kullanicinin verdigi hat ismi (bos olabilir)
+  materialType: string; // "Siyah Boru", "HDPE", "PPR-C", vb. (bos = otomatik)
 }
+
+const MATERIAL_TYPES = [
+  { value: '', label: 'Otomatik' },
+  { value: 'Siyah Boru', label: 'Siyah Boru' },
+  { value: 'Galvaniz Boru', label: 'Galvaniz Boru' },
+  { value: 'PPR-C', label: 'PPR-C' },
+  { value: 'HDPE', label: 'HDPE' },
+  { value: 'PVC', label: 'PVC' },
+  { value: 'Bakir Boru', label: 'Bakir Boru' },
+];
 
 interface LayerSelectorProps {
   layers: LayerInfo[];
@@ -32,6 +43,7 @@ export default function LayerSelector({ layers, fileName, onConfirm, onCancel }:
       layer: l.layer,
       selected: false,
       hatIsmi: '',
+      materialType: '',
     })),
   );
 
@@ -50,6 +62,12 @@ export default function LayerSelector({ layers, fileName, onConfirm, onCancel }:
   const changeHatIsmi = (layer: string, hatIsmi: string) => {
     setSelections((prev) =>
       prev.map((s) => (s.layer === layer ? { ...s, hatIsmi } : s)),
+    );
+  };
+
+  const changeMaterialType = (layer: string, materialType: string) => {
+    setSelections((prev) =>
+      prev.map((s) => (s.layer === layer ? { ...s, materialType } : s)),
     );
   };
 
@@ -115,7 +133,8 @@ export default function LayerSelector({ layers, fileName, onConfirm, onCancel }:
               <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 w-10">Sec</th>
               <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500">Layer Adi</th>
               <th className="px-4 py-2.5 text-right text-xs font-semibold text-slate-500 w-20">Entity</th>
-              <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 w-56">Hat Ismi (opsiyonel)</th>
+              <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 w-48">Hat Ismi (opsiyonel)</th>
+              <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 w-36">Malzeme Tipi</th>
             </tr>
           </thead>
           <tbody>
@@ -177,11 +196,36 @@ export default function LayerSelector({ layers, fileName, onConfirm, onCancel }:
                     )}
                   />
                 </td>
+
+                {/* Malzeme Tipi — combobox (serbest metin + öneriler) */}
+                <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="text"
+                    list="material-type-options"
+                    value={sel.materialType}
+                    onChange={(e) => changeMaterialType(sel.layer, e.target.value)}
+                    disabled={!sel.selected}
+                    placeholder="Otomatik / serbest metin"
+                    className={cn(
+                      'w-full rounded-lg border bg-white px-2 py-1.5 text-xs outline-none transition-all',
+                      sel.selected
+                        ? 'border-blue-200 text-slate-700 hover:border-blue-300 focus:border-blue-400'
+                        : 'border-slate-100 text-slate-300 cursor-not-allowed bg-slate-50',
+                    )}
+                  />
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {/* Malzeme tipi öneri listesi (combobox için) */}
+      <datalist id="material-type-options">
+        {MATERIAL_TYPES.filter((mt) => mt.value).map((mt) => (
+          <option key={mt.value} value={mt.value} />
+        ))}
+      </datalist>
 
       {/* Alt Bar */}
       <div className="mt-4 flex items-center justify-between rounded-xl border bg-card px-5 py-3">

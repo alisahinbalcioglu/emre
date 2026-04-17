@@ -1,10 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Plus, Trash2, Check, AlertCircle } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Plus, Trash2, Check, AlertCircle, Download, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
-import api from '@/lib/api';
 import type { MetrajResult } from './MetrajTable';
 
 interface MetrajRow {
@@ -16,18 +15,37 @@ interface MetrajRow {
   source: string; // "project" | "rule" | "user"
   category: string; // "Boru" | "Fitting" | "Vana" | "Otomatik"
   hatTipi?: string; // yangin, sihhi, isitma, vb.
+  materialType?: string; // Siyah Boru, HDPE, PPR-C, vb.
   original?: { name: string; qty: number }; // duzeltme oncesi
   deleted?: boolean;
+}
+
+interface GroupedMetraj {
+  hatTipi: string;
+  rows: MetrajRow[];
+  totalLength: number;
 }
 
 interface MetrajEditorProps {
   data: MetrajResult;
   fileName: string;
   onApprove: (rows: MetrajRow[]) => void;
+  /** Alt bar (Excel + Onayla butonları) gizle. MetrajTabs için. */
+  hideFooterActions?: boolean;
+  /** Satırlar değişince dışarı bildir (MetrajTabs state senkronu için) */
+  onRowsChange?: (rows: MetrajRow[]) => void;
 }
 
 let _nextId = 1;
 const nextId = () => `row-${_nextId++}`;
+
+/** Cap string'inden numerik siralama degeri cikar */
+function diameterSortKey(d: string): number {
+  if (!d || d === 'Belirtilmemis') return -1;
+  const match = d.match(/(\d+)/);
+  if (!match) return 0;
+  return parseInt(match[1], 10);
+}
 
 function metrajToRows(data: MetrajResult): MetrajRow[] {
   const rows: MetrajRow[] = [];
@@ -44,6 +62,7 @@ function metrajToRows(data: MetrajResult): MetrajRow[] {
           source: 'project',
           category: 'Boru',
           hatTipi: l.hat_tipi ?? '',
+          materialType: seg.material_type ?? '',
         });
       }
     } else {
@@ -57,15 +76,38 @@ function metrajToRows(data: MetrajResult): MetrajRow[] {
         source: 'project',
         category: 'Boru',
         hatTipi: l.hat_tipi ?? '',
+        materialType: '',
       });
     }
   }
   return rows;
 }
 
-export default function MetrajEditor({ data, fileName, onApprove }: MetrajEditorProps) {
+/** Satirlari hat tipine gore grupla, her grup icinde cap'a gore buyukten kucuge sirala */
+function groupAndSortRows(rows: MetrajRow[]): GroupedMetraj[] {
+  const groups = new Map<string, MetrajRow[]>();
+  for (const row of rows) {
+    if (row.deleted) continue;
+    const key = row.hatTipi || row.name;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(row);
+  }
+  return Array.from(groups.entries()).map(([hatTipi, groupRows]) => ({
+    hatTipi,
+    rows: groupRows.sort((a, b) => diameterSortKey(b.diameter) - diameterSortKey(a.diameter)),
+    totalLength: groupRows.reduce((sum, r) => sum + (parseFloat(r.qty) || 0), 0),
+  }));
+}
+
+export default function MetrajEditor({ data, fileName, onApprove, hideFooterActions, onRowsChange }: MetrajEditorProps) {
   const [rows, setRows] = useState<MetrajRow[]>(() => metrajToRows(data));
   const [saving, setSaving] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+
+  // Rows degisince disariya bildir (MetrajTabs icin)
+  React.useEffect(() => {
+    if (onRowsChange) onRowsChange(rows);
+  }, [rows, onRowsChange]);
 
   // Yeni satir ekleme formu
   const [newName, setNewName] = useState('');
@@ -73,6 +115,17 @@ export default function MetrajEditor({ data, fileName, onApprove }: MetrajEditor
   const [newQty, setNewQty] = useState('');
   const [newUnit, setNewUnit] = useState('ad');
   const [showAddForm, setShowAddForm] = useState(false);
+
+  const grouped = useMemo(() => groupAndSortRows(rows), [rows]);
+
+  const toggleGroupCollapse = (hatTipi: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(hatTipi)) next.delete(hatTipi);
+      else next.add(hatTipi);
+      return next;
+    });
+  };
 
   const handleDelete = (id: string) => {
     setRows((prev) => prev.map((r) => r.id === id ? { ...r, deleted: true } : r));
@@ -120,47 +173,43 @@ export default function MetrajEditor({ data, fileName, onApprove }: MetrajEditor
     setShowAddForm(false);
   };
 
+  const handleExcelExport = async () => {
+    try {
+      const XLSX = await import('xlsx');
+      const wsData: (string | number)[][] = [];
+
+      wsData.push([`${fileName} — Metraj Listesi`]);
+      wsData.push([]);
+
+      for (const group of grouped) {
+        wsData.push([group.hatTipi]);
+        wsData.push(['Malzeme Adi', 'Cap', 'Birim', 'Miktar']);
+        for (const row of group.rows) {
+          wsData.push([row.name, row.diameter, row.unit, parseFloat(row.qty) || 0]);
+        }
+        wsData.push(['', '', 'Toplam:', Math.round(group.totalLength * 100) / 100]);
+        wsData.push([]);
+      }
+
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet(wsData);
+      ws['!cols'] = [{ wch: 30 }, { wch: 12 }, { wch: 8 }, { wch: 14 }];
+      XLSX.utils.book_append_sheet(wb, ws, 'Metraj');
+      XLSX.writeFile(wb, fileName.replace(/\..+$/, '') + '-metraj.xlsx');
+
+      toast({ title: 'Excel indirildi', description: `${grouped.length} grup, ${activeRows.length} kalem` });
+    } catch {
+      toast({ title: 'Hata', description: 'Excel olusturulamadi', variant: 'destructive' });
+    }
+  };
+
   const handleApprove = async () => {
     setSaving(true);
     try {
-      // Duzeltmeleri DB'ye kaydet
-      const corrections: any[] = [];
-
-      for (const row of rows) {
-        if (row.deleted) {
-          corrections.push({
-            correctionType: 'delete',
-            originalName: row.name,
-            originalDiameter: row.diameter,
-            originalQty: parseFloat(row.qty) || 0,
-            originalUnit: row.unit,
-          });
-        } else if (row.original) {
-          corrections.push({
-            correctionType: 'update',
-            originalName: row.original.name,
-            originalQty: row.original.qty,
-            correctedName: row.name,
-            correctedQty: parseFloat(row.qty) || 0,
-            correctedUnit: row.unit,
-            correctedDiameter: row.diameter,
-          });
-        } else if (row.source === 'user') {
-          corrections.push({
-            correctionType: 'add',
-            correctedName: row.name,
-            correctedDiameter: row.diameter,
-            correctedQty: parseFloat(row.qty) || 0,
-            correctedUnit: row.unit,
-          });
-        }
-      }
-
-      // Aktif (silinmemis) satirlari gonder
       const activeRows = rows.filter((r) => !r.deleted);
       onApprove(activeRows);
-      toast({ title: 'Metraj onaylandi', description: `${activeRows.length} kalem, ${corrections.length} duzeltme kaydedildi` });
-    } catch (e: any) {
+      toast({ title: 'Metraj onaylandi', description: `${activeRows.length} kalem` });
+    } catch {
       toast({ title: 'Hata', description: 'Duzeltmeler kaydedilemedi', variant: 'destructive' });
     } finally {
       setSaving(false);
@@ -170,6 +219,9 @@ export default function MetrajEditor({ data, fileName, onApprove }: MetrajEditor
   const activeRows = rows.filter((r) => !r.deleted);
   const deletedRows = rows.filter((r) => r.deleted);
   const modifiedCount = rows.filter((r) => r.original || r.deleted || r.source === 'user').length;
+
+  // Global satir numaralama
+  let globalIdx = 0;
 
   return (
     <div>
@@ -185,7 +237,7 @@ export default function MetrajEditor({ data, fileName, onApprove }: MetrajEditor
         </div>
       )}
 
-      {/* Tablo */}
+      {/* Gruplu Tablo */}
       <div className="rounded-xl border bg-card overflow-hidden">
         <table className="w-full text-sm">
           <thead>
@@ -200,71 +252,111 @@ export default function MetrajEditor({ data, fileName, onApprove }: MetrajEditor
             </tr>
           </thead>
           <tbody>
-            {activeRows.map((row, i) => (
-              <tr key={row.id} className={cn(
-                'border-b border-slate-100 last:border-0 hover:bg-slate-50/50',
-                row.original && 'bg-blue-50/30',
-                row.source === 'user' && 'bg-emerald-50/30',
-              )}>
-                <td className="px-4 py-2 text-xs text-slate-400">{i + 1}</td>
-                <td className="px-4 py-1.5">
-                  <input
-                    type="text"
-                    value={row.name}
-                    onChange={(e) => handleNameChange(row.id, e.target.value)}
-                    className="w-full bg-transparent text-[13px] font-medium outline-none border-b border-transparent hover:border-slate-200 focus:border-blue-400 py-1 transition-colors"
-                  />
-                </td>
-                <td className="px-4 py-1.5">
-                  <input
-                    type="text"
-                    value={row.diameter}
-                    onChange={(e) => setRows((prev) => prev.map((r) => r.id === row.id ? { ...r, diameter: e.target.value } : r))}
-                    className="w-20 bg-transparent text-xs text-slate-500 outline-none border-b border-transparent hover:border-slate-200 focus:border-blue-400 py-1 transition-colors"
-                    placeholder="DN..."
-                  />
-                </td>
-                <td className="px-4 py-1.5 text-right">
-                  <input
-                    type="text"
-                    value={row.qty}
-                    onChange={(e) => handleQtyChange(row.id, e.target.value)}
-                    className="w-20 bg-transparent text-[13px] font-medium text-right outline-none border-b border-transparent hover:border-slate-200 focus:border-blue-400 py-1 tabular-nums transition-colors"
-                  />
-                </td>
-                <td className="px-4 py-2">
-                  <select
-                    value={row.unit}
-                    onChange={(e) => setRows((prev) => prev.map((r) => r.id === row.id ? { ...r, unit: e.target.value } : r))}
-                    className="bg-transparent text-xs text-slate-500 outline-none cursor-pointer"
+            {grouped.map((group) => {
+              const isCollapsed = collapsedGroups.has(group.hatTipi);
+              return (
+                <React.Fragment key={group.hatTipi}>
+                  {/* Grup Header */}
+                  <tr
+                    className="border-b bg-slate-100 cursor-pointer hover:bg-slate-200/70 transition-colors"
+                    onClick={() => toggleGroupCollapse(group.hatTipi)}
                   >
-                    <option value="m">m</option>
-                    <option value="ad">ad</option>
-                    <option value="tk">tk</option>
-                    <option value="kg">kg</option>
-                  </select>
-                </td>
-                <td className="px-4 py-2">
-                  <span className={cn(
-                    'inline-block rounded px-1.5 py-0.5 text-[10px] font-medium',
-                    row.source === 'project' && 'bg-slate-100 text-slate-500',
-                    row.source === 'rule' && 'bg-amber-50 text-amber-600',
-                    row.source === 'user' && 'bg-emerald-50 text-emerald-600',
-                  )}>
-                    {row.source === 'project' ? 'proje' : row.source === 'rule' ? 'kural' : 'elle'}
-                  </span>
-                </td>
-                <td className="px-4 py-2 text-right">
-                  <button
-                    onClick={() => handleDelete(row.id)}
-                    className="rounded p-1 text-slate-300 hover:bg-red-50 hover:text-red-500 transition-colors"
-                    title="Sil"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </td>
-              </tr>
-            ))}
+                    <td colSpan={5} className="px-4 py-2.5">
+                      <div className="flex items-center gap-2">
+                        {isCollapsed
+                          ? <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
+                          : <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                        }
+                        <span className="text-xs font-semibold text-slate-700">{group.hatTipi}</span>
+                        <span className="text-[10px] text-slate-400">({group.rows.length} kalem)</span>
+                      </div>
+                    </td>
+                    <td colSpan={2} className="px-4 py-2.5 text-right">
+                      <span className="text-xs font-semibold text-slate-600 tabular-nums">
+                        {group.totalLength.toFixed(2)} m
+                      </span>
+                    </td>
+                  </tr>
+
+                  {/* Grup Satirlari */}
+                  {!isCollapsed && group.rows.map((row) => {
+                    globalIdx++;
+                    return (
+                      <tr key={row.id} className={cn(
+                        'border-b border-slate-100 last:border-0 hover:bg-slate-50/50',
+                        row.original && 'bg-blue-50/30',
+                        row.source === 'user' && 'bg-emerald-50/30',
+                      )}>
+                        <td className="px-4 py-2 text-xs text-slate-400">{globalIdx}</td>
+                        <td className="px-4 py-1.5">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={row.name}
+                              onChange={(e) => handleNameChange(row.id, e.target.value)}
+                              className="flex-1 bg-transparent text-[13px] font-medium outline-none border-b border-transparent hover:border-slate-200 focus:border-blue-400 py-1 transition-colors"
+                            />
+                            {row.materialType && (
+                              <span className="shrink-0 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-600">
+                                {row.materialType}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-1.5">
+                          <input
+                            type="text"
+                            value={row.diameter}
+                            onChange={(e) => setRows((prev) => prev.map((r) => r.id === row.id ? { ...r, diameter: e.target.value } : r))}
+                            className="w-20 bg-transparent text-xs text-slate-500 outline-none border-b border-transparent hover:border-slate-200 focus:border-blue-400 py-1 transition-colors"
+                            placeholder="DN..."
+                          />
+                        </td>
+                        <td className="px-4 py-1.5 text-right">
+                          <input
+                            type="text"
+                            value={row.qty}
+                            onChange={(e) => handleQtyChange(row.id, e.target.value)}
+                            className="w-20 bg-transparent text-[13px] font-medium text-right outline-none border-b border-transparent hover:border-slate-200 focus:border-blue-400 py-1 tabular-nums transition-colors"
+                          />
+                        </td>
+                        <td className="px-4 py-2">
+                          <select
+                            value={row.unit}
+                            onChange={(e) => setRows((prev) => prev.map((r) => r.id === row.id ? { ...r, unit: e.target.value } : r))}
+                            className="bg-transparent text-xs text-slate-500 outline-none cursor-pointer"
+                          >
+                            <option value="m">m</option>
+                            <option value="ad">ad</option>
+                            <option value="tk">tk</option>
+                            <option value="kg">kg</option>
+                          </select>
+                        </td>
+                        <td className="px-4 py-2">
+                          <span className={cn(
+                            'inline-block rounded px-1.5 py-0.5 text-[10px] font-medium',
+                            row.source === 'project' && 'bg-slate-100 text-slate-500',
+                            row.source === 'rule' && 'bg-amber-50 text-amber-600',
+                            row.source === 'user' && 'bg-emerald-50 text-emerald-600',
+                          )}>
+                            {row.source === 'project' ? 'proje' : row.source === 'rule' ? 'kural' : 'elle'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2 text-right">
+                          <button
+                            onClick={() => handleDelete(row.id)}
+                            className="rounded p-1 text-slate-300 hover:bg-red-50 hover:text-red-500 transition-colors"
+                            title="Sil"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </React.Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -342,25 +434,39 @@ export default function MetrajEditor({ data, fileName, onApprove }: MetrajEditor
         </button>
       )}
 
-      {/* Alt bar — ozet + onayla */}
-      <div className="mt-4 flex items-center justify-between rounded-xl border bg-card px-5 py-3">
-        <div className="text-sm">
-          <span className="font-semibold">{activeRows.length}</span>
-          <span className="text-slate-500 ml-1">kalem</span>
-          {modifiedCount > 0 && (
-            <span className="ml-2 text-xs text-blue-600">({modifiedCount} duzeltme)</span>
-          )}
+      {/* Alt bar — ozet + Excel + onayla (sekme kullan\u0131m\u0131nda gizli) */}
+      {!hideFooterActions && (
+        <div className="mt-4 flex items-center justify-between rounded-xl border bg-card px-5 py-3">
+          <div className="text-sm">
+            <span className="font-semibold">{activeRows.length}</span>
+            <span className="text-slate-500 ml-1">kalem</span>
+            <span className="text-slate-300 mx-1.5">·</span>
+            <span className="font-semibold">{grouped.length}</span>
+            <span className="text-slate-500 ml-1">grup</span>
+            {modifiedCount > 0 && (
+              <span className="ml-2 text-xs text-blue-600">({modifiedCount} duzeltme)</span>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleExcelExport}
+              className="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+            >
+              <Download className="h-4 w-4" />
+              Excel Indir
+            </button>
+            <button
+              onClick={handleApprove}
+              disabled={saving || activeRows.length === 0}
+              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {saving ? 'Kaydediliyor...' : (
+                <><Check className="h-4 w-4" /> Onayla — Fiyatlandirmaya Gec</>
+              )}
+            </button>
+          </div>
         </div>
-        <button
-          onClick={handleApprove}
-          disabled={saving || activeRows.length === 0}
-          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-        >
-          {saving ? 'Kaydediliyor...' : (
-            <><Check className="h-4 w-4" /> Onayla — Fiyatlandirmaya Gec</>
-          )}
-        </button>
-      </div>
+      )}
     </div>
   );
 }

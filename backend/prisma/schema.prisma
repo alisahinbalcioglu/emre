@@ -1,0 +1,290 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  admin
+  user
+}
+
+enum UserStatus {
+  active
+  banned
+}
+
+enum Tier {
+  core
+  pro
+  suite
+}
+
+enum PackageLevel {
+  core
+  pro
+}
+
+enum SubscriptionScope {
+  mechanical
+  electrical
+  mep
+}
+
+model User {
+  id             String              @id @default(uuid())
+  email          String              @unique
+  password       String
+  role           Role                @default(user)
+  status         UserStatus          @default(active)
+  tier           Tier                @default(core)
+  createdAt      DateTime            @default(now())
+  library        UserLibrary[]
+  brandLibraries UserBrandLibrary[]
+  laborFirms     LaborFirm[]
+  quotes         Quote[]
+  organization   Organization?       @relation(fields: [organizationId], references: [id])
+  organizationId String?
+  subscriptions  UserSubscription[]
+}
+
+// Kullanicinin kendi marka kutuphanesi — ExcelGrid gorunumu icin sheets JSON
+// UserLibrary (satir bazli, matching icin) ile paralel calisir
+model UserBrandLibrary {
+  id        String   @id @default(uuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  brand     Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  brandId   String
+  sheets    Json     // ExcelGrid raw sheets yapisi (multi-sheet, grup basliklari, merge cells)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, brandId])
+  @@index([userId])
+}
+
+model UserSubscription {
+  id        String            @id @default(uuid())
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  level     PackageLevel
+  scope     SubscriptionScope
+  startsAt  DateTime          @default(now())
+  endsAt    DateTime?
+  active    Boolean           @default(true)
+  createdAt DateTime          @default(now())
+
+  @@unique([userId, level, scope])
+  @@index([userId])
+}
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  tier      Tier     @default(suite)
+  maxUsers  Int      @default(10)
+  createdAt DateTime @default(now())
+  members   User[]
+}
+
+model Brand {
+  id              String              @id @default(uuid())
+  name            String              @unique
+  logoUrl         String?
+  discipline      String              @default("mechanical") // 'mechanical' | 'electrical'
+  priceLists      PriceList[]
+  materialPrices  MaterialPrice[]
+  userLibrary     UserLibrary[]
+  userLibraries   UserBrandLibrary[]
+  quoteItems      QuoteItem[]
+}
+
+model PriceList {
+  id            String          @id @default(uuid())
+  name          String
+  brand         Brand           @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  brandId       String
+  createdAt     DateTime        @default(now())
+  items         MaterialPrice[]
+  userLibraries UserLibrary[]
+}
+
+model Material {
+  id             String          @id @default(uuid())
+  name           String          @unique
+  unit           String?
+  category       String?
+  listPrice      Float?
+  isGlobal       Boolean         @default(true)
+  tags           String[]        @default([])
+  normalizedName String?
+  materialType   String?
+  materialPrices MaterialPrice[]
+  userLibrary    UserLibrary[]
+
+  @@index([materialType])
+}
+
+model MaterialPrice {
+  id          String     @id @default(uuid())
+  material    Material   @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  materialId  String
+  brand       Brand      @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  brandId     String
+  priceList   PriceList? @relation(fields: [priceListId], references: [id], onDelete: Cascade)
+  priceListId String?
+  price       Float
+
+  @@unique([materialId, brandId, priceListId])
+}
+
+model UserLibrary {
+  id                String     @id @default(uuid())
+  user              User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId            String
+  material          Material?  @relation(fields: [materialId], references: [id])
+  materialId        String?
+  materialName      String?
+  brand             Brand      @relation(fields: [brandId], references: [id])
+  brandId           String
+  customPrice       Float?
+  discountRate      Float?
+  listPrice         Float?
+  unit              String?
+  sourcePriceList   PriceList? @relation(fields: [sourcePriceListId], references: [id], onDelete: SetNull)
+  sourcePriceListId String?
+}
+
+model Quote {
+  id           String      @id @default(uuid())
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String
+  title        String?
+  sheets       Json?       // Multi-sheet Excel raw state (SheetData[]), null = legacy tek-sheet quote
+  originalFile Bytes?      // Orijinal Excel dosya binary'si — indirirken fiyatlar uzerine yazilir
+  originalName String?     // Orijinal dosya adi (orn. "SAHINKUL KESIF OZETI.xlsx")
+  createdAt    DateTime    @default(now())
+  items        QuoteItem[]
+}
+
+model QuoteItem {
+  id                 String     @id @default(uuid())
+  quote              Quote      @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  quoteId            String
+  materialName       String
+  unit               String     @default("Adet")
+  brand              Brand?     @relation(fields: [brandId], references: [id])
+  brandId            String?
+  laborFirma         LaborFirm? @relation(fields: [laborFirmaId], references: [id])
+  laborFirmaId       String?
+  quantity           Float
+  // Malzeme fiyatlari
+  materialUnitPrice  Float   @default(0)
+  materialTotalPrice Float   @default(0)
+  materialMargin     Float   @default(0)  // %
+  // Iscilik fiyatlari
+  laborUnitPrice     Float   @default(0)
+  laborTotalPrice    Float   @default(0)
+  laborMargin        Float   @default(0)  // %
+  // Toplamlar
+  totalUnitPrice     Float   @default(0)
+  totalPrice         Float   @default(0)
+  // Eski alanlar (geriye uyumluluk)
+  unitPrice          Float   @default(0)
+  discount           Float   @default(0)
+  netPrice           Float   @default(0)
+  profitMargin       Float   @default(0)
+  finalPrice         Float   @default(0)
+}
+
+enum Discipline {
+  mechanical
+  electrical
+}
+
+model LaborItem {
+  id             String       @id @default(uuid())
+  name           String
+  unit           String       @default("Adet")
+  unitPrice      Float                            // varsayilan/baz fiyat
+  discipline     Discipline
+  category       String?
+  description    String?
+  tags           String[]     @default([])
+  normalizedName String?
+  isGlobal       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  laborPrices    LaborPrice[]
+
+  @@index([discipline])
+  @@index([name])
+  @@index([tags], type: Gin)
+}
+
+// LaborFirm KULLANICIYA AIT — her kullanici kendi firmalarini olusturur
+model LaborFirm {
+  id          String           @id @default(uuid())
+  name        String
+  discipline  Discipline
+  logo        String?
+  createdAt   DateTime         @default(now())
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  laborPrices LaborPrice[]
+  priceLists  LaborPriceList[]
+  quoteItems  QuoteItem[]
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@index([discipline])
+}
+
+model LaborPriceList {
+  id         String       @id @default(uuid())
+  name       String
+  firma      LaborFirm    @relation(fields: [firmaId], references: [id], onDelete: Cascade)
+  firmaId    String
+  uploadedAt DateTime     @default(now())
+  sheets     Json?        // ExcelGrid raw sheet — yuklenen dosyanin sheet icerigi (tek sheet, multi-row header, grup basliklari)
+  prices     LaborPrice[]
+}
+
+model LaborPrice {
+  id           String          @id @default(uuid())
+  laborItem    LaborItem       @relation(fields: [laborItemId], references: [id], onDelete: Cascade)
+  laborItemId  String
+  firma        LaborFirm       @relation(fields: [firmaId], references: [id], onDelete: Cascade)
+  firmaId      String
+  priceList    LaborPriceList? @relation(fields: [priceListId], references: [id], onDelete: SetNull)
+  priceListId  String?
+  unitPrice    Float           // liste fiyat
+  discountRate Float           @default(0)  // iskonto %
+  unit         String          @default("Adet")
+  createdAt    DateTime        @default(now())
+
+  @@unique([laborItemId, firmaId, priceListId])
+  @@index([firmaId])
+  @@index([laborItemId])
+}
+
+model AiUsageLog {
+  id            String   @id @default(uuid())
+  feature       String   // 'pdf_parse' | 'excel_match' | 'quote_analyze'
+  provider      String   // 'claude' | 'gemini' | 'openrouter'
+  model         String?  // 'claude-sonnet-4-6' etc.
+  inputTokens   Int      @default(0)
+  outputTokens  Int      @default(0)
+  estimatedCost Float    @default(0) // USD
+  success       Boolean  @default(true)
+  errorMessage  String?
+  createdAt     DateTime @default(now())
+
+  @@index([feature])
+  @@index([createdAt])
+}
+

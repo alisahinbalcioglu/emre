@@ -55,6 +55,7 @@ export class DwgEngineService {
     fileId?: string,
     selectedLayers?: string[],
     layerHatTipi?: Record<string, string>,
+    layerMaterialType?: Record<string, string>,
   ) {
     const params = new URLSearchParams({
       discipline,
@@ -70,10 +71,13 @@ export class DwgEngineService {
     if (layerHatTipi && Object.keys(layerHatTipi).length > 0) {
       params.set('layer_hat_tipi', JSON.stringify(layerHatTipi));
     }
+    if (layerMaterialType && Object.keys(layerMaterialType).length > 0) {
+      params.set('layer_material_type', JSON.stringify(layerMaterialType));
+    }
 
     const fetchOptions: RequestInit = {
       method: 'POST',
-      signal: AbortSignal.timeout(120_000),
+      signal: AbortSignal.timeout(300_000),
     };
 
     // file_id varsa dosya gondermeye gerek yok, bos form gonder

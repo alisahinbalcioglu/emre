@@ -9,6 +9,8 @@ export interface PipeSegment {
   diameter: string;
   length: number;
   line_count: number;
+  material_type?: string;
+  coords?: number[][];
 }
 
 export interface LayerMetraj {
@@ -19,11 +21,21 @@ export interface LayerMetraj {
   segments?: PipeSegment[];
 }
 
+export interface BranchPointData {
+  x: number;
+  y: number;
+  connections: number;
+  point_type: string;
+}
+
 export interface MetrajResult {
   layers: LayerMetraj[];
   total_length: number;
   total_layers: number;
   warnings: string[];
+  branch_points?: BranchPointData[];
+  edge_segments?: PipeSegment[];
+  background_lines?: number[][];
 }
 
 interface MetrajTableProps {

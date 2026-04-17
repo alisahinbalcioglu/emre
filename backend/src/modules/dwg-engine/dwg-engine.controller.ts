@@ -40,6 +40,7 @@ export class DwgEngineController {
     @Query('file_id') fileId?: string,
     @Query('selected_layers') selectedLayers?: string,
     @Query('layer_hat_tipi') layerHatTipi?: string,
+    @Query('layer_material_type') layerMaterialType?: string,
   ) {
     // file_id varsa dosya gerekmez, yoksa dosya zorunlu
     if (!fileId && !file) {
@@ -66,6 +67,16 @@ export class DwgEngineController {
       }
     }
 
+    // layer_material_type JSON object parse
+    let parsedMaterialType: Record<string, string> | undefined;
+    if (layerMaterialType) {
+      try {
+        parsedMaterialType = JSON.parse(layerMaterialType);
+      } catch {
+        return { error: 'layer_material_type gecersiz JSON formati' };
+      }
+    }
+
     return this.dwgEngine.parseDwg(
       file?.buffer ?? null,
       file?.originalname ?? '',
@@ -74,6 +85,7 @@ export class DwgEngineController {
       fileId,
       parsedLayers,
       parsedHatTipi,
+      parsedMaterialType,
     );
   }
 
