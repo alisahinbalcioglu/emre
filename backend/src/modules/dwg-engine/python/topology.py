@@ -11,7 +11,6 @@ from collections import defaultdict
 
 from graph import Point, Edge, PipeGraph, build_graph
 from diameter import DiameterText, extract_diameters, detect_pipe_type
-from arrows import trace_arrows, match_nearby_texts
 from models import PipeSegment, BranchPoint
 
 # Pis su icin gecersiz caplar (kesinlikle olmaz)

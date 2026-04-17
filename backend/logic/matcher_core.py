@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import math
 import re
-from typing import Any
 from pydantic import BaseModel
 
 
@@ -218,62 +217,6 @@ def _calc_confidence(method: str, dist: float) -> float:
 # ═══════════════════════════════════════════════════════════════════
 #  SANAL SEGMENTASYON (PRD v2 Madde 3B)
 # ═══════════════════════════════════════════════════════════════════
-
-
-def _virtual_segment(
-    pipe: Pipe,
-    arrows_on_pipe: list[tuple[Arrow, float]],  # (arrow, t_param)
-    scale: float = 0.001,
-) -> list[tuple[str, str, float]]:
-    """Uzun boru uzerine birden fazla ok varsa sanal parcalara bol.
-
-    Her ok'un temas noktasi (t parametresi) uzerinden boru parcalanir.
-    Returns: [(diameter, segment_str, segment_length), ...]
-    """
-    if len(arrows_on_pipe) <= 1:
-        dia = arrows_on_pipe[0][0].diameter if arrows_on_pipe else "Belirtilmemis"
-        total = _pipe_length(pipe) * scale
-        return [(dia, f"0-{total:.0f}cm", total)]
-
-    # t parametresine gore sirala
-    sorted_arrows = sorted(arrows_on_pipe, key=lambda x: x[1])
-
-    total_len = _pipe_length(pipe)
-    segments: list[tuple[str, str, float]] = []
-
-    # Baslangic → ilk ok arasi
-    # Her ok arasi → ok'un cap degeri
-    # Son ok → boru sonu
-    boundaries = [0.0]
-    for _, t in sorted_arrows:
-        boundaries.append(t)
-    boundaries.append(1.0)
-
-    for i in range(len(sorted_arrows)):
-        t_start = boundaries[i]
-        t_end = boundaries[i + 1]
-        mid_t = (t_start + t_end) / 2.0
-
-        # Bu araligin ortasina en yakin ok'un capi
-        best_arrow = sorted_arrows[i][0]
-        seg_len = abs(t_end - t_start) * total_len * scale
-        start_cm = t_start * total_len * scale * 100
-        end_cm = t_end * total_len * scale * 100
-        seg_str = f"{start_cm:.0f}-{end_cm:.0f}cm"
-        segments.append((best_arrow.diameter, seg_str, seg_len))
-
-    # Son segment (son ok → boru sonu)
-    if len(sorted_arrows) > 0:
-        t_start = boundaries[-2]
-        t_end = 1.0
-        seg_len = abs(t_end - t_start) * total_len * scale
-        if seg_len > 0.001:
-            start_cm = t_start * total_len * scale * 100
-            end_cm = t_end * total_len * scale * 100
-            seg_str = f"{start_cm:.0f}-{end_cm:.0f}cm"
-            segments.append((sorted_arrows[-1][0].diameter, seg_str, seg_len))
-
-    return segments
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -538,49 +481,3 @@ class PipeMatcher:
         return results, matched_ids
 
 
-# ═══════════════════════════════════════════════════════════════════
-#  ODA SDK KOPRU
-# ═══════════════════════════════════════════════════════════════════
-
-_LINE_TYPES = frozenset({"DbLine", "AcDbLine"})
-_LEADER_TYPES = frozenset({"DbLeader", "AcDbLeader", "DbMLeader", "AcDbMLeader"})
-_TEXT_TYPES = frozenset({"DbText", "AcDbText", "DbMText", "AcDbMText"})
-
-
-def process_cad_data(
-    cad_objects: list[Any], selected_layer: str,
-) -> list[MatchResult]:
-    pipes: list[Pipe] = []
-    arrows: list[Arrow] = []
-    texts: list[Text] = []
-    for obj in cad_objects:
-        tn = type(obj).__name__
-        if tn in _LINE_TYPES:
-            pipes.append(_convert_pipe(obj))
-        elif tn in _LEADER_TYPES:
-            arrows.append(_convert_arrow(obj))
-        elif tn in _TEXT_TYPES:
-            texts.append(_convert_text(obj))
-    return PipeMatcher(pipes, arrows, texts, selected_layer).match()
-
-
-def _convert_pipe(obj: Any) -> Pipe:
-    return Pipe(
-        id=str(obj.Handle), layer=str(obj.Layer),
-        start=(float(obj.StartPoint.x), float(obj.StartPoint.y)),
-        end=(float(obj.EndPoint.x), float(obj.EndPoint.y)),
-    )
-
-
-def _convert_arrow(obj: Any) -> Arrow:
-    sx, sy = float(obj.StartPoint.x), float(obj.StartPoint.y)
-    ex, ey = float(obj.EndPoint.x), float(obj.EndPoint.y)
-    length = float(obj.Length) if hasattr(obj, "Length") else _pt_dist(sx, sy, ex, ey)
-    return Arrow(id=str(obj.Handle), start=(sx, sy), end=(ex, ey), length=length)
-
-
-def _convert_text(obj: Any) -> Text:
-    return Text(
-        id=str(obj.Handle), value=str(obj.TextString),
-        position=(float(obj.Position.x), float(obj.Position.y)),
-    )
