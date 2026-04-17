@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import api from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
+import PdfToExcelButton from '@/components/library/PdfToExcelButton';
 
 interface LibraryBrand {
   brandId: string;
@@ -202,9 +203,10 @@ export default function ElectricalBrandsPage() {
           <Button variant="outline" onClick={() => setAddOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />Malzeme Ekle
           </Button>
+          <PdfToExcelButton label="PDF'den Excel'e Cevir" />
           {isAdmin && (
             <Button className="bg-amber-600 hover:bg-amber-700" onClick={() => setPdfOpen(true)}>
-              <Upload className="mr-2 h-4 w-4" />PDF Yukle
+              <Upload className="mr-2 h-4 w-4" />PDF Yukle (Admin)
             </Button>
           )}
         </div>

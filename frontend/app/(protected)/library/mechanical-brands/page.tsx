@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import api from '@/lib/api';
+import PdfToExcelButton from '@/components/library/PdfToExcelButton';
 import { toast } from '@/hooks/use-toast';
 
 interface LibraryBrand {
@@ -202,9 +203,10 @@ export default function MechanicalBrandsPage() {
           <Button variant="outline" onClick={() => setAddOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />Malzeme Ekle
           </Button>
+          <PdfToExcelButton label="PDF'den Excel'e Cevir" />
           {isAdmin && (
             <Button onClick={() => setPdfOpen(true)}>
-              <Upload className="mr-2 h-4 w-4" />PDF Yukle
+              <Upload className="mr-2 h-4 w-4" />PDF Yukle (Admin)
             </Button>
           )}
         </div>
