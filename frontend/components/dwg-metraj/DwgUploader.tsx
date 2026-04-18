@@ -150,6 +150,10 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
         }
       }
 
+      // Sprinkler layer tespiti backend tarafinda yapilir:
+      // Kullanici hat ismine "sprinkler"/"upright"/"pendant"/"sidewall"
+      // yazdiysa o layer sprinkler olarak islenir. layer_hat_tipi map'inden
+      // backend bunu anlar.
       const params = new URLSearchParams({
         discipline,
         scale: String(selectedUnit),

@@ -56,6 +56,7 @@ export class DwgEngineService {
     selectedLayers?: string[],
     layerHatTipi?: Record<string, string>,
     layerMaterialType?: Record<string, string>,
+    sprinklerLayers?: string[],
   ) {
     const params = new URLSearchParams({
       discipline,
@@ -73,6 +74,9 @@ export class DwgEngineService {
     }
     if (layerMaterialType && Object.keys(layerMaterialType).length > 0) {
       params.set('layer_material_type', JSON.stringify(layerMaterialType));
+    }
+    if (sprinklerLayers && sprinklerLayers.length > 0) {
+      params.set('sprinkler_layers', JSON.stringify(sprinklerLayers));
     }
 
     const fetchOptions: RequestInit = {

@@ -159,6 +159,7 @@ def analyze_dxf_metraj(
     selected_layers: list[str] | None = None,
     hat_tipi_map: dict[str, str] | None = None,
     material_type_map: dict[str, str] | None = None,
+    sprinkler_layers_manual: list[str] | None = None,
 ) -> MetrajResult:
     """
     DXF dosyasini parse edip layer bazinda boru uzunlugu hesaplar.
@@ -246,6 +247,7 @@ def analyze_dxf_metraj(
         dxf_path, selected_layers, scale,
         material_type_map=material_type_map,
         hat_tipi_map=hat_tipi_map,
+        sprinkler_layers_manual=sprinkler_layers_manual,
     )
     topo_segments = topo_result[0]
     branch_points = topo_result[1]
@@ -345,6 +347,7 @@ async def parse_dwg(
     selected_layers: str = Query("", description="JSON array: secilen layer isimleri"),
     layer_hat_tipi: str = Query("{}", description="JSON object: {layer: hat_tipi} eslestirmesi"),
     layer_material_type: str = Query("{}", description="JSON object: {layer: material_type} eslestirmesi"),
+    sprinkler_layers: str = Query("", description="JSON array: kullanici tarafindan sprinkler olarak isaretlenen layer'lar"),
 ):
     """
     DWG/DXF dosyasini parse edip layer bazinda metraj cikarir.
@@ -397,6 +400,16 @@ async def parse_dwg(
         except json.JSONDecodeError:
             raise HTTPException(400, "layer_material_type gecersiz JSON formati")
 
+    # sprinkler_layers: kullanicinin manuel isaretledigi sprinkler layer'lar
+    sprinkler_layers_manual: list[str] | None = None
+    if sprinkler_layers:
+        try:
+            parsed_sp = json.loads(sprinkler_layers)
+            if isinstance(parsed_sp, list) and len(parsed_sp) > 0:
+                sprinkler_layers_manual = [str(s) for s in parsed_sp]
+        except json.JSONDecodeError:
+            raise HTTPException(400, "sprinkler_layers gecersiz JSON formati")
+
     # ── Analiz et ──
     try:
         result = analyze_dxf_metraj(
@@ -405,6 +418,7 @@ async def parse_dwg(
             selected_layers=sel_layers,
             hat_tipi_map=hat_tipi_map,
             material_type_map=mat_type_map,
+            sprinkler_layers_manual=sprinkler_layers_manual,
         )
         return result
 

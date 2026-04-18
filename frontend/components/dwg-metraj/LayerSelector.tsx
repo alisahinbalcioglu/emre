@@ -3,6 +3,9 @@
 import React, { useState, useMemo } from 'react';
 import { Layers, Check, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
 
 // ── Tipler ──
 
@@ -14,7 +17,10 @@ export interface LayerInfo {
 export interface LayerSelection {
   layer: string;
   selected: boolean;
-  hatIsmi: string; // kullanicinin verdigi hat ismi (bos olabilir)
+  /** Hat ismi — bos olabilir. Icinde "sprink"/"upright"/"pendant"/"sidewall"
+   *  keyword'u gecerse backend o layer'i sprinkler layer olarak isler
+   *  (INSERT'leri boru edge'ini keser, her sprinkler bir dal ayirici). */
+  hatIsmi: string;
   materialType: string; // "Siyah Boru", "HDPE", "PPR-C", vb. (bos = otomatik)
 }
 
@@ -120,8 +126,13 @@ export default function LayerSelector({ layers, fileName, onConfirm, onCancel }:
       {/* Bilgilendirme */}
       <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5">
         <p className="text-[11px] text-blue-700">
-          Metraj hesaplanacak layer'lari secin. Gerekirse hat ismi verin (orn: &quot;Yangin Hidrant Hatti&quot;).
-          Secilmeyen layer'lar hesaba dahil edilmez.
+          <strong>Boru layer:</strong> Sol &quot;Sec&quot; kutusunu isaretle, hat ismi ver (orn: &quot;Yangin Hidrant Hatti&quot;).
+          <br />
+          <strong>Sprinkler layer:</strong> Adi anlamsiz olsa bile <strong>Hat Ismi</strong> alanina
+          <code className="mx-1 rounded bg-amber-100 px-1.5 py-0.5 text-amber-800">sprinkler</code>
+          (veya <code className="rounded bg-amber-100 px-1 py-0.5 text-amber-800">upright</code>,
+          <code className="mx-0.5 rounded bg-amber-100 px-1 py-0.5 text-amber-800">pendant</code>)
+          yazarsan o layer sprinkler olarak tanir, borular her sprinkler'de bolunur.
         </p>
       </div>
 
@@ -133,8 +144,8 @@ export default function LayerSelector({ layers, fileName, onConfirm, onCancel }:
               <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 w-10">Sec</th>
               <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500">Layer Adi</th>
               <th className="px-4 py-2.5 text-right text-xs font-semibold text-slate-500 w-20">Entity</th>
-              <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 w-48">Hat Ismi (opsiyonel)</th>
-              <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 w-36">Malzeme Tipi</th>
+              <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 w-56">Hat Ismi (opsiyonel)</th>
+              <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 w-44">Malzeme Tipi</th>
             </tr>
           </thead>
           <tbody>
@@ -180,14 +191,15 @@ export default function LayerSelector({ layers, fileName, onConfirm, onCancel }:
                   </span>
                 </td>
 
-                {/* Hat Ismi — text input */}
+                {/* Hat Ismi — text input. "sprinkler"/"upright"/"pendant"
+                    yazilirsa backend o layer'i sprinkler layer olarak algilar. */}
                 <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
                   <input
                     type="text"
                     value={sel.hatIsmi}
                     onChange={(e) => changeHatIsmi(sel.layer, e.target.value)}
                     disabled={!sel.selected}
-                    placeholder={sel.selected ? 'orn: Yangin Hidrant Hatti' : ''}
+                    placeholder={sel.selected ? 'orn: Yangin Hidrant Hatti / sprinkler' : ''}
                     className={cn(
                       'w-full rounded-lg border bg-white px-3 py-1.5 text-xs outline-none transition-all',
                       sel.selected
@@ -197,35 +209,43 @@ export default function LayerSelector({ layers, fileName, onConfirm, onCancel }:
                   />
                 </td>
 
-                {/* Malzeme Tipi — combobox (serbest metin + öneriler) */}
+                {/* Malzeme Tipi — dropdown */}
                 <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
-                  <input
-                    type="text"
-                    list="material-type-options"
-                    value={sel.materialType}
-                    onChange={(e) => changeMaterialType(sel.layer, e.target.value)}
+                  <Select
+                    value={sel.materialType || '__auto__'}
+                    onValueChange={(v) =>
+                      changeMaterialType(sel.layer, v === '__auto__' ? '' : v)
+                    }
                     disabled={!sel.selected}
-                    placeholder="Otomatik / serbest metin"
-                    className={cn(
-                      'w-full rounded-lg border bg-white px-2 py-1.5 text-xs outline-none transition-all',
-                      sel.selected
-                        ? 'border-blue-200 text-slate-700 hover:border-blue-300 focus:border-blue-400'
-                        : 'border-slate-100 text-slate-300 cursor-not-allowed bg-slate-50',
-                    )}
-                  />
+                  >
+                    <SelectTrigger
+                      className={cn(
+                        'h-8 text-xs',
+                        sel.selected
+                          ? 'border-blue-200 hover:border-blue-300'
+                          : 'border-slate-100 text-slate-300 bg-slate-50 cursor-not-allowed',
+                      )}
+                    >
+                      <SelectValue placeholder="Otomatik" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MATERIAL_TYPES.map((mt) => (
+                        <SelectItem
+                          key={mt.value || '__auto__'}
+                          value={mt.value || '__auto__'}
+                          className="text-xs"
+                        >
+                          {mt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-
-      {/* Malzeme tipi öneri listesi (combobox için) */}
-      <datalist id="material-type-options">
-        {MATERIAL_TYPES.filter((mt) => mt.value).map((mt) => (
-          <option key={mt.value} value={mt.value} />
-        ))}
-      </datalist>
 
       {/* Alt Bar */}
       <div className="mt-4 flex items-center justify-between rounded-xl border bg-card px-5 py-3">

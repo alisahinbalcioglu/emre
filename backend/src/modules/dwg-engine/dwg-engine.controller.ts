@@ -41,6 +41,7 @@ export class DwgEngineController {
     @Query('selected_layers') selectedLayers?: string,
     @Query('layer_hat_tipi') layerHatTipi?: string,
     @Query('layer_material_type') layerMaterialType?: string,
+    @Query('sprinkler_layers') sprinklerLayers?: string,
   ) {
     // file_id varsa dosya gerekmez, yoksa dosya zorunlu
     if (!fileId && !file) {
@@ -77,6 +78,16 @@ export class DwgEngineController {
       }
     }
 
+    // sprinkler_layers JSON array parse — kullanicinin manuel isaretledigi sprinkler layer'lar
+    let parsedSprinklerLayers: string[] | undefined;
+    if (sprinklerLayers) {
+      try {
+        parsedSprinklerLayers = JSON.parse(sprinklerLayers);
+      } catch {
+        return { error: 'sprinkler_layers gecersiz JSON formati' };
+      }
+    }
+
     return this.dwgEngine.parseDwg(
       file?.buffer ?? null,
       file?.originalname ?? '',
@@ -86,6 +97,7 @@ export class DwgEngineController {
       parsedLayers,
       parsedHatTipi,
       parsedMaterialType,
+      parsedSprinklerLayers,
     );
   }
 

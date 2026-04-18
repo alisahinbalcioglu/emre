@@ -28,20 +28,27 @@ class Edge:
 
 class PipeGraph:
     """build_graph() sonucu."""
-    __slots__ = ('edges', 'raw_coords', 'tees', 'ends', 'adj')
+    __slots__ = ('edges', 'raw_coords', 'tees', 'ends', 'adj', 'sprinkler_points')
 
-    def __init__(self, edges, raw_coords, tees, ends, adj):
+    def __init__(self, edges, raw_coords, tees, ends, adj, sprinkler_points=None):
         self.edges = edges
         self.raw_coords = raw_coords
         self.tees = tees       # set[Point]
         self.ends = ends       # set[Point]
         self.adj = adj         # dict[Point, list[tuple[Point, Edge]]]
+        # Sprinkler INSERT pozisyonlari icin borular bolunmus noktalar.
+        # compute_edge_branches bu noktalarda dali mecburen ayirir.
+        self.sprinkler_points: set[Point] = sprinkler_points or set()
 
 
 # Fitting boşlukları 7-25 birim. 25 ile %88 bağlantı sağlanır.
 MERGE_DISTANCE = 25.0
 MAX_CLUSTER = 60.0  # Zincir birleşmeyi önler
 MIN_EDGE_LENGTH = 5.0  # Çok kısa çizgiler (< 5 birim) atla
+# Sprinkler INSERT'i boru edge'ine bu mesafede ise edge'i boleriz
+SPRINKLER_SNAP_DIST = 50.0
+# Sprinkler projeksiyonu edge uclarina cok yakinsa bolme (anlamsiz parca olusmasin)
+SPRINKLER_EDGE_EPS = 0.05  # t parametresi icin [0.05, 0.95] araligi
 
 
 def _merge_close_points(raw_points: list[tuple[float, float]]) -> dict[int, Point]:
@@ -108,12 +115,20 @@ def _merge_close_points(raw_points: list[tuple[float, float]]) -> dict[int, Poin
     return result
 
 
-def build_graph(dxf_path: str, pipe_layers: list[str]) -> PipeGraph:
+def build_graph(
+    dxf_path: str,
+    pipe_layers: list[str],
+    sprinkler_layers: list[str] | None = None,
+) -> PipeGraph:
     """
     Seçilen boru layer'larından graph oluştur.
     Cap layer'ları DAHİL ETMEYİN — sadece gerçek boru layer'ları.
 
-    Döndürür: PipeGraph (edges, raw_coords, tees, ends, adj)
+    sprinkler_layers: sprinkler INSERT layer'lari. Verilirse her INSERT
+    pozisyonu en yakin boru edge'ine projekte edilir ve edge o noktada
+    bolunur — her sprinkler bir tee gibi davranir.
+
+    Döndürür: PipeGraph (edges, raw_coords, tees, ends, adj, sprinkler_points)
     """
     import ezdxf
 
@@ -175,8 +190,79 @@ def build_graph(dxf_path: str, pipe_layers: list[str]) -> PipeGraph:
     if not raw_points:
         return PipeGraph([], [], set(), set(), {})
 
+    # 1.5. Sprinkler INSERT'leri topla ve borulari bu noktalarda bol
+    # Her sprinkler position'a en yakin edge'i bulup bolmek: ayni boru iki
+    # edge'e donusur, ortasinda yeni node olur. Bu node'da compute_edge_branches
+    # kolinear pair bulsa bile birlesim YAPMAZ — her sprinkler bir dal ayirici.
+    sprinkler_raw_indices: set[int] = set()
+    if sprinkler_layers:
+        sprinkler_set = set(sprinkler_layers)
+        sprinkler_positions: list[tuple[float, float]] = []
+        for entity in msp.query('INSERT'):
+            if entity.dxf.layer in sprinkler_set:
+                sprinkler_positions.append((entity.dxf.insert.x, entity.dxf.insert.y))
+
+        snap_dist_sq = SPRINKLER_SNAP_DIST ** 2
+        # Her sprinkler icin en yakin edge'i bul + bol.
+        # raw_edges listesi islem sirasinda genisler (yeni edge'ler eklenir),
+        # ama yeni edge'ler de sonraki sprinkler'lar icin aday — bu tutarli.
+        for sx, sy in sprinkler_positions:
+            best_edge_i = -1
+            best_dist_sq = snap_dist_sq
+            best_proj: tuple[float, float] | None = None
+            best_t = 0.0
+
+            for i in range(len(raw_edges)):
+                ia, ib, length, layer = raw_edges[i]
+                ax, ay = raw_points[ia]
+                bx, by = raw_points[ib]
+                dx = bx - ax
+                dy = by - ay
+                seg_len_sq = dx * dx + dy * dy
+                if seg_len_sq < 1e-6:
+                    continue
+                # Dik projeksiyonun t parametresi
+                t = ((sx - ax) * dx + (sy - ay) * dy) / seg_len_sq
+                if t < SPRINKLER_EDGE_EPS or t > (1.0 - SPRINKLER_EDGE_EPS):
+                    continue
+                px = ax + t * dx
+                py = ay + t * dy
+                dsq = (sx - px) ** 2 + (sy - py) ** 2
+                if dsq < best_dist_sq:
+                    best_dist_sq = dsq
+                    best_edge_i = i
+                    best_proj = (px, py)
+                    best_t = t
+
+            if best_edge_i < 0 or best_proj is None:
+                continue
+
+            # Edge'i bol
+            ia, ib, _old_length, layer = raw_edges[best_edge_i]
+            ax, ay = raw_points[ia]
+            bx, by = raw_points[ib]
+            px, py = best_proj
+
+            # Yeni nokta (mevcut nokta cache'ine ekle veya bulunana snap)
+            ic = _get_idx(px, py)
+            sprinkler_raw_indices.add(ic)
+
+            len_a = math.sqrt((px - ax) ** 2 + (py - ay) ** 2)
+            len_b = math.sqrt((bx - px) ** 2 + (by - py) ** 2)
+
+            # Minimum uzunluk kontrolu (kucuk parca olusmasin)
+            if len_a < MIN_EDGE_LENGTH or len_b < MIN_EDGE_LENGTH:
+                continue
+
+            raw_edges[best_edge_i] = (ia, ic, len_a, layer)
+            raw_edges.append((ic, ib, len_b, layer))
+
     # 2. Yakın noktaları birleştir
     merged = _merge_close_points(raw_points)
+
+    # Sprinkler raw indekslerini merge sonrasi final Point'lere cevir
+    sprinkler_points: set[Point] = {merged[idx] for idx in sprinkler_raw_indices
+                                     if idx in merged}
 
     # 3. Edge listesi + raw koordinatlar
     edges: list[Edge] = []
@@ -213,7 +299,7 @@ def build_graph(dxf_path: str, pipe_layers: list[str]) -> PipeGraph:
         adj[edge.node_a].append((edge.node_b, edge))
         adj[edge.node_b].append((edge.node_a, edge))
 
-    return PipeGraph(edges, raw_coords, tees, ends, adj)
+    return PipeGraph(edges, raw_coords, tees, ends, adj, sprinkler_points)
 
 
 def extract_background_lines(

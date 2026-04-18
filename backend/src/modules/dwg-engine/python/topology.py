@@ -129,11 +129,17 @@ def compute_edge_branches(graph) -> dict[int, str]:
             parent[rx] = ry
 
     COLLINEAR_DOT_MAX = -0.966  # 180 +/- 15 derece
+    sprinkler_points = getattr(graph, 'sprinkler_points', set()) or set()
 
     for node, neighbors in graph.adj.items():
         edge_list = [e for _, e in neighbors]
         if len(edge_list) < 2:
             continue  # dead-end, tek edge
+
+        # Sprinkler noktasi: kolinear cift olsa bile dal AYIRICI, union yapma.
+        # Her sprinkler'de dikey kolon parcalanir, ayri branch_id alir.
+        if node in sprinkler_points:
+            continue
 
         if node not in graph.tees and len(edge_list) == 2:
             # Degree-2: iki edge otomatik ayni dal
@@ -186,6 +192,22 @@ def compute_edge_branches(graph) -> dict[int, str]:
             counter += 1
             roots_to_branch[root] = f"b_{counter}"
         result[e.idx] = roots_to_branch[root]
+
+    # Diagnostic log: dal sayisi + en buyuk/kucuk dal
+    branch_sizes: dict[str, int] = {}
+    for bid in result.values():
+        branch_sizes[bid] = branch_sizes.get(bid, 0) + 1
+    if branch_sizes:
+        sizes = sorted(branch_sizes.values(), reverse=True)
+        print(
+            f"[compute_edge_branches] {len(branch_sizes)} dal, "
+            f"{len(graph.edges)} edge, {len(graph.tees)} tee; "
+            f"en buyuk dal: {sizes[0]} edge, en kucuk: {sizes[-1]} edge; "
+            f"ilk 5: {sizes[:5]}",
+            flush=True,
+        )
+    else:
+        print(f"[compute_edge_branches] HIC DAL YOK, {len(graph.edges)} edge, {len(graph.tees)} tee", flush=True)
 
     return result
 
@@ -475,6 +497,7 @@ def analyze_topology(
     material_type_map: dict[str, str] | None = None,
     cap_layers: list[str] | None = None,
     hat_tipi_map: dict[str, str] | None = None,
+    sprinkler_layers_manual: list[str] | None = None,
 ) -> tuple[list[PipeSegment], list[BranchPoint], list[str]]:
     """
     Ana orkestratör. Eski API ile uyumlu.
@@ -499,6 +522,7 @@ def analyze_topology(
             result = analyze_topology(
                 dxf_path, [layer], scale, material_type_map, cap_layers,
                 hat_tipi_map=hat_tipi_map,
+                sprinkler_layers_manual=sprinkler_layers_manual,
             )
             all_segs.extend(result[0])
             all_bps.extend(result[1])
@@ -509,13 +533,66 @@ def analyze_topology(
         return all_segs, all_bps, all_warns, all_edges
 
     # Tek layer analizi
-    # 1. Boru ağı
-    graph = build_graph(dxf_path, selected_layers)
+    # 1. Sprinkler layer'larini belirle — 3 kaynaktan toplanir:
+    #    (a) Kullanicinin manuel verdigi liste (sprinkler_layers_manual)
+    #    (b) Hat ismi icinde "sprink"/"upright"/"pendant"/"sidewall" gecen
+    #        layer'lar (hat_tipi_map uzerinden kullanici belirtir)
+    #    (c) Layer adi icinde ayni keyword gecen layer'lar (otomatik fallback)
+    _selected_set = set(selected_layers)
+
+    def _norm_tr(s: str) -> str:
+        trans = str.maketrans({
+            '\u0130': 'I', '\u0049': 'I', '\u0131': 'i',
+            '\u015e': 'S', '\u015f': 's',
+            '\u011e': 'G', '\u011f': 'g',
+            '\u00d6': 'O', '\u00f6': 'o',
+            '\u00dc': 'U', '\u00fc': 'u',
+            '\u00c7': 'C', '\u00e7': 'c',
+        })
+        return s.translate(trans).lower()
+
+    SPRINKLER_KEYWORDS = ('sprink', 'upright', 'pendant', 'sidewall')
+
+    def _is_sprinkler_hint(text: str) -> bool:
+        return any(kw in _norm_tr(text) for kw in SPRINKLER_KEYWORDS)
+
+    sprinkler_set: set[str] = set()
+
+    # (a) Manuel liste
+    if sprinkler_layers_manual:
+        for l in sprinkler_layers_manual:
+            if l not in _selected_set:
+                sprinkler_set.add(l)
+
+    # (b) Hat ismi ipucu — kullanici hat ismine "sprinkler" yazdiysa
+    if hat_tipi_map:
+        for layer_name, hat_ismi in hat_tipi_map.items():
+            if layer_name in _selected_set:
+                continue
+            if hat_ismi and _is_sprinkler_hint(hat_ismi):
+                sprinkler_set.add(layer_name)
+
+    # (c) Layer adinda keyword — otomatik fallback (kullanici hicbir ipucu vermemisse de calisir)
+    import ezdxf as _ezdxf_sp
+    _doc_sp = _ezdxf_sp.readfile(dxf_path)
+    _all_layers_sp = {e.dxf.layer for e in _doc_sp.modelspace() if hasattr(e.dxf, 'layer')}
+    for l in _all_layers_sp:
+        if l in _selected_set:
+            continue
+        if _is_sprinkler_hint(l):
+            sprinkler_set.add(l)
+
+    sprinkler_layers_auto = sorted(sprinkler_set)
+    if sprinkler_layers_auto:
+        warnings.append(f"Sprinkler layer'lari: {sprinkler_layers_auto}")
+
+    graph = build_graph(dxf_path, selected_layers, sprinkler_layers=sprinkler_layers_auto)
     if not graph.edges:
         return [], [], ["Seçilen layer'larda boru bulunamadı"], []
 
     warnings.append(
-        f"Topoloji: {len(graph.edges)} edge, {len(graph.tees)} tee, {len(graph.ends)} hat sonu"
+        f"Topoloji: {len(graph.edges)} edge, {len(graph.tees)} tee, "
+        f"{len(graph.ends)} hat sonu, {len(graph.sprinkler_points)} sprinkler"
     )
 
     # BranchPoint listesi (uyumluluk için)
