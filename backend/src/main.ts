@@ -6,9 +6,11 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Multi-sheet quote payload icin body limit yukselt (default 100kb yetersiz)
-  app.use(json({ limit: '50mb' }));
-  app.use(urlencoded({ extended: true, limit: '50mb' }));
+  // Buyuk DWG/DXF dosyalari + multi-sheet Excel payload icin body limit yukselt.
+  // Multer FileInterceptor zaten kendi fileSize limitini kullanir (1GB controller'da),
+  // bu buraya JSON/urlencoded icin global guvenlik ucu.
+  app.use(json({ limit: '500mb' }));
+  app.use(urlencoded({ extended: true, limit: '500mb' }));
 
   app.useGlobalPipes(
     new ValidationPipe({

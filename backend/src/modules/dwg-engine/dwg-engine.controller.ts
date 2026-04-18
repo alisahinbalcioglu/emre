@@ -23,7 +23,7 @@ export class DwgEngineController {
   @Post('layers')
   @UseInterceptors(FileInterceptor('file', {
     storage: memoryStorage(),
-    limits: { fileSize: 200 * 1024 * 1024 },
+    limits: { fileSize: 1024 * 1024 * 1024 }, // 1 GB
   }))
   async listLayers(@UploadedFile() file: Express.Multer.File) {
     if (!file) {
@@ -41,7 +41,7 @@ export class DwgEngineController {
   @Post('parse')
   @UseInterceptors(FileInterceptor('file', {
     storage: memoryStorage(),
-    limits: { fileSize: 200 * 1024 * 1024 },
+    limits: { fileSize: 1024 * 1024 * 1024 }, // 1 GB
   }))
   async parseDwg(
     @UploadedFile() file: Express.Multer.File,
@@ -114,7 +114,7 @@ export class DwgEngineController {
   @Post('convert')
   @UseInterceptors(FileInterceptor('file', {
     storage: memoryStorage(),
-    limits: { fileSize: 200 * 1024 * 1024 },
+    limits: { fileSize: 1024 * 1024 * 1024 }, // 1 GB
   }))
   async convertToDxf(@UploadedFile() file: Express.Multer.File) {
     if (!file) return { error: 'Dosya yuklenemedi' };
