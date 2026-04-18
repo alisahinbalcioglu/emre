@@ -17,10 +17,11 @@ export class DwgEngineService {
     const blob = new Blob([fileBuffer as any]);
     formData.append('file', blob, fileName);
 
+    // Buyuk DWG'ler icin 5 dakika (ODA converter + ezdxf parse uzun surebilir)
     try {
       const response = await fetch(
         `${this.pythonServiceUrl}/layers`,
-        { method: 'POST', body: formData, signal: AbortSignal.timeout(60_000) },
+        { method: 'POST', body: formData, signal: AbortSignal.timeout(300_000) },
       );
 
       if (!response.ok) {
@@ -34,10 +35,10 @@ export class DwgEngineService {
       return await response.json();
     } catch (error) {
       if (error instanceof HttpException) throw error;
-      throw new HttpException(
-        'DWG Engine servisi baglanti hatasi. Servis calismiyor olabilir.',
-        HttpStatus.SERVICE_UNAVAILABLE,
-      );
+      const msg = (error as any)?.name === 'TimeoutError'
+        ? 'DWG cok buyuk veya karmasik — 5 dakikada cevap alinamadi. Daha kucuk bir bolumunu deneyin.'
+        : 'DWG Engine servisi baglanti hatasi. Servis calismiyor olabilir.';
+      throw new HttpException(msg, HttpStatus.SERVICE_UNAVAILABLE);
     }
   }
 

@@ -15,9 +15,16 @@ export class DwgEngineController {
   /**
    * Layer listesi cikar (hizli, uzunluk hesaplamaz).
    * file_id doner — bu ID ile /parse cagirilabilir.
+   *
+   * Dosya boyut limiti 200MB (buyuk mimari projeler icin). DWG->DXF
+   * donustume (ODA converter) bazen uzun surer, timeout 180 saniyeye
+   * kadar tolerans verilir.
    */
   @Post('layers')
-  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  @UseInterceptors(FileInterceptor('file', {
+    storage: memoryStorage(),
+    limits: { fileSize: 200 * 1024 * 1024 },
+  }))
   async listLayers(@UploadedFile() file: Express.Multer.File) {
     if (!file) {
       return { error: 'Dosya yuklenemedi' };
@@ -32,7 +39,10 @@ export class DwgEngineController {
    * file_id yoksa: dosya yuklenmeli (geriye uyumlu).
    */
   @Post('parse')
-  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  @UseInterceptors(FileInterceptor('file', {
+    storage: memoryStorage(),
+    limits: { fileSize: 200 * 1024 * 1024 },
+  }))
   async parseDwg(
     @UploadedFile() file: Express.Multer.File,
     @Query('discipline') discipline?: string,
@@ -102,7 +112,10 @@ export class DwgEngineController {
   }
 
   @Post('convert')
-  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  @UseInterceptors(FileInterceptor('file', {
+    storage: memoryStorage(),
+    limits: { fileSize: 200 * 1024 * 1024 },
+  }))
   async convertToDxf(@UploadedFile() file: Express.Multer.File) {
     if (!file) return { error: 'Dosya yuklenemedi' };
     return this.dwgEngine.convertToDxf(file.buffer, file.originalname);
