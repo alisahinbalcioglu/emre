@@ -49,6 +49,9 @@ MIN_EDGE_LENGTH = 5.0  # Çok kısa çizgiler (< 5 birim) atla
 SPRINKLER_SNAP_DIST = 50.0
 # Sprinkler projeksiyonu edge uclarina cok yakinsa bolme (anlamsiz parca olusmasin)
 SPRINKLER_EDGE_EPS = 0.05  # t parametresi icin [0.05, 0.95] araligi
+# AutoCAD'de sprinkler bazen borunun bir vertex'ine cakistiriliyor. Bu durumda
+# edge bolmeye gerek yok — mevcut node'u sprinkler olarak isaretlemek yeterli.
+SPRINKLER_VERTEX_SNAP = 5.0
 
 
 def _merge_close_points(raw_points: list[tuple[float, float]]) -> dict[int, Point]:
@@ -203,14 +206,30 @@ def build_graph(
                 sprinkler_positions.append((entity.dxf.insert.x, entity.dxf.insert.y))
 
         snap_dist_sq = SPRINKLER_SNAP_DIST ** 2
-        # Her sprinkler icin en yakin edge'i bul + bol.
-        # raw_edges listesi islem sirasinda genisler (yeni edge'ler eklenir),
-        # ama yeni edge'ler de sonraki sprinkler'lar icin aday — bu tutarli.
+        vertex_snap_sq = SPRINKLER_VERTEX_SNAP ** 2
+
+        # Her sprinkler icin:
+        # 1) ONCE mevcut bir raw_point'e cok yakinsa (bir polyline vertex'ine
+        #    cakistirilmissa), o node'u sprinkler olarak isaretle — bolme gereksiz.
+        # 2) Yoksa en yakin edge'i bul + projekte et + bolme yap.
         for sx, sy in sprinkler_positions:
+            # ── ADIM 1: mevcut node'a cakisim kontrolu ──
+            best_pt_idx = -1
+            best_pt_dsq = vertex_snap_sq
+            for i, (rx, ry) in enumerate(raw_points):
+                dd = (sx - rx) * (sx - rx) + (sy - ry) * (sy - ry)
+                if dd < best_pt_dsq:
+                    best_pt_dsq = dd
+                    best_pt_idx = i
+            if best_pt_idx >= 0:
+                # Mevcut vertex sprinkler — bolmeye gerek yok
+                sprinkler_raw_indices.add(best_pt_idx)
+                continue
+
+            # ── ADIM 2: edge uzerine snap + bolme ──
             best_edge_i = -1
             best_dist_sq = snap_dist_sq
             best_proj: tuple[float, float] | None = None
-            best_t = 0.0
 
             for i in range(len(raw_edges)):
                 ia, ib, length, layer = raw_edges[i]
@@ -221,7 +240,6 @@ def build_graph(
                 seg_len_sq = dx * dx + dy * dy
                 if seg_len_sq < 1e-6:
                     continue
-                # Dik projeksiyonun t parametresi
                 t = ((sx - ax) * dx + (sy - ay) * dy) / seg_len_sq
                 if t < SPRINKLER_EDGE_EPS or t > (1.0 - SPRINKLER_EDGE_EPS):
                     continue
@@ -232,25 +250,21 @@ def build_graph(
                     best_dist_sq = dsq
                     best_edge_i = i
                     best_proj = (px, py)
-                    best_t = t
 
             if best_edge_i < 0 or best_proj is None:
                 continue
 
-            # Edge'i bol
             ia, ib, _old_length, layer = raw_edges[best_edge_i]
             ax, ay = raw_points[ia]
             bx, by = raw_points[ib]
             px, py = best_proj
 
-            # Yeni nokta (mevcut nokta cache'ine ekle veya bulunana snap)
             ic = _get_idx(px, py)
             sprinkler_raw_indices.add(ic)
 
             len_a = math.sqrt((px - ax) ** 2 + (py - ay) ** 2)
             len_b = math.sqrt((bx - px) ** 2 + (by - py) ** 2)
 
-            # Minimum uzunluk kontrolu (kucuk parca olusmasin)
             if len_a < MIN_EDGE_LENGTH or len_b < MIN_EDGE_LENGTH:
                 continue
 
