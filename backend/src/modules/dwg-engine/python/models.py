@@ -7,7 +7,8 @@ from pydantic import BaseModel
 
 class LayerInfo(BaseModel):
     layer: str          # AutoCAD layer adi
-    entity_count: int   # LINE + LWPOLYLINE + POLYLINE entity sayisi
+    entity_count: int   # LINE + LWPOLYLINE + POLYLINE entity sayisi (boru cizgileri)
+    insert_count: int = 0  # INSERT entity sayisi (sprinkler/sembol block'lari)
 
 
 class LayerListResult(BaseModel):

@@ -127,24 +127,30 @@ def extract_layer_info(dxf_path: str) -> LayerListResult:
     doc = ezdxf.readfile(dxf_path)
     msp = doc.modelspace()
 
-    layer_data: dict[str, int] = {}  # layer → entity_count
+    # layer → {'entity': boru_cizgi_sayisi, 'insert': block_ref_sayisi}
+    layer_data: dict[str, dict[str, int]] = {}
+    pipe_types = ('LINE', 'LWPOLYLINE', 'POLYLINE')
 
-    target_types = ('LINE', 'LWPOLYLINE', 'POLYLINE')
     for entity in msp:
-        if entity.dxftype() not in target_types:
-            continue
+        et = entity.dxftype()
         layer = entity.dxf.layer
-        layer_data[layer] = layer_data.get(layer, 0) + 1
+        if layer not in layer_data:
+            layer_data[layer] = {'entity': 0, 'insert': 0}
+        if et in pipe_types:
+            layer_data[layer]['entity'] += 1
+        elif et == 'INSERT':
+            layer_data[layer]['insert'] += 1
 
+    # Hem boru cizgisi olan (pipe layer) hem sadece INSERT olan (sprinkler/sembol layer) goster
     layers = [
-        LayerInfo(layer=name, entity_count=count)
-        for name, count in sorted(layer_data.items())
-        if count > 0
+        LayerInfo(layer=name, entity_count=d['entity'], insert_count=d['insert'])
+        for name, d in sorted(layer_data.items())
+        if d['entity'] > 0 or d['insert'] > 0
     ]
 
     warnings: list[str] = []
     if not layers:
-        warnings.append("Hicbir cizgi entity'si (LINE/POLYLINE) tespit edilemedi")
+        warnings.append("Hicbir entity tespit edilemedi")
 
     return LayerListResult(
         layers=layers,

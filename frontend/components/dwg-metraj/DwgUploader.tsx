@@ -141,12 +141,20 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
       setSelectedLayerNames(selectedNames);
       const hatTipiMap: Record<string, string> = {};
       const materialTypeMap: Record<string, string> = {};
-      for (const s of selected) {
-        // Hat ismi varsa onu kullan, yoksa layer adini kullan
-        hatTipiMap[s.layer] = s.hatIsmi || s.layer;
-        // Malzeme tipi secildiyse gonder
-        if (s.materialType) {
-          materialTypeMap[s.layer] = s.materialType;
+
+      // TUM selections'tan hat ismi topla — sadece secili olanlar degil.
+      // Kullanici sprinkler layer'ini "Sec" etmeyip sadece hat ismine
+      // "sprinkler"/"upright" yazabilir; backend bunu yine sprinkler olarak
+      // algilayabilsin diye hat_tipi_map'e ekliyoruz.
+      for (const s of selections) {
+        if (s.selected) {
+          hatTipiMap[s.layer] = s.hatIsmi || s.layer;
+          if (s.materialType) {
+            materialTypeMap[s.layer] = s.materialType;
+          }
+        } else if (s.hatIsmi.trim()) {
+          // Secilmemis ama hat ismi var — sprinkler ipucu olabilir
+          hatTipiMap[s.layer] = s.hatIsmi;
         }
       }
 

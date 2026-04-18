@@ -3,15 +3,14 @@
 import React, { useState, useMemo } from 'react';
 import { Layers, Check, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
 
 // ── Tipler ──
 
 export interface LayerInfo {
   layer: string;
   entity_count: number;
+  /** INSERT (block reference) sayisi — genelde sprinkler/sembol layer'larini ayirt eder. */
+  insert_count?: number;
 }
 
 export interface LayerSelection {
@@ -23,16 +22,6 @@ export interface LayerSelection {
   hatIsmi: string;
   materialType: string; // "Siyah Boru", "HDPE", "PPR-C", vb. (bos = otomatik)
 }
-
-const MATERIAL_TYPES = [
-  { value: '', label: 'Otomatik' },
-  { value: 'Siyah Boru', label: 'Siyah Boru' },
-  { value: 'Galvaniz Boru', label: 'Galvaniz Boru' },
-  { value: 'PPR-C', label: 'PPR-C' },
-  { value: 'HDPE', label: 'HDPE' },
-  { value: 'PVC', label: 'PVC' },
-  { value: 'Bakir Boru', label: 'Bakir Boru' },
-];
 
 interface LayerSelectorProps {
   layers: LayerInfo[];
@@ -84,9 +73,9 @@ export default function LayerSelector({ layers, fileName, onConfirm, onCancel }:
   };
 
   const entityCountMap = useMemo(() => {
-    const map: Record<string, number> = {};
+    const map: Record<string, { line: number; block: number }> = {};
     for (const l of layers) {
-      map[l.layer] = l.entity_count;
+      map[l.layer] = { line: l.entity_count, block: l.insert_count ?? 0 };
     }
     return map;
   }, [layers]);
@@ -125,14 +114,16 @@ export default function LayerSelector({ layers, fileName, onConfirm, onCancel }:
 
       {/* Bilgilendirme */}
       <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5">
-        <p className="text-[11px] text-blue-700">
+        <p className="text-[11px] text-blue-700 leading-relaxed">
           <strong>Boru layer:</strong> Sol &quot;Sec&quot; kutusunu isaretle, hat ismi ver (orn: &quot;Yangin Hidrant Hatti&quot;).
           <br />
-          <strong>Sprinkler layer:</strong> Adi anlamsiz olsa bile <strong>Hat Ismi</strong> alanina
+          <strong>Sprinkler layer:</strong> Entity kolonunda
+          <span className="mx-1 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">▣</span>
+          rozetli layer'lar INSERT block icerir (sprinkler adayi). Boylesinin
+          <strong> Hat Ismi</strong> alanina
           <code className="mx-1 rounded bg-amber-100 px-1.5 py-0.5 text-amber-800">sprinkler</code>
-          (veya <code className="rounded bg-amber-100 px-1 py-0.5 text-amber-800">upright</code>,
-          <code className="mx-0.5 rounded bg-amber-100 px-1 py-0.5 text-amber-800">pendant</code>)
-          yazarsan o layer sprinkler olarak tanir, borular her sprinkler'de bolunur.
+          (veya <code className="rounded bg-amber-100 px-1 py-0.5 text-amber-800">upright</code>/<code className="rounded bg-amber-100 px-1 py-0.5 text-amber-800">pendant</code>) yazarsan,
+          borular her sprinkler noktasinda bolunur. &quot;Sec&quot; isaretlemen gerekmez.
         </p>
       </div>
 
@@ -143,7 +134,12 @@ export default function LayerSelector({ layers, fileName, onConfirm, onCancel }:
             <tr className="border-b bg-slate-50">
               <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 w-10">Sec</th>
               <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500">Layer Adi</th>
-              <th className="px-4 py-2.5 text-right text-xs font-semibold text-slate-500 w-20">Entity</th>
+              <th
+                className="px-4 py-2.5 text-right text-xs font-semibold text-slate-500 w-28"
+                title="Cizgi (LINE/POLYLINE) + Block (INSERT) sayisi"
+              >
+                Entity
+              </th>
               <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 w-56">Hat Ismi (opsiyonel)</th>
               <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 w-44">Malzeme Tipi</th>
             </tr>
@@ -184,11 +180,29 @@ export default function LayerSelector({ layers, fileName, onConfirm, onCancel }:
                   </span>
                 </td>
 
-                {/* Entity Sayisi */}
+                {/* Entity Sayisi — cizgi + block ayri gosterilir */}
                 <td className="px-4 py-2.5 text-right">
-                  <span className="text-xs text-slate-400 tabular-nums">
-                    {entityCountMap[sel.layer] ?? 0}
-                  </span>
+                  {(() => {
+                    const c = entityCountMap[sel.layer] ?? { line: 0, block: 0 };
+                    return (
+                      <span className="inline-flex items-center gap-1.5 text-xs tabular-nums">
+                        {c.line > 0 && (
+                          <span className="text-slate-500" title="Cizgi (boru)">{c.line}</span>
+                        )}
+                        {c.block > 0 && (
+                          <span
+                            className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700"
+                            title="INSERT block (sprinkler/sembol)"
+                          >
+                            {c.block}▣
+                          </span>
+                        )}
+                        {c.line === 0 && c.block === 0 && (
+                          <span className="text-slate-300">0</span>
+                        )}
+                      </span>
+                    );
+                  })()}
                 </td>
 
                 {/* Hat Ismi — text input. "sprinkler"/"upright"/"pendant"
@@ -209,37 +223,21 @@ export default function LayerSelector({ layers, fileName, onConfirm, onCancel }:
                   />
                 </td>
 
-                {/* Malzeme Tipi — dropdown */}
+                {/* Malzeme Tipi — serbest text input */}
                 <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
-                  <Select
-                    value={sel.materialType || '__auto__'}
-                    onValueChange={(v) =>
-                      changeMaterialType(sel.layer, v === '__auto__' ? '' : v)
-                    }
+                  <input
+                    type="text"
+                    value={sel.materialType}
+                    onChange={(e) => changeMaterialType(sel.layer, e.target.value)}
                     disabled={!sel.selected}
-                  >
-                    <SelectTrigger
-                      className={cn(
-                        'h-8 text-xs',
-                        sel.selected
-                          ? 'border-blue-200 hover:border-blue-300'
-                          : 'border-slate-100 text-slate-300 bg-slate-50 cursor-not-allowed',
-                      )}
-                    >
-                      <SelectValue placeholder="Otomatik" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {MATERIAL_TYPES.map((mt) => (
-                        <SelectItem
-                          key={mt.value || '__auto__'}
-                          value={mt.value || '__auto__'}
-                          className="text-xs"
-                        >
-                          {mt.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    placeholder={sel.selected ? 'orn: Siyah Boru / HDPE / PPR-C' : ''}
+                    className={cn(
+                      'w-full rounded-lg border bg-white px-3 py-1.5 text-xs outline-none transition-all',
+                      sel.selected
+                        ? 'border-blue-200 text-slate-700 placeholder:text-slate-300 hover:border-blue-300 focus:border-blue-400'
+                        : 'border-slate-100 text-slate-300 cursor-not-allowed bg-slate-50',
+                    )}
+                  />
                 </td>
               </tr>
             ))}
