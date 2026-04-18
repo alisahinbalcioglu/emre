@@ -9,11 +9,6 @@ class LayerInfo(BaseModel):
     layer: str          # AutoCAD layer adi
     entity_count: int   # LINE + LWPOLYLINE + POLYLINE entity sayisi (boru cizgileri)
     insert_count: int = 0  # INSERT entity sayisi (sprinkler/sembol block'lari)
-    # Geometri-bazli sprinkler aday skoru (0.0-1.0) — V2 icin, su an unused
-    sprinkler_candidate_score: float = 0.0
-    # Backend'in onerdigi rol — frontend UI pre-selection icin.
-    # 'pipe' | 'sprinkler' | 'ignore'. Kullanici UI'da degistirebilir.
-    suggested_role: str = 'ignore'
 
 
 class LayerListResult(BaseModel):

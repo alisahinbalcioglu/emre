@@ -533,16 +533,56 @@ def analyze_topology(
         return all_segs, all_bps, all_warns, all_edges
 
     # Tek layer analizi
-    # Sprinkler layer'lari: SADECE kullanicinin frontend'de Rol=sprinkler
-    # atadigi layer'lar kullanilir. Keyword bazli otomatik tarama kaldirildi
-    # — /layers endpoint'i zaten suggested_role uretiyor, kullanici UI'da
-    # onayliyor. Burada sadece gelen listeyi kullan.
+    # 1. Sprinkler layer'larini belirle — 3 kaynaktan toplanir:
+    #    (a) Kullanicinin manuel verdigi liste (sprinkler_layers_manual)
+    #    (b) Hat ismi icinde "sprink"/"upright"/"pendant"/"sidewall" gecen
+    #        layer'lar (hat_tipi_map uzerinden kullanici belirtir)
+    #    (c) Layer adi icinde ayni keyword gecen layer'lar (otomatik fallback)
     _selected_set = set(selected_layers)
-    sprinkler_layers_auto: list[str] = sorted(
-        l for l in (sprinkler_layers_manual or [])
-        if l not in _selected_set
-    )
 
+    def _norm_tr(s: str) -> str:
+        trans = str.maketrans({
+            '\u0130': 'I', '\u0049': 'I', '\u0131': 'i',
+            '\u015e': 'S', '\u015f': 's',
+            '\u011e': 'G', '\u011f': 'g',
+            '\u00d6': 'O', '\u00f6': 'o',
+            '\u00dc': 'U', '\u00fc': 'u',
+            '\u00c7': 'C', '\u00e7': 'c',
+        })
+        return s.translate(trans).lower()
+
+    SPRINKLER_KEYWORDS = ('sprink', 'upright', 'pendant', 'sidewall')
+
+    def _is_sprinkler_hint(text: str) -> bool:
+        return any(kw in _norm_tr(text) for kw in SPRINKLER_KEYWORDS)
+
+    sprinkler_set: set[str] = set()
+
+    # (a) Manuel liste
+    if sprinkler_layers_manual:
+        for l in sprinkler_layers_manual:
+            if l not in _selected_set:
+                sprinkler_set.add(l)
+
+    # (b) Hat ismi ipucu — kullanici hat ismine "sprinkler" yazdiysa
+    if hat_tipi_map:
+        for layer_name, hat_ismi in hat_tipi_map.items():
+            if layer_name in _selected_set:
+                continue
+            if hat_ismi and _is_sprinkler_hint(hat_ismi):
+                sprinkler_set.add(layer_name)
+
+    # (c) Layer adinda keyword — otomatik fallback (kullanici hicbir ipucu vermemisse de calisir)
+    import ezdxf as _ezdxf_sp
+    _doc_sp = _ezdxf_sp.readfile(dxf_path)
+    _all_layers_sp = {e.dxf.layer for e in _doc_sp.modelspace() if hasattr(e.dxf, 'layer')}
+    for l in _all_layers_sp:
+        if l in _selected_set:
+            continue
+        if _is_sprinkler_hint(l):
+            sprinkler_set.add(l)
+
+    sprinkler_layers_auto = sorted(sprinkler_set)
     if sprinkler_layers_auto:
         warnings.append(f"Sprinkler layer'lari: {sprinkler_layers_auto}")
 
@@ -550,29 +590,9 @@ def analyze_topology(
     if not graph.edges:
         return [], [], ["Seçilen layer'larda boru bulunamadı"], []
 
-    # Sprinkler snap orani — kac INSERT boruya snap edildi
-    import ezdxf as _ezdxf_dbg
-    total_inserts = 0
-    if sprinkler_layers_auto:
-        try:
-            _doc_dbg = _ezdxf_dbg.readfile(dxf_path)
-            _sp_set = set(sprinkler_layers_auto)
-            total_inserts = sum(
-                1 for e in _doc_dbg.modelspace().query('INSERT')
-                if e.dxf.layer in _sp_set
-            )
-        except Exception:
-            total_inserts = 0
-
-    snap_count = len(graph.sprinkler_points)
-    snap_miss = max(0, total_inserts - snap_count)
-    snap_pct = (snap_count * 100 // total_inserts) if total_inserts > 0 else 0
-
     warnings.append(
         f"Topoloji: {len(graph.edges)} edge, {len(graph.tees)} tee, "
-        f"{len(graph.ends)} hat sonu, {snap_count} sprinkler snap"
-        + (f" ({snap_count}/{total_inserts} = {snap_pct}%; {snap_miss} boruya > 150 birim uzak)"
-           if total_inserts > 0 else "")
+        f"{len(graph.ends)} hat sonu, {len(graph.sprinkler_points)} sprinkler"
     )
 
     # BranchPoint listesi (uyumluluk için)

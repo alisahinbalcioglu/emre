@@ -46,13 +46,12 @@ MERGE_DISTANCE = 25.0
 MAX_CLUSTER = 60.0  # Zincir birleşmeyi önler
 MIN_EDGE_LENGTH = 5.0  # Çok kısa çizgiler (< 5 birim) atla
 # Sprinkler INSERT'i boru edge'ine bu mesafede ise edge'i boleriz
-# (150 birim — boru kalinligi + cizim toleransi; dar projelerde 50 yetmiyordu)
-SPRINKLER_SNAP_DIST = 150.0
+SPRINKLER_SNAP_DIST = 50.0
 # Sprinkler projeksiyonu edge uclarina cok yakinsa bolme (anlamsiz parca olusmasin)
 SPRINKLER_EDGE_EPS = 0.05  # t parametresi icin [0.05, 0.95] araligi
 # AutoCAD'de sprinkler bazen borunun bir vertex'ine cakistiriliyor. Bu durumda
 # edge bolmeye gerek yok — mevcut node'u sprinkler olarak isaretlemek yeterli.
-SPRINKLER_VERTEX_SNAP = 15.0
+SPRINKLER_VERTEX_SNAP = 5.0
 
 
 def _merge_close_points(raw_points: list[tuple[float, float]]) -> dict[int, Point]:

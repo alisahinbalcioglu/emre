@@ -141,39 +141,9 @@ def extract_layer_info(dxf_path: str) -> LayerListResult:
         elif et == 'INSERT':
             layer_data[layer]['insert'] += 1
 
-    # Layer adi keyword'une gore sprinkler onerisi (Turkce I/S/G/O/U/C normalize)
-    def _norm_tr(s: str) -> str:
-        trans = str.maketrans({
-            '\u0130': 'I', '\u0049': 'I', '\u0131': 'i',
-            '\u015e': 'S', '\u015f': 's',
-            '\u011e': 'G', '\u011f': 'g',
-            '\u00d6': 'O', '\u00f6': 'o',
-            '\u00dc': 'U', '\u00fc': 'u',
-            '\u00c7': 'C', '\u00e7': 'c',
-        })
-        return s.translate(trans).lower()
-
-    SPRINKLER_KW = ('sprink', 'upright', 'pendant', 'sidewall')
-
-    def _suggest_role(name: str, entity: int, insert: int) -> str:
-        """Heuristik: INSERT-only veya sprinkler keyword'lu → sprinkler.
-        LINE/polyline olan + keyword yoksa → pipe. Hicbir sey yoksa → ignore."""
-        norm = _norm_tr(name)
-        has_kw = any(kw in norm for kw in SPRINKLER_KW)
-        if insert > 0 and (entity == 0 or has_kw):
-            return 'sprinkler'
-        if entity > 0:
-            return 'pipe'
-        return 'ignore'
-
     # Hem boru cizgisi olan (pipe layer) hem sadece INSERT olan (sprinkler/sembol layer) goster
     layers = [
-        LayerInfo(
-            layer=name,
-            entity_count=d['entity'],
-            insert_count=d['insert'],
-            suggested_role=_suggest_role(name, d['entity'], d['insert']),
-        )
+        LayerInfo(layer=name, entity_count=d['entity'], insert_count=d['insert'])
         for name, d in sorted(layer_data.items())
         if d['entity'] > 0 or d['insert'] > 0
     ]
