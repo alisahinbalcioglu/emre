@@ -97,10 +97,11 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
       const formData = new FormData();
       formData.append('file', f);
 
+      // Buyuk DWG'ler icin 5 dakika timeout (DWG->DXF donusturme + parse uzun surebilir)
       const res = await api.post(
         '/dwg-engine/layers',
         formData,
-        { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000 },
+        { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 300000 },
       );
 
       const data = res.data;
