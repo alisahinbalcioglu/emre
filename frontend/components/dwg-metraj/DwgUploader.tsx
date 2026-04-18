@@ -127,9 +127,12 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
    * file_id ile cagrilir — dosya tekrar yuklenmez.
    */
   const calculateMetraj = useCallback(async (selections: LayerSelection[]) => {
-    const selected = selections.filter((s) => s.selected);
-    if (selected.length === 0) {
-      toast({ title: 'Hata', description: 'En az bir layer secmelisiniz', variant: 'destructive' });
+    // Yeni rol-bazli secim: 'pipe' → selected_layers, 'sprinkler' → sprinkler_layers
+    const pipeSelections = selections.filter((s) => s.role === 'pipe');
+    const sprinklerSelections = selections.filter((s) => s.role === 'sprinkler');
+
+    if (pipeSelections.length === 0) {
+      toast({ title: 'Hata', description: 'En az bir boru layer secmelisiniz', variant: 'destructive' });
       return;
     }
 
@@ -138,36 +141,25 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
     startTimer();
 
     try {
-      const selectedNames = selected.map((s) => s.layer);
-      setSelectedLayerNames(selectedNames);
+      const pipeLayerNames = pipeSelections.map((s) => s.layer);
+      const sprinklerLayerNames = sprinklerSelections.map((s) => s.layer);
+      setSelectedLayerNames(pipeLayerNames);
+
       const hatTipiMap: Record<string, string> = {};
       const materialTypeMap: Record<string, string> = {};
-
-      // TUM selections'tan hat ismi topla — sadece secili olanlar degil.
-      // Kullanici sprinkler layer'ini "Sec" etmeyip sadece hat ismine
-      // "sprinkler"/"upright" yazabilir; backend bunu yine sprinkler olarak
-      // algilayabilsin diye hat_tipi_map'e ekliyoruz.
-      for (const s of selections) {
-        if (s.selected) {
-          hatTipiMap[s.layer] = s.hatIsmi || s.layer;
-          if (s.materialType) {
-            materialTypeMap[s.layer] = s.materialType;
-          }
-        } else if (s.hatIsmi.trim()) {
-          // Secilmemis ama hat ismi var — sprinkler ipucu olabilir
-          hatTipiMap[s.layer] = s.hatIsmi;
+      for (const s of pipeSelections) {
+        hatTipiMap[s.layer] = s.hatIsmi || s.layer;
+        if (s.materialType) {
+          materialTypeMap[s.layer] = s.materialType;
         }
       }
 
-      // Sprinkler layer tespiti backend tarafinda yapilir:
-      // Kullanici hat ismine "sprinkler"/"upright"/"pendant"/"sidewall"
-      // yazdiysa o layer sprinkler olarak islenir. layer_hat_tipi map'inden
-      // backend bunu anlar.
       const params = new URLSearchParams({
         discipline,
         scale: String(selectedUnit),
         file_id: fileId ?? '',
-        selected_layers: JSON.stringify(selectedNames),
+        selected_layers: JSON.stringify(pipeLayerNames),
+        sprinkler_layers: JSON.stringify(sprinklerLayerNames),
         layer_hat_tipi: JSON.stringify(hatTipiMap),
         layer_material_type: JSON.stringify(materialTypeMap),
       });
