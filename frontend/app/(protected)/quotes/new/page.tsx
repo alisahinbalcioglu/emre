@@ -1074,7 +1074,6 @@ export default function NewQuotePage() {
                         _isHeaderRow: false,
                         _rowIdx: idx++,
                         'Malzeme Adi': seg.material_type || layer.hat_tipi || layer.layer,
-                        'Cap': seg.diameter || '',
                         'Birim': 'm',
                         'Miktar': String(seg.length.toFixed(2)),
                       });

@@ -1,0 +1,192 @@
+{
+  "dxf": "C:\\Users\\basar\\AppData\\Local\\Temp\\dwg2dxf_0ezh1pz_\\depo alanları.dxf",
+  "dxf_size_mb": 8.27,
+  "model": "claude-sonnet-4-5-20250929",
+  "duration_sec": 20.0,
+  "input_tokens": 2695,
+  "output_tokens": 1104,
+  "cost_usd": 0.0246,
+  "cost_try": 0.99,
+  "total_unique_blocks": 26,
+  "total_inserts": 112,
+  "type_inserts": {
+    "sprinkler": 42,
+    "symbol_only": 39,
+    "pump": 6,
+    "fixture": 7,
+    "valve": 8,
+    "other": 7,
+    "fire_cabinet": 2,
+    "meter": 1
+  },
+  "type_blocks": {
+    "sprinkler": 1,
+    "symbol_only": 10,
+    "pump": 1,
+    "fixture": 2,
+    "valve": 5,
+    "other": 5,
+    "fire_cabinet": 1,
+    "meter": 1
+  },
+  "regex_sprinkler_hits": 42,
+  "ai_sprinkler_hits": 42,
+  "blocks": [
+    {
+      "block_name": "Sprinkler UPRIGHT",
+      "equipment_type": "sprinkler",
+      "confidence": "high",
+      "reason": "Block adı ve layer açıkça upright sprinkler kafası"
+    },
+    {
+      "block_name": "*U20",
+      "equipment_type": "symbol_only",
+      "confidence": "medium",
+      "reason": "Layer 0, oda isimleri yakınında, fiziksel ekipman değil"
+    },
+    {
+      "block_name": "*U27",
+      "equipment_type": "symbol_only",
+      "confidence": "medium",
+      "reason": "Layer 0, daire numarası context, mimari sembol"
+    },
+    {
+      "block_name": "yangın pompası",
+      "equipment_type": "pump",
+      "confidence": "high",
+      "reason": "Block adı yangın pompası, vana/boru yakınında"
+    },
+    {
+      "block_name": "OK",
+      "equipment_type": "symbol_only",
+      "confidence": "high",
+      "reason": "Ok işareti, çizim sembolu"
+    },
+    {
+      "block_name": "*U26",
+      "equipment_type": "symbol_only",
+      "confidence": "medium",
+      "reason": "Layer 0, banyo/oda context, mimari sembol"
+    },
+    {
+      "block_name": "klozet-villeroyboch-subway_plan",
+      "equipment_type": "fixture",
+      "confidence": "high",
+      "reason": "Klozet, saniter armatür"
+    },
+    {
+      "block_name": "yangınISLAK ALARM VANASI",
+      "equipment_type": "valve",
+      "confidence": "high",
+      "reason": "Islak alarm vanası, sprinkler sistemi vanası"
+    },
+    {
+      "block_name": "lavabo",
+      "equipment_type": "fixture",
+      "confidence": "high",
+      "reason": "Lavabo, saniter armatür"
+    },
+    {
+      "block_name": "*U9",
+      "equipment_type": "symbol_only",
+      "confidence": "medium",
+      "reason": "Layer kolon yangın, numaralandırma sembolu"
+    },
+    {
+      "block_name": "hgfhyj",
+      "equipment_type": "other",
+      "confidence": "low",
+      "reason": "Anlamsız block adı, context yok"
+    },
+    {
+      "block_name": "FGFGF",
+      "equipment_type": "other",
+      "confidence": "low",
+      "reason": "Anlamsız block adı, context yok"
+    },
+    {
+      "block_name": "-YT-YANGIN DOLABI",
+      "equipment_type": "fire_cabinet",
+      "confidence": "high",
+      "reason": "Block adı ve layer yangın dolapı"
+    },
+    {
+      "block_name": "FGFNGFN",
+      "equipment_type": "other",
+      "confidence": "low",
+      "reason": "Anlamsız block adı, context yok"
+    },
+    {
+      "block_name": "HJ YT U",
+      "equipment_type": "other",
+      "confidence": "low",
+      "reason": "Anlamsız block adı, context yok"
+    },
+    {
+      "block_name": "GJGJCGHJ",
+      "equipment_type": "other",
+      "confidence": "low",
+      "reason": "Anlamsız block adı, context yok"
+    },
+    {
+      "block_name": "*U8",
+      "equipment_type": "symbol_only",
+      "confidence": "medium",
+      "reason": "Layer kolon yangın, numaralandırma sembolu"
+    },
+    {
+      "block_name": "-YT-TEST VE DRENAJ VANASI",
+      "equipment_type": "valve",
+      "confidence": "high",
+      "reason": "Test ve drenaj vanası, sprinkler sistemi"
+    },
+    {
+      "block_name": "-YT-IZLEME ANAHTARLI KELEBEK VANA",
+      "equipment_type": "valve",
+      "confidence": "high",
+      "reason": "İzleme anahtarlı kelebek vana"
+    },
+    {
+      "block_name": "-YT-FS",
+      "equipment_type": "meter",
+      "confidence": "medium",
+      "reason": "FS = Flow Switch (akış anahtarı), vana layer'ında"
+    },
+    {
+      "block_name": "CEKVALF",
+      "equipment_type": "valve",
+      "confidence": "high",
+      "reason": "Çekvalf (check valve), vana layer'ında"
+    },
+    {
+      "block_name": "-YT-ITF.VANA",
+      "equipment_type": "valve",
+      "confidence": "high",
+      "reason": "İtfaiye vanası, vana layer'ında"
+    },
+    {
+      "block_name": "*U61",
+      "equipment_type": "symbol_only",
+      "confidence": "medium",
+      "reason": "Layer atık su, yangın tüpü yakınında, sembol olabilir"
+    },
+    {
+      "block_name": "*U63",
+      "equipment_type": "symbol_only",
+      "confidence": "medium",
+      "reason": "Layer atık su, itfaiye ağzı yakınında, sembol"
+    },
+    {
+      "block_name": "*U65",
+      "equipment_type": "symbol_only",
+      "confidence": "medium",
+      "reason": "Layer atık su, yangın dolabı yakınında, sembol"
+    },
+    {
+      "block_name": "*U67",
+      "equipment_type": "symbol_only",
+      "confidence": "medium",
+      "reason": "Layer atık su, yangın dolabı yakınında, sembol"
+    }
+  ]
+}

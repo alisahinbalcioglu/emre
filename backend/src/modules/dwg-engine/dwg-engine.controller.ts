@@ -1,5 +1,5 @@
 import {
-  Controller, Post, Get, UploadedFile,
+  Controller, Post, Get, Param, UploadedFile,
   UseGuards, UseInterceptors, Query,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -52,6 +52,8 @@ export class DwgEngineController {
     @Query('layer_hat_tipi') layerHatTipi?: string,
     @Query('layer_material_type') layerMaterialType?: string,
     @Query('sprinkler_layers') sprinklerLayers?: string,
+    @Query('use_ai_diameter') useAiDiameter?: string,
+    @Query('layer_default_diameter') layerDefaultDiameter?: string,
   ) {
     // file_id varsa dosya gerekmez, yoksa dosya zorunlu
     if (!fileId && !file) {
@@ -98,6 +100,16 @@ export class DwgEngineController {
       }
     }
 
+    // layer_default_diameter JSON object parse — AI'nin atayamadigi segment'ler icin layer-level default cap
+    let parsedDefaultDiameter: Record<string, string> | undefined;
+    if (layerDefaultDiameter) {
+      try {
+        parsedDefaultDiameter = JSON.parse(layerDefaultDiameter);
+      } catch {
+        return { error: 'layer_default_diameter gecersiz JSON formati' };
+      }
+    }
+
     return this.dwgEngine.parseDwg(
       file?.buffer ?? null,
       file?.originalname ?? '',
@@ -108,6 +120,8 @@ export class DwgEngineController {
       parsedHatTipi,
       parsedMaterialType,
       parsedSprinklerLayers,
+      useAiDiameter === 'true',
+      parsedDefaultDiameter,
     );
   }
 
@@ -125,5 +139,16 @@ export class DwgEngineController {
   async health() {
     const ok = await this.dwgEngine.healthCheck();
     return { status: ok ? 'ok' : 'unavailable', service: 'dwg-engine' };
+  }
+
+  /**
+   * Cache'teki DXF'ten koordinatlari dondur — SVG viewer (dwg-viewer) icin.
+   */
+  @Get('geometry/:fileId')
+  async getGeometry(
+    @Param('fileId') fileId: string,
+    @Query('layers') layers?: string,
+  ) {
+    return this.dwgEngine.getGeometry(fileId, layers ?? '');
   }
 }

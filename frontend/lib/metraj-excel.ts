@@ -5,9 +5,9 @@
 
 export interface MetrajExcelRow {
   name: string;
-  diameter: string;
   qty: string | number;
   unit: string;
+  diameter?: string;
   materialType?: string;
 }
 
@@ -62,7 +62,7 @@ export async function exportMetrajToExcel(
 
     for (const row of sheet.rows) {
       const qty = typeof row.qty === 'string' ? parseFloat(row.qty) || 0 : row.qty;
-      wsData.push([row.name, row.diameter, row.unit, qty]);
+      wsData.push([row.name, row.diameter || '', row.unit, qty]);
       totalItems++;
     }
 

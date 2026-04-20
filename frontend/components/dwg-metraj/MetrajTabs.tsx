@@ -11,9 +11,9 @@ import { exportMetrajToExcel, type MetrajSheet } from '@/lib/metraj-excel';
 interface MetrajRow {
   id: string;
   name: string;
-  diameter: string;
   qty: string;
   unit: string;
+  diameter: string;
   source: string;
   category: string;
   hatTipi?: string;
@@ -111,9 +111,9 @@ export default function MetrajTabs({ data, fileName, onAllApproved }: MetrajTabs
           materialType: mat,
           rows: activeRows.map((r) => ({
             name: r.name,
-            diameter: r.diameter,
             qty: r.qty,
             unit: r.unit,
+            diameter: r.diameter,
             materialType: r.materialType,
           })),
           totalLength: activeRows

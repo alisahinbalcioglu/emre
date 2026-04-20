@@ -37,7 +37,6 @@ class PipeGraph:
         self.ends = ends       # set[Point]
         self.adj = adj         # dict[Point, list[tuple[Point, Edge]]]
         # Sprinkler INSERT pozisyonlari icin borular bolunmus noktalar.
-        # compute_edge_branches bu noktalarda dali mecburen ayirir.
         self.sprinkler_points: set[Point] = sprinkler_points or set()
 
 
@@ -195,8 +194,7 @@ def build_graph(
 
     # 1.5. Sprinkler INSERT'leri topla ve borulari bu noktalarda bol
     # Her sprinkler position'a en yakin edge'i bulup bolmek: ayni boru iki
-    # edge'e donusur, ortasinda yeni node olur. Bu node'da compute_edge_branches
-    # kolinear pair bulsa bile birlesim YAPMAZ — her sprinkler bir dal ayirici.
+    # edge'e donusur, ortasinda yeni node olur.
     sprinkler_raw_indices: set[int] = set()
     if sprinkler_layers:
         sprinkler_set = set(sprinkler_layers)
@@ -208,12 +206,8 @@ def build_graph(
         snap_dist_sq = SPRINKLER_SNAP_DIST ** 2
         vertex_snap_sq = SPRINKLER_VERTEX_SNAP ** 2
 
-        # Her sprinkler icin:
-        # 1) ONCE mevcut bir raw_point'e cok yakinsa (bir polyline vertex'ine
-        #    cakistirilmissa), o node'u sprinkler olarak isaretle — bolme gereksiz.
-        # 2) Yoksa en yakin edge'i bul + projekte et + bolme yap.
         for sx, sy in sprinkler_positions:
-            # ── ADIM 1: mevcut node'a cakisim kontrolu ──
+            # Mevcut node'a cakisim kontrolu
             best_pt_idx = -1
             best_pt_dsq = vertex_snap_sq
             for i, (rx, ry) in enumerate(raw_points):
@@ -222,11 +216,10 @@ def build_graph(
                     best_pt_dsq = dd
                     best_pt_idx = i
             if best_pt_idx >= 0:
-                # Mevcut vertex sprinkler — bolmeye gerek yok
                 sprinkler_raw_indices.add(best_pt_idx)
                 continue
 
-            # ── ADIM 2: edge uzerine snap + bolme ──
+            # Edge uzerine snap + bolme
             best_edge_i = -1
             best_dist_sq = snap_dist_sq
             best_proj: tuple[float, float] | None = None

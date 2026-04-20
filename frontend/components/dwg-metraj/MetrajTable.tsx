@@ -6,11 +6,10 @@ import { AlertCircle } from 'lucide-react';
 export interface PipeSegment {
   segment_id: number;
   layer: string;
-  diameter: string;
   length: number;
   line_count: number;
   material_type?: string;
-  coords?: number[][];
+  diameter?: string;
 }
 
 export interface LayerMetraj {
@@ -26,6 +25,15 @@ export interface BranchPointData {
   y: number;
   connections: number;
   point_type: string;
+  layer?: string;
+}
+
+export interface EdgeSegmentData {
+  segment_id: number;
+  layer: string;
+  diameter: string;
+  length: number;
+  coords: [number, number, number, number];
 }
 
 export interface MetrajResult {
@@ -34,8 +42,7 @@ export interface MetrajResult {
   total_layers: number;
   warnings: string[];
   branch_points?: BranchPointData[];
-  edge_segments?: PipeSegment[];
-  background_lines?: number[][];
+  edge_segments?: EdgeSegmentData[];
 }
 
 interface MetrajTableProps {

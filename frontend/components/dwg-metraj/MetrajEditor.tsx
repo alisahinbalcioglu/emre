@@ -9,14 +9,14 @@ import type { MetrajResult } from './MetrajTable';
 interface MetrajRow {
   id: string;
   name: string;
-  diameter: string;
   qty: string;
   unit: string;
+  diameter: string; // "Ø50", "DN25", "1\"" — AI atadigi cap (opsiyonel, bos olabilir)
   source: string; // "project" | "rule" | "user"
   category: string; // "Boru" | "Fitting" | "Vana" | "Otomatik"
-  hatTipi?: string; // yangin, sihhi, isitma, vb.
-  materialType?: string; // Siyah Boru, HDPE, PPR-C, vb.
-  original?: { name: string; qty: number }; // duzeltme oncesi
+  hatTipi?: string;
+  materialType?: string;
+  original?: { name: string; qty: number };
   deleted?: boolean;
 }
 
@@ -39,51 +39,43 @@ interface MetrajEditorProps {
 let _nextId = 1;
 const nextId = () => `row-${_nextId++}`;
 
-/** Cap string'inden numerik siralama degeri cikar */
-function diameterSortKey(d: string): number {
-  if (!d || d === 'Belirtilmemis') return -1;
-  const match = d.match(/(\d+)/);
-  if (!match) return 0;
-  return parseInt(match[1], 10);
-}
-
 function metrajToRows(data: MetrajResult): MetrajRow[] {
   const rows: MetrajRow[] = [];
   for (const l of data.layers || []) {
-    // Segment varsa: her cap icin ayri satir
-    if (l.segments && l.segments.length > 0) {
+    // Eger AI cap atamisi varsa (segments icinde her cap icin ayri satir), her segment ayri row
+    if (l.segments && l.segments.length > 0 && l.segments.some((s) => s.diameter)) {
       for (const seg of l.segments) {
         rows.push({
           id: nextId(),
           name: l.hat_tipi || l.layer,
-          diameter: seg.diameter || '',
           qty: seg.length.toFixed(2),
           unit: 'm',
+          diameter: seg.diameter || '',
           source: 'project',
           category: 'Boru',
           hatTipi: l.hat_tipi ?? '',
-          materialType: seg.material_type ?? '',
+          materialType: seg.material_type || '',
         });
       }
     } else {
-      // Segment yoksa: layer = satir (eski davranis)
+      // AI yoksa layer tek satir
       rows.push({
         id: nextId(),
         name: l.hat_tipi || l.layer,
-        diameter: '',
         qty: l.length.toFixed(2),
         unit: 'm',
+        diameter: '',
         source: 'project',
         category: 'Boru',
         hatTipi: l.hat_tipi ?? '',
-        materialType: '',
+        materialType: (l.segments && l.segments[0]?.material_type) || '',
       });
     }
   }
   return rows;
 }
 
-/** Satirlari hat tipine gore grupla, her grup icinde cap'a gore buyukten kucuge sirala */
+/** Satirlari hat tipine gore grupla */
 function groupAndSortRows(rows: MetrajRow[]): GroupedMetraj[] {
   const groups = new Map<string, MetrajRow[]>();
   for (const row of rows) {
@@ -94,7 +86,7 @@ function groupAndSortRows(rows: MetrajRow[]): GroupedMetraj[] {
   }
   return Array.from(groups.entries()).map(([hatTipi, groupRows]) => ({
     hatTipi,
-    rows: groupRows.sort((a, b) => diameterSortKey(b.diameter) - diameterSortKey(a.diameter)),
+    rows: groupRows,
     totalLength: groupRows.reduce((sum, r) => sum + (parseFloat(r.qty) || 0), 0),
   }));
 }
@@ -111,7 +103,6 @@ export default function MetrajEditor({ data, fileName, onApprove, hideFooterActi
 
   // Yeni satir ekleme formu
   const [newName, setNewName] = useState('');
-  const [newDiameter, setNewDiameter] = useState('');
   const [newQty, setNewQty] = useState('');
   const [newUnit, setNewUnit] = useState('ad');
   const [showAddForm, setShowAddForm] = useState(false);
@@ -160,14 +151,13 @@ export default function MetrajEditor({ data, fileName, onApprove, hideFooterActi
     setRows((prev) => [...prev, {
       id: nextId(),
       name: newName.trim(),
-      diameter: newDiameter.trim(),
       qty: newQty || '1',
       unit: newUnit,
+      diameter: '',
       source: 'user',
       category: 'Elle Eklenen',
     }]);
     setNewName('');
-    setNewDiameter('');
     setNewQty('');
     setNewUnit('ad');
     setShowAddForm(false);
@@ -185,7 +175,7 @@ export default function MetrajEditor({ data, fileName, onApprove, hideFooterActi
         wsData.push([group.hatTipi]);
         wsData.push(['Malzeme Adi', 'Cap', 'Birim', 'Miktar']);
         for (const row of group.rows) {
-          wsData.push([row.name, row.diameter, row.unit, parseFloat(row.qty) || 0]);
+          wsData.push([row.name, row.diameter || '', row.unit, parseFloat(row.qty) || 0]);
         }
         wsData.push(['', '', 'Toplam:', Math.round(group.totalLength * 100) / 100]);
         wsData.push([]);
@@ -244,7 +234,7 @@ export default function MetrajEditor({ data, fileName, onApprove, hideFooterActi
             <tr className="border-b bg-slate-50">
               <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 w-8">#</th>
               <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500">Malzeme Adi</th>
-              <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 w-20">Cap</th>
+              <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 w-24">Cap</th>
               <th className="px-4 py-2.5 text-right text-xs font-semibold text-slate-500 w-24">Miktar</th>
               <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 w-16">Birim</th>
               <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 w-20">Kaynak</th>
@@ -308,8 +298,11 @@ export default function MetrajEditor({ data, fileName, onApprove, hideFooterActi
                             type="text"
                             value={row.diameter}
                             onChange={(e) => setRows((prev) => prev.map((r) => r.id === row.id ? { ...r, diameter: e.target.value } : r))}
-                            className="w-20 bg-transparent text-xs text-slate-500 outline-none border-b border-transparent hover:border-slate-200 focus:border-blue-400 py-1 transition-colors"
-                            placeholder="DN..."
+                            placeholder="—"
+                            className={cn(
+                              'w-20 bg-transparent text-xs outline-none border-b border-transparent hover:border-slate-200 focus:border-blue-400 py-1 transition-colors',
+                              row.diameter ? 'text-slate-700 font-medium' : 'text-slate-400',
+                            )}
                           />
                         </td>
                         <td className="px-4 py-1.5 text-right">
@@ -378,7 +371,7 @@ export default function MetrajEditor({ data, fileName, onApprove, hideFooterActi
       {showAddForm ? (
         <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50/30 p-4">
           <p className="text-xs font-semibold text-emerald-700 mb-3">Yeni Malzeme Ekle</p>
-          <div className="grid grid-cols-5 gap-2">
+          <div className="grid grid-cols-4 gap-2">
             <div className="col-span-2">
               <input
                 type="text"
@@ -390,13 +383,6 @@ export default function MetrajEditor({ data, fileName, onApprove, hideFooterActi
                 onKeyDown={(e) => e.key === 'Enter' && handleAddRow()}
               />
             </div>
-            <input
-              type="text"
-              value={newDiameter}
-              onChange={(e) => setNewDiameter(e.target.value)}
-              placeholder="Cap (DN50)"
-              className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-blue-400"
-            />
             <input
               type="text"
               value={newQty}

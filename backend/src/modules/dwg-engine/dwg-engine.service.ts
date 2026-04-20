@@ -58,6 +58,8 @@ export class DwgEngineService {
     layerHatTipi?: Record<string, string>,
     layerMaterialType?: Record<string, string>,
     sprinklerLayers?: string[],
+    useAiDiameter: boolean = false,
+    layerDefaultDiameter?: Record<string, string>,
   ) {
     const params = new URLSearchParams({
       discipline,
@@ -78,6 +80,12 @@ export class DwgEngineService {
     }
     if (sprinklerLayers && sprinklerLayers.length > 0) {
       params.set('sprinkler_layers', JSON.stringify(sprinklerLayers));
+    }
+    if (useAiDiameter) {
+      params.set('use_ai_diameter', 'true');
+    }
+    if (layerDefaultDiameter && Object.keys(layerDefaultDiameter).length > 0) {
+      params.set('layer_default_diameter', JSON.stringify(layerDefaultDiameter));
     }
 
     const fetchOptions: RequestInit = {
@@ -140,6 +148,38 @@ export class DwgEngineService {
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new HttpException('DWG Engine baglanti hatasi', HttpStatus.SERVICE_UNAVAILABLE);
+    }
+  }
+
+  /**
+   * DXF geometrisini (LINE/POLYLINE koordinatlari) getir.
+   * Frontend SVG viewer (dwg-viewer klasoru) kullanir.
+   */
+  async getGeometry(fileId: string, layers: string = '') {
+    const params = new URLSearchParams();
+    if (layers) params.set('layers', layers);
+    const qs = params.toString();
+    const url = `${this.pythonServiceUrl}/geometry/${encodeURIComponent(fileId)}${qs ? '?' + qs : ''}`;
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        signal: AbortSignal.timeout(60_000),
+      });
+      if (!response.ok) {
+        const error = await response.text();
+        throw new HttpException(
+          `Geometri hatasi: ${error}`,
+          response.status >= 500 ? HttpStatus.INTERNAL_SERVER_ERROR : HttpStatus.UNPROCESSABLE_ENTITY,
+        );
+      }
+      return await response.json();
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        'DWG Engine baglanti hatasi',
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
     }
   }
 

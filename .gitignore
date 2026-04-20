@@ -62,6 +62,9 @@ Thumbs.db
 *.bak
 *.cache
 
+# Claude Code yerel konfigurasyon (worktree'ler, planlar, agent state)
+.claude/
+
 # Coverage
 coverage/
 *.lcov
