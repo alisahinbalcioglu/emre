@@ -3,9 +3,28 @@ import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 @Injectable()
 export class DwgEngineService {
   private readonly pythonServiceUrl: string;
+  private readonly internalToken: string;
 
   constructor() {
-    this.pythonServiceUrl = process.env.DWG_ENGINE_URL || 'http://localhost:8011';
+    // Python engine URL önceligi:
+    //   1. DWG_ENGINE_URL — acik URL (dev: http://localhost:8011)
+    //   2. DWG_ENGINE_HOST — Render fromService.host ile set edilir, https eklenir
+    //   3. fallback: localhost
+    const urlEnv = process.env.DWG_ENGINE_URL?.trim();
+    const hostEnv = process.env.DWG_ENGINE_HOST?.trim();
+    if (urlEnv) {
+      this.pythonServiceUrl = urlEnv;
+    } else if (hostEnv) {
+      this.pythonServiceUrl = `https://${hostEnv}`;
+    } else {
+      this.pythonServiceUrl = 'http://localhost:8011';
+    }
+    this.internalToken = process.env.DWG_ENGINE_TOKEN?.trim() ?? '';
+  }
+
+  /** Python engine'e giden istekler icin header — INTERNAL auth */
+  private headers(): Record<string, string> {
+    return this.internalToken ? { 'X-Internal-Token': this.internalToken } : {};
   }
 
   /**
@@ -21,7 +40,7 @@ export class DwgEngineService {
     try {
       const response = await fetch(
         `${this.pythonServiceUrl}/layers`,
-        { method: 'POST', body: formData, signal: AbortSignal.timeout(300_000) },
+        { method: 'POST', body: formData, headers: this.headers(), signal: AbortSignal.timeout(300_000) },
       );
 
       if (!response.ok) {
@@ -90,6 +109,7 @@ export class DwgEngineService {
 
     const fetchOptions: RequestInit = {
       method: 'POST',
+      headers: this.headers(),
       signal: AbortSignal.timeout(300_000),
     };
 
@@ -138,7 +158,7 @@ export class DwgEngineService {
     try {
       const response = await fetch(
         `${this.pythonServiceUrl}/convert`,
-        { method: 'POST', body: formData, signal: AbortSignal.timeout(120_000) },
+        { method: 'POST', body: formData, headers: this.headers(), signal: AbortSignal.timeout(120_000) },
       );
       if (!response.ok) {
         const error = await response.text();
@@ -164,6 +184,7 @@ export class DwgEngineService {
     try {
       const response = await fetch(url, {
         method: 'GET',
+        headers: this.headers(),
         signal: AbortSignal.timeout(60_000),
       });
       if (!response.ok) {

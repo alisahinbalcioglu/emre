@@ -1,0 +1,94 @@
+# ═════════════════════════════════════════════════════════════
+#  MetaPrice SaaS — Render Blueprint
+# ═════════════════════════════════════════════════════════════
+# Render dashboard → New + → Blueprint → bu repoyu secerek tum
+# altyapi (Postgres + NestJS API + Python DWG Engine) tek tikta kurulur.
+#
+# NOT — Free tier kisitlari:
+#  - Postgres 30 gun sonra silinir (prod icin Starter'a gec, $7/ay)
+#  - Web servisleri 15dk idle → uyku (ilk istek ~60s soguk kalkis)
+#  - Private Services free'de yok → Python engine public ama
+#    INTERNAL_API_TOKEN ile NestJS-only erisim saglanir.
+#
+# Upgrade yolu: `plan: free` → `plan: starter` her servis icin.
+# Python'u gercek private yapmak icin: `type: web` → `type: pserv`.
+# ═════════════════════════════════════════════════════════════
+
+databases:
+  - name: metaprice-db
+    databaseName: metaprice
+    user: metaprice
+    plan: free          # 30 gun, 1GB — prodda Starter'a gec
+    region: frankfurt   # Turkiye icin en dusuk gecikme
+    postgresMajorVersion: 16
+
+services:
+  # ───────────────────────────────────────────────────────
+  # 1) Python DWG Engine — FastAPI + ezdxf
+  #    Public URL ama INTERNAL_API_TOKEN ile kilitli
+  # ───────────────────────────────────────────────────────
+  - type: web
+    name: metaprice-dwg-engine
+    runtime: python
+    region: frankfurt
+    plan: free
+    rootDir: backend/src/modules/dwg-engine/python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+      # NestJS'ten gelen her istek bu token'i X-Internal-Token header'inda tasimali
+      - key: INTERNAL_API_TOKEN
+        generateValue: true   # Render ilk deploy'da random uretir
+      # Claude API — dashboard'dan elle set et
+      - key: ANTHROPIC_API_KEY
+        sync: false
+
+  # ───────────────────────────────────────────────────────
+  # 2) NestJS API — Prisma + PostgreSQL + multer
+  # ───────────────────────────────────────────────────────
+  - type: web
+    name: metaprice-api
+    runtime: node
+    region: frankfurt
+    plan: free
+    rootDir: backend
+    buildCommand: npm install && npx prisma generate && npm run build
+    startCommand: npx prisma migrate deploy && node dist/main
+    healthCheckPath: /api
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: NODE_ENV
+        value: production
+      # Database — otomatik baglanir
+      - key: DATABASE_URL
+        fromDatabase:
+          name: metaprice-db
+          property: connectionString
+      # JWT — Render rastgele secret uretir, rotation kolay
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      # Python engine baglantisi — host fromService, https prefix service.ts'de
+      - key: DWG_ENGINE_HOST
+        fromService:
+          type: web
+          name: metaprice-dwg-engine
+          property: host
+      # Token'i da Python servisinden kopyala — ayni deger
+      - key: DWG_ENGINE_TOKEN
+        fromService:
+          type: web
+          name: metaprice-dwg-engine
+          envVarKey: INTERNAL_API_TOKEN
+      # CORS — Netlify deploy sonrasi buraya frontend URL'i gir
+      # Ornek: "https://metaprice.netlify.app,https://metaprice.com"
+      - key: CORS_ORIGINS
+        sync: false
+      # Claude API — dashboard'dan elle set et (rotate edilmis yeni key)
+      - key: ANTHROPIC_API_KEY
+        sync: false

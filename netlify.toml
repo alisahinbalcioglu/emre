@@ -1,0 +1,24 @@
+# ═════════════════════════════════════════════════════════════
+#  MetaPrice Frontend — Netlify Config
+# ═════════════════════════════════════════════════════════════
+# Netlify dashboard → Add new site → Import from Git → bu repo.
+# Build settings otomatik bu dosyadan okunur.
+#
+# Gereken environment variable (Site settings → Environment variables):
+#   NEXT_PUBLIC_API_URL = https://metaprice-api.onrender.com/api
+#     (Render NestJS URL'inin sonuna /api ekle)
+# ═════════════════════════════════════════════════════════════
+
+[build]
+  base = "frontend"
+  command = "npm install && npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "20"
+  NEXT_TELEMETRY_DISABLED = "1"
+
+# Netlify'in resmi Next.js eklentisi — App Router, ISR, API routes, image opt destegi.
+# Otomatik yuklenir ama burada da tanimlamak netlik saglar.
+[[plugins]]
+  package = "@netlify/plugin-nextjs"

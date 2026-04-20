@@ -16,8 +16,9 @@ import base64
 import tempfile
 from collections import defaultdict
 import ezdxf
-from fastapi import FastAPI, UploadFile, File, Query, HTTPException
+from fastapi import FastAPI, UploadFile, File, Query, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from converter import convert_dwg_to_dxf
 from topology import analyze_topology
 from geometry import extract_geometry, GeometryResult
@@ -45,6 +46,29 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ═══════════════════════════════════════════════════════
+#  INTERNAL AUTH — yalnizca NestJS'ten gelen istekleri kabul et
+# ═══════════════════════════════════════════════════════
+# Production'da public URL'i olsa da, INTERNAL_API_TOKEN set edilirse
+# her istek 'X-Internal-Token' header'inda bu token'i tasimak zorunda.
+# Locale (env yoksa) auth kontrol atlanir — geliştirme engel olmasin.
+
+_INTERNAL_API_TOKEN = os.environ.get("INTERNAL_API_TOKEN", "").strip()
+_PUBLIC_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
+
+
+@app.middleware("http")
+async def verify_internal_token(request: Request, call_next):
+    if _INTERNAL_API_TOKEN and request.url.path not in _PUBLIC_PATHS:
+        provided = request.headers.get("x-internal-token", "")
+        if provided != _INTERNAL_API_TOKEN:
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Unauthorized — internal token missing or invalid"},
+            )
+    return await call_next(request)
 
 
 # ═══════════════════════════════════════════════════════
@@ -669,5 +693,6 @@ async def convert_to_dxf(file: UploadFile = File(...)):
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.environ.get("DWG_ENGINE_PORT", 8011))
+    # Render 'PORT' kullanir, locale DWG_ENGINE_PORT fallback; default 8011
+    port = int(os.environ.get("PORT") or os.environ.get("DWG_ENGINE_PORT") or 8011)
     uvicorn.run(app, host="0.0.0.0", port=port)

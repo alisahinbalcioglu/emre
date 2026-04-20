@@ -19,8 +19,17 @@ async function bootstrap() {
     }),
   );
 
+  // CORS origin'leri CORS_ORIGINS env'inden virgullu okunur.
+  // Production'da Netlify URL'i buraya eklenir: "https://app.netlify.app,https://metaprice.com"
+  // Locale varsayilan: localhost:3000/3002/3003 (geri uyumluluk).
+  const corsOrigins = (process.env.CORS_ORIGINS
+    ?? 'http://localhost:3000,http://localhost:3002,http://localhost:3003')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
   app.enableCors({
-    origin: ['http://localhost:3000', 'http://localhost:3002', 'http://localhost:3003'],
+    origin: corsOrigins,
     credentials: true,
   });
 
