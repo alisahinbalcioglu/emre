@@ -19,16 +19,32 @@ FROM python:3.11-slim-bookworm
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
-# libredwg-tools paketi Debian'da 'contrib' reposunda — onu enable et.
-# bookworm-slim deb822 sources kullanir, ona contrib component'i ekle.
-RUN sed -i 's/Components: main/Components: main contrib/' /etc/apt/sources.list.d/debian.sources && \
-    apt-get update && \
+
+# libredwg-tools paketi Debian bookworm/trixie'de paketli degil — source'dan
+# derliyoruz. dwg2dxf ve digerleri /usr/local/bin altina kurulur, converter.py
+# zaten shutil.which("dwg2dxf") ile arar.
+RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        libredwg-tools \
-        build-essential \
-        gcc && \
+        ca-certificates git \
+        build-essential gcc autoconf automake libtool pkg-config \
+        swig texinfo perl \
+        libpcre2-dev && \
+    git clone --depth 1 https://github.com/LibreDWG/libredwg.git /tmp/libredwg && \
+    cd /tmp/libredwg && \
+    sh autogen.sh && \
+    ./configure --disable-bindings --disable-docs --disable-static && \
+    make -j"$(nproc)" && \
+    make install && \
+    ldconfig && \
+    cd / && rm -rf /tmp/libredwg && \
+    # Build-only paketleri sok ki final image kuculsun
+    apt-get purge -y --auto-remove \
+        git autoconf automake libtool pkg-config \
+        swig texinfo perl libpcre2-dev && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* && \
+    # Sanity: dwg2dxf PATH'te mi
+    dwg2dxf --version || (echo "dwg2dxf install fail" && exit 1)
 
 WORKDIR /app
 
