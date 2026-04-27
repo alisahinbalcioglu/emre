@@ -19,7 +19,10 @@ FROM python:3.11-slim-bookworm
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
-RUN apt-get update && \
+# libredwg-tools paketi Debian'da 'contrib' reposunda — onu enable et.
+# bookworm-slim deb822 sources kullanir, ona contrib component'i ekle.
+RUN sed -i 's/Components: main/Components: main contrib/' /etc/apt/sources.list.d/debian.sources && \
+    apt-get update && \
     apt-get install -y --no-install-recommends \
         libredwg-tools \
         build-essential \
