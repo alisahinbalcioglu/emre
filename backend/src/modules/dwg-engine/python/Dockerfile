@@ -15,7 +15,9 @@ FROM python:3.11-slim
 #  - libredwg-tools: dwg2dxf binary'i (DWG → DXF cevirisi)
 #  - build-essential, gcc: bazi pip paketleri (ezdxf vb.) icin gerekli
 #  - libpcre3-dev: ezdxf'in optional dependencies icin
-ENV DEBIAN_FRONTEND=noninteractive
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         libredwg-tools \
