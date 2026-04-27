@@ -9,12 +9,13 @@
 #  oldugu surece buildCommand ve startCommand kullanmaz.
 # ─────────────────────────────────────────────────────────────────
 
-FROM python:3.11-slim
+# bookworm sabit cunku libredwg-tools paketi trixie'de yok (slim default'u
+# python image'inin trixie'ye gecince patladi). bookworm Debian 12 = stable.
+FROM python:3.11-slim-bookworm
 
 # Sistem paketleri:
 #  - libredwg-tools: dwg2dxf binary'i (DWG → DXF cevirisi)
-#  - build-essential, gcc: bazi pip paketleri (ezdxf vb.) icin gerekli
-#  - libpcre3-dev: ezdxf'in optional dependencies icin
+#  - build-essential, gcc: bazi pip paketleri (ezdxf vb.) wheel yoksa icin gerekli
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
@@ -22,8 +23,7 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         libredwg-tools \
         build-essential \
-        gcc \
-        libpcre3-dev && \
+        gcc && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
