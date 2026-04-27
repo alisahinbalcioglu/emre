@@ -203,6 +203,23 @@ export default function DxfPixiViewer({
       app.stage.addChild(layers.world);
       appRef.current = app;
       layersRef.current = layers;
+      // PixiJS resizeTo bazen ilk mount'ta tetiklenmiyor (container o anda
+      // 0 boyutlu olabilir). Container boyutu hazirsa manuel resize at;
+      // degilse ResizeObserver bekle.
+      const w = container.clientWidth;
+      const h = container.clientHeight;
+      if (w > 0 && h > 0) {
+        app.renderer.resize(w, h);
+      }
+      // Bir frame sonra container'in nihai boyutu icin tekrar resize at.
+      requestAnimationFrame(() => {
+        if (cancelled || !appRef.current) return;
+        const fw = container.clientWidth;
+        const fh = container.clientHeight;
+        if (fw > 0 && fh > 0) {
+          appRef.current.renderer.resize(fw, fh);
+        }
+      });
       setStageReady(true);
     })();
 
