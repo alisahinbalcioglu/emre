@@ -89,7 +89,7 @@ def convert_dwg_to_dxf(dwg_path: str) -> str:
 
     # Yontem 3: ezdxf dogrudan DXF okuyabilir ama DWG okuyamaz
     raise RuntimeError(
-        "DWG→DXF cevirici bulunamadi. "
-        "ODA FileConverter veya LibreDWG kurulmali. "
-        "Alternatif: DXF formatinda dosya yukleyin."
+        "Bu sunucuda DWG→DXF donusumu kapali (ODA FileConverter / LibreDWG kurulu degil). "
+        "Lutfen dosyayi DXF formatinda yukleyin. "
+        "Yerel kurulumda ODAFileConverter veya 'dwg2dxf' (libredwg-tools) PATH'e eklenince otomatik etkinlesir."
     )
