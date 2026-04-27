@@ -189,6 +189,7 @@ export default function DxfPixiViewer({
     if (!canvas || !container) return;
 
     let cancelled = false;
+    let resizeObserver: ResizeObserver | null = null;
     (async () => {
       const app = await createPixiStage({
         canvas,
@@ -203,28 +204,28 @@ export default function DxfPixiViewer({
       app.stage.addChild(layers.world);
       appRef.current = app;
       layersRef.current = layers;
-      // PixiJS resizeTo bazen ilk mount'ta tetiklenmiyor (container o anda
-      // 0 boyutlu olabilir). Container boyutu hazirsa manuel resize at;
-      // degilse ResizeObserver bekle.
-      const w = container.clientWidth;
-      const h = container.clientHeight;
-      if (w > 0 && h > 0) {
-        app.renderer.resize(w, h);
-      }
-      // Bir frame sonra container'in nihai boyutu icin tekrar resize at.
+
+      // PixiJS resizeTo, container'in boyutu mount aninda 0'dan farkli olsa
+      // bile bazen ilk resize callback'ini tetiklemiyor — sonuc: canvas
+      // 300x150 default'unda kaliyor, tum cizim kucuk buffer'a sıkışır.
+      // 1) Hemen app.resize() — Pixi'nin kendi resizeTo logic'ini calistir
+      // 2) RAF'ta tekrar — layout settled olmasi icin
+      // 3) ResizeObserver ile her boyut degisikligini yakala
+      app.resize();
       requestAnimationFrame(() => {
-        if (cancelled || !appRef.current) return;
-        const fw = container.clientWidth;
-        const fh = container.clientHeight;
-        if (fw > 0 && fh > 0) {
-          appRef.current.renderer.resize(fw, fh);
-        }
+        if (!cancelled && appRef.current) appRef.current.resize();
       });
+      resizeObserver = new ResizeObserver(() => {
+        if (!cancelled && appRef.current) appRef.current.resize();
+      });
+      resizeObserver.observe(container);
+
       setStageReady(true);
     })();
 
     return () => {
       cancelled = true;
+      resizeObserver?.disconnect();
       setStageReady(false);
       bgHandleRef.current?.destroy();
       edgesHandleRef.current?.destroy();
