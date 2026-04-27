@@ -12,10 +12,15 @@ export class DwgEngineService {
     //   3. fallback: localhost
     const urlEnv = process.env.DWG_ENGINE_URL?.trim();
     const hostEnv = process.env.DWG_ENGINE_HOST?.trim();
+    // Defansif: host degerinin basinda http(s):// veya sonunda / kazara
+    // varsa temizle, aksi halde double-prefix bug olusur (https://https://...).
+    const cleanHost = hostEnv
+      ?.replace(/^https?:\/\//i, '')
+      .replace(/\/+$/, '');
     if (urlEnv) {
-      this.pythonServiceUrl = urlEnv;
-    } else if (hostEnv) {
-      this.pythonServiceUrl = `https://${hostEnv}`;
+      this.pythonServiceUrl = urlEnv.replace(/\/+$/, '');
+    } else if (cleanHost) {
+      this.pythonServiceUrl = `https://${cleanHost}`;
     } else {
       this.pythonServiceUrl = 'http://localhost:8011';
     }
