@@ -24,21 +24,20 @@ databases:
 
 services:
   # ───────────────────────────────────────────────────────
-  # 1) Python DWG Engine — FastAPI + ezdxf
-  #    Public URL ama INTERNAL_API_TOKEN ile kilitli
+  # 1) Python DWG Engine — FastAPI + ezdxf + libredwg-tools
+  #    Public URL ama INTERNAL_API_TOKEN ile kilitli.
+  #    Docker runtime cunku DWG→DXF icin libredwg-tools (apt) lazim
+  #    (Native Python runtime sistem paketi yukletmiyor).
   # ───────────────────────────────────────────────────────
   - type: web
     name: metaprice-dwg-engine
-    runtime: python
+    runtime: docker
     region: frankfurt
     plan: free
     rootDir: backend/src/modules/dwg-engine/python
-    buildCommand: pip install -r requirements.txt
-    startCommand: python main.py
+    dockerfilePath: ./Dockerfile
     healthCheckPath: /health
     envVars:
-      - key: PYTHON_VERSION
-        value: "3.11"
       # NestJS'ten gelen her istek bu token'i X-Internal-Token header'inda tasimali
       - key: INTERNAL_API_TOKEN
         generateValue: true   # Render ilk deploy'da random uretir
