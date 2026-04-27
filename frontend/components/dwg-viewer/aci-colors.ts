@@ -27,7 +27,10 @@ const ACI_PALETTE: Record<number, string> = {
  * AutoCAD color index'i CSS hex'e cevir.
  * Bilinmiyor veya BYLAYER (256) ise fallback renk donulur.
  */
-export function aciToColor(aci: number, fallback: string = '#334155'): string {
+// Fallback acik gri — koyu (#0b1220) arka planda gorunur olmali. Eskiden
+// #334155 idi ve PixiJS viewer arka plana karistigindan layer "0" gibi
+// renksiz cizimler "bos ekran" gibi gorunuyordu.
+export function aciToColor(aci: number, fallback: string = '#94a3b8'): string {
   if (aci === 256 || aci === 0) return fallback;
   if (ACI_PALETTE[aci]) return ACI_PALETTE[aci];
   // Orta renkler icin basit bir hash — HSL ile cesitlilik yarat

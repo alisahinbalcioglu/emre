@@ -30,7 +30,9 @@ export interface BackgroundLinesHandle {
 }
 
 const COLOR_SELECTED = cssToHex('#60a5fa');
-const COLOR_PASSIVE = cssToHex('#475569');
+// Eski #475569 koyu slate idi, viewer arka plani (#0b1220) ile kontrasti
+// cok dusuk oldugu icin layer "0" gibi cizimler "bos ekran" gibi goruluyordu.
+const COLOR_PASSIVE = cssToHex('#94a3b8');
 const ALPHA_DIM = 0.3;
 
 /**
