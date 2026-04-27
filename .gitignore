@@ -40,6 +40,19 @@ backend/src/modules/dwg-engine/python/*.txt
 backend/src/modules/dwg-engine/python/*.dxf
 backend/src/modules/dwg-engine/python/*.dwg
 backend/src/modules/dwg-engine/python/_diag.py
+backend/src/modules/dwg-engine/python/*.log
+backend/src/modules/dwg-engine/python/equipment_ai_result.json
+backend/src/modules/dwg-engine/python/*_result.json
+
+# User uploads (DWG/Excel/PDF — not in fixtures)
+uploads/
+backend/uploads/
+*.pdf
+*.xlsx
+*.xls
+!**/fixtures/**/*.pdf
+!**/fixtures/**/*.xlsx
+!**/fixtures/**/*.xls
 
 # Prisma
 backend/prisma/dev.db
