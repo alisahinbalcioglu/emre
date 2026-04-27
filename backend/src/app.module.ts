@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { HealthController } from './health.controller';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { BrandsModule } from './brands/brands.module';
@@ -35,5 +36,6 @@ import { PdfToExcelModule } from './modules/pdf-to-excel/pdf-to-excel.module';
     DwgEngineModule,
     PdfToExcelModule,
   ],
+  controllers: [HealthController],
 })
 export class AppModule {}
