@@ -46,8 +46,6 @@ model User {
   brandLibraries UserBrandLibrary[]
   laborFirms     LaborFirm[]
   quotes         Quote[]
-  organization   Organization?       @relation(fields: [organizationId], references: [id])
-  organizationId String?
   subscriptions  UserSubscription[]
 }
 
@@ -80,15 +78,6 @@ model UserSubscription {
 
   @@unique([userId, level, scope])
   @@index([userId])
-}
-
-model Organization {
-  id        String   @id @default(uuid())
-  name      String
-  tier      Tier     @default(suite)
-  maxUsers  Int      @default(10)
-  createdAt DateTime @default(now())
-  members   User[]
 }
 
 model Brand {
