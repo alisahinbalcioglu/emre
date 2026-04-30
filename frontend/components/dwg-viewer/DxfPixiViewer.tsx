@@ -20,8 +20,8 @@
  *   5. texts           — TEXT/MTEXT (zoom>=0.3 LOD)
  */
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, ZoomIn, ZoomOut, Maximize2, AlertCircle } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Loader2, AlertCircle } from 'lucide-react';
 import type { Application } from 'pixi.js';
 import api from '@/lib/api';
 import type { EdgeSegment, GeometryResult } from './types';
@@ -34,6 +34,8 @@ import { createCalculatedEdges, type CalculatedEdgesHandle } from './pixi/layers
 import { createCircles, type CirclesHandle } from './pixi/layers/circles';
 import { createInserts, type InsertsHandle } from './pixi/layers/inserts';
 import { createTexts, type TextsHandle } from './pixi/layers/texts';
+import ViewerStatusBar from './ViewerStatusBar';
+import ViewerToolbar from './ViewerToolbar';
 
 interface DxfPixiViewerProps {
   fileId: string | null;
@@ -82,6 +84,9 @@ export default function DxfPixiViewer({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stageReady, setStageReady] = useState(false);
+  /** Mouse'un dunya-uzayindaki konumu — status bar'da gosterilir. null =
+   *  fare viewer'in disinda. */
+  const [cursorWorld, setCursorWorld] = useState<{ x: number; y: number } | null>(null);
 
   // ─── Callback ref'leri (closure stale olmasın) ───
   const onLineClickRef = useRef(onLineClick);
@@ -395,117 +400,134 @@ export default function DxfPixiViewer({
   const { zoom } = viewport;
   const lineCount = usingEdges ? edgeSegments!.length : (geometry?.lines.length ?? 0);
   const insertCount = geometry?.inserts?.length ?? 0;
+  const layerCount = geometry?.layer_colors ? Object.keys(geometry.layer_colors).length : 0;
+
+  /** Mouse hareketinde dunya-uzayi koordinatini hesapla — AutoCAD
+   *  status bar gibi real-time gosterim. Y-flip dahil edilir. */
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      // Once mevcut pan/drag handler'i (sürükleme algilamasi)
+      pointerHandlers.onPointerMove(e);
+      const el = containerRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      // Dunya koordinatina cevir (Y-flip: world Y yukari, screen Y asagi)
+      const worldX = (mx - viewport.panX) / viewport.zoom;
+      const worldY = (viewport.panY - my) / viewport.zoom;
+      setCursorWorld({ x: worldX, y: worldY });
+    },
+    [pointerHandlers, viewport.panX, viewport.panY, viewport.zoom],
+  );
+
+  const handlePointerLeave = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      pointerHandlers.onPointerCancel(e);
+      setCursorWorld(null);
+    },
+    [pointerHandlers],
+  );
 
   return (
-    <div
-      ref={containerRef}
-      className={`relative overflow-hidden rounded-xl border border-slate-700 ${className}`}
-      style={{ touchAction: 'none', backgroundColor: '#0b1220' }}
-      onWheel={onWheelReact}
-      {...pointerHandlers}
-    >
-      <canvas
-        ref={canvasRef}
-        className="h-full w-full cursor-grab active:cursor-grabbing"
-        style={{ display: 'block' }}
-      />
+    <div className={`flex flex-col rounded-xl border border-slate-700 overflow-hidden bg-slate-950 ${className}`}>
+      {/* ─── Viewer alani (canvas + overlay'ler + toolbar) ─── */}
+      <div
+        ref={containerRef}
+        className="relative flex-1 overflow-hidden"
+        style={{ touchAction: 'none', backgroundColor: '#0b1220', cursor: 'crosshair' }}
+        onWheel={onWheelReact}
+        onPointerDown={pointerHandlers.onPointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={pointerHandlers.onPointerUp}
+        onPointerCancel={pointerHandlers.onPointerCancel}
+        onPointerLeave={handlePointerLeave}
+      >
+        <canvas
+          ref={canvasRef}
+          className="h-full w-full"
+          style={{ display: 'block' }}
+        />
 
-      {/* Conditional overlay'ler — canvas DOM'dan cikmadan goster */}
-      {!fileId && (
-        <div className="absolute inset-0 flex items-center justify-center bg-slate-900/90 text-sm text-slate-300">
-          Cizim icin once DWG yukleyin
+        {/* Toolbar — sol ust */}
+        <div className="absolute top-2 left-2 z-10">
+          <ViewerToolbar
+            onZoomIn={zoomIn}
+            onZoomOut={zoomOut}
+            onFit={fitView}
+          />
         </div>
-      )}
-      {fileId && loading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-slate-900/90">
-          <div className="flex flex-col items-center gap-2">
-            <Loader2 className="h-6 w-6 animate-spin text-blue-400" />
-            <p className="text-xs text-slate-300">Cizim hazirlaniyor...</p>
+
+        {/* Conditional overlay'ler — canvas DOM'dan cikmadan goster */}
+        {!fileId && (
+          <div className="absolute inset-0 flex items-center justify-center bg-slate-900/90 text-sm text-slate-300">
+            Cizim icin once DWG yukleyin
           </div>
-        </div>
-      )}
-      {fileId && !loading && error && (
-        <div className="absolute inset-0 flex items-center justify-center bg-slate-900/90 p-4">
-          <div className="flex items-start gap-2 max-w-md">
-            <AlertCircle className="h-4 w-4 shrink-0 text-red-400 mt-0.5" />
-            <div>
-              <p className="text-sm font-medium text-red-300">Cizim yuklenemedi</p>
-              <p className="text-xs text-slate-300 mt-1">{error}</p>
+        )}
+        {fileId && loading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-slate-900/90">
+            <div className="flex flex-col items-center gap-2">
+              <Loader2 className="h-6 w-6 animate-spin text-blue-400" />
+              <p className="text-xs text-slate-300">Cizim hazirlaniyor...</p>
             </div>
           </div>
-        </div>
-      )}
-      {fileId && !loading && !error && hasNoData && (
-        <div className="absolute inset-0 flex items-center justify-center bg-slate-900/90 text-sm text-slate-300">
-          Bu dosyada cizilebilir cizgi bulunamadi
-        </div>
-      )}
-
-      {/* Bilgi banner — sol ust */}
-      <div className="absolute top-2 left-2 rounded bg-slate-800/90 px-2.5 py-1 text-[10px] font-mono text-slate-100 border border-slate-600 space-y-0.5 max-w-[320px]">
-        <div>
-          {lineCount.toLocaleString('tr-TR')} çizgi · zoom {zoom < 0.01 ? zoom.toExponential(2) : zoom.toFixed(2) + 'x'} · <span className="text-emerald-400">WebGL</span>
-        </div>
-        {insertCount > 0 && (
-          <div className="text-[9px] text-slate-300">{insertCount} INSERT (ekipman)</div>
         )}
-        <div className="text-[9px] text-slate-400">
-          bounds: [{bounds[0].toFixed(0)}..{bounds[2].toFixed(0)} × {bounds[1].toFixed(0)}..{bounds[3].toFixed(0)}]
-        </div>
-      </div>
-
-      {/* Cap legend — edge segments modunda sol alt */}
-      {usingEdges && diameterPalette.length > 0 && (
-        <div className="absolute bottom-3 left-3 rounded-lg bg-slate-800/95 border border-slate-600 px-2.5 py-2 text-[11px] text-slate-100 max-w-[280px]">
-          <div className="mb-1 text-[10px] font-semibold text-slate-300 uppercase tracking-wide">Çaplar</div>
-          <div className="flex flex-col gap-1">
-            {diameterPalette
-              .sort((a, b) => (diameterLengths[b.diameter] ?? 0) - (diameterLengths[a.diameter] ?? 0))
-              .map((p) => (
-                <div key={p.label} className="flex items-center gap-2">
-                  <span
-                    className="inline-block h-2.5 w-5 rounded-sm"
-                    style={{ backgroundColor: p.color }}
-                  />
-                  <span className="font-mono tabular-nums">{p.label}</span>
-                  <span className="text-slate-400 ml-auto tabular-nums">
-                    {(diameterLengths[p.diameter] ?? 0).toFixed(1)} m
-                  </span>
-                </div>
-              ))}
+        {fileId && !loading && error && (
+          <div className="absolute inset-0 flex items-center justify-center bg-slate-900/90 p-4">
+            <div className="flex items-start gap-2 max-w-md">
+              <AlertCircle className="h-4 w-4 shrink-0 text-red-400 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-red-300">Cizim yuklenemedi</p>
+                <p className="text-xs text-slate-300 mt-1">{error}</p>
+              </div>
+            </div>
           </div>
+        )}
+        {fileId && !loading && !error && hasNoData && (
+          <div className="absolute inset-0 flex items-center justify-center bg-slate-900/90 text-sm text-slate-300">
+            Bu dosyada cizilebilir cizgi bulunamadi
+          </div>
+        )}
+
+        {/* Cap legend — edge segments modunda sag ust */}
+        {usingEdges && diameterPalette.length > 0 && (
+          <div className="absolute top-2 right-2 z-10 rounded-lg bg-slate-900/90 backdrop-blur-sm border border-slate-700 px-2.5 py-2 text-[11px] text-slate-100 max-w-[280px]">
+            <div className="mb-1 text-[10px] font-semibold text-slate-300 uppercase tracking-wide">Çaplar</div>
+            <div className="flex flex-col gap-1">
+              {diameterPalette
+                .sort((a, b) => (diameterLengths[b.diameter] ?? 0) - (diameterLengths[a.diameter] ?? 0))
+                .map((p) => (
+                  <div key={p.label} className="flex items-center gap-2">
+                    <span
+                      className="inline-block h-2.5 w-5 rounded-sm"
+                      style={{ backgroundColor: p.color }}
+                    />
+                    <span className="font-mono tabular-nums">{p.label}</span>
+                    <span className="text-slate-400 ml-auto tabular-nums">
+                      {(diameterLengths[p.diameter] ?? 0).toFixed(1)} m
+                    </span>
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
+
+        {/* Kullanim ipucu — sag alt (eski) */}
+        <div className="absolute bottom-2 right-2 z-10 rounded bg-slate-900/80 backdrop-blur-sm px-2 py-1 text-[9px] text-slate-400 border border-slate-700">
+          {onSegmentClick ? 'Çizgi: çap düzelt · ' : ''}Tekerle zoom · Sürükle pan
         </div>
-      )}
-
-      {/* Kullanim ipucu — sag ust */}
-      <div className="absolute top-2 right-2 rounded bg-slate-800/90 px-2.5 py-1 text-[10px] text-slate-300 border border-slate-600">
-        {onSegmentClick ? 'Çizgi tıkla: çap düzelt · ' : ''}Tekerle zoom · Surukle ile kaydir
       </div>
 
-      {/* Zoom butonlari — sag alt */}
-      <div className="absolute bottom-3 right-3 flex flex-col gap-1">
-        <button
-          onClick={zoomIn}
-          className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-800/90 border border-slate-600 shadow-sm hover:bg-slate-700 text-slate-100"
-          title="Yakinlastir"
-        >
-          <ZoomIn className="h-4 w-4" />
-        </button>
-        <button
-          onClick={zoomOut}
-          className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-800/90 border border-slate-600 shadow-sm hover:bg-slate-700 text-slate-100"
-          title="Uzaklastir"
-        >
-          <ZoomOut className="h-4 w-4" />
-        </button>
-        <button
-          onClick={fitView}
-          className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-800/90 border border-slate-600 shadow-sm hover:bg-slate-700 text-slate-100"
-          title="Tumunu goster"
-        >
-          <Maximize2 className="h-4 w-4" />
-        </button>
-      </div>
+      {/* ─── Status bar (alt sticky) ─── */}
+      <ViewerStatusBar
+        cursorWorld={cursorWorld}
+        zoom={zoom}
+        lineCount={lineCount}
+        insertCount={insertCount}
+        layerCount={layerCount}
+        unit="mm"
+        renderer="WebGL"
+      />
     </div>
   );
 }
