@@ -1161,9 +1161,16 @@ def assign_diameters_with_ai(
       info_dict: {input_tokens, output_tokens, cost_usd, segment_count, text_count, sprinkler_block_count}
     """
     # 1) Otomatik sprinkler tespiti (AI ile, cache'li)
-    sprinkler_block_names, classify_info = auto_detect_sprinklers(
-        dxf_path, hat_tipi_hint=hat_tipi_hint, model=model,
-    )
+    # Defansif: auto_detect_sprinklers crash etse bile assign_diameters_with_ai
+    # devam etsin — sprinkler_block_names bos kalir, mevcut akis (regex
+    # fallback yoluyla) calismaya devam eder.
+    try:
+        sprinkler_block_names, classify_info = auto_detect_sprinklers(
+            dxf_path, hat_tipi_hint=hat_tipi_hint, model=model,
+        )
+    except Exception as _ee:
+        sprinkler_block_names = set()
+        classify_info = {"source": "error", "error": str(_ee)[:120]}
 
     # 2) Topology + segment uretim (sprinkler INSERT pozisyonlarinda LINE bol)
     segments, sp_centers = _extract_segments(

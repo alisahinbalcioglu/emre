@@ -24,7 +24,7 @@ from topology import analyze_topology
 from geometry import extract_geometry, GeometryResult
 from models import (
     LayerInfo, LayerListResult,
-    LayerMetraj, MetrajResult, PipeSegment, EdgeSegment,
+    LayerMetraj, MetrajResult, PipeSegment, EdgeSegment, SprinklerDetectionInfo,
 )
 
 # backend/.env dosyasini yukle (ANTHROPIC_API_KEY icin)
@@ -459,7 +459,15 @@ def analyze_dxf_metraj(
             if (not es.diameter or es.diameter == "Belirtilmemis") and layer_default_diameter_map.get(es.layer):
                 es.diameter = layer_default_diameter_map[es.layer]
 
-    from models import SprinklerDetectionInfo as _SDI
+    sd_obj: SprinklerDetectionInfo | None = None
+    if sprinkler_detection_info:
+        try:
+            sd_obj = SprinklerDetectionInfo(**sprinkler_detection_info)
+        except Exception:
+            # Defansif — bir field tip uymazsa MetrajResult bunu kaybetsin,
+            # ana metraj akisi calismaya devam etsin.
+            sd_obj = None
+
     return MetrajResult(
         layers=layers,
         total_length=round(total, 2),
@@ -467,9 +475,7 @@ def analyze_dxf_metraj(
         warnings=warnings,
         branch_points=branch_points,
         edge_segments=edge_segments,
-        sprinkler_detection=(
-            _SDI(**sprinkler_detection_info) if sprinkler_detection_info else None
-        ),
+        sprinkler_detection=sd_obj,
     )
 
 
