@@ -35,7 +35,8 @@ import { SheetTabs } from '@/components/excel-grid/SheetTabs';
 import { buildMaterialContextFromArray } from '@/components/excel-grid/build-material-context';
 import type { ExcelGridData, ExcelRowData, MultiSheetData, SheetData, MatchCandidate as ExcelMatchCandidate } from '@/components/excel-grid/types';
 import { useCapabilities } from '@/contexts/CapabilitiesContext';
-import DwgUploader from '@/components/dwg-metraj/DwgUploader';
+// DwgUploader artik bagimsiz /dwg-workspace route'unda render ediliyor —
+// ana quotes bundle'i PixiJS yukunden tamamen kurtuldu (~450 kB azalma).
 import type { MetrajResult } from '@/components/dwg-metraj/MetrajTable';
 import MetrajEditor from '@/components/dwg-metraj/MetrajEditor';
 import type { Brand } from '@/types';
@@ -111,12 +112,69 @@ export default function NewQuotePage() {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
 
-    // DWG mode — Dashboard'dan yonlendirildi, DwgUploader gosterilecek
+    // DWG mode — Dashboard'dan yonlendirildi, ayri /dwg-workspace sayfasina
+    // git (PixiJS lazy load + state izolasyonu).
     if (params.get('mode') === 'dwg') {
-      setUploadMode('dwg');
-      window.history.replaceState({}, '', '/quotes/new');
-      // DwgUploader layer secim akisini baslatacak — sessionStorage'dan okumaya gerek yok
+      router.replace('/dwg-workspace');
+      return;
+    }
+
+    // /dwg-workspace'ten metraj onaylanip donmussuz — sessionStorage'dan oku
+    // ve fiyatlandirma akisina aktar.
+    if (params.get('from') === 'dwg-workspace') {
+      const stored = sessionStorage.getItem('metaprice_dwg_metraj');
       sessionStorage.removeItem('metaprice_dwg_metraj');
+      window.history.replaceState({}, '', '/quotes/new');
+      if (!stored) return;
+      try {
+        const { metraj, fileName } = JSON.parse(stored) as {
+          metraj: MetrajResult;
+          fileName: string;
+        };
+        const rows: ExcelRowData[] = [];
+        let idx = 0;
+        for (const layer of metraj.layers) {
+          if (layer.segments && layer.segments.length > 0) {
+            for (const seg of layer.segments) {
+              rows.push({
+                _isDataRow: true,
+                _isHeaderRow: false,
+                _rowIdx: idx++,
+                'Malzeme Adi': seg.material_type || layer.hat_tipi || layer.layer,
+                'Birim': 'm',
+                'Miktar': String(seg.length.toFixed(2)),
+              });
+            }
+          } else {
+            rows.push({
+              _isDataRow: true,
+              _isHeaderRow: false,
+              _rowIdx: idx++,
+              'Malzeme Adi': layer.hat_tipi || layer.layer,
+              'Cap': '',
+              'Birim': 'm',
+              'Miktar': String(layer.length.toFixed(2)),
+            });
+          }
+        }
+        const columnDefs = [
+          { field: 'Malzeme Adi', headerName: 'Malzeme Adi', flex: 3 },
+          { field: 'Cap', headerName: 'Cap', width: 90 },
+          { field: 'Birim', headerName: 'Birim', width: 80 },
+          { field: 'Miktar', headerName: 'Miktar', width: 100, type: 'rightAligned' as const },
+        ];
+        setExcelGridData({
+          columnDefs,
+          rowData: rows,
+          columnRoles: { nameField: 'Malzeme Adi', quantityField: 'Miktar', unitField: 'Birim' },
+          brands: allBrands,
+          headerEndRow: 0,
+        });
+        setTitle(fileName.replace(/\.[^.]+$/, '') + ' — DWG Metraj');
+        toast({ title: 'Metraj onaylandi', description: `${rows.length} kalem fiyatlandirmaya aktarildi` });
+      } catch (e) {
+        console.error('DWG metraj parse failed:', e);
+      }
       return;
     }
 
@@ -1056,63 +1114,26 @@ export default function NewQuotePage() {
         </Card>
       )}
 
-      {/* DWG upload — layer secim akisi */}
+      {/* DWG akisi artik /dwg-workspace route'unda. Bu sayfa sadece sonradan
+          metraj donus akisini ele alir (sessionStorage uzerinden). */}
       {!multiSheet && !excelGridData && uploadMode === 'dwg' && (
         <Card className="mb-4">
-          <CardContent className="py-6">
-            <DwgUploader
-              onMetrajApproved={(metraj, fileName) => {
-                // Metraj sonucundan Excel grid'e aktarilabilir format olustur
-                const rows: ExcelRowData[] = [];
-                let idx = 0;
-                // Segment bazli metraj satirlari (cap detayli)
-                for (const layer of metraj.layers) {
-                  if (layer.segments && layer.segments.length > 0) {
-                    for (const seg of layer.segments) {
-                      rows.push({
-                        _isDataRow: true,
-                        _isHeaderRow: false,
-                        _rowIdx: idx++,
-                        'Malzeme Adi': seg.material_type || layer.hat_tipi || layer.layer,
-                        'Birim': 'm',
-                        'Miktar': String(seg.length.toFixed(2)),
-                      });
-                    }
-                  } else {
-                    rows.push({
-                      _isDataRow: true,
-                      _isHeaderRow: false,
-                      _rowIdx: idx++,
-                      'Malzeme Adi': layer.hat_tipi || layer.layer,
-                      'Cap': '',
-                      'Birim': 'm',
-                      'Miktar': String(layer.length.toFixed(2)),
-                    });
-                  }
-                }
-                // Excel grid formatina cevir
-                const columnDefs = [
-                  { field: 'Malzeme Adi', headerName: 'Malzeme Adi', flex: 3 },
-                  { field: 'Cap', headerName: 'Cap', width: 90 },
-                  { field: 'Birim', headerName: 'Birim', width: 80 },
-                  { field: 'Miktar', headerName: 'Miktar', width: 100, type: 'rightAligned' as const },
-                ];
-                const gridData: ExcelGridData = {
-                  columnDefs,
-                  rowData: rows,
-                  columnRoles: {
-                    nameField: 'Malzeme Adi',
-                    quantityField: 'Miktar',
-                    unitField: 'Birim',
-                  },
-                  brands: allBrands,
-                  headerEndRow: 0,
-                };
-                setExcelGridData(gridData);
-                setTitle(fileName.replace(/\.[^.]+$/, '') + ' — DWG Metraj');
-                toast({ title: 'Metraj onaylandi', description: `${rows.length} kalem fiyatlandirmaya aktarildi` });
-              }}
-            />
+          <CardContent className="py-12">
+            <div className="flex flex-col items-center justify-center gap-4">
+              <FileText className="h-10 w-10 text-muted-foreground" />
+              <div className="text-center">
+                <p className="font-medium">DWG analizi ayri sayfada yapilir</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Tesisat planini analiz etmek icin DWG Workspace'e gidin.
+                </p>
+              </div>
+              <Link
+                href="/dwg-workspace"
+                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              >
+                DWG Workspace'i Ac
+              </Link>
+            </div>
           </CardContent>
         </Card>
       )}
