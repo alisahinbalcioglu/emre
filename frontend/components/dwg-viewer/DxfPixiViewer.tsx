@@ -37,6 +37,8 @@ import { createTexts, type TextsHandle } from './pixi/layers/texts';
 import { createGrid, type GridHandle } from './pixi/layers/grid';
 import ViewerStatusBar from './ViewerStatusBar';
 import ViewerToolbar from './ViewerToolbar';
+import ViewerContextMenu, { buildDefaultMenuItems } from './ViewerContextMenu';
+import { useViewerKeyboard } from './useViewerKeyboard';
 
 interface DxfPixiViewerProps {
   fileId: string | null;
@@ -102,6 +104,11 @@ export default function DxfPixiViewer({
       return nv;
     });
   }, []);
+
+  /** Context menu state — sag-tikla acilan menu. */
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  // NOTE: useViewerKeyboard cagrisini useViewport'tan SONRA yapiyoruz
+  // (fitView/zoomIn/zoomOut o hook'tan geliyor). Asagida 'use' kismina bak.
 
   // ─── Callback ref'leri (closure stale olmasın) ───
   const onLineClickRef = useRef(onLineClick);
@@ -320,6 +327,17 @@ export default function DxfPixiViewer({
     autoFit: !!geometry || !!edgeSegments,
   });
 
+  /** Klavye kisayollari — F/Esc/+/-/G/Ctrl+Home (useViewport'tan SONRA
+   *  cunku fitView/zoomIn/zoomOut o hook'tan geliyor). */
+  useViewerKeyboard({
+    enabled: !!fileId,
+    onFit: fitView,
+    onZoomIn: zoomIn,
+    onZoomOut: zoomOut,
+    onToggleGrid: toggleGrid,
+    onReset: () => { fitView(); },
+  });
+
   // Stage ready olunca layer handle'larını kur
   useEffect(() => {
     if (!stageReady) return;
@@ -458,6 +476,26 @@ export default function DxfPixiViewer({
     [pointerHandlers],
   );
 
+  /** Sag-tik context menu — drag yapilmissa atla (yanlislikla acilmasin). */
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      if (wasDragged()) return; // pan sonrasi sag-tik click sayilmasin
+      setContextMenu({ x: e.clientX, y: e.clientY });
+    },
+    [wasDragged],
+  );
+
+  /** Cift tikla → tum cizimi cerceveye sigdir. AutoCAD'de cift-tik MMB
+   *  zoom-extents'tir; biz default'u boyle yapiyoruz. */
+  const handleDoubleClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      fitView();
+    },
+    [fitView],
+  );
+
   return (
     <div className={`flex flex-col rounded-xl border border-slate-700 overflow-hidden bg-slate-950 ${className}`}>
       {/* ─── Viewer alani (canvas + overlay'ler + toolbar) ─── */}
@@ -471,6 +509,8 @@ export default function DxfPixiViewer({
         onPointerUp={pointerHandlers.onPointerUp}
         onPointerCancel={pointerHandlers.onPointerCancel}
         onPointerLeave={handlePointerLeave}
+        onContextMenu={handleContextMenu}
+        onDoubleClick={handleDoubleClick}
       >
         <canvas
           ref={canvasRef}
@@ -559,6 +599,21 @@ export default function DxfPixiViewer({
         unit="mm"
         renderer="WebGL"
       />
+
+      {/* ─── Sag-tik context menu (portal benzeri, fixed pos) ─── */}
+      {contextMenu && (
+        <ViewerContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={buildDefaultMenuItems({
+            onFit: fitView,
+            onReset: () => { fitView(); },
+            gridVisible,
+            onGridToggle: toggleGrid,
+          })}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </div>
   );
 }
