@@ -22,6 +22,10 @@ export interface BackgroundLinesUpdateOpts {
   /** Hesaplanmış edge'i olan layer'lar — bunlar background'da çizilmez (renkli
    *  edge katmanı zaten gösterecek). */
   skipLayers?: Set<string>;
+  /** World container'in mevcut zoom'u — width hesabi icin (zoom-aware stroke).
+   *  PixiJS v8'de pixelLine: true asiri kucuk zoom'da (~0.005) bug olabiliyor;
+   *  zoom-aware width kendimiz hesapliyoruz: dunya_width = ekran_piksel / zoom. */
+  zoom?: number;
 }
 
 export interface BackgroundLinesHandle {
@@ -53,7 +57,13 @@ export function createBackgroundLines(
   }
 
   function update(opts: BackgroundLinesUpdateOpts) {
-    const { geometry, selectedLayer, highlightLayer, skipLayers } = opts;
+    const { geometry, selectedLayer, highlightLayer, skipLayers, zoom } = opts;
+    // zoom yoksa fallback 1; world transform asla 0 olmamali ama defensive.
+    const safeZoom = zoom && zoom > 1e-8 ? zoom : 1;
+    // Ekran piksel cinsinden istenen kalinligi dunya birimine cevir:
+    // dunya_width = ekran_pixel_kalinligi / zoom.
+    // Boylece world.scale ile carpildiginda tam istenen ekran piksel olur.
+    const widthFor = (screenPx: number) => screenPx / safeZoom;
 
     if (!geometry) {
       clearAll();
@@ -112,25 +122,24 @@ export function createBackgroundLines(
 
       if (isSelected) {
         color = COLOR_SELECTED;
-        width = 3;
+        width = widthFor(3); // 3 ekran pikseli kalin
         alpha = 1;
       } else if (hasHighlight) {
         // Highlight modu: sadece highlightLayer normal, diğerleri silik
         const aci = layerColors[layer] ?? 7;
         color = isHighlighted ? aciToPixiColor(aci) : COLOR_PASSIVE;
-        width = isHighlighted ? 3 : 1.5;
+        width = widthFor(isHighlighted ? 3 : 1.5);
         alpha = isHighlighted ? 1 : ALPHA_DIM;
       } else {
         const aci = layerColors[layer] ?? 7;
         color = aciToPixiColor(aci);
-        width = 1.5;
+        width = widthFor(1.5);
         alpha = 1;
       }
 
-      // pixelLine: width PIXEL_PERFECT yorumlanir — zoom 0.03x'te bile 1.5
-      // ekran pikseli kalin gorunur. Default modu (pixelLine=false) width
-      // dunya birimi yorumlardi ki bu zoom 0.03x'te 0.03 piksel = gorunmez.
-      g.stroke({ width, color, alpha, pixelLine: true });
+      // Width'i kendimiz zoom-aware hesapliyoruz; pixelLine bayragini KALDIRDIK
+      // cunku PixiJS v8.18'de extreme zoom-out (~0.005) icin tutarsiz davraniyor.
+      g.stroke({ width, color, alpha });
 
       // Tıklama — onLineClick varsa tıklanabilir
       const callbackExists = !!onLineClickRef();

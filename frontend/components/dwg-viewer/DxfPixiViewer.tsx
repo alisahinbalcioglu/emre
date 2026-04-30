@@ -316,7 +316,8 @@ export default function DxfPixiViewer({
     applyViewport(layers.world, viewport.panX, viewport.panY, viewport.zoom);
   }, [viewport.panX, viewport.panY, viewport.zoom, stageReady]);
 
-  // Background lines update
+  // Background lines update — zoom dependency eklendi cunku stroke width
+  // zoom-aware (dunya birimi cinsinden hesaplaniyor backgroundLines'da).
   useEffect(() => {
     if (!stageReady) return;
     bgHandleRef.current?.update({
@@ -324,8 +325,9 @@ export default function DxfPixiViewer({
       selectedLayer,
       highlightLayer,
       skipLayers,
+      zoom: viewport.zoom,
     });
-  }, [stageReady, geometry, selectedLayer, highlightLayer, skipLayers]);
+  }, [stageReady, geometry, selectedLayer, highlightLayer, skipLayers, viewport.zoom]);
 
   // Calculated edges update
   useEffect(() => {
