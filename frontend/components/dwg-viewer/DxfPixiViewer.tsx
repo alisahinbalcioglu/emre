@@ -186,22 +186,30 @@ export default function DxfPixiViewer({
   useEffect(() => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
+
+    // Mount-effect tetiklendigini her durumda kayit et (early return bile
+    // olsa bilelim — debug global undefined kalmasin).
+    if (typeof window !== 'undefined') {
+      (window as any).__dwgDebug = {
+        effectFired: true,
+        hasCanvas: !!canvas,
+        hasContainer: !!container,
+        canvas,
+        container,
+        initStarted: false,
+        initCompleted: false,
+        initError: null as unknown,
+        earlyReturned: !canvas || !container,
+      };
+    }
     if (!canvas || !container) return;
 
     let cancelled = false;
     let resizeObserver: ResizeObserver | null = null;
 
-    // Mount-anindaki MINIMUM debug global — PixiJS init reject olsa bile
-    // konsoldan tanı yapılabilir. Sonra (init başarılıysa) app/world ile
-    // genisletilir.
+    // Init basliyor — flag'i guncelle
     if (typeof window !== 'undefined') {
-      (window as any).__dwgDebug = {
-        canvas,
-        container,
-        initStarted: true,
-        initCompleted: false,
-        initError: null as unknown,
-      };
+      (window as any).__dwgDebug.initStarted = true;
     }
 
     (async () => {
@@ -378,49 +386,14 @@ export default function DxfPixiViewer({
     textsHandleRef.current?.update({ geometry, zoom: viewport.zoom });
   }, [stageReady, geometry, viewport.zoom]);
 
-  // ─── Erken dönüşler ───
-  if (!fileId) {
-    return (
-      <div className={`flex items-center justify-center bg-slate-50 rounded-xl border text-sm text-muted-foreground ${className}`}>
-        Cizim icin once DWG yukleyin
-      </div>
-    );
-  }
-  if (loading) {
-    return (
-      <div className={`flex items-center justify-center bg-slate-50 rounded-xl border ${className}`}>
-        <div className="flex flex-col items-center gap-2">
-          <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
-          <p className="text-xs text-muted-foreground">Cizim hazirlaniyor...</p>
-        </div>
-      </div>
-    );
-  }
-  if (error) {
-    return (
-      <div className={`flex items-center justify-center bg-slate-50 rounded-xl border p-4 ${className}`}>
-        <div className="flex items-start gap-2 max-w-md">
-          <AlertCircle className="h-4 w-4 shrink-0 text-red-500 mt-0.5" />
-          <div>
-            <p className="text-sm font-medium text-red-600">Cizim yuklenemedi</p>
-            <p className="text-xs text-muted-foreground mt-1">{error}</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
+  // KRITIK: erken return YAPMA — yoksa canvas/container ref'ler null kalir
+  // ve PixiJS init mount-effect'inde early return yapar (bos ekran bug'i).
+  // Her durumda container + canvas DOM'da kalmali, conditional icerikler
+  // overlay olarak gosterilmeli.
   const usingEdges = !!edgeSegments && edgeSegments.length > 0;
-  if (!usingEdges && (!geometry || (geometry.lines.length === 0 && (!geometry.inserts || geometry.inserts.length === 0)))) {
-    return (
-      <div className={`flex items-center justify-center bg-slate-50 rounded-xl border text-sm text-muted-foreground ${className}`}>
-        Bu dosyada cizilebilir cizgi bulunamadi
-      </div>
-    );
-  }
-
+  const hasNoData = !usingEdges && (!geometry || (geometry.lines.length === 0 && (!geometry.inserts || geometry.inserts.length === 0)));
   const { zoom } = viewport;
-  const lineCount = usingEdges ? edgeSegments!.length : geometry!.lines.length;
+  const lineCount = usingEdges ? edgeSegments!.length : (geometry?.lines.length ?? 0);
   const insertCount = geometry?.inserts?.length ?? 0;
 
   return (
@@ -436,6 +409,37 @@ export default function DxfPixiViewer({
         className="h-full w-full cursor-grab active:cursor-grabbing"
         style={{ display: 'block' }}
       />
+
+      {/* Conditional overlay'ler — canvas DOM'dan cikmadan goster */}
+      {!fileId && (
+        <div className="absolute inset-0 flex items-center justify-center bg-slate-900/90 text-sm text-slate-300">
+          Cizim icin once DWG yukleyin
+        </div>
+      )}
+      {fileId && loading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-slate-900/90">
+          <div className="flex flex-col items-center gap-2">
+            <Loader2 className="h-6 w-6 animate-spin text-blue-400" />
+            <p className="text-xs text-slate-300">Cizim hazirlaniyor...</p>
+          </div>
+        </div>
+      )}
+      {fileId && !loading && error && (
+        <div className="absolute inset-0 flex items-center justify-center bg-slate-900/90 p-4">
+          <div className="flex items-start gap-2 max-w-md">
+            <AlertCircle className="h-4 w-4 shrink-0 text-red-400 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-red-300">Cizim yuklenemedi</p>
+              <p className="text-xs text-slate-300 mt-1">{error}</p>
+            </div>
+          </div>
+        </div>
+      )}
+      {fileId && !loading && !error && hasNoData && (
+        <div className="absolute inset-0 flex items-center justify-center bg-slate-900/90 text-sm text-slate-300">
+          Bu dosyada cizilebilir cizgi bulunamadi
+        </div>
+      )}
 
       {/* Bilgi banner — sol ust */}
       <div className="absolute top-2 left-2 rounded bg-slate-800/90 px-2.5 py-1 text-[10px] font-mono text-slate-100 border border-slate-600 space-y-0.5 max-w-[320px]">
