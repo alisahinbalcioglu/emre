@@ -190,12 +190,37 @@ export default function DxfPixiViewer({
 
     let cancelled = false;
     let resizeObserver: ResizeObserver | null = null;
-    (async () => {
-      const app = await createPixiStage({
+
+    // Mount-anindaki MINIMUM debug global — PixiJS init reject olsa bile
+    // konsoldan tanı yapılabilir. Sonra (init başarılıysa) app/world ile
+    // genisletilir.
+    if (typeof window !== 'undefined') {
+      (window as any).__dwgDebug = {
         canvas,
-        background: 0x0b1220,
-        resizeTo: container,
-      });
+        container,
+        initStarted: true,
+        initCompleted: false,
+        initError: null as unknown,
+      };
+    }
+
+    (async () => {
+      let app: Awaited<ReturnType<typeof createPixiStage>> | null = null;
+      try {
+        app = await createPixiStage({
+          canvas,
+          background: 0x0b1220,
+          resizeTo: container,
+        });
+      } catch (err) {
+        console.error('[DxfPixiViewer] createPixiStage failed:', err);
+        if (typeof window !== 'undefined') {
+          (window as any).__dwgDebug.initError = err;
+        }
+        setError('PixiJS baslatilamadi: ' + (err instanceof Error ? err.message : String(err)));
+        return;
+      }
+
       if (cancelled) {
         destroyPixiStage(app);
         return;
@@ -205,11 +230,11 @@ export default function DxfPixiViewer({
       appRef.current = app;
       layersRef.current = layers;
 
-      // Geliştirici teşhis yardımcısı — production'da da kalabilir, sadece
-      // window.__dwgDebug ile state'e erişim verir, bug yaşandığında
-      // konsoldan inceleme için. Performansa etkisi yok (sadece referans).
+      // Init basarili — debug global'i app/world ile genislet
       if (typeof window !== 'undefined') {
         (window as any).__dwgDebug = {
+          ...(window as any).__dwgDebug,
+          initCompleted: true,
           app,
           world: layers.world,
           layers,
