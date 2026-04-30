@@ -154,6 +154,13 @@ export function useWorkspaceState(fileId: string, scale: number) {
     setState((s) => ({ ...s, sprinklerLayers: s.sprinklerLayers.filter((l) => l !== layer) }));
   }, []);
 
+  /** Backend auto_detect_sprinklers'un bulduğu sprinkler sayisini state'e yaz.
+   *  /parse response'undan handleCalculate icinde cagrilir; UI'da bilgi
+   *  satirinda gosterilir. */
+  const setAiDetectedSprinklerCount = useCallback((count: number | undefined) => {
+    setState((s) => ({ ...s, aiDetectedSprinklerCount: count }));
+  }, []);
+
   return {
     state,
     selectLayer,
@@ -169,5 +176,6 @@ export function useWorkspaceState(fileId: string, scale: number) {
     setLastClickedLayer,
     confirmSprinklerLayer,
     removeSprinklerLayer,
+    setAiDetectedSprinklerCount,
   };
 }

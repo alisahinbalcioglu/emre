@@ -65,6 +65,14 @@ class EdgeSegment(BaseModel):
     polyline: list[list[float]] = []  # [[x,y], ...] — chain'in gercek sekli
 
 
+class SprinklerDetectionInfo(BaseModel):
+    """Backend auto_detect_sprinklers ozeti — frontend bilgi satirinda gosterir."""
+    source: str = ""           # "ai" | "regex" | "cache" | ""
+    block_count: int = 0       # kac unique block sprinkler olarak isaretlendi
+    center_count: int = 0      # toplam sprinkler INSERT pozisyonu
+    excluded_text_count: int = 0  # cap havuzundan dusen sprinkler ID etiketleri
+
+
 class MetrajResult(BaseModel):
     layers: list[LayerMetraj] = []
     total_length: float = 0.0
@@ -72,3 +80,4 @@ class MetrajResult(BaseModel):
     warnings: list[str] = []
     branch_points: list[BranchPoint] = []
     edge_segments: list[EdgeSegment] = []  # her edge ayri — SVG viewer icin
+    sprinkler_detection: SprinklerDetectionInfo | None = None

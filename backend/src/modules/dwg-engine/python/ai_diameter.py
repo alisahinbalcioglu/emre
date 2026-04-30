@@ -88,10 +88,222 @@ class DiameterText(TypedDict):
 # ── Segment/Run uretimi ───────────────────────────────────────────
 
 # Sprinkler tespit regex — block name bu pattern'i iceren INSERT'ler sprinkler sayilir
+# (auto_detect_sprinklers fail-safe fallback'i, ya da AI kapali iken).
 _SPRINKLER_RE = re.compile(
     r'spr(?:ink)?|upright|pendant|sidewall|fire.?head|yağmur',
     re.IGNORECASE,
 )
+
+
+# ── AI-bazli sprinkler block tespiti (auto_detect_sprinklers) ─────
+#
+# Modul-level cache. Key = (dxf_path, mtime_ns, hat_tipi_hint).
+# Value = (sprinkler_block_names: set[str], timestamp_sec).
+# 24 saat TTL — proje yeniden parse edilince AI cagrisi tekrarlanmaz.
+_SPRINKLER_BLOCK_CACHE: dict[tuple[str, int, str], tuple[set[str], float]] = {}
+_SPRINKLER_CACHE_TTL_SEC = 24 * 3600
+# AI block sınıflandırma için max unique block sayısı (prompt budget koruması)
+_MAX_BLOCKS_TO_CLASSIFY = 300
+# Sprinkler INSERT yakininda bulunan TEXT'leri cap havuzundan dusurme esigi (mm)
+_SPRINKLER_ID_TEXT_THRESHOLD = 30.0
+# Block radius < bu deger ise (DXF birimi mm varsayilir) sprinkler kandidati sayilir
+# (kullanici AI kapali calistirirsa veya AI cevap veremezse fallback için)
+_SPRINKLER_MAX_RADIUS_MM = 50.0
+
+
+def _collect_blocks_for_classification(doc) -> list[dict]:
+    """Modelspace'teki unique INSERT block'larini sayim + ornek pozisyon ile topla.
+
+    Donus: [{"block_name", "count", "layers", "positions"[max 5]}]
+    """
+    from collections import defaultdict
+    blocks: dict[str, dict] = defaultdict(
+        lambda: {"count": 0, "layers": set(), "positions": []}
+    )
+    for ins in doc.modelspace().query('INSERT'):
+        try:
+            name = str(ins.dxf.name or '').strip()
+            if not name:
+                continue
+            layer = str(ins.dxf.layer or '')
+            x = float(ins.dxf.insert.x)
+            y = float(ins.dxf.insert.y)
+        except Exception:
+            continue
+        b = blocks[name]
+        b["count"] += 1
+        b["layers"].add(layer)
+        if len(b["positions"]) < 5:
+            b["positions"].append((x, y))
+    return [
+        {
+            "block_name": name,
+            "count": data["count"],
+            "layers": sorted(data["layers"])[:5],
+        }
+        for name, data in blocks.items()
+    ]
+
+
+def _build_classification_prompt(blocks: list[dict], hat_tipi_hint: str = "") -> str:
+    """Block listesini Claude'a sprinkler/diger sınıflandırma için hazırla.
+
+    Sadece sprinkler/non-sprinkler ayrimi (test_equipment_ai.py 11-tip
+    sınıflandırmasına gore daha dar). Cunku amac sadece T noktasi tespiti.
+    """
+    hint_line = f"\nHAT TIPI: {hat_tipi_hint}" if hat_tipi_hint else ""
+    return f"""Sen bir mekanik/yangin tesisat uzmanisin. AutoCAD DWG dosyasindan
+cikarilan unique block referanslarini siniflandiriyorsun.{hint_line}
+
+Gorev: Her block'un YANGIN SPRINKLER KAFASI olup olmadigini belirle.
+
+SPRINKLER ICIN POZITIF ISARETLER:
+- Block adi: spr/sprink/upright/pendant/sidewall/concealed/yagmur, UH/PEND
+- Yangin tesisat layer'inda ve cok sayida (10+) tekrar eden kucuk simetrik
+  semboller (pipe network'unun T noktalarinda)
+- Genelde 5-50mm civari boyut (radius)
+
+SPRINKLER OLMAYAN:
+- Vana, pompa, dolap, sayac, fitting, lavabo, klozet, tank
+- Title block, frame, lejant, ok isaretleri, kotu/kuzey isareti
+- Genel ekipman blocklari
+
+Her block icin SADECE iki secenek:
+- "sprinkler"     → kesin/buyuk olasilik sprinkler kafasi
+- "other"         → sprinkler degil veya emin degilsin
+
+Block listesi ({len(blocks)} tane):
+{json.dumps(blocks, ensure_ascii=False, indent=2)}
+
+SADECE valid JSON array dondur, ek metin yok:
+[{{"block_name":"...","is_sprinkler":true|false}}, ...]"""
+
+
+def auto_detect_sprinklers(
+    dxf_path: str,
+    hat_tipi_hint: str = "",
+    model: str = "claude-sonnet-4-5",
+) -> tuple[set[str], dict]:
+    """DXF'teki unique INSERT block'larini Claude'a sınıflandırarak sprinkler
+    olanlarini tespit eder. Cache'li — ayni dosya icin AI cagrisi 1 kez yapilir.
+
+    Fail-safe: API key yoksa veya cagri basarisizsa _SPRINKLER_RE regex
+    fallback'i ile devam eder, hata firlatmaz.
+
+    Returns:
+      (sprinkler_block_names, info_dict)
+      sprinkler_block_names: sprinkler olarak işaretlenen block adlari
+      info_dict: {source: "ai"|"regex"|"cache", cost_usd, ...}
+    """
+    import time as _time
+    # Cache key — dosya path + mtime + hat_tipi
+    try:
+        st = os.stat(dxf_path)
+        cache_key = (dxf_path, st.st_mtime_ns, hat_tipi_hint or "")
+    except OSError:
+        cache_key = (dxf_path, 0, hat_tipi_hint or "")
+
+    # Cache HIT?
+    cached = _SPRINKLER_BLOCK_CACHE.get(cache_key)
+    if cached is not None:
+        block_set, ts = cached
+        if (_time.time() - ts) < _SPRINKLER_CACHE_TTL_SEC:
+            return block_set, {"source": "cache", "block_count": len(block_set)}
+
+    # API key
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        # Fallback: regex
+        try:
+            doc = ezdxf.readfile(dxf_path)
+            block_set = {
+                str(ins.dxf.name or "")
+                for ins in doc.modelspace().query('INSERT')
+                if _SPRINKLER_RE.search(str(ins.dxf.name or ""))
+            }
+        except Exception:
+            block_set = set()
+        _SPRINKLER_BLOCK_CACHE[cache_key] = (block_set, _time.time())
+        return block_set, {"source": "regex", "block_count": len(block_set), "note": "ANTHROPIC_API_KEY yok"}
+
+    # AI yolu
+    try:
+        doc = ezdxf.readfile(dxf_path)
+        blocks_info = _collect_blocks_for_classification(doc)
+    except Exception as e:
+        return set(), {"source": "error", "error": str(e)[:100]}
+
+    if not blocks_info:
+        block_set: set[str] = set()
+        _SPRINKLER_BLOCK_CACHE[cache_key] = (block_set, _time.time())
+        return block_set, {"source": "ai", "block_count": 0, "note": "Hic INSERT bulunamadi"}
+
+    # Cok block varsa kırp (prompt budget)
+    if len(blocks_info) > _MAX_BLOCKS_TO_CLASSIFY:
+        # En sık kullanılanları öncelikle ele al
+        blocks_info.sort(key=lambda x: -x["count"])
+        blocks_info = blocks_info[:_MAX_BLOCKS_TO_CLASSIFY]
+
+    prompt = _build_classification_prompt(blocks_info, hat_tipi_hint=hat_tipi_hint)
+
+    try:
+        client = Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model=model,
+            max_tokens=4096,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        in_tok = response.usage.input_tokens
+        out_tok = response.usage.output_tokens
+        text = response.content[0].text if response.content else ""
+
+        # JSON array extract
+        m = re.search(r'\[\s*\{.*\}\s*\]', text, re.DOTALL)
+        block_set: set[str] = set()
+        if m:
+            try:
+                arr = json.loads(m.group(0))
+                for item in arr:
+                    if isinstance(item, dict) and item.get("is_sprinkler"):
+                        name = str(item.get("block_name", "")).strip()
+                        if name:
+                            block_set.add(name)
+            except json.JSONDecodeError:
+                pass
+
+        # Bos ya da fail → regex fallback'le birlestir (defansif)
+        if not block_set:
+            try:
+                block_set = {
+                    str(ins.dxf.name or "")
+                    for ins in doc.modelspace().query('INSERT')
+                    if _SPRINKLER_RE.search(str(ins.dxf.name or ""))
+                }
+            except Exception:
+                pass
+
+        cost_usd = (in_tok * 3.0 + out_tok * 15.0) / 1_000_000
+        _SPRINKLER_BLOCK_CACHE[cache_key] = (block_set, _time.time())
+        return block_set, {
+            "source": "ai",
+            "block_count": len(block_set),
+            "input_tokens": in_tok,
+            "output_tokens": out_tok,
+            "cost_usd": round(cost_usd, 4),
+            "model": model,
+        }
+    except Exception as e:
+        # AI fail → regex fallback
+        try:
+            block_set = {
+                str(ins.dxf.name or "")
+                for ins in doc.modelspace().query('INSERT')
+                if _SPRINKLER_RE.search(str(ins.dxf.name or ""))
+            }
+        except Exception:
+            block_set = set()
+        _SPRINKLER_BLOCK_CACHE[cache_key] = (block_set, _time.time())
+        return block_set, {"source": "regex", "block_count": len(block_set), "ai_error": str(e)[:100]}
 
 # Endpoint eslestirme tolerans DEFAULT'lari — `_compute_tolerances` runtime'da
 # edge length median'ina gore dinamik hesaplar, proje-bagimsiz calisir.
@@ -122,54 +334,102 @@ def _compute_tolerances(edges: list[dict]) -> tuple[float, float]:
     return node_tol, sprinkler_tol
 
 
-def _sprinkler_centers_from_layers(doc, sprinkler_layers: list[str]) -> list[tuple[float, float]]:
-    """Kullanicinin sprinkler layer olarak isaretledigi layer(lar)daki TUM entity
-    pozisyonlarini topla. Proje-bagimsiz: block adi regex'i kullanilmaz.
+def _sprinkler_centers_from_layers(
+    doc,
+    sprinkler_layers: list[str] | None = None,
+    sprinkler_block_names: set[str] | None = None,
+) -> list[tuple[float, float]]:
+    """Sprinkler INSERT/CIRCLE/POINT pozisyonlarini topla.
 
-    Desteklenen entity'ler:
-      - INSERT  → insert point
-      - CIRCLE  → center
-      - POINT   → location
-      - TEXT/MTEXT → insert point (sprinkler etiketi olabilir)
+    Iki kaynaktan birleşik liste:
+      1) sprinkler_layers verilirse: o layer'lardaki INSERT + kucuk CIRCLE
+         (radius < _SPRINKLER_MAX_RADIUS_MM) + POINT — yani sembol gosteren
+         entity'ler. LINE/POLYLINE/TEXT atilir cunku ayni layer'da boru ya da
+         etiket olabilir.
+      2) sprinkler_block_names verilirse: layer FARKETMEKSIZIN, block adi bu
+         set'te olan tum INSERT'ler. (auto_detect_sprinklers ciktisi).
+
+    "Aynı layer" sorununun cozumu: sprinkler_layers verilse bile LINE'lar
+    sprinkler sayilmaz (boru olarak kalir), sadece sembol entity'leri T
+    noktasi olarak isaretlenir.
     """
     centers: list[tuple[float, float]] = []
-    if not sprinkler_layers:
-        return centers
-    layer_set = set(sprinkler_layers)
     msp = doc.modelspace()
-    # INSERT
+    layer_set: set[str] = set(sprinkler_layers) if sprinkler_layers else set()
+    block_set: set[str] = sprinkler_block_names or set()
+
+    if not layer_set and not block_set:
+        return centers
+
+    # INSERT — ya sprinkler layer'inda ya da sprinkler block adina sahip
     for ent in msp.query('INSERT'):
-        if ent.dxf.layer not in layer_set:
-            continue
         try:
+            in_layer = (ent.dxf.layer in layer_set) if layer_set else False
+            block_name = str(ent.dxf.name or '')
+            in_block = (block_name in block_set) if block_set else False
+            if not (in_layer or in_block):
+                continue
             centers.append((float(ent.dxf.insert.x), float(ent.dxf.insert.y)))
         except Exception:
             continue
-    # CIRCLE
-    for ent in msp.query('CIRCLE'):
-        if ent.dxf.layer not in layer_set:
-            continue
-        try:
-            centers.append((float(ent.dxf.center.x), float(ent.dxf.center.y)))
-        except Exception:
-            continue
-    # POINT
-    for ent in msp.query('POINT'):
-        if ent.dxf.layer not in layer_set:
-            continue
-        try:
-            centers.append((float(ent.dxf.location.x), float(ent.dxf.location.y)))
-        except Exception:
-            continue
-    # TEXT/MTEXT (sprinkler etiket formu)
-    for ent in list(msp.query('TEXT')) + list(msp.query('MTEXT')):
-        if ent.dxf.layer not in layer_set:
-            continue
-        try:
-            centers.append((float(ent.dxf.insert.x), float(ent.dxf.insert.y)))
-        except Exception:
-            continue
+
+    # CIRCLE — sadece sprinkler layer'inda VE radius esigi altinda
+    if layer_set:
+        for ent in msp.query('CIRCLE'):
+            if ent.dxf.layer not in layer_set:
+                continue
+            try:
+                radius = float(ent.dxf.radius)
+                if radius > _SPRINKLER_MAX_RADIUS_MM:
+                    continue  # Buyuk daire — sprinkler degil (vana, tank vb.)
+                centers.append((float(ent.dxf.center.x), float(ent.dxf.center.y)))
+            except Exception:
+                continue
+
+        # POINT — sadece sprinkler layer'inda
+        for ent in msp.query('POINT'):
+            if ent.dxf.layer not in layer_set:
+                continue
+            try:
+                centers.append((float(ent.dxf.location.x), float(ent.dxf.location.y)))
+            except Exception:
+                continue
+
+    # NOT: LINE/LWPOLYLINE/POLYLINE asla sprinkler degil — ayni layer
+    # durumunda boru olarak topology'ye girmesi sart.
+    # NOT: TEXT/MTEXT _filter_sprinkler_id_texts() ile cap havuzundan ayri
+    # olarak filtre edilir (etiket yanlislikla cap sayilmasin).
     return centers
+
+
+def _filter_sprinkler_id_texts(
+    texts: list[DiameterText],
+    sprinkler_centers: list[tuple[float, float]],
+    threshold: float = _SPRINKLER_ID_TEXT_THRESHOLD,
+) -> list[DiameterText]:
+    """Bir TEXT bir sprinkler INSERT merkezine `threshold` mm'den yakinsa
+    cap havuzundan dus. Sprinkler etiketleri (S1, PEND-Ø12.7) cap regex'ine
+    yanlislikla takılmasın diye.
+
+    threshold default 30mm — sprinkler sembolu boyutunun usti.
+    """
+    if not sprinkler_centers or not texts:
+        return texts
+    threshold_sq = threshold * threshold
+    filtered: list[DiameterText] = []
+    for t in texts:
+        tx = t.get("x", 0.0)
+        ty = t.get("y", 0.0)
+        is_near_sprinkler = False
+        for cx, cy in sprinkler_centers:
+            dx = tx - cx
+            dy = ty - cy
+            if dx * dx + dy * dy <= threshold_sq:
+                is_near_sprinkler = True
+                break
+        if not is_near_sprinkler:
+            filtered.append(t)
+    return filtered
 
 
 def _detect_sprinkler_positions(
@@ -177,23 +437,36 @@ def _detect_sprinkler_positions(
     node_tol: float = _NODE_TOL,
     sprinkler_tol: float = _SPRINKLER_TOL,
     sprinkler_layers: list[str] | None = None,
-) -> set[tuple[float, float]]:
+    sprinkler_block_names: set[str] | None = None,
+) -> tuple[set[tuple[float, float]], list[tuple[float, float]]]:
     """Sprinkler pozisyonlarini aura-fill seklinde node_key seti olarak dondur.
 
-    Oncelik:
-      1) `sprinkler_layers` verildiyse → o layer'lardaki tum entity (proje-bagimsiz)
-      2) Aksi halde → block adi regex'i (_SPRINKLER_RE) fallback
+    Kaynaklari birlestirir (her ikisi de kullanilabilir):
+      1) `sprinkler_layers` → entity-type filtre (INSERT + kucuk CIRCLE + POINT,
+         LINE/TEXT atlanir, "ayni layer" sorununu cozer)
+      2) `sprinkler_block_names` → block adina gore (auto_detect_sprinklers
+         ciktisi); layer'dan bagimsiz, AI ile tespit edilen tum sprinkler
+         INSERT'ler dahil olur
+      3) Hicbiri yoksa → block adi regex'i (_SPRINKLER_RE) fallback
+
+    Returns:
+      (positions_set, centers_list) — positions aura-fill node key'ler,
+      centers ham (cx, cy) listesi (text filter icin gerekli).
     """
     positions: set[tuple[float, float]] = set()
+    centers: list[tuple[float, float]] = []
     if node_tol <= 0:
-        return positions
+        return positions, centers
     steps = int(sprinkler_tol / node_tol) + 1
 
-    centers: list[tuple[float, float]] = []
-    if sprinkler_layers:
-        centers = _sprinkler_centers_from_layers(doc, sprinkler_layers)
+    if sprinkler_layers or sprinkler_block_names:
+        centers = _sprinkler_centers_from_layers(
+            doc,
+            sprinkler_layers=sprinkler_layers,
+            sprinkler_block_names=sprinkler_block_names,
+        )
     else:
-        # Fallback: block adi regex
+        # Fallback: block adi regex (auto_detect_sprinklers cagrilmadiysa)
         for ins in doc.modelspace().query('INSERT'):
             try:
                 if not _SPRINKLER_RE.search(str(ins.dxf.name or '')):
@@ -206,7 +479,7 @@ def _detect_sprinkler_positions(
         for dx in range(-steps, steps + 1):
             for dy in range(-steps, steps + 1):
                 positions.add(_node_key(cx + dx * node_tol, cy + dy * node_tol))
-    return positions
+    return positions, centers
 
 
 def _collect_raw_edges(msp, layer_set: set[str]) -> list[dict]:
@@ -581,15 +854,21 @@ def _extract_segments(
     dxf_path: str,
     pipe_layers: list[str],
     sprinkler_layers: list[str] | None = None,
-) -> list[Segment]:
+    sprinkler_block_names: set[str] | None = None,
+) -> tuple[list[Segment], list[tuple[float, float]]]:
     """Secilen boru layer'larindan topology-aware pipe-run segment'leri uret.
 
     Her segment = bir pipe-run (iki junction/terminal/sprinkler arasinda).
     Bu sayede ana hat ve her dal icin AI'ya tek sorgu gider, farkli caplar
     dogru ayrilir (ana 2" → T → dal 1¼" → sprinkler 1").
 
-    Sprinkler'lar block name regex ile otomatik tespit edilir — kullanicinin
-    hat ismine ozel kelime yazmasina gerek yoktur.
+    Sprinkler tespiti iki kaynaktan gelir:
+      - sprinkler_layers (kullanici manuel) — entity tipiyle filtre
+      - sprinkler_block_names (auto_detect_sprinklers ciktisi) — layer-agnostik
+
+    Returns:
+      (segments, sprinkler_centers) — sprinkler_centers ham (cx, cy) listesi,
+      _filter_sprinkler_id_texts'e geri verilebilir.
     """
     doc = ezdxf.readfile(dxf_path)
     msp = doc.modelspace()
@@ -597,7 +876,7 @@ def _extract_segments(
 
     edges = _collect_raw_edges(msp, layer_set)
     if not edges:
-        return []
+        return [], []
 
     # Adaptif tolerance — edge median'ina gore olcek-bagimsiz
     node_tol, sprinkler_tol = _compute_tolerances(edges)
@@ -607,16 +886,23 @@ def _extract_segments(
     # Sprinkler merkezleri LINE orta kisminda ise LINE'i o noktada bol
     # (sprinkler cember boru uzerinde cizildiginde — ornek: SPR depo alanlari)
     split_sprinkler_keys: set[tuple[float, float]] = set()
-    if sprinkler_layers:
-        sp_centers = _sprinkler_centers_from_layers(doc, sprinkler_layers)
+    sp_centers: list[tuple[float, float]] = []
+    if sprinkler_layers or sprinkler_block_names:
+        sp_centers = _sprinkler_centers_from_layers(
+            doc,
+            sprinkler_layers=sprinkler_layers,
+            sprinkler_block_names=sprinkler_block_names,
+        )
         if sp_centers:
             edges, split_positions = _split_edges_on_points(edges, sp_centers, radius=sprinkler_tol)
             # Split edilen pozisyonlar dogrudan sprinkler endpoint'i
             split_sprinkler_keys = {_node_key(x, y, node_tol) for x, y in split_positions}
 
     graph = _build_node_graph(edges, node_tol)
-    sprinkler_keys = _detect_sprinkler_positions(
-        doc, node_tol, sprinkler_tol, sprinkler_layers=sprinkler_layers
+    sprinkler_keys, _ = _detect_sprinkler_positions(
+        doc, node_tol, sprinkler_tol,
+        sprinkler_layers=sprinkler_layers,
+        sprinkler_block_names=sprinkler_block_names,
     )
     sprinkler_keys |= split_sprinkler_keys
     runs = _group_into_runs(edges, graph, sprinkler_keys, node_tol)
@@ -631,7 +917,7 @@ def _extract_segments(
             "length": run["length"],
             "polyline": run.get("polyline", []),
         })
-    return segments
+    return segments, sp_centers
 
 
 def _extract_diameter_texts(dxf_path: str) -> list[DiameterText]:
@@ -848,23 +1134,56 @@ def assign_diameters_with_ai(
 ) -> tuple[dict[int, str], dict]:
     """Secilen boru layer'larindaki segment'lere AI ile cap atar.
 
+    Akis:
+      1. auto_detect_sprinklers — DXF'teki block'lari Claude'a sınıflandırır
+         (cache'li, fail-safe regex fallback) → sprinkler block adlari
+      2. _extract_segments — boru layer'larini topla, sprinkler INSERT
+         pozisyonlarinda LINE'i bol (T noktasi etkisi). Ayni layer'da
+         boru + sprinkler varsa: LINE boru, INSERT sprinkler — entity
+         tipiyle ayrilir.
+      3. _extract_diameter_texts → cap-benzeri TEXT havuzu
+      4. _filter_sprinkler_id_texts → sprinkler INSERT'e yakin TEXT'leri
+         cap havuzundan dus (etiket yanlislikla cap sayilmasin)
+      5. Claude API → cap atama
+
     Args:
       dxf_path: DXF dosya yolu
       pipe_layers: boru olarak isaretli layer adlari
       model: Claude model adi
       hat_tipi_hint: kullanicinin hat_tipi_map'te verdigi ipucu
-        (ornek: "Sprinkler Hatti", "Pis Su", "Temiz Su") — AI'nin format secimine yardim eder
-      sprinkler_layers: kullanicinin sprinkler olarak isaretledigi layer adlari;
-        verildiginde block regex'i yerine bu layer'lardaki tum entity pozisyonlari
-        sprinkler ucu olarak kullanilir (proje-bagimsiz)
+        (ornek: "Sprinkler Hatti", "Pis Su", "Temiz Su")
+      sprinkler_layers: opsiyonel — kullanici manuel sprinkler layer secimi
+        (yeni akista gerekli degil, geri uyumluluk icin tutuluyor)
 
     Returns:
       (segment_diameters, info_dict)
       segment_diameters: {segment_id: "Ø50" | "Belirtilmemis" | ...}
-      info_dict: {input_tokens, output_tokens, cost_usd, segment_count, text_count}
+      info_dict: {input_tokens, output_tokens, cost_usd, segment_count, text_count, sprinkler_block_count}
     """
-    segments = _extract_segments(dxf_path, pipe_layers, sprinkler_layers=sprinkler_layers)
+    # 1) Otomatik sprinkler tespiti (AI ile, cache'li)
+    sprinkler_block_names, classify_info = auto_detect_sprinklers(
+        dxf_path, hat_tipi_hint=hat_tipi_hint, model=model,
+    )
+
+    # 2) Topology + segment uretim (sprinkler INSERT pozisyonlarinda LINE bol)
+    segments, sp_centers = _extract_segments(
+        dxf_path,
+        pipe_layers,
+        sprinkler_layers=sprinkler_layers,
+        sprinkler_block_names=sprinkler_block_names,
+    )
+
+    # 3) Cap-benzeri text havuzu
     texts = _extract_diameter_texts(dxf_path)
+
+    # 4) Sprinkler ID etiketlerini cap havuzundan dus (yanlislikla "S1" = "1"' lik
+    #    olarak parse edilmesin)
+    if sp_centers and texts:
+        before = len(texts)
+        texts = _filter_sprinkler_id_texts(texts, sp_centers)
+        excluded_text_count = before - len(texts)
+    else:
+        excluded_text_count = 0
 
     if not segments:
         return {}, {"segment_count": 0, "text_count": 0, "error": "Secilen layer'larda segment yok"}
@@ -958,6 +1277,14 @@ def assign_diameters_with_ai(
         "cost_usd": round(cost_usd, 4),
         "cost_tl": round(cost_usd * 34, 2),
         "model": model,
+        # Auto-detect sprinkler bilgileri
+        "sprinkler_detection": {
+            "source": classify_info.get("source"),  # "ai" | "regex" | "cache"
+            "block_count": len(sprinkler_block_names),
+            "center_count": len(sp_centers),
+            "excluded_text_count": excluded_text_count,
+            "classify_cost_usd": classify_info.get("cost_usd", 0),
+        },
     }
     if errors:
         info["errors"] = errors

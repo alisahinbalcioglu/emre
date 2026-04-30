@@ -73,8 +73,8 @@ def main():
     node_tol, sprinkler_tol = _compute_tolerances(edges_raw)
     print(f"[2/4] Raw edge: {len(edges_raw)}, node_tol={node_tol:.2f}, sprinkler_tol={sprinkler_tol:.2f}")
 
-    # Sprinkler centers (layer-based)
-    centers = _sprinkler_centers_from_layers(doc, sprinkler_layers or [])
+    # Sprinkler centers (layer-based, entity type filter)
+    centers = _sprinkler_centers_from_layers(doc, sprinkler_layers=sprinkler_layers or [])
     print(f"[3/4] Sprinkler layer entity sayisi: {len(centers)}")
 
     # GERCEK pipeline: _extract_segments — sprinkler split dahil
@@ -89,9 +89,9 @@ def main():
     print(f"       sprinkler   split: {len(edges_ix)} -> {len(edges_sp)} (+{len(edges_sp)-len(edges_ix)} sprinkler split)")
 
     # Final segments (gercek pipeline)
-    segments = _extract_segments(str(dxf), pipe_layers, sprinkler_layers=sprinkler_layers)
+    segments, _ = _extract_segments(str(dxf), pipe_layers, sprinkler_layers=sprinkler_layers)
     graph = _build_node_graph(edges_sp, node_tol)
-    sk = _detect_sprinkler_positions(
+    sk, _ = _detect_sprinkler_positions(
         doc, node_tol, sprinkler_tol, sprinkler_layers=sprinkler_layers
     )
     sp_matched = sum(1 for k in graph if k in sk)
@@ -133,7 +133,8 @@ def main():
         from collections import Counter
         dia_count = Counter(v or "Belirtilmemis" for v in seg_dia.values())
         # Toplam uzunluk per cap
-        seg_map = {s["id"]: s for s in _extract_segments(str(dxf), pipe_layers, sprinkler_layers=sprinkler_layers)}
+        _segs2, _ = _extract_segments(str(dxf), pipe_layers, sprinkler_layers=sprinkler_layers)
+        seg_map = {s["id"]: s for s in _segs2}
         dia_len: dict[str, float] = {}
         for sid, dia in seg_dia.items():
             key = dia or "Belirtilmemis"

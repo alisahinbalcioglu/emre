@@ -335,7 +335,7 @@ def analyze_dxf_metraj(
     if selected_layers:
         try:
             from ai_diameter import _extract_segments as _edge_extract
-            _edges = _edge_extract(dxf_path, selected_layers, sprinkler_layers=sprinkler_layers_manual)
+            _edges, _ = _edge_extract(dxf_path, selected_layers, sprinkler_layers=sprinkler_layers_manual)
             edge_segments = [
                 EdgeSegment(
                     segment_id=s["id"],
@@ -351,6 +351,7 @@ def analyze_dxf_metraj(
             warnings.append(f"Edge segment cikarma: {str(_e)[:100]}")
 
     # ── AI Cap Atama (opsiyonel) ──
+    sprinkler_detection_info: dict | None = None
     if use_ai_diameter and selected_layers:
         try:
             from ai_diameter import assign_diameters_with_ai
@@ -378,7 +379,7 @@ def analyze_dxf_metraj(
 
             # Segment id -> (layer, length) haritasi (ai_diameter ile ayni sira)
             from ai_diameter import _extract_segments
-            _segs = _extract_segments(dxf_path, selected_layers, sprinkler_layers=sprinkler_layers_manual)
+            _segs, _ = _extract_segments(dxf_path, selected_layers, sprinkler_layers=sprinkler_layers_manual)
             seg_map = {s["id"]: s for s in _segs}
 
             # AI'nin atayamadigi segment'leri layer-level default ile doldur
@@ -430,6 +431,18 @@ def analyze_dxf_metraj(
                     f"{ai_info['text_count']} cap text, "
                     f"~{ai_info['cost_tl']} TL"
                 )
+                # Sprinkler tespit ozeti (auto_detect_sprinklers ciktisi)
+                sd = ai_info.get("sprinkler_detection") or {}
+                if sd.get("center_count") is not None:
+                    sprinkler_detection_info = sd
+                if sd.get("center_count"):
+                    src = sd.get("source", "?")
+                    warnings.append(
+                        f"Sprinkler tespit ({src}): "
+                        f"{sd.get('center_count')} sembol, "
+                        f"{sd.get('block_count')} unique block, "
+                        f"{sd.get('excluded_text_count')} etiket cap havuzundan dusuruldu"
+                    )
 
             # edge_segments'deki diameter'lari AI sonucuyla doldur
             for es in edge_segments:
@@ -446,6 +459,7 @@ def analyze_dxf_metraj(
             if (not es.diameter or es.diameter == "Belirtilmemis") and layer_default_diameter_map.get(es.layer):
                 es.diameter = layer_default_diameter_map[es.layer]
 
+    from models import SprinklerDetectionInfo as _SDI
     return MetrajResult(
         layers=layers,
         total_length=round(total, 2),
@@ -453,6 +467,9 @@ def analyze_dxf_metraj(
         warnings=warnings,
         branch_points=branch_points,
         edge_segments=edge_segments,
+        sprinkler_detection=(
+            _SDI(**sprinkler_detection_info) if sprinkler_detection_info else None
+        ),
     )
 
 

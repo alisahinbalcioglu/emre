@@ -56,4 +56,9 @@ export interface WorkspaceState {
 
   // AI toggle
   useAiDiameter: boolean;
+
+  /** Backend auto_detect_sprinklers'un bulduğu sprinkler INSERT sayisi.
+   *  Bilgilendirme amacli (info satirinda gosterilir). undefined = henuz
+   *  parse calismadi. */
+  aiDetectedSprinklerCount?: number;
 }

@@ -43,6 +43,7 @@ export default function DwgProjectWorkspace({
     beginEditEquipment, cancelEditEquipment, saveEquipment, removeEquipment,
     toggleAiDiameter,
     setLastClickedLayer, confirmSprinklerLayer, removeSprinklerLayer,
+    setAiDetectedSprinklerCount,
   } = useWorkspaceState(fileId, scale);
 
   const [calculating, setCalculating] = useState(false);
@@ -115,6 +116,12 @@ export default function DwgProjectWorkspace({
         computedAt: Date.now(),
       };
       addCalculatedLayer(calcLayer);
+
+      // Backend auto_detect_sprinklers ozeti — bilgi satirinda gosterilir.
+      const sd = data.sprinkler_detection;
+      if (sd && typeof sd.center_count === 'number') {
+        setAiDetectedSprinklerCount(sd.center_count);
+      }
 
       toast({
         title: 'Layer hesaplandı',
@@ -281,51 +288,25 @@ export default function DwgProjectWorkspace({
             onClearSelection={() => selectLayer(state.selectedLayer!)}
           />
 
-          {/* Sprinkler Layer Panel — tiklanan layer → buton ile sprinkler olarak isaretle */}
-          <div className="rounded-xl border bg-white p-3 space-y-2">
-            <div className="flex items-center gap-1.5">
-              <div className="h-2 w-2 rounded-full bg-cyan-400" />
-              <h4 className="text-xs font-semibold text-slate-700">Sprinkler Layer Secimi</h4>
-            </div>
-            <p className="text-[11px] text-slate-500 leading-relaxed">
-              Ekranda bir sprinkler sembolune tikla (cember, block veya cizgi fark etmez), sonra asagidaki butona bas.
-            </p>
-            <div className="rounded-md bg-slate-50 px-2 py-1.5 text-[11px]">
-              <span className="text-slate-500">Son tiklanan: </span>
-              <span className="font-mono text-slate-800">
-                {state.lastClickedLayer ?? '(henuz tiklanmadi)'}
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={handleConfirmSprinkler}
-              disabled={!state.lastClickedLayer}
-              className="w-full rounded-lg bg-cyan-600 px-3 py-2 text-xs font-medium text-white hover:bg-cyan-700 disabled:bg-slate-300 disabled:cursor-not-allowed"
-            >
-              {state.lastClickedLayer && state.sprinklerLayers.includes(state.lastClickedLayer)
-                ? `"${state.lastClickedLayer}" — Sprinkler Olmaktan Cikar`
-                : state.lastClickedLayer
-                  ? `"${state.lastClickedLayer}" — Sprinkler Yap`
-                  : 'Once bir sembole tikla'}
-            </button>
-            {state.sprinklerLayers.length > 0 && (
-              <div className="pt-1 border-t space-y-0.5">
-                <p className="text-[10px] font-medium uppercase text-slate-500 tracking-wide">Isaretli Sprinkler Layer'lari</p>
-                {state.sprinklerLayers.map((l) => (
-                  <div key={l} className="flex items-center justify-between gap-2 text-[11px]">
-                    <span className="font-mono truncate text-cyan-700">{l}</span>
-                    <button
-                      onClick={() => removeSprinklerLayer(l)}
-                      className="shrink-0 text-slate-400 hover:text-red-500"
-                      title="Kaldir"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </button>
-                  </div>
-                ))}
+          {/* Sprinkler tespit info — AI otomatik bulduğunda gösterilir.
+              Manuel layer secim panel kaldirildi: sprinkler tespit artik
+              backend'de otomatik (auto_detect_sprinklers, AI block sınıflandırma
+              + entity type filtre). Kullanici fark ederse viewer'da tıklayarak
+              ekle/cikar yapabilir (mevcut handleCircleClick / handleInsertClick). */}
+          {state.aiDetectedSprinklerCount !== undefined && state.aiDetectedSprinklerCount > 0 && (
+            <div className="rounded-xl border border-cyan-200 bg-cyan-50/50 p-3">
+              <div className="flex items-center gap-2">
+                <div className="h-2 w-2 rounded-full bg-cyan-400" />
+                <p className="text-xs text-slate-700">
+                  <span className="font-semibold text-cyan-700">{state.aiDetectedSprinklerCount}</span>
+                  <span className="text-slate-600"> sprinkler AI ile tespit edildi.</span>
+                </p>
               </div>
-            )}
-          </div>
+              <p className="mt-1 pl-4 text-[10px] text-slate-500">
+                Yanlissa: viewer'da yanlis simgeyi tıkla, sağ panelden "Sprinkler degil" işaretle.
+              </p>
+            </div>
+          )}
 
           <MetrajSummaryPanel
             calculatedLayers={state.calculatedLayers}
