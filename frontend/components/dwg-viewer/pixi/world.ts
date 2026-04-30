@@ -10,6 +10,8 @@ import { Container } from 'pixi.js';
 
 export interface WorldLayers {
   world: Container;
+  /** Arka plan grid (en altta, AutoCAD-vari kareli zemin). */
+  grid: Container;
   backgroundLines: Container;
   calculatedEdges: Container;
   circles: Container;
@@ -26,6 +28,10 @@ export function createWorld(): WorldLayers {
   world.label = 'world';
   world.eventMode = 'static';
   world.sortableChildren = false;
+
+  const grid = new Container();
+  grid.label = 'grid';
+  grid.eventMode = 'none';
 
   const backgroundLines = new Container();
   backgroundLines.label = 'backgroundLines';
@@ -47,14 +53,15 @@ export function createWorld(): WorldLayers {
   texts.label = 'texts';
   texts.eventMode = 'none';
 
-  // Render sırası (alttan üste): background → calculatedEdges → circles → inserts → texts
+  // Render sırası (alttan üste): grid → background → calculatedEdges → circles → inserts → texts
+  world.addChild(grid);
   world.addChild(backgroundLines);
   world.addChild(calculatedEdges);
   world.addChild(circles);
   world.addChild(inserts);
   world.addChild(texts);
 
-  return { world, backgroundLines, calculatedEdges, circles, inserts, texts };
+  return { world, grid, backgroundLines, calculatedEdges, circles, inserts, texts };
 }
 
 /**

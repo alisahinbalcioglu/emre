@@ -34,6 +34,7 @@ import { createCalculatedEdges, type CalculatedEdgesHandle } from './pixi/layers
 import { createCircles, type CirclesHandle } from './pixi/layers/circles';
 import { createInserts, type InsertsHandle } from './pixi/layers/inserts';
 import { createTexts, type TextsHandle } from './pixi/layers/texts';
+import { createGrid, type GridHandle } from './pixi/layers/grid';
 import ViewerStatusBar from './ViewerStatusBar';
 import ViewerToolbar from './ViewerToolbar';
 
@@ -79,6 +80,7 @@ export default function DxfPixiViewer({
   const circlesHandleRef = useRef<CirclesHandle | null>(null);
   const insertsHandleRef = useRef<InsertsHandle | null>(null);
   const textsHandleRef = useRef<TextsHandle | null>(null);
+  const gridHandleRef = useRef<GridHandle | null>(null);
 
   const [geometry, setGeometry] = useState<GeometryResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -87,6 +89,19 @@ export default function DxfPixiViewer({
   /** Mouse'un dunya-uzayindaki konumu — status bar'da gosterilir. null =
    *  fare viewer'in disinda. */
   const [cursorWorld, setCursorWorld] = useState<{ x: number; y: number } | null>(null);
+  /** Arka plan grid acik mi? localStorage'dan ilk degeri oku, kullanici
+   *  tercihi oturumlar arasinda hatirlanir. Default: kapali (sade). */
+  const [gridVisible, setGridVisible] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem('dwg-viewer-grid') === '1';
+  });
+  const toggleGrid = useCallback(() => {
+    setGridVisible((v) => {
+      const nv = !v;
+      try { window.localStorage.setItem('dwg-viewer-grid', nv ? '1' : '0'); } catch {}
+      return nv;
+    });
+  }, []);
 
   // ─── Callback ref'leri (closure stale olmasın) ───
   const onLineClickRef = useRef(onLineClick);
@@ -311,6 +326,7 @@ export default function DxfPixiViewer({
     const layers = layersRef.current;
     if (!layers) return;
 
+    gridHandleRef.current = createGrid(layers.grid);
     bgHandleRef.current = createBackgroundLines(
       layers.backgroundLines,
       () => onLineClickRef.current,
@@ -334,11 +350,13 @@ export default function DxfPixiViewer({
     textsHandleRef.current = createTexts(layers.texts);
 
     return () => {
+      gridHandleRef.current?.destroy();
       bgHandleRef.current?.destroy();
       edgesHandleRef.current?.destroy();
       circlesHandleRef.current?.destroy();
       insertsHandleRef.current?.destroy();
       textsHandleRef.current?.destroy();
+      gridHandleRef.current = null;
       bgHandleRef.current = null;
       edgesHandleRef.current = null;
       circlesHandleRef.current = null;
@@ -366,6 +384,17 @@ export default function DxfPixiViewer({
       zoom: viewport.zoom,
     });
   }, [stageReady, geometry, selectedLayer, highlightLayer, skipLayers, viewport.zoom]);
+
+  // Grid update — zoom + bounds + visibility degisince yeniden ciz.
+  // bounds null ise (geometry henuz fetch edilmedi) grid de cizilmez.
+  useEffect(() => {
+    if (!stageReady) return;
+    gridHandleRef.current?.update({
+      bounds: geometry || edgeSegments?.length ? bounds : null,
+      zoom: viewport.zoom,
+      visible: gridVisible,
+    });
+  }, [stageReady, gridVisible, viewport.zoom, bounds, geometry, edgeSegments]);
 
   // Calculated edges update
   useEffect(() => {
@@ -455,6 +484,8 @@ export default function DxfPixiViewer({
             onZoomIn={zoomIn}
             onZoomOut={zoomOut}
             onFit={fitView}
+            gridVisible={gridVisible}
+            onGridToggle={toggleGrid}
           />
         </div>
 
