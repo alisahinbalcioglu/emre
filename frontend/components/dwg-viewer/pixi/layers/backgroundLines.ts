@@ -112,21 +112,24 @@ export function createBackgroundLines(
 
       if (isSelected) {
         color = COLOR_SELECTED;
-        width = 2;
+        width = 3;
         alpha = 1;
       } else if (hasHighlight) {
         // Highlight modu: sadece highlightLayer normal, diğerleri silik
         const aci = layerColors[layer] ?? 7;
         color = isHighlighted ? aciToPixiColor(aci) : COLOR_PASSIVE;
-        width = isHighlighted ? 2 : 1;
+        width = isHighlighted ? 3 : 1.5;
         alpha = isHighlighted ? 1 : ALPHA_DIM;
       } else {
         const aci = layerColors[layer] ?? 7;
         color = aciToPixiColor(aci);
-        width = 1;
+        width = 1.5;
         alpha = 1;
       }
 
+      // pixelLine: width PIXEL_PERFECT yorumlanir — zoom 0.03x'te bile 1.5
+      // ekran pikseli kalin gorunur. Default modu (pixelLine=false) width
+      // dunya birimi yorumlardi ki bu zoom 0.03x'te 0.03 piksel = gorunmez.
       g.stroke({ width, color, alpha, pixelLine: true });
 
       // Tıklama — onLineClick varsa tıklanabilir

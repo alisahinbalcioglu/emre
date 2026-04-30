@@ -205,6 +205,20 @@ export default function DxfPixiViewer({
       appRef.current = app;
       layersRef.current = layers;
 
+      // Geliştirici teşhis yardımcısı — production'da da kalabilir, sadece
+      // window.__dwgDebug ile state'e erişim verir, bug yaşandığında
+      // konsoldan inceleme için. Performansa etkisi yok (sadece referans).
+      if (typeof window !== 'undefined') {
+        (window as any).__dwgDebug = {
+          app,
+          world: layers.world,
+          layers,
+          get geometry() { return geometry; },
+          get viewport() { return viewport; },
+          get bounds() { return bounds; },
+        };
+      }
+
       // PixiJS resizeTo, container'in boyutu mount aninda 0'dan farkli olsa
       // bile bazen ilk resize callback'ini tetiklemiyor — sonuc: canvas
       // 300x150 default'unda kaliyor, tum cizim kucuk buffer'a sıkışır.
