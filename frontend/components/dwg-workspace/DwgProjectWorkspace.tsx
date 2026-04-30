@@ -251,6 +251,10 @@ export default function DwgProjectWorkspace({
             onInsertClick={handleInsertClick}
             onCircleClick={handleCircleClick}
             onSegmentClick={(seg) => setEditingSegment(seg)}
+            onClearSelection={() => {
+              // selectLayer ayni layer ile cagrilinca toggle off yapiyor
+              if (state.selectedLayer) selectLayer(state.selectedLayer);
+            }}
             className="h-[600px] lg:h-[calc(100vh-150px)]"
           />
 

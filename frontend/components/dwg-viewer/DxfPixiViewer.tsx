@@ -55,6 +55,9 @@ interface DxfPixiViewerProps {
   highlightLayer?: string;
   includeInserts?: boolean;
   className?: string;
+  /** Esc tusu / context menu'den "Secimi temizle" tetiklendiginde cagirilir.
+   *  Genelde parent'in selectedLayer state'ini null'a cekecek. */
+  onClearSelection?: () => void;
 }
 
 export default function DxfPixiViewer({
@@ -71,6 +74,7 @@ export default function DxfPixiViewer({
   sprinklerLayers,
   highlightLayer,
   className = '',
+  onClearSelection,
 }: DxfPixiViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -335,6 +339,12 @@ export default function DxfPixiViewer({
     onZoomIn: zoomIn,
     onZoomOut: zoomOut,
     onToggleGrid: toggleGrid,
+    onClearSelection: () => {
+      // 1) Acik context menu varsa once onu kapat
+      setContextMenu(null);
+      // 2) Parent'in selection'ini temizle (varsa)
+      onClearSelection?.();
+    },
     onReset: () => { fitView(); },
   });
 
