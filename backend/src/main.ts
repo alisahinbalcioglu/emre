@@ -1,10 +1,16 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { json, urlencoded } from 'express';
+import compression from 'compression';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // GZIP — DWG geometry response 5-10 MB JSON. Sikistirma ile ~85-90% kucuk
+  // network transfer. Bu NestJS proxy katmaninda; Python tarafi da ayrica
+  // GZipMiddleware ekledigi icin Python→NestJS hop'unda da sikistirilmis.
+  app.use(compression());
 
   // Buyuk DWG/DXF dosyalari + multi-sheet Excel payload icin body limit yukselt.
   // Multer FileInterceptor zaten kendi fileSize limitini kullanir (1GB controller'da),

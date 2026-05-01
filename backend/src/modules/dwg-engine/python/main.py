@@ -19,7 +19,8 @@ from collections import defaultdict
 import ezdxf
 from fastapi import FastAPI, UploadFile, File, Query, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import JSONResponse, Response
 from converter import convert_dwg_to_dxf
 from topology import analyze_topology
 from geometry import extract_geometry, GeometryResult
@@ -40,6 +41,11 @@ if os.path.isfile(_ENV_PATH):
             os.environ.setdefault(_k.strip(), _v.strip().strip('"').strip("'"))
 
 app = FastAPI(title="MetaPrice DWG Engine", version="2.2.0")
+
+# GZIP — /geometry response 5-10 MB JSON. Sikistirma ile ~85-90% kucuk
+# (~0.5-1 MB) → network transfer ~10x hizli. minimum_size=1000: kucuk
+# health/ack response'lari sikistirma maliyetini odemesin.
+app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=6)
 
 app.add_middleware(
     CORSMiddleware,
@@ -79,6 +85,21 @@ async def verify_internal_token(request: Request, call_next):
 _file_cache: dict[str, dict] = {}  # {file_id: {"path": str, "created": float}}
 _CACHE_TTL = 900  # 15 dakika
 
+# Geometry response byte cache — extract_geometry + Pydantic serialize zincirini
+# tekrar yapmamak icin, ayni (file_id, layers_key) icin son JSON byte'larini tutar.
+# Frontend ayni file'i tekrar acarsa veya viewer remount olursa milisaniye seviye
+# response. Memory: ~3-5 MB/cache entry × max_entries → free tier 512MB icin 50MB
+# civar cap.
+_geometry_response_cache: dict[tuple[str, str], bytes] = {}
+_GEOMETRY_CACHE_MAX = 20  # son 20 unique (file_id, layers_key) tutulur
+
+
+def _invalidate_geometry_for_file(file_id: str) -> None:
+    """file_id ait tum cache entry'lerini sil (file expired/silindi)."""
+    keys_to_remove = [k for k in _geometry_response_cache if k[0] == file_id]
+    for k in keys_to_remove:
+        _geometry_response_cache.pop(k, None)
+
 
 def _cleanup_cache() -> None:
     """Suresi dolmus dosyalari temizle."""
@@ -93,6 +114,7 @@ def _cleanup_cache() -> None:
         except OSError:
             pass
         del _file_cache[fid]
+        _invalidate_geometry_for_file(fid)
 
 
 def _cache_dxf(dxf_path: str) -> str:
@@ -115,8 +137,23 @@ def _get_cached_dxf(file_id: str) -> str:
         except OSError:
             pass
         del _file_cache[file_id]
+        _invalidate_geometry_for_file(file_id)
         raise HTTPException(410, "Dosya suresi doldu (15dk). Lutfen tekrar yukleyin.")
     return info["path"]
+
+
+def _geometry_cache_get(file_id: str, layers_key: str) -> bytes | None:
+    """(file_id, layers) icin onceki JSON byte'larini don, yoksa None."""
+    return _geometry_response_cache.get((file_id, layers_key))
+
+
+def _geometry_cache_set(file_id: str, layers_key: str, payload: bytes) -> None:
+    """JSON byte cevabini cache'e koy. Boyut limiti asilirsa LRU FIFO drop."""
+    if len(_geometry_response_cache) >= _GEOMETRY_CACHE_MAX:
+        # En eski entry'yi at — Python 3.7+ dict insertion order'i koruyor
+        oldest = next(iter(_geometry_response_cache))
+        _geometry_response_cache.pop(oldest, None)
+    _geometry_response_cache[(file_id, layers_key)] = payload
 
 
 # ═══════════════════════════════════════════════════════
@@ -507,10 +544,20 @@ def get_geometry(
     # _get_cached_dxf 404/410 atabilir — HTTPException try/except'in DISINDA
     # ki orijinal status (404/410) korunsun, generic 500'e wraplenmesin.
     dxf_path = _get_cached_dxf(file_id)
-    print(f"[GEOMETRY] cache_ok dxf_path={dxf_path}", flush=True)
+
+    # Response cache: ayni (file_id, layers) icin onceki JSON byte'larini don.
+    # extract_geometry + Pydantic serialize zincirini atla — milisaniye seviye.
+    parts = sorted({ln.strip() for ln in layers.split(",") if ln.strip()})
+    layers_key = ",".join(parts)
+    cached_bytes = _geometry_cache_get(file_id, layers_key)
+    if cached_bytes is not None:
+        print(f"[GEOMETRY] cache_hit bytes={len(cached_bytes)}", flush=True)
+        return Response(content=cached_bytes, media_type="application/json")
+
+    print(f"[GEOMETRY] cache_miss dxf_path={dxf_path}", flush=True)
     layer_set: set[str] | None = None
-    if layers.strip():
-        layer_set = {ln.strip() for ln in layers.split(",") if ln.strip()}
+    if parts:
+        layer_set = set(parts)
     try:
         result = extract_geometry(dxf_path, layer_set)
     except HTTPException:
@@ -520,12 +567,19 @@ def get_geometry(
         traceback.print_exc()
         msg = f"{type(e).__name__}: {e}" if str(e) else f"{type(e).__name__} (bos mesaj)"
         raise HTTPException(500, f"Geometri cikarilamadi: {msg}")
+
+    # Pydantic'i bir kez serialize et, byte'lari cache'le, Response don. Bu yolla
+    # FastAPI'nin `response_model=GeometryResult` re-validate maliyeti atlanir
+    # (binlerce nested model icin onemli kazanc).
+    payload = result.model_dump_json().encode("utf-8")
+    _geometry_cache_set(file_id, layers_key, payload)
     print(
         f"[GEOMETRY] ok lines={len(result.lines)} inserts={len(result.inserts)} "
-        f"texts={len(result.texts)} circles={len(result.circles)}",
+        f"texts={len(result.texts)} circles={len(result.circles)} arcs={len(result.arcs)} "
+        f"bytes={len(payload)}",
         flush=True,
     )
-    return result
+    return Response(content=payload, media_type="application/json")
 
 
 @app.post("/layers", response_model=LayerListResult)
