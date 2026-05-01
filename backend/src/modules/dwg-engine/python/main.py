@@ -72,50 +72,75 @@ async def verify_internal_token(request: Request, call_next):
 
 
 # ═══════════════════════════════════════════════════════
-#  FILE CACHE — DXF dosyalarini bellekte tutma (15dk TTL)
+#  FILE CACHE — Filesystem-based DXF cache (15dk TTL)
 # ═══════════════════════════════════════════════════════
+# Disk-uzerinde deterministic path: /tmp/dwg_cache_<file_id>.dxf
+# Bu sayede multi-worker uvicorn'da TUM worker'lar ayni file_id'yi gorebilir
+# (in-memory dict per-worker olurdu, /layers worker A'da, /geometry worker B'de
+# olunca cache miss yasanirdi). Filesystem dogal sekilde paylasimli.
+# TTL kontrolu dosya mtime'i ile yapilir.
 
-_file_cache: dict[str, dict] = {}  # {file_id: {"path": str, "created": float}}
+import shutil
+
 _CACHE_TTL = 900  # 15 dakika
+_CACHE_DIR = tempfile.gettempdir()
+_CACHE_PREFIX = "dwg_cache_"
+_CACHE_SUFFIX = ".dxf"
+
+
+def _cache_path(file_id: str) -> str:
+    """file_id → deterministic disk path. In-memory map'e gerek yok."""
+    return os.path.join(_CACHE_DIR, f"{_CACHE_PREFIX}{file_id}{_CACHE_SUFFIX}")
 
 
 def _cleanup_cache() -> None:
-    """Suresi dolmus dosyalari temizle."""
+    """TTL'i gecmis cache dosyalarini disk'ten sil."""
     now = time.time()
-    expired = [
-        fid for fid, info in _file_cache.items()
-        if now - info["created"] > _CACHE_TTL
-    ]
-    for fid in expired:
-        try:
-            os.unlink(_file_cache[fid]["path"])
-        except OSError:
-            pass
-        del _file_cache[fid]
+    try:
+        for fname in os.listdir(_CACHE_DIR):
+            if not fname.startswith(_CACHE_PREFIX) or not fname.endswith(_CACHE_SUFFIX):
+                continue
+            fpath = os.path.join(_CACHE_DIR, fname)
+            try:
+                if now - os.path.getmtime(fpath) > _CACHE_TTL:
+                    os.unlink(fpath)
+            except OSError:
+                pass
+    except OSError:
+        pass
 
 
 def _cache_dxf(dxf_path: str) -> str:
-    """DXF dosyasini cache'e ekle, file_id dondur."""
+    """DXF temp dosyasini deterministic cache path'ine tasi, file_id dondur."""
     _cleanup_cache()
     file_id = uuid.uuid4().hex[:12]
-    _file_cache[file_id] = {"path": dxf_path, "created": time.time()}
+    cache_path = _cache_path(file_id)
+    # Once rename dene (ayni filesystem'de atomic), cross-fs ise shutil.move
+    try:
+        os.rename(dxf_path, cache_path)
+    except OSError:
+        shutil.move(dxf_path, cache_path)
     return file_id
 
 
 def _get_cached_dxf(file_id: str) -> str:
-    """Cache'ten DXF path al. Yoksa veya suresi dolduysa hata."""
-    if file_id not in _file_cache:
+    """Cache'ten DXF path al. Yoksa 404, expired ise 410."""
+    cache_path = _cache_path(file_id)
+    if not os.path.isfile(cache_path):
         raise HTTPException(404, "Dosya bulunamadi. Lutfen tekrar yukleyin.")
-    info = _file_cache[file_id]
-    if time.time() - info["created"] > _CACHE_TTL:
-        # Suresi dolmus, temizle
-        try:
-            os.unlink(info["path"])
-        except OSError:
-            pass
-        del _file_cache[file_id]
-        raise HTTPException(410, "Dosya suresi doldu (15dk). Lutfen tekrar yukleyin.")
-    return info["path"]
+    try:
+        if time.time() - os.path.getmtime(cache_path) > _CACHE_TTL:
+            try:
+                os.unlink(cache_path)
+            except OSError:
+                pass
+            raise HTTPException(410, "Dosya suresi doldu (15dk). Lutfen tekrar yukleyin.")
+    except HTTPException:
+        raise
+    except OSError:
+        # mtime alinamadi — dosya yine de var, kullan
+        pass
+    return cache_path
 
 
 # ═══════════════════════════════════════════════════════
@@ -485,11 +510,19 @@ def analyze_dxf_metraj(
 
 @app.get("/health")
 def health():
+    # Filesystem cache: disk'teki dwg_cache_*.dxf dosyalarini say.
+    try:
+        cached = sum(
+            1 for f in os.listdir(_CACHE_DIR)
+            if f.startswith(_CACHE_PREFIX) and f.endswith(_CACHE_SUFFIX)
+        )
+    except OSError:
+        cached = 0
     return {
         "status": "ok",
         "service": "dwg-engine",
         "version": "2.2",
-        "cached_files": len(_file_cache),
+        "cached_files": cached,
     }
 
 
@@ -718,4 +751,10 @@ if __name__ == "__main__":
     import uvicorn
     # Render 'PORT' kullanir, locale DWG_ENGINE_PORT fallback; default 8011
     port = int(os.environ.get("PORT") or os.environ.get("DWG_ENGINE_PORT") or 8011)
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    # Multi-worker — biri /geometry isleyirken digerleri /health'e cevap verir.
+    # GIL paylasimi yok (her worker ayri Python process). Render free tier
+    # 5sn HTTP health check timeout'undan kacinir; cache filesystem-tabanli
+    # oldugu icin file_id worker'lar arasi paylasilir.
+    # WORKERS env var ile override edilebilir; default 2.
+    workers = int(os.environ.get("WORKERS") or 2)
+    uvicorn.run("main:app", host="0.0.0.0", port=port, workers=workers)
