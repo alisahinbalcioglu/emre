@@ -3,7 +3,7 @@
  * Tamamen izole klasor (components/dwg-workspace/) — disa bagimli degil.
  */
 
-import type { EdgeSegment } from '@/components/dwg-viewer';
+import type { EdgeSegment } from '@/components/dwg-metraj';
 
 /** Bir layer icin kullanici tarafindan girilmis konfigurasyon. */
 export interface LayerConfig {

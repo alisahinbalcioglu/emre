@@ -1,31 +1,30 @@
 'use client';
 
 /**
- * DWG PixiJS Viewer — SVG renderer'ın WebGL muadili.
+ * DWG PixiJS Viewer — gorunru duzeni (canvas WebGL renderer).
  *
  * Mimari:
- *   - Prop interface birebir DxfSvgViewer ile aynı → DwgProjectWorkspace'te
- *     tek satır import değiştirilerek geçiş yapılır.
- *   - Render motoru: PixiJS v8 (WebGL). SVG DOM yerine tek <canvas>, binlerce
- *     element 60fps — "binlerce eşzamanlı kullanıcı" hedefi için kritik.
- *   - Pan/zoom: mevcut useViewport.ts hook'u aynen kullanılır; transform
- *     uygulama hedefi SVG <g> yerine PixiJS world container.
- *   - Y-flip: DWG Y↑ / canvas Y↓ — world.scale.y = -zoom ile çözülür.
+ *   - Render motoru: PixiJS v8 (WebGL). Tek <canvas>, binlerce element 60fps.
+ *   - Pan/zoom: useViewport.ts hook'u; transform PixiJS world container'a uygular.
+ *   - Y-flip: DWG Y↑ / canvas Y↓ — world.scale.y = -zoom ile cozulur.
  *
- * Layer katmanları (z-sırası alttan üste):
- *   1. backgroundLines — geometry.lines layer bazlı batch
- *   2. calculatedEdges — edge_segments çap bazlı batch + hit-test
- *   3. circles         — sprinkler/sembol çemberleri
- *   4. inserts         — ekipman noktaları
- *   5. texts           — TEXT/MTEXT (zoom>=0.3 LOD)
+ * Layer katmanlari (z-sirasi alttan uste):
+ *   1. grid            — AutoCAD-vari arka plan
+ *   2. backgroundLines — geometry.lines layer bazli batch
+ *   3. calculatedEdges — edge_segments cap bazli batch + hit-test (metraj)
+ *   4. arcs            — block icinden gelen yariciap yaylar
+ *   5. circles         — sprinkler/sembol cemberleri
+ *   6. inserts         — ekipman noktalari (hit-target)
+ *   7. texts           — TEXT/MTEXT (zoom>=0.3 LOD)
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, AlertCircle } from 'lucide-react';
 import type { Application } from 'pixi.js';
 import api from '@/lib/api';
-import type { EdgeSegment, GeometryResult } from './types';
-import { buildDiameterPalette } from './diameter-colors';
+import type { GeometryResult } from './types';
+import type { EdgeSegment } from '@/components/dwg-metraj/types';
+import { buildDiameterPalette } from '@/components/dwg-metraj/diameter-colors';
 import { useViewport } from './useViewport';
 import { createPixiStage, destroyPixiStage } from './pixi/stage';
 import { applyViewport, createWorld, type WorldLayers } from './pixi/world';

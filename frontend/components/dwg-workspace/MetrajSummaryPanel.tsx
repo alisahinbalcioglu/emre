@@ -7,7 +7,7 @@
 import React from 'react';
 import { Ruler, Wrench, Trash2 } from 'lucide-react';
 import type { CalculatedLayer, MarkedEquipment } from './types';
-import { diameterToColor } from '@/components/dwg-viewer/diameter-colors';
+import { diameterToColor } from '@/components/dwg-metraj/diameter-colors';
 
 interface MetrajSummaryPanelProps {
   calculatedLayers: Record<string, CalculatedLayer>;

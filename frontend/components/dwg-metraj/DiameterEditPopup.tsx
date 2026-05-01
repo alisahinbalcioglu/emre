@@ -3,7 +3,9 @@
 /**
  * Cap duzenleme popup — edge segment'e tiklaninca acilir.
  * Kullanici standart caplardan secer veya ozel deger girer.
- * Tamamen izole — dwg-viewer klasoru disindaki hic bir sey ile bagi yoktur.
+ *
+ * Boru/cap hesabi (metraj) domain'ine ait. Workspace `DwgProjectWorkspace`
+ * uzerinden tetiklenir; viewer (dwg-viewer) sadece tikla event'ini iletir.
  */
 
 import React, { useState } from 'react';

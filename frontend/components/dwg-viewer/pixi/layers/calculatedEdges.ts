@@ -10,7 +10,7 @@
  */
 
 import { Container, Graphics } from 'pixi.js';
-import type { EdgeSegment } from '../../types';
+import type { EdgeSegment } from '@/components/dwg-metraj/types';
 import { diameterToPixiColor } from '../color';
 
 export interface CalculatedEdgesUpdateOpts {
