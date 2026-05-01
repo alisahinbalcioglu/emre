@@ -751,10 +751,11 @@ if __name__ == "__main__":
     import uvicorn
     # Render 'PORT' kullanir, locale DWG_ENGINE_PORT fallback; default 8011
     port = int(os.environ.get("PORT") or os.environ.get("DWG_ENGINE_PORT") or 8011)
-    # Multi-worker — biri /geometry isleyirken digerleri /health'e cevap verir.
-    # GIL paylasimi yok (her worker ayri Python process). Render free tier
-    # 5sn HTTP health check timeout'undan kacinir; cache filesystem-tabanli
-    # oldugu icin file_id worker'lar arasi paylasilir.
-    # WORKERS env var ile override edilebilir; default 2.
-    workers = int(os.environ.get("WORKERS") or 2)
+    # Default WORKERS=1 — Render free tier 512MB RAM'de 2 worker × (ezdxf doc
+    # + libredwg + Python runtime) OOM yiyiyor (worker spawn sirasinda kernel
+    # SIGKILL → "Child process died" loop → port scan timeout → deploy fail).
+    # Filesystem-based cache (yukaridaki _cache_path) sayesinde tek worker bile
+    # restart sonrasi cache'i koruyor — multi-worker artik strictly gerekli degil.
+    # Daha fazla CPU/RAM (Starter plan) ile WORKERS=2 ayarlanabilir.
+    workers = int(os.environ.get("WORKERS") or 1)
     uvicorn.run("main:app", host="0.0.0.0", port=port, workers=workers)
