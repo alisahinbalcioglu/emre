@@ -394,7 +394,11 @@ export default function DxfPixiViewer({
       () => onSegmentClickRef.current,
       wasDragged,
     );
-    arcsHandleRef.current = createArcs(layers.arcs);
+    arcsHandleRef.current = createArcs(
+      layers.arcs,
+      () => onLineClickRef.current,
+      wasDragged,
+    );
     circlesHandleRef.current = createCircles(
       layers.circles,
       () => onCircleClickRef.current,

@@ -307,6 +307,14 @@ export default function DwgProjectWorkspace({
             onToggleAi={toggleAiDiameter}
             onCalculate={handleCalculate}
             onClearSelection={() => selectLayer(state.selectedLayer!)}
+            onHideLayer={() => {
+              if (!state.selectedLayer) return;
+              const layer = state.selectedLayer;
+              toggleLayerVisibility(layer);
+              toast({ title: 'Layer gizlendi', description: layer });
+              // Secimi de temizle ki sidebar "Cizimde bir boru layer'ina tiklayin" mesajina donsun
+              selectLayer(layer);
+            }}
           />
 
           <LayerVisibilityPanel

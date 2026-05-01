@@ -5,7 +5,7 @@
  */
 
 import React from 'react';
-import { Loader2, Layers } from 'lucide-react';
+import { Loader2, Layers, EyeOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { LayerConfig } from './types';
 
@@ -18,6 +18,8 @@ interface LayerInfoSidebarProps {
   onToggleAi: (v: boolean) => void;
   onCalculate: () => void;
   onClearSelection: () => void;
+  /** Secili layer'i cizimden gizle (LayerVisibilityPanel toggle ile ayni). */
+  onHideLayer?: () => void;
 }
 
 export default function LayerInfoSidebar({
@@ -29,6 +31,7 @@ export default function LayerInfoSidebar({
   onToggleAi,
   onCalculate,
   onClearSelection,
+  onHideLayer,
 }: LayerInfoSidebarProps) {
   if (!selectedLayer) {
     return (
@@ -51,12 +54,24 @@ export default function LayerInfoSidebar({
           <div className="h-2 w-2 rounded-full bg-blue-500" />
           <span className="text-[11px] font-medium text-blue-900 uppercase tracking-wide">Seçili Layer</span>
         </div>
-        <button
-          onClick={onClearSelection}
-          className="text-[10px] text-blue-600 hover:underline"
-        >
-          Seçimi kaldır
-        </button>
+        <div className="flex items-center gap-2">
+          {onHideLayer && (
+            <button
+              onClick={onHideLayer}
+              className="flex items-center gap-1 text-[10px] font-medium text-slate-600 hover:text-red-600 hover:underline"
+              title="Bu layer'i cizimden gizle"
+            >
+              <EyeOff className="h-3 w-3" />
+              Layer&apos;i Gizle
+            </button>
+          )}
+          <button
+            onClick={onClearSelection}
+            className="text-[10px] text-blue-600 hover:underline"
+          >
+            Seçimi kaldır
+          </button>
+        </div>
       </div>
       <p className="mb-3 break-all text-sm font-semibold text-slate-800">{selectedLayer}</p>
 
