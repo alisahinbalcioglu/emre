@@ -1,7 +1,8 @@
-import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
+import { Injectable, HttpException, HttpStatus, Logger } from '@nestjs/common';
 
 @Injectable()
 export class DwgEngineService {
+  private readonly logger = new Logger(DwgEngineService.name);
   private readonly pythonServiceUrl: string;
   private readonly internalToken: string;
 
@@ -33,6 +34,28 @@ export class DwgEngineService {
   }
 
   /**
+   * Python servisinden gelen hatalari kullaniciya anlasilir mesaja cevirir.
+   * Bos body / 50sn cold start / worker crash durumlarinda generic Geometri hatasi:
+   * cikmasin diye.
+   *
+   * @param prefix "Layer listesi hatasi" gibi mesaj on eki
+   * @param status Python tarafinin HTTP status kodu
+   * @param body Python tarafinin response body'si (text)
+   * @returns Birlestirilmis kullanici mesaji
+   */
+  private formatUpstreamError(prefix: string, status: number, body: string): string {
+    const trimmed = (body ?? '').trim();
+    if (!trimmed) {
+      // Bos body — Render edge crash, worker death, cold start drop senaryolari
+      if (status >= 500) {
+        return `${prefix}: DWG motoru cevap vermedi (HTTP ${status}, gecici hata olabilir, tekrar deneyin)`;
+      }
+      return `${prefix}: DWG motoru istegi reddetti (HTTP ${status})`;
+    }
+    return `${prefix}: ${trimmed}`;
+  }
+
+  /**
    * Layer listesi cikar (hizli, uzunluk hesaplamaz).
    * Dosya Python tarafinda cache'lenir, file_id doner.
    */
@@ -42,16 +65,20 @@ export class DwgEngineService {
     formData.append('file', blob, fileName);
 
     // Buyuk DWG'ler icin 5 dakika (ODA converter + ezdxf parse uzun surebilir)
+    const url = `${this.pythonServiceUrl}/layers`;
     try {
       const response = await fetch(
-        `${this.pythonServiceUrl}/layers`,
+        url,
         { method: 'POST', body: formData, headers: this.headers(), signal: AbortSignal.timeout(300_000) },
       );
 
       if (!response.ok) {
-        const error = await response.text();
+        const body = await response.text();
+        this.logger.warn(
+          `upstream /layers status=${response.status} url=${url} body=${body.slice(0, 200)}`,
+        );
         throw new HttpException(
-          `Layer listesi hatasi: ${error}`,
+          this.formatUpstreamError('Layer listesi hatasi', response.status, body),
           response.status >= 500 ? HttpStatus.INTERNAL_SERVER_ERROR : HttpStatus.UNPROCESSABLE_ENTITY,
         );
       }
@@ -62,6 +89,7 @@ export class DwgEngineService {
       const msg = (error as any)?.name === 'TimeoutError'
         ? 'DWG cok buyuk veya karmasik — 5 dakikada cevap alinamadi. Daha kucuk bir bolumunu deneyin.'
         : 'DWG Engine servisi baglanti hatasi. Servis calismiyor olabilir.';
+      this.logger.warn(`upstream /layers transport error: ${(error as any)?.name ?? 'Error'}: ${(error as any)?.message ?? ''}`);
       throw new HttpException(msg, HttpStatus.SERVICE_UNAVAILABLE);
     }
   }
@@ -131,16 +159,17 @@ export class DwgEngineService {
       fetchOptions.body = formData;
     }
 
+    const url = `${this.pythonServiceUrl}/parse?${params.toString()}`;
     try {
-      const response = await fetch(
-        `${this.pythonServiceUrl}/parse?${params.toString()}`,
-        fetchOptions,
-      );
+      const response = await fetch(url, fetchOptions);
 
       if (!response.ok) {
-        const error = await response.text();
+        const body = await response.text();
+        this.logger.warn(
+          `upstream /parse status=${response.status} body=${body.slice(0, 200)}`,
+        );
         throw new HttpException(
-          `DWG Engine hatasi: ${error}`,
+          this.formatUpstreamError('DWG Engine hatasi', response.status, body),
           response.status >= 500 ? HttpStatus.INTERNAL_SERVER_ERROR : HttpStatus.UNPROCESSABLE_ENTITY,
         );
       }
@@ -148,6 +177,7 @@ export class DwgEngineService {
       return await response.json();
     } catch (error) {
       if (error instanceof HttpException) throw error;
+      this.logger.warn(`upstream /parse transport error: ${(error as any)?.name ?? 'Error'}: ${(error as any)?.message ?? ''}`);
       throw new HttpException(
         'DWG Engine servisi baglanti hatasi. Servis calismiyor olabilir.',
         HttpStatus.SERVICE_UNAVAILABLE,
@@ -160,18 +190,26 @@ export class DwgEngineService {
     const blob = new Blob([fileBuffer as any]);
     formData.append('file', blob, fileName);
 
+    const url = `${this.pythonServiceUrl}/convert`;
     try {
       const response = await fetch(
-        `${this.pythonServiceUrl}/convert`,
+        url,
         { method: 'POST', body: formData, headers: this.headers(), signal: AbortSignal.timeout(120_000) },
       );
       if (!response.ok) {
-        const error = await response.text();
-        throw new HttpException(`DXF cevirme hatasi: ${error}`, HttpStatus.UNPROCESSABLE_ENTITY);
+        const body = await response.text();
+        this.logger.warn(
+          `upstream /convert status=${response.status} body=${body.slice(0, 200)}`,
+        );
+        throw new HttpException(
+          this.formatUpstreamError('DXF cevirme hatasi', response.status, body),
+          response.status >= 500 ? HttpStatus.INTERNAL_SERVER_ERROR : HttpStatus.UNPROCESSABLE_ENTITY,
+        );
       }
       return await response.json();
     } catch (error) {
       if (error instanceof HttpException) throw error;
+      this.logger.warn(`upstream /convert transport error: ${(error as any)?.name ?? 'Error'}: ${(error as any)?.message ?? ''}`);
       throw new HttpException('DWG Engine baglanti hatasi', HttpStatus.SERVICE_UNAVAILABLE);
     }
   }
@@ -193,15 +231,26 @@ export class DwgEngineService {
         signal: AbortSignal.timeout(60_000),
       });
       if (!response.ok) {
-        const error = await response.text();
+        const body = await response.text();
+        this.logger.warn(
+          `upstream /geometry status=${response.status} fileId=${fileId} body=${body.slice(0, 200)}`,
+        );
+        // 404 — cache miss / stale fileId. Frontend bunu yakalayip workspace'i
+        // upload zone'a sifirlamali. NOT_FOUND status'unu koru.
+        const wrappedStatus =
+          response.status === 404 ? HttpStatus.NOT_FOUND
+          : response.status === 410 ? HttpStatus.GONE
+          : response.status >= 500 ? HttpStatus.INTERNAL_SERVER_ERROR
+          : HttpStatus.UNPROCESSABLE_ENTITY;
         throw new HttpException(
-          `Geometri hatasi: ${error}`,
-          response.status >= 500 ? HttpStatus.INTERNAL_SERVER_ERROR : HttpStatus.UNPROCESSABLE_ENTITY,
+          this.formatUpstreamError('Geometri hatasi', response.status, body),
+          wrappedStatus,
         );
       }
       return await response.json();
     } catch (error) {
       if (error instanceof HttpException) throw error;
+      this.logger.warn(`upstream /geometry transport error: ${(error as any)?.name ?? 'Error'}: ${(error as any)?.message ?? ''}`);
       throw new HttpException(
         'DWG Engine baglanti hatasi',
         HttpStatus.SERVICE_UNAVAILABLE,
