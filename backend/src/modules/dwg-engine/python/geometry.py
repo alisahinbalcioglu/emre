@@ -51,11 +51,22 @@ class GeometryCircle(BaseModel):
     radius: float = 0.0          # world units
 
 
+class GeometryArc(BaseModel):
+    """ARC entity — yariciap yay (sprinkler/vana sembollerinde sik kullanilir)."""
+    layer: str
+    color: int = 256
+    center: list[float] = []     # [cx, cy]
+    radius: float = 0.0
+    start_angle: float = 0.0     # derece (DXF konvensyonu: x-eksenin saat yonune ters)
+    end_angle: float = 0.0       # derece
+
+
 class GeometryResult(BaseModel):
     lines: list[GeometryLine] = []
     inserts: list[GeometryInsert] = []
     texts: list[GeometryText] = []
     circles: list[GeometryCircle] = []
+    arcs: list[GeometryArc] = []
     bounds: list[float] = [0.0, 0.0, 0.0, 0.0]  # [minX, minY, maxX, maxY]
     layer_colors: dict[str, int] = {}  # {layer_name: ACI color}
 
@@ -207,6 +218,7 @@ def extract_geometry(dxf_path: str, layer_filter: set[str] | None = None) -> Geo
     inserts: list[GeometryInsert] = []
     texts: list[GeometryText] = []
     circles: list[GeometryCircle] = []
+    arcs: list[GeometryArc] = []
     bounds = [math.inf, math.inf, -math.inf, -math.inf]
     layer_colors: dict[str, int] = {}
     insert_counter = 0
@@ -227,6 +239,166 @@ def extract_geometry(dxf_path: str, layer_filter: set[str] | None = None) -> Geo
     # Layer renkleri
     for layer in doc.layers:
         layer_colors[layer.dxf.name] = layer.color if layer.color > 0 else 7  # default beyaz
+
+    def _expand_block_contents(
+        block_name: str,
+        parent_pos_raw: tuple[float, float],
+        parent_rot_deg: float,
+        parent_sx: float,
+        parent_sy: float,
+        parent_layer: str,
+        parent_color: int,
+        visited: frozenset[str],
+    ) -> None:
+        """
+        Block tanimini (LINE/POLYLINE/CIRCLE/ARC/INSERT/TEXT/MTEXT) world-space'e
+        expand eder. INSERT'in gorsel sembolü tam goruluyor olsun diye.
+
+        Kosullar:
+        - Local koordinatlari parent transform (pos+rot+scale) ile world'e cevir
+        - Layer "0" → parent'in layer'ini kullan (AutoCAD konvansiyonu)
+        - Color BYBLOCK (0) → parent'in color'ini kullan
+        - Nested INSERT recursive — visited set ile dongu guard
+        """
+        nonlocal circle_counter, insert_counter
+        if not block_name or block_name not in doc.blocks:
+            return
+        if block_name in visited:
+            return  # cyclic block reference guard
+        visited = visited | {block_name}
+
+        rot_rad = math.radians(parent_rot_deg)
+        cr, sr = math.cos(rot_rad), math.sin(rot_rad)
+        avg_scale = (abs(parent_sx) + abs(parent_sy)) / 2 or 1.0
+        px_raw, py_raw = parent_pos_raw
+
+        def _local_to_world_raw(lx0: float, ly0: float) -> tuple[float, float]:
+            """Local block coords → raw world coords (view-transform oncesi)."""
+            lx = lx0 * parent_sx
+            ly = ly0 * parent_sy
+            return (
+                lx * cr - ly * sr + px_raw,
+                lx * sr + ly * cr + py_raw,
+            )
+
+        def _local_to_world(lx0: float, ly0: float) -> tuple[float, float]:
+            """Local block coords → final world coords (view transform sonrasi)."""
+            wx_raw, wy_raw = _local_to_world_raw(lx0, ly0)
+            return _tp(wx_raw, wy_raw)
+
+        for bent in doc.blocks[block_name]:
+            bt_type = bent.dxftype()
+            if getattr(bent.dxf, "invisible", 0) == 1:
+                continue  # dynamic block gizli state
+            bent_layer = getattr(bent.dxf, "layer", parent_layer) or parent_layer
+            # AutoCAD: layer "0" iceren entity, parent INSERT'in layer'ini alir
+            if bent_layer == "0":
+                bent_layer = parent_layer
+            if layer_filter is not None and bent_layer not in layer_filter:
+                continue
+            bent_color = getattr(bent.dxf, "color", 256) or 256
+            # BYBLOCK (0) → parent INSERT'in color'i
+            if bent_color == 0:
+                bent_color = parent_color
+
+            try:
+                if bt_type == "LINE":
+                    x1, y1 = _local_to_world(float(bent.dxf.start.x), float(bent.dxf.start.y))
+                    x2, y2 = _local_to_world(float(bent.dxf.end.x), float(bent.dxf.end.y))
+                    lines.append(GeometryLine(layer=bent_layer, color=bent_color, coords=[x1, y1, x2, y2]))
+                    _update_bounds(bounds, x1, y1)
+                    _update_bounds(bounds, x2, y2)
+
+                elif bt_type == "LWPOLYLINE":
+                    pts = [_local_to_world(float(p[0]), float(p[1])) for p in bent.get_points("xy")]
+                    for i in range(len(pts) - 1):
+                        x1, y1 = pts[i]
+                        x2, y2 = pts[i + 1]
+                        lines.append(GeometryLine(layer=bent_layer, color=bent_color, coords=[x1, y1, x2, y2]))
+                        _update_bounds(bounds, x1, y1)
+                        _update_bounds(bounds, x2, y2)
+                    if getattr(bent, "closed", False) and len(pts) > 2:
+                        x1, y1 = pts[-1]
+                        x2, y2 = pts[0]
+                        lines.append(GeometryLine(layer=bent_layer, color=bent_color, coords=[x1, y1, x2, y2]))
+
+                elif bt_type == "POLYLINE":
+                    pts = [_local_to_world(float(v.dxf.location.x), float(v.dxf.location.y)) for v in bent.vertices]
+                    for i in range(len(pts) - 1):
+                        x1, y1 = pts[i]
+                        x2, y2 = pts[i + 1]
+                        lines.append(GeometryLine(layer=bent_layer, color=bent_color, coords=[x1, y1, x2, y2]))
+                        _update_bounds(bounds, x1, y1)
+                        _update_bounds(bounds, x2, y2)
+
+                elif bt_type == "CIRCLE":
+                    cx, cy = _local_to_world(float(bent.dxf.center.x), float(bent.dxf.center.y))
+                    radius = float(bent.dxf.radius) * avg_scale
+                    circles.append(GeometryCircle(
+                        circle_index=circle_counter,
+                        layer=bent_layer,
+                        color=bent_color,
+                        center=[cx, cy],
+                        radius=radius,
+                    ))
+                    circle_counter += 1
+                    _update_bounds(bounds, cx - radius, cy - radius)
+                    _update_bounds(bounds, cx + radius, cy + radius)
+
+                elif bt_type == "ARC":
+                    cx, cy = _local_to_world(float(bent.dxf.center.x), float(bent.dxf.center.y))
+                    radius = float(bent.dxf.radius) * avg_scale
+                    sa = float(getattr(bent.dxf, "start_angle", 0.0) or 0.0)
+                    ea = float(getattr(bent.dxf, "end_angle", 0.0) or 0.0)
+                    # ARC açilari parent rotasyon ile birlikte donusur
+                    arcs.append(GeometryArc(
+                        layer=bent_layer,
+                        color=bent_color,
+                        center=[cx, cy],
+                        radius=radius,
+                        start_angle=sa + parent_rot_deg + view_angle_deg,
+                        end_angle=ea + parent_rot_deg + view_angle_deg,
+                    ))
+                    _update_bounds(bounds, cx - radius, cy - radius)
+                    _update_bounds(bounds, cx + radius, cy + radius)
+
+                elif bt_type == "INSERT":
+                    # Nested block — recursive expand
+                    nested_lp = bent.dxf.insert
+                    nested_local_x, nested_local_y = float(nested_lp.x), float(nested_lp.y)
+                    nested_pos_raw = _local_to_world_raw(nested_local_x, nested_local_y)
+                    nested_rot = parent_rot_deg + float(getattr(bent.dxf, "rotation", 0.0) or 0.0)
+                    nested_sx = parent_sx * float(getattr(bent.dxf, "xscale", 1.0) or 1.0)
+                    nested_sy = parent_sy * float(getattr(bent.dxf, "yscale", 1.0) or 1.0)
+                    nested_name = str(getattr(bent.dxf, "name", "") or "")
+                    _expand_block_contents(
+                        nested_name, nested_pos_raw, nested_rot,
+                        nested_sx, nested_sy, bent_layer, bent_color, visited,
+                    )
+
+                elif bt_type in ("TEXT", "MTEXT"):
+                    if bt_type == "TEXT":
+                        bt_txt_raw = getattr(bent.dxf, "text", "") or ""
+                    else:
+                        bt_txt_raw = bent.plain_text() if hasattr(bent, "plain_text") else (getattr(bent.dxf, "text", "") or "")
+                    bt_txt = _autocad_decode(str(bt_txt_raw).replace("\n", " ")).strip()
+                    if not bt_txt:
+                        continue
+                    lp = bent.dxf.insert
+                    wx, wy = _local_to_world(float(lp.x), float(lp.y))
+                    raw_h = getattr(bent.dxf, "height", None)
+                    if raw_h is None:
+                        raw_h = getattr(bent.dxf, "char_height", 1.0)
+                    bh = float(raw_h or 1.0) * avg_scale
+                    b_rot = float(getattr(bent.dxf, "rotation", 0.0) or 0.0) + parent_rot_deg + view_angle_deg
+                    texts.append(GeometryText(
+                        text=bt_txt, layer=bent_layer, color=bent_color,
+                        position=[wx, wy], height=bh, rotation=b_rot,
+                    ))
+                    _update_bounds(bounds, wx, wy)
+            except Exception:
+                # Tek entity hatasi tum block'u patlatmasin
+                continue
 
     for entity in msp:
         layer_name = entity.dxf.layer
@@ -294,8 +466,30 @@ def extract_geometry(dxf_path: str, layer_filter: set[str] | None = None) -> Geo
             _update_bounds(bounds, cx - radius, cy - radius)
             _update_bounds(bounds, cx + radius, cy + radius)
 
+        elif etype == "ARC":
+            # ARC — sprinkler/vana sembollerinde sik kullanilan yariciap yay
+            try:
+                cx_raw, cy_raw = float(entity.dxf.center.x), float(entity.dxf.center.y)
+                cx, cy = _tp(cx_raw, cy_raw)
+                radius = float(entity.dxf.radius)
+                sa = float(getattr(entity.dxf, "start_angle", 0.0) or 0.0)
+                ea = float(getattr(entity.dxf, "end_angle", 0.0) or 0.0)
+            except (AttributeError, TypeError):
+                continue
+            arcs.append(GeometryArc(
+                layer=layer_name, color=color,
+                center=[cx, cy], radius=radius,
+                start_angle=sa + view_angle_deg,
+                end_angle=ea + view_angle_deg,
+            ))
+            _update_bounds(bounds, cx - radius, cy - radius)
+            _update_bounds(bounds, cx + radius, cy + radius)
+
         elif etype == "INSERT":
             # Ekipman/sembol — vana, pompa, sprinkler, radyator, hidrant, vs.
+            # 1) INSERT'i metadata olarak kaydet (hit-test + Excel cikti icin)
+            # 2) Block icerigini (LINE/CIRCLE/ARC/POLYLINE/TEXT/nested INSERT)
+            #    world-space'e expand et — gorsel sembol AutoCAD ile birebir gozuksun
             try:
                 pos = entity.dxf.insert
                 px_raw, py_raw = float(pos.x), float(pos.y)
@@ -318,7 +512,7 @@ def extract_geometry(dxf_path: str, layer_filter: set[str] | None = None) -> Geo
             insert_counter += 1
             _update_bounds(bounds, px, py)
 
-            # 2a) ATTRIB degerleri — block referansinda kullanicinin yazdigi dinamik yazilar
+            # ATTRIB — kullanici dolduran dinamik yazilar (block'tan ayri yasar)
             if hasattr(entity, "attribs"):
                 for at in entity.attribs:
                     try:
@@ -341,47 +535,17 @@ def extract_geometry(dxf_path: str, layer_filter: set[str] | None = None) -> Geo
                     except Exception:
                         continue
 
-            # 2b) Block definition icindeki TEXT/MTEXT — world coords'a transform
-            if block_name and block_name in doc.blocks:
-                rot_rad = math.radians(rot)
-                cr, sr = math.cos(rot_rad), math.sin(rot_rad)
-                for bent in doc.blocks[block_name]:
-                    bt_type = bent.dxftype()
-                    if bt_type not in ("TEXT", "MTEXT"):
-                        continue
-                    if getattr(bent.dxf, "invisible", 0) == 1:
-                        continue  # dynamic block gizli state
-                    try:
-                        if bt_type == "TEXT":
-                            bt_txt_raw = getattr(bent.dxf, "text", "") or ""
-                        else:
-                            bt_txt_raw = bent.plain_text() if hasattr(bent, "plain_text") else (getattr(bent.dxf, "text", "") or "")
-                        bt_txt = _autocad_decode(str(bt_txt_raw).replace("\n", " ")).strip()
-                        if not bt_txt:
-                            continue
-                        bent_layer = getattr(bent.dxf, "layer", layer_name)
-                        if layer_filter is not None and bent_layer not in layer_filter:
-                            continue
-                        # Local block coords → world (raw) → view-transformed world coords
-                        lp = bent.dxf.insert
-                        lx, ly = float(lp.x) * sx, float(lp.y) * sy
-                        wx_raw = lx * cr - ly * sr + px_raw
-                        wy_raw = lx * sr + ly * cr + py_raw
-                        wx, wy = _tp(wx_raw, wy_raw)
-                        # Height * ortalama scale
-                        raw_h = getattr(bent.dxf, "height", None)
-                        if raw_h is None:
-                            raw_h = getattr(bent.dxf, "char_height", 1.0)
-                        bh = float(raw_h or 1.0) * ((abs(sx) + abs(sy)) / 2)
-                        b_rot = float(getattr(bent.dxf, "rotation", 0.0) or 0.0) + rot + view_angle_deg
-                        bt_color = getattr(bent.dxf, "color", 256) or 256
-                        texts.append(GeometryText(
-                            text=bt_txt, layer=bent_layer, color=bt_color,
-                            position=[wx, wy], height=bh, rotation=b_rot,
-                        ))
-                        _update_bounds(bounds, wx, wy)
-                    except Exception:
-                        continue
+            # Block icerigini world-space'e expand et (gorsel sembol)
+            _expand_block_contents(
+                block_name=block_name,
+                parent_pos_raw=(px_raw, py_raw),
+                parent_rot_deg=rot,
+                parent_sx=sx,
+                parent_sy=sy,
+                parent_layer=layer_name,
+                parent_color=color,
+                visited=frozenset(),
+            )
 
         elif etype == "TEXT":
             # Cap etiketi, olcu, vs. (kullanici gorebilsin diye)
@@ -517,6 +681,6 @@ def extract_geometry(dxf_path: str, layer_filter: set[str] | None = None) -> Geo
         texts = [t for t in texts if _DIAMETER_TEXT_RE.match(t.text.strip())]
 
     return GeometryResult(
-        lines=lines, inserts=inserts, texts=texts, circles=circles,
+        lines=lines, inserts=inserts, texts=texts, circles=circles, arcs=arcs,
         bounds=bounds, layer_colors=layer_colors,
     )
