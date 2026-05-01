@@ -68,7 +68,9 @@ def convert_dwg_to_dxf(dwg_path: str) -> str:
         except subprocess.TimeoutExpired:
             raise RuntimeError("ODA FileConverter zaman asimi (120s)")
         except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"ODA FileConverter hatasi: {e.stderr.decode()}")
+            # errors='replace' — stderr UTF-8 olmayan karakter iceriyorsa decode patlamasin
+            stderr = (e.stderr or b"").decode(errors="replace").strip() or "(stderr bos)"
+            raise RuntimeError(f"ODA FileConverter hatasi: {stderr}")
 
     # Yontem 2: LibreDWG dwg2dxf
     libredwg = find_libredwg()
@@ -85,7 +87,8 @@ def convert_dwg_to_dxf(dwg_path: str) -> str:
         except subprocess.TimeoutExpired:
             raise RuntimeError("LibreDWG zaman asimi (120s)")
         except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"LibreDWG hatasi: {e.stderr.decode()}")
+            stderr = (e.stderr or b"").decode(errors="replace").strip() or "(stderr bos)"
+            raise RuntimeError(f"LibreDWG hatasi: {stderr}")
 
     # Yontem 3: ezdxf dogrudan DXF okuyabilir ama DWG okuyamaz
     raise RuntimeError(

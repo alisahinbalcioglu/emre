@@ -498,8 +498,11 @@ def extract_geometry(dxf_path: str, layer_filter: set[str] | None = None) -> Geo
             ))
             _update_bounds(bounds, px, py)
 
-    # Hicbir entity yoksa bounds sonsuz kalir — sifir yap
-    if not lines and not inserts and not texts and not circles:
+    # Hicbir entity yoksa veya tum entity'ler exception ile atlandiysa bounds
+    # sonsuz kalabilir. JSON serialization Infinity literal yazar (gecersiz JSON,
+    # client parse error). Defansif olarak finite kontrolu yapip sane default ata.
+    if (not math.isfinite(bounds[0]) or not math.isfinite(bounds[1])
+            or not math.isfinite(bounds[2]) or not math.isfinite(bounds[3])):
         bounds = [0.0, 0.0, 0.0, 0.0]
     else:
         bounds = [float(bounds[0]), float(bounds[1]), float(bounds[2]), float(bounds[3])]

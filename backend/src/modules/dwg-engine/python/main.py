@@ -14,6 +14,7 @@ import time
 import uuid
 import base64
 import tempfile
+import traceback
 from collections import defaultdict
 import ezdxf
 from fastapi import FastAPI, UploadFile, File, Query, HTTPException, Request
@@ -502,14 +503,29 @@ def get_geometry(
     Cache'teki DXF'ten LINE/POLYLINE koordinatlarini dondur.
     Frontend SVG viewer (dwg-viewer klasoru) icin kullanilir.
     """
+    print(f"[GEOMETRY] start file_id={file_id} layers={layers!r}", flush=True)
+    # _get_cached_dxf 404/410 atabilir — HTTPException try/except'in DISINDA
+    # ki orijinal status (404/410) korunsun, generic 500'e wraplenmesin.
     dxf_path = _get_cached_dxf(file_id)
+    print(f"[GEOMETRY] cache_ok dxf_path={dxf_path}", flush=True)
     layer_set: set[str] | None = None
     if layers.strip():
         layer_set = {ln.strip() for ln in layers.split(",") if ln.strip()}
     try:
-        return extract_geometry(dxf_path, layer_set)
+        result = extract_geometry(dxf_path, layer_set)
+    except HTTPException:
+        # extract_geometry icinde HTTPException atilirsa orijinal status'u koru
+        raise
     except Exception as e:
-        raise HTTPException(500, f"Geometri cikarilamadi: {str(e)}")
+        traceback.print_exc()
+        msg = f"{type(e).__name__}: {e}" if str(e) else f"{type(e).__name__} (bos mesaj)"
+        raise HTTPException(500, f"Geometri cikarilamadi: {msg}")
+    print(
+        f"[GEOMETRY] ok lines={len(result.lines)} inserts={len(result.inserts)} "
+        f"texts={len(result.texts)} circles={len(result.circles)}",
+        flush=True,
+    )
+    return result
 
 
 @app.post("/layers", response_model=LayerListResult)
@@ -523,9 +539,11 @@ async def list_layers(file: UploadFile = File(...)):
         raise HTTPException(400, "Dosya adi eksik")
 
     content = await file.read()
+    print(f"[LAYERS] start filename={file.filename!r} size={len(content)}", flush=True)
 
     try:
         dxf_path = _prepare_dxf(content, file.filename)
+        print(f"[LAYERS] dxf_ready dxf_path={dxf_path}", flush=True)
         result = extract_layer_info(dxf_path)
 
         # DXF dosyasini cache'e kaydet (15dk)
@@ -559,12 +577,19 @@ async def list_layers(file: UploadFile = File(...)):
         except OSError:
             result.dxf_base64 = ""
 
+        print(
+            f"[LAYERS] ok file_id={result.file_id} layers={result.total_layers} "
+            f"unit={result.suggested_unit_label}",
+            flush=True,
+        )
         return result
 
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(500, f"Layer listesi cikarilirken hata: {str(e)}")
+        traceback.print_exc()
+        msg = f"{type(e).__name__}: {e}" if str(e) else f"{type(e).__name__} (bos mesaj)"
+        raise HTTPException(500, f"Layer listesi cikarilirken hata: {msg}")
 
 
 @app.post("/parse", response_model=MetrajResult)
