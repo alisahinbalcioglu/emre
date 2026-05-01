@@ -62,6 +62,10 @@ interface DxfPixiViewerProps {
   /** Kullanicinin "goz" ikonuyla gizledigi layer'lar. Hicbir cizim
    *  katmaninda render edilmez (background, circles, arcs, inserts, texts). */
   hiddenLayers?: Set<string>;
+  /** Layer Gizle Modu aktif mi — toolbar'da AutoCAD-vari toggle. Aktif iken
+   *  cizimde tikla = o layer'i cizimden cikar. */
+  hideMode?: boolean;
+  onHideModeToggle?: () => void;
 }
 
 export default function DxfPixiViewer({
@@ -81,6 +85,8 @@ export default function DxfPixiViewer({
   onClearSelection,
   onLayersAvailable,
   hiddenLayers,
+  hideMode,
+  onHideModeToggle,
 }: DxfPixiViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -579,6 +585,8 @@ export default function DxfPixiViewer({
             onFit={fitView}
             gridVisible={gridVisible}
             onGridToggle={toggleGrid}
+            hideMode={hideMode}
+            onHideModeToggle={onHideModeToggle}
           />
         </div>
 

@@ -7,7 +7,7 @@
  * Sag grup: Grid toggle, Reset view (opsiyonel butonlar)
  */
 
-import { ZoomIn, ZoomOut, Maximize2, Grid3x3, Home } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize2, Grid3x3, Home, EyeOff } from 'lucide-react';
 
 interface ViewerToolbarProps {
   onZoomIn: () => void;
@@ -17,6 +17,9 @@ interface ViewerToolbarProps {
   /** Grid toggle — null/undefined ise buton gosterilmez. */
   gridVisible?: boolean;
   onGridToggle?: () => void;
+  /** Layer Gizle modu — buton aktif iken cizimde tikla = layer'i gizle. */
+  hideMode?: boolean;
+  onHideModeToggle?: () => void;
 }
 
 /**
@@ -61,6 +64,8 @@ export function ViewerToolbar({
   onReset,
   gridVisible,
   onGridToggle,
+  hideMode,
+  onHideModeToggle,
 }: ViewerToolbarProps) {
   return (
     <div className="flex items-center gap-0.5 rounded-lg border border-slate-700 bg-slate-900/90 backdrop-blur-sm px-1.5 py-1 shadow-lg">
@@ -84,6 +89,18 @@ export function ViewerToolbar({
           <Divider />
           <ToolButton onClick={onGridToggle} title={gridVisible ? 'Grid Kapat' : 'Grid Ac'} active={gridVisible}>
             <Grid3x3 className="h-4 w-4" />
+          </ToolButton>
+        </>
+      )}
+      {onHideModeToggle && (
+        <>
+          <Divider />
+          <ToolButton
+            onClick={onHideModeToggle}
+            title={hideMode ? 'Layer Gizle Modu AKTIF — kapatmak icin tikla' : 'Layer Gizle Modu — buton aktif iken cizimde tikla = o layer gizlenir'}
+            active={!!hideMode}
+          >
+            <EyeOff className="h-4 w-4" />
           </ToolButton>
         </>
       )}

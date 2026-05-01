@@ -139,7 +139,7 @@ export default function LayerInfoSidebar({
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
             Hesaplanıyor...
           </span>
-        ) : 'Bu Layer&apos;ı Hesapla'}
+        ) : 'Bu Layer\'ı Hesapla'}
       </button>
     </div>
   );

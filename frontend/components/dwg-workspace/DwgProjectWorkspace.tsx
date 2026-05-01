@@ -54,6 +54,11 @@ export default function DwgProjectWorkspace({
   const [availableLayers, setAvailableLayers] = useState<string[]>([]);
   const hiddenLayersSet = useMemo(() => new Set(state.hiddenLayers), [state.hiddenLayers]);
 
+  /** AutoCAD-vari "Layer Gizle Modu". Toolbar'daki goz-kapali butonu ile toggle.
+   *  Aktif iken cizimde tikla = o layer'i cizimden cikar. Geri getirmek icin
+   *  sag panel "Layer Goruntusu" listesinden goz ikonuyla gosterirsin. */
+  const [hideMode, setHideMode] = useState(false);
+
   const [calculating, setCalculating] = useState(false);
   const [editingSegment, setEditingSegment] = useState<EdgeSegment | null>(null);
   const [pendingEquipment, setPendingEquipment] = useState<null | {
@@ -145,9 +150,9 @@ export default function DwgProjectWorkspace({
 
   const handleLineClick = (line: { layer: string; index: number; shiftKey: boolean }) => {
     if (calculating) return;
-    // Shift+click → o layer'i gizle/goster (LayerVisibilityPanel'in shortcut'i).
-    // Normal click → layer'i metraj icin sec.
-    if (line.shiftKey) {
+    // Layer Gizle Modu (toolbar toggle) VEYA Shift+click → layer gizle/goster.
+    // Normal click → metraj secimi (sag panel formu acilir).
+    if (hideMode || line.shiftKey) {
       toggleLayerVisibility(line.layer);
       toast({
         title: state.hiddenLayers.includes(line.layer) ? 'Layer gosterildi' : 'Layer gizlendi',
@@ -282,6 +287,8 @@ export default function DwgProjectWorkspace({
             }}
             onLayersAvailable={setAvailableLayers}
             hiddenLayers={hiddenLayersSet}
+            hideMode={hideMode}
+            onHideModeToggle={() => setHideMode((v) => !v)}
             className="h-[600px] lg:h-[calc(100vh-150px)]"
           />
 
@@ -291,7 +298,7 @@ export default function DwgProjectWorkspace({
             <p className="text-[11px] text-slate-600">
               <strong>Boru:</strong> Çizgiye tıkla → sağda hat ismi gir → &quot;Hesapla&quot;.
               <strong className="ml-2">Ekipman:</strong> Noktaya tıkla → malzeme adı + birim gir.
-              <strong className="ml-2">Layer Gizle:</strong> Shift + Çizgiye tıkla.
+              <strong className="ml-2">Layer Gizle:</strong> Sol-üst toolbar&apos;da göz-kapalı butona bas → cizimde layer&apos;a tıkla. Geri getirmek icin sag paneldeki &quot;Layer Goruntusu&quot; listesinden goz ikonu.
             </p>
           </div>
         </div>
