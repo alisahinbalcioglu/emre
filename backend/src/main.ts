@@ -1,7 +1,11 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { json, urlencoded } from 'express';
-import compression from 'compression';
+// `compression` paketi pure CommonJS — `import x from 'compression'` esModuleInterop
+// olmadan compile edildiginde `.default` access'e dusuyor ve runtime'da
+// "compression_1.default is not a function" patliyor. TypeScript'in CJS-spesifik
+// `import = require` syntax'i ile direkt require gibi davranisir, sorun cikmaz.
+import compression = require('compression');
 import { AppModule } from './app.module';
 
 async function bootstrap() {
