@@ -90,11 +90,43 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
     try {
       const formData = new FormData();
       formData.append('file', f);
-      const res = await api.post(
-        '/dwg-engine/layers',
-        formData,
-        { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 300000 },
-      );
+      // Render free tier cold start (~50sn) ve gecici 5xx/429 durumlarinda
+      // sessiz retry yap. 4xx kalici hatalar (validation, dosya bozuk) retry'siz
+      // kullaniciya gosterilir.
+      const RETRY_DELAYS_MS = [3000, 6000]; // 2 retry: 3s, 6s
+      let res: any = null;
+      let lastErr: any = null;
+      for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+        try {
+          res = await api.post(
+            '/dwg-engine/layers',
+            formData,
+            { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 300000 },
+          );
+          lastErr = null;
+          break;
+        } catch (err: any) {
+          lastErr = err;
+          const status: number | undefined = err?.response?.status;
+          // 4xx (429 haric) → kalici, retry yapma
+          if (status !== undefined && status < 500 && status !== 429) {
+            break;
+          }
+          // 429: Retry-After header'i varsa onu dinle, yoksa default delay
+          let delay = RETRY_DELAYS_MS[attempt];
+          if (status === 429) {
+            const retryAfter = parseInt(err?.response?.headers?.['retry-after'] ?? '', 10);
+            if (!Number.isNaN(retryAfter) && retryAfter > 0) {
+              delay = Math.min(retryAfter * 1000, 15000);
+            } else {
+              delay = (delay ?? 5000);
+            }
+          }
+          if (delay === undefined) break;
+          await new Promise((r) => setTimeout(r, delay));
+        }
+      }
+      if (!res) throw lastErr;
       const data = res.data;
 
       // Backend'in onerdiği birim — default dialog secimi

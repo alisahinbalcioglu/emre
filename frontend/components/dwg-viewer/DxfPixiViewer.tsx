@@ -58,6 +58,9 @@ interface DxfPixiViewerProps {
   /** Esc tusu / context menu'den "Secimi temizle" tetiklendiginde cagirilir.
    *  Genelde parent'in selectedLayer state'ini null'a cekecek. */
   onClearSelection?: () => void;
+  /** Backend cache'inde fileId yoksa (404 = TTL doldu / worker restart edildi)
+   *  cagirilir. Parent burada workspace'i upload zone'a sifirlar. */
+  onCacheMiss?: () => void;
 }
 
 export default function DxfPixiViewer({
@@ -75,6 +78,7 @@ export default function DxfPixiViewer({
   highlightLayer,
   className = '',
   onClearSelection,
+  onCacheMiss,
 }: DxfPixiViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -186,6 +190,9 @@ export default function DxfPixiViewer({
   }, [calculatedEdgesByLayer]);
 
   // ─── Geometry fetch ───
+  // Render free tier cold start (~50sn) ve gecici 5xx durumlarinda transparent
+  // retry yap. 404 (cache miss / stale fileId) durumunda parent'i bilgilendir
+  // ki workspace upload zone'a geri donsun.
   useEffect(() => {
     if (!fileId || edgeSegments) {
       setGeometry(null);
@@ -194,24 +201,52 @@ export default function DxfPixiViewer({
     let cancelled = false;
     setLoading(true);
     setError(null);
+
+    const qs = layersKey ? `?layers=${encodeURIComponent(layersKey)}` : '';
+    const url = `/dwg-engine/geometry/${fileId}${qs}`;
+    const RETRY_DELAYS_MS = [2000, 4000]; // 2 retry: 2s, 4s
+
     (async () => {
-      try {
-        const qs = layersKey ? `?layers=${encodeURIComponent(layersKey)}` : '';
-        const res = await api.get<GeometryResult>(`/dwg-engine/geometry/${fileId}${qs}`);
-        if (!cancelled) {
-          setGeometry(res.data);
-          setLoading(false);
+      let lastErr: any = null;
+      for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+        if (cancelled) return;
+        try {
+          const res = await api.get<GeometryResult>(url);
+          if (!cancelled) {
+            setGeometry(res.data);
+            setLoading(false);
+          }
+          return;
+        } catch (e: any) {
+          lastErr = e;
+          const status: number | undefined = e?.response?.status;
+          // 404/410: cache miss / TTL expired — retry anlamsiz, parent reset etsin
+          if (status === 404 || status === 410) {
+            if (!cancelled) {
+              setLoading(false);
+              setError('Dosya suresi doldu, lutfen tekrar yukleyin');
+              onCacheMiss?.();
+            }
+            return;
+          }
+          // 4xx (5xx ve network haric) retry yapilmaz — kalici hata
+          if (status !== undefined && status < 500 && status !== 429) {
+            break;
+          }
+          // 5xx / 429 / network — retry hakki kaldiysa bekle ve tekrar dene
+          const delay = RETRY_DELAYS_MS[attempt];
+          if (delay === undefined) break;
+          await new Promise((r) => setTimeout(r, delay));
         }
-      } catch (e: any) {
-        if (!cancelled) {
-          const msg = e?.response?.data?.message ?? e?.message ?? 'Geometri alinamadi';
-          setError(msg);
-          setLoading(false);
-        }
+      }
+      if (!cancelled) {
+        const msg = lastErr?.response?.data?.message ?? lastErr?.message ?? 'Geometri alinamadi';
+        setError(msg);
+        setLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [fileId, layersKey, edgeSegments]);
+  }, [fileId, layersKey, edgeSegments, onCacheMiss]);
 
   // ─── PixiJS Stage init (mount-once) ───
   useEffect(() => {

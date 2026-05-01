@@ -262,6 +262,16 @@ export default function DwgProjectWorkspace({
               // selectLayer ayni layer ile cagrilinca toggle off yapiyor
               if (state.selectedLayer) selectLayer(state.selectedLayer);
             }}
+            onCacheMiss={() => {
+              // Backend cache'inde fileId yok (TTL doldu / Render free tier
+              // worker restart oldu). Workspace'i upload zone'a sifirla.
+              toast({
+                title: 'Dosya suresi doldu',
+                description: 'DWG motoru cache\'inden dustu, lutfen tekrar yukleyin.',
+                variant: 'destructive',
+              });
+              onReset();
+            }}
             className="h-[600px] lg:h-[calc(100vh-150px)]"
           />
 
