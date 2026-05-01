@@ -725,6 +725,33 @@ def extract_geometry(dxf_path: str, layer_filter: set[str] | None = None) -> Geo
     if len(texts) > 2000:
         texts = [t for t in texts if _DIAMETER_TEXT_RE.match(t.text.strip())]
 
+    # JSON payload boyut optimizasyonu — koordinat float'larini 2 ondalika yuvarla.
+    # DWG cizimleri mm precision yeterli; uzun float'lar (1234.5678901234567)
+    # JSON'da gereksiz 15+ byte tutar. Round(x, 2) → ~%30-40 ek boyut dususu
+    # (GZIP ile birlikte toplam ~%93 sikistirma).
+    def _r2(v: float) -> float:
+        return round(v, 2)
+
+    for ln in lines:
+        ln.coords = [_r2(c) for c in ln.coords]
+    for c in circles:
+        c.center = [_r2(c.center[0]), _r2(c.center[1])]
+        c.radius = _r2(c.radius)
+    for a in arcs:
+        a.center = [_r2(a.center[0]), _r2(a.center[1])]
+        a.radius = _r2(a.radius)
+        a.start_angle = _r2(a.start_angle)
+        a.end_angle = _r2(a.end_angle)
+    for ins in inserts:
+        ins.position = [_r2(ins.position[0]), _r2(ins.position[1])]
+        ins.scale = [_r2(ins.scale[0]), _r2(ins.scale[1])]
+        ins.rotation = _r2(ins.rotation)
+    for t in texts:
+        t.position = [_r2(t.position[0]), _r2(t.position[1])]
+        t.height = _r2(t.height)
+        t.rotation = _r2(t.rotation)
+    bounds = [_r2(b) for b in bounds]
+
     return GeometryResult(
         lines=lines, inserts=inserts, texts=texts, circles=circles, arcs=arcs,
         bounds=bounds, layer_colors=layer_colors,
