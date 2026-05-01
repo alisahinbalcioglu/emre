@@ -46,7 +46,7 @@ const ALPHA_DIM = 0.3;
  */
 export function createBackgroundLines(
   parent: Container,
-  onLineClickRef: () => ((args: { layer: string; index: number }) => void) | undefined,
+  onLineClickRef: () => ((args: { layer: string; index: number; shiftKey: boolean }) => void) | undefined,
   wasDraggedRef: () => boolean,
 ): BackgroundLinesHandle {
   const layerGraphics = new Map<string, Graphics>();
@@ -147,10 +147,12 @@ export function createBackgroundLines(
         g.eventMode = 'static';
         g.cursor = 'pointer';
         g.removeAllListeners('pointertap');
-        g.on('pointertap', () => {
+        g.on('pointertap', (event) => {
           if (wasDraggedRef()) return;
           const cb = onLineClickRef();
-          cb?.({ layer, index: 0 });
+          // PixiJS FederatedPointerEvent shiftKey'i direkt expose eder.
+          // Shift+click = layer gizle/goster (workspace handler'inda dallanir).
+          cb?.({ layer, index: 0, shiftKey: !!event.shiftKey });
         });
       } else {
         g.eventMode = 'passive';

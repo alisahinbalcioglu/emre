@@ -46,7 +46,7 @@ interface DxfPixiViewerProps {
   selectedLayer?: string | null;
   markedEquipmentKeys?: Set<string>;
   onSegmentClick?: (segment: EdgeSegment) => void;
-  onLineClick?: (line: { layer: string; index: number }) => void;
+  onLineClick?: (line: { layer: string; index: number; shiftKey: boolean }) => void;
   onInsertClick?: (insert: { layer: string; insertIndex: number; insertName: string; position: [number, number] }) => void;
   onCircleClick?: (circle: { layer: string; circleIndex: number; center: [number, number]; radius: number }) => void;
   sprinklerLayers?: Set<string>;

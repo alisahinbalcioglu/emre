@@ -143,8 +143,18 @@ export default function DwgProjectWorkspace({
     }
   };
 
-  const handleLineClick = (line: { layer: string; index: number }) => {
+  const handleLineClick = (line: { layer: string; index: number; shiftKey: boolean }) => {
     if (calculating) return;
+    // Shift+click → o layer'i gizle/goster (LayerVisibilityPanel'in shortcut'i).
+    // Normal click → layer'i metraj icin sec.
+    if (line.shiftKey) {
+      toggleLayerVisibility(line.layer);
+      toast({
+        title: state.hiddenLayers.includes(line.layer) ? 'Layer gosterildi' : 'Layer gizlendi',
+        description: line.layer,
+      });
+      return;
+    }
     setLastClickedLayer(line.layer);
     selectLayer(line.layer);
   };
@@ -281,6 +291,7 @@ export default function DwgProjectWorkspace({
             <p className="text-[11px] text-slate-600">
               <strong>Boru:</strong> Çizgiye tıkla → sağda hat ismi gir → &quot;Hesapla&quot;.
               <strong className="ml-2">Ekipman:</strong> Noktaya tıkla → malzeme adı + birim gir.
+              <strong className="ml-2">Layer Gizle:</strong> Shift + Çizgiye tıkla.
             </p>
           </div>
         </div>
