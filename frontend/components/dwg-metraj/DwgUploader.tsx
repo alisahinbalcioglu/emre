@@ -26,10 +26,6 @@ interface DwgUploaderProps {
  *      - Ekipmanlara (INSERT) tiklayip malzeme ad+birim girilir
  *   5. "Tumunu Onayla" → fiyatlandirmaya gider
  */
-// 429 / Cloudflare burst rate limit aldiktan sonra kullaniciya empoze edilen
-// minimum bekleme suresi — yenilenen retry feedback dongusunu kirmak icin.
-const RATE_LIMIT_COOLDOWN_MS = 30_000;
-
 export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
   const [file, setFile] = useState<File | null>(null);
   const [fileId, setFileId] = useState<string | null>(null);
@@ -37,9 +33,6 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
-  /** 429 hatasi alindigindaki Date.now() — kullanicinin hemen yeniden tiklamasi
-   *  edge cooldown'unu uzatabiliyor, bu nedenle 30sn empoze ediyoruz. */
-  const [rateLimitedUntil, setRateLimitedUntil] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -87,15 +80,6 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
     f: File,
     opts: { skipDialog?: boolean; override?: number } = {},
   ) => {
-    // Cloudflare/Render edge 429 cooldown — kullanici hemen tekrar deneyemez,
-    // burst window'u kapanmadan ikinci ardisik POST yine 429 doner.
-    if (rateLimitedUntil && Date.now() < rateLimitedUntil) {
-      const remaining = Math.ceil((rateLimitedUntil - Date.now()) / 1000);
-      const msg = `Sunucu yakin zamanda kalabaliklik yasadi. ${remaining}sn sonra tekrar dene.`;
-      setError(msg);
-      toast({ title: 'Bekleme suresi', description: msg, variant: 'destructive' });
-      return;
-    }
     setFile(f);
     setFileId(null);
     setPendingUnitChoice(null);
@@ -184,16 +168,11 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
       const msg = e?.response?.data?.message ?? e?.response?.data?.detail ?? 'Proje yuklenemedi';
       setError(msg);
       toast({ title: 'Hata', description: msg, variant: 'destructive' });
-      // Eger son hata 429 ise (tum retry'lar tukendi) — kullaniciya empoze
-      // edilen 30sn cooldown baslat. Bu, retry feedback dongusunu kirar.
-      if (e?.response?.status === 429) {
-        setRateLimitedUntil(Date.now() + RATE_LIMIT_COOLDOWN_MS);
-      }
     } finally {
       setExtractingLayers(false);
       stopTimer();
     }
-  }, [rateLimitedUntil]);
+  }, []);
 
   const resetAll = () => {
     setFile(null);
