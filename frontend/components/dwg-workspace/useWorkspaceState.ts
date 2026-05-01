@@ -30,6 +30,7 @@ export function useWorkspaceState(fileId: string, scale: number) {
     sprinklerLayers: [],
     lastClickedLayer: null,
     useAiDiameter: false,
+    hiddenLayers: [],
   });
 
   // fileId degistiginde tum workspace state'i sifirla — eski dosyanin hesaplamalari
@@ -45,6 +46,7 @@ export function useWorkspaceState(fileId: string, scale: number) {
       sprinklerLayers: [],
       lastClickedLayer: null,
       useAiDiameter: false,
+      hiddenLayers: [],
     });
   }, [fileId, scale]);
 
@@ -161,6 +163,23 @@ export function useWorkspaceState(fileId: string, scale: number) {
     setState((s) => ({ ...s, aiDetectedSprinklerCount: count }));
   }, []);
 
+  /** Layer'i gosterimden cikar/geri al. Sadece viewer goruntusunu etkiler;
+   *  hesaplanmis metrajlar ve config korunur. */
+  const toggleLayerVisibility = useCallback((layer: string) => {
+    setState((s) => {
+      const has = s.hiddenLayers.includes(layer);
+      return {
+        ...s,
+        hiddenLayers: has ? s.hiddenLayers.filter((l) => l !== layer) : [...s.hiddenLayers, layer],
+      };
+    });
+  }, []);
+
+  /** Tum layer'lari geri goster (filtre temizle). */
+  const showAllLayers = useCallback(() => {
+    setState((s) => (s.hiddenLayers.length === 0 ? s : { ...s, hiddenLayers: [] }));
+  }, []);
+
   return {
     state,
     selectLayer,
@@ -177,5 +196,7 @@ export function useWorkspaceState(fileId: string, scale: number) {
     confirmSprinklerLayer,
     removeSprinklerLayer,
     setAiDetectedSprinklerCount,
+    toggleLayerVisibility,
+    showAllLayers,
   };
 }

@@ -56,6 +56,12 @@ interface DxfPixiViewerProps {
   /** Esc tusu / context menu'den "Secimi temizle" tetiklendiginde cagirilir.
    *  Genelde parent'in selectedLayer state'ini null'a cekecek. */
   onClearSelection?: () => void;
+  /** Geometry'den cikan layer isimleri (bir kez, fetch sonrasi). Layer
+   *  goruntusu panelini beslemek icin parent'a iletilir. */
+  onLayersAvailable?: (layers: string[]) => void;
+  /** Kullanicinin "goz" ikonuyla gizledigi layer'lar. Hicbir cizim
+   *  katmaninda render edilmez (background, circles, arcs, inserts, texts). */
+  hiddenLayers?: Set<string>;
 }
 
 export default function DxfPixiViewer({
@@ -73,6 +79,8 @@ export default function DxfPixiViewer({
   highlightLayer,
   className = '',
   onClearSelection,
+  onLayersAvailable,
+  hiddenLayers,
 }: DxfPixiViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -184,6 +192,23 @@ export default function DxfPixiViewer({
     return new Set(Object.keys(calculatedEdgesByLayer));
   }, [calculatedEdgesByLayer]);
 
+  // Kullanicinin "goz" ikonuyla gizledigi layer'lara ait entity'leri tum cizim
+  // katmanlarindan filtreler. Hesaplanmis edge'leri etkilemez (kullanici metrajini
+  // kaybetmemeli, sadece ekran karmasiklasinca gormek istemiyor).
+  const visibleGeometry = useMemo<GeometryResult | null>(() => {
+    if (!geometry) return null;
+    if (!hiddenLayers || hiddenLayers.size === 0) return geometry;
+    const skip = (layer: string) => hiddenLayers.has(layer);
+    return {
+      ...geometry,
+      lines: geometry.lines.filter((l) => !skip(l.layer)),
+      circles: geometry.circles.filter((c) => !skip(c.layer)),
+      arcs: geometry.arcs.filter((a) => !skip(a.layer)),
+      inserts: geometry.inserts.filter((i) => !skip(i.layer)),
+      texts: geometry.texts.filter((t) => !skip(t.layer)),
+    };
+  }, [geometry, hiddenLayers]);
+
   // ─── Geometry fetch ───
   useEffect(() => {
     if (!fileId || edgeSegments) {
@@ -200,6 +225,9 @@ export default function DxfPixiViewer({
         if (!cancelled) {
           setGeometry(res.data);
           setLoading(false);
+          // Layer goruntusu paneli icin tum layer isimlerini parent'a iletir
+          const layerNames = Object.keys(res.data.layer_colors ?? {});
+          if (layerNames.length > 0) onLayersAvailable?.(layerNames);
         }
       } catch (e: any) {
         if (!cancelled) {
@@ -406,16 +434,17 @@ export default function DxfPixiViewer({
 
   // Background lines update — zoom dependency eklendi cunku stroke width
   // zoom-aware (dunya birimi cinsinden hesaplaniyor backgroundLines'da).
+  // visibleGeometry kullanilir ki gizli layer'lar atlansin.
   useEffect(() => {
     if (!stageReady) return;
     bgHandleRef.current?.update({
-      geometry,
+      geometry: visibleGeometry,
       selectedLayer,
       highlightLayer,
       skipLayers,
       zoom: viewport.zoom,
     });
-  }, [stageReady, geometry, selectedLayer, highlightLayer, skipLayers, viewport.zoom]);
+  }, [stageReady, visibleGeometry, selectedLayer, highlightLayer, skipLayers, viewport.zoom]);
 
   // Grid update — zoom + bounds + visibility degisince yeniden ciz.
   // bounds null ise (geometry henuz fetch edilmedi) grid de cizilmez.
@@ -437,26 +466,26 @@ export default function DxfPixiViewer({
   // Arcs update — block icinden gelen yariciap yaylar (sprinkler/vana sembol kavisleri)
   useEffect(() => {
     if (!stageReady) return;
-    arcsHandleRef.current?.update({ geometry });
-  }, [stageReady, geometry]);
+    arcsHandleRef.current?.update({ geometry: visibleGeometry });
+  }, [stageReady, visibleGeometry]);
 
   // Circles update
   useEffect(() => {
     if (!stageReady) return;
-    circlesHandleRef.current?.update({ geometry, sprinklerLayers });
-  }, [stageReady, geometry, sprinklerLayers]);
+    circlesHandleRef.current?.update({ geometry: visibleGeometry, sprinklerLayers });
+  }, [stageReady, visibleGeometry, sprinklerLayers]);
 
   // Inserts update
   useEffect(() => {
     if (!stageReady) return;
-    insertsHandleRef.current?.update({ geometry, markedEquipmentKeys });
-  }, [stageReady, geometry, markedEquipmentKeys]);
+    insertsHandleRef.current?.update({ geometry: visibleGeometry, markedEquipmentKeys });
+  }, [stageReady, visibleGeometry, markedEquipmentKeys]);
 
   // Texts update (LOD: zoom'a bağlı)
   useEffect(() => {
     if (!stageReady) return;
-    textsHandleRef.current?.update({ geometry, zoom: viewport.zoom });
-  }, [stageReady, geometry, viewport.zoom]);
+    textsHandleRef.current?.update({ geometry: visibleGeometry, zoom: viewport.zoom });
+  }, [stageReady, visibleGeometry, viewport.zoom]);
 
   // KRITIK: erken return YAPMA — yoksa canvas/container ref'ler null kalir
   // ve PixiJS init mount-effect'inde early return yapar (bos ekran bug'i).
