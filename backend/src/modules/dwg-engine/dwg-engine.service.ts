@@ -41,10 +41,16 @@ export class DwgEngineService {
    * @param prefix "Layer listesi hatasi" gibi mesaj on eki
    * @param status Python tarafinin HTTP status kodu
    * @param body Python tarafinin response body'si (text)
+   * @param retryAfter upstream Retry-After header degeri (saniye), opsiyonel
    * @returns Birlestirilmis kullanici mesaji
    */
-  private formatUpstreamError(prefix: string, status: number, body: string): string {
+  private formatUpstreamError(prefix: string, status: number, body: string, retryAfter?: number): string {
     const trimmed = (body ?? '').trim();
+    if (status === 429) {
+      // Cloudflare/Render edge burst rate limit. Frontend retry tetikler.
+      const wait = retryAfter && retryAfter > 0 ? `${retryAfter}sn` : 'birkac saniye';
+      return `${prefix}: Sunucu kalabalik, ${wait} sonra tekrar denenecek`;
+    }
     if (!trimmed) {
       // Bos body — Render edge crash, worker death, cold start drop senaryolari
       if (status >= 500) {
@@ -53,6 +59,19 @@ export class DwgEngineService {
       return `${prefix}: DWG motoru istegi reddetti (HTTP ${status})`;
     }
     return `${prefix}: ${trimmed}`;
+  }
+
+  /**
+   * Upstream'in HTTP status kodunu, frontend'in dogru ele alabilecegi NestJS
+   * HttpStatus'una map eder. Ozel durumlar (404 cache miss, 410 TTL expired,
+   * 429 rate limit) korunur ki frontend retry mantigi calissin.
+   */
+  private mapUpstreamStatus(status: number): HttpStatus {
+    if (status === 404) return HttpStatus.NOT_FOUND;
+    if (status === 410) return HttpStatus.GONE;
+    if (status === 429) return HttpStatus.TOO_MANY_REQUESTS;
+    if (status >= 500) return HttpStatus.INTERNAL_SERVER_ERROR;
+    return HttpStatus.UNPROCESSABLE_ENTITY;
   }
 
   /**
@@ -74,12 +93,14 @@ export class DwgEngineService {
 
       if (!response.ok) {
         const body = await response.text();
+        const retryAfter = parseInt(response.headers.get('retry-after') ?? '', 10);
+        const ra = !Number.isNaN(retryAfter) && retryAfter > 0 ? retryAfter : undefined;
         this.logger.warn(
-          `upstream /layers status=${response.status} url=${url} body=${body.slice(0, 200)}`,
+          `upstream /layers status=${response.status} url=${url} retry-after=${ra ?? '-'} body=${body.slice(0, 200)}`,
         );
         throw new HttpException(
-          this.formatUpstreamError('Layer listesi hatasi', response.status, body),
-          response.status >= 500 ? HttpStatus.INTERNAL_SERVER_ERROR : HttpStatus.UNPROCESSABLE_ENTITY,
+          this.formatUpstreamError('Layer listesi hatasi', response.status, body, ra),
+          this.mapUpstreamStatus(response.status),
         );
       }
 
@@ -165,12 +186,14 @@ export class DwgEngineService {
 
       if (!response.ok) {
         const body = await response.text();
+        const retryAfter = parseInt(response.headers.get('retry-after') ?? '', 10);
+        const ra = !Number.isNaN(retryAfter) && retryAfter > 0 ? retryAfter : undefined;
         this.logger.warn(
-          `upstream /parse status=${response.status} body=${body.slice(0, 200)}`,
+          `upstream /parse status=${response.status} retry-after=${ra ?? '-'} body=${body.slice(0, 200)}`,
         );
         throw new HttpException(
-          this.formatUpstreamError('DWG Engine hatasi', response.status, body),
-          response.status >= 500 ? HttpStatus.INTERNAL_SERVER_ERROR : HttpStatus.UNPROCESSABLE_ENTITY,
+          this.formatUpstreamError('DWG Engine hatasi', response.status, body, ra),
+          this.mapUpstreamStatus(response.status),
         );
       }
 
@@ -198,12 +221,14 @@ export class DwgEngineService {
       );
       if (!response.ok) {
         const body = await response.text();
+        const retryAfter = parseInt(response.headers.get('retry-after') ?? '', 10);
+        const ra = !Number.isNaN(retryAfter) && retryAfter > 0 ? retryAfter : undefined;
         this.logger.warn(
-          `upstream /convert status=${response.status} body=${body.slice(0, 200)}`,
+          `upstream /convert status=${response.status} retry-after=${ra ?? '-'} body=${body.slice(0, 200)}`,
         );
         throw new HttpException(
-          this.formatUpstreamError('DXF cevirme hatasi', response.status, body),
-          response.status >= 500 ? HttpStatus.INTERNAL_SERVER_ERROR : HttpStatus.UNPROCESSABLE_ENTITY,
+          this.formatUpstreamError('DXF cevirme hatasi', response.status, body, ra),
+          this.mapUpstreamStatus(response.status),
         );
       }
       return await response.json();
@@ -232,19 +257,16 @@ export class DwgEngineService {
       });
       if (!response.ok) {
         const body = await response.text();
+        const retryAfter = parseInt(response.headers.get('retry-after') ?? '', 10);
+        const ra = !Number.isNaN(retryAfter) && retryAfter > 0 ? retryAfter : undefined;
         this.logger.warn(
-          `upstream /geometry status=${response.status} fileId=${fileId} body=${body.slice(0, 200)}`,
+          `upstream /geometry status=${response.status} fileId=${fileId} retry-after=${ra ?? '-'} body=${body.slice(0, 200)}`,
         );
-        // 404 — cache miss / stale fileId. Frontend bunu yakalayip workspace'i
-        // upload zone'a sifirlamali. NOT_FOUND status'unu koru.
-        const wrappedStatus =
-          response.status === 404 ? HttpStatus.NOT_FOUND
-          : response.status === 410 ? HttpStatus.GONE
-          : response.status >= 500 ? HttpStatus.INTERNAL_SERVER_ERROR
-          : HttpStatus.UNPROCESSABLE_ENTITY;
+        // 404 cache miss, 410 TTL expired, 429 rate limit — hepsi mapUpstreamStatus
+        // tarafindan korunur ki frontend retry/reset davranisi calissin.
         throw new HttpException(
-          this.formatUpstreamError('Geometri hatasi', response.status, body),
-          wrappedStatus,
+          this.formatUpstreamError('Geometri hatasi', response.status, body, ra),
+          this.mapUpstreamStatus(response.status),
         );
       }
       return await response.json();
