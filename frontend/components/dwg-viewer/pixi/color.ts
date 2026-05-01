@@ -8,7 +8,7 @@
  */
 
 import { aciToColor } from '../aci-colors';
-import { diameterToColor } from '../diameter-colors';
+import { diameterToColor } from '@/components/dwg-metraj/diameter-colors';
 
 /**
  * CSS renk string'ini ("#rrggbb", "#rgb", "hsl(h,s%,l%)", "rgb(r,g,b)")

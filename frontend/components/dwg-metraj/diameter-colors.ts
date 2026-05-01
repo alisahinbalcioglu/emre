@@ -1,6 +1,10 @@
 /**
- * Cap → renk esleme. Frontend SVG viewer cizgileri capa gore renklendirir.
+ * Cap → renk esleme. Cizgileri capa gore renklendiren palet.
  * Renkler koyu arka plan (#0b1220) uzerinde iyi okunur.
+ *
+ * Bu dosya boru/cap hesabi (metraj) domain'ine ait. Viewer (dwg-viewer)
+ * calculatedEdges katmaninda buradan import eder — gorunru renkleri metraj
+ * verisinden uretilir.
  */
 
 // Sik kullanilan caplar icin sabit renkler — hep ayni caplar ayni renkte gorunsun
