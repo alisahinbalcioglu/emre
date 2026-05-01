@@ -19,6 +19,7 @@ import api from '@/lib/api';
 import { DxfPixiViewer, DiameterEditPopup, type EdgeSegment } from '@/components/dwg-viewer';
 import type { MetrajResult } from '@/components/dwg-metraj/MetrajTable';
 import LayerInfoSidebar from './LayerInfoSidebar';
+import LayerVisibilityPanel from './LayerVisibilityPanel';
 import MetrajSummaryPanel from './MetrajSummaryPanel';
 import EquipmentDetailPopup from './EquipmentDetailPopup';
 import { useWorkspaceState } from './useWorkspaceState';
@@ -44,7 +45,13 @@ export default function DwgProjectWorkspace({
     toggleAiDiameter,
     setLastClickedLayer, confirmSprinklerLayer, removeSprinklerLayer,
     setAiDetectedSprinklerCount,
+    toggleLayerVisibility, showAllLayers,
   } = useWorkspaceState(fileId, scale);
+
+  /** Geometry'den cikan layer isimleri — DxfPixiViewer onLayersAvailable
+   *  callback'inden gelir. Layer goruntusu paneli icin kullanilir. */
+  const [availableLayers, setAvailableLayers] = useState<string[]>([]);
+  const hiddenLayersSet = useMemo(() => new Set(state.hiddenLayers), [state.hiddenLayers]);
 
   const [calculating, setCalculating] = useState(false);
   const [editingSegment, setEditingSegment] = useState<EdgeSegment | null>(null);
@@ -272,6 +279,8 @@ export default function DwgProjectWorkspace({
               });
               onReset();
             }}
+            onLayersAvailable={setAvailableLayers}
+            hiddenLayers={hiddenLayersSet}
             className="h-[600px] lg:h-[calc(100vh-150px)]"
           />
 
@@ -296,6 +305,13 @@ export default function DwgProjectWorkspace({
             onToggleAi={toggleAiDiameter}
             onCalculate={handleCalculate}
             onClearSelection={() => selectLayer(state.selectedLayer!)}
+          />
+
+          <LayerVisibilityPanel
+            availableLayers={availableLayers}
+            hiddenLayers={state.hiddenLayers}
+            onToggle={toggleLayerVisibility}
+            onShowAll={showAllLayers}
           />
 
           {/* Sprinkler tespit info — AI otomatik bulduğunda gösterilir.

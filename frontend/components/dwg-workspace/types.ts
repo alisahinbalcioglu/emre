@@ -57,6 +57,11 @@ export interface WorkspaceState {
   // AI toggle
   useAiDiameter: boolean;
 
+  /** Kullanicinin "goz" ikonuyla gizledigi layer'lar — viewer'da hicbir
+   *  katmanda (background, circles, arcs, inserts, texts) cizilmez. Sadece
+   *  gorsel filtre, hesaplanmis metrajlari ve config'i etkilemez. */
+  hiddenLayers: string[];
+
   /** Backend auto_detect_sprinklers'un bulduğu sprinkler INSERT sayisi.
    *  Bilgilendirme amacli (info satirinda gosterilir). undefined = henuz
    *  parse calismadi. */
