@@ -2,10 +2,11 @@
  * Inserts layer — geometry.inserts (ekipman noktaları: vana, pompa, sprinkler
  * INSERT blokları, vs.)
  *
- * Render: küçük daire (r=2, işaretli için 3.5 + beyaz kontür).
- * Renk: işaretli ise turuncu (#f97316), değilse gri (#64748b).
- *
- * Etkileşim: onInsertClick → ekipman popup aç.
+ * Mimari notu: Backend artik block geometrisini world-space'e expand ediyor
+ * (LINE/CIRCLE/ARC). Yani sprinkler sembolu, vana profili, kollektor T'si
+ * gercek sekliyle background katmanlarinda goruluyor. Bu katmanin gorsel
+ * rolu silikleşti — sadece "isaretli ekipman" turuncu nokta olarak vurgulanir;
+ * normal INSERT'ler icin hit-target gorunmez kalir (kullanici tikla → popup).
  */
 
 import { Container, Graphics } from 'pixi.js';
@@ -23,9 +24,9 @@ export interface InsertsHandle {
 }
 
 const COLOR_MARKED = cssToHex('#f97316');
-const COLOR_NORMAL = cssToHex('#64748b');
 const RADIUS_MARKED = 3.5;
-const RADIUS_NORMAL = 2;
+const RADIUS_NORMAL = 2;       // sadece hit-area boyutu icin referans
+const HIT_RADIUS_MIN = 4;      // tikla kolayligi icin alt limit
 
 export function createInserts(
   parent: Container,
@@ -33,14 +34,11 @@ export function createInserts(
   wasDraggedRef: () => boolean,
 ): InsertsHandle {
   let gMarked: Graphics | null = null;
-  let gNormal: Graphics | null = null;
   let hitGraphics: Graphics[] = [];
 
   function clearAll() {
     gMarked?.destroy();
-    gNormal?.destroy();
     gMarked = null;
-    gNormal = null;
     for (const h of hitGraphics) h.destroy();
     hitGraphics = [];
   }
@@ -58,38 +56,28 @@ export function createInserts(
     gMarked.eventMode = 'passive';
     parent.addChild(gMarked);
 
-    gNormal = new Graphics();
-    gNormal.label = 'inserts-normal';
-    gNormal.eventMode = 'passive';
-    parent.addChild(gNormal);
-
     const markedList: GeometryInsert[] = [];
-    const normalList: GeometryInsert[] = [];
     for (const ins of inserts) {
       const key = `${ins.layer}:${ins.insert_index}`;
       if (marked?.has(key)) markedList.push(ins);
-      else normalList.push(ins);
     }
 
+    // Sadece kullanicinin işaretledigi ekipmanlar gorsel olarak vurgulanir.
+    // Normal INSERT'lerin gorseli backgroundLines/circles/arcs/texts katmanlarinda
+    // (block expansion ile) zaten cizildiginden burada nokta cizilmiyor.
     for (const ins of markedList) {
       gMarked.circle(ins.position[0], ins.position[1], RADIUS_MARKED);
     }
     gMarked.fill({ color: COLOR_MARKED });
     gMarked.stroke({ width: 0.5, color: 0xffffff, pixelLine: true });
 
-    for (const ins of normalList) {
-      gNormal.circle(ins.position[0], ins.position[1], RADIUS_NORMAL);
-    }
-    gNormal.fill({ color: COLOR_NORMAL });
-
-    // Hit-test per insert
+    // Hit-test her INSERT icin (gorunmeyen ama tiklanabilir alan).
     if (hasClick) {
       for (const ins of inserts) {
         const key = `${ins.layer}:${ins.insert_index}`;
         const isMarked = marked?.has(key);
         const r = isMarked ? RADIUS_MARKED : RADIUS_NORMAL;
-        // Tıklama kolaylığı için hit alanı biraz geniş
-        const hitRadius = Math.max(r + 2, 4);
+        const hitRadius = Math.max(r + 2, HIT_RADIUS_MIN);
         const h = new Graphics();
         h.label = `hit-ins-${ins.insert_index}`;
         h.circle(ins.position[0], ins.position[1], hitRadius);

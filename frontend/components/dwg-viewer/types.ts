@@ -45,11 +45,23 @@ export interface GeometryCircle {
   radius: number;
 }
 
+/** ARC entity — yariciap yay (sprinkler/vana sembollerinde sik kullanilir). */
+export interface GeometryArc {
+  layer: string;
+  color: number;
+  center: [number, number];
+  radius: number;
+  /** DXF konvensyonu: x-eksenin saat yonune ters, derece. */
+  start_angle: number;
+  end_angle: number;
+}
+
 export interface GeometryResult {
   lines: GeometryLine[];
   inserts: GeometryInsert[];
   texts: GeometryText[];
   circles: GeometryCircle[];
+  arcs: GeometryArc[];
   bounds: [number, number, number, number];  // [minX, minY, maxX, maxY]
   layer_colors: Record<string, number>;
 }
