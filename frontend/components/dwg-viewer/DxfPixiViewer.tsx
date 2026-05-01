@@ -32,6 +32,7 @@ import { applyViewport, createWorld, type WorldLayers } from './pixi/world';
 import { createBackgroundLines, type BackgroundLinesHandle } from './pixi/layers/backgroundLines';
 import { createCalculatedEdges, type CalculatedEdgesHandle } from './pixi/layers/calculatedEdges';
 import { createCircles, type CirclesHandle } from './pixi/layers/circles';
+import { createArcs, type ArcsHandle } from './pixi/layers/arcs';
 import { createInserts, type InsertsHandle } from './pixi/layers/inserts';
 import { createTexts, type TextsHandle } from './pixi/layers/texts';
 import { createGrid, type GridHandle } from './pixi/layers/grid';
@@ -87,6 +88,7 @@ export default function DxfPixiViewer({
 
   const bgHandleRef = useRef<BackgroundLinesHandle | null>(null);
   const edgesHandleRef = useRef<CalculatedEdgesHandle | null>(null);
+  const arcsHandleRef = useRef<ArcsHandle | null>(null);
   const circlesHandleRef = useRef<CirclesHandle | null>(null);
   const insertsHandleRef = useRef<InsertsHandle | null>(null);
   const textsHandleRef = useRef<TextsHandle | null>(null);
@@ -342,11 +344,13 @@ export default function DxfPixiViewer({
       setStageReady(false);
       bgHandleRef.current?.destroy();
       edgesHandleRef.current?.destroy();
+      arcsHandleRef.current?.destroy();
       circlesHandleRef.current?.destroy();
       insertsHandleRef.current?.destroy();
       textsHandleRef.current?.destroy();
       bgHandleRef.current = null;
       edgesHandleRef.current = null;
+      arcsHandleRef.current = null;
       circlesHandleRef.current = null;
       insertsHandleRef.current = null;
       textsHandleRef.current = null;
@@ -400,6 +404,7 @@ export default function DxfPixiViewer({
       () => onSegmentClickRef.current,
       wasDragged,
     );
+    arcsHandleRef.current = createArcs(layers.arcs);
     circlesHandleRef.current = createCircles(
       layers.circles,
       () => onCircleClickRef.current,
@@ -416,12 +421,14 @@ export default function DxfPixiViewer({
       gridHandleRef.current?.destroy();
       bgHandleRef.current?.destroy();
       edgesHandleRef.current?.destroy();
+      arcsHandleRef.current?.destroy();
       circlesHandleRef.current?.destroy();
       insertsHandleRef.current?.destroy();
       textsHandleRef.current?.destroy();
       gridHandleRef.current = null;
       bgHandleRef.current = null;
       edgesHandleRef.current = null;
+      arcsHandleRef.current = null;
       circlesHandleRef.current = null;
       insertsHandleRef.current = null;
       textsHandleRef.current = null;
@@ -464,6 +471,12 @@ export default function DxfPixiViewer({
     if (!stageReady) return;
     edgesHandleRef.current?.update({ calculatedEdgesByLayer });
   }, [stageReady, calculatedEdgesByLayer]);
+
+  // Arcs update — block icinden gelen yariciap yaylar (sprinkler/vana sembol kavisleri)
+  useEffect(() => {
+    if (!stageReady) return;
+    arcsHandleRef.current?.update({ geometry });
+  }, [stageReady, geometry]);
 
   // Circles update
   useEffect(() => {

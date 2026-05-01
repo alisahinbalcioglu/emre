@@ -14,6 +14,8 @@ export interface WorldLayers {
   grid: Container;
   backgroundLines: Container;
   calculatedEdges: Container;
+  /** Block icinden gelen yariciap yaylar — circles ile ayni stil, daha alt z. */
+  arcs: Container;
   circles: Container;
   inserts: Container;
   texts: Container;
@@ -41,6 +43,10 @@ export function createWorld(): WorldLayers {
   calculatedEdges.label = 'calculatedEdges';
   calculatedEdges.eventMode = 'passive';
 
+  const arcs = new Container();
+  arcs.label = 'arcs';
+  arcs.eventMode = 'passive';
+
   const circles = new Container();
   circles.label = 'circles';
   circles.eventMode = 'passive';
@@ -53,15 +59,16 @@ export function createWorld(): WorldLayers {
   texts.label = 'texts';
   texts.eventMode = 'none';
 
-  // Render sırası (alttan üste): grid → background → calculatedEdges → circles → inserts → texts
+  // Render sırası (alttan üste): grid → background → calculatedEdges → arcs → circles → inserts → texts
   world.addChild(grid);
   world.addChild(backgroundLines);
   world.addChild(calculatedEdges);
+  world.addChild(arcs);
   world.addChild(circles);
   world.addChild(inserts);
   world.addChild(texts);
 
-  return { world, grid, backgroundLines, calculatedEdges, circles, inserts, texts };
+  return { world, grid, backgroundLines, calculatedEdges, arcs, circles, inserts, texts };
 }
 
 /**
