@@ -108,12 +108,12 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
       formData.append('file', f);
       // Render free tier cold start (~50sn) ve Cloudflare/Render edge burst rate
       // limit (429) durumlarinda sessiz retry yap. 5xx ve 429 ayri timing:
-      //   - 5xx: 3s, 6s (cold start)
-      //   - 429: 10s, 20s (Cloudflare cooldown — burst window'unu kapatmasini bekle)
+      //   - 5xx: 3s, 10s, 25s (cold start full coverage ~38s)
+      //   - 429: 10s, 20s, 30s (Cloudflare cooldown — burst window'u uzun olabilir)
       // 4xx kalici hatalar (422 validation, 415 dosya bozuk) retry'siz.
-      const RETRY_DELAYS_5XX_MS = [3000, 6000];
-      const RETRY_DELAYS_429_MS = [10000, 20000];
-      const MAX_ATTEMPTS = 3; // ilk + 2 retry
+      const RETRY_DELAYS_5XX_MS = [3000, 10000, 25000];
+      const RETRY_DELAYS_429_MS = [10000, 20000, 30000];
+      const MAX_ATTEMPTS = 4; // ilk + 3 retry
       let res: any = null;
       let lastErr: any = null;
       for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
@@ -142,7 +142,7 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
             if (!Number.isNaN(retryAfter) && retryAfter > 0) {
               delay = Math.min(retryAfter * 1000, 30000); // max 30s clamp
             } else {
-              delay = RETRY_DELAYS_429_MS[attempt] ?? 20000;
+              delay = RETRY_DELAYS_429_MS[attempt] ?? 30000;
             }
             // Kullaniciya feedback — sunucu mesgul, bekle
             toast({
@@ -150,7 +150,12 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
               description: `~${Math.round(delay / 1000)}sn sonra tekrar denenecek...`,
             });
           } else {
-            delay = RETRY_DELAYS_5XX_MS[attempt] ?? 6000;
+            delay = RETRY_DELAYS_5XX_MS[attempt] ?? 25000;
+            // Cold start senaryosu — kullanici beklerken durumu bilsin
+            toast({
+              title: 'Sunucu uyandiriliyor',
+              description: `~${Math.round(delay / 1000)}sn sonra tekrar denenecek...`,
+            });
           }
           await new Promise((r) => setTimeout(r, delay));
         }
