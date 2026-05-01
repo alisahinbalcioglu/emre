@@ -26,6 +26,10 @@ interface DwgUploaderProps {
  *      - Ekipmanlara (INSERT) tiklayip malzeme ad+birim girilir
  *   5. "Tumunu Onayla" → fiyatlandirmaya gider
  */
+// 429 / Cloudflare burst rate limit aldiktan sonra kullaniciya empoze edilen
+// minimum bekleme suresi — yenilenen retry feedback dongusunu kirmak icin.
+const RATE_LIMIT_COOLDOWN_MS = 30_000;
+
 export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
   const [file, setFile] = useState<File | null>(null);
   const [fileId, setFileId] = useState<string | null>(null);
@@ -33,6 +37,9 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  /** 429 hatasi alindigindaki Date.now() — kullanicinin hemen yeniden tiklamasi
+   *  edge cooldown'unu uzatabiliyor, bu nedenle 30sn empoze ediyoruz. */
+  const [rateLimitedUntil, setRateLimitedUntil] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -80,6 +87,15 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
     f: File,
     opts: { skipDialog?: boolean; override?: number } = {},
   ) => {
+    // Cloudflare/Render edge 429 cooldown — kullanici hemen tekrar deneyemez,
+    // burst window'u kapanmadan ikinci ardisik POST yine 429 doner.
+    if (rateLimitedUntil && Date.now() < rateLimitedUntil) {
+      const remaining = Math.ceil((rateLimitedUntil - Date.now()) / 1000);
+      const msg = `Sunucu yakin zamanda kalabaliklik yasadi. ${remaining}sn sonra tekrar dene.`;
+      setError(msg);
+      toast({ title: 'Bekleme suresi', description: msg, variant: 'destructive' });
+      return;
+    }
     setFile(f);
     setFileId(null);
     setPendingUnitChoice(null);
@@ -90,13 +106,17 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
     try {
       const formData = new FormData();
       formData.append('file', f);
-      // Render free tier cold start (~50sn) ve gecici 5xx/429 durumlarinda
-      // sessiz retry yap. 4xx kalici hatalar (validation, dosya bozuk) retry'siz
-      // kullaniciya gosterilir.
-      const RETRY_DELAYS_MS = [3000, 6000]; // 2 retry: 3s, 6s
+      // Render free tier cold start (~50sn) ve Cloudflare/Render edge burst rate
+      // limit (429) durumlarinda sessiz retry yap. 5xx ve 429 ayri timing:
+      //   - 5xx: 3s, 6s (cold start)
+      //   - 429: 10s, 20s (Cloudflare cooldown — burst window'unu kapatmasini bekle)
+      // 4xx kalici hatalar (422 validation, 415 dosya bozuk) retry'siz.
+      const RETRY_DELAYS_5XX_MS = [3000, 6000];
+      const RETRY_DELAYS_429_MS = [10000, 20000];
+      const MAX_ATTEMPTS = 3; // ilk + 2 retry
       let res: any = null;
       let lastErr: any = null;
-      for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
         try {
           res = await api.post(
             '/dwg-engine/layers',
@@ -108,21 +128,30 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
         } catch (err: any) {
           lastErr = err;
           const status: number | undefined = err?.response?.status;
-          // 4xx (429 haric) → kalici, retry yapma
+          // 4xx (429 haric) → kalici hata, retry yapma
           if (status !== undefined && status < 500 && status !== 429) {
             break;
           }
-          // 429: Retry-After header'i varsa onu dinle, yoksa default delay
-          let delay = RETRY_DELAYS_MS[attempt];
+          // Bu son denemeyse retry yapma
+          if (attempt >= MAX_ATTEMPTS - 1) break;
+          // Delay hesapla: 429 ozel (Retry-After header'i veya 10s/20s),
+          // 5xx default 3s/6s
+          let delay: number;
           if (status === 429) {
             const retryAfter = parseInt(err?.response?.headers?.['retry-after'] ?? '', 10);
             if (!Number.isNaN(retryAfter) && retryAfter > 0) {
-              delay = Math.min(retryAfter * 1000, 15000);
+              delay = Math.min(retryAfter * 1000, 30000); // max 30s clamp
             } else {
-              delay = (delay ?? 5000);
+              delay = RETRY_DELAYS_429_MS[attempt] ?? 20000;
             }
+            // Kullaniciya feedback — sunucu mesgul, bekle
+            toast({
+              title: 'Sunucu kalabalik',
+              description: `~${Math.round(delay / 1000)}sn sonra tekrar denenecek...`,
+            });
+          } else {
+            delay = RETRY_DELAYS_5XX_MS[attempt] ?? 6000;
           }
-          if (delay === undefined) break;
           await new Promise((r) => setTimeout(r, delay));
         }
       }
@@ -150,11 +179,16 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
       const msg = e?.response?.data?.message ?? e?.response?.data?.detail ?? 'Proje yuklenemedi';
       setError(msg);
       toast({ title: 'Hata', description: msg, variant: 'destructive' });
+      // Eger son hata 429 ise (tum retry'lar tukendi) — kullaniciya empoze
+      // edilen 30sn cooldown baslat. Bu, retry feedback dongusunu kirar.
+      if (e?.response?.status === 429) {
+        setRateLimitedUntil(Date.now() + RATE_LIMIT_COOLDOWN_MS);
+      }
     } finally {
       setExtractingLayers(false);
       stopTimer();
     }
-  }, []);
+  }, [rateLimitedUntil]);
 
   const resetAll = () => {
     setFile(null);

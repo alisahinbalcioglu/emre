@@ -206,16 +206,22 @@ export default function DxfPixiViewer({
 
     const qs = layersKey ? `?layers=${encodeURIComponent(layersKey)}` : '';
     const url = `/dwg-engine/geometry/${fileId}${qs}`;
-    const RETRY_DELAYS_MS = [2000, 4000]; // 2 retry: 2s, 4s
+    // 5xx (cold start): 2s/4s — kucuk delay, hizli toparlanmali
+    // 429 (Cloudflare burst): 10s/20s — cooldown'a saygi, daha kucuk delay 429'i
+    // tekrar tetikler
+    const RETRY_DELAYS_5XX_MS = [2000, 4000];
+    const RETRY_DELAYS_429_MS = [10000, 20000];
+    const MAX_ATTEMPTS = 3; // ilk + 2 retry
 
     (async () => {
       let lastErr: any = null;
-      for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
         if (cancelled) return;
         try {
           const res = await api.get<GeometryResult>(url);
           if (!cancelled) {
             setGeometry(res.data);
+            setError(null);
             setLoading(false);
           }
           return;
@@ -231,13 +237,25 @@ export default function DxfPixiViewer({
             }
             return;
           }
-          // 4xx (5xx ve network haric) retry yapilmaz — kalici hata
+          // 4xx (5xx ve 429 haric) retry yapilmaz — kalici hata
           if (status !== undefined && status < 500 && status !== 429) {
             break;
           }
-          // 5xx / 429 / network — retry hakki kaldiysa bekle ve tekrar dene
-          const delay = RETRY_DELAYS_MS[attempt];
-          if (delay === undefined) break;
+          // Bu son denemeyse retry yapma
+          if (attempt >= MAX_ATTEMPTS - 1) break;
+          // Delay: 429 ozel (Retry-After veya 10s/20s), 5xx default 2s/4s
+          let delay: number;
+          if (status === 429) {
+            const retryAfter = parseInt(e?.response?.headers?.['retry-after'] ?? '', 10);
+            if (!Number.isNaN(retryAfter) && retryAfter > 0) {
+              delay = Math.min(retryAfter * 1000, 30000);
+            } else {
+              delay = RETRY_DELAYS_429_MS[attempt] ?? 20000;
+            }
+            if (!cancelled) setError(`Sunucu kalabalik, ${Math.round(delay / 1000)}sn sonra tekrar denenecek...`);
+          } else {
+            delay = RETRY_DELAYS_5XX_MS[attempt] ?? 4000;
+          }
           await new Promise((r) => setTimeout(r, delay));
         }
       }
