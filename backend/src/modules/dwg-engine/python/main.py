@@ -88,10 +88,14 @@ _CACHE_TTL = 900  # 15 dakika
 # Geometry response byte cache — extract_geometry + Pydantic serialize zincirini
 # tekrar yapmamak icin, ayni (file_id, layers_key) icin son JSON byte'larini tutar.
 # Frontend ayni file'i tekrar acarsa veya viewer remount olursa milisaniye seviye
-# response. Memory: ~3-5 MB/cache entry × max_entries → free tier 512MB icin 50MB
-# civar cap.
+# response.
+#
+# Memory: byte'lar UNCOMPRESSED tutuluyor (GZIP middleware response'a uygulayinca
+# istemci compressed alir, biz raw cache'liyoruz). 26K-line projede 5-10 MB/entry.
+# Render free tier 512 MB → cap=5 ile worst case 50 MB cache + ~150 MB ezdxf doc +
+# Python runtime → ~250 MB toplam, guvenli marj.
 _geometry_response_cache: dict[tuple[str, str], bytes] = {}
-_GEOMETRY_CACHE_MAX = 20  # son 20 unique (file_id, layers_key) tutulur
+_GEOMETRY_CACHE_MAX = 5  # son 5 unique (file_id, layers_key) — OOM koruma
 
 
 def _invalidate_geometry_for_file(file_id: str) -> None:
