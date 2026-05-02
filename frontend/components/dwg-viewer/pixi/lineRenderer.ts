@@ -83,7 +83,9 @@ export function createLineRenderer(
     }
     const aci = layerColors[layer] ?? 7;
     const color = aci > 0 && aci !== 256 ? aciToPixiColor(aci) : COLOR_PASSIVE;
-    g.stroke({ width: 1, color, pixelLine: true });
+    // pixelLine kaldirildi (v8.18 shader bug). Width sabit world unit;
+    // zoom degisikliginde stroke'i scale eder ama hatasiz render.
+    g.stroke({ width: 1, color });
   }
 
   function setVisibleIds(visibleIds: Set<string>) {

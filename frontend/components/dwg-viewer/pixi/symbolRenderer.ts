@@ -78,7 +78,7 @@ export function createCircleRenderer(
     g.stroke({
       width: isSprinkler ? 1.6 : 0.8,
       color: isSprinkler ? COLOR_SPRINKLER : COLOR_NORMAL,
-      pixelLine: true,
+      // pixelLine kaldirildi (v8.18 shader bug)
     });
   }
 
@@ -165,7 +165,7 @@ export function createArcRenderer(
       g.moveTo(a.center[0] + a.radius * Math.cos(ea), yToScreen(a.center[1]) + a.radius * Math.sin(ea));
       g.arc(a.center[0], yToScreen(a.center[1]), a.radius, ea, sa);
     }
-    g.stroke({ width: 0.8, color: COLOR_NORMAL, pixelLine: true });
+    g.stroke({ width: 0.8, color: COLOR_NORMAL });
   }
 
   function setVisibleIds(visibleIds: Set<string>) {
@@ -229,7 +229,7 @@ export function createInsertRenderer(
       g.circle(ins.position[0], yToScreen(ins.position[1]), RADIUS_INSERT_MARKER);
     }
     g.fill({ color: COLOR_MARKED_INSERT });
-    g.stroke({ width: 0.5, color: 0xffffff, pixelLine: true });
+    g.stroke({ width: 0.5, color: 0xffffff });
   }
 
   function destroy() {

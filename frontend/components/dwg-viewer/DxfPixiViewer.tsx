@@ -340,16 +340,32 @@ export default function DxfPixiViewer({
       texts: geometry.texts,
     });
 
-    // Worker'a yukle
-    if (worker) {
-      worker.load(geometry).catch((e) => {
-        console.error('[DxfPixiViewer] Worker load failed:', e);
-      });
-    }
-
-    // Bounds'a sigdir
+    // Bounds'a sigdir (Worker'dan bagimsiz, immediate)
     if (geometry.bounds) {
       fitViewportToBounds(scene.viewport, geometry.bounds);
+    }
+
+    // Worker'a yukle, AWAIT et, sonra ilk culling tetikle
+    // (race condition fix: load tamamlanmadan queryViewport bos doner → boş canvas)
+    if (worker) {
+      worker.load(geometry)
+        .then(async () => {
+          // Worker hazir — ilk culling render
+          if (!sceneRef.current) return;
+          try {
+            const bbox = getViewportDwgBounds(sceneRef.current.viewport);
+            const ids = await worker.queryViewport(bbox);
+            const idSet = new Set(ids);
+            lineHandleRef.current?.setVisibleIds(idSet);
+            circleHandleRef.current?.setVisibleIds(idSet);
+            arcHandleRef.current?.setVisibleIds(idSet);
+          } catch (err) {
+            console.warn('[DxfPixiViewer] Initial culling failed:', err);
+          }
+        })
+        .catch((e) => {
+          console.error('[DxfPixiViewer] Worker load failed:', e);
+        });
     }
   }, [stageReady, geometry, sprinklerLayers, calculatedEdgesByLayer]);
 

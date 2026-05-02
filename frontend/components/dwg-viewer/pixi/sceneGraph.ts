@@ -84,7 +84,10 @@ export function createScene(app: Application): SceneLayers {
 }
 
 /** Viewport'u DWG bounds'una sigdir.
- *  DWG bounds Y-up, pixi-viewport Y-down — center.y'yi negate ediyoruz. */
+ *  DWG bounds Y-up, pixi-viewport Y-down — center.y'yi negate ediyoruz.
+ *  Empty/invalid bounds halinde defansif fallback: zoom=1, center=(0,0).
+ *  Aksi halde viewport off-screen kalir (origin'de kalir, geometri uzakta).
+ */
 export function fitViewportToBounds(
   viewport: Viewport,
   bounds: [number, number, number, number],
@@ -93,12 +96,23 @@ export function fitViewportToBounds(
   const [minX, minY, maxX, maxY] = bounds;
   const w = maxX - minX;
   const h = maxY - minY;
-  if (w <= 0 || h <= 0) return;
+
+  // Empty bounds → fallback (DWG parse 0 entity dondurmus olabilir)
+  if (w <= 0 || h <= 0) {
+    viewport.setZoom(1, true);
+    viewport.moveCenter(0, 0);
+    return;
+  }
 
   const scaleX = viewport.screenWidth / w;
   const scaleY = viewport.screenHeight / h;
   const zoom = Math.min(scaleX, scaleY) * padding;
-  if (!Number.isFinite(zoom) || zoom < 1e-9) return;
+  if (!Number.isFinite(zoom) || zoom < 1e-9) {
+    // Patolojik bounds (outlier vs) — fallback
+    viewport.setZoom(1, true);
+    viewport.moveCenter(0, 0);
+    return;
+  }
 
   viewport.setZoom(zoom, true);
   const cx = (minX + maxX) / 2;

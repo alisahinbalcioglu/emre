@@ -72,7 +72,7 @@ export function createEdgeRenderer(parent: Container): EdgeRendererHandle {
           g.lineTo(x2, yToScreen(y2));
         }
       }
-      g.stroke({ width: 1.8, color, pixelLine: true });
+      g.stroke({ width: 1.8, color });
     });
   }
 

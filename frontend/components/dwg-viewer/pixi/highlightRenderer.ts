@@ -96,7 +96,7 @@ export function createHighlightRenderer(
         }
       }
     }
-    g.stroke({ width: HIGHLIGHT_WIDTH, color: COLOR_HIGHLIGHT, pixelLine: true });
+    g.stroke({ width: HIGHLIGHT_WIDTH, color: COLOR_HIGHLIGHT });
   }
 
   function destroy() {
