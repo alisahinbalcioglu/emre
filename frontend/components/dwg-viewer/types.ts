@@ -56,6 +56,28 @@ export interface GeometryArc {
   end_angle: number;
 }
 
+/** Entity tipi — frontend hit-test dispatcher'da kullanilir. */
+export type EntityType = 'line' | 'circle' | 'arc' | 'insert' | 'text';
+
+/**
+ * RBush spatial index icin hafif kayit (backend payload).
+ *
+ * id formati: "{prefix}:{array_index}". Prefix'ler:
+ *   L = line  → lookup `geometry.lines[idx]`
+ *   C = circle → `geometry.circles[idx]`
+ *   A = arc   → `geometry.arcs[idx]`
+ *   I = insert → `geometry.inserts[idx]`
+ *   T = text  → `geometry.texts[idx]`
+ *
+ * bbox: world-space [minX, minY, maxX, maxY] — RBush insertion icin precomputed.
+ */
+export interface EntityRef {
+  id: string;
+  type: EntityType;
+  layer: string;
+  bbox: [number, number, number, number];
+}
+
 export interface GeometryResult {
   lines: GeometryLine[];
   inserts: GeometryInsert[];
@@ -64,6 +86,8 @@ export interface GeometryResult {
   arcs: GeometryArc[];
   bounds: [number, number, number, number];  // [minX, minY, maxX, maxY]
   layer_colors: Record<string, number>;
+  /** RBush spatial index payload — backend her entity icin tek kayit doldurur. */
+  entity_index: EntityRef[];
 }
 
 export interface Viewport {

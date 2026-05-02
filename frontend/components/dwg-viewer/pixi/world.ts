@@ -31,6 +31,11 @@ export function createWorld(): WorldLayers {
   world.eventMode = 'static';
   world.sortableChildren = false;
 
+  // ─── Alt katmanlar: 'passive' — etkilesim yok ama event traversal kalir.
+  // Hit-test RBush + pickEntityAt ile yapilir (world.eventMode='static' tek
+  // pointertap'i alir). 'passive' guvenli kalir cunku alt katmanlarda zaten
+  // 'static' child yok — dispatch dogal olarak world'e cikar.
+
   const grid = new Container();
   grid.label = 'grid';
   grid.eventMode = 'none';

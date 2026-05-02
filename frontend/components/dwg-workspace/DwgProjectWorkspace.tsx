@@ -12,8 +12,8 @@
  *  - Birden fazla layer + ekipman ekleye ekleye onaylar
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { AlertCircle, Trash2 } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { AlertCircle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import api from '@/lib/api';
 import { DxfPixiViewer } from '@/components/dwg-viewer';

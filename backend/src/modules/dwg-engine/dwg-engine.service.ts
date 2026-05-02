@@ -1,7 +1,8 @@
-import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
+import { Injectable, HttpException, HttpStatus, Logger } from '@nestjs/common';
 
 @Injectable()
 export class DwgEngineService {
+  private readonly logger = new Logger(DwgEngineService.name);
   private readonly pythonServiceUrl: string;
   private readonly internalToken: string;
 
@@ -33,19 +34,92 @@ export class DwgEngineService {
   }
 
   /**
+   * Cold-start tolerant fetch — Render free tier servisi uyumusa ilk istek
+   * 50+ saniye surebilir. Bu helper:
+   *   1. Once normal timeout ile dene
+   *   2. 5xx VEYA timeout/abort hatasi alirsa kisa backoff sonra retry et,
+   *      retry timeout daha genis (cold start tamamlansin)
+   *   3. Retry da basarisiz → orijinal hatayi firlat (handler 503'e cevirir)
+   *
+   * Multipart body'lerde dikkat: FormData stream tek seferlik. Retry icin
+   * factory pattern: caller her cagri icin yeni RequestInit doner.
+   */
+  private async fetchWithRetry(
+    url: string,
+    optionsFactory: (timeoutMs: number) => RequestInit,
+    initialTimeout: number,
+    retryTimeout: number = 90_000,
+    label: string = 'request',
+  ): Promise<Response> {
+    const tryOnce = async (timeout: number): Promise<Response> => {
+      return fetch(url, optionsFactory(timeout));
+    };
+
+    try {
+      const r = await tryOnce(initialTimeout);
+      // 5xx → cold start ihtimali, retry et
+      if (r.status >= 500 && r.status < 600) {
+        this.logger.warn(`[${label}] ${r.status} response — cold start retry (${retryTimeout}ms)`);
+        await this.delay(2000);
+        return await tryOnce(retryTimeout);
+      }
+      return r;
+    } catch (err: any) {
+      const errName = err?.name ?? '';
+      const isTransient = errName === 'TimeoutError' || errName === 'AbortError';
+      if (!isTransient) throw err;
+      this.logger.warn(`[${label}] ${errName} — cold start retry (${retryTimeout}ms)`);
+      await this.delay(2000);
+      // Retry hatasi orijinal hata gibi yukari firlatilir
+      return await tryOnce(retryTimeout);
+    }
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise((res) => setTimeout(res, ms));
+  }
+
+  /** Cold-start veya kisa-kesintili hata mesajlari — handler kullanilir */
+  private translateError(err: unknown): never {
+    if (err instanceof HttpException) throw err;
+    const errName = (err as any)?.name ?? '';
+    if (errName === 'TimeoutError' || errName === 'AbortError') {
+      throw new HttpException(
+        'DWG Engine yanit vermedi (cold start veya yogun yuk). Lutfen 30 saniye sonra tekrar deneyin.',
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+    throw new HttpException(
+      'DWG Engine servisi baglanti hatasi. Servis calismiyor olabilir.',
+      HttpStatus.SERVICE_UNAVAILABLE,
+    );
+  }
+
+  /**
    * Layer listesi cikar (hizli, uzunluk hesaplamaz).
    * Dosya Python tarafinda cache'lenir, file_id doner.
    */
   async listLayers(fileBuffer: Buffer, fileName: string) {
-    const formData = new FormData();
-    const blob = new Blob([fileBuffer as any]);
-    formData.append('file', blob, fileName);
+    // FormData factory — retry icin her cagrida yeni body
+    const factory = (timeoutMs: number): RequestInit => {
+      const formData = new FormData();
+      const blob = new Blob([fileBuffer as any]);
+      formData.append('file', blob, fileName);
+      return {
+        method: 'POST',
+        body: formData,
+        headers: this.headers(),
+        signal: AbortSignal.timeout(timeoutMs),
+      };
+    };
 
-    // Buyuk DWG'ler icin 5 dakika (ODA converter + ezdxf parse uzun surebilir)
     try {
-      const response = await fetch(
+      const response = await this.fetchWithRetry(
         `${this.pythonServiceUrl}/layers`,
-        { method: 'POST', body: formData, headers: this.headers(), signal: AbortSignal.timeout(300_000) },
+        factory,
+        300_000, // 5 dakika - buyuk DWG icin
+        300_000, // retry de 5 dakika (zaten cok genis)
+        'listLayers',
       );
 
       if (!response.ok) {
@@ -58,11 +132,7 @@ export class DwgEngineService {
 
       return await response.json();
     } catch (error) {
-      if (error instanceof HttpException) throw error;
-      const msg = (error as any)?.name === 'TimeoutError'
-        ? 'DWG cok buyuk veya karmasik — 5 dakikada cevap alinamadi. Daha kucuk bir bolumunu deneyin.'
-        : 'DWG Engine servisi baglanti hatasi. Servis calismiyor olabilir.';
-      throw new HttpException(msg, HttpStatus.SERVICE_UNAVAILABLE);
+      this.translateError(error);
     }
   }
 
@@ -112,29 +182,32 @@ export class DwgEngineService {
       params.set('layer_default_diameter', JSON.stringify(layerDefaultDiameter));
     }
 
-    const fetchOptions: RequestInit = {
-      method: 'POST',
-      headers: this.headers(),
-      signal: AbortSignal.timeout(300_000),
+    const factory = (timeoutMs: number): RequestInit => {
+      const opts: RequestInit = {
+        method: 'POST',
+        headers: this.headers(),
+        signal: AbortSignal.timeout(timeoutMs),
+      };
+
+      // file_id varsa dosya gondermeye gerek yok, bos form gonder
+      if (fileId) {
+        opts.body = new FormData();
+      } else if (fileBuffer) {
+        const formData = new FormData();
+        const blob = new Blob([fileBuffer as any]);
+        formData.append('file', blob, fileName);
+        opts.body = formData;
+      }
+      return opts;
     };
 
-    // file_id varsa dosya gondermeye gerek yok, bos form gonder
-    if (fileId) {
-      // Python tarafinda file opsiyonel, file_id yeterli
-      // Bos bir FormData gondermek gerekiyor cunku endpoint multipart bekliyor
-      const formData = new FormData();
-      fetchOptions.body = formData;
-    } else if (fileBuffer) {
-      const formData = new FormData();
-      const blob = new Blob([fileBuffer as any]);
-      formData.append('file', blob, fileName);
-      fetchOptions.body = formData;
-    }
-
     try {
-      const response = await fetch(
+      const response = await this.fetchWithRetry(
         `${this.pythonServiceUrl}/parse?${params.toString()}`,
-        fetchOptions,
+        factory,
+        300_000,
+        300_000,
+        'parseDwg',
       );
 
       if (!response.ok) {
@@ -147,23 +220,30 @@ export class DwgEngineService {
 
       return await response.json();
     } catch (error) {
-      if (error instanceof HttpException) throw error;
-      throw new HttpException(
-        'DWG Engine servisi baglanti hatasi. Servis calismiyor olabilir.',
-        HttpStatus.SERVICE_UNAVAILABLE,
-      );
+      this.translateError(error);
     }
   }
 
   async convertToDxf(fileBuffer: Buffer, fileName: string) {
-    const formData = new FormData();
-    const blob = new Blob([fileBuffer as any]);
-    formData.append('file', blob, fileName);
+    const factory = (timeoutMs: number): RequestInit => {
+      const formData = new FormData();
+      const blob = new Blob([fileBuffer as any]);
+      formData.append('file', blob, fileName);
+      return {
+        method: 'POST',
+        body: formData,
+        headers: this.headers(),
+        signal: AbortSignal.timeout(timeoutMs),
+      };
+    };
 
     try {
-      const response = await fetch(
+      const response = await this.fetchWithRetry(
         `${this.pythonServiceUrl}/convert`,
-        { method: 'POST', body: formData, headers: this.headers(), signal: AbortSignal.timeout(120_000) },
+        factory,
+        120_000,
+        180_000,
+        'convertToDxf',
       );
       if (!response.ok) {
         const error = await response.text();
@@ -171,14 +251,17 @@ export class DwgEngineService {
       }
       return await response.json();
     } catch (error) {
-      if (error instanceof HttpException) throw error;
-      throw new HttpException('DWG Engine baglanti hatasi', HttpStatus.SERVICE_UNAVAILABLE);
+      this.translateError(error);
     }
   }
 
   /**
    * DXF geometrisini (LINE/POLYLINE koordinatlari) getir.
    * Frontend SVG viewer (dwg-viewer klasoru) kullanir.
+   *
+   * Cold-start hassasiyeti yuksek — kullanici dogrudan bekliyor. Initial 60s,
+   * retry 90s. Toplam max ~150s + 2s backoff. Kullanici gozunde "uyandiriliyor"
+   * olarak gosterilir (frontend B2 retry mantik).
    */
   async getGeometry(fileId: string, layers: string = '') {
     const params = new URLSearchParams();
@@ -186,12 +269,14 @@ export class DwgEngineService {
     const qs = params.toString();
     const url = `${this.pythonServiceUrl}/geometry/${encodeURIComponent(fileId)}${qs ? '?' + qs : ''}`;
 
+    const factory = (timeoutMs: number): RequestInit => ({
+      method: 'GET',
+      headers: this.headers(),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+
     try {
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: this.headers(),
-        signal: AbortSignal.timeout(60_000),
-      });
+      const response = await this.fetchWithRetry(url, factory, 60_000, 90_000, 'getGeometry');
       if (!response.ok) {
         const error = await response.text();
         throw new HttpException(
@@ -201,11 +286,7 @@ export class DwgEngineService {
       }
       return await response.json();
     } catch (error) {
-      if (error instanceof HttpException) throw error;
-      throw new HttpException(
-        'DWG Engine baglanti hatasi',
-        HttpStatus.SERVICE_UNAVAILABLE,
-      );
+      this.translateError(error);
     }
   }
 

@@ -1,11 +1,12 @@
 /**
  * Texts layer — TEXT/MTEXT etiketleri (çap notları, ölçü, başlık).
  *
+ * SADECE GORSEL — hit-test merkezi RBush (pixi/hitTest.ts) ile yapilir.
+ *
  * LOD (Level of Detail):
  *   - Zoom < 0.3: hiç render etme (binlerce text memory yemesin)
  *   - Zoom >= 0.3: tüm text'leri render et
  *
- * Her Text için ayrı PIXI.Text sprite. Zoom değişiminde rebuild.
  * Y-flip: world scale.y negatif olduğu için text ters döner; lokal scale.y=-1
  * ile geri çeviririz (SVG'deki `scale(1 -1)` muadili).
  */
@@ -32,7 +33,7 @@ const MAX_TEXT_RENDER = 1500;
 
 export function createTexts(parent: Container): TextsHandle {
   let sprites: Text[] = [];
-  let lastSignature = ''; // geometry+lodVisible cache key
+  let lastSignature = '';
 
   function clearAll() {
     for (const s of sprites) s.destroy();
@@ -43,7 +44,7 @@ export function createTexts(parent: Container): TextsHandle {
     const { geometry, zoom } = opts;
     const lodVisible = zoom >= LOD_THRESHOLD;
 
-    // Cache: aynı geometry + aynı LOD durumu → rebuild etme
+    // Cache: aynı geometry + aynı LOD → rebuild etme
     const sig = `${geometry?.texts?.length ?? 0}|${lodVisible ? '1' : '0'}`;
     if (sig === lastSignature) return;
     lastSignature = sig;
@@ -64,7 +65,6 @@ export function createTexts(parent: Container): TextsHandle {
         fontSize: Math.max(t.height, 1),
       });
       const sprite = new Text({ text: t.text, style });
-      // DWG Y↑; world scale.y negatif → text içerik ters. Local scale.y=-1 ile düzelt.
       sprite.position.set(t.position[0], t.position[1]);
       sprite.scale.set(1, -1);
       if (t.rotation) {

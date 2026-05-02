@@ -18,12 +18,15 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, AlertCircle } from 'lucide-react';
-import type { Application } from 'pixi.js';
+import type { Application, Container } from 'pixi.js';
 import api from '@/lib/api';
 import type { GeometryResult } from './types';
 import type { EdgeSegment } from '@/components/dwg-metraj/types';
 import { buildDiameterPalette } from '@/components/dwg-metraj/diameter-colors';
 import { useViewport } from './useViewport';
+import { useRafDebounce } from './useRafDebounce';
+import { useEntityIndex } from './useEntityIndex';
+import { pickEntityAt } from './pixi/hitTest';
 import { createPixiStage, destroyPixiStage } from './pixi/stage';
 import { applyViewport, createWorld, type WorldLayers } from './pixi/world';
 import { createBackgroundLines, type BackgroundLinesHandle } from './pixi/layers/backgroundLines';
@@ -92,6 +95,9 @@ export default function DxfPixiViewer({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const appRef = useRef<Application | null>(null);
   const layersRef = useRef<WorldLayers | null>(null);
+  /** useViewport'a verilen ref — drag sirasinda direkt world.position.set
+   *  ile React'i bypass'lar. Stage ready olunca layersRef.current.world set edilir. */
+  const worldContainerRef = useRef<Container | null>(null);
 
   const bgHandleRef = useRef<BackgroundLinesHandle | null>(null);
   const edgesHandleRef = useRef<CalculatedEdgesHandle | null>(null);
@@ -103,6 +109,10 @@ export default function DxfPixiViewer({
 
   const [geometry, setGeometry] = useState<GeometryResult | null>(null);
   const [loading, setLoading] = useState(false);
+  /** Cold-start retry sirasinda 'waking' — kullaniciya servis uyandiriliyor
+   *  mesaji gosterilir. Render free tier 50+ saniyelik soguk baslangic icin. */
+  const [loadingPhase, setLoadingPhase] = useState<'idle' | 'loading' | 'waking'>('idle');
+  const [retryAttempt, setRetryAttempt] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [stageReady, setStageReady] = useState(false);
   /** Mouse'un dunya-uzayindaki konumu — status bar'da gosterilir. null =
@@ -216,31 +226,68 @@ export default function DxfPixiViewer({
   }, [geometry, hiddenLayers]);
 
   // ─── Geometry fetch ───
+  // Cold-start tolerant: Render free tier servisi uyumusa ilk istek 50+ sn
+  // surebilir. 503/timeout alirsak exponential backoff ile 3 kez retry,
+  // 2. denemeden itibaren UI 'Servis uyandiriliyor...' gosterir.
   useEffect(() => {
     if (!fileId || edgeSegments) {
       setGeometry(null);
       return;
     }
     let cancelled = false;
+    const RETRY_DELAYS = [3000, 7000, 15000]; // ms — toplam max ~25sn bekleme
     setLoading(true);
+    setLoadingPhase('loading');
+    setRetryAttempt(0);
     setError(null);
+
+    const isTransientError = (e: any): boolean => {
+      const status = e?.response?.status;
+      if (status === 503 || status === 502 || status === 504) return true;
+      // Network error / timeout / no response
+      const code = e?.code;
+      if (code === 'ECONNABORTED' || code === 'ERR_NETWORK') return true;
+      if (!e?.response) return true; // network'e cikamadi
+      return false;
+    };
+
+    const fetchOnce = async (): Promise<GeometryResult> => {
+      const qs = layersKey ? `?layers=${encodeURIComponent(layersKey)}` : '';
+      const res = await api.get<GeometryResult>(`/dwg-engine/geometry/${fileId}${qs}`);
+      return res.data;
+    };
+
     (async () => {
-      try {
-        const qs = layersKey ? `?layers=${encodeURIComponent(layersKey)}` : '';
-        const res = await api.get<GeometryResult>(`/dwg-engine/geometry/${fileId}${qs}`);
-        if (!cancelled) {
-          setGeometry(res.data);
+      let lastErr: any = null;
+      for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
+        if (cancelled) return;
+        try {
+          const data = await fetchOnce();
+          if (cancelled) return;
+          setGeometry(data);
           setLoading(false);
-          // Layer goruntusu paneli icin tum layer isimlerini parent'a iletir
-          const layerNames = Object.keys(res.data.layer_colors ?? {});
+          setLoadingPhase('idle');
+          setRetryAttempt(0);
+          const layerNames = Object.keys(data.layer_colors ?? {});
           if (layerNames.length > 0) onLayersAvailable?.(layerNames);
+          return;
+        } catch (e: any) {
+          lastErr = e;
+          if (!isTransientError(e)) break; // 4xx vs benzeri kalici hata → retry yok
+          if (attempt >= RETRY_DELAYS.length) break; // son denemede de basarisiz
+          // Cold-start retry — UI'da kullaniciyi bilgilendir
+          if (cancelled) return;
+          setLoadingPhase('waking');
+          setRetryAttempt(attempt + 1);
+          await new Promise((r) => setTimeout(r, RETRY_DELAYS[attempt]));
         }
-      } catch (e: any) {
-        if (!cancelled) {
-          const msg = e?.response?.data?.message ?? e?.message ?? 'Geometri alinamadi';
-          setError(msg);
-          setLoading(false);
-        }
+      }
+      // Tum denemeler basarisiz
+      if (!cancelled) {
+        const msg = lastErr?.response?.data?.message ?? lastErr?.message ?? 'Geometri alinamadi';
+        setError(msg);
+        setLoading(false);
+        setLoadingPhase('idle');
       }
     })();
     return () => { cancelled = true; };
@@ -301,6 +348,7 @@ export default function DxfPixiViewer({
       app.stage.addChild(layers.world);
       appRef.current = app;
       layersRef.current = layers;
+      worldContainerRef.current = layers.world;
 
       // Init basarili — debug global'i app/world ile genislet
       if (typeof window !== 'undefined') {
@@ -351,6 +399,7 @@ export default function DxfPixiViewer({
       insertsHandleRef.current = null;
       textsHandleRef.current = null;
       layersRef.current = null;
+      worldContainerRef.current = null;
       destroyPixiStage(appRef.current);
       appRef.current = null;
     };
@@ -363,8 +412,18 @@ export default function DxfPixiViewer({
   const { viewport, fitView, zoomIn, zoomOut, onWheelReact, wasDragged, pointerHandlers } = useViewport({
     bounds,
     containerRef,
+    worldRef: worldContainerRef,
     autoFit: !!geometry || !!edgeSegments,
   });
+
+  /** Pahali katman update'lerini (g.clear+redraw) zoom-burst sirasinda tutmak icin
+   *  RAF-debounced zoom. Wheel rapid-fire'da geometry tek seferde redraw edilir;
+   *  arada sadece world.scale degisir (GPU-cheap). 80ms ~ 5 frame sessizlik. */
+  const debouncedZoom = useRafDebounce(viewport.zoom, 80);
+
+  /** RBush spatial index — geometry + edgeSegments degistikce yeniden kurulur.
+   *  Pan/zoom'da yeniden kurulmaz. 28K obje icin ~30ms bulk insert. */
+  const entityIndex = useEntityIndex(geometry, edgeSegments);
 
   /** Klavye kisayollari — F/Esc/+/-/G/Ctrl+Home (useViewport'tan SONRA
    *  cunku fitView/zoomIn/zoomOut o hook'tan geliyor). */
@@ -390,31 +449,11 @@ export default function DxfPixiViewer({
     if (!layers) return;
 
     gridHandleRef.current = createGrid(layers.grid);
-    bgHandleRef.current = createBackgroundLines(
-      layers.backgroundLines,
-      () => onLineClickRef.current,
-      wasDragged,
-    );
-    edgesHandleRef.current = createCalculatedEdges(
-      layers.calculatedEdges,
-      () => onSegmentClickRef.current,
-      wasDragged,
-    );
-    arcsHandleRef.current = createArcs(
-      layers.arcs,
-      () => onLineClickRef.current,
-      wasDragged,
-    );
-    circlesHandleRef.current = createCircles(
-      layers.circles,
-      () => onCircleClickRef.current,
-      wasDragged,
-    );
-    insertsHandleRef.current = createInserts(
-      layers.inserts,
-      () => onInsertClickRef.current,
-      wasDragged,
-    );
+    bgHandleRef.current = createBackgroundLines(layers.backgroundLines);
+    edgesHandleRef.current = createCalculatedEdges(layers.calculatedEdges);
+    arcsHandleRef.current = createArcs(layers.arcs);
+    circlesHandleRef.current = createCircles(layers.circles);
+    insertsHandleRef.current = createInserts(layers.inserts);
     textsHandleRef.current = createTexts(layers.texts);
 
     return () => {
@@ -433,7 +472,76 @@ export default function DxfPixiViewer({
       insertsHandleRef.current = null;
       textsHandleRef.current = null;
     };
-  }, [stageReady, wasDragged]);
+  }, [stageReady]);
+
+  // ─── Merkezi hit-test dispatcher ───────────────────────────────────────
+  // World container'a TEK pointertap. RBush ile aday entity'i bul,
+  // exact-test ile kesin filtre, type'a gore mevcut callback'lere yonlendir.
+  // Eski yapida her entity icin ayri Pixi listener vardi (28K dosyada 8K listener);
+  // bu yontem 1 listener + log(N) sorgu = 60FPS pan/zoom.
+  useEffect(() => {
+    if (!stageReady) return;
+    const world = worldContainerRef.current;
+    if (!world) return;
+
+    const handleTap = (e: any) => {
+      if (wasDragged()) return; // pan sonrasi click yutma
+      // Pixi FederatedPointerEvent → world local koordinati
+      const local = world.toLocal(e.global);
+      const entity = pickEntityAt(
+        local.x, local.y,
+        viewport.zoom,
+        entityIndex,
+        hiddenLayers,
+      );
+      if (!entity) return;
+
+      const shiftKey = !!e.shiftKey;
+      // Type bazli dispatch — workspace handler'lari ayni signatures
+      switch (entity.payload.type) {
+        case 'line':
+          onLineClickRef.current?.({ layer: entity.layer, index: entity.payload.index, shiftKey });
+          break;
+        case 'arc':
+          // Arc'a tikla = layer secimi (mevcut davranis)
+          onLineClickRef.current?.({ layer: entity.layer, index: 0, shiftKey });
+          break;
+        case 'text':
+          // Text'e tikla = layer secimi (yeni — onceden tiklanmiyordu)
+          onLineClickRef.current?.({ layer: entity.layer, index: 0, shiftKey });
+          break;
+        case 'circle': {
+          const c = entity.payload.data;
+          onCircleClickRef.current?.({
+            layer: c.layer,
+            circleIndex: c.circle_index,
+            center: c.center as [number, number],
+            radius: c.radius,
+          });
+          break;
+        }
+        case 'insert': {
+          const ins = entity.payload.data;
+          onInsertClickRef.current?.({
+            layer: ins.layer,
+            insertIndex: ins.insert_index,
+            insertName: ins.insert_name,
+            position: ins.position as [number, number],
+          });
+          break;
+        }
+        case 'segment': {
+          onSegmentClickRef.current?.(entity.payload.data);
+          break;
+        }
+      }
+    };
+
+    world.on('pointertap', handleTap);
+    return () => {
+      world.off('pointertap', handleTap);
+    };
+  }, [stageReady, viewport.zoom, entityIndex, hiddenLayers, wasDragged]);
 
   // Viewport state → world transform
   useEffect(() => {
@@ -442,8 +550,8 @@ export default function DxfPixiViewer({
     applyViewport(layers.world, viewport.panX, viewport.panY, viewport.zoom);
   }, [viewport.panX, viewport.panY, viewport.zoom, stageReady]);
 
-  // Background lines update — zoom dependency eklendi cunku stroke width
-  // zoom-aware (dunya birimi cinsinden hesaplaniyor backgroundLines'da).
+  // Background lines update — zoom dependency RAF-debounced (zoom-burst pahali
+  // redraw'lari erteler, ara zoom'larda sadece world.scale GPU transform yapar).
   // visibleGeometry kullanilir ki gizli layer'lar atlansin.
   useEffect(() => {
     if (!stageReady) return;
@@ -452,9 +560,9 @@ export default function DxfPixiViewer({
       selectedLayer,
       highlightLayer,
       skipLayers,
-      zoom: viewport.zoom,
+      zoom: debouncedZoom,
     });
-  }, [stageReady, visibleGeometry, selectedLayer, highlightLayer, skipLayers, viewport.zoom]);
+  }, [stageReady, visibleGeometry, selectedLayer, highlightLayer, skipLayers, debouncedZoom]);
 
   // Grid update — zoom + bounds + visibility degisince yeniden ciz.
   // bounds null ise (geometry henuz fetch edilmedi) grid de cizilmez.
@@ -462,10 +570,10 @@ export default function DxfPixiViewer({
     if (!stageReady) return;
     gridHandleRef.current?.update({
       bounds: geometry || edgeSegments?.length ? bounds : null,
-      zoom: viewport.zoom,
+      zoom: debouncedZoom,
       visible: gridVisible,
     });
-  }, [stageReady, gridVisible, viewport.zoom, bounds, geometry, edgeSegments]);
+  }, [stageReady, gridVisible, debouncedZoom, bounds, geometry, edgeSegments]);
 
   // Calculated edges update
   useEffect(() => {
@@ -491,11 +599,12 @@ export default function DxfPixiViewer({
     insertsHandleRef.current?.update({ geometry: visibleGeometry, markedEquipmentKeys });
   }, [stageReady, visibleGeometry, markedEquipmentKeys]);
 
-  // Texts update (LOD: zoom'a bağlı)
+  // Texts update (LOD: zoom'a bağlı). debouncedZoom — zoom-burst sirasinda
+  // text rebuild'i ertelenir; LOD threshold gecisinde de tek rebuild olur.
   useEffect(() => {
     if (!stageReady) return;
-    textsHandleRef.current?.update({ geometry: visibleGeometry, zoom: viewport.zoom });
-  }, [stageReady, visibleGeometry, viewport.zoom]);
+    textsHandleRef.current?.update({ geometry: visibleGeometry, zoom: debouncedZoom });
+  }, [stageReady, visibleGeometry, debouncedZoom]);
 
   // KRITIK: erken return YAPMA — yoksa canvas/container ref'ler null kalir
   // ve PixiJS init mount-effect'inde early return yapar (bos ekran bug'i).
@@ -509,7 +618,10 @@ export default function DxfPixiViewer({
   const layerCount = geometry?.layer_colors ? Object.keys(geometry.layer_colors).length : 0;
 
   /** Mouse hareketinde dunya-uzayi koordinatini hesapla — AutoCAD
-   *  status bar gibi real-time gosterim. Y-flip dahil edilir. */
+   *  status bar gibi real-time gosterim. Y-flip dahil edilir.
+   *  NOT: drag sirasinda React state stale; canli pan icin world.position'dan
+   *  okur (worldContainerRef.current). Zoom drag esnasinda degismedigi icin
+   *  React state'ten alinir. */
   const handlePointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       // Once mevcut pan/drag handler'i (sürükleme algilamasi)
@@ -519,9 +631,12 @@ export default function DxfPixiViewer({
       const rect = el.getBoundingClientRect();
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
+      const world = worldContainerRef.current;
+      const livePanX = world ? world.position.x : viewport.panX;
+      const livePanY = world ? world.position.y : viewport.panY;
       // Dunya koordinatina cevir (Y-flip: world Y yukari, screen Y asagi)
-      const worldX = (mx - viewport.panX) / viewport.zoom;
-      const worldY = (viewport.panY - my) / viewport.zoom;
+      const worldX = (mx - livePanX) / viewport.zoom;
+      const worldY = (livePanY - my) / viewport.zoom;
       setCursorWorld({ x: worldX, y: worldY });
     },
     [pointerHandlers, viewport.panX, viewport.panY, viewport.zoom],
@@ -598,9 +713,18 @@ export default function DxfPixiViewer({
         )}
         {fileId && loading && (
           <div className="absolute inset-0 flex items-center justify-center bg-slate-900/90">
-            <div className="flex flex-col items-center gap-2">
+            <div className="flex flex-col items-center gap-2 max-w-sm text-center px-4">
               <Loader2 className="h-6 w-6 animate-spin text-blue-400" />
-              <p className="text-xs text-slate-300">Cizim hazirlaniyor...</p>
+              {loadingPhase === 'waking' ? (
+                <>
+                  <p className="text-xs font-medium text-amber-300">Servis uyandiriliyor...</p>
+                  <p className="text-[10px] text-slate-400">
+                    Sunucu uyku modundaydi, ~30 saniye surebilir. Deneme {retryAttempt}/3
+                  </p>
+                </>
+              ) : (
+                <p className="text-xs text-slate-300">Cizim hazirlaniyor...</p>
+              )}
             </div>
           </div>
         )}

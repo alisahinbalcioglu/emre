@@ -2,11 +2,10 @@
  * Calculated edges layer — /parse sonucundaki edge_segments'i çap bazlı
  * renklerle çizer.
  *
+ * SADECE GORSEL — hit-test merkezi RBush (pixi/hitTest.ts) ile yapilir.
+ *
  * Performans: Her çap için tek PIXI.Graphics (batched). polyline varsa
  * gerçek L/Z/U şekli, yoksa iki-uç line.
- *
- * Hit-test: Her edge için ayrı invisible Graphics (bbox-like wide stroke).
- * Sayı az (tipik 500-2000), SVG'deki mantıkla aynı — her birine pointertap.
  */
 
 import { Container, Graphics } from 'pixi.js';
@@ -22,26 +21,15 @@ export interface CalculatedEdgesHandle {
   destroy(): void;
 }
 
-/** Edge çizgisinin "kalınlık" stroke'u (dünya koordinatında değil, pixel) */
 const EDGE_STROKE_WIDTH = 1.8;
-/** Hit-test için görünmez stroke kalınlığı (piksel — zoom'dan bağımsız) */
-const HIT_STROKE_WIDTH = 10;
 
-export function createCalculatedEdges(
-  parent: Container,
-  onSegmentClickRef: () => ((segment: EdgeSegment) => void) | undefined,
-  wasDraggedRef: () => boolean,
-): CalculatedEdgesHandle {
+export function createCalculatedEdges(parent: Container): CalculatedEdgesHandle {
   /** Görünür çizgiler: her çap için tek Graphics */
   const diameterGraphics = new Map<string, Graphics>();
-  /** Hit-test — her edge için ayrı Graphics (tıklama bağlamı lazım) */
-  let hitGraphicsList: Graphics[] = [];
 
   function clearAll() {
     diameterGraphics.forEach((g) => g.destroy());
     diameterGraphics.clear();
-    hitGraphicsList.forEach((h) => h.destroy());
-    hitGraphicsList = [];
   }
 
   function drawSegmentPath(g: Graphics, seg: EdgeSegment) {
@@ -78,13 +66,10 @@ export function createCalculatedEdges(
       }
     }
 
-    const hasClickHandler = !!onSegmentClickRef();
-
     // Görünür çizgiler — her çap tek Graphics
     byDiameter.forEach((segs, diameter) => {
       const g = new Graphics();
       g.label = `edges-${diameter}`;
-      g.eventMode = 'passive'; // tıklama hit-layer'dan gelir
       parent.addChild(g);
       diameterGraphics.set(diameter, g);
 
@@ -92,28 +77,6 @@ export function createCalculatedEdges(
       segs.forEach((seg) => drawSegmentPath(g, seg));
       g.stroke({ width: EDGE_STROKE_WIDTH, color, pixelLine: true });
     });
-
-    // Hit-test layer — onSegmentClick varsa her edge ayrı
-    if (hasClickHandler) {
-      byDiameter.forEach((segs) => {
-        segs.forEach((seg) => {
-          const h = new Graphics();
-          h.label = `hit-${seg.segment_id}`;
-          drawSegmentPath(h, seg);
-          // Görünmez ama kalın stroke → hit area olur
-          h.stroke({ width: HIT_STROKE_WIDTH, color: 0xffffff, alpha: 0.001, pixelLine: true });
-          h.eventMode = 'static';
-          h.cursor = 'pointer';
-          h.on('pointertap', () => {
-            if (wasDraggedRef()) return;
-            const cb = onSegmentClickRef();
-            cb?.(seg);
-          });
-          parent.addChild(h);
-          hitGraphicsList.push(h);
-        });
-      });
-    }
   }
 
   function destroy() {

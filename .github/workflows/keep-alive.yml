@@ -1,32 +1,51 @@
 name: Keep Render services awake
 
 # Render free tier servisleri 15 dakika idle'dan sonra uyuyor — sonraki
-# istek 30-60sn cold start. Her 14 dakikada bir /health endpoint'lerine
-# ping atarak servisleri sicak tut. GitHub Actions free tier, public
-# repo'larda sinirsiz minute, private'da 2000/ay (workflow ~5sn surer).
+# istek 30-60sn cold start. Her 10 dakikada bir /health endpoint'lerine
+# ping atarak servisleri sicak tut. GitHub cron "best-effort" — yuksek
+# yukte 5-15 dk gecikme olabilir. 10dk interval bunun ustune marj birakir.
 #
-# Not: GitHub cron schedule "best effort" — yuksek yukte 5-15 dk gecikme
-# olabilir. 14 dk interval bunun ustune marj birakir; ortalama 15 dk
-# threshold ile carpisma riski dusuk.
+# Onceki 14dk interval kenar durumlarda 15dk threshold'unu asabiliyordu;
+# 10dk daha guvenli (Render dashboard "spin down after 15 min" kuralinin
+# %33 altinda).
+#
+# Iki ardisik ping: birincisi servis uykuda ise uyandirir (ilk ping'in 503
+# olabilir), ikincisi 30sn sonra servisin gercekten warm oldugunu dogrular.
+# GitHub Actions free tier: public repo sinirsiz, private 2000 dk/ay.
+# Bu workflow ~30sn surer × 144 calisma/gun × 30 gun = ~36 saat/ay → kabul.
 
 on:
   schedule:
-    - cron: '*/14 * * * *'   # her 14 dakikada bir
+    - cron: '*/10 * * * *'   # her 10 dakikada bir
   workflow_dispatch:          # manual tetikleme icin "Run workflow" butonu
 
 jobs:
   ping:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 3
     steps:
-      - name: Ping NestJS API
+      - name: Wake DWG Engine (first ping)
+        id: wake
+        continue-on-error: true
         run: |
-          echo "Pinging NestJS API..."
+          echo "Waking DWG Engine (cold-start tolerated)..."
           curl -fsS --max-time 90 -w "\nHTTP %{http_code} | %{time_total}s\n" \
-            https://metaprice-api.onrender.com/api/health || echo "API ping failed (will retry next cycle)"
+            https://metaprice-dwg-engine.onrender.com/health \
+            || echo "First ping failed — service was likely cold, will verify next."
 
-      - name: Ping DWG Engine
+      - name: Wait for warm-up
+        run: sleep 15
+
+      - name: Verify DWG Engine warm
         run: |
-          echo "Pinging DWG Engine..."
+          echo "Verifying DWG Engine is warm..."
+          curl -fsS --max-time 30 -w "\nHTTP %{http_code} | %{time_total}s\n" \
+            https://metaprice-dwg-engine.onrender.com/health \
+            || echo "Verification ping failed — service may still be starting."
+
+      - name: Wake NestJS API
+        run: |
+          echo "Waking NestJS API..."
           curl -fsS --max-time 90 -w "\nHTTP %{http_code} | %{time_total}s\n" \
-            https://metaprice-dwg-engine.onrender.com/health || echo "DWG ping failed (will retry next cycle)"
+            https://metaprice-api.onrender.com/api/health \
+            || echo "NestJS ping failed (will retry next cycle)."

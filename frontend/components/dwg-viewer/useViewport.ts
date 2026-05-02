@@ -2,24 +2,35 @@
 
 import { useCallback, useRef, useState, useEffect, RefObject } from 'react';
 import type { Viewport } from './types';
+import type { Container } from 'pixi.js';
 
 interface UseViewportOpts {
   /** DXF world-space bounding box: [minX, minY, maxX, maxY] */
   bounds: [number, number, number, number];
   /** Viewer container ref (wheel/pointer event dinler) */
   containerRef: RefObject<HTMLElement | null>;
+  /** PixiJS world container — drag sirasinda dogrudan transform uygulanir
+   *  (React state'ini bypass'lar, 60fps GPU-only pan). */
+  worldRef?: RefObject<Container | null>;
   /** Otomatik fit — ilk mount'ta bounds'u cerceveye sigdirir */
   autoFit?: boolean;
 }
 
 /**
- * SVG viewer icin zoom/pan state yonetimi.
- * - Wheel: zoom (mouse pozisyonu etrafinda)
- * - Drag: pan
- * - FitView: bounds'u cerceveye sigdir
+ * Pan/zoom state yonetimi (PixiJS world container'i icin).
+ *
+ * Pan optimizasyonu: drag sirasinda her pointermove'da React setState
+ * yapmiyoruz — ki 6 layer module'u re-render etmesin. Bunun yerine
+ * worldRef.current.position.set(...) ile direkt GPU transform uygulanir.
+ * Drag bittiginde tek seferde setViewport ile React state senkron edilir.
  */
-export function useViewport({ bounds, containerRef, autoFit = true }: UseViewportOpts) {
+export function useViewport({ bounds, containerRef, worldRef, autoFit = true }: UseViewportOpts) {
   const [viewport, setViewport] = useState<Viewport>({ panX: 0, panY: 0, zoom: 1 });
+  /** React state'in en son commit edilmis hali — direkt-pan modunda
+   *  setViewport tetiklenmedigi icin closure stale kalmasin diye ref. */
+  const viewportRef = useRef<Viewport>(viewport);
+  useEffect(() => { viewportRef.current = viewport; }, [viewport]);
+
   // Drag vs click ayrimi:
   // - startX/Y: pointer down konumu
   // - capturing: setPointerCapture aktif mi (threshold asilinca true olur)
@@ -157,11 +168,11 @@ export function useViewport({ bounds, containerRef, autoFit = true }: UseViewpor
       moved: false,
       startX: e.clientX,
       startY: e.clientY,
-      startPanX: viewport.panX,
-      startPanY: viewport.panY,
+      startPanX: viewportRef.current.panX,
+      startPanY: viewportRef.current.panY,
       pointerId: e.pointerId,
     };
-  }, [viewport.panX, viewport.panY]);
+  }, []);
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     const s = dragStateRef.current;
@@ -176,17 +187,40 @@ export function useViewport({ bounds, containerRef, autoFit = true }: UseViewpor
       s.moved = true;
       try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch {}
     }
-    setViewport((v) => ({ ...v, panX: s.startPanX + dx, panY: s.startPanY + dy }));
-  }, []);
+    const newPanX = s.startPanX + dx;
+    const newPanY = s.startPanY + dy;
+
+    // ─── Direct GPU pan (React'i bypass) ──────────────────────────────
+    // worldRef varsa transform'u dogrudan pixi container'a uygula. Bu sayede
+    // drag sirasinda 0 React render olur — 60fps GPU-only pan.
+    const world = worldRef?.current;
+    if (world) {
+      world.position.set(newPanX, newPanY);
+    } else {
+      // Fallback (worldRef verilmemisse): React state ile pan
+      setViewport((v) => ({ ...v, panX: newPanX, panY: newPanY }));
+    }
+  }, [worldRef]);
 
   const onPointerUp = useCallback((e: React.PointerEvent) => {
     const s = dragStateRef.current;
     if (s.capturing) {
       try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+      // Drag bitti — direct-pan modunda React state'i nihai pozisyona senkronla
+      // (start + son delta). e.clientX/Y son hareket konumu.
+      const dx = e.clientX - s.startX;
+      const dy = e.clientY - s.startY;
+      const finalPanX = s.startPanX + dx;
+      const finalPanY = s.startPanY + dy;
+      const world = worldRef?.current;
+      if (world) {
+        // Sadece worldRef modunda commit gerekli (fallback'te zaten state senkron)
+        setViewport((v) => ({ ...v, panX: finalPanX, panY: finalPanY }));
+      }
     }
     dragStateRef.current.active = false;
     dragStateRef.current.capturing = false;
-  }, []);
+  }, [worldRef]);
 
   /** Bir alt bilesenin tiklama handler'i: drag olduysa click iptal edilmeli */
   const wasDragged = useCallback(() => dragStateRef.current.moved, []);
