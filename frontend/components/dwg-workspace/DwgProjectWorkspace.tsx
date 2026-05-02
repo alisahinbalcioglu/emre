@@ -16,26 +16,7 @@ import React, { useState, useMemo } from 'react';
 import { AlertCircle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import api from '@/lib/api';
-// Tabula Rasa: dwg-viewer komple silindi. Yeni viewer yazılana kadar placeholder.
-type DxfPixiViewerProps = {
-  fileId?: string | null;
-  className?: string;
-  [key: string]: unknown;
-};
-function DxfPixiViewer({ fileId, className }: DxfPixiViewerProps) {
-  return (
-    <div
-      className={`flex flex-col items-center justify-center rounded-xl border border-slate-700 bg-slate-950 text-slate-400 ${className ?? ''}`}
-      style={{ minHeight: 400 }}
-    >
-      <p className="text-sm font-medium text-amber-400">Görüntü modülü hazırlanıyor</p>
-      <p className="mt-2 text-xs text-slate-500 max-w-md text-center">
-        Yeni viewer yazılacak. Şimdilik dosya yükleme + metraj akışı çalışır.
-        {fileId ? ` Dosya yüklendi: ${fileId}` : ''}
-      </p>
-    </div>
-  );
-}
+import { DxfPixiViewer } from '@/components/dwg-viewer';
 import { DiameterEditPopup, type EdgeSegment } from '@/components/dwg-metraj';
 import type { MetrajResult } from '@/components/dwg-metraj/MetrajTable';
 import LayerInfoSidebar from './LayerInfoSidebar';
@@ -299,7 +280,7 @@ export default function DwgProjectWorkspace({
             onLineClick={handleLineClick}
             onInsertClick={handleInsertClick}
             onCircleClick={handleCircleClick}
-            onSegmentClick={(seg: EdgeSegment) => setEditingSegment(seg)}
+            onSegmentClick={(seg) => setEditingSegment(seg)}
             onClearSelection={() => {
               // selectLayer ayni layer ile cagrilinca toggle off yapiyor
               if (state.selectedLayer) selectLayer(state.selectedLayer);
