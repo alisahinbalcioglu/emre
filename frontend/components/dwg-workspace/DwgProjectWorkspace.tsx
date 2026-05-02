@@ -16,28 +16,7 @@ import React, { useState, useMemo } from 'react';
 import { AlertCircle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import api from '@/lib/api';
-// Phase R: dwg-viewer komple silindi (Tabula Rasa). Phase 1'de yeniden yazılacak.
-// Geçici placeholder — workspace'in compile etmesi ve sayfanın açılması için.
-// Tüm props ignore edilir; gerçek viewer Phase 1i sonunda gelir.
-type DxfPixiViewerProps = {
-  fileId?: string | null;
-  className?: string;
-  [key: string]: unknown;
-};
-function DxfPixiViewer({ fileId, className }: DxfPixiViewerProps) {
-  return (
-    <div
-      className={`flex flex-col items-center justify-center rounded-xl border border-slate-700 bg-slate-950 text-slate-400 ${className ?? ''}`}
-      style={{ minHeight: 400 }}
-    >
-      <p className="text-sm font-medium text-amber-400">Viewer hazırlanıyor</p>
-      <p className="mt-2 text-xs text-slate-500 max-w-md text-center">
-        Görüntü modülü yeniden yazılıyor (Phase 1).
-        {fileId ? ` Dosya yüklendi: ${fileId}` : ' Henüz dosya yüklenmedi.'}
-      </p>
-    </div>
-  );
-}
+import { DxfPixiViewer } from '@/components/dwg-viewer';
 import { DiameterEditPopup, type EdgeSegment } from '@/components/dwg-metraj';
 import type { MetrajResult } from '@/components/dwg-metraj/MetrajTable';
 import LayerInfoSidebar from './LayerInfoSidebar';
@@ -301,15 +280,13 @@ export default function DwgProjectWorkspace({
             onLineClick={handleLineClick}
             onInsertClick={handleInsertClick}
             onCircleClick={handleCircleClick}
-            onSegmentClick={(seg: EdgeSegment) => setEditingSegment(seg)}
+            onSegmentClick={(seg) => setEditingSegment(seg)}
             onClearSelection={() => {
               // selectLayer ayni layer ile cagrilinca toggle off yapiyor
               if (state.selectedLayer) selectLayer(state.selectedLayer);
             }}
             onLayersAvailable={setAvailableLayers}
             hiddenLayers={hiddenLayersSet}
-            hideMode={hideMode}
-            onHideModeToggle={() => setHideMode((v) => !v)}
             className="h-[600px] lg:h-[calc(100vh-150px)]"
           />
 

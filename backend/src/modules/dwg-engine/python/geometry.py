@@ -19,6 +19,10 @@ class GeometryLine(BaseModel):
     layer: str
     color: int = 0           # AutoCAD color index (ACI); 0 = BYBLOCK, 256 = BYLAYER
     coords: list[float]      # [x1, y1, x2, y2]
+    # Block expansion'dan gelen sub-entity ise, parent INSERT'in canonical id'si.
+    # Equipment butunsel selection icin: ayni parent_block_id'ye sahip tum
+    # entity'ler birlikte highlight edilir. None = direkt entity (block icinde degil).
+    parent_block_id: str | None = None
 
 
 class GeometryInsert(BaseModel):
@@ -40,6 +44,7 @@ class GeometryText(BaseModel):
     position: list[float] = []   # [x, y] anchor
     height: float = 1.0           # world units
     rotation: float = 0.0         # derece
+    parent_block_id: str | None = None
 
 
 class GeometryCircle(BaseModel):
@@ -49,16 +54,44 @@ class GeometryCircle(BaseModel):
     color: int = 256             # BYLAYER default
     center: list[float] = []     # [cx, cy]
     radius: float = 0.0          # world units
+    parent_block_id: str | None = None
 
 
 class GeometryArc(BaseModel):
     """ARC entity — yariciap yay (sprinkler/vana sembollerinde sik kullanilir)."""
+    arc_index: int = 0           # Her ARC icin benzersiz id (0-based)
     layer: str
     color: int = 256
     center: list[float] = []     # [cx, cy]
     radius: float = 0.0
     start_angle: float = 0.0     # derece (DXF konvensyonu: x-eksenin saat yonune ters)
     end_angle: float = 0.0       # derece
+    parent_block_id: str | None = None
+
+
+class EntityRef(BaseModel):
+    """RBush spatial index icin hafif kayit — frontend'in tum entity'ler icin
+    tek bir hit-test agaci kurmasi ve viewport-bazli render culling yapmasi
+    icin gerekli minimal payload.
+
+    canonical_entity_id formati: "{type}.{index}"
+        line.42       → lines[42]
+        circle.7      → circles[7]
+        arc.13        → arcs[13]
+        insert.2      → inserts[2]
+        text.58       → texts[58]
+
+    parent_block_id: Block expansion'dan gelen sub-entity ise INSERT'in
+    canonical id'si (ornegin "insert.2"). Equipment butunsel selection icin.
+    None = direkt entity, NOT None = block sub-entity.
+
+    bbox: world-space [minX, minY, maxX, maxY] — RBush.load icin precomputed.
+    """
+    canonical_entity_id: str
+    type: str                     # "line" | "circle" | "arc" | "insert" | "text"
+    layer_name: str
+    bbox: list[float]             # [minX, minY, maxX, maxY]
+    parent_block_id: str | None = None
 
 
 class GeometryResult(BaseModel):
@@ -69,6 +102,10 @@ class GeometryResult(BaseModel):
     arcs: list[GeometryArc] = []
     bounds: list[float] = [0.0, 0.0, 0.0, 0.0]  # [minX, minY, maxX, maxY]
     layer_colors: dict[str, int] = {}  # {layer_name: ACI color}
+    # Frontend RBush spatial index payload — hit-test + viewport culling icin.
+    # Phase 1c.2: pan/zoom'da RBush.search(viewportBbox) → visible IDs → Mesh
+    # index buffer dinamik update. Phase 1e: click → pickEntityAt(x,y).
+    entity_index: list[EntityRef] = []
 
 
 def _update_bounds(b: list[float], x: float, y: float) -> None:
@@ -223,6 +260,7 @@ def extract_geometry(dxf_path: str, layer_filter: set[str] | None = None) -> Geo
     layer_colors: dict[str, int] = {}
     insert_counter = 0
     circle_counter = 0
+    arc_counter = 0
 
     # Cizim orientasyonunu orthogonal'e hizala (UCS rotation veya skewed view fix)
     # _compute_view_transform baskın LINE yonunu 0/90 dereceye hizalayan rotasyon doner.
@@ -327,17 +365,23 @@ def extract_geometry(dxf_path: str, layer_filter: set[str] | None = None) -> Geo
         parent_layer: str,
         parent_color: int,
         visited: frozenset[str],
+        top_block_id: str | None = None,
     ) -> None:
         """
         Cached block local geometry'sini parent transform (pos+rot+scale) ile
         world-space'e tasir.
+
+        top_block_id: Equipment butunsel selection icin. Outermost INSERT'in
+        canonical id'si (ornegin "insert.42"). Nested call'larda ayni id
+        forward edilir — kullanici en distaki sembolu (gordugu equipment'i)
+        secince TUM sub-entity'ler highlight olur.
 
         Kurallar:
         - Layer "0" → parent INSERT'in layer'ini kullan (AutoCAD konvansiyonu)
         - Color BYBLOCK (0) → parent INSERT'in color'ini kullan
         - Nested INSERT recursive — visited set ile dongu guard
         """
-        nonlocal circle_counter
+        nonlocal circle_counter, arc_counter
         if not block_name:
             return
         if block_name in visited:
@@ -371,7 +415,10 @@ def extract_geometry(dxf_path: str, layer_filter: set[str] | None = None) -> Geo
                 _, _, _, sx0, sy0, ex0, ey0 = cached
                 x1, y1 = _l2w(sx0, sy0)
                 x2, y2 = _l2w(ex0, ey0)
-                lines.append(GeometryLine(layer=cached_layer, color=cached_color, coords=[x1, y1, x2, y2]))
+                lines.append(GeometryLine(
+                    layer=cached_layer, color=cached_color, coords=[x1, y1, x2, y2],
+                    parent_block_id=top_block_id,
+                ))
                 _update_bounds(bounds, x1, y1)
                 _update_bounds(bounds, x2, y2)
 
@@ -381,13 +428,19 @@ def extract_geometry(dxf_path: str, layer_filter: set[str] | None = None) -> Geo
                 for i in range(len(pts) - 1):
                     x1, y1 = pts[i]
                     x2, y2 = pts[i + 1]
-                    lines.append(GeometryLine(layer=cached_layer, color=cached_color, coords=[x1, y1, x2, y2]))
+                    lines.append(GeometryLine(
+                        layer=cached_layer, color=cached_color, coords=[x1, y1, x2, y2],
+                        parent_block_id=top_block_id,
+                    ))
                     _update_bounds(bounds, x1, y1)
                     _update_bounds(bounds, x2, y2)
                 if closed and len(pts) > 2:
                     x1, y1 = pts[-1]
                     x2, y2 = pts[0]
-                    lines.append(GeometryLine(layer=cached_layer, color=cached_color, coords=[x1, y1, x2, y2]))
+                    lines.append(GeometryLine(
+                        layer=cached_layer, color=cached_color, coords=[x1, y1, x2, y2],
+                        parent_block_id=top_block_id,
+                    ))
 
             elif cached_type == "POLYLINE":
                 _, _, _, pts0 = cached
@@ -395,7 +448,10 @@ def extract_geometry(dxf_path: str, layer_filter: set[str] | None = None) -> Geo
                 for i in range(len(pts) - 1):
                     x1, y1 = pts[i]
                     x2, y2 = pts[i + 1]
-                    lines.append(GeometryLine(layer=cached_layer, color=cached_color, coords=[x1, y1, x2, y2]))
+                    lines.append(GeometryLine(
+                        layer=cached_layer, color=cached_color, coords=[x1, y1, x2, y2],
+                        parent_block_id=top_block_id,
+                    ))
                     _update_bounds(bounds, x1, y1)
                     _update_bounds(bounds, x2, y2)
 
@@ -406,6 +462,7 @@ def extract_geometry(dxf_path: str, layer_filter: set[str] | None = None) -> Geo
                 circles.append(GeometryCircle(
                     circle_index=circle_counter, layer=cached_layer, color=cached_color,
                     center=[cx, cy], radius=radius,
+                    parent_block_id=top_block_id,
                 ))
                 circle_counter += 1
                 _update_bounds(bounds, cx - radius, cy - radius)
@@ -416,22 +473,28 @@ def extract_geometry(dxf_path: str, layer_filter: set[str] | None = None) -> Geo
                 cx, cy = _l2w(cx0, cy0)
                 radius = r0 * avg_scale
                 arcs.append(GeometryArc(
+                    arc_index=arc_counter,
                     layer=cached_layer, color=cached_color,
                     center=[cx, cy], radius=radius,
                     start_angle=sa + parent_rot_deg + view_angle_deg,
                     end_angle=ea + parent_rot_deg + view_angle_deg,
+                    parent_block_id=top_block_id,
                 ))
+                arc_counter += 1
                 _update_bounds(bounds, cx - radius, cy - radius)
                 _update_bounds(bounds, cx + radius, cy + radius)
 
             elif cached_type == "INSERT":
                 _, _, _, nname, lx, ly, nrot, nsx, nsy = cached
                 n_pos_raw = _l2w_raw(lx, ly)
+                # Nested INSERT — top_block_id forward et (kullanici outermost
+                # block'u secsin, ic blok degil)
                 _expand_block_contents(
                     nname, n_pos_raw,
                     parent_rot_deg + nrot,
                     parent_sx * nsx, parent_sy * nsy,
                     cached_layer, cached_color, visited,
+                    top_block_id=top_block_id,
                 )
 
             elif cached_type == "TEXT":
@@ -442,6 +505,7 @@ def extract_geometry(dxf_path: str, layer_filter: set[str] | None = None) -> Geo
                     position=[wx, wy],
                     height=raw_h * avg_scale,
                     rotation=b_rot0 + parent_rot_deg + view_angle_deg,
+                    parent_block_id=top_block_id,
                 ))
                 _update_bounds(bounds, wx, wy)
 
@@ -522,11 +586,13 @@ def extract_geometry(dxf_path: str, layer_filter: set[str] | None = None) -> Geo
             except (AttributeError, TypeError):
                 continue
             arcs.append(GeometryArc(
+                arc_index=arc_counter,
                 layer=layer_name, color=color,
                 center=[cx, cy], radius=radius,
                 start_angle=sa + view_angle_deg,
                 end_angle=ea + view_angle_deg,
             ))
+            arc_counter += 1
             _update_bounds(bounds, cx - radius, cy - radius)
             _update_bounds(bounds, cx + radius, cy + radius)
 
@@ -545,6 +611,10 @@ def extract_geometry(dxf_path: str, layer_filter: set[str] | None = None) -> Geo
                 sy = float(getattr(entity.dxf, "yscale", 1.0) or 1.0)
             except (AttributeError, TypeError):
                 continue
+            # Bu INSERT'in canonical id'si — block expansion sirasinda alt
+            # entity'lere parent_block_id olarak forward edilecek. Equipment
+            # butunsel selection icin kritik.
+            this_insert_canonical_id = f"insert.{insert_counter}"
             inserts.append(GeometryInsert(
                 insert_index=insert_counter,
                 layer=layer_name,
@@ -575,12 +645,14 @@ def extract_geometry(dxf_path: str, layer_filter: set[str] | None = None) -> Geo
                             position=[apx, apy],
                             height=float(getattr(at.dxf, "height", 1.0) or 1.0),
                             rotation=float(getattr(at.dxf, "rotation", 0.0) or 0.0) + view_angle_deg,
+                            parent_block_id=this_insert_canonical_id,
                         ))
                         _update_bounds(bounds, apx, apy)
                     except Exception:
                         continue
 
             # Block icerigini world-space'e expand et (gorsel sembol)
+            # top_block_id = bu INSERT — alt sub-entity'ler bu id'yi tasir.
             _expand_block_contents(
                 block_name=block_name,
                 parent_pos_raw=(px_raw, py_raw),
@@ -590,6 +662,7 @@ def extract_geometry(dxf_path: str, layer_filter: set[str] | None = None) -> Geo
                 parent_layer=layer_name,
                 parent_color=color,
                 visited=frozenset(),
+                top_block_id=this_insert_canonical_id,
             )
 
         elif etype == "TEXT":
@@ -707,6 +780,106 @@ def extract_geometry(dxf_path: str, layer_filter: set[str] | None = None) -> Geo
             ))
             _update_bounds(bounds, px, py)
 
+        # ─── Phase 2: SPLINE — esnek boru rotasi ─────────────────────
+        elif etype == "SPLINE":
+            try:
+                pts_raw = list(entity.flattening(distance=0.5))
+                pts = [_tp(float(p[0]), float(p[1])) for p in pts_raw]
+            except Exception:
+                continue
+            for i in range(len(pts) - 1):
+                x1, y1 = pts[i]
+                x2, y2 = pts[i + 1]
+                lines.append(GeometryLine(
+                    layer=layer_name, color=color, coords=[x1, y1, x2, y2],
+                ))
+                _update_bounds(bounds, x1, y1)
+                _update_bounds(bounds, x2, y2)
+
+        # ─── Phase 2: ELLIPSE — analitik yay/oval ────────────────────
+        elif etype == "ELLIPSE":
+            try:
+                pts_raw = list(entity.flattening(distance=0.5))
+                pts = [_tp(float(p[0]), float(p[1])) for p in pts_raw]
+            except Exception:
+                continue
+            for i in range(len(pts) - 1):
+                x1, y1 = pts[i]
+                x2, y2 = pts[i + 1]
+                lines.append(GeometryLine(
+                    layer=layer_name, color=color, coords=[x1, y1, x2, y2],
+                ))
+                _update_bounds(bounds, x1, y1)
+                _update_bounds(bounds, x2, y2)
+
+        # ─── Phase 2: SOLID / TRACE — 4 vertex contour (dolgu YOK) ───
+        elif etype in ("SOLID", "TRACE"):
+            try:
+                # 4 vertex bowtie ordering: vtx0, vtx1, vtx2, vtx3
+                # Contour: 0->1->3->2->0 (AutoCAD klasik)
+                v0 = entity.dxf.vtx0
+                v1 = entity.dxf.vtx1
+                v2 = entity.dxf.vtx2
+                v3 = entity.dxf.vtx3
+                p0 = _tp(float(v0.x), float(v0.y))
+                p1 = _tp(float(v1.x), float(v1.y))
+                p2 = _tp(float(v2.x), float(v2.y))
+                p3 = _tp(float(v3.x), float(v3.y))
+            except (AttributeError, TypeError):
+                continue
+            for x1, y1, x2, y2 in (
+                (p0[0], p0[1], p1[0], p1[1]),
+                (p1[0], p1[1], p3[0], p3[1]),
+                (p3[0], p3[1], p2[0], p2[1]),
+                (p2[0], p2[1], p0[0], p0[1]),
+            ):
+                lines.append(GeometryLine(
+                    layer=layer_name, color=color, coords=[x1, y1, x2, y2],
+                ))
+                _update_bounds(bounds, x1, y1)
+                _update_bounds(bounds, x2, y2)
+
+        # ─── Phase 2: HATCH — sadece outline, fill YOK, segment limit ─
+        elif etype == "HATCH":
+            try:
+                paths = entity.paths
+            except AttributeError:
+                continue
+            HATCH_SEGMENT_LIMIT = 200
+            for path in paths:
+                # Path tipleri: PolylinePath, EdgePath. Her ikisinde de
+                # vertex/edge listesi var. ezdxf flattening fallback.
+                try:
+                    if hasattr(path, "vertices") and path.vertices:
+                        pts = [_tp(float(v[0]), float(v[1])) for v in path.vertices]
+                    elif hasattr(path, "flattening"):
+                        pts_raw = list(path.flattening(distance=0.5))
+                        pts = [_tp(float(p[0]), float(p[1])) for p in pts_raw]
+                    else:
+                        continue
+                except Exception:
+                    continue
+
+                # Segment limit — patolojik HATCH'leri at
+                if len(pts) > HATCH_SEGMENT_LIMIT:
+                    pts = pts[:HATCH_SEGMENT_LIMIT]
+
+                for i in range(len(pts) - 1):
+                    x1, y1 = pts[i]
+                    x2, y2 = pts[i + 1]
+                    lines.append(GeometryLine(
+                        layer=layer_name, color=color, coords=[x1, y1, x2, y2],
+                    ))
+                    _update_bounds(bounds, x1, y1)
+                    _update_bounds(bounds, x2, y2)
+                # Closed path ise son segment
+                if getattr(path, "is_closed", False) and len(pts) > 2:
+                    x1, y1 = pts[-1]
+                    x2, y2 = pts[0]
+                    lines.append(GeometryLine(
+                        layer=layer_name, color=color, coords=[x1, y1, x2, y2],
+                    ))
+
     # Hicbir entity yoksa veya tum entity'ler exception ile atlandiysa bounds
     # sonsuz kalabilir. JSON serialization Infinity literal yazar (gecersiz JSON,
     # client parse error). Defansif olarak finite kontrolu yapip sane default ata.
@@ -725,7 +898,74 @@ def extract_geometry(dxf_path: str, layer_filter: set[str] | None = None) -> Geo
     if len(texts) > 2000:
         texts = [t for t in texts if _DIAMETER_TEXT_RE.match(t.text.strip())]
 
+    # ─── Spatial index payload (frontend RBush) ─────────────────────────
+    # Her entity icin canonical_entity_id + bbox + layer_name + parent_block_id.
+    # Frontend bunu RBush.load() ile bulk insert eder (28K kayit ~30ms).
+    # Hit-test + viewport culling ayni index'i kullanir.
+    entity_index: list[EntityRef] = []
+
+    for i, ln in enumerate(lines):
+        x1, y1, x2, y2 = ln.coords
+        entity_index.append(EntityRef(
+            canonical_entity_id=f"line.{i}",
+            type="line",
+            layer_name=ln.layer,
+            bbox=[min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2)],
+            parent_block_id=ln.parent_block_id,
+        ))
+
+    for i, c in enumerate(circles):
+        cx, cy = c.center
+        r = c.radius
+        entity_index.append(EntityRef(
+            canonical_entity_id=f"circle.{i}",
+            type="circle",
+            layer_name=c.layer,
+            bbox=[cx - r, cy - r, cx + r, cy + r],
+            parent_block_id=c.parent_block_id,
+        ))
+
+    for i, a in enumerate(arcs):
+        # Yay'in bbox'i kaba: tum cember bbox'i. Hit-test exact-test acisal
+        # range'i ayrica kontrol eder, false-positive culling sorun degil.
+        cx, cy = a.center
+        r = a.radius
+        entity_index.append(EntityRef(
+            canonical_entity_id=f"arc.{i}",
+            type="arc",
+            layer_name=a.layer,
+            bbox=[cx - r, cy - r, cx + r, cy + r],
+            parent_block_id=a.parent_block_id,
+        ))
+
+    for i, ins in enumerate(inserts):
+        # INSERT noktasi — block icerigi zaten lines/circles/arcs olarak ayri
+        # entity'ler ile expand edildi. Kucuk bbox (dunya birimi 2 unit) — hit-
+        # test client side'da 8/zoom ekran piksel toleransi ekler zaten.
+        px, py = ins.position
+        entity_index.append(EntityRef(
+            canonical_entity_id=f"insert.{i}",
+            type="insert",
+            layer_name=ins.layer,
+            bbox=[px - 2, py - 2, px + 2, py + 2],
+            parent_block_id=None,  # INSERT'in kendisi root, parent yok
+        ))
+
+    for i, t in enumerate(texts):
+        # Text bbox kabaca: pozisyon + height bazli kutu (y +height, x +len*0.6*h)
+        px, py = t.position
+        h = max(t.height, 0.5)
+        w = max(len(t.text) * h * 0.6, h)
+        entity_index.append(EntityRef(
+            canonical_entity_id=f"text.{i}",
+            type="text",
+            layer_name=t.layer,
+            bbox=[px - h * 0.2, py - h * 0.2, px + w, py + h * 1.2],
+            parent_block_id=t.parent_block_id,
+        ))
+
     return GeometryResult(
         lines=lines, inserts=inserts, texts=texts, circles=circles, arcs=arcs,
         bounds=bounds, layer_colors=layer_colors,
+        entity_index=entity_index,
     )
