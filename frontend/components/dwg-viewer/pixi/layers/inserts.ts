@@ -69,7 +69,7 @@ export function createInserts(
       gMarked.circle(ins.position[0], ins.position[1], RADIUS_MARKED);
     }
     gMarked.fill({ color: COLOR_MARKED });
-    gMarked.stroke({ width: 0.5, color: 0xffffff, pixelLine: true });
+    gMarked.stroke({ width: 0.5, color: 0xffffff });
 
     // Hit-test her INSERT icin (gorunmeyen ama tiklanabilir alan).
     if (hasClick) {

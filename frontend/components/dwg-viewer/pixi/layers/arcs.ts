@@ -68,7 +68,7 @@ export function createArcs(
       );
       g.arc(a.center[0], a.center[1], a.radius, sa, ea);
     }
-    g.stroke({ width: WIDTH_NORMAL, color: COLOR_NORMAL, pixelLine: true });
+    g.stroke({ width: WIDTH_NORMAL, color: COLOR_NORMAL });
 
     // Hit-test her arc icin (gorunmeyen ama tiklanabilir alan).
     // Yarim daire seklindeki stroke alani PixiJS hit-test'i ile zor — onun

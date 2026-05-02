@@ -90,7 +90,7 @@ export function createCalculatedEdges(
 
       const color = diameterToPixiColor(diameter);
       segs.forEach((seg) => drawSegmentPath(g, seg));
-      g.stroke({ width: EDGE_STROKE_WIDTH, color, pixelLine: true });
+      g.stroke({ width: EDGE_STROKE_WIDTH, color });
     });
 
     // Hit-test layer — onSegmentClick varsa her edge ayrı
@@ -101,7 +101,7 @@ export function createCalculatedEdges(
           h.label = `hit-${seg.segment_id}`;
           drawSegmentPath(h, seg);
           // Görünmez ama kalın stroke → hit area olur
-          h.stroke({ width: HIT_STROKE_WIDTH, color: 0xffffff, alpha: 0.001, pixelLine: true });
+          h.stroke({ width: HIT_STROKE_WIDTH, color: 0xffffff, alpha: 0.001 });
           h.eventMode = 'static';
           h.cursor = 'pointer';
           h.on('pointertap', () => {

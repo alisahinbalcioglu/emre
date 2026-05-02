@@ -75,12 +75,12 @@ export function createCircles(
     for (const c of sprinklerList) {
       gSprinkler.circle(c.center[0], c.center[1], c.radius);
     }
-    gSprinkler.stroke({ width: WIDTH_SPRINKLER, color: COLOR_SPRINKLER, pixelLine: true });
+    gSprinkler.stroke({ width: WIDTH_SPRINKLER, color: COLOR_SPRINKLER });
 
     for (const c of normalList) {
       gNormal.circle(c.center[0], c.center[1], c.radius);
     }
-    gNormal.stroke({ width: WIDTH_NORMAL, color: COLOR_NORMAL, pixelLine: true });
+    gNormal.stroke({ width: WIDTH_NORMAL, color: COLOR_NORMAL });
 
     // Hit-test — her circle ayrı (tıklama bağlamı için)
     if (hasClick) {
