@@ -16,7 +16,7 @@ name: Keep Render services awake
 
 on:
   schedule:
-    - cron: '*/10 * * * *'   # her 10 dakikada bir
+    - cron: '*/7 * * * *'    # her 7 dakikada bir — 15dk threshold'a karsi guvenli marj
   workflow_dispatch:          # manual tetikleme icin "Run workflow" butonu
 
 jobs:
