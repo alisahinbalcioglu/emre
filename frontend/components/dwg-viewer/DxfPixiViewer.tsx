@@ -134,15 +134,11 @@ export default function DxfPixiViewer({
   const [retryNonce, setRetryNonce] = useState(0);
 
   // ─── Pre-warm — workspace mount'unda Render servislerini uyandir ──
-  // /api/health (auth-less) NestJS'i, fetch ile dogrudan Python /health
-  // (auth-less) Python'i uyandirir. Kullanici dosya secip tikla yapacagi
-  // ana kadar her iki service warm.
+  // /api/health/wake (auth-less, NestJS) — backend hem kendi yanit verir
+  // (NestJS uyanir) hem Python /health'e fire-and-forget proxy fetch eder
+  // (Python uyanir). Tek call ile iki servis warm. CORS yok, server-to-server.
   useEffect(() => {
-    // NestJS health (axios baseURL: https://metaprice-api.onrender.com/api)
-    api.get('/health').catch(() => {});
-    // Python health — direkt URL (auth gerektirmez, public endpoint)
-    const pythonUrl = 'https://metaprice-dwg-engine.onrender.com/health';
-    fetch(pythonUrl, { method: 'GET' }).catch(() => {});
+    api.get('/health/wake').catch(() => {});
   }, []);
 
   // ─── Geometry fetch + B2 cold-start retry ─────────────────────────
@@ -598,7 +594,7 @@ export default function DxfPixiViewer({
         )}
 
         {fileId && !loading && error && (
-          <div className="absolute inset-0 flex items-center justify-center bg-slate-900/90 p-4">
+          <div className="absolute inset-0 flex items-center justify-center bg-slate-900/90 p-4 overflow-y-auto">
             <div className="flex flex-col items-center gap-3 max-w-md text-center">
               <div className="flex items-start gap-2">
                 <AlertCircle className="h-4 w-4 shrink-0 text-red-400 mt-0.5" />
@@ -606,17 +602,69 @@ export default function DxfPixiViewer({
                   <p className="text-sm font-medium text-red-300">Cizim yuklenemedi</p>
                   <p className="text-xs text-slate-300 mt-1">{error}</p>
                   <p className="text-[10px] text-slate-500 mt-2">
-                    Render free tier servis uyandirma 50sn surebilir. Tekrar dene'ye basarak yeni denemeyi baslat.
+                    Render free tier servisi uyumus olabilir. Once "Servisi Uyandir" butonuna bas, 30 saniye bekle, sonra "Tekrar Dene".
                   </p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setRetryNonce((n) => n + 1)}
-                className="rounded-md bg-blue-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-blue-500 transition-colors"
-              >
-                Tekrar Dene
-              </button>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await api.get('/health/wake');
+                      // Wake basarili — 30sn bekle, sonra retry
+                      setRetryNonce((n) => n + 1);
+                    } catch {
+                      setRetryNonce((n) => n + 1);
+                    }
+                  }}
+                  className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-500 transition-colors"
+                >
+                  Servisi Uyandir
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRetryNonce((n) => n + 1)}
+                  className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500 transition-colors"
+                >
+                  Tekrar Dene
+                </button>
+              </div>
+
+              <details className="text-left mt-2 w-full">
+                <summary className="text-[10px] text-slate-500 cursor-pointer hover:text-slate-400">
+                  Hala acilmiyor? Render Manual Deploy rehberi
+                </summary>
+                <div className="mt-2 rounded-md border border-slate-700 bg-slate-800/50 p-3 text-[10px] text-slate-400">
+                  <ol className="list-decimal pl-4 space-y-1">
+                    <li>
+                      <a
+                        href="https://dashboard.render.com"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-400 hover:underline"
+                      >
+                        dashboard.render.com
+                      </a>{' '}
+                      ac → giris yap
+                    </li>
+                    <li>
+                      <strong>metaprice-dwg-engine</strong> servisini sec
+                    </li>
+                    <li>
+                      Sag ust kose: <strong>Manual Deploy</strong> →{' '}
+                      <em>Deploy latest commit</em>
+                    </li>
+                    <li>
+                      ~3 dakika bekle (servis tam restart)
+                    </li>
+                    <li>
+                      Bu sayfaya don, <strong>Tekrar Dene</strong>'ye bas
+                    </li>
+                  </ol>
+                </div>
+              </details>
             </div>
           </div>
         )}
