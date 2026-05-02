@@ -29,11 +29,14 @@ export async function createPixiStage(opts: PixiStageOpts): Promise<Application>
     canvas: opts.canvas,
     background: opts.background ?? 0x0b1220,
     resolution: opts.resolution ?? (typeof window !== 'undefined' ? window.devicePixelRatio : 1),
-    antialias: true,
+    // Pixi v8.18.1 + antialias=true + buyuk Graphics path = shader linking bug
+    // (logProgramError split null). Antialias kapatildi, MSAA yok ama stabil.
+    antialias: false,
     autoDensity: true,
     resizeTo: opts.resizeTo,
     preference: 'webgl',
-    // WebGPU v8'de desteklense de deneysel; WebGL daha stabil ve geniş destekli.
+    // WebGL2 default; WebGL1 fallback driver-bug toleransi icin.
+    powerPreference: 'high-performance',
   });
   return app;
 }
