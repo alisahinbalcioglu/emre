@@ -61,27 +61,6 @@ class GeometryArc(BaseModel):
     end_angle: float = 0.0       # derece
 
 
-class EntityRef(BaseModel):
-    """RBush spatial index icin hafif kayit — frontend'in tum entity'ler icin
-    tek bir hit-test agaci kurmasi icin gerekli minimal payload.
-
-    id formati: '{type_prefix}:{array_index}', frontend tarafinda ilgili
-    array'den (lines/circles/arcs/inserts/texts) full entity'i lookup eder.
-    Type prefix'leri:
-        L = line  (lines[idx])
-        C = circle (circles[idx])
-        A = arc   (arcs[idx])
-        I = insert (inserts[idx])
-        T = text  (texts[idx])
-
-    bbox: world-space [minX, minY, maxX, maxY] — RBush insertion icin.
-    """
-    id: str
-    type: str           # "line" | "circle" | "arc" | "insert" | "text"
-    layer: str
-    bbox: list[float]   # [minX, minY, maxX, maxY]
-
-
 class GeometryResult(BaseModel):
     lines: list[GeometryLine] = []
     inserts: list[GeometryInsert] = []
@@ -90,7 +69,6 @@ class GeometryResult(BaseModel):
     arcs: list[GeometryArc] = []
     bounds: list[float] = [0.0, 0.0, 0.0, 0.0]  # [minX, minY, maxX, maxY]
     layer_colors: dict[str, int] = {}  # {layer_name: ACI color}
-    entity_index: list[EntityRef] = []  # frontend RBush spatial index
 
 
 def _update_bounds(b: list[float], x: float, y: float) -> None:
@@ -747,61 +725,7 @@ def extract_geometry(dxf_path: str, layer_filter: set[str] | None = None) -> Geo
     if len(texts) > 2000:
         texts = [t for t in texts if _DIAMETER_TEXT_RE.match(t.text.strip())]
 
-    # ─── Spatial index payload — frontend RBush kurulumu icin ────────────
-    # Her entity icin bbox + id + layer hesapla. id formati: "{prefix}:{idx}",
-    # frontend o array'den lookup eder. Bbox tolerans: hit-test sirasinda RBush
-    # query'sine ek 8/zoom ekran-piksel toleransi eklenir.
-    entity_index: list[EntityRef] = []
-
-    for i, ln in enumerate(lines):
-        x1, y1, x2, y2 = ln.coords
-        entity_index.append(EntityRef(
-            id=f"L:{i}", type="line", layer=ln.layer,
-            bbox=[min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2)],
-        ))
-
-    for i, c in enumerate(circles):
-        cx, cy = c.center
-        r = c.radius
-        entity_index.append(EntityRef(
-            id=f"C:{i}", type="circle", layer=c.layer,
-            bbox=[cx - r, cy - r, cx + r, cy + r],
-        ))
-
-    for i, a in enumerate(arcs):
-        # Yay'in bbox'i analitik (start/end + acisal extremler) yerine kaba: tum
-        # cember bbox'i. Hit-test sirasinda exact-test acisal range'i kontrol eder.
-        cx, cy = a.center
-        r = a.radius
-        entity_index.append(EntityRef(
-            id=f"A:{i}", type="arc", layer=a.layer,
-            bbox=[cx - r, cy - r, cx + r, cy + r],
-        ))
-
-    for i, ins in enumerate(inserts):
-        # INSERT noktasi — block icerigi zaten lines/circles/arcs olarak ayri
-        # entity'ler ile expand edildi. Burada sadece insert kendi pozisyonu
-        # icin kucuk bir bbox (tikla = ekipman secimi).
-        px, py = ins.position
-        # 2 dunya birimi tolerans — hit-test 8/zoom ekran piksel ekleyecek zaten
-        entity_index.append(EntityRef(
-            id=f"I:{i}", type="insert", layer=ins.layer,
-            bbox=[px - 2, py - 2, px + 2, py + 2],
-        ))
-
-    for i, t in enumerate(texts):
-        # Text bbox kabaca: pozisyon + height bazli kutu
-        # height world-units, characters * 0.6 ~ width per char
-        px, py = t.position
-        h = max(t.height, 0.5)
-        w = max(len(t.text) * h * 0.6, h)
-        entity_index.append(EntityRef(
-            id=f"T:{i}", type="text", layer=t.layer,
-            bbox=[px - h * 0.2, py - h * 0.2, px + w, py + h * 1.2],
-        ))
-
     return GeometryResult(
         lines=lines, inserts=inserts, texts=texts, circles=circles, arcs=arcs,
         bounds=bounds, layer_colors=layer_colors,
-        entity_index=entity_index,
     )
