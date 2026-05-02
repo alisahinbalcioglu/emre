@@ -130,6 +130,21 @@ export default function DxfPixiViewer({
   useEffect(() => { onCircleClickRef.current = onCircleClick; }, [onCircleClick]);
   useEffect(() => { onSegmentClickRef.current = onSegmentClick; }, [onSegmentClick]);
 
+  /** Manuel "Tekrar Dene" trigger — error sonrasi kullanici tikla. */
+  const [retryNonce, setRetryNonce] = useState(0);
+
+  // ─── Pre-warm — workspace mount'unda Render servislerini uyandir ──
+  // /api/health (auth-less) NestJS'i, fetch ile dogrudan Python /health
+  // (auth-less) Python'i uyandirir. Kullanici dosya secip tikla yapacagi
+  // ana kadar her iki service warm.
+  useEffect(() => {
+    // NestJS health (axios baseURL: https://metaprice-api.onrender.com/api)
+    api.get('/health').catch(() => {});
+    // Python health — direkt URL (auth gerektirmez, public endpoint)
+    const pythonUrl = 'https://metaprice-dwg-engine.onrender.com/health';
+    fetch(pythonUrl, { method: 'GET' }).catch(() => {});
+  }, []);
+
   // ─── Geometry fetch + B2 cold-start retry ─────────────────────────
   useEffect(() => {
     if (!fileId || edgeSegments) {
@@ -137,7 +152,10 @@ export default function DxfPixiViewer({
       return;
     }
     let cancelled = false;
-    const RETRY_DELAYS = [3000, 7000, 15000]; // toplam ~25sn
+    // 5 deneme, exponential backoff: toplam max ~80 saniye
+    // (Render free tier cold start 50+ saniye olabilir).
+    const RETRY_DELAYS = [2000, 5000, 10000, 20000, 40000];
+    const MAX_ATTEMPTS = RETRY_DELAYS.length;
     setLoading(true);
     setLoadingPhase('loading');
     setRetryAttempt(0);
@@ -146,6 +164,8 @@ export default function DxfPixiViewer({
     const isTransient = (e: any): boolean => {
       const status = e?.response?.status;
       if (status === 503 || status === 502 || status === 504) return true;
+      // 500 de cold-start sirasinda olabilir (worker crash). Retry et.
+      if (status === 500) return true;
       const code = e?.code;
       if (code === 'ECONNABORTED' || code === 'ERR_NETWORK') return true;
       if (!e?.response) return true;
@@ -154,7 +174,7 @@ export default function DxfPixiViewer({
 
     (async () => {
       let lastErr: any = null;
-      for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
+      for (let attempt = 0; attempt <= MAX_ATTEMPTS; attempt++) {
         if (cancelled) return;
         try {
           const res = await api.get<GeometryResult>(`/dwg-engine/geometry/${fileId}`);
@@ -171,7 +191,7 @@ export default function DxfPixiViewer({
         } catch (e: any) {
           lastErr = e;
           if (!isTransient(e)) break;
-          if (attempt >= RETRY_DELAYS.length) break;
+          if (attempt >= MAX_ATTEMPTS) break;
           if (cancelled) return;
           setLoadingPhase('waking');
           setRetryAttempt(attempt + 1);
@@ -179,14 +199,18 @@ export default function DxfPixiViewer({
         }
       }
       if (!cancelled) {
-        const msg = lastErr?.response?.data?.message ?? lastErr?.message ?? 'Geometri alinamadi';
+        const status = lastErr?.response?.status;
+        const serverMsg = lastErr?.response?.data?.message;
+        const msg = status
+          ? `${status}: ${serverMsg ?? 'Sunucu yaniti alinamadi'}`
+          : (lastErr?.message ?? 'Geometri alinamadi');
         setError(msg);
         setLoading(false);
         setLoadingPhase('idle');
       }
     })();
     return () => { cancelled = true; };
-  }, [fileId, edgeSegments, onLayersAvailable, setAllLayersStore]);
+  }, [fileId, edgeSegments, onLayersAvailable, setAllLayersStore, retryNonce]);
 
   // ─── Pixi stage init (mount-once) ─────────────────────────────────
   useEffect(() => {
@@ -544,7 +568,10 @@ export default function DxfPixiViewer({
                 <>
                   <p className="text-xs font-medium text-amber-300">Servis uyandiriliyor...</p>
                   <p className="text-[10px] text-slate-400">
-                    Sunucu uyku modundaydi, ~30 saniye surebilir. Deneme {retryAttempt}/3
+                    Render free tier soguk baslangic. Deneme {retryAttempt}/5
+                  </p>
+                  <p className="text-[10px] text-slate-500">
+                    Toplam ~80 saniye yetebilir. Lutfen bekleyin.
                   </p>
                 </>
               ) : (
@@ -556,12 +583,24 @@ export default function DxfPixiViewer({
 
         {fileId && !loading && error && (
           <div className="absolute inset-0 flex items-center justify-center bg-slate-900/90 p-4">
-            <div className="flex items-start gap-2 max-w-md">
-              <AlertCircle className="h-4 w-4 shrink-0 text-red-400 mt-0.5" />
-              <div>
-                <p className="text-sm font-medium text-red-300">Cizim yuklenemedi</p>
-                <p className="text-xs text-slate-300 mt-1">{error}</p>
+            <div className="flex flex-col items-center gap-3 max-w-md text-center">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 shrink-0 text-red-400 mt-0.5" />
+                <div className="text-left">
+                  <p className="text-sm font-medium text-red-300">Cizim yuklenemedi</p>
+                  <p className="text-xs text-slate-300 mt-1">{error}</p>
+                  <p className="text-[10px] text-slate-500 mt-2">
+                    Render free tier servis uyandirma 50sn surebilir. Tekrar dene'ye basarak yeni denemeyi baslat.
+                  </p>
+                </div>
               </div>
+              <button
+                type="button"
+                onClick={() => setRetryNonce((n) => n + 1)}
+                className="rounded-md bg-blue-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-blue-500 transition-colors"
+              >
+                Tekrar Dene
+              </button>
             </div>
           </div>
         )}
