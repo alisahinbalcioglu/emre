@@ -215,32 +215,56 @@ export default function DxfPixiViewer({
     };
   }, [geometry, hiddenLayers]);
 
-  // ─── Geometry fetch ───
+  // ─── Geometry fetch — Render free tier cold-start tolerance + retry ──
   useEffect(() => {
     if (!fileId || edgeSegments) {
       setGeometry(null);
       return;
     }
     let cancelled = false;
+    // 5 deneme, exponential backoff: 2s, 5s, 10s, 20s, 40s = ~80sn max
+    const RETRY_DELAYS = [2000, 5000, 10000, 20000, 40000];
     setLoading(true);
     setError(null);
+
+    const isTransient = (e: any): boolean => {
+      const status = e?.response?.status;
+      if (status === 503 || status === 502 || status === 504 || status === 500) return true;
+      const code = e?.code;
+      if (code === 'ECONNABORTED' || code === 'ERR_NETWORK') return true;
+      if (!e?.response) return true;
+      return false;
+    };
+
     (async () => {
-      try {
-        const qs = layersKey ? `?layers=${encodeURIComponent(layersKey)}` : '';
-        const res = await api.get<GeometryResult>(`/dwg-engine/geometry/${fileId}${qs}`);
-        if (!cancelled) {
+      let lastErr: any = null;
+      for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
+        if (cancelled) return;
+        try {
+          const qs = layersKey ? `?layers=${encodeURIComponent(layersKey)}` : '';
+          const res = await api.get<GeometryResult>(`/dwg-engine/geometry/${fileId}${qs}`);
+          if (cancelled) return;
           setGeometry(res.data);
           setLoading(false);
-          // Layer goruntusu paneli icin tum layer isimlerini parent'a iletir
           const layerNames = Object.keys(res.data.layer_colors ?? {});
           if (layerNames.length > 0) onLayersAvailable?.(layerNames);
+          return;
+        } catch (e: any) {
+          lastErr = e;
+          if (!isTransient(e)) break;
+          if (attempt >= RETRY_DELAYS.length) break;
+          if (cancelled) return;
+          await new Promise((r) => setTimeout(r, RETRY_DELAYS[attempt]));
         }
-      } catch (e: any) {
-        if (!cancelled) {
-          const msg = e?.response?.data?.message ?? e?.message ?? 'Geometri alinamadi';
-          setError(msg);
-          setLoading(false);
-        }
+      }
+      if (!cancelled) {
+        const status = lastErr?.response?.status;
+        const serverMsg = lastErr?.response?.data?.message;
+        const msg = status
+          ? `${status}: ${serverMsg ?? 'Servis cevap vermedi (Render free tier cold-start). Sayfayi yenile.'}`
+          : (lastErr?.message ?? 'Geometri alinamadi');
+        setError(msg);
+        setLoading(false);
       }
     })();
     return () => { cancelled = true; };
