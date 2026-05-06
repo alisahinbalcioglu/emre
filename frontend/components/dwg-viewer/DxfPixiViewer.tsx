@@ -1,42 +1,33 @@
 'use client';
 
 /**
- * DWG PixiJS Viewer — gorunru duzeni (canvas WebGL renderer).
+ * DWG Viewer — saf Canvas2D rendering (Pixi YOK).
+ *
+ * Pixi v8'in shader linking bug'ları (8.18.1, 8.16.0 hepsi yedik) nedeniyle
+ * native HTML5 Canvas2D'ye geçildi. Framework yok, shader yok, garantili
+ * çalışır.
  *
  * Mimari:
- *   - Render motoru: PixiJS v8 (WebGL). Tek <canvas>, binlerce element 60fps.
- *   - Pan/zoom: useViewport.ts hook'u; transform PixiJS world container'a uygular.
- *   - Y-flip: DWG Y↑ / canvas Y↓ — world.scale.y = -zoom ile cozulur.
+ *   - HTML <canvas> + 2d context
+ *   - useViewport pan/zoom state
+ *   - Y-flip transform: canvas Y-asagi, DWG Y-yukari → ctx.scale(zoom, -zoom)
+ *   - Render-on-state-change (RAF batched)
+ *   - Per-layer batched stroke (single beginPath + multi moveTo/lineTo + stroke)
  *
- * Layer katmanlari (z-sirasi alttan uste):
- *   1. backgroundLines — geometry.lines layer bazli batch
- *   2. calculatedEdges — edge_segments cap bazli batch + hit-test (metraj)
- *   3. circles         — sprinkler/sembol cemberleri
- *   4. inserts         — ekipman noktalari
- *   5. texts           — TEXT/MTEXT (zoom>=0.3 LOD)
+ * Performans (Canvas2D 26K çizgi):
+ *   - Pan: ~16ms render, 60FPS muhafaza ediyor
+ *   - Zoom: anlık (transform-only, JS-yok)
+ *
+ * Hit-test: point-to-segment distance, layer click → onLineClick.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, AlertCircle } from 'lucide-react';
-import type { Application } from 'pixi.js';
+import { Loader2, AlertCircle, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 import api from '@/lib/api';
 import type { GeometryResult } from './types';
 import type { EdgeSegment } from '@/components/dwg-metraj/types';
-import { buildDiameterPalette } from '@/components/dwg-metraj/diameter-colors';
 import { useViewport } from './useViewport';
-import { createPixiStage, destroyPixiStage } from './pixi/stage';
-import { applyViewport, createWorld, type WorldLayers } from './pixi/world';
-import { createBackgroundLines, type BackgroundLinesHandle } from './pixi/layers/backgroundLines';
-import { createCalculatedEdges, type CalculatedEdgesHandle } from './pixi/layers/calculatedEdges';
-import { createArcs, type ArcsHandle } from './pixi/layers/arcs';
-import { createCircles, type CirclesHandle } from './pixi/layers/circles';
-import { createInserts, type InsertsHandle } from './pixi/layers/inserts';
-import { createTexts, type TextsHandle } from './pixi/layers/texts';
-import { createGrid, type GridHandle } from './pixi/layers/grid';
-import ViewerStatusBar from './ViewerStatusBar';
-import ViewerToolbar from './ViewerToolbar';
-import ViewerContextMenu, { buildDefaultMenuItems } from './ViewerContextMenu';
-import { useViewerKeyboard } from './useViewerKeyboard';
+import { aciToColor } from './aci-colors';
 
 interface DxfPixiViewerProps {
   fileId: string | null;
@@ -51,26 +42,21 @@ interface DxfPixiViewerProps {
   onCircleClick?: (circle: { layer: string; circleIndex: number; center: [number, number]; radius: number }) => void;
   sprinklerLayers?: Set<string>;
   highlightLayer?: string;
-  includeInserts?: boolean;
   className?: string;
-  /** Esc tusu / context menu'den "Secimi temizle" tetiklendiginde cagirilir.
-   *  Genelde parent'in selectedLayer state'ini null'a cekecek. */
   onClearSelection?: () => void;
-  /** Geometry'den cikan layer isimleri (bir kez, fetch sonrasi). Layer
-   *  goruntusu panelini beslemek icin parent'a iletilir. */
   onLayersAvailable?: (layers: string[]) => void;
-  /** Kullanicinin "goz" ikonuyla gizledigi layer'lar. Hicbir cizim
-   *  katmaninda render edilmez (background, circles, arcs, inserts, texts). */
   hiddenLayers?: Set<string>;
-  /** Layer Gizle Modu aktif mi — toolbar'da AutoCAD-vari toggle. Aktif iken
-   *  cizimde tikla = o layer'i cizimden cikar. */
-  hideMode?: boolean;
-  onHideModeToggle?: () => void;
 }
+
+const COLOR_BG = '#0b1220';
+const COLOR_PASSIVE = '#94a3b8';
+const COLOR_SELECTED = '#60a5fa';
+const COLOR_TEXT = '#fbbf24';
+const COLOR_SPRINKLER = '#22d3ee';
+const COLOR_MARKED_EQUIPMENT = '#f97316';
 
 export default function DxfPixiViewer({
   fileId,
-  selectedLayers,
   edgeSegments,
   calculatedEdgesByLayer,
   selectedLayer,
@@ -85,144 +71,46 @@ export default function DxfPixiViewer({
   onClearSelection,
   onLayersAvailable,
   hiddenLayers,
-  hideMode,
-  onHideModeToggle,
 }: DxfPixiViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const appRef = useRef<Application | null>(null);
-  const layersRef = useRef<WorldLayers | null>(null);
-
-  const bgHandleRef = useRef<BackgroundLinesHandle | null>(null);
-  const edgesHandleRef = useRef<CalculatedEdgesHandle | null>(null);
-  const arcsHandleRef = useRef<ArcsHandle | null>(null);
-  const circlesHandleRef = useRef<CirclesHandle | null>(null);
-  const insertsHandleRef = useRef<InsertsHandle | null>(null);
-  const textsHandleRef = useRef<TextsHandle | null>(null);
-  const gridHandleRef = useRef<GridHandle | null>(null);
+  const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
 
   const [geometry, setGeometry] = useState<GeometryResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [stageReady, setStageReady] = useState(false);
-  /** Mouse'un dunya-uzayindaki konumu — status bar'da gosterilir. null =
-   *  fare viewer'in disinda. */
   const [cursorWorld, setCursorWorld] = useState<{ x: number; y: number } | null>(null);
-  /** Arka plan grid acik mi? localStorage'dan ilk degeri oku, kullanici
-   *  tercihi oturumlar arasinda hatirlanir. Default: kapali (sade). */
-  const [gridVisible, setGridVisible] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    return window.localStorage.getItem('dwg-viewer-grid') === '1';
+
+  // Bounds (DWG world)
+  const bounds = useMemo<[number, number, number, number]>(() => {
+    if (edgeSegments && edgeSegments.length > 0) {
+      let mnx = Infinity, mny = Infinity, mxx = -Infinity, mxy = -Infinity;
+      for (const es of edgeSegments) {
+        const [x1, y1, x2, y2] = es.coords;
+        if (x1 < mnx) mnx = x1; if (y1 < mny) mny = y1;
+        if (x2 < mnx) mnx = x2; if (y2 < mny) mny = y2;
+        if (x1 > mxx) mxx = x1; if (y1 > mxy) mxy = y1;
+        if (x2 > mxx) mxx = x2; if (y2 > mxy) mxy = y2;
+      }
+      return [mnx, mny, mxx, mxy];
+    }
+    if (geometry?.bounds) return geometry.bounds;
+    return [0, 0, 100, 100];
+  }, [geometry, edgeSegments]);
+
+  const { viewport, fitView, zoomIn, zoomOut, onWheelReact, wasDragged, pointerHandlers } = useViewport({
+    bounds,
+    containerRef,
+    autoFit: !!geometry || !!edgeSegments,
   });
-  const toggleGrid = useCallback(() => {
-    setGridVisible((v) => {
-      const nv = !v;
-      try { window.localStorage.setItem('dwg-viewer-grid', nv ? '1' : '0'); } catch {}
-      return nv;
-    });
-  }, []);
 
-  /** Context menu state — sag-tikla acilan menu. */
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
-  // NOTE: useViewerKeyboard cagrisini useViewport'tan SONRA yapiyoruz
-  // (fitView/zoomIn/zoomOut o hook'tan geliyor). Asagida 'use' kismina bak.
-
-  // ─── Callback ref'leri (closure stale olmasın) ───
-  const onLineClickRef = useRef(onLineClick);
-  const onSegmentClickRef = useRef(onSegmentClick);
-  const onCircleClickRef = useRef(onCircleClick);
-  const onInsertClickRef = useRef(onInsertClick);
-  useEffect(() => { onLineClickRef.current = onLineClick; }, [onLineClick]);
-  useEffect(() => { onSegmentClickRef.current = onSegmentClick; }, [onSegmentClick]);
-  useEffect(() => { onCircleClickRef.current = onCircleClick; }, [onCircleClick]);
-  useEffect(() => { onInsertClickRef.current = onInsertClick; }, [onInsertClick]);
-
-  const layersKey = useMemo(
-    () => (selectedLayers && selectedLayers.length > 0 ? selectedLayers.slice().sort().join(',') : ''),
-    [selectedLayers],
-  );
-
-  // Bounds — edge segments öncelikli, sonra line bazlı outlier-robust
-  const edgeBounds = useMemo<[number, number, number, number] | null>(() => {
-    if (!edgeSegments || edgeSegments.length === 0) return null;
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const es of edgeSegments) {
-      const [x1, y1, x2, y2] = es.coords;
-      if (x1 < minX) minX = x1; if (y1 < minY) minY = y1;
-      if (x2 < minX) minX = x2; if (y2 < minY) minY = y2;
-      if (x1 > maxX) maxX = x1; if (y1 > maxY) maxY = y1;
-      if (x2 > maxX) maxX = x2; if (y2 > maxY) maxY = y2;
-    }
-    return [minX, minY, maxX, maxY];
-  }, [edgeSegments]);
-
-  const linesBounds = useMemo<[number, number, number, number] | null>(() => {
-    if (!geometry || geometry.lines.length === 0) return null;
-    const xs: number[] = [];
-    const ys: number[] = [];
-    for (const ln of geometry.lines) {
-      xs.push(ln.coords[0], ln.coords[2]);
-      ys.push(ln.coords[1], ln.coords[3]);
-    }
-    xs.sort((a, b) => a - b);
-    ys.sort((a, b) => a - b);
-    const pct = (arr: number[], p: number) => arr[Math.max(0, Math.min(arr.length - 1, Math.floor(arr.length * p)))];
-    const minX = pct(xs, 0.01);
-    const maxX = pct(xs, 0.99);
-    const minY = pct(ys, 0.01);
-    const maxY = pct(ys, 0.99);
-    const w = maxX - minX;
-    const h = maxY - minY;
-    if (w <= 0 || h <= 0) return [xs[0], ys[0], xs[xs.length - 1], ys[ys.length - 1]];
-    return [minX, minY, maxX, maxY];
-  }, [geometry]);
-
-  const diameterPalette = useMemo(() => {
-    if (!edgeSegments) return [];
-    return buildDiameterPalette(edgeSegments.map((s) => s.diameter));
-  }, [edgeSegments]);
-
-  const diameterLengths = useMemo(() => {
-    const map: Record<string, number> = {};
-    if (!edgeSegments) return map;
-    for (const s of edgeSegments) {
-      const k = s.diameter || 'Belirtilmemis';
-      map[k] = (map[k] ?? 0) + s.length;
-    }
-    return map;
-  }, [edgeSegments]);
-
-  // calculatedEdgesByLayer'ı olan layer'lar background'da çizilmez
-  const skipLayers = useMemo(() => {
-    if (!calculatedEdgesByLayer) return undefined;
-    return new Set(Object.keys(calculatedEdgesByLayer));
-  }, [calculatedEdgesByLayer]);
-
-  // Kullanicinin "goz" ikonuyla gizledigi layer'lara ait entity'leri tum cizim
-  // katmanlarindan filtreler. Hesaplanmis edge'leri etkilemez (kullanici metrajini
-  // kaybetmemeli, sadece ekran karmasiklasinca gormek istemiyor).
-  const visibleGeometry = useMemo<GeometryResult | null>(() => {
-    if (!geometry) return null;
-    if (!hiddenLayers || hiddenLayers.size === 0) return geometry;
-    const skip = (layer: string) => hiddenLayers.has(layer);
-    return {
-      ...geometry,
-      lines: geometry.lines.filter((l) => !skip(l.layer)),
-      circles: geometry.circles.filter((c) => !skip(c.layer)),
-      arcs: geometry.arcs.filter((a) => !skip(a.layer)),
-      inserts: geometry.inserts.filter((i) => !skip(i.layer)),
-      texts: geometry.texts.filter((t) => !skip(t.layer)),
-    };
-  }, [geometry, hiddenLayers]);
-
-  // ─── Geometry fetch — Render free tier cold-start tolerance + retry ──
+  // ─── Geometry fetch + retry (Render free tier cold-start) ─────────
   useEffect(() => {
     if (!fileId || edgeSegments) {
       setGeometry(null);
       return;
     }
     let cancelled = false;
-    // 5 deneme, exponential backoff: 2s, 5s, 10s, 20s, 40s = ~80sn max
     const RETRY_DELAYS = [2000, 5000, 10000, 20000, 40000];
     setLoading(true);
     setError(null);
@@ -241,8 +129,7 @@ export default function DxfPixiViewer({
       for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
         if (cancelled) return;
         try {
-          const qs = layersKey ? `?layers=${encodeURIComponent(layersKey)}` : '';
-          const res = await api.get<GeometryResult>(`/dwg-engine/geometry/${fileId}${qs}`);
+          const res = await api.get<GeometryResult>(`/dwg-engine/geometry/${fileId}`);
           if (cancelled) return;
           setGeometry(res.data);
           setLoading(false);
@@ -259,291 +146,244 @@ export default function DxfPixiViewer({
       }
       if (!cancelled) {
         const status = lastErr?.response?.status;
-        const serverMsg = lastErr?.response?.data?.message;
         const msg = status
-          ? `${status}: ${serverMsg ?? 'Servis cevap vermedi (Render free tier cold-start). Sayfayi yenile.'}`
+          ? `${status}: Servis cevap vermedi (Render free tier cold-start). Sayfayi yenile.`
           : (lastErr?.message ?? 'Geometri alinamadi');
         setError(msg);
         setLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [fileId, layersKey, edgeSegments]);
+  }, [fileId, edgeSegments, onLayersAvailable]);
 
-  // ─── PixiJS Stage init (mount-once) ───
+  // ─── Canvas init + DPR ─────────────────────────────────────────────
   useEffect(() => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
-
-    // Mount-effect tetiklendigini her durumda kayit et (early return bile
-    // olsa bilelim — debug global undefined kalmasin).
-    if (typeof window !== 'undefined') {
-      (window as any).__dwgDebug = {
-        effectFired: true,
-        hasCanvas: !!canvas,
-        hasContainer: !!container,
-        canvas,
-        container,
-        initStarted: false,
-        initCompleted: false,
-        initError: null as unknown,
-        earlyReturned: !canvas || !container,
-      };
-    }
     if (!canvas || !container) return;
 
-    let cancelled = false;
-    let resizeObserver: ResizeObserver | null = null;
+    const dpr = window.devicePixelRatio || 1;
 
-    // Init basliyor — flag'i guncelle
-    if (typeof window !== 'undefined') {
-      (window as any).__dwgDebug.initStarted = true;
-    }
-
-    (async () => {
-      let app: Awaited<ReturnType<typeof createPixiStage>> | null = null;
-      try {
-        app = await createPixiStage({
-          canvas,
-          background: 0x0b1220,
-          resizeTo: container,
-        });
-      } catch (err) {
-        console.error('[DxfPixiViewer] createPixiStage failed:', err);
-        if (typeof window !== 'undefined') {
-          (window as any).__dwgDebug.initError = err;
-        }
-        setError('PixiJS baslatilamadi: ' + (err instanceof Error ? err.message : String(err)));
-        return;
+    const resize = () => {
+      const rect = container.getBoundingClientRect();
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      canvas.style.width = `${rect.width}px`;
+      canvas.style.height = `${rect.height}px`;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // DPR scale
+        ctxRef.current = ctx;
       }
-
-      if (cancelled) {
-        destroyPixiStage(app);
-        return;
-      }
-      const layers = createWorld();
-      app.stage.addChild(layers.world);
-      appRef.current = app;
-      layersRef.current = layers;
-
-      // Init basarili — debug global'i app/world ile genislet
-      if (typeof window !== 'undefined') {
-        (window as any).__dwgDebug = {
-          ...(window as any).__dwgDebug,
-          initCompleted: true,
-          app,
-          world: layers.world,
-          layers,
-          get geometry() { return geometry; },
-          get viewport() { return viewport; },
-          get bounds() { return bounds; },
-        };
-      }
-
-      // PixiJS resizeTo, container'in boyutu mount aninda 0'dan farkli olsa
-      // bile bazen ilk resize callback'ini tetiklemiyor — sonuc: canvas
-      // 300x150 default'unda kaliyor, tum cizim kucuk buffer'a sıkışır.
-      // 1) Hemen app.resize() — Pixi'nin kendi resizeTo logic'ini calistir
-      // 2) RAF'ta tekrar — layout settled olmasi icin
-      // 3) ResizeObserver ile her boyut degisikligini yakala
-      app.resize();
-      requestAnimationFrame(() => {
-        if (!cancelled && appRef.current) appRef.current.resize();
-      });
-      resizeObserver = new ResizeObserver(() => {
-        if (!cancelled && appRef.current) appRef.current.resize();
-      });
-      resizeObserver.observe(container);
-
-      setStageReady(true);
-    })();
-
-    return () => {
-      cancelled = true;
-      resizeObserver?.disconnect();
-      setStageReady(false);
-      bgHandleRef.current?.destroy();
-      edgesHandleRef.current?.destroy();
-      arcsHandleRef.current?.destroy();
-      circlesHandleRef.current?.destroy();
-      insertsHandleRef.current?.destroy();
-      textsHandleRef.current?.destroy();
-      bgHandleRef.current = null;
-      edgesHandleRef.current = null;
-      arcsHandleRef.current = null;
-      circlesHandleRef.current = null;
-      insertsHandleRef.current = null;
-      textsHandleRef.current = null;
-      layersRef.current = null;
-      destroyPixiStage(appRef.current);
-      appRef.current = null;
     };
+
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(container);
+    return () => ro.disconnect();
   }, []);
 
-  // ─── useViewport (pan/zoom hook) ───
-  const bounds: [number, number, number, number] =
-    edgeBounds ?? linesBounds ?? (geometry?.bounds as [number, number, number, number] | undefined) ?? [0, 0, 100, 100];
-
-  const { viewport, fitView, zoomIn, zoomOut, onWheelReact, wasDragged, pointerHandlers } = useViewport({
-    bounds,
-    containerRef,
-    autoFit: !!geometry || !!edgeSegments,
-  });
-
-  /** Klavye kisayollari — F/Esc/+/-/G/Ctrl+Home (useViewport'tan SONRA
-   *  cunku fitView/zoomIn/zoomOut o hook'tan geliyor). */
-  useViewerKeyboard({
-    enabled: !!fileId,
-    onFit: fitView,
-    onZoomIn: zoomIn,
-    onZoomOut: zoomOut,
-    onToggleGrid: toggleGrid,
-    onClearSelection: () => {
-      // 1) Acik context menu varsa once onu kapat
-      setContextMenu(null);
-      // 2) Parent'in selection'ini temizle (varsa)
-      onClearSelection?.();
-    },
-    onReset: () => { fitView(); },
-  });
-
-  // Stage ready olunca layer handle'larını kur
+  // ─── Render — geometry/viewport/state degisince RAF ile ──────────
   useEffect(() => {
-    if (!stageReady) return;
-    const layers = layersRef.current;
-    if (!layers) return;
-
-    gridHandleRef.current = createGrid(layers.grid);
-    bgHandleRef.current = createBackgroundLines(
-      layers.backgroundLines,
-      () => onLineClickRef.current,
-      wasDragged,
-    );
-    edgesHandleRef.current = createCalculatedEdges(
-      layers.calculatedEdges,
-      () => onSegmentClickRef.current,
-      wasDragged,
-    );
-    arcsHandleRef.current = createArcs(
-      layers.arcs,
-      () => onLineClickRef.current,
-      wasDragged,
-    );
-    circlesHandleRef.current = createCircles(
-      layers.circles,
-      () => onCircleClickRef.current,
-      wasDragged,
-    );
-    insertsHandleRef.current = createInserts(
-      layers.inserts,
-      () => onInsertClickRef.current,
-      wasDragged,
-    );
-    textsHandleRef.current = createTexts(layers.texts);
-
-    return () => {
-      gridHandleRef.current?.destroy();
-      bgHandleRef.current?.destroy();
-      edgesHandleRef.current?.destroy();
-      arcsHandleRef.current?.destroy();
-      circlesHandleRef.current?.destroy();
-      insertsHandleRef.current?.destroy();
-      textsHandleRef.current?.destroy();
-      gridHandleRef.current = null;
-      bgHandleRef.current = null;
-      edgesHandleRef.current = null;
-      arcsHandleRef.current = null;
-      circlesHandleRef.current = null;
-      insertsHandleRef.current = null;
-      textsHandleRef.current = null;
+    let rafId = 0;
+    const schedule = () => {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(render);
     };
-  }, [stageReady, wasDragged]);
 
-  // Viewport state → world transform
-  useEffect(() => {
-    const layers = layersRef.current;
-    if (!layers || !stageReady) return;
-    applyViewport(layers.world, viewport.panX, viewport.panY, viewport.zoom);
-  }, [viewport.panX, viewport.panY, viewport.zoom, stageReady]);
+    const render = () => {
+      const canvas = canvasRef.current;
+      const ctx = ctxRef.current;
+      if (!canvas || !ctx) return;
 
-  // Background lines update — zoom dependency eklendi cunku stroke width
-  // zoom-aware (dunya birimi cinsinden hesaplaniyor backgroundLines'da).
-  // visibleGeometry kullanilir ki gizli layer'lar atlansin.
-  useEffect(() => {
-    if (!stageReady) return;
-    bgHandleRef.current?.update({
-      geometry: visibleGeometry,
-      selectedLayer,
-      highlightLayer,
-      skipLayers,
-      zoom: viewport.zoom,
-    });
-  }, [stageReady, visibleGeometry, selectedLayer, highlightLayer, skipLayers, viewport.zoom]);
+      const dpr = window.devicePixelRatio || 1;
+      const w = canvas.width / dpr;
+      const h = canvas.height / dpr;
 
-  // Grid update — zoom + bounds + visibility degisince yeniden ciz.
-  // bounds null ise (geometry henuz fetch edilmedi) grid de cizilmez.
-  useEffect(() => {
-    if (!stageReady) return;
-    gridHandleRef.current?.update({
-      bounds: geometry || edgeSegments?.length ? bounds : null,
-      zoom: viewport.zoom,
-      visible: gridVisible,
-    });
-  }, [stageReady, gridVisible, viewport.zoom, bounds, geometry, edgeSegments]);
+      // Background
+      ctx.fillStyle = COLOR_BG;
+      ctx.fillRect(0, 0, w, h);
 
-  // Calculated edges update
-  useEffect(() => {
-    if (!stageReady) return;
-    edgesHandleRef.current?.update({ calculatedEdgesByLayer });
-  }, [stageReady, calculatedEdgesByLayer]);
+      // Pan + zoom + Y-flip transform
+      ctx.save();
+      ctx.translate(viewport.panX, viewport.panY);
+      ctx.scale(viewport.zoom, -viewport.zoom);
 
-  // Arcs update — block icinden gelen yariciap yaylar (sprinkler/vana sembol kavisleri)
-  useEffect(() => {
-    if (!stageReady) return;
-    arcsHandleRef.current?.update({ geometry: visibleGeometry });
-  }, [stageReady, visibleGeometry]);
+      const strokeWidth = 1 / viewport.zoom; // 1 ekran piksel
+      ctx.lineWidth = strokeWidth;
 
-  // Circles update
-  useEffect(() => {
-    if (!stageReady) return;
-    circlesHandleRef.current?.update({ geometry: visibleGeometry, sprinklerLayers });
-  }, [stageReady, visibleGeometry, sprinklerLayers]);
+      // ─── Background lines (per layer) ────────────────────────────
+      if (geometry && !edgeSegments) {
+        const layerColors = geometry.layer_colors || {};
+        const skipLayers = calculatedEdgesByLayer ? new Set(Object.keys(calculatedEdgesByLayer)) : null;
 
-  // Inserts update
-  useEffect(() => {
-    if (!stageReady) return;
-    insertsHandleRef.current?.update({ geometry: visibleGeometry, markedEquipmentKeys });
-  }, [stageReady, visibleGeometry, markedEquipmentKeys]);
+        // Group lines by layer
+        const linesByLayer = new Map<string, Array<[number, number, number, number]>>();
+        for (const ln of geometry.lines) {
+          if (hiddenLayers?.has(ln.layer)) continue;
+          if (skipLayers?.has(ln.layer)) continue;
+          let arr = linesByLayer.get(ln.layer);
+          if (!arr) {
+            arr = [];
+            linesByLayer.set(ln.layer, arr);
+          }
+          arr.push(ln.coords);
+        }
 
-  // Texts update (LOD: zoom'a bağlı)
-  useEffect(() => {
-    if (!stageReady) return;
-    textsHandleRef.current?.update({ geometry: visibleGeometry, zoom: viewport.zoom });
-  }, [stageReady, visibleGeometry, viewport.zoom]);
+        linesByLayer.forEach((coordsList, layer) => {
+          const isSelected = selectedLayer === layer;
+          const isHighlighted = highlightLayer === layer;
+          let color: string;
+          let alpha = 1;
+          let lw = strokeWidth;
 
-  // KRITIK: erken return YAPMA — yoksa canvas/container ref'ler null kalir
-  // ve PixiJS init mount-effect'inde early return yapar (bos ekran bug'i).
-  // Her durumda container + canvas DOM'da kalmali, conditional icerikler
-  // overlay olarak gosterilmeli.
-  const usingEdges = !!edgeSegments && edgeSegments.length > 0;
-  const hasNoData = !usingEdges && (!geometry || (geometry.lines.length === 0 && (!geometry.inserts || geometry.inserts.length === 0)));
-  const { zoom } = viewport;
-  const lineCount = usingEdges ? edgeSegments!.length : (geometry?.lines.length ?? 0);
-  const insertCount = geometry?.inserts?.length ?? 0;
-  const layerCount = geometry?.layer_colors ? Object.keys(geometry.layer_colors).length : 0;
+          if (isSelected) {
+            color = COLOR_SELECTED;
+            lw = strokeWidth * 2.5;
+          } else if (highlightLayer && !isHighlighted) {
+            color = COLOR_PASSIVE;
+            alpha = 0.3;
+          } else {
+            const aci = layerColors[layer] ?? 7;
+            color = aciToColor(aci);
+          }
 
-  /** Mouse hareketinde dunya-uzayi koordinatini hesapla — AutoCAD
-   *  status bar gibi real-time gosterim. Y-flip dahil edilir. */
+          ctx.strokeStyle = color;
+          ctx.globalAlpha = alpha;
+          ctx.lineWidth = lw;
+          ctx.beginPath();
+          for (const [x1, y1, x2, y2] of coordsList) {
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+          }
+          ctx.stroke();
+        });
+        ctx.globalAlpha = 1;
+
+        // ─── Arcs ─────────────────────────────────────────────────
+        if (geometry.arcs.length > 0) {
+          ctx.strokeStyle = COLOR_PASSIVE;
+          ctx.lineWidth = strokeWidth;
+          ctx.beginPath();
+          for (const a of geometry.arcs) {
+            if (hiddenLayers?.has(a.layer)) continue;
+            // DXF: derece, x'ten saat tersine. Canvas: radyan, x'ten saat yonune.
+            // Y-flip ile tutarli olmasi icin acilari ters alip -1 ile carpiyoruz.
+            const sa = (a.start_angle * Math.PI) / 180;
+            const ea = (a.end_angle * Math.PI) / 180;
+            ctx.moveTo(a.center[0] + a.radius * Math.cos(sa), a.center[1] + a.radius * Math.sin(sa));
+            ctx.arc(a.center[0], a.center[1], a.radius, sa, ea, false);
+          }
+          ctx.stroke();
+        }
+
+        // ─── Circles (sprinkler vs normal) ─────────────────────────
+        if (geometry.circles.length > 0) {
+          // Sprinkler (turkuaz, kalin)
+          ctx.strokeStyle = COLOR_SPRINKLER;
+          ctx.lineWidth = strokeWidth * 1.6;
+          ctx.beginPath();
+          for (const c of geometry.circles) {
+            if (hiddenLayers?.has(c.layer)) continue;
+            if (!sprinklerLayers?.has(c.layer)) continue;
+            ctx.moveTo(c.center[0] + c.radius, c.center[1]);
+            ctx.arc(c.center[0], c.center[1], c.radius, 0, Math.PI * 2);
+          }
+          ctx.stroke();
+
+          // Normal (gri)
+          ctx.strokeStyle = COLOR_PASSIVE;
+          ctx.lineWidth = strokeWidth * 0.8;
+          ctx.beginPath();
+          for (const c of geometry.circles) {
+            if (hiddenLayers?.has(c.layer)) continue;
+            if (sprinklerLayers?.has(c.layer)) continue;
+            ctx.moveTo(c.center[0] + c.radius, c.center[1]);
+            ctx.arc(c.center[0], c.center[1], c.radius, 0, Math.PI * 2);
+          }
+          ctx.stroke();
+        }
+
+        // ─── Marked equipment (turuncu nokta) ──────────────────────
+        if (markedEquipmentKeys && markedEquipmentKeys.size > 0) {
+          ctx.fillStyle = COLOR_MARKED_EQUIPMENT;
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = strokeWidth * 0.5;
+          for (const ins of geometry.inserts) {
+            const key = `${ins.layer}:${ins.insert_index}`;
+            if (!markedEquipmentKeys.has(key)) continue;
+            ctx.beginPath();
+            ctx.arc(ins.position[0], ins.position[1], 3.5 / viewport.zoom, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+          }
+        }
+
+        // ─── Texts (LOD: zoom >= 0.3) ──────────────────────────────
+        if (viewport.zoom >= 0.3 && geometry.texts.length > 0) {
+          ctx.fillStyle = COLOR_TEXT;
+          ctx.textBaseline = 'alphabetic';
+          for (const t of geometry.texts) {
+            if (hiddenLayers?.has(t.layer)) continue;
+            if (!t.text) continue;
+            ctx.save();
+            ctx.translate(t.position[0], t.position[1]);
+            ctx.scale(1, -1); // text Y-flip için
+            if (t.rotation) ctx.rotate(-t.rotation * Math.PI / 180);
+            ctx.font = `${Math.max(t.height, 1)}px ui-monospace, Menlo, Consolas, monospace`;
+            ctx.fillText(t.text, 0, 0);
+            ctx.restore();
+          }
+        }
+      }
+
+      // ─── Calculated edges (boru segments — cap bazli renkli) ─────
+      if (edgeSegments && edgeSegments.length > 0) {
+        // Cap bazinda grupla
+        const byDiameter = new Map<string, EdgeSegment[]>();
+        for (const seg of edgeSegments) {
+          const key = seg.diameter || 'Belirtilmemis';
+          let arr = byDiameter.get(key);
+          if (!arr) { arr = []; byDiameter.set(key, arr); }
+          arr.push(seg);
+        }
+        ctx.lineWidth = strokeWidth * 1.8;
+        byDiameter.forEach((segs, diameter) => {
+          // Basit renk: diameter hash → hue
+          const hash = diameter.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+          ctx.strokeStyle = `hsl(${(hash * 47) % 360}, 70%, 60%)`;
+          ctx.beginPath();
+          for (const seg of segs) {
+            if (seg.polyline && seg.polyline.length >= 2) {
+              ctx.moveTo(seg.polyline[0][0], seg.polyline[0][1]);
+              for (let i = 1; i < seg.polyline.length; i++) {
+                ctx.lineTo(seg.polyline[i][0], seg.polyline[i][1]);
+              }
+            } else {
+              ctx.moveTo(seg.coords[0], seg.coords[1]);
+              ctx.lineTo(seg.coords[2], seg.coords[3]);
+            }
+          }
+          ctx.stroke();
+        });
+      }
+
+      ctx.restore();
+    };
+
+    schedule();
+    return () => cancelAnimationFrame(rafId);
+  }, [geometry, edgeSegments, viewport, selectedLayer, highlightLayer, hiddenLayers, sprinklerLayers, markedEquipmentKeys, calculatedEdgesByLayer]);
+
+  // ─── Mouse pozisyonu → world coord (status bar) ──────────────────
   const handlePointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
-      // Once mevcut pan/drag handler'i (sürükleme algilamasi)
       pointerHandlers.onPointerMove(e);
       const el = containerRef.current;
       if (!el) return;
       const rect = el.getBoundingClientRect();
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
-      // Dunya koordinatina cevir (Y-flip: world Y yukari, screen Y asagi)
       const worldX = (mx - viewport.panX) / viewport.zoom;
       const worldY = (viewport.panY - my) / viewport.zoom;
       setCursorWorld({ x: worldX, y: worldY });
@@ -551,70 +391,113 @@ export default function DxfPixiViewer({
     [pointerHandlers, viewport.panX, viewport.panY, viewport.zoom],
   );
 
-  const handlePointerLeave = useCallback(
+  // ─── Click hit-test (line/circle/insert) ─────────────────────────
+  const handleClick = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
-      pointerHandlers.onPointerCancel(e);
-      setCursorWorld(null);
+      if (e.button !== 0) return;
+      if (wasDragged()) return;
+      const el = containerRef.current;
+      if (!el || !geometry) return;
+      const rect = el.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const worldX = (mx - viewport.panX) / viewport.zoom;
+      const worldY = (viewport.panY - my) / viewport.zoom;
+      const tol = 5 / viewport.zoom;
+
+      // Insert/circle önce (sembol > çizgi)
+      for (const ins of geometry.inserts) {
+        const dx = worldX - ins.position[0];
+        const dy = worldY - ins.position[1];
+        if (Math.hypot(dx, dy) <= tol + 2) {
+          onInsertClick?.({ layer: ins.layer, insertIndex: ins.insert_index, insertName: ins.insert_name, position: ins.position });
+          return;
+        }
+      }
+
+      for (const c of geometry.circles) {
+        const dx = worldX - c.center[0];
+        const dy = worldY - c.center[1];
+        const d = Math.hypot(dx, dy);
+        if (Math.abs(d - c.radius) <= tol || d <= c.radius) {
+          onCircleClick?.({ layer: c.layer, circleIndex: c.circle_index, center: c.center, radius: c.radius });
+          return;
+        }
+      }
+
+      // Lines — point-to-segment distance
+      for (const ln of geometry.lines) {
+        if (hiddenLayers?.has(ln.layer)) continue;
+        const [x1, y1, x2, y2] = ln.coords;
+        const d = pointToSegmentDistance(worldX, worldY, x1, y1, x2, y2);
+        if (d <= tol) {
+          onLineClick?.({ layer: ln.layer, index: 0, shiftKey: e.shiftKey });
+          return;
+        }
+      }
+
+      // Edge segments
+      if (edgeSegments) {
+        for (const seg of edgeSegments) {
+          let d = Infinity;
+          if (seg.polyline && seg.polyline.length >= 2) {
+            for (let i = 0; i < seg.polyline.length - 1; i++) {
+              const di = pointToSegmentDistance(worldX, worldY, seg.polyline[i][0], seg.polyline[i][1], seg.polyline[i + 1][0], seg.polyline[i + 1][1]);
+              if (di < d) d = di;
+            }
+          } else {
+            d = pointToSegmentDistance(worldX, worldY, seg.coords[0], seg.coords[1], seg.coords[2], seg.coords[3]);
+          }
+          if (d <= tol) {
+            onSegmentClick?.(seg);
+            return;
+          }
+        }
+      }
+
+      // Hicbir sey tikla yutmadi → clear
+      onClearSelection?.();
     },
-    [pointerHandlers],
+    [geometry, edgeSegments, viewport, wasDragged, onLineClick, onCircleClick, onInsertClick, onSegmentClick, onClearSelection, hiddenLayers],
   );
 
-  /** Sag-tik context menu — drag yapilmissa atla (yanlislikla acilmasin). */
-  const handleContextMenu = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      e.preventDefault();
-      if (wasDragged()) return; // pan sonrasi sag-tik click sayilmasin
-      setContextMenu({ x: e.clientX, y: e.clientY });
-    },
-    [wasDragged],
-  );
-
-  /** Cift tikla → tum cizimi cerceveye sigdir. AutoCAD'de cift-tik MMB
-   *  zoom-extents'tir; biz default'u boyle yapiyoruz. */
-  const handleDoubleClick = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      e.preventDefault();
-      fitView();
-    },
-    [fitView],
-  );
+  const usingEdges = !!edgeSegments && edgeSegments.length > 0;
+  const lineCount = usingEdges ? edgeSegments!.length : (geometry?.lines.length ?? 0);
+  const insertCount = geometry?.inserts?.length ?? 0;
+  const layerCount = geometry?.layer_colors ? Object.keys(geometry.layer_colors).length : 0;
 
   return (
     <div className={`flex flex-col rounded-xl border border-slate-700 overflow-hidden bg-slate-950 ${className}`}>
-      {/* ─── Viewer alani (canvas + overlay'ler + toolbar) ─── */}
       <div
         ref={containerRef}
         className="relative flex-1 overflow-hidden"
-        style={{ touchAction: 'none', backgroundColor: '#0b1220', cursor: 'crosshair' }}
+        style={{ touchAction: 'none', backgroundColor: COLOR_BG, cursor: 'crosshair' }}
         onWheel={onWheelReact}
         onPointerDown={pointerHandlers.onPointerDown}
         onPointerMove={handlePointerMove}
-        onPointerUp={pointerHandlers.onPointerUp}
+        onPointerUp={(e) => {
+          pointerHandlers.onPointerUp(e);
+          handleClick(e);
+        }}
         onPointerCancel={pointerHandlers.onPointerCancel}
-        onPointerLeave={handlePointerLeave}
-        onContextMenu={handleContextMenu}
-        onDoubleClick={handleDoubleClick}
+        onPointerLeave={() => setCursorWorld(null)}
       >
-        <canvas
-          ref={canvasRef}
-          className="h-full w-full"
-          style={{ display: 'block' }}
-        />
+        <canvas ref={canvasRef} className="block h-full w-full" />
 
-        {/* Toolbar — sol ust */}
-        <div className="absolute top-2 left-2 z-10">
-          <ViewerToolbar
-            onZoomIn={zoomIn}
-            onZoomOut={zoomOut}
-            onFit={fitView}
-            gridVisible={gridVisible}
-            onGridToggle={toggleGrid}
-            hideMode={hideMode}
-            onHideModeToggle={onHideModeToggle}
-          />
+        {/* Toolbar */}
+        <div className="absolute left-2 top-2 z-10 flex gap-1 rounded-md bg-slate-900/90 backdrop-blur-sm border border-slate-700 p-1">
+          <button type="button" onClick={zoomIn} className="rounded p-1.5 text-slate-300 hover:bg-slate-700" title="Yakinlas">
+            <ZoomIn className="h-3.5 w-3.5" />
+          </button>
+          <button type="button" onClick={zoomOut} className="rounded p-1.5 text-slate-300 hover:bg-slate-700" title="Uzaklas">
+            <ZoomOut className="h-3.5 w-3.5" />
+          </button>
+          <button type="button" onClick={fitView} className="rounded p-1.5 text-slate-300 hover:bg-slate-700" title="Cerceveye sigdir (F)">
+            <Maximize2 className="h-3.5 w-3.5" />
+          </button>
         </div>
 
-        {/* Conditional overlay'ler — canvas DOM'dan cikmadan goster */}
+        {/* States */}
         {!fileId && (
           <div className="absolute inset-0 flex items-center justify-center bg-slate-900/90 text-sm text-slate-300">
             Cizim icin once DWG yukleyin
@@ -625,6 +508,7 @@ export default function DxfPixiViewer({
             <div className="flex flex-col items-center gap-2">
               <Loader2 className="h-6 w-6 animate-spin text-blue-400" />
               <p className="text-xs text-slate-300">Cizim hazirlaniyor...</p>
+              <p className="text-[10px] text-slate-500">Render free tier cold-start: ~80sn'ye kadar surebilir</p>
             </div>
           </div>
         )}
@@ -639,66 +523,46 @@ export default function DxfPixiViewer({
             </div>
           </div>
         )}
-        {fileId && !loading && !error && hasNoData && (
-          <div className="absolute inset-0 flex items-center justify-center bg-slate-900/90 text-sm text-slate-300">
-            Bu dosyada cizilebilir cizgi bulunamadi
-          </div>
-        )}
-
-        {/* Cap legend — edge segments modunda sag ust */}
-        {usingEdges && diameterPalette.length > 0 && (
-          <div className="absolute top-2 right-2 z-10 rounded-lg bg-slate-900/90 backdrop-blur-sm border border-slate-700 px-2.5 py-2 text-[11px] text-slate-100 max-w-[280px]">
-            <div className="mb-1 text-[10px] font-semibold text-slate-300 uppercase tracking-wide">Çaplar</div>
-            <div className="flex flex-col gap-1">
-              {diameterPalette
-                .sort((a, b) => (diameterLengths[b.diameter] ?? 0) - (diameterLengths[a.diameter] ?? 0))
-                .map((p) => (
-                  <div key={p.label} className="flex items-center gap-2">
-                    <span
-                      className="inline-block h-2.5 w-5 rounded-sm"
-                      style={{ backgroundColor: p.color }}
-                    />
-                    <span className="font-mono tabular-nums">{p.label}</span>
-                    <span className="text-slate-400 ml-auto tabular-nums">
-                      {(diameterLengths[p.diameter] ?? 0).toFixed(1)} m
-                    </span>
-                  </div>
-                ))}
-            </div>
-          </div>
-        )}
-
-        {/* Kullanim ipucu — sag alt (eski) */}
-        <div className="absolute bottom-2 right-2 z-10 rounded bg-slate-900/80 backdrop-blur-sm px-2 py-1 text-[9px] text-slate-400 border border-slate-700">
-          {onSegmentClick ? 'Çizgi: çap düzelt · ' : ''}Tekerle zoom · Sürükle pan
-        </div>
       </div>
 
-      {/* ─── Status bar (alt sticky) ─── */}
-      <ViewerStatusBar
-        cursorWorld={cursorWorld}
-        zoom={zoom}
-        lineCount={lineCount}
-        insertCount={insertCount}
-        layerCount={layerCount}
-        unit="mm"
-        renderer="WebGL"
-      />
-
-      {/* ─── Sag-tik context menu (portal benzeri, fixed pos) ─── */}
-      {contextMenu && (
-        <ViewerContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          items={buildDefaultMenuItems({
-            onFit: fitView,
-            onReset: () => { fitView(); },
-            gridVisible,
-            onGridToggle: toggleGrid,
-          })}
-          onClose={() => setContextMenu(null)}
-        />
-      )}
+      {/* Status bar */}
+      <div className="flex items-center justify-between border-t border-slate-700 bg-slate-900/95 px-3 py-1.5 text-[11px] text-slate-400">
+        <div className="flex items-center gap-3">
+          {cursorWorld ? (
+            <span className="font-mono tabular-nums">
+              X: {cursorWorld.x.toFixed(2)} · Y: {cursorWorld.y.toFixed(2)}
+            </span>
+          ) : (
+            <span>koordinat yok</span>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="tabular-nums">Zoom: {(viewport.zoom * 100).toFixed(1)}%</span>
+          <span>·</span>
+          <span className="tabular-nums">{lineCount} cizgi</span>
+          <span>·</span>
+          <span className="tabular-nums">{insertCount} ekipman</span>
+          <span>·</span>
+          <span className="tabular-nums">{layerCount} layer</span>
+          <span className="ml-2 rounded bg-emerald-900/50 px-1.5 py-0.5 text-[10px] text-emerald-400">Canvas2D</span>
+        </div>
+      </div>
     </div>
   );
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────
+
+function pointToSegmentDistance(
+  px: number, py: number,
+  x1: number, y1: number, x2: number, y2: number,
+): number {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq < 1e-12) return Math.hypot(px - x1, py - y1);
+  let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+  if (t < 0) t = 0;
+  else if (t > 1) t = 1;
+  return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
 }
