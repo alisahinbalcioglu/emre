@@ -37,7 +37,7 @@ interface DxfPixiViewerProps {
   selectedLayer?: string | null;
   markedEquipmentKeys?: Set<string>;
   onSegmentClick?: (segment: EdgeSegment) => void;
-  onLineClick?: (line: { layer: string; index: number; shiftKey: boolean }) => void;
+  onLineClick?: (line: { layer: string; index: number; shiftKey: boolean; screenX: number; screenY: number }) => void;
   onInsertClick?: (insert: { layer: string; insertIndex: number; insertName: string; position: [number, number] }) => void;
   onCircleClick?: (circle: { layer: string; circleIndex: number; center: [number, number]; radius: number }) => void;
   sprinklerLayers?: Set<string>;
@@ -431,7 +431,7 @@ export default function DxfPixiViewer({
         const [x1, y1, x2, y2] = ln.coords;
         const d = pointToSegmentDistance(worldX, worldY, x1, y1, x2, y2);
         if (d <= tol) {
-          onLineClick?.({ layer: ln.layer, index: 0, shiftKey: e.shiftKey });
+          onLineClick?.({ layer: ln.layer, index: 0, shiftKey: e.shiftKey, screenX: e.clientX, screenY: e.clientY });
           return;
         }
       }

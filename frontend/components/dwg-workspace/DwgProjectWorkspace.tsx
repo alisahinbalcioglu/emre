@@ -23,6 +23,7 @@ import LayerInfoSidebar from './LayerInfoSidebar';
 import LayerVisibilityPanel from './LayerVisibilityPanel';
 import MetrajSummaryPanel from './MetrajSummaryPanel';
 import EquipmentDetailPopup from './EquipmentDetailPopup';
+import DiameterPromptPopup from './DiameterPromptPopup';
 import { useWorkspaceState } from './useWorkspaceState';
 import type { MarkedEquipment, CalculatedLayer } from './types';
 
@@ -63,6 +64,13 @@ export default function DwgProjectWorkspace({
   const [editingSegment, setEditingSegment] = useState<EdgeSegment | null>(null);
   const [pendingEquipment, setPendingEquipment] = useState<null | {
     key: string; insertIndex: number; layer: string; insertName: string; position: [number, number];
+  }>(null);
+
+  /** Layer'a tiklayinca acilan inline cap girme popup'i. AutoCAD-vari workflow:
+   *  cizgiye tikla → quick-select Ø20/Ø25/.../Ø160 veya manuel gir → "Hesapla"
+   *  yapinca o layer'in defaultDiameter'i kullanilir. */
+  const [diameterPopup, setDiameterPopup] = useState<null | {
+    layer: string; x: number; y: number;
   }>(null);
 
   const selectedConfig = state.selectedLayer ? state.layerConfigs[state.selectedLayer] ?? null : null;
@@ -148,10 +156,10 @@ export default function DwgProjectWorkspace({
     }
   };
 
-  const handleLineClick = (line: { layer: string; index: number; shiftKey: boolean }) => {
+  const handleLineClick = (line: { layer: string; index: number; shiftKey: boolean; screenX: number; screenY: number }) => {
     if (calculating) return;
     // Layer Gizle Modu (toolbar toggle) VEYA Shift+click → layer gizle/goster.
-    // Normal click → metraj secimi (sag panel formu acilir).
+    // Normal click → layer sec + inline cap girme popup'i ac.
     if (hideMode || line.shiftKey) {
       toggleLayerVisibility(line.layer);
       toast({
@@ -162,6 +170,9 @@ export default function DwgProjectWorkspace({
     }
     setLastClickedLayer(line.layer);
     selectLayer(line.layer);
+    // Cap popup'ini tiklanan konumda ac. Apply edince layer'in defaultDiameter'i
+    // guncellenir, hesaplama bu degeri kullanir.
+    setDiameterPopup({ layer: line.layer, x: line.screenX, y: line.screenY });
   };
 
   const handleInsertClick = (ins: { layer: string; insertIndex: number; insertName: string; position: [number, number] }) => {
@@ -385,6 +396,23 @@ export default function DwgProjectWorkspace({
             setEditingSegment(null);
             toast({ title: 'Çap güncellendi', description: `Segment #${segmentId}: ${newDiameter}` });
           }}
+        />
+      )}
+
+      {/* Layer cap girme popup (cizimde layer'a tıklayinca acilir) */}
+      {diameterPopup && (
+        <DiameterPromptPopup
+          layer={diameterPopup.layer}
+          currentDiameter={state.layerConfigs[diameterPopup.layer]?.defaultDiameter}
+          hatIsmi={state.layerConfigs[diameterPopup.layer]?.hatIsmi}
+          x={diameterPopup.x}
+          y={diameterPopup.y}
+          onApply={(d) => {
+            updateLayerConfig(diameterPopup.layer, { defaultDiameter: d });
+            toast({ title: 'Çap atandı', description: `${diameterPopup.layer}: ${d}` });
+            setDiameterPopup(null);
+          }}
+          onClose={() => setDiameterPopup(null)}
         />
       )}
 
