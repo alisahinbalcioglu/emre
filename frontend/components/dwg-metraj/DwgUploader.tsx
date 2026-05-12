@@ -5,7 +5,7 @@ import { Upload, Loader2, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
 import api from '@/lib/api';
-import { MetrajResult } from './MetrajTable';
+import { MetrajResult } from './types';
 import { DwgProjectWorkspace } from '@/components/dwg-workspace';
 
 interface DwgUploaderProps {

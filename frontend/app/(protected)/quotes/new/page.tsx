@@ -36,8 +36,8 @@ import { buildMaterialContextFromArray } from '@/components/excel-grid/build-mat
 import type { ExcelGridData, ExcelRowData, MultiSheetData, SheetData, MatchCandidate as ExcelMatchCandidate } from '@/components/excel-grid/types';
 import { useCapabilities } from '@/contexts/CapabilitiesContext';
 // DwgUploader artik bagimsiz /dwg-workspace route'unda render ediliyor —
-// ana quotes bundle'i PixiJS yukunden tamamen kurtuldu (~450 kB azalma).
-import type { MetrajResult } from '@/components/dwg-metraj/MetrajTable';
+// ana quotes bundle'i DWG viewer agirligindan kurtuldu.
+import type { MetrajResult } from '@/components/dwg-metraj/types';
 import MetrajEditor from '@/components/dwg-metraj/MetrajEditor';
 import type { Brand } from '@/types';
 import type {
@@ -82,10 +82,8 @@ function nextKey(): string {
 export default function NewQuotePage() {
   const router = useRouter();
 
-  // Step state — Step 1 wizard kaldirildi, direkt Step 2 acilir
-  const [step, setStep] = useState<1 | 2>(2);
-
-  // Step 1 state (legacy — dashboard upload icin hala kullaniliyor)
+  // Step 1 wizard kaldirildi — quotes/new direkt grid + form gosterir.
+  // Bu state'ler hala API parametreleri olarak kullanildigi icin tutuluyor.
   const [uploadMode, setUploadMode] = useState<UploadMode>('excel');
   const [discipline, setDiscipline] = useState<'mechanical' | 'electrical' | 'hybrid'>('mechanical');
   const [laborPref, setLaborPref] = useState<'include' | 'exclude'>('include');
@@ -113,7 +111,7 @@ export default function NewQuotePage() {
     const params = new URLSearchParams(window.location.search);
 
     // DWG mode — Dashboard'dan yonlendirildi, ayri /dwg-workspace sayfasina
-    // git (PixiJS lazy load + state izolasyonu).
+    // git (Canvas2D viewer lazy load + state izolasyonu).
     if (params.get('mode') === 'dwg') {
       router.replace('/dwg-workspace');
       return;
@@ -234,8 +232,6 @@ export default function NewQuotePage() {
         // Eski tek-sheet shape (backward compat)
         setExcelGridData(multi);
       }
-
-      setStep(2);
     } catch {}
 
   }, []);
@@ -309,7 +305,6 @@ export default function NewQuotePage() {
             headerEndRow: active.headerEndRow ?? 0,
           });
         }
-        setStep(2);
         console.log('[quotes/new] Draft restored from sessionStorage');
 
         // Marka/firma atanmis satirlar icin otomatik re-matching
@@ -370,7 +365,7 @@ export default function NewQuotePage() {
   // Save: onemli state degisimlerinde sessionStorage'a yaz
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (!multiSheet || step !== 2) {
+    if (!multiSheet) {
       sessionStorage.removeItem(DRAFT_KEY);
       return;
     }
@@ -386,7 +381,7 @@ export default function NewQuotePage() {
     } catch (e) {
       console.warn('[quotes/new] Draft save failed:', e);
     }
-  }, [multiSheet, liveRowDataBySheet, activeSheetIndex, sheetDisciplines, title, allBrands, step]);
+  }, [multiSheet, liveRowDataBySheet, activeSheetIndex, sheetDisciplines, title, allBrands]);
 
   // Marka fiyat cache: brandId → { materialName → PriceLookupResult }
   const brandPriceCacheRef = useRef<Record<string, Record<string, any>>>({});
@@ -506,7 +501,6 @@ export default function NewQuotePage() {
       setRows(editableRows);
       if (data.brands) setAllBrands(data.brands);
       setUsedProvider(data.usedProvider ?? null);
-      setStep(2);
     } catch {
       const fileType = uploadMode === 'excel' ? 'Excel' : 'PDF';
       toast({
@@ -894,116 +888,6 @@ export default function NewQuotePage() {
     }
   }
 
-  /* ---------- Render: Step 1 -- KALDIRILDI — direkt Step 2 acilir ---------- */
-  /* Dashboard'dan dosya yuklenince veya sessionStorage'dan restore edilince Step 2'ye gecer */
-  /* Eger multiSheet yoksa (dosya yuklenmemis), dosya yukleme alani Step 2 icinde gosterilir */
-
-  if (step === 1 && false) { // DEVRE DISI — asla step 1 gosterme
-    const isPro = userTier === 'pro' || userTier === 'suite';
-    const isSuite = userTier === 'suite';
-    const acceptedExtensions = uploadMode === 'excel' ? EXCEL_EXTENSIONS : PDF_EXTENSIONS;
-    const fileInputId = uploadMode === 'excel' ? 'excel-file' : 'pdf-file';
-
-    const ProBadge = () => (
-      <span className="ml-1.5 inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">PRO</span>
-    );
-    const SuiteBadge = () => (
-      <span className="ml-1.5 inline-flex items-center rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold text-violet-700">SUITE</span>
-    );
-
-    return (
-      <div>
-        <div className="mb-6 flex items-center gap-3">
-          <h1 className="text-2xl font-bold tracking-tight">Yeni Teklif</h1>
-          <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-bold', userTier === 'suite' ? 'bg-violet-100 text-violet-700' : userTier === 'pro' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600')}>
-            {userTier.toUpperCase()}
-          </span>
-        </div>
-
-        <Card className="mx-auto max-w-xl">
-          <CardHeader>
-            <CardTitle className="text-lg">Teklif Ayarlari</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {/* ── 1. Dosya Tipi ── */}
-            <div className="space-y-2">
-              <Label className="text-sm font-semibold">1. Dosya Tipi</Label>
-              <div className="grid grid-cols-3 gap-2">
-                {/* Excel — herkes */}
-                <button type="button" onClick={() => handleModeSwitch('excel')}
-                  className={cn('flex flex-col items-center gap-1.5 rounded-lg border-2 p-4 text-sm transition-all', uploadMode === 'excel' ? 'border-primary bg-primary/5' : 'border-muted hover:border-primary/50')}>
-                  <FileSpreadsheet className="h-6 w-6" /><span className="font-medium">Excel</span>
-                </button>
-                {/* PDF — Pro+ */}
-                <button type="button" onClick={() => isPro && handleModeSwitch('pdf')} disabled={!isPro}
-                  className={cn('relative flex flex-col items-center gap-1.5 rounded-lg border-2 p-4 text-sm transition-all', !isPro && 'cursor-not-allowed opacity-50', uploadMode === 'pdf' && isPro ? 'border-primary bg-primary/5' : 'border-muted hover:border-primary/50')}>
-                  <FileText className="h-6 w-6" /><span className="font-medium">PDF</span>
-                  {!isPro && <ProBadge />}
-                </button>
-                {/* DWG — Pro+ */}
-                <button type="button" onClick={() => isPro && handleModeSwitch('dwg')} disabled={!isPro}
-                  className={cn('relative flex flex-col items-center gap-1.5 rounded-lg border-2 p-4 text-sm transition-all', !isPro && 'cursor-not-allowed opacity-50', uploadMode === 'dwg' && isPro ? 'border-primary bg-primary/5' : 'border-muted hover:border-primary/50')}>
-                  <Package className="h-6 w-6" /><span className="font-medium">DWG</span>
-                  {!isPro && <ProBadge />}
-                </button>
-              </div>
-            </div>
-
-            {/* ── 2. Disiplin ── */}
-            <div className="space-y-2">
-              <Label className="text-sm font-semibold">2. Disiplin</Label>
-              <div className="grid grid-cols-3 gap-2">
-                <button type="button" onClick={() => setDiscipline('mechanical')}
-                  className={cn('rounded-lg border-2 px-3 py-2.5 text-sm font-medium transition-all', discipline === 'mechanical' ? 'border-primary bg-primary/5' : 'border-muted hover:border-primary/50')}>
-                  Mekanik
-                </button>
-                <button type="button" onClick={() => setDiscipline('electrical')}
-                  className={cn('rounded-lg border-2 px-3 py-2.5 text-sm font-medium transition-all', discipline === 'electrical' ? 'border-primary bg-primary/5' : 'border-muted hover:border-primary/50')}>
-                  Elektrik
-                </button>
-                <button type="button" onClick={() => isPro && setDiscipline('hybrid')} disabled={!isPro}
-                  className={cn('relative rounded-lg border-2 px-3 py-2.5 text-sm font-medium transition-all', !isPro && 'cursor-not-allowed opacity-50', discipline === 'hybrid' && isPro ? 'border-primary bg-primary/5' : 'border-muted hover:border-primary/50')}>
-                  Hibrit {!isPro && <ProBadge />}
-                </button>
-              </div>
-            </div>
-
-            {/* ── 3. Iscilik Tercihi ── */}
-            <div className="space-y-2">
-              <Label className="text-sm font-semibold">3. Iscilik Tercihi</Label>
-              <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => setLaborPref('include')}
-                  className={cn('rounded-lg border-2 px-3 py-2.5 text-sm font-medium transition-all', laborPref === 'include' ? 'border-primary bg-primary/5' : 'border-muted hover:border-primary/50')}>
-                  Iscilik Dahil
-                </button>
-                <button type="button" onClick={() => setLaborPref('exclude')}
-                  className={cn('rounded-lg border-2 px-3 py-2.5 text-sm font-medium transition-all', laborPref === 'exclude' ? 'border-primary bg-primary/5' : 'border-muted hover:border-primary/50')}>
-                  Sadece Malzeme
-                </button>
-              </div>
-            </div>
-
-            {/* ── 4. Dosya Yükleme ── */}
-            <div className="space-y-2">
-              <Label className="text-sm font-semibold">4. Dosya</Label>
-              <label htmlFor={fileInputId}
-                className={cn('flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 transition-colors hover:border-primary hover:bg-muted/50', file ? 'border-primary bg-primary/5' : 'border-muted-foreground/30')}>
-                <Upload className="mb-2 h-8 w-8 text-muted-foreground" />
-                <span className="text-sm font-medium">{file?.name ?? (uploadMode === 'excel' ? 'Excel dosyasi secin' : 'PDF dosyasi secin')}</span>
-                <span className="mt-1 text-xs text-muted-foreground">{uploadMode === 'excel' ? '.xlsx veya .xls' : '.pdf'}</span>
-                <input id={fileInputId} key={uploadMode} type="file" accept={acceptedExtensions} onChange={handleFileChange} className="sr-only" />
-              </label>
-            </div>
-
-            {/* Analiz Butonu */}
-            <Button className="w-full" onClick={handleUpload} disabled={!file || isUploading}>
-              {isUploading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Analiz ediliyor...</> : 'Analiz Et ve Devam Et'}
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   /* ---------- Render: Step 2 -- Edit Quote ---------- */
 

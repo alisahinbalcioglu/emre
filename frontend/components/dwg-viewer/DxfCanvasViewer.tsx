@@ -1,22 +1,18 @@
 'use client';
 
 /**
- * DWG Viewer — saf Canvas2D rendering (Pixi YOK).
- *
- * Pixi v8'in shader linking bug'ları (8.18.1, 8.16.0 hepsi yedik) nedeniyle
- * native HTML5 Canvas2D'ye geçildi. Framework yok, shader yok, garantili
- * çalışır.
+ * DWG Viewer — native HTML5 Canvas2D rendering.
  *
  * Mimari:
  *   - HTML <canvas> + 2d context
- *   - useViewport pan/zoom state
+ *   - useViewport pan/zoom state (native wheel listener)
  *   - Y-flip transform: canvas Y-asagi, DWG Y-yukari → ctx.scale(zoom, -zoom)
- *   - Render-on-state-change (RAF batched)
+ *   - Adaptive grid (log10 step) + viewport culling + selection glow
  *   - Per-layer batched stroke (single beginPath + multi moveTo/lineTo + stroke)
  *
- * Performans (Canvas2D 26K çizgi):
- *   - Pan: ~16ms render, 60FPS muhafaza ediyor
- *   - Zoom: anlık (transform-only, JS-yok)
+ * Performans (28K cizgi):
+ *   - Pan/zoom: 60FPS (viewport culling sayesinde sadece ekrandakiler cizilir)
+ *   - Anında zoomToFit (geometry geldigi anda)
  *
  * Hit-test: point-to-segment distance, layer click → onLineClick.
  */
@@ -29,7 +25,7 @@ import type { EdgeSegment } from '@/components/dwg-metraj/types';
 import { useViewport } from './useViewport';
 import { aciToColor } from './aci-colors';
 
-interface DxfPixiViewerProps {
+interface DxfCanvasViewerProps {
   fileId: string | null;
   selectedLayers?: string[];
   edgeSegments?: EdgeSegment[];
@@ -55,7 +51,7 @@ const COLOR_TEXT = '#fbbf24';
 const COLOR_SPRINKLER = '#22d3ee';
 const COLOR_MARKED_EQUIPMENT = '#f97316';
 
-export default function DxfPixiViewer({
+export default function DxfCanvasViewer({
   fileId,
   edgeSegments,
   calculatedEdgesByLayer,
@@ -71,7 +67,7 @@ export default function DxfPixiViewer({
   onClearSelection,
   onLayersAvailable,
   hiddenLayers,
-}: DxfPixiViewerProps) {
+}: DxfCanvasViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
@@ -98,7 +94,9 @@ export default function DxfPixiViewer({
     return [0, 0, 100, 100];
   }, [geometry, edgeSegments]);
 
-  const { viewport, fitView, zoomIn, zoomOut, onWheelReact, wasDragged, pointerHandlers } = useViewport({
+  // Native wheel listener useViewport icinde — passive: false ile preventDefault yapar.
+  // onWheelReact React fallback'i; ana akis native listener uzerinden.
+  const { viewport, fitView, zoomIn, zoomOut, wasDragged, pointerHandlers } = useViewport({
     bounds,
     containerRef,
     autoFit: !!geometry || !!edgeSegments,
@@ -204,6 +202,44 @@ export default function DxfPixiViewer({
       ctx.fillStyle = COLOR_BG;
       ctx.fillRect(0, 0, w, h);
 
+      // A3 — Adaptive grid (screen space, transform oncesi)
+      // OCERP pattern (DxfViewer.tsx:389-436): log10 step, minor=1x, major=10x,
+      // threshold 8px. Zoom'a gore sıklasir/seyrelir → AutoCAD hissi.
+      const rawStep = 50 / viewport.zoom;
+      const exponent = Math.floor(Math.log10(rawStep));
+      const minorStep = Math.pow(10, exponent);
+      const majorStep = minorStep * 10;
+      const minorPx = minorStep * viewport.zoom;
+      const majorPx = majorStep * viewport.zoom;
+      const drawGrid = (stepPx: number, alpha: string) => {
+        if (stepPx <= 8) return;
+        ctx.strokeStyle = alpha;
+        ctx.lineWidth = 1;
+        const startX = Math.floor(-viewport.panX / stepPx) * stepPx + viewport.panX;
+        const startY = Math.floor(-viewport.panY / stepPx) * stepPx + viewport.panY;
+        ctx.beginPath();
+        for (let x = startX; x < w; x += stepPx) { ctx.moveTo(x, 0); ctx.lineTo(x, h); }
+        for (let y = startY; y < h; y += stepPx) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
+        ctx.stroke();
+      };
+      drawGrid(minorPx, 'rgba(255,255,255,0.03)');
+      drawGrid(majorPx, 'rgba(255,255,255,0.07)');
+
+      // A2 — Viewport culling: world-space bbox (margin 50px ekran ki edge case yumusak)
+      // Y-flip: canvas y-down, world y-up → world y = (panY - screenY) / zoom
+      const marginPx = 50;
+      const worldMinX = (-marginPx - viewport.panX) / viewport.zoom;
+      const worldMaxX = (w + marginPx - viewport.panX) / viewport.zoom;
+      const worldMinY = (viewport.panY - (h + marginPx)) / viewport.zoom;
+      const worldMaxY = (viewport.panY + marginPx) / viewport.zoom;
+      const inView = (x: number, y: number) => x >= worldMinX && x <= worldMaxX && y >= worldMinY && y <= worldMaxY;
+      const lineInView = (x1: number, y1: number, x2: number, y2: number) => {
+        // Hızlı bbox-bbox: line bbox viewport bbox'la kesişiyor mu?
+        const lnMinX = Math.min(x1, x2), lnMaxX = Math.max(x1, x2);
+        const lnMinY = Math.min(y1, y2), lnMaxY = Math.max(y1, y2);
+        return lnMaxX >= worldMinX && lnMinX <= worldMaxX && lnMaxY >= worldMinY && lnMinY <= worldMaxY;
+      };
+
       // Pan + zoom + Y-flip transform
       ctx.save();
       ctx.translate(viewport.panX, viewport.panY);
@@ -211,17 +247,20 @@ export default function DxfPixiViewer({
 
       const strokeWidth = 1 / viewport.zoom; // 1 ekran piksel
       ctx.lineWidth = strokeWidth;
+      ctx.lineCap = 'round';
 
       // ─── Background lines (per layer) ────────────────────────────
       if (geometry && !edgeSegments) {
         const layerColors = geometry.layer_colors || {};
         const skipLayers = calculatedEdgesByLayer ? new Set(Object.keys(calculatedEdgesByLayer)) : null;
 
-        // Group lines by layer
+        // Group lines by layer + viewport culling
         const linesByLayer = new Map<string, Array<[number, number, number, number]>>();
         for (const ln of geometry.lines) {
           if (hiddenLayers?.has(ln.layer)) continue;
           if (skipLayers?.has(ln.layer)) continue;
+          const [x1, y1, x2, y2] = ln.coords;
+          if (!lineInView(x1, y1, x2, y2)) continue;  // A2 culling
           let arr = linesByLayer.get(ln.layer);
           if (!arr) {
             arr = [];
@@ -251,34 +290,47 @@ export default function DxfPixiViewer({
           ctx.strokeStyle = color;
           ctx.globalAlpha = alpha;
           ctx.lineWidth = lw;
+          // A4 — Selection glow (shadowBlur). OCERP pattern (dxf-renderer.ts:171-186).
+          if (isSelected) {
+            ctx.shadowColor = 'rgba(96, 165, 250, 0.5)';
+            ctx.shadowBlur = 8;
+          }
           ctx.beginPath();
           for (const [x1, y1, x2, y2] of coordsList) {
             ctx.moveTo(x1, y1);
             ctx.lineTo(x2, y2);
           }
           ctx.stroke();
+          if (isSelected) {
+            ctx.shadowBlur = 0;
+            ctx.shadowColor = 'transparent';
+          }
         });
         ctx.globalAlpha = 1;
 
-        // ─── Arcs ─────────────────────────────────────────────────
+        // ─── Arcs (culled by bounding box of full circle) ────────
         if (geometry.arcs.length > 0) {
           ctx.strokeStyle = COLOR_PASSIVE;
           ctx.lineWidth = strokeWidth;
           ctx.beginPath();
           for (const a of geometry.arcs) {
             if (hiddenLayers?.has(a.layer)) continue;
-            // DXF: derece, x'ten saat tersine. Canvas: radyan, x'ten saat yonune.
-            // Y-flip ile tutarli olmasi icin acilari ters alip -1 ile carpiyoruz.
+            // A2 culling: arc bbox = (cx ± r, cy ± r) — viewport ile kesisiyor mu?
+            const r = a.radius;
+            if (!lineInView(a.center[0] - r, a.center[1] - r, a.center[0] + r, a.center[1] + r)) continue;
             const sa = (a.start_angle * Math.PI) / 180;
             const ea = (a.end_angle * Math.PI) / 180;
-            ctx.moveTo(a.center[0] + a.radius * Math.cos(sa), a.center[1] + a.radius * Math.sin(sa));
-            ctx.arc(a.center[0], a.center[1], a.radius, sa, ea, false);
+            ctx.moveTo(a.center[0] + r * Math.cos(sa), a.center[1] + r * Math.sin(sa));
+            ctx.arc(a.center[0], a.center[1], r, sa, ea, false);
           }
           ctx.stroke();
         }
 
-        // ─── Circles (sprinkler vs normal) ─────────────────────────
+        // ─── Circles (sprinkler vs normal) — A2 culled ───────────
         if (geometry.circles.length > 0) {
+          const circleInView = (cx: number, cy: number, r: number) =>
+            lineInView(cx - r, cy - r, cx + r, cy + r);
+
           // Sprinkler (turkuaz, kalin)
           ctx.strokeStyle = COLOR_SPRINKLER;
           ctx.lineWidth = strokeWidth * 1.6;
@@ -286,6 +338,7 @@ export default function DxfPixiViewer({
           for (const c of geometry.circles) {
             if (hiddenLayers?.has(c.layer)) continue;
             if (!sprinklerLayers?.has(c.layer)) continue;
+            if (!circleInView(c.center[0], c.center[1], c.radius)) continue;
             ctx.moveTo(c.center[0] + c.radius, c.center[1]);
             ctx.arc(c.center[0], c.center[1], c.radius, 0, Math.PI * 2);
           }
@@ -298,6 +351,7 @@ export default function DxfPixiViewer({
           for (const c of geometry.circles) {
             if (hiddenLayers?.has(c.layer)) continue;
             if (sprinklerLayers?.has(c.layer)) continue;
+            if (!circleInView(c.center[0], c.center[1], c.radius)) continue;
             ctx.moveTo(c.center[0] + c.radius, c.center[1]);
             ctx.arc(c.center[0], c.center[1], c.radius, 0, Math.PI * 2);
           }
@@ -319,13 +373,14 @@ export default function DxfPixiViewer({
           }
         }
 
-        // ─── Texts (LOD: zoom >= 0.3) ──────────────────────────────
+        // ─── Texts (LOD: zoom >= 0.3) — A2 culled ─────────────────
         if (viewport.zoom >= 0.3 && geometry.texts.length > 0) {
           ctx.fillStyle = COLOR_TEXT;
           ctx.textBaseline = 'alphabetic';
           for (const t of geometry.texts) {
             if (hiddenLayers?.has(t.layer)) continue;
             if (!t.text) continue;
+            if (!inView(t.position[0], t.position[1])) continue;  // A2 culling
             ctx.save();
             ctx.translate(t.position[0], t.position[1]);
             ctx.scale(1, -1); // text Y-flip için
@@ -472,7 +527,6 @@ export default function DxfPixiViewer({
         ref={containerRef}
         className="relative flex-1 overflow-hidden"
         style={{ touchAction: 'none', backgroundColor: COLOR_BG, cursor: 'crosshair' }}
-        onWheel={onWheelReact}
         onPointerDown={pointerHandlers.onPointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={(e) => {

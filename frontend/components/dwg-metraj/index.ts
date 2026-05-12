@@ -4,10 +4,8 @@
  */
 
 export { default as DwgUploader } from './DwgUploader';
-export { default as MetrajTable } from './MetrajTable';
 export { default as MetrajEditor } from './MetrajEditor';
-export { default as MetrajTabs } from './MetrajTabs';
 export { default as DiameterEditPopup } from './DiameterEditPopup';
 
-export type { EdgeSegment } from './types';
+export type { EdgeSegment, MetrajResult, LayerMetraj, PipeSegment, MetrajEquipment } from './types';
 export { diameterToColor, buildDiameterPalette } from './diameter-colors';

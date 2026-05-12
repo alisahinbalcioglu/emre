@@ -16,9 +16,9 @@ import React, { useState, useMemo } from 'react';
 import { AlertCircle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import api from '@/lib/api';
-import { DxfPixiViewer } from '@/components/dwg-viewer';
+import { DxfCanvasViewer } from '@/components/dwg-viewer';
 import { DiameterEditPopup, type EdgeSegment } from '@/components/dwg-metraj';
-import type { MetrajResult } from '@/components/dwg-metraj/MetrajTable';
+import type { MetrajResult } from '@/components/dwg-metraj/types';
 import LayerInfoSidebar from './LayerInfoSidebar';
 import LayerVisibilityPanel from './LayerVisibilityPanel';
 import MetrajSummaryPanel from './MetrajSummaryPanel';
@@ -50,7 +50,7 @@ export default function DwgProjectWorkspace({
     toggleLayerVisibility, showAllLayers,
   } = useWorkspaceState(fileId, scale);
 
-  /** Geometry'den cikan layer isimleri — DxfPixiViewer onLayersAvailable
+  /** Geometry'den cikan layer isimleri — DxfCanvasViewer onLayersAvailable
    *  callback'inden gelir. Layer goruntusu paneli icin kullanilir. */
   const [availableLayers, setAvailableLayers] = useState<string[]>([]);
   const hiddenLayersSet = useMemo(() => new Set(state.hiddenLayers), [state.hiddenLayers]);
@@ -350,9 +350,9 @@ export default function DwgProjectWorkspace({
 
       {/* Ana grid: sol buyuk cizim + sag panel */}
       <div className="grid grid-cols-1 lg:grid-cols-[3fr_1fr] gap-3">
-        {/* Sol: PixiJS (WebGL) Viewer */}
+        {/* Sol: Canvas2D Viewer */}
         <div className="lg:sticky lg:top-4 lg:self-start">
-          <DxfPixiViewer
+          <DxfCanvasViewer
             fileId={fileId}
             calculatedEdgesByLayer={calculatedEdgesByLayer}
             selectedLayer={state.selectedLayer}

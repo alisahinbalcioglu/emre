@@ -272,7 +272,7 @@ export class DwgEngineService {
 
   /**
    * DXF geometrisini (LINE/POLYLINE koordinatlari) getir.
-   * Frontend SVG viewer (dwg-viewer klasoru) kullanir.
+   * Frontend Canvas2D viewer (dwg-viewer klasoru) kullanir.
    *
    * Cold-start hassasiyeti yuksek — kullanici dogrudan bekliyor. Initial 60s,
    * retry 90s. Toplam max ~150s + 2s backoff. Kullanici gozunde "uyandiriliyor"

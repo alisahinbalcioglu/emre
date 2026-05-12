@@ -86,6 +86,10 @@ _CACHE_TTL = 900  # 15 dakika
 _CACHE_DIR = tempfile.gettempdir()
 _CACHE_PREFIX = "dwg_cache_"
 _CACHE_SUFFIX = ".dxf"
+# Geometry JSON cache — parse sonucunu serialize edip /geometry tekrar
+# cagrildiginda ezdxf parse maliyetinden kac. OCERP pattern: entities.json
+# disk'e yazilir, GET sadece json.load(f). ~50ms cache hit vs ~2-5sn parse.
+_GEOMETRY_CACHE_SUFFIX = ".geom.json"
 
 
 def _cache_path(file_id: str) -> str:
@@ -93,12 +97,19 @@ def _cache_path(file_id: str) -> str:
     return os.path.join(_CACHE_DIR, f"{_CACHE_PREFIX}{file_id}{_CACHE_SUFFIX}")
 
 
+def _geometry_cache_path(file_id: str) -> str:
+    """file_id → geometry JSON cache path."""
+    return os.path.join(_CACHE_DIR, f"{_CACHE_PREFIX}{file_id}{_GEOMETRY_CACHE_SUFFIX}")
+
+
 def _cleanup_cache() -> None:
-    """TTL'i gecmis cache dosyalarini disk'ten sil."""
+    """TTL'i gecmis cache dosyalarini disk'ten sil (hem DXF hem geometry JSON)."""
     now = time.time()
     try:
         for fname in os.listdir(_CACHE_DIR):
-            if not fname.startswith(_CACHE_PREFIX) or not fname.endswith(_CACHE_SUFFIX):
+            if not fname.startswith(_CACHE_PREFIX):
+                continue
+            if not (fname.endswith(_CACHE_SUFFIX) or fname.endswith(_GEOMETRY_CACHE_SUFFIX)):
                 continue
             fpath = os.path.join(_CACHE_DIR, fname)
             try:
@@ -355,7 +366,7 @@ def analyze_dxf_metraj(
         warnings.append("Secilen layer'larda hicbir cizgi tespit edilemedi")
 
     # ── Edge segment'leri olustur (AI kullanilsa da kullanilmasa da) ──
-    # Frontend SVG viewer her edge'i cap bazli renklendirip tiklanabilir yapar.
+    # Frontend Canvas2D viewer her edge'i cap bazli renklendirip tiklanabilir yapar.
     edge_segments: list[EdgeSegment] = []
     if selected_layers:
         try:
@@ -533,16 +544,47 @@ def get_geometry(
 ):
     """
     Cache'teki DXF'ten LINE/POLYLINE koordinatlarini dondur.
-    Frontend SVG viewer (dwg-viewer klasoru) icin kullanilir.
+    Frontend Canvas2D viewer (dwg-viewer klasoru) icin kullanilir.
+
+    A6 — Disk JSON cache:
+      Cache hit  (geom.json varsa, layers filtresi yoksa) → ~50ms json.load
+      Cache miss (yok veya layers filtresi var) → ezdxf parse + JSON yaz
+    OCERP pattern (service.py:553-567).
     """
     dxf_path = _get_cached_dxf(file_id)
     layer_set: set[str] | None = None
     if layers.strip():
         layer_set = {ln.strip() for ln in layers.split(",") if ln.strip()}
+
+    # Cache hit fast-path: SADECE layer filtresi yokken kullan (cache full geometry tutar)
+    geom_cache = _geometry_cache_path(file_id)
+    if layer_set is None and os.path.isfile(geom_cache):
+        try:
+            with open(geom_cache, "r", encoding="utf-8") as f:
+                cached = json.load(f)
+            return GeometryResult(**cached)
+        except Exception:
+            # Bozuk cache — sessizce parse'a dus, sonra yeniden yaz
+            try:
+                os.unlink(geom_cache)
+            except OSError:
+                pass
+
     try:
-        return extract_geometry(dxf_path, layer_set)
+        result = extract_geometry(dxf_path, layer_set)
     except Exception as e:
         raise HTTPException(500, f"Geometri cikarilamadi: {str(e)}")
+
+    # Layer filtresi YOKSA disk'e yaz — sonraki cagrilara hizli donus
+    if layer_set is None:
+        try:
+            with open(geom_cache, "w", encoding="utf-8") as f:
+                json.dump(result.model_dump() if hasattr(result, "model_dump") else result.dict(), f)
+        except Exception:
+            # Cache yazimi basarisiz — sorun degil, ana akis devam
+            pass
+
+    return result
 
 
 @app.post("/layers", response_model=LayerListResult)

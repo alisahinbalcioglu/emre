@@ -52,10 +52,10 @@ class LayerMetraj(BaseModel):
 
 class EdgeSegment(BaseModel):
     """Her bir pipe-run (chain) + cap + koordinatlar.
-    Frontend SVG viewer'da cizim + tik-duzenleme icin kullanilir.
+    Frontend Canvas2D viewer'da cizim + tik-duzenleme icin kullanilir.
 
     coords: run'in iki ucu [x1,y1,x2,y2] — AI mesafe hesabi + tiklama icin.
-    polyline: chain'in gercek sirali vertex'leri [[x,y], [x,y], ...] — SVG'de
+    polyline: chain'in gercek sirali vertex'leri [[x,y], [x,y], ...] — canvas'ta
               gorsel olarak dogru L/Z/U sekilli boru hatti cizimi icin."""
     segment_id: int
     layer: str
@@ -79,5 +79,5 @@ class MetrajResult(BaseModel):
     total_layers: int = 0
     warnings: list[str] = []
     branch_points: list[BranchPoint] = []
-    edge_segments: list[EdgeSegment] = []  # her edge ayri — SVG viewer icin
+    edge_segments: list[EdgeSegment] = []  # her edge ayri — Canvas2D viewer icin
     sprinkler_detection: SprinklerDetectionInfo | None = None

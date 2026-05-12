@@ -4,8 +4,8 @@
  * DWG Workspace — bagimsiz route.
  *
  * Neden ayri sayfa:
- * - PixiJS + DwgProjectWorkspace ~1.5 MB. Ayri sayfada lazy load ile ana
- *   app cok daha hizli initial paint yapar.
+ * - Canvas2D viewer + DwgProjectWorkspace bundle'i ayri tutulur, ana app
+ *   hizli initial paint yapar (lazy load).
  * - DWG analiz state machine'i karmasik (file_id, layer secimi, sprinkler,
  *   ekipman, hesaplama). Bagimsiz route saf state ile baslar — quotes/new
  *   icindeki Excel akisi ile karismiyor.
@@ -23,9 +23,9 @@ import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { Loader2, ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
-import type { MetrajResult } from '@/components/dwg-metraj/MetrajTable';
+import type { MetrajResult } from '@/components/dwg-metraj/types';
 
-// PixiJS browser-only — ssr: false zorunlu (window referansi var).
+// Canvas2D viewer browser-only — ssr: false zorunlu (window/canvas referansi var).
 // Loading state component'i mount sirasinda gosterilir.
 const DwgUploader = dynamic(
   () => import('@/components/dwg-metraj/DwgUploader'),

@@ -13,7 +13,7 @@ interface UseViewportOpts {
 }
 
 /**
- * SVG viewer icin zoom/pan state yonetimi.
+ * Canvas2D viewer icin zoom/pan state yonetimi.
  * - Wheel: zoom (mouse pozisyonu etrafinda)
  * - Drag: pan
  * - FitView: bounds'u cerceveye sigdir
@@ -65,7 +65,7 @@ export function useViewport({ bounds, containerRef, autoFit = true }: UseViewpor
     const centerY = (minY + maxY) / 2;
     setViewport({
       panX: rect.width / 2 - centerX * zoom,
-      // SVG Y ekseni asagi, DWG yukari — negatif
+      // Canvas Y ekseni asagi, DWG yukari — negatif
       panY: rect.height / 2 + centerY * zoom,
       zoom,
     });
@@ -141,7 +141,7 @@ export function useViewport({ bounds, containerRef, autoFit = true }: UseViewpor
     return () => el.removeEventListener('wheel', onWheel);
   }, [containerRef, applyWheel]);
 
-  // React onWheel — yedek, hem SVG hem container'a bagli olabilir
+  // React onWheel — yedek, native listener primary path'i
   const onWheelReact = useCallback((e: React.WheelEvent) => {
     // preventDefault React 18'de passive mode ile calismaz — native listener asil is yapar
     applyWheel(e.deltaY, e.clientX, e.clientY);
