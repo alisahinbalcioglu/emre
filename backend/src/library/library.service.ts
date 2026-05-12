@@ -21,6 +21,16 @@ export class LibraryService {
     });
   }
 
+  /** Sadece ekipman (kombi, pompa vs.) kategorisindeki kutuphane satirlari.
+   *  DWG workspace equipment popup'u bu listeyi cekip autocomplete kullanir. */
+  async findEquipment(userId: string) {
+    return this.prisma.userLibrary.findMany({
+      where: { userId, category: 'ekipman' },
+      include: { material: true, brand: true },
+      orderBy: { materialName: 'asc' },
+    });
+  }
+
   async create(userId: string, dto: CreateLibraryItemDto) {
     if (!dto.materialId && !dto.materialName) {
       throw new BadRequestException('Either materialId or materialName is required');
@@ -41,6 +51,8 @@ export class LibraryService {
         brandId: dto.brandId,
         customPrice: dto.customPrice ?? null,
         discountRate: dto.discountRate ?? null,
+        specs: (dto.specs as any) ?? undefined,
+        category: dto.category ?? null,
       },
       include: { material: true, brand: true },
     });
@@ -55,6 +67,8 @@ export class LibraryService {
     if (dto.customPrice !== undefined) data.customPrice = dto.customPrice;
     if (dto.discountRate !== undefined) data.discountRate = dto.discountRate;
     if (dto.listPrice !== undefined) data.listPrice = dto.listPrice;
+    if (dto.specs !== undefined) data.specs = dto.specs as any;
+    if (dto.category !== undefined) data.category = dto.category;
 
     return this.prisma.userLibrary.update({
       where: { id },

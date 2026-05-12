@@ -146,6 +146,13 @@ model UserLibrary {
   unit              String?
   sourcePriceList   PriceList? @relation(fields: [sourcePriceListId], references: [id], onDelete: SetNull)
   sourcePriceListId String?
+  // Sarf malzemesi / ekipman icin ek teknik ozellikler. Serbest key-value JSON.
+  // Ornek: { "power": "24 kW", "capacity": "100 m3/h", "voltaj": "220V" }
+  // DWG workspace'te INSERT (ekipman) noktasina atanan malzemenin guc/kapasite
+  // gibi bilgileri burada tutulur, hesaplamaya/cikti'ya dahil edilir.
+  specs             Json?
+  // "ekipman" | "boru" | "fitting" | null — DWG equipment popup filtre icin
+  category          String?
 }
 
 model Quote {

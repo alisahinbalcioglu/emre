@@ -88,6 +88,21 @@ export default function DwgProjectWorkspace({
     [state.markedEquipments]
   );
 
+  /** Layer panelinde her layer adının yanında atanmış çapı rozet olarak
+   *  göstermek için lookup map. */
+  const layerDiametersMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const [layer, cfg] of Object.entries(state.layerConfigs)) {
+      if (cfg.defaultDiameter?.trim()) m[layer] = cfg.defaultDiameter;
+    }
+    return m;
+  }, [state.layerConfigs]);
+
+  const calculatedLayerNames = useMemo(
+    () => new Set(Object.keys(state.calculatedLayers)),
+    [state.calculatedLayers],
+  );
+
   const handleCalculate = async () => {
     if (!state.selectedLayer) return;
     if (state.calculatedLayers[state.selectedLayer]) {
@@ -229,14 +244,59 @@ export default function DwgProjectWorkspace({
       warnings: [],
     };
 
-    // Ekipmanlari da ayri "layer" gibi ekle (adet bazli)
-    const eqGroups = equipments.reduce<Record<string, { count: number; unit: string; label: string }>>((acc, eq) => {
-      const k = `${eq.userLabel}__${eq.unit}`;
-      if (!acc[k]) acc[k] = { count: 0, unit: eq.unit, label: eq.userLabel };
-      acc[k].count += 1;
-      return acc;
-    }, {});
+    // Ekipmanlari ayni isim+marka+birim ile grupla — adet topla, fiyatlandir
+    type EqGroup = {
+      label: string;
+      brandName: string | null;
+      unit: string;
+      unitPrice: number | null;
+      specs: Record<string, string> | null;
+      libraryItemId: string | null;
+      layer: string;
+      count: number;
+    };
+    const eqGroups: Record<string, EqGroup> = {};
+    for (const eq of equipments) {
+      const k = `${eq.libraryItemId ?? eq.userLabel}__${eq.unit}`;
+      if (!eqGroups[k]) {
+        eqGroups[k] = {
+          label: eq.userLabel,
+          brandName: eq.brandName ?? null,
+          unit: eq.unit,
+          unitPrice: eq.unitPrice ?? null,
+          specs: eq.specs ?? null,
+          libraryItemId: eq.libraryItemId ?? null,
+          layer: eq.layer,
+          count: 0,
+        };
+      }
+      eqGroups[k].count += 1;
+    }
+
+    // (1) Structured equipments — quotes/Excel/PDF için
+    finalMetraj.equipments = Object.values(eqGroups).map((g) => ({
+      name: g.label,
+      brandName: g.brandName,
+      unit: g.unit,
+      quantity: g.count,
+      unitPrice: g.unitPrice,
+      totalPrice: g.unitPrice != null ? g.unitPrice * g.count : null,
+      specs: g.specs,
+      layer: g.layer,
+      libraryItemId: g.libraryItemId,
+    }));
+
+    // (2) Legacy fake-layer satırı — mevcut MetrajTable görünümü için
+    //     material_type'a marka + specs özetini koy ki tabloda görünsün
     for (const g of Object.values(eqGroups)) {
+      const specsSummary = g.specs && Object.keys(g.specs).length > 0
+        ? Object.entries(g.specs).map(([k, v]) => `${k}:${v}`).join(', ')
+        : '';
+      const matType = [
+        `Ekipman · ${g.unit}`,
+        g.brandName && `(${g.brandName})`,
+        specsSummary && `[${specsSummary}]`,
+      ].filter(Boolean).join(' ');
       finalMetraj.layers.push({
         layer: g.label,
         length: g.count,
@@ -247,8 +307,8 @@ export default function DwgProjectWorkspace({
           layer: g.label,
           length: g.count,
           line_count: g.count,
-          material_type: `Ekipman · ${g.unit}`,
-          diameter: '',
+          material_type: matType,
+          diameter: g.unitPrice != null ? `₺${g.unitPrice.toFixed(2)}/${g.unit}` : '',
         }],
       });
     }
@@ -336,8 +396,16 @@ export default function DwgProjectWorkspace({
           <LayerVisibilityPanel
             availableLayers={availableLayers}
             hiddenLayers={state.hiddenLayers}
+            selectedLayer={state.selectedLayer}
+            calculatedLayers={calculatedLayerNames}
+            layerDiameters={layerDiametersMap}
             onToggle={toggleLayerVisibility}
             onShowAll={showAllLayers}
+            onLayerSelect={(layer, x, y) => {
+              setLastClickedLayer(layer);
+              selectLayer(layer);
+              setDiameterPopup({ layer, x, y });
+            }}
           />
 
           {/* Sprinkler tespit info — AI otomatik bulduğunda gösterilir.

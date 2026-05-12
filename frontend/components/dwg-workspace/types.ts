@@ -30,8 +30,15 @@ export interface MarkedEquipment {
   layer: string;
   insertName: string;       // DWG block adi (ornek: "SPRINKLER_BLOCK")
   position: [number, number];
-  userLabel: string;        // kullanicinin girdigi malzeme adi
+  userLabel: string;        // kullanicinin girdigi malzeme adi (kütüphaneden ise: materialName)
   unit: string;             // "adet" default, "set", "m" vs.
+  // Kütüphaneden seçildiyse: ekipman kataloğundaki kayıt referansı +
+  // o kaydın spec (güç/kapasite vs.) ve birim fiyatı. Manuel girilen
+  // ekipmanlarda hepsi null.
+  libraryItemId?: string | null;
+  brandName?: string | null;
+  unitPrice?: number | null;        // ₺
+  specs?: Record<string, string> | null;
 }
 
 /** Workspace'in genel state'i. */

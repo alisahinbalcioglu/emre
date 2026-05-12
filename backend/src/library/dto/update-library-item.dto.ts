@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, Min, Max } from 'class-validator';
+import { IsString, IsNumber, IsOptional, Min, Max, IsObject } from 'class-validator';
 
 export class UpdateLibraryItemDto {
   @IsOptional()
@@ -20,4 +20,12 @@ export class UpdateLibraryItemDto {
   @IsNumber()
   @Min(0)
   listPrice?: number;
+
+  @IsOptional()
+  @IsObject()
+  specs?: Record<string, string>;
+
+  @IsOptional()
+  @IsString()
+  category?: string;
 }

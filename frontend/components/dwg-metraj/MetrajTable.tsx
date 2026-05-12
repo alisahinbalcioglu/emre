@@ -36,6 +36,20 @@ export interface EdgeSegmentData {
   coords: [number, number, number, number];
 }
 
+/** DWG'den seçilmiş ekipman (kombi, pompa vs.) — kütüphane referansli
+ *  veya manuel girilmis. Çıktıda boru/segmentlerden ayri bir bölümde gösterilir. */
+export interface MetrajEquipment {
+  name: string;                          // örn. "Kombi Yogusmali 24kW"
+  brandName?: string | null;
+  unit: string;                          // "adet", "set"
+  quantity: number;                      // toplam adet
+  unitPrice?: number | null;             // ₺ — kütüphaneden geldiyse
+  totalPrice?: number | null;            // quantity × unitPrice
+  specs?: Record<string, string> | null; // {Güç: "24 kW", Kapasite: "100 m³/h"}
+  layer: string;                         // DWG layer (gruplama için)
+  libraryItemId?: string | null;         // kaynak ekipman kayıt id
+}
+
 export interface MetrajResult {
   layers: LayerMetraj[];
   total_length: number;
@@ -43,6 +57,10 @@ export interface MetrajResult {
   warnings: string[];
   branch_points?: BranchPointData[];
   edge_segments?: EdgeSegmentData[];
+  /** Ekipman listesi — workspace'te kütüphaneden/manuel işaretlenmiş INSERT'ler.
+   *  Mevcut "fake layer" görünümü (layers içinde "Ekipman · adet" gibi) ile
+   *  birlikte gönderilir. Quotes/Excel/PDF ihracatları structured data buradan okur. */
+  equipments?: MetrajEquipment[];
 }
 
 interface MetrajTableProps {

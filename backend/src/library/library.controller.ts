@@ -21,6 +21,13 @@ export class LibraryController {
     return this.libraryService.findAll(user.id);
   }
 
+  /** Sadece ekipman/sarf kategorisindeki kutuphane satirlari. DWG workspace
+   *  equipment popup'unun autocomplete'i icin. */
+  @Get('equipment')
+  findEquipment(@CurrentUser() user: any) {
+    return this.libraryService.findEquipment(user.id);
+  }
+
   @Post()
   create(@CurrentUser() user: any, @Body() dto: CreateLibraryItemDto) {
     return this.libraryService.create(user.id, dto);
