@@ -63,6 +63,21 @@ export class DwgEngineService {
         await this.delay(2000);
         return await tryOnce(retryTimeout);
       }
+      // 401/403 → auth mismatch. Retry anlamsiz (token degismeyecek).
+      // Acik mesaj firlat ki kullanici Render env senkronu sorununu hizli tani.
+      // Sebep: NestJS DWG_ENGINE_TOKEN ile Python INTERNAL_API_TOKEN ayni
+      // degerde degil (genelde Python servisi yeniden olusturuldugunda
+      // generateValue yeni random uretir, NestJS env eski deger ile kalir).
+      if (r.status === 401 || r.status === 403) {
+        this.logger.error(
+          `[${label}] ${r.status} Unauthorized — DWG_ENGINE_TOKEN / INTERNAL_API_TOKEN mismatch. ` +
+          `Render dashboard'da metaprice-dwg-engine.INTERNAL_API_TOKEN degerini metaprice-api.DWG_ENGINE_TOKEN'a kopyalayin.`,
+        );
+        throw new HttpException(
+          'DWG Engine yetkilendirme hatasi. Sunucu yoneticisinin token senkronizasyonunu kontrol etmesi gerekiyor (DWG_ENGINE_TOKEN / INTERNAL_API_TOKEN).',
+          HttpStatus.SERVICE_UNAVAILABLE,
+        );
+      }
       return r;
     } catch (err: any) {
       const errName = err?.name ?? '';

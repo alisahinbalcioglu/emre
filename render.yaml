@@ -38,9 +38,13 @@ services:
     dockerfilePath: ./Dockerfile
     healthCheckPath: /health
     envVars:
-      # NestJS'ten gelen her istek bu token'i X-Internal-Token header'inda tasimali
+      # NestJS'ten gelen her istek bu token'i X-Internal-Token header'inda tasimali.
+      # `sync: false` → dashboard'dan elle set et. Generate value KULLANMIYORUZ
+      # cunku servis yeniden olusturuldugunda (runtime degisikligi vs.) yeni
+      # random token uretiyor ve NestJS DWG_ENGINE_TOKEN ile mismatch oluyor.
+      # Manuel ayni string her iki yerde (asagiya bak) = sync sorunu bitti.
       - key: INTERNAL_API_TOKEN
-        generateValue: true   # Render ilk deploy'da random uretir
+        sync: false
       # Claude API — dashboard'dan elle set et
       - key: ANTHROPIC_API_KEY
         sync: false
@@ -80,12 +84,15 @@ services:
           type: web
           name: metaprice-dwg-engine
           property: host
-      # Token'i da Python servisinden kopyala — ayni deger
+      # Python servisinin INTERNAL_API_TOKEN'i ile AYNI deger olmali.
+      # Daha once fromService.envVarKey ile cross-sync kullaniyorduk; ancak
+      # Python servisi yeniden olustugu durumlarda (Docker runtime gecisi gibi)
+      # generateValue yenileniyor, NestJS env eski deger ile kalip 401 firlatiyordu.
+      # Cozum: her iki yerde sync: false + dashboard'dan ayni string elle gir.
+      # Diagnostics: NestJS 401 alirsa dwg-engine.service.ts artik acik mesaj
+      # ("DWG Engine yetkilendirme hatasi") firlatir, log'da net hata gorunur.
       - key: DWG_ENGINE_TOKEN
-        fromService:
-          type: web
-          name: metaprice-dwg-engine
-          envVarKey: INTERNAL_API_TOKEN
+        sync: false
       # CORS — Netlify deploy sonrasi buraya frontend URL'i gir
       # Ornek: "https://metaprice.netlify.app,https://metaprice.com"
       - key: CORS_ORIGINS
