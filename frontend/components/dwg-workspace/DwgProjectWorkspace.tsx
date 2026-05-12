@@ -164,8 +164,18 @@ export default function DwgProjectWorkspace({
         description: `${layer}: ${totalLen.toFixed(1)} m, ${edgeSegs.length} segment`,
       });
     } catch (e: any) {
-      const msg = e?.response?.data?.message ?? e?.response?.data?.detail ?? 'Metraj hesaplanamadı';
-      toast({ title: 'Hata', description: msg, variant: 'destructive' });
+      // Tam error context'i console'a — toast kesiyor, F12 → Console'da tüm detay
+      console.error('[Hesapla] HATA:', {
+        status: e?.response?.status,
+        data: e?.response?.data,
+        message: e?.message,
+        url: e?.config?.url,
+      });
+      const rawMsg = e?.response?.data?.message ?? e?.response?.data?.detail ?? e?.message ?? 'Metraj hesaplanamadı';
+      const msg = typeof rawMsg === 'string' ? rawMsg : JSON.stringify(rawMsg);
+      // Toast'a uzunsa truncate ama tam mesaj console'da
+      const shortMsg = msg.length > 200 ? msg.slice(0, 200) + '... (F12 Console\'da tam mesaj)' : msg;
+      toast({ title: 'Hata', description: shortMsg, variant: 'destructive' });
     } finally {
       setCalculating(false);
     }
