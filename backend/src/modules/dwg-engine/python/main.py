@@ -613,22 +613,10 @@ async def list_layers(file: UploadFile = File(...)):
         file_id = _cache_dxf(dxf_path)
         result.file_id = file_id
 
-        # A6-extended — Geometry'yi de simdi parse et + diske yaz.
-        # Frontend /layers basariyla dondukten sonra /geometry/{file_id}
-        # cagiriyor; eger entities.json zaten varsa o cagri ~50ms cache hit.
-        # OCERP pattern: upload sirasinda entities.json yazilir, GET sadece okur.
-        try:
-            geometry_result = extract_geometry(_cache_path(file_id), None)
-            geom_cache = _geometry_cache_path(file_id)
-            with open(geom_cache, "w", encoding="utf-8") as gf:
-                json.dump(
-                    geometry_result.model_dump() if hasattr(geometry_result, "model_dump") else geometry_result.dict(),
-                    gf,
-                )
-        except Exception:
-            # Geometry pre-cache basarisiz — /geometry GET'i normal parse'e duser.
-            # Ana akis (layers donus) etkilenmesin.
-            pass
+        # /geometry GET cache hit logic'i mevcut (geometry endpoint'inde).
+        # Pre-cache geometry yazimi /layers'da DEVRE DISI birakildi — 503 sorunu
+        # vardi (extract_geometry'nin /layers icindeki ilk parse'i fail ediyor olabilirdi).
+        # /geometry GET kendi cache miss handler'i ile parse yapar — daha guvenli.
 
         # DWG birimini otomatik tespit et ($INSUNITS header'indan)
         try:
