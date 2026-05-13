@@ -115,7 +115,11 @@ export default function DxfCanvasViewer({
 
     const isTransient = (e: any): boolean => {
       const status = e?.response?.status;
+      // 5xx: backend hata. 429: rate limit (CF/Render edge). 422: NestJS'in 429
+      // mapping'i eskiden 422'ye duserdi — backwards compat icin 422'yi de
+      // transient sayariz. Toplam 5 retry (2/5/10/20/40sn backoff).
       if (status === 503 || status === 502 || status === 504 || status === 500) return true;
+      if (status === 429 || status === 422) return true;
       const code = e?.code;
       if (code === 'ECONNABORTED' || code === 'ERR_NETWORK') return true;
       if (!e?.response) return true;

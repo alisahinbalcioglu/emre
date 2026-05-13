@@ -87,14 +87,44 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
     setExtractingLayers(true);
     startTimer();
 
+    // Cold-start tolerant retry — Cloudflare 429 (rate limit) + 5xx + network
+    // hatalarinda 5 deneme yap (2/5/10/20/40sn backoff). Sadece final fail'de
+    // toast atilir; ara denemelerde "uyandiriliyor" durum mesaji gosterilir.
+    const RETRY_DELAYS = [2000, 5000, 10000, 20000, 40000];
+    const isTransient = (e: any): boolean => {
+      const status = e?.response?.status;
+      if (status === 503 || status === 502 || status === 504 || status === 500) return true;
+      if (status === 429 || status === 422) return true;
+      const code = e?.code;
+      if (code === 'ECONNABORTED' || code === 'ERR_NETWORK') return true;
+      if (!e?.response) return true;
+      return false;
+    };
+
     try {
       const formData = new FormData();
       formData.append('file', f);
-      const res = await api.post(
+      // FormData stream tek-shot oldugu icin retry icin factory pattern
+      const sendOnce = () => api.post(
         '/dwg-engine/layers',
         formData,
         { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 300000 },
       );
+
+      let res: any = null;
+      let lastErr: any = null;
+      for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
+        try {
+          res = await sendOnce();
+          break;
+        } catch (err: any) {
+          lastErr = err;
+          if (!isTransient(err)) throw err;
+          if (attempt >= RETRY_DELAYS.length) throw err;
+          await new Promise((r) => setTimeout(r, RETRY_DELAYS[attempt]));
+        }
+      }
+      if (!res) throw lastErr;
       const data = res.data;
 
       // Backend'in onerdiği birim — default dialog secimi

@@ -141,7 +141,11 @@ export class DwgEngineService {
         const error = await response.text();
         throw new HttpException(
           `Layer listesi hatasi: ${error}`,
-          response.status >= 500 ? HttpStatus.INTERNAL_SERVER_ERROR : HttpStatus.UNPROCESSABLE_ENTITY,
+          // 429 (CF rate limit) + 5xx → SERVICE_UNAVAILABLE — frontend retry yapsin.
+          // 4xx (validation, missing file) → UNPROCESSABLE_ENTITY — kalici hata.
+          response.status >= 500 || response.status === 429
+            ? HttpStatus.SERVICE_UNAVAILABLE
+            : HttpStatus.UNPROCESSABLE_ENTITY,
         );
       }
 
@@ -229,7 +233,11 @@ export class DwgEngineService {
         const error = await response.text();
         throw new HttpException(
           `DWG Engine hatasi: ${error}`,
-          response.status >= 500 ? HttpStatus.INTERNAL_SERVER_ERROR : HttpStatus.UNPROCESSABLE_ENTITY,
+          // 429 (CF rate limit) + 5xx → SERVICE_UNAVAILABLE — frontend retry yapsin.
+          // 4xx (validation, missing file) → UNPROCESSABLE_ENTITY — kalici hata.
+          response.status >= 500 || response.status === 429
+            ? HttpStatus.SERVICE_UNAVAILABLE
+            : HttpStatus.UNPROCESSABLE_ENTITY,
         );
       }
 
@@ -296,7 +304,11 @@ export class DwgEngineService {
         const error = await response.text();
         throw new HttpException(
           `Geometri hatasi: ${error}`,
-          response.status >= 500 ? HttpStatus.INTERNAL_SERVER_ERROR : HttpStatus.UNPROCESSABLE_ENTITY,
+          // 429 (CF rate limit) + 5xx → SERVICE_UNAVAILABLE — frontend retry yapsin.
+          // 4xx (validation, missing file) → UNPROCESSABLE_ENTITY — kalici hata.
+          response.status >= 500 || response.status === 429
+            ? HttpStatus.SERVICE_UNAVAILABLE
+            : HttpStatus.UNPROCESSABLE_ENTITY,
         );
       }
       return await response.json();
