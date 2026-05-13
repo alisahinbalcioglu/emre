@@ -608,10 +608,32 @@ import asyncio
 _UPLOAD_STATES: dict[str, dict] = {}
 
 
-def _background_parse(file_id: str, dxf_path: str) -> None:
-    """Background parse — layers + entities + geometry cache'i tek pass'te yazar.
-    Sync function; caller asyncio.to_thread ile cagiriyor."""
+def _detect_unit_from_dxf(doc) -> tuple[float, str]:
+    """ezdxf doc'tan birim cikart. $INSUNITS header'i (1=inch, 4=mm, 6=m, ...)."""
     try:
+        insunits = int(doc.header.get("$INSUNITS", 0) or 0)
+        _unit_map: dict[int, tuple[float, str]] = {
+            1: (0.0254, "inch"), 2: (0.3048, "feet"),
+            4: (0.001, "mm"), 5: (0.01, "cm"), 6: (1.0, "m"),
+        }
+        return _unit_map.get(insunits, (0.001, "mm"))
+    except Exception:
+        return 0.001, "mm"
+
+
+def _background_parse(file_id: str, dxf_path: str) -> None:
+    """Background parse — layers + entities + geometry cache'i TEK ezdxf parse ile.
+    Sync function; caller asyncio.to_thread ile cagiriyor.
+
+    F5C-fix: Daha onceden /upload endpoint'inde ezdxf.readfile cagriliyordu (sadece
+    INSUNITS icin), bu tum dosyayi parse ediyordu — upload 30-60sn sururdu.
+    Simdi: parse SADECE burada (background), upload anlik doner.
+    """
+    try:
+        # Tek ezdxf parse — hem birim, hem layers, hem geometry icin
+        doc = ezdxf.readfile(dxf_path)
+        scale, label = _detect_unit_from_dxf(doc)
+
         # 1. Layers
         layer_result = extract_layer_info(dxf_path)
         # 2. Geometry (entities.json'a yaz)
@@ -632,8 +654,8 @@ def _background_parse(file_id: str, dxf_path: str) -> None:
             "completed_at": time.time(),
             "layers": [l.model_dump() if hasattr(l, "model_dump") else l.dict() for l in (layer_result.layers or [])],
             "total_layers": layer_result.total_layers,
-            "suggested_scale": getattr(layer_result, "suggested_scale", 0.001),
-            "suggested_unit_label": getattr(layer_result, "suggested_unit_label", "mm"),
+            "suggested_scale": scale,
+            "suggested_unit_label": label,
             "entity_count": getattr(geom_result, "entity_count", None),
         }
     except Exception as e:
@@ -649,11 +671,16 @@ def _background_parse(file_id: str, dxf_path: str) -> None:
 
 @app.post("/upload")
 async def upload_async(file: UploadFile = File(...)):
-    """Async upload — file save + cache + background parse task. 2sn'de doner.
+    """Async upload — file save + cache + background parse task. **2sn'de doner.**
 
     OCERP pattern: kullanici parse'i beklemez, file_id alir, /status ile takip eder.
 
-    Response: {file_id, status: "processing", started_at}
+    F5C-bugfix (14.05.2026): Daha onceden ezdxf.readfile burada cagriliyordu
+    sadece INSUNITS header'i icin — ama ezdxf TUM dosyayi parse ediyor, 30-60sn
+    suruyordu. ARTIK: endpoint anlik doner, INSUNITS detection background
+    task'a tasindi (/status'tan gelir).
+
+    Response (2sn): {file_id, status: "processing"}
     """
     if not file.filename:
         raise HTTPException(400, "Dosya adi eksik")
@@ -665,35 +692,22 @@ async def upload_async(file: UploadFile = File(...)):
         file_id = _cache_dxf(dxf_path)
         cache_path = _cache_path(file_id)
 
-        # DWG birimini layers ile birlikte tespit et (background task'ta)
-        # Hizli unit detection icin header oku — background'ı bekletmeden donus
-        try:
-            doc = ezdxf.readfile(cache_path)
-            insunits = int(doc.header.get("$INSUNITS", 0) or 0)
-            _unit_map: dict[int, tuple[float, str]] = {
-                1: (0.0254, "inch"), 2: (0.3048, "feet"),
-                4: (0.001, "mm"), 5: (0.01, "cm"), 6: (1.0, "m"),
-            }
-            scale, label = _unit_map.get(insunits, (0.001, "mm"))
-        except Exception:
-            scale, label = 0.001, "mm"
-
-        # State: processing
+        # State: processing (suggested_scale/label background task'tan gelecek)
         _UPLOAD_STATES[file_id] = {
             "status": "processing",
             "started_at": time.time(),
-            "suggested_scale": scale,
-            "suggested_unit_label": label,
+            # Default mm — frontend "ready" gelene kadar bu kullanilir; sonra
+            # background task gercek INSUNITS degerini state'e yazar.
+            "suggested_scale": 0.001,
+            "suggested_unit_label": "mm",
         }
 
-        # Background task — main loop bloklanmaz
+        # Background task — main loop bloklanmaz, ezdxf parse arka planda
         asyncio.create_task(asyncio.to_thread(_background_parse, file_id, cache_path))
 
         return {
             "file_id": file_id,
             "status": "processing",
-            "suggested_scale": scale,
-            "suggested_unit_label": label,
         }
     except HTTPException:
         raise

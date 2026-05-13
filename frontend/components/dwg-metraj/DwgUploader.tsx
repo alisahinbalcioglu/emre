@@ -127,14 +127,16 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
       }
       if (!uploadRes) throw lastErr;
 
-      const { file_id: uploadFileId, suggested_scale, suggested_unit_label } = uploadRes.data;
-      const suggestedScale = typeof suggested_scale === 'number' ? suggested_scale : 0.001;
-      const suggestedLabel = suggested_unit_label ?? 'mm';
-      setSelectedUnit(opts.override ?? suggestedScale);
+      const { file_id: uploadFileId } = uploadRes.data;
+      // suggested_scale /upload anlik dondugu icin burada YOK — /status'tan gelir
+      // (F5C-bugfix: ezdxf parse background task'a tasindi). Default mm bekle.
+      let suggestedScale = 0.001;
+      let suggestedLabel = 'mm';
 
-      // ── 2. Polling /status/{file_id} — her 1.5sn, max 90sn (60 deneme) ──
+      // ── 2. Polling /status/{file_id} — her 1.5sn, max 180sn (120 deneme) ──
+      // 180sn limit: ilk istek cold-start + buyuk DWG parse icin pay birakir.
       const POLL_INTERVAL = 1500;
-      const MAX_POLLS = 60;
+      const MAX_POLLS = 120;
       let parseResult: any = null;
       for (let i = 0; i < MAX_POLLS; i++) {
         await new Promise((r) => setTimeout(r, POLL_INTERVAL));
@@ -143,6 +145,8 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
           const state = statusRes.data;
           if (state.status === 'ready') {
             parseResult = state;
+            suggestedScale = typeof state.suggested_scale === 'number' ? state.suggested_scale : 0.001;
+            suggestedLabel = state.suggested_unit_label ?? 'mm';
             break;
           }
           if (state.status === 'error') {
@@ -155,8 +159,10 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
         }
       }
       if (!parseResult) {
-        throw new Error('Parse 90 saniye icinde tamamlanmadi — dosya cok buyuk olabilir');
+        throw new Error('Parse 180 saniye icinde tamamlanmadi — dosya cok buyuk olabilir veya Python servisi yavasladi');
       }
+
+      setSelectedUnit(opts.override ?? suggestedScale);
 
       toast({
         title: 'Proje hazirlandi',
