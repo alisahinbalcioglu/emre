@@ -743,6 +743,10 @@ async def list_layers(file: UploadFile = File(...)):
     DWG/DXF dosyasindaki layer listesini cikar.
     Uzunluk hesaplamaz — sadece layer adi ve entity sayisi doner.
     Dosya cache'e kaydedilir, file_id ile /parse'a gonderilebilir.
+
+    F5A safe (14.05.2026): Bu endpoint TEK ezdxf parse ile hem layers cikartir
+    hem de entities.json pre-cache yazar. /geometry GET sonraki cagrida cache
+    hit yapar (100ms). Boylece kullanici sadece /layers'i beklemis olur.
     """
     if not file.filename:
         raise HTTPException(400, "Dosya adi eksik")
@@ -751,16 +755,30 @@ async def list_layers(file: UploadFile = File(...)):
 
     try:
         dxf_path = _prepare_dxf(content, file.filename)
-        result = extract_layer_info(dxf_path)
+
+        # TEK ezdxf parse — hem layers hem geometry icin paylasilmis doc
+        doc = ezdxf.readfile(dxf_path)
+        result = extract_layer_info_from_doc(doc)
 
         # DXF dosyasini cache'e kaydet (15dk)
         file_id = _cache_dxf(dxf_path)
         result.file_id = file_id
 
-        # /geometry GET cache hit logic'i mevcut (geometry endpoint'inde).
-        # Pre-cache geometry yazimi /layers'da DEVRE DISI birakildi — 503 sorunu
-        # vardi (extract_geometry'nin /layers icindeki ilk parse'i fail ediyor olabilirdi).
-        # /geometry GET kendi cache miss handler'i ile parse yapar — daha guvenli.
+        # F5A safe pre-cache: geometry'yi simdi disk'e yaz, /geometry GET cache hit yapsin.
+        # Pydantic v2 mode='json' nested model'leri JSON-safe primitives'e cevirir.
+        # Pre-cache fail olursa try/except yutar — /geometry GET fallback parse yapar.
+        try:
+            geom_result = extract_geometry_from_doc(doc, None)
+            geom_cache = _geometry_cache_path(file_id)
+            try:
+                data = geom_result.model_dump(mode='json')
+            except (AttributeError, TypeError):
+                data = geom_result.dict()
+            with open(geom_cache, "w", encoding="utf-8") as gf:
+                json.dump(data, gf)
+        except Exception:
+            # Log et — silent fail degil, gozlem icin
+            logging.exception("Pre-cache geometry failed for file_id=%s", file_id)
 
         # DWG birimini otomatik tespit et ($INSUNITS header'indan)
         try:

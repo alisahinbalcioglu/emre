@@ -71,14 +71,11 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
   };
 
   /**
-   * F5C — Async upload + status polling (OCERP pattern).
+   * F5A — /layers parse + pre-cache geometry (OCERP pattern, polling YOK).
    *
-   * 1. POST /upload → 2sn'de file_id alir (parse arka planda)
-   * 2. Polling GET /status/{file_id} her 1.5sn → "ready" olunca devam
-   * 3. "ready" olunca workspace acilir, /geometry cache hit (50ms)
-   *
-   * Eski /layers akisi sync 60sn await ediyordu. Yeni akis 2sn algılanan
-   * süre + arka planda 30sn parse. UX bakimindan OCERP "anında" hissi.
+   * F5C async/polling karmasikligi production'da 503 bug yaratti — F5A'ya
+   * geri donus. /layers endpoint'i tek ezdxf parse ile layers + entities.json
+   * pre-cache yazar. /geometry GET sonra cache hit (~100ms). Toplam ~30sn.
    */
   const extractLayers = useCallback(async (
     f: File,
@@ -103,20 +100,19 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
     };
 
     try {
-      // ── 1. POST /upload — 2sn'de file_id doner (parse arka planda) ──
       const formData = new FormData();
       formData.append('file', f);
-      const sendUpload = () => api.post(
-        '/dwg-engine/upload',
+      const sendOnce = () => api.post(
+        '/dwg-engine/layers',
         formData,
-        { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000 },
+        { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 300000 },
       );
 
-      let uploadRes: any = null;
+      let res: any = null;
       let lastErr: any = null;
       for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
         try {
-          uploadRes = await sendUpload();
+          res = await sendOnce();
           break;
         } catch (err: any) {
           lastErr = err;
@@ -125,54 +121,22 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
           await new Promise((r) => setTimeout(r, RETRY_DELAYS[attempt]));
         }
       }
-      if (!uploadRes) throw lastErr;
+      if (!res) throw lastErr;
+      const data = res.data;
 
-      const { file_id: uploadFileId } = uploadRes.data;
-      // suggested_scale /upload anlik dondugu icin burada YOK — /status'tan gelir
-      // (F5C-bugfix: ezdxf parse background task'a tasindi). Default mm bekle.
-      let suggestedScale = 0.001;
-      let suggestedLabel = 'mm';
-
-      // ── 2. Polling /status/{file_id} — her 1.5sn, max 180sn (120 deneme) ──
-      // 180sn limit: ilk istek cold-start + buyuk DWG parse icin pay birakir.
-      const POLL_INTERVAL = 1500;
-      const MAX_POLLS = 120;
-      let parseResult: any = null;
-      for (let i = 0; i < MAX_POLLS; i++) {
-        await new Promise((r) => setTimeout(r, POLL_INTERVAL));
-        try {
-          const statusRes = await api.get(`/dwg-engine/status/${uploadFileId}`);
-          const state = statusRes.data;
-          if (state.status === 'ready') {
-            parseResult = state;
-            suggestedScale = typeof state.suggested_scale === 'number' ? state.suggested_scale : 0.001;
-            suggestedLabel = state.suggested_unit_label ?? 'mm';
-            break;
-          }
-          if (state.status === 'error') {
-            throw new Error(state.error || 'Parse hatasi');
-          }
-          // status === 'processing' → bekle, devam
-        } catch (err: any) {
-          // Transient polling hatasi → bir sonraki tick'te tekrar dene
-          if (!isTransient(err)) throw err;
-        }
-      }
-      if (!parseResult) {
-        throw new Error('Parse 180 saniye icinde tamamlanmadi — dosya cok buyuk olabilir veya Python servisi yavasladi');
-      }
-
+      const suggestedScale = typeof data.suggested_scale === 'number' ? data.suggested_scale : 0.001;
+      const suggestedLabel = data.suggested_unit_label ?? 'mm';
       setSelectedUnit(opts.override ?? suggestedScale);
 
       toast({
         title: 'Proje hazirlandi',
-        description: `${parseResult.total_layers || 0} layer · ${suggestedLabel} birimi`,
+        description: `${data.total_layers} layer · ${suggestedLabel} birimi`,
       });
 
       if (opts.skipDialog) {
-        setFileId(uploadFileId);
+        setFileId(data.file_id);
       } else {
-        setPendingUnitChoice({ fileId: uploadFileId, suggestedUnitLabel: suggestedLabel });
+        setPendingUnitChoice({ fileId: data.file_id, suggestedUnitLabel: suggestedLabel });
       }
     } catch (e: any) {
       const msg = e?.response?.data?.message ?? e?.response?.data?.detail ?? e?.message ?? 'Proje yuklenemedi';
