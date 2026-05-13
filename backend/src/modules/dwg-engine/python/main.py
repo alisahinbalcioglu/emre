@@ -18,6 +18,7 @@ from collections import defaultdict
 import ezdxf
 from fastapi import FastAPI, UploadFile, File, Query, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from converter import convert_dwg_to_dxf
 from topology import analyze_topology
@@ -46,6 +47,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# GZip compression — buyuk JSON response'lar (28K entity geometry ~5-10MB JSON
+# → ~1-2MB gzipped). Network transfer suresi 3-5x kisalir.
+# minimum_size=1024 — kucuk response'lar (health, layers metadata) compress edilmez.
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 
 # ═══════════════════════════════════════════════════════
@@ -607,6 +613,23 @@ async def list_layers(file: UploadFile = File(...)):
         file_id = _cache_dxf(dxf_path)
         result.file_id = file_id
 
+        # A6-extended — Geometry'yi de simdi parse et + diske yaz.
+        # Frontend /layers basariyla dondukten sonra /geometry/{file_id}
+        # cagiriyor; eger entities.json zaten varsa o cagri ~50ms cache hit.
+        # OCERP pattern: upload sirasinda entities.json yazilir, GET sadece okur.
+        try:
+            geometry_result = extract_geometry(_cache_path(file_id), None)
+            geom_cache = _geometry_cache_path(file_id)
+            with open(geom_cache, "w", encoding="utf-8") as gf:
+                json.dump(
+                    geometry_result.model_dump() if hasattr(geometry_result, "model_dump") else geometry_result.dict(),
+                    gf,
+                )
+        except Exception:
+            # Geometry pre-cache basarisiz — /geometry GET'i normal parse'e duser.
+            # Ana akis (layers donus) etkilenmesin.
+            pass
+
         # DWG birimini otomatik tespit et ($INSUNITS header'indan)
         try:
             doc = ezdxf.readfile(dxf_path)
@@ -627,12 +650,8 @@ async def list_layers(file: UploadFile = File(...)):
             result.suggested_scale = 0.001
             result.suggested_unit_label = "mm"
 
-        # DXF dosyasini base64 olarak da don — frontend DxfViewer icin
-        try:
-            with open(dxf_path, "rb") as f:
-                result.dxf_base64 = base64.b64encode(f.read()).decode("ascii")
-        except OSError:
-            result.dxf_base64 = ""
+        # Not: dxf_base64 alani kaldirildi — frontend kullanmiyordu, sadece I/O +
+        # network overhead'i (5MB DXF → 6.7MB base64 string) yaratıyordu.
 
         return result
 
