@@ -71,10 +71,14 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
   };
 
   /**
-   * DWG yukle → /layers ile file_id al. Backend DWG'nin $INSUNITS header'indan
-   * birim onerisi doner (mm/cm/m/inch/feet). Dialog'da bu birim default secilir.
+   * F5C — Async upload + status polling (OCERP pattern).
    *
-   * @param skipDialog Dashboard'dan gelen dosyalar icin birim dialog'unu atla.
+   * 1. POST /upload → 2sn'de file_id alir (parse arka planda)
+   * 2. Polling GET /status/{file_id} her 1.5sn → "ready" olunca devam
+   * 3. "ready" olunca workspace acilir, /geometry cache hit (50ms)
+   *
+   * Eski /layers akisi sync 60sn await ediyordu. Yeni akis 2sn algılanan
+   * süre + arka planda 30sn parse. UX bakimindan OCERP "anında" hissi.
    */
   const extractLayers = useCallback(async (
     f: File,
@@ -87,9 +91,6 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
     setExtractingLayers(true);
     startTimer();
 
-    // Cold-start tolerant retry — Cloudflare 429 (rate limit) + 5xx + network
-    // hatalarinda 5 deneme yap (2/5/10/20/40sn backoff). Sadece final fail'de
-    // toast atilir; ara denemelerde "uyandiriliyor" durum mesaji gosterilir.
     const RETRY_DELAYS = [2000, 5000, 10000, 20000, 40000];
     const isTransient = (e: any): boolean => {
       const status = e?.response?.status;
@@ -102,20 +103,20 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
     };
 
     try {
+      // ── 1. POST /upload — 2sn'de file_id doner (parse arka planda) ──
       const formData = new FormData();
       formData.append('file', f);
-      // FormData stream tek-shot oldugu icin retry icin factory pattern
-      const sendOnce = () => api.post(
-        '/dwg-engine/layers',
+      const sendUpload = () => api.post(
+        '/dwg-engine/upload',
         formData,
-        { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 300000 },
+        { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000 },
       );
 
-      let res: any = null;
+      let uploadRes: any = null;
       let lastErr: any = null;
       for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
         try {
-          res = await sendOnce();
+          uploadRes = await sendUpload();
           break;
         } catch (err: any) {
           lastErr = err;
@@ -124,28 +125,51 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
           await new Promise((r) => setTimeout(r, RETRY_DELAYS[attempt]));
         }
       }
-      if (!res) throw lastErr;
-      const data = res.data;
+      if (!uploadRes) throw lastErr;
 
-      // Backend'in onerdiği birim — default dialog secimi
-      const suggestedScale = typeof data.suggested_scale === 'number' ? data.suggested_scale : 0.001;
-      const suggestedLabel = data.suggested_unit_label ?? 'mm';
+      const { file_id: uploadFileId, suggested_scale, suggested_unit_label } = uploadRes.data;
+      const suggestedScale = typeof suggested_scale === 'number' ? suggested_scale : 0.001;
+      const suggestedLabel = suggested_unit_label ?? 'mm';
       setSelectedUnit(opts.override ?? suggestedScale);
+
+      // ── 2. Polling /status/{file_id} — her 1.5sn, max 90sn (60 deneme) ──
+      const POLL_INTERVAL = 1500;
+      const MAX_POLLS = 60;
+      let parseResult: any = null;
+      for (let i = 0; i < MAX_POLLS; i++) {
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL));
+        try {
+          const statusRes = await api.get(`/dwg-engine/status/${uploadFileId}`);
+          const state = statusRes.data;
+          if (state.status === 'ready') {
+            parseResult = state;
+            break;
+          }
+          if (state.status === 'error') {
+            throw new Error(state.error || 'Parse hatasi');
+          }
+          // status === 'processing' → bekle, devam
+        } catch (err: any) {
+          // Transient polling hatasi → bir sonraki tick'te tekrar dene
+          if (!isTransient(err)) throw err;
+        }
+      }
+      if (!parseResult) {
+        throw new Error('Parse 90 saniye icinde tamamlanmadi — dosya cok buyuk olabilir');
+      }
 
       toast({
         title: 'Proje hazirlandi',
-        description: `${data.total_layers} layer · ${suggestedLabel} birimi tespit edildi`,
+        description: `${parseResult.total_layers || 0} layer · ${suggestedLabel} birimi`,
       });
 
       if (opts.skipDialog) {
-        // Dashboard'dan gelen: direkt workspace'e gec
-        setFileId(data.file_id);
+        setFileId(uploadFileId);
       } else {
-        // Normal akis: birim onayi icin dialog aç
-        setPendingUnitChoice({ fileId: data.file_id, suggestedUnitLabel: suggestedLabel });
+        setPendingUnitChoice({ fileId: uploadFileId, suggestedUnitLabel: suggestedLabel });
       }
     } catch (e: any) {
-      const msg = e?.response?.data?.message ?? e?.response?.data?.detail ?? 'Proje yuklenemedi';
+      const msg = e?.response?.data?.message ?? e?.response?.data?.detail ?? e?.message ?? 'Proje yuklenemedi';
       setError(msg);
       toast({ title: 'Hata', description: msg, variant: 'destructive' });
     } finally {

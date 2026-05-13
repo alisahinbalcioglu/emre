@@ -593,6 +593,130 @@ def get_geometry(
     return result
 
 
+# ═══════════════════════════════════════════════════════
+#  F5C — ASYNC UPLOAD PATTERN (OCERP-style)
+# ═══════════════════════════════════════════════════════
+# POST /upload → 2sn'de file_id doner, parse arka planda asyncio.to_thread
+# ile calisir. GET /status/{file_id} ile durumu sorulur. Hazir olunca
+# /geometry/{file_id} cache hit ile 50ms doner.
+
+import asyncio
+
+# Memory-resident state: file_id → {"status", "started_at", "layers"?, "extents"?, "error"?}
+# WORKERS=1 oldugu icin per-worker dict yeterli. Restart durumunda kaybolur
+# (kullanici dosyayi yeniden yukler — kabul edilebilir trade-off).
+_UPLOAD_STATES: dict[str, dict] = {}
+
+
+def _background_parse(file_id: str, dxf_path: str) -> None:
+    """Background parse — layers + entities + geometry cache'i tek pass'te yazar.
+    Sync function; caller asyncio.to_thread ile cagiriyor."""
+    try:
+        # 1. Layers
+        layer_result = extract_layer_info(dxf_path)
+        # 2. Geometry (entities.json'a yaz)
+        geom_result = extract_geometry(dxf_path, None)
+        geom_cache = _geometry_cache_path(file_id)
+        # Pydantic v2 safe: model_dump mode='json' nested model'leri serialize eder
+        try:
+            data = geom_result.model_dump(mode='json')
+        except (AttributeError, TypeError):
+            # Pydantic v1 fallback
+            data = geom_result.dict()
+        with open(geom_cache, "w", encoding="utf-8") as gf:
+            json.dump(data, gf)
+        # 3. State: ready
+        _UPLOAD_STATES[file_id] = {
+            "status": "ready",
+            "started_at": _UPLOAD_STATES.get(file_id, {}).get("started_at", time.time()),
+            "completed_at": time.time(),
+            "layers": [l.model_dump() if hasattr(l, "model_dump") else l.dict() for l in (layer_result.layers or [])],
+            "total_layers": layer_result.total_layers,
+            "suggested_scale": getattr(layer_result, "suggested_scale", 0.001),
+            "suggested_unit_label": getattr(layer_result, "suggested_unit_label", "mm"),
+            "entity_count": getattr(geom_result, "entity_count", None),
+        }
+    except Exception as e:
+        # Hata loglansin, frontend status'tan goruyor
+        logging.exception("Background parse failed for file_id=%s", file_id)
+        _UPLOAD_STATES[file_id] = {
+            "status": "error",
+            "started_at": _UPLOAD_STATES.get(file_id, {}).get("started_at", time.time()),
+            "completed_at": time.time(),
+            "error": str(e)[:500],
+        }
+
+
+@app.post("/upload")
+async def upload_async(file: UploadFile = File(...)):
+    """Async upload — file save + cache + background parse task. 2sn'de doner.
+
+    OCERP pattern: kullanici parse'i beklemez, file_id alir, /status ile takip eder.
+
+    Response: {file_id, status: "processing", started_at}
+    """
+    if not file.filename:
+        raise HTTPException(400, "Dosya adi eksik")
+
+    content = await file.read()
+
+    try:
+        dxf_path = _prepare_dxf(content, file.filename)
+        file_id = _cache_dxf(dxf_path)
+        cache_path = _cache_path(file_id)
+
+        # DWG birimini layers ile birlikte tespit et (background task'ta)
+        # Hizli unit detection icin header oku — background'ı bekletmeden donus
+        try:
+            doc = ezdxf.readfile(cache_path)
+            insunits = int(doc.header.get("$INSUNITS", 0) or 0)
+            _unit_map: dict[int, tuple[float, str]] = {
+                1: (0.0254, "inch"), 2: (0.3048, "feet"),
+                4: (0.001, "mm"), 5: (0.01, "cm"), 6: (1.0, "m"),
+            }
+            scale, label = _unit_map.get(insunits, (0.001, "mm"))
+        except Exception:
+            scale, label = 0.001, "mm"
+
+        # State: processing
+        _UPLOAD_STATES[file_id] = {
+            "status": "processing",
+            "started_at": time.time(),
+            "suggested_scale": scale,
+            "suggested_unit_label": label,
+        }
+
+        # Background task — main loop bloklanmaz
+        asyncio.create_task(asyncio.to_thread(_background_parse, file_id, cache_path))
+
+        return {
+            "file_id": file_id,
+            "status": "processing",
+            "suggested_scale": scale,
+            "suggested_unit_label": label,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Upload hatasi: {str(e)}")
+
+
+@app.get("/status/{file_id}")
+async def get_upload_status(file_id: str):
+    """Background parse durumunu doner.
+
+    Response:
+      - status="processing": henuz devam ediyor
+      - status="ready":      layers + entity_count + suggested_scale doluler
+      - status="error":      error string'i doludur
+      - 404:                 file_id bilinmiyor (cache TTL gecmis veya hic upload edilmemis)
+    """
+    state = _UPLOAD_STATES.get(file_id)
+    if state is None:
+        raise HTTPException(404, "file_id bilinmiyor (cache TTL gecmis olabilir)")
+    return state
+
+
 @app.post("/layers", response_model=LayerListResult)
 async def list_layers(file: UploadFile = File(...)):
     """

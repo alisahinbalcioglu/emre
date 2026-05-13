@@ -142,6 +142,30 @@ export class DwgEngineController {
   }
 
   /**
+   * F5C — Async upload (OCERP pattern). 2sn'de file_id doner, parse arka
+   * planda. Frontend /status/:fileId ile durumu sorar, "ready" olunca
+   * /geometry/:fileId cache hit (50ms).
+   */
+  @Post('upload')
+  @UseInterceptors(FileInterceptor('file', {
+    storage: memoryStorage(),
+    limits: { fileSize: 1024 * 1024 * 1024 },
+  }))
+  async uploadAsync(@UploadedFile() file: Express.Multer.File) {
+    if (!file) return { error: 'Dosya yuklenemedi' };
+    return this.dwgEngine.uploadAsync(file.buffer, file.originalname);
+  }
+
+  /**
+   * F5C — Background parse durumu sorgula.
+   * Frontend setInterval ile poll eder, "ready" olunca devam.
+   */
+  @Get('status/:fileId')
+  async getUploadStatus(@Param('fileId') fileId: string) {
+    return this.dwgEngine.getUploadStatus(fileId);
+  }
+
+  /**
    * Cache'teki DXF'ten koordinatlari dondur — SVG viewer (dwg-viewer) icin.
    */
   @Get('geometry/:fileId')

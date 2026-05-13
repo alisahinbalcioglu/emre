@@ -317,6 +317,77 @@ export class DwgEngineService {
     }
   }
 
+  /**
+   * F5C — Async upload (OCERP pattern). 2sn icinde Python file_id doner,
+   * parse arka planda. Frontend /status ile poll eder.
+   */
+  async uploadAsync(fileBuffer: Buffer, fileName: string) {
+    const factory = (timeoutMs: number): RequestInit => {
+      const formData = new FormData();
+      const blob = new Blob([fileBuffer as any]);
+      formData.append('file', blob, fileName);
+      return {
+        method: 'POST',
+        body: formData,
+        headers: this.headers(),
+        signal: AbortSignal.timeout(timeoutMs),
+      };
+    };
+
+    try {
+      const response = await this.fetchWithRetry(
+        `${this.pythonServiceUrl}/upload`,
+        factory,
+        30_000,  // 30sn initial — sadece file save + task queue, parse arka planda
+        60_000,  // retry 60sn — cold start ihtimaline karsi
+        'uploadAsync',
+      );
+      if (!response.ok) {
+        const error = await response.text();
+        throw new HttpException(
+          `Upload hatasi: ${error}`,
+          response.status >= 500 || response.status === 429
+            ? HttpStatus.SERVICE_UNAVAILABLE
+            : HttpStatus.UNPROCESSABLE_ENTITY,
+        );
+      }
+      return await response.json();
+    } catch (error) {
+      this.translateError(error);
+    }
+  }
+
+  /** F5C — Background parse status sorgula (polling icin). Hafif, 5sn timeout. */
+  async getUploadStatus(fileId: string) {
+    const factory = (timeoutMs: number): RequestInit => ({
+      method: 'GET',
+      headers: this.headers(),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+
+    try {
+      const response = await this.fetchWithRetry(
+        `${this.pythonServiceUrl}/status/${encodeURIComponent(fileId)}`,
+        factory,
+        5_000,   // hafif endpoint, kisa timeout
+        15_000,  // retry biraz daha uzun (cold start)
+        'getUploadStatus',
+      );
+      if (!response.ok) {
+        const error = await response.text();
+        throw new HttpException(
+          `Status hatasi: ${error}`,
+          response.status >= 500 || response.status === 429
+            ? HttpStatus.SERVICE_UNAVAILABLE
+            : HttpStatus.UNPROCESSABLE_ENTITY,
+        );
+      }
+      return await response.json();
+    } catch (error) {
+      this.translateError(error);
+    }
+  }
+
   async healthCheck(): Promise<boolean> {
     try {
       const response = await fetch(`${this.pythonServiceUrl}/health`, {
