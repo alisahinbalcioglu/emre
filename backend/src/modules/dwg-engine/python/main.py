@@ -22,7 +22,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from converter import convert_dwg_to_dxf
 from topology import analyze_topology
-from geometry import extract_geometry, GeometryResult
+from geometry import extract_geometry, extract_geometry_from_doc, GeometryResult
 from models import (
     LayerInfo, LayerListResult,
     LayerMetraj, MetrajResult, PipeSegment, EdgeSegment, SprinklerDetectionInfo,
@@ -203,12 +203,17 @@ def extract_layer_info(dxf_path: str) -> LayerListResult:
     """
     DXF dosyasindan layer bilgilerini cikar.
     SADECE layer adi ve entity sayisi — uzunluk hesaplamaz (hizli).
-
-    TUM entity tipli layer'lari doner (TEXT/MTEXT icin cap layer'lari,
-    CIRCLE/ARC icin sembol layer'lari dahil). Kullanicinin manuel
-    sprinkler/cap etiketi atayabilmesi icin tum layer'lar gorunmeli.
     """
     doc = ezdxf.readfile(dxf_path)
+    return extract_layer_info_from_doc(doc)
+
+
+def extract_layer_info_from_doc(doc) -> LayerListResult:
+    """ezdxf doc'undan layer cikart — TEK PARSE icin paylasilmis doc kullanir.
+
+    `_background_parse` bu fonksiyonu cagirir; ezdxf.readfile sadece bir kez
+    yapilir (extract_geometry_from_doc ile ayni doc paylasilir).
+    """
     msp = doc.modelspace()
 
     # layer → {'entity': boru, 'insert': block, 'total': tum entity sayisi}
@@ -625,19 +630,20 @@ def _background_parse(file_id: str, dxf_path: str) -> None:
     """Background parse — layers + entities + geometry cache'i TEK ezdxf parse ile.
     Sync function; caller asyncio.to_thread ile cagiriyor.
 
-    F5C-fix: Daha onceden /upload endpoint'inde ezdxf.readfile cagriliyordu (sadece
-    INSUNITS icin), bu tum dosyayi parse ediyordu — upload 30-60sn sururdu.
-    Simdi: parse SADECE burada (background), upload anlik doner.
+    KRITIK FIX (14.05.2026): Daha onceden bu fonksiyonda 3 KEZ ezdxf.readfile
+    cagriliyordu (birim icin + extract_layer_info icin + extract_geometry icin)
+    — toplam 90sn+ aliyordu! Simdi TEK readfile, sonuc 3 fonksiyona
+    paylasilmis doc olarak gecirilir (3x hizlanma).
     """
     try:
-        # Tek ezdxf parse — hem birim, hem layers, hem geometry icin
+        # TEK ezdxf parse — 30sn yerine 90sn'lik 3x parse'tan kurtulduk
         doc = ezdxf.readfile(dxf_path)
         scale, label = _detect_unit_from_dxf(doc)
 
-        # 1. Layers
-        layer_result = extract_layer_info(dxf_path)
-        # 2. Geometry (entities.json'a yaz)
-        geom_result = extract_geometry(dxf_path, None)
+        # 1. Layers (paylasilan doc'tan)
+        layer_result = extract_layer_info_from_doc(doc)
+        # 2. Geometry (paylasilan doc'tan) → entities.json'a yaz
+        geom_result = extract_geometry_from_doc(doc, None)
         geom_cache = _geometry_cache_path(file_id)
         # Pydantic v2 safe: model_dump mode='json' nested model'leri serialize eder
         try:

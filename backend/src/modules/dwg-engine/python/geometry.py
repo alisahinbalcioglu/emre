@@ -212,6 +212,15 @@ def extract_geometry(dxf_path: str, layer_filter: set[str] | None = None) -> Geo
         GeometryResult — lines + bounds + layer_colors
     """
     doc = ezdxf.readfile(dxf_path)
+    return extract_geometry_from_doc(doc, layer_filter)
+
+
+def extract_geometry_from_doc(doc, layer_filter: set[str] | None = None) -> GeometryResult:
+    """ezdxf doc'undan geometry cikar — TEK PARSE icin paylasilmis doc kullanir.
+
+    `_background_parse` bu fonksiyonu cagirir; ezdxf.readfile sadece bir kez
+    yapilir (extract_layer_info_from_doc ile ayni doc paylasilir).
+    """
     msp = doc.modelspace()
 
     lines: list[GeometryLine] = []
