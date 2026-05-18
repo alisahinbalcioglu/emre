@@ -547,11 +547,14 @@ def health():
         )
     except OSError:
         cached = 0
+    # Render kendi RENDER_GIT_COMMIT env'i veriyor — deploy versiyonu dogrulamak icin
+    build_sha = os.environ.get("RENDER_GIT_COMMIT", "local")[:8]
     return {
         "status": "ok",
         "service": "dwg-engine",
         "version": "2.2",
         "cached_files": cached,
+        "build_sha": build_sha,
     }
 
 
