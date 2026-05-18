@@ -31,6 +31,7 @@ export function useWorkspaceState(fileId: string, scale: number) {
     lastClickedLayer: null,
     useAiDiameter: false,
     hiddenLayers: [],
+    dimmedLayers: [],
   });
 
   // fileId degistiginde tum workspace state'i sifirla — eski dosyanin hesaplamalari
@@ -47,6 +48,7 @@ export function useWorkspaceState(fileId: string, scale: number) {
       lastClickedLayer: null,
       useAiDiameter: false,
       hiddenLayers: [],
+      dimmedLayers: [],
     });
   }, [fileId, scale]);
 
@@ -180,6 +182,23 @@ export function useWorkspaceState(fileId: string, scale: number) {
     setState((s) => (s.hiddenLayers.length === 0 ? s : { ...s, hiddenLayers: [] }));
   }, []);
 
+  /** Layer'i soluk/normal arasinda toggle et. Soluk layer'lar viewer'da
+   *  %25 opacity + gri renkte gosterilir, tiklanamaz. Hidden ile bagimsiz. */
+  const toggleLayerDimmed = useCallback((layer: string) => {
+    setState((s) => {
+      const has = s.dimmedLayers.includes(layer);
+      return {
+        ...s,
+        dimmedLayers: has ? s.dimmedLayers.filter((l) => l !== layer) : [...s.dimmedLayers, layer],
+      };
+    });
+  }, []);
+
+  /** Tum soluklugu kaldir. */
+  const showAllDimmed = useCallback(() => {
+    setState((s) => (s.dimmedLayers.length === 0 ? s : { ...s, dimmedLayers: [] }));
+  }, []);
+
   return {
     state,
     selectLayer,
@@ -198,5 +217,7 @@ export function useWorkspaceState(fileId: string, scale: number) {
     setAiDetectedSprinklerCount,
     toggleLayerVisibility,
     showAllLayers,
+    toggleLayerDimmed,
+    showAllDimmed,
   };
 }

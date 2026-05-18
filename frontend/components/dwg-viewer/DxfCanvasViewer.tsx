@@ -9,15 +9,18 @@
  *   - Y-flip transform: canvas Y-asagi, DWG Y-yukari → ctx.scale(zoom, -zoom)
  *   - Adaptive grid (log10 step) + viewport culling + selection glow
  *   - Per-layer batched stroke (single beginPath + multi moveTo/lineTo + stroke)
+ *   - rbush spatial index: 26K+ cizgide hover/click O(log N)
+ *   - Hover overlay: cursor pointer + glow
+ *   - Per-line selection + tooltip (layer + uzunluk)
  *
- * Performans (28K cizgi):
- *   - Pan/zoom: 60FPS (viewport culling sayesinde sadece ekrandakiler cizilir)
- *   - Anında zoomToFit (geometry geldigi anda)
- *
- * Hit-test: point-to-segment distance, layer click → onLineClick.
+ * Layer durumlari (her biri bagimsiz):
+ *   - hidden:  hic cizilmez, hit-test'te atlanır
+ *   - dimmed:  %25 opacity gri, hit-test'te atlanır (referans)
+ *   - normal:  ACI renkli, etkilesime acik
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import RBush from 'rbush';
 import { Loader2, AlertCircle, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 import api from '@/lib/api';
 import type { GeometryResult } from './types';
@@ -42,6 +45,9 @@ interface DxfCanvasViewerProps {
   onClearSelection?: () => void;
   onLayersAvailable?: (layers: string[]) => void;
   hiddenLayers?: Set<string>;
+  dimmedLayers?: Set<string>;
+  /** Birim donusturucu (DWG birimi → metre). mm=0.001, cm=0.01, m=1.0. Tooltip uzunluk hesabi icin. */
+  scale?: number;
 }
 
 const COLOR_BG = '#0b1220';
@@ -50,6 +56,31 @@ const COLOR_SELECTED = '#60a5fa';
 const COLOR_TEXT = '#fbbf24';
 const COLOR_SPRINKLER = '#22d3ee';
 const COLOR_MARKED_EQUIPMENT = '#f97316';
+const COLOR_DIMMED = '#475569';            // slate-600
+const COLOR_HOVER = '#fde68a';             // amber-200 glow
+const COLOR_LINE_SELECTED = '#3b82f6';     // brand blue
+const DIMMED_ALPHA = 0.25;
+const HOVER_TOL_PX = 6;
+
+interface SpatialEntry {
+  minX: number; minY: number; maxX: number; maxY: number;
+  type: 'line' | 'edge';
+  layer: string;
+  /** geometry.lines[] icindeki index ya da edgeSegments[] icindeki index */
+  index: number;
+  coords: [number, number, number, number];
+  polyline?: Array<[number, number]>;
+}
+
+interface HoveredEntity {
+  type: 'line' | 'edge';
+  layer: string;
+  index: number;
+  coords: [number, number, number, number];
+  polyline?: Array<[number, number]>;
+  /** Metre cinsinden hesaplanmis uzunluk (scale uygulanmis). */
+  length: number;
+}
 
 export default function DxfCanvasViewer({
   fileId,
@@ -67,6 +98,8 @@ export default function DxfCanvasViewer({
   onClearSelection,
   onLayersAvailable,
   hiddenLayers,
+  dimmedLayers,
+  scale = 0.001,
 }: DxfCanvasViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -76,6 +109,9 @@ export default function DxfCanvasViewer({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cursorWorld, setCursorWorld] = useState<{ x: number; y: number } | null>(null);
+  const [cursorScreen, setCursorScreen] = useState<{ x: number; y: number } | null>(null);
+  const [hovered, setHovered] = useState<HoveredEntity | null>(null);
+  const [selectedLine, setSelectedLine] = useState<HoveredEntity | null>(null);
 
   // Bounds (DWG world)
   const bounds = useMemo<[number, number, number, number]>(() => {
@@ -94,8 +130,6 @@ export default function DxfCanvasViewer({
     return [0, 0, 100, 100];
   }, [geometry, edgeSegments]);
 
-  // Native wheel listener useViewport icinde — passive: false ile preventDefault yapar.
-  // onWheelReact React fallback'i; ana akis native listener uzerinden.
   const { viewport, fitView, zoomIn, zoomOut, wasDragged, pointerHandlers } = useViewport({
     bounds,
     containerRef,
@@ -115,9 +149,6 @@ export default function DxfCanvasViewer({
 
     const isTransient = (e: any): boolean => {
       const status = e?.response?.status;
-      // 5xx: backend hata. 429: rate limit (CF/Render edge). 422: NestJS'in 429
-      // mapping'i eskiden 422'ye duserdi — backwards compat icin 422'yi de
-      // transient sayariz. Toplam 5 retry (2/5/10/20/40sn backoff).
       if (status === 503 || status === 502 || status === 504 || status === 500) return true;
       if (status === 429 || status === 422) return true;
       const code = e?.code;
@@ -174,7 +205,7 @@ export default function DxfCanvasViewer({
       canvas.style.height = `${rect.height}px`;
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // DPR scale
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctxRef.current = ctx;
       }
     };
@@ -184,6 +215,58 @@ export default function DxfCanvasViewer({
     ro.observe(container);
     return () => ro.disconnect();
   }, []);
+
+  // ─── Spatial index (rbush) ────────────────────────────────────────
+  // 26K cizgide hover/click O(log N). Build O(N) — geometry degisince yeniden.
+  const spatialIndex = useMemo<RBush<SpatialEntry>>(() => {
+    const tree = new RBush<SpatialEntry>();
+    const items: SpatialEntry[] = [];
+    if (geometry) {
+      geometry.lines.forEach((ln, i) => {
+        const [x1, y1, x2, y2] = ln.coords;
+        items.push({
+          minX: Math.min(x1, x2), maxX: Math.max(x1, x2),
+          minY: Math.min(y1, y2), maxY: Math.max(y1, y2),
+          type: 'line', layer: ln.layer, index: i, coords: ln.coords,
+        });
+      });
+    }
+    if (edgeSegments) {
+      edgeSegments.forEach((seg, i) => {
+        if (seg.polyline && seg.polyline.length >= 2) {
+          let mnx = Infinity, mny = Infinity, mxx = -Infinity, mxy = -Infinity;
+          for (const [x, y] of seg.polyline) {
+            if (x < mnx) mnx = x; if (x > mxx) mxx = x;
+            if (y < mny) mny = y; if (y > mxy) mxy = y;
+          }
+          items.push({
+            minX: mnx, minY: mny, maxX: mxx, maxY: mxy,
+            type: 'edge', layer: seg.layer, index: i,
+            coords: seg.coords, polyline: seg.polyline,
+          });
+        } else {
+          const [x1, y1, x2, y2] = seg.coords;
+          items.push({
+            minX: Math.min(x1, x2), maxX: Math.max(x1, x2),
+            minY: Math.min(y1, y2), maxY: Math.max(y1, y2),
+            type: 'edge', layer: seg.layer, index: i, coords: seg.coords,
+          });
+        }
+      });
+    }
+    tree.load(items);
+    return tree;
+  }, [geometry, edgeSegments]);
+
+  // Hidden/dimmed layer degisince hover/selected gecersiz olabilir, temizle
+  useEffect(() => {
+    if (hovered && (hiddenLayers?.has(hovered.layer) || dimmedLayers?.has(hovered.layer))) {
+      setHovered(null);
+    }
+    if (selectedLine && (hiddenLayers?.has(selectedLine.layer) || dimmedLayers?.has(selectedLine.layer))) {
+      setSelectedLine(null);
+    }
+  }, [hiddenLayers, dimmedLayers, hovered, selectedLine]);
 
   // ─── Render — geometry/viewport/state degisince RAF ile ──────────
   useEffect(() => {
@@ -202,13 +285,10 @@ export default function DxfCanvasViewer({
       const w = canvas.width / dpr;
       const h = canvas.height / dpr;
 
-      // Background
       ctx.fillStyle = COLOR_BG;
       ctx.fillRect(0, 0, w, h);
 
-      // A3 — Adaptive grid (screen space, transform oncesi)
-      // OCERP pattern (DxfViewer.tsx:389-436): log10 step, minor=1x, major=10x,
-      // threshold 8px. Zoom'a gore sıklasir/seyrelir → AutoCAD hissi.
+      // Adaptive grid (screen space, transform oncesi)
       const rawStep = 50 / viewport.zoom;
       const exponent = Math.floor(Math.log10(rawStep));
       const minorStep = Math.pow(10, exponent);
@@ -229,8 +309,7 @@ export default function DxfCanvasViewer({
       drawGrid(minorPx, 'rgba(255,255,255,0.03)');
       drawGrid(majorPx, 'rgba(255,255,255,0.07)');
 
-      // A2 — Viewport culling: world-space bbox (margin 50px ekran ki edge case yumusak)
-      // Y-flip: canvas y-down, world y-up → world y = (panY - screenY) / zoom
+      // Viewport culling
       const marginPx = 50;
       const worldMinX = (-marginPx - viewport.panX) / viewport.zoom;
       const worldMaxX = (w + marginPx - viewport.panX) / viewport.zoom;
@@ -238,42 +317,59 @@ export default function DxfCanvasViewer({
       const worldMaxY = (viewport.panY + marginPx) / viewport.zoom;
       const inView = (x: number, y: number) => x >= worldMinX && x <= worldMaxX && y >= worldMinY && y <= worldMaxY;
       const lineInView = (x1: number, y1: number, x2: number, y2: number) => {
-        // Hızlı bbox-bbox: line bbox viewport bbox'la kesişiyor mu?
         const lnMinX = Math.min(x1, x2), lnMaxX = Math.max(x1, x2);
         const lnMinY = Math.min(y1, y2), lnMaxY = Math.max(y1, y2);
         return lnMaxX >= worldMinX && lnMinX <= worldMaxX && lnMaxY >= worldMinY && lnMinY <= worldMaxY;
       };
 
-      // Pan + zoom + Y-flip transform
       ctx.save();
       ctx.translate(viewport.panX, viewport.panY);
       ctx.scale(viewport.zoom, -viewport.zoom);
 
-      const strokeWidth = 1 / viewport.zoom; // 1 ekran piksel
+      const strokeWidth = 1 / viewport.zoom;
       ctx.lineWidth = strokeWidth;
       ctx.lineCap = 'round';
 
-      // ─── Background lines (per layer) ────────────────────────────
       if (geometry && !edgeSegments) {
         const layerColors = geometry.layer_colors || {};
         const skipLayers = calculatedEdgesByLayer ? new Set(Object.keys(calculatedEdgesByLayer)) : null;
 
-        // Group lines by layer + viewport culling
-        const linesByLayer = new Map<string, Array<[number, number, number, number]>>();
+        // Layer bazinda 3 grup: normal, dimmed (skip render path is hidden)
+        const normalByLayer = new Map<string, Array<[number, number, number, number]>>();
+        const dimmedByLayer = new Map<string, Array<[number, number, number, number]>>();
+
         for (const ln of geometry.lines) {
           if (hiddenLayers?.has(ln.layer)) continue;
           if (skipLayers?.has(ln.layer)) continue;
           const [x1, y1, x2, y2] = ln.coords;
-          if (!lineInView(x1, y1, x2, y2)) continue;  // A2 culling
-          let arr = linesByLayer.get(ln.layer);
+          if (!lineInView(x1, y1, x2, y2)) continue;
+          const bucket = dimmedLayers?.has(ln.layer) ? dimmedByLayer : normalByLayer;
+          let arr = bucket.get(ln.layer);
           if (!arr) {
             arr = [];
-            linesByLayer.set(ln.layer, arr);
+            bucket.set(ln.layer, arr);
           }
           arr.push(ln.coords);
         }
 
-        linesByLayer.forEach((coordsList, layer) => {
+        // ─── Dimmed layers (önce, arka plana otursun) ─────────────
+        if (dimmedByLayer.size > 0) {
+          ctx.globalAlpha = DIMMED_ALPHA;
+          ctx.strokeStyle = COLOR_DIMMED;
+          ctx.lineWidth = strokeWidth;
+          ctx.beginPath();
+          dimmedByLayer.forEach((coordsList) => {
+            for (const [x1, y1, x2, y2] of coordsList) {
+              ctx.moveTo(x1, y1);
+              ctx.lineTo(x2, y2);
+            }
+          });
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        }
+
+        // ─── Normal layers (ACI renkli) ───────────────────────────
+        normalByLayer.forEach((coordsList, layer) => {
           const isSelected = selectedLayer === layer;
           const isHighlighted = highlightLayer === layer;
           let color: string;
@@ -294,7 +390,6 @@ export default function DxfCanvasViewer({
           ctx.strokeStyle = color;
           ctx.globalAlpha = alpha;
           ctx.lineWidth = lw;
-          // A4 — Selection glow (shadowBlur). OCERP pattern (dxf-renderer.ts:171-186).
           if (isSelected) {
             ctx.shadowColor = 'rgba(96, 165, 250, 0.5)';
             ctx.shadowBlur = 8;
@@ -312,14 +407,14 @@ export default function DxfCanvasViewer({
         });
         ctx.globalAlpha = 1;
 
-        // ─── Arcs (culled by bounding box of full circle) ────────
+        // ─── Arcs (dimmed atlanir) ────────────────────────────────
         if (geometry.arcs.length > 0) {
           ctx.strokeStyle = COLOR_PASSIVE;
           ctx.lineWidth = strokeWidth;
           ctx.beginPath();
           for (const a of geometry.arcs) {
             if (hiddenLayers?.has(a.layer)) continue;
-            // A2 culling: arc bbox = (cx ± r, cy ± r) — viewport ile kesisiyor mu?
+            if (dimmedLayers?.has(a.layer)) continue;
             const r = a.radius;
             if (!lineInView(a.center[0] - r, a.center[1] - r, a.center[0] + r, a.center[1] + r)) continue;
             const sa = (a.start_angle * Math.PI) / 180;
@@ -330,17 +425,18 @@ export default function DxfCanvasViewer({
           ctx.stroke();
         }
 
-        // ─── Circles (sprinkler vs normal) — A2 culled ───────────
+        // ─── Circles ────────────────────────────────────────────────
         if (geometry.circles.length > 0) {
           const circleInView = (cx: number, cy: number, r: number) =>
             lineInView(cx - r, cy - r, cx + r, cy + r);
 
-          // Sprinkler (turkuaz, kalin)
+          // Sprinkler
           ctx.strokeStyle = COLOR_SPRINKLER;
           ctx.lineWidth = strokeWidth * 1.6;
           ctx.beginPath();
           for (const c of geometry.circles) {
             if (hiddenLayers?.has(c.layer)) continue;
+            if (dimmedLayers?.has(c.layer)) continue;
             if (!sprinklerLayers?.has(c.layer)) continue;
             if (!circleInView(c.center[0], c.center[1], c.radius)) continue;
             ctx.moveTo(c.center[0] + c.radius, c.center[1]);
@@ -348,12 +444,13 @@ export default function DxfCanvasViewer({
           }
           ctx.stroke();
 
-          // Normal (gri)
+          // Normal
           ctx.strokeStyle = COLOR_PASSIVE;
           ctx.lineWidth = strokeWidth * 0.8;
           ctx.beginPath();
           for (const c of geometry.circles) {
             if (hiddenLayers?.has(c.layer)) continue;
+            if (dimmedLayers?.has(c.layer)) continue;
             if (sprinklerLayers?.has(c.layer)) continue;
             if (!circleInView(c.center[0], c.center[1], c.radius)) continue;
             ctx.moveTo(c.center[0] + c.radius, c.center[1]);
@@ -362,7 +459,7 @@ export default function DxfCanvasViewer({
           ctx.stroke();
         }
 
-        // ─── Marked equipment (turuncu nokta) ──────────────────────
+        // ─── Marked equipment ─────────────────────────────────────
         if (markedEquipmentKeys && markedEquipmentKeys.size > 0) {
           ctx.fillStyle = COLOR_MARKED_EQUIPMENT;
           ctx.strokeStyle = '#ffffff';
@@ -377,17 +474,18 @@ export default function DxfCanvasViewer({
           }
         }
 
-        // ─── Texts (LOD: zoom >= 0.3) — A2 culled ─────────────────
+        // ─── Texts ─────────────────────────────────────────────────
         if (viewport.zoom >= 0.3 && geometry.texts.length > 0) {
           ctx.fillStyle = COLOR_TEXT;
           ctx.textBaseline = 'alphabetic';
           for (const t of geometry.texts) {
             if (hiddenLayers?.has(t.layer)) continue;
+            if (dimmedLayers?.has(t.layer)) continue;
             if (!t.text) continue;
-            if (!inView(t.position[0], t.position[1])) continue;  // A2 culling
+            if (!inView(t.position[0], t.position[1])) continue;
             ctx.save();
             ctx.translate(t.position[0], t.position[1]);
-            ctx.scale(1, -1); // text Y-flip için
+            ctx.scale(1, -1);
             if (t.rotation) ctx.rotate(-t.rotation * Math.PI / 180);
             ctx.font = `${Math.max(t.height, 1)}px ui-monospace, Menlo, Consolas, monospace`;
             ctx.fillText(t.text, 0, 0);
@@ -396,9 +494,8 @@ export default function DxfCanvasViewer({
         }
       }
 
-      // ─── Calculated edges (boru segments — cap bazli renkli) ─────
+      // ─── Calculated edges ─────────────────────────────────────────
       if (edgeSegments && edgeSegments.length > 0) {
-        // Cap bazinda grupla
         const byDiameter = new Map<string, EdgeSegment[]>();
         for (const seg of edgeSegments) {
           const key = seg.diameter || 'Belirtilmemis';
@@ -408,7 +505,6 @@ export default function DxfCanvasViewer({
         }
         ctx.lineWidth = strokeWidth * 1.8;
         byDiameter.forEach((segs, diameter) => {
-          // Basit renk: diameter hash → hue
           const hash = diameter.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
           ctx.strokeStyle = `hsl(${(hash * 47) % 360}, 70%, 60%)`;
           ctx.beginPath();
@@ -427,14 +523,101 @@ export default function DxfCanvasViewer({
         });
       }
 
+      // ─── HOVER overlay (amber glow + 2x stroke) ───────────────────
+      if (hovered) {
+        ctx.strokeStyle = COLOR_HOVER;
+        ctx.lineWidth = strokeWidth * 2.2;
+        ctx.shadowColor = 'rgba(253, 230, 138, 0.7)';
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        if (hovered.polyline && hovered.polyline.length >= 2) {
+          ctx.moveTo(hovered.polyline[0][0], hovered.polyline[0][1]);
+          for (let i = 1; i < hovered.polyline.length; i++) {
+            ctx.lineTo(hovered.polyline[i][0], hovered.polyline[i][1]);
+          }
+        } else {
+          ctx.moveTo(hovered.coords[0], hovered.coords[1]);
+          ctx.lineTo(hovered.coords[2], hovered.coords[3]);
+        }
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.shadowColor = 'transparent';
+      }
+
+      // ─── SELECTED overlay (brand blue + 2.5x stroke + bigger glow) ──
+      if (selectedLine) {
+        ctx.strokeStyle = COLOR_LINE_SELECTED;
+        ctx.lineWidth = strokeWidth * 3;
+        ctx.shadowColor = 'rgba(59, 130, 246, 0.8)';
+        ctx.shadowBlur = 14;
+        ctx.beginPath();
+        if (selectedLine.polyline && selectedLine.polyline.length >= 2) {
+          ctx.moveTo(selectedLine.polyline[0][0], selectedLine.polyline[0][1]);
+          for (let i = 1; i < selectedLine.polyline.length; i++) {
+            ctx.lineTo(selectedLine.polyline[i][0], selectedLine.polyline[i][1]);
+          }
+        } else {
+          ctx.moveTo(selectedLine.coords[0], selectedLine.coords[1]);
+          ctx.lineTo(selectedLine.coords[2], selectedLine.coords[3]);
+        }
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.shadowColor = 'transparent';
+      }
+
       ctx.restore();
     };
 
     schedule();
     return () => cancelAnimationFrame(rafId);
-  }, [geometry, edgeSegments, viewport, selectedLayer, highlightLayer, hiddenLayers, sprinklerLayers, markedEquipmentKeys, calculatedEdgesByLayer]);
+  }, [geometry, edgeSegments, viewport, selectedLayer, highlightLayer, hiddenLayers, dimmedLayers, sprinklerLayers, markedEquipmentKeys, calculatedEdgesByLayer, hovered, selectedLine]);
 
-  // ─── Mouse pozisyonu → world coord (status bar) ──────────────────
+  // ─── Hover detection (rbush ile O(log N)) ────────────────────────
+  const computeHovered = useCallback(
+    (worldX: number, worldY: number): HoveredEntity | null => {
+      const tol = HOVER_TOL_PX / viewport.zoom;
+      const candidates = spatialIndex.search({
+        minX: worldX - tol, minY: worldY - tol,
+        maxX: worldX + tol, maxY: worldY + tol,
+      });
+      let best: SpatialEntry | null = null;
+      let bestDist = Infinity;
+      for (const c of candidates) {
+        if (hiddenLayers?.has(c.layer)) continue;
+        if (dimmedLayers?.has(c.layer)) continue;
+        let d: number;
+        if (c.polyline && c.polyline.length >= 2) {
+          d = Infinity;
+          for (let i = 0; i < c.polyline.length - 1; i++) {
+            const di = pointToSegmentDistance(
+              worldX, worldY,
+              c.polyline[i][0], c.polyline[i][1],
+              c.polyline[i + 1][0], c.polyline[i + 1][1],
+            );
+            if (di < d) d = di;
+          }
+        } else {
+          d = pointToSegmentDistance(worldX, worldY, c.coords[0], c.coords[1], c.coords[2], c.coords[3]);
+        }
+        if (d <= tol && d < bestDist) {
+          best = c;
+          bestDist = d;
+        }
+      }
+      if (!best) return null;
+      return {
+        type: best.type,
+        layer: best.layer,
+        index: best.index,
+        coords: best.coords,
+        polyline: best.polyline,
+        length: computeEntityLength(best, scale),
+      };
+    },
+    [spatialIndex, viewport.zoom, hiddenLayers, dimmedLayers, scale],
+  );
+
+  // ─── Mouse pozisyonu → world coord + hover ──────────────────────
   const handlePointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       pointerHandlers.onPointerMove(e);
@@ -446,11 +629,19 @@ export default function DxfCanvasViewer({
       const worldX = (mx - viewport.panX) / viewport.zoom;
       const worldY = (viewport.panY - my) / viewport.zoom;
       setCursorWorld({ x: worldX, y: worldY });
+      setCursorScreen({ x: mx, y: my });
+
+      // Hover detection — pan/drag esnasinda atla (yanlis hover gosterimi olmasin)
+      const newHover = computeHovered(worldX, worldY);
+      // Aynı entity ise re-render tetiklememek için referans karşılaştırması
+      if (newHover?.type !== hovered?.type || newHover?.index !== hovered?.index || newHover?.layer !== hovered?.layer) {
+        setHovered(newHover);
+      }
     },
-    [pointerHandlers, viewport.panX, viewport.panY, viewport.zoom],
+    [pointerHandlers, viewport.panX, viewport.panY, viewport.zoom, computeHovered, hovered],
   );
 
-  // ─── Click hit-test (line/circle/insert) ─────────────────────────
+  // ─── Click hit-test ──────────────────────────────────────────────
   const handleClick = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
@@ -462,75 +653,78 @@ export default function DxfCanvasViewer({
       const my = e.clientY - rect.top;
       const worldX = (mx - viewport.panX) / viewport.zoom;
       const worldY = (viewport.panY - my) / viewport.zoom;
-      const tol = 5 / viewport.zoom;
+      const tol = HOVER_TOL_PX / viewport.zoom;
 
-      // Insert/circle önce (sembol > çizgi)
+      // Insert/circle önce (sembol > çizgi). Dimmed/hidden atlanir.
       for (const ins of geometry.inserts) {
+        if (hiddenLayers?.has(ins.layer)) continue;
+        if (dimmedLayers?.has(ins.layer)) continue;
         const dx = worldX - ins.position[0];
         const dy = worldY - ins.position[1];
         if (Math.hypot(dx, dy) <= tol + 2) {
+          setSelectedLine(null);
           onInsertClick?.({ layer: ins.layer, insertIndex: ins.insert_index, insertName: ins.insert_name, position: ins.position });
           return;
         }
       }
 
       for (const c of geometry.circles) {
+        if (hiddenLayers?.has(c.layer)) continue;
+        if (dimmedLayers?.has(c.layer)) continue;
         const dx = worldX - c.center[0];
         const dy = worldY - c.center[1];
         const d = Math.hypot(dx, dy);
         if (Math.abs(d - c.radius) <= tol || d <= c.radius) {
+          setSelectedLine(null);
           onCircleClick?.({ layer: c.layer, circleIndex: c.circle_index, center: c.center, radius: c.radius });
           return;
         }
       }
 
-      // Lines — point-to-segment distance
-      for (const ln of geometry.lines) {
-        if (hiddenLayers?.has(ln.layer)) continue;
-        const [x1, y1, x2, y2] = ln.coords;
-        const d = pointToSegmentDistance(worldX, worldY, x1, y1, x2, y2);
-        if (d <= tol) {
-          onLineClick?.({ layer: ln.layer, index: 0, shiftKey: e.shiftKey, screenX: e.clientX, screenY: e.clientY });
-          return;
+      // Line/edge: spatial index ile en yakini bul
+      const target = computeHovered(worldX, worldY);
+      if (target) {
+        setSelectedLine(target);
+        if (target.type === 'line') {
+          onLineClick?.({ layer: target.layer, index: target.index, shiftKey: e.shiftKey, screenX: e.clientX, screenY: e.clientY });
+        } else if (target.type === 'edge' && edgeSegments) {
+          onSegmentClick?.(edgeSegments[target.index]);
         }
+        return;
       }
 
-      // Edge segments
-      if (edgeSegments) {
-        for (const seg of edgeSegments) {
-          let d = Infinity;
-          if (seg.polyline && seg.polyline.length >= 2) {
-            for (let i = 0; i < seg.polyline.length - 1; i++) {
-              const di = pointToSegmentDistance(worldX, worldY, seg.polyline[i][0], seg.polyline[i][1], seg.polyline[i + 1][0], seg.polyline[i + 1][1]);
-              if (di < d) d = di;
-            }
-          } else {
-            d = pointToSegmentDistance(worldX, worldY, seg.coords[0], seg.coords[1], seg.coords[2], seg.coords[3]);
-          }
-          if (d <= tol) {
-            onSegmentClick?.(seg);
-            return;
-          }
-        }
-      }
-
-      // Hicbir sey tikla yutmadi → clear
+      // Hicbir sey tutmadi → clear selection
+      setSelectedLine(null);
       onClearSelection?.();
     },
-    [geometry, edgeSegments, viewport, wasDragged, onLineClick, onCircleClick, onInsertClick, onSegmentClick, onClearSelection, hiddenLayers],
+    [geometry, edgeSegments, viewport, wasDragged, computeHovered, hiddenLayers, dimmedLayers, onLineClick, onCircleClick, onInsertClick, onSegmentClick, onClearSelection],
   );
+
+  // Esc → clear selection
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setSelectedLine(null);
+        setHovered(null);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const usingEdges = !!edgeSegments && edgeSegments.length > 0;
   const lineCount = usingEdges ? edgeSegments!.length : (geometry?.lines.length ?? 0);
   const insertCount = geometry?.inserts?.length ?? 0;
   const layerCount = geometry?.layer_colors ? Object.keys(geometry.layer_colors).length : 0;
 
+  const cursorClass = hovered ? 'cursor-pointer' : 'cursor-crosshair';
+
   return (
     <div className={`flex flex-col rounded-xl border border-slate-700 overflow-hidden bg-slate-950 ${className}`}>
       <div
         ref={containerRef}
-        className="relative flex-1 overflow-hidden"
-        style={{ touchAction: 'none', backgroundColor: COLOR_BG, cursor: 'crosshair' }}
+        className={`relative flex-1 overflow-hidden ${cursorClass}`}
+        style={{ touchAction: 'none', backgroundColor: COLOR_BG }}
         onPointerDown={pointerHandlers.onPointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={(e) => {
@@ -538,7 +732,11 @@ export default function DxfCanvasViewer({
           handleClick(e);
         }}
         onPointerCancel={pointerHandlers.onPointerCancel}
-        onPointerLeave={() => setCursorWorld(null)}
+        onPointerLeave={() => {
+          setCursorWorld(null);
+          setCursorScreen(null);
+          setHovered(null);
+        }}
       >
         <canvas ref={canvasRef} className="block h-full w-full" />
 
@@ -554,6 +752,16 @@ export default function DxfCanvasViewer({
             <Maximize2 className="h-3.5 w-3.5" />
           </button>
         </div>
+
+        {/* Tooltip — hover ya da selected uzerinde */}
+        {(selectedLine || hovered) && cursorScreen && (
+          <Tooltip
+            entity={selectedLine ?? hovered!}
+            screenX={cursorScreen.x}
+            screenY={cursorScreen.y}
+            pinned={!!selectedLine}
+          />
+        )}
 
         {/* States */}
         {!fileId && (
@@ -623,4 +831,66 @@ function pointToSegmentDistance(
   if (t < 0) t = 0;
   else if (t > 1) t = 1;
   return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+}
+
+function computeEntityLength(entry: SpatialEntry, scale: number): number {
+  if (entry.polyline && entry.polyline.length >= 2) {
+    let total = 0;
+    for (let i = 0; i < entry.polyline.length - 1; i++) {
+      total += Math.hypot(
+        entry.polyline[i + 1][0] - entry.polyline[i][0],
+        entry.polyline[i + 1][1] - entry.polyline[i][1],
+      );
+    }
+    return total * scale;
+  }
+  const [x1, y1, x2, y2] = entry.coords;
+  return Math.hypot(x2 - x1, y2 - y1) * scale;
+}
+
+// ─── Tooltip subcomponent ───────────────────────────────────────────
+
+interface TooltipProps {
+  entity: HoveredEntity;
+  screenX: number;
+  screenY: number;
+  /** Selected ise (tıklanmıs), hover ise false. Pinned tooltip biraz daha belirgin. */
+  pinned: boolean;
+}
+
+function Tooltip({ entity, screenX, screenY, pinned }: TooltipProps) {
+  // Farenin sag-altinda (+14, +14) — PRD'ye uygun. Ekran kenarina tasarsa ayarla.
+  const offsetX = 14;
+  const offsetY = 14;
+  return (
+    <div
+      className={`pointer-events-none absolute z-20 rounded-lg border px-3 py-1.5 shadow-xl backdrop-blur-sm transition-opacity ${
+        pinned
+          ? 'border-blue-400 bg-blue-900/95 text-white'
+          : 'border-amber-400/60 bg-slate-900/95 text-amber-100'
+      }`}
+      style={{
+        left: `${screenX + offsetX}px`,
+        top: `${screenY + offsetY}px`,
+        maxWidth: '320px',
+      }}
+    >
+      <div className="text-[10px] uppercase tracking-wider opacity-70">
+        {entity.type === 'edge' ? 'Hesaplanmis Boru' : 'Cizgi'}
+      </div>
+      <div className="mt-0.5 text-sm font-semibold truncate" title={entity.layer}>
+        {entity.layer}
+      </div>
+      <div className="mt-1 flex items-baseline gap-1">
+        <span className="text-xs opacity-70">Uzunluk:</span>
+        <span className="font-mono text-sm font-bold tabular-nums">
+          {entity.length.toFixed(2)}
+        </span>
+        <span className="text-xs opacity-70">m</span>
+      </div>
+      {pinned && (
+        <div className="mt-1 text-[10px] opacity-60">Esc ile kaldir</div>
+      )}
+    </div>
+  );
 }

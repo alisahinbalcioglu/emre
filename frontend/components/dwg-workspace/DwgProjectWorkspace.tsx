@@ -48,12 +48,14 @@ export default function DwgProjectWorkspace({
     setLastClickedLayer, confirmSprinklerLayer, removeSprinklerLayer,
     setAiDetectedSprinklerCount,
     toggleLayerVisibility, showAllLayers,
+    toggleLayerDimmed, showAllDimmed,
   } = useWorkspaceState(fileId, scale);
 
   /** Geometry'den cikan layer isimleri — DxfCanvasViewer onLayersAvailable
    *  callback'inden gelir. Layer goruntusu paneli icin kullanilir. */
   const [availableLayers, setAvailableLayers] = useState<string[]>([]);
   const hiddenLayersSet = useMemo(() => new Set(state.hiddenLayers), [state.hiddenLayers]);
+  const dimmedLayersSet = useMemo(() => new Set(state.dimmedLayers), [state.dimmedLayers]);
 
   /** AutoCAD-vari "Layer Gizle Modu". Toolbar'daki goz-kapali butonu ile toggle.
    *  Aktif iken cizimde tikla = o layer'i cizimden cikar. Geri getirmek icin
@@ -368,6 +370,8 @@ export default function DwgProjectWorkspace({
             }}
             onLayersAvailable={setAvailableLayers}
             hiddenLayers={hiddenLayersSet}
+            dimmedLayers={dimmedLayersSet}
+            scale={scale}
             className="h-[600px] lg:h-[calc(100vh-150px)]"
           />
 
@@ -406,11 +410,14 @@ export default function DwgProjectWorkspace({
           <LayerVisibilityPanel
             availableLayers={availableLayers}
             hiddenLayers={state.hiddenLayers}
+            dimmedLayers={state.dimmedLayers}
             selectedLayer={state.selectedLayer}
             calculatedLayers={calculatedLayerNames}
             layerDiameters={layerDiametersMap}
             onToggle={toggleLayerVisibility}
+            onToggleDimmed={toggleLayerDimmed}
             onShowAll={showAllLayers}
+            onShowAllDimmed={showAllDimmed}
             onLayerSelect={(layer, x, y) => {
               setLastClickedLayer(layer);
               selectLayer(layer);

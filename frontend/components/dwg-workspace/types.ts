@@ -69,6 +69,11 @@ export interface WorkspaceState {
    *  gorsel filtre, hesaplanmis metrajlari ve config'i etkilemez. */
   hiddenLayers: string[];
 
+  /** Kullanicinin "isik" ikonuyla soluklastirdigi layer'lar — viewer'da
+   *  cizilir ama gri tonda + %25 opacity. Tiklanamaz/secilemez (referans
+   *  amacli). Hesaplanmis metrajlari ve config'i etkilemez. */
+  dimmedLayers: string[];
+
   /** Backend auto_detect_sprinklers'un bulduğu sprinkler INSERT sayisi.
    *  Bilgilendirme amacli (info satirinda gosterilir). undefined = henuz
    *  parse calismadi. */
