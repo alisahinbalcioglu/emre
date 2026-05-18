@@ -25,6 +25,7 @@ import { Loader2, AlertCircle, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 import api from '@/lib/api';
 import type { GeometryResult } from './types';
 import type { EdgeSegment } from '@/components/dwg-metraj/types';
+import { diameterToColor } from '@/components/dwg-metraj/diameter-colors';
 import { useViewport } from './useViewport';
 import { aciToColor } from './aci-colors';
 
@@ -70,6 +71,9 @@ interface SpatialEntry {
   index: number;
   coords: [number, number, number, number];
   polyline?: Array<[number, number]>;
+  /** Sadece type='edge' icin: cap ve miras durumu (tooltip + renk icin) */
+  diameter?: string;
+  isInherited?: boolean;
 }
 
 interface HoveredEntity {
@@ -80,6 +84,9 @@ interface HoveredEntity {
   polyline?: Array<[number, number]>;
   /** Metre cinsinden hesaplanmis uzunluk (scale uygulanmis). */
   length: number;
+  /** Sadece edge tipi icin: cap ve BFS miras durumu */
+  diameter?: string;
+  isInherited?: boolean;
 }
 
 export default function DxfCanvasViewer({
@@ -233,6 +240,12 @@ export default function DxfCanvasViewer({
     }
     if (edgeSegments) {
       edgeSegments.forEach((seg, i) => {
+        const meta = {
+          type: 'edge' as const, layer: seg.layer, index: i,
+          coords: seg.coords,
+          diameter: seg.diameter || undefined,
+          isInherited: seg.is_inherited || false,
+        };
         if (seg.polyline && seg.polyline.length >= 2) {
           let mnx = Infinity, mny = Infinity, mxx = -Infinity, mxy = -Infinity;
           for (const [x, y] of seg.polyline) {
@@ -241,15 +254,14 @@ export default function DxfCanvasViewer({
           }
           items.push({
             minX: mnx, minY: mny, maxX: mxx, maxY: mxy,
-            type: 'edge', layer: seg.layer, index: i,
-            coords: seg.coords, polyline: seg.polyline,
+            ...meta, polyline: seg.polyline,
           });
         } else {
           const [x1, y1, x2, y2] = seg.coords;
           items.push({
             minX: Math.min(x1, x2), maxX: Math.max(x1, x2),
             minY: Math.min(y1, y2), maxY: Math.max(y1, y2),
-            type: 'edge', layer: seg.layer, index: i, coords: seg.coords,
+            ...meta,
           });
         }
       });
@@ -546,8 +558,8 @@ export default function DxfCanvasViewer({
         ctx.lineWidth = strokeWidth * 1.8;
         ctx.globalAlpha = 1;
         byDiameter.forEach((segs, diameter) => {
-          const hash = diameter.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-          ctx.strokeStyle = `hsl(${(hash * 47) % 360}, 70%, 60%)`;
+          // Sabit cap->renk haritasi (MetrajSummaryPanel ile tutarli)
+          ctx.strokeStyle = diameterToColor(diameter);
           ctx.beginPath();
           for (const seg of segs) drawSegPath(seg);
           ctx.stroke();
@@ -653,6 +665,8 @@ export default function DxfCanvasViewer({
         coords: best.coords,
         polyline: best.polyline,
         length: computeEntityLength(best, scale),
+        diameter: best.diameter,
+        isInherited: best.isInherited,
       };
     },
     [spatialIndex, viewport.zoom, hiddenLayers, dimmedLayers, scale],
@@ -922,6 +936,22 @@ function Tooltip({ entity, screenX, screenY, pinned }: TooltipProps) {
       <div className="mt-0.5 text-sm font-semibold truncate" title={entity.layer}>
         {entity.layer}
       </div>
+      {entity.diameter && entity.diameter !== 'Belirtilmemis' && (
+        <div className="mt-1 flex items-baseline gap-1">
+          <span className="text-xs opacity-70">Cap:</span>
+          <span className="font-mono text-sm font-bold tabular-nums">
+            {entity.diameter}
+          </span>
+          {entity.isInherited && (
+            <span
+              className="ml-1 text-[10px] opacity-75 italic"
+              title="Cap, komsu segmentten graph BFS ile miras alindi"
+            >
+              ↳ miras
+            </span>
+          )}
+        </div>
+      )}
       <div className="mt-1 flex items-baseline gap-1">
         <span className="text-xs opacity-70">Uzunluk:</span>
         <span className="font-mono text-sm font-bold tabular-nums">

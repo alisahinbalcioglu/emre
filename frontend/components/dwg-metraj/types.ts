@@ -18,6 +18,9 @@ export interface EdgeSegment {
   /** Chain'in sirali vertex listesi — L/Z/U sekilli borularin gercek sekli
    * (2+ nokta). Yoksa coords'a duseriz (tek edge line). */
   polyline?: [number, number][];
+  /** true = cap graph BFS ile komsu segmentten miras alindi (backend pass 2).
+   * false/undefined = pass 1 text-map veya pass 3 AI atadi. UI'da "↳ miras" gosterilir. */
+  is_inherited?: boolean;
 }
 
 /** Layer-level metraj agregesi (1 layer = N pipe segmenti). */
