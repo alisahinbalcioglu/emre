@@ -12,7 +12,7 @@
  *  - Birden fazla layer + ekipman ekleye ekleye onaylar
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { AlertCircle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import api from '@/lib/api';
@@ -76,6 +76,27 @@ export default function DwgProjectWorkspace({
   }>(null);
 
   const selectedConfig = state.selectedLayer ? state.layerConfigs[state.selectedLayer] ?? null : null;
+
+  // ─── Global Esc: en ust katmandan baslayip tek tek geri al ─────────
+  // Priority: acik popup'lar > duzenlenen ogeler > secim/mod. Her Esc tek
+  // katman geri gider — kullanici uretici akisi kaybetmez.
+  // Input'a focus iken Esc form temizleme yapsin (preventDefault yok).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+
+      if (diameterPopup) { setDiameterPopup(null); return; }
+      if (pendingEquipment) { setPendingEquipment(null); return; }
+      if (state.editingEquipmentKey) { cancelEditEquipment(); return; }
+      if (editingSegment) { setEditingSegment(null); return; }
+      if (state.selectedLayer) { selectLayer(state.selectedLayer); return; }  // toggle off
+      if (hideMode) { setHideMode(false); return; }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [diameterPopup, pendingEquipment, state.editingEquipmentKey, editingSegment, state.selectedLayer, hideMode, cancelEditEquipment, selectLayer]);
 
   const calculatedEdgesByLayer = useMemo(() => {
     const map: Record<string, EdgeSegment[]> = {};
