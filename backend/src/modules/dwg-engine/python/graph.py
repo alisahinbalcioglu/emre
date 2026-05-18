@@ -121,6 +121,7 @@ def build_graph(
     dxf_path: str,
     pipe_layers: list[str],
     sprinkler_layers: list[str] | None = None,
+    doc=None,
 ) -> PipeGraph:
     """
     Seçilen boru layer'larından graph oluştur.
@@ -130,11 +131,14 @@ def build_graph(
     pozisyonu en yakin boru edge'ine projekte edilir ve edge o noktada
     bolunur — her sprinkler bir tee gibi davranir.
 
+    doc: opsiyonel ezdxf Drawing — paylasilan doc'tan tekrar ezdxf.readfile
+    yapmamak icin. None ise dahili read_dxf cagrilir.
+
     Döndürür: PipeGraph (edges, raw_coords, tees, ends, adj, sprinkler_points)
     """
-    import ezdxf
-
-    doc = ezdxf.readfile(dxf_path)
+    if doc is None:
+        from converter import read_dxf
+        doc = read_dxf(dxf_path)
     msp = doc.modelspace()
     pipe_set = set(pipe_layers)
 

@@ -127,14 +127,26 @@ def analyze_topology(
     material_type_map: dict[str, str] | None = None,
     hat_tipi_map: dict[str, str] | None = None,
     sprinkler_layers_manual: list[str] | None = None,
+    doc=None,
 ) -> tuple[list[PipeSegment], list[BranchPoint], list[str]]:
-    """Layer bazlı uzunluk metrajı + BranchPoint listesi. Çap YOK."""
+    """Layer bazlı uzunluk metrajı + BranchPoint listesi. Çap YOK.
+
+    PERFORMANCE: doc param opsiyonel — recursive multi-layer cagrilarinda
+    aynı doc paylasilarak ezdxf.readfile tekrari engellenir. 5 layer parse'da
+    eski: 10 readfile (~300sn). Yeni: 1 readfile (~30sn).
+    """
     warnings: list[str] = []
 
     if not selected_layers:
         return [], [], ["Boru layer'ları seçilmedi"]
 
+    # Doc'u BIR KEZ oku — recursive call'lar bunu paylasacak
+    if doc is None:
+        from converter import read_dxf
+        doc = read_dxf(dxf_path)
+
     # Multi-layer: her layer'i ayri analiz et (cross-system bozulmasin)
+    # ama doc'u paylas — her birinde tekrar readfile YAPMA
     if len(selected_layers) > 1:
         all_segs: list[PipeSegment] = []
         all_bps: list[BranchPoint] = []
@@ -145,6 +157,7 @@ def analyze_topology(
                 dxf_path, [layer], scale, material_type_map,
                 hat_tipi_map=hat_tipi_map,
                 sprinkler_layers_manual=sprinkler_layers_manual,
+                doc=doc,  # paylasilan doc
             )
             all_segs.extend(result[0])
             all_bps.extend(result[1])
@@ -165,9 +178,7 @@ def analyze_topology(
             if hat_ismi and _is_sprinkler_hint(hat_ismi):
                 sprinkler_set.add(layer_name)
 
-    # Layer adinda keyword — otomatik fallback
-    from converter import read_dxf
-    doc = read_dxf(dxf_path)
+    # Layer adinda keyword — otomatik fallback (paylasilan doc kullan)
     all_layers = {e.dxf.layer for e in doc.modelspace() if hasattr(e.dxf, 'layer')}
     for l in all_layers:
         if _is_sprinkler_hint(l):
@@ -177,8 +188,8 @@ def analyze_topology(
     if sprinkler_layers_auto:
         warnings.append(f"Sprinkler layer'lari: {sprinkler_layers_auto}")
 
-    # 2. Graph kur (sprinkler INSERT'ler boruyu boler)
-    graph = build_graph(dxf_path, selected_layers, sprinkler_layers=sprinkler_layers_auto)
+    # 2. Graph kur (sprinkler INSERT'ler boruyu boler) — paylasilan doc kullan
+    graph = build_graph(dxf_path, selected_layers, sprinkler_layers=sprinkler_layers_auto, doc=doc)
     if not graph.edges:
         return [], [], ["Seçilen layer'larda boru bulunamadı"]
 

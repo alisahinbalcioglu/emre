@@ -343,11 +343,13 @@ def analyze_dxf_metraj(
             layer_data[layer]["count"] += seg_count
 
     # ── Topoloji analizi: sprinkler/tee/end branch_points ──
+    # Paylasilan doc — ezdxf.readfile tekrari engelle (perf: 100sn -> 30sn)
     topo_segments, branch_points, topo_warnings = analyze_topology(
         dxf_path, selected_layers, scale,
         material_type_map=material_type_map,
         hat_tipi_map=hat_tipi_map,
         sprinkler_layers_manual=sprinkler_layers_manual,
+        doc=doc,
     )
 
     # Segmentleri layer bazinda grupla
