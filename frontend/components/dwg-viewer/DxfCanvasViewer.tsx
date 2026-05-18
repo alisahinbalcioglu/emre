@@ -59,7 +59,7 @@ const COLOR_MARKED_EQUIPMENT = '#f97316';
 const COLOR_DIMMED = '#475569';            // slate-600
 const COLOR_HOVER = '#fde68a';             // amber-200 glow
 const COLOR_LINE_SELECTED = '#3b82f6';     // brand blue
-const DIMMED_ALPHA = 0.25;
+const DIMMED_ALPHA = 0.45;
 const HOVER_TOL_PX = 6;
 
 interface SpatialEntry {
