@@ -407,59 +407,74 @@ export default function DxfCanvasViewer({
         });
         ctx.globalAlpha = 1;
 
-        // ─── Arcs (dimmed atlanir) ────────────────────────────────
+        // ─── Arcs (normal + dimmed iki pass) ──────────────────────
         if (geometry.arcs.length > 0) {
-          ctx.strokeStyle = COLOR_PASSIVE;
-          ctx.lineWidth = strokeWidth;
-          ctx.beginPath();
-          for (const a of geometry.arcs) {
-            if (hiddenLayers?.has(a.layer)) continue;
-            if (dimmedLayers?.has(a.layer)) continue;
-            const r = a.radius;
-            if (!lineInView(a.center[0] - r, a.center[1] - r, a.center[0] + r, a.center[1] + r)) continue;
-            const sa = (a.start_angle * Math.PI) / 180;
-            const ea = (a.end_angle * Math.PI) / 180;
-            ctx.moveTo(a.center[0] + r * Math.cos(sa), a.center[1] + r * Math.sin(sa));
-            ctx.arc(a.center[0], a.center[1], r, sa, ea, false);
+          const drawArcs = (filterDim: boolean, color: string, alpha: number) => {
+            ctx.globalAlpha = alpha;
+            ctx.strokeStyle = color;
+            ctx.lineWidth = strokeWidth;
+            ctx.beginPath();
+            for (const a of geometry.arcs) {
+              if (hiddenLayers?.has(a.layer)) continue;
+              const isDim = !!dimmedLayers?.has(a.layer);
+              if (filterDim !== isDim) continue;
+              const r = a.radius;
+              if (!lineInView(a.center[0] - r, a.center[1] - r, a.center[0] + r, a.center[1] + r)) continue;
+              const sa = (a.start_angle * Math.PI) / 180;
+              const ea = (a.end_angle * Math.PI) / 180;
+              ctx.moveTo(a.center[0] + r * Math.cos(sa), a.center[1] + r * Math.sin(sa));
+              ctx.arc(a.center[0], a.center[1], r, sa, ea, false);
+            }
+            ctx.stroke();
+          };
+          drawArcs(false, COLOR_PASSIVE, 1);
+          if (dimmedLayers && dimmedLayers.size > 0) {
+            drawArcs(true, COLOR_DIMMED, DIMMED_ALPHA);
           }
-          ctx.stroke();
+          ctx.globalAlpha = 1;
         }
 
-        // ─── Circles ────────────────────────────────────────────────
+        // ─── Circles (sprinkler/normal × normal/dimmed = 4 pass) ──
         if (geometry.circles.length > 0) {
           const circleInView = (cx: number, cy: number, r: number) =>
             lineInView(cx - r, cy - r, cx + r, cy + r);
 
-          // Sprinkler
-          ctx.strokeStyle = COLOR_SPRINKLER;
-          ctx.lineWidth = strokeWidth * 1.6;
-          ctx.beginPath();
-          for (const c of geometry.circles) {
-            if (hiddenLayers?.has(c.layer)) continue;
-            if (dimmedLayers?.has(c.layer)) continue;
-            if (!sprinklerLayers?.has(c.layer)) continue;
-            if (!circleInView(c.center[0], c.center[1], c.radius)) continue;
-            ctx.moveTo(c.center[0] + c.radius, c.center[1]);
-            ctx.arc(c.center[0], c.center[1], c.radius, 0, Math.PI * 2);
-          }
-          ctx.stroke();
+          const drawCircles = (
+            filterSprinkler: boolean,
+            filterDim: boolean,
+            color: string,
+            lw: number,
+            alpha: number,
+          ) => {
+            ctx.globalAlpha = alpha;
+            ctx.strokeStyle = color;
+            ctx.lineWidth = lw;
+            ctx.beginPath();
+            for (const c of geometry.circles) {
+              if (hiddenLayers?.has(c.layer)) continue;
+              const isSprink = !!sprinklerLayers?.has(c.layer);
+              if (filterSprinkler !== isSprink) continue;
+              const isDim = !!dimmedLayers?.has(c.layer);
+              if (filterDim !== isDim) continue;
+              if (!circleInView(c.center[0], c.center[1], c.radius)) continue;
+              ctx.moveTo(c.center[0] + c.radius, c.center[1]);
+              ctx.arc(c.center[0], c.center[1], c.radius, 0, Math.PI * 2);
+            }
+            ctx.stroke();
+          };
 
-          // Normal
-          ctx.strokeStyle = COLOR_PASSIVE;
-          ctx.lineWidth = strokeWidth * 0.8;
-          ctx.beginPath();
-          for (const c of geometry.circles) {
-            if (hiddenLayers?.has(c.layer)) continue;
-            if (dimmedLayers?.has(c.layer)) continue;
-            if (sprinklerLayers?.has(c.layer)) continue;
-            if (!circleInView(c.center[0], c.center[1], c.radius)) continue;
-            ctx.moveTo(c.center[0] + c.radius, c.center[1]);
-            ctx.arc(c.center[0], c.center[1], c.radius, 0, Math.PI * 2);
+          // Normal pass'lar
+          drawCircles(true, false, COLOR_SPRINKLER, strokeWidth * 1.6, 1);
+          drawCircles(false, false, COLOR_PASSIVE, strokeWidth * 0.8, 1);
+          // Dimmed pass'lar (sprinkler ya da normal fark etmez, hepsi gri+%25)
+          if (dimmedLayers && dimmedLayers.size > 0) {
+            drawCircles(true, true, COLOR_DIMMED, strokeWidth * 0.8, DIMMED_ALPHA);
+            drawCircles(false, true, COLOR_DIMMED, strokeWidth * 0.8, DIMMED_ALPHA);
           }
-          ctx.stroke();
+          ctx.globalAlpha = 1;
         }
 
-        // ─── Marked equipment ─────────────────────────────────────
+        // ─── Marked equipment (hidden = atla; dimmed = %25 alpha) ─
         if (markedEquipmentKeys && markedEquipmentKeys.size > 0) {
           ctx.fillStyle = COLOR_MARKED_EQUIPMENT;
           ctx.strokeStyle = '#ffffff';
@@ -467,22 +482,26 @@ export default function DxfCanvasViewer({
           for (const ins of geometry.inserts) {
             const key = `${ins.layer}:${ins.insert_index}`;
             if (!markedEquipmentKeys.has(key)) continue;
+            if (hiddenLayers?.has(ins.layer)) continue;
+            ctx.globalAlpha = dimmedLayers?.has(ins.layer) ? DIMMED_ALPHA : 1;
             ctx.beginPath();
             ctx.arc(ins.position[0], ins.position[1], 3.5 / viewport.zoom, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
           }
+          ctx.globalAlpha = 1;
         }
 
-        // ─── Texts ─────────────────────────────────────────────────
+        // ─── Texts (dimmed = gri + %25 alpha, fillText per-text) ──
         if (viewport.zoom >= 0.3 && geometry.texts.length > 0) {
-          ctx.fillStyle = COLOR_TEXT;
           ctx.textBaseline = 'alphabetic';
           for (const t of geometry.texts) {
             if (hiddenLayers?.has(t.layer)) continue;
-            if (dimmedLayers?.has(t.layer)) continue;
             if (!t.text) continue;
             if (!inView(t.position[0], t.position[1])) continue;
+            const isDim = !!dimmedLayers?.has(t.layer);
+            ctx.fillStyle = isDim ? COLOR_DIMMED : COLOR_TEXT;
+            ctx.globalAlpha = isDim ? DIMMED_ALPHA : 1;
             ctx.save();
             ctx.translate(t.position[0], t.position[1]);
             ctx.scale(1, -1);
@@ -491,36 +510,58 @@ export default function DxfCanvasViewer({
             ctx.fillText(t.text, 0, 0);
             ctx.restore();
           }
+          ctx.globalAlpha = 1;
         }
       }
 
-      // ─── Calculated edges ─────────────────────────────────────────
+      // ─── Calculated edges (hidden = atla, dimmed = ayri gri pass) ─
       if (edgeSegments && edgeSegments.length > 0) {
+        const drawSegPath = (seg: EdgeSegment) => {
+          if (seg.polyline && seg.polyline.length >= 2) {
+            ctx.moveTo(seg.polyline[0][0], seg.polyline[0][1]);
+            for (let i = 1; i < seg.polyline.length; i++) {
+              ctx.lineTo(seg.polyline[i][0], seg.polyline[i][1]);
+            }
+          } else {
+            ctx.moveTo(seg.coords[0], seg.coords[1]);
+            ctx.lineTo(seg.coords[2], seg.coords[3]);
+          }
+        };
+
+        // Normal pass: layer-bazli filtrele, cap-bazli renkli grupla
         const byDiameter = new Map<string, EdgeSegment[]>();
+        const dimmedSegs: EdgeSegment[] = [];
         for (const seg of edgeSegments) {
+          if (hiddenLayers?.has(seg.layer)) continue;
+          if (dimmedLayers?.has(seg.layer)) {
+            dimmedSegs.push(seg);
+            continue;
+          }
           const key = seg.diameter || 'Belirtilmemis';
           let arr = byDiameter.get(key);
           if (!arr) { arr = []; byDiameter.set(key, arr); }
           arr.push(seg);
         }
+
         ctx.lineWidth = strokeWidth * 1.8;
+        ctx.globalAlpha = 1;
         byDiameter.forEach((segs, diameter) => {
           const hash = diameter.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
           ctx.strokeStyle = `hsl(${(hash * 47) % 360}, 70%, 60%)`;
           ctx.beginPath();
-          for (const seg of segs) {
-            if (seg.polyline && seg.polyline.length >= 2) {
-              ctx.moveTo(seg.polyline[0][0], seg.polyline[0][1]);
-              for (let i = 1; i < seg.polyline.length; i++) {
-                ctx.lineTo(seg.polyline[i][0], seg.polyline[i][1]);
-              }
-            } else {
-              ctx.moveTo(seg.coords[0], seg.coords[1]);
-              ctx.lineTo(seg.coords[2], seg.coords[3]);
-            }
-          }
+          for (const seg of segs) drawSegPath(seg);
           ctx.stroke();
         });
+
+        // Dimmed pass: hepsi gri + %25
+        if (dimmedSegs.length > 0) {
+          ctx.globalAlpha = DIMMED_ALPHA;
+          ctx.strokeStyle = COLOR_DIMMED;
+          ctx.beginPath();
+          for (const seg of dimmedSegs) drawSegPath(seg);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        }
       }
 
       // ─── HOVER overlay (amber glow + 2x stroke) ───────────────────
