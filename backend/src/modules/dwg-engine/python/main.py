@@ -417,18 +417,17 @@ def analyze_dxf_metraj(
             seg_diameters, ai_info = assign_diameters_with_ai(
                 dxf_path, selected_layers, hat_tipi_hint=_hat_hint,
                 sprinkler_layers=sprinkler_layers_manual,
+                doc=doc,  # PERF: tek readfile paylasimi
             )
 
             # Her segment'i kendi cap'iyla birlikte, layer bazinda grupla
             # Sonuc: her layer icin (diameter -> toplam_uzunluk)
-            # Segment uzunluklarini AI modulu zaten dxf birim olarak ureitir —
-            # bu fonksiyonda scale uygulayacagiz.
-            _doc = read_dxf(dxf_path)
-            _msp = _doc.modelspace()
-
             # Segment id -> (layer, length) haritasi (ai_diameter ile ayni sira)
+            # PERF: doc paylasilir (tekrar readfile YOK)
             from ai_diameter import _extract_segments
-            _segs, _ = _extract_segments(dxf_path, selected_layers, sprinkler_layers=sprinkler_layers_manual)
+            _segs, _ = _extract_segments(dxf_path, selected_layers,
+                                          sprinkler_layers=sprinkler_layers_manual,
+                                          doc=doc)
             seg_map = {s["id"]: s for s in _segs}
 
             # AI'nin atayamadigi segment'leri layer-level default ile doldur

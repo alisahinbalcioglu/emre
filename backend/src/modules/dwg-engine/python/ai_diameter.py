@@ -183,6 +183,7 @@ def auto_detect_sprinklers(
     dxf_path: str,
     hat_tipi_hint: str = "",
     model: str = "claude-sonnet-4-5",
+    doc=None,
 ) -> tuple[set[str], dict]:
     """DXF'teki unique INSERT block'larini Claude'a sınıflandırarak sprinkler
     olanlarini tespit eder. Cache'li — ayni dosya icin AI cagrisi 1 kez yapilir.
@@ -210,15 +211,23 @@ def auto_detect_sprinklers(
         if (_time.time() - ts) < _SPRINKLER_CACHE_TTL_SEC:
             return block_set, {"source": "cache", "block_count": len(block_set)}
 
+    # Doc lazy load (paylasilmissa kullan, yoksa oku) — perf icin
+    def _get_doc():
+        nonlocal doc
+        if doc is None:
+            from converter import read_dxf
+            doc = read_dxf(dxf_path)
+        return doc
+
     # API key
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         # Fallback: regex
         try:
-            doc = ezdxf.readfile(dxf_path)
+            _doc = _get_doc()
             block_set = {
                 str(ins.dxf.name or "")
-                for ins in doc.modelspace().query('INSERT')
+                for ins in _doc.modelspace().query('INSERT')
                 if _SPRINKLER_RE.search(str(ins.dxf.name or ""))
             }
         except Exception:
@@ -228,8 +237,8 @@ def auto_detect_sprinklers(
 
     # AI yolu
     try:
-        doc = ezdxf.readfile(dxf_path)
-        blocks_info = _collect_blocks_for_classification(doc)
+        _doc = _get_doc()
+        blocks_info = _collect_blocks_for_classification(_doc)
     except Exception as e:
         return set(), {"source": "error", "error": str(e)[:100]}
 
@@ -855,6 +864,7 @@ def _extract_segments(
     pipe_layers: list[str],
     sprinkler_layers: list[str] | None = None,
     sprinkler_block_names: set[str] | None = None,
+    doc=None,
 ) -> tuple[list[Segment], list[tuple[float, float]]]:
     """Secilen boru layer'larindan topology-aware pipe-run segment'leri uret.
 
@@ -869,8 +879,13 @@ def _extract_segments(
     Returns:
       (segments, sprinkler_centers) — sprinkler_centers ham (cx, cy) listesi,
       _filter_sprinkler_id_texts'e geri verilebilir.
+
+    PERF: doc opsiyonel — caller'dan paylasilirsa tekrar ezdxf.readfile YOK
+    (Render free tier'da 30sn tasarruf, gateway timeout altinda kalmak icin).
     """
-    doc = ezdxf.readfile(dxf_path)
+    if doc is None:
+        from converter import read_dxf
+        doc = read_dxf(dxf_path)
     msp = doc.modelspace()
     layer_set = set(pipe_layers)
 
@@ -920,13 +935,18 @@ def _extract_segments(
     return segments, sp_centers
 
 
-def _extract_diameter_texts(dxf_path: str) -> list[DiameterText]:
+def _extract_diameter_texts(dxf_path: str, doc=None) -> list[DiameterText]:
     """Tum cap-benzeri TEXT/MTEXT'leri al:
     - Modelspace direct TEXT/MTEXT
     - INSERT block reference'larin ATTRIB degerleri
-    - Block definition icindeki TEXT/MTEXT (INSERT pozisyonuna transform)"""
+    - Block definition icindeki TEXT/MTEXT (INSERT pozisyonuna transform)
+
+    PERF: doc opsiyonel — caller paylasirsa tekrar readfile YOK.
+    """
     import math as _m
-    doc = ezdxf.readfile(dxf_path)
+    if doc is None:
+        from converter import read_dxf
+        doc = read_dxf(dxf_path)
     msp = doc.modelspace()
     results: list[DiameterText] = []
 
@@ -1272,6 +1292,7 @@ def assign_diameters_with_ai(
     model: str = "claude-sonnet-4-5",
     hat_tipi_hint: str = "",
     sprinkler_layers: list[str] | None = None,
+    doc=None,
 ) -> tuple[dict[int, tuple[str, bool]], dict]:
     """Boru segment'lerine cap atar (3-pass: text-map → BFS inheritance → AI fallback).
 
@@ -1299,9 +1320,15 @@ def assign_diameters_with_ai(
     # Defansif: auto_detect_sprinklers crash etse bile assign_diameters_with_ai
     # devam etsin — sprinkler_block_names bos kalir, mevcut akis (regex
     # fallback yoluyla) calismaya devam eder.
+    # PERF: tek read_dxf — auto_detect + _extract_segments + _extract_diameter_texts
+    # hepsi ayni doc'u paylasir. Render free tier'da 30sn x 3 = 90sn tasarruf.
+    if doc is None:
+        from converter import read_dxf
+        doc = read_dxf(dxf_path)
+
     try:
         sprinkler_block_names, classify_info = auto_detect_sprinklers(
-            dxf_path, hat_tipi_hint=hat_tipi_hint, model=model,
+            dxf_path, hat_tipi_hint=hat_tipi_hint, model=model, doc=doc,
         )
     except Exception as _ee:
         sprinkler_block_names = set()
@@ -1313,10 +1340,11 @@ def assign_diameters_with_ai(
         pipe_layers,
         sprinkler_layers=sprinkler_layers,
         sprinkler_block_names=sprinkler_block_names,
+        doc=doc,
     )
 
     # 3) Cap-benzeri text havuzu
-    texts = _extract_diameter_texts(dxf_path)
+    texts = _extract_diameter_texts(dxf_path, doc=doc)
 
     # 4) Sprinkler ID etiketlerini cap havuzundan dus (yanlislikla "S1" = "1"' lik
     #    olarak parse edilmesin)
