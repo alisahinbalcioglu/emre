@@ -13,6 +13,7 @@ import math
 import time
 import uuid
 import base64
+import logging
 import tempfile
 from collections import defaultdict
 import ezdxf
@@ -20,7 +21,7 @@ from fastapi import FastAPI, UploadFile, File, Query, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
-from converter import convert_dwg_to_dxf
+from converter import convert_dwg_to_dxf, read_dxf
 from topology import analyze_topology
 from geometry import extract_geometry, extract_geometry_from_doc, GeometryResult
 from models import (
@@ -204,7 +205,7 @@ def extract_layer_info(dxf_path: str) -> LayerListResult:
     DXF dosyasindan layer bilgilerini cikar.
     SADECE layer adi ve entity sayisi — uzunluk hesaplamaz (hizli).
     """
-    doc = ezdxf.readfile(dxf_path)
+    doc = read_dxf(dxf_path)
     return extract_layer_info_from_doc(doc)
 
 
@@ -267,7 +268,7 @@ def analyze_dxf_metraj(
     selected_layers: None ise tum layer'lar, liste ise sadece belirtilenler
     hat_tipi_map: {layer_adi: hat_tipi} eslestirmesi
     """
-    doc = ezdxf.readfile(dxf_path)
+    doc = read_dxf(dxf_path)
     msp = doc.modelspace()
 
     layer_data: dict[str, dict] = {}  # layer → {length, count}
@@ -420,8 +421,7 @@ def analyze_dxf_metraj(
             # Sonuc: her layer icin (diameter -> toplam_uzunluk)
             # Segment uzunluklarini AI modulu zaten dxf birim olarak ureitir —
             # bu fonksiyonda scale uygulayacagiz.
-            import ezdxf as _ezdxf
-            _doc = _ezdxf.readfile(dxf_path)
+            _doc = read_dxf(dxf_path)
             _msp = _doc.modelspace()
 
             # Segment id -> (layer, length) haritasi (ai_diameter ile ayni sira)
@@ -637,7 +637,7 @@ def _background_parse(file_id: str, dxf_path: str) -> None:
     """
     try:
         # TEK ezdxf parse — 30sn yerine 90sn'lik 3x parse'tan kurtulduk
-        doc = ezdxf.readfile(dxf_path)
+        doc = read_dxf(dxf_path)
         scale, label = _detect_unit_from_dxf(doc)
 
         # 1. Layers (paylasilan doc'tan)
@@ -757,7 +757,7 @@ async def list_layers(file: UploadFile = File(...)):
         dxf_path = _prepare_dxf(content, file.filename)
 
         # TEK ezdxf parse — hem layers hem geometry icin paylasilmis doc
-        doc = ezdxf.readfile(dxf_path)
+        doc = read_dxf(dxf_path)
         result = extract_layer_info_from_doc(doc)
 
         # DXF dosyasini cache'e kaydet (15dk)
@@ -782,7 +782,7 @@ async def list_layers(file: UploadFile = File(...)):
 
         # DWG birimini otomatik tespit et ($INSUNITS header'indan)
         try:
-            doc = ezdxf.readfile(dxf_path)
+            doc = read_dxf(dxf_path)
             insunits = int(doc.header.get("$INSUNITS", 0) or 0)
             # DXF standardi: 1=inch, 2=feet, 4=mm, 5=cm, 6=m (digerleri nadir)
             _unit_map: dict[int, tuple[float, str]] = {

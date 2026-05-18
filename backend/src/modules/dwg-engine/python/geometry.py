@@ -211,7 +211,8 @@ def extract_geometry(dxf_path: str, layer_filter: set[str] | None = None) -> Geo
     Returns:
         GeometryResult — lines + bounds + layer_colors
     """
-    doc = ezdxf.readfile(dxf_path)
+    from converter import read_dxf
+    doc = read_dxf(dxf_path)
     return extract_geometry_from_doc(doc, layer_filter)
 
 

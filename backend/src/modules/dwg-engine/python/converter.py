@@ -173,13 +173,59 @@ def _normalize_header(dxf_path: str, report: IntegrityReport) -> None:
 
 
 # ─────────────────────────────────────────────────────────
+#  Smart DXF reader (encoding auto-detect with fallback)
+# ─────────────────────────────────────────────────────────
+
+def read_dxf(dxf_path: str):
+    """ezdxf.readfile wrapper - UTF-8 / cp1254 encoding mismatch'i handle eder.
+
+    LibreDWG (Render Docker'da derlenmis) DWG'den DXF cevirirken UTF-8 bytes
+    yaziyor — $DWGCODEPAGE header'i ANSI_1254 olsa bile. ODA FileConverter
+    ise cp1254 yaziyor (Turkce Windows default'u). ezdxf'in auto-detect'i
+    bazen yanlis encoding seciyor → Turkce karakterler mojibake oluyor
+    (ornek: 'A_Yangın Çap' → 'A_YangÄ±n Ã‡ap').
+
+    Strateji:
+      1. UTF-8 ile dene
+      2. Ilk 10 layer adinda surrogate veya replacement char varsa
+         (= decode hatasi belirtisi) → cp1254 ile yeniden oku
+      3. UTF-8 parse'da exception olursa → cp1254 fallback
+
+    Donus: ezdxf Drawing instance (her zaman, hata fallback ile)
+    """
+    def _has_decode_errors(doc) -> bool:
+        for i, layer in enumerate(doc.layers):
+            if i >= 10:
+                break
+            name = layer.dxf.name
+            # surrogateescape bad bytes'i U+DC80-U+DCFF range'inde kodlar
+            # replacement char (�) errors='replace' davranisi
+            if '�' in name or any(0xd800 <= ord(c) <= 0xdfff for c in name):
+                return True
+        return False
+
+    try:
+        doc = ezdxf.readfile(dxf_path, encoding='utf-8')
+        if not _has_decode_errors(doc):
+            return doc
+        logger.info("UTF-8 read'de mojibake tespit edildi, cp1254 ile yeniden okunuyor: %s", dxf_path)
+    except UnicodeDecodeError as e:
+        logger.info("UTF-8 read basarisiz (%s), cp1254 fallback: %s", e, dxf_path)
+    except Exception as e:
+        # ezdxf.DXFStructureError vb - encoding ile alakali olmayabilir; cp1254 yine dene
+        logger.warning("ezdxf utf-8 read exception (%s: %s), cp1254 fallback denenecek",
+                       type(e).__name__, str(e)[:100])
+    return ezdxf.readfile(dxf_path, encoding='cp1254')
+
+
+# ─────────────────────────────────────────────────────────
 #  ezdxf-level integrity validation (opt-in, expensive)
 # ─────────────────────────────────────────────────────────
 
 def _validate_with_ezdxf(dxf_path: str, report: IntegrityReport) -> None:
     """ezdxf ile ac, header/LTYPE/layer/entity butunlugunu dogrula. Yazmaz."""
     try:
-        doc = ezdxf.readfile(dxf_path)
+        doc = read_dxf(dxf_path)
     except Exception as e:
         report.issues.append(f"ezdxf parse hatasi: {str(e)[:200]}")
         return

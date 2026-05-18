@@ -166,8 +166,8 @@ def analyze_topology(
                 sprinkler_set.add(layer_name)
 
     # Layer adinda keyword — otomatik fallback
-    import ezdxf
-    doc = ezdxf.readfile(dxf_path)
+    from converter import read_dxf
+    doc = read_dxf(dxf_path)
     all_layers = {e.dxf.layer for e in doc.modelspace() if hasattr(e.dxf, 'layer')}
     for l in all_layers:
         if _is_sprinkler_hint(l):
