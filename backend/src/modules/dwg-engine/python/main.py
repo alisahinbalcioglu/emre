@@ -919,7 +919,13 @@ async def parse_dwg(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(500, f"DWG analiz hatasi: {str(e)}")
+        import traceback as _tb
+        _trace = _tb.format_exc()
+        # Render logs'a TAM traceback yaz — debug icin kritik
+        logging.error("DWG analiz hatasi: %s\n%s", repr(e), _trace)
+        # Response'a repr(e) ver (str(e) bazi exception'larda bos olabiliyor)
+        # + class adi (debugging icin frontend'e bilgi)
+        raise HTTPException(500, f"DWG analiz hatasi: {type(e).__name__}: {str(e) or repr(e)}")
     finally:
         # Sadece cache'e girmeyen dosyalari temizle
         if tmp_to_cleanup:
