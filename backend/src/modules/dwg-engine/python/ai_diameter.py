@@ -1092,6 +1092,147 @@ def _nearest_texts(
     return [{"text": v, "mesafe": round(d, 1)} for d, v in scored[:max_count]]
 
 
+# ─────────────────────────────────────────────────────────
+#  Deterministic cap atama: text-mapping + graph inheritance
+#  AI'dan ONCE calisan ucuz/deterministic katman.
+# ─────────────────────────────────────────────────────────
+
+def _point_to_segment_dist(
+    px: float, py: float,
+    x1: float, y1: float, x2: float, y2: float,
+) -> float:
+    """Point'in line segment'e olan en kisa mesafesi."""
+    dx, dy = x2 - x1, y2 - y1
+    len_sq = dx * dx + dy * dy
+    if len_sq < 1e-12:
+        return math.sqrt((px - x1) ** 2 + (py - y1) ** 2)
+    t = ((px - x1) * dx + (py - y1) * dy) / len_sq
+    if t < 0:
+        t = 0.0
+    elif t > 1:
+        t = 1.0
+    qx = x1 + t * dx
+    qy = y1 + t * dy
+    return math.sqrt((px - qx) ** 2 + (py - qy) ** 2)
+
+
+def _assign_diameters_from_nearest_text(
+    segments: list[Segment],
+    texts: list[DiameterText],
+    max_distance: float = 200.0,
+) -> dict[int, str]:
+    """Pass 1 — Spatial text-to-segment mapping (deterministic, AI'sis).
+
+    Her cap text'ini (pattern matched) EN YAKIN segment'e atar. Birden fazla
+    text ayni segmente cikarsa, en yakin olan kazanir.
+
+    max_distance: text segmentten bu mesafeden uzaksa atama YOK (gurultu engeli).
+
+    Returns: {sid: text_value} — sadece guvenle atananlar
+    """
+    if not segments or not texts:
+        return {}
+
+    # sid → (best_distance, value)
+    best_for_seg: dict[int, tuple[float, str]] = {}
+    for t in texts:
+        if not _has_diameter_pattern(t["value"]):
+            continue
+        tx, ty = t["x"], t["y"]
+        best_d = float('inf')
+        best_sid = None
+        for seg in segments:
+            d = _point_to_segment_dist(
+                tx, ty, seg["x1"], seg["y1"], seg["x2"], seg["y2"],
+            )
+            if d < best_d:
+                best_d = d
+                best_sid = seg["id"]
+        if best_sid is None or best_d > max_distance:
+            continue
+        prev = best_for_seg.get(best_sid)
+        if prev is None or best_d < prev[0]:
+            best_for_seg[best_sid] = (best_d, t["value"].strip())
+
+    return {sid: val for sid, (_, val) in best_for_seg.items()}
+
+
+def _build_segment_adjacency(
+    segments: list[Segment],
+    node_tol: float,
+) -> tuple[dict[int, list[tuple[int, tuple[float, float]]]], dict[tuple[float, float], int]]:
+    """Segment endpoint'lerinden komsuluk haritasi cikar.
+
+    Returns:
+      seg_neighbors: {sid: [(neighbor_sid, shared_node_key), ...]}
+      node_degree:   {node_key: count} — kac segment bu node'a deginiyor
+    """
+    node_to_segs: dict[tuple[float, float], list[int]] = {}
+    for seg in segments:
+        for x, y in ((seg["x1"], seg["y1"]), (seg["x2"], seg["y2"])):
+            k = _node_key(x, y, node_tol)
+            node_to_segs.setdefault(k, []).append(seg["id"])
+
+    seg_neighbors: dict[int, list[tuple[int, tuple[float, float]]]] = {
+        seg["id"]: [] for seg in segments
+    }
+    node_degree: dict[tuple[float, float], int] = {}
+    for node_k, sids in node_to_segs.items():
+        node_degree[node_k] = len(sids)
+        for sid in sids:
+            for other_sid in sids:
+                if sid != other_sid:
+                    seg_neighbors[sid].append((other_sid, node_k))
+
+    return seg_neighbors, node_degree
+
+
+def _propagate_diameters_via_bfs(
+    segments: list[Segment],
+    seed_diameters: dict[int, str],
+    node_tol: float,
+) -> dict[int, tuple[str, bool]]:
+    """Pass 2 — Graph BFS ile bilinmeyen segmentlere komsulardan miras aktar.
+
+    Kural: bir node'a SADECE 2 segment baglıysa (non-branching pass-through),
+    diameter inherit edilir. degree >= 3 (tee/junction) noktada inherit YOK
+    (hangi branş ayni cap belirsiz). degree == 1 (terminal) zaten propagation
+    icin onemli degil.
+
+    Args:
+      segments: tum pipe segment'leri (sid + endpoint'ler)
+      seed_diameters: pass 1'den (text-mapping) gelen kesin atamalar
+      node_tol: endpoint birlestirme toleransi (graph.py'deki MERGE_DISTANCE benzeri)
+
+    Returns: {sid: (diameter, is_inherited)} — seed'ler + miras alanlar
+             Bilinmeyenler dahil DEGIL (caller AI fallback yapsin).
+    """
+    from collections import deque
+
+    seg_neighbors, node_degree = _build_segment_adjacency(segments, node_tol)
+
+    result: dict[int, tuple[str, bool]] = {}
+    queue: deque[int] = deque()
+    for sid, dia in seed_diameters.items():
+        if dia and dia != "Belirtilmemis":
+            result[sid] = (dia, False)
+            queue.append(sid)
+
+    while queue:
+        sid = queue.popleft()
+        cur_dia = result[sid][0]
+        for neighbor_sid, shared_node_k in seg_neighbors.get(sid, []):
+            if neighbor_sid in result:
+                continue  # zaten atanmis (seed veya onceki BFS adimi)
+            # Non-branching pass-through: degree == 2 (bu seg + neighbor)
+            # Tee/junction (degree >= 3) -> inherit YOK
+            if node_degree.get(shared_node_k, 0) == 2:
+                result[neighbor_sid] = (cur_dia, True)
+                queue.append(neighbor_sid)
+
+    return result
+
+
 def _build_prompt(
     segments_with_textnbrs: list[dict],
     hat_tipi_hint: str = "",
@@ -1131,34 +1272,28 @@ def assign_diameters_with_ai(
     model: str = "claude-sonnet-4-5",
     hat_tipi_hint: str = "",
     sprinkler_layers: list[str] | None = None,
-) -> tuple[dict[int, str], dict]:
-    """Secilen boru layer'larindaki segment'lere AI ile cap atar.
+) -> tuple[dict[int, tuple[str, bool]], dict]:
+    """Boru segment'lerine cap atar (3-pass: text-map → BFS inheritance → AI fallback).
 
     Akis:
-      1. auto_detect_sprinklers — DXF'teki block'lari Claude'a sınıflandırır
-         (cache'li, fail-safe regex fallback) → sprinkler block adlari
-      2. _extract_segments — boru layer'larini topla, sprinkler INSERT
-         pozisyonlarinda LINE'i bol (T noktasi etkisi). Ayni layer'da
-         boru + sprinkler varsa: LINE boru, INSERT sprinkler — entity
-         tipiyle ayrilir.
-      3. _extract_diameter_texts → cap-benzeri TEXT havuzu
-      4. _filter_sprinkler_id_texts → sprinkler INSERT'e yakin TEXT'leri
-         cap havuzundan dus (etiket yanlislikla cap sayilmasin)
-      5. Claude API → cap atama
-
-    Args:
-      dxf_path: DXF dosya yolu
-      pipe_layers: boru olarak isaretli layer adlari
-      model: Claude model adi
-      hat_tipi_hint: kullanicinin hat_tipi_map'te verdigi ipucu
-        (ornek: "Sprinkler Hatti", "Pis Su", "Temiz Su")
-      sprinkler_layers: opsiyonel — kullanici manuel sprinkler layer secimi
-        (yeni akista gerekli degil, geri uyumluluk icin tutuluyor)
+      0. auto_detect_sprinklers (AI/regex) — block sinif tanima
+      1. _extract_segments — boru layer'larini topla, sprinkler/tee'de bol
+      2. _extract_diameter_texts → cap-benzeri TEXT havuzu
+      3. _filter_sprinkler_id_texts → sprinkler ID etiketlerini dus
+      4. PASS 1 (deterministic, ucretsiz): _assign_diameters_from_nearest_text
+         → text < 200 birim mesafedeki segmente atanir
+      5. PASS 2 (deterministic, ucretsiz): _propagate_diameters_via_bfs
+         → graph BFS, non-branching node'larda diameter miras alma
+      6. PASS 3 (AI, ucretli): sadece pass 1+2'den sonra hala BOSTA olan
+         segmentleri Claude'a sor — gereksiz token harcamasi YOK
 
     Returns:
       (segment_diameters, info_dict)
-      segment_diameters: {segment_id: "Ø50" | "Belirtilmemis" | ...}
-      info_dict: {input_tokens, output_tokens, cost_usd, segment_count, text_count, sprinkler_block_count}
+      segment_diameters: {sid: (diameter, is_inherited)}
+        - diameter: "Ø50" | "DN100" | ... | "Belirtilmemis"
+        - is_inherited: True = pass 2'de BFS ile miras alindi
+                        False = pass 1 (text-map) veya pass 3 (AI) atadi
+      info_dict: pass-bazli istatistik + AI maliyet
     """
     # 1) Otomatik sprinkler tespiti (AI ile, cache'li)
     # Defansif: auto_detect_sprinklers crash etse bile assign_diameters_with_ai
@@ -1195,15 +1330,58 @@ def assign_diameters_with_ai(
     if not segments:
         return {}, {"segment_count": 0, "text_count": 0, "error": "Secilen layer'larda segment yok"}
 
-    if not texts:
-        return (
-            {s["id"]: "Belirtilmemis" for s in segments},
-            {"segment_count": len(segments), "text_count": 0, "note": "Hic cap text bulunamadi"},
-        )
+    # ── PASS 1: Spatial text-mapping (deterministic, ucretsiz) ──
+    text_seed_diameters = _assign_diameters_from_nearest_text(segments, texts)
+    pass1_count = len(text_seed_diameters)
 
-    # Her segment icin yakin text'leri mesafesiyle topla (3 text yeterli, 5 degil)
+    # ── PASS 2: Graph BFS inheritance (deterministic, ucretsiz) ──
+    # node_tol: _compute_tolerances'den gelen tipik degerin (~5-25) iki kati
+    # endpoint birlestirme icin yeterli buffer (fitting bosluklari)
+    propagated = _propagate_diameters_via_bfs(
+        segments, text_seed_diameters, node_tol=25.0,
+    )
+    pass2_count = sum(1 for v in propagated.values() if v[1])  # is_inherited=True olanlar
+
+    # Pass 1+2 sonucunu seg_diameters'a yaz (tuple format: (dia, is_inherited))
+    seg_diameters: dict[int, tuple[str, bool]] = dict(propagated)
+    # Pass 1 atadigi ama BFS'in seed olarak almadigi (sonuc'a almasi gerek):
+    # _propagate_diameters_via_bfs zaten seed'leri sonuca yaziyor — ekstra is yok.
+
+    # Hala bos kalan segmentleri belirle (AI'a sorulacak)
+    remaining = [s for s in segments if s["id"] not in seg_diameters]
+
+    info_base = {
+        "segment_count": len(segments),
+        "text_count": len(texts),
+        "pass1_text_count": pass1_count,
+        "pass2_inherit_count": pass2_count,
+        "pass3_ai_count": len(remaining),
+        "sprinkler_detection": {
+            "source": classify_info.get("source"),
+            "block_count": len(sprinkler_block_names),
+            "center_count": len(sp_centers),
+            "excluded_text_count": excluded_text_count,
+            "classify_cost_usd": classify_info.get("cost_usd", 0),
+        },
+    }
+
+    # Pass 1+2 her seyi karsiladiysa AI'a hic gitme — token kazan
+    if not remaining:
+        info_base["note"] = "Tum segmentler text-mapping + inheritance ile cozuldu, AI cagrilmadi"
+        return seg_diameters, info_base
+
+    # ── PASS 3: AI fallback — sadece bos kalanlari sor ──
+
+    if not texts:
+        # Text yok → AI'in bilgi tabani da yok, kalanlari "Belirtilmemis" yap
+        for s in remaining:
+            seg_diameters[s["id"]] = ("Belirtilmemis", False)
+        info_base["note"] = "Cap text bulunamadi, kalan segmentler 'Belirtilmemis'"
+        return seg_diameters, info_base
+
+    # Sadece bos kalanlar icin prompt_data uret
     prompt_data: list[dict] = []
-    for seg in segments:
+    for seg in remaining:
         near = _nearest_texts(seg, texts, max_count=3)
         prompt_data.append({
             "id": seg["id"],
@@ -1224,18 +1402,21 @@ def assign_diameters_with_ai(
                         api_key = line.split("=", 1)[1].strip().strip('"').strip("'")
                         break
     if not api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY .env dosyasinda bulunamadi")
+        # AI yok ama kalan segmentler var — onlari "Belirtilmemis" yap, hata firlatma
+        for s in remaining:
+            seg_diameters[s["id"]] = ("Belirtilmemis", False)
+        info_base["error"] = "ANTHROPIC_API_KEY yok, AI fallback atlandi"
+        return seg_diameters, info_base
 
     client = Anthropic(api_key=api_key)
 
     # Buyuk projelerde prompt token limitini (200K) asar — BATCH'lere bol
-    # Tek batch'te max ~400 segment (her segment ~200-300 token ile sinirli)
     BATCH_SIZE = 300
     batches: list[list[dict]] = []
     for i in range(0, len(prompt_data), BATCH_SIZE):
         batches.append(prompt_data[i : i + BATCH_SIZE])
 
-    diameters: dict[int, str] = {}
+    ai_diameters: dict[int, str] = {}
     total_in_tok = 0
     total_out_tok = 0
     errors: list[str] = []
@@ -1252,7 +1433,6 @@ def assign_diameters_with_ai(
             total_out_tok += response.usage.output_tokens
 
             response_text = response.content[0].text.strip()
-            # JSON extract
             json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', response_text, re.DOTALL)
             if json_match:
                 response_text = json_match.group(0)
@@ -1260,7 +1440,7 @@ def assign_diameters_with_ai(
             result = json.loads(response_text)
             for k, v in result.items():
                 try:
-                    diameters[int(k)] = str(v) if v else "Belirtilmemis"
+                    ai_diameters[int(k)] = str(v) if v else "Belirtilmemis"
                 except (ValueError, TypeError):
                     continue
         except json.JSONDecodeError as e:
@@ -1268,32 +1448,21 @@ def assign_diameters_with_ai(
         except Exception as e:
             errors.append(f"Batch {batch_idx}: {type(e).__name__} {str(e)[:100]}")
 
-    # Eksik segment'leri doldur
-    for seg in segments:
-        diameters.setdefault(seg["id"], "Belirtilmemis")
+    # AI sonuclarini merge et — AI ile atanan is_inherited=False (text-based AI karari)
+    for s in remaining:
+        dia = ai_diameters.get(s["id"], "Belirtilmemis")
+        seg_diameters[s["id"]] = (dia, False)
 
-    # Maliyet hesabi (Claude Sonnet 4.5: $3/M input, $15/M output)
     cost_usd = (total_in_tok * 3.0 + total_out_tok * 15.0) / 1_000_000
-
-    info = {
-        "segment_count": len(segments),
-        "text_count": len(texts),
+    info_base.update({
         "batch_count": len(batches),
         "input_tokens": total_in_tok,
         "output_tokens": total_out_tok,
         "cost_usd": round(cost_usd, 4),
         "cost_tl": round(cost_usd * 34, 2),
         "model": model,
-        # Auto-detect sprinkler bilgileri
-        "sprinkler_detection": {
-            "source": classify_info.get("source"),  # "ai" | "regex" | "cache"
-            "block_count": len(sprinkler_block_names),
-            "center_count": len(sp_centers),
-            "excluded_text_count": excluded_text_count,
-            "classify_cost_usd": classify_info.get("cost_usd", 0),
-        },
-    }
+    })
     if errors:
-        info["errors"] = errors
+        info_base["errors"] = errors
 
-    return diameters, info
+    return seg_diameters, info_base

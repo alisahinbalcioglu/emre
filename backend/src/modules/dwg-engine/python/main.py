@@ -431,17 +431,19 @@ def analyze_dxf_metraj(
 
             # AI'nin atayamadigi segment'leri layer-level default ile doldur
             # (metraj tablosunda da dogru gorulsun diye aggregation'dan ONCE uygulanir)
+            # seg_diameters artik tuple: (diameter, is_inherited)
             if layer_default_diameter_map:
                 for _sid, _seg in seg_map.items():
-                    if not seg_diameters.get(_sid):
+                    tup = seg_diameters.get(_sid)
+                    if not tup or not tup[0] or tup[0] == "Belirtilmemis":
                         _def = layer_default_diameter_map.get(_seg["layer"], "").strip()
                         if _def:
-                            seg_diameters[_sid] = _def
+                            seg_diameters[_sid] = (_def, False)  # default = manual, miras degil
 
             # Layer -> {diameter -> total_length} (m cinsinden)
             cap_totals: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
             cap_counts: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
-            for sid, dia in seg_diameters.items():
+            for sid, (dia, _is_inh) in seg_diameters.items():
                 seg = seg_map.get(sid)
                 if not seg:
                     continue
@@ -469,14 +471,17 @@ def analyze_dxf_metraj(
                     next_id += 1
                 l.segments = ai_segs
 
-            # Warning'e AI bilgisi ekle
+            # Warning'e cap atama pass istatistikleri (3-pass: text-map / BFS / AI)
             if "error" in ai_info:
-                warnings.append(f"AI Cap atama hatasi: {ai_info['error']}")
+                warnings.append(f"Cap atama hatasi: {ai_info['error']}")
             else:
+                cost_tl = ai_info.get('cost_tl', 0)
                 warnings.append(
-                    f"AI Cap: {ai_info['segment_count']} segment, "
-                    f"{ai_info['text_count']} cap text, "
-                    f"~{ai_info['cost_tl']} TL"
+                    f"Cap: {ai_info['segment_count']} segment, "
+                    f"{ai_info['text_count']} cap text "
+                    f"| Pass1 text-map: {ai_info.get('pass1_text_count', 0)} "
+                    f"| Pass2 inherit: {ai_info.get('pass2_inherit_count', 0)} "
+                    f"| Pass3 AI: {ai_info.get('pass3_ai_count', 0)} (~{cost_tl} TL)"
                 )
                 # Sprinkler tespit ozeti (auto_detect_sprinklers ciktisi)
                 sd = ai_info.get("sprinkler_detection") or {}
@@ -491,10 +496,12 @@ def analyze_dxf_metraj(
                         f"{sd.get('excluded_text_count')} etiket cap havuzundan dusuruldu"
                     )
 
-            # edge_segments'deki diameter'lari AI sonucuyla doldur
+            # edge_segments'deki diameter + is_inherited'i (text-map/BFS/AI) ile doldur
             for es in edge_segments:
-                if es.segment_id in seg_diameters:
-                    es.diameter = seg_diameters[es.segment_id] or ""
+                tup = seg_diameters.get(es.segment_id)
+                if tup:
+                    es.diameter = tup[0] or ""
+                    es.is_inherited = tup[1]
         except Exception as e:
             warnings.append(f"AI cap atama calistirilamadi: {str(e)[:150]}")
 

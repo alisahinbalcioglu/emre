@@ -63,6 +63,7 @@ class EdgeSegment(BaseModel):
     length: float = 0.0          # m (scale uygulanmis)
     coords: list[float] = []     # [x1, y1, x2, y2] — DXF world coords (run endpoint'leri)
     polyline: list[list[float]] = []  # [[x,y], ...] — chain'in gercek sekli
+    is_inherited: bool = False   # True = cap graph BFS ile komsu segmentten miras alindi
 
 
 class SprinklerDetectionInfo(BaseModel):
