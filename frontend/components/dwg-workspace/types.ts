@@ -19,6 +19,8 @@ export interface CalculatedLayer {
   materialType: string;
   defaultDiameter: string;
   edgeSegments: EdgeSegment[];
+  /** T-junction noktalari [x, y] — backend pipe_segments'ten. Canvas2D'de marker icin. */
+  junctionPoints: [number, number][];
   totalLength: number;
   computedAt: number;  // timestamp — sirayla gosterim icin
 }

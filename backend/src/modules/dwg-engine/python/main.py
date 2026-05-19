@@ -381,9 +381,15 @@ def analyze_dxf_metraj(
     # ── Edge segment'leri olustur (AI kullanilsa da kullanilmasa da) ──
     # Frontend Canvas2D viewer her edge'i cap bazli renklendirip tiklanabilir yapar.
     edge_segments: list[EdgeSegment] = []
+    junction_points: list[list[float]] = []
     if selected_layers:
         try:
-            from pipe_segments import _extract_segments as _edge_extract
+            from pipe_segments import (
+                _extract_segments as _edge_extract,
+                _extract_junction_points,
+                _compute_tolerances,
+                _collect_raw_edges_all_layers,
+            )
             _edges, _ = _edge_extract(
                 dxf_path, selected_layers,
                 sprinkler_layers=sprinkler_layers_manual,
@@ -401,6 +407,10 @@ def analyze_dxf_metraj(
                 )
                 for s in _edges
             ]
+            # T-junction marker'lari (frontend Canvas2D'de gosterilir)
+            _all_edges = _collect_raw_edges_all_layers(doc.modelspace())
+            _node_tol, _ = _compute_tolerances(_all_edges, unit_scale=scale)
+            junction_points = [list(p) for p in _extract_junction_points(_edges, _node_tol)]
         except Exception as _e:
             warnings.append(f"Edge segment cikarma: {str(_e)[:100]}")
 
@@ -418,6 +428,7 @@ def analyze_dxf_metraj(
         warnings=warnings,
         branch_points=branch_points,
         edge_segments=edge_segments,
+        junction_points=junction_points,
         sprinkler_detection=None,
     )
 

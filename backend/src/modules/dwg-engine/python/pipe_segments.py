@@ -710,3 +710,27 @@ def _extract_segments(
             "polyline": run.get("polyline", []),
         })
     return segments, sp_centers
+
+
+def _extract_junction_points(
+    segments: list[Segment],
+    node_tol: float,
+) -> list[tuple[float, float]]:
+    """Cikan segment'lerin endpoint'lerinden T-junction (degree>=3) noktalarini bul.
+
+    Frontend Canvas2D viewer'da kucuk marker olarak gosterilir → kullanici
+    her T noktasinda gercekten 3 ayri segment buluştugunu gorur.
+    """
+    from collections import defaultdict
+    endpoint_count: dict[tuple[float, float], list[tuple[float, float]]] = defaultdict(list)
+    for s in segments:
+        k1 = _node_key(s["x1"], s["y1"], node_tol)
+        k2 = _node_key(s["x2"], s["y2"], node_tol)
+        endpoint_count[k1].append((s["x1"], s["y1"]))
+        endpoint_count[k2].append((s["x2"], s["y2"]))
+    junctions: list[tuple[float, float]] = []
+    for k, coords_list in endpoint_count.items():
+        if len(coords_list) >= 3:
+            # Gercek koordinat (ilk gorulen) — node_key zaten quantize
+            junctions.append(coords_list[0])
+    return junctions

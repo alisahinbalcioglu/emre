@@ -104,6 +104,16 @@ export default function DwgProjectWorkspace({
     return map;
   }, [state.calculatedLayers]);
 
+  const calculatedJunctionsByLayer = useMemo(() => {
+    const map: Record<string, [number, number][]> = {};
+    for (const [layer, cl] of Object.entries(state.calculatedLayers)) {
+      if (cl.junctionPoints && cl.junctionPoints.length > 0) {
+        map[layer] = cl.junctionPoints;
+      }
+    }
+    return map;
+  }, [state.calculatedLayers]);
+
   const markedEquipmentKeys = useMemo(
     () => new Set(Object.keys(state.markedEquipments)),
     [state.markedEquipments]
@@ -160,6 +170,9 @@ export default function DwgProjectWorkspace({
 
       const data = res.data as any;
       const edgeSegs: EdgeSegment[] = Array.isArray(data.edge_segments) ? data.edge_segments : [];
+      const junctions: [number, number][] = Array.isArray(data.junction_points)
+        ? (data.junction_points as [number, number][])
+        : [];
       const totalLen = edgeSegs.reduce((sum, e) => sum + (e.length || 0), 0);
 
       const calcLayer: CalculatedLayer = {
@@ -168,6 +181,7 @@ export default function DwgProjectWorkspace({
         materialType: cfg.materialType,
         defaultDiameter: cfg.defaultDiameter,
         edgeSegments: edgeSegs,
+        junctionPoints: junctions,
         totalLength: totalLen,
         computedAt: Date.now(),
       };
@@ -175,7 +189,7 @@ export default function DwgProjectWorkspace({
 
       toast({
         title: 'Layer hesaplandı',
-        description: `${layer}: ${totalLen.toFixed(1)} m, ${edgeSegs.length} segment`,
+        description: `${layer}: ${totalLen.toFixed(1)} m, ${edgeSegs.length} segment, ${junctions.length} T-noktası`,
       });
     } catch (e: any) {
       // Tam error context'i console'a — toast kesiyor, F12 → Console'da tüm detay
@@ -356,6 +370,7 @@ export default function DwgProjectWorkspace({
           <DxfCanvasViewer
             fileId={fileId}
             calculatedEdgesByLayer={calculatedEdgesByLayer}
+            calculatedJunctionsByLayer={calculatedJunctionsByLayer}
             selectedLayer={state.selectedLayer}
             markedEquipmentKeys={markedEquipmentKeys}
             sprinklerLayers={new Set(state.sprinklerLayers)}

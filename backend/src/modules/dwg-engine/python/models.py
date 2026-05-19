@@ -73,4 +73,5 @@ class MetrajResult(BaseModel):
     warnings: list[str] = []
     branch_points: list[BranchPoint] = []
     edge_segments: list[EdgeSegment] = []  # her edge ayri — Canvas2D viewer icin
+    junction_points: list[list[float]] = []  # T-junction [x, y] noktalari (degree>=3, marker icin)
     sprinkler_detection: None = None  # Legacy field — AI sprinkler tespit kaldirildigi icin her zaman None

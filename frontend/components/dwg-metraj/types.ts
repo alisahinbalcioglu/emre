@@ -63,4 +63,7 @@ export interface MetrajResult {
   /** Ekipman listesi — workspace'te kütüphaneden/manuel işaretlenmiş INSERT'ler.
    *  Quotes/Excel/PDF ihracatları structured data buradan okur. */
   equipments?: MetrajEquipment[];
+  /** T-junction noktaları [x, y] — Canvas2D viewer'da marker olarak çizilir.
+   *  Her noktada >=3 segment buluşur. Backend pipe_segments._extract_junction_points'tan. */
+  junction_points?: [number, number][];
 }
