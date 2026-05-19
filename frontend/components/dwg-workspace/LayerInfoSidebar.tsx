@@ -111,14 +111,12 @@ export default function LayerInfoSidebar({
         <p className="mt-1 text-[10px] text-slate-500">AI&apos;nın atayamadığı segment&apos;ler bu çapla doldurulur.</p>
       </div>
 
-      {/* Bilgi: cap atama text-mapping + graph BFS inheritance ile otomatik
-          AI cagrisi kapatildi (Render free tier gateway timeout sebebiyle).
-          Pass1: en yakin cap text'i segmente atanir.
-          Pass2: graph BFS ile non-branching node'larda komsu segmente miras. */}
-      <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50/60 px-2.5 py-1.5">
-        <p className="text-[11px] font-medium text-emerald-900">Otomatik cap atama</p>
-        <p className="text-[10px] text-emerald-700 leading-relaxed">
-          Cizimdeki yazilardan otomatik okunur, T noktalarinda komsu segmente miras yapilir.
+      {/* Manuel cap atama notu — otomatik cap atama devre disi (Render perf). */}
+      <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50/60 px-2.5 py-1.5">
+        <p className="text-[11px] font-medium text-amber-900">Cap girisi: manuel</p>
+        <p className="text-[10px] text-amber-700 leading-relaxed">
+          Her layer icin yukaridaki &quot;Cap&quot; alanini doldurun — o layer'daki tum borular
+          bu capla isaretlenir.
         </p>
       </div>
 

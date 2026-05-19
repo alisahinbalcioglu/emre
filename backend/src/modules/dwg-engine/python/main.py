@@ -400,13 +400,13 @@ def analyze_dxf_metraj(
         except Exception as _e:
             warnings.append(f"Edge segment cikarma: {str(_e)[:100]}")
 
-    # ── Cap Atama: text-map + BFS inheritance her zaman, AI opsiyonel ──
-    # use_ai_diameter parametresi SADECE Pass 3 (AI fallback) kontrol eder.
-    # Pass 1 (spatial nearest text) + Pass 2 (graph BFS) her zaman calisir
-    # (deterministic + ucretsiz). Render free tier'da AI gateway timeout'a
-    # takiliyordu — varsayilan kullanima AI off ile yeterli sonuc.
+    # ── AI Cap Atama (opsiyonel) ──
+    # KARAR: AI kullanmiyoruz (Render free tier gateway timeout). Pass 1+2
+    # (text-map + BFS) AI'siz bile 70sn ekliyor — toplam 138sn -> 503.
+    # Cozum: tamamen elle layer-level cap girme (defaultDiameter ile).
+    # use_ai_diameter=True iken tum 3-pass calisir (development/test icin korundu).
     sprinkler_detection_info: dict | None = None
-    if selected_layers:
+    if use_ai_diameter and selected_layers:
         try:
             from ai_diameter import assign_diameters_with_ai
 
@@ -419,7 +419,7 @@ def analyze_dxf_metraj(
                 dxf_path, selected_layers, hat_tipi_hint=_hat_hint,
                 sprinkler_layers=sprinkler_layers_manual,
                 doc=doc,  # PERF: tek readfile paylasimi
-                use_ai=use_ai_diameter,  # False -> Pass 3 atlanir, Pass 1+2 calisir
+                use_ai=True,  # use_ai_diameter=True iken AI da dahil
             )
 
             # Her segment'i kendi cap'iyla birlikte, layer bazinda grupla
