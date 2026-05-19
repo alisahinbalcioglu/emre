@@ -384,7 +384,12 @@ def analyze_dxf_metraj(
     if selected_layers:
         try:
             from pipe_segments import _extract_segments as _edge_extract
-            _edges, _ = _edge_extract(dxf_path, selected_layers, sprinkler_layers=sprinkler_layers_manual)
+            _edges, _ = _edge_extract(
+                dxf_path, selected_layers,
+                sprinkler_layers=sprinkler_layers_manual,
+                unit_scale=scale,
+                doc=doc,
+            )
             edge_segments = [
                 EdgeSegment(
                     segment_id=s["id"],

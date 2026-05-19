@@ -49,22 +49,37 @@ def _node_key(x: float, y: float, tol: float = _NODE_TOL) -> tuple[float, float]
     return (round(x / tol) * tol, round(y / tol) * tol)
 
 
-def _compute_tolerances(edges: list[dict]) -> tuple[float, float]:
+def _compute_tolerances(
+    edges: list[dict],
+    unit_scale: float = 0.001,
+) -> tuple[float, float]:
     """Edge length median'ina gore adaptif node/sprinkler tolerans hesapla.
 
-    - node_tol: boru endpoint snap — dar tutulur, `max(1.0, median*0.01)` ~ %1.
-    - sprinkler_tol: sprinkler sembolu merkezi boru ucundan biraz uzakta
-      olabilir; sembol boyutu genelde median'in %20-30'u kadar — bu yuzden
-      `max(25.0, median*0.25)` alinir.
-    Alt sinirlar cok kucuk olceklerde (mimari birim-mm) koruma saglar.
+    PRD v2.0 — "Snap & Split" ve "En Yakin Noktaya Izdusum" algoritmalari icin:
+    - node_tol (Te yaklasma): PRD epsilon = 5cm. Minimum 5cm world-unit.
+      Mikro bosluklar (gap) ve overshoot durumlarinda dikey bransh endpoint'i
+      yatay ana hatta tam degmiyorsa, bu tolerance icinde yakalanir.
+    - sprinkler_tol (izdusum mesafesi): sprinkler block'lar borunun *yakinindadir*
+      ama uzerinde olmayabilir. Default 20cm world-unit, edge median'a gore
+      buyuyebilir. Yangin tesisat semasinda sprinkler sembolleri 5-20cm
+      uzaklikta yerlestirilebilir.
+
+    Parametreler:
+      unit_scale: DWG birim -> metre carpani (mm=0.001, cm=0.01, m=1.0).
+        World-unit cinsinden 5cm = 0.05 / unit_scale. Default mm varsayilir.
     """
+    # PRD epsilon = 5cm world-unit cinsinden
+    epsilon_world = 0.05 / max(unit_scale, 1e-9)   # mm: 50, cm: 5, m: 0.05
+    # Sprinkler block borunun yakininda (5-25cm typical) — sabit 25cm tolerance
+    # (median'a baglandiginda buyuk hatlarda yanlis pozitif yapiyor)
+    sprinkler_world = 0.25 / max(unit_scale, 1e-9)  # mm: 250, cm: 25, m: 0.25
+
     if not edges:
-        return _NODE_TOL, _SPRINKLER_TOL
-    lens = sorted(e["length"] for e in edges)
-    median = lens[len(lens) // 2]
-    node_tol = max(1.0, median * 0.01)
-    # Docstring ile uyumlu — eski deger (0.5) 50m hat icin 25m tolerance veriyordu.
-    sprinkler_tol = max(25.0, median * 0.25)
+        return max(_NODE_TOL, epsilon_world), max(_SPRINKLER_TOL, sprinkler_world)
+    # PRD epsilon: sabit 5cm — median'a baglamak yanlis pozitif yapiyor
+    # (162cm median ile %5 = 8cm tolerance ile yanlis Te tespitleri olusuyor)
+    node_tol = epsilon_world
+    sprinkler_tol = sprinkler_world
     return node_tol, sprinkler_tol
 
 
@@ -606,11 +621,16 @@ def _extract_segments(
     sprinkler_layers: list[str] | None = None,
     sprinkler_block_names: set[str] | None = None,
     all_pipe_layers: list[str] | None = None,
+    unit_scale: float = 0.001,
     doc=None,
 ) -> tuple[list[Segment], list[tuple[float, float]]]:
     """Secilen boru layer'larindan topology-aware pipe-run segment'leri uret.
 
-    Her segment = bir pipe-run (iki junction/terminal/sprinkler arasinda).
+    PRD v2.0 destegi:
+    - Snap & Split: dikey bransh endpoint'i yatay ana hatta tam degmiyorsa
+      (mikro bosluk veya overshoot), node_tol icinde otomatik yakalanir.
+    - Sprinkler izdusum: sprinkler block borunun yakininda (5-20cm) ise,
+      en yakin LINE'a izdusumden bolme yapilir.
 
     Parametreler:
       pipe_layers: SEGMENT ciktisi bu layer'lardan uretilir (secilen layer'lar)
@@ -619,9 +639,9 @@ def _extract_segments(
         alani kalmadi ama backward-compat icin signature'da tutuldu)
       all_pipe_layers: TOPOLOGY hesabi icin kullanilacak tum boru layer'lari.
         None ise: DXF'teki LINE/POLYLINE iceren tum layer'lar otomatik tespit
-        edilir → cross-layer T-junction yakalanir (yatay ana hat farkli
-        layer'daki dikey bransh ile orta noktada birlesirse parcalanir).
-        Ciktidaki run'lar yine sadece pipe_layers'tan gelir.
+        edilir → cross-layer T-junction yakalanir.
+      unit_scale: DWG birim -> metre carpani (mm=0.001 default, cm=0.01, m=1.0).
+        Tolerance hesabinda PRD epsilon=5cm world-unit'e cevrilir.
 
     Returns:
       (segments, sprinkler_centers) — sprinkler_centers ham (cx, cy) listesi.
@@ -644,10 +664,10 @@ def _extract_segments(
     if not edges:
         return [], []
 
-    # Adaptif tolerance — edge median'ina gore olcek-bagimsiz
-    node_tol, sprinkler_tol = _compute_tolerances(edges)
+    # PRD v2.0 — scale-aware adaptif tolerance (min 5cm node_tol, min 20cm sprinkler_tol)
+    node_tol, sprinkler_tol = _compute_tolerances(edges, unit_scale=unit_scale)
     # Virtual tee tespiti — LINE ortasindaki endpoint degmelerini yeni edge olarak ayir
-    # (tum boru layer'lari dahil → cross-layer T yakalanir)
+    # (tum boru layer'lari dahil → cross-layer T yakalanir; node_tol gap'leri yakalar)
     edges = _split_edges_on_intersections(edges, node_tol)
 
     # Sprinkler merkezleri LINE orta kisminda ise LINE'i o noktada bol
