@@ -592,6 +592,30 @@ export default function DxfCanvasViewer({
         }
       }
 
+      // ─── T-junction noktalari (gorsel ayraq) ──────────────────────
+      // 866 segment hepsi tek path'te ve ayni renkte cizildigi icin gorsel
+      // olarak tek parca gibi gozukur. Junction'larda kucuk yari-seffaf nokta
+      // koy → kullanici hangi noktada segment'in degistigini anlar.
+      // (Hover'da daha belirgin mavi marker zaten cizilir.)
+      if (calculatedJunctionsByLayer) {
+        const allJunctions: [number, number][] = [];
+        for (const [layer, pts] of Object.entries(calculatedJunctionsByLayer)) {
+          if (hiddenLayers?.has(layer) || dimmedLayers?.has(layer)) continue;
+          allJunctions.push(...pts);
+        }
+        if (allJunctions.length > 0) {
+          const r = 2.5 / viewport.zoom;
+          ctx.globalAlpha = 0.55;
+          ctx.fillStyle = '#94a3b8';  // slate-400, dikkat dagitmaz
+          for (const [jx, jy] of allJunctions) {
+            ctx.beginPath();
+            ctx.arc(jx, jy, r, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.globalAlpha = 1;
+        }
+      }
+
       // ─── HOVER overlay (amber glow + 2x stroke) ───────────────────
       if (hovered) {
         ctx.strokeStyle = COLOR_HOVER;
@@ -611,6 +635,27 @@ export default function DxfCanvasViewer({
         ctx.stroke();
         ctx.shadowBlur = 0;
         ctx.shadowColor = 'transparent';
+
+        // Edge segment ise — segment'in iki ucunda mavi nokta marker'i
+        // (kullanici T noktasinda nerede ayrildigini gorsun)
+        if (hovered.type === 'edge') {
+          const markerR = 4 / viewport.zoom;
+          const borderW = 1.5 / viewport.zoom;
+          const endpoints: [number, number][] = hovered.polyline && hovered.polyline.length >= 2
+            ? [hovered.polyline[0] as [number, number], hovered.polyline[hovered.polyline.length - 1] as [number, number]]
+            : [[hovered.coords[0], hovered.coords[1]], [hovered.coords[2], hovered.coords[3]]];
+          ctx.globalAlpha = 1;
+          for (const [ex, ey] of endpoints) {
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(ex, ey, markerR + borderW, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#3b82f6';  // brand blue
+            ctx.beginPath();
+            ctx.arc(ex, ey, markerR, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
       }
 
       // ─── SELECTED overlay (brand blue + 2.5x stroke + bigger glow) ──
