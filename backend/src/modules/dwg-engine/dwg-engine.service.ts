@@ -231,8 +231,11 @@ export class DwgEngineService {
 
       if (!response.ok) {
         const error = await response.text();
+        // Engine bos body donduyse '(empty body)' marker - debug icin
+        const display = error?.trim() ? error : `(empty body, HTTP ${response.status})`;
+        this.logger.error(`[parseDwg] ${response.status} from engine: ${display}`);
         throw new HttpException(
-          `DWG Engine hatasi: ${error}`,
+          `DWG Engine hatasi [${response.status}]: ${display}`,
           // 429 (CF rate limit) + 5xx → SERVICE_UNAVAILABLE — frontend retry yapsin.
           // 4xx (validation, missing file) → UNPROCESSABLE_ENTITY — kalici hata.
           response.status >= 500 || response.status === 429
