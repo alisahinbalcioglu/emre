@@ -16,7 +16,7 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { Eye, EyeOff, Lightbulb, LightbulbOff, Layers, ChevronDown, ChevronRight, CheckCircle2 } from 'lucide-react';
+import { Eye, EyeOff, Lightbulb, LightbulbOff, Layers, ChevronDown, ChevronRight, CheckCircle2, Droplets } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface LayerVisibilityPanelProps {
@@ -28,8 +28,12 @@ interface LayerVisibilityPanelProps {
   calculatedLayers?: Set<string>;
   /** Layer -> atanmış çap haritası (defaultDiameter) — rozet göstermek için */
   layerDiameters?: Record<string, string>;
+  /** Sprinkler olarak işaretli layer'lar — cap atama hesabında T noktası kaynağı olur */
+  sprinklerLayers?: string[];
   onToggle: (layer: string) => void;
   onToggleDimmed: (layer: string) => void;
+  /** Layer'ı sprinkler işaretle/kaldır (panel'den) */
+  onToggleSprinkler?: (layer: string) => void;
   onShowAll: () => void;
   onShowAllDimmed: () => void;
   /** Layer adına tıklanırsa: seç + çap popup'ını aç. clientX/Y popup pozisyonu için. */
@@ -43,8 +47,10 @@ export default function LayerVisibilityPanel({
   selectedLayer,
   calculatedLayers,
   layerDiameters,
+  sprinklerLayers,
   onToggle,
   onToggleDimmed,
+  onToggleSprinkler,
   onShowAll,
   onShowAllDimmed,
   onLayerSelect,
@@ -53,6 +59,7 @@ export default function LayerVisibilityPanel({
 
   const hiddenSet = useMemo(() => new Set(hiddenLayers), [hiddenLayers]);
   const dimmedSet = useMemo(() => new Set(dimmedLayers), [dimmedLayers]);
+  const sprinklerSet = useMemo(() => new Set(sprinklerLayers ?? []), [sprinklerLayers]);
   const sortedLayers = useMemo(
     () => [...availableLayers].sort((a, b) => a.localeCompare(b)),
     [availableLayers],
@@ -85,7 +92,7 @@ export default function LayerVisibilityPanel({
         <div>
           <div className="border-b bg-slate-50/50 px-3 py-1.5">
             <p className="text-[10px] text-slate-500">
-              <span className="font-mono">👁️</span> Göz: gizle/göster · <span className="font-mono">💡</span> Işık: solgunlaş/parlat (tıklanamaz) · <span className="font-mono">Ad</span>: seç + çap gir
+              <span className="font-mono">👁️</span> Göz: gizle/göster · <span className="font-mono">💡</span> Işık: solgunlaş/parlat · <span className="font-mono">💧</span> Sprinkler işaretle · <span className="font-mono">Ad</span>: seç + çap gir
             </p>
           </div>
 
@@ -114,6 +121,7 @@ export default function LayerVisibilityPanel({
             {sortedLayers.map((layer) => {
               const isHidden = hiddenSet.has(layer);
               const isDimmed = dimmedSet.has(layer);
+              const isSprinkler = sprinklerSet.has(layer);
               const isSelected = selectedLayer === layer;
               const isCalculated = calculatedLayers?.has(layer) ?? false;
               const assignedDiameter = layerDiameters?.[layer];
@@ -155,6 +163,27 @@ export default function LayerVisibilityPanel({
                         <Lightbulb className={cn('h-4 w-4', isHidden ? 'text-slate-300' : 'text-amber-500')} />
                       )}
                     </button>
+
+                    {/* Damla ikonu — sprinkler işaretle/kaldır */}
+                    {onToggleSprinkler && (
+                      <button
+                        type="button"
+                        onClick={() => onToggleSprinkler(layer)}
+                        className="shrink-0 rounded p-1.5 hover:bg-cyan-100"
+                        title={
+                          isSprinkler
+                            ? 'Sprinkler işaretini kaldır'
+                            : 'Bu layer sprinkler (her CIRCLE/INSERT/POINT T noktasıdır)'
+                        }
+                      >
+                        <Droplets
+                          className={cn(
+                            'h-4 w-4',
+                            isSprinkler ? 'text-cyan-600' : 'text-slate-300',
+                          )}
+                        />
+                      </button>
+                    )}
 
                     {/* Sağ: layer adı + rozet — seç + popup aç */}
                     <button

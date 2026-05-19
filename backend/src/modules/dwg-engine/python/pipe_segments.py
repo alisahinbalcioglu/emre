@@ -543,41 +543,75 @@ def _group_into_runs(
 
 # ── Ana API ──────────────────────────────────────────────────────
 
+def _collect_all_pipe_layers(msp) -> set[str]:
+    """DXF modelspace'deki LINE/LWPOLYLINE/POLYLINE iceren tum layer'lari topla.
+
+    Cross-layer T-junction tespiti icin: yatay ana hat (layer A) ile dikey
+    bransh hatlari (layer B) ayri layer'lardaysa bile, ikisinin node'lari
+    ortak grid'e toplansin ki orta nokta T olarak yakalansin.
+
+    Sadece pipe-benzeri entity'ler (LINE/POLYLINE) dahil — TEXT/INSERT/CIRCLE
+    layer'lari dahil edilmez, cunku onlar topology'ye katki saglamaz.
+    """
+    layers: set[str] = set()
+    for ent in msp.query('LINE'):
+        layers.add(ent.dxf.layer)
+    for ent in msp.query('LWPOLYLINE'):
+        layers.add(ent.dxf.layer)
+    for ent in msp.query('POLYLINE'):
+        layers.add(ent.dxf.layer)
+    return layers
+
+
 def _extract_segments(
     dxf_path: str,
     pipe_layers: list[str],
     sprinkler_layers: list[str] | None = None,
     sprinkler_block_names: set[str] | None = None,
+    all_pipe_layers: list[str] | None = None,
     doc=None,
 ) -> tuple[list[Segment], list[tuple[float, float]]]:
     """Secilen boru layer'larindan topology-aware pipe-run segment'leri uret.
 
     Her segment = bir pipe-run (iki junction/terminal/sprinkler arasinda).
 
-    Sprinkler tespiti iki kaynaktan gelir:
-      - sprinkler_layers (kullanici manuel) — entity tipiyle filtre
-      - sprinkler_block_names — layer-agnostik (kullanim alani kalmadi ama
-        backward-compat icin signature'da tutuldu)
+    Parametreler:
+      pipe_layers: SEGMENT ciktisi bu layer'lardan uretilir (secilen layer'lar)
+      sprinkler_layers: kullanici manuel sprinkler isaretledigi layer'lar
+      sprinkler_block_names: layer-agnostik sprinkler block adlari (kullanim
+        alani kalmadi ama backward-compat icin signature'da tutuldu)
+      all_pipe_layers: TOPOLOGY hesabi icin kullanilacak tum boru layer'lari.
+        None ise: DXF'teki LINE/POLYLINE iceren tum layer'lar otomatik tespit
+        edilir → cross-layer T-junction yakalanir (yatay ana hat farkli
+        layer'daki dikey bransh ile orta noktada birlesirse parcalanir).
+        Ciktidaki run'lar yine sadece pipe_layers'tan gelir.
 
     Returns:
       (segments, sprinkler_centers) — sprinkler_centers ham (cx, cy) listesi.
 
-    PERF: doc opsiyonel — caller'dan paylasilirsa tekrar ezdxf.readfile YOK
-    (Render free tier'da 30sn tasarruf, gateway timeout altinda kalmak icin).
+    PERF: doc opsiyonel — caller'dan paylasilirsa tekrar ezdxf.readfile YOK.
     """
     if doc is None:
         from converter import read_dxf
         doc = read_dxf(dxf_path)
     msp = doc.modelspace()
-    layer_set = set(pipe_layers)
 
-    edges = _collect_raw_edges(msp, layer_set)
+    # Topology icin tum boru layer'lari (cross-layer T tespiti)
+    if all_pipe_layers is not None:
+        topology_layer_set = set(all_pipe_layers)
+    else:
+        topology_layer_set = _collect_all_pipe_layers(msp)
+    # Selected mutlaka dahil olsun (caller bilmediyse bile)
+    topology_layer_set |= set(pipe_layers)
+
+    edges = _collect_raw_edges(msp, topology_layer_set)
     if not edges:
         return [], []
 
     # Adaptif tolerance — edge median'ina gore olcek-bagimsiz
     node_tol, sprinkler_tol = _compute_tolerances(edges)
     # Virtual tee tespiti — LINE ortasindaki endpoint degmelerini yeni edge olarak ayir
+    # (tum boru layer'lari dahil → cross-layer T yakalanir)
     edges = _split_edges_on_intersections(edges, node_tol)
 
     # Sprinkler merkezleri LINE orta kisminda ise LINE'i o noktada bol
@@ -602,8 +636,15 @@ def _extract_segments(
     sprinkler_keys |= split_sprinkler_keys
     runs = _group_into_runs(edges, graph, sprinkler_keys, node_tol)
 
+    # SEGMENT ciktisi sadece secilen layer'lardan
+    # (diger layer'lar topology icin gerekli ama metraj'a girmesin)
+    selected_set = set(pipe_layers)
     segments: list[Segment] = []
-    for sid, run in enumerate(runs, start=1):
+    sid = 0
+    for run in runs:
+        if run["layer"] not in selected_set:
+            continue
+        sid += 1
         segments.append({
             "id": sid,
             "layer": run["layer"],

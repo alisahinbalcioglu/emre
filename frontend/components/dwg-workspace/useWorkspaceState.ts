@@ -152,6 +152,19 @@ export function useWorkspaceState(fileId: string, scale: number) {
     setState((s) => ({ ...s, sprinklerLayers: s.sprinklerLayers.filter((l) => l !== layer) }));
   }, []);
 
+  /** Layer'i sprinkler listesinde toggle et (panel'den dogrudan, sembol tiklamadan). */
+  const toggleSprinklerLayer = useCallback((layer: string) => {
+    setState((s) => {
+      const has = s.sprinklerLayers.includes(layer);
+      return {
+        ...s,
+        sprinklerLayers: has
+          ? s.sprinklerLayers.filter((l) => l !== layer)
+          : [...s.sprinklerLayers, layer],
+      };
+    });
+  }, []);
+
   /** Layer'i gosterimden cikar/geri al. Sadece viewer goruntusunu etkiler;
    *  hesaplanmis metrajlar ve config korunur. */
   const toggleLayerVisibility = useCallback((layer: string) => {
@@ -200,6 +213,7 @@ export function useWorkspaceState(fileId: string, scale: number) {
     setLastClickedLayer,
     confirmSprinklerLayer,
     removeSprinklerLayer,
+    toggleSprinklerLayer,
     toggleLayerVisibility,
     showAllLayers,
     toggleLayerDimmed,

@@ -44,7 +44,7 @@ export default function DwgProjectWorkspace({
     addCalculatedLayer, removeCalculatedLayer,
     updateEdgeSegmentDiameter,
     beginEditEquipment, cancelEditEquipment, saveEquipment, removeEquipment,
-    setLastClickedLayer, confirmSprinklerLayer, removeSprinklerLayer,
+    setLastClickedLayer, confirmSprinklerLayer, removeSprinklerLayer, toggleSprinklerLayer,
     toggleLayerVisibility, showAllLayers,
     toggleLayerDimmed, showAllDimmed,
   } = useWorkspaceState(fileId, scale);
@@ -424,8 +424,10 @@ export default function DwgProjectWorkspace({
             selectedLayer={state.selectedLayer}
             calculatedLayers={calculatedLayerNames}
             layerDiameters={layerDiametersMap}
+            sprinklerLayers={state.sprinklerLayers}
             onToggle={toggleLayerVisibility}
             onToggleDimmed={toggleLayerDimmed}
+            onToggleSprinkler={toggleSprinklerLayer}
             onShowAll={showAllLayers}
             onShowAllDimmed={showAllDimmed}
             onLayerSelect={(layer, x, y) => {
