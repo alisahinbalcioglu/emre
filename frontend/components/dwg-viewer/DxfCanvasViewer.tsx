@@ -241,11 +241,20 @@ export default function DxfCanvasViewer({
 
   // ─── Spatial index (rbush) ────────────────────────────────────────
   // 26K cizgide hover/click O(log N). Build O(N) — geometry degisince yeniden.
+  //
+  // KRITIK: hesaplanmis layer'larin RAW LINE'lari index'e EKLENMEZ — aksi
+  // halde click hit-test uzun raw LWPOLYLINE'a (50m) duser, kucuk edge
+  // segment'lere degil. Bu sayede T'den once/sonra ayri segment secilebilir.
   const spatialIndex = useMemo<RBush<SpatialEntry>>(() => {
     const tree = new RBush<SpatialEntry>();
     const items: SpatialEntry[] = [];
+    const skipRawLayers = calculatedEdgesByLayer
+      ? new Set(Object.keys(calculatedEdgesByLayer))
+      : null;
     if (geometry) {
       geometry.lines.forEach((ln, i) => {
+        // Hesaplanmis layer ise raw LINE'lari atla (edge_segments'i kullaniliyor)
+        if (skipRawLayers?.has(ln.layer)) return;
         const [x1, y1, x2, y2] = ln.coords;
         items.push({
           minX: Math.min(x1, x2), maxX: Math.max(x1, x2),
@@ -284,7 +293,7 @@ export default function DxfCanvasViewer({
     }
     tree.load(items);
     return tree;
-  }, [geometry, allEdgeSegments]);
+  }, [geometry, allEdgeSegments, calculatedEdgesByLayer]);
 
   // Hidden/dimmed layer degisince hover/selected gecersiz olabilir, temizle
   useEffect(() => {
