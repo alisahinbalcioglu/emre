@@ -134,19 +134,6 @@ export function useWorkspaceState(fileId: string, scale: number) {
     setState((s) => s.lastClickedLayer === layer ? s : { ...s, lastClickedLayer: layer });
   }, []);
 
-  /** Aday layer'i (lastClickedLayer) sprinkler listesine ekle/cikar (toggle). */
-  const confirmSprinklerLayer = useCallback(() => {
-    setState((s) => {
-      const layer = s.lastClickedLayer;
-      if (!layer) return s;
-      const has = s.sprinklerLayers.includes(layer);
-      const next = has
-        ? s.sprinklerLayers.filter((l) => l !== layer)
-        : [...s.sprinklerLayers, layer];
-      return { ...s, sprinklerLayers: next };
-    });
-  }, []);
-
   /** Belirli bir sprinkler layer'i listeden kaldir. */
   const removeSprinklerLayer = useCallback((layer: string) => {
     setState((s) => ({ ...s, sprinklerLayers: s.sprinklerLayers.filter((l) => l !== layer) }));
@@ -211,7 +198,6 @@ export function useWorkspaceState(fileId: string, scale: number) {
     saveEquipment,
     removeEquipment,
     setLastClickedLayer,
-    confirmSprinklerLayer,
     removeSprinklerLayer,
     toggleSprinklerLayer,
     toggleLayerVisibility,

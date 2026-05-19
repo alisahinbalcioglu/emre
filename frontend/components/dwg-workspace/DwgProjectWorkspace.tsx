@@ -44,7 +44,7 @@ export default function DwgProjectWorkspace({
     addCalculatedLayer, removeCalculatedLayer,
     updateEdgeSegmentDiameter,
     beginEditEquipment, cancelEditEquipment, saveEquipment, removeEquipment,
-    setLastClickedLayer, confirmSprinklerLayer, removeSprinklerLayer, toggleSprinklerLayer,
+    setLastClickedLayer, removeSprinklerLayer, toggleSprinklerLayer,
     toggleLayerVisibility, showAllLayers,
     toggleLayerDimmed, showAllDimmed,
   } = useWorkspaceState(fileId, scale);
@@ -222,22 +222,9 @@ export default function DwgProjectWorkspace({
   };
 
   const handleCircleClick = (c: { layer: string; circleIndex: number; center: [number, number]; radius: number }) => {
-    // Sadece aday olarak kaydet — kullanici sag panel'deki "Sprinkler Yap" butonu ile onaylar.
+    // Sembole tiklayinca son tiklanan layer'i kaydet (genel amac).
+    // Sprinkler isaretleme artik LayerVisibilityPanel'de damla ikonuyla yapilir.
     setLastClickedLayer(c.layer);
-  };
-
-  const handleConfirmSprinkler = () => {
-    const layer = state.lastClickedLayer;
-    if (!layer) {
-      toast({ title: 'Once bir sembole tikla', description: 'Ekrandan herhangi bir sprinkler sembolune tiklayin.', variant: 'destructive' });
-      return;
-    }
-    const wasIn = state.sprinklerLayers.includes(layer);
-    confirmSprinklerLayer();
-    toast({
-      title: wasIn ? 'Sprinkler layer kaldirildi' : 'Sprinkler layer eklendi',
-      description: `${layer}${!wasIn ? ' — hesaplamada sprinkler olarak kullanilacak.' : ''}`,
-    });
   };
 
   const handleConfirmAll = () => {

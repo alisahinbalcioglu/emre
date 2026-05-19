@@ -131,7 +131,8 @@ export default function LayerVisibilityPanel({
                     className={cn(
                       'group flex w-full items-center gap-1 px-2 transition-colors',
                       isSelected && 'bg-blue-100',
-                      !isSelected && 'hover:bg-blue-50',
+                      !isSelected && !isSprinkler && 'hover:bg-blue-50',
+                      !isSelected && isSprinkler && 'bg-cyan-50/50 hover:bg-cyan-100/60',
                       isHidden && !isSelected && 'bg-slate-50',
                     )}
                   >

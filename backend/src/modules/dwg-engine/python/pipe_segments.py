@@ -63,7 +63,8 @@ def _compute_tolerances(edges: list[dict]) -> tuple[float, float]:
     lens = sorted(e["length"] for e in edges)
     median = lens[len(lens) // 2]
     node_tol = max(1.0, median * 0.01)
-    sprinkler_tol = max(25.0, median * 0.5)
+    # Docstring ile uyumlu — eski deger (0.5) 50m hat icin 25m tolerance veriyordu.
+    sprinkler_tol = max(25.0, median * 0.25)
     return node_tol, sprinkler_tol
 
 
@@ -543,24 +544,60 @@ def _group_into_runs(
 
 # ── Ana API ──────────────────────────────────────────────────────
 
-def _collect_all_pipe_layers(msp) -> set[str]:
-    """DXF modelspace'deki LINE/LWPOLYLINE/POLYLINE iceren tum layer'lari topla.
+def _collect_raw_edges_all_layers(msp) -> list[dict]:
+    """Tum LINE+LWPOLYLINE+POLYLINE edge'lerini topla (layer filtresi YOK).
 
-    Cross-layer T-junction tespiti icin: yatay ana hat (layer A) ile dikey
-    bransh hatlari (layer B) ayri layer'lardaysa bile, ikisinin node'lari
-    ortak grid'e toplansin ki orta nokta T olarak yakalansin.
-
-    Sadece pipe-benzeri entity'ler (LINE/POLYLINE) dahil — TEXT/INSERT/CIRCLE
-    layer'lari dahil edilmez, cunku onlar topology'ye katki saglamaz.
+    `_collect_raw_edges`'in layer-bagimsiz versiyonu — cross-layer T-junction
+    tespiti icin tek bir scan'de tum boru layer'larinin edge'lerini toplar
+    (cift tarama yerine).
     """
-    layers: set[str] = set()
+    edges: list[dict] = []
     for ent in msp.query('LINE'):
-        layers.add(ent.dxf.layer)
+        try:
+            x1, y1 = float(ent.dxf.start.x), float(ent.dxf.start.y)
+            x2, y2 = float(ent.dxf.end.x), float(ent.dxf.end.y)
+        except Exception:
+            continue
+        length = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+        if length < 1.0:
+            continue
+        edges.append({"layer": ent.dxf.layer, "x1": x1, "y1": y1, "x2": x2, "y2": y2, "length": length})
+
     for ent in msp.query('LWPOLYLINE'):
-        layers.add(ent.dxf.layer)
+        try:
+            pts = [(float(p[0]), float(p[1])) for p in ent.get_points(format='xy')]
+        except Exception:
+            continue
+        if len(pts) < 2:
+            continue
+        for i in range(len(pts) - 1):
+            x1, y1 = pts[i]
+            x2, y2 = pts[i + 1]
+            length = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+            if length < 1.0:
+                continue
+            edges.append({"layer": ent.dxf.layer, "x1": x1, "y1": y1, "x2": x2, "y2": y2, "length": length})
+        if getattr(ent, "closed", False) and len(pts) > 2:
+            x1, y1 = pts[-1]
+            x2, y2 = pts[0]
+            length = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+            if length >= 1.0:
+                edges.append({"layer": ent.dxf.layer, "x1": x1, "y1": y1, "x2": x2, "y2": y2, "length": length})
+
     for ent in msp.query('POLYLINE'):
-        layers.add(ent.dxf.layer)
-    return layers
+        try:
+            pts = [(float(v.dxf.location.x), float(v.dxf.location.y)) for v in ent.vertices]
+        except Exception:
+            continue
+        for i in range(len(pts) - 1):
+            x1, y1 = pts[i]
+            x2, y2 = pts[i + 1]
+            length = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+            if length < 1.0:
+                continue
+            edges.append({"layer": ent.dxf.layer, "x1": x1, "y1": y1, "x2": x2, "y2": y2, "length": length})
+
+    return edges
 
 
 def _extract_segments(
@@ -596,15 +633,14 @@ def _extract_segments(
         doc = read_dxf(dxf_path)
     msp = doc.modelspace()
 
-    # Topology icin tum boru layer'lari (cross-layer T tespiti)
+    # Topology icin edge'leri topla — cross-layer T tespiti icin tum boru
+    # layer'larini dahil et. all_pipe_layers verilmemisse layer-bagimsiz tek
+    # scan yapilir (cift tarama olmasin diye).
     if all_pipe_layers is not None:
-        topology_layer_set = set(all_pipe_layers)
+        topology_layer_set = set(all_pipe_layers) | set(pipe_layers)
+        edges = _collect_raw_edges(msp, topology_layer_set)
     else:
-        topology_layer_set = _collect_all_pipe_layers(msp)
-    # Selected mutlaka dahil olsun (caller bilmediyse bile)
-    topology_layer_set |= set(pipe_layers)
-
-    edges = _collect_raw_edges(msp, topology_layer_set)
+        edges = _collect_raw_edges_all_layers(msp)
     if not edges:
         return [], []
 
