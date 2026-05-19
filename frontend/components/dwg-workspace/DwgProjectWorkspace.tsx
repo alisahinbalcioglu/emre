@@ -226,9 +226,14 @@ export default function DwgProjectWorkspace({
     }
     setLastClickedLayer(line.layer);
     selectLayer(line.layer);
-    // Cap popup'ini tiklanan konumda ac. Apply edince layer'in defaultDiameter'i
-    // guncellenir, hesaplama bu degeri kullanir.
+    // Cap popup'ini tiklanan konumda ac.
     setDiameterPopup({ layer: line.layer, x: line.screenX, y: line.screenY });
+    // ARKA PLANDA OTOMATIK HESAPLA — kullanici cap girmeden de T noktalarinda
+    // bolunme aktif olsun, her segment ayri secilebilir hale gelsin.
+    // (Cap popup kapatilirsa bile hesaplama zaten yapilmis olur.)
+    if (!state.calculatedLayers[line.layer]) {
+      handleCalculate(line.layer);
+    }
   };
 
   const handleInsertClick = (ins: { layer: string; insertIndex: number; insertName: string; position: [number, number] }) => {
@@ -439,6 +444,9 @@ export default function DwgProjectWorkspace({
               setLastClickedLayer(layer);
               selectLayer(layer);
               setDiameterPopup({ layer, x, y });
+              if (!state.calculatedLayers[layer]) {
+                handleCalculate(layer);  // Otomatik hesapla (T'lerde bolunme)
+              }
             }}
           />
 
@@ -492,11 +500,28 @@ export default function DwgProjectWorkspace({
           onApply={(d) => {
             const layer = diameterPopup.layer;
             updateLayerConfig(layer, { defaultDiameter: d });
-            toast({ title: 'Çap atandı', description: `${layer}: ${d} — hesaplaniyor...` });
             setDiameterPopup(null);
-            // Otomatik hesapla başlat — kullanıcı 'Hesapla' butonuna basmak zorunda kalmasın.
-            // configOverride ile anlık değer geçilir (state güncellemesi async).
-            handleCalculate(layer, { defaultDiameter: d });
+            // Hesaplanmis ise: mevcut segment'lerden cap'i bos olanlara apply et
+            // (kullanicinin yeni atadigi segment'leri ezme).
+            // Hesaplanmamis ise: arka planda hesaplama baslat (otomatik).
+            if (state.calculatedLayers[layer]) {
+              // Segment-level cap update (frontend-only, backend tetiklenmez)
+              const cl = state.calculatedLayers[layer];
+              let updatedCount = 0;
+              cl.edgeSegments.forEach((es) => {
+                if (!es.diameter || es.diameter === 'Belirtilmemis') {
+                  updateEdgeSegmentDiameter(layer, es.segment_id, d);
+                  updatedCount += 1;
+                }
+              });
+              toast({
+                title: 'Çap atandı',
+                description: `${layer}: ${d} → ${updatedCount} segment guncellendi`,
+              });
+            } else {
+              toast({ title: 'Çap atandı', description: `${layer}: ${d} — hesaplaniyor...` });
+              handleCalculate(layer, { defaultDiameter: d });
+            }
           }}
           onClose={() => setDiameterPopup(null)}
         />
