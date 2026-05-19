@@ -53,33 +53,46 @@ def _compute_tolerances(
     edges: list[dict],
     unit_scale: float = 0.001,
 ) -> tuple[float, float]:
-    """Edge length median'ina gore adaptif node/sprinkler tolerans hesapla.
+    """Tolerance hesabi — PRD epsilon=5cm hedefli, scale + bbox cift-koruma.
 
-    PRD v2.0 — "Snap & Split" ve "En Yakin Noktaya Izdusum" algoritmalari icin:
-    - node_tol (Te yaklasma): PRD epsilon = 5cm. Minimum 5cm world-unit.
-      Mikro bosluklar (gap) ve overshoot durumlarinda dikey bransh endpoint'i
-      yatay ana hatta tam degmiyorsa, bu tolerance icinde yakalanir.
-    - sprinkler_tol (izdusum mesafesi): sprinkler block'lar borunun *yakinindadir*
-      ama uzerinde olmayabilir. Default 20cm world-unit, edge median'a gore
-      buyuyebilir. Yangin tesisat semasinda sprinkler sembolleri 5-20cm
-      uzaklikta yerlestirilebilir.
+    Iki kaynaktan tolerance hesaplanir, daha kucugu (daha sert) kullanilir:
 
-    Parametreler:
-      unit_scale: DWG birim -> metre carpani (mm=0.001, cm=0.01, m=1.0).
-        World-unit cinsinden 5cm = 0.05 / unit_scale. Default mm varsayilir.
+    1. SCALE-BASED: PRD 5cm world-unit cinsinden (unit_scale carpani ile).
+       - mm proje (scale=0.001) -> 50 world units
+       - cm proje (scale=0.01)  -> 5 world units
+       - m proje  (scale=1.0)   -> 0.05 world units
+
+    2. BBOX-BASED: Cizimin bounding box'inin %0.05 (yarim binde). 50m projede ~2.5cm.
+       Kullanici unit'i yanlis sectiyse scale-based tolerance 10x kayar; bbox-based
+       koruma yanlis pozitif veya negatif tespiti engeller.
+
+    Sprinkler: 5x daha gevsek (sprinkler block typical 5-25cm uzaklikta).
+
+    Genel kullanim: scale parametresi dogruysa scale-based win; yanlissa bbox-based.
     """
-    # PRD epsilon = 5cm world-unit cinsinden
-    epsilon_world = 0.05 / max(unit_scale, 1e-9)   # mm: 50, cm: 5, m: 0.05
-    # Sprinkler block borunun yakininda (5-25cm typical) — sabit 25cm tolerance
-    # (median'a baglandiginda buyuk hatlarda yanlis pozitif yapiyor)
-    sprinkler_world = 0.25 / max(unit_scale, 1e-9)  # mm: 250, cm: 25, m: 0.25
+    epsilon_scale = 0.05 / max(unit_scale, 1e-9)
+    sprinkler_scale = 0.25 / max(unit_scale, 1e-9)
 
     if not edges:
-        return max(_NODE_TOL, epsilon_world), max(_SPRINKLER_TOL, sprinkler_world)
-    # PRD epsilon: sabit 5cm — median'a baglamak yanlis pozitif yapiyor
-    # (162cm median ile %5 = 8cm tolerance ile yanlis Te tespitleri olusuyor)
-    node_tol = epsilon_world
-    sprinkler_tol = sprinkler_world
+        return max(_NODE_TOL, epsilon_scale), max(_SPRINKLER_TOL, sprinkler_scale)
+
+    # Bbox-based fallback (scale-independent)
+    xs: list[float] = []
+    ys: list[float] = []
+    for e in edges:
+        xs.append(e["x1"]); xs.append(e["x2"])
+        ys.append(e["y1"]); ys.append(e["y2"])
+    bbox_diag = math.hypot(max(xs) - min(xs), max(ys) - min(ys)) if xs else 0.0
+    # %0.05 of diagonal — 50m cizimde ~2.5cm; 10m'de 0.5cm; 100m'de 5cm
+    bbox_node_tol = bbox_diag * 0.0005
+    bbox_sprinkler_tol = bbox_diag * 0.0025  # 5x daha gevsek
+
+    # Final: scale-based ile bbox-based'in MIN'i (daha sert olan).
+    # Eger scale yanlissa scale-based aci derece buyur; bbox-based onu sinirlar.
+    # Eger scale dogru ise zaten ikisi yakin olur, fark etmez.
+    # Alt sinir 1.0 (yuvarlama hatasi koruma) + maksimum 2x bbox (sertlik).
+    node_tol = max(1.0, min(epsilon_scale, bbox_node_tol * 2.0))
+    sprinkler_tol = max(5.0, min(sprinkler_scale, bbox_sprinkler_tol * 2.0))
     return node_tol, sprinkler_tol
 
 
