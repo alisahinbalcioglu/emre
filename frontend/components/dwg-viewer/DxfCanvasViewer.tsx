@@ -120,11 +120,24 @@ export default function DxfCanvasViewer({
   const [hovered, setHovered] = useState<HoveredEntity | null>(null);
   const [selectedLine, setSelectedLine] = useState<HoveredEntity | null>(null);
 
+  // Hesaplanmis tum edge segment'leri tek bir array'e flatten et.
+  // edgeSegments prop'u verilirse onu, yoksa calculatedEdgesByLayer'daki tum
+  // layer'larin segment'lerini birlestir. Boylece render path + spatial index
+  // + bounds tek bir kaynak kullanir.
+  const allEdgeSegments = useMemo<EdgeSegment[] | null>(() => {
+    if (edgeSegments && edgeSegments.length > 0) return edgeSegments;
+    if (calculatedEdgesByLayer) {
+      const flat = Object.values(calculatedEdgesByLayer).flat();
+      if (flat.length > 0) return flat;
+    }
+    return null;
+  }, [edgeSegments, calculatedEdgesByLayer]);
+
   // Bounds (DWG world)
   const bounds = useMemo<[number, number, number, number]>(() => {
-    if (edgeSegments && edgeSegments.length > 0) {
+    if (allEdgeSegments && allEdgeSegments.length > 0) {
       let mnx = Infinity, mny = Infinity, mxx = -Infinity, mxy = -Infinity;
-      for (const es of edgeSegments) {
+      for (const es of allEdgeSegments) {
         const [x1, y1, x2, y2] = es.coords;
         if (x1 < mnx) mnx = x1; if (y1 < mny) mny = y1;
         if (x2 < mnx) mnx = x2; if (y2 < mny) mny = y2;
@@ -135,12 +148,12 @@ export default function DxfCanvasViewer({
     }
     if (geometry?.bounds) return geometry.bounds;
     return [0, 0, 100, 100];
-  }, [geometry, edgeSegments]);
+  }, [geometry, allEdgeSegments]);
 
   const { viewport, fitView, zoomIn, zoomOut, wasDragged, pointerHandlers } = useViewport({
     bounds,
     containerRef,
-    autoFit: !!geometry || !!edgeSegments,
+    autoFit: !!geometry || !!allEdgeSegments,
   });
 
   // ─── Geometry fetch + retry (Render free tier cold-start) ─────────
@@ -238,8 +251,8 @@ export default function DxfCanvasViewer({
         });
       });
     }
-    if (edgeSegments) {
-      edgeSegments.forEach((seg, i) => {
+    if (allEdgeSegments) {
+      allEdgeSegments.forEach((seg, i) => {
         const meta = {
           type: 'edge' as const, layer: seg.layer, index: i,
           coords: seg.coords,
@@ -268,7 +281,7 @@ export default function DxfCanvasViewer({
     }
     tree.load(items);
     return tree;
-  }, [geometry, edgeSegments]);
+  }, [geometry, allEdgeSegments]);
 
   // Hidden/dimmed layer degisince hover/selected gecersiz olabilir, temizle
   useEffect(() => {
@@ -527,7 +540,7 @@ export default function DxfCanvasViewer({
       }
 
       // ─── Calculated edges (hidden = atla, dimmed = ayri gri pass) ─
-      if (edgeSegments && edgeSegments.length > 0) {
+      if (allEdgeSegments && allEdgeSegments.length > 0) {
         const drawSegPath = (seg: EdgeSegment) => {
           if (seg.polyline && seg.polyline.length >= 2) {
             ctx.moveTo(seg.polyline[0][0], seg.polyline[0][1]);
@@ -543,7 +556,7 @@ export default function DxfCanvasViewer({
         // Normal pass: layer-bazli filtrele, cap-bazli renkli grupla
         const byDiameter = new Map<string, EdgeSegment[]>();
         const dimmedSegs: EdgeSegment[] = [];
-        for (const seg of edgeSegments) {
+        for (const seg of allEdgeSegments) {
           if (hiddenLayers?.has(seg.layer)) continue;
           if (dimmedLayers?.has(seg.layer)) {
             dimmedSegs.push(seg);
@@ -623,7 +636,7 @@ export default function DxfCanvasViewer({
 
     schedule();
     return () => cancelAnimationFrame(rafId);
-  }, [geometry, edgeSegments, viewport, selectedLayer, highlightLayer, hiddenLayers, dimmedLayers, sprinklerLayers, markedEquipmentKeys, calculatedEdgesByLayer, hovered, selectedLine]);
+  }, [geometry, allEdgeSegments, viewport, selectedLayer, highlightLayer, hiddenLayers, dimmedLayers, sprinklerLayers, markedEquipmentKeys, hovered, selectedLine]);
 
   // ─── Hover detection (rbush ile O(log N)) ────────────────────────
   const computeHovered = useCallback(
@@ -742,8 +755,8 @@ export default function DxfCanvasViewer({
         setSelectedLine(target);
         if (target.type === 'line') {
           onLineClick?.({ layer: target.layer, index: target.index, shiftKey: e.shiftKey, screenX: e.clientX, screenY: e.clientY });
-        } else if (target.type === 'edge' && edgeSegments) {
-          onSegmentClick?.(edgeSegments[target.index]);
+        } else if (target.type === 'edge' && allEdgeSegments) {
+          onSegmentClick?.(allEdgeSegments[target.index]);
         }
         return;
       }
@@ -752,7 +765,7 @@ export default function DxfCanvasViewer({
       setSelectedLine(null);
       onClearSelection?.();
     },
-    [geometry, edgeSegments, viewport, wasDragged, computeHovered, hiddenLayers, dimmedLayers, onLineClick, onCircleClick, onInsertClick, onSegmentClick, onClearSelection],
+    [geometry, allEdgeSegments, viewport, wasDragged, computeHovered, hiddenLayers, dimmedLayers, onLineClick, onCircleClick, onInsertClick, onSegmentClick, onClearSelection],
   );
 
   // Esc → clear selection
