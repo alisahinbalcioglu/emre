@@ -171,7 +171,6 @@ export class DwgEngineService {
     layerHatTipi?: Record<string, string>,
     layerMaterialType?: Record<string, string>,
     sprinklerLayers?: string[],
-    useAiDiameter: boolean = false,
     layerDefaultDiameter?: Record<string, string>,
   ) {
     const params = new URLSearchParams({
@@ -193,9 +192,6 @@ export class DwgEngineService {
     }
     if (sprinklerLayers && sprinklerLayers.length > 0) {
       params.set('sprinkler_layers', JSON.stringify(sprinklerLayers));
-    }
-    if (useAiDiameter) {
-      params.set('use_ai_diameter', 'true');
     }
     if (layerDefaultDiameter && Object.keys(layerDefaultDiameter).length > 0) {
       params.set('layer_default_diameter', JSON.stringify(layerDefaultDiameter));

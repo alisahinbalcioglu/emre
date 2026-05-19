@@ -26,10 +26,10 @@ from topology import analyze_topology
 from geometry import extract_geometry, extract_geometry_from_doc, GeometryResult
 from models import (
     LayerInfo, LayerListResult,
-    LayerMetraj, MetrajResult, PipeSegment, EdgeSegment, SprinklerDetectionInfo,
+    LayerMetraj, MetrajResult, PipeSegment, EdgeSegment,
 )
 
-# backend/.env dosyasini yukle (ANTHROPIC_API_KEY icin)
+# backend/.env dosyasini yukle (env override icin — AI cap atama kaldirildi)
 _ENV_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", ".env")
 if os.path.isfile(_ENV_PATH):
     with open(_ENV_PATH, encoding="utf-8") as _f:
@@ -258,7 +258,6 @@ def analyze_dxf_metraj(
     hat_tipi_map: dict[str, str] | None = None,
     material_type_map: dict[str, str] | None = None,
     sprinkler_layers_manual: list[str] | None = None,
-    use_ai_diameter: bool = False,
     layer_default_diameter_map: dict[str, str] | None = None,
 ) -> MetrajResult:
     """
@@ -384,7 +383,7 @@ def analyze_dxf_metraj(
     edge_segments: list[EdgeSegment] = []
     if selected_layers:
         try:
-            from ai_diameter import _extract_segments as _edge_extract
+            from pipe_segments import _extract_segments as _edge_extract
             _edges, _ = _edge_extract(dxf_path, selected_layers, sprinkler_layers=sprinkler_layers_manual)
             edge_segments = [
                 EdgeSegment(
@@ -400,130 +399,12 @@ def analyze_dxf_metraj(
         except Exception as _e:
             warnings.append(f"Edge segment cikarma: {str(_e)[:100]}")
 
-    # ── AI Cap Atama (opsiyonel) ──
-    # KARAR: AI kullanmiyoruz (Render free tier gateway timeout). Pass 1+2
-    # (text-map + BFS) AI'siz bile 70sn ekliyor — toplam 138sn -> 503.
-    # Cozum: tamamen elle layer-level cap girme (defaultDiameter ile).
-    # use_ai_diameter=True iken tum 3-pass calisir (development/test icin korundu).
-    sprinkler_detection_info: dict | None = None
-    if use_ai_diameter and selected_layers:
-        try:
-            from ai_diameter import assign_diameters_with_ai
-
-            _hat_hint = ""
-            if hat_tipi_map:
-                hints = [hat_tipi_map.get(l, "") for l in selected_layers if hat_tipi_map.get(l)]
-                _hat_hint = " / ".join(filter(None, hints))
-
-            seg_diameters, ai_info = assign_diameters_with_ai(
-                dxf_path, selected_layers, hat_tipi_hint=_hat_hint,
-                sprinkler_layers=sprinkler_layers_manual,
-                doc=doc,  # PERF: tek readfile paylasimi
-                use_ai=True,  # use_ai_diameter=True iken AI da dahil
-            )
-
-            # Her segment'i kendi cap'iyla birlikte, layer bazinda grupla
-            # Sonuc: her layer icin (diameter -> toplam_uzunluk)
-            # Segment id -> (layer, length) haritasi (ai_diameter ile ayni sira)
-            # PERF: doc paylasilir (tekrar readfile YOK)
-            from ai_diameter import _extract_segments
-            _segs, _ = _extract_segments(dxf_path, selected_layers,
-                                          sprinkler_layers=sprinkler_layers_manual,
-                                          doc=doc)
-            seg_map = {s["id"]: s for s in _segs}
-
-            # AI'nin atayamadigi segment'leri layer-level default ile doldur
-            # (metraj tablosunda da dogru gorulsun diye aggregation'dan ONCE uygulanir)
-            # seg_diameters artik tuple: (diameter, is_inherited)
-            if layer_default_diameter_map:
-                for _sid, _seg in seg_map.items():
-                    tup = seg_diameters.get(_sid)
-                    if not tup or not tup[0] or tup[0] == "Belirtilmemis":
-                        _def = layer_default_diameter_map.get(_seg["layer"], "").strip()
-                        if _def:
-                            seg_diameters[_sid] = (_def, False)  # default = manual, miras degil
-
-            # Layer -> {diameter -> total_length} (m cinsinden)
-            cap_totals: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
-            cap_counts: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
-            for sid, (dia, _is_inh) in seg_diameters.items():
-                seg = seg_map.get(sid)
-                if not seg:
-                    continue
-                key_dia = dia if dia else "Belirtilmemis"
-                cap_totals[seg["layer"]][key_dia] += seg["length"] * scale
-                cap_counts[seg["layer"]][key_dia] += 1
-
-            # layers listesini AI capinin detayiyla guncelle
-            for l in layers:
-                ai_breakdown = cap_totals.get(l.layer, {})
-                if not ai_breakdown:
-                    continue
-                # Her cap icin ayri PipeSegment
-                ai_segs: list[PipeSegment] = []
-                next_id = 1
-                for dia, length in sorted(ai_breakdown.items()):
-                    ai_segs.append(PipeSegment(
-                        segment_id=next_id,
-                        layer=l.layer,
-                        length=round(length, 2),
-                        line_count=cap_counts[l.layer].get(dia, 0),
-                        material_type=(material_type_map or {}).get(l.layer, ""),
-                        diameter=dia,
-                    ))
-                    next_id += 1
-                l.segments = ai_segs
-
-            # Warning'e cap atama pass istatistikleri (3-pass: text-map / BFS / AI)
-            if "error" in ai_info:
-                warnings.append(f"Cap atama hatasi: {ai_info['error']}")
-            else:
-                cost_tl = ai_info.get('cost_tl', 0)
-                warnings.append(
-                    f"Cap: {ai_info['segment_count']} segment, "
-                    f"{ai_info['text_count']} cap text "
-                    f"| Pass1 text-map: {ai_info.get('pass1_text_count', 0)} "
-                    f"| Pass2 inherit: {ai_info.get('pass2_inherit_count', 0)} "
-                    f"| Pass3 AI: {ai_info.get('pass3_ai_count', 0)} (~{cost_tl} TL)"
-                )
-                # Sprinkler tespit ozeti (auto_detect_sprinklers ciktisi)
-                sd = ai_info.get("sprinkler_detection") or {}
-                if sd.get("center_count") is not None:
-                    sprinkler_detection_info = sd
-                if sd.get("center_count"):
-                    src = sd.get("source", "?")
-                    warnings.append(
-                        f"Sprinkler tespit ({src}): "
-                        f"{sd.get('center_count')} sembol, "
-                        f"{sd.get('block_count')} unique block, "
-                        f"{sd.get('excluded_text_count')} etiket cap havuzundan dusuruldu"
-                    )
-
-            # edge_segments'deki diameter + is_inherited'i (text-map/BFS/AI) ile doldur
-            for es in edge_segments:
-                tup = seg_diameters.get(es.segment_id)
-                if tup:
-                    es.diameter = tup[0] or ""
-                    es.is_inherited = tup[1]
-        except Exception as e:
-            warnings.append(f"AI cap atama calistirilamadi: {str(e)[:150]}")
-
-    # ── Layer-level default cap uygulamasi (AI kullanilmasa da calissin) ──
+    # ── Layer-level default cap uygulamasi ──
     # edge_segments'deki bos/Belirtilmemis olan segment'leri layer default'u ile doldur.
-    # Onceki AI bloğu zaten seg_diameters'i enrich ettiyse bu adim ekstra etkilemez.
     if layer_default_diameter_map:
         for es in edge_segments:
             if (not es.diameter or es.diameter == "Belirtilmemis") and layer_default_diameter_map.get(es.layer):
                 es.diameter = layer_default_diameter_map[es.layer]
-
-    sd_obj: SprinklerDetectionInfo | None = None
-    if sprinkler_detection_info:
-        try:
-            sd_obj = SprinklerDetectionInfo(**sprinkler_detection_info)
-        except Exception:
-            # Defansif — bir field tip uymazsa MetrajResult bunu kaybetsin,
-            # ana metraj akisi calismaya devam etsin.
-            sd_obj = None
 
     return MetrajResult(
         layers=layers,
@@ -532,7 +413,7 @@ def analyze_dxf_metraj(
         warnings=warnings,
         branch_points=branch_points,
         edge_segments=edge_segments,
-        sprinkler_detection=sd_obj,
+        sprinkler_detection=None,
     )
 
 
@@ -834,8 +715,7 @@ async def parse_dwg(
     layer_hat_tipi: str = Query("{}", description="JSON object: {layer: hat_tipi} eslestirmesi"),
     layer_material_type: str = Query("{}", description="JSON object: {layer: material_type} eslestirmesi"),
     sprinkler_layers: str = Query("", description="JSON array: kullanici tarafindan sprinkler olarak isaretlenen layer'lar"),
-    use_ai_diameter: bool = Query(False, description="True ise boru cap atama Claude AI ile yapilir"),
-    layer_default_diameter: str = Query("{}", description="JSON object: {layer: default_diameter} — AI atayamadigi segment'ler icin fallback"),
+    layer_default_diameter: str = Query("{}", description="JSON object: {layer: default_diameter} — layer-level cap fallback"),
 ):
     """
     DWG/DXF dosyasini parse edip layer bazinda metraj cikarir.
@@ -917,7 +797,6 @@ async def parse_dwg(
             hat_tipi_map=hat_tipi_map,
             material_type_map=mat_type_map,
             sprinkler_layers_manual=sprinkler_layers_manual,
-            use_ai_diameter=use_ai_diameter,
             layer_default_diameter_map=default_dia_map,
         )
         return result

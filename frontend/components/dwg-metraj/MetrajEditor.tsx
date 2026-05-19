@@ -11,7 +11,7 @@ interface MetrajRow {
   name: string;
   qty: string;
   unit: string;
-  diameter: string; // "Ø50", "DN25", "1\"" — AI atadigi cap (opsiyonel, bos olabilir)
+  diameter: string; // "Ø50", "DN25", "1\"" — layer-level kullanici girisi (opsiyonel, bos olabilir)
   source: string; // "project" | "rule" | "user"
   category: string; // "Boru" | "Fitting" | "Vana" | "Otomatik"
   hatTipi?: string;
@@ -42,7 +42,7 @@ const nextId = () => `row-${_nextId++}`;
 function metrajToRows(data: MetrajResult): MetrajRow[] {
   const rows: MetrajRow[] = [];
   for (const l of data.layers || []) {
-    // Eger AI cap atamisi varsa (segments icinde her cap icin ayri satir), her segment ayri row
+    // Eger segment-level cap atamasi varsa (her cap icin ayri satir), her segment ayri row
     if (l.segments && l.segments.length > 0 && l.segments.some((s) => s.diameter)) {
       for (const seg of l.segments) {
         rows.push({

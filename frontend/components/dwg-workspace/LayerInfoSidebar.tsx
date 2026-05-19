@@ -12,10 +12,8 @@ import type { LayerConfig } from './types';
 interface LayerInfoSidebarProps {
   selectedLayer: string | null;
   config: LayerConfig | null;
-  useAiDiameter: boolean;
   calculating: boolean;
   onChangeConfig: (patch: Partial<LayerConfig>) => void;
-  onToggleAi: (v: boolean) => void;
   onCalculate: () => void;
   onClearSelection: () => void;
   /** Secili layer'i cizimden gizle (LayerVisibilityPanel toggle ile ayni). */
@@ -25,10 +23,8 @@ interface LayerInfoSidebarProps {
 export default function LayerInfoSidebar({
   selectedLayer,
   config,
-  useAiDiameter,
   calculating,
   onChangeConfig,
-  onToggleAi,
   onCalculate,
   onClearSelection,
   onHideLayer,

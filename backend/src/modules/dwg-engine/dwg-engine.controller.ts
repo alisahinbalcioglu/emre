@@ -52,7 +52,6 @@ export class DwgEngineController {
     @Query('layer_hat_tipi') layerHatTipi?: string,
     @Query('layer_material_type') layerMaterialType?: string,
     @Query('sprinkler_layers') sprinklerLayers?: string,
-    @Query('use_ai_diameter') useAiDiameter?: string,
     @Query('layer_default_diameter') layerDefaultDiameter?: string,
   ) {
     // file_id varsa dosya gerekmez, yoksa dosya zorunlu
@@ -100,7 +99,7 @@ export class DwgEngineController {
       }
     }
 
-    // layer_default_diameter JSON object parse — AI'nin atayamadigi segment'ler icin layer-level default cap
+    // layer_default_diameter JSON object parse — layer-level default cap
     let parsedDefaultDiameter: Record<string, string> | undefined;
     if (layerDefaultDiameter) {
       try {
@@ -120,7 +119,6 @@ export class DwgEngineController {
       parsedHatTipi,
       parsedMaterialType,
       parsedSprinklerLayers,
-      useAiDiameter === 'true',
       parsedDefaultDiameter,
     );
   }

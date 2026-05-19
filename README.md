@@ -72,9 +72,9 @@ npm run lint               # next lint
 Detayli bilgi icin [`CLAUDE.md`](CLAUDE.md) — ozet:
 
 - **Kutuphaneme Aktar**: Marka malzemelerini iskonto + net fiyat ile kullanici kutuphanesine kopyalama.
-- **DWG Engine v3**: 4 modullu Python pipeline (geometry, topology, ai_diameter, converter).
+- **DWG Engine v3**: 4 modullu Python pipeline (geometry, topology, pipe_segments, converter).
 - **Windows DLL EPERM hatasi**: `taskkill //F //IM node.exe` kullanma. `npx kill-port 3001` -> `npx prisma db push`.
-- **AI scope**: sadece cap atama. Vana/ekipman manuel.
+- **Cap atama**: Layer-level manuel (kullanici sag panelden default cap girer); AI cap atama kaldirildi.
 
 ## Lisans
 

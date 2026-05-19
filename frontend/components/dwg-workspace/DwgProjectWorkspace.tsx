@@ -44,9 +44,7 @@ export default function DwgProjectWorkspace({
     addCalculatedLayer, removeCalculatedLayer,
     updateEdgeSegmentDiameter,
     beginEditEquipment, cancelEditEquipment, saveEquipment, removeEquipment,
-    toggleAiDiameter,
     setLastClickedLayer, confirmSprinklerLayer, removeSprinklerLayer,
-    setAiDetectedSprinklerCount,
     toggleLayerVisibility, showAllLayers,
     toggleLayerDimmed, showAllDimmed,
   } = useWorkspaceState(fileId, scale);
@@ -150,7 +148,6 @@ export default function DwgProjectWorkspace({
         layer_hat_tipi: JSON.stringify(hatTipiMap),
         layer_material_type: JSON.stringify(materialTypeMap),
         layer_default_diameter: JSON.stringify(defaultDiameterMap),
-        use_ai_diameter: String(state.useAiDiameter),
         sprinkler_layers: JSON.stringify(state.sprinklerLayers),
       });
 
@@ -175,12 +172,6 @@ export default function DwgProjectWorkspace({
         computedAt: Date.now(),
       };
       addCalculatedLayer(calcLayer);
-
-      // Backend auto_detect_sprinklers ozeti — bilgi satirinda gosterilir.
-      const sd = data.sprinkler_detection;
-      if (sd && typeof sd.center_count === 'number') {
-        setAiDetectedSprinklerCount(sd.center_count);
-      }
 
       toast({
         title: 'Layer hesaplandı',
@@ -412,10 +403,8 @@ export default function DwgProjectWorkspace({
           <LayerInfoSidebar
             selectedLayer={state.selectedLayer}
             config={selectedConfig}
-            useAiDiameter={state.useAiDiameter}
             calculating={calculating}
             onChangeConfig={(patch) => state.selectedLayer && updateLayerConfig(state.selectedLayer, patch)}
-            onToggleAi={toggleAiDiameter}
             onCalculate={handleCalculate}
             onClearSelection={() => selectLayer(state.selectedLayer!)}
             onHideLayer={() => {
@@ -445,26 +434,6 @@ export default function DwgProjectWorkspace({
               setDiameterPopup({ layer, x, y });
             }}
           />
-
-          {/* Sprinkler tespit info — AI otomatik bulduğunda gösterilir.
-              Manuel layer secim panel kaldirildi: sprinkler tespit artik
-              backend'de otomatik (auto_detect_sprinklers, AI block sınıflandırma
-              + entity type filtre). Kullanici fark ederse viewer'da tıklayarak
-              ekle/cikar yapabilir (mevcut handleCircleClick / handleInsertClick). */}
-          {state.aiDetectedSprinklerCount !== undefined && state.aiDetectedSprinklerCount > 0 && (
-            <div className="rounded-xl border border-cyan-200 bg-cyan-50/50 p-3">
-              <div className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-cyan-400" />
-                <p className="text-xs text-slate-700">
-                  <span className="font-semibold text-cyan-700">{state.aiDetectedSprinklerCount}</span>
-                  <span className="text-slate-600"> sprinkler AI ile tespit edildi.</span>
-                </p>
-              </div>
-              <p className="mt-1 pl-4 text-[10px] text-slate-500">
-                Yanlissa: viewer'da yanlis simgeyi tıkla, sağ panelden "Sprinkler degil" işaretle.
-              </p>
-            </div>
-          )}
 
           <MetrajSummaryPanel
             calculatedLayers={state.calculatedLayers}

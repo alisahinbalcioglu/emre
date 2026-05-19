@@ -29,7 +29,6 @@ export function useWorkspaceState(fileId: string, scale: number) {
     editingEquipmentKey: null,
     sprinklerLayers: [],
     lastClickedLayer: null,
-    useAiDiameter: false,
     hiddenLayers: [],
     dimmedLayers: [],
   });
@@ -46,7 +45,6 @@ export function useWorkspaceState(fileId: string, scale: number) {
       editingEquipmentKey: null,
       sprinklerLayers: [],
       lastClickedLayer: null,
-      useAiDiameter: false,
       hiddenLayers: [],
       dimmedLayers: [],
     });
@@ -131,10 +129,6 @@ export function useWorkspaceState(fileId: string, scale: number) {
     });
   }, []);
 
-  const toggleAiDiameter = useCallback((v: boolean) => {
-    setState((s) => ({ ...s, useAiDiameter: v }));
-  }, []);
-
   /** Kullanici viewer'da bir sembole tikladiginda (herhangi tip), aday olarak kaydet. */
   const setLastClickedLayer = useCallback((layer: string | null) => {
     setState((s) => s.lastClickedLayer === layer ? s : { ...s, lastClickedLayer: layer });
@@ -156,13 +150,6 @@ export function useWorkspaceState(fileId: string, scale: number) {
   /** Belirli bir sprinkler layer'i listeden kaldir. */
   const removeSprinklerLayer = useCallback((layer: string) => {
     setState((s) => ({ ...s, sprinklerLayers: s.sprinklerLayers.filter((l) => l !== layer) }));
-  }, []);
-
-  /** Backend auto_detect_sprinklers'un bulduğu sprinkler sayisini state'e yaz.
-   *  /parse response'undan handleCalculate icinde cagrilir; UI'da bilgi
-   *  satirinda gosterilir. */
-  const setAiDetectedSprinklerCount = useCallback((count: number | undefined) => {
-    setState((s) => ({ ...s, aiDetectedSprinklerCount: count }));
   }, []);
 
   /** Layer'i gosterimden cikar/geri al. Sadece viewer goruntusunu etkiler;
@@ -210,11 +197,9 @@ export function useWorkspaceState(fileId: string, scale: number) {
     cancelEditEquipment,
     saveEquipment,
     removeEquipment,
-    toggleAiDiameter,
     setLastClickedLayer,
     confirmSprinklerLayer,
     removeSprinklerLayer,
-    setAiDetectedSprinklerCount,
     toggleLayerVisibility,
     showAllLayers,
     toggleLayerDimmed,

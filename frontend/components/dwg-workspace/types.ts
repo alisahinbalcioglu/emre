@@ -9,7 +9,7 @@ import type { EdgeSegment } from '@/components/dwg-metraj';
 export interface LayerConfig {
   hatIsmi: string;           // "Yangin Hidrant Hatti" vs.
   materialType: string;      // "Siyah Boru" vs.
-  defaultDiameter: string;   // "6\"" — AI'nin bulamadigi segment'ler icin fallback
+  defaultDiameter: string;   // "6\"" — layer-level default cap (tum segment'lere uygulanir)
 }
 
 /** Bir layer icin hesaplanmis metraj sonucu (edge_segments + toplam). */
@@ -61,9 +61,6 @@ export interface WorkspaceState {
   /** Kullanicinin en son tikladigi layer (herhangi entity tipi) — sprinkler secimi aday */
   lastClickedLayer: string | null;
 
-  // AI toggle
-  useAiDiameter: boolean;
-
   /** Kullanicinin "goz" ikonuyla gizledigi layer'lar — viewer'da hicbir
    *  katmanda (background, circles, arcs, inserts, texts) cizilmez. Sadece
    *  gorsel filtre, hesaplanmis metrajlari ve config'i etkilemez. */
@@ -74,8 +71,4 @@ export interface WorkspaceState {
    *  amacli). Hesaplanmis metrajlari ve config'i etkilemez. */
   dimmedLayers: string[];
 
-  /** Backend auto_detect_sprinklers'un bulduğu sprinkler INSERT sayisi.
-   *  Bilgilendirme amacli (info satirinda gosterilir). undefined = henuz
-   *  parse calismadi. */
-  aiDetectedSprinklerCount?: number;
 }

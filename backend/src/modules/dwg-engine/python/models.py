@@ -29,7 +29,7 @@ class PipeSegment(BaseModel):
     length: float = 0.0     # metre cinsinden
     line_count: int = 0
     material_type: str = "" # "Siyah Boru", "HDPE", "PPR-C", "Galvaniz Boru", vb.
-    diameter: str = ""      # "Ø50", "DN100", "2\"", "" (AI atadigi cap — bos = belirtilmemis)
+    diameter: str = ""      # "Ø50", "DN100", "2\"", "" — layer-level kullanici girisi, bos = belirtilmemis
 
 
 class BranchPoint(BaseModel):
@@ -54,24 +54,16 @@ class EdgeSegment(BaseModel):
     """Her bir pipe-run (chain) + cap + koordinatlar.
     Frontend Canvas2D viewer'da cizim + tik-duzenleme icin kullanilir.
 
-    coords: run'in iki ucu [x1,y1,x2,y2] — AI mesafe hesabi + tiklama icin.
+    coords: run'in iki ucu [x1,y1,x2,y2] — tiklama icin.
     polyline: chain'in gercek sirali vertex'leri [[x,y], [x,y], ...] — canvas'ta
               gorsel olarak dogru L/Z/U sekilli boru hatti cizimi icin."""
     segment_id: int
     layer: str
-    diameter: str = ""           # AI atadigi cap; bos = belirtilmemis
+    diameter: str = ""           # Layer-level kullanici girisi; bos = belirtilmemis
     length: float = 0.0          # m (scale uygulanmis)
     coords: list[float] = []     # [x1, y1, x2, y2] — DXF world coords (run endpoint'leri)
     polyline: list[list[float]] = []  # [[x,y], ...] — chain'in gercek sekli
-    is_inherited: bool = False   # True = cap graph BFS ile komsu segmentten miras alindi
-
-
-class SprinklerDetectionInfo(BaseModel):
-    """Backend auto_detect_sprinklers ozeti — frontend bilgi satirinda gosterir."""
-    source: str = ""           # "ai" | "regex" | "cache" | ""
-    block_count: int = 0       # kac unique block sprinkler olarak isaretlendi
-    center_count: int = 0      # toplam sprinkler INSERT pozisyonu
-    excluded_text_count: int = 0  # cap havuzundan dusen sprinkler ID etiketleri
+    is_inherited: bool = False   # Legacy field — AI BFS miras esnekligi (her zaman False artik)
 
 
 class MetrajResult(BaseModel):
@@ -81,4 +73,4 @@ class MetrajResult(BaseModel):
     warnings: list[str] = []
     branch_points: list[BranchPoint] = []
     edge_segments: list[EdgeSegment] = []  # her edge ayri — Canvas2D viewer icin
-    sprinkler_detection: SprinklerDetectionInfo | None = None
+    sprinkler_detection: None = None  # Legacy field — AI sprinkler tespit kaldirildigi icin her zaman None
