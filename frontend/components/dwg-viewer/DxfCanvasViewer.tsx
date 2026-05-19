@@ -592,34 +592,6 @@ export default function DxfCanvasViewer({
         }
       }
 
-      // ─── T-junction marker'lari (>=3 segment buluştugu noktalar) ──
-      // Kullanici "burada T noktası var, 3 segment ayri" diye gorsel ipucu.
-      // Beyaz bordurlu mavi nokta — zoom-bagimsiz piksel cinsinden boyut.
-      if (calculatedJunctionsByLayer) {
-        const allJunctions: [number, number][] = [];
-        for (const [layer, pts] of Object.entries(calculatedJunctionsByLayer)) {
-          if (hiddenLayers?.has(layer) || dimmedLayers?.has(layer)) continue;
-          allJunctions.push(...pts);
-        }
-        if (allJunctions.length > 0) {
-          const markerRadius = 4 / viewport.zoom;  // 4px ekranda
-          const borderWidth = 1.5 / viewport.zoom;
-          ctx.globalAlpha = 1;
-          for (const [jx, jy] of allJunctions) {
-            // Beyaz border
-            ctx.fillStyle = '#ffffff';
-            ctx.beginPath();
-            ctx.arc(jx, jy, markerRadius + borderWidth, 0, Math.PI * 2);
-            ctx.fill();
-            // Ic mavi
-            ctx.fillStyle = '#3b82f6';
-            ctx.beginPath();
-            ctx.arc(jx, jy, markerRadius, 0, Math.PI * 2);
-            ctx.fill();
-          }
-        }
-      }
-
       // ─── HOVER overlay (amber glow + 2x stroke) ───────────────────
       if (hovered) {
         ctx.strokeStyle = COLOR_HOVER;

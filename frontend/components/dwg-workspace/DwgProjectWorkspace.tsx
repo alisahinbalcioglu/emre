@@ -134,14 +134,17 @@ export default function DwgProjectWorkspace({
     [state.calculatedLayers],
   );
 
-  const handleCalculate = async () => {
-    if (!state.selectedLayer) return;
-    if (state.calculatedLayers[state.selectedLayer]) {
-      toast({ title: 'Bu layer zaten hesaplandı', description: 'Önce özetten kaldırın.' });
+  const handleCalculate = async (forceLayer?: string, configOverride?: { defaultDiameter?: string; hatIsmi?: string; materialType?: string }) => {
+    const layer = forceLayer ?? state.selectedLayer;
+    if (!layer) return;
+    if (state.calculatedLayers[layer]) {
+      if (!forceLayer) {
+        toast({ title: 'Bu layer zaten hesaplandı', description: 'Önce özetten kaldırın.' });
+      }
       return;
     }
-    const layer = state.selectedLayer;
-    const cfg = selectedConfig ?? { hatIsmi: '', materialType: '', defaultDiameter: '' };
+    const baseCfg = state.layerConfigs[layer] ?? { hatIsmi: '', materialType: '', defaultDiameter: '' };
+    const cfg = configOverride ? { ...baseCfg, ...configOverride } : baseCfg;
     setCalculating(true);
     try {
       const hatTipiMap: Record<string, string> = { [layer]: cfg.hatIsmi || layer };
@@ -487,9 +490,13 @@ export default function DwgProjectWorkspace({
           x={diameterPopup.x}
           y={diameterPopup.y}
           onApply={(d) => {
-            updateLayerConfig(diameterPopup.layer, { defaultDiameter: d });
-            toast({ title: 'Çap atandı', description: `${diameterPopup.layer}: ${d}` });
+            const layer = diameterPopup.layer;
+            updateLayerConfig(layer, { defaultDiameter: d });
+            toast({ title: 'Çap atandı', description: `${layer}: ${d} — hesaplaniyor...` });
             setDiameterPopup(null);
+            // Otomatik hesapla başlat — kullanıcı 'Hesapla' butonuna basmak zorunda kalmasın.
+            // configOverride ile anlık değer geçilir (state güncellemesi async).
+            handleCalculate(layer, { defaultDiameter: d });
           }}
           onClose={() => setDiameterPopup(null)}
         />
