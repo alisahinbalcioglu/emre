@@ -1293,6 +1293,7 @@ def assign_diameters_with_ai(
     hat_tipi_hint: str = "",
     sprinkler_layers: list[str] | None = None,
     doc=None,
+    use_ai: bool = True,
 ) -> tuple[dict[int, tuple[str, bool]], dict]:
     """Boru segment'lerine cap atar (3-pass: text-map → BFS inheritance → AI fallback).
 
@@ -1396,6 +1397,16 @@ def assign_diameters_with_ai(
     # Pass 1+2 her seyi karsiladiysa AI'a hic gitme — token kazan
     if not remaining:
         info_base["note"] = "Tum segmentler text-mapping + inheritance ile cozuldu, AI cagrilmadi"
+        return seg_diameters, info_base
+
+    # AI devre disi (use_ai=False) — pass 3 atla, kalanlar "Belirtilmemis"
+    if not use_ai:
+        for s in remaining:
+            seg_diameters[s["id"]] = ("Belirtilmemis", False)
+        info_base["note"] = (
+            f"AI devre disi (use_ai=False). Pass1+Pass2 ile {len(seg_diameters) - len(remaining)} "
+            f"segment cozuldu, {len(remaining)} segment 'Belirtilmemis'."
+        )
         return seg_diameters, info_base
 
     # ── PASS 3: AI fallback — sadece bos kalanlari sor ──

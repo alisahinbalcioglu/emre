@@ -111,18 +111,16 @@ export default function LayerInfoSidebar({
         <p className="mt-1 text-[10px] text-slate-500">AI&apos;nın atayamadığı segment&apos;ler bu çapla doldurulur.</p>
       </div>
 
-      <label className="mb-3 flex items-start gap-2 rounded-lg border border-purple-200 bg-purple-50/60 px-2.5 py-1.5 cursor-pointer hover:bg-purple-50">
-        <input
-          type="checkbox"
-          checked={useAiDiameter}
-          onChange={(e) => onToggleAi(e.target.checked)}
-          className="mt-0.5 h-3.5 w-3.5 rounded border-purple-300 text-purple-600 focus:ring-purple-500"
-        />
-        <div className="flex-1">
-          <p className="text-[11px] font-medium text-purple-900">AI ile çap ata</p>
-          <p className="text-[10px] text-purple-700 leading-relaxed">Her segmente Claude ~0.3-1 TL, 5-60 sn</p>
-        </div>
-      </label>
+      {/* Bilgi: cap atama text-mapping + graph BFS inheritance ile otomatik
+          AI cagrisi kapatildi (Render free tier gateway timeout sebebiyle).
+          Pass1: en yakin cap text'i segmente atanir.
+          Pass2: graph BFS ile non-branching node'larda komsu segmente miras. */}
+      <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50/60 px-2.5 py-1.5">
+        <p className="text-[11px] font-medium text-emerald-900">Otomatik cap atama</p>
+        <p className="text-[10px] text-emerald-700 leading-relaxed">
+          Cizimdeki yazilardan otomatik okunur, T noktalarinda komsu segmente miras yapilir.
+        </p>
+      </div>
 
       <button
         onClick={onCalculate}
