@@ -125,6 +125,98 @@ export default function DwgProjectWorkspace({
     [state.calculatedLayers],
   );
 
+  // BULK auto-calc: DWG yuklenip layer listesi geldikten sonra tum layer'lar
+  // icin tek /parse cagrisi yap. Kullanici LINE'a tikla-bekle yapmak zorunda
+  // kalmasin. Render cold-start ~30-60sn ama tek seferlik.
+  const [bulkAttempted, setBulkAttempted] = useState(false);
+  useEffect(() => {
+    if (!fileId || availableLayers.length === 0 || bulkAttempted) return;
+    setBulkAttempted(true);
+    void handleBulkCalculate(availableLayers);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fileId, availableLayers, bulkAttempted]);
+
+  const handleBulkCalculate = async (layers: string[]) => {
+    if (layers.length === 0) return;
+    console.log('[handleBulkCalculate] START', { count: layers.length });
+    setCalculating(true);
+    toast({
+      title: '🔄 Tum layer\'lar hesaplaniyor',
+      description: `${layers.length} layer — Render cold-start 30-60sn olabilir`,
+    });
+    try {
+      const params = new URLSearchParams({
+        discipline: 'mechanical',
+        scale: String(scale),
+        file_id: fileId,
+        selected_layers: JSON.stringify(layers),
+        layer_hat_tipi: '{}',
+        layer_material_type: '{}',
+        layer_default_diameter: '{}',
+        sprinkler_layers: JSON.stringify(state.sprinklerLayers),
+      });
+      const formData = new FormData();
+      const res = await api.post<MetrajResult>(
+        `/dwg-engine/parse?${params.toString()}`,
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 300000 },
+      );
+      console.log('[handleBulkCalculate] RESPONSE OK', { status: res.status });
+      const data = res.data as any;
+      const allEdges: EdgeSegment[] = Array.isArray(data.edge_segments) ? data.edge_segments : [];
+      const allJunctions: [number, number][] = Array.isArray(data.junction_points)
+        ? data.junction_points : [];
+
+      // Edge segment'leri layer'a gore grupla
+      const segsByLayer: Record<string, EdgeSegment[]> = {};
+      for (const es of allEdges) {
+        const lyr = es.layer;
+        if (!segsByLayer[lyr]) segsByLayer[lyr] = [];
+        segsByLayer[lyr].push(es);
+      }
+      // junction_points layer-agnostik (xy noktalar) — tum layer'lara dagit (cogu zaten ortak)
+      // Pratik: ilk pipe-like layer'a koy, viewer hepsini render eder zaten
+      const layerNames = Object.keys(segsByLayer);
+      console.log('[handleBulkCalculate] PARSED', {
+        totalSegs: allEdges.length, junctions: allJunctions.length, layerCount: layerNames.length,
+      });
+
+      let totalSegCount = 0;
+      for (const lyr of layerNames) {
+        const segs = segsByLayer[lyr];
+        const totalLen = segs.reduce((s, e) => s + (e.length || 0), 0);
+        const cfg = state.layerConfigs[lyr] ?? { hatIsmi: '', materialType: '', defaultDiameter: '' };
+        const calcLayer: CalculatedLayer = {
+          layer: lyr,
+          hatIsmi: cfg.hatIsmi || lyr,
+          materialType: cfg.materialType || '',
+          defaultDiameter: cfg.defaultDiameter || '',
+          edgeSegments: segs,
+          junctionPoints: lyr === layerNames[0] ? allJunctions : [],
+          totalLength: totalLen,
+          computedAt: Date.now(),
+        };
+        addCalculatedLayer(calcLayer);
+        totalSegCount += segs.length;
+      }
+
+      toast({
+        title: '✓ Hesaplandi',
+        description: `${layerNames.length} layer, ${totalSegCount} segment, ${allJunctions.length} T-noktasi`,
+      });
+    } catch (e: any) {
+      console.error('[handleBulkCalculate] HATA:', {
+        status: e?.response?.status,
+        data: e?.response?.data,
+        message: e?.message,
+      });
+      const msg = e?.response?.data?.message ?? e?.message ?? 'Bulk hesaplama hatasi';
+      toast({ title: 'Hata', description: String(msg).slice(0, 200), variant: 'destructive' });
+    } finally {
+      setCalculating(false);
+    }
+  };
+
   const handleCalculate = async (forceLayer?: string) => {
     const layer = forceLayer ?? state.selectedLayer;
     console.log('[handleCalculate] START', { layer, forceLayer, selectedLayer: state.selectedLayer });
