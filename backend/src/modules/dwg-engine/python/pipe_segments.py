@@ -320,10 +320,13 @@ def _split_edges_on_intersections(
             continue
         k_start = _node_key(x1, y1, node_tol)
         k_end = _node_key(x2, y2, node_tol)
-        min_cx = int(min(x1, x2) // cs)
-        max_cx = int(max(x1, x2) // cs)
-        min_cy = int(min(y1, y2) // cs)
-        max_cy = int(max(y1, y2) // cs)
+        # BBOX'a node_tol kadar genislet — yakin (mikro bosluk) node'lar
+        # ayri cell'e dustugu icin kacirilmasin. Onceki bug: tolerance
+        # eklenmemis, 3mm yakin node yatay LINE'in cell range'i disinda kaliyor.
+        min_cx = int((min(x1, x2) - node_tol) // cs)
+        max_cx = int((max(x1, x2) + node_tol) // cs)
+        min_cy = int((min(y1, y2) - node_tol) // cs)
+        max_cy = int((max(y1, y2) + node_tol) // cs)
         L2 = L * L
         for cx in range(min_cx, max_cx + 1):
             for cy in range(min_cy, max_cy + 1):
@@ -343,6 +346,149 @@ def _split_edges_on_intersections(
     if not splits:
         return edges
 
+    new_edges: list[dict] = []
+    for i, e in enumerate(edges):
+        if i not in splits:
+            new_edges.append(e)
+            continue
+        sp = sorted(splits[i], key=lambda v: v[2])
+        prev_x, prev_y = e["x1"], e["y1"]
+        layer = e["layer"]
+        for nx, ny, _ in sp:
+            seg_len = math.hypot(nx - prev_x, ny - prev_y)
+            if seg_len >= 1.0:
+                new_edges.append({"layer": layer, "x1": prev_x, "y1": prev_y,
+                                  "x2": nx, "y2": ny, "length": seg_len})
+            prev_x, prev_y = nx, ny
+        seg_len = math.hypot(e["x2"] - prev_x, e["y2"] - prev_y)
+        if seg_len >= 1.0:
+            new_edges.append({"layer": layer, "x1": prev_x, "y1": prev_y,
+                              "x2": e["x2"], "y2": e["y2"], "length": seg_len})
+
+    return new_edges
+
+
+def _split_edges_on_crossings(
+    edges: list[dict],
+    node_tol: float,
+) -> list[dict]:
+    """Iki LINE'in birbirini ortasindan kesistiği (proper crossing) durumlar
+    icin gercek geometric intersection bul ve her iki LINE'i kesisim
+    noktasinda bol.
+
+    Mevcut `_split_edges_on_intersections` SADECE endpoint-on-line durumunu
+    yakalar (bir LINE'in endpoint'i digerinin ortasina degiyor). Ama:
+      - Iki LINE klasik '+' seklinde kesisiyorsa (hicbiri endpoint degil)
+      - Bir LINE digerini gecip overshoot yapiyorsa
+      - LINE'lar arasi mikro bosluk varsa (gap < tolerance)
+    bunlar yakalanmaz. Bu fonksiyon yakalar.
+
+    Algoritma: O(N) grid spatial + O(K) pair check (K = ortalama komsu).
+    Her LINE icin bbox cell'lerini tara, ayni cell'deki diger LINE'larla
+    pair-wise crossing kontrolu yap.
+
+    Crossing kosulu:
+      - Iki LINE paralel degil (det != 0)
+      - Intersection parametreleri t, u her ikisi de [tol_param, 1-tol_param]
+        araliginda (yani her iki LINE'in da IC bolgesinde kesisiyor)
+      - tol_param = node_tol / line_length (relative tolerance)
+
+    PRD section 2.1 'Snap & Split': mikro bosluk + overshoot durumlarini bu
+    fonksiyon halleder. Endpoint-on-line ise zaten oncesinde calistirilmis.
+    """
+    if not edges or len(edges) < 2:
+        return edges
+
+    # Grid spatial index — her edge'in bbox'unu cell'lere yerlestir
+    cs = max(node_tol * 50.0, 10.0)
+    cell_to_edges: dict[tuple[int, int], list[int]] = {}
+    edge_bbox: list[tuple[float, float, float, float]] = []
+    for i, e in enumerate(edges):
+        x1, y1, x2, y2 = e["x1"], e["y1"], e["x2"], e["y2"]
+        mnx, mxx = min(x1, x2), max(x1, x2)
+        mny, mxy = min(y1, y2), max(y1, y2)
+        edge_bbox.append((mnx, mny, mxx, mxy))
+        c_min_x = int(mnx // cs)
+        c_max_x = int(mxx // cs)
+        c_min_y = int(mny // cs)
+        c_max_y = int(mxy // cs)
+        for cx in range(c_min_x, c_max_x + 1):
+            for cy in range(c_min_y, c_max_y + 1):
+                cell_to_edges.setdefault((cx, cy), []).append(i)
+
+    # Her edge'in komsularini bul, pair-wise crossing kontrol
+    checked: set[tuple[int, int]] = set()
+    splits: dict[int, list[tuple[float, float, float]]] = {}
+
+    for i, e in enumerate(edges):
+        x1, y1, x2, y2 = e["x1"], e["y1"], e["x2"], e["y2"]
+        mnx_i, mny_i, mxx_i, mxy_i = edge_bbox[i]
+        c_min_x = int(mnx_i // cs)
+        c_max_x = int(mxx_i // cs)
+        c_min_y = int(mny_i // cs)
+        c_max_y = int(mxy_i // cs)
+
+        neighbors: set[int] = set()
+        for cx in range(c_min_x, c_max_x + 1):
+            for cy in range(c_min_y, c_max_y + 1):
+                for j in cell_to_edges.get((cx, cy), ()):
+                    if j != i:
+                        neighbors.add(j)
+
+        for j in neighbors:
+            pair = (i, j) if i < j else (j, i)
+            if pair in checked:
+                continue
+            checked.add(pair)
+
+            # bbox overlap kontrolu (hizli filtre)
+            mnx_j, mny_j, mxx_j, mxy_j = edge_bbox[j]
+            if mxx_i < mnx_j - node_tol or mxx_j < mnx_i - node_tol:
+                continue
+            if mxy_i < mny_j - node_tol or mxy_j < mny_i - node_tol:
+                continue
+
+            ej = edges[j]
+            x3, y3, x4, y4 = ej["x1"], ej["y1"], ej["x2"], ej["y2"]
+
+            # Iki LINE parametrik kesisim
+            # P_i(t) = (x1,y1) + t * ((x2,y2) - (x1,y1)), t in [0,1]
+            # P_j(u) = (x3,y3) + u * ((x4,y4) - (x3,y3)), u in [0,1]
+            dx_i, dy_i = x2 - x1, y2 - y1
+            dx_j, dy_j = x4 - x3, y4 - y3
+            denom = dx_i * dy_j - dy_i * dx_j
+            if abs(denom) < 1e-9:
+                continue  # paralel veya kesiniti hata payinda
+
+            # Cramer
+            t = ((x3 - x1) * dy_j - (y3 - y1) * dx_j) / denom
+            u = ((x3 - x1) * dy_i - (y3 - y1) * dx_i) / denom
+
+            # Her iki LINE da IC bolgesinde kesisiyor mu?
+            # Relative tolerance: node_tol / line_length
+            L_i = e["length"]
+            L_j = ej["length"]
+            tol_t = max(0.001, node_tol / L_i if L_i > 0 else 0.001)
+            tol_u = max(0.001, node_tol / L_j if L_j > 0 else 0.001)
+
+            # IC bolge: endpoint'lere cok yakin degil (zaten endpoint-on-line ile yakalanmis)
+            if t <= tol_t or t >= 1 - tol_t:
+                continue
+            if u <= tol_u or u >= 1 - tol_u:
+                continue
+
+            # Intersection point
+            ix = x1 + t * dx_i
+            iy = y1 + t * dy_i
+
+            # Her iki edge icin split point ekle
+            splits.setdefault(i, []).append((ix, iy, t))
+            splits.setdefault(j, []).append((ix, iy, u))
+
+    if not splits:
+        return edges
+
+    # Yeniden bol — _split_edges_on_intersections ile ayni pattern
     new_edges: list[dict] = []
     for i, e in enumerate(edges):
         if i not in splits:
@@ -679,9 +825,17 @@ def _extract_segments(
 
     # PRD v2.0 — scale-aware adaptif tolerance (min 5cm node_tol, min 20cm sprinkler_tol)
     node_tol, sprinkler_tol = _compute_tolerances(edges, unit_scale=unit_scale)
-    # Virtual tee tespiti — LINE ortasindaki endpoint degmelerini yeni edge olarak ayir
-    # (tum boru layer'lari dahil → cross-layer T yakalanir; node_tol gap'leri yakalar)
+    # STEP 1: Virtual tee — LINE ortasindaki endpoint degmeleri yakalar
+    # (endpoint-on-line, ana hat yatay + dikey branshin endpoint'i ortada)
+    edges_before_1 = len(edges)
     edges = _split_edges_on_intersections(edges, node_tol)
+    edges_after_1 = len(edges)
+    # STEP 2: Proper LINE-LINE crossing — iki LINE birbirini ortadan kesiyor
+    # (klasik + kesisim, overshoot, mikro bosluk — PRD section 2.1 Snap & Split)
+    edges = _split_edges_on_crossings(edges, node_tol)
+    edges_after_2 = len(edges)
+    print(f"[pipe_segments] split: {edges_before_1} -> {edges_after_1} (endpoint-on-line) "
+          f"-> {edges_after_2} (crossings) | node_tol={node_tol:.2f}")
 
     # Sprinkler merkezleri LINE orta kisminda ise LINE'i o noktada bol
     split_sprinkler_keys: set[tuple[float, float]] = set()
