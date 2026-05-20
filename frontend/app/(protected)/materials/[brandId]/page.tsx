@@ -1,5 +1,8 @@
 'use client';
 
+// Cloudflare Pages icin Edge Runtime (dynamic route)
+export const runtime = 'edge';
+
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
