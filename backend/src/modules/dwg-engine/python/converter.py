@@ -1,11 +1,18 @@
 """DWG → DXF cevirici + DXF butunluk dogrulamasi.
 
-Akis:
-  1. ODA FileConverter (target=ACAD2004 → AC1018) veya LibreDWG ile ham DXF al
-  2. Text-level header normalize (her zaman, ms olcusunde):
+Akis (LibreDWG-only, ODA tamamen pasifleştirildi):
+  1. LibreDWG dwg2dxf — birincil (prod Docker'da kurulu, lokal/Windows'ta
+     opsiyonel). Source'tan derlenmiş LibreDWG /usr/local/bin/dwg2dxf.
+  2. ezdxf 1.4+ direct read — fallback (LibreDWG fail olursa)
+  3. Text-level header normalize (her zaman, ms olcusunde):
        $ACADVER → AC1018, $DWGCODEPAGE → ANSI_1254, $INSUNITS → 4
-  3. Opt-in ezdxf butunluk dogrulamasi (DWG_CONVERTER_VALIDATE=1):
+  4. Opt-in ezdxf butunluk dogrulamasi (DWG_CONVERTER_VALIDATE=1):
        LTYPE pattern_tags, Turkce karakterler, entity override (6/48/62/370)
+
+ODA NEDEN PASIFLENDI: Render Docker image'inda ODA FileConverter yok
+(proprietary, headless GUI sorunlu). Lokal Windows'ta yüklü olsa bile
+prod ile davranış farkı yaratıyordu. LibreDWG hem prod hem lokal'de tek
+yöntem — tutarli davranis.
 
 Performans notu: ezdxf validate default OFF — background parse zaten readfile
 yapiyor (main.py _background_parse). Cift parse istemiyoruz. Test/dev'de env
@@ -401,15 +408,15 @@ def _post_process(dxf_path: str) -> IntegrityReport:
 def convert_dwg_to_dxf(dwg_path: str) -> str:
     """DWG dosyasini DXF'e cevirir. Cikti: AC1018, ANSI_1254, mm.
 
-    Akis (fallback chain — biri fail olursa digerini dene):
-      1. ODA FileConverter (target=ACAD2004) — birincil
-      2. LibreDWG dwg2dxf — fallback
-      3. ezdxf direct read (yeni DWG'leri kismi destek)
-      Her aşamada: ham DXF al → header normalize → opt-in validate
+    Akis (ODA pasiflendi — LibreDWG birincil):
+      1. LibreDWG dwg2dxf (Docker apt'ten /usr/local/bin'de) — birincil
+      2. ezdxf 1.4+ direct read — fallback
 
     Donus: DXF dosya yolu.
-    Hata: RuntimeError - tum yontemler basarisiz olursa, hepsinin error
-    mesaji ile birlikte (kullanici hangi dosyanin neden parse edilemedigini gorur).
+    Hata: RuntimeError - tum yontemler basarisiz olursa hatalar birlestirilir.
+
+    ODA NEDEN PASIF: Render Docker'da yok, lokal Windows'ta yuklu olsa bile
+    tutarsiz davranis yaratiyordu. LibreDWG hem prod hem lokal'de calisir.
     """
     dwg_path = os.path.abspath(dwg_path)
     if not os.path.isfile(dwg_path):
@@ -426,39 +433,7 @@ def convert_dwg_to_dxf(dwg_path: str) -> str:
 
     errors: list[str] = []  # tum yontemlerin hatalari — final exception'da raporla
 
-    # Yontem 1: ODA FileConverter - ACAD2004 target = AC1018
-    oda = find_oda_converter()
-    if oda:
-        input_dir = os.path.dirname(dwg_path)
-        try:
-            result = subprocess.run(
-                [oda, input_dir, output_dir, _ODA_VERSION_TARGET, "DXF", "0", "1"],
-                timeout=120,
-                capture_output=True,
-            )
-            # ODA exit code 0 dondurse bile bazen DXF olusmaz (sessiz fail)
-            if os.path.isfile(output_dxf) and os.path.getsize(output_dxf) > 100:
-                logger.info("ODA FileConverter ile DWG -> DXF basarili: %s", output_dxf)
-                _post_process(output_dxf)
-                return output_dxf
-            # Exit 0 ama DXF yok -> ODA bu dosyayi sessiz reject etti
-            err = result.stderr.decode(errors='replace')[:300] if result.stderr else ""
-            errors.append(f"ODA: DXF olusmadi (exit={result.returncode}) {err}")
-            logger.warning("ODA basarisiz (sessiz): %s", err[:200])
-        except subprocess.TimeoutExpired:
-            errors.append("ODA FileConverter zaman asimi (120s)")
-            logger.warning("ODA timeout (120s) — LibreDWG fallback denenecek")
-        except subprocess.CalledProcessError as e:
-            err = e.stderr.decode(errors='replace')[:300] if e.stderr else ""
-            errors.append(f"ODA error: {err}")
-            logger.warning("ODA fail: %s — LibreDWG fallback denenecek", err[:200])
-        except Exception as e:
-            errors.append(f"ODA exception: {str(e)[:200]}")
-            logger.warning("ODA exception: %s", str(e)[:200])
-    else:
-        errors.append("ODA FileConverter bulunamadi")
-
-    # Yontem 2: LibreDWG dwg2dxf - FALLBACK (ODA fail olduysa)
+    # Yontem 1: LibreDWG dwg2dxf — BIRINCIL (Docker'da /usr/local/bin'de kurulu)
     libredwg = find_libredwg()
     if libredwg:
         try:
@@ -468,12 +443,12 @@ def convert_dwg_to_dxf(dwg_path: str) -> str:
                 capture_output=True,
             )
             if os.path.isfile(output_dxf) and os.path.getsize(output_dxf) > 100:
-                logger.info("LibreDWG ile DWG -> DXF basarili (fallback): %s", output_dxf)
+                logger.info("LibreDWG ile DWG -> DXF basarili: %s", output_dxf)
                 _post_process(output_dxf)
                 return output_dxf
             err = result.stderr.decode(errors='replace')[:300] if result.stderr else ""
             errors.append(f"LibreDWG: DXF olusmadi (exit={result.returncode}) {err}")
-            logger.warning("LibreDWG basarisiz: %s", err[:200])
+            logger.warning("LibreDWG basarisiz: %s — ezdxf fallback denenecek", err[:200])
         except subprocess.TimeoutExpired:
             errors.append("LibreDWG zaman asimi (120s)")
             logger.warning("LibreDWG timeout — ezdxf fallback denenecek")
@@ -483,18 +458,17 @@ def convert_dwg_to_dxf(dwg_path: str) -> str:
             logger.warning("LibreDWG fail: %s — ezdxf fallback denenecek", err[:200])
         except Exception as e:
             errors.append(f"LibreDWG exception: {str(e)[:200]}")
-            logger.warning("LibreDWG exception: %s", str(e)[:200])
+            logger.warning("LibreDWG exception: %s — ezdxf fallback", str(e)[:200])
     else:
-        errors.append("LibreDWG (dwg2dxf) bulunamadi")
+        errors.append("LibreDWG (dwg2dxf) PATH'te bulunamadi")
+        logger.warning("dwg2dxf binary'si yok — sadece ezdxf direct denenecek")
 
-    # Yontem 3: ezdxf direct read (1.4+ versiyonu kismi DWG destegi)
-    # Son care — ODA ve LibreDWG fail olursa ezdxf ile direkt DWG okumayi dene
+    # Yontem 2: ezdxf direct read (1.4+ kismi DWG destegi) — FALLBACK
     try:
-        import ezdxf
         doc = ezdxf.readfile(dwg_path)
         doc.saveas(output_dxf)
         if os.path.isfile(output_dxf) and os.path.getsize(output_dxf) > 100:
-            logger.info("ezdxf direct ile DWG -> DXF basarili (son fallback): %s", output_dxf)
+            logger.info("ezdxf direct ile DWG -> DXF basarili (fallback): %s", output_dxf)
             _post_process(output_dxf)
             return output_dxf
         errors.append("ezdxf: saveas sonrasi DXF olusmadi")
@@ -505,7 +479,7 @@ def convert_dwg_to_dxf(dwg_path: str) -> str:
     # Hepsi basarisiz — kullaniciya net rapor
     error_summary = " | ".join(errors)
     raise RuntimeError(
-        f"DWG dosyasi parse edilemedi (tum yontemler denendi). "
-        f"Dosyayi AutoCAD'de 'Save As R2007 DWG' veya DXF olarak kaydedip yeniden yukleyin. "
-        f"Hata detaylari: {error_summary[:500]}"
+        f"DWG dosyasi parse edilemedi. "
+        f"Dosyayi AutoCAD'de 'Save As R2007 DWG' veya 'DXF' olarak kaydedip yeniden yukleyin. "
+        f"Hata: {error_summary[:500]}"
     )
