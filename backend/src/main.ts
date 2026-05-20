@@ -19,24 +19,37 @@ async function bootstrap() {
     }),
   );
 
-  // CORS origin'leri: env'den gelenler + localhost'lar HER ZAMAN.
-  // Localhost'lar dışarıdan exploit edilemez (loopback), bu yüzden
-  // prod'da bile dahil etmek geliştirici makinesinden direkt prod
-  // backend'e konuşma kolayligi saglar — Render'a dokunmaya gerek yok.
+  // CORS origin'leri: env'den gelenler + localhost'lar + bilinen prod'lar.
+  // - Localhost'lar dışarıdan exploit edilemez (loopback), prod'da bile dahil.
+  // - Cloudflare Pages preview URL'leri (*.metaprice.pages.dev) regex ile dahil.
+  // - Vercel preview URL'leri (*.vercel.app) backward-compat icin dahil.
   const envOrigins = process.env.CORS_ORIGINS
     ?.split(',')
     .map((s) => s.trim())
     .filter(Boolean) ?? [];
-  const localOrigins = [
+  const staticOrigins = [
     'http://localhost:3000',
     'http://localhost:3001',
     'http://localhost:3002',
     'http://localhost:3003',
+    'https://metaprice.pages.dev',         // Cloudflare Pages production
+    'https://metaprice.vercel.app',        // Vercel backward-compat
   ];
-  const corsOrigins = Array.from(new Set([...envOrigins, ...localOrigins]));
+  const allowedOrigins = Array.from(new Set([...envOrigins, ...staticOrigins]));
+  // Regex pattern'ler: preview/deploy-specific URL'ler
+  const allowedPatterns: RegExp[] = [
+    /^https:\/\/[a-z0-9-]+\.metaprice\.pages\.dev$/,  // CF Pages unique deploys
+    /^https:\/\/metaprice-[a-z0-9-]+\.vercel\.app$/,  // Vercel preview deploys
+  ];
 
   app.enableCors({
-    origin: corsOrigins,
+    origin: (origin, callback) => {
+      // Same-origin (browser address bar veya server-to-server) — origin undefined
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      if (allowedPatterns.some((re) => re.test(origin))) return callback(null, true);
+      return callback(new Error(`CORS blocked: ${origin}`));
+    },
     credentials: true,
   });
 
