@@ -151,7 +151,16 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
 
       while (Date.now() - pollStart < POLL_MAX_MS) {
         try {
-          const s = await api.get(`/dwg-engine/status/${uploadFileId}`, { timeout: 15000 });
+          // CACHE-BUSTING: NestJS GET handler'lari otomatik ETag uretiyor,
+          // browser If-None-Match gonderiyor → 304 Not Modified zincirine
+          // dusuyor. Bu durumda axios eski cache'lenmis body'i (status=processing)
+          // sonsuza kadar okuyor; "ready" hic gorulmuyor.
+          // Cozum: her request'e farkli query param ekle → ETag eslesmesin.
+          const s = await api.get(`/dwg-engine/status/${uploadFileId}`, {
+            timeout: 15000,
+            params: { _t: Date.now() },
+            headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' },
+          });
           const st = s.data?.status;
           if (st === 'ready') {
             statusData = s.data;

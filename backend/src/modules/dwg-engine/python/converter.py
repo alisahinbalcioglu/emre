@@ -278,10 +278,38 @@ def read_dxf(dxf_path: str):
                        primary, type(e).__name__, str(e)[:100], fallback)
 
     t1 = _time.time()
-    doc = ezdxf.readfile(dxf_path, encoding=fallback)
-    logger.info("read_dxf fallback %s OK (%.1fs total, %s primary fail): %s",
-                fallback, _time.time() - t0, primary, dxf_path)
-    return doc
+    try:
+        doc = ezdxf.readfile(dxf_path, encoding=fallback)
+        logger.info("read_dxf fallback %s OK (%.1fs total, %s primary fail): %s",
+                    fallback, _time.time() - t0, primary, dxf_path)
+        return doc
+    except Exception as fallback_err:
+        # Son care: ezdxf.recover modu — corrupt DXF'leri tolerate eder.
+        # Ornek: LibreDWG bazı Türkçe karakterleri "?" olarak yazıyor (Ğ→?),
+        # ezdxf strict mode "Invalid value 'SO?UK SU' for attribute 'layer'"
+        # hatasıyla dosyayı tamamen reddediyor. Recover mode invalid entity'leri
+        # atlatır, dosyanın kalanını parse eder. Hatalar auditor.errors'a yazılır.
+        from ezdxf import recover
+        logger.warning(
+            "read_dxf fallback %s da basarisiz (%s: %s) — ezdxf.recover deneniyor",
+            fallback, type(fallback_err).__name__, str(fallback_err)[:200],
+        )
+        try:
+            doc, auditor = recover.readfile(dxf_path, errors='ignore')
+            err_count = len(auditor.errors) if auditor else 0
+            fix_count = len(auditor.fixes) if auditor else 0
+            logger.info(
+                "read_dxf recover OK (%.1fs total): %d hata, %d fix — %s",
+                _time.time() - t0, err_count, fix_count, dxf_path,
+            )
+            return doc
+        except Exception as recover_err:
+            # Recover bile fail ettiyse: orijinal exception'i fırlat (debug için)
+            logger.error(
+                "read_dxf recover da fail (%s: %s) — orijinal hata firlatiliyor",
+                type(recover_err).__name__, str(recover_err)[:200],
+            )
+            raise fallback_err
 
 
 # ─────────────────────────────────────────────────────────
