@@ -127,9 +127,13 @@ export default function DwgProjectWorkspace({
 
   const handleCalculate = async (forceLayer?: string) => {
     const layer = forceLayer ?? state.selectedLayer;
-    if (!layer) return;
+    console.log('[handleCalculate] START', { layer, forceLayer, selectedLayer: state.selectedLayer });
+    if (!layer) {
+      console.warn('[handleCalculate] EARLY EXIT: layer yok');
+      return;
+    }
     if (state.calculatedLayers[layer]) {
-      // Layer zaten hesaplandi, tekrar tetiklenince sessizce cik (toast yok)
+      console.warn('[handleCalculate] EARLY EXIT: zaten hesaplandi', layer);
       return;
     }
     const cfg = state.layerConfigs[layer] ?? { hatIsmi: '', materialType: '', defaultDiameter: '' };
@@ -152,12 +156,14 @@ export default function DwgProjectWorkspace({
         sprinkler_layers: JSON.stringify(state.sprinklerLayers),
       });
 
+      console.log('[handleCalculate] POST /dwg-engine/parse', { url: `/dwg-engine/parse?${params.toString()}` });
       const formData = new FormData();
       const res = await api.post<MetrajResult>(
         `/dwg-engine/parse?${params.toString()}`,
         formData,
         { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 300000 },
       );
+      console.log('[handleCalculate] RESPONSE OK', { status: res.status });
 
       const data = res.data as any;
       const edgeSegs: EdgeSegment[] = Array.isArray(data.edge_segments) ? data.edge_segments : [];
@@ -165,6 +171,7 @@ export default function DwgProjectWorkspace({
         ? (data.junction_points as [number, number][])
         : [];
       const totalLen = edgeSegs.reduce((sum, e) => sum + (e.length || 0), 0);
+      console.log('[handleCalculate] PARSED', { edgeSegsCount: edgeSegs.length, junctionsCount: junctions.length, totalLen });
 
       const calcLayer: CalculatedLayer = {
         layer,
@@ -201,8 +208,12 @@ export default function DwgProjectWorkspace({
   };
 
   const handleLineClick = (line: { layer: string; index: number; shiftKey: boolean; screenX: number; screenY: number }) => {
-    if (calculating) return;
-    // Layer Gizle Modu (toolbar toggle) VEYA Shift+click → layer gizle/goster.
+    // DEBUG: Click event'in tetiklendigini anlik dogrula
+    console.log('[handleLineClick] FIRED', { layer: line.layer, index: line.index, calculating });
+    if (calculating) {
+      toast({ title: 'Devam eden hesaplama var', description: 'Bitince tekrar tikla.', variant: 'destructive' });
+      return;
+    }
     if (hideMode || line.shiftKey) {
       toggleLayerVisibility(line.layer);
       toast({
@@ -211,13 +222,15 @@ export default function DwgProjectWorkspace({
       });
       return;
     }
-    // Normal tek tik = layer sec + arka planda otomatik hesapla.
-    // Cap popup ACMAZ — T noktalari otomatik bolunur, sonra her segment'e
-    // ayri tiklanip DiameterEditPopup ile cap atanir.
     selectLayer(line.layer);
-    if (!state.calculatedLayers[line.layer]) {
-      handleCalculate(line.layer);
+    if (state.calculatedLayers[line.layer]) {
+      toast({ title: 'Bu layer zaten hesaplandi', description: line.layer });
+      return;
     }
+    // Anlik visual feedback — kullanici click'in dustuğunu bilsin
+    toast({ title: '🚀 Hesaplama basladi', description: `${line.layer} (Render cold-start 30-60sn olabilir)` });
+    console.log('[handleLineClick] handleCalculate cagrilacak', line.layer);
+    handleCalculate(line.layer);
   };
 
   const handleInsertClick = (ins: { layer: string; insertIndex: number; insertName: string; position: [number, number] }) => {
