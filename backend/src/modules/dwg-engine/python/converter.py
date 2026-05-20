@@ -412,10 +412,48 @@ def validate_dxf_integrity(dxf_path: str) -> IntegrityReport:
 #  Public entry point
 # ─────────────────────────────────────────────────────────
 
+def _strip_invalid_dxf_chars(dxf_path: str, report: IntegrityReport) -> None:
+    """LibreDWG'nin Turkce karakter kaybindan kaynakli '?' kirliligini temizle.
+
+    Sorun: LibreDWG DWG'den DXF'e cevirirken bazi Turkce karakterleri (Ğ, Ş,
+    İ vb.) byte basinda kaybediyor, '?' olarak yaziyor. Ornek: "SOĞUK SU"
+    layer adi DXF'te "SO?UK SU" olarak goruluyor.
+
+    DXF spec layer/entity attribute adlarinda su karakterleri yasakliyor:
+        < > / \\ " : ; ? * | = '
+    Yani '?' karakteri layer adinda bulunamaz. ezdxf hem strict mode hem
+    recover mode bu validation'i yapiyor → tum DXF dosyasi reddediliyor.
+
+    Cozum: text seviyesinde '?' → '_' replace. Yan etki: TEXT/MTEXT
+    entity'lerinde '?' varsa onlar da '_' olur (gorsel, kabul edilebilir;
+    metraj hesaplamasi metin icerigi kullanmiyor).
+
+    Performans: tek text okuma+yazma (~10-50ms). Hicbir '?' yoksa skip.
+    """
+    text = _read_dxf_text(dxf_path)
+    if text is None:
+        return
+    count = text.count('?')
+    if count == 0:
+        return
+    text = text.replace('?', '_')
+    try:
+        _write_dxf_text(dxf_path, text)
+        report.fixed_headers.append(
+            f"{count} adet '?' karakteri '_' ile degistirildi (Turkce kaybi recovery)"
+        )
+        logger.info("DXF '?' temizligi: %d karakter degistirildi (%s)", count, dxf_path)
+    except OSError as e:
+        report.issues.append(f"'?' temizligi yazim hatasi: {e}")
+
+
 def _post_process(dxf_path: str) -> IntegrityReport:
     """Ham DXF uzerinde normalize (her zaman) + opsiyonel ezdxf validate."""
     report = IntegrityReport()
     _normalize_header(dxf_path, report)
+    # Header normalize'dan SONRA '?' temizligi — _normalize_header ayni dosyayi
+    # okuyup yazdigi icin sira onemli (yoksa write race).
+    _strip_invalid_dxf_chars(dxf_path, report)
     if report.fixed_headers:
         logger.info("DXF header normalize: %s", ", ".join(report.fixed_headers))
 
