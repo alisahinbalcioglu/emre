@@ -401,13 +401,15 @@ def _post_process(dxf_path: str) -> IntegrityReport:
 def convert_dwg_to_dxf(dwg_path: str) -> str:
     """DWG dosyasini DXF'e cevirir. Cikti: AC1018, ANSI_1254, mm.
 
-    Akis:
-      1. ODA FileConverter (target=ACAD2004) ya da LibreDWG ile ham DXF al
-      2. Text-level header normalize ($ACADVER/$DWGCODEPAGE/$INSUNITS)
-      3. Opt-in ezdxf butunluk dogrulamasi (env: DWG_CONVERTER_VALIDATE=1)
+    Akis (fallback chain — biri fail olursa digerini dene):
+      1. ODA FileConverter (target=ACAD2004) — birincil
+      2. LibreDWG dwg2dxf — fallback
+      3. ezdxf direct read (yeni DWG'leri kismi destek)
+      Her aşamada: ham DXF al → header normalize → opt-in validate
 
     Donus: DXF dosya yolu.
-    Hata: RuntimeError - converter binary'si yok ya da cevirim basarisiz.
+    Hata: RuntimeError - tum yontemler basarisiz olursa, hepsinin error
+    mesaji ile birlikte (kullanici hangi dosyanin neden parse edilemedigini gorur).
     """
     dwg_path = os.path.abspath(dwg_path)
     if not os.path.isfile(dwg_path):
@@ -422,45 +424,88 @@ def convert_dwg_to_dxf(dwg_path: str) -> str:
     base_name = Path(dwg_path).stem
     output_dxf = os.path.join(output_dir, f"{base_name}.dxf")
 
-    # Yontem 1: ODA FileConverter - ACAD2004 target = AC1018 (reference ile esit)
+    errors: list[str] = []  # tum yontemlerin hatalari — final exception'da raporla
+
+    # Yontem 1: ODA FileConverter - ACAD2004 target = AC1018
     oda = find_oda_converter()
     if oda:
         input_dir = os.path.dirname(dwg_path)
         try:
-            subprocess.run(
+            result = subprocess.run(
                 [oda, input_dir, output_dir, _ODA_VERSION_TARGET, "DXF", "0", "1"],
                 timeout=120,
-                check=True,
                 capture_output=True,
             )
-            if os.path.isfile(output_dxf):
+            # ODA exit code 0 dondurse bile bazen DXF olusmaz (sessiz fail)
+            if os.path.isfile(output_dxf) and os.path.getsize(output_dxf) > 100:
+                logger.info("ODA FileConverter ile DWG -> DXF basarili: %s", output_dxf)
                 _post_process(output_dxf)
                 return output_dxf
+            # Exit 0 ama DXF yok -> ODA bu dosyayi sessiz reject etti
+            err = result.stderr.decode(errors='replace')[:300] if result.stderr else ""
+            errors.append(f"ODA: DXF olusmadi (exit={result.returncode}) {err}")
+            logger.warning("ODA basarisiz (sessiz): %s", err[:200])
         except subprocess.TimeoutExpired:
-            raise RuntimeError("ODA FileConverter zaman asimi (120s)")
+            errors.append("ODA FileConverter zaman asimi (120s)")
+            logger.warning("ODA timeout (120s) — LibreDWG fallback denenecek")
         except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"ODA FileConverter hatasi: {e.stderr.decode(errors='replace')}")
+            err = e.stderr.decode(errors='replace')[:300] if e.stderr else ""
+            errors.append(f"ODA error: {err}")
+            logger.warning("ODA fail: %s — LibreDWG fallback denenecek", err[:200])
+        except Exception as e:
+            errors.append(f"ODA exception: {str(e)[:200]}")
+            logger.warning("ODA exception: %s", str(e)[:200])
+    else:
+        errors.append("ODA FileConverter bulunamadi")
 
-    # Yontem 2: LibreDWG dwg2dxf - version target verilemiyor, post-process daha kritik
+    # Yontem 2: LibreDWG dwg2dxf - FALLBACK (ODA fail olduysa)
     libredwg = find_libredwg()
     if libredwg:
         try:
-            subprocess.run(
+            result = subprocess.run(
                 [libredwg, "-o", output_dxf, dwg_path],
                 timeout=120,
-                check=True,
                 capture_output=True,
             )
-            if os.path.isfile(output_dxf):
+            if os.path.isfile(output_dxf) and os.path.getsize(output_dxf) > 100:
+                logger.info("LibreDWG ile DWG -> DXF basarili (fallback): %s", output_dxf)
                 _post_process(output_dxf)
                 return output_dxf
+            err = result.stderr.decode(errors='replace')[:300] if result.stderr else ""
+            errors.append(f"LibreDWG: DXF olusmadi (exit={result.returncode}) {err}")
+            logger.warning("LibreDWG basarisiz: %s", err[:200])
         except subprocess.TimeoutExpired:
-            raise RuntimeError("LibreDWG zaman asimi (120s)")
+            errors.append("LibreDWG zaman asimi (120s)")
+            logger.warning("LibreDWG timeout — ezdxf fallback denenecek")
         except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"LibreDWG hatasi: {e.stderr.decode(errors='replace')}")
+            err = e.stderr.decode(errors='replace')[:300] if e.stderr else ""
+            errors.append(f"LibreDWG error: {err}")
+            logger.warning("LibreDWG fail: %s — ezdxf fallback denenecek", err[:200])
+        except Exception as e:
+            errors.append(f"LibreDWG exception: {str(e)[:200]}")
+            logger.warning("LibreDWG exception: %s", str(e)[:200])
+    else:
+        errors.append("LibreDWG (dwg2dxf) bulunamadi")
 
+    # Yontem 3: ezdxf direct read (1.4+ versiyonu kismi DWG destegi)
+    # Son care — ODA ve LibreDWG fail olursa ezdxf ile direkt DWG okumayi dene
+    try:
+        import ezdxf
+        doc = ezdxf.readfile(dwg_path)
+        doc.saveas(output_dxf)
+        if os.path.isfile(output_dxf) and os.path.getsize(output_dxf) > 100:
+            logger.info("ezdxf direct ile DWG -> DXF basarili (son fallback): %s", output_dxf)
+            _post_process(output_dxf)
+            return output_dxf
+        errors.append("ezdxf: saveas sonrasi DXF olusmadi")
+    except Exception as e:
+        errors.append(f"ezdxf direct: {str(e)[:200]}")
+        logger.warning("ezdxf direct read fail: %s", str(e)[:200])
+
+    # Hepsi basarisiz — kullaniciya net rapor
+    error_summary = " | ".join(errors)
     raise RuntimeError(
-        "Bu sunucuda DWG→DXF donusumu kapali (ODA FileConverter / LibreDWG kurulu degil). "
-        "Lutfen dosyayi DXF formatinda yukleyin. "
-        "Yerel kurulumda ODAFileConverter veya 'dwg2dxf' (libredwg-tools) PATH'e eklenince otomatik etkinlesir."
+        f"DWG dosyasi parse edilemedi (tum yontemler denendi). "
+        f"Dosyayi AutoCAD'de 'Save As R2007 DWG' veya DXF olarak kaydedip yeniden yukleyin. "
+        f"Hata detaylari: {error_summary[:500]}"
     )
