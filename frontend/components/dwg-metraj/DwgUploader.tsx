@@ -88,7 +88,9 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
     setExtractingLayers(true);
     startTimer();
 
-    const RETRY_DELAYS = [2000, 5000, 10000, 20000, 40000];
+    // Render free tier DWG engine cold-start ~30-120sn. 7 retry, daha uzun
+    // backoff'larla yaklasik 180sn toplam tolerance.
+    const RETRY_DELAYS = [3000, 6000, 12000, 24000, 45000, 60000, 60000];
     const isTransient = (e: any): boolean => {
       const status = e?.response?.status;
       if (status === 503 || status === 502 || status === 504 || status === 500) return true;
