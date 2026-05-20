@@ -140,9 +140,9 @@ def _sprinkler_centers_from_layers(
     # CIRCLE — sadece sprinkler layer'inda VE radius esigi altinda
     if layer_set:
         for ent in msp.query('CIRCLE'):
-            if ent.dxf.layer not in layer_set:
-                continue
             try:
+                if ent.dxf.layer not in layer_set:
+                    continue
                 radius = float(ent.dxf.radius)
                 if radius > _SPRINKLER_MAX_RADIUS_MM:
                     continue  # Buyuk daire — sprinkler degil (vana, tank vb.)
@@ -152,9 +152,9 @@ def _sprinkler_centers_from_layers(
 
         # POINT — sadece sprinkler layer'inda
         for ent in msp.query('POINT'):
-            if ent.dxf.layer not in layer_set:
-                continue
             try:
+                if ent.dxf.layer not in layer_set:
+                    continue
                 centers.append((float(ent.dxf.location.x), float(ent.dxf.location.y)))
             except Exception:
                 continue
@@ -215,12 +215,18 @@ def _detect_sprinkler_positions(
 # ── Edge toplama ve splitting ────────────────────────────────────
 
 def _collect_raw_edges(msp, layer_set: set[str]) -> list[dict]:
-    """Tum LINE + LWPOLYLINE + POLYLINE edge'lerini toplar (vertex-level)."""
+    """Tum LINE + LWPOLYLINE + POLYLINE edge'lerini toplar (vertex-level).
+
+    PER-ENTITY TOLERANCE: ezdxf bazi bozuk entity'lerde attribute access'te
+    DXFValueError atiyor. Tum try'ler kapsayici — layer access dahil her sey
+    icinde, bozuk entity atlanip kalan dosya parse edilebilsin diye.
+    """
     edges: list[dict] = []
     for ent in msp.query('LINE'):
-        if ent.dxf.layer not in layer_set:
-            continue
         try:
+            layer = ent.dxf.layer
+            if layer not in layer_set:
+                continue
             x1, y1 = float(ent.dxf.start.x), float(ent.dxf.start.y)
             x2, y2 = float(ent.dxf.end.x), float(ent.dxf.end.y)
         except Exception:
@@ -228,13 +234,15 @@ def _collect_raw_edges(msp, layer_set: set[str]) -> list[dict]:
         length = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
         if length < 1.0:
             continue
-        edges.append({"layer": ent.dxf.layer, "x1": x1, "y1": y1, "x2": x2, "y2": y2, "length": length})
+        edges.append({"layer": layer, "x1": x1, "y1": y1, "x2": x2, "y2": y2, "length": length})
 
     for ent in msp.query('LWPOLYLINE'):
-        if ent.dxf.layer not in layer_set:
-            continue
         try:
+            layer = ent.dxf.layer
+            if layer not in layer_set:
+                continue
             pts = [(float(p[0]), float(p[1])) for p in ent.get_points(format='xy')]
+            closed = bool(getattr(ent, "closed", False))
         except Exception:
             continue
         if len(pts) < 2:
@@ -245,18 +253,19 @@ def _collect_raw_edges(msp, layer_set: set[str]) -> list[dict]:
             length = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
             if length < 1.0:
                 continue
-            edges.append({"layer": ent.dxf.layer, "x1": x1, "y1": y1, "x2": x2, "y2": y2, "length": length})
-        if getattr(ent, "closed", False) and len(pts) > 2:
+            edges.append({"layer": layer, "x1": x1, "y1": y1, "x2": x2, "y2": y2, "length": length})
+        if closed and len(pts) > 2:
             x1, y1 = pts[-1]
             x2, y2 = pts[0]
             length = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
             if length >= 1.0:
-                edges.append({"layer": ent.dxf.layer, "x1": x1, "y1": y1, "x2": x2, "y2": y2, "length": length})
+                edges.append({"layer": layer, "x1": x1, "y1": y1, "x2": x2, "y2": y2, "length": length})
 
     for ent in msp.query('POLYLINE'):
-        if ent.dxf.layer not in layer_set:
-            continue
         try:
+            layer = ent.dxf.layer
+            if layer not in layer_set:
+                continue
             pts = [(float(v.dxf.location.x), float(v.dxf.location.y)) for v in ent.vertices]
         except Exception:
             continue
@@ -266,7 +275,7 @@ def _collect_raw_edges(msp, layer_set: set[str]) -> list[dict]:
             length = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
             if length < 1.0:
                 continue
-            edges.append({"layer": ent.dxf.layer, "x1": x1, "y1": y1, "x2": x2, "y2": y2, "length": length})
+            edges.append({"layer": layer, "x1": x1, "y1": y1, "x2": x2, "y2": y2, "length": length})
 
     return edges
 
@@ -723,11 +732,12 @@ def _collect_raw_edges_all_layers(msp) -> list[dict]:
 
     `_collect_raw_edges`'in layer-bagimsiz versiyonu — cross-layer T-junction
     tespiti icin tek bir scan'de tum boru layer'larinin edge'lerini toplar
-    (cift tarama yerine).
+    (cift tarama yerine). Per-entity tolerance (bozuk entity atlanir).
     """
     edges: list[dict] = []
     for ent in msp.query('LINE'):
         try:
+            layer = ent.dxf.layer
             x1, y1 = float(ent.dxf.start.x), float(ent.dxf.start.y)
             x2, y2 = float(ent.dxf.end.x), float(ent.dxf.end.y)
         except Exception:
@@ -735,11 +745,13 @@ def _collect_raw_edges_all_layers(msp) -> list[dict]:
         length = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
         if length < 1.0:
             continue
-        edges.append({"layer": ent.dxf.layer, "x1": x1, "y1": y1, "x2": x2, "y2": y2, "length": length})
+        edges.append({"layer": layer, "x1": x1, "y1": y1, "x2": x2, "y2": y2, "length": length})
 
     for ent in msp.query('LWPOLYLINE'):
         try:
+            layer = ent.dxf.layer
             pts = [(float(p[0]), float(p[1])) for p in ent.get_points(format='xy')]
+            closed = bool(getattr(ent, "closed", False))
         except Exception:
             continue
         if len(pts) < 2:
@@ -750,16 +762,17 @@ def _collect_raw_edges_all_layers(msp) -> list[dict]:
             length = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
             if length < 1.0:
                 continue
-            edges.append({"layer": ent.dxf.layer, "x1": x1, "y1": y1, "x2": x2, "y2": y2, "length": length})
-        if getattr(ent, "closed", False) and len(pts) > 2:
+            edges.append({"layer": layer, "x1": x1, "y1": y1, "x2": x2, "y2": y2, "length": length})
+        if closed and len(pts) > 2:
             x1, y1 = pts[-1]
             x2, y2 = pts[0]
             length = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
             if length >= 1.0:
-                edges.append({"layer": ent.dxf.layer, "x1": x1, "y1": y1, "x2": x2, "y2": y2, "length": length})
+                edges.append({"layer": layer, "x1": x1, "y1": y1, "x2": x2, "y2": y2, "length": length})
 
     for ent in msp.query('POLYLINE'):
         try:
+            layer = ent.dxf.layer
             pts = [(float(v.dxf.location.x), float(v.dxf.location.y)) for v in ent.vertices]
         except Exception:
             continue
@@ -769,7 +782,7 @@ def _collect_raw_edges_all_layers(msp) -> list[dict]:
             length = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
             if length < 1.0:
                 continue
-            edges.append({"layer": ent.dxf.layer, "x1": x1, "y1": y1, "x2": x2, "y2": y2, "length": length})
+            edges.append({"layer": layer, "x1": x1, "y1": y1, "x2": x2, "y2": y2, "length": length})
 
     return edges
 

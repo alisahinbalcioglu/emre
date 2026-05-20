@@ -246,9 +246,13 @@ def extract_geometry_from_doc(doc, layer_filter: set[str] | None = None) -> Geom
             return _transform_point(x, y, view_t)
         return x, y
 
-    # Layer renkleri
+    # Layer renkleri — per-layer try/except (bozuk layer attribute'lari atla)
     for layer in doc.layers:
-        layer_colors[layer.dxf.name] = layer.color if layer.color > 0 else 7  # default beyaz
+        try:
+            layer_colors[layer.dxf.name] = layer.color if layer.color > 0 else 7  # default beyaz
+        except Exception:
+            # Layer adi/rengi okunamiyor → atla, geometry parse devam etsin
+            continue
 
     # Block geometry cache — her unique block icin ezdxf attribute access'i SADECE
     # bir kez yap. Sonra her INSERT cached tuple'lari kullanip transform uygular.
@@ -456,13 +460,20 @@ def extract_geometry_from_doc(doc, layer_filter: set[str] | None = None) -> Geom
                 _update_bounds(bounds, wx, wy)
 
     for entity in msp:
-        layer_name = entity.dxf.layer
+        # PER-ENTITY TOLERANCE: bozuk entity (ezdxf attribute setter validation
+        # fail) tum geometry parse'i cokertmesin. Layer adi/tipi alinamiyorsa
+        # entity atla; baska entity'ler etkilenmesin.
+        try:
+            layer_name = entity.dxf.layer
+            etype = entity.dxftype()
+        except Exception:
+            continue
+
         if layer_filter is not None and layer_name not in layer_filter:
             continue
 
         # Entity color — BYLAYER ise 256, aksi halde kendi ACI kodu
         color = getattr(entity.dxf, "color", 256) or 256
-        etype = entity.dxftype()
 
         if etype == "LINE":
             try:

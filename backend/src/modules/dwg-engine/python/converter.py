@@ -412,39 +412,92 @@ def validate_dxf_integrity(dxf_path: str) -> IntegrityReport:
 #  Public entry point
 # ─────────────────────────────────────────────────────────
 
+# DXF spec'te layer/entity attribute adlarinda yasak karakterler.
+# Reference: AutoCAD documentation "Symbol Naming Conventions"
+_DXF_FORBIDDEN_LAYER_CHARS = re.compile(r'[<>/\\":;?*|=\']')
+
+
 def _strip_invalid_dxf_chars(dxf_path: str, report: IntegrityReport) -> None:
-    """LibreDWG'nin Turkce karakter kaybindan kaynakli '?' kirliligini temizle.
+    """LibreDWG kaynakli DXF kirliligini text seviyesinde temizle.
 
-    Sorun: LibreDWG DWG'den DXF'e cevirirken bazi Turkce karakterleri (Ğ, Ş,
-    İ vb.) byte basinda kaybediyor, '?' olarak yaziyor. Ornek: "SOĞUK SU"
-    layer adi DXF'te "SO?UK SU" olarak goruluyor.
+    Iki ayri fix uygulanir:
 
-    DXF spec layer/entity attribute adlarinda su karakterleri yasakliyor:
-        < > / \\ " : ; ? * | = '
-    Yani '?' karakteri layer adinda bulunamaz. ezdxf hem strict mode hem
-    recover mode bu validation'i yapiyor → tum DXF dosyasi reddediliyor.
+    1. GLOBAL '?' replace:
+       LibreDWG bazi Turkce karakterleri (Ğ, Ş, İ vb.) byte basinda kaybediyor,
+       '?' olarak yaziyor. "SOĞUK SU" → "SO?UK SU". '?' karakteri DXF spec'inde
+       layer/symbol adlarinda yasak → ezdxf reddediyor.
 
-    Cozum: text seviyesinde '?' → '_' replace. Yan etki: TEXT/MTEXT
-    entity'lerinde '?' varsa onlar da '_' olur (gorsel, kabul edilebilir;
-    metraj hesaplamasi metin icerigi kullanmiyor).
+       Yan etki: TEXT/MTEXT entity'lerinde '?' varsa onlar da '_' olur (kabul
+       edilebilir — metraj hesaplamasi metin icerigi kullanmiyor).
 
-    Performans: tek text okuma+yazma (~10-50ms). Hicbir '?' yoksa skip.
+    2. SCOPED layer name sanitize:
+       DXF spec'te tum yasak karakterler: < > / \\ " : ; ? * | = '
+       (Adim 1 sadece '?' icin global; digerleri text icerigi de etkileyebilir
+       — ornegin '\\' xref/block reference'larinda kullaniliyor.)
+       Bu adimda LAYER table'daki yasak karakter iceren layer adlari bulunur,
+       sanitize edilir, tum referanslar (group code 8) global replace yapilir.
+
+    DXF format ornek:
+        0
+        LAYER
+        5
+        10
+        2
+        SO?UK<BORU       <- yasak karakter iceren layer adi
+        70
+        0
+        ...
+
+    Performans: 1-2 text okuma+yazma (~10-100ms). Sorun yoksa skip.
     """
     text = _read_dxf_text(dxf_path)
     if text is None:
         return
-    count = text.count('?')
-    if count == 0:
+
+    fixes_applied: list[str] = []
+
+    # === ADIM 1: Global '?' replace ===
+    qmark_count = text.count('?')
+    if qmark_count > 0:
+        text = text.replace('?', '_')
+        fixes_applied.append(f"{qmark_count} adet '?' (Turkce kaybi)")
+
+    # === ADIM 2: Scoped layer name sanitize (other forbidden chars) ===
+    # LAYER table entry pattern: "  0\nLAYER\n... 2\n<name>\n" (next 0\n bounded)
+    # Non-greedy match, layer name in group(1)
+    layer_pattern = re.compile(
+        r'\s*0\s*\r?\nLAYER\s*\r?\n(?:[^\r\n]*\r?\n)+?\s*2\s*\r?\n([^\r\n]+)',
+    )
+
+    rename_map: dict[str, str] = {}
+    for match in layer_pattern.finditer(text):
+        old_name = match.group(1).strip()
+        if _DXF_FORBIDDEN_LAYER_CHARS.search(old_name):
+            new_name = _DXF_FORBIDDEN_LAYER_CHARS.sub('_', old_name)
+            if new_name != old_name and old_name not in rename_map:
+                rename_map[old_name] = new_name
+
+    if rename_map:
+        # Uzun layer adlari once degistirilsin (kisa olan baska layer'in alt-string'i olmasin)
+        for old in sorted(rename_map.keys(), key=len, reverse=True):
+            new = rename_map[old]
+            text = text.replace(old, new)
+        sample = list(rename_map.items())[:3]
+        fixes_applied.append(
+            f"{len(rename_map)} layer adi sanitize: {sample}"
+            f"{'...' if len(rename_map) > 3 else ''}"
+        )
+
+    if not fixes_applied:
         return
-    text = text.replace('?', '_')
+
     try:
         _write_dxf_text(dxf_path, text)
-        report.fixed_headers.append(
-            f"{count} adet '?' karakteri '_' ile degistirildi (Turkce kaybi recovery)"
-        )
-        logger.info("DXF '?' temizligi: %d karakter degistirildi (%s)", count, dxf_path)
+        msg = " + ".join(fixes_applied)
+        report.fixed_headers.append(f"DXF sanitize: {msg}")
+        logger.info("DXF text sanitize (%s): %s", dxf_path, msg)
     except OSError as e:
-        report.issues.append(f"'?' temizligi yazim hatasi: {e}")
+        report.issues.append(f"DXF sanitize yazim hatasi: {e}")
 
 
 def _post_process(dxf_path: str) -> IntegrityReport:

@@ -221,9 +221,22 @@ def extract_layer_info_from_doc(doc) -> LayerListResult:
     layer_data: dict[str, dict[str, int]] = {}
     pipe_types = ('LINE', 'LWPOLYLINE', 'POLYLINE')
 
+    # PER-ENTITY TOLERANCE: ezdxf bazi bozuk entity'lerde attribute access'te
+    # DXFValueError atiyor (ornek: SEQEND'in layer adi yasak karakter iceriyorsa
+    # ezdxf setter validation rejects). Tek bozuk entity tum dosya parse'ini
+    # cokertmesin diye her entity ayri try/except'te islenir, hata olursa
+    # atlanir, kalan dosya normal islenir.
+    skipped_count = 0
+    skip_examples: list[str] = []
     for entity in msp:
-        et = entity.dxftype()
-        layer = entity.dxf.layer
+        try:
+            et = entity.dxftype()
+            layer = entity.dxf.layer
+        except Exception as e:
+            skipped_count += 1
+            if len(skip_examples) < 3:
+                skip_examples.append(f"{type(e).__name__}: {str(e)[:80]}")
+            continue
         if layer not in layer_data:
             layer_data[layer] = {'entity': 0, 'insert': 0, 'total': 0}
         layer_data[layer]['total'] += 1
@@ -231,6 +244,12 @@ def extract_layer_info_from_doc(doc) -> LayerListResult:
             layer_data[layer]['entity'] += 1
         elif et == 'INSERT':
             layer_data[layer]['insert'] += 1
+
+    if skipped_count > 0:
+        logging.warning(
+            "extract_layer_info: %d entity skip edildi (bozuk attribute). Ornekler: %s",
+            skipped_count, skip_examples,
+        )
 
     # Herhangi bir entity iceren tum layer'lari goster
     # (boru, INSERT, TEXT, MTEXT, CIRCLE, ARC, LEADER, vb.)
@@ -278,17 +297,30 @@ def analyze_dxf_metraj(
             return True
         return layer in selected_layers
 
+    # PER-ENTITY TOLERANCE: bozuk entity'ler tum metraj hesabini cokertmesin.
+    # Sayilari sayariz, log'a yaziriz; partial sonuc kullanilabilir.
+    skipped = {'LINE': 0, 'LWPOLYLINE': 0, 'POLYLINE': 0}
+    skip_examples: list[str] = []
+
+    def _record_skip(et: str, exc: Exception) -> None:
+        skipped[et] += 1
+        if len(skip_examples) < 5:
+            skip_examples.append(f"{et}: {type(exc).__name__}: {str(exc)[:80]}")
+
     # LINE entity'leri
     for line in msp.query('LINE'):
-        layer = line.dxf.layer
-        if not _should_include(layer):
+        try:
+            layer = line.dxf.layer
+            if not _should_include(layer):
+                continue
+            start = line.dxf.start
+            end = line.dxf.end
+            length = math.sqrt(
+                (end.x - start.x) ** 2 + (end.y - start.y) ** 2
+            ) * scale
+        except Exception as e:
+            _record_skip('LINE', e)
             continue
-
-        start = line.dxf.start
-        end = line.dxf.end
-        length = math.sqrt(
-            (end.x - start.x) ** 2 + (end.y - start.y) ** 2
-        ) * scale
 
         if length < 0.01:  # 1cm'den kisa cizgileri atla
             continue
@@ -300,15 +332,23 @@ def analyze_dxf_metraj(
 
     # LWPOLYLINE entity'leri
     for pline in msp.query('LWPOLYLINE'):
-        layer = pline.dxf.layer
-        if not _should_include(layer):
+        try:
+            layer = pline.dxf.layer
+            if not _should_include(layer):
+                continue
+            points = list(pline.get_points(format="xy"))
+        except Exception as e:
+            _record_skip('LWPOLYLINE', e)
             continue
 
-        points = list(pline.get_points(format="xy"))
         for i in range(len(points) - 1):
-            sx, sy = points[i]
-            ex, ey = points[i + 1]
-            seg_len = math.sqrt((ex - sx) ** 2 + (ey - sy) ** 2) * scale
+            try:
+                sx, sy = points[i]
+                ex, ey = points[i + 1]
+                seg_len = math.sqrt((ex - sx) ** 2 + (ey - sy) ** 2) * scale
+            except Exception:
+                # Tek segment bozuksa atla, polyline'in geri kalanini hesaplamaya devam
+                continue
             if seg_len < 0.01:
                 continue
             if layer not in layer_data:
@@ -316,21 +356,28 @@ def analyze_dxf_metraj(
             layer_data[layer]["length"] += seg_len
             layer_data[layer]["count"] += 1
 
-    # POLYLINE entity'leri
+    # POLYLINE entity'leri (eski-style, VERTEX + SEQEND ile)
     for pline in msp.query('POLYLINE'):
-        layer = pline.dxf.layer
-        if not _should_include(layer):
+        try:
+            layer = pline.dxf.layer
+            if not _should_include(layer):
+                continue
+            vertices = list(pline.vertices)
+        except Exception as e:
+            _record_skip('POLYLINE', e)
             continue
 
-        vertices = list(pline.vertices)
         total_len = 0.0
         seg_count = 0
         for i in range(len(vertices) - 1):
-            sx = vertices[i].dxf.location.x
-            sy = vertices[i].dxf.location.y
-            ex = vertices[i + 1].dxf.location.x
-            ey = vertices[i + 1].dxf.location.y
-            seg_len = math.sqrt((ex - sx) ** 2 + (ey - sy) ** 2) * scale
+            try:
+                sx = vertices[i].dxf.location.x
+                sy = vertices[i].dxf.location.y
+                ex = vertices[i + 1].dxf.location.x
+                ey = vertices[i + 1].dxf.location.y
+                seg_len = math.sqrt((ex - sx) ** 2 + (ey - sy) ** 2) * scale
+            except Exception:
+                continue
             if seg_len >= 0.01:
                 total_len += seg_len
                 seg_count += 1
@@ -340,6 +387,13 @@ def analyze_dxf_metraj(
                 layer_data[layer] = {"length": 0.0, "count": 0}
             layer_data[layer]["length"] += total_len
             layer_data[layer]["count"] += seg_count
+
+    total_skipped = sum(skipped.values())
+    if total_skipped > 0:
+        logging.warning(
+            "analyze_dxf_metraj: %d entity skip edildi %s. Ornekler: %s",
+            total_skipped, skipped, skip_examples,
+        )
 
     # ── Topoloji analizi: sprinkler/tee/end branch_points ──
     # Paylasilan doc — ezdxf.readfile tekrari engelle (perf: 100sn -> 30sn)
