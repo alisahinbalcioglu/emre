@@ -596,11 +596,20 @@ def _background_parse(file_id: str, dxf_path: str) -> None:
     except Exception as e:
         # Hata loglansin, frontend status'tan goruyor
         logging.exception("Background parse failed for file_id=%s", file_id)
+        # Error message JSON-safe yap — ezdxf hatalari icinde mojibake byte'lar
+        # (surrogate, invalid UTF-8) olabilir → FastAPI JSON encoder fail → 500.
+        # encode/decode + errors='replace' ile sanitize et.
+        raw_msg = str(e)[:500]
+        try:
+            safe_msg = raw_msg.encode('utf-8', errors='replace').decode('utf-8', errors='replace')
+        except Exception:
+            safe_msg = f"{type(e).__name__} (mesaj sanitize edilemedi)"
         _UPLOAD_STATES[file_id] = {
             "status": "error",
             "started_at": _UPLOAD_STATES.get(file_id, {}).get("started_at", time.time()),
             "completed_at": time.time(),
-            "error": str(e)[:500],
+            "error_type": type(e).__name__,
+            "error": safe_msg,
         }
 
 
@@ -663,7 +672,27 @@ async def get_upload_status(file_id: str):
     state = _UPLOAD_STATES.get(file_id)
     if state is None:
         raise HTTPException(404, "file_id bilinmiyor (cache TTL gecmis olabilir)")
-    return state
+
+    # DEFANSIF: state icinde JSON-encode edilemez bir field varsa (invalid UTF-8
+    # byte, surrogate, NaN/Inf float vb.), FastAPI default encoder 500 atar.
+    # Bu durumda kullanici "Internal Server Error" goruyor, gercek hatayi
+    # ogrenemiyor. Sanitize edilmis safe_state hazirla.
+    try:
+        json.dumps(state, ensure_ascii=False, allow_nan=False)
+        return state
+    except (TypeError, ValueError) as enc_err:
+        logging.exception("State JSON encode fail for file_id=%s", file_id)
+        return {
+            "status": state.get("status", "error"),
+            "started_at": state.get("started_at", 0),
+            "completed_at": state.get("completed_at", time.time()),
+            "error_type": "StateSerializationError",
+            "error": (
+                f"Engine state JSON encode edilemedi ({type(enc_err).__name__}: "
+                f"{str(enc_err)[:150]}). Orijinal status={state.get('status')}, "
+                f"orijinal error_type={state.get('error_type', 'unknown')}."
+            ),
+        }
 
 
 @app.post("/layers", response_model=LayerListResult)
