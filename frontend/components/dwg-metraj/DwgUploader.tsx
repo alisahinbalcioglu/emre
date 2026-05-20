@@ -155,11 +155,16 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
           // browser If-None-Match gonderiyor → 304 Not Modified zincirine
           // dusuyor. Bu durumda axios eski cache'lenmis body'i (status=processing)
           // sonsuza kadar okuyor; "ready" hic gorulmuyor.
-          // Cozum: her request'e farkli query param ekle → ETag eslesmesin.
+          // Cozum: her request'e farkli query param ekle → URL'ler eslesmiyor
+          // → browser cache match yok → her request fresh.
+          //
+          // NOT: Cache-Control header'i EKLEMIYORUZ — custom header CORS
+          // preflight (OPTIONS) tetikliyordu, NestJS allowedHeaders default'ta
+          // Cache-Control/Pragma yok → preflight fail → CORS error.
+          // Query param tek basina yeterli.
           const s = await api.get(`/dwg-engine/status/${uploadFileId}`, {
             timeout: 15000,
             params: { _t: Date.now() },
-            headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' },
           });
           const st = s.data?.status;
           if (st === 'ready') {
