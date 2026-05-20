@@ -1,20 +1,31 @@
 'use client';
 
 /**
- * Sag panel — aktif layer konfigurasyonu + "Metraj Hesapla" butonu.
+ * Sag panel — aktif layer info + opsiyonel "Varsayilan Cap" toplu apply.
+ *
+ * "Bu Layer'i Hesapla" butonu KALDIRILDI — layer'a tiklayinca otomatik
+ * hesaplama tetikleniyor (DwgProjectWorkspace.handleLineClick / onLayerSelect).
+ *
+ * Asil cap atama akisi:
+ *  - Hesaplanmis layer'da bir segmente tikla -> DiameterEditPopup (segment-level)
+ *  - Veya buradan "Varsayilan Cap" gir + Uygula -> tum BOS segmentlere apply
  */
 
 import React from 'react';
-import { Loader2, Layers, EyeOff } from 'lucide-react';
+import { Loader2, Layers, EyeOff, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { LayerConfig } from './types';
+import type { LayerConfig, CalculatedLayer } from './types';
 
 interface LayerInfoSidebarProps {
   selectedLayer: string | null;
   config: LayerConfig | null;
+  /** Hesaplanmis layer bilgisi — varsa segment count + Uygula etkin. */
+  calculatedLayer: CalculatedLayer | null;
+  /** Backend /parse devam ediyor — spinner goster. */
   calculating: boolean;
   onChangeConfig: (patch: Partial<LayerConfig>) => void;
-  onCalculate: () => void;
+  /** "Varsayilan Cap" gir + Uygula: layer'daki bos segmentlere apply. */
+  onApplyDefaultDiameter: (diameter: string) => void;
   onClearSelection: () => void;
   /** Secili layer'i cizimden gizle (LayerVisibilityPanel toggle ile ayni). */
   onHideLayer?: () => void;
@@ -23,9 +34,10 @@ interface LayerInfoSidebarProps {
 export default function LayerInfoSidebar({
   selectedLayer,
   config,
+  calculatedLayer,
   calculating,
   onChangeConfig,
-  onCalculate,
+  onApplyDefaultDiameter,
   onClearSelection,
   onHideLayer,
 }: LayerInfoSidebarProps) {
@@ -35,13 +47,24 @@ export default function LayerInfoSidebar({
         <Layers className="mx-auto h-5 w-5 text-slate-300" />
         <p className="mt-2 text-xs text-muted-foreground">
           Çizimde bir <strong>boru</strong> layer&apos;ına tıklayın.
-          <br />Seçilen layer burada ayarlanır ve metrajı hesaplanır.
+          <br />T noktalarinda otomatik bölünür, sonra her segmente ayrı cap atayabilirsiniz.
         </p>
       </div>
     );
   }
 
   const c = config ?? { hatIsmi: '', materialType: '', defaultDiameter: '' };
+
+  // Hesaplanmis layer'da bos segment sayisi
+  const emptySegmentCount = calculatedLayer
+    ? calculatedLayer.edgeSegments.filter((es) => !es.diameter || es.diameter === 'Belirtilmemis').length
+    : 0;
+
+  const handleApply = () => {
+    const d = c.defaultDiameter.trim();
+    if (!d) return;
+    onApplyDefaultDiameter(d);
+  };
 
   return (
     <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-3">
@@ -71,6 +94,25 @@ export default function LayerInfoSidebar({
       </div>
       <p className="mb-3 break-all text-sm font-semibold text-slate-800">{selectedLayer}</p>
 
+      {/* Hesaplama durumu */}
+      {calculating && (
+        <div className="mb-3 flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-100/60 px-2.5 py-1.5">
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-600" />
+          <span className="text-[11px] font-medium text-blue-900">Hesaplanıyor (Render cold-start 30-60sn olabilir)</span>
+        </div>
+      )}
+      {calculatedLayer && !calculating && (
+        <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50/60 px-2.5 py-1.5">
+          <p className="text-[11px] font-medium text-emerald-900">
+            ✓ Hesaplandı — {calculatedLayer.edgeSegments.length} segment, {calculatedLayer.totalLength.toFixed(2)} m
+          </p>
+          <p className="text-[10px] text-emerald-700">
+            {calculatedLayer.junctionPoints.length} T-noktası tespit edildi.
+            {emptySegmentCount > 0 && ` ${emptySegmentCount} segment çapsız.`}
+          </p>
+        </div>
+      )}
+
       <div className="mb-2.5">
         <label className="mb-1 block text-[11px] font-medium text-slate-600">Hat İsmi</label>
         <input
@@ -93,46 +135,46 @@ export default function LayerInfoSidebar({
         />
       </div>
 
-      <div className="mb-3">
+      <div className="mb-2">
         <label className="mb-1 block text-[11px] font-medium text-slate-600">
-          Varsayılan Çap <span className="text-slate-400">(ops.)</span>
+          Varsayılan Çap <span className="text-slate-400">(toplu apply)</span>
         </label>
-        <input
-          type="text"
-          value={c.defaultDiameter}
-          onChange={(e) => onChangeConfig({ defaultDiameter: e.target.value })}
-          placeholder='örn: 6", DN150'
-          className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-mono focus:border-blue-400 focus:outline-none"
-        />
-        <p className="mt-1 text-[10px] text-slate-500">AI&apos;nın atayamadığı segment&apos;ler bu çapla doldurulur.</p>
-      </div>
-
-      {/* Manuel cap atama notu — otomatik cap atama devre disi (Render perf). */}
-      <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50/60 px-2.5 py-1.5">
-        <p className="text-[11px] font-medium text-amber-900">Cap girisi: manuel</p>
-        <p className="text-[10px] text-amber-700 leading-relaxed">
-          Her layer icin yukaridaki &quot;Cap&quot; alanini doldurun — o layer'daki tum borular
-          bu capla isaretlenir.
+        <div className="flex gap-1.5">
+          <input
+            type="text"
+            value={c.defaultDiameter}
+            onChange={(e) => onChangeConfig({ defaultDiameter: e.target.value })}
+            placeholder='örn: 6", DN150'
+            className="flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-mono focus:border-blue-400 focus:outline-none"
+          />
+          <button
+            type="button"
+            onClick={handleApply}
+            disabled={!c.defaultDiameter.trim() || !calculatedLayer || emptySegmentCount === 0}
+            className={cn(
+              'flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors',
+              c.defaultDiameter.trim() && calculatedLayer && emptySegmentCount > 0
+                ? 'bg-blue-600 text-white hover:bg-blue-700'
+                : 'bg-slate-100 text-slate-400 cursor-not-allowed',
+            )}
+            title={
+              !calculatedLayer
+                ? 'Önce layer hesaplanmalı (çizimde boruya tıklayın)'
+                : emptySegmentCount === 0
+                  ? 'Tüm segmentler çaplı, uygulanacak boş segment yok'
+                  : `${emptySegmentCount} boş segmente uygula`
+            }
+          >
+            <Check className="h-3 w-3" />
+            Uygula
+          </button>
+        </div>
+        <p className="mt-1 text-[10px] text-slate-500">
+          {calculatedLayer
+            ? `Layer'ın ${emptySegmentCount} boş segmentine apply. Tek tek atanmış segment'ler korunur.`
+            : 'Layer hesaplandıktan sonra etkinleşir. Tek tek atama için segmente tıklayın.'}
         </p>
       </div>
-
-      <button
-        onClick={onCalculate}
-        disabled={calculating}
-        className={cn(
-          'w-full rounded-lg px-3 py-2 text-sm font-medium transition-all',
-          calculating
-            ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
-            : 'bg-blue-600 text-white hover:bg-blue-700',
-        )}
-      >
-        {calculating ? (
-          <span className="flex items-center justify-center gap-1.5">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            Hesaplanıyor...
-          </span>
-        ) : 'Bu Layer\'ı Hesapla'}
-      </button>
     </div>
   );
 }

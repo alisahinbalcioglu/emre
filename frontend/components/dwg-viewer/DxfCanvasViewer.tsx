@@ -1001,7 +1001,7 @@ function Tooltip({ entity, screenX, screenY, pinned }: TooltipProps) {
       }}
     >
       <div className="text-[10px] uppercase tracking-wider opacity-70">
-        {entity.type === 'edge' ? 'Hesaplanmis Segment' : 'Ham Cizgi (hesaplanmadi)'}
+        {entity.type === 'edge' ? 'Segment' : 'Boru'}
       </div>
       <div className="mt-0.5 text-sm font-semibold truncate" title={entity.layer}>
         {entity.layer}
@@ -1029,11 +1029,6 @@ function Tooltip({ entity, screenX, screenY, pinned }: TooltipProps) {
         </span>
         <span className="text-xs opacity-70">m</span>
       </div>
-      {entity.type === 'line' && (
-        <div className="mt-2 rounded bg-amber-500/20 border border-amber-400/40 px-2 py-1 text-[11px] text-amber-100">
-          T noktalarinda bolunme icin <strong>"Bu Layer'i Hesapla"</strong> butonuna bas.
-        </div>
-      )}
       {pinned && (
         <div className="mt-1 text-[10px] opacity-60">Esc ile kaldir</div>
       )}

@@ -28,7 +28,6 @@ export function useWorkspaceState(fileId: string, scale: number) {
     markedEquipments: {},
     editingEquipmentKey: null,
     sprinklerLayers: [],
-    lastClickedLayer: null,
     hiddenLayers: [],
     dimmedLayers: [],
   });
@@ -44,7 +43,6 @@ export function useWorkspaceState(fileId: string, scale: number) {
       markedEquipments: {},
       editingEquipmentKey: null,
       sprinklerLayers: [],
-      lastClickedLayer: null,
       hiddenLayers: [],
       dimmedLayers: [],
     });
@@ -129,11 +127,6 @@ export function useWorkspaceState(fileId: string, scale: number) {
     });
   }, []);
 
-  /** Kullanici viewer'da bir sembole tikladiginda (herhangi tip), aday olarak kaydet. */
-  const setLastClickedLayer = useCallback((layer: string | null) => {
-    setState((s) => s.lastClickedLayer === layer ? s : { ...s, lastClickedLayer: layer });
-  }, []);
-
   /** Belirli bir sprinkler layer'i listeden kaldir. */
   const removeSprinklerLayer = useCallback((layer: string) => {
     setState((s) => ({ ...s, sprinklerLayers: s.sprinklerLayers.filter((l) => l !== layer) }));
@@ -197,7 +190,6 @@ export function useWorkspaceState(fileId: string, scale: number) {
     cancelEditEquipment,
     saveEquipment,
     removeEquipment,
-    setLastClickedLayer,
     removeSprinklerLayer,
     toggleSprinklerLayer,
     toggleLayerVisibility,

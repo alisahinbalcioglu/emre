@@ -23,7 +23,6 @@ import LayerInfoSidebar from './LayerInfoSidebar';
 import LayerVisibilityPanel from './LayerVisibilityPanel';
 import MetrajSummaryPanel from './MetrajSummaryPanel';
 import EquipmentDetailPopup from './EquipmentDetailPopup';
-import DiameterPromptPopup from './DiameterPromptPopup';
 import { useWorkspaceState } from './useWorkspaceState';
 import type { MarkedEquipment, CalculatedLayer } from './types';
 
@@ -44,7 +43,7 @@ export default function DwgProjectWorkspace({
     addCalculatedLayer, removeCalculatedLayer,
     updateEdgeSegmentDiameter,
     beginEditEquipment, cancelEditEquipment, saveEquipment, removeEquipment,
-    setLastClickedLayer, removeSprinklerLayer, toggleSprinklerLayer,
+    removeSprinklerLayer, toggleSprinklerLayer,
     toggleLayerVisibility, showAllLayers,
     toggleLayerDimmed, showAllDimmed,
   } = useWorkspaceState(fileId, scale);
@@ -66,13 +65,6 @@ export default function DwgProjectWorkspace({
     key: string; insertIndex: number; layer: string; insertName: string; position: [number, number];
   }>(null);
 
-  /** Layer'a tiklayinca acilan inline cap girme popup'i. AutoCAD-vari workflow:
-   *  cizgiye tikla → quick-select Ø20/Ø25/.../Ø160 veya manuel gir → "Hesapla"
-   *  yapinca o layer'in defaultDiameter'i kullanilir. */
-  const [diameterPopup, setDiameterPopup] = useState<null | {
-    layer: string; x: number; y: number;
-  }>(null);
-
   const selectedConfig = state.selectedLayer ? state.layerConfigs[state.selectedLayer] ?? null : null;
 
   // ─── Global Esc: en ust katmandan baslayip tek tek geri al ─────────
@@ -85,7 +77,6 @@ export default function DwgProjectWorkspace({
       const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase();
       if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
 
-      if (diameterPopup) { setDiameterPopup(null); return; }
       if (pendingEquipment) { setPendingEquipment(null); return; }
       if (state.editingEquipmentKey) { cancelEditEquipment(); return; }
       if (editingSegment) { setEditingSegment(null); return; }
@@ -94,7 +85,7 @@ export default function DwgProjectWorkspace({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [diameterPopup, pendingEquipment, state.editingEquipmentKey, editingSegment, state.selectedLayer, hideMode, cancelEditEquipment, selectLayer]);
+  }, [pendingEquipment, state.editingEquipmentKey, editingSegment, state.selectedLayer, hideMode, cancelEditEquipment, selectLayer]);
 
   const calculatedEdgesByLayer = useMemo(() => {
     const map: Record<string, EdgeSegment[]> = {};
@@ -134,17 +125,14 @@ export default function DwgProjectWorkspace({
     [state.calculatedLayers],
   );
 
-  const handleCalculate = async (forceLayer?: string, configOverride?: { defaultDiameter?: string; hatIsmi?: string; materialType?: string }) => {
+  const handleCalculate = async (forceLayer?: string) => {
     const layer = forceLayer ?? state.selectedLayer;
     if (!layer) return;
     if (state.calculatedLayers[layer]) {
-      if (!forceLayer) {
-        toast({ title: 'Bu layer zaten hesaplandı', description: 'Önce özetten kaldırın.' });
-      }
+      // Layer zaten hesaplandi, tekrar tetiklenince sessizce cik (toast yok)
       return;
     }
-    const baseCfg = state.layerConfigs[layer] ?? { hatIsmi: '', materialType: '', defaultDiameter: '' };
-    const cfg = configOverride ? { ...baseCfg, ...configOverride } : baseCfg;
+    const cfg = state.layerConfigs[layer] ?? { hatIsmi: '', materialType: '', defaultDiameter: '' };
     setCalculating(true);
     try {
       const hatTipiMap: Record<string, string> = { [layer]: cfg.hatIsmi || layer };
@@ -215,7 +203,6 @@ export default function DwgProjectWorkspace({
   const handleLineClick = (line: { layer: string; index: number; shiftKey: boolean; screenX: number; screenY: number }) => {
     if (calculating) return;
     // Layer Gizle Modu (toolbar toggle) VEYA Shift+click → layer gizle/goster.
-    // Normal click → layer sec + inline cap girme popup'i ac.
     if (hideMode || line.shiftKey) {
       toggleLayerVisibility(line.layer);
       toast({
@@ -224,13 +211,10 @@ export default function DwgProjectWorkspace({
       });
       return;
     }
-    setLastClickedLayer(line.layer);
+    // Normal tek tik = layer sec + arka planda otomatik hesapla.
+    // Cap popup ACMAZ — T noktalari otomatik bolunur, sonra her segment'e
+    // ayri tiklanip DiameterEditPopup ile cap atanir.
     selectLayer(line.layer);
-    // Cap popup'ini tiklanan konumda ac.
-    setDiameterPopup({ layer: line.layer, x: line.screenX, y: line.screenY });
-    // ARKA PLANDA OTOMATIK HESAPLA — kullanici cap girmeden de T noktalarinda
-    // bolunme aktif olsun, her segment ayri secilebilir hale gelsin.
-    // (Cap popup kapatilirsa bile hesaplama zaten yapilmis olur.)
     if (!state.calculatedLayers[line.layer]) {
       handleCalculate(line.layer);
     }
@@ -238,15 +222,13 @@ export default function DwgProjectWorkspace({
 
   const handleInsertClick = (ins: { layer: string; insertIndex: number; insertName: string; position: [number, number] }) => {
     const key = `${ins.layer}:${ins.insertIndex}`;
-    setLastClickedLayer(ins.layer);
     setPendingEquipment({ ...ins, key });
     beginEditEquipment(key);
   };
 
-  const handleCircleClick = (c: { layer: string; circleIndex: number; center: [number, number]; radius: number }) => {
-    // Sembole tiklayinca son tiklanan layer'i kaydet (genel amac).
-    // Sprinkler isaretleme artik LayerVisibilityPanel'de damla ikonuyla yapilir.
-    setLastClickedLayer(c.layer);
+  const handleCircleClick = (_c: { layer: string; circleIndex: number; center: [number, number]; radius: number }) => {
+    // Sprinkler/sembol isaretleme LayerVisibilityPanel damla ikonuyla yapilir.
+    // CIRCLE tik su an no-op.
   };
 
   const handleConfirmAll = () => {
@@ -414,15 +396,36 @@ export default function DwgProjectWorkspace({
             selectedLayer={state.selectedLayer}
             config={selectedConfig}
             calculating={calculating}
+            calculatedLayer={state.selectedLayer ? state.calculatedLayers[state.selectedLayer] ?? null : null}
             onChangeConfig={(patch) => state.selectedLayer && updateLayerConfig(state.selectedLayer, patch)}
-            onCalculate={handleCalculate}
+            onApplyDefaultDiameter={(d) => {
+              if (!state.selectedLayer) return;
+              const layer = state.selectedLayer;
+              updateLayerConfig(layer, { defaultDiameter: d });
+              // Hesaplanmis ise: bos diameter'li segment'lere apply et
+              const cl = state.calculatedLayers[layer];
+              if (cl) {
+                let updatedCount = 0;
+                cl.edgeSegments.forEach((es) => {
+                  if (!es.diameter || es.diameter === 'Belirtilmemis') {
+                    updateEdgeSegmentDiameter(layer, es.segment_id, d);
+                    updatedCount += 1;
+                  }
+                });
+                toast({
+                  title: 'Çap uygulandı',
+                  description: `${updatedCount} boş segment → ${d}`,
+                });
+              } else {
+                toast({ title: 'Çap kaydedildi', description: 'Layer hesaplanınca uygulanacak.' });
+              }
+            }}
             onClearSelection={() => selectLayer(state.selectedLayer!)}
             onHideLayer={() => {
               if (!state.selectedLayer) return;
               const layer = state.selectedLayer;
               toggleLayerVisibility(layer);
               toast({ title: 'Layer gizlendi', description: layer });
-              // Secimi de temizle ki sidebar "Cizimde bir boru layer'ina tiklayin" mesajina donsun
               selectLayer(layer);
             }}
           />
@@ -440,12 +443,12 @@ export default function DwgProjectWorkspace({
             onToggleSprinkler={toggleSprinklerLayer}
             onShowAll={showAllLayers}
             onShowAllDimmed={showAllDimmed}
-            onLayerSelect={(layer, x, y) => {
-              setLastClickedLayer(layer);
+            onLayerSelect={(layer, _x, _y) => {
+              // Layer panel'den layer adina tikla = sec + otomatik hesapla.
+              // Cap popup ACMAZ — T noktalari bolunur, segment'lere ayri tiklanir.
               selectLayer(layer);
-              setDiameterPopup({ layer, x, y });
               if (!state.calculatedLayers[layer]) {
-                handleCalculate(layer);  // Otomatik hesapla (T'lerde bolunme)
+                handleCalculate(layer);
               }
             }}
           />
@@ -486,44 +489,6 @@ export default function DwgProjectWorkspace({
             setEditingSegment(null);
             toast({ title: 'Çap güncellendi', description: `Segment #${segmentId}: ${newDiameter}` });
           }}
-        />
-      )}
-
-      {/* Layer cap girme popup (cizimde layer'a tıklayinca acilir) */}
-      {diameterPopup && (
-        <DiameterPromptPopup
-          layer={diameterPopup.layer}
-          currentDiameter={state.layerConfigs[diameterPopup.layer]?.defaultDiameter}
-          hatIsmi={state.layerConfigs[diameterPopup.layer]?.hatIsmi}
-          x={diameterPopup.x}
-          y={diameterPopup.y}
-          onApply={(d) => {
-            const layer = diameterPopup.layer;
-            updateLayerConfig(layer, { defaultDiameter: d });
-            setDiameterPopup(null);
-            // Hesaplanmis ise: mevcut segment'lerden cap'i bos olanlara apply et
-            // (kullanicinin yeni atadigi segment'leri ezme).
-            // Hesaplanmamis ise: arka planda hesaplama baslat (otomatik).
-            if (state.calculatedLayers[layer]) {
-              // Segment-level cap update (frontend-only, backend tetiklenmez)
-              const cl = state.calculatedLayers[layer];
-              let updatedCount = 0;
-              cl.edgeSegments.forEach((es) => {
-                if (!es.diameter || es.diameter === 'Belirtilmemis') {
-                  updateEdgeSegmentDiameter(layer, es.segment_id, d);
-                  updatedCount += 1;
-                }
-              });
-              toast({
-                title: 'Çap atandı',
-                description: `${layer}: ${d} → ${updatedCount} segment guncellendi`,
-              });
-            } else {
-              toast({ title: 'Çap atandı', description: `${layer}: ${d} — hesaplaniyor...` });
-              handleCalculate(layer, { defaultDiameter: d });
-            }
-          }}
-          onClose={() => setDiameterPopup(null)}
         />
       )}
 

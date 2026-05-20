@@ -57,11 +57,8 @@ export interface WorkspaceState {
   markedEquipments: Record<string, MarkedEquipment>;
   editingEquipmentKey: string | null;
 
-  // Sprinkler layer secimi — kullanici viewer'da bir sembole tiklar → lastClickedLayer,
-  // sonra "Sprinkler yap" butonu ile sprinklerLayers'a aktarilir
+  // Sprinkler olarak isaretli layer'lar — LayerVisibilityPanel'de damla ikonu ile toggle
   sprinklerLayers: string[];
-  /** Kullanicinin en son tikladigi layer (herhangi entity tipi) — sprinkler secimi aday */
-  lastClickedLayer: string | null;
 
   /** Kullanicinin "goz" ikonuyla gizledigi layer'lar — viewer'da hicbir
    *  katmanda (background, circles, arcs, inserts, texts) cizilmez. Sadece
