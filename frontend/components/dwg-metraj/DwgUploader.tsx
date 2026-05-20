@@ -71,11 +71,23 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
   };
 
   /**
-   * F5A — /layers parse + pre-cache geometry (OCERP pattern, polling YOK).
+   * F5D — Async /upload + /status polling.
    *
-   * F5C async/polling karmasikligi production'da 503 bug yaratti — F5A'ya
-   * geri donus. /layers endpoint'i tek ezdxf parse ile layers + entities.json
-   * pre-cache yazar. /geometry GET sonra cache hit (~100ms). Toplam ~30sn.
+   * Eskiden: F5A /layers (senkron). Engine tek istekte DWG->DXF + ezdxf parse +
+   * geometry pre-cache + INSUNITS-icin-ikinci-parse yapiyordu. Buyuk dosyalarda
+   * peak memory 2x ezdxf doc olusturuyordu → 512MB free tier RAM'i asip
+   * OOM-kill + 500/503 zinciri. Frontend 7 retry, hepsi fail.
+   *
+   * Yeni: /upload sadece DWG->DXF + cache yapar (2-30sn), file_id doner.
+   * /status polling ile background parse'i izleriz. Avantajlar:
+   *   - Peak memory dusuk (parse ayri thread'de, response handler bekletmez)
+   *   - Gercek hata mesaji: status="error" + error string (artik vague 503 yok)
+   *   - UX: frontend 5 dk sync request'te oturmaz, polling feedback verir
+   *
+   * Eski F5C revert sebebi (d83ebbf): NestJS uploadAsync multipart bug
+   * sanildi ama net teshis yapilmadi. Bu session'da NestJS /upload test edildi
+   * ve calisti (file_id donuyor) — bug eski iterasyondaymis veya beraberindeki
+   * fix'lerle (b72fffb, 81f7a89) cozulmus.
    */
   const extractLayers = useCallback(async (
     f: File,
@@ -88,13 +100,13 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
     setExtractingLayers(true);
     startTimer();
 
-    // Render free tier DWG engine cold-start ~30-120sn. 7 retry, daha uzun
-    // backoff'larla yaklasik 180sn toplam tolerance.
-    const RETRY_DELAYS = [3000, 6000, 12000, 24000, 45000, 60000, 60000];
+    // /upload icin retry: cold-start ihtimaline karsi 4 deneme
+    // (upload kendi 2-30sn, parse arka planda → kisa toplam timeout yeter)
+    const UPLOAD_RETRY_DELAYS = [3000, 8000, 20000, 45000];
     const isTransient = (e: any): boolean => {
       const status = e?.response?.status;
       if (status === 503 || status === 502 || status === 504 || status === 500) return true;
-      if (status === 429 || status === 422) return true;
+      if (status === 429) return true;
       const code = e?.code;
       if (code === 'ECONNABORTED' || code === 'ERR_NETWORK') return true;
       if (!e?.response) return true;
@@ -102,43 +114,83 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
     };
 
     try {
+      // 1) UPLOAD — file_id al
       const formData = new FormData();
       formData.append('file', f);
-      const sendOnce = () => api.post(
-        '/dwg-engine/layers',
+      const uploadOnce = () => api.post(
+        '/dwg-engine/upload',
         formData,
-        { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 300000 },
+        { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 },
       );
 
-      let res: any = null;
-      let lastErr: any = null;
-      for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
+      let uploadRes: any = null;
+      let uploadErr: any = null;
+      for (let attempt = 0; attempt <= UPLOAD_RETRY_DELAYS.length; attempt++) {
         try {
-          res = await sendOnce();
+          uploadRes = await uploadOnce();
           break;
         } catch (err: any) {
-          lastErr = err;
+          uploadErr = err;
           if (!isTransient(err)) throw err;
-          if (attempt >= RETRY_DELAYS.length) throw err;
-          await new Promise((r) => setTimeout(r, RETRY_DELAYS[attempt]));
+          if (attempt >= UPLOAD_RETRY_DELAYS.length) throw err;
+          await new Promise((r) => setTimeout(r, UPLOAD_RETRY_DELAYS[attempt]));
         }
       }
-      if (!res) throw lastErr;
-      const data = res.data;
+      if (!uploadRes) throw uploadErr;
+      const uploadFileId: string = uploadRes.data.file_id;
+      if (!uploadFileId) {
+        throw new Error('Sunucudan file_id donmedi');
+      }
 
-      const suggestedScale = typeof data.suggested_scale === 'number' ? data.suggested_scale : 0.001;
-      const suggestedLabel = data.suggested_unit_label ?? 'mm';
+      // 2) POLL /status — background parse bitene kadar
+      // Timeout: 240sn (cold-start engine olabilir, sonra ~30-60sn parse)
+      const POLL_INTERVAL = 3000;
+      const POLL_MAX_MS = 240000;
+      const pollStart = Date.now();
+      let statusData: any = null;
+
+      while (Date.now() - pollStart < POLL_MAX_MS) {
+        try {
+          const s = await api.get(`/dwg-engine/status/${uploadFileId}`, { timeout: 15000 });
+          const st = s.data?.status;
+          if (st === 'ready') {
+            statusData = s.data;
+            break;
+          }
+          if (st === 'error') {
+            const err = s.data?.error || 'Bilinmeyen parse hatasi';
+            throw new Error(`Parse hatasi: ${err}`);
+          }
+          // st === 'processing' → bekle, polla
+        } catch (err: any) {
+          // Status endpoint'i transient hata atarsa polling devam (404 hariç)
+          if (err?.response?.status === 404) {
+            throw new Error('Sunucu file_id\'yi unutmus (cache TTL); dosyayi tekrar yukleyin');
+          }
+          if (!isTransient(err)) throw err;
+        }
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL));
+      }
+
+      if (!statusData) {
+        throw new Error(`Parse zaman asimi (${POLL_MAX_MS / 1000}sn)`);
+      }
+
+      // 3) Sonuc — /layers'in dondurdugu sekille uyumlu olarak normalize et
+      const suggestedScale = typeof statusData.suggested_scale === 'number' ? statusData.suggested_scale : 0.001;
+      const suggestedLabel = statusData.suggested_unit_label ?? 'mm';
+      const totalLayers = statusData.total_layers ?? (statusData.layers?.length ?? 0);
       setSelectedUnit(opts.override ?? suggestedScale);
 
       toast({
         title: 'Proje hazirlandi',
-        description: `${data.total_layers} layer · ${suggestedLabel} birimi`,
+        description: `${totalLayers} layer · ${suggestedLabel} birimi`,
       });
 
       if (opts.skipDialog) {
-        setFileId(data.file_id);
+        setFileId(uploadFileId);
       } else {
-        setPendingUnitChoice({ fileId: data.file_id, suggestedUnitLabel: suggestedLabel });
+        setPendingUnitChoice({ fileId: uploadFileId, suggestedUnitLabel: suggestedLabel });
       }
     } catch (e: any) {
       const msg = e?.response?.data?.message ?? e?.response?.data?.detail ?? e?.message ?? 'Proje yuklenemedi';
