@@ -368,8 +368,14 @@ export class DwgEngineService {
       const response = await this.fetchWithRetry(
         `${this.pythonServiceUrl}/status/${encodeURIComponent(fileId)}`,
         factory,
-        5_000,   // hafif endpoint, kisa timeout
-        15_000,  // retry biraz daha uzun (cold start)
+        // 5sn cok kisa: background parse CPU-heavy oldugunda engine main
+        // thread'i kisa sure bloke olabiliyor (LibreDWG subprocess wait,
+        // ezdxf parse vb.). Bu durumda /status hizli geri donmeyebiliyor,
+        // backend 503 firlatip kullaniciya generic hata gosteriyor.
+        // 30sn'ye cikartiyoruz; engine bloke olsa bile yaniti bekleyelim,
+        // /health 200 dondugu surece worker yaşıyor demektir.
+        30_000,
+        45_000,  // retry daha da uzun
         'getUploadStatus',
       );
       if (!response.ok) {

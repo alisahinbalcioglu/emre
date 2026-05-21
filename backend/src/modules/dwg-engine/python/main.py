@@ -713,6 +713,36 @@ async def upload_async(file: UploadFile = File(...)):
 
     content = await file.read()
 
+    # ── DWG VERSION CHECK ───────────────────────────────────────────
+    # LibreDWG ve ezdxf'in DWG version destegi:
+    #   AC1015 (R2000) - AC1027 (R2013)  → tam destek
+    #   AC1032 (R2018)                   → KIRIK destek (parse hang/crash)
+    # Dosya AC1032 ise upload'i hemen reddet, kullaniciya net cozum sun.
+    # Bu engine'i bloke etmeyi onler ve kullaniciya 503 yerine net hata verir.
+    ext = file.filename.lower().rsplit('.', 1)[-1] if '.' in file.filename else ''
+    if ext == 'dwg' and len(content) >= 6:
+        try:
+            ver = content[:6].decode('ascii', errors='replace')
+            # AC1032 = R2018, AC1035 = R2024 vb. AC1027 (R2013) son guvenli
+            _supported = {'AC1014', 'AC1015', 'AC1018', 'AC1021', 'AC1024', 'AC1027'}
+            if ver.startswith('AC') and ver not in _supported:
+                ver_label = {
+                    'AC1032': 'AutoCAD 2018',
+                    'AC1035': 'AutoCAD 2024',
+                }.get(ver, f'unknown version ({ver})')
+                raise HTTPException(
+                    422,
+                    f"DWG version desteklenmiyor: {ver} ({ver_label}). "
+                    f"LibreDWG/ezdxf maksimum AC1027 (AutoCAD 2013) destekliyor. "
+                    f"Lutfen AutoCAD'de dosyayi 'Save As → AutoCAD 2013 (LT2013) DWG' "
+                    f"olarak kaydedip tekrar yukleyin."
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            # Version okuma fail ederse devam et — belki LibreDWG yine de parse eder
+            pass
+
     try:
         dxf_path = _prepare_dxf(content, file.filename)
         file_id = _cache_dxf(dxf_path)
