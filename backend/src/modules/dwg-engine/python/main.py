@@ -723,30 +723,62 @@ import asyncio
 _UPLOAD_STATES: dict[str, dict] = {}
 
 
+def _clean_surrogates(s: str) -> str:
+    """Bir Python string'inden lone surrogate (U+D800-U+DFFF) karakterleri temizle.
+
+    ezdxf DXF parse ederken bazi byte'lari decode edemiyorsa (mojibake, bozuk
+    cp1254/utf-8 mix), Python'un 'surrogateescape' error handler'i ile lone
+    surrogate uretiyor (U+DCxx). Bu karakterler JSON encode edilemez:
+      UnicodeEncodeError: 'utf-8' codec can't encode character '\\udcc4'
+      (surrogates not allowed)
+
+    Cozum: utf-8 encode/decode cycle ile surrogate'leri U+FFFD'ye degistir.
+    """
+    if not isinstance(s, str):
+        return s
+    try:
+        # Hizli kontrol: surrogate yoksa olduğu gibi don
+        s.encode('utf-8')
+        return s
+    except UnicodeEncodeError:
+        # Surrogate var — replace ile temizle
+        try:
+            return s.encode('utf-8', errors='replace').decode('utf-8')
+        except BaseException:
+            # Son care: karakter karakter, surrogate'leri '?' yap
+            return ''.join('?' if (0xd800 <= ord(c) <= 0xdfff) else c for c in s)
+
+
 def _json_safe(obj):
     """Recursive olarak obj'i JSON-safe hale getir.
 
-    Sorun: ezdxf parse sirasinda NaN/Inf float'lar uretiliyor (geometry
-    hesaplamalarinda bbox infinite, division-by-zero vb.). Bunlar state'e
-    yaziliyor, sonra FastAPI Starlette JSONResponse allow_nan=False ile
-    serialize edemeden ValueError atip 500 donduruyor.
+    Sorunlar:
+      1. ezdxf parse sirasinda NaN/Inf float'lar uretiliyor (geometry
+         hesaplamalarinda bbox infinite, division-by-zero vb.)
+      2. ezdxf string'lerinde lone surrogate (\\udcXX) olabiliyor —
+         DXF'in cp1254/utf-8 mojibake'inden surrogateescape ile decode
+         edildiginde. Bunlar json.dumps utf-8 encode'unu patlatir.
 
     Bu fonksiyon:
       - NaN/Inf float → None
-      - dict → her value sanitize
+      - str → surrogate temizleme (U+DCxx → U+FFFD)
+      - dict → her key+value sanitize
       - list/tuple → her item sanitize
-      - str/int/bool/None → degisiklik yok
+      - int/bool/None → degisiklik yok
       - Pydantic model → model_dump (varsa) sonra recurse
-      - Diger → str() fallback
+      - Diger → str() fallback (yine surrogate temizle)
     """
-    if obj is None or isinstance(obj, (str, int, bool)):
+    if obj is None or isinstance(obj, (int, bool)):
         return obj
+    if isinstance(obj, str):
+        return _clean_surrogates(obj)
     if isinstance(obj, float):
         if math.isnan(obj) or math.isinf(obj):
             return None
         return obj
     if isinstance(obj, dict):
-        return {k: _json_safe(v) for k, v in obj.items()}
+        # Key'ler de string olabilir surrogate ile — onlari da temizle
+        return {_clean_surrogates(k) if isinstance(k, str) else k: _json_safe(v) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
         return [_json_safe(x) for x in obj]
     # Pydantic model
@@ -760,9 +792,9 @@ def _json_safe(obj):
             return _json_safe(obj.dict())
         except BaseException:
             pass
-    # Bilinmeyen tip — str fallback
+    # Bilinmeyen tip — str fallback (surrogate temizleme dahil)
     try:
-        return str(obj)
+        return _clean_surrogates(str(obj))
     except BaseException:
         return "<unrepr>"
 
