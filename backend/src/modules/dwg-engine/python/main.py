@@ -528,8 +528,15 @@ def health():
         )
     except OSError:
         cached = 0
-    # Render kendi RENDER_GIT_COMMIT env'i veriyor — deploy versiyonu dogrulamak icin
-    build_sha = os.environ.get("RENDER_GIT_COMMIT", "local")[:8]
+    # Build/deploy version — platform-agnostic fallback chain:
+    # Render: RENDER_GIT_COMMIT, Cloud Run: K_REVISION (servis-revision adi),
+    # Custom: BUILD_SHA env. Hicbiri yoksa "local".
+    build_sha = (
+        os.environ.get("RENDER_GIT_COMMIT")
+        or os.environ.get("K_REVISION")
+        or os.environ.get("BUILD_SHA")
+        or "local"
+    )[:16]
     return {
         "status": "ok",
         "service": "dwg-engine",
@@ -649,7 +656,12 @@ def debug_info():
         cached_files = ["<dir unreadable>"]
 
     return {
-        "build_sha": os.environ.get("RENDER_GIT_COMMIT", "local")[:8],
+        "build_sha": (
+            os.environ.get("RENDER_GIT_COMMIT")
+            or os.environ.get("K_REVISION")
+            or os.environ.get("BUILD_SHA")
+            or "local"
+        )[:16],
         "states_count": len(_UPLOAD_STATES),
         "states": state_summary,
         "memory": mem_info,

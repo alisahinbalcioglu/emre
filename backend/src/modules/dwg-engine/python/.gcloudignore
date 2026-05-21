@@ -1,0 +1,54 @@
+# .gcloudignore — Cloud Build context'inden cikarilacak dosyalar
+# (Docker image'a girmeyen ama gcloud submit ile yuklenmesini istemedigimiz)
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+venv/
+.venv/
+env/
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs / artifacts
+*.log
+logs/
+*.tmp
+
+# Test outputs
+test-results/
+coverage/
+htmlcov/
+
+# Documentation (build context'te gerek yok)
+*.md
+README*
+docs/
+
+# CI configs (Cloud Build'in gcloudignore'i farkli)
+.github/
+
+# Cloud Run config dosyalari (deploy script kendisini gondermez)
+cloudbuild.yaml
+deploy-to-cloudrun.*
