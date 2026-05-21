@@ -65,11 +65,18 @@ app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 _INTERNAL_API_TOKEN = os.environ.get("INTERNAL_API_TOKEN", "").strip()
 _PUBLIC_PATHS = {"/health", "/docs", "/openapi.json", "/redoc", "/debug/info"}
+# Path prefix-bazli public paths (debug endpoint'leri)
+_PUBLIC_PATH_PREFIXES = ("/debug/",)
 
 
 @app.middleware("http")
 async def verify_internal_token(request: Request, call_next):
-    if _INTERNAL_API_TOKEN and request.url.path not in _PUBLIC_PATHS:
+    path = request.url.path
+    is_public = (
+        path in _PUBLIC_PATHS
+        or any(path.startswith(prefix) for prefix in _PUBLIC_PATH_PREFIXES)
+    )
+    if _INTERNAL_API_TOKEN and not is_public:
         provided = request.headers.get("x-internal-token", "")
         if provided != _INTERNAL_API_TOKEN:
             return JSONResponse(
@@ -530,6 +537,49 @@ def health():
         "cached_files": cached,
         "build_sha": build_sha,
     }
+
+
+@app.get("/debug/raw-state/{file_id}")
+def debug_raw_state(file_id: str):
+    """File_id'nin FULL state'ini sanitize ederek dondur — auth-free debug.
+
+    /status endpoint'i 500 atiyor bizim teshis edemiyoruz. Bu endpoint
+    tam state'i _json_safe ile temizleyip return eder. Eger bu calisirsa
+    /status'taki sorun middleware'de (CORS, GZip).
+    """
+    import traceback
+    state = _UPLOAD_STATES.get(file_id)
+    if state is None:
+        return {"error": "file_id bilinmiyor", "all_keys": list(_UPLOAD_STATES.keys())[:10]}
+
+    # Sanitize edip return
+    debug_info_out = {"file_id": file_id}
+    try:
+        safe = _json_safe(state)
+        debug_info_out["sanitized_ok"] = True
+        debug_info_out["sanitized_keys"] = list(safe.keys()) if isinstance(safe, dict) else "<not_dict>"
+        # JSON test
+        try:
+            j = json.dumps(safe, allow_nan=False)
+            debug_info_out["json_size_bytes"] = len(j)
+            debug_info_out["sample_first_500"] = j[:500]
+        except BaseException as je:
+            debug_info_out["json_test_fail"] = f"{type(je).__name__}: {str(je)[:200]}"
+            # Field-by-field test
+            field_results = {}
+            if isinstance(safe, dict):
+                for k, v in safe.items():
+                    try:
+                        json.dumps(v, allow_nan=False)
+                        field_results[k] = "OK"
+                    except BaseException as fe:
+                        field_results[k] = f"FAIL: {type(fe).__name__}: {str(fe)[:150]}"
+            debug_info_out["per_field_test"] = field_results
+        return debug_info_out
+    except BaseException as e:
+        debug_info_out["sanitize_fail"] = f"{type(e).__name__}: {str(e)[:300]}"
+        debug_info_out["traceback"] = traceback.format_exc()[:2000]
+        return debug_info_out
 
 
 @app.get("/debug/info")
