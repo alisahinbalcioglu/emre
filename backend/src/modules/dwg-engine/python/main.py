@@ -664,6 +664,50 @@ import asyncio
 _UPLOAD_STATES: dict[str, dict] = {}
 
 
+def _json_safe(obj):
+    """Recursive olarak obj'i JSON-safe hale getir.
+
+    Sorun: ezdxf parse sirasinda NaN/Inf float'lar uretiliyor (geometry
+    hesaplamalarinda bbox infinite, division-by-zero vb.). Bunlar state'e
+    yaziliyor, sonra FastAPI Starlette JSONResponse allow_nan=False ile
+    serialize edemeden ValueError atip 500 donduruyor.
+
+    Bu fonksiyon:
+      - NaN/Inf float → None
+      - dict → her value sanitize
+      - list/tuple → her item sanitize
+      - str/int/bool/None → degisiklik yok
+      - Pydantic model → model_dump (varsa) sonra recurse
+      - Diger → str() fallback
+    """
+    if obj is None or isinstance(obj, (str, int, bool)):
+        return obj
+    if isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
+    if isinstance(obj, dict):
+        return {k: _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_safe(x) for x in obj]
+    # Pydantic model
+    if hasattr(obj, 'model_dump'):
+        try:
+            return _json_safe(obj.model_dump())
+        except BaseException:
+            pass
+    if hasattr(obj, 'dict'):
+        try:
+            return _json_safe(obj.dict())
+        except BaseException:
+            pass
+    # Bilinmeyen tip — str fallback
+    try:
+        return str(obj)
+    except BaseException:
+        return "<unrepr>"
+
+
 def _detect_unit_from_dxf(doc) -> tuple[float, str]:
     """ezdxf doc'tan birim cikart. $INSUNITS header'i (1=inch, 4=mm, 6=m, ...)."""
     try:
@@ -843,40 +887,21 @@ async def get_upload_status(file_id: str):
         if state is None:
             raise HTTPException(404, "file_id bilinmiyor (cache TTL gecmis olabilir)")
 
-        # DEFANSIF: state icinde JSON-encode edilemez bir field varsa, sanitize et
+        # DEEP SANITIZE: NaN/Inf float'lar + non-JSON-serializable tipleri
+        # recursive olarak temizle. Bu olmadan FastAPI JSONResponse
+        # allow_nan=False ile patlatip 500 donduruyor.
         try:
-            json.dumps(state, ensure_ascii=False, allow_nan=False)
-            return state
+            return _json_safe(state)
         except BaseException as enc_err:
             try:
-                logging.exception("State JSON encode fail for file_id=%s", file_id)
+                logging.exception("State sanitize fail for file_id=%s", file_id)
             except BaseException:
                 pass
-            # State'i field-field temizle, hangi field problemli onu da rapor et
-            problematic_fields: list[str] = []
-            clean_state: dict = {}
-            for k in ("status", "started_at", "completed_at", "error_type", "total_layers",
-                      "suggested_scale", "suggested_unit_label", "entity_count"):
-                v = state.get(k) if isinstance(state, dict) else None
-                try:
-                    json.dumps(v)
-                    clean_state[k] = v
-                except BaseException:
-                    problematic_fields.append(k)
-            # Error field sanitize ile
-            try:
-                err_raw = str(state.get("error", "")) if isinstance(state, dict) else ""
-                clean_state["error"] = err_raw.encode('utf-8', errors='replace').decode('utf-8', errors='replace')[:500]
-            except BaseException:
-                clean_state["error"] = "<error field unreadable>"
-            if not clean_state.get("status"):
-                clean_state["status"] = "error"
-            if problematic_fields:
-                clean_state["error_type"] = clean_state.get("error_type") or "StateSerializationError"
-                clean_state["serialize_fail_fields"] = problematic_fields
-                if not clean_state.get("error"):
-                    clean_state["error"] = f"State JSON encode fail: {type(enc_err).__name__}"
-            return clean_state
+            return {
+                "status": "error",
+                "error_type": "StateSanitizeError",
+                "error": f"State okunamadi: {type(enc_err).__name__}: {str(enc_err)[:200]}",
+            }
     except HTTPException:
         raise
     except BaseException as outer_err:
