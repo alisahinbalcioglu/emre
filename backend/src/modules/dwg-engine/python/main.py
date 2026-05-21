@@ -647,24 +647,52 @@ def _background_parse(file_id: str, dxf_path: str) -> None:
             "suggested_unit_label": label,
             "entity_count": getattr(geom_result, "entity_count", None),
         }
-    except Exception as e:
-        # Hata loglansin, frontend status'tan goruyor
-        logging.exception("Background parse failed for file_id=%s", file_id)
-        # Error message JSON-safe yap — ezdxf hatalari icinde mojibake byte'lar
-        # (surrogate, invalid UTF-8) olabilir → FastAPI JSON encoder fail → 500.
-        # encode/decode + errors='replace' ile sanitize et.
-        raw_msg = str(e)[:500]
+    except BaseException as e:
+        # BULLETPROOF error handler — hicbir koshulda exception fırlatma,
+        # state mutlaka "error" olarak yazilsin. BaseException yakalanir
+        # (Exception + KeyboardInterrupt + SystemExit hepsi) cunku thread
+        # icinde unhandled exception olusursa frontend hicbir zaman
+        # net hata mesaji goremiyor.
+        err_type = "UnknownError"
+        safe_msg = "Bilinmeyen hata"
         try:
+            err_type = type(e).__name__
+        except BaseException:
+            pass
+        try:
+            raw_msg = str(e)[:500]
             safe_msg = raw_msg.encode('utf-8', errors='replace').decode('utf-8', errors='replace')
-        except Exception:
-            safe_msg = f"{type(e).__name__} (mesaj sanitize edilemedi)"
-        _UPLOAD_STATES[file_id] = {
-            "status": "error",
-            "started_at": _UPLOAD_STATES.get(file_id, {}).get("started_at", time.time()),
-            "completed_at": time.time(),
-            "error_type": type(e).__name__,
-            "error": safe_msg,
-        }
+        except BaseException:
+            try:
+                safe_msg = repr(e)[:500]
+            except BaseException:
+                safe_msg = f"<exception while stringifying {err_type}>"
+        try:
+            logging.exception("Background parse failed for file_id=%s", file_id)
+        except BaseException:
+            pass
+        try:
+            existing_start = _UPLOAD_STATES.get(file_id, {}).get("started_at", time.time())
+        except BaseException:
+            existing_start = time.time()
+        try:
+            _UPLOAD_STATES[file_id] = {
+                "status": "error",
+                "started_at": existing_start,
+                "completed_at": time.time(),
+                "error_type": err_type,
+                "error": safe_msg,
+            }
+        except BaseException:
+            # En son care: en azindan flag ata
+            try:
+                _UPLOAD_STATES[file_id] = {
+                    "status": "error",
+                    "error_type": "CriticalStateWriteFail",
+                    "error": "State guncellenemedi",
+                }
+            except BaseException:
+                pass
 
 
 @app.post("/upload")
@@ -722,30 +750,63 @@ async def get_upload_status(file_id: str):
       - status="ready":      layers + entity_count + suggested_scale doluler
       - status="error":      error string'i doludur
       - 404:                 file_id bilinmiyor (cache TTL gecmis veya hic upload edilmemis)
-    """
-    state = _UPLOAD_STATES.get(file_id)
-    if state is None:
-        raise HTTPException(404, "file_id bilinmiyor (cache TTL gecmis olabilir)")
 
-    # DEFANSIF: state icinde JSON-encode edilemez bir field varsa (invalid UTF-8
-    # byte, surrogate, NaN/Inf float vb.), FastAPI default encoder 500 atar.
-    # Bu durumda kullanici "Internal Server Error" goruyor, gercek hatayi
-    # ogrenemiyor. Sanitize edilmis safe_state hazirla.
+    BULLETPROOF: Bu endpoint hicbir kosulda 500 dondurmemeli — kullanici
+    surekli "Internal Server Error" goruyor cunku ic hata mesaji yutulmuyor.
+    En son care olarak DAMA bir status response donulur, gercek hata
+    "error" field'inda.
+    """
     try:
-        json.dumps(state, ensure_ascii=False, allow_nan=False)
-        return state
-    except (TypeError, ValueError) as enc_err:
-        logging.exception("State JSON encode fail for file_id=%s", file_id)
+        state = _UPLOAD_STATES.get(file_id)
+        if state is None:
+            raise HTTPException(404, "file_id bilinmiyor (cache TTL gecmis olabilir)")
+
+        # DEFANSIF: state icinde JSON-encode edilemez bir field varsa, sanitize et
+        try:
+            json.dumps(state, ensure_ascii=False, allow_nan=False)
+            return state
+        except BaseException as enc_err:
+            try:
+                logging.exception("State JSON encode fail for file_id=%s", file_id)
+            except BaseException:
+                pass
+            # State'i field-field temizle, hangi field problemli onu da rapor et
+            problematic_fields: list[str] = []
+            clean_state: dict = {}
+            for k in ("status", "started_at", "completed_at", "error_type", "total_layers",
+                      "suggested_scale", "suggested_unit_label", "entity_count"):
+                v = state.get(k) if isinstance(state, dict) else None
+                try:
+                    json.dumps(v)
+                    clean_state[k] = v
+                except BaseException:
+                    problematic_fields.append(k)
+            # Error field sanitize ile
+            try:
+                err_raw = str(state.get("error", "")) if isinstance(state, dict) else ""
+                clean_state["error"] = err_raw.encode('utf-8', errors='replace').decode('utf-8', errors='replace')[:500]
+            except BaseException:
+                clean_state["error"] = "<error field unreadable>"
+            if not clean_state.get("status"):
+                clean_state["status"] = "error"
+            if problematic_fields:
+                clean_state["error_type"] = clean_state.get("error_type") or "StateSerializationError"
+                clean_state["serialize_fail_fields"] = problematic_fields
+                if not clean_state.get("error"):
+                    clean_state["error"] = f"State JSON encode fail: {type(enc_err).__name__}"
+            return clean_state
+    except HTTPException:
+        raise
+    except BaseException as outer_err:
+        # SON CARE — endpoint handler'da beklenmedik hata
+        try:
+            logging.exception("get_upload_status critical fail for %s", file_id)
+        except BaseException:
+            pass
         return {
-            "status": state.get("status", "error"),
-            "started_at": state.get("started_at", 0),
-            "completed_at": state.get("completed_at", time.time()),
-            "error_type": "StateSerializationError",
-            "error": (
-                f"Engine state JSON encode edilemedi ({type(enc_err).__name__}: "
-                f"{str(enc_err)[:150]}). Orijinal status={state.get('status')}, "
-                f"orijinal error_type={state.get('error_type', 'unknown')}."
-            ),
+            "status": "error",
+            "error_type": "EndpointHandlerError",
+            "error": f"{type(outer_err).__name__}: {str(outer_err)[:200] if outer_err else 'unknown'}",
         }
 
 
