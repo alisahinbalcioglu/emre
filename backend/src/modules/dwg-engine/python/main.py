@@ -8,6 +8,7 @@ Akis:
 """
 
 import os
+import sys
 import json
 import math
 import time
@@ -528,6 +529,73 @@ def health():
         "version": "2.2",
         "cached_files": cached,
         "build_sha": build_sha,
+    }
+
+
+@app.get("/debug/info")
+def debug_info():
+    """Diagnostic endpoint: _UPLOAD_STATES keys + sizes, memory usage, cache.
+
+    Production debugging icin — Render Logs erisilmediginde state'i
+    inceleyebilmek icin. Authentication YOK (engine internal token zaten var).
+    """
+    try:
+        state_summary = []
+        for fid, st in list(_UPLOAD_STATES.items())[:20]:  # max 20
+            try:
+                state_summary.append({
+                    "file_id": fid,
+                    "status": st.get("status") if isinstance(st, dict) else "<invalid>",
+                    "error_type": st.get("error_type") if isinstance(st, dict) else None,
+                    "started_at": st.get("started_at") if isinstance(st, dict) else None,
+                    "completed_at": st.get("completed_at") if isinstance(st, dict) else None,
+                })
+            except BaseException:
+                state_summary.append({"file_id": fid, "status": "<unreadable>"})
+    except BaseException:
+        state_summary = ["<states dict unreadable>"]
+
+    # Memory usage (psutil yoksa atla)
+    mem_info = "psutil not available"
+    try:
+        import psutil
+        proc = psutil.Process()
+        mi = proc.memory_info()
+        mem_info = {
+            "rss_mb": round(mi.rss / 1024 / 1024, 1),
+            "vms_mb": round(mi.vms / 1024 / 1024, 1),
+        }
+    except BaseException:
+        try:
+            import resource
+            usage = resource.getrusage(resource.RUSAGE_SELF)
+            mem_info = {"max_rss_kb": usage.ru_maxrss}
+        except BaseException:
+            pass
+
+    # Cached DXF files on disk
+    cached_files = []
+    try:
+        for f in os.listdir(_CACHE_DIR):
+            if f.startswith(_CACHE_PREFIX) and f.endswith(_CACHE_SUFFIX):
+                try:
+                    full = os.path.join(_CACHE_DIR, f)
+                    cached_files.append({
+                        "name": f,
+                        "size_kb": round(os.path.getsize(full) / 1024, 1),
+                    })
+                except BaseException:
+                    cached_files.append({"name": f, "size_kb": "?"})
+    except BaseException:
+        cached_files = ["<dir unreadable>"]
+
+    return {
+        "build_sha": os.environ.get("RENDER_GIT_COMMIT", "local")[:8],
+        "states_count": len(_UPLOAD_STATES),
+        "states": state_summary,
+        "memory": mem_info,
+        "cached_dxf_files": cached_files,
+        "python_version": sys.version.split()[0],
     }
 
 
