@@ -64,7 +64,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1024)
 # Locale (env yoksa) auth kontrol atlanir — geliştirme engel olmasin.
 
 _INTERNAL_API_TOKEN = os.environ.get("INTERNAL_API_TOKEN", "").strip()
-_PUBLIC_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
+_PUBLIC_PATHS = {"/health", "/docs", "/openapi.json", "/redoc", "/debug/info"}
 
 
 @app.middleware("http")
