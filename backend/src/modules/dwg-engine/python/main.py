@@ -815,6 +815,66 @@ def _json_safe(obj):
         return "<unrepr>"
 
 
+def _run_parse_subprocess(dxf_path: str, params: dict, timeout: int = 180) -> dict:
+    """analyze_dxf_metraj'i IZOLE subprocess'te calistir — OOM-safe.
+
+    Render free tier 512MB single-worker'da bulk-parse OOM kill yapiyor
+    (engine restart + state kaybi + sonsuz polling). Bu helper her parse
+    request'ini ayri Python subprocess'te calistir — OOM olursa sadece
+    subprocess kill, parent worker SAGLAM kalir.
+
+    Iletisim:
+      stdin  → JSON params (dxf_path + scale + selected_layers + ...)
+      stdout → JSON result (analyze_dxf_metraj ciktisi, _json_safe ile sanitize)
+      stderr → error mesajlari
+      exit 0 → BASARILI
+      exit 1 → HATA (stderr'de detay)
+      exit -9 → SIGKILL (OOM)
+      timeout → process.kill, TimeoutError
+
+    Donus: result dict (model_dump cikti). Hata durumunda RuntimeError firlatir.
+    """
+    import subprocess as _sp
+
+    # parse_worker.py engine dizininde, main.py ile ayni yerde
+    worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "parse_worker.py")
+    if not os.path.isfile(worker_path):
+        raise RuntimeError(f"parse_worker.py bulunamadi: {worker_path}")
+
+    payload = json.dumps({"dxf_path": dxf_path, **params})
+
+    try:
+        proc = _sp.run(
+            [sys.executable, worker_path],
+            input=payload,
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+        )
+    except _sp.TimeoutExpired:
+        logging.error("parse_worker timeout (%ds) for %s", timeout, dxf_path)
+        raise RuntimeError(f"Parse subprocess timeout ({timeout}s) — dosya cok kompleks olabilir")
+
+    if proc.returncode == 0:
+        try:
+            return json.loads(proc.stdout)
+        except json.JSONDecodeError as je:
+            logging.error("parse_worker stdout JSON parse fail: %s\nstdout[:500]: %s", je, proc.stdout[:500])
+            raise RuntimeError(f"Subprocess sonuc JSON degil: {str(je)[:200]}")
+
+    # Non-zero exit code — error
+    err_short = (proc.stderr or "")[:500]
+    if proc.returncode == -9 or proc.returncode == 137:
+        # SIGKILL — OOM kill
+        logging.error("parse_worker OOM-killed (exit %d) for %s", proc.returncode, dxf_path)
+        raise RuntimeError(
+            "Parse subprocess bellek yetersiz (OOM kill). "
+            "Dosya cok buyuk veya cok kompleks — daha az layer ile deneyin."
+        )
+    logging.error("parse_worker fail (exit %d): %s", proc.returncode, err_short)
+    raise RuntimeError(f"Subprocess hata (exit {proc.returncode}): {err_short or 'no stderr'}")
+
+
 def _safe_response(obj):
     """Endpoint return helper: FastAPI encoder pipeline'ini BYPASS et.
 
@@ -1233,29 +1293,43 @@ async def parse_dwg(
         except json.JSONDecodeError:
             raise HTTPException(400, "layer_default_diameter gecersiz JSON formati")
 
-    # ── Analiz et ──
+    # ── Analiz et (SUBPROCESS IZOLASYON) ──
+    # Render free tier 512MB'da bulk parse OOM kill yapiyor. Her parse'i
+    # ayri Python subprocess'te calistir — OOM olursa parent worker SAGLAM.
+    # asyncio.to_thread sayesinde main event loop bloke olmaz.
     try:
-        result = analyze_dxf_metraj(
-            dxf_path,
-            scale=scale,
-            selected_layers=sel_layers,
-            hat_tipi_map=hat_tipi_map,
-            material_type_map=mat_type_map,
-            sprinkler_layers_manual=sprinkler_layers_manual,
-            layer_default_diameter_map=default_dia_map,
+        params = {
+            "scale": scale,
+            "selected_layers": sel_layers,
+            "hat_tipi_map": hat_tipi_map,
+            "material_type_map": mat_type_map,
+            "sprinkler_layers_manual": sprinkler_layers_manual,
+            "layer_default_diameter_map": default_dia_map,
+        }
+        # Subprocess'i async thread'de calistir, FastAPI event loop bloke olmasin
+        result_dict = await asyncio.to_thread(
+            _run_parse_subprocess, dxf_path, params, 180
         )
-        # PIPELINE BYPASS: jsonable_encoder atla, surrogate'siz JSON donder
-        return _safe_response(result)
+        # Subprocess zaten _json_safe ile sanitize ettiği için direkt response
+        body = json.dumps(result_dict, allow_nan=False, ensure_ascii=False).encode('utf-8')
+        return Response(content=body, media_type="application/json")
 
     except HTTPException:
         raise
+    except RuntimeError as e:
+        # Subprocess OOM, timeout, veya parse hatasi — net mesaj
+        err_msg = str(e)
+        logging.error("Parse subprocess hatasi: %s", err_msg)
+        # OOM ise 507 (Insufficient Storage), timeout 504, diger 500
+        if "OOM" in err_msg or "bellek" in err_msg:
+            raise HTTPException(507, err_msg)
+        if "timeout" in err_msg.lower():
+            raise HTTPException(504, err_msg)
+        raise HTTPException(500, err_msg)
     except Exception as e:
         import traceback as _tb
         _trace = _tb.format_exc()
-        # Render logs'a TAM traceback yaz — debug icin kritik
         logging.error("DWG analiz hatasi: %s\n%s", repr(e), _trace)
-        # Response'a repr(e) ver (str(e) bazi exception'larda bos olabiliyor)
-        # + class adi (debugging icin frontend'e bilgi)
         raise HTTPException(500, f"DWG analiz hatasi: {type(e).__name__}: {str(e) or repr(e)}")
     finally:
         # Sadece cache'e girmeyen dosyalari temizle
