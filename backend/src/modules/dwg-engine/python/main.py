@@ -658,7 +658,7 @@ def debug_info():
     }
 
 
-@app.get("/geometry/{file_id}", response_model=GeometryResult)
+@app.get("/geometry/{file_id}")
 def get_geometry(
     file_id: str,
     layers: str = Query("", description="Virgulle ayrilmis layer listesi; bos ise tum layerlar"),
@@ -670,7 +670,12 @@ def get_geometry(
     A6 — Disk JSON cache:
       Cache hit  (geom.json varsa, layers filtresi yoksa) → ~50ms json.load
       Cache miss (yok veya layers filtresi var) → ezdxf parse + JSON yaz
-    OCERP pattern (service.py:553-567).
+
+    BYPASS PIPELINE: response_model kaldirildi, Response(json bytes) ile
+    direkt dondurulur. FastAPI'nin jsonable_encoder'i Pydantic model'i
+    encode ederken DXF'ten gelen lone surrogate karakterlerine (\\udcXX)
+    takilip 500 atiyordu. Bu yaklasimda _json_safe ile sanitize +
+    json.dumps ile pre-encode → garanti calisir.
     """
     dxf_path = _get_cached_dxf(file_id)
     layer_set: set[str] | None = None
@@ -683,7 +688,9 @@ def get_geometry(
         try:
             with open(geom_cache, "r", encoding="utf-8") as f:
                 cached = json.load(f)
-            return GeometryResult(**cached)
+            safe = _json_safe(cached)
+            body = json.dumps(safe, allow_nan=False, ensure_ascii=False).encode('utf-8')
+            return Response(content=body, media_type="application/json")
         except Exception:
             # Bozuk cache — sessizce parse'a dus, sonra yeniden yaz
             try:
@@ -696,16 +703,25 @@ def get_geometry(
     except Exception as e:
         raise HTTPException(500, f"Geometri cikarilamadi: {str(e)}")
 
+    # Pydantic model'i dict'e cevir, sanitize et
+    try:
+        result_dict = result.model_dump() if hasattr(result, "model_dump") else result.dict()
+    except BaseException:
+        result_dict = {}
+
     # Layer filtresi YOKSA disk'e yaz — sonraki cagrilara hizli donus
     if layer_set is None:
         try:
             with open(geom_cache, "w", encoding="utf-8") as f:
-                json.dump(result.model_dump() if hasattr(result, "model_dump") else result.dict(), f)
+                json.dump(result_dict, f)
         except Exception:
             # Cache yazimi basarisiz — sorun degil, ana akis devam
             pass
 
-    return result
+    # PIPELINE BYPASS: _json_safe + json.dumps + Response
+    safe = _json_safe(result_dict)
+    body = json.dumps(safe, allow_nan=False, ensure_ascii=False).encode('utf-8')
+    return Response(content=body, media_type="application/json")
 
 
 # ═══════════════════════════════════════════════════════
@@ -797,6 +813,49 @@ def _json_safe(obj):
         return _clean_surrogates(str(obj))
     except BaseException:
         return "<unrepr>"
+
+
+def _safe_response(obj):
+    """Endpoint return helper: FastAPI encoder pipeline'ini BYPASS et.
+
+    DXF'ten gelen Pydantic model'ler/dict'ler icinde lone surrogate (\\udcXX),
+    NaN/Inf float, mojibake byte vb. olabiliyor. FastAPI'nin default
+    jsonable_encoder → JSONResponse pipeline'i bunlari serialize ederken
+    UnicodeEncodeError/ValueError atip 500 donduruyor.
+
+    Bu helper:
+      1. Pydantic model varsa model_dump ile dict'e çevir
+      2. _json_safe ile derin temizle (NaN→None, surrogate→U+FFFD)
+      3. json.dumps ile bytes'a encode (allow_nan=False, ensure_ascii=False)
+      4. Response(pre-encoded bytes) ile dondur — pipeline atlanir
+
+    Her zaman 200 doner (extreme fail durumunda hata mesaji icerikli body).
+    """
+    try:
+        if hasattr(obj, 'model_dump'):
+            data = obj.model_dump()
+        elif hasattr(obj, 'dict'):
+            data = obj.dict()
+        else:
+            data = obj
+        safe = _json_safe(data)
+        body = json.dumps(safe, allow_nan=False, ensure_ascii=False).encode('utf-8')
+        return Response(content=body, media_type="application/json")
+    except BaseException as e:
+        try:
+            logging.exception("_safe_response fail")
+        except BaseException:
+            pass
+        fallback = {
+            "error": f"Response encode fail: {type(e).__name__}: {str(e)[:200]}",
+        }
+        try:
+            return Response(
+                content=json.dumps(fallback, ensure_ascii=False).encode('utf-8'),
+                media_type="application/json",
+            )
+        except BaseException:
+            return Response(content=b'{"error":"encode_failure"}', media_type="application/json")
 
 
 def _detect_unit_from_dxf(doc) -> tuple[float, str]:
@@ -1016,7 +1075,7 @@ async def get_upload_status(file_id: str):
         }
 
 
-@app.post("/layers", response_model=LayerListResult)
+@app.post("/layers")
 async def list_layers(file: UploadFile = File(...)):
     """
     DWG/DXF dosyasindaki layer listesini cikar.
@@ -1082,7 +1141,8 @@ async def list_layers(file: UploadFile = File(...)):
         # Not: dxf_base64 alani kaldirildi — frontend kullanmiyordu, sadece I/O +
         # network overhead'i (5MB DXF → 6.7MB base64 string) yaratıyordu.
 
-        return result
+        # PIPELINE BYPASS: jsonable_encoder atla, surrogate'siz JSON donder
+        return _safe_response(result)
 
     except HTTPException:
         raise
@@ -1090,7 +1150,7 @@ async def list_layers(file: UploadFile = File(...)):
         raise HTTPException(500, f"Layer listesi cikarilirken hata: {str(e)}")
 
 
-@app.post("/parse", response_model=MetrajResult)
+@app.post("/parse")
 async def parse_dwg(
     file: UploadFile | None = File(None),
     file_id: str = Query("", description="Cache'teki dosyanin ID'si (/layers'tan donen)"),
@@ -1184,7 +1244,8 @@ async def parse_dwg(
             sprinkler_layers_manual=sprinkler_layers_manual,
             layer_default_diameter_map=default_dia_map,
         )
-        return result
+        # PIPELINE BYPASS: jsonable_encoder atla, surrogate'siz JSON donder
+        return _safe_response(result)
 
     except HTTPException:
         raise
