@@ -18,7 +18,7 @@ import logging
 import tempfile
 from collections import defaultdict
 import ezdxf
-from fastapi import FastAPI, UploadFile, File, Query, HTTPException, Request
+from fastapi import FastAPI, UploadFile, File, Query, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
@@ -544,15 +544,16 @@ def debug_raw_state(file_id: str):
     """File_id'nin FULL state'ini sanitize ederek dondur — auth-free debug.
 
     /status endpoint'i 500 atiyor bizim teshis edemiyoruz. Bu endpoint
-    /status ILE AYNI KODU calistir: _json_safe(state) return. Eger bu
-    calisir /status calismazsa, sorun /status endpoint'inde DEGIL,
-    middleware'de (CORS, GZip middleware vb.).
+    /status ILE AYNI YAKLASIMI uygula: Response(json.dumps(...)) ile
+    FastAPI encoder pipeline'i bypass.
     """
     state = _UPLOAD_STATES.get(file_id)
     if state is None:
-        return {"error": "file_id bilinmiyor", "all_keys": list(_UPLOAD_STATES.keys())[:10]}
-    # AYNEN /status gibi return — middleware testi
-    return _json_safe(state)
+        body = json.dumps({"error": "file_id bilinmiyor", "all_keys": list(_UPLOAD_STATES.keys())[:10]})
+        return Response(content=body, media_type="application/json")
+    safe = _json_safe(state)
+    body = json.dumps(safe, allow_nan=False, ensure_ascii=False).encode('utf-8')
+    return Response(content=body, media_type="application/json")
 
 
 @app.get("/debug/status-deep/{file_id}")
@@ -945,21 +946,29 @@ async def get_upload_status(file_id: str):
         if state is None:
             raise HTTPException(404, "file_id bilinmiyor (cache TTL gecmis olabilir)")
 
-        # DEEP SANITIZE: NaN/Inf float'lar + non-JSON-serializable tipleri
-        # recursive olarak temizle. Bu olmadan FastAPI JSONResponse
-        # allow_nan=False ile patlatip 500 donduruyor.
+        # DEEP SANITIZE + DIRECT RESPONSE: FastAPI'nin jsonable_encoder
+        # pipeline'i bazi durumlarda 500 atip patliyor (kanitlandi:
+        # /debug/status-deep'te json.dumps BASARILI ama /status hala 500).
+        # Cozum: pipeline'i tamamen bypass et — Response(json.dumps(...))
+        # ile pre-encoded JSON bytes don. jsonable_encoder ASLA calismaz.
         try:
-            return _json_safe(state)
+            safe = _json_safe(state)
+            body = json.dumps(safe, allow_nan=False, ensure_ascii=False).encode('utf-8')
+            return Response(content=body, media_type="application/json")
         except BaseException as enc_err:
             try:
                 logging.exception("State sanitize fail for file_id=%s", file_id)
             except BaseException:
                 pass
-            return {
+            fallback = {
                 "status": "error",
                 "error_type": "StateSanitizeError",
                 "error": f"State okunamadi: {type(enc_err).__name__}: {str(enc_err)[:200]}",
             }
+            return Response(
+                content=json.dumps(fallback, ensure_ascii=False).encode('utf-8'),
+                media_type="application/json",
+            )
     except HTTPException:
         raise
     except BaseException as outer_err:
