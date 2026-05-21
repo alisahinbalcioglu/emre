@@ -140,32 +140,74 @@ export default function DwgProjectWorkspace({
     if (layers.length === 0) return;
     console.log('[handleBulkCalculate] START', { count: layers.length });
     setCalculating(true);
+
+    // BATCH SIRALI: Render free tier 512MB RAM single worker. 27 layer'i
+    // tek request'te gondermek OOM-kill'e neden oluyor (ilk parse OK,
+    // sonrakiler engine crash). 5 layer'lik batch'lere bol, sirali await.
+    // Toplam sure: 5-6 batch x 15-30sn = 1.5-3 dakika (acik gostergeyle).
+    const BATCH_SIZE = 5;
+    const batches: string[][] = [];
+    for (let i = 0; i < layers.length; i += BATCH_SIZE) {
+      batches.push(layers.slice(i, i + BATCH_SIZE));
+    }
+
     toast({
       title: '🔄 Tum layer\'lar hesaplaniyor',
-      description: `${layers.length} layer — Render cold-start 30-60sn olabilir`,
+      description: `${layers.length} layer ${batches.length} batch'te islenecek (1.5-3 dk)`,
     });
+
+    const allEdges: EdgeSegment[] = [];
+    const allJunctions: [number, number][] = [];
+    let failedBatches = 0;
+    let successBatches = 0;
+
     try {
-      const params = new URLSearchParams({
-        discipline: 'mechanical',
-        scale: String(scale),
-        file_id: fileId,
-        selected_layers: JSON.stringify(layers),
-        layer_hat_tipi: '{}',
-        layer_material_type: '{}',
-        layer_default_diameter: '{}',
-        sprinkler_layers: JSON.stringify(state.sprinklerLayers),
-      });
-      const formData = new FormData();
-      const res = await api.post<MetrajResult>(
-        `/dwg-engine/parse?${params.toString()}`,
-        formData,
-        { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 300000 },
-      );
-      console.log('[handleBulkCalculate] RESPONSE OK', { status: res.status });
-      const data = res.data as any;
-      const allEdges: EdgeSegment[] = Array.isArray(data.edge_segments) ? data.edge_segments : [];
-      const allJunctions: [number, number][] = Array.isArray(data.junction_points)
-        ? data.junction_points : [];
+      for (let bIdx = 0; bIdx < batches.length; bIdx++) {
+        const batch = batches[bIdx];
+        console.log(`[handleBulkCalculate] BATCH ${bIdx + 1}/${batches.length}`, { layers: batch });
+
+        try {
+          const params = new URLSearchParams({
+            discipline: 'mechanical',
+            scale: String(scale),
+            file_id: fileId,
+            selected_layers: JSON.stringify(batch),
+            layer_hat_tipi: '{}',
+            layer_material_type: '{}',
+            layer_default_diameter: '{}',
+            sprinkler_layers: JSON.stringify(state.sprinklerLayers),
+          });
+          const formData = new FormData();
+          const res = await api.post<MetrajResult>(
+            `/dwg-engine/parse?${params.toString()}`,
+            formData,
+            { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 180000 },
+          );
+          const data = res.data as any;
+          const batchEdges: EdgeSegment[] = Array.isArray(data.edge_segments) ? data.edge_segments : [];
+          const batchJunctions: [number, number][] = Array.isArray(data.junction_points)
+            ? data.junction_points : [];
+          allEdges.push(...batchEdges);
+          allJunctions.push(...batchJunctions);
+          successBatches++;
+          console.log(`[handleBulkCalculate] BATCH ${bIdx + 1} OK`, {
+            segments: batchEdges.length, junctions: batchJunctions.length,
+          });
+        } catch (batchErr: any) {
+          failedBatches++;
+          console.warn(`[handleBulkCalculate] BATCH ${bIdx + 1} FAIL:`, {
+            status: batchErr?.response?.status,
+            msg: batchErr?.message,
+          });
+          // Devam et — diger batch'ler calismaya devam etsin
+        }
+
+        // Engine'e nefes aldir — sonraki batch'ten once kisa bekleme
+        // (memory cleanup + worker idle olsun)
+        if (bIdx < batches.length - 1) {
+          await new Promise((r) => setTimeout(r, 1500));
+        }
+      }
 
       // Edge segment'leri layer'a gore grupla
       const segsByLayer: Record<string, EdgeSegment[]> = {};
@@ -174,10 +216,9 @@ export default function DwgProjectWorkspace({
         if (!segsByLayer[lyr]) segsByLayer[lyr] = [];
         segsByLayer[lyr].push(es);
       }
-      // junction_points layer-agnostik (xy noktalar) — tum layer'lara dagit (cogu zaten ortak)
-      // Pratik: ilk pipe-like layer'a koy, viewer hepsini render eder zaten
       const layerNames = Object.keys(segsByLayer);
-      console.log('[handleBulkCalculate] PARSED', {
+      console.log('[handleBulkCalculate] DONE', {
+        successBatches, failedBatches,
         totalSegs: allEdges.length, junctions: allJunctions.length, layerCount: layerNames.length,
       });
 
@@ -200,9 +241,11 @@ export default function DwgProjectWorkspace({
         totalSegCount += segs.length;
       }
 
+      const failedNote = failedBatches > 0 ? ` (${failedBatches} batch fail)` : '';
       toast({
         title: '✓ Hesaplandi',
-        description: `${layerNames.length} layer, ${totalSegCount} segment, ${allJunctions.length} T-noktasi`,
+        description: `${layerNames.length} layer, ${totalSegCount} segment, ${allJunctions.length} T-noktasi${failedNote}`,
+        variant: failedBatches > 0 ? 'destructive' : 'default',
       });
     } catch (e: any) {
       console.error('[handleBulkCalculate] HATA:', {
