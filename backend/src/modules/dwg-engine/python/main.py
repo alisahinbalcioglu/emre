@@ -544,28 +544,36 @@ def debug_raw_state(file_id: str):
     """File_id'nin FULL state'ini sanitize ederek dondur — auth-free debug.
 
     /status endpoint'i 500 atiyor bizim teshis edemiyoruz. Bu endpoint
-    tam state'i _json_safe ile temizleyip return eder. Eger bu calisirsa
-    /status'taki sorun middleware'de (CORS, GZip).
+    /status ILE AYNI KODU calistir: _json_safe(state) return. Eger bu
+    calisir /status calismazsa, sorun /status endpoint'inde DEGIL,
+    middleware'de (CORS, GZip middleware vb.).
     """
-    import traceback
     state = _UPLOAD_STATES.get(file_id)
     if state is None:
         return {"error": "file_id bilinmiyor", "all_keys": list(_UPLOAD_STATES.keys())[:10]}
+    # AYNEN /status gibi return — middleware testi
+    return _json_safe(state)
 
-    # Sanitize edip return
+
+@app.get("/debug/status-deep/{file_id}")
+def debug_status_deep(file_id: str):
+    """/status'tan farkli olarak field-by-field JSON test yapar + detayli rapor."""
+    import traceback
+    state = _UPLOAD_STATES.get(file_id)
+    if state is None:
+        return {"error": "file_id bilinmiyor"}
+
     debug_info_out = {"file_id": file_id}
     try:
         safe = _json_safe(state)
         debug_info_out["sanitized_ok"] = True
         debug_info_out["sanitized_keys"] = list(safe.keys()) if isinstance(safe, dict) else "<not_dict>"
-        # JSON test
         try:
             j = json.dumps(safe, allow_nan=False)
             debug_info_out["json_size_bytes"] = len(j)
             debug_info_out["sample_first_500"] = j[:500]
         except BaseException as je:
             debug_info_out["json_test_fail"] = f"{type(je).__name__}: {str(je)[:200]}"
-            # Field-by-field test
             field_results = {}
             if isinstance(safe, dict):
                 for k, v in safe.items():
