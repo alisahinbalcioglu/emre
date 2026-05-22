@@ -145,7 +145,9 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
       // 2) POLL /status — background parse bitene kadar
       // Timeout: 240sn (cold-start engine olabilir, sonra ~30-60sn parse)
       const POLL_INTERVAL = 3000;
-      const POLL_MAX_MS = 240000;
+      // Buyuk DWG dosyalari (>20 MB DXF cache) icin 10 dk timeout — kucuk
+      // dosyalar genelde 30-60sn'de hazir, buyuk dosyalar (50-100MB) 5-10dk
+      const POLL_MAX_MS = 600000;
       const pollStart = Date.now();
       let statusData: any = null;
 
