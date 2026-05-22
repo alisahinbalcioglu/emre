@@ -825,14 +825,19 @@ def _extract_segments(
         doc = read_dxf(dxf_path)
     msp = doc.modelspace()
 
-    # Topology icin edge'leri topla — cross-layer T tespiti icin tum boru
-    # layer'larini dahil et. all_pipe_layers verilmemisse layer-bagimsiz tek
-    # scan yapilir (cift tarama olmasin diye).
-    if all_pipe_layers is not None:
-        topology_layer_set = set(all_pipe_layers) | set(pipe_layers)
-        edges = _collect_raw_edges(msp, topology_layer_set)
-    else:
-        edges = _collect_raw_edges_all_layers(msp)
+    # Topology icin edge'leri topla — SADECE secili layer (pipe_layers) icinden.
+    #
+    # ESKI DAVRANIS: cross-layer (tum boru layer'lari) T tespiti yapiyordu.
+    # Bu yanlisti cunku:
+    #   - SICAK SU borusu ile SOGUK SU borusu gorsel olarak ayni noktadan
+    #     gecse bile FIZIKSEL OLARAK farkli sistemlerdir, baglanti yok
+    #   - Cross-layer kesisim T-noktasi sanilip segment'ler gereksiz boluniyordu
+    #   - Sonuc: sismis segment sayisi + hatali T markerlari + gorsel kaos
+    #
+    # YENI DAVRANIS: T-noktasi = AYNI LAYER icindeki 3+ boru birlesimi.
+    # Farkli layer'larin kesisimi (just visual overlap) GORMEZDEN GELINIR.
+    # all_pipe_layers parametresi backward-compat icin tutuluyor ama kullanilmiyor.
+    edges = _collect_raw_edges(msp, set(pipe_layers))
     if not edges:
         return [], []
 
