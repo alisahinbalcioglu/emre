@@ -69,32 +69,72 @@ export default function DwgProjectWorkspace({
   const [hiddenLineKeys, setHiddenLineKeys] = useState<Set<string>>(new Set());
   /** insert_index set (geometry.inserts array index) */
   const [hiddenInsertKeys, setHiddenInsertKeys] = useState<Set<number>>(new Set());
+  /** geometry.texts[] array index set */
+  const [hiddenTextKeys, setHiddenTextKeys] = useState<Set<number>>(new Set());
+
+  /** PENDING ERASE — kullanici tikladi/marquee yapti ama henuz silmedi.
+   *  "Sil (Enter)" butonuna basinca veya Enter tuşuna basinca hidden'a aktarilir.
+   *  Esc veya "Iptal" ile temizlenir. AutoCAD'in seç-onayla-sil flow'u. */
+  const [pendingErase, setPendingErase] = useState<{
+    lines: string[];
+    inserts: number[];
+    texts: number[];
+  } | null>(null);
+
   /** Undo history — son N erase action'i (her action = ne silindi) */
   const [eraseHistory, setEraseHistory] = useState<
-    Array<{ lines: string[]; inserts: number[] }>
+    Array<{ lines: string[]; inserts: number[]; texts: number[] }>
   >([]);
   const MAX_ERASE_HISTORY = 10;
 
-  const handleEraseEntities = useCallback(
-    (lines: string[], inserts: number[]) => {
-      if (lines.length === 0 && inserts.length === 0) return;
-      setHiddenLineKeys((prev) => {
-        const next = new Set(prev);
-        for (const k of lines) next.add(k);
-        return next;
-      });
-      setHiddenInsertKeys((prev) => {
-        const next = new Set(prev);
-        for (const k of inserts) next.add(k);
-        return next;
-      });
-      setEraseHistory((prev) => {
-        const next = [...prev, { lines, inserts }];
-        return next.length > MAX_ERASE_HISTORY ? next.slice(-MAX_ERASE_HISTORY) : next;
+  /** Marquee'de tespit edilen veya tek tikla secilen entity'leri PENDING'e ekle.
+   *  Hala silmiyor — confirm aksiyonu bekliyor. */
+  const handleSelectForErase = useCallback(
+    (lines: string[], inserts: number[], texts: number[]) => {
+      if (lines.length === 0 && inserts.length === 0 && texts.length === 0) return;
+      setPendingErase((prev) => {
+        if (!prev) return { lines, inserts, texts };
+        // Birikme — eski pending'e ekle (multi-select)
+        return {
+          lines: Array.from(new Set([...prev.lines, ...lines])),
+          inserts: Array.from(new Set([...prev.inserts, ...inserts])),
+          texts: Array.from(new Set([...prev.texts, ...texts])),
+        };
       });
     },
     [],
   );
+
+  /** Pending'i onayla — hidden'a aktar + history'e ekle. Enter veya "Sil" butonu. */
+  const handleConfirmErase = useCallback(() => {
+    if (!pendingErase) return;
+    const { lines, inserts, texts } = pendingErase;
+    setHiddenLineKeys((prev) => {
+      const next = new Set(prev);
+      for (const k of lines) next.add(k);
+      return next;
+    });
+    setHiddenInsertKeys((prev) => {
+      const next = new Set(prev);
+      for (const k of inserts) next.add(k);
+      return next;
+    });
+    setHiddenTextKeys((prev) => {
+      const next = new Set(prev);
+      for (const k of texts) next.add(k);
+      return next;
+    });
+    setEraseHistory((prev) => {
+      const next = [...prev, { lines, inserts, texts }];
+      return next.length > MAX_ERASE_HISTORY ? next.slice(-MAX_ERASE_HISTORY) : next;
+    });
+    setPendingErase(null);
+  }, [pendingErase]);
+
+  /** Pending'i iptal et — secimi sifirla (silme yapilmaz). Esc veya "Iptal" butonu. */
+  const handleCancelPendingErase = useCallback(() => {
+    setPendingErase(null);
+  }, []);
 
   const handleUndoErase = useCallback(() => {
     setEraseHistory((prev) => {
@@ -110,6 +150,11 @@ export default function DwgProjectWorkspace({
         for (const k of last.inserts) next.delete(k);
         return next;
       });
+      setHiddenTextKeys((s) => {
+        const next = new Set(s);
+        for (const k of last.texts) next.delete(k);
+        return next;
+      });
       return prev.slice(0, -1);
     });
   }, []);
@@ -117,7 +162,9 @@ export default function DwgProjectWorkspace({
   const handleRestoreAllErased = useCallback(() => {
     setHiddenLineKeys(new Set());
     setHiddenInsertKeys(new Set());
+    setHiddenTextKeys(new Set());
     setEraseHistory([]);
+    setPendingErase(null);
   }, []);
 
   const [calculating, setCalculating] = useState(false);
@@ -141,6 +188,9 @@ export default function DwgProjectWorkspace({
       if (pendingEquipment) { setPendingEquipment(null); return; }
       if (state.editingEquipmentKey) { cancelEditEquipment(); return; }
       if (editingSegment) { setEditingSegment(null); return; }
+      // Pending erase silgi modundan ONCE — Esc bir kademe geri gider:
+      // pending varsa once pending iptal, sonraki Esc silgi modunu kapatir.
+      if (pendingErase) { handleCancelPendingErase(); return; }
       if (eraseMode) { setEraseMode(false); return; }  // silgi modunu kapat
       if (state.selectedLayer) { selectLayer(state.selectedLayer); return; }  // toggle off
       if (hideMode) { setHideMode(false); return; }
@@ -152,13 +202,34 @@ export default function DwgProjectWorkspace({
         handleUndoErase();
       }
     };
+    // Enter → pending erase'i onayla (AutoCAD-style: sec sonra Enter)
+    // Input/textarea focus iken Enter form submit edebilir → atla.
+    const onEnterKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' || !pendingErase) return;
+      const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+      e.preventDefault();
+      handleConfirmErase();
+    };
     window.addEventListener('keydown', onKey);
     window.addEventListener('keydown', onUndoKey);
+    window.addEventListener('keydown', onEnterKey);
     return () => {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keydown', onUndoKey);
+      window.removeEventListener('keydown', onEnterKey);
     };
-  }, [pendingEquipment, state.editingEquipmentKey, editingSegment, state.selectedLayer, hideMode, eraseMode, eraseHistory.length, cancelEditEquipment, selectLayer, handleUndoErase]);
+  }, [pendingEquipment, state.editingEquipmentKey, editingSegment, state.selectedLayer, hideMode, eraseMode, eraseHistory.length, pendingErase, cancelEditEquipment, selectLayer, handleUndoErase, handleConfirmErase, handleCancelPendingErase]);
+
+  // Pending erase Set'leri — viewer turuncu highlight icin (immutable Set)
+  const pendingLineKeysSet = useMemo(
+    () => (pendingErase ? new Set(pendingErase.lines) : undefined),
+    [pendingErase],
+  );
+  const pendingInsertKeysSet = useMemo(
+    () => (pendingErase ? new Set(pendingErase.inserts) : undefined),
+    [pendingErase],
+  );
 
   const calculatedEdgesByLayer = useMemo(() => {
     const map: Record<string, EdgeSegment[]> = {};
@@ -593,10 +664,16 @@ export default function DwgProjectWorkspace({
             onToggleEraseMode={() => setEraseMode((v) => !v)}
             hiddenLineKeys={hiddenLineKeys}
             hiddenInsertKeys={hiddenInsertKeys}
-            onEraseEntities={handleEraseEntities}
+            // Tek tik / marquee → pending'e ekler (henuz silmez); confirm gerekir
+            onEraseEntities={(lines, inserts) => handleSelectForErase(lines, inserts, [])}
             onUndoErase={handleUndoErase}
             canUndoErase={eraseHistory.length > 0}
             onRestoreAllErased={handleRestoreAllErased}
+            // PENDING ERASE — viewer turuncu highlight + sag-ust onay/iptal toolbar
+            pendingLineKeys={pendingLineKeysSet}
+            pendingInsertKeys={pendingInsertKeysSet}
+            onConfirmPendingErase={handleConfirmErase}
+            onCancelPendingErase={handleCancelPendingErase}
             className="h-[600px] lg:h-[calc(100vh-150px)]"
           />
 

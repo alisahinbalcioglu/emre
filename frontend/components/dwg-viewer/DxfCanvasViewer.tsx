@@ -21,7 +21,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import RBush from 'rbush';
-import { Loader2, AlertCircle, ZoomIn, ZoomOut, Maximize2, Eraser, Undo2, RotateCcw } from 'lucide-react';
+import { Loader2, AlertCircle, ZoomIn, ZoomOut, Maximize2, Eraser, Undo2, RotateCcw, Check, X } from 'lucide-react';
 import api from '@/lib/api';
 import type { GeometryResult } from './types';
 import type { EdgeSegment } from '@/components/dwg-metraj/types';
@@ -66,6 +66,15 @@ interface DxfCanvasViewerProps {
   canUndoErase?: boolean;
   /** "Tumunu Geri Getir" — tum hidden'lari temizle. */
   onRestoreAllErased?: () => void;
+  // ── PENDING ERASE (AutoCAD-style sec-onayla-sil) ──────────────────
+  /** Tikla/marquee ile secilmis ama henuz silinmemis LINE'lar. Turuncu highlight. */
+  pendingLineKeys?: Set<string>;
+  /** Pending INSERT index seti. Turuncu highlight. */
+  pendingInsertKeys?: Set<number>;
+  /** Enter / "Sil" butonu → pending'i hidden'a aktar. */
+  onConfirmPendingErase?: () => void;
+  /** Esc / "Iptal" butonu → pending'i temizle. */
+  onCancelPendingErase?: () => void;
 }
 
 const COLOR_BG = '#0b1220';
@@ -133,6 +142,10 @@ export default function DxfCanvasViewer({
   onUndoErase,
   canUndoErase = false,
   onRestoreAllErased,
+  pendingLineKeys,
+  pendingInsertKeys,
+  onConfirmPendingErase,
+  onCancelPendingErase,
 }: DxfCanvasViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -171,6 +184,24 @@ export default function DxfCanvasViewer({
     },
     [hiddenInsertKeys],
   );
+
+  const isLinePending = useCallback(
+    (coords: [number, number, number, number]): boolean => {
+      if (!pendingLineKeys || pendingLineKeys.size === 0) return false;
+      return pendingLineKeys.has(computeLineKey(coords));
+    },
+    [pendingLineKeys, computeLineKey],
+  );
+
+  const isInsertPending = useCallback(
+    (insertIndex: number): boolean => {
+      if (!pendingInsertKeys || pendingInsertKeys.size === 0) return false;
+      return pendingInsertKeys.has(insertIndex);
+    },
+    [pendingInsertKeys],
+  );
+
+  const pendingCount = (pendingLineKeys?.size ?? 0) + (pendingInsertKeys?.size ?? 0);
 
   // Hesaplanmis tum edge segment'leri tek bir array'e flatten et.
   // edgeSegments prop'u verilirse onu, yoksa calculatedEdgesByLayer'daki tum
@@ -720,6 +751,64 @@ export default function DxfCanvasViewer({
         }
       }
 
+      // ─── PENDING ERASE highlight (turuncu, kalin) ──────────────────
+      // Sec-onayla-sil flow: kullanici tıkladi/marquee yapti ama Enter'a
+      // basmadi. Onaylanana dek hidden DEGIL — turuncu vurgu ile gosterilir.
+      if (pendingLineKeys && pendingLineKeys.size > 0 && geometry) {
+        ctx.save();
+        ctx.strokeStyle = '#fb923c';  // orange-400 — silgi rose'undan ayri
+        ctx.lineWidth = strokeWidth * 2.8;
+        ctx.shadowColor = 'rgba(251, 146, 60, 0.7)';
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        // Raw LINE'lar
+        for (const ln of geometry.lines) {
+          if (hiddenLayers?.has(ln.layer)) continue;
+          if (isLineHidden(ln.coords)) continue;
+          if (!isLinePending(ln.coords)) continue;
+          ctx.moveTo(ln.coords[0], ln.coords[1]);
+          ctx.lineTo(ln.coords[2], ln.coords[3]);
+        }
+        // Hesaplanmis edge segment'leri (allEdgeSegments — ayni computeLineKey)
+        if (allEdgeSegments) {
+          for (const seg of allEdgeSegments) {
+            if (hiddenLayers?.has(seg.layer)) continue;
+            if (isLineHidden(seg.coords)) continue;
+            if (!isLinePending(seg.coords)) continue;
+            if (seg.polyline && seg.polyline.length >= 2) {
+              ctx.moveTo(seg.polyline[0][0], seg.polyline[0][1]);
+              for (let i = 1; i < seg.polyline.length; i++) {
+                ctx.lineTo(seg.polyline[i][0], seg.polyline[i][1]);
+              }
+            } else {
+              ctx.moveTo(seg.coords[0], seg.coords[1]);
+              ctx.lineTo(seg.coords[2], seg.coords[3]);
+            }
+          }
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+      if (pendingInsertKeys && pendingInsertKeys.size > 0 && geometry) {
+        ctx.save();
+        ctx.fillStyle = '#fb923c';
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = strokeWidth * 0.8;
+        ctx.shadowColor = 'rgba(251, 146, 60, 0.8)';
+        ctx.shadowBlur = 10;
+        const r = 5 / viewport.zoom;
+        for (const ins of geometry.inserts) {
+          if (hiddenLayers?.has(ins.layer)) continue;
+          if (isInsertHidden(ins.insert_index)) continue;
+          if (!isInsertPending(ins.insert_index)) continue;
+          ctx.beginPath();
+          ctx.arc(ins.position[0], ins.position[1], r, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
       // ─── SELECTED overlay (brand blue + 2.5x stroke + bigger glow) ──
       if (selectedLine) {
         ctx.strokeStyle = COLOR_LINE_SELECTED;
@@ -746,7 +835,7 @@ export default function DxfCanvasViewer({
 
     schedule();
     return () => cancelAnimationFrame(rafId);
-  }, [geometry, allEdgeSegments, calculatedJunctionsByLayer, viewport, selectedLayer, highlightLayer, hiddenLayers, dimmedLayers, sprinklerLayers, markedEquipmentKeys, hovered, selectedLine]);
+  }, [geometry, allEdgeSegments, calculatedJunctionsByLayer, viewport, selectedLayer, highlightLayer, hiddenLayers, dimmedLayers, sprinklerLayers, markedEquipmentKeys, hovered, selectedLine, pendingLineKeys, pendingInsertKeys, isLinePending, isInsertPending, isLineHidden, isInsertHidden]);
 
   // ─── Hover detection (rbush ile O(log N)) ────────────────────────
   const computeHovered = useCallback(
@@ -1090,6 +1179,43 @@ export default function DxfCanvasViewer({
           <div className="pointer-events-none absolute right-2 top-2 z-20 flex items-center gap-1.5 rounded-md bg-rose-600 px-2.5 py-1 text-[11px] font-semibold text-white shadow-lg">
             <Eraser className="h-3 w-3" />
             SILGI AKTIF · Esc ile cik
+          </div>
+        )}
+
+        {/* PENDING ERASE toolbar — secildi ama silinmedi, onay/iptal */}
+        {pendingCount > 0 && (
+          <div
+            className={
+              'absolute right-2 z-20 flex items-center gap-2 rounded-md border border-orange-400/60 bg-slate-900/95 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-lg backdrop-blur-sm ' +
+              (eraseMode ? 'top-10' : 'top-2')
+            }
+          >
+            <span className="flex items-center gap-1 text-orange-300">
+              <span className="inline-block h-2.5 w-2.5 rounded-full bg-orange-400 shadow-[0_0_6px_rgba(251,146,60,0.8)]" />
+              {pendingCount} oge secildi
+            </span>
+            {onConfirmPendingErase && (
+              <button
+                type="button"
+                onClick={onConfirmPendingErase}
+                className="flex items-center gap-1 rounded bg-rose-600 px-2 py-0.5 text-white hover:bg-rose-700"
+                title="Secimi sil (Enter)"
+              >
+                <Check className="h-3 w-3" />
+                Sil (Enter)
+              </button>
+            )}
+            {onCancelPendingErase && (
+              <button
+                type="button"
+                onClick={onCancelPendingErase}
+                className="flex items-center gap-1 rounded bg-slate-700 px-2 py-0.5 text-slate-200 hover:bg-slate-600"
+                title="Secimi iptal et (Esc)"
+              >
+                <X className="h-3 w-3" />
+                Iptal (Esc)
+              </button>
+            )}
           </div>
         )}
 
