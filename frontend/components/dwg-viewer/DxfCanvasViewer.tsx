@@ -1006,6 +1006,14 @@ export default function DxfCanvasViewer({
         pointerHandlers.onPointerDown(e);
         return;
       }
+      // BUG FIX: Toolbar button'lari container'in cocugu. setPointerCapture
+      // butonlara giden click event'ini calar (Sil/Iptal cevap vermiyordu).
+      // event.target button/svg/icon ise marquee BASLATMA, browser'in normal
+      // button click flow'una birak.
+      const target = e.target as HTMLElement | null;
+      if (target && target.closest('button, [role="button"]')) {
+        return;
+      }
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return;
       const sx = e.clientX - rect.left;
@@ -1059,7 +1067,10 @@ export default function DxfCanvasViewer({
         handleClick(e);
         return;
       }
-      // MARQUEE FINAL — kutu icindeki entity'leri tespit
+      // MARQUEE FINAL — AutoCAD davranisi:
+      //   sol→sag surukleme (sx2 > sx1): WINDOW — sadece TAMAMEN icerideki secilir (mavi)
+      //   sag→sol surukleme (sx2 < sx1): CROSSING — kesisen de secilir (yesil)
+      const isWindow = marquee.sx2 > marquee.sx1;
       const minSx = Math.min(marquee.sx1, marquee.sx2);
       const maxSx = Math.max(marquee.sx1, marquee.sx2);
       const minSy = Math.min(marquee.sy1, marquee.sy2);
@@ -1070,24 +1081,35 @@ export default function DxfCanvasViewer({
       const minWy = (viewport.panY - maxSy) / viewport.zoom;
       const maxWy = (viewport.panY - minSy) / viewport.zoom;
 
+      // LINE/segment secim testi — yon-bazli (window vs crossing).
+      // Window: bbox kutuda TAMAMEN icerde (her iki uc + bbox icerde).
+      // Crossing: bbox overlap (kesisme yeterli) — eski davranis.
+      const lineInBox = (x1: number, y1: number, x2: number, y2: number): boolean => {
+        const lnMnx = Math.min(x1, x2);
+        const lnMxx = Math.max(x1, x2);
+        const lnMny = Math.min(y1, y2);
+        const lnMxy = Math.max(y1, y2);
+        if (isWindow) {
+          // TAMAMEN icerde
+          return lnMnx >= minWx && lnMxx <= maxWx && lnMny >= minWy && lnMxy <= maxWy;
+        }
+        // Crossing: bbox overlap
+        return lnMxx >= minWx && lnMnx <= maxWx && lnMxy >= minWy && lnMny <= maxWy;
+      };
+
       const lineKeys: string[] = [];
       const insertIndices: number[] = [];
 
       if (geometry) {
-        // LINE crossing select — bbox overlap
         for (const ln of geometry.lines) {
           if (hiddenLayers?.has(ln.layer)) continue;
           if (isLineHidden(ln.coords)) continue;
           const [x1, y1, x2, y2] = ln.coords;
-          const lnMnx = Math.min(x1, x2);
-          const lnMxx = Math.max(x1, x2);
-          const lnMny = Math.min(y1, y2);
-          const lnMxy = Math.max(y1, y2);
-          if (lnMxx >= minWx && lnMnx <= maxWx && lnMxy >= minWy && lnMny <= maxWy) {
+          if (lineInBox(x1, y1, x2, y2)) {
             lineKeys.push(computeLineKey(ln.coords));
           }
         }
-        // INSERT inside box
+        // INSERT: nokta entity — window/crossing fark etmez (point ya icerde ya degil)
         for (const ins of geometry.inserts) {
           if (hiddenLayers?.has(ins.layer)) continue;
           if (isInsertHidden(ins.insert_index)) continue;
@@ -1097,17 +1119,27 @@ export default function DxfCanvasViewer({
           }
         }
       }
-      // Edge segments (hesaplanmis layer'lar)
+      // Edge segments (hesaplanmis layer'lar) — ayni yon-bazli test
       if (allEdgeSegments) {
         for (const seg of allEdgeSegments) {
           if (isLineHidden(seg.coords)) continue;
-          const [x1, y1, x2, y2] = seg.coords;
-          const sMnx = Math.min(x1, x2);
-          const sMxx = Math.max(x1, x2);
-          const sMny = Math.min(y1, y2);
-          const sMxy = Math.max(y1, y2);
-          if (sMxx >= minWx && sMnx <= maxWx && sMxy >= minWy && sMny <= maxWy) {
-            lineKeys.push(computeLineKey(seg.coords));
+          // Polyline varsa: tum vertex'lerin bbox'ini kullan
+          if (seg.polyline && seg.polyline.length >= 2) {
+            let pMnx = Infinity, pMxx = -Infinity, pMny = Infinity, pMxy = -Infinity;
+            for (const [px, py] of seg.polyline) {
+              if (px < pMnx) pMnx = px;
+              if (px > pMxx) pMxx = px;
+              if (py < pMny) pMny = py;
+              if (py > pMxy) pMxy = py;
+            }
+            if (lineInBox(pMnx, pMny, pMxx, pMxy)) {
+              lineKeys.push(computeLineKey(seg.coords));
+            }
+          } else {
+            const [x1, y1, x2, y2] = seg.coords;
+            if (lineInBox(x1, y1, x2, y2)) {
+              lineKeys.push(computeLineKey(seg.coords));
+            }
           }
         }
       }
@@ -1161,10 +1193,17 @@ export default function DxfCanvasViewer({
       >
         <canvas ref={canvasRef} className="block h-full w-full" />
 
-        {/* MARQUEE SELECTION BOX — silgi modu drag sirasinda */}
+        {/* MARQUEE SELECTION BOX — AutoCAD davranisi:
+            sol→sag (sx2 > sx1) = WINDOW (mavi, solid border, sadece TAMAMEN icerde)
+            sag→sol (sx2 < sx1) = CROSSING (yesil, dashed border, kesisen de secilir) */}
         {marquee && (
           <div
-            className="pointer-events-none absolute z-20 border-2 border-rose-400 bg-rose-500/15"
+            className={
+              'pointer-events-none absolute z-20 border-2 ' +
+              (marquee.sx2 > marquee.sx1
+                ? 'border-blue-400 bg-blue-500/15'
+                : 'border-emerald-400 bg-emerald-500/15 [border-style:dashed]')
+            }
             style={{
               left: Math.min(marquee.sx1, marquee.sx2),
               top: Math.min(marquee.sy1, marquee.sy2),
@@ -1182,9 +1221,14 @@ export default function DxfCanvasViewer({
           </div>
         )}
 
-        {/* PENDING ERASE toolbar — secildi ama silinmedi, onay/iptal */}
+        {/* PENDING ERASE toolbar — secildi ama silinmedi, onay/iptal.
+            stopPropagation: silgi modu pointerDown viewer container'a capture
+            yapiyor; double-safety olarak toolbar level'da event'i durdur. */}
         {pendingCount > 0 && (
           <div
+            onPointerDown={(e) => e.stopPropagation()}
+            onPointerUp={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
             className={
               'absolute right-2 z-20 flex items-center gap-2 rounded-md border border-orange-400/60 bg-slate-900/95 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-lg backdrop-blur-sm ' +
               (eraseMode ? 'top-10' : 'top-2')
