@@ -25,6 +25,11 @@ import MetrajSummaryPanel from './MetrajSummaryPanel';
 import EquipmentDetailPopup from './EquipmentDetailPopup';
 import { useWorkspaceState } from './useWorkspaceState';
 import type { MarkedEquipment, CalculatedLayer } from './types';
+import {
+  useProximityCalc,
+  useOriginalColorState,
+  DiameterLegendPanel,
+} from '@/components/dwg-diameter-engine';
 
 interface DwgProjectWorkspaceProps {
   fileId: string;
@@ -168,6 +173,21 @@ export default function DwgProjectWorkspace({
   }, []);
 
   const [calculating, setCalculating] = useState(false);
+
+  // ── PRD: deterministic proximity caplandirma + dinamik renk save flow ───
+  // useProximityCalc: tek layer icin /parse?use_proximity_diameter=true tetikle.
+  // useOriginalColorState: save sonrasi viewer'da cap-renk kapat (PRD §5).
+  const { useDiameterColors, enableDiameterColors, restoreOriginalColors } = useOriginalColorState();
+  const { calculatingLayer, calculateLayer: calculateLayerByProximity } = useProximityCalc({
+    fileId,
+    scale,
+    sprinklerLayers: state.sprinklerLayers,
+    onResult: ({ calculated }) => {
+      addCalculatedLayer(calculated);
+      enableDiameterColors();  // Yeni hesaplama -> cap renkleri aktif
+    },
+  });
+
   const [editingSegment, setEditingSegment] = useState<EdgeSegment | null>(null);
   const [pendingEquipment, setPendingEquipment] = useState<null | {
     key: string; insertIndex: number; layer: string; insertName: string; position: [number, number];
@@ -485,10 +505,10 @@ export default function DwgProjectWorkspace({
   };
 
   const handleLineClick = (line: { layer: string; index: number; shiftKey: boolean; screenX: number; screenY: number }) => {
-    // YENI AKIS: Tik = sadece SECME. Hesaplama kullanici "Hesapla" butonuna
-    // basinca tetiklenir (LayerInfoSidebar'da). Boylece yanlislikla tiklamada
-    // hesap baslamaz, kullanici kontrolu elinde tutar.
-    console.log('[handleLineClick] FIRED', { layer: line.layer, calculating });
+    // PRD: LINE click -> layer secimi + otomatik proximity hesaplama tetikle.
+    // Mevcut LayerInfoSidebar "Hesapla" butonu kullanici manuel cap girmek
+    // isterse hala kullanilabilir (deterministic proximity flag'siz handleCalculate).
+    console.log('[handleLineClick] FIRED', { layer: line.layer, calculatingLayer });
     if (hideMode || line.shiftKey) {
       toggleLayerVisibility(line.layer);
       toast({
@@ -498,11 +518,14 @@ export default function DwgProjectWorkspace({
       return;
     }
     selectLayer(line.layer);
-    // Kullaniciya nazik bilgi mesaji — Hesapla butonu icin sag paneli gor
-    if (!state.calculatedLayers[line.layer]) {
-      toast({
-        title: 'Layer secildi',
-        description: 'Sag panelden "Hesapla" butonuna basın',
+    // PRD §1+§2: tik = layer aktif + otomatik proximity caplandirma.
+    // Zaten hesaplanmissa tekrar etme (kullanici sadece secmis olabilir).
+    if (!state.calculatedLayers[line.layer] && calculatingLayer !== line.layer) {
+      const cfg = state.layerConfigs[line.layer];
+      calculateLayerByProximity(line.layer, {
+        hatIsmi: cfg?.hatIsmi,
+        materialType: cfg?.materialType,
+        defaultDiameter: cfg?.defaultDiameter,
       });
     }
   };
@@ -616,6 +639,10 @@ export default function DwgProjectWorkspace({
     }
 
     onApproved(finalMetraj, fileName);
+    // PRD §5: Save sonrasi viewer'da cap renkleri kaldirilir, layer orijinal
+    // ACI rengine donulur. calculatedLayers state'i SAKLI tutulur (kullanici
+    // dondukten sonra cap duzeltmesi yapabilsin). Sadece RENDER bayragi false.
+    restoreOriginalColors();
   };
 
   const editingEquipmentExisting = state.editingEquipmentKey
@@ -680,6 +707,8 @@ export default function DwgProjectWorkspace({
             pendingTextKeys={pendingTextKeysSet}
             onConfirmPendingErase={handleConfirmErase}
             onCancelPendingErase={handleCancelPendingErase}
+            // PRD §3 + §5: cap-bazli dinamik renk; save sonrasi false -> layer ACI
+            useDiameterColors={useDiameterColors}
             className="h-[600px] lg:h-[calc(100vh-150px)]"
           />
 
@@ -687,15 +716,21 @@ export default function DwgProjectWorkspace({
           <div className="mt-2 flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
             <AlertCircle className="h-3.5 w-3.5 shrink-0 text-slate-500 mt-0.5" />
             <p className="text-[11px] text-slate-600">
-              <strong>Boru:</strong> Çizgiye tıkla → sağda hat ismi gir → &quot;Hesapla&quot;.
+              <strong>Boru:</strong> Çizgiye tıkla → otomatik cap ataması (en yakin text → cap).
+              <strong className="ml-2">Manuel:</strong> Sağ panelden hat ismi gir + &quot;Hesapla&quot; (default cap atar).
               <strong className="ml-2">Ekipman:</strong> Noktaya tıkla → malzeme adı + birim gir.
-              <strong className="ml-2">Layer Gizle:</strong> Sol-üst toolbar&apos;da göz-kapalı butona bas → cizimde layer&apos;a tıkla. Geri getirmek icin sag paneldeki &quot;Layer Goruntusu&quot; listesinden goz ikonu.
+              <strong className="ml-2">Layer Gizle:</strong> Sol-üst toolbar&apos;da göz-kapalı butona bas → çizimde layer&apos;a tıkla.
             </p>
           </div>
         </div>
 
-        {/* Sag: aktif layer formu + ozetsa ekipman listesi */}
+        {/* Sag: aktif layer formu + cap renk legend + ozet ekipman listesi */}
         <div className="space-y-3">
+          {/* PRD §3: Dinamik renk legend — cizimle birebir esles */}
+          <DiameterLegendPanel
+            calculatedLayers={state.calculatedLayers}
+            diameterColorsActive={useDiameterColors}
+          />
           <LayerInfoSidebar
             selectedLayer={state.selectedLayer}
             config={selectedConfig}
@@ -755,11 +790,18 @@ export default function DwgProjectWorkspace({
             onShowAll={showAllLayers}
             onShowAllDimmed={showAllDimmed}
             onLayerSelect={(layer, _x, _y) => {
-              // Layer panel'den layer adina tikla = sec + otomatik hesapla.
-              // Cap popup ACMAZ — T noktalari bolunur, segment'lere ayri tiklanir.
+              // Layer panel'den layer adina tikla = sec + otomatik proximity hesapla.
+              // PRD: deterministic en yakin text -> cap atama. Mevcut handleCalculate
+              // (manuel default cap) artik gerekli degil cunku proximity onceliklidir;
+              // atayamadigi segmentler icin layer default fallback hala main.py'da.
               selectLayer(layer);
-              if (!state.calculatedLayers[layer]) {
-                handleCalculate(layer);
+              if (!state.calculatedLayers[layer] && calculatingLayer !== layer) {
+                const cfg = state.layerConfigs[layer];
+                calculateLayerByProximity(layer, {
+                  hatIsmi: cfg?.hatIsmi,
+                  materialType: cfg?.materialType,
+                  defaultDiameter: cfg?.defaultDiameter,
+                });
               }
             }}
           />

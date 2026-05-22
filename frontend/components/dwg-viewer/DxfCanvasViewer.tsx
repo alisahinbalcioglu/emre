@@ -61,6 +61,9 @@ interface DxfCanvasViewerProps {
   hiddenInsertKeys?: Set<number>;
   /** Hidden TEXT index set (geometry.texts array index). Render skip eder. */
   hiddenTextKeys?: Set<number>;
+  /** Hesaplanmis edge segment'leri cap-bazli renklerle (true, default) ya da
+   *  layer orijinal ACI rengiyle (false) ciz. PRD §5: save sonrasi false. */
+  useDiameterColors?: boolean;
   /** Silgi mod aktif iken tik veya marquee → bu callback'le hidden'a ekleme yapilir.
    *  textIndices: geometry.texts[] array index'leri. */
   onEraseEntities?: (lineKeys: string[], insertIndices: number[], textIndices: number[]) => void;
@@ -153,6 +156,7 @@ export default function DxfCanvasViewer({
   pendingTextKeys,
   onConfirmPendingErase,
   onCancelPendingErase,
+  useDiameterColors = true,
 }: DxfCanvasViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -709,13 +713,34 @@ export default function DxfCanvasViewer({
 
         ctx.lineWidth = strokeWidth * 1.8;
         ctx.globalAlpha = 1;
-        byDiameter.forEach((segs, diameter) => {
-          // Sabit cap->renk haritasi (MetrajSummaryPanel ile tutarli)
-          ctx.strokeStyle = diameterToColor(diameter);
-          ctx.beginPath();
-          for (const seg of segs) drawSegPath(seg);
-          ctx.stroke();
-        });
+        if (useDiameterColors) {
+          // PRD §3: cap-bazli dinamik renklendirme (legend ile esles)
+          byDiameter.forEach((segs, diameter) => {
+            ctx.strokeStyle = diameterToColor(diameter);
+            ctx.beginPath();
+            for (const seg of segs) drawSegPath(seg);
+            ctx.stroke();
+          });
+        } else {
+          // PRD §5: save sonrasi cap renkleri kaldirilir, layer orijinal ACI
+          // rengine donulur. Tum diameter group'larini layer'a yeniden grupla.
+          const byLayer = new Map<string, EdgeSegment[]>();
+          byDiameter.forEach((segs) => {
+            for (const seg of segs) {
+              let arr = byLayer.get(seg.layer);
+              if (!arr) { arr = []; byLayer.set(seg.layer, arr); }
+              arr.push(seg);
+            }
+          });
+          const layerColorsMap = geometry?.layer_colors || {};
+          byLayer.forEach((segs, layer) => {
+            const aci = layerColorsMap[layer] ?? 7;
+            ctx.strokeStyle = aciToColor(aci);
+            ctx.beginPath();
+            for (const seg of segs) drawSegPath(seg);
+            ctx.stroke();
+          });
+        }
 
         // Dimmed pass: hepsi gri + %25
         if (dimmedSegs.length > 0) {
@@ -878,7 +903,7 @@ export default function DxfCanvasViewer({
 
     schedule();
     return () => cancelAnimationFrame(rafId);
-  }, [geometry, allEdgeSegments, calculatedJunctionsByLayer, viewport, selectedLayer, highlightLayer, hiddenLayers, dimmedLayers, sprinklerLayers, markedEquipmentKeys, hovered, selectedLine, pendingLineKeys, pendingInsertKeys, pendingTextKeys, hiddenTextKeys, isLinePending, isInsertPending, isLineHidden, isInsertHidden, isTextHidden, isTextPending]);
+  }, [geometry, allEdgeSegments, calculatedJunctionsByLayer, viewport, selectedLayer, highlightLayer, hiddenLayers, dimmedLayers, sprinklerLayers, markedEquipmentKeys, hovered, selectedLine, pendingLineKeys, pendingInsertKeys, pendingTextKeys, hiddenTextKeys, isLinePending, isInsertPending, isLineHidden, isInsertHidden, isTextHidden, isTextPending, useDiameterColors]);
 
   // ─── Hover detection (rbush ile O(log N)) ────────────────────────
   const computeHovered = useCallback(
