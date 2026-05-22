@@ -59,8 +59,11 @@ interface DxfCanvasViewerProps {
   hiddenLineKeys?: Set<string>;
   /** Hidden INSERT index set. Render skip eder. */
   hiddenInsertKeys?: Set<number>;
-  /** Silgi mod aktif iken tik veya marquee → bu callback'le hidden'a ekleme yapilir. */
-  onEraseEntities?: (lineKeys: string[], insertIndices: number[]) => void;
+  /** Hidden TEXT index set (geometry.texts array index). Render skip eder. */
+  hiddenTextKeys?: Set<number>;
+  /** Silgi mod aktif iken tik veya marquee → bu callback'le hidden'a ekleme yapilir.
+   *  textIndices: geometry.texts[] array index'leri. */
+  onEraseEntities?: (lineKeys: string[], insertIndices: number[], textIndices: number[]) => void;
   /** Undo button — son silmeyi geri al. */
   onUndoErase?: () => void;
   canUndoErase?: boolean;
@@ -71,6 +74,8 @@ interface DxfCanvasViewerProps {
   pendingLineKeys?: Set<string>;
   /** Pending INSERT index seti. Turuncu highlight. */
   pendingInsertKeys?: Set<number>;
+  /** Pending TEXT index seti. Turuncu highlight. */
+  pendingTextKeys?: Set<number>;
   /** Enter / "Sil" butonu → pending'i hidden'a aktar. */
   onConfirmPendingErase?: () => void;
   /** Esc / "Iptal" butonu → pending'i temizle. */
@@ -142,8 +147,10 @@ export default function DxfCanvasViewer({
   onUndoErase,
   canUndoErase = false,
   onRestoreAllErased,
+  hiddenTextKeys,
   pendingLineKeys,
   pendingInsertKeys,
+  pendingTextKeys,
   onConfirmPendingErase,
   onCancelPendingErase,
 }: DxfCanvasViewerProps) {
@@ -201,7 +208,23 @@ export default function DxfCanvasViewer({
     [pendingInsertKeys],
   );
 
-  const pendingCount = (pendingLineKeys?.size ?? 0) + (pendingInsertKeys?.size ?? 0);
+  const isTextHidden = useCallback(
+    (textIndex: number): boolean => {
+      if (!hiddenTextKeys || hiddenTextKeys.size === 0) return false;
+      return hiddenTextKeys.has(textIndex);
+    },
+    [hiddenTextKeys],
+  );
+
+  const isTextPending = useCallback(
+    (textIndex: number): boolean => {
+      if (!pendingTextKeys || pendingTextKeys.size === 0) return false;
+      return pendingTextKeys.has(textIndex);
+    },
+    [pendingTextKeys],
+  );
+
+  const pendingCount = (pendingLineKeys?.size ?? 0) + (pendingInsertKeys?.size ?? 0) + (pendingTextKeys?.size ?? 0);
 
   // Hesaplanmis tum edge segment'leri tek bir array'e flatten et.
   // edgeSegments prop'u verilirse onu, yoksa calculatedEdgesByLayer'daki tum
@@ -614,13 +637,33 @@ export default function DxfCanvasViewer({
         }
 
         // ─── Texts (dimmed = gri + %25 alpha, fillText per-text) ──
+        // SILGI: hiddenText skip; pendingText turuncu arka plan + outline.
         if (viewport.zoom >= 0.3 && geometry.texts.length > 0) {
           ctx.textBaseline = 'alphabetic';
-          for (const t of geometry.texts) {
+          for (let ti = 0; ti < geometry.texts.length; ti++) {
+            const t = geometry.texts[ti];
             if (hiddenLayers?.has(t.layer)) continue;
             if (!t.text) continue;
+            if (isTextHidden(ti)) continue;  // SILGI: silinmis text'i cizme
             if (!inView(t.position[0], t.position[1])) continue;
             const isDim = !!dimmedLayers?.has(t.layer);
+            const isPending = isTextPending(ti);
+            // Pending text: arka plana turuncu yari-saydam rect (text'i de
+            // turuncu glow ile cevreler)
+            if (isPending) {
+              const tw = t.text.length * Math.max(t.height, 1) * 0.6;
+              const th = Math.max(t.height, 1);
+              const pad = 1 / viewport.zoom;
+              ctx.save();
+              ctx.fillStyle = 'rgba(251, 146, 60, 0.30)';   // orange-400 @ 30%
+              ctx.strokeStyle = '#fb923c';
+              ctx.lineWidth = 1.5 / viewport.zoom;
+              ctx.shadowColor = 'rgba(251, 146, 60, 0.7)';
+              ctx.shadowBlur = 8;
+              ctx.fillRect(t.position[0] - pad, t.position[1] - pad, tw + 2 * pad, th + 2 * pad);
+              ctx.strokeRect(t.position[0] - pad, t.position[1] - pad, tw + 2 * pad, th + 2 * pad);
+              ctx.restore();
+            }
             ctx.fillStyle = isDim ? COLOR_DIMMED : COLOR_TEXT;
             ctx.globalAlpha = isDim ? DIMMED_ALPHA : 1;
             ctx.save();
@@ -835,7 +878,7 @@ export default function DxfCanvasViewer({
 
     schedule();
     return () => cancelAnimationFrame(rafId);
-  }, [geometry, allEdgeSegments, calculatedJunctionsByLayer, viewport, selectedLayer, highlightLayer, hiddenLayers, dimmedLayers, sprinklerLayers, markedEquipmentKeys, hovered, selectedLine, pendingLineKeys, pendingInsertKeys, isLinePending, isInsertPending, isLineHidden, isInsertHidden]);
+  }, [geometry, allEdgeSegments, calculatedJunctionsByLayer, viewport, selectedLayer, highlightLayer, hiddenLayers, dimmedLayers, sprinklerLayers, markedEquipmentKeys, hovered, selectedLine, pendingLineKeys, pendingInsertKeys, pendingTextKeys, hiddenTextKeys, isLinePending, isInsertPending, isLineHidden, isInsertHidden, isTextHidden, isTextPending]);
 
   // ─── Hover detection (rbush ile O(log N)) ────────────────────────
   const computeHovered = useCallback(
@@ -922,7 +965,7 @@ export default function DxfCanvasViewer({
       const worldY = (viewport.panY - my) / viewport.zoom;
       const tol = HOVER_TOL_PX / viewport.zoom;
 
-      // ── SILGI MODU: tek tık = entity sil (boru/insert) ──────────
+      // ── SILGI MODU: tek tık = entity sil (boru/insert/text) ──────
       if (eraseMode && onEraseEntities) {
         // INSERT (sembol noktasi) once
         for (const ins of geometry.inserts) {
@@ -931,19 +974,35 @@ export default function DxfCanvasViewer({
           const dx = worldX - ins.position[0];
           const dy = worldY - ins.position[1];
           if (Math.hypot(dx, dy) <= tol + 2) {
-            onEraseEntities([], [ins.insert_index]);
+            onEraseEntities([], [ins.insert_index], []);
+            return;
+          }
+        }
+        // TEXT hit-test — monospace yaklasik bbox (rotation goz ardi).
+        // height * 0.6 yaklasik karakter genisligi, padding tol kadar.
+        for (let ti = 0; ti < geometry.texts.length; ti++) {
+          const t = geometry.texts[ti];
+          if (!t.text) continue;
+          if (hiddenLayers?.has(t.layer)) continue;
+          if (isTextHidden(ti)) continue;
+          const tw = t.text.length * Math.max(t.height, 1) * 0.6;
+          const th = Math.max(t.height, 1);
+          const pad = tol;
+          if (worldX >= t.position[0] - pad && worldX <= t.position[0] + tw + pad &&
+              worldY >= t.position[1] - pad && worldY <= t.position[1] + th + pad) {
+            onEraseEntities([], [], [ti]);
             return;
           }
         }
         // LINE (boru hatti) — spatial index ile en yakini
         const target = computeHovered(worldX, worldY);
         if (target && target.type === 'line') {
-          onEraseEntities([computeLineKey(target.coords)], []);
+          onEraseEntities([computeLineKey(target.coords)], [], []);
           return;
         }
         // EDGE segment (hesaplanmis layer'da) — siliniyorsa LINE key olarak gonder
         if (target && target.type === 'edge') {
-          onEraseEntities([computeLineKey(target.coords)], []);
+          onEraseEntities([computeLineKey(target.coords)], [], []);
           return;
         }
         // Bos alana tik → bir sey olmaz (marquee zaten pointer handler'la)
@@ -993,7 +1052,7 @@ export default function DxfCanvasViewer({
       setSelectedLine(null);
       onClearSelection?.();
     },
-    [geometry, allEdgeSegments, viewport, wasDragged, computeHovered, hiddenLayers, dimmedLayers, onLineClick, onCircleClick, onInsertClick, onSegmentClick, onClearSelection, eraseMode, onEraseEntities, isInsertHidden, computeLineKey],
+    [geometry, allEdgeSegments, viewport, wasDragged, computeHovered, hiddenLayers, dimmedLayers, onLineClick, onCircleClick, onInsertClick, onSegmentClick, onClearSelection, eraseMode, onEraseEntities, isInsertHidden, isTextHidden, computeLineKey],
   );
 
   // ── SILGI MODU — marquee selection pointer handler'lari ──────────
@@ -1099,6 +1158,7 @@ export default function DxfCanvasViewer({
 
       const lineKeys: string[] = [];
       const insertIndices: number[] = [];
+      const textIndices: number[] = [];
 
       if (geometry) {
         for (const ln of geometry.lines) {
@@ -1116,6 +1176,18 @@ export default function DxfCanvasViewer({
           const [px, py] = ins.position;
           if (px >= minWx && px <= maxWx && py >= minWy && py <= maxWy) {
             insertIndices.push(ins.insert_index);
+          }
+        }
+        // TEXT bbox — line ile ayni yon-bazli testi kullan
+        for (let ti = 0; ti < geometry.texts.length; ti++) {
+          const t = geometry.texts[ti];
+          if (!t.text) continue;
+          if (hiddenLayers?.has(t.layer)) continue;
+          if (isTextHidden(ti)) continue;
+          const tw = t.text.length * Math.max(t.height, 1) * 0.6;
+          const th = Math.max(t.height, 1);
+          if (lineInBox(t.position[0], t.position[1], t.position[0] + tw, t.position[1] + th)) {
+            textIndices.push(ti);
           }
         }
       }
@@ -1144,14 +1216,14 @@ export default function DxfCanvasViewer({
         }
       }
 
-      if (lineKeys.length > 0 || insertIndices.length > 0) {
-        onEraseEntities?.(lineKeys, insertIndices);
+      if (lineKeys.length > 0 || insertIndices.length > 0 || textIndices.length > 0) {
+        onEraseEntities?.(lineKeys, insertIndices, textIndices);
       }
       setMarquee(null);
     },
     [
       eraseMode, marquee, pointerHandlers, viewport, geometry, allEdgeSegments,
-      hiddenLayers, isLineHidden, isInsertHidden, computeLineKey, onEraseEntities, handleClick,
+      hiddenLayers, isLineHidden, isInsertHidden, isTextHidden, computeLineKey, onEraseEntities, handleClick,
     ],
   );
 

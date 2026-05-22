@@ -230,6 +230,10 @@ export default function DwgProjectWorkspace({
     () => (pendingErase ? new Set(pendingErase.inserts) : undefined),
     [pendingErase],
   );
+  const pendingTextKeysSet = useMemo(
+    () => (pendingErase ? new Set(pendingErase.texts) : undefined),
+    [pendingErase],
+  );
 
   const calculatedEdgesByLayer = useMemo(() => {
     const map: Record<string, EdgeSegment[]> = {};
@@ -664,14 +668,16 @@ export default function DwgProjectWorkspace({
             onToggleEraseMode={() => setEraseMode((v) => !v)}
             hiddenLineKeys={hiddenLineKeys}
             hiddenInsertKeys={hiddenInsertKeys}
+            hiddenTextKeys={hiddenTextKeys}
             // Tek tik / marquee → pending'e ekler (henuz silmez); confirm gerekir
-            onEraseEntities={(lines, inserts) => handleSelectForErase(lines, inserts, [])}
+            onEraseEntities={(lines, inserts, texts) => handleSelectForErase(lines, inserts, texts)}
             onUndoErase={handleUndoErase}
             canUndoErase={eraseHistory.length > 0}
             onRestoreAllErased={handleRestoreAllErased}
             // PENDING ERASE — viewer turuncu highlight + sag-ust onay/iptal toolbar
             pendingLineKeys={pendingLineKeysSet}
             pendingInsertKeys={pendingInsertKeysSet}
+            pendingTextKeys={pendingTextKeysSet}
             onConfirmPendingErase={handleConfirmErase}
             onCancelPendingErase={handleCancelPendingErase}
             className="h-[600px] lg:h-[calc(100vh-150px)]"
