@@ -471,27 +471,54 @@ def analyze_dxf_metraj(
                 _compute_tolerances,
                 _collect_raw_edges_all_layers,
             )
+            # ── VIEW TRANSFORM UYUMU (kritik) ──────────────────────────
+            # /geometry endpoint'i (Canvas2D viewer icin) LINE coords'larini
+            # _compute_view_transform ile rotated dondurur (UCS/skewed view
+            # ortogonal'e hizalanir). pipe_segments ham DWG coords kullanir.
+            # Frontend ikisini ayni viewer'da cizdigi icin transform UYUMSUZLUGU
+            # → edge_segments orijinal LINE'lardan KAYIK gorunur ("hat yapisi
+            # bozuluyor" bug'i). Cozum: edge_segments coords'larina /geometry
+            # ile AYNI view_transform'u uygula.
+            from geometry import _compute_view_transform, _transform_point
+            view_t = _compute_view_transform(doc)
+            _has_view_rot = abs(view_t[1]) > 1e-6  # sin_t > 0 → rotation var
+
+            def _vt(x: float, y: float) -> tuple[float, float]:
+                if _has_view_rot:
+                    return _transform_point(x, y, view_t)
+                return x, y
+
             _edges, _ = _edge_extract(
                 dxf_path, selected_layers,
                 sprinkler_layers=sprinkler_layers_manual,
                 unit_scale=scale,
                 doc=doc,
             )
-            edge_segments = [
-                EdgeSegment(
+            edge_segments = []
+            for s in _edges:
+                sx1, sy1 = _vt(s["x1"], s["y1"])
+                sx2, sy2 = _vt(s["x2"], s["y2"])
+                # polyline points (opsiyonel multi-vertex) da transform
+                raw_pl = s.get("polyline") or []
+                pl_transformed: list = []
+                for p in raw_pl:
+                    if isinstance(p, (list, tuple)) and len(p) >= 2:
+                        tx, ty = _vt(float(p[0]), float(p[1]))
+                        pl_transformed.append([tx, ty])
+                edge_segments.append(EdgeSegment(
                     segment_id=s["id"],
                     layer=s["layer"],
                     diameter="",
                     length=round(s["length"] * scale, 3),
-                    coords=[s["x1"], s["y1"], s["x2"], s["y2"]],
-                    polyline=s.get("polyline", []) or [],
-                )
-                for s in _edges
-            ]
-            # T-junction marker'lari (frontend Canvas2D'de gosterilir)
+                    coords=[sx1, sy1, sx2, sy2],
+                    polyline=pl_transformed,
+                ))
+            # T-junction marker'lari (frontend Canvas2D'de gosterilir) — bunlar
+            # da view transform'a tabi tutulmalı, edge_segments ile uyumlu olsun
             _all_edges = _collect_raw_edges_all_layers(doc.modelspace())
             _node_tol, _ = _compute_tolerances(_all_edges, unit_scale=scale)
-            junction_points = [list(p) for p in _extract_junction_points(_edges, _node_tol)]
+            _raw_junctions = _extract_junction_points(_edges, _node_tol)
+            junction_points = [list(_vt(p[0], p[1])) for p in _raw_junctions]
         except Exception as _e:
             warnings.append(f"Edge segment cikarma: {str(_e)[:100]}")
 
