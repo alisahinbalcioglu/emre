@@ -53,6 +53,8 @@ export class DwgEngineController {
     @Query('layer_material_type') layerMaterialType?: string,
     @Query('sprinkler_layers') sprinklerLayers?: string,
     @Query('layer_default_diameter') layerDefaultDiameter?: string,
+    @Query('use_proximity_diameter') useProximityDiameter?: string,
+    @Query('proximity_max_distance') proximityMaxDistance?: string,
   ) {
     // file_id varsa dosya gerekmez, yoksa dosya zorunlu
     if (!fileId && !file) {
@@ -109,6 +111,13 @@ export class DwgEngineController {
       }
     }
 
+    // use_proximity_diameter: bool flag — frontend "true"/"false" string olarak gonderir
+    const proximityFlag = useProximityDiameter === 'true' || useProximityDiameter === '1';
+    const proximityMax =
+      proximityMaxDistance !== undefined && proximityMaxDistance !== ''
+        ? Number(proximityMaxDistance)
+        : undefined;
+
     return this.dwgEngine.parseDwg(
       file?.buffer ?? null,
       file?.originalname ?? '',
@@ -120,6 +129,8 @@ export class DwgEngineController {
       parsedMaterialType,
       parsedSprinklerLayers,
       parsedDefaultDiameter,
+      proximityFlag,
+      Number.isFinite(proximityMax) ? proximityMax : undefined,
     );
   }
 

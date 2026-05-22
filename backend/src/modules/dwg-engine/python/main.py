@@ -286,6 +286,8 @@ def analyze_dxf_metraj(
     material_type_map: dict[str, str] | None = None,
     sprinkler_layers_manual: list[str] | None = None,
     layer_default_diameter_map: dict[str, str] | None = None,
+    use_proximity_diameter: bool = False,
+    proximity_max_distance: float | None = None,
 ) -> MetrajResult:
     """
     DXF dosyasini parse edip layer bazinda boru uzunlugu hesaplar.
@@ -521,6 +523,27 @@ def analyze_dxf_metraj(
             junction_points = [list(_vt(p[0], p[1])) for p in _raw_junctions]
         except Exception as _e:
             warnings.append(f"Edge segment cikarma: {str(_e)[:100]}")
+
+    # ── Proximity diameter (deterministic, AI'siz) ─────────────────
+    # PRD: her segment icin en yakin text -> cap. Layer default fallback'ten
+    # ONCE calisir ki text-bazli atama oncelikli olsun. Atayamadiklarini
+    # asagidaki layer default fallback yakalar.
+    if use_proximity_diameter and edge_segments:
+        try:
+            from proximity_diameter import assign_diameters_by_proximity
+            prox_result = assign_diameters_by_proximity(
+                doc, edge_segments,
+                sprinkler_layers=set(sprinkler_layers_manual or []),
+                max_distance_world=proximity_max_distance,
+            )
+            warnings.append(
+                f"Proximity: {prox_result['assigned_count']}/{len(edge_segments)} segment cap aldi "
+                f"({prox_result['text_pool_size']} text havuzdan)"
+            )
+            for w in prox_result.get("warnings", []):
+                warnings.append(w)
+        except Exception as _e:
+            warnings.append(f"Proximity diameter: {str(_e)[:100]}")
 
     # ── Layer-level default cap uygulamasi ──
     # edge_segments'deki bos/Belirtilmemis olan segment'leri layer default'u ile doldur.
@@ -1260,6 +1283,8 @@ async def parse_dwg(
     layer_material_type: str = Query("{}", description="JSON object: {layer: material_type} eslestirmesi"),
     sprinkler_layers: str = Query("", description="JSON array: kullanici tarafindan sprinkler olarak isaretlenen layer'lar"),
     layer_default_diameter: str = Query("{}", description="JSON object: {layer: default_diameter} — layer-level cap fallback"),
+    use_proximity_diameter: bool = Query(False, description="PRD: her segment icin en yakin text -> cap (deterministic, AI'siz)"),
+    proximity_max_distance: float | None = Query(None, description="DWG world unit cinsinden maksimum text mesafesi (None = sinir yok)"),
 ):
     """
     DWG/DXF dosyasini parse edip layer bazinda metraj cikarir.
@@ -1344,6 +1369,8 @@ async def parse_dwg(
             "material_type_map": mat_type_map,
             "sprinkler_layers_manual": sprinkler_layers_manual,
             "layer_default_diameter_map": default_dia_map,
+            "use_proximity_diameter": use_proximity_diameter,
+            "proximity_max_distance": proximity_max_distance,
         }
         # Subprocess'i async thread'de calistir, FastAPI event loop bloke olmasin
         result_dict = await asyncio.to_thread(

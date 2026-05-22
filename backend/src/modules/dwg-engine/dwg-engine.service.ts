@@ -172,6 +172,8 @@ export class DwgEngineService {
     layerMaterialType?: Record<string, string>,
     sprinklerLayers?: string[],
     layerDefaultDiameter?: Record<string, string>,
+    useProximityDiameter?: boolean,
+    proximityMaxDistance?: number,
   ) {
     const params = new URLSearchParams({
       discipline,
@@ -195,6 +197,12 @@ export class DwgEngineService {
     }
     if (layerDefaultDiameter && Object.keys(layerDefaultDiameter).length > 0) {
       params.set('layer_default_diameter', JSON.stringify(layerDefaultDiameter));
+    }
+    if (useProximityDiameter) {
+      params.set('use_proximity_diameter', 'true');
+    }
+    if (proximityMaxDistance !== undefined && proximityMaxDistance !== null) {
+      params.set('proximity_max_distance', String(proximityMaxDistance));
     }
 
     const factory = (timeoutMs: number): RequestInit => {
