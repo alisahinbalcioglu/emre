@@ -12,7 +12,7 @@
  *  - Birden fazla layer + ekipman ekleye ekleye onaylar
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { AlertCircle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import api from '@/lib/api';
@@ -59,6 +59,67 @@ export default function DwgProjectWorkspace({
    *  sag panel "Layer Goruntusu" listesinden goz ikonuyla gosterirsin. */
   const [hideMode, setHideMode] = useState(false);
 
+  /** SILGI MODU — AutoCAD'in Erase komutu mantigi.
+   *  Aktif iken: tik = entity sil, drag = marquee select + sil.
+   *  Silinen entity'ler hidden* set'lerinde tutulur, render skip eder.
+   *  hesaplama yapilirken backend'e gonderilir (excluded_lines), metraj
+   *  hesabindan da cikar. */
+  const [eraseMode, setEraseMode] = useState(false);
+  /** "x1,y1,x2,y2" formatinda LINE key set (round 1dp) */
+  const [hiddenLineKeys, setHiddenLineKeys] = useState<Set<string>>(new Set());
+  /** insert_index set (geometry.inserts array index) */
+  const [hiddenInsertKeys, setHiddenInsertKeys] = useState<Set<number>>(new Set());
+  /** Undo history — son N erase action'i (her action = ne silindi) */
+  const [eraseHistory, setEraseHistory] = useState<
+    Array<{ lines: string[]; inserts: number[] }>
+  >([]);
+  const MAX_ERASE_HISTORY = 10;
+
+  const handleEraseEntities = useCallback(
+    (lines: string[], inserts: number[]) => {
+      if (lines.length === 0 && inserts.length === 0) return;
+      setHiddenLineKeys((prev) => {
+        const next = new Set(prev);
+        for (const k of lines) next.add(k);
+        return next;
+      });
+      setHiddenInsertKeys((prev) => {
+        const next = new Set(prev);
+        for (const k of inserts) next.add(k);
+        return next;
+      });
+      setEraseHistory((prev) => {
+        const next = [...prev, { lines, inserts }];
+        return next.length > MAX_ERASE_HISTORY ? next.slice(-MAX_ERASE_HISTORY) : next;
+      });
+    },
+    [],
+  );
+
+  const handleUndoErase = useCallback(() => {
+    setEraseHistory((prev) => {
+      if (prev.length === 0) return prev;
+      const last = prev[prev.length - 1];
+      setHiddenLineKeys((s) => {
+        const next = new Set(s);
+        for (const k of last.lines) next.delete(k);
+        return next;
+      });
+      setHiddenInsertKeys((s) => {
+        const next = new Set(s);
+        for (const k of last.inserts) next.delete(k);
+        return next;
+      });
+      return prev.slice(0, -1);
+    });
+  }, []);
+
+  const handleRestoreAllErased = useCallback(() => {
+    setHiddenLineKeys(new Set());
+    setHiddenInsertKeys(new Set());
+    setEraseHistory([]);
+  }, []);
+
   const [calculating, setCalculating] = useState(false);
   const [editingSegment, setEditingSegment] = useState<EdgeSegment | null>(null);
   const [pendingEquipment, setPendingEquipment] = useState<null | {
@@ -80,12 +141,24 @@ export default function DwgProjectWorkspace({
       if (pendingEquipment) { setPendingEquipment(null); return; }
       if (state.editingEquipmentKey) { cancelEditEquipment(); return; }
       if (editingSegment) { setEditingSegment(null); return; }
+      if (eraseMode) { setEraseMode(false); return; }  // silgi modunu kapat
       if (state.selectedLayer) { selectLayer(state.selectedLayer); return; }  // toggle off
       if (hideMode) { setHideMode(false); return; }
     };
+    // Ctrl+Z undo erase
+    const onUndoKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && eraseHistory.length > 0) {
+        e.preventDefault();
+        handleUndoErase();
+      }
+    };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [pendingEquipment, state.editingEquipmentKey, editingSegment, state.selectedLayer, hideMode, cancelEditEquipment, selectLayer]);
+    window.addEventListener('keydown', onUndoKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keydown', onUndoKey);
+    };
+  }, [pendingEquipment, state.editingEquipmentKey, editingSegment, state.selectedLayer, hideMode, eraseMode, eraseHistory.length, cancelEditEquipment, selectLayer, handleUndoErase]);
 
   const calculatedEdgesByLayer = useMemo(() => {
     const map: Record<string, EdgeSegment[]> = {};
@@ -515,6 +588,15 @@ export default function DwgProjectWorkspace({
             hiddenLayers={hiddenLayersSet}
             dimmedLayers={dimmedLayersSet}
             scale={scale}
+            // SILGI MODU props
+            eraseMode={eraseMode}
+            onToggleEraseMode={() => setEraseMode((v) => !v)}
+            hiddenLineKeys={hiddenLineKeys}
+            hiddenInsertKeys={hiddenInsertKeys}
+            onEraseEntities={handleEraseEntities}
+            onUndoErase={handleUndoErase}
+            canUndoErase={eraseHistory.length > 0}
+            onRestoreAllErased={handleRestoreAllErased}
             className="h-[600px] lg:h-[calc(100vh-150px)]"
           />
 

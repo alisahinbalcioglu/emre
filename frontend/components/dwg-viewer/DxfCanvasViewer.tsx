@@ -21,7 +21,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import RBush from 'rbush';
-import { Loader2, AlertCircle, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
+import { Loader2, AlertCircle, ZoomIn, ZoomOut, Maximize2, Eraser, Undo2, RotateCcw } from 'lucide-react';
 import api from '@/lib/api';
 import type { GeometryResult } from './types';
 import type { EdgeSegment } from '@/components/dwg-metraj/types';
@@ -51,6 +51,21 @@ interface DxfCanvasViewerProps {
   dimmedLayers?: Set<string>;
   /** Birim donusturucu (DWG birimi → metre). mm=0.001, cm=0.01, m=1.0. Tooltip uzunluk hesabi icin. */
   scale?: number;
+  // ── SILGI MODU (AutoCAD-style erase) ──────────────────────────────
+  /** Silgi modu aktif mi? Toolbar button toggle. */
+  eraseMode?: boolean;
+  onToggleEraseMode?: () => void;
+  /** Hidden LINE key set — "x1,y1,x2,y2" (round 1dp). Render skip eder. */
+  hiddenLineKeys?: Set<string>;
+  /** Hidden INSERT index set. Render skip eder. */
+  hiddenInsertKeys?: Set<number>;
+  /** Silgi mod aktif iken tik veya marquee → bu callback'le hidden'a ekleme yapilir. */
+  onEraseEntities?: (lineKeys: string[], insertIndices: number[]) => void;
+  /** Undo button — son silmeyi geri al. */
+  onUndoErase?: () => void;
+  canUndoErase?: boolean;
+  /** "Tumunu Geri Getir" — tum hidden'lari temizle. */
+  onRestoreAllErased?: () => void;
 }
 
 const COLOR_BG = '#0b1220';
@@ -110,6 +125,14 @@ export default function DxfCanvasViewer({
   hiddenLayers,
   dimmedLayers,
   scale = 0.001,
+  eraseMode = false,
+  onToggleEraseMode,
+  hiddenLineKeys,
+  hiddenInsertKeys,
+  onEraseEntities,
+  onUndoErase,
+  canUndoErase = false,
+  onRestoreAllErased,
 }: DxfCanvasViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -122,6 +145,32 @@ export default function DxfCanvasViewer({
   const [cursorScreen, setCursorScreen] = useState<{ x: number; y: number } | null>(null);
   const [hovered, setHovered] = useState<HoveredEntity | null>(null);
   const [selectedLine, setSelectedLine] = useState<HoveredEntity | null>(null);
+
+  // ── SILGI MODU state ──────────────────────────────────────────
+  /** Marquee selection box (screen coords). Drag sirasinda guncellenir. */
+  const [marquee, setMarquee] = useState<{ sx1: number; sy1: number; sx2: number; sy2: number } | null>(null);
+
+  /** LINE coords → kararli string key. 1dp precision (0.1mm). Render skip + erase eslesme icin. */
+  const computeLineKey = useCallback((coords: [number, number, number, number]): string => {
+    const [x1, y1, x2, y2] = coords;
+    return `${x1.toFixed(1)},${y1.toFixed(1)},${x2.toFixed(1)},${y2.toFixed(1)}`;
+  }, []);
+
+  const isLineHidden = useCallback(
+    (coords: [number, number, number, number]): boolean => {
+      if (!hiddenLineKeys || hiddenLineKeys.size === 0) return false;
+      return hiddenLineKeys.has(computeLineKey(coords));
+    },
+    [hiddenLineKeys, computeLineKey],
+  );
+
+  const isInsertHidden = useCallback(
+    (insertIndex: number): boolean => {
+      if (!hiddenInsertKeys || hiddenInsertKeys.size === 0) return false;
+      return hiddenInsertKeys.has(insertIndex);
+    },
+    [hiddenInsertKeys],
+  );
 
   // Hesaplanmis tum edge segment'leri tek bir array'e flatten et.
   // edgeSegments prop'u verilirse onu, yoksa calculatedEdgesByLayer'daki tum
@@ -255,6 +304,8 @@ export default function DxfCanvasViewer({
       geometry.lines.forEach((ln, i) => {
         // Hesaplanmis layer ise raw LINE'lari atla (edge_segments'i kullaniliyor)
         if (skipRawLayers?.has(ln.layer)) return;
+        // SILGI: silinen LINE'lara tik aldirma (hover/click)
+        if (isLineHidden(ln.coords)) return;
         const [x1, y1, x2, y2] = ln.coords;
         items.push({
           minX: Math.min(x1, x2), maxX: Math.max(x1, x2),
@@ -378,6 +429,7 @@ export default function DxfCanvasViewer({
         for (const ln of geometry.lines) {
           if (hiddenLayers?.has(ln.layer)) continue;
           if (skipLayers?.has(ln.layer)) continue;
+          if (isLineHidden(ln.coords)) continue;  // SILGI: silinen LINE'i cizme
           const [x1, y1, x2, y2] = ln.coords;
           if (!lineInView(x1, y1, x2, y2)) continue;
           const bucket = dimmedLayers?.has(ln.layer) ? dimmedByLayer : normalByLayer;
@@ -520,6 +572,7 @@ export default function DxfCanvasViewer({
             const key = `${ins.layer}:${ins.insert_index}`;
             if (!markedEquipmentKeys.has(key)) continue;
             if (hiddenLayers?.has(ins.layer)) continue;
+            if (isInsertHidden(ins.insert_index)) continue;  // SILGI: silinmis insert dot'unu cizme
             ctx.globalAlpha = dimmedLayers?.has(ins.layer) ? DIMMED_ALPHA : 1;
             ctx.beginPath();
             ctx.arc(ins.position[0], ins.position[1], 3.5 / viewport.zoom, 0, Math.PI * 2);
@@ -780,10 +833,39 @@ export default function DxfCanvasViewer({
       const worldY = (viewport.panY - my) / viewport.zoom;
       const tol = HOVER_TOL_PX / viewport.zoom;
 
+      // ── SILGI MODU: tek tık = entity sil (boru/insert) ──────────
+      if (eraseMode && onEraseEntities) {
+        // INSERT (sembol noktasi) once
+        for (const ins of geometry.inserts) {
+          if (hiddenLayers?.has(ins.layer)) continue;
+          if (isInsertHidden(ins.insert_index)) continue;
+          const dx = worldX - ins.position[0];
+          const dy = worldY - ins.position[1];
+          if (Math.hypot(dx, dy) <= tol + 2) {
+            onEraseEntities([], [ins.insert_index]);
+            return;
+          }
+        }
+        // LINE (boru hatti) — spatial index ile en yakini
+        const target = computeHovered(worldX, worldY);
+        if (target && target.type === 'line') {
+          onEraseEntities([computeLineKey(target.coords)], []);
+          return;
+        }
+        // EDGE segment (hesaplanmis layer'da) — siliniyorsa LINE key olarak gonder
+        if (target && target.type === 'edge') {
+          onEraseEntities([computeLineKey(target.coords)], []);
+          return;
+        }
+        // Bos alana tik → bir sey olmaz (marquee zaten pointer handler'la)
+        return;
+      }
+
       // Insert/circle önce (sembol > çizgi). Dimmed/hidden atlanir.
       for (const ins of geometry.inserts) {
         if (hiddenLayers?.has(ins.layer)) continue;
         if (dimmedLayers?.has(ins.layer)) continue;
+        if (isInsertHidden(ins.insert_index)) continue;  // SILGI: silinmis insert tik almasin
         const dx = worldX - ins.position[0];
         const dy = worldY - ins.position[1];
         if (Math.hypot(dx, dy) <= tol + 2) {
@@ -822,7 +904,134 @@ export default function DxfCanvasViewer({
       setSelectedLine(null);
       onClearSelection?.();
     },
-    [geometry, allEdgeSegments, viewport, wasDragged, computeHovered, hiddenLayers, dimmedLayers, onLineClick, onCircleClick, onInsertClick, onSegmentClick, onClearSelection],
+    [geometry, allEdgeSegments, viewport, wasDragged, computeHovered, hiddenLayers, dimmedLayers, onLineClick, onCircleClick, onInsertClick, onSegmentClick, onClearSelection, eraseMode, onEraseEntities, isInsertHidden, computeLineKey],
+  );
+
+  // ── SILGI MODU — marquee selection pointer handler'lari ──────────
+  // ERASE mode'da pan disabled, drag = marquee box. Click (small move) = single
+  // entity erase (handleClick yapar).
+  const handleErasePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!eraseMode || e.button !== 0) {
+        // Normal: pan handler
+        pointerHandlers.onPointerDown(e);
+        return;
+      }
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      setMarquee({ sx1: sx, sy1: sy, sx2: sx, sy2: sy });
+      try {
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      } catch {}
+    },
+    [eraseMode, pointerHandlers],
+  );
+
+  const handleErasePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      // Normal hover/cursor logic her zaman calissin
+      handlePointerMove(e);
+      if (eraseMode && marquee) {
+        const rect = containerRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        setMarquee({
+          ...marquee,
+          sx2: e.clientX - rect.left,
+          sy2: e.clientY - rect.top,
+        });
+      }
+    },
+    [eraseMode, marquee, handlePointerMove],
+  );
+
+  const handleErasePointerUp = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!eraseMode) {
+        pointerHandlers.onPointerUp(e);
+        handleClick(e);
+        return;
+      }
+      // ERASE mode — marquee var mi?
+      if (!marquee) {
+        // Marquee baslamadi (mouse up sirasinda kayboldu) — tek tik handler
+        handleClick(e);
+        return;
+      }
+      const dx = Math.abs(marquee.sx2 - marquee.sx1);
+      const dy = Math.abs(marquee.sy2 - marquee.sy1);
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch {}
+      if (dx <= 4 && dy <= 4) {
+        // Cok kucuk hareket = tek tik
+        setMarquee(null);
+        handleClick(e);
+        return;
+      }
+      // MARQUEE FINAL — kutu icindeki entity'leri tespit
+      const minSx = Math.min(marquee.sx1, marquee.sx2);
+      const maxSx = Math.max(marquee.sx1, marquee.sx2);
+      const minSy = Math.min(marquee.sy1, marquee.sy2);
+      const maxSy = Math.max(marquee.sy1, marquee.sy2);
+      // Screen → world (Y ters!)
+      const minWx = (minSx - viewport.panX) / viewport.zoom;
+      const maxWx = (maxSx - viewport.panX) / viewport.zoom;
+      const minWy = (viewport.panY - maxSy) / viewport.zoom;
+      const maxWy = (viewport.panY - minSy) / viewport.zoom;
+
+      const lineKeys: string[] = [];
+      const insertIndices: number[] = [];
+
+      if (geometry) {
+        // LINE crossing select — bbox overlap
+        for (const ln of geometry.lines) {
+          if (hiddenLayers?.has(ln.layer)) continue;
+          if (isLineHidden(ln.coords)) continue;
+          const [x1, y1, x2, y2] = ln.coords;
+          const lnMnx = Math.min(x1, x2);
+          const lnMxx = Math.max(x1, x2);
+          const lnMny = Math.min(y1, y2);
+          const lnMxy = Math.max(y1, y2);
+          if (lnMxx >= minWx && lnMnx <= maxWx && lnMxy >= minWy && lnMny <= maxWy) {
+            lineKeys.push(computeLineKey(ln.coords));
+          }
+        }
+        // INSERT inside box
+        for (const ins of geometry.inserts) {
+          if (hiddenLayers?.has(ins.layer)) continue;
+          if (isInsertHidden(ins.insert_index)) continue;
+          const [px, py] = ins.position;
+          if (px >= minWx && px <= maxWx && py >= minWy && py <= maxWy) {
+            insertIndices.push(ins.insert_index);
+          }
+        }
+      }
+      // Edge segments (hesaplanmis layer'lar)
+      if (allEdgeSegments) {
+        for (const seg of allEdgeSegments) {
+          if (isLineHidden(seg.coords)) continue;
+          const [x1, y1, x2, y2] = seg.coords;
+          const sMnx = Math.min(x1, x2);
+          const sMxx = Math.max(x1, x2);
+          const sMny = Math.min(y1, y2);
+          const sMxy = Math.max(y1, y2);
+          if (sMxx >= minWx && sMnx <= maxWx && sMxy >= minWy && sMny <= maxWy) {
+            lineKeys.push(computeLineKey(seg.coords));
+          }
+        }
+      }
+
+      if (lineKeys.length > 0 || insertIndices.length > 0) {
+        onEraseEntities?.(lineKeys, insertIndices);
+      }
+      setMarquee(null);
+    },
+    [
+      eraseMode, marquee, pointerHandlers, viewport, geometry, allEdgeSegments,
+      hiddenLayers, isLineHidden, isInsertHidden, computeLineKey, onEraseEntities, handleClick,
+    ],
   );
 
   // Esc → clear selection
@@ -831,6 +1040,7 @@ export default function DxfCanvasViewer({
       if (e.key === 'Escape') {
         setSelectedLine(null);
         setHovered(null);
+        setMarquee(null);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -842,7 +1052,7 @@ export default function DxfCanvasViewer({
   const insertCount = geometry?.inserts?.length ?? 0;
   const layerCount = geometry?.layer_colors ? Object.keys(geometry.layer_colors).length : 0;
 
-  const cursorClass = hovered ? 'cursor-pointer' : 'cursor-crosshair';
+  const cursorClass = eraseMode ? 'cursor-cell' : (hovered ? 'cursor-pointer' : 'cursor-crosshair');
 
   return (
     <div className={`flex flex-col rounded-xl border border-slate-700 overflow-hidden bg-slate-950 ${className}`}>
@@ -850,12 +1060,9 @@ export default function DxfCanvasViewer({
         ref={containerRef}
         className={`relative flex-1 overflow-hidden ${cursorClass}`}
         style={{ touchAction: 'none', backgroundColor: COLOR_BG }}
-        onPointerDown={pointerHandlers.onPointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={(e) => {
-          pointerHandlers.onPointerUp(e);
-          handleClick(e);
-        }}
+        onPointerDown={handleErasePointerDown}
+        onPointerMove={handleErasePointerMove}
+        onPointerUp={handleErasePointerUp}
         onPointerCancel={pointerHandlers.onPointerCancel}
         onPointerLeave={() => {
           setCursorWorld(null);
@@ -864,6 +1071,27 @@ export default function DxfCanvasViewer({
         }}
       >
         <canvas ref={canvasRef} className="block h-full w-full" />
+
+        {/* MARQUEE SELECTION BOX — silgi modu drag sirasinda */}
+        {marquee && (
+          <div
+            className="pointer-events-none absolute z-20 border-2 border-rose-400 bg-rose-500/15"
+            style={{
+              left: Math.min(marquee.sx1, marquee.sx2),
+              top: Math.min(marquee.sy1, marquee.sy2),
+              width: Math.abs(marquee.sx2 - marquee.sx1),
+              height: Math.abs(marquee.sy2 - marquee.sy1),
+            }}
+          />
+        )}
+
+        {/* SILGI MODU AKTIF badge */}
+        {eraseMode && (
+          <div className="pointer-events-none absolute right-2 top-2 z-20 flex items-center gap-1.5 rounded-md bg-rose-600 px-2.5 py-1 text-[11px] font-semibold text-white shadow-lg">
+            <Eraser className="h-3 w-3" />
+            SILGI AKTIF · Esc ile cik
+          </div>
+        )}
 
         {/* Toolbar */}
         <div className="absolute left-2 top-2 z-10 flex gap-1 rounded-md bg-slate-900/90 backdrop-blur-sm border border-slate-700 p-1">
@@ -876,6 +1104,48 @@ export default function DxfCanvasViewer({
           <button type="button" onClick={fitView} className="rounded p-1.5 text-slate-300 hover:bg-slate-700" title="Cerceveye sigdir (F)">
             <Maximize2 className="h-3.5 w-3.5" />
           </button>
+          {/* SILGI MODU butonu */}
+          {onToggleEraseMode && (
+            <button
+              type="button"
+              onClick={onToggleEraseMode}
+              className={
+                'rounded p-1.5 transition-colors ' +
+                (eraseMode
+                  ? 'bg-rose-600 text-white hover:bg-rose-700'
+                  : 'text-slate-300 hover:bg-slate-700')
+              }
+              title={eraseMode ? 'Silgi modu AKTIF — tek tik veya kare ile sil. Esc ile cik.' : 'Silgi modu (sil)'}
+            >
+              <Eraser className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {/* UNDO — son silmeyi geri al */}
+          {onUndoErase && (
+            <button
+              type="button"
+              onClick={onUndoErase}
+              disabled={!canUndoErase}
+              className={
+                'rounded p-1.5 transition-colors ' +
+                (canUndoErase ? 'text-slate-300 hover:bg-slate-700' : 'text-slate-600 cursor-not-allowed')
+              }
+              title="Son silmeyi geri al (Ctrl+Z)"
+            >
+              <Undo2 className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {/* TUMUNU GERI GETIR */}
+          {onRestoreAllErased && canUndoErase && (
+            <button
+              type="button"
+              onClick={onRestoreAllErased}
+              className="rounded p-1.5 text-slate-300 hover:bg-slate-700"
+              title="Tum silinen objeleri geri getir"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
 
         {/* Tooltip — hover ya da selected uzerinde */}
