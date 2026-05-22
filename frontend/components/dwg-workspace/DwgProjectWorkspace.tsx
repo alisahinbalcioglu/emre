@@ -125,16 +125,10 @@ export default function DwgProjectWorkspace({
     [state.calculatedLayers],
   );
 
-  // BULK auto-calc: DWG yuklenip layer listesi geldikten sonra tum layer'lar
-  // icin tek /parse cagrisi yap. Kullanici LINE'a tikla-bekle yapmak zorunda
-  // kalmasin. Render cold-start ~30-60sn ama tek seferlik.
-  const [bulkAttempted, setBulkAttempted] = useState(false);
-  useEffect(() => {
-    if (!fileId || availableLayers.length === 0 || bulkAttempted) return;
-    setBulkAttempted(true);
-    void handleBulkCalculate(availableLayers);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fileId, availableLayers, bulkAttempted]);
+  // BULK auto-calc KALDIRILDI: Kullanici 142 layer'in hepsini hesaplama
+  // istemiyor. Yeni akis: kullanici layer'a tikla, sag panel acilir, "Hesapla"
+  // butonuna basinca SADECE o layer parse edilir. Engine load minimize, kontrol
+  // kullanicida.
 
   const handleBulkCalculate = async (layers: string[]) => {
     if (layers.length === 0) return;
@@ -343,12 +337,10 @@ export default function DwgProjectWorkspace({
   };
 
   const handleLineClick = (line: { layer: string; index: number; shiftKey: boolean; screenX: number; screenY: number }) => {
-    // DEBUG: Click event'in tetiklendigini anlik dogrula
-    console.log('[handleLineClick] FIRED', { layer: line.layer, index: line.index, calculating });
-    if (calculating) {
-      toast({ title: 'Devam eden hesaplama var', description: 'Bitince tekrar tikla.', variant: 'destructive' });
-      return;
-    }
+    // YENI AKIS: Tik = sadece SECME. Hesaplama kullanici "Hesapla" butonuna
+    // basinca tetiklenir (LayerInfoSidebar'da). Boylece yanlislikla tiklamada
+    // hesap baslamaz, kullanici kontrolu elinde tutar.
+    console.log('[handleLineClick] FIRED', { layer: line.layer, calculating });
     if (hideMode || line.shiftKey) {
       toggleLayerVisibility(line.layer);
       toast({
@@ -358,14 +350,13 @@ export default function DwgProjectWorkspace({
       return;
     }
     selectLayer(line.layer);
-    if (state.calculatedLayers[line.layer]) {
-      toast({ title: 'Bu layer zaten hesaplandi', description: line.layer });
-      return;
+    // Kullaniciya nazik bilgi mesaji — Hesapla butonu icin sag paneli gor
+    if (!state.calculatedLayers[line.layer]) {
+      toast({
+        title: 'Layer secildi',
+        description: 'Sag panelden "Hesapla" butonuna basın',
+      });
     }
-    // Anlik visual feedback — kullanici click'in dustuğunu bilsin
-    toast({ title: '🚀 Hesaplama basladi', description: `${line.layer} (Render cold-start 30-60sn olabilir)` });
-    console.log('[handleLineClick] handleCalculate cagrilacak', line.layer);
-    handleCalculate(line.layer);
   };
 
   const handleInsertClick = (ins: { layer: string; insertIndex: number; insertName: string; position: [number, number] }) => {
@@ -545,6 +536,13 @@ export default function DwgProjectWorkspace({
             config={selectedConfig}
             calculating={calculating}
             calculatedLayer={state.selectedLayer ? state.calculatedLayers[state.selectedLayer] ?? null : null}
+            onCalculate={(layer) => {
+              if (calculating) {
+                toast({ title: 'Devam eden hesaplama var', description: 'Bitince tekrar dene.', variant: 'destructive' });
+                return;
+              }
+              handleCalculate(layer);
+            }}
             onChangeConfig={(patch) => state.selectedLayer && updateLayerConfig(state.selectedLayer, patch)}
             onApplyDefaultDiameter={(d) => {
               if (!state.selectedLayer) return;

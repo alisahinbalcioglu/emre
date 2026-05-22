@@ -17,8 +17,18 @@ import json
 import os
 import traceback
 
+# STDOUT IZOLASYON: parse_worker'in stdout'u SADECE JSON output icin kullanilir.
+# Import edilen modullerin print() veya logging stdout'lari karismasin diye
+# stdout'u devnull'a yonlendir, JSON yazimi icin orijinal stdout'u sakla.
+# Bu sayede pipe_segments.py veya 3rd party kutuphane stdout'a print etse
+# bile parent'in JSON parse'i bozulmaz.
+_original_stdout = sys.stdout
+sys.stdout = open(os.devnull, "w")
+
 
 def main():
+    # SystemExit & KeyboardInterrupt'i except Exception YAKALAMAZ — istedigimiz
+    # davranis (sys.exit(0) normal cikis olarak gelir, error sayilmaz).
     try:
         # stdin'den JSON params oku
         payload = sys.stdin.read()
@@ -52,12 +62,16 @@ def main():
             result_dict = dict(result)
 
         safe = _json_safe(result_dict)
-        # stdout'a JSON yaz — parent okur
-        json.dump(safe, sys.stdout, allow_nan=False, ensure_ascii=False)
-        sys.stdout.flush()
-        sys.exit(0)
+        # JSON'u ORIGINAL stdout'a yaz — devnull'a redirect edilmis sys.stdout DEGIL
+        json.dump(safe, _original_stdout, allow_nan=False, ensure_ascii=False)
+        _original_stdout.flush()
+        # NOT: sys.exit(0) yerine return — SystemExit except Exception'a takilmaz
+        # ama yine de cleaner.
+        return
 
-    except BaseException as e:
+    except Exception as e:
+        # SADECE gercek hatalari yakala (Exception, BaseException degil)
+        # SystemExit, KeyboardInterrupt buraya gelmez (BaseException'dan turer)
         tb = traceback.format_exc()
         sys.stderr.write(f"parse_worker FAIL ({type(e).__name__}): {str(e)[:500]}\n{tb[:2000]}\n")
         sys.stderr.flush()

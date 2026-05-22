@@ -847,8 +847,12 @@ def _extract_segments(
     # (klasik + kesisim, overshoot, mikro bosluk — PRD section 2.1 Snap & Split)
     edges = _split_edges_on_crossings(edges, node_tol)
     edges_after_2 = len(edges)
+    # NOT: file=sys.stderr — parse_worker.py subprocess stdout'unu JSON output
+    # icin kullaniyor, stdout'a print yazarsak JSON parse fail eder.
+    import sys as _sys
     print(f"[pipe_segments] split: {edges_before_1} -> {edges_after_1} (endpoint-on-line) "
-          f"-> {edges_after_2} (crossings) | node_tol={node_tol:.2f}")
+          f"-> {edges_after_2} (crossings) | node_tol={node_tol:.2f}",
+          file=_sys.stderr)
 
     # Sprinkler merkezleri LINE orta kisminda ise LINE'i o noktada bol
     split_sprinkler_keys: set[tuple[float, float]] = set()

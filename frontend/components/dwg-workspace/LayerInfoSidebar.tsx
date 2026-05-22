@@ -12,7 +12,7 @@
  */
 
 import React from 'react';
-import { Loader2, Layers, EyeOff, Check } from 'lucide-react';
+import { Loader2, Layers, EyeOff, Check, Calculator } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { LayerConfig, CalculatedLayer } from './types';
 
@@ -29,6 +29,8 @@ interface LayerInfoSidebarProps {
   onClearSelection: () => void;
   /** Secili layer'i cizimden gizle (LayerVisibilityPanel toggle ile ayni). */
   onHideLayer?: () => void;
+  /** "Hesapla" butonu — secili layer icin /parse tetikle. */
+  onCalculate?: (layer: string) => void;
 }
 
 export default function LayerInfoSidebar({
@@ -40,6 +42,7 @@ export default function LayerInfoSidebar({
   onApplyDefaultDiameter,
   onClearSelection,
   onHideLayer,
+  onCalculate,
 }: LayerInfoSidebarProps) {
   if (!selectedLayer) {
     return (
@@ -98,7 +101,7 @@ export default function LayerInfoSidebar({
       {calculating && (
         <div className="mb-3 flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-100/60 px-2.5 py-1.5">
           <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-600" />
-          <span className="text-[11px] font-medium text-blue-900">Hesaplanıyor (Render cold-start 30-60sn olabilir)</span>
+          <span className="text-[11px] font-medium text-blue-900">Hesaplanıyor (~15-60sn)</span>
         </div>
       )}
       {calculatedLayer && !calculating && (
@@ -111,6 +114,17 @@ export default function LayerInfoSidebar({
             {emptySegmentCount > 0 && ` ${emptySegmentCount} segment çapsız.`}
           </p>
         </div>
+      )}
+
+      {/* HESAPLA BUTONU — yeni: kullanici kontrol, otomatik degil */}
+      {!calculatedLayer && !calculating && onCalculate && (
+        <button
+          onClick={() => onCalculate(selectedLayer)}
+          className="mb-3 flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
+        >
+          <Calculator className="h-4 w-4" />
+          Bu Layer&apos;ı Hesapla
+        </button>
       )}
 
       <div className="mb-2.5">
