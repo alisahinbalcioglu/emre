@@ -1,76 +1,36 @@
 """
 Proximity-tabanli deterministic diameter atama.
 
-PRD: "her boru segmentinin midpoint'inden en yakin diameter text'i bul,
-segment.diameter = text.value olarak set et."
+GENEL MANTIK (kullanici PRD'si):
+  "Her boru segmentine fiziksel olarak EN YAKIN text/mtext entity'sinin
+   icerigi o segmente cap olarak atanir."
 
-AI/Claude YOK. Sadece Euclidean mesafe + cap-format regex.
-geometry.py'daki _DIAMETER_TEXT_RE mantigi (same regex re-used) ile
-TEXT/MTEXT entity'leri filtrelenir.
+FELSEFE:
+  - Filter YOK (regex, uzunluk, rakam zorunlulugu — hicbiri).
+  - Kullanici text'i borunun yanina bilincli yerlestirdiyse niyeti captir.
+  - Algoritma sadece FIZIKSEL PROXIMITY'i kabul eder, icerigi yorumlamaz.
+  - Yanlis atama olursa kullanici DiameterEditPopup ile manuel duzeltir.
 
-Performans: O(N*M) brute force. Tipik DWG: ~500 segment x ~300 text =
-150K comparison ~50ms. R-tree gereksiz.
+TEK SINIRLAMA: mesafe esigi (max_distance_world).
+  - Text segment'ten cok uzaksa (>esik) atama YAPILMAZ — sayfa basligi,
+    kapasite degeri, baska blok'un text'i karismaz.
+
+OPSIYONEL FILTER: sprinkler layer'larindaki text'ler atlanir.
+  - Kullanici manuel sprinkler layer'i isaretledigi icin o layer'lardaki
+    text'ler genelde ID etiketi ('S1', 'K115'), cap degil.
+
+ALGORITMA:
+  - Her segment icin point-to-line-segment distance ile en yakin text bul.
+  - Polyline'li segment'lerde her ardisik vertex pair'i ayri parca, min mesafe.
+  - Distance esik altindaysa text.value -> seg.diameter (orijinal aynen).
+
+Performans: O(N*M) brute force. ~500 seg x ~300 text = 150K compare, ~50ms.
 """
 from __future__ import annotations
 
 import math
-import re
 import logging
 from typing import Any
-
-# Cap-format text regex — EXTRACT mantigi: string ICINDE cap pattern'i ara,
-# tam string match istemeden. DWG'de cap text'leri genelde:
-#   - Saf format: "Ø200", "DN150"
-#   - Spec string icinde: "HDPE 100 PN 16 Ø200", "PE 32 PN6 Ø50"
-# Anchor'siz (^/$ yok) — re.search ile string'in herhangi bir yerinde bulur.
-# Bulunan kismi capture group 0 ile alir, segment'e atar.
-#
-# Cap belirteci ZORUNLU (sahte "1", "100" gibi tek sayilari elemek icin):
-#   - Ø/Ø prefix:        Ø50, Ø 100
-#   - DN/dn prefix:      DN100, DN 32
-#   - Inch suffix:       2", 1 1/4"
-#   - mm suffix:         50mm, 100 mm
-#   - Kesir:             1/2, 3/4, 1 1/4 (en az bir / icermeli)
-# "KM80" gibi prefix'leri filtrelemek icin: cap match'ten ONCE harf gelmemeli
-# (negative lookbehind \b ile). "HDPE 100" once kelime/sayi olabilir, ama
-# "Ø" karakteri kendi basina yeterli isaret.
-# Ana regex — explicit cap belirteci olan format'lar (Ø, DN, ", mm, kesir).
-# Pure sayidan ONCE denenir; "HDPE 100 PN 16 Ø200" -> "Ø200" almak icin.
-_DIAMETER_TEXT_RE = re.compile(
-    r"""(
-          [ØØ]\s*\d+([./\s]+\d+)?(\s*["″])?                                # Ø200, Ø 50, Ø1 1/4
-        | (?<![A-Za-zÇĞİÖŞÜçğıöşü])[Dd][Nn]\s*\d+                            # DN100
-        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])\d+\s*[/]\s*\d+\s*["″]?                # 1/2, 3/4"
-        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])\d+\s+\d+\s*[/]\s*\d+\s*["″]?          # 1 1/4, 1 1/4"
-        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])\d+\s*[½¼¾]\s*["″]?                    # 1½, 2½ (Unicode)
-        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])[½¼¾]\s*["″]?                           # ½ (tek basina)
-        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])\d+\s*["″]                              # 2", 4"
-        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])\d{2,3}\s*(mm|MM)\b                    # 50mm, 100 mm
-    )""",
-    re.VERBOSE,
-)
-
-# Fallback — sik mm cap degerlerinin pure sayi versiyonu (15/20/.../250).
-# Sahsi tesisat planlarinda boru yaninda "25", "50", "70" yazilir.
-# SADECE string'de ana regex match etmiyorsa kullanilir (Ø/DN onceliklidir).
-_DIAMETER_FALLBACK_RE = re.compile(
-    r"""(?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])
-        (?:15|20|25|32|40|50|65|70|80|100|125|150|200|250)
-        (?![\d.A-Za-zÇĞİÖŞÜçğıöşü])""",
-    re.VERBOSE,
-)
-# NOT: '10' listede YOK. Cunku '10' cok sik oda numarasi/satir numarasi olur.
-# 10mm cap'i nadirdir, eklenirse yanlis atama riski yuksek. 15mm = 1/2" zaten
-# yangin tesisatinda minimum.
-
-
-def _segment_midpoint(seg: dict) -> tuple[float, float]:
-    """Segment (dict ya da EdgeSegment) orta noktasi."""
-    if isinstance(seg, dict):
-        return ((seg["x1"] + seg["x2"]) / 2.0, (seg["y1"] + seg["y2"]) / 2.0)
-    # EdgeSegment Pydantic model — coords [x1,y1,x2,y2]
-    c = seg.coords
-    return ((c[0] + c[2]) / 2.0, (c[1] + c[3]) / 2.0)
 
 
 def _point_to_segment_distance(
@@ -101,17 +61,18 @@ def _point_to_segment_distance(
 
 def _segment_polyline_points(seg) -> list[tuple[float, float]]:
     """Segment'in koselerini list of (x,y) olarak don. Polyline varsa onun
-    vertex'leri, yoksa basit iki uctan olusur. point-to-segment distance icin
-    her ardisik pair ayri bir cizgi parcasi olarak ele alinir."""
+    vertex'leri, yoksa basit iki uctan olusur."""
     if isinstance(seg, dict):
         pl = seg.get("polyline") or []
         if pl and len(pl) >= 2:
-            return [(float(p[0]), float(p[1])) for p in pl if isinstance(p, (list, tuple)) and len(p) >= 2]
+            return [(float(p[0]), float(p[1])) for p in pl
+                    if isinstance(p, (list, tuple)) and len(p) >= 2]
         return [(seg["x1"], seg["y1"]), (seg["x2"], seg["y2"])]
-    # EdgeSegment Pydantic
+    # EdgeSegment Pydantic model
     pl = getattr(seg, "polyline", None) or []
     if pl and len(pl) >= 2:
-        return [(float(p[0]), float(p[1])) for p in pl if isinstance(p, (list, tuple)) and len(p) >= 2]
+        return [(float(p[0]), float(p[1])) for p in pl
+                if isinstance(p, (list, tuple)) and len(p) >= 2]
     c = seg.coords
     return [(c[0], c[1]), (c[2], c[3])]
 
@@ -120,16 +81,15 @@ def _autocad_decode(s: str) -> str:
     """AutoCAD %%c -> Ø gibi escape'leri cozer (geometry.py ile tutarli)."""
     if not s:
         return ""
-    # Sik kullanilan escape'ler
     s = s.replace("%%c", "Ø").replace("%%C", "Ø")
     s = s.replace("%%d", "°").replace("%%D", "°")
     s = s.replace("%%p", "±").replace("%%P", "±")
     return s
 
 
-def _extract_diameter_texts(doc, excluded_layers: set[str] | None = None) -> list[dict]:
-    """
-    DXF modelspace'inden cap-benzeri TEXT/MTEXT entity'lerini cikar.
+def _extract_all_texts(doc, excluded_layers: set[str] | None = None) -> list[dict]:
+    """DXF modelspace'inden TUM TEXT/MTEXT entity'lerini cikar — FILTER YOK.
+    Sadece sprinkler layer'lari (kullanici isaretledi) atlanir.
 
     Args:
         doc: ezdxf Drawing
@@ -162,22 +122,10 @@ def _extract_diameter_texts(doc, excluded_layers: set[str] | None = None) -> lis
             txt = _autocad_decode(raw).strip()
             if not txt:
                 continue
-            # Iki asamali extract:
-            #   1. Ana regex (Ø/DN/inch/kesir/mm) — explicit cap belirteci
-            #   2. Yoksa fallback (pure 15/20/.../250 sayilari, sihhi tesisat)
-            # "HDPE 100 PN 16 Ø200" -> "Ø200" (ana), "25" -> "25" (fallback).
-            m = _DIAMETER_TEXT_RE.search(txt)
-            if not m:
-                m = _DIAMETER_FALLBACK_RE.search(txt)
-            if not m:
-                continue
-            extracted = m.group(0).strip()
-            if not extracted:
-                continue
             pos = entity.dxf.insert
             x = float(pos.x)
             y = float(pos.y)
-            texts.append({"x": x, "y": y, "value": extracted, "layer": layer})
+            texts.append({"x": x, "y": y, "value": txt, "layer": layer})
         except (AttributeError, TypeError, ValueError):
             continue
     return texts
@@ -201,8 +149,6 @@ def _nearest_text(seg, texts: list[dict]) -> tuple[dict, float] | None:
     for t in texts:
         tx = t["x"]
         ty = t["y"]
-        # Her ardisik vertex pair'inden olan mesafenin min'i = text'in
-        # tum polyline'a olan en kisa mesafesi.
         seg_d = math.inf
         for i in range(len(points) - 1):
             x1, y1 = points[i]
@@ -225,13 +171,15 @@ def assign_diameters_by_proximity(
     max_distance_world: float | None = None,
 ) -> dict:
     """
-    Her edge_segment icin en yakin diameter text'i bul, segment.diameter ata.
+    Her edge_segment icin en yakin TEXT/MTEXT entity'sini bul, segment.diameter ata.
+    Saf proximity — text icerigi REGEX ile filtrelenmez, aynen kullanilir.
 
     Args:
         doc: ezdxf Drawing
         edge_segments: list of EdgeSegment (Pydantic) — diameter field'i mutate edilir
-        sprinkler_layers: bu layer'lardaki text'ler cap havuzundan dusurulur
+        sprinkler_layers: bu layer'lardaki text'ler havuzdan dusurulur (ID etiketi)
         max_distance_world: opsiyonel uzaklik esigi (DWG world unit). None = sinir yok.
+                            Esik altinda text -> atama; uzerinde -> atama yok.
 
     Returns:
         {
@@ -242,10 +190,10 @@ def assign_diameters_by_proximity(
         }
     """
     warnings: list[str] = []
-    texts = _extract_diameter_texts(doc, excluded_layers=sprinkler_layers)
+    texts = _extract_all_texts(doc, excluded_layers=sprinkler_layers)
     pool_size = len(texts)
     if pool_size == 0:
-        warnings.append("Proximity: DXF'te cap formatinda hicbir TEXT/MTEXT bulunamadi")
+        warnings.append("Proximity: DXF'te hicbir TEXT/MTEXT entity'si bulunamadi")
         return {
             "assigned_count": 0,
             "skipped_count": len(edge_segments),

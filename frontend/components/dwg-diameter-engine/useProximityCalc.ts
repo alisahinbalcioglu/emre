@@ -75,11 +75,12 @@ export function useProximityCalc({ fileId, scale, sprinklerLayers, onResult }: U
           layer_default_diameter: JSON.stringify(defaultDiameterMap),
           sprinkler_layers: JSON.stringify(sprinklerLayers),
           use_proximity_diameter: 'true',   // PRD kritik flag
-          // 800mm = 80cm: point-to-line-segment distance ile cap text borunun
-          // HERHANGI bir ucundan 80cm icinde olabilir (eskisi midpoint'ten 50cm
-          // istiyordu, cok sikiydi — Ø200 spec'leri kayboldu). 80cm tipik cap
-          // etiketi uzakligi, sayfa basligi/kapasite text'i 1m+ kalir, elenir.
-          proximity_max_distance: '800',
+          // 1500mm = 1.5m: saf proximity (icerik regex filter YOK), sadece
+          // mesafe esigi bagılayıcı. Cap text borunun HERHANGI bir noktasindan
+          // ~1.5m icinde olmali. Bundan daha uzak text'ler (sayfa basligi,
+          // baska bloktaki kapasite degeri) atanmasin. Tipik cap etiketi
+          // borunun bitisiginde (~10-50cm), 1.5m rahat marj.
+          proximity_max_distance: '1500',
         });
 
         const formData = new FormData();
