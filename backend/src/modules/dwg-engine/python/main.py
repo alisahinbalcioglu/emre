@@ -587,12 +587,35 @@ def health():
         or os.environ.get("BUILD_SHA")
         or "local"
     )[:16]
+    # Deploy verification: yeni proximity_diameter modulu container'da var mi?
+    # Render Docker COPY layer cache eski snapshot tutuyorsa modul ImportError
+    # firlatir ve /parse'taki try/except sessizce yutar. Bu field ile teshis ederiz.
+    prox_status = "unknown"
+    prox_funcs = []
+    try:
+        import proximity_diameter as _pd
+        prox_status = "imported"
+        prox_funcs = [n for n in dir(_pd) if not n.startswith('_')]
+    except ImportError as _e:
+        prox_status = f"ImportError: {str(_e)[:80]}"
+    except Exception as _e:
+        prox_status = f"{type(_e).__name__}: {str(_e)[:80]}"
+
+    # /app dizininde gercek file listesi (Dockerfile COPY *.py kontrolu)
+    try:
+        py_files = sorted([f for f in os.listdir("/app") if f.endswith(".py")])
+    except Exception:
+        py_files = []
+
     return {
         "status": "ok",
         "service": "dwg-engine",
         "version": "2.2",
         "cached_files": cached,
         "build_sha": build_sha,
+        "proximity_module": prox_status,
+        "proximity_funcs": prox_funcs,
+        "py_files_in_app": py_files,
     }
 
 
