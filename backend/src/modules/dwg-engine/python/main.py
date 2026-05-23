@@ -531,37 +531,6 @@ def analyze_dxf_metraj(
     if use_proximity_diameter and edge_segments:
         try:
             from proximity_diameter import assign_diameters_by_proximity
-            # DIAG: regex'i bypass ederek tum TEXT/MTEXT entity'lerini sample'la
-            # Boylece DWG'de hangi cap formatlarinin oldugunu gorebiliriz.
-            try:
-                _excl = set(sprinkler_layers_manual or [])
-                _raw_samples = []
-                msp = doc.modelspace()
-                for ent in msp:
-                    et = ent.dxftype()
-                    if et not in ("TEXT", "MTEXT"):
-                        continue
-                    try:
-                        ly = str(getattr(ent.dxf, "layer", "") or "")
-                        if ly in _excl:
-                            continue
-                        if et == "TEXT":
-                            tx = str(getattr(ent.dxf, "text", "") or "").strip()
-                        else:
-                            tx = (ent.plain_text() if hasattr(ent, "plain_text") else str(ent.dxf.text)).strip()
-                        if tx and len(tx) <= 20:
-                            _raw_samples.append(tx)
-                    except Exception:
-                        continue
-                from collections import Counter as _Co
-                _top = _Co(_raw_samples).most_common(20)
-                warnings.append(
-                    f"DIAG_RAW_TEXTS ({len(_raw_samples)} total, top 20 by freq): "
-                    + " | ".join(f"{repr(t)}x{n}" for t, n in _top)
-                )
-            except Exception as _e:
-                warnings.append(f"DIAG_RAW_TEXTS hata: {str(_e)[:80]}")
-
             prox_result = assign_diameters_by_proximity(
                 doc, edge_segments,
                 sprinkler_layers=set(sprinkler_layers_manual or []),

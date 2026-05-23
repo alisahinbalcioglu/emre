@@ -18,25 +18,31 @@ import re
 import logging
 from typing import Any
 
-# Cap-format text regex — SIKI: tek rakam (sprinkler ID "1", "S2", oda numarasi
-# "12" vb.) match etmesin. Mutlaka soyle bir cap belirteci olmali:
-#   - Ø prefix:           Ø50, Ø 100, Ø50mm
-#   - DN prefix:          DN100, DN 32
-#   - Inch suffix:        2", 1 1/4", 3/4"
-#   - mm suffix:          50mm, 100 mm
-#   - Kesir formati:      1/2, 3/4, 1 1/4 (en az bir / icermeli)
-# Tek basina sayilar (1, 2, 100) cap olarak sayilmaz — yanlis atama onlenir.
+# Cap-format text regex — EXTRACT mantigi: string ICINDE cap pattern'i ara,
+# tam string match istemeden. DWG'de cap text'leri genelde:
+#   - Saf format: "Ø200", "DN150"
+#   - Spec string icinde: "HDPE 100 PN 16 Ø200", "PE 32 PN6 Ø50"
+# Anchor'siz (^/$ yok) — re.search ile string'in herhangi bir yerinde bulur.
+# Bulunan kismi capture group 0 ile alir, segment'e atar.
+#
+# Cap belirteci ZORUNLU (sahte "1", "100" gibi tek sayilari elemek icin):
+#   - Ø/Ø prefix:        Ø50, Ø 100
+#   - DN/dn prefix:      DN100, DN 32
+#   - Inch suffix:       2", 1 1/4"
+#   - mm suffix:         50mm, 100 mm
+#   - Kesir:             1/2, 3/4, 1 1/4 (en az bir / icermeli)
+# "KM80" gibi prefix'leri filtrelemek icin: cap match'ten ONCE harf gelmemeli
+# (negative lookbehind \b ile). "HDPE 100" once kelime/sayi olabilir, ama
+# "Ø" karakteri kendi basina yeterli isaret.
 _DIAMETER_TEXT_RE = re.compile(
-    r"""^\s*(
-          [ØØ]\s*\d+([./\s]*\d+)?\s*(["″]|mm|MM)?    # Ø50, Ø1 1/4, Ø50mm
-        | [Dd][Nn]\s*\d+                                       # DN100, dn50
-        | \d+\s*[/]\s*\d+\s*["″]?                         # 1/2, 3/4"
-        | \d+\s+\d+\s*[/]\s*\d+\s*["″]?                   # 1 1/4, 1 1/4"
-        | \d+\s*["″]                                      # 2", 4"
-        | \d+\s*(mm|MM)                                        # 50mm, 100 mm
-        | \d+\s*[½¼¾]                                          # 1½, 1¼
-        | [½¼¾]\s*["″]?                                   # ½, ½"
-    )\s*$""",
+    r"""(
+          [ØØ]\s*\d+([./\s]+\d+)?(\s*["″])?            # Ø200, Ø 50, Ø1 1/4
+        | (?<![A-Za-zÇĞİÖŞÜçğıöşü])[Dd][Nn]\s*\d+        # DN100 (KM, PN onunde olamaz)
+        | (?<![\d.])\d+\s*[/]\s*\d+\s*["″]               # 1/2", 3/4" (inch'li kesir)
+        | (?<![\d.])\d+\s+\d+\s*[/]\s*\d+\s*["″]?        # 1 1/4, 1 1/4"
+        | (?<![\d.])\d+\s*["″]                           # 2", 4"
+        | (?<![\d.])\d{2,3}\s*(mm|MM)\b                   # 50mm, 100 mm (en az 2 hane)
+    )""",
     re.VERBOSE,
 )
 
@@ -96,13 +102,18 @@ def _extract_diameter_texts(doc, excluded_layers: set[str] | None = None) -> lis
             txt = _autocad_decode(raw).strip()
             if not txt:
                 continue
-            # Cap-format regex filtresi — gurultu text'leri (isim/baslik/not) elenir
-            if not _DIAMETER_TEXT_RE.match(txt):
+            # Cap-format regex EXTRACT: string icinde cap pattern'i ara,
+            # bulunan kismi cap olarak al. "HDPE 100 PN 16 Ø200" -> "Ø200".
+            m = _DIAMETER_TEXT_RE.search(txt)
+            if not m:
+                continue
+            extracted = m.group(0).strip()
+            if not extracted:
                 continue
             pos = entity.dxf.insert
             x = float(pos.x)
             y = float(pos.y)
-            texts.append({"x": x, "y": y, "value": txt, "layer": layer})
+            texts.append({"x": x, "y": y, "value": extracted, "layer": layer})
         except (AttributeError, TypeError, ValueError):
             continue
     return texts
