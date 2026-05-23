@@ -1,36 +1,63 @@
 """
 Proximity-tabanli deterministic diameter atama.
 
-GENEL MANTIK (kullanici PRD'si):
-  "Her boru segmentine fiziksel olarak EN YAKIN text/mtext entity'sinin
-   icerigi o segmente cap olarak atanir."
+KURAL (kullanici talimati):
+  "Boruya en yakin text + text MUTLAKA cap belirteci icermeli."
+  Cap belirteci = Ø, DN, inch ("), mm, kesir (/ veya ½¼¾)
 
 FELSEFE:
-  - Filter YOK (regex, uzunluk, rakam zorunlulugu — hicbiri).
-  - Kullanici text'i borunun yanina bilincli yerlestirdiyse niyeti captir.
-  - Algoritma sadece FIZIKSEL PROXIMITY'i kabul eder, icerigi yorumlamaz.
-  - Yanlis atama olursa kullanici DiameterEditPopup ile manuel duzeltir.
+  - Text icinde cap belirteci YOKSA cap olarak atama YOK.
+    'YANGIN DOLABI', '8PYB', 'KM80', '25', '20000 kcal/h' -> atanmaz
+  - Text icinde cap belirteci VARSA: o belirteci iceren kismi EXTRACT et.
+    'HDPE 100 PN 16 Ø200' -> 'Ø200' (uzun spec icinde Ø)
+    'DN150' -> 'DN150' (zaten cap)
+    'Ø100' -> 'Ø100'
+    '2½' -> '2½'
+  - Filtreli havuzdan, segment'e fiziksel olarak en yakin text -> cap.
+  - Sprinkler layer'larindaki text'ler havuzdan dusurulur (ID etiketi).
 
-TEK SINIRLAMA: mesafe esigi (max_distance_world).
-  - Text segment'ten cok uzaksa (>esik) atama YAPILMAZ — sayfa basligi,
-    kapasite degeri, baska blok'un text'i karismaz.
-
-OPSIYONEL FILTER: sprinkler layer'larindaki text'ler atlanir.
-  - Kullanici manuel sprinkler layer'i isaretledigi icin o layer'lardaki
-    text'ler genelde ID etiketi ('S1', 'K115'), cap degil.
+EXTRACT YAKLASIMI:
+  Tek tipte: ham text'in TAMAMI degil, icindeki cap PATTERN'i kullanilir.
+  Boylece spec string'leri ('HDPE 100 PN 16 Ø200') temiz cap'e ('Ø200')
+  donusur, ayni cap'in farkli spec variantlari (PE100 vs HDPE) ayni renge
+  duser.
 
 ALGORITMA:
-  - Her segment icin point-to-line-segment distance ile en yakin text bul.
-  - Polyline'li segment'lerde her ardisik vertex pair'i ayri parca, min mesafe.
-  - Distance esik altindaysa text.value -> seg.diameter (orijinal aynen).
+  1. DXF'ten TEXT/MTEXT entity'lerini cek (sprinkler layer hariç).
+  2. Her text'i regex ile filtrele: cap pattern bulunamazsa havuza ALMA.
+  3. Bulunan -> match.group(0) extract olarak text.value.
+  4. Her segment icin point-to-line-segment distance ile en yakin text.
+  5. Distance esik altindaysa segment.diameter = text.value.
 
 Performans: O(N*M) brute force. ~500 seg x ~300 text = 150K compare, ~50ms.
 """
 from __future__ import annotations
 
 import math
+import re
 import logging
 from typing import Any
+
+
+# ─────────────────────────────────────────────────────────────────────
+# CAP REGEX — text icinde cap belirteci (Ø, DN, ", mm, kesir) ARA.
+# Bulunan match'in tam stringi cap olarak alinir (extract).
+# Anchor'siz: 'HDPE 100 PN 16 Ø200' icinden 'Ø200' yakalanabilir.
+# Pure sayi YOK ('25', '100' kabul edilmez — cap belirteci yok).
+# ─────────────────────────────────────────────────────────────────────
+_CAP_PATTERN = re.compile(
+    r"""(
+          [ØØ]\s*\d+([./\s]+\d+)?(\s*["″])?                          # Ø200, Ø 50, Ø1 1/4
+        | (?<![A-Za-zÇĞİÖŞÜçğıöşü])[Dd][Nn]\s*\d+                     # DN100, dn50 (KM/PN onunde olamaz)
+        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])\d+\s*[/]\s*\d+\s*["″]?         # 1/2, 3/4"
+        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])\d+\s+\d+\s*[/]\s*\d+\s*["″]?   # 1 1/4, 1 1/4"
+        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])\d+\s*[½¼¾]\s*["″]?             # 1½, 2½ (Unicode kesir)
+        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])[½¼¾]\s*["″]?                   # ½ (tek basina)
+        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])\d+\s*["″]                      # 2", 4"
+        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])\d{2,3}\s*(mm|MM)\b             # 50mm, 100 mm
+    )""",
+    re.VERBOSE,
+)
 
 
 def _point_to_segment_distance(
@@ -68,7 +95,6 @@ def _segment_polyline_points(seg) -> list[tuple[float, float]]:
             return [(float(p[0]), float(p[1])) for p in pl
                     if isinstance(p, (list, tuple)) and len(p) >= 2]
         return [(seg["x1"], seg["y1"]), (seg["x2"], seg["y2"])]
-    # EdgeSegment Pydantic model
     pl = getattr(seg, "polyline", None) or []
     if pl and len(pl) >= 2:
         return [(float(p[0]), float(p[1])) for p in pl
@@ -87,9 +113,12 @@ def _autocad_decode(s: str) -> str:
     return s
 
 
-def _extract_all_texts(doc, excluded_layers: set[str] | None = None) -> list[dict]:
-    """DXF modelspace'inden TUM TEXT/MTEXT entity'lerini cikar — FILTER YOK.
-    Sadece sprinkler layer'lari (kullanici isaretledi) atlanir.
+def _extract_diameter_texts(doc, excluded_layers: set[str] | None = None) -> list[dict]:
+    """DXF modelspace'inden CAP BELIRTECI ICEREN TEXT/MTEXT entity'lerini cikar.
+
+    Filtreleme: text icinde Ø/DN/"/mm/kesir VARSA havuza alinir, bulunan
+    cap pattern'i kismi extract edilir. Pure sayilar ve harf-only text'ler
+    ('25', 'YANGIN', '8PYB') havuza ALINMAZ.
 
     Args:
         doc: ezdxf Drawing
@@ -97,6 +126,7 @@ def _extract_all_texts(doc, excluded_layers: set[str] | None = None) -> list[dic
 
     Returns:
         [{"x": float, "y": float, "value": str, "layer": str}, ...]
+        value = cap pattern extract (ham text degil)
     """
     excluded_layers = excluded_layers or set()
     texts: list[dict] = []
@@ -122,10 +152,18 @@ def _extract_all_texts(doc, excluded_layers: set[str] | None = None) -> list[dic
             txt = _autocad_decode(raw).strip()
             if not txt:
                 continue
+            # KRITIK FILTER: text icinde cap belirteci VAR mi?
+            # Yoksa havuza alma. 'YANGIN DOLABI', '25', '8PYB' -> elenir.
+            m = _CAP_PATTERN.search(txt)
+            if not m:
+                continue
+            extracted = m.group(0).strip()
+            if not extracted:
+                continue
             pos = entity.dxf.insert
             x = float(pos.x)
             y = float(pos.y)
-            texts.append({"x": x, "y": y, "value": txt, "layer": layer})
+            texts.append({"x": x, "y": y, "value": extracted, "layer": layer})
         except (AttributeError, TypeError, ValueError):
             continue
     return texts
@@ -134,7 +172,7 @@ def _extract_all_texts(doc, excluded_layers: set[str] | None = None) -> list[dic
 def _nearest_text(seg, texts: list[dict]) -> tuple[dict, float] | None:
     """Segment cizgisinin HERHANGI BIR NOKTASINDAN en yakin text'i + mesafesini
     dondur. Midpoint'ten degil — uzun borularda cap text borunun ucunda olsa
-    bile dogru yakalansin (kullanici talimati: 'boruya en yakin text').
+    bile dogru yakalansin.
 
     Polyline'li segment varsa her ardisik vertex pair'i ayri cizgi parcasi
     olarak ele alinir; min mesafe alinir.
@@ -171,15 +209,19 @@ def assign_diameters_by_proximity(
     max_distance_world: float | None = None,
 ) -> dict:
     """
-    Her edge_segment icin en yakin TEXT/MTEXT entity'sini bul, segment.diameter ata.
-    Saf proximity — text icerigi REGEX ile filtrelenmez, aynen kullanilir.
+    Her edge_segment icin en yakin CAP TEXT'ini bul, segment.diameter ata.
+
+    KURAL:
+      - Text icinde cap belirteci (Ø/DN/"/mm/kesir) ZORUNLU.
+      - Sadece bu kriteri saglayan text'ler havuza alinir.
+      - Havuzdan segment'e fiziksel olarak en yakin secilir (point-to-segment).
+      - Mesafe esik (max_distance_world) altinda olmali — uzak text atanmasin.
 
     Args:
         doc: ezdxf Drawing
         edge_segments: list of EdgeSegment (Pydantic) — diameter field'i mutate edilir
         sprinkler_layers: bu layer'lardaki text'ler havuzdan dusurulur (ID etiketi)
         max_distance_world: opsiyonel uzaklik esigi (DWG world unit). None = sinir yok.
-                            Esik altinda text -> atama; uzerinde -> atama yok.
 
     Returns:
         {
@@ -190,10 +232,13 @@ def assign_diameters_by_proximity(
         }
     """
     warnings: list[str] = []
-    texts = _extract_all_texts(doc, excluded_layers=sprinkler_layers)
+    texts = _extract_diameter_texts(doc, excluded_layers=sprinkler_layers)
     pool_size = len(texts)
     if pool_size == 0:
-        warnings.append("Proximity: DXF'te hicbir TEXT/MTEXT entity'si bulunamadi")
+        warnings.append(
+            "Proximity: DXF'te cap belirteci (Ø/DN/\"/mm/kesir) iceren "
+            "TEXT/MTEXT bulunamadi"
+        )
         return {
             "assigned_count": 0,
             "skipped_count": len(edge_segments),
