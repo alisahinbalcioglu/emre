@@ -26,8 +26,19 @@ interface DwgUploaderProps {
  *      - Ekipmanlara (INSERT) tiklayip malzeme ad+birim girilir
  *   5. "Tumunu Onayla" → fiyatlandirmaya gider
  */
+/** Sayfa yenilemede DWG oturumunu korumak icin localStorage key.
+ *  Icerik: { fileId, fileName, scale, savedAt }
+ *  Mount'ta: bu key'i oku, fileId'nin Cloud Run cache'inde HALA gecerli oldugunu
+ *  /status/:fileId ile dogrula, gecerliyse state'i restore et — kullanici DWG'yi
+ *  yeniden yuklemek zorunda kalmaz. */
+const SESSION_STORAGE_KEY = 'metaprice_dwg_session';
+
 export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
+  // file: dosya nesnesi (yuklemede gerekli). Refresh sonrasi YOK ama
+  // fileName + fileId localStorage'dan gelir — workspace acilir.
   const [file, setFile] = useState<File | null>(null);
+  // restoredFileName: refresh sonrasi localStorage'dan gelen dosya adi (file nesnesi yok)
+  const [restoredFileName, setRestoredFileName] = useState<string | null>(null);
   const [fileId, setFileId] = useState<string | null>(null);
   const [extractingLayers, setExtractingLayers] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -55,8 +66,55 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
       delete (window as any).__metaprice_dwg_scale;
       if (pendingScale) setSelectedUnit(pendingScale);
       extractLayers(pendingFile, { skipDialog: true, override: pendingScale });
+      return;
+    }
+    // SESSION RESTORE: sayfa yenilenmis olabilir, localStorage'da onceki
+    // DWG session'i var mi? Varsa Cloud Run cache'inde hala valid mi check et.
+    // Valid ise workspace'i geri ac — kullanici dosyayi tekrar yuklemek
+    // zorunda kalmasin.
+    try {
+      const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+      if (!raw) return;
+      const session = JSON.parse(raw);
+      if (!session?.fileId || !session?.fileName) return;
+      initialFileProcessed.current = true;
+      // Async: backend'e status sor — hala ready mi?
+      api.get(`/dwg-engine/status/${session.fileId}`)
+        .then((res) => {
+          if (res?.data?.status === 'ready') {
+            setRestoredFileName(session.fileName);
+            setSelectedUnit(session.scale || 0.001);
+            setFileId(session.fileId);
+          } else {
+            // Cache'te yok veya parse henuz bitmemis → temizle
+            localStorage.removeItem(SESSION_STORAGE_KEY);
+          }
+        })
+        .catch(() => {
+          // 404 (cache TTL gecmis) veya baska hata → temizle, kullanici
+          // yeniden yuklesin
+          localStorage.removeItem(SESSION_STORAGE_KEY);
+        });
+    } catch {
+      localStorage.removeItem(SESSION_STORAGE_KEY);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // SESSION SAVE: fileId/fileName/scale degisince localStorage'a yansit.
+  // Refresh sonrasi yukaridaki RESTORE bunu okur.
+  useEffect(() => {
+    if (!fileId) return;
+    const fname = file?.name || restoredFileName;
+    if (!fname) return;
+    try {
+      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({
+        fileId,
+        fileName: fname,
+        scale: selectedUnit,
+        savedAt: Date.now(),
+      }));
+    } catch {}
+  }, [fileId, file, restoredFileName, selectedUnit]);
 
   const startTimer = () => {
     setElapsed(0);
@@ -220,10 +278,13 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
 
   const resetAll = () => {
     setFile(null);
+    setRestoredFileName(null);
     setFileId(null);
     setPendingUnitChoice(null);
     setError(null);
     setExtractingLayers(false);
+    // Session storage temizle — kullanici yeni DWG yuklemek istiyor
+    try { localStorage.removeItem(SESSION_STORAGE_KEY); } catch {}
   };
 
   const handleFileSelect = (f: File) => {
@@ -258,12 +319,14 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
   };
 
   // ── RENDER: fileId hazirsa workspace acilir ──
-  if (fileId && file) {
+  // file objesi olabilir (yeni upload) veya restoredFileName (session restore)
+  const effectiveFileName = file?.name || restoredFileName;
+  if (fileId && effectiveFileName) {
     return (
       <DwgProjectWorkspace
         fileId={fileId}
         scale={selectedUnit}
-        fileName={file.name}
+        fileName={effectiveFileName}
         onReset={resetAll}
         onApproved={onMetrajApproved}
       />

@@ -18,8 +18,11 @@ const emptyConfig = (): LayerConfig => ({
  * Workspace state yonetimi — layer secimleri, hesaplanmis metrajlar,
  * isaretlenmis ekipmanlar.
  */
-export function useWorkspaceState(fileId: string, scale: number) {
-  const [state, setState] = useState<WorkspaceState>({
+/** fileId bazli storage key — her DWG kendi state'ini ayri tutar. */
+const STORAGE_KEY_PREFIX = 'metaprice_dwg_ws_';
+
+function _emptyState(fileId: string, scale: number): WorkspaceState {
+  return {
     fileId,
     scale,
     selectedLayer: null,
@@ -30,23 +33,49 @@ export function useWorkspaceState(fileId: string, scale: number) {
     sprinklerLayers: [],
     hiddenLayers: [],
     dimmedLayers: [],
-  });
+  };
+}
 
-  // fileId degistiginde tum workspace state'i sifirla — eski dosyanin hesaplamalari
-  // yeni dosyaya karismasin.
+function _loadState(fileId: string, scale: number): WorkspaceState {
+  if (typeof window === 'undefined') return _emptyState(fileId, scale);
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY_PREFIX + fileId);
+    if (!raw) return _emptyState(fileId, scale);
+    const parsed = JSON.parse(raw);
+    // Sanity: fileId eslesmeli, scale uyumlu
+    if (parsed?.fileId !== fileId) return _emptyState(fileId, scale);
+    return { ..._emptyState(fileId, scale), ...parsed, fileId, scale };
+  } catch {
+    return _emptyState(fileId, scale);
+  }
+}
+
+export function useWorkspaceState(fileId: string, scale: number) {
+  // Mount'ta localStorage'dan restore et — sayfa yenilenmesi sonrasi
+  // hesaplanmis layer'lar, isaretli ekipmanlar, sprinkler/hidden layer'lar
+  // korunur. Kullanici tum metraji yeniden yapmaz.
+  const [state, setState] = useState<WorkspaceState>(() => _loadState(fileId, scale));
+
+  // fileId degistiginde state'i o fileId'nin local kaydindan yukle
+  // (yoksa bos baslat). Eski fileId'nin hesaplamalari yeni dosyaya karismaz.
   useEffect(() => {
-    setState({
-      fileId, scale,
-      selectedLayer: null,
-      layerConfigs: {},
-      calculatedLayers: {},
-      markedEquipments: {},
-      editingEquipmentKey: null,
-      sprinklerLayers: [],
-      hiddenLayers: [],
-      dimmedLayers: [],
-    });
+    setState(_loadState(fileId, scale));
   }, [fileId, scale]);
+
+  // State degisince localStorage'a kaydet. Refresh sonrasi yukaridaki
+  // _loadState bunu okuyup geri restore eder.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!state.fileId) return;
+    try {
+      window.localStorage.setItem(
+        STORAGE_KEY_PREFIX + state.fileId,
+        JSON.stringify(state),
+      );
+    } catch {
+      // QuotaExceededError veya disabled storage — sessizce gec
+    }
+  }, [state]);
 
   const selectLayer = useCallback((layer: string) => {
     setState((s) => {
