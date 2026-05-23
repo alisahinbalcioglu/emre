@@ -18,9 +18,27 @@ import re
 import logging
 from typing import Any
 
-# geometry.py'deki ile AYNI regex — cap-benzeri text format'i:
-# Ø50, DN100, 1 1/4", 50mm, 1/2", 2", 1 1/2" vb.
-_DIAMETER_TEXT_RE = re.compile(r"""^[\sØØDNdn\d/\\"'½¼¾]+$""")
+# Cap-format text regex — SIKI: tek rakam (sprinkler ID "1", "S2", oda numarasi
+# "12" vb.) match etmesin. Mutlaka soyle bir cap belirteci olmali:
+#   - Ø prefix:           Ø50, Ø 100, Ø50mm
+#   - DN prefix:          DN100, DN 32
+#   - Inch suffix:        2", 1 1/4", 3/4"
+#   - mm suffix:          50mm, 100 mm
+#   - Kesir formati:      1/2, 3/4, 1 1/4 (en az bir / icermeli)
+# Tek basina sayilar (1, 2, 100) cap olarak sayilmaz — yanlis atama onlenir.
+_DIAMETER_TEXT_RE = re.compile(
+    r"""^\s*(
+          [ØØ]\s*\d+([./\s]*\d+)?\s*(["″]|mm|MM)?    # Ø50, Ø1 1/4, Ø50mm
+        | [Dd][Nn]\s*\d+                                       # DN100, dn50
+        | \d+\s*[/]\s*\d+\s*["″]?                         # 1/2, 3/4"
+        | \d+\s+\d+\s*[/]\s*\d+\s*["″]?                   # 1 1/4, 1 1/4"
+        | \d+\s*["″]                                      # 2", 4"
+        | \d+\s*(mm|MM)                                        # 50mm, 100 mm
+        | \d+\s*[½¼¾]                                          # 1½, 1¼
+        | [½¼¾]\s*["″]?                                   # ½, ½"
+    )\s*$""",
+    re.VERBOSE,
+)
 
 
 def _segment_midpoint(seg: dict) -> tuple[float, float]:

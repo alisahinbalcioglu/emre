@@ -150,27 +150,6 @@ export class DwgEngineController {
     return { status: ok ? 'ok' : 'unavailable', service: 'dwg-engine' };
   }
 
-  /** DIAG: NestJS'in Python servisine hangi URL ile ulastigi + downstream
-   *  /health response'u yansit. Iki Python instance ihtimali varsa burada
-   *  kesinlikle gorunur. */
-  @Get('diag/upstream')
-  async diagUpstream() {
-    const url = (this.dwgEngine as any).pythonServiceUrl;
-    let downstream: any = null;
-    let err: string | null = null;
-    try {
-      const r = await fetch(`${url}/health`);
-      downstream = await r.json();
-    } catch (e: any) {
-      err = e?.message ?? String(e);
-    }
-    return {
-      nestjs_python_url: url,
-      downstream_health: downstream,
-      fetch_error: err,
-    };
-  }
-
   /**
    * F5C — Async upload (OCERP pattern). 2sn'de file_id doner, parse arka
    * planda. Frontend /status/:fileId ile durumu sorar, "ready" olunca
