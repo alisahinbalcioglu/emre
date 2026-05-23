@@ -536,9 +536,11 @@ def analyze_dxf_metraj(
                 sprinkler_layers=set(sprinkler_layers_manual or []),
                 max_distance_world=proximity_max_distance,
             )
+            _src = prox_result.get("source_summary", "")
+            _src_part = f" [{_src}]" if _src else ""
             warnings.append(
                 f"Proximity: {prox_result['assigned_count']}/{len(edge_segments)} segment cap aldi "
-                f"({prox_result['text_pool_size']} text havuzdan)"
+                f"({prox_result['text_pool_size']} text havuzdan{_src_part})"
             )
             for w in prox_result.get("warnings", []):
                 warnings.append(w)

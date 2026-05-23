@@ -135,37 +135,120 @@ def _extract_diameter_texts(doc, excluded_layers: set[str] | None = None) -> lis
     except Exception:
         return texts
 
+    def _try_add(txt_raw: str, x: float, y: float, layer: str, source: str) -> None:
+        """Helper: cap pattern regex match, varsa havuza ekle (source meta dahil)."""
+        txt = _autocad_decode(txt_raw or "").strip()
+        if not txt:
+            return
+        m = _CAP_PATTERN.search(txt)
+        if not m:
+            return
+        extracted = m.group(0).strip()
+        if not extracted:
+            return
+        texts.append({
+            "x": x, "y": y,
+            "value": extracted,
+            "layer": layer,
+            "source": source,   # TEXT/MTEXT/DIMENSION/LEADER/ATTRIB — debug için
+        })
+
     for entity in msp:
         etype = entity.dxftype()
-        if etype not in ("TEXT", "MTEXT"):
-            continue
         try:
             layer = str(getattr(entity.dxf, "layer", "") or "")
             if layer in excluded_layers:
                 continue
+
             if etype == "TEXT":
                 raw = str(getattr(entity.dxf, "text", "") or "")
-            else:
-                # MTEXT — formatting code'lari temizle
+                pos = entity.dxf.insert
+                _try_add(raw, float(pos.x), float(pos.y), layer, "TEXT")
+
+            elif etype == "MTEXT":
                 raw = entity.plain_text() if hasattr(entity, "plain_text") else str(entity.dxf.text)
                 raw = str(raw).replace("\n", " ")
-            txt = _autocad_decode(raw).strip()
-            if not txt:
-                continue
-            # KRITIK FILTER: text icinde cap belirteci VAR mi?
-            # Yoksa havuza alma. 'YANGIN DOLABI', '25', '8PYB' -> elenir.
-            m = _CAP_PATTERN.search(txt)
-            if not m:
-                continue
-            extracted = m.group(0).strip()
-            if not extracted:
-                continue
-            pos = entity.dxf.insert
-            x = float(pos.x)
-            y = float(pos.y)
-            texts.append({"x": x, "y": y, "value": extracted, "layer": layer})
+                pos = entity.dxf.insert
+                _try_add(raw, float(pos.x), float(pos.y), layer, "MTEXT")
+
+            elif etype == "DIMENSION":
+                # Ölçü etiketi — text override > get_measurement() fallback
+                dim_txt = getattr(entity.dxf, "text", "") or ""
+                if dim_txt in ("", "<>", "< >"):
+                    if hasattr(entity, "get_measurement"):
+                        try:
+                            meas = entity.get_measurement()
+                            if isinstance(meas, (int, float)):
+                                dim_txt = f"{meas:g}"
+                        except Exception:
+                            pass
+                tmp = getattr(entity.dxf, "text_midpoint", None)
+                if tmp is not None and hasattr(tmp, "x"):
+                    x, y = float(tmp.x), float(tmp.y)
+                else:
+                    dp = getattr(entity.dxf, "defpoint", None)
+                    if dp is None or not hasattr(dp, "x"):
+                        continue
+                    x, y = float(dp.x), float(dp.y)
+                _try_add(dim_txt, x, y, layer, "DIMENSION")
+
+            elif etype in ("MULTILEADER", "MLEADER"):
+                # Kıvrımlı leader (ok + yazı) — cap etiketleme için sık kullanılır
+                mtxt = None
+                if hasattr(entity, "get_mtext_content"):
+                    try:
+                        mtxt = entity.get_mtext_content()
+                    except Exception:
+                        mtxt = None
+                if not mtxt:
+                    mtxt = getattr(entity.dxf, "text", None)
+                if not mtxt:
+                    continue
+                mtxt = str(mtxt).replace("\n", " ")
+                # Pozisyon: text_attachment_point → context.leaders fallback
+                x, y = 0.0, 0.0
+                tap = getattr(entity.dxf, "text_attachment_point", None)
+                pos_found = False
+                if tap is not None and hasattr(tap, "x"):
+                    x, y = float(tap.x), float(tap.y)
+                    pos_found = True
+                else:
+                    ctx = getattr(entity, "context", None)
+                    if ctx is not None:
+                        leaders = getattr(ctx, "leaders", None) or []
+                        for ldr in leaders:
+                            lines = getattr(ldr, "lines", None) or []
+                            for ln in lines:
+                                verts = list(getattr(ln, "vertices", []) or [])
+                                if verts:
+                                    v = verts[0]
+                                    x, y = float(v[0]), float(v[1])
+                                    pos_found = True
+                                    break
+                            if pos_found:
+                                break
+                if not pos_found:
+                    continue
+                _try_add(mtxt, x, y, layer, "LEADER")
+
+            elif etype == "INSERT":
+                # Block içine gömülü ATTRIB tag'leri (cap olabilir)
+                if not hasattr(entity, "attribs"):
+                    continue
+                for at in entity.attribs:
+                    try:
+                        at_layer = str(getattr(at.dxf, "layer", layer) or layer)
+                        if at_layer in excluded_layers:
+                            continue
+                        at_txt = str(getattr(at.dxf, "text", "") or "")
+                        ap = at.dxf.insert
+                        _try_add(at_txt, float(ap.x), float(ap.y), at_layer, "ATTRIB")
+                    except Exception:
+                        continue
+
         except (AttributeError, TypeError, ValueError):
             continue
+
     return texts
 
 
@@ -237,7 +320,7 @@ def assign_diameters_by_proximity(
     if pool_size == 0:
         warnings.append(
             "Proximity: DXF'te cap belirteci (Ø/DN/\"/mm/kesir) iceren "
-            "TEXT/MTEXT bulunamadi"
+            "TEXT/MTEXT/DIMENSION/LEADER/ATTRIB bulunamadi"
         )
         return {
             "assigned_count": 0,
@@ -245,6 +328,13 @@ def assign_diameters_by_proximity(
             "text_pool_size": 0,
             "warnings": warnings,
         }
+
+    # Source breakdown — DWG'de hangi entity tipinden ne kadar cap geldigi
+    from collections import Counter
+    source_counts = Counter(t.get("source", "?") for t in texts)
+    source_summary = ", ".join(
+        f"{src}:{cnt}" for src, cnt in source_counts.most_common()
+    )
 
     assigned = 0
     for es in edge_segments:
@@ -272,5 +362,6 @@ def assign_diameters_by_proximity(
         "assigned_count": assigned,
         "skipped_count": skipped,
         "text_pool_size": pool_size,
+        "source_summary": source_summary,
         "warnings": warnings,
     }
