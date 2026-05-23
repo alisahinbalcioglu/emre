@@ -285,7 +285,10 @@ def _build_segment_adjacency(
         {segment_id: [komsu_segment_id'ler]}
     """
     if tolerance is None or tolerance <= 0:
-        tolerance = 50.0  # 50mm default — most DWG'ler mm cinsinden
+        tolerance = 500.0  # 500mm default — gevsek snap. T-noktalarinda endpoint'ler
+        # genelde 50-200mm tolerance icinde snap olur ama bazi DWG'lerde 200mm+ gap
+        # olabilir. 500mm: aynı T-noktasi etrafindaki tum segment'leri yakalar,
+        # FALSE pozitive riski dusuk (farkli T-noktalari genelde >1m uzakta).
 
     def _node_key(x: float, y: float) -> tuple[int, int]:
         return (int(round(x / tolerance)), int(round(y / tolerance)))
@@ -505,7 +508,11 @@ def assign_diameters_by_proximity(
     # BFS bu davranisi otomatik yapar — cap-li ankrajdan zincir gibi yayilir.
     inherited = 0
     try:
-        adjacency = _build_segment_adjacency(edge_segments, inheritance_tolerance or 50.0)
+        # Tolerance: caller'dan gelmezse 500mm (gevsek). _node_tol genelde 50mm
+        # ama BFS adjacency icin daha gevsek (500mm) yapmak yayılımı arttirir.
+        # Pratik: max(_node_tol*10, 500) — adaptive scaling.
+        _tol = inheritance_tolerance if (inheritance_tolerance and inheritance_tolerance >= 500) else 500.0
+        adjacency = _build_segment_adjacency(edge_segments, _tol)
         inherited = _inherit_caps_via_bfs(edge_segments, adjacency)
     except Exception as _e:
         warnings.append(f"BFS inheritance: {str(_e)[:100]}")

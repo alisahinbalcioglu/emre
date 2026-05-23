@@ -75,12 +75,13 @@ export function useProximityCalc({ fileId, scale, sprinklerLayers, onResult }: U
           layer_default_diameter: JSON.stringify(defaultDiameterMap),
           sprinkler_layers: JSON.stringify(sprinklerLayers),
           use_proximity_diameter: 'true',   // PRD kritik flag
-          // max_distance YOK (sinirsiz). Cunku regex filter zaten cap
-          // belirteci (Ø/DN/"/mm/kesir) icermeyen text'leri haviza ALMIYOR.
-          // Havuzda kalanlar GERCEK cap belirteclerî — uzak olsa bile
-          // o segment icin en yakin cap'i atamak dogru (alternatif Belirtilmemis
-          // birakilmak, kullaniciya hicbir ipucu vermez). Test: max_distance=10m
-          // bu DWG'de 394/569 segment cap aldi, sinirsizla %100'e cikar.
+          // max_distance=3m: direct atama, BFS, hibrit ile dengeli sonuc.
+          // SINIRSIZ olunca: cap text'i UZAK segment'lere yanlislikla atanir
+          //   (ornek: yangin layer'inda 1/2" text'i ana hatta atanir → yanlis).
+          // 1500mm cok sıkı: cogu segment cap'siz kalır, BFS sınırı asilamaz.
+          // 3000mm: cap text borunun ~3m yakininda makul. Daha uzak segment'ler
+          //   BFS ile komsu cap'li hattan miras alır (T-noktasi mantigi).
+          proximity_max_distance: '3000',
         });
 
         const formData = new FormData();
