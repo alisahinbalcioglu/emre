@@ -1285,6 +1285,7 @@ async def list_layers(file: UploadFile = File(...)):
 
 @app.post("/parse")
 async def parse_dwg(
+    request: Request,
     file: UploadFile | None = File(None),
     file_id: str = Query("", description="Cache'teki dosyanin ID'si (/layers'tan donen)"),
     discipline: str = Query("mechanical"),
@@ -1387,6 +1388,17 @@ async def parse_dwg(
         result_dict = await asyncio.to_thread(
             _run_parse_subprocess, dxf_path, params, 180
         )
+        # DIAG: NestJS'in Python'a gercekten ne URL gonderdigini gor.
+        # use_proximity_diameter URL'de yoksa NestJS forward etmiyor demektir.
+        try:
+            raw_query = str(request.url.query)
+        except Exception:
+            raw_query = "(unavailable)"
+        if isinstance(result_dict.get("warnings"), list):
+            result_dict["warnings"].insert(
+                0,
+                f"RAW_QUERY: {raw_query[:300]} | parsed_flag={use_proximity_diameter!r}"
+            )
         # Subprocess zaten _json_safe ile sanitize ettiği için direkt response
         body = json.dumps(result_dict, allow_nan=False, ensure_ascii=False).encode('utf-8')
         return Response(content=body, media_type="application/json")
