@@ -542,13 +542,9 @@ def analyze_dxf_metraj(
             )
             _src = prox_result.get("source_summary", "")
             _src_part = f" [{_src}]" if _src else ""
-            _direct = prox_result.get("assigned_count", 0)
-            _inherited = prox_result.get("inherited_count", 0)
-            _total = _direct + _inherited
             warnings.append(
-                f"Proximity: {_direct} direct + {_inherited} inherited = "
-                f"{_total}/{len(edge_segments)} segment cap aldi "
-                f"({prox_result['text_pool_size']} text havuzdan{_src_part})"
+                f"Proximity: {prox_result['assigned_count']}/{len(edge_segments)} "
+                f"segment cap aldi ({prox_result['text_pool_size']} text havuzdan{_src_part})"
             )
             for w in prox_result.get("warnings", []):
                 warnings.append(w)
