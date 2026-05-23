@@ -1,33 +1,50 @@
 """
 Proximity-tabanli deterministic diameter atama.
 
-KURAL (kullanici talimati, SADE):
-  "T-noktalari arasi her hatta (EdgeSegment = run), HATTA EN YAKIN
-   text/mtext/dimension/leader/attrib entity'sinin icerigi cap olarak atanir."
+TEK KURAL (kullanici talimati):
+  "Run (T-noktalari arasi kesintisiz hat = EdgeSegment) icin
+   HATTA EN YAKIN CAP-TEXT'i cap olarak atanir."
 
-FELSEFE (kullanici emri: 'zor olmamali'):
-  - Filter YOK (regex, uzunluk, format zorunlulugu).
-  - max_distance YOK (sinirsiz — DWG'de neyin en yakin oldugu kazanir).
-  - BFS miras YOK (gereksiz kompleksite).
-  - Sprinkler layer'larindaki text'ler atlanir (kullanici isaretledi -> ID).
-  - Kullanici yanlis goruse DiameterEditPopup ile manuel duzeltir.
+CAP-TEXT TANIMI:
+  Text'in icinde cap belirteci VARSA o text cap-text'tir:
+    - Ø veya Ø prefix              (Ø200, Ø50)
+    - DN/dn prefix                 (DN150)
+    - inch suffix (\")              (2\", 1 1/4\")
+    - mm suffix                    (50mm, 100 mm)
+    - kesir (/) veya Unicode ½¼¾   (1/2, 2½)
+  Sahte text'leri (YD, YK, '2', 'YANGIN DOLABI', basliklar) eler.
+  Bu filter olmadan 569 segmente bilmem ne text'i atanir.
 
-ALGORITMA (3 adim):
-  1. DXF'ten TUM text-bearing entity'leri cek (TEXT, MTEXT, DIMENSION,
-     MULTILEADER, MLEADER, INSERT ATTRIB). Sprinkler layer hariç.
-  2. Her edge_segment (run = T-noktalari arasi kesintisiz hat) icin
-     point-to-line-segment distance ile EN YAKIN text'i bul (polyline-aware).
-  3. text.value -> seg.diameter (aynen, transform yok).
-
-EdgeSegment ZATEN T-noktalari arasi run (pipe_segments._group_into_runs).
-Her run'in polyline'i tum vertex'leri iceriyor. Point-to-segment bu polyline
-boyunca minimum mesafe = "boruyu takip et" garantisi.
+DIGER:
+  - max_distance YOK (sinirsiz — havuzdaki en yakin cap-text kazanir)
+  - BFS YOK (gereksiz kompleksite)
+  - Sprinkler layer text'leri hariç (kullanici manuel isaretledi -> ID)
+  - Kullanici yanlis goruse DiameterEditPopup ile manuel duzeltir
 """
 from __future__ import annotations
 
 import math
+import re
 import logging
 from typing import Any
+
+
+# Cap-belirteci regex — text icinde Ø/DN/inch/mm/kesir VAR MI?
+# Bulunan match'in extract'i (örn. 'HDPE 100 PN 16 Ø200' -> 'Ø200') cap olur.
+# Anchor'siz: string'in herhangi bir yerinde olabilir.
+_CAP_PATTERN = re.compile(
+    r"""(
+          [ØØ]\s*\d+([./\s]+\d+)?(\s*["″])?                          # Ø200, Ø1 1/4
+        | (?<![A-Za-zÇĞİÖŞÜçğıöşü])[Dd][Nn]\s*\d+                     # DN100
+        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])\d+\s*[/]\s*\d+\s*["″]?         # 1/2, 3/4"
+        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])\d+\s+\d+\s*[/]\s*\d+\s*["″]?   # 1 1/4
+        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])\d+\s*[½¼¾]\s*["″]?             # 1½, 2½
+        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])[½¼¾]\s*["″]?                   # ½
+        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])\d+\s*["″]                      # 2", 4"
+        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])\d{2,3}\s*(mm|MM)\b             # 50mm
+    )""",
+    re.VERBOSE,
+)
 
 
 def _point_to_segment_distance(
@@ -92,12 +109,20 @@ def _extract_all_texts(doc, excluded_layers: set[str] | None = None) -> list[dic
         return texts
 
     def _add(txt_raw: str, x: float, y: float, layer: str, source: str) -> None:
+        """Cap belirteci filter + extract. Yoksa havuza alma."""
         txt = _autocad_decode(txt_raw or "").strip()
         if not txt:
             return
+        m = _CAP_PATTERN.search(txt)
+        if not m:
+            return  # 'YD', 'YK', '2', 'YANGIN DOLABI' vb. eler
+        extracted = m.group(0).strip()
+        if not extracted:
+            return
         texts.append({
             "x": float(x), "y": float(y),
-            "value": txt, "layer": layer, "source": source,
+            "value": extracted,   # 'HDPE 100 PN 16 Ø200' -> 'Ø200'
+            "layer": layer, "source": source,
         })
 
     for entity in msp:
