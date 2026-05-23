@@ -55,10 +55,13 @@ _DIAMETER_TEXT_RE = re.compile(
 # SADECE string'de ana regex match etmiyorsa kullanilir (Ø/DN onceliklidir).
 _DIAMETER_FALLBACK_RE = re.compile(
     r"""(?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])
-        (?:1[05]|20|25|32|40|50|65|70|80|100|125|150|200|250)
+        (?:15|20|25|32|40|50|65|70|80|100|125|150|200|250)
         (?![\d.A-Za-zÇĞİÖŞÜçğıöşü])""",
     re.VERBOSE,
 )
+# NOT: '10' listede YOK. Cunku '10' cok sik oda numarasi/satir numarasi olur.
+# 10mm cap'i nadirdir, eklenirse yanlis atama riski yuksek. 15mm = 1/2" zaten
+# yangin tesisatinda minimum.
 
 
 def _segment_midpoint(seg: dict) -> tuple[float, float]:
@@ -68,6 +71,49 @@ def _segment_midpoint(seg: dict) -> tuple[float, float]:
     # EdgeSegment Pydantic model — coords [x1,y1,x2,y2]
     c = seg.coords
     return ((c[0] + c[2]) / 2.0, (c[1] + c[3]) / 2.0)
+
+
+def _point_to_segment_distance(
+    px: float, py: float,
+    x1: float, y1: float, x2: float, y2: float,
+) -> float:
+    """Bir nokta (px,py) ile bir cizgi parcasinin [(x1,y1)-(x2,y2)] arasindaki
+    EN KISA mesafe. Projection segment disinda kalirsa, en yakin endpoint'e duser.
+
+    Bu fonksiyon midpoint'ten degil, cizginin HERHANGI BIR NOKTASINDAN olan
+    mesafeyi hesaplar — uzun borularda cap text borunun BIR UCUNDA olsa bile
+    yakaladigi icin midpoint-only yaklasimdan cok daha dogru.
+    """
+    dx = x2 - x1
+    dy = y2 - y1
+    lensq = dx * dx + dy * dy
+    if lensq < 1e-12:
+        return math.hypot(px - x1, py - y1)
+    t = ((px - x1) * dx + (py - y1) * dy) / lensq
+    if t < 0.0:
+        t = 0.0
+    elif t > 1.0:
+        t = 1.0
+    proj_x = x1 + t * dx
+    proj_y = y1 + t * dy
+    return math.hypot(px - proj_x, py - proj_y)
+
+
+def _segment_polyline_points(seg) -> list[tuple[float, float]]:
+    """Segment'in koselerini list of (x,y) olarak don. Polyline varsa onun
+    vertex'leri, yoksa basit iki uctan olusur. point-to-segment distance icin
+    her ardisik pair ayri bir cizgi parcasi olarak ele alinir."""
+    if isinstance(seg, dict):
+        pl = seg.get("polyline") or []
+        if pl and len(pl) >= 2:
+            return [(float(p[0]), float(p[1])) for p in pl if isinstance(p, (list, tuple)) and len(p) >= 2]
+        return [(seg["x1"], seg["y1"]), (seg["x2"], seg["y2"])]
+    # EdgeSegment Pydantic
+    pl = getattr(seg, "polyline", None) or []
+    if pl and len(pl) >= 2:
+        return [(float(p[0]), float(p[1])) for p in pl if isinstance(p, (list, tuple)) and len(p) >= 2]
+    c = seg.coords
+    return [(c[0], c[1]), (c[2], c[3])]
 
 
 def _autocad_decode(s: str) -> str:
@@ -138,18 +184,34 @@ def _extract_diameter_texts(doc, excluded_layers: set[str] | None = None) -> lis
 
 
 def _nearest_text(seg, texts: list[dict]) -> tuple[dict, float] | None:
-    """Segment midpoint'inden en yakin text'i + mesafesini dondur. None -> text yok."""
+    """Segment cizgisinin HERHANGI BIR NOKTASINDAN en yakin text'i + mesafesini
+    dondur. Midpoint'ten degil — uzun borularda cap text borunun ucunda olsa
+    bile dogru yakalansin (kullanici talimati: 'boruya en yakin text').
+
+    Polyline'li segment varsa her ardisik vertex pair'i ayri cizgi parcasi
+    olarak ele alinir; min mesafe alinir.
+    """
     if not texts:
         return None
-    mx, my = _segment_midpoint(seg)
+    points = _segment_polyline_points(seg)
+    if len(points) < 2:
+        return None
     best = None
     best_d = math.inf
     for t in texts:
-        dx = t["x"] - mx
-        dy = t["y"] - my
-        d = math.sqrt(dx * dx + dy * dy)
-        if d < best_d:
-            best_d = d
+        tx = t["x"]
+        ty = t["y"]
+        # Her ardisik vertex pair'inden olan mesafenin min'i = text'in
+        # tum polyline'a olan en kisa mesafesi.
+        seg_d = math.inf
+        for i in range(len(points) - 1):
+            x1, y1 = points[i]
+            x2, y2 = points[i + 1]
+            d = _point_to_segment_distance(tx, ty, x1, y1, x2, y2)
+            if d < seg_d:
+                seg_d = d
+        if seg_d < best_d:
+            best_d = seg_d
             best = t
     if best is None:
         return None
