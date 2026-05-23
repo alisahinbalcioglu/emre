@@ -246,6 +246,21 @@ def _nearest_text(seg, texts: list[dict]) -> tuple[dict, float] | None:
     return (best, best_d)
 
 
+def _segment_distance(seg, tx: float, ty: float) -> float:
+    """Bir text noktasinin segment polyline'ina min mesafesi (point-to-segment)."""
+    points = _segment_polyline_points(seg)
+    if len(points) < 2:
+        return math.inf
+    seg_d = math.inf
+    for i in range(len(points) - 1):
+        x1, y1 = points[i]
+        x2, y2 = points[i + 1]
+        d = _point_to_segment_distance(tx, ty, x1, y1, x2, y2)
+        if d < seg_d:
+            seg_d = d
+    return seg_d
+
+
 def assign_diameters_by_proximity(
     doc,
     edge_segments: list[Any],
@@ -254,25 +269,30 @@ def assign_diameters_by_proximity(
     inheritance_tolerance: float | None = None,
 ) -> dict:
     """
-    Her run (T-noktalari arasi kesintisiz hat = EdgeSegment) icin en yakin
-    text'i bul, segment.diameter ata. SADE: filter yok, BFS yok, mesafe yok.
+    MUTUAL NEAREST: Her cap-text icin en yakin segment'i bul (text-perspective).
+    Sonra her segment'e — kendisini en yakin segment olarak goren text'lerin
+    EN YAKIN olani — cap olarak atanir.
+
+    Avantaj: bir text birden fazla segment'e atanmaz. "2½\"" text'i hangi
+    segment'e fiziksel olarak en yakinsa OYU segmente atanir, baska segment'ler
+    bu text'i 'kapamaz'.
 
     Args:
         doc: ezdxf Drawing
         edge_segments: list of EdgeSegment — diameter field'i mutate edilir
         sprinkler_layers: bu layer'lardaki text'ler havuzdan dusurulur
-        max_distance_world: KULLANILMIYOR (geri uyumluluk icin parametre)
-        inheritance_tolerance: KULLANILMIYOR (geri uyumluluk icin parametre)
+        max_distance_world: kullanilmiyor (backward compat)
+        inheritance_tolerance: kullanilmiyor (backward compat)
 
     Returns:
-        {assigned_count, inherited_count, skipped_count, text_pool_size,
-         source_summary, warnings}
+        {assigned_count, skipped_count, text_pool_size, source_summary,
+         warnings, inherited_count(=0)}
     """
     warnings: list[str] = []
     texts = _extract_all_texts(doc, excluded_layers=sprinkler_layers)
     pool_size = len(texts)
     if pool_size == 0:
-        warnings.append("Proximity: DXF'te hicbir TEXT/MTEXT/DIM/LEADER/ATTRIB bulunamadi")
+        warnings.append("Proximity: DXF'te cap belirteci iceren TEXT/MTEXT/DIM/LEADER/ATTRIB bulunamadi")
         return {
             "assigned_count": 0,
             "inherited_count": 0,
@@ -282,32 +302,50 @@ def assign_diameters_by_proximity(
             "warnings": warnings,
         }
 
-    # Source breakdown — sadece debug bilgisi
     from collections import Counter
     source_counts = Counter(t.get("source", "?") for t in texts)
     source_summary = ", ".join(f"{src}:{cnt}" for src, cnt in source_counts.most_common())
 
-    # Her run icin en yakin text -> cap
+    # ── ADIM 1: Her text icin en yakin segment bul (text-perspective) ──
+    # segment_to_texts[seg_idx] = [(text_dict, distance), ...] — bu segmente "ait" text'ler
+    segment_to_texts: dict[int, list[tuple[dict, float]]] = {}
+    for t in texts:
+        tx, ty = t["x"], t["y"]
+        best_seg_idx = -1
+        best_d = math.inf
+        for idx, es in enumerate(edge_segments):
+            try:
+                d = _segment_distance(es, tx, ty)
+                if d < best_d:
+                    best_d = d
+                    best_seg_idx = idx
+            except Exception:
+                continue
+        if best_seg_idx >= 0:
+            segment_to_texts.setdefault(best_seg_idx, []).append((t, best_d))
+
+    # ── ADIM 2: Her segmente kendi text'lerinin EN YAKIN olanini ata ──
     assigned = 0
-    for es in edge_segments:
+    for idx, es in enumerate(edge_segments):
         try:
             current = getattr(es, "diameter", "") or ""
             if current and current != "Belirtilmemis":
-                continue  # manuel override veya onceki atama korunur
-            result = _nearest_text(es, texts)
-            if result is None:
-                continue
-            top_text, _dist = result
-            es.diameter = top_text["value"]
+                continue  # manuel override korunur
+            text_candidates = segment_to_texts.get(idx, [])
+            if not text_candidates:
+                continue  # bu segmente hicbir text 'ait' degil -> Belirtilmemis
+            # En yakin candidate
+            best_text, _ = min(text_candidates, key=lambda x: x[1])
+            es.diameter = best_text["value"]
             assigned += 1
         except Exception as _e:
-            logging.warning("proximity assign skip: %s", _e)
+            logging.warning("mutual nearest skip: %s", _e)
             continue
 
     skipped = sum(1 for es in edge_segments if not (getattr(es, "diameter", "") or ""))
     return {
         "assigned_count": assigned,
-        "inherited_count": 0,  # geri uyumluluk
+        "inherited_count": 0,
         "skipped_count": skipped,
         "text_pool_size": pool_size,
         "source_summary": source_summary,
