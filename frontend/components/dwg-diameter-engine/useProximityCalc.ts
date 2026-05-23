@@ -75,12 +75,12 @@ export function useProximityCalc({ fileId, scale, sprinklerLayers, onResult }: U
           layer_default_diameter: JSON.stringify(defaultDiameterMap),
           sprinkler_layers: JSON.stringify(sprinklerLayers),
           use_proximity_diameter: 'true',   // PRD kritik flag
-          // 1500mm = 1.5m: saf proximity (icerik regex filter YOK), sadece
-          // mesafe esigi bagılayıcı. Cap text borunun HERHANGI bir noktasindan
-          // ~1.5m icinde olmali. Bundan daha uzak text'ler (sayfa basligi,
-          // baska bloktaki kapasite degeri) atanmasin. Tipik cap etiketi
-          // borunun bitisiginde (~10-50cm), 1.5m rahat marj.
-          proximity_max_distance: '1500',
+          // max_distance YOK (sinirsiz). Cunku regex filter zaten cap
+          // belirteci (Ø/DN/"/mm/kesir) icermeyen text'leri haviza ALMIYOR.
+          // Havuzda kalanlar GERCEK cap belirteclerî — uzak olsa bile
+          // o segment icin en yakin cap'i atamak dogru (alternatif Belirtilmemis
+          // birakilmak, kullaniciya hicbir ipucu vermez). Test: max_distance=10m
+          // bu DWG'de 394/569 segment cap aldi, sinirsizla %100'e cikar.
         });
 
         const formData = new FormData();

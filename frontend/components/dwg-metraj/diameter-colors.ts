@@ -27,32 +27,46 @@ const PALETTE_12 = [
   '#ec4899', // 11 pink-500    — pembe
 ];
 
-/** Numeric cap -> palette index. Inch (1/2", 1 1/4") cinsindeyse mm'e cevirir. */
+/** Numeric cap -> palette index. Inch (1/2", 1 1/4") cinsindeyse mm'e cevirir.
+ *  KRITIK SIRA: kompleks pattern (inch, kesir) ONCE, basit (Ø/DN) SONRA.
+ *  Aksi takdirde '2 1/2"' -> '2' rakami leftmost match olur -> 2mm yanlis sonuc.
+ */
 function diameterToNumeric(d: string): number | null {
   const s = d.trim();
-  // Ø50, DN150 -> 50, 150
-  const mDirect = s.match(/(?:Ø|Ø|DN|dn|d)?\s*(\d{1,3})(?!\d)/);
-  if (mDirect) {
-    const n = parseInt(mDirect[1], 10);
-    if (Number.isFinite(n) && n > 0) return n;
-  }
-  // Inch -> mm (yaklasik nominal): 1/2"=15, 3/4"=20, 1"=25, 1 1/4"=32...
+
+  // 1) INCH map ONCE — "2 1/2\"", "1 1/4\"", "1/2\"" gibi tam string eslesmesi
   const inchMap: Record<string, number> = {
     '1/2': 15, '3/4': 20, '1': 25, '1 1/4': 32, '1 1/2': 40,
     '2': 50, '2 1/2': 65, '3': 80, '4': 100, '5': 125, '6': 150, '8': 200,
   };
   const noQuote = s.replace(/["″]/g, '').trim();
   if (inchMap[noQuote] !== undefined) return inchMap[noQuote];
-  // Unicode kesir: ½=15 (1/2"), 2½=65 (2 1/2"), 1½=40, 1¼=32
+
+  // 2) Unicode kesir: ½=15 (1/2"), 2½=65 (2 1/2"), 1½=40, 1¼=32
   const fracMap: Record<string, number> = { '½': 15, '¼': 8, '¾': 20 };
   const fracMatch = s.match(/^(\d*)\s*([½¼¾])/);
   if (fracMatch) {
     const whole = fracMatch[1] ? parseInt(fracMatch[1], 10) : 0;
     const fracMm = fracMap[fracMatch[2]] ?? 0;
-    // 2½ -> 2"+1/2" = 65mm nominal; basit: whole*25 + fracMm
     const mm = whole * 25 + fracMm;
     if (mm > 0) return mm;
   }
+
+  // 3) Ø/DN prefix ZORUNLU (yoksa "2 1/2"" '2'ye dusurmesin)
+  //    "Ø200" -> 200, "DN150" -> 150, "dn50" -> 50
+  const mPrefix = s.match(/(?:[ØØ]|[Dd][Nn])\s*(\d{1,3})/);
+  if (mPrefix) {
+    const n = parseInt(mPrefix[1], 10);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+
+  // 4) mm suffix: "50mm", "100 mm"
+  const mMm = s.match(/(\d{1,3})\s*(?:mm|MM)\b/);
+  if (mMm) {
+    const n = parseInt(mMm[1], 10);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+
   return null;
 }
 
