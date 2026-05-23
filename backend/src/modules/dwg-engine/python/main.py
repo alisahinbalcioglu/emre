@@ -524,6 +524,14 @@ def analyze_dxf_metraj(
         except Exception as _e:
             warnings.append(f"Edge segment cikarma: {str(_e)[:100]}")
 
+    # DEBUG (gecici): gelen flag tipini ve degerini gor — kaldirilacak
+    warnings.append(
+        f"DEBUG_PROXIMITY: flag={use_proximity_diameter!r} "
+        f"type={type(use_proximity_diameter).__name__} "
+        f"max_dist={proximity_max_distance!r} "
+        f"edge_segments_count={len(edge_segments)}"
+    )
+
     # ── Proximity diameter (deterministic, AI'siz) ─────────────────
     # PRD: her segment icin en yakin text -> cap. Layer default fallback'ten
     # ONCE calisir ki text-bazli atama oncelikli olsun. Atayamadiklarini
