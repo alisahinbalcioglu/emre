@@ -531,15 +531,23 @@ def analyze_dxf_metraj(
     if use_proximity_diameter and edge_segments:
         try:
             from proximity_diameter import assign_diameters_by_proximity
+            # _node_tol main.py:519'da hesaplanmıştı (edge segment extraction'da).
+            # BFS inheritance için endpoint snap tolerance olarak kullan.
+            _inheritance_tol = locals().get("_node_tol", None)
             prox_result = assign_diameters_by_proximity(
                 doc, edge_segments,
                 sprinkler_layers=set(sprinkler_layers_manual or []),
                 max_distance_world=proximity_max_distance,
+                inheritance_tolerance=_inheritance_tol,
             )
             _src = prox_result.get("source_summary", "")
             _src_part = f" [{_src}]" if _src else ""
+            _direct = prox_result.get("assigned_count", 0)
+            _inherited = prox_result.get("inherited_count", 0)
+            _total = _direct + _inherited
             warnings.append(
-                f"Proximity: {prox_result['assigned_count']}/{len(edge_segments)} segment cap aldi "
+                f"Proximity: {_direct} direct + {_inherited} inherited = "
+                f"{_total}/{len(edge_segments)} segment cap aldi "
                 f"({prox_result['text_pool_size']} text havuzdan{_src_part})"
             )
             for w in prox_result.get("warnings", []):

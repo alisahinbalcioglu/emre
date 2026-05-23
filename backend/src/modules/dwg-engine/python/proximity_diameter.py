@@ -252,6 +252,150 @@ def _extract_diameter_texts(doc, excluded_layers: set[str] | None = None) -> lis
     return texts
 
 
+def _segment_endpoints(seg) -> tuple[tuple[float, float], tuple[float, float]]:
+    """Segment'in iki ucunu (polyline varsa ilk+son vertex) döndürür.
+    Adjacency build için kullanılır — aynı endpoint'i paylaşan segment'ler komşu."""
+    pl = getattr(seg, "polyline", None) or []
+    if pl and len(pl) >= 2:
+        try:
+            return (
+                (float(pl[0][0]), float(pl[0][1])),
+                (float(pl[-1][0]), float(pl[-1][1])),
+            )
+        except (IndexError, TypeError, ValueError):
+            pass
+    c = seg.coords
+    return ((float(c[0]), float(c[1])), (float(c[2]), float(c[3])))
+
+
+def _build_segment_adjacency(
+    edge_segments: list[Any],
+    tolerance: float,
+) -> dict[int, list[int]]:
+    """Endpoint snap ile segment-segment adjacency dict.
+
+    Her segment'in 2 endpoint'i grid-bazlı snapla (tolerance büyüklüğünde
+    hücre); aynı hücreye düşen tüm segment'ler birbirinin komşusu.
+
+    Args:
+        edge_segments: list of EdgeSegment (Pydantic veya dict-like)
+        tolerance: endpoint snap tolerance (DWG world unit, genelde 50mm = 50)
+
+    Returns:
+        {segment_id: [komsu_segment_id'ler]}
+    """
+    if tolerance is None or tolerance <= 0:
+        tolerance = 50.0  # 50mm default — most DWG'ler mm cinsinden
+
+    def _node_key(x: float, y: float) -> tuple[int, int]:
+        return (int(round(x / tolerance)), int(round(y / tolerance)))
+
+    # Adım 1: her node_key'e düşen segment ID'lerini topla
+    node_to_segs: dict[tuple[int, int], list[int]] = {}
+    for seg in edge_segments:
+        try:
+            sid = seg.segment_id
+            ep1, ep2 = _segment_endpoints(seg)
+            for ep in (ep1, ep2):
+                key = _node_key(ep[0], ep[1])
+                bucket = node_to_segs.get(key)
+                if bucket is None:
+                    node_to_segs[key] = [sid]
+                elif sid not in bucket:
+                    bucket.append(sid)
+        except (AttributeError, TypeError, ValueError):
+            continue
+
+    # Adım 2: ortak node'a değen segment çiftleri komşu
+    adjacency: dict[int, set[int]] = {seg.segment_id: set() for seg in edge_segments}
+    for sid_list in node_to_segs.values():
+        if len(sid_list) < 2:
+            continue
+        for i, a in enumerate(sid_list):
+            for b in sid_list[i + 1:]:
+                adjacency[a].add(b)
+                adjacency[b].add(a)
+
+    return {sid: list(nbrs) for sid, nbrs in adjacency.items()}
+
+
+def _inherit_caps_via_bfs(
+    edge_segments: list[Any],
+    adjacency: dict[int, list[int]],
+) -> int:
+    """BFS ile cap-li segment'lerden komşu cap-siz segment'lere cap yay.
+
+    Kullanıcı talimatı: "bir sonraki T-noktasında çap tespit edilmemişse
+    bir önceki çap miras alınacak". Cap'li segment'ler "ankraj" — bunlardan
+    başlayıp komşulara cap'i yayan BFS aynı sonucu verir.
+
+    Cycle'larda (halka boru) visited set ile sonsuz döngü önlenir.
+
+    Args:
+        edge_segments: list of EdgeSegment — diameter field'i mutate edilir
+        adjacency: _build_segment_adjacency çıktısı
+
+    Returns:
+        kaç segment'e miras yapıldı
+    """
+    from collections import deque
+
+    seg_by_id = {}
+    for seg in edge_segments:
+        try:
+            seg_by_id[seg.segment_id] = seg
+        except AttributeError:
+            continue
+
+    queue: deque = deque()
+    visited: set[int] = set()
+
+    # Init: cap-li tüm segment'leri queue'ya at (ankraj)
+    for seg in edge_segments:
+        try:
+            sid = seg.segment_id
+            current = getattr(seg, "diameter", "") or ""
+            if current and current != "Belirtilmemis":
+                queue.append(sid)
+                visited.add(sid)
+        except AttributeError:
+            continue
+
+    inherited = 0
+    while queue:
+        sid = queue.popleft()
+        cur = seg_by_id.get(sid)
+        if cur is None:
+            continue
+        cur_diameter = getattr(cur, "diameter", "") or ""
+        if not cur_diameter:
+            continue
+
+        for nbr_id in adjacency.get(sid, []):
+            if nbr_id in visited:
+                continue
+            nbr = seg_by_id.get(nbr_id)
+            if nbr is None:
+                visited.add(nbr_id)
+                continue
+            nbr_diameter = getattr(nbr, "diameter", "") or ""
+            if nbr_diameter and nbr_diameter != "Belirtilmemis":
+                # Zaten dolu (kendi cap'i var), miras override etmez
+                visited.add(nbr_id)
+                continue
+            # MIRAS — komşu cap'i al, queue'ya ekle (zincir yayılım)
+            try:
+                nbr.diameter = cur_diameter
+                inherited += 1
+                visited.add(nbr_id)
+                queue.append(nbr_id)
+            except Exception:
+                visited.add(nbr_id)
+                continue
+
+    return inherited
+
+
 def _nearest_text(seg, texts: list[dict]) -> tuple[dict, float] | None:
     """Segment cizgisinin HERHANGI BIR NOKTASINDAN en yakin text'i + mesafesini
     dondur. Midpoint'ten degil — uzun borularda cap text borunun ucunda olsa
@@ -290,6 +434,7 @@ def assign_diameters_by_proximity(
     edge_segments: list[Any],   # list[EdgeSegment] — mutate in place
     sprinkler_layers: set[str] | None = None,
     max_distance_world: float | None = None,
+    inheritance_tolerance: float | None = None,
 ) -> dict:
     """
     Her edge_segment icin en yakin CAP TEXT'ini bul, segment.diameter ata.
@@ -354,12 +499,25 @@ def assign_diameters_by_proximity(
             logging.warning("proximity assign segment skip: %s", _e)
             continue
 
+    # ── FAZ 2 + 3: BFS inheritance ──
+    # Cap'i olmayan segment'lere, komşu cap-li segment'lerden cap yay.
+    # Kullanıcı talimati: "T-noktasında çap yoksa bir önceki çap miras alınır".
+    # BFS bu davranisi otomatik yapar — cap-li ankrajdan zincir gibi yayilir.
+    inherited = 0
+    try:
+        adjacency = _build_segment_adjacency(edge_segments, inheritance_tolerance or 50.0)
+        inherited = _inherit_caps_via_bfs(edge_segments, adjacency)
+    except Exception as _e:
+        warnings.append(f"BFS inheritance: {str(_e)[:100]}")
+        logging.warning("BFS inheritance failed: %s", _e)
+
     skipped = sum(
         1 for es in edge_segments
         if not (getattr(es, "diameter", "") or "")
     )
     return {
         "assigned_count": assigned,
+        "inherited_count": inherited,
         "skipped_count": skipped,
         "text_pool_size": pool_size,
         "source_summary": source_summary,
