@@ -587,25 +587,15 @@ def health():
         or os.environ.get("BUILD_SHA")
         or "local"
     )[:16]
-    # Deploy verification: yeni proximity_diameter modulu container'da var mi?
-    # Render Docker COPY layer cache eski snapshot tutuyorsa modul ImportError
-    # firlatir ve /parse'taki try/except sessizce yutar. Bu field ile teshis ederiz.
-    prox_status = "unknown"
-    prox_funcs = []
+    # proximity_diameter modulu container'da var mi? (deploy dogrulama)
     try:
         import proximity_diameter as _pd
         prox_status = "imported"
-        prox_funcs = [n for n in dir(_pd) if not n.startswith('_')]
+        _ = _pd.assign_diameters_by_proximity  # ensure attribute exists
     except ImportError as _e:
-        prox_status = f"ImportError: {str(_e)[:80]}"
+        prox_status = f"ImportError: {str(_e)[:60]}"
     except Exception as _e:
-        prox_status = f"{type(_e).__name__}: {str(_e)[:80]}"
-
-    # /app dizininde gercek file listesi (Dockerfile COPY *.py kontrolu)
-    try:
-        py_files = sorted([f for f in os.listdir("/app") if f.endswith(".py")])
-    except Exception:
-        py_files = []
+        prox_status = f"{type(_e).__name__}: {str(_e)[:60]}"
 
     return {
         "status": "ok",
@@ -614,8 +604,6 @@ def health():
         "cached_files": cached,
         "build_sha": build_sha,
         "proximity_module": prox_status,
-        "proximity_funcs": prox_funcs,
-        "py_files_in_app": py_files,
     }
 
 
@@ -1399,15 +1387,6 @@ async def parse_dwg(
         result_dict = await asyncio.to_thread(
             _run_parse_subprocess, dxf_path, params, 180
         )
-        # DIAG: subprocess sonrasi parent'ta echo — NestJS'in flag'i gercekten
-        # gonderip gondermedigini teyit eder (subprocess deploy cache'inden bagimsiz).
-        if isinstance(result_dict.get("warnings"), list):
-            result_dict["warnings"].insert(
-                0,
-                f"PARSE_ECHO: use_proximity_diameter={use_proximity_diameter!r} "
-                f"(type={type(use_proximity_diameter).__name__}) "
-                f"max_dist={proximity_max_distance!r}"
-            )
         # Subprocess zaten _json_safe ile sanitize ettiği için direkt response
         body = json.dumps(result_dict, allow_nan=False, ensure_ascii=False).encode('utf-8')
         return Response(content=body, media_type="application/json")
