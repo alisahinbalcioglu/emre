@@ -53,6 +53,12 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
+# Cache bust marker — Render Docker layer cache'i kod degisikliginde
+# bazen invalidate olmuyor (eski main.py serve ediyor). Bu ARG her commit'te
+# degisik degerle build edilince COPY layer'i kesin yeniden calisir.
+ARG CACHE_BUST=v2-proximity
+RUN echo "Build marker: $CACHE_BUST"
+
 # Sonra kaynak kodu — kod degisikliginde sadece bu layer rebuild olur
 COPY *.py ./
 
