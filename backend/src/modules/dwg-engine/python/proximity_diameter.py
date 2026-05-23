@@ -34,15 +34,29 @@ from typing import Any
 # "KM80" gibi prefix'leri filtrelemek icin: cap match'ten ONCE harf gelmemeli
 # (negative lookbehind \b ile). "HDPE 100" once kelime/sayi olabilir, ama
 # "Ø" karakteri kendi basina yeterli isaret.
+# Ana regex — explicit cap belirteci olan format'lar (Ø, DN, ", mm, kesir).
+# Pure sayidan ONCE denenir; "HDPE 100 PN 16 Ø200" -> "Ø200" almak icin.
 _DIAMETER_TEXT_RE = re.compile(
     r"""(
-          [ØØ]\s*\d+([./\s]+\d+)?(\s*["″])?            # Ø200, Ø 50, Ø1 1/4
-        | (?<![A-Za-zÇĞİÖŞÜçğıöşü])[Dd][Nn]\s*\d+        # DN100 (KM, PN onunde olamaz)
-        | (?<![\d.])\d+\s*[/]\s*\d+\s*["″]               # 1/2", 3/4" (inch'li kesir)
-        | (?<![\d.])\d+\s+\d+\s*[/]\s*\d+\s*["″]?        # 1 1/4, 1 1/4"
-        | (?<![\d.])\d+\s*["″]                           # 2", 4"
-        | (?<![\d.])\d{2,3}\s*(mm|MM)\b                   # 50mm, 100 mm (en az 2 hane)
+          [ØØ]\s*\d+([./\s]+\d+)?(\s*["″])?                                # Ø200, Ø 50, Ø1 1/4
+        | (?<![A-Za-zÇĞİÖŞÜçğıöşü])[Dd][Nn]\s*\d+                            # DN100
+        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])\d+\s*[/]\s*\d+\s*["″]?                # 1/2, 3/4"
+        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])\d+\s+\d+\s*[/]\s*\d+\s*["″]?          # 1 1/4, 1 1/4"
+        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])\d+\s*[½¼¾]\s*["″]?                    # 1½, 2½ (Unicode)
+        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])[½¼¾]\s*["″]?                           # ½ (tek basina)
+        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])\d+\s*["″]                              # 2", 4"
+        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])\d{2,3}\s*(mm|MM)\b                    # 50mm, 100 mm
     )""",
+    re.VERBOSE,
+)
+
+# Fallback — sik mm cap degerlerinin pure sayi versiyonu (15/20/.../250).
+# Sahsi tesisat planlarinda boru yaninda "25", "50", "70" yazilir.
+# SADECE string'de ana regex match etmiyorsa kullanilir (Ø/DN onceliklidir).
+_DIAMETER_FALLBACK_RE = re.compile(
+    r"""(?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])
+        (?:1[05]|20|25|32|40|50|65|70|80|100|125|150|200|250)
+        (?![\d.A-Za-zÇĞİÖŞÜçğıöşü])""",
     re.VERBOSE,
 )
 
@@ -102,9 +116,13 @@ def _extract_diameter_texts(doc, excluded_layers: set[str] | None = None) -> lis
             txt = _autocad_decode(raw).strip()
             if not txt:
                 continue
-            # Cap-format regex EXTRACT: string icinde cap pattern'i ara,
-            # bulunan kismi cap olarak al. "HDPE 100 PN 16 Ø200" -> "Ø200".
+            # Iki asamali extract:
+            #   1. Ana regex (Ø/DN/inch/kesir/mm) — explicit cap belirteci
+            #   2. Yoksa fallback (pure 15/20/.../250 sayilari, sihhi tesisat)
+            # "HDPE 100 PN 16 Ø200" -> "Ø200" (ana), "25" -> "25" (fallback).
             m = _DIAMETER_TEXT_RE.search(txt)
+            if not m:
+                m = _DIAMETER_FALLBACK_RE.search(txt)
             if not m:
                 continue
             extracted = m.group(0).strip()

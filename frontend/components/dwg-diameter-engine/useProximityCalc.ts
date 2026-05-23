@@ -75,10 +75,11 @@ export function useProximityCalc({ fileId, scale, sprinklerLayers, onResult }: U
           layer_default_diameter: JSON.stringify(defaultDiameterMap),
           sprinkler_layers: JSON.stringify(sprinklerLayers),
           use_proximity_diameter: 'true',   // PRD kritik flag
-          // 2000mm = 2m: segment midpoint'inden >2m uzaktaki text'ler
-          // (sayfa basligi, oda no vb.) yanlislikla atanmasin. DWG'lerde
-          // gercek cap etiketleri borunun BITISIK noktasinda olur (genelde <1m).
-          proximity_max_distance: '2000',
+          // 500mm = 50cm: cap text borunun BITISIK noktasinda olur. Daha uzak
+          // text'ler (sayfa basligi, kapasite degeri, sembol etiketi) atanmasin.
+          // Sihhi tesisat planlarinda "25", "50" gibi pure sayilar yazildigi
+          // icin sıkı mesafe esigi yanlis atamayi onler.
+          proximity_max_distance: '500',
         });
 
         const formData = new FormData();
