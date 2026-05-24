@@ -9,9 +9,11 @@ CAP-TEXT TANIMI:
   Text'in icinde cap belirteci VARSA o text cap-text'tir:
     - Ø veya Ø prefix              (Ø200, Ø50)
     - DN/dn prefix                 (DN150)
-    - inch suffix (\")              (2\", 1 1/4\")
+    - inch suffix (", ″, '')        (2", 1 1/4", 1'')
     - mm suffix                    (50mm, 100 mm)
-    - kesir (/) veya Unicode ½¼¾   (1/2, 2½)
+    - kesir (/) — SADECE payda 2/4/8/16 (inç standardi: 1/2, 3/4, 1 1/4)
+    - Unicode kesir ½¼¾            (1½, 2½)
+  Kesir paydasi >16 olanlar REDDEDILIR (100/210, 1/50, 50/50 sahte cap).
   Sahte text'leri (YD, YK, '2', 'YANGIN DOLABI', basliklar) eler.
   Bu filter olmadan 569 segmente bilmem ne text'i atanir.
 
@@ -32,16 +34,20 @@ from typing import Any
 # Cap-belirteci regex — text icinde Ø/DN/inch/mm/kesir VAR MI?
 # Bulunan match'in extract'i (örn. 'HDPE 100 PN 16 Ø200' -> 'Ø200') cap olur.
 # Anchor'siz: string'in herhangi bir yerinde olabilir.
+#
+# Inch isareti varyantlari: "  ″  '' (iki tek-tirnak, AutoCAD/TR klavyeden)
+# Kesir paydasi WHITELIST: SADECE 2/4/8/16 (inç standardi).
+# Bu kural 100/210, 1/50, 50/50, 90/210 gibi kanal/spec format'larini eler.
 _CAP_PATTERN = re.compile(
     r"""(
-          [ØØ]\s*\d+([./\s]+\d+)?(\s*["″])?                          # Ø200, Ø1 1/4
-        | (?<![A-Za-zÇĞİÖŞÜçğıöşü])[Dd][Nn]\s*\d+                     # DN100
-        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])\d+\s*[/]\s*\d+\s*["″]?         # 1/2, 3/4"
-        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])\d+\s+\d+\s*[/]\s*\d+\s*["″]?   # 1 1/4
-        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])\d+\s*[½¼¾]\s*["″]?             # 1½, 2½
-        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])[½¼¾]\s*["″]?                   # ½
-        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])\d+\s*["″]                      # 2", 4"
-        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])\d{2,3}\s*(mm|MM)\b             # 50mm
+          [ØØ]\s*\d+([./\s]+\d+)?(\s*(?:["″]|''))?                              # Ø200, Ø1 1/4
+        | (?<![A-Za-zÇĞİÖŞÜçğıöşü])[Dd][Nn]\s*\d+                                # DN100
+        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])\d+\s+\d+\s*/\s*(?:2|4|8|16)\b\s*(?:["″]|'')?  # 1 1/4 (mixed, payda whitelist)
+        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])\d+\s*/\s*(?:2|4|8|16)\b\s*(?:["″]|'')?        # 1/2, 3/4" (payda whitelist)
+        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])\d+\s*[½¼¾]\s*(?:["″]|'')?                    # 1½, 2½
+        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])[½¼¾]\s*(?:["″]|'')?                          # ½
+        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])\d+\s*(?:["″]|'')                              # 2", 4", 1''
+        | (?<![A-Za-zÇĞİÖŞÜçğıöşü\d.])\d{2,3}\s*(mm|MM)\b                            # 50mm
     )""",
     re.VERBOSE,
 )
