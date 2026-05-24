@@ -343,7 +343,17 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
       <div className="flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-blue-300 bg-blue-50/50 py-16">
         <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
         <p className="text-sm font-medium text-blue-700">Proje hazirlaniyor...</p>
-        <p className="text-xs text-blue-400">{elapsed} saniye · {file?.name}</p>
+        <p className="text-xs text-blue-400">{elapsed} saniye · {file?.name || restoredFileName}</p>
+        {/* Cikis kapisi: deploy/restart sirasinda cache TTL gectiyse 422 ile takilabilir,
+            ya da kullanici farkli dosya yuklemek isteyebilir. Loading'den her zaman
+            cikabilsin. resetAll state'i + localStorage'i temizler. */}
+        <button
+          type="button"
+          onClick={resetAll}
+          className="mt-2 rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50"
+        >
+          Iptal — yeniden yukle
+        </button>
       </div>
     );
   }
