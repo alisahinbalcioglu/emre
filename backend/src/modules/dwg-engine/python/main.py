@@ -561,8 +561,11 @@ def analyze_dxf_metraj(
                     "skipped_count": prox_result.get("skipped_count", 0),
                     "text_pool_size": prox_result.get("text_pool_size", 0),
                     "source_summary": _src,
+                    "max_distance_world": prox_result.get("max_distance_world"),
+                    "out_of_range_text_count": prox_result.get("out_of_range_text_count", 0),
                     "rejected_texts": prox_result.get("debug_rejected_texts", []),
                     "accepted_sample": prox_result.get("debug_accepted_sample", []),
+                    "assignment_sample": prox_result.get("debug_assignment_sample", []),
                 }
         except Exception as _e:
             warnings.append(f"Proximity diameter: {str(_e)[:100]}")

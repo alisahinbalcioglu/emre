@@ -373,7 +373,8 @@ class TestExtractAllTexts:
 
 
 # ════════════════════════════════════════════════════════════════════════
-#  5) assign_diameters_by_proximity — mutual nearest atama
+#  5) assign_diameters_by_proximity — segment-perspective naive nearest
+#     (max_distance, paylasimli atama, diagnostic)
 # ════════════════════════════════════════════════════════════════════════
 
 class _FakeEdge:
@@ -418,22 +419,72 @@ class TestAssignDiametersByProximity:
         assert result["text_pool_size"] == 0
         assert any("cap belirteci" in w.lower() for w in result["warnings"])
 
-    def test_mutual_nearest_one_text_one_segment(self):
-        """Bir text -> sadece kendine en yakin segment'e atanir, diger segment Belirtilmemis."""
+    def test_far_segment_not_assigned_due_to_max_distance(self):
+        """Tek text + 2 segment: yakin segment alir, uzak segment Belirtilmemis kalir.
+
+        Default max_distance = 2000mm. Uzak segment 1000 birim ileride (DWG world)
+        ama text'le aralarinda 1000-3000mm mesafe -> max_distance asilir, atanmaz."""
         doc = ezdxf.new()
-        # Tek bir cap text (5, 0)
         doc.modelspace().add_text("Ø75",
                                    dxfattribs={"insert": (5, 0), "height": 50, "layer": "L1"})
-        # Iki segment: yakindaki (segment 1: 0,0->10,0) + uzaktaki (segment 2: 0,1000->10,1000)
         edges = [
-            _FakeEdge(1, 0, 0, 10, 0),
-            _FakeEdge(2, 0, 1000, 10, 1000),
+            _FakeEdge(1, 0, 0, 10, 0),                    # text yakin
+            _FakeEdge(2, 0, 5000, 10, 5000),              # text 5000 uzak (>2000)
         ]
         result = assign_diameters_by_proximity(doc, edges)
-        # Sadece text-perspective en yakin segment kazanir -> segment 1
         assert edges[0].diameter == "Ø75"
         assert edges[1].diameter in ("", "Belirtilmemis", None)
         assert result["assigned_count"] == 1
+
+    def test_shared_text_between_two_close_segments(self):
+        """Ayni cap-text 2 yakin segmente paylasilabilir (T-junction senaryosu).
+
+        Onceki mutual nearest mantigi text'i sadece TEK segmente atadigi icin
+        diger segment Belirtilmemis kaliyordu. Segment-perspective: ikisi de alir."""
+        doc = ezdxf.new()
+        doc.modelspace().add_text("Ø50",
+                                   dxfattribs={"insert": (5, 0), "height": 50, "layer": "L1"})
+        edges = [
+            _FakeEdge(1, 0, 0, 10, 0),    # text segment uzerinde
+            _FakeEdge(2, 5, 0, 5, 50),    # text bu segment'in baslangic noktasinda
+        ]
+        result = assign_diameters_by_proximity(doc, edges)
+        # IKISI de Ø50 almalı — paylasimli atama (T-junction'da dogal)
+        assert edges[0].diameter == "Ø50"
+        assert edges[1].diameter == "Ø50"
+        assert result["assigned_count"] == 2
+
+    def test_max_distance_override_to_unlimited(self):
+        """max_distance=0 verildiginde sinir kapanmali (eski davranis)."""
+        doc = ezdxf.new()
+        doc.modelspace().add_text("Ø100",
+                                   dxfattribs={"insert": (10000, 0), "height": 50, "layer": "L1"})
+        edges = [_FakeEdge(1, 0, 0, 10, 0)]
+        # Default ile uzak (10000 birim) -> atanmaz
+        result_default = assign_diameters_by_proximity(doc, edges)
+        assert result_default["assigned_count"] == 0
+        # max_distance=0 (sinir kapali) -> atanir
+        edges2 = [_FakeEdge(1, 0, 0, 10, 0)]
+        result_unlimited = assign_diameters_by_proximity(doc, edges2, max_distance_world=0)
+        assert result_unlimited["assigned_count"] == 1
+        assert edges2[0].diameter == "Ø100"
+
+    def test_uzak_text_kazanamaz_bug_regression(self):
+        """REGRESYON TESTI: kullanici raporu — borunun yaninda 'Ø50' var ama
+        baska layer'da uzakta '1\"' var; mevcut mantik '1\"' atadi. Yeni mantik
+        (segment-perspective + max_distance) yakin Ø50'yi atamali."""
+        doc = ezdxf.new()
+        msp = doc.modelspace()
+        # Borunun YANINDA Ø50 text
+        msp.add_text("Ø50", dxfattribs={"insert": (5, 5), "height": 50, "layer": "L1"})
+        # UZAKTA, baska layer'da, 1" text
+        msp.add_text('1"', dxfattribs={"insert": (10000, 10000), "height": 50,
+                                       "layer": "BAŞKA_LAYER"})
+        edges = [_FakeEdge(1, 0, 0, 10, 0, layer="L1")]
+        result = assign_diameters_by_proximity(doc, edges)
+        assert edges[0].diameter == "Ø50", (
+            f"Yakin Ø50 yerine uzak text atanmis: {edges[0].diameter!r}"
+        )
 
     def test_pool_size_guard_warning(self):
         """Pool >3000 olunca uyari ekleniyor (synthetic test)."""
@@ -471,5 +522,13 @@ class TestAssignDiametersByProximity:
         result = assign_diameters_by_proximity(doc, edges)
         assert "debug_rejected_texts" in result
         assert "debug_accepted_sample" in result
+        assert "debug_assignment_sample" in result
         assert any(r["raw"] == "YD" for r in result["debug_rejected_texts"])
         assert any(s["value"] == "Ø50" for s in result["debug_accepted_sample"])
+        # assignment_sample'da segmente atanan cap + mesafe gozukmeli
+        assert len(result["debug_assignment_sample"]) >= 1
+        first = result["debug_assignment_sample"][0]
+        assert first["assigned_diameter"] == "Ø50"
+        assert first["distance_world"] >= 0.0
+        assert "text_layer" in first
+        assert "segment_layer" in first

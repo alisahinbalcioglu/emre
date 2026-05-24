@@ -17,8 +17,12 @@ CAP-TEXT TANIMI:
   Sahte text'leri (YD, YK, '2', 'YANGIN DOLABI', basliklar) eler.
   Bu filter olmadan 569 segmente bilmem ne text'i atanir.
 
-DIGER:
-  - max_distance YOK (sinirsiz — havuzdaki en yakin cap-text kazanir)
+ATAMA MANTIGI:
+  - SEGMENT-PERSPECTIVE NAIVE NEAREST: her segment kendi en yakin text'ini
+    alir. Ayni text birden fazla segmente paylasilabilir (T-junction'da ayni
+    cap kardes borulara uygular).
+  - MESAFE SINIRI: DEFAULT_MAX_DISTANCE_WORLD (2000mm world unit, ~2m).
+    Asan text'ler atanmaz; uzak text'in segmente zorla yakistirilmasini onler.
   - BFS YOK (gereksiz kompleksite)
   - Sprinkler layer text'leri hariç (kullanici manuel isaretledi -> ID)
   - Kullanici yanlis goruse DiameterEditPopup ile manuel duzeltir
@@ -520,6 +524,13 @@ def _segment_distance(seg, tx: float, ty: float) -> float:
     return seg_d
 
 
+# Mesafe sınırı default (DWG world unit, scale 0.001 ile 2 metre).
+# Cap text'i segmente bu mesafeden uzaksa atanmaz — uzak text'in "kazanmasini"
+# onler. Pool BLOCK_TEXT ile buyudukten sonra (15000+) bu kritik. 81960eb refactor'unda
+# kaldirilmisti, BLOCK_TEXT genislemesiyle birlikte geri eklendi.
+DEFAULT_MAX_DISTANCE_WORLD = 2000.0
+
+
 def assign_diameters_by_proximity(
     doc,
     edge_segments: list[Any],
@@ -528,25 +539,37 @@ def assign_diameters_by_proximity(
     inheritance_tolerance: float | None = None,
 ) -> dict:
     """
-    MUTUAL NEAREST: Her cap-text icin en yakin segment'i bul (text-perspective).
-    Sonra her segment'e — kendisini en yakin segment olarak goren text'lerin
-    EN YAKIN olani — cap olarak atanir.
+    SEGMENT-PERSPECTIVE NAIVE NEAREST: Her segment KENDI en yakin cap-text'ini
+    alir. Mesafe DEFAULT_MAX_DISTANCE_WORLD sinirini asan text'ler atanmaz.
+    Ayni text birden fazla yakin segmente paylasilabilir (T-junction'da ayni
+    cap zaten kardes borulara uygulanir).
 
-    Avantaj: bir text birden fazla segment'e atanmaz. "2½\"" text'i hangi
-    segment'e fiziksel olarak en yakinsa OYU segmente atanir, baska segment'ler
-    bu text'i 'kapamaz'.
+    Onceki "mutual nearest" (text-perspective, tek-text-tek-segment kapma)
+    mantigi BLOCK_TEXT havuzu buyudukten sonra kullaniciya yanlis sonuc
+    veriyordu: borunun yanindaki text bir kardes boruya kapilinca, bu boru
+    uzaktaki bambaska bir text'i 'en yakin' aliyordu. Basit mantik daha
+    saglam: "borunun yaninda text var -> al, yoksa Belirtilmemis."
 
     Args:
         doc: ezdxf Drawing
         edge_segments: list of EdgeSegment — diameter field'i mutate edilir
         sprinkler_layers: bu layer'lardaki text'ler havuzdan dusurulur
-        max_distance_world: kullanilmiyor (backward compat)
+        max_distance_world: DWG world unit cinsinden maks text-segment mesafesi.
+          None -> DEFAULT_MAX_DISTANCE_WORLD (2000mm). 0 veya negatif -> sinir yok.
         inheritance_tolerance: kullanilmiyor (backward compat)
 
     Returns:
         {assigned_count, skipped_count, text_pool_size, source_summary,
-         warnings, inherited_count(=0)}
+         warnings, inherited_count(=0), max_distance_world, out_of_range_*,
+         debug_*}
     """
+    # Efektif mesafe sınırı — None ise default, <=0 ise sinir yok
+    if max_distance_world is None:
+        effective_max_dist = DEFAULT_MAX_DISTANCE_WORLD
+    elif max_distance_world <= 0:
+        effective_max_dist = math.inf
+    else:
+        effective_max_dist = float(max_distance_world)
     warnings: list[str] = []
     # DIAGNOSTIC: regex'i geçemeyen ham text'leri topla — response'a forward edilir.
     # "Neden '2½\"' atanmadi" gibi sorularda kullanici F12 Console'da gorebilsin.
@@ -567,8 +590,11 @@ def assign_diameters_by_proximity(
             "text_pool_size": 0,
             "source_summary": "",
             "warnings": warnings,
+            "max_distance_world": effective_max_dist if effective_max_dist != math.inf else None,
+            "out_of_range_text_count": 0,
             "debug_rejected_texts": debug_rejected[:50],
             "debug_accepted_sample": [],
+            "debug_assignment_sample": [],
         }
 
     from collections import Counter
@@ -584,43 +610,67 @@ def assign_diameters_by_proximity(
             f"Proximity: cap-text havuzu BUYUK ({pool_size}). Hesaplama yavaslayabilir."
         )
 
-    # ── ADIM 1: Her text icin en yakin segment bul (text-perspective) ──
-    # segment_to_texts[seg_idx] = [(text_dict, distance), ...] — bu segmente "ait" text'ler
-    segment_to_texts: dict[int, list[tuple[dict, float]]] = {}
-    for t in texts:
-        tx, ty = t["x"], t["y"]
-        best_seg_idx = -1
-        best_d = math.inf
-        for idx, es in enumerate(edge_segments):
-            try:
-                d = _segment_distance(es, tx, ty)
-                if d < best_d:
-                    best_d = d
-                    best_seg_idx = idx
-            except Exception:
-                continue
-        if best_seg_idx >= 0:
-            segment_to_texts.setdefault(best_seg_idx, []).append((t, best_d))
-
-    # ── ADIM 2: Her segmente kendi text'lerinin EN YAKIN olanini ata ──
+    # ── SEGMENT-PERSPECTIVE NAIVE NEAREST ────────────────────────────
+    # Her segment KENDI en yakin cap-text'ini alir (mesafe sinirinin altinda
+    # kalmak kosuluyla). Onceki "mutual nearest" mantigi (her text TEK bir
+    # segmente kapanir) kullaniciya yanlis sonuc veriyordu: borunun YANINDAKI
+    # text bir kardes boruya daha yakin oldugunda, kapilan text'i bu boru
+    # alamiyordu ve UZAKTAKI bambaska bir text'i 'en yakin' oluyordu.
+    # Basit mantik: "borunun yaninda text var -> onu al". Ayni text birden
+    # fazla yakin segmente paylasilabilir (T-junction'da zaten ayni cap gecerli).
+    # DIAGNOSTIC: ilk 60 atamanin (segment, text, mesafe, layer) bilgisini sample'a koy.
     assigned = 0
+    out_of_range_count = 0
+    assignment_sample: list[dict] = []
     for idx, es in enumerate(edge_segments):
         try:
             current = getattr(es, "diameter", "") or ""
             if current and current != "Belirtilmemis":
                 continue  # manuel override korunur
-            text_candidates = segment_to_texts.get(idx, [])
-            if not text_candidates:
-                continue  # bu segmente hicbir text 'ait' degil -> Belirtilmemis
-            # En yakin candidate
-            best_text, _ = min(text_candidates, key=lambda x: x[1])
+            # Bu segmente en yakin text'i ara
+            best_text: dict | None = None
+            best_d = effective_max_dist  # mesafe siniri — bunun ustu sayilmaz
+            for t in texts:
+                try:
+                    d = _segment_distance(es, t["x"], t["y"])
+                    if d < best_d:
+                        best_d = d
+                        best_text = t
+                except Exception:
+                    continue
+            if best_text is None:
+                # Bu segmente mesafe sinirinin altinda hicbir text yok -> Belirtilmemis
+                continue
             es.diameter = best_text["value"]
             assigned += 1
+            if len(assignment_sample) < 60:
+                seg_layer = getattr(es, "layer", "") or ""
+                seg_id = getattr(es, "segment_id", idx)
+                assignment_sample.append({
+                    "segment_id": int(seg_id),
+                    "segment_layer": seg_layer,
+                    "assigned_diameter": best_text["value"],
+                    "distance_world": round(best_d, 2),
+                    "text_layer": best_text.get("layer", ""),
+                    "text_source": best_text.get("source", ""),
+                    "text_xy": [round(best_text["x"], 1), round(best_text["y"], 1)],
+                })
         except Exception as _e:
-            logging.warning("mutual nearest skip: %s", _e)
+            logging.warning("proximity nearest skip: %s", _e)
             continue
 
-    skipped = sum(1 for es in edge_segments if not (getattr(es, "diameter", "") or ""))
+    # Mesafe siniri yuzunden atanmayan segment'leri say (warning icin)
+    out_of_range_count = sum(
+        1 for es in edge_segments
+        if not (getattr(es, "diameter", "") or "")
+    )
+
+    skipped = out_of_range_count
+    if out_of_range_count > 0 and effective_max_dist != math.inf:
+        warnings.append(
+            f"Proximity: {out_of_range_count} segmente mesafe sinirinin ({effective_max_dist:g}) "
+            f"altinda cap-text bulunamadi."
+        )
     # DIAGNOSTIC: kabul edilmis text'lerden ilk 50 ornek + codepoint dump.
     # Production'a sokmadan once kaldirilacak.
     accepted_sample: list[dict] = []
@@ -641,6 +691,9 @@ def assign_diameters_by_proximity(
         "text_pool_size": pool_size,
         "source_summary": source_summary,
         "warnings": warnings,
+        "max_distance_world": effective_max_dist if effective_max_dist != math.inf else None,
+        "out_of_range_text_count": out_of_range_count,
         "debug_rejected_texts": debug_rejected[:50],
         "debug_accepted_sample": accepted_sample,
+        "debug_assignment_sample": assignment_sample,
     }
