@@ -289,6 +289,14 @@ def _extract_block_texts(
         text_iter = []
     for ent in text_iter:
         try:
+            # KRITIK FILTER (geometry.py:272 ile ayni): invisible entity'leri ATLA.
+            # AutoCAD dynamic block'larda block icinde HER variant icin TEXT entity
+            # bulunur, sadece bir tanesi visible olur (dxf.invisible=0). Bu filter
+            # olmazsa proximity TUM variants'i goruyor ve yanlis cap atiyordu —
+            # ornek: *U112 ('2½"' block) icinde '1"', '1¼"', '2"', '2½"' TEXT'leri
+            # var; visible olan sadece '2½"'. Bu kontrol olmadan '1"' atanyordu.
+            if getattr(ent.dxf, "invisible", 0) == 1:
+                continue
             etype = ent.dxftype()
             if etype == "TEXT":
                 raw = str(getattr(ent.dxf, "text", "") or "")
@@ -380,6 +388,9 @@ def _extract_block_texts(
                 n_text_iter = []
             for ent in n_text_iter:
                 try:
+                    # Invisible filter (dynamic block visibility — geometry.py:272 ile ayni)
+                    if getattr(ent.dxf, "invisible", 0) == 1:
+                        continue
                     etype = ent.dxftype()
                     if etype == "TEXT":
                         raw = str(getattr(ent.dxf, "text", "") or "")

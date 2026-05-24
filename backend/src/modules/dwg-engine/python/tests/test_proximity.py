@@ -314,6 +314,35 @@ class TestBlockTextExtraction:
         results = _extract_block_texts(doc, ins)
         assert results == []
 
+    def test_invisible_text_filtered(self):
+        """REGRESYON: AutoCAD dynamic block — bir block icinde HER cap variant
+        icin TEXT entity var, sadece BIRI visible. dxf.invisible=1 olanlar
+        proximity pool'una girmemelidir. Aksi halde yanlis cap atanir.
+
+        Kullanici raporu: *U112 (2½\") block'unda '1\"', '2½\"' her ikisi de
+        TEXT entity olarak var; visible olan '2½\"' ama proximity ESKI hali
+        '1\"' aliyordu — invisible filter yoktu."""
+        doc = ezdxf.new(dxfversion="R2018")
+        block = doc.blocks.new(name="DYN_CAP")
+        # Visible variant
+        block.add_text('2½"', dxfattribs={
+            "insert": (0, 0), "height": 50, "layer": "0", "invisible": 0,
+        })
+        # Hidden alternative variants (invisible=1) — dynamic block stub'lari
+        block.add_text('1"', dxfattribs={
+            "insert": (0, 0), "height": 50, "layer": "0", "invisible": 1,
+        })
+        block.add_text('1¼"', dxfattribs={
+            "insert": (0, 0), "height": 50, "layer": "0", "invisible": 1,
+        })
+        ins = doc.modelspace().add_blockref(
+            "DYN_CAP", insert=(100, 200), dxfattribs={"layer": "A_Yangin_Cap"},
+        )
+        results = _extract_block_texts(doc, ins)
+        # Sadece visible variant pool'a girmeli
+        values = [r[0] for r in results]
+        assert values == ['2½"'], f"Expected only ['2½\"'], got {values}"
+
 
 # ════════════════════════════════════════════════════════════════════════
 #  4) _extract_all_texts — entegrasyon (modelspace + block_text + filter)
