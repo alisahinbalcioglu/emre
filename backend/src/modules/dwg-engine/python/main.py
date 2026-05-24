@@ -538,11 +538,17 @@ def analyze_dxf_metraj(
             # _node_tol main.py:519'da hesaplanmıştı (edge segment extraction'da).
             # BFS inheritance için endpoint snap tolerance olarak kullan.
             _inheritance_tol = locals().get("_node_tol", None)
+            # KRITIK: edge_segments coords'lari yukarida _vt (view_transform)
+            # ile transform edildi. Proximity'nin text pozisyonlarini AYNI space'e
+            # tasimasi icin view_transform'u geciriyoruz; aksi halde "en yakin
+            # text" yanlis hesaplanir (text ham DXF space'inde, edge view space'te).
+            _prox_view_t = locals().get("view_t", None) if locals().get("_has_view_rot", False) else None
             prox_result = assign_diameters_by_proximity(
                 doc, edge_segments,
                 sprinkler_layers=set(sprinkler_layers_manual or []),
                 max_distance_world=proximity_max_distance,
                 inheritance_tolerance=_inheritance_tol,
+                view_transform=_prox_view_t,
             )
             _src = prox_result.get("source_summary", "")
             _src_part = f" [{_src}]" if _src else ""

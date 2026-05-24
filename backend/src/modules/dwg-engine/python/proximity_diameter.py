@@ -209,10 +209,25 @@ def _layers_thematically_compatible(text_layer: str, seg_layer: str) -> bool:
     return bool(twords & swords)
 
 
+def _apply_view_transform(
+    x: float, y: float,
+    view_transform: tuple[float, float, float, float, float, float] | None,
+) -> tuple[float, float]:
+    """Geometry'nin _transform_point ile aynisi — proximity space'i edge_segments
+    space'iyle ayni tutar. None ise identity (x, y) doner."""
+    if view_transform is None:
+        return x, y
+    cos_t, sin_t, tx, ty, cx, cy = view_transform
+    rx = (x - cx) * cos_t - (y - cy) * sin_t + cx + tx
+    ry = (x - cx) * sin_t + (y - cy) * cos_t + cy + ty
+    return rx, ry
+
+
 def _extract_block_texts(
     doc,
     insert_entity,
     parent_layer: str | None = None,
+    view_transform: tuple[float, float, float, float, float, float] | None = None,
     _depth: int = 0,
     _visited: frozenset[str] = frozenset(),
 ) -> list[tuple[str, float, float, str]]:
@@ -289,6 +304,9 @@ def _extract_block_texts(
             lp = ent.dxf.insert
             lx, ly = float(lp.x), float(lp.y)
             wx, wy = _local_to_world(lx, ly)
+            # KRITIK: view_transform uygulanmali (edge_segments view space'te,
+            # text de ayni space'te olmali; yoksa mesafe hesabi YANLIS).
+            wx, wy = _apply_view_transform(wx, wy, view_transform)
             # P0b: TEXT'in kendi layer'i "0" ise parent INSERT layer'i
             ent_layer = str(getattr(ent.dxf, "layer", "") or "")
             effective = effective_parent_layer if ent_layer in ("", "0") else ent_layer
@@ -376,6 +394,8 @@ def _extract_block_texts(
                         continue
                     lp = ent.dxf.insert
                     wx, wy = _l2w_nested(float(lp.x), float(lp.y))
+                    # View transform uyumu (edge space'iyle ayni olsun)
+                    wx, wy = _apply_view_transform(wx, wy, view_transform)
                     ent_layer = str(getattr(ent.dxf, "layer", "") or "")
                     effective = nested_effective_parent if ent_layer in ("", "0") else ent_layer
                     results.append((txt, wx, wy, effective))
@@ -388,6 +408,7 @@ def _extract_block_texts(
                 deeper = _extract_block_texts(
                     doc, nested,
                     parent_layer=nested_effective_parent,
+                    view_transform=view_transform,
                     _depth=_depth + 2,  # iki seviye ileri — bu fonk + recursive
                     _visited=new_visited,
                 )
@@ -410,6 +431,7 @@ def _extract_all_texts(
     doc,
     excluded_layers: set[str] | None = None,
     debug_rejected: list[dict] | None = None,
+    view_transform: tuple[float, float, float, float, float, float] | None = None,
 ) -> list[dict]:
     """DXF modelspace'inden TUM text-bearing entity'leri cikar.
     Filter YOK — TEXT/MTEXT/DIMENSION/MULTILEADER/MLEADER/INSERT ATTRIB
@@ -429,19 +451,16 @@ def _extract_all_texts(
         return texts
 
     def _add(txt_raw: str, x: float, y: float, layer: str, source: str) -> None:
-        """Cap belirteci filter + extract. Yoksa havuza alma."""
+        """Cap belirteci filter + extract. Yoksa havuza alma.
+        Pozisyon view_transform ile edge_segments space'ine tasinir."""
         txt = _autocad_decode(txt_raw or "").strip()
         if not txt:
             return
+        # KRITIK: pozisyonu edge space'e tasiyan view_transform uygulanmali
+        x, y = _apply_view_transform(float(x), float(y), view_transform)
         m = _CAP_PATTERN.search(txt)
         if not m:
-            # 'YD', 'YK', '2', 'YANGIN DOLABI' vb. eler — ama debug icin
-            # ham metni kaydet ki kullanici "neden '2½\"' atanmadi" gibi
-            # sorularini cozebilelim. Caller list vermisse pushla.
             if debug_rejected is not None and len(debug_rejected) < 200:
-                # Ham karakterleri Unicode codepoint listesi ile birlikte ver —
-                # ekranda goremedigimiz garip karakterleri (stacked fraction
-                # kontrol kodlari, BOM, vs.) tanimak icin.
                 codepoints = [f"U+{ord(c):04X}" for c in txt[:40]]
                 debug_rejected.append({
                     "raw": txt,
@@ -456,7 +475,7 @@ def _extract_all_texts(
             return
         texts.append({
             "x": float(x), "y": float(y),
-            "value": extracted,   # 'HDPE 100 PN 16 Ø200' -> 'Ø200'
+            "value": extracted,
             "layer": layer, "source": source,
         })
 
@@ -556,7 +575,11 @@ def _extract_all_texts(
                 # P0a: Nested INSERT'leri de takip eder (max depth 4, cyclic guard).
                 # P0b: Block TEXT'in dxf.layer "0" ise parent INSERT layer'ina dusurulur.
                 try:
-                    block_texts = _extract_block_texts(doc, entity, parent_layer=layer)
+                    block_texts = _extract_block_texts(
+                        doc, entity,
+                        parent_layer=layer,
+                        view_transform=view_transform,
+                    )
                     for btxt, wx, wy, blayer in block_texts:
                         # Sprinkler/excluded layer filtresini block TEXT'lere de uygula
                         if blayer in excluded_layers:
@@ -627,6 +650,7 @@ def assign_diameters_by_proximity(
     sprinkler_layers: set[str] | None = None,
     max_distance_world: float | None = None,
     inheritance_tolerance: float | None = None,
+    view_transform: tuple[float, float, float, float, float, float] | None = None,
 ) -> dict:
     """
     SEGMENT-PERSPECTIVE NAIVE NEAREST: Her segment KENDI en yakin cap-text'ini
@@ -669,6 +693,7 @@ def assign_diameters_by_proximity(
         doc,
         excluded_layers=sprinkler_layers,
         debug_rejected=debug_rejected,
+        view_transform=view_transform,
     )
     pool_size = len(texts)
     if pool_size == 0:
