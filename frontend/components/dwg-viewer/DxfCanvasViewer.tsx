@@ -325,8 +325,14 @@ export default function DxfCanvasViewer({
 
     const isTransient = (e: any): boolean => {
       const status = e?.response?.status;
+      // 5xx cold-start / overload — retry mantikli
       if (status === 503 || status === 502 || status === 504 || status === 500) return true;
-      if (status === 429 || status === 422) return true;
+      if (status === 429) return true;
+      // 422: 'file_id bilinmiyor (cache TTL gecmis olabilir)' — Cloud Run revision
+      // switch'i veya 15dk TTL sonrasi. file_id bir daha asla geri gelmeyecek,
+      // retry anlamsiz. Hemen hata goster, kullanici resetlesin.
+      // 404: file_id tamamen bilinmiyor — ayni
+      if (status === 422 || status === 404) return false;
       const code = e?.code;
       if (code === 'ECONNABORTED' || code === 'ERR_NETWORK') return true;
       if (!e?.response) return true;
@@ -355,9 +361,16 @@ export default function DxfCanvasViewer({
       }
       if (!cancelled) {
         const status = lastErr?.response?.status;
-        const msg = status
-          ? `${status}: Servis cevap vermedi (Render free tier cold-start). Sayfayi yenile.`
-          : (lastErr?.message ?? 'Geometri alinamadi');
+        let msg: string;
+        if (status === 422 || status === 404) {
+          // Cache TTL gecti / deploy oldu — DWG'yi yeniden yuklemek gerekli.
+          // Kullaniciya net aksiyon: "Yeni DWG Yukle" butonu zaten ust toolbar'da.
+          msg = 'Oturum sona erdi (sunucu file_id\'yi unutmus). Lutfen "Yeni DWG Yukle" butonuna basip dosyayi tekrar yukleyin.';
+        } else if (status) {
+          msg = `${status}: Servis cevap vermedi (Render free tier cold-start). Sayfayi yenile.`;
+        } else {
+          msg = lastErr?.message ?? 'Geometri alinamadi';
+        }
         setError(msg);
         setLoading(false);
       }
