@@ -34,42 +34,47 @@ export function useViewport({ bounds, containerRef, autoFit = true }: UseViewpor
   });
   const DRAG_THRESHOLD = 4; // piksel — bu kadar hareket olmadan click sayilir
 
-  const fitView = useCallback(() => {
+  /** Verilen DWG world bounds'unu viewport'a sigdir (padding ile).
+   *  fitView bunun "all bounds" ozel hali. Custom bounds (segment focus vs.)
+   *  icin parametreli kullanim icin ayri tutuldu. paddingRatio: 0.92 = %8 marj. */
+  const zoomToBounds = useCallback((
+    targetBounds: [number, number, number, number],
+    paddingRatio = 0.92,
+  ) => {
     const el = containerRef.current;
     if (!el) return;
-    const [minX, minY, maxX, maxY] = bounds;
-    const w = maxX - minX;
-    const h = maxY - minY;
-    if (w <= 0 || h <= 0) {
-      setViewport({ panX: 0, panY: 0, zoom: 1 });
-      return;
-    }
+    const [minX, minY, maxX, maxY] = targetBounds;
+    let w = maxX - minX;
+    let h = maxY - minY;
     const rect = el.getBoundingClientRect();
-    // Container henuz layout almadiysa zoom hesaplamasi sifir olur — sonraki RAF icin ertele
-    if (rect.width <= 0 || rect.height <= 0) {
-      return;
-    }
+    if (rect.width <= 0 || rect.height <= 0) return;
+
+    // Sifir-boyut bounds (tek nokta veya sifir-uzunluk segment): minimum dunya boyu
+    // ata — fitView yapinca cok yaklasmasin. 1 metre = 1000mm civari pencere.
+    if (w <= 0) w = 1000;
+    if (h <= 0) h = 1000;
+
     const scaleX = rect.width / w;
     const scaleY = rect.height / h;
-    let zoom = Math.min(scaleX, scaleY) * 0.92; // %8 padding
+    let zoom = Math.min(scaleX, scaleY) * paddingRatio;
 
-    // Guvenlik clip: Patolojik bounds (outlier kalmis olabilir) zoom'u 0'a cekerse
-    // fallback olarak zoom=1 ve pan=0 — kullanici wheel ile yaklasabilir.
     if (!Number.isFinite(zoom) || zoom < 1e-6) {
       setViewport({ panX: rect.width / 2, panY: rect.height / 2, zoom: 1 });
       return;
     }
 
-    // Orta noktayi viewport merkezine getir
     const centerX = (minX + maxX) / 2;
     const centerY = (minY + maxY) / 2;
     setViewport({
       panX: rect.width / 2 - centerX * zoom,
-      // Canvas Y ekseni asagi, DWG yukari — negatif
       panY: rect.height / 2 + centerY * zoom,
       zoom,
     });
-  }, [bounds, containerRef]);
+  }, [containerRef]);
+
+  const fitView = useCallback(() => {
+    zoomToBounds(bounds, 0.92);
+  }, [bounds, zoomToBounds]);
 
   // Ilk mount + bounds degisiminde fit — container layout'u beklenmeli
   // Cok katmanli strateji: RAF x2 → yetmedyse 100ms sonra tekrar dene
@@ -197,6 +202,7 @@ export function useViewport({ bounds, containerRef, autoFit = true }: UseViewpor
   return {
     viewport,
     fitView,
+    zoomToBounds,
     zoomIn,
     zoomOut,
     onWheelReact,

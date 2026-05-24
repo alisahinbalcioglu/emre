@@ -30,6 +30,7 @@ import {
   useOriginalColorState,
   DiameterLegendPanel,
 } from '@/components/dwg-diameter-engine';
+import { diameterToColor } from '@/components/dwg-metraj/diameter-colors';
 
 interface DwgProjectWorkspaceProps {
   fileId: string;
@@ -189,6 +190,67 @@ export default function DwgProjectWorkspace({
   });
 
   const [editingSegment, setEditingSegment] = useState<EdgeSegment | null>(null);
+
+  // ── CAP RENKLERI LISTE NAVIGATION ──────────────────────────────────────
+  // Legend'da bir cap'e tiklayinca o cap'in segment'leri arasinda dolas.
+  // activeDiameter: aktif cap key ("Ø50", "Belirtilmemis", ...). null = kapali.
+  // activeIndex: o cap icin gecerli segment index (0-based, modulo segment sayisi).
+  // focusVersion: ayni segment'e tekrar basildiginda zoom+halo'yu yeniden tetikleme
+  //   icin monoton artan token. Parent her cycle tikinda increment eder.
+  const [activeDiameter, setActiveDiameter] = useState<string | null>(null);
+  const [activeIndex, setActiveIndex] = useState<number>(0);
+  const [focusVersion, setFocusVersion] = useState<number>(0);
+
+  // Aktif cap icin tum hesaplanmis layer'lardan eslesen segment'lerin duzlestirilmis listesi.
+  // Diameter eslestirmesi normalize edilir: "Belirtilmemis" ile bos cap esit sayilir.
+  const activeDiameterSegments = useMemo<EdgeSegment[]>(() => {
+    if (!activeDiameter) return [];
+    const out: EdgeSegment[] = [];
+    for (const cl of Object.values(state.calculatedLayers)) {
+      for (const seg of cl.edgeSegments) {
+        const segKey = seg.diameter || 'Belirtilmemis';
+        if (segKey === activeDiameter) out.push(seg);
+      }
+    }
+    // Deterministik sira (segment_id ascending) — kullanici tiklayinca tutarli gezsin
+    out.sort((a, b) => a.segment_id - b.segment_id);
+    return out;
+  }, [activeDiameter, state.calculatedLayers]);
+
+  // Tiklanan cap segment listesi degisirse (cap eklendi/silindi/duzeltildi) index'i
+  // guvenle clamp et — out-of-bounds focus'u onler.
+  useEffect(() => {
+    if (activeDiameter && activeIndex >= activeDiameterSegments.length) {
+      setActiveIndex(activeDiameterSegments.length > 0 ? 0 : 0);
+    }
+  }, [activeDiameter, activeIndex, activeDiameterSegments.length]);
+
+  const handleCycleDiameter = useCallback((diameter: string) => {
+    if (activeDiameter !== diameter) {
+      // Yeni cap'e gec — basa al
+      setActiveDiameter(diameter);
+      setActiveIndex(0);
+    } else {
+      // Ayni cap'e tekrar tikla — sonraki segmente atla (modulo cycle)
+      setActiveIndex((prev) => {
+        const count = activeDiameterSegments.length;
+        if (count <= 1) return 0;
+        return (prev + 1) % count;
+      });
+    }
+    setFocusVersion((v) => v + 1);  // Tek-segment cap'lerde bile zoom + halo yeniden tetiklensin
+  }, [activeDiameter, activeDiameterSegments.length]);
+
+  const handleClearActiveDiameter = useCallback(() => {
+    setActiveDiameter(null);
+    setActiveIndex(0);
+  }, []);
+
+  // Aktif segment ve halo rengini DxfCanvasViewer'a propagate et
+  const focusedSegmentId = activeDiameter && activeDiameterSegments.length > 0
+    ? activeDiameterSegments[Math.min(activeIndex, activeDiameterSegments.length - 1)].segment_id
+    : null;
+  const focusedHaloColor = activeDiameter ? diameterToColor(activeDiameter) : null;
   const [pendingEquipment, setPendingEquipment] = useState<null | {
     key: string; insertIndex: number; layer: string; insertName: string; position: [number, number];
   }>(null);
@@ -212,6 +274,7 @@ export default function DwgProjectWorkspace({
       // pending varsa once pending iptal, sonraki Esc silgi modunu kapatir.
       if (pendingErase) { handleCancelPendingErase(); return; }
       if (eraseMode) { setEraseMode(false); return; }  // silgi modunu kapat
+      if (activeDiameter) { handleClearActiveDiameter(); return; }  // cap-focus halo'yu kapat
       if (state.selectedLayer) { selectLayer(state.selectedLayer); return; }  // toggle off
       if (hideMode) { setHideMode(false); return; }
     };
@@ -239,7 +302,7 @@ export default function DwgProjectWorkspace({
       window.removeEventListener('keydown', onUndoKey);
       window.removeEventListener('keydown', onEnterKey);
     };
-  }, [pendingEquipment, state.editingEquipmentKey, editingSegment, state.selectedLayer, hideMode, eraseMode, eraseHistory.length, pendingErase, cancelEditEquipment, selectLayer, handleUndoErase, handleConfirmErase, handleCancelPendingErase]);
+  }, [pendingEquipment, state.editingEquipmentKey, editingSegment, state.selectedLayer, hideMode, eraseMode, eraseHistory.length, pendingErase, activeDiameter, cancelEditEquipment, selectLayer, handleUndoErase, handleConfirmErase, handleCancelPendingErase, handleClearActiveDiameter]);
 
   // Pending erase Set'leri — viewer turuncu highlight icin (immutable Set)
   const pendingLineKeysSet = useMemo(
@@ -643,6 +706,9 @@ export default function DwgProjectWorkspace({
     // ACI rengine donulur. calculatedLayers state'i SAKLI tutulur (kullanici
     // dondukten sonra cap duzeltmesi yapabilsin). Sadece RENDER bayragi false.
     restoreOriginalColors();
+    // Cap-renkleri legend navigation halo'su da kapansin — kaydet sonrasi cizim
+    // orijinal goruntuye doner, halo'nun kalmasi gorsel kirlilik olur.
+    handleClearActiveDiameter();
   };
 
   const editingEquipmentExisting = state.editingEquipmentKey
@@ -709,6 +775,10 @@ export default function DwgProjectWorkspace({
             onCancelPendingErase={handleCancelPendingErase}
             // PRD §3 + §5: cap-bazli dinamik renk; save sonrasi false -> layer ACI
             useDiameterColors={useDiameterColors}
+            // Cap renkleri legend tiklama navigation
+            focusedSegmentId={focusedSegmentId}
+            focusedHaloColor={focusedHaloColor}
+            focusVersion={focusVersion}
             className="h-[600px] lg:h-[calc(100vh-150px)]"
           />
 
@@ -726,10 +796,16 @@ export default function DwgProjectWorkspace({
 
         {/* Sag: aktif layer formu + cap renk legend + ozet ekipman listesi */}
         <div className="space-y-3">
-          {/* PRD §3: Dinamik renk legend — cizimle birebir esles */}
+          {/* PRD §3: Dinamik renk legend — cizimle birebir esles
+              Cap satirina tikla -> o cap'in segment'leri arasinda cycle */}
           <DiameterLegendPanel
             calculatedLayers={state.calculatedLayers}
             diameterColorsActive={useDiameterColors}
+            activeDiameter={activeDiameter}
+            activeIndex={activeDiameter ? activeIndex : 0}
+            activeCount={activeDiameterSegments.length}
+            onDiameterClick={handleCycleDiameter}
+            onClearActive={handleClearActiveDiameter}
           />
           <LayerInfoSidebar
             selectedLayer={state.selectedLayer}

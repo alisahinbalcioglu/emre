@@ -83,6 +83,16 @@ interface DxfCanvasViewerProps {
   onConfirmPendingErase?: () => void;
   /** Esc / "Iptal" butonu → pending'i temizle. */
   onCancelPendingErase?: () => void;
+  // ── CAP RENKLERI LISTE NAVIGATION (focus segment) ─────────────────
+  /** Legend'dan cap satirina tiklandiginda secilen segment'in id'si.
+   *  Set ise: viewport o segmente zoom yapilir + uzerine kalin halo cizilir. */
+  focusedSegmentId?: number | null;
+  /** Halo rengi (cap rengi). null ise sari/vurgu rengi kullanir. */
+  focusedHaloColor?: string | null;
+  /** Ayni segment'e art arda tiklayinca zoom + flash tekrari icin token.
+   *  Parent her tiklamada increment eder; bu sayede ayni segmentId'de bile
+   *  effect yeniden tetiklenir. */
+  focusVersion?: number;
 }
 
 const COLOR_BG = '#0b1220';
@@ -157,6 +167,9 @@ export default function DxfCanvasViewer({
   onConfirmPendingErase,
   onCancelPendingErase,
   useDiameterColors = true,
+  focusedSegmentId = null,
+  focusedHaloColor = null,
+  focusVersion = 0,
 }: DxfCanvasViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -260,11 +273,44 @@ export default function DxfCanvasViewer({
     return [0, 0, 100, 100];
   }, [geometry, allEdgeSegments]);
 
-  const { viewport, fitView, zoomIn, zoomOut, wasDragged, pointerHandlers } = useViewport({
+  const { viewport, fitView, zoomToBounds, zoomIn, zoomOut, wasDragged, pointerHandlers } = useViewport({
     bounds,
     containerRef,
     autoFit: !!geometry || !!allEdgeSegments,
   });
+
+  // ─── Focus segment: cap-renkleri legend'dan tiklanan segment'e zoom + halo ─
+  // Halo'yu kisa bir pulse animasyonu icin RAF tabanli alpha state'i tutuyoruz.
+  // focusVersion her tiklamada increment olur → ayni segment'e bile zoom+flash tetikler.
+  const focusedSegment = useMemo<EdgeSegment | null>(() => {
+    if (focusedSegmentId == null || !allEdgeSegments) return null;
+    return allEdgeSegments.find((s) => s.segment_id === focusedSegmentId) ?? null;
+  }, [focusedSegmentId, allEdgeSegments]);
+
+  useEffect(() => {
+    if (!focusedSegment) return;
+    // Segment'in dunya bounds'u (polyline varsa tum vertex'ler, yoksa coords)
+    let mnx = Infinity, mny = Infinity, mxx = -Infinity, mxy = -Infinity;
+    const pts: Array<[number, number]> =
+      focusedSegment.polyline && focusedSegment.polyline.length >= 2
+        ? focusedSegment.polyline
+        : [
+            [focusedSegment.coords[0], focusedSegment.coords[1]],
+            [focusedSegment.coords[2], focusedSegment.coords[3]],
+          ];
+    for (const [px, py] of pts) {
+      if (px < mnx) mnx = px;
+      if (py < mny) mny = py;
+      if (px > mxx) mxx = px;
+      if (py > mxy) mxy = py;
+    }
+    // Segment'in etrafina yari-ekran padding ekle ki cevre context gozuksun
+    const w = mxx - mnx;
+    const h = mxy - mny;
+    const padX = Math.max(w * 0.6, 500);
+    const padY = Math.max(h * 0.6, 500);
+    zoomToBounds([mnx - padX, mny - padY, mxx + padX, mxy + padY], 0.85);
+  }, [focusedSegment, focusVersion, zoomToBounds]);
 
   // ─── Geometry fetch + retry (Render free tier cold-start) ─────────
   useEffect(() => {
@@ -751,6 +797,31 @@ export default function DxfCanvasViewer({
           ctx.stroke();
           ctx.globalAlpha = 1;
         }
+
+        // FOCUS HALO — legend cap'inden tiklanan segment uzerinde cap rengiyle
+        // kalin "glow" cizilir. Cizimin diger segment'lerinin uzerine biner ki
+        // kullanici sectigi cap'in nerede oldugunu kolayca gorur.
+        if (focusedSegment) {
+          const haloColor = focusedHaloColor || '#fde047'; // amber-300 fallback
+          ctx.save();
+          ctx.shadowColor = haloColor;
+          ctx.shadowBlur = 18;
+          ctx.strokeStyle = haloColor;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          // Iki kademe: dis daha kalin + yari-seffaf, ic dolgun cap rengi
+          ctx.globalAlpha = 0.55;
+          ctx.lineWidth = strokeWidth * 6;
+          ctx.beginPath();
+          drawSegPath(focusedSegment);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+          ctx.lineWidth = strokeWidth * 2.8;
+          ctx.beginPath();
+          drawSegPath(focusedSegment);
+          ctx.stroke();
+          ctx.restore();
+        }
       }
 
       // ─── T-junction noktalari (gorsel ayraq) ──────────────────────
@@ -903,7 +974,7 @@ export default function DxfCanvasViewer({
 
     schedule();
     return () => cancelAnimationFrame(rafId);
-  }, [geometry, allEdgeSegments, calculatedJunctionsByLayer, viewport, selectedLayer, highlightLayer, hiddenLayers, dimmedLayers, sprinklerLayers, markedEquipmentKeys, hovered, selectedLine, pendingLineKeys, pendingInsertKeys, pendingTextKeys, hiddenTextKeys, isLinePending, isInsertPending, isLineHidden, isInsertHidden, isTextHidden, isTextPending, useDiameterColors]);
+  }, [geometry, allEdgeSegments, calculatedJunctionsByLayer, viewport, selectedLayer, highlightLayer, hiddenLayers, dimmedLayers, sprinklerLayers, markedEquipmentKeys, hovered, selectedLine, pendingLineKeys, pendingInsertKeys, pendingTextKeys, hiddenTextKeys, isLinePending, isInsertPending, isLineHidden, isInsertHidden, isTextHidden, isTextPending, useDiameterColors, focusedSegment, focusedHaloColor]);
 
   // ─── Hover detection (rbush ile O(log N)) ────────────────────────
   const computeHovered = useCallback(
