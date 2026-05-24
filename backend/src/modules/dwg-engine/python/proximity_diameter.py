@@ -119,6 +119,96 @@ def _autocad_decode(s: str) -> str:
 _MAX_BLOCK_DEPTH = 4  # nested INSERT max recursion depth (cyclic guard + maliyet sinirla)
 
 
+# ════════════════════════════════════════════════════════════════════════
+#  LAYER-AWARE FILTERING
+#  Yangin tesisati segment'lerine isitma/sogutma/basinclihava layer'larindan
+#  cap-text atanmasini engeller. Yan yana cakisan tesisatlardan yanlis cap
+#  gelmesi engellenir.
+# ════════════════════════════════════════════════════════════════════════
+
+# Yapisal/anlamsiz kelimeler — tema degil; layer adindan cikartilir.
+# Tema kelimeleri (yangin, isitma, sogutma, klima, sihhi, ...) korunur.
+_LAYER_STOPWORDS = frozenset({
+    # Tek harfler (anlamsiz)
+    "a", "b", "c", "d", "e", "f",
+    # Yapisal kelimeler
+    "tesisat", "tesisati", "tesisatlari",
+    "hat", "hatti", "hattisi", "hatlari",
+    "kolon", "kolonu", "kolonlari",
+    "bolum", "bolumu", "bolge", "bolgesi",
+    "detay", "detayi", "detaylar",
+    "ile", "ve", "icin", "veya",
+    "cap", "capi", "caplar",  # cap-tag layer'lardan temizle (tema kalsin)
+    "sistem", "sistemi", "sistemler",
+    "grup", "grubu", "gruplari",
+    "genel", "ana", "alt",
+    "sembol", "sembolu", "sembolleri",
+    "alan", "alani", "alanlar",
+    "duzen", "duzeni",
+    "boru", "borulama",
+    "no", "numara", "numarali",
+    # AutoCAD tipik
+    "format", "cerceve", "yardimci", "yardim",
+    # Sayisal indeksler (01-99)
+})
+
+
+def _normalize_turkish(s: str) -> str:
+    """Turkce karakterleri normalize et + lowercase + alphanumeric only."""
+    if not s:
+        return ""
+    tr_map = str.maketrans({
+        "İ": "i", "I": "i", "Ğ": "g", "Ü": "u",
+        "Ş": "s", "Ö": "o", "Ç": "c",
+        "ı": "i", "ğ": "g", "ü": "u",
+        "ş": "s", "ö": "o", "ç": "c",
+    })
+    s = s.translate(tr_map).lower()
+    s = re.sub(r"[^a-z0-9 ]+", " ", s)
+    return s
+
+
+def _layer_theme_words(layer_name: str) -> set[str]:
+    """Layer adindan tema kelimelerini cikar (yapisal stopword'leri at).
+
+    Ornekler:
+      'A_Yangın Çap' -> {'yangin'}
+      'YANGIN TESİSATI YANGIN DOLABI ve İSA HATTI' -> {'yangin', 'dolabi', 'isa'}
+      '---ISITMA' -> {'isitma'}
+      '---BASICLIHAVA_SEBEKE' -> {'basiclihava', 'sebeke'}
+      'A-Yangın Tesisatı Sprink Yangın Borulama Hattı' -> {'yangin', 'sprink'}
+    """
+    s = _normalize_turkish(layer_name)
+    # Cift haneli sayisal indeksleri de stopword olarak ele al
+    words: set[str] = set()
+    for w in s.split():
+        if len(w) < 2:
+            continue
+        if w in _LAYER_STOPWORDS:
+            continue
+        if w.isdigit():
+            continue  # "01", "02", ...
+        words.add(w)
+    return words
+
+
+def _layers_thematically_compatible(text_layer: str, seg_layer: str) -> bool:
+    """Text'in layer'i ile segment'in layer'i ayni tema'ya ait mi?
+
+    Strateji: ikisinin de tema kelime listelerinde EN AZ 1 ortak kelime varsa
+    'uyumlu'. Yangin-yangin OK; yangin-isitma DEGIL.
+
+    Edge case: ikisi de bos tema kelime kumesi (cok generic layer) -> True
+    don (atamayi engelleme; max_distance zaten filtreliyor).
+    """
+    twords = _layer_theme_words(text_layer)
+    swords = _layer_theme_words(seg_layer)
+    if not twords or not swords:
+        # Bos tema (cok generic layer adi) — atamayi engelleme, distance halletsin.
+        return True
+    return bool(twords & swords)
+
+
 def _extract_block_texts(
     doc,
     insert_entity,
@@ -610,15 +700,16 @@ def assign_diameters_by_proximity(
             f"Proximity: cap-text havuzu BUYUK ({pool_size}). Hesaplama yavaslayabilir."
         )
 
-    # ── SEGMENT-PERSPECTIVE NAIVE NEAREST ────────────────────────────
-    # Her segment KENDI en yakin cap-text'ini alir (mesafe sinirinin altinda
-    # kalmak kosuluyla). Onceki "mutual nearest" mantigi (her text TEK bir
-    # segmente kapanir) kullaniciya yanlis sonuc veriyordu: borunun YANINDAKI
-    # text bir kardes boruya daha yakin oldugunda, kapilan text'i bu boru
-    # alamiyordu ve UZAKTAKI bambaska bir text'i 'en yakin' oluyordu.
-    # Basit mantik: "borunun yaninda text var -> onu al". Ayni text birden
-    # fazla yakin segmente paylasilabilir (T-junction'da zaten ayni cap gecerli).
-    # DIAGNOSTIC: ilk 60 atamanin (segment, text, mesafe, layer) bilgisini sample'a koy.
+    # ── SEGMENT-PERSPECTIVE NAIVE NEAREST + LAYER-AWARE FILTER ──────
+    # Her segment KENDI en yakin cap-text'ini alir AMA text'in layer'i ile
+    # segment'in layer'inin TEMA KELIMELERI ortak olmali (yangin-yangin OK,
+    # yangin-isitma DEGIL). Bu sayede yan yana cakisan tesisatlardan yanlis
+    # cap atanmaz. Mesafe sinirinin altinda kalmak kosuluyla.
+    #
+    # Ozel durum: layer adi cok generic (tema kelime yok) -> filter atlanir,
+    # sadece distance kontrolu yeter.
+    #
+    # DIAGNOSTIC: ilk 60 atamanin bilgisini sample'a koy.
     assigned = 0
     out_of_range_count = 0
     assignment_sample: list[dict] = []
@@ -627,11 +718,15 @@ def assign_diameters_by_proximity(
             current = getattr(es, "diameter", "") or ""
             if current and current != "Belirtilmemis":
                 continue  # manuel override korunur
-            # Bu segmente en yakin text'i ara
+            seg_layer = getattr(es, "layer", "") or ""
+            # Bu segmente en yakin UYUMLU text'i ara
             best_text: dict | None = None
             best_d = effective_max_dist  # mesafe siniri — bunun ustu sayilmaz
             for t in texts:
                 try:
+                    # LAYER-AWARE FILTER: tematik uyumsuz text'leri atla.
+                    if not _layers_thematically_compatible(t.get("layer", ""), seg_layer):
+                        continue
                     d = _segment_distance(es, t["x"], t["y"])
                     if d < best_d:
                         best_d = d
@@ -639,12 +734,11 @@ def assign_diameters_by_proximity(
                 except Exception:
                     continue
             if best_text is None:
-                # Bu segmente mesafe sinirinin altinda hicbir text yok -> Belirtilmemis
+                # Bu segmente mesafe + layer-compatibility kosullarinda hicbir text yok
                 continue
             es.diameter = best_text["value"]
             assigned += 1
             if len(assignment_sample) < 60:
-                seg_layer = getattr(es, "layer", "") or ""
                 seg_id = getattr(es, "segment_id", idx)
                 assignment_sample.append({
                     "segment_id": int(seg_id),
