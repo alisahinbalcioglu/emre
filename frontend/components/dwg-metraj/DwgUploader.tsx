@@ -237,9 +237,13 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
           }
           // st === 'processing' → bekle, polla
         } catch (err: any) {
-          // Status endpoint'i transient hata atarsa polling devam (404 hariç)
-          if (err?.response?.status === 404) {
-            throw new Error('Sunucu file_id\'yi unutmus (cache TTL); dosyayi tekrar yukleyin');
+          // Status endpoint'i transient hata atarsa polling devam (404/422 hariç)
+          // 422 = backend "file_id bilinmiyor (cache TTL gecmis olabilir)" — Cloud Run
+          // revision switch'inde memory state sifirlandiginda olur. Polling devam
+          // etmek anlamsiz, kullaniciya yeniden yuklemeyi tetikle.
+          const status = err?.response?.status;
+          if (status === 404 || status === 422) {
+            throw new Error('Sunucu file_id\'yi unutmus (cache TTL veya deploy oldu); dosyayi tekrar yukleyin');
           }
           if (!isTransient(err)) throw err;
         }
