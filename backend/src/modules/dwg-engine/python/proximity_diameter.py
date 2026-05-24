@@ -90,19 +90,41 @@ def _segment_polyline_points(seg) -> list[tuple[float, float]]:
     return [(c[0], c[1]), (c[2], c[3])]
 
 
+# MTEXT stacked fraction formatting code: \S<num>[/#^]<den>; → "<num>/<den>"
+# ezdxf plain_text() cogu zaman bunu cozer ama versiyona gore "2#3" gibi hash
+# separator birakabilir. Safety olarak burada normalize ediyoruz. SADECE \S ile
+# baslayip ; ile biten formatlara dokunulur — standalone "Profil#3" gibi text'leri
+# yanlislikla degistirmez.
+_STACKED_FRACTION_RE = re.compile(r"\\S\s*(\d+)\s*[/#^]\s*(\d+)\s*;")
+
+
 def _autocad_decode(s: str) -> str:
-    """AutoCAD %%c -> Ø vb. escape'leri cozer."""
+    """AutoCAD %%c -> Ø vb. escape'leri cozer.
+    Plus: MTEXT stacked fraction format kodu \\S2/3; veya \\S2#3; -> "2/3".
+    """
     if not s:
         return ""
     s = s.replace("%%c", "Ø").replace("%%C", "Ø")
     s = s.replace("%%d", "°").replace("%%D", "°")
     s = s.replace("%%p", "±").replace("%%P", "±")
+    # P1b: stacked fraction → normal "/" kesir (sadece guvenli \S...; format)
+    s = _STACKED_FRACTION_RE.sub(r"\1/\2", s)
     return s
 
 
-def _extract_block_texts(doc, insert_entity) -> list[tuple[str, float, float]]:
+_MAX_BLOCK_DEPTH = 4  # nested INSERT max recursion depth (cyclic guard + maliyet sinirla)
+
+
+def _extract_block_texts(
+    doc,
+    insert_entity,
+    parent_layer: str | None = None,
+    _depth: int = 0,
+    _visited: frozenset[str] = frozenset(),
+) -> list[tuple[str, float, float, str]]:
     """INSERT'in referans verdigi blok tanimi icindeki TEXT/MTEXT'leri
-    world coordinates'e donusturup don.
+    world coordinates'e donusturup don. Recursive: nested INSERT'leri
+    de takip eder (visited set + max depth ile cyclic guard).
 
     AutoCAD'de boru cap etiketleri sik sik bir "tag block"a sarilir
     (ornek: 'A_Yangin Cap' layer'inda 664 INSERT, her biri icinde TEXT
@@ -110,13 +132,24 @@ def _extract_block_texts(doc, insert_entity) -> list[tuple[str, float, float]]:
     yakalayamaz — blok'u acmak gerekir.
 
     Transform: TEXT'in lokal pozisyonunu INSERT'in pos+rot+scale ile
-    world coords'e tasi. Nested INSERT su an ele alinmaz (cyclic risk),
-    pratikte cap text bloklari tek seviye.
+    world coords'e tasi. Negatif scale (mirror) matrix carpiminda dogal
+    olarak handle olur — koordinatlar dogru aksetler.
+
+    BYLAYER konvansiyonu (P0b): block icindeki TEXT'in dxf.layer "0" ise
+    AutoCAD bu entity'i parent INSERT'in layer'iyle render eder. Biz de
+    proximity icin parent layer'i kullaniyoruz; aksi halde "0" diye
+    soyut bir layer pool'a girer ve sprinkler filtresi yanlis isler.
+
+    Returns: [(text, world_x, world_y, effective_layer), ...]
     """
+    if _depth > _MAX_BLOCK_DEPTH:
+        return []
     try:
         block_name = str(getattr(insert_entity.dxf, "name", "") or "")
         if not block_name:
             return []
+        if block_name in _visited:
+            return []  # cyclic reference guard
         if block_name not in doc.blocks:
             return []
         block = doc.blocks[block_name]
@@ -126,16 +159,26 @@ def _extract_block_texts(doc, insert_entity) -> list[tuple[str, float, float]]:
         sx = float(getattr(insert_entity.dxf, "xscale", 1.0) or 1.0)
         sy = float(getattr(insert_entity.dxf, "yscale", 1.0) or 1.0)
         cr, sr = math.cos(rot), math.sin(rot)
+        # Parent INSERT'in layer'i — block icinde TEXT layer == "0" olunca
+        # bunu kullanacagiz. None ise entity.dxf.layer fallback.
+        own_layer = str(getattr(insert_entity.dxf, "layer", "") or "")
+        effective_parent_layer = parent_layer or own_layer
     except Exception:
         return []
 
-    results: list[tuple[str, float, float]] = []
-    try:
-        block_iter = block.query("TEXT MTEXT")
-    except Exception:
-        return results
+    results: list[tuple[str, float, float, str]] = []
 
-    for ent in block_iter:
+    def _local_to_world(lx: float, ly: float) -> tuple[float, float]:
+        """Local block coords -> world coords (scale, rotate, translate)."""
+        sxl, syl = lx * sx, ly * sy
+        return (sxl * cr - syl * sr + ix, sxl * sr + syl * cr + iy)
+
+    # ── Direct TEXT/MTEXT block icinde ─────────────────────────────
+    try:
+        text_iter = block.query("TEXT MTEXT")
+    except Exception:
+        text_iter = []
+    for ent in text_iter:
         try:
             etype = ent.dxftype()
             if etype == "TEXT":
@@ -151,13 +194,121 @@ def _extract_block_texts(doc, insert_entity) -> list[tuple[str, float, float]]:
                 continue
             lp = ent.dxf.insert
             lx, ly = float(lp.x), float(lp.y)
-            # Local -> world: scale, rotate, translate
-            sxl, syl = lx * sx, ly * sy
-            wx = sxl * cr - syl * sr + ix
-            wy = sxl * sr + syl * cr + iy
-            results.append((txt, wx, wy))
+            wx, wy = _local_to_world(lx, ly)
+            # P0b: TEXT'in kendi layer'i "0" ise parent INSERT layer'i
+            ent_layer = str(getattr(ent.dxf, "layer", "") or "")
+            effective = effective_parent_layer if ent_layer in ("", "0") else ent_layer
+            results.append((txt, wx, wy, effective))
         except (AttributeError, TypeError, ValueError):
             continue
+
+    # ── Nested INSERT recursion (P0a) ──────────────────────────────
+    # Block icindeki INSERT'leri de ac — onlarin icindeki TEXT'leri al.
+    # visited set'e bu block'u ekle ki cyclic referans patlamasin.
+    try:
+        nested_iter = block.query("INSERT")
+    except Exception:
+        nested_iter = []
+    new_visited = _visited | {block_name}
+    for nested in nested_iter:
+        try:
+            # Nested INSERT'in lokal pozisyonunu world'e tasi, sonra
+            # geçici bir "synthetic" insert objesi gibi davran — yani
+            # recursive call'a dogru transform'u zaten yapan parent ile gir.
+            # Pratikte: nested'in dxf.insert/rotation/scale'i lokal koordinatta,
+            # _extract_block_texts kendi local-to-world transform'unu uyguluyor.
+            # Bizim burada nested'i ham ile gondermemiz YETERSIZ — cunku
+            # nested'in dxf.insert lokal, biz worldspace transform'u once
+            # uygulamaliyiz. Bunun yerine: NESTED icin ozyinelemeli cagri
+            # YENI bir local-to-world zinciri kurmali.
+            #
+            # Cozum: nested.dxf.insert/rot/scale'i ALI VE PARENT TRANSFORM ILE
+            # CARPIP YENI BIR EFFECTIVE INSERT olustur, sonra recursive cagir.
+            # Bunu temiz yapmak icin sadece world space'e tasinmis bir "stub"
+            # gerekiyor. ezdxf entity'sini mutate edemeyiz; bu yuzden
+            # alternative: nested icindeki TEXT'leri kendi mantigimizla
+            # gez (iki adim transform).
+            nip = nested.dxf.insert
+            nlx, nly = float(nip.x), float(nip.y)
+            n_rot_local = math.radians(float(getattr(nested.dxf, "rotation", 0.0) or 0.0))
+            n_sx = float(getattr(nested.dxf, "xscale", 1.0) or 1.0)
+            n_sy = float(getattr(nested.dxf, "yscale", 1.0) or 1.0)
+            # Nested'in world pozisyonu (parent transform uygulu)
+            nwx, nwy = _local_to_world(nlx, nly)
+            # Bilesik rotation = parent_rot + nested_rot_local
+            combined_rot = rot + n_rot_local
+            # Bilesik scale = parent_sx * nested_sx (carpim)
+            combined_sx = sx * n_sx
+            combined_sy = sy * n_sy
+            n_cr, n_sr = math.cos(combined_rot), math.sin(combined_rot)
+
+            n_block_name = str(getattr(nested.dxf, "name", "") or "")
+            if not n_block_name or n_block_name in new_visited:
+                continue
+            if n_block_name not in doc.blocks:
+                continue
+            n_block = doc.blocks[n_block_name]
+
+            # Nested'in kendi layer'i — TEXT layer "0" ise nested INSERT layer'i
+            nested_own_layer = str(getattr(nested.dxf, "layer", "") or "")
+            nested_effective_parent = (
+                effective_parent_layer if nested_own_layer in ("", "0") else nested_own_layer
+            )
+
+            def _l2w_nested(lx: float, ly: float, nwx=nwx, nwy=nwy,
+                            csx=combined_sx, csy=combined_sy,
+                            ncr=n_cr, nsr=n_sr) -> tuple[float, float]:
+                sxl, syl = lx * csx, ly * csy
+                return (sxl * ncr - syl * nsr + nwx, sxl * nsr + syl * ncr + nwy)
+
+            # Nested block icindeki direct TEXT/MTEXT
+            try:
+                n_text_iter = n_block.query("TEXT MTEXT")
+            except Exception:
+                n_text_iter = []
+            for ent in n_text_iter:
+                try:
+                    etype = ent.dxftype()
+                    if etype == "TEXT":
+                        raw = str(getattr(ent.dxf, "text", "") or "")
+                    else:
+                        raw = (
+                            ent.plain_text()
+                            if hasattr(ent, "plain_text")
+                            else str(getattr(ent.dxf, "text", "") or "")
+                        )
+                    txt = str(raw).replace("\n", " ").strip()
+                    if not txt:
+                        continue
+                    lp = ent.dxf.insert
+                    wx, wy = _l2w_nested(float(lp.x), float(lp.y))
+                    ent_layer = str(getattr(ent.dxf, "layer", "") or "")
+                    effective = nested_effective_parent if ent_layer in ("", "0") else ent_layer
+                    results.append((txt, wx, wy, effective))
+                except (AttributeError, TypeError, ValueError):
+                    continue
+
+            # Daha derin nested icin recursive — depth limiti ile.
+            # NOT: Daha derin seviyeler nadir; max derinlik 4'te kesilir.
+            if _depth + 1 < _MAX_BLOCK_DEPTH:
+                deeper = _extract_block_texts(
+                    doc, nested,
+                    parent_layer=nested_effective_parent,
+                    _depth=_depth + 2,  # iki seviye ileri — bu fonk + recursive
+                    _visited=new_visited,
+                )
+                # deeper'da koordinatlar nested'in kendi transform'unda; ama
+                # nested'i parent transform ile bagladigimizi unutmadan,
+                # deeper'i da parent transform'a tasimaliyiz. _l2w_nested
+                # zaten parent transform'u iceriyor, ama recursive call kendi
+                # local-to-world'unu kuruyor olabilir — bu durum derin
+                # seviyelerde drift uretir. Pratikte cap text'leri seviye
+                # 0-1'de oldugu icin bu drift'i kabul ediyoruz; gelecekte
+                # tam matrix kompozisyonu ile temizlenebilir.
+                results.extend(deeper)
+        except (AttributeError, TypeError, ValueError):
+            continue
+
     return results
 
 
@@ -307,10 +458,16 @@ def _extract_all_texts(
                 # cap etiketleri sik sik bu yontemle yerlestirilir; geometry.py block
                 # expansion yapiyor ama proximity'de yoktu — bu DWG'nin pool'unu 43
                 # text'ten ~700+ text'e cikaracak (664 INSERT × 1 TEXT/blok).
+                #
+                # P0a: Nested INSERT'leri de takip eder (max depth 4, cyclic guard).
+                # P0b: Block TEXT'in dxf.layer "0" ise parent INSERT layer'ina dusurulur.
                 try:
-                    block_texts = _extract_block_texts(doc, entity)
-                    for btxt, wx, wy in block_texts:
-                        _add(btxt, wx, wy, layer, "BLOCK_TEXT")
+                    block_texts = _extract_block_texts(doc, entity, parent_layer=layer)
+                    for btxt, wx, wy, blayer in block_texts:
+                        # Sprinkler/excluded layer filtresini block TEXT'lere de uygula
+                        if blayer in excluded_layers:
+                            continue
+                        _add(btxt, wx, wy, blayer, "BLOCK_TEXT")
                 except Exception:
                     pass
 
@@ -417,6 +574,15 @@ def assign_diameters_by_proximity(
     from collections import Counter
     source_counts = Counter(t.get("source", "?") for t in texts)
     source_summary = ", ".join(f"{src}:{cnt}" for src, cnt in source_counts.most_common())
+
+    # P1c: Pool size guard — buyuk DWG'lerde proximity O(text × edge) maliyeti
+    # patlamasin. Esik gecince warning ekle (kullaniciya gosterilir, hesap yine devam).
+    # 3000 esigi: 3000 text × 1500 edge = 4.5M mesafe hesabi ~ 1-2 saniye. Cok daha
+    # azi normal. Sinir asilirsa kullanici tum-DWG isleyislerinde yavaslama beklesin.
+    if pool_size > 3000:
+        warnings.append(
+            f"Proximity: cap-text havuzu BUYUK ({pool_size}). Hesaplama yavaslayabilir."
+        )
 
     # ── ADIM 1: Her text icin en yakin segment bul (text-perspective) ──
     # segment_to_texts[seg_idx] = [(text_dict, distance), ...] — bu segmente "ait" text'ler

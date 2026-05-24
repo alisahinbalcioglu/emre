@@ -288,6 +288,7 @@ def analyze_dxf_metraj(
     layer_default_diameter_map: dict[str, str] | None = None,
     use_proximity_diameter: bool = False,
     proximity_max_distance: float | None = None,
+    include_debug: bool = False,
 ) -> MetrajResult:
     """
     DXF dosyasini parse edip layer bazinda boru uzunlugu hesaplar.
@@ -551,15 +552,18 @@ def analyze_dxf_metraj(
             )
             for w in prox_result.get("warnings", []):
                 warnings.append(w)
-            # GECICI: diagnostic field'lari response'a forward
-            proximity_debug = {
-                "assigned_count": prox_result.get("assigned_count", 0),
-                "skipped_count": prox_result.get("skipped_count", 0),
-                "text_pool_size": prox_result.get("text_pool_size", 0),
-                "source_summary": _src,
-                "rejected_texts": prox_result.get("debug_rejected_texts", []),
-                "accepted_sample": prox_result.get("debug_accepted_sample", []),
-            }
+            # Diagnostic field'lari: SADECE include_debug=True ise response'a forward.
+            # Production'da pool 700+ olabilir, response gereksiz buyumesin.
+            # Kullanim: /parse?debug=1 ile manuel acilir, F12 Console'dan incelenir.
+            if include_debug:
+                proximity_debug = {
+                    "assigned_count": prox_result.get("assigned_count", 0),
+                    "skipped_count": prox_result.get("skipped_count", 0),
+                    "text_pool_size": prox_result.get("text_pool_size", 0),
+                    "source_summary": _src,
+                    "rejected_texts": prox_result.get("debug_rejected_texts", []),
+                    "accepted_sample": prox_result.get("debug_accepted_sample", []),
+                }
         except Exception as _e:
             warnings.append(f"Proximity diameter: {str(_e)[:100]}")
 
@@ -1315,6 +1319,7 @@ async def parse_dwg(
     layer_default_diameter: str = Query("{}", description="JSON object: {layer: default_diameter} — layer-level cap fallback"),
     use_proximity_diameter: bool = Query(False, description="PRD: her segment icin en yakin text -> cap (deterministic, AI'siz)"),
     proximity_max_distance: float | None = Query(None, description="DWG world unit cinsinden maksimum text mesafesi (None = sinir yok)"),
+    debug: bool = Query(False, description="proximity_debug field'ini response'a ekle (text pool dump, rejected reasons)"),
 ):
     """
     DWG/DXF dosyasini parse edip layer bazinda metraj cikarir.
@@ -1401,6 +1406,7 @@ async def parse_dwg(
             "layer_default_diameter_map": default_dia_map,
             "use_proximity_diameter": use_proximity_diameter,
             "proximity_max_distance": proximity_max_distance,
+            "include_debug": debug,
         }
         # Subprocess'i async thread'de calistir, FastAPI event loop bloke olmasin
         result_dict = await asyncio.to_thread(
