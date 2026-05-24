@@ -568,10 +568,11 @@ export default function DwgProjectWorkspace({
   };
 
   const handleLineClick = (line: { layer: string; index: number; shiftKey: boolean; screenX: number; screenY: number }) => {
-    // PRD: LINE click -> layer secimi + otomatik proximity hesaplama tetikle.
-    // Mevcut LayerInfoSidebar "Hesapla" butonu kullanici manuel cap girmek
-    // isterse hala kullanilabilir (deterministic proximity flag'siz handleCalculate).
-    console.log('[handleLineClick] FIRED', { layer: line.layer, calculatingLayer });
+    // LINE click -> SADECE layer secimi. Hesaplama "Hesapla" butonuyla manuel
+    // tetiklenir (LayerInfoSidebar'da). Onceden tik = otomatik proximity
+    // hesaplama vardi (PRD §1+§2), kullanici talebi uzerine kaldirildi: hesaplama
+    // sadece "Hesapla" butonuyla baslar.
+    console.log('[handleLineClick] FIRED', { layer: line.layer });
     if (hideMode || line.shiftKey) {
       toggleLayerVisibility(line.layer);
       toast({
@@ -581,22 +582,16 @@ export default function DwgProjectWorkspace({
       return;
     }
     selectLayer(line.layer);
-    // PRD §1+§2: tik = layer aktif + otomatik proximity caplandirma.
-    // Zaten hesaplanmissa tekrar etme (kullanici sadece secmis olabilir).
-    if (!state.calculatedLayers[line.layer] && calculatingLayer !== line.layer) {
-      const cfg = state.layerConfigs[line.layer];
-      calculateLayerByProximity(line.layer, {
-        hatIsmi: cfg?.hatIsmi,
-        materialType: cfg?.materialType,
-        defaultDiameter: cfg?.defaultDiameter,
-      });
-    }
   };
 
   const handleInsertClick = (ins: { layer: string; insertIndex: number; insertName: string; position: [number, number] }) => {
-    const key = `${ins.layer}:${ins.insertIndex}`;
-    setPendingEquipment({ ...ins, key });
-    beginEditEquipment(key);
+    // EKIPMAN AKISI SIMDILIK KAPALI (kullanici talebi: "ekipman ile ilgili sonra").
+    // INSERT'in icinde oldugu layer'i sec — boylece zoom disindan tiklayinca
+    // (yakindaki sembol noktasi hit olunca) yine de layer secilir, popup acilmaz.
+    //
+    // TODO: Ekipman isaretleme tekrar aktif edilince burada
+    //   setPendingEquipment + beginEditEquipment cagrilacak. Su an dokunma.
+    selectLayer(ins.layer);
   };
 
   const handleCircleClick = (_c: { layer: string; circleIndex: number; center: [number, number]; radius: number }) => {
@@ -813,11 +808,23 @@ export default function DwgProjectWorkspace({
             calculating={calculating}
             calculatedLayer={state.selectedLayer ? state.calculatedLayers[state.selectedLayer] ?? null : null}
             onCalculate={(layer) => {
-              if (calculating) {
+              if (calculating || calculatingLayer === layer) {
                 toast({ title: 'Devam eden hesaplama var', description: 'Bitince tekrar dene.', variant: 'destructive' });
                 return;
               }
-              handleCalculate(layer);
+              if (state.calculatedLayers[layer]) {
+                toast({ title: 'Zaten hesaplandi', description: layer });
+                return;
+              }
+              // "Hesapla" butonu -> proximity hesaplama (en yakin cap-text -> cap).
+              // Onceden bu callback eski handleCalculate (manuel default cap) idi —
+              // auto-calc kaldirildigi icin "Hesapla" tetigi artik proximity'ye baglandi.
+              const cfg = state.layerConfigs[layer];
+              calculateLayerByProximity(layer, {
+                hatIsmi: cfg?.hatIsmi,
+                materialType: cfg?.materialType,
+                defaultDiameter: cfg?.defaultDiameter,
+              });
             }}
             onChangeConfig={(patch) => state.selectedLayer && updateLayerConfig(state.selectedLayer, patch)}
             onApplyDefaultDiameter={(d) => {
@@ -866,19 +873,11 @@ export default function DwgProjectWorkspace({
             onShowAll={showAllLayers}
             onShowAllDimmed={showAllDimmed}
             onLayerSelect={(layer, _x, _y) => {
-              // Layer panel'den layer adina tikla = sec + otomatik proximity hesapla.
-              // PRD: deterministic en yakin text -> cap atama. Mevcut handleCalculate
-              // (manuel default cap) artik gerekli degil cunku proximity onceliklidir;
-              // atayamadigi segmentler icin layer default fallback hala main.py'da.
+              // Layer panel'den layer adina tikla = SADECE sec.
+              // Hesaplama "Hesapla" butonuyla manuel tetiklenir (sidebar'da).
+              // Onceden tik = otomatik proximity hesaplama vardi, kullanici
+              // talebi uzerine kaldirildi.
               selectLayer(layer);
-              if (!state.calculatedLayers[layer] && calculatingLayer !== layer) {
-                const cfg = state.layerConfigs[layer];
-                calculateLayerByProximity(layer, {
-                  hatIsmi: cfg?.hatIsmi,
-                  materialType: cfg?.materialType,
-                  defaultDiameter: cfg?.defaultDiameter,
-                });
-              }
             }}
           />
 
