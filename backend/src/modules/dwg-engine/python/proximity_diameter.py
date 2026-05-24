@@ -100,10 +100,18 @@ def _autocad_decode(s: str) -> str:
     return s
 
 
-def _extract_all_texts(doc, excluded_layers: set[str] | None = None) -> list[dict]:
+def _extract_all_texts(
+    doc,
+    excluded_layers: set[str] | None = None,
+    debug_rejected: list[dict] | None = None,
+) -> list[dict]:
     """DXF modelspace'inden TUM text-bearing entity'leri cikar.
     Filter YOK — TEXT/MTEXT/DIMENSION/MULTILEADER/MLEADER/INSERT ATTRIB
     hepsinin icerigi havuza alinir. Sprinkler layer text'leri hariç.
+
+    Args:
+        debug_rejected: caller bos liste verirse, REGEX'i gecemeyen text'ler
+          burada toplanir (debug icin). None ise toplanmaz (production path).
 
     Returns: [{"x", "y", "value", "layer", "source"}, ...]
     """
@@ -121,7 +129,22 @@ def _extract_all_texts(doc, excluded_layers: set[str] | None = None) -> list[dic
             return
         m = _CAP_PATTERN.search(txt)
         if not m:
-            return  # 'YD', 'YK', '2', 'YANGIN DOLABI' vb. eler
+            # 'YD', 'YK', '2', 'YANGIN DOLABI' vb. eler — ama debug icin
+            # ham metni kaydet ki kullanici "neden '2½\"' atanmadi" gibi
+            # sorularini cozebilelim. Caller list vermisse pushla.
+            if debug_rejected is not None and len(debug_rejected) < 200:
+                # Ham karakterleri Unicode codepoint listesi ile birlikte ver —
+                # ekranda goremedigimiz garip karakterleri (stacked fraction
+                # kontrol kodlari, BOM, vs.) tanimak icin.
+                codepoints = [f"U+{ord(c):04X}" for c in txt[:40]]
+                debug_rejected.append({
+                    "raw": txt,
+                    "codepoints": codepoints,
+                    "layer": layer,
+                    "source": source,
+                    "x": float(x), "y": float(y),
+                })
+            return
         extracted = m.group(0).strip()
         if not extracted:
             return
@@ -295,7 +318,15 @@ def assign_diameters_by_proximity(
          warnings, inherited_count(=0)}
     """
     warnings: list[str] = []
-    texts = _extract_all_texts(doc, excluded_layers=sprinkler_layers)
+    # DIAGNOSTIC: regex'i geçemeyen ham text'leri topla — response'a forward edilir.
+    # "Neden '2½\"' atanmadi" gibi sorularda kullanici F12 Console'da gorebilsin.
+    # Production'a sokmadan once kaldirilacak (default capacity 200 entry).
+    debug_rejected: list[dict] = []
+    texts = _extract_all_texts(
+        doc,
+        excluded_layers=sprinkler_layers,
+        debug_rejected=debug_rejected,
+    )
     pool_size = len(texts)
     if pool_size == 0:
         warnings.append("Proximity: DXF'te cap belirteci iceren TEXT/MTEXT/DIM/LEADER/ATTRIB bulunamadi")
@@ -306,6 +337,8 @@ def assign_diameters_by_proximity(
             "text_pool_size": 0,
             "source_summary": "",
             "warnings": warnings,
+            "debug_rejected_texts": debug_rejected[:50],
+            "debug_accepted_sample": [],
         }
 
     from collections import Counter
@@ -349,6 +382,19 @@ def assign_diameters_by_proximity(
             continue
 
     skipped = sum(1 for es in edge_segments if not (getattr(es, "diameter", "") or ""))
+    # DIAGNOSTIC: kabul edilmis text'lerden ilk 50 ornek + codepoint dump.
+    # Production'a sokmadan once kaldirilacak.
+    accepted_sample: list[dict] = []
+    for t in texts[:50]:
+        v = str(t.get("value", ""))
+        accepted_sample.append({
+            "value": v,
+            "codepoints": [f"U+{ord(c):04X}" for c in v[:40]],
+            "layer": t.get("layer", ""),
+            "source": t.get("source", ""),
+            "x": float(t.get("x", 0.0)),
+            "y": float(t.get("y", 0.0)),
+        })
     return {
         "assigned_count": assigned,
         "inherited_count": 0,
@@ -356,4 +402,6 @@ def assign_diameters_by_proximity(
         "text_pool_size": pool_size,
         "source_summary": source_summary,
         "warnings": warnings,
+        "debug_rejected_texts": debug_rejected[:50],
+        "debug_accepted_sample": accepted_sample,
     }

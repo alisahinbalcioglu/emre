@@ -528,6 +528,9 @@ def analyze_dxf_metraj(
     # PRD: her segment icin en yakin text -> cap. Layer default fallback'ten
     # ONCE calisir ki text-bazli atama oncelikli olsun. Atayamadiklarini
     # asagidaki layer default fallback yakalar.
+    # proximity_debug — gecici diagnostic (Sorun 3 icin: hangi text'ler reddedildi).
+    # Default None, sadece proximity calistirildi ise dolar.
+    proximity_debug: dict | None = None
     if use_proximity_diameter and edge_segments:
         try:
             from proximity_diameter import assign_diameters_by_proximity
@@ -548,6 +551,15 @@ def analyze_dxf_metraj(
             )
             for w in prox_result.get("warnings", []):
                 warnings.append(w)
+            # GECICI: diagnostic field'lari response'a forward
+            proximity_debug = {
+                "assigned_count": prox_result.get("assigned_count", 0),
+                "skipped_count": prox_result.get("skipped_count", 0),
+                "text_pool_size": prox_result.get("text_pool_size", 0),
+                "source_summary": _src,
+                "rejected_texts": prox_result.get("debug_rejected_texts", []),
+                "accepted_sample": prox_result.get("debug_accepted_sample", []),
+            }
         except Exception as _e:
             warnings.append(f"Proximity diameter: {str(_e)[:100]}")
 
@@ -567,6 +579,7 @@ def analyze_dxf_metraj(
         edge_segments=edge_segments,
         junction_points=junction_points,
         sprinkler_detection=None,
+        proximity_debug=proximity_debug,
     )
 
 
