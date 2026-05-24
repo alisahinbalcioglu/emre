@@ -100,6 +100,67 @@ def _autocad_decode(s: str) -> str:
     return s
 
 
+def _extract_block_texts(doc, insert_entity) -> list[tuple[str, float, float]]:
+    """INSERT'in referans verdigi blok tanimi icindeki TEXT/MTEXT'leri
+    world coordinates'e donusturup don.
+
+    AutoCAD'de boru cap etiketleri sik sik bir "tag block"a sarilir
+    (ornek: 'A_Yangin Cap' layer'inda 664 INSERT, her biri icinde TEXT
+    '1¼"' yazili). Modelspace tarama bunlari ATTRIB olmadigi icin
+    yakalayamaz — blok'u acmak gerekir.
+
+    Transform: TEXT'in lokal pozisyonunu INSERT'in pos+rot+scale ile
+    world coords'e tasi. Nested INSERT su an ele alinmaz (cyclic risk),
+    pratikte cap text bloklari tek seviye.
+    """
+    try:
+        block_name = str(getattr(insert_entity.dxf, "name", "") or "")
+        if not block_name:
+            return []
+        if block_name not in doc.blocks:
+            return []
+        block = doc.blocks[block_name]
+        ip = insert_entity.dxf.insert
+        ix, iy = float(ip.x), float(ip.y)
+        rot = math.radians(float(getattr(insert_entity.dxf, "rotation", 0.0) or 0.0))
+        sx = float(getattr(insert_entity.dxf, "xscale", 1.0) or 1.0)
+        sy = float(getattr(insert_entity.dxf, "yscale", 1.0) or 1.0)
+        cr, sr = math.cos(rot), math.sin(rot)
+    except Exception:
+        return []
+
+    results: list[tuple[str, float, float]] = []
+    try:
+        block_iter = block.query("TEXT MTEXT")
+    except Exception:
+        return results
+
+    for ent in block_iter:
+        try:
+            etype = ent.dxftype()
+            if etype == "TEXT":
+                raw = str(getattr(ent.dxf, "text", "") or "")
+            else:  # MTEXT
+                raw = (
+                    ent.plain_text()
+                    if hasattr(ent, "plain_text")
+                    else str(getattr(ent.dxf, "text", "") or "")
+                )
+            txt = str(raw).replace("\n", " ").strip()
+            if not txt:
+                continue
+            lp = ent.dxf.insert
+            lx, ly = float(lp.x), float(lp.y)
+            # Local -> world: scale, rotate, translate
+            sxl, syl = lx * sx, ly * sy
+            wx = sxl * cr - syl * sr + ix
+            wy = sxl * sr + syl * cr + iy
+            results.append((txt, wx, wy))
+        except (AttributeError, TypeError, ValueError):
+            continue
+    return results
+
+
 def _extract_all_texts(
     doc,
     excluded_layers: set[str] | None = None,
@@ -228,18 +289,30 @@ def _extract_all_texts(
                 _add(mtxt, x, y, layer, "LEADER")
 
             elif etype == "INSERT":
-                if not hasattr(entity, "attribs"):
-                    continue
-                for at in entity.attribs:
-                    try:
-                        at_layer = str(getattr(at.dxf, "layer", layer) or layer)
-                        if at_layer in excluded_layers:
+                # 1) ATTRIB'ler (block'a baglanan kullanici girdi text'leri)
+                if hasattr(entity, "attribs"):
+                    for at in entity.attribs:
+                        try:
+                            at_layer = str(getattr(at.dxf, "layer", layer) or layer)
+                            if at_layer in excluded_layers:
+                                continue
+                            at_txt = str(getattr(at.dxf, "text", "") or "")
+                            ap = at.dxf.insert
+                            _add(at_txt, ap.x, ap.y, at_layer, "ATTRIB")
+                        except Exception:
                             continue
-                        at_txt = str(getattr(at.dxf, "text", "") or "")
-                        ap = at.dxf.insert
-                        _add(at_txt, ap.x, ap.y, at_layer, "ATTRIB")
-                    except Exception:
-                        continue
+                # 2) BLOCK_TEXT — INSERT'in referans verdigi blok icinde TEXT/MTEXT
+                # entity'leri varsa (ornek: 'cap tag' block'lari icinde '1¼"' yazili
+                # statik TEXT), bunlari world coords'e tasiyip pool'a ekle. AutoCAD'de
+                # cap etiketleri sik sik bu yontemle yerlestirilir; geometry.py block
+                # expansion yapiyor ama proximity'de yoktu — bu DWG'nin pool'unu 43
+                # text'ten ~700+ text'e cikaracak (664 INSERT × 1 TEXT/blok).
+                try:
+                    block_texts = _extract_block_texts(doc, entity)
+                    for btxt, wx, wy in block_texts:
+                        _add(btxt, wx, wy, layer, "BLOCK_TEXT")
+                except Exception:
+                    pass
 
         except (AttributeError, TypeError, ValueError):
             continue
