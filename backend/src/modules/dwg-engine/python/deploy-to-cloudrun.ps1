@@ -1,4 +1,4 @@
-# MetaPrice DWG Engine — Google Cloud Run Deploy Script (PowerShell)
+﻿# MetaPrice DWG Engine — Google Cloud Run Deploy Script (PowerShell)
 #
 # Kullanim:
 #   1. Once `gcloud auth login` yap
