@@ -119,150 +119,13 @@ def _autocad_decode(s: str) -> str:
 _MAX_BLOCK_DEPTH = 4  # nested INSERT max recursion depth (cyclic guard + maliyet sinirla)
 
 
-# ════════════════════════════════════════════════════════════════════════
-#  CAP CANONICAL NORMALIZATION
-#  Ayni capi temsil eden farkli format'lari TEK string'e indirger.
-#  Legend'da '1¼"' iki kez gozukmesin diye GEREKLI. Ornekler:
-#    '1 1/4"' → '1¼"'
-#    '1¼″'    → '1¼"'   (Unicode prime → ASCII quote)
-#    "1¼''"   → '1¼"'   (iki tek-tirnak → ASCII quote)
-#    'dn 150' → 'DN150'
-#    '50 MM'  → '50mm'
-#    'Ø 200'  → 'Ø200'
-# ════════════════════════════════════════════════════════════════════════
-
-_ASCII_FRAC_TO_UNICODE = {
-    ("1", "2"): "½",
-    ("1", "4"): "¼",
-    ("3", "4"): "¾",
-}
-
-
-def _canonicalize_cap(s: str) -> str:
-    """Cap text'ini canonical form'a getir. Idempotent: tekrar uygulanabilir."""
-    if not s:
-        return ""
-    s = s.strip()
-    # Quote varyantlarini ASCII " ile birlestir
-    s = s.replace("″", '"').replace("''", '"')
-    # DN: 'dn 150' → 'DN150'
-    s = re.sub(
-        r"(?<![A-Za-zÇĞİÖŞÜçğıöşü])[Dd][Nn]\s*(\d+)",
-        lambda m: f"DN{m.group(1)}",
-        s,
-    )
-    # Ø: 'Ø 200' → 'Ø200'  (Ø ve Ø varyantlari)
-    s = re.sub(r"[ØØ]\s*", "Ø", s)
-    # mm: '50 MM', '50 mm' → '50mm'
-    s = re.sub(r"(\d+)\s*[Mm][Mm]\b", lambda m: f"{m.group(1)}mm", s)
-
-    def _ascii_frac(m: re.Match) -> str:
-        whole = m.group(1) or ""
-        num = m.group(2)
-        den = m.group(3)
-        ufrac = _ASCII_FRAC_TO_UNICODE.get((num, den))
-        if ufrac is None:
-            # Bilinmeyen kesir (orn 5/8) — kompakt boslusuz "5/8"
-            return f"{whole + ' ' if whole else ''}{num}/{den}".replace("  ", " ")
-        return f"{whole}{ufrac}"
-
-    # Mixed: '1 1/4' → '1¼'
-    s = re.sub(r"(\d+)\s+(\d+)/(\d+)", _ascii_frac, s)
-    # Standalone kesir: '1/4' → '¼' (oncesinde rakam yok)
-    s = re.sub(r"(?<!\d)()(\d+)/(\d+)(?!\d)", _ascii_frac, s)
-    # Coklu bosluklari tek bosluga indir
-    s = re.sub(r"\s+", " ", s).strip()
-    return s
-
-
-# ════════════════════════════════════════════════════════════════════════
-#  LAYER-AWARE FILTERING
-#  Yangin tesisati segment'lerine isitma/sogutma/basinclihava layer'larindan
-#  cap-text atanmasini engeller. Yan yana cakisan tesisatlardan yanlis cap
-#  gelmesi engellenir.
-# ════════════════════════════════════════════════════════════════════════
-
-# Yapisal/anlamsiz kelimeler — tema degil; layer adindan cikartilir.
-# Tema kelimeleri (yangin, isitma, sogutma, klima, sihhi, ...) korunur.
-_LAYER_STOPWORDS = frozenset({
-    # Tek harfler (anlamsiz)
-    "a", "b", "c", "d", "e", "f",
-    # Yapisal kelimeler
-    "tesisat", "tesisati", "tesisatlari",
-    "hat", "hatti", "hattisi", "hatlari",
-    "kolon", "kolonu", "kolonlari",
-    "bolum", "bolumu", "bolge", "bolgesi",
-    "detay", "detayi", "detaylar",
-    "ile", "ve", "icin", "veya",
-    "cap", "capi", "caplar",  # cap-tag layer'lardan temizle (tema kalsin)
-    "sistem", "sistemi", "sistemler",
-    "grup", "grubu", "gruplari",
-    "genel", "ana", "alt",
-    "sembol", "sembolu", "sembolleri",
-    "alan", "alani", "alanlar",
-    "duzen", "duzeni",
-    "boru", "borulama",
-    "no", "numara", "numarali",
-    # AutoCAD tipik
-    "format", "cerceve", "yardimci", "yardim",
-    # Sayisal indeksler (01-99)
-})
-
-
-def _normalize_turkish(s: str) -> str:
-    """Turkce karakterleri normalize et + lowercase + alphanumeric only."""
-    if not s:
-        return ""
-    tr_map = str.maketrans({
-        "İ": "i", "I": "i", "Ğ": "g", "Ü": "u",
-        "Ş": "s", "Ö": "o", "Ç": "c",
-        "ı": "i", "ğ": "g", "ü": "u",
-        "ş": "s", "ö": "o", "ç": "c",
-    })
-    s = s.translate(tr_map).lower()
-    s = re.sub(r"[^a-z0-9 ]+", " ", s)
-    return s
-
-
-def _layer_theme_words(layer_name: str) -> set[str]:
-    """Layer adindan tema kelimelerini cikar (yapisal stopword'leri at).
-
-    Ornekler:
-      'A_Yangın Çap' -> {'yangin'}
-      'YANGIN TESİSATI YANGIN DOLABI ve İSA HATTI' -> {'yangin', 'dolabi', 'isa'}
-      '---ISITMA' -> {'isitma'}
-      '---BASICLIHAVA_SEBEKE' -> {'basiclihava', 'sebeke'}
-      'A-Yangın Tesisatı Sprink Yangın Borulama Hattı' -> {'yangin', 'sprink'}
-    """
-    s = _normalize_turkish(layer_name)
-    # Cift haneli sayisal indeksleri de stopword olarak ele al
-    words: set[str] = set()
-    for w in s.split():
-        if len(w) < 2:
-            continue
-        if w in _LAYER_STOPWORDS:
-            continue
-        if w.isdigit():
-            continue  # "01", "02", ...
-        words.add(w)
-    return words
-
-
-def _layers_thematically_compatible(text_layer: str, seg_layer: str) -> bool:
-    """Text'in layer'i ile segment'in layer'i ayni tema'ya ait mi?
-
-    Strateji: ikisinin de tema kelime listelerinde EN AZ 1 ortak kelime varsa
-    'uyumlu'. Yangin-yangin OK; yangin-isitma DEGIL.
-
-    Edge case: ikisi de bos tema kelime kumesi (cok generic layer) -> True
-    don (atamayi engelleme; max_distance zaten filtreliyor).
-    """
-    twords = _layer_theme_words(text_layer)
-    swords = _layer_theme_words(seg_layer)
-    if not twords or not swords:
-        # Bos tema (cok generic layer adi) — atamayi engelleme, distance halletsin.
-        return True
-    return bool(twords & swords)
+# NOT: Eskiden burada _canonicalize_cap (display normalize) ve _layer_theme_words
+# / _layers_thematically_compatible (tema kelime overlap filter) vardi.
+# Plan v2 (radikal sadelestirme) kapsaminda silindi:
+#   - Canonical: frontend canonicalizeDiameter() ayni isi yapiyor (DRY)
+#   - Layer filter: kullanici karari — "text layer'i secilen layer'dan farkli
+#     olabilir, onemli olan mesafe + cap-text regex"
+# Algoritma artik TEK kural: en yakin GORUNUR cap-text -> cap.
 
 
 def _apply_view_transform(
@@ -521,7 +384,8 @@ def _extract_all_texts(
         m = _CAP_PATTERN.search(txt)
         if not m:
             return
-        extracted = _canonicalize_cap(m.group(0).strip())
+        # Raw cap-text (frontend canonicalizeDiameter normalize edecek)
+        extracted = m.group(0).strip()
         if not extracted:
             return
         # Pozisyonu edge space'e tasiyan view_transform uygulanir
@@ -718,7 +582,7 @@ DEFAULT_MAX_DISTANCE_WORLD = 2000.0
 # Endpoint paylasimi toleransi (DWG world unit). T-junction'da iki segment'in
 # uclari floating-point hassasiyetinden ufak ayrik durabilir; bu tolerans icinde
 # olan endpoint'ler ayni nokta sayilir.
-_INHERITANCE_ENDPOINT_TOL = 1.0  # 1 mm (mm-bazli DWG icin)
+_INHERITANCE_ENDPOINT_TOL = 5.0  # 5 mm (AutoCAD snap genelde 1-5mm sapabilir)
 
 
 def _segment_endpoints(es) -> list[tuple[float, float]]:
@@ -746,25 +610,40 @@ def _segment_endpoints(es) -> list[tuple[float, float]]:
 def _propagate_inheritance(edge_segments: list[Any], tolerance: float) -> int:
     """T-junction komsulari arasi BFS-based cap miras yayilimi.
 
-    Proximity bittikten sonra cagrilir. Atama almamis segmentlere, AYNI LAYER'da
-    AYNI ENDPOINT'i paylasan ATANMIS komsudan cap miras verir. BFS sirasinda
-    ilk gelen kazanir (ana-hat -> kollar yayilimi pratikte dogal sonuc).
+    Proximity bittikten sonra cagrilir. Atama almamis segmentlere, tolerance
+    icindeki ENDPOINT'i paylasan herhangi atanmis komsudan cap miras verir.
+    v2: layer guard kaldirildi (kullanici karari). Endpoint kontrolu icin
+    O(n^2) gercek mesafe karsilastirmasi — grid hash hucre sinirinda yanlis
+    sonuc verebiliyordu (sapma tolerance icindeyken farkli hucreye dusebilir).
 
     Returns: miras alan segment sayisi.
     """
     if not edge_segments or tolerance <= 0:
         return 0
 
-    def _key(x: float, y: float) -> tuple[int, int]:
-        """Endpoint'i tolerance grid'ine snap'le — hash key."""
-        return (round(x / tolerance), round(y / tolerance))
+    from collections import deque
 
-    # Endpoint key -> [segment indices]
-    from collections import defaultdict, deque
-    endpoint_to_segs: dict[tuple[int, int], list[int]] = defaultdict(list)
+    # Tum endpoint'leri topla: [(seg_idx, x, y), ...]
+    endpoints: list[tuple[int, float, float]] = []
     for idx, es in enumerate(edge_segments):
         for (ex, ey) in _segment_endpoints(es):
-            endpoint_to_segs[_key(ex, ey)].append(idx)
+            endpoints.append((idx, ex, ey))
+
+    # Komsuluk: tolerance icindeki endpoint'leri paylasan segment ciftleri
+    # O(n^2) — endpoint sayisi 2*segment_sayisi; 2000 segment icin 16M pair, hizli
+    tol_sq = tolerance * tolerance
+    neighbors: dict[int, set[int]] = {i: set() for i in range(len(edge_segments))}
+    for i in range(len(endpoints)):
+        ia, xa, ya = endpoints[i]
+        for j in range(i + 1, len(endpoints)):
+            ib, xb, yb = endpoints[j]
+            if ia == ib:
+                continue
+            dx = xa - xb
+            dy = ya - yb
+            if dx * dx + dy * dy <= tol_sq:
+                neighbors[ia].add(ib)
+                neighbors[ib].add(ia)
 
     # BFS frontier: atanmis segment indices'lerini kuyruga koy
     queue: deque[int] = deque()
@@ -778,25 +657,18 @@ def _propagate_inheritance(edge_segments: list[Any], tolerance: float) -> int:
         src_idx = queue.popleft()
         src = edge_segments[src_idx]
         src_cap = getattr(src, "diameter", "") or ""
-        src_layer = getattr(src, "layer", "") or ""
         if not src_cap:
-            continue  # defansif — kuyrukta yer almamali ama yine de
-        for (ex, ey) in _segment_endpoints(src):
-            for nbr_idx in endpoint_to_segs.get(_key(ex, ey), []):
-                if nbr_idx == src_idx:
-                    continue
-                nbr = edge_segments[nbr_idx]
-                nbr_cap = getattr(nbr, "diameter", "") or ""
-                if nbr_cap and nbr_cap != "Belirtilmemis":
-                    continue  # zaten atanmis
-                # AYNI LAYER kosulu — yangin → isitma sicramasin
-                if (getattr(nbr, "layer", "") or "") != src_layer:
-                    continue
-                nbr.diameter = src_cap
-                if hasattr(nbr, "is_inherited"):
-                    nbr.is_inherited = True
-                inherited += 1
-                queue.append(nbr_idx)
+            continue
+        for nbr_idx in neighbors.get(src_idx, set()):
+            nbr = edge_segments[nbr_idx]
+            nbr_cap = getattr(nbr, "diameter", "") or ""
+            if nbr_cap and nbr_cap != "Belirtilmemis":
+                continue  # zaten atanmis
+            nbr.diameter = src_cap
+            if hasattr(nbr, "is_inherited"):
+                nbr.is_inherited = True
+            inherited += 1
+            queue.append(nbr_idx)
     return inherited
 
 
@@ -861,21 +733,20 @@ def assign_diameters_by_proximity(
             f"Proximity: cap-text havuzu BUYUK ({pool_size}). Hesaplama yavaslayabilir."
         )
 
-    # SEGMENT-PERSPECTIVE NAIVE NEAREST + LAYER-AWARE FILTER
-    # Her segment: kendi layer'i ile tematik uyumlu, mesafe sinirinin altindaki
-    # EN YAKIN cap-text'i alir. Aksi halde atama yapilmaz.
+    # SEGMENT-PERSPECTIVE NAIVE NEAREST
+    # Her segment: mesafe sinirinin altindaki EN YAKIN cap-text'i alir.
+    # Text'in layer'i secilen layer'dan farkli olabilir — onemi yok.
+    # Kullanici karari: "belirledigimiz text filtreleri ve mesafe filtresinde
+    # olmasi durumunda capin atanmasi". Layer-aware tema filtresi silindi.
     assigned = 0
     for es in edge_segments:
         try:
             current = getattr(es, "diameter", "") or ""
             if current and current != "Belirtilmemis":
                 continue  # manuel override korunur
-            seg_layer = getattr(es, "layer", "") or ""
             best_text: dict | None = None
             best_d = effective_max_dist
             for t in texts:
-                if not _layers_thematically_compatible(t.get("layer", ""), seg_layer):
-                    continue
                 d = _segment_distance(es, t["x"], t["y"])
                 if d < best_d:
                     best_d = d

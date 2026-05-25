@@ -33,8 +33,6 @@ from proximity_diameter import (
     _autocad_decode,
     _extract_block_texts,
     _extract_all_texts,
-    _layer_theme_words,
-    _layers_thematically_compatible,
     assign_diameters_by_proximity,
 )
 
@@ -394,50 +392,9 @@ class TestExtractAllTexts:
 
 
 # ════════════════════════════════════════════════════════════════════════
-#  4.5) Layer-aware filtering — tematik kelime ortakligi
-# ════════════════════════════════════════════════════════════════════════
-
-class TestLayerThemeWords:
-
-    @pytest.mark.parametrize("layer,expected", [
-        ("A_Yangın Çap", {"yangin"}),
-        ("YANGIN TESİSATI YANGIN DOLABI ve İSA HATTI", {"yangin", "dolabi", "isa"}),
-        ("A-Yangın Tesisatı Sprink Yangın Borulama Hattı", {"yangin", "sprink"}),
-        ("---ISITMA", {"isitma"}),
-        ("---BASICLIHAVA_SEBEKE", {"basiclihava", "sebeke"}),
-        ("Sulu vrv borulama", {"sulu", "vrv"}),
-        # Generic layer'lar -> bos kume (filter atlanir)
-        ("0", set()),
-        ("FORMAT", set()),
-        ("A", set()),
-    ])
-    def test_theme_words(self, layer, expected):
-        assert _layer_theme_words(layer) == expected
-
-
-class TestLayersThematicallyCompatible:
-
-    @pytest.mark.parametrize("text_l,seg_l,expected", [
-        # Yangın text -> yangın segment uyumlu
-        ("A_Yangın Çap", "YANGIN TESİSATI YANGIN DOLABI ve İSA HATTI", True),
-        ("A_Yangın Çap", "A-Yangın Tesisatı Sprink Yangın Borulama Hattı", True),
-        # Farklı tesisat -> uyumsuz
-        ("---ISITMA", "YANGIN TESİSATI YANGIN DOLABI ve İSA HATTI", False),
-        ("---BASICLIHAVA_SEBEKE", "YANGIN TESİSATI YANGIN DOLABI ve İSA HATTI", False),
-        ("A_Yangın Çap", "Sulu vrv borulama", False),
-        # Aynı tesisat -> uyumlu
-        ("---ISITMA", "---ISITMA_KOLONU", True),
-        # Generic layer (bos tema) -> izin ver (filter atlanir)
-        ("0", "YANGIN TESİSATI", True),
-        ("A_Yangın", "0", True),
-    ])
-    def test_compatibility(self, text_l, seg_l, expected):
-        assert _layers_thematically_compatible(text_l, seg_l) == expected
-
-
 # ════════════════════════════════════════════════════════════════════════
 #  5) assign_diameters_by_proximity — segment-perspective naive nearest
-#     (max_distance, paylasimli atama, layer-aware filter, diagnostic)
+#     (Layer-aware filter v2 PLANI ile SILINDI; sadece mesafe + visible)
 # ════════════════════════════════════════════════════════════════════════
 
 class _FakeEdge:
@@ -549,27 +506,22 @@ class TestAssignDiametersByProximity:
             f"Yakin Ø50 yerine uzak text atanmis: {edges[0].diameter!r}"
         )
 
-    def test_layer_aware_filter_cross_discipline_blocked(self):
-        """REGRESYON: yan yana isitma/yangin tesisatlari, isitma cap-text'i
-        YANGIN segment'ine atanmamali (kullanici raporu)."""
+    def test_v2_cross_discipline_text_assigned(self):
+        """v2 davranisi: text'in layer'i secilen segment'in layer'indan farkli
+        olsa bile EN YAKIN olan atanir. Eskiden 'cross-discipline blocked' testti;
+        artik layer-aware filter silindi, yakin text kazanir."""
         doc = ezdxf.new()
         msp = doc.modelspace()
-        # YAKIN: ISITMA layer'inda 'DN15' cap-text (yanlis tesisat)
         msp.add_text("DN15",
                      dxfattribs={"insert": (5, 0), "height": 50, "layer": "---ISITMA"})
-        # UZAKTA: ayni temada yangin layer'inda 'Ø50' cap-text (dogru tesisat)
         msp.add_text("Ø50",
                      dxfattribs={"insert": (500, 0), "height": 50,
                                  "layer": "A_Yangın Çap"})
-        # Segment YANGIN tesisati layer'inda
         edges = [_FakeEdge(1, 0, 0, 10, 0,
                            layer="YANGIN TESİSATI YANGIN DOLABI ve İSA HATTI")]
-        result = assign_diameters_by_proximity(doc, edges)
-        # DN15 daha yakin AMA tema uyumsuz -> reddedildi
-        # Ø50 daha uzak AMA YANGIN temasi uyumlu -> atandi
-        assert edges[0].diameter == "Ø50", (
-            f"Layer-aware filter calismadi, atanan: {edges[0].diameter!r}"
-        )
+        assign_diameters_by_proximity(doc, edges)
+        # v2: DN15 (5mm uzak) -> Ø50'den (500mm uzak) cok daha yakin -> atanir
+        assert edges[0].diameter == "DN15"
 
     def test_layer_aware_generic_layer_allowed(self):
         """Generic layer (tema kelime yok, ornek '0') -> filter atlanir,
@@ -712,19 +664,21 @@ class TestInheritance:
         assert result["assigned_count"] == 1
         assert result["inherited_count"] == 2
 
-    def test_inheritance_blocked_by_layer_mismatch(self):
-        """Farkli layer'daki komsuya miras GECMEMELI — yangin hatti isitma sicramasin."""
+    def test_inheritance_crosses_layer_boundary(self):
+        """v2 davranisi: farkli layer'daki komsuya miras GIDER.
+        Ayni endpoint = ayni cizim noktasi (T-junction). Layer guard kaldirildi."""
         doc = ezdxf.new()
         doc.modelspace().add_text("Ø50",
-                                   dxfattribs={"insert": (5, 30), "height": 30, "layer": "Yangin"})
+                                   dxfattribs={"insert": (5, 30), "height": 30, "layer": "L1"})
         edges = [
-            _FakeEdge(1, 0, 0, 10, 0, layer="Yangin"),
-            _FakeEdge(2, 10, 0, 20, 0, layer="Isitma"),  # ayni endpoint ama farkli layer
+            _FakeEdge(1, 0, 0, 10, 0, layer="L1"),
+            _FakeEdge(2, 10, 0, 20, 0, layer="L2"),  # ayni endpoint, FARKLI layer
         ]
-        assign_diameters_by_proximity(doc, edges, max_distance_world=31.0)
+        result = assign_diameters_by_proximity(doc, edges, max_distance_world=30.3)
         assert edges[0].diameter == "Ø50"
-        # Isitma layer'i miras almamali
-        assert edges[1].diameter in ("", "Belirtilmemis", None)
+        # v2: L2 layer'i da miras alir (eski davranis: alamaz; layer guard kaldirildi)
+        assert edges[1].diameter == "Ø50"
+        assert result["inherited_count"] == 1
 
     def test_inheritance_disconnected_segment(self):
         """Endpoint paylasmayan segmente miras gitmez."""
@@ -760,4 +714,32 @@ class TestInheritance:
         # Ikisi de proximity'den kendi yakinindakini alir
         assert edges[0].diameter == "Ø50"
         assert edges[1].diameter == "Ø80"
+
+    def test_text_from_different_layer_assigned(self):
+        """v2 davranisi: text'in layer'i secilen segment'in layer'indan farkli olsa bile
+        mesafe yakinsa CAP ATANIR. Layer-aware filter silindi (kullanici karari)."""
+        doc = ezdxf.new()
+        # Text "A_CAP_TAG" layer'inda, segment "M-MUTFAK" layer'inda — farkli tema
+        doc.modelspace().add_text("Ø25",
+                                   dxfattribs={"insert": (5, 0), "height": 30, "layer": "A_CAP_TAG"})
+        edges = [_FakeEdge(1, 0, 0, 10, 0, layer="M-MUTFAK")]
+        result = assign_diameters_by_proximity(doc, edges)
+        assert edges[0].diameter == "Ø25"
+        assert result["assigned_count"] == 1
+
+    def test_inheritance_endpoint_tol_5mm(self):
+        """v2: endpoint tolerance 1mm -> 5mm. 3mm sapma da T-junction sayilir."""
+        doc = ezdxf.new()
+        doc.modelspace().add_text("Ø50",
+                                   dxfattribs={"insert": (5, 30), "height": 30, "layer": "L1"})
+        # Segment A endpoint'i (10, 0), segment B endpoint'i (13, 0) - 3mm sapma
+        edges = [
+            _FakeEdge(1, 0, 0, 10, 0, layer="L1"),
+            _FakeEdge(2, 13, 0, 23, 0, layer="L1"),
+        ]
+        result = assign_diameters_by_proximity(doc, edges, max_distance_world=30.3)
+        assert edges[0].diameter == "Ø50"
+        # 3mm sapma 5mm tolerance icinde -> miras gider
+        assert edges[1].diameter == "Ø50"
+        assert result["inherited_count"] == 1
 

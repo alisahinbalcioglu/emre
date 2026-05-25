@@ -114,9 +114,29 @@ export function useProximityCalc({ fileId, scale, sprinklerLayers, onResult, onF
 
         onResult({ layer, calculated, raw: data, summary });
 
+        // Detayli rapor: kac segment proximity'den, kac segment miras, kac segment bos.
+        // Backend warning'ler parse edilir: "Inheritance: X segment T-junction komsusundan..."
+        const warnings: string[] = Array.isArray(data.warnings) ? data.warnings : [];
+        const inhMatch = warnings.find((w) => w.startsWith('Inheritance:'))?.match(/Inheritance:\s+(\d+)\s+segment/);
+        const inheritedCount = inhMatch ? Number(inhMatch[1]) || 0 : 0;
+        const emptyCount = edgeSegs.filter((es) => !es.diameter || es.diameter === 'Belirtilmemis').length;
+        const proximityCount = (summary?.assignedCount ?? 0) - inheritedCount;
+
         const descParts = [`${totalLen.toFixed(1)} m`, `${edgeSegs.length} segment`];
-        if (summary) descParts.push(`${summary.assignedCount}/${summary.totalSegments} cap atandi`);
-        toast({ title: `Layer hesaplandı: ${layer}`, description: descParts.join(' · ') });
+        if (proximityCount > 0) descParts.push(`${proximityCount} proximity`);
+        if (inheritedCount > 0) descParts.push(`${inheritedCount} miras`);
+        if (emptyCount > 0) descParts.push(`${emptyCount} boş`);
+        toast({
+          title: `Layer hesaplandı: ${layer}`,
+          description: descParts.join(' · '),
+          variant: emptyCount > 0 ? 'default' : 'default',
+        });
+        if (emptyCount > 0) {
+          toast({
+            title: `${emptyCount} segment çapsız`,
+            description: 'Manuel çap atayabilirsin (segmente tıkla) veya "Varsayılan Çap" ile toplu uygula.',
+          });
+        }
       } catch (e: any) {
         const status = e?.response?.status as number | undefined;
         const detail = e?.response?.data?.detail ?? e?.response?.data?.message;
