@@ -325,9 +325,13 @@ export default function DwgProjectWorkspace({
     [pendingErase],
   );
 
+  // Onayli layer'lar cap-renkli edge listesinden DUSER — viewer onlara dokunmaz,
+  // layer orijinal AutoCAD rengiyle kalir. Kullanici kurali: "onayla = bu layer
+  // bitti, dikkati basa cek". T-junction marker'lari da onayli layer'larda gizli.
   const calculatedEdgesByLayer = useMemo(() => {
     const map: Record<string, EdgeSegment[]> = {};
     for (const [layer, cl] of Object.entries(state.calculatedLayers)) {
+      if (cl.approved) continue;  // onayli -> cap renksiz, orijinal
       map[layer] = cl.edgeSegments;
     }
     return map;
@@ -336,6 +340,7 @@ export default function DwgProjectWorkspace({
   const calculatedJunctionsByLayer = useMemo(() => {
     const map: Record<string, [number, number][]> = {};
     for (const [layer, cl] of Object.entries(state.calculatedLayers)) {
+      if (cl.approved) continue;  // onayli -> T-junction marker da kapali
       if (cl.junctionPoints && cl.junctionPoints.length > 0) {
         map[layer] = cl.junctionPoints;
       }

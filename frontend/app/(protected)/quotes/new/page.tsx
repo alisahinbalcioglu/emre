@@ -129,32 +129,41 @@ export default function NewQuotePage() {
           metraj: MetrajResult;
           fileName: string;
         };
-        const rows: ExcelRowData[] = [];
-        let idx = 0;
+        // (Malzeme Adi, Cap) bazinda groupBy — Excel ile ayni format.
+        // Her segment'i ayri satir gostermek 26+ satir saciyordu; cap bazinda
+        // toplam daha temiz ve fiyatlandirma icin dogru veri.
+        const grouped = new Map<string, { name: string; diameter: string; totalLen: number }>();
         for (const layer of metraj.layers) {
           if (layer.segments && layer.segments.length > 0) {
             for (const seg of layer.segments) {
-              rows.push({
-                _isDataRow: true,
-                _isHeaderRow: false,
-                _rowIdx: idx++,
-                'Malzeme Adi': seg.material_type || layer.hat_tipi || layer.layer,
-                'Birim': 'm',
-                'Miktar': String(seg.length.toFixed(2)),
-              });
+              const name = seg.material_type || layer.hat_tipi || layer.layer;
+              const dia = seg.diameter || 'Belirtilmemis';
+              const key = `${name}__${dia}`;
+              const entry = grouped.get(key);
+              if (entry) {
+                entry.totalLen += seg.length || 0;
+              } else {
+                grouped.set(key, { name, diameter: dia, totalLen: seg.length || 0 });
+              }
             }
           } else {
-            rows.push({
-              _isDataRow: true,
-              _isHeaderRow: false,
-              _rowIdx: idx++,
-              'Malzeme Adi': layer.hat_tipi || layer.layer,
-              'Cap': '',
-              'Birim': 'm',
-              'Miktar': String(layer.length.toFixed(2)),
-            });
+            // Layer'da segment yok — fake equipment satiri (ekipman)
+            const name = layer.hat_tipi || layer.layer;
+            const key = `${name}__`;
+            grouped.set(key, { name, diameter: '', totalLen: layer.length });
           }
         }
+        const rows: ExcelRowData[] = Array.from(grouped.values())
+          .sort((a, b) => b.totalLen - a.totalLen)
+          .map((g, idx) => ({
+            _isDataRow: true,
+            _isHeaderRow: false,
+            _rowIdx: idx,
+            'Malzeme Adi': g.name,
+            'Cap': g.diameter,
+            'Birim': 'm',
+            'Miktar': g.totalLen.toFixed(2),
+          }));
         const columnDefs = [
           { field: 'Malzeme Adi', headerName: 'Malzeme Adi', flex: 3 },
           { field: 'Cap', headerName: 'Cap', width: 90 },
