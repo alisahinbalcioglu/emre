@@ -131,6 +131,23 @@ export function useWorkspaceState(fileId: string, scale: number) {
     });
   }, []);
 
+  /** Onayli bir layer'in onayini geri al — revize moduna gec.
+   *  Cap renkleri tekrar gozukur, viewer renklendirir, Excel/finalMetraj'a
+   *  dahil edilmez (yeniden onaylanana kadar). */
+  const unapproveLayer = useCallback((layer: string) => {
+    setState((s) => {
+      const cl = s.calculatedLayers[layer];
+      if (!cl || !cl.approved) return s;
+      return {
+        ...s,
+        calculatedLayers: {
+          ...s.calculatedLayers,
+          [layer]: { ...cl, approved: false, approvedAt: undefined },
+        },
+      };
+    });
+  }, []);
+
   const updateEdgeSegmentDiameter = useCallback((layer: string, segmentId: number, newDiameter: string) => {
     setState((s) => {
       const cl = s.calculatedLayers[layer];
@@ -231,6 +248,7 @@ export function useWorkspaceState(fileId: string, scale: number) {
     updateLayerConfig,
     addCalculatedLayer,
     approveLayer,
+    unapproveLayer,
     removeCalculatedLayer,
     updateEdgeSegmentDiameter,
     beginEditEquipment,

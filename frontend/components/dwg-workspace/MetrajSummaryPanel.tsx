@@ -19,6 +19,9 @@ interface MetrajSummaryPanelProps {
   onEditEquipment: (key: string) => void;
   /** Tek bir layer'i onayla — Excel'e dahil olur, baska layer'a gecilebilir. */
   onApproveLayer: (layer: string) => void;
+  /** Layer kartina tikla -> o layer'i sec (revize). Onayli ise onay
+   *  otomatik kalkar, cap renkleri geri gelir. */
+  onSelectLayerCard: (layer: string) => void;
 }
 
 export default function MetrajSummaryPanel({
@@ -28,6 +31,7 @@ export default function MetrajSummaryPanel({
   onRemoveEquipment,
   onEditEquipment,
   onApproveLayer,
+  onSelectLayerCard,
 }: MetrajSummaryPanelProps) {
   const layerList = Object.values(calculatedLayers).sort((a, b) => a.computedAt - b.computedAt);
   const equipmentList = Object.values(markedEquipments);
@@ -64,7 +68,12 @@ export default function MetrajSummaryPanel({
             capTotals[k] = (capTotals[k] ?? 0) + es.length;
           }
           return (
-            <div key={cl.layer} className="border-b last:border-0 px-3 py-2">
+            <div
+              key={cl.layer}
+              className="border-b last:border-0 px-3 py-2 cursor-pointer hover:bg-slate-50 transition-colors"
+              onClick={() => onSelectLayerCard(cl.layer)}
+              title={cl.approved ? 'Tıkla → bu layer\'a geri dön (onay kalkar, revize edebilirsin)' : 'Tıkla → bu layer\'ı aktif yap'}
+            >
               <div className="mb-1 flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[13px] font-medium text-slate-800">{cl.hatIsmi || cl.layer}</p>
@@ -73,7 +82,7 @@ export default function MetrajSummaryPanel({
                   )}
                 </div>
                 <button
-                  onClick={() => onRemoveLayer(cl.layer)}
+                  onClick={(e) => { e.stopPropagation(); onRemoveLayer(cl.layer); }}
                   className="shrink-0 text-slate-300 hover:text-red-500"
                   title="Kaldır"
                 >
@@ -106,7 +115,7 @@ export default function MetrajSummaryPanel({
               </div>
               {/* Inline ONAYLA butonu — her layer kendi onayini alir */}
               <button
-                onClick={() => onApproveLayer(cl.layer)}
+                onClick={(e) => { e.stopPropagation(); onApproveLayer(cl.layer); }}
                 disabled={cl.approved}
                 className={[
                   'mt-2 w-full rounded-lg px-3 py-1.5 text-[11px] font-medium transition-colors flex items-center justify-center gap-1.5',

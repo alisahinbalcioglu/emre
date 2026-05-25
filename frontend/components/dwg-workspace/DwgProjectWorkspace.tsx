@@ -47,7 +47,7 @@ export default function DwgProjectWorkspace({
   const {
     state,
     selectLayer, updateLayerConfig,
-    addCalculatedLayer, approveLayer, removeCalculatedLayer,
+    addCalculatedLayer, approveLayer, unapproveLayer, removeCalculatedLayer,
     updateEdgeSegmentDiameter,
     beginEditEquipment, cancelEditEquipment, saveEquipment, removeEquipment,
     removeSprinklerLayer, toggleSprinklerLayer,
@@ -198,6 +198,18 @@ export default function DwgProjectWorkspace({
 
   const [editingSegment, setEditingSegment] = useState<EdgeSegment | null>(null);
 
+  // Cap Renkleri legend'i SADECE onaysiz layer'larin caplarini gosterir.
+  // Onaylanan layer kullanici icin "bitti" sayilir; cap listesi karismasin.
+  // Hesaplanmis Metraj panelinde gerekirse o layer'a tiklayinca onay kalkar
+  // ve renkler geri gelir (revize modu).
+  const pendingCalculatedLayers = useMemo(() => {
+    const map: Record<string, CalculatedLayer> = {};
+    for (const [layer, cl] of Object.entries(state.calculatedLayers)) {
+      if (!cl.approved) map[layer] = cl;
+    }
+    return map;
+  }, [state.calculatedLayers]);
+
   // ── CAP RENKLERI LISTE NAVIGATION ──────────────────────────────────────
   // Legend'da bir cap'e tiklayinca o cap'in segment'leri arasinda dolas.
   // activeDiameter: aktif cap key ("Ø50", "Belirtilmemis", ...). null = kapali.
@@ -208,21 +220,20 @@ export default function DwgProjectWorkspace({
   const [activeIndex, setActiveIndex] = useState<number>(0);
   const [focusVersion, setFocusVersion] = useState<number>(0);
 
-  // Aktif cap icin tum hesaplanmis layer'lardan eslesen segment'lerin duzlestirilmis listesi.
-  // Diameter eslestirmesi normalize edilir: "Belirtilmemis" ile bos cap esit sayilir.
+  // Aktif cap icin onaysiz layer'lardaki eslesen segment'leri duzlestir.
+  // Onayli layer'lar Cap Renkleri'nde gozukmuyor; cycle'da da olmamali.
   const activeDiameterSegments = useMemo<EdgeSegment[]>(() => {
     if (!activeDiameter) return [];
     const out: EdgeSegment[] = [];
-    for (const cl of Object.values(state.calculatedLayers)) {
+    for (const cl of Object.values(pendingCalculatedLayers)) {
       for (const seg of cl.edgeSegments) {
         const segKey = seg.diameter || 'Belirtilmemis';
         if (segKey === activeDiameter) out.push(seg);
       }
     }
-    // Deterministik sira (segment_id ascending) — kullanici tiklayinca tutarli gezsin
     out.sort((a, b) => a.segment_id - b.segment_id);
     return out;
-  }, [activeDiameter, state.calculatedLayers]);
+  }, [activeDiameter, pendingCalculatedLayers]);
 
   // Tiklanan cap segment listesi degisirse (cap eklendi/silindi/duzeltildi) index'i
   // guvenle clamp et — out-of-bounds focus'u onler.
@@ -899,7 +910,7 @@ export default function DwgProjectWorkspace({
           {/* PRD §3: Dinamik renk legend — cizimle birebir esles
               Cap satirina tikla -> o cap'in segment'leri arasinda cycle */}
           <DiameterLegendPanel
-            calculatedLayers={state.calculatedLayers}
+            calculatedLayers={pendingCalculatedLayers}
             diameterColorsActive={useDiameterColors}
             activeDiameter={activeDiameter}
             activeIndex={activeDiameter ? activeIndex : 0}
@@ -1003,6 +1014,19 @@ export default function DwgProjectWorkspace({
               }
             }}
             onApproveLayer={approveLayer}
+            onSelectLayerCard={(layer) => {
+              // Hesaplanmis Metraj kartina tikla:
+              //  - Layer onayli ise onayi kaldir (revize moduna gec, cap renkleri donsun)
+              //  - tryChangeLayer guard'indan gec (mevcut onaysiz layer varsa uyari)
+              const cl = state.calculatedLayers[layer];
+              if (cl?.approved) {
+                unapproveLayer(layer);
+              }
+              // Onaysizlasinca tryChangeLayer (selectedLayer'da onaysiz mevcut var mi)
+              // mantigini bozmamak icin direkt selectLayer cagiriyoruz: bu layer'in
+              // kendisi zaten artik "onaysiz" durumda ve seciliyor.
+              selectLayer(layer);
+            }}
           />
         </div>
       </div>
