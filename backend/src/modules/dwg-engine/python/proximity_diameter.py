@@ -120,6 +120,62 @@ _MAX_BLOCK_DEPTH = 4  # nested INSERT max recursion depth (cyclic guard + maliye
 
 
 # ════════════════════════════════════════════════════════════════════════
+#  CAP CANONICAL NORMALIZATION
+#  Ayni capi temsil eden farkli format'lari TEK string'e indirger.
+#  Legend'da '1¼"' iki kez gozukmesin diye GEREKLI. Ornekler:
+#    '1 1/4"' → '1¼"'
+#    '1¼″'    → '1¼"'   (Unicode prime → ASCII quote)
+#    "1¼''"   → '1¼"'   (iki tek-tirnak → ASCII quote)
+#    'dn 150' → 'DN150'
+#    '50 MM'  → '50mm'
+#    'Ø 200'  → 'Ø200'
+# ════════════════════════════════════════════════════════════════════════
+
+_ASCII_FRAC_TO_UNICODE = {
+    ("1", "2"): "½",
+    ("1", "4"): "¼",
+    ("3", "4"): "¾",
+}
+
+
+def _canonicalize_cap(s: str) -> str:
+    """Cap text'ini canonical form'a getir. Idempotent: tekrar uygulanabilir."""
+    if not s:
+        return ""
+    s = s.strip()
+    # Quote varyantlarini ASCII " ile birlestir
+    s = s.replace("″", '"').replace("''", '"')
+    # DN: 'dn 150' → 'DN150'
+    s = re.sub(
+        r"(?<![A-Za-zÇĞİÖŞÜçğıöşü])[Dd][Nn]\s*(\d+)",
+        lambda m: f"DN{m.group(1)}",
+        s,
+    )
+    # Ø: 'Ø 200' → 'Ø200'  (Ø ve Ø varyantlari)
+    s = re.sub(r"[ØØ]\s*", "Ø", s)
+    # mm: '50 MM', '50 mm' → '50mm'
+    s = re.sub(r"(\d+)\s*[Mm][Mm]\b", lambda m: f"{m.group(1)}mm", s)
+
+    def _ascii_frac(m: re.Match) -> str:
+        whole = m.group(1) or ""
+        num = m.group(2)
+        den = m.group(3)
+        ufrac = _ASCII_FRAC_TO_UNICODE.get((num, den))
+        if ufrac is None:
+            # Bilinmeyen kesir (orn 5/8) — kompakt boslusuz "5/8"
+            return f"{whole + ' ' if whole else ''}{num}/{den}".replace("  ", " ")
+        return f"{whole}{ufrac}"
+
+    # Mixed: '1 1/4' → '1¼'
+    s = re.sub(r"(\d+)\s+(\d+)/(\d+)", _ascii_frac, s)
+    # Standalone kesir: '1/4' → '¼' (oncesinde rakam yok)
+    s = re.sub(r"(?<!\d)()(\d+)/(\d+)(?!\d)", _ascii_frac, s)
+    # Coklu bosluklari tek bosluga indir
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+# ════════════════════════════════════════════════════════════════════════
 #  LAYER-AWARE FILTERING
 #  Yangin tesisati segment'lerine isitma/sogutma/basinclihava layer'larindan
 #  cap-text atanmasini engeller. Yan yana cakisan tesisatlardan yanlis cap
@@ -441,16 +497,11 @@ def _extract_block_texts(
 def _extract_all_texts(
     doc,
     excluded_layers: set[str] | None = None,
-    debug_rejected: list[dict] | None = None,
     view_transform: tuple[float, float, float, float, float, float] | None = None,
 ) -> list[dict]:
-    """DXF modelspace'inden TUM text-bearing entity'leri cikar.
-    Filter YOK — TEXT/MTEXT/DIMENSION/MULTILEADER/MLEADER/INSERT ATTRIB
-    hepsinin icerigi havuza alinir. Sprinkler layer text'leri hariç.
-
-    Args:
-        debug_rejected: caller bos liste verirse, REGEX'i gecemeyen text'ler
-          burada toplanir (debug icin). None ise toplanmaz (production path).
+    """DXF modelspace'inden GORUNUR cap-text'leri cikar.
+    TEXT/MTEXT/DIMENSION/MULTILEADER/MLEADER/INSERT (ATTRIB + nested block).
+    Gorunmez (dxf.invisible=1) entity'ler ve sprinkler layer'lar haric.
 
     Returns: [{"x", "y", "value", "layer", "source"}, ...]
     """
@@ -467,25 +518,16 @@ def _extract_all_texts(
         txt = _autocad_decode(txt_raw or "").strip()
         if not txt:
             return
-        # KRITIK: pozisyonu edge space'e tasiyan view_transform uygulanmali
-        x, y = _apply_view_transform(float(x), float(y), view_transform)
         m = _CAP_PATTERN.search(txt)
         if not m:
-            if debug_rejected is not None and len(debug_rejected) < 200:
-                codepoints = [f"U+{ord(c):04X}" for c in txt[:40]]
-                debug_rejected.append({
-                    "raw": txt,
-                    "codepoints": codepoints,
-                    "layer": layer,
-                    "source": source,
-                    "x": float(x), "y": float(y),
-                })
             return
-        extracted = m.group(0).strip()
+        extracted = _canonicalize_cap(m.group(0).strip())
         if not extracted:
             return
+        # Pozisyonu edge space'e tasiyan view_transform uygulanir
+        wx, wy = _apply_view_transform(float(x), float(y), view_transform)
         texts.append({
-            "x": float(x), "y": float(y),
+            "x": wx, "y": wy,
             "value": extracted,
             "layer": layer, "source": source,
         })
@@ -495,6 +537,16 @@ def _extract_all_texts(
         try:
             layer = str(getattr(entity.dxf, "layer", "") or "")
             if layer in excluded_layers:
+                continue
+
+            # KRITIK FILTER: gorunmez entity'leri (dxf.invisible=1) ATLA.
+            # Modelspace top-level'da TEXT/MTEXT/DIMENSION/INSERT/... hepsi icin gecerli.
+            # Bu filter olmadan, gorunmeyen bir 'DN300' veya 'DN15' TEXT proximity
+            # pool'una giriyor ve bir segmente cap olarak atanyor — kullanici
+            # cizimde olmayan capi gormesinin asil sebebi buydu.
+            # INSERT icin: block instance gorunmezse icindeki TEXT'lere de bakma
+            # (block icinde recursive filter zaten var ama ust seviye de filtrelenmeli).
+            if getattr(entity.dxf, "invisible", 0) == 1:
                 continue
 
             if etype == "TEXT":
@@ -570,6 +622,15 @@ def _extract_all_texts(
                         try:
                             at_layer = str(getattr(at.dxf, "layer", layer) or layer)
                             if at_layer in excluded_layers:
+                                continue
+                            # INVISIBLE filter — ATTRIB icin iki yol:
+                            # a) dxf.invisible == 1 (entity-level invisible)
+                            # b) ATTRIB flags & 1 (DXF spec: bit 0 = invisible)
+                            # Her iki kanal da kontrol edilmeli; AutoCAD'in eski versiyonlari
+                            # gorunmez ATTRIB'leri flags ile, yenileri invisible ile isaretler.
+                            if getattr(at.dxf, "invisible", 0) == 1:
+                                continue
+                            if int(getattr(at.dxf, "flags", 0) or 0) & 1:
                                 continue
                             at_txt = str(getattr(at.dxf, "text", "") or "")
                             ap = at.dxf.insert
@@ -660,35 +721,24 @@ def assign_diameters_by_proximity(
     edge_segments: list[Any],
     sprinkler_layers: set[str] | None = None,
     max_distance_world: float | None = None,
-    inheritance_tolerance: float | None = None,
+    inheritance_tolerance: float | None = None,  # noqa: ARG001 — backward compat
     view_transform: tuple[float, float, float, float, float, float] | None = None,
 ) -> dict:
-    """
-    SEGMENT-PERSPECTIVE NAIVE NEAREST: Her segment KENDI en yakin cap-text'ini
-    alir. Mesafe DEFAULT_MAX_DISTANCE_WORLD sinirini asan text'ler atanmaz.
-    Ayni text birden fazla yakin segmente paylasilabilir (T-junction'da ayni
-    cap zaten kardes borulara uygulanir).
+    """Her segmente, layer-uyumlu en yakin GORUNUR cap-text'i ata.
 
-    Onceki "mutual nearest" (text-perspective, tek-text-tek-segment kapma)
-    mantigi BLOCK_TEXT havuzu buyudukten sonra kullaniciya yanlis sonuc
-    veriyordu: borunun yanindaki text bir kardes boruya kapilinca, bu boru
-    uzaktaki bambaska bir text'i 'en yakin' aliyordu. Basit mantik daha
-    saglam: "borunun yaninda text var -> al, yoksa Belirtilmemis."
+    Kural: "borunun yaninda gorunen cap-text var -> al, yoksa atama yapma."
 
     Args:
         doc: ezdxf Drawing
         edge_segments: list of EdgeSegment — diameter field'i mutate edilir
         sprinkler_layers: bu layer'lardaki text'ler havuzdan dusurulur
-        max_distance_world: DWG world unit cinsinden maks text-segment mesafesi.
-          None -> DEFAULT_MAX_DISTANCE_WORLD (2000mm). 0 veya negatif -> sinir yok.
-        inheritance_tolerance: kullanilmiyor (backward compat)
+        max_distance_world: maks text-segment mesafesi (DWG world unit).
+          None -> DEFAULT_MAX_DISTANCE_WORLD. 0/negatif -> sinir yok.
 
-    Returns:
-        {assigned_count, skipped_count, text_pool_size, source_summary,
-         warnings, inherited_count(=0), max_distance_world, out_of_range_*,
-         debug_*}
+    Returns: assigned_count, skipped_count, text_pool_size, source_summary,
+             warnings, max_distance_world, out_of_range_text_count, inherited_count(=0).
     """
-    # Efektif mesafe sınırı — None ise default, <=0 ise sinir yok
+    # Efektif mesafe sınırı
     if max_distance_world is None:
         effective_max_dist = DEFAULT_MAX_DISTANCE_WORLD
     elif max_distance_world <= 0:
@@ -696,19 +746,16 @@ def assign_diameters_by_proximity(
     else:
         effective_max_dist = float(max_distance_world)
     warnings: list[str] = []
-    # DIAGNOSTIC: regex'i geçemeyen ham text'leri topla — response'a forward edilir.
-    # "Neden '2½\"' atanmadi" gibi sorularda kullanici F12 Console'da gorebilsin.
-    # Production'a sokmadan once kaldirilacak (default capacity 200 entry).
-    debug_rejected: list[dict] = []
     texts = _extract_all_texts(
         doc,
         excluded_layers=sprinkler_layers,
-        debug_rejected=debug_rejected,
         view_transform=view_transform,
     )
     pool_size = len(texts)
     if pool_size == 0:
-        warnings.append("Proximity: DXF'te cap belirteci iceren TEXT/MTEXT/DIM/LEADER/ATTRIB bulunamadi")
+        warnings.append(
+            "Proximity: DXF'te gorunen cap-text bulunamadi"
+        )
         return {
             "assigned_count": 0,
             "inherited_count": 0,
@@ -718,112 +765,63 @@ def assign_diameters_by_proximity(
             "warnings": warnings,
             "max_distance_world": effective_max_dist if effective_max_dist != math.inf else None,
             "out_of_range_text_count": 0,
-            "debug_rejected_texts": debug_rejected[:50],
-            "debug_accepted_sample": [],
-            "debug_assignment_sample": [],
         }
 
     from collections import Counter
     source_counts = Counter(t.get("source", "?") for t in texts)
     source_summary = ", ".join(f"{src}:{cnt}" for src, cnt in source_counts.most_common())
 
-    # P1c: Pool size guard — buyuk DWG'lerde proximity O(text × edge) maliyeti
-    # patlamasin. Esik gecince warning ekle (kullaniciya gosterilir, hesap yine devam).
-    # 3000 esigi: 3000 text × 1500 edge = 4.5M mesafe hesabi ~ 1-2 saniye. Cok daha
-    # azi normal. Sinir asilirsa kullanici tum-DWG isleyislerinde yavaslama beklesin.
+    # Pool size guard — kullanici hesaplama suresinin uzayabilecegini bilsin
     if pool_size > 3000:
         warnings.append(
             f"Proximity: cap-text havuzu BUYUK ({pool_size}). Hesaplama yavaslayabilir."
         )
 
-    # ── SEGMENT-PERSPECTIVE NAIVE NEAREST + LAYER-AWARE FILTER ──────
-    # Her segment KENDI en yakin cap-text'ini alir AMA text'in layer'i ile
-    # segment'in layer'inin TEMA KELIMELERI ortak olmali (yangin-yangin OK,
-    # yangin-isitma DEGIL). Bu sayede yan yana cakisan tesisatlardan yanlis
-    # cap atanmaz. Mesafe sinirinin altinda kalmak kosuluyla.
-    #
-    # Ozel durum: layer adi cok generic (tema kelime yok) -> filter atlanir,
-    # sadece distance kontrolu yeter.
-    #
-    # DIAGNOSTIC: ilk 60 atamanin bilgisini sample'a koy.
+    # SEGMENT-PERSPECTIVE NAIVE NEAREST + LAYER-AWARE FILTER
+    # Her segment: kendi layer'i ile tematik uyumlu, mesafe sinirinin altindaki
+    # EN YAKIN cap-text'i alir. Aksi halde atama yapilmaz.
     assigned = 0
-    out_of_range_count = 0
-    assignment_sample: list[dict] = []
-    for idx, es in enumerate(edge_segments):
+    for es in edge_segments:
         try:
             current = getattr(es, "diameter", "") or ""
             if current and current != "Belirtilmemis":
                 continue  # manuel override korunur
             seg_layer = getattr(es, "layer", "") or ""
-            # Bu segmente en yakin UYUMLU text'i ara
             best_text: dict | None = None
-            best_d = effective_max_dist  # mesafe siniri — bunun ustu sayilmaz
+            best_d = effective_max_dist
             for t in texts:
-                try:
-                    # LAYER-AWARE FILTER: tematik uyumsuz text'leri atla.
-                    if not _layers_thematically_compatible(t.get("layer", ""), seg_layer):
-                        continue
-                    d = _segment_distance(es, t["x"], t["y"])
-                    if d < best_d:
-                        best_d = d
-                        best_text = t
-                except Exception:
+                if not _layers_thematically_compatible(t.get("layer", ""), seg_layer):
                     continue
+                d = _segment_distance(es, t["x"], t["y"])
+                if d < best_d:
+                    best_d = d
+                    best_text = t
             if best_text is None:
-                # Bu segmente mesafe + layer-compatibility kosullarinda hicbir text yok
                 continue
             es.diameter = best_text["value"]
             assigned += 1
-            if len(assignment_sample) < 60:
-                seg_id = getattr(es, "segment_id", idx)
-                assignment_sample.append({
-                    "segment_id": int(seg_id),
-                    "segment_layer": seg_layer,
-                    "assigned_diameter": best_text["value"],
-                    "distance_world": round(best_d, 2),
-                    "text_layer": best_text.get("layer", ""),
-                    "text_source": best_text.get("source", ""),
-                    "text_xy": [round(best_text["x"], 1), round(best_text["y"], 1)],
-                })
         except Exception as _e:
             logging.warning("proximity nearest skip: %s", _e)
             continue
 
-    # Mesafe siniri yuzunden atanmayan segment'leri say (warning icin)
+    # Mesafe siniri / layer mismatch yuzunden atanmayan segment'leri say
     out_of_range_count = sum(
         1 for es in edge_segments
         if not (getattr(es, "diameter", "") or "")
     )
-
-    skipped = out_of_range_count
     if out_of_range_count > 0 and effective_max_dist != math.inf:
         warnings.append(
             f"Proximity: {out_of_range_count} segmente mesafe sinirinin ({effective_max_dist:g}) "
             f"altinda cap-text bulunamadi."
         )
-    # DIAGNOSTIC: kabul edilmis text'lerden ilk 50 ornek + codepoint dump.
-    # Production'a sokmadan once kaldirilacak.
-    accepted_sample: list[dict] = []
-    for t in texts[:50]:
-        v = str(t.get("value", ""))
-        accepted_sample.append({
-            "value": v,
-            "codepoints": [f"U+{ord(c):04X}" for c in v[:40]],
-            "layer": t.get("layer", ""),
-            "source": t.get("source", ""),
-            "x": float(t.get("x", 0.0)),
-            "y": float(t.get("y", 0.0)),
-        })
+
     return {
         "assigned_count": assigned,
         "inherited_count": 0,
-        "skipped_count": skipped,
+        "skipped_count": out_of_range_count,
         "text_pool_size": pool_size,
         "source_summary": source_summary,
         "warnings": warnings,
         "max_distance_world": effective_max_dist if effective_max_dist != math.inf else None,
         "out_of_range_text_count": out_of_range_count,
-        "debug_rejected_texts": debug_rejected[:50],
-        "debug_accepted_sample": accepted_sample,
-        "debug_assignment_sample": assignment_sample,
     }

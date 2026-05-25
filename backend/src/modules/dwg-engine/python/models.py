@@ -75,7 +75,3 @@ class MetrajResult(BaseModel):
     edge_segments: list[EdgeSegment] = []  # her edge ayri — Canvas2D viewer icin
     junction_points: list[list[float]] = []  # T-junction [x, y] noktalari (degree>=3, marker icin)
     sprinkler_detection: None = None  # Legacy field — AI sprinkler tespit kaldirildigi icin her zaman None
-    # GECICI DIAGNOSTIC — proximity'nin neden bazi text'leri reddettigini incelemek icin.
-    # Production'a sokmadan once kaldirilacak. Frontend kullanmaz, sadece F12 Console'dan
-    # response'a bakildiginda gorulur.
-    proximity_debug: dict | None = None

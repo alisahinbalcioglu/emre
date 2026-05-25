@@ -174,7 +174,6 @@ export class DwgEngineService {
     layerDefaultDiameter?: Record<string, string>,
     useProximityDiameter?: boolean,
     proximityMaxDistance?: number,
-    debug?: boolean,
   ) {
     const params = new URLSearchParams({
       discipline,
@@ -204,9 +203,6 @@ export class DwgEngineService {
     }
     if (proximityMaxDistance !== undefined && proximityMaxDistance !== null) {
       params.set('proximity_max_distance', String(proximityMaxDistance));
-    }
-    if (debug) {
-      params.set('debug', 'true');
     }
 
     const factory = (timeoutMs: number): RequestInit => {

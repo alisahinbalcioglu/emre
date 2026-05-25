@@ -55,7 +55,6 @@ export class DwgEngineController {
     @Query('layer_default_diameter') layerDefaultDiameter?: string,
     @Query('use_proximity_diameter') useProximityDiameter?: string,
     @Query('proximity_max_distance') proximityMaxDistance?: string,
-    @Query('debug') debug?: string,
   ) {
     // file_id varsa dosya gerekmez, yoksa dosya zorunlu
     if (!fileId && !file) {
@@ -118,8 +117,6 @@ export class DwgEngineController {
       proximityMaxDistance !== undefined && proximityMaxDistance !== ''
         ? Number(proximityMaxDistance)
         : undefined;
-    // debug: bool flag — engine response'una proximity_debug dolar (sadece dev/test)
-    const debugFlag = debug === 'true' || debug === '1';
 
     return this.dwgEngine.parseDwg(
       file?.buffer ?? null,
@@ -134,7 +131,6 @@ export class DwgEngineController {
       parsedDefaultDiameter,
       proximityFlag,
       Number.isFinite(proximityMax) ? proximityMax : undefined,
-      debugFlag,
     );
   }
 

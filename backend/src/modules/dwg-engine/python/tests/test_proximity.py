@@ -391,16 +391,6 @@ class TestExtractAllTexts:
         assert "NotSprinkler" in layers
         assert "Sprinkler" not in layers
 
-    def test_debug_rejected_captured(self):
-        """debug_rejected verildiyse cap belirteci olmayan text'ler oraya gider."""
-        doc = ezdxf.new()
-        msp = doc.modelspace()
-        msp.add_text("Ø50", dxfattribs={"insert": (0, 0), "height": 50, "layer": "L1"})
-        msp.add_text("YD", dxfattribs={"insert": (10, 10), "height": 30, "layer": "L1"})
-        rejected: list[dict] = []
-        texts = _extract_all_texts(doc, debug_rejected=rejected)
-        assert len(texts) == 1  # sadece Ø50
-        assert any(r["raw"] == "YD" for r in rejected)
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -490,7 +480,7 @@ class TestAssignDiametersByProximity:
         result = assign_diameters_by_proximity(doc, edges)
         assert result["assigned_count"] == 0
         assert result["text_pool_size"] == 0
-        assert any("cap belirteci" in w.lower() for w in result["warnings"])
+        assert any("cap-text" in w.lower() for w in result["warnings"])
 
     def test_far_segment_not_assigned_due_to_max_distance(self):
         """Tek text + 2 segment: yakin segment alir, uzak segment Belirtilmemis kalir.
@@ -671,23 +661,3 @@ class TestAssignDiametersByProximity:
         assert result["assigned_count"] == 1
         assert edges[0].diameter == '1¼"'
 
-    def test_diagnostic_fields_present(self):
-        """assign sonucunda debug_rejected_texts + debug_accepted_sample dolu olmali."""
-        doc = ezdxf.new()
-        msp = doc.modelspace()
-        msp.add_text("Ø50", dxfattribs={"insert": (0, 0), "height": 50, "layer": "L1"})
-        msp.add_text("YD", dxfattribs={"insert": (50, 50), "height": 30, "layer": "L1"})
-        edges = [_FakeEdge(1, 0, 0, 10, 0)]
-        result = assign_diameters_by_proximity(doc, edges)
-        assert "debug_rejected_texts" in result
-        assert "debug_accepted_sample" in result
-        assert "debug_assignment_sample" in result
-        assert any(r["raw"] == "YD" for r in result["debug_rejected_texts"])
-        assert any(s["value"] == "Ø50" for s in result["debug_accepted_sample"])
-        # assignment_sample'da segmente atanan cap + mesafe gozukmeli
-        assert len(result["debug_assignment_sample"]) >= 1
-        first = result["debug_assignment_sample"][0]
-        assert first["assigned_diameter"] == "Ø50"
-        assert first["distance_world"] >= 0.0
-        assert "text_layer" in first
-        assert "segment_layer" in first
