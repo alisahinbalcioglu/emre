@@ -607,21 +607,29 @@ def _segment_endpoints(es) -> list[tuple[float, float]]:
     return []
 
 
-def _propagate_inheritance(edge_segments: list[Any], tolerance: float) -> int:
-    """T-junction komsulari arasi BFS-based cap miras yayilimi.
+def _propagate_inheritance(
+    edge_segments: list[Any],
+    tolerance: float,
+    proximity_assigned_idx: set[int],
+) -> int:
+    """T-junction komsudan 1-HOP cap miras yayilimi.
 
-    Proximity bittikten sonra cagrilir. Atama almamis segmentlere, tolerance
-    icindeki ENDPOINT'i paylasan herhangi atanmis komsudan cap miras verir.
-    v2: layer guard kaldirildi (kullanici karari). Endpoint kontrolu icin
-    O(n^2) gercek mesafe karsilastirmasi — grid hash hucre sinirinda yanlis
-    sonuc verebiliyordu (sapma tolerance icindeyken farkli hucreye dusebilir).
+    KRITIK KURAL (kullanici): "2m mesafede text bulamazsan miras olarak
+    BIR ONCEKI hattin text'ini alacaksin." → 1 hop, zincirleme YOK.
+
+    Sadece PROXIMITY ile atanmis komsulardan miras gider. Miras alan
+    segmentler kendileri zincirleme yapamaz. Bu sayede uzun T-junction
+    zincirleri (orn 50m bir hat) bastaki cap'i sonuna kadar yaymaz.
+
+    Args:
+        edge_segments: liste; atanmayanlara cap miras yazilir.
+        tolerance: endpoint paylasimi mesafesi (DWG world unit).
+        proximity_assigned_idx: proximity loop'tan atanmis segment index'leri.
 
     Returns: miras alan segment sayisi.
     """
-    if not edge_segments or tolerance <= 0:
+    if not edge_segments or tolerance <= 0 or not proximity_assigned_idx:
         return 0
-
-    from collections import deque
 
     # Tum endpoint'leri topla: [(seg_idx, x, y), ...]
     endpoints: list[tuple[int, float, float]] = []
@@ -629,8 +637,8 @@ def _propagate_inheritance(edge_segments: list[Any], tolerance: float) -> int:
         for (ex, ey) in _segment_endpoints(es):
             endpoints.append((idx, ex, ey))
 
-    # Komsuluk: tolerance icindeki endpoint'leri paylasan segment ciftleri
-    # O(n^2) — endpoint sayisi 2*segment_sayisi; 2000 segment icin 16M pair, hizli
+    # Komsuluk: tolerance icindeki endpoint'leri paylasan segment ciftleri.
+    # O(n^2) gercek mesafe (grid hash hucre sinirinda yanlis sonuc veriyordu).
     tol_sq = tolerance * tolerance
     neighbors: dict[int, set[int]] = {i: set() for i in range(len(edge_segments))}
     for i in range(len(endpoints)):
@@ -645,30 +653,25 @@ def _propagate_inheritance(edge_segments: list[Any], tolerance: float) -> int:
                 neighbors[ia].add(ib)
                 neighbors[ib].add(ia)
 
-    # BFS frontier: atanmis segment indices'lerini kuyruga koy
-    queue: deque[int] = deque()
-    for idx, es in enumerate(edge_segments):
-        d = getattr(es, "diameter", "") or ""
-        if d and d != "Belirtilmemis":
-            queue.append(idx)
-
+    # 1-HOP PASS: atanmayan her segment icin, proximity_assigned KOMSU varsa
+    # onun cap'ini al. BFS DEGIL — zincirleme yok.
     inherited = 0
-    while queue:
-        src_idx = queue.popleft()
-        src = edge_segments[src_idx]
-        src_cap = getattr(src, "diameter", "") or ""
-        if not src_cap:
-            continue
-        for nbr_idx in neighbors.get(src_idx, set()):
-            nbr = edge_segments[nbr_idx]
-            nbr_cap = getattr(nbr, "diameter", "") or ""
-            if nbr_cap and nbr_cap != "Belirtilmemis":
-                continue  # zaten atanmis
-            nbr.diameter = src_cap
-            if hasattr(nbr, "is_inherited"):
-                nbr.is_inherited = True
+    for idx, es in enumerate(edge_segments):
+        cap = getattr(es, "diameter", "") or ""
+        if cap and cap != "Belirtilmemis":
+            continue  # zaten atanmis
+        # Komsular arasindan proximity'den atanmis olanlari bul
+        for nbr_idx in neighbors.get(idx, set()):
+            if nbr_idx not in proximity_assigned_idx:
+                continue  # miras alan komsu yayim yapmaz
+            nbr_cap = getattr(edge_segments[nbr_idx], "diameter", "") or ""
+            if not nbr_cap or nbr_cap == "Belirtilmemis":
+                continue
+            es.diameter = nbr_cap
+            if hasattr(es, "is_inherited"):
+                es.is_inherited = True
             inherited += 1
-            queue.append(nbr_idx)
+            break  # ilk uygun komsudan al, devam etme
     return inherited
 
 
@@ -739,7 +742,10 @@ def assign_diameters_by_proximity(
     # Kullanici karari: "belirledigimiz text filtreleri ve mesafe filtresinde
     # olmasi durumunda capin atanmasi". Layer-aware tema filtresi silindi.
     assigned = 0
-    for es in edge_segments:
+    # Proximity ile atanan segment'lerin INDEX listesi — inheritance 1-hop
+    # yayilimi SADECE bunlardan baslar (zincirleme miras engellenir).
+    proximity_assigned_idx: set[int] = set()
+    for idx, es in enumerate(edge_segments):
         try:
             current = getattr(es, "diameter", "") or ""
             if current and current != "Belirtilmemis":
@@ -755,6 +761,7 @@ def assign_diameters_by_proximity(
                 continue
             es.diameter = best_text["value"]
             assigned += 1
+            proximity_assigned_idx.add(idx)
         except Exception as _e:
             logging.warning("proximity nearest skip: %s", _e)
             continue
@@ -770,17 +777,17 @@ def assign_diameters_by_proximity(
             f"altinda cap-text bulunamadi."
         )
 
-    # ── INHERITANCE: T-junction komsulari arasi BFS yayilimi ──────────
-    # Text bulamayan segmentler icin: AYNI LAYER'da AYNI ENDPOINT'i paylasan
-    # ATANMIS komsudan cap miras al. Kullanici kurali:
-    #   "2 metre mesafede text bulamazsan miras olarak bir onceki hattin
-    #    text'ini alacaksin."
+    # ── INHERITANCE: 1-HOP T-junction komsudan cap miras ──────────────
+    # KULLANICI KURALI: "2m mesafede text bulamazsan miras olarak BIR ONCEKI
+    # hattin text'ini alacaksin." → SADECE proximity'den atanmis dogrudan
+    # komsudan miras. Miras alan zincirleme yapamaz. Bu sayede uzun T-junction
+    # zincirleri (orn 50m+ hat) bastaki cap'i sonuna kadar yaymaz.
     _inh_tol = (
         float(inheritance_tolerance)
         if inheritance_tolerance and inheritance_tolerance > 0
         else _INHERITANCE_ENDPOINT_TOL
     )
-    inherited = _propagate_inheritance(edge_segments, _inh_tol)
+    inherited = _propagate_inheritance(edge_segments, _inh_tol, proximity_assigned_idx)
     # Inheritance sonrasi hala bos kalan segment sayisi (gercek skipped)
     skipped = sum(
         1 for es in edge_segments

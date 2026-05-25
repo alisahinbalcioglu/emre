@@ -621,13 +621,15 @@ class TestInheritance:
     AYNI ENDPOINT'i paylasan ATANMIS komsudan cap miras verilir.
     """
 
-    def test_linear_chain_inheritance(self):
-        """A-B-C linear zincir, sadece A'ya text yakin. B ve C miras almali.
+    def test_linear_chain_only_one_hop(self):
+        """A-B-C linear zincir, 1-HOP miras kurali (kullanici "bir onceki hat" kurali).
 
-        Text (5, 30): A closest point (5,0) mesafe = 30 -> ATANIR.
-        B (10,0)-(20,0) closest (10,0) mesafe = sqrt(25+900) = 30.41 -> ASAR.
-        C (20,0)-(30,0) closest (20,0) mesafe = sqrt(225+900) = 33.54 -> ASAR.
-        max_distance=30.3: sadece A proximity'den alir; B ve C inheritance ile.
+        Sadece A proximity'den alir. B (A'nin dogrudan komsusu) -> 1-hop miras.
+        C (B'nin komsusu, A'nin DEGIL) -> miras alan B'den yayim YOK -> ATANMAZ.
+
+        Bu test 1-hop kuralinin uzun zincirleri kestigi senaryoyu dogrular.
+        Foto'daki "CICUK OYUN ALANI" segmenti gibi alakasiz uzakta segmente
+        cap atanmasi engellenir.
         """
         doc = ezdxf.new()
         doc.modelspace().add_text("Ø50",
@@ -638,11 +640,12 @@ class TestInheritance:
             _FakeEdge(3, 20, 0, 30, 0, layer="L1"),
         ]
         result = assign_diameters_by_proximity(doc, edges, max_distance_world=30.3)
-        assert edges[0].diameter == "Ø50"
-        assert edges[1].diameter == "Ø50"
-        assert edges[2].diameter == "Ø50"
+        assert edges[0].diameter == "Ø50"  # proximity
+        assert edges[1].diameter == "Ø50"  # 1-hop miras (A'dan)
+        # 1-hop kurali: B miras alan, yayim YOK -> C atanmaz
+        assert edges[2].diameter in ("", "Belirtilmemis", None)
         assert result["assigned_count"] == 1
-        assert result["inherited_count"] == 2
+        assert result["inherited_count"] == 1
 
     def test_t_junction_inheritance(self):
         """T-junction: ana hat alir, iki kol inheritance ile alir.
@@ -741,5 +744,32 @@ class TestInheritance:
         assert edges[0].diameter == "Ø50"
         # 3mm sapma 5mm tolerance icinde -> miras gider
         assert edges[1].diameter == "Ø50"
+        assert result["inherited_count"] == 1
+
+    def test_long_chain_does_not_propagate(self):
+        """KRITIK REGRESYON: 5+ segment'lik uzun T-junction zinciri.
+        Sadece bastan A proximity'den alir. 1-hop kurali -> sadece B miras
+        alir. C, D, E atanmaz (alakasiz uzakta segmentlere cap sicratmaz).
+
+        Bu test 'Cocuk Oyun Alani' senaryosunu engeller — uzun bir hat
+        zincirinin sonundaki segmente bastaki cap'in ulasmamasini garanti."""
+        doc = ezdxf.new()
+        doc.modelspace().add_text("Ø50",
+                                   dxfattribs={"insert": (5, 30), "height": 30, "layer": "L1"})
+        edges = [
+            _FakeEdge(1, 0, 0, 10, 0, layer="L1"),    # A: proximity
+            _FakeEdge(2, 10, 0, 20, 0, layer="L1"),   # B: A'dan 1-hop
+            _FakeEdge(3, 20, 0, 30, 0, layer="L1"),   # C: B'den yayim YOK
+            _FakeEdge(4, 30, 0, 40, 0, layer="L1"),   # D: C'den yayim YOK
+            _FakeEdge(5, 40, 0, 50, 0, layer="L1"),   # E: D'den yayim YOK
+        ]
+        result = assign_diameters_by_proximity(doc, edges, max_distance_world=30.3)
+        assert edges[0].diameter == "Ø50"
+        assert edges[1].diameter == "Ø50"  # 1-hop miras
+        # Zincirin geri kalani atanmaz
+        for i in range(2, 5):
+            assert edges[i].diameter in ("", "Belirtilmemis", None), (
+                f"edges[{i}] zincirleme miras aldi: {edges[i].diameter!r}"
+            )
         assert result["inherited_count"] == 1
 
