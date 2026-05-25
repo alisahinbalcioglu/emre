@@ -377,11 +377,18 @@ def _extract_all_texts(
 
     def _add(txt_raw: str, x: float, y: float, layer: str, source: str) -> None:
         """Cap belirteci filter + extract. Yoksa havuza alma.
-        Pozisyon view_transform ile edge_segments space'ine tasinir."""
+        Pozisyon view_transform ile edge_segments space'ine tasinir.
+
+        STRICT FULLMATCH: Text'in TAMAMI cap pattern olmali (whitespace tolerance).
+        'dolum 11/2"', 'Ø50 PE', 'P3' gibi etiketleri (ekipman aciklamasi/sprinkler
+        kodu/malzeme suffix'i) REJECT eder. Eskiden 'search' kullaniliyordu ve
+        'dolum 11/2"' icinden alt-eslesme olarak '11/2"' cikartilip pool'a
+        ekleniyordu → ÇOCUK OYUN ALANI bug'i (hidrofor 'dolum' etiketi).
+        Saf cap text'i kullanan projeler etkilenmez."""
         txt = _autocad_decode(txt_raw or "").strip()
         if not txt:
             return
-        m = _CAP_PATTERN.search(txt)
+        m = _CAP_PATTERN.fullmatch(txt)
         if not m:
             return
         # Raw cap-text (frontend canonicalizeDiameter normalize edecek)
@@ -736,34 +743,61 @@ def assign_diameters_by_proximity(
             f"Proximity: cap-text havuzu BUYUK ({pool_size}). Hesaplama yavaslayabilir."
         )
 
-    # SEGMENT-PERSPECTIVE NAIVE NEAREST
-    # Her segment: mesafe sinirinin altindaki EN YAKIN cap-text'i alir.
-    # Text'in layer'i secilen layer'dan farkli olabilir — onemi yok.
-    # Kullanici karari: "belirledigimiz text filtreleri ve mesafe filtresinde
-    # olmasi durumunda capin atanmasi". Layer-aware tema filtresi silindi.
+    # TEXT-PERSPECTIVE MUTUAL NEAREST (claim-based)
+    # Her cap-text EN YAKIN TEK segmente "claim" eder (mesafe < sinir). Ayni
+    # text birden fazla segmente paylasilmaz. Eger ayni segmente birden cok
+    # text claim ederse, en yakin text kazanir.
+    #
+    # NEDEN: Bir yangin hattinin '11/2"' yazisi yan tesisat hattindaki boruya
+    # da yakin olabilir (yan yana cizilen tesisatlarda 50-100mm uzaklik).
+    # Eski segment-perspective o text'i HER iki boruya da kopyaliyordu →
+    # "rastgele cap atanmasi" sikayeti (ÇOCUK OYUN ALANI senaryosu).
+    #
+    # T-junction kardes borular: bu yaklasimda kardes kollar text alamaz
+    # (text bir kola claim edildi), AMA 1-HOP miras devreye girer ve
+    # kardes kola dogru cap'i tasir. Yani kayip yok.
     assigned = 0
-    # Proximity ile atanan segment'lerin INDEX listesi — inheritance 1-hop
-    # yayilimi SADECE bunlardan baslar (zincirleme miras engellenir).
     proximity_assigned_idx: set[int] = set()
+
+    # Manuel override korunur — bu segmentler claim'e dahil edilmez
+    manual_override_idx: set[int] = set()
     for idx, es in enumerate(edge_segments):
+        current = getattr(es, "diameter", "") or ""
+        if current and current != "Belirtilmemis":
+            manual_override_idx.add(idx)
+
+    # Faz 1: her text icin en yakin segment'i bul (mesafe < sinir)
+    # claim[seg_idx] = (best_text, best_distance)
+    claim: dict[int, tuple[dict, float]] = {}
+    for t in texts:
         try:
-            current = getattr(es, "diameter", "") or ""
-            if current and current != "Belirtilmemis":
-                continue  # manuel override korunur
-            best_text: dict | None = None
+            best_seg_idx: int | None = None
             best_d = effective_max_dist
-            for t in texts:
+            for idx, es in enumerate(edge_segments):
+                if idx in manual_override_idx:
+                    continue
                 d = _segment_distance(es, t["x"], t["y"])
                 if d < best_d:
                     best_d = d
-                    best_text = t
-            if best_text is None:
+                    best_seg_idx = idx
+            if best_seg_idx is None:
                 continue
-            es.diameter = best_text["value"]
-            assigned += 1
-            proximity_assigned_idx.add(idx)
+            # Ayni segmente daha onceki text daha yakinsa, eskiyi koru
+            prev = claim.get(best_seg_idx)
+            if prev is None or best_d < prev[1]:
+                claim[best_seg_idx] = (t, best_d)
         except Exception as _e:
-            logging.warning("proximity nearest skip: %s", _e)
+            logging.warning("proximity claim skip (text=%s): %s", t.get("value", "?"), _e)
+            continue
+
+    # Faz 2: claim'lari segmente uygula
+    for seg_idx, (t, _d) in claim.items():
+        try:
+            edge_segments[seg_idx].diameter = t["value"]
+            assigned += 1
+            proximity_assigned_idx.add(seg_idx)
+        except Exception as _e:
+            logging.warning("proximity apply skip (seg=%d): %s", seg_idx, _e)
             continue
 
     # Atama sonrasi atanmayan segment sayisi (proximity asamasinin sonu)

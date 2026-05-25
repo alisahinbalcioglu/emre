@@ -456,23 +456,67 @@ class TestAssignDiametersByProximity:
         assert edges[1].diameter in ("", "Belirtilmemis", None)
         assert result["assigned_count"] == 1
 
-    def test_shared_text_between_two_close_segments(self):
-        """Ayni cap-text 2 yakin segmente paylasilabilir (T-junction senaryosu).
+    def test_tjunction_sibling_inherits_via_inheritance(self):
+        """T-junction kardes borular: text bir segmente claim edilir, digeri 1-HOP miras alir.
 
-        Onceki mutual nearest mantigi text'i sadece TEK segmente atadigi icin
-        diger segment Belirtilmemis kaliyordu. Segment-perspective: ikisi de alir."""
+        YENI davranis (mutual nearest claim + 1-HOP miras):
+        - Text en yakin SEGMENTE atanir (paylasim yok)
+        - Endpoint paylasimi olan kardes segment 1-HOP miras ile cap alir
+        - Sonuc: iki segment de ayni cap ama farkli mekanizma ile."""
         doc = ezdxf.new()
         doc.modelspace().add_text("Ø50",
-                                   dxfattribs={"insert": (5, 0), "height": 50, "layer": "L1"})
+                                   dxfattribs={"insert": (2, 0), "height": 50, "layer": "L1"})
         edges = [
-            _FakeEdge(1, 0, 0, 10, 0),    # text segment uzerinde
-            _FakeEdge(2, 5, 0, 5, 50),    # text bu segment'in baslangic noktasinda
+            _FakeEdge(1, 0, 0, 10, 0),     # text (2,0) bu segmente cok yakin -> proximity claim
+            _FakeEdge(2, 10, 0, 10, 50),   # endpoint (10,0) paylasimi -> 1-HOP miras
         ]
         result = assign_diameters_by_proximity(doc, edges)
-        # IKISI de Ø50 almalı — paylasimli atama (T-junction'da dogal)
+        assert edges[0].diameter == "Ø50"  # proximity
+        assert edges[1].diameter == "Ø50"  # inheritance (kardes endpoint)
+        assert result["assigned_count"] == 1   # sadece 1 proximity claim
+        assert result["inherited_count"] == 1  # 1 miras
+
+    def test_mutual_nearest_no_double_assign(self):
+        """Mutual nearest: ayni text birden fazla segmente atanmaz.
+
+        ÇOCUK OYUN ALANI senaryosu — bir hat'in cap text'i yan tesisat hattindaki
+        boruya da yakin oldugu icin eski algoritmada her iki boruya da kopyalaniyordu.
+        Yeni: text sadece EN YAKIN segmente claim edilir."""
+        doc = ezdxf.new()
+        # Text bir tesisatin yaninda (5,0)
+        doc.modelspace().add_text("Ø50",
+                                   dxfattribs={"insert": (5, 0), "height": 50, "layer": "L1"})
+        # Iki ayri tesisat (endpoint paylasimi YOK -> miras yayilmaz)
+        edges = [
+            _FakeEdge(1, 0, 0, 10, 0),      # text (5,0) bu segment uzerinde -> EN YAKIN
+            _FakeEdge(2, 0, 200, 10, 200),  # 200mm uzakta, hala 2m altinda ama uzak
+        ]
+        result = assign_diameters_by_proximity(doc, edges)
+        # Eskiden ikisi de Ø50 aliyordu (segment-perspective)
+        # Yeni: sadece EN YAKIN segment alir, diger Belirtilmemis kalir
         assert edges[0].diameter == "Ø50"
-        assert edges[1].diameter == "Ø50"
-        assert result["assigned_count"] == 2
+        assert edges[1].diameter in ("", "Belirtilmemis", None)
+        assert result["assigned_count"] == 1
+        assert result["inherited_count"] == 0  # endpoint paylasimi yok
+
+    def test_label_text_with_word_rejected(self):
+        """Cap text icinde Turkce kelime varsa REJECT (fullmatch).
+
+        ÇOCUK OYUN ALANI bug: hidrofor 'dolum 11/2"' etiketi pool'a giriyordu
+        cunku regex search alt-eslesme olarak 11/2" yakaliyordu. Yeni fullmatch
+        ile 'dolum 11/2"' butun olarak reject edilir."""
+        doc = ezdxf.new()
+        # Ekipman etiketi — REJECT olmali
+        doc.modelspace().add_text('dolum 11/2"',
+                                   dxfattribs={"insert": (5, 0), "height": 50, "layer": "L1"})
+        doc.modelspace().add_text('tahliye Ø100',
+                                   dxfattribs={"insert": (5, 100), "height": 50, "layer": "L1"})
+        edges = [_FakeEdge(1, 0, 0, 10, 0)]
+        result = assign_diameters_by_proximity(doc, edges)
+        # Iki text de etiket; ikisi de pool'a girmemeli -> segment cap almaz
+        assert edges[0].diameter in ("", "Belirtilmemis", None)
+        assert result["assigned_count"] == 0
+        assert result["text_pool_size"] == 0  # iki etiket de reject
 
     def test_max_distance_override_to_unlimited(self):
         """max_distance=0 verildiginde sinir kapanmali (eski davranis)."""
