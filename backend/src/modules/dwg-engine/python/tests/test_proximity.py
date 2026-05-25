@@ -518,6 +518,79 @@ class TestAssignDiametersByProximity:
         assert result["assigned_count"] == 0
         assert result["text_pool_size"] == 0  # iki etiket de reject
 
+    def test_layer_off_text_excluded(self):
+        """Kapali (is_off) layer'daki cap text'leri pool'a girmemeli.
+
+        Eski projelerde cap text'leri silinmek yerine LAYER kapatilarak gizlenir.
+        Algoritma bunlari yine de yakaliyor ve segmentlere yanlis cap atiyordu.
+        Cizimde gozukmediyse pool'a alma."""
+        doc = ezdxf.new()
+        # Layer'i kapali yap
+        L = doc.layers.add("HIDDEN_CAPS")
+        L.off()  # is_on() = False
+        doc.modelspace().add_text("Ø75",
+                                   dxfattribs={"insert": (5, 0), "height": 50, "layer": "HIDDEN_CAPS"})
+        edges = [_FakeEdge(1, 0, 0, 10, 0)]
+        result = assign_diameters_by_proximity(doc, edges)
+        assert edges[0].diameter in ("", "Belirtilmemis", None)
+        assert result["assigned_count"] == 0
+        assert result["text_pool_size"] == 0  # kapali layer -> pool'a girmedi
+
+    def test_layer_frozen_text_excluded(self):
+        """Donmus (is_frozen) layer'daki cap text'leri pool'a girmemeli."""
+        doc = ezdxf.new()
+        L = doc.layers.add("FROZEN_CAPS")
+        L.freeze()  # is_frozen() = True
+        doc.modelspace().add_text("Ø75",
+                                   dxfattribs={"insert": (5, 0), "height": 50, "layer": "FROZEN_CAPS"})
+        edges = [_FakeEdge(1, 0, 0, 10, 0)]
+        result = assign_diameters_by_proximity(doc, edges)
+        assert edges[0].diameter in ("", "Belirtilmemis", None)
+        assert result["text_pool_size"] == 0
+
+    def test_scale_aware_distance_cm_dwg(self):
+        """cm-birim DWG: scale=0.01 ile 2m gercek mesafe = 200 world unit.
+
+        Eski sabit 2000 world unit cm DWG'de 20m olurdu — uzaktaki text'i yakalardi.
+        Yeni: scale'e gore 2m garantili."""
+        doc = ezdxf.new()
+        # Text 250 world unit uzakta (cm DWG'de 2.5m gercek)
+        doc.modelspace().add_text("Ø75",
+                                   dxfattribs={"insert": (250, 0), "height": 5, "layer": "L1"})
+        edges = [_FakeEdge(1, 0, 0, 10, 0)]
+        # scale=0.01 (cm DWG): 250 world unit = 2.5m gercek > 2m sinir -> atanmamali
+        result = assign_diameters_by_proximity(doc, edges, scale=0.01)
+        assert edges[0].diameter in ("", "Belirtilmemis", None)
+        assert result["assigned_count"] == 0
+        # Aynisi text 150 birim uzakta (1.5m gercek) -> atanmali
+        edges2 = [_FakeEdge(1, 0, 0, 10, 0)]
+        doc2 = ezdxf.new()
+        doc2.modelspace().add_text("Ø75",
+                                    dxfattribs={"insert": (150, 0), "height": 5, "layer": "L1"})
+        result2 = assign_diameters_by_proximity(doc2, edges2, scale=0.01)
+        assert edges2[0].diameter == "Ø75"
+
+    def test_scale_aware_distance_m_dwg(self):
+        """metre-birim DWG: scale=1.0 ile 2m gercek mesafe = 2 world unit.
+
+        Eski sabit 2000 world unit m DWG'de 2km olurdu — TUM text'leri yakalar (felaket).
+        Yeni: scale'e gore 2m garantili."""
+        doc = ezdxf.new()
+        # Text 3 world unit uzakta (m DWG'de 3m gercek)
+        doc.modelspace().add_text("Ø75",
+                                   dxfattribs={"insert": (3, 0), "height": 0.05, "layer": "L1"})
+        edges = [_FakeEdge(1, 0, 0, 0.01, 0)]
+        # scale=1.0 (m DWG): 3 world unit = 3m > 2m sinir -> atanmamali
+        result = assign_diameters_by_proximity(doc, edges, scale=1.0)
+        assert edges[0].diameter in ("", "Belirtilmemis", None)
+        # Aynisi text 1 birim uzakta -> atanmali
+        doc2 = ezdxf.new()
+        doc2.modelspace().add_text("Ø75",
+                                    dxfattribs={"insert": (1, 0), "height": 0.05, "layer": "L1"})
+        edges2 = [_FakeEdge(1, 0, 0, 0.01, 0)]
+        result2 = assign_diameters_by_proximity(doc2, edges2, scale=1.0)
+        assert edges2[0].diameter == "Ø75"
+
     def test_max_distance_override_to_unlimited(self):
         """max_distance=0 verildiginde sinir kapanmali (eski davranis)."""
         doc = ezdxf.new()

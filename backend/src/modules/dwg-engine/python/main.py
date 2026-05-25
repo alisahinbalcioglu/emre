@@ -540,6 +540,7 @@ def analyze_dxf_metraj(
                 max_distance_world=proximity_max_distance,
                 inheritance_tolerance=_inheritance_tol,
                 view_transform=_prox_view_t,
+                scale=scale,  # SCALE-AWARE mesafe sinirlari icin (mm/cm/m DWG)
             )
             _src = prox_result.get("source_summary", "")
             _src_part = f" [{_src}]" if _src else ""

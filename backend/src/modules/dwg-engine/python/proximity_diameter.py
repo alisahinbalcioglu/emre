@@ -357,19 +357,50 @@ def _extract_block_texts(
     return results
 
 
+def _layer_visible(doc, layer_name: str, cache: dict[str, bool]) -> bool:
+    """Layer goruntude mu? is_off()=False veya is_frozen()=True ise gizli.
+
+    Kullanici layer'i AutoCAD'de kapattiysa veya dondurduysa, oradaki text'ler
+    cizimde gozukmez. Pool'a almazsak hayalet cap'ler engellenir (eski projelerde
+    silinmeyip kapatilmis cap text'leri sik gorulur).
+    Cache: ayni layer adi 5000+ entity'de tekrar tekrar lookup edilir."""
+    if layer_name in cache:
+        return cache[layer_name]
+    try:
+        L = doc.layers.get(layer_name)
+        # ezdxf API: is_on(), is_frozen(), is_locked()
+        visible = bool(L.is_on()) and not bool(L.is_frozen())
+    except Exception:
+        # Bilinmeyen layer — guvenli taraf: visible kabul et (false positive yerine
+        # false negative tercih edilir, kullanici manuel ayar yapabilir).
+        visible = True
+    cache[layer_name] = visible
+    return visible
+
+
 def _extract_all_texts(
     doc,
     excluded_layers: set[str] | None = None,
     view_transform: tuple[float, float, float, float, float, float] | None = None,
+    out_diagnostic: dict | None = None,
 ) -> list[dict]:
     """DXF modelspace'inden GORUNUR cap-text'leri cikar.
     TEXT/MTEXT/DIMENSION/MULTILEADER/MLEADER/INSERT (ATTRIB + nested block).
-    Gorunmez (dxf.invisible=1) entity'ler ve sprinkler layer'lar haric.
+    Gorunmez (dxf.invisible=1) entity'ler, KAPALI/DONMUS layer'lar ve sprinkler
+    layer'lar haric.
+
+    out_diagnostic (optional): {layer_filter_skip, invisible_skip, tiny_text_count}
+    sayaclari yazilir (caller diagnostic warning uretebilir).
 
     Returns: [{"x", "y", "value", "layer", "source"}, ...]
     """
     excluded_layers = excluded_layers or set()
     texts: list[dict] = []
+    layer_vis_cache: dict[str, bool] = {}
+    diag = out_diagnostic if out_diagnostic is not None else {}
+    diag.setdefault("layer_off_skip", 0)
+    diag.setdefault("invisible_skip", 0)
+    diag.setdefault("tiny_text_count", 0)
     try:
         msp = doc.modelspace()
     except Exception:
@@ -418,6 +449,15 @@ def _extract_all_texts(
             # INSERT icin: block instance gorunmezse icindeki TEXT'lere de bakma
             # (block icinde recursive filter zaten var ama ust seviye de filtrelenmeli).
             if getattr(entity.dxf, "invisible", 0) == 1:
+                diag["invisible_skip"] += 1
+                continue
+
+            # LAYER VISIBILITY FILTER: Layer is_off()=False veya is_frozen()=True ise
+            # tum o layer'daki text'ler cizimde gizli. Pool'a alma. Eski projelerde
+            # cap text'leri silinmek yerine layer kapatilarak gizlenir; algoritma
+            # bunlari yine de yakalayip yanlis cap atiyordu.
+            if not _layer_visible(doc, layer, layer_vis_cache):
+                diag["layer_off_skip"] += 1
                 continue
 
             if etype == "TEXT":
@@ -689,6 +729,7 @@ def assign_diameters_by_proximity(
     max_distance_world: float | None = None,
     inheritance_tolerance: float | None = None,  # noqa: ARG001 — backward compat
     view_transform: tuple[float, float, float, float, float, float] | None = None,
+    scale: float = 0.001,
 ) -> dict:
     """Her segmente, layer-uyumlu en yakin GORUNUR cap-text'i ata.
 
@@ -699,24 +740,49 @@ def assign_diameters_by_proximity(
         edge_segments: list of EdgeSegment — diameter field'i mutate edilir
         sprinkler_layers: bu layer'lardaki text'ler havuzdan dusurulur
         max_distance_world: maks text-segment mesafesi (DWG world unit).
-          None -> DEFAULT_MAX_DISTANCE_WORLD. 0/negatif -> sinir yok.
+          None -> scale'e gore 2m karsiligi (mm DWG'de 2000, cm'de 200, m'de 2).
+          0/negatif -> sinir yok.
+        scale: DWG world unit -> meter cevirim katsayisi (mm=0.001, cm=0.01, m=1.0).
+          Mesafe sinirini ve inheritance toleransini SCALE-AWARE yapar.
+          DWG cm/m birimindeyse default sabit 2000 world unit YANLIS olur:
+          cm DWG'de 2000 birim = 20m, m DWG'de 2000 birim = 2km. Bu parametre
+          her DWG birimi icin dogru 2m gercek mesafe garantiler.
 
     Returns: assigned_count, skipped_count, text_pool_size, source_summary,
              warnings, max_distance_world, out_of_range_text_count, inherited_count(=0).
     """
-    # Efektif mesafe sınırı
+    # Efektif mesafe sınırı — SCALE-AWARE (2m gercek mesafe -> world unit)
+    # Eski sabit DEFAULT_MAX_DISTANCE_WORLD=2000 SADECE mm DWG icin dogruydu.
+    # cm DWG'de 2000 birim = 20m, m DWG'de 2km. Yeni: 2m / scale ile her birime calisir.
+    safe_scale = float(scale) if scale and float(scale) > 0 else 0.001
     if max_distance_world is None:
-        effective_max_dist = DEFAULT_MAX_DISTANCE_WORLD
+        effective_max_dist = 2.0 / safe_scale  # 2m gercek mesafe -> world unit
     elif max_distance_world <= 0:
         effective_max_dist = math.inf
     else:
         effective_max_dist = float(max_distance_world)
     warnings: list[str] = []
+    diag: dict = {}
     texts = _extract_all_texts(
         doc,
         excluded_layers=sprinkler_layers,
         view_transform=view_transform,
+        out_diagnostic=diag,
     )
+    # Layer/visibility filter sayilari — kullanici neden bazi text'lerin
+    # poola girmedigini anlasin
+    if diag.get("layer_off_skip", 0) > 0:
+        warnings.append(
+            f"Proximity: kapali/donmus layer'lardan {diag['layer_off_skip']} cap-text "
+            f"havuza alinmadi (cizimde gizli)."
+        )
+    if diag.get("invisible_skip", 0) > 0:
+        # Daha az kritik, sadece yuksek sayida ise warning
+        if diag["invisible_skip"] > 20:
+            warnings.append(
+                f"Proximity: gorunmez (dxf.invisible=1) {diag['invisible_skip']} cap-text "
+                f"havuza alinmadi."
+            )
     pool_size = len(texts)
     if pool_size == 0:
         warnings.append(
@@ -816,11 +882,13 @@ def assign_diameters_by_proximity(
     # hattin text'ini alacaksin." → SADECE proximity'den atanmis dogrudan
     # komsudan miras. Miras alan zincirleme yapamaz. Bu sayede uzun T-junction
     # zincirleri (orn 50m+ hat) bastaki cap'i sonuna kadar yaymaz.
-    _inh_tol = (
-        float(inheritance_tolerance)
-        if inheritance_tolerance and inheritance_tolerance > 0
-        else _INHERITANCE_ENDPOINT_TOL
-    )
+    # Inheritance endpoint tolerance — SCALE-AWARE.
+    # 5mm world unit hedef (AutoCAD snap mesafesi). mm DWG'de 5 birim, cm'de 0.5,
+    # m'de 0.005. Eski sabit 5.0 SADECE mm DWG'de dogruydu.
+    if inheritance_tolerance and inheritance_tolerance > 0:
+        _inh_tol = float(inheritance_tolerance)
+    else:
+        _inh_tol = 0.005 / safe_scale  # 5mm = 0.005m -> world unit
     inherited = _propagate_inheritance(edge_segments, _inh_tol, proximity_assigned_idx)
     # Inheritance sonrasi hala bos kalan segment sayisi (gercek skipped)
     skipped = sum(
