@@ -23,6 +23,11 @@ export interface CalculatedLayer {
   junctionPoints: [number, number][];
   totalLength: number;
   computedAt: number;  // timestamp — sirayla gosterim icin
+  /** Layer kullanici tarafindan onaylandi mi? Yeni hesaplandiginda false.
+   *  "Onayla" butonu -> true. Onaylanmadan baska layer'a gecilemez (toast uyarisi). */
+  approved: boolean;
+  /** Onay zamani (audit + Excel sheet siralamasi icin). */
+  approvedAt?: number;
 }
 
 /** Kullanicinin tiklayip isaretledigi bir ekipman (INSERT). */

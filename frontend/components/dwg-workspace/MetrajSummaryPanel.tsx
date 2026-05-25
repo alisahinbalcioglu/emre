@@ -2,10 +2,12 @@
 
 /**
  * Hesaplanmis layer'lar + isaretlenmis ekipmanlarin ozet panel'i.
+ * Her layer item'inda inline "Onayla" butonu: layer'i tek tek onaylamak icin.
+ * "Tumunu Onayla & Fiyatlandirmaya Gec" header'a tasindi (DwgProjectWorkspace).
  */
 
 import React from 'react';
-import { Ruler, Wrench, Trash2 } from 'lucide-react';
+import { Ruler, Wrench, Trash2, Check } from 'lucide-react';
 import type { CalculatedLayer, MarkedEquipment } from './types';
 import { diameterToColor } from '@/components/dwg-metraj/diameter-colors';
 
@@ -15,7 +17,8 @@ interface MetrajSummaryPanelProps {
   onRemoveLayer: (layer: string) => void;
   onRemoveEquipment: (key: string) => void;
   onEditEquipment: (key: string) => void;
-  onConfirmAll: () => void;
+  /** Tek bir layer'i onayla — Excel'e dahil olur, baska layer'a gecilebilir. */
+  onApproveLayer: (layer: string) => void;
 }
 
 export default function MetrajSummaryPanel({
@@ -24,7 +27,7 @@ export default function MetrajSummaryPanel({
   onRemoveLayer,
   onRemoveEquipment,
   onEditEquipment,
-  onConfirmAll,
+  onApproveLayer,
 }: MetrajSummaryPanelProps) {
   const layerList = Object.values(calculatedLayers).sort((a, b) => a.computedAt - b.computedAt);
   const equipmentList = Object.values(markedEquipments);
@@ -37,8 +40,6 @@ export default function MetrajSummaryPanel({
     acc[groupKey].keys.push(eq.key);
     return acc;
   }, {});
-
-  const hasAny = layerList.length > 0 || equipmentList.length > 0;
 
   return (
     <div className="rounded-xl border bg-white">
@@ -103,6 +104,26 @@ export default function MetrajSummaryPanel({
                 <span className="text-slate-500">Toplam</span>
                 <span className="tabular-nums text-slate-900">{cl.totalLength.toFixed(2)} m</span>
               </div>
+              {/* Inline ONAYLA butonu — her layer kendi onayini alir */}
+              <button
+                onClick={() => onApproveLayer(cl.layer)}
+                disabled={cl.approved}
+                className={[
+                  'mt-2 w-full rounded-lg px-3 py-1.5 text-[11px] font-medium transition-colors flex items-center justify-center gap-1.5',
+                  cl.approved
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-default'
+                    : 'bg-blue-600 text-white hover:bg-blue-700',
+                ].join(' ')}
+              >
+                {cl.approved ? (
+                  <>
+                    <Check className="h-3 w-3" />
+                    Onayli
+                  </>
+                ) : (
+                  'Onayla'
+                )}
+              </button>
             </div>
           );
         })}
@@ -127,16 +148,6 @@ export default function MetrajSummaryPanel({
         )}
       </div>
 
-      {hasAny && (
-        <div className="border-t bg-blue-50/30 px-3 py-2">
-          <button
-            onClick={onConfirmAll}
-            className="w-full rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700"
-          >
-            Tümünü Onayla & Fiyatlandırmaya Geç
-          </button>
-        </div>
-      )}
     </div>
   );
 }

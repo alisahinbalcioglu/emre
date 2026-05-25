@@ -31,6 +31,7 @@ import {
   DiameterLegendPanel,
 } from '@/components/dwg-diameter-engine';
 import { diameterToColor } from '@/components/dwg-metraj/diameter-colors';
+import { exportMetrajToExcel, type MetrajSheet } from '@/lib/metraj-excel';
 
 interface DwgProjectWorkspaceProps {
   fileId: string;
@@ -46,7 +47,7 @@ export default function DwgProjectWorkspace({
   const {
     state,
     selectLayer, updateLayerConfig,
-    addCalculatedLayer, removeCalculatedLayer,
+    addCalculatedLayer, approveLayer, removeCalculatedLayer,
     updateEdgeSegmentDiameter,
     beginEditEquipment, cancelEditEquipment, saveEquipment, removeEquipment,
     removeSprinklerLayer, toggleSprinklerLayer,
@@ -186,6 +187,12 @@ export default function DwgProjectWorkspace({
     onResult: ({ calculated }) => {
       addCalculatedLayer(calculated);
       enableDiameterColors();  // Yeni hesaplama -> cap renkleri aktif
+    },
+    // Engine cache resetlendiginde (Cloud Run revision switch, TTL 15dk asimi):
+    // localStorage'daki file_id artik gecersiz. Parent onReset() ile DwgUploader'a
+    // donerek kullaniciya dosyayi yeniden yukletir. Toast useProximityCalc icinde.
+    onFileIdInvalid: () => {
+      onReset();
     },
   });
 
@@ -461,6 +468,7 @@ export default function DwgProjectWorkspace({
           junctionPoints: lyr === layerNames[0] ? allJunctions : [],
           totalLength: totalLen,
           computedAt: Date.now(),
+          approved: false,  // bulk hesap layer'lari da onaysiz baslar
         };
         addCalculatedLayer(calcLayer);
         totalSegCount += segs.length;
@@ -542,6 +550,7 @@ export default function DwgProjectWorkspace({
         junctionPoints: junctions,
         totalLength: totalLen,
         computedAt: Date.now(),
+        approved: false,
       };
       addCalculatedLayer(calcLayer);
 
@@ -567,11 +576,30 @@ export default function DwgProjectWorkspace({
     }
   };
 
+  /** Layer secimi degisikligini onaysiz-hesaplama korumasiyla yap.
+   *  Mevcut secili layer hesaplandi ama onaylanmadi ise uyari ver, secimi
+   *  degistirme. Ayni layer'a tekrar tiklama (toggle off) serbest.
+   *  Returns: true -> secim degisti, false -> bloklandi. */
+  const tryChangeLayer = (target: string): boolean => {
+    const prev = state.selectedLayer;
+    if (prev && prev !== target) {
+      const cl = state.calculatedLayers[prev];
+      if (cl && !cl.approved) {
+        toast({
+          title: 'Once mevcut layer\'i onaylayin',
+          description: `"${prev}" hesaplandi ama onaylanmadi. Onayla butonuna basip sonra baska layer'a gec.`,
+          variant: 'destructive',
+        });
+        return false;
+      }
+    }
+    selectLayer(target);
+    return true;
+  };
+
   const handleLineClick = (line: { layer: string; index: number; shiftKey: boolean; screenX: number; screenY: number }) => {
     // LINE click -> SADECE layer secimi. Hesaplama "Hesapla" butonuyla manuel
-    // tetiklenir (LayerInfoSidebar'da). Onceden tik = otomatik proximity
-    // hesaplama vardi (PRD §1+§2), kullanici talebi uzerine kaldirildi: hesaplama
-    // sadece "Hesapla" butonuyla baslar.
+    // tetiklenir (LayerInfoSidebar'da).
     console.log('[handleLineClick] FIRED', { layer: line.layer });
     if (hideMode || line.shiftKey) {
       toggleLayerVisibility(line.layer);
@@ -581,17 +609,12 @@ export default function DwgProjectWorkspace({
       });
       return;
     }
-    selectLayer(line.layer);
+    tryChangeLayer(line.layer);
   };
 
   const handleInsertClick = (ins: { layer: string; insertIndex: number; insertName: string; position: [number, number] }) => {
-    // EKIPMAN AKISI SIMDILIK KAPALI (kullanici talebi: "ekipman ile ilgili sonra").
-    // INSERT'in icinde oldugu layer'i sec — boylece zoom disindan tiklayinca
-    // (yakindaki sembol noktasi hit olunca) yine de layer secilir, popup acilmaz.
-    //
-    // TODO: Ekipman isaretleme tekrar aktif edilince burada
-    //   setPendingEquipment + beginEditEquipment cagrilacak. Su an dokunma.
-    selectLayer(ins.layer);
+    // EKIPMAN AKISI SIMDILIK KAPALI. INSERT'in layer'ini sec.
+    tryChangeLayer(ins.layer);
   };
 
   const handleCircleClick = (_c: { layer: string; circleIndex: number; center: [number, number]; radius: number }) => {
@@ -599,13 +622,77 @@ export default function DwgProjectWorkspace({
     // CIRCLE tik su an no-op.
   };
 
-  const handleConfirmAll = () => {
-    const layers = Object.values(state.calculatedLayers);
+  /** Hesaplanmis ve onaylanmis layer'lardan Excel sheet'leri kur.
+   *  Her layer ayri sheet — Cap'lere groupBy, malzeme adi config.materialType. */
+  const buildExcelSheets = (approvedLayers: CalculatedLayer[]): MetrajSheet[] => {
+    return approvedLayers
+      .slice()
+      .sort((a, b) => (a.approvedAt ?? 0) - (b.approvedAt ?? 0))
+      .map((cl) => {
+        const byDia = new Map<string, number>();
+        for (const seg of cl.edgeSegments) {
+          const cap = seg.diameter || 'Belirtilmemis';
+          byDia.set(cap, (byDia.get(cap) || 0) + (seg.length || 0));
+        }
+        const rows = Array.from(byDia.entries())
+          .sort((a, b) => b[1] - a[1])
+          .map(([diameter, length]) => ({
+            name: cl.materialType || '-',
+            diameter,
+            unit: 'm',
+            qty: Math.round(length * 100) / 100,
+          }));
+        return {
+          sheetName: cl.hatIsmi || cl.layer,
+          rows,
+          totalLength: cl.totalLength,
+          materialType: cl.materialType || undefined,
+        };
+      });
+  };
+
+  const handleConfirmAll = async () => {
+    const allLayers = Object.values(state.calculatedLayers);
+    const approvedLayers = allLayers.filter((l) => l.approved);
     const equipments = Object.values(state.markedEquipments);
-    if (layers.length === 0 && equipments.length === 0) {
-      toast({ title: 'Boş', description: 'Hesaplanmış bir şey yok.', variant: 'destructive' });
+
+    if (approvedLayers.length === 0 && equipments.length === 0) {
+      toast({
+        title: 'Onayli layer yok',
+        description: 'Once hesaplanan layer\'lari "Onayla" butonuyla onayla, sonra finallestir.',
+        variant: 'destructive',
+      });
       return;
     }
+
+    // Onaylanmamis layer kalmis mi? Uyari ver ama bloklamadan devam (kullanici karari)
+    const pendingCount = allLayers.length - approvedLayers.length;
+    if (pendingCount > 0) {
+      toast({
+        title: `${pendingCount} layer hala onaylanmadi`,
+        description: 'Onaysiz layer\'lar Excel\'e ve fiyatlandirmaya DAHIL EDILMEYECEK.',
+      });
+    }
+
+    // Excel indirimi (sadece onayli layer'lar)
+    if (approvedLayers.length > 0) {
+      try {
+        const sheets = buildExcelSheets(approvedLayers);
+        const result = await exportMetrajToExcel(sheets, fileName);
+        if (result.success) {
+          toast({
+            title: 'Excel olusturuldu',
+            description: `${result.sheetCount} layer · ${result.totalItems} satir`,
+          });
+        }
+      } catch (e: any) {
+        console.error('[handleConfirmAll] Excel hatasi:', e);
+        toast({ title: 'Excel hatasi', description: String(e?.message ?? e), variant: 'destructive' });
+      }
+    }
+
+    // FinalMetraj sadece ONAYLI layer'lardan kurulur — onaysizlar dahil degil
+    const layers = approvedLayers;
 
     const finalMetraj: MetrajResult = {
       layers: layers.map((cl) => ({
@@ -717,15 +804,28 @@ export default function DwgProjectWorkspace({
         <div>
           <h3 className="text-sm font-semibold">Proje: {fileName}</h3>
           <p className="text-xs text-muted-foreground">
-            {Object.keys(state.calculatedLayers).length} layer hesaplandı · {Object.keys(state.markedEquipments).length} ekipman işaretli
+            {Object.keys(state.calculatedLayers).length} layer hesaplandı ·{' '}
+            {Object.values(state.calculatedLayers).filter((l) => l.approved).length} onaylı ·{' '}
+            {Object.keys(state.markedEquipments).length} ekipman işaretli
           </p>
         </div>
-        <button
-          onClick={onReset}
-          className="rounded-lg border px-3 py-1.5 text-xs text-muted-foreground hover:bg-slate-50"
-        >
-          Yeni DWG Yükle
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Final buton: en az 1 onayli layer varsa enabled */}
+          <button
+            onClick={handleConfirmAll}
+            disabled={!Object.values(state.calculatedLayers).some((l) => l.approved)}
+            className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed"
+            title="Excel olustur + fiyatlandirmaya gec (sadece onayli layer'lar dahil)"
+          >
+            Tümünü Onayla & Fiyatlandırmaya Geç
+          </button>
+          <button
+            onClick={onReset}
+            className="rounded-lg border px-3 py-1.5 text-xs text-muted-foreground hover:bg-slate-50"
+          >
+            Yeni DWG Yükle
+          </button>
+        </div>
       </div>
 
       {/* Ana grid: sol buyuk cizim + sag panel */}
@@ -874,10 +974,8 @@ export default function DwgProjectWorkspace({
             onShowAllDimmed={showAllDimmed}
             onLayerSelect={(layer, _x, _y) => {
               // Layer panel'den layer adina tikla = SADECE sec.
-              // Hesaplama "Hesapla" butonuyla manuel tetiklenir (sidebar'da).
-              // Onceden tik = otomatik proximity hesaplama vardi, kullanici
-              // talebi uzerine kaldirildi.
-              selectLayer(layer);
+              // tryChangeLayer onaysiz-hesaplama korumasi yapar.
+              tryChangeLayer(layer);
             }}
           />
 
@@ -899,7 +997,7 @@ export default function DwgProjectWorkspace({
                 beginEditEquipment(key);
               }
             }}
-            onConfirmAll={handleConfirmAll}
+            onApproveLayer={approveLayer}
           />
         </div>
       </div>

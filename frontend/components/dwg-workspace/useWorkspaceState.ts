@@ -100,10 +100,12 @@ export function useWorkspaceState(fileId: string, scale: number) {
   }, []);
 
   const addCalculatedLayer = useCallback((calculated: CalculatedLayer) => {
+    // Yeni hesaplanan layer her zaman onaysiz baslar — kullanici "Onayla"yi bilerek tiklamali
+    const withApproval: CalculatedLayer = { ...calculated, approved: false };
     setState((s) => ({
       ...s,
-      calculatedLayers: { ...s.calculatedLayers, [calculated.layer]: calculated },
-      selectedLayer: null,  // hesaplama bitince secimi serbest birak
+      calculatedLayers: { ...s.calculatedLayers, [calculated.layer]: withApproval },
+      // selectedLayer'i KORU — kullanici onayla butonuna basabilsin. Eskiden null'lanyordu.
     }));
   }, []);
 
@@ -111,6 +113,21 @@ export function useWorkspaceState(fileId: string, scale: number) {
     setState((s) => {
       const { [layer]: _, ...rest } = s.calculatedLayers;
       return { ...s, calculatedLayers: rest };
+    });
+  }, []);
+
+  /** Hesaplanmis bir layer'i onayla — Excel'e dahil olur, baska layer'a gecilebilir. */
+  const approveLayer = useCallback((layer: string) => {
+    setState((s) => {
+      const cl = s.calculatedLayers[layer];
+      if (!cl || cl.approved) return s;
+      return {
+        ...s,
+        calculatedLayers: {
+          ...s.calculatedLayers,
+          [layer]: { ...cl, approved: true, approvedAt: Date.now() },
+        },
+      };
     });
   }, []);
 
@@ -213,6 +230,7 @@ export function useWorkspaceState(fileId: string, scale: number) {
     selectLayer,
     updateLayerConfig,
     addCalculatedLayer,
+    approveLayer,
     removeCalculatedLayer,
     updateEdgeSegmentDiameter,
     beginEditEquipment,

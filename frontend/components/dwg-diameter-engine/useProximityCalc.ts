@@ -28,6 +28,10 @@ interface UseProximityCalcArgs {
   scale: number;
   sprinklerLayers: string[];
   onResult: (r: ProximityCalcResult) => void;
+  /** Engine 404 (file_id gecersiz) algilandiginda cagrilir — parent
+   *  uploader'i tekrar acabilir. Cloud Run revision switch sonrasi cache
+   *  ephemeral oldugundan file_id eskimis olabilir. */
+  onFileIdInvalid?: () => void;
 }
 
 const PROXIMITY_WARN_PREFIX = 'Proximity:';
@@ -48,7 +52,7 @@ function parseProximitySummary(layer: string, totalSegments: number, warnings: s
   };
 }
 
-export function useProximityCalc({ fileId, scale, sprinklerLayers, onResult }: UseProximityCalcArgs) {
+export function useProximityCalc({ fileId, scale, sprinklerLayers, onResult, onFileIdInvalid }: UseProximityCalcArgs) {
   /** Hesaplama suren layer adi — UI spinner icin */
   const [calculatingLayer, setCalculatingLayer] = useState<string | null>(null);
 
@@ -105,6 +109,7 @@ export function useProximityCalc({ fileId, scale, sprinklerLayers, onResult }: U
           junctionPoints: junctions,
           totalLength: totalLen,
           computedAt: Date.now(),
+          approved: false,  // yeni hesaplanan layer onaysiz baslar
         };
 
         onResult({ layer, calculated, raw: data, summary });
@@ -113,12 +118,27 @@ export function useProximityCalc({ fileId, scale, sprinklerLayers, onResult }: U
         if (summary) descParts.push(`${summary.assignedCount}/${summary.totalSegments} cap atandi`);
         toast({ title: `Layer hesaplandı: ${layer}`, description: descParts.join(' · ') });
       } catch (e: any) {
-        console.error('[useProximityCalc] HATA:', {
-          status: e?.response?.status,
-          data: e?.response?.data,
-          message: e?.message,
-        });
-        const rawMsg = e?.response?.data?.message ?? e?.response?.data?.detail ?? e?.message ?? 'Proximity hesaplama hatasi';
+        const status = e?.response?.status as number | undefined;
+        const detail = e?.response?.data?.detail ?? e?.response?.data?.message;
+        console.error('[useProximityCalc] HATA:', { status, data: e?.response?.data, message: e?.message });
+
+        // Engine cache invalid: 404 (Dosya bulunamadi) veya 422'lik file_id miss
+        // (NestJS proxy 404'u 422'ye dondurebilir). Hem status hem detail metnine bak.
+        const isFileIdInvalid =
+          status === 404 ||
+          (typeof detail === 'string' && /dosya bulunamad/i.test(detail));
+
+        if (isFileIdInvalid && onFileIdInvalid) {
+          toast({
+            title: 'Sunucu cache resetlendi',
+            description: 'Cloud Run engine yeniden baslatildi. DWG dosyasini tekrar yuklemen gerekiyor.',
+            variant: 'destructive',
+          });
+          onFileIdInvalid();
+          return;
+        }
+
+        const rawMsg = detail ?? e?.message ?? 'Proximity hesaplama hatasi';
         const msg = typeof rawMsg === 'string' ? rawMsg : JSON.stringify(rawMsg);
         const shortMsg = msg.length > 200 ? msg.slice(0, 200) + '... (F12 Console)' : msg;
         toast({ title: 'Hata', description: shortMsg, variant: 'destructive' });
@@ -126,7 +146,7 @@ export function useProximityCalc({ fileId, scale, sprinklerLayers, onResult }: U
         setCalculatingLayer(null);
       }
     },
-    [fileId, scale, sprinklerLayers, onResult],
+    [fileId, scale, sprinklerLayers, onResult, onFileIdInvalid],
   );
 
   return { calculatingLayer, calculateLayer };
