@@ -11,6 +11,7 @@
 import type { EdgeSegment } from '@/components/dwg-metraj/types';
 import type { MetrajResult } from '@/components/dwg-metraj/types';
 import type { CalculatedLayer } from '@/components/dwg-workspace/types';
+import { canonicalizeDiameter } from '@/components/dwg-metraj/diameter-colors';
 
 /** /parse response'unda gelen proximity warning'leri parse etmek icin */
 export interface ProximitySummary {
@@ -38,7 +39,9 @@ export interface DiameterLegendEntry {
   layers: string[];       // bu cap'e sahip layer'lar (multi-layer uniqueness)
 }
 
-/** Tum hesaplanmis layer'lardan legend entry'leri turet */
+/** Tum hesaplanmis layer'lardan legend entry'leri turet.
+ *  Cap key'i canonical form'a indirilir — '1 1/4"' ve '1¼"' tek satirda toplanir.
+ */
 export function buildLegendEntries(
   calculatedLayers: Record<string, CalculatedLayer>,
   diameterToColor: (d: string) => string,
@@ -46,7 +49,8 @@ export function buildLegendEntries(
   const byDia = new Map<string, DiameterLegendEntry>();
   for (const cl of Object.values(calculatedLayers)) {
     for (const seg of cl.edgeSegments) {
-      const key = seg.diameter || 'Belirtilmemis';
+      const raw = seg.diameter || 'Belirtilmemis';
+      const key = raw === 'Belirtilmemis' ? raw : canonicalizeDiameter(raw);
       let entry = byDia.get(key);
       if (!entry) {
         entry = {

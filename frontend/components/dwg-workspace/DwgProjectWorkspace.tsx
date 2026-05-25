@@ -805,7 +805,7 @@ export default function DwgProjectWorkspace({
           <LayerInfoSidebar
             selectedLayer={state.selectedLayer}
             config={selectedConfig}
-            calculating={calculating}
+            calculating={calculating || (!!state.selectedLayer && calculatingLayer === state.selectedLayer)}
             calculatedLayer={state.selectedLayer ? state.calculatedLayers[state.selectedLayer] ?? null : null}
             onCalculate={(layer) => {
               if (calculating || calculatingLayer === layer) {

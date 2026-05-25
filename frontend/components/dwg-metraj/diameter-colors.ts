@@ -114,3 +114,51 @@ export function buildDiameterPalette(diameters: string[]): Array<{ diameter: str
     label: d || 'Belirtilmemis',
   }));
 }
+
+/**
+ * Cap text'ini canonical form'a getir. Backend'deki `_canonicalize_cap` ile
+ * AYNI kurallari uygular — frontend'de manuel kullanici input'larini
+ * (DiameterEditPopup, default diameter input) ayni string'e indirir ki
+ * legend'da '1¼"' ve '1 1/4"' tek satira birlessin.
+ *
+ * Idempotent: tekrar uygulanabilir, ayni sonucu doner.
+ *
+ * Ornekler:
+ *   '1 1/4"'  → '1¼"'
+ *   '1¼″'     → '1¼"'      (Unicode prime → ASCII)
+ *   "1¼''"    → '1¼"'      (iki tek-tirnak → ASCII)
+ *   'dn 150'  → 'DN150'
+ *   '50 MM'   → '50mm'
+ *   'Ø 200'   → 'Ø200'
+ */
+const ASCII_FRAC_TO_UNICODE: Record<string, string> = {
+  '1/2': '½',
+  '1/4': '¼',
+  '3/4': '¾',
+};
+
+export function canonicalizeDiameter(s: string): string {
+  if (!s) return '';
+  let out = s.trim();
+  // Quote varyantlari → ASCII "
+  out = out.replace(/″/g, '"').replace(/''/g, '"');
+  // DN normalize: 'dn 150', 'Dn150' → 'DN150'  (oncesinde harf yoksa)
+  out = out.replace(/(?<![A-Za-zÇĞİÖŞÜçğıöşü])[Dd][Nn]\s*(\d+)/g, (_m, n) => `DN${n}`);
+  // Ø: 'Ø 200' → 'Ø200'
+  out = out.replace(/[ØØ]\s*/g, 'Ø');
+  // mm: '50 MM', '50 mm' → '50mm'
+  out = out.replace(/(\d+)\s*[Mm][Mm]\b/g, (_m, n) => `${n}mm`);
+  // Mixed kesir: '1 1/4' → '1¼'
+  out = out.replace(/(\d+)\s+(\d+)\/(\d+)/g, (m, whole, num, den) => {
+    const u = ASCII_FRAC_TO_UNICODE[`${num}/${den}`];
+    return u ? `${whole}${u}` : m;
+  });
+  // Standalone kesir: '1/4' → '¼' (oncesinde rakam yok)
+  out = out.replace(/(?<!\d)(\d+)\/(\d+)(?!\d)/g, (m, num, den) => {
+    const u = ASCII_FRAC_TO_UNICODE[`${num}/${den}`];
+    return u ?? m;
+  });
+  // Coklu bosluk → tek bosluk
+  out = out.replace(/\s+/g, ' ').trim();
+  return out;
+}

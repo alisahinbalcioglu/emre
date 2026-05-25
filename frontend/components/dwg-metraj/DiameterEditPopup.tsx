@@ -11,6 +11,7 @@
 import React, { useState } from 'react';
 import { X, Check } from 'lucide-react';
 import type { EdgeSegment } from './types';
+import { canonicalizeDiameter } from './diameter-colors';
 
 const STANDARD_DIAMETERS = [
   '1/2"', '3/4"', '1"', '1 1/4"', '1 1/2"',
@@ -28,9 +29,10 @@ export default function DiameterEditPopup({ segment, onCancel, onSave }: Diamete
   const [custom, setCustom] = useState('');
 
   const handleSave = () => {
-    const final = custom.trim() || selected;
-    if (!final) return;
-    onSave(segment.segment_id, final);
+    const raw = custom.trim() || selected;
+    if (!raw) return;
+    // Canonical: legend'da '1 1/4"' ve '1¼"' tek satira birlessin
+    onSave(segment.segment_id, canonicalizeDiameter(raw));
   };
 
   return (

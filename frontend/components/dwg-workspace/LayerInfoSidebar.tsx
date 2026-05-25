@@ -15,6 +15,7 @@ import React from 'react';
 import { Loader2, Layers, EyeOff, Check, Calculator } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { LayerConfig, CalculatedLayer } from './types';
+import { canonicalizeDiameter } from '@/components/dwg-metraj/diameter-colors';
 
 interface LayerInfoSidebarProps {
   selectedLayer: string | null;
@@ -64,9 +65,9 @@ export default function LayerInfoSidebar({
     : 0;
 
   const handleApply = () => {
-    const d = c.defaultDiameter.trim();
-    if (!d) return;
-    onApplyDefaultDiameter(d);
+    const raw = c.defaultDiameter.trim();
+    if (!raw) return;
+    onApplyDefaultDiameter(canonicalizeDiameter(raw));
   };
 
   return (
