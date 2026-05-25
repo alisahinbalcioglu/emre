@@ -304,12 +304,16 @@ export default function DxfCanvasViewer({
       if (px > mxx) mxx = px;
       if (py > mxy) mxy = py;
     }
-    // Segment'in etrafina yari-ekran padding ekle ki cevre context gozuksun
+    // Segment'in etrafina padding ekle ki cevre context gozuksun.
+    // Kullanici talimati: 2. fotograftaki gibi yakin zoom — segment + cap text'leri
+    // net okunabilir olmali, uzak alan degil. Min padding 150mm (15cm) yeterli;
+    // 500mm cok uzak goruntu veriyor (kucuk Ø20 segment'inde ekran 1m+ alani gosteriyor).
     const w = mxx - mnx;
     const h = mxy - mny;
-    const padX = Math.max(w * 0.6, 500);
-    const padY = Math.max(h * 0.6, 500);
-    zoomToBounds([mnx - padX, mny - padY, mxx + padX, mxy + padY], 0.85);
+    const padX = Math.max(w * 0.3, 150);
+    const padY = Math.max(h * 0.3, 150);
+    // Fill oranini %85 -> %95: ekran neredeyse tam kapla, kenar bosluklarini azalt
+    zoomToBounds([mnx - padX, mny - padY, mxx + padX, mxy + padY], 0.95);
   }, [focusedSegment, focusVersion, zoomToBounds]);
 
   // ─── Geometry fetch + retry (Render free tier cold-start) ─────────
