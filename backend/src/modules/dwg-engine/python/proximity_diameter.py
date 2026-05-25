@@ -715,6 +715,90 @@ def _segment_distance(seg, tx: float, ty: float) -> float:
 # kaldirilmisti, BLOCK_TEXT genislemesiyle birlikte geri eklendi.
 DEFAULT_MAX_DISTANCE_WORLD = 2000.0
 
+# Endpoint paylasimi toleransi (DWG world unit). T-junction'da iki segment'in
+# uclari floating-point hassasiyetinden ufak ayrik durabilir; bu tolerans icinde
+# olan endpoint'ler ayni nokta sayilir.
+_INHERITANCE_ENDPOINT_TOL = 1.0  # 1 mm (mm-bazli DWG icin)
+
+
+def _segment_endpoints(es) -> list[tuple[float, float]]:
+    """Segment'in iki ucunu (x, y) olarak don. coords > polyline > attr fallback."""
+    if isinstance(es, dict):
+        c = es.get("coords") or []
+        if len(c) >= 4:
+            return [(float(c[0]), float(c[1])), (float(c[2]), float(c[3]))]
+        pl = es.get("polyline") or []
+        if pl and len(pl) >= 2:
+            return [(float(pl[0][0]), float(pl[0][1])),
+                    (float(pl[-1][0]), float(pl[-1][1]))]
+        return []
+    # object: EdgeSegment Pydantic model
+    c = getattr(es, "coords", None) or []
+    if len(c) >= 4:
+        return [(float(c[0]), float(c[1])), (float(c[2]), float(c[3]))]
+    pl = getattr(es, "polyline", None) or []
+    if pl and len(pl) >= 2:
+        return [(float(pl[0][0]), float(pl[0][1])),
+                (float(pl[-1][0]), float(pl[-1][1]))]
+    return []
+
+
+def _propagate_inheritance(edge_segments: list[Any], tolerance: float) -> int:
+    """T-junction komsulari arasi BFS-based cap miras yayilimi.
+
+    Proximity bittikten sonra cagrilir. Atama almamis segmentlere, AYNI LAYER'da
+    AYNI ENDPOINT'i paylasan ATANMIS komsudan cap miras verir. BFS sirasinda
+    ilk gelen kazanir (ana-hat -> kollar yayilimi pratikte dogal sonuc).
+
+    Returns: miras alan segment sayisi.
+    """
+    if not edge_segments or tolerance <= 0:
+        return 0
+
+    def _key(x: float, y: float) -> tuple[int, int]:
+        """Endpoint'i tolerance grid'ine snap'le — hash key."""
+        return (round(x / tolerance), round(y / tolerance))
+
+    # Endpoint key -> [segment indices]
+    from collections import defaultdict, deque
+    endpoint_to_segs: dict[tuple[int, int], list[int]] = defaultdict(list)
+    for idx, es in enumerate(edge_segments):
+        for (ex, ey) in _segment_endpoints(es):
+            endpoint_to_segs[_key(ex, ey)].append(idx)
+
+    # BFS frontier: atanmis segment indices'lerini kuyruga koy
+    queue: deque[int] = deque()
+    for idx, es in enumerate(edge_segments):
+        d = getattr(es, "diameter", "") or ""
+        if d and d != "Belirtilmemis":
+            queue.append(idx)
+
+    inherited = 0
+    while queue:
+        src_idx = queue.popleft()
+        src = edge_segments[src_idx]
+        src_cap = getattr(src, "diameter", "") or ""
+        src_layer = getattr(src, "layer", "") or ""
+        if not src_cap:
+            continue  # defansif — kuyrukta yer almamali ama yine de
+        for (ex, ey) in _segment_endpoints(src):
+            for nbr_idx in endpoint_to_segs.get(_key(ex, ey), []):
+                if nbr_idx == src_idx:
+                    continue
+                nbr = edge_segments[nbr_idx]
+                nbr_cap = getattr(nbr, "diameter", "") or ""
+                if nbr_cap and nbr_cap != "Belirtilmemis":
+                    continue  # zaten atanmis
+                # AYNI LAYER kosulu — yangin → isitma sicramasin
+                if (getattr(nbr, "layer", "") or "") != src_layer:
+                    continue
+                nbr.diameter = src_cap
+                if hasattr(nbr, "is_inherited"):
+                    nbr.is_inherited = True
+                inherited += 1
+                queue.append(nbr_idx)
+    return inherited
+
 
 def assign_diameters_by_proximity(
     doc,
@@ -804,7 +888,7 @@ def assign_diameters_by_proximity(
             logging.warning("proximity nearest skip: %s", _e)
             continue
 
-    # Mesafe siniri / layer mismatch yuzunden atanmayan segment'leri say
+    # Atama sonrasi atanmayan segment sayisi (proximity asamasinin sonu)
     out_of_range_count = sum(
         1 for es in edge_segments
         if not (getattr(es, "diameter", "") or "")
@@ -815,10 +899,31 @@ def assign_diameters_by_proximity(
             f"altinda cap-text bulunamadi."
         )
 
+    # ── INHERITANCE: T-junction komsulari arasi BFS yayilimi ──────────
+    # Text bulamayan segmentler icin: AYNI LAYER'da AYNI ENDPOINT'i paylasan
+    # ATANMIS komsudan cap miras al. Kullanici kurali:
+    #   "2 metre mesafede text bulamazsan miras olarak bir onceki hattin
+    #    text'ini alacaksin."
+    _inh_tol = (
+        float(inheritance_tolerance)
+        if inheritance_tolerance and inheritance_tolerance > 0
+        else _INHERITANCE_ENDPOINT_TOL
+    )
+    inherited = _propagate_inheritance(edge_segments, _inh_tol)
+    # Inheritance sonrasi hala bos kalan segment sayisi (gercek skipped)
+    skipped = sum(
+        1 for es in edge_segments
+        if not (getattr(es, "diameter", "") or "")
+    )
+    if inherited > 0:
+        warnings.append(
+            f"Inheritance: {inherited} segment T-junction komsusundan cap miras aldi."
+        )
+
     return {
         "assigned_count": assigned,
-        "inherited_count": 0,
-        "skipped_count": out_of_range_count,
+        "inherited_count": inherited,
+        "skipped_count": skipped,
         "text_pool_size": pool_size,
         "source_summary": source_summary,
         "warnings": warnings,

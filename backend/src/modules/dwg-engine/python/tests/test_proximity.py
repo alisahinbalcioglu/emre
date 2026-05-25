@@ -661,3 +661,103 @@ class TestAssignDiametersByProximity:
         assert result["assigned_count"] == 1
         assert edges[0].diameter == '1¼"'
 
+
+class TestInheritance:
+    """T-junction komsulari arasi BFS-based cap miras yayilimi.
+
+    Kural: Proximity bittikten sonra, atama almamis segmentlere AYNI LAYER'da
+    AYNI ENDPOINT'i paylasan ATANMIS komsudan cap miras verilir.
+    """
+
+    def test_linear_chain_inheritance(self):
+        """A-B-C linear zincir, sadece A'ya text yakin. B ve C miras almali.
+
+        Text (5, 30): A closest point (5,0) mesafe = 30 -> ATANIR.
+        B (10,0)-(20,0) closest (10,0) mesafe = sqrt(25+900) = 30.41 -> ASAR.
+        C (20,0)-(30,0) closest (20,0) mesafe = sqrt(225+900) = 33.54 -> ASAR.
+        max_distance=30.3: sadece A proximity'den alir; B ve C inheritance ile.
+        """
+        doc = ezdxf.new()
+        doc.modelspace().add_text("Ø50",
+                                   dxfattribs={"insert": (5, 30), "height": 30, "layer": "L1"})
+        edges = [
+            _FakeEdge(1, 0, 0, 10, 0, layer="L1"),
+            _FakeEdge(2, 10, 0, 20, 0, layer="L1"),
+            _FakeEdge(3, 20, 0, 30, 0, layer="L1"),
+        ]
+        result = assign_diameters_by_proximity(doc, edges, max_distance_world=30.3)
+        assert edges[0].diameter == "Ø50"
+        assert edges[1].diameter == "Ø50"
+        assert edges[2].diameter == "Ø50"
+        assert result["assigned_count"] == 1
+        assert result["inherited_count"] == 2
+
+    def test_t_junction_inheritance(self):
+        """T-junction: ana hat alir, iki kol inheritance ile alir.
+        Text (5,30): ana hat (0,0)-(10,0) closest (5,0) mes 30. Kollarin closest
+        endpoint'leri (10,0) mes 30.4 -> max_distance=30.3 asar -> inheritance.
+        """
+        doc = ezdxf.new()
+        doc.modelspace().add_text("Ø80",
+                                   dxfattribs={"insert": (5, 30), "height": 30, "layer": "L1"})
+        edges = [
+            _FakeEdge(1, 0, 0, 10, 0, layer="L1"),
+            _FakeEdge(2, 10, 0, 1010, 0, layer="L1"),      # kol-1: yatay devam
+            _FakeEdge(3, 10, 0, 10, -1000, layer="L1"),    # kol-2: dikey asagi
+        ]
+        result = assign_diameters_by_proximity(doc, edges, max_distance_world=30.3)
+        assert edges[0].diameter == "Ø80"
+        assert edges[1].diameter == "Ø80"
+        assert edges[2].diameter == "Ø80"
+        assert result["assigned_count"] == 1
+        assert result["inherited_count"] == 2
+
+    def test_inheritance_blocked_by_layer_mismatch(self):
+        """Farkli layer'daki komsuya miras GECMEMELI — yangin hatti isitma sicramasin."""
+        doc = ezdxf.new()
+        doc.modelspace().add_text("Ø50",
+                                   dxfattribs={"insert": (5, 30), "height": 30, "layer": "Yangin"})
+        edges = [
+            _FakeEdge(1, 0, 0, 10, 0, layer="Yangin"),
+            _FakeEdge(2, 10, 0, 20, 0, layer="Isitma"),  # ayni endpoint ama farkli layer
+        ]
+        assign_diameters_by_proximity(doc, edges, max_distance_world=31.0)
+        assert edges[0].diameter == "Ø50"
+        # Isitma layer'i miras almamali
+        assert edges[1].diameter in ("", "Belirtilmemis", None)
+
+    def test_inheritance_disconnected_segment(self):
+        """Endpoint paylasmayan segmente miras gitmez."""
+        doc = ezdxf.new()
+        doc.modelspace().add_text("Ø50",
+                                   dxfattribs={"insert": (5, 0), "height": 30, "layer": "L1"})
+        edges = [
+            _FakeEdge(1, 0, 0, 10, 0, layer="L1"),         # text yakin
+            _FakeEdge(2, 5000, 5000, 6000, 6000, layer="L1"),  # tamamen ayrik + uzak
+        ]
+        assign_diameters_by_proximity(doc, edges)
+        assert edges[0].diameter == "Ø50"
+        assert edges[1].diameter in ("", "Belirtilmemis", None)
+
+    def test_inheritance_proximity_wins_over_inheritance(self):
+        """Hem text yakin hem komsudan miras mumkun -> proximity (text) kazanir.
+
+        A'ya Ø50 atanir (proximity). B'nin yaninda Ø80 text'i de var ama uzakta;
+        A'dan miras alinabilir. Proximity ONCE calistigi icin B = Ø80 alir
+        (max_distance icindeyse). Aksi halde inheritance Ø50 verir.
+        """
+        doc = ezdxf.new()
+        # A'nin yaninda Ø50, B'nin yaninda Ø80 (ikisi de proximity sinirinda)
+        doc.modelspace().add_text("Ø50",
+                                   dxfattribs={"insert": (5, 0), "height": 30, "layer": "L1"})
+        doc.modelspace().add_text("Ø80",
+                                   dxfattribs={"insert": (15, 0), "height": 30, "layer": "L1"})
+        edges = [
+            _FakeEdge(1, 0, 0, 10, 0, layer="L1"),
+            _FakeEdge(2, 10, 0, 20, 0, layer="L1"),
+        ]
+        assign_diameters_by_proximity(doc, edges)
+        # Ikisi de proximity'den kendi yakinindakini alir
+        assert edges[0].diameter == "Ø50"
+        assert edges[1].diameter == "Ø80"
+
