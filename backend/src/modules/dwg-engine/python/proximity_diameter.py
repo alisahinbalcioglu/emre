@@ -731,9 +731,12 @@ def assign_diameters_by_proximity(
     view_transform: tuple[float, float, float, float, float, float] | None = None,
     scale: float = 0.001,
 ) -> dict:
-    """Her segmente, layer-uyumlu en yakin GORUNUR cap-text'i ata.
+    """Her segmente, en yakin GORUNUR cap-text'i ata (segment-perspective).
 
     Kural: "borunun yaninda gorunen cap-text var -> al, yoksa atama yapma."
+    Ayni text birden fazla segmente paylasilabilir (paralel kardes borular).
+    ÇOCUK OYUN ALANI bug'i _CAP_PATTERN.fullmatch ile cozulur (etiket pool'a
+    girmez), mutual nearest claim DEGIL.
 
     Args:
         doc: ezdxf Drawing
@@ -809,61 +812,35 @@ def assign_diameters_by_proximity(
             f"Proximity: cap-text havuzu BUYUK ({pool_size}). Hesaplama yavaslayabilir."
         )
 
-    # TEXT-PERSPECTIVE MUTUAL NEAREST (claim-based)
-    # Her cap-text EN YAKIN TEK segmente "claim" eder (mesafe < sinir). Ayni
-    # text birden fazla segmente paylasilmaz. Eger ayni segmente birden cok
-    # text claim ederse, en yakin text kazanir.
+    # SEGMENT-PERSPECTIVE NAIVE NEAREST
+    # Her segment KENDI en yakin cap-text'ini alir (mesafe < sinir). Ayni text
+    # birden fazla segmente paylasilabilir — paralel cizilen kardes borular
+    # ayni cap-text'i payslar (yaygin durum: pis su, ana hat besleme).
     #
-    # NEDEN: Bir yangin hattinin '11/2"' yazisi yan tesisat hattindaki boruya
-    # da yakin olabilir (yan yana cizilen tesisatlarda 50-100mm uzaklik).
-    # Eski segment-perspective o text'i HER iki boruya da kopyaliyordu →
-    # "rastgele cap atanmasi" sikayeti (ÇOCUK OYUN ALANI senaryosu).
-    #
-    # T-junction kardes borular: bu yaklasimda kardes kollar text alamaz
-    # (text bir kola claim edildi), AMA 1-HOP miras devreye girer ve
-    # kardes kola dogru cap'i tasir. Yani kayip yok.
+    # ÇOCUK OYUN ALANI bug ('dolum 11/2"' yan boruya bulasmasi) bu mantik degil
+    # _CAP_PATTERN.fullmatch ile cozulur — etiket pool'a hic girmez. Mutual
+    # nearest (text-perspective claim) denenmisti ama paralel boru senaryosunu
+    # bozdu: 324 segment + 30 text -> sadece 30 atama, gerisi bos. Geri alindi.
     assigned = 0
     proximity_assigned_idx: set[int] = set()
 
-    # Manuel override korunur — bu segmentler claim'e dahil edilmez
-    manual_override_idx: set[int] = set()
+    # Manuel override korunur — bu segmentlere yeni atama yapilmaz
     for idx, es in enumerate(edge_segments):
-        current = getattr(es, "diameter", "") or ""
-        if current and current != "Belirtilmemis":
-            manual_override_idx.add(idx)
-
-    # Faz 1: her text icin en yakin segment'i bul (mesafe < sinir)
-    # claim[seg_idx] = (best_text, best_distance)
-    claim: dict[int, tuple[dict, float]] = {}
-    for t in texts:
         try:
-            best_seg_idx: int | None = None
-            best_d = effective_max_dist
-            for idx, es in enumerate(edge_segments):
-                if idx in manual_override_idx:
-                    continue
-                d = _segment_distance(es, t["x"], t["y"])
-                if d < best_d:
-                    best_d = d
-                    best_seg_idx = idx
-            if best_seg_idx is None:
+            current = getattr(es, "diameter", "") or ""
+            if current and current != "Belirtilmemis":
+                continue  # manuel/onceki atama korunur
+            nearest = _nearest_text(es, texts)
+            if nearest is None:
                 continue
-            # Ayni segmente daha onceki text daha yakinsa, eskiyi koru
-            prev = claim.get(best_seg_idx)
-            if prev is None or best_d < prev[1]:
-                claim[best_seg_idx] = (t, best_d)
-        except Exception as _e:
-            logging.warning("proximity claim skip (text=%s): %s", t.get("value", "?"), _e)
-            continue
-
-    # Faz 2: claim'lari segmente uygula
-    for seg_idx, (t, _d) in claim.items():
-        try:
-            edge_segments[seg_idx].diameter = t["value"]
+            t, d = nearest
+            if d > effective_max_dist:
+                continue  # uzak text'in zorla yakistirilmasini onler
+            es.diameter = t["value"]
             assigned += 1
-            proximity_assigned_idx.add(seg_idx)
+            proximity_assigned_idx.add(idx)
         except Exception as _e:
-            logging.warning("proximity apply skip (seg=%d): %s", seg_idx, _e)
+            logging.warning("proximity skip (seg=%d): %s", idx, _e)
             continue
 
     # Atama sonrasi atanmayan segment sayisi (proximity asamasinin sonu)

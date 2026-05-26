@@ -457,47 +457,48 @@ class TestAssignDiametersByProximity:
         assert result["assigned_count"] == 1
 
     def test_tjunction_sibling_inherits_via_inheritance(self):
-        """T-junction kardes borular: text bir segmente claim edilir, digeri 1-HOP miras alir.
+        """T-junction kardes: text proximity sinirinin disinda kalan kola 1-HOP miras.
 
-        YENI davranis (mutual nearest claim + 1-HOP miras):
-        - Text en yakin SEGMENTE atanir (paylasim yok)
-        - Endpoint paylasimi olan kardes segment 1-HOP miras ile cap alir
-        - Sonuc: iki segment de ayni cap ama farkli mekanizma ile."""
+        Senaryo: text edge[0]'in ortasinda; edge[1] uzun bir T-junction kolu,
+        text'ten 2m'den uzak. edge[1] proximity ile alamaz, ama endpoint
+        paylasimi (1-HOP miras) ile cap alir."""
         doc = ezdxf.new()
         doc.modelspace().add_text("Ø50",
-                                   dxfattribs={"insert": (2, 0), "height": 50, "layer": "L1"})
+                                   dxfattribs={"insert": (0, 0), "height": 50, "layer": "L1"})
         edges = [
-            _FakeEdge(1, 0, 0, 10, 0),     # text (2,0) bu segmente cok yakin -> proximity claim
-            _FakeEdge(2, 10, 0, 10, 50),   # endpoint (10,0) paylasimi -> 1-HOP miras
+            _FakeEdge(1, -10000, 0, 10000, 0),    # text (0,0) bu boru uzerinde -> proximity
+            _FakeEdge(2, 10000, 0, 10000, 5000),  # T-junction (10000,0), text 10m uzakta -> miras
         ]
         result = assign_diameters_by_proximity(doc, edges)
         assert edges[0].diameter == "Ø50"  # proximity
-        assert edges[1].diameter == "Ø50"  # inheritance (kardes endpoint)
-        assert result["assigned_count"] == 1   # sadece 1 proximity claim
-        assert result["inherited_count"] == 1  # 1 miras
+        assert edges[1].diameter == "Ø50"  # inheritance
+        assert result["assigned_count"] == 1
+        assert result["inherited_count"] == 1
 
-    def test_mutual_nearest_no_double_assign(self):
-        """Mutual nearest: ayni text birden fazla segmente atanmaz.
+    def test_parallel_pipes_share_text(self):
+        """Paralel cizilen kardes borular ayni cap-text'i paylasir.
 
-        ÇOCUK OYUN ALANI senaryosu — bir hat'in cap text'i yan tesisat hattindaki
-        boruya da yakin oldugu icin eski algoritmada her iki boruya da kopyalaniyordu.
-        Yeni: text sadece EN YAKIN segmente claim edilir."""
+        PIS SU / ana hat besleme senaryosu: bir cizimde 324 boru segment + 30
+        cap-text. Eger her text TEK segmente claim edilirse 294 segment bos
+        kalir (mutual nearest regresyonu). Segment-perspective her boru kendi
+        en yakin text'ini alir -> paralel borular dogal olarak ayni cap'i
+        payslar.
+
+        ÇOCUK OYUN ALANI bug'i bu yolla DEGIL fullmatch ile cozulur
+        (test_label_text_with_word_rejected)."""
         doc = ezdxf.new()
-        # Text bir tesisatin yaninda (5,0)
         doc.modelspace().add_text("Ø50",
                                    dxfattribs={"insert": (5, 0), "height": 50, "layer": "L1"})
-        # Iki ayri tesisat (endpoint paylasimi YOK -> miras yayilmaz)
+        # Iki paralel kardes boru, ikisi de text'e 2m sinirinin altinda
         edges = [
-            _FakeEdge(1, 0, 0, 10, 0),      # text (5,0) bu segment uzerinde -> EN YAKIN
-            _FakeEdge(2, 0, 200, 10, 200),  # 200mm uzakta, hala 2m altinda ama uzak
+            _FakeEdge(1, 0, 0, 10, 0),      # 0mm dik mesafe
+            _FakeEdge(2, 0, 200, 10, 200),  # 200mm dik mesafe (2m sinirinin altinda)
         ]
         result = assign_diameters_by_proximity(doc, edges)
-        # Eskiden ikisi de Ø50 aliyordu (segment-perspective)
-        # Yeni: sadece EN YAKIN segment alir, diger Belirtilmemis kalir
+        # Her iki paralel boru da en yakin cap'i alir
         assert edges[0].diameter == "Ø50"
-        assert edges[1].diameter in ("", "Belirtilmemis", None)
-        assert result["assigned_count"] == 1
-        assert result["inherited_count"] == 0  # endpoint paylasimi yok
+        assert edges[1].diameter == "Ø50"
+        assert result["assigned_count"] == 2
 
     def test_label_text_with_word_rejected(self):
         """Cap text icinde Turkce kelime varsa REJECT (fullmatch).
