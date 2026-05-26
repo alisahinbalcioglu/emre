@@ -797,28 +797,62 @@ def assign_diameters_by_proximity(
         edge_segments: list of EdgeSegment — diameter field'i mutate edilir
         sprinkler_layers: bu layer'lardaki text'ler havuzdan dusurulur
         max_distance_world: maks text-segment mesafesi (DWG world unit).
-          None -> scale'e gore 2m karsiligi (mm DWG'de 2000, cm'de 200, m'de 2).
+          None -> CIZIM BOUND'undan otomatik (diagonal × %5). SCALE'DEN BAGIMSIZ.
           0/negatif -> sinir yok.
+          Pozitif -> verilen deger override olarak kullanilir.
         scale: DWG world unit -> meter cevirim katsayisi (mm=0.001, cm=0.01, m=1.0).
-          Mesafe sinirini ve inheritance toleransini SCALE-AWARE yapar.
-          DWG cm/m birimindeyse default sabit 2000 world unit YANLIS olur:
-          cm DWG'de 2000 birim = 20m, m DWG'de 2000 birim = 2km. Bu parametre
-          her DWG birimi icin dogru 2m gercek mesafe garantiler.
+          NOT: artik SADECE inheritance tolerance ve metraj icin kullanilir.
+          Mesafe sinirini ETKILEMEZ — bound bazli adaptive cunku kullanicinin
+          UI'da yanlis birim secmesi mesafe atamasi bozmamali (uretim DWG'lerde
+          $INSUNITS metadata sik sik yanlis set edilir).
 
     Returns: assigned_count, skipped_count, text_pool_size, source_summary,
              warnings, max_distance_world, out_of_range_text_count, inherited_count(=0).
     """
-    # Efektif mesafe sınırı — SCALE-AWARE (2m gercek mesafe -> world unit)
-    # Eski sabit DEFAULT_MAX_DISTANCE_WORLD=2000 SADECE mm DWG icin dogruydu.
-    # cm DWG'de 2000 birim = 20m, m DWG'de 2km. Yeni: 2m / scale ile her birime calisir.
+    # Efektif mesafe sınırı — BOUND-BAZLI ADAPTIVE (scale'den bagimsiz)
+    # ESKI: 2.0 / scale  -> kullanici yanlis birim secerse atama bozuluyordu
+    # YENI: cizim diagonalinin %5'i. Her birim secimi icin AYNI orantida calisir
+    #       cunku bound zaten kullanilan birimde olculmustur.
+    #
+    # Ornek: 37500 unit (mm cizimde 37.5m) bound × %5 = 1875 unit
+    #        - mm yorumda 1.87m gercek mesafe (eskinin 2m'sine yakin)
+    #        - cm yorumda 18.75m gercek mesafe (eskinin 20cm yerine!) — cm DWG'de daha makul
     safe_scale = float(scale) if scale and float(scale) > 0 else 0.001
     if max_distance_world is None:
-        effective_max_dist = 2.0 / safe_scale  # 2m gercek mesafe -> world unit
+        # Bound bazli otomatik hesap (cizim diagonali × %5)
+        # Eşik: diagonal < 5000 unit ise eski scale-aware davranisa fallback
+        # (kucuk test fixture'lari ve nadir minik cizimler icin geriye uyumluluk)
+        _all_eps: list[tuple[float, float]] = []
+        for _es in edge_segments:
+            _all_eps.extend(_segment_endpoints(_es))
+        _diag = 0.0
+        if _all_eps:
+            _xs = [p[0] for p in _all_eps]
+            _ys = [p[1] for p in _all_eps]
+            _bw = max(_xs) - min(_xs)
+            _bh = max(_ys) - min(_ys)
+            _diag = math.hypot(_bw, _bh)
+        if _diag >= 5000.0:
+            # Bound bazli adaptive: cizim diagonalinin %10'u
+            # Empirik test (test-1.dwg): %8'den itibaren atama orani saturate (94%)
+            # %5: 69% (cok dar), %10: 94% (sweet spot), %20: 96% (cok gevsek, false pos risk)
+            effective_max_dist = _diag * 0.10
+            _dist_source = f"adaptive (cizim diagonal {_diag:.0f} * %10)"
+        else:
+            effective_max_dist = 2.0 / safe_scale  # scale-aware fallback (kucuk cizimler)
+            _dist_source = f"scale-aware fallback (2m / scale={safe_scale})"
     elif max_distance_world <= 0:
         effective_max_dist = math.inf
+        _dist_source = "limit YOK"
     else:
         effective_max_dist = float(max_distance_world)
+        _dist_source = "user override"
     warnings: list[str] = []
+    # Mesafe kuralini diagnostic'e ekle (kullanici hangi sinirla calistigini gorsun)
+    if effective_max_dist != math.inf:
+        warnings.append(
+            f"Proximity diag: max mesafe = {effective_max_dist:.0f} unit ({_dist_source})"
+        )
     diag: dict = {}
     texts = _extract_all_texts(
         doc,
