@@ -167,6 +167,85 @@ export function useWorkspaceState(fileId: string, scale: number) {
     });
   }, []);
 
+  /**
+   * PRD §3 (manuel override propagation): Kullanici bir boruya cap atayinca,
+   * AYNI LAYER'da endpoint paylasan ve cap'i null/Belirtilmemis olan KOMSU
+   * borulara o cap'i otomatik dagit (1-HOP, zincirleme yok).
+   *
+   * Backend'in layer-aware 1-HOP inheritance mantiginin frontend karsiligidir.
+   * DWG re-parse etmeden, lokal state guncelleme ile.
+   *
+   * Tolerance: 5 world unit (mm DWG'de 5mm — AutoCAD snap toleransi).
+   *
+   * Returns: { target, propagated } — kullanici toast'inda gosterilebilir.
+   */
+  const applyDiameterWithPropagation = useCallback((
+    layer: string,
+    segmentId: number,
+    newDiameter: string,
+  ): { target: boolean; propagated: number } => {
+    let propagated = 0;
+    let target = false;
+    setState((s) => {
+      const cl = s.calculatedLayers[layer];
+      if (!cl) return s;
+      const targetSeg = cl.edgeSegments.find((es) => es.segment_id === segmentId);
+      if (!targetSeg) return s;
+      target = true;
+
+      // Hedef segment endpoint'leri (coords[0..3] veya polyline ilk/son)
+      const endpointsOf = (es: typeof targetSeg): [number, number][] => {
+        const c = es.coords;
+        if (c && c.length >= 4) return [[c[0], c[1]], [c[2], c[3]]];
+        const pl = es.polyline;
+        if (pl && pl.length >= 2) {
+          const first = pl[0];
+          const last = pl[pl.length - 1];
+          return [[first[0], first[1]], [last[0], last[1]]];
+        }
+        return [];
+      };
+
+      const TOL = 5;        // world unit (mm DWG: 5mm)
+      const TOL_SQ = TOL * TOL;
+      const targetEps = endpointsOf(targetSeg);
+
+      const shareEndpoint = (es: typeof targetSeg): boolean => {
+        const eps = endpointsOf(es);
+        for (const [ax, ay] of targetEps) {
+          for (const [bx, by] of eps) {
+            const dx = ax - bx;
+            const dy = ay - by;
+            if (dx * dx + dy * dy <= TOL_SQ) return true;
+          }
+        }
+        return false;
+      };
+
+      const updatedSegs = cl.edgeSegments.map((es) => {
+        if (es.segment_id === segmentId) {
+          return { ...es, diameter: newDiameter };
+        }
+        // Sadece ayni layer + null cap + endpoint paylasimi
+        if (es.layer !== targetSeg.layer) return es;
+        const cap = es.diameter || '';
+        if (cap && cap !== 'Belirtilmemis') return es;
+        if (!shareEndpoint(es)) return es;
+        propagated += 1;
+        return { ...es, diameter: newDiameter };
+      });
+
+      return {
+        ...s,
+        calculatedLayers: {
+          ...s.calculatedLayers,
+          [layer]: { ...cl, edgeSegments: updatedSegs },
+        },
+      };
+    });
+    return { target, propagated };
+  }, []);
+
   const beginEditEquipment = useCallback((key: string) => {
     setState((s) => ({ ...s, editingEquipmentKey: key }));
   }, []);
@@ -251,6 +330,7 @@ export function useWorkspaceState(fileId: string, scale: number) {
     unapproveLayer,
     removeCalculatedLayer,
     updateEdgeSegmentDiameter,
+    applyDiameterWithPropagation,
     beginEditEquipment,
     cancelEditEquipment,
     saveEquipment,

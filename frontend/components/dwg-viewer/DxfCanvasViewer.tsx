@@ -778,12 +778,23 @@ export default function DxfCanvasViewer({
         ctx.globalAlpha = 1;
         if (useDiameterColors) {
           // PRD §3: cap-bazli dinamik renklendirme (legend ile esles)
+          // PRD §3 (Atanmamis): 'Belirtilmemis' borular gri/KESIKLI cizgi (atanmadi
+          // durumunu gosterir; kullanici manuel duzeltir).
           byDiameter.forEach((segs, diameter) => {
+            const isUnassigned = !diameter || diameter === 'Belirtilmemis';
             ctx.strokeStyle = diameterToColor(diameter);
+            if (isUnassigned) {
+              // 6-3px desen (zoom invariant degil ama kontrol icin OK; gerekirse
+              // strokeWidth scale ile orantili yapilabilir)
+              ctx.setLineDash([6, 3]);
+            } else {
+              ctx.setLineDash([]);
+            }
             ctx.beginPath();
             for (const seg of segs) drawSegPath(seg);
             ctx.stroke();
           });
+          ctx.setLineDash([]);  // sonraki pass'lere taşmasın
         } else {
           // PRD §5: save sonrasi cap renkleri kaldirilir, layer orijinal ACI
           // rengine donulur. Tum diameter group'larini layer'a yeniden grupla.

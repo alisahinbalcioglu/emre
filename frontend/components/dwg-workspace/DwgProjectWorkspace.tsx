@@ -49,6 +49,7 @@ export default function DwgProjectWorkspace({
     selectLayer, updateLayerConfig,
     addCalculatedLayer, approveLayer, unapproveLayer, removeCalculatedLayer,
     updateEdgeSegmentDiameter,
+    applyDiameterWithPropagation,
     beginEditEquipment, cancelEditEquipment, saveEquipment, removeEquipment,
     removeSprinklerLayer, toggleSprinklerLayer,
     toggleLayerVisibility, showAllLayers,
@@ -1037,12 +1038,30 @@ export default function DwgProjectWorkspace({
           segment={editingSegment}
           onCancel={() => setEditingSegment(null)}
           onSave={(segmentId, newDiameter) => {
-            // Tum hesaplanmis layer'larda segmentId'yi bul ve guncelle
+            // PRD §3: manuel cap ataminda AYNI LAYER'da endpoint paylasan
+            // null komsulara da otomatik dagit (1-HOP). Hedef segmentin hangi
+            // layer'a ait oldugunu bulup, sadece o layer'da propagation yap.
+            let totalPropagated = 0;
+            let hitLayer: string | null = null;
             for (const layer of Object.keys(state.calculatedLayers)) {
-              updateEdgeSegmentDiameter(layer, segmentId, newDiameter);
+              const { target, propagated } = applyDiameterWithPropagation(layer, segmentId, newDiameter);
+              if (target) {
+                hitLayer = layer;
+                totalPropagated = propagated;
+                break;  // segment_id global unique; tek layer'da olur
+              }
             }
             setEditingSegment(null);
-            toast({ title: 'Çap güncellendi', description: `Segment #${segmentId}: ${newDiameter}` });
+            const desc = totalPropagated > 0
+              ? `Segment #${segmentId}: ${newDiameter} · ${totalPropagated} komşuya yayıldı`
+              : `Segment #${segmentId}: ${newDiameter}`;
+            toast({ title: 'Çap güncellendi', description: desc });
+            // Defensive: hicbir layer'da bulunamadiysa eski davranisi koru
+            if (!hitLayer) {
+              for (const layer of Object.keys(state.calculatedLayers)) {
+                updateEdgeSegmentDiameter(layer, segmentId, newDiameter);
+              }
+            }
           }}
         />
       )}
