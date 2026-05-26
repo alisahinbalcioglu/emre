@@ -52,7 +52,7 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
     fileId: string;
     suggestedUnitLabel: string;
   } | null>(null);
-  const [selectedUnit, setSelectedUnit] = useState<number>(0.001);
+  const [selectedUnit, setSelectedUnit] = useState<number>(0);  // 0 = Auto-detect (default)
 
   // Dashboard'dan gelen dosyayi otomatik isle — birim dialog'u atla (Dashboard zaten belirlemis)
   const initialFileProcessed = useRef(false);
@@ -83,7 +83,10 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
         .then((res) => {
           if (res?.data?.status === 'ready') {
             setRestoredFileName(session.fileName);
-            setSelectedUnit(session.scale || 0.001);
+            // SESSION SCALE'i GOZ ARDI ET — her hesaplamada Auto-detect tetiklensin
+            // (eski session'larda scale=0.001 sabit kayitli, bu Auto'yu bypass ediyordu).
+            // Backend pipe physics ile dogru birimi her seferinde tespit eder.
+            setSelectedUnit(0);  // 0 = Auto (scale parametresi backend'e gonderilmez)
             setFileId(session.fileId);
           } else {
             // Cache'te yok veya parse henuz bitmemis → temizle
