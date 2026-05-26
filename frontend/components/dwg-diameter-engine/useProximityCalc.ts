@@ -117,6 +117,11 @@ export function useProximityCalc({ fileId, scale, sprinklerLayers, onResult, onF
         // Detayli rapor: kac segment proximity'den, kac segment miras, kac segment bos.
         // Backend warning'ler parse edilir: "Inheritance: X segment T-junction komsusundan..."
         const warnings: string[] = Array.isArray(data.warnings) ? data.warnings : [];
+        // DEBUG: backend warnings array'ini console'a tam dok — kullanici F12'den
+        // root cause'u (regex_no_match, label_reject, layer_off_skip vb.) gorebilsin.
+        // Pool 0 / 0 atama senaryolarinda diagnostic mesajlar burada.
+        console.warn(`[Proximity ${layer}] backend warnings:`, warnings);
+        console.warn(`[Proximity ${layer}] summary:`, summary);
         const inhMatch = warnings.find((w) => w.startsWith('Inheritance:'))?.match(/Inheritance:\s+(\d+)\s+segment/);
         const inheritedCount = inhMatch ? Number(inhMatch[1]) || 0 : 0;
         const emptyCount = edgeSegs.filter((es) => !es.diameter || es.diameter === 'Belirtilmemis').length;
