@@ -37,6 +37,12 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
   // file: dosya nesnesi (yuklemede gerekli). Refresh sonrasi YOK ama
   // fileName + fileId localStorage'dan gelir — workspace acilir.
   const [file, setFile] = useState<File | null>(null);
+  // DEBUG: Cloudflare build/cache test marker — yeni JS yuklendigini ispatlar
+  // (eski JS bu satiri yazmaz)
+  if (typeof window !== 'undefined' && !(window as any).__metaprice_v_marker) {
+    (window as any).__metaprice_v_marker = 'v2026-05-27-AUTO-DETECT';
+    console.warn('%c🚀 MetaPrice v2026-05-27 AUTO-DETECT yüklendi', 'color:#22c55e;font-size:14px;font-weight:bold');
+  }
   // restoredFileName: refresh sonrasi localStorage'dan gelen dosya adi (file nesnesi yok)
   const [restoredFileName, setRestoredFileName] = useState<string | null>(null);
   const [fileId, setFileId] = useState<string | null>(null);
