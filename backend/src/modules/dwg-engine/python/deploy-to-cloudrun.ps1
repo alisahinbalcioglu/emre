@@ -8,7 +8,7 @@
 # Env variable INTERNAL_API_TOKEN ile auth gonderilir.
 
 # Config — kendi project'ine gore degistir
-$PROJECT_ID = "metaprice-dwg-prod"        # GCP project ID
+$PROJECT_ID = "metaprice"                  # GCP project ID (gercek proje adi)
 $REGION     = "europe-west3"               # Frankfurt (Render'a yakın)
 $SERVICE    = "metaprice-dwg-engine"       # Cloud Run service adi
 
