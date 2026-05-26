@@ -416,7 +416,7 @@ def _extract_all_texts(
     # 'HDPE', 'PVC', 'PN', 'BANYO' (hep BUYUK harf) -> kabul. Sade ve sembolik.
     _LOWER_LATIN_RE = re.compile(r"[a-zçğıöşüâî]")
 
-    def _add(txt_raw: str, x: float, y: float, layer: str, source: str) -> None:
+    def _add(txt_raw: str, x: float, y: float, layer: str, source: str, layer_visible: bool = True) -> None:
         """Cap belirteci filter + extract. Yoksa havuza alma.
         Pozisyon view_transform ile edge_segments space'ine tasinir.
 
@@ -457,6 +457,7 @@ def _extract_all_texts(
             "x": wx, "y": wy,
             "value": extracted,
             "layer": layer, "source": source,
+            "layer_visible": layer_visible,
         })
 
     for entity in msp:
@@ -477,30 +478,29 @@ def _extract_all_texts(
                 diag["invisible_skip"] += 1
                 continue
 
-            # LAYER VISIBILITY: skip filter DEVRE DISI (d737549 -> bu commit).
-            # Gerekce: gercek uretim DWG'lerinde cap text'leri SIKCA off/frozen
-            # layer'larda tutulur (eski cap'leri silmek yerine layer kapatma
-            # konvansiyonu, ya da layer template'i default OFF gelir). Filter
-            # bu durumda 11000+ cap-text'i eliyordu -> pool 0 -> 0 atama.
-            # Frontend canvas zaten layer visibility'i goz ardi edip text'leri
-            # render ediyor; biz de pool'a alalim.
-            # ÇOCUK OYUN ALANI tarzi 'gizli eski cap' senaryosunu fullmatch (search) +
-            # label guard ZATEN cozuyor (etiket text'ler reddediliyor).
-            # Sayac diag'da kaliyor (info amacli; warning'de bilgi olarak verilebilir).
-            if not _layer_visible(doc, layer, layer_vis_cache):
+            # LAYER VISIBILITY: HIBRIT yaklasim (v5).
+            # ON/THAWED layer'lar -> primary pool (kullanici cizimde goruyor)
+            # OFF/FROZEN layer'lar -> secondary pool (kullanici gormez, fallback)
+            # Atama 2 fazli: once primary, atanmayan kalanlara secondary uygula.
+            # Bu sayede:
+            #   - PIS SU senaryosu (11129 OFF text): primary bossa OFF fallback isler
+            #   - COCUK OYUN ALANI senaryosu (ON text varken): kullanici ne gorduyse
+            #     o atanir, gizli text'ler kullanilmaz -> "neden bu cap atandi?" yok
+            is_layer_visible = _layer_visible(doc, layer, layer_vis_cache)
+            if not is_layer_visible:
                 diag["layer_off_skip"] += 1
-                # continue KALDIRILDI: text yine pool'a girsin
+                # NOT: continue YOK — text pool'a girsin ama 'layer_visible=False' ile
 
             if etype == "TEXT":
                 raw = str(getattr(entity.dxf, "text", "") or "")
                 pos = entity.dxf.insert
-                _add(raw, pos.x, pos.y, layer, "TEXT")
+                _add(raw, pos.x, pos.y, layer, "TEXT", layer_visible=is_layer_visible)
 
             elif etype == "MTEXT":
                 raw = entity.plain_text() if hasattr(entity, "plain_text") else str(entity.dxf.text)
                 raw = str(raw).replace("\n", " ")
                 pos = entity.dxf.insert
-                _add(raw, pos.x, pos.y, layer, "MTEXT")
+                _add(raw, pos.x, pos.y, layer, "MTEXT", layer_visible=is_layer_visible)
 
             elif etype == "DIMENSION":
                 dim_txt = getattr(entity.dxf, "text", "") or ""
@@ -520,7 +520,7 @@ def _extract_all_texts(
                     if dp is None or not hasattr(dp, "x"):
                         continue
                     x, y = float(dp.x), float(dp.y)
-                _add(dim_txt, x, y, layer, "DIMENSION")
+                _add(dim_txt, x, y, layer, "DIMENSION", layer_visible=is_layer_visible)
 
             elif etype in ("MULTILEADER", "MLEADER"):
                 mtxt = None
@@ -555,7 +555,7 @@ def _extract_all_texts(
                                 break
                 if not pos_found:
                     continue
-                _add(mtxt, x, y, layer, "LEADER")
+                _add(mtxt, x, y, layer, "LEADER", layer_visible=is_layer_visible)
 
             elif etype == "INSERT":
                 # 1) ATTRIB'ler (block'a baglanan kullanici girdi text'leri)
@@ -576,7 +576,9 @@ def _extract_all_texts(
                                 continue
                             at_txt = str(getattr(at.dxf, "text", "") or "")
                             ap = at.dxf.insert
-                            _add(at_txt, ap.x, ap.y, at_layer, "ATTRIB")
+                            # ATTRIB'in kendi layer'i farkli olabilir -> ayri visibility check
+                            at_visible = _layer_visible(doc, at_layer, layer_vis_cache)
+                            _add(at_txt, ap.x, ap.y, at_layer, "ATTRIB", layer_visible=at_visible)
                         except Exception:
                             continue
                 # 2) BLOCK_TEXT — INSERT'in referans verdigi blok icinde TEXT/MTEXT
@@ -598,7 +600,9 @@ def _extract_all_texts(
                         # Sprinkler/excluded layer filtresini block TEXT'lere de uygula
                         if blayer in excluded_layers:
                             continue
-                        _add(btxt, wx, wy, blayer, "BLOCK_TEXT")
+                        # Block TEXT'in effective layer visibility'i (parent veya kendi)
+                        b_visible = _layer_visible(doc, blayer, layer_vis_cache)
+                        _add(btxt, wx, wy, blayer, "BLOCK_TEXT", layer_visible=b_visible)
                 except Exception:
                     pass
 
@@ -823,13 +827,12 @@ def assign_diameters_by_proximity(
         out_diagnostic=diag,
     )
     # DIAGNOSTIC WARNINGS — kullanici pool'un neden bos/kucuk oldugunu anlasin.
-    # Bu sayaclar bir daha kor tahmin yapmamak icin kritik.
-    # NOT: layer_off_skip artik 'skip' degil, sadece bilgi — text'ler pool'a ALINIR
-    # (filter devre disi). Kullaniciya 'havuza alindi' diye not edilir.
+    # NOT: layer_off text'leri pool'a SECONDARY olarak alinir (fallback).
+    # Atama sirasinda primary'ye oncelik, hic alternatif yoksa secondary kullanilir.
     if diag.get("layer_off_skip", 0) > 0:
         warnings.append(
             f"Proximity diag: {diag['layer_off_skip']} cap-text kapali/donmus layer'da "
-            f"(filter devre disi -> POOL'A ALINDI)."
+            f"(secondary pool -> primary atama bossa fallback olarak kullanilir)."
         )
     _regex_no_match = diag.get("regex_no_match", 0)
     if _regex_no_match > 0:
@@ -876,36 +879,76 @@ def assign_diameters_by_proximity(
             f"Proximity: cap-text havuzu BUYUK ({pool_size}). Hesaplama yavaslayabilir."
         )
 
-    # SEGMENT-PERSPECTIVE NAIVE NEAREST
+    # SEGMENT-PERSPECTIVE NAIVE NEAREST (HIBRIT VISIBILITY v5)
     # Her segment KENDI en yakin cap-text'ini alir (mesafe < sinir). Ayni text
     # birden fazla segmente paylasilabilir — paralel cizilen kardes borular
     # ayni cap-text'i payslar (yaygin durum: pis su, ana hat besleme).
     #
-    # ÇOCUK OYUN ALANI bug ('dolum 11/2"' yan boruya bulasmasi) bu mantik degil
-    # _CAP_PATTERN.fullmatch ile cozulur — etiket pool'a hic girmez. Mutual
-    # nearest (text-perspective claim) denenmisti ama paralel boru senaryosunu
-    # bozdu: 324 segment + 30 text -> sadece 30 atama, gerisi bos. Geri alindi.
+    # HIBRIT VISIBILITY (v5):
+    #   Faz 1 — PRIMARY (ON/THAWED text): kullanici cizimde GORUYOR
+    #   Faz 2 — SECONDARY (OFF/FROZEN text fallback): SADECE Faz 1'de atanmayan
+    #           segment'ler icin. Boylece kullanicinin gormedigi text'ten atama
+    #           SADECE primary'de hic alternatif olmadiginda yapilir.
+    # Bu sayede:
+    #   - PIS SU senaryosu (11129 OFF text, primary bos): fallback isler
+    #   - COCUK OYUN ALANI (ON text yakinda): primary kullanilir, gizli text
+    #     atanan boruya bulasmaz -> 'neden bu cap atandi?' sorusu kalkar
+    #
+    # ÇOCUK OYUN ALANI etiket bug ('dolum 11/2"' yan boruya bulasmasi) bu mantik
+    # degil _CAP_PATTERN.search + label guard (kucuk harfli kelime) ile cozulur.
+    primary_texts = [t for t in texts if t.get("layer_visible", True)]
+    secondary_texts = [t for t in texts if not t.get("layer_visible", True)]
     assigned = 0
+    assigned_from_hidden = 0
     proximity_assigned_idx: set[int] = set()
 
-    # Manuel override korunur — bu segmentlere yeni atama yapilmaz
+    # Faz 1: PRIMARY (cizimde gorunen layer'lardan)
     for idx, es in enumerate(edge_segments):
         try:
             current = getattr(es, "diameter", "") or ""
             if current and current != "Belirtilmemis":
                 continue  # manuel/onceki atama korunur
-            nearest = _nearest_text(es, texts)
+            if not primary_texts:
+                continue
+            nearest = _nearest_text(es, primary_texts)
             if nearest is None:
                 continue
             t, d = nearest
             if d > effective_max_dist:
-                continue  # uzak text'in zorla yakistirilmasini onler
+                continue
             es.diameter = t["value"]
             assigned += 1
             proximity_assigned_idx.add(idx)
         except Exception as _e:
-            logging.warning("proximity skip (seg=%d): %s", idx, _e)
+            logging.warning("proximity primary skip (seg=%d): %s", idx, _e)
             continue
+
+    # Faz 2: SECONDARY fallback (gizli layer'lardan, sadece bos kalanlar icin)
+    if secondary_texts:
+        for idx, es in enumerate(edge_segments):
+            try:
+                current = getattr(es, "diameter", "") or ""
+                if current and current != "Belirtilmemis":
+                    continue
+                nearest = _nearest_text(es, secondary_texts)
+                if nearest is None:
+                    continue
+                t, d = nearest
+                if d > effective_max_dist:
+                    continue
+                es.diameter = t["value"]
+                assigned += 1
+                assigned_from_hidden += 1
+                proximity_assigned_idx.add(idx)
+            except Exception as _e:
+                logging.warning("proximity secondary skip (seg=%d): %s", idx, _e)
+                continue
+
+    if assigned_from_hidden > 0:
+        warnings.append(
+            f"Proximity: {assigned_from_hidden} segment cap'i KAPALI/DONMUS layer'daki "
+            f"text'ten geldi (cizimde gizli). Supheli ise ilgili layer'i acip dogrula."
+        )
 
     # Atama sonrasi atanmayan segment sayisi (proximity asamasinin sonu)
     out_of_range_count = sum(

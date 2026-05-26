@@ -560,6 +560,46 @@ class TestAssignDiametersByProximity:
         # En yakin text segmente atanir (Ø50)
         assert edges[0].diameter == "Ø50"
 
+    def test_hybrid_visibility_primary_wins_over_hidden(self):
+        """v5 HIBRIT: ON layer text bir segmente atama icin yetiyorsa OFF layer'daki
+        daha yakin text bile dikkate ALINMAZ. Kullanicinin gormedigi text'ten
+        atama yapilmaz."""
+        doc = ezdxf.new()
+        # ON layer (gorunur)
+        doc.layers.add("VISIBLE")
+        # OFF layer (gizli)
+        L = doc.layers.add("HIDDEN_CAPS")
+        L.off()
+        # OFF layer'da DAHA YAKIN text — ama secondary, kullanilmamali
+        doc.modelspace().add_text("Ø999",
+                                   dxfattribs={"insert": (5, 0), "height": 50, "layer": "HIDDEN_CAPS"})
+        # ON layer'da daha uzak ama gorunur text
+        doc.modelspace().add_text("Ø50",
+                                   dxfattribs={"insert": (5, 100), "height": 50, "layer": "VISIBLE"})
+        edges = [_FakeEdge(1, 0, 0, 10, 0)]
+        result = assign_diameters_by_proximity(doc, edges)
+        # Primary (ON) kazanir, OFF secondary yedek olarak kullanilmaz
+        assert edges[0].diameter == "Ø50"
+        assert result["assigned_count"] == 1
+        # Pool ikisini de iceriyor ama atama icin primary kullanildi
+        assert result["text_pool_size"] == 2
+
+    def test_hybrid_visibility_fallback_to_hidden(self):
+        """v5 HIBRIT: ON layer'da hic cap-text yoksa OFF layer fallback'i isler.
+        PIS SU senaryosu — 11129 cap-text gizli layer'da, atama yine yapilir."""
+        doc = ezdxf.new()
+        L = doc.layers.add("HIDDEN_CAPS")
+        L.off()
+        doc.modelspace().add_text("Ø100",
+                                   dxfattribs={"insert": (5, 0), "height": 50, "layer": "HIDDEN_CAPS"})
+        edges = [_FakeEdge(1, 0, 0, 10, 0)]
+        result = assign_diameters_by_proximity(doc, edges)
+        # Primary bos, secondary fallback isler
+        assert edges[0].diameter == "Ø100"
+        assert result["assigned_count"] == 1
+        # Warning'de gizli layer fallback bilgisi olmali
+        assert any("KAPALI/DONMUS" in w for w in result["warnings"])
+
     def test_layer_off_text_included(self):
         """v4: Kapali (is_off) layer'daki cap text'leri ARTIK POOL'A GIRER.
 
