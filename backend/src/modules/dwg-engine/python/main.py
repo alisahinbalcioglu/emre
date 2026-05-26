@@ -442,22 +442,34 @@ def analyze_dxf_metraj(
     if not layers:
         warnings.append("Secilen layer'larda hicbir cizgi tespit edilemedi")
 
-    # ── $INSUNITS otomatik tespit + scale uyumsuzluk uyarisi ─────────
+    # ── $INSUNITS otomatik tespit + SCALE AUTO-CORRECT ─────────────────
     # DXF header $INSUNITS: 0=unitless, 1=inch, 2=feet, 4=mm, 5=cm, 6=m
-    # Kullanici scale UI'da seciyor; eger DXF header'i farkli birimi belirtiyorsa
-    # uyari ver — algoritma scale parametresine bagli, yanlis secim sonucu kaydirir.
+    # YENI davranis: DXF $INSUNITS varsa onu OTORITER kabul et — kullanicinin
+    # UI'da yanlis birim secmesi (sik gorulur: mm DWG ama cm secim) metraj 10x
+    # ve mesafe sinirini bozuyor. Auto-correct uygula, kullanici bilgilendir.
+    # $INSUNITS=0 (unitless) ise UI scale'e guven (mevcut davranis).
     try:
         _insunits = int(doc.header.get("$INSUNITS", 0))
-        _insunit_scale_map = {4: 0.001, 5: 0.01, 6: 1.0}  # mm, cm, m
-        _expected_scale = _insunit_scale_map.get(_insunits)
-        if _expected_scale and abs(_expected_scale - scale) / max(_expected_scale, 1e-9) > 0.1:
-            _names = {4: "mm", 5: "cm", 6: "m"}
-            _expected_name = _names.get(_insunits, "?")
-            _selected_name = "mm" if abs(scale - 0.001) < 1e-6 else ("cm" if abs(scale - 0.01) < 1e-6 else ("m" if abs(scale - 1.0) < 1e-6 else f"{scale}"))
-            warnings.append(
-                f"BIRIM UYUMSUZ: DXF $INSUNITS={_expected_name} diyor, secilen birim {_selected_name}. "
-                "Yanlissa metraj 10/100x kayar."
-            )
+        _insunit_scale_map = {4: (0.001, "mm"), 5: (0.01, "cm"), 6: (1.0, "m")}
+        _detected = _insunit_scale_map.get(_insunits)
+        if _detected:
+            _expected_scale, _expected_name = _detected
+            if abs(_expected_scale - scale) / max(_expected_scale, 1e-9) > 0.1:
+                _selected_name = (
+                    "mm" if abs(scale - 0.001) < 1e-6
+                    else "cm" if abs(scale - 0.01) < 1e-6
+                    else "m" if abs(scale - 1.0) < 1e-6
+                    else f"{scale}"
+                )
+                warnings.append(
+                    f"BIRIM AUTO-CORRECT: DXF $INSUNITS={_expected_name} diyor (UI'da {_selected_name} secilmis). "
+                    f"Otomatik {_expected_name} kullaniliyor — metraj ve mesafe sinirlari dogru hesaplanir."
+                )
+                scale = _expected_scale  # ← OTORITER override
+            else:
+                # Uyumlu — bilgi mesaji vermeye gerek yok
+                pass
+        # $INSUNITS=0 veya bilinmiyor -> UI scale aynen kullanilir
     except Exception:
         pass
 
