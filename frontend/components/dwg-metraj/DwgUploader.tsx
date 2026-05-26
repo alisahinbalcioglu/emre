@@ -258,10 +258,12 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
       }
 
       // 3) Sonuc — /layers'in dondurdugu sekille uyumlu olarak normalize et
-      const suggestedScale = typeof statusData.suggested_scale === 'number' ? statusData.suggested_scale : 0.001;
-      const suggestedLabel = statusData.suggested_unit_label ?? 'mm';
+      // KRITIK FIX: backend'in suggested_scale'i (default 0.001) auto-detect'i
+      // bypass ediyordu. Frontend her zaman 0 (Auto) set eder, backend
+      // /parse cagrisinda kendisi pipe physics + metadata ile karar verir.
+      const suggestedLabel = statusData.suggested_unit_label ?? 'auto';
       const totalLayers = statusData.total_layers ?? (statusData.layers?.length ?? 0);
-      setSelectedUnit(opts.override ?? suggestedScale);
+      setSelectedUnit(opts.override ?? 0);  // 0 = Auto, backend pipe physics karar verir
 
       toast({
         title: 'Proje hazirlandi',
