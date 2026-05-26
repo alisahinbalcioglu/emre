@@ -819,28 +819,16 @@ def assign_diameters_by_proximity(
     #        - cm yorumda 18.75m gercek mesafe (eskinin 20cm yerine!) — cm DWG'de daha makul
     safe_scale = float(scale) if scale and float(scale) > 0 else 0.001
     if max_distance_world is None:
-        # Bound bazli otomatik hesap (cizim diagonali × %5)
-        # Eşik: diagonal < 5000 unit ise eski scale-aware davranisa fallback
-        # (kucuk test fixture'lari ve nadir minik cizimler icin geriye uyumluluk)
-        _all_eps: list[tuple[float, float]] = []
-        for _es in edge_segments:
-            _all_eps.extend(_segment_endpoints(_es))
-        _diag = 0.0
-        if _all_eps:
-            _xs = [p[0] for p in _all_eps]
-            _ys = [p[1] for p in _all_eps]
-            _bw = max(_xs) - min(_xs)
-            _bh = max(_ys) - min(_ys)
-            _diag = math.hypot(_bw, _bh)
-        if _diag >= 5000.0:
-            # Bound bazli adaptive: cizim diagonalinin %10'u
-            # Empirik test (test-1.dwg): %8'den itibaren atama orani saturate (94%)
-            # %5: 69% (cok dar), %10: 94% (sweet spot), %20: 96% (cok gevsek, false pos risk)
-            effective_max_dist = _diag * 0.10
-            _dist_source = f"adaptive (cizim diagonal {_diag:.0f} * %10)"
-        else:
-            effective_max_dist = 2.0 / safe_scale  # scale-aware fallback (kucuk cizimler)
-            _dist_source = f"scale-aware fallback (2m / scale={safe_scale})"
+        # KULLANICI KURALI: Proje sekli/boyutu ne olursa olsun 2 METRE sabit gercek mesafe.
+        # Birim auto-detect (pipe physics) artik scale'i guvenilir veriyor, scale-aware
+        # mesafe dogru calisir:
+        #   cm DWG -> 2/0.01  = 200 unit  = 2m gercek
+        #   mm DWG -> 2/0.001 = 2000 unit = 2m gercek
+        #   m  DWG -> 2/1.0   = 2 unit    = 2m gercek
+        # Bound × %10 adaptive mantigi kaldirildi (buyuk cizimlerde 38m gibi cok gevsek
+        # sinirlar uretiyordu, false-positive atamalari arttiriyordu).
+        effective_max_dist = 2.0 / safe_scale
+        _dist_source = f"sabit 2m gercek (scale={safe_scale} -> {effective_max_dist:.0f} unit)"
     elif max_distance_world <= 0:
         effective_max_dist = math.inf
         _dist_source = "limit YOK"

@@ -475,27 +475,20 @@ class TestAssignDiametersByProximity:
         assert result["assigned_count"] == 1
         assert result["inherited_count"] == 1
 
-    def test_adaptive_distance_bound_based(self):
-        """v6: Default max_distance bound bazli (cizim diagonalinin %10'u),
-        kullanici scale secimi ETKILEMEZ. Buyuk cizimde 50000+ unit bound icin
-        diagonal * 0.10 hesaplanir.
-
-        Bu test: bound > 5000 (adaptive aktif) durumda mm vs cm secimi AYNI
-        mesafe sinirini verir (cunku bound DWG world unit'inde sabit)."""
+    def test_fixed_2m_distance(self):
+        """v7: Mesafe SABIT 2m gercek (proje boyutundan bagimsiz).
+        scale-aware: cm DWG -> 200 unit, mm DWG -> 2000 unit."""
         doc = ezdxf.new()
         doc.modelspace().add_text("Ø50",
-                                   dxfattribs={"insert": (1000, 0), "height": 50, "layer": "L1"})
-        # Genis bound -> adaptive devreye girer
-        edges_mm = [_FakeEdge(1, 0, 0, 20000, 0, layer="L1"),       # 20000 unit hat
-                    _FakeEdge(2, 0, 5000, 20000, 5000, layer="L1")]  # paralel hat
-        edges_cm = [_FakeEdge(1, 0, 0, 20000, 0, layer="L1"),
-                    _FakeEdge(2, 0, 5000, 20000, 5000, layer="L1")]
+                                   dxfattribs={"insert": (100, 0), "height": 50, "layer": "L1"})
+        edges_mm = [_FakeEdge(1, 0, 0, 100, 0, layer="L1")]
+        edges_cm = [_FakeEdge(1, 0, 0, 100, 0, layer="L1")]
         result_mm = assign_diameters_by_proximity(doc, edges_mm, scale=0.001)
         result_cm = assign_diameters_by_proximity(doc, edges_cm, scale=0.01)
-        # IKI durumda da AYNI mesafe sinirinin uygulanmasi gerek
-        assert result_mm["max_distance_world"] == result_cm["max_distance_world"]
-        # diagonal ~ sqrt(20000^2 + 5000^2) ~ 20616, * 0.10 = 2062
-        assert 2000 < result_mm["max_distance_world"] < 2200
+        # mm DWG: 2/0.001 = 2000 unit
+        assert abs(result_mm["max_distance_world"] - 2000.0) < 1.0
+        # cm DWG: 2/0.01 = 200 unit
+        assert abs(result_cm["max_distance_world"] - 200.0) < 1.0
 
     def test_inheritance_different_layer_blocked(self):
         """Farkli layer'daki komsular birbirinden miras ALMAZ.
