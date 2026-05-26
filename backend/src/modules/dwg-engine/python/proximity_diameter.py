@@ -696,12 +696,23 @@ def _segment_layer(es) -> str:
     return str(getattr(es, "layer", "") or "")
 
 
+def _segment_length_world(es) -> float:
+    """Segment'in world-unit uzunlugu (endpoint'lerden hesaplanan duz mesafe)."""
+    eps = _segment_endpoints(es)
+    if len(eps) < 2:
+        return 0.0
+    x1, y1 = eps[0]
+    x2, y2 = eps[1]
+    return math.hypot(x2 - x1, y2 - y1)
+
+
 def _propagate_inheritance(
     edge_segments: list[Any],
     tolerance: float,
     proximity_assigned_idx: set[int],
+    max_distance_world: float = 0.0,
 ) -> int:
-    """T-junction komsudan 1-HOP cap miras yayilimi (LAYER-AWARE).
+    """T-junction komsudan 1-HOP cap miras yayilimi (LAYER-AWARE + UZUNLUK SINIRLI).
 
     KRITIK KURAL (kullanici PRD): "Aynı layer'daki başka bir borunun noktası
     çakışıyorsa, bu iki boru aynı hattın parçasıdır." → SADECE ayni layer'daki
@@ -712,14 +723,20 @@ def _propagate_inheritance(
     KRITIK KURAL (kullanici): "2m mesafede text bulamazsan miras olarak
     BIR ONCEKI hattin text'ini alacaksin." → 1 hop, zincirleme YOK.
 
+    YENI KURAL (v7): Miras alan segmentin UZUNLUGU max_distance_world'i geciyorsa
+    miras ALMAZ. Cunku 2m'den uzun bir boru parcasi, T-junction'dan diger ucuna
+    2m+ uzakta olur — yanlis cap atanma riski. Boyle uzun borular kendi
+    cap-text'lerine sahip olmali.
+
     Sadece PROXIMITY ile atanmis komsulardan miras gider. Miras alan
-    segmentler kendileri zincirleme yapamaz. Bu sayede uzun T-junction
-    zincirleri (orn 50m bir hat) bastaki cap'i sonuna kadar yaymaz.
+    segmentler kendileri zincirleme yapamaz.
 
     Args:
         edge_segments: liste; atanmayanlara cap miras yazilir.
         tolerance: endpoint paylasimi mesafesi (DWG world unit).
         proximity_assigned_idx: proximity loop'tan atanmis segment index'leri.
+        max_distance_world: miras icin maks segment uzunlugu (2m gercek).
+                            0 ise uzunluk kontrolu YAPILMAZ (geriye uyumluluk).
 
     Returns: miras alan segment sayisi.
     """
@@ -761,6 +778,13 @@ def _propagate_inheritance(
         cap = getattr(es, "diameter", "") or ""
         if cap and cap != "Belirtilmemis":
             continue  # zaten atanmis
+        # YENI: segment uzunlugu max_distance_world'u geciyorsa miras ALMA
+        # Cunku uzun borular kendi cap-text'lerine sahip olmali (cap-text yoksa
+        # miras yoluyla 'uzaktan' atama yapmak yanlis cap riski yaratir).
+        if max_distance_world > 0:
+            es_len = _segment_length_world(es)
+            if es_len > max_distance_world:
+                continue
         # Komsular arasindan proximity'den atanmis olanlari bul
         for nbr_idx in neighbors.get(idx, set()):
             if nbr_idx not in proximity_assigned_idx:
@@ -995,7 +1019,12 @@ def assign_diameters_by_proximity(
         _inh_tol = float(inheritance_tolerance)
     else:
         _inh_tol = 0.005 / safe_scale  # 5mm = 0.005m -> world unit
-    inherited = _propagate_inheritance(edge_segments, _inh_tol, proximity_assigned_idx)
+    # v7: miras alacak segmentin uzunlugu max_distance_world'i geciyorsa miras almaz
+    # (2m'den uzun borular kendi cap-text'lerine sahip olmali)
+    inherited = _propagate_inheritance(
+        edge_segments, _inh_tol, proximity_assigned_idx,
+        max_distance_world=effective_max_dist if effective_max_dist != math.inf else 0.0,
+    )
     # Inheritance sonrasi hala bos kalan segment sayisi (gercek skipped)
     skipped = sum(
         1 for es in edge_segments

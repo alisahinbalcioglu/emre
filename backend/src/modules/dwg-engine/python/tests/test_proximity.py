@@ -456,22 +456,49 @@ class TestAssignDiametersByProximity:
         assert edges[1].diameter in ("", "Belirtilmemis", None)
         assert result["assigned_count"] == 1
 
-    def test_tjunction_sibling_inherits_via_inheritance(self):
-        """T-junction kardes: text proximity sinirinin disinda kalan kola 1-HOP miras.
+    def test_inheritance_long_segment_blocked(self):
+        """v7: Miras alacak segment 2m'den UZUN ise miras ALMAZ.
 
-        Senaryo: text edge[0]'in ortasinda; edge[1] uzun bir T-junction kolu,
-        text'ten 2m'den uzak. edge[1] proximity ile alamaz, ama endpoint
-        paylasimi (1-HOP miras) ile cap alir."""
+        Cunku 2m'den uzun bir boru parcasi, T-junction'dan diger ucuna 2m+
+        uzakta olur — uzakta yanlis cap atanma riski. Bu uzunluk borular
+        kendi cap-text'lerine sahip olmali.
+
+        Senaryo: A 30cm Ø50 atanir; B 3000mm (=3m, mm DWG'de) uzunlukta,
+        T-junction'da A'ya bagli. B 2m'yi astigi icin miras almaz."""
+        doc = ezdxf.new()
+        doc.modelspace().add_text("Ø50",
+                                   dxfattribs={"insert": (0, 0), "height": 50, "layer": "L1"})
+        edges = [
+            _FakeEdge(1, -10000, 0, 10000, 0, layer="L1"),    # A: text üzerinde -> proximity
+            _FakeEdge(2, 10000, 0, 10000, 3000, layer="L1"),  # B: 3000mm uzunluk, T-junction (10000,0)
+        ]
+        # mm DWG: max_distance = 2000 (2m). B uzunlugu 3000 > 2000 -> miras alma.
+        result = assign_diameters_by_proximity(doc, edges, scale=0.001)
+        assert edges[0].diameter == "Ø50"  # proximity
+        # B 2m'den uzun -> miras YOK
+        assert edges[1].diameter in ("", "Belirtilmemis", None)
+        assert result["assigned_count"] == 1
+        assert result["inherited_count"] == 0  # uzunluk bloke etti
+
+    def test_tjunction_sibling_inherits_via_inheritance(self):
+        """T-junction kardes: text proximity sinirinin disinda kalan KISA kola 1-HOP miras.
+
+        v7: Miras alacak segment uzunlugu <= 2m olmali. Bu testte B segmenti
+        500mm = 0.5m, <2m sinirinin altinda -> miras alabilir.
+
+        Senaryo: text edge[0]'in ortasinda; edge[1] kisa T-junction kolu,
+        text'ten 2m'den uzak (proximity alamaz) ama endpoint paylasimi
+        (1-HOP miras) ile cap alir."""
         doc = ezdxf.new()
         doc.modelspace().add_text("Ø50",
                                    dxfattribs={"insert": (0, 0), "height": 50, "layer": "L1"})
         edges = [
             _FakeEdge(1, -10000, 0, 10000, 0),    # text (0,0) bu boru uzerinde -> proximity
-            _FakeEdge(2, 10000, 0, 10000, 5000),  # T-junction (10000,0), text 10m uzakta -> miras
+            _FakeEdge(2, 10000, 0, 10000, 500),   # T-junction (10000,0), B uzunlugu 500mm -> miras
         ]
         result = assign_diameters_by_proximity(doc, edges)
         assert edges[0].diameter == "Ø50"  # proximity
-        assert edges[1].diameter == "Ø50"  # inheritance
+        assert edges[1].diameter == "Ø50"  # inheritance (B kisa, miras alabilir)
         assert result["assigned_count"] == 1
         assert result["inherited_count"] == 1
 
@@ -864,17 +891,21 @@ class TestInheritance:
         assert result["inherited_count"] == 1
 
     def test_t_junction_inheritance(self):
-        """T-junction: ana hat alir, iki kol inheritance ile alir.
-        Text (5,30): ana hat (0,0)-(10,0) closest (5,0) mes 30. Kollarin closest
-        endpoint'leri (10,0) mes 30.4 -> max_distance=30.3 asar -> inheritance.
-        """
+        """T-junction: ana hat alir, iki KISA kol inheritance ile alir.
+
+        v7: Miras alacak kol uzunlugu <= max_distance olmali.
+        max_distance=30.3 oldugu icin kollar 20-25 unit (kisa) yapildi -> miras alabilir.
+
+        Text (5,30): ana hat (0,0)-(10,0) closest (5,0) mes 30 -> proximity.
+        Kollarin closest endpoint'leri (10,0) mes 30.4 -> max_distance=30.3 asar.
+        Kollar KISA (uzunluk 20-25) oldugu icin miras alir."""
         doc = ezdxf.new()
         doc.modelspace().add_text("Ø80",
                                    dxfattribs={"insert": (5, 30), "height": 30, "layer": "L1"})
         edges = [
             _FakeEdge(1, 0, 0, 10, 0, layer="L1"),
-            _FakeEdge(2, 10, 0, 1010, 0, layer="L1"),      # kol-1: yatay devam
-            _FakeEdge(3, 10, 0, 10, -1000, layer="L1"),    # kol-2: dikey asagi
+            _FakeEdge(2, 10, 0, 30, 0, layer="L1"),    # kol-1: 20 unit (< 30.3)
+            _FakeEdge(3, 10, 0, 10, -25, layer="L1"),  # kol-2: 25 unit (< 30.3)
         ]
         result = assign_diameters_by_proximity(doc, edges, max_distance_world=30.3)
         assert edges[0].diameter == "Ø80"
