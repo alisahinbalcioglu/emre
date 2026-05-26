@@ -560,26 +560,28 @@ class TestAssignDiametersByProximity:
         # En yakin text segmente atanir (Ø50)
         assert edges[0].diameter == "Ø50"
 
-    def test_layer_off_text_excluded(self):
-        """Kapali (is_off) layer'daki cap text'leri pool'a girmemeli.
+    def test_layer_off_text_included(self):
+        """v4: Kapali (is_off) layer'daki cap text'leri ARTIK POOL'A GIRER.
 
-        Eski projelerde cap text'leri silinmek yerine LAYER kapatilarak gizlenir.
-        Algoritma bunlari yine de yakaliyor ve segmentlere yanlis cap atiyordu.
-        Cizimde gozukmediyse pool'a alma."""
+        Gercek uretim DWG'lerinde cap text'leri sikca off layer'larda tutulur
+        (eski cap'leri silmek yerine layer kapatma, ya da layer template'i
+        default OFF). Filter 11000+ cap-text eliyordu -> 0 atama (PIS SU bug).
+        Frontend canvas zaten layer visibility'i goz ardi edip text'leri render
+        ediyor; backend da pool'a almalı."""
         doc = ezdxf.new()
-        # Layer'i kapali yap
         L = doc.layers.add("HIDDEN_CAPS")
         L.off()  # is_on() = False
         doc.modelspace().add_text("Ø75",
                                    dxfattribs={"insert": (5, 0), "height": 50, "layer": "HIDDEN_CAPS"})
         edges = [_FakeEdge(1, 0, 0, 10, 0)]
         result = assign_diameters_by_proximity(doc, edges)
-        assert edges[0].diameter in ("", "Belirtilmemis", None)
-        assert result["assigned_count"] == 0
-        assert result["text_pool_size"] == 0  # kapali layer -> pool'a girmedi
+        # v4: off layer text de pool'a girer, en yakin segmente atanir
+        assert edges[0].diameter == "Ø75"
+        assert result["text_pool_size"] == 1
+        assert result["assigned_count"] == 1
 
-    def test_layer_frozen_text_excluded(self):
-        """Donmus (is_frozen) layer'daki cap text'leri pool'a girmemeli."""
+    def test_layer_frozen_text_included(self):
+        """v4: Donmus (is_frozen) layer'daki cap text'leri de POOL'A GIRER."""
         doc = ezdxf.new()
         L = doc.layers.add("FROZEN_CAPS")
         L.freeze()  # is_frozen() = True
@@ -587,8 +589,8 @@ class TestAssignDiametersByProximity:
                                    dxfattribs={"insert": (5, 0), "height": 50, "layer": "FROZEN_CAPS"})
         edges = [_FakeEdge(1, 0, 0, 10, 0)]
         result = assign_diameters_by_proximity(doc, edges)
-        assert edges[0].diameter in ("", "Belirtilmemis", None)
-        assert result["text_pool_size"] == 0
+        assert edges[0].diameter == "Ø75"
+        assert result["text_pool_size"] == 1
 
     def test_scale_aware_distance_cm_dwg(self):
         """cm-birim DWG: scale=0.01 ile 2m gercek mesafe = 200 world unit.

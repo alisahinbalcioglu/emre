@@ -477,13 +477,19 @@ def _extract_all_texts(
                 diag["invisible_skip"] += 1
                 continue
 
-            # LAYER VISIBILITY FILTER: Layer is_off()=False veya is_frozen()=True ise
-            # tum o layer'daki text'ler cizimde gizli. Pool'a alma. Eski projelerde
-            # cap text'leri silinmek yerine layer kapatilarak gizlenir; algoritma
-            # bunlari yine de yakalayip yanlis cap atiyordu.
+            # LAYER VISIBILITY: skip filter DEVRE DISI (d737549 -> bu commit).
+            # Gerekce: gercek uretim DWG'lerinde cap text'leri SIKCA off/frozen
+            # layer'larda tutulur (eski cap'leri silmek yerine layer kapatma
+            # konvansiyonu, ya da layer template'i default OFF gelir). Filter
+            # bu durumda 11000+ cap-text'i eliyordu -> pool 0 -> 0 atama.
+            # Frontend canvas zaten layer visibility'i goz ardi edip text'leri
+            # render ediyor; biz de pool'a alalim.
+            # ÇOCUK OYUN ALANI tarzi 'gizli eski cap' senaryosunu fullmatch (search) +
+            # label guard ZATEN cozuyor (etiket text'ler reddediliyor).
+            # Sayac diag'da kaliyor (info amacli; warning'de bilgi olarak verilebilir).
             if not _layer_visible(doc, layer, layer_vis_cache):
                 diag["layer_off_skip"] += 1
-                continue
+                # continue KALDIRILDI: text yine pool'a girsin
 
             if etype == "TEXT":
                 raw = str(getattr(entity.dxf, "text", "") or "")
@@ -818,10 +824,12 @@ def assign_diameters_by_proximity(
     )
     # DIAGNOSTIC WARNINGS — kullanici pool'un neden bos/kucuk oldugunu anlasin.
     # Bu sayaclar bir daha kor tahmin yapmamak icin kritik.
+    # NOT: layer_off_skip artik 'skip' degil, sadece bilgi — text'ler pool'a ALINIR
+    # (filter devre disi). Kullaniciya 'havuza alindi' diye not edilir.
     if diag.get("layer_off_skip", 0) > 0:
         warnings.append(
-            f"Proximity diag: kapali/donmus layer'lardan {diag['layer_off_skip']} cap-text "
-            f"havuza alinmadi (cizimde gizli)."
+            f"Proximity diag: {diag['layer_off_skip']} cap-text kapali/donmus layer'da "
+            f"(filter devre disi -> POOL'A ALINDI)."
         )
     _regex_no_match = diag.get("regex_no_match", 0)
     if _regex_no_match > 0:
