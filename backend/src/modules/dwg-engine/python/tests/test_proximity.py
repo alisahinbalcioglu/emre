@@ -475,6 +475,26 @@ class TestAssignDiametersByProximity:
         assert result["assigned_count"] == 1
         assert result["inherited_count"] == 1
 
+    def test_inheritance_different_layer_blocked(self):
+        """Farkli layer'daki komsular birbirinden miras ALMAZ.
+
+        PRD: 'Aynı layer'daki başka bir borunun noktası çakışıyorsa, bu iki
+        boru aynı hattın parçasıdır.' Senaryo: sicak su (SS) ve pis su (PS)
+        parallel cizilmis, endpoint paylasiyor ama farkli tesisatlar — pis su
+        sicak suyun cap'ini ALMAMALI."""
+        doc = ezdxf.new()
+        doc.modelspace().add_text("Ø50",
+                                   dxfattribs={"insert": (0, 0), "height": 50, "layer": "SS"})
+        edges = [
+            _FakeEdge(1, -10000, 0, 10000, 0, layer="SS"),     # SS: text yakin -> proximity
+            _FakeEdge(2, 10000, 0, 10000, 5000, layer="PS"),   # PS: SS ile endpoint paylasir AMA farkli layer
+        ]
+        result = assign_diameters_by_proximity(doc, edges)
+        assert edges[0].diameter == "Ø50"  # proximity
+        assert edges[1].diameter in ("", "Belirtilmemis", None)  # MIRAS ALMADI (layer farkli)
+        assert result["assigned_count"] == 1
+        assert result["inherited_count"] == 0
+
     def test_parallel_pipes_share_text(self):
         """Paralel cizilen kardes borular ayni cap-text'i paylasir.
 
@@ -785,9 +805,12 @@ class TestInheritance:
         assert result["assigned_count"] == 1
         assert result["inherited_count"] == 2
 
-    def test_inheritance_crosses_layer_boundary(self):
-        """v2 davranisi: farkli layer'daki komsuya miras GIDER.
-        Ayni endpoint = ayni cizim noktasi (T-junction). Layer guard kaldirildi."""
+    def test_inheritance_does_not_cross_layer_boundary(self):
+        """v3 davranisi (PRD): farkli layer'daki komsuya miras GITMEZ.
+
+        PRD: 'Aynı layer'daki başka bir borunun noktası çakışıyorsa, bu iki
+        boru aynı hattın parçasıdır.' Layer guard geri geldi cunku parallel
+        tesisatlar (sicak/soguk/pis su) endpoint paylasabilse de farkli hatlar."""
         doc = ezdxf.new()
         doc.modelspace().add_text("Ø50",
                                    dxfattribs={"insert": (5, 30), "height": 30, "layer": "L1"})
@@ -797,9 +820,9 @@ class TestInheritance:
         ]
         result = assign_diameters_by_proximity(doc, edges, max_distance_world=30.3)
         assert edges[0].diameter == "Ø50"
-        # v2: L2 layer'i da miras alir (eski davranis: alamaz; layer guard kaldirildi)
-        assert edges[1].diameter == "Ø50"
-        assert result["inherited_count"] == 1
+        # v3 (PRD): L2 layer'i miras ALMAZ
+        assert edges[1].diameter in ("", "Belirtilmemis", None)
+        assert result["inherited_count"] == 0
 
     def test_inheritance_disconnected_segment(self):
         """Endpoint paylasmayan segmente miras gitmez."""

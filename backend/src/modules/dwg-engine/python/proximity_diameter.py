@@ -654,12 +654,25 @@ def _segment_endpoints(es) -> list[tuple[float, float]]:
     return []
 
 
+def _segment_layer(es) -> str:
+    """Segment'in layer'ini don (dict veya Pydantic model)."""
+    if isinstance(es, dict):
+        return str(es.get("layer", "") or "")
+    return str(getattr(es, "layer", "") or "")
+
+
 def _propagate_inheritance(
     edge_segments: list[Any],
     tolerance: float,
     proximity_assigned_idx: set[int],
 ) -> int:
-    """T-junction komsudan 1-HOP cap miras yayilimi.
+    """T-junction komsudan 1-HOP cap miras yayilimi (LAYER-AWARE).
+
+    KRITIK KURAL (kullanici PRD): "Aynı layer'daki başka bir borunun noktası
+    çakışıyorsa, bu iki boru aynı hattın parçasıdır." → SADECE ayni layer'daki
+    komsulardan miras alinir. Farkli layer'daki tesisatlardan miras gitmez
+    (orn: sicak su <-> soguk su <-> pis su parallel cizilse de birbirinden
+    cap miras almaz).
 
     KRITIK KURAL (kullanici): "2m mesafede text bulamazsan miras olarak
     BIR ONCEKI hattin text'ini alacaksin." → 1 hop, zincirleme YOK.
@@ -684,7 +697,10 @@ def _propagate_inheritance(
         for (ex, ey) in _segment_endpoints(es):
             endpoints.append((idx, ex, ey))
 
-    # Komsuluk: tolerance icindeki endpoint'leri paylasan segment ciftleri.
+    # Layer cache — neighbor karsilastirmasinda her seferinde lookup yapmamak icin
+    seg_layer: list[str] = [_segment_layer(es) for es in edge_segments]
+
+    # Komsuluk: tolerance icindeki endpoint'leri paylasan AYNI LAYER'daki segment ciftleri.
     # O(n^2) gercek mesafe (grid hash hucre sinirinda yanlis sonuc veriyordu).
     tol_sq = tolerance * tolerance
     neighbors: dict[int, set[int]] = {i: set() for i in range(len(edge_segments))}
@@ -693,6 +709,9 @@ def _propagate_inheritance(
         for j in range(i + 1, len(endpoints)):
             ib, xb, yb = endpoints[j]
             if ia == ib:
+                continue
+            # LAYER-AWARE: farkli layer'daki borular birbirinden miras almaz
+            if seg_layer[ia] != seg_layer[ib]:
                 continue
             dx = xa - xb
             dy = ya - yb
