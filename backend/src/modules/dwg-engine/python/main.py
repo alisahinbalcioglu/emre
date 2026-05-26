@@ -442,12 +442,12 @@ def analyze_dxf_metraj(
     if not layers:
         warnings.append("Secilen layer'larda hicbir cizgi tespit edilemedi")
 
-    # ── $INSUNITS otomatik tespit + SCALE AUTO-CORRECT ─────────────────
+    # ── $INSUNITS uyumsuzluk UYARISI (override YOK) ─────────────────────
     # DXF header $INSUNITS: 0=unitless, 1=inch, 2=feet, 4=mm, 5=cm, 6=m
-    # YENI davranis: DXF $INSUNITS varsa onu OTORITER kabul et — kullanicinin
-    # UI'da yanlis birim secmesi (sik gorulur: mm DWG ama cm secim) metraj 10x
-    # ve mesafe sinirini bozuyor. Auto-correct uygula, kullanici bilgilendir.
-    # $INSUNITS=0 (unitless) ise UI scale'e guven (mevcut davranis).
+    # DXF metadata GUVENILMEZ — bircok tasarimci yanlis birim ile kaydeder
+    # (orn: cm cizip $INSUNITS=mm yazar). Bu yuzden kullanici secimini
+    # OVERRIDE ETMIYORUZ. Sadece uyari veriyoruz: uyumsuzsa kullanici
+    # toplam metraja bakarak dogru birimi gorebilir (300m vs 3000m vs 30m).
     try:
         _insunits = int(doc.header.get("$INSUNITS", 0))
         _insunit_scale_map = {4: (0.001, "mm"), 5: (0.01, "cm"), 6: (1.0, "m")}
@@ -462,14 +462,9 @@ def analyze_dxf_metraj(
                     else f"{scale}"
                 )
                 warnings.append(
-                    f"BIRIM AUTO-CORRECT: DXF $INSUNITS={_expected_name} diyor (UI'da {_selected_name} secilmis). "
-                    f"Otomatik {_expected_name} kullaniliyor — metraj ve mesafe sinirlari dogru hesaplanir."
+                    f"BIRIM UYARISI: DXF $INSUNITS={_expected_name} diyor (UI'da {_selected_name} secilmis). "
+                    f"Toplam metraj makulse {_selected_name} dogru, 10/100x sapma varsa birimi degistir."
                 )
-                scale = _expected_scale  # ← OTORITER override
-            else:
-                # Uyumlu — bilgi mesaji vermeye gerek yok
-                pass
-        # $INSUNITS=0 veya bilinmiyor -> UI scale aynen kullanilir
     except Exception:
         pass
 
