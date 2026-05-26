@@ -56,7 +56,7 @@ export default function QuickStart({
     const ext = file.name.split('.').pop()?.toLowerCase();
     if (['dwg', 'dxf'].includes(ext ?? '')) {
       setUnitDialogFile(file);
-      setSelectedUnit(0.001);
+      setSelectedUnit(0);  // Auto-detect (backend pipe physics karar verir)
     } else if (['xlsx', 'xls'].includes(ext ?? '')) {
       onExcelFile(file);
     } else {
@@ -74,7 +74,7 @@ export default function QuickStart({
     const file = e.target.files?.[0];
     if (file) {
       setUnitDialogFile(file);
-      setSelectedUnit(0.001);
+      setSelectedUnit(0);  // Auto-detect (backend pipe physics karar verir)
     }
     e.target.value = '';
   };

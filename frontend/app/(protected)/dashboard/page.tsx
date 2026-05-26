@@ -114,7 +114,7 @@ export default function DashboardPage() {
   }, [router]);
 
   /* ── DWG/DXF Upload Handler — quotes/new sayfasina yonlendir (layer secim akisi) ── */
-  const handleDwgFile = useCallback(async (file: File, scale: number = 0.001) => {
+  const handleDwgFile = useCallback(async (file: File, scale: number = 0) => {
     const ext = file.name.split('.').pop()?.toLowerCase();
 
     if (['dwg', 'dxf'].includes(ext ?? '')) {
