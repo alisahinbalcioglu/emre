@@ -539,6 +539,27 @@ class TestAssignDiametersByProximity:
         assert result["assigned_count"] == 0
         assert result["text_pool_size"] == 0  # iki etiket de reject
 
+    def test_production_text_with_material_prefix_accepted(self):
+        """Uretim DWG'lerde 'PVC Ø50', 'HDPE Ø200', 'BANYO Ø20' gibi formatlar
+        cok yaygin. SEARCH + label-guard ile bunlar pool'a girer (kucuk harf yok).
+
+        Eski fullmatch davranisi bunlari REJECT ediyordu -> uretim DWG'lerde
+        pool 0 sayisi, hicbir segment cap alamiyor (PIS SU regresyonu).
+        """
+        doc = ezdxf.new()
+        doc.modelspace().add_text("PVC Ø50",
+                                   dxfattribs={"insert": (5, 0), "height": 50, "layer": "L1"})
+        doc.modelspace().add_text("HDPE 100 PN 16 Ø200",
+                                   dxfattribs={"insert": (5, 100), "height": 50, "layer": "L1"})
+        doc.modelspace().add_text("BANYO Ø20",
+                                   dxfattribs={"insert": (5, 200), "height": 50, "layer": "L1"})
+        edges = [_FakeEdge(1, 0, 0, 10, 0)]
+        result = assign_diameters_by_proximity(doc, edges)
+        # 3 text de pool'a girer (hicbiri kucuk harf icermiyor)
+        assert result["text_pool_size"] == 3
+        # En yakin text segmente atanir (Ø50)
+        assert edges[0].diameter == "Ø50"
+
     def test_layer_off_text_excluded(self):
         """Kapali (is_off) layer'daki cap text'leri pool'a girmemeli.
 

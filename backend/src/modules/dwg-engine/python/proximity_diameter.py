@@ -401,32 +401,57 @@ def _extract_all_texts(
     diag.setdefault("layer_off_skip", 0)
     diag.setdefault("invisible_skip", 0)
     diag.setdefault("tiny_text_count", 0)
+    diag.setdefault("regex_no_match", 0)      # cap pattern hic bulunamadi
+    diag.setdefault("label_reject", 0)         # match var ama kucuk harf -> etiket
+    diag.setdefault("regex_no_match_samples", [])  # ilk 5 ornek (debug icin)
+    diag.setdefault("label_reject_samples", [])
     try:
         msp = doc.modelspace()
     except Exception:
         return texts
 
+    # ÇOCUK OYUN ALANI label guard regex: Latin/Turkce kucuk harf varsa text
+    # 'etiket' kabul edilir (ekipman/fonksiyon aciklamasi). Match disinda kalan
+    # kelimelerde gorulurse reject. 'dolum', 'tahliye', 'bosaltma' -> reject.
+    # 'HDPE', 'PVC', 'PN', 'BANYO' (hep BUYUK harf) -> kabul. Sade ve sembolik.
+    _LOWER_LATIN_RE = re.compile(r"[a-zçğıöşüâî]")
+
     def _add(txt_raw: str, x: float, y: float, layer: str, source: str) -> None:
         """Cap belirteci filter + extract. Yoksa havuza alma.
         Pozisyon view_transform ile edge_segments space'ine tasinir.
 
-        STRICT FULLMATCH: Text'in TAMAMI cap pattern olmali (whitespace tolerance).
-        'dolum 11/2"', 'Ø50 PE', 'P3' gibi etiketleri (ekipman aciklamasi/sprinkler
-        kodu/malzeme suffix'i) REJECT eder. Eskiden 'search' kullaniliyordu ve
-        'dolum 11/2"' icinden alt-eslesme olarak '11/2"' cikartilip pool'a
-        ekleniyordu → ÇOCUK OYUN ALANI bug'i (hidrofor 'dolum' etiketi).
-        Saf cap text'i kullanan projeler etkilenmez."""
+        SEARCH + LABEL GUARD: regex text icinde HERHANGI bir yerde cap pattern
+        bulur (eski davranis, uretimle uyumlu — 'HDPE 100 PN 16 Ø200' -> Ø200,
+        'BANYO Ø20' -> Ø20). ÇOCUK OYUN ALANI bug'i (hidrofor 'dolum 11/2"'
+        yan boruya bulasmasi) icin: match'in disinda kalan kisimda kucuk harfli
+        Latin/Turkce harf varsa text 'etiket' sayilir ve REJECT edilir. Tipik:
+          - 'dolum 11/2"'   -> 'dolum' kucuk harf -> REJECT
+          - 'tahliye Ø100'  -> 'tahliye' kucuk harf -> REJECT
+          - 'HDPE Ø200'     -> kucuk harf yok -> KABUL
+          - 'BANYO Ø20'     -> kucuk harf yok -> KABUL
+          - 'Ø50' tek basina -> match disi 0 karakter -> KABUL
+        Eski fullmatch SADECE temiz cap text'leri kabul ediyordu, uretim DWG'lerde
+        'PVC Ø50' gibi formatlari reject ederek pool'u sifirliyordu (regresyon).
+        """
         txt = _autocad_decode(txt_raw or "").strip()
         if not txt:
             return
-        m = _CAP_PATTERN.fullmatch(txt)
+        m = _CAP_PATTERN.search(txt)
         if not m:
+            diag["regex_no_match"] += 1
+            if len(diag["regex_no_match_samples"]) < 5:
+                diag["regex_no_match_samples"].append(txt[:40])
             return
-        # Raw cap-text (frontend canonicalizeDiameter normalize edecek)
+        # ÇOCUK OYUN ALANI guard: match disinda kalan kisimda kucuk harf -> etiket
+        rest = (txt[:m.start()] + " " + txt[m.end():]).strip()
+        if rest and _LOWER_LATIN_RE.search(rest):
+            diag["label_reject"] += 1
+            if len(diag["label_reject_samples"]) < 5:
+                diag["label_reject_samples"].append(txt[:40])
+            return
         extracted = m.group(0).strip()
         if not extracted:
             return
-        # Pozisyonu edge space'e tasiyan view_transform uygulanir
         wx, wy = _apply_view_transform(float(x), float(y), view_transform)
         texts.append({
             "x": wx, "y": wy,
@@ -791,12 +816,24 @@ def assign_diameters_by_proximity(
         view_transform=view_transform,
         out_diagnostic=diag,
     )
-    # Layer/visibility filter sayilari — kullanici neden bazi text'lerin
-    # poola girmedigini anlasin
+    # DIAGNOSTIC WARNINGS — kullanici pool'un neden bos/kucuk oldugunu anlasin.
+    # Bu sayaclar bir daha kor tahmin yapmamak icin kritik.
     if diag.get("layer_off_skip", 0) > 0:
         warnings.append(
-            f"Proximity: kapali/donmus layer'lardan {diag['layer_off_skip']} cap-text "
+            f"Proximity diag: kapali/donmus layer'lardan {diag['layer_off_skip']} cap-text "
             f"havuza alinmadi (cizimde gizli)."
+        )
+    _regex_no_match = diag.get("regex_no_match", 0)
+    if _regex_no_match > 0:
+        _samples = ", ".join(f"'{s}'" for s in diag.get("regex_no_match_samples", [])[:3])
+        warnings.append(
+            f"Proximity diag: {_regex_no_match} text regex eslesmesi yapamadi (cap formati degil). Ornek: {_samples}"
+        )
+    _label_reject = diag.get("label_reject", 0)
+    if _label_reject > 0:
+        _samples = ", ".join(f"'{s}'" for s in diag.get("label_reject_samples", [])[:3])
+        warnings.append(
+            f"Proximity diag: {_label_reject} text 'etiket' (kucuk harf) -> reject. Ornek: {_samples}"
         )
     if diag.get("invisible_skip", 0) > 0:
         # Daha az kritik, sadece yuksek sayida ise warning
