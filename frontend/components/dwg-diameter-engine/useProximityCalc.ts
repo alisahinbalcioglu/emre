@@ -71,7 +71,8 @@ export function useProximityCalc({ fileId, scale, sprinklerLayers, onResult, onF
 
         const params = new URLSearchParams({
           discipline: 'mechanical',
-          scale: String(scale),
+          // scale=0 (Auto) durumda parametreyi gondermiyoruz -> backend $INSUNITS+geometri ile karar verir
+          ...(scale && scale > 0 ? { scale: String(scale) } : {}),
           file_id: fileId,
           selected_layers: JSON.stringify([layer]),
           layer_hat_tipi: JSON.stringify(hatTipiMap),
@@ -131,6 +132,11 @@ export function useProximityCalc({ fileId, scale, sprinklerLayers, onResult, onF
         if (proximityCount > 0) descParts.push(`${proximityCount} proximity`);
         if (inheritedCount > 0) descParts.push(`${inheritedCount} miras`);
         if (emptyCount > 0) descParts.push(`${emptyCount} boş`);
+        // Birim auto-detect bilgisi — backend response'undan al
+        const detectedUnit = (data as any)?.detected_unit as string | undefined;
+        if (detectedUnit) {
+          descParts.push(`Algılanan birim: ${detectedUnit}`);
+        }
         toast({
           title: `Layer hesaplandı: ${layer}`,
           description: descParts.join(' · '),

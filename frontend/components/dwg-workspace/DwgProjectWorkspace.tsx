@@ -418,7 +418,8 @@ export default function DwgProjectWorkspace({
         try {
           const params = new URLSearchParams({
             discipline: 'mechanical',
-            scale: String(scale),
+            // scale=0 (Auto) durumda parametreyi HIC gondermiyoruz -> backend $INSUNITS+geometri ile karar verir
+            ...(scale && scale > 0 ? { scale: String(scale) } : {}),
             file_id: fileId,
             selected_layers: JSON.stringify(batch),
             layer_hat_tipi: '{}',

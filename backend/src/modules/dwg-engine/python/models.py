@@ -75,3 +75,7 @@ class MetrajResult(BaseModel):
     edge_segments: list[EdgeSegment] = []  # her edge ayri — Canvas2D viewer icin
     junction_points: list[list[float]] = []  # T-junction [x, y] noktalari (degree>=3, marker icin)
     sprinkler_detection: None = None  # Legacy field — AI sprinkler tespit kaldirildigi icin her zaman None
+    # Birim auto-detect bilgisi (frontend "Algılanan: X" rozetinde gösterir)
+    detected_unit: str = "mm"               # 'mm', 'cm', 'm', 'inch', 'feet'
+    detected_scale: float = 0.001           # ham scale degeri (test/debug için)
+    detection_reason: str = ""              # nasıl belirlendi (metadata, geometri, fallback...)

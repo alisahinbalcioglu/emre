@@ -25,9 +25,9 @@ export default function QuickStart({
   const excelInputRef = useRef<HTMLInputElement>(null);
   const dwgInputRef = useRef<HTMLInputElement>(null);
 
-  // DWG birim secim dialog
+  // DWG birim secim dialog — 0 = Auto (backend $INSUNITS + bound ile karar verir)
   const [unitDialogFile, setUnitDialogFile] = useState<File | null>(null);
-  const [selectedUnit, setSelectedUnit] = useState<number>(0.001); // mm varsayilan
+  const [selectedUnit, setSelectedUnit] = useState<number>(0); // Auto varsayilan
 
   // ── Excel Drop ──
   const handleExcelDrop = useCallback((e: React.DragEvent) => {
@@ -157,40 +157,48 @@ export default function QuickStart({
         )}
       </div>
 
-      {/* DWG Birim Secim Dialog */}
+      {/* DWG Analiz Dialog — birim otomatik tespit, manuel override gizli */}
       {unitDialogFile && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setUnitDialogFile(null)}>
           <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-semibold mb-1">Cizim Birimi</h3>
+            <h3 className="text-lg font-semibold mb-1">Analiz</h3>
             <p className="text-sm text-muted-foreground mb-4">{unitDialogFile.name}</p>
 
-            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-              <p className="text-[11px] text-amber-700">
-                AutoCAD projeleri genellikle milimetre (mm) biriminde cizilir. Dogru birimi secin, aksi halde boru uzunluklari yanlis hesaplanir.
+            <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+              <p className="text-[11px] text-blue-700">
+                <strong>Birim otomatik algılanır</strong> — DXF metadata + çizim geometrisi ile.
+                Analiz sonrası &quot;Algılanan birim&quot; rozetinden kontrol edebilirsin.
               </p>
             </div>
 
-            <div className="mb-5 grid grid-cols-3 gap-2">
-              {[
-                { value: 0.001, label: 'mm', desc: 'Varsayilan' },
-                { value: 0.01, label: 'cm', desc: '' },
-                { value: 1.0, label: 'm', desc: 'Gercek olcu' },
-              ].map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => setSelectedUnit(opt.value)}
-                  className={cn(
-                    'rounded-lg border-2 px-3 py-3 text-center transition-all',
-                    selectedUnit === opt.value
-                      ? 'border-blue-500 bg-blue-50 text-blue-700'
-                      : 'border-slate-200 text-slate-600 hover:border-slate-300',
-                  )}
-                >
-                  <div className="text-base font-semibold">{opt.label}</div>
-                  {opt.desc && <div className="text-[10px] text-slate-400">{opt.desc}</div>}
-                </button>
-              ))}
-            </div>
+            {/* Manuel override — gizli opt-in */}
+            <details className="mb-5">
+              <summary className="cursor-pointer text-[11px] text-slate-500 hover:text-slate-700">
+                Manuel birim seçimi (gerekirse)
+              </summary>
+              <div className="mt-3 grid grid-cols-4 gap-2">
+                {[
+                  { value: 0, label: 'Auto', desc: 'Önerilen' },
+                  { value: 0.001, label: 'mm', desc: '' },
+                  { value: 0.01, label: 'cm', desc: '' },
+                  { value: 1.0, label: 'm', desc: '' },
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setSelectedUnit(opt.value)}
+                    className={cn(
+                      'rounded-lg border-2 px-2 py-2 text-center transition-all',
+                      selectedUnit === opt.value
+                        ? 'border-blue-500 bg-blue-50 text-blue-700'
+                        : 'border-slate-200 text-slate-600 hover:border-slate-300',
+                    )}
+                  >
+                    <div className="text-sm font-semibold">{opt.label}</div>
+                    {opt.desc && <div className="text-[10px] text-slate-400">{opt.desc}</div>}
+                  </button>
+                ))}
+              </div>
+            </details>
 
             <div className="flex justify-end gap-2">
               <button

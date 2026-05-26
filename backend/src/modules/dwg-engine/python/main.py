@@ -280,7 +280,7 @@ def extract_layer_info_from_doc(doc) -> LayerListResult:
 
 def analyze_dxf_metraj(
     dxf_path: str,
-    scale: float = 0.001,
+    scale: float | None = None,
     selected_layers: list[str] | None = None,
     hat_tipi_map: dict[str, str] | None = None,
     material_type_map: dict[str, str] | None = None,
@@ -292,12 +292,29 @@ def analyze_dxf_metraj(
     """
     DXF dosyasini parse edip layer bazinda boru uzunlugu hesaplar.
 
-    scale: birim carpani (mm=0.001, cm=0.01, m=1.0)
+    scale: birim carpani (mm=0.001, cm=0.01, m=1.0). None ise OTOMATIK tespit
+           ($INSUNITS + bound geometrisi). Kullanici manuel override etmek
+           istiyorsa explicit deger gecsin.
     selected_layers: None ise tum layer'lar, liste ise sadece belirtilenler
     hat_tipi_map: {layer_adi: hat_tipi} eslestirmesi
     """
     doc = read_dxf(dxf_path)
     msp = doc.modelspace()
+
+    # SCALE AUTO-DETECT — scale=None ise hibrit tespit ($INSUNITS + bound)
+    # Cikti hep metre cinsinden, kullanicinin birim secmesine gerek yok.
+    _scale_auto_reason = ""
+    if scale is None:
+        scale, _scale_label, _scale_auto_reason = _auto_detect_scale(doc)
+    else:
+        # Kullanici manuel scale verdi (override) -> kullan ama detection reason'a yaz
+        _scale_label = (
+            "mm" if abs(scale - 0.001) < 1e-6
+            else "cm" if abs(scale - 0.01) < 1e-6
+            else "m" if abs(scale - 1.0) < 1e-6
+            else f"{scale}"
+        )
+        _scale_auto_reason = f"Manuel override: {_scale_label} (scale={scale})"
 
     layer_data: dict[str, dict] = {}  # layer → {length, count}
 
@@ -442,31 +459,9 @@ def analyze_dxf_metraj(
     if not layers:
         warnings.append("Secilen layer'larda hicbir cizgi tespit edilemedi")
 
-    # ── $INSUNITS uyumsuzluk UYARISI (override YOK) ─────────────────────
-    # DXF header $INSUNITS: 0=unitless, 1=inch, 2=feet, 4=mm, 5=cm, 6=m
-    # DXF metadata GUVENILMEZ — bircok tasarimci yanlis birim ile kaydeder
-    # (orn: cm cizip $INSUNITS=mm yazar). Bu yuzden kullanici secimini
-    # OVERRIDE ETMIYORUZ. Sadece uyari veriyoruz: uyumsuzsa kullanici
-    # toplam metraja bakarak dogru birimi gorebilir (300m vs 3000m vs 30m).
-    try:
-        _insunits = int(doc.header.get("$INSUNITS", 0))
-        _insunit_scale_map = {4: (0.001, "mm"), 5: (0.01, "cm"), 6: (1.0, "m")}
-        _detected = _insunit_scale_map.get(_insunits)
-        if _detected:
-            _expected_scale, _expected_name = _detected
-            if abs(_expected_scale - scale) / max(_expected_scale, 1e-9) > 0.1:
-                _selected_name = (
-                    "mm" if abs(scale - 0.001) < 1e-6
-                    else "cm" if abs(scale - 0.01) < 1e-6
-                    else "m" if abs(scale - 1.0) < 1e-6
-                    else f"{scale}"
-                )
-                warnings.append(
-                    f"BIRIM UYARISI: DXF $INSUNITS={_expected_name} diyor (UI'da {_selected_name} secilmis). "
-                    f"Toplam metraj makulse {_selected_name} dogru, 10/100x sapma varsa birimi degistir."
-                )
-    except Exception:
-        pass
+    # ── BIRIM AUTO-DETECT raporu (kullanici hangi birim kullanildigini gorsun) ─
+    if _scale_auto_reason:
+        warnings.append(f"BIRIM TESPITI: {_scale_label} | {_scale_auto_reason}")
 
     # ── Edge segment'leri olustur (AI kullanilsa da kullanilmasa da) ──
     # Frontend Canvas2D viewer her edge'i cap bazli renklendirip tiklanabilir yapar.
@@ -576,6 +571,9 @@ def analyze_dxf_metraj(
         edge_segments=edge_segments,
         junction_points=junction_points,
         sprinkler_detection=None,
+        detected_unit=_scale_label,
+        detected_scale=scale,
+        detection_reason=_scale_auto_reason,
     )
 
 
@@ -1019,6 +1017,79 @@ def _detect_unit_from_dxf(doc) -> tuple[float, str]:
         return 0.001, "mm"
 
 
+def _auto_detect_scale(doc, fallback_scale: float = 0.001) -> tuple[float, str, str]:
+    """Hibrit birim tespiti: $INSUNITS metadata + bound geometrisi ile.
+
+    Mantik:
+      1. DXF $INSUNITS oku (varsa)
+      2. Modelspace bound hesapla (EXTMIN/EXTMAX header'dan)
+      3. Her birim yorumunda bound'u gercek-hayata cevirip MAKUL olani sec
+         Makul aralik: 5m - 500m (bina/tesisat cizim tipik aralik)
+      4. Metadata makul aralikta ise -> kullan (metadata + geometri tutarli)
+      5. Metadata makul disinda ise -> geometriden en makulu sec (40m'ye en yakin = bina optimum)
+      6. Hicbiri uymuyorsa -> fallback (default mm)
+
+    Returns: (scale, unit_label, detection_reason)
+    """
+    insunits = 0
+    try:
+        insunits = int(doc.header.get("$INSUNITS", 0) or 0)
+    except Exception:
+        pass
+
+    _scale_map: dict[int, tuple[float, str]] = {
+        1: (0.0254, "inch"), 2: (0.3048, "feet"),
+        4: (0.001, "mm"), 5: (0.01, "cm"), 6: (1.0, "m"),
+    }
+    meta_scale_info = _scale_map.get(insunits)
+
+    # Bound hesabi
+    bound_max = 0.0
+    try:
+        extmin = doc.header.get("$EXTMIN")
+        extmax = doc.header.get("$EXTMAX")
+        if extmin and extmax:
+            bw = abs(extmax[0] - extmin[0])
+            bh = abs(extmax[1] - extmin[1])
+            bound_max = max(bw, bh)
+    except Exception:
+        pass
+
+    # Bound yoksa metadata + fallback
+    if bound_max < 1.0:
+        if meta_scale_info:
+            return meta_scale_info[0], meta_scale_info[1], f"DXF $INSUNITS={meta_scale_info[1]} (geometri tespit edilemedi)"
+        return fallback_scale, "mm", "fallback (metadata + geometri yok)"
+
+    # Her birim yorumunda gercek boyut hesapla, makul olanlari topla
+    # Makul aralik: 5m - 500m (kucuk lavabo detayindan buyuk endustriye)
+    candidates: list[tuple[float, str, float]] = []  # (scale, label, real_m)
+    for scale, label in [(0.001, "mm"), (0.01, "cm"), (1.0, "m")]:
+        real_m = bound_max * scale
+        if 5.0 <= real_m <= 500.0:
+            candidates.append((scale, label, real_m))
+
+    # Metadata makul aralikta ise OTORITER kabul
+    if meta_scale_info:
+        meta_scale, meta_label = meta_scale_info
+        if any(abs(c[0] - meta_scale) < 1e-9 for c in candidates):
+            return meta_scale, meta_label, f"DXF $INSUNITS={meta_label} ve bound geometrisi tutarli ({bound_max * meta_scale:.1f}m)"
+
+    # Metadata yok veya tutarsiz -> geometriden 40m'ye en yakin olani sec
+    if candidates:
+        best = min(candidates, key=lambda c: abs(c[2] - 40.0))
+        scale, label, real_m = best
+        reason = f"Bound geometrisi {label} secimini destekliyor ({real_m:.1f}m)"
+        if meta_scale_info and abs(meta_scale_info[0] - scale) > 1e-9:
+            reason += f" — DXF $INSUNITS={meta_scale_info[1]} dedi ama geometri tutarsiz, override"
+        return scale, label, reason
+
+    # Hicbiri makul degil — fallback
+    if meta_scale_info:
+        return meta_scale_info[0], meta_scale_info[1], f"DXF $INSUNITS={meta_scale_info[1]} (geometri makul disinda, riskli)"
+    return fallback_scale, "mm", "fallback (bound geometrisi her birim icin mantiksiz)"
+
+
 def _background_parse(file_id: str, dxf_path: str) -> None:
     """Background parse — layers + entities + geometry cache'i TEK ezdxf parse ile.
     Sync function; caller asyncio.to_thread ile cagiriyor.
@@ -1303,7 +1374,7 @@ async def parse_dwg(
     file: UploadFile | None = File(None),
     file_id: str = Query("", description="Cache'teki dosyanin ID'si (/layers'tan donen)"),
     discipline: str = Query("mechanical"),
-    scale: float = Query(0.001),
+    scale: float | None = Query(None, description="Birim carpani (mm=0.001, cm=0.01, m=1.0). None ise OTOMATIK tespit ($INSUNITS + bound geometrisi)."),
     selected_layers: str = Query("", description="JSON array: secilen layer isimleri"),
     layer_hat_tipi: str = Query("{}", description="JSON object: {layer: hat_tipi} eslestirmesi"),
     layer_material_type: str = Query("{}", description="JSON object: {layer: material_type} eslestirmesi"),
