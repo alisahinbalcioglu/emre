@@ -27,6 +27,7 @@ import type { GeometryResult } from './types';
 import type { EdgeSegment } from '@/components/dwg-metraj/types';
 import { diameterToColor } from '@/components/dwg-metraj/diameter-colors';
 import { isUnassignedDiameter, UNASSIGNED_LABEL } from '@/components/dwg-metraj/constants';
+import { resolveHoverLength } from './segment-length';
 import { useViewport } from './useViewport';
 import { aciToColor } from './aci-colors';
 
@@ -116,6 +117,8 @@ interface SpatialEntry {
   index: number;
   coords: [number, number, number, number];
   polyline?: Array<[number, number]>;
+  /** Sadece type='edge' icin: backend'in hesapladigi metre uzunluk (tooltip). */
+  length?: number;
   /** Sadece type='edge' icin: cap ve miras durumu (tooltip + renk icin) */
   diameter?: string;
   isInherited?: boolean;
@@ -441,6 +444,7 @@ export default function DxfCanvasViewer({
         const meta = {
           type: 'edge' as const, layer: seg.layer, index: i,
           coords: seg.coords,
+          length: seg.length,
           diameter: seg.diameter || undefined,
           isInherited: seg.is_inherited || false,
         };
@@ -1047,7 +1051,7 @@ export default function DxfCanvasViewer({
         index: best.index,
         coords: best.coords,
         polyline: best.polyline,
-        length: computeEntityLength(best, scale),
+        length: resolveHoverLength(best, scale),
         diameter: best.diameter,
         isInherited: best.isInherited,
       };
@@ -1598,20 +1602,8 @@ function pointToSegmentDistance(
   return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
 }
 
-function computeEntityLength(entry: SpatialEntry, scale: number): number {
-  if (entry.polyline && entry.polyline.length >= 2) {
-    let total = 0;
-    for (let i = 0; i < entry.polyline.length - 1; i++) {
-      total += Math.hypot(
-        entry.polyline[i + 1][0] - entry.polyline[i][0],
-        entry.polyline[i + 1][1] - entry.polyline[i][1],
-      );
-    }
-    return total * scale;
-  }
-  const [x1, y1, x2, y2] = entry.coords;
-  return Math.hypot(x2 - x1, y2 - y1) * scale;
-}
+// computeEntityLength + resolveHoverLength artik ./segment-length modulunde
+// (izole test edilebilir, Auto-mode scale=0 bug fix orada).
 
 // ─── Tooltip subcomponent ───────────────────────────────────────────
 

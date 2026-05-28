@@ -6,6 +6,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { DwgEngineService } from './dwg-engine.service';
+import { resolveScaleParam } from './scale-param';
 
 @Controller('dwg-engine')
 @UseGuards(JwtAuthGuard)
@@ -117,7 +118,9 @@ export class DwgEngineController {
       file?.buffer ?? null,
       file?.originalname ?? '',
       discipline || 'mechanical',
-      parseFloat(scale || '0.001') || 0.001,
+      // Auto-mode: scale gonderilmezse undefined birak -> Python $INSUNITS+bound
+      // ile OTOMATIK birim tespiti yapar. 0.001'e zorlamak auto-detect'i bypass eder.
+      resolveScaleParam(scale),
       fileId,
       parsedLayers,
       parsedHatTipi,

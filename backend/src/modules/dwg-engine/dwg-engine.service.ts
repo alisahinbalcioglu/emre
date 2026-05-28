@@ -165,7 +165,7 @@ export class DwgEngineService {
     fileBuffer: Buffer | null,
     fileName: string,
     discipline: string = 'mechanical',
-    scale: number = 0.001,
+    scale?: number,
     fileId?: string,
     selectedLayers?: string[],
     layerHatTipi?: Record<string, string>,
@@ -174,10 +174,12 @@ export class DwgEngineService {
     layerDefaultDiameter?: Record<string, string>,
     useProximityDiameter?: boolean,
   ) {
-    const params = new URLSearchParams({
-      discipline,
-      scale: String(scale),
-    });
+    const params = new URLSearchParams({ discipline });
+    // Auto-mode: scale undefined -> parametreyi HIC gonderme. Python query
+    // default'u None olur -> $INSUNITS+bound ile otomatik birim tespiti.
+    if (scale !== undefined && scale !== null) {
+      params.set('scale', String(scale));
+    }
 
     if (fileId) {
       params.set('file_id', fileId);

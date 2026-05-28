@@ -677,6 +677,91 @@ def _is_unassigned(cap: str | None) -> bool:
     return cap.strip() in _UNASSIGNED_MARKERS
 
 
+def _diameter_unit_class(cap: str | None) -> str | None:
+    """Cap'in birim sinifi: 'metric' (Ø/DN/mm) | 'imperial' (inch/kesir) | None.
+
+    BIRIM TUTARLILIGI kurali icin: bir tesisat hatti ya metrik (Ø100, DN50)
+    ya da inch (2", 1 1/4") cap kullanir, ikisi karismaz. PIS SU mm-baskin bir
+    layer'da yakinda cizilmis sihhi/soguk-su armatur etiketi (2", 1/2") yanlis
+    atanir; bu siniflandirma o aykiri capleri tespit etmeyi saglar.
+    """
+    if _is_unassigned(cap):
+        return None
+    s = cap.strip()
+    # imperial: inch isareti (" ″ '') veya kesir (/) veya unicode kesir
+    if '"' in s or '″' in s or "''" in s or '/' in s or any(c in s for c in "½¼¾"):
+        return "imperial"
+    # metric: Ø (iki unicode varyant), DN prefix, mm suffix
+    if "Ø" in s or "Ø" in s or "mm" in s.lower():
+        return "metric"
+    if s[:2].upper() == "DN":
+        return "metric"
+    return None  # belirsiz (orn sadece sayi) — tutarlilik kontrolune dahil edilmez
+
+
+def _dominant_unit(edge_segments: list[Any], layer: str, ratio: float = 0.6) -> str | None:
+    """Bir layer'in baskin cap birim sinifi (UZUNLUK AGIRLIKLI).
+
+    Uzunluk agirlikli cunku kisa armatur/sembol segmentleri (inç etiketli, 1-5cm)
+    gercek boru hattini (metrik, metrelerce) baskinligini bozmamali.
+
+    Net baskinlik icin baskin birim toplam (metric+imperial) uzunlugun >= `ratio`
+    orani olmali. Aksi halde karisik/belirsiz -> None (temizlik YAPILMAZ, riskli).
+    """
+    metric_len = 0.0
+    imperial_len = 0.0
+    for es in edge_segments:
+        if _segment_layer(es) != layer:
+            continue
+        cls = _diameter_unit_class(getattr(es, "diameter", "") or "")
+        if cls is None:
+            continue
+        w = _segment_length_world(es) or 0.0
+        if cls == "metric":
+            metric_len += w
+        else:
+            imperial_len += w
+    total = metric_len + imperial_len
+    if total <= 0:
+        return None
+    if metric_len / total >= ratio:
+        return "metric"
+    if imperial_len / total >= ratio:
+        return "imperial"
+    return None  # karisik — net baskin yok
+
+
+def _enforce_unit_consistency(edge_segments: list[Any]) -> int:
+    """BIRIM TUTARLILIGI: her layer'da baskin birime AYKIRI cap atamalarini temizle.
+
+    Ornek: PIS SU mm-baskin (Ø100/Ø70/Ø50). Yakinda cizilmis sihhi/soguk-su
+    armatur etiketi (2", 1/2") 2m icinde oldugu icin proximity ile atanmis ama
+    AYKIRI. Bu aykiri capler null'a cekilir; sonraki inheritance pass'i ayni
+    layer komsusundan dogru (metrik) cap'i miras verebilir, veremezse segment
+    'Capi Belirlenemeyenler' grubuna duser (yanlis cap'ten iyidir).
+
+    Net baskinlik yoksa (karisik layer) DOKUNULMAZ — yanlis temizlik riski.
+
+    Returns: temizlenen (null'a cekilen) segment sayisi.
+    """
+    layers = {_segment_layer(es) for es in edge_segments}
+    cleared = 0
+    for layer in layers:
+        dom = _dominant_unit(edge_segments, layer)
+        if dom is None:
+            continue
+        for es in edge_segments:
+            if _segment_layer(es) != layer:
+                continue
+            cls = _diameter_unit_class(getattr(es, "diameter", "") or "")
+            if cls is not None and cls != dom:
+                es.diameter = ""
+                if hasattr(es, "is_inherited"):
+                    es.is_inherited = False
+                cleared += 1
+    return cleared
+
+
 def _segment_endpoints(es) -> list[tuple[float, float]]:
     """Segment'in iki ucunu (x, y) olarak don. coords > polyline > attr fallback."""
     if isinstance(es, dict):
@@ -1003,6 +1088,22 @@ def assign_diameters_by_proximity(
         warnings.append(
             f"Proximity: {assigned_from_hidden} segment cap'i KAPALI/DONMUS layer'daki "
             f"text'ten geldi (cizimde gizli). Supheli ise ilgili layer'i acip dogrula."
+        )
+
+    # ── BIRIM TUTARLILIGI: layer baskin birimine aykiri capleri temizle ──
+    # PIS SU mm-baskin layer'inda yakinda (2m ici) cizilmis sihhi/soguk-su
+    # armatur etiketi (2", 1/2") yanlis atanir. Bunlari null'a cek; inheritance
+    # ayni layer komsusundan dogru (metrik) cap verir, veremezse 'Belirlenemeyen'.
+    unit_cleared = _enforce_unit_consistency(edge_segments)
+    if unit_cleared > 0:
+        # Temizlenenler artik kaynak degil -> inheritance onlari doldurabilsin
+        proximity_assigned_idx = {
+            i for i in proximity_assigned_idx
+            if not _is_unassigned(getattr(edge_segments[i], "diameter", "") or "")
+        }
+        warnings.append(
+            f"Birim tutarliligi: {unit_cleared} segment layer baskin birimine "
+            f"aykiri cap aldigi icin temizlendi (sihhi/soguk-su etiketi PIS SU'ya bulasmasi)."
         )
 
     # Atama sonrasi atanmayan segment sayisi (proximity asamasinin sonu)

@@ -34,6 +34,10 @@ from proximity_diameter import (
     _extract_block_texts,
     _extract_all_texts,
     _is_unassigned,
+    _diameter_unit_class,
+    _dominant_unit,
+    _enforce_unit_consistency,
+    _point_to_segment_distance,
     _propagate_inheritance,
     assign_diameters_by_proximity,
 )
@@ -1126,3 +1130,190 @@ class TestFloodFillHopGuard:
         assert edges[1].diameter in ("", "Belirtilmemis")
         assert inherited == 0
 
+
+class TestPointToLineNotMidpoint:
+    """KURAL 2: text-boru mesafesi MIDPOINT'e DEGIL, segmentin BUTUNUNE en kisa
+    dik izdusum mesafesidir. Bu test class'i midpoint mantiginin REDDEDILDIGINI,
+    point-to-line mantiginin KULLANILDIGINI kanitlar."""
+
+    def test_perpendicular_projection_to_segment_body(self):
+        """Saf matematik: nokta (5,10), segment (0,0)-(100,0).
+        Point-to-line: dik izdusum (5,0) -> mesafe 10.
+        Midpoint olsaydi: (50,0)'a mesafe sqrt(45^2+10^2)=46.1 -> COK FARKLI."""
+        d = _point_to_segment_distance(5, 10, 0, 0, 100, 0)
+        assert abs(d - 10.0) < 1e-6, f"point-to-line 10 olmali, geldi: {d}"
+        # Midpoint mantigi olsaydi ~46.1 cikardi — onu DEGIL bunu istiyoruz
+        midpoint_dist = math.hypot(5 - 50, 10 - 0)
+        assert midpoint_dist > 45, "kontrol: midpoint mesafesi gercekten cok buyuk"
+
+    def test_projection_clamps_to_endpoint(self):
+        """Izdusum segment DISINA dustugunde en yakin endpoint'e duser.
+        Nokta (-10, 0), segment (0,0)-(100,0): izdusum t<0 -> endpoint (0,0), mesafe 10."""
+        d = _point_to_segment_distance(-10, 0, 0, 0, 100, 0)
+        assert abs(d - 10.0) < 1e-6, f"endpoint clamp 10 olmali, geldi: {d}"
+
+    def test_assignment_uses_segment_body_not_midpoint(self):
+        """ENTEGRASYON: text uzun borunun UCUNA yakin, MIDPOINT'inden uzak.
+        max_distance=20 ile:
+          - Midpoint mantigi: text-midpoint ~46 > 20 -> ATAMAZDI (yanlis)
+          - Point-to-line: text-segment 10 < 20 -> ATAR (dogru)
+        Bu test gecerse 'midpoint kullanilmiyor' kanitlanir."""
+        doc = ezdxf.new()
+        # Text segmentin sol ucuna yakin: (5, 10). Segment (0,0)-(100,0).
+        doc.modelspace().add_text("Ø50",
+                                   dxfattribs={"insert": (5, 10), "height": 5, "layer": "L1"})
+        edges = [_FakeEdge(1, 0, 0, 100, 0, layer="L1")]
+        result = assign_diameters_by_proximity(doc, edges, max_distance_world=20.0)
+        assert edges[0].diameter == "Ø50", (
+            "point-to-line ile atanmaliydi (midpoint mantigi olsaydi atanmazdi)"
+        )
+        assert result["assigned_count"] == 1
+
+
+
+class TestDiameterUnitClass:
+    """_diameter_unit_class: cap'in birim sinifi (metric/imperial/None)."""
+
+    def test_metric_o_prefix(self):
+        assert _diameter_unit_class("Ø100") == "metric"
+        assert _diameter_unit_class("Ø50") == "metric"
+
+    def test_metric_dn(self):
+        assert _diameter_unit_class("DN100") == "metric"
+        assert _diameter_unit_class("dn50") == "metric"
+
+    def test_metric_mm(self):
+        assert _diameter_unit_class("50mm") == "metric"
+        assert _diameter_unit_class("100 MM") == "metric"
+
+    def test_imperial_inch(self):
+        assert _diameter_unit_class('2"') == "imperial"
+        assert _diameter_unit_class('1/2"') == "imperial"
+        assert _diameter_unit_class("5/8") == "imperial"
+        assert _diameter_unit_class("1 1/4") == "imperial"
+
+    def test_imperial_unicode_fraction(self):
+        assert _diameter_unit_class("1½") == "imperial"
+        assert _diameter_unit_class("¾") == "imperial"
+
+    def test_unassigned_is_none(self):
+        assert _diameter_unit_class("") is None
+        assert _diameter_unit_class("Belirtilmemis") is None
+        assert _diameter_unit_class(None) is None
+
+    def test_ambiguous_bare_number_is_none(self):
+        # Sadece sayi (birim belirteci yok) -> belirsiz, tutarlilik kontrolune girmez
+        assert _diameter_unit_class("100") is None
+
+
+class TestDominantUnit:
+    """_dominant_unit: layer'in uzunluk-agirlikli baskin birim sinifi."""
+
+    def test_metric_dominant(self):
+        # 3 uzun metric + 1 kisa imperial -> metric baskin
+        edges = [
+            _FakeEdge(1, 0, 0, 1000, 0, layer="PIS"),   # metric, 1000 uzun
+            _FakeEdge(2, 0, 0, 1000, 0, layer="PIS"),   # metric, 1000
+            _FakeEdge(3, 0, 0, 50, 0, layer="PIS"),     # imperial, 50 kisa
+        ]
+        edges[0].diameter = "Ø100"
+        edges[1].diameter = "Ø70"
+        edges[2].diameter = '2"'
+        assert _dominant_unit(edges, "PIS") == "metric"
+
+    def test_imperial_dominant(self):
+        edges = [
+            _FakeEdge(1, 0, 0, 1000, 0, layer="SU"),
+            _FakeEdge(2, 0, 0, 1000, 0, layer="SU"),
+            _FakeEdge(3, 0, 0, 50, 0, layer="SU"),
+        ]
+        edges[0].diameter = '2"'
+        edges[1].diameter = '1 1/4"'
+        edges[2].diameter = "Ø50"
+        assert _dominant_unit(edges, "SU") == "imperial"
+
+    def test_mixed_no_dominant(self):
+        # 50/50 uzunluk -> None (riskli, temizleme yapma)
+        edges = [
+            _FakeEdge(1, 0, 0, 1000, 0, layer="X"),
+            _FakeEdge(2, 0, 0, 1000, 0, layer="X"),
+        ]
+        edges[0].diameter = "Ø100"
+        edges[1].diameter = '2"'
+        assert _dominant_unit(edges, "X") is None
+
+    def test_no_assigned_caps_none(self):
+        edges = [_FakeEdge(1, 0, 0, 1000, 0, layer="Y")]
+        assert _dominant_unit(edges, "Y") is None
+
+    def test_kisa_imperial_uzun_metrigi_bozamaz(self):
+        # PIS SU senaryosu: 26m metric + 4m kisa imperial -> metric (uzunluk agirlikli)
+        edges = []
+        for i in range(5):
+            e = _FakeEdge(i, 0, 0, 5000, 0, layer="PIS"); e.diameter = "Ø100"
+            edges.append(e)
+        for i in range(20):  # cok sayida ama KISA imperial armatur
+            e = _FakeEdge(100+i, 0, 0, 50, 0, layer="PIS"); e.diameter = '2"'
+            edges.append(e)
+        # metric: 5*5000=25000, imperial: 20*50=1000 -> metric %96
+        assert _dominant_unit(edges, "PIS") == "metric"
+
+
+class TestEnforceUnitConsistency:
+    """_enforce_unit_consistency: layer baskin birimine aykiri caplari null yapar."""
+
+    def test_pis_su_inch_temizlenir(self):
+        # PIS SU mm-baskin: uzun Ø100/Ø70 + kisa armatur 2"/1/2" -> incler null
+        edges = []
+        for i in range(3):
+            e = _FakeEdge(i, 0, 0, 5000, 0, layer="PIS"); e.diameter = "Ø100"
+            edges.append(e)
+        a = _FakeEdge(50, 0, 0, 50, 0, layer="PIS"); a.diameter = '2"'
+        b = _FakeEdge(51, 0, 0, 50, 0, layer="PIS"); b.diameter = '1/2"'
+        edges += [a, b]
+        cleared = _enforce_unit_consistency(edges)
+        assert cleared == 2
+        assert a.diameter == ""   # aykiri inch -> null
+        assert b.diameter == ""
+        assert all(edges[i].diameter == "Ø100" for i in range(3))  # metric korundu
+
+    def test_imperial_layer_metric_temizlenir(self):
+        edges = []
+        for i in range(3):
+            e = _FakeEdge(i, 0, 0, 5000, 0, layer="SU"); e.diameter = '2"'
+            edges.append(e)
+        m = _FakeEdge(50, 0, 0, 50, 0, layer="SU"); m.diameter = "Ø50"
+        edges.append(m)
+        cleared = _enforce_unit_consistency(edges)
+        assert cleared == 1
+        assert m.diameter == ""
+
+    def test_karisik_layer_dokunulmaz(self):
+        # 50/50 -> baskin yok -> hicbir sey temizlenmez
+        edges = [
+            _FakeEdge(1, 0, 0, 1000, 0, layer="X"),
+            _FakeEdge(2, 0, 0, 1000, 0, layer="X"),
+        ]
+        edges[0].diameter = "Ø100"
+        edges[1].diameter = '2"'
+        cleared = _enforce_unit_consistency(edges)
+        assert cleared == 0
+        assert edges[0].diameter == "Ø100"
+        assert edges[1].diameter == '2"'
+
+    def test_farkli_layerlar_bagimsiz(self):
+        # PIS mm-baskin, SU inch-baskin -> her layer kendi baskinina gore
+        edges = [
+            _FakeEdge(1, 0, 0, 5000, 0, layer="PIS"),
+            _FakeEdge(2, 0, 0, 50, 0, layer="PIS"),
+            _FakeEdge(3, 0, 0, 5000, 0, layer="SU"),
+            _FakeEdge(4, 0, 0, 50, 0, layer="SU"),
+        ]
+        edges[0].diameter = "Ø100"; edges[1].diameter = '2"'
+        edges[2].diameter = '2"';   edges[3].diameter = "Ø50"
+        cleared = _enforce_unit_consistency(edges)
+        assert cleared == 2
+        assert edges[1].diameter == ""  # PIS'te inch null
+        assert edges[3].diameter == ""  # SU'da metric null
+        assert edges[0].diameter == "Ø100"
+        assert edges[2].diameter == '2"'
