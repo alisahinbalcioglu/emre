@@ -413,10 +413,9 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
           <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-semibold mb-1">Cizim Birimi</h3>
             <p className="text-sm text-muted-foreground mb-4">{file?.name}</p>
-            <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
-              <p className="text-[11px] text-blue-700">
-                DWG dosyasinda birim <strong>{pendingUnitChoice.suggestedUnitLabel}</strong> olarak belirtilmis
-                — default olarak secili. Gerekirse degistirebilirsin.
+            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+              <p className="text-[12px] font-medium text-amber-800">
+                DWG&apos;de boru uzunlukları hangi birimde ise onu seçiniz
               </p>
             </div>
             <div className="mb-5 grid grid-cols-3 gap-2">
