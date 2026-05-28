@@ -2,21 +2,22 @@
  * Frontend'den gelen `scale` query parametresini Python engine'e iletilecek
  * degere cevirir.
  *
- * KRITIK: Auto-mode'da frontend `scale` parametresini HIC gondermez (undefined).
- * Bu durumda Python'a da scale GONDERILMEMELI (undefined) ki Python
- * `scale is None` dalina girip $INSUNITS + bound geometri ile OTOMATIK birim
- * tespiti yapsin. Eski kod `parseFloat(scale || '0.001') || 0.001` ile
- * undefined'i 0.001'e zorluyordu -> auto-detect hic calismiyordu (mm sanardi).
+ * BIRIM = KULLANICI SORUMLULUGU (TAHMIN YOK). Sistem birimi asla tahmin etmez;
+ * kullanici UI dropdown'dan secer (default mm). scale gelmezse/gecersizse mm
+ * (0.001) varsayilan kullanilir. Auto-detect mantigi KALDIRILDI (eskiden
+ * undefined -> backend auto-detect idi).
  *
- * @returns gecerli pozitif sayi (manuel override) VEYA undefined (Auto -> backend auto-detect)
+ * @returns gecerli pozitif scale carpani (mm=0.001, cm=0.01, m=1.0)
  */
-export function resolveScaleParam(raw?: string): number | undefined {
+const DEFAULT_SCALE_MM = 0.001;
+
+export function resolveScaleParam(raw?: string): number {
   if (raw === undefined || raw === null || raw.trim() === '') {
-    return undefined; // Auto -> Python auto-detect etsin
+    return DEFAULT_SCALE_MM; // birim secilmedi -> mm varsayilan
   }
   const n = parseFloat(raw);
   if (!Number.isFinite(n) || n <= 0) {
-    return undefined; // gecersiz -> auto-detect (mm'e zorlama, guvenli)
+    return DEFAULT_SCALE_MM; // gecersiz -> mm varsayilan
   }
   return n;
 }

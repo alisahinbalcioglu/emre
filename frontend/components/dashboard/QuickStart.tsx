@@ -25,9 +25,9 @@ export default function QuickStart({
   const excelInputRef = useRef<HTMLInputElement>(null);
   const dwgInputRef = useRef<HTMLInputElement>(null);
 
-  // DWG birim secim dialog — 0 = Auto (backend $INSUNITS + bound ile karar verir)
+  // DWG birim secim dialog — kullanici secer (sistem TAHMIN ETMEZ), mm varsayilan
   const [unitDialogFile, setUnitDialogFile] = useState<File | null>(null);
-  const [selectedUnit, setSelectedUnit] = useState<number>(0); // Auto varsayilan
+  const [selectedUnit, setSelectedUnit] = useState<number>(0.001); // mm varsayilan
 
   // ── Excel Drop ──
   const handleExcelDrop = useCallback((e: React.DragEvent) => {
@@ -56,7 +56,7 @@ export default function QuickStart({
     const ext = file.name.split('.').pop()?.toLowerCase();
     if (['dwg', 'dxf'].includes(ext ?? '')) {
       setUnitDialogFile(file);
-      setSelectedUnit(0);  // Auto-detect (backend pipe physics karar verir)
+      setSelectedUnit(0.001);  // mm varsayilan (kullanici dialog'dan degistirir)
     } else if (['xlsx', 'xls'].includes(ext ?? '')) {
       onExcelFile(file);
     } else {
@@ -74,7 +74,7 @@ export default function QuickStart({
     const file = e.target.files?.[0];
     if (file) {
       setUnitDialogFile(file);
-      setSelectedUnit(0);  // Auto-detect (backend pipe physics karar verir)
+      setSelectedUnit(0.001);  // mm varsayilan (kullanici dialog'dan degistirir)
     }
     e.target.value = '';
   };
@@ -178,10 +178,9 @@ export default function QuickStart({
               </summary>
               <div className="mt-3 grid grid-cols-4 gap-2">
                 {[
-                  { value: 0, label: 'Auto', desc: 'Önerilen' },
-                  { value: 0.001, label: 'mm', desc: '' },
-                  { value: 0.01, label: 'cm', desc: '' },
-                  { value: 1.0, label: 'm', desc: '' },
+                  { value: 0.001, label: 'mm', desc: 'Milimetre' },
+                  { value: 0.01, label: 'cm', desc: 'Santimetre' },
+                  { value: 1.0, label: 'm', desc: 'Metre' },
                 ].map((opt) => (
                   <button
                     key={opt.value}

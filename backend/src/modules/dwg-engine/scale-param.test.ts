@@ -15,36 +15,36 @@ function check(name: string, fn: () => void) {
 
 console.log('resolveScaleParam:');
 
-check('BUG-2 repro: undefined (Auto) -> undefined (auto-detect tetiklenir, 0.001 ZORLAMA yok)', () => {
-  assert.strictEqual(resolveScaleParam(undefined), undefined);
+check('TAHMIN YOK: undefined -> mm default (0.001)', () => {
+  assert.strictEqual(resolveScaleParam(undefined), 0.001);
 });
 
-check('bos string -> undefined (Auto)', () => {
-  assert.strictEqual(resolveScaleParam(''), undefined);
+check('bos string -> mm default', () => {
+  assert.strictEqual(resolveScaleParam(''), 0.001);
 });
 
-check('whitespace -> undefined (Auto)', () => {
-  assert.strictEqual(resolveScaleParam('   '), undefined);
+check('whitespace -> mm default', () => {
+  assert.strictEqual(resolveScaleParam('   '), 0.001);
 });
 
-check('manuel mm "0.001" -> 0.001', () => {
+check('kullanici mm "0.001" -> 0.001', () => {
   assert.strictEqual(resolveScaleParam('0.001'), 0.001);
 });
 
-check('manuel cm "0.01" -> 0.01', () => {
+check('kullanici cm "0.01" -> 0.01', () => {
   assert.strictEqual(resolveScaleParam('0.01'), 0.01);
 });
 
-check('manuel m "1" -> 1', () => {
+check('kullanici m "1" -> 1', () => {
   assert.strictEqual(resolveScaleParam('1'), 1);
 });
 
-check('gecersiz "abc" -> undefined (mm zorlamak yerine auto-detect)', () => {
-  assert.strictEqual(resolveScaleParam('abc'), undefined);
+check('gecersiz "abc" -> mm default', () => {
+  assert.strictEqual(resolveScaleParam('abc'), 0.001);
 });
 
-check('negatif/sifir "0" -> undefined (auto-detect)', () => {
-  assert.strictEqual(resolveScaleParam('0'), undefined);
+check('negatif/sifir "0" -> mm default', () => {
+  assert.strictEqual(resolveScaleParam('0'), 0.001);
 });
 
 console.log(`\n${passed}/8 PASS`);

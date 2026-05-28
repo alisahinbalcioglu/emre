@@ -1,40 +1,36 @@
 /**
- * Heuristic Unit Detection + Normalization Layer (PRD).
+ * Birim donusturucu (deterministik — TAHMIN YOK).
  *
- * ADIM 1: detectDrawingUnit — segment ham uzunluklarinin MEDYANINA gore birim tahmini.
- * ADIM 2: normalizeToMeters — ham uzunlugu kesin olarak metre'ye cevirir.
+ * Sistem cizim birimini ASLA tahmin etmez. Birim tamamen kullanici
+ * sorumlulugundadir (UI dropdown -> selectedUnit). Bu dosya sadece
+ * matematiksel donusturucu olarak calisir.
  *
- * NOT (kanit): Medyan-heuristic CAD'de cok sayida kisa segment (armatur/hatch)
- * yuzunden dusuk medyan verip yanlis tahmin edebilir. Bu yuzden ADIM 3'teki
- * kullanici override (selectedUnit dropdown) guvenlik agidir.
+ * NOT: Eski detectDrawingUnit (medyan-heuristic) ve auto-detect mantiklari
+ * SILINDI — CAD'de cok kisa segment yuzunden medyan yanlis birim tahmin
+ * ediyordu (kanit: PIS SU medyan 19->cm, tum cizim 3->m; gercek mm).
  */
 
 export type DrawingUnit = 'mm' | 'cm' | 'm';
 
-/** Ham uzunlugu (rawLength) selectedUnit'e gore METRE'ye cevirir. Metrajin tek gercegi. */
+/** 1 metrenin secilen birimdeki matematiksel karsiligi (TEK GERCEK KAYNAK). */
+export const UNIT_SCALE_TO_METER: Record<DrawingUnit, number> = {
+  m: 1,
+  cm: 100,
+  mm: 1000,
+};
+
+/** Ham uzunlugu (rawLength) selectedUnit'e gore METRE'ye cevirir. Metrajin tek gercegi.
+ *  Metraj (metre) = rawLength / UNIT_SCALE_TO_METER[selectedUnit]. */
 export function normalizeToMeters(rawLength: number, selectedUnit: DrawingUnit | string): number {
-  if (selectedUnit === 'mm') {
-    return rawLength / 1000;
-  } else if (selectedUnit === 'cm') {
-    return rawLength / 100;
-  } else if (selectedUnit === 'm') {
-    return rawLength / 1;
-  } else {
-    return rawLength; // Fallback (tanimsiz birim)
-  }
+  const divisor = UNIT_SCALE_TO_METER[selectedUnit as DrawingUnit];
+  if (!divisor) return rawLength; // tanimsiz birim -> fallback (ham deger)
+  return rawLength / divisor;
 }
 
-/** Medyan-heuristic ile cizim birimini tahmin eder (PRD ADIM 1).
- *   median > 800        -> 'mm'
- *   15 < median <= 800  -> 'cm'
- *   median <= 15        -> 'm'
- *  Bos dizi -> 'mm' (en yaygin CAD birimi, guvenli default). */
-export function detectDrawingUnit(rawLengths: number[]): DrawingUnit {
-  const valid = rawLengths.filter((l) => Number.isFinite(l) && l > 0).sort((a, b) => a - b);
-  if (valid.length === 0) return 'mm';
-  const mid = Math.floor(valid.length / 2);
-  const median = valid.length % 2 === 0 ? (valid[mid - 1] + valid[mid]) / 2 : valid[mid];
-  if (median > 800) return 'mm';
-  if (median > 15) return 'cm';
-  return 'm';
+/** Cap-text arama yaricapi (CAD world unit). "Gercek 2 metre" sinirini secilen
+ *  birimin world-unit karsiligina cevirir: mm->2000, cm->200, m->2. */
+export function searchRadiusForUnit(selectedUnit: DrawingUnit | string): number {
+  const mult = UNIT_SCALE_TO_METER[selectedUnit as DrawingUnit];
+  if (!mult) return 2000; // fallback: mm varsayimi
+  return 2.0 * mult;
 }

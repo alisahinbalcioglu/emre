@@ -58,7 +58,7 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
     fileId: string;
     suggestedUnitLabel: string;
   } | null>(null);
-  const [selectedUnit, setSelectedUnit] = useState<number>(0);  // 0 = Auto-detect (default)
+  const [selectedUnit, setSelectedUnit] = useState<number>(0.001);  // mm varsayilan (sistem tahmin etmez; kullanici degistirir)
 
   // Dashboard'dan gelen dosyayi otomatik isle — birim dialog'u atla (Dashboard zaten belirlemis)
   const initialFileProcessed = useRef(false);
@@ -89,10 +89,9 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
         .then((res) => {
           if (res?.data?.status === 'ready') {
             setRestoredFileName(session.fileName);
-            // SESSION SCALE'i GOZ ARDI ET — her hesaplamada Auto-detect tetiklensin
-            // (eski session'larda scale=0.001 sabit kayitli, bu Auto'yu bypass ediyordu).
-            // Backend pipe physics ile dogru birimi her seferinde tespit eder.
-            setSelectedUnit(0);  // 0 = Auto (scale parametresi backend'e gonderilmez)
+            // Birim = kullanici sorumlulugu. Session'da kayitli birim varsa onu
+            // kullan, yoksa mm varsayilan. Sistem tahmin ETMEZ.
+            setSelectedUnit(session.scale && session.scale > 0 ? session.scale : 0.001);
             setFileId(session.fileId);
           } else {
             // Cache'te yok veya parse henuz bitmemis → temizle
@@ -263,13 +262,13 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
         throw new Error(`Parse zaman asimi (${POLL_MAX_MS / 1000}sn)`);
       }
 
-      // 3) Sonuc — /layers'in dondurdugu sekille uyumlu olarak normalize et
-      // KRITIK FIX: backend'in suggested_scale'i (default 0.001) auto-detect'i
-      // bypass ediyordu. Frontend her zaman 0 (Auto) set eder, backend
-      // /parse cagrisinda kendisi pipe physics + metadata ile karar verir.
-      const suggestedLabel = statusData.suggested_unit_label ?? 'auto';
+      // 3) Sonuc — /layers'in dondurdugu sekille uyumlu olarak normalize et.
+      // Birim = kullanici sorumlulugu. suggested_unit_label sadece BILGI amacli
+      // toast'ta gosterilir; selectedUnit varsayilan mm (kullanici dropdown'dan
+      // degistirir). Sistem birimi TAHMIN ETMEZ.
+      const suggestedLabel = statusData.suggested_unit_label ?? 'mm';
       const totalLayers = statusData.total_layers ?? (statusData.layers?.length ?? 0);
-      setSelectedUnit(opts.override ?? 0);  // 0 = Auto, backend pipe physics karar verir
+      setSelectedUnit(opts.override ?? 0.001);  // mm varsayilan
 
       toast({
         title: 'Proje hazirlandi',

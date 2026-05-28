@@ -300,20 +300,19 @@ def analyze_dxf_metraj(
     doc = read_dxf(dxf_path)
     msp = doc.modelspace()
 
-    # SCALE AUTO-DETECT — scale=None ise hibrit tespit ($INSUNITS + bound)
-    # Cikti hep metre cinsinden, kullanicinin birim secmesine gerek yok.
-    _scale_auto_reason = ""
+    # BIRIM = KULLANICI SORUMLULUGU (TAHMIN YOK).
+    # Sistem cizim birimini ASLA tahmin etmez. scale frontend'den gelir
+    # (kullanici dropdown secimi). scale=None ise mm varsayilan (kullanici
+    # secmedi) — auto-detect/bound/medyan mantiklari KALDIRILDI.
     if scale is None:
-        scale, _scale_label, _scale_auto_reason = _auto_detect_scale(doc)
-    else:
-        # Kullanici manuel scale verdi (override) -> kullan ama detection reason'a yaz
-        _scale_label = (
-            "mm" if abs(scale - 0.001) < 1e-6
-            else "cm" if abs(scale - 0.01) < 1e-6
-            else "m" if abs(scale - 1.0) < 1e-6
-            else f"{scale}"
-        )
-        _scale_auto_reason = f"Manuel override: {_scale_label} (scale={scale})"
+        scale = 0.001  # mm varsayilan
+    _scale_label = (
+        "mm" if abs(scale - 0.001) < 1e-6
+        else "cm" if abs(scale - 0.01) < 1e-6
+        else "m" if abs(scale - 1.0) < 1e-6
+        else f"{scale}"
+    )
+    _scale_auto_reason = f"Kullanici secimi: {_scale_label} (scale={scale})"
 
     layer_data: dict[str, dict] = {}  # layer → {length, count}
 
@@ -1015,141 +1014,6 @@ def _detect_unit_from_dxf(doc) -> tuple[float, str]:
         return 0.001, "mm"
 
 
-_PIPE_LAYER_KEYWORDS = (
-    "PIS", "PİS",  # PİS
-    "SU", "SOGUK", "SOĞUK",  # SOĞUK
-    "SICAK", "SCKK", "BORU",
-    "HIDRO", "TESISAT", "TESİSAT",
-    "Y_DOLUM", "SPRINKLER", "YANGI",
-)
-
-
-def _collect_pipe_segment_lengths(doc, sample_max: int = 5000) -> list[float]:
-    """Modelspace'teki boru-tipi LINE entity'lerinin uzunluklarini topla.
-
-    Boru layer keyword'lerine bakarak filtreler. Yoksa tum LINE'lari fallback olarak alir.
-    Artefakt filtresi: <0.1 unit segments cikarilir.
-    """
-    msp = doc.modelspace()
-    pipe_lengths: list[float] = []
-    all_lengths: list[float] = []
-    for ent in msp:
-        if ent.dxftype() != "LINE":
-            continue
-        try:
-            s, e = ent.dxf.start, ent.dxf.end
-            L = math.hypot(e.x - s.x, e.y - s.y)
-            if L <= 0.1:
-                continue
-            layer_upper = str(getattr(ent.dxf, "layer", "") or "").upper()
-            if any(kw in layer_upper for kw in _PIPE_LAYER_KEYWORDS):
-                pipe_lengths.append(L)
-            all_lengths.append(L)
-            if len(all_lengths) >= sample_max:
-                break
-        except Exception:
-            continue
-    return pipe_lengths if len(pipe_lengths) >= 50 else all_lengths
-
-
-def _auto_detect_scale(doc, fallback_scale: float = 0.001) -> tuple[float, str, str]:
-    """Hibrit birim tespiti — 3 katmanli puanlama (oncelik sirali):
-      1. BOUND GEOMETRISI (en GUVENILIR): bina projesi 5m-500m araliginda olmali.
-         Sadece TEK scale bu araliga giriyorsa, bu scale DEFINITIVE secim.
-      2. $INSUNITS metadata: bound coklu scale destekliyorsa tie-break.
-      3. PIPE PHYSICS (zayif sinyal): sample yeterli (>=50) ve diger sinyaller
-         belirsizse kullan. Cunku CAD'de boru cogunlukla BLOCK INSERT icinde
-         olur, modelspace top-level sample temsili olmayabilir.
-
-    SEBEP: Onceki versiyonda pipe physics dominanti, ama 18 sample ile
-    yangin DWG'sinde yanlis m secti (gercek mm idi). Bound 66m × 24m bina
-    icin m yanlis (66km olur), mm dogru.
-
-    Returns: (scale, unit_label, detection_reason)
-    """
-    # Metadata
-    insunits = 0
-    try:
-        insunits = int(doc.header.get("$INSUNITS", 0) or 0)
-    except Exception:
-        pass
-    _scale_map: dict[int, tuple[float, str]] = {
-        1: (0.0254, "inch"), 2: (0.3048, "feet"),
-        4: (0.001, "mm"), 5: (0.01, "cm"), 6: (1.0, "m"),
-    }
-    meta_info = _scale_map.get(insunits)  # (scale, label) veya None
-
-    # Bound
-    bound_max = 0.0
-    try:
-        extmin = doc.header.get("$EXTMIN")
-        extmax = doc.header.get("$EXTMAX")
-        if extmin and extmax:
-            bw = abs(extmax[0] - extmin[0])
-            bh = abs(extmax[1] - extmin[1])
-            bound_max = max(bw, bh)
-    except Exception:
-        pass
-
-    # Pipe physics (zayif sinyal — sample yeterli olmali)
-    pipe_lengths = _collect_pipe_segment_lengths(doc)
-    physics_pct: dict[float, float] = {}
-    if pipe_lengths and len(pipe_lengths) >= 50:
-        for scale, _ in [(0.001, "mm"), (0.01, "cm"), (1.0, "m")]:
-            in_range = sum(1 for L in pipe_lengths if 0.3 <= L * scale <= 5.0)
-            physics_pct[scale] = in_range / len(pipe_lengths)
-
-    # ── 1. BOUND DOMINANT KARAR ──
-    # Tek scale bina projesi araligina giriyorsa, definitive.
-    if bound_max >= 1.0:
-        bound_candidates: list[tuple[float, str, float]] = []
-        for scale, label in [(0.001, "mm"), (0.01, "cm"), (1.0, "m")]:
-            real_m = bound_max * scale
-            if 5.0 <= real_m <= 500.0:
-                bound_candidates.append((scale, label, real_m))
-
-        # Tek aday -> definitive secim
-        if len(bound_candidates) == 1:
-            sc, lbl, real_m = bound_candidates[0]
-            meta_note = ""
-            if meta_info and abs(meta_info[0] - sc) > 1e-9:
-                meta_note = f" (DXF $INSUNITS={meta_info[1]} dedi ama bound geometrisi {lbl} destekliyor)"
-            return sc, lbl, f"Bound geometrisi: {real_m:.1f}m -> {lbl} (tek makul scale){meta_note}"
-
-        # Coklu aday -> metadata tie-break
-        if len(bound_candidates) > 1 and meta_info:
-            meta_in_bound = any(abs(c[0] - meta_info[0]) < 1e-9 for c in bound_candidates)
-            if meta_in_bound:
-                return meta_info[0], meta_info[1], f"DXF $INSUNITS={meta_info[1]} + bound geometrisi tutarli ({bound_max * meta_info[0]:.1f}m)"
-
-        # Coklu aday, metadata yok/uyumsuz -> pipe physics tie-break (varsa)
-        if len(bound_candidates) > 1 and physics_pct:
-            valid_phys = {sc: pct for sc, pct in physics_pct.items()
-                          if any(abs(sc - c[0]) < 1e-9 for c in bound_candidates)}
-            if valid_phys:
-                best_sc = max(valid_phys.items(), key=lambda kv: kv[1])[0]
-                best_lbl = {0.001: "mm", 0.01: "cm", 1.0: "m"}[best_sc]
-                real_m = bound_max * best_sc
-                return best_sc, best_lbl, f"Bound coklu aday, pipe physics {best_lbl} destekliyor ({real_m:.1f}m)"
-
-        # Coklu aday, tie-break yok -> orta yas en yakin (40m hedef bina)
-        if bound_candidates:
-            best = min(bound_candidates, key=lambda c: abs(c[2] - 40.0))
-            return best[0], best[1], f"Bound coklu aday, orta-yas secim: {best[1]} ({best[2]:.1f}m)"
-
-    # ── 2. BOUND YOK/BELIRSIZ -> Pipe physics fallback ──
-    if physics_pct:
-        sorted_phys = sorted(physics_pct.items(), key=lambda kv: kv[1], reverse=True)
-        best_scale, best_pct = sorted_phys[0]
-        second_pct = sorted_phys[1][1] if len(sorted_phys) > 1 else 0.0
-        if best_pct >= 0.20 and (best_pct - second_pct) >= 0.10:
-            label = {0.001: "mm", 0.01: "cm", 1.0: "m"}[best_scale]
-            return best_scale, label, f"Pipe physics: boru segmentlerin %{best_pct*100:.0f}'i {label} icin fiziksel araligi karsiliyor (bound belirsiz)"
-
-    # ── 3. Son care: metadata varsa, yoksa mm fallback ──
-    if meta_info:
-        return meta_info[0], meta_info[1], f"DXF $INSUNITS={meta_info[1]} (diger sinyaller belirsiz)"
-    return fallback_scale, "mm", "fallback (sinyaller belirsiz, mm varsayilan)"
 
 
 def _background_parse(file_id: str, dxf_path: str) -> None:
