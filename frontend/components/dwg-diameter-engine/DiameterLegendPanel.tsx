@@ -115,6 +115,16 @@ export default function DiameterLegendPanel({
               <span className="min-w-0 flex-1 truncate text-left font-mono font-semibold text-slate-800">
                 {e.diameter}
               </span>
+              {/* Layer breakdown badge — kullanici hangi cap hangi layer'dan
+                  geldigini gorsun (multi-layer + mixed unit kafa karistirmasin). */}
+              {e.layers.length > 0 && (
+                <span
+                  className="hidden sm:inline-block max-w-[110px] truncate rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-medium text-slate-600"
+                  title={e.layers.join(', ')}
+                >
+                  {e.layers.length === 1 ? e.layers[0] : `${e.layers.length} layer`}
+                </span>
+              )}
               {isActive && activeCount > 0 && (
                 <span className="rounded bg-violet-200 px-1.5 py-0.5 font-mono text-[10px] font-semibold tabular-nums text-violet-900">
                   {Math.min(activeIndex, activeCount - 1) + 1}/{activeCount}

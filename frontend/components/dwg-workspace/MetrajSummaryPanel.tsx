@@ -10,6 +10,7 @@ import React from 'react';
 import { Ruler, Wrench, Trash2, Check } from 'lucide-react';
 import type { CalculatedLayer, MarkedEquipment } from './types';
 import { diameterToColor } from '@/components/dwg-metraj/diameter-colors';
+import { isUnassignedDiameter, UNASSIGNED_LABEL } from '@/components/dwg-metraj/constants';
 
 interface MetrajSummaryPanelProps {
   calculatedLayers: Record<string, CalculatedLayer>;
@@ -61,10 +62,11 @@ export default function MetrajSummaryPanel({
 
         {/* BORU LAYER'LARI */}
         {layerList.map((cl) => {
-          // Cap dagilimi
+          // Cap dagilimi — atanmamis cap'lar tek 'Capi Belirlenemeyenler' grubuna toplanir
+          // (backend "" veya "Belirtilmemis" sentinel'lerini ayni grubu yansitir).
           const capTotals: Record<string, number> = {};
           for (const es of cl.edgeSegments) {
-            const k = es.diameter || 'Belirtilmemiş';
+            const k = isUnassignedDiameter(es.diameter) ? UNASSIGNED_LABEL : es.diameter;
             capTotals[k] = (capTotals[k] ?? 0) + es.length;
           }
           return (
@@ -93,7 +95,7 @@ export default function MetrajSummaryPanel({
                 {Object.entries(capTotals)
                   .sort((a, b) => b[1] - a[1])
                   .map(([dia, len]) => {
-                    const color = diameterToColor(dia === 'Belirtilmemiş' ? '' : dia);
+                    const color = diameterToColor(dia === UNASSIGNED_LABEL ? '' : dia);
                     return (
                       <div key={dia} className="flex items-center justify-between text-[11px] gap-2">
                         <span className="flex items-center gap-1.5 min-w-0 flex-1 font-mono text-slate-600">

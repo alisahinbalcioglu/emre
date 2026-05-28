@@ -33,6 +33,8 @@ from proximity_diameter import (
     _autocad_decode,
     _extract_block_texts,
     _extract_all_texts,
+    _is_unassigned,
+    _propagate_inheritance,
     assign_diameters_by_proximity,
 )
 
@@ -858,21 +860,18 @@ class TestAssignDiametersByProximity:
 
 
 class TestInheritance:
-    """T-junction komsulari arasi BFS-based cap miras yayilimi.
+    """Cap miras yayilimi — FLOOD-FILL BFS (hop<=3, layer-aware, length-guarded).
 
-    Kural: Proximity bittikten sonra, atama almamis segmentlere AYNI LAYER'da
-    AYNI ENDPOINT'i paylasan ATANMIS komsudan cap miras verilir.
+    PRD Kural 3: "2m içinde text yoksa, aynı katmandaki uç uca değen komşu
+    boruları tespit et... (Flood fill / BFS mantığı ile çap bilgisi hat
+    boyunca yazısız borulara aktarılmalıdır)."
     """
 
-    def test_linear_chain_only_one_hop(self):
-        """A-B-C linear zincir, 1-HOP miras kurali (kullanici "bir onceki hat" kurali).
+    def test_linear_chain_flood_fill_within_hops(self):
+        """A-B-C linear zincir, flood-fill ile A->B->C hepsi miras alir (hop<=3).
 
-        Sadece A proximity'den alir. B (A'nin dogrudan komsusu) -> 1-hop miras.
-        C (B'nin komsusu, A'nin DEGIL) -> miras alan B'den yayim YOK -> ATANMAZ.
-
-        Bu test 1-hop kuralinin uzun zincirleri kestigi senaryoyu dogrular.
-        Foto'daki "CICUK OYUN ALANI" segmenti gibi alakasiz uzakta segmente
-        cap atanmasi engellenir.
+        Sadece A proximity'den alir. B (depth=1), C (depth=2) BFS ile miras
+        alir — hop<=3 sinirini ASMAZ. Layer-aware + length-guard korunur.
         """
         doc = ezdxf.new()
         doc.modelspace().add_text("Ø50",
@@ -884,11 +883,10 @@ class TestInheritance:
         ]
         result = assign_diameters_by_proximity(doc, edges, max_distance_world=30.3)
         assert edges[0].diameter == "Ø50"  # proximity
-        assert edges[1].diameter == "Ø50"  # 1-hop miras (A'dan)
-        # 1-hop kurali: B miras alan, yayim YOK -> C atanmaz
-        assert edges[2].diameter in ("", "Belirtilmemis", None)
+        assert edges[1].diameter == "Ø50"  # BFS hop=1
+        assert edges[2].diameter == "Ø50"  # BFS hop=2
         assert result["assigned_count"] == 1
-        assert result["inherited_count"] == 1
+        assert result["inherited_count"] == 2
 
     def test_t_junction_inheritance(self):
         """T-junction: ana hat alir, iki KISA kol inheritance ile alir.
@@ -996,30 +994,135 @@ class TestInheritance:
         assert edges[1].diameter == "Ø50"
         assert result["inherited_count"] == 1
 
-    def test_long_chain_does_not_propagate(self):
-        """KRITIK REGRESYON: 5+ segment'lik uzun T-junction zinciri.
-        Sadece bastan A proximity'den alir. 1-hop kurali -> sadece B miras
-        alir. C, D, E atanmaz (alakasiz uzakta segmentlere cap sicratmaz).
+    def test_long_chain_hop_limit_enforced(self):
+        """KRITIK REGRESYON: 5+ segment'lik uzun zincir, hop<=3 sinirini DOGRULA.
 
-        Bu test 'Cocuk Oyun Alani' senaryosunu engeller — uzun bir hat
-        zincirinin sonundaki segmente bastaki cap'in ulasmamasini garanti."""
+        A proximity'den alir. BFS B(1) C(2) D(3) miras alir. E (hop=4) ATANMAZ
+        cunku hop sinirini asar. 'Cocuk Oyun Alani' senaryosu: bastaki cap'in
+        sonsuza yayilimini engeller.
+
+        PRD Kural 3 ile uyumlu: flood-fill var ama hop<=3 guard ile patlama
+        sinirlanir (uzun ana hatlarda yanlis cap riski azalir)."""
         doc = ezdxf.new()
         doc.modelspace().add_text("Ø50",
                                    dxfattribs={"insert": (5, 30), "height": 30, "layer": "L1"})
         edges = [
-            _FakeEdge(1, 0, 0, 10, 0, layer="L1"),    # A: proximity
-            _FakeEdge(2, 10, 0, 20, 0, layer="L1"),   # B: A'dan 1-hop
-            _FakeEdge(3, 20, 0, 30, 0, layer="L1"),   # C: B'den yayim YOK
-            _FakeEdge(4, 30, 0, 40, 0, layer="L1"),   # D: C'den yayim YOK
-            _FakeEdge(5, 40, 0, 50, 0, layer="L1"),   # E: D'den yayim YOK
+            _FakeEdge(1, 0, 0, 10, 0, layer="L1"),    # A: proximity (hop=0)
+            _FakeEdge(2, 10, 0, 20, 0, layer="L1"),   # B: hop=1
+            _FakeEdge(3, 20, 0, 30, 0, layer="L1"),   # C: hop=2
+            _FakeEdge(4, 30, 0, 40, 0, layer="L1"),   # D: hop=3
+            _FakeEdge(5, 40, 0, 50, 0, layer="L1"),   # E: hop=4 -> KESIL
         ]
         result = assign_diameters_by_proximity(doc, edges, max_distance_world=30.3)
         assert edges[0].diameter == "Ø50"
-        assert edges[1].diameter == "Ø50"  # 1-hop miras
-        # Zincirin geri kalani atanmaz
-        for i in range(2, 5):
-            assert edges[i].diameter in ("", "Belirtilmemis", None), (
-                f"edges[{i}] zincirleme miras aldi: {edges[i].diameter!r}"
-            )
-        assert result["inherited_count"] == 1
+        # B, C, D BFS ile miras alir (hop<=3)
+        assert edges[1].diameter == "Ø50"
+        assert edges[2].diameter == "Ø50"
+        assert edges[3].diameter == "Ø50"
+        # E hop=4 -> hop sinirini asar, ATANMAZ
+        assert edges[4].diameter in ("", "Belirtilmemis", None), (
+            f"edges[4] hop sinirini astigi halde miras aldi: {edges[4].diameter!r}"
+        )
+        assert result["inherited_count"] == 3
+
+
+# ════════════════════════════════════════════════════════════════════════
+#  YENI TESTLER — sentinel normalize + flood-fill hop guard
+# ════════════════════════════════════════════════════════════════════════
+
+
+class TestSentinelNormalize:
+    """_is_unassigned helper'i tum atanmamis cap sentinel'lerini yakalamali.
+
+    Backend tarihsel olarak iki sentinel uretmis: '' (bos) ve 'Belirtilmemis'
+    (ASCII s). Frontend her ikisini de 'Capi Belirlenemeyenler' grubuna toplar.
+    """
+
+    def test_empty_string_is_unassigned(self):
+        assert _is_unassigned("") is True
+
+    def test_belirtilmemis_is_unassigned(self):
+        assert _is_unassigned("Belirtilmemis") is True
+
+    def test_none_is_unassigned(self):
+        assert _is_unassigned(None) is True
+
+    def test_whitespace_only_is_unassigned(self):
+        # strip ile bos string'e indirilir
+        assert _is_unassigned("   ") is True
+
+    def test_valid_diameter_not_unassigned(self):
+        assert _is_unassigned("Ø50") is False
+        assert _is_unassigned("DN100") is False
+        assert _is_unassigned('1/2"') is False
+        assert _is_unassigned("2\"") is False
+
+    def test_belirtilmis_turkce_s_not_unassigned(self):
+        # Turkce ş ile yazilirsa SENTINEL DEGIL — frontend Turkce label asla
+        # backend sentinel'i olarak kullanilmaz.
+        assert _is_unassigned("Belirtilmemiş") is False
+
+
+class TestFloodFillHopGuard:
+    """Flood-fill miras yayilimini hop guard ile dogrula (direkt API testi)."""
+
+    def test_hop_3_exact_boundary(self):
+        """A->B->C->D zinciri: D hop=3 (sinir icinde) miras alir."""
+        from proximity_diameter import _propagate_inheritance
+        edges = [
+            _FakeEdge(1, 0, 0, 10, 0, layer="L1"),  # A: kaynak
+            _FakeEdge(2, 10, 0, 20, 0, layer="L1"),
+            _FakeEdge(3, 20, 0, 30, 0, layer="L1"),
+            _FakeEdge(4, 30, 0, 40, 0, layer="L1"),
+        ]
+        edges[0].diameter = "Ø100"
+        inherited = _propagate_inheritance(
+            edges, tolerance=5.0,
+            proximity_assigned_idx={0},
+            max_distance_world=20.0,  # her segment 10 unit < 20 -> guard'i gecer
+            max_hops=3,
+        )
+        assert edges[1].diameter == "Ø100"  # hop=1
+        assert edges[2].diameter == "Ø100"  # hop=2
+        assert edges[3].diameter == "Ø100"  # hop=3 (sinirda, gecer)
+        assert inherited == 3
+
+    def test_length_guard_blocks_long_segment(self):
+        """Uzun segment (length > max_distance_world) miras almaz."""
+        from proximity_diameter import _propagate_inheritance
+        edges = [
+            _FakeEdge(1, 0, 0, 10, 0, layer="L1"),    # A: 10 unit, kaynak
+            _FakeEdge(2, 10, 0, 100, 0, layer="L1"),  # B: 90 unit (UZUN)
+            _FakeEdge(3, 100, 0, 110, 0, layer="L1"),  # C: 10 unit
+        ]
+        edges[0].diameter = "Ø50"
+        inherited = _propagate_inheritance(
+            edges, tolerance=5.0,
+            proximity_assigned_idx={0},
+            max_distance_world=20.0,
+            max_hops=3,
+        )
+        # B uzun (90 > 20), miras ALMAZ. C de almaz cunku B'den yayim olmaz.
+        assert edges[1].diameter in ("", "Belirtilmemis"), (
+            f"B uzun olmasina ragmen miras aldi: {edges[1].diameter!r}"
+        )
+        assert edges[2].diameter in ("", "Belirtilmemis")
+        assert inherited == 0
+
+    def test_layer_aware_blocks_cross_layer(self):
+        """Farkli layer'daki kosmu miras ALMAZ."""
+        from proximity_diameter import _propagate_inheritance
+        edges = [
+            _FakeEdge(1, 0, 0, 10, 0, layer="L1"),
+            _FakeEdge(2, 10, 0, 20, 0, layer="L2"),  # FARKLI layer
+        ]
+        edges[0].diameter = "Ø75"
+        inherited = _propagate_inheritance(
+            edges, tolerance=5.0,
+            proximity_assigned_idx={0},
+            max_distance_world=20.0,
+            max_hops=3,
+        )
+        assert edges[1].diameter in ("", "Belirtilmemis")
+        assert inherited == 0
 

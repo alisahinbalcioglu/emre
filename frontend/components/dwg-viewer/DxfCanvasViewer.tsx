@@ -26,6 +26,7 @@ import api from '@/lib/api';
 import type { GeometryResult } from './types';
 import type { EdgeSegment } from '@/components/dwg-metraj/types';
 import { diameterToColor } from '@/components/dwg-metraj/diameter-colors';
+import { isUnassignedDiameter, UNASSIGNED_LABEL } from '@/components/dwg-metraj/constants';
 import { useViewport } from './useViewport';
 import { aciToColor } from './aci-colors';
 
@@ -768,7 +769,10 @@ export default function DxfCanvasViewer({
             dimmedSegs.push(seg);
             continue;
           }
-          const key = seg.diameter || 'Belirtilmemis';
+          // Atanmis ve atanmamis ayri grupla — atanmamis sentinel'leri tek
+          // anahtara toplanir (backend "" veya "Belirtilmemis" gonderse de
+          // legend ile birebir ortusur).
+          const key = isUnassignedDiameter(seg.diameter) ? UNASSIGNED_LABEL : seg.diameter;
           let arr = byDiameter.get(key);
           if (!arr) { arr = []; byDiameter.set(key, arr); }
           arr.push(seg);
@@ -778,10 +782,10 @@ export default function DxfCanvasViewer({
         ctx.globalAlpha = 1;
         if (useDiameterColors) {
           // PRD §3: cap-bazli dinamik renklendirme (legend ile esles)
-          // PRD §3 (Atanmamis): 'Belirtilmemis' borular gri/KESIKLI cizgi (atanmadi
-          // durumunu gosterir; kullanici manuel duzeltir).
+          // PRD §4 (Atanmamis): cap'i belirlenmemis borular gri/KESIKLI cizgi
+          // (atanmadi durumunu gosterir; kullanici manuel duzeltir).
           byDiameter.forEach((segs, diameter) => {
-            const isUnassigned = !diameter || diameter === 'Belirtilmemis';
+            const isUnassigned = diameter === UNASSIGNED_LABEL;
             ctx.strokeStyle = diameterToColor(diameter);
             if (isUnassigned) {
               // 6-3px desen (zoom invariant degil ama kontrol icin OK; gerekirse
@@ -1642,7 +1646,7 @@ function Tooltip({ entity, screenX, screenY, pinned }: TooltipProps) {
       <div className="mt-0.5 text-sm font-semibold truncate" title={entity.layer}>
         {entity.layer}
       </div>
-      {entity.diameter && entity.diameter !== 'Belirtilmemis' && (
+      {!isUnassignedDiameter(entity.diameter) && (
         <div className="mt-1 flex items-baseline gap-1">
           <span className="text-xs opacity-70">Cap:</span>
           <span className="font-mono text-sm font-bold tabular-nums">

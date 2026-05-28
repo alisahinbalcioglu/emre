@@ -52,7 +52,6 @@ def main():
             sprinkler_layers_manual=params.get("sprinkler_layers_manual"),
             layer_default_diameter_map=params.get("layer_default_diameter_map"),
             use_proximity_diameter=params.get("use_proximity_diameter", False),
-            proximity_max_distance=params.get("proximity_max_distance"),
         )
 
         # Pydantic model'i dict'e cevir, surrogate/NaN sanitize

@@ -17,15 +17,19 @@ CAP-TEXT TANIMI:
   Sahte text'leri (YD, YK, '2', 'YANGIN DOLABI', basliklar) eler.
   Bu filter olmadan 569 segmente bilmem ne text'i atanir.
 
-ATAMA MANTIGI:
-  - SEGMENT-PERSPECTIVE NAIVE NEAREST: her segment kendi en yakin text'ini
-    alir. Ayni text birden fazla segmente paylasilabilir (T-junction'da ayni
-    cap kardes borulara uygular).
-  - MESAFE SINIRI: DEFAULT_MAX_DISTANCE_WORLD (2000mm world unit, ~2m).
-    Asan text'ler atanmaz; uzak text'in segmente zorla yakistirilmasini onler.
-  - BFS YOK (gereksiz kompleksite)
-  - Sprinkler layer text'leri hariç (kullanici manuel isaretledi -> ID)
-  - Kullanici yanlis goruse DiameterEditPopup ile manuel duzeltir
+ATAMA MANTIGI (5-adim deterministik pipeline — PRD):
+  1. SEGMENT-PERSPECTIVE NAIVE NEAREST: her segment kendi en yakin text'ini
+     alir. Ayni text birden fazla segmente paylasilabilir (T-junction'da ayni
+     cap kardes borulara uygular).
+  2. MESAFE SINIRI: 2.0 / scale (mm:2000, cm:200, m:2 unit). Sabit 2m gercek
+     mesafe, scale-aware. Asan text'ler atanmaz.
+  3. FLOOD-FILL INHERITANCE (hop <= 3, layer-aware): proximity ile atanan
+     segmentlerden ayni layer'daki komsulara BFS yayilim. Her hop'ta length
+     <= 2m guard (uzun borular kendi text'lerine sahip olmali).
+  4. NULL FALLBACK: atanamayan segment cap'i bos string ("") kalir; frontend
+     "Capi Belirlenemeyenler" grubunda + kesikli cizgi ile gosterir.
+  5. Sprinkler layer text'leri hariç (kullanici manuel isaretledi -> ID).
+     Kullanici yanlis goruse DiameterEditPopup ile manuel duzeltir.
 """
 from __future__ import annotations
 
@@ -655,16 +659,22 @@ def _segment_distance(seg, tx: float, ty: float) -> float:
     return seg_d
 
 
-# Mesafe sınırı default (DWG world unit, scale 0.001 ile 2 metre).
-# Cap text'i segmente bu mesafeden uzaksa atanmaz — uzak text'in "kazanmasini"
-# onler. Pool BLOCK_TEXT ile buyudukten sonra (15000+) bu kritik. 81960eb refactor'unda
-# kaldirilmisti, BLOCK_TEXT genislemesiyle birlikte geri eklendi.
-DEFAULT_MAX_DISTANCE_WORLD = 2000.0
-
 # Endpoint paylasimi toleransi (DWG world unit). T-junction'da iki segment'in
 # uclari floating-point hassasiyetinden ufak ayrik durabilir; bu tolerans icinde
 # olan endpoint'ler ayni nokta sayilir.
 _INHERITANCE_ENDPOINT_TOL = 5.0  # 5 mm (AutoCAD snap genelde 1-5mm sapabilir)
+
+# ── Atanmamis cap sentinel'leri ──
+# Backend tarihsel olarak iki sentinel uretmis: bos string ve "Belirtilmemis"
+# (ASCII s). Frontend "Capi Belirlenemeyenler" grubuna ikisini de toplar.
+_UNASSIGNED_MARKERS: tuple[str, ...] = ("", "Belirtilmemis")
+
+
+def _is_unassigned(cap: str | None) -> bool:
+    """Cap atanmamis sayilsin mi? Tum sentinel'leri yakalar (None dahil)."""
+    if cap is None:
+        return True
+    return cap.strip() in _UNASSIGNED_MARKERS
 
 
 def _segment_endpoints(es) -> list[tuple[float, float]]:
@@ -711,32 +721,32 @@ def _propagate_inheritance(
     tolerance: float,
     proximity_assigned_idx: set[int],
     max_distance_world: float = 0.0,
+    max_hops: int = 3,
 ) -> int:
-    """T-junction komsudan 1-HOP cap miras yayilimi (LAYER-AWARE + UZUNLUK SINIRLI).
+    """Cap miras yayilimi — flood-fill BFS (LAYER-AWARE, HOP-SINIRLI, LENGTH-GUARDLI).
 
-    KRITIK KURAL (kullanici PRD): "Aynı layer'daki başka bir borunun noktası
-    çakışıyorsa, bu iki boru aynı hattın parçasıdır." → SADECE ayni layer'daki
-    komsulardan miras alinir. Farkli layer'daki tesisatlardan miras gitmez
-    (orn: sicak su <-> soguk su <-> pis su parallel cizilse de birbirinden
-    cap miras almaz).
+    PRD Kural 3: "2m içinde text yoksa, aynı katmandaki uç uca değen komşu
+    boruları tespit et. Bu borunun 2 metre yakınında yazı yoksa, fiziksel
+    olarak bağlı olduğu komşu hattan gelen çap bilgisini Miras (Inherit) al.
+    (Flood fill / BFS mantığı ile çap bilgisi hat boyunca yazısız borulara
+    aktarılmalıdır)."
 
-    KRITIK KURAL (kullanici): "2m mesafede text bulamazsan miras olarak
-    BIR ONCEKI hattin text'ini alacaksin." → 1 hop, zincirleme YOK.
-
-    YENI KURAL (v7): Miras alan segmentin UZUNLUGU max_distance_world'i geciyorsa
-    miras ALMAZ. Cunku 2m'den uzun bir boru parcasi, T-junction'dan diger ucuna
-    2m+ uzakta olur — yanlis cap atanma riski. Boyle uzun borular kendi
-    cap-text'lerine sahip olmali.
-
-    Sadece PROXIMITY ile atanmis komsulardan miras gider. Miras alan
-    segmentler kendileri zincirleme yapamaz.
+    Algoritma:
+      - Queue baslangici: proximity_assigned_idx (depth=0, kaynak segmentler).
+      - BFS: her segmentten layer-aware endpoint-komsulara (tolerance icinde) yay.
+      - Length guard: hedef segment uzunlugu > max_distance_world -> MIRAS ALMA.
+      - Hop guard: depth >= max_hops -> yayilim durur (uzun zincir patlama korumasi).
+      - Miras alan segment yeni kaynak olur — zincirleme yayilim.
+      - Layer-aware: farkli layer'daki segmentler birbirinden miras almaz.
 
     Args:
         edge_segments: liste; atanmayanlara cap miras yazilir.
         tolerance: endpoint paylasimi mesafesi (DWG world unit).
-        proximity_assigned_idx: proximity loop'tan atanmis segment index'leri.
-        max_distance_world: miras icin maks segment uzunlugu (2m gercek).
-                            0 ise uzunluk kontrolu YAPILMAZ (geriye uyumluluk).
+        proximity_assigned_idx: proximity loop'tan atanmis kaynak indexleri.
+        max_distance_world: hedef segment maks uzunlugu (2m gercek).
+                            0 ise uzunluk kontrolu yapilmaz.
+        max_hops: BFS maks derinligi (default 3 — uzun ana hatta bastaki cap
+                  sonuna kadar yayilmasin).
 
     Returns: miras alan segment sayisi.
     """
@@ -753,7 +763,6 @@ def _propagate_inheritance(
     seg_layer: list[str] = [_segment_layer(es) for es in edge_segments]
 
     # Komsuluk: tolerance icindeki endpoint'leri paylasan AYNI LAYER'daki segment ciftleri.
-    # O(n^2) gercek mesafe (grid hash hucre sinirinda yanlis sonuc veriyordu).
     tol_sq = tolerance * tolerance
     neighbors: dict[int, set[int]] = {i: set() for i in range(len(edge_segments))}
     for i in range(len(endpoints)):
@@ -771,32 +780,40 @@ def _propagate_inheritance(
                 neighbors[ia].add(ib)
                 neighbors[ib].add(ia)
 
-    # 1-HOP PASS: atanmayan her segment icin, proximity_assigned KOMSU varsa
-    # onun cap'ini al. BFS DEGIL — zincirleme yok.
+    # FLOOD-FILL BFS: proximity kaynak'lardan baslayip hop<=max_hops layer-aware
+    # komsulara yay. Her hop'ta length guard uygulanir (uzun borular pas gecer).
+    from collections import deque
+    visited: set[int] = set(proximity_assigned_idx)
+    queue: deque[tuple[int, int]] = deque((idx, 0) for idx in proximity_assigned_idx)
     inherited = 0
-    for idx, es in enumerate(edge_segments):
-        cap = getattr(es, "diameter", "") or ""
-        if cap and cap != "Belirtilmemis":
-            continue  # zaten atanmis
-        # YENI: segment uzunlugu max_distance_world'u geciyorsa miras ALMA
-        # Cunku uzun borular kendi cap-text'lerine sahip olmali (cap-text yoksa
-        # miras yoluyla 'uzaktan' atama yapmak yanlis cap riski yaratir).
-        if max_distance_world > 0:
-            es_len = _segment_length_world(es)
-            if es_len > max_distance_world:
+    while queue:
+        src_idx, depth = queue.popleft()
+        if depth >= max_hops:
+            continue
+        src_cap = getattr(edge_segments[src_idx], "diameter", "") or ""
+        if _is_unassigned(src_cap):
+            continue
+        for nbr_idx in neighbors.get(src_idx, set()):
+            if nbr_idx in visited:
                 continue
-        # Komsular arasindan proximity'den atanmis olanlari bul
-        for nbr_idx in neighbors.get(idx, set()):
-            if nbr_idx not in proximity_assigned_idx:
-                continue  # miras alan komsu yayim yapmaz
-            nbr_cap = getattr(edge_segments[nbr_idx], "diameter", "") or ""
-            if not nbr_cap or nbr_cap == "Belirtilmemis":
+            nbr = edge_segments[nbr_idx]
+            nbr_cap = getattr(nbr, "diameter", "") or ""
+            # Zaten atanmis (proximity veya onceki BFS hop) -> visited isaretle, atla
+            if not _is_unassigned(nbr_cap):
+                visited.add(nbr_idx)
                 continue
-            es.diameter = nbr_cap
-            if hasattr(es, "is_inherited"):
-                es.is_inherited = True
+            # Length guard: 2m'den uzun borular kendi cap-text'lerine sahip olmali
+            if max_distance_world > 0:
+                if _segment_length_world(nbr) > max_distance_world:
+                    visited.add(nbr_idx)
+                    continue
+            # MIRAS al — komsu artik kaynak olabilir (zincirleme yayilim)
+            nbr.diameter = src_cap
+            if hasattr(nbr, "is_inherited"):
+                nbr.is_inherited = True
             inherited += 1
-            break  # ilk uygun komsudan al, devam etme
+            visited.add(nbr_idx)
+            queue.append((nbr_idx, depth + 1))
     return inherited
 
 
@@ -805,7 +822,7 @@ def assign_diameters_by_proximity(
     edge_segments: list[Any],
     sprinkler_layers: set[str] | None = None,
     max_distance_world: float | None = None,
-    inheritance_tolerance: float | None = None,  # noqa: ARG001 — backward compat
+    inheritance_tolerance: float | None = None,
     view_transform: tuple[float, float, float, float, float, float] | None = None,
     scale: float = 0.001,
 ) -> dict:
@@ -860,11 +877,9 @@ def assign_diameters_by_proximity(
         effective_max_dist = float(max_distance_world)
         _dist_source = "user override"
     warnings: list[str] = []
-    # Mesafe kuralini diagnostic'e ekle (kullanici hangi sinirla calistigini gorsun)
+    # Detaylı tanı log'lari kullanici-facing degil — geliştirici log'larina indir.
     if effective_max_dist != math.inf:
-        warnings.append(
-            f"Proximity diag: max mesafe = {effective_max_dist:.0f} unit ({_dist_source})"
-        )
+        logging.debug("Proximity max distance: %.0f unit (%s)", effective_max_dist, _dist_source)
     diag: dict = {}
     texts = _extract_all_texts(
         doc,
@@ -872,33 +887,27 @@ def assign_diameters_by_proximity(
         view_transform=view_transform,
         out_diagnostic=diag,
     )
-    # DIAGNOSTIC WARNINGS — kullanici pool'un neden bos/kucuk oldugunu anlasin.
-    # NOT: layer_off text'leri pool'a SECONDARY olarak alinir (fallback).
-    # Atama sirasinda primary'ye oncelik, hic alternatif yoksa secondary kullanilir.
     if diag.get("layer_off_skip", 0) > 0:
-        warnings.append(
-            f"Proximity diag: {diag['layer_off_skip']} cap-text kapali/donmus layer'da "
-            f"(secondary pool -> primary atama bossa fallback olarak kullanilir)."
+        logging.debug(
+            "Proximity: %d cap-text kapali/donmus layer'da (secondary pool fallback)",
+            diag["layer_off_skip"],
         )
     _regex_no_match = diag.get("regex_no_match", 0)
     if _regex_no_match > 0:
-        _samples = ", ".join(f"'{s}'" for s in diag.get("regex_no_match_samples", [])[:3])
-        warnings.append(
-            f"Proximity diag: {_regex_no_match} text regex eslesmesi yapamadi (cap formati degil). Ornek: {_samples}"
+        logging.debug(
+            "Proximity: %d text regex eslesmesi yapamadi (cap formati degil). Ornek: %s",
+            _regex_no_match,
+            ", ".join(f"'{s}'" for s in diag.get("regex_no_match_samples", [])[:3]),
         )
     _label_reject = diag.get("label_reject", 0)
     if _label_reject > 0:
-        _samples = ", ".join(f"'{s}'" for s in diag.get("label_reject_samples", [])[:3])
-        warnings.append(
-            f"Proximity diag: {_label_reject} text 'etiket' (kucuk harf) -> reject. Ornek: {_samples}"
+        logging.debug(
+            "Proximity: %d text etiket (kucuk harf) reddi. Ornek: %s",
+            _label_reject,
+            ", ".join(f"'{s}'" for s in diag.get("label_reject_samples", [])[:3]),
         )
     if diag.get("invisible_skip", 0) > 0:
-        # Daha az kritik, sadece yuksek sayida ise warning
-        if diag["invisible_skip"] > 20:
-            warnings.append(
-                f"Proximity: gorunmez (dxf.invisible=1) {diag['invisible_skip']} cap-text "
-                f"havuza alinmadi."
-            )
+        logging.debug("Proximity: %d gorunmez cap-text havuza alinmadi", diag["invisible_skip"])
     pool_size = len(texts)
     if pool_size == 0:
         warnings.append(
@@ -952,7 +961,7 @@ def assign_diameters_by_proximity(
     for idx, es in enumerate(edge_segments):
         try:
             current = getattr(es, "diameter", "") or ""
-            if current and current != "Belirtilmemis":
+            if not _is_unassigned(current):
                 continue  # manuel/onceki atama korunur
             if not primary_texts:
                 continue
@@ -974,7 +983,7 @@ def assign_diameters_by_proximity(
         for idx, es in enumerate(edge_segments):
             try:
                 current = getattr(es, "diameter", "") or ""
-                if current and current != "Belirtilmemis":
+                if not _is_unassigned(current):
                     continue
                 nearest = _nearest_text(es, secondary_texts)
                 if nearest is None:
@@ -1007,23 +1016,22 @@ def assign_diameters_by_proximity(
             f"altinda cap-text bulunamadi."
         )
 
-    # ── INHERITANCE: 1-HOP T-junction komsudan cap miras ──────────────
-    # KULLANICI KURALI: "2m mesafede text bulamazsan miras olarak BIR ONCEKI
-    # hattin text'ini alacaksin." → SADECE proximity'den atanmis dogrudan
-    # komsudan miras. Miras alan zincirleme yapamaz. Bu sayede uzun T-junction
-    # zincirleri (orn 50m+ hat) bastaki cap'i sonuna kadar yaymaz.
-    # Inheritance endpoint tolerance — SCALE-AWARE.
-    # 5mm world unit hedef (AutoCAD snap mesafesi). mm DWG'de 5 birim, cm'de 0.5,
-    # m'de 0.005. Eski sabit 5.0 SADECE mm DWG'de dogruydu.
+    # ── INHERITANCE: FLOOD-FILL (hop<=3, layer-aware, length-guarded) ──
+    # PRD Kural 3: "2m içinde text yoksa, aynı katmandaki uç uca değen komşu
+    # boruları tespit et... (Flood fill / BFS mantığı ile çap bilgisi hat
+    # boyunca yazısız borulara aktarılmalıdır)."
+    # Hop guard (max 3): uzun ana hatta bastaki cap sonuna kadar yayilmasin
+    # (paralel sistemlerde yanlis cap riskini sinirlar).
+    # Length guard (her hop): 2m'den uzun borular kendi cap-text'ine sahip olmali.
+    # Endpoint tolerance — SCALE-AWARE (5mm world unit, AutoCAD snap mesafesi).
     if inheritance_tolerance and inheritance_tolerance > 0:
         _inh_tol = float(inheritance_tolerance)
     else:
         _inh_tol = 0.005 / safe_scale  # 5mm = 0.005m -> world unit
-    # v7: miras alacak segmentin uzunlugu max_distance_world'i geciyorsa miras almaz
-    # (2m'den uzun borular kendi cap-text'lerine sahip olmali)
     inherited = _propagate_inheritance(
         edge_segments, _inh_tol, proximity_assigned_idx,
         max_distance_world=effective_max_dist if effective_max_dist != math.inf else 0.0,
+        max_hops=3,
     )
     # Inheritance sonrasi hala bos kalan segment sayisi (gercek skipped)
     skipped = sum(

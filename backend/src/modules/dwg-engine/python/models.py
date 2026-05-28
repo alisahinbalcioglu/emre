@@ -43,8 +43,8 @@ class BranchPoint(BaseModel):
 # ── Metraj Hesaplama ──
 
 class LayerMetraj(BaseModel):
-    layer: str          # "YANGIN TESİSATI HİDRANT HATTI"
-    length: float       # metre cinsinden toplam uzunluk
+    layer: str          # "YANGIN TESISATI HIDRANT HATTI"
+    length: float       # METRE toplam uzunluk (DXF world unit x scale)
     line_count: int     # kac cizgi parcasi
     hat_tipi: str = ""  # kullanicinin verdigi hat ismi
     segments: list[PipeSegment] = []
@@ -54,16 +54,15 @@ class EdgeSegment(BaseModel):
     """Her bir pipe-run (chain) + cap + koordinatlar.
     Frontend Canvas2D viewer'da cizim + tik-duzenleme icin kullanilir.
 
-    coords: run'in iki ucu [x1,y1,x2,y2] — tiklama icin.
-    polyline: chain'in gercek sirali vertex'leri [[x,y], [x,y], ...] — canvas'ta
-              gorsel olarak dogru L/Z/U sekilli boru hatti cizimi icin."""
+    coords / polyline: DXF world coords (HAM unit — mm/cm/m). Sadece UI cizim
+    ve hit-test icin. Metraj her zaman `length` alanindan (metre) okunur."""
     segment_id: int
     layer: str
-    diameter: str = ""           # Layer-level kullanici girisi; bos = belirtilmemis
-    length: float = 0.0          # m (scale uygulanmis)
-    coords: list[float] = []     # [x1, y1, x2, y2] — DXF world coords (run endpoint'leri)
-    polyline: list[list[float]] = []  # [[x,y], ...] — chain'in gercek sekli
-    is_inherited: bool = False   # Legacy field — AI BFS miras esnekligi (her zaman False artik)
+    diameter: str = ""           # bos = atanmadi ('Capi Belirlenemeyenler' grubuna duser)
+    length: float = 0.0          # METRE (DXF world unit x scale)
+    coords: list[float] = []     # [x1, y1, x2, y2] — run endpoint'leri (ham DXF unit)
+    polyline: list[list[float]] = []  # [[x,y], ...] — chain'in gercek sekli (ham DXF unit)
+    is_inherited: bool = False   # True = inheritance pass'inden geldi (canvas'ta isaret icin)
 
 
 class MetrajResult(BaseModel):
@@ -74,7 +73,6 @@ class MetrajResult(BaseModel):
     branch_points: list[BranchPoint] = []
     edge_segments: list[EdgeSegment] = []  # her edge ayri — Canvas2D viewer icin
     junction_points: list[list[float]] = []  # T-junction [x, y] noktalari (degree>=3, marker icin)
-    sprinkler_detection: None = None  # Legacy field — AI sprinkler tespit kaldirildigi icin her zaman None
     # Birim auto-detect bilgisi (frontend "Algılanan: X" rozetinde gösterir)
     detected_unit: str = "mm"               # 'mm', 'cm', 'm', 'inch', 'feet'
     detected_scale: float = 0.001           # ham scale degeri (test/debug için)

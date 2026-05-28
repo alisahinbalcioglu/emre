@@ -6,6 +6,7 @@
  * calculatedEdges katmaninda buradan import eder — gorunru renkleri metraj
  * verisinden uretilir.
  */
+import { isUnassignedDiameter, diameterDisplayLabel, UNASSIGNED_LABEL } from './constants';
 
 /**
  * 12 belirgin renk — Tailwind 500-level, rainbow sirali, birbirine kontrast.
@@ -89,12 +90,12 @@ function hashToPaletteIndex(s: string): number {
 
 /**
  * Cap string'inden renk don.
- * Bos veya "Belirtilmemis" ise nötr gri (uyari yerine).
- * Ø50, DN50, 50, 2" hepsi AYNI renge denk gelir (nominal mm bazli).
+ * Atanmamis (bos, 'Belirtilmemis', UNASSIGNED_LABEL) -> notr gri.
+ * O50, DN50, 50, 2" hepsi AYNI renge denk gelir (nominal mm bazli).
  */
 export function diameterToColor(diameter: string): string {
-  if (!diameter || diameter === 'Belirtilmemis') {
-    return '#64748b'; // slate-500 nötr gri — atanmamis cap dikkati ana renklerle bozmasin
+  if (isUnassignedDiameter(diameter) || diameter === UNASSIGNED_LABEL) {
+    return '#64748b'; // slate-500 notr gri — atanmamis cap dikkati ana renklerle bozmasin
   }
   const normalized = diameter.trim();
   const mm = diameterToNumeric(normalized);
@@ -111,7 +112,7 @@ export function buildDiameterPalette(diameters: string[]): Array<{ diameter: str
   return uniq.map((d) => ({
     diameter: d,
     color: diameterToColor(d),
-    label: d || 'Belirtilmemis',
+    label: diameterDisplayLabel(d),
   }));
 }
 
