@@ -88,3 +88,6 @@ coverage/
 *.dxf
 !**/fixtures/**/*.dwg
 !**/fixtures/**/*.dxf
+
+# VPS otomatik yedekler (pg_dump ciktilari) — repo'ya girmesin
+backups/

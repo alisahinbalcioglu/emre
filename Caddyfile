@@ -1,0 +1,31 @@
+# ═════════════════════════════════════════════════════════════════
+#  MetaPrice — Caddy reverse proxy + otomatik HTTPS
+# ═════════════════════════════════════════════════════════════════
+#  Tek domain: /api/* → NestJS, digerleri → Next.js.
+#  Ayni origin oldugu icin CORS derdi yok. Sertifikayi Caddy Let's
+#  Encrypt'ten otomatik alir/yeniler (80 ve 443 acik olmali).
+# ═════════════════════════════════════════════════════════════════
+
+{
+    email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+    encode gzip
+
+    # NestJS API — global prefix zaten /api, path'i oldugu gibi iletiriz.
+    handle /api/* {
+        reverse_proxy backend:3001 {
+            # Buyuk DWG parse'lari 30-90sn surebilir — timeout'lari genis tut.
+            transport http {
+                read_timeout 600s
+                write_timeout 600s
+            }
+        }
+    }
+
+    # Geri kalan her sey → Next.js frontend
+    handle {
+        reverse_proxy frontend:3000
+    }
+}

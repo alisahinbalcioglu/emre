@@ -1,0 +1,125 @@
+# ═════════════════════════════════════════════════════════════════
+#  MetaPrice — Tek sunucu (VPS) docker-compose
+# ═════════════════════════════════════════════════════════════════
+#  Tum sistem tek kutuda:
+#    caddy      → 80/443, otomatik HTTPS, reverse proxy
+#    frontend   → Next.js  (ic port 3000)
+#    backend    → NestJS   (ic port 3001, /api)
+#    dwg-engine → Python   (ic port 10000, sadece ic ag)
+#    db         → Postgres 16 (kalici volume)
+#    backup     → gunluk pg_dump (14 gun saklar)
+#
+#  Kurulum:  cp .env.example .env  → degerleri doldur → docker compose up -d --build
+# ═════════════════════════════════════════════════════════════════
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  dwg-engine:
+    build:
+      context: ./backend/src/modules/dwg-engine/python
+    restart: unless-stopped
+    environment:
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN}
+      PORT: "10000"
+      WORKERS: "1"
+      PYTHONUNBUFFERED: "1"
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+    expose:
+      - "10000"
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: "7d"
+      # Ayni domain ama tarayici same-origin POST'ta bile Origin header yolluyor.
+      # main.ts allowlist'i env'den okur — domaini eklemezsek login reddedilir.
+      CORS_ORIGINS: https://${DOMAIN},https://www.${DOMAIN}
+      # Ic ag: http (https DEGIL) + servis adi. service.ts DWG_ENGINE_URL'i oldugu gibi kullanir.
+      DWG_ENGINE_URL: http://dwg-engine:10000
+      DWG_ENGINE_TOKEN: ${INTERNAL_API_TOKEN}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      PORT: "3001"
+      NODE_ENV: production
+    expose:
+      - "3001"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Ayni domain + /api → CORS yok. Caddy /api/* i backend'e yonlendirir.
+        NEXT_PUBLIC_API_URL: https://${DOMAIN}/api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+    expose:
+      - "3000"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - frontend
+      - backend
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  # Gunluk otomatik yedek — host crontab GEREKMEZ (paste sorununu by-pass eder).
+  # ./backups klasorune metaprice-YYYYMMDD-HHMMSS.sql.gz yazar, 14 gunden eskiyi siler.
+  backup:
+    image: postgres:16
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - ./backups:/backups
+    entrypoint:
+      - sh
+      - -c
+      - >
+        while true; do
+          echo "[backup] $$(date) dump basliyor";
+          pg_dump -h db -U $$POSTGRES_USER $$POSTGRES_DB | gzip > /backups/metaprice-$$(date +%Y%m%d-%H%M%S).sql.gz
+          && echo "[backup] tamam" || echo "[backup] HATA";
+          find /backups -name 'metaprice-*.sql.gz' -mtime +14 -delete;
+          sleep 86400;
+        done
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

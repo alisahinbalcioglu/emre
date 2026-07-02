@@ -1,0 +1,12 @@
+# Lokal (Windows) node_modules/dist ASLA image'a girmesin — Linux'ta yeniden kurulur
+node_modules
+dist
+npm-debug.log*
+.env
+.env.*
+# Python DWG engine ayri image olarak build edilir, backend image'ina gerek yok
+src/modules/dwg-engine/python
+# Git + editor
+.git
+.vscode
+*.log
