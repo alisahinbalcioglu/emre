@@ -1,12 +1,15 @@
 """DWG → DXF cevirici + DXF butunluk dogrulamasi.
 
 Akis (LibreDWG-only, ODA tamamen pasifleştirildi):
-  1. LibreDWG dwg2dxf — birincil (prod Docker'da kurulu, lokal/Windows'ta
-     opsiyonel). Source'tan derlenmiş LibreDWG /usr/local/bin/dwg2dxf.
-  2. ezdxf 1.4+ direct read — fallback (LibreDWG fail olursa)
-  3. Text-level header normalize (her zaman, ms olcusunde):
-       $ACADVER → AC1018, $DWGCODEPAGE → ANSI_1254, $INSUNITS → 4
-  4. Opt-in ezdxf butunluk dogrulamasi (DWG_CONVERTER_VALIDATE=1):
+  1. LibreDWG dwg2dxf — TEK DWG okuma yolu (prod Docker'da source'tan derli).
+     NOT: ezdxf DWG formatini OKUYAMAZ (ODA eklentisi gerektirir) — eski
+     "ezdxf direct read fallback" hicbir zaman calismayan olu koddu, SILINDI.
+  2. Text-level header normalize (her zaman, ms olcusunde):
+       $ACADVER → AC1018, $DWGCODEPAGE → ANSI_1254
+       $INSUNITS'e DOKUNULMAZ — orijinal birim bilgisi korunur ki
+       _detect_unit_from_dxf gercek birimi okuyabilsin (eskiden zorla 4/mm
+       yazilip "onerilen birim" her zaman mm cikiyordu — sahte oneriydi).
+  3. Opt-in ezdxf butunluk dogrulamasi (DWG_CONVERTER_VALIDATE=1):
        LTYPE pattern_tags, Turkce karakterler, entity override (6/48/62/370)
 
 ODA NEDEN PASIFLENDI: Render Docker image'inda ODA FileConverter yok
@@ -33,9 +36,10 @@ import ezdxf
 logger = logging.getLogger(__name__)
 
 # MetaPrice DXF profili - reference.dxf ile birebir esit olmali
+# NOT: $INSUNITS bilerek listede YOK — orijinal birim header'i degistirilmez
+# (birim tespiti icin ham deger lazim; secim zaten kullanicida).
 _TARGET_ACADVER = "AC1018"        # AutoCAD 2004
 _TARGET_CODEPAGE = "ANSI_1254"    # cp1254 - Turkce karakterler icin sart
-_TARGET_INSUNITS = 4              # millimeter
 _ODA_VERSION_TARGET = "ACAD2004"  # AC1018'e cevirir (ACAD2018 = AC1032, lossy downgrade)
 
 # Standart linetype'lar - validasyonda gozardi edilir
@@ -165,10 +169,10 @@ def _normalize_header(dxf_path: str, report: IntegrityReport) -> None:
         report.issues.append("DXF okunamadi (cp1254)")
         return
 
+    # $INSUNITS BILEREK normalize edilmez: birim tespiti orijinal degeri okur.
     for var_name, group_code, target, is_int in (
         ("$ACADVER", "1", _TARGET_ACADVER, False),
         ("$DWGCODEPAGE", "3", _TARGET_CODEPAGE, False),
-        ("$INSUNITS", "70", str(_TARGET_INSUNITS), True),
     ):
         text = _replace_header_value(text, var_name, group_code, target, is_int, report)
 
@@ -325,10 +329,10 @@ def _validate_with_ezdxf(dxf_path: str, report: IntegrityReport) -> None:
         return
 
     # 1. Header dogrulama (text normalize'tan sonra kalan sorunlar)
+    # $INSUNITS kontrol edilmez — orijinal deger bilerek korunuyor.
     for var, expected in (
         ("$ACADVER", _TARGET_ACADVER),
         ("$DWGCODEPAGE", _TARGET_CODEPAGE),
-        ("$INSUNITS", _TARGET_INSUNITS),
     ):
         try:
             actual = doc.header.get(var)
@@ -525,14 +529,14 @@ def _post_process(dxf_path: str) -> IntegrityReport:
 
 
 def convert_dwg_to_dxf(dwg_path: str) -> str:
-    """DWG dosyasini DXF'e cevirir. Cikti: AC1018, ANSI_1254, mm.
+    """DWG dosyasini DXF'e cevirir. Cikti: AC1018, ANSI_1254 ($INSUNITS orijinal kalir).
 
-    Akis (ODA pasiflendi — LibreDWG birincil):
-      1. LibreDWG dwg2dxf (Docker apt'ten /usr/local/bin'de) — birincil
-      2. ezdxf 1.4+ direct read — fallback
+    Akis: LibreDWG dwg2dxf — TEK yontem (Docker'da /usr/local/bin'de).
+    ezdxf "direct read" fallback'i SILINDI: ezdxf DWG okuyamaz (yalniz DXF),
+    o blok her zaman exception atan olu koddu.
 
     Donus: DXF dosya yolu.
-    Hata: RuntimeError - tum yontemler basarisiz olursa hatalar birlestirilir.
+    Hata: RuntimeError - LibreDWG basarisiz olursa (kullaniciya net mesaj).
 
     ODA NEDEN PASIF: Render Docker'da yok, lokal Windows'ta yuklu olsa bile
     tutarsiz davranis yaratiyordu. LibreDWG hem prod hem lokal'de calisir.
@@ -580,22 +584,11 @@ def convert_dwg_to_dxf(dwg_path: str) -> str:
             logger.warning("LibreDWG exception: %s — ezdxf fallback", str(e)[:200])
     else:
         errors.append("LibreDWG (dwg2dxf) PATH'te bulunamadi")
-        logger.warning("dwg2dxf binary'si yok — sadece ezdxf direct denenecek")
+        logger.error("dwg2dxf binary'si yok — DWG cevrilemez (ezdxf DWG okuyamaz)")
 
-    # Yontem 2: ezdxf direct read (1.4+ kismi DWG destegi) — FALLBACK
-    try:
-        doc = ezdxf.readfile(dwg_path)
-        doc.saveas(output_dxf)
-        if os.path.isfile(output_dxf) and os.path.getsize(output_dxf) > 100:
-            logger.info("ezdxf direct ile DWG -> DXF basarili (fallback): %s", output_dxf)
-            _post_process(output_dxf)
-            return output_dxf
-        errors.append("ezdxf: saveas sonrasi DXF olusmadi")
-    except Exception as e:
-        errors.append(f"ezdxf direct: {str(e)[:200]}")
-        logger.warning("ezdxf direct read fail: %s", str(e)[:200])
-
-    # Hepsi basarisiz — kullaniciya net rapor
+    # LibreDWG basarisiz — kullaniciya net rapor
+    # (Eski "ezdxf direct read" fallback'i kaldirildi: ezdxf DWG formatini
+    #  yapisal olarak okuyamaz, blok her zaman exception atiyordu.)
     error_summary = " | ".join(errors)
     raise RuntimeError(
         f"DWG dosyasi parse edilemedi. "

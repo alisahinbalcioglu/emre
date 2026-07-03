@@ -96,6 +96,7 @@ async def verify_internal_token(request: Request, call_next):
 # TTL kontrolu dosya mtime'i ile yapilir.
 
 import shutil
+import hashlib
 
 _CACHE_TTL = 900  # 15 dakika
 _CACHE_DIR = tempfile.gettempdir()
@@ -105,6 +106,13 @@ _CACHE_SUFFIX = ".dxf"
 # cagrildiginda ezdxf parse maliyetinden kac. OCERP pattern: entities.json
 # disk'e yazilir, GET sadece json.load(f). ~50ms cache hit vs ~2-5sn parse.
 _GEOMETRY_CACHE_SUFFIX = ".geom.json"
+# Upload state dosyasi — eski in-memory _UPLOAD_STATES dict'in yerini aldi.
+# Diskte olmasi: (1) worker restart'inda state kaybolmaz, (2) WORKERS>1
+# oldugunda tum worker'lar ayni state'i gorur, (3) RAM'de sinirsiz buyume
+# olmaz (TTL cleanup ayni anda state'i de siler).
+_STATE_SUFFIX = ".state.json"
+# Ham yuklenen dosya (dwg/dxf) — donusum background'da yapilir, kaynak burada.
+_SRC_INFIX = ".src."
 
 
 def _cache_path(file_id: str) -> str:
@@ -117,14 +125,65 @@ def _geometry_cache_path(file_id: str) -> str:
     return os.path.join(_CACHE_DIR, f"{_CACHE_PREFIX}{file_id}{_GEOMETRY_CACHE_SUFFIX}")
 
 
+def _state_path(file_id: str) -> str:
+    """file_id → upload state JSON path."""
+    return os.path.join(_CACHE_DIR, f"{_CACHE_PREFIX}{file_id}{_STATE_SUFFIX}")
+
+
+def _src_path(file_id: str, ext: str) -> str:
+    """file_id → ham yuklenen dosyanin (henuz donusmemis) path'i."""
+    return os.path.join(_CACHE_DIR, f"{_CACHE_PREFIX}{file_id}{_SRC_INFIX}{ext}")
+
+
+def _read_state(file_id: str) -> dict | None:
+    """Upload state'ini diskten oku. Yoksa/bozuksa None."""
+    try:
+        with open(_state_path(file_id), "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else None
+    except (OSError, json.JSONDecodeError, ValueError):
+        return None
+
+
+def _write_state(file_id: str, state: dict) -> None:
+    """Upload state'ini ATOMIK yaz (tmp + os.replace) — yarim okuma olmasin."""
+    path = _state_path(file_id)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(_json_safe(state), f, ensure_ascii=False)
+    os.replace(tmp, path)
+
+
+def _iter_states() -> list[tuple[str, dict]]:
+    """Diskteki tum upload state'lerini (file_id, state) olarak don.
+
+    Cache dizini TTL cleanup sayesinde kucuk kalir (tipik <20 kayit),
+    linear tarama dedup + debug icin yeterince ucuz.
+    """
+    out: list[tuple[str, dict]] = []
+    try:
+        for fname in os.listdir(_CACHE_DIR):
+            if not (fname.startswith(_CACHE_PREFIX) and fname.endswith(_STATE_SUFFIX)):
+                continue
+            file_id = fname[len(_CACHE_PREFIX):-len(_STATE_SUFFIX)]
+            st = _read_state(file_id)
+            if st is not None:
+                out.append((file_id, st))
+    except OSError:
+        pass
+    return out
+
+
 def _cleanup_cache() -> None:
-    """TTL'i gecmis cache dosyalarini disk'ten sil (hem DXF hem geometry JSON)."""
+    """TTL'i gecmis cache dosyalarini sil (DXF + geometry JSON + state + src).
+
+    Prefix bazli: dwg_cache_* ile baslayan HER dosya TTL'e tabi — boylece
+    state.json ve .src.* artiklari da temizlenir (RAM/disk sismesi onlenir).
+    """
     now = time.time()
     try:
         for fname in os.listdir(_CACHE_DIR):
             if not fname.startswith(_CACHE_PREFIX):
-                continue
-            if not (fname.endswith(_CACHE_SUFFIX) or fname.endswith(_GEOMETRY_CACHE_SUFFIX)):
                 continue
             fpath = os.path.join(_CACHE_DIR, fname)
             try:
@@ -220,8 +279,8 @@ def extract_layer_info(dxf_path: str) -> LayerListResult:
 def extract_layer_info_from_doc(doc) -> LayerListResult:
     """ezdxf doc'undan layer cikart — TEK PARSE icin paylasilmis doc kullanir.
 
-    `_background_parse` bu fonksiyonu cagirir; ezdxf.readfile sadece bir kez
-    yapilir (extract_geometry_from_doc ile ayni doc paylasilir).
+    `upload_worker.py` (izole subprocess) bu fonksiyonu cagirir; ezdxf.readfile
+    sadece bir kez yapilir (extract_geometry_from_doc ile ayni doc paylasilir).
     """
     msp = doc.modelspace()
 
@@ -625,9 +684,10 @@ def debug_raw_state(file_id: str):
     /status ILE AYNI YAKLASIMI uygula: Response(json.dumps(...)) ile
     FastAPI encoder pipeline'i bypass.
     """
-    state = _UPLOAD_STATES.get(file_id)
+    state = _read_state(file_id)
     if state is None:
-        body = json.dumps({"error": "file_id bilinmiyor", "all_keys": list(_UPLOAD_STATES.keys())[:10]})
+        all_ids = [fid for fid, _ in _iter_states()][:10]
+        body = json.dumps({"error": "file_id bilinmiyor", "all_keys": all_ids})
         return Response(content=body, media_type="application/json")
     safe = _json_safe(state)
     body = json.dumps(safe, allow_nan=False, ensure_ascii=False).encode('utf-8')
@@ -638,7 +698,7 @@ def debug_raw_state(file_id: str):
 def debug_status_deep(file_id: str):
     """/status'tan farkli olarak field-by-field JSON test yapar + detayli rapor."""
     import traceback
-    state = _UPLOAD_STATES.get(file_id)
+    state = _read_state(file_id)
     if state is None:
         return {"error": "file_id bilinmiyor"}
 
@@ -671,14 +731,16 @@ def debug_status_deep(file_id: str):
 
 @app.get("/debug/info")
 def debug_info():
-    """Diagnostic endpoint: _UPLOAD_STATES keys + sizes, memory usage, cache.
+    """Diagnostic endpoint: disk state dosyalari + memory usage + cache.
 
     Production debugging icin — Render Logs erisilmediginde state'i
     inceleyebilmek icin. Authentication YOK (engine internal token zaten var).
     """
+    states_list: list = []
     try:
+        states_list = _iter_states()
         state_summary = []
-        for fid, st in list(_UPLOAD_STATES.items())[:20]:  # max 20
+        for fid, st in states_list[:20]:  # max 20
             try:
                 state_summary.append({
                     "file_id": fid,
@@ -733,7 +795,7 @@ def debug_info():
             or os.environ.get("BUILD_SHA")
             or "local"
         )[:16],
-        "states_count": len(_UPLOAD_STATES),
+        "states_count": len(states_list),
         "states": state_summary,
         "memory": mem_info,
         "cached_dxf_files": cached_files,
@@ -808,18 +870,22 @@ def get_geometry(
 
 
 # ═══════════════════════════════════════════════════════
-#  F5C — ASYNC UPLOAD PATTERN (OCERP-style)
+#  ASYNC UPLOAD PATTERN (OCERP-style) — v2.3
 # ═══════════════════════════════════════════════════════
-# POST /upload → 2sn'de file_id doner, parse arka planda asyncio.to_thread
-# ile calisir. GET /status/{file_id} ile durumu sorulur. Hazir olunca
-# /geometry/{file_id} cache hit ile 50ms doner.
+# POST /upload → dosyayi diske yazar, 1-2sn'de file_id doner. DWG→DXF
+# donusumu + ezdxf parse TAMAMEN izole subprocess'te (upload_worker.py)
+# arka planda kosar. GET /status/{file_id} ile durum sorulur. Hazir olunca
+# /geometry/{file_id} cache hit ile ~50ms doner.
+#
+# State artik DISKTE (_state_path) — eski in-memory _UPLOAD_STATES dict
+# kaldirildi: restart'ta kaybolmuyor, WORKERS>1'e hazir, RAM'de buyumuyor.
 
 import asyncio
 
-# Memory-resident state: file_id → {"status", "started_at", "layers"?, "extents"?, "error"?}
-# WORKERS=1 oldugu icin per-worker dict yeterli. Restart durumunda kaybolur
-# (kullanici dosyayi yeniden yukler — kabul edilebilir trade-off).
-_UPLOAD_STATES: dict[str, dict] = {}
+# /upload dedup kritik bolgesi icin lock: ayni hash'li es zamanli iki istekten
+# yalniz biri yeni pipeline baslatir. (Process-ici lock; WORKERS=1'de tam
+# guvence, WORKERS>1'de pencere cok kucuk — state dosyasi yine tekilligi saglar.)
+_UPLOAD_LOCK = asyncio.Lock()
 
 
 def _clean_surrogates(s: str) -> str:
@@ -958,6 +1024,60 @@ def _run_parse_subprocess(dxf_path: str, params: dict, timeout: int = 180) -> di
     raise RuntimeError(f"Subprocess hata (exit {proc.returncode}): {err_short or 'no stderr'}")
 
 
+def _run_upload_subprocess(file_id: str, src_path: str, timeout: int = 600) -> dict:
+    """Upload pipeline'ini (DWG→DXF + tek ezdxf parse + geometry cache) IZOLE
+    subprocess'te calistir — OOM-safe.
+
+    Eskiden _background_parse ana worker icinde to_thread ile kosuyordu:
+    devasa dosyada OOM olursa MOTORUN TAMAMI oluyordu (tum kullanicilarin
+    state'i gidiyordu). Simdi /parse'taki desenin aynisi: cocuk process olur,
+    parent saglam kalir, state'e net hata yazilir.
+
+    Iletisim: stdin JSON {src_path, dxf_out, geom_out} → stdout JSON sonuc.
+    Exit: 0 basarili | 1 hata (stderr) | -9/137 OOM kill.
+    """
+    import subprocess as _sp
+
+    worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "upload_worker.py")
+    if not os.path.isfile(worker_path):
+        raise RuntimeError(f"upload_worker.py bulunamadi: {worker_path}")
+
+    payload = json.dumps({
+        "src_path": src_path,
+        "dxf_out": _cache_path(file_id),
+        "geom_out": _geometry_cache_path(file_id),
+    })
+
+    try:
+        proc = _sp.run(
+            [sys.executable, worker_path],
+            input=payload,
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+        )
+    except _sp.TimeoutExpired:
+        logging.error("upload_worker timeout (%ds) for %s", timeout, src_path)
+        raise RuntimeError(f"Islem zaman asimi ({timeout}s) — dosya cok buyuk/kompleks olabilir")
+
+    if proc.returncode == 0:
+        try:
+            return json.loads(proc.stdout)
+        except json.JSONDecodeError as je:
+            logging.error("upload_worker stdout JSON degil: %s\nstdout[:500]: %s", je, proc.stdout[:500])
+            raise RuntimeError(f"Subprocess sonuc JSON degil: {str(je)[:200]}")
+
+    err_short = (proc.stderr or "")[:500]
+    if proc.returncode in (-9, 137):
+        logging.error("upload_worker OOM-killed (exit %d) for %s", proc.returncode, src_path)
+        raise RuntimeError(
+            "Dosya islenirken bellek yetersiz kaldi (OOM). "
+            "Dosya cok buyuk — mumkunse gereksiz layer'lari temizleyip yeniden deneyin."
+        )
+    logging.error("upload_worker fail (exit %d): %s", proc.returncode, err_short)
+    raise RuntimeError(f"Islem hatasi (exit {proc.returncode}): {err_short or 'no stderr'}")
+
+
 def _safe_response(obj):
     """Endpoint return helper: FastAPI encoder pipeline'ini BYPASS et.
 
@@ -1016,50 +1136,33 @@ def _detect_unit_from_dxf(doc) -> tuple[float, str]:
 
 
 
-def _background_parse(file_id: str, dxf_path: str) -> None:
-    """Background parse — layers + entities + geometry cache'i TEK ezdxf parse ile.
-    Sync function; caller asyncio.to_thread ile cagiriyor.
+def _background_pipeline(file_id: str, src_path: str) -> None:
+    """Background pipeline orkestratoru — sync function, asyncio.to_thread ile cagrilir.
 
-    KRITIK FIX (14.05.2026): Daha onceden bu fonksiyonda 3 KEZ ezdxf.readfile
-    cagriliyordu (birim icin + extract_layer_info icin + extract_geometry icin)
-    — toplam 90sn+ aliyordu! Simdi TEK readfile, sonuc 3 fonksiyona
-    paylasilmis doc olarak gecirilir (3x hizlanma).
+    AGIR ISIN TAMAMI (DWG→DXF donusumu + ezdxf parse + geometry cache)
+    upload_worker.py SUBPROCESS'inde kosar; bu fonksiyon sadece subprocess'i
+    bekler ve sonucu state dosyasina yazar. OOM/timeout olursa yalniz cocuk
+    olur — motor ve diger kullanicilarin state'leri SAGLAM kalir.
     """
+    prev = _read_state(file_id) or {}
+    started_at = prev.get("started_at", time.time())
+    file_hash = prev.get("hash")
     try:
-        # TEK ezdxf parse — 30sn yerine 90sn'lik 3x parse'tan kurtulduk
-        doc = read_dxf(dxf_path)
-        scale, label = _detect_unit_from_dxf(doc)
-
-        # 1. Layers (paylasilan doc'tan)
-        layer_result = extract_layer_info_from_doc(doc)
-        # 2. Geometry (paylasilan doc'tan) → entities.json'a yaz
-        geom_result = extract_geometry_from_doc(doc, None)
-        geom_cache = _geometry_cache_path(file_id)
-        # Pydantic v2 safe: model_dump mode='json' nested model'leri serialize eder
-        try:
-            data = geom_result.model_dump(mode='json')
-        except (AttributeError, TypeError):
-            # Pydantic v1 fallback
-            data = geom_result.dict()
-        with open(geom_cache, "w", encoding="utf-8") as gf:
-            json.dump(data, gf)
-        # 3. State: ready
-        _UPLOAD_STATES[file_id] = {
+        result = _run_upload_subprocess(file_id, src_path, timeout=600)
+        _write_state(file_id, {
             "status": "ready",
-            "started_at": _UPLOAD_STATES.get(file_id, {}).get("started_at", time.time()),
+            "hash": file_hash,
+            "started_at": started_at,
             "completed_at": time.time(),
-            "layers": [l.model_dump() if hasattr(l, "model_dump") else l.dict() for l in (layer_result.layers or [])],
-            "total_layers": layer_result.total_layers,
-            "suggested_scale": scale,
-            "suggested_unit_label": label,
-            "entity_count": getattr(geom_result, "entity_count", None),
-        }
+            "layers": result.get("layers") or [],
+            "total_layers": result.get("total_layers", 0),
+            "suggested_scale": result.get("suggested_scale", 0.001),
+            "suggested_unit_label": result.get("suggested_unit_label", "mm"),
+            "entity_count": result.get("entity_count"),
+        })
     except BaseException as e:
-        # BULLETPROOF error handler — hicbir koshulda exception fırlatma,
-        # state mutlaka "error" olarak yazilsin. BaseException yakalanir
-        # (Exception + KeyboardInterrupt + SystemExit hepsi) cunku thread
-        # icinde unhandled exception olusursa frontend hicbir zaman
-        # net hata mesaji goremiyor.
+        # BULLETPROOF error handler — hicbir kosulda exception firlatma,
+        # state mutlaka "error" olarak yazilsin ki frontend net mesaj gorsun.
         err_type = "UnknownError"
         safe_msg = "Bilinmeyen hata"
         try:
@@ -1075,58 +1178,56 @@ def _background_parse(file_id: str, dxf_path: str) -> None:
             except BaseException:
                 safe_msg = f"<exception while stringifying {err_type}>"
         try:
-            logging.exception("Background parse failed for file_id=%s", file_id)
+            logging.exception("Background pipeline failed for file_id=%s", file_id)
         except BaseException:
             pass
         try:
-            existing_start = _UPLOAD_STATES.get(file_id, {}).get("started_at", time.time())
-        except BaseException:
-            existing_start = time.time()
-        try:
-            _UPLOAD_STATES[file_id] = {
+            _write_state(file_id, {
                 "status": "error",
-                "started_at": existing_start,
+                "hash": file_hash,
+                "started_at": started_at,
                 "completed_at": time.time(),
                 "error_type": err_type,
                 "error": safe_msg,
-            }
+            })
         except BaseException:
-            # En son care: en azindan flag ata
-            try:
-                _UPLOAD_STATES[file_id] = {
-                    "status": "error",
-                    "error_type": "CriticalStateWriteFail",
-                    "error": "State guncellenemedi",
-                }
-            except BaseException:
-                pass
+            pass
+    finally:
+        # Ham kaynak dosya artik gereksiz (basarida worker DXF'i cache'e yazdi,
+        # hatada kullanici yeniden yukleyecek). Diski sisirme.
+        try:
+            if os.path.isfile(src_path):
+                os.unlink(src_path)
+        except OSError:
+            pass
 
 
 @app.post("/upload")
 async def upload_async(file: UploadFile = File(...)):
-    """Async upload — file save + cache + background parse task. **2sn'de doner.**
+    """Async upload — dosyayi DISKE yazar, file_id ile HEMEN doner (~1-2sn).
 
-    OCERP pattern: kullanici parse'i beklemez, file_id alir, /status ile takip eder.
+    v2.3 (PRD): DWG→DXF donusumu ARTIK bu istegin icinde DEGIL — eskiden
+    LibreDWG donusumu burada senkron kosuyordu (buyuk DWG'de 30-120sn),
+    NestJS 30/60sn'de bagantiyi koparip 503 uretiyordu. Simdi donusum de
+    parse da upload_worker.py subprocess'inde arka planda.
 
-    F5C-bugfix (14.05.2026): Daha onceden ezdxf.readfile burada cagriliyordu
-    sadece INSUNITS header'i icin — ama ezdxf TUM dosyayi parse ediyor, 30-60sn
-    suruyordu. ARTIK: endpoint anlik doner, INSUNITS detection background
-    task'a tasindi (/status'tan gelir).
+    DEDUP (PRD 3.1): Ayni icerik (sha256) zaten processing/ready ise YENI
+    pipeline baslatilmaz, mevcut file_id doner. Boylece frontend retry'lari
+    sunucuda LibreDWG surecini katlamaz ("kendi kendine DDoS" biter).
 
-    Response (2sn): {file_id, status: "processing"}
+    Response: {file_id, status: "processing"|"ready", dedup?: true}
     """
     if not file.filename:
         raise HTTPException(400, "Dosya adi eksik")
+
+    ext = file.filename.lower().rsplit('.', 1)[-1] if '.' in file.filename else ''
+    if ext not in ("dwg", "dxf"):
+        raise HTTPException(400, f"Desteklenmeyen format: .{ext}. Sadece .dwg ve .dxf kabul edilir.")
 
     content = await file.read()
 
     # ── DWG VERSION LOG (sadece teshis amacli, reddetmiyoruz) ───────
     # LibreDWG R2013'e (AC1027) kadar tam, R2018+ (AC1032) icin kismi destek.
-    # Onceden AC1032+ erken reddediyordu (b2df5f8) — kullanici "her version
-    # acilmasi gerek" dedi, hakli. Reddetme kaldirildi.
-    # Version log'lanir; LibreDWG dener; basarisiz olursa kullanici net hata
-    # mesaji aliyor (bulletproof handler sayesinde, d6c1465).
-    ext = file.filename.lower().rsplit('.', 1)[-1] if '.' in file.filename else ''
     if ext == 'dwg' and len(content) >= 6:
         try:
             ver = content[:6].decode('ascii', errors='replace')
@@ -1134,23 +1235,48 @@ async def upload_async(file: UploadFile = File(...)):
         except Exception:
             pass
 
+    file_hash = hashlib.sha256(content).hexdigest()[:16]
+
     try:
-        dxf_path = _prepare_dxf(content, file.filename)
-        file_id = _cache_dxf(dxf_path)
-        cache_path = _cache_path(file_id)
+        # Kritik bolge: dedup taramasi + state yazimi atomik olsun ki ayni
+        # dosyanin es zamanli iki upload'i cift pipeline baslatmasin.
+        async with _UPLOAD_LOCK:
+            _cleanup_cache()
 
-        # State: processing (suggested_scale/label background task'tan gelecek)
-        _UPLOAD_STATES[file_id] = {
-            "status": "processing",
-            "started_at": time.time(),
-            # Default mm — frontend "ready" gelene kadar bu kullanilir; sonra
-            # background task gercek INSUNITS degerini state'e yazar.
-            "suggested_scale": 0.001,
-            "suggested_unit_label": "mm",
-        }
+            # ── DEDUP: ayni hash zaten islemde/hazir mi? ──
+            for fid, st in _iter_states():
+                if st.get("hash") != file_hash:
+                    continue
+                status = st.get("status")
+                if status == "ready" and os.path.isfile(_cache_path(fid)):
+                    logging.info("Upload dedup (ready): %s → %s", file.filename, fid)
+                    return {"file_id": fid, "status": "ready", "dedup": True}
+                if status == "processing" and (
+                    os.path.isfile(_src_path(fid, ext)) or os.path.isfile(_cache_path(fid))
+                ):
+                    logging.info("Upload dedup (processing): %s → %s", file.filename, fid)
+                    return {"file_id": fid, "status": "processing", "dedup": True}
+                # status=error veya dosyalar kaybolmus → dedup etme, yeniden isle
 
-        # Background task — main loop bloklanmaz, ezdxf parse arka planda
-        asyncio.create_task(asyncio.to_thread(_background_parse, file_id, cache_path))
+            # ── Yeni pipeline: ham dosyayi diske yaz + state + spawn ──
+            file_id = uuid.uuid4().hex[:12]
+            src_path = _src_path(file_id, ext)
+            with open(src_path, "wb") as sf:
+                sf.write(content)
+
+            _write_state(file_id, {
+                "status": "processing",
+                "hash": file_hash,
+                "started_at": time.time(),
+                # Frontend "ready" gelene kadar bunlari kullanir; worker gercek
+                # $INSUNITS degerini okuyup state'e yazar (artik ezilmiyor).
+                "suggested_scale": 0.001,
+                "suggested_unit_label": "mm",
+            })
+
+        # Agir is: izole subprocess (upload_worker.py) — event loop bloklanmaz,
+        # OOM olsa bile yalniz cocuk process olur.
+        asyncio.create_task(asyncio.to_thread(_background_pipeline, file_id, src_path))
 
         return {
             "file_id": file_id,
@@ -1178,7 +1304,7 @@ async def get_upload_status(file_id: str):
     "error" field'inda.
     """
     try:
-        state = _UPLOAD_STATES.get(file_id)
+        state = _read_state(file_id)
         if state is None:
             raise HTTPException(404, "file_id bilinmiyor (cache TTL gecmis olabilir)")
 

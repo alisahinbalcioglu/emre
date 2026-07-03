@@ -708,9 +708,13 @@ def extract_geometry_from_doc(doc, layer_filter: set[str] | None = None) -> Geom
                     if ctx is not None:
                         leaders = getattr(ctx, "leaders", None) or []
                         for ldr in leaders:
-                            lines = getattr(ldr, "lines", None) or []
+                            # DIKKAT: dis scope'taki `lines` (GeometryLine listesi)
+                            # ile AYNI ISMI KULLANMA — onceki isim `lines` idi ve
+                            # ana geometri listesini eziyordu (Pydantic ValidationError:
+                            # "lines.0 ... input_type=LeaderLine"). Izole isim sart.
+                            ldr_lines = getattr(ldr, "lines", None) or []
                             found = False
-                            for ln in lines:
+                            for ln in ldr_lines:
                                 verts = list(getattr(ln, "vertices", []) or [])
                                 if verts:
                                     v = verts[0]

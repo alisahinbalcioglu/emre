@@ -323,8 +323,9 @@ export class DwgEngineService {
   }
 
   /**
-   * F5C — Async upload (OCERP pattern). 2sn icinde Python file_id doner,
-   * parse arka planda. Frontend /status ile poll eder.
+   * Async upload (OCERP pattern). Python dosyayi diske yazip file_id doner
+   * (~1-2sn); DWG→DXF donusumu + parse izole subprocess'te arka planda.
+   * Frontend /status ile poll eder.
    */
   async uploadAsync(fileBuffer: Buffer, fileName: string) {
     const factory = (timeoutMs: number): RequestInit => {
@@ -343,8 +344,13 @@ export class DwgEngineService {
       const response = await this.fetchWithRetry(
         `${this.pythonServiceUrl}/upload`,
         factory,
-        30_000,  // 30sn initial — sadece file save + task queue, parse arka planda
-        60_000,  // retry 60sn — cold start ihtimaline karsi
+        // PRD 2.4 — timeout hizalama: Python /upload artik LibreDWG donusumu
+        // YAPMIYOR (izole subprocess'e tasindi), sadece disk yazimi + spawn.
+        // 15sn ic-ag dosya transferi icin bol pay. Toplam en kotu senaryo
+        // 15+2+30=47sn < frontend axios 120sn — katmanlar artik CAKISMAZ,
+        // eski 30/60sn ile buyuk DWG'de olusan 503 zinciri kalkti.
+        15_000,
+        30_000,
         'uploadAsync',
       );
       if (!response.ok) {

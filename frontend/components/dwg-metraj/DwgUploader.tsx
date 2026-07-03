@@ -53,10 +53,11 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Birim secimi — /layers cevabindan sonra dialog acilir (backend onerisi default)
+  // Birim secimi — parse bitince dialog acilir. Birim TAMAMEN kullanici
+  // secimi (PRD: "onerilen birim" gosterimi kaldirildi — organik tespit
+  // degil, sabit mm yaziyordu).
   const [pendingUnitChoice, setPendingUnitChoice] = useState<{
     fileId: string;
-    suggestedUnitLabel: string;
   } | null>(null);
   const [selectedUnit, setSelectedUnit] = useState<number>(0.001);  // mm varsayilan (sistem tahmin etmez; kullanici degistirir)
 
@@ -262,23 +263,21 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
         throw new Error(`Parse zaman asimi (${POLL_MAX_MS / 1000}sn)`);
       }
 
-      // 3) Sonuc — /layers'in dondurdugu sekille uyumlu olarak normalize et.
-      // Birim = kullanici sorumlulugu. suggested_unit_label sadece BILGI amacli
-      // toast'ta gosterilir; selectedUnit varsayilan mm (kullanici dropdown'dan
-      // degistirir). Sistem birimi TAHMIN ETMEZ.
-      const suggestedLabel = statusData.suggested_unit_label ?? 'mm';
+      // 3) Sonuc — birim TAMAMEN kullanici secimi. "Onerilen birim" toast'i
+      // KALDIRILDI (PRD): eski gosterim organik tespit degildi, header'a
+      // zorla yazilan sabit mm'i geri okuyordu. Kullanici dialogdan secer.
       const totalLayers = statusData.total_layers ?? (statusData.layers?.length ?? 0);
       setSelectedUnit(opts.override ?? 0.001);  // mm varsayilan
 
       toast({
         title: 'Proje hazirlandi',
-        description: `${totalLayers} layer · ${suggestedLabel} birimi`,
+        description: `${totalLayers} layer`,
       });
 
       if (opts.skipDialog) {
         setFileId(uploadFileId);
       } else {
-        setPendingUnitChoice({ fileId: uploadFileId, suggestedUnitLabel: suggestedLabel });
+        setPendingUnitChoice({ fileId: uploadFileId });
       }
     } catch (e: any) {
       const msg = e?.response?.data?.message ?? e?.response?.data?.detail ?? e?.message ?? 'Proje yuklenemedi';
