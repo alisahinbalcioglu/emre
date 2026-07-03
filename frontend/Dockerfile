@@ -10,8 +10,9 @@ FROM node:20-slim
 WORKDIR /app
 
 # Bagimliliklar (build icin devDeps de lazim — NODE_ENV'i build'den sonra set ediyoruz)
+# --legacy-peer-deps: @cloudflare/next-on-pages + wrangler peer-dep catismasini bypass et
 COPY package*.json ./
-RUN npm install
+RUN npm install --legacy-peer-deps
 
 # Kaynak
 COPY . .

@@ -25,7 +25,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Layer cache: once bagimliliklar
 COPY package*.json ./
-RUN npm install --include=dev
+RUN npm install --include=dev --legacy-peer-deps
 
 # Sonra kaynak — prisma generate + nest build
 COPY . .
