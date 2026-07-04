@@ -31,7 +31,8 @@
     "react-dom": "^18.3.0",
     "tailwind-merge": "^2.2.2",
     "tailwindcss-animate": "^1.0.7",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "zustand": "^4.5.7"
   },
   "devDependencies": {
     "@cloudflare/next-on-pages": "^1.13.5",

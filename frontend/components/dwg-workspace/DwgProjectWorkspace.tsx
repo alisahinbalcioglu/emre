@@ -26,11 +26,13 @@ import EquipmentDetailPopup from './EquipmentDetailPopup';
 import { useWorkspaceState } from './useWorkspaceState';
 import type { MarkedEquipment, CalculatedLayer } from './types';
 import {
-  useProximityCalc,
+  useLayerCalc,
   useOriginalColorState,
   DiameterLegendPanel,
 } from '@/components/dwg-diameter-engine';
+import { BucketPanel, useActiveBucket } from '@/components/dwg-tagging';
 import { diameterToColor } from '@/components/dwg-metraj/diameter-colors';
+import { isUnassignedDiameter } from '@/components/dwg-metraj/constants';
 import { exportMetrajToExcel, type MetrajSheet } from '@/lib/metraj-excel';
 
 interface DwgProjectWorkspaceProps {
@@ -177,27 +179,34 @@ export default function DwgProjectWorkspace({
 
   const [calculating, setCalculating] = useState(false);
 
-  // ── PRD: deterministic proximity caplandirma + dinamik renk save flow ───
-  // useProximityCalc: tek layer icin /parse?use_proximity_diameter=true tetikle.
+  // ── MANUEL ETIKETLEME AKISI (operasyon: otomatik proximity KALDIRILDI) ──
+  // useLayerCalc: tek layer icin SAF geometri+uzunluk hesabi (/parse — cap
+  // atamasi YOK, tum segmentler capsiz/neon gelir).
   // useOriginalColorState: save sonrasi viewer'da cap-renk kapat (PRD §5).
   const { useDiameterColors, enableDiameterColors, restoreOriginalColors } = useOriginalColorState();
-  const { calculatingLayer, calculateLayer: calculateLayerByProximity } = useProximityCalc({
+  const { calculatingLayer, calculateLayer } = useLayerCalc({
     fileId,
     scale,
     sprinklerLayers: state.sprinklerLayers,
     onResult: ({ calculated }) => {
       addCalculatedLayer(calculated);
-      enableDiameterColors();  // Yeni hesaplama -> cap renkleri aktif
+      enableDiameterColors();  // Yeni hesaplama -> cap renkleri aktif (capsizlar neon)
     },
-    // Engine cache resetlendiginde (Cloud Run revision switch, TTL 15dk asimi):
-    // localStorage'daki file_id artik gecersiz. Parent onReset() ile DwgUploader'a
-    // donerek kullaniciya dosyayi yeniden yukletir. Toast useProximityCalc icinde.
+    // Engine cache resetlendiginde (TTL 15dk / deploy): localStorage'daki
+    // file_id gecersiz. Parent onReset() ile DwgUploader'a doner.
     onFileIdInvalid: () => {
       onReset();
     },
   });
 
   const [editingSegment, setEditingSegment] = useState<EdgeSegment | null>(null);
+
+  // ── TIKLA-ETIKETLE (bucket) ─────────────────────────────────────────────
+  // Aktif kalem varken cizimde boruya tik = capi dogrudan ata (popup yok).
+  // tagFlash: SEGMENT IZOLASYONU teyidi — tiklanan run ~900ms kalem rengiyle
+  // parlar, uc noktalari (T-noktalari arasi sinirlar) vurgulanir.
+  const activeBucket = useActiveBucket();
+  const [tagFlash, setTagFlash] = useState<{ segmentId: number; color: string; at: number } | null>(null);
 
   // Cap Renkleri legend'i SADECE onaysiz layer'larin caplarini gosterir.
   // Onaylanan layer kullanici icin "bitti" sayilir; cap listesi karismasin.
@@ -210,6 +219,39 @@ export default function DwgProjectWorkspace({
     }
     return map;
   }, [state.calculatedLayers]);
+
+  // EKSIK PARCA TESPITI: bekleyen layer'lardaki capsiz segment sayisi.
+  // Viewer bunlari NEON cizer; BucketPanel rozet + toplu-uygula gosterir.
+  const unassignedPendingCount = useMemo(() => {
+    let n = 0;
+    for (const cl of Object.values(pendingCalculatedLayers)) {
+      for (const es of cl.edgeSegments) {
+        if (isUnassignedDiameter(es.diameter)) n += 1;
+      }
+    }
+    return n;
+  }, [pendingCalculatedLayers]);
+
+  /** Aktif kalemi TUM capsiz segmentlere toplu uygula. Secili layer hesaplanmis
+   *  ve onaysizsa yalniz ona; degilse tum bekleyen layer'lara. (Eski backend
+   *  layer-default fallback'inin kullanici-tetikli karsiligi.) */
+  const applyBucketToUnassigned = useCallback((diameter: string) => {
+    const selCl = state.selectedLayer ? state.calculatedLayers[state.selectedLayer] : null;
+    const targets = selCl && !selCl.approved ? [selCl] : Object.values(pendingCalculatedLayers);
+    let n = 0;
+    for (const cl of targets) {
+      for (const es of cl.edgeSegments) {
+        if (isUnassignedDiameter(es.diameter)) {
+          updateEdgeSegmentDiameter(cl.layer, es.segment_id, diameter);
+          n += 1;
+        }
+      }
+    }
+    toast({
+      title: 'Toplu çap uygulandı',
+      description: `${n} çapsız segment → ${diameter}${selCl && !selCl.approved ? ` (${selCl.layer})` : ' (tüm bekleyen layerlar)'}`,
+    });
+  }, [state.selectedLayer, state.calculatedLayers, pendingCalculatedLayers, updateEdgeSegmentDiameter]);
 
   // ── CAP RENKLERI LISTE NAVIGATION ──────────────────────────────────────
   // Legend'da bir cap'e tiklayinca o cap'in segment'leri arasinda dolas.
@@ -424,7 +466,6 @@ export default function DwgProjectWorkspace({
             selected_layers: JSON.stringify(batch),
             layer_hat_tipi: '{}',
             layer_material_type: '{}',
-            layer_default_diameter: '{}',
             sprinkler_layers: JSON.stringify(state.sprinklerLayers),
           });
           const formData = new FormData();
@@ -528,8 +569,7 @@ export default function DwgProjectWorkspace({
       const hatTipiMap: Record<string, string> = { [layer]: cfg.hatIsmi || layer };
       const materialTypeMap: Record<string, string> = {};
       if (cfg.materialType) materialTypeMap[layer] = cfg.materialType;
-      const defaultDiameterMap: Record<string, string> = {};
-      if (cfg.defaultDiameter.trim()) defaultDiameterMap[layer] = cfg.defaultDiameter.trim();
+      // layer_default_diameter KALDIRILDI — cap atamasi manuel (dwg-tagging)
 
       const params = new URLSearchParams({
         discipline: 'mechanical',
@@ -538,7 +578,6 @@ export default function DwgProjectWorkspace({
         selected_layers: JSON.stringify([layer]),
         layer_hat_tipi: JSON.stringify(hatTipiMap),
         layer_material_type: JSON.stringify(materialTypeMap),
-        layer_default_diameter: JSON.stringify(defaultDiameterMap),
         sprinkler_layers: JSON.stringify(state.sprinklerLayers),
       });
 
@@ -681,6 +720,20 @@ export default function DwgProjectWorkspace({
         variant: 'destructive',
       });
       return;
+    }
+
+    // EKSIK PARCA GUARD: onayli layer'larda capsiz segment kaldiysa kullanici
+    // bilerek onaylasin — neon vurgu gozden kacmis olabilir (operasyon madde 1).
+    const unassignedInApproved = approvedLayers.reduce(
+      (n, cl) => n + cl.edgeSegments.filter((es) => isUnassignedDiameter(es.diameter)).length,
+      0,
+    );
+    if (unassignedInApproved > 0) {
+      const ok = window.confirm(
+        `${unassignedInApproved} boru parçasının çapı hâlâ atanmamış (çizimde neon).\n` +
+        'Bunlar Excel/fiyatlandırmada "Belirtilmemis" olarak görünecek.\n\nYine de devam edilsin mi?',
+      );
+      if (!ok) return;
     }
 
     // Onaylanmamis layer kalmis mi? Uyari ver ama bloklamadan devam (kullanici karari)
@@ -860,7 +913,16 @@ export default function DwgProjectWorkspace({
             onLineClick={handleLineClick}
             onInsertClick={handleInsertClick}
             onCircleClick={handleCircleClick}
-            onSegmentClick={(seg) => setEditingSegment(seg)}
+            onSegmentClick={(seg) => {
+              // TIKLA-ETIKETLE: aktif kalem varsa capi DOGRUDAN ata (popup yok)
+              // + segment izolasyon flash'i (nerede baslayip bittigi teyidi).
+              if (activeBucket) {
+                updateEdgeSegmentDiameter(seg.layer, seg.segment_id, activeBucket.diameter);
+                setTagFlash({ segmentId: seg.segment_id, color: activeBucket.color, at: Date.now() });
+              } else {
+                setEditingSegment(seg);
+              }
+            }}
             onClearSelection={() => {
               // selectLayer ayni layer ile cagrilinca toggle off yapiyor
               if (state.selectedLayer) selectLayer(state.selectedLayer);
@@ -888,6 +950,11 @@ export default function DwgProjectWorkspace({
             onCancelPendingErase={handleCancelPendingErase}
             // PRD §3 + §5: cap-bazli dinamik renk; save sonrasi false -> layer ACI
             useDiameterColors={useDiameterColors}
+            // TIKLA-ETIKETLE: hover vurgusu aktif kalem rengine boyanir
+            // (tiklamadan once hangi rengin atanacagi gorunur — izolasyon onizleme)
+            activeTagColor={activeBucket?.color ?? null}
+            // SEGMENT IZOLASYONU: tiklanan run ~900ms parlar (secim teyidi)
+            flashSegment={tagFlash}
             // Cap renkleri legend tiklama navigation
             focusedSegmentId={focusedSegmentId}
             focusedHaloColor={focusedHaloColor}
@@ -899,16 +966,22 @@ export default function DwgProjectWorkspace({
           <div className="mt-2 flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
             <AlertCircle className="h-3.5 w-3.5 shrink-0 text-slate-500 mt-0.5" />
             <p className="text-[11px] text-slate-600">
-              <strong>Boru:</strong> Çizgiye tıkla → otomatik cap ataması (en yakin text → cap).
-              <strong className="ml-2">Manuel:</strong> Sağ panelden hat ismi gir + &quot;Hesapla&quot; (default cap atar).
-              <strong className="ml-2">Ekipman:</strong> Noktaya tıkla → malzeme adı + birim gir.
-              <strong className="ml-2">Layer Gizle:</strong> Sol-üst toolbar&apos;da göz-kapalı butona bas → çizimde layer&apos;a tıkla.
+              <strong>1. Hesapla:</strong> Layer seç + &quot;Hesapla&quot; → borular çıkar (hepsi <span className="font-semibold text-lime-600">neon = çapsız</span>).
+              <strong className="ml-2">2. Etiketle:</strong> Çap Kalemi seç → çizimde boruya tıkla, çap atanır.
+              <strong className="ml-2">Kalem yokken:</strong> tıklama çap popup&apos;ı açar.
+              <strong className="ml-2">Ekipman:</strong> Noktaya tıkla → ad + birim gir.
             </p>
           </div>
         </div>
 
-        {/* Sag: aktif layer formu + cap renk legend + ozet ekipman listesi */}
+        {/* Sag: cap kalemleri + aktif layer formu + cap renk legend + ozet */}
         <div className="space-y-3">
+          {/* MANUEL ETIKETLEME: cap kalemi tanimla -> sec -> boruya tikla.
+              Rozet: capsiz (neon) segment sayisi. */}
+          <BucketPanel
+            unassignedCount={unassignedPendingCount}
+            onApplyToUnassigned={applyBucketToUnassigned}
+          />
           {/* PRD §3: Dinamik renk legend — cizimle birebir esles
               Cap satirina tikla -> o cap'in segment'leri arasinda cycle */}
           <DiameterLegendPanel
@@ -934,14 +1007,13 @@ export default function DwgProjectWorkspace({
                 toast({ title: 'Zaten hesaplandi', description: layer });
                 return;
               }
-              // "Hesapla" butonu -> proximity hesaplama (en yakin cap-text -> cap).
-              // Onceden bu callback eski handleCalculate (manuel default cap) idi —
-              // auto-calc kaldirildigi icin "Hesapla" tetigi artik proximity'ye baglandi.
+              // "Hesapla" = SAF geometri+uzunluk cikarimi. Cap atamasi YOK —
+              // segmentler capsiz (neon) gelir, kullanici Cap Kalemleri ile
+              // tek tek veya toplu etiketler (operasyon: manuel tagging).
               const cfg = state.layerConfigs[layer];
-              calculateLayerByProximity(layer, {
+              calculateLayer(layer, {
                 hatIsmi: cfg?.hatIsmi,
                 materialType: cfg?.materialType,
-                defaultDiameter: cfg?.defaultDiameter,
               });
             }}
             onChangeConfig={(patch) => state.selectedLayer && updateLayerConfig(state.selectedLayer, patch)}

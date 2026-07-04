@@ -1,11 +1,13 @@
 /**
- * dwg-diameter-engine — algoritma destekli boru caplandirma modulu.
+ * dwg-diameter-engine — layer hesaplama + cap-renk legend modulu.
  *
- * Bu klasor: proximity (en yakin text -> cap) trigger, save sonra orijinal
- * renge donus state'i, ve cap-renk legend paneli.
+ * Bu klasor: saf geometri/uzunluk hesabi trigger'i (useLayerCalc), save
+ * sonrasi orijinal renge donus state'i, ve cap-renk legend paneli.
+ * Otomatik cap atama (proximity) motoru KALDIRILDI — cap atamasi artik
+ * dwg-tagging modulundeki manuel etiketleme ile yapilir.
  *
  * Mevcut dwg-workspace + dwg-viewer'a MINIMUM dokunulur (sadece prop'lar
- * ve hook tuketimi). Tum algoritma + UX yeni mantigi BURADA yasar.
+ * ve hook tuketimi).
  */
 
 import type { EdgeSegment } from '@/components/dwg-metraj/types';
@@ -14,21 +16,13 @@ import type { CalculatedLayer } from '@/components/dwg-workspace/types';
 import { canonicalizeDiameter } from '@/components/dwg-metraj/diameter-colors';
 import { isUnassignedDiameter, UNASSIGNED_LABEL } from '@/components/dwg-metraj/constants';
 
-/** /parse response'unda gelen proximity warning'leri parse etmek icin */
-export interface ProximitySummary {
-  layer: string;
-  assignedCount: number;
-  totalSegments: number;
-  textPoolSize: number;
-  warnings: string[];
-}
-
-/** useProximityCalc'in onResult callback'i icin pay load */
-export interface ProximityCalcResult {
+/** useLayerCalc'in onResult callback payload'i.
+ *  (Eski ProximitySummary/ProximityCalcResult tipleri otomatik cap atama
+ *   motoruyla birlikte silindi — operasyon Faz 2 temizligi.) */
+export interface LayerCalcResult {
   layer: string;
   calculated: CalculatedLayer;
   raw: MetrajResult;
-  summary?: ProximitySummary;
 }
 
 /** Legend panelinde her cap satiri icin gosterilen aggregate veri */

@@ -171,8 +171,6 @@ export class DwgEngineService {
     layerHatTipi?: Record<string, string>,
     layerMaterialType?: Record<string, string>,
     sprinklerLayers?: string[],
-    layerDefaultDiameter?: Record<string, string>,
-    useProximityDiameter?: boolean,
   ) {
     const params = new URLSearchParams({ discipline });
     // Auto-mode: scale undefined -> parametreyi HIC gonderme. Python query
@@ -196,12 +194,8 @@ export class DwgEngineService {
     if (sprinklerLayers && sprinklerLayers.length > 0) {
       params.set('sprinkler_layers', JSON.stringify(sprinklerLayers));
     }
-    if (layerDefaultDiameter && Object.keys(layerDefaultDiameter).length > 0) {
-      params.set('layer_default_diameter', JSON.stringify(layerDefaultDiameter));
-    }
-    if (useProximityDiameter) {
-      params.set('use_proximity_diameter', 'true');
-    }
+    // layer_default_diameter + use_proximity_diameter KALDIRILDI —
+    // otomatik cap atama motoru sokuldu, cap atamasi frontend'de manuel.
 
     const factory = (timeoutMs: number): RequestInit => {
       const opts: RequestInit = {

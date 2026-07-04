@@ -90,12 +90,15 @@ function hashToPaletteIndex(s: string): number {
 
 /**
  * Cap string'inden renk don.
- * Atanmamis (bos, 'Belirtilmemis', UNASSIGNED_LABEL) -> notr gri.
+ * Atanmamis (bos, 'Belirtilmemis', UNASSIGNED_LABEL) -> NEON yesil.
  * O50, DN50, 50, 2" hepsi AYNI renge denk gelir (nominal mm bazli).
  */
 export function diameterToColor(diameter: string): string {
   if (isUnassignedDiameter(diameter) || diameter === UNASSIGNED_LABEL) {
-    return '#64748b'; // slate-500 notr gri — atanmamis cap dikkati ana renklerle bozmasin
+    // EKSIK PARCA TESPITI (operasyon madde 1): atanmamis cap NEON — eskiden
+    // notr griydi, gozden kaciyordu. Artik lejant + viewer ayni neon'u
+    // gosterir; kullanici rapor oncesi eksik parcayi ANINDA fark eder.
+    return '#39ff14';
   }
   const normalized = diameter.trim();
   const mm = diameterToNumeric(normalized);

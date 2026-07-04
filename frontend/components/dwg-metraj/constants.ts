@@ -2,10 +2,10 @@
  * Merkezi cap sentinel'leri. Backend ve frontend arasi label/encoding
  * tutarsizligini onler.
  *
- * Backend `proximity_diameter.py` cap atanmayinca `diameter = ""` (bos) doner;
- * bazi eski kod yollari "Belirtilmemis" (ASCII s) yaziyor. Frontend hicbir
- * zaman bunlardan birini guvenle hardcode etmesin — `isUnassignedDiameter()`
- * helper'i her iki sentinel'i de yakalar.
+ * Backend segment cikariminda cap atamasi YOK (otomatik motor kaldirildi,
+ * cap %100 manuel etiketleme) — `diameter = ""` (bos) doner; bazi eski kod
+ * yollari "Belirtilmemis" (ASCII s) yaziyor. Frontend hicbir zaman bunlardan
+ * birini hardcode etmesin — `isUnassignedDiameter()` ikisini de yakalar.
  */
 
 /** Backend'in atanmamis cap icin yazdigi sentinel'ler (case-sensitive). */

@@ -344,8 +344,6 @@ def analyze_dxf_metraj(
     hat_tipi_map: dict[str, str] | None = None,
     material_type_map: dict[str, str] | None = None,
     sprinkler_layers_manual: list[str] | None = None,
-    layer_default_diameter_map: dict[str, str] | None = None,
-    use_proximity_diameter: bool = False,
 ) -> MetrajResult:
     """
     DXF dosyasini parse edip layer bazinda boru uzunlugu hesaplar.
@@ -583,41 +581,12 @@ def analyze_dxf_metraj(
         except Exception as _e:
             warnings.append(f"Edge segment cikarma: {str(_e)[:100]}")
 
-    # ── Proximity diameter (deterministic, AI'siz) ─────────────────
-    # Her segment icin en yakin GORUNUR cap-text -> cap. Layer default
-    # fallback'ten ONCE calisir; atayamadiklarini layer default yakalar.
-    if use_proximity_diameter and edge_segments:
-        try:
-            from proximity_diameter import assign_diameters_by_proximity
-            _inheritance_tol = locals().get("_node_tol", None)
-            # KRITIK: edge_segments coords'lari yukarida view_t ile transform edildi.
-            # Proximity text pozisyonlarini AYNI space'e tasimasi icin view_transform geciyor.
-            _prox_view_t = locals().get("view_t", None) if locals().get("_has_view_rot", False) else None
-            prox_result = assign_diameters_by_proximity(
-                doc, edge_segments,
-                sprinkler_layers=set(sprinkler_layers_manual or []),
-                inheritance_tolerance=_inheritance_tol,
-                view_transform=_prox_view_t,
-                scale=scale,  # SCALE-AWARE mesafe sinirlari icin (mm/cm/m DWG)
-            )
-            _src = prox_result.get("source_summary", "")
-            _src_part = f" [{_src}]" if _src else ""
-            warnings.append(
-                f"Proximity: {prox_result['assigned_count']}/{len(edge_segments)} "
-                f"segment cap aldi ({prox_result['text_pool_size']} text havuzdan{_src_part})"
-            )
-            for w in prox_result.get("warnings", []):
-                warnings.append(w)
-        except Exception as _e:
-            warnings.append(f"Proximity diameter: {str(_e)[:100]}")
-
-    # ── Layer-level default cap uygulamasi ──
-    # Atanmamis (bos veya 'Belirtilmemis' sentinel) segment'leri layer default'u ile doldur.
-    from proximity_diameter import _is_unassigned
-    if layer_default_diameter_map:
-        for es in edge_segments:
-            if _is_unassigned(es.diameter) and layer_default_diameter_map.get(es.layer):
-                es.diameter = layer_default_diameter_map[es.layer]
+    # ── OTOMATIK CAP ATAMA KALDIRILDI (operasyon Faz 1-2) ─────────────
+    # Eski proximity motoru (en yakin text -> cap) + layer-default fallback
+    # burada calisiyordu — proximity_diameter.py ile birlikte SILINDI.
+    # Sistem artik yalniz geometri + uzunluk doner; TUM segmentler capsiz
+    # (diameter="") gelir. Cap atamasi %100 kullanici isidir: frontend
+    # dwg-tagging modulu (Cap Kalemleri + tikla-etiketle).
 
     return MetrajResult(
         layers=layers,
@@ -656,23 +625,12 @@ def health():
         or os.environ.get("BUILD_SHA")
         or "local"
     )[:16]
-    # proximity_diameter modulu container'da var mi? (deploy dogrulama)
-    try:
-        import proximity_diameter as _pd
-        prox_status = "imported"
-        _ = _pd.assign_diameters_by_proximity  # ensure attribute exists
-    except ImportError as _e:
-        prox_status = f"ImportError: {str(_e)[:60]}"
-    except Exception as _e:
-        prox_status = f"{type(_e).__name__}: {str(_e)[:60]}"
-
     return {
         "status": "ok",
         "service": "dwg-engine",
-        "version": "2.2",
+        "version": "2.3",
         "cached_files": cached,
         "build_sha": build_sha,
-        "proximity_module": prox_status,
     }
 
 
@@ -1431,8 +1389,6 @@ async def parse_dwg(
     layer_hat_tipi: str = Query("{}", description="JSON object: {layer: hat_tipi} eslestirmesi"),
     layer_material_type: str = Query("{}", description="JSON object: {layer: material_type} eslestirmesi"),
     sprinkler_layers: str = Query("", description="JSON array: kullanici tarafindan sprinkler olarak isaretlenen layer'lar"),
-    layer_default_diameter: str = Query("{}", description="JSON object: {layer: default_diameter} — layer-level cap fallback"),
-    use_proximity_diameter: bool = Query(False, description="PRD: her segment icin en yakin text -> cap (deterministic, AI'siz)"),
 ):
     """
     DWG/DXF dosyasini parse edip layer bazinda metraj cikarir.
@@ -1495,16 +1451,6 @@ async def parse_dwg(
         except json.JSONDecodeError:
             raise HTTPException(400, "sprinkler_layers gecersiz JSON formati")
 
-    # layer_default_diameter: AI atayamadigi segment'ler icin layer-level fallback
-    default_dia_map: dict[str, str] | None = None
-    if layer_default_diameter and layer_default_diameter != "{}":
-        try:
-            parsed_dia = json.loads(layer_default_diameter)
-            if isinstance(parsed_dia, dict) and len(parsed_dia) > 0:
-                default_dia_map = {str(k): str(v) for k, v in parsed_dia.items() if str(v).strip()}
-        except json.JSONDecodeError:
-            raise HTTPException(400, "layer_default_diameter gecersiz JSON formati")
-
     # ── Analiz et (SUBPROCESS IZOLASYON) ──
     # Render free tier 512MB'da bulk parse OOM kill yapiyor. Her parse'i
     # ayri Python subprocess'te calistir — OOM olursa parent worker SAGLAM.
@@ -1516,8 +1462,6 @@ async def parse_dwg(
             "hat_tipi_map": hat_tipi_map,
             "material_type_map": mat_type_map,
             "sprinkler_layers_manual": sprinkler_layers_manual,
-            "layer_default_diameter_map": default_dia_map,
-            "use_proximity_diameter": use_proximity_diameter,
         }
         # Subprocess'i async thread'de calistir, FastAPI event loop bloke olmasin
         result_dict = await asyncio.to_thread(

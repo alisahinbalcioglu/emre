@@ -95,6 +95,14 @@ interface DxfCanvasViewerProps {
    *  Parent her tiklamada increment eder; bu sayede ayni segmentId'de bile
    *  effect yeniden tetiklenir. */
   focusVersion?: number;
+  // ── MANUEL ETIKETLEME (tikla-etiketle) ────────────────────────────
+  /** Aktif cap kaleminin rengi. Set ise edge hover vurgusu bu renge boyanir —
+   *  kullanici tiklamadan ONCE hangi rengin atanacagini gorur (izolasyon
+   *  onizleme: run'in uc noktalari da ayni renkte isaretlenir). */
+  activeTagColor?: string | null;
+  /** SEGMENT IZOLASYONU teyidi: tiklanan run ~900ms kalem rengiyle parlar,
+   *  uc noktalari (T-noktalari arasi sinir) vurgulanir. */
+  flashSegment?: { segmentId: number; color: string; at: number } | null;
 }
 
 const COLOR_BG = '#0b1220';
@@ -106,6 +114,9 @@ const COLOR_MARKED_EQUIPMENT = '#f97316';
 const COLOR_DIMMED = '#475569';            // slate-600
 const COLOR_HOVER = '#fde68a';             // amber-200 glow
 const COLOR_LINE_SELECTED = '#3b82f6';     // brand blue
+/** EKSIK PARCA TESPITI: capsiz segment NEON — koyu zeminde bagirir,
+ *  rapor oncesi gozden kacan boru kalmaz (diameter-colors ile senkron). */
+const COLOR_UNASSIGNED_NEON = '#39ff14';
 const DIMMED_ALPHA = 0.45;
 const HOVER_TOL_PX = 6;
 
@@ -174,6 +185,8 @@ export default function DxfCanvasViewer({
   focusedSegmentId = null,
   focusedHaloColor = null,
   focusVersion = 0,
+  activeTagColor = null,
+  flashSegment = null,
 }: DxfCanvasViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -186,6 +199,15 @@ export default function DxfCanvasViewer({
   const [cursorScreen, setCursorScreen] = useState<{ x: number; y: number } | null>(null);
   const [hovered, setHovered] = useState<HoveredEntity | null>(null);
   const [selectedLine, setSelectedLine] = useState<HoveredEntity | null>(null);
+
+  // TAG FLASH temizligi: flash 900ms gorunur; suresi dolunca bir kez redraw
+  // tetikle ki parlaklik ekrandan silinsin (draw loop surekli calismiyor).
+  const [flashTick, setFlashTick] = useState(0);
+  useEffect(() => {
+    if (!flashSegment) return;
+    const t = setTimeout(() => setFlashTick((v) => v + 1), 950);
+    return () => clearTimeout(t);
+  }, [flashSegment]);
 
   // ── SILGI MODU state ──────────────────────────────────────────
   /** Marquee selection box (screen coords). Drag sirasinda guncellenir. */
@@ -786,21 +808,29 @@ export default function DxfCanvasViewer({
         ctx.globalAlpha = 1;
         if (useDiameterColors) {
           // PRD §3: cap-bazli dinamik renklendirme (legend ile esles)
-          // PRD §4 (Atanmamis): cap'i belirlenmemis borular gri/KESIKLI cizgi
-          // (atanmadi durumunu gosterir; kullanici manuel duzeltir).
+          // EKSIK PARCA TESPITI (operasyon madde 1): capsiz borular NEON +
+          // glow + kesikli — rapor oncesi gozden kacan parca aninda gorunur.
           byDiameter.forEach((segs, diameter) => {
             const isUnassigned = diameter === UNASSIGNED_LABEL;
-            ctx.strokeStyle = diameterToColor(diameter);
             if (isUnassigned) {
-              // 6-3px desen (zoom invariant degil ama kontrol icin OK; gerekirse
-              // strokeWidth scale ile orantili yapilabilir)
-              ctx.setLineDash([6, 3]);
+              ctx.save();
+              ctx.strokeStyle = COLOR_UNASSIGNED_NEON;
+              ctx.lineWidth = strokeWidth * 2.6;
+              ctx.shadowColor = 'rgba(57, 255, 20, 0.85)';
+              ctx.shadowBlur = 12;
+              ctx.setLineDash([8, 4]);
+              ctx.beginPath();
+              for (const seg of segs) drawSegPath(seg);
+              ctx.stroke();
+              ctx.restore();
+              ctx.lineWidth = strokeWidth * 1.8;  // save/restore lineWidth'i geri alir ama emin ol
             } else {
+              ctx.strokeStyle = diameterToColor(diameter);
               ctx.setLineDash([]);
+              ctx.beginPath();
+              for (const seg of segs) drawSegPath(seg);
+              ctx.stroke();
             }
-            ctx.beginPath();
-            for (const seg of segs) drawSegPath(seg);
-            ctx.stroke();
           });
           ctx.setLineDash([]);  // sonraki pass'lere taşmasın
         } else {
@@ -885,11 +915,14 @@ export default function DxfCanvasViewer({
       }
 
       // ─── HOVER overlay (amber glow + 2x stroke) ───────────────────
+      // TIKLA-ETIKETLE onizleme: aktif kalem varken edge hover'i kalem
+      // rengine boyanir — kullanici tiklamadan once atanacak rengi gorur.
       if (hovered) {
-        ctx.strokeStyle = COLOR_HOVER;
+        const isTagHover = hovered.type === 'edge' && !!activeTagColor;
+        ctx.strokeStyle = isTagHover ? (activeTagColor as string) : COLOR_HOVER;
         ctx.lineWidth = strokeWidth * 2.2;
-        ctx.shadowColor = 'rgba(253, 230, 138, 0.7)';
-        ctx.shadowBlur = 10;
+        ctx.shadowColor = isTagHover ? (activeTagColor as string) : 'rgba(253, 230, 138, 0.7)';
+        ctx.shadowBlur = isTagHover ? 14 : 10;
         ctx.beginPath();
         if (hovered.polyline && hovered.polyline.length >= 2) {
           ctx.moveTo(hovered.polyline[0][0], hovered.polyline[0][1]);
@@ -918,11 +951,60 @@ export default function DxfCanvasViewer({
             ctx.beginPath();
             ctx.arc(ex, ey, markerR + borderW, 0, Math.PI * 2);
             ctx.fill();
-            ctx.fillStyle = '#3b82f6';  // brand blue
+            // Kalem aktifse marker da kalem renginde — izolasyon onizleme
+            ctx.fillStyle = activeTagColor ?? '#3b82f6';
             ctx.beginPath();
             ctx.arc(ex, ey, markerR, 0, Math.PI * 2);
             ctx.fill();
           }
+        }
+      }
+
+      // ─── TAG FLASH — SEGMENT IZOLASYONU teyidi (operasyon madde 2) ──
+      // Tiklanan run ~900ms kalem rengiyle parlar; uc noktalar (T-noktalari
+      // arasi sinirlar) beyaz halkali marker'la vurgulanir. Kullanici neyi
+      // etiketledigini net gorur.
+      if (flashSegment && allEdgeSegments && Date.now() - flashSegment.at < 900) {
+        const fs = allEdgeSegments.find((s) => s.segment_id === flashSegment.segmentId);
+        if (fs) {
+          ctx.save();
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.shadowColor = flashSegment.color;
+          ctx.shadowBlur = 20;
+          // Dis beyaz kusak (yari seffaf) + ic kalem rengi
+          ctx.globalAlpha = 0.5;
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = strokeWidth * 5.5;
+          ctx.beginPath();
+          if (fs.polyline && fs.polyline.length >= 2) {
+            ctx.moveTo(fs.polyline[0][0], fs.polyline[0][1]);
+            for (let i = 1; i < fs.polyline.length; i++) ctx.lineTo(fs.polyline[i][0], fs.polyline[i][1]);
+          } else {
+            ctx.moveTo(fs.coords[0], fs.coords[1]);
+            ctx.lineTo(fs.coords[2], fs.coords[3]);
+          }
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+          ctx.strokeStyle = flashSegment.color;
+          ctx.lineWidth = strokeWidth * 2.8;
+          ctx.stroke();
+          // Uc nokta marker'lari
+          const fEnds: [number, number][] = fs.polyline && fs.polyline.length >= 2
+            ? [fs.polyline[0] as [number, number], fs.polyline[fs.polyline.length - 1] as [number, number]]
+            : [[fs.coords[0], fs.coords[1]], [fs.coords[2], fs.coords[3]]];
+          const fr = 5 / viewport.zoom;
+          for (const [ex, ey] of fEnds) {
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(ex, ey, fr + 1.5 / viewport.zoom, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = flashSegment.color;
+            ctx.beginPath();
+            ctx.arc(ex, ey, fr, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.restore();
         }
       }
 
@@ -1010,7 +1092,7 @@ export default function DxfCanvasViewer({
 
     schedule();
     return () => cancelAnimationFrame(rafId);
-  }, [geometry, allEdgeSegments, calculatedJunctionsByLayer, viewport, selectedLayer, highlightLayer, hiddenLayers, dimmedLayers, sprinklerLayers, markedEquipmentKeys, hovered, selectedLine, pendingLineKeys, pendingInsertKeys, pendingTextKeys, hiddenTextKeys, isLinePending, isInsertPending, isLineHidden, isInsertHidden, isTextHidden, isTextPending, useDiameterColors, focusedSegment, focusedHaloColor]);
+  }, [geometry, allEdgeSegments, calculatedJunctionsByLayer, viewport, selectedLayer, highlightLayer, hiddenLayers, dimmedLayers, sprinklerLayers, markedEquipmentKeys, hovered, selectedLine, pendingLineKeys, pendingInsertKeys, pendingTextKeys, hiddenTextKeys, isLinePending, isInsertPending, isLineHidden, isInsertHidden, isTextHidden, isTextPending, useDiameterColors, focusedSegment, focusedHaloColor, activeTagColor, flashSegment, flashTick]);
 
   // ─── Hover detection (rbush ile O(log N)) ────────────────────────
   const computeHovered = useCallback(

@@ -53,8 +53,6 @@ export class DwgEngineController {
     @Query('layer_hat_tipi') layerHatTipi?: string,
     @Query('layer_material_type') layerMaterialType?: string,
     @Query('sprinkler_layers') sprinklerLayers?: string,
-    @Query('layer_default_diameter') layerDefaultDiameter?: string,
-    @Query('use_proximity_diameter') useProximityDiameter?: string,
   ) {
     // file_id varsa dosya gerekmez, yoksa dosya zorunlu
     if (!fileId && !file) {
@@ -101,18 +99,9 @@ export class DwgEngineController {
       }
     }
 
-    // layer_default_diameter JSON object parse — layer-level default cap
-    let parsedDefaultDiameter: Record<string, string> | undefined;
-    if (layerDefaultDiameter) {
-      try {
-        parsedDefaultDiameter = JSON.parse(layerDefaultDiameter);
-      } catch {
-        return { error: 'layer_default_diameter gecersiz JSON formati' };
-      }
-    }
-
-    // use_proximity_diameter: bool flag — frontend "true"/"false" string olarak gonderir
-    const proximityFlag = useProximityDiameter === 'true' || useProximityDiameter === '1';
+    // NOT: layer_default_diameter + use_proximity_diameter parametreleri
+    // KALDIRILDI — otomatik cap atama motoru sokuldu (operasyon Faz 2).
+    // Cap atamasi frontend dwg-tagging modulunde manuel yapilir.
 
     return this.dwgEngine.parseDwg(
       file?.buffer ?? null,
@@ -126,8 +115,6 @@ export class DwgEngineController {
       parsedHatTipi,
       parsedMaterialType,
       parsedSprinklerLayers,
-      parsedDefaultDiameter,
-      proximityFlag,
     );
   }
 
