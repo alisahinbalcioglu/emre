@@ -39,12 +39,16 @@ interface DwgProjectWorkspaceProps {
   fileId: string;
   scale: number;
   fileName: string;
+  /** Dosya iceriginin sha256 kisa hash'i (DwgUploader hesaplar). Workspace
+   *  state'i bununla anahtarlanir — sunucu file_id'yi unutsa bile ayni dosya
+   *  yeniden yuklenince TUM etiketler localStorage'dan geri gelir. */
+  fileHash?: string | null;
   onReset: () => void;
   onApproved: (metraj: MetrajResult, fileName: string) => void;
 }
 
 export default function DwgProjectWorkspace({
-  fileId, scale, fileName, onReset, onApproved,
+  fileId, scale, fileName, fileHash = null, onReset, onApproved,
 }: DwgProjectWorkspaceProps) {
   const {
     state,
@@ -56,7 +60,7 @@ export default function DwgProjectWorkspace({
     removeSprinklerLayer, toggleSprinklerLayer,
     toggleLayerVisibility, showAllLayers,
     toggleLayerDimmed, showAllDimmed,
-  } = useWorkspaceState(fileId, scale);
+  } = useWorkspaceState(fileId, scale, fileHash);
 
   /** Geometry'den cikan layer isimleri — DxfCanvasViewer onLayersAvailable
    *  callback'inden gelir. Layer goruntusu paneli icin kullanilir. */

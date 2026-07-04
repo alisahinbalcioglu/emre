@@ -103,8 +103,8 @@ export function useLayerCalc({ fileId, scale, sprinklerLayers, onResult, onFileI
 
         if (isFileIdInvalid && onFileIdInvalid) {
           toast({
-            title: 'Sunucu cache süresi doldu',
-            description: 'DWG dosyasını tekrar yüklemen gerekiyor (15dk TTL).',
+            title: 'Sunucu dosya önbelleği süresi doldu',
+            description: 'Aynı DWG\'yi tekrar yükle — etiketlerin kayıtlı, otomatik geri gelecek.',
             variant: 'destructive',
           });
           onFileIdInvalid();

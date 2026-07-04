@@ -38,6 +38,13 @@ services:
       WORKERS: "1"
       PYTHONUNBUFFERED: "1"
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      # DWG cache omru (saniye). Manuel etiketleme saatler surebilir — 24 saat.
+      DWG_CACHE_TTL: "86400"
+    volumes:
+      # KALICI CACHE: /tmp'deki dwg_cache_* dosyalari (DXF + geometri + state)
+      # artik container rebuild/deploy'da SILINMEZ — kullanicinin acik oturumu
+      # deploy yuzunden "file_id bilinmiyor"a dusmez. TTL temizligi ayni calisir.
+      - dwg_cache:/tmp
     expose:
       - "10000"
 
@@ -114,3 +121,4 @@ volumes:
   pgdata:
   caddy_data:
   caddy_config:
+  dwg_cache:

@@ -33,6 +33,23 @@ interface DwgUploaderProps {
  *  yeniden yuklemek zorunda kalmaz. */
 const SESSION_STORAGE_KEY = 'metaprice_dwg_session';
 
+/** Dosya iceriginin sha256 kisa hash'i (16 hex) — backend dedup ile ayni bicim.
+ *  EMEK KAYBI SIGORTASI: workspace state'i bu hash ile anahtarlanir; sunucu
+ *  cache'i dusse ve ayni dosya yeniden yuklense bile (YENI file_id) tum
+ *  etiketlemeler localStorage'dan geri gelir. Hata/eski tarayici → null
+ *  (file_id anahtarlamasina zarifce duser). */
+async function computeFileHash(f: File): Promise<string | null> {
+  try {
+    const buf = await f.arrayBuffer();
+    const digest = await crypto.subtle.digest('SHA-256', buf);
+    return Array.from(new Uint8Array(digest).slice(0, 8))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+  } catch {
+    return null;
+  }
+}
+
 export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
   // file: dosya nesnesi (yuklemede gerekli). Refresh sonrasi YOK ama
   // fileName + fileId localStorage'dan gelir — workspace acilir.
@@ -46,6 +63,8 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
   // restoredFileName: refresh sonrasi localStorage'dan gelen dosya adi (file nesnesi yok)
   const [restoredFileName, setRestoredFileName] = useState<string | null>(null);
   const [fileId, setFileId] = useState<string | null>(null);
+  /** Icerik hash'i — workspace state'inin kalici anahtari (emek kaybi sigortasi). */
+  const [fileHash, setFileHash] = useState<string | null>(null);
   const [extractingLayers, setExtractingLayers] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -93,6 +112,7 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
             // Birim = kullanici sorumlulugu. Session'da kayitli birim varsa onu
             // kullan, yoksa mm varsayilan. Sistem tahmin ETMEZ.
             setSelectedUnit(session.scale && session.scale > 0 ? session.scale : 0.001);
+            setFileHash(session.fileHash ?? null);
             setFileId(session.fileId);
           } else {
             // Cache'te yok veya parse henuz bitmemis → temizle
@@ -119,11 +139,12 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
       localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({
         fileId,
         fileName: fname,
+        fileHash,
         scale: selectedUnit,
         savedAt: Date.now(),
       }));
     } catch {}
-  }, [fileId, file, restoredFileName, selectedUnit]);
+  }, [fileId, file, restoredFileName, selectedUnit, fileHash]);
 
   const startTimer = () => {
     setElapsed(0);
@@ -166,6 +187,12 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
     setError(null);
     setExtractingLayers(true);
     startTimer();
+
+    // EMEK KAYBI SIGORTASI: icerik hash'i upload'dan ONCE hesaplanir —
+    // workspace bu anahtarla acilir; ayni dosyanin onceki etiketleri
+    // (sunucu file_id'yi unutmus olsa bile) localStorage'dan geri gelir.
+    const contentHash = await computeFileHash(f);
+    setFileHash(contentHash);
 
     // /upload icin retry: cold-start ihtimaline karsi 4 deneme
     // (upload kendi 2-30sn, parse arka planda → kisa toplam timeout yeter)
@@ -293,6 +320,7 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
     setFile(null);
     setRestoredFileName(null);
     setFileId(null);
+    setFileHash(null);
     setPendingUnitChoice(null);
     setError(null);
     setExtractingLayers(false);
@@ -340,6 +368,7 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
         fileId={fileId}
         scale={selectedUnit}
         fileName={effectiveFileName}
+        fileHash={fileHash}
         onReset={resetAll}
         onApproved={onMetrajApproved}
       />

@@ -17,9 +17,22 @@ const emptyConfig = (): LayerConfig => ({
 /**
  * Workspace state yonetimi — layer secimleri, hesaplanmis metrajlar,
  * isaretlenmis ekipmanlar.
+ *
+ * EMEK KAYBI SIGORTASI (UX/TTL): state artik oncelikle DOSYA ICERIK HASH'i
+ * ile anahtarlanir (fileHash = sha256 ilk 16 hex, DwgUploader hesaplar).
+ * Sunucu cache'i dusse ve ayni dosya YENIDEN yuklense bile (yeni file_id!)
+ * kullanicinin tum etiketlemeleri hash key'inden geri gelir — saatlerce
+ * suren manuel etiketleme emegi file_id omrune bagli degildir.
+ * fileHash yoksa (eski oturum / hash hesaplanamadi) file_id key'ine duser.
  */
-/** fileId bazli storage key — her DWG kendi state'ini ayri tutar. */
+/** fileId bazli LEGACY storage key — geriye uyum icin okunur. */
 const STORAGE_KEY_PREFIX = 'metaprice_dwg_ws_';
+/** Icerik-hash bazli KALICI storage key — birincil. */
+const HASH_KEY_PREFIX = 'metaprice_dwg_ws_h_';
+
+function _storageKey(fileId: string, fileHash?: string | null): string {
+  return fileHash ? HASH_KEY_PREFIX + fileHash : STORAGE_KEY_PREFIX + fileId;
+}
 
 function _emptyState(fileId: string, scale: number): WorkspaceState {
   return {
@@ -36,46 +49,52 @@ function _emptyState(fileId: string, scale: number): WorkspaceState {
   };
 }
 
-function _loadState(fileId: string, scale: number): WorkspaceState {
+function _loadState(fileId: string, scale: number, fileHash?: string | null): WorkspaceState {
   if (typeof window === 'undefined') return _emptyState(fileId, scale);
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY_PREFIX + fileId);
+    // 1) Birincil: hash key (ayni dosya = ayni state, file_id degisse bile)
+    let raw = fileHash ? window.localStorage.getItem(HASH_KEY_PREFIX + fileHash) : null;
+    let hashKeyed = !!raw;
+    // 2) Legacy: file_id key (hash'ten onceki kayitlar — migrasyon okumasi)
+    if (!raw) {
+      raw = window.localStorage.getItem(STORAGE_KEY_PREFIX + fileId);
+      hashKeyed = false;
+    }
     if (!raw) return _emptyState(fileId, scale);
     const parsed = JSON.parse(raw);
-    // Sanity: fileId eslesmeli, scale uyumlu
-    if (parsed?.fileId !== fileId) return _emptyState(fileId, scale);
+    // Hash-keyed kayitta fileId FARKLI olabilir (sunucu yeni id verdi) — state
+    // gecerlidir, fileId guncellenir. Legacy kayitta eski sanity korunur.
+    if (!hashKeyed && parsed?.fileId !== fileId) return _emptyState(fileId, scale);
     return { ..._emptyState(fileId, scale), ...parsed, fileId, scale };
   } catch {
     return _emptyState(fileId, scale);
   }
 }
 
-export function useWorkspaceState(fileId: string, scale: number) {
-  // Mount'ta localStorage'dan restore et — sayfa yenilenmesi sonrasi
-  // hesaplanmis layer'lar, isaretli ekipmanlar, sprinkler/hidden layer'lar
-  // korunur. Kullanici tum metraji yeniden yapmaz.
-  const [state, setState] = useState<WorkspaceState>(() => _loadState(fileId, scale));
+export function useWorkspaceState(fileId: string, scale: number, fileHash?: string | null) {
+  // Mount'ta localStorage'dan restore et — sayfa yenilenmesi VEYA ayni
+  // dosyanin yeniden yuklenmesi (yeni file_id) sonrasi hesaplanmis layer'lar,
+  // etiketler, ekipmanlar korunur. Kullanici metraji yeniden yapmaz.
+  const [state, setState] = useState<WorkspaceState>(() => _loadState(fileId, scale, fileHash));
 
-  // fileId degistiginde state'i o fileId'nin local kaydindan yukle
-  // (yoksa bos baslat). Eski fileId'nin hesaplamalari yeni dosyaya karismaz.
+  // fileId/hash degistiginde ilgili kayittan yukle (yoksa bos baslat).
   useEffect(() => {
-    setState(_loadState(fileId, scale));
-  }, [fileId, scale]);
+    setState(_loadState(fileId, scale, fileHash));
+  }, [fileId, scale, fileHash]);
 
-  // State degisince localStorage'a kaydet. Refresh sonrasi yukaridaki
-  // _loadState bunu okuyup geri restore eder.
+  // State degisince localStorage'a kaydet (hash key birincil).
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (!state.fileId) return;
     try {
       window.localStorage.setItem(
-        STORAGE_KEY_PREFIX + state.fileId,
+        _storageKey(state.fileId, fileHash),
         JSON.stringify(state),
       );
     } catch {
       // QuotaExceededError veya disabled storage — sessizce gec
     }
-  }, [state]);
+  }, [state, fileHash]);
 
   const selectLayer = useCallback((layer: string) => {
     setState((s) => {

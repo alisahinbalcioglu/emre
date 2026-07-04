@@ -87,7 +87,7 @@ async def verify_internal_token(request: Request, call_next):
 
 
 # ═══════════════════════════════════════════════════════
-#  FILE CACHE — Filesystem-based DXF cache (15dk TTL)
+#  FILE CACHE — Filesystem-based DXF cache (default 24 saat TTL)
 # ═══════════════════════════════════════════════════════
 # Disk-uzerinde deterministic path: /tmp/dwg_cache_<file_id>.dxf
 # Bu sayede multi-worker uvicorn'da TUM worker'lar ayni file_id'yi gorebilir
@@ -98,7 +98,12 @@ async def verify_internal_token(request: Request, call_next):
 import shutil
 import hashlib
 
-_CACHE_TTL = 900  # 15 dakika
+# CACHE TTL — SaaS gercegi: manuel etiketleme oturumu SAATLER surebilir.
+# Eski 15dk kullanicinin emegini yariyolda birakiyordu ("file_id bilinmiyor").
+# Default 24 saat; env DWG_CACHE_TTL (saniye) ile ayarlanabilir.
+# Disk maliyeti kabul edilebilir: dedup ayni dosyayi coklamaz, cleanup her
+# upload'da kosar, 75GB diskte gunluk DXF hacmi sorun degil.
+_CACHE_TTL = int(os.environ.get("DWG_CACHE_TTL") or 86400)  # 24 saat
 _CACHE_DIR = tempfile.gettempdir()
 _CACHE_PREFIX = "dwg_cache_"
 _CACHE_SUFFIX = ".dxf"
@@ -219,7 +224,8 @@ def _get_cached_dxf(file_id: str) -> str:
                 os.unlink(cache_path)
             except OSError:
                 pass
-            raise HTTPException(410, "Dosya suresi doldu (15dk). Lutfen tekrar yukleyin.")
+            _ttl_hours = max(1, _CACHE_TTL // 3600)
+            raise HTTPException(410, f"Dosya suresi doldu ({_ttl_hours} saat). Lutfen tekrar yukleyin.")
     except HTTPException:
         raise
     except OSError:
