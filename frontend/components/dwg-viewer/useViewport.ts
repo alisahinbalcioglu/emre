@@ -76,10 +76,28 @@ export function useViewport({ bounds, containerRef, autoFit = true }: UseViewpor
     zoomToBounds(bounds, 0.92);
   }, [bounds, zoomToBounds]);
 
-  // Ilk mount + bounds degisiminde fit — container layout'u beklenmeli
+  // Ilk mount + bounds DEGERI degisiminde fit — container layout'u beklenmeli
   // Cok katmanli strateji: RAF x2 → yetmedyse 100ms sonra tekrar dene
+  //
+  // VIEWPORT JUMP FIX (UX #1): cap etiketleme edgeSegments dizisini yeniden
+  // yaratir → bounds AYNI DEGERLERLE yeni referans olur → fitView identity
+  // degisir → eski kod kamerayi sifirliyordu. Cozum: son fit edilen bounds
+  // DEGERLERINI ref'te tut; degerler (epsilon ici) aynıysa fit ATLA.
+  // Kamera yalniz gercek veri degisiminde (yeni dosya/yeni layer bounds'u)
+  // fit olur; renk/cap guncellemeleri kamerayi OYNATAMAZ.
+  const lastFitBoundsRef = useRef<[number, number, number, number] | null>(null);
   useEffect(() => {
     if (!autoFit) return;
+    const prev = lastFitBoundsRef.current;
+    if (
+      prev &&
+      Math.abs(prev[0] - bounds[0]) < 1e-6 &&
+      Math.abs(prev[1] - bounds[1]) < 1e-6 &&
+      Math.abs(prev[2] - bounds[2]) < 1e-6 &&
+      Math.abs(prev[3] - bounds[3]) < 1e-6
+    ) {
+      return; // bounds degeri degismedi — kamera kullanicinin biraktigi yerde kalir
+    }
     let raf1 = 0, raf2 = 0, retryTimer: ReturnType<typeof setTimeout> | null = null;
     let done = false;
 
@@ -88,6 +106,7 @@ export function useViewport({ bounds, containerRef, autoFit = true }: UseViewpor
       const el = containerRef.current;
       if (el && el.getBoundingClientRect().width > 0 && el.getBoundingClientRect().height > 0) {
         fitView();
+        lastFitBoundsRef.current = [bounds[0], bounds[1], bounds[2], bounds[3]];
         done = true;
       }
     };
@@ -108,7 +127,7 @@ export function useViewport({ bounds, containerRef, autoFit = true }: UseViewpor
       cancelAnimationFrame(raf2);
       if (retryTimer) clearTimeout(retryTimer);
     };
-  }, [autoFit, fitView, containerRef]);
+  }, [autoFit, fitView, containerRef, bounds]);
 
   // Wheel zoom logic — hem native hem React onWheel icin ortak
   const applyWheel = useCallback((deltaY: number, clientX: number, clientY: number) => {

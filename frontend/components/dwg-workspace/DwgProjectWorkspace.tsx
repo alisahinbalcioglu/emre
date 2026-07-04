@@ -1,15 +1,15 @@
 'use client';
 
 /**
- * DWG Project Workspace — tek ekran metraj akisi.
- * Sol: buyuk SVG cizim | Sag: aktif layer formu + hesaplanmis metraj ozeti.
+ * DWG Project Workspace — tek ekran MANUEL ETIKETLEME metraj akisi.
+ * Sol: buyuk Canvas2D cizim | Sag: Cap Kalemleri + lejant + layer + ozet.
  *
  * Kullanici:
- *  - Cizimde boru layer'ina tiklar → secilir, sagda form acilir
- *  - Hat ismi/malzeme/cap girer, "Bu Layer'i Hesapla" → /parse cagrilir
- *  - Hesaplanan layer cap bazli renklenir, ozete eklenir
- *  - Ekipman (INSERT) noktasina tiklar → popup, ad+birim girer, turuncu isaretlenir
- *  - Birden fazla layer + ekipman ekleye ekleye onaylar
+ *  - Layer secer → "Layer'i Segmentlerine Ayir" → borular capsiz (NEON) cikar
+ *  - Cap Kalemi secer → boruya tiklar → cap atanir (ayni capa tekrar tik = geri al)
+ *  - "Hesaplamayi Tamamla" → layer onaylanir, kalem/secim resetlenir
+ *  - Ekipman (INSERT) noktasina tiklar → popup, ad+birim girer
+ *  - Birden fazla layer + ekipman ekleye ekleye finale gider
  */
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
@@ -30,8 +30,8 @@ import {
   useOriginalColorState,
   DiameterLegendPanel,
 } from '@/components/dwg-diameter-engine';
-import { BucketPanel, useActiveBucket } from '@/components/dwg-tagging';
-import { diameterToColor } from '@/components/dwg-metraj/diameter-colors';
+import { BucketPanel, useActiveBucket, useTaggingStore } from '@/components/dwg-tagging';
+import { diameterToColor, canonicalizeDiameter } from '@/components/dwg-metraj/diameter-colors';
 import { isUnassignedDiameter } from '@/components/dwg-metraj/constants';
 import { exportMetrajToExcel, type MetrajSheet } from '@/lib/metraj-excel';
 
@@ -48,7 +48,7 @@ export default function DwgProjectWorkspace({
 }: DwgProjectWorkspaceProps) {
   const {
     state,
-    selectLayer, updateLayerConfig,
+    selectLayer,
     addCalculatedLayer, approveLayer, unapproveLayer, removeCalculatedLayer,
     updateEdgeSegmentDiameter,
     applyDiameterWithPropagation,
@@ -206,6 +206,9 @@ export default function DwgProjectWorkspace({
   // tagFlash: SEGMENT IZOLASYONU teyidi — tiklanan run ~900ms kalem rengiyle
   // parlar, uc noktalari (T-noktalari arasi sinirlar) vurgulanir.
   const activeBucket = useActiveBucket();
+  // UX #4 (state bulasmasi): yeni layer hesaplamasi / tamamlama aninda aktif
+  // kalem deaktive edilir — sonraki layer'a yanlislikla cap bulasmasin.
+  const clearActiveBucket = useTaggingStore((s) => s.clearActiveBucket);
   const [tagFlash, setTagFlash] = useState<{ segmentId: number; color: string; at: number } | null>(null);
 
   // Cap Renkleri legend'i SADECE onaysiz layer'larin caplarini gosterir.
@@ -316,7 +319,8 @@ export default function DwgProjectWorkspace({
     key: string; insertIndex: number; layer: string; insertName: string; position: [number, number];
   }>(null);
 
-  const selectedConfig = state.selectedLayer ? state.layerConfigs[state.selectedLayer] ?? null : null;
+  // selectedConfig KALDIRILDI (UX #3): hat ismi / malzeme / varsayilan cap
+  // form alanlari silindi — cap bilgisi Cap Kalemleri modulunden geliyor.
 
   // ─── Global Esc: en ust katmandan baslayip tek tek geri al ─────────
   // Priority: acik popup'lar > duzenlenen ogeler > secim/mod. Her Esc tek
@@ -427,211 +431,6 @@ export default function DwgProjectWorkspace({
   // butonuna basinca SADECE o layer parse edilir. Engine load minimize, kontrol
   // kullanicida.
 
-  const handleBulkCalculate = async (layers: string[]) => {
-    if (layers.length === 0) return;
-    console.log('[handleBulkCalculate] START', { count: layers.length });
-    setCalculating(true);
-
-    // BATCH SIRALI: Render free tier 512MB RAM single worker. 27 layer'i
-    // tek request'te gondermek OOM-kill'e neden oluyor (ilk parse OK,
-    // sonrakiler engine crash). 5 layer'lik batch'lere bol, sirali await.
-    // Toplam sure: 5-6 batch x 15-30sn = 1.5-3 dakika (acik gostergeyle).
-    const BATCH_SIZE = 5;
-    const batches: string[][] = [];
-    for (let i = 0; i < layers.length; i += BATCH_SIZE) {
-      batches.push(layers.slice(i, i + BATCH_SIZE));
-    }
-
-    toast({
-      title: '🔄 Tum layer\'lar hesaplaniyor',
-      description: `${layers.length} layer ${batches.length} batch'te islenecek (1.5-3 dk)`,
-    });
-
-    const allEdges: EdgeSegment[] = [];
-    const allJunctions: [number, number][] = [];
-    let failedBatches = 0;
-    let successBatches = 0;
-
-    try {
-      for (let bIdx = 0; bIdx < batches.length; bIdx++) {
-        const batch = batches[bIdx];
-        console.log(`[handleBulkCalculate] BATCH ${bIdx + 1}/${batches.length}`, { layers: batch });
-
-        try {
-          const params = new URLSearchParams({
-            discipline: 'mechanical',
-            // scale=0 (Auto) durumda parametreyi HIC gondermiyoruz -> backend $INSUNITS+geometri ile karar verir
-            ...(scale && scale > 0 ? { scale: String(scale) } : {}),
-            file_id: fileId,
-            selected_layers: JSON.stringify(batch),
-            layer_hat_tipi: '{}',
-            layer_material_type: '{}',
-            sprinkler_layers: JSON.stringify(state.sprinklerLayers),
-          });
-          const formData = new FormData();
-          const res = await api.post<MetrajResult>(
-            `/dwg-engine/parse?${params.toString()}`,
-            formData,
-            { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 180000 },
-          );
-          const data = res.data as any;
-          const batchEdges: EdgeSegment[] = Array.isArray(data.edge_segments) ? data.edge_segments : [];
-          const batchJunctions: [number, number][] = Array.isArray(data.junction_points)
-            ? data.junction_points : [];
-          allEdges.push(...batchEdges);
-          allJunctions.push(...batchJunctions);
-          successBatches++;
-          console.log(`[handleBulkCalculate] BATCH ${bIdx + 1} OK`, {
-            segments: batchEdges.length, junctions: batchJunctions.length,
-          });
-        } catch (batchErr: any) {
-          failedBatches++;
-          console.warn(`[handleBulkCalculate] BATCH ${bIdx + 1} FAIL:`, {
-            status: batchErr?.response?.status,
-            msg: batchErr?.message,
-          });
-          // Devam et — diger batch'ler calismaya devam etsin
-        }
-
-        // Engine'e nefes aldir — sonraki batch'ten once kisa bekleme
-        // (memory cleanup + worker idle olsun)
-        if (bIdx < batches.length - 1) {
-          await new Promise((r) => setTimeout(r, 1500));
-        }
-      }
-
-      // Edge segment'leri layer'a gore grupla
-      const segsByLayer: Record<string, EdgeSegment[]> = {};
-      for (const es of allEdges) {
-        const lyr = es.layer;
-        if (!segsByLayer[lyr]) segsByLayer[lyr] = [];
-        segsByLayer[lyr].push(es);
-      }
-      const layerNames = Object.keys(segsByLayer);
-      console.log('[handleBulkCalculate] DONE', {
-        successBatches, failedBatches,
-        totalSegs: allEdges.length, junctions: allJunctions.length, layerCount: layerNames.length,
-      });
-
-      let totalSegCount = 0;
-      for (const lyr of layerNames) {
-        const segs = segsByLayer[lyr];
-        const totalLen = segs.reduce((s, e) => s + (e.length || 0), 0);
-        const cfg = state.layerConfigs[lyr] ?? { hatIsmi: '', materialType: '', defaultDiameter: '' };
-        const calcLayer: CalculatedLayer = {
-          layer: lyr,
-          hatIsmi: cfg.hatIsmi || lyr,
-          materialType: cfg.materialType || '',
-          defaultDiameter: cfg.defaultDiameter || '',
-          edgeSegments: segs,
-          junctionPoints: lyr === layerNames[0] ? allJunctions : [],
-          totalLength: totalLen,
-          computedAt: Date.now(),
-          approved: false,  // bulk hesap layer'lari da onaysiz baslar
-        };
-        addCalculatedLayer(calcLayer);
-        totalSegCount += segs.length;
-      }
-
-      const failedNote = failedBatches > 0 ? ` (${failedBatches} batch fail)` : '';
-      toast({
-        title: '✓ Hesaplandi',
-        description: `${layerNames.length} layer, ${totalSegCount} segment, ${allJunctions.length} T-noktasi${failedNote}`,
-        variant: failedBatches > 0 ? 'destructive' : 'default',
-      });
-    } catch (e: any) {
-      console.error('[handleBulkCalculate] HATA:', {
-        status: e?.response?.status,
-        data: e?.response?.data,
-        message: e?.message,
-      });
-      const msg = e?.response?.data?.message ?? e?.message ?? 'Bulk hesaplama hatasi';
-      toast({ title: 'Hata', description: String(msg).slice(0, 200), variant: 'destructive' });
-    } finally {
-      setCalculating(false);
-    }
-  };
-
-  const handleCalculate = async (forceLayer?: string) => {
-    const layer = forceLayer ?? state.selectedLayer;
-    console.log('[handleCalculate] START', { layer, forceLayer, selectedLayer: state.selectedLayer });
-    if (!layer) {
-      console.warn('[handleCalculate] EARLY EXIT: layer yok');
-      return;
-    }
-    if (state.calculatedLayers[layer]) {
-      console.warn('[handleCalculate] EARLY EXIT: zaten hesaplandi', layer);
-      return;
-    }
-    const cfg = state.layerConfigs[layer] ?? { hatIsmi: '', materialType: '', defaultDiameter: '' };
-    setCalculating(true);
-    try {
-      const hatTipiMap: Record<string, string> = { [layer]: cfg.hatIsmi || layer };
-      const materialTypeMap: Record<string, string> = {};
-      if (cfg.materialType) materialTypeMap[layer] = cfg.materialType;
-      // layer_default_diameter KALDIRILDI — cap atamasi manuel (dwg-tagging)
-
-      const params = new URLSearchParams({
-        discipline: 'mechanical',
-        scale: String(scale),
-        file_id: fileId,
-        selected_layers: JSON.stringify([layer]),
-        layer_hat_tipi: JSON.stringify(hatTipiMap),
-        layer_material_type: JSON.stringify(materialTypeMap),
-        sprinkler_layers: JSON.stringify(state.sprinklerLayers),
-      });
-
-      console.log('[handleCalculate] POST /dwg-engine/parse', { url: `/dwg-engine/parse?${params.toString()}` });
-      const formData = new FormData();
-      const res = await api.post<MetrajResult>(
-        `/dwg-engine/parse?${params.toString()}`,
-        formData,
-        { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 300000 },
-      );
-      console.log('[handleCalculate] RESPONSE OK', { status: res.status });
-
-      const data = res.data as any;
-      const edgeSegs: EdgeSegment[] = Array.isArray(data.edge_segments) ? data.edge_segments : [];
-      const junctions: [number, number][] = Array.isArray(data.junction_points)
-        ? (data.junction_points as [number, number][])
-        : [];
-      const totalLen = edgeSegs.reduce((sum, e) => sum + (e.length || 0), 0);
-      console.log('[handleCalculate] PARSED', { edgeSegsCount: edgeSegs.length, junctionsCount: junctions.length, totalLen });
-
-      const calcLayer: CalculatedLayer = {
-        layer,
-        hatIsmi: cfg.hatIsmi,
-        materialType: cfg.materialType,
-        defaultDiameter: cfg.defaultDiameter,
-        edgeSegments: edgeSegs,
-        junctionPoints: junctions,
-        totalLength: totalLen,
-        computedAt: Date.now(),
-        approved: false,
-      };
-      addCalculatedLayer(calcLayer);
-
-      toast({
-        title: 'Layer hesaplandı',
-        description: `${layer}: ${totalLen.toFixed(1)} m, ${edgeSegs.length} segment, ${junctions.length} T-noktası`,
-      });
-    } catch (e: any) {
-      // Tam error context'i console'a — toast kesiyor, F12 → Console'da tüm detay
-      console.error('[Hesapla] HATA:', {
-        status: e?.response?.status,
-        data: e?.response?.data,
-        message: e?.message,
-        url: e?.config?.url,
-      });
-      const rawMsg = e?.response?.data?.message ?? e?.response?.data?.detail ?? e?.message ?? 'Metraj hesaplanamadı';
-      const msg = typeof rawMsg === 'string' ? rawMsg : JSON.stringify(rawMsg);
-      // Toast'a uzunsa truncate ama tam mesaj console'da
-      const shortMsg = msg.length > 200 ? msg.slice(0, 200) + '... (F12 Console\'da tam mesaj)' : msg;
-      toast({ title: 'Hata', description: shortMsg, variant: 'destructive' });
-    } finally {
-      setCalculating(false);
-    }
-  };
 
   /** Layer secimi degisikligini onaysiz-hesaplama korumasiyla yap.
    *  Mevcut secili layer hesaplandi ama onaylanmadi ise uyari ver, secimi
@@ -855,6 +654,8 @@ export default function DwgProjectWorkspace({
     }
 
     onApproved(finalMetraj, fileName);
+    // UX #4: final sonrasi etiketleme ekrani da sifirlansin
+    clearActiveBucket();
     // PRD §5: Save sonrasi viewer'da cap renkleri kaldirilir, layer orijinal
     // ACI rengine donulur. calculatedLayers state'i SAKLI tutulur (kullanici
     // dondukten sonra cap duzeltmesi yapabilsin). Sadece RENDER bayragi false.
@@ -914,11 +715,23 @@ export default function DwgProjectWorkspace({
             onInsertClick={handleInsertClick}
             onCircleClick={handleCircleClick}
             onSegmentClick={(seg) => {
-              // TIKLA-ETIKETLE: aktif kalem varsa capi DOGRUDAN ata (popup yok)
-              // + segment izolasyon flash'i (nerede baslayip bittigi teyidi).
+              // TIKLA-ETIKETLE (UX #2 toggle mantigi):
+              //  - Ayni cap zaten atanmissa  → SIL (capsiz/neon'a don) = geri alma
+              //  - Farkli veya bos ise       → aktif kalemin capini yaz = uzerine yazma
+              // Kalem yokken: eski davranis (DiameterEditPopup).
               if (activeBucket) {
-                updateEdgeSegmentDiameter(seg.layer, seg.segment_id, activeBucket.diameter);
-                setTagFlash({ segmentId: seg.segment_id, color: activeBucket.color, at: Date.now() });
+                const current = (seg.diameter || '').trim();
+                const sameAsBucket =
+                  !isUnassignedDiameter(current) &&
+                  canonicalizeDiameter(current) === activeBucket.diameter;
+                if (sameAsBucket) {
+                  updateEdgeSegmentDiameter(seg.layer, seg.segment_id, '');
+                  // Geri alma teyidi: NEON flash (capsiz durumunun rengi)
+                  setTagFlash({ segmentId: seg.segment_id, color: '#39ff14', at: Date.now() });
+                } else {
+                  updateEdgeSegmentDiameter(seg.layer, seg.segment_id, activeBucket.diameter);
+                  setTagFlash({ segmentId: seg.segment_id, color: activeBucket.color, at: Date.now() });
+                }
               } else {
                 setEditingSegment(seg);
               }
@@ -995,7 +808,6 @@ export default function DwgProjectWorkspace({
           />
           <LayerInfoSidebar
             selectedLayer={state.selectedLayer}
-            config={selectedConfig}
             calculating={calculating || (!!state.selectedLayer && calculatingLayer === state.selectedLayer)}
             calculatedLayer={state.selectedLayer ? state.calculatedLayers[state.selectedLayer] ?? null : null}
             onCalculate={(layer) => {
@@ -1007,37 +819,33 @@ export default function DwgProjectWorkspace({
                 toast({ title: 'Zaten hesaplandi', description: layer });
                 return;
               }
-              // "Hesapla" = SAF geometri+uzunluk cikarimi. Cap atamasi YOK —
-              // segmentler capsiz (neon) gelir, kullanici Cap Kalemleri ile
-              // tek tek veya toplu etiketler (operasyon: manuel tagging).
-              const cfg = state.layerConfigs[layer];
-              calculateLayer(layer, {
-                hatIsmi: cfg?.hatIsmi,
-                materialType: cfg?.materialType,
-              });
+              // UX #4: yeni layer hesaplamasi TERTEMIZ baslar — onceki layer'in
+              // aktif kalemi bulasmasin diye kalem deaktive edilir.
+              clearActiveBucket();
+              // "Segmentlerine Ayir" = SAF geometri+uzunluk cikarimi. Cap
+              // atamasi YOK — segmentler capsiz (neon) gelir; hat ismi/malzeme
+              // alanlari kaldirildi (UX #3), cap bilgisi Cap Kalemleri'nden.
+              calculateLayer(layer);
             }}
-            onChangeConfig={(patch) => state.selectedLayer && updateLayerConfig(state.selectedLayer, patch)}
-            onApplyDefaultDiameter={(d) => {
-              if (!state.selectedLayer) return;
-              const layer = state.selectedLayer;
-              updateLayerConfig(layer, { defaultDiameter: d });
-              // Hesaplanmis ise: bos diameter'li segment'lere apply et
+            onComplete={(layer) => {
+              // UX #4: "Hesaplamayi Tamamla" — layer onaylanir, etiketleme
+              // ekrani sifirlanir (aktif kalem + secim reset).
               const cl = state.calculatedLayers[layer];
-              if (cl) {
-                let updatedCount = 0;
-                cl.edgeSegments.forEach((es) => {
-                  if (!es.diameter || es.diameter === 'Belirtilmemis') {
-                    updateEdgeSegmentDiameter(layer, es.segment_id, d);
-                    updatedCount += 1;
-                  }
-                });
-                toast({
-                  title: 'Çap uygulandı',
-                  description: `${updatedCount} boş segment → ${d}`,
-                });
-              } else {
-                toast({ title: 'Çap kaydedildi', description: 'Layer hesaplanınca uygulanacak.' });
+              if (!cl) return;
+              const empty = cl.edgeSegments.filter((es) => isUnassignedDiameter(es.diameter)).length;
+              if (empty > 0) {
+                const ok = window.confirm(
+                  `${empty} segment hâlâ çapsız (çizimde neon).\nYine de bu layer tamamlansın mı?`,
+                );
+                if (!ok) return;
               }
+              approveLayer(layer);
+              clearActiveBucket();
+              if (state.selectedLayer === layer) selectLayer(layer); // toggle off — secim temizlenir
+              toast({
+                title: 'Layer tamamlandı ✓',
+                description: `${layer} onaylandı. Etiketleme ekranı yeni layer için sıfırlandı.`,
+              });
             }}
             onClearSelection={() => selectLayer(state.selectedLayer!)}
             onHideLayer={() => {
@@ -1087,7 +895,11 @@ export default function DwgProjectWorkspace({
                 beginEditEquipment(key);
               }
             }}
-            onApproveLayer={approveLayer}
+            onApproveLayer={(layer) => {
+              // UX #4: ozet panelinden onay da etiketleme ekranini sifirlar
+              approveLayer(layer);
+              clearActiveBucket();
+            }}
             onSelectLayerCard={(layer) => {
               // Hesaplanmis Metraj kartina tikla:
               //  - Layer onayli ise onayi kaldir (revize moduna gec, cap renkleri donsun)
