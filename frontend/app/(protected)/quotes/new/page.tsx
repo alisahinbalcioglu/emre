@@ -63,6 +63,10 @@ import { useCurrency } from '@/hooks/use-currency';
 const EXCEL_EXTENSIONS = '.xlsx,.xls';
 const PDF_EXTENSIONS = '.pdf';
 
+/** DWG Workspace'ten gelindi isareti — sayfa yenilense bile "Çizime / Projeye
+ *  Dön" butonu korunur (state degil, sessionStorage; teklif kaydedilince silinir). */
+const FROM_DWG_KEY = 'metaprice_quote_from_dwg';
+
 // formatPrice ve CURRENCY_SYMBOLS @/hooks/use-currency altina tasindi.
 
 // Calc fonksiyonlari kaldirildi — Excel aynen gosteriliyor
@@ -110,6 +114,12 @@ export default function NewQuotePage() {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
 
+    // Onceki oturumda DWG'den gelinmisti ve sayfa yenilendi — "Çizime /
+    // Projeye Dön" butonu kaybolmasin (draft restore ile birlikte calisir).
+    try {
+      if (sessionStorage.getItem(FROM_DWG_KEY) === '1') setCameFromDwg(true);
+    } catch {}
+
     // DWG mode — Dashboard'dan yonlendirildi, ayri /dwg-workspace sayfasina
     // git (Canvas2D viewer lazy load + state izolasyonu).
     if (params.get('mode') === 'dwg') {
@@ -123,60 +133,105 @@ export default function NewQuotePage() {
       const stored = sessionStorage.getItem('metaprice_dwg_metraj');
       sessionStorage.removeItem('metaprice_dwg_metraj');
       window.history.replaceState({}, '', '/quotes/new');
+      // Geri butonu artik "Cizime Don" olarak calisir (DWG state /dwg-workspace'te
+      // localStorage'da korunuyor). Kullanici dashboard'a atilmaz.
+      setCameFromDwg(true);
+      try { sessionStorage.setItem(FROM_DWG_KEY, '1'); } catch {}
       if (!stored) return;
       try {
         const { metraj, fileName } = JSON.parse(stored) as {
           metraj: MetrajResult;
           fileName: string;
         };
-        // (Malzeme Adi, Cap) bazinda groupBy — Excel ile ayni format.
-        // Her segment'i ayri satir gostermek 26+ satir saciyordu; cap bazinda
-        // toplam daha temiz ve fiyatlandirma icin dogru veri.
-        const grouped = new Map<string, { name: string; diameter: string; totalLen: number }>();
+        // ── DOGRU VERI ESLESTIRMESI (manuel etiketleme mimarisi) ──
+        //   seg.layer     = Layer/sistem adi (orn "a-yagmur")   -> "Hat / Sistem"
+        //   seg.diameter  = kullanicinin bucket/kalem metni       -> "Malzeme ve Cap"
+        //                   (orn "Ø160 HDPE BORU")
+        //   Ekipman satirlari (material_type "Ekipman..." ile baslar) ayri: kalem
+        //   metni ekipman etiketidir, "sistem" yok -> Hat/Sistem = "Ekipman".
+        //
+        // (Hat/Sistem, Malzeme ve Cap, Birim) bazinda groupBy — ayni kalemin
+        // farkli layer'lardaki uzunluklari ayri satir kalir, cap bazli toplam.
+        const grouped = new Map<
+          string,
+          { hatSistem: string; malzemeCap: string; unit: string; totalQty: number }
+        >();
+        const add = (hatSistem: string, malzemeCap: string, unit: string, qty: number) => {
+          const key = `${hatSistem}__${malzemeCap}__${unit}`;
+          const entry = grouped.get(key);
+          if (entry) entry.totalQty += qty;
+          else grouped.set(key, { hatSistem, malzemeCap, unit, totalQty: qty });
+        };
         for (const layer of metraj.layers) {
           if (layer.segments && layer.segments.length > 0) {
             for (const seg of layer.segments) {
-              const name = seg.material_type || layer.hat_tipi || layer.layer;
-              const dia = seg.diameter || 'Belirtilmemis';
-              const key = `${name}__${dia}`;
-              const entry = grouped.get(key);
-              if (entry) {
-                entry.totalLen += seg.length || 0;
+              const isEquip = (seg.material_type || '').startsWith('Ekipman');
+              if (isEquip) {
+                // "Ekipman · {birim} (marka) [specs]" -> birim ayikla
+                const m = (seg.material_type || '').match(/Ekipman\s*·\s*([^\s(]+)/);
+                const unit = m?.[1]?.trim() || 'adet';
+                // Ekipman kalem metni = layer alani (handleConfirmAll g.label'i buraya koyar)
+                const label = seg.layer || layer.hat_tipi || layer.layer || 'Ekipman';
+                add('Ekipman', label, unit, seg.length || 0);
               } else {
-                grouped.set(key, { name, diameter: dia, totalLen: seg.length || 0 });
+                const hatSistem = seg.layer || layer.hat_tipi || layer.layer || '';
+                const malzemeCap = seg.diameter || 'Belirtilmemis';
+                add(hatSistem, malzemeCap, 'm', seg.length || 0);
               }
             }
           } else {
-            // Layer'da segment yok — fake equipment satiri (ekipman)
-            const name = layer.hat_tipi || layer.layer;
-            const key = `${name}__`;
-            grouped.set(key, { name, diameter: '', totalLen: layer.length });
+            // Segment'siz layer (nadir) — sistem adi bilinir, kalem metni yok
+            const hatSistem = layer.hat_tipi || layer.layer || '';
+            add(hatSistem, 'Belirtilmemis', 'm', layer.length || 0);
           }
         }
         const rows: ExcelRowData[] = Array.from(grouped.values())
-          .sort((a, b) => b.totalLen - a.totalLen)
+          .sort((a, b) => b.totalQty - a.totalQty)
           .map((g, idx) => ({
             _isDataRow: true,
             _isHeaderRow: false,
             _rowIdx: idx,
-            'Malzeme Adi': g.name,
-            'Cap': g.diameter,
-            'Birim': 'm',
-            'Miktar': g.totalLen.toFixed(2),
+            'Hat / Sistem': g.hatSistem,
+            'Malzeme ve Çap': g.malzemeCap,
+            'Birim': g.unit,
+            'Miktar': g.totalQty.toFixed(2),
           }));
         const columnDefs = [
-          { field: 'Malzeme Adi', headerName: 'Malzeme Adi', flex: 3 },
-          { field: 'Cap', headerName: 'Cap', width: 90 },
+          { field: 'Hat / Sistem', headerName: 'Hat / Sistem', flex: 2 },
+          { field: 'Malzeme ve Çap', headerName: 'Malzeme ve Çap', flex: 3 },
           { field: 'Birim', headerName: 'Birim', width: 80 },
           { field: 'Miktar', headerName: 'Miktar', width: 100, type: 'rightAligned' as const },
         ];
+        // nameField = "Malzeme ve Cap": marka eslestirme/fiyatlandirma bucket
+        // metnini (orn "Ø160 HDPE BORU") arar — layer adini DEGIL.
+        const dwgColumnRoles = { nameField: 'Malzeme ve Çap', quantityField: 'Miktar', unitField: 'Birim' };
         setExcelGridData({
           columnDefs,
           rowData: rows,
-          columnRoles: { nameField: 'Malzeme Adi', quantityField: 'Miktar', unitField: 'Birim' },
+          columnRoles: dwgColumnRoles,
           brands: allBrands,
           headerEndRow: 0,
         });
+        // KAYDETME + DRAFT KALICILIGI: handleSave items'i multiSheet'ten kurar
+        // ve draft-persist effect'i yalniz multiSheet varken calisir. Tek-sheet
+        // MultiSheet olarak da yaz — yoksa "Teklifi Kaydet" BOS teklif kaydeder
+        // ve sayfa yenilenince tablo kaybolur (MetrajEditor yoluyla ayni desen).
+        const multiData: MultiSheetData = {
+          sheets: [{
+            index: 0,
+            name: 'DWG Metraj',
+            isEmpty: false,
+            discipline: 'mechanical' as const,
+            columnDefs,
+            rowData: rows,
+            columnRoles: dwgColumnRoles,
+            headerEndRow: 0,
+          }],
+          brands: allBrands,
+        };
+        setMultiSheet(multiData);
+        setActiveSheetIndex(0);
+        setLiveRowDataBySheet({ 0: rows });
         setTitle(fileName.replace(/\.[^.]+$/, '') + ' — DWG Metraj');
         toast({ title: 'Metraj onaylandi', description: `${rows.length} kalem fiyatlandirmaya aktarildi` });
       } catch (e) {
@@ -253,6 +308,10 @@ export default function NewQuotePage() {
   const [excelGridData, setExcelGridData] = useState<ExcelGridData | null>(null);
   const [dwgMetraj, setDwgMetraj] = useState<MetrajResult | null>(null);
   const [dwgFileName, setDwgFileName] = useState<string>('');
+  // DWG Workspace'ten mi gelindi? Evetse "Geri" butonu dashboard yerine
+  // /dwg-workspace'e (cizime) doner — metraj/etiketleme state'i localStorage'da
+  // korunur, kullanici projeden atilmaz.
+  const [cameFromDwg, setCameFromDwg] = useState(false);
   // Multi-sheet state
   const [multiSheet, setMultiSheet] = useState<MultiSheetData | null>(null);
   const [activeSheetIndex, setActiveSheetIndex] = useState(0);
@@ -880,6 +939,7 @@ export default function NewQuotePage() {
 
       // Draft temizle — artik kayitli teklif var
       sessionStorage.removeItem(DRAFT_KEY);
+      sessionStorage.removeItem(FROM_DWG_KEY);
 
       toast({
         title: 'Teklif kaydedildi',
@@ -908,12 +968,18 @@ export default function NewQuotePage() {
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="sm" onClick={() => {
-            // Draft sessionStorage'da kalir (geri donerse kaldigi yerden devam edebilir)
-            // Kullanici acikca "kaydet" basmadiysa zaten kalici kayit yok
-            router.push('/dashboard');
+            // DWG'den gelindiyse cizime don — /dwg-workspace DwgUploader mount'ta
+            // localStorage'daki session'i (fileId + hash) /status ile dogrulayip
+            // workspace'i etiketlerle birlikte geri acar. Aksi halde dashboard.
+            // Draft sessionStorage'da kalir (kaldigi yerden devam edebilir).
+            if (cameFromDwg) {
+              router.push('/dwg-workspace');
+            } else {
+              router.push('/dashboard');
+            }
           }}>
             <ArrowLeft className="mr-1 h-4 w-4" />
-            Geri
+            {cameFromDwg ? 'Çizime / Projeye Dön' : 'Geri'}
           </Button>
           <h1 className="text-2xl font-bold tracking-tight">Teklif Duzenle</h1>
           {usedProvider && (
