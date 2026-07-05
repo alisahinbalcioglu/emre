@@ -67,6 +67,9 @@ export default function DwgProjectWorkspace({
   const [availableLayers, setAvailableLayers] = useState<string[]>([]);
   const hiddenLayersSet = useMemo(() => new Set(state.hiddenLayers), [state.hiddenLayers]);
   const dimmedLayersSet = useMemo(() => new Set(state.dimmedLayers), [state.dimmedLayers]);
+  // PERF: inline `new Set(...)` her render'da YENI identity uretir → viewer'in
+  // render effect'i tetiklenir → 706K cizgilik sahne bosuna yeniden cizilirdi.
+  const sprinklerLayersSet = useMemo(() => new Set(state.sprinklerLayers), [state.sprinklerLayers]);
 
   /** AutoCAD-vari "Layer Gizle Modu". Toolbar'daki goz-kapali butonu ile toggle.
    *  Aktif iken cizimde tikla = o layer'i cizimden cikar. Geri getirmek icin
@@ -460,7 +463,6 @@ export default function DwgProjectWorkspace({
   const handleLineClick = (line: { layer: string; index: number; shiftKey: boolean; screenX: number; screenY: number }) => {
     // LINE click -> SADECE layer secimi. Hesaplama "Hesapla" butonuyla manuel
     // tetiklenir (LayerInfoSidebar'da).
-    console.log('[handleLineClick] FIRED', { layer: line.layer });
     if (hideMode || line.shiftKey) {
       toggleLayerVisibility(line.layer);
       toast({
@@ -714,7 +716,7 @@ export default function DwgProjectWorkspace({
             calculatedJunctionsByLayer={calculatedJunctionsByLayer}
             selectedLayer={state.selectedLayer}
             markedEquipmentKeys={markedEquipmentKeys}
-            sprinklerLayers={new Set(state.sprinklerLayers)}
+            sprinklerLayers={sprinklerLayersSet}
             onLineClick={handleLineClick}
             onInsertClick={handleInsertClick}
             onCircleClick={handleCircleClick}

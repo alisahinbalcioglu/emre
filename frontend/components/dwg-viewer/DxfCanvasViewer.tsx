@@ -130,9 +130,9 @@ interface SpatialEntry {
   polyline?: Array<[number, number]>;
   /** Sadece type='edge' icin: backend'in hesapladigi metre uzunluk (tooltip). */
   length?: number;
-  /** Sadece type='edge' icin: cap ve miras durumu (tooltip + renk icin) */
-  diameter?: string;
-  isInherited?: boolean;
+  // NOT: diameter/isInherited BILEREK index'te tutulmaz — cap her tiklamada
+  // degisir; index'te olsa ya stale kalir ya da 700K'lik agac her tiklamada
+  // yeniden kurulur (OOM). Hover aninda allEdgeSegments'ten canli okunur.
 }
 
 interface HoveredEntity {
@@ -299,10 +299,13 @@ export default function DxfCanvasViewer({
     return [0, 0, 100, 100];
   }, [geometry, allEdgeSegments]);
 
-  const { viewport, fitView, zoomToBounds, zoomIn, zoomOut, wasDragged, pointerHandlers } = useViewport({
+  const { viewport, fitView, zoomToBounds, zoomIn, zoomOut, wasDragged, isDragging, pointerHandlers } = useViewport({
     bounds,
     containerRef,
     autoFit: !!geometry || !!allEdgeSegments,
+    // KAMERA KILIDI: dosya basina TEK otomatik fit. Onay/hesaplama/etiketleme
+    // bounds'u degistirse bile kamera kullanicinin biraktigi yerde kalir.
+    fitKey: fileId,
   });
 
   // ─── Focus segment: cap-renkleri legend'dan tiklanan segment'e zoom + halo ─
@@ -409,6 +412,9 @@ export default function DxfCanvasViewer({
   }, [fileId, edgeSegments, onLayersAvailable]);
 
   // ─── Canvas init + DPR ─────────────────────────────────────────────
+  // resizeTick: boyut degisince render effect'i tetikler + sahne cache'ini
+  // gecersiz kilar (canvas.width degisimi icerigi zaten siler).
+  const [resizeTick, setResizeTick] = useState(0);
   useEffect(() => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
@@ -427,6 +433,7 @@ export default function DxfCanvasViewer({
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctxRef.current = ctx;
       }
+      setResizeTick((t) => t + 1);
     };
 
     resize();
@@ -435,24 +442,55 @@ export default function DxfCanvasViewer({
     return () => ro.disconnect();
   }, []);
 
+  // ─── Sahne cache (KATMAN MIMARISI — OOM/re-render fix) ─────────────
+  // Statik sahne (706K cizgi + arc + circle + text + edge'ler) offscreen
+  // canvas'ta tutulur. Hover/flash/secim/halo gibi OVERLAY degisimlerinde
+  // sahne YENIDEN CIZILMEZ — tek drawImage (blit) + birkac vurgu cizgisi.
+  // Sahne yalniz asagidaki "sceneDeps" parmak izi degisince yeniden cizilir
+  // (pan/zoom, layer gorunurlugu, cap renkleri, silgi...).
+  const sceneCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const sceneKeyRef = useRef<unknown[] | null>(null);
+
   // ─── Spatial index (rbush) ────────────────────────────────────────
-  // 26K cizgide hover/click O(log N). Build O(N) — geometry degisince yeniden.
+  // 700K+ cizgide hover/click O(log N). Build O(N) — SADECE GEOMETRI
+  // degisince yeniden kurulur.
   //
-  // KRITIK: hesaplanmis layer'larin RAW LINE'lari index'e EKLENMEZ — aksi
-  // halde click hit-test uzun raw LWPOLYLINE'a (50m) duser, kucuk edge
-  // segment'lere degil. Bu sayede T'den once/sonra ayri segment secilebilir.
+  // MEMORY LEAK FIX (OOM): eski kod calculatedEdgesByLayer/allEdgeSegments
+  // IDENTITY'sine bagliydi — her cap etiketleme tiklamasi yeni state objesi
+  // uretir, 700K+ SpatialEntry'lik agac SIFIRDAN allocate edilirdi (yuzlerce
+  // MB cop/tiklama → GC yetisemez → Chrome "Out of Memory"). Cozum:
+  //  1. Rebuild anahtari GEOMETRIK parmak izi (segment_id listesi + layer
+  //     seti) — cap degisimi id'leri DEGISTIRMEZ, agac ayakta kalir.
+  //  2. diameter/is_inherited index'te SAKLANMAZ — hover aninda guncel
+  //     allEdgeSegments'ten okunur (stale veri riski yok).
+  //  3. Silgi (hiddenLineKeys) kontrolu de sorgu anina tasindi — silme de
+  //     rebuild tetiklemez.
+  //
+  // KRITIK (davranis korunur): hesaplanmis layer'larin RAW LINE'lari index'e
+  // EKLENMEZ — aksi halde click hit-test uzun raw LWPOLYLINE'a duser.
+  const skipRawLayersKey = useMemo(
+    () => (calculatedEdgesByLayer ? JSON.stringify(Object.keys(calculatedEdgesByLayer).sort()) : '[]'),
+    [calculatedEdgesByLayer],
+  );
+  const edgeGeomKey = useMemo(() => {
+    if (!allEdgeSegments) return 'none';
+    let k = String(allEdgeSegments.length);
+    for (const s of allEdgeSegments) k += ',' + s.segment_id;
+    return k;
+  }, [allEdgeSegments]);
+  // Guncel segment dizisine parmak-izi degismeden erisim (memo'yu tetiklemez;
+  // ayni parmak izinde diziler geometrik olarak esdegerdir).
+  const allEdgeSegmentsRef = useRef(allEdgeSegments);
+  allEdgeSegmentsRef.current = allEdgeSegments;
+
   const spatialIndex = useMemo<RBush<SpatialEntry>>(() => {
     const tree = new RBush<SpatialEntry>();
     const items: SpatialEntry[] = [];
-    const skipRawLayers = calculatedEdgesByLayer
-      ? new Set(Object.keys(calculatedEdgesByLayer))
-      : null;
+    const skipRawLayers = new Set<string>(JSON.parse(skipRawLayersKey));
     if (geometry) {
       geometry.lines.forEach((ln, i) => {
         // Hesaplanmis layer ise raw LINE'lari atla (edge_segments'i kullaniliyor)
-        if (skipRawLayers?.has(ln.layer)) return;
-        // SILGI: silinen LINE'lara tik aldirma (hover/click)
-        if (isLineHidden(ln.coords)) return;
+        if (skipRawLayers.has(ln.layer)) return;
         const [x1, y1, x2, y2] = ln.coords;
         items.push({
           minX: Math.min(x1, x2), maxX: Math.max(x1, x2),
@@ -461,14 +499,13 @@ export default function DxfCanvasViewer({
         });
       });
     }
-    if (allEdgeSegments) {
-      allEdgeSegments.forEach((seg, i) => {
+    const segs = allEdgeSegmentsRef.current;
+    if (segs) {
+      segs.forEach((seg, i) => {
         const meta = {
           type: 'edge' as const, layer: seg.layer, index: i,
           coords: seg.coords,
           length: seg.length,
-          diameter: seg.diameter || undefined,
-          isInherited: seg.is_inherited || false,
         };
         if (seg.polyline && seg.polyline.length >= 2) {
           let mnx = Infinity, mny = Infinity, mxx = -Infinity, mxy = -Infinity;
@@ -492,7 +529,10 @@ export default function DxfCanvasViewer({
     }
     tree.load(items);
     return tree;
-  }, [geometry, allEdgeSegments, calculatedEdgesByLayer]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- allEdgeSegments bilerek
+    // parmak izi (edgeGeomKey) uzerinden takip edilir; identity degisimi rebuild
+    // TETIKLEMEMELI (OOM fix). Detay: yukaridaki blok yorumu.
+  }, [geometry, edgeGeomKey, skipRawLayersKey]);
 
   // Hidden/dimmed layer degisince hover/selected gecersiz olabilir, temizle
   useEffect(() => {
@@ -504,7 +544,7 @@ export default function DxfCanvasViewer({
     }
   }, [hiddenLayers, dimmedLayers, hovered, selectedLine]);
 
-  // ─── Render — geometry/viewport/state degisince RAF ile ──────────
+  // ─── Render — sahne cache (statik katman) + overlay, RAF ile ─────
   useEffect(() => {
     let rafId = 0;
     const schedule = () => {
@@ -512,15 +552,11 @@ export default function DxfCanvasViewer({
       rafId = requestAnimationFrame(render);
     };
 
-    const render = () => {
-      const canvas = canvasRef.current;
-      const ctx = ctxRef.current;
-      if (!canvas || !ctx) return;
-
-      const dpr = window.devicePixelRatio || 1;
-      const w = canvas.width / dpr;
-      const h = canvas.height / dpr;
-
+    // ── SAHNE (statik katman) — yalniz sceneDeps degisince cizilir ──
+    // Icerik: grid + raw line/arc/circle/text + ekipman + edge segment'ler +
+    // T-junction marker'lari. Hover/flash/secim/halo BURADA DEGIL (overlay).
+    // 706K cizgide her hover'da bu fonksiyonun kosmasi OOM/kasma sebebiydi.
+    const drawScene = (ctx: CanvasRenderingContext2D, w: number, h: number) => {
       ctx.fillStyle = COLOR_BG;
       ctx.fillRect(0, 0, w, h);
 
@@ -864,30 +900,8 @@ export default function DxfCanvasViewer({
           ctx.globalAlpha = 1;
         }
 
-        // FOCUS HALO — legend cap'inden tiklanan segment uzerinde cap rengiyle
-        // kalin "glow" cizilir. Cizimin diger segment'lerinin uzerine biner ki
-        // kullanici sectigi cap'in nerede oldugunu kolayca gorur.
-        if (focusedSegment) {
-          const haloColor = focusedHaloColor || '#fde047'; // amber-300 fallback
-          ctx.save();
-          ctx.shadowColor = haloColor;
-          ctx.shadowBlur = 18;
-          ctx.strokeStyle = haloColor;
-          ctx.lineCap = 'round';
-          ctx.lineJoin = 'round';
-          // Iki kademe: dis daha kalin + yari-seffaf, ic dolgun cap rengi
-          ctx.globalAlpha = 0.55;
-          ctx.lineWidth = strokeWidth * 6;
-          ctx.beginPath();
-          drawSegPath(focusedSegment);
-          ctx.stroke();
-          ctx.globalAlpha = 1;
-          ctx.lineWidth = strokeWidth * 2.8;
-          ctx.beginPath();
-          drawSegPath(focusedSegment);
-          ctx.stroke();
-          ctx.restore();
-        }
+        // FOCUS HALO overlay'e tasindi (sahne cache'i halo yuzunden
+        // gecersiz olmasin — legend tiklamasi sahneyi yeniden cizmez).
       }
 
       // ─── T-junction noktalari (gorsel ayraq) ──────────────────────
@@ -913,6 +927,61 @@ export default function DxfCanvasViewer({
           ctx.globalAlpha = 1;
         }
       }
+
+      ctx.restore();  // sahne world-transform'u kapat
+    };  // drawScene sonu
+
+    const render = () => {
+      const canvas = canvasRef.current;
+      const ctx = ctxRef.current;
+      if (!canvas || !ctx) return;
+
+      const dpr = window.devicePixelRatio || 1;
+      const w = canvas.width / dpr;
+      const h = canvas.height / dpr;
+
+      // ── 1) SAHNE CACHE — parmak izi degismediyse 706K cizgi CIZILMEZ ──
+      // Hover/flash/secim degisimlerinde bu dizi AYNI kalir → sadece blit.
+      const sceneDeps: unknown[] = [
+        geometry, allEdgeSegments, viewport.panX, viewport.panY, viewport.zoom,
+        selectedLayer, highlightLayer, hiddenLayers, dimmedLayers,
+        sprinklerLayers, markedEquipmentKeys, calculatedJunctionsByLayer,
+        hiddenLineKeys, hiddenInsertKeys, hiddenTextKeys, pendingTextKeys,
+        useDiameterColors, calculatedEdgesByLayer, canvas.width, canvas.height,
+      ];
+      let scene = sceneCanvasRef.current;
+      const prevKey = sceneKeyRef.current;
+      const sceneValid =
+        !!scene && scene.width === canvas.width && scene.height === canvas.height &&
+        !!prevKey && prevKey.length === sceneDeps.length &&
+        prevKey.every((v, i) => Object.is(v, sceneDeps[i]));
+
+      if (!sceneValid) {
+        if (!scene) {
+          scene = document.createElement('canvas');
+          sceneCanvasRef.current = scene;
+        }
+        if (scene.width !== canvas.width) scene.width = canvas.width;
+        if (scene.height !== canvas.height) scene.height = canvas.height;
+        const sctx = scene.getContext('2d');
+        if (!sctx) return;
+        sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        drawScene(sctx, w, h);
+        sceneKeyRef.current = sceneDeps;
+      }
+
+      // ── 2) BLIT — sahneyi ana canvas'a tek kopyalama (device px 1:1) ──
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(scene as HTMLCanvasElement, 0, 0);
+      ctx.restore();
+
+      // ── 3) OVERLAY — hover/flash/pending/secim/halo (az obje, ucuz) ──
+      ctx.save();
+      ctx.translate(viewport.panX, viewport.panY);
+      ctx.scale(viewport.zoom, -viewport.zoom);
+      const strokeWidth = 1 / viewport.zoom;
+      ctx.lineCap = 'round';
 
       // ─── HOVER overlay (amber glow + 2x stroke) ───────────────────
       // TIKLA-ETIKETLE onizleme: aktif kalem varken edge hover'i kalem
@@ -1087,12 +1156,48 @@ export default function DxfCanvasViewer({
         ctx.shadowColor = 'transparent';
       }
 
+      // ─── FOCUS HALO — legend'dan tiklanan segment (overlay katmani) ──
+      // Sahne cache'inden bagimsiz: legend tiklamasi 706K'lik sahneyi
+      // yeniden CIZDIRMEZ, sadece blit + bu halo.
+      if (focusedSegment) {
+        const fs = focusedSegment;
+        const haloColor = focusedHaloColor || '#fde047'; // amber-300 fallback
+        const haloPath = () => {
+          ctx.beginPath();
+          if (fs.polyline && fs.polyline.length >= 2) {
+            ctx.moveTo(fs.polyline[0][0], fs.polyline[0][1]);
+            for (let i = 1; i < fs.polyline.length; i++) {
+              ctx.lineTo(fs.polyline[i][0], fs.polyline[i][1]);
+            }
+          } else {
+            ctx.moveTo(fs.coords[0], fs.coords[1]);
+            ctx.lineTo(fs.coords[2], fs.coords[3]);
+          }
+        };
+        ctx.save();
+        ctx.shadowColor = haloColor;
+        ctx.shadowBlur = 18;
+        ctx.strokeStyle = haloColor;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        // Iki kademe: dis daha kalin + yari-seffaf, ic dolgun cap rengi
+        ctx.globalAlpha = 0.55;
+        ctx.lineWidth = strokeWidth * 6;
+        haloPath();
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        ctx.lineWidth = strokeWidth * 2.8;
+        haloPath();
+        ctx.stroke();
+        ctx.restore();
+      }
+
       ctx.restore();
     };
 
     schedule();
     return () => cancelAnimationFrame(rafId);
-  }, [geometry, allEdgeSegments, calculatedJunctionsByLayer, viewport, selectedLayer, highlightLayer, hiddenLayers, dimmedLayers, sprinklerLayers, markedEquipmentKeys, hovered, selectedLine, pendingLineKeys, pendingInsertKeys, pendingTextKeys, hiddenTextKeys, isLinePending, isInsertPending, isLineHidden, isInsertHidden, isTextHidden, isTextPending, useDiameterColors, focusedSegment, focusedHaloColor, activeTagColor, flashSegment, flashTick]);
+  }, [geometry, allEdgeSegments, calculatedJunctionsByLayer, calculatedEdgesByLayer, viewport, selectedLayer, highlightLayer, hiddenLayers, dimmedLayers, sprinklerLayers, markedEquipmentKeys, hovered, selectedLine, pendingLineKeys, pendingInsertKeys, pendingTextKeys, hiddenTextKeys, isLinePending, isInsertPending, isLineHidden, isInsertHidden, isTextHidden, isTextPending, useDiameterColors, focusedSegment, focusedHaloColor, activeTagColor, flashSegment, flashTick, resizeTick]);
 
   // ─── Hover detection (rbush ile O(log N)) ────────────────────────
   const computeHovered = useCallback(
@@ -1107,6 +1212,8 @@ export default function DxfCanvasViewer({
       for (const c of candidates) {
         if (hiddenLayers?.has(c.layer)) continue;
         if (dimmedLayers?.has(c.layer)) continue;
+        // SILGI: silinen LINE'lar sorgu aninda atlanir (index rebuild gerektirmez)
+        if (c.type === 'line' && isLineHidden(c.coords)) continue;
         let d: number;
         if (c.polyline && c.polyline.length >= 2) {
           d = Infinity;
@@ -1127,6 +1234,8 @@ export default function DxfCanvasViewer({
         }
       }
       if (!best) return null;
+      // Cap/miras bilgisi CANLI okunur — index'te tutulmaz (OOM fix, stale onlemi)
+      const liveSeg = best.type === 'edge' ? allEdgeSegments?.[best.index] : undefined;
       return {
         type: best.type,
         layer: best.layer,
@@ -1134,35 +1243,56 @@ export default function DxfCanvasViewer({
         coords: best.coords,
         polyline: best.polyline,
         length: resolveHoverLength(best, scale),
-        diameter: best.diameter,
-        isInherited: best.isInherited,
+        diameter: liveSeg?.diameter || undefined,
+        isInherited: liveSeg?.is_inherited || false,
       };
     },
-    [spatialIndex, viewport.zoom, hiddenLayers, dimmedLayers, scale],
+    [spatialIndex, viewport.zoom, hiddenLayers, dimmedLayers, scale, isLineHidden, allEdgeSegments],
   );
 
   // ─── Mouse pozisyonu → world coord + hover ──────────────────────
+  // EVENT THROTTLING (OOM/CPU fix): pointermove yuksek Hz'li fare/monitorde
+  // saniyede 120-250 kez tetiklenir. Her event'te 2 setState + rbush sorgusu
+  // React agacini bogup GC baskisi yaratiyordu. Cozum: son event ref'te
+  // birikir, frame basina EN FAZLA 1 hover/cursor hesabi yapilir (RAF).
+  // Pan (drag) gercek zamanli kalir — pointerHandlers.onPointerMove throttle
+  // DISINDA senkron cagrilir.
+  const moveRafRef = useRef(0);
+  const lastMoveRef = useRef<{ clientX: number; clientY: number } | null>(null);
+  useEffect(() => () => cancelAnimationFrame(moveRafRef.current), []);
+
   const handlePointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
-      pointerHandlers.onPointerMove(e);
-      const el = containerRef.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      const mx = e.clientX - rect.left;
-      const my = e.clientY - rect.top;
-      const worldX = (mx - viewport.panX) / viewport.zoom;
-      const worldY = (viewport.panY - my) / viewport.zoom;
-      setCursorWorld({ x: worldX, y: worldY });
-      setCursorScreen({ x: mx, y: my });
+      pointerHandlers.onPointerMove(e); // pan — throttle'siz, gercek zamanli
+      lastMoveRef.current = { clientX: e.clientX, clientY: e.clientY };
+      if (moveRafRef.current) return; // bu frame icin zaten planli
+      moveRafRef.current = requestAnimationFrame(() => {
+        moveRafRef.current = 0;
+        const pos = lastMoveRef.current;
+        const el = containerRef.current;
+        if (!pos || !el) return;
+        const rect = el.getBoundingClientRect();
+        const mx = pos.clientX - rect.left;
+        const my = pos.clientY - rect.top;
+        const worldX = (mx - viewport.panX) / viewport.zoom;
+        const worldY = (viewport.panY - my) / viewport.zoom;
+        setCursorWorld({ x: worldX, y: worldY });
+        setCursorScreen({ x: mx, y: my });
 
-      // Hover detection — pan/drag esnasinda atla (yanlis hover gosterimi olmasin)
-      const newHover = computeHovered(worldX, worldY);
-      // Aynı entity ise re-render tetiklememek için referans karşılaştırması
-      if (newHover?.type !== hovered?.type || newHover?.index !== hovered?.index || newHover?.layer !== hovered?.layer) {
-        setHovered(newHover);
-      }
+        // Hover detection — pan/drag esnasinda ATLA (kamera zaten hareketli,
+        // hover hesabi + glow cizimi bos yere frame yer)
+        if (isDragging()) return;
+        const newHover = computeHovered(worldX, worldY);
+        // Ayni entity ise state IDENTITY korunur — re-render/redraw tetiklenmez
+        setHovered((prev) => {
+          if (newHover?.type === prev?.type && newHover?.index === prev?.index && newHover?.layer === prev?.layer) {
+            return prev;
+          }
+          return newHover;
+        });
+      });
     },
-    [pointerHandlers, viewport.panX, viewport.panY, viewport.zoom, computeHovered, hovered],
+    [pointerHandlers, viewport.panX, viewport.panY, viewport.zoom, computeHovered, isDragging],
   );
 
   // ─── Click hit-test ──────────────────────────────────────────────

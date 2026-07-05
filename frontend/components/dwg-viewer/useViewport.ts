@@ -10,6 +10,11 @@ interface UseViewportOpts {
   containerRef: RefObject<HTMLElement | null>;
   /** Otomatik fit — ilk mount'ta bounds'u cerceveye sigdirir */
   autoFit?: boolean;
+  /** KAMERA KILIDI: otomatik fit bu anahtar basina yalniz BIR KEZ calisir
+   *  (tipik olarak fileId). Ayni anahtar altinda bounds ne kadar degisirse
+   *  degissin (segment hesaplama, onay, etiketleme...) kamera OYNATILMAZ —
+   *  yalniz kullanici hareketleri (wheel/drag/toolbar) kamerayi degistirir. */
+  fitKey?: string | null;
 }
 
 /**
@@ -18,7 +23,7 @@ interface UseViewportOpts {
  * - Drag: pan
  * - FitView: bounds'u cerceveye sigdir
  */
-export function useViewport({ bounds, containerRef, autoFit = true }: UseViewportOpts) {
+export function useViewport({ bounds, containerRef, autoFit = true, fitKey = null }: UseViewportOpts) {
   const [viewport, setViewport] = useState<Viewport>({ panX: 0, panY: 0, zoom: 1 });
   // Drag vs click ayrimi:
   // - startX/Y: pointer down konumu
@@ -76,28 +81,19 @@ export function useViewport({ bounds, containerRef, autoFit = true }: UseViewpor
     zoomToBounds(bounds, 0.92);
   }, [bounds, zoomToBounds]);
 
-  // Ilk mount + bounds DEGERI degisiminde fit — container layout'u beklenmeli
-  // Cok katmanli strateji: RAF x2 → yetmedyse 100ms sonra tekrar dene
-  //
-  // VIEWPORT JUMP FIX (UX #1): cap etiketleme edgeSegments dizisini yeniden
-  // yaratir → bounds AYNI DEGERLERLE yeni referans olur → fitView identity
-  // degisir → eski kod kamerayi sifirliyordu. Cozum: son fit edilen bounds
-  // DEGERLERINI ref'te tut; degerler (epsilon ici) aynıysa fit ATLA.
-  // Kamera yalniz gercek veri degisiminde (yeni dosya/yeni layer bounds'u)
-  // fit olur; renk/cap guncellemeleri kamerayi OYNATAMAZ.
-  const lastFitBoundsRef = useRef<[number, number, number, number] | null>(null);
+  // KAMERA KILIDI (Manual Control Only): otomatik fit fitKey basina yalniz
+  // BIR KEZ calisir — dosya ilk yuklendiginde. Sonrasinda bounds DEGERI
+  // degisse bile ("Segmentlerine Ayir" segment bbox'i, "Hesaplamayi Tamamla"
+  // sonrasi geometry.bounds'a donus...) kamera ASLA otomatik oynamaz.
+  // Eski deger-bazli epsilon guard'i yetersizdi: onay/hesaplama akislari
+  // bounds'u FARKLI degerlere tasiyor ve kamera uzaga atiyordu.
+  // Kamerayi yalniz kullanici hareket ettirir: wheel, drag, toolbar butonlari,
+  // legend focus (zoomToBounds — bilincli tiklama navigasyonu).
+  const autoFittedKeyRef = useRef<string | null>(null);
   useEffect(() => {
     if (!autoFit) return;
-    const prev = lastFitBoundsRef.current;
-    if (
-      prev &&
-      Math.abs(prev[0] - bounds[0]) < 1e-6 &&
-      Math.abs(prev[1] - bounds[1]) < 1e-6 &&
-      Math.abs(prev[2] - bounds[2]) < 1e-6 &&
-      Math.abs(prev[3] - bounds[3]) < 1e-6
-    ) {
-      return; // bounds degeri degismedi — kamera kullanicinin biraktigi yerde kalir
-    }
+    const key = fitKey ?? '__default__';
+    if (autoFittedKeyRef.current === key) return; // bu dosya icin fit YAPILDI — kamera kilitli
     let raf1 = 0, raf2 = 0, retryTimer: ReturnType<typeof setTimeout> | null = null;
     let done = false;
 
@@ -106,7 +102,7 @@ export function useViewport({ bounds, containerRef, autoFit = true }: UseViewpor
       const el = containerRef.current;
       if (el && el.getBoundingClientRect().width > 0 && el.getBoundingClientRect().height > 0) {
         fitView();
-        lastFitBoundsRef.current = [bounds[0], bounds[1], bounds[2], bounds[3]];
+        autoFittedKeyRef.current = key;
         done = true;
       }
     };
@@ -127,7 +123,7 @@ export function useViewport({ bounds, containerRef, autoFit = true }: UseViewpor
       cancelAnimationFrame(raf2);
       if (retryTimer) clearTimeout(retryTimer);
     };
-  }, [autoFit, fitView, containerRef, bounds]);
+  }, [autoFit, fitView, containerRef, fitKey]);
 
   // Wheel zoom logic — hem native hem React onWheel icin ortak
   const applyWheel = useCallback((deltaY: number, clientX: number, clientY: number) => {
@@ -215,6 +211,10 @@ export function useViewport({ bounds, containerRef, autoFit = true }: UseViewpor
   /** Bir alt bilesenin tiklama handler'i: drag olduysa click iptal edilmeli */
   const wasDragged = useCallback(() => dragStateRef.current.moved, []);
 
+  /** Su anda aktif pan/drag var mi? Hover hit-test'i pan sirasinda atlamak
+   *  icin (706K cizgide her frame rbush sorgusu + state update israfi). */
+  const isDragging = useCallback(() => dragStateRef.current.capturing, []);
+
   const zoomIn = useCallback(() => setViewport((v) => ({ ...v, zoom: v.zoom * 1.3 })), []);
   const zoomOut = useCallback(() => setViewport((v) => ({ ...v, zoom: v.zoom / 1.3 })), []);
 
@@ -226,6 +226,7 @@ export function useViewport({ bounds, containerRef, autoFit = true }: UseViewpor
     zoomOut,
     onWheelReact,
     wasDragged,
+    isDragging,
     pointerHandlers: { onPointerDown, onPointerMove, onPointerUp, onPointerCancel: onPointerUp },
   };
 }
