@@ -583,6 +583,115 @@ def _split_edges_on_points(
     return new_edges, split_positions
 
 
+# ── Block-to-Line parcalama (insertion point split) ─────────────
+
+def _collect_all_insert_points(doc) -> list[tuple[float, float]]:
+    """TUM INSERT'lerin insertion point'lerini topla — blok ADI, SEKLI ve
+    LAYER'i ONEMSIZ. Blogun icindeki geometri tamamen yoksayilir.
+
+    Degismez kural (PRD): sprinkler/ekipman blogu cizimde her zaman borunun
+    TAM USTUNE eklenir. Cizer blogu istedigi isimle/sekille cizebilir; tek
+    guvenilir sinyal insertion point'in cizgi guzergahinda olmasidir.
+    """
+    pts: list[tuple[float, float]] = []
+    for ent in doc.modelspace().query('INSERT'):
+        try:
+            pts.append((float(ent.dxf.insert.x), float(ent.dxf.insert.y)))
+        except Exception:
+            continue
+    return pts
+
+
+def _split_edges_on_insert_points(
+    edges: list[dict],
+    points: list[tuple[float, float]],
+    node_tol: float,
+) -> tuple[list[dict], set[tuple[float, float]]]:
+    """Point-on-Line kesisimi + dugumden parcalama (Block-to-Line).
+
+    Her insertion point icin:
+      1. Nokta herhangi bir boru cizgisinin guzergahi uzerinde mi?
+         (dik mesafe <= node_tol — "cok kucuk epsilon", sekil analizi YOK)
+      2. Uzerindeyse: o node run-AYIRICI olarak isaretlenir (separator key)
+         — kullanici arayuzde sprinkler'lar arasi ayri ayri parcalara tiklar.
+      3. Projeksiyon cizginin IC bolgesindeyse (uclara yakin degilse) cizgi
+         o noktadan IKI yeni segmente bolunur.
+
+    Grid-bucketed: nokta yalniz kendi hucre komsulugundaki edge'lerle test
+    edilir — binlerce INSERT × on binlerce edge'de O(P×E) patlamasi olmaz.
+
+    Donus: (yeni edge listesi, separator node key seti).
+    """
+    if not edges or not points:
+        return edges, set()
+
+    cs = max(node_tol * 50.0, 10.0)
+    cell_to_edges: dict[tuple[int, int], list[int]] = {}
+    for i, e in enumerate(edges):
+        mnx, mxx = min(e["x1"], e["x2"]), max(e["x1"], e["x2"])
+        mny, mxy = min(e["y1"], e["y2"]), max(e["y1"], e["y2"])
+        for cx in range(int((mnx - node_tol) // cs), int((mxx + node_tol) // cs) + 1):
+            for cy in range(int((mny - node_tol) // cs), int((mxy + node_tol) // cs) + 1):
+                cell_to_edges.setdefault((cx, cy), []).append(i)
+
+    splits: dict[int, list[tuple[float, float, float]]] = {}
+    separator_keys: set[tuple[float, float]] = set()
+
+    for px, py in points:
+        ck_x, ck_y = int(px // cs), int(py // cs)
+        best: tuple[int, float, float, float, float] | None = None  # (i, t, projx, projy, d)
+        for ncx in (ck_x - 1, ck_x, ck_x + 1):
+            for ncy in (ck_y - 1, ck_y, ck_y + 1):
+                for i in cell_to_edges.get((ncx, ncy), ()):
+                    e = edges[i]
+                    x1, y1, x2, y2 = e["x1"], e["y1"], e["x2"], e["y2"]
+                    dx, dy = x2 - x1, y2 - y1
+                    L2 = dx * dx + dy * dy
+                    if L2 < 1.0:
+                        continue
+                    t = ((px - x1) * dx + (py - y1) * dy) / L2
+                    t_cl = min(1.0, max(0.0, t))
+                    qx = x1 + t_cl * dx
+                    qy = y1 + t_cl * dy
+                    d = math.hypot(px - qx, py - qy)
+                    if d > node_tol:
+                        continue
+                    if best is None or d < best[4]:
+                        best = (i, t, qx, qy, d)
+        if best is None:
+            continue  # nokta hicbir borunun uzerinde degil — blok alakasiz, dokunma
+        i, t, qx, qy, _d = best
+        # Run ayirici: nokta cizgi UZERINDE (uc noktada bile olsa) — her
+        # sprinkler yeni parca baslatir
+        separator_keys.add(_node_key(qx, qy, node_tol))
+        # IC bolgede ise gercek bolme (uclara cok yakinsa mevcut node yeterli)
+        if 0.001 < t < 0.999:
+            splits.setdefault(i, []).append((qx, qy, t))
+
+    if not splits:
+        return edges, separator_keys
+
+    new_edges: list[dict] = []
+    for i, e in enumerate(edges):
+        if i not in splits:
+            new_edges.append(e)
+            continue
+        sp = sorted(splits[i], key=lambda v: v[2])
+        prev_x, prev_y = e["x1"], e["y1"]
+        layer = e["layer"]
+        for nx, ny, _ in sp:
+            sl = math.hypot(nx - prev_x, ny - prev_y)
+            if sl >= 1.0:
+                new_edges.append({"layer": layer, "x1": prev_x, "y1": prev_y,
+                                  "x2": nx, "y2": ny, "length": sl})
+            prev_x, prev_y = nx, ny
+        sl = math.hypot(e["x2"] - prev_x, e["y2"] - prev_y)
+        if sl >= 1.0:
+            new_edges.append({"layer": layer, "x1": prev_x, "y1": prev_y,
+                              "x2": e["x2"], "y2": e["y2"], "length": sl})
+    return new_edges, separator_keys
+
+
 # ── Run gruplama ─────────────────────────────────────────────────
 
 def _chain_to_polyline(
@@ -872,6 +981,21 @@ def _extract_segments(
             edges, split_positions = _split_edges_on_points(edges, sp_centers, radius=sprinkler_tol)
             split_sprinkler_keys = {_node_key(x, y, node_tol) for x, y in split_positions}
 
+    # STEP 3 — Block-to-Line parcalama (PRD): TUM INSERT insertion point'leri,
+    # blok adi/sekli/layer'i ONEMSIZ. Nokta boru cizgisinin TAM USTUNDEYSE
+    # (dik mesafe <= node_tol) cizgi o dugumden bolunur + run ayirici olur.
+    # Boylece sprinkler layer'i hic isaretlenmese bile boru uzerine dizilmis
+    # sprinkler bloklarinin arasindaki her parca ayri tiklanabilir segment olur.
+    insert_points = _collect_all_insert_points(doc)
+    insert_separator_keys: set[tuple[float, float]] = set()
+    if insert_points:
+        edges, insert_separator_keys = _split_edges_on_insert_points(
+            edges, insert_points, node_tol,
+        )
+        print(f"[pipe_segments] block-to-line: {len(insert_points)} INSERT point, "
+              f"{len(insert_separator_keys)} boru-ustu dugum",
+              file=_sys.stderr)
+
     graph = _build_node_graph(edges, node_tol)
     sprinkler_keys, _ = _detect_sprinkler_positions(
         doc, node_tol, sprinkler_tol,
@@ -879,6 +1003,7 @@ def _extract_segments(
         sprinkler_block_names=sprinkler_block_names,
     )
     sprinkler_keys |= split_sprinkler_keys
+    sprinkler_keys |= insert_separator_keys
     runs = _group_into_runs(edges, graph, sprinkler_keys, node_tol)
 
     # SEGMENT ciktisi sadece secilen layer'lardan
