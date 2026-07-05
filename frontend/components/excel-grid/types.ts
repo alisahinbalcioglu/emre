@@ -19,6 +19,14 @@ export interface ExcelRowData {
   _firma?: string | null;
   _matNetPrice?: number;
   _merges?: Record<string, { rowSpan?: number; colSpan?: number; hidden?: boolean }>;
+  /** Excel-vari GRUP BANDI satiri (orn "Hat / Sistem" basligi). Full-width
+   *  render edilir, edit/toplam/kayit disindadir (_isDataRow=false ile). */
+  _isGroupRow?: boolean;
+  _groupLabel?: string;
+  _groupCount?: number;
+  /** En alttaki her-zaman-bos satir — kullanici yazinca gercek satira donusur
+   *  ve yenisi eklenir. Kayitta filtrelenir. */
+  _isSpareRow?: boolean;
 }
 
 export interface ColumnRoles {
@@ -33,6 +41,8 @@ export interface ColumnRoles {
   laborTotalField?: string;
   grandUnitPriceField?: string;
   grandTotalField?: string;
+  /** "Çapı" sutunu (DWG akisi). Varsa eslestirme/kayit adi = Çap + Cins birlesimi. */
+  diameterField?: string;
 }
 
 export interface ExcelGridData {

@@ -11,6 +11,7 @@ import './fill-handle.css';
 import type { ExcelGridData, ExcelRowData, MatchCandidate } from './types';
 import { useFillHandle, FillHandleIndicator } from './useFillHandle';
 import { CustomDropdown } from './CustomDropdown';
+import { joinMaterialText } from '@/lib/parse-material-text';
 
 // AG-Grid Community modules'leri kaydet (v32+)
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -48,6 +49,9 @@ interface Props {
   } | null>;
   // Hucre duzenleme sonrasi disariya canli rowData'yi yayar (fiyat listesi yuklemede kullanilir)
   onRowDataChange?: (rows: ExcelRowData[]) => void;
+  /** Excel-vari "en altta hep bos satir": _isSpareRow satiri dolunca otomatik
+   *  yenisi eklenir ('Satir Ekle' butonu YOK). DWG metraj akisinda acilir. */
+  autoAppendRow?: boolean;
   // Mod: 'quote' (teklif — brand/firma dropdown + kar %) veya 'library' (iskonto + net fiyat)
   mode?: 'quote' | 'library';
   // library mode'da hangi fiyat alanini kullanir? (material veya labor)
@@ -69,8 +73,9 @@ function BrandDropdown(props: ICellRendererParams & {
   quantityField?: string;
   materialUnitPriceField?: string;
   materialTotalField?: string;
+  diameterField?: string;
 }) {
-  const { data, brands, onBrandChange, nameField, noField, brandField, quantityField, materialUnitPriceField, materialTotalField, api, node } = props;
+  const { data, brands, onBrandChange, nameField, noField, brandField, quantityField, materialUnitPriceField, materialTotalField, diameterField, api, node } = props;
   const [candidates, setCandidates] = React.useState<MatchCandidate[] | null>(null);
   const [popupPos, setPopupPos] = React.useState<{ top: number; left: number } | null>(null);
   const triggerRef = React.useRef<HTMLButtonElement>(null);
@@ -103,7 +108,12 @@ function BrandDropdown(props: ICellRendererParams & {
       return;
     }
 
-    const currentName = nameField ? String(data[nameField] ?? '').trim() : '';
+    // AKILLI SUTUN: Çapı ayri sutundaysa (diameterField) eslestirme adi
+    // "Çap + Cins" birlesimidir (orn "Ø110 PVC BORU") — cins tek basina
+    // fiyat listesinde bulunamaz.
+    const baseName = nameField ? String(data[nameField] ?? '').trim() : '';
+    const diaVal = diameterField ? String(data[diameterField] ?? '').trim() : '';
+    const currentName = joinMaterialText(diaVal, baseName);
     if (!currentName) return;
 
     // 3 ASAMALI MATCHING: once malzeme adi, sonra baslik+malzeme, sonra secenek
@@ -258,10 +268,12 @@ function FirmaDropdown(props: ICellRendererParams & {
   quantityField?: string;
   laborUnitPriceField?: string;
   laborTotalField?: string;
+  diameterField?: string;
 }) {
   const {
     data, laborFirms, sheetDiscipline, laborEnabled, onFirmaChange,
     nameField, noField, brandField, quantityField, laborUnitPriceField, laborTotalField,
+    diameterField,
     api, node,
   } = props;
   const [candidates, setCandidates] = React.useState<MatchCandidate[] | null>(null);
@@ -325,7 +337,10 @@ function FirmaDropdown(props: ICellRendererParams & {
       return;
     }
 
-    const currentName = nameField ? String(data[nameField] ?? '').trim() : '';
+    // AKILLI SUTUN: diameterField varsa isim = Çap + Cins (BrandDropdown ile ayni)
+    const baseName = nameField ? String(data[nameField] ?? '').trim() : '';
+    const diaVal = diameterField ? String(data[diameterField] ?? '').trim() : '';
+    const currentName = joinMaterialText(diaVal, baseName);
     if (!currentName || !onFirmaChange) return;
 
     // 3 ASAMALI MATCHING: once malzeme adi, sonra baslik+malzeme
@@ -528,6 +543,35 @@ function buildMaterialContext(
 }
 
 // ────────────────────────────────────────────
+// Grup bandi (Excel-vari "Hat / Sistem" basligi)
+// ────────────────────────────────────────────
+// AG Grid Community'de Row Grouping yok (Enterprise) — full-width satir ile
+// ayni gorsel etki: grup basligi tum genislikte tek bant olarak cizilir.
+// _isDataRow=false oldugu icin toplam/kayit/eslestirme akislarina girmez.
+
+function GroupRowBand(params: ICellRendererParams<ExcelRowData>) {
+  const label = params.data?._groupLabel ?? '';
+  const count = params.data?._groupCount;
+  return (
+    <div
+      style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        height: '100%', padding: '0 10px',
+        background: 'linear-gradient(to right, #eef2ff, #f8fafc)',
+        borderLeft: '3px solid #4f46e5',
+        fontWeight: 700, fontSize: 12, color: '#3730a3',
+      }}
+    >
+      <span style={{ fontSize: 10 }}>▸</span>
+      <span>{label}</span>
+      {typeof count === 'number' && (
+        <span style={{ fontWeight: 500, color: '#6366f1', fontSize: 11 }}>({count} kalem)</span>
+      )}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────
 // Main Component
 // ────────────────────────────────────────────
 
@@ -540,6 +584,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
   data, brands, onBrandChange,
   laborFirms = [], sheetDiscipline = null, laborEnabled = false, onFirmaChange,
   onRowDataChange,
+  autoAppendRow = false,
   mode = 'quote',
   libraryPriceField = 'materialUnitPriceField',
   currencySymbol, conversionRate,
@@ -556,14 +601,21 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     if (!api) return;
 
     const { nameField, quantityField, materialUnitPriceField, materialTotalField,
-            laborUnitPriceField, laborTotalField } = data.columnRoles;
+            laborUnitPriceField, laborTotalField, diameterField } = data.columnRoles;
+
+    // AKILLI SUTUN: diameterField varsa eslestirme adi = Çap + Cins birlesimi
+    const lookupNameOf = (rowData: any): string => {
+      const n = nameField ? String(rowData[nameField] ?? '').trim() : '';
+      const d = diameterField ? String(rowData[diameterField] ?? '').trim() : '';
+      return joinMaterialText(d, n);
+    };
 
     if (result.field === '_marka' && onBrandChange) {
       // Marka fill → her satir icin matching tetikle
       for (const node of result.targetRowNodes) {
         if (!node.data?._isDataRow) continue;
         node.setDataValue('_marka', result.value);
-        const currentName = nameField ? String(node.data[nameField] ?? '').trim() : '';
+        const currentName = lookupNameOf(node.data);
         if (!currentName) continue;
         try {
           const matchResult = await onBrandChange(node.data._rowIdx, result.value, currentName);
@@ -582,7 +634,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       for (const node of result.targetRowNodes) {
         if (!node.data?._isDataRow) continue;
         node.setDataValue('_firma', result.value);
-        const currentName = nameField ? String(node.data[nameField] ?? '').trim() : '';
+        const currentName = lookupNameOf(node.data);
         if (!currentName) continue;
         try {
           const matchResult = await onFirmaChange(node.data._rowIdx, result.value, currentName);
@@ -836,6 +888,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
             quantityField={data.columnRoles.quantityField}
             materialUnitPriceField={data.columnRoles.materialUnitPriceField}
             materialTotalField={data.columnRoles.materialTotalField}
+            diameterField={data.columnRoles.diameterField}
           />
         );
         base.editable = false;
@@ -853,6 +906,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
             quantityField={data.columnRoles.quantityField}
             laborUnitPriceField={data.columnRoles.laborUnitPriceField}
             laborTotalField={data.columnRoles.laborTotalField}
+            diameterField={data.columnRoles.diameterField}
           />
         );
         base.editable = false;
@@ -1143,6 +1197,35 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       console.log(`[ExcelGrid library] _draftDiscount edit: row=${row._rowIdx}, value=${e.newValue}, _dirty=true`);
     }
 
+    // ── AUTO-APPEND: en alttaki bos satir dolduysa yeni bos satir ekle ──
+    // Excel davranisi — "Satir Ekle" butonu YOK. Kullanici spare satira
+    // yazmaya baslar baslamaz o satir gercek satira donusur, altina yeni
+    // spare eklenir.
+    if (autoAppendRow && row._isSpareRow && gridRef.current?.api) {
+      const hasContent = data.columnDefs.some(
+        (c) => !c.field.startsWith('_') && String(row[c.field] ?? '').trim() !== '',
+      );
+      if (hasContent) {
+        row._isSpareRow = false;
+        let maxIdx = 0;
+        gridRef.current.api.forEachNode((n) => {
+          if (n.data && n.data._rowIdx > maxIdx) maxIdx = n.data._rowIdx;
+        });
+        const spare: any = {
+          _rowIdx: maxIdx + 1,
+          _isDataRow: true,
+          _isHeaderRow: false,
+          _isSpareRow: true,
+          _malzKar: 0, _iscKar: 0, _marka: null, _firma: null,
+          _matNetPrice: 0, _labNetPrice: 0,
+        };
+        for (const c of data.columnDefs) {
+          if (!c.field.startsWith('_')) spare[c.field] = '';
+        }
+        gridRef.current.api.applyTransaction({ add: [spare] });
+      }
+    }
+
     // Disariya canli rowData yayinla (fiyat listesi yuklemede gerekli)
     if (onRowDataChange && gridRef.current?.api) {
       const allRows: ExcelRowData[] = [];
@@ -1151,7 +1234,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       });
       onRowDataChange(allRows);
     }
-  }, [data.columnRoles, onRowDataChange]);
+  }, [data.columnRoles, data.columnDefs, onRowDataChange, autoAppendRow]);
 
   // getRowId — stabil row kimligi (re-render'da row'un durumunu korur)
   const getRowId = useCallback((params: GetRowIdParams<ExcelRowData>) => {
@@ -1185,6 +1268,13 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         headerHeight={32}
         animateRows={false}
         suppressRowTransform
+        // Excel-vari GRUP BANDI: _isGroupRow satirlari tum genislikte cizilir
+        // (AG Grid Community'de rowGrouping yok — full-width satir ayni etki)
+        isFullWidthRow={(p) => p.rowNode.data?._isGroupRow === true}
+        fullWidthCellRenderer={GroupRowBand}
+        // Excel-vari klavye: Enter → alt hucre (edit sonrasi da), ok/Tab native
+        enterNavigatesVertically
+        enterNavigatesVerticallyAfterEdit
       />
       <style jsx global>{`
         .ag-theme-alpine {

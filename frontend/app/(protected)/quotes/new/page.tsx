@@ -39,6 +39,7 @@ import { useCapabilities } from '@/contexts/CapabilitiesContext';
 // ana quotes bundle'i DWG viewer agirligindan kurtuldu.
 import type { MetrajResult } from '@/components/dwg-metraj/types';
 import MetrajEditor from '@/components/dwg-metraj/MetrajEditor';
+import { parseMaterialText } from '@/lib/parse-material-text';
 import type { Brand } from '@/types';
 import type {
   UploadMode,
@@ -185,26 +186,77 @@ export default function NewQuotePage() {
             add(hatSistem, 'Belirtilmemis', 'm', layer.length || 0);
           }
         }
-        const rows: ExcelRowData[] = Array.from(grouped.values())
-          .sort((a, b) => b.totalQty - a.totalQty)
-          .map((g, idx) => ({
-            _isDataRow: true,
-            _isHeaderRow: false,
-            _rowIdx: idx,
-            'Hat / Sistem': g.hatSistem,
-            'Malzeme ve Çap': g.malzemeCap,
-            'Birim': g.unit,
-            'Miktar': g.totalQty.toFixed(2),
-          }));
+        // ── EXCEL-VARI YAPI (spreadsheet UX) ──
+        // 1) Hat/Sistem artik SUTUN DEGIL, GRUP BANDI: _isGroupRow satirlari
+        //    ExcelGrid'de full-width bant olarak cizilir (Excel'deki gibi).
+        // 2) Kalem metni regex ile ikiye ayrilir: "Ø110 PVC BORU" →
+        //    Çapı="Ø110", Malzeme Cinsi="PVC BORU" (parse-material-text).
+        //    Eslestirme/kayit aninda tekrar birlestirilir (diameterField).
+        // 3) Fiyatlandirma sistem kolonlari eklendi (Kar %, Marka, Birim
+        //    Fiyat, Tutar) — Excel yolundaki grid ile ayni deneyim, GENEL
+        //    TOPLAM pinned satiri da otomatik gelir.
+        // 4) En altta HEP bos satir (autoAppendRow) — 'Satir Ekle' butonu YOK.
+        const byHat = new Map<string, Array<{ malzemeCap: string; unit: string; totalQty: number }>>();
+        grouped.forEach((g) => {
+          let arr = byHat.get(g.hatSistem);
+          if (!arr) { arr = []; byHat.set(g.hatSistem, arr); }
+          arr.push(g);
+        });
+        const emptyDataFields = {
+          'Malzeme Cinsi': '', 'Çapı': '', 'Birim': '', 'Miktar': '',
+          'Birim Fiyat': '', 'Tutar': '',
+        };
+        const rows: ExcelRowData[] = [];
+        let rowIdx = 0;
+        byHat.forEach((items, hat) => {
+          rows.push({
+            _rowIdx: rowIdx++, _isDataRow: false, _isHeaderRow: false,
+            _isGroupRow: true, _groupLabel: hat, _groupCount: items.length,
+            ...emptyDataFields,
+          });
+          items.sort((a, b) => b.totalQty - a.totalQty);
+          for (const it of items) {
+            const { cap, cins } = parseMaterialText(it.malzemeCap);
+            rows.push({
+              _rowIdx: rowIdx++, _isDataRow: true, _isHeaderRow: false,
+              _malzKar: 0, _marka: null, _matNetPrice: 0,
+              'Malzeme Cinsi': cins || it.malzemeCap,
+              'Çapı': cap,
+              'Birim': it.unit,
+              'Miktar': it.totalQty.toFixed(2),
+              'Birim Fiyat': '',
+              'Tutar': '',
+            });
+          }
+        });
+        // En altta hep bos satir — kullanici yazmaya baslayinca otomatik
+        // yeni satir olusur (ExcelGrid autoAppendRow).
+        rows.push({
+          _rowIdx: rowIdx++, _isDataRow: true, _isHeaderRow: false,
+          _isSpareRow: true, _malzKar: 0, _marka: null, _matNetPrice: 0,
+          ...emptyDataFields,
+        });
         const columnDefs = [
-          { field: 'Hat / Sistem', headerName: 'Hat / Sistem', flex: 2 },
-          { field: 'Malzeme ve Çap', headerName: 'Malzeme ve Çap', flex: 3 },
-          { field: 'Birim', headerName: 'Birim', width: 80 },
-          { field: 'Miktar', headerName: 'Miktar', width: 100, type: 'rightAligned' as const },
+          { field: 'Malzeme Cinsi', headerName: 'Malzeme Cinsi', width: 240, editable: true },
+          { field: 'Çapı', headerName: 'Çapı', width: 90, editable: true },
+          { field: 'Birim', headerName: 'Birim', width: 70, editable: true },
+          { field: 'Miktar', headerName: 'Miktar', width: 90, editable: true },
+          { field: '_malzKar', headerName: 'Malz. Kar %', width: 100 },
+          { field: '_marka', headerName: 'Malz. Marka', width: 150, cellRenderer: 'brandRenderer' },
+          { field: 'Birim Fiyat', headerName: 'Birim Fiyat', width: 110, editable: true },
+          { field: 'Tutar', headerName: 'Tutar', width: 120 },
         ];
-        // nameField = "Malzeme ve Cap": marka eslestirme/fiyatlandirma bucket
-        // metnini (orn "Ø160 HDPE BORU") arar — layer adini DEGIL.
-        const dwgColumnRoles = { nameField: 'Malzeme ve Çap', quantityField: 'Miktar', unitField: 'Birim' };
+        // nameField=Cins, diameterField=Çap: marka eslestirme adi grid icinde
+        // "Çap + Cins" (orn "Ø110 PVC BORU") olarak birlestirilir — cins tek
+        // basina fiyat listesinde bulunamaz.
+        const dwgColumnRoles = {
+          nameField: 'Malzeme Cinsi',
+          diameterField: 'Çapı',
+          quantityField: 'Miktar',
+          unitField: 'Birim',
+          materialUnitPriceField: 'Birim Fiyat',
+          materialTotalField: 'Tutar',
+        };
         setExcelGridData({
           columnDefs,
           rowData: rows,
@@ -233,7 +285,8 @@ export default function NewQuotePage() {
         setActiveSheetIndex(0);
         setLiveRowDataBySheet({ 0: rows });
         setTitle(fileName.replace(/\.[^.]+$/, '') + ' — DWG Metraj');
-        toast({ title: 'Metraj onaylandi', description: `${rows.length} kalem fiyatlandirmaya aktarildi` });
+        const itemCount = rows.filter((r) => r._isDataRow && !r._isSpareRow).length;
+        toast({ title: 'Metraj onaylandi', description: `${itemCount} kalem fiyatlandirmaya aktarildi` });
       } catch (e) {
         console.error('DWG metraj parse failed:', e);
       }
@@ -902,8 +955,12 @@ export default function NewQuotePage() {
           console.log(`[Save] Sheet ${sheet.index}: ${rowsForSheet.length} rows, nameField=${sheet.columnRoles.nameField}`);
           const roles = sheet.columnRoles;
           rowsForSheet.forEach((r) => {
-            if (!r._isDataRow) return;
-            const matName = roles.nameField ? String(r[roles.nameField] ?? '').trim() : '';
+            if (!r._isDataRow || r._isGroupRow || r._isSpareRow) return;
+            // AKILLI SUTUN: Çapı ayri sutundaysa kayit adi = "Çap + Cins"
+            // (orn "Ø110 PVC BORU") — PDF/Excel ciktisinda tam metin gorunur.
+            const baseName = roles.nameField ? String(r[roles.nameField] ?? '').trim() : '';
+            const diaVal = roles.diameterField ? String(r[roles.diameterField] ?? '').trim() : '';
+            const matName = [diaVal, baseName].filter(Boolean).join(' ');
             if (!matName) return;
             multiItems.push({
               materialName: matName,
@@ -925,7 +982,9 @@ export default function NewQuotePage() {
           columnDefs: s.columnDefs,
           columnRoles: s.columnRoles,
           headerEndRow: s.headerEndRow,
-          rowData: liveRowDataBySheet[s.index] ?? s.rowData,
+          // Spare (en alttaki bos) satir kayda girmez; grup bandi satirlari
+          // gorunum icin SAKLANIR (detay sayfasi ayni bantlari cizer).
+          rowData: (liveRowDataBySheet[s.index] ?? s.rowData).filter((r) => !r._isSpareRow),
         }));
       }
 
@@ -1384,6 +1443,9 @@ export default function NewQuotePage() {
         <ExcelGrid
           ref={excelGridRef}
           key={multiSheet ? `sheet-${activeSheetIndex}` : 'single'}
+          // Excel-vari "en altta hep bos satir" — DWG metraj grid'inde aktif
+          // (Excel yolunda backend kolonlari cok genis, davranis degismesin)
+          autoAppendRow={multiSheet?.sheets?.length === 1 && multiSheet.sheets[0]?.name === 'DWG Metraj'}
           data={
             multiSheet
               ? (() => {
