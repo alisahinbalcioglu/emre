@@ -1,6 +1,8 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import * as XLSX from 'xlsx';
 import { PrismaService } from '../prisma/prisma.service';
 import { AiService } from '../ai/ai.service';
+import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import {
   buildMaterialContextFromRows,
   ColumnRoles,
@@ -22,6 +24,7 @@ export class AdminService {
   constructor(
     private prisma: PrismaService,
     private aiService: AiService,
+    private exchangeRates: ExchangeRatesService,
   ) {}
 
   // ═════════ USERS ═════════
@@ -395,6 +398,178 @@ export class AdminService {
   }
 
   // ═════════ MATERIALS: SAVE BULK (from PDF extraction) ═════════
+
+  // ═════════ MATERIALS: PRICE LIST EXCEL IMPORT ═════════
+
+  /**
+   * Admin fiyat listesine Excel'den toplu malzeme yukleme.
+   *
+   * Kesif Excel'inden FARKLI yapi: fiyat listesinde Miktar kolonu YOKTUR
+   * (o yuzden excelGridService.prepare kullanilamaz — quantity'siz sheet'i
+   * "bos" sayar). Beklenen kolonlar: Malzeme/Urun Adi + Liste/Birim Fiyat
+   * (+ opsiyonel Malzeme Kodu, Birim, Para Birimi).
+   *
+   * USD/EUR fiyatlar TCMB kuru ile TL'ye cevrilir. Kayit, mevcut
+   * saveBulkMaterials uzerinden yapilir (Material tag'leme + upsert ayni).
+   */
+  async importPriceListExcel(priceListId: string, fileBuffer: Buffer) {
+    const priceList = await this.prisma.priceList.findUnique({
+      where: { id: priceListId },
+      include: { brand: true },
+    });
+    if (!priceList) throw new NotFoundException('Fiyat listesi bulunamadi');
+
+    let workbook: XLSX.WorkBook;
+    try {
+      workbook = XLSX.read(fileBuffer, { type: 'buffer' });
+    } catch (e) {
+      throw new BadRequestException('Excel dosyasi okunamadi: ' + (e as Error).message);
+    }
+
+    const norm = (s: any) => String(s ?? '')
+      .replace(/İ/g, 'i').replace(/I/g, 'i').replace(/ı/g, 'i')
+      .replace(/[şŞ]/g, 's').replace(/[çÇ]/g, 'c')
+      .replace(/[üÜ]/g, 'u').replace(/[öÖ]/g, 'o').replace(/[ğĞ]/g, 'g')
+      .toLowerCase().trim();
+
+    // Turkce/karisik sayi formati: "1.234,56" → 1234.56, "1,234.56" → 1234.56
+    const parsePrice = (raw: any): number => {
+      if (typeof raw === 'number') return raw;
+      let s = String(raw ?? '').replace(/[₺$€]|TL|TRY|USD|EUR/gi, '').trim();
+      if (!s) return NaN;
+      const lastComma = s.lastIndexOf(',');
+      const lastDot = s.lastIndexOf('.');
+      if (lastComma > lastDot) {
+        s = s.replace(/\./g, '').replace(',', '.'); // 1.234,56
+      } else if (lastDot > lastComma) {
+        s = s.replace(/,/g, ''); // 1,234.56
+      }
+      return parseFloat(s);
+    };
+
+    const detectCurrency = (val: any): 'TRY' | 'USD' | 'EUR' | null => {
+      const s = String(val ?? '');
+      if (/USD|\$|DOLAR/i.test(s)) return 'USD';
+      if (/EUR|€|AVRO/i.test(s)) return 'EUR';
+      if (/TRY|TL|₺/i.test(s)) return 'TRY';
+      return null;
+    };
+
+    const items: { materialName: string; unit: string; unitPrice: number }[] = [];
+    const warnings: string[] = [];
+    let converted = 0;
+    let rates: { usdTry: number; eurTry: number } | null = null;
+    const getRates = async () => {
+      if (!rates) rates = await this.exchangeRates.getRates();
+      return rates;
+    };
+
+    for (const sheetName of workbook.SheetNames) {
+      const ws = workbook.Sheets[sheetName];
+      if (!ws || !ws['!ref']) continue;
+      const grid = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true }) as any[][];
+      if (grid.length === 0) continue;
+
+      // Header satirini bul: ad + fiyat kolonu ayni satirda eslesmeli
+      const NAME_RE = /(malzeme|urun|stok)\s*(adi|tanimi|tanim)|urun\s*ad|malzeme\s*ad|aciklama|tanim|cinsi/;
+      const CODE_RE = /\bkod\b|kodu/;
+      const UNIT_RE = /^birim$|^brm$|^br$|olcu\s*birim/;
+      const PRICE_RE = /liste\s*fiyat|birim\s*fiyat|net\s*fiyat|satis\s*fiyat|\bfiyat\b|price/;
+      const CURR_RE = /para\s*birimi|doviz|currency|\bpb\b/;
+      // Ayirt edici ek kolonlar: ayni "Malzeme Adi"na farkli cap/cins/renk
+      // satirlari gelir (orn. Borusan boru listesi) — ada EKLENMEZSE upsert
+      // ayni isimde tum caplari tek kayda ezer (veri kaybi).
+      const DESC_RE = /cinsi|\bcins\b|\btip\b|model|renk/;
+      const DIAM_RE = /^cap$|\bcap\b|ebat|\bolcu\b|boyut/;
+
+      let headerRow = -1;
+      let cols: { name?: number; code?: number; unit?: number; price?: number; curr?: number; desc?: number; diam?: number } = {};
+      const scanLimit = Math.min(15, grid.length);
+      for (let r = 0; r < scanLimit; r++) {
+        const found: typeof cols = {};
+        (grid[r] ?? []).forEach((cell, c) => {
+          const t = norm(cell);
+          if (!t) return;
+          if (found.name === undefined && NAME_RE.test(t)) found.name = c;
+          else if (found.price === undefined && PRICE_RE.test(t)) found.price = c;
+          else if (found.code === undefined && CODE_RE.test(t)) found.code = c;
+          else if (found.unit === undefined && UNIT_RE.test(t)) found.unit = c;
+          else if (found.curr === undefined && CURR_RE.test(t)) found.curr = c;
+          else if (found.desc === undefined && DESC_RE.test(t)) found.desc = c;
+          else if (found.diam === undefined && DIAM_RE.test(t)) found.diam = c;
+        });
+        if (found.name !== undefined && found.price !== undefined) {
+          headerRow = r;
+          cols = found;
+          break;
+        }
+      }
+
+      if (headerRow < 0) {
+        warnings.push(`"${sheetName}": malzeme adi + fiyat kolonlari bulunamadi, sayfa atlandi`);
+        continue;
+      }
+
+      // Para birimi baslikta olabilir: "Birim Fiyat (USD)" / "Liste Fiyati €"
+      const headerCurrency = detectCurrency(grid[headerRow]?.[cols.price!]);
+
+      let sheetCount = 0;
+      for (let r = headerRow + 1; r < grid.length; r++) {
+        const row = grid[r] ?? [];
+        let name = String(row[cols.name!] ?? '').trim();
+        // Ad bos ama kod doluysa kodu ad olarak kullan (schema'da ayri kod alani yok)
+        if (!name && cols.code !== undefined) {
+          name = String(row[cols.code] ?? '').trim();
+        }
+        const rawPrice = row[cols.price!];
+        if (!name || name.length < 2) continue;
+        let price = parsePrice(rawPrice);
+        if (isNaN(price) || price <= 0) continue;
+
+        // AD BENZERSIZLESTIRME: ayni "Malzeme Adi"na farkli cins/cap satirlari
+        // gelir (orn. Borusan boru listesi: tek ad, 8 farkli cap). Material.name
+        // @unique + upsert oldugundan cins/cap ada eklenmezse hepsi tek kayda
+        // ezilir (veri kaybi). Cins + cap varsa ada birlestir.
+        const desc = cols.desc !== undefined ? String(row[cols.desc] ?? '').trim() : '';
+        const diam = cols.diam !== undefined ? String(row[cols.diam] ?? '').trim() : '';
+        let fullName = name;
+        if (desc && !name.toLowerCase().includes(desc.toLowerCase())) fullName += ` ${desc}`;
+        if (diam && !fullName.toLowerCase().includes(diam.toLowerCase())) fullName += ` ${diam}`;
+        fullName = fullName.trim();
+
+        // Para birimi: satir kolonu > fiyat hucresi sembolu > baslik > TRY
+        const curr = detectCurrency(cols.curr !== undefined ? row[cols.curr] : null)
+          ?? detectCurrency(rawPrice)
+          ?? headerCurrency
+          ?? 'TRY';
+        if (curr === 'USD') { price = price * (await getRates()).usdTry; converted++; }
+        else if (curr === 'EUR') { price = price * (await getRates()).eurTry; converted++; }
+        price = Math.round(price * 100) / 100;
+
+        const unit = cols.unit !== undefined ? String(row[cols.unit] ?? '').trim() : '';
+        items.push({ materialName: fullName, unit: unit || 'Adet', unitPrice: price });
+        sheetCount++;
+      }
+      if (sheetCount > 0) {
+        console.log(`[PriceListImport] "${sheetName}": ${sheetCount} kalem okundu`);
+      }
+    }
+
+    if (items.length === 0) {
+      throw new BadRequestException(
+        'Excel\'de malzeme bulunamadi. Beklenen kolonlar: Malzeme/Urun Adi + Liste Fiyati' +
+        (warnings.length ? ` — ${warnings.join(' · ')}` : ''),
+      );
+    }
+
+    const result = await this.saveBulkMaterials(priceList.brandId, priceListId, items);
+    return {
+      ...result,
+      warnings,
+      convertedFxRows: converted,
+      preview: items.slice(0, 50),
+    };
+  }
 
   async saveBulkMaterials(
     brandId: string,

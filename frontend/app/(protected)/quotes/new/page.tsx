@@ -386,6 +386,10 @@ export default function NewQuotePage() {
 
   // ── SessionStorage draft key ──
   const DRAFT_KEY = 'metaprice_quote_draft';
+  // Draft sema surumu — eski/bozuk draft'lar (orn. multi-sheet bug doneminde
+  // tek sheet'le kaydedilmis olanlar) restore EDILMEZ, otomatik silinir.
+  // Sema degistiginde artir.
+  const DRAFT_VERSION = 2;
 
   // Iscilik firmalarini cek (capability varsa)
   useEffect(() => {
@@ -420,10 +424,23 @@ export default function NewQuotePage() {
       const stored = sessionStorage.getItem(DRAFT_KEY);
       if (!stored) return;
       const draft = JSON.parse(stored);
+      // SURUM KONTROLU: eski semali draft'lar (multi-sheet bug doneminden
+      // kalma tek-sheet'li olanlar dahil) restore edilmez — "yeni Excel
+      // yukledim ama tek sekme geldi" bayat-state semptomunun kok cozumu.
+      if (draft.v !== DRAFT_VERSION) {
+        sessionStorage.removeItem(DRAFT_KEY);
+        console.log('[quotes/new] Eski surumlu draft atildi (v=' + draft.v + ')');
+        return;
+      }
       if (draft.multiSheet) {
+        // v2 semasi: tek kopya — live rowData zaten sheets[i].rowData icinde.
+        const restoredLive: Record<number, ExcelRowData[]> = {};
+        (draft.multiSheet.sheets ?? []).forEach((s: any) => {
+          restoredLive[s.index] = s.rowData ?? [];
+        });
         setMultiSheet(draft.multiSheet);
         setActiveSheetIndex(draft.activeSheetIndex ?? 0);
-        setLiveRowDataBySheet(draft.liveRowDataBySheet ?? {});
+        setLiveRowDataBySheet(restoredLive);
         setSheetDisciplines(draft.sheetDisciplines ?? {});
         setTitle(draft.title ?? '');
         setAllBrands(draft.allBrands ?? []);
@@ -432,7 +449,7 @@ export default function NewQuotePage() {
         if (active && Array.isArray(active.columnDefs)) {
           setExcelGridData({
             columnDefs: active.columnDefs,
-            rowData: draft.liveRowDataBySheet?.[active.index] ?? active.rowData,
+            rowData: restoredLive[active.index] ?? active.rowData,
             columnRoles: active.columnRoles,
             brands: draft.multiSheet.brands ?? [],
             headerEndRow: active.headerEndRow ?? 0,
@@ -445,7 +462,7 @@ export default function NewQuotePage() {
         setTimeout(async () => {
           const multi = draft.multiSheet;
           if (!multi?.sheets) return;
-          const live = draft.liveRowDataBySheet ?? {};
+          const live = restoredLive;
           let reMatched = 0;
 
           for (const sheet of multi.sheets) {
@@ -503,16 +520,30 @@ export default function NewQuotePage() {
       return;
     }
     try {
+      // TEK KOPYA (v2): live rowData sheets'in icine gomulur — eski sema ayni
+      // veriyi iki kez yazip buyuk dosyalarda sessionStorage kotasini asiyordu
+      // (setItem sessizce fail → bayat draft restore → "sekmeler kayboldu").
+      const draftMulti = {
+        ...multiSheet,
+        sheets: multiSheet.sheets.map((s) => ({
+          ...s,
+          rowData: liveRowDataBySheet[s.index] ?? s.rowData,
+        })),
+      };
       sessionStorage.setItem(DRAFT_KEY, JSON.stringify({
-        multiSheet,
-        liveRowDataBySheet,
+        v: DRAFT_VERSION,
+        multiSheet: draftMulti,
         activeSheetIndex,
         sheetDisciplines,
         title,
         allBrands,
       }));
     } catch (e) {
-      console.warn('[quotes/new] Draft save failed:', e);
+      // Kota vb. hata: ESKI draft'i birakma — bayat state restore edilmesin.
+      // (Kayit yapilamiyorsa refresh'te bos baslamak, yanlis/eski veriyle
+      // baslamaktan iyidir.)
+      sessionStorage.removeItem(DRAFT_KEY);
+      console.warn('[quotes/new] Draft save failed, eski draft temizlendi:', e);
     }
   }, [multiSheet, liveRowDataBySheet, activeSheetIndex, sheetDisciplines, title, allBrands]);
 
@@ -533,7 +564,20 @@ export default function NewQuotePage() {
    * eslesen pozlarin kaynak hucreleri (miktar vb.) dosyadan guncellenir,
    * yeni satir/sheet eklenir, yalniz eskide olanlar sona tasinir. */
   function applyIncomingMultiSheet(multi: MultiSheetData) {
-    const { merged, live, stats } = mergeMultiSheet(multiSheet, liveRowDataBySheet, multi);
+    let merged: MultiSheetData;
+    let live: Record<number, ExcelRowData[]>;
+    let stats: ReturnType<typeof mergeMultiSheet>['stats'];
+    try {
+      ({ merged, live, stats } = mergeMultiSheet(multiSheet, liveRowDataBySheet, multi));
+    } catch (e) {
+      // Merge patlarsa dosyadan geleni DOGRUDAN uygula — eski gorunumun
+      // ekranda kalmasi (sekmelerin "kaybolmasi") en kotu senaryodur.
+      console.error('[quotes/new] merge hatasi, dosya dogrudan uygulaniyor:', e);
+      merged = multi;
+      live = {};
+      multi.sheets.forEach((s) => { live[s.index] = s.rowData; });
+      stats = { matchedRows: 0, newRows: 0, preservedRows: 0, newSheets: multi.sheets.length };
+    }
     setMultiSheet(merged);
     setLiveRowDataBySheet(live);
     const firstNonEmpty = merged.sheets.findIndex((s) => !s.isEmpty);
@@ -554,10 +598,18 @@ export default function NewQuotePage() {
         headerEndRow: active.headerEndRow,
       });
     }
+    const filledCount = merged.sheets.filter((s) => !s.isEmpty).length;
     if (multiSheet) {
       toast({
         title: 'Excel birleştirildi — verileriniz korundu',
         description: `${stats.matchedRows} satır güncellendi · ${stats.newRows} yeni · ${stats.preservedRows} eski satır korundu${stats.newSheets ? ` · ${stats.newSheets} yeni sayfa` : ''}`,
+      });
+    } else {
+      // Ilk yukleme: kullanici kac sayfanin acildigini HEMEN gorsun —
+      // "sekmeler kayboldu mu?" belirsizligini bitirir.
+      toast({
+        title: 'Excel yüklendi',
+        description: `${merged.sheets.length} sayfa okundu, ${filledCount} veri sayfası açıldı.`,
       });
     }
     return stats;

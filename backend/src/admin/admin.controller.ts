@@ -132,6 +132,17 @@ export class AdminController {
     return this.adminService.saveMaterialsFromSheets(brandId, body.sheets);
   }
 
+  // Fiyat listesine Excel'den toplu malzeme yukleme (admin)
+  @Post('price-lists/:id/import-excel')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } }))
+  importPriceListExcel(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file?.buffer) throw new BadRequestException('Dosya bulunamadi');
+    return this.adminService.importPriceListExcel(id, file.buffer);
+  }
+
   @Post('materials/save-bulk')
   saveBulkMaterials(
     @Body() body: {

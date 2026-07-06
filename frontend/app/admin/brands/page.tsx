@@ -11,9 +11,9 @@
  * (+ekle/sil) + secili listenin malzemeleri + hizli malzeme ekleme.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Package, Plus, Trash2, Loader2, ChevronRight, RefreshCw, AlertCircle,
+  Package, Plus, Trash2, Loader2, ChevronRight, RefreshCw, AlertCircle, Upload,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
@@ -54,6 +54,10 @@ export default function AdminBrandsPage() {
   const [matName, setMatName] = useState('');
   const [matUnit, setMatUnit] = useState('Adet');
   const [matPrice, setMatPrice] = useState('');
+
+  // Excel toplu yukleme
+  const [importing, setImporting] = useState(false);
+  const excelInputRef = useRef<HTMLInputElement>(null);
 
   const fetchBrands = useCallback(() => {
     setLoadingBrands(true);
@@ -160,6 +164,46 @@ export default function AdminBrandsPage() {
       if (selectedBrand) openBrand(selectedBrand);
     } catch {
       toast({ title: 'Hata', description: 'Liste silinemedi', variant: 'destructive' });
+    }
+  }
+
+  async function importExcel(file: File) {
+    if (!selectedBrand || !selectedList) return;
+    setImporting(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const { data } = await api.post(
+        `/admin/price-lists/${selectedList.id}/import-excel`,
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } },
+      );
+      toast({
+        title: `${data.imported} kalem malzeme başarıyla yüklendi`,
+        description: [
+          data.skipped ? `${data.skipped} satır atlandı (boş/fiyatsız)` : null,
+          data.convertedFxRows ? `${data.convertedFxRows} satır TCMB kuru ile TL'ye çevrildi` : null,
+        ].filter(Boolean).join(' · ') || `${selectedList.name} listesine eklendi.`,
+      });
+      if (Array.isArray(data.warnings) && data.warnings.length > 0) {
+        toast({ title: 'Uyarılar', description: data.warnings.join(' · '), variant: 'destructive' });
+      }
+      // Tabloyu ve liste sayaclarini tazele — yuklenen urunler asagida listelenir.
+      // openBrand KULLANMA: secimi sifirlar ve openList'in doldurdugu
+      // malzeme tablosunu yaristirip bosaltir.
+      openList(selectedList);
+      api.get<{ priceLists: PriceList[] }>(`/admin/brands/${selectedBrand.id}/materials`)
+        .then(({ data }) => setPriceLists(data.priceLists ?? []))
+        .catch(() => {});
+    } catch (e: any) {
+      toast({
+        title: 'Excel yüklenemedi',
+        description: e?.response?.data?.message ?? e?.message ?? 'Bilinmeyen hata',
+        variant: 'destructive',
+      });
+    } finally {
+      setImporting(false);
+      if (excelInputRef.current) excelInputRef.current.value = '';
     }
   }
 
@@ -324,6 +368,36 @@ export default function AdminBrandsPage() {
                 {/* Secili listenin malzemeleri */}
                 {selectedList && (
                   <div className="space-y-3 border-t pt-3">
+                    {/* Excel toplu yukleme */}
+                    <div className="flex items-center justify-between rounded-lg border border-dashed border-blue-200 bg-blue-50/50 px-3 py-2">
+                      <div className="text-xs text-slate-600">
+                        <span className="font-medium text-slate-800">Excel ile toplu yükleme</span>
+                        {' — '}Malzeme/Ürün Adı + Liste Fiyatı kolonları yeterli (Birim, Malzeme Kodu, Para Birimi opsiyonel; USD/EUR otomatik TL&apos;ye çevrilir)
+                      </div>
+                      <input
+                        ref={excelInputRef}
+                        type="file"
+                        accept=".xlsx,.xls,.csv"
+                        className="hidden"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) importExcel(f);
+                        }}
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 shrink-0"
+                        disabled={importing}
+                        onClick={() => excelInputRef.current?.click()}
+                      >
+                        {importing
+                          ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                          : <Upload className="mr-1.5 h-3.5 w-3.5" />}
+                        {importing ? 'Yükleniyor…' : 'Excel Yükle'}
+                      </Button>
+                    </div>
+
                     <div className="flex flex-wrap items-end gap-2">
                       <div className="min-w-[220px] flex-1">
                         <Input
