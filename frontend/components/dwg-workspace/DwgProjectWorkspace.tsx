@@ -474,14 +474,41 @@ export default function DwgProjectWorkspace({
     tryChangeLayer(line.layer);
   };
 
+  // ── EKIPMAN AKISI ACIK (Tam Tiklanabilirlik PRD) ──
+  // INSERT (blok) tiklamasi = Ekipman Noktasi: popup acilir, kullanici ad +
+  // birim girer → Ekipman Sayimi'na dahil olur. hideMode/shift'te layer gizle.
   const handleInsertClick = (ins: { layer: string; insertIndex: number; insertName: string; position: [number, number] }) => {
-    // EKIPMAN AKISI SIMDILIK KAPALI. INSERT'in layer'ini sec.
-    tryChangeLayer(ins.layer);
+    if (hideMode) {
+      toggleLayerVisibility(ins.layer);
+      return;
+    }
+    const key = `${ins.layer}:${ins.insertIndex}`;
+    setPendingEquipment({
+      key,
+      insertIndex: ins.insertIndex,
+      layer: ins.layer,
+      insertName: ins.insertName || 'Blok',
+      position: ins.position,
+    });
+    beginEditEquipment(key);
   };
 
-  const handleCircleClick = (_c: { layer: string; circleIndex: number; center: [number, number]; radius: number }) => {
-    // Sprinkler/sembol isaretleme LayerVisibilityPanel damla ikonuyla yapilir.
-    // CIRCLE tik su an no-op.
+  // Tekil CIRCLE da Ekipman Noktasi'dir (sprinkler kafasi vb. — cizer blok
+  // yerine cember kullanmis olabilir). Ayri key uzayi: "circle:layer:idx".
+  const handleCircleClick = (c: { layer: string; circleIndex: number; center: [number, number]; radius: number }) => {
+    if (hideMode) {
+      toggleLayerVisibility(c.layer);
+      return;
+    }
+    const key = `circle:${c.layer}:${c.circleIndex}`;
+    setPendingEquipment({
+      key,
+      insertIndex: c.circleIndex,
+      layer: c.layer,
+      insertName: 'Çember Sembol',
+      position: c.center,
+    });
+    beginEditEquipment(key);
   };
 
   /** Hesaplanmis ve onaylanmis layer'lardan Excel sheet'leri kur.

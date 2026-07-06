@@ -120,11 +120,16 @@ const COLOR_UNASSIGNED_NEON = '#39ff14';
 const DIMMED_ALPHA = 0.45;
 const HOVER_TOL_PX = 6;
 
+/** TAM TIKLANABILIRLIK: line/edge'e ek olarak INSERT (ekipman noktasi),
+ *  CIRCLE (sembol cemberi) ve TEXT (cap etiketi/olcu/not) de spatial index'e
+ *  girer — her biri hover + click alabilen "selectable entity" olur. */
+type EntityKind = 'line' | 'edge' | 'insert' | 'circle' | 'text';
+
 interface SpatialEntry {
   minX: number; minY: number; maxX: number; maxY: number;
-  type: 'line' | 'edge';
+  type: EntityKind;
   layer: string;
-  /** geometry.lines[] icindeki index ya da edgeSegments[] icindeki index */
+  /** Ilgili geometry dizisindeki index (lines/edgeSegments/inserts/circles/texts) */
   index: number;
   coords: [number, number, number, number];
   polyline?: Array<[number, number]>;
@@ -133,19 +138,32 @@ interface SpatialEntry {
   // NOT: diameter/isInherited BILEREK index'te tutulmaz — cap her tiklamada
   // degisir; index'te olsa ya stale kalir ya da 700K'lik agac her tiklamada
   // yeniden kurulur (OOM). Hover aninda allEdgeSegments'ten canli okunur.
+  /** type='text': icerik + yukseklik (hitbox + tooltip) */
+  text?: string;
+  height?: number;
+  /** type='insert': blok adi; type='insert'|'circle': merkez/anchor */
+  insertName?: string;
+  center?: [number, number];
+  radius?: number;
 }
 
 interface HoveredEntity {
-  type: 'line' | 'edge';
+  type: EntityKind;
   layer: string;
   index: number;
   coords: [number, number, number, number];
   polyline?: Array<[number, number]>;
-  /** Metre cinsinden hesaplanmis uzunluk (scale uygulanmis). */
-  length: number;
+  /** Metre cinsinden hesaplanmis uzunluk (yalniz line/edge). */
+  length?: number;
   /** Sadece edge tipi icin: cap ve BFS miras durumu */
   diameter?: string;
   isInherited?: boolean;
+  /** type='text' icerik; type='insert' blok adi */
+  text?: string;
+  insertName?: string;
+  center?: [number, number];
+  radius?: number;
+  height?: number;
 }
 
 export default function DxfCanvasViewer({
@@ -496,6 +514,44 @@ export default function DxfCanvasViewer({
           minX: Math.min(x1, x2), maxX: Math.max(x1, x2),
           minY: Math.min(y1, y2), maxY: Math.max(y1, y2),
           type: 'line', layer: ln.layer, index: i, coords: ln.coords,
+        });
+      });
+
+      // ── TAM TIKLANABILIRLIK: insert/circle/text de selectable entity ──
+      // Ekipman sayimi + metraj icin cizimdeki HER SEY tek tek secilebilir.
+      // Hidden/dimmed/silgi filtreleri SORGU aninda uygulanir (index stabil).
+      geometry.inserts.forEach((ins) => {
+        const [px, py] = ins.position;
+        items.push({
+          minX: px, maxX: px, minY: py, maxY: py,
+          type: 'insert', layer: ins.layer, index: ins.insert_index,
+          coords: [px, py, px, py],
+          insertName: ins.insert_name,
+          center: [px, py],
+        });
+      });
+      geometry.circles.forEach((c) => {
+        const [cx, cy] = c.center;
+        items.push({
+          minX: cx - c.radius, maxX: cx + c.radius,
+          minY: cy - c.radius, maxY: cy + c.radius,
+          type: 'circle', layer: c.layer, index: c.circle_index,
+          coords: [cx, cy, cx, cy],
+          center: [cx, cy], radius: c.radius,
+        });
+      });
+      geometry.texts.forEach((t, ti) => {
+        if (!t.text) return;
+        const [tx, ty] = t.position;
+        // Monospace yaklasik bbox (rotation yoksayilir) — silgi hit-test'iyle
+        // ayni kabul. Gorunmez ama AKTIF carpisma kutusu (collision hitbox).
+        const th = Math.max(t.height, 1);
+        const tw = t.text.length * th * 0.6;
+        items.push({
+          minX: tx, maxX: tx + tw, minY: ty, maxY: ty + th,
+          type: 'text', layer: t.layer, index: ti,
+          coords: [tx, ty, tx + tw, ty + th],
+          text: t.text, height: th,
         });
       });
     }
@@ -983,28 +1039,64 @@ export default function DxfCanvasViewer({
       const strokeWidth = 1 / viewport.zoom;
       ctx.lineCap = 'round';
 
+      // ─── Entity vurgusu (hover + selected ortak) ─────────────────
+      // Tip bazli: line/edge=cizgi izi, insert=nokta halkasi, circle=cember,
+      // text=hitbox cercevesi. TAM TIKLANABILIRLIK gorsel geri bildirimi.
+      const drawEntityHighlight = (ent: HoveredEntity, color: string, lwMul: number, glow: string, blur: number) => {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = strokeWidth * lwMul;
+        ctx.shadowColor = glow;
+        ctx.shadowBlur = blur;
+        if (ent.type === 'insert') {
+          const r = 6 / viewport.zoom;
+          ctx.beginPath();
+          ctx.arc(ent.coords[0], ent.coords[1], r, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.fillStyle = color;
+          ctx.globalAlpha = 0.25;
+          ctx.fill();
+          ctx.globalAlpha = 1;
+        } else if (ent.type === 'circle' && ent.center) {
+          ctx.beginPath();
+          ctx.arc(ent.center[0], ent.center[1], ent.radius ?? 1, 0, Math.PI * 2);
+          ctx.stroke();
+        } else if (ent.type === 'text') {
+          // coords = bbox [minX, minY, maxX, maxY] konvansiyonu
+          const pad = 1.5 / viewport.zoom;
+          ctx.strokeRect(
+            ent.coords[0] - pad, ent.coords[1] - pad,
+            (ent.coords[2] - ent.coords[0]) + 2 * pad,
+            (ent.coords[3] - ent.coords[1]) + 2 * pad,
+          );
+        } else {
+          ctx.beginPath();
+          if (ent.polyline && ent.polyline.length >= 2) {
+            ctx.moveTo(ent.polyline[0][0], ent.polyline[0][1]);
+            for (let i = 1; i < ent.polyline.length; i++) {
+              ctx.lineTo(ent.polyline[i][0], ent.polyline[i][1]);
+            }
+          } else {
+            ctx.moveTo(ent.coords[0], ent.coords[1]);
+            ctx.lineTo(ent.coords[2], ent.coords[3]);
+          }
+          ctx.stroke();
+        }
+        ctx.shadowBlur = 0;
+        ctx.shadowColor = 'transparent';
+      };
+
       // ─── HOVER overlay (amber glow + 2x stroke) ───────────────────
       // TIKLA-ETIKETLE onizleme: aktif kalem varken edge hover'i kalem
       // rengine boyanir — kullanici tiklamadan once atanacak rengi gorur.
       if (hovered) {
         const isTagHover = hovered.type === 'edge' && !!activeTagColor;
-        ctx.strokeStyle = isTagHover ? (activeTagColor as string) : COLOR_HOVER;
-        ctx.lineWidth = strokeWidth * 2.2;
-        ctx.shadowColor = isTagHover ? (activeTagColor as string) : 'rgba(253, 230, 138, 0.7)';
-        ctx.shadowBlur = isTagHover ? 14 : 10;
-        ctx.beginPath();
-        if (hovered.polyline && hovered.polyline.length >= 2) {
-          ctx.moveTo(hovered.polyline[0][0], hovered.polyline[0][1]);
-          for (let i = 1; i < hovered.polyline.length; i++) {
-            ctx.lineTo(hovered.polyline[i][0], hovered.polyline[i][1]);
-          }
-        } else {
-          ctx.moveTo(hovered.coords[0], hovered.coords[1]);
-          ctx.lineTo(hovered.coords[2], hovered.coords[3]);
-        }
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-        ctx.shadowColor = 'transparent';
+        drawEntityHighlight(
+          hovered,
+          isTagHover ? (activeTagColor as string) : COLOR_HOVER,
+          2.2,
+          isTagHover ? (activeTagColor as string) : 'rgba(253, 230, 138, 0.7)',
+          isTagHover ? 14 : 10,
+        );
 
         // Edge segment ise — segment'in iki ucunda mavi nokta marker'i
         // (kullanici T noktasinda nerede ayrildigini gorsun)
@@ -1137,23 +1229,7 @@ export default function DxfCanvasViewer({
 
       // ─── SELECTED overlay (brand blue + 2.5x stroke + bigger glow) ──
       if (selectedLine) {
-        ctx.strokeStyle = COLOR_LINE_SELECTED;
-        ctx.lineWidth = strokeWidth * 3;
-        ctx.shadowColor = 'rgba(59, 130, 246, 0.8)';
-        ctx.shadowBlur = 14;
-        ctx.beginPath();
-        if (selectedLine.polyline && selectedLine.polyline.length >= 2) {
-          ctx.moveTo(selectedLine.polyline[0][0], selectedLine.polyline[0][1]);
-          for (let i = 1; i < selectedLine.polyline.length; i++) {
-            ctx.lineTo(selectedLine.polyline[i][0], selectedLine.polyline[i][1]);
-          }
-        } else {
-          ctx.moveTo(selectedLine.coords[0], selectedLine.coords[1]);
-          ctx.lineTo(selectedLine.coords[2], selectedLine.coords[3]);
-        }
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-        ctx.shadowColor = 'transparent';
+        drawEntityHighlight(selectedLine, COLOR_LINE_SELECTED, 3, 'rgba(59, 130, 246, 0.8)', 14);
       }
 
       // ─── FOCUS HALO — legend'dan tiklanan segment (overlay katmani) ──
@@ -1207,15 +1283,39 @@ export default function DxfCanvasViewer({
         minX: worldX - tol, minY: worldY - tol,
         maxX: worldX + tol, maxY: worldY + tol,
       });
+      // SECIM ONCELIGI: nokta entity (insert) > cember > yazi > boru.
+      // Tek tiklamayla yazi ile hemen yanindaki boru/cember birbirinden
+      // ayirt edilir: once daha spesifik (kucuk hedefli) tip kazanir,
+      // ayni tip icinde en yakin mesafe kazanir.
+      const PRIORITY: Record<EntityKind, number> = { insert: 0, circle: 1, text: 2, edge: 3, line: 4 };
       let best: SpatialEntry | null = null;
+      let bestPrio = Infinity;
       let bestDist = Infinity;
       for (const c of candidates) {
         if (hiddenLayers?.has(c.layer)) continue;
         if (dimmedLayers?.has(c.layer)) continue;
-        // SILGI: silinen LINE'lar sorgu aninda atlanir (index rebuild gerektirmez)
+        // SILGI filtreleri sorgu aninda (index rebuild gerektirmez)
         if (c.type === 'line' && isLineHidden(c.coords)) continue;
+        if (c.type === 'insert' && isInsertHidden(c.index)) continue;
+        if (c.type === 'text' && isTextHidden(c.index)) continue;
+
         let d: number;
-        if (c.polyline && c.polyline.length >= 2) {
+        if (c.type === 'insert') {
+          d = Math.hypot(worldX - c.coords[0], worldY - c.coords[1]);
+          if (d > tol + 2) continue; // eski click kabulu ile ayni
+        } else if (c.type === 'circle') {
+          const dc = Math.hypot(worldX - c.center![0], worldY - c.center![1]);
+          d = Math.abs(dc - (c.radius ?? 0));
+          if (d > tol && dc > (c.radius ?? 0)) continue; // cember cizgisi veya ici
+          if (dc <= (c.radius ?? 0)) d = Math.min(d, tol * 0.5); // ic tiklama kabul
+        } else if (c.type === 'text') {
+          // Hitbox: bbox + tol pad — icindeyse d=0 (metin kucuk hedef, tam kabul)
+          if (
+            worldX < c.minX - tol || worldX > c.maxX + tol ||
+            worldY < c.minY - tol || worldY > c.maxY + tol
+          ) continue;
+          d = 0;
+        } else if (c.polyline && c.polyline.length >= 2) {
           d = Infinity;
           for (let i = 0; i < c.polyline.length - 1; i++) {
             const di = pointToSegmentDistance(
@@ -1225,11 +1325,16 @@ export default function DxfCanvasViewer({
             );
             if (di < d) d = di;
           }
+          if (d > tol) continue;
         } else {
           d = pointToSegmentDistance(worldX, worldY, c.coords[0], c.coords[1], c.coords[2], c.coords[3]);
+          if (d > tol) continue;
         }
-        if (d <= tol && d < bestDist) {
+
+        const prio = PRIORITY[c.type];
+        if (prio < bestPrio || (prio === bestPrio && d < bestDist)) {
           best = c;
+          bestPrio = prio;
           bestDist = d;
         }
       }
@@ -1242,12 +1347,19 @@ export default function DxfCanvasViewer({
         index: best.index,
         coords: best.coords,
         polyline: best.polyline,
-        length: resolveHoverLength(best, scale),
+        length: (best.type === 'line' || best.type === 'edge')
+          ? resolveHoverLength(best as { type: 'line' | 'edge'; length?: number; coords: [number, number, number, number]; polyline?: Array<[number, number]> }, scale)
+          : undefined,
         diameter: liveSeg?.diameter || undefined,
         isInherited: liveSeg?.is_inherited || false,
+        text: best.text,
+        insertName: best.insertName,
+        center: best.center,
+        radius: best.radius,
+        height: best.height,
       };
     },
-    [spatialIndex, viewport.zoom, hiddenLayers, dimmedLayers, scale, isLineHidden, allEdgeSegments],
+    [spatialIndex, viewport.zoom, hiddenLayers, dimmedLayers, scale, isLineHidden, isInsertHidden, isTextHidden, allEdgeSegments],
   );
 
   // ─── Mouse pozisyonu → world coord + hover ──────────────────────
@@ -1353,36 +1465,36 @@ export default function DxfCanvasViewer({
         return;
       }
 
-      // Insert/circle önce (sembol > çizgi). Dimmed/hidden atlanir.
-      for (const ins of geometry.inserts) {
-        if (hiddenLayers?.has(ins.layer)) continue;
-        if (dimmedLayers?.has(ins.layer)) continue;
-        if (isInsertHidden(ins.insert_index)) continue;  // SILGI: silinmis insert tik almasin
-        const dx = worldX - ins.position[0];
-        const dy = worldY - ins.position[1];
-        if (Math.hypot(dx, dy) <= tol + 2) {
-          setSelectedLine(null);
-          onInsertClick?.({ layer: ins.layer, insertIndex: ins.insert_index, insertName: ins.insert_name, position: ins.position });
-          return;
-        }
-      }
-
-      for (const c of geometry.circles) {
-        if (hiddenLayers?.has(c.layer)) continue;
-        if (dimmedLayers?.has(c.layer)) continue;
-        const dx = worldX - c.center[0];
-        const dy = worldY - c.center[1];
-        const d = Math.hypot(dx, dy);
-        if (Math.abs(d - c.radius) <= tol || d <= c.radius) {
-          setSelectedLine(null);
-          onCircleClick?.({ layer: c.layer, circleIndex: c.circle_index, center: c.center, radius: c.radius });
-          return;
-        }
-      }
-
-      // Line/edge: spatial index ile en yakini bul
+      // ── TAM TIKLANABILIRLIK: tum tipler tek spatial sorgudan ──
+      // Secim onceligi computeHovered icinde: insert > circle > text > edge > line.
+      // Hidden/dimmed/silgi filtreleri de orada — tek dogruluk kaynagi.
       const target = computeHovered(worldX, worldY);
       if (target) {
+        if (target.type === 'insert') {
+          setSelectedLine(null); // ekipman popup acilacak — tooltip cakismasin
+          onInsertClick?.({
+            layer: target.layer,
+            insertIndex: target.index,
+            insertName: target.insertName ?? '',
+            position: [target.coords[0], target.coords[1]],
+          });
+          return;
+        }
+        if (target.type === 'circle') {
+          setSelectedLine(null);
+          onCircleClick?.({
+            layer: target.layer,
+            circleIndex: target.index,
+            center: target.center ?? [target.coords[0], target.coords[1]],
+            radius: target.radius ?? 0,
+          });
+          return;
+        }
+        if (target.type === 'text') {
+          // Yazi secimi: pinned tooltip icerik gosterir (Esc ile kalkar)
+          setSelectedLine(target);
+          return;
+        }
         setSelectedLine(target);
         if (target.type === 'line') {
           onLineClick?.({ layer: target.layer, index: target.index, shiftKey: e.shiftKey, screenX: e.clientX, screenY: e.clientY });
@@ -1845,11 +1957,26 @@ function Tooltip({ entity, screenX, screenY, pinned }: TooltipProps) {
       }}
     >
       <div className="text-[10px] uppercase tracking-wider opacity-70">
-        {entity.type === 'edge' ? 'Segment' : 'Boru'}
+        {entity.type === 'edge' ? 'Segment'
+          : entity.type === 'insert' ? 'Ekipman (Blok)'
+          : entity.type === 'circle' ? 'Sembol (Çember)'
+          : entity.type === 'text' ? 'Yazı'
+          : 'Boru'}
       </div>
       <div className="mt-0.5 text-sm font-semibold truncate" title={entity.layer}>
         {entity.layer}
       </div>
+      {entity.type === 'text' && entity.text && (
+        <div className="mt-1 font-mono text-sm font-bold break-words">
+          &quot;{entity.text}&quot;
+        </div>
+      )}
+      {entity.type === 'insert' && entity.insertName && (
+        <div className="mt-1 flex items-baseline gap-1">
+          <span className="text-xs opacity-70">Blok:</span>
+          <span className="font-mono text-sm font-bold truncate">{entity.insertName}</span>
+        </div>
+      )}
       {!isUnassignedDiameter(entity.diameter) && (
         <div className="mt-1 flex items-baseline gap-1">
           <span className="text-xs opacity-70">Cap:</span>
@@ -1866,13 +1993,15 @@ function Tooltip({ entity, screenX, screenY, pinned }: TooltipProps) {
           )}
         </div>
       )}
-      <div className="mt-1 flex items-baseline gap-1">
-        <span className="text-xs opacity-70">Uzunluk:</span>
-        <span className="font-mono text-sm font-bold tabular-nums">
-          {entity.length.toFixed(2)}
-        </span>
-        <span className="text-xs opacity-70">m</span>
-      </div>
+      {entity.length != null && (
+        <div className="mt-1 flex items-baseline gap-1">
+          <span className="text-xs opacity-70">Uzunluk:</span>
+          <span className="font-mono text-sm font-bold tabular-nums">
+            {entity.length.toFixed(2)}
+          </span>
+          <span className="text-xs opacity-70">m</span>
+        </div>
+      )}
       {pinned && (
         <div className="mt-1 text-[10px] opacity-60">Esc ile kaldir</div>
       )}
