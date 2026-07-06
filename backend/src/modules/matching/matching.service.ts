@@ -43,9 +43,13 @@ export class MatchingService {
     brandId: string,
     materialNames: string[],
   ): Promise<Record<string, MatchResult>> {
-    // 1. Markanin TUM malzemelerini + taglarini tek sorguda cek
-    const allPrices = await this.prisma.materialPrice.findMany({
-      where: { brandId },
+    // ── KUTUPHANEM IZOLASYONU (PRD) ──────────────────────────────────
+    // Aday havuzu artik GLOBAL MaterialPrice DEGIL, kullanicinin KENDI
+    // kutuphanesi (UserLibrary). Kullanici havuzdan "Kutuphaneme Aktar" ile
+    // kopyalar, fiyat/iskontoyu ozgurce degistirir, manuel malzeme ekler —
+    // teklif eslestirmesi YALNIZ bu kisisel veriyi okur. Global fallback YOK.
+    const libRows = await this.prisma.userLibrary.findMany({
+      where: { userId, brandId },
       include: {
         material: {
           select: { id: true, name: true, tags: true, normalizedName: true, materialType: true },
@@ -53,17 +57,49 @@ export class MatchingService {
       },
     });
 
-    if (allPrices.length === 0) {
-      console.log(`[Matching] Brand ${brandId} icin fiyat listesi bos.`);
-      return {};
+    if (libRows.length === 0) {
+      console.log(`[Matching] Kutuphane bos: user=${userId}, brand=${brandId}`);
+      const empty: Record<string, MatchResult> = {};
+      const reason =
+        'Kütüphanenizde bu markaya ait malzeme yok. Malzeme Havuzu\'ndan "Kütüphaneme Aktar" ile ekleyin.';
+      for (const n of materialNames) {
+        if (!n.trim()) continue;
+        empty[n] = { netPrice: 0, listPrice: 0, discount: 0, confidence: 'none', reason };
+      }
+      return empty;
     }
 
-    // 2. Kullanici kutuphanesini cek (iskonto icin)
-    const libItems = await this.prisma.userLibrary.findMany({
-      where: { userId, brandId },
+    // UserLibrary satirlarini matcher'in bekledigi MaterialPriceItem sekline
+    // cevir. Havuzdan aktarilanlar Material.tags'ini tasir; kullanicinin
+    // MANUEL ekledigi satirlarda (materialId yok) tag'ler anlik uretilir.
+    const allPrices: MaterialPriceItem[] = libRows.map((li) => {
+      const name = li.material?.name ?? li.materialName ?? '';
+      const basePrice = li.customPrice ?? li.listPrice ?? 0;
+      if (li.material) {
+        return { price: basePrice, material: li.material };
+      }
+      const gen = generateTags(name);
+      return {
+        price: basePrice,
+        material: {
+          id: li.id,
+          name,
+          tags: gen.tags,
+          normalizedName: gen.normalizedName,
+          materialType: gen.materialType,
+        },
+      };
     });
 
-    console.log(`[Matching] ${materialNames.length} malzeme, ${allPrices.length} fiyat listesi, ${libItems.length} kutuphane`);
+    // Iskonto/liste fiyati lookup'i icin ayni satirlar (calcPrice ad ile bulur)
+    const libItems: LibItem[] = libRows.map((li) => ({
+      materialName: li.material?.name ?? li.materialName,
+      listPrice: li.customPrice ?? li.listPrice,
+      discountRate: li.discountRate,
+      customPrice: li.customPrice,
+    }));
+
+    console.log(`[Matching] KUTUPHANE modu: ${materialNames.length} malzeme, ${libRows.length} kutuphane kaydi (brand=${brandId})`);
 
     // 3. Her Excel malzemesi icin tag-based eslestirme
     const results: Record<string, MatchResult> = {};

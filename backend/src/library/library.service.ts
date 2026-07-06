@@ -21,6 +21,20 @@ export class LibraryService {
     });
   }
 
+  /** Kullanicinin kutuphanesindeki DISTINCT markalar — teklif grid'inin
+   *  Marka dropdown kaynagi (Kutuphanem izolasyonu). Global havuz DEGIL. */
+  async findLibraryBrands(userId: string) {
+    const rows = await this.prisma.userLibrary.findMany({
+      where: { userId },
+      distinct: ['brandId'],
+      select: {
+        brand: { select: { id: true, name: true, discipline: true, logoUrl: true } },
+      },
+      orderBy: { brandId: 'asc' },
+    });
+    return rows.map((r) => r.brand);
+  }
+
   /** Sadece ekipman (kombi, pompa vs.) kategorisindeki kutuphane satirlari.
    *  DWG workspace equipment popup'u bu listeyi cekip autocomplete kullanir. */
   async findEquipment(userId: string) {

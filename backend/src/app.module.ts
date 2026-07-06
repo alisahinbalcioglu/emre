@@ -16,6 +16,7 @@ import { ExcelGridModule } from './modules/excel-grid/excel-grid.module';
 import { MatchingModule } from './modules/matching/matching.module';
 import { LaborMatchingModule } from './modules/labor-matching/labor-matching.module';
 import { DwgEngineModule } from './modules/dwg-engine/dwg-engine.module';
+import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
 import { PdfToExcelModule } from './modules/pdf-to-excel/pdf-to-excel.module';
 
 @Module({
@@ -36,6 +37,7 @@ import { PdfToExcelModule } from './modules/pdf-to-excel/pdf-to-excel.module';
     LaborMatchingModule,
     DwgEngineModule,
     PdfToExcelModule,
+    ExchangeRatesModule,
   ],
   controllers: [HealthController, BootstrapController],
 })

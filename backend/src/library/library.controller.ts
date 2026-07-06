@@ -21,6 +21,14 @@ export class LibraryController {
     return this.libraryService.findAll(user.id);
   }
 
+  /** KUTUPHANEM IZOLASYONU: teklif grid'indeki Marka dropdown'i bu listeden
+   *  beslenir — kullanicinin kutuphanesine AKTARDIGI markalar. Global havuz
+   *  (GET /brands) teklif akisinda kullanilmaz. */
+  @Get('brands')
+  findLibraryBrands(@CurrentUser() user: any) {
+    return this.libraryService.findLibraryBrands(user.id);
+  }
+
   /** Sadece ekipman/sarf kategorisindeki kutuphane satirlari. DWG workspace
    *  equipment popup'unun autocomplete'i icin. */
   @Get('equipment')
