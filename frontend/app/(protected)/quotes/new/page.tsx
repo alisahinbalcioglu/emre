@@ -40,6 +40,7 @@ import { useCapabilities } from '@/contexts/CapabilitiesContext';
 import type { MetrajResult } from '@/components/dwg-metraj/types';
 import MetrajEditor from '@/components/dwg-metraj/MetrajEditor';
 import { parseMaterialText } from '@/lib/parse-material-text';
+import { mergeMultiSheet } from '@/lib/merge-multisheet';
 import type { Brand } from '@/types';
 import type {
   UploadMode,
@@ -526,6 +527,42 @@ export default function NewQuotePage() {
 
   /* ---------- Step 1: Upload ---------- */
 
+  /** ── VERI KORUMALI EXCEL YUKLEME (PRD) ──
+   * Yeni Excel mevcut grid'i EZMEZ: sheet'ler ada, satirlar poz+ad anahtarina
+   * gore MERGE edilir — kullanicinin kar marji/marka/fiyat emegi korunur,
+   * eslesen pozlarin kaynak hucreleri (miktar vb.) dosyadan guncellenir,
+   * yeni satir/sheet eklenir, yalniz eskide olanlar sona tasinir. */
+  function applyIncomingMultiSheet(multi: MultiSheetData) {
+    const { merged, live, stats } = mergeMultiSheet(multiSheet, liveRowDataBySheet, multi);
+    setMultiSheet(merged);
+    setLiveRowDataBySheet(live);
+    const firstNonEmpty = merged.sheets.findIndex((s) => !s.isEmpty);
+    const activeIdx = firstNonEmpty >= 0 ? firstNonEmpty : 0;
+    setActiveSheetIndex(activeIdx);
+    setSheetDisciplines((prevDisc) => {
+      const d: Record<number, 'mechanical' | 'electrical' | null> = {};
+      merged.sheets.forEach((s) => { d[s.index] = s.discipline ?? prevDisc[s.index] ?? null; });
+      return d;
+    });
+    const active = merged.sheets[activeIdx];
+    if (active && Array.isArray(active.columnDefs)) {
+      setExcelGridData({
+        columnDefs: active.columnDefs,
+        rowData: live[active.index] ?? active.rowData,
+        columnRoles: active.columnRoles,
+        brands: allBrands,
+        headerEndRow: active.headerEndRow,
+      });
+    }
+    if (multiSheet) {
+      toast({
+        title: 'Excel birleştirildi — verileriniz korundu',
+        description: `${stats.matchedRows} satır güncellendi · ${stats.newRows} yeni · ${stats.preservedRows} eski satır korundu${stats.newSheets ? ` · ${stats.newSheets} yeni sayfa` : ''}`,
+      });
+    }
+    return stats;
+  }
+
   function handleModeSwitch(mode: UploadMode) {
     setUploadMode(mode);
     setFile(null);
@@ -579,31 +616,8 @@ export default function NewQuotePage() {
           if (multi?.sheets?.length) {
             // Not: Backend /excel-grid/prepare artik stripPrices=true ile cagriliyor,
             // fiyat kolonlari zaten backend'te temizlenmis geliyor.
-            setMultiSheet(multi);
-            // Ilk non-empty sheet'i aktif yap
-            const firstNonEmpty = multi.sheets.findIndex((s) => !s.isEmpty);
-            setActiveSheetIndex(firstNonEmpty >= 0 ? firstNonEmpty : 0);
-            // Her sheet icin canli rowData'yi initialize et
-            const initialLive: Record<number, ExcelRowData[]> = {};
-            const initialDisc: Record<number, 'mechanical' | 'electrical' | null> = {};
-            multi.sheets.forEach((s) => {
-              initialLive[s.index] = s.rowData;
-              initialDisc[s.index] = s.discipline ?? null;
-            });
-            setLiveRowDataBySheet(initialLive);
-            setSheetDisciplines(initialDisc);
-            // Backward compat: aktif sheet'i tekli excelGridData olarak da ayarla (diger kod yollari icin)
-            const activeIdx = firstNonEmpty >= 0 ? firstNonEmpty : 0;
-            const active = multi.sheets[activeIdx];
-            if (active) {
-              setExcelGridData({
-                columnDefs: active.columnDefs,
-                rowData: active.rowData,
-                columnRoles: active.columnRoles,
-                brands: multi.brands,
-                headerEndRow: active.headerEndRow,
-              });
-            }
+            // VERI KORUMA: mevcut grid EZILMEZ — merge (kar/marka/fiyat korunur).
+            applyIncomingMultiSheet(multi);
           }
         } catch (err: any) {
           console.error('[ExcelGrid] prepare HATA:', err);
@@ -1196,17 +1210,8 @@ export default function NewQuotePage() {
                       });
                       const multi = gridRes.data;
                       if (multi?.sheets?.length) {
-                        setMultiSheet(multi);
-                        const firstNonEmpty = multi.sheets.findIndex((s) => !s.isEmpty);
-                        setActiveSheetIndex(firstNonEmpty >= 0 ? firstNonEmpty : 0);
-                        const initialLive: Record<number, ExcelRowData[]> = {};
-                        const initialDisc: Record<number, 'mechanical' | 'electrical' | null> = {};
-                        multi.sheets.forEach((s) => {
-                          initialLive[s.index] = s.rowData;
-                          initialDisc[s.index] = s.discipline ?? null;
-                        });
-                        setLiveRowDataBySheet(initialLive);
-                        setSheetDisciplines(initialDisc);
+                        // VERI KORUMA: mevcut grid EZILMEZ — merge
+                        applyIncomingMultiSheet(multi);
                         setTitle(f.name.replace(/\.[^.]+$/, ''));
                         // Orijinal dosya binary'sini base64'e cevir (kaydetme icin)
                         try {
@@ -1222,16 +1227,8 @@ export default function NewQuotePage() {
                         } catch (e) {
                           console.warn('[quotes/new] File to base64 failed:', e);
                         }
-                        const active = multi.sheets[firstNonEmpty >= 0 ? firstNonEmpty : 0];
-                        if (active) {
-                          setExcelGridData({
-                            columnDefs: active.columnDefs,
-                            rowData: active.rowData,
-                            columnRoles: active.columnRoles,
-                            brands: multi.brands,
-                            headerEndRow: active.headerEndRow,
-                          });
-                        }
+                        // setExcelGridData'yi applyIncomingMultiSheet zaten yapti;
+                        // merge toast'i da orada (once yukleme varsa) gosterilir.
                         toast({ title: 'Analiz tamamlandi', description: `${multi.sheets.filter((s) => !s.isEmpty).length} sayfa yuklendi` });
                       }
                     } catch (err: any) {

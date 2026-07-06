@@ -58,8 +58,27 @@ export default function AdminBrandsPage() {
   const fetchBrands = useCallback(() => {
     setLoadingBrands(true);
     api.get<Brand[]>('/brands')
-      .then(({ data }) => setBrands(data ?? []))
-      .catch(() => toast({ title: 'Markalar yüklenemedi', variant: 'destructive' }))
+      .then(({ data }) => {
+        const list = data ?? [];
+        setBrands(list);
+        // STALE SELECTION FIX: secili marka artik listede yoksa (baska yerden
+        // silinmis olabilir) secimi ve detay panelini temizle — aksi halde tum
+        // liste/malzeme islemleri 404 doner, kullanici "yuklenemiyor" sanir.
+        setSelectedBrand((prev) => {
+          if (prev && !list.some((b) => b.id === prev.id)) {
+            setPriceLists([]);
+            setSelectedList(null);
+            setMaterials([]);
+            return null;
+          }
+          return prev;
+        });
+      })
+      .catch((e: any) => toast({
+        title: 'Markalar yüklenemedi',
+        description: e?.response?.data?.message ?? e?.message ?? 'Bilinmeyen hata',
+        variant: 'destructive',
+      }))
       .finally(() => setLoadingBrands(false));
   }, []);
 

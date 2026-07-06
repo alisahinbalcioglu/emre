@@ -13,7 +13,6 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   Users,
   Package,
-  Sparkles,
   BarChart3,
   CreditCard,
   ArrowLeft,
@@ -33,8 +32,9 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { href: '/admin/users', label: 'Kullanıcılar', icon: Users },
   { href: '/admin/brands', label: 'Marka & Fiyat Listeleri', icon: Package },
-  { href: '/admin/ai', label: 'AI Ayarları', icon: Sparkles, soon: true },
-  { href: '/admin/stats', label: 'İstatistikler', icon: BarChart3, soon: true },
+  // 'AI Ayarları' KALDIRILDI (2026-07-06): aktif AI entegrasyonu yok —
+  // kullanici karari. Backend /admin/ai-* uclari duruyor; UI'da gosterilmez.
+  { href: '/admin/stats', label: 'İstatistikler', icon: BarChart3 },
   { href: '/admin/payments', label: 'Ödeme Yöntemleri', icon: CreditCard, soon: true },
 ];
 
