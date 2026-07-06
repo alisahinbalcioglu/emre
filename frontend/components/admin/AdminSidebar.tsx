@@ -32,7 +32,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { href: '/admin/users', label: 'Kullanıcılar', icon: Users },
-  { href: '/admin/brands', label: 'Marka & Fiyat Listeleri', icon: Package, soon: true },
+  { href: '/admin/brands', label: 'Marka & Fiyat Listeleri', icon: Package },
   { href: '/admin/ai', label: 'AI Ayarları', icon: Sparkles, soon: true },
   { href: '/admin/stats', label: 'İstatistikler', icon: BarChart3, soon: true },
   { href: '/admin/payments', label: 'Ödeme Yöntemleri', icon: CreditCard, soon: true },

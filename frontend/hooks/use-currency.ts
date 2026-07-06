@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import api from '@/lib/api';
 import type { Currency, ExchangeRates } from '@/types/quotes';
 
 const CURRENCY_SYMBOLS: Record<Currency, string> = {
@@ -32,7 +33,8 @@ export interface UseCurrencyResult {
 /**
  * Para birimi yonetimi hook'u.
  * - Uygulamada tum taban fiyatlar TRY saklanir.
- * - Gosterim icin USD/EUR cevrimi open.er-api.com kuruyla yapilir.
+ * - Gosterim icin USD/EUR cevrimi CANLI TCMB kuru ile yapilir — backend
+ *   /exchange-rates endpoint'i (TCMB today.xml, 1 saat cache, er-api fallback).
  * - API erisilemezse TRY=1 fallback kalir.
  */
 export function useCurrency(): UseCurrencyResult {
@@ -47,18 +49,19 @@ export function useCurrency(): UseCurrencyResult {
   useEffect(() => {
     async function fetchRates() {
       try {
-        const res = await fetch('https://open.er-api.com/v6/latest/USD');
-        const data = await res.json();
-        if (data?.rates) {
+        // Backend TCMB servisi: { usdTry, eurTry, source, date }
+        const { data } = await api.get<{ usdTry: number; eurTry: number }>('/exchange-rates');
+        if (data?.usdTry && data.usdTry > 1) {
+          // Ic temsil USD-bazli: TRY = TL/USD, EUR = EUR/USD
           setExchangeRates({
-            TRY: data.rates.TRY ?? 1,
+            TRY: data.usdTry,
             USD: 1,
-            EUR: data.rates.EUR ?? 1,
+            EUR: data.usdTry / data.eurTry,
           });
           setRatesLoaded(true);
         }
       } catch {
-        // Fallback: keep defaults
+        // Fallback: keep defaults (TRY=1 — donusum kapali kalir)
       }
     }
     fetchRates();

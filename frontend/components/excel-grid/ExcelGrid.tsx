@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useMemo, useRef, useImperativeHandle, forwardRef } from 'react';
+import React, { useCallback, useMemo, useRef, useState, useImperativeHandle, forwardRef } from 'react';
 import { createPortal } from 'react-dom';
 import { AgGridReact } from 'ag-grid-react';
 import type { ColDef, ICellRendererParams, CellValueChangedEvent, GetRowIdParams } from 'ag-grid-community';
@@ -52,6 +52,12 @@ interface Props {
   /** Excel-vari "en altta hep bos satir": _isSpareRow satiri dolunca otomatik
    *  yenisi eklenir ('Satir Ekle' butonu YOK). DWG metraj akisinda acilir. */
   autoAppendRow?: boolean;
+  /** DINAMIK GRID: sag tik context menu ile araya satir ekle/sil ve sutun
+   *  ekle/sil. Teklif duzenleme ekraninda acilir (detay sayfasi salt okunur). */
+  enableStructureEdit?: boolean;
+  /** Sutun ekle/sil sonrasi YENI columnDefs — parent (quotes/new) multiSheet
+   *  state'ini gunceller; draft + kayit (sheetsPayload) otomatik persist olur. */
+  onColumnsChange?: (defs: ExcelGridData['columnDefs']) => void;
   // Mod: 'quote' (teklif — brand/firma dropdown + kar %) veya 'library' (iskonto + net fiyat)
   mode?: 'quote' | 'library';
   // library mode'da hangi fiyat alanini kullanir? (material veya labor)
@@ -585,11 +591,87 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
   laborFirms = [], sheetDiscipline = null, laborEnabled = false, onFirmaChange,
   onRowDataChange,
   autoAppendRow = false,
+  enableStructureEdit = false,
+  onColumnsChange,
   mode = 'quote',
   libraryPriceField = 'materialUnitPriceField',
   currencySymbol, conversionRate,
 }, ref) {
   const gridRef = useRef<AgGridReact<ExcelRowData>>(null);
+
+  // ── DINAMIK GRID: sag tik context menu state ──
+  const [ctxMenu, setCtxMenu] = useState<{
+    x: number; y: number;
+    rowData: ExcelRowData | null;
+    rowIndex: number | null;
+    colField: string | null;
+  } | null>(null);
+
+  /** Grid'den guncel tum satirlari topla + onRowDataChange yayinla. */
+  const emitRows = useCallback(() => {
+    const api = gridRef.current?.api;
+    if (!api || !onRowDataChange) return;
+    const all: ExcelRowData[] = [];
+    api.forEachNode((n) => { if (n.data) all.push(n.data); });
+    onRowDataChange(all);
+  }, [onRowDataChange]);
+
+  /** Bos veri satiri uret (mevcut kolonlardan). */
+  const makeBlankRow = useCallback((): ExcelRowData => {
+    const api = gridRef.current?.api;
+    let maxIdx = 0;
+    api?.forEachNode((n) => { if (n.data && n.data._rowIdx > maxIdx) maxIdx = n.data._rowIdx; });
+    const row: any = {
+      _rowIdx: maxIdx + 1, _isDataRow: true, _isHeaderRow: false,
+      _malzKar: 0, _iscKar: 0, _marka: null, _firma: null,
+      _matNetPrice: 0, _labNetPrice: 0,
+    };
+    for (const c of data.columnDefs) {
+      if (!c.field.startsWith('_')) row[c.field] = '';
+    }
+    return row;
+  }, [data.columnDefs]);
+
+  const insertRow = useCallback((atIndex: number) => {
+    const api = gridRef.current?.api;
+    if (!api) return;
+    api.applyTransaction({ add: [makeBlankRow()], addIndex: Math.max(0, atIndex) });
+    setCtxMenu(null);
+    setTimeout(emitRows, 0);
+  }, [makeBlankRow, emitRows]);
+
+  const deleteRow = useCallback((row: ExcelRowData | null) => {
+    const api = gridRef.current?.api;
+    if (!api || !row) return;
+    api.applyTransaction({ remove: [row] });
+    setCtxMenu(null);
+    setTimeout(emitRows, 0);
+  }, [emitRows]);
+
+  const addColumn = useCallback(() => {
+    setCtxMenu(null);
+    if (!onColumnsChange) return;
+    const name = window.prompt('Yeni sütun adı (örn: "Özel İskonto", "Nakliye"):')?.trim();
+    if (!name) return;
+    if (data.columnDefs.some((c) => c.field === name)) {
+      window.alert(`"${name}" adında bir sütun zaten var.`);
+      return;
+    }
+    onColumnsChange([...data.columnDefs, { field: name, headerName: name, width: 120, editable: true }]);
+  }, [onColumnsChange, data.columnDefs]);
+
+  const removeColumn = useCallback((field: string | null) => {
+    setCtxMenu(null);
+    if (!onColumnsChange || !field) return;
+    // Sistem + rol kolonlari silinemez (hesap/kayit zinciri bozulur)
+    const roleFields = new Set(Object.values(data.columnRoles).filter(Boolean) as string[]);
+    if (field.startsWith('_') || roleFields.has(field)) {
+      window.alert('Bu sütun sistem tarafından kullanılıyor, silinemez.');
+      return;
+    }
+    if (!window.confirm(`"${field}" sütunu ve içindeki veriler tablodan kaldırılacak. Emin misiniz?`)) return;
+    onColumnsChange(data.columnDefs.filter((c) => c.field !== field));
+  }, [onColumnsChange, data.columnDefs, data.columnRoles]);
 
   // ── Fill Handle (surukle-doldur) ──
   const FILLABLE_FIELDS = useMemo(() => new Set([
@@ -1275,7 +1357,63 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         // Excel-vari klavye: Enter → alt hucre (edit sonrasi da), ok/Tab native
         enterNavigatesVertically
         enterNavigatesVerticallyAfterEdit
+        // DINAMIK GRID: sag tik → custom context menu (AG Grid Community'de
+        // yerlesik menu yok — Enterprise ozelligi; kendi menumuzu ciziyoruz)
+        preventDefaultOnContextMenu={enableStructureEdit}
+        onCellContextMenu={(e) => {
+          if (!enableStructureEdit) return;
+          const me = e.event as MouseEvent | null;
+          if (!me) return;
+          setCtxMenu({
+            x: me.clientX, y: me.clientY,
+            rowData: (e.data as ExcelRowData) ?? null,
+            rowIndex: e.rowIndex,
+            colField: (e.colDef?.field as string) ?? null,
+          });
+        }}
       />
+
+      {/* ── SAG TIK CONTEXT MENU (satir/sutun CRUD) ── */}
+      {ctxMenu && typeof document !== 'undefined' && createPortal(
+        <>
+          <div className="fixed inset-0 z-[9998]" onClick={() => setCtxMenu(null)} onContextMenu={(e) => { e.preventDefault(); setCtxMenu(null); }} />
+          <div
+            className="fixed z-[9999] min-w-[200px] rounded-lg border border-slate-200 bg-white py-1 text-sm shadow-xl"
+            style={{ top: Math.min(ctxMenu.y, window.innerHeight - 230), left: Math.min(ctxMenu.x, window.innerWidth - 210) }}
+          >
+            <button type="button" className="block w-full px-3 py-1.5 text-left hover:bg-slate-100"
+              onClick={() => insertRow(ctxMenu.rowIndex ?? 0)}>
+              ↥ Üste satır ekle
+            </button>
+            <button type="button" className="block w-full px-3 py-1.5 text-left hover:bg-slate-100"
+              onClick={() => insertRow((ctxMenu.rowIndex ?? 0) + 1)}>
+              ↧ Alta satır ekle
+            </button>
+            <button type="button"
+              className="block w-full px-3 py-1.5 text-left text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:text-slate-300"
+              disabled={!ctxMenu.rowData || ctxMenu.rowData._isPinnedTotal}
+              onClick={() => deleteRow(ctxMenu.rowData)}>
+              ✕ Satırı sil
+            </button>
+            {onColumnsChange && (
+              <>
+                <div className="my-1 border-t border-slate-100" />
+                <button type="button" className="block w-full px-3 py-1.5 text-left hover:bg-slate-100"
+                  onClick={addColumn}>
+                  ⊞ Sütun ekle…
+                </button>
+                <button type="button"
+                  className="block w-full px-3 py-1.5 text-left text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:text-slate-300"
+                  disabled={!ctxMenu.colField}
+                  onClick={() => removeColumn(ctxMenu.colField)}>
+                  ⊟ &quot;{ctxMenu.colField && !ctxMenu.colField.startsWith('_') ? ctxMenu.colField : 'Sütun'}&quot; sütununu sil
+                </button>
+              </>
+            )}
+          </div>
+        </>,
+        document.body,
+      )}
       <style jsx global>{`
         .ag-theme-alpine {
           --ag-grid-size: 5px;

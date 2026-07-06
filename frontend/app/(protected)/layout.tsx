@@ -29,13 +29,12 @@ function useCurrencyRates(): ExchangeRates {
   useEffect(() => {
     async function fetchRates() {
       try {
-        const res = await fetch('https://open.er-api.com/v6/latest/USD');
-        if (!res.ok) return;
-        const data = await res.json();
-        const tryRate: number = data.rates?.TRY;
-        const eurRate: number = data.rates?.EUR;
-        if (!tryRate || !eurRate) return;
-        setRates({ usdTry: tryRate, eurTry: tryRate / eurRate });
+        // CANLI TCMB kuru — backend /exchange-rates (today.xml + 1 saat cache,
+        // er-api fallback). Statik degil: her sayfa yuklemesinde guncel deger.
+        const api = (await import('@/lib/api')).default;
+        const { data } = await api.get<{ usdTry: number; eurTry: number }>('/exchange-rates');
+        if (!data?.usdTry || data.usdTry <= 1) return;
+        setRates({ usdTry: data.usdTry, eurTry: data.eurTry });
       } catch {
         // sessizce gec
       }

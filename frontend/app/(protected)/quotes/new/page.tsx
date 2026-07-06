@@ -315,7 +315,8 @@ export default function NewQuotePage() {
       }));
 
       setRows(editableRows);
-      if (data.brands) setAllBrands(data.brands);
+      // KUTUPHANEM IZOLASYONU: data.brands (global havuz) ARTIK dropdown'i
+      // beslemez — mount'taki /library/brands fetch'i tek dogruluk kaynagi.
       setUsedProvider(data.usedProvider ?? null);
       if (data.fileName) setTitle(data.fileName.replace(/\.[^.]+$/, ''));
 
@@ -395,6 +396,16 @@ export default function NewQuotePage() {
   const [title, setTitle] = useState('');
   const [rows, setRows] = useState<EditableRow[]>([]);
   const [allBrands, setAllBrands] = useState<Brand[]>([]);
+
+  // ── KUTUPHANEM IZOLASYONU (PRD) ──
+  // Marka dropdown'i GLOBAL Malzeme Havuzu'ndan DEGIL, kullanicinin kendi
+  // kutuphanesindeki markalardan beslenir. Akis: Havuz'da begen → "Kutuphaneme
+  // Aktar" → fiyat/iskontoyu ozgurce duzenle → teklif SADECE bu veriyi okur.
+  useEffect(() => {
+    api.get<Brand[]>('/library/brands')
+      .then(({ data }) => setAllBrands(data ?? []))
+      .catch(() => {});
+  }, []);
   const [usedProvider, setUsedProvider] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isMatching, setIsMatching] = useState(false);
@@ -620,7 +631,8 @@ export default function NewQuotePage() {
       }));
 
       setRows(editableRows);
-      if (data.brands) setAllBrands(data.brands);
+      // KUTUPHANEM IZOLASYONU: data.brands (global havuz) ARTIK dropdown'i
+      // beslemez — mount'taki /library/brands fetch'i tek dogruluk kaynagi.
       setUsedProvider(data.usedProvider ?? null);
     } catch {
       const fileType = uploadMode === 'excel' ? 'Excel' : 'PDF';
@@ -1446,6 +1458,25 @@ export default function NewQuotePage() {
           // Excel-vari "en altta hep bos satir" — DWG metraj grid'inde aktif
           // (Excel yolunda backend kolonlari cok genis, davranis degismesin)
           autoAppendRow={multiSheet?.sheets?.length === 1 && multiSheet.sheets[0]?.name === 'DWG Metraj'}
+          // DINAMIK GRID: sag tik → satir/sutun ekle-sil (yalniz teklif duzenleme;
+          // detay sayfasi salt okunur kalir). Sutun degisimi multiSheet'e yazilir →
+          // draft (sessionStorage) + kayit (sheetsPayload) otomatik persist.
+          enableStructureEdit
+          onColumnsChange={(newDefs) => {
+            if (multiSheet) {
+              const activeIdx = multiSheet.sheets[activeSheetIndex]?.index ?? activeSheetIndex;
+              setMultiSheet((prev) => {
+                if (!prev) return prev;
+                return {
+                  ...prev,
+                  sheets: prev.sheets.map((s) =>
+                    s.index === activeIdx ? { ...s, columnDefs: newDefs } : s,
+                  ),
+                };
+              });
+            }
+            setExcelGridData((prev) => (prev ? { ...prev, columnDefs: newDefs } : prev));
+          }}
           data={
             multiSheet
               ? (() => {
