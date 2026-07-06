@@ -390,19 +390,50 @@ export class ExcelGridService {
       { role: 'grandTotal', patterns: [/toplam.*tutar/, /^toplam$/, /genel\s*toplam/], priority: 3 },
     ];
 
+    // Bir kolonda (header sonrasi olabilecek satirlarda) sayisal deger var mi?
+    // quantity dogrulamasi icin: "Miktar" kolonu sayi icermeli.
+    const hasNumericValue = (c: number): boolean => {
+      const limit = Math.min(40, rawValues.length);
+      for (let r = 0; r < limit; r++) {
+        const num = parseFloat(String(rawValues[r]?.[c] ?? '').replace(',', '.'));
+        if (!isNaN(num) && num > 0) return true;
+      }
+      return false;
+    };
+
     const assignedCols = new Set<number>();
     for (const priority of [3, 2, 1]) {
       for (const check of checks.filter((x) => x.priority === priority)) {
         if (roles[check.role] !== undefined) continue;
-        for (let c = 0; c < colCount; c++) {
-          if (assignedCols.has(c)) continue;
-          const text = colTexts[c];
-          if (!text) continue;
-          if (check.patterns.some((p) => p.test(text))) {
-            roles[check.role] = c;
-            assignedCols.add(c);
-            break;
+        // PATTERN-ONCELIKLI TARAMA (multi-sheet bug fix):
+        // Eski kod kolon-oncelikliydi: soldaki kolon zayif bir pattern'le
+        // (orn quantity icin /\badet\b/) eslesince gercek "Miktar" kolonunun
+        // /\bmiktar\b/ eslesmesine hic sira gelmiyordu. Ornek felaket:
+        // "Birim" kolonunda 'adet' DEGERI var diye Miktar rolu Birim'e
+        // atandi -> parseFloat('metre')=NaN -> firstDataRow=-1 -> sheet
+        // isEmpty sayildi -> 5 sayfalik dosyada 4 sekme "kayboldu".
+        // Yeni kod: GUCLU pattern TUM kolonlarda once aranir; zayif pattern
+        // ancak guclusu hic eslesmezse devreye girer.
+        outer:
+        for (const pattern of check.patterns) {
+          const candidates: number[] = [];
+          for (let c = 0; c < colCount; c++) {
+            if (assignedCols.has(c)) continue;
+            const text = colTexts[c];
+            if (text && pattern.test(text)) candidates.push(c);
           }
+          if (candidates.length === 0) continue;
+          // quantity icin ek dogrulama: secilen kolon SAYI icermeli
+          // (header'da 'miktar' yazan ama bos kolon yerine dolu olani sec)
+          let pick = candidates[0];
+          if (check.role === 'quantity') {
+            const numeric = candidates.find((c) => hasNumericValue(c));
+            if (numeric === undefined) continue; // adaylarin hicbirinde sayi yok — sonraki pattern'e dus
+            pick = numeric;
+          }
+          roles[check.role] = pick;
+          assignedCols.add(pick);
+          break outer;
         }
       }
     }

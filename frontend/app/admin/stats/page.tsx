@@ -26,6 +26,14 @@ import { fetchAdminStats, type AdminStats, type KpiMetric } from '@/lib/admin-st
 
 const PIE_COLORS = ['#3b82f6', '#f59e0b'];
 
+function ChartEmpty({ text }: { text: string }) {
+  return (
+    <div className="flex h-full items-center justify-center text-xs text-slate-400">
+      {text}
+    </div>
+  );
+}
+
 function KpiCard({
   title, icon: Icon, metric, suffix = '',
 }: {
@@ -34,7 +42,7 @@ function KpiCard({
   metric: KpiMetric;
   suffix?: string;
 }) {
-  const up = metric.trendPct >= 0;
+  const up = (metric.trendPct ?? 0) >= 0;
   return (
     <Card>
       <CardContent className="p-4">
@@ -45,13 +53,16 @@ function KpiCard({
         <p className="mt-2 text-2xl font-bold tabular-nums text-slate-900">
           {metric.value.toLocaleString('tr-TR')}{suffix}
         </p>
-        <div className="mt-1 flex items-center gap-1.5">
-          <span className={`inline-flex items-center gap-0.5 text-xs font-semibold ${up ? 'text-emerald-600' : 'text-red-600'}`}>
-            {up ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-            {up ? '+' : ''}{metric.trendPct}%
-          </span>
-          <span className="text-[10px] text-slate-400">önceki aya göre{metric.isDummyTrend ? ' · örnek' : ''}</span>
-        </div>
+        {/* trendPct null = hesaplanamiyor (orn. Brand'de createdAt yok) — rozet gizlenir */}
+        {metric.trendPct !== null && (
+          <div className="mt-1 flex items-center gap-1.5">
+            <span className={`inline-flex items-center gap-0.5 text-xs font-semibold ${up ? 'text-emerald-600' : 'text-red-600'}`}>
+              {up ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+              {up ? '+' : ''}{metric.trendPct}%
+            </span>
+            <span className="text-[10px] text-slate-400">önceki aya göre</span>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -84,9 +95,10 @@ export default function AdminStatsPage() {
             İstatistikler
           </h1>
           <p className="mt-0.5 text-sm text-slate-500">
-            Platform kullanım özeti
-            {!stats.live && <Badge variant="warning" className="ml-2">örnek veri</Badge>}
-            {stats.live && <Badge variant="success" className="ml-2">KPI canlı · grafikler örnek</Badge>}
+            Platform kullanım özeti — gerçek veri
+            {stats.live
+              ? <Badge variant="success" className="ml-2">canlı</Badge>
+              : <Badge variant="destructive" className="ml-2">veri alınamadı</Badge>}
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={load}>
@@ -109,6 +121,9 @@ export default function AdminStatsPage() {
           <CardTitle className="text-sm">Son 30 Gün — Yeni Teklifler</CardTitle>
         </CardHeader>
         <CardContent className="h-64">
+          {stats.quoteTrend.length === 0 ? (
+            <ChartEmpty text="Son 30 günde teklif verisi yok" />
+          ) : (
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={stats.quoteTrend} margin={{ top: 6, right: 12, bottom: 0, left: -18 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -118,6 +133,7 @@ export default function AdminStatsPage() {
               <Line type="monotone" dataKey="teklif" stroke="#3b82f6" strokeWidth={2} dot={false} name="Teklif" />
             </LineChart>
           </ResponsiveContainer>
+          )}
         </CardContent>
       </Card>
 
@@ -128,6 +144,9 @@ export default function AdminStatsPage() {
             <CardTitle className="text-sm">Disiplin Dağılımı (Mekanik / Elektrik)</CardTitle>
           </CardHeader>
           <CardContent className="h-64">
+            {stats.disciplineSplit.length === 0 ? (
+              <ChartEmpty text="Henüz kütüphane verisi yok — kullanıcılar marka aktardıkça dolar" />
+            ) : (
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
@@ -148,6 +167,7 @@ export default function AdminStatsPage() {
                 <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
               </PieChart>
             </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
 
@@ -157,6 +177,9 @@ export default function AdminStatsPage() {
             <CardTitle className="text-sm">Kütüphaneye En Çok Aktarılan Markalar (Top 5)</CardTitle>
           </CardHeader>
           <CardContent className="h-64">
+            {stats.topBrands.length === 0 ? (
+              <ChartEmpty text="Henüz kütüphaneye marka aktarılmamış" />
+            ) : (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={stats.topBrands} layout="vertical" margin={{ top: 6, right: 24, bottom: 0, left: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
@@ -166,6 +189,7 @@ export default function AdminStatsPage() {
                 <Bar dataKey="aktarim" fill="#6366f1" radius={[0, 4, 4, 0]} barSize={18} name="Aktarım" />
               </BarChart>
             </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
       </div>

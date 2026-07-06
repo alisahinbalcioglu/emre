@@ -1,115 +1,80 @@
 /**
  * admin-stats — Istatistikler sayfasinin servis katmani.
  *
- * GERCEK VERI: GET /admin/stats (userCount, quoteCount, brandCount,
- * materialCount, priceListCount) — KPI kartlarinin ana degerleri buradan.
- *
- * DUMMY VERI: trend %'leri, 30 gunluk teklif serisi, disiplin dagilimi ve
- * Top-5 marka aktarimi — backend'de henuz zaman-serisi/aggregation ucu yok.
- * Deterministik uretilir (her render'da zipla yok). Backend ucu eklendiginde
- * SADECE bu dosya guncellenir; sayfa komponenti degismez.
+ * TUM VERI GERCEK: GET /admin/stats artik zaman-serisi/aggregation dondurur —
+ * KPI'lar + aylik trendler + 30 gunluk teklif serisi + disiplin dagilimi
+ * (kutuphanede kullanilan markalarin disiplini) + Top-5 aktarilan marka.
+ * Dummy/sahte veri YOK. API hatasinda sifir-degerli guvenli sekil doner
+ * (sayfa cokmez, "veri alinamadi" rozeti gosterilir).
  */
 
 import api from '@/lib/api';
 
 export interface KpiMetric {
   value: number;
-  /** Onceki aya gore % degisim (dummy — backend zaman serisi ekleyince gercek) */
-  trendPct: number;
-  isDummyTrend: boolean;
+  /** Onceki aya gore % degisim. null = hesaplanamiyor (rozet gizlenir). */
+  trendPct: number | null;
 }
 
 export interface AdminStats {
   totalUsers: KpiMetric;
   totalQuotes: KpiMetric;
   totalBrands: KpiMetric;
-  /** Bu ayki aktif kullanici orani (%) — dummy */
+  /** Bu ay teklif olusturan kullanici / toplam kullanici (%) */
   activeUserRate: KpiMetric;
   /** Son 30 gun: gunluk yeni teklif sayisi */
   quoteTrend: Array<{ date: string; teklif: number }>;
-  /** Disiplin dagilimi (pie) */
+  /** Disiplin dagilimi — kutuphanede kullanilan markalarin disiplinine gore */
   disciplineSplit: Array<{ name: string; value: number }>;
-  /** Kutuphaneye en cok aktarilan Top 5 marka (yatay bar) */
+  /** Kutuphaneye en cok aktarilan Top 5 marka */
   topBrands: Array<{ name: string; aktarim: number }>;
-  /** KPI degerleri gercek API'den mi geldi? */
+  /** Veri API'den basariyla geldi mi? */
   live: boolean;
 }
 
-/** Deterministik pseudo-random — dummy seriler her yuklemede AYNI gorunsun. */
-function seeded(seed: number): () => number {
-  let s = seed;
-  return () => {
-    s = (s * 9301 + 49297) % 233280;
-    return s / 233280;
+interface StatsApiResponse {
+  userCount: number;
+  brandCount: number;
+  materialCount: number;
+  quoteCount: number;
+  priceListCount: number;
+  trends?: {
+    users: number | null;
+    quotes: number | null;
+    brands: number | null;
+    activeUsers: number | null;
   };
+  activeUserRate?: number;
+  quoteTrend?: Array<{ date: string; count: number }>;
+  disciplineSplit?: Array<{ name: string; value: number }>;
+  topBrands?: Array<{ name: string; count: number }>;
 }
 
-function dummyQuoteTrend(): AdminStats['quoteTrend'] {
-  const rnd = seeded(42);
-  const out: AdminStats['quoteTrend'] = [];
-  const today = new Date();
-  for (let i = 29; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    // Hafif yukari trend + gunluk dalgalanma
-    const base = 2 + (29 - i) * 0.15;
-    out.push({
-      date: d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit' }),
-      teklif: Math.max(0, Math.round(base + rnd() * 4 - 1)),
-    });
-  }
-  return out;
-}
-
-const DUMMY_DISCIPLINE = [
-  { name: 'Mekanik', value: 68 },
-  { name: 'Elektrik', value: 32 },
-];
-
-const DUMMY_TOP_BRANDS = [
-  { name: 'ECA', aktarim: 14 },
-  { name: 'Vaillant', aktarim: 11 },
-  { name: 'Viega', aktarim: 8 },
-  { name: 'Schneider', aktarim: 6 },
-  { name: 'Göldağ', aktarim: 4 },
-];
-
-function dummyKpi(value: number, trendPct: number): KpiMetric {
-  return { value, trendPct, isDummyTrend: true };
-}
-
-const FULL_DUMMY: AdminStats = {
-  totalUsers: dummyKpi(2, 100),
-  totalQuotes: dummyKpi(12, 33),
-  totalBrands: dummyKpi(5, 25),
-  activeUserRate: dummyKpi(74, 8),
-  quoteTrend: dummyQuoteTrend(),
-  disciplineSplit: DUMMY_DISCIPLINE,
-  topBrands: DUMMY_TOP_BRANDS,
+const EMPTY: AdminStats = {
+  totalUsers: { value: 0, trendPct: null },
+  totalQuotes: { value: 0, trendPct: null },
+  totalBrands: { value: 0, trendPct: null },
+  activeUserRate: { value: 0, trendPct: null },
+  quoteTrend: [],
+  disciplineSplit: [],
+  topBrands: [],
   live: false,
 };
 
 export async function fetchAdminStats(): Promise<AdminStats> {
   try {
-    const { data } = await api.get<{
-      userCount: number;
-      brandCount: number;
-      materialCount: number;
-      quoteCount: number;
-      priceListCount: number;
-    }>('/admin/stats');
-
+    const { data } = await api.get<StatsApiResponse>('/admin/stats');
     return {
-      ...FULL_DUMMY,
-      // KPI ana degerleri GERCEK — trend %'leri dummy (backend serisi yok)
-      totalUsers: dummyKpi(data.userCount, 100),
-      totalQuotes: dummyKpi(data.quoteCount, 33),
-      totalBrands: dummyKpi(data.brandCount, 25),
-      quoteTrend: dummyQuoteTrend(),
+      totalUsers: { value: data.userCount ?? 0, trendPct: data.trends?.users ?? null },
+      totalQuotes: { value: data.quoteCount ?? 0, trendPct: data.trends?.quotes ?? null },
+      totalBrands: { value: data.brandCount ?? 0, trendPct: data.trends?.brands ?? null },
+      activeUserRate: { value: data.activeUserRate ?? 0, trendPct: data.trends?.activeUsers ?? null },
+      quoteTrend: (data.quoteTrend ?? []).map((r) => ({ date: r.date, teklif: r.count })),
+      disciplineSplit: data.disciplineSplit ?? [],
+      topBrands: (data.topBrands ?? []).map((r) => ({ name: r.name, aktarim: r.count })),
       live: true,
     };
   } catch {
-    // API erisilemedi (network/CORS/dev) → tam dummy; sayfa yine calisir
-    return FULL_DUMMY;
+    return EMPTY;
   }
 }

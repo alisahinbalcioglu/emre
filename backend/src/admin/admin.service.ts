@@ -116,14 +116,116 @@ export class AdminService {
   // ═════════ STATS ═════════
 
   async getStats() {
-    const [userCount, brandCount, materialCount, quoteCount, priceListCount] = await Promise.all([
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const days30Ago = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    const [
+      userCount, brandCount, materialCount, quoteCount, priceListCount,
+      usersThisMonth, usersPrevMonth,
+      quotesThisMonth, quotesPrevMonth,
+      activeUsersThisMonth, activeUsersPrevMonth,
+      dailyQuotes, libraryByBrand,
+    ] = await Promise.all([
       this.prisma.user.count(),
       this.prisma.brand.count(),
       this.prisma.material.count(),
       this.prisma.quote.count(),
       this.prisma.priceList.count(),
+      // Aylik trendler (onceki aya gore %)
+      this.prisma.user.count({ where: { createdAt: { gte: monthStart } } }),
+      this.prisma.user.count({ where: { createdAt: { gte: prevMonthStart, lt: monthStart } } }),
+      this.prisma.quote.count({ where: { createdAt: { gte: monthStart } } }),
+      this.prisma.quote.count({ where: { createdAt: { gte: prevMonthStart, lt: monthStart } } }),
+      // Aktif kullanici = bu ay teklif olusturan DISTINCT kullanici
+      this.prisma.quote.findMany({
+        where: { createdAt: { gte: monthStart } },
+        distinct: ['userId'], select: { userId: true },
+      }),
+      this.prisma.quote.findMany({
+        where: { createdAt: { gte: prevMonthStart, lt: monthStart } },
+        distinct: ['userId'], select: { userId: true },
+      }),
+      // Son 30 gun: gun bazinda teklif sayisi (line chart)
+      this.prisma.$queryRaw<Array<{ d: string; c: number }>>`
+        SELECT to_char(date_trunc('day', "createdAt"), 'YYYY-MM-DD') AS d,
+               COUNT(*)::int AS c
+        FROM "Quote"
+        WHERE "createdAt" >= ${days30Ago}
+        GROUP BY 1
+      `,
+      // Kutuphaneye aktarim: marka bazinda UserLibrary satir sayisi (Top 5)
+      this.prisma.userLibrary.groupBy({
+        by: ['brandId'],
+        _count: { _all: true },
+        orderBy: { _count: { brandId: 'desc' } },
+        take: 5,
+      }),
     ]);
-    return { userCount, brandCount, materialCount, quoteCount, priceListCount };
+
+    // % degisim helper — onceki donem 0 ise: yeni veri varsa +100, yoksa 0
+    const pct = (cur: number, prev: number): number =>
+      prev === 0 ? (cur > 0 ? 100 : 0) : Math.round(((cur - prev) / prev) * 100);
+
+    // 30 gunluk seri — bos gunler 0 ile doldurulur (grafik surekli olsun)
+    const byDay = new Map(dailyQuotes.map((r) => [r.d, Number(r.c)]));
+    const quoteTrend: Array<{ date: string; count: number }> = [];
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+      const key = d.toISOString().slice(0, 10);
+      quoteTrend.push({
+        date: `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`,
+        count: byDay.get(key) ?? 0,
+      });
+    }
+
+    // Top-5 marka isimleri (tek sorgu)
+    const topBrandIds = libraryByBrand.map((r) => r.brandId);
+    const topBrandRows = topBrandIds.length
+      ? await this.prisma.brand.findMany({
+          where: { id: { in: topBrandIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+    const brandById = new Map(topBrandRows.map((b) => [b.id, b.name]));
+    const topBrands = libraryByBrand
+      .map((r) => ({ name: brandById.get(r.brandId) ?? 'Bilinmeyen', count: r._count._all }))
+      .sort((a, b) => b.count - a.count);
+
+    // Disiplin dagilimi — kutuphanede FIILEN kullanilan malzemelerin markalari
+    // uzerinden (teklif item'inda disiplin alani yok; en anlamli gercek veri bu)
+    const discAgg = await this.prisma.$queryRaw<Array<{ discipline: string; c: number }>>`
+      SELECT b.discipline AS discipline, COUNT(*)::int AS c
+      FROM "UserLibrary" ul
+      JOIN "Brand" b ON b.id = ul."brandId"
+      GROUP BY 1
+    `;
+    const disciplineSplit = discAgg.map((r) => ({
+      name: r.discipline === 'electrical' ? 'Elektrik' : 'Mekanik',
+      value: Number(r.c),
+    }));
+
+    const activeCur = activeUsersThisMonth.length;
+    const activePrev = activeUsersPrevMonth.length;
+    const activeUserRate = userCount > 0 ? Math.round((activeCur / userCount) * 100) : 0;
+
+    return {
+      // Mevcut alanlar (geriye uyum)
+      userCount, brandCount, materialCount, quoteCount, priceListCount,
+      // GERCEK zaman-serisi/aggregation alanlari — Istatistikler sayfasi
+      trends: {
+        users: pct(usersThisMonth, usersPrevMonth),
+        quotes: pct(quotesThisMonth, quotesPrevMonth),
+        // Brand modelinde createdAt yok — trend hesaplanamiyor (durust null)
+        brands: null as number | null,
+        activeUsers: pct(activeCur, activePrev),
+      },
+      activeUserRate,
+      quoteTrend,
+      disciplineSplit,
+      topBrands,
+    };
   }
 
   // ═════════ AI TASKS / STATS / HEALTH ═════════
