@@ -412,6 +412,26 @@ export class AdminService {
    * USD/EUR fiyatlar TCMB kuru ile TL'ye cevrilir. Kayit, mevcut
    * saveBulkMaterials uzerinden yapilir (Material tag'leme + upsert ayni).
    */
+  /**
+   * Markaya dogrudan Excel yukleme — fiyat listesi OTOMATIK olusturulur.
+   * Admin once liste acmak zorunda kalmasin diye: liste adi verilmezse
+   * dosya adindan/tarihten uretilir, sonra normal import calisir.
+   */
+  async importBrandExcel(brandId: string, fileBuffer: Buffer, listName?: string) {
+    const brand = await this.prisma.brand.findUnique({ where: { id: brandId } });
+    if (!brand) throw new NotFoundException('Marka bulunamadi');
+    const name = (listName ?? '').trim()
+      || `${brand.name} — ${new Date().toLocaleDateString('tr-TR')}`;
+    const list = await this.prisma.priceList.create({ data: { name, brandId } });
+    try {
+      return await this.importPriceListExcel(list.id, fileBuffer);
+    } catch (e) {
+      // Import bastan basarisizsa (kolon bulunamadi vb.) bos liste birakma
+      await this.prisma.priceList.delete({ where: { id: list.id } }).catch(() => {});
+      throw e;
+    }
+  }
+
   async importPriceListExcel(priceListId: string, fileBuffer: Buffer) {
     const priceList = await this.prisma.priceList.findUnique({
       where: { id: priceListId },

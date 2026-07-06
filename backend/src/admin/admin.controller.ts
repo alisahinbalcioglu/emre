@@ -132,6 +132,18 @@ export class AdminController {
     return this.adminService.saveMaterialsFromSheets(brandId, body.sheets);
   }
 
+  // Markaya dogrudan Excel yukleme — fiyat listesi otomatik olusturulur
+  @Post('brands/:brandId/import-excel')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } }))
+  importBrandExcel(
+    @Param('brandId') brandId: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('listName') listName?: string,
+  ) {
+    if (!file?.buffer) throw new BadRequestException('Dosya bulunamadi');
+    return this.adminService.importBrandExcel(brandId, file.buffer, listName);
+  }
+
   // Fiyat listesine Excel'den toplu malzeme yukleme (admin)
   @Post('price-lists/:id/import-excel')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } }))

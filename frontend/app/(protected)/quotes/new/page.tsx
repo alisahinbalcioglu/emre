@@ -666,8 +666,9 @@ export default function NewQuotePage() {
             });
           }
           if (multi?.sheets?.length) {
-            // Not: Backend /excel-grid/prepare artik stripPrices=true ile cagriliyor,
-            // fiyat kolonlari zaten backend'te temizlenmis geliyor.
+            // Not: Backend /excel-grid/prepare fiyatlari ARTIK SILMIYOR
+            // (stripPrices:false — 2026-07-07 kullanici karari): dosyadaki
+            // fiyatlar grid'e oldugu gibi gelir.
             // VERI KORUMA: mevcut grid EZILMEZ — merge (kar/marka/fiyat korunur).
             applyIncomingMultiSheet(multi);
           }

@@ -12,7 +12,10 @@ export class ExcelGridController {
   @Post('prepare')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } }))
   async prepare(@UploadedFile() file: Express.Multer.File) {
-    // Teklif akisi — dosyadaki fiyatlari temizle (kullanici marka/firma secene kadar bos kalsin)
-    return this.service.prepare(file.buffer, { stripPrices: true });
+    // KULLANICI KARARI (2026-07-07): dosyadaki fiyatlar SILINMEZ, oldugu gibi
+    // gelir. Eski davranis (stripPrices:true) "orijinal Excel'de fiyatlar dolu
+    // ama grid'de bos" sikayetine yol acti. Marka eslestirme fiyatlari yine
+    // uzerine yazabilir; merge'de kullanici emegi korunur.
+    return this.service.prepare(file.buffer, { stripPrices: false });
   }
 }
