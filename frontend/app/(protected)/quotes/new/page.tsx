@@ -620,6 +620,26 @@ export default function NewQuotePage() {
     setFile(null);
   }
 
+  // ── Malzeme Adı düzeltme: kullanıcı hangi Excel sütununun malzeme adı
+  //    olduğunu değiştirebilir (otomatik tespit yanlışsa). Aktif sayfanın
+  //    columnRoles.nameField'ini günceller → eşleştirme yeni sütunu okur.
+  function handleNameFieldChange(newField: string) {
+    setMultiSheet((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        sheets: prev.sheets.map((s) =>
+          s.index === activeSheetIndex
+            ? { ...s, columnRoles: { ...s.columnRoles, nameField: newField } }
+            : s,
+        ),
+      };
+    });
+    setExcelGridData((prev) =>
+      prev ? { ...prev, columnRoles: { ...prev.columnRoles, nameField: newField } } : prev,
+    );
+  }
+
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const selected = e.target.files?.[0] ?? null;
     setFile(selected);
@@ -1307,6 +1327,35 @@ export default function NewQuotePage() {
             {multiSheet.sheets.length > 1 && ' · Alt sekmeleri kullanarak gecis yap'}
           </div>
         )}
+        {/* MALZEME ADI DÜZELTME ÇUBUĞU — otomatik tespit yanlışsa düzelt.
+            Fiyat eşleştirme bu sütunu okur; yanlış sütun (örn marka metni)
+            seçiliyse fiyat bulunamaz. */}
+        {(() => {
+          const activeSheet = multiSheet?.sheets.find((s) => s.index === activeSheetIndex);
+          if (!activeSheet || activeSheet.isEmpty) return null;
+          const excelCols = (activeSheet.columnDefs ?? []).filter(
+            (c) => c.field && !c.field.startsWith('_'),
+          );
+          if (excelCols.length === 0) return null;
+          const current = activeSheet.columnRoles?.nameField ?? '';
+          return (
+            <div className="mb-2 flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50/60 px-3 py-1.5 text-xs">
+              <span className="font-medium text-slate-700">Malzeme Adı sütunu:</span>
+              <select
+                value={current}
+                onChange={(e) => handleNameFieldChange(e.target.value)}
+                className="h-7 rounded border border-slate-300 bg-white px-2 text-xs"
+              >
+                {excelCols.map((c) => (
+                  <option key={c.field} value={c.field}>{c.headerName}</option>
+                ))}
+              </select>
+              <span className="text-slate-500">
+                (Fiyat eşleşmiyorsa doğru sütunu seçin — marka değil, malzeme/çap sütunu)
+              </span>
+            </div>
+          );
+        })()}
         {/* Toplu fiyatlandirma butonlari kaldirildi — marka secimi satir bazinda */}
         {false && (
           <div>

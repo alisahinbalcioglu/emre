@@ -4,6 +4,19 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { detectSheetDiscipline } from './sheet-discipline';
 
 // ────────────────────────────────────────────
+// Icerik-tabanli sutun tespiti sabitleri
+// ────────────────────────────────────────────
+// Bir hucrenin MALZEME tanimi mi oldugunu anlamak icin: cap notasyonu veya
+// tesisat malzeme kelimesi geciyor mu? Marka sutununu ("...VEYA MUADILI")
+// isim rolunden ayirmak icin de BRAND_HINT kullanilir.
+const MATERIAL_TOKEN_RE = /(\bdn\s?\d)|(ø|Ø)|(\bod[\s-]?\d)|(\d\s?["″′'])|(\b\d+\/\d+\s?["″])|\b(boru|vana|fitting|dirsek|te|reduksiyon|reduksiyon|flans|flan[sş]|celik|çelik|pvc|ppr|hdpe|\bpe\b|bakir|bak[iı]r|galvaniz|kablo|kesici|salter|[sş]alter|pano|sprink|kelepce|kelep[cç]e|vidali|vidal[iı]|kaynakli|kaynakl[iı]|manson|man[sş]on|rakor|nipel|kolektor|kolekt[oö]r|radyator|radyat[oö]r|pompa|kombi|vitrifiye|lavabo|klozet|batarya|sifon|rekor|dirsek|te\b|kanal|izolasyon)/i;
+const BRAND_HINT_RE = /muad[iı]l|veya\s+muad|\bmuadili\b/i;
+const UNIT_VOCAB = new Set<string>([
+  'metre', 'mt', 'm', 'adet', 'ad', 'takim', 'tk', 'm2', 'm3', 'kg', 'ton',
+  'paket', 'pk', 'rulo', 'boy', 'litre', 'lt', 'cift', 'kutu', 'set', 'gr',
+]);
+
+// ────────────────────────────────────────────
 // Types
 // ────────────────────────────────────────────
 
@@ -80,8 +93,12 @@ export interface MultiSheetData {
 export class ExcelGridService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async prepare(fileBuffer: Buffer, opts?: { stripPrices?: boolean }): Promise<MultiSheetData> {
+  async prepare(fileBuffer: Buffer, opts?: { stripPrices?: boolean; fixedSchema?: boolean }): Promise<MultiSheetData> {
     const stripPrices = opts?.stripPrices ?? false;
+    // fixedSchema: teklif akisi — Excel'in fiyat/tutar sutunlari ATILIR,
+    // yerine SABIT sistem sutunlari (Malz/Isc Birim+Toplam+Toplam) konur.
+    // Admin malzeme-import akisi bunu KULLANMAZ (ham sutunlar korunur).
+    const fixedSchema = opts?.fixedSchema ?? false;
     let workbook: XLSX.WorkBook;
     try {
       workbook = XLSX.read(fileBuffer, { type: 'buffer', cellStyles: true });
@@ -123,7 +140,7 @@ export class ExcelGridService {
       }
 
       try {
-        const parsed = this.parseSingleSheet(sheet);
+        const parsed = this.parseSingleSheet(sheet, fixedSchema);
         // Disiplin tespiti — sheet adi + ilk N data row'unun nameField'i
         let sampleText = '';
         if (parsed.columnRoles.nameField) {
@@ -201,7 +218,7 @@ export class ExcelGridService {
   // ────────────────────────────────────────────
   // Tek sheet parse (her sheet icin bagimsiz cagrilir)
   // ────────────────────────────────────────────
-  private parseSingleSheet(sheet: XLSX.WorkSheet): Omit<SheetData, 'name' | 'index' | 'discipline'> {
+  private parseSingleSheet(sheet: XLSX.WorkSheet, fixedSchema = false): Omit<SheetData, 'name' | 'index' | 'discipline'> {
     if (!sheet['!ref']) {
       return { columnDefs: [], rowData: [], columnRoles: {}, headerEndRow: 0, isEmpty: true };
     }
@@ -253,10 +270,29 @@ export class ExcelGridService {
     // 3. Sutun rollerini tespit et
     const { columnRoles, headerEndRow, realHeaderRow, firstDataRow } = this.detectColumnRoles(rawValues, colCount);
 
+    // ── FIXED SCHEMA: Excel'in fiyat/tutar sutunlarini ATILACAK isaretle ──
+    // Rol tespitinden gelen fiyat kolonlari + basligi fiyat/tutar/toplam olan
+    // her kolon. Yerlerine asagida SABIT sistem sutunlari eklenir.
+    const dropCols = new Set<number>();
+    if (fixedSchema) {
+      for (const rk of ['materialUnitPrice', 'materialTotal', 'laborUnitPrice', 'laborTotal', 'grandUnitPrice', 'grandTotal']) {
+        if (columnRoles[rk] !== undefined) dropCols.add(columnRoles[rk]);
+      }
+      const normHdr = (s: any) => String(s ?? '')
+        .replace(/İ/g, 'i').replace(/I/g, 'i').replace(/ı/g, 'i')
+        .replace(/[şŞ]/g, 's').replace(/[çÇ]/g, 'c').replace(/[üÜ]/g, 'u')
+        .replace(/[öÖ]/g, 'o').replace(/[ğĞ]/g, 'g').toLowerCase();
+      for (let c = 0; c < colCount; c++) {
+        const h = `${normHdr(rawValues[realHeaderRow]?.[c])} ${normHdr(rawValues[realHeaderRow + 1]?.[c])}`;
+        if (/\b(fiyat|tutar|bedel|toplam)\b/.test(h)) dropCols.add(c);
+      }
+    }
+
     // 4. Column defs olustur — gercek header satirindan + alt satirdan birlestir
     const columnDefs: ColumnDef[] = [];
 
     for (let c = 0; c < colCount; c++) {
+      if (dropCols.has(c)) continue; // fixedSchema: fiyat/tutar sutunu atilir
       // Gercek header satirindan ve bir sonraki satirdan degeri al
       const headerValue1 = String(rawValues[realHeaderRow]?.[c] ?? '').trim();
       const headerValue2 = String(rawValues[realHeaderRow + 1]?.[c] ?? '').trim();
@@ -281,16 +317,44 @@ export class ExcelGridService {
     }
 
     // 5. Sistem sutunlari (en saga)
-    columnDefs.push(
-      { field: '_malzKar', headerName: 'Malz. Kar %', width: 90, editable: true, pinned: 'right', suppressMovable: true },
-      { field: '_marka', headerName: 'Malz. Marka', width: 150, cellRenderer: 'brandRenderer', pinned: 'right', suppressMovable: true },
-      { field: '_iscKar', headerName: 'Isc. Kar %', width: 90, editable: true, pinned: 'right', suppressMovable: true },
-      { field: '_firma', headerName: 'Isc. Firma', width: 150, cellRenderer: 'firmaRenderer', pinned: 'right', suppressMovable: true },
-    );
+    if (fixedSchema) {
+      // SABIT HESAP BLOGU — her Excel'de ayni, kaymaz. Fiyat/tutarlar bu
+      // sistem alanlarina yazilir; frontend rol-tabanli formulle hesaplar.
+      columnDefs.push(
+        { field: '_malzKar', headerName: 'Malz. Kar %', width: 85, editable: true, suppressMovable: true },
+        { field: '_marka', headerName: 'Malz. Marka', width: 150, cellRenderer: 'brandRenderer', suppressMovable: true },
+        { field: '_matBirim', headerName: 'Malz. Birim Fiyat', width: 120, editable: true, suppressMovable: true },
+        { field: '_matToplam', headerName: 'Malz. Toplam', width: 120, editable: false, suppressMovable: true },
+        { field: '_iscKar', headerName: 'İşç. Kar %', width: 85, editable: true, suppressMovable: true },
+        { field: '_firma', headerName: 'İşç. Firma', width: 150, cellRenderer: 'firmaRenderer', suppressMovable: true },
+        { field: '_labBirim', headerName: 'İşç. Birim Fiyat', width: 120, editable: true, suppressMovable: true },
+        { field: '_labToplam', headerName: 'İşç. Toplam', width: 120, editable: false, suppressMovable: true },
+        { field: '_toplam', headerName: 'Toplam', width: 130, editable: false, suppressMovable: true },
+      );
+    } else {
+      columnDefs.push(
+        { field: '_malzKar', headerName: 'Malz. Kar %', width: 90, editable: true, pinned: 'right', suppressMovable: true },
+        { field: '_marka', headerName: 'Malz. Marka', width: 150, cellRenderer: 'brandRenderer', pinned: 'right', suppressMovable: true },
+        { field: '_iscKar', headerName: 'Isc. Kar %', width: 90, editable: true, pinned: 'right', suppressMovable: true },
+        { field: '_firma', headerName: 'Isc. Firma', width: 150, cellRenderer: 'firmaRenderer', pinned: 'right', suppressMovable: true },
+      );
+    }
 
     // 6. Row data olustur
     const rowData: RowData[] = [];
     const roleFields = this.mapRolesToFields(columnRoles);
+
+    // FIXED SCHEMA: fiyat/tutar rollerini SABIT sistem alanlarina yonlendir.
+    // Boylece frontend'in rol-tabanli yazma/hesaplama mantigi (writePrice,
+    // recalcGrand) Excel sutunu yerine sabit sisteme yazar — kayma imkansiz.
+    if (fixedSchema) {
+      roleFields.materialUnitPriceField = '_matBirim';
+      roleFields.materialTotalField = '_matToplam';
+      roleFields.laborUnitPriceField = '_labBirim';
+      roleFields.laborTotalField = '_labToplam';
+      roleFields.grandTotalField = '_toplam';
+      delete roleFields.grandUnitPriceField;
+    }
 
     for (let r = 0; r < rowCount; r++) {
       const row: RowData = {
@@ -304,6 +368,14 @@ export class ExcelGridService {
         _matNetPrice: 0,
         _merges: {},
       };
+      if (fixedSchema) {
+        row._matBirim = '';
+        row._matToplam = '';
+        row._labBirim = '';
+        row._labToplam = '';
+        row._toplam = '';
+        row._labNetPrice = 0;
+      }
 
       for (let c = 0; c < colCount; c++) {
         const field = `col${c}`;
@@ -449,6 +521,57 @@ export class ExcelGridService {
           firstDataRow = r;
           break;
         }
+      }
+    }
+
+    // ── ICERIK-TABANLI MALZEME ADI TESPITI (kok fix) ────────────────
+    // Eski regex tespiti "Aciklama/Marka" basligini /aciklama/ ile isim
+    // rolune atiyordu; ama o sutun MARKA metni ("...VEYA MUADILI") tasiyor,
+    // gercek malzeme "Isin Tanimi"nda. Eslestirmeye marka metni gidince
+    // cap/tip cikmiyor -> fiyat atanmiyordu.
+    // Cozum: her sutunu ICERIGINE gore puanla (cap/malzeme kelimesi geciyor
+    // mu?), marka-ipuclu ("muadili") sutunu DISLA, en yuksek puanli sutunu
+    // malzeme adi sec. Baslikta "tanim/imalat/cinsi" varsa bonus.
+    {
+      const dataStart = firstDataRow >= 0 ? firstDataRow : Math.min(2, rawValues.length - 1);
+      const dataEnd = Math.min(dataStart + 40, rawValues.length);
+      let bestCol = -1;
+      let bestScore = -1;
+      for (let c = 0; c < colCount; c++) {
+        // sayisal roller (miktar/birim) isim olamaz
+        if (c === roles.quantity) continue;
+        let material = 0;
+        let brand = 0;
+        let nonEmpty = 0;
+        for (let r = dataStart; r < dataEnd; r++) {
+          const v = String(rawValues[r]?.[c] ?? '').trim();
+          if (!v) continue;
+          nonEmpty++;
+          if (BRAND_HINT_RE.test(v)) brand++;
+          if (MATERIAL_TOKEN_RE.test(v)) material++;
+        }
+        if (nonEmpty === 0) continue;
+        // Marka sutunu: cogunlukla "muadili" tasiyor VE malzeme kelimesi az → disla
+        if (brand > material && brand >= nonEmpty * 0.3) continue;
+        // Baslik ipucu
+        const ht = colTexts[c] ?? '';
+        let headerBonus = 0;
+        if (/tanim|imalat|cinsi|malzeme\s*ad|yapilacak|poz\s*ad|urun/.test(ht)) headerBonus = 4;
+        else if (/aciklama/.test(ht)) headerBonus = 1;
+        if (/marka/.test(ht)) headerBonus -= 3;
+        const score = material + headerBonus;
+        if (score > bestScore) {
+          bestScore = score;
+          bestCol = c;
+        }
+      }
+      // Guclu bir aday bulunduysa isim rolunu ONA ata (regex tahminini ez).
+      // Hicbir sutunda malzeme sinyali yoksa (bestScore<=0) eski regex tercihini koru.
+      if (bestCol >= 0 && bestScore > 0) {
+        if (roles.name !== bestCol) {
+          console.log(`[ExcelGrid] Malzeme adi icerikten: col${bestCol} (score=${bestScore}), eski regex col${roles.name}`);
+        }
+        roles.name = bestCol;
       }
     }
 
