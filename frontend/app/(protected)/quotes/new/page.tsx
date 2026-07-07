@@ -386,10 +386,13 @@ export default function NewQuotePage() {
 
   // ── SessionStorage draft key ──
   const DRAFT_KEY = 'metaprice_quote_draft';
-  // Draft sema surumu — eski/bozuk draft'lar (orn. multi-sheet bug doneminde
-  // tek sheet'le kaydedilmis olanlar) restore EDILMEZ, otomatik silinir.
+  // Draft sema surumu — eski/bozuk draft'lar restore EDILMEZ, otomatik silinir.
   // Sema degistiginde artir.
-  const DRAFT_VERSION = 2;
+  //   v2: multi-sheet tek-kopya draft
+  //   v3: SABIT SEMA — eski draft'ta nameField marka sutununu, fiyat Excel
+  //       sutununu gosteriyordu; sabit sistem sutunlari (_matBirim...) yok.
+  //       Eski draft yuklenirse fiyat eslesmez → zorla temizle.
+  const DRAFT_VERSION = 3;
 
   // Iscilik firmalarini cek (capability varsa)
   useEffect(() => {
