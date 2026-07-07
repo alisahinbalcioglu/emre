@@ -2,7 +2,12 @@ export interface MatchResult {
   netPrice: number;
   listPrice: number;
   discount: number;
-  confidence: 'high' | 'medium' | 'low' | 'none' | 'multi';
+  // 'high' = kesin (satir cap+tip+cins tasiyor, tek aday)
+  // 'suggestion' = oneri (yalniz cap veya baslik-ipucu ile tek aday bulundu;
+  //                fiyat doldurulur AMA gorsel isaretlenir — sessiz hata onlemi)
+  // 'multi' = birden cok aday, kullaniciya popup
+  // 'none' = cap yok veya kutuphanede aday yok
+  confidence: 'high' | 'suggestion' | 'medium' | 'low' | 'none' | 'multi';
   matchedName?: string;
   reason?: string;
   matchedTags?: string[];

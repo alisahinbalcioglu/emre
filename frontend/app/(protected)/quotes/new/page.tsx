@@ -1359,12 +1359,17 @@ export default function NewQuotePage() {
                       const roles = sheetDef.columnRoles;
                       newCounts[sheetIdx] = newCounts[sheetIdx] ?? { total: 0, matched: 0 };
                       newCounts[sheetIdx].total++;
-                      if (match && match.confidence === 'high' && match.netPrice > 0) {
+                      // 'high' (kesin) + 'suggestion' (oneri) fiyat yazar; 'multi'
+                      // (popup gerek) ve 'none' atlanir. Oneriler sari isaretlenir.
+                      const writable = match && match.netPrice > 0 &&
+                        (match.confidence === 'high' || match.confidence === 'suggestion');
+                      if (writable) {
                         const netPrice = parseFloat(String(match.netPrice)) || 0;
                         const qty = roles.quantityField ? parseFloat(String(row[roles.quantityField] ?? '')) || 0 : 0;
                         if (roles.materialUnitPriceField) row[roles.materialUnitPriceField] = netPrice.toFixed(2);
                         if (roles.materialTotalField) row[roles.materialTotalField] = (netPrice * qty).toFixed(2);
                         row._matNetPrice = netPrice;
+                        row._matSuggestion = match.confidence === 'suggestion';
                         row._marka = match.matchedName ?? null;
                         newCounts[sheetIdx].matched++;
                       }
@@ -1626,12 +1631,18 @@ export default function NewQuotePage() {
               // Tek eslesme basarili
               if (match.netPrice > 0) {
                 const netPrice = parseFloat(String(match.netPrice)) || 0;
-                // KATMAN 3: Gorsel dogrulama — kullanici hangi DB malzemesinin secildigini gorsun
+                const isSuggestion = match.confidence === 'suggestion';
+                // KATMAN 3: Gorsel dogrulama — kullanici hangi DB malzemesinin secildigini gorsun.
+                // 'suggestion' → sari uyari tonu, kesin degil "kontrol edin".
                 toast({
-                  title: `🟢 ${displayPrice(netPrice)} — ${materialName.slice(0, 50)}`,
-                  description: `Eslesti: ${match.matchedName?.slice(0, 80) ?? 'Bilinmeyen'}`,
+                  title: isSuggestion
+                    ? `🟡 Öneri: ${displayPrice(netPrice)} — ${materialName.slice(0, 45)}`
+                    : `🟢 ${displayPrice(netPrice)} — ${materialName.slice(0, 50)}`,
+                  description: isSuggestion
+                    ? `Tahmini eşleşme: ${match.matchedName?.slice(0, 70) ?? '?'} — lütfen kontrol edin`
+                    : `Eslesti: ${match.matchedName?.slice(0, 80) ?? 'Bilinmeyen'}`,
                 });
-                return { netPrice, matchedName: match.matchedName, candidates: match.candidates, reason: match.reason };
+                return { netPrice, matchedName: match.matchedName, candidates: match.candidates, reason: match.reason, confidence: match.confidence };
               }
 
               // Eslesme bulundu ama fiyat 0 — kullaniciya uyari

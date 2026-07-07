@@ -36,6 +36,8 @@ interface Props {
     matchedName?: string;
     candidates?: MatchCandidate[];
     reason?: string;
+    // 'high' = kesin, 'suggestion' = oneri (fiyat dolar ama sari isaretlenir)
+    confidence?: 'high' | 'suggestion' | string;
   } | null>;
   // Iscilik tarafi
   laborFirms?: LaborFirm[];
@@ -88,8 +90,9 @@ function BrandDropdown(props: ICellRendererParams & {
 
   if (!data?._isDataRow) return null;
 
-  // Fiyati hucrelere yaz (helper)
-  const writePrice = (netPrice: number) => {
+  // Fiyati hucrelere yaz (helper). isSuggestion=true → satir 'oneri' olarak
+  // isaretlenir (sari) — cap-only/baslik-ipucu ile bulundu, kullanici baksin.
+  const writePrice = (netPrice: number, isSuggestion = false) => {
     const kar = parseFloat(String(data._malzKar ?? 0)) || 0;
     const finalPrice = netPrice * (1 + kar / 100);
     const qty = quantityField ? parseFloat(String(data[quantityField] ?? 0)) || 0 : 0;
@@ -98,10 +101,11 @@ function BrandDropdown(props: ICellRendererParams & {
     // AG-Grid sutun tipi string — number degeri reddediyor (warning #135)
     // toFixed(2) ile string olarak yaz, ayrica floating point precision fix
     node.setDataValue('_matNetPrice', netPrice);
+    node.setDataValue('_matSuggestion', isSuggestion);
     if (materialUnitPriceField) node.setDataValue(materialUnitPriceField, finalPrice.toFixed(2));
     if (materialTotalField) node.setDataValue(materialTotalField, total.toFixed(2));
 
-    console.log(`[BrandDropdown] row=${data._rowIdx}, net=${netPrice}, kar=${kar}%, final=${finalPrice.toFixed(2)}, qty=${qty}, total=${total.toFixed(2)}`);
+    console.log(`[BrandDropdown] row=${data._rowIdx}, net=${netPrice}, kar=${kar}%, final=${finalPrice.toFixed(2)}, qty=${qty}, total=${total.toFixed(2)}, suggestion=${isSuggestion}`);
   };
 
   const handleChange = async (brandId: string) => {
@@ -150,20 +154,22 @@ function BrandDropdown(props: ICellRendererParams & {
       return;
     }
 
-    // Tek eslesme — fiyat yaz
+    // Tek eslesme — fiyat yaz ('suggestion' ise sari isaretle)
     if (result && result.netPrice > 0) {
-      writePrice(result.netPrice);
+      writePrice(result.netPrice, result.confidence === 'suggestion');
       return;
     }
 
     // Hic eslesme yok
     node.setDataValue('_matNetPrice', 0);
+    node.setDataValue('_matSuggestion', false);
     if (materialUnitPriceField) node.setDataValue(materialUnitPriceField, '');
     if (materialTotalField) node.setDataValue(materialTotalField, '');
   };
 
   const handleCandidateSelect = (c: MatchCandidate) => {
-    writePrice(c.netPrice);
+    // Kullanici popup'tan bilincli sectiginde 'oneri' degil kesin sayilir
+    writePrice(c.netPrice, false);
     setCandidates(null);
     setPopupPos(null);
   };
@@ -703,6 +709,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           const matchResult = await onBrandChange(node.data._rowIdx, result.value, currentName);
           if (matchResult && matchResult.netPrice > 0) {
             node.setDataValue('_matNetPrice', matchResult.netPrice);
+            node.setDataValue('_matSuggestion', matchResult.confidence === 'suggestion');
             const kar = parseFloat(String(node.data._malzKar ?? 0)) || 0;
             const finalPrice = matchResult.netPrice * (1 + kar / 100);
             const qty = quantityField ? parseFloat(String(node.data[quantityField] ?? 0)) || 0 : 0;
@@ -1028,7 +1035,19 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           });
           return `${currencySymbol}${formatted}`;
         };
-        base.cellStyle = { textAlign: 'right' };
+        // Malzeme birim fiyat: 'oneri' (suggestion) ile dolan hucreler SARI
+        // zeminle isaretlenir — cap-only/baslik-ipucu eslesmesi; kullanici
+        // dogrulasin (sessiz yanlis eslesme onlemi, PRD Faz 1).
+        if (field === data.columnRoles.materialUnitPriceField) {
+          base.cellStyle = ((params: any) => {
+            if (params.data?._matSuggestion && !params.node?.rowPinned) {
+              return { textAlign: 'right', backgroundColor: '#fef9c3', color: '#854d0e' };
+            }
+            return { textAlign: 'right' };
+          }) as any;
+        } else {
+          base.cellStyle = { textAlign: 'right' };
+        }
       }
 
       // Grand kolonlari read-only (sistem otomatik hesaplar)
