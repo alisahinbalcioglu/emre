@@ -80,7 +80,11 @@ for (const [dn, variants] of Object.entries(DIAMETER_MAP)) {
  * "GALVANiZ CELiK ½"" → "dn15"
  */
 export function extractDiameter(text: string): string | null {
-  const normalized = normalizeText(text);
+  // KRITIK: kesif Excel'lerinde inç isareti cogu zaman IKI APOSTROF ('') —
+  // "2'' siyah boru", "4''" gibi. normalizeText sussuleri duz apostrofa indiriyor;
+  // burada iki duz apostrofu CIFT TIRNAK'a ceviriyoruz ki inç regex'i (\d+")
+  // yakalasin. Yoksa cap hic cikmiyor, eslesme olmuyordu.
+  const normalized = normalizeText(text).replace(/'{2}/g, '"');
 
   // Once DN kodlarini ara — TUM dn'leri bul, en sonuncuyu al (gercek malzeme cap'i sonda olur)
   const dnMatches = Array.from(normalized.matchAll(/dn\s*(\d+)/gi));
