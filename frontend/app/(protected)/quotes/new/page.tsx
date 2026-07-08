@@ -304,6 +304,10 @@ export default function NewQuotePage() {
     try {
       const data = JSON.parse(stored);
       sessionStorage.removeItem('metaprice_upload_result');
+      // YENI DOSYA GELDI → eski draft'i TEMIZLE. Yoksa asagidaki draft-restore
+      // efekti bayat taslagi geri yukleyip yeni yuklemeyi eziyordu ("surekli
+      // ayni dosyayi aciyor"). Yeni dosya tek dogruluk kaynagi.
+      sessionStorage.removeItem('metaprice_quote_draft');
 
       setExcelHeaders(data.headers ?? []);
       setColumnRoles(data.columnRoles ?? {});

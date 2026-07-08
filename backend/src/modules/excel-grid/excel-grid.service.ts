@@ -286,24 +286,44 @@ export class ExcelGridService {
         const h = `${normHdr(rawValues[realHeaderRow]?.[c])} ${normHdr(rawValues[realHeaderRow + 1]?.[c])}`;
         if (/\b(fiyat|tutar|bedel|toplam)\b/.test(h)) dropCols.add(c);
       }
+      // BOS SUTUN COPU: basligi yok VE hicbir veri satirinda deger yok
+      // ("Sutun 11" gibi placeholder'lar). Rol sutunlari (ad/miktar/birim)
+      // dolu oldugundan buraya dusmez.
+      const roleIdx = new Set(Object.values(columnRoles));
+      for (let c = 0; c < colCount; c++) {
+        if (dropCols.has(c) || roleIdx.has(c)) continue;
+        const hdr = String(rawValues[realHeaderRow]?.[c] ?? '').trim();
+        let hasData = false;
+        for (let r = realHeaderRow + 1; r < rawValues.length; r++) {
+          if (String(rawValues[r]?.[c] ?? '').trim()) { hasData = true; break; }
+        }
+        if (!hdr && !hasData) dropCols.add(c);
+      }
     }
 
     // 4. Column defs olustur — gercek header satirindan + alt satirdan birlestir
     const columnDefs: ColumnDef[] = [];
 
     for (let c = 0; c < colCount; c++) {
-      if (dropCols.has(c)) continue; // fixedSchema: fiyat/tutar sutunu atilir
+      if (dropCols.has(c)) continue; // fixedSchema: fiyat/tutar + bos sutunlar atilir
       // Gercek header satirindan ve bir sonraki satirdan degeri al
       const headerValue1 = String(rawValues[realHeaderRow]?.[c] ?? '').trim();
       const headerValue2 = String(rawValues[realHeaderRow + 1]?.[c] ?? '').trim();
 
-      // Multi-row header: "MALZEME" + "BIRIM FIYAT" -> "MALZEME BIRIM FIYAT"
-      // Eger 2. satir 1. satir ile ayni ise (merge expansion), sadece 1'i kullan
-      let headerName = headerValue1;
-      if (headerValue2 && headerValue2 !== headerValue1) {
-        headerName = headerValue1 ? `${headerValue1} ${headerValue2}` : headerValue2;
+      // Header adi. fixedSchema'da TEK satir kullanilir — cunku realHeaderRow+1
+      // cogu keşifte MERGE edilmis bolum basligidir ("YANGIN TESİSATI") ve
+      // iki-satir birlestirmesi tum basliklara bulasir. Non-fixed'de multi-row
+      // header birlestirmesi korunur (fiyat sutunlari icin gerekliydi).
+      let headerName: string;
+      if (fixedSchema) {
+        headerName = headerValue1 || `Sütun ${c + 1}`;
+      } else {
+        headerName = headerValue1;
+        if (headerValue2 && headerValue2 !== headerValue1) {
+          headerName = headerValue1 ? `${headerValue1} ${headerValue2}` : headerValue2;
+        }
+        if (!headerName) headerName = `Sutun ${c + 1}`;
       }
-      if (!headerName) headerName = `Sutun ${c + 1}`;
 
       const field = `col${c}`;
       const colDef: ColumnDef = {
@@ -356,11 +376,17 @@ export class ExcelGridService {
       delete roleFields.grandUnitPriceField;
     }
 
+    // fixedSchema'da baslik gercek header satirinda biter; firstDataRow-1
+    // KULLANILMAZ (ekipman satirlari miktar=0 oldugundan firstDataRow onlari
+    // atlayip basliga katiyordu → fiyatlandirilamiyorlardi).
+    const effHeaderEndRow = fixedSchema ? realHeaderRow : headerEndRow;
+    const nameColIdx = columnRoles.name;
+
     for (let r = 0; r < rowCount; r++) {
       const row: RowData = {
         _rowIdx: r,
         _isDataRow: false,
-        _isHeaderRow: r <= headerEndRow,
+        _isHeaderRow: r <= effHeaderEndRow,
         _malzKar: 0,
         _iscKar: 0,
         _marka: null,
@@ -391,8 +417,26 @@ export class ExcelGridService {
         }
       }
 
-      // Data satiri mi? Miktar sutununda sayi var mi?
-      if (roleFields.quantityField) {
+      // Data satiri tespiti
+      if (fixedSchema) {
+        // Malzeme adi VAR ve (birim VAR veya miktar>0). Ekipman (miktar=0 ama
+        // birim var) DAHIL; bolum basliklari (sadece ad, birim/miktar yok VEYA
+        // merge ile ad=birim ayni deger) HARIC.
+        const nameVal = roleFields.nameField ? String(row[roleFields.nameField] ?? '').trim() : '';
+        const unitVal = roleFields.unitField ? String(row[roleFields.unitField] ?? '').trim() : '';
+        const qtyNum = roleFields.quantityField ? parseFloat(String(row[roleFields.quantityField] ?? '').replace(',', '.')) : NaN;
+        const hasQty = !isNaN(qtyNum) && qtyNum > 0;
+        // Merge ile yayilmis bolum basligi: ad hucresi gizli-merge VEYA
+        // ad===birim (ayni merge kaynagi) → satir baslik, veri degil.
+        const nameMerge = nameColIdx !== undefined ? mergeInfo.get(`${r}-${nameColIdx}`) : undefined;
+        const isMergedSection =
+          nameMerge?.hidden === true ||
+          (nameMerge?.colSpan ?? 1) > 2 ||
+          (!!nameVal && nameVal === unitVal);
+        if (r > effHeaderEndRow && nameVal && (unitVal || hasQty) && !isMergedSection) {
+          row._isDataRow = true;
+        }
+      } else if (roleFields.quantityField) {
         const qty = parseFloat(String(row[roleFields.quantityField] ?? ''));
         if (!isNaN(qty) && qty > 0 && r > headerEndRow) {
           row._isDataRow = true;
@@ -409,7 +453,7 @@ export class ExcelGridService {
       columnDefs,
       rowData,
       columnRoles: roleFields,
-      headerEndRow,
+      headerEndRow: effHeaderEndRow,
       isEmpty: !hasDataRows,
     };
   }
