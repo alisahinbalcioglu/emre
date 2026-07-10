@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { generateTags } from './tag-generator';
+import { hesaplaNetFiyat } from './pricing';
 import type { MatchResult } from './types';
 import {
   splitExcelTags,
@@ -175,6 +176,23 @@ export class MatchingService {
     // bile ARA; sonra aday sayisi + tip belirsizligine gore karar ver.
     const hasDiameter = excelTags.tags.some((t) => t.startsWith('dn') || t.startsWith('od-'));
     if (!hasDiameter) {
+      // URUN DEGIL (spec ALTIN KURAL yardimcisi): "FITTINGS ORANI",
+      // "MONTAJ ISCILIGI" gibi oran/hizmet satirlari malzeme degildir —
+      // fiyat BEKLENMEZ. 'yok'tan ayri isaretlenir ki kullanici bunlari
+      // "eksik eslesme" sanmasin. Muhafazakar liste: yalniz net hizmet
+      // kelimeleri (boya DEGIL — POLISAN antipas gercek urun olabilir).
+      const NOT_PRODUCT_RE = /\borani?\b|\biscilik\b|\bmontaj\b|\bnakliye\b|\bdevreye\s*alma\b|\bgenel\s*gider/;
+      const normName = excelName
+        .replace(/İ/g, 'i').replace(/I/g, 'i').replace(/ı/g, 'i')
+        .replace(/[şŞ]/g, 's').replace(/[çÇ]/g, 'c').replace(/[üÜ]/g, 'u')
+        .replace(/[öÖ]/g, 'o').replace(/[ğĞ]/g, 'g').toLowerCase();
+      if (NOT_PRODUCT_RE.test(normName)) {
+        return {
+          netPrice: 0, listPrice: 0, discount: 0, confidence: 'none',
+          notProduct: true,
+          reason: 'Ürün değil (oran/hizmet satırı) — fiyat beklenmiyor',
+        };
+      }
       return {
         netPrice: 0, listPrice: 0, discount: 0, confidence: 'none',
         reason: `Eksik bilgi: cap yok. Etiketler: [${excelTags.tags.join(', ')}]`,
@@ -269,7 +287,7 @@ export class MatchingService {
       );
       const discount = libItem?.discountRate ?? 0;
       const listPrice = libItem?.listPrice ?? priceItem.price;
-      const netPrice = listPrice * (1 - discount / 100);
+      const netPrice = hesaplaNetFiyat(listPrice, discount); // spec: yukari yuvarla, 1 hane
       return { netPrice, listPrice, discount };
     };
 
@@ -309,7 +327,7 @@ export class MatchingService {
       );
       const discount = libItem?.discountRate ?? 0;
       const listPrice = libItem?.listPrice ?? priceItem.price;
-      const netPrice = listPrice * (1 - discount / 100);
+      const netPrice = hesaplaNetFiyat(listPrice, discount); // spec: yukari yuvarla, 1 hane
       return { netPrice, listPrice, discount };
     };
     const candidates = buildCandidateList(topCandidates, {

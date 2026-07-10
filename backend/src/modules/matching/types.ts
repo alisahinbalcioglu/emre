@@ -8,6 +8,9 @@ export interface MatchResult {
   // 'multi' = birden cok aday, kullaniciya popup
   // 'none' = cap yok veya kutuphanede aday yok
   confidence: 'high' | 'suggestion' | 'medium' | 'low' | 'none' | 'multi';
+  // URUN DEGIL (spec): "FITTINGS ORANI" gibi oran/hizmet satirlari — fiyat
+  // BEKLENMEZ. Hucre bos + gri isaretlenir ('yok' kirmizisindan farkli).
+  notProduct?: boolean;
   matchedName?: string;
   reason?: string;
   matchedTags?: string[];

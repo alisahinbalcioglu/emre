@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
 import api from '@/lib/api';
+import { hesaplaNetFiyat } from '@/lib/pricing';
 
 /* -------------------------------------------------------------------------- */
 /*  Types                                                                      */
@@ -104,7 +105,8 @@ function calcNetPrice(listPrice: number | undefined | null, customPrice: number 
   const basePrice = customPrice ?? listPrice;
   if (basePrice == null) return null;
   const discount = discountRate ?? 0;
-  return basePrice * (1 - discount / 100);
+  // SPEC ASAMA A (fiyat cekirdegi): net = liste×(1-iskonto), YUKARI 1 hane
+  return hesaplaNetFiyat(basePrice, discount);
 }
 
 /* -------------------------------------------------------------------------- */

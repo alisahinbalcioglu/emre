@@ -41,6 +41,7 @@ import type { MetrajResult } from '@/components/dwg-metraj/types';
 import MetrajEditor from '@/components/dwg-metraj/MetrajEditor';
 import { parseMaterialText } from '@/lib/parse-material-text';
 import { mergeMultiSheet } from '@/lib/merge-multisheet';
+import { hesaplaSatisBirimFiyat, hesaplaSatirToplam } from '@/lib/pricing';
 import type { Brand } from '@/types';
 import type {
   UploadMode,
@@ -495,9 +496,10 @@ export default function NewQuotePage() {
                       });
                       const match = result[currentName];
                       if (match?.netPrice > 0) {
-                        row[roles.materialUnitPriceField] = match.netPrice.toFixed(2);
+                        const satisRestore = hesaplaSatisBirimFiyat(match.netPrice, parseFloat(String(row._malzKar ?? 0)) || 0);
+                        row[roles.materialUnitPriceField] = satisRestore.toFixed(1);
                         const qty = roles.quantityField ? parseFloat(String(row[roles.quantityField] ?? '')) || 0 : 0;
-                        if (roles.materialTotalField) row[roles.materialTotalField] = (match.netPrice * qty).toFixed(2);
+                        if (roles.materialTotalField) row[roles.materialTotalField] = hesaplaSatirToplam(satisRestore, qty).toFixed(1);
                         row._matNetPrice = match.netPrice;
                         reMatched++;
                       }
@@ -1421,9 +1423,10 @@ export default function NewQuotePage() {
                         (match.confidence === 'high' || match.confidence === 'suggestion');
                       if (writable) {
                         const netPrice = parseFloat(String(match.netPrice)) || 0;
+                        const satis = hesaplaSatisBirimFiyat(netPrice, parseFloat(String(row._malzKar ?? 0)) || 0);
                         const qty = roles.quantityField ? parseFloat(String(row[roles.quantityField] ?? '')) || 0 : 0;
-                        if (roles.materialUnitPriceField) row[roles.materialUnitPriceField] = netPrice.toFixed(2);
-                        if (roles.materialTotalField) row[roles.materialTotalField] = (netPrice * qty).toFixed(2);
+                        if (roles.materialUnitPriceField) row[roles.materialUnitPriceField] = satis.toFixed(1);
+                        if (roles.materialTotalField) row[roles.materialTotalField] = hesaplaSatirToplam(satis, qty).toFixed(1);
                         row._matNetPrice = netPrice;
                         row._matSuggestion = match.confidence === 'suggestion';
                         row._marka = match.matchedName ?? null;
@@ -1523,8 +1526,9 @@ export default function NewQuotePage() {
                           const netPrice = parseFloat(String(match.netPrice)) || 0;
                           const qty = roles.quantityField ? parseFloat(String(sheetRows[rowIdx][roles.quantityField] ?? '')) || 0 : 0;
                           const row = { ...sheetRows[rowIdx] };
-                          if (roles.laborUnitPriceField) row[roles.laborUnitPriceField] = netPrice.toFixed(2);
-                          if (roles.laborTotalField) row[roles.laborTotalField] = (netPrice * qty).toFixed(2);
+                          const satisLab = hesaplaSatisBirimFiyat(netPrice, parseFloat(String(row._iscKar ?? 0)) || 0);
+                          if (roles.laborUnitPriceField) row[roles.laborUnitPriceField] = satisLab.toFixed(1);
+                          if (roles.laborTotalField) row[roles.laborTotalField] = hesaplaSatirToplam(satisLab, qty).toFixed(1);
                           row._labNetPrice = netPrice;
                           row._firma = match.matchedName ?? firmaId;
                           sheetRows[rowIdx] = row;
@@ -1711,6 +1715,12 @@ export default function NewQuotePage() {
                 return { netPrice: 0, matchedName: match.matchedName, candidates: match.candidates, reason: match.reason };
               }
 
+              // URUN DEGIL (spec): oran/hizmet satiri — fiyat beklenmiyor,
+              // hucre gri isaretlenir; hata tonu YOK.
+              if (match.notProduct) {
+                toast({ title: 'Ürün değil', description: 'Oran/hizmet satırı — fiyat beklenmiyor.' });
+                return { netPrice: 0, notProduct: true, reason: match.reason };
+              }
               // Eslesme yok
               toast({ title: 'Eslesmedi', description: match.reason ?? `"${materialName.slice(0, 40)}"` });
               return null;

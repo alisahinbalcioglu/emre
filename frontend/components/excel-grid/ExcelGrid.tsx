@@ -12,6 +12,7 @@ import type { ExcelGridData, ExcelRowData, MatchCandidate } from './types';
 import { useFillHandle, FillHandleIndicator } from './useFillHandle';
 import { CustomDropdown } from './CustomDropdown';
 import { joinMaterialText } from '@/lib/parse-material-text';
+import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, yukariYuvarla } from '@/lib/pricing';
 
 // AG-Grid Community modules'leri kaydet (v32+)
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -38,6 +39,8 @@ interface Props {
     reason?: string;
     // 'high' = kesin, 'suggestion' = oneri (fiyat dolar ama sari isaretlenir)
     confidence?: 'high' | 'suggestion' | string;
+    // spec: oran/hizmet satiri — fiyat beklenmiyor (gri isaret)
+    notProduct?: boolean;
   } | null>;
   // Iscilik tarafi
   laborFirms?: LaborFirm[];
@@ -94,18 +97,19 @@ function BrandDropdown(props: ICellRendererParams & {
   // isaretlenir (sari) — cap-only/baslik-ipucu ile bulundu, kullanici baksin.
   const writePrice = (netPrice: number, isSuggestion = false) => {
     const kar = parseFloat(String(data._malzKar ?? 0)) || 0;
-    const finalPrice = netPrice * (1 + kar / 100);
+    // SPEC (fiyat cekirdegi): satis = net×(1+kar), YUKARI 1 hane; toplam = satis×miktar.
+    const finalPrice = hesaplaSatisBirimFiyat(netPrice, kar);
     const qty = quantityField ? parseFloat(String(data[quantityField] ?? 0)) || 0 : 0;
-    const total = finalPrice * qty;
+    const total = hesaplaSatirToplam(finalPrice, qty);
 
     // AG-Grid sutun tipi string — number degeri reddediyor (warning #135)
-    // toFixed(2) ile string olarak yaz, ayrica floating point precision fix
     node.setDataValue('_matNetPrice', netPrice);
     node.setDataValue('_matSuggestion', isSuggestion);
-    if (materialUnitPriceField) node.setDataValue(materialUnitPriceField, finalPrice.toFixed(2));
-    if (materialTotalField) node.setDataValue(materialTotalField, total.toFixed(2));
+    node.setDataValue('_matStatus', ''); // eslesme geldi — bekleme isareti kalkar
+    if (materialUnitPriceField) node.setDataValue(materialUnitPriceField, finalPrice.toFixed(1));
+    if (materialTotalField) node.setDataValue(materialTotalField, total.toFixed(1));
 
-    console.log(`[BrandDropdown] row=${data._rowIdx}, net=${netPrice}, kar=${kar}%, final=${finalPrice.toFixed(2)}, qty=${qty}, total=${total.toFixed(2)}, suggestion=${isSuggestion}`);
+    console.log(`[BrandDropdown] row=${data._rowIdx}, net=${netPrice}, kar=${kar}%, final=${finalPrice}, qty=${qty}, total=${total}, suggestion=${isSuggestion}`);
   };
 
   const handleChange = async (brandId: string) => {
@@ -150,6 +154,7 @@ function BrandDropdown(props: ICellRendererParams & {
         const rect = triggerRef.current.getBoundingClientRect();
         setPopupPos({ top: rect.bottom + 2, left: rect.left });
       }
+      node.setDataValue('_matStatus', 'belirsiz'); // secim bekleniyor
       setCandidates(result.candidates);
       return;
     }
@@ -160,9 +165,11 @@ function BrandDropdown(props: ICellRendererParams & {
       return;
     }
 
-    // Hic eslesme yok
+    // ALTIN KURAL: fiyat uretilmez — hucre bos + ISARETLI.
+    // 'urun_degil' (oran/hizmet, gri) vs 'yok' (kutuphanede eslesme yok, kirmizi).
     node.setDataValue('_matNetPrice', 0);
     node.setDataValue('_matSuggestion', false);
+    node.setDataValue('_matStatus', result?.notProduct ? 'urun_degil' : 'yok');
     if (materialUnitPriceField) node.setDataValue(materialUnitPriceField, '');
     if (materialTotalField) node.setDataValue(materialTotalField, '');
   };
@@ -329,14 +336,15 @@ function FirmaDropdown(props: ICellRendererParams & {
 
   const writeLaborPrice = (netPrice: number) => {
     const kar = parseFloat(String(data._iscKar ?? 0)) || 0;
-    const finalPrice = netPrice * (1 + kar / 100);
+    // SPEC: satis = net×(1+kar) yukari 1 hane; toplam = satis×miktar.
+    const finalPrice = hesaplaSatisBirimFiyat(netPrice, kar);
     const qty = quantityField ? parseFloat(String(data[quantityField] ?? 0)) || 0 : 0;
-    const total = finalPrice * qty;
+    const total = hesaplaSatirToplam(finalPrice, qty);
 
     node.setDataValue('_labNetPrice', netPrice);
-    if (laborUnitPriceField) node.setDataValue(laborUnitPriceField, finalPrice.toFixed(2));
-    if (laborTotalField) node.setDataValue(laborTotalField, total.toFixed(2));
-    console.log(`[FirmaDropdown] row=${data._rowIdx}, net=${netPrice}, kar=${kar}%, final=${finalPrice.toFixed(2)}, qty=${qty}`);
+    if (laborUnitPriceField) node.setDataValue(laborUnitPriceField, finalPrice.toFixed(1));
+    if (laborTotalField) node.setDataValue(laborTotalField, total.toFixed(1));
+    console.log(`[FirmaDropdown] row=${data._rowIdx}, net=${netPrice}, kar=${kar}%, final=${finalPrice}, qty=${qty}`);
   };
 
   const handleChange = async (firmaId: string) => {
@@ -710,11 +718,14 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           if (matchResult && matchResult.netPrice > 0) {
             node.setDataValue('_matNetPrice', matchResult.netPrice);
             node.setDataValue('_matSuggestion', matchResult.confidence === 'suggestion');
+            node.setDataValue('_matStatus', '');
             const kar = parseFloat(String(node.data._malzKar ?? 0)) || 0;
-            const finalPrice = matchResult.netPrice * (1 + kar / 100);
+            const finalPrice = hesaplaSatisBirimFiyat(matchResult.netPrice, kar);
             const qty = quantityField ? parseFloat(String(node.data[quantityField] ?? 0)) || 0 : 0;
-            if (materialUnitPriceField) node.setDataValue(materialUnitPriceField, finalPrice.toFixed(2));
-            if (materialTotalField) node.setDataValue(materialTotalField, (finalPrice * qty).toFixed(2));
+            if (materialUnitPriceField) node.setDataValue(materialUnitPriceField, finalPrice.toFixed(1));
+            if (materialTotalField) node.setDataValue(materialTotalField, hesaplaSatirToplam(finalPrice, qty).toFixed(1));
+          } else {
+            node.setDataValue('_matStatus', matchResult?.notProduct ? 'urun_degil' : 'yok');
           }
         } catch {}
       }
@@ -730,10 +741,10 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           if (matchResult && matchResult.netPrice > 0) {
             node.setDataValue('_labNetPrice', matchResult.netPrice);
             const kar = parseFloat(String(node.data._iscKar ?? 0)) || 0;
-            const finalPrice = matchResult.netPrice * (1 + kar / 100);
+            const finalPrice = hesaplaSatisBirimFiyat(matchResult.netPrice, kar);
             const qty = quantityField ? parseFloat(String(node.data[quantityField] ?? 0)) || 0 : 0;
-            if (laborUnitPriceField) node.setDataValue(laborUnitPriceField, finalPrice.toFixed(2));
-            if (laborTotalField) node.setDataValue(laborTotalField, (finalPrice * qty).toFixed(2));
+            if (laborUnitPriceField) node.setDataValue(laborUnitPriceField, finalPrice.toFixed(1));
+            if (laborTotalField) node.setDataValue(laborTotalField, hesaplaSatirToplam(finalPrice, qty).toFixed(1));
           }
         } catch {}
       }
@@ -1029,19 +1040,29 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           if (isNaN(v)) return '';
           // Pinned bottom satirinda 0 bile gosterilsin (GENEL TOPLAM satiri)
           if (v === 0 && !params.node?.rowPinned) return '';
+          // SPEC: 1 ondalik hane goster (3.019,2)
           const formatted = (v * conversionRate).toLocaleString('tr-TR', {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
+            minimumFractionDigits: 1,
+            maximumFractionDigits: 1,
           });
           return `${currencySymbol}${formatted}`;
         };
-        // Malzeme birim fiyat: 'oneri' (suggestion) ile dolan hucreler SARI
-        // zeminle isaretlenir — cap-only/baslik-ipucu eslesmesi; kullanici
-        // dogrulasin (sessiz yanlis eslesme onlemi, PRD Faz 1).
+        // Malzeme birim fiyat — ALTIN KURAL isaretleri:
+        //   sari  = 'oneri' (cap-only/baslik-ipucu eslesmesi, kontrol edin)
+        //   kirmizi = 'yok' (kutuphanede eslesme yok — aktarim/secim bekliyor)
+        //   gri   = 'urun_degil' (oran/hizmet satiri — fiyat beklenmiyor)
         if (field === data.columnRoles.materialUnitPriceField) {
           base.cellStyle = ((params: any) => {
-            if (params.data?._matSuggestion && !params.node?.rowPinned) {
-              return { textAlign: 'right', backgroundColor: '#fef9c3', color: '#854d0e' };
+            if (!params.node?.rowPinned) {
+              if (params.data?._matSuggestion) {
+                return { textAlign: 'right', backgroundColor: '#fef9c3', color: '#854d0e' };
+              }
+              if (params.data?._matStatus === 'yok' || params.data?._matStatus === 'belirsiz') {
+                return { textAlign: 'right', backgroundColor: '#fee2e2' };
+              }
+              if (params.data?._matStatus === 'urun_degil') {
+                return { textAlign: 'right', backgroundColor: '#f1f5f9' };
+              }
             }
             return { textAlign: 'right' };
           }) as any;
@@ -1111,14 +1132,15 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           const row = p.data;
           const listPrice = parseFloat(String(row[priceField ?? ''] ?? '')) || 0;
           const discount = Number(row._draftDiscount ?? 0);
-          return listPrice * (1 - discount / 100);
+          // SPEC ASAMA A: net = liste×(1-iskonto), YUKARI 1 hane
+          return hesaplaNetFiyat(listPrice, discount);
         },
         valueFormatter: (p: any) => {
           const v = parseFloat(String(p.value ?? ''));
           if (isNaN(v) || v === 0) return '';
           const formatted = (v * conversionRate).toLocaleString('tr-TR', {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
+            minimumFractionDigits: 1,
+            maximumFractionDigits: 1,
           });
           return `${currencySymbol}${formatted}`;
         },
@@ -1161,7 +1183,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
 
       if (grandUnitPriceField) {
         // Miktar 0 veya bos olsa bile birim fiyat gosterilir
-        e.node.setDataValue(grandUnitPriceField, grandUnit > 0 ? grandUnit.toFixed(2) : '');
+        e.node.setDataValue(grandUnitPriceField, grandUnit > 0 ? yukariYuvarla(grandUnit).toFixed(1) : '');
       }
 
       // Grand total = matTotal + labTotal
@@ -1175,7 +1197,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
 
       if (grandTotalField) {
         // Miktar 0 ise grand total 0 gosterilir (bos degil, kullanici "bos degil sifir" dedi)
-        e.node.setDataValue(grandTotalField, grandTotal.toFixed(2));
+        e.node.setDataValue(grandTotalField, yukariYuvarla(grandTotal).toFixed(1));
       }
     };
 
@@ -1191,12 +1213,12 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       }
 
       if (net > 0) {
-        const finalPrice = net * (1 + kar / 100);
+        const finalPrice = hesaplaSatisBirimFiyat(net, kar);
         const qty = parseFloat(String(row[quantityField] ?? 0)) || 0;
-        const total = finalPrice * qty;
-        e.node.setDataValue(materialUnitPriceField, finalPrice.toFixed(2));
-        e.node.setDataValue(materialTotalField, total.toFixed(2));
-        console.log(`[ExcelGrid] Malz. kar recalc: row=${row._rowIdx}, net=${net}, kar=${kar}%, final=${finalPrice.toFixed(2)}, qty=${qty}, total=${total.toFixed(2)}`);
+        const total = hesaplaSatirToplam(finalPrice, qty);
+        e.node.setDataValue(materialUnitPriceField, finalPrice.toFixed(1));
+        e.node.setDataValue(materialTotalField, total.toFixed(1));
+        console.log(`[ExcelGrid] Malz. kar recalc: row=${row._rowIdx}, net=${net}, kar=${kar}%, final=${finalPrice}, qty=${qty}, total=${total}`);
       }
       setTimeout(() => { recalcGrand(); updatePinnedBottom(); }, 0);
     }
@@ -1213,12 +1235,12 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       }
 
       if (net > 0) {
-        const finalPrice = net * (1 + kar / 100);
+        const finalPrice = hesaplaSatisBirimFiyat(net, kar);
         const qty = parseFloat(String(row[quantityField] ?? 0)) || 0;
-        const total = finalPrice * qty;
-        e.node.setDataValue(laborUnitPriceField, finalPrice.toFixed(2));
-        e.node.setDataValue(laborTotalField, total.toFixed(2));
-        console.log(`[ExcelGrid] Isc. kar recalc: row=${row._rowIdx}, net=${net}, kar=${kar}%, final=${finalPrice.toFixed(2)}, qty=${qty}, total=${total.toFixed(2)}`);
+        const total = hesaplaSatirToplam(finalPrice, qty);
+        e.node.setDataValue(laborUnitPriceField, finalPrice.toFixed(1));
+        e.node.setDataValue(laborTotalField, total.toFixed(1));
+        console.log(`[ExcelGrid] Isc. kar recalc: row=${row._rowIdx}, net=${net}, kar=${kar}%, final=${finalPrice}, qty=${qty}, total=${total}`);
       }
       setTimeout(() => { recalcGrand(); updatePinnedBottom(); }, 0);
     }
@@ -1233,8 +1255,8 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           ? row._matNetPrice
           : parseFloat(String(row[materialUnitPriceField] ?? '')) || 0;
         if (matNet > 0) {
-          const finalPrice = matNet * (1 + matKar / 100);
-          e.node.setDataValue(materialTotalField, (finalPrice * qty).toFixed(2));
+          const finalPrice = hesaplaSatisBirimFiyat(matNet, matKar);
+          e.node.setDataValue(materialTotalField, hesaplaSatirToplam(finalPrice, qty).toFixed(1));
         }
       }
 
@@ -1244,8 +1266,8 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           ? row._labNetPrice
           : parseFloat(String(row[laborUnitPriceField] ?? '')) || 0;
         if (labNet > 0) {
-          const finalPrice = labNet * (1 + labKar / 100);
-          e.node.setDataValue(laborTotalField, (finalPrice * qty).toFixed(2));
+          const finalPrice = hesaplaSatisBirimFiyat(labNet, labKar);
+          e.node.setDataValue(laborTotalField, hesaplaSatirToplam(finalPrice, qty).toFixed(1));
         }
       }
       setTimeout(() => { recalcGrand(); updatePinnedBottom(); }, 0);
@@ -1259,10 +1281,11 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       // Net'i geriye hesapla
       const net = kar > 0 ? enteredPrice / (1 + kar / 100) : enteredPrice;
       e.node.setDataValue('_matNetPrice', net);
+      e.node.setDataValue('_matStatus', ''); // manuel fiyat girildi — bekleme isareti kalkar
       const qty = parseFloat(String(row[quantityField] ?? 0)) || 0;
-      e.node.setDataValue(materialTotalField, (enteredPrice * qty).toFixed(2));
+      e.node.setDataValue(materialTotalField, hesaplaSatirToplam(enteredPrice, qty).toFixed(1));
       setTimeout(() => { recalcGrand(); updatePinnedBottom(); }, 0);
-      console.log(`[ExcelGrid] Manuel malz. birim: row=${row._rowIdx}, entered=${enteredPrice}, kar=${kar}%, net=${net.toFixed(2)}, qty=${qty}, total=${(enteredPrice * qty).toFixed(2)}`);
+      console.log(`[ExcelGrid] Manuel malz. birim: row=${row._rowIdx}, entered=${enteredPrice}, kar=${kar}%, net=${net.toFixed(2)}, qty=${qty}`);
     }
 
     // ── Iscilik birim fiyat manuel degisti ──
@@ -1272,9 +1295,9 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       const net = kar > 0 ? enteredPrice / (1 + kar / 100) : enteredPrice;
       e.node.setDataValue('_labNetPrice', net);
       const qty = parseFloat(String(row[quantityField] ?? 0)) || 0;
-      e.node.setDataValue(laborTotalField, (enteredPrice * qty).toFixed(2));
+      e.node.setDataValue(laborTotalField, hesaplaSatirToplam(enteredPrice, qty).toFixed(1));
       setTimeout(() => { recalcGrand(); updatePinnedBottom(); }, 0);
-      console.log(`[ExcelGrid] Manuel isc. birim: row=${row._rowIdx}, entered=${enteredPrice}, kar=${kar}%, net=${net.toFixed(2)}, qty=${qty}, total=${(enteredPrice * qty).toFixed(2)}`);
+      console.log(`[ExcelGrid] Manuel isc. birim: row=${row._rowIdx}, entered=${enteredPrice}, kar=${kar}%, net=${net.toFixed(2)}, qty=${qty}`);
     }
 
     // ── Malzeme veya iscilik birim/tutar kolonlari api tarafindan degisti (brand/firma matching sonrasi) ──
