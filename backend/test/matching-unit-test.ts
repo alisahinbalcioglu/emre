@@ -17,11 +17,22 @@ function lib(name: string, price: number) {
 }
 
 // Marka adi → fake Prisma (brand.findUnique bu adi doner)
+// eslesmeHafizasi: in-memory (V5 cins tercihi testi icin gercek upsert/find)
 function fakePrisma(brandName: string, libRows: any[]): any {
+  const memStore = new Map<string, any>();
+  const memKey = (w: any) => `${w.userId_imza.userId}|${w.userId_imza.imza}`;
   return {
     userLibrary: { findMany: async () => libRows },
     brand: { findUnique: async () => ({ name: brandName }) },
-    eslesmeHafizasi: { findUnique: async () => null },
+    eslesmeHafizasi: {
+      findUnique: async ({ where }: any) => memStore.get(memKey(where)) ?? null,
+      upsert: async ({ where, update, create }: any) => {
+        const k = memKey(where);
+        const ex = memStore.get(k);
+        if (ex) { ex.secilenAd = update.secilenAd ?? ex.secilenAd; ex.secimSayisi++; }
+        else memStore.set(k, { ...create, secimSayisi: 1 });
+      },
+    },
     terminologyAlias: {
       findMany: async () => ALIAS_SEEDS.map((s, i) => ({ id: `a${i}`, userId: null, active: true, ...s })),
     },
@@ -164,6 +175,27 @@ async function run() {
     const okMulti = r?.confidence === 'multi' && (r?.candidates?.length ?? 0) === 2;
     const okSuggestion = r?.confidence === 'suggestion'; // otomatik-Disli sari isaretli
     check('T15 popup veya sari-oneri', okMulti || okSuggestion, `got ${r?.confidence} "${r?.matchedName}"`);
+  }
+
+  // T16 (V5): DN25 vanada pirinc secildi → FARKLI capli (DN32) vana
+  // belirsizliginde cins tercihi otomatik 'suggestion' doldurur
+  {
+    const LIB = [
+      ...VANA_LIB,
+      lib('Küresel Vana DN32 Pirinç', 190),
+      lib('Küresel Vana DN32 Çelik', 450),
+    ];
+    const svc = makeService('DUYAR', LIB);
+    const r1 = (await svc.bulkMatch('u1', 'brand-1', ['DN 25 KÜRESEL VANA']))['DN 25 KÜRESEL VANA'];
+    check('T16 once multi', r1?.confidence === 'multi', `got ${r1?.confidence}`);
+    await svc.remember('u1', 'brand-1', 'DN 25 KÜRESEL VANA', 'Küresel Vana DN25 Pirinç');
+    const r2 = (await svc.bulkMatch('u1', 'brand-1', ['DN 32 KÜRESEL VANA']))['DN 32 KÜRESEL VANA'];
+    check('T16 cins tercihi farkli capta', r2?.confidence === 'suggestion' && !!r2?.matchedName?.includes('Pirinç'),
+      `got ${r2?.confidence} "${r2?.matchedName}" (${r2?.reason})`);
+    // Ayni cap tekrar gelirse tam-imza hafizasi calisir (mevcut davranis)
+    const r3 = (await svc.bulkMatch('u1', 'brand-1', ['DN 25 KÜRESEL VANA']))['DN 25 KÜRESEL VANA'];
+    check('T16 ayni imza hafizadan', r3?.confidence === 'suggestion' && !!r3?.matchedName?.includes('Pirinç'),
+      `got ${r3?.confidence} "${r3?.matchedName}"`);
   }
 
   // Ters yon (T9 pipeline): kutuphane DN25 kayitli, Excel 1" — celik marka

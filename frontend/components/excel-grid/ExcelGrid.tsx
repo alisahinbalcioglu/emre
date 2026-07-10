@@ -13,6 +13,7 @@ import { useFillHandle, FillHandleIndicator } from './useFillHandle';
 import { CustomDropdown } from './CustomDropdown';
 import { joinMaterialText } from '@/lib/parse-material-text';
 import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, yukariYuvarla } from '@/lib/pricing';
+import { hasSizeExpression, isSelfSufficientRow } from './build-material-context';
 import httpApi from '@/lib/api';
 
 // AG-Grid Community modules'leri kaydet (v32+)
@@ -42,6 +43,8 @@ interface Props {
     confidence?: 'high' | 'suggestion' | string;
     // spec: oran/hizmet satiri — fiyat beklenmiyor (gri isaret)
     notProduct?: boolean;
+    // U2 seffaf cevrim rozeti: "DN 25 → 1\" (çelik)"
+    donusum?: string;
   } | null>;
   // Iscilik tarafi
   laborFirms?: LaborFirm[];
@@ -76,6 +79,12 @@ interface Props {
 // Brand / Firma cell renderers
 // ────────────────────────────────────────────
 
+// S4: ayni basligi ayni oturumda bir kez oner (confirm yorgunlugu onlemi)
+const offeredHeaderAliases = new Set<string>();
+// Cins tag'leri (backend KIND_TAGS ikizi) — S4 alias kaydinda secilen adaydan turetilir
+const FE_KIND_TAGS = ['celik', 'pirinc', 'dokum', 'paslanmaz', 'bronz', 'aluminyum', 'bakir', 'ppr', 'pvc', 'pe', 'hdpe'];
+const FE_PLASTIC_KINDS = ['ppr', 'pvc', 'pe', 'hdpe'];
+
 function BrandDropdown(props: ICellRendererParams & {
   brands: Brand[];
   onBrandChange: Props['onBrandChange'];
@@ -95,27 +104,33 @@ function BrandDropdown(props: ICellRendererParams & {
   // OGRENME (PRD Adim 8): secici hangi arama adiyla acildi — secim yapilinca
   // (imza, secilenAd) hafizaya yazilir, ikinci gelisinde secici atlanir.
   const lookupNameRef = React.useRef<string>('');
+  // S4: eslesme baslik-zenginlestirmeyle bulunduysa baslik metni (sozluk onerisi)
+  const headerRef = React.useRef<string | null>(null);
+  // V7: 8+ aday oldugunda "tumunu gor" acildi mi
+  const [showAllCandidates, setShowAllCandidates] = React.useState(false);
 
   if (!data?._isDataRow) return null;
 
-  // Fiyati hucrelere yaz (helper). isSuggestion=true → satir 'oneri' olarak
-  // isaretlenir (sari) — cap-only/baslik-ipucu ile bulundu, kullanici baksin.
-  const writePrice = (netPrice: number, isSuggestion = false) => {
-    const kar = parseFloat(String(data._malzKar ?? 0)) || 0;
+  // Fiyati HERHANGI bir node'un hucrelerine yaz (V4 benzer-satir uygulamasi
+  // baska node'lara da yazar). isSuggestion=true → sari 'oneri' isareti.
+  const writePriceToNode = (targetNode: any, netPrice: number, isSuggestion = false) => {
+    const d = targetNode.data;
+    const kar = parseFloat(String(d._malzKar ?? 0)) || 0;
     // SPEC (fiyat cekirdegi): satis = net×(1+kar), YUKARI 1 hane; toplam = satis×miktar.
     const finalPrice = hesaplaSatisBirimFiyat(netPrice, kar);
-    const qty = quantityField ? parseFloat(String(data[quantityField] ?? 0)) || 0 : 0;
+    const qty = quantityField ? parseFloat(String(d[quantityField] ?? 0)) || 0 : 0;
     const total = hesaplaSatirToplam(finalPrice, qty);
 
     // AG-Grid sutun tipi string — number degeri reddediyor (warning #135)
-    node.setDataValue('_matNetPrice', netPrice);
-    node.setDataValue('_matSuggestion', isSuggestion);
-    node.setDataValue('_matStatus', ''); // eslesme geldi — bekleme isareti kalkar
-    if (materialUnitPriceField) node.setDataValue(materialUnitPriceField, finalPrice.toFixed(1));
-    if (materialTotalField) node.setDataValue(materialTotalField, total.toFixed(1));
+    targetNode.setDataValue('_matNetPrice', netPrice);
+    targetNode.setDataValue('_matSuggestion', isSuggestion);
+    targetNode.setDataValue('_matStatus', ''); // eslesme geldi — bekleme isareti kalkar
+    if (materialUnitPriceField) targetNode.setDataValue(materialUnitPriceField, finalPrice.toFixed(1));
+    if (materialTotalField) targetNode.setDataValue(materialTotalField, total.toFixed(1));
 
-    console.log(`[BrandDropdown] row=${data._rowIdx}, net=${netPrice}, kar=${kar}%, final=${finalPrice}, qty=${qty}, total=${total}, suggestion=${isSuggestion}`);
+    console.log(`[BrandDropdown] row=${d._rowIdx}, net=${netPrice}, kar=${kar}%, final=${finalPrice}, qty=${qty}, total=${total}, suggestion=${isSuggestion}`);
   };
+  const writePrice = (netPrice: number, isSuggestion = false) => writePriceToNode(node, netPrice, isSuggestion);
 
   const handleChange = async (brandId: string) => {
     node.setDataValue('_marka', brandId || null);
@@ -136,7 +151,9 @@ function BrandDropdown(props: ICellRendererParams & {
     if (!currentName) return;
 
     // 3 ASAMALI MATCHING: once malzeme adi, sonra baslik+malzeme, sonra secenek
-    const fullName = buildMaterialContext(api, node.rowIndex ?? 0, nameField, noField, brandField);
+    const ctxDetail = buildMaterialContextDetailed(api, node.rowIndex ?? 0, nameField, noField, brandField, quantityField);
+    const fullName = ctxDetail.name;
+    headerRef.current = ctxDetail.header; // S4: sozluk ogrenme onerisi icin
 
     // Asama 1: Sadece malzeme adi ile dene
     console.log(`[BrandDropdown] row=${data._rowIdx}, Asama1 currentName="${currentName}"`);
@@ -163,6 +180,7 @@ function BrandDropdown(props: ICellRendererParams & {
         setPopupPos({ top: rect.bottom + 2, left: rect.left });
       }
       node.setDataValue('_matStatus', 'belirsiz'); // secim bekleniyor
+      setShowAllCandidates(false); // V7: yeni popup 8 adayla baslar
       setCandidates(result.candidates);
       return;
     }
@@ -182,20 +200,78 @@ function BrandDropdown(props: ICellRendererParams & {
     if (materialTotalField) node.setDataValue(materialTotalField, '');
   };
 
-  const handleCandidateSelect = (c: MatchCandidate) => {
-    // OGRENME (PRD Adim 8): secimi hafizaya yaz — ayni imza ikinci gelisinde
-    // secici atlanir. Fire-and-forget; basarisizlik akisi bozmaz.
-    if (data._marka && lookupNameRef.current) {
-      httpApi.post('/matching/remember', {
-        brandId: data._marka,
-        materialName: lookupNameRef.current,
-        secilenAd: c.materialName,
-      }).catch(() => {});
+  // V4: ayni marka + secim bekleyen ('belirsiz') satirlari yeniden eslestir.
+  // remember() cins tercihini YAZDIKTAN sonra cagrilir — re-match cins
+  // tercihine carpar, tek adaya inen satirlar sari 'oneri' olarak dolar.
+  const applyToSimilarRows = async (brandId: string) => {
+    const pending: any[] = [];
+    api.forEachNode((n: any) => {
+      const d = n.data;
+      if (n !== node && d?._isDataRow && d._matStatus === 'belirsiz' && d._marka === brandId) pending.push(n);
+    });
+    if (pending.length === 0) return;
+    if (!window.confirm(`Bu seçim, aynı markada seçim bekleyen ${pending.length} benzer satıra da uygulansın mı?\n(Cins tercihinizle yeniden eşleştirilir; kesin olmayanlar seçimde kalır.)`)) return;
+    let applied = 0;
+    for (const n of pending.slice(0, 50)) {
+      const d = n.data;
+      const baseName = nameField ? String(d[nameField] ?? '').trim() : '';
+      const diaVal = diameterField ? String(d[diameterField] ?? '').trim() : '';
+      const nm = joinMaterialText(diaVal, baseName);
+      if (!nm) continue;
+      try {
+        let r = await onBrandChange(d._rowIdx, brandId, nm);
+        if (!r || r.netPrice <= 0) {
+          const det = buildMaterialContextDetailed(api, n.rowIndex ?? 0, nameField, noField, brandField, quantityField);
+          if (det.name && det.name !== nm) r = await onBrandChange(d._rowIdx, brandId, det.name);
+        }
+        if (r && r.netPrice > 0) {
+          writePriceToNode(n, r.netPrice, true); // toplu uygulama = oneri (sari), kesin degil
+          applied++;
+        }
+      } catch { /* satir atlanir, belirsiz kalir */ }
     }
+    console.log(`[BrandDropdown] V4: ${applied}/${pending.length} benzer satir dolduruldu`);
+  };
+
+  const handleCandidateSelect = async (c: MatchCandidate) => {
+    const brandId = data._marka as string | null;
     // Kullanici popup'tan bilincli sectiginde 'oneri' degil kesin sayilir
     writePrice(c.netPrice, false);
     setCandidates(null);
     setPopupPos(null);
+
+    // OGRENME (PRD Adim 8 + V5): secimi hafizaya yaz. V4 re-match'i cins
+    // tercihine carpsin diye AWAIT edilir; hata akisi bozmaz.
+    if (brandId && lookupNameRef.current) {
+      try {
+        await httpApi.post('/matching/remember', {
+          brandId,
+          materialName: lookupNameRef.current,
+          secilenAd: c.materialName,
+        });
+      } catch { /* hafiza yazilamadi — akis devam */ }
+    }
+
+    // S4: eslesme BASLIK zenginlestirmesiyle bulunduysa sozluge kaydetmeyi
+    // oner (oturum basina baslik basina 1 kez). Alias → sonraki dosyalarda
+    // ayni baslik otomatik cozulur.
+    const hdr = headerRef.current;
+    if (hdr && lookupNameRef.current.startsWith(hdr) && !offeredHeaderAliases.has(hdr)) {
+      offeredHeaderAliases.add(hdr);
+      const kinds = (c.tags ?? []).filter((t) => FE_KIND_TAGS.includes(t));
+      if (kinds.length > 0 && window.confirm(`"${hdr}" terimi sözlüğe kaydedilsin mi?\nSonraki dosyalarda bu başlık altındaki satırlar otomatik "${kinds.join('/')}" olarak yorumlanır.`)) {
+        httpApi.post('/matching/aliases', {
+          alias: hdr,
+          canonical: c.materialName,
+          kinds,
+          sizeClass: kinds.some((k) => FE_PLASTIC_KINDS.includes(k)) ? 'plastic' : 'steel',
+          impliedType: null,
+        }).catch(() => {});
+      }
+    }
+
+    // V4: ayni belirsizligi bekleyen benzer satirlara uygula
+    if (brandId) await applyToSimilarRows(brandId);
   };
 
   const handleCancel = () => {
@@ -238,7 +314,7 @@ function BrandDropdown(props: ICellRendererParams & {
           <div style={{ fontWeight: 700, color: '#b45309', marginBottom: 6, fontSize: 13 }}>
             ⚠ Secin ({candidates.length} aday)
           </div>
-          {candidates.map((c, i) => (
+          {(showAllCandidates ? candidates : candidates.slice(0, 8)).map((c, i) => (
             <button
               key={i}
               onClick={() => handleCandidateSelect(c)}
@@ -264,9 +340,21 @@ function BrandDropdown(props: ICellRendererParams & {
               }}
             >
               <div style={{ fontWeight: 600 }}>{c.popular && '★ '}{c.label}</div>
-              <div style={{ color: '#6b7280', fontSize: 11 }}>{c.netPrice.toFixed(2)} TL</div>
+              <div style={{ color: '#6b7280', fontSize: 11 }}>{c.netPrice.toFixed(1)} TL</div>
             </button>
           ))}
+          {!showAllCandidates && candidates.length > 8 && (
+            <button
+              onClick={() => setShowAllCandidates(true)}
+              style={{
+                display: 'block', width: '100%', textAlign: 'center', padding: '6px',
+                border: '1px dashed #f59e0b', background: '#fffbeb', cursor: 'pointer',
+                fontSize: 11, color: '#b45309', borderRadius: 4, marginBottom: 4, fontWeight: 600,
+              }}
+            >
+              Tümünü gör ({candidates.length - 8} aday daha)
+            </button>
+          )}
           <button
             onClick={handleCancel}
             style={{
@@ -381,7 +469,7 @@ function FirmaDropdown(props: ICellRendererParams & {
     if (!currentName || !onFirmaChange) return;
 
     // 3 ASAMALI MATCHING: once malzeme adi, sonra baslik+malzeme
-    const fullName = buildMaterialContext(api, node.rowIndex ?? 0, nameField, noField, brandField);
+    const fullName = buildMaterialContext(api, node.rowIndex ?? 0, nameField, noField, brandField, quantityField);
 
     // Asama 1
     let result = await onFirmaChange(data._rowIdx, firmaId, currentName);
@@ -515,68 +603,78 @@ function extractCapFromText(text: string): string | null {
   return inchToDn[lastCap] ?? null;
 }
 
+// PRD v1.1 §4 — build-material-context.ts ile SENKRON tutulur (ikiz mantik):
+// H4 olculu satir baslik olamaz, H1/H2 miktar-bos sinyali, C3 kendi kendine
+// yeterli satira baslik eklenmez. AG-Grid api versiyonu (displayed rows).
+function buildMaterialContextDetailed(
+  api: any,
+  rowIdx: number,
+  nameField?: string,
+  noField?: string,
+  brandField?: string,
+  quantityField?: string,
+): { name: string; header: string | null } {
+  if (!nameField) return { name: '', header: null };
+  const currentNode = api.getDisplayedRowAtIndex(rowIdx);
+  if (!currentNode) return { name: '', header: null };
+  const currentName = String(currentNode.data[nameField] ?? '').trim();
+  if (!currentName) return { name: '', header: null };
+
+  // C3: satir kendi kendine yeterliyse (tip kelimesi / anlamli metin) baslik EKLEME
+  if (isSelfSufficientRow(currentName)) return { name: currentName, header: null };
+
+  // Ust satirlara bak — data row'lari, olculu satirlari ve brand dolu
+  // malzeme satirlarini ATLA; EN YAKIN gercek baslikta dur (C2)
+  let foundParent: string | null = null;
+  for (let i = rowIdx - 1; i >= 0; i--) {
+    const prev = api.getDisplayedRowAtIndex(i);
+    if (!prev) continue;
+    if (prev.data._isDataRow) continue;
+
+    const prevName = String(prev.data[nameField] ?? '').trim();
+    if (prevName.length <= 2) continue;
+    const prevBrand = brandField ? String(prev.data[brandField] ?? '').trim() : '';
+    if (prevBrand.length > 0) continue; // marka dolu = malzeme satiri, baslik degil
+    if (hasSizeExpression(prevName)) continue; // H4: olculu satir baslik olamaz
+
+    const prevNo = noField ? String(prev.data[noField] ?? '').trim() : '';
+    const prevQty = quantityField ? String(prev.data[quantityField] ?? '').trim() : '';
+    // H1/H2: noField dolu VEYA miktari bos olan isimli satir baslik adayidir
+    if (prevNo.length > 0 || prevQty === '' || prevQty === '0') {
+      foundParent = prevName;
+      break;
+    }
+  }
+
+  if (!foundParent) return { name: currentName, header: null };
+
+  // KATMAN 1 SAVUNMA: Cap Sanity Check
+  const fullName = `${foundParent} ${currentName}`;
+  const currentCap = extractCapFromText(currentName);
+  const fullCap = extractCapFromText(fullName);
+  const parentCap = extractCapFromText(foundParent);
+
+  if (parentCap && currentCap && parentCap !== currentCap) {
+    console.warn(`[buildMaterialContext] Cap mismatch! parent="${foundParent}" (${parentCap}), current="${currentName}" (${currentCap}). Sadece currentName kullanildi.`);
+    return { name: currentName, header: null };
+  }
+  if (currentCap && fullCap && currentCap !== fullCap) {
+    console.warn(`[buildMaterialContext] Full cap mismatch! current=${currentCap}, full=${fullCap}. Sadece currentName kullanildi.`);
+    return { name: currentName, header: null };
+  }
+
+  return { name: fullName, header: foundParent };
+}
+
 function buildMaterialContext(
   api: any,
   rowIdx: number,
   nameField?: string,
   noField?: string,
   brandField?: string,
+  quantityField?: string,
 ): string {
-  if (!nameField) return '';
-  const currentNode = api.getDisplayedRowAtIndex(rowIdx);
-  if (!currentNode) return '';
-  const currentName = String(currentNode.data[nameField] ?? '').trim();
-  if (!currentName) return '';
-
-  if (!noField) return currentName;
-
-  // Ust satirlara bak — data row'lari, aciklama satirlarini ve brand dolu malzeme satirlarini ATLA
-  // Sadece GERCEK grup basligini bul: brand BOS + noField dolu + isim dolu
-  let foundParent: string | null = null;
-  for (let i = rowIdx - 1; i >= 0; i--) {
-    const prev = api.getDisplayedRowAtIndex(i);
-    if (!prev) continue;
-
-    // Data row'lari atla
-    if (prev.data._isDataRow) continue;
-
-    const prevNo = String(prev.data[noField] ?? '').trim();
-    const prevName = String(prev.data[nameField] ?? '').trim();
-    const prevBrand = brandField ? String(prev.data[brandField] ?? '').trim() : '';
-
-    // Brand dolu ise bu bir malzeme satiri (muhtemelen miktarsiz) — grup basligi DEGIL, atla
-    if (prevBrand.length > 0) continue;
-
-    // noField dolu + isim dolu + brand bos = gercek grup basligi
-    if (prevNo.length > 0 && prevName.length > 2) {
-      foundParent = prevName;
-      break;
-    }
-  }
-
-  if (!foundParent) return currentName;
-
-  // KATMAN 1 SAVUNMA: Cap Sanity Check
-  // Parent + currentName birlestirildiğinde, cap currentName'in cap'i ile AYNI olmali
-  // Eger parent farkli bir cap iceriyorsa (felaket onleme), parent kullanma
-  const fullName = `${foundParent} ${currentName}`;
-  const currentCap = extractCapFromText(currentName);
-  const fullCap = extractCapFromText(fullName);
-  const parentCap = extractCapFromText(foundParent);
-
-  // Eger parent'in icinde cap varsa VE bu currentName'in cap'iyle FARKLIYSA, parent'i ATLA
-  if (parentCap && currentCap && parentCap !== currentCap) {
-    console.warn(`[buildMaterialContext] Cap mismatch! parent="${foundParent}" (${parentCap}), current="${currentName}" (${currentCap}). Sadece currentName kullanildi.`);
-    return currentName;
-  }
-
-  // Eger fullName'in cap'i currentName'in cap'inden FARKLIYSA (regex hatasi), guvenli yola dus
-  if (currentCap && fullCap && currentCap !== fullCap) {
-    console.warn(`[buildMaterialContext] Full cap mismatch! current=${currentCap}, full=${fullCap}. Sadece currentName kullanildi.`);
-    return currentName;
-  }
-
-  return fullName;
+  return buildMaterialContextDetailed(api, rowIdx, nameField, noField, brandField, quantityField).name;
 }
 
 // ────────────────────────────────────────────

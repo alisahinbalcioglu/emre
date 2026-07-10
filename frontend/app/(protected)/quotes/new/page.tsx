@@ -1685,13 +1685,15 @@ export default function NewQuotePage() {
               // Multi-match: kullaniciya secenek sun
               if (match.confidence === 'multi' && match.candidates?.length) {
                 toast({ title: `⚠ ${match.candidates.length} aday`, description: match.reason ?? 'Birden fazla secenek var' });
-                return { netPrice: 0, matchedName: match.matchedName, candidates: match.candidates, reason: match.reason };
+                return { netPrice: 0, matchedName: match.matchedName, candidates: match.candidates, reason: match.reason, donusum: match.donusum };
               }
 
               // Tek eslesme basarili
               if (match.netPrice > 0) {
                 const netPrice = parseFloat(String(match.netPrice)) || 0;
                 const isSuggestion = match.confidence === 'suggestion';
+                // U2 seffaf cevrim rozeti: "DN 25 → 1" (çelik)" — cevrim yapildiysa goster
+                const rozet = match.donusum ? ` · ${match.donusum}` : '';
                 // KATMAN 3: Gorsel dogrulama — kullanici hangi DB malzemesinin secildigini gorsun.
                 // 'suggestion' → sari uyari tonu, kesin degil "kontrol edin".
                 toast({
@@ -1699,10 +1701,10 @@ export default function NewQuotePage() {
                     ? `🟡 Öneri: ${displayPrice(netPrice)} — ${materialName.slice(0, 45)}`
                     : `🟢 ${displayPrice(netPrice)} — ${materialName.slice(0, 50)}`,
                   description: isSuggestion
-                    ? `Tahmini eşleşme: ${match.matchedName?.slice(0, 70) ?? '?'} — lütfen kontrol edin`
-                    : `Eslesti: ${match.matchedName?.slice(0, 80) ?? 'Bilinmeyen'}`,
+                    ? `Tahmini eşleşme: ${match.matchedName?.slice(0, 70) ?? '?'}${rozet} — lütfen kontrol edin`
+                    : `Eslesti: ${match.matchedName?.slice(0, 80) ?? 'Bilinmeyen'}${rozet}`,
                 });
-                return { netPrice, matchedName: match.matchedName, candidates: match.candidates, reason: match.reason, confidence: match.confidence };
+                return { netPrice, matchedName: match.matchedName, candidates: match.candidates, reason: match.reason, confidence: match.confidence, donusum: match.donusum };
               }
 
               // Eslesme bulundu ama fiyat 0 — kullaniciya uyari

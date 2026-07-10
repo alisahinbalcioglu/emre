@@ -194,8 +194,38 @@ export class MatchingService {
               netPrice: cand.netPrice, listPrice: cand.listPrice, discount: cand.discount,
               confidence: 'suggestion',
               matchedName: cand.materialName,
+              donusum: result.donusum,
               reason: `Geçmiş seçiminizden (${mem.secimSayisi}× seçildi) — kontrol edin`,
             };
+          }
+        }
+      }
+
+      // ── CINS TERCIHI (PRD V4/V5): olcu-bagimsiz varyant tercihi ───
+      // "Kuresel vanalar pirinc" secildiyse FARKLI capli ayni-tip belirsizlikte
+      // pirinc adaylar one gecer; tek adaya inerse 'suggestion' dolar.
+      if (result.confidence === 'multi' && result.candidates?.length) {
+        let kmem: any = null;
+        try {
+          kmem = await (this.prisma as any).eslesmeHafizasi?.findUnique({
+            where: { userId_imza: { userId, imza: this.buildKindImza(excelName, brandId) } },
+          });
+        } catch { kmem = null; }
+        if (kmem) {
+          const preferred = result.candidates.filter((c) => c.tags?.includes(kmem.secilenAd));
+          if (preferred.length === 1) {
+            const cand = preferred[0];
+            console.log(`[Matching] CINS TERCIHI HIT: "${excelName}" → ${kmem.secilenAd} → "${cand.materialName}"`);
+            result = {
+              netPrice: cand.netPrice, listPrice: cand.listPrice, discount: cand.discount,
+              confidence: 'suggestion',
+              matchedName: cand.materialName,
+              donusum: result.donusum,
+              reason: `Geçmiş tercihinizden (${kmem.secilenAd}, ${kmem.secimSayisi}×) — kontrol edin`,
+            };
+          } else if (preferred.length > 1 && preferred.length < result.candidates.length) {
+            // Tercih daraltir ama tek adaya inmez — popup kucultulmus gelir
+            result = { ...result, candidates: preferred, reason: `${preferred.length} aday (geçmiş tercih: ${kmem.secilenAd}). ${result.reason ?? ''}` };
           }
         }
       }
@@ -536,6 +566,13 @@ export class MatchingService {
     return `${brandId}|${olcu}|${tags.materialType}|${kinds}`;
   }
 
+  /** Cins tercihinin imzasi (V5): olcu YOK — marka + malzeme tipi.
+   *  "DN20 vana → pirinc" secimi DN32 vanada da gecerli olsun diye. */
+  private buildKindImza(excelName: string, brandId: string): string {
+    const tags = generateTags(excelName);
+    return `kind|${brandId}|${tags.materialType}`;
+  }
+
   /** Kullanici secici popup'tan urun secince cagrilir — senkron, secim aninda. */
   async remember(userId: string, brandId: string, materialName: string, secilenAd: string) {
     if (!userId || !brandId || !materialName?.trim() || !secilenAd?.trim()) {
@@ -548,6 +585,23 @@ export class MatchingService {
       create: { userId, imza, secilenAd },
     });
     console.log(`[Matching] HAFIZA YAZ: user=${userId} imza="${imza}" → "${secilenAd}"`);
+
+    // ── CINS TERCIHI YAZ (V5): secilen urun TEK cins tasiyorsa kaydet ──
+    // (orn "Kuresel Vana DN25 Pirinç" → pirinc). Olcu-bagimsiz: sonraki
+    // farkli-capli ayni-tip belirsizliklerde bu cins one gecer.
+    try {
+      const chosenKinds = generateTags(secilenAd).tags.filter((t) => KIND_TAGS.has(t));
+      if (chosenKinds.length === 1) {
+        const kindImza = this.buildKindImza(materialName, brandId);
+        await (this.prisma as any).eslesmeHafizasi.upsert({
+          where: { userId_imza: { userId, imza: kindImza } },
+          update: { secilenAd: chosenKinds[0], secimSayisi: { increment: 1 } },
+          create: { userId, imza: kindImza, secilenAd: chosenKinds[0] },
+        });
+        console.log(`[Matching] CINS TERCIHI YAZ: imza="${kindImza}" → ${chosenKinds[0]}`);
+      }
+    } catch { /* cins tercihi opsiyonel — ana hafiza yazildi */ }
+
     return { ok: true, imza };
   }
 
