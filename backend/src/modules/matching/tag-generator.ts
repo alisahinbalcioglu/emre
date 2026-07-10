@@ -15,6 +15,7 @@ import {
   extractOuterDiameter,
   extractStandard,
   extractSubtype,
+  extractPn,
 } from './normalizer';
 import type { TaggedMaterial } from './types';
 
@@ -66,6 +67,10 @@ export function generateTags(materialName: string): TaggedMaterial {
   // 9. Boru standardi
   const standard = extractStandard(materialName);
   if (standard) tags.add(standard);
+
+  // 9b. PN basinc sinifi (PRD: fazla kriter = bonus, elemez)
+  const pn = extractPn(materialName);
+  if (pn) tags.add(pn);
 
   // 10. Alt tip (sessiz, basincli, pe kapli, folyo vs.)
   const subtypes = extractSubtype(materialName);

@@ -80,7 +80,33 @@ export interface SplitExcelTags {
   excelKinds: string[];
 }
 
-export function splitExcelTags(excelTags: string[]): SplitExcelTags {
+/** Malzeme TIPI tag degerleri (extractMaterialType ciktilari) — must'ta kalir:
+ *  tip uyusmazligi sessiz-yanlis eslesme uretir (boru yerine vana). */
+export const MATERIAL_TYPE_TAGS = new Set<string>([
+  'boru', 'vana', 'fitting', 'flans', 'izolasyon', 'pompa', 'radyator',
+  'kombi', 'vitrifiye', 'armatur', 'kablo', 'pano', 'sigorta', 'kazan',
+  'dogalgaz-boru', 'montaj',
+]);
+
+/**
+ * PRD Adim 4 (material modu): SERT FILTRE = OLCU + TIP.
+ * Geri kalan HER tag (et kalinligi, dis cap, standart, PN, subtype, cins,
+ * baglanti, yuzey) REFINE'a gider — "eksik kriter = filtre degil, fazla
+ * kriter = bonus". Eski davranista et-2.6 gibi kaynak-ozel tag'ler adayda
+ * bulunmayinca SESSIZCE eliyordu.
+ * mode 'legacy' (default): eski davranis — labor matcher bunu kullanir.
+ */
+export function splitExcelTags(excelTags: string[], mode: 'legacy' | 'material' = 'legacy'): SplitExcelTags {
+  if (mode === 'material') {
+    const isMust = (t: string) =>
+      t.startsWith('dn') || t.startsWith('od-') || MATERIAL_TYPE_TAGS.has(t);
+    return {
+      mustMatchTags: excelTags.filter((t) => isMust(t) && !IGNORE_TAGS.has(t)),
+      refineTags: excelTags.filter((t) => !isMust(t) && !IGNORE_TAGS.has(t)),
+      excelSurfaces: excelTags.filter((t) => SURFACE_TAGS.has(t)),
+      excelKinds: excelTags.filter((t) => KIND_TAGS.has(t)),
+    };
+  }
   return {
     mustMatchTags: excelTags.filter((t) => !REFINE_TAGS.has(t) && !IGNORE_TAGS.has(t)),
     refineTags: excelTags.filter((t) => REFINE_TAGS.has(t)),

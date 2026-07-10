@@ -13,6 +13,7 @@ import { useFillHandle, FillHandleIndicator } from './useFillHandle';
 import { CustomDropdown } from './CustomDropdown';
 import { joinMaterialText } from '@/lib/parse-material-text';
 import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, yukariYuvarla } from '@/lib/pricing';
+import httpApi from '@/lib/api';
 
 // AG-Grid Community modules'leri kaydet (v32+)
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -91,6 +92,10 @@ function BrandDropdown(props: ICellRendererParams & {
   const [popupPos, setPopupPos] = React.useState<{ top: number; left: number } | null>(null);
   const triggerRef = React.useRef<HTMLButtonElement>(null);
 
+  // OGRENME (PRD Adim 8): secici hangi arama adiyla acildi — secim yapilinca
+  // (imza, secilenAd) hafizaya yazilir, ikinci gelisinde secici atlanir.
+  const lookupNameRef = React.useRef<string>('');
+
   if (!data?._isDataRow) return null;
 
   // Fiyati hucrelere yaz (helper). isSuggestion=true → satir 'oneri' olarak
@@ -136,6 +141,7 @@ function BrandDropdown(props: ICellRendererParams & {
     // Asama 1: Sadece malzeme adi ile dene
     console.log(`[BrandDropdown] row=${data._rowIdx}, Asama1 currentName="${currentName}"`);
     let result = await onBrandChange(data._rowIdx, brandId, currentName);
+    lookupNameRef.current = currentName; // ogrenme imzasi bu adla uretilir
 
     // Asama 2: Eslesme yoksa veya fiyat 0, baslik+malzeme ile dene (farkliysa)
     if ((!result || result.netPrice <= 0) && fullName && fullName !== currentName) {
@@ -143,8 +149,10 @@ function BrandDropdown(props: ICellRendererParams & {
       const result2 = await onBrandChange(data._rowIdx, brandId, fullName);
       if (result2 && result2.netPrice > 0) {
         result = result2;
+        lookupNameRef.current = fullName;
       } else if (result2 && result2.candidates && result2.candidates.length > 0) {
         result = result2; // multi-candidate Asama 2'den
+        lookupNameRef.current = fullName;
       }
     }
 
@@ -175,6 +183,15 @@ function BrandDropdown(props: ICellRendererParams & {
   };
 
   const handleCandidateSelect = (c: MatchCandidate) => {
+    // OGRENME (PRD Adim 8): secimi hafizaya yaz — ayni imza ikinci gelisinde
+    // secici atlanir. Fire-and-forget; basarisizlik akisi bozmaz.
+    if (data._marka && lookupNameRef.current) {
+      httpApi.post('/matching/remember', {
+        brandId: data._marka,
+        materialName: lookupNameRef.current,
+        secilenAd: c.materialName,
+      }).catch(() => {});
+    }
     // Kullanici popup'tan bilincli sectiginde 'oneri' degil kesin sayilir
     writePrice(c.netPrice, false);
     setCandidates(null);
@@ -629,6 +646,26 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     api.forEachNode((n) => { if (n.data) all.push(n.data); });
     onRowDataChange(all);
   }, [onRowDataChange]);
+
+  // ── GUVEN KAPISI SAYACI (PRD Bolum 9): "N satir secim bekliyor" ──
+  // _matStatus 'yok'/'belirsiz' olan data satirlari sayilir; her hucre
+  // degisiminde tazelenir (setDataValue de cellValueChanged tetikler).
+  const [pendingCount, setPendingCount] = useState(0);
+  const recountPending = useCallback(() => {
+    const api = gridRef.current?.api;
+    if (!api) return;
+    let n = 0;
+    api.forEachNode((node) => {
+      const d: any = node.data;
+      if (d?._isDataRow && (d._matStatus === 'yok' || d._matStatus === 'belirsiz')) n++;
+    });
+    setPendingCount(n);
+  }, []);
+  React.useEffect(() => {
+    // rowData degisince (sheet gecisi / yeni yukleme) sayaci tazele
+    const t = setTimeout(recountPending, 100);
+    return () => clearTimeout(t);
+  }, [data.rowData, recountPending]);
 
   /** Bos veri satiri uret (mevcut kolonlardan). */
   const makeBlankRow = useCallback((): ExcelRowData => {
@@ -1358,7 +1395,10 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       });
       onRowDataChange(allRows);
     }
-  }, [data.columnRoles, data.columnDefs, onRowDataChange, autoAppendRow]);
+
+    // Guven kapisi sayaci tazele (PRD Bolum 9)
+    recountPending();
+  }, [data.columnRoles, data.columnDefs, onRowDataChange, autoAppendRow, recountPending]);
 
   // getRowId — stabil row kimligi (re-render'da row'un durumunu korur)
   const getRowId = useCallback((params: GetRowIdParams<ExcelRowData>) => {
@@ -1366,6 +1406,15 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
   }, []);
 
   return (
+    <div className="w-full">
+      {/* GUVEN KAPISI SAYACI (PRD Bolum 9): eslesmeyen/belirsiz satirlar
+          gorunur kilinir — "eslestirme emin degilse fiyat uydurmaz". */}
+      {mode === 'quote' && pendingCount > 0 && (
+        <div className="mb-1 flex items-center gap-2 rounded border border-red-200 bg-red-50 px-3 py-1 text-xs text-red-800">
+          <span className="font-semibold">⚠ {pendingCount} satır seçim bekliyor</span>
+          <span className="text-red-600">— kırmızı hücreler: eşleşme yok/belirsiz · sarı: öneri (kontrol edin) · gri: ürün değil</span>
+        </div>
+      )}
     <div className="ag-theme-alpine w-full" style={{ height: '80vh' }}>
       <AgGridReact<ExcelRowData>
         ref={gridRef}
@@ -1466,6 +1515,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           display: none !important;
         }
       `}</style>
+    </div>
     </div>
   );
 });

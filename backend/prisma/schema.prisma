@@ -49,6 +49,23 @@ model User {
   subscriptions  UserSubscription[]
 }
 
+// ESLESME HAFIZASI (PRD Adim 8) — belirsiz satirda kullanicinin sectigi urunu
+// hatirlar. Imza = belirsizligin parmak izi (brandId|olcu|tip|cins-ipucu).
+// Kullanici bazli: bir firmanin tercihi digerine dayatilmaz. ML/embedding YOK —
+// duz alias tablosu; ayni imza ikinci kez gelince secici atlanir, 'oneri' dolar.
+model EslesmeHafizasi {
+  id             String   @id @default(uuid())
+  userId         String
+  imza           String
+  // Secilen KUTUPHANE urununun ADI (id degil — kutuphane satiri silinip
+  // yeniden aktarilabilir; ad ile guncel kutuphanede tekrar bulunur).
+  secilenAd      String
+  secimSayisi    Int      @default(1)
+  sonSecimTarihi DateTime @updatedAt
+
+  @@unique([userId, imza])
+}
+
 // Kullanicinin kendi marka kutuphanesi — ExcelGrid gorunumu icin sheets JSON
 // UserLibrary (satir bazli, matching icin) ile paralel calisir
 model UserBrandLibrary {

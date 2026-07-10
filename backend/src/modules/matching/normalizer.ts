@@ -145,8 +145,37 @@ export function extractDiameter(text: string): string | null {
     if (REVERSE_DIAMETER[key]) return REVERSE_DIAMETER[key];
   }
 
+  // TAM SAYI mm: "63mm", "110 mm" — bilinen DN karsiligi varsa DN'e, yoksa od-NN
+  // (PE/PVC dis capi mm cinsinden anilir; Ø'suz yazilan formlar buraya duser).
+  const intMmMatches = Array.from(normalized.matchAll(/(?<![\d.,])(\d{2,3})\s*mm\b/g));
+  if (intMmMatches.length > 0) {
+    const mm = parseInt(intMmMatches[intMmMatches.length - 1][1], 10);
+    return MM_TO_DN[mm] ?? `od-${mm}`;
+  }
+
+  // CIPLAK PE/PVC DIS CAPI (PRD Adim 1): "63 PE100 - SDR17, PN10" gibi —
+  // isimde plastik cins gecmeli (yanlis pozitif koruma). "pe100/sdr17/pn10"
+  // icindeki sayilar harfe bitisik oldugundan yakalanmaz; yalniz BAGIMSIZ
+  // 2-3 haneli sayi dis cap sayilir.
+  if (/\b(pe\s?100|pe\s?80|\bpe\b|ppr|pvc|hdpe)\b/.test(normalized)) {
+    const bare = normalized.match(/(?<![a-z0-9.,])(\d{2,3})(?![\d.,]*\s*(mm|bar|mt|m\b))(?![a-z0-9])/);
+    if (bare) {
+      const mm = parseInt(bare[1], 10);
+      if (mm >= 16 && mm <= 630) return MM_TO_DN[mm] ?? `od-${mm}`;
+    }
+  }
+
   return null;
 }
+
+/** mm dis cap → nominal DN (bilinenler); PE tipik caplari DN'e cevrilmez, od- kalir. */
+const MM_TO_DN: Record<number, string> = {
+  15: 'dn15', 20: 'dn20', 21: 'dn15', 25: 'dn25', 27: 'dn20', 32: 'dn32', 34: 'dn25',
+  40: 'dn40', 42: 'dn32', 48: 'dn40', 50: 'dn50', 60: 'dn50', 65: 'dn65', 76: 'dn65',
+  80: 'dn80', 89: 'dn80', 100: 'dn100', 110: 'dn100', 114: 'dn100',
+  125: 'dn125', 140: 'dn125', 150: 'dn150', 160: 'dn150', 168: 'dn150',
+  200: 'dn200', 219: 'dn200', 250: 'dn250', 273: 'dn250', 300: 'dn300', 323: 'dn300',
+};
 
 // ────────────────────────────────────────────
 // Yuzey Islemi Tespiti
@@ -335,6 +364,16 @@ export function extractODiameter(text: string): string | null {
     200: 'dn200', 250: 'dn250', 300: 'dn300',
   };
   return mmToDn[mm] ?? `od-${mm}`;
+}
+
+// ────────────────────────────────────────────
+// PN (Basinc Sinifi) Tespiti — PRD Adim 1
+// ────────────────────────────────────────────
+
+/** "PN10", "PN 16", "Pn25" → 'pn10' tag'i. BONUS kriterdir (elemez). */
+export function extractPn(text: string): string | null {
+  const m = normalizeText(text).match(/\bpn\s*(\d{1,2})\b/);
+  return m ? `pn${m[1]}` : null;
 }
 
 // ────────────────────────────────────────────

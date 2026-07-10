@@ -142,7 +142,34 @@ export class MatchingService {
 
     for (const excelName of materialNames) {
       if (!excelName.trim()) continue;
-      const result = this.matchSingle(excelName, allPrices, libItems);
+      let result = this.matchSingle(excelName, allPrices, libItems);
+
+      // ── OGRENME HAFIZASI (PRD Adim 8) ─────────────────────────────
+      // Belirsiz kararindan ONCE oku: ayni imza icin kullanici daha once
+      // secim yaptiysa seciciyi atla, o urunle 'suggestion' doldur.
+      if (result.confidence === 'multi' && result.candidates?.length) {
+        const imza = this.buildImza(excelName, brandId);
+        // Savunmaci: tablo/client henuz yoksa (migration oncesi) akisi BOZMA.
+        let mem: any = null;
+        try {
+          mem = await (this.prisma as any).eslesmeHafizasi?.findUnique({
+            where: { userId_imza: { userId, imza } },
+          });
+        } catch { mem = null; }
+        if (mem) {
+          const cand = result.candidates.find((c) => c.materialName === mem.secilenAd);
+          if (cand) {
+            console.log(`[Matching] HAFIZA HIT: "${excelName}" → "${mem.secilenAd}" (${mem.secimSayisi}× seçilmiş)`);
+            result = {
+              netPrice: cand.netPrice, listPrice: cand.listPrice, discount: cand.discount,
+              confidence: 'suggestion',
+              matchedName: cand.materialName,
+              reason: `Geçmiş seçiminizden (${mem.secimSayisi}× seçildi) — kontrol edin`,
+            };
+          }
+        }
+      }
+
       results[excelName] = result;
       if (result.confidence !== 'none') matchCount++;
     }
@@ -181,7 +208,10 @@ export class MatchingService {
       // fiyat BEKLENMEZ. 'yok'tan ayri isaretlenir ki kullanici bunlari
       // "eksik eslesme" sanmasin. Muhafazakar liste: yalniz net hizmet
       // kelimeleri (boya DEGIL — POLISAN antipas gercek urun olabilir).
-      const NOT_PRODUCT_RE = /\borani?\b|\biscilik\b|\bmontaj\b|\bnakliye\b|\bdevreye\s*alma\b|\bgenel\s*gider/;
+      // PRD Adim 7 genisletmesi: fitting orani/bedeli (TR+EN), paket satirlari
+      // (boru+fittings+support+sarf), sarf malzeme. "SET" ve "boya" BILEREK
+      // yok: "GAZ ALARM SETI" / POLISAN antipas gercek urun olabilir.
+      const NOT_PRODUCT_RE = /\borani?\b|\biscilik\b|\bmontaj\b|\bnakliye\b|\bdevreye\s*alma\b|\bgenel\s*gider|fittings?\s*(orani|bedeli|oran)\b|boru\s*\+\s*fitting|\bsarf\b/;
       const normName = excelName
         .replace(/İ/g, 'i').replace(/I/g, 'i').replace(/ı/g, 'i')
         .replace(/[şŞ]/g, 's').replace(/[çÇ]/g, 'c').replace(/[üÜ]/g, 'u')
@@ -213,8 +243,10 @@ export class MatchingService {
     const excelHasKind = excelTags.tags.some((t) => KIND_TAGS.has(t));
     const fullyQualified = excelTypeKnown && excelHasKind;
 
-    // Shared helper: tag'leri parcala, adaylari skorla
-    const split = splitExcelTags(effectiveTags);
+    // Shared helper: tag'leri parcala, adaylari skorla.
+    // 'material' modu (PRD Adim 4): sert filtre = OLCU + TIP; et kalinligi/
+    // PN/standart/subtype elemez, bonus verir.
+    const split = splitExcelTags(effectiveTags, 'material');
     const allCandidates = scoreCandidates(
       allPrices,
       (p) => p.material.tags,
@@ -295,11 +327,18 @@ export class MatchingService {
     if (topCandidates.length === 1) {
       const winner = topCandidates[0];
       const { netPrice, listPrice, discount } = calcPrice(winner.priceItem);
-      // 'high' yalniz satir KENDISI tam tanimliysa; cap-only / baslik-ipucu → 'suggestion'
-      const confidence: MatchResult['confidence'] = fullyQualified ? 'high' : 'suggestion';
-      const via = fullyQualified
-        ? `[${split.mustMatchTags.join(', ')}]`
-        : hint ? `cap + baslik ipucu (${hint.preferredKinds.join('/')})` : 'yalniz cap';
+      // 'high' yalniz satir KENDISI tam tanimliysa; cap-only / baslik-ipucu → 'suggestion'.
+      // SESSIZ-YANLIS ONLEMI (PRD): otomatik-Disli secimiyle tek adaya inildi
+      // ve kaynak 'disli' YAZMADIYSA — baglanti tipi tahmin edildi → 'suggestion'
+      // (sari isaret), 'high' DEGIL.
+      const autoConnectionGuess = autoPickedDisli && !excelTags.tags.includes('disli');
+      const confidence: MatchResult['confidence'] =
+        fullyQualified && !autoConnectionGuess ? 'high' : 'suggestion';
+      const via = autoConnectionGuess
+        ? 'baglanti tipi otomatik secildi (Disli)'
+        : fullyQualified
+          ? `[${split.mustMatchTags.join(', ')}]`
+          : hint ? `cap + baslik ipucu (${hint.preferredKinds.join('/')})` : 'yalniz cap';
       console.log(`[Matching] "${excelName}" → ${confidence} → "${winner.priceItem.material.name}" = ${winner.priceItem.price} (net=${netPrice}) via ${via}`);
       return {
         netPrice, listPrice, discount,
@@ -342,6 +381,38 @@ export class MatchingService {
       reason: `${candidates.length} aday bulundu. ${reason}`,
       candidates,
     };
+  }
+
+  // ═══════════════════════════════════════════
+  // OGRENME HAFIZASI (PRD Adim 8) — imza + kaydet
+  // ═══════════════════════════════════════════
+
+  /** Belirsizligin parmak izi: marka + kanonik olcu + tip + cins(+ipucu).
+   *  Ayni imza = ayni secim sorusu → hafizadan cevaplanabilir. */
+  private buildImza(excelName: string, brandId: string): string {
+    const tags = generateTags(excelName);
+    const hint = this.deriveHeaderHint(excelName);
+    const olcu = tags.tags.filter((t) => t.startsWith('dn') || t.startsWith('od-')).sort().join(',');
+    const kinds = Array.from(new Set([
+      ...tags.tags.filter((t) => KIND_TAGS.has(t)),
+      ...(hint?.preferredKinds ?? []),
+    ])).sort().join(',');
+    return `${brandId}|${olcu}|${tags.materialType}|${kinds}`;
+  }
+
+  /** Kullanici secici popup'tan urun secince cagrilir — senkron, secim aninda. */
+  async remember(userId: string, brandId: string, materialName: string, secilenAd: string) {
+    if (!userId || !brandId || !materialName?.trim() || !secilenAd?.trim()) {
+      return { ok: false, reason: 'eksik parametre' };
+    }
+    const imza = this.buildImza(materialName, brandId);
+    await (this.prisma as any).eslesmeHafizasi.upsert({
+      where: { userId_imza: { userId, imza } },
+      update: { secilenAd, secimSayisi: { increment: 1 } },
+      create: { userId, imza, secilenAd },
+    });
+    console.log(`[Matching] HAFIZA YAZ: user=${userId} imza="${imza}" → "${secilenAd}"`);
+    return { ok: true, imza };
   }
 
   /** Islevsel grup basligini (sprink/pis su...) cins+tip ipucuna cevirir. */
