@@ -10,6 +10,14 @@
     email {$ACME_EMAIL}
 }
 
+# www → apex kalici yonlendirme. Bu blok olmadan Caddy www icin sertifika
+# URETMEZ → tarayici TLS kuramaz → "www ile giris yapilamiyor" (status 000).
+# DNS'te www CNAME kaydi zaten apex'e isaret ediyor; sertifikayi Caddy
+# Let's Encrypt'ten otomatik alir.
+www.{$DOMAIN} {
+    redir https://{$DOMAIN}{uri} permanent
+}
+
 {$DOMAIN} {
     encode gzip
 
