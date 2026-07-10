@@ -78,6 +78,11 @@ export interface SplitExcelTags {
   refineTags: string[];
   excelSurfaces: string[];
   excelKinds: string[];
+  /** CAP ESDEGERLIK KUMESI (PRD §6-7): doluysa aday bu tag'lerden EN AZ
+   *  BIRINI tasimali. Celik DN↔inc / PPR DN↔mm cevrimi bu kumede birlesir
+   *  (orn PPR "1\"" → ['od-32','dn32']). mustMatchTags'teki tekil cap tag'inin
+   *  yerini alir — yalniz material matcher doldurur, labor 'legacy' etkilenmez. */
+  sizeAnyOf?: string[];
 }
 
 /** Malzeme TIPI tag degerleri (extractMaterialType ciktilari) — must'ta kalir:
@@ -143,8 +148,15 @@ export function scoreCandidates<T>(
     const dbTags = getTags(priceItem);
     if (!dbTags || dbTags.length === 0) continue;
 
+    // CAP ESDEGERLIGI (PRD §6-7): kume doluysa aday en az birini tasimali.
+    let sizeMatched = 0;
+    if (split.sizeAnyOf && split.sizeAnyOf.length > 0) {
+      if (!split.sizeAnyOf.some((t) => dbTags.includes(t))) continue;
+      sizeMatched = 1;
+    }
+
     // Zorunlu etiketler: TAMAMI eslesmeli
-    let mustMatched = 0;
+    let mustMatched = sizeMatched;
     let mustMissing = 0;
     for (const tag of mustMatchTags) {
       if (dbTags.includes(tag)) mustMatched++;

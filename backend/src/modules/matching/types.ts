@@ -16,6 +16,8 @@ export interface MatchResult {
   matchedTags?: string[];
   // Birden fazla aday varsa
   candidates?: MatchCandidate[];
+  // U2 seffaf cevrim rozeti: "DN 25 → 1\" (çelik)" — cevrim yapildiysa dolu
+  donusum?: string;
 }
 
 export interface MatchCandidate {

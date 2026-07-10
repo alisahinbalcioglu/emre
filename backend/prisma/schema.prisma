@@ -66,6 +66,54 @@ model EslesmeHafizasi {
   @@unique([userId, imza])
 }
 
+// TERMINOLOJI SOZLUGU (PRD v1.1 §5) — sektorel terim/baslik → kanonik malzeme.
+// "SPRINK HATTI BORULARI" basligi kutuphanedeki "Siyah Celik Boru"ya bu tablo
+// uzerinden cozumlenir. Seed kayitlar sistemle gelir (TR+EN), kullanici kendi
+// alias'larini ekleyebilir (S3); seed silinmez, pasife alinir.
+model TerminologyAlias {
+  id          String   @id @default(uuid())
+  // null = sistem geneli seed; dolu = kullaniciya (hesaba) ozel
+  userId      String?
+  // NORMALIZE edilmis terim ("sprink hatti") — contains mantigiyla eslesir,
+  // en uzun eslesen alias kazanir (S2)
+  alias       String
+  // Kanonik malzeme anahtari ("siyah_celik_boru", "hdpe_pe100_boru")
+  canonical   String
+  // Cins ipuclari (KIND_TAGS uyumlu: celik/ppr/hdpe/pe/pvc...) — tie-break,
+  // sert filtre degil
+  kinds       String[] @default([])
+  // Ima edilen malzeme tipi ('boru' vb.) — tip belirsizligini cozer
+  impliedType String?
+  // Cap cevrim sinifi: 'steel' | 'plastic' | null (belirsiz)
+  sizeClass   String?
+  // Bu islevsel kelimeden uretilen ve elemeye girmemesi gereken tag'ler
+  stripTags   String[] @default([])
+  active      Boolean  @default(true)
+  createdBy   String   @default("seed") // 'seed' | 'user'
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, alias])
+  @@index([userId])
+}
+
+// MARKA → MALZEME TIPI (PRD §10.4, D2/P1) — marka adindaki uretici deseni
+// malzeme sinifini belirler: Cayirova → celik (DN↔inc), Kalde → PPR (DN=mm).
+model BrandMaterialType {
+  id        String   @id @default(uuid())
+  userId    String?  // null = seed; dolu = kullanici ekledi
+  // NORMALIZE uretici deseni ("cayirova") — marka adinda contains aranir,
+  // "X veya muadili" kaliplarini da yakalar
+  pattern   String
+  kinds     String[] @default([])
+  sizeClass String   // 'steel' | 'plastic'
+  active    Boolean  @default(true)
+  createdBy String   @default("seed")
+  createdAt DateTime @default(now())
+
+  @@unique([userId, pattern])
+  @@index([userId])
+}
+
 // Kullanicinin kendi marka kutuphanesi — ExcelGrid gorunumu icin sheets JSON
 // UserLibrary (satir bazli, matching icin) ile paralel calisir
 model UserBrandLibrary {

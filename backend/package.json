@@ -9,6 +9,8 @@
     "start:prod": "node dist/main",
     "lint": "tsc --noEmit",
     "test:regression": "ts-node test/matching-regression.ts",
+    "test:conversion": "ts-node test/conversion-test.ts",
+    "test:matching": "ts-node test/matching-unit-test.ts",
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate",
     "prisma:studio": "prisma studio"

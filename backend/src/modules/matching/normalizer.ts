@@ -95,6 +95,11 @@ export function extractDiameter(text: string): string | null {
     const last = dnMatches[dnMatches.length - 1];
     const dn = `dn${last[1]}`;
     if (DIAMETER_MAP[dn]) return dn;
+    // Tabloda olmayan DN (dn63, dn75, dn90...): yine de tag olarak dondur.
+    // PPR/HDPE'de DN = dis cap mm oldugundan (PRD §7) bunlar GERCEK caplar —
+    // eski davranis null'du, kutuphanedeki "PPR DN63" hic bulunamiyordu.
+    // (Yeni tag'in gecerli olmasi icin mevcut kayitlarda backfill-tags gerekir.)
+    if (/^\d{2,3}$/.test(last[1])) return dn;
   }
 
   // Inc olculeri TUM bul, en sondakini al
