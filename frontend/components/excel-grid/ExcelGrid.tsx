@@ -118,7 +118,21 @@ function BrandDropdown(props: ICellRendererParams & {
   const { data, brands, onBrandChange, nameField, noField, brandField, quantityField, materialUnitPriceField, materialTotalField, diameterField, groupVariants, autoVariantEnabled, api, node } = props;
   const [candidates, setCandidates] = React.useState<MatchCandidate[] | null>(null);
   const [popupPos, setPopupPos] = React.useState<{ top: number; left: number } | null>(null);
-  const triggerRef = React.useRef<HTMLButtonElement>(null);
+  // HATA RAPORU FIX: popup konumu WRAPPER div'den alinir — onceki triggerRef
+  // hicbir elemana bagli DEGILDI (null kaliyordu) → popupPos hic set edilmiyor,
+  // secim listesi HIC ACILMIYORDU (eylemsiz toast + dead-end). Wrapper ref
+  // hucrenin kendisi; o da yoksa viewport fallback — popup HER KOSULDA acilir.
+  const wrapperRef = React.useRef<HTMLDivElement>(null);
+  const computePopupPos = (): { top: number; left: number } => {
+    const rect = wrapperRef.current?.getBoundingClientRect();
+    const raw = rect
+      ? { top: rect.bottom + 2, left: rect.left }
+      : { top: window.innerHeight * 0.3, left: window.innerWidth * 0.35 };
+    return {
+      top: Math.max(8, Math.min(raw.top, window.innerHeight - 360)),
+      left: Math.max(8, Math.min(raw.left, window.innerWidth - 420)),
+    };
+  };
 
   // OGRENME (PRD Adim 8): secici hangi arama adiyla acildi — secim yapilinca
   // (imza, secilenAd) hafizaya yazilir, ikinci gelisinde secici atlanir.
@@ -134,6 +148,8 @@ function BrandDropdown(props: ICellRendererParams & {
   // K4/K7: "Secimi bu gruptaki tum satirlara uygula" — ilk secimde ACIK,
   // oto-satir kacisinda (V4.2) KAPALI acilir; kullanici degistirebilir.
   const [applyToGroup, setApplyToGroup] = React.useState(false);
+  // F3: 8+ aday oldugunda arama kutusu (label + urun adi uzerinde filtre)
+  const [filterText, setFilterText] = React.useState('');
   // Popup basliginda gosterilecek cevrim rozeti ("DN 50 → 2\" (çelik)")
   const donusumRef = React.useRef<string | null>(null);
 
@@ -210,15 +226,14 @@ function BrandDropdown(props: ICellRendererParams & {
       }
     }
 
-    // Multi case — kullaniciya secenek sun (Portal ile body'e render)
+    // Multi case — kullaniciya secenek sun (Portal ile body'e render).
+    // F1/B3: popupPos HER KOSULDA set edilir — eylemsiz uyari YASAK.
     if (result && result.candidates && result.candidates.length > 0) {
-      if (triggerRef.current) {
-        const rect = triggerRef.current.getBoundingClientRect();
-        setPopupPos({ top: rect.bottom + 2, left: rect.left });
-      }
+      setPopupPos(computePopupPos());
       node.setDataValue('_matStatus', 'belirsiz'); // secim bekleniyor (V4.5 dahil)
       setShowAllCandidates(false); // V7: yeni popup 8 adayla baslar
       setStage2(null); // K6: zincir bastan
+      setFilterText(''); // F3: arama sifirlanir
       // K4: gruba-uygula varsayilani — ilk secimde ACIK, oto-kacista KAPALI
       setApplyToGroup(autoVariantEnabled && !!ctxDetail.header && !escapeAuto);
       donusumRef.current = result.donusum ?? null;
@@ -354,7 +369,7 @@ function BrandDropdown(props: ICellRendererParams & {
   );
 
   return (
-    <div className="fill-handle-cell" style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center' }}>
+    <div ref={wrapperRef} className="fill-handle-cell" style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center' }}>
       <CustomDropdown
         value={data._marka ?? ''}
         options={brandOptions}
@@ -431,9 +446,27 @@ function BrandDropdown(props: ICellRendererParams & {
               if (g) { g.items.push(c); g.preferred = g.preferred || !!c.preferred; }
               else groups.push({ label: c.label, items: [c], preferred: !!c.preferred });
             }
-            const visible = showAllCandidates ? groups : groups.slice(0, 8);
+            // F3: arama filtresi (label + urun adi)
+            const flt = filterText.trim().toLowerCase();
+            const filtered = flt
+              ? groups.filter((g) =>
+                  g.label.toLowerCase().includes(flt) ||
+                  g.items.some((c) => c.materialName.toLowerCase().includes(flt)))
+              : groups;
+            const visible = showAllCandidates ? filtered : filtered.slice(0, 8);
             return (
               <>
+                {candidates.length > 8 && (
+                  <input
+                    value={filterText}
+                    onChange={(e) => setFilterText(e.target.value)}
+                    placeholder="Ara… (varyant / ürün adı)"
+                    style={{
+                      display: 'block', width: '100%', padding: '5px 8px', marginBottom: 6,
+                      border: '1px solid #fcd34d', borderRadius: 4, fontSize: 12, outline: 'none',
+                    }}
+                  />
+                )}
                 {visible.map((g, i) => {
                   const single = g.items.length === 1;
                   const c = g.items[0];
@@ -452,7 +485,7 @@ function BrandDropdown(props: ICellRendererParams & {
                     </button>
                   );
                 })}
-                {!showAllCandidates && groups.length > 8 && (
+                {!showAllCandidates && filtered.length > 8 && (
                   <button
                     onClick={() => setShowAllCandidates(true)}
                     style={{
@@ -461,7 +494,7 @@ function BrandDropdown(props: ICellRendererParams & {
                       fontSize: 11, color: '#b45309', borderRadius: 4, marginBottom: 4, fontWeight: 600,
                     }}
                   >
-                    Tümünü gör ({groups.length - 8} seçenek daha)
+                    Tümünü gör ({filtered.length - 8} seçenek daha)
                   </button>
                 )}
               </>
@@ -529,7 +562,19 @@ function FirmaDropdown(props: ICellRendererParams & {
   } = props;
   const [candidates, setCandidates] = React.useState<MatchCandidate[] | null>(null);
   const [popupPos, setPopupPos] = React.useState<{ top: number; left: number } | null>(null);
-  const triggerRef = React.useRef<HTMLButtonElement>(null);
+  // AYNI FIX (BrandDropdown ile): eski triggerRef hicbir elemana bagli degildi
+  // → labor secim popup'i da HIC acilamiyordu. Wrapper + viewport fallback.
+  const wrapperRef = React.useRef<HTMLDivElement>(null);
+  const computePopupPos = (): { top: number; left: number } => {
+    const rect = wrapperRef.current?.getBoundingClientRect();
+    const raw = rect
+      ? { top: rect.bottom + 2, left: rect.left }
+      : { top: window.innerHeight * 0.3, left: window.innerWidth * 0.35 };
+    return {
+      top: Math.max(8, Math.min(raw.top, window.innerHeight - 360)),
+      left: Math.max(8, Math.min(raw.left, window.innerWidth - 420)),
+    };
+  };
 
   if (!data?._isDataRow) return null;
 
@@ -610,10 +655,7 @@ function FirmaDropdown(props: ICellRendererParams & {
     }
 
     if (result && result.candidates && result.candidates.length > 0) {
-      if (triggerRef.current) {
-        const rect = triggerRef.current.getBoundingClientRect();
-        setPopupPos({ top: rect.bottom + 2, left: rect.left });
-      }
+      setPopupPos(computePopupPos()); // her kosulda acilir (F1)
       setCandidates(result.candidates);
       return;
     }
@@ -637,7 +679,7 @@ function FirmaDropdown(props: ICellRendererParams & {
   const firmaOptions = filteredFirms.map((f) => ({ value: f.id, label: f.name }));
 
   return (
-    <div className="fill-handle-cell" style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center' }}>
+    <div ref={wrapperRef} className="fill-handle-cell" style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center' }}>
       <CustomDropdown
         value={data._firma ?? ''}
         options={firmaOptions}

@@ -497,9 +497,14 @@ export class MatchingService {
     // coklu aday fiyatli popup'a gider. "Tahmini eslesme" kalibi bu yoldan
     // kalkti; excel metni varyanti soylediyse (disli vb.) refine skoru zaten
     // tek adaya indirir (A5), popup acilmaz.
+    // HATA RAPORU F2: effectiveTags GECILIR (excelTags.tags DEGIL) — baslik
+    // sozlugunun strip ettigi 'sprink' tag'i excelHasSubtype'i true yapip
+    // subtype elemesini KAPATIYORDU → EN-standart/alt-tipli tum varyantlar
+    // listede kaliyordu (20 aday). Strip sonrasi gercek subtype yoksa eleme
+    // calisir, aday sayisi varyant sayisina iner.
     const { narrowed, autoPickedDisli } = narrowTopCandidates(
       topCandidates,
-      excelTags.tags,
+      effectiveTags,
       (p) => p.material.tags,
       MATERIAL_SUBTYPE_KEYS,
       false, // autoPick KAPALI — material tarafinda otomatik-Disli yok

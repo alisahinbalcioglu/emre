@@ -1701,9 +1701,10 @@ export default function NewQuotePage() {
                 return null;
               }
 
-              // Multi-match: kullaniciya secenek sun (V4.5 variantMissing dahil)
+              // Multi-match: kullaniciya secenek sun (V4.5 variantMissing dahil).
+              // B3: EYLEMSIZ TOAST YOK — secim popup'i ExcelGrid'de acilir,
+              // toast gurultusu kaldirildi (hata raporu: "pasif uyari + dead-end").
               if (match.confidence === 'multi' && match.candidates?.length) {
-                if (!silent) toast({ title: `⚠ ${match.candidates.length} aday`, description: match.reason ?? 'Birden fazla secenek var' });
                 return { netPrice: 0, matchedName: match.matchedName, candidates: match.candidates, reason: match.reason, donusum: match.donusum, variantMissing: match.variantMissing };
               }
 

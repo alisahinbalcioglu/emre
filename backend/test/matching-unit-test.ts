@@ -195,6 +195,21 @@ async function run() {
     check('A1 kirmizi variantTags dolu', !!kirmizi?.variantTags?.length, `got ${JSON.stringify(kirmizi?.variantTags)}`);
   }
 
+  // F2 (hata raporu): baslik sozlugunun strip ettigi 'sprink' tag'i subtype
+  // elemesini KAPATMAMALI — subtype'li (basincli vb.) adaylar excel'de
+  // subtype yokken elenir, aday sayisi varyant sayisina iner.
+  {
+    const LIB = [
+      lib('Siyah Düz Uçlu Boru 2" DN50', 198.4),
+      lib('Siyah Dişli Boru 2" DN50', 241.6),
+      lib('Siyah Basınçlı Boru 2" DN50', 300), // subtype'li — elenmeli
+    ];
+    const svc = makeService('ÇAYIROVA', LIB);
+    const r = (await svc.bulkMatch('u1', 'brand-1', ['SPRİNK HATTI BORULARI DN 50']))['SPRİNK HATTI BORULARI DN 50'];
+    check('F2 subtype elemesi calisiyor (basincli elendi, 2 aday)', r?.confidence === 'multi' && (r?.candidates?.length ?? 0) === 2,
+      `got ${r?.confidence} ${r?.candidates?.length} aday: ${r?.candidates?.map((c) => c.materialName).join(' | ')}`);
+  }
+
   // A5 (Duzeltme Talebi): satir varyanti ACIKCA soyluyor → soru sorulmaz
   {
     const A1_LIB = [
