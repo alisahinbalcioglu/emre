@@ -11,14 +11,15 @@ export class MatchingController {
     private readonly terminology: TerminologyService,
   ) {}
 
-  /** Teklif sirasinda: Excel malzemelerini DB'den esle (AI yok) */
+  /** Teklif sirasinda: Excel malzemelerini DB'den esle (AI yok).
+   *  variantTags (V4): grup ici otomatik atama — secili varyantin tag'leri. */
   @Post('bulk-match')
   async bulkMatch(
-    @Body() body: { brandId: string; materialNames: string[] },
+    @Body() body: { brandId: string; materialNames: string[]; variantTags?: string[] },
     @Req() req: any,
   ) {
     const userId: string = req.user?.id ?? req.user?.sub;
-    return this.service.bulkMatch(userId, body.brandId, body.materialNames);
+    return this.service.bulkMatch(userId, body.brandId, body.materialNames, body.variantTags);
   }
 
   /** OGRENME (PRD Adim 8): secici popup'tan secim yapilinca hafizaya yaz.

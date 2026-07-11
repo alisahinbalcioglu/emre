@@ -378,6 +378,9 @@ export default function NewQuotePage() {
   const [liveRowDataBySheet, setLiveRowDataBySheet] = useState<Record<number, ExcelRowData[]>>({});
   const [sheetMatchCounts, setSheetMatchCounts] = useState<Record<number, { total: number; matched: number }>>({});
   const [isMatchingAllSheets, setIsMatchingAllSheets] = useState(false);
+  // V4.4 (PRD v1.3): grup ici otomatik varyant atama anahtari — varsayilan ACIK.
+  // Kapaliyken her satir icin secenek listesi tek tek sunulur.
+  const [autoVariantEnabled, setAutoVariantEnabled] = useState(true);
   // Sheet disiplinleri (kullanici override edebilir)
   const [sheetDisciplines, setSheetDisciplines] = useState<Record<number, 'mechanical' | 'electrical' | null>>({});
   // Iscilik firmalari + secilen firma (sheet bazli)
@@ -1362,6 +1365,18 @@ export default function NewQuotePage() {
               <span className="text-slate-500">
                 (Fiyat eşleşmiyorsa doğru sütunu seçin — marka değil, malzeme/çap sütunu)
               </span>
+              {/* V4.4: grup ici otomatik varyant atama anahtari */}
+              <label className="ml-auto flex cursor-pointer items-center gap-1.5 whitespace-nowrap text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={autoVariantEnabled}
+                  onChange={(e) => setAutoVariantEnabled(e.target.checked)}
+                  className="h-3.5 w-3.5 accent-sky-600"
+                />
+                <span title="Açıkken: grupta ilk varyant seçimi, aynı başlık altındaki diğer satırlara kendi çaplarının fiyatıyla otomatik uygulanır (⚡ mavi hücre). Kapalıyken her satır tek tek sorulur.">
+                  ⚡ Otomatik varyant atama
+                </span>
+              </label>
             </div>
           );
         })()}
@@ -1570,6 +1585,7 @@ export default function NewQuotePage() {
         <ExcelGrid
           ref={excelGridRef}
           key={multiSheet ? `sheet-${activeSheetIndex}` : 'single'}
+          autoVariantEnabled={autoVariantEnabled}
           // Excel-vari "en altta hep bos satir" — DWG metraj grid'inde aktif
           // (Excel yolunda backend kolonlari cok genis, davranis degismesin)
           autoAppendRow={multiSheet?.sheets?.length === 1 && multiSheet.sheets[0]?.name === 'DWG Metraj'}
@@ -1670,22 +1686,25 @@ export default function NewQuotePage() {
               return null;
             }
           }}
-          onBrandChange={async (rowIdx, brandId, materialName) => {
+          onBrandChange={async (rowIdx, brandId, materialName, opts) => {
             try {
               const { data: result } = await api.post('/matching/bulk-match', {
                 brandId,
                 materialNames: [materialName],
+                // V4: grup varyant filtresi — adaylar bu tag'lerin tamamini tasimali
+                variantTags: opts?.variantTags,
               });
               const match = result[materialName];
+              const silent = opts?.silent === true; // grup ici toplu uygulamada toast yok
               if (!match) {
-                toast({ title: 'Eslesmedi', description: `"${materialName.slice(0, 40)}"` });
+                if (!silent) toast({ title: 'Eslesmedi', description: `"${materialName.slice(0, 40)}"` });
                 return null;
               }
 
-              // Multi-match: kullaniciya secenek sun
+              // Multi-match: kullaniciya secenek sun (V4.5 variantMissing dahil)
               if (match.confidence === 'multi' && match.candidates?.length) {
-                toast({ title: `⚠ ${match.candidates.length} aday`, description: match.reason ?? 'Birden fazla secenek var' });
-                return { netPrice: 0, matchedName: match.matchedName, candidates: match.candidates, reason: match.reason, donusum: match.donusum };
+                if (!silent) toast({ title: `⚠ ${match.candidates.length} aday`, description: match.reason ?? 'Birden fazla secenek var' });
+                return { netPrice: 0, matchedName: match.matchedName, candidates: match.candidates, reason: match.reason, donusum: match.donusum, variantMissing: match.variantMissing };
               }
 
               // Tek eslesme basarili
@@ -1696,15 +1715,17 @@ export default function NewQuotePage() {
                 const rozet = match.donusum ? ` · ${match.donusum}` : '';
                 // KATMAN 3: Gorsel dogrulama — kullanici hangi DB malzemesinin secildigini gorsun.
                 // 'suggestion' → sari uyari tonu, kesin degil "kontrol edin".
-                toast({
-                  title: isSuggestion
-                    ? `🟡 Öneri: ${displayPrice(netPrice)} — ${materialName.slice(0, 45)}`
-                    : `🟢 ${displayPrice(netPrice)} — ${materialName.slice(0, 50)}`,
+                if (!silent) toast({
+                  title: match.autoVariant
+                    ? `⚡ Otomatik varyant: ${displayPrice(netPrice)} — ${materialName.slice(0, 40)}`
+                    : isSuggestion
+                      ? `🟡 Öneri: ${displayPrice(netPrice)} — ${materialName.slice(0, 45)}`
+                      : `🟢 ${displayPrice(netPrice)} — ${materialName.slice(0, 50)}`,
                   description: isSuggestion
                     ? `Tahmini eşleşme: ${match.matchedName?.slice(0, 70) ?? '?'}${rozet} — lütfen kontrol edin`
                     : `Eslesti: ${match.matchedName?.slice(0, 80) ?? 'Bilinmeyen'}${rozet}`,
                 });
-                return { netPrice, matchedName: match.matchedName, candidates: match.candidates, reason: match.reason, confidence: match.confidence, donusum: match.donusum };
+                return { netPrice, matchedName: match.matchedName, candidates: match.candidates, reason: match.reason, confidence: match.confidence, donusum: match.donusum, autoVariant: match.autoVariant };
               }
 
               // Eslesme bulundu ama fiyat 0 — kullaniciya uyari

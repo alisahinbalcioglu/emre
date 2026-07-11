@@ -177,8 +177,8 @@ async function run() {
     check('T15 popup veya sari-oneri', okMulti || okSuggestion, `got ${r?.confidence} "${r?.matchedName}"`);
   }
 
-  // T16 (V5): DN25 vanada pirinc secildi → FARKLI capli (DN32) vana
-  // belirsizliginde cins tercihi otomatik 'suggestion' doldurur
+  // T16 (V5, PRD v1.3): DN25 vanada pirinc secildi → FARKLI capli (DN32) vana
+  // belirsizliginde tercih ON-SECILI gelir (otomatik DOLDURMAZ — secim kullanicinin)
   {
     const LIB = [
       ...VANA_LIB,
@@ -190,12 +190,45 @@ async function run() {
     check('T16 once multi', r1?.confidence === 'multi', `got ${r1?.confidence}`);
     await svc.remember('u1', 'brand-1', 'DN 25 KÜRESEL VANA', 'Küresel Vana DN25 Pirinç');
     const r2 = (await svc.bulkMatch('u1', 'brand-1', ['DN 32 KÜRESEL VANA']))['DN 32 KÜRESEL VANA'];
-    check('T16 cins tercihi farkli capta', r2?.confidence === 'suggestion' && !!r2?.matchedName?.includes('Pirinç'),
-      `got ${r2?.confidence} "${r2?.matchedName}" (${r2?.reason})`);
-    // Ayni cap tekrar gelirse tam-imza hafizasi calisir (mevcut davranis)
+    check('T16 tercih ON-SECILI (multi kalir)', r2?.confidence === 'multi'
+      && r2?.candidates?.[0]?.preferred === true && !!r2?.candidates?.[0]?.materialName?.includes('Pirinç'),
+      `got ${r2?.confidence} ilk="${r2?.candidates?.[0]?.materialName}" preferred=${r2?.candidates?.[0]?.preferred}`);
+    check('T16 netPrice yazilmadi', r2?.netPrice === 0, `got ${r2?.netPrice}`);
+    // Ayni cap tekrar gelirse tam-imza hafizasi calisir (mevcut davranis korunur)
     const r3 = (await svc.bulkMatch('u1', 'brand-1', ['DN 25 KÜRESEL VANA']))['DN 25 KÜRESEL VANA'];
     check('T16 ayni imza hafizadan', r3?.confidence === 'suggestion' && !!r3?.matchedName?.includes('Pirinç'),
       `got ${r3?.confidence} "${r3?.matchedName}"`);
+  }
+
+  // T17/T18-altyapi/T19 (V4): grup varyant filtresi — kirmizi boyali / duz uclu / disli
+  {
+    const FIRE_LIB = [
+      lib('Sprinkler Borusu Kırmızı Boyalı 1"', 105.9),
+      lib('Sprinkler Borusu Düz Uçlu 1"', 98.4),
+      lib('Sprinkler Borusu Dişli 1"', 112.7),
+      lib('Sprinkler Borusu Kırmızı Boyalı 1 1/4"', 130),
+      lib('Sprinkler Borusu Düz Uçlu 1 1/4"', 120),
+      lib('Sprinkler Borusu Dişli 1 1/4"', 137),
+      // DN 65'te kirmizi BILEREK YOK (T19)
+      lib('Sprinkler Borusu Düz Uçlu 2 1/2"', 260),
+      lib('Sprinkler Borusu Dişli 2 1/2"', 288),
+    ];
+    const svc = makeService('ÇAYIROVA', FIRE_LIB);
+    // Ilk satir: 3 varyant fiyatli listede, her adayin variantTags'i dolu
+    const r1 = (await svc.bulkMatch('u1', 'brand-1', ['SPRİNK HATTI BORULARI DN 25']))['SPRİNK HATTI BORULARI DN 25'];
+    check('T17 ilk satir multi (3 varyant)', r1?.confidence === 'multi' && r1?.candidates?.length === 3,
+      `got ${r1?.confidence} ${r1?.candidates?.length} aday`);
+    const kirmizi = r1?.candidates?.find((c) => c.materialName.includes('Kırmızı'));
+    check('T17 kirmizi adayin variantTags dolu', !!kirmizi?.variantTags?.includes('kirmizi'),
+      `got ${JSON.stringify(kirmizi?.variantTags)}`);
+    // Grup atamasi: DN 32'ye ayni varyant — otomatik, kendi capinin fiyati
+    const r2 = (await svc.bulkMatch('u1', 'brand-1', ['SPRİNK HATTI BORULARI DN 32'], kirmizi?.variantTags))['SPRİNK HATTI BORULARI DN 32'];
+    check('T17 autoVariant DN32 kirmizi', r2?.autoVariant === true && !!r2?.matchedName?.includes('Kırmızı') && !!r2?.matchedName?.includes('1 1/4"'),
+      `got ${r2?.confidence} auto=${r2?.autoVariant} "${r2?.matchedName}"`);
+    // T19: DN 65'te kirmizi yok → otomatik atama YOK, fiyatli liste + neden
+    const r3 = (await svc.bulkMatch('u1', 'brand-1', ['SPRİNK HATTI BORULARI DN 65'], kirmizi?.variantTags))['SPRİNK HATTI BORULARI DN 65'];
+    check('T19 variantMissing + secim bekliyor', r3?.variantMissing === true && (r3?.candidates?.length ?? 0) === 2 && r3?.netPrice === 0,
+      `got missing=${r3?.variantMissing} ${r3?.candidates?.length} aday net=${r3?.netPrice} (${r3?.reason})`);
   }
 
   // Ters yon (T9 pipeline): kutuphane DN25 kayitli, Excel 1" — celik marka

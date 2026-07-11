@@ -34,7 +34,12 @@ interface Props {
   data: ExcelGridData;
   brands: Brand[];
   title?: string;
-  onBrandChange: (rowIdx: number, brandId: string, materialName: string) => Promise<{
+  onBrandChange: (rowIdx: number, brandId: string, materialName: string, opts?: {
+    // V4: grup varyant filtresi — adaylar bu tag'lerin tamamini tasimali
+    variantTags?: string[];
+    // Grup ici toplu uygulamada toast gurultusunu kapat
+    silent?: boolean;
+  }) => Promise<{
     netPrice: number;
     matchedName?: string;
     candidates?: MatchCandidate[];
@@ -45,7 +50,13 @@ interface Props {
     notProduct?: boolean;
     // U2 seffaf cevrim rozeti: "DN 25 → 1\" (çelik)"
     donusum?: string;
+    // V4: varyant filtresi tek adaya indi (grup otomatik atamasi)
+    autoVariant?: boolean;
+    // V4.5: varyant bu capta yok — secim bekliyor
+    variantMissing?: boolean;
   } | null>;
+  /** V4.4: grup ici otomatik varyant atama anahtari (varsayilan ACIK) */
+  autoVariantEnabled?: boolean;
   // Iscilik tarafi
   laborFirms?: LaborFirm[];
   sheetDiscipline?: 'mechanical' | 'electrical' | null;
@@ -85,6 +96,12 @@ const offeredHeaderAliases = new Set<string>();
 const FE_KIND_TAGS = ['celik', 'pirinc', 'dokum', 'paslanmaz', 'bronz', 'aluminyum', 'bakir', 'ppr', 'pvc', 'pe', 'hdpe'];
 const FE_PLASTIC_KINDS = ['ppr', 'pvc', 'pe', 'hdpe'];
 
+/** V4: grup (baslik) → secilmis varyant kimligi. Grid seviyesinde ref olarak
+ *  yasar — cell renderer'lar arasinda paylasilir, re-render tetiklemez. */
+export interface GroupVariantMap {
+  [headerKey: string]: { tags: string[]; label: string };
+}
+
 function BrandDropdown(props: ICellRendererParams & {
   brands: Brand[];
   onBrandChange: Props['onBrandChange'];
@@ -95,8 +112,10 @@ function BrandDropdown(props: ICellRendererParams & {
   materialUnitPriceField?: string;
   materialTotalField?: string;
   diameterField?: string;
+  groupVariants: React.MutableRefObject<GroupVariantMap>;
+  autoVariantEnabled: boolean;
 }) {
-  const { data, brands, onBrandChange, nameField, noField, brandField, quantityField, materialUnitPriceField, materialTotalField, diameterField, api, node } = props;
+  const { data, brands, onBrandChange, nameField, noField, brandField, quantityField, materialUnitPriceField, materialTotalField, diameterField, groupVariants, autoVariantEnabled, api, node } = props;
   const [candidates, setCandidates] = React.useState<MatchCandidate[] | null>(null);
   const [popupPos, setPopupPos] = React.useState<{ top: number; left: number } | null>(null);
   const triggerRef = React.useRef<HTMLButtonElement>(null);
@@ -153,17 +172,26 @@ function BrandDropdown(props: ICellRendererParams & {
     // 3 ASAMALI MATCHING: once malzeme adi, sonra baslik+malzeme, sonra secenek
     const ctxDetail = buildMaterialContextDetailed(api, node.rowIndex ?? 0, nameField, noField, brandField, quantityField);
     const fullName = ctxDetail.name;
-    headerRef.current = ctxDetail.header; // S4: sozluk ogrenme onerisi icin
+    headerRef.current = ctxDetail.header; // S4/V4: grup anahtari + sozluk onerisi
+
+    // ── V4/V4.6: GRUP VARYANTI — grupta secim yapildiysa ayni varyantla ara.
+    // V4.2 KACIS: satir zaten otomatik doluysa kullanicinin markaya tekrar
+    // tiklamasi "tam listeyi goster" demektir → filtresiz ara, popup acilir,
+    // secim satiri MANUEL yapar. Manuel satira da filtre uygulanmaz.
+    const gv = autoVariantEnabled && ctxDetail.header ? groupVariants.current[ctxDetail.header] : undefined;
+    const escapeAuto = !!data._matAutoVariant;
+    const useVariant = !!gv && !escapeAuto && data._matVariantMode !== 'manual';
+    const opts = useVariant ? { variantTags: gv!.tags } : undefined;
 
     // Asama 1: Sadece malzeme adi ile dene
-    console.log(`[BrandDropdown] row=${data._rowIdx}, Asama1 currentName="${currentName}"`);
-    let result = await onBrandChange(data._rowIdx, brandId, currentName);
+    console.log(`[BrandDropdown] row=${data._rowIdx}, Asama1 currentName="${currentName}"${useVariant ? ` varyant=[${gv!.tags.join(',')}]` : ''}${escapeAuto ? ' (oto-kacis: tam liste)' : ''}`);
+    let result = await onBrandChange(data._rowIdx, brandId, currentName, opts);
     lookupNameRef.current = currentName; // ogrenme imzasi bu adla uretilir
 
     // Asama 2: Eslesme yoksa veya fiyat 0, baslik+malzeme ile dene (farkliysa)
     if ((!result || result.netPrice <= 0) && fullName && fullName !== currentName) {
       console.log(`[BrandDropdown] row=${data._rowIdx}, Asama2 fullName="${fullName}"`);
-      const result2 = await onBrandChange(data._rowIdx, brandId, fullName);
+      const result2 = await onBrandChange(data._rowIdx, brandId, fullName, opts);
       if (result2 && result2.netPrice > 0) {
         result = result2;
         lookupNameRef.current = fullName;
@@ -179,7 +207,7 @@ function BrandDropdown(props: ICellRendererParams & {
         const rect = triggerRef.current.getBoundingClientRect();
         setPopupPos({ top: rect.bottom + 2, left: rect.left });
       }
-      node.setDataValue('_matStatus', 'belirsiz'); // secim bekleniyor
+      node.setDataValue('_matStatus', 'belirsiz'); // secim bekleniyor (V4.5 dahil)
       setShowAllCandidates(false); // V7: yeni popup 8 adayla baslar
       setCandidates(result.candidates);
       return;
@@ -188,6 +216,11 @@ function BrandDropdown(props: ICellRendererParams & {
     // Tek eslesme — fiyat yaz ('suggestion' ise sari isaretle)
     if (result && result.netPrice > 0) {
       writePrice(result.netPrice, result.confidence === 'suggestion');
+      // V4.1/V4.6: grup varyantiyla otomatik dolduysa rozeti isle
+      if (result.autoVariant && useVariant) {
+        node.setDataValue('_matAutoVariant', gv!.label);
+        node.setDataValue('_matVariantMode', 'auto');
+      }
       return;
     }
 
@@ -200,48 +233,62 @@ function BrandDropdown(props: ICellRendererParams & {
     if (materialTotalField) node.setDataValue(materialTotalField, '');
   };
 
-  // V4: ayni marka + secim bekleyen ('belirsiz') satirlari yeniden eslestir.
-  // remember() cins tercihini YAZDIKTAN sonra cagrilir — re-match cins
-  // tercihine carpar, tek adaya inen satirlar sari 'oneri' olarak dolar.
-  const applyToSimilarRows = async (brandId: string) => {
-    const pending: any[] = [];
+  // ── V4 (PRD v1.3): GRUP ICI OTOMATIK VARYANT ATAMA — SORULMAZ ──────
+  // Ayni baslik altindaki, manuel olmayan satirlara secilen varyantin KENDI
+  // CAPLARININ fiyati atanir. Varyant o capta yoksa satir fiyatli listeyle
+  // "secim bekliyor" kalir (V4.5). Markasiz satirlara dokunulmaz — marka
+  // secildigi anda hatirlanan varyantla dolarlar (V4.6, handleChange'de).
+  const applyVariantToGroup = async (groupKey: string, variant: { tags: string[]; label: string }) => {
+    const targets: any[] = [];
     api.forEachNode((n: any) => {
       const d = n.data;
-      if (n !== node && d?._isDataRow && d._matStatus === 'belirsiz' && d._marka === brandId) pending.push(n);
+      if (n === node || !d?._isDataRow || !d._marka) return;
+      if (d._matVariantMode === 'manual') return; // V4.2/V4.3: manuel satira dokunma
+      const det = buildMaterialContextDetailed(api, n.rowIndex ?? 0, nameField, noField, brandField, quantityField);
+      if (det.header === groupKey) targets.push(n);
     });
-    if (pending.length === 0) return;
-    if (!window.confirm(`Bu seçim, aynı markada seçim bekleyen ${pending.length} benzer satıra da uygulansın mı?\n(Cins tercihinizle yeniden eşleştirilir; kesin olmayanlar seçimde kalır.)`)) return;
+    if (targets.length === 0) return;
     let applied = 0;
-    for (const n of pending.slice(0, 50)) {
+    let waiting = 0;
+    for (const n of targets.slice(0, 100)) {
       const d = n.data;
       const baseName = nameField ? String(d[nameField] ?? '').trim() : '';
       const diaVal = diameterField ? String(d[diameterField] ?? '').trim() : '';
       const nm = joinMaterialText(diaVal, baseName);
       if (!nm) continue;
       try {
-        let r = await onBrandChange(d._rowIdx, brandId, nm);
-        if (!r || r.netPrice <= 0) {
+        let r = await onBrandChange(d._rowIdx, d._marka, nm, { variantTags: variant.tags, silent: true });
+        if ((!r || r.netPrice <= 0) && !r?.variantMissing) {
           const det = buildMaterialContextDetailed(api, n.rowIndex ?? 0, nameField, noField, brandField, quantityField);
-          if (det.name && det.name !== nm) r = await onBrandChange(d._rowIdx, brandId, det.name);
+          if (det.name && det.name !== nm) r = await onBrandChange(d._rowIdx, d._marka, det.name, { variantTags: variant.tags, silent: true });
         }
-        if (r && r.netPrice > 0) {
-          writePriceToNode(n, r.netPrice, true); // toplu uygulama = oneri (sari), kesin degil
+        if (r && r.autoVariant && r.netPrice > 0) {
+          writePriceToNode(n, r.netPrice, true);
+          n.setDataValue('_matAutoVariant', variant.label); // V4.1 rozeti
+          n.setDataValue('_matVariantMode', 'auto');
           applied++;
+        } else if (r && r.variantMissing) {
+          // V4.5: varyant bu capta yok — secim bekliyor, neden tooltip'te
+          n.setDataValue('_matStatus', 'belirsiz');
+          waiting++;
         }
-      } catch { /* satir atlanir, belirsiz kalir */ }
+      } catch { /* satir atlanir */ }
     }
-    console.log(`[BrandDropdown] V4: ${applied}/${pending.length} benzer satir dolduruldu`);
+    console.log(`[BrandDropdown] V4 grup atamasi "${groupKey}" (${variant.label}): ${applied} otomatik, ${waiting} secim bekliyor, ${targets.length} hedef`);
   };
 
   const handleCandidateSelect = async (c: MatchCandidate) => {
     const brandId = data._marka as string | null;
-    // Kullanici popup'tan bilincli sectiginde 'oneri' degil kesin sayilir
+    // Kullanici popup'tan bilincli sectiginde 'oneri' degil kesin sayilir.
+    // V4.2: popup'tan secim = MANUEL — grup degisse bile uzerine yazilmaz.
     writePrice(c.netPrice, false);
+    node.setDataValue('_matVariantMode', 'manual');
+    node.setDataValue('_matAutoVariant', null);
     setCandidates(null);
     setPopupPos(null);
 
-    // OGRENME (PRD Adim 8 + V5): secimi hafizaya yaz. V4 re-match'i cins
-    // tercihine carpsin diye AWAIT edilir; hata akisi bozmaz.
+    // OGRENME (PRD Adim 8 + V5): secimi hafizaya yaz (V5 artik ON-SECILI
+    // getirir, otomatik doldurmaz — dosyalar arasi atama yok).
     if (brandId && lookupNameRef.current) {
       try {
         await httpApi.post('/matching/remember', {
@@ -270,8 +317,15 @@ function BrandDropdown(props: ICellRendererParams & {
       }
     }
 
-    // V4: ayni belirsizligi bekleyen benzer satirlara uygula
-    if (brandId) await applyToSimilarRows(brandId);
+    // V4: grupta ILK varyant secimi grubu belirler ve SORULMADAN yayilir.
+    // Grup varyanti zaten varsa bu secim yalniz BU satiri manuel yapar (T18) —
+    // gruba dokunulmaz.
+    if (autoVariantEnabled && hdr && c.variantTags && c.variantTags.length > 0) {
+      if (!groupVariants.current[hdr]) {
+        groupVariants.current[hdr] = { tags: c.variantTags, label: c.label };
+        await applyVariantToGroup(hdr, groupVariants.current[hdr]);
+      }
+    }
   };
 
   const handleCancel = () => {
@@ -339,8 +393,11 @@ function BrandDropdown(props: ICellRendererParams & {
                 e.currentTarget.style.borderColor = '#e5e7eb';
               }}
             >
-              <div style={{ fontWeight: 600 }}>{c.popular && '★ '}{c.label}</div>
-              <div style={{ color: '#6b7280', fontSize: 11 }}>{c.netPrice.toFixed(1)} TL</div>
+              <div style={{ fontWeight: 600 }}>{c.preferred && '✓ '}{c.popular && '★ '}{c.label}</div>
+              <div style={{ color: '#6b7280', fontSize: 11 }}>
+                {c.netPrice.toFixed(1)} TL
+                {c.preferred && <span style={{ color: '#059669', marginLeft: 6, fontWeight: 600 }}>önceki tercihiniz</span>}
+              </div>
             </button>
           ))}
           {!showAllCandidates && candidates.length > 8 && (
@@ -725,8 +782,12 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
   mode = 'quote',
   libraryPriceField = 'materialUnitPriceField',
   currencySymbol, conversionRate,
+  autoVariantEnabled = true,
 }, ref) {
   const gridRef = useRef<AgGridReact<ExcelRowData>>(null);
+
+  // V4: grup (baslik) → secilen varyant. Cell renderer'lar paylasir.
+  const groupVariantsRef = useRef<GroupVariantMap>({});
 
   // ── DINAMIK GRID: sag tik context menu state ──
   const [ctxMenu, setCtxMenu] = useState<{
@@ -842,23 +903,40 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     };
 
     if (result.field === '_marka' && onBrandChange) {
-      // Marka fill → her satir icin matching tetikle
+      // Marka fill → her satir icin matching tetikle (baslik baglami + V4.6
+      // grup varyanti dahil — surukle-doldur da ayni akistan gecer)
       for (const node of result.targetRowNodes) {
         if (!node.data?._isDataRow) continue;
         node.setDataValue('_marka', result.value);
         const currentName = lookupNameOf(node.data);
         if (!currentName) continue;
         try {
-          const matchResult = await onBrandChange(node.data._rowIdx, result.value, currentName);
+          const det = buildMaterialContextDetailed(
+            api, node.rowIndex ?? 0,
+            nameField, data.columnRoles.noField, data.columnRoles.brandField, quantityField,
+          );
+          const gv = autoVariantEnabled && det.header ? groupVariantsRef.current[det.header] : undefined;
+          const opts = gv && node.data._matVariantMode !== 'manual' ? { variantTags: gv.tags } : undefined;
+          let matchResult = await onBrandChange(node.data._rowIdx, result.value, currentName, opts);
+          if ((!matchResult || matchResult.netPrice <= 0) && !matchResult?.variantMissing && det.name && det.name !== currentName) {
+            matchResult = await onBrandChange(node.data._rowIdx, result.value, det.name, opts);
+          }
           if (matchResult && matchResult.netPrice > 0) {
             node.setDataValue('_matNetPrice', matchResult.netPrice);
             node.setDataValue('_matSuggestion', matchResult.confidence === 'suggestion');
             node.setDataValue('_matStatus', '');
+            if (matchResult.autoVariant && gv) {
+              node.setDataValue('_matAutoVariant', gv.label); // V4.1 rozeti
+              node.setDataValue('_matVariantMode', 'auto');
+            }
             const kar = parseFloat(String(node.data._malzKar ?? 0)) || 0;
             const finalPrice = hesaplaSatisBirimFiyat(matchResult.netPrice, kar);
             const qty = quantityField ? parseFloat(String(node.data[quantityField] ?? 0)) || 0 : 0;
             if (materialUnitPriceField) node.setDataValue(materialUnitPriceField, finalPrice.toFixed(1));
             if (materialTotalField) node.setDataValue(materialTotalField, hesaplaSatirToplam(finalPrice, qty).toFixed(1));
+          } else if (matchResult?.candidates?.length) {
+            // Coklu varyant — secim bekliyor (kirmizi 'yok' DEGIL)
+            node.setDataValue('_matStatus', 'belirsiz');
           } else {
             node.setDataValue('_matStatus', matchResult?.notProduct ? 'urun_degil' : 'yok');
           }
@@ -1124,6 +1202,8 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
             materialUnitPriceField={data.columnRoles.materialUnitPriceField}
             materialTotalField={data.columnRoles.materialTotalField}
             diameterField={data.columnRoles.diameterField}
+            groupVariants={groupVariantsRef}
+            autoVariantEnabled={autoVariantEnabled}
           />
         );
         base.editable = false;
@@ -1183,12 +1263,16 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           return `${currencySymbol}${formatted}`;
         };
         // Malzeme birim fiyat — ALTIN KURAL isaretleri:
+        //   mavi  = 'otomatik varyant' (V4.1 — grup seciminden atandi)
         //   sari  = 'oneri' (cap-only/baslik-ipucu eslesmesi, kontrol edin)
         //   kirmizi = 'yok' (kutuphanede eslesme yok — aktarim/secim bekliyor)
         //   gri   = 'urun_degil' (oran/hizmet satiri — fiyat beklenmiyor)
         if (field === data.columnRoles.materialUnitPriceField) {
           base.cellStyle = ((params: any) => {
             if (!params.node?.rowPinned) {
+              if (params.data?._matAutoVariant) {
+                return { textAlign: 'right', backgroundColor: '#e0f2fe', color: '#0c4a6e' };
+              }
               if (params.data?._matSuggestion) {
                 return { textAlign: 'right', backgroundColor: '#fef9c3', color: '#854d0e' };
               }
@@ -1200,6 +1284,17 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
               }
             }
             return { textAlign: 'right' };
+          }) as any;
+          // V4.1 rozet + neden tooltip'i: otomatik varyant / secim bekliyor
+          base.tooltipValueGetter = ((params: any) => {
+            const d = params.data;
+            if (!d || params.node?.rowPinned) return '';
+            if (d._matAutoVariant) return `⚡ otomatik: ${d._matAutoVariant} — farklı varyant için marka menüsünü yeniden açın`;
+            if (d._matStatus === 'belirsiz') return 'Seçim bekliyor — marka menüsünü açıp varyant seçin';
+            if (d._matStatus === 'yok') return 'Kütüphanede eşleşme yok';
+            if (d._matStatus === 'urun_degil') return 'Oran/hizmet satırı — fiyat beklenmiyor';
+            if (d._matSuggestion) return 'Öneri — kontrol edin';
+            return '';
           }) as any;
         } else {
           base.cellStyle = { textAlign: 'right' };

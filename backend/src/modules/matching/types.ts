@@ -18,6 +18,10 @@ export interface MatchResult {
   candidates?: MatchCandidate[];
   // U2 seffaf cevrim rozeti: "DN 25 → 1\" (çelik)" — cevrim yapildiysa dolu
   donusum?: string;
+  // V4 (PRD v1.3): variantTags filtresi tek adaya indi — grup ici otomatik atama
+  autoVariant?: boolean;
+  // V4.5: istenen varyant bu capta kutuphanede yok — secim bekliyor
+  variantMissing?: boolean;
 }
 
 export interface MatchCandidate {
@@ -31,6 +35,11 @@ export interface MatchCandidate {
   label: string;
   // Sadece malzeme cinsi/yuzey farki mi (asama 1)? Yoksa baglanti vs farki mi (asama 2)?
   surfaceLevel: boolean;
+  // V4: bu adayi kardeslerinden ayiran ANLAMLI tag'ler (cins/yuzey/baglanti/PN/
+  // subtype) — grup ici otomatik atamada varyant kimligi olarak kullanilir
+  variantTags?: string[];
+  // V5 (PRD v1.3): hesabin gecmis tercihine uyan aday — liste basinda on-secili
+  preferred?: boolean;
 }
 
 export interface TaggedMaterial {

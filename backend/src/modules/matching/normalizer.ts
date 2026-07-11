@@ -205,6 +205,18 @@ export function extractSurface(text: string): string | null {
   return null;
 }
 
+/** TUM yuzey tag'lerini toplar (V4 varyant kimligi icin — PRD v1.2/v1.3).
+ *  "Siyah Celik Boru Kirmizi Boyali" → ['siyah','kirmizi','boyali']:
+ *  tek-yuzey versiyonu 'siyah'ta durur, kirmizi varyant AYIRT EDILEMEZDI. */
+export function extractSurfaces(text: string): string[] {
+  const normalized = normalizeText(text);
+  const out: string[] = [];
+  for (const { pattern, tag } of SURFACE_PATTERNS) {
+    if (pattern.test(normalized) && !out.includes(tag)) out.push(tag);
+  }
+  return out;
+}
+
 // ────────────────────────────────────────────
 // Baglanti Tipi Tespiti
 // ────────────────────────────────────────────

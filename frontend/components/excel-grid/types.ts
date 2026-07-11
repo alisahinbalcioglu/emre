@@ -27,6 +27,12 @@ export interface ExcelRowData {
   /** En alttaki her-zaman-bos satir — kullanici yazinca gercek satira donusur
    *  ve yenisi eklenir. Kayitta filtrelenir. */
   _isSpareRow?: boolean;
+  /** V4 (PRD v1.3): satirin varyant durumu — 'auto' = grup seciminden otomatik
+   *  atandi (grup degisirse guncellenir), 'manuel' = kullanici secti (uzerine
+   *  YAZILMAZ, V4.2). Bos = henuz varyant karari yok. */
+  _matVariantMode?: 'auto' | 'manual';
+  /** V4.1 rozeti: otomatik atanan varyantin etiketi ("Kırmızı Boyalı") */
+  _matAutoVariant?: string | null;
 }
 
 export interface ColumnRoles {
@@ -78,4 +84,8 @@ export interface MatchCandidate {
   popular: boolean;
   label: string;
   surfaceLevel: boolean;
+  // V4: adayi kardeslerinden ayiran anlamli tag'ler (grup varyant kimligi)
+  variantTags?: string[];
+  // V5: hesabin gecmis tercihi — liste basinda on-secili gosterilir
+  preferred?: boolean;
 }

@@ -7,7 +7,7 @@ import {
   normalizeText,
   extractDiameter,
   extractODiameter,
-  extractSurface,
+  extractSurfaces,
   extractConnection,
   extractMaterialType,
   extractMaterialKind,
@@ -40,9 +40,9 @@ export function generateTags(materialName: string): TaggedMaterial {
     if (oDiameter) tags.add(oDiameter);
   }
 
-  // 3. Yuzey islemi tagi
-  const surface = extractSurface(materialName);
-  if (surface) tags.add(surface);
+  // 3. Yuzey islemi tag'leri — TUMU (V4 varyant kimligi: "Siyah ... Kirmizi
+  // Boyali" uc yuzey tasir; tek-yuzey 'siyah'ta durup kirmizi'yi yutuyordu)
+  for (const surface of extractSurfaces(materialName)) tags.add(surface);
 
   // 4. Baglanti tipi tagi
   const connection = extractConnection(materialName);

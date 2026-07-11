@@ -92,6 +92,10 @@ export class MatchingService {
     userId: string,
     brandId: string,
     materialNames: string[],
+    // V4 (PRD v1.3): grup ici otomatik atama — secilen varyantin tag'leri.
+    // Doluysa adaylar bu tag'lerin TAMAMINI tasimali; tek kalirsa otomatik
+    // atanir (autoVariant), hic kalmazsa variantMissing + fiyatli liste (V4.5).
+    variantTags?: string[],
   ): Promise<Record<string, MatchResult>> {
     // ── KUTUPHANEM IZOLASYONU (PRD) ──────────────────────────────────
     // Aday havuzu artik GLOBAL MaterialPrice DEGIL, kullanicinin KENDI
@@ -172,7 +176,7 @@ export class MatchingService {
 
     for (const excelName of materialNames) {
       if (!excelName.trim()) continue;
-      let result = this.matchSingle(excelName, allPrices, libItems, ctx);
+      let result = this.matchSingle(excelName, allPrices, libItems, ctx, variantTags);
 
       // ── OGRENME HAFIZASI (PRD Adim 8) ─────────────────────────────
       // Belirsiz kararindan ONCE oku: ayni imza icin kullanici daha once
@@ -201,9 +205,10 @@ export class MatchingService {
         }
       }
 
-      // ── CINS TERCIHI (PRD V4/V5): olcu-bagimsiz varyant tercihi ───
-      // "Kuresel vanalar pirinc" secildiyse FARKLI capli ayni-tip belirsizlikte
-      // pirinc adaylar one gecer; tek adaya inerse 'suggestion' dolar.
+      // ── CINS TERCIHI (V5, PRD v1.3): ON-SECILI getir, OTOMATIK DOLDURMA ──
+      // "İlk satırdaki seçim yine kullanıcıya aittir; dosyalar arası otomatik
+      // atama yapılmaz" — tercih edilen adaylar listenin BASINA alinir ve
+      // preferred=true isaretlenir; secim kullanicinin.
       if (result.confidence === 'multi' && result.candidates?.length) {
         let kmem: any = null;
         try {
@@ -213,19 +218,14 @@ export class MatchingService {
         } catch { kmem = null; }
         if (kmem) {
           const preferred = result.candidates.filter((c) => c.tags?.includes(kmem.secilenAd));
-          if (preferred.length === 1) {
-            const cand = preferred[0];
-            console.log(`[Matching] CINS TERCIHI HIT: "${excelName}" → ${kmem.secilenAd} → "${cand.materialName}"`);
+          if (preferred.length > 0 && preferred.length < result.candidates.length) {
+            const rest = result.candidates.filter((c) => !c.tags?.includes(kmem.secilenAd));
+            console.log(`[Matching] CINS TERCIHI ON-SECILI: "${excelName}" → ${kmem.secilenAd} (${preferred.length} aday one alindi)`);
             result = {
-              netPrice: cand.netPrice, listPrice: cand.listPrice, discount: cand.discount,
-              confidence: 'suggestion',
-              matchedName: cand.materialName,
-              donusum: result.donusum,
-              reason: `Geçmiş tercihinizden (${kmem.secilenAd}, ${kmem.secimSayisi}×) — kontrol edin`,
+              ...result,
+              candidates: [...preferred.map((c) => ({ ...c, preferred: true })), ...rest],
+              reason: `${result.reason ?? ''} Geçmiş tercihiniz (${kmem.secilenAd}) önde.`.trim(),
             };
-          } else if (preferred.length > 1 && preferred.length < result.candidates.length) {
-            // Tercih daraltir ama tek adaya inmez — popup kucultulmus gelir
-            result = { ...result, candidates: preferred, reason: `${preferred.length} aday (geçmiş tercih: ${kmem.secilenAd}). ${result.reason ?? ''}` };
           }
         }
       }
@@ -250,6 +250,7 @@ export class MatchingService {
     allPrices: MaterialPriceItem[],
     libItems: LibItem[],
     ctx: MatchContext,
+    variantTags?: string[],
   ): MatchResult {
     const excelTags = generateTags(excelName);
 
@@ -448,6 +449,42 @@ export class MatchingService {
         console.log(`[Matching]   Sinif belirsiz (celik/PPR yorumlari) → popup`);
         return this.buildMultiResult(topCandidates, libItems, 'Malzeme sınıfı belirsiz: çelik (DN↔inç) ve PPR (DN=mm) yorumları farklı ürünlere gidiyor.', null);
       }
+    }
+
+    // ── V4 (PRD v1.3): GRUP VARYANT FILTRESI ────────────────────────
+    // Grupta ilk secim yapildi, ayni varyant bu satirin capinda araniyor.
+    // Tag'lerin TAMAMI eslesmeli (kutuphaneden dinamik turetilmis kimlik).
+    if (variantTags && variantTags.length > 0) {
+      const matching = topCandidates.filter((c) =>
+        variantTags.every((t) => c.priceItem.material.tags.includes(t)),
+      );
+      if (matching.length === 1) {
+        const winner = matching[0];
+        const libItem = libItems.find(
+          (l) => (l.materialName ?? '').toLowerCase().trim() === winner.priceItem.material.name.toLowerCase().trim(),
+        );
+        const discount = libItem?.discountRate ?? 0;
+        const listPrice = libItem?.listPrice ?? winner.priceItem.price;
+        const netPrice = hesaplaNetFiyat(listPrice, discount);
+        console.log(`[Matching] "${excelName}" → V4 OTOMATIK VARYANT (${variantTags.join(',')}) → "${winner.priceItem.material.name}"`);
+        return {
+          netPrice, listPrice, discount,
+          confidence: 'suggestion',
+          autoVariant: true,
+          matchedName: winner.priceItem.material.name,
+          donusum: equiv.rozet ?? undefined,
+          reason: `Grup varyantı uygulandı (${variantTags.join(', ')})`,
+        };
+      }
+      if (matching.length === 0) {
+        // V4.5: varyant bu capta yok — otomatik atama YAPMA, fiyatli listeyle
+        // "secim bekliyor" birak, nedeni soyle.
+        console.log(`[Matching] "${excelName}" → V4.5 varyant yok (${variantTags.join(',')}) → secim bekliyor`);
+        const r = this.buildMultiResult(topCandidates, libItems, `Seçilen varyant (${variantTags.join(', ')}) bu çapta kütüphanede yok — elle seçin.`, equiv.rozet);
+        return { ...r, variantMissing: true };
+      }
+      // >1: varyant tag'leri bu capta birden fazla urunu tutuyor — daraltilmis popup
+      topCandidates = matching;
     }
 
     // Shared helper: subtype elemesi + otomatik-Disli (ayni tip icinde guvenli)

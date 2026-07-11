@@ -60,6 +60,13 @@ export const POPULAR_MATERIALS = new Set<string>([
   'ppr', 'pvc', 'pe', 'bakir',
 ]);
 
+/** V4 (PRD v1.3): varyant kimligi sayilan tag'ler — cins/yuzey/baglanti/PN/
+ *  subtype. Grup ici otomatik atamada "ayni varyanti farkli capta bul" bu
+ *  tag'lerle yapilir. Cap/tip tag'leri varyant DEGILDIR. */
+export function isVariantTag(t: string): boolean {
+  return SURFACE_KIND_KEYS.has(t) || CONNECTION_TAGS.has(t) || /^pn\d+$/.test(t) || MATERIAL_SUBTYPE_KEYS.has(t);
+}
+
 export const TAG_LABELS: Record<string, string> = {
   galvaniz: 'Galvanizli', siyah: 'Siyah', kirmizi: 'Kırmızı Boyalı', boyali: 'Boyalı',
   celik: 'Çelik', pirinc: 'Pirinç', dokum: 'Döküm', paslanmaz: 'Paslanmaz',
@@ -318,6 +325,9 @@ export function buildCandidateList<T>(
       popular,
       label,
       surfaceLevel,
+      // V4: varyant kimligi — diff tag'lerin anlamli alt kumesi (kutuphaneden
+      // dinamik turetilir, sabit liste yok — PRD v1.3 V0 genellik ilkesi)
+      variantTags: diffTags.filter(isVariantTag),
     };
   });
 
