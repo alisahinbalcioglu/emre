@@ -403,16 +403,21 @@ export class MatchingService {
         topCandidates = preferred;
       }
       // YUZEY tercihi (sozluk "SIYAH celik boru" der — sprink hatti siyah
-      // borudur, galvaniz degil): kinds icinde yuzey tag'i varsa ve o yuzeyi
-      // tasiyan aday(lar) varsa yalniz onlara in. Uyan yoksa dokunma.
+      // borudur, galvaniz DEGIL): CAKISAN TABAN yuzeyi tasiyan adaylari ele.
+      // Duzeltme Talebi dersi: "siyah'a daralt" yanlisti — Kirmizi Boyali boru
+      // (siyah celigin boyalisi) listeden dusuyordu; varyant secenegi olarak
+      // KALMALI. Taban yuzeyler (siyah/galvaniz) birbirini dislar; kirmizi/
+      // boyali taban degil, kaplama — elenmez.
+      const BASE_SURFACES = ['siyah', 'galvaniz'];
       const prefSurfaces = preferredKinds.filter((k) => SURFACE_TAGS.has(k));
       if (prefSurfaces.length > 0 && topCandidates.length > 1) {
-        const surfaced = topCandidates.filter((c) =>
-          c.priceItem.material.tags.some((t) => prefSurfaces.includes(t)),
-        );
-        if (surfaced.length > 0 && surfaced.length < topCandidates.length) {
-          console.log(`[Matching]   Yuzey tercihi (${prefSurfaces.join('/')}) ile ${topCandidates.length} → ${surfaced.length}`);
-          topCandidates = surfaced;
+        const kept = topCandidates.filter((c) => {
+          const bases = c.priceItem.material.tags.filter((t) => BASE_SURFACES.includes(t));
+          return bases.length === 0 || bases.some((b) => prefSurfaces.includes(b));
+        });
+        if (kept.length > 0 && kept.length < topCandidates.length) {
+          console.log(`[Matching]   Cakisan taban yuzey elendi (${prefSurfaces.join('/')} tercih) ${topCandidates.length} → ${kept.length}`);
+          topCandidates = kept;
         }
       }
     }
@@ -487,16 +492,19 @@ export class MatchingService {
       topCandidates = matching;
     }
 
-    // Shared helper: subtype elemesi + otomatik-Disli (ayni tip icinde guvenli)
+    // Shared helper: subtype elemesi. autoPick=false (Duzeltme Talebi K1/K2):
+    // varyant belirsizse — baglanti farki dahil — OTOMATIK SECIM YASAK,
+    // coklu aday fiyatli popup'a gider. "Tahmini eslesme" kalibi bu yoldan
+    // kalkti; excel metni varyanti soylediyse (disli vb.) refine skoru zaten
+    // tek adaya indirir (A5), popup acilmaz.
     const { narrowed, autoPickedDisli } = narrowTopCandidates(
       topCandidates,
       excelTags.tags,
       (p) => p.material.tags,
       MATERIAL_SUBTYPE_KEYS,
+      false, // autoPick KAPALI — material tarafinda otomatik-Disli yok
     );
-    if (narrowed.length < topCandidates.length && autoPickedDisli) {
-      console.log(`[Matching]   Otomatik Disli secildi: "${narrowed[0].priceItem.material.name}"`);
-    } else if (narrowed.length < topCandidates.length) {
+    if (narrowed.length < topCandidates.length) {
       console.log(`[Matching]   Subtype elendi: ${topCandidates.length} → ${narrowed.length}`);
     }
     topCandidates = narrowed;

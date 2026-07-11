@@ -127,6 +127,15 @@ function BrandDropdown(props: ICellRendererParams & {
   const headerRef = React.useRef<string | null>(null);
   // V7: 8+ aday oldugunda "tumunu gor" acildi mi
   const [showAllCandidates, setShowAllCandidates] = React.useState(false);
+  // K6 zincirleme secim: 1. soru = varyant (label grubu), 2. soru = alt tip
+  // (ayni label'da birden fazla urun — "Tip A / Tip B"). Fiyat ancak tek
+  // urune inilince yazilir.
+  const [stage2, setStage2] = React.useState<MatchCandidate[] | null>(null);
+  // K4/K7: "Secimi bu gruptaki tum satirlara uygula" — ilk secimde ACIK,
+  // oto-satir kacisinda (V4.2) KAPALI acilir; kullanici degistirebilir.
+  const [applyToGroup, setApplyToGroup] = React.useState(false);
+  // Popup basliginda gosterilecek cevrim rozeti ("DN 50 → 2\" (çelik)")
+  const donusumRef = React.useRef<string | null>(null);
 
   if (!data?._isDataRow) return null;
 
@@ -209,6 +218,10 @@ function BrandDropdown(props: ICellRendererParams & {
       }
       node.setDataValue('_matStatus', 'belirsiz'); // secim bekleniyor (V4.5 dahil)
       setShowAllCandidates(false); // V7: yeni popup 8 adayla baslar
+      setStage2(null); // K6: zincir bastan
+      // K4: gruba-uygula varsayilani — ilk secimde ACIK, oto-kacista KAPALI
+      setApplyToGroup(autoVariantEnabled && !!ctxDetail.header && !escapeAuto);
+      donusumRef.current = result.donusum ?? null;
       setCandidates(result.candidates);
       return;
     }
@@ -286,6 +299,7 @@ function BrandDropdown(props: ICellRendererParams & {
     node.setDataValue('_matAutoVariant', null);
     setCandidates(null);
     setPopupPos(null);
+    setStage2(null);
 
     // OGRENME (PRD Adim 8 + V5): secimi hafizaya yaz (V5 artik ON-SECILI
     // getirir, otomatik doldurmaz — dosyalar arasi atama yok).
@@ -317,20 +331,20 @@ function BrandDropdown(props: ICellRendererParams & {
       }
     }
 
-    // V4: grupta ILK varyant secimi grubu belirler ve SORULMADAN yayilir.
-    // Grup varyanti zaten varsa bu secim yalniz BU satiri manuel yapar (T18) —
-    // gruba dokunulmaz.
-    if (autoVariantEnabled && hdr && c.variantTags && c.variantTags.length > 0) {
-      if (!groupVariants.current[hdr]) {
-        groupVariants.current[hdr] = { tags: c.variantTags, label: c.label };
-        await applyVariantToGroup(hdr, groupVariants.current[hdr]);
-      }
+    // K4/K7 (Duzeltme Talebi): grup yayilimini POPUP'TAKI CHECKBOX belirler.
+    // Isaretliyse zincirin TAMAMI (secilen somut urunun varyant kimligi) grup
+    // varyanti olur/GUNCELLENIR ve oto-satirlara sorulmadan yayilir (V4.3);
+    // isaretli degilse yalniz bu satir degisir (A4 — manuel, grup etkilenmez).
+    if (applyToGroup && autoVariantEnabled && hdr && c.variantTags && c.variantTags.length > 0) {
+      groupVariants.current[hdr] = { tags: c.variantTags, label: c.label };
+      await applyVariantToGroup(hdr, groupVariants.current[hdr]);
     }
   };
 
   const handleCancel = () => {
     setCandidates(null);
     setPopupPos(null);
+    setStage2(null);
     node.setDataValue('_marka', null);
   };
 
@@ -365,52 +379,108 @@ function BrandDropdown(props: ICellRendererParams & {
           boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
           fontSize: 12,
         }}>
-          <div style={{ fontWeight: 700, color: '#b45309', marginBottom: 6, fontSize: 13 }}>
-            ⚠ Secin ({candidates.length} aday)
+          <div style={{ fontWeight: 700, color: '#b45309', marginBottom: 2, fontSize: 13 }}>
+            🟡 Seçim gerekli{stage2 ? ' — tip seçin' : ` (${candidates.length} aday)`}
           </div>
-          {(showAllCandidates ? candidates : candidates.slice(0, 8)).map((c, i) => (
-            <button
-              key={i}
-              onClick={() => handleCandidateSelect(c)}
-              style={{
-                display: 'block',
-                width: '100%',
-                textAlign: 'left',
-                padding: '6px 8px',
-                border: '1px solid #e5e7eb',
-                background: 'white',
-                cursor: 'pointer',
-                fontSize: 12,
-                borderRadius: 4,
-                marginBottom: 4,
-              }}
-              onMouseEnter={(e) => {
+          {(headerRef.current || donusumRef.current) && (
+            <div style={{ color: '#92400e', fontSize: 10, marginBottom: 6 }}>
+              {headerRef.current ?? ''}{headerRef.current && donusumRef.current ? ' · ' : ''}{donusumRef.current ?? ''}
+            </div>
+          )}
+          {(() => {
+            // K6 ZINCIRLEME SECIM: 1. soru = varyant (label) gruplari.
+            // Ayni label'da birden fazla somut urun varsa (alt tipler) fiyat
+            // HENUZ yazilmaz — 2. soru o urunleri adlariyla listeler.
+            const btnStyle: React.CSSProperties = {
+              display: 'block', width: '100%', textAlign: 'left', padding: '6px 8px',
+              border: '1px solid #e5e7eb', background: 'white', cursor: 'pointer',
+              fontSize: 12, borderRadius: 4, marginBottom: 4,
+            };
+            const hover = {
+              onMouseEnter: (e: React.MouseEvent<HTMLButtonElement>) => {
                 e.currentTarget.style.background = '#dbeafe';
                 e.currentTarget.style.borderColor = '#3b82f6';
-              }}
-              onMouseLeave={(e) => {
+              },
+              onMouseLeave: (e: React.MouseEvent<HTMLButtonElement>) => {
                 e.currentTarget.style.background = 'white';
                 e.currentTarget.style.borderColor = '#e5e7eb';
-              }}
-            >
-              <div style={{ fontWeight: 600 }}>{c.preferred && '✓ '}{c.popular && '★ '}{c.label}</div>
-              <div style={{ color: '#6b7280', fontSize: 11 }}>
-                {c.netPrice.toFixed(1)} TL
-                {c.preferred && <span style={{ color: '#059669', marginLeft: 6, fontWeight: 600 }}>önceki tercihiniz</span>}
-              </div>
-            </button>
-          ))}
-          {!showAllCandidates && candidates.length > 8 && (
-            <button
-              onClick={() => setShowAllCandidates(true)}
-              style={{
-                display: 'block', width: '100%', textAlign: 'center', padding: '6px',
-                border: '1px dashed #f59e0b', background: '#fffbeb', cursor: 'pointer',
-                fontSize: 11, color: '#b45309', borderRadius: 4, marginBottom: 4, fontWeight: 600,
-              }}
-            >
-              Tümünü gör ({candidates.length - 8} aday daha)
-            </button>
+              },
+            };
+
+            if (stage2) {
+              // 2. soru: secilen varyantin alt tipleri (somut urunler, adlariyla)
+              return (
+                <>
+                  <button onClick={() => setStage2(null)} style={{ ...btnStyle, textAlign: 'center', background: '#f9fafb', color: '#6b7280', fontSize: 11 }}>
+                    ← Geri (varyantlar)
+                  </button>
+                  {stage2.map((c, i) => (
+                    <button key={i} onClick={() => handleCandidateSelect(c)} style={btnStyle} {...hover}>
+                      <div style={{ fontWeight: 600 }}>{c.preferred && '✓ '}{c.materialName.slice(0, 60)}</div>
+                      <div style={{ color: '#6b7280', fontSize: 11 }}>{c.netPrice.toFixed(1)} TL</div>
+                    </button>
+                  ))}
+                </>
+              );
+            }
+
+            // 1. soru: label bazli gruplar
+            const groups: { label: string; items: MatchCandidate[]; preferred: boolean }[] = [];
+            for (const c of candidates) {
+              const g = groups.find((x) => x.label === c.label);
+              if (g) { g.items.push(c); g.preferred = g.preferred || !!c.preferred; }
+              else groups.push({ label: c.label, items: [c], preferred: !!c.preferred });
+            }
+            const visible = showAllCandidates ? groups : groups.slice(0, 8);
+            return (
+              <>
+                {visible.map((g, i) => {
+                  const single = g.items.length === 1;
+                  const c = g.items[0];
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => (single ? handleCandidateSelect(c) : setStage2(g.items))}
+                      style={btnStyle}
+                      {...hover}
+                    >
+                      <div style={{ fontWeight: 600 }}>{g.preferred && '✓ '}{single && c.popular && '★ '}{g.label}</div>
+                      <div style={{ color: '#6b7280', fontSize: 11 }}>
+                        {single ? `${c.netPrice.toFixed(1)} TL` : `${g.items.length} alt tip →`}
+                        {g.preferred && <span style={{ color: '#059669', marginLeft: 6, fontWeight: 600 }}>önceki tercihiniz</span>}
+                      </div>
+                    </button>
+                  );
+                })}
+                {!showAllCandidates && groups.length > 8 && (
+                  <button
+                    onClick={() => setShowAllCandidates(true)}
+                    style={{
+                      display: 'block', width: '100%', textAlign: 'center', padding: '6px',
+                      border: '1px dashed #f59e0b', background: '#fffbeb', cursor: 'pointer',
+                      fontSize: 11, color: '#b45309', borderRadius: 4, marginBottom: 4, fontWeight: 600,
+                    }}
+                  >
+                    Tümünü gör ({groups.length - 8} seçenek daha)
+                  </button>
+                )}
+              </>
+            );
+          })()}
+          {/* K4/K7: gruba uygula — ilk secimde acik, oto-kacista kapali gelir */}
+          {autoVariantEnabled && headerRef.current && (
+            <label style={{
+              display: 'flex', alignItems: 'center', gap: 6, padding: '5px 4px 2px',
+              fontSize: 11, color: '#78350f', cursor: 'pointer', borderTop: '1px dashed #fcd34d', marginTop: 2,
+            }}>
+              <input
+                type="checkbox"
+                checked={applyToGroup}
+                onChange={(e) => setApplyToGroup(e.target.checked)}
+                style={{ accentColor: '#0284c7' }}
+              />
+              Seçimi bu gruptaki tüm satırlara uygula
+            </label>
           )}
           <button
             onClick={handleCancel}

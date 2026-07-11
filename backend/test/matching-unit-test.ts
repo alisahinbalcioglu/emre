@@ -165,16 +165,47 @@ async function run() {
     check('T14 netPrice yazilmadi', r?.netPrice === 0, `got ${r?.netPrice}`);
   }
 
-  // T15: SIYAH BORU 1" → duz uclu / disli secenekleri
-  // NOT: mevcut otomatik-Disli kurali (kaynak 'disli' yazmadiysa) 'suggestion'
-  // uretebilir — PRD V1 "tek varyant kalirsa otomatik akis" der; burada iki
-  // varyant BAGLANTI farki tasidigindan popup bekleriz.
+  // T15 + Duzeltme Talebi K1/K2: SIYAH BORU 1" → duz uclu / disli SORULUR.
+  // Otomatik-Disli material tarafinda KALDIRILDI — baglanti farki da popup'a gider.
   {
     const svc = makeService('ÇAYIROVA', SIYAH_BORU_LIB);
     const r = (await svc.bulkMatch('u1', 'brand-1', ['SİYAH BORU 1"']))['SİYAH BORU 1"'];
-    const okMulti = r?.confidence === 'multi' && (r?.candidates?.length ?? 0) === 2;
-    const okSuggestion = r?.confidence === 'suggestion'; // otomatik-Disli sari isaretli
-    check('T15 popup veya sari-oneri', okMulti || okSuggestion, `got ${r?.confidence} "${r?.matchedName}"`);
+    check('T15/K2 baglanti farki POPUP (otomatik-Disli yok)', r?.confidence === 'multi' && (r?.candidates?.length ?? 0) === 2 && r?.netPrice === 0,
+      `got ${r?.confidence} "${r?.matchedName}" ${r?.candidates?.length} aday net=${r?.netPrice}`);
+  }
+
+  // A1 (Duzeltme Talebi): DN 50 + marka, satirda varyant kelimesi YOK,
+  // kutuphanede 3 varyant → fiyat YAZILMAZ, 3'u de fiyatli listelenir.
+  // Kirmizi Boyali (taban-yuzey siyah/galvaniz tasimayan) listede KALMALI.
+  {
+    const A1_LIB = [
+      lib('Siyah Düz Uçlu Boru 2" DN50', 198.4),
+      lib('Siyah Dişli Manşonlu Boru 2" DN50', 241.6),
+      lib('Kırmızı Boyalı Boru 2" DN50', 227.1),
+    ];
+    const svc = makeService('ÇAYIROVA', A1_LIB);
+    const r = (await svc.bulkMatch('u1', 'brand-1', ['SPRİNK HATTI BORULARI DN 50']))['SPRİNK HATTI BORULARI DN 50'];
+    check('A1 fiyat yazilmadi + 3 varyant listede', r?.confidence === 'multi' && (r?.candidates?.length ?? 0) === 3 && r?.netPrice === 0,
+      `got ${r?.confidence} ${r?.candidates?.length} aday net=${r?.netPrice} "${r?.matchedName ?? ''}" (${r?.reason})`);
+    const kirmiziVar = r?.candidates?.some((c) => c.materialName.includes('Kırmızı'));
+    check('A1 kirmizi boyali listede (taban-yuzey elemesi dusurmedi)', !!kirmiziVar,
+      `adaylar: ${r?.candidates?.map((c) => c.materialName).join(' | ')}`);
+    // A3 altyapisi: kirmizi secilirse variantTags ile DN'e ozgu otomatik atama calisir
+    const kirmizi = r?.candidates?.find((c) => c.materialName.includes('Kırmızı'));
+    check('A1 kirmizi variantTags dolu', !!kirmizi?.variantTags?.length, `got ${JSON.stringify(kirmizi?.variantTags)}`);
+  }
+
+  // A5 (Duzeltme Talebi): satir varyanti ACIKCA soyluyor → soru sorulmaz
+  {
+    const A1_LIB = [
+      lib('Siyah Düz Uçlu Boru 2" DN50', 198.4),
+      lib('Siyah Dişli Manşonlu Boru 2" DN50', 241.6),
+      lib('Kırmızı Boyalı Boru 2" DN50', 227.1),
+    ];
+    const svc = makeService('ÇAYIROVA', A1_LIB);
+    const r = (await svc.bulkMatch('u1', 'brand-1', ['SİYAH DİŞLİ BORU 2"']))['SİYAH DİŞLİ BORU 2"'];
+    check('A5 acik varyant → dogrudan eslesir', (r?.netPrice ?? 0) > 0 && !!r?.matchedName?.includes('Dişli'),
+      `got ${r?.confidence} "${r?.matchedName}" net=${r?.netPrice}`);
   }
 
   // T16 (V5, PRD v1.3): DN25 vanada pirinc secildi → FARKLI capli (DN32) vana

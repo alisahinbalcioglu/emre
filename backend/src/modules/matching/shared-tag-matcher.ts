@@ -213,12 +213,18 @@ export function scoreCandidates<T>(
 /**
  * Top aday listesini alir, subtype elemesi + otomatik-Disli mantigini uygular.
  * Donen liste 1 kisa veya devam eden coklu adaylari icerir.
+ *
+ * autoPick=false (Duzeltme Talebi K1/K2, material matcher): yuzey/cins farki
+ * olmasa bile OTOMATIK SECIM YASAK — baglanti (disli/duz-uclu) ve ad-farki
+ * varyantlari da kullaniciya fiyatli listeyle sorulur. Labor matcher eski
+ * davranisi (autoPick=true) korur.
  */
 export function narrowTopCandidates<T>(
   topCandidates: ScoredCandidate<T>[],
   excelTags: string[],
   getTags: (item: T) => string[],
   subtypeKeys: Set<string> = MATERIAL_SUBTYPE_KEYS,
+  autoPick: boolean = true,
 ): { narrowed: ScoredCandidate<T>[]; autoPickedDisli: boolean } {
   if (topCandidates.length <= 1) {
     return { narrowed: topCandidates, autoPickedDisli: false };
@@ -245,13 +251,15 @@ export function narrowTopCandidates<T>(
     }
   }
 
-  // 2. Yuzey/cins farki yoksa → otomatik Disli (yoksa ilki)
+  // 2. Yuzey/cins farki yoksa → otomatik Disli (yoksa ilki).
+  // YALNIZ autoPick=true iken (labor). Material tarafinda K2: belirsizken
+  // otomatik fiyat yazmak YASAK — coklu aday popup'a gider.
   const hasSurfaceKindDiff = diffTagsPerCandidate.some((diff) =>
     diff.some((t) => SURFACE_KIND_KEYS.has(t)),
   );
 
   let autoPickedDisli = false;
-  if (!hasSurfaceKindDiff) {
+  if (autoPick && !hasSurfaceKindDiff) {
     const disliCandidate = narrowed.find((c) => getTags(c.priceItem).includes('disli'));
     if (disliCandidate) {
       narrowed = [disliCandidate];
