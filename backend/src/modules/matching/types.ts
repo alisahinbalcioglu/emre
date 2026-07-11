@@ -22,6 +22,19 @@ export interface MatchResult {
   autoVariant?: boolean;
   // V4.5: istenen varyant bu capta kutuphanede yok — secim bekliyor
   variantMissing?: boolean;
+  // M3: secilen markada bu urun ailesi+boyut YOK — kullanicinin kutuphanesinde
+  // ayni urunu sunan DIGER markalar (net fiyatlariyla, tiklanabilir)
+  alternatives?: BrandAlternative[];
+}
+
+// M3: alternatif marka onerisi — marka+urun+fiyat birlikte secilir
+export interface BrandAlternative {
+  brandId: string;
+  brandName: string;
+  materialName: string;
+  netPrice: number;
+  listPrice: number;
+  discount: number;
 }
 
 export interface MatchCandidate {

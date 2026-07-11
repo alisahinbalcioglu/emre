@@ -18,11 +18,18 @@ function lib(name: string, price: number) {
 
 // Marka adi → fake Prisma (brand.findUnique bu adi doner)
 // eslesmeHafizasi: in-memory (V5 cins tercihi testi icin gercek upsert/find)
-function fakePrisma(brandName: string, libRows: any[]): any {
+// otherBrandRows: M3 alternatif taramasi (brandId: {not}) bu havuzu gorur
+function fakePrisma(brandName: string, libRows: any[], otherBrandRows: any[] = []): any {
   const memStore = new Map<string, any>();
   const memKey = (w: any) => `${w.userId_imza.userId}|${w.userId_imza.imza}`;
   return {
-    userLibrary: { findMany: async () => libRows },
+    userLibrary: {
+      findMany: async (args: any) => {
+        const b = args?.where?.brandId;
+        if (b && typeof b === 'object' && 'not' in b) return otherBrandRows;
+        return libRows;
+      },
+    },
     brand: { findUnique: async () => ({ name: brandName }) },
     eslesmeHafizasi: {
       findUnique: async ({ where }: any) => memStore.get(memKey(where)) ?? null,
@@ -42,8 +49,8 @@ function fakePrisma(brandName: string, libRows: any[]): any {
   };
 }
 
-function makeService(brandName: string, libRows: any[]): MatchingService {
-  const prisma = fakePrisma(brandName, libRows);
+function makeService(brandName: string, libRows: any[], otherBrandRows: any[] = []): MatchingService {
+  const prisma = fakePrisma(brandName, libRows, otherBrandRows);
   const term = new TerminologyService(prisma);
   return new MatchingService(prisma, term);
 }
@@ -193,6 +200,32 @@ async function run() {
     // A3 altyapisi: kirmizi secilirse variantTags ile DN'e ozgu otomatik atama calisir
     const kirmizi = r?.candidates?.find((c) => c.materialName.includes('Kırmızı'));
     check('A1 kirmizi variantTags dolu', !!kirmizi?.variantTags?.length, `got ${JSON.stringify(kirmizi?.variantTags)}`);
+  }
+
+  // C1/M1/M3 (Duzeltme: markada olmayan urun): Cayirova'da (celik boru) PP
+  // kuresel vana YOK → fiyat yazilmaz + baska markanin/ailenin urunune ASLA
+  // dusulmez; AYNI aileyi sunan diger markalar fiyatlariyla ALTERNATIF doner.
+  {
+    const PIPES_ONLY = STEEL_LIB.filter((x) => !x.materialName.includes('Vana'));
+    const OTHER = [
+      { ...lib('PPR-C Küresel Vana 20 mm', 96.1), brand: { id: 'brand-kalde', name: 'KALDE' } },      // ayni aile (PP vana) → ALTERNATIF
+      { ...lib('Küresel Vana DN20 Pirinç', 88), brand: { id: 'brand-duyar', name: 'DUYAR' } },        // pirinc vana — PP degil, girmemeli
+      { ...lib('Siyah Çelik Boru 1" DN25', 130), brand: { id: 'brand-x', name: 'ERBOSAN' } },         // farkli aile — girmemeli
+    ];
+    const svc = makeService('ÇAYIROVA', PIPES_ONLY, OTHER);
+    const r = (await svc.bulkMatch('u1', 'brand-1', ['PP KÜRESEL VANALAR DN 20']))['PP KÜRESEL VANALAR DN 20'];
+    check('C1 fiyat yazilmadi (none)', r?.confidence === 'none' && r?.netPrice === 0,
+      `got ${r?.confidence} net=${r?.netPrice} "${r?.matchedName}"`);
+    check('C1 alternatif yalniz KALDE PP vanasi', (r?.alternatives?.length ?? 0) === 1 && r?.alternatives?.[0]?.brandName === 'KALDE' && r?.alternatives?.[0]?.netPrice === 96.1,
+      `got ${JSON.stringify(r?.alternatives)}`);
+  }
+
+  // C5: hicbir markada yok → alternatifsiz 'none' (kutuphanede urun yok)
+  {
+    const PIPES_ONLY = STEEL_LIB.filter((x) => !x.materialName.includes('Vana'));
+    const svc = makeService('ÇAYIROVA', PIPES_ONLY, []);
+    const r = (await svc.bulkMatch('u1', 'brand-1', ['PP KÜRESEL VANALAR DN 20']))['PP KÜRESEL VANALAR DN 20'];
+    check('C5 alternatifsiz none', r?.confidence === 'none' && !r?.alternatives?.length, `got ${r?.confidence} alts=${r?.alternatives?.length}`);
   }
 
   // F2 (hata raporu): baslik sozlugunun strip ettigi 'sprink' tag'i subtype

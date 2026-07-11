@@ -1745,8 +1745,13 @@ export default function NewQuotePage() {
                 toast({ title: 'Ürün değil', description: 'Oran/hizmet satırı — fiyat beklenmiyor.' });
                 return { netPrice: 0, notProduct: true, reason: match.reason };
               }
+              // M3: bu markada urun yok ama baska markalarda VAR — tiklanabilir
+              // alternatif listesi ExcelGrid popup'inda acilir (eylemsiz toast yok)
+              if (match.alternatives?.length) {
+                return { netPrice: 0, alternatives: match.alternatives, reason: match.reason };
+              }
               // Eslesme yok
-              toast({ title: 'Eslesmedi', description: match.reason ?? `"${materialName.slice(0, 40)}"` });
+              if (!silent) toast({ title: 'Eslesmedi', description: match.reason ?? `"${materialName.slice(0, 40)}"` });
               return null;
             } catch (e) {
               console.error('[ExcelGrid] brand change error:', e);

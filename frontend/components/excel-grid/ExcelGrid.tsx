@@ -8,7 +8,7 @@ import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
 import './fill-handle.css';
-import type { ExcelGridData, ExcelRowData, MatchCandidate } from './types';
+import type { ExcelGridData, ExcelRowData, MatchCandidate, BrandAlternative } from './types';
 import { useFillHandle, FillHandleIndicator } from './useFillHandle';
 import { CustomDropdown } from './CustomDropdown';
 import { joinMaterialText } from '@/lib/parse-material-text';
@@ -54,6 +54,8 @@ interface Props {
     autoVariant?: boolean;
     // V4.5: varyant bu capta yok — secim bekliyor
     variantMissing?: boolean;
+    // M3: bu markada urun yok — ayni urunu sunan diger markalar (fiyatli)
+    alternatives?: BrandAlternative[];
   } | null>;
   /** V4.4: grup ici otomatik varyant atama anahtari (varsayilan ACIK) */
   autoVariantEnabled?: boolean;
@@ -150,6 +152,8 @@ function BrandDropdown(props: ICellRendererParams & {
   const [applyToGroup, setApplyToGroup] = React.useState(false);
   // F3: 8+ aday oldugunda arama kutusu (label + urun adi uzerinde filtre)
   const [filterText, setFilterText] = React.useState('');
+  // M3: bu markada urun yok — alternatif markalar listesi (marka+fiyat birlikte)
+  const [alternatives, setAlternatives] = React.useState<BrandAlternative[] | null>(null);
   // Popup basliginda gosterilecek cevrim rozeti ("DN 50 → 2\" (çelik)")
   const donusumRef = React.useRef<string | null>(null);
 
@@ -179,6 +183,7 @@ function BrandDropdown(props: ICellRendererParams & {
   const handleChange = async (brandId: string) => {
     node.setDataValue('_marka', brandId || null);
     setCandidates(null);
+    setAlternatives(null);
     if (!brandId) {
       node.setDataValue('_matNetPrice', 0);
       if (materialUnitPriceField) node.setDataValue(materialUnitPriceField, '');
@@ -194,9 +199,15 @@ function BrandDropdown(props: ICellRendererParams & {
     const currentName = joinMaterialText(diaVal, baseName);
     if (!currentName) return;
 
-    // 3 ASAMALI MATCHING: once malzeme adi, sonra baslik+malzeme, sonra secenek
+    // ── M1/M4 (Duzeltme: markada olmayan urun): SORGU HER ZAMAN TEKTIR —
+    // baslik+satir birlesimi (yetim satirda aile bilgisi basliktan gelir).
+    // Eski "once satir, olmazsa baslikli" 2 asamali akis KALDIRILDI: yetim
+    // "DN 20" sorgusu aile bilgisiz calisip BORU adaylari donduruyor, baslikli
+    // sorgunun dogru "yok" cevabini eziyordu → Cayirova'ya PP vana fiyati
+    // yazilmisti. Aile sorgudan ASLA dusmez; markada urun yoksa sonuc YOK'tur
+    // (cross-family fallback yasak), M3 alternatif markalar popup'i devreye girer.
     const ctxDetail = buildMaterialContextDetailed(api, node.rowIndex ?? 0, nameField, noField, brandField, quantityField);
-    const fullName = ctxDetail.name;
+    const queryName = ctxDetail.name || currentName;
     headerRef.current = ctxDetail.header; // S4/V4: grup anahtari + sozluk onerisi
 
     // ── V4/V4.6: GRUP VARYANTI — grupta secim yapildiysa ayni varyantla ara.
@@ -208,23 +219,9 @@ function BrandDropdown(props: ICellRendererParams & {
     const useVariant = !!gv && !escapeAuto && data._matVariantMode !== 'manual';
     const opts = useVariant ? { variantTags: gv!.tags } : undefined;
 
-    // Asama 1: Sadece malzeme adi ile dene
-    console.log(`[BrandDropdown] row=${data._rowIdx}, Asama1 currentName="${currentName}"${useVariant ? ` varyant=[${gv!.tags.join(',')}]` : ''}${escapeAuto ? ' (oto-kacis: tam liste)' : ''}`);
-    let result = await onBrandChange(data._rowIdx, brandId, currentName, opts);
-    lookupNameRef.current = currentName; // ogrenme imzasi bu adla uretilir
-
-    // Asama 2: Eslesme yoksa veya fiyat 0, baslik+malzeme ile dene (farkliysa)
-    if ((!result || result.netPrice <= 0) && fullName && fullName !== currentName) {
-      console.log(`[BrandDropdown] row=${data._rowIdx}, Asama2 fullName="${fullName}"`);
-      const result2 = await onBrandChange(data._rowIdx, brandId, fullName, opts);
-      if (result2 && result2.netPrice > 0) {
-        result = result2;
-        lookupNameRef.current = fullName;
-      } else if (result2 && result2.candidates && result2.candidates.length > 0) {
-        result = result2; // multi-candidate Asama 2'den
-        lookupNameRef.current = fullName;
-      }
-    }
+    console.log(`[BrandDropdown] row=${data._rowIdx}, sorgu="${queryName}"${useVariant ? ` varyant=[${gv!.tags.join(',')}]` : ''}${escapeAuto ? ' (oto-kacis: tam liste)' : ''}`);
+    const result = await onBrandChange(data._rowIdx, brandId, queryName, opts);
+    lookupNameRef.current = queryName; // ogrenme imzasi bu adla uretilir
 
     // Multi case — kullaniciya secenek sun (Portal ile body'e render).
     // F1/B3: popupPos HER KOSULDA set edilir — eylemsiz uyari YASAK.
@@ -249,6 +246,15 @@ function BrandDropdown(props: ICellRendererParams & {
         node.setDataValue('_matAutoVariant', gv!.label);
         node.setDataValue('_matVariantMode', 'auto');
       }
+      return;
+    }
+
+    // ── M3: bu markada urun yok — alternatif markalar (fiyatli, tiklanabilir).
+    // Fiyat ASLA otomatik yazilmaz (M1); kullanici marka+fiyati birlikte secer.
+    if (result && result.alternatives && result.alternatives.length > 0) {
+      setPopupPos(computePopupPos());
+      node.setDataValue('_matStatus', 'belirsiz');
+      setAlternatives(result.alternatives);
       return;
     }
 
@@ -285,11 +291,9 @@ function BrandDropdown(props: ICellRendererParams & {
       const nm = joinMaterialText(diaVal, baseName);
       if (!nm) continue;
       try {
-        let r = await onBrandChange(d._rowIdx, d._marka, nm, { variantTags: variant.tags, silent: true });
-        if ((!r || r.netPrice <= 0) && !r?.variantMissing) {
-          const det = buildMaterialContextDetailed(api, n.rowIndex ?? 0, nameField, noField, brandField, quantityField);
-          if (det.name && det.name !== nm) r = await onBrandChange(d._rowIdx, d._marka, det.name, { variantTags: variant.tags, silent: true });
-        }
+        // M1/M4: TEK SORGU — baslik+satir (aile bilgisiz fallback yasak)
+        const det = buildMaterialContextDetailed(api, n.rowIndex ?? 0, nameField, noField, brandField, quantityField);
+        const r = await onBrandChange(d._rowIdx, d._marka, det.name || nm, { variantTags: variant.tags, silent: true });
         if (r && r.autoVariant && r.netPrice > 0) {
           writePriceToNode(n, r.netPrice, true);
           n.setDataValue('_matAutoVariant', variant.label); // V4.1 rozeti
@@ -361,6 +365,24 @@ function BrandDropdown(props: ICellRendererParams & {
     setPopupPos(null);
     setStage2(null);
     node.setDataValue('_marka', null);
+  };
+
+  // M3: alternatif marka secimi — marka + fiyat BIRLIKTE atanir, satir manuel
+  const handleAlternativeSelect = (a: BrandAlternative) => {
+    node.setDataValue('_marka', a.brandId);
+    writePrice(a.netPrice, false);
+    node.setDataValue('_matVariantMode', 'manual');
+    node.setDataValue('_matAutoVariant', null);
+    setAlternatives(null);
+    setPopupPos(null);
+    console.log(`[BrandDropdown] M3 alternatif secildi: ${a.brandName} → "${a.materialName}" = ${a.netPrice}`);
+  };
+
+  const handleAlternativeCancel = () => {
+    // Kullanici uyumsuz markada kalmayi secti — fiyat yok, hucre 'yok' isaretli
+    setAlternatives(null);
+    setPopupPos(null);
+    node.setDataValue('_matStatus', 'yok');
   };
 
   const brandOptions = React.useMemo(() =>
@@ -536,6 +558,46 @@ function BrandDropdown(props: ICellRendererParams & {
         </div>,
         document.body,
       )}
+      {/* M3: bu markada urun yok — alternatif markalar (fiyatli, tiklanabilir) */}
+      {alternatives && alternatives.length > 0 && popupPos && typeof document !== 'undefined' && createPortal(
+        <div style={{
+          position: 'fixed', top: popupPos.top, left: popupPos.left, zIndex: 99999,
+          background: '#fef2f2', border: '2px solid #ef4444', borderRadius: 6, padding: 8,
+          minWidth: 280, maxWidth: 420, maxHeight: 320, overflowY: 'auto',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.25)', fontSize: 12,
+        }}>
+          <div style={{ fontWeight: 700, color: '#b91c1c', marginBottom: 6, fontSize: 13 }}>
+            Bu markada ürün yok — şu markalarda var:
+          </div>
+          {alternatives.map((a, i) => (
+            <button
+              key={i}
+              onClick={() => handleAlternativeSelect(a)}
+              style={{
+                display: 'block', width: '100%', textAlign: 'left', padding: '6px 8px',
+                border: '1px solid #e5e7eb', background: 'white', cursor: 'pointer',
+                fontSize: 12, borderRadius: 4, marginBottom: 4,
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = '#dbeafe'; e.currentTarget.style.borderColor = '#3b82f6'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'white'; e.currentTarget.style.borderColor = '#e5e7eb'; }}
+            >
+              <div style={{ fontWeight: 700 }}>{a.brandName} — {a.netPrice.toFixed(1)} TL</div>
+              <div style={{ color: '#6b7280', fontSize: 11 }}>{a.materialName.slice(0, 60)}</div>
+            </button>
+          ))}
+          <button
+            onClick={handleAlternativeCancel}
+            style={{
+              display: 'block', width: '100%', textAlign: 'center', padding: '6px',
+              border: '1px solid #e5e7eb', background: '#f9fafb', cursor: 'pointer',
+              fontSize: 11, color: '#6b7280', borderRadius: 4, marginTop: 4,
+            }}
+          >
+            Kapat (fiyatsız bırak)
+          </button>
+        </div>,
+        document.body,
+      )}
       <FillHandleIndicator field="_marka" value={data._marka ?? ''} rowIdx={data._rowIdx} />
     </div>
   );
@@ -640,19 +702,9 @@ function FirmaDropdown(props: ICellRendererParams & {
     const currentName = joinMaterialText(diaVal, baseName);
     if (!currentName || !onFirmaChange) return;
 
-    // 3 ASAMALI MATCHING: once malzeme adi, sonra baslik+malzeme
+    // M1/M4: TEK SORGU — baslik+satir birlesimi (aile bilgisiz fallback yasak)
     const fullName = buildMaterialContext(api, node.rowIndex ?? 0, nameField, noField, brandField, quantityField);
-
-    // Asama 1
-    let result = await onFirmaChange(data._rowIdx, firmaId, currentName);
-
-    // Asama 2
-    if ((!result || result.netPrice <= 0) && fullName && fullName !== currentName) {
-      const result2 = await onFirmaChange(data._rowIdx, firmaId, fullName);
-      if (result2 && (result2.netPrice > 0 || (result2.candidates && result2.candidates.length > 0))) {
-        result = result2;
-      }
-    }
+    const result = await onFirmaChange(data._rowIdx, firmaId, fullName || currentName);
 
     if (result && result.candidates && result.candidates.length > 0) {
       setPopupPos(computePopupPos()); // her kosulda acilir (F1)
@@ -1029,10 +1081,9 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           );
           const gv = autoVariantEnabled && det.header ? groupVariantsRef.current[det.header] : undefined;
           const opts = gv && node.data._matVariantMode !== 'manual' ? { variantTags: gv.tags } : undefined;
-          let matchResult = await onBrandChange(node.data._rowIdx, result.value, currentName, opts);
-          if ((!matchResult || matchResult.netPrice <= 0) && !matchResult?.variantMissing && det.name && det.name !== currentName) {
-            matchResult = await onBrandChange(node.data._rowIdx, result.value, det.name, opts);
-          }
+          // M1/M4: TEK SORGU — baslik+satir; aile bilgisiz fallback YASAK
+          // (yanlis aileden fiyat yazilmasin — "Cayirova'ya PP vana" vakasi)
+          const matchResult = await onBrandChange(node.data._rowIdx, result.value, det.name || currentName, opts);
           if (matchResult && matchResult.netPrice > 0) {
             node.setDataValue('_matNetPrice', matchResult.netPrice);
             node.setDataValue('_matSuggestion', matchResult.confidence === 'suggestion');

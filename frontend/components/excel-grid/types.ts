@@ -89,3 +89,13 @@ export interface MatchCandidate {
   // V5: hesabin gecmis tercihi — liste basinda on-secili gosterilir
   preferred?: boolean;
 }
+
+// M3: secilen markada urun yok — alternatif marka onerisi (marka+fiyat birlikte secilir)
+export interface BrandAlternative {
+  brandId: string;
+  brandName: string;
+  materialName: string;
+  netPrice: number;
+  listPrice: number;
+  discount: number;
+}

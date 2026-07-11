@@ -297,7 +297,9 @@ const MATERIAL_PATTERNS: { pattern: RegExp; tag: string }[] = [
   { pattern: /su\s*ve\s*yangin\s*tesisat/i, tag: 'celik' },
   { pattern: /basincli\s*boru/i, tag: 'celik' },
   { pattern: /siyah.*boru|boru.*siyah/i, tag: 'celik' },
-  { pattern: /\bppr\b|\bpprc\b|polipropilen/i, tag: 'ppr' },
+  // "PP KURESEL VANA" gibi kullanimlarda PP = polipropilen (M4: PP vana,
+  // pirinc/celik vanayla AYNI aile degildir — cins filtresi ayirir)
+  { pattern: /\bppr\b|\bpprc\b|\bpp-?r?\b|polipropilen/i, tag: 'ppr' },
   { pattern: /\bpe\b|polietilen/i, tag: 'pe' },
   { pattern: /\bpvc\b|polivinil/i, tag: 'pvc' },
   { pattern: /\bhdpe\b/i, tag: 'hdpe' },

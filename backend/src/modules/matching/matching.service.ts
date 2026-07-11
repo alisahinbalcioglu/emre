@@ -7,7 +7,7 @@ import { extractSizeInfo, sizeEquivalents, isSizeTag } from './conversion';
 import type { SizeClass, SizeInfo } from './conversion';
 import { TerminologyService } from './terminology.service';
 import type { AliasHint, BrandClassHint } from './terminology.service';
-import type { MatchResult } from './types';
+import type { MatchResult, BrandAlternative } from './types';
 import {
   splitExcelTags,
   scoreCandidates,
@@ -227,6 +227,21 @@ export class MatchingService {
               reason: `${result.reason ?? ''} Geçmiş tercihiniz (${kmem.secilenAd}) önde.`.trim(),
             };
           }
+        }
+      }
+
+      // ── M3 (Duzeltme: markada olmayan urun): sonuc YOK ve satirin urun
+      // ailesi belliyse, kullanicinin kutuphanesindeki DIGER markalarda ara —
+      // "Cayirova'da PP kuresel vana yok; su markalarda var" listesi.
+      // ASLA otomatik yazilmaz (M1) — kullanici marka+fiyati birlikte secer.
+      if (result.confidence === 'none' && !result.notProduct) {
+        const alts = await this.findAlternatives(userId, brandId, excelName);
+        if (alts.length > 0) {
+          result = {
+            ...result,
+            alternatives: alts,
+            reason: `Bu markada eşleşme yok — ürün şu markalarda var: ${alts.map((a) => a.brandName).join(', ')}`,
+          };
         }
       }
 
@@ -597,6 +612,100 @@ export class MatchingService {
       candidates,
       donusum: rozet ?? undefined,
     };
+  }
+
+  // ═══════════════════════════════════════════
+  // M3 — ALTERNATIF MARKA ARAMASI
+  // Secilen markada urun ailesi+boyut yoksa, kullanicinin kutuphanesindeki
+  // DIGER markalarda ayni aile+boyutu ara. Marka basina en iyi 1 urun, en
+  // fazla 6 marka. Yalniz urun ailesi BELLI satirlar icin (yalın "DN 20"
+  // gibi tipsiz satirlarda gurultu uretmez).
+  // ═══════════════════════════════════════════
+
+  private async findAlternatives(
+    userId: string,
+    excludeBrandId: string,
+    excelName: string,
+  ): Promise<BrandAlternative[]> {
+    try {
+      const excelTags = generateTags(excelName);
+      if (excelTags.materialType === 'diger') return []; // aile belirsiz — onerme
+
+      let sizeInfo = extractSizeInfo(excelName);
+      if (!sizeInfo) {
+        const legacy = excelTags.tags.find((t) => isSizeTag(t));
+        if (legacy) {
+          sizeInfo = legacy.startsWith('od-')
+            ? { source: 'mm', value: parseInt(legacy.slice(3), 10), display: legacy }
+            : { source: 'dn', value: parseInt(legacy.slice(2), 10), display: legacy.toUpperCase() };
+        }
+      }
+      if (!sizeInfo) return [];
+
+      const rows = await this.prisma.userLibrary.findMany({
+        where: { userId, brandId: { not: excludeBrandId } },
+        include: {
+          material: { select: { id: true, name: true, tags: true, normalizedName: true, materialType: true } },
+          brand: { select: { id: true, name: true } },
+        },
+      });
+      if (rows.length === 0) return [];
+
+      // Sinif markaya gore degisir (Cayirova DN≠mm, Kalde DN=mm) — alternatif
+      // taramasi 'unknown' union ile yapilir; her aday GERCEK kutuphane kaydi
+      // oldugundan yanlis-fiyat riski yok, yalnizca oneri genisler.
+      const equiv = sizeEquivalents('unknown', sizeInfo);
+      const split = splitExcelTags(
+        excelTags.tags.filter((t) => !isSizeTag(t)),
+        'material',
+      );
+      split.sizeAnyOf = equiv.tags;
+
+      type AltItem = {
+        brand: { id: string; name: string };
+        name: string;
+        tags: string[];
+        listPrice: number;
+        discount: number;
+      };
+      const items: AltItem[] = rows.map((li: any) => {
+        const name = li.material?.name ?? li.materialName ?? '';
+        const tags = li.material?.tags?.length ? li.material.tags : generateTags(name).tags;
+        return {
+          brand: li.brand,
+          name,
+          tags,
+          listPrice: li.customPrice ?? li.listPrice ?? 0,
+          discount: li.discountRate ?? 0,
+        };
+      }).filter((x: AltItem) => x.name && x.listPrice > 0);
+
+      const scored = scoreCandidates(items, (x) => x.tags, split);
+      scored.sort((a, b) => b.totalScore - a.totalScore);
+
+      const out: BrandAlternative[] = [];
+      const seenBrands = new Set<string>();
+      for (const c of scored) {
+        const it = c.priceItem as AltItem;
+        if (seenBrands.has(it.brand.id)) continue; // marka basina en iyi 1
+        seenBrands.add(it.brand.id);
+        out.push({
+          brandId: it.brand.id,
+          brandName: it.brand.name,
+          materialName: it.name,
+          netPrice: hesaplaNetFiyat(it.listPrice, it.discount),
+          listPrice: it.listPrice,
+          discount: it.discount,
+        });
+        if (out.length >= 6) break;
+      }
+      if (out.length > 0) {
+        console.log(`[Matching] M3 ALTERNATIF: "${excelName}" → ${out.map((a) => a.brandName).join(', ')}`);
+      }
+      return out;
+    } catch {
+      return []; // alternatif arama opsiyonel — ana akisi bozmaz
+    }
   }
 
   // ═══════════════════════════════════════════
