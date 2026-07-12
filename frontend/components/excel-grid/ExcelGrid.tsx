@@ -251,10 +251,18 @@ function BrandDropdown(props: ICellRendererParams & {
 
     // ── M3: bu markada urun yok — alternatif markalar (fiyatli, tiklanabilir).
     // Fiyat ASLA otomatik yazilmaz (M1); kullanici marka+fiyati birlikte secer.
+    // N5-lite: kesif dosyasindaki "HAKAN VEYA MUADILI" marka metnine uyan
+    // alternatif one alinir ve ★ ile isaretlenir.
     if (result && result.alternatives && result.alternatives.length > 0) {
+      const brandText = brandField ? String(data[brandField] ?? '').toLocaleLowerCase('tr') : '';
+      const marked = result.alternatives.map((a) => ({
+        ...a,
+        onerilen: !!brandText && brandText.includes(a.brandName.toLocaleLowerCase('tr').split(' ')[0]),
+      }));
+      marked.sort((a, b) => (a.onerilen ? 0 : 1) - (b.onerilen ? 0 : 1));
       setPopupPos(computePopupPos());
       node.setDataValue('_matStatus', 'belirsiz');
-      setAlternatives(result.alternatives);
+      setAlternatives(marked);
       return;
     }
 
@@ -587,7 +595,7 @@ function BrandDropdown(props: ICellRendererParams & {
               onMouseEnter={(e) => { e.currentTarget.style.background = '#dbeafe'; e.currentTarget.style.borderColor = '#3b82f6'; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = 'white'; e.currentTarget.style.borderColor = '#e5e7eb'; }}
             >
-              <div style={{ fontWeight: 700 }}>{a.brandName} — {a.netPrice.toFixed(1)} TL</div>
+              <div style={{ fontWeight: 700 }}>{a.onerilen && '★ '}{a.brandName} — {a.netPrice.toFixed(1)} TL{a.onerilen && <span style={{ color: '#059669', marginLeft: 6, fontSize: 10, fontWeight: 600 }}>keşif önerisi</span>}</div>
               <div style={{ color: '#6b7280', fontSize: 11 }}>{a.materialName.slice(0, 60)}</div>
             </button>
           ))}

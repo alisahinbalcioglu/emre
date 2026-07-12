@@ -216,7 +216,7 @@ export class MatchingService {
         let kmem: any = null;
         try {
           kmem = await (this.prisma as any).eslesmeHafizasi?.findUnique({
-            where: { userId_imza: { userId, imza: this.buildKindImza(excelName, brandId) } },
+            where: { userId_imza: { userId, imza: this.buildKindImza(excelName, brandId, ctx.aliases) } },
           });
         } catch { kmem = null; }
         if (kmem) {
@@ -238,7 +238,7 @@ export class MatchingService {
       // "Cayirova'da PP kuresel vana yok; su markalarda var" listesi.
       // ASLA otomatik yazilmaz (M1) — kullanici marka+fiyati birlikte secer.
       if (result.confidence === 'none' && !result.notProduct) {
-        const alts = await this.findAlternatives(userId, brandId, excelName);
+        const alts = await this.findAlternatives(userId, brandId, excelName, ctx);
         if (alts.length > 0) {
           result = {
             ...result,
@@ -402,6 +402,25 @@ export class MatchingService {
     // PN/standart/subtype elemez, bonus verir.
     const split = splitExcelTags(effectiveTags, 'material');
     split.sizeAnyOf = sizeAnyOf;
+
+    // ── N1 AILE KILIDI (Duzeltme: PPR hattina celik aday) ────────────
+    // Cozumlenen urun ailesinin cinsleri (oncelik T5: satir > sozluk) aday
+    // havuzunu SERT sinirlar — MARKA bu kilidi degistiremez/genisletemez.
+    // scoreCandidates'in excelKinds kurali tam istenen semantik: cins tag'i
+    // TASIYAN aday uyusmali; cins tag'i olmayan duz-adli kayitlar gecer.
+    // (Onceki "yumusak tie-break" yaklasimi deliniyordu: plastik 20mm ile
+    // celik DN20 ayni dn20 tag'ini paylasir → Cayirova celik borulari
+    // TEMIZ SU (PPR) hattina aday oluyordu.)
+    // DIKKAT: once KIND_TAGS filtresi, sonra bosluk kontrolu — rawKinds 'su'
+    // gibi cins-olmayan etiketler dondurebilir (temiz SU), hint'e dusus bozulurdu.
+    const rawFamily = rawKinds.filter((k) => KIND_TAGS.has(k));
+    const familyKinds = rawFamily.length > 0
+      ? rawFamily
+      : (hint?.kinds ?? []).filter((k) => KIND_TAGS.has(k));
+    if (familyKinds.length > 0) {
+      split.excelKinds = Array.from(new Set([...split.excelKinds, ...familyKinds]));
+    }
+
     const allCandidates = scoreCandidates(
       allPrices,
       (p) => p.material.tags,
@@ -649,10 +668,19 @@ export class MatchingService {
     userId: string,
     excludeBrandId: string,
     excelName: string,
+    ctx: MatchContext,
   ): Promise<BrandAlternative[]> {
     try {
       const excelTags = generateTags(excelName);
       if (excelTags.materialType === 'diger') return []; // aile belirsiz — onerme
+      // N1/N2: alternatif taramasi da AILE KILITLIDIR — sozluk/satir cinsleri
+      // uygulanir (temiz su → yalniz PPR markalari onerilir, celik ASLA).
+      const altHint = this.terminology.resolveAlias(excelName, ctx.aliases);
+      const altRawKinds = extractMaterialKind(excelName);
+      const altRawFamily = altRawKinds.filter((k) => KIND_TAGS.has(k));
+      const altFamilyKinds = altRawFamily.length > 0
+        ? altRawFamily
+        : (altHint?.kinds ?? []).filter((k) => KIND_TAGS.has(k));
 
       let sizeInfo = extractSizeInfo(excelName);
       if (!sizeInfo) {
@@ -678,11 +706,17 @@ export class MatchingService {
       // taramasi 'unknown' union ile yapilir; her aday GERCEK kutuphane kaydi
       // oldugundan yanlis-fiyat riski yok, yalnizca oneri genisler.
       const equiv = sizeEquivalents('unknown', sizeInfo);
-      const split = splitExcelTags(
-        excelTags.tags.filter((t) => !isSizeTag(t)),
-        'material',
-      );
+      // Plastik ailede DEFAULT-CELIK varsayimi sorguyu bozmasin (matchSingle
+      // ile ayni kural) — yoksa PPR alternatifleri cins filtresinde elenirdi.
+      let altTags = excelTags.tags.filter((t) => !isSizeTag(t));
+      if (altHint?.sizeClass === 'plastic' && !altRawKinds.includes('celik')) {
+        altTags = altTags.filter((t) => t !== 'celik');
+      }
+      const split = splitExcelTags(altTags, 'material');
       split.sizeAnyOf = equiv.tags;
+      if (altFamilyKinds.length > 0) {
+        split.excelKinds = Array.from(new Set([...split.excelKinds, ...altFamilyKinds]));
+      }
 
       type AltItem = {
         brand: { id: string; name: string };
@@ -748,11 +782,20 @@ export class MatchingService {
     return `${brandId}|${olcu}|${tags.materialType}|${kinds}`;
   }
 
-  /** Cins tercihinin imzasi (V5): olcu YOK — marka + malzeme tipi.
-   *  "DN20 vana → pirinc" secimi DN32 vanada da gecerli olsun diye. */
-  private buildKindImza(excelName: string, brandId: string): string {
+  /** Cins tercihinin imzasi (V5): olcu YOK — marka + malzeme tipi + AILE.
+   *  "DN20 vana → pirinc" secimi DN32 vanada da gecerli olsun diye.
+   *  N4 (Duzeltme): AILE bileseni eklendi — celik hattaki "galvanizli disli"
+   *  tercihi PPR hattinda "onceki tercihiniz" olarak GORUNMEZ. Aile = satir
+   *  ham cinsleri, yoksa sozluk cinsleri, yoksa 'genel'. (Eski imza formati
+   *  farkli — eski kind-tercihleri dogal olarak devre disi kalir.) */
+  private buildKindImza(excelName: string, brandId: string, aliases: AliasHint[]): string {
     const tags = generateTags(excelName);
-    return `kind|${brandId}|${tags.materialType}`;
+    const raw = extractMaterialKind(excelName).filter((k) => KIND_TAGS.has(k));
+    const hint = this.terminology.resolveAlias(excelName, aliases);
+    const fam = raw.length > 0
+      ? raw.sort().join(',')
+      : ((hint?.kinds ?? []).filter((k) => KIND_TAGS.has(k)).sort().join(',') || 'genel');
+    return `kind|${brandId}|${tags.materialType}|${fam}`;
   }
 
   /** Kullanici secici popup'tan urun secince cagrilir — senkron, secim aninda. */
@@ -774,7 +817,8 @@ export class MatchingService {
     try {
       const chosenKinds = generateTags(secilenAd).tags.filter((t) => KIND_TAGS.has(t));
       if (chosenKinds.length === 1) {
-        const kindImza = this.buildKindImza(materialName, brandId);
+        const aliases = await this.terminology.loadAliases(userId);
+        const kindImza = this.buildKindImza(materialName, brandId, aliases);
         await (this.prisma as any).eslesmeHafizasi.upsert({
           where: { userId_imza: { userId, imza: kindImza } },
           update: { secilenAd: chosenKinds[0], secimSayisi: { increment: 1 } },

@@ -358,6 +358,39 @@ async function run() {
       `got ${r?.confidence} "${r?.matchedName}" net=${r?.netPrice} (${r?.reason})`);
   }
 
+  // D2/N1 (Duzeltme: aile kilidi): TEMIZ SU (PPR) hattina CAYIROVA (celik
+  // kutuphanesi) secildi → HICBIR celik aday gosterilmez, fiyat yazilmaz;
+  // ayni aileyi (PPR) sunan markalar alternatif olarak doner.
+  {
+    const CAYIROVA_STEEL = [
+      lib('Su ve Yangın Tesisat Boruları Galvanizli Dişli Manşonlu 3/4" DN20', 96.1),
+      lib('Su ve Yangın Tesisat Boruları Siyah Dişli Manşonlu 3/4" DN20', 69.5),
+    ];
+    const OTHER = [
+      { ...lib('PPR-C Boru 20 mm PN20', 32), brand: { id: 'brand-hakan', name: 'HAKAN PLASTİK' } },
+      { ...lib('Küresel Vana DN20 Pirinç', 88), brand: { id: 'brand-duyar', name: 'DUYAR' } }, // farkli aile — girmemeli
+    ];
+    const svc = makeService('ÇAYIROVA', CAYIROVA_STEEL, OTHER);
+    const r = (await svc.bulkMatch('u1', 'brand-1', ['TEMİZ SU BORULARI DN 20']))['TEMİZ SU BORULARI DN 20'];
+    check('D2 celik aday YOK + fiyat yazilmadi', r?.confidence === 'none' && r?.netPrice === 0 && !r?.candidates?.length,
+      `got ${r?.confidence} net=${r?.netPrice} ${r?.candidates?.length ?? 0} aday "${r?.matchedName}"`);
+    check('D2 alternatif yalniz HAKAN (PPR)', (r?.alternatives?.length ?? 0) === 1 && r?.alternatives?.[0]?.brandName === 'HAKAN PLASTİK',
+      `got ${JSON.stringify(r?.alternatives?.map((a) => a.brandName))}`);
+  }
+
+  // N6: "Kirmizi Boyali" etiketi TEKRARLAMAMALI ("Kırmızı Boyalı Boyalı" bug'i)
+  {
+    const LIB = [
+      lib('Sprinkler Borusu Kırmızı Boyalı 2"', 227.1),
+      lib('Sprinkler Borusu Düz Uçlu 2"', 198.4),
+    ];
+    const svc = makeService('ÇAYIROVA', LIB);
+    const r = (await svc.bulkMatch('u1', 'brand-1', ['SPRİNK HATTI BORULARI DN 50']))['SPRİNK HATTI BORULARI DN 50'];
+    const kirmiziLabel = r?.candidates?.find((c) => c.materialName.includes('Kırmızı'))?.label ?? '';
+    check('N6 etiket tekrarsiz', r?.confidence === 'multi' && !/boyal.*boyal/i.test(kirmiziLabel),
+      `got label="${kirmiziLabel}"`);
+  }
+
   // PIS SU regresyonu: baslik plastik derken default-celik PVC'yi ELEMEMELI
   {
     const svc = makeService('HAKAN PLASTİK', [lib('PVC Boru 110 mm Atık Su', 75)]);

@@ -98,4 +98,6 @@ export interface BrandAlternative {
   netPrice: number;
   listPrice: number;
   discount: number;
+  // N5-lite: kesif dosyasindaki "MARKA VEYA MUADILI" metnine uyan marka (★ onde)
+  onerilen?: boolean;
 }

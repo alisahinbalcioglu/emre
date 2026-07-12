@@ -312,7 +312,12 @@ export function buildCandidateList<T>(
     let surfaceLevel = false;
 
     if (useSurfaceLevelLabels) {
-      const surfaceKinds = diffTags.filter((t) => SURFACE_KIND_KEYS.has(t));
+      // N6: "Kirmizi Boyali" + "Boyali" ayni etikette TEKRARLIYORDU
+      // ("Kırmızı Boyalı Boyalı") — kirmizi zaten boyayi soyler, boyali dusulur.
+      let surfaceKinds = diffTags.filter((t) => SURFACE_KIND_KEYS.has(t));
+      if (surfaceKinds.includes('kirmizi')) {
+        surfaceKinds = surfaceKinds.filter((t) => t !== 'boyali');
+      }
       const connections = diffTags.filter((t) => CONNECTION_TAGS.has(t));
       surfaceLevel = surfaceKinds.length > 0;
       const labelParts = [
