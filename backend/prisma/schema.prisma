@@ -192,6 +192,23 @@ model MaterialPrice {
   priceList   PriceList? @relation(fields: [priceListId], references: [id], onDelete: Cascade)
   priceListId String?
   price       Float
+  // ── KAYNAK SADAKATI (Duzeltme Talebi Y1/Y2/Y5): yuklenen dosyanin yapisi
+  // liste-kalemi seviyesinde BIREBIR saklanir. Material global-unique kalir;
+  // gorunum ve yapi bu alanlardan beslenir.
+  // Dosyadaki kategori basligi ("Esnek Metal Hortum / Orgulu Hortum")
+  kategori    String?
+  // MALZEME CINSI sutunu (bossa null — miras tagging'de, veri bozulmaz)
+  cins        String?
+  // CAP sutunu (ayri alan — esletirme tag'lerine de katilir, E6)
+  cap         String?
+  // MALZEME ADI hucresi BIREBIR (Material.name benzersizlik icin birlesik olabilir)
+  adRaw       String?
+  // BIRIM hucresi birebir
+  birimRaw    String?
+  // Kaynak satir sirasi (Y5: sistem yeniden siralamaz)
+  sortOrder   Int        @default(0)
+  // Role oturmayan ek sutunlar { "Kolon Adi": "deger" } (Y2: sutun dusurulmez)
+  extra       Json?
 
   @@unique([materialId, brandId, priceListId])
 }

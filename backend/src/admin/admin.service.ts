@@ -8,6 +8,12 @@ import {
   ColumnRoles,
   RowData,
 } from '../utils/build-material-context';
+import {
+  parseTrNumber,
+  walkCategories,
+  detectExtraRoles,
+  ImportRowView,
+} from '../utils/import-fidelity';
 
 export interface MaterialSheetInput {
   name: string;
@@ -15,6 +21,9 @@ export interface MaterialSheetInput {
   rowData: RowData[];
   columnRoles: ColumnRoles;
   isEmpty?: boolean;
+  // Y2 (kaynak sadakati): header adlari — cins/cap rol tespiti + ek sutunlarin
+  // (role oturmayanlarin) EK ALAN olarak korunmasi icin
+  columnDefs?: { field: string; headerName: string }[];
 }
 
 @Injectable()
@@ -683,7 +692,11 @@ export class AdminService {
     }
 
     const { generateTags } = require('../modules/matching/tag-generator');
-    const results: { sheetName: string; listName: string; imported: number; skipped: number }[] = [];
+    const results: {
+      sheetName: string; listName: string; guncellendi: boolean;
+      imported: number; updated: number; skipped: number; kategoriSayisi: number;
+      fiyatDegisimleri: { ad: string; eski: number; yeni: number }[];
+    }[] = [];
     const warnings: string[] = [];
 
     for (const sheet of sheets) {
@@ -709,73 +722,149 @@ export class AdminService {
         continue;
       }
 
-      let listName = sheet.name || `Sayfa ${sheet.index ?? 0}`;
-      let suffix = 2;
-      while (await this.prisma.priceList.findFirst({ where: { brandId, name: listName } })) {
-        listName = `${sheet.name} (${suffix++})`;
-        if (suffix > 100) break;
-      }
+      // ── Y2: cins/cap kolon tespiti (roller > header regex) + ek sutunlar ──
+      const defs = (sheet.columnDefs ?? []).filter((d) => d.field && !d.field.startsWith('_'));
+      const detected = detectExtraRoles(defs);
+      const cinsField: string | undefined = roles.cinsField ?? detected.cinsField;
+      const capField: string | undefined = roles.capField ?? roles.diameterField ?? detected.capField;
+      const roleFields = new Set(
+        [roles.nameField, roles.unitField, roles.materialUnitPriceField, roles.noField, cinsField, capField].filter(Boolean),
+      );
 
-      const priceList = await this.prisma.priceList.create({
-        data: { brandId, name: listName },
-      });
+      // ── Y1: kategori basligi yuruyusu (dosyadaki hiyerarsi BIREBIR) ──
+      const rowViews: ImportRowView[] = sheet.rowData.map((r: any) => ({
+        isDataRow: !!r?._isDataRow,
+        name: String(r?.[roles.nameField] ?? ''),
+        priceRaw: r?.[roles.materialUnitPriceField],
+      }));
+      const kategoriPerRow = walkCategories(rowViews);
+
+      // ── Y7: ayni adli liste varsa GUNCELLEME modu — mukerrer "(2)" YOK ──
+      const listName = sheet.name || `Sayfa ${sheet.index ?? 0}`;
+      const existingList = await this.prisma.priceList.findFirst({ where: { brandId, name: listName } });
+      const priceList = existingList
+        ?? await this.prisma.priceList.create({ data: { brandId, name: listName } });
 
       let imported = 0;
+      let updated = 0;
       let skipped = 0;
+      const fiyatDegisimleri: { ad: string; eski: number; yeni: number }[] = [];
+      const kategoriler = new Set<string>();
 
       for (let rowIdx = 0; rowIdx < sheet.rowData.length; rowIdx++) {
         const row: any = sheet.rowData[rowIdx];
         if (!row || !row._isDataRow) continue;
 
-        const unitPriceRaw = row[roles.materialUnitPriceField];
-        const parsed = typeof unitPriceRaw === 'number'
-          ? unitPriceRaw
-          : parseFloat(String(unitPriceRaw ?? '').replace(',', '.'));
-        const unitPrice = isNaN(parsed) || parsed < 0 ? 0 : parsed;
+        const adRaw = String(row[roles.nameField] ?? '').trim();
+
+        // ── Y4: TR sayi ayristirma — belirsizde SESSIZ VARSAYIM YOK ──
+        const priceRaw = row[roles.materialUnitPriceField];
+        const { value: fiyatVal, ambiguous } = parseTrNumber(priceRaw);
+        if (ambiguous) {
+          skipped++;
+          warnings.push(`"${sheet.name}" satır ${rowIdx + 1} "${adRaw.slice(0, 40)}": fiyat belirsiz ("${String(priceRaw)}") — binlik mi ondalık mı? Grid'de düzeltip yeniden kaydedin.`);
+          continue;
+        }
+        const unitPrice = fiyatVal == null || fiyatVal < 0 ? 0 : fiyatVal;
 
         const fullName = buildMaterialContextFromRows(sheet.rowData, rowIdx, roles);
-        if (!fullName || fullName.length < 2) { skipped++; continue; }
+        if (!fullName || fullName.length < 2) {
+          skipped++;
+          if (adRaw) warnings.push(`"${sheet.name}" satır ${rowIdx + 1}: malzeme adı çözümlenemedi (atlandı)`);
+          continue;
+        }
 
-        const unit = roles.unitField
-          ? String(row[roles.unitField] ?? '').trim() || 'Adet'
-          : 'Adet';
+        const cins = cinsField ? String(row[cinsField] ?? '').trim() : '';
+        const cap = capField ? String(row[capField] ?? '').trim() : '';
+        const birimRaw = roles.unitField ? String(row[roles.unitField] ?? '').trim() : '';
+        const unit = birimRaw || 'Adet';
+        const kategori = kategoriPerRow[rowIdx];
+        if (kategori) kategoriler.add(kategori);
+
+        // Y2: role oturmayan sutunlar EK ALAN olarak korunur (dusurulmez)
+        const extra: Record<string, string> = {};
+        for (const d of defs) {
+          if (roleFields.has(d.field)) continue;
+          const v = String(row[d.field] ?? '').trim();
+          if (v) extra[d.headerName || d.field] = v;
+        }
+
+        // Material benzersiz adi: ad + (icinde gecmiyorsa) cins + cap —
+        // ayni-ad-farkli-cap satirlar TEK kayda cokertilmez.
+        const lowerFull = fullName.toLowerCase();
+        const nameParts = [fullName];
+        if (cins && !lowerFull.includes(cins.toLowerCase())) nameParts.push(cins);
+        if (cap && !lowerFull.includes(cap.toLowerCase())) nameParts.push(cap);
+        const materialName = nameParts.join(' ');
+
+        // E6: tag metni kategori + ad + cins + cap — aile kilidi (N1) ve cap
+        // cevrimi AYRI SUTUNLARDAN gelen bilgiyle de calisir.
+        const tagText = [kategori ?? '', materialName].filter(Boolean).join(' ');
+        const tagged = generateTags(tagText);
 
         let material = await this.prisma.material.findFirst({
-          where: { name: { equals: fullName, mode: 'insensitive' } },
+          where: { name: { equals: materialName, mode: 'insensitive' } },
         });
-
         if (!material) {
-          const tagged = generateTags(fullName);
           material = await this.prisma.material.create({
             data: {
-              name: fullName, unit, isGlobal: true,
+              name: materialName, unit, isGlobal: true,
+              category: kategori ?? undefined,
               tags: tagged.tags, normalizedName: tagged.normalizedName, materialType: tagged.materialType,
             },
           });
-        } else if (!material.tags || material.tags.length === 0) {
-          const tagged = generateTags(fullName);
+        } else {
           await this.prisma.material.update({
             where: { id: material.id },
-            data: { tags: tagged.tags, normalizedName: tagged.normalizedName, materialType: tagged.materialType },
+            data: {
+              tags: tagged.tags, normalizedName: tagged.normalizedName, materialType: tagged.materialType,
+              category: kategori ?? material.category,
+            },
           });
         }
 
-        await this.prisma.materialPrice.upsert({
-          where: { materialId_brandId_priceListId: { materialId: material.id, brandId, priceListId: priceList.id } },
-          update: { price: unitPrice },
-          create: { materialId: material.id, brandId, priceListId: priceList.id, price: unitPrice },
+        // Kaynak sadakati alanlari + Y7 fiyat degisim takibi
+        const whereKey = { materialId_brandId_priceListId: { materialId: material.id, brandId, priceListId: priceList.id } };
+        const prev = await (this.prisma as any).materialPrice.findUnique({ where: whereKey });
+        const fidelity: any = {
+          kategori: kategori ?? null,
+          cins: cins || null,
+          cap: cap || null,
+          adRaw: adRaw || null,
+          birimRaw: birimRaw || null,
+          sortOrder: rowIdx,
+        };
+        if (Object.keys(extra).length > 0) fidelity.extra = extra;
+        await (this.prisma as any).materialPrice.upsert({
+          where: whereKey,
+          update: { price: unitPrice, ...fidelity },
+          create: { materialId: material.id, brandId, priceListId: priceList.id, price: unitPrice, ...fidelity },
         });
-        imported++;
+        if (prev) {
+          updated++;
+          if (Math.abs(prev.price - unitPrice) > 0.001 && fiyatDegisimleri.length < 50) {
+            fiyatDegisimleri.push({ ad: adRaw || materialName, eski: prev.price, yeni: unitPrice });
+          }
+        } else {
+          imported++;
+        }
       }
 
-      results.push({ sheetName: sheet.name, listName, imported, skipped });
-      console.log(`[saveMaterialsFromSheets] "${sheet.name}" → "${listName}": ${imported} kalem`);
+      results.push({
+        sheetName: sheet.name, listName, guncellendi: !!existingList,
+        imported, updated, skipped, kategoriSayisi: kategoriler.size, fiyatDegisimleri,
+      });
+      console.log(`[saveMaterialsFromSheets] "${sheet.name}" → "${listName}"${existingList ? ' (GUNCELLEME)' : ''}: ${imported} yeni, ${updated} guncel, ${skipped} atlandi, ${kategoriler.size} kategori`);
     }
 
     const totalImported = results.reduce((s, r) => s + r.imported, 0);
+    const totalUpdated = results.reduce((s, r) => s + r.updated, 0);
+    const totalSkipped = results.reduce((s, r) => s + r.skipped, 0);
     return {
       totalImported,
-      totalListsCreated: results.length,
+      totalUpdated,
+      totalSkipped,
+      totalListsCreated: results.filter((r) => !r.guncellendi).length,
       brandName: brand.name,
       sheets: results,
       warnings,
@@ -801,20 +890,29 @@ export class AdminService {
       include: { brand: true },
     });
     if (!pl) throw new NotFoundException('Liste bulunamadi');
-    const items = await this.prisma.materialPrice.findMany({
+    // Y5: KAYNAK SIRASI korunur (sortOrder) — sistem alfabetik dayatmaz.
+    // Eski listelerde sortOrder=0 → ad sirasi ikincil (legacy fallback).
+    const items = await (this.prisma as any).materialPrice.findMany({
       where: { priceListId },
       include: { material: true },
-      orderBy: { material: { name: 'asc' } },
+      orderBy: [{ sortOrder: 'asc' }, { material: { name: 'asc' } }],
     });
     return {
       priceList: pl,
       brand: pl.brand,
-      materials: items.map((p) => ({
+      materials: items.map((p: any) => ({
         id: p.id,
         materialId: p.materialId,
         materialName: p.material.name,
-        unit: p.material.unit || 'Adet',
+        unit: p.birimRaw || p.material.unit || 'Adet',
         price: p.price,
+        // Y1/Y2/Y5 kaynak sadakati alanlari (eski kayitlarda null — legacy gorunum)
+        kategori: p.kategori ?? null,
+        cins: p.cins ?? null,
+        cap: p.cap ?? null,
+        adRaw: p.adRaw ?? null,
+        extra: p.extra ?? null,
+        sortOrder: p.sortOrder ?? 0,
       })),
       totalCount: items.length,
     };

@@ -21,7 +21,12 @@ import type { MultiSheetData, ExcelRowData } from '@/components/excel-grid/types
 
 interface PriceListSummary { id: string; name: string; createdAt: string; _count: { items: number } }
 interface BrandDetail { brand: { id: string; name: string }; priceLists: PriceListSummary[] }
-interface MaterialRow { id: string; materialName: string; unit: string; price: number }
+interface MaterialRow {
+  id: string; materialName: string; unit: string; price: number;
+  // Kaynak sadakati (Duzeltme Talebi Y1/Y2/Y5) — eski kayitlarda null
+  kategori?: string | null; cins?: string | null; cap?: string | null;
+  adRaw?: string | null; sortOrder?: number;
+}
 interface PriceListDetail { priceList: { id: string; name: string }; brand: { name: string }; materials: MaterialRow[]; totalCount: number }
 
 function getRole(): string | null {
@@ -97,6 +102,24 @@ function diameterSortKey(d: string): number {
 }
 
 interface ClassGroup { className: string; items: MaterialRow[] }
+
+/** Y5 — KAYNAK SADAKATI gorunumu: dosyadaki kategori basliklari ve satir
+ *  sirasi BIREBIR. Kategorisiz eski listelerde legacy groupAndSort kullanilir. */
+function groupBySource(materials: MaterialRow[]): ClassGroup[] {
+  const sorted = [...materials].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  const groups: ClassGroup[] = [];
+  for (const m of sorted) {
+    const key = m.kategori || 'Diğer';
+    const last = groups[groups.length - 1];
+    if (last && last.className === key) last.items.push(m);
+    else {
+      const existing = groups.find((g) => g.className === key);
+      if (existing) existing.items.push(m);
+      else groups.push({ className: key, items: [m] });
+    }
+  }
+  return groups;
+}
 
 function groupAndSort(materials: MaterialRow[]): ClassGroup[] {
   // 1. Group by material class
@@ -284,19 +307,32 @@ export default function BrandDetailPage() {
         isEmpty: s.isEmpty,
         rowData: liveRowDataBySheet[s.index] ?? s.rowData,
         columnRoles: s.columnRoles,
+        // Y2: header adlari — backend cins/cap rollerini tespit eder,
+        // role oturmayan sutunlari ek alan olarak korur
+        columnDefs: (s.columnDefs ?? [])
+          .filter((c) => c.field && !c.field.startsWith('_'))
+          .map((c) => ({ field: c.field, headerName: c.headerName })),
       }));
 
       const { data: res } = await api.post(`/admin/brands/${brandId}/save-from-sheets`, {
         sheets: sheetsToSend,
       });
 
+      // Y6: icE aktarim raporu — hicbir satir sessizce atlanmaz/degistirilmez
+      const kategoriToplam = (res.sheets ?? []).reduce((s: number, r: any) => s + (r.kategoriSayisi ?? 0), 0);
+      const fiyatDegisen = (res.sheets ?? []).reduce((s: number, r: any) => s + (r.fiyatDegisimleri?.length ?? 0), 0);
       toast({
-        title: 'Kaydedildi',
-        description: `${res.totalListsCreated} liste, ${res.totalImported} malzeme`,
+        title: res.totalUpdated > 0 ? 'Kaydedildi (güncelleme)' : 'Kaydedildi',
+        description: `${res.totalImported} yeni · ${res.totalUpdated ?? 0} güncellendi · ${res.totalSkipped ?? 0} atlandı · ${kategoriToplam} kategori${fiyatDegisen ? ` · ${fiyatDegisen} fiyat değişti` : ''}`,
       });
 
       if (res.warnings && res.warnings.length > 0) {
-        res.warnings.forEach((w: string) => toast({ title: 'Uyari', description: w }));
+        const MAX_TOAST = 5;
+        res.warnings.slice(0, MAX_TOAST).forEach((w: string) => toast({ title: 'Uyari', description: w }));
+        if (res.warnings.length > MAX_TOAST) {
+          toast({ title: `+${res.warnings.length - MAX_TOAST} uyarı daha`, description: 'Detay için konsola bakın (F12)' });
+          console.warn('[Import raporu] Tüm uyarılar:', res.warnings);
+        }
       }
 
       setEditorOpen(false);
@@ -317,8 +353,14 @@ export default function BrandDetailPage() {
     setLiveRowDataBySheet({});
   }
 
-  const filtered = listMaterials.filter(m => m.materialName.toLowerCase().includes(search.toLowerCase()));
-  const classGroups = groupAndSort(filtered);
+  const filtered = listMaterials.filter(m =>
+    [m.materialName, m.adRaw, m.cins, m.cap, m.kategori]
+      .some((v) => (v ?? '').toLocaleLowerCase('tr').includes(search.toLocaleLowerCase('tr'))));
+  // Y5: kaynak kategorisi varsa dosya yapisi BIREBIR; yoksa legacy siniflama
+  const hasSourceStructure = listMaterials.some((m) => m.kategori);
+  const hasCins = listMaterials.some((m) => m.cins);
+  const hasCap = listMaterials.some((m) => m.cap);
+  const classGroups = hasSourceStructure ? groupBySource(filtered) : groupAndSort(filtered);
 
   if (isLoading) return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
 
@@ -451,6 +493,8 @@ export default function BrandDetailPage() {
                                       <tr className="border-b">
                                         <th className="w-12 px-4 py-2 text-left text-xs font-medium text-muted-foreground">#</th>
                                         <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Malzeme Adı</th>
+                                        {hasCins && <th className="w-36 px-4 py-2 text-left text-xs font-medium text-muted-foreground">Cinsi</th>}
+                                        {hasCap && <th className="w-24 px-4 py-2 text-left text-xs font-medium text-muted-foreground">Çap</th>}
                                         <th className="w-24 px-4 py-2 text-left text-xs font-medium text-muted-foreground">Birim</th>
                                         <th className="w-32 px-4 py-2 text-right text-xs font-medium text-muted-foreground">Birim Fiyat</th>
                                       </tr>
@@ -459,7 +503,10 @@ export default function BrandDetailPage() {
                                       {group.items.map((m, i) => (
                                         <tr key={m.id} className="border-b last:border-0 hover:bg-muted/30">
                                           <td className="px-4 py-2 text-muted-foreground">{startIdx + i + 1}</td>
-                                          <td className="px-4 py-2 font-medium">{m.materialName}</td>
+                                          {/* Y3: kaynak metin BIREBIR — adRaw varsa o gosterilir */}
+                                          <td className="px-4 py-2 font-medium">{m.adRaw ?? m.materialName}</td>
+                                          {hasCins && <td className="px-4 py-2 text-muted-foreground">{m.cins ?? ''}</td>}
+                                          {hasCap && <td className="px-4 py-2 text-muted-foreground">{m.cap ?? ''}</td>}
                                           <td className="px-4 py-2 text-muted-foreground">{m.unit}</td>
                                           <td className="px-4 py-2 text-right font-medium">₺{fmtPrice(m.price)}</td>
                                         </tr>
