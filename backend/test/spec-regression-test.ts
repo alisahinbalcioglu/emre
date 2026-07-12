@@ -278,6 +278,24 @@ async function run() {
     check('R9-EK2 motorlu/selenoid/pnomatik yok', !names.some((n) => /Motorlu|Selenoid|Pnömatik/.test(n)));
   }
 
+  // ── R15 (3-ETIKET MODELI §2): "KURESEL VE KELEBEK VANALAR" basligi
+  // IKI aday ad uretir — her iki tipin adaylari da listelenir; kumede
+  // olmayan tipler (motorlu/surgulu) yine HICBIR skorla giremez
+  {
+    const svc = makeService('AYVAZ', [
+      lib('Küresel Vana Dişli DN15', 450),
+      lib('Kelebek Vana Wafer DN15', 780),
+      lib('Motorlu Vana 2 Yollu ON/OFF DN15', 4250),
+      lib('Sürgülü Vana DN15', 950),
+    ]);
+    const r = await m(svc, 'KÜRESEL VE KELEBEK VANALAR DN15');
+    const names = r?.candidates?.map((c) => c.materialName) ?? [];
+    check('R15 iki aday ad (kuresel + kelebek) listede', r?.confidence === 'multi' && names.length === 2
+      && names.some((n) => n.includes('Küresel')) && names.some((n) => n.includes('Kelebek')),
+      `got ${r?.confidence} adaylar: ${names.join(' | ') || r?.matchedName}`);
+    check('R15 motorlu/surgulu kumede degil → yok', !names.some((n) => /Motorlu|Sürgülü/.test(n)));
+  }
+
   // ── R12 (A-1): FITTINGS ORANI → malzeme eslestirmesi yapilmaz
   {
     const svc = makeService('ÇAYIROVA', [lib('Siyah Çelik Boru 1" DN25 Dişli', 130)]);

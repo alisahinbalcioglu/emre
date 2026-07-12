@@ -21,7 +21,7 @@ import {
   extractMountType,
   extractLengthMm,
   extractAccessory,
-  extractValveType,
+  extractValveTypes,
   extractFluid,
 } from './normalizer';
 import type { TaggedMaterial } from './types';
@@ -97,11 +97,10 @@ export function generateTags(materialName: string): TaggedMaterial {
   const accessory = extractAccessory(materialName);
   if (accessory) tags.add(accessory);
 
-  // 10c. VANA YUVALARI (E8/E9): tip (vt-kuresel/surgulu/kelebek/globe/
-  // bicakli/cek) + akiskan (akiskan-gaz/sivi/buhar). Ayni yuvada FARKLI
-  // deger tasiyan aday scoreCandidates'ta SERT elenir.
-  const valveType = extractValveType(materialName);
-  if (valveType) tags.add(valveType);
+  // 10c. VANA YUVALARI (E8/E9 + 3-Etiket): tip(ler) + akiskan. Coklu tip
+  // desteklenir ("KURESEL VE KELEBEK VANALAR" → iki aday ad; "Bicakli
+  // Surgulu" → iki tag). Yuva disi deger tasiyan aday SERT elenir.
+  for (const vt of extractValveTypes(materialName)) tags.add(vt);
   const fluid = extractFluid(materialName);
   if (fluid) tags.add(fluid);
 

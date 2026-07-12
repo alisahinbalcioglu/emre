@@ -283,18 +283,20 @@ export function scoreCandidates<T>(
       }
     }
 
-    // ── E8/E9: YUVA CELISKISI — SERT eleme ──────────────────────────
-    // Satir "kuresel" derken vt-surgulu/vt-kelebek/vt-globe tasiyan aday
-    // HICBIR skorla gosterilemez; "dogalgaz" derken akiskan-sivi/buhar
-    // tasiyan aday elenir (H9). Ayni yuvada AYNI degeri tasiyan bonus alir;
-    // yuva tag'i hic tasimayan (duz adli) kayit burada gecer — vana ozel
-    // sikilastirmasi matchSingle'da (tasiyan varsa tasiyanlara daraltma).
+    // ── E8/E9: YUVA CELISKISI — SERT eleme (KUME semantigi) ─────────
+    // Satir "kuresel" derken vt-surgulu/vt-globe tasiyan aday HICBIR skorla
+    // gosterilemez; "dogalgaz" derken akiskan-sivi/buhar elenir (H9).
+    // 3-ETIKET MODELI: ayni yuvada COKLU aday ad olabilir ("KURESEL VE
+    // KELEBEK VANALAR" → [vt-kuresel, vt-kelebek]) — aday kumeden HERHANGI
+    // birini tasiyorsa gecer. Yuva tag'i hic tasimayan (duz adli) kayit
+    // burada gecer — vana sikilastirmasi matchSingle'da.
     if (split.slotTags && split.slotTags.length > 0) {
       let slotConflict = false;
-      for (const want of split.slotTags) {
-        const prefix = SLOT_PREFIXES.find((p) => want.startsWith(p))!;
+      for (const prefix of SLOT_PREFIXES) {
+        const wanted = split.slotTags.filter((t) => t.startsWith(prefix));
+        if (wanted.length === 0) continue;
         const dbSlot = dbTags.filter((t) => t.startsWith(prefix));
-        if (dbSlot.length > 0 && !dbSlot.includes(want)) { slotConflict = true; break; }
+        if (dbSlot.length > 0 && !dbSlot.some((t) => wanted.includes(t))) { slotConflict = true; break; }
       }
       if (slotConflict) continue;
     }

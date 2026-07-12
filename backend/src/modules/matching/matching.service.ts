@@ -518,19 +518,22 @@ export class MatchingService {
     // uygunlugu ISARETSIZ urun de gosterilmez — tasiyan yoksa sonuc YOK,
     // M3 alternatif markalar devreye girer (E10).
     if (excelTags.materialType === 'vana' && split.slotTags && split.slotTags.length > 0) {
-      for (const want of split.slotTags) {
-        const carriers = allCandidates.filter((c) => c.priceItem.material.tags.includes(want));
+      // 3-ETIKET MODELI: yuva basina KUME — "KURESEL VE KELEBEK VANALAR"
+      // iki aday ad uretir, kumeden herhangi birini tasiyan gecer.
+      for (const prefix of ['vt-', 'akiskan-'] as const) {
+        const wanted = split.slotTags.filter((t) => t.startsWith(prefix));
+        if (wanted.length === 0) continue;
+        const carriers = allCandidates.filter((c) => c.priceItem.material.tags.some((t) => wanted.includes(t)));
         if (carriers.length > 0) {
           if (carriers.length < allCandidates.length) {
-            console.log(`[Matching]   Yuva daraltmasi (${want}): ${allCandidates.length} → ${carriers.length}`);
+            console.log(`[Matching]   Yuva daraltmasi (${wanted.join('|')}): ${allCandidates.length} → ${carriers.length}`);
           }
           allCandidates = carriers;
-        } else if (want === 'akiskan-gaz' || want.startsWith('vt-')) {
-          // E9/H7 SERT (canli vaka 13.07): tip ACIKCA istendiyse (kuresel)
-          // yalniz o tipi tasiyanlar sunulabilir — tasiyan yoksa isaretsiz
-          // motorlu/selenoid/pnomatik listesi DEGIL, "bu markada yok" + M3.
-          // Gazda ayni kural (gaz uygunlugu isaretsiz urun gosterilmez).
-          console.log(`[Matching]   SERT yuva (${want}): tasiyan aday yok → sonuc YOK (M3'e duser)`);
+        } else if (prefix === 'vt-' || wanted.includes('akiskan-gaz')) {
+          // E9/H7 SERT (canli vaka 13.07): tip ACIKCA istendiyse yalniz o
+          // tipi tasiyanlar sunulabilir — tasiyan yoksa isaretsiz motorlu/
+          // selenoid listesi DEGIL, "bu markada yok" + M3. Gazda ayni kural.
+          console.log(`[Matching]   SERT yuva (${wanted.join('|')}): tasiyan aday yok → sonuc YOK (M3'e duser)`);
           allCandidates = [];
           break;
         }
@@ -871,12 +874,13 @@ export class MatchingService {
       // E8/E9/E10 (vana): alternatifler de yuva kurallarina uyar — tasiyan
       // varsa tasiyanlara daralt; dogalgazda isaretsiz urun onerilmez.
       if (excelTags.materialType === 'vana' && split.slotTags && split.slotTags.length > 0) {
-        for (const want of split.slotTags) {
-          const carriers = scored.filter((c) => (c.priceItem as AltItem).tags.includes(want));
+        // SERT yuva, KUME semantigi (matchSingle ile ayni)
+        for (const prefix of ['vt-', 'akiskan-'] as const) {
+          const wanted = split.slotTags.filter((t) => t.startsWith(prefix));
+          if (wanted.length === 0) continue;
+          const carriers = scored.filter((c) => (c.priceItem as AltItem).tags.some((t) => wanted.includes(t)));
           if (carriers.length > 0) scored = carriers;
-          // SERT yuva (matchSingle ile ayni): tip/gaz acikca istendiyse
-          // tasiyan yoksa alternatif de onerilmez
-          else if (want === 'akiskan-gaz' || want.startsWith('vt-')) { scored = []; break; }
+          else if (prefix === 'vt-' || wanted.includes('akiskan-gaz')) { scored = []; break; }
         }
       }
       scored.sort((a, b) => b.totalScore - a.totalScore);

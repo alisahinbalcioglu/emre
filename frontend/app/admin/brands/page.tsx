@@ -60,6 +60,12 @@ interface PreviewItem {
   kategori?: string | null; cins?: string | null; cap?: string | null;
   adRaw?: string | null; birimRaw?: string | null; sortOrder?: number;
   sapma?: string | null;
+  // 3-Etiket modeli: AD/CINS/CAP gosterimi + admin AD duzeltmesi
+  etiketAd?: string | null;
+  etiketAdSlug?: string | null;
+  etiketCins?: string;
+  etiketCap?: string | null;
+  adOverride?: string | null;
 }
 interface ImportPreview {
   brandName: string;
@@ -71,8 +77,17 @@ interface ImportPreview {
   stats: {
     toplam: number; gecerli: number; belirsiz: number; sapan: number;
     atlanacak: number; kategoriSayisi: number; currencies: Record<string, number>;
+    adBelirsiz?: number;
   };
 }
+
+// 3-Etiket: AD duzeltme secenekleri (backend MATERIAL_TYPE_TAGS ile uyumlu)
+const AD_SECENEKLERI: [string, string][] = [
+  ['boru', 'Boru'], ['vana', 'Vana'], ['fitting', 'Fitting'], ['flans', 'Flanş'],
+  ['sprinkler', 'Sprinkler'], ['hortum', 'Hortum'], ['akis-anahtari', 'Akış Anahtarı'],
+  ['izolasyon', 'İzolasyon'], ['pompa', 'Pompa'], ['radyator', 'Radyatör'],
+  ['armatur', 'Armatür'], ['vitrifiye', 'Vitrifiye'], ['kazan', 'Kazan'], ['montaj', 'Montaj'],
+];
 
 const CURRENCY_SYMBOL: Record<string, string> = { TRY: '₺', USD: '$', EUR: '€' };
 const fmtMoney = (v: number, currency?: string | null) =>
@@ -271,6 +286,17 @@ export default function AdminBrandsPage() {
     setResolvedAmbig(null);
   }
 
+  // 3-Etiket: AD cozulemedi satirinda admin duzeltmesi — commit'te
+  // Material.materialType/tags'e islenir
+  function setAdOverride(idx: number, slug: string) {
+    setPreview((prev) => {
+      if (!prev) return prev;
+      const items = [...prev.items];
+      items[idx] = { ...items[idx], adOverride: slug || null };
+      return { ...prev, items };
+    });
+  }
+
   async function commitImport() {
     if (!preview || !selectedBrand) return;
     setCommitting(true);
@@ -297,6 +323,7 @@ export default function AdminBrandsPage() {
           resolvedAmbig
             ? `${resolvedAmbig.count} belirsiz fiyat "${resolvedAmbig.choice === 'thousands' ? 'nokta = binlik' : 'nokta = ondalık'}" kararıyla çözüldü`
             : null,
+          data.adDuzeltilen ? `${data.adDuzeltilen} ürünün AD etiketi elle düzeltildi` : null,
           data.atlananSayisi ? `${data.atlananSayisi} satır atlandı` : null,
         ].filter(Boolean).join(' · '),
       });
@@ -652,6 +679,11 @@ export default function AdminBrandsPage() {
                 {preview.stats.atlanacak > 0 && (
                   <Badge variant="destructive">{preview.stats.atlanacak} satır atlanacak</Badge>
                 )}
+                {(preview.stats.adBelirsiz ?? 0) > 0 && (
+                  <Badge variant="warning" title="Etiketsiz ürün eşleştirmeye giremez — satırdaki menüden aile seçerek düzeltebilirsiniz">
+                    {preview.stats.adBelirsiz} ürünün AD etiketi çözülemedi
+                  </Badge>
+                )}
               </div>
 
               {/* Z2: DOSYA BAŞINA TEK SORU — cevap tüm kolona uygulanır */}
@@ -715,7 +747,7 @@ export default function AdminBrandsPage() {
                 {(() => {
                   const hasCins = preview.items.some((i) => i.cins);
                   const hasCap = preview.items.some((i) => i.cap);
-                  const colCount = 3 + (hasCins ? 1 : 0) + (hasCap ? 1 : 0);
+                  const colCount = 4 + (hasCins ? 1 : 0) + (hasCap ? 1 : 0);
                   let prevKategori: string | null | undefined;
                   return (
                     <Table>
@@ -724,6 +756,7 @@ export default function AdminBrandsPage() {
                           <TableHead>Malzeme</TableHead>
                           {hasCins && <TableHead className="w-40">Cinsi</TableHead>}
                           {hasCap && <TableHead className="w-20">Çap</TableHead>}
+                          <TableHead className="w-44" title="3-Etiket modeli: AD · Çap (üzerine gelince CİNS)">Etiket (AD · Çap)</TableHead>
                           <TableHead className="w-20">Birim</TableHead>
                           <TableHead className="w-40 text-right">Fiyat</TableHead>
                         </TableRow>
@@ -746,6 +779,32 @@ export default function AdminBrandsPage() {
                                 <TableCell className="py-1.5 text-sm text-slate-900">{it.adRaw ?? it.materialName}</TableCell>
                                 {hasCins && <TableCell className="py-1.5 text-xs text-slate-600">{it.cins ?? ''}</TableCell>}
                                 {hasCap && <TableCell className="py-1.5 text-xs text-slate-600">{it.cap ?? ''}</TableCell>}
+                                {/* 3-ETIKET: AD · Çap (title=CİNS); AD çözülemediyse düzeltme menüsü */}
+                                <TableCell className="py-1.5 text-xs">
+                                  {it.etiketAd ? (
+                                    <span className="text-emerald-700" title={it.etiketCins || undefined}>
+                                      {it.etiketAd}{it.etiketCap ? ` · ${it.etiketCap}` : ''}
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1">
+                                      <AlertTriangle className="h-3 w-3 text-amber-600" />
+                                      <select
+                                        value={it.adOverride ?? ''}
+                                        onChange={(e) => setAdOverride(idx, e.target.value)}
+                                        className={
+                                          'h-6 rounded border px-1 text-[11px] outline-none ' +
+                                          (it.adOverride ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-amber-300 bg-amber-50 text-amber-800')
+                                        }
+                                        title="AD çözülemedi — etiketsiz ürün eşleştirmeye giremez; aileyi elle seçin"
+                                      >
+                                        <option value="">AD çözülemedi…</option>
+                                        {AD_SECENEKLERI.map(([slug, label]) => (
+                                          <option key={slug} value={slug}>{label}</option>
+                                        ))}
+                                      </select>
+                                    </span>
+                                  )}
+                                </TableCell>
                                 <TableCell className="py-1.5 text-xs">{it.unit}</TableCell>
                                 <TableCell className="py-1.5 text-right text-sm tabular-nums">
                                   {it.ambiguous ? (

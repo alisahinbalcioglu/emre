@@ -562,11 +562,20 @@ const VALVE_TYPE_PATTERNS: { pattern: RegExp; tag: string }[] = [
 ];
 
 export function extractValveType(text: string): string | null {
+  return extractValveTypes(text)[0] ?? null;
+}
+
+/** 3-ETIKET MODELI: coklu AD destegi — "KURESEL VE KELEBEK VANALAR" basligi
+ *  IKI aday ad uretir [vt-kuresel, vt-kelebek]; aday bu kumeden HERHANGI
+ *  birini tasiyorsa gecer (kumede olmayan vt tasiyan elenir).
+ *  Urun tarafinda da coklu: "Bicakli Surgulu Vana" [vt-bicakli, vt-surgulu]. */
+export function extractValveTypes(text: string): string[] {
   const normalized = normalizeText(text);
+  const out: string[] = [];
   for (const { pattern, tag } of VALVE_TYPE_PATTERNS) {
-    if (pattern.test(normalized)) return tag;
+    if (pattern.test(normalized) && !out.includes(tag)) out.push(tag);
   }
-  return null;
+  return out;
 }
 
 /** AKISKAN/hizmet yuvasi: dogalgaz/gaz → gaz · sivi(lar) → sivi · buhar →

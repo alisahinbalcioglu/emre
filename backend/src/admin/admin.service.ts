@@ -17,6 +17,7 @@ import {
   DotMeaning,
   ImportRowView,
 } from '../utils/import-fidelity';
+import { deriveEtiketler, isValidAdOverride } from '../utils/etiket-display';
 
 export interface MaterialSheetInput {
   name: string;
@@ -53,6 +54,16 @@ export interface ImportPreviewItem {
   sortOrder?: number;
   /** Z6: makulluk isareti (sifir/negatif, kategori medyanina gore ×1000). */
   sapma?: string | null;
+  // ── 3-ETIKET MODELI: onizlemede AD/CINS/CAP gosterimi ──
+  /** AD gosterimi ("Küresel Vana") — cozulemezse null → satir isaretlenir */
+  etiketAd?: string | null;
+  etiketAdSlug?: string | null;
+  etiketCins?: string;
+  etiketCap?: string | null;
+  /** Admin duzeltmesi: AD cozulemedi → elle secilen aile slug'i; commit'te
+   *  Material.materialType/tags'e islenir ("etiketsiz urun eslestirmeye
+   *  giremez" kurali boylece kapanir). */
+  adOverride?: string | null;
 }
 
 @Injectable()
@@ -587,6 +598,10 @@ export class AdminService {
         const price = parsed.value != null ? Math.round(parsed.value * 100) / 100 : null;
         const unit = cols.unit !== undefined ? String(row[cols.unit] ?? '').trim() : '';
         const rawStr = typeof rawPrice === 'number' ? rawPrice : String(rawPrice ?? '').trim();
+        // 3-ETIKET MODELI: urun 3 etikete ayristirilir (kategori baglami
+        // dahil — kayit tarafindaki tagText ile AYNI metin), onizlemede
+        // gosterilir; AD cozulemezse isaretlenir + admin duzeltebilir.
+        const etiket = deriveEtiketler([aktifKategori ?? '', fullName].filter(Boolean).join(' '));
         items.push({
           materialName: fullName, unit: unit || 'Adet',
           unitPrice: price,
@@ -600,6 +615,9 @@ export class AdminService {
           // Y1/Y2/Y3/Y5 kaynak sadakati
           kategori: aktifKategori, cins: desc || null, cap: diam || null,
           adRaw: name, birimRaw: unit || null, sortOrder: items.length,
+          // 3-Etiket gosterimi
+          etiketAd: etiket.ad, etiketAdSlug: etiket.adSlug,
+          etiketCins: etiket.cins, etiketCap: etiket.cap,
         });
         sheetCount++;
       }
@@ -661,6 +679,9 @@ export class AdminService {
         atlanacak: parsed.items.filter((i) => !i.ambiguous && (i.unitPrice == null || i.unitPrice <= 0)).length,
         kategoriSayisi: kategoriler.size,
         currencies,
+        // 3-Etiket: AD cozulemedi — "etiketsiz urun eslestirmeye giremez",
+        // admin onizlemede dropdown'la duzeltebilir (adOverride)
+        adBelirsiz: parsed.items.filter((i) => !i.etiketAdSlug).length,
       },
     };
   }
@@ -786,6 +807,9 @@ export class AdminService {
       currency?: string | null;
       kategori?: string | null; cins?: string | null; cap?: string | null;
       adRaw?: string | null; birimRaw?: string | null; sortOrder?: number;
+      // 3-Etiket: admin'in AD duzeltmesi (onizleme dropdown'u) — Material
+      // .materialType/tags'e islenir
+      adOverride?: string | null;
     }[],
     exchangeRate?: number,
     opts?: { replaceExisting?: boolean },
@@ -839,6 +863,7 @@ export class AdminService {
     let imported = 0;
     let updated = 0;
     let skipped = 0;
+    let adDuzeltilen = 0;
     const fiyatDegisimleri: { ad: string; eski: number; yeni: number }[] = [];
     const kategoriler = new Set<string>();
 
@@ -856,6 +881,14 @@ export class AdminService {
       // bilgisiyle de calisir ("...Galvanizli Disli Mansonlu" basligi cinsi verir)
       const tagText = [item.kategori ?? '', name].filter(Boolean).join(' ');
       const tagged = generateTags(tagText);
+      // 3-ETIKET MODELI: admin AD duzeltmesi — cozulemez satirda onizlemede
+      // secilen aile, Material.materialType + tags'e islenir ("etiketsiz
+      // urun eslestirmeye giremez" kurali kapanir). Yalniz bilinen slug'lar.
+      if (isValidAdOverride(item.adOverride)) {
+        tagged.materialType = item.adOverride;
+        tagged.tags = Array.from(new Set([...tagged.tags.filter((t: string) => t !== 'diger'), item.adOverride]));
+        adDuzeltilen++;
+      }
 
       let material = await this.prisma.material.findFirst({
         where: { name: { equals: name, mode: 'insensitive' } },
@@ -905,11 +938,13 @@ export class AdminService {
       }
     }
 
-    console.log(`[SaveBulk] Sonuc: ${imported} yeni, ${updated} guncel, ${removed} eski kalem temizlendi, ${kategoriler.size} kategori`);
+    console.log(`[SaveBulk] Sonuc: ${imported} yeni, ${updated} guncel, ${removed} eski kalem temizlendi, ${kategoriler.size} kategori${adDuzeltilen ? `, ${adDuzeltilen} AD duzeltmesi` : ''}`);
     return {
       imported, updated, skipped, removed,
       kategoriSayisi: kategoriler.size,
       fiyatDegisimleri,
+      // 3-Etiket: admin'in elle duzelttigi AD sayisi (rapor)
+      adDuzeltilen,
       total: items.length,
       brandName: brand.name,
       priceListName: priceList.name,

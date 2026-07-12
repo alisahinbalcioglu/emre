@@ -7,6 +7,7 @@ import {
   parseTrNumber, walkCategories, detectExtraRoles, detectCurrency,
   inferPriceFormat, flagPriceOutliers, ImportRowView,
 } from '../src/utils/import-fidelity';
+import { deriveEtiketler, isValidAdOverride } from '../src/utils/etiket-display';
 
 let passed = 0; let failed = 0; const failures: string[] = [];
 function check(name: string, cond: boolean, detail?: string) {
@@ -158,6 +159,32 @@ num('  2.500,00 TL ', 2500);
     { price: 90000, kategori: 'X' },
   ]);
   check('Z6 kucuk grupta medyan kiyasi YOK', small[0] === null && small[1] === null, `got ${JSON.stringify(small)}`);
+}
+
+// ── 3-ETIKET MODELI: AD/CINS/CAP turetimi (onizleme gosterimi) ──
+{
+  const s = deriveEtiketler('Ayvaz Sprinkler 68°C Pendent 1/2" DN15');
+  check('3E sprinkler: AD=Sprinkler', s.ad === 'Sprinkler' && s.adSlug === 'sprinkler', `got ${JSON.stringify(s)}`);
+  check('3E sprinkler: CAP=DN15', s.cap === 'DN15', `got ${s.cap}`);
+  check('3E sprinkler: CINS 68°C + Pendent icerir', s.cins.includes('68°C') && s.cins.includes('Pendent'), `got "${s.cins}"`);
+
+  const v = deriveEtiketler('DOĞALGAZ VANASI KÜRESEL DN50');
+  check('3E vana: AD=Küresel Vana', v.ad === 'Küresel Vana', `got ${v.ad}`);
+  check('3E vana: CINS Doğalgaz icerir', v.cins.includes('Doğalgaz'), `got "${v.cins}"`);
+  check('3E vana: CAP=DN50', v.cap === 'DN50', `got ${v.cap}`);
+
+  const ck = deriveEtiketler('KÜRESEL VE KELEBEK VANALAR DN15');
+  check('3E coklu AD: Küresel/Kelebek Vana', ck.ad === 'Küresel/Kelebek Vana', `got ${ck.ad}`);
+
+  const u = deriveEtiketler('ÖZEL KALEM XR-2000');
+  check('3E cozulemedi: AD=null (isaretlenir)', u.ad === null && u.adSlug === null, `got ${JSON.stringify(u)}`);
+
+  const h = deriveEtiketler('ESNEK SPRİNKLER HORTUMU 50 cm');
+  check('3E hortum: AD=Hortum + CAP=500 mm', h.ad === 'Hortum' && h.cap === '500 mm', `got ${JSON.stringify(h)}`);
+
+  // adOverride guvenligi: yalniz bilinen slug'lar
+  check('3E adOverride: vana gecerli', isValidAdOverride('vana') === true);
+  check('3E adOverride: rastgele deger RED', isValidAdOverride('drop table') === false && isValidAdOverride(null) === false);
 }
 
 console.log(`\n${'='.repeat(60)}`);
