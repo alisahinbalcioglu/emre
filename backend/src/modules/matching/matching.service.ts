@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { generateTags } from './tag-generator';
 import { hesaplaNetFiyat } from './pricing';
-import { extractMaterialKind, extractMaterialType } from './normalizer';
+import { extractMaterialKind, extractMaterialType, extractSurfaces } from './normalizer';
 import { extractSizeInfo, sizeEquivalents, isSizeTag } from './conversion';
 import type { SizeClass, SizeInfo } from './conversion';
 import { TerminologyService } from './terminology.service';
@@ -191,15 +191,18 @@ export class MatchingService {
           });
         } catch { mem = null; }
         if (mem) {
-          const cand = result.candidates.find((c) => c.materialName === mem.secilenAd);
-          if (cand) {
-            console.log(`[Matching] HAFIZA HIT: "${excelName}" → "${mem.secilenAd}" (${mem.secimSayisi}× seçilmiş)`);
+          // DUZELTME (A2/A5): hafiza tam-imza artik OTOMATIK DOLDURMAZ —
+          // "ilk secim her zaman kullanicinin". Gecmis secim listenin BASINA
+          // preferred olarak alinir; kullanici tek tikla onaylar (V5 ile tutarli).
+          const idx = result.candidates.findIndex((c) => c.materialName === mem.secilenAd);
+          if (idx >= 0) {
+            console.log(`[Matching] HAFIZA ON-SECILI: "${excelName}" → "${mem.secilenAd}" (${mem.secimSayisi}×) basa alindi`);
+            const cand = { ...result.candidates[idx], preferred: true };
+            const rest = result.candidates.filter((_, i) => i !== idx);
             result = {
-              netPrice: cand.netPrice, listPrice: cand.listPrice, discount: cand.discount,
-              confidence: 'suggestion',
-              matchedName: cand.materialName,
-              donusum: result.donusum,
-              reason: `Geçmiş seçiminizden (${mem.secimSayisi}× seçildi) — kontrol edin`,
+              ...result,
+              candidates: [cand, ...rest],
+              reason: `Geçmiş seçiminiz (${mem.secimSayisi}×) önde — onaylayın. ${result.reason ?? ''}`.trim(),
             };
           }
         }
@@ -332,25 +335,32 @@ export class MatchingService {
             }
           : null;
 
-    // ── PRD §9 Adim 4: MALZEME SINIFI COZ (cevrim tablosu secimi) ────
-    // Oncelik: (1) baslik+sozluk → (2) marka→tip → (3) satir ipuclari.
+    // ── MALZEME SINIFI COZ (cevrim tablosu secimi) ───────────────────
+    // T5 (Duzeltme Talebi): oncelik SATIR ACIK MALZEME > baslik/sozluk > marka.
+    // "TEMIZ SU BORULARI" (varsayilan PPR) altindaki "DN50 GALVANIZ CELIK BORU"
+    // satiri CELIK cevrimiyle cozulur — satir detayi basligi EZER (T3).
     // NOT: generateTags'in DEFAULT-CELIK'i satir ipucu SAYILMAZ (o bir
-    // varsayim) — ham extractMaterialKind kullanilir.
+    // varsayim) — ham extractMaterialKind/extractSurfaces kullanilir.
     const rawKinds = extractMaterialKind(excelName);
+    const rawSurfaces = extractSurfaces(excelName);
     const lineClass: SizeClass | null = rawKinds.some((k) => ['ppr', 'pe', 'pvc', 'hdpe'].includes(k))
       ? 'plastic'
       : rawKinds.some((k) => ['celik', 'paslanmaz', 'pirinc', 'dokum', 'bronz', 'bakir'].includes(k))
         ? 'steel'
-        : null;
+        // Yuzey sinyali: galvaniz/siyah kaplama CELIK ailesidir ("DN32 GALVANIZ
+        // KAPLAMA" — 'celik' kelimesi gecmese de plastik boru galvanizlenmez)
+        : rawSurfaces.includes('galvaniz') || rawSurfaces.includes('siyah')
+          ? 'steel'
+          : null;
     // Metal tip aileleri (vana/fitting/flans...) DN'i celik anlaminda kullanir
     // — satirda plastik cins yoksa.
     const metalTypeClass: SizeClass | null =
       lineClass === null && ['vana', 'fitting', 'flans', 'pompa', 'radyator', 'kombi', 'kazan'].includes(excelTags.materialType)
         ? 'steel'
         : null;
-    const sizeClass: SizeClass = hint?.sizeClass ?? ctx.brandClass?.sizeClass ?? lineClass ?? metalTypeClass ?? 'unknown';
-    if (hint?.sizeClass && ctx.brandClass && hint.sizeClass !== ctx.brandClass.sizeClass) {
-      console.warn(`[Matching] "${excelName}": baslik sinifi (${hint.sizeClass}) marka sinifiyla (${ctx.brandClass.sizeClass}) celisiyor — baslik kazanir (PRD §9)`);
+    const sizeClass: SizeClass = lineClass ?? hint?.sizeClass ?? ctx.brandClass?.sizeClass ?? metalTypeClass ?? 'unknown';
+    if (lineClass && hint?.sizeClass && lineClass !== hint.sizeClass) {
+      console.log(`[Matching] "${excelName}": satir sinifi (${lineClass}) baslik varsayilanini (${hint.sizeClass}) EZDI (T3/T5)`);
     }
 
     // ── PRD §6-7: sinifa gore cap esdegerleri ────────────────────────
@@ -368,10 +378,18 @@ export class MatchingService {
 
     // Islevsel kelimeden uretilen tag'i (orn 'sprink') mustMatch'ten cikar —
     // yoksa kutuphanede o tag'i tasimayan gercek aday elenirdi.
-    const effectiveTags = (hint
+    let effectiveTags = (hint
       ? excelTags.tags.filter((t) => !hint.stripTags.includes(t))
       : excelTags.tags
     ).filter((t) => !isSizeTag(t)); // cap artik sizeAnyOf kumesiyle aranir
+
+    // T1/T2 (temiz su) + PIS SU bug'i: sinif PLASTIK cozulduyse ve satir ham
+    // metninde 'celik' YOKSA, generateTags'in DEFAULT-CELIK varsayimi sorgudan
+    // atilir — yoksa excelKinds=['celik'] cins filtresi PPR/PVC/HDPE adaylarini
+    // SESSIZCE eliyordu ("TEMIZ SU BORULARI DN50" hic eslesemezdi).
+    if (sizeClass === 'plastic' && !rawKinds.includes('celik')) {
+      effectiveTags = effectiveTags.filter((t) => t !== 'celik');
+    }
 
     // Satirin KENDISI tam tanimli mi? (cap + bilinen tip + cins) → 'high'
     // Yalniz cap veya baslik-ipucu ile bulunmus → 'suggestion' (oneri)
@@ -540,38 +558,43 @@ export class MatchingService {
       return { netPrice, listPrice, discount };
     };
 
-    // TEK ADAY — kademe ile eslestir
+    // TEK ADAY — DUZELTME: "ONERI" (sari auto-write) KADEMESI KALDIRILDI.
+    // Sistem tek adayda bile yalniz CELISKISIZSE yazar (yesil/high).
+    // Celiski = adayin TABAN yuzeyi (siyah|galvaniz) satir+sozluk beklentisinin
+    // TERSI — orn sprink hatti (siyah beklenir) icin tek aday GALVANIZLI ise
+    // fiyat YAZILMAZ, 1 secenekli fiyatli liste sunulur (kullanici onaylar).
+    // Sinif-belirsiz (P4) ve cevrim-tablosunda-yok (D5) tek adaylar da ayni:
+    // otomatik yazma yok, onayli liste. ("Tahmini eslesme — kontrol edin"
+    // pasif balonu tum akislardan kalkti — A5/B3.)
     if (topCandidates.length === 1) {
       const winner = topCandidates[0];
-      const { netPrice, listPrice, discount } = calcPrice(winner.priceItem);
-      // 'high' yalniz satir KENDISI tam tanimliysa; cap-only / baslik-ipucu → 'suggestion'.
-      // SESSIZ-YANLIS ONLEMI (PRD): otomatik-Disli secimiyle tek adaya inildi
-      // ve kaynak 'disli' YAZMADIYSA — baglanti tipi tahmin edildi → 'suggestion'
-      // (sari isaret), 'high' DEGIL.
-      const autoConnectionGuess = autoPickedDisli && !excelTags.tags.includes('disli');
-      // P4/D5 KADEME KAPAGI: sinif belirsizken veya cevrim tablosu disindayken
-      // ASLA 'high' verme — fiyat dolar ama sari isaretlenir (sessiz-yanlis onlemi).
+      const winnerTags = winner.priceItem.material.tags;
+      const expectedBases = new Set<string>(
+        [...rawSurfaces, ...(hint?.kinds ?? [])].filter((s) => s === 'siyah' || s === 'galvaniz'),
+      );
+      const winnerBases = winnerTags.filter((t) => t === 'siyah' || t === 'galvaniz');
+      const surfaceConflict =
+        expectedBases.size > 0 && winnerBases.length > 0 && !winnerBases.some((b) => expectedBases.has(b));
       const capped = equiv.ambiguous || equiv.noConversion;
-      const confidence: MatchResult['confidence'] =
-        fullyQualified && !autoConnectionGuess && !capped ? 'high' : 'suggestion';
-      const via = autoConnectionGuess
-        ? 'baglanti tipi otomatik secildi (Disli)'
-        : equiv.ambiguous
-          ? 'sınıf (çelik/PPR) varsayıldı'
-          : equiv.noConversion
-            ? `çevrim tablosunda yok (${sizeInfo!.display})`
-            : fullyQualified
-              ? `[${split.mustMatchTags.join(', ')}]`
-              : hint ? `cap + baslik ipucu (${hint.kinds.join('/')})` : 'yalniz cap';
-      console.log(`[Matching] "${excelName}" → ${confidence} → "${winner.priceItem.material.name}" = ${winner.priceItem.price} (net=${netPrice}) via ${via}${equiv.rozet ? ` | ${equiv.rozet}` : ''}`);
+
+      if (surfaceConflict || capped) {
+        const why = surfaceConflict
+          ? `Tek aday (${winnerBases.join('/')}) başlık/satır beklentisiyle (${Array.from(expectedBases).join('/')}) çelişiyor — onaylayın.`
+          : equiv.ambiguous
+            ? 'Malzeme sınıfı (çelik/PPR) belirsiz — onaylayın.'
+            : `Çevrim tablosunda yok (${sizeInfo!.display}) — onaylayın.`;
+        console.log(`[Matching] "${excelName}" → tek aday ama ONAY GEREKLI (${surfaceConflict ? 'yuzey celiskisi' : 'kademe kapagi'}) → popup(1)`);
+        return this.buildMultiResult(topCandidates, libItems, why, equiv.rozet);
+      }
+
+      const { netPrice, listPrice, discount } = calcPrice(winner.priceItem);
+      console.log(`[Matching] "${excelName}" → high → "${winner.priceItem.material.name}" = ${winner.priceItem.price} (net=${netPrice})${equiv.rozet ? ` | ${equiv.rozet}` : ''}`);
       return {
         netPrice, listPrice, discount,
-        confidence,
+        confidence: 'high',
         matchedName: winner.priceItem.material.name,
         donusum: equiv.rozet ?? undefined,
-        reason: confidence === 'high'
-          ? `Eslesti: ${via}${equiv.rozet ? ` · ${equiv.rozet}` : ''}`
-          : `Oneri (${via}) — kontrol edin${equiv.rozet ? ` · ${equiv.rozet}` : ''}`,
+        reason: `Eslesti (aile+boyut+sınıf doğrulandı)${equiv.rozet ? ` · ${equiv.rozet}` : ''}`,
       };
     }
 

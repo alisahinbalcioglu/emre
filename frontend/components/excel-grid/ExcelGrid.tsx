@@ -277,7 +277,10 @@ function BrandDropdown(props: ICellRendererParams & {
     api.forEachNode((n: any) => {
       const d = n.data;
       if (n === node || !d?._isDataRow || !d._marka) return;
-      if (d._matVariantMode === 'manual') return; // V4.2/V4.3: manuel satira dokunma
+      if (d._matVariantMode === 'manual') return; // V4.2: manuel satira dokunma
+      // A4: yayilim yalniz FIYATSIZ satirlara — dolu otomatik hucreler
+      // geriye donuk degistirilmez (kullanici onayi olmadan)
+      if ((parseFloat(String(d._matNetPrice ?? 0)) || 0) > 0) return;
       const det = buildMaterialContextDetailed(api, n.rowIndex ?? 0, nameField, noField, brandField, quantityField);
       if (det.header === groupKey) targets.push(n);
     });
@@ -350,13 +353,16 @@ function BrandDropdown(props: ICellRendererParams & {
       }
     }
 
-    // K4/K7 (Duzeltme Talebi): grup yayilimini POPUP'TAKI CHECKBOX belirler.
-    // Isaretliyse zincirin TAMAMI (secilen somut urunun varyant kimligi) grup
-    // varyanti olur/GUNCELLENIR ve oto-satirlara sorulmadan yayilir (V4.3);
-    // isaretli degilse yalniz bu satir degisir (A4 — manuel, grup etkilenmez).
-    if (applyToGroup && autoVariantEnabled && hdr && c.variantTags && c.variantTags.length > 0) {
-      groupVariants.current[hdr] = { tags: c.variantTags, label: c.label };
-      await applyVariantToGroup(hdr, groupVariants.current[hdr]);
+    // A4 (Duzeltme — anahtar semantigi): "SON SECIM" her secimde guncellenir —
+    // sonraki otomatik atamalar (V4.6 markasiz satirlar dahil) buna gore yapilir.
+    // CHECKBOX yalniz ANLIK yayilimi belirler; yayilim SADECE henuz FIYATSIZ
+    // satirlara gider — dolu otomatik hucreler geriye donuk DEGISTIRILMEZ,
+    // manuel hucrelere hic dokunulmaz.
+    if (autoVariantEnabled && hdr && c.variantTags && c.variantTags.length > 0) {
+      groupVariants.current[hdr] = { tags: c.variantTags, label: c.label }; // son secim
+      if (applyToGroup) {
+        await applyVariantToGroup(hdr, groupVariants.current[hdr]);
+      }
     }
   };
 

@@ -1711,20 +1711,16 @@ export default function NewQuotePage() {
               // Tek eslesme basarili
               if (match.netPrice > 0) {
                 const netPrice = parseFloat(String(match.netPrice)) || 0;
-                const isSuggestion = match.confidence === 'suggestion';
                 // U2 seffaf cevrim rozeti: "DN 25 → 1" (çelik)" — cevrim yapildiysa goster
                 const rozet = match.donusum ? ` · ${match.donusum}` : '';
-                // KATMAN 3: Gorsel dogrulama — kullanici hangi DB malzemesinin secildigini gorsun.
-                // 'suggestion' → sari uyari tonu, kesin degil "kontrol edin".
+                // A5/B3: "Öneri / tahmini eşleşme — lütfen kontrol edin" pasif
+                // balonu TAMAMEN KALDIRILDI — netPrice>0 artik yalniz 'high'
+                // (kesin) veya autoVariant (kullanici seciminin yayilimi) olabilir.
                 if (!silent) toast({
                   title: match.autoVariant
                     ? `⚡ Otomatik varyant: ${displayPrice(netPrice)} — ${materialName.slice(0, 40)}`
-                    : isSuggestion
-                      ? `🟡 Öneri: ${displayPrice(netPrice)} — ${materialName.slice(0, 45)}`
-                      : `🟢 ${displayPrice(netPrice)} — ${materialName.slice(0, 50)}`,
-                  description: isSuggestion
-                    ? `Tahmini eşleşme: ${match.matchedName?.slice(0, 70) ?? '?'}${rozet} — lütfen kontrol edin`
-                    : `Eslesti: ${match.matchedName?.slice(0, 80) ?? 'Bilinmeyen'}${rozet}`,
+                    : `🟢 ${displayPrice(netPrice)} — ${materialName.slice(0, 50)}`,
+                  description: `Eslesti: ${match.matchedName?.slice(0, 80) ?? 'Bilinmeyen'}${rozet}`,
                 });
                 return { netPrice, matchedName: match.matchedName, candidates: match.candidates, reason: match.reason, confidence: match.confidence, donusum: match.donusum, autoVariant: match.autoVariant };
               }

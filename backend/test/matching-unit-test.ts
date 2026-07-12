@@ -273,10 +273,12 @@ async function run() {
       && r2?.candidates?.[0]?.preferred === true && !!r2?.candidates?.[0]?.materialName?.includes('Pirinç'),
       `got ${r2?.confidence} ilk="${r2?.candidates?.[0]?.materialName}" preferred=${r2?.candidates?.[0]?.preferred}`);
     check('T16 netPrice yazilmadi', r2?.netPrice === 0, `got ${r2?.netPrice}`);
-    // Ayni cap tekrar gelirse tam-imza hafizasi calisir (mevcut davranis korunur)
+    // Ayni cap tekrar gelirse: hafiza artik OTOMATIK DOLDURMAZ (A2/A5) —
+    // gecmis secim listenin BASINDA preferred olarak gelir, secim kullanicinin
     const r3 = (await svc.bulkMatch('u1', 'brand-1', ['DN 25 KÜRESEL VANA']))['DN 25 KÜRESEL VANA'];
-    check('T16 ayni imza hafizadan', r3?.confidence === 'suggestion' && !!r3?.matchedName?.includes('Pirinç'),
-      `got ${r3?.confidence} "${r3?.matchedName}"`);
+    check('T16 ayni imza ON-SECILI (doldurmaz)', r3?.confidence === 'multi' && r3?.netPrice === 0
+      && r3?.candidates?.[0]?.preferred === true && !!r3?.candidates?.[0]?.materialName?.includes('Pirinç'),
+      `got ${r3?.confidence} net=${r3?.netPrice} ilk="${r3?.candidates?.[0]?.materialName}" pref=${r3?.candidates?.[0]?.preferred}`);
   }
 
   // T17/T18-altyapi/T19 (V4): grup varyant filtresi — kirmizi boyali / duz uclu / disli
@@ -321,7 +323,47 @@ async function run() {
   {
     const svc = makeService('ÇAYIROVA', [lib('Siyah Çelik Boru DN90', 200)]);
     const r = (await svc.bulkMatch('u1', 'brand-1', ['SİYAH ÇELİK BORU DN 90']))['SİYAH ÇELİK BORU DN 90'];
-    check('D5 suggestion (cevrim yok)', r?.confidence === 'suggestion', `got ${r?.confidence} (${r?.reason})`);
+    // Oneri kademesi kalkti: cevrimsiz tek aday YAZILMAZ — onayli liste (popup 1)
+    check('D5 onayli liste (cevrim yok, yazilmaz)', r?.confidence === 'multi' && r?.netPrice === 0 && (r?.candidates?.length ?? 0) === 1,
+      `got ${r?.confidence} net=${r?.netPrice} ${r?.candidates?.length} aday (${r?.reason})`);
+  }
+
+  // A2/A5 (Duzeltme — anahtar semantigi): tek aday SOZLUKLE CELISIYORSA
+  // (sprink=siyah beklenir, tek aday GALVANIZLI) fiyat YAZILMAZ — onayli liste.
+  {
+    const svc = makeService('ÇAYIROVA', [lib('Su ve Yangın Tesisat Boruları Galvanizli Dişli Manşonlu 2 1/2" DN65', 372.8)]);
+    const r = (await svc.bulkMatch('u1', 'brand-1', ['SPRİNK HATTI BORULARI DN 65']))['SPRİNK HATTI BORULARI DN 65'];
+    check('A2 celiskili tek aday yazilmaz (galvaniz vs siyah)', r?.confidence === 'multi' && r?.netPrice === 0 && (r?.candidates?.length ?? 0) === 1,
+      `got ${r?.confidence} net=${r?.netPrice} "${r?.matchedName}" ${r?.candidates?.length} aday`);
+  }
+
+  // B1 (temiz su): detaysiz "DN50" → PPR-C 50 mm (DN=mm; default-celik sorguyu bozmaz)
+  {
+    const svc = makeService('KALDE', [lib('PPR-C Boru 50 mm PN20', 90), lib('PPR-C Boru 63 mm PN20', 140)]);
+    const r = (await svc.bulkMatch('u1', 'brand-1', ['TEMİZ SU BORULARI DN50']))['TEMİZ SU BORULARI DN50'];
+    check('B1 temiz su DN50 → PPR 50 mm', (r?.netPrice ?? 0) > 0 && !!r?.matchedName?.includes('50 mm'),
+      `got ${r?.confidence} "${r?.matchedName}" net=${r?.netPrice} (${r?.reason})`);
+  }
+
+  // B2 (T3 override): ayni baslik altinda "DN50 GALVANIZ CELIK BORU" → celik 2"
+  // (PPR DEGIL — satir detayi basligi ezer; cevrim tablosu satir bazinda secilir)
+  {
+    const MIX = [
+      lib('PPR-C Boru 50 mm PN20', 90),
+      lib('Galvanizli Çelik Boru 2" DN50 Dişli', 291.1),
+    ];
+    const svc = makeService('GENEL TESİSAT', MIX);
+    const r = (await svc.bulkMatch('u1', 'brand-1', ['TEMİZ SU BORULARI DN50 GALVANİZ ÇELİK BORU']))['TEMİZ SU BORULARI DN50 GALVANİZ ÇELİK BORU'];
+    check('B2 satir detayi basligi ezer → galvaniz celik 2"', (r?.netPrice ?? 0) > 0 && !!r?.matchedName?.includes('Galvanizli') && !!r?.matchedName?.includes('2"'),
+      `got ${r?.confidence} "${r?.matchedName}" net=${r?.netPrice} (${r?.reason})`);
+  }
+
+  // PIS SU regresyonu: baslik plastik derken default-celik PVC'yi ELEMEMELI
+  {
+    const svc = makeService('HAKAN PLASTİK', [lib('PVC Boru 110 mm Atık Su', 75)]);
+    const r = (await svc.bulkMatch('u1', 'brand-1', ['PİS SU BORULARI DN 110']))['PİS SU BORULARI DN 110'];
+    check('PIS SU DN110 → PVC 110 mm eslesir', (r?.netPrice ?? 0) > 0 || r?.confidence === 'multi',
+      `got ${r?.confidence} "${r?.matchedName}" net=${r?.netPrice} (${r?.reason})`);
   }
 
   console.log(`\n${'='.repeat(60)}`);

@@ -52,6 +52,16 @@ const PIS_SU = {
   sizeClass: 'plastic',
   stripTags: [],
 };
+// T1 (Duzeltme Talebi — temiz su): detay belirtilmemis satirlarda varsayilan
+// PPR-C; DN = dis cap mm (DN50 = 50 mm). Satir detayi basligi EZER (T3/T5):
+// "DN50 GALVANIZ CELIK BORU" satiri celik cevrimiyle cozulur.
+const TEMIZ_SU = {
+  canonical: 'ppr_c_boru',
+  kinds: ['ppr'],
+  impliedType: 'boru',
+  sizeClass: 'plastic',
+  stripTags: [],
+};
 
 export const ALIAS_SEEDS: Array<{ alias: string } & typeof CELIK> = [
   // Sprinkler / yangin → siyah celik boru (TR)
@@ -87,8 +97,11 @@ export const ALIAS_SEEDS: Array<{ alias: string } & typeof CELIK> = [
   { alias: 'atiksu', ...PIS_SU },
   { alias: 'kanalizasyon', ...PIS_SU },
   { alias: 'drenaj', ...PIS_SU },
-  // NOT: "temiz su / kullanma suyu" BILEREK YOK — cins belirsiz (ppr/galvaniz/
-  // pex), otomatik doldurmak yerine popup'a birakilir (onceki karar korundu).
+  // Temiz su → PPR-C varsayilani (Duzeltme Talebi T1 — onceki "bilerek yok"
+  // karari kullanici talebiyle degisti; satir detayi varsayilani ezer T3)
+  { alias: 'temiz su', ...TEMIZ_SU },
+  { alias: 'kullanma suyu', ...TEMIZ_SU },
+  { alias: 'icme suyu', ...TEMIZ_SU },
 ];
 
 // ── SEED: Marka → sinif (PRD D2 celik + P1 PPR + HDPE) ──
