@@ -530,3 +530,40 @@ export function extractLengthMm(text: string): string | null {
 export function extractAccessory(text: string): string | null {
   return /rozet/i.test(normalizeText(text)) ? 'aks-rozet' : null;
 }
+
+// ────────────────────────────────────────────
+// VANA YUVALARI (E8/E9 — Boru Disi Kalemler PRD ek vakasi)
+// "DOGALGAZ VANASI KURESEL" → aile=vana, tip=vt-kuresel, akiskan=gaz.
+// Ayni YUVADA farkli deger tasiyan aday SERT elenir (skor niteligi degil):
+// kuresel istenirken surgulu/kelebek/globe/bicakli hicbir skorla gosterilemez.
+// ────────────────────────────────────────────
+
+/** Vana TIPI (TR-EN es-anlamli, E4). SIRA ONEMLI: "Bicakli Surgulu Vana"
+ *  bicakli'dir (once test edilir). Ilk eslesen kazanir. */
+const VALVE_TYPE_PATTERNS: { pattern: RegExp; tag: string }[] = [
+  { pattern: /bicakli|knife/i, tag: 'vt-bicakli' },
+  { pattern: /kuresel|\bball\b/i, tag: 'vt-kuresel' },
+  { pattern: /surgulu|\bgate\b/i, tag: 'vt-surgulu' },
+  { pattern: /kelebek|butterfly/i, tag: 'vt-kelebek' },
+  { pattern: /\bglobe\b/i, tag: 'vt-globe' },
+  { pattern: /cek\s*val|cekval|check\s*val/i, tag: 'vt-cek' },
+];
+
+export function extractValveType(text: string): string | null {
+  const normalized = normalizeText(text);
+  for (const { pattern, tag } of VALVE_TYPE_PATTERNS) {
+    if (pattern.test(normalized)) return tag;
+  }
+  return null;
+}
+
+/** AKISKAN/hizmet yuvasi: dogalgaz/gaz → gaz · sivi(lar) → sivi · buhar →
+ *  buhar. E9: dogalgaz istenirken "Sivilar icin" urun HICBIR kosulda aday
+ *  olamaz; gaz uygunlugu isaretsiz urun de gosterilmez (guvenlik). */
+export function extractFluid(text: string): string | null {
+  const normalized = normalizeText(text);
+  if (/dogalgaz|dogal\s*gaz|\bgaz\b|\blpg\b/.test(normalized)) return 'akiskan-gaz';
+  if (/buhar|steam/.test(normalized)) return 'akiskan-buhar';
+  if (/\bsivi(lar)?\b/.test(normalized)) return 'akiskan-sivi';
+  return null;
+}

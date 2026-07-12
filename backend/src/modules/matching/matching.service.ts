@@ -375,6 +375,15 @@ export class MatchingService {
             }
           : null;
 
+    // ── E8 on-kosulu: BORU alias'i boru-olmayan satira dayatilamaz ──
+    // "DOGALGAZ VANASI KURESEL" satiri 'dogalgaz' alias'ini (dogalgaz→celik
+    // BORU) tetikliyordu → vana satirina celik-boru ailesi + siyah beklentisi
+    // biniyordu. Satirin KENDI tipi belli ve boru degilse boru ipucu dusulur.
+    if (hint?.impliedType === 'boru' && excelTags.materialType !== 'diger' && excelTags.materialType !== 'boru') {
+      console.log(`[Matching] "${excelName}": satir tipi (${excelTags.materialType}) boru alias'ini gecersiz kildi (E8)`);
+      hint = null;
+    }
+
     // ── E2: BIRIM SINYALI (metre→boru, adet→ekipman) ────────────────
     // Satirin kendisi ekipman tipi tasirken sozluk/baslik boru ailesi dayatamaz;
     // adet birimli satira boru ipucu uygulanmaz. Sinyaller CELISIRSE otomatik
@@ -496,11 +505,33 @@ export class MatchingService {
     // hafizaya yazilir (E7), sonraki dosyada on-secili gelir.
     const familyResolved = excelTypeKnown || familyKinds.length > 0 || !!hint;
 
-    const allCandidates = scoreCandidates(
+    let allCandidates = scoreCandidates(
       allPrices,
       (p) => p.material.tags,
       split,
     );
+
+    // ── E8/E9 (vana): yuva SIKILASTIRMASI ───────────────────────────
+    // Celiskili adaylar scoreCandidates'ta elendi; burada: istenen yuva
+    // degerini TASIYAN aday varsa yalniz tasiyanlar kalir (H7 "yalnizca
+    // kuresel + dogalgaza uygun"). DOGALGAZ ozel SERT kural (E9): gaz
+    // uygunlugu ISARETSIZ urun de gosterilmez — tasiyan yoksa sonuc YOK,
+    // M3 alternatif markalar devreye girer (E10).
+    if (excelTags.materialType === 'vana' && split.slotTags && split.slotTags.length > 0) {
+      for (const want of split.slotTags) {
+        const carriers = allCandidates.filter((c) => c.priceItem.material.tags.includes(want));
+        if (carriers.length > 0) {
+          if (carriers.length < allCandidates.length) {
+            console.log(`[Matching]   Yuva daraltmasi (${want}): ${allCandidates.length} → ${carriers.length}`);
+          }
+          allCandidates = carriers;
+        } else if (want === 'akiskan-gaz') {
+          console.log(`[Matching]   E9 SERT: gaz uygunlugu isaretli aday yok → sonuc YOK (M3'e duser)`);
+          allCandidates = [];
+          break;
+        }
+      }
+    }
 
     if (allCandidates.length === 0) {
       console.log(`[Matching] "${excelName}" → ESLESMEDI. Olcu: [${sizeAnyOf.join(',')}] (${sizeClass}), zorunlu: [${split.mustMatchTags.join(',')}], refine: [${split.refineTags.join(',')}]`);
@@ -764,7 +795,11 @@ export class MatchingService {
       if (excelTags.materialType === 'diger') return []; // aile belirsiz — onerme
       // N1/N2: alternatif taramasi da AILE KILITLIDIR — sozluk/satir cinsleri
       // uygulanir (temiz su → yalniz PPR markalari onerilir, celik ASLA).
-      const altHint = this.terminology.resolveAlias(excelName, ctx.aliases);
+      let altHint = this.terminology.resolveAlias(excelName, ctx.aliases);
+      // E8: boru alias'i boru-olmayan satira dayatilamaz (matchSingle ile ayni)
+      if (altHint?.impliedType === 'boru' && excelTags.materialType !== 'boru') {
+        altHint = null;
+      }
       const altRawKinds = extractMaterialKind(excelName);
       const altRawFamily = altRawKinds.filter((k) => KIND_TAGS.has(k));
       const altFamilyKinds = altRawFamily.length > 0
@@ -828,7 +863,16 @@ export class MatchingService {
         };
       }).filter((x: AltItem) => x.name && x.listPrice > 0);
 
-      const scored = scoreCandidates(items, (x) => x.tags, split);
+      let scored = scoreCandidates(items, (x) => x.tags, split);
+      // E8/E9/E10 (vana): alternatifler de yuva kurallarina uyar — tasiyan
+      // varsa tasiyanlara daralt; dogalgazda isaretsiz urun onerilmez.
+      if (excelTags.materialType === 'vana' && split.slotTags && split.slotTags.length > 0) {
+        for (const want of split.slotTags) {
+          const carriers = scored.filter((c) => (c.priceItem as AltItem).tags.includes(want));
+          if (carriers.length > 0) scored = carriers;
+          else if (want === 'akiskan-gaz') { scored = []; break; }
+        }
+      }
       scored.sort((a, b) => b.totalScore - a.totalScore);
 
       const out: BrandAlternative[] = [];

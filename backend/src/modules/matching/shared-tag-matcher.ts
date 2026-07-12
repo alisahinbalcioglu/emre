@@ -94,6 +94,16 @@ export interface SplitExcelTags {
    *  (orn PPR "1\"" → ['od-32','dn32']). mustMatchTags'teki tekil cap tag'inin
    *  yerini alir — yalniz material matcher doldurur, labor 'legacy' etkilenmez. */
   sizeAnyOf?: string[];
+  /** E8/E9: YUVA tag'leri (vt-* vana tipi, akiskan-* akiskan) — ayni yuvada
+   *  FARKLI deger tasiyan aday SERT elenir (skor niteligi degil). */
+  slotTags?: string[];
+}
+
+/** E8: yuva on-ekleri — her yuva tek deger tasir, celiski = eleme. */
+export const SLOT_PREFIXES = ['vt-', 'akiskan-'] as const;
+
+export function isSlotTag(t: string): boolean {
+  return SLOT_PREFIXES.some((p) => t.startsWith(p));
 }
 
 /** Malzeme TIPI tag degerleri (extractMaterialType ciktilari) — must'ta kalir:
@@ -117,7 +127,10 @@ export const EQUIPMENT_TYPE_TAGS = new Set<string>([
 
 export function isAttrTag(t: string): boolean {
   return /^temp-\d+$/.test(t) || /^k-\d+$/.test(t) || /^len-\d+$/.test(t)
-    || t === 'pendent' || t === 'upright' || t === 'sidewall' || t.startsWith('aks-');
+    || t === 'pendent' || t === 'upright' || t === 'sidewall' || t.startsWith('aks-')
+    // E8: vana yuvalari da etiket/varyant kimligidir (kuresel gaz vanasi
+    // farkli capta ayni yuvalarla aranir)
+    || t.startsWith('vt-') || t.startsWith('akiskan-');
 }
 
 /** Nitelik tag'inin kullaniciya gosterilecek hali. */
@@ -129,6 +142,15 @@ export function attrLabel(t: string): string {
   if (t === 'upright') return 'Upright (dik)';
   if (t === 'sidewall') return 'Sidewall (duvar)';
   if (t === 'aks-rozet') return 'Rozetli';
+  if (t === 'vt-kuresel') return 'Küresel';
+  if (t === 'vt-surgulu') return 'Sürgülü';
+  if (t === 'vt-kelebek') return 'Kelebek';
+  if (t === 'vt-globe') return 'Globe';
+  if (t === 'vt-bicakli') return 'Bıçaklı Sürgülü';
+  if (t === 'vt-cek') return 'Çek Valf';
+  if (t === 'akiskan-gaz') return 'Doğalgaz';
+  if (t === 'akiskan-sivi') return 'Sıvı';
+  if (t === 'akiskan-buhar') return 'Buhar';
   return t;
 }
 
@@ -179,6 +201,8 @@ export function splitExcelTags(excelTags: string[], mode: 'legacy' | 'material' 
       refineTags: excelTags.filter((t) => !isMust(t) && !IGNORE_TAGS.has(t)),
       excelSurfaces: excelTags.filter((t) => SURFACE_TAGS.has(t)),
       excelKinds: excelTags.filter((t) => KIND_TAGS.has(t)),
+      // E8/E9: yuva tag'leri — scoreCandidates celiskili adayi SERT eler
+      slotTags: excelTags.filter(isSlotTag),
     };
   }
   return {
@@ -249,6 +273,22 @@ export function scoreCandidates<T>(
         const hasMatchingKind = excelKinds.some((k) => dbKinds.includes(k));
         if (!hasMatchingKind) continue;
       }
+    }
+
+    // ── E8/E9: YUVA CELISKISI — SERT eleme ──────────────────────────
+    // Satir "kuresel" derken vt-surgulu/vt-kelebek/vt-globe tasiyan aday
+    // HICBIR skorla gosterilemez; "dogalgaz" derken akiskan-sivi/buhar
+    // tasiyan aday elenir (H9). Ayni yuvada AYNI degeri tasiyan bonus alir;
+    // yuva tag'i hic tasimayan (duz adli) kayit burada gecer — vana ozel
+    // sikilastirmasi matchSingle'da (tasiyan varsa tasiyanlara daraltma).
+    if (split.slotTags && split.slotTags.length > 0) {
+      let slotConflict = false;
+      for (const want of split.slotTags) {
+        const prefix = SLOT_PREFIXES.find((p) => want.startsWith(p))!;
+        const dbSlot = dbTags.filter((t) => t.startsWith(prefix));
+        if (dbSlot.length > 0 && !dbSlot.includes(want)) { slotConflict = true; break; }
+      }
+      if (slotConflict) continue;
     }
 
     // Refine etiketler: bonus

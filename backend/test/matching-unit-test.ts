@@ -510,6 +510,68 @@ async function run() {
     check('H6 neden "ailesi belirlenemedi"', !!r?.reason?.includes('belirlenemedi'), `got "${r?.reason}"`);
   }
 
+  // ═══════ EK VAKA (E8-E10, H7-H9): vana tipi + akiskan SERT filtre ═══════
+  const AYVAZ_VANA = [
+    lib('Doğalgaz Küresel Vana Dişli DN50', 2250),
+    lib('Doğalgaz Küresel Vana Flanşlı DN50', 3350),
+    lib('Sürgülü Vana Elastomer Sitli DN50', 3250),
+    lib('Bıçaklı Sürgülü Vana Wafer DN50', 4850),
+    lib('Kelebek Vana Lug Tip PN16 DN50', 1850),
+    lib('Globe Vana API 623 Class 150 2"', 18500),
+    lib('Monoblok Vana Sıvılar DN50', 4450),
+  ];
+
+  // H7: DOGALGAZ VANASI KURESEL DN50 → YALNIZ kuresel+gaz adaylar (2 varyant:
+  // disli/flansli); surgulu/kelebek/globe/bicakli/SIVILAR hicbir skorla yok (H9)
+  {
+    const svc = makeService('AYVAZ', AYVAZ_VANA);
+    const q = 'DOĞALGAZ VANASI KÜRESEL DN50';
+    const r = (await svc.bulkMatch('u1', 'brand-1', [q]))[q];
+    check('H7 iki gaz-kuresel varyant listede (disli/flansli)', r?.confidence === 'multi' && (r?.candidates?.length ?? 0) === 2
+      && !!r?.candidates?.every((c) => c.materialName.includes('Doğalgaz Küresel')),
+      `got ${r?.confidence} ${r?.candidates?.length} aday: ${r?.candidates?.map((c) => c.materialName).join(' | ') ?? r?.matchedName}`);
+    check('H9 surgulu/kelebek/globe/sivilar YOK',
+      !r?.candidates?.some((c) => /Sürgülü|Kelebek|Globe|Sıvılar|Bıçaklı/.test(c.materialName)),
+      `adaylar: ${r?.candidates?.map((c) => c.materialName).join(' | ')}`);
+  }
+
+  // H7b/E10: markada gaz-isaretli kuresel YOK → isaretsiz kuresel YAZILMAZ,
+  // M3 alternatif markalar (gercek gaz vanasi sunanlar) onerilir
+  {
+    const NO_GAS = [
+      lib('Küresel Vana DN50 Pirinç', 950),        // gaz isareti yok — gosterilemez
+      lib('Sürgülü Vana Elastomer Sitli DN50', 3250),
+    ];
+    const OTHER = [
+      { ...lib('Doğalgaz Küresel Vana Dişli DN50', 2100), brand: { id: 'brand-esbir', name: 'ESBİR' } },
+      { ...lib('Küresel Vana DN50 Çelik', 1200), brand: { id: 'brand-x', name: 'DUYAR' } }, // gaz degil — girmemeli
+    ];
+    const svc = makeService('AYVAZ', NO_GAS, OTHER);
+    const q = 'DOĞALGAZ VANASI KÜRESEL DN50';
+    const r = (await svc.bulkMatch('u1', 'brand-1', [q]))[q];
+    check('H7b gaz isaretsiz urun yazilmadi (none)', r?.confidence === 'none' && r?.netPrice === 0,
+      `got ${r?.confidence} net=${r?.netPrice} "${r?.matchedName}"`);
+    check('H7b alternatif yalniz ESBİR (gaz vanasi)', (r?.alternatives?.length ?? 0) === 1 && r?.alternatives?.[0]?.brandName === 'ESBİR',
+      `got ${JSON.stringify(r?.alternatives?.map((a) => a.brandName))}`);
+  }
+
+  // H8: DOGALGAZ VANASI FLANSLI DN50 → tip belirtilmedi; flansli+gaz vana
+  // dogrudan bulunur (baglanti refine ile one gecer)
+  {
+    const svc = makeService('AYVAZ', AYVAZ_VANA);
+    const q = 'DOĞALGAZ VANASI FLANŞLI DN50';
+    const r = (await svc.bulkMatch('u1', 'brand-1', [q]))[q];
+    check('H8 flansli gaz vanasi', (r?.netPrice ?? 0) > 0
+      ? !!r?.matchedName?.includes('Flanşlı')
+      : r?.candidates?.[0]?.materialName?.includes('Flanşlı') === true,
+      `got ${r?.confidence} "${r?.matchedName ?? r?.candidates?.map((c) => c.materialName).join(' | ')}"`);
+    check('H8 sivi/surgulu yok', !r?.matchedName?.includes('Sıvılar') && !r?.candidates?.some((c) => /Sıvılar|Sürgülü|Kelebek/.test(c.materialName)),
+      `got "${r?.matchedName}" adaylar: ${r?.candidates?.map((c) => c.materialName).join(' | ') ?? '-'}`);
+  }
+
+  // E8 regresyon: KURESEL VANA (akiskansiz) mevcut davranis — 3 cins adayi
+  // (T14 zaten dogruluyor); vt-kuresel yuvasi tum adaylarda ayni → daralmaz.
+
   console.log(`\n${'='.repeat(60)}`);
   console.log(`SONUC: ${passed} PASS, ${failed} FAIL`);
   console.log('='.repeat(60));

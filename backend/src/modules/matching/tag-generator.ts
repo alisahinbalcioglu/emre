@@ -21,6 +21,8 @@ import {
   extractMountType,
   extractLengthMm,
   extractAccessory,
+  extractValveType,
+  extractFluid,
 } from './normalizer';
 import type { TaggedMaterial } from './types';
 
@@ -94,6 +96,14 @@ export function generateTags(materialName: string): TaggedMaterial {
   if (lengthMm) tags.add(lengthMm);
   const accessory = extractAccessory(materialName);
   if (accessory) tags.add(accessory);
+
+  // 10c. VANA YUVALARI (E8/E9): tip (vt-kuresel/surgulu/kelebek/globe/
+  // bicakli/cek) + akiskan (akiskan-gaz/sivi/buhar). Ayni yuvada FARKLI
+  // deger tasiyan aday scoreCandidates'ta SERT elenir.
+  const valveType = extractValveType(materialName);
+  if (valveType) tags.add(valveType);
+  const fluid = extractFluid(materialName);
+  if (fluid) tags.add(fluid);
 
   // 11. DEFAULT BORU = CELIK
   // Eger malzeme tipi 'boru' ise ve alternatif bir malzeme cinsi yoksa, celik etiketi ekle
