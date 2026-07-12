@@ -64,7 +64,11 @@ export const POPULAR_MATERIALS = new Set<string>([
  *  subtype. Grup ici otomatik atamada "ayni varyanti farkli capta bul" bu
  *  tag'lerle yapilir. Cap/tip tag'leri varyant DEGILDIR. */
 export function isVariantTag(t: string): boolean {
-  return SURFACE_KIND_KEYS.has(t) || CONNECTION_TAGS.has(t) || /^pn\d+$/.test(t) || MATERIAL_SUBTYPE_KEYS.has(t);
+  // E3: ekipman nitelikleri de varyant kimligidir (pendent+68°C sprinkler'i
+  // farkli capta ararken korunur) — UZUNLUK haric (len satir bazli degisir,
+  // cap gibi davranir; varyanta dahil edilirse grup yayilimi kilitlenir).
+  const attrVariant = isAttrTag(t) && !/^len-\d+$/.test(t);
+  return SURFACE_KIND_KEYS.has(t) || CONNECTION_TAGS.has(t) || /^pn\d+$/.test(t) || MATERIAL_SUBTYPE_KEYS.has(t) || attrVariant;
 }
 
 export const TAG_LABELS: Record<string, string> = {
@@ -93,12 +97,70 @@ export interface SplitExcelTags {
 }
 
 /** Malzeme TIPI tag degerleri (extractMaterialType ciktilari) — must'ta kalir:
- *  tip uyusmazligi sessiz-yanlis eslesme uretir (boru yerine vana). */
+ *  tip uyusmazligi sessiz-yanlis eslesme uretir (boru yerine vana).
+ *  E1 (Boru Disi Kalemler PRD): ekipman aileleri de tip=must ile KILITLENIR —
+ *  sprinkler satirina Fan-Coil hortumu hicbir skorla aday olamaz. */
 export const MATERIAL_TYPE_TAGS = new Set<string>([
   'boru', 'vana', 'fitting', 'flans', 'izolasyon', 'pompa', 'radyator',
   'kombi', 'vitrifiye', 'armatur', 'kablo', 'pano', 'sigorta', 'kazan',
   'dogalgaz-boru', 'montaj',
+  'sprinkler', 'hortum', 'akis-anahtari', 'akis-olcer',
 ]);
+
+/** E1: ekipman aileleri — cap zorunlulugu gevser (H3: uzunlukla eslesir),
+ *  DN cevrimi celik tablosuyla yapilir (H4: DN 65 → 2 1/2"). */
+export const EQUIPMENT_TYPE_TAGS = new Set<string>([
+  'sprinkler', 'hortum', 'akis-anahtari', 'akis-olcer',
+]);
+
+// ── E3: EKIPMAN NITELIK TAG'LERI (temp-68, k-80, pendent, len-500, aks-*) ──
+
+export function isAttrTag(t: string): boolean {
+  return /^temp-\d+$/.test(t) || /^k-\d+$/.test(t) || /^len-\d+$/.test(t)
+    || t === 'pendent' || t === 'upright' || t === 'sidewall' || t.startsWith('aks-');
+}
+
+/** Nitelik tag'inin kullaniciya gosterilecek hali. */
+export function attrLabel(t: string): string {
+  if (t.startsWith('temp-')) return `${t.slice(5)}°C`;
+  if (t.startsWith('k-')) return `K=${t.slice(2)}`;
+  if (t.startsWith('len-')) return `${t.slice(4)} mm`;
+  if (t === 'pendent') return 'Pendent (asma tavan)';
+  if (t === 'upright') return 'Upright (dik)';
+  if (t === 'sidewall') return 'Sidewall (duvar)';
+  if (t === 'aks-rozet') return 'Rozetli';
+  return t;
+}
+
+/** E3: nitelik KATEGORISI — ayni kategoride farkli deger = fark uyarisi
+ *  ("68°C istendi — bu ürün 141°C"). */
+function attrCategory(t: string): string | null {
+  if (/^temp-\d+$/.test(t)) return 'temp';
+  if (/^k-\d+$/.test(t)) return 'k';
+  if (/^len-\d+$/.test(t)) return 'len';
+  if (t === 'pendent' || t === 'upright' || t === 'sidewall') return 'mount';
+  return null;
+}
+
+/** Aday, istenen niteligi FARKLI degerle tasiyorsa uyari metni uretir. */
+export function buildAttrUyari(excelTags: string[], candidateTags: string[]): string | null {
+  const wanted = new Map<string, string>();
+  for (const t of excelTags) {
+    const cat = attrCategory(t);
+    if (cat && !wanted.has(cat)) wanted.set(cat, t);
+  }
+  if (wanted.size === 0) return null;
+  const notes: string[] = [];
+  for (const t of candidateTags) {
+    const cat = attrCategory(t);
+    if (!cat) continue;
+    const want = wanted.get(cat);
+    if (want && want !== t) {
+      notes.push(`${attrLabel(want)} istendi — bu ürün ${attrLabel(t)}`);
+    }
+  }
+  return notes.length > 0 ? notes.join(' · ') : null;
+}
 
 /**
  * PRD Adim 4 (material modu): SERT FILTRE = OLCU + TIP.
@@ -285,13 +347,16 @@ export interface BuildCandidatesOptions<T> {
   getTags: (item: T) => string[];
   /** Label uretirken yuzey/cins seviyesi surfaceLevel=true yapilsin mi (material=true, labor=false). */
   useSurfaceLevelLabels: boolean;
+  /** E3: satirin tag'leri — aday nitelik FARKI tasiyorsa uyari uretilir
+   *  ("68°C istendi — bu ürün 141°C"). */
+  excelTags?: string[];
 }
 
 export function buildCandidateList<T>(
   topCandidates: ScoredCandidate<T>[],
   opts: BuildCandidatesOptions<T>,
 ): MatchCandidate[] {
-  const { calcPrice, getName, getTags, useSurfaceLevelLabels } = opts;
+  const { calcPrice, getName, getTags, useSurfaceLevelLabels, excelTags } = opts;
 
   const allTagSets = topCandidates.map((c) => new Set(getTags(c.priceItem)));
   const commonTags = new Set<string>(allTagSets[0]);
@@ -319,10 +384,13 @@ export function buildCandidateList<T>(
         surfaceKinds = surfaceKinds.filter((t) => t !== 'boyali');
       }
       const connections = diffTags.filter((t) => CONNECTION_TAGS.has(t));
+      // E3: ekipman nitelik farklari da etikette gorunur ("141°C Pendent")
+      const attrs = diffTags.filter((t) => isAttrTag(t));
       surfaceLevel = surfaceKinds.length > 0;
       const labelParts = [
         ...surfaceKinds.map((t) => TAG_LABELS[t] ?? t),
         ...connections.map((t) => TAG_LABELS[t] ?? t),
+        ...attrs.map((t) => attrLabel(t)),
       ];
       label = labelParts.length > 0 ? labelParts.join(' ') : name.slice(0, 40);
     } else {
@@ -341,6 +409,8 @@ export function buildCandidateList<T>(
       // V4: varyant kimligi — diff tag'lerin anlamli alt kumesi (kutuphaneden
       // dinamik turetilir, sabit liste yok — PRD v1.3 V0 genellik ilkesi)
       variantTags: diffTags.filter(isVariantTag),
+      // E3: istenen nitelikten FARKLI deger tasiyan aday isaretlenir
+      uyari: excelTags ? buildAttrUyari(excelTags, tags) ?? undefined : undefined,
     };
   });
 

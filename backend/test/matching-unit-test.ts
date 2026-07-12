@@ -404,6 +404,112 @@ async function run() {
       `got ${r?.confidence} "${r?.matchedName}" net=${r?.netPrice} (${r?.reason})`);
   }
 
+  // ═══════ BORU DISI KALEMLER PRD (E1-E6, H1-H6) — AYVAZ vakasi ═══════
+  const AYVAZ_LIB = [
+    lib('Ayvaz Sprinkler 68°C Pendent 1/2" DN15', 420),
+    lib('Ayvaz Sprinkler 141°C Pendent 1/2" DN15', 485),
+    lib('Ayvaz Sprinkler 68°C Upright 1/2" DN15', 430),
+    lib('Ayvaz Sprinkler 68°C Sidewall 1/2" DN15', 460),
+    lib('Fan-Coil Bağlantı 1/2"Nx1/2"R 500mm', 350),
+    lib('İzoleli Fan-Coil Bağlantı 1/2"Nx1/2"R 300mm', 410),
+    lib('Sprinkler Bağlantı Hortumu ve Seti 300', 700),
+    lib('Sprinkler Bağlantı Hortumu ve Seti 500', 800),
+    lib('Akış Anahtarı Paddle Tip 2 1/2"', 4250),
+    lib('Akış Anahtarı Paddle Tip 3"', 4750),
+    lib('Akış Ölçer Flow Meter 2 1/2"', 14771),
+  ];
+
+  // H1: sprinkler basligi satiri → YALNIZ sprinkler ailesi; nitelikler
+  // (68°C + Pendent + 1/2") tam tutan urun dogrudan eslesir; Fan-Coil ASLA aday olamaz
+  {
+    const svc = makeService('AYVAZ', AYVAZ_LIB);
+    const q = 'SPRİNKLER ASMA TAVAN SPRİNK 68°C, K=80, 1/2" NPT (ROZET DAHİL)';
+    const r = (await svc.bulkMatch('u1', 'brand-1', [q]))[q];
+    check('H1 nitelik tam tutan sprinkler eslesti', (r?.netPrice ?? 0) > 0 && !!r?.matchedName?.includes('68°C Pendent'),
+      `got ${r?.confidence} "${r?.matchedName}" net=${r?.netPrice} (${r?.reason})`);
+    check('H1 Fan-Coil eslesmedi', !r?.matchedName?.includes('Fan-Coil'), `got "${r?.matchedName}"`);
+  }
+
+  // H1b/E3: kutuphanede olmayan nitelik (93°C) → aday listesi YALNIZ sprinkler,
+  // farkli °C adaylar UYARI ile isaretli ("93°C istendi — bu ürün 68°C")
+  {
+    const svc = makeService('AYVAZ', AYVAZ_LIB);
+    const q = 'SPRİNKLER ASMA TAVAN SPRİNK 93°C 1/2"';
+    const r = (await svc.bulkMatch('u1', 'brand-1', [q]))[q];
+    check('H1b multi + fiyat yazilmadi', r?.confidence === 'multi' && r?.netPrice === 0,
+      `got ${r?.confidence} net=${r?.netPrice} "${r?.matchedName}"`);
+    check('H1b adaylar YALNIZ sprinkler (Fan-Coil yok)',
+      !!r?.candidates?.length && r.candidates.every((c) => c.materialName.includes('Sprinkler') && !c.materialName.includes('Fan-Coil')),
+      `adaylar: ${r?.candidates?.map((c) => c.materialName).join(' | ')}`);
+    check('H1b nitelik farki uyarisi var', !!r?.candidates?.some((c) => c.uyari?.includes('93°C istendi')),
+      `uyarilar: ${r?.candidates?.map((c) => c.uyari ?? '-').join(' | ')}`);
+  }
+
+  // H2: "ASMA DUVAR" → Sidewall (montaj tipi ayrimi, E4 es-anlamli)
+  {
+    const svc = makeService('AYVAZ', AYVAZ_LIB);
+    const q = 'SPRİNKLER ASMA DUVAR SPRİNK 68°C 1/2"';
+    const r = (await svc.bulkMatch('u1', 'brand-1', [q]))[q];
+    check('H2 Sidewall ustte/eslesti', !!r?.matchedName?.includes('Sidewall') || r?.candidates?.[0]?.materialName?.includes('Sidewall') === true,
+      `got ${r?.confidence} "${r?.matchedName ?? r?.candidates?.[0]?.materialName}" (${r?.reason})`);
+  }
+
+  // H3: capsiz hortum satiri — cm→mm cevrimi (50 cm = 500) uzunlukla eslesir
+  {
+    const svc = makeService('AYVAZ', AYVAZ_LIB);
+    const q = 'ESNEK SPRİNKLER HORTUMU (50 cm)';
+    const r = (await svc.bulkMatch('u1', 'brand-1', [q]))[q];
+    check('H3 hortum 500 eslesti (cap yok ama aile+uzunluk var)', (r?.netPrice ?? 0) > 0 && !!r?.matchedName?.includes('Seti 500'),
+      `got ${r?.confidence} "${r?.matchedName}" net=${r?.netPrice} (${r?.reason})`);
+  }
+
+  // H4: FLOW SWITCH DN 65 → akis anahtari ailesi + DN→inc cevrimi (2 1/2");
+  // Akis OLCER (flow meter) ayri ailedir, aday olamaz
+  {
+    const svc = makeService('AYVAZ', AYVAZ_LIB);
+    const q = 'FLOW SWİTCH DN 65';
+    const r = (await svc.bulkMatch('u1', 'brand-1', [q]))[q];
+    check('H4 Paddle Tip 2 1/2" eslesti', (r?.netPrice ?? 0) > 0 && !!r?.matchedName?.includes('Paddle Tip 2 1/2"'),
+      `got ${r?.confidence} "${r?.matchedName}" net=${r?.netPrice} (${r?.reason})`);
+    check('H4 Flow Meter aday degil', !r?.matchedName?.includes('Meter') && !r?.candidates?.some((c) => c.materialName.includes('Meter')),
+      `got "${r?.matchedName}" adaylar: ${r?.candidates?.map((c) => c.materialName).join(' | ') ?? '-'}`);
+  }
+
+  // H5/E2 regresyon: "SPRİNK HATTI" hala BORU ailesidir (E2 ayrimi yalin
+  // sprink'i etkiler, hatti'yi degil) — T1 zaten dogruluyor; burada yalin
+  // sprink satirinin celik boruya COZULMEDIGINI dogrula (adet birimli)
+  {
+    const MIX = [...STEEL_LIB, ...AYVAZ_LIB];
+    const svc = makeService('AYVAZ', MIX);
+    const q = 'SPRİNKLER ASMA TAVAN SPRİNK 68°C, K=80, 1/2" NPT';
+    const r = (await svc.bulkMatch('u1', 'brand-1', [q], undefined, { [q]: 'Adet' }))[q];
+    check('H5 siyah celik boruya cozulmedi', !r?.matchedName?.includes('Boru') && !!r?.matchedName?.includes('Sprinkler'),
+      `got ${r?.confidence} "${r?.matchedName}" (${r?.reason})`);
+  }
+
+  // E2: adet birimli satira baslik/sozluk BORU ailesi dayatamaz — celiski →
+  // otomatik yazim yok, aile-belirsiz onay listesi
+  {
+    const svc = makeService('ÇAYIROVA', STEEL_LIB);
+    const q = 'YANGIN TESİSAT DN 25';
+    const rMetre = (await svc.bulkMatch('u1', 'brand-1', [q], undefined, { [q]: 'metre' }))[q];
+    check('E2 metre birimli → boru yazilir (celiski yok)', (rMetre?.netPrice ?? 0) > 0 && !!rMetre?.matchedName?.includes('Boru'),
+      `got ${rMetre?.confidence} "${rMetre?.matchedName}" (${rMetre?.reason})`);
+    const rAdet = (await svc.bulkMatch('u1', 'brand-1', [q], undefined, { [q]: 'Adet' }))[q];
+    check('E2 adet birimli → otomatik yazilMAZ (celiski/aile belirsiz)', rAdet?.confidence !== 'high' && rAdet?.netPrice === 0,
+      `got ${rAdet?.confidence} net=${rAdet?.netPrice} "${rAdet?.matchedName}" (${rAdet?.reason})`);
+  }
+
+  // H6/E6: aile cozulemeyen yalin satir — tek yuksek-skorlu metin/olcu
+  // eslesmesi bile OTOMATIK yazilmaz; "aile belirlenemedi" isaretli onay listesi
+  {
+    const svc = makeService('ÇAYIROVA', [lib('Siyah Çelik Boru 1" DN25 Dişli', 130)]);
+    const r = (await svc.bulkMatch('u1', 'brand-1', ['DN 25']))['DN 25'];
+    check('H6 tek aday ama otomatik yazilmadi', r?.confidence === 'multi' && r?.netPrice === 0 && (r?.candidates?.length ?? 0) === 1,
+      `got ${r?.confidence} net=${r?.netPrice} ${r?.candidates?.length} aday`);
+    check('H6 neden "ailesi belirlenemedi"', !!r?.reason?.includes('belirlenemedi'), `got "${r?.reason}"`);
+  }
+
   console.log(`\n${'='.repeat(60)}`);
   console.log(`SONUC: ${passed} PASS, ${failed} FAIL`);
   console.log('='.repeat(60));

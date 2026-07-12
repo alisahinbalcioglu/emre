@@ -53,6 +53,9 @@ export interface MatchCandidate {
   variantTags?: string[];
   // V5 (PRD v1.3): hesabin gecmis tercihine uyan aday — liste basinda on-secili
   preferred?: boolean;
+  // E3 (Boru Disi Kalemler PRD): istenen nitelikten farkli deger tasiyan aday
+  // isaretlenir ("68°C istendi — bu ürün 141°C")
+  uyari?: string;
 }
 
 export interface TaggedMaterial {

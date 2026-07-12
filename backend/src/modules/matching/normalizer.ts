@@ -224,6 +224,7 @@ export function extractSurfaces(text: string): string[] {
 const CONNECTION_PATTERNS: { pattern: RegExp; tag: string }[] = [
   { pattern: /disli/i, tag: 'disli' },
   { pattern: /threaded/i, tag: 'disli' },
+  { pattern: /\bnpt\b/i, tag: 'disli' }, // E3: 1/2" NPT = disli baglanti
   { pattern: /vidali/i, tag: 'disli' },
   { pattern: /mansanlu|mansonlu|mansonu/i, tag: 'disli' },
   { pattern: /kaynakli|welded/i, tag: 'kaynakli' },
@@ -250,6 +251,23 @@ const TYPE_PATTERNS: { pattern: RegExp; type: string }[] = [
   { pattern: /vana/i, type: 'vana' },
   { pattern: /valve/i, type: 'vana' },
   { pattern: /valf/i, type: 'vana' },
+  // ── EKIPMAN AILELERI (E1/E2/E4 — Boru Disi Kalemler PRD) ──────────
+  // SIRA KRITIK: "sprink hatti" = BORU kosusu (E2 ayrimi) — yalin
+  // "sprink"ten ONCE test edilir; "sprinkler hortumu" = HORTUM ailesi —
+  // o da yalin sprink'ten once. Vana'dan SONRA gelirler ki "sprink hatti
+  // vanasi" vana kalir.
+  { pattern: /sprink\w*\s*hat/i, type: 'boru' },
+  { pattern: /hortum|hose/i, type: 'hortum' },
+  { pattern: /fan\s*-?\s*coil/i, type: 'hortum' },
+  // E4: flow switch ↔ akis anahtari (paddle tip dahil)
+  { pattern: /flow\s*sw/i, type: 'akis-anahtari' },
+  { pattern: /akis\s*anahtar/i, type: 'akis-anahtari' },
+  { pattern: /paddle/i, type: 'akis-anahtari' },
+  // Flow meter (akis OLCER) ayri ailedir — switch ile karistirilmaz (H4)
+  { pattern: /flow\s*meter|akis\s*olcer/i, type: 'akis-olcer' },
+  // Yalin sprink (adet birimli satirlar, °C/K-faktoru nitelikli) →
+  // SPRINKLER BASLIGI ailesi (E2: "sprinkler hatti" degil!)
+  { pattern: /sprink/i, type: 'sprinkler' },
   { pattern: /dirsek/i, type: 'fitting' },
   { pattern: /elbow/i, type: 'fitting' },
   { pattern: /reduksiyon/i, type: 'fitting' },
@@ -444,4 +462,71 @@ export function extractSubtype(text: string): string[] {
     if (pattern.test(normalized)) subtypes.push(tag);
   }
   return subtypes;
+}
+
+// ────────────────────────────────────────────
+// EKIPMAN NITELIKLERI (E3 — Boru Disi Kalemler PRD)
+// Yapilandirilmis nitelikler aile ICI siralamada kullanilir (refine bonus,
+// sert filtre DEGIL): sicaklik sinifi, K-faktoru, montaj tipi, uzunluk,
+// aksesuar. Ayni cikarim hem kesif satirina hem kutuphane adina uygulanir.
+// ────────────────────────────────────────────
+
+/** Sicaklik sinifi: "68°C", "141 °C", "93 derece" → 'temp-68'. */
+export function extractTemperature(text: string): string | null {
+  const normalized = normalizeText(text);
+  const m = normalized.match(/(\d{2,3})\s*(?:°\s*c?|derece)/);
+  return m ? `temp-${m[1]}` : null;
+}
+
+/** K-faktoru: "K=80", "K: 115", "K80" → 'k-80'. */
+export function extractKFactor(text: string): string | null {
+  const normalized = normalizeText(text);
+  const m = normalized.match(/\bk\s*[=:]\s*(\d{2,3})\b/) ?? normalized.match(/\bk(\d{2,3})\b/);
+  return m ? `k-${m[1]}` : null;
+}
+
+/** E4 — Montaj tipi es-anlamli sozlugu:
+ *  pendent ↔ asma tavan / sarkik · upright ↔ dik · sidewall ↔ duvar. */
+const MOUNT_PATTERNS: { pattern: RegExp; tag: string }[] = [
+  { pattern: /pendent|sarkik|asma\s*tavan/i, tag: 'pendent' },
+  { pattern: /upright|\bdik\b/i, tag: 'upright' },
+  { pattern: /sidewall|side\s*wall|duvar/i, tag: 'sidewall' },
+];
+
+export function extractMountType(text: string): string | null {
+  const normalized = normalizeText(text);
+  for (const { pattern, tag } of MOUNT_PATTERNS) {
+    if (pattern.test(normalized)) return tag;
+  }
+  return null;
+}
+
+/** E5 — uzunluk normalizasyonu: "50 cm" = "500 mm" = (hortum baglaminda)
+ *  yalin "500" → 'len-500'. mm/yalin sayi YALNIZ hortum baglaminda uzunluk
+ *  sayilir (PE borularda mm DIS CAP'tir — karistirilmaz). */
+const HOSE_CONTEXT_RE = /hortum|hose|fan\s*-?\s*coil|esnek|flex/;
+
+export function extractLengthMm(text: string): string | null {
+  const normalized = normalizeText(text);
+  // cm HER baglamda uzunluktur (cap cm ile anilmaz)
+  const cm = normalized.match(/(\d+(?:[.,]\d+)?)\s*cm\b/);
+  if (cm) return `len-${Math.round(parseFloat(cm[1].replace(',', '.')) * 10)}`;
+  if (!HOSE_CONTEXT_RE.test(normalized)) return null;
+  // Hortum baglami: "500mm" veya sondaki yalin 200-2000 sayisi uzunluktur
+  const mm = normalized.match(/(\d{3,4})\s*mm\b/);
+  if (mm) {
+    const v = parseInt(mm[1], 10);
+    if (v >= 200 && v <= 2000) return `len-${v}`;
+  }
+  const bare = normalized.match(/(?:^|[\s(])(\d{3,4})\s*\)?\s*$/);
+  if (bare) {
+    const v = parseInt(bare[1], 10);
+    if (v >= 200 && v <= 2000) return `len-${v}`;
+  }
+  return null;
+}
+
+/** Aksesuar: "(rozet dahil)" → 'aks-rozet' (refine bonus). */
+export function extractAccessory(text: string): string | null {
+  return /rozet/i.test(normalizeText(text)) ? 'aks-rozet' : null;
 }

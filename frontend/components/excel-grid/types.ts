@@ -88,6 +88,9 @@ export interface MatchCandidate {
   variantTags?: string[];
   // V5: hesabin gecmis tercihi — liste basinda on-secili gosterilir
   preferred?: boolean;
+  // E3 (Boru Disi Kalemler PRD): istenen nitelikten farkli deger tasiyan aday
+  // isaretlenir ("68°C istendi — bu ürün 141°C")
+  uyari?: string;
 }
 
 // M3: secilen markada urun yok — alternatif marka onerisi (marka+fiyat birlikte secilir)

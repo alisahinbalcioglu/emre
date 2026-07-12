@@ -12,14 +12,16 @@ export class MatchingController {
   ) {}
 
   /** Teklif sirasinda: Excel malzemelerini DB'den esle (AI yok).
-   *  variantTags (V4): grup ici otomatik atama — secili varyantin tag'leri. */
+   *  variantTags (V4): grup ici otomatik atama — secili varyantin tag'leri.
+   *  units (E2): satir birimleri (ad→birim) — aile cozumunde sinyal
+   *  (metre→boru, adet→ekipman); opsiyonel, eski istemciler etkilenmez. */
   @Post('bulk-match')
   async bulkMatch(
-    @Body() body: { brandId: string; materialNames: string[]; variantTags?: string[] },
+    @Body() body: { brandId: string; materialNames: string[]; variantTags?: string[]; units?: Record<string, string> },
     @Req() req: any,
   ) {
     const userId: string = req.user?.id ?? req.user?.sub;
-    return this.service.bulkMatch(userId, body.brandId, body.materialNames, body.variantTags);
+    return this.service.bulkMatch(userId, body.brandId, body.materialNames, body.variantTags, body.units);
   }
 
   /** OGRENME (PRD Adim 8): secici popup'tan secim yapilinca hafizaya yaz.

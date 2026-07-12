@@ -475,6 +475,8 @@ function BrandDropdown(props: ICellRendererParams & {
                     <button key={i} onClick={() => handleCandidateSelect(c)} style={btnStyle} {...hover}>
                       <div style={{ fontWeight: 600 }}>{c.preferred && '✓ '}{c.materialName.slice(0, 60)}</div>
                       <div style={{ color: '#6b7280', fontSize: 11 }}>{c.netPrice.toFixed(1)} TL</div>
+                      {/* E3: nitelik farki uyarisi ("68°C istendi — bu ürün 141°C") */}
+                      {c.uyari && <div style={{ color: '#dc2626', fontSize: 10, marginTop: 2 }}>⚠ {c.uyari}</div>}
                     </button>
                   ))}
                 </>
@@ -524,6 +526,8 @@ function BrandDropdown(props: ICellRendererParams & {
                         {single ? `${c.netPrice.toFixed(1)} TL` : `${g.items.length} alt tip →`}
                         {g.preferred && <span style={{ color: '#059669', marginLeft: 6, fontWeight: 600 }}>önceki tercihiniz</span>}
                       </div>
+                      {/* E3: nitelik farki uyarisi ("68°C istendi — bu ürün 141°C") */}
+                      {single && c.uyari && <div style={{ color: '#dc2626', fontSize: 10, marginTop: 2 }}>⚠ {c.uyari}</div>}
                     </button>
                   );
                 })}

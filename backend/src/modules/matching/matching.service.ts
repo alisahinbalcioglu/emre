@@ -2,9 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { generateTags } from './tag-generator';
 import { hesaplaNetFiyat } from './pricing';
-import { extractMaterialKind, extractMaterialType, extractSurfaces } from './normalizer';
+import { extractMaterialKind, extractMaterialType, extractSurfaces, normalizeText } from './normalizer';
 import { extractSizeInfo, sizeEquivalents, isSizeTag } from './conversion';
-import type { SizeClass, SizeInfo } from './conversion';
+import type { SizeClass, SizeInfo, SizeEquivalents } from './conversion';
 import { TerminologyService } from './terminology.service';
 import type { AliasHint, BrandClassHint } from './terminology.service';
 import { ExchangeRatesService } from '../../exchange-rates/exchange-rates.service';
@@ -18,6 +18,7 @@ import {
   MATERIAL_SUBTYPE_KEYS,
   KIND_TAGS,
   SURFACE_TAGS,
+  EQUIPMENT_TYPE_TAGS,
 } from './shared-tag-matcher';
 
 // ═══════════════════════════════════════════
@@ -41,8 +42,13 @@ interface HeaderHint {
 }
 
 const HEADER_HINTS: HeaderHint[] = [
-  // Yangin/sprinkler hatti → celik boru
-  { test: /\bsprink|sprinkler|yangin\s*hat|yangin\s*tesisat/, stripTags: ['sprink'], preferredKinds: ['celik'], impliedType: 'boru' },
+  // Yangin/sprinkler HATTI → celik boru.
+  // E2 (Boru Disi Kalemler PRD): yalin "sprink|sprinkler" YAKALANMAZ —
+  // "ASMA TAVAN SPRINK 68°C" bir SPRINKLER BASLIGIDIR (adet), boru degil.
+  // Onceki /\bsprink|sprinkler/ deseni bu satirlara celik-boru ailesi dayatip
+  // 'sprink' tag'ini strip ediyordu → gercek sprinkler urunleri subtype
+  // elemesinde dusuyor, dn15'li Fan-Coil hortumlari aday kaliyordu (H1 vakasi).
+  { test: /sprink\w*\s*hat|sprinkler\s*(pipe|line)|yangin\s*hat|yangin\s*tesisat/, stripTags: ['sprink'], preferredKinds: ['celik'], impliedType: 'boru' },
   // Pis su / atik su / kanalizasyon → PVC veya HDPE (cift cins → belirsiz kalabilir)
   { test: /\bpis\s*su|pissu|atik\s*su|atiksu|kanalizasyon|kanal\b|drenaj/, stripTags: [], preferredKinds: ['pvc', 'hdpe'], impliedType: 'boru' },
   // Kalorifer / isitma → celik boru
@@ -117,6 +123,10 @@ export class MatchingService {
     // Doluysa adaylar bu tag'lerin TAMAMINI tasimali; tek kalirsa otomatik
     // atanir (autoVariant), hic kalmazsa variantMissing + fiyatli liste (V4.5).
     variantTags?: string[],
+    // E2 (Boru Disi Kalemler PRD): satirin BIRIM'i (metre→boru, adet→ekipman)
+    // aile cozumunde sinyal olarak kullanilir; sinyaller celisirse otomatik
+    // yazim yerine onay listesi. Opsiyonel — eski istemciler etkilenmez.
+    units?: Record<string, string>,
   ): Promise<Record<string, MatchResult>> {
     // ── KUTUPHANEM IZOLASYONU (PRD) ──────────────────────────────────
     // Aday havuzu artik GLOBAL MaterialPrice DEGIL, kullanicinin KENDI
@@ -201,7 +211,7 @@ export class MatchingService {
 
     for (const excelName of materialNames) {
       if (!excelName.trim()) continue;
-      let result = this.matchSingle(excelName, allPrices, libItems, ctx, variantTags);
+      let result = this.matchSingle(excelName, allPrices, libItems, ctx, variantTags, units?.[excelName]);
 
       // ── OGRENME HAFIZASI (PRD Adim 8) ─────────────────────────────
       // Belirsiz kararindan ONCE oku: ayni imza icin kullanici daha once
@@ -294,6 +304,7 @@ export class MatchingService {
     libItems: LibItem[],
     ctx: MatchContext,
     variantTags?: string[],
+    unit?: string | null,
   ): MatchResult {
     const excelTags = generateTags(excelName);
 
@@ -316,7 +327,11 @@ export class MatchingService {
       }
     }
     const hasDiameter = sizeInfo !== null;
-    if (!hasDiameter) {
+    // E1/H3 (Boru Disi Kalemler PRD): EKIPMAN ailelerinde cap ZORUNLU DEGIL —
+    // "ESNEK SPRINKLER HORTUMU (50 cm)" capsizdir, uzunluk/nitelikle eslesir.
+    // Aile (tip) must-match oldugu icin capsiz sorgu yine dar kalir.
+    const isEquipment = EQUIPMENT_TYPE_TAGS.has(excelTags.materialType);
+    if (!hasDiameter && !isEquipment) {
       // URUN DEGIL (spec ALTIN KURAL yardimcisi): "FITTINGS ORANI",
       // "MONTAJ ISCILIGI" gibi oran/hizmet satirlari malzeme degildir —
       // fiyat BEKLENMEZ. 'yok'tan ayri isaretlenir ki kullanici bunlari
@@ -348,7 +363,7 @@ export class MatchingService {
     // koddaki HEADER_HINTS ayni isi gorur.
     const dictHint = this.terminology.resolveAlias(excelName, ctx.aliases);
     const legacyHint = dictHint ? null : this.deriveHeaderHint(excelName);
-    const hint: { kinds: string[]; impliedType: string | null; sizeClass: SizeClass | null; stripTags: string[] } | null =
+    let hint: { kinds: string[]; impliedType: string | null; sizeClass: SizeClass | null; stripTags: string[] } | null =
       dictHint
         ? { kinds: dictHint.kinds, impliedType: dictHint.impliedType, sizeClass: dictHint.sizeClass, stripTags: dictHint.stripTags }
         : legacyHint
@@ -359,6 +374,28 @@ export class MatchingService {
               stripTags: legacyHint.stripTags,
             }
           : null;
+
+    // ── E2: BIRIM SINYALI (metre→boru, adet→ekipman) ────────────────
+    // Satirin kendisi ekipman tipi tasirken sozluk/baslik boru ailesi dayatamaz;
+    // adet birimli satira boru ipucu uygulanmaz. Sinyaller CELISIRSE otomatik
+    // yazim yerine onay listesi sunulur (asagida 'capped').
+    const unitNorm = unit ? normalizeText(unit) : '';
+    const unitSignal: 'pipe' | 'equipment' | null =
+      unitNorm && /metre|mtul|^mt\.?$|^m\.?$/.test(unitNorm) ? 'pipe'
+      : unitNorm && /adet|^ad\.?$|takim|^tk\.?$/.test(unitNorm) ? 'equipment'
+      : null;
+    let unitConflict: string | null = null;
+    if (unitSignal === 'equipment' && hint?.impliedType === 'boru' && excelTags.materialType !== 'boru') {
+      // adet birimli, boru olmayan satira baslik/sozluk boru ailesi dayatmasin
+      console.log(`[Matching] "${excelName}": birim (${unit}) boru ipucusuyla celisti — ipucu birakildi (E2)`);
+      hint = null;
+      if (excelTags.materialType === 'diger') {
+        unitConflict = `Birim (${unit}) başlık ipucusuyla (boru) çelişiyor — aile belirsiz`;
+      }
+    }
+    if (unitSignal === 'pipe' && isEquipment) {
+      unitConflict = `Birim (${unit}) ekipman ailesiyle çelişiyor`;
+    }
 
     // ── MALZEME SINIFI COZ (cevrim tablosu secimi) ───────────────────
     // T5 (Duzeltme Talebi): oncelik SATIR ACIK MALZEME > baslik/sozluk > marka.
@@ -377,10 +414,12 @@ export class MatchingService {
         : rawSurfaces.includes('galvaniz') || rawSurfaces.includes('siyah')
           ? 'steel'
           : null;
-    // Metal tip aileleri (vana/fitting/flans...) DN'i celik anlaminda kullanir
-    // — satirda plastik cins yoksa.
+    // Metal tip aileleri (vana/fitting/flans... + E5 ekipmanlar) DN'i celik
+    // anlaminda kullanir — satirda plastik cins yoksa. H4: "FLOW SWITCH DN 65"
+    // → celik cevrimi → 2 1/2" (Paddle Tip).
     const metalTypeClass: SizeClass | null =
-      lineClass === null && ['vana', 'fitting', 'flans', 'pompa', 'radyator', 'kombi', 'kazan'].includes(excelTags.materialType)
+      lineClass === null && ['vana', 'fitting', 'flans', 'pompa', 'radyator', 'kombi', 'kazan',
+        'sprinkler', 'hortum', 'akis-anahtari', 'akis-olcer'].includes(excelTags.materialType)
         ? 'steel'
         : null;
     const sizeClass: SizeClass = lineClass ?? hint?.sizeClass ?? ctx.brandClass?.sizeClass ?? metalTypeClass ?? 'unknown';
@@ -389,12 +428,16 @@ export class MatchingService {
     }
 
     // ── PRD §6-7: sinifa gore cap esdegerleri ────────────────────────
-    const equiv = sizeEquivalents(sizeClass, sizeInfo!);
+    // H3: capsiz ekipman satirinda notr equiv — boyut kisiti uygulanmaz,
+    // aile (tip) must-match + nitelik bonuslariyla eslesir.
+    const equiv: SizeEquivalents = sizeInfo
+      ? sizeEquivalents(sizeClass, sizeInfo)
+      : { tags: [], rozet: null, noConversion: false, ambiguous: false };
     // Cevrim hic tag uretemediyse (inc degeri tabloda yok) eski tekil tag'e dus
     const sizeAnyOf = equiv.tags.length > 0
       ? equiv.tags
       : excelTags.tags.filter((t) => isSizeTag(t));
-    if (sizeAnyOf.length === 0) {
+    if (sizeAnyOf.length === 0 && !isEquipment) {
       return {
         netPrice: 0, listPrice: 0, discount: 0, confidence: 'none',
         reason: `Çevrim tablosunda yok: ${sizeInfo!.display} — kütüphanede elle arayın`,
@@ -445,6 +488,13 @@ export class MatchingService {
     if (familyKinds.length > 0) {
       split.excelKinds = Array.from(new Set([...split.excelKinds, ...familyKinds]));
     }
+
+    // ── E6: AILE COZULDU MU? ─────────────────────────────────────────
+    // Tip bilinmiyor + cins yok + sozluk/baslik ipucu yok = aile belirsiz.
+    // Bu durumda YUKSEK metin/olcu skoru bile OTOMATIK yazima donusmez —
+    // adaylar "aile belirlenemedi" isaretiyle onay listesine gider; secim
+    // hafizaya yazilir (E7), sonraki dosyada on-secili gelir.
+    const familyResolved = excelTypeKnown || familyKinds.length > 0 || !!hint;
 
     const allCandidates = scoreCandidates(
       allPrices,
@@ -514,7 +564,7 @@ export class MatchingService {
     const distinctTypes = new Set(topCandidates.map(typeOf));
     if (distinctTypes.size > 1) {
       console.log(`[Matching]   Tip belirsiz (${Array.from(distinctTypes).join(',')}) → popup`);
-      return this.buildMultiResult(topCandidates, libItems, 'Malzeme tipi belirsiz (boru/vana/fitting).', equiv.rozet);
+      return this.buildMultiResult(topCandidates, libItems, 'Malzeme tipi belirsiz (boru/vana/fitting).', equiv.rozet, effectiveTags);
     }
 
     // ── P4: SINIF BELIRSIZLIGI KORUMASI ─────────────────────────────
@@ -529,7 +579,7 @@ export class MatchingService {
       const classes = new Set(topCandidates.map(kindOf));
       if (classes.size > 1) {
         console.log(`[Matching]   Sinif belirsiz (celik/PPR yorumlari) → popup`);
-        return this.buildMultiResult(topCandidates, libItems, 'Malzeme sınıfı belirsiz: çelik (DN↔inç) ve PPR (DN=mm) yorumları farklı ürünlere gidiyor.', null);
+        return this.buildMultiResult(topCandidates, libItems, 'Malzeme sınıfı belirsiz: çelik (DN↔inç) ve PPR (DN=mm) yorumları farklı ürünlere gidiyor.', null, effectiveTags);
       }
     }
 
@@ -562,7 +612,7 @@ export class MatchingService {
         // V4.5: varyant bu capta yok — otomatik atama YAPMA, fiyatli listeyle
         // "secim bekliyor" birak, nedeni soyle.
         console.log(`[Matching] "${excelName}" → V4.5 varyant yok (${variantTags.join(',')}) → secim bekliyor`);
-        const r = this.buildMultiResult(topCandidates, libItems, `Seçilen varyant (${variantTags.join(', ')}) bu çapta kütüphanede yok — elle seçin.`, equiv.rozet);
+        const r = this.buildMultiResult(topCandidates, libItems, `Seçilen varyant (${variantTags.join(', ')}) bu çapta kütüphanede yok — elle seçin.`, equiv.rozet, effectiveTags);
         return { ...r, variantMissing: true };
       }
       // >1: varyant tag'leri bu capta birden fazla urunu tutuyor — daraltilmis popup
@@ -619,16 +669,21 @@ export class MatchingService {
       const winnerBases = winnerTags.filter((t) => t === 'siyah' || t === 'galvaniz');
       const surfaceConflict =
         expectedBases.size > 0 && winnerBases.length > 0 && !winnerBases.some((b) => expectedBases.has(b));
-      const capped = equiv.ambiguous || equiv.noConversion;
+      // E6: aile belirlenemedi / E2: birim celiskisi de otomatik yazimi kapatir
+      const capped = equiv.ambiguous || equiv.noConversion || !familyResolved || !!unitConflict;
 
       if (surfaceConflict || capped) {
         const why = surfaceConflict
           ? `Tek aday (${winnerBases.join('/')}) başlık/satır beklentisiyle (${Array.from(expectedBases).join('/')}) çelişiyor — onaylayın.`
-          : equiv.ambiguous
-            ? 'Malzeme sınıfı (çelik/PPR) belirsiz — onaylayın.'
-            : `Çevrim tablosunda yok (${sizeInfo!.display}) — onaylayın.`;
-        console.log(`[Matching] "${excelName}" → tek aday ama ONAY GEREKLI (${surfaceConflict ? 'yuzey celiskisi' : 'kademe kapagi'}) → popup(1)`);
-        return this.buildMultiResult(topCandidates, libItems, why, equiv.rozet);
+          : !familyResolved
+            ? 'Ürün ailesi belirlenemedi — eşleşme yalnız ölçü benzerliğiyle bulundu, onaylayın.'
+            : unitConflict
+              ? `${unitConflict} — onaylayın.`
+              : equiv.ambiguous
+                ? 'Malzeme sınıfı (çelik/PPR) belirsiz — onaylayın.'
+                : `Çevrim tablosunda yok (${sizeInfo!.display}) — onaylayın.`;
+        console.log(`[Matching] "${excelName}" → tek aday ama ONAY GEREKLI (${surfaceConflict ? 'yuzey celiskisi' : !familyResolved ? 'aile belirsiz' : unitConflict ? 'birim celiskisi' : 'kademe kapagi'}) → popup(1)`);
+        return this.buildMultiResult(topCandidates, libItems, why, equiv.rozet, effectiveTags);
       }
 
       const { netPrice, listPrice, discount } = calcPrice(winner.priceItem);
@@ -642,16 +697,24 @@ export class MatchingService {
       };
     }
 
-    // BIRDEN FAZLA ADAY — kullaniciya secenekleri sun
-    return this.buildMultiResult(topCandidates, libItems, 'Birden fazla aday — malzeme cinsi belirtilmemis.', equiv.rozet);
+    // BIRDEN FAZLA ADAY — kullaniciya secenekleri sun.
+    // E6/E2: aile belirsizligi ve birim celiskisi nedene islenir (isaretli liste).
+    const multiWhy = !familyResolved
+      ? 'Ürün ailesi belirlenemedi — adaylar yalnız ölçü benzerliğiyle bulundu; seçiminiz öğrenilir.'
+      : unitConflict
+        ? `${unitConflict}.`
+        : 'Birden fazla aday — malzeme cinsi belirtilmemis.';
+    return this.buildMultiResult(topCandidates, libItems, multiWhy, equiv.rozet, effectiveTags);
   }
 
-  /** ScoredCandidate listesinden 'multi' MatchResult uretir (popup icin). */
+  /** ScoredCandidate listesinden 'multi' MatchResult uretir (popup icin).
+   *  excelTags (E3): aday nitelik FARKI tasiyorsa uyari uretilir. */
   private buildMultiResult(
     topCandidates: ReturnType<typeof scoreCandidates<MaterialPriceItem>>,
     libItems: LibItem[],
     reason: string,
     rozet: string | null = null,
+    excelTags?: string[],
   ): MatchResult {
     const calcPrice = (priceItem: MaterialPriceItem) => {
       const libItem = libItems.find(
@@ -667,6 +730,7 @@ export class MatchingService {
       getName: (p) => p.material.name,
       getTags: (p) => p.material.tags,
       useSurfaceLevelLabels: true,
+      excelTags,
     });
     // V7: en fazla 8 aday goster — fazlasi sorgunun daralmadigina isaret (log)
     if (candidates.length > 8) {

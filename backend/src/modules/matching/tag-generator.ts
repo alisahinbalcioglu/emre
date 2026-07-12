@@ -16,6 +16,11 @@ import {
   extractStandard,
   extractSubtype,
   extractPn,
+  extractTemperature,
+  extractKFactor,
+  extractMountType,
+  extractLengthMm,
+  extractAccessory,
 } from './normalizer';
 import type { TaggedMaterial } from './types';
 
@@ -75,6 +80,20 @@ export function generateTags(materialName: string): TaggedMaterial {
   // 10. Alt tip (sessiz, basincli, pe kapli, folyo vs.)
   const subtypes = extractSubtype(materialName);
   for (const sub of subtypes) tags.add(sub);
+
+  // 10b. EKIPMAN NITELIKLERI (E3 — Boru Disi Kalemler PRD): sicaklik sinifi,
+  // K-faktoru, montaj tipi, uzunluk, aksesuar. Refine bonus'tur (sert filtre
+  // degil) — nitelikleri birebir tutan adaylar aile ici siralamada one gecer.
+  const temp = extractTemperature(materialName);
+  if (temp) tags.add(temp);
+  const kFactor = extractKFactor(materialName);
+  if (kFactor) tags.add(kFactor);
+  const mount = extractMountType(materialName);
+  if (mount) tags.add(mount);
+  const lengthMm = extractLengthMm(materialName);
+  if (lengthMm) tags.add(lengthMm);
+  const accessory = extractAccessory(materialName);
+  if (accessory) tags.add(accessory);
 
   // 11. DEFAULT BORU = CELIK
   // Eger malzeme tipi 'boru' ise ve alternatif bir malzeme cinsi yoksa, celik etiketi ekle

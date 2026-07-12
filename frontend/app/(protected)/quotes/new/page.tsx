@@ -1397,14 +1397,21 @@ export default function NewQuotePage() {
                 setIsMatchingAllSheets(true);
                 try {
                   const collected: { sheetIdx: number; rowIdx: number; name: string }[] = [];
+                  // E2: birim sinyali (metre→boru, adet→ekipman) — ad→birim map'i
+                  const unitMap: Record<string, string> = {};
                   multiSheet.sheets.forEach((sheet) => {
                     if (sheet.isEmpty) return;
                     const rows = liveRowDataBySheet[sheet.index] ?? sheet.rowData;
+                    const unitField = (sheet.columnRoles as any)?.unitField;
                     rows.forEach((row, rIdx) => {
                       if (!row._isDataRow) return;
                       const name = buildMaterialContextFromArray(rows, rIdx, sheet.columnRoles);
                       if (name && name.trim().length > 1) {
                         collected.push({ sheetIdx: sheet.index, rowIdx: rIdx, name });
+                        if (unitField) {
+                          const u = String((row as any)[unitField] ?? '').trim();
+                          if (u && !unitMap[name]) unitMap[name] = u;
+                        }
                       }
                     });
                   });
@@ -1418,6 +1425,7 @@ export default function NewQuotePage() {
                   const { data: results } = await api.post('/matching/bulk-match', {
                     brandId,
                     materialNames: uniqueNames,
+                    units: Object.keys(unitMap).length > 0 ? unitMap : undefined,
                   });
                   // 4. Sonuclari sheet bazinda dagit
                   const newCounts: Record<number, { total: number; matched: number }> = {};
@@ -1688,11 +1696,26 @@ export default function NewQuotePage() {
           }}
           onBrandChange={async (rowIdx, brandId, materialName, opts) => {
             try {
+              // E2 (Boru Disi Kalemler PRD): satirin BIRIMI aile cozumune sinyal
+              // (metre→boru, adet→ekipman) — aktif sheet'ten okunur, bulunamazsa
+              // gonderilmez (backend'de opsiyonel).
+              let units: Record<string, string> | undefined;
+              if (multiSheet) {
+                const active = multiSheet.sheets[activeSheetIndex] ?? multiSheet.sheets.find((s) => !s.isEmpty);
+                const unitField = (active?.columnRoles as any)?.unitField;
+                if (active && unitField) {
+                  const rowsNow = liveRowDataBySheet[active.index] ?? active.rowData ?? [];
+                  const row = rowsNow.find((r: any) => r._rowIdx === rowIdx);
+                  const u = String((row as any)?.[unitField] ?? '').trim();
+                  if (u) units = { [materialName]: u };
+                }
+              }
               const { data: result } = await api.post('/matching/bulk-match', {
                 brandId,
                 materialNames: [materialName],
                 // V4: grup varyant filtresi — adaylar bu tag'lerin tamamini tasimali
                 variantTags: opts?.variantTags,
+                units,
               });
               const match = result[materialName];
               const silent = opts?.silent === true; // grup ici toplu uygulamada toast yok
