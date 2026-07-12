@@ -240,6 +240,44 @@ async function run() {
       `got ${r?.confidence} net=${r?.netPrice} ${r?.candidates?.length} aday (${r?.reason})`);
   }
 
+  // ── R9-EK (I2, canli vaka 13.07): "PP KURESEL VANALAR · DN 20 · AYVAZ" —
+  // kutuphanede kuresel YOK, motorlu/pnomatik/selenoid/basinc-dusurucu VAR →
+  // hicbiri gosterilemez (tip sert); PP kuresel sunan marka M3 ile onerilir.
+  {
+    const AYVAZ_OZEL_VANA = [
+      lib('Basınç Düşürücü Vana Pistonlu Tip 3/4"', 5650),
+      lib('Motorlu Vana 2 Yollu ON/OFF DN20', 4250),
+      lib('Pnömatik Pistonlu Vana 2 Yollu DN20', 9500),
+      lib('Pnömatik Pistonlu Vana 3 Yollu DN20', 10500),
+      lib('Selenoid Valf 2/2 NK 3/4"', 1850),
+    ];
+    const OTHER = [
+      { ...lib('PPR-C Küresel Vana 20 mm', 96.1), brand: { id: 'b-kalde', name: 'KALDE' } },
+    ];
+    const svc = makeService('AYVAZ', AYVAZ_OZEL_VANA, OTHER);
+    const r = await m(svc, 'PP KÜRESEL VANALAR DN 20');
+    check('R9-EK kuresel yok → motorlu/selenoid GOSTERILMEDI (none)', r?.confidence === 'none' && r?.netPrice === 0 && !r?.candidates?.length,
+      `got ${r?.confidence} net=${r?.netPrice} adaylar: ${r?.candidates?.map((c) => c.materialName).join(' | ') ?? '-'} "${r?.matchedName ?? ''}"`);
+    check('R9-EK alternatif: PP kuresel sunan KALDE', (r?.alternatives?.length ?? 0) === 1 && r?.alternatives?.[0]?.brandName === 'KALDE',
+      `got ${JSON.stringify(r?.alternatives?.map((a) => a.brandName))}`);
+  }
+
+  // ── R9-EK2: kutuphanede kuresel VARSA yalniz o gosterilir; motorlu/
+  // selenoid hicbir skorla listeye giremez
+  {
+    const svc = makeService('AYVAZ', [
+      lib('Küresel Vana Tam Geçişli Dişli DN20', 1450),
+      lib('Motorlu Vana 2 Yollu ON/OFF DN20', 4250),
+      lib('Selenoid Valf 2/2 NK 3/4"', 1850),
+      lib('Pnömatik Pistonlu Vana 2 Yollu DN20', 9500),
+    ]);
+    const r = await m(svc, 'KÜRESEL VANALAR DN 20');
+    const names = r?.candidates?.map((c) => c.materialName) ?? (r?.matchedName ? [r.matchedName] : []);
+    check('R9-EK2 yalniz kuresel', names.length === 1 && names[0].includes('Küresel'),
+      `got ${r?.confidence} adaylar: ${names.join(' | ')}`);
+    check('R9-EK2 motorlu/selenoid/pnomatik yok', !names.some((n) => /Motorlu|Selenoid|Pnömatik/.test(n)));
+  }
+
   // ── R12 (A-1): FITTINGS ORANI → malzeme eslestirmesi yapilmaz
   {
     const svc = makeService('ÇAYIROVA', [lib('Siyah Çelik Boru 1" DN25 Dişli', 130)]);

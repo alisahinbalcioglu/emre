@@ -148,6 +148,14 @@ export function attrLabel(t: string): string {
   if (t === 'vt-globe') return 'Globe';
   if (t === 'vt-bicakli') return 'Bıçaklı Sürgülü';
   if (t === 'vt-cek') return 'Çek Valf';
+  if (t === 'vt-basinc-dusurucu') return 'Basınç Düşürücü';
+  if (t === 'vt-motorlu') return 'Motorlu';
+  if (t === 'vt-pnomatik') return 'Pnömatik';
+  if (t === 'vt-selenoid') return 'Selenoid';
+  if (t === 'vt-samandira') return 'Şamandıralı';
+  if (t === 'vt-balans') return 'Balans';
+  if (t === 'vt-igne') return 'İğne';
+  if (t === 'vt-emniyet') return 'Emniyet';
   if (t === 'akiskan-gaz') return 'Doğalgaz';
   if (t === 'akiskan-sivi') return 'Sıvı';
   if (t === 'akiskan-buhar') return 'Buhar';

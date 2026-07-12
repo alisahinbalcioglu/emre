@@ -539,14 +539,26 @@ export function extractAccessory(text: string): string | null {
 // ────────────────────────────────────────────
 
 /** Vana TIPI (TR-EN es-anlamli, E4). SIRA ONEMLI: "Bicakli Surgulu Vana"
- *  bicakli'dir (once test edilir). Ilk eslesen kazanir. */
+ *  bicakli'dir, "Basinc Dusurucu ... Pistonlu" basinc-dusurucu'dur (once
+ *  test edilirler). Ilk eslesen kazanir.
+ *  CANLI VAKA (13.07): motorlu/pnomatik/selenoid/basinc-dusurucu SOZLUKTE
+ *  YOKTU → vt tag'i almadan "isaretsiz gecer" kuralindan siziyorlardi
+ *  ("PP KURESEL VANALAR DN 20" satirina Selenoid Valf onerildi). */
 const VALVE_TYPE_PATTERNS: { pattern: RegExp; tag: string }[] = [
+  { pattern: /basinc\s*dusurucu|pressure\s*reduc/i, tag: 'vt-basinc-dusurucu' },
   { pattern: /bicakli|knife/i, tag: 'vt-bicakli' },
   { pattern: /kuresel|\bball\b/i, tag: 'vt-kuresel' },
   { pattern: /surgulu|\bgate\b/i, tag: 'vt-surgulu' },
   { pattern: /kelebek|butterfly/i, tag: 'vt-kelebek' },
   { pattern: /\bglobe\b/i, tag: 'vt-globe' },
   { pattern: /cek\s*val|cekval|check\s*val/i, tag: 'vt-cek' },
+  { pattern: /motorlu|aktuator|actuat|on\s*\/?\s*off/i, tag: 'vt-motorlu' },
+  { pattern: /pnomatik|pneumatic/i, tag: 'vt-pnomatik' },
+  { pattern: /selenoid|solenoid/i, tag: 'vt-selenoid' },
+  { pattern: /samandira|flator|float\s*val/i, tag: 'vt-samandira' },
+  { pattern: /balans|balanc/i, tag: 'vt-balans' },
+  { pattern: /\bigne\b|needle/i, tag: 'vt-igne' },
+  { pattern: /emniyet|safety\s*val/i, tag: 'vt-emniyet' },
 ];
 
 export function extractValveType(text: string): string | null {

@@ -525,8 +525,12 @@ export class MatchingService {
             console.log(`[Matching]   Yuva daraltmasi (${want}): ${allCandidates.length} → ${carriers.length}`);
           }
           allCandidates = carriers;
-        } else if (want === 'akiskan-gaz') {
-          console.log(`[Matching]   E9 SERT: gaz uygunlugu isaretli aday yok → sonuc YOK (M3'e duser)`);
+        } else if (want === 'akiskan-gaz' || want.startsWith('vt-')) {
+          // E9/H7 SERT (canli vaka 13.07): tip ACIKCA istendiyse (kuresel)
+          // yalniz o tipi tasiyanlar sunulabilir — tasiyan yoksa isaretsiz
+          // motorlu/selenoid/pnomatik listesi DEGIL, "bu markada yok" + M3.
+          // Gazda ayni kural (gaz uygunlugu isaretsiz urun gosterilmez).
+          console.log(`[Matching]   SERT yuva (${want}): tasiyan aday yok → sonuc YOK (M3'e duser)`);
           allCandidates = [];
           break;
         }
@@ -870,7 +874,9 @@ export class MatchingService {
         for (const want of split.slotTags) {
           const carriers = scored.filter((c) => (c.priceItem as AltItem).tags.includes(want));
           if (carriers.length > 0) scored = carriers;
-          else if (want === 'akiskan-gaz') { scored = []; break; }
+          // SERT yuva (matchSingle ile ayni): tip/gaz acikca istendiyse
+          // tasiyan yoksa alternatif de onerilmez
+          else if (want === 'akiskan-gaz' || want.startsWith('vt-')) { scored = []; break; }
         }
       }
       scored.sort((a, b) => b.totalScore - a.totalScore);
