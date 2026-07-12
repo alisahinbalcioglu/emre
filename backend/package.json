@@ -13,6 +13,7 @@
     "test:matching": "ts-node test/matching-unit-test.ts",
     "test:admin-import": "ts-node test/admin-import-test.ts",
     "test:library": "ts-node test/library-transfer-test.ts",
+    "test:spec": "ts-node test/spec-regression-test.ts",
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate",
     "prisma:studio": "prisma studio"
