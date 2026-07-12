@@ -135,14 +135,19 @@ export default function AdminBrandsPage() {
   }
 
   async function deleteBrand(b: Brand) {
-    if (!window.confirm(`"${b.name}" markasi ve TUM fiyat listeleri havuzdan silinecek. Emin misiniz?`)) return;
+    if (!window.confirm(`"${b.name}" markasi, TUM fiyat listeleri VE kullanicilarin bu markadan aktardigi kutuphane kayitlari silinecek. Emin misiniz?`)) return;
     try {
-      await api.delete(`/brands/${b.id}`);
-      toast({ title: 'Marka silindi', description: b.name });
+      const { data } = await api.delete(`/brands/${b.id}`);
+      toast({
+        title: 'Marka silindi',
+        description: data?.deletedLibraryRows
+          ? `${b.name} — ${data.deletedLibraryRows} kullanıcı kütüphane kaydı da temizlendi`
+          : b.name,
+      });
       if (selectedBrand?.id === b.id) { setSelectedBrand(null); setPriceLists([]); setSelectedList(null); setMaterials([]); }
       fetchBrands();
-    } catch {
-      toast({ title: 'Hata', description: 'Marka silinemedi', variant: 'destructive' });
+    } catch (e: any) {
+      toast({ title: 'Hata', description: e?.response?.data?.message ?? 'Marka silinemedi', variant: 'destructive' });
     }
   }
 

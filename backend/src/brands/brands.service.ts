@@ -109,6 +109,16 @@ export class BrandsService {
   async remove(id: string) {
     const brand = await this.prisma.brand.findUnique({ where: { id } });
     if (!brand) throw new NotFoundException('Brand not found');
-    return this.prisma.brand.delete({ where: { id } });
+    // UserLibrary.brand ZORUNLU iliski + onDelete tanimsiz (Restrict) —
+    // kullanici kutuphane kayitlari temizlenmeden marka silinemiyordu
+    // (FK hatasi: "Cayirova/TEST_MARKA_X silinemiyor" sikayeti).
+    // Fiyat listeleri + havuz fiyatlari + UserBrandLibrary Cascade ile gider;
+    // teklif kalemlerinde marka SetNull olur (teklifler bozulmaz).
+    const [libDel] = await this.prisma.$transaction([
+      this.prisma.userLibrary.deleteMany({ where: { brandId: id } }),
+      this.prisma.brand.delete({ where: { id } }),
+    ]);
+    console.log(`[Brands] "${brand.name}" silindi — ${libDel.count} kullanici kutuphane kaydi temizlendi`);
+    return { ok: true, name: brand.name, deletedLibraryRows: libDel.count };
   }
 }
