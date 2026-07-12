@@ -10,11 +10,17 @@ import 'ag-grid-community/styles/ag-theme-alpine.css';
 import './fill-handle.css';
 import type { ExcelGridData, ExcelRowData, MatchCandidate, BrandAlternative } from './types';
 import { useFillHandle, FillHandleIndicator } from './useFillHandle';
+import { clampDiscount, parseDiscountInput, parseDiscountPaste } from './discount-utils';
 import { CustomDropdown } from './CustomDropdown';
 import { joinMaterialText } from '@/lib/parse-material-text';
 import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, yukariYuvarla } from '@/lib/pricing';
 import { hasSizeExpression, isSelfSufficientRow } from './build-material-context';
 import httpApi from '@/lib/api';
+import { toast } from '@/hooks/use-toast';
+
+// Z4: satir bazli para birimi sembolu (row._currency) — kutuphane gridi
+// dovizli satirlari kendi birimiyle gosterir
+const ROW_CURRENCY_SYMBOL: Record<string, string> = { TRY: '₺', USD: '$', EUR: '€' };
 
 // AG-Grid Community modules'leri kaydet (v32+)
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -922,20 +928,44 @@ function buildMaterialContext(
 function GroupRowBand(params: ICellRendererParams<ExcelRowData>) {
   const label = params.data?._groupLabel ?? '';
   const count = params.data?._groupCount;
+  // L3/S2c: library modunda grup bandi ETKILESIMLI — tikla=daralt/genislet,
+  // "% uygula" butonu=gruba toplu iskonto. Quote modunda context bos, band
+  // eski salt-gorsel davranisinda kalir.
+  const ctx: any = params.context ?? {};
+  const canToggle = typeof ctx.onToggleGroup === 'function';
+  const collapsed = canToggle && ctx.collapsedGroups?.has?.(label);
   return (
     <div
+      onClick={canToggle ? () => ctx.onToggleGroup(label) : undefined}
+      title={canToggle ? (collapsed ? 'Grubu genişlet' : 'Grubu daralt') : undefined}
       style={{
         display: 'flex', alignItems: 'center', gap: 8,
         height: '100%', padding: '0 10px',
         background: 'linear-gradient(to right, #eef2ff, #f8fafc)',
         borderLeft: '3px solid #4f46e5',
         fontWeight: 700, fontSize: 12, color: '#3730a3',
+        cursor: canToggle ? 'pointer' : 'default',
+        userSelect: 'none',
       }}
     >
-      <span style={{ fontSize: 10 }}>▸</span>
+      <span style={{ fontSize: 10 }}>{collapsed ? '▸' : canToggle ? '▾' : '▸'}</span>
       <span>{label}</span>
       {typeof count === 'number' && (
         <span style={{ fontWeight: 500, color: '#6366f1', fontSize: 11 }}>({count} kalem)</span>
+      )}
+      {typeof ctx.onGroupDiscount === 'function' && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); ctx.onGroupDiscount(label); }}
+          title="Bu gruptaki tüm satırlara iskonto uygula"
+          style={{
+            marginLeft: 'auto', padding: '1px 8px', borderRadius: 4,
+            border: '1px solid #c7d2fe', background: 'white', color: '#4338ca',
+            fontSize: 10, fontWeight: 600, cursor: 'pointer',
+          }}
+        >
+          % iskonto uygula
+        </button>
       )}
     </div>
   );
@@ -966,6 +996,165 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
 
   // V4: grup (baslik) → secilen varyant. Cell renderer'lar paylasir.
   const groupVariantsRef = useRef<GroupVariantMap>({});
+
+  // ═══════════ ISKONTO TOPLU ISLEMLERI (Iskonto Surukle-Doldur PRD) ═══════════
+  // S5: geri alma yigini — her toplu islem (fill / yapistir / gruba veya tum
+  // listeye uygula) TEK adim olarak kaydedilir, Ctrl+Z butun olarak geri alir.
+  const discountUndoStack = useRef<{ entries: { rowId: string; prev: number; prevDirty: boolean }[] }[]>([]);
+  // L3: daraltilmis gruplar (external filter ile satirlari gizler)
+  const collapsedGroupsRef = useRef<Set<string>>(new Set());
+  // Toolbar "tum listeye uygula" input'u
+  const [bulkDiscountInput, setBulkDiscountInput] = useState('');
+
+  /** Grid'i tazele + disariya yayinla (S4 sayaci + S6 tek refresh). */
+  const refreshAndEmit = useCallback(() => {
+    const api = gridRef.current?.api;
+    if (!api) return;
+    api.refreshCells({ force: true });
+    if (onRowDataChange) {
+      const all: ExcelRowData[] = [];
+      api.forEachNode((n) => { if (n.data) all.push(n.data); });
+      onRowDataChange(all);
+    }
+  }, [onRowDataChange]);
+
+  /** S1/S2/S3 cekirdegi: iskonto degerlerini TOPLU uygular — undo kaydi +
+   *  _dirty isareti + tek refresh (satir basina event yok, S6 performans). */
+  const applyDiscountBulk = useCallback((pairs: { node: any; value: number }[]): number => {
+    const entries: { rowId: string; prev: number; prevDirty: boolean }[] = [];
+    for (const { node, value } of pairs) {
+      const d = node?.data;
+      if (!d?._isDataRow) continue;
+      const v = clampDiscount(value);
+      if (Number(d._draftDiscount ?? 0) === v && d._dirty) continue;
+      entries.push({ rowId: String(d._rowIdx), prev: Number(d._draftDiscount ?? 0), prevDirty: !!d._dirty });
+      d._draftDiscount = v;
+      d._dirty = true;
+    }
+    if (entries.length === 0) return 0;
+    discountUndoStack.current.push({ entries });
+    if (discountUndoStack.current.length > 25) discountUndoStack.current.shift();
+    refreshAndEmit();
+    return entries.length;
+  }, [refreshAndEmit]);
+
+  /** S5: son toplu islemi BUTUN olarak geri al. */
+  const undoLastDiscountOp = useCallback((): boolean => {
+    const api = gridRef.current?.api;
+    const op = discountUndoStack.current.pop();
+    if (!api || !op) return false;
+    const byId = new Map(op.entries.map((e) => [e.rowId, e]));
+    api.forEachNode((n) => {
+      const d: any = n.data;
+      if (!d) return;
+      const e = byId.get(String(d._rowIdx));
+      if (e) { d._draftDiscount = e.prev; d._dirty = e.prevDirty; }
+    });
+    refreshAndEmit();
+    return true;
+  }, [refreshAndEmit]);
+
+  /** L3: grup daralt/genislet — external filter uyeleri gizler. */
+  const toggleGroup = useCallback((key: string) => {
+    const s = collapsedGroupsRef.current;
+    if (s.has(key)) s.delete(key); else s.add(key);
+    const api = gridRef.current?.api;
+    api?.onFilterChanged();
+    api?.redrawRows(); // band ok isareti (▸/▾) guncellensin
+  }, []);
+
+  /** S2c/G6: grup bandindan o kategoriye toplu iskonto. */
+  const promptGroupDiscount = useCallback((key: string) => {
+    const api = gridRef.current?.api;
+    if (!api) return;
+    const raw = window.prompt(`"${key}" grubundaki tüm satırlara uygulanacak iskonto % (0-100):`);
+    if (raw == null || raw.trim() === '') return;
+    const v = parseDiscountInput(raw);
+    const pairs: { node: any; value: number }[] = [];
+    // forEachNode DARALTILMIS satirlari da kapsar — grup uyeligi _groupKey
+    api.forEachNode((n) => {
+      if (n.data?._isDataRow && n.data._groupKey === key) pairs.push({ node: n, value: v });
+    });
+    const applied = applyDiscountBulk(pairs);
+    if (applied > 0) toast({ title: `"${key}" grubuna %${v} iskonto uygulandı`, description: `${applied} satır güncellendi — kaydetmeyi unutmayın` });
+  }, [applyDiscountBulk]);
+
+  /** S2b: tum listeye uygula (toolbar). */
+  const applyDiscountToAll = useCallback(() => {
+    const api = gridRef.current?.api;
+    if (!api || bulkDiscountInput.trim() === '') return;
+    const v = parseDiscountInput(bulkDiscountInput);
+    const pairs: { node: any; value: number }[] = [];
+    api.forEachNode((n) => { if (n.data?._isDataRow) pairs.push({ node: n, value: v }); });
+    const applied = applyDiscountBulk(pairs);
+    if (applied > 0) toast({ title: `Tüm listeye %${v} iskonto uygulandı`, description: `${applied} satır güncellendi — kaydetmeyi unutmayın` });
+  }, [bulkDiscountInput, applyDiscountBulk]);
+
+  /** S2a: Ctrl+D — ustteki en yakin veri satirinin iskontosunu kopyala;
+   *  S5: Ctrl+Z — son toplu islemi geri al (hucre editi acikken karisilmaz). */
+  const handleLibraryKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (mode !== 'library') return;
+    const api = gridRef.current?.api;
+    if (!api) return;
+    const isMod = e.ctrlKey || e.metaKey;
+    if (!isMod) return;
+    if ((e.key === 'z' || e.key === 'Z') && api.getEditingCells().length === 0) {
+      if (undoLastDiscountOp()) e.preventDefault();
+      return;
+    }
+    if (e.key === 'd' || e.key === 'D') {
+      const fc = api.getFocusedCell();
+      if (!fc || fc.column.getColId() !== '_draftDiscount') return;
+      e.preventDefault();
+      let src: number | null = null;
+      for (let i = fc.rowIndex - 1; i >= 0; i--) {
+        const n = api.getDisplayedRowAtIndex(i);
+        if (n?.data?._isDataRow) { src = Number(n.data._draftDiscount ?? 0); break; }
+      }
+      const target = api.getDisplayedRowAtIndex(fc.rowIndex);
+      if (src != null && target?.data?._isDataRow) applyDiscountBulk([{ node: target, value: src }]);
+    }
+  }, [mode, undoLastDiscountOp, applyDiscountBulk]);
+
+  /** S3: Excel'den cok satirli iskonto yapistirma — odakli hucreden asagi,
+   *  grup bantlari atlanir; sigmayan degerlerde uyari (satir uyusmazligi). */
+  const handleLibraryPaste = useCallback((e: React.ClipboardEvent) => {
+    if (mode !== 'library') return;
+    const api = gridRef.current?.api;
+    if (!api) return;
+    const fc = api.getFocusedCell();
+    if (!fc || fc.column.getColId() !== '_draftDiscount') return;
+    if (api.getEditingCells().length > 0) return; // hucre editoru kendi paste'ini yapar
+    const values = parseDiscountPaste(e.clipboardData.getData('text'));
+    if (values.length === 0) return;
+    e.preventDefault();
+    const pairs: { node: any; value: number }[] = [];
+    let vi = 0;
+    for (let i = fc.rowIndex; vi < values.length; i++) {
+      const n = api.getDisplayedRowAtIndex(i);
+      if (!n) break;
+      if (!n.data?._isDataRow) continue; // grup bandi/baslik atla
+      pairs.push({ node: n, value: values[vi++] });
+    }
+    const applied = applyDiscountBulk(pairs);
+    if (vi < values.length) {
+      toast({
+        title: 'Satır sayısı uyuşmazlığı',
+        description: `${values.length} değerden ${applied} satıra uygulandı — ${values.length - vi} değer tabloya sığmadı`,
+        variant: 'destructive',
+      });
+    } else if (applied > 0) {
+      toast({ title: `${applied} iskonto değeri yapıştırıldı`, description: 'Kaydetmeyi unutmayın' });
+    }
+  }, [mode, applyDiscountBulk]);
+
+  // Grup bandi renderer'ina library etkilesimleri context ile gider
+  // (quote modunda bos — band eski salt-gorsel davranisinda kalir)
+  const gridContext = useMemo(() => (
+    mode === 'library'
+      ? { collapsedGroups: collapsedGroupsRef.current, onToggleGroup: toggleGroup, onGroupDiscount: promptGroupDiscount }
+      : {}
+  ), [mode, toggleGroup, promptGroupDiscount]);
 
   // ── DINAMIK GRID: sag tik context menu state ──
   const [ctxMenu, setCtxMenu] = useState<{
@@ -1168,6 +1357,11 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           if (laborTotalField) node.setDataValue(laborTotalField, (finalPrice * qty).toFixed(2));
         }
       }
+    } else if (result.field === '_draftDiscount') {
+      // S1: iskonto fill — undo kaydi + _dirty + net fiyat tek refresh'te
+      // (applyDiscountBulk refreshAndEmit yapar; asagidaki genel emit de zararsiz)
+      const v = clampDiscount(parseFloat(String(result.value ?? '').replace(',', '.')));
+      applyDiscountBulk(result.targetRowNodes.map((n) => ({ node: n, value: v })));
     } else {
       // Diger basit deger kopyalama
       for (const node of result.targetRowNodes) {
@@ -1188,13 +1382,14 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     }, 100);
 
     console.log(`[FillHandle] Complete: ${result.targetRowNodes.length} rows filled, field=${result.field}`);
-  }, [data.columnRoles, onBrandChange, onFirmaChange, onRowDataChange]);
+  }, [data.columnRoles, onBrandChange, onFirmaChange, onRowDataChange, applyDiscountBulk]);
 
   useFillHandle({
     gridRef,
     fillableFields: FILLABLE_FIELDS,
     onFillComplete: handleFillComplete,
-    enabled: mode === 'quote', // sadece teklif modunda
+    // S1: kutuphane modunda da aktif (_draftDiscount surukle-doldur)
+    enabled: mode === 'quote' || mode === 'library',
   });
 
   // Dışarıya imperative method aç (handleSave öncesi güncel data almak için)
@@ -1437,7 +1632,11 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
             minimumFractionDigits: 1,
             maximumFractionDigits: 1,
           });
-          return `${currencySymbol}${formatted}`;
+          // Z4: satirin kendi para birimi varsa (_currency — kutuphane gridi)
+          // onun sembolu basilir; yoksa global sembol (teklif akisi)
+          const rowCurr = (params.data as any)?._currency;
+          const sym = rowCurr ? (ROW_CURRENCY_SYMBOL[rowCurr] ?? currencySymbol) : currencySymbol;
+          return `${sym}${formatted}`;
         };
         // Malzeme birim fiyat — ALTIN KURAL isaretleri:
         //   mavi  = 'otomatik varyant' (V4.1 — grup seciminden atandi)
@@ -1518,11 +1717,17 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           if (val > 100) val = 100;
           return val;
         },
-        valueFormatter: (p: any) => {
-          if (!p.data?._isDataRow) return '';
+        // S1: fill-handle-cell sarmalayici — hucrenin alt kenarindan
+        // surukle-doldur baslar (kar % kolonlariyla ayni mekanizma)
+        cellRenderer: (p: any) => {
+          if (!p.data?._isDataRow) return null;
           const v = p.value;
-          if (v === undefined || v === null || v === '') return '%0';
-          return `%${Number(v).toFixed(0)}`;
+          const txt = (v === undefined || v === null || v === '') ? '%0' : `%${Number(v).toFixed(0)}`;
+          return (
+            <div className="fill-handle-cell" style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+              <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 12 }}>{txt}</span>
+            </div>
+          );
         },
         cellStyle: { textAlign: 'right' as const },
       } as any);
@@ -1549,7 +1754,10 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
             minimumFractionDigits: 1,
             maximumFractionDigits: 1,
           });
-          return `${currencySymbol}${formatted}`;
+          // Z4: net fiyat da satirin kendi para birimiyle gosterilir
+          const rowCurr = p.data?._currency;
+          const sym = rowCurr ? (ROW_CURRENCY_SYMBOL[rowCurr] ?? currencySymbol) : currencySymbol;
+          return `${sym}${formatted}`;
         },
         cellStyle: { textAlign: 'right' as const, fontWeight: 'bold' as const },
       } as any);
@@ -1776,7 +1984,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
   }, []);
 
   return (
-    <div className="w-full">
+    <div className="w-full" onKeyDown={handleLibraryKeyDown} onPaste={handleLibraryPaste}>
       {/* GUVEN KAPISI SAYACI (PRD Bolum 9): eslesmeyen/belirsiz satirlar
           gorunur kilinir — "eslestirme emin degilse fiyat uydurmaz". */}
       {mode === 'quote' && pendingCount > 0 && (
@@ -1785,11 +1993,43 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           <span className="text-red-600">— kırmızı hücreler: eşleşme yok/belirsiz · sarı: öneri (kontrol edin) · gri: ürün değil</span>
         </div>
       )}
+      {/* ISKONTO ARAC CUBUGU (S2b): tum listeye tek hamlede iskonto +
+          kisayol ipuclari. Yalniz kutuphane modunda. */}
+      {mode === 'library' && (
+        <div className="mb-1 flex flex-wrap items-center gap-2 rounded border border-indigo-200 bg-indigo-50/60 px-3 py-1.5 text-xs text-indigo-900">
+          <span className="font-semibold">İskonto %</span>
+          <input
+            value={bulkDiscountInput}
+            onChange={(e) => setBulkDiscountInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') applyDiscountToAll(); e.stopPropagation(); }}
+            placeholder="örn 30"
+            className="h-6 w-16 rounded border border-indigo-300 bg-white px-1.5 text-right text-xs outline-none"
+          />
+          <button
+            type="button"
+            onClick={applyDiscountToAll}
+            disabled={bulkDiscountInput.trim() === ''}
+            className="rounded border border-indigo-300 bg-white px-2 py-0.5 font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-40"
+          >
+            Tüm listeye uygula
+          </button>
+          <span className="text-[10px] text-indigo-400">
+            Sürükle-doldur: iskonto hücresinin alt kenarından · Ctrl+D: üstteki değeri kopyala · Ctrl+V: Excel&apos;den sütun yapıştır · Ctrl+Z: son toplu işlemi geri al · Grup bandı: daralt/genişlet + gruba iskonto
+          </span>
+        </div>
+      )}
     <div className="ag-theme-alpine w-full" style={{ height: '80vh' }}>
       <AgGridReact<ExcelRowData>
         ref={gridRef}
         theme="legacy"
         rowData={data.rowData}
+        context={gridContext}
+        // L3: daraltilmis gruplarin uyeleri gizlenir (grup bandi gorunur kalir)
+        isExternalFilterPresent={() => collapsedGroupsRef.current.size > 0}
+        doesExternalFilterPass={(node) => {
+          const k = (node.data as any)?._groupKey;
+          return !k || !collapsedGroupsRef.current.has(k);
+        }}
         pinnedBottomRowData={pinnedBottomRow}
         getRowStyle={(p) => {
           if (p.node.rowPinned === 'bottom') {

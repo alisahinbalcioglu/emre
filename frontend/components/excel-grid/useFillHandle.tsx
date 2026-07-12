@@ -53,9 +53,14 @@ export function useFillHandle({
   }, []);
 
   const getCellElement = useCallback((rowIdx: number, colId: string): HTMLElement | null => {
-    const rowEl = document.querySelector(`[row-index="${rowIdx}"]`);
-    if (!rowEl) return null;
-    return rowEl.querySelector(`[col-id="${colId}"]`) as HTMLElement;
+    // Ayni row-index birden fazla konteynerde bulunur (center + pinned-left/right).
+    // Pinned kolonlar (orn kutuphane Iskonto %) icin TUM konteynerler taranir.
+    const rowEls = document.querySelectorAll(`[row-index="${rowIdx}"]`);
+    for (const rowEl of Array.from(rowEls)) {
+      const cell = rowEl.querySelector(`[col-id="${colId}"]`);
+      if (cell) return cell as HTMLElement;
+    }
+    return null;
   }, []);
 
   const getTargetNodes = useCallback((startIdx: number, endIdx: number): IRowNode[] => {

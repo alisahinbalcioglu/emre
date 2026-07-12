@@ -236,10 +236,18 @@ export default function BrandDetailPage() {
     setImportingListId(listId);
     try {
       const { data: res } = await api.post('/library/import-price-list', { brandId, priceListId: listId });
-      if (res.imported === 0) {
-        toast({ title: 'Bilgi', description: `Bu listedeki malzemeler zaten kütüphanenizde mevcut.` });
-      } else {
-        toast({ title: 'Aktarıldı', description: `${res.imported} malzeme kütüphanenize eklendi.${res.skipped > 0 ? ` (${res.skipped} zaten mevcuttu)` : ''}` });
+      // L5: aktarim dogrulama raporu — havuz ↔ kutuphane birebir karsilastirma
+      const rapor = [
+        res.imported ? `${res.imported} yeni` : null,
+        res.updated ? `${res.updated} güncellendi (iskontolar korundu)` : null,
+        res.kategoriSayisi ? `${res.kategoriSayisi} kategori` : null,
+        res.havuzUrun != null && res.kutuphaneUrun != null
+          ? `havuz ${res.havuzUrun} ↔ kütüphane ${res.kutuphaneUrun} ${res.havuzUrun === res.kutuphaneUrun ? '✓ birebir' : '✗ FARK VAR'}`
+          : null,
+      ].filter(Boolean).join(' · ');
+      toast({ title: 'Kütüphanenize aktarıldı', description: rapor || `${res.imported} malzeme eklendi.` });
+      if (Array.isArray(res.farklar) && res.farklar.length > 0) {
+        toast({ title: 'Aktarım farkı', description: res.farklar.join(' · '), variant: 'destructive' });
       }
     } catch (err: any) {
       toast({ title: 'Hata', description: err?.response?.data?.message || 'Aktarım sırasında hata oluştu.', variant: 'destructive' });

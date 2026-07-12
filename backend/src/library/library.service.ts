@@ -5,6 +5,7 @@ import { UpdateLibraryItemDto } from './dto/update-library-item.dto';
 import { ImportPriceListDto } from './dto/import-price-list.dto';
 import { BulkDiscountDto } from './dto/bulk-discount.dto';
 import { BulkUpdateItemsDto } from './dto/bulk-update-items.dto';
+import { buildLibrarySheetRows } from './library-sheet-builder';
 
 @Injectable()
 export class LibraryService {
@@ -126,70 +127,115 @@ export class LibraryService {
       throw new BadRequestException('Fiyat listesi bu markaya ait degil');
     }
 
+    // L1: KAYNAK SIRASI korunur (sortOrder) — kutuphane havuzla ayni dizilir
     const items = await this.prisma.materialPrice.findMany({
       where: { priceListId: dto.priceListId },
       include: { material: true },
+      orderBy: [{ sortOrder: 'asc' }, { material: { name: 'asc' } }],
     });
 
     if (items.length === 0) {
       throw new BadRequestException('Bu fiyat listesinde malzeme yok');
     }
 
-    // Mevcut kutuphane kayitlarini kontrol et (ayni malzeme+marka tekrar eklenmemeli)
+    // L4: IDEMPOTENT aktarim — anahtar (marka + kaynak liste + materialId).
+    // Mevcut kayit ATLANMAZ; fiyat + yapi alanlari GUNCELLENIR, kullanicinin
+    // girdigi iskonto (discountRate) ve ozel fiyat (customPrice) KORUNUR.
     const existing = await this.prisma.userLibrary.findMany({
       where: {
         userId,
         brandId: dto.brandId,
         sourcePriceListId: dto.priceListId,
       },
-      select: { materialId: true, materialName: true },
+      select: { id: true, materialId: true },
     });
-    const existingKeys = new Set(
-      existing.map((e) => e.materialId || e.materialName),
-    );
+    const existingByMat = new Map(existing.filter((e) => e.materialId).map((e) => [e.materialId as string, e.id]));
 
-    const newItems = items.filter(
-      (item) => !existingKeys.has(item.materialId),
-    );
+    const newItems = items.filter((item) => !existingByMat.has(item.materialId));
+    const updateItems = items.filter((item) => existingByMat.has(item.materialId));
 
-    if (newItems.length === 0) {
-      return { imported: 0, skipped: items.length, brandName: priceList.brand.name };
+    // L1/L3: yapi alanlari (kategori/cins/cap/adRaw/sortOrder) VERI olarak tasinir
+    const fidelityOf = (item: (typeof items)[number]) => ({
+      listPrice: item.price,
+      // Z4: fiyat orijinal para birimiyle tasinir — cevrim teklif asamasinda
+      currency: item.currency ?? 'TRY',
+      unit: item.birimRaw || item.material.unit || 'Adet',
+      kategori: item.kategori ?? null,
+      cins: item.cins ?? null,
+      cap: item.cap ?? null,
+      adRaw: item.adRaw ?? null,
+      sortOrder: item.sortOrder ?? 0,
+    });
+
+    if (newItems.length > 0) {
+      await this.prisma.userLibrary.createMany({
+        data: newItems.map((item) => ({
+          userId,
+          materialId: item.materialId,
+          materialName: item.material.name,
+          brandId: dto.brandId,
+          sourcePriceListId: dto.priceListId,
+          ...fidelityOf(item),
+        })),
+      });
     }
 
-    await this.prisma.userLibrary.createMany({
-      data: newItems.map((item) => ({
-        userId,
-        materialId: item.materialId,
-        materialName: item.material.name,
-        brandId: dto.brandId,
-        listPrice: item.price,
-        // Z4: fiyat orijinal para birimiyle tasinir — cevrim teklif asamasinda
-        currency: (item as any).currency ?? 'TRY',
-        unit: item.material.unit || 'Adet',
-        sourcePriceListId: dto.priceListId,
-      })),
-    });
+    // Mevcutlar guncellenir (chunk'li transaction — 1500+ satirda tek tek RTT yok)
+    let updated = 0;
+    const CHUNK = 200;
+    for (let i = 0; i < updateItems.length; i += CHUNK) {
+      const chunk = updateItems.slice(i, i + CHUNK);
+      await this.prisma.$transaction(
+        chunk.map((item) =>
+          this.prisma.userLibrary.update({
+            where: { id: existingByMat.get(item.materialId)! },
+            data: {
+              materialName: item.material.name,
+              ...fidelityOf(item),
+            },
+          }),
+        ),
+      );
+      updated += chunk.length;
+    }
 
     // UserBrandLibrary sheets guncelle/olustur — tum kullanicinin o markaya ait
     // UserLibrary satirlarindan sentetik sheet yeniden olustur
     await this.rebuildUserBrandLibrary(userId, dto.brandId);
 
+    // L5: AKTARIM DOGRULAMA RAPORU — havuz ↔ kutuphane birebir karsilastirma
+    const kutuphaneUrun = await this.prisma.userLibrary.count({
+      where: { userId, brandId: dto.brandId, sourcePriceListId: dto.priceListId },
+    });
+    const havuzKategori = new Set(items.map((i) => i.kategori).filter(Boolean)).size;
+    const farklar: string[] = [];
+    if (kutuphaneUrun !== items.length) {
+      farklar.push(`Havuzda ${items.length} ürün, kütüphaneye ${kutuphaneUrun} kayıt yazıldı`);
+    }
+
     return {
       imported: newItems.length,
-      skipped: items.length - newItems.length,
+      updated,
+      skipped: 0,
       brandName: priceList.brand.name,
       listName: priceList.name,
+      // L5 raporu
+      havuzUrun: items.length,
+      kutuphaneUrun,
+      kategoriSayisi: havuzKategori,
+      farklar,
     };
   }
 
   // ── UserBrandLibrary sheets builder ──
-  // UserLibrary satirlarindan tek sheet'lik synthetic grid olusturur.
-  // Her satir: no (sira), materialName, unit, listPrice, discountRate, netPrice (computed)
-  // Sistem ExcelGrid bu sheets'i okuyup library mode ile render eder.
+  // UserLibrary satirlarindan tek sheet'lik synthetic grid olusturur
+  // (buildLibrarySheetRows — saf, test edilir). L1: kaynak sirasi (sortOrder)
+  // + kategori grup bantlari BIREBIR; L2: sentetik header satiri YOK.
   async rebuildUserBrandLibrary(userId: string, brandId: string) {
+    // sortOrder birincil (kaynak sirasi); legacy kayitlarda hepsi 0 → ad sirasi
     const items = await this.prisma.userLibrary.findMany({
       where: { userId, brandId },
-      orderBy: { materialName: 'asc' },
+      orderBy: [{ sortOrder: 'asc' }, { materialName: 'asc' }],
     });
 
     if (items.length === 0) {
@@ -198,46 +244,28 @@ export class LibraryService {
       return null;
     }
 
-    // Synthetic single-sheet olustur
-    // Kolonlar: col0=No, col1=MalzemeAdi, col2=Birim, col3=ListeFiyat
-    const columnDefs = [
-      { field: 'col0', headerName: 'No', width: 60, editable: false },
-      { field: 'col1', headerName: 'Malzeme Adi', width: 400, editable: true },
-      { field: 'col2', headerName: 'Birim', width: 100, editable: true },
-      { field: 'col3', headerName: 'Liste Fiyat', width: 130, editable: true },
-    ];
-    const columnRoles = {
-      noField: 'col0',
-      nameField: 'col1',
-      unitField: 'col2',
-      materialUnitPriceField: 'col3',
-    };
-    // Header row + data rows
-    const rowData: any[] = [
-      { _rowIdx: 0, _isDataRow: false, _isHeaderRow: true, col0: 'No', col1: 'Malzeme Adi', col2: 'Birim', col3: 'Liste Fiyat' },
-    ];
-    items.forEach((item, i) => {
-      const listPrice = item.customPrice ?? item.listPrice ?? 0;
-      rowData.push({
-        _rowIdx: i + 1,
-        _isDataRow: true,
-        _isHeaderRow: false,
-        _libraryItemId: item.id, // UserLibrary satir ID'si — save sirasinda geri donebilmek icin
-        _libraryDiscountRate: item.discountRate ?? 0,
-        col0: String(i + 1),
-        col1: item.materialName ?? '',
-        col2: item.unit ?? 'Adet',
-        col3: listPrice,
-      });
-    });
+    const built = buildLibrarySheetRows(
+      items.map((item) => ({
+        id: item.id,
+        materialName: item.materialName,
+        adRaw: item.adRaw,
+        unit: item.unit,
+        listPrice: item.customPrice ?? item.listPrice ?? 0,
+        discountRate: item.discountRate,
+        currency: item.currency,
+        kategori: item.kategori,
+        cins: item.cins,
+        cap: item.cap,
+      })),
+    );
 
     const sheets = [
       {
         name: 'Fiyat Listesi',
         index: 0,
-        columnDefs,
-        rowData,
-        columnRoles,
+        columnDefs: built.columnDefs,
+        rowData: built.rowData,
+        columnRoles: built.columnRoles,
         headerEndRow: 0,
         isEmpty: false,
         discipline: null,
@@ -253,21 +281,14 @@ export class LibraryService {
   }
 
   // ── GET — ExcelGrid render icin sheets + guncel iskontolar ──
+  // HER ZAMAN taze rebuild: kayitli sheets eski formatta olabilir (header
+  // satirli / grupsuz) — UserLibrary kaynak-of-truth'tur, gorunum ondan uretilir.
   async getBrandSheets(userId: string, brandId: string) {
-    const lib = await this.prisma.userBrandLibrary.findUnique({
-      where: { userId_brandId: { userId, brandId } },
-    });
-
-    // Eger yoksa, UserLibrary satirlarindan sentetik olustur (migration fallback)
-    if (!lib) {
-      const count = await this.prisma.userLibrary.count({ where: { userId, brandId } });
-      if (count === 0) throw new NotFoundException('Kutuphanenizde bu markaya ait kayit yok');
-      const created = await this.rebuildUserBrandLibrary(userId, brandId);
-      if (!created) throw new NotFoundException('Olusturulamadi');
-      return created;
-    }
-
-    return lib;
+    const count = await this.prisma.userLibrary.count({ where: { userId, brandId } });
+    if (count === 0) throw new NotFoundException('Kutuphanenizde bu markaya ait kayit yok');
+    const built = await this.rebuildUserBrandLibrary(userId, brandId);
+    if (!built) throw new NotFoundException('Olusturulamadi');
+    return built;
   }
 
   // ── SAVE — ExcelGrid'den gelen dirty satirlari kaydet ──
