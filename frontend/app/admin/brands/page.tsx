@@ -11,7 +11,7 @@
  * (+ekle/sil) + secili listenin malzemeleri + hizli malzeme ekleme.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import {
   Package, Plus, Trash2, Loader2, ChevronRight, RefreshCw, AlertCircle, Upload,
 } from 'lucide-react';
@@ -35,7 +35,12 @@ interface Brand {
   _count?: { priceLists: number; materialPrices: number };
 }
 interface PriceList { id: string; name: string; createdAt: string; _count?: { items: number } }
-interface PoolMaterial { id: string; materialName: string; unit: string; price: number }
+interface PoolMaterial {
+  id: string; materialName: string; unit: string; price: number;
+  // Kaynak sadakati (Y1/Y2/Y5) — eski kayitlarda null
+  kategori?: string | null; cins?: string | null; cap?: string | null;
+  adRaw?: string | null; sortOrder?: number;
+}
 
 export default function AdminBrandsPage() {
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -446,33 +451,62 @@ export default function AdminBrandsPage() {
                     {loadingDetail ? (
                       <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
                     ) : (
-                      <Table>
-                        <TableHeader>
-                          <TableRow className="bg-slate-50 hover:bg-slate-50">
-                            <TableHead>Malzeme</TableHead>
-                            <TableHead className="w-24">Birim</TableHead>
-                            <TableHead className="w-32 text-right">Baz Fiyat</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {materials.length === 0 && (
-                            <TableRow>
-                              <TableCell colSpan={3} className="py-8 text-center text-xs text-slate-400">
-                                Bu listede malzeme yok — yukarıdan ekleyin.
-                              </TableCell>
-                            </TableRow>
-                          )}
-                          {materials.map((m) => (
-                            <TableRow key={m.id}>
-                              <TableCell className="font-medium text-slate-900">{m.materialName}</TableCell>
-                              <TableCell>{m.unit}</TableCell>
-                              <TableCell className="text-right tabular-nums">
-                                ₺{m.price.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
+                      (() => {
+                        // Y5: kaynak sadakati — API kaynak sirasinda dondurur;
+                        // kategori degistikce tam-genislik baslik satiri cizilir.
+                        // Cinsi/Cap sutunlari yalniz veri varsa gosterilir.
+                        const hasCins = materials.some((m) => m.cins);
+                        const hasCap = materials.some((m) => m.cap);
+                        const colCount = 3 + (hasCins ? 1 : 0) + (hasCap ? 1 : 0);
+                        let prevKategori: string | null | undefined;
+                        return (
+                          <Table>
+                            <TableHeader>
+                              <TableRow className="bg-slate-50 hover:bg-slate-50">
+                                <TableHead>Malzeme</TableHead>
+                                {hasCins && <TableHead className="w-44">Cinsi</TableHead>}
+                                {hasCap && <TableHead className="w-20">Çap</TableHead>}
+                                <TableHead className="w-24">Birim</TableHead>
+                                <TableHead className="w-32 text-right">Baz Fiyat</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {materials.length === 0 && (
+                                <TableRow>
+                                  <TableCell colSpan={colCount} className="py-8 text-center text-xs text-slate-400">
+                                    Bu listede malzeme yok — yukarıdan ekleyin.
+                                  </TableCell>
+                                </TableRow>
+                              )}
+                              {materials.map((m) => {
+                                const showKategori = !!m.kategori && m.kategori !== prevKategori;
+                                prevKategori = m.kategori ?? prevKategori;
+                                return (
+                                  <Fragment key={m.id}>
+                                    {showKategori && (
+                                      <TableRow className="bg-red-50 hover:bg-red-50">
+                                        <TableCell colSpan={colCount} className="py-1.5 text-xs font-bold text-red-800">
+                                          {m.kategori}
+                                        </TableCell>
+                                      </TableRow>
+                                    )}
+                                    <TableRow>
+                                      {/* Y3: kaynak metin BIREBIR — adRaw varsa o gosterilir */}
+                                      <TableCell className="font-medium text-slate-900">{m.adRaw ?? m.materialName}</TableCell>
+                                      {hasCins && <TableCell className="text-slate-600">{m.cins ?? ''}</TableCell>}
+                                      {hasCap && <TableCell className="text-slate-600">{m.cap ?? ''}</TableCell>}
+                                      <TableCell>{m.unit}</TableCell>
+                                      <TableCell className="text-right tabular-nums">
+                                        ₺{m.price.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                                      </TableCell>
+                                    </TableRow>
+                                  </Fragment>
+                                );
+                              })}
+                            </TableBody>
+                          </Table>
+                        );
+                      })()
                     )}
                   </div>
                 )}

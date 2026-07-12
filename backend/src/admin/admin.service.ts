@@ -461,19 +461,13 @@ export class AdminService {
       .replace(/[üÜ]/g, 'u').replace(/[öÖ]/g, 'o').replace(/[ğĞ]/g, 'g')
       .toLowerCase().trim();
 
-    // Turkce/karisik sayi formati: "1.234,56" → 1234.56, "1,234.56" → 1234.56
-    const parsePrice = (raw: any): number => {
-      if (typeof raw === 'number') return raw;
-      let s = String(raw ?? '').replace(/[₺$€]|TL|TRY|USD|EUR/gi, '').trim();
-      if (!s) return NaN;
-      const lastComma = s.lastIndexOf(',');
-      const lastDot = s.lastIndexOf('.');
-      if (lastComma > lastDot) {
-        s = s.replace(/\./g, '').replace(',', '.'); // 1.234,56
-      } else if (lastDot > lastComma) {
-        s = s.replace(/,/g, ''); // 1,234.56
-      }
-      return parseFloat(s);
+    // Y4: TR sayi ayristirma — parseTrNumber cekirdegi. "540.000" gibi
+    // belirsiz degerler SESSIZCE varsayilmaz (ambiguous doner, satir atlanir
+    // + uyari). Doviz sembolleri once temizlenir (kur cevirisi ayri).
+    const parsePrice = (raw: any): { value: number | null; ambiguous: boolean } => {
+      if (typeof raw === 'number') return { value: raw, ambiguous: false };
+      const s = String(raw ?? '').replace(/[$€]|USD|EUR|TRY/gi, '').trim();
+      return parseTrNumber(s);
     };
 
     const detectCurrency = (val: any): 'TRY' | 'USD' | 'EUR' | null => {
@@ -484,7 +478,11 @@ export class AdminService {
       return null;
     };
 
-    const items: { materialName: string; unit: string; unitPrice: number }[] = [];
+    const items: {
+      materialName: string; unit: string; unitPrice: number;
+      kategori?: string | null; cins?: string | null; cap?: string | null;
+      adRaw?: string | null; birimRaw?: string | null; sortOrder?: number;
+    }[] = [];
     const warnings: string[] = [];
     let converted = 0;
     let rates: { usdTry: number; eurTry: number } | null = null;
@@ -543,6 +541,7 @@ export class AdminService {
       const headerCurrency = detectCurrency(grid[headerRow]?.[cols.price!]);
 
       let sheetCount = 0;
+      let aktifKategori: string | null = null;
       for (let r = headerRow + 1; r < grid.length; r++) {
         const row = grid[r] ?? [];
         let name = String(row[cols.name!] ?? '').trim();
@@ -551,19 +550,39 @@ export class AdminService {
           name = String(row[cols.code] ?? '').trim();
         }
         const rawPrice = row[cols.price!];
+        const parsed = parsePrice(rawPrice);
+
+        // ── Y1: KATEGORI SATIRI — fiyati olmayan, tek anlamli metin tasiyan
+        // satir (kirmizi/merge basliklar; merge metni ilk kolona duser).
+        // Onceden SESSIZCE atlaniyordu → dosya hiyerarsisi kayboluyordu.
+        if (parsed.value == null && !parsed.ambiguous) {
+          const cells = (row as any[]).map((v) => String(v ?? '').trim()).filter(Boolean);
+          const catText = name || (cells[0] ?? '');
+          if (catText.length > 2 && cells.length <= 2) {
+            aktifKategori = catText;
+          }
+          continue;
+        }
         if (!name || name.length < 2) continue;
-        let price = parsePrice(rawPrice);
-        if (isNaN(price) || price <= 0) continue;
+        // Y4: belirsiz fiyat (540.000) — sessiz varsayim YOK, satir raporlanir
+        if (parsed.ambiguous) {
+          warnings.push(`"${sheetName}" satır ${r + 1} "${name.slice(0, 40)}": fiyat belirsiz ("${String(rawPrice)}") — binlik mi ondalık mı? Düzeltip yeniden yükleyin.`);
+          continue;
+        }
+        let price = parsed.value!;
+        if (price <= 0) continue;
 
         // AD BENZERSIZLESTIRME: ayni "Malzeme Adi"na farkli cins/cap satirlari
         // gelir (orn. Borusan boru listesi: tek ad, 8 farkli cap). Material.name
         // @unique + upsert oldugundan cins/cap ada eklenmezse hepsi tek kayda
         // ezilir (veri kaybi). Cins + cap varsa ada birlestir.
+        // Contains kontrolu TR-KATLAMALI (norm) — "Boyalı"/"Boyali" farki yuzunden
+        // ad iki kez ekleniyordu ("Boyalı Düz Uçlu Boyalı Düz Uçlu" bug'i).
         const desc = cols.desc !== undefined ? String(row[cols.desc] ?? '').trim() : '';
         const diam = cols.diam !== undefined ? String(row[cols.diam] ?? '').trim() : '';
         let fullName = name;
-        if (desc && !name.toLowerCase().includes(desc.toLowerCase())) fullName += ` ${desc}`;
-        if (diam && !fullName.toLowerCase().includes(diam.toLowerCase())) fullName += ` ${diam}`;
+        if (desc && !norm(name).includes(norm(desc))) fullName += ` ${desc}`;
+        if (diam && !norm(fullName).includes(norm(diam))) fullName += ` ${diam}`;
         fullName = fullName.trim();
 
         // Para birimi: satir kolonu > fiyat hucresi sembolu > baslik > TRY
@@ -576,7 +595,12 @@ export class AdminService {
         price = Math.round(price * 100) / 100;
 
         const unit = cols.unit !== undefined ? String(row[cols.unit] ?? '').trim() : '';
-        items.push({ materialName: fullName, unit: unit || 'Adet', unitPrice: price });
+        items.push({
+          materialName: fullName, unit: unit || 'Adet', unitPrice: price,
+          // Y1/Y2/Y3/Y5 kaynak sadakati
+          kategori: aktifKategori, cins: desc || null, cap: diam || null,
+          adRaw: name, birimRaw: unit || null, sortOrder: items.length,
+        });
         sheetCount++;
       }
       if (sheetCount > 0) {
@@ -591,7 +615,10 @@ export class AdminService {
       );
     }
 
-    const result = await this.saveBulkMaterials(priceList.brandId, priceListId, items);
+    // Y7: dosya kaynak-of-truth — ayni listeye yeniden yukleme listeyi
+    // BASTAN YAZAR (eski/bozuk adlandirilmis kalemler de temizlenir),
+    // degisen fiyatlar raporlanir.
+    const result = await this.saveBulkMaterials(priceList.brandId, priceListId, items, undefined, { replaceExisting: true });
     return {
       ...result,
       warnings,
@@ -603,8 +630,13 @@ export class AdminService {
   async saveBulkMaterials(
     brandId: string,
     priceListId: string,
-    items: { materialName: string; unit: string; unitPrice: number }[],
+    items: {
+      materialName: string; unit: string; unitPrice: number;
+      kategori?: string | null; cins?: string | null; cap?: string | null;
+      adRaw?: string | null; birimRaw?: string | null; sortOrder?: number;
+    }[],
     exchangeRate?: number,
+    opts?: { replaceExisting?: boolean },
   ) {
     const brand = await this.prisma.brand.findUnique({ where: { id: brandId } });
     if (!brand) throw new NotFoundException('Marka bulunamadi');
@@ -634,10 +666,29 @@ export class AdminService {
       throw new BadRequestException('Kaydedilecek gecerli malzeme bulunamadi. Tum satirlar bos veya fiyatsiz.');
     }
 
-    console.log(`[SaveBulk] ${validItems.length}/${items.length} gecerli satir, brand=${brand.name}, list=${priceList.name}`);
+    console.log(`[SaveBulk] ${validItems.length}/${items.length} gecerli satir, brand=${brand.name}, list=${priceList.name}${opts?.replaceExisting ? ' (REPLACE)' : ''}`);
 
+    // ── Y7: replaceExisting — dosya kaynak-of-truth. Eski kalemler fiyat
+    // degisim raporu icin okunur, sonra listenin TAMAMI silinip yeni yapiyla
+    // bastan yazilir (eski bozuk adlandirilmis kayitlar da temizlenir).
+    const oldPrices = new Map<string, number>();
+    let removed = 0;
+    if (opts?.replaceExisting) {
+      const olds = await (this.prisma as any).materialPrice.findMany({
+        where: { priceListId: priceList.id },
+        include: { material: { select: { name: true } } },
+      });
+      for (const o of olds) oldPrices.set(String(o.material?.name ?? '').toLocaleLowerCase('tr'), o.price);
+      const del = await this.prisma.materialPrice.deleteMany({ where: { priceListId: priceList.id } });
+      removed = del.count;
+    }
+
+    const { generateTags } = require('../modules/matching/tag-generator');
     let imported = 0;
+    let updated = 0;
     let skipped = 0;
+    const fiyatDegisimleri: { ad: string; eski: number; yeni: number }[] = [];
+    const kategoriler = new Set<string>();
 
     for (const item of validItems) {
       const name = item.materialName?.trim();
@@ -647,39 +698,68 @@ export class AdminService {
       if (exchangeRate && exchangeRate > 0) {
         price = Math.round(price * exchangeRate * 100) / 100;
       }
+      if (item.kategori) kategoriler.add(item.kategori);
+
+      // E6: tag metni kategori + ad — aile kilidi/cap cevrimi kategori
+      // bilgisiyle de calisir ("...Galvanizli Disli Mansonlu" basligi cinsi verir)
+      const tagText = [item.kategori ?? '', name].filter(Boolean).join(' ');
+      const tagged = generateTags(tagText);
 
       let material = await this.prisma.material.findFirst({
         where: { name: { equals: name, mode: 'insensitive' } },
       });
-
       if (!material) {
-        const { generateTags } = require('../modules/matching/tag-generator');
-        const tagged = generateTags(name);
         material = await this.prisma.material.create({
-          data: { name, unit, isGlobal: true, tags: tagged.tags, normalizedName: tagged.normalizedName, materialType: tagged.materialType },
+          data: {
+            name, unit, isGlobal: true, category: item.kategori ?? undefined,
+            tags: tagged.tags, normalizedName: tagged.normalizedName, materialType: tagged.materialType,
+          },
         });
-      } else if (!material.unit && unit) {
-        await this.prisma.material.update({ where: { id: material.id }, data: { unit } });
-      }
-
-      if (material.tags?.length === 0) {
-        const { generateTags } = require('../modules/matching/tag-generator');
-        const tagged = generateTags(name);
+      } else {
         await this.prisma.material.update({
           where: { id: material.id },
-          data: { tags: tagged.tags, normalizedName: tagged.normalizedName, materialType: tagged.materialType },
+          data: {
+            unit: material.unit || unit,
+            category: item.kategori ?? material.category,
+            tags: tagged.tags, normalizedName: tagged.normalizedName, materialType: tagged.materialType,
+          },
         });
       }
 
-      await this.prisma.materialPrice.upsert({
-        where: { materialId_brandId_priceListId: { materialId: material.id, brandId, priceListId } },
-        update: { price },
-        create: { materialId: material.id, brandId, priceListId, price },
+      const fidelity: any = {
+        kategori: item.kategori ?? null,
+        cins: item.cins ?? null,
+        cap: item.cap ?? null,
+        adRaw: item.adRaw ?? null,
+        birimRaw: item.birimRaw ?? null,
+        sortOrder: item.sortOrder ?? 0,
+      };
+      await (this.prisma as any).materialPrice.upsert({
+        where: { materialId_brandId_priceListId: { materialId: material.id, brandId, priceListId: priceList.id } },
+        update: { price, ...fidelity },
+        create: { materialId: material.id, brandId, priceListId: priceList.id, price, ...fidelity },
       });
-      imported++;
+
+      const oldPrice = oldPrices.get(name.toLocaleLowerCase('tr'));
+      if (oldPrice !== undefined) {
+        updated++;
+        if (Math.abs(oldPrice - price) > 0.001 && fiyatDegisimleri.length < 50) {
+          fiyatDegisimleri.push({ ad: item.adRaw || name, eski: oldPrice, yeni: price });
+        }
+      } else {
+        imported++;
+      }
     }
 
-    return { imported, skipped, total: items.length, brandName: brand.name, priceListName: priceList.name };
+    console.log(`[SaveBulk] Sonuc: ${imported} yeni, ${updated} guncel, ${removed} eski kalem temizlendi, ${kategoriler.size} kategori`);
+    return {
+      imported, updated, skipped, removed,
+      kategoriSayisi: kategoriler.size,
+      fiyatDegisimleri,
+      total: items.length,
+      brandName: brand.name,
+      priceListName: priceList.name,
+    };
   }
 
   // ═════════ MATERIALS: SAVE FROM SHEETS (Excel multi-sheet) ═════════
