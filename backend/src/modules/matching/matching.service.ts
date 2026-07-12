@@ -7,6 +7,7 @@ import { extractSizeInfo, sizeEquivalents, isSizeTag } from './conversion';
 import type { SizeClass, SizeInfo } from './conversion';
 import { TerminologyService } from './terminology.service';
 import type { AliasHint, BrandClassHint } from './terminology.service';
+import { ExchangeRatesService } from '../../exchange-rates/exchange-rates.service';
 import type { MatchResult, BrandAlternative } from './types';
 import {
   splitExcelTags,
@@ -82,7 +83,27 @@ export class MatchingService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly terminology: TerminologyService,
+    private readonly exchangeRates: ExchangeRatesService,
   ) {}
+
+  // ── Z4: teklif-ani kur cevrimi ─────────────────────────────────────
+  // Kutuphane fiyatlari ORIJINAL para biriminde saklanir (ice aktarimda
+  // cevrim yok). Eslestirme aninda — yani teklif hazirlanirken — USD/EUR
+  // fiyatlar o anki TCMB kuruyla TRY tabanina cevrilir; teklif ekraninin
+  // gorunum birimi (TL/USD/EUR) bu tabani kendi secimine cevirir.
+  // Kur, istek basina EN FAZLA 1 kez cekilir (yalniz doviz satiri varsa).
+  private async buildTryConverter(
+    rows: { currency?: string | null }[],
+  ): Promise<(value: number, currency?: string | null) => number> {
+    const needsFx = rows.some((r) => r.currency && r.currency !== 'TRY');
+    if (!needsFx) return (v) => v;
+    const rates = await this.exchangeRates.getRates();
+    return (v, currency) => {
+      if (currency === 'USD') return Math.round(v * rates.usdTry * 100) / 100;
+      if (currency === 'EUR') return Math.round(v * rates.eurTry * 100) / 100;
+      return v;
+    };
+  }
 
   // ═══════════════════════════════════════════
   // BULK MATCH — Teklif sirasinda (AI YOK)
@@ -126,9 +147,11 @@ export class MatchingService {
     // UserLibrary satirlarini matcher'in bekledigi MaterialPriceItem sekline
     // cevir. Havuzdan aktarilanlar Material.tags'ini tasir; kullanicinin
     // MANUEL ekledigi satirlarda (materialId yok) tag'ler anlik uretilir.
+    // Z4: dovizli satirlar teklif aninda TRY tabanina cevrilir.
+    const toTry = await this.buildTryConverter(libRows as { currency?: string | null }[]);
     const allPrices: MaterialPriceItem[] = libRows.map((li) => {
       const name = li.material?.name ?? li.materialName ?? '';
-      const basePrice = li.customPrice ?? li.listPrice ?? 0;
+      const basePrice = toTry(li.customPrice ?? li.listPrice ?? 0, (li as any).currency);
       if (li.material) {
         return { price: basePrice, material: li.material };
       }
@@ -148,9 +171,11 @@ export class MatchingService {
     // Iskonto/liste fiyati lookup'i icin ayni satirlar (calcPrice ad ile bulur)
     const libItems: LibItem[] = libRows.map((li) => ({
       materialName: li.material?.name ?? li.materialName,
-      listPrice: li.customPrice ?? li.listPrice,
+      listPrice: (li.customPrice ?? li.listPrice) != null
+        ? toTry((li.customPrice ?? li.listPrice)!, (li as any).currency)
+        : null,
       discountRate: li.discountRate,
-      customPrice: li.customPrice,
+      customPrice: li.customPrice != null ? toTry(li.customPrice, (li as any).currency) : null,
     }));
 
     console.log(`[Matching] KUTUPHANE modu: ${materialNames.length} malzeme, ${libRows.length} kutuphane kaydi (brand=${brandId})`);
@@ -725,6 +750,8 @@ export class MatchingService {
         listPrice: number;
         discount: number;
       };
+      // Z4: alternatif fiyatlar da teklif aninda TRY tabanina cevrilir
+      const altToTry = await this.buildTryConverter(rows as { currency?: string | null }[]);
       const items: AltItem[] = rows.map((li: any) => {
         const name = li.material?.name ?? li.materialName ?? '';
         const tags = li.material?.tags?.length ? li.material.tags : generateTags(name).tags;
@@ -732,7 +759,7 @@ export class MatchingService {
           brand: li.brand,
           name,
           tags,
-          listPrice: li.customPrice ?? li.listPrice ?? 0,
+          listPrice: altToTry(li.customPrice ?? li.listPrice ?? 0, li.currency),
           discount: li.discountRate ?? 0,
         };
       }).filter((x: AltItem) => x.name && x.listPrice > 0);

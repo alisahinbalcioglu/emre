@@ -14,6 +14,7 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import {
   Package, Plus, Trash2, Loader2, ChevronRight, RefreshCw, AlertCircle, Upload,
+  AlertTriangle,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
@@ -27,6 +28,9 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
+import {
+  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
 
 interface Brand {
   id: string;
@@ -37,10 +41,42 @@ interface Brand {
 interface PriceList { id: string; name: string; createdAt: string; _count?: { items: number } }
 interface PoolMaterial {
   id: string; materialName: string; unit: string; price: number;
+  // Z4: fiyatin orijinal para birimi — havuz kendi birimiyle listeler
+  currency?: 'TRY' | 'USD' | 'EUR';
   // Kaynak sadakati (Y1/Y2/Y5) — eski kayitlarda null
   kategori?: string | null; cins?: string | null; cap?: string | null;
   adRaw?: string | null; sortOrder?: number;
 }
+
+// ── Excel ice aktarim onizlemesi (Z1-Z6) ──────────────────────────────
+interface PreviewItem {
+  materialName: string; unit: string;
+  unitPrice: number | null;
+  priceRaw?: string | number | null;
+  ambiguous?: boolean;
+  asThousands?: number | null;
+  asDecimal?: number | null;
+  currency?: 'TRY' | 'USD' | 'EUR';
+  kategori?: string | null; cins?: string | null; cap?: string | null;
+  adRaw?: string | null; birimRaw?: string | null; sortOrder?: number;
+  sapma?: string | null;
+}
+interface ImportPreview {
+  brandName: string;
+  priceListName?: string | null;
+  items: PreviewItem[];
+  warnings: string[];
+  formatQuestion: { count: number; samples: { raw: string; asThousands: number | null; asDecimal: number | null }[] } | null;
+  dotMeaning: 'thousands' | 'decimal' | null;
+  stats: {
+    toplam: number; gecerli: number; belirsiz: number; sapan: number;
+    atlanacak: number; kategoriSayisi: number; currencies: Record<string, number>;
+  };
+}
+
+const CURRENCY_SYMBOL: Record<string, string> = { TRY: '₺', USD: '$', EUR: '€' };
+const fmtMoney = (v: number, currency?: string | null) =>
+  `${CURRENCY_SYMBOL[currency ?? 'TRY'] ?? '₺'}${v.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`;
 
 export default function AdminBrandsPage() {
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -60,8 +96,14 @@ export default function AdminBrandsPage() {
   const [matUnit, setMatUnit] = useState('Adet');
   const [matPrice, setMatPrice] = useState('');
 
-  // Excel toplu yukleme
+  // Excel toplu yukleme — iki fazli (Z5): preview modal + commit
   const [importing, setImporting] = useState(false);
+  const [committing, setCommitting] = useState(false);
+  const [preview, setPreview] = useState<ImportPreview | null>(null);
+  const [previewFile, setPreviewFile] = useState<File | null>(null);
+  const [dotChoice, setDotChoice] = useState<'thousands' | 'decimal' | null>(null);
+  const [resolvedAmbig, setResolvedAmbig] = useState<{ count: number; choice: 'thousands' | 'decimal' } | null>(null);
+  const [importListName, setImportListName] = useState('');
   const excelInputRef = useRef<HTMLInputElement>(null);
 
   const fetchBrands = useCallback(() => {
@@ -177,35 +219,96 @@ export default function AdminBrandsPage() {
     }
   }
 
-  async function importExcel(file: File) {
+  // ── Excel ice aktarim: IKI FAZLI (Z5 — onizleme onaylanmadan yazim yok) ──
+  // FAZ 1: preview — dosya parse edilir, modal acilir. Fiyat bicimi
+  // belirsizse (Z2) modalda DOSYA BASINA TEK SORU sorulur; cevap tum
+  // kolona uygulanir (yeniden preview). FAZ 2: commit — onayla yazilir.
+  async function openImportPreview(file: File, dotMeaning?: 'thousands' | 'decimal') {
     if (!selectedBrand) return;
     setImporting(true);
     try {
       const formData = new FormData();
       formData.append('file', file);
-      // Liste seciliyse ona yukle; secili degilse marka ucuna yukle —
-      // backend fiyat listesini OTOMATIK acar (dosya adiyla).
-      let url = `/admin/brands/${selectedBrand.id}/import-excel`;
-      if (selectedList) {
-        url = `/admin/price-lists/${selectedList.id}/import-excel`;
-      } else {
-        formData.append('listName', file.name.replace(/\.[^.]+$/, ''));
-      }
-      const { data } = await api.post(
-        url,
-        formData,
-        { headers: { 'Content-Type': 'multipart/form-data' } },
+      if (dotMeaning) formData.append('dotMeaning', dotMeaning);
+      const url = selectedList
+        ? `/admin/price-lists/${selectedList.id}/import-excel/preview`
+        : `/admin/brands/${selectedBrand.id}/import-excel/preview`;
+      const { data } = await api.post<ImportPreview>(
+        url, formData, { headers: { 'Content-Type': 'multipart/form-data' } },
       );
-      toast({
-        title: `${data.imported} kalem malzeme başarıyla yüklendi`,
-        description: [
-          data.skipped ? `${data.skipped} satır atlandı (boş/fiyatsız)` : null,
-          data.convertedFxRows ? `${data.convertedFxRows} satır TCMB kuru ile TL'ye çevrildi` : null,
-        ].filter(Boolean).join(' · ') || `"${data.priceListName}" listesine eklendi.`,
-      });
-      if (Array.isArray(data.warnings) && data.warnings.length > 0) {
-        toast({ title: 'Uyarılar', description: data.warnings.join(' · '), variant: 'destructive' });
+      setPreviewFile(file);
+      setPreview(data);
+      if (dotMeaning) setDotChoice(dotMeaning);
+      if (!dotMeaning) {
+        setDotChoice(null);
+        setResolvedAmbig(null);
+        setImportListName(file.name.replace(/\.[^.]+$/, ''));
       }
+    } catch (e: any) {
+      toast({
+        title: 'Excel önizlenemedi',
+        description: e?.response?.data?.message ?? e?.message ?? 'Bilinmeyen hata',
+        variant: 'destructive',
+      });
+    } finally {
+      setImporting(false);
+      if (excelInputRef.current) excelInputRef.current.value = '';
+    }
+  }
+
+  // Z2: tek soru cevabi — ayni dosya secilen yorumla YENIDEN onizlenir;
+  // belirsizler cozulur, Z6 sapma isaretleri cozulmus fiyatlarla guncellenir.
+  function answerFormatQuestion(choice: 'thousands' | 'decimal') {
+    if (!preview || !previewFile) return;
+    setResolvedAmbig({ count: preview.formatQuestion?.count ?? 0, choice });
+    openImportPreview(previewFile, choice);
+  }
+
+  function closePreview() {
+    setPreview(null);
+    setPreviewFile(null);
+    setDotChoice(null);
+    setResolvedAmbig(null);
+  }
+
+  async function commitImport() {
+    if (!preview || !selectedBrand) return;
+    setCommitting(true);
+    try {
+      const url = selectedList
+        ? `/admin/price-lists/${selectedList.id}/import-excel/commit`
+        : `/admin/brands/${selectedBrand.id}/import-excel/commit`;
+      const body: any = {
+        items: preview.items,
+        dotMeaning: dotChoice ?? preview.dotMeaning ?? undefined,
+      };
+      if (!selectedList) {
+        body.listName = importListName.trim() || previewFile?.name.replace(/\.[^.]+$/, '');
+      }
+      const { data } = await api.post(url, body);
+      // Z5 raporu: kac kategori, kac urun, belirsizlik nasil cozuldu, kac satir atlandi
+      toast({
+        title: `${(data.imported ?? 0) + (data.updated ?? 0)} kalem içe aktarıldı — "${data.priceListName}"`,
+        description: [
+          data.kategoriSayisi ? `${data.kategoriSayisi} kategori` : null,
+          data.imported ? `${data.imported} yeni` : null,
+          data.updated ? `${data.updated} güncellendi` : null,
+          data.removed ? `${data.removed} eski kalem temizlendi` : null,
+          resolvedAmbig
+            ? `${resolvedAmbig.count} belirsiz fiyat "${resolvedAmbig.choice === 'thousands' ? 'nokta = binlik' : 'nokta = ondalık'}" kararıyla çözüldü`
+            : null,
+          data.atlananSayisi ? `${data.atlananSayisi} satır atlandı` : null,
+        ].filter(Boolean).join(' · '),
+      });
+      if (data.atlananSayisi > 0 && Array.isArray(data.atlananNedenler) && data.atlananNedenler.length) {
+        toast({
+          title: `${data.atlananSayisi} satır atlandı — nedenler`,
+          description: data.atlananNedenler.slice(0, 3).join(' · ')
+            + (data.atlananSayisi > 3 ? ` · … (+${data.atlananSayisi - 3})` : ''),
+          variant: 'destructive',
+        });
+      }
+      closePreview();
       // Listeleri tazele ve hedef listeyi ac — yuklenen urunler tabloda gorunur.
       // openBrand KULLANMA: secimi sifirlar ve openList'in doldurdugu
       // malzeme tablosunu yaristirip bosaltir.
@@ -220,13 +323,12 @@ export default function AdminBrandsPage() {
       if (target) openList(target);
     } catch (e: any) {
       toast({
-        title: 'Excel yüklenemedi',
+        title: 'İçe aktarım başarısız',
         description: e?.response?.data?.message ?? e?.message ?? 'Bilinmeyen hata',
         variant: 'destructive',
       });
     } finally {
-      setImporting(false);
-      if (excelInputRef.current) excelInputRef.current.value = '';
+      setCommitting(false);
     }
   }
 
@@ -397,7 +499,7 @@ export default function AdminBrandsPage() {
                     {selectedList
                       ? <>Malzemeler <span className="font-medium">&quot;{selectedList.name}&quot;</span> listesine eklenecek.</>
                       : <>Liste seçili değil — dosya adıyla <span className="font-medium">yeni fiyat listesi otomatik oluşturulur</span>.</>}
-                    {' '}Malzeme/Ürün Adı + Liste Fiyatı kolonları yeterli (Birim, Kod, Para Birimi opsiyonel; USD/EUR otomatik TL&apos;ye çevrilir)
+                    {' '}Malzeme/Ürün Adı + Liste Fiyatı kolonları yeterli (Birim, Kod, Para Birimi opsiyonel; dövizli fiyatlar <span className="font-medium">kendi biriminde saklanır</span>, çevrim teklif ekranında yapılır). Yükleme öncesi önizleme gösterilir.
                   </div>
                   <input
                     ref={excelInputRef}
@@ -406,7 +508,7 @@ export default function AdminBrandsPage() {
                     className="hidden"
                     onChange={(e) => {
                       const f = e.target.files?.[0];
-                      if (f) importExcel(f);
+                      if (f) openImportPreview(f);
                     }}
                   />
                   <Button
@@ -501,8 +603,9 @@ export default function AdminBrandsPage() {
                                       {hasCins && <TableCell className="text-slate-600">{m.cins ?? ''}</TableCell>}
                                       {hasCap && <TableCell className="text-slate-600">{m.cap ?? ''}</TableCell>}
                                       <TableCell>{m.unit}</TableCell>
+                                      {/* Z4: havuz fiyati KENDI para birimiyle listeler */}
                                       <TableCell className="text-right tabular-nums">
-                                        ₺{m.price.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                                        {fmtMoney(m.price, m.currency)}
                                       </TableCell>
                                     </TableRow>
                                   </Fragment>
@@ -520,6 +623,176 @@ export default function AdminBrandsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* ── ICE AKTARIM ONIZLEMESI (Z3/Z5): onaylanmadan HICBIR satir yazilmaz ── */}
+      <Dialog open={!!preview} onOpenChange={(o) => { if (!o && !committing) closePreview(); }}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>
+              İçe Aktarım Önizlemesi
+              {preview?.priceListName ? ` — "${preview.priceListName}"` : preview ? ` — ${preview.brandName}` : ''}
+            </DialogTitle>
+          </DialogHeader>
+
+          {preview && (
+            <div className="space-y-3">
+              {/* Özet şeridi */}
+              <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                <Badge variant="secondary">{preview.stats.toplam} satır</Badge>
+                <Badge variant="secondary">{preview.stats.kategoriSayisi} kategori</Badge>
+                {Object.entries(preview.stats.currencies).map(([c, n]) => (
+                  <Badge key={c} variant="info">{CURRENCY_SYMBOL[c] ?? c} {n} satır</Badge>
+                ))}
+                {preview.stats.belirsiz > 0 && (
+                  <Badge variant="warning">{preview.stats.belirsiz} fiyat biçim onayı bekliyor</Badge>
+                )}
+                {preview.stats.sapan > 0 && (
+                  <Badge variant="warning">{preview.stats.sapan} şüpheli fiyat</Badge>
+                )}
+                {preview.stats.atlanacak > 0 && (
+                  <Badge variant="destructive">{preview.stats.atlanacak} satır atlanacak</Badge>
+                )}
+              </div>
+
+              {/* Z2: DOSYA BAŞINA TEK SORU — cevap tüm kolona uygulanır */}
+              {preview.formatQuestion && (
+                <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3">
+                  <p className="text-sm font-medium text-amber-900">
+                    Bu listede {preview.formatQuestion.count} satırın fiyat biçimi belirsiz.
+                    Örn. &quot;{preview.formatQuestion.samples[0]?.raw}&quot; hangisi? Seçiminiz tüm satırlara uygulanır.
+                  </p>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {(['thousands', 'decimal'] as const).map((choice) => (
+                      <button
+                        key={choice}
+                        type="button"
+                        disabled={importing}
+                        onClick={() => answerFormatQuestion(choice)}
+                        className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-left text-sm transition-colors hover:border-blue-400 hover:bg-blue-50 disabled:opacity-50"
+                      >
+                        <span className="font-semibold text-slate-900">
+                          {choice === 'thousands' ? 'Nokta binlik ayracı' : 'Nokta ondalık ayracı'}
+                        </span>
+                        <span className="mt-0.5 block text-xs text-slate-600">
+                          {preview.formatQuestion!.samples.map((s) => {
+                            const v = choice === 'thousands' ? s.asThousands : s.asDecimal;
+                            return `${s.raw} → ${v != null ? v.toLocaleString('tr-TR', { minimumFractionDigits: 2 }) : '?'}`;
+                          }).join(' · ')}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {importing && (
+                <div className="flex items-center gap-2 text-xs text-slate-500">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Önizleme güncelleniyor…
+                </div>
+              )}
+
+              {/* Yapısal uyarılar (sayfa atlandı vb.) — kısa, önizleme içinde */}
+              {preview.warnings.length > 0 && (
+                <div className="rounded-md border border-orange-200 bg-orange-50 px-2.5 py-1.5 text-xs text-orange-800">
+                  {preview.warnings.slice(0, 3).join(' · ')}
+                  {preview.warnings.length > 3 ? ` · … (+${preview.warnings.length - 3})` : ''}
+                </div>
+              )}
+
+              {/* Marka moduna yükleme: liste adı (liste COMMIT anında açılır — Z5) */}
+              {!selectedList && (
+                <div className="flex items-center gap-2">
+                  <span className="shrink-0 text-xs text-slate-500">Yeni liste adı:</span>
+                  <Input
+                    value={importListName}
+                    onChange={(e) => setImportListName(e.target.value)}
+                    className="h-8 max-w-sm text-sm"
+                  />
+                </div>
+              )}
+
+              {/* Önizleme tablosu — belirsiz/şüpheli satırlar işaretli (Z3/Z6) */}
+              <div className="max-h-[42vh] overflow-y-auto rounded-md border">
+                {(() => {
+                  const hasCins = preview.items.some((i) => i.cins);
+                  const hasCap = preview.items.some((i) => i.cap);
+                  const colCount = 3 + (hasCins ? 1 : 0) + (hasCap ? 1 : 0);
+                  let prevKategori: string | null | undefined;
+                  return (
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-slate-50 hover:bg-slate-50">
+                          <TableHead>Malzeme</TableHead>
+                          {hasCins && <TableHead className="w-40">Cinsi</TableHead>}
+                          {hasCap && <TableHead className="w-20">Çap</TableHead>}
+                          <TableHead className="w-20">Birim</TableHead>
+                          <TableHead className="w-40 text-right">Fiyat</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {preview.items.map((it, idx) => {
+                          const showKategori = !!it.kategori && it.kategori !== prevKategori;
+                          prevKategori = it.kategori ?? prevKategori;
+                          const invalid = !it.ambiguous && (it.unitPrice == null || it.unitPrice <= 0);
+                          return (
+                            <Fragment key={idx}>
+                              {showKategori && (
+                                <TableRow className="bg-red-50 hover:bg-red-50">
+                                  <TableCell colSpan={colCount} className="py-1 text-xs font-bold text-red-800">
+                                    {it.kategori}
+                                  </TableCell>
+                                </TableRow>
+                              )}
+                              <TableRow className={it.ambiguous ? 'bg-amber-50/60' : invalid ? 'bg-red-50/40' : undefined}>
+                                <TableCell className="py-1.5 text-sm text-slate-900">{it.adRaw ?? it.materialName}</TableCell>
+                                {hasCins && <TableCell className="py-1.5 text-xs text-slate-600">{it.cins ?? ''}</TableCell>}
+                                {hasCap && <TableCell className="py-1.5 text-xs text-slate-600">{it.cap ?? ''}</TableCell>}
+                                <TableCell className="py-1.5 text-xs">{it.unit}</TableCell>
+                                <TableCell className="py-1.5 text-right text-sm tabular-nums">
+                                  {it.ambiguous ? (
+                                    <span className="inline-flex items-center gap-1 text-amber-700">
+                                      <AlertTriangle className="h-3 w-3" />
+                                      {String(it.priceRaw ?? '')} — onay bekliyor
+                                    </span>
+                                  ) : it.unitPrice == null ? (
+                                    <span className="text-red-600">okunamadı ({String(it.priceRaw ?? '')})</span>
+                                  ) : it.unitPrice <= 0 ? (
+                                    <span className="text-red-600">atlanacak (sıfır/negatif)</span>
+                                  ) : (
+                                    <span className={it.sapma ? 'text-amber-700' : undefined}>
+                                      {it.sapma && (
+                                        <AlertTriangle className="mr-1 inline h-3 w-3" aria-label={it.sapma} />
+                                      )}
+                                      <span title={it.sapma ?? undefined}>{fmtMoney(it.unitPrice, it.currency)}</span>
+                                    </span>
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            </Fragment>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  );
+                })()}
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={closePreview} disabled={committing}>
+              Vazgeç
+            </Button>
+            <Button
+              onClick={commitImport}
+              disabled={committing || importing || !preview || preview.stats.belirsiz > 0 || preview.stats.gecerli === 0}
+              title={preview && preview.stats.belirsiz > 0 ? 'Önce fiyat biçimi sorusunu yanıtlayın' : undefined}
+            >
+              {committing && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+              İçe Aktar{preview ? ` (${preview.stats.gecerli} kalem)` : ''}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

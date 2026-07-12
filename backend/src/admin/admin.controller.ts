@@ -4,7 +4,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
-import { AdminService, MaterialSheetInput } from './admin.service';
+import { AdminService, MaterialSheetInput, ImportPreviewItem } from './admin.service';
 import { ExcelGridService } from '../modules/excel-grid/excel-grid.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -132,27 +132,50 @@ export class AdminController {
     return this.adminService.saveMaterialsFromSheets(brandId, body.sheets);
   }
 
-  // Markaya dogrudan Excel yukleme — fiyat listesi otomatik olusturulur
-  @Post('brands/:brandId/import-excel')
+  // ── Excel toplu yukleme IKI FAZLI (Z5: onizleme onaylanmadan yazim yok) ──
+  // FAZ 1: preview — dosya parse edilir, hicbir sey yazilmaz. dotMeaning
+  // (Z2 tek-soru cevabi: 'thousands' | 'decimal') multipart alani olarak
+  // opsiyonel gelir; ikinci cagrida belirsizler onunla cozulu doner.
+
+  @Post('brands/:brandId/import-excel/preview')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } }))
-  importBrandExcel(
+  previewBrandExcel(
     @Param('brandId') brandId: string,
     @UploadedFile() file: Express.Multer.File,
-    @Body('listName') listName?: string,
+    @Body('dotMeaning') dotMeaning?: 'thousands' | 'decimal',
   ) {
     if (!file?.buffer) throw new BadRequestException('Dosya bulunamadi');
-    return this.adminService.importBrandExcel(brandId, file.buffer, listName);
+    return this.adminService.previewBrandExcel(brandId, file.buffer, dotMeaning || null);
   }
 
-  // Fiyat listesine Excel'den toplu malzeme yukleme (admin)
-  @Post('price-lists/:id/import-excel')
+  @Post('price-lists/:id/import-excel/preview')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } }))
-  importPriceListExcel(
+  previewPriceListExcel(
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File,
+    @Body('dotMeaning') dotMeaning?: 'thousands' | 'decimal',
   ) {
     if (!file?.buffer) throw new BadRequestException('Dosya bulunamadi');
-    return this.adminService.importPriceListExcel(id, file.buffer);
+    return this.adminService.previewPriceListExcel(id, file.buffer, dotMeaning || null);
+  }
+
+  // FAZ 2: commit — onaylanan onizleme kalemleri yazilir (replace + rapor).
+  // Markaya commit'te fiyat listesi ANCAK simdi olusturulur (Z5).
+
+  @Post('brands/:brandId/import-excel/commit')
+  commitBrandImport(
+    @Param('brandId') brandId: string,
+    @Body() body: { items: ImportPreviewItem[]; dotMeaning?: 'thousands' | 'decimal'; listName?: string },
+  ) {
+    return this.adminService.commitBrandImport(brandId, body);
+  }
+
+  @Post('price-lists/:id/import-excel/commit')
+  commitPriceListImport(
+    @Param('id') id: string,
+    @Body() body: { items: ImportPreviewItem[]; dotMeaning?: 'thousands' | 'decimal' },
+  ) {
+    return this.adminService.commitPriceListImport(id, body);
   }
 
   @Post('materials/save-bulk')

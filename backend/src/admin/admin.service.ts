@@ -2,7 +2,6 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import * as XLSX from 'xlsx';
 import { PrismaService } from '../prisma/prisma.service';
 import { AiService } from '../ai/ai.service';
-import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import {
   buildMaterialContextFromRows,
   ColumnRoles,
@@ -12,6 +11,10 @@ import {
   parseTrNumber,
   walkCategories,
   detectExtraRoles,
+  detectCurrency,
+  inferPriceFormat,
+  flagPriceOutliers,
+  DotMeaning,
   ImportRowView,
 } from '../utils/import-fidelity';
 
@@ -26,6 +29,32 @@ export interface MaterialSheetInput {
   columnDefs?: { field: string; headerName: string }[];
 }
 
+/** Onizleme satiri (Z3/Z5): parse edilen her kalem — havuza YAZILMADAN once
+ *  frontend'e doner, onay sonrasi commit ucuna aynen geri gelir. */
+export interface ImportPreviewItem {
+  materialName: string;
+  unit: string;
+  /** Cozulmus fiyat (orijinal para biriminde). null = belirsiz/okunamadi. */
+  unitPrice: number | null;
+  /** Ham hucre degeri — gosterim + commit'te yeniden cozum icin. */
+  priceRaw?: string | number | null;
+  /** Z2: bicim onayi bekliyor (tek nokta + 3 hane, dosya karari yok). */
+  ambiguous?: boolean;
+  /** Belirsiz satirda iki yorum (dialog gosterimi icin, backend hesaplar). */
+  asThousands?: number | null;
+  asDecimal?: number | null;
+  /** Z4: satirin orijinal para birimi — CEVRIM YAPILMAZ. */
+  currency?: 'TRY' | 'USD' | 'EUR';
+  kategori?: string | null;
+  cins?: string | null;
+  cap?: string | null;
+  adRaw?: string | null;
+  birimRaw?: string | null;
+  sortOrder?: number;
+  /** Z6: makulluk isareti (sifir/negatif, kategori medyanina gore ×1000). */
+  sapma?: string | null;
+}
+
 @Injectable()
 export class AdminService {
   private readonly SENSITIVE_KEYS = ['CLAUDE_API_KEY', 'GEMINI_API_KEY', 'OPENROUTER_API_KEY'];
@@ -33,7 +62,6 @@ export class AdminService {
   constructor(
     private prisma: PrismaService,
     private aiService: AiService,
-    private exchangeRates: ExchangeRatesService,
   ) {}
 
   // ═════════ USERS ═════════
@@ -411,43 +439,21 @@ export class AdminService {
   // ═════════ MATERIALS: PRICE LIST EXCEL IMPORT ═════════
 
   /**
-   * Admin fiyat listesine Excel'den toplu malzeme yukleme.
+   * Admin fiyat listesine Excel'den toplu malzeme yukleme — IKI FAZLI
+   * (Fiyat Bicimi Duzeltme Talebi Z1-Z6):
+   *
+   *   1. PREVIEW: dosya parse edilir, HICBIR SATIR YAZILMAZ (Z5). Fiyat
+   *      bicimi KOLON DUZEYINDE cikarilir (Z1); cozulemezse dosya basina
+   *      TEK soru doner (Z2, formatQuestion). Para birimi satir bazinda
+   *      etiketlenir, CEVRIM YAPILMAZ (Z4). Sapan fiyatlar isaretlenir (Z6).
+   *   2. COMMIT: kullanici onizlemeyi onaylayinca cozulmus kalemler yazilir
+   *      (replaceExisting) + rapor doner (Z5).
    *
    * Kesif Excel'inden FARKLI yapi: fiyat listesinde Miktar kolonu YOKTUR
-   * (o yuzden excelGridService.prepare kullanilamaz — quantity'siz sheet'i
-   * "bos" sayar). Beklenen kolonlar: Malzeme/Urun Adi + Liste/Birim Fiyat
-   * (+ opsiyonel Malzeme Kodu, Birim, Para Birimi).
-   *
-   * USD/EUR fiyatlar TCMB kuru ile TL'ye cevrilir. Kayit, mevcut
-   * saveBulkMaterials uzerinden yapilir (Material tag'leme + upsert ayni).
+   * (o yuzden excelGridService.prepare kullanilamaz). Beklenen kolonlar:
+   * Malzeme/Urun Adi + Liste/Birim Fiyat (+ opsiyonel Kod, Birim, Para Birimi).
    */
-  /**
-   * Markaya dogrudan Excel yukleme — fiyat listesi OTOMATIK olusturulur.
-   * Admin once liste acmak zorunda kalmasin diye: liste adi verilmezse
-   * dosya adindan/tarihten uretilir, sonra normal import calisir.
-   */
-  async importBrandExcel(brandId: string, fileBuffer: Buffer, listName?: string) {
-    const brand = await this.prisma.brand.findUnique({ where: { id: brandId } });
-    if (!brand) throw new NotFoundException('Marka bulunamadi');
-    const name = (listName ?? '').trim()
-      || `${brand.name} — ${new Date().toLocaleDateString('tr-TR')}`;
-    const list = await this.prisma.priceList.create({ data: { name, brandId } });
-    try {
-      return await this.importPriceListExcel(list.id, fileBuffer);
-    } catch (e) {
-      // Import bastan basarisizsa (kolon bulunamadi vb.) bos liste birakma
-      await this.prisma.priceList.delete({ where: { id: list.id } }).catch(() => {});
-      throw e;
-    }
-  }
-
-  async importPriceListExcel(priceListId: string, fileBuffer: Buffer) {
-    const priceList = await this.prisma.priceList.findUnique({
-      where: { id: priceListId },
-      include: { brand: true },
-    });
-    if (!priceList) throw new NotFoundException('Fiyat listesi bulunamadi');
-
+  private parsePriceListExcel(fileBuffer: Buffer, dotMeaningIn?: DotMeaning | null) {
     let workbook: XLSX.WorkBook;
     try {
       workbook = XLSX.read(fileBuffer, { type: 'buffer' });
@@ -461,35 +467,21 @@ export class AdminService {
       .replace(/[üÜ]/g, 'u').replace(/[öÖ]/g, 'o').replace(/[ğĞ]/g, 'g')
       .toLowerCase().trim();
 
-    // Y4: TR sayi ayristirma — parseTrNumber cekirdegi. "540.000" gibi
-    // belirsiz degerler SESSIZCE varsayilmaz (ambiguous doner, satir atlanir
-    // + uyari). Doviz sembolleri once temizlenir (kur cevirisi ayri).
-    const parsePrice = (raw: any): { value: number | null; ambiguous: boolean } => {
-      if (typeof raw === 'number') return { value: raw, ambiguous: false };
-      const s = String(raw ?? '').replace(/[$€]|USD|EUR|TRY/gi, '').trim();
-      return parseTrNumber(s);
-    };
+    // Header satirini bul: ad + fiyat kolonu ayni satirda eslesmeli
+    const NAME_RE = /(malzeme|urun|stok)\s*(adi|tanimi|tanim)|urun\s*ad|malzeme\s*ad|aciklama|tanim|cinsi/;
+    const CODE_RE = /\bkod\b|kodu/;
+    const UNIT_RE = /^birim$|^brm$|^br$|olcu\s*birim/;
+    const PRICE_RE = /liste\s*fiyat|birim\s*fiyat|net\s*fiyat|satis\s*fiyat|\bfiyat\b|price/;
+    const CURR_RE = /para\s*birimi|doviz|currency|\bpb\b/;
+    // Ayirt edici ek kolonlar: ayni "Malzeme Adi"na farkli cap/cins/renk
+    // satirlari gelir (orn. Borusan boru listesi) — ada EKLENMEZSE upsert
+    // ayni isimde tum caplari tek kayda ezer (veri kaybi).
+    const DESC_RE = /cinsi|\bcins\b|\btip\b|model|renk/;
+    const DIAM_RE = /^cap$|\bcap\b|ebat|\bolcu\b|boyut/;
 
-    const detectCurrency = (val: any): 'TRY' | 'USD' | 'EUR' | null => {
-      const s = String(val ?? '');
-      if (/USD|\$|DOLAR/i.test(s)) return 'USD';
-      if (/EUR|€|AVRO/i.test(s)) return 'EUR';
-      if (/TRY|TL|₺/i.test(s)) return 'TRY';
-      return null;
-    };
-
-    const items: {
-      materialName: string; unit: string; unitPrice: number;
-      kategori?: string | null; cins?: string | null; cap?: string | null;
-      adRaw?: string | null; birimRaw?: string | null; sortOrder?: number;
-    }[] = [];
+    type Cols = { name?: number; code?: number; unit?: number; price?: number; curr?: number; desc?: number; diam?: number };
+    const sheetPlans: { sheetName: string; grid: any[][]; headerRow: number; cols: Cols }[] = [];
     const warnings: string[] = [];
-    let converted = 0;
-    let rates: { usdTry: number; eurTry: number } | null = null;
-    const getRates = async () => {
-      if (!rates) rates = await this.exchangeRates.getRates();
-      return rates;
-    };
 
     for (const sheetName of workbook.SheetNames) {
       const ws = workbook.Sheets[sheetName];
@@ -497,23 +489,11 @@ export class AdminService {
       const grid = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true }) as any[][];
       if (grid.length === 0) continue;
 
-      // Header satirini bul: ad + fiyat kolonu ayni satirda eslesmeli
-      const NAME_RE = /(malzeme|urun|stok)\s*(adi|tanimi|tanim)|urun\s*ad|malzeme\s*ad|aciklama|tanim|cinsi/;
-      const CODE_RE = /\bkod\b|kodu/;
-      const UNIT_RE = /^birim$|^brm$|^br$|olcu\s*birim/;
-      const PRICE_RE = /liste\s*fiyat|birim\s*fiyat|net\s*fiyat|satis\s*fiyat|\bfiyat\b|price/;
-      const CURR_RE = /para\s*birimi|doviz|currency|\bpb\b/;
-      // Ayirt edici ek kolonlar: ayni "Malzeme Adi"na farkli cap/cins/renk
-      // satirlari gelir (orn. Borusan boru listesi) — ada EKLENMEZSE upsert
-      // ayni isimde tum caplari tek kayda ezer (veri kaybi).
-      const DESC_RE = /cinsi|\bcins\b|\btip\b|model|renk/;
-      const DIAM_RE = /^cap$|\bcap\b|ebat|\bolcu\b|boyut/;
-
       let headerRow = -1;
-      let cols: { name?: number; code?: number; unit?: number; price?: number; curr?: number; desc?: number; diam?: number } = {};
+      let cols: Cols = {};
       const scanLimit = Math.min(15, grid.length);
       for (let r = 0; r < scanLimit; r++) {
-        const found: typeof cols = {};
+        const found: Cols = {};
         (grid[r] ?? []).forEach((cell, c) => {
           const t = norm(cell);
           if (!t) return;
@@ -536,7 +516,25 @@ export class AdminService {
         warnings.push(`"${sheetName}": malzeme adi + fiyat kolonlari bulunamadi, sayfa atlandi`);
         continue;
       }
+      sheetPlans.push({ sheetName, grid, headerRow, cols });
+    }
 
+    // ── Z1: KOLON DUZEYINDE BICIM CIKARIMI — dosyadaki TUM fiyat degerleri
+    // birlikte analiz edilir. Kanit varsa (1.234,56 / 540,50 / 540.5) bicim
+    // kesindir, soru sorulmaz (F5). Yoksa dosya basina TEK soru (Z2).
+    const allPriceRaws: unknown[] = [];
+    for (const p of sheetPlans) {
+      for (let r = p.headerRow + 1; r < p.grid.length; r++) {
+        allPriceRaws.push((p.grid[r] ?? [])[p.cols.price!]);
+      }
+    }
+    const inferred = inferPriceFormat(allPriceRaws);
+    // Oncelik: kullanicinin verdigi karar (Z2 cevabi) > dosya ici kanit
+    const effectiveDot: DotMeaning | null = dotMeaningIn ?? inferred.dotMeaning;
+
+    const items: ImportPreviewItem[] = [];
+    for (const p of sheetPlans) {
+      const { sheetName, grid, headerRow, cols } = p;
       // Para birimi baslikta olabilir: "Birim Fiyat (USD)" / "Liste Fiyati €"
       const headerCurrency = detectCurrency(grid[headerRow]?.[cols.price!]);
 
@@ -550,11 +548,12 @@ export class AdminService {
           name = String(row[cols.code] ?? '').trim();
         }
         const rawPrice = row[cols.price!];
-        const parsed = parsePrice(rawPrice);
+        const parsed = typeof rawPrice === 'number'
+          ? { value: rawPrice, ambiguous: false }
+          : parseTrNumber(String(rawPrice ?? ''), effectiveDot);
 
         // ── Y1: KATEGORI SATIRI — fiyati olmayan, tek anlamli metin tasiyan
         // satir (kirmizi/merge basliklar; merge metni ilk kolona duser).
-        // Onceden SESSIZCE atlaniyordu → dosya hiyerarsisi kayboluyordu.
         if (parsed.value == null && !parsed.ambiguous) {
           const cells = (row as any[]).map((v) => String(v ?? '').trim()).filter(Boolean);
           const catText = name || (cells[0] ?? '');
@@ -564,13 +563,6 @@ export class AdminService {
           continue;
         }
         if (!name || name.length < 2) continue;
-        // Y4: belirsiz fiyat (540.000) — sessiz varsayim YOK, satir raporlanir
-        if (parsed.ambiguous) {
-          warnings.push(`"${sheetName}" satır ${r + 1} "${name.slice(0, 40)}": fiyat belirsiz ("${String(rawPrice)}") — binlik mi ondalık mı? Düzeltip yeniden yükleyin.`);
-          continue;
-        }
-        let price = parsed.value!;
-        if (price <= 0) continue;
 
         // AD BENZERSIZLESTIRME: ayni "Malzeme Adi"na farkli cins/cap satirlari
         // gelir (orn. Borusan boru listesi: tek ad, 8 farkli cap). Material.name
@@ -585,18 +577,26 @@ export class AdminService {
         if (diam && !norm(fullName).includes(norm(diam))) fullName += ` ${diam}`;
         fullName = fullName.trim();
 
-        // Para birimi: satir kolonu > fiyat hucresi sembolu > baslik > TRY
+        // ── Z4: para birimi satir bazinda ETIKETLENIR, CEVRIM YAPILMAZ.
+        // Oncelik: satir kolonu > fiyat hucresi sembolu > baslik > TRY
         const curr = detectCurrency(cols.curr !== undefined ? row[cols.curr] : null)
           ?? detectCurrency(rawPrice)
           ?? headerCurrency
           ?? 'TRY';
-        if (curr === 'USD') { price = price * (await getRates()).usdTry; converted++; }
-        else if (curr === 'EUR') { price = price * (await getRates()).eurTry; converted++; }
-        price = Math.round(price * 100) / 100;
 
+        const price = parsed.value != null ? Math.round(parsed.value * 100) / 100 : null;
         const unit = cols.unit !== undefined ? String(row[cols.unit] ?? '').trim() : '';
+        const rawStr = typeof rawPrice === 'number' ? rawPrice : String(rawPrice ?? '').trim();
         items.push({
-          materialName: fullName, unit: unit || 'Adet', unitPrice: price,
+          materialName: fullName, unit: unit || 'Adet',
+          unitPrice: price,
+          priceRaw: rawStr,
+          // Z2: belirsiz satir HATA DEGIL — onizlemede isaretli, dosya karari
+          // ile toplu cozulur. Satir basina uyari uretmek YASAK.
+          ambiguous: parsed.ambiguous || undefined,
+          asThousands: parsed.ambiguous ? parseTrNumber(String(rawPrice), 'thousands').value : undefined,
+          asDecimal: parsed.ambiguous ? parseTrNumber(String(rawPrice), 'decimal').value : undefined,
+          currency: curr,
           // Y1/Y2/Y3/Y5 kaynak sadakati
           kategori: aktifKategori, cins: desc || null, cap: diam || null,
           adRaw: name, birimRaw: unit || null, sortOrder: items.length,
@@ -615,16 +615,166 @@ export class AdminService {
       );
     }
 
+    const ambiguousCount = items.filter((i) => i.ambiguous).length;
+    // Z2: dosya basina TEK soru — ornek degerler iki yorumla birlikte doner.
+    const formatQuestion = effectiveDot == null && ambiguousCount > 0
+      ? {
+          count: ambiguousCount,
+          samples: inferred.samples.map((raw) => ({
+            raw,
+            asThousands: parseTrNumber(raw, 'thousands').value,
+            asDecimal: parseTrNumber(raw, 'decimal').value,
+          })),
+        }
+      : null;
+
+    return { items, warnings, formatQuestion, dotMeaning: effectiveDot };
+  }
+
+  /** Onizleme cevabi: Z6 sapma isaretleri + ozet istatistikler eklenir. */
+  private buildImportPreview(
+    parsed: ReturnType<AdminService['parsePriceListExcel']>,
+    meta: { brandName: string; priceListName?: string | null },
+  ) {
+    const flags = flagPriceOutliers(
+      parsed.items.map((i) => ({ price: i.unitPrice, kategori: i.kategori })),
+    );
+    parsed.items.forEach((it, idx) => { if (flags[idx]) it.sapma = flags[idx]; });
+
+    const kategoriler = new Set(parsed.items.map((i) => i.kategori).filter(Boolean));
+    const currencies: Record<string, number> = {};
+    for (const it of parsed.items) {
+      const c = it.currency ?? 'TRY';
+      currencies[c] = (currencies[c] ?? 0) + 1;
+    }
+    return {
+      ...meta,
+      items: parsed.items,
+      warnings: parsed.warnings,
+      formatQuestion: parsed.formatQuestion,
+      dotMeaning: parsed.dotMeaning,
+      stats: {
+        toplam: parsed.items.length,
+        gecerli: parsed.items.filter((i) => (i.unitPrice ?? 0) > 0).length,
+        belirsiz: parsed.items.filter((i) => i.ambiguous).length,
+        sapan: parsed.items.filter((i) => i.sapma && (i.unitPrice ?? 0) > 0).length,
+        atlanacak: parsed.items.filter((i) => !i.ambiguous && (i.unitPrice == null || i.unitPrice <= 0)).length,
+        kategoriSayisi: kategoriler.size,
+        currencies,
+      },
+    };
+  }
+
+  /** FAZ 1a: mevcut fiyat listesine yukleme onizlemesi — YAZMAZ (Z5). */
+  async previewPriceListExcel(priceListId: string, fileBuffer: Buffer, dotMeaning?: DotMeaning | null) {
+    const priceList = await this.prisma.priceList.findUnique({
+      where: { id: priceListId },
+      include: { brand: true },
+    });
+    if (!priceList) throw new NotFoundException('Fiyat listesi bulunamadi');
+    const parsed = this.parsePriceListExcel(fileBuffer, dotMeaning);
+    return this.buildImportPreview(parsed, { brandName: priceList.brand.name, priceListName: priceList.name });
+  }
+
+  /** FAZ 1b: markaya dogrudan yukleme onizlemesi — liste de OLUSTURULMAZ (Z5:
+   *  onay oncesi hicbir kalici iz yok; liste commit aninda acilir). */
+  async previewBrandExcel(brandId: string, fileBuffer: Buffer, dotMeaning?: DotMeaning | null) {
+    const brand = await this.prisma.brand.findUnique({ where: { id: brandId } });
+    if (!brand) throw new NotFoundException('Marka bulunamadi');
+    const parsed = this.parsePriceListExcel(fileBuffer, dotMeaning);
+    return this.buildImportPreview(parsed, { brandName: brand.name, priceListName: null });
+  }
+
+  /** FAZ 2 cekirdegi: onaylanmis onizleme kalemlerini yazar. Belirsiz kalan
+   *  satirlar dotMeaning ile cozulur; karar yoksa yazim REDDEDILIR (Z2/Z5). */
+  private async commitImportCore(
+    brandId: string,
+    priceListId: string,
+    body: { items: ImportPreviewItem[]; dotMeaning?: DotMeaning | null },
+  ) {
+    if (!Array.isArray(body.items) || body.items.length === 0) {
+      throw new BadRequestException('Kaydedilecek kalem yok');
+    }
+    const skippedReasons: string[] = [];
+    let cozulenBelirsizlik = 0;
+    const resolved: (ImportPreviewItem & { unitPrice: number })[] = [];
+
+    for (const it of body.items) {
+      let price = it.unitPrice;
+      if (price == null || it.ambiguous) {
+        // Onizlemede cozulmemis satir — dosya karariyla burada cozulur
+        const p = parseTrNumber(
+          typeof it.priceRaw === 'number' ? it.priceRaw : String(it.priceRaw ?? ''),
+          body.dotMeaning ?? undefined,
+        );
+        if (p.ambiguous) {
+          throw new BadRequestException(
+            'Fiyat biçimi kararı verilmeden içe aktarım yapılamaz — önizlemedeki soruyu yanıtlayın (binlik mi ondalık mı?).',
+          );
+        }
+        if (p.value != null) {
+          price = Math.round(p.value * 100) / 100;
+          if (it.ambiguous) cozulenBelirsizlik++;
+        }
+      }
+      const etiket = (it.adRaw || it.materialName || '').slice(0, 40);
+      if (price == null) {
+        skippedReasons.push(`"${etiket}": fiyat okunamadı ("${String(it.priceRaw ?? '')}")`);
+        continue;
+      }
+      if (price <= 0) {
+        skippedReasons.push(`"${etiket}": sıfır/negatif fiyat (${price})`);
+        continue;
+      }
+      resolved.push({ ...it, unitPrice: price });
+    }
+
+    if (resolved.length === 0) {
+      throw new BadRequestException(
+        'Kaydedilecek geçerli satır yok.' +
+        (skippedReasons.length ? ` İlk nedenler: ${skippedReasons.slice(0, 3).join(' · ')}` : ''),
+      );
+    }
+
     // Y7: dosya kaynak-of-truth — ayni listeye yeniden yukleme listeyi
-    // BASTAN YAZAR (eski/bozuk adlandirilmis kalemler de temizlenir),
-    // degisen fiyatlar raporlanir.
-    const result = await this.saveBulkMaterials(priceList.brandId, priceListId, items, undefined, { replaceExisting: true });
+    // BASTAN YAZAR, degisen fiyatlar raporlanir.
+    const result = await this.saveBulkMaterials(brandId, priceListId, resolved, undefined, { replaceExisting: true });
     return {
       ...result,
-      warnings,
-      convertedFxRows: converted,
-      preview: items.slice(0, 50),
+      cozulenBelirsizlik,
+      dotMeaning: body.dotMeaning ?? null,
+      atlananSayisi: skippedReasons.length,
+      atlananNedenler: skippedReasons.slice(0, 20),
     };
+  }
+
+  /** FAZ 2a: mevcut listeye commit. */
+  async commitPriceListImport(
+    priceListId: string,
+    body: { items: ImportPreviewItem[]; dotMeaning?: DotMeaning | null },
+  ) {
+    const priceList = await this.prisma.priceList.findUnique({ where: { id: priceListId } });
+    if (!priceList) throw new NotFoundException('Fiyat listesi bulunamadi');
+    return this.commitImportCore(priceList.brandId, priceListId, body);
+  }
+
+  /** FAZ 2b: markaya commit — fiyat listesi ANCAK simdi olusturulur (Z5). */
+  async commitBrandImport(
+    brandId: string,
+    body: { items: ImportPreviewItem[]; dotMeaning?: DotMeaning | null; listName?: string },
+  ) {
+    const brand = await this.prisma.brand.findUnique({ where: { id: brandId } });
+    if (!brand) throw new NotFoundException('Marka bulunamadi');
+    const name = (body.listName ?? '').trim()
+      || `${brand.name} — ${new Date().toLocaleDateString('tr-TR')}`;
+    const list = await this.prisma.priceList.create({ data: { name, brandId } });
+    try {
+      return await this.commitImportCore(brandId, list.id, body);
+    } catch (e) {
+      // Commit basarisizsa bos liste birakma
+      await this.prisma.priceList.delete({ where: { id: list.id } }).catch(() => {});
+      throw e;
+    }
   }
 
   async saveBulkMaterials(
@@ -632,6 +782,8 @@ export class AdminService {
     priceListId: string,
     items: {
       materialName: string; unit: string; unitPrice: number;
+      // Z4: fiyatin orijinal para birimi — cevrimsiz saklanir
+      currency?: string | null;
       kategori?: string | null; cins?: string | null; cap?: string | null;
       adRaw?: string | null; birimRaw?: string | null; sortOrder?: number;
     }[],
@@ -727,6 +879,8 @@ export class AdminService {
       }
 
       const fidelity: any = {
+        // Z4: orijinal para birimi kalemde saklanir (cevrim yalniz teklifte)
+        currency: item.currency ?? 'TRY',
         kategori: item.kategori ?? null,
         cins: item.cins ?? null,
         cap: item.cap ?? null,
@@ -986,6 +1140,8 @@ export class AdminService {
         materialName: p.material.name,
         unit: p.birimRaw || p.material.unit || 'Adet',
         price: p.price,
+        // Z4: fiyatin orijinal para birimi — havuz kendi birimiyle listeler
+        currency: p.currency ?? 'TRY',
         // Y1/Y2/Y5 kaynak sadakati alanlari (eski kayitlarda null — legacy gorunum)
         kategori: p.kategori ?? null,
         cins: p.cins ?? null,

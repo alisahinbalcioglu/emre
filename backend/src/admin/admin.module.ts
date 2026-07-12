@@ -4,10 +4,9 @@ import { AdminService } from './admin.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AiModule } from '../ai/ai.module';
 import { ExcelGridModule } from '../modules/excel-grid/excel-grid.module';
-import { ExchangeRatesModule } from '../exchange-rates/exchange-rates.module';
 
 @Module({
-  imports: [PrismaModule, AiModule, ExcelGridModule, ExchangeRatesModule],
+  imports: [PrismaModule, AiModule, ExcelGridModule],
   controllers: [AdminController],
   providers: [AdminService],
 })

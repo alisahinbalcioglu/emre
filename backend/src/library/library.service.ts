@@ -163,6 +163,8 @@ export class LibraryService {
         materialName: item.material.name,
         brandId: dto.brandId,
         listPrice: item.price,
+        // Z4: fiyat orijinal para birimiyle tasinir — cevrim teklif asamasinda
+        currency: (item as any).currency ?? 'TRY',
         unit: item.material.unit || 'Adet',
         sourcePriceListId: dto.priceListId,
       })),

@@ -192,6 +192,10 @@ model MaterialPrice {
   priceList   PriceList? @relation(fields: [priceListId], references: [id], onDelete: Cascade)
   priceListId String?
   price       Float
+  // Z4 (Fiyat Bicimi Duzeltme Talebi): fiyat ORIJINAL para birimiyle saklanir
+  // ("TRY" | "USD" | "EUR"). Ice aktarimda cevrim YAPILMAZ; cevrim yalniz
+  // teklif asamasinda o anki TCMB kuruyla yapilir.
+  currency    String     @default("TRY")
   // ── KAYNAK SADAKATI (Duzeltme Talebi Y1/Y2/Y5): yuklenen dosyanin yapisi
   // liste-kalemi seviyesinde BIREBIR saklanir. Material global-unique kalir;
   // gorunum ve yapi bu alanlardan beslenir.
@@ -225,6 +229,9 @@ model UserLibrary {
   customPrice       Float?
   discountRate      Float?
   listPrice         Float?
+  // Z4: listPrice/customPrice'in para birimi — havuzdan aktarimda MaterialPrice
+  // .currency kopyalanir; eslestirme teklif aninda TRY'ye cevirir.
+  currency          String     @default("TRY")
   unit              String?
   sourcePriceList   PriceList? @relation(fields: [sourcePriceListId], references: [id], onDelete: SetNull)
   sourcePriceListId String?

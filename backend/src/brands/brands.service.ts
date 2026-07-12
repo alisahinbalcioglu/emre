@@ -58,6 +58,8 @@ export class BrandsService {
         materialName: p.material.name,
         unit: p.material.unit || 'Adet',
         price: p.price,
+        // Z4: havuz fiyati KENDI para birimiyle listeler ($15,00 · ₺637,00)
+        currency: (p as any).currency ?? 'TRY',
       })),
       totalCount: items.length,
     };
@@ -84,6 +86,7 @@ export class BrandsService {
       materialName: p.material.name,
       unit: p.material.unit || 'Adet',
       price: p.price,
+      currency: (p as any).currency ?? 'TRY',
       brandName: p.brand.name,
       brandId: p.brand.id,
       priceListName: p.priceList?.name ?? '-',

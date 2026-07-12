@@ -23,6 +23,8 @@ interface PriceListSummary { id: string; name: string; createdAt: string; _count
 interface BrandDetail { brand: { id: string; name: string }; priceLists: PriceListSummary[] }
 interface MaterialRow {
   id: string; materialName: string; unit: string; price: number;
+  // Z4: fiyatin orijinal para birimi — havuz kendi birimiyle listeler
+  currency?: 'TRY' | 'USD' | 'EUR';
   // Kaynak sadakati (Duzeltme Talebi Y1/Y2/Y5) — eski kayitlarda null
   kategori?: string | null; cins?: string | null; cap?: string | null;
   adRaw?: string | null; sortOrder?: number;
@@ -34,6 +36,9 @@ function getRole(): string | null {
 }
 
 function fmtPrice(v: number) { return v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+// Z4: havuz fiyati orijinal para birimiyle gosterilir ($15,00 · ₺637,00)
+const CURRENCY_SYMBOL: Record<string, string> = { TRY: '₺', USD: '$', EUR: '€' };
+function currencySym(c?: string | null) { return CURRENCY_SYMBOL[c ?? 'TRY'] ?? '₺'; }
 
 /* ── Material class + diameter grouping helpers ── */
 
@@ -508,7 +513,7 @@ export default function BrandDetailPage() {
                                           {hasCins && <td className="px-4 py-2 text-muted-foreground">{m.cins ?? ''}</td>}
                                           {hasCap && <td className="px-4 py-2 text-muted-foreground">{m.cap ?? ''}</td>}
                                           <td className="px-4 py-2 text-muted-foreground">{m.unit}</td>
-                                          <td className="px-4 py-2 text-right font-medium">₺{fmtPrice(m.price)}</td>
+                                          <td className="px-4 py-2 text-right font-medium">{currencySym(m.currency)}{fmtPrice(m.price)}</td>
                                         </tr>
                                       ))}
                                     </tbody>

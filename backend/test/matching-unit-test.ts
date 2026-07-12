@@ -52,7 +52,12 @@ function fakePrisma(brandName: string, libRows: any[], otherBrandRows: any[] = [
 function makeService(brandName: string, libRows: any[], otherBrandRows: any[] = []): MatchingService {
   const prisma = fakePrisma(brandName, libRows, otherBrandRows);
   const term = new TerminologyService(prisma);
-  return new MatchingService(prisma, term);
+  // Z4: sahte kur servisi — TRY satirlarda hic cagrilmaz; dovizli fixture
+  // eklenirse sabit kur kullanilir (DB'siz determinizm)
+  const fakeFx = {
+    getRates: async () => ({ usdTry: 40, eurTry: 48, usdTryBuying: 40, eurTryBuying: 48, source: 'fake', date: '' }),
+  } as any;
+  return new MatchingService(prisma, term, fakeFx);
 }
 
 // ── Fixture kutuphaneleri ──────────────────────────────────

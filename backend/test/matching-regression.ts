@@ -119,7 +119,10 @@ const TEST_CASES: TestCase[] = [
 async function runTests() {
   const prisma = new PrismaClient();
   // PrismaService extends PrismaClient — cast guvenli (sadece test icin)
-  const service = new MatchingService(prisma as any);
+  const fakeFx = {
+    getRates: async () => ({ usdTry: 40, eurTry: 48, usdTryBuying: 40, eurTryBuying: 48, source: 'fake', date: '' }),
+  } as any;
+  const service = new MatchingService(prisma as any, undefined as any, fakeFx);
   let passed = 0;
   let failed = 0;
   const failures: string[] = [];
