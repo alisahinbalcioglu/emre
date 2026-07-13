@@ -339,6 +339,32 @@ async function run() {
       `got ${r?.confidence} net=${r?.netPrice} reason="${r?.reason}"`);
   }
 
+  // ── R19 (canli vaka 13.07): "3\"-DN80 Izleme Anahtarli Kelebek Vana" —
+  // kutuphanedeki "Izleme Anahtarli Kelebek ..." urunleri (adinda 'vana'
+  // gecmiyor!) aile disina atilip yalniz duz kelebekler oneriliyordu.
+  // vt→vana terfisi + izleme-anahtarli niteligi: yalniz izleme-anahtarli
+  // kelebekler (Wafer/Yivli Yangin) fiyatlariyla sunulur.
+  {
+    const svc = makeService('AYVAZ', [
+      lib('İzleme Anahtarlı Kelebek Wafer Yangın 3"', 19460.5),
+      lib('İzleme Anahtarlı Kelebek Yivli Yangın 3"', 19929.4),
+      lib('Kelebek Vana Wafer PN16 DN80', 2450),
+      lib('Kelebek Vana Lug Tip PN16 DN80', 2850),
+    ]);
+    const q = '3"-DN80 İzleme Anahtarlı Kelebek Vana';
+    const r = await m(svc, q);
+    const names = r?.candidates?.map((c) => c.materialName) ?? (r?.matchedName ? [r.matchedName] : []);
+    check('R19 yalniz izleme-anahtarli kelebekler sunuldu (2)', names.length === 2 && names.every((n) => n.includes('İzleme Anahtarlı')),
+      `got ${r?.confidence} adaylar: ${names.join(' | ')} (${r?.reason})`);
+    check('R19 fiyat yazilmadi (cins secimi kullanicinin)', r?.netPrice === 0, `got net=${r?.netPrice}`);
+    // Duz "KELEBEK VANA" satiri: izleme-anahtarlilar subtype elemesiyle
+    // one gecmez — duz kelebekler sunulur (ters yon regresyonu)
+    const r2 = await m(svc, 'KELEBEK VANA DN80');
+    const names2 = r2?.candidates?.map((c) => c.materialName) ?? (r2?.matchedName ? [r2.matchedName] : []);
+    check('R19b duz kelebek satiri → duz kelebekler (izleme elenir)', names2.length === 2 && names2.every((n) => n.includes('Kelebek Vana')),
+      `got adaylar: ${names2.join(' | ')}`);
+  }
+
   // ── R12 (A-1): FITTINGS ORANI → malzeme eslestirmesi yapilmaz
   {
     const svc = makeService('ÇAYIROVA', [lib('Siyah Çelik Boru 1" DN25 Dişli', 130)]);

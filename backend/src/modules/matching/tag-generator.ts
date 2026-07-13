@@ -100,9 +100,24 @@ export function generateTags(materialName: string): TaggedMaterial {
   // 10c. VANA YUVALARI (E8/E9 + 3-Etiket): tip(ler) + akiskan. Coklu tip
   // desteklenir ("KURESEL VE KELEBEK VANALAR" → iki aday ad; "Bicakli
   // Surgulu" → iki tag). Yuva disi deger tasiyan aday SERT elenir.
-  for (const vt of extractValveTypes(materialName)) tags.add(vt);
+  const valveTypes = extractValveTypes(materialName);
+  for (const vt of valveTypes) tags.add(vt);
   const fluid = extractFluid(materialName);
   if (fluid) tags.add(fluid);
+
+  // 10d. VT → VANA TERFISI (canli vaka 13.07): "Izleme Anahtarli Kelebek"
+  // gibi urun adlarinda 'vana' KELIMESI gecmiyor → tip 'diger' kaliyor ve
+  // AD kilidi (vana=must) urunu aile DISINA atiyordu — satir "Kelebek Vana"
+  // derken kutuphanedeki gercek izleme-anahtarli kelebekler elenip yalniz
+  // adinda 'vana' gecenler oneriliyordu. vt-* etiketi urunu vana yapar.
+  // KORUMA: kelebek somun / vida / civata / rakor vana DEGILDIR.
+  let effectiveType = materialType;
+  if (materialType === 'diger' && valveTypes.length > 0
+      && !/somun|civata|vida\b|rakor|\bpul\b/.test(normalizeText(materialName))) {
+    effectiveType = 'vana';
+    tags.add('vana');
+    tags.delete('diger');
+  }
 
   // 11. DEFAULT BORU = CELIK
   // Eger malzeme tipi 'boru' ise ve alternatif bir malzeme cinsi yoksa, celik etiketi ekle
@@ -121,7 +136,7 @@ export function generateTags(materialName: string): TaggedMaterial {
   return {
     tags: Array.from(tags),
     normalizedName,
-    materialType,
+    materialType: effectiveType,
   };
 }
 

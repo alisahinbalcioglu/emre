@@ -448,6 +448,11 @@ const SUBTYPE_PATTERNS: { pattern: RegExp; tag: string }[] = [
   { pattern: /camyunu|cam\s*yunu/i, tag: 'camyunu' },
   { pattern: /tasyu?nu|tas\s*yunu/i, tag: 'tasyunu' },
   { pattern: /sprink/i, tag: 'sprink' },
+  // Canli vaka (13.07): "Izleme Anahtarli Kelebek (Vana)" — izlenebilir/
+  // tamper switch es-anlamli (E4). Satirda yaziliysa yalniz tasiyanlar
+  // sunulur (altin kural); yazili degilse subtype elemesi duz kelebekleri
+  // one alir.
+  { pattern: /izleme\s*anahtar|izlenebilir|tamper|supervis/i, tag: 'izleme-anahtarli' },
   { pattern: /yangin\s*dayanim/i, tag: 'yangin-dayanim' },
   { pattern: /drenaj/i, tag: 'drenaj' },
   { pattern: /sicak\s*ve\s*re-?sirkulasyon/i, tag: 'resirkulasyon' },

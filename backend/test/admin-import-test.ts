@@ -185,6 +185,14 @@ num('  2.500,00 TL ', 2500);
   // adOverride guvenligi: yalniz bilinen slug'lar
   check('3E adOverride: vana gecerli', isValidAdOverride('vana') === true);
   check('3E adOverride: rastgele deger RED', isValidAdOverride('drop table') === false && isValidAdOverride(null) === false);
+
+  // vt→vana terfisi (canli vaka): adinda 'vana' gecmeyen kelebek urunu
+  const iz = deriveEtiketler('İzleme Anahtarlı Kelebek Wafer Yangın 3"');
+  check('3E vt-terfi: AD=Kelebek Vana', iz.ad === 'Kelebek Vana' && iz.adSlug === 'vana', `got ${JSON.stringify(iz)}`);
+  check('3E vt-terfi: CINS izleme-anahtarli icerir', iz.cins.includes('İzleme Anahtarlı'), `got "${iz.cins}"`);
+  // Koruma: kelebek somun vana DEGILDIR
+  const somun = deriveEtiketler('Kelebek Somun 1/2"');
+  check('3E vt-terfi korumasi: kelebek somun vana degil', somun.adSlug !== 'vana', `got ${JSON.stringify(somun)}`);
 }
 
 console.log(`\n${'='.repeat(60)}`);

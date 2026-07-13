@@ -48,6 +48,7 @@ export const BASE_SUBTYPE_KEYS = new Set<string>([
   'basincli', 'kazan', 'sessiz', 'drenaj', 'pe-kapli',
   'folyo', 'kaucuk', 'camyunu', 'tasyunu', 'sprink',
   'yangin-dayanim', 'gofrajli', 'aluminyum-sac',
+  'izleme-anahtarli',
 ]);
 
 export const MATERIAL_SUBTYPE_KEYS = new Set<string>([
@@ -78,6 +79,7 @@ export const TAG_LABELS: Record<string, string> = {
   bakir: 'Bakır', aluminyum: 'Alüminyum',
   disli: 'Dişli Manşonlu', kaynakli: 'Kaynaklı', flans: 'Flanşlı',
   pres: 'Press', 'duz-uclu': 'Düz Uçlu',
+  'izleme-anahtarli': 'İzleme Anahtarlı',
 };
 
 // ═══════════════════════════════════════════
