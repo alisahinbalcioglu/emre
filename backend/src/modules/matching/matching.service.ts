@@ -18,7 +18,9 @@ import {
   MATERIAL_SUBTYPE_KEYS,
   KIND_TAGS,
   SURFACE_TAGS,
+  CONNECTION_TAGS,
   EQUIPMENT_TYPE_TAGS,
+  isAttrTag,
 } from './shared-tag-matcher';
 
 // ═══════════════════════════════════════════
@@ -540,6 +542,27 @@ export class MatchingService {
       }
     }
 
+    // ── ALTIN KURAL HAVUZU (Birlestirme Talimati R16-R18) ────────────
+    // "Fiyatin sorulmadan yazilabilmesinin TEK kosulu: AD + CAP (+ satirda
+    // YAZILI CINS + sozluk cinsi) SERT filtreleri sonrasi markada TEK URUN
+    // kalmasi." Yumusak katman (marka tie-break, refine skoru, subtype
+    // elemesi) sunulan listeyi SIRALAR/daraltir ama secimi GASP EDEMEZ —
+    // hardPool > 1 iken otomatik yazim ISTISNASIZ yasak.
+    // Yazili cins = satirdaki cins/yuzey/baglanti/PN/subtype/nitelik/yuva
+    // tag'leri; sozluk cinsi (hint.kinds, orn sprink hatti=siyah celik)
+    // yazili sayilir (T1); MARKA cikarimi SAYILMAZ (I4: marka yalniz dogrular).
+    const writtenCins = Array.from(new Set([
+      ...effectiveTags.filter((t) =>
+        KIND_TAGS.has(t) || SURFACE_TAGS.has(t) || CONNECTION_TAGS.has(t)
+        || /^pn\d+$/.test(t) || MATERIAL_SUBTYPE_KEYS.has(t) || isAttrTag(t)),
+      ...(hint?.kinds ?? []),
+    ]));
+    let hardPool = allCandidates;
+    for (const v of writtenCins) {
+      const carriers = hardPool.filter((c) => c.priceItem.material.tags.includes(v));
+      if (carriers.length > 0) hardPool = carriers;
+    }
+
     if (allCandidates.length === 0) {
       console.log(`[Matching] "${excelName}" → ESLESMEDI. Olcu: [${sizeAnyOf.join(',')}] (${sizeClass}), zorunlu: [${split.mustMatchTags.join(',')}], refine: [${split.refineTags.join(',')}]`);
       return {
@@ -554,6 +577,45 @@ export class MatchingService {
     const topScore = allCandidates[0].totalScore;
     let topCandidates = allCandidates.filter((c) => c.totalScore === topScore);
     console.log(`[Matching] "${excelName}" → ${allCandidates.length} aday, topScore=${topScore}, topCount=${topCandidates.length}, sinif=${sizeClass}, hint=${hint ? hint.kinds.join('/') : 'yok'}`);
+
+    // ── V4 (PRD v1.3): GRUP VARYANT FILTRESI ────────────────────────
+    // Grupta ilk secim yapildi, ayni varyant bu satirin capinda araniyor.
+    // Tag'lerin TAMAMI eslesmeli (kutuphaneden dinamik turetilmis kimlik).
+    // R16 dersi: KULLANICININ SECIMI marka tie-break'inden ONCE uygulanir —
+    // eskiden pref-kind (Cayirova=celik) pirinc secimini DN32'de eleyip
+    // varyant yayilimini kiriyordu; kullanici sinyali marka sinyalini ezer.
+    if (variantTags && variantTags.length > 0) {
+      const matching = topCandidates.filter((c) =>
+        variantTags.every((t) => c.priceItem.material.tags.includes(t)),
+      );
+      if (matching.length === 1) {
+        const winner = matching[0];
+        const libItem = libItems.find(
+          (l) => (l.materialName ?? '').toLowerCase().trim() === winner.priceItem.material.name.toLowerCase().trim(),
+        );
+        const discount = libItem?.discountRate ?? 0;
+        const listPrice = libItem?.listPrice ?? winner.priceItem.price;
+        const netPrice = hesaplaNetFiyat(listPrice, discount);
+        console.log(`[Matching] "${excelName}" → V4 OTOMATIK VARYANT (${variantTags.join(',')}) → "${winner.priceItem.material.name}"`);
+        return {
+          netPrice, listPrice, discount,
+          confidence: 'suggestion',
+          autoVariant: true,
+          matchedName: winner.priceItem.material.name,
+          donusum: equiv.rozet ?? undefined,
+          reason: `Grup varyantı uygulandı (${variantTags.join(', ')})`,
+        };
+      }
+      if (matching.length === 0) {
+        // V4.5: varyant bu capta yok — otomatik atama YAPMA, fiyatli listeyle
+        // "secim bekliyor" birak, nedeni soyle.
+        console.log(`[Matching] "${excelName}" → V4.5 varyant yok (${variantTags.join(',')}) → secim bekliyor`);
+        const r = this.buildMultiResult(topCandidates, libItems, `Seçilen varyant (${variantTags.join(', ')}) bu çapta kütüphanede yok — elle seçin.`, equiv.rozet, effectiveTags);
+        return { ...r, variantMissing: true };
+      }
+      // >1: varyant tag'leri bu capta birden fazla urunu tutuyor — daraltilmis popup
+      topCandidates = matching;
+    }
 
     // ── FAZ 3 + PRD: cins ipucu tie-break (SILME DEGIL, one cikarma) ──
     // Oncelik: baslik/sozluk cinsi > marka cinsi. Uyan aday yoksa dokunma
@@ -619,42 +681,6 @@ export class MatchingService {
         console.log(`[Matching]   Sinif belirsiz (celik/PPR yorumlari) → popup`);
         return this.buildMultiResult(topCandidates, libItems, 'Malzeme sınıfı belirsiz: çelik (DN↔inç) ve PPR (DN=mm) yorumları farklı ürünlere gidiyor.', null, effectiveTags);
       }
-    }
-
-    // ── V4 (PRD v1.3): GRUP VARYANT FILTRESI ────────────────────────
-    // Grupta ilk secim yapildi, ayni varyant bu satirin capinda araniyor.
-    // Tag'lerin TAMAMI eslesmeli (kutuphaneden dinamik turetilmis kimlik).
-    if (variantTags && variantTags.length > 0) {
-      const matching = topCandidates.filter((c) =>
-        variantTags.every((t) => c.priceItem.material.tags.includes(t)),
-      );
-      if (matching.length === 1) {
-        const winner = matching[0];
-        const libItem = libItems.find(
-          (l) => (l.materialName ?? '').toLowerCase().trim() === winner.priceItem.material.name.toLowerCase().trim(),
-        );
-        const discount = libItem?.discountRate ?? 0;
-        const listPrice = libItem?.listPrice ?? winner.priceItem.price;
-        const netPrice = hesaplaNetFiyat(listPrice, discount);
-        console.log(`[Matching] "${excelName}" → V4 OTOMATIK VARYANT (${variantTags.join(',')}) → "${winner.priceItem.material.name}"`);
-        return {
-          netPrice, listPrice, discount,
-          confidence: 'suggestion',
-          autoVariant: true,
-          matchedName: winner.priceItem.material.name,
-          donusum: equiv.rozet ?? undefined,
-          reason: `Grup varyantı uygulandı (${variantTags.join(', ')})`,
-        };
-      }
-      if (matching.length === 0) {
-        // V4.5: varyant bu capta yok — otomatik atama YAPMA, fiyatli listeyle
-        // "secim bekliyor" birak, nedeni soyle.
-        console.log(`[Matching] "${excelName}" → V4.5 varyant yok (${variantTags.join(',')}) → secim bekliyor`);
-        const r = this.buildMultiResult(topCandidates, libItems, `Seçilen varyant (${variantTags.join(', ')}) bu çapta kütüphanede yok — elle seçin.`, equiv.rozet, effectiveTags);
-        return { ...r, variantMissing: true };
-      }
-      // >1: varyant tag'leri bu capta birden fazla urunu tutuyor — daraltilmis popup
-      topCandidates = matching;
     }
 
     // Shared helper: subtype elemesi. autoPick=false (Duzeltme Talebi K1/K2):
@@ -724,6 +750,17 @@ export class MatchingService {
         return this.buildMultiResult(topCandidates, libItems, why, equiv.rozet, effectiveTags);
       }
 
+      // ── ALTIN KURAL KAPISI (R16/R17): sunulan liste 1'e inmis olsa bile
+      // SERT havuzda >1 urun varsa yumusak katman (marka tie-break/skor)
+      // secim yapmis demektir — fiyat YAZILMAZ, kalan cinslerin TAMAMI net
+      // fiyatlariyla sorulur. Istisnasiz.
+      if (hardPool.length > 1) {
+        console.log(`[Matching] "${excelName}" → ALTIN KURAL: sert havuzda ${hardPool.length} urun (yumusak katman 1'e indirmisti) → CINS secimi popup`);
+        return this.buildMultiResult(hardPool, libItems,
+          `${hardPool.length} cins/varyant mevcut — seçim sizin (fiyat yalnız tek ürün kalınca otomatik yazılır).`,
+          equiv.rozet, effectiveTags);
+      }
+
       const { netPrice, listPrice, discount } = calcPrice(winner.priceItem);
       console.log(`[Matching] "${excelName}" → high → "${winner.priceItem.material.name}" = ${winner.priceItem.price} (net=${netPrice})${equiv.rozet ? ` | ${equiv.rozet}` : ''}`);
       return {
@@ -731,7 +768,8 @@ export class MatchingService {
         confidence: 'high',
         matchedName: winner.priceItem.material.name,
         donusum: equiv.rozet ?? undefined,
-        reason: `Eslesti (aile+boyut+sınıf doğrulandı)${equiv.rozet ? ` · ${equiv.rozet}` : ''}`,
+        // R18: "tek eslesme" rozeti — AD+CAP(+cins) sonrasi markada tek urun
+        reason: `Tek eşleşme — AD+ÇAP${writtenCins.length ? '+cins' : ''} sonrası markada tek ürün${equiv.rozet ? ` · ${equiv.rozet}` : ''}`,
       };
     }
 

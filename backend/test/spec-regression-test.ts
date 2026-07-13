@@ -296,6 +296,49 @@ async function run() {
     check('R15 motorlu/surgulu kumede degil → yok', !names.some((n) => /Motorlu|Sürgülü/.test(n)));
   }
 
+  // ── R16 (Birlestirme Talimati — ALTIN KURAL): CEKVALF · DN 40 —
+  // kutuphanede ≥2 cekvalf cinsi varken fiyat SORULMADAN YAZILAMAZ.
+  // Eski ihlal yolu birebir: marka tie-break'i (Cayirova=celik) pirinc/celik
+  // ikilisini 1'e indirip otomatik yaziyordu — yumusak katman secim gasp edemez.
+  {
+    const svc = makeService('ÇAYIROVA', [
+      lib('Pirinç Çekvalf Yaylı DN40', 950),
+      lib('Çelik Çekvalf Çalpara DN40', 1050),
+      lib('Pirinç Çekvalf Yaylı DN32', 780),
+      lib('Çelik Çekvalf Çalpara DN32', 860),
+    ]);
+    const r = await m(svc, 'ÇEKVALF DN 40');
+    check('R16 fiyat yazilmadi — cinsler fiyatli soruldu', r?.confidence === 'multi' && r?.netPrice === 0 && (r?.candidates?.length ?? 0) === 2
+      && !!r?.candidates?.every((c) => c.netPrice > 0),
+      `got ${r?.confidence} net=${r?.netPrice} ${r?.candidates?.length} aday "${r?.matchedName ?? ''}" (${r?.reason})`);
+    // Secim DN 32'ye KENDI cap fiyatiyla yayilir (variantTags zinciri)
+    const pirinc = r?.candidates?.find((c) => c.materialName.includes('Pirinç'));
+    const r2 = await m(svc, 'ÇEKVALF DN 32', pirinc?.variantTags);
+    check('R16 secim DN32ye kendi fiyatiyla yayildi', r2?.autoVariant === true && r2?.netPrice === 780 && !!r2?.matchedName?.includes('DN32'),
+      `got auto=${r2?.autoVariant} net=${r2?.netPrice} "${r2?.matchedName}"`);
+  }
+
+  // ── R17: TEST DRENAJ VANASI · DN 25 — yivli/disli secenekleri fiyatlariyla
+  // sorulur; secilmeden fiyat yazilmaz
+  {
+    const svc = makeService('AYVAZ', [
+      lib('Test Drenaj Vanası Yivli DN25', 2850),
+      lib('Test Drenaj Vanası Dişli DN25', 2650),
+    ]);
+    const r = await m(svc, 'TEST DRENAJ VANASI DN 25');
+    check('R17 yivli/disli fiyatli soruldu, yazilmadi', r?.confidence === 'multi' && r?.netPrice === 0 && (r?.candidates?.length ?? 0) === 2
+      && !!r?.candidates?.every((c) => c.netPrice > 0),
+      `got ${r?.confidence} net=${r?.netPrice} ${r?.candidates?.length} aday (${r?.reason})`);
+  }
+
+  // ── R18: AD + CAP sonrasi markada TEK urun → dogrudan yazilir + rozet
+  {
+    const svc = makeService('AYVAZ', [lib('Yaylı Çekvalf DN50', 1250)]);
+    const r = await m(svc, 'ÇEKVALF DN 50');
+    check('R18 tek urun dogrudan yazildi + "Tek eşleşme" rozeti', (r?.netPrice ?? 0) > 0 && r?.confidence === 'high' && !!r?.reason?.includes('Tek eşleşme'),
+      `got ${r?.confidence} net=${r?.netPrice} reason="${r?.reason}"`);
+  }
+
   // ── R12 (A-1): FITTINGS ORANI → malzeme eslestirmesi yapilmaz
   {
     const svc = makeService('ÇAYIROVA', [lib('Siyah Çelik Boru 1" DN25 Dişli', 130)]);
