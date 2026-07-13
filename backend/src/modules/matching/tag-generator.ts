@@ -25,6 +25,7 @@ import {
   extractFluid,
 } from './normalizer';
 import type { TaggedMaterial } from './types';
+import { resolveAd } from './ad-resolver';
 
 /**
  * Malzeme adından deterministik taglar cikarir.
@@ -112,7 +113,25 @@ export function generateTags(materialName: string): TaggedMaterial {
   // adinda 'vana' gecenler oneriliyordu. vt-* etiketi urunu vana yapar.
   // KORUMA: kelebek somun / vida / civata / rakor vana DEGILDIR.
   let effectiveType = materialType;
-  if (materialType === 'diger' && valveTypes.length > 0
+
+  // 10e. AD SOZLUGU (Excel seed — 3 Etiket Modeli): regex tip cozemediyse
+  // sozluk cozer (yangin dolabi, chiller, fan, damper, kompansator...).
+  // Es anlamlilar dahil ("su sogutma grubu"→chiller); en uzun desen kazanir.
+  // Sozluk slug'lari MATERIAL_TYPE_TAGS'e katildigi icin AD kilidi (must)
+  // bu aileler icin de calisir. SIRA: sozluk vt-terfisinden ONCE —
+  // "Termostatik KONDENSTOP" kondenstop'tur, vt-radyator tag'i onu vana yapamaz.
+  if (effectiveType === 'diger') {
+    const adSlug = resolveAd(materialName);
+    if (adSlug) {
+      effectiveType = adSlug;
+      tags.add(adSlug);
+      tags.delete('diger');
+    }
+  }
+
+  // 10f. VT → VANA TERFISI (sozluk de cozemediyse): "Izleme Anahtarli
+  // Kelebek" gibi adinda 'vana' gecmeyen urunler vt etiketiyle vana olur.
+  if (effectiveType === 'diger' && valveTypes.length > 0
       && !/somun|civata|vida\b|rakor|\bpul\b/.test(normalizeText(materialName))) {
     effectiveType = 'vana';
     tags.add('vana');

@@ -365,6 +365,29 @@ async function run() {
       `got adaylar: ${names2.join(' | ')}`);
   }
 
+  // ── R20 (AD-CINS SOZLUGU seed): sozluk aileleri aile kilidiyle calisir;
+  // es anlamlilar cozulur ("su sogutma grubu" → chiller)
+  {
+    const svc = makeService('AYVAZ', [
+      lib('Yangın Dolabı Camlı Makaralı 25 m', 8500),
+      lib('Yangın Dolabı Sac Kapaklı', 6200),
+      lib('Yangın Söndürme Tüpü KKT 6 kg', 950),
+    ]);
+    const r = await m(svc, 'YANGIN DOLABI');
+    check('R20 yangin dolabi ailesi — tup ASLA aday degil', r?.confidence === 'multi' && (r?.candidates?.length ?? 0) === 2
+      && !!r?.candidates?.every((c) => c.materialName.includes('Dolabı')),
+      `got ${r?.confidence} adaylar: ${r?.candidates?.map((c) => c.materialName).join(' | ') ?? r?.matchedName}`);
+  }
+  {
+    const svc = makeService('AYVAZ', [
+      lib('Chiller Vidalı Hava Soğutmalı 500 kW', 2850000),
+      lib('Aksiyel Fan 10000 m3/h', 45000),
+    ]);
+    const r = await m(svc, 'SU SOĞUTMA GRUBU 500 kW');
+    check('R20 es anlamli: su sogutma grubu → chiller', (r?.netPrice ?? 0) > 0 && !!r?.matchedName?.includes('Chiller'),
+      `got ${r?.confidence} "${r?.matchedName}" (${r?.reason})`);
+  }
+
   // ── R12 (A-1): FITTINGS ORANI → malzeme eslestirmesi yapilmaz
   {
     const svc = makeService('ÇAYIROVA', [lib('Siyah Çelik Boru 1" DN25 Dişli', 130)]);

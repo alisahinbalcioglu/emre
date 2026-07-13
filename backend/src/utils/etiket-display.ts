@@ -11,6 +11,7 @@ import {
   KIND_TAGS, SURFACE_TAGS, CONNECTION_TAGS, MATERIAL_SUBTYPE_KEYS,
   MATERIAL_TYPE_TAGS,
 } from '../modules/matching/shared-tag-matcher';
+import { AD_DISPLAY } from '../modules/matching/ad-resolver';
 
 /** AD (malzeme adi/ailesi) Turkce etiketleri — admin duzeltme dropdown'u da
  *  bu listeden secer. */
@@ -43,7 +44,7 @@ export function deriveEtiketler(text: string): Etiketler {
   const ad = adSlug
     ? (adSlug === 'vana' && vt.length > 0
         ? `${vt.map((t) => attrLabel(t)).join('/')} Vana`
-        : TYPE_LABELS_TR[adSlug] ?? adSlug)
+        : TYPE_LABELS_TR[adSlug] ?? AD_DISPLAY.get(adSlug) ?? adSlug)
     : null;
 
   const sizeTag = tagged.tags.find((t) => /^dn\d+$/.test(t) || t.startsWith('od-'));

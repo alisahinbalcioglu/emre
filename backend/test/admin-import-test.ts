@@ -193,6 +193,20 @@ num('  2.500,00 TL ', 2500);
   // Koruma: kelebek somun vana DEGILDIR
   const somun = deriveEtiketler('Kelebek Somun 1/2"');
   check('3E vt-terfi korumasi: kelebek somun vana degil', somun.adSlug !== 'vana', `got ${JSON.stringify(somun)}`);
+
+  // ── AD-CINS SOZLUGU (Excel seed) ──
+  const dolap = deriveEtiketler('Yangın Dolabı Camlı Makaralı');
+  check('Sozluk: yangin dolabi ailesi', dolap.adSlug === 'yangin-dolabi' && dolap.ad === 'Yangın dolabı', `got ${JSON.stringify(dolap)}`);
+  const ch = deriveEtiketler('SU SOĞUTMA GRUBU 500 kW');
+  check('Sozluk es anlamli: su sogutma grubu → chiller', ch.adSlug === 'chiller', `got ${JSON.stringify(ch)}`);
+  const siber = deriveEtiketler('Şiber Vana DN50');
+  check('Sozluk vt es anlamli: siber → Sürgülü Vana', siber.ad === 'Sürgülü Vana', `got ${JSON.stringify(siber)}`);
+  const kond = deriveEtiketler('Termostatik Kondenstop DN25');
+  check('Sozluk oncelik: termostatik kondenstop VANA DEGIL kondenstop', kond.adSlug === 'kondenstop', `got ${JSON.stringify(kond)}`);
+  const kanaliz = deriveEtiketler('KANALİZASYON HATTI DN200');
+  check('Sozluk koruma: kanalizasyon hava kanali DEGIL', kanaliz.adSlug !== 'kanal', `got ${JSON.stringify(kanaliz)}`);
+  const yivli = deriveEtiketler('Test Drenaj Vanası Yivli DN25');
+  check('Cins: yivli baglanti etiketi', yivli.cins.includes('Yivli'), `got "${yivli.cins}"`);
 }
 
 console.log(`\n${'='.repeat(60)}`);

@@ -5,6 +5,7 @@
  */
 
 import type { MatchCandidate } from './types';
+import { AD_YENI_SLUGS } from './ad-resolver';
 
 // ═══════════════════════════════════════════
 // TAG KUMELERI
@@ -40,7 +41,7 @@ export const SURFACE_KIND_KEYS = new Set<string>([
 ]);
 
 export const CONNECTION_TAGS = new Set<string>([
-  'disli', 'kaynakli', 'flans', 'pres', 'duz-uclu',
+  'disli', 'kaynakli', 'flans', 'pres', 'duz-uclu', 'yivli',
 ]);
 
 /** Baz subtype kumesi — material tarafi ek EN/DIN kodlari ekler. */
@@ -49,6 +50,10 @@ export const BASE_SUBTYPE_KEYS = new Set<string>([
   'folyo', 'kaucuk', 'camyunu', 'tasyunu', 'sprink',
   'yangin-dayanim', 'gofrajli', 'aluminyum-sac',
   'izleme-anahtarli',
+  // NOT: wafer/lug/orgulu SUBTYPE DEGIL — kelebek govdesinin/hortumun NORMAL
+  // cins varyantidir (attr). Subtype yapmak alt-tip elemesini bozuyordu:
+  // duz "KELEBEK VANA" satirinda tum adaylar subtype'li sayilip izleme-
+  // anahtarlilar elenemiyordu (R19b).
 ]);
 
 export const MATERIAL_SUBTYPE_KEYS = new Set<string>([
@@ -78,8 +83,9 @@ export const TAG_LABELS: Record<string, string> = {
   bronz: 'Bronz', pvc: 'PVC', ppr: 'PPR', pe: 'PE', hdpe: 'HDPE',
   bakir: 'Bakır', aluminyum: 'Alüminyum',
   disli: 'Dişli Manşonlu', kaynakli: 'Kaynaklı', flans: 'Flanşlı',
-  pres: 'Press', 'duz-uclu': 'Düz Uçlu',
+  pres: 'Press', 'duz-uclu': 'Düz Uçlu', yivli: 'Yivli',
   'izleme-anahtarli': 'İzleme Anahtarlı',
+  wafer: 'Wafer', lug: 'Lug Tip', orgulu: 'Örgülü',
 };
 
 // ═══════════════════════════════════════════
@@ -117,12 +123,18 @@ export const MATERIAL_TYPE_TAGS = new Set<string>([
   'kombi', 'vitrifiye', 'armatur', 'kablo', 'pano', 'sigorta', 'kazan',
   'dogalgaz-boru', 'montaj',
   'sprinkler', 'hortum', 'akis-anahtari', 'akis-olcer',
+  // AD SOZLUGU (Excel seed): 44 yeni aile — yangin-dolabi, chiller, fan,
+  // damper, kompansator, kondenstop, manometre... (ad-cins-sozlugu.ts)
+  ...AD_YENI_SLUGS,
 ]);
 
 /** E1: ekipman aileleri — cap zorunlulugu gevser (H3: uzunlukla eslesir),
- *  DN cevrimi celik tablosuyla yapilir (H4: DN 65 → 2 1/2"). */
+ *  DN cevrimi celik tablosuyla yapilir (H4: DN 65 → 2 1/2").
+ *  Sozluk aileleri de ekipman semantigindedir (kW/m³h/BTU olculu cihazlar
+ *  capsiz eslesir; DN'li olanlarda cap yazilirsa sizeAnyOf yine filtreler). */
 export const EQUIPMENT_TYPE_TAGS = new Set<string>([
   'sprinkler', 'hortum', 'akis-anahtari', 'akis-olcer',
+  ...AD_YENI_SLUGS,
 ]);
 
 // ── E3: EKIPMAN NITELIK TAG'LERI (temp-68, k-80, pendent, len-500, aks-*) ──
@@ -132,7 +144,9 @@ export function isAttrTag(t: string): boolean {
     || t === 'pendent' || t === 'upright' || t === 'sidewall' || t.startsWith('aks-')
     // E8: vana yuvalari da etiket/varyant kimligidir (kuresel gaz vanasi
     // farkli capta ayni yuvalarla aranir)
-    || t.startsWith('vt-') || t.startsWith('akiskan-');
+    || t.startsWith('vt-') || t.startsWith('akiskan-')
+    // AD-CINS Sozlugu cins degerleri: kelebek govde tipi + hortum orgusu
+    || t === 'wafer' || t === 'lug' || t === 'orgulu';
 }
 
 /** Nitelik tag'inin kullaniciya gosterilecek hali. */
@@ -158,6 +172,18 @@ export function attrLabel(t: string): string {
   if (t === 'vt-balans') return 'Balans';
   if (t === 'vt-igne') return 'İğne';
   if (t === 'vt-emniyet') return 'Emniyet';
+  if (t === 'vt-purjor') return 'Purjör';
+  if (t === 'vt-vakum') return 'Vakum Kırıcı';
+  if (t === 'vt-alarm-islak') return 'Islak Alarm';
+  if (t === 'vt-alarm-kuru') return 'Kuru Alarm';
+  if (t === 'vt-test-drenaj') return 'Test & Drenaj';
+  if (t === 'vt-dolum') return 'Dolum';
+  if (t === 'vt-hidrolik') return 'Hidrolik Kontrol';
+  if (t === 'vt-radyator') return 'Radyatör Vanası';
+  if (t === 'vt-pislik-tutucu') return 'Pislik Tutucu';
+  if (t === 'wafer') return 'Wafer';
+  if (t === 'lug') return 'Lug Tip';
+  if (t === 'orgulu') return 'Örgülü';
   if (t === 'akiskan-gaz') return 'Doğalgaz';
   if (t === 'akiskan-sivi') return 'Sıvı';
   if (t === 'akiskan-buhar') return 'Buhar';
@@ -171,6 +197,7 @@ function attrCategory(t: string): string | null {
   if (/^k-\d+$/.test(t)) return 'k';
   if (/^len-\d+$/.test(t)) return 'len';
   if (t === 'pendent' || t === 'upright' || t === 'sidewall') return 'mount';
+  if (t === 'wafer' || t === 'lug') return 'govde';
   return null;
 }
 

@@ -231,6 +231,9 @@ const CONNECTION_PATTERNS: { pattern: RegExp; tag: string }[] = [
   { pattern: /flansh|flans|flanged/i, tag: 'flans' },
   { pattern: /press|pres/i, tag: 'pres' },
   { pattern: /duz\s*uclu/i, tag: 'duz-uclu' },
+  // AD-CINS Sozlugu: yivli (grooved/victaulic) baglanti — celik boru/vana/
+  // fittings'te yaygin cins ("Yivli Dirsek", "Test Drenaj Vanasi Yivli")
+  { pattern: /yivli|grooved/i, tag: 'yivli' },
 ];
 
 export function extractConnection(text: string): string | null {
@@ -257,8 +260,12 @@ const TYPE_PATTERNS: { pattern: RegExp; type: string }[] = [
   // o da yalin sprink'ten once. Vana'dan SONRA gelirler ki "sprink hatti
   // vanasi" vana kalir.
   { pattern: /sprink\w*\s*hat/i, type: 'boru' },
+  // AD-CINS Sozlugu: "hidrant hatti (borusu)" BORU kosusudur (HDPE alias'i
+  // sahibi) — yalin "hidrant" sozlukte ayri ailedir (yangin hidranti)
+  { pattern: /hidrant\s*hat/i, type: 'boru' },
   { pattern: /hortum|hose/i, type: 'hortum' },
-  { pattern: /fan\s*-?\s*coil/i, type: 'hortum' },
+  // "Fan-Coil BAGLANTI ..." hortumdur; yalin "Fan-coil" cihazi sozluk cozer
+  { pattern: /fan\s*-?\s*coil\s*bagl|fancoil\s*flex/i, type: 'hortum' },
   // E4: flow switch ↔ akis anahtari (paddle tip dahil)
   { pattern: /flow\s*sw/i, type: 'akis-anahtari' },
   { pattern: /akis\s*anahtar/i, type: 'akis-anahtari' },
@@ -276,6 +283,12 @@ const TYPE_PATTERNS: { pattern: RegExp; type: string }[] = [
   { pattern: /tee/i, type: 'fitting' },
   { pattern: /manson/i, type: 'fitting' },
   { pattern: /coupling/i, type: 'fitting' },
+  // AD-CINS Sozlugu fittings es anlamlilari
+  { pattern: /nipel/i, type: 'fitting' },
+  { pattern: /\bkep\b|kor\s*tapa/i, type: 'fitting' },
+  { pattern: /rakor/i, type: 'fitting' },
+  { pattern: /kaplin|victaulic/i, type: 'fitting' },
+  { pattern: /\bmuf\b/i, type: 'fitting' },
   { pattern: /flans/i, type: 'flans' },
   { pattern: /flange/i, type: 'flans' },
   { pattern: /izolasyon/i, type: 'izolasyon' },
@@ -452,7 +465,11 @@ const SUBTYPE_PATTERNS: { pattern: RegExp; tag: string }[] = [
   // tamper switch es-anlamli (E4). Satirda yaziliysa yalniz tasiyanlar
   // sunulur (altin kural); yazili degilse subtype elemesi duz kelebekleri
   // one alir.
-  { pattern: /izleme\s*anahtar|izlenebilir|tamper|supervis/i, tag: 'izleme-anahtarli' },
+  { pattern: /izleme\s*anahtar|izlenebilir|tamper|supervis|switchli/i, tag: 'izleme-anahtarli' },
+  // AD-CINS Sozlugu cins degerleri: kelebek govde tipi + hortum orgusu
+  { pattern: /\bwafer\b/i, tag: 'wafer' },
+  { pattern: /\blug\b/i, tag: 'lug' },
+  { pattern: /orgulu/i, tag: 'orgulu' },
   { pattern: /yangin\s*dayanim/i, tag: 'yangin-dayanim' },
   { pattern: /drenaj/i, tag: 'drenaj' },
   { pattern: /sicak\s*ve\s*re-?sirkulasyon/i, tag: 'resirkulasyon' },
@@ -550,20 +567,30 @@ export function extractAccessory(text: string): string | null {
  *  YOKTU → vt tag'i almadan "isaretsiz gecer" kuralindan siziyorlardi
  *  ("PP KURESEL VANALAR DN 20" satirina Selenoid Valf onerildi). */
 const VALVE_TYPE_PATTERNS: { pattern: RegExp; tag: string }[] = [
-  { pattern: /basinc\s*dusurucu|pressure\s*reduc/i, tag: 'vt-basinc-dusurucu' },
+  { pattern: /basinc\s*dusurucu|pressure\s*reduc|\bprv\b|basinc\s*kirici/i, tag: 'vt-basinc-dusurucu' },
   { pattern: /bicakli|knife/i, tag: 'vt-bicakli' },
-  { pattern: /kuresel|\bball\b/i, tag: 'vt-kuresel' },
-  { pattern: /surgulu|\bgate\b/i, tag: 'vt-surgulu' },
+  { pattern: /kuresel|\bball\b|tam\s*gecisli/i, tag: 'vt-kuresel' },
+  { pattern: /surgulu|\bgate\b|siber|os\s*&\s*y|yukselen\s*milli/i, tag: 'vt-surgulu' },
   { pattern: /kelebek|butterfly/i, tag: 'vt-kelebek' },
-  { pattern: /\bglobe\b/i, tag: 'vt-globe' },
-  { pattern: /cek\s*val|cekval|check\s*val/i, tag: 'vt-cek' },
+  { pattern: /\bglobe\b|oturmali/i, tag: 'vt-globe' },
+  { pattern: /cek\s*val|cekval|check\s*val|geri\s*donussuz\s*van/i, tag: 'vt-cek' },
   { pattern: /motorlu|aktuator|actuat|on\s*\/?\s*off/i, tag: 'vt-motorlu' },
   { pattern: /pnomatik|pneumatic/i, tag: 'vt-pnomatik' },
-  { pattern: /selenoid|solenoid/i, tag: 'vt-selenoid' },
+  { pattern: /selenoid|solenoid|elektromanyetik/i, tag: 'vt-selenoid' },
   { pattern: /samandira|flator|float\s*val/i, tag: 'vt-samandira' },
   { pattern: /balans|balanc/i, tag: 'vt-balans' },
   { pattern: /\bigne\b|needle/i, tag: 'vt-igne' },
-  { pattern: /emniyet|safety\s*val/i, tag: 'vt-emniyet' },
+  { pattern: /emniyet|safety\s*val|relief/i, tag: 'vt-emniyet' },
+  // AD-CINS Sozlugu ek vana aileleri (VANALAR + YANGIN gruplari)
+  { pattern: /purjor|hava\s*atici|hava\s*tahliye/i, tag: 'vt-purjor' },
+  { pattern: /vakum\s*kirici|vacuum\s*breaker/i, tag: 'vt-vakum' },
+  { pattern: /islak\s*alarm|alarm\s*check/i, tag: 'vt-alarm-islak' },
+  { pattern: /kuru\s*alarm|dry\s*pipe/i, tag: 'vt-alarm-kuru' },
+  { pattern: /test\s*(ve\s*)?dren|test\s*&\s*drain/i, tag: 'vt-test-drenaj' },
+  { pattern: /dolum\s*van/i, tag: 'vt-dolum' },
+  { pattern: /hidrolik\s*kontrol|diyafram|basinc\s*sabitleme|seviye\s*kontrol|debi\s*kontrol|pompa\s*kontrol/i, tag: 'vt-hidrolik' },
+  { pattern: /radyator\s*(donus\s*)?van|termostatik|kose\s*radyator/i, tag: 'vt-radyator' },
+  { pattern: /pislik\s*tutucu|strainer|y\s*tipi\s*(pislik|filtre)/i, tag: 'vt-pislik-tutucu' },
 ];
 
 export function extractValveType(text: string): string | null {

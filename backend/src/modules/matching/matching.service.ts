@@ -8,6 +8,7 @@ import type { SizeClass, SizeInfo, SizeEquivalents } from './conversion';
 import { TerminologyService } from './terminology.service';
 import type { AliasHint, BrandClassHint } from './terminology.service';
 import { ExchangeRatesService } from '../../exchange-rates/exchange-rates.service';
+import { AD_DNLI_SLUGS } from './ad-resolver';
 import type { MatchResult, BrandAlternative } from './types';
 import {
   splitExcelTags,
@@ -425,12 +426,13 @@ export class MatchingService {
         : rawSurfaces.includes('galvaniz') || rawSurfaces.includes('siyah')
           ? 'steel'
           : null;
-    // Metal tip aileleri (vana/fitting/flans... + E5 ekipmanlar) DN'i celik
-    // anlaminda kullanir — satirda plastik cins yoksa. H4: "FLOW SWITCH DN 65"
-    // → celik cevrimi → 2 1/2" (Paddle Tip).
+    // Metal tip aileleri (vana/fitting/flans... + E5 ekipmanlar + DN'li
+    // sozluk aileleri) DN'i celik anlaminda kullanir — satirda plastik cins
+    // yoksa. H4: "FLOW SWITCH DN 65" → celik cevrimi → 2 1/2" (Paddle Tip).
     const metalTypeClass: SizeClass | null =
-      lineClass === null && ['vana', 'fitting', 'flans', 'pompa', 'radyator', 'kombi', 'kazan',
+      lineClass === null && (['vana', 'fitting', 'flans', 'pompa', 'radyator', 'kombi', 'kazan',
         'sprinkler', 'hortum', 'akis-anahtari', 'akis-olcer'].includes(excelTags.materialType)
+        || AD_DNLI_SLUGS.has(excelTags.materialType))
         ? 'steel'
         : null;
     const sizeClass: SizeClass = lineClass ?? hint?.sizeClass ?? ctx.brandClass?.sizeClass ?? metalTypeClass ?? 'unknown';
@@ -558,7 +560,15 @@ export class MatchingService {
       ...(hint?.kinds ?? []),
     ]));
     let hardPool = allCandidates;
-    for (const v of writtenCins) {
+    // Yuva kumeleri (vt-/akiskan-) KUME icinde OR: "KURESEL VE KELEBEK" iki
+    // aday ad — tek tek AND'lenirse ilk deger digerini duurur (R15 dersi).
+    for (const prefix of ['vt-', 'akiskan-'] as const) {
+      const wanted = writtenCins.filter((t) => t.startsWith(prefix));
+      if (wanted.length === 0) continue;
+      const carriers = hardPool.filter((c) => c.priceItem.material.tags.some((t) => wanted.includes(t)));
+      if (carriers.length > 0) hardPool = carriers;
+    }
+    for (const v of writtenCins.filter((t) => !t.startsWith('vt-') && !t.startsWith('akiskan-'))) {
       const carriers = hardPool.filter((c) => c.priceItem.material.tags.includes(v));
       if (carriers.length > 0) hardPool = carriers;
     }
