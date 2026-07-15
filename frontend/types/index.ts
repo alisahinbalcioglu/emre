@@ -61,14 +61,3 @@ export interface Quote {
   _count?: { items: number };
 }
 
-export interface ParsedRow {
-  materialName: string;
-  quantity: number;
-  brandId: string | null;
-  brandName: string | null;
-  unitPrice: number;
-  discount: number;
-  profitMargin: number;
-  availableBrands: { id: string; name: string; price: number }[];
-  matched: boolean;
-}

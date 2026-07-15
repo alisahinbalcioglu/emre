@@ -8,31 +8,6 @@ export const RequireTier = (...tiers: string[]) => SetMetadata(TIER_KEY, tiers);
 // Tier yetki haritası — Core < Pro < Suite
 const TIER_LEVELS: Record<string, number> = { core: 1, pro: 2, suite: 3 };
 
-// Tier → izin verilen özellikler
-export const TIER_FEATURES = {
-  core: {
-    fileTypes: ['excel'],
-    disciplines: ['mechanical', 'electrical'],
-    maxQuotesPerMonth: 10,
-    maxMaterials: 500,
-    teamManagement: false,
-  },
-  pro: {
-    fileTypes: ['excel', 'pdf', 'dwg'],
-    disciplines: ['mechanical', 'electrical', 'hybrid'],
-    maxQuotesPerMonth: 100,
-    maxMaterials: 5000,
-    teamManagement: false,
-  },
-  suite: {
-    fileTypes: ['excel', 'pdf', 'dwg'],
-    disciplines: ['mechanical', 'electrical', 'hybrid'],
-    maxQuotesPerMonth: -1, // unlimited
-    maxMaterials: -1,
-    teamManagement: true,
-  },
-};
-
 @Injectable()
 export class TierGuard implements CanActivate {
   constructor(

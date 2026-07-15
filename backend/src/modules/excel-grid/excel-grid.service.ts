@@ -61,13 +61,6 @@ export interface ColumnRoles {
   grandTotalField?: string;
 }
 
-export interface GridPreparedData {
-  columnDefs: ColumnDef[];
-  rowData: RowData[];
-  columnRoles: ColumnRoles;
-  brands: Array<{ id: string; name: string }>;
-  headerEndRow: number;
-}
 
 export interface SheetData {
   name: string;

@@ -131,9 +131,3 @@ export function classifyTokens(tokens: string[], vocab: FamilyVocab): RoutedToke
   }
   return out;
 }
-
-/** Kullaniciya gosterilecek net fiyat (kendi iskontosu/ozel fiyatiyla). */
-export function satirNetFiyat(row: IndexedRow, hesapla: (list: number, isk: number) => number): number {
-  if (row.customPrice != null && row.customPrice > 0) return row.customPrice;
-  return hesapla(row.listPrice ?? row.urun.price, row.discountRate ?? 0);
-}

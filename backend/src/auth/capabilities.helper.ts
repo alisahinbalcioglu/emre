@@ -62,14 +62,3 @@ export async function getUserCapabilities(
 
   return caps;
 }
-
-/**
- * Hizli kontrol helper'i — guard'larda kullanilir.
- */
-export function hasCapability(
-  caps: UserCapabilities,
-  discipline: 'mechanical' | 'electrical',
-  feature: 'material' | 'labor' | 'dwg',
-): boolean {
-  return caps[discipline]?.[feature] === true;
-}
