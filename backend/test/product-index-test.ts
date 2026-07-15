@@ -75,22 +75,42 @@ function run() {
       `got ${resolveFamily('Sprinkler borusu')}`);
   }
 
-  // ══ P3: AILE KELIMESI DUSER — Turkce ek tuzagi ══════════════════════
-  // Urun "kompansatörü" (ekli), teklif "Kompansatör" (eksiz) yazar. Token
-  // olarak "kompansatoru" ≠ "kompansator" — ESLESMEZ. Ikisi de aile kelimesi
-  // oldugu icin ikisi de duser; geriye GERCEK ayirt ediciler kalir.
+  // ══ P3: TURKCE EK TUZAGI — KOK ALINIR, kelime ATILMAZ ══════════════
+  // Urun "kompansatörü" (ekli), teklif "Kompansatör" (eksiz) yazar; token
+  // olarak "kompansatoru" ≠ "kompansator" ESLESMEZ.
+  //
+  // ⚠ Bunu once "aile kelimesini iki taraftan da DUS" diye cozmustum. O kural
+  // canli vakada coktu: "ÇEKVALF" → extractMaterialType /valf/ SUBSTRING'ini
+  // gorup aile='vana' diyor → 'cekvalf' aile kelimesi sanilip ATILIYOR →
+  // geriye HIC ayirt edici kalmiyor → DN32'li TUM vana ailesi aday (147 aday).
+  // Cekvalf = cek + valf: aileyi ICERIR ama aile kelimesi DEGILDIR.
+  //
+  // Dogru cozum KOK ALMAK: hicbir kelime atilmaz, iki tarafa da AYNI kural.
   {
     const f = buildProductIndex(AYVAZ_FLANSLI_DN65);
-    check('P3 adTokens aile kelimesini TASIMAZ', !f.adTokens.some((t) => t.startsWith('kompansator')),
-      `got ${JSON.stringify(f.adTokens)}`);
+    check('P3 adTokens aile kelimesini KOK halinde TASIR (atilmaz)',
+      f.adTokens.includes('kompansator'), `got ${JSON.stringify(f.adTokens)}`);
+    check('P3 ek kesildi ("kompansatörü" → kompansator, "kompansatoru" DEGIL)',
+      !f.adTokens.includes('kompansatoru'), `got ${JSON.stringify(f.adTokens)}`);
     check('P3 adTokens ayirt ediciyi TASIR (dilatasyon)', f.adTokens.includes('dilatasyon'),
       `got ${JSON.stringify(f.adTokens)}`);
     check('P3 adTokens marka/seri token\'ini TASIR (omega)', f.adTokens.includes('omega'),
       `got ${JSON.stringify(f.adTokens)}`);
 
+    // CANLI VAKA (K8): 'cekvalf' AYIRT EDICI olarak yasar — atilmaz
+    const cek = buildProductIndex({ ad: 'Çekvalf', cins: 'disko tip', cap: 'DN32', price: 1250, urunKodu: 'C1' });
+    const kur = buildProductIndex({ ad: 'Küresel vana', cins: 'pirinç', cap: 'DN32', price: 850, urunKodu: 'K1' });
+    check('P3 K8: "Çekvalf" adTokens BOS DEGIL (aile vana olsa da)',
+      cek.adTokens.includes('cekvalf') && cek.adSlug === 'vana',
+      `got ${JSON.stringify(cek.adTokens)} slug=${cek.adSlug}`);
+    check('P3 K8: "Çekvalf" ⊄ "Küresel vana" → 147 aday imkansiz',
+      !cek.adTokens.every((t) => kur.adTokens.includes(t)),
+      `cek=${JSON.stringify(cek.adTokens)} kur=${JSON.stringify(kur.adTokens)}`);
+
     // K1'in cekirdegi: teklifin token'lari urununkinin ALT KUMESI mi?
-    const teklif = tokenize('Dilatasyon kompansatörü').filter((t) => !t.startsWith('kompansator'));
-    check('P3 K1: teklif {dilatasyon} ⊆ urun adTokens',
+    // Kok alma sayesinde aile kelimesi iki tarafta da AYNI ('kompansator').
+    const teklif = tokenize('Dilatasyon kompansatörü');
+    check('P3 K1: teklif {dilatasyon,kompansator} ⊆ urun adTokens',
       teklif.every((t) => f.adTokens.includes(t)), `teklif=${JSON.stringify(teklif)} urun=${JSON.stringify(f.adTokens)}`);
 
     // Farkli alt-ad ELENMELI

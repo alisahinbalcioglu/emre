@@ -32,11 +32,6 @@ export function resolveLineFamily(text: string): string | null {
   return resolveAd(text);
 }
 
-/** Bir token TEK BASINA aileyi cozuyorsa aile kelimesidir → ayirt edici degil. */
-function isFamilyToken(token: string, familySlug: string): boolean {
-  return extractMaterialType(token) === familySlug || resolveAd(token) === familySlug;
-}
-
 /**
  * Teklif satiri metni → LineQuery.
  *
@@ -52,12 +47,9 @@ export function parseLine(text: string, unit?: string | null): LineQuery {
 
   const familySlug = resolveLineFamily(raw);
 
-  // Aile kelimesi DUSULUR — Turkce ek tuzagi:
-  //   urun "kompansatörü" · teklif "Kompansatör" → token olarak ESLESMEZ.
-  // Ikisi de aile kelimesi oldugu icin iki taraftan da duser; geriye yalniz
-  // GERCEK ayirt ediciler kalir ("dilatasyon", "omega").
-  const hepsi = tokenize(raw);
-  const adaylar = familySlug ? hepsi.filter((t) => !isFamilyToken(t, familySlug)) : hepsi;
+  // Token'lar KOK ALINMIS gelir (tokenize) — urun tarafiyla ayni kural.
+  // "Kompansatör"/"kompansatörü" ayni koke iner; 'cekvalf' AYIRT EDICI kalir.
+  const adaylar = tokenize(raw);
 
   // Cap: kaynak-farkinda (DN mi, inc mi, mm mi yazilmis?) — cevrim tablosu
   // secimi buna bagli (PPR'de DN=mm, celikte DN≠mm). v1 ile ayni primitif.
@@ -66,7 +58,7 @@ export function parseLine(text: string, unit?: string | null): LineQuery {
     // Ciplak PE yolu ("63 PE100 SDR17"): conversion parser'i ciplak sayiyi
     // BILEREK yakalamaz (yanlis pozitif riski) — v1 bu yolu tag'lerden
     // kurtariyordu, aynisini yapiyoruz.
-    const legacy = hepsi.find((t) => isSizeTag(t));
+    const legacy = adaylar.find((t) => isSizeTag(t));
     if (legacy) {
       capInfo = legacy.startsWith('od-')
         ? { source: 'mm', value: parseInt(legacy.slice(3), 10), display: legacy }

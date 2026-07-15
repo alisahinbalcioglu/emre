@@ -75,7 +75,34 @@ const STOPWORDS: ReadonlySet<string> = new Set([
   'mm', 'cm', 'metre', 'mt', 'adeti',
 ]);
 
-/** Metni token'lara ayirir: normalize → bol → gurultuyu at. */
+/**
+ * Turkce iyelik/cogul ekini keser: "kompansatörü" → 'kompansator',
+ * "borusu" → 'boru', "vanası" → 'vana'.
+ *
+ * NEDEN GEREKLI: urun "kompansatörü" yazar, teklif "Kompansatör" — token
+ * olarak ESLESMEZLER. Onceden bunu "aile kelimesini iki taraftan da DUS"
+ * diye cozmustum; o kural canli vakada cokru:
+ *   "ÇEKVALF" → extractMaterialType /valf/ SUBSTRING'ini gorup aile='vana'
+ *   diyor → 'cekvalf' aile kelimesi sanilip ATILIYOR → geriye HIC ayirt
+ *   edici kalmiyor → DN32'li TUM vana ailesi aday (canli: 147 aday).
+ * Cekvalf = cek + valf: aileyi ICERIR ama aile kelimesi DEGILDIR.
+ *
+ * Kok alma hem ek tuzagini cozer hem 'cekvalf'i AYIRT EDICI olarak korur —
+ * ve hicbir kelime atilmaz.
+ *
+ * Asiri kesme (orn. 'flansli' → 'flansl') ZARARSIZDIR: kural iki tarafa da
+ * ayni sekilde uygulanir, eslesme simetrik kalir.
+ */
+function kokAl(t: string): string {
+  // Once cogul+iyelik ("borulari"), sonra iyelik ("borusu"/"kompansatoru")
+  for (const re of [/(?:lar|ler)[ıiuü]$/, /(?:lar|ler)$/, /s[ıiuü]$/, /[ıiuü]$/]) {
+    const s = t.replace(re, '');
+    if (s !== t && s.length >= 4) return s;
+  }
+  return t;
+}
+
+/** Metni token'lara ayirir: normalize → bol → kok al → gurultuyu at. */
 export function tokenize(text: string | null | undefined): string[] {
   if (!text) return [];
   // TIRELI KELIME TEK TOKEN: "V-Flex" → 'vflex'.
@@ -84,27 +111,14 @@ export function tokenize(text: string | null | undefined): string[] {
   const norm = normalizeText(String(text)).replace(/([a-z0-9])-([a-z0-9])/gi, '$1$2');
   const raw = norm.split(/[^a-z0-9°%]+/i).filter(Boolean);
   const out: string[] = [];
-  for (const t of raw) {
-    if (t.length < 2) continue; // tek harf ayirt etmez ("x,y,z" gurultusu)
+  for (const t0 of raw) {
+    if (t0.length < 2) continue; // tek harf ayirt etmez ("x,y,z" gurultusu)
+    if (STOPWORDS.has(t0)) continue;
+    const t = kokAl(t0);
     if (STOPWORDS.has(t)) continue;
     if (!out.includes(t)) out.push(t);
   }
   return out;
-}
-
-/**
- * Bir token TEK BASINA aileyi cozuyorsa, o token aile kelimesidir ve
- * ayirt edici DEGILDIR — dusulur.
- *
- * Bu, Turkce ek tuzagini da cozer: urun "kompansatörü", teklif "Kompansatör"
- * yazar; token olarak "kompansatoru" ≠ "kompansator" ESLESMEZ. Ikisi de aile
- * kelimesi oldugu icin ikisi de dusulur → geriye yalniz GERCEK ayirt ediciler
- * kalir ("dilatasyon", "omega").
- */
-function isFamilyToken(token: string, familySlug: string): boolean {
-  if (extractMaterialType(token) === familySlug) return true;
-  if (resolveAd(token) === familySlug) return true;
-  return false;
 }
 
 /**
@@ -212,10 +226,9 @@ export function buildProductIndex(c: ProductColumns): ProductIndexFields {
   // veridir — ayri bir alt-ad sozlugu KURMAYA GEREK YOK.)
   const adBucket = normalizeText(ad);
 
-  // Ayirt edici token'lar: aile kelimesi dusulur (yukarida gerekcesi).
-  const adTokens = familySlug
-    ? tokenize(ad).filter((t) => !isFamilyToken(t, familySlug))
-    : tokenize(ad);
+  // Ad kolonunun token'lari — KOK ALINMIS, hicbiri atilmaz.
+  // ("kompansatörü" → 'kompansator'; 'cekvalf' AYIRT EDICI olarak yasar)
+  const adTokens = tokenize(ad);
 
   const cinsNorm = c.cins?.trim() ? normalizeText(c.cins) : null;
   const cinsTokens = tokenize(c.cins);

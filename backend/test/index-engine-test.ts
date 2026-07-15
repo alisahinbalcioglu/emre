@@ -435,7 +435,7 @@ async function run() {
     const L = parseLine('OTOMATİK HAVA ATMA PÜRJÖRÜ DN 20');
     check('OLCU: "dn" ve "20" ad token\'i DEGIL (capInfo tuketti)',
       !L.tokens.includes('dn') && !L.tokens.includes('20'), JSON.stringify(L.tokens));
-    check('OLCU: gercek ad kelimeleri korundu', L.tokens.includes('purjoru') && L.tokens.includes('otomatik'),
+    check('OLCU: gercek ad kelimeleri korundu (kok alinmis)', L.tokens.includes('purjor') && L.tokens.includes('otomatik'),
       JSON.stringify(L.tokens));
     // HASSAS: capla ilgisiz sayi (sicaklik) KORUNMALI
     const L2 = parseLine('Sprinkler 68 derece 1/2"');
