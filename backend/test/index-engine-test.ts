@@ -62,7 +62,125 @@ const HAVUZ_KOMPANSATOR: IndexedRow[] = [
   prod({ kategori: 'Esnek Metal Hortum', ad: 'Örgülü flexible hortum', cins: 'paslanmaz', baglanti: 'dişli', cap: 'DN25', price: 640, urunKodu: 'H-25', sheetName: 'Ayvaz S5-161 TAM' }),
 ];
 
-function run() {
+/** UserLibrary satiri (indeksli) — Prisma'nin include:{product} ciktisi sekli */
+function libRow(c: ProductColumns & { discount?: number; custom?: number }) {
+  const idx = buildProductIndex(c);
+  return {
+    id: `lib-${idx.rowKey}`,
+    materialId: null, material: null, materialName: idx.displayName,
+    listPrice: c.price, customPrice: c.custom ?? null,
+    discountRate: c.discount ?? 0, currency: (c.paraBirimi as string) ?? 'TRY',
+    productIndexId: `pi-${idx.rowKey}`,
+    product: {
+      ...idx, id: `pi-${idx.rowKey}`,
+      ad: c.ad, cins: c.cins ?? null, baglanti: c.baglanti ?? null,
+      capRaw: c.cap ?? null, kategori: c.kategori ?? null,
+      boyMm: typeof c.boy === 'number' ? c.boy : null,
+      urunKodu: c.urunKodu ?? null, sheetName: c.sheetName ?? null, price: c.price,
+    },
+  };
+}
+
+async function dispatchTestleri() {
+  const { MatchingService } = require('../src/modules/matching/matching.service');
+  const { TerminologyService, ALIAS_SEEDS, BRAND_SEEDS } = require('../src/modules/matching/terminology.service');
+
+  function svcWith(rows: any[], otherRows: any[] = [], brandName = 'AYVAZ') {
+    const prisma: any = {
+      userLibrary: {
+        findMany: async (args: any) => {
+          const b = args?.where?.brandId;
+          if (b && typeof b === 'object' && 'not' in b) return otherRows;
+          return rows;
+        },
+      },
+      brand: { findUnique: async () => ({ name: brandName }) },
+      eslesmeHafizasi: { findUnique: async () => null, upsert: async () => {} },
+      terminologyAlias: { findMany: async () => ALIAS_SEEDS.map((s: any, i: number) => ({ id: `a${i}`, userId: null, active: true, ...s })) },
+      brandMaterialType: { findMany: async () => BRAND_SEEDS.map((s: any, i: number) => ({ id: `b${i}`, userId: null, active: true, ...s })) },
+    };
+    const fx = { getRates: async () => ({ usdTry: 40, eurTry: 48, usdTryBuying: 40, eurTryBuying: 48, source: 'fake', date: '' }) };
+    return new MatchingService(prisma, new TerminologyService(prisma), fx);
+  }
+
+  const HAVUZ = [
+    libRow({ ...KOMP, ad: 'Omega V-Flex dilatasyon kompansatörü', baglanti: 'flanşlı', cap: 'DN25', price: 18015, urunKodu: 'A1' }),
+    libRow({ ...KOMP, ad: 'Eksenel metal körüklü kompansatör', baglanti: 'flanşlı', cap: 'DN25', price: 9500, urunKodu: 'A2' }),
+    libRow({ kategori: 'Küresel Vanalar', ad: 'Küresel vana', cins: 'pirinç', baglanti: 'dişli', cap: 'DN25', price: 850, urunKodu: 'V1', sheetName: 'S' }),
+  ];
+
+  // D1: indeksli marka → v2 devreye girer ve Ad kilidi CALISIR
+  {
+    const svc = svcWith(HAVUZ);
+    const r = (await svc.bulkMatch('u1', 'brand-1', ['Dilatasyon kompansatörü DN25']))['Dilatasyon kompansatörü DN25'];
+    check('D1 dispatch: indeksli marka → v2, tek eslesme yazildi',
+      r?.confidence === 'high' && r?.netPrice === 18015, `got ${r?.confidence} net=${r?.netPrice}`);
+    check('D1 v2 sonucu "Tek eşleşme" rozetini tasir (sozlesme)',
+      !!r?.reason?.includes('Tek eşleşme'), `got "${r?.reason}"`);
+  }
+
+  // D2: iskonto/ozel fiyat KULLANICIYA ait — havuz fiyati degil
+  {
+    const svc = svcWith([
+      libRow({ ...KOMP, ad: 'Dilatasyon kompansatörü', baglanti: 'flanşlı', cap: 'DN25', price: 20000, discount: 25, urunKodu: 'B1' }),
+    ]);
+    const r = (await svc.bulkMatch('u1', 'brand-1', ['Dilatasyon kompansatörü DN25']))['Dilatasyon kompansatörü DN25'];
+    check('D2 iskonto uygulandi (20000 - %25 = 15000)', r?.netPrice === 15000, `got ${r?.netPrice}`);
+    check('D2 listPrice korunur', r?.listPrice === 20000 && r?.discount === 25, `got list=${r?.listPrice} isk=${r?.discount}`);
+  }
+
+  // D3: doviz — teklif aninda TRY tabanina cevrilir (Z4)
+  {
+    const svc = svcWith([
+      libRow({ ...KOMP, ad: 'Dilatasyon kompansatörü', baglanti: 'flanşlı', cap: 'DN25', price: 100, paraBirimi: 'USD', urunKodu: 'C1' }),
+    ]);
+    const r = (await svc.bulkMatch('u1', 'brand-1', ['Dilatasyon kompansatörü DN25']))['Dilatasyon kompansatörü DN25'];
+    check('D3 USD 100 → TRY 4000 (kur 40, cevrim teklif aninda)', r?.netPrice === 4000, `got ${r?.netPrice}`);
+  }
+
+  // D4: KARISIK havuz (bir satir indekssiz) → v2 DEVREYE GIRMEZ, v1 calisir
+  {
+    const karisik = [...HAVUZ, { id: 'manuel-1', material: null, materialName: 'Elle eklenen boru DN25',
+      listPrice: 100, customPrice: null, discountRate: 0, currency: 'TRY', productIndexId: null, product: null }];
+    const svc = svcWith(karisik);
+    const r = (await svc.bulkMatch('u1', 'brand-1', ['Dilatasyon kompansatörü DN25']))['Dilatasyon kompansatörü DN25'];
+    // v2'nin single reason'i "AD + ÇAP" ifadesini tasir (outcome-mapper) —
+    // v1 bunu ASLA uretmez. Yani bu ifadenin YOKLUGU v1'e dusuldugunun kaniti.
+    check('D4 karisik havuz → v2 DEVREYE GIRMEDI (v1 rozeti)',
+      !r?.reason?.includes('AD + ÇAP'), `got reason="${r?.reason}"`);
+    // Ve kritik: v2'ye girseydi product:null satirda cokerdi — girmedigi icin
+    // sonuc uretildi. Sessiz tutarsizlik yerine bilinen v1 davranisi.
+    check('D4 karisik havuzda sonuc yine de uretildi (cokme yok)',
+      r !== undefined && typeof r.netPrice === 'number', `got ${JSON.stringify(r)?.slice(0, 80)}`);
+  }
+
+  // D5: M3 — bu markada yok, DIGER indeksli markada var
+  {
+    const digerMarka = [
+      { ...libRow({ kategori: 'Kompansatörler', ad: 'Dilatasyon kompansatörü', baglanti: 'flanşlı', cap: 'DN25', price: 16000, urunKodu: 'D1', sheetName: 'S' }),
+        brand: { id: 'b-duyar', name: 'DUYAR' } },
+    ];
+    const svc = svcWith([HAVUZ[2]], digerMarka); // kendi markasinda YALNIZ vana var
+    const r = (await svc.bulkMatch('u1', 'brand-1', ['Dilatasyon kompansatörü DN25']))['Dilatasyon kompansatörü DN25'];
+    check('D5 markada yok → none + fiyat 0', r?.confidence === 'none' && r?.netPrice === 0,
+      `got ${r?.confidence} net=${r?.netPrice}`);
+    check('D5 M3: alternatif marka onerildi (DUYAR)',
+      (r?.alternatives?.length ?? 0) === 1 && r?.alternatives?.[0]?.brandName === 'DUYAR',
+      `got ${JSON.stringify(r?.alternatives)}`);
+    check('D5 alternatif fiyatiyla geliyor', r?.alternatives?.[0]?.netPrice === 16000,
+      `got ${r?.alternatives?.[0]?.netPrice}`);
+  }
+
+  // D6: bos kutuphane → v2'ye girmeden anlamli mesaj (sozlesme korunur)
+  {
+    const svc = svcWith([]);
+    const r = (await svc.bulkMatch('u1', 'brand-1', ['Dilatasyon kompansatörü DN25']))['Dilatasyon kompansatörü DN25'];
+    check('D6 bos kutuphane → none + aciklama', r?.confidence === 'none' && !!r?.reason,
+      `got ${r?.confidence}`);
+  }
+}
+
+async function run() {
   // ══ K1: Ad kilidi — baska aile ASLA aday olamaz ═══════════════════
   {
     const r = m('Dilatasyon kompansatörü DN25', HAVUZ_KOMPANSATOR);
@@ -243,6 +361,13 @@ function run() {
     check('FLANS gercek flans URUNU hala bulunur (ayrim bozulmadi)',
       r2.confidence === 'high' && r2.netPrice === 1400, `got ${r2.confidence} net=${r2.netPrice}`);
   }
+
+  // ══ DISPATCH: MatchingService UZERINDEN v2 yolu ══════════════════
+  // Yukaridaki testler SAF cekirdegi kanitliyor. Bu blok GERCEK servisi
+  // (marka bazli dispatch + matchV2 + havuz esleme + M3) kosturuyor —
+  // yani cekirdegin dogru BAGLANDIGINI. Bugun ucu de "test yesil, gercek
+  // kirik" deseninden cikan bug'lar tam bu bosluktan gecmisti.
+  await dispatchTestleri();
 
   console.log(`\n${'='.repeat(60)}`);
   console.log(`INDEKSLI MOTOR KABUL (K1-K7 + fallback yasagi): ${passed} PASS, ${failed} FAIL`);

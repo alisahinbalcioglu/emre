@@ -6,6 +6,11 @@ import { extractMaterialKind, extractMaterialType, extractSurfaces, normalizeTex
 import { extractSizeInfo, sizeEquivalents, isSizeTag } from './conversion';
 import type { SizeClass, SizeInfo, SizeEquivalents } from './conversion';
 import { TerminologyService } from './terminology.service';
+// FAZ 4: indeksli + Ad-kilitli motor (saf cekirdek — test:index K1-K7)
+import { parseLine } from './index/line-parser';
+import { runQuery } from './index/query-engine';
+import { toMatchResult } from './index/outcome-mapper';
+import type { IndexedRow, LineQuery } from './index/types';
 import type { AliasHint, BrandClassHint } from './terminology.service';
 import { ExchangeRatesService } from '../../exchange-rates/exchange-rates.service';
 import { AD_DNLI_SLUGS } from './ad-resolver';
@@ -142,6 +147,8 @@ export class MatchingService {
         material: {
           select: { id: true, name: true, tags: true, normalizedName: true, materialType: true },
         },
+        // FAZ 4: urun indeksi — doluysa v2 (Ad-kilitli) motor devreye girer
+        product: true,
       },
     });
 
@@ -162,6 +169,25 @@ export class MatchingService {
     // MANUEL ekledigi satirlarda (materialId yok) tag'ler anlik uretilir.
     // Z4: dovizli satirlar teklif aninda TRY tabanina cevrilir.
     const toTry = await this.buildTryConverter(libRows as { currency?: string | null }[]);
+
+    // ══ FAZ 4: MARKA BAZLI DISPATCH ═══════════════════════════════════
+    // Bu markanin kutuphane satirlarinin TAMAMI indekslenmisse Ad-kilitli v2
+    // motor calisir; degilse v1 aynen devam eder. Boylece gecis marka marka
+    // olur ve kullanici hicbir gun "bugun hicbir sey eslesmiyor" demez.
+    //
+    // TAMAMI sarti bilincli: karisik havuzda (yarisi indeksli) iki farkli
+    // kimlik/filtre mantigini ayni sorguda kosturmak sessiz tutarsizlik uretir.
+    // Manuel eklenen satirlarin indeksi yoktur → o marka v1'de kalir (bilinen
+    // sinirlama; manuel satiri indekslemek ayri is).
+    const indeksli = (libRows as any[]).filter((r) => r.productIndexId && r.product);
+    if (indeksli.length === libRows.length) {
+      console.log(`[Matching] v2 INDEKSLI MOTOR (Ad kilitli): ${libRows.length} satir, brand=${brandId}`);
+      return this.matchV2(userId, brandId, materialNames, libRows as any[], toTry, variantTags, units);
+    }
+    if (indeksli.length > 0) {
+      console.log(`[Matching] v1 LEGACY: ${indeksli.length}/${libRows.length} satir indeksli — TAMAMI indekslenmeden v2 devreye girmez`);
+    }
+
     const allPrices: MaterialPriceItem[] = libRows.map((li) => {
       const name = li.material?.name ?? li.materialName ?? '';
       const basePrice = toTry(li.customPrice ?? li.listPrice ?? 0, (li as any).currency);
@@ -300,6 +326,105 @@ export class MatchingService {
   // 1 bile eksikse → eslestirme YAPMA
   // Birden fazla aday varsa → candidates listesi dondur
   // ═══════════════════════════════════════════
+
+  /**
+   * FAZ 4: INDEKSLI + AD-KILITLI MOTOR (v2).
+   *
+   * Skor YOK, aday URETILMEZ — havuz FILTRELENIR (Ad → Cap → yazili nitelik).
+   * Cekirdek saf modullerde (index/*), DB'siz test edilir: test:index (K1-K7).
+   * Bu metot yalniz veriyi hazirlar ve M3 alternatiflerini ekler.
+   */
+  private async matchV2(
+    userId: string,
+    brandId: string,
+    materialNames: string[],
+    libRows: any[],
+    toTry: (v: number, cur?: string | null) => number,
+    variantTags?: string[],
+    units?: Record<string, string>,
+  ): Promise<Record<string, MatchResult>> {
+    const pool: IndexedRow[] = libRows.map((li) => ({
+      id: li.id,
+      listPrice: li.listPrice ?? li.product.price,
+      customPrice: li.customPrice ?? null,
+      discountRate: li.discountRate ?? 0,
+      currency: li.currency ?? 'TRY',
+      urun: li.product,
+    }));
+
+    const out: Record<string, MatchResult> = {};
+    for (const name of materialNames) {
+      if (!name?.trim()) continue;
+      const line = parseLine(name, units?.[name]);
+      const outcome = runQuery(line, pool, { variantTags });
+      let r = toMatchResult(outcome, line, toTry);
+
+      // M3: "bu markada yok" cevabi ALTERNATIFSIZ birakilmaz (PRD Bolum 3).
+      if (r.confidence === 'none' && !r.notProduct && line.familySlug) {
+        const alts = await this.findAlternativesV2(userId, brandId, line);
+        if (alts.length > 0) r = { ...r, alternatives: alts };
+      }
+      out[name] = r;
+    }
+    console.log(`[Matching] v2 Sonuc: ${Object.values(out).filter((r) => r.netPrice > 0).length}/${Object.keys(out).length} yazildi, ${Object.values(out).filter((r) => r.confidence === 'multi').length} soru`);
+    return out;
+  }
+
+  /**
+   * M3 (v2): satirin ailesi+capi DIGER markalarin indeksli kutuphanesinde var mi?
+   * Ayni sert kurallar — yalniz GERCEKTEN o urunu sunan markalar onerilir.
+   */
+  private async findAlternativesV2(userId: string, brandId: string, line: LineQuery): Promise<BrandAlternative[]> {
+    const others = await this.prisma.userLibrary.findMany({
+      where: { userId, brandId: { not: brandId } },
+      include: { brand: { select: { id: true, name: true } }, product: true } as any,
+    });
+    const pool: IndexedRow[] = (others as any[])
+      .filter((r) => r.productIndexId && r.product)
+      .map((r) => ({
+        id: r.id,
+        listPrice: r.listPrice ?? r.product.price,
+        customPrice: r.customPrice ?? null,
+        discountRate: r.discountRate ?? 0,
+        currency: r.currency ?? 'TRY',
+        urun: r.product,
+      }));
+    if (pool.length === 0) return [];
+
+    const toTry = await this.buildTryConverter(others as { currency?: string | null }[]);
+    const byBrand = new Map<string, BrandAlternative>();
+    const markaOf = new Map<string, { id: string; name: string }>(
+      (others as any[]).map((r) => [r.id, r.brand]),
+    );
+
+    // Marka basina AYRI sorgu: her markanin havuzu kendi icinde degerlendirilir
+    // (dagarcik marka+aile kapsaminda uretilir — vocab.ts).
+    const markaGruplari = new Map<string, IndexedRow[]>();
+    for (const row of pool) {
+      const m = markaOf.get(row.id);
+      if (!m) continue;
+      if (!markaGruplari.has(m.id)) markaGruplari.set(m.id, []);
+      markaGruplari.get(m.id)!.push(row);
+    }
+
+    for (const [mid, rows] of markaGruplari) {
+      const outcome = runQuery(line, rows);
+      // Yalniz KESIN sonuc alternatif olur — "belki" onerilmez
+      if (outcome.kind !== 'single') continue;
+      const m = markaOf.get(outcome.row.id)!;
+      const list = toTry(outcome.row.listPrice, outcome.row.currency);
+      const isk = outcome.row.discountRate ?? 0;
+      const net = outcome.row.customPrice != null && outcome.row.customPrice > 0
+        ? toTry(outcome.row.customPrice, outcome.row.currency)
+        : hesaplaNetFiyat(list, isk);
+      byBrand.set(mid, {
+        brandId: m.id, brandName: m.name,
+        materialName: outcome.row.urun.displayName,
+        netPrice: net, listPrice: list, discount: isk,
+      });
+    }
+    return Array.from(byBrand.values());
+  }
 
   private matchSingle(
     excelName: string,

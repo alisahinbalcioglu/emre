@@ -127,6 +127,21 @@ export class LibraryService {
       throw new BadRequestException('Fiyat listesi bu markaya ait degil');
     }
 
+    // ── FAZ 3: INDEKS VARSA KAYNAK ODUR ─────────────────────────────
+    // MaterialPrice, ayni ad/cins/capta farkli BAGLANTI'li satirlari
+    // Material.name @unique yuzunden tek kayda eziyor. Canli olcum (Ayvaz):
+    // ProductIndex 4571 satir · MaterialPrice 4068 → 503 URUN kutuphaneye
+    // HIC ULASAMIYORDU. Indeksten kopyalayinca hepsi gelir ve satirlar
+    // productIndexId ile indekse baglanir (v2 motorun on kosulu).
+    // Indekslenmemis (eski) listeler legacy yoldan devam eder.
+    const indexRows = await (this.prisma as any).productIndex.findMany({
+      where: { priceListId: dto.priceListId },
+      orderBy: [{ sortOrder: 'asc' }],
+    });
+    if (indexRows.length > 0) {
+      return this.importFromIndex(userId, dto, indexRows, priceList);
+    }
+
     // L1: KAYNAK SIRASI korunur (sortOrder) — kutuphane havuzla ayni dizilir
     const items = await this.prisma.materialPrice.findMany({
       where: { priceListId: dto.priceListId },
@@ -224,6 +239,116 @@ export class LibraryService {
       kutuphaneUrun,
       kategoriSayisi: havuzKategori,
       farklar,
+    };
+  }
+
+  /**
+   * FAZ 3: URUN INDEKSINDEN kutuphaneye aktarim.
+   *
+   * Legacy importPriceList ile AYNI sozlesme (imported/updated/L5 raporu),
+   * iki farkla:
+   *  1. Kaynak MaterialPrice degil ProductIndex → legacy'nin yuttugu satirlar
+   *     (Ayvaz'da 503 urun) kutuphaneye ULASIR.
+   *  2. Satir productIndexId ile indekse BAGLANIR → v2 motor bu markayi
+   *     "indeksli" sayar ve Ad-kilitli sorguyu calistirabilir.
+   *
+   * L4 IDEMPOTENT KORUNUR: anahtar (userId + kaynak liste + productIndexId).
+   * Mevcut satir ATLANMAZ — fiyat/yapi guncellenir, kullanicinin girdigi
+   * discountRate ve customPrice'a HIC DOKUNULMAZ.
+   *
+   * 'belirsiz' satirlar da aktarilir (kullanicinin urunudur, gorunur olmali);
+   * eslestirmeye girmeleri query-engine tarafinda engellenir (PRD 2A).
+   */
+  private async importFromIndex(
+    userId: string,
+    dto: ImportPriceListDto,
+    rows: any[],
+    priceList: { name: string; brand: { name: string } },
+  ) {
+    const existing = await this.prisma.userLibrary.findMany({
+      where: { userId, brandId: dto.brandId, sourcePriceListId: dto.priceListId },
+      select: { id: true, productIndexId: true } as any,
+    });
+    const byIdx = new Map(
+      (existing as any[]).filter((e) => e.productIndexId).map((e) => [e.productIndexId as string, e.id as string]),
+    );
+
+    // L1/L3: yapi alanlari VERI olarak tasinir — kutuphane gorunumu
+    // (library-sheet-builder) bu alanlardan beslenir, sema degismeden calisir.
+    const fidelityOf = (r: any) => ({
+      productIndexId: r.id,
+      // Legacy gorunum + hafiza karsilastirmasi icin okunabilir ad
+      materialName: r.displayName,
+      listPrice: r.price,
+      // Z4: orijinal para birimi — cevrim YALNIZ teklif aninda
+      currency: r.currency ?? 'TRY',
+      unit: r.birim || 'Adet',
+      kategori: r.kategori ?? null,
+      cins: r.cins ?? null,
+      cap: r.capRaw ?? null,
+      adRaw: r.ad ?? null,
+      sortOrder: r.sortOrder ?? 0,
+    });
+
+    const newRows = rows.filter((r) => !byIdx.has(r.id));
+    const updRows = rows.filter((r) => byIdx.has(r.id));
+
+    if (newRows.length > 0) {
+      await this.prisma.userLibrary.createMany({
+        data: newRows.map((r) => ({
+          userId,
+          brandId: dto.brandId,
+          sourcePriceListId: dto.priceListId,
+          // Indeks yolunda Material bagi YOK — urun yapisi indekste yasar
+          materialId: null,
+          ...fidelityOf(r),
+        })) as any,
+      });
+    }
+
+    let updated = 0;
+    const CHUNK = 200;
+    for (let i = 0; i < updRows.length; i += CHUNK) {
+      const chunk = updRows.slice(i, i + CHUNK);
+      await this.prisma.$transaction(
+        chunk.map((r) =>
+          this.prisma.userLibrary.update({
+            where: { id: byIdx.get(r.id)! },
+            // discountRate / customPrice BU LISTEDE YOK → dokunulmaz
+            data: fidelityOf(r) as any,
+          }),
+        ),
+      );
+      updated += chunk.length;
+    }
+
+    await this.rebuildUserBrandLibrary(userId, dto.brandId);
+
+    // L5: havuz ↔ kutuphane birebir dogrulama
+    const kutuphaneUrun = await this.prisma.userLibrary.count({
+      where: { userId, brandId: dto.brandId, sourcePriceListId: dto.priceListId },
+    });
+    const farklar: string[] = [];
+    if (kutuphaneUrun !== rows.length) {
+      farklar.push(`Havuzda ${rows.length} ürün, kütüphaneye ${kutuphaneUrun} kayıt yazıldı`);
+    }
+    const belirsiz = rows.filter((r) => r.belirsiz).length;
+    if (belirsiz > 0) {
+      farklar.push(`${belirsiz} ürünün ailesi çözülemedi — kütüphanede görünür, eşleştirmeye giremez`);
+    }
+
+    return {
+      imported: newRows.length,
+      updated,
+      skipped: 0,
+      brandName: priceList.brand.name,
+      listName: priceList.name,
+      havuzUrun: rows.length,
+      kutuphaneUrun,
+      kategoriSayisi: new Set(rows.map((r) => r.kategori).filter(Boolean)).size,
+      farklar,
+      // Faz 3: bu marka artik v2 motora hazir
+      indeksli: true,
     };
   }
 
