@@ -809,7 +809,24 @@ export class AdminService {
     return this.commitImportCore(priceList.brandId, priceListId, body);
   }
 
-  /** FAZ 2b: markaya commit — fiyat listesi ANCAK simdi olusturulur (Z5). */
+  /**
+   * FAZ 2b: markaya commit — fiyat listesi ANCAK simdi olusturulur (Z5).
+   *
+   * Y7 (AYNI ADLI LISTE = GUNCELLEME): ayni adla ikinci kez yuklenirse YENI
+   * liste YARATILMAZ, mevcut liste guncellenir.
+   *
+   * Neden sart — canli vakayla olculdu: kullanici ayni Ayvaz dosyasini iki kez
+   * yukleyince iki "Ayvaz_Subat2024" listesi olustu ve ProductIndex 4571 → 9142
+   * satira ciktı (liste_sayisi=2). Kimlik anahtari @@unique([priceListId, rowKey])
+   * oldugu icin, HER yuklemede yeni priceListId dogarsa upsert ASLA guncelleme
+   * yapmaz — hep insert eder. Bu da idempotentligi ve ona dayanan ISKONTO
+   * KORUMASINI tamamen devre disi birakir (kutuphane eski listenin id'lerine
+   * bagli kalir, yeni liste ayri bir ada olarak yasar).
+   *
+   * Ayni koruma legacy'nin OBUR yukleme yolunda (saveMaterialsFromSheets) zaten
+   * vardi ("mukerrer '(2)' YOK") — bu yola hic uygulanmamis. Iki yukleme yolu,
+   * iki farkli davranis.
+   */
   async commitBrandImport(
     brandId: string,
     body: { items: ImportPreviewItem[]; dotMeaning?: DotMeaning | null; listName?: string },
@@ -818,12 +835,18 @@ export class AdminService {
     if (!brand) throw new NotFoundException('Marka bulunamadi');
     const name = (body.listName ?? '').trim()
       || `${brand.name} — ${new Date().toLocaleDateString('tr-TR')}`;
-    const list = await this.prisma.priceList.create({ data: { name, brandId } });
+
+    const existing = await this.prisma.priceList.findFirst({ where: { brandId, name } });
+    const list = existing ?? await this.prisma.priceList.create({ data: { name, brandId } });
     try {
-      return await this.commitImportCore(brandId, list.id, body);
+      const r = await this.commitImportCore(brandId, list.id, body);
+      return { ...r, listeModu: existing ? 'guncelleme' : 'yeni' };
     } catch (e) {
-      // Commit basarisizsa bos liste birakma
-      await this.prisma.priceList.delete({ where: { id: list.id } }).catch(() => {});
+      // Commit basarisizsa bos liste birakma — AMA yalnizca BIZ yarattiysak.
+      // Mevcut listeyi silmek kullanicinin verisini yok ederdi.
+      if (!existing) {
+        await this.prisma.priceList.delete({ where: { id: list.id } }).catch(() => {});
+      }
       throw e;
     }
   }
