@@ -57,7 +57,7 @@ export function parseLine(text: string, unit?: string | null): LineQuery {
   // Ikisi de aile kelimesi oldugu icin iki taraftan da duser; geriye yalniz
   // GERCEK ayirt ediciler kalir ("dilatasyon", "omega").
   const hepsi = tokenize(raw);
-  const tokens = familySlug ? hepsi.filter((t) => !isFamilyToken(t, familySlug)) : hepsi;
+  const adaylar = familySlug ? hepsi.filter((t) => !isFamilyToken(t, familySlug)) : hepsi;
 
   // Cap: kaynak-farkinda (DN mi, inc mi, mm mi yazilmis?) — cevrim tablosu
   // secimi buna bagli (PPR'de DN=mm, celikte DN≠mm). v1 ile ayni primitif.
@@ -81,6 +81,20 @@ export function parseLine(text: string, unit?: string | null): LineQuery {
     const v = parseFloat(boyMatch[1].replace(',', '.'));
     boyTag = buildBoyTag(boyMatch[2] === 'cm' ? v * 10 : v);
   }
+
+  // ── OLCU TOKEN'LARINI AYIKLA ─────────────────────────────────────
+  // "DN 20" → tokenize ['dn','20'] uretir; ikisi de capInfo tarafindan ZATEN
+  // tuketildi, ad kelimesi DEGILLER. Ayiklanmazsa "dn"/"20" ad kisiti sanilir.
+  // HASSAS OL: yalin sayiyi kormeden atmak "Sprinkler 68°C 1/2\"" satirinda
+  // sicakligi (68) yok ederdi. Bu yuzden yalniz capInfo'nun KENDI degerini
+  // ve olcu on-eklerini duseriyoruz.
+  const olcuOnEk = /^(dn|od|nd|pn|cap)$/;
+  const tokens = adaylar.filter((t) => {
+    if (olcuOnEk.test(t)) return false;
+    if (!capInfo) return true;
+    const n = parseFloat(t.replace(',', '.'));
+    return !(Number.isFinite(n) && n === capInfo.value);
+  });
 
   return { raw, notProduct: false, familySlug, tokens, capInfo, boyTag, unit: unit ?? null };
 }

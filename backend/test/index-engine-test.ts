@@ -344,6 +344,55 @@ async function run() {
       armas[0].urun.rowKey !== armas[1].urun.rowKey);
   }
 
+  // ══ CANLI VAKA (15.07): AILE COZULEMEYEN SATIR ═══════════════════
+  // Kullanici teklif ekraninda yakaladi: "OTOMATİK HAVA ATMA PÜRJÖRÜ DN 20"
+  // satirina 359 aday onerildi (sprinkler hortumu, dogalgaz hortumu,
+  // kondenstop...). KOK: tum ad-token filtrelemesi `if (familySlug)` blogunun
+  // icindeydi → aile cozulemeyince HICBIR ad kisiti uygulanmiyor, geriye
+  // yalniz cap kaliyordu. Sokmeye calistigimiz hastaligin ta kendisi.
+  {
+    const havuz = [
+      prod({ kategori: 'Esnek Metal Hortum', ad: 'Sprinkler bağlantı hortumu', cins: 'SP-FLEX', cap: 'DN20', price: 700, urunKodu: 'S1', sheetName: 'S' }),
+      prod({ kategori: 'Doğalgaz', ad: 'Doğalgaz hortumu', cins: 'ocak-fırın', cap: 'DN20', price: 300, urunKodu: 'S2', sheetName: 'S' }),
+      prod({ kategori: 'Kondenstop', ad: 'Termostatik kondenstop', cap: 'DN20', price: 1200, urunKodu: 'S3', sheetName: 'S' }),
+      prod({ kategori: 'Küresel Vanalar', ad: 'Küresel vana', cins: 'pirinç', cap: 'DN20', price: 850, urunKodu: 'S4', sheetName: 'S' }),
+    ];
+    const r = m('OTOMATİK HAVA ATMA PÜRJÖRÜ DN 20', havuz);
+    check('CANLI: aile cozulemeyen satir → 359 aday DEGIL, "markada yok"',
+      r.confidence === 'none' && r.netPrice === 0,
+      `got ${r.confidence} aday=${r.candidates?.length}`);
+    check('CANLI: sprinkler/dogalgaz hortumu ADAY DEGIL',
+      !(r.candidates ?? []).some((c) => /hortum|kondenstop|vana/i.test(c.materialName)),
+      JSON.stringify(r.candidates?.map((c) => c.materialName)));
+    check('CANLI: neden soylenir (taninmayan kelimeler)',
+      !!r.reason && r.reason.length > 5, `got "${r.reason}"`);
+
+    // R11 KORUNUR: hic ad kelimesi olmayan satir → SORU (yok DEGIL).
+    // Ayrim: "bir sey sorulmadi" ≠ "var olmayan bir sey soruldu".
+    const r2 = m('DN 20', havuz);
+    check('R11 korundu: yalin "DN 20" → soru (4 aday), sifir DEGIL',
+      r2.confidence === 'multi' && (r2.candidates?.length ?? 0) === 4,
+      `got ${r2.confidence} aday=${r2.candidates?.length}`);
+
+    // Aile cozulen satirda KARAR #3 hala gecerli: yazim hatasi sifir vermez
+    const komp = m('Dilatsyon kompansatörü DN25', HAVUZ_KOMPANSATOR);
+    check('KARAR #3 sinirlandi ama BOZULMADI (aile varsa yazim hatasi → soru)',
+      komp.confidence === 'multi', `got ${komp.confidence}`);
+  }
+
+  // ══ OLCU TOKEN'LARI AD SANILMAZ ══════════════════════════════════
+  {
+    const L = parseLine('OTOMATİK HAVA ATMA PÜRJÖRÜ DN 20');
+    check('OLCU: "dn" ve "20" ad token\'i DEGIL (capInfo tuketti)',
+      !L.tokens.includes('dn') && !L.tokens.includes('20'), JSON.stringify(L.tokens));
+    check('OLCU: gercek ad kelimeleri korundu', L.tokens.includes('purjoru') && L.tokens.includes('otomatik'),
+      JSON.stringify(L.tokens));
+    // HASSAS: capla ilgisiz sayi (sicaklik) KORUNMALI
+    const L2 = parseLine('Sprinkler 68 derece 1/2"');
+    check('OLCU: "68" (sicaklik) ayiklanmadi — yalniz capin KENDI degeri duser',
+      L2.tokens.includes('68'), JSON.stringify(L2.tokens));
+  }
+
   // ══ FLANS vs FLANSLI — teklif satiri COK KOLONLU metindir ════════
   // Urun tarafinda bu tuzak YOK (yalniz Ad kolonu okunur). Teklif satiri
   // ise ad+cins+baglanti kelimelerini BIR ARADA tasir; yalin /flans/

@@ -52,38 +52,53 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   // aday olamaz — cunku skor yok, filtre var.
   // 'belirsiz' urunler (aile cozulemedi) havuza HIC girmez (PRD 2A).
   let rows = pool.filter((r) => !r.urun.belirsiz);
-  let bilinmeyen: string[] = [];
 
+  // ── 1a. SEVIYE1: AILE (cozulduyse) ───────────────────────────────
   if (line.familySlug) {
     rows = rows.filter((r) => r.urun.adSlug === line.familySlug);
     if (rows.length === 0) return { kind: 'none', reason: 'ad-yok', detail: line.familySlug };
+  }
 
-    // Seviye2: alt-ad token'lari. Dagarcik AILE HAVUZUNDAN uretilir.
-    const vocab = buildFamilyVocab(rows);
-    const yol = classifyTokens(line.tokens, vocab);
-    bilinmeyen = yol.bilinmeyen;
+  // ── 1b. SEVIYE2: AD TOKEN'LARI — AILE COZULMESE DE UYGULANIR ─────
+  // ⚠ Bunu once yanlis yaptim: tum token filtrelemesi `if (familySlug)`
+  // blogunun ICINDEYDI. Aile cozulemeyen satirda ("OTOMATİK HAVA ATMA
+  // PÜRJÖRÜ DN 20" → aile=null, sozlukte yok) HICBIR ad kisiti uygulanmiyor,
+  // geriye yalniz cap kaliyordu → DN20'li HER urun aday oluyordu (canli
+  // vakada 359 aday: sprinkler hortumu, dogalgaz hortumu, kondenstop...).
+  // Bu, tam da sokmeye calistigimiz hastaligin ta kendisiydi.
+  //
+  // Dagarcik: aile cozulduyse aile havuzundan, cozulmediyse TUM havuzdan.
+  const vocab = buildFamilyVocab(rows);
+  const yol = classifyTokens(line.tokens, vocab);
+  const bilinmeyen = yol.bilinmeyen;
 
-    // KARAR #3: taninmayan token KISIT DEGILDIR.
-    // Sert sifir vermek yazim hatasinda cikmaz sokak yaratirdi ("Dilatsyon"
-    // → 0 sonuc → alternatif arama da ayni hatali kelimeyle arar → kullanici
-    // tikanir). Bunun yerine aile sorusuna duseriz; kullanici secince es
-    // anlamli ogrenilir (TerminologyAlias) → sonraki sefer sert kilit calisir.
-    // K1/K6 KORUNUR: aile kilidi durdugu icin vana/hortum yine sizamaz.
-    if (yol.ad.length) {
-      const daralt = rows.filter((r) => altKume(yol.ad, r.urun.adTokens));
-      if (daralt.length > 0) rows = daralt;
-      else return { kind: 'none', reason: 'ad-yok', detail: yol.ad.join(' ') };
-    }
+  if (yol.ad.length) {
+    const daralt = rows.filter((r) => altKume(yol.ad, r.urun.adTokens));
+    if (daralt.length > 0) rows = daralt;
+    else return { kind: 'none', reason: 'ad-yok', detail: yol.ad.join(' ') };
+  }
 
-    // ── 3/4. YAZILI CINS + BAGLANTI — SERT (K4) ────────────────────
-    if (yol.cins.length) {
-      const d = rows.filter((r) => altKume(yol.cins, r.urun.cinsTokens));
-      if (d.length > 0) rows = d; else return { kind: 'none', reason: 'kriter-yok', detail: yol.cins.join(' ') };
-    }
-    if (yol.baglanti.length) {
-      const d = rows.filter((r) => altKume(yol.baglanti, r.urun.baglantiTokens));
-      if (d.length > 0) rows = d; else return { kind: 'none', reason: 'kriter-yok', detail: yol.baglanti.join(' ') };
-    }
+  // ── KARAR #3'UN SINIRI ───────────────────────────────────────────
+  // "Taninmayan token kisit degildir" kurali, AILE KILIDI ZATEN TUTUYORKEN
+  // dogrudur: kompansator ailesi icinde "dilatsyon" yazim hatasi → alt-ad
+  // sorusu, vana/hortum yine sizamaz. Kullanici secer, es anlamli ogrenilir.
+  //
+  // Ama aile HIC cozulmemisken ayni kurali uygulamak "her seyi goster"
+  // demektir. Ayrim sudur:
+  //   • hic ad kelimesi YOK ("DN 20")        → bir sey sorulmadi → SOR (R11)
+  //   • kelime VAR ama hicbiri taninmiyor    → var olmayan bir sey soruldu → YOK
+  if (!line.familySlug && yol.ad.length === 0 && bilinmeyen.length > 0) {
+    return { kind: 'none', reason: 'ad-yok', detail: bilinmeyen.join(' ') };
+  }
+
+  // ── 3/4/5. YAZILI CINS + BAGLANTI — SERT (K4) ────────────────────
+  if (yol.cins.length) {
+    const d = rows.filter((r) => altKume(yol.cins, r.urun.cinsTokens));
+    if (d.length > 0) rows = d; else return { kind: 'none', reason: 'kriter-yok', detail: yol.cins.join(' ') };
+  }
+  if (yol.baglanti.length) {
+    const d = rows.filter((r) => altKume(yol.baglanti, r.urun.baglantiTokens));
+    if (d.length > 0) rows = d; else return { kind: 'none', reason: 'kriter-yok', detail: yol.baglanti.join(' ') };
   }
   if (rows.length === 0) return { kind: 'none', reason: 'ad-yok' };
 
