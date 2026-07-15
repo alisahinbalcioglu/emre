@@ -227,6 +227,107 @@ export function walkCategories(rows: ImportRowView[]): (string | null)[] {
 
 /** Y2 — kolon rolu tespiti: header adindan cins/cap kolonlarini bul.
  *  Bilinen role oturmayan kolonlar EK ALAN olarak korunur (dusurulmez). */
+// ════════════════════════════════════════════════════════════════════
+// 11 KOLONLU YAPILANDIRILMIS FIYAT LISTESI — kolon haritasi (SAF)
+//
+// Karar #1: bu format artik TUM listeler icin standart. Indeksleyici
+// aileyi/cinsi/baglantiyi METINDEN TAHMIN ETMEZ, bu kolonlardan OKUR.
+//
+// Bugune kadar Baglanti/Boy/Kategori/Not kolonlarinin regex'i YOKTU →
+// hucreler sessizce dusuyordu; Urun Kodu okunup atiliyordu.
+// ════════════════════════════════════════════════════════════════════
+
+export interface PriceListCols {
+  name?: number;
+  price?: number;
+  code?: number;
+  unit?: number;
+  curr?: number;
+  desc?: number; // Malzeme Cinsi
+  diam?: number; // Cap
+  bagl?: number; // Baglanti Sekli
+  boy?: number; // Boy (mm)
+  kategori?: number; // Kategori (PDF Bolumu)
+  not?: number; // Not
+}
+
+const COL_NORM = (s: any) => String(s ?? '')
+  .replace(/İ/g, 'i').replace(/I/g, 'i').replace(/ı/g, 'i')
+  .replace(/[şŞ]/g, 's').replace(/[çÇ]/g, 'c')
+  .replace(/[üÜ]/g, 'u').replace(/[öÖ]/g, 'o').replace(/[ğĞ]/g, 'g')
+  .toLowerCase().trim();
+
+/**
+ * Bir baslik satirini kolon rollerine esler.
+ *
+ * SIRA KRITIK — her hucre YALNIZ TEK role oturur (ilk eslesen kazanir):
+ *  - NAME_RE 'cinsi' ve 'aciklama'yi da yakalar; bu yuzden "Malzeme Adi"
+ *    once gelmeli ki "Malzeme Cinsi" desc'e dussun.
+ *  - BOY_RE ile DIAM_RE'nin 'boyut'u carismasin diye kelime siniri sart.
+ *  - NOT_RE zincirin SONUNDA ve TAM eslesme ile (NAME_RE 'aciklama'yi
+ *    zaten alir; ad atanmissa 'Aciklama' nota duser).
+ */
+export function mapPriceListColumns(headerRow: any[]): PriceListCols {
+  const NAME_RE = /(malzeme|urun|stok)\s*(adi|tanimi|tanim)|urun\s*ad|malzeme\s*ad|aciklama|tanim|cinsi/;
+  const PRICE_RE = /liste\s*fiyat|birim\s*fiyat|net\s*fiyat|satis\s*fiyat|\bfiyat\b|price/;
+  const CODE_RE = /\bkod\b|kodu/;
+  const UNIT_RE = /^birim$|^brm$|^br$|olcu\s*birim/;
+  const CURR_RE = /para\s*birimi|doviz|currency|\bpb\b/;
+  const DESC_RE = /cinsi|\bcins\b|\btip\b|model|renk/;
+  const DIAM_RE = /^cap$|\bcap\b|ebat|\bolcu\b|boyut/;
+  const BAGL_RE = /baglanti|baglama|\bbaglant/;
+  const BOY_RE = /^boy\b|\bboy\s*\(|uzunluk|\bboy$/;
+  const KATEGORI_RE = /kategori|\bbolum/;
+  const NOT_RE = /^not$|^notlar$|^aciklama$|^ozellik/;
+
+  const found: PriceListCols = {};
+  (headerRow ?? []).forEach((cell, c) => {
+    const t = COL_NORM(cell);
+    if (!t) return;
+    if (found.name === undefined && NAME_RE.test(t)) found.name = c;
+    else if (found.price === undefined && PRICE_RE.test(t)) found.price = c;
+    else if (found.code === undefined && CODE_RE.test(t)) found.code = c;
+    else if (found.unit === undefined && UNIT_RE.test(t)) found.unit = c;
+    else if (found.curr === undefined && CURR_RE.test(t)) found.curr = c;
+    else if (found.desc === undefined && DESC_RE.test(t)) found.desc = c;
+    else if (found.diam === undefined && DIAM_RE.test(t)) found.diam = c;
+    else if (found.bagl === undefined && BAGL_RE.test(t)) found.bagl = c;
+    else if (found.boy === undefined && BOY_RE.test(t)) found.boy = c;
+    else if (found.kategori === undefined && KATEGORI_RE.test(t)) found.kategori = c;
+    else if (found.not === undefined && NOT_RE.test(t)) found.not = c;
+  });
+  return found;
+}
+
+/**
+ * Onizleme icin "yapilandirma skoru": dosya yeni standarda ne kadar uyuyor?
+ * ZORUNLU yalniz Malzeme Adi + Birim Fiyat (Karar: gerisi uyari, red degil).
+ */
+export function yapilandirmaSkoru(cols: PriceListCols): {
+  skor: number; toplam: number; eksik: string[]; zorunluTamam: boolean;
+} {
+  const BEKLENEN: { key: keyof PriceListCols; label: string }[] = [
+    { key: 'kategori', label: 'Kategori' },
+    { key: 'name', label: 'Malzeme Adı' },
+    { key: 'desc', label: 'Malzeme Cinsi' },
+    { key: 'bagl', label: 'Bağlantı Şekli' },
+    { key: 'diam', label: 'Çap' },
+    { key: 'boy', label: 'Boy (mm)' },
+    { key: 'unit', label: 'Birim' },
+    { key: 'price', label: 'Birim Fiyat' },
+    { key: 'curr', label: 'Para Birimi' },
+    { key: 'code', label: 'Ürün Kodu' },
+    { key: 'not', label: 'Not' },
+  ];
+  const eksik = BEKLENEN.filter((b) => cols[b.key] === undefined).map((b) => b.label);
+  return {
+    skor: BEKLENEN.length - eksik.length,
+    toplam: BEKLENEN.length,
+    eksik,
+    zorunluTamam: cols.name !== undefined && cols.price !== undefined,
+  };
+}
+
 export function detectExtraRoles(
   headers: { field: string; headerName: string }[],
 ): { cinsField?: string; capField?: string } {

@@ -6,6 +6,7 @@
 import {
   parseTrNumber, walkCategories, detectExtraRoles, detectCurrency,
   inferPriceFormat, flagPriceOutliers, ImportRowView,
+  mapPriceListColumns, yapilandirmaSkoru,
 } from '../src/utils/import-fidelity';
 import { deriveEtiketler, isValidAdOverride } from '../src/utils/etiket-display';
 
@@ -207,6 +208,52 @@ num('  2.500,00 TL ', 2500);
   check('Sozluk koruma: kanalizasyon hava kanali DEGIL', kanaliz.adSlug !== 'kanal', `got ${JSON.stringify(kanaliz)}`);
   const yivli = deriveEtiketler('Test Drenaj Vanası Yivli DN25');
   check('Cins: yivli baglanti etiketi', yivli.cins.includes('Yivli'), `got "${yivli.cins}"`);
+}
+
+// ── 11 KOLONLU YAPILANDIRILMIS FORMAT (Karar #1) ───────────
+// Basliklar kullanicinin GERCEK dosyasindan birebir (Ayvaz S5-161 TAM).
+// Bu dort kolonun regex'i YOKTU → hucreler sessizce dusuyordu.
+{
+  const AYVAZ_BASLIK = [
+    'Kategori (PDF Bölümü)', 'Malzeme Adı', 'Malzeme Cinsi', 'Bağlantı Şekli',
+    'Çap', 'Boy (mm)', 'Birim', 'Birim Fiyat', 'Para Birimi',
+    'Ürün Kodu (Art.No)', 'Not',
+  ];
+  const c = mapPriceListColumns(AYVAZ_BASLIK);
+
+  check('11K Kategori kolonu (bugun DUSUYOR)', c.kategori === 0, `got ${c.kategori}`);
+  check('11K Malzeme Adı → name', c.name === 1, `got ${c.name}`);
+  check('11K Malzeme Cinsi → desc (NAME_RE "cinsi"yi de yakalar; ad ONCE atanmali)',
+    c.desc === 2, `got ${c.desc}`);
+  check('11K Bağlantı Şekli (bugun DUSUYOR — K3/K4 bu veri olmadan imkansiz)',
+    c.bagl === 3, `got ${c.bagl}`);
+  check('11K Çap → diam', c.diam === 4, `got ${c.diam}`);
+  check('11K Boy (mm) (bugun DUSUYOR; DIAM_RE "boyut" ile carismamali)',
+    c.boy === 5, `got ${c.boy}`);
+  check('11K Birim → unit', c.unit === 6, `got ${c.unit}`);
+  check('11K Birim Fiyat → price', c.price === 7, `got ${c.price}`);
+  check('11K Para Birimi → curr', c.curr === 8, `got ${c.curr}`);
+  check('11K Ürün Kodu (Art.No) → code (bugun okunup ATILIYOR — K7)',
+    c.code === 9, `got ${c.code}`);
+  check('11K Not (bugun DUSUYOR)', c.not === 10, `got ${c.not}`);
+
+  const s = yapilandirmaSkoru(c);
+  check('11K yapilandirma skoru 11/11', s.skor === 11 && s.eksik.length === 0,
+    `got ${s.skor}/${s.toplam} eksik=${JSON.stringify(s.eksik)}`);
+  check('11K zorunlular tamam', s.zorunluTamam === true);
+
+  // ESKI dagimik format hala calisir (geriye uyum — F2 dual-write donemi)
+  const eski = mapPriceListColumns(['Malzeme Adı', 'Birim', 'Liste Fiyatı']);
+  check('11K eski format bozulmadi (ad+fiyat yeter)',
+    eski.name === 0 && eski.unit === 1 && eski.price === 2, `got ${JSON.stringify(eski)}`);
+  const eskiSkor = yapilandirmaSkoru(eski);
+  check('11K eski format: zorunlu tamam ama eksik kolonlar raporlanir',
+    eskiSkor.zorunluTamam === true && eskiSkor.eksik.includes('Bağlantı Şekli'),
+    `got ${JSON.stringify(eskiSkor.eksik)}`);
+
+  // Zorunlu kolon yoksa (Karar: yalniz Ad + Birim Fiyat zorunlu)
+  const fiyatsiz = mapPriceListColumns(['Malzeme Adı', 'Birim']);
+  check('11K fiyat kolonu yoksa zorunluTamam=false', yapilandirmaSkoru(fiyatsiz).zorunluTamam === false);
 }
 
 console.log(`\n${'='.repeat(60)}`);

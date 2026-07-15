@@ -16,8 +16,12 @@ import {
   flagPriceOutliers,
   DotMeaning,
   ImportRowView,
+  mapPriceListColumns,
+  yapilandirmaSkoru,
+  PriceListCols,
 } from '../utils/import-fidelity';
 import { deriveEtiketler, isValidAdOverride } from '../utils/etiket-display';
+import { buildProductIndex, ProductColumns } from '../modules/matching/index/product-index';
 
 export interface MaterialSheetInput {
   name: string;
@@ -54,6 +58,22 @@ export interface ImportPreviewItem {
   sortOrder?: number;
   /** Z6: makulluk isareti (sifir/negatif, kategori medyanina gore ×1000). */
   sapma?: string | null;
+  // ── 11 KOLONLU YAPILANDIRILMIS FORMAT (Karar #1) ──────────────────
+  // Bu alanlarin regex'i YOKTU → hucreler sessizce dusuyordu. ProductIndex
+  // bunlardan beslenir; K3/K4 (baglanti sorusu) ve K7 (ayni kod farkli
+  // sayfa) bu veri olmadan FIZIKSEL OLARAK imkansizdi.
+  /** Baglanti Sekli — "flanşlı" | "kaynak boyunlu" | "döner flanşlı"... */
+  baglanti?: string | null;
+  /** Boy (mm) — Excel sayi da metin de verebilir */
+  boy?: number | string | null;
+  /** Urun Kodu (Art.No) — TEKIL ANAHTAR DEGIL (K7): yalniz kimlik/izleme */
+  urunKodu?: string | null;
+  /** Not sutunu birebir */
+  not?: string | null;
+  /** Kaynak sayfa (rowKey'in sheetKey bileseni — K7'nin tasiyicisi) */
+  sheetName?: string | null;
+  /** Kaynak satir indeksi (izleme) */
+  sourceRow?: number;
   // ── 3-ETIKET MODELI: onizlemede AD/CINS/CAP gosterimi ──
   /** AD gosterimi ("Küresel Vana") — cozulemezse null → satir isaretlenir */
   etiketAd?: string | null;
@@ -478,19 +498,9 @@ export class AdminService {
       .replace(/[üÜ]/g, 'u').replace(/[öÖ]/g, 'o').replace(/[ğĞ]/g, 'g')
       .toLowerCase().trim();
 
-    // Header satirini bul: ad + fiyat kolonu ayni satirda eslesmeli
-    const NAME_RE = /(malzeme|urun|stok)\s*(adi|tanimi|tanim)|urun\s*ad|malzeme\s*ad|aciklama|tanim|cinsi/;
-    const CODE_RE = /\bkod\b|kodu/;
-    const UNIT_RE = /^birim$|^brm$|^br$|olcu\s*birim/;
-    const PRICE_RE = /liste\s*fiyat|birim\s*fiyat|net\s*fiyat|satis\s*fiyat|\bfiyat\b|price/;
-    const CURR_RE = /para\s*birimi|doviz|currency|\bpb\b/;
-    // Ayirt edici ek kolonlar: ayni "Malzeme Adi"na farkli cap/cins/renk
-    // satirlari gelir (orn. Borusan boru listesi) — ada EKLENMEZSE upsert
-    // ayni isimde tum caplari tek kayda ezer (veri kaybi).
-    const DESC_RE = /cinsi|\bcins\b|\btip\b|model|renk/;
-    const DIAM_RE = /^cap$|\bcap\b|ebat|\bolcu\b|boyut/;
-
-    type Cols = { name?: number; code?: number; unit?: number; price?: number; curr?: number; desc?: number; diam?: number };
+    // Kolon haritasi SAF fonksiyondadir (import-fidelity.mapPriceListColumns)
+    // — regex'ler tek yerde durur, test edilir (test/admin-import-test.ts).
+    type Cols = PriceListCols;
     const sheetPlans: { sheetName: string; grid: any[][]; headerRow: number; cols: Cols }[] = [];
     const warnings: string[] = [];
 
@@ -504,18 +514,7 @@ export class AdminService {
       let cols: Cols = {};
       const scanLimit = Math.min(15, grid.length);
       for (let r = 0; r < scanLimit; r++) {
-        const found: Cols = {};
-        (grid[r] ?? []).forEach((cell, c) => {
-          const t = norm(cell);
-          if (!t) return;
-          if (found.name === undefined && NAME_RE.test(t)) found.name = c;
-          else if (found.price === undefined && PRICE_RE.test(t)) found.price = c;
-          else if (found.code === undefined && CODE_RE.test(t)) found.code = c;
-          else if (found.unit === undefined && UNIT_RE.test(t)) found.unit = c;
-          else if (found.curr === undefined && CURR_RE.test(t)) found.curr = c;
-          else if (found.desc === undefined && DESC_RE.test(t)) found.desc = c;
-          else if (found.diam === undefined && DIAM_RE.test(t)) found.diam = c;
-        });
+        const found = mapPriceListColumns(grid[r] ?? []);
         if (found.name !== undefined && found.price !== undefined) {
           headerRow = r;
           cols = found;
@@ -598,10 +597,22 @@ export class AdminService {
         const price = parsed.value != null ? Math.round(parsed.value * 100) / 100 : null;
         const unit = cols.unit !== undefined ? String(row[cols.unit] ?? '').trim() : '';
         const rawStr = typeof rawPrice === 'number' ? rawPrice : String(rawPrice ?? '').trim();
+
+        // ── 11 KOLONLU FORMAT: bugune kadar sessizce dusen alanlar ────────
+        const bagl = cols.bagl !== undefined ? String(row[cols.bagl] ?? '').trim() : '';
+        const boyRaw = cols.boy !== undefined ? row[cols.boy] : null;
+        const notRaw = cols.not !== undefined ? String(row[cols.not] ?? '').trim() : '';
+        const kod = cols.code !== undefined ? String(row[cols.code] ?? '').trim() : '';
+        // KATEGORI iki dunyayi da destekler:
+        //  - YENI format: her veri satirinda KOLON olarak durur
+        //  - ESKI format: fiyatsiz "satir bandi" basligi (aktifKategori)
+        // Kolon varsa o kazanir; yoksa band mantigi aynen korunur (Y1).
+        const katCol = cols.kategori !== undefined ? String(row[cols.kategori] ?? '').trim() : '';
+        const kategori = katCol || aktifKategori;
         // 3-ETIKET MODELI: urun 3 etikete ayristirilir (kategori baglami
         // dahil — kayit tarafindaki tagText ile AYNI metin), onizlemede
         // gosterilir; AD cozulemezse isaretlenir + admin duzeltebilir.
-        const etiket = deriveEtiketler([aktifKategori ?? '', fullName].filter(Boolean).join(' '));
+        const etiket = deriveEtiketler([kategori ?? '', fullName].filter(Boolean).join(' '));
         items.push({
           materialName: fullName, unit: unit || 'Adet',
           unitPrice: price,
@@ -613,8 +624,15 @@ export class AdminService {
           asDecimal: parsed.ambiguous ? parseTrNumber(String(rawPrice), 'decimal').value : undefined,
           currency: curr,
           // Y1/Y2/Y3/Y5 kaynak sadakati
-          kategori: aktifKategori, cins: desc || null, cap: diam || null,
+          kategori, cins: desc || null, cap: diam || null,
           adRaw: name, birimRaw: unit || null, sortOrder: items.length,
+          // ── 11 KOLONLU FORMAT (ProductIndex'in besleyicisi) ──
+          baglanti: bagl || null,
+          boy: boyRaw === '' || boyRaw === null || boyRaw === undefined ? null : boyRaw,
+          urunKodu: kod || null,
+          not: notRaw || null,
+          sheetName,
+          sourceRow: r,
           // 3-Etiket gosterimi
           etiketAd: etiket.ad, etiketAdSlug: etiket.adSlug,
           etiketCins: etiket.cins, etiketCap: etiket.cap,
@@ -646,7 +664,17 @@ export class AdminService {
         }
       : null;
 
-    return { items, warnings, formatQuestion, dotMeaning: effectiveDot };
+    // ── YAPILANDIRMA SKORU (Karar #1): dosya yeni 11 kolonlu standarda ne
+    // kadar uyuyor? Zorunlu YALNIZ Ad + Birim Fiyat; eksik kolonlar RED degil
+    // UYARI — ama hangi yetenegin calismayacagini onizlemede soyleriz
+    // (orn. Baglanti kolonu yoksa K3 "yalniz baglanti sorulur" imkansizdir).
+    const skorlar = sheetPlans.map((p) => ({ sheetName: p.sheetName, ...yapilandirmaSkoru(p.cols) }));
+    const enIyi = skorlar.reduce((a, b) => (b.skor > a.skor ? b : a), skorlar[0]);
+    const yapilandirma = enIyi
+      ? { skor: enIyi.skor, toplam: enIyi.toplam, eksik: enIyi.eksik, sayfalar: skorlar }
+      : null;
+
+    return { items, warnings, formatQuestion, dotMeaning: effectiveDot, yapilandirma };
   }
 
   /** Onizleme cevabi: Z6 sapma isaretleri + ozet istatistikler eklenir. */
@@ -671,6 +699,8 @@ export class AdminService {
       warnings: parsed.warnings,
       formatQuestion: parsed.formatQuestion,
       dotMeaning: parsed.dotMeaning,
+      // Karar #1: 11 kolonlu format standart — hangi kolonlar eksik?
+      yapilandirma: parsed.yapilandirma,
       stats: {
         toplam: parsed.items.length,
         gecerli: parsed.items.filter((i) => (i.unitPrice ?? 0) > 0).length,
@@ -810,6 +840,10 @@ export class AdminService {
       // 3-Etiket: admin'in AD duzeltmesi (onizleme dropdown'u) — Material
       // .materialType/tags'e islenir
       adOverride?: string | null;
+      // ── 11 KOLONLU FORMAT → ProductIndex (F2 dual-write) ──────────
+      baglanti?: string | null; boy?: number | string | null;
+      urunKodu?: string | null; not?: string | null;
+      sheetName?: string | null; sourceRow?: number;
     }[],
     exchangeRate?: number,
     opts?: { replaceExisting?: boolean },
@@ -866,6 +900,11 @@ export class AdminService {
     let adDuzeltilen = 0;
     const fiyatDegisimleri: { ad: string; eski: number; yeni: number }[] = [];
     const kategoriler = new Set<string>();
+    // ── ProductIndex dual-write sayaclari (F2) ──
+    let belirsizSayisi = 0;
+    const gorulenRowKeys = new Map<string, number>();
+    const rowKeyTekrar = new Map<string, number>();
+    const rowKeyCakismalari: { rowKey: string; ad: string; ilk: number; ikinci: number }[] = [];
 
     for (const item of validItems) {
       const name = item.materialName?.trim();
@@ -927,6 +966,78 @@ export class AdminService {
         create: { materialId: material.id, brandId, priceListId: priceList.id, price, ...fidelity },
       });
 
+      // ══ DUAL-WRITE → ProductIndex (F2) ═══════════════════════════
+      // Motor HENUZ burayi okumuyor (F4'te devreye girer) — bu faz yalniz
+      // indeksi doldurur, canli davranis DEGISMEZ.
+      //
+      // Legacy yolun aksine kimlik ADA degil DOSYA SATIRINA (rowKey) bagli:
+      //  - K7: ayni kod farkli sayfada → iki ayri kayit
+      //  - Ayni ad/cins/capta farkli BAGLANTI → iki ayri kayit (legacy'de
+      //    Material.name @unique yuzunden birbirini eziyordu)
+      //  - upsert(priceListId_rowKey) → ProductIndex.id KORUNUR → bagli
+      //    UserLibrary.productIndexId ayakta kalir → ISKONTO KAYBOLMAZ
+      const pcols: ProductColumns = {
+        kategori: item.kategori ?? null,
+        ad: item.adRaw || name,
+        cins: item.cins ?? null,
+        baglanti: item.baglanti ?? null,
+        cap: item.cap ?? null,
+        boy: item.boy ?? null,
+        birim: item.birimRaw ?? unit,
+        price,
+        paraBirimi: item.currency ?? 'TRY',
+        urunKodu: item.urunKodu ?? null,
+        not: item.not ?? null,
+        sheetName: item.sheetName ?? null,
+        sourceRow: item.sourceRow ?? 0,
+        sortOrder: item.sortOrder ?? 0,
+      };
+      const idx = buildProductIndex(pcols);
+      // Admin'in AD duzeltmesi indekse de islenir (3-Etiket dropdown'u) —
+      // "etiketsiz urun eslestirmeye giremez" kapisi burada da acilir.
+      if (isValidAdOverride(item.adOverride)) {
+        idx.adSlug = item.adOverride!;
+        idx.belirsiz = false;
+      }
+      if (idx.belirsiz) belirsizSayisi++;
+      // ── AYNI DEMET IKI KEZ → SESSIZCE EZME, AYIR ────────────────────
+      // Demet kimligi (sayfa+ad+cins+baglanti+cap+boy+kod) esit olan iki
+      // satir dosyada gercekten olabilir (orn. ayni flans iki kez, farkli
+      // fiyatla). Ustune yazmak = kaynaga sadakatsizlik + K7 ihlali.
+      // Cozum: ikinciye #2, ucuncuye #3 soneki + raporda goster.
+      // Sonek SIRAYA baglidir → ayni dosya tekrar yuklendiginde ayni sira,
+      // ayni sonek → idempotentlik korunur.
+      const oncekiRowKey = gorulenRowKeys.get(idx.rowKey);
+      if (oncekiRowKey !== undefined) {
+        const kacinci = (rowKeyTekrar.get(idx.rowKey) ?? 1) + 1;
+        rowKeyTekrar.set(idx.rowKey, kacinci);
+        rowKeyCakismalari.push({ rowKey: idx.rowKey, ad: pcols.ad, ilk: oncekiRowKey, ikinci: item.sourceRow ?? 0 });
+        idx.rowKey = `${idx.rowKey}#${kacinci}`;
+      }
+      gorulenRowKeys.set(idx.rowKey, item.sourceRow ?? 0);
+
+      const piData: any = {
+        brandId, priceListId: priceList.id,
+        kategori: pcols.kategori, ad: pcols.ad, cins: pcols.cins,
+        baglanti: pcols.baglanti, capRaw: pcols.cap,
+        boyMm: typeof pcols.boy === 'number' ? pcols.boy
+          : pcols.boy ? parseFloat(String(pcols.boy).replace(',', '.')) || null : null,
+        birim: pcols.birim, price, currency: pcols.paraBirimi ?? 'TRY',
+        urunKodu: pcols.urunKodu, not: pcols.not,
+        sheetName: pcols.sheetName, sourceRow: pcols.sourceRow, sortOrder: pcols.sortOrder,
+        adSlug: idx.adSlug, adBucket: idx.adBucket, adTokens: idx.adTokens,
+        cinsNorm: idx.cinsNorm, cinsTokens: idx.cinsTokens,
+        baglantiNorm: idx.baglantiNorm, baglantiTokens: idx.baglantiTokens,
+        sizeClass: idx.sizeClass, capTags: idx.capTags, capNorm: idx.capNorm,
+        boyTag: idx.boyTag, displayName: idx.displayName, rowKey: idx.rowKey,
+        indexVersion: idx.indexVersion, belirsiz: idx.belirsiz,
+      };
+      await (this.prisma as any).productIndex.upsert({
+        where: { priceListId_rowKey: { priceListId: priceList.id, rowKey: idx.rowKey } },
+        update: piData,
+        create: piData,
+      });
+
       const oldPrice = oldPrices.get(name.toLocaleLowerCase('tr'));
       if (oldPrice !== undefined) {
         updated++;
@@ -938,7 +1049,20 @@ export class AdminService {
       }
     }
 
+    // ── DOSYADAN KALKAN SATIRLAR (F2) ────────────────────────────────
+    // Legacy yol replaceExisting'de deleteMany yapar. ProductIndex'te
+    // BILINCLI OLARAK yapmiyoruz: rowKey upsert'un tum amaci id'leri (dolayisiyla
+    // bagli UserLibrary.productIndexId FK'sini, dolayisiyla KULLANICININ
+    // ISKONTOSUNU) korumak. Ama dosyadan kalkan satir da SESSIZCE kalmasin —
+    // raporlanir. Sert silme F3'te kutuphane bagi kurulunca, ONAYLA yapilir.
+    const bayatlar = await (this.prisma as any).productIndex.findMany({
+      where: { priceListId: priceList.id, rowKey: { notIn: Array.from(gorulenRowKeys.keys()) } },
+      select: { rowKey: true, displayName: true },
+      take: 50,
+    }).catch(() => [] as any[]);
+
     console.log(`[SaveBulk] Sonuc: ${imported} yeni, ${updated} guncel, ${removed} eski kalem temizlendi, ${kategoriler.size} kategori${adDuzeltilen ? `, ${adDuzeltilen} AD duzeltmesi` : ''}`);
+    console.log(`[SaveBulk] ProductIndex: ${gorulenRowKeys.size} indeksli satir${belirsizSayisi ? `, ${belirsizSayisi} BELIRSIZ (aile cozulemedi → eslestirmeye giremez)` : ''}${rowKeyCakismalari.length ? `, ${rowKeyCakismalari.length} rowKey CAKISMASI` : ''}${bayatlar.length ? `, ${bayatlar.length} satir dosyadan KALKMIS (silinmedi, raporlandi)` : ''}`);
     return {
       imported, updated, skipped, removed,
       kategoriSayisi: kategoriler.size,
@@ -948,6 +1072,17 @@ export class AdminService {
       total: items.length,
       brandName: brand.name,
       priceListName: priceList.name,
+      // ── ProductIndex raporu (F2) ──
+      indeks: {
+        satir: gorulenRowKeys.size,
+        // PRD 2A: etiketi cikarilamayan satir "bekleyen" — sessizce yanlis
+        // eslesmektense GORUNUR sekilde eksik kalir. Admin dropdown'undan duzeltilir.
+        belirsiz: belirsizSayisi,
+        // Ayni dosyada ayni rowKey iki kez: sessiz ezme YOK, raporlanir
+        cakismalar: rowKeyCakismalari.slice(0, 20),
+        // Dosyadan kalkmis satirlar — SILINMEDI (iskonto korunur), raporlandi
+        bayat: bayatlar.map((b: any) => b.displayName),
+      },
     };
   }
 
