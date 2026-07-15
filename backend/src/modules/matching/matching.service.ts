@@ -10,6 +10,7 @@ import { TerminologyService } from './terminology.service';
 import { parseLine } from './index/line-parser';
 import { runQuery } from './index/query-engine';
 import { toMatchResult } from './index/outcome-mapper';
+import { INDEX_VERSION } from './index/product-index';
 import type { IndexedRow, LineQuery } from './index/types';
 import type { AliasHint, BrandClassHint } from './terminology.service';
 import { ExchangeRatesService } from '../../exchange-rates/exchange-rates.service';
@@ -180,11 +181,23 @@ export class MatchingService {
     // Manuel eklenen satirlarin indeksi yoktur → o marka v1'de kalir (bilinen
     // sinirlama; manuel satiri indekslemek ayri is).
     const indeksli = (libRows as any[]).filter((r) => r.productIndexId && r.product);
-    if (indeksli.length === libRows.length) {
+    // ── BAYAT INDEKS KAPISI ──────────────────────────────────────────
+    // adTokens VERITABANINDA saklidir; teklif satiri CANLI kodla cozulur.
+    // Tokenizer degisip indeks eski surumde kalirsa motor SESSIZCE yanlis
+    // cevap uretir. Canli vaka (15.07): "İZLENEBİLİR KELEBEK VANA" →
+    // "bu markada 'vana' tasiyan urun yok" dedi; oysa 23 tane vardi —
+    // indeks 'vana' token'ini eski kuralla ATMISTI.
+    // Bayat indekste v2 CALISMAZ: v1'e duser ve UYARIR (sessiz yanlis
+    // cevap yerine gorunur uyari + ne yapilacagi).
+    const bayat = indeksli.filter((r) => (r.product.indexVersion ?? 1) !== INDEX_VERSION);
+    if (bayat.length > 0) {
+      console.warn(`[Matching] ⚠ BAYAT INDEKS: ${bayat.length}/${libRows.length} satir eski surumde ` +
+        `(v${bayat[0].product.indexVersion ?? 1} ≠ v${INDEX_VERSION}) → v2 DEVRE DISI, v1'e dusuldu. ` +
+        `COZUM: fiyat listesini yeniden yukleyin (rowKey upsert id'leri korur, iskonto kaybolmaz).`);
+    } else if (indeksli.length === libRows.length) {
       console.log(`[Matching] v2 INDEKSLI MOTOR (Ad kilitli): ${libRows.length} satir, brand=${brandId}`);
       return this.matchV2(userId, brandId, materialNames, libRows as any[], toTry, variantTags, units);
-    }
-    if (indeksli.length > 0) {
+    } else if (indeksli.length > 0) {
       console.log(`[Matching] v1 LEGACY: ${indeksli.length}/${libRows.length} satir indeksli — TAMAMI indekslenmeden v2 devreye girmez`);
     }
 

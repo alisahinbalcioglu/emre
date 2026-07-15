@@ -57,7 +57,24 @@ export interface ProductIndexFields {
   indexVersion: number;
 }
 
-export const INDEX_VERSION = 1;
+/**
+ * INDEKS SURUMU — tokenize/kok alma/alan uretimi HER DEGISTIGINDE ARTTIR.
+ *
+ * Neden hayati: adTokens VERITABANINDA saklidir, teklif satiri ise CANLI
+ * kodla cozulur. Ikisi farkli surumdense motor SESSIZCE yanlis cevap uretir.
+ * Canli vaka (15.07): tokenizer "aile kelimesini dus"ten "kok al"a gecti;
+ * indeks eski surumde kaldi:
+ *   indeks:  "İzlenebilir kelebek vana" → {izlenebilir,kelebek}   ('vana' ATILMIS)
+ *   satir:   "İZLENEBİLİR KELEBEK VANA" → {izlenebilir,kelebek,vana}
+ * → 'vana' hicbir urunun adinda yok → Cins kisiti sanildi → "bu markada
+ *   'vana' tasiyan urun yok" (oysa 23 tane vardi).
+ *
+ * v2: kok alma + tireli kelime birlestirme + aile kelimesi ARTIK ATILMIYOR.
+ *
+ * Dispatch bu surumu KONTROL EDER (matching.service): bayat indekste v2
+ * CALISMAZ, v1'e duser ve uyarir. Sessiz yanlis cevap yerine gorunur uyari.
+ */
+export const INDEX_VERSION = 2;
 
 /** adSlug cozulemeyen satirin tasidigi isaret — eslestirmeye ADAY OLAMAZ. */
 export const BELIRSIZ_SLUG = 'belirsiz';

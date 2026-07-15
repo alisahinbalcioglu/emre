@@ -154,6 +154,29 @@ async function dispatchTestleri() {
       r !== undefined && typeof r.netPrice === 'number', `got ${JSON.stringify(r)?.slice(0, 80)}`);
   }
 
+  // D4b: BAYAT INDEKS → v2 SESSIZCE yanlis cevap VERMEZ, v1'e duser
+  // Canli vaka (15.07): tokenizer "aile kelimesini dus"ten "kok al"a gecti;
+  // indeks eski surumde kaldi → "İZLENEBİLİR KELEBEK VANA" satirina
+  // "bu markada 'vana' tasiyan urun yok" dedi (oysa 23 tane vardi), cunku
+  // indekste 'vana' token'i eski kuralla ATILMISTI. Sessiz yanlis cevap.
+  {
+    const eski = HAVUZ.map((r) => ({
+      ...r,
+      product: {
+        ...r.product,
+        indexVersion: 1,                       // ← BAYAT
+        adTokens: r.product.adTokens.filter((t: string) => t !== 'kompansator'), // eski kural: aile kelimesi atilmis
+      },
+    }));
+    const svc = svcWith(eski);
+    const r = (await svc.bulkMatch('u1', 'brand-1', ['Dilatasyon kompansatörü DN25']))['Dilatasyon kompansatörü DN25'];
+    // v2'nin single rozeti "AD + ÇAP" ifadesini tasir; YOKLUGU v1'e dusuldugunun kaniti
+    check('D4b BAYAT indeks → v2 DEVRE DISI (v1\'e dusuldu)',
+      !r?.reason?.includes('AD + ÇAP'), `got reason="${r?.reason}"`);
+    check('D4b bayat indekste yine de sonuc uretildi (sessiz cokme yok)',
+      r !== undefined && typeof r.netPrice === 'number');
+  }
+
   // D5: M3 — bu markada yok, DIGER indeksli markada var
   {
     const digerMarka = [
