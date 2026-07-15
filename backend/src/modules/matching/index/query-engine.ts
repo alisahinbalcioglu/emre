@@ -70,7 +70,10 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   // Dagarcik: aile cozulduyse aile havuzundan, cozulmediyse TUM havuzdan.
   const vocab = buildFamilyVocab(rows);
   const yol = classifyTokens(line.tokens, vocab);
-  const bilinmeyen = yol.bilinmeyen;
+  // Aileyi COZEN kelimeler "taninmayan" sayilmaz — onlar ailenin adidir
+  // (es anlamli olabilir: "flow switch" ↔ "Akış anahtarı"). Yalniz FILTRE
+  // DISI kalirlar; kullaniciya eksikmis gibi RAPORLANMAZLAR.
+  const bilinmeyen = yol.bilinmeyen.filter((t) => !line.aileKelimeleri.includes(t));
 
   if (yol.ad.length) {
     // ── TAM AD ESLESMESI ONCELIKLIDIR (PRD §4: "bucket kilitlenir — YALNIZ bu ad")

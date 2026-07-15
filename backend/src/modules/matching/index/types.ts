@@ -42,8 +42,17 @@ export interface LineQuery {
   notProduct: boolean;
   /** Seviye1 aile (sert kilit). null = aile cozulemedi → her zaman soru */
   familySlug: string | null;
-  /** Aile kelimesi DUSULMUS ayirt edici token'lar (Turkce ek tuzagi icin) */
+  /** Satirin KOK ALINMIS token'lari (hicbiri atilmaz) */
   tokens: string[];
+  /**
+   * AILEYI COZEN token'lar: kaldirilinca aile cozumu bozulanlar.
+   * Bunlar EKSIK KELIME DEGIL, ailenin adidir — kullaniciya "bulunamadı"
+   * diye raporlanmazlar. Canli vaka: "FLOW SWİTCH DN 65" → urunun Turkce
+   * adi "Akış anahtarı" oldugu icin 'flow'/'switch' urun token'larinda yok;
+   * motor dogru bulup soruyordu ama "'flow switch' bu markada bulunamadı"
+   * diyordu — YALAN (aileyi zaten o kelimeler cozdu).
+   */
+  aileKelimeleri: string[];
   capInfo: SizeInfo | null;
   boyTag: string | null;
   /** Satirin birim sinyali (I9): 'adet' → boru dayatilamaz */

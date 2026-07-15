@@ -42,7 +42,7 @@ export function parseLine(text: string, unit?: string | null): LineQuery {
   const norm = normalizeText(raw);
 
   if (NOT_PRODUCT_RE.test(norm)) {
-    return { raw, notProduct: true, familySlug: null, tokens: [], capInfo: null, boyTag: null, unit: unit ?? null };
+    return { raw, notProduct: true, familySlug: null, tokens: [], aileKelimeleri: [], capInfo: null, boyTag: null, unit: unit ?? null };
   }
 
   const familySlug = resolveLineFamily(raw);
@@ -92,7 +92,22 @@ export function parseLine(text: string, unit?: string | null): LineQuery {
     return !(Number.isFinite(n) && n === capInfo.value);
   });
 
-  return { raw, notProduct: false, familySlug, tokens, capInfo, boyTag, unit: unit ?? null };
+  // ── AILEYI COZEN KELIMELER ───────────────────────────────────────
+  // Bir token KALDIRILINCA aile cozumu bozuluyorsa, o token ailenin ADIDIR.
+  // Urun tarafinda gecmemesi EKSIKLIK DEGILDIR — es anlamli olabilir:
+  //   "FLOW SWİTCH DN 65" ↔ urun "Akış anahtarı"
+  // Ikisi de akis-anahtari ailesine cozulur; 'flow'/'switch' urunun TURKCE
+  // adinda gecmez ama ailenin INGILIZCE adidir. Kullaniciya "bulunamadı"
+  // demek yalan olur (sozluk onlari zaten taniyor: ad-cins-sozlugu 'flow switch').
+  const aileKelimeleri: string[] = [];
+  if (familySlug) {
+    for (const t of tokens) {
+      const kalan = tokens.filter((x) => x !== t).join(' ');
+      if (resolveLineFamily(kalan) !== familySlug) aileKelimeleri.push(t);
+    }
+  }
+
+  return { raw, notProduct: false, familySlug, tokens, aileKelimeleri, capInfo, boyTag, unit: unit ?? null };
 }
 
 /**

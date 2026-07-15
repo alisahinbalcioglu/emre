@@ -445,6 +445,39 @@ async function run() {
       r3.confidence === 'high' && r3.netPrice === 17080, `got ${r3.confidence} net=${r3.netPrice}`);
   }
 
+  // ══ CANLI VAKA (15.07): ES ANLAMLI AD — "FLOW SWİTCH" ↔ "Akış anahtarı"
+  // Kullanici: "FLOW SWİTCH için eşleşme vermiyor". Motor ASLINDA buluyordu
+  // (2 aday) ama mesaji '"flow switch" bu markada bulunamadı' diyordu — YALAN:
+  // sozluk 'flow switch'i taniyor ve aileyi ZATEN o kelimeler cozdu.
+  // 'flow'/'switch' urunun TURKCE adinda gecmez; bu EKSIKLIK degil ES ANLAMLILIK.
+  {
+    const K = 'Yangın / Akış Anahtarı';
+    const havuz = [
+      prod({ kategori: K, ad: 'Akış anahtarı', cins: 'Ayvaz · paddle (palet) tip · 30-60 sn gecikme ayarlı', cap: '2 1/2" (73 mm)', price: 245, urunKodu: 'F1', sheetName: 'S' }),
+      prod({ kategori: K, ad: 'Akış anahtarı', cins: 'System Sensor · paddle (palet) tip · 30-120 sn gecikme', cap: '2 1/2"', price: 275, urunKodu: 'F2', sheetName: 'S' }),
+      prod({ kategori: 'Küresel Vanalar', ad: 'Küresel vana', cins: 'pirinç', cap: 'DN65', price: 850, urunKodu: 'V9', sheetName: 'S' }),
+    ];
+    const L = parseLine('FLOW SWİTCH DN 65');
+    check('ES ANLAMLI: "flow switch" aileyi cozer (sozluk)', L.familySlug === 'akis-anahtari',
+      `got ${L.familySlug}`);
+    check('ES ANLAMLI: flow/switch AILE KELIMESI sayilir (eksik degil)',
+      L.aileKelimeleri.includes('flow') && L.aileKelimeleri.includes('switch'),
+      `got ${JSON.stringify(L.aileKelimeleri)}`);
+
+    const r = m('FLOW SWİTCH DN 65', havuz);
+    check('ES ANLAMLI: urunler BULUNUR (2 akis anahtari)', (r.candidates?.length ?? 0) === 2,
+      `got ${r.candidates?.length}`);
+    check('ES ANLAMLI: kuresel vana ADAY DEGIL (aile kilidi)',
+      !(r.candidates ?? []).some((c) => /küresel/i.test(c.materialName)));
+    check('ES ANLAMLI: mesaj "bulunamadı" YALANINI SOYLEMEZ',
+      !r.reason?.includes('bulunamadı'), `got "${r.reason}"`);
+
+    // KARAR #3 BOZULMADI: gercek yazim hatasi hala raporlanir
+    const y = m('Dilatsyon kompansatörü DN25', HAVUZ_KOMPANSATOR);
+    check('ES ANLAMLI kurali KARAR #3\'u BOZMAZ (dilatsyon hala raporlanir)',
+      !!y.reason?.toLowerCase().includes('dilatsyon'), `got "${y.reason}"`);
+  }
+
   // ══ OLCU TOKEN'LARI AD SANILMAZ ══════════════════════════════════
   {
     // CANLI: "DN25" BITISIK yazilinca tek token ('dn25') gelir ve ad kelimesi
