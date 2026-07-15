@@ -18,7 +18,21 @@ export interface AdSozlukGirdisi {
 }
 
 export const AD_SOZLUGU: AdSozlukGirdisi[] = [
+  // ════════════════════════════════════════════════════════════════
+  // SEED v1.1 (15.07.2026) — 12 GERCEK yapilandirilmis fiyat listesi
+  // (15487 satir) uzerinde olculen aile bosluklari kapatildi.
+  // Once %20 satir 'belirsiz' = ESLESMEYE GIREMEZ durumdaydi.
+  // Asagidaki girdiler o olcumden cikti; her birinin yaninda kac satiri
+  // kurtardigi ve hangi markadan geldigi yazili.
+  // ════════════════════════════════════════════════════════════════
+  { slug: 'aktuator', ad: 'Aktüatör', grup: 'VANA / OTOMASYON', dnli: false, patterns: ['aktuator', 'actuator', 'disli kutusu', 'vana aktuatoru', 'elektrikli aktuator', 'pnomatik aktuator'] }, // Duyar 22
   { slug: 'aski', ad: 'Askı tiji', grup: 'İZOLASYON / ASKI', dnli: false, patterns: ['aski tiji', 'tij', 'aski cubugu m8', 'aski cubugu m10', 'konsol', 'boru konsolu', 'destek profili', 'sismik aski', 'deprem askisi'] },
+  { slug: 'conta', ad: 'Conta', grup: 'BAĞLANTI ELEMANI', dnli: false, patterns: ['conta', 'klingrit', 'klingrit conta', 'flans contasi', 'yedek conta'] }, // Sardogan 29 + Ayvaz
+  { slug: 'dubel', ad: 'Dübel', grup: 'BAĞLANTI ELEMANI', dnli: false, patterns: ['dubel', 'celik dubel', 'plastik dubel', 'sac gomlekli dubel', 'kimyasal dubel'] }, // Norm 38
+  { slug: 'seviye-elektrodu', ad: 'Seviye elektrodu', grup: 'OTOMASYON', dnli: false, patterns: ['seviye elektrodu', 'kapasitif seviye elektrodu', 'elektrod', 'elektrot'] }, // Ayvaz 28
+  // Y-suzgec / strainer. 'suzgec' ailesi YER SUZGECIDIR (banyo) — ayri urun.
+  // Desen 'pislik tutucu' (12 karakter) yalin 'suzgec'ten uzun → catismaz.
+  { slug: 'pislik-tutucu', ad: 'Pislik tutucu', grup: 'VANA / EKİPMAN', dnli: true, patterns: ['pislik tutucu', 'pislik tutucular', 'y suzgec', 'y-suzgec', 'y tipi suzgec', 'strainer', 'filtre pislik tutucu'] }, // Ayvaz 60 + Duyar 44
   { slug: 'baca', ad: 'Paslanmaz baca', grup: 'ISITMA', dnli: false, patterns: ['paslanmaz baca', 'cift cidarli baca', 'baca seti'] },
   { slug: 'basinc-anahtari', ad: 'Basınç anahtarı', grup: 'YANGIN', dnli: false, patterns: ['basinc anahtari', 'pressure switch', 'presostat'] },
   { slug: 'boyler', ad: 'Boyler', grup: 'ISITMA', dnli: false, patterns: ['boyler', 'serpantinli boyler', 'cift serpantinli boyler', 'akumulasyon tanki'] },
@@ -36,7 +50,11 @@ export const AD_SOZLUGU: AdSozlukGirdisi[] = [
   { slug: 'itfaiye-agzi', ad: 'İtfaiye bağlantı ağzı', grup: 'YANGIN', dnli: true, patterns: ['itfaiye baglanti agzi', 'itfaiye su alma agzi', 'siamese connection'] },
   { slug: 'kalorimetre', ad: 'Kalorimetre', grup: 'SIHHİ TESİSAT / EKİPMAN', dnli: true, patterns: ['kalorimetre', 'isi sayaci'] },
   { slug: 'kanal', ad: 'Hava kanalı', grup: 'HAVALANDIRMA', dnli: false, patterns: ['hava kanali', 'galvaniz kanal', 'dikdortgen kanal', 'spiral yuvarlak kanal', 'flexible hava kanali', 'flexible kanal', 'izoleli flexible'] },
-  { slug: 'kelepce', ad: 'Boru kelepçesi', grup: 'İZOLASYON / ASKI', dnli: false, patterns: ['boru kelepcesi', 'kaucuklu kelepce', 'aski kelepcesi'] },
+  // YALIN AD SART: desenler yalniz cok-kelimeli ifadeler tasiyordu, aile
+  // isminin KENDISI yoktu → "Somunlu Kelepçe" (Norm, 293 satir) ailesiz
+  // kaliyordu. "En uzun desen kazanir" kurali sayesinde yalin ad eklemek
+  // ozel ifadeleri BOZMAZ (orn. 'boru kelepcesi' hala 'kelepce'yi yener).
+  { slug: 'kelepce', ad: 'Boru kelepçesi', grup: 'İZOLASYON / ASKI', dnli: false, patterns: ['kelepce', 'boru kelepcesi', 'kaucuklu kelepce', 'aski kelepcesi', 'somunlu kelepce', 'havalandirma kelepcesi'] },
   { slug: 'klima', ad: 'Split klima', grup: 'SOĞUTMA / KLİMA', dnli: false, patterns: ['split klima', 'duvar tipi klima', 'inverter klima'] },
   { slug: 'klima-santrali', ad: 'Klima santrali', grup: 'SOĞUTMA / KLİMA', dnli: false, patterns: ['klima santrali', 'ahu', 'hucreli klima santrali', 'isi geri kazanimli santral'] },
   { slug: 'kolektor', ad: 'Kolektör', grup: 'ISITMA', dnli: true, patterns: ['kolektor', 'celik kolektor', 'dagitim kolektoru'] },
@@ -47,8 +65,12 @@ export const AD_SOZLUGU: AdSozlukGirdisi[] = [
   { slug: 'menfez', ad: 'Menfez', grup: 'HAVALANDIRMA', dnli: false, patterns: ['menfez', 'egzoz menfezi', 'emis menfezi', 'lineer menfez', 'kapi menfezi'] },
   { slug: 'panjur', ad: 'Panjur', grup: 'HAVALANDIRMA', dnli: false, patterns: ['panjur', 'dis hava panjuru'] },
   { slug: 'rooftop', ad: 'Rooftop', grup: 'SOĞUTMA / KLİMA', dnli: false, patterns: ['rooftop', 'cati tipi paket klima'] },
-  { slug: 'sayac', ad: 'Su sayacı', grup: 'SIHHİ TESİSAT / EKİPMAN', dnli: true, patterns: ['su sayaci', 'mekanik su sayaci', 'ultrasonik su sayaci'] },
-  { slug: 'seperator', ad: 'Hava seperatörü', grup: 'SIHHİ TESİSAT / EKİPMAN', dnli: true, patterns: ['hava seperatoru', 'mikro kabarcik ayirici', 'tortu seperatoru', 'manyetik seperator', 'camur ayirici'] },
+  // 'kalorimetre' ('isi sayaci') yalin 'sayac'tan UZUN oldugu icin onu yener —
+  // dogrulandi: "kalorimetre sayaci" → kalorimetre, "buhar sayaci" → sayac.
+  { slug: 'sayac', ad: 'Su sayacı', grup: 'SIHHİ TESİSAT / EKİPMAN', dnli: true, patterns: ['sayac', 'su sayaci', 'mekanik su sayaci', 'ultrasonik su sayaci', 'buhar sayaci'] },
+  // YAZIM VARYANTI: sozluk 'seperator' yazmis, gercek listeler 'separatör'
+  // yaziyor (Ayvaz "Buhar separatörü", 36 satir) — ikisi de desen.
+  { slug: 'seperator', ad: 'Hava seperatörü', grup: 'SIHHİ TESİSAT / EKİPMAN', dnli: true, patterns: ['seperator', 'separator', 'hava seperatoru', 'hava separatoru', 'buhar seperatoru', 'buhar separatoru', 'mikro kabarcik ayirici', 'tortu seperatoru', 'manyetik seperator', 'camur ayirici'] },
   { slug: 'seviye-gostergesi', ad: 'Seviye göstergesi', grup: 'SIHHİ TESİSAT / EKİPMAN', dnli: false, patterns: ['seviye gostergesi', 'manyetik seviye gostergesi', 'su seviye gostergesi'] },
   { slug: 'sogutma-kulesi', ad: 'Soğutma kulesi', grup: 'SOĞUTMA / KLİMA', dnli: false, patterns: ['sogutma kulesi', 'acik devre kule', 'kapali devre kule'] },
   { slug: 'sprinkler-aksesuar', ad: 'Sprinkler rozeti', grup: 'YANGIN', dnli: false, patterns: ['sprinkler rozeti', 'rozet', 'sprinkler koruma kafesi', 'koruma kafesi'] },

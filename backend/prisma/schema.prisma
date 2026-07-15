@@ -35,13 +35,13 @@ enum SubscriptionScope {
 }
 
 model User {
-  id             String              @id @default(uuid())
-  email          String              @unique
+  id             String             @id @default(uuid())
+  email          String             @unique
   password       String
-  role           Role                @default(user)
-  status         UserStatus          @default(active)
-  tier           Tier                @default(core)
-  createdAt      DateTime            @default(now())
+  role           Role               @default(user)
+  status         UserStatus         @default(active)
+  tier           Tier               @default(core)
+  createdAt      DateTime           @default(now())
   library        UserLibrary[]
   brandLibraries UserBrandLibrary[]
   laborFirms     LaborFirm[]
@@ -100,12 +100,12 @@ model TerminologyAlias {
 // malzeme sinifini belirler: Cayirova → celik (DN↔inc), Kalde → PPR (DN=mm).
 model BrandMaterialType {
   id        String   @id @default(uuid())
-  userId    String?  // null = seed; dolu = kullanici ekledi
+  userId    String? // null = seed; dolu = kullanici ekledi
   // NORMALIZE uretici deseni ("cayirova") — marka adinda contains aranir,
   // "X veya muadili" kaliplarini da yakalar
   pattern   String
   kinds     String[] @default([])
-  sizeClass String   // 'steel' | 'plastic'
+  sizeClass String // 'steel' | 'plastic'
   active    Boolean  @default(true)
   createdBy String   @default("seed")
   createdAt DateTime @default(now())
@@ -122,7 +122,7 @@ model UserBrandLibrary {
   userId    String
   brand     Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
   brandId   String
-  sheets    Json     // ExcelGrid raw sheets yapisi (multi-sheet, grup basliklari, merge cells)
+  sheets    Json // ExcelGrid raw sheets yapisi (multi-sheet, grup basliklari, merge cells)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -146,15 +146,16 @@ model UserSubscription {
 }
 
 model Brand {
-  id              String              @id @default(uuid())
-  name            String              @unique
-  logoUrl         String?
-  discipline      String              @default("mechanical") // 'mechanical' | 'electrical'
-  priceLists      PriceList[]
-  materialPrices  MaterialPrice[]
-  userLibrary     UserLibrary[]
-  userLibraries   UserBrandLibrary[]
-  quoteItems      QuoteItem[]
+  id             String             @id @default(uuid())
+  name           String             @unique
+  logoUrl        String?
+  discipline     String             @default("mechanical") // 'mechanical' | 'electrical'
+  priceLists     PriceList[]
+  materialPrices MaterialPrice[]
+  userLibrary    UserLibrary[]
+  userLibraries  UserBrandLibrary[]
+  quoteItems     QuoteItem[]
+  productIndex   ProductIndex[]
 }
 
 model PriceList {
@@ -165,6 +166,92 @@ model PriceList {
   createdAt     DateTime        @default(now())
   items         MaterialPrice[]
   userLibraries UserLibrary[]
+  productIndex  ProductIndex[]
+}
+
+// ════════════════════════════════════════════════════════════════════
+// URUN INDEKSI (Indeksli + Ad-Kilitli TEK Motor — Faz 1)
+//
+// Havuzun yeni gercegi. Fiyat listesi YUKLENIRKEN her satir buraya
+// kolonlardan indekslenir; eslestirme motoru YALNIZ burayi okur ve
+// metinden aile TAHMIN ETMEZ.
+//
+// Neden ayri tablo: Material.name @unique + upsert, ayni ad/cins/capta
+// farkli BAGLANTI SEKLI'ndeki iki urunu tek kayda eziyordu (kod kendi
+// yorumunda bunu "veri kaybi" diye isaretlemis: admin.service.ts:580).
+// Bu kisit K7'nin ("ayni kod farkli sayfada farkli fiyat = IKI kayit")
+// tanimiyla dogrudan celisiyor. Cozmeye calismak yerine kimligi ADA
+// degil DOSYA SATIRINA baglıyoruz (rowKey).
+//
+// Material/MaterialPrice SILINMEZ — yalnizca eslestirme yolundan cikar.
+// ════════════════════════════════════════════════════════════════════
+model ProductIndex {
+  id          String     @id @default(uuid())
+  brand       Brand      @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  brandId     String
+  priceList   PriceList? @relation(fields: [priceListId], references: [id], onDelete: Cascade)
+  priceListId String?
+  // null = havuz (admin yukledi); dolu = kullanicinin kendi manuel satiri
+  ownerUserId String?
+
+  // ── 11 KOLON BIREBIR (kaynak sadakati — hicbiri dusmez) ──────────
+  kategori  String? // Kategori (PDF Bolumu)
+  ad        String // Malzeme Adi         ← ZORUNLU (bucket'in kaynagi)
+  cins      String? // Malzeme Cinsi
+  baglanti  String? // Baglanti Sekli      ← bugun TAMAMEN dusuyordu
+  capRaw    String? // Cap
+  boyMm     Float? // Boy (mm)            ← bugun TAMAMEN dusuyordu
+  birim     String? // Birim
+  price     Float // Birim Fiyat
+  // Z4: cevrim YOK — orijinal para birimi saklanir, TRY'ye yalniz teklif aninda
+  currency  String  @default("TRY")
+  urunKodu  String? // Urun Kodu (Art.No)  ← bugun okunup ATILIYORDU
+  not       String? // Not                 ← bugun TAMAMEN dusuyordu
+  sheetName String?
+  sourceRow Int     @default(0)
+  sortOrder Int     @default(0)
+  // Role oturmayan ek sutunlar (Y2: sutun dusurulmez)
+  extra     Json?
+
+  // ── ON-HESAP (YALNIZ yukaridaki kolonlardan turetilir) ───────────
+  // Seviye1 AILE — sert kilit: 'kompansator' → vana/hortum ASLA aday olamaz
+  adSlug       String
+  // Seviye2 AD BUCKET — alt-ad: 'omega v flex dilatasyon kompansatoru'
+  adBucket     String
+  // Ad kolonunun token'lari — teklifin adTokens'i bunun ALT KUMESI olmali (K1)
+  adTokens     String[] @default([])
+  cinsNorm     String?
+  cinsTokens   String[] @default([])
+  // HAM normalize deger — KANONIKLESTIRILMEZ. extractConnection("döner
+  // flanşlı") → 'flans' doner ve "döner"i KAYBEDER; oysa K3'un cevap
+  // secenekleri tam olarak "döner flanşlı" / "sabit flanşlı"dir. Ayrica
+  // extractConnection "kaynak boyunlu"yu hic tanimiyor (null) — ham deger
+  // o kolonu da kurtarir. Eslestirme baglantiTokens ALT-KUMESI ile yapilir.
+  baglantiNorm   String?
+  baglantiTokens String[] @default([])
+  sizeClass      String   @default("unknown")
+  // ON-HESAP esdegerlik kumesi: teklifteki 2" ile kutuphanedeki DN50 INDEKS
+  // duzeyinde bulusur — sorgu aninda cevrim aranmaz (conversion.ts DOKUNULMAZ,
+  // yalnizca yazma aninda BIR KEZ calistirilir).
+  capTags      String[] @default([])
+  capNorm      String?
+  boyTag       String?
+  displayName  String
+  // K7 + idempotent yeniden yukleme kimligi (bkz. product-index.ts)
+  rowKey       String
+  indexVersion Int      @default(1)
+  // adSlug cozulemedi → eslestirmeye ADAY OLAMAZ (PRD 2A: "sessizce yanlis
+  // eslesmektense gorunur sekilde eksik kal"). Admin dropdown'undan duzeltilir.
+  belirsiz     Boolean  @default(false)
+
+  userLibrary UserLibrary[]
+
+  // Idempotent yeniden yukleme: ayni satir → ayni rowKey → UPDATE, id KORUNUR
+  // → UserLibrary.productIndexId FK'si ayakta kalir → ISKONTO HIC KAYBOLMAZ.
+  @@unique([priceListId, rowKey])
+  @@index([brandId, adSlug])
+  @@index([adSlug, adBucket])
+  @@index([urunKodu])
 }
 
 model Material {
@@ -252,6 +339,18 @@ model UserLibrary {
   specs             Json?
   // "ekipman" | "boru" | "fitting" | null — DWG equipment popup filtre icin
   category          String?
+
+  // ── URUN INDEKSI BAGI (Faz 1 — additive, nullable) ──────────────
+  // Urun YAPISI indekse ait, EKONOMI (customPrice/discountRate) kullaniciya.
+  // Denormalizasyon YOK: yapiyi buraya kopyalarsak liste yeniden yuklendiginde
+  // kutuphane sessizce eskir. Tek gercek ProductIndex'te durur.
+  product        ProductIndex? @relation(fields: [productIndexId], references: [id], onDelete: Cascade)
+  productIndexId String?
+
+  // Motorun ANA sorgusu: userLibrary.findMany({ where: { userId, brandId } })
+  // — bugune kadar bu tabloda HIC index yoktu (full scan).
+  @@index([userId, brandId])
+  @@index([productIndexId])
 }
 
 model Quote {
@@ -259,9 +358,9 @@ model Quote {
   user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId       String
   title        String?
-  sheets       Json?       // Multi-sheet Excel raw state (SheetData[]), null = legacy tek-sheet quote
-  originalFile Bytes?      // Orijinal Excel dosya binary'si — indirirken fiyatlar uzerine yazilir
-  originalName String?     // Orijinal dosya adi (orn. "SAHINKUL KESIF OZETI.xlsx")
+  sheets       Json? // Multi-sheet Excel raw state (SheetData[]), null = legacy tek-sheet quote
+  originalFile Bytes? // Orijinal Excel dosya binary'si — indirirken fiyatlar uzerine yazilir
+  originalName String? // Orijinal dosya adi (orn. "SAHINKUL KESIF OZETI.xlsx")
   createdAt    DateTime    @default(now())
   items        QuoteItem[]
 }
@@ -278,22 +377,22 @@ model QuoteItem {
   laborFirmaId       String?
   quantity           Float
   // Malzeme fiyatlari
-  materialUnitPrice  Float   @default(0)
-  materialTotalPrice Float   @default(0)
-  materialMargin     Float   @default(0)  // %
+  materialUnitPrice  Float      @default(0)
+  materialTotalPrice Float      @default(0)
+  materialMargin     Float      @default(0) // %
   // Iscilik fiyatlari
-  laborUnitPrice     Float   @default(0)
-  laborTotalPrice    Float   @default(0)
-  laborMargin        Float   @default(0)  // %
+  laborUnitPrice     Float      @default(0)
+  laborTotalPrice    Float      @default(0)
+  laborMargin        Float      @default(0) // %
   // Toplamlar
-  totalUnitPrice     Float   @default(0)
-  totalPrice         Float   @default(0)
+  totalUnitPrice     Float      @default(0)
+  totalPrice         Float      @default(0)
   // Eski alanlar (geriye uyumluluk)
-  unitPrice          Float   @default(0)
-  discount           Float   @default(0)
-  netPrice           Float   @default(0)
-  profitMargin       Float   @default(0)
-  finalPrice         Float   @default(0)
+  unitPrice          Float      @default(0)
+  discount           Float      @default(0)
+  netPrice           Float      @default(0)
+  profitMargin       Float      @default(0)
+  finalPrice         Float      @default(0)
 }
 
 enum Discipline {
@@ -305,7 +404,7 @@ model LaborItem {
   id             String       @id @default(uuid())
   name           String
   unit           String       @default("Adet")
-  unitPrice      Float                            // varsayilan/baz fiyat
+  unitPrice      Float // varsayilan/baz fiyat
   discipline     Discipline
   category       String?
   description    String?
@@ -345,7 +444,7 @@ model LaborPriceList {
   firma      LaborFirm    @relation(fields: [firmaId], references: [id], onDelete: Cascade)
   firmaId    String
   uploadedAt DateTime     @default(now())
-  sheets     Json?        // ExcelGrid raw sheet — yuklenen dosyanin sheet icerigi (tek sheet, multi-row header, grup basliklari)
+  sheets     Json? // ExcelGrid raw sheet — yuklenen dosyanin sheet icerigi (tek sheet, multi-row header, grup basliklari)
   prices     LaborPrice[]
 }
 
@@ -357,8 +456,8 @@ model LaborPrice {
   firmaId      String
   priceList    LaborPriceList? @relation(fields: [priceListId], references: [id], onDelete: SetNull)
   priceListId  String?
-  unitPrice    Float           // liste fiyat
-  discountRate Float           @default(0)  // iskonto %
+  unitPrice    Float // liste fiyat
+  discountRate Float           @default(0) // iskonto %
   unit         String          @default("Adet")
   createdAt    DateTime        @default(now())
 
@@ -369,9 +468,9 @@ model LaborPrice {
 
 model AiUsageLog {
   id            String   @id @default(uuid())
-  feature       String   // 'pdf_parse' | 'excel_match' | 'quote_analyze'
-  provider      String   // 'claude' | 'gemini' | 'openrouter'
-  model         String?  // 'claude-sonnet-4-6' etc.
+  feature       String // 'pdf_parse' | 'excel_match' | 'quote_analyze'
+  provider      String // 'claude' | 'gemini' | 'openrouter'
+  model         String? // 'claude-sonnet-4-6' etc.
   inputTokens   Int      @default(0)
   outputTokens  Int      @default(0)
   estimatedCost Float    @default(0) // USD
@@ -389,4 +488,3 @@ model SystemSettings {
   value     String
   updatedAt DateTime @updatedAt
 }
-

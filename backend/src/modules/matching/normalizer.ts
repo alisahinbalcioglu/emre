@@ -254,6 +254,11 @@ const TYPE_PATTERNS: { pattern: RegExp; type: string }[] = [
   { pattern: /vana/i, type: 'vana' },
   { pattern: /valve/i, type: 'vana' },
   { pattern: /valf/i, type: 'vana' },
+  // "Emniyet ventili" bir VANADIR. 12 gercek fiyat listesinde 143 satir
+  // yalniz bu yuzden ailesiz kaliyordu (Ayvaz+Duyar emniyet ventilleri).
+  // KELIME SINIRI SART: /ventil/ yalin haliyle "ventilatör"u (= FAN!)
+  // yakalar ve fani vana sanardi. \b ile dogrulandi: ventilator → false.
+  { pattern: /\bventil\b|\bventili\b|\bventilleri\b/i, type: 'vana' },
   // ── EKIPMAN AILELERI (E1/E2/E4 — Boru Disi Kalemler PRD) ──────────
   // SIRA KRITIK: "sprink hatti" = BORU kosusu (E2 ayrimi) — yalin
   // "sprink"ten ONCE test edilir; "sprinkler hortumu" = HORTUM ailesi —
@@ -287,10 +292,28 @@ const TYPE_PATTERNS: { pattern: RegExp; type: string }[] = [
   { pattern: /nipel/i, type: 'fitting' },
   { pattern: /\bkep\b|kor\s*tapa/i, type: 'fitting' },
   { pattern: /rakor/i, type: 'fitting' },
+  // ── Ek parca alt-adlari (12 gercek listede ~600 satir ailesiz kaliyordu)
+  // Bunlar FITTING ailesidir; adlarinda "fitting" kelimesi GECMEZ, cunku
+  // kullanicinin listesinde ek parca alt-adiyla yazilir (Trakya "Tapa",
+  // Wavin/Kalde "Çift Çatal 87°", Hakan "İstavroz", Wavin "ES Sifonu").
+  // 'kor tapa' zaten yukarida; yalin "Tapa" da ek parcadir.
+  { pattern: /\btapa\b/i, type: 'fitting' },
+  { pattern: /istavroz|\bcatal\b/i, type: 'fitting' },
+  // "sifon" vitrifiye ailesinden CALMAZ — dogrulandi: vitrifiye desenleri
+  // klozet/lavabo/rezervuar, 'sifon' iceren desen YOK.
+  { pattern: /sifon/i, type: 'fitting' },
+  { pattern: /\bkavis\b/i, type: 'fitting' },
   { pattern: /kaplin|victaulic/i, type: 'fitting' },
   { pattern: /\bmuf\b/i, type: 'fitting' },
-  { pattern: /flans/i, type: 'flans' },
-  { pattern: /flange/i, type: 'flans' },
+  // FLANS = URUN ("Düz Flanş"), FLANSLI = BAGLANTI SIFATI ("döner flanşlı").
+  // Yalin /flans/ ikisini de yakaliyordu → "Dilatasyon kompansatörü döner
+  // flanşlı DN50" satirinin AILESI 'flans' cikiyordu (kompansator yerine!).
+  // Urun tarafinda gorunmez, cunku orada yalniz Ad kolonu okunur; TEKLIF
+  // satiri ise her kolonun kelimesini bir arada tasir.
+  // Kelime siniri ayrimi yapar: "duz flans" ✓ · "flansli" ✗
+  // (CONNECTION_PATTERNS'te /flans/ GEVSEK kalir — orasi zaten baglanti yuvasi.)
+  { pattern: /\bflans\b|\bflansi\b|\bflanslar\b/i, type: 'flans' },
+  { pattern: /\bflange\b|\bflanges\b/i, type: 'flans' },
   { pattern: /izolasyon/i, type: 'izolasyon' },
   { pattern: /insulation/i, type: 'izolasyon' },
   { pattern: /pompa/i, type: 'pompa' },
