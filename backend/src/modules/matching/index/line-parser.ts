@@ -12,7 +12,7 @@
 import { normalizeText, extractMaterialType } from '../normalizer';
 import { resolveAd } from '../ad-resolver';
 import { extractSizeInfo, isSizeTag, SizeInfo } from '../conversion';
-import { tokenize, buildBoyTag } from './product-index';
+import { tokenize, buildBoyTag, resolveFamily } from './product-index';
 import type { LineQuery, FamilyVocab, RoutedTokens, IndexedRow } from './types';
 
 /**
@@ -27,9 +27,9 @@ const NOT_PRODUCT_RE = /\borani?\b|\biscilik\b|\bmontaj\b|\bnakliye\b|\bdevreye\
  * boylece iki taraf ayni kelime dagarcigini konusur.
  */
 export function resolveLineFamily(text: string): string | null {
-  const byRegex = extractMaterialType(text);
-  if (byRegex && byRegex !== 'diger') return byRegex;
-  return resolveAd(text);
+  // Urun tarafiyla AYNI kural (bas isim sonda) — iki taraf ayni aileyi
+  // cozmezse eslesme imkansizdir. Tek kaynak: product-index.resolveFamily.
+  return resolveFamily(text);
 }
 
 /**

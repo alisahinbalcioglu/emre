@@ -234,8 +234,30 @@ function run() {
       resolveFamily('Somunlu Kelepçe') === 'kelepce', `got ${resolveFamily('Somunlu Kelepçe')}`);
     check('P6c "Buhar sayacı (vorteks)" → sayac (Ayvaz, 29)',
       resolveFamily('Buhar sayacı (vorteks)') === 'sayac', `got ${resolveFamily('Buhar sayacı (vorteks)')}`);
-    check('P6c yalin ad OZEL ifadeyi bozmaz: "kalorimetre sayacı" → kalorimetre',
-      resolveFamily('kalorimetre sayacı') === 'kalorimetre', `got ${resolveFamily('kalorimetre sayacı')}`);
+    // ── BILINCLI ODUNLESME (bas-isim kurali) ──────────────────────────
+    // "kalorimetre sayacı" → 'sayac' (kalorimetre DEGIL). Turkcede bas isim
+    // sondadir; sondan tarayinca once 'sayacı' cozulur ve durur.
+    // Uc vaka birbiriyle CELISIYOR, tek kural ucunu de cozmuyor:
+    //   "Dekoratif boru kompansatörü" → bas-isim ✓ kompansator · en-uzun ✓
+    //   "Sprinkler borusu"            → bas-isim ✓ boru        · en-uzun ✗ sprinkler
+    //   "kalorimetre sayacı"          → bas-isim ✗ sayac       · en-uzun ✓ kalorimetre
+    // BAS-ISIM secildi cunku: (a) CANLI bug'i cozuyor ("Dekoratif boru
+    // kompansatörü" boru ailesine dusup boru satirlarina aday oluyordu),
+    // (b) 12 gercek dosyada belirsiz %4.0'da KALDI (bedava), kompansator
+    // ailesi 717→766 (dogru siniflanan satirlar), (c) kalorimetre nadir —
+    // ilk 8 ailede bile yok.
+    // ISLEVSEL ZARAR YOK: aile 'sayac' olsa da 'kalorimetre' AD TOKEN'i
+    // urunu zaten daraltir. Tek kayip: bir marka "Kalorimetre", digeri
+    // "kalorimetre sayacı" yazarsa markalar-arasi M3 onerisi kacar.
+    check('P6c ODUNLESME: "kalorimetre sayacı" → sayac (bas isim sonda)',
+      resolveFamily('kalorimetre sayacı') === 'sayac', `got ${resolveFamily('kalorimetre sayacı')}`);
+    check('P6c ODUNLESME: yalin "kalorimetre" → kalorimetre (bozulmadi)',
+      resolveFamily('kalorimetre') === 'kalorimetre', `got ${resolveFamily('kalorimetre')}`);
+    check('P6c BAS-ISIM: "Dekoratif boru kompansatörü" → kompansator (boru DEGIL)',
+      resolveFamily('Dekoratif boru kompansatörü') === 'kompansator',
+      `got ${resolveFamily('Dekoratif boru kompansatörü')}`);
+    check('P6c BAS-ISIM: "Sprinkler borusu" → boru (sprinkler DEGIL)',
+      resolveFamily('Sprinkler borusu') === 'boru', `got ${resolveFamily('Sprinkler borusu')}`);
     // Yazim varyanti: sozluk 'seperator', gercek liste 'separatör'
     check('P6c "Buhar separatörü" → seperator (yazim varyanti, Ayvaz 36)',
       resolveFamily('Buhar separatörü') === 'seperator', `got ${resolveFamily('Buhar separatörü')}`);

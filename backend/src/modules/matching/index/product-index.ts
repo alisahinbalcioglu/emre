@@ -74,7 +74,7 @@ export interface ProductIndexFields {
  * Dispatch bu surumu KONTROL EDER (matching.service): bayat indekste v2
  * CALISMAZ, v1'e duser ve uyarir. Sessiz yanlis cevap yerine gorunur uyari.
  */
-export const INDEX_VERSION = 2;
+export const INDEX_VERSION = 3;
 
 /** adSlug cozulemeyen satirin tasidigi isaret — eslestirmeye ADAY OLAMAZ. */
 export const BELIRSIZ_SLUG = 'belirsiz';
@@ -110,13 +110,28 @@ const STOPWORDS: ReadonlySet<string> = new Set([
  * Asiri kesme (orn. 'flansli' → 'flansl') ZARARSIZDIR: kural iki tarafa da
  * ayni sekilde uygulanir, eslesme simetrik kalir.
  */
+const EK_KURALLARI = [
+  /(?:lar|ler)[ıiuü]$/, // borulari
+  /(?:lar|ler)$/, // borular
+  /l[ıiuü]$/, // galvanizli → galvaniz · yivli → yiv · flansli → flans
+  /s[ıiuü]$/, // borusu
+  /[ıiuü]$/, // kompansatoru · anahtari
+];
 function kokAl(t: string): string {
-  // Once cogul+iyelik ("borulari"), sonra iyelik ("borusu"/"kompansatoru")
-  for (const re of [/(?:lar|ler)[ıiuü]$/, /(?:lar|ler)$/, /s[ıiuü]$/, /[ıiuü]$/]) {
-    const s = t.replace(re, '');
-    if (s !== t && s.length >= 4) return s;
+  // KARARLI HALE GELENE KADAR uygula. Tek gecis YETMEZ ve ASIMETRI yaratir:
+  //   'borusu' → 'boru' (durur)  ·  'boru' → 'bor'  → ESLESMEZLER
+  // Donguyle ikisi de 'bor'a iner. Simetri sart — biri ekli, digeri eksiz
+  // yazilmis ayni kelime AYNI koke inmeli.
+  let s = t;
+  for (let i = 0; i < 5; i++) {
+    let degisti = false;
+    for (const re of EK_KURALLARI) {
+      const y = s.replace(re, '');
+      if (y !== s && y.length >= 3) { s = y; degisti = true; break; }
+    }
+    if (!degisti) break;
   }
-  return t;
+  return s;
 }
 
 /** Metni token'lara ayirir: normalize → bol → kok al → gurultuyu at. */
@@ -153,17 +168,42 @@ export function tokenize(text: string | null | undefined): string[] {
  * degeri sozlukte kompansator deseni tasir → aileyi kacirtir.
  */
 export function resolveFamily(ad: string, kategori?: string | null): string | null {
-  const byRegex = extractMaterialType(ad);
-  if (byRegex && byRegex !== 'diger') return byRegex;
-  const byDict = resolveAd(ad); // 44 aile sozlugu (f59fe17)
-  if (byDict) return byDict;
+  const bas = basIsimAilesi(ad);
+  if (bas) return bas;
   if (!kategori?.trim()) return null;
   // Ad + kategori birlikte: kategori TEK BASINA cozulmez (baska satirin
   // ailesini bu satira dayatabilir) — ad ile birlikte deger tasir.
-  const birlesik = `${ad} ${kategori}`;
-  const katRegex = extractMaterialType(birlesik);
-  if (katRegex && katRegex !== 'diger') return katRegex;
-  return resolveAd(birlesik);
+  return basIsimAilesi(`${ad} ${kategori}`);
+}
+
+/**
+ * TURKCEDE BAS ISIM SONDADIR — aileyi SONDAN cozeriz.
+ *
+ * ⚠ Once bastan tariyordum (extractMaterialType(tumMetin)) ve canli vakada
+ * kirildi: "Dekoratif boru kompansatörü" icinde /boru/ gectigi icin aile
+ * 'boru' cikiyordu → bir KOMPANSATOR, boru satirina aday oluyordu.
+ * Sozluge ('kompansator') hic sira gelmiyordu.
+ *
+ * Dogru kural: en KISA sondan-parcadan baslayip uzat, ILK cozuleni al.
+ *   "Dekoratif boru kompansatörü" → "kompansatörü" → kompansator ✓
+ *   "Sprinkler borusu"            → "borusu"       → boru        ✓ (gercekten boru)
+ *   "Akış anahtarı"               → "anahtarı"(∅) → "akış anahtarı" → akis-anahtari ✓
+ *   "Otomatik hava atma pürjörü"  → hicbiri       → null         ✓ (sozlukte yok)
+ *
+ * Boylece "en uzun desen kazanir" sozluk kurali da dogru calisir: aile
+ * kelimesi ADIN SONUNDA arandigi icin bastaki nitelemeler ("dekoratif boru")
+ * aileyi kacirtmaz.
+ */
+function basIsimAilesi(text: string): string | null {
+  const kelimeler = normalizeText(text).split(/\s+/).filter(Boolean);
+  for (let i = kelimeler.length - 1; i >= 0; i--) {
+    const parca = kelimeler.slice(i).join(' ');
+    const byRegex = extractMaterialType(parca);
+    if (byRegex && byRegex !== 'diger') return byRegex;
+    const byDict = resolveAd(parca);
+    if (byDict) return byDict;
+  }
+  return null;
 }
 
 /**
