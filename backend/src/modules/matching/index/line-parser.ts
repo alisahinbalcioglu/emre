@@ -1,0 +1,126 @@
+// ════════════════════════════════════════════════════════════════════
+// TEKLIF SATIRI COZUCU (v2)
+//
+// Metin cikarimi YALNIZ burada yasar. Sebep: teklif satiri MUSTERININ
+// Excel'inden gelir — serbest metindir, kolonlu degildir. Urun tarafinda
+// (product-index.ts) tahmin YOKTUR; orada 11 kolon vardir.
+//
+// Bu modul SAFTIR: DB yok, I/O yok. conversion.ts / normalizer.ts /
+// ad-resolver.ts primitiflerini YENIDEN YAZMAZ, cagirir.
+// ════════════════════════════════════════════════════════════════════
+
+import { normalizeText, extractMaterialType } from '../normalizer';
+import { resolveAd } from '../ad-resolver';
+import { extractSizeInfo, isSizeTag, SizeInfo } from '../conversion';
+import { tokenize, buildBoyTag } from './product-index';
+import type { LineQuery, FamilyVocab, RoutedTokens, IndexedRow } from './types';
+
+/**
+ * "FITTINGS ORANI", "İşçilik", "Nakliye" — fiyat BEKLENMEYEN satirlar.
+ * v1'den birebir tasindi (matching.service.ts:346) — davranis degismemeli
+ * (spec R12 bu deseni assert ediyor).
+ */
+const NOT_PRODUCT_RE = /\borani?\b|\biscilik\b|\bmontaj\b|\bnakliye\b|\bdevreye\s*alma\b|\bgenel\s*gider|fittings?\s*(orani|bedeli|oran)\b|boru\s*\+\s*fitting|\bsarf\b/;
+
+/**
+ * Satirin ailesini cozer. Urun tarafiyla AYNI iki kaynak (regex → sozluk),
+ * boylece iki taraf ayni kelime dagarcigini konusur.
+ */
+export function resolveLineFamily(text: string): string | null {
+  const byRegex = extractMaterialType(text);
+  if (byRegex && byRegex !== 'diger') return byRegex;
+  return resolveAd(text);
+}
+
+/** Bir token TEK BASINA aileyi cozuyorsa aile kelimesidir → ayirt edici degil. */
+function isFamilyToken(token: string, familySlug: string): boolean {
+  return extractMaterialType(token) === familySlug || resolveAd(token) === familySlug;
+}
+
+/**
+ * Teklif satiri metni → LineQuery.
+ *
+ * @param unit  I9 birim sinyali ('adet' | 'm' | ...) — opsiyonel
+ */
+export function parseLine(text: string, unit?: string | null): LineQuery {
+  const raw = text ?? '';
+  const norm = normalizeText(raw);
+
+  if (NOT_PRODUCT_RE.test(norm)) {
+    return { raw, notProduct: true, familySlug: null, tokens: [], capInfo: null, boyTag: null, unit: unit ?? null };
+  }
+
+  const familySlug = resolveLineFamily(raw);
+
+  // Aile kelimesi DUSULUR — Turkce ek tuzagi:
+  //   urun "kompansatörü" · teklif "Kompansatör" → token olarak ESLESMEZ.
+  // Ikisi de aile kelimesi oldugu icin iki taraftan da duser; geriye yalniz
+  // GERCEK ayirt ediciler kalir ("dilatasyon", "omega").
+  const hepsi = tokenize(raw);
+  const tokens = familySlug ? hepsi.filter((t) => !isFamilyToken(t, familySlug)) : hepsi;
+
+  // Cap: kaynak-farkinda (DN mi, inc mi, mm mi yazilmis?) — cevrim tablosu
+  // secimi buna bagli (PPR'de DN=mm, celikte DN≠mm). v1 ile ayni primitif.
+  let capInfo: SizeInfo | null = extractSizeInfo(raw);
+  if (!capInfo) {
+    // Ciplak PE yolu ("63 PE100 SDR17"): conversion parser'i ciplak sayiyi
+    // BILEREK yakalamaz (yanlis pozitif riski) — v1 bu yolu tag'lerden
+    // kurtariyordu, aynisini yapiyoruz.
+    const legacy = hepsi.find((t) => isSizeTag(t));
+    if (legacy) {
+      capInfo = legacy.startsWith('od-')
+        ? { source: 'mm', value: parseInt(legacy.slice(3), 10), display: legacy }
+        : { source: 'dn', value: parseInt(legacy.slice(2), 10), display: legacy.toUpperCase() };
+    }
+  }
+
+  // Boy: "50 cm" / "500 mm" — capla karismasin diye YALNIZ acik uzunluk
+  const boyMatch = norm.match(/(\d+(?:[.,]\d+)?)\s*(cm|mm)\b(?!\s*\))/);
+  let boyTag: string | null = null;
+  if (boyMatch && !capInfo) {
+    const v = parseFloat(boyMatch[1].replace(',', '.'));
+    boyTag = buildBoyTag(boyMatch[2] === 'cm' ? v * 10 : v);
+  }
+
+  return { raw, notProduct: false, familySlug, tokens, capInfo, boyTag, unit: unit ?? null };
+}
+
+/**
+ * Token yonlendirme — hangi token hangi kolonu kisitliyor?
+ *
+ * Dagarcik SABIT bir liste degil, o marka+ailenin INDEKSINDEN uretilir
+ * (vocab.ts). Boylece "orgulu" bir CINS kelimesi olarak taninir ve Ad
+ * kisiti sanilip sifir sonuc uretmez.
+ *
+ * Oncelik KAPALI kumeden GENIS kumeye: baglanti → cins → ad.
+ */
+export function classifyTokens(tokens: string[], vocab: FamilyVocab): RoutedTokens {
+  const out: RoutedTokens = { ad: [], cins: [], baglanti: [], bilinmeyen: [] };
+  for (const t of tokens) {
+    const inBagl = vocab.baglanti.has(t);
+    const inCins = vocab.cins.has(t);
+    const inAd = vocab.ad.has(t);
+    if (!inBagl && !inCins && !inAd) { out.bilinmeyen.push(t); continue; }
+    // Birden fazla dagarcikta olan token AYIRT EDICI DEGILDIR — kisit
+    // uygulamak yanlis eleme yapar (her aday zaten tasiyor ya da tasimiyor).
+    // Tek-anlamli olana kisit uygularız.
+    const sayi = (inBagl ? 1 : 0) + (inCins ? 1 : 0) + (inAd ? 1 : 0);
+    if (sayi > 1) {
+      // Coklu anlam: en kapali kumeye ver (baglanti > cins > ad)
+      if (inBagl) out.baglanti.push(t);
+      else if (inCins) out.cins.push(t);
+      else out.ad.push(t);
+      continue;
+    }
+    if (inBagl) out.baglanti.push(t);
+    else if (inCins) out.cins.push(t);
+    else out.ad.push(t);
+  }
+  return out;
+}
+
+/** Kullaniciya gosterilecek net fiyat (kendi iskontosu/ozel fiyatiyla). */
+export function satirNetFiyat(row: IndexedRow, hesapla: (list: number, isk: number) => number): number {
+  if (row.customPrice != null && row.customPrice > 0) return row.customPrice;
+  return hesapla(row.listPrice ?? row.urun.price, row.discountRate ?? 0);
+}

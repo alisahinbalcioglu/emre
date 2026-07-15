@@ -16,6 +16,7 @@
     "test:spec": "ts-node test/spec-regression-test.ts",
     "test:contract": "ts-node test/contract-test.ts",
     "test:product-index": "ts-node test/product-index-test.ts",
+    "test:index": "ts-node test/index-engine-test.ts",
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate",
     "prisma:studio": "prisma studio"
