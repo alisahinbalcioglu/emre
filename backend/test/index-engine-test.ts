@@ -380,8 +380,58 @@ async function run() {
       komp.confidence === 'multi', `got ${komp.confidence}`);
   }
 
+  // ══ CANLI VAKA (15.07): TAM AD ESLESMESI ONCELIKLI ═══════════════
+  // Canli olcum: "Dilatasyon kompansatörü DN25" → 16 aday. Hepsi DOGRU
+  // aileden (vana/hortum yok — K1 tutuyor) ama UC ayri ad karisiyordu:
+  //   Dilatasyon kompansatörü (4) · Omega U-Flex … (6) · Omega V-Flex … (6)
+  // Salt alt-kume mantigi ({dilatasyon} ⊆ {omega,vflex,dilatasyon}) hepsini
+  // aliyordu. PRD §4: "bucket kilitlenir — YALNIZ bu ad".
+  {
+    const havuz = [
+      // Kullanicinin YAZDIGI adin BIREBIR karsiligi (2 baglanti varyanti)
+      prod({ kategori: 'Dilatasyon', ad: 'Dilatasyon kompansatörü', cins: 'yanal hareket ±50 mm (DLTKF-50)', baglanti: 'döner flanşlı', cap: 'DN25', price: 7235, urunKodu: 'D1', sheetName: 'S' }),
+      prod({ kategori: 'Dilatasyon', ad: 'Dilatasyon kompansatörü', cins: 'yanal hareket ±50 mm (DLTKKB-50)', baglanti: 'kaynak boyunlu', cap: 'DN25', price: 6385, urunKodu: 'D2', sheetName: 'S' }),
+      // Ayni ailede, adi DAHA UZUN olanlar → tam eslesme varken ELENMELI
+      prod({ kategori: 'Dilatasyon', ad: 'Omega U-Flex dilatasyon kompansatörü', cins: 'U-Flex ±40 mm', baglanti: 'flanşlı', cap: 'DN25', price: 16325, urunKodu: 'U1', sheetName: 'S' }),
+      prod({ kategori: 'Dilatasyon', ad: 'Omega V-Flex dilatasyon kompansatörü', cins: 'V-Flex ±40 mm', baglanti: 'flanşlı', cap: 'DN25', price: 17080, urunKodu: 'V1', sheetName: 'S' }),
+    ];
+    const r = m('Dilatasyon kompansatörü DN25', havuz);
+    const adlar = (r.candidates ?? []).map((c) => c.materialName);
+    check('TAM AD: yalniz BIREBIR ad kaldi (Omega\'lar elendi) — PRD §4',
+      (r.candidates?.length ?? 0) === 2 && !adlar.some((a) => /Omega/.test(a)),
+      `got ${r.candidates?.length} → ${JSON.stringify(adlar)}`);
+    // Soru artik ALT-AD degil, urunun kendi niteligi. Hangi kolonun sorulacagi
+    // (cins mi baglanti mi) VERIYE baglidir — gercek Ayvaz satirlarinda cins
+    // de baglanti da ayrisir ("±50 (DLTKF-50)" = döner flanşlı). Kabul olcutu
+    // kolonun ADI degil, sorunun TEK TIKTA cozulmesi: her etiket benzersiz olmali.
+    const etiketler = (r.candidates ?? []).map((c) => c.label);
+    check('TAM AD: soru alt-ad DEGIL, urun niteligi (Omega secenegi yok)',
+      !etiketler.some((l) => /Omega|kompansat/i.test(l)), JSON.stringify(etiketler));
+    check('TAM AD: soru TEK TIKTA cozulur (her etiket benzersiz)',
+      new Set(etiketler).size === etiketler.length && etiketler.length === 2,
+      JSON.stringify(etiketler));
+
+    // UST ad yazilirsa tam eslesme YOK → alt-kume calisir → K5
+    const r2 = m('Kompansatör DN25', havuz);
+    check('TAM AD kurali K5\'i BOZMAZ: ust ad → 4 alt-ad sorulur',
+      (r2.candidates?.length ?? 0) === 4, `got ${r2.candidates?.length}`);
+
+    // Urun adi daha uzunsa ve tam eslesme yoksa alt-kume yine calisir
+    const r3 = m('Omega V-Flex dilatasyon kompansatörü DN25', havuz);
+    check('TAM AD: uzun ad birebir yazilirsa o secilir',
+      r3.confidence === 'high' && r3.netPrice === 17080, `got ${r3.confidence} net=${r3.netPrice}`);
+  }
+
   // ══ OLCU TOKEN'LARI AD SANILMAZ ══════════════════════════════════
   {
+    // CANLI: "DN25" BITISIK yazilinca tek token ('dn25') gelir ve ad kelimesi
+    // saniliyordu → kullaniciya '"dn25" bu markada bulunamadı' deniyordu.
+    const Lb = parseLine('Dilatasyon kompansatörü DN25');
+    check('OLCU: bitisik "DN25" ad token\'i DEGIL',
+      !Lb.tokens.some((t) => t.startsWith('dn')), JSON.stringify(Lb.tokens));
+    check('OLCU: bitisik yazimda cap yine cozuldu', Lb.capInfo?.display === 'DN 25',
+      `got ${Lb.capInfo?.display}`);
+
     const L = parseLine('OTOMATİK HAVA ATMA PÜRJÖRÜ DN 20');
     check('OLCU: "dn" ve "20" ad token\'i DEGIL (capInfo tuketti)',
       !L.tokens.includes('dn') && !L.tokens.includes('20'), JSON.stringify(L.tokens));

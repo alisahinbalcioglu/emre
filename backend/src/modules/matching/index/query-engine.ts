@@ -73,9 +73,28 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   const bilinmeyen = yol.bilinmeyen;
 
   if (yol.ad.length) {
-    const daralt = rows.filter((r) => altKume(yol.ad, r.urun.adTokens));
-    if (daralt.length > 0) rows = daralt;
-    else return { kind: 'none', reason: 'ad-yok', detail: yol.ad.join(' ') };
+    // ── TAM AD ESLESMESI ONCELIKLIDIR (PRD §4: "bucket kilitlenir — YALNIZ bu ad")
+    // Canli vaka: "Dilatasyon kompansatörü DN25" → 16 aday geldi; hepsi dogru
+    // aileden ama UC ayri ad: "Dilatasyon kompansatörü" (4) + "Omega U-Flex
+    // dilatasyon kompansatörü" (6) + "Omega V-Flex dilatasyon kompansatörü" (6).
+    // Salt alt-kume mantigi ({dilatasyon} ⊆ {omega,vflex,dilatasyon}) Omega'lari
+    // da aliyordu. Oysa kullanici ADIN TAMAMINI yazmis ve kutuphanede o ad
+    // BIREBIR var → bucket odur; K1 "yalniz Dilatasyon kompansatörü kayitlari"
+    // diyor. Boylece soru da doguru yere kayar: alt-ad degil, BAGLANTI (K3).
+    //
+    // Tam eslesme = token kumeleri ESIT (alt-kume + ayni sayida).
+    const tam = rows.filter(
+      (r) => r.urun.adTokens.length === yol.ad.length && altKume(yol.ad, r.urun.adTokens),
+    );
+    if (tam.length > 0) {
+      rows = tam;
+    } else {
+      // Tam ad yok → alt-kume: teklif UST ad yazmis olabilir ("kompansatör"),
+      // ya da urun adi daha uzundur ("Omega V-Flex dilatasyon kompansatörü").
+      const daralt = rows.filter((r) => altKume(yol.ad, r.urun.adTokens));
+      if (daralt.length > 0) rows = daralt;
+      else return { kind: 'none', reason: 'ad-yok', detail: yol.ad.join(' ') };
+    }
   }
 
   // ── KARAR #3'UN SINIRI ───────────────────────────────────────────

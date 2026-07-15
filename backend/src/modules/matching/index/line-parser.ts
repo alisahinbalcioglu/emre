@@ -88,9 +88,13 @@ export function parseLine(text: string, unit?: string | null): LineQuery {
   // HASSAS OL: yalin sayiyi kormeden atmak "Sprinkler 68°C 1/2\"" satirinda
   // sicakligi (68) yok ederdi. Bu yuzden yalniz capInfo'nun KENDI degerini
   // ve olcu on-eklerini duseriyoruz.
+  // "DN 20" → ['dn','20'] · "DN25" → ['dn25'] (BITISIK, tek token!) — ikisi de
+  // olcudur. Canli vakada 'dn25' ad kelimesi sanildi ve kullaniciya
+  // '"dn25" bu markada bulunamadı' denildi — capi bulunamamis gibi, yanlis bilgi.
   const olcuOnEk = /^(dn|od|nd|pn|cap)$/;
+  const olcuBitisik = /^(dn|od|nd|pn)\d+([.,]\d+)?$/;
   const tokens = adaylar.filter((t) => {
-    if (olcuOnEk.test(t)) return false;
+    if (olcuOnEk.test(t) || olcuBitisik.test(t)) return false;
     if (!capInfo) return true;
     const n = parseFloat(t.replace(',', '.'));
     return !(Number.isFinite(n) && n === capInfo.value);
@@ -111,24 +115,19 @@ export function parseLine(text: string, unit?: string | null): LineQuery {
 export function classifyTokens(tokens: string[], vocab: FamilyVocab): RoutedTokens {
   const out: RoutedTokens = { ad: [], cins: [], baglanti: [], bilinmeyen: [] };
   for (const t of tokens) {
-    const inBagl = vocab.baglanti.has(t);
-    const inCins = vocab.cins.has(t);
-    const inAd = vocab.ad.has(t);
-    if (!inBagl && !inCins && !inAd) { out.bilinmeyen.push(t); continue; }
-    // Birden fazla dagarcikta olan token AYIRT EDICI DEGILDIR — kisit
-    // uygulamak yanlis eleme yapar (her aday zaten tasiyor ya da tasimiyor).
-    // Tek-anlamli olana kisit uygularız.
-    const sayi = (inBagl ? 1 : 0) + (inCins ? 1 : 0) + (inAd ? 1 : 0);
-    if (sayi > 1) {
-      // Coklu anlam: en kapali kumeye ver (baglanti > cins > ad)
-      if (inBagl) out.baglanti.push(t);
-      else if (inCins) out.cins.push(t);
-      else out.ad.push(t);
-      continue;
-    }
-    if (inBagl) out.baglanti.push(t);
-    else if (inCins) out.cins.push(t);
-    else out.ad.push(t);
+    // ONCELIK: AD > BAGLANTI > CINS.
+    //
+    // AD once, cunku AD KILITTIR (PRD 2B-1); cins/baglanti onun icinde
+    // daraltmadir. Bir token hem Ad'da hem Cins'te gecebilir: "Omega V-Flex
+    // dilatasyon kompansatörü" ADinda 'vflex' var, "V-Flex ±40 mm" CINSinde de.
+    //
+    // ⚠ Once tersini yaptim ("en kapali kumeye ver") ve canli vakada kirildi:
+    // 'vflex' Cins'e yonlendirilince Ad token kumesi {omega,dilatasyon}'a
+    // dusuyor, TAM ad eslesmesi tutmuyor ve U-Flex ile V-Flex ayrilamiyordu.
+    if (vocab.ad.has(t)) out.ad.push(t);
+    else if (vocab.baglanti.has(t)) out.baglanti.push(t);
+    else if (vocab.cins.has(t)) out.cins.push(t);
+    else out.bilinmeyen.push(t);
   }
   return out;
 }

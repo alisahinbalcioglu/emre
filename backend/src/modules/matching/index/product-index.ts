@@ -78,7 +78,10 @@ const STOPWORDS: ReadonlySet<string> = new Set([
 /** Metni token'lara ayirir: normalize → bol → gurultuyu at. */
 export function tokenize(text: string | null | undefined): string[] {
   if (!text) return [];
-  const norm = normalizeText(String(text));
+  // TIRELI KELIME TEK TOKEN: "V-Flex" → 'vflex'.
+  // Yoksa ['v','flex'] olur, 'v' tek harf diye gurultuye gider ve "Omega
+  // V-Flex" ile "Omega U-Flex" AYIRT EDILEMEZ hale gelir (canli vaka).
+  const norm = normalizeText(String(text)).replace(/([a-z0-9])-([a-z0-9])/gi, '$1$2');
   const raw = norm.split(/[^a-z0-9°%]+/i).filter(Boolean);
   const out: string[] = [];
   for (const t of raw) {
