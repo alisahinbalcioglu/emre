@@ -12,7 +12,7 @@
 import { normalizeText, extractMaterialType } from '../normalizer';
 import { resolveAd } from '../ad-resolver';
 import { extractSizeInfo, isSizeTag, SizeInfo } from '../conversion';
-import { tokenize, buildBoyTag, resolveFamily } from './product-index';
+import { tokenize, buildBoyTag, resolveFamily, tokenEsit } from './product-index';
 import type { LineQuery, FamilyVocab, RoutedTokens, IndexedRow } from './types';
 
 /**
@@ -131,9 +131,12 @@ export function classifyTokens(tokens: string[], vocab: FamilyVocab): RoutedToke
     // ⚠ Once tersini yaptim ("en kapali kumeye ver") ve canli vakada kirildi:
     // 'vflex' Cins'e yonlendirilince Ad token kumesi {omega,dilatasyon}'a
     // dusuyor, TAM ad eslesmesi tutmuyor ve U-Flex ile V-Flex ayrilamiyordu.
-    if (vocab.ad.has(t)) out.ad.push(t);
-    else if (vocab.baglanti.has(t)) out.baglanti.push(t);
-    else if (vocab.cins.has(t)) out.cins.push(t);
+    // ONEK TOLERANSLI arama: dagarcikta 'galvanizli' varken teklif 'galvaniz'
+    // yazmis olabilir. Set.has() birebir arar ve kacirirdi.
+    const varMi = (k: Set<string>) => { for (const v of k) if (tokenEsit(t, v)) return true; return false; };
+    if (varMi(vocab.ad)) out.ad.push(t);
+    else if (varMi(vocab.baglanti)) out.baglanti.push(t);
+    else if (varMi(vocab.cins)) out.cins.push(t);
     else out.bilinmeyen.push(t);
   }
   return out;

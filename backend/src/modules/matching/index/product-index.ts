@@ -69,12 +69,14 @@ export interface ProductIndexFields {
  * → 'vana' hicbir urunun adinda yok → Cins kisiti sanildi → "bu markada
  *   'vana' tasiyan urun yok" (oysa 23 tane vardi).
  *
- * v2: kok alma + tireli kelime birlestirme + aile kelimesi ARTIK ATILMIYOR.
+ * v2: aile kelimesi artik ATILMIYOR · v3: bas-isim aile cozumu (sondan)
+ * v4: KOK ALMA KALDIRILDI → onek toleransi (bkz. tokenEsit) — Turkcede -lı
+ *     eki ile govde-sonu -l sozluksuz ayirt edilemiyordu ('kanalı'→'kana').
  *
  * Dispatch bu surumu KONTROL EDER (matching.service): bayat indekste v2
  * CALISMAZ, v1'e duser ve uyarir. Sessiz yanlis cevap yerine gorunur uyari.
  */
-export const INDEX_VERSION = 3;
+export const INDEX_VERSION = 4;
 
 /** adSlug cozulemeyen satirin tasidigi isaret — eslestirmeye ADAY OLAMAZ. */
 export const BELIRSIZ_SLUG = 'belirsiz';
@@ -92,49 +94,40 @@ const STOPWORDS: ReadonlySet<string> = new Set([
   'mm', 'cm', 'metre', 'mt', 'adeti',
 ]);
 
+/** Turkce ekini ONEK TOLERANSIYLA karsilastirmak icin en kisa govde. */
+const ONEK_MIN = 4;
+
 /**
- * Turkce iyelik/cogul ekini keser: "kompansatörü" → 'kompansator',
- * "borusu" → 'boru', "vanası" → 'vana'.
+ * IKI TOKEN AYNI KELIME MI? — Turkce eki ONEK TOLERANSIYLA gecilir.
  *
- * NEDEN GEREKLI: urun "kompansatörü" yazar, teklif "Kompansatör" — token
- * olarak ESLESMEZLER. Onceden bunu "aile kelimesini iki taraftan da DUS"
- * diye cozmustum; o kural canli vakada cokru:
- *   "ÇEKVALF" → extractMaterialType /valf/ SUBSTRING'ini gorup aile='vana'
- *   diyor → 'cekvalf' aile kelimesi sanilip ATILIYOR → geriye HIC ayirt
- *   edici kalmiyor → DN32'li TUM vana ailesi aday (canli: 147 aday).
- * Cekvalf = cek + valf: aileyi ICERIR ama aile kelimesi DEGILDIR.
+ * ⚠ Once KOK ALMAYA calistim ve TEMELDEN cikmaza girdi: Turkcede -lı eki ile
+ * govde-sonu -l + iyelik -ı SOZLUKSUZ AYIRT EDILEMEZ:
+ *     galvaniz + li  → 'galvanizli'   (ek)
+ *     kanal    + ı   → 'kanalı'       (govdenin KENDI l'si)
+ * Kural '-lı'yi keserse 'kanalı' → 'kana' olur (govde parcalanir); kesmezse
+ * 'galvanizli' → 'galvanizl' kalir ve 'galvaniz' ile eslesmez. Ikisi de
+ * canli vakada kirildi (biri "galvaniz yazilmasina ragmen siyah onerildi",
+ * digeri "boru kanalı, çelik boru satirina aday oldu").
  *
- * Kok alma hem ek tuzagini cozer hem 'cekvalf'i AYIRT EDICI olarak korur —
- * ve hicbir kelime atilmaz.
- *
- * Asiri kesme (orn. 'flansli' → 'flansl') ZARARSIZDIR: kural iki tarafa da
- * ayni sekilde uygulanir, eslesme simetrik kalir.
+ * ONEK TOLERANSI belirsizligi TAMAMEN kaldirir — tahmin YOK, kesme YOK:
+ *     'galvaniz' ⊂ 'galvanizli' ✓   'kanal' ⊂ 'kanalı' ✓   'boru' ⊂ 'borusu' ✓
+ *     'cekvalf' ⊄ 'kuresel' ✓        'disli' ⊄ 'disko' ✓ (ikisi de digerinin
+ *                                     oneki DEGIL — 'dis' 4 karakterin altinda)
+ * ONEK_MIN kisa govdelerin birbirini yutmasini engeller.
  */
-const EK_KURALLARI = [
-  /(?:lar|ler)[ıiuü]$/, // borulari
-  /(?:lar|ler)$/, // borular
-  /l[ıiuü]$/, // galvanizli → galvaniz · yivli → yiv · flansli → flans
-  /s[ıiuü]$/, // borusu
-  /[ıiuü]$/, // kompansatoru · anahtari
-];
-function kokAl(t: string): string {
-  // KARARLI HALE GELENE KADAR uygula. Tek gecis YETMEZ ve ASIMETRI yaratir:
-  //   'borusu' → 'boru' (durur)  ·  'boru' → 'bor'  → ESLESMEZLER
-  // Donguyle ikisi de 'bor'a iner. Simetri sart — biri ekli, digeri eksiz
-  // yazilmis ayni kelime AYNI koke inmeli.
-  let s = t;
-  for (let i = 0; i < 5; i++) {
-    let degisti = false;
-    for (const re of EK_KURALLARI) {
-      const y = s.replace(re, '');
-      if (y !== s && y.length >= 3) { s = y; degisti = true; break; }
-    }
-    if (!degisti) break;
-  }
-  return s;
+export function tokenEsit(a: string, b: string): boolean {
+  if (a === b) return true;
+  if (a.length >= ONEK_MIN && b.startsWith(a)) return true;
+  if (b.length >= ONEK_MIN && a.startsWith(b)) return true;
+  return false;
 }
 
-/** Metni token'lara ayirir: normalize → bol → kok al → gurultuyu at. */
+/** istenen ⊆ varolan (onek toleransli) */
+export function altKumeMi(istenen: string[], varolan: string[]): boolean {
+  return istenen.every((t) => varolan.some((v) => tokenEsit(t, v)));
+}
+
+/** Metni token'lara ayirir: normalize → bol → gurultuyu at. KOK ALINMAZ. */
 export function tokenize(text: string | null | undefined): string[] {
   if (!text) return [];
   // TIRELI KELIME TEK TOKEN: "V-Flex" → 'vflex'.
@@ -143,11 +136,11 @@ export function tokenize(text: string | null | undefined): string[] {
   const norm = normalizeText(String(text)).replace(/([a-z0-9])-([a-z0-9])/gi, '$1$2');
   const raw = norm.split(/[^a-z0-9°%]+/i).filter(Boolean);
   const out: string[] = [];
-  for (const t0 of raw) {
-    if (t0.length < 2) continue; // tek harf ayirt etmez ("x,y,z" gurultusu)
-    if (STOPWORDS.has(t0)) continue;
-    const t = kokAl(t0);
+  for (const t of raw) {
+    if (t.length < 2) continue; // tek harf ayirt etmez ("x,y,z" gurultusu)
     if (STOPWORDS.has(t)) continue;
+    // KOK ALINMAZ — kelime OLDUGU GIBI saklanir. Ek toleransi karsilastirma
+    // aninda (tokenEsit) onek ile gecilir; boylece hicbir govde parcalanmaz.
     if (!out.includes(t)) out.push(t);
   }
   return out;

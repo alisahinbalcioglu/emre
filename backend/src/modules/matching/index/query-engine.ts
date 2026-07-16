@@ -14,6 +14,7 @@
 // ════════════════════════════════════════════════════════════════════
 
 import { sizeEquivalents, SizeClass } from '../conversion';
+import { altKumeMi } from './product-index';
 import { buildFamilyVocab, distinctSayisi } from './vocab';
 import { classifyTokens } from './line-parser';
 import type { IndexedRow, LineQuery, QueryOutcome, QueryOpts, AskColumn } from './types';
@@ -40,8 +41,13 @@ export function ayrisanKolon(rows: IndexedRow[]): AskColumn {
   return 'urun'; // kolonlar ayni, kayit farkli → K7 vakasi (ayni kod, iki fiyat)
 }
 
-/** Alt-kume testi: teklifin token'lari urununkinin icinde mi? */
-const altKume = (istenen: string[], varolan: string[]) => istenen.every((t) => varolan.includes(t));
+/**
+ * Alt-kume testi: teklifin token'lari urununkinin icinde mi?
+ * ONEK TOLERANSLI — Turkce eki burada gecilir ('galvaniz' ⊂ 'galvanizli'),
+ * kok alma YOK (bkz. product-index.tokenEsit: -lı eki ile govde-sonu -l
+ * sozluksuz ayirt edilemez).
+ */
+const altKume = altKumeMi;
 
 export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts): QueryOutcome {
   // ── 0. URUN DEGIL ────────────────────────────────────────────────

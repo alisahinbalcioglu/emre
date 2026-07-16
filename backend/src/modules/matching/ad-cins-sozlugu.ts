@@ -49,7 +49,7 @@ export const AD_SOZLUGU: AdSozlukGirdisi[] = [
   { slug: 'hidrofor', ad: 'Hidrofor', grup: 'POMPALAR', dnli: false, patterns: ['hidrofor', 'paket hidrofor', 'hidrofor grubu'] },
   { slug: 'itfaiye-agzi', ad: 'İtfaiye bağlantı ağzı', grup: 'YANGIN', dnli: true, patterns: ['itfaiye baglanti agzi', 'itfaiye su alma agzi', 'siamese connection'] },
   { slug: 'kalorimetre', ad: 'Kalorimetre', grup: 'SIHHİ TESİSAT / EKİPMAN', dnli: true, patterns: ['kalorimetre', 'isi sayaci'] },
-  { slug: 'kanal', ad: 'Hava kanalı', grup: 'HAVALANDIRMA', dnli: false, patterns: ['hava kanali', 'galvaniz kanal', 'dikdortgen kanal', 'spiral yuvarlak kanal', 'flexible hava kanali', 'flexible kanal', 'izoleli flexible'] },
+  { slug: 'kanal', ad: 'Hava kanalı', grup: 'HAVALANDIRMA', dnli: false, patterns: ['kanal', 'hava kanali', 'galvaniz kanal', 'dikdortgen kanal', 'spiral yuvarlak kanal', 'flexible hava kanali', 'flexible kanal', 'izoleli flexible'] },
   // YALIN AD SART: desenler yalniz cok-kelimeli ifadeler tasiyordu, aile
   // isminin KENDISI yoktu → "Somunlu Kelepçe" (Norm, 293 satir) ailesiz
   // kaliyordu. "En uzun desen kazanir" kurali sayesinde yalin ad eklemek

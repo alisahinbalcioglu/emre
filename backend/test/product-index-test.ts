@@ -10,7 +10,7 @@
  */
 
 import {
-  buildProductIndex, buildRowKey, tokenize, resolveFamily,
+  buildProductIndex, buildRowKey, tokenize, resolveFamily, tokenEsit,
   resolveProductSizeClass, buildBoyTag, BELIRSIZ_SLUG, type ProductColumns,
 } from '../src/modules/matching/index/product-index';
 
@@ -88,10 +88,16 @@ function run() {
   // Dogru cozum KOK ALMAK: hicbir kelime atilmaz, iki tarafa da AYNI kural.
   {
     const f = buildProductIndex(AYVAZ_FLANSLI_DN65);
-    check('P3 adTokens aile kelimesini KOK halinde TASIR (atilmaz)',
-      f.adTokens.includes('kompansator'), `got ${JSON.stringify(f.adTokens)}`);
-    check('P3 ek kesildi ("kompansatörü" → kompansator, "kompansatoru" DEGIL)',
-      !f.adTokens.includes('kompansatoru'), `got ${JSON.stringify(f.adTokens)}`);
+    check('P3 adTokens aile kelimesini TASIR (atilmaz)',
+      f.adTokens.some((t) => t.startsWith('kompansator')), `got ${JSON.stringify(f.adTokens)}`);
+    check('P3 kelime OLDUGU GIBI saklanir (kok alinmaz, govde parcalanmaz)',
+      f.adTokens.includes('kompansatoru'), `got ${JSON.stringify(f.adTokens)}`);
+    // Ek toleransi KARSILASTIRMA aninda onek ile gecilir — kesme yok
+    check('P3 ONEK: teklif "kompansator" ~ urun "kompansatoru"',
+      tokenEsit('kompansator', 'kompansatoru'));
+    check('P3 ONEK: govde parcalanmiyor — "kanalı" ~ "kanal" (kok alma "kana" yapardi)',
+      tokenEsit('kanal', 'kanali') && tokenize('Boru kanalı').includes('kanali'),
+      `got ${JSON.stringify(tokenize('Boru kanalı'))}`);
     check('P3 adTokens ayirt ediciyi TASIR (dilatasyon)', f.adTokens.includes('dilatasyon'),
       `got ${JSON.stringify(f.adTokens)}`);
     check('P3 adTokens marka/seri token\'ini TASIR (omega)', f.adTokens.includes('omega'),
