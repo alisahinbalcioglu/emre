@@ -620,6 +620,53 @@ async function run() {
       r2.confidence === 'high' && r2.netPrice === 120, `got ${r2.confidence} net=${r2.netPrice}`);
   }
 
+  // ══ B — BORU YUZEY GENISLETMESI (kullanici karari 16.07) ═════════
+  // "siyah boru / celik boru kelimelerinde galvaniz ve kirmizi boyali
+  // tercihlerini de sunsun" — YALNIZ boru ailesinde, YALNIZ popup aciliyorsa.
+  // Yazili yuzey onde; tek kayda inen satir YINE otomatik yazilir (K2 bozulmaz).
+  {
+    const B = { kategori: 'Borular', sheetName: 'S' };
+    const havuz = [
+      prod({ ...B, ad: 'Çelik boru', cins: 'Siyah, dikişli, et 3,0 mm', cap: 'DN150', price: 900, urunKodu: 'S1' }),
+      prod({ ...B, ad: 'Çelik boru', cins: 'Siyah, dikişli, et 3,6 mm', cap: 'DN150', price: 950, urunKodu: 'S2' }),
+      prod({ ...B, ad: 'Çelik boru', cins: 'Galvanizli, dikişli', cap: 'DN150', price: 1100, urunKodu: 'G1' }),
+      prod({ ...B, ad: 'Çelik boru', cins: 'Kırmızı boyalı, dikişli', cap: 'DN150', price: 980, urunKodu: 'K1' }),
+    ];
+    // B1: yazili 'siyah' + 2 siyah varyant → popup; galvaniz+kirmizi DE listede
+    const r = m('6" DN150 Siyah Çelik Boru', havuz);
+    const adlar = (r.candidates ?? []).map((c) => c.materialName);
+    check('B1 siyah boru → popup acildi (2 siyah varyant)',
+      r.confidence === 'multi' && r.netPrice === 0, `got ${r.confidence} net=${r.netPrice}`);
+    check('B1 galvaniz + kirmizi TERCIH OLARAK listede (boru genislemesi)',
+      adlar.some((a) => /galvaniz/i.test(a)) && adlar.some((a) => /kırmızı|kirmizi/i.test(a)),
+      JSON.stringify(adlar));
+    check('B1 SIRALAMA: yazili yuzey (siyah) ONDE',
+      /siyah/i.test(adlar[0] ?? '') && /siyah/i.test(adlar[1] ?? ''), JSON.stringify(adlar));
+    check('B1 SIRALAMA: cakisan taban (galvaniz) SONDA',
+      /galvaniz/i.test(adlar[adlar.length - 1] ?? ''), JSON.stringify(adlar));
+
+    // B2: yazili yuzey TEK kayda iniyor → OTOMATIK YAZILIR (K2 korunur)
+    const havuzTek = [
+      prod({ ...B, ad: 'Çelik boru', cins: 'Siyah, dikişli', cap: 'DN150', price: 900, urunKodu: 'S1' }),
+      prod({ ...B, ad: 'Çelik boru', cins: 'Galvanizli, dikişli', cap: 'DN150', price: 1100, urunKodu: 'G1' }),
+    ];
+    const r2 = m('DN150 Siyah Çelik Boru', havuzTek);
+    check('B2 yazili yuzey tek kayda indi → fiyat YAZILIR (genisleme K2\'yi bozmaz)',
+      r2.confidence === 'high' && r2.netPrice === 900, `got ${r2.confidence} net=${r2.netPrice}`);
+
+    // B3: BORU DISI ailede genisletme YOK — yazili nitelik sert kalir
+    const vanaHavuz = [
+      prod({ kategori: 'Vanalar', ad: 'Küresel vana', cins: 'pirinç', cap: 'DN50', price: 800, urunKodu: 'V1', sheetName: 'S' }),
+      prod({ kategori: 'Vanalar', ad: 'Küresel vana', cins: 'pirinç, kilitli', cap: 'DN50', price: 850, urunKodu: 'V2', sheetName: 'S' }),
+      prod({ kategori: 'Vanalar', ad: 'Küresel vana', cins: 'paslanmaz', cap: 'DN50', price: 1900, urunKodu: 'V3', sheetName: 'S' }),
+    ];
+    const r3 = m('Küresel vana pirinç DN50', vanaHavuz);
+    const adlar3 = (r3.candidates ?? []).map((c) => c.materialName);
+    check('B3 vana ailesinde yazili cins SERT — paslanmaz listeye SIZMAZ',
+      r3.confidence === 'multi' && !adlar3.some((a) => /paslanmaz/i.test(a)),
+      `got ${r3.confidence} ${JSON.stringify(adlar3)}`);
+  }
+
   // ══ DISPATCH: MatchingService UZERINDEN v2 yolu ══════════════════
   // Yukaridaki testler SAF cekirdegi kanitliyor. Bu blok GERCEK servisi
   // (marka bazli dispatch + matchV2 + havuz esleme + M3) kosturuyor —

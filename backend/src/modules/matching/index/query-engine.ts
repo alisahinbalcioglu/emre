@@ -142,13 +142,36 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   }
 
   // ── 3/4/5. YAZILI CINS + BAGLANTI — SERT (K4) ────────────────────
+  // BORU YUZEY GENISLETMESI (kullanici karari 16.07): "siyah boru / celik
+  // boru kelimelerinde galvaniz ve kirmizi boyali tercihlerini de sunsun."
+  // YALNIZ boru ailesinde: yazili YUZEY yine sert filtredir (tek kayda inen
+  // satir otomatik yazilir — K2 bozulmaz), ama POPUP acilacaksa yuzey-haric
+  // ayni filtreleri gecen DIGER yuzey varyantlari listeye SONDA eklenir.
+  // Yuzey-DISI cins kelimeleri (pirinc/paslanmaz/pn25...) HER ailede sert.
+  const YUZEYLER = ['siyah', 'galvaniz', 'kirmizi', 'boyali'];
+  const yuzeyToken = (t: string) => YUZEYLER.some((s) => tokenEsit(s, t));
+  let yuzeyGenis: IndexedRow[] | null = null; // boru: yuzey filtresi HARIC gecenler
+  let yaziliTabanlar: string[] = []; // yazili yuzeylerin kanonik tabani (siralama)
   if (yol.cins.length) {
-    const d = rows.filter((r) => altKume(yol.cins, r.urun.cinsTokens));
-    if (d.length > 0) rows = d; else return { kind: 'none', reason: 'kriter-yok', detail: yol.cins.join(' ') };
+    const yuzeyler = yol.cins.filter(yuzeyToken);
+    const diger = yol.cins.filter((t) => !yuzeyToken(t));
+    if (diger.length) {
+      const d = rows.filter((r) => altKume(diger, r.urun.cinsTokens));
+      if (d.length > 0) rows = d; else return { kind: 'none', reason: 'kriter-yok', detail: diger.join(' ') };
+    }
+    if (yuzeyler.length) {
+      const d = rows.filter((r) => altKume(yuzeyler, r.urun.cinsTokens));
+      if (d.length > 0) {
+        if (familySlug === 'boru') yuzeyGenis = rows; // yuzey uygulanmamis kume
+        yaziliTabanlar = ['siyah', 'galvaniz'].filter((b) => yuzeyler.some((t) => tokenEsit(b, t)));
+        rows = d;
+      } else return { kind: 'none', reason: 'kriter-yok', detail: yuzeyler.join(' ') };
+    }
   }
   if (yol.baglanti.length) {
     const d = rows.filter((r) => altKume(yol.baglanti, r.urun.baglantiTokens));
     if (d.length > 0) rows = d; else return { kind: 'none', reason: 'kriter-yok', detail: yol.baglanti.join(' ') };
+    if (yuzeyGenis) yuzeyGenis = yuzeyGenis.filter((r) => altKume(yol.baglanti, r.urun.baglantiTokens));
   }
   if (rows.length === 0) return { kind: 'none', reason: 'ad-yok' };
 
@@ -161,13 +184,15 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     const equiv = sizeEquivalents(cls, line.capInfo);
     donusum = equiv.rozet;
     if (equiv.tags.length) {
-      const d = rows.filter((r) => r.urun.capTags.some((t) => equiv.tags.includes(t)));
+      const capUyar = (r: IndexedRow) => r.urun.capTags.some((t) => equiv.tags.includes(t));
+      const d = rows.filter(capUyar);
       // Capsiz ekipman (E1/H3): urunun capi yoksa cap filtresi ELEMEZ —
       // "kompansator 40cm hortum" gibi satirlarda cap satira degil urune ait
       // olmayabilir. Capi OLAN urunler arasinda ise filtre serttir.
       const capsiz = rows.filter((r) => r.urun.capTags.length === 0);
       rows = d.length > 0 || capsiz.length === 0 ? d : capsiz;
       if (rows.length === 0) return { kind: 'none', reason: 'cap-yok', detail: line.capInfo.display, donusum };
+      if (yuzeyGenis) yuzeyGenis = yuzeyGenis.filter(capUyar); // genis kume de AYNI capta
     }
   }
 
@@ -175,6 +200,7 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   if (line.boyTag) {
     const d = rows.filter((r) => r.urun.boyTag === line.boyTag);
     if (d.length > 0) rows = d;
+    if (yuzeyGenis) yuzeyGenis = yuzeyGenis.filter((r) => r.urun.boyTag === line.boyTag || !r.urun.boyTag);
   }
 
   // ── 5b. TABAN YUZEY BEKLENTISI (S3/R1) — SIRALAR, ELEMEZ ─────────
@@ -187,14 +213,15 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   // SATIR KAZANIR (T3): satir acikca 'galvaniz' yazdiysa cins filtresi
   // yukarida zaten galvanize indirdi — buraya tek tabanla gelinir.
   const TABANLAR = ['siyah', 'galvaniz'];
-  const tabanSirasi = (r: IndexedRow): number => {
+  const tabanSirasi = (r: IndexedRow, beklenen: string[]): number => {
     const rowBases = TABANLAR.filter((b) =>
       r.urun.cinsTokens.some((t) => tokenEsit(b, t)) || r.urun.adTokens.some((t) => tokenEsit(b, t)));
     if (rowBases.length === 0) return 1; // taban soylemiyor (kirmizi boyali)
-    return rowBases.some((b) => opts!.hintBases!.includes(b)) ? 0 : 2; // beklenen : cakisan
+    return rowBases.some((b) => beklenen.includes(b)) ? 0 : 2; // beklenen : cakisan
   };
   if (opts?.hintBases?.length && rows.length > 1) {
-    rows = [...rows].sort((a, b) => tabanSirasi(a) - tabanSirasi(b)); // stable — grup ici sira korunur
+    const hb = opts.hintBases;
+    rows = [...rows].sort((a, b) => tabanSirasi(a, hb) - tabanSirasi(b, hb)); // stable — grup ici sira korunur
   }
 
   // ── 6. V4 GRUP VARYANTI — kullanicinin KENDI secimi ──────────────
@@ -223,9 +250,24 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   // hattina (siyah beklenir) fiyat OTOMATIK yazilmaz — 1 secenekli onay
   // listesi sunulur, secim kullanicinin.
   const surfaceConflict =
-    opts?.hintBases?.length && rows.length === 1 && tabanSirasi(rows[0]) === 2
+    opts?.hintBases?.length && rows.length === 1 && tabanSirasi(rows[0], opts.hintBases) === 2
       ? `Tek aday sözlük beklentisiyle (${opts.hintBases.join('/')}) çelişiyor`
       : null;
+
+  // ── BORU YUZEY GENISLETMESI — merge (yalniz POPUP acilacaksa) ─────
+  // Yazili yuzey havuzu >1 kayda biraktiysa (soru zaten acilacak), yuzey-
+  // haric ayni filtreleri gecen diger yuzey varyantlari TERCIH olarak SONA
+  // eklenir (yazili yuzey onde, cakisan taban en sonda). rows.length===1
+  // ise DOKUNULMAZ — tek eslesme otomatik yazilir (K2). V4 varyant akisi
+  // kullanicinin KENDI secimidir — genisletme uygulanmaz (yukarida null'a
+  // dusmez ama eslesen daralttiysa rows zaten varyant kumesidir).
+  if (yuzeyGenis && rows.length > 1 && !opts?.variantTags?.length) {
+    const eldekiler = new Set(rows.map((r) => r.id));
+    const ekstra = yuzeyGenis
+      .filter((r) => !eldekiler.has(r.id))
+      .sort((a, b) => tabanSirasi(a, yaziliTabanlar) - tabanSirasi(b, yaziliTabanlar));
+    if (ekstra.length > 0) rows = [...rows, ...ekstra];
+  }
 
   // ── SONUC: UC YOL, DORDUNCU YOK ──────────────────────────────────
   if (rows.length === 1) {
