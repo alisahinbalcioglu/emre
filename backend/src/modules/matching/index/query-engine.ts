@@ -17,7 +17,7 @@ import { sizeEquivalents, SizeClass } from '../conversion';
 import { altKumeMi, tokenEsit } from './product-index';
 import { EQUIPMENT_TYPE_TAGS } from '../shared-tag-matcher';
 import { buildFamilyVocab, distinctSayisi } from './vocab';
-import { classifyTokens } from './line-parser';
+import { classifyTokens, resolveLineFamily } from './line-parser';
 import type { IndexedRow, LineQuery, QueryOutcome, QueryOpts, AskColumn } from './types';
 
 /**
@@ -101,7 +101,22 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   // Aileyi COZEN kelimeler "taninmayan" sayilmaz — onlar ailenin adidir
   // (es anlamli olabilir: "flow switch" ↔ "Akış anahtarı"). Yalniz FILTRE
   // DISI kalirlar; kullaniciya eksikmis gibi RAPORLANMAZLAR.
-  const bilinmeyen = yol.bilinmeyen.filter((t) => !line.aileKelimeleri.includes(t));
+  //
+  // ⚠ MUAFIYET DARALTILDI (16.07, K8): 'cekvalf' de aileyi cozer (icindeki
+  // /valf/ → vana) ama VANANIN ADI DEGILDIR — muaf sayilinca, markada
+  // cekvalf yokken TUM vana ailesi soruya dusuyordu (kuresel vana bir
+  // cekvalf satirina ADAY OLAMAZ, K6). Ayrim:
+  //   • token TEK BASINA aileyi cozuyor VE cozdugu ailenin adi DEGIL
+  //     ('cekvalf'→vana): bu bir ALT-TIP adidir → muaf DEGIL (kisit/rapor).
+  //   • tek basina cozemeyen ('flow'/'switch' — esi lazim) veya ailenin
+  //     kendisi olan ('vana', 'borulari'→boru) → muaf (es anlamli/aile adi).
+  const aileMuaf = (t: string) => {
+    if (!line.aileKelimeleri.includes(t)) return false;
+    const tekBasina = resolveLineFamily(t);
+    if (tekBasina && !tokenEsit(t, tekBasina)) return false; // alt-tip adi (cekvalf)
+    return true;
+  };
+  const bilinmeyen = yol.bilinmeyen.filter((t) => !aileMuaf(t));
 
   if (yol.ad.length) {
     // ── TAM AD ESLESMESI ONCELIKLIDIR (PRD §4: "bucket kilitlenir — YALNIZ bu ad")
@@ -124,20 +139,39 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
       // ya da urun adi daha uzundur ("Omega V-Flex dilatasyon kompansatörü").
       const daralt = rows.filter((r) => altKume(yol.ad, r.urun.adTokens));
       if (daralt.length > 0) rows = daralt;
-      else return { kind: 'none', reason: 'ad-yok', detail: yol.ad.join(' ') };
+      else {
+        // ── AD-TOKEN DUSURME (canli vaka 16.07: izleme anahtarli) ────
+        // Token'lar tek tek TANINIYOR ama hicbir urun HEPSINI birden
+        // tasimiyor ('izleme' baska urunden — "Vana izleme anahtarı" —
+        // dagarciga girmisti; hedef urun "İzlenebilir kelebek vana").
+        // Kural: havuzu BOSALTAN token kisit YAPILMAZ, "bulunamadı"
+        // notuna duser; kalanlar daraltir → fiyatli soru → secim
+        // ogrenilir. SONDAN uygulanir (Turkcede bas isim sondadir —
+        // 'vana','kelebek' once daraltsin). HIC token uygulanamazsa
+        // asagidaki K8 kapisina duser (tum aile ASLA listelenmez).
+        let kalan = rows;
+        let uygulanan = 0;
+        for (const t of [...yol.ad].reverse()) {
+          const d = kalan.filter((r) => r.urun.adTokens.some((x) => tokenEsit(t, x)));
+          if (d.length > 0) { kalan = d; uygulanan++; }
+          else bilinmeyen.push(t);
+        }
+        if (uygulanan === 0) return { kind: 'none', reason: 'ad-yok', detail: yol.ad.join(' ') };
+        rows = kalan;
+      }
     }
   }
 
-  // ── KARAR #3'UN SINIRI ───────────────────────────────────────────
-  // "Taninmayan token kisit degildir" kurali, AILE KILIDI ZATEN TUTUYORKEN
-  // dogrudur: kompansator ailesi icinde "dilatsyon" yazim hatasi → alt-ad
-  // sorusu, vana/hortum yine sizamaz. Kullanici secer, es anlamli ogrenilir.
-  //
-  // Ama aile HIC cozulmemisken ayni kurali uygulamak "her seyi goster"
-  // demektir. Ayrim sudur:
-  //   • hic ad kelimesi YOK ("DN 20")        → bir sey sorulmadi → SOR (R11)
-  //   • kelime VAR ama hicbiri taninmiyor    → var olmayan bir sey soruldu → YOK
-  if (!familySlug && yol.ad.length === 0 && bilinmeyen.length > 0) {
+  // ── KARAR #3'UN SINIRI (16.07'de K8 ile SIKILASTIRILDI) ──────────
+  // "Taninmayan token kisit degildir" kurali ancak satirin ad-icereginden
+  // EN AZ BIR kelime eslesiyorsa gecerlidir (yukaridaki dusurme dahil):
+  // kompansator ailesinde "dilatsyon" yazim hatasi → alt-ad sorusu ✓.
+  // Satirin ad-icereginden HICBIR kelime eslesmiyorsa ("ÇEKVALF" — markada
+  // cekvalf yok) tum aileyi listelemek K6/K8 ihlalidir: kuresel vana bir
+  // cekvalf satirina ADAY OLAMAZ → YOK + M3 alternatif markalar.
+  //   • hic ad kelimesi YOK ("DN 20")     → bir sey sorulmadi → SOR (R11)
+  //   • kelime VAR ama hicbiri eslesmiyor → var olmayan sey soruldu → YOK
+  if (yol.ad.length === 0 && bilinmeyen.length > 0) {
     return { kind: 'none', reason: 'ad-yok', detail: bilinmeyen.join(' ') };
   }
 

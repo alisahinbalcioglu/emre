@@ -667,6 +667,39 @@ async function run() {
       `got ${r3.confidence} ${JSON.stringify(adlar3)}`);
   }
 
+  // ══ İ — AD-TOKEN DUSURME (canli vaka 16.07: izleme anahtarli) ════
+  // "4\"-DN100 İzleme Anahtarlı Kelebek Vana" → kutupanede urun
+  // "İzlenebilir kelebek vana" adiyla kayitli. 'izleme' kelimesi BASKA
+  // urunden ("Vana izleme anahtarı") taninip AD kisiti sanildi; hicbir
+  // urun izleme+kelebek+vana UCUNU birden tasimadigindan "bulunamadı"
+  // deniyordu. Kural: havuzu BOSALTAN ad-token kisit YAPILMAZ, nota duser;
+  // kalan token'lar daraltir → fiyatli soru → secim ogrenilir (Karar #3).
+  {
+    const V = { kategori: 'Vanalar', sheetName: 'S' };
+    const havuz = [
+      prod({ ...V, ad: 'İzlenebilir kelebek vana', cins: 'wafer', cap: 'DN100', price: 3000, urunKodu: 'IK100' }),
+      prod({ ...V, ad: 'Kelebek vana', cins: 'wafer', cap: 'DN100', price: 2500, urunKodu: 'K100' }),
+      prod({ ...V, ad: 'Küresel vana', cins: 'pirinç', cap: 'DN100', price: 2000, urunKodu: 'KV100' }),
+      // 'izleme' kelimesini dagarciga sokan urun (hastaligi tetikleyen)
+      prod({ ...V, ad: 'Vana izleme anahtarı', cins: 'OS&Y', cap: 'DN100', price: 900, urunKodu: 'VIA100' }),
+    ];
+    const r = m('4"-DN100 İzleme Anahtarlı Kelebek Vana', havuz);
+    const adlar = (r.candidates ?? []).map((c) => c.materialName);
+    check('İ1 izleme anahtarli kelebek → SORU acilir (none DEGIL)',
+      r.confidence === 'multi' && r.netPrice === 0, `got ${r.confidence} net=${r.netPrice} "${r.reason}"`);
+    check('İ1 "İzlenebilir kelebek vana" ADAYLARDA (kullanici secebilir)',
+      // NOT: /i bayragi Turkce 'İ'yi yakalamaz — tr locale ile kucult
+      adlar.some((a) => a.toLocaleLowerCase('tr').includes('izlenebilir')), JSON.stringify(adlar));
+    check('İ1 kuresel vana SIZMADI (kelebek daraltmasi calisti)',
+      !adlar.some((a) => /küresel|kuresel/i.test(a)), JSON.stringify(adlar));
+
+    // K8 KORUMASI: hicbir ad-token uygulanamiyorsa yine NONE — "çekvalf"
+    // yokken tum vana ailesi ASLA listelenmez (147-aday hastaligi donmez).
+    const r2 = m('ÇEKVALF DN100', havuz);
+    check('İ2 K8 koruması: cekvalf yok → none (aile listesi ACILMAZ)',
+      r2.confidence === 'none', `got ${r2.confidence} cand=${r2.candidates?.length}`);
+  }
+
   // ══ DISPATCH: MatchingService UZERINDEN v2 yolu ══════════════════
   // Yukaridaki testler SAF cekirdegi kanitliyor. Bu blok GERCEK servisi
   // (marka bazli dispatch + matchV2 + havuz esleme + M3) kosturuyor —
