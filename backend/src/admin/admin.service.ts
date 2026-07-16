@@ -21,7 +21,7 @@ import {
   PriceListCols,
 } from '../utils/import-fidelity';
 import { deriveEtiketler, isValidAdOverride } from '../utils/etiket-display';
-import { buildProductIndex, ProductColumns } from '../modules/matching/index/product-index';
+import { buildProductIndex, rebuildIndexFields, INDEX_VERSION, ProductColumns } from '../modules/matching/index/product-index';
 
 export interface MaterialSheetInput {
   name: string;
@@ -1345,5 +1345,61 @@ export class AdminService {
       })),
       totalCount: items.length,
     };
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // S2 — TOPLU YENIDEN INDEKSLEME (tokenizer surum gecisi)
+  // INDEX_VERSION artinca canli ProductIndex satirlari BAYAT kalir ve
+  // dispatch v2'yi kapatir (v1'e duser). Tek guvenli iyilestirme yolu:
+  // ham kolonlardan on-hesap alanlarini YENI kodla yeniden uret.
+  // id/rowKey/FK'ye DOKUNULMAZ → UserLibrary bagi + iskonto korunur.
+  // Dosya yeniden yuklemek GEREKMEZ. Idempotent — tekrar kosulabilir.
+  // ═══════════════════════════════════════════════════════════════
+
+  async reindexProducts(): Promise<{
+    toplam: number; guncellenen: number; atlanan: number;
+    belirsizOnce: number; belirsizSonra: number; korunanDuzeltme: number;
+    surum: number;
+  }> {
+    const rows = await (this.prisma as any).productIndex.findMany();
+    let guncellenen = 0, atlanan = 0, belirsizOnce = 0, belirsizSonra = 0, korunanDuzeltme = 0;
+
+    for (const r of rows) {
+      if (r.belirsiz) belirsizOnce++;
+      // Guncel surumdeki satiri yeniden yazmak gereksiz I/O — atla (idempotens)
+      if (r.indexVersion === INDEX_VERSION) {
+        atlanan++;
+        if (r.belirsiz) belirsizSonra++;
+        continue;
+      }
+      const cols: ProductColumns = {
+        kategori: r.kategori, ad: r.ad, cins: r.cins, baglanti: r.baglanti,
+        cap: r.capRaw, boy: r.boyMm, birim: r.birim, price: r.price,
+        paraBirimi: r.currency, urunKodu: r.urunKodu, not: r.not,
+        sheetName: r.sheetName, sourceRow: r.sourceRow, sortOrder: r.sortOrder,
+      };
+      const f = rebuildIndexFields(cols, { adSlug: r.adSlug, belirsiz: r.belirsiz });
+      if (!r.belirsiz && f.adSlug === r.adSlug && buildProductIndex(cols).belirsiz) {
+        korunanDuzeltme++; // admin kurtarmasi devrede (P9b)
+      }
+      if (f.belirsiz) belirsizSonra++;
+      await (this.prisma as any).productIndex.update({
+        where: { id: r.id },
+        // rowKey BILEREK YOK (P9d): '#2' sonekli mukerrerler ezilmesin
+        data: {
+          adSlug: f.adSlug, adBucket: f.adBucket, adTokens: f.adTokens,
+          cinsNorm: f.cinsNorm, cinsTokens: f.cinsTokens,
+          baglantiNorm: f.baglantiNorm, baglantiTokens: f.baglantiTokens,
+          sizeClass: f.sizeClass, capTags: f.capTags, capNorm: f.capNorm,
+          boyTag: f.boyTag, displayName: f.displayName,
+          belirsiz: f.belirsiz, indexVersion: f.indexVersion,
+        },
+      });
+      guncellenen++;
+    }
+
+    console.log(`[Reindex] v${INDEX_VERSION}: ${guncellenen} guncellendi, ${atlanan} zaten guncel, ` +
+      `belirsiz ${belirsizOnce}→${belirsizSonra}${korunanDuzeltme ? `, ${korunanDuzeltme} admin duzeltmesi korundu` : ''}`);
+    return { toplam: rows.length, guncellenen, atlanan, belirsizOnce, belirsizSonra, korunanDuzeltme, surum: INDEX_VERSION };
   }
 }

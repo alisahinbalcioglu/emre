@@ -11,7 +11,8 @@
 
 import {
   buildProductIndex, buildRowKey, tokenize, resolveFamily, tokenEsit,
-  resolveProductSizeClass, buildBoyTag, BELIRSIZ_SLUG, type ProductColumns,
+  resolveProductSizeClass, buildBoyTag, rebuildIndexFields,
+  BELIRSIZ_SLUG, INDEX_VERSION, type ProductColumns,
 } from '../src/modules/matching/index/product-index';
 
 let passed = 0; let failed = 0; const failures: string[] = [];
@@ -102,6 +103,25 @@ function run() {
       `got ${JSON.stringify(f.adTokens)}`);
     check('P3 adTokens marka/seri token\'ini TASIR (omega)', f.adTokens.includes('omega'),
       `got ${JSON.stringify(f.adTokens)}`);
+
+    // ── K-D GUARDRAIL (Faz 1 denetim bulgusu S4): -siz OLUMSUZLUK EKI ──
+    // Onek toleransi Turkce -siz/-suz olumsuzlugunu YUTMAMALI: 'galvanizsiz'
+    // urun, 'galvaniz' isteyen satirla ESLESEMEZ — anlamlar ZIT.
+    // (Gercek dosya denetiminde dogrulandi: tokenEsit('galvaniz','galvanizsiz')
+    // true donuyordu → cins filtresi zit urunu geciriyordu.)
+    check('P3 K-D: "galvaniz" ≠ "galvanizsiz" (olumsuzluk yutulmaz)',
+      !tokenEsit('galvaniz', 'galvanizsiz'));
+    check('P3 K-D: "conta" ≠ "contasiz"', !tokenEsit('conta', 'contasiz'));
+    check('P3 K-D: "boru" ≠ "borusuz"', !tokenEsit('boru', 'borusuz'));
+    check('P3 K-D: "izole" ≠ "izolesiz"', !tokenEsit('izole', 'izolesiz'));
+    // Olumsuzluk istisnasi POZITIF ekleri BOZMAZ:
+    check('P3 K-D: "galvaniz" ~ "galvanizli" KORUNUR', tokenEsit('galvaniz', 'galvanizli'));
+    check('P3 K-D: "boru" ~ "borusu" KORUNUR (iyelik -su, olumsuz -suz DEGIL)',
+      tokenEsit('boru', 'borusu'));
+    check('P3 K-D: "boru" ~ "borulari" KORUNUR', tokenEsit('boru', 'borulari'));
+    // Simetri: hangi taraf uzun olursa olsun ayni karar
+    check('P3 K-D: simetrik — tokenEsit(a,b) = tokenEsit(b,a)',
+      tokenEsit('galvanizsiz', 'galvaniz') === tokenEsit('galvaniz', 'galvanizsiz'));
 
     // CANLI VAKA (K8): 'cekvalf' AYIRT EDICI olarak yasar — atilmaz
     const cek = buildProductIndex({ ad: 'Çekvalf', cins: 'disko tip', cap: 'DN32', price: 1250, urunKodu: 'C1' });
@@ -336,8 +356,40 @@ function run() {
       buildProductIndex(AYVAZ_FLANSLI_DN65).rowKey === buildProductIndex(AYVAZ_FLANSLI_DN65).rowKey);
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  // P9 — YENIDEN INDEKSLEME (S2: toplu reindex, tokenizer surum gecisi)
+  // Kural: ham kolonlar SABIT, on-hesap alanlari YENI kodla yeniden uretilir.
+  // id/rowKey/FK'ye DOKUNULMAZ (mukerrer '#2' soneki ancak import katmaninda
+  // uretilir — yeniden hesap onu kaybederdi). Admin AD duzeltmesi KORUNUR.
+  // ═══════════════════════════════════════════════════════════════
+  {
+    // P9a: cozulen satir — alanlar taze hesapla birebir + guncel surum
+    const taze = buildProductIndex(AYVAZ_FLANSLI_DN65);
+    const yeniden = rebuildIndexFields(AYVAZ_FLANSLI_DN65, { adSlug: 'kompansator', belirsiz: false });
+    check('P9a rebuild = taze hesap (adTokens)',
+      JSON.stringify(yeniden.adTokens) === JSON.stringify(taze.adTokens));
+    check('P9a rebuild surumu guncel', yeniden.indexVersion === INDEX_VERSION);
+
+    // P9b: ADMIN KURTARMASI — yeni hesap 'belirsiz' derken mevcut kayit
+    // cozulmusse (adOverride ile), o cozum KAYBEDILMEZ.
+    const sozlukDisi: ProductColumns = { ad: 'XQZ-9 Ozel Aparat', price: 100 };
+    const tazeB = buildProductIndex(sozlukDisi);
+    check('P9b on-kosul: sozluk disi ad gercekten belirsiz', tazeB.belirsiz);
+    const kurtarilan = rebuildIndexFields(sozlukDisi, { adSlug: 'kompansator', belirsiz: false });
+    check('P9b admin duzeltmesi KORUNUR (adSlug)', kurtarilan.adSlug === 'kompansator');
+    check('P9b admin duzeltmesi KORUNUR (belirsiz=false)', kurtarilan.belirsiz === false);
+
+    // P9c: yeni kod COZUYORSA taze cozum kazanir (sozluk iyilesmis olabilir)
+    const cozulen = rebuildIndexFields(AYVAZ_FLANSLI_DN65, { adSlug: 'boru', belirsiz: false });
+    check('P9c yeni cozum eski slug\'i ezer', cozulen.adSlug === taze.adSlug);
+
+    // P9d: rowKey REBUILD CIKTISINDA YOK — servis onu asla ezemez
+    check('P9d rebuild rowKey TASIMAZ (id/FK/iskonto korumasi)',
+      !('rowKey' in (yeniden as Record<string, unknown>)));
+  }
+
   console.log(`\n${'='.repeat(60)}`);
-  console.log(`URUN INDEKSLEYICI (P1-P8 + K1/K3/K4/K7): ${passed} PASS, ${failed} FAIL`);
+  console.log(`URUN INDEKSLEYICI (P1-P9 + K1/K3/K4/K7): ${passed} PASS, ${failed} FAIL`);
   if (failures.length) {
     console.log(`\nBASARISIZ:`);
     for (const f of failures) console.log(`  ✗ ${f}`);

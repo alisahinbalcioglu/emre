@@ -88,6 +88,15 @@ export class AdminController {
     return this.adminService.updateSettings(data);
   }
 
+  /** S2: ProductIndex on-hesap alanlarini guncel INDEX_VERSION ile yeniden
+   *  uret (tokenizer surum gecisi). id/rowKey/iskonto korunur; idempotent.
+   *  Deploy sonrasi indeks bayatsa (v2 motor v1'e dusuyorsa) BURASI kosulur —
+   *  dosya yeniden yuklemek gerekmez. */
+  @Post('reindex-products')
+  reindexProducts() {
+    return this.adminService.reindexProducts();
+  }
+
   @Post('brands/:brandId/price-lists')
   createPriceList(@Param('brandId') brandId: string, @Body('name') name: string) {
     return this.adminService.createPriceList(brandId, name);

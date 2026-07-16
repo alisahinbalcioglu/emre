@@ -114,11 +114,20 @@ const ONEK_MIN = 4;
  *     'cekvalf' ⊄ 'kuresel' ✓        'disli' ⊄ 'disko' ✓ (ikisi de digerinin
  *                                     oneki DEGIL — 'dis' 4 karakterin altinda)
  * ONEK_MIN kisa govdelerin birbirini yutmasini engeller.
+ *
+ * TEK ISTISNA — OLUMSUZLUK EKI (K-D guardrail, Faz 1 denetim bulgusu S4):
+ * -siz/-suz anlami TERSINE cevirir; onek toleransi onu yutarsa 'galvaniz'
+ * isteyen satir 'galvanizsiz' urunle eslesir (gercek dosya denetiminde
+ * dogrulandi). Kalan ek 'siz'/'suz' ile BASLIYORSA esit sayilmaz.
+ * (normalizeText ı→i, ü→u indirger: -sız→siz, -süz→suz burada yakalanir.
+ * Iyelik '-su' [borusu] etkilenmez — 'suz' UC harf arar.)
  */
+const OLUMSUZLUK_EKI = /^s[iu]z/;
+
 export function tokenEsit(a: string, b: string): boolean {
   if (a === b) return true;
-  if (a.length >= ONEK_MIN && b.startsWith(a)) return true;
-  if (b.length >= ONEK_MIN && a.startsWith(b)) return true;
+  if (a.length >= ONEK_MIN && b.startsWith(a)) return !OLUMSUZLUK_EKI.test(b.slice(a.length));
+  if (b.length >= ONEK_MIN && a.startsWith(b)) return !OLUMSUZLUK_EKI.test(a.slice(b.length));
   return false;
 }
 
@@ -328,4 +337,31 @@ export function buildProductIndex(c: ProductColumns): ProductIndexFields {
     belirsiz,
     indexVersion: INDEX_VERSION,
   };
+}
+
+/**
+ * YENIDEN INDEKSLEME (S2 — toplu reindex, tokenizer surum gecisi).
+ *
+ * Tokenizer/sozluk her degistiginde (INDEX_VERSION artar) canlidaki binlerce
+ * satirin TEK guvenli guncelleme yolu: ham kolonlar sabit, on-hesap alanlari
+ * YENI kodla yeniden uretilir. Dosyayi yeniden yuklemek GEREKMEZ.
+ *
+ * Iki koruma:
+ *  1. rowKey CIKTIDA YOK — bilincli. Import katmani mukerrer demetlere '#2'
+ *     soneki verir (admin.service); yeniden hesap soneksiz uretir ve unique
+ *     (priceListId,rowKey) kisitina CARPARDI. id/rowKey/FK (→ iskonto) sabit.
+ *  2. ADMIN KURTARMASI: yeni hesap 'belirsiz' derken mevcut kayit cozulmusse,
+ *     o cozum adOverride'dan gelmistir (belirsiz satiri ancak insan cozer) —
+ *     KAYBEDILMEZ. Yeni kod COZUYORSA taze cozum kazanir (sozluk iyilesmistir;
+ *     override'i ayirt edecek isaret saklanmiyor — bilinen odunlesim).
+ */
+export function rebuildIndexFields(
+  c: ProductColumns,
+  mevcut: { adSlug: string; belirsiz: boolean },
+): Omit<ProductIndexFields, 'rowKey'> {
+  const { rowKey: _atilan, ...f } = buildProductIndex(c);
+  if (f.belirsiz && !mevcut.belirsiz && mevcut.adSlug !== BELIRSIZ_SLUG) {
+    return { ...f, adSlug: mevcut.adSlug, belirsiz: false };
+  }
+  return f;
 }
