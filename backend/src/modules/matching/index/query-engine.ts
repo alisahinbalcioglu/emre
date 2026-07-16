@@ -177,20 +177,24 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     if (d.length > 0) rows = d;
   }
 
-  // ── 5b. TABAN YUZEY BEKLENTISI (S3/R1) — sozluk "siyah" der ──────
-  // CAKISAN tabani (siyah↔galvaniz) tasiyan aday elenir; taban tasimayan
-  // (kirmizi boyali = kaplama) VARYANT olarak KALIR — Duzeltme Talebi dersi:
-  // "siyah'a daralt" yanlisti. SATIR KAZANIR: satir acikca 'galvaniz'
-  // yazdiysa cins filtresi zaten galvanize indirdi; burada eleme havuzu
-  // BOSALTACAKSA dokunulmaz (yazili kelime sozlugu ezer, T3).
+  // ── 5b. TABAN YUZEY BEKLENTISI (S3/R1) — SIRALAR, ELEMEZ ─────────
+  // Kullanici karari (16.07): "galvaniz one cikmaz" = listede SONA duser;
+  // sprink/yangin hattinda galvaniz/siyah/kirmizi astarli UCUY DE fiyatiyla
+  // secenek olarak sunulur — sistem yine KENDISI SECMEZ. (Onceki yorum
+  // "cakisan tabani ELE" idi; kullanici canli testte duzeltti.)
+  // Sira: beklenen taban (siyah) → tabansiz varyant (kirmizi = kaplama)
+  //       → cakisan taban (galvaniz).
+  // SATIR KAZANIR (T3): satir acikca 'galvaniz' yazdiysa cins filtresi
+  // yukarida zaten galvanize indirdi — buraya tek tabanla gelinir.
+  const TABANLAR = ['siyah', 'galvaniz'];
+  const tabanSirasi = (r: IndexedRow): number => {
+    const rowBases = TABANLAR.filter((b) =>
+      r.urun.cinsTokens.some((t) => tokenEsit(b, t)) || r.urun.adTokens.some((t) => tokenEsit(b, t)));
+    if (rowBases.length === 0) return 1; // taban soylemiyor (kirmizi boyali)
+    return rowBases.some((b) => opts!.hintBases!.includes(b)) ? 0 : 2; // beklenen : cakisan
+  };
   if (opts?.hintBases?.length && rows.length > 1) {
-    const TABANLAR = ['siyah', 'galvaniz'];
-    const kept = rows.filter((r) => {
-      const rowBases = TABANLAR.filter((b) =>
-        r.urun.cinsTokens.some((t) => tokenEsit(b, t)) || r.urun.adTokens.some((t) => tokenEsit(b, t)));
-      return rowBases.length === 0 || rowBases.some((b) => opts.hintBases!.includes(b));
-    });
-    if (kept.length > 0 && kept.length < rows.length) rows = kept;
+    rows = [...rows].sort((a, b) => tabanSirasi(a) - tabanSirasi(b)); // stable — grup ici sira korunur
   }
 
   // ── 6. V4 GRUP VARYANTI — kullanicinin KENDI secimi ──────────────
@@ -214,10 +218,20 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
       ? `Birim (${line.unit}) ekipman ailesiyle çelişiyor`
       : null;
 
+  // ── R1b YUZEY CELISKISI: tek aday CAKISAN taban tasiyorsa yazilmaz ─
+  // (v1'in surfaceConflict kurali): markada yalniz galvanizli varken sprink
+  // hattina (siyah beklenir) fiyat OTOMATIK yazilmaz — 1 secenekli onay
+  // listesi sunulur, secim kullanicinin.
+  const surfaceConflict =
+    opts?.hintBases?.length && rows.length === 1 && tabanSirasi(rows[0]) === 2
+      ? `Tek aday sözlük beklentisiyle (${opts.hintBases.join('/')}) çelişiyor`
+      : null;
+
   // ── SONUC: UC YOL, DORDUNCU YOK ──────────────────────────────────
   if (rows.length === 1) {
-    if (unitConflict) {
-      return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, uyariNot: unitConflict };
+    const celiski = unitConflict ?? surfaceConflict;
+    if (celiski) {
+      return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, uyariNot: celiski };
     }
     return { kind: 'single', row: rows[0], donusum };
   }

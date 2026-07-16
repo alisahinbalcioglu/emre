@@ -224,24 +224,39 @@ async function dispatchTestleri() {
       !altMarkalar.includes('BORUSAN'), JSON.stringify(altMarkalar));
   }
 
-  // S3-R1: SPRINK HATTI → siyah beklentisi; galvaniz TABAN elenir,
-  // kirmizi boyali VARYANT OLARAK KALIR (Duzeltme Talebi dersi)
+  // S3-R1: SPRINK HATTI → siyah beklentisi SIRALAR, ELEMEZ (kullanici
+  // karari 16.07: "galvaniz one cikmaz" = listede SONA duser; galvaniz/
+  // siyah/kirmizi astarli UCUY DE fiyatiyla secenek olarak sunulur).
   {
     const B = { kategori: 'Borular', sheetName: 'S' };
     const svc = svcWith([
-      libRow({ ...B, ad: 'Çelik boru', cins: 'Siyah, dikişli', cap: 'DN50', price: 900, urunKodu: 'S50' }),
+      // BILEREK galvaniz ILK sirada — siralama testi anlamli olsun
       libRow({ ...B, ad: 'Çelik boru', cins: 'Galvanizli, dikişli', cap: 'DN50', price: 1100, urunKodu: 'G50' }),
+      libRow({ ...B, ad: 'Çelik boru', cins: 'Siyah, dikişli', cap: 'DN50', price: 900, urunKodu: 'S50' }),
       libRow({ ...B, ad: 'Çelik boru', cins: 'Kırmızı boyalı, dikişli', cap: 'DN50', price: 950, urunKodu: 'K50' }),
     ], [], 'ÇAYIROVA');
     const r = (await svc.bulkMatch('u1', 'brand-1', ['SPRİNK HATTI BORULARI DN50']))['SPRİNK HATTI BORULARI DN50'];
     const adlar = (r?.candidates ?? []).map((c: any) => c.materialName);
     check('S3-R1 sprink hatti → fiyatli secim listesi (otomatik yazim yok)',
       r?.confidence === 'multi' && r?.netPrice === 0, `got ${r?.confidence} net=${r?.netPrice}`);
-    check('S3-R1 GALVANIZLI taban ELENDI (siyah beklentisi)',
-      !adlar.some((a: string) => /galvaniz/i.test(a)), JSON.stringify(adlar));
-    check('S3-R1 KIRMIZI BOYALI varyant KALDI (taban degil, kaplama)',
-      adlar.some((a: string) => /kırmızı|kirmizi/i.test(a)), JSON.stringify(adlar));
-    check('S3-R1 siyah aday listede', adlar.some((a: string) => /siyah/i.test(a)), JSON.stringify(adlar));
+    check('S3-R1 UC SECENEK DE listede (galvaniz ELENMEZ — kullanici karari)',
+      adlar.length === 3 && adlar.some((a: string) => /galvaniz/i.test(a)), JSON.stringify(adlar));
+    check('S3-R1 SIRALAMA: siyah ONDE (sozluk beklentisi)',
+      /siyah/i.test(adlar[0] ?? ''), JSON.stringify(adlar));
+    check('S3-R1 SIRALAMA: galvaniz SONDA (cakisan taban one cikmaz)',
+      /galvaniz/i.test(adlar[adlar.length - 1] ?? ''), JSON.stringify(adlar));
+
+    // R1b: markada YALNIZ galvanizli var → tek aday bile OTOMATIK YAZILMAZ
+    // (celiski onayi: sozluk siyah bekliyor) — v1 surfaceConflict kurali v2'de
+    const svcTek = svcWith([
+      libRow({ ...B, ad: 'Çelik boru', cins: 'Galvanizli, dikişli', cap: 'DN50', price: 1100, urunKodu: 'G50' }),
+    ], [], 'ÇAYIROVA');
+    const r2 = (await svcTek.bulkMatch('u1', 'brand-1', ['SPRİNK HATTI BORULARI DN50']))['SPRİNK HATTI BORULARI DN50'];
+    check('S3-R1b tek aday GALVANIZLI + siyah beklentisi → onay listesi (yazilmaz)',
+      r2?.confidence === 'multi' && r2?.netPrice === 0 && (r2?.candidates?.length ?? 0) === 1,
+      `got ${r2?.confidence} net=${r2?.netPrice} cand=${r2?.candidates?.length}`);
+    check('S3-R1b nedeni celiskiyi soyluyor',
+      !!r2?.reason && /galvaniz|siyah|beklenti|çelişiyor/i.test(r2.reason), `got "${r2?.reason}"`);
   }
 
   // S3-E8: boru sozlugu (dogalgaz→celik boru) VANA satirina dayatilamaz
