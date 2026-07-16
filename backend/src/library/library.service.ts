@@ -17,7 +17,12 @@ export class LibraryService {
       include: {
         material: true,
         brand: true,
-      },
+        // 16.07: Excel'in kalan kolonlari (Baglanti/Boy/Kod/Not) kutuphane
+        // gorunumune de gelsin — tek gercek ProductIndex'te, kopyalanmaz.
+        product: {
+          select: { baglanti: true, boyMm: true, urunKodu: true, not: true },
+        },
+      } as any,
       orderBy: { materialName: 'asc' },
     });
   }
@@ -360,6 +365,8 @@ export class LibraryService {
     // sortOrder birincil (kaynak sirasi); legacy kayitlarda hepsi 0 → ad sirasi
     const items = await this.prisma.userLibrary.findMany({
       where: { userId, brandId },
+      // 16.07: Baglanti/Boy/Kod/Not tek gercek ProductIndex'te — join'le gelir
+      include: { product: { select: { baglanti: true, boyMm: true, urunKodu: true, not: true } } } as any,
       orderBy: [{ sortOrder: 'asc' }, { materialName: 'asc' }],
     });
 
@@ -370,7 +377,7 @@ export class LibraryService {
     }
 
     const built = buildLibrarySheetRows(
-      items.map((item) => ({
+      items.map((item: any) => ({
         id: item.id,
         materialName: item.materialName,
         adRaw: item.adRaw,
@@ -381,6 +388,10 @@ export class LibraryService {
         kategori: item.kategori,
         cins: item.cins,
         cap: item.cap,
+        baglanti: item.product?.baglanti ?? null,
+        boy: item.product?.boyMm ?? null,
+        urunKodu: item.product?.urunKodu ?? null,
+        not: item.product?.not ?? null,
       })),
     );
 

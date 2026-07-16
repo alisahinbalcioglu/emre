@@ -28,6 +28,9 @@ interface MaterialRow {
   // Kaynak sadakati (Duzeltme Talebi Y1/Y2/Y5) — eski kayitlarda null
   kategori?: string | null; cins?: string | null; cap?: string | null;
   adRaw?: string | null; sortOrder?: number;
+  // Kaynak sadakati 2 (16.07): Excel'in KALAN kolonlari da birebir gorunur
+  baglanti?: string | null; boy?: number | null;
+  urunKodu?: string | null; not?: string | null;
 }
 interface PriceListDetail { priceList: { id: string; name: string }; brand: { name: string }; materials: MaterialRow[]; totalCount: number }
 
@@ -367,12 +370,17 @@ export default function BrandDetailPage() {
   }
 
   const filtered = listMaterials.filter(m =>
-    [m.materialName, m.adRaw, m.cins, m.cap, m.kategori]
+    [m.materialName, m.adRaw, m.cins, m.cap, m.kategori, m.baglanti, m.urunKodu, m.not]
       .some((v) => (v ?? '').toLocaleLowerCase('tr').includes(search.toLocaleLowerCase('tr'))));
   // Y5: kaynak kategorisi varsa dosya yapisi BIREBIR; yoksa legacy siniflama
   const hasSourceStructure = listMaterials.some((m) => m.kategori);
   const hasCins = listMaterials.some((m) => m.cins);
   const hasCap = listMaterials.some((m) => m.cap);
+  // 16.07: Excel'in kalan kolonlari — dolu olan varsa sutun gorunur
+  const hasBaglanti = listMaterials.some((m) => m.baglanti);
+  const hasBoy = listMaterials.some((m) => m.boy != null);
+  const hasKod = listMaterials.some((m) => m.urunKodu);
+  const hasNot = listMaterials.some((m) => m.not);
   const classGroups = hasSourceStructure ? groupBySource(filtered) : groupAndSort(filtered);
 
   if (isLoading) return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
@@ -507,9 +515,13 @@ export default function BrandDetailPage() {
                                         <th className="w-12 px-4 py-2 text-left text-xs font-medium text-muted-foreground">#</th>
                                         <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Malzeme Adı</th>
                                         {hasCins && <th className="w-36 px-4 py-2 text-left text-xs font-medium text-muted-foreground">Cinsi</th>}
+                                        {hasBaglanti && <th className="w-28 px-4 py-2 text-left text-xs font-medium text-muted-foreground">Bağlantı Şekli</th>}
                                         {hasCap && <th className="w-24 px-4 py-2 text-left text-xs font-medium text-muted-foreground">Çap</th>}
+                                        {hasBoy && <th className="w-20 px-4 py-2 text-left text-xs font-medium text-muted-foreground">Boy (mm)</th>}
                                         <th className="w-24 px-4 py-2 text-left text-xs font-medium text-muted-foreground">Birim</th>
                                         <th className="w-32 px-4 py-2 text-right text-xs font-medium text-muted-foreground">Birim Fiyat</th>
+                                        {hasKod && <th className="w-28 px-4 py-2 text-left text-xs font-medium text-muted-foreground">Ürün Kodu</th>}
+                                        {hasNot && <th className="w-44 px-4 py-2 text-left text-xs font-medium text-muted-foreground">Not</th>}
                                       </tr>
                                     </thead>
                                     <tbody>
@@ -519,9 +531,14 @@ export default function BrandDetailPage() {
                                           {/* Y3: kaynak metin BIREBIR — adRaw varsa o gosterilir */}
                                           <td className="px-4 py-2 font-medium">{m.adRaw ?? m.materialName}</td>
                                           {hasCins && <td className="px-4 py-2 text-muted-foreground">{m.cins ?? ''}</td>}
+                                          {hasBaglanti && <td className="px-4 py-2 text-muted-foreground">{m.baglanti ?? ''}</td>}
                                           {hasCap && <td className="px-4 py-2 text-muted-foreground">{m.cap ?? ''}</td>}
+                                          {hasBoy && <td className="px-4 py-2 text-muted-foreground">{m.boy ?? ''}</td>}
                                           <td className="px-4 py-2 text-muted-foreground">{m.unit}</td>
                                           <td className="px-4 py-2 text-right font-medium">{currencySym(m.currency)}{fmtPrice(m.price)}</td>
+                                          {hasKod && <td className="px-4 py-2 text-muted-foreground">{m.urunKodu ?? ''}</td>}
+                                          {/* Not uzun olabilir — kirpilir, tam metin title'da */}
+                                          {hasNot && <td className="max-w-[11rem] truncate px-4 py-2 text-muted-foreground" title={m.not ?? ''}>{m.not ?? ''}</td>}
                                         </tr>
                                       ))}
                                     </tbody>

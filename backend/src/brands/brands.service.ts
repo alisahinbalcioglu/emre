@@ -44,6 +44,39 @@ export class BrandsService {
     });
     if (!pl) throw new NotFoundException('Liste bulunamadi');
 
+    // ── KAYNAK SADAKATI (kullanici istegi 16.07): liste indekslenmisse havuz
+    // gorunumu ProductIndex'ten beslenir — kullanicinin Excel'indeki 11 kolon
+    // (Kategori/Ad/Cins/Baglanti/Cap/Boy/Birim/Fiyat/ParaBirimi/Kod/Not)
+    // BIREBIR ve KAYNAK SIRASIYLA doner. Legacy birlesik-ad gorunumu yalniz
+    // indekssiz eski listeler icin kalir. ("bazi kolonlar ortadan kalkiyor"
+    // sikayetinin koku: bu uc legacy Material.name — birlesik ad — donuyordu.)
+    const idx = await (this.prisma as any).productIndex.findMany({
+      where: { priceListId },
+      orderBy: [{ sortOrder: 'asc' }],
+    });
+    if (idx.length > 0) {
+      return {
+        priceList: pl,
+        brand: pl.brand,
+        materials: idx.map((p: any) => ({
+          id: p.id,
+          materialName: p.ad, // GERCEK Ad kolonu — birlesik ad degil
+          unit: p.birim || 'Adet',
+          price: p.price,
+          currency: p.currency ?? 'TRY',
+          kategori: p.kategori ?? null,
+          cins: p.cins ?? null,
+          baglanti: p.baglanti ?? null,
+          cap: p.capRaw ?? null,
+          boy: p.boyMm ?? null,
+          urunKodu: p.urunKodu ?? null,
+          not: p.not ?? null,
+          sortOrder: p.sortOrder ?? 0,
+        })),
+        totalCount: idx.length,
+      };
+    }
+
     const items = await this.prisma.materialPrice.findMany({
       where: { priceListId },
       include: { material: true },
