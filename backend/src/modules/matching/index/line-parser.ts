@@ -41,8 +41,16 @@ export function parseLine(text: string, unit?: string | null): LineQuery {
   const raw = text ?? '';
   const norm = normalizeText(raw);
 
+  // E2 birim sinyali (v1 matching.service ile AYNI desenler — davranis birebir):
+  // metre/mtül/mt/m → boru beklentisi; adet/ad/takım/tk → ekipman beklentisi.
+  const unitNorm = unit ? normalizeText(unit) : '';
+  const unitSignal: LineQuery['unitSignal'] =
+    unitNorm && /metre|mtul|^mt\.?$|^m\.?$/.test(unitNorm) ? 'pipe'
+    : unitNorm && /adet|^ad\.?$|takim|^tk\.?$/.test(unitNorm) ? 'equipment'
+    : null;
+
   if (NOT_PRODUCT_RE.test(norm)) {
-    return { raw, notProduct: true, familySlug: null, tokens: [], aileKelimeleri: [], capInfo: null, boyTag: null, unit: unit ?? null };
+    return { raw, notProduct: true, familySlug: null, tokens: [], aileKelimeleri: [], capInfo: null, boyTag: null, unit: unit ?? null, unitSignal };
   }
 
   const familySlug = resolveLineFamily(raw);
@@ -107,7 +115,7 @@ export function parseLine(text: string, unit?: string | null): LineQuery {
     }
   }
 
-  return { raw, notProduct: false, familySlug, tokens, aileKelimeleri, capInfo, boyTag, unit: unit ?? null };
+  return { raw, notProduct: false, familySlug, tokens, aileKelimeleri, capInfo, boyTag, unit: unit ?? null, unitSignal };
 }
 
 /**

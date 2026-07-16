@@ -14,7 +14,8 @@
 // ════════════════════════════════════════════════════════════════════
 
 import { sizeEquivalents, SizeClass } from '../conversion';
-import { altKumeMi } from './product-index';
+import { altKumeMi, tokenEsit } from './product-index';
+import { EQUIPMENT_TYPE_TAGS } from '../shared-tag-matcher';
 import { buildFamilyVocab, distinctSayisi } from './vocab';
 import { classifyTokens } from './line-parser';
 import type { IndexedRow, LineQuery, QueryOutcome, QueryOpts, AskColumn } from './types';
@@ -53,6 +54,13 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   // ── 0. URUN DEGIL ────────────────────────────────────────────────
   if (line.notProduct) return { kind: 'none', reason: 'urun-degil' };
 
+  // ── 0b. SOZLUK KELIMELERI AYIKLANIR (S3) ─────────────────────────
+  // Alias'in kendi kelimeleri ('sprink','hatti','temiz','su') sozluk
+  // tarafindan ZATEN tuketildi — kisit da degiller, "bulunamadı" da.
+  const tokens = opts?.ignoreTokens?.length
+    ? line.tokens.filter((t) => !opts.ignoreTokens!.some((ig) => tokenEsit(ig, t)))
+    : line.tokens;
+
   // ── 1. AD — SERT KILIT ───────────────────────────────────────────
   // Seviye1: aile. Vana/hortum bir kompansator satirina HICBIR skorla
   // aday olamaz — cunku skor yok, filtre var.
@@ -60,9 +68,23 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   let rows = pool.filter((r) => !r.urun.belirsiz);
 
   // ── 1a. SEVIYE1: AILE (cozulduyse) ───────────────────────────────
-  if (line.familySlug) {
-    rows = rows.filter((r) => r.urun.adSlug === line.familySlug);
-    if (rows.length === 0) return { kind: 'none', reason: 'ad-yok', detail: line.familySlug };
+  // S3: satir kendi ailesini cozemediyse SOZLUK cozer (hidrant→boru).
+  // E8 guard CAGIRANDA: satir ailesi COZULDUYSE hintFamily zaten gelmez.
+  const familySlug = line.familySlug ?? opts?.hintFamily ?? null;
+  if (familySlug) {
+    rows = rows.filter((r) => r.urun.adSlug === familySlug);
+    if (rows.length === 0) return { kind: 'none', reason: 'ad-yok', detail: familySlug };
+  }
+
+  // ── 1a2. SOZLUK SINIFI — SERT (T1: sozluk cinsi YAZILI sayilir) ──
+  // "TEMİZ SU" (→PPR) altinda celik urun ADAY OLAMAZ (R3). Karsit sinif
+  // elenir; 'unknown' gecer (urun sinifini soylemiyorsa suclanmaz).
+  if (opts?.hintClass) {
+    const karsit = opts.hintClass === 'plastic' ? 'steel' : 'plastic';
+    rows = rows.filter((r) => r.urun.sizeClass !== karsit);
+    if (rows.length === 0) {
+      return { kind: 'none', reason: 'kriter-yok', detail: opts.hintLabel ?? opts.hintClass };
+    }
   }
 
   // ── 1b. SEVIYE2: AD TOKEN'LARI — AILE COZULMESE DE UYGULANIR ─────
@@ -75,7 +97,7 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   //
   // Dagarcik: aile cozulduyse aile havuzundan, cozulmediyse TUM havuzdan.
   const vocab = buildFamilyVocab(rows);
-  const yol = classifyTokens(line.tokens, vocab);
+  const yol = classifyTokens(tokens, vocab);
   // Aileyi COZEN kelimeler "taninmayan" sayilmaz — onlar ailenin adidir
   // (es anlamli olabilir: "flow switch" ↔ "Akış anahtarı"). Yalniz FILTRE
   // DISI kalirlar; kullaniciya eksikmis gibi RAPORLANMAZLAR.
@@ -115,7 +137,7 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   // demektir. Ayrim sudur:
   //   • hic ad kelimesi YOK ("DN 20")        → bir sey sorulmadi → SOR (R11)
   //   • kelime VAR ama hicbiri taninmiyor    → var olmayan bir sey soruldu → YOK
-  if (!line.familySlug && yol.ad.length === 0 && bilinmeyen.length > 0) {
+  if (!familySlug && yol.ad.length === 0 && bilinmeyen.length > 0) {
     return { kind: 'none', reason: 'ad-yok', detail: bilinmeyen.join(' ') };
   }
 
@@ -155,6 +177,22 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     if (d.length > 0) rows = d;
   }
 
+  // ── 5b. TABAN YUZEY BEKLENTISI (S3/R1) — sozluk "siyah" der ──────
+  // CAKISAN tabani (siyah↔galvaniz) tasiyan aday elenir; taban tasimayan
+  // (kirmizi boyali = kaplama) VARYANT olarak KALIR — Duzeltme Talebi dersi:
+  // "siyah'a daralt" yanlisti. SATIR KAZANIR: satir acikca 'galvaniz'
+  // yazdiysa cins filtresi zaten galvanize indirdi; burada eleme havuzu
+  // BOSALTACAKSA dokunulmaz (yazili kelime sozlugu ezer, T3).
+  if (opts?.hintBases?.length && rows.length > 1) {
+    const TABANLAR = ['siyah', 'galvaniz'];
+    const kept = rows.filter((r) => {
+      const rowBases = TABANLAR.filter((b) =>
+        r.urun.cinsTokens.some((t) => tokenEsit(b, t)) || r.urun.adTokens.some((t) => tokenEsit(b, t)));
+      return rowBases.length === 0 || rowBases.some((b) => opts.hintBases!.includes(b));
+    });
+    if (kept.length > 0 && kept.length < rows.length) rows = kept;
+  }
+
   // ── 6. V4 GRUP VARYANTI — kullanicinin KENDI secimi ──────────────
   // R16 dersi: kullanici sinyali marka/skor sinyalinden ONCE uygulanir.
   // (v2'de zaten marka tie-break YOK — marka artik stok kapsami.)
@@ -168,9 +206,22 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     rows = eslesen;
   }
 
+  // ── E2 BIRIM CELISKISI (I9): metre birimli satir EKIPMAN ailesine ──
+  // indiyse otomatik yazim KAPANIR — tek aday bile ONAY listesine gider.
+  // ("sprinkler hattı" ≠ "sprinkler": metre birimli satir boru istiyordur.)
+  const unitConflict =
+    line.unitSignal === 'pipe' && familySlug && EQUIPMENT_TYPE_TAGS.has(familySlug)
+      ? `Birim (${line.unit}) ekipman ailesiyle çelişiyor`
+      : null;
+
   // ── SONUC: UC YOL, DORDUNCU YOK ──────────────────────────────────
-  if (rows.length === 1) return { kind: 'single', row: rows[0], donusum };
-  return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum };
+  if (rows.length === 1) {
+    if (unitConflict) {
+      return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, uyariNot: unitConflict };
+    }
+    return { kind: 'single', row: rows[0], donusum };
+  }
+  return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, uyariNot: unitConflict ?? undefined };
 }
 
 /**

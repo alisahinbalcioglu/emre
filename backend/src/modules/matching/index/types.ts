@@ -55,8 +55,13 @@ export interface LineQuery {
   aileKelimeleri: string[];
   capInfo: SizeInfo | null;
   boyTag: string | null;
-  /** Satirin birim sinyali (I9): 'adet' → boru dayatilamaz */
+  /** Satirin ham birimi (I9): 'adet' → boru dayatilamaz */
   unit: string | null;
+  /**
+   * E2 birim sinyali (on-hesap): metre→boru, adet→ekipman beklentisi.
+   * Sorgu motoru CELISKIDE otomatik yazimi kapatir (tek aday → onay listesi).
+   */
+  unitSignal: 'pipe' | 'equipment' | null;
 }
 
 /** Bir token hangi kolonu kisitliyor? Dagarcik marka+aile havuzundan uretilir. */
@@ -105,6 +110,8 @@ export type QueryOutcome =
       donusum?: string | null;
       /** V4.5: istenen varyant bu capta yok */
       variantMissing?: boolean;
+      /** E2: birim celiskisi gibi "tek aday olsa da ONAY iste" notu */
+      uyariNot?: string;
     }
   | { kind: 'none'; reason: NoneReason; detail?: string; donusum?: string | null }
   | { kind: 'auto-variant'; row: IndexedRow; donusum?: string | null };
@@ -113,4 +120,19 @@ export interface QueryOpts {
   /** V4: kullanicinin grup ici onceki secimi — marka sinyalinden ONCE uygulanir */
   variantTags?: string[];
   sizeClassHint?: SizeClass | null;
+  // ── S3: SOZLUK IPUCLARI (TerminologyAlias — matchV2 cozer, motor uygular) ──
+  /** Alias impliedType: satirin KENDI ailesi cozulemediyse aile bu olur
+   *  (E8: satir ailesi COZULDUYSE hint ASLA dayatilamaz — cagiran temizler) */
+  hintFamily?: string | null;
+  /** T1: sozluk sinifi YAZILI sayilir → karsit sinif (steel↔plastic) SERT
+   *  elenir; 'unknown' urunler gecer (kanit yok, suclama yok) */
+  hintClass?: 'steel' | 'plastic' | null;
+  /** Taban yuzey beklentisi (siyah|galvaniz): CAKISAN tabani tasiyan aday
+   *  elenir, taban tasimayan (kirmizi boyali) VARYANT olarak kalir */
+  hintBases?: string[];
+  /** none/elenme mesajlarinda gosterilecek sozluk etiketi ("ppr" gibi) */
+  hintLabel?: string;
+  /** Alias'in KENDI kelimeleri + stripTags — kisit/bilinmeyen SAYILMAZ
+   *  (sozluk o kelimeleri zaten tuketti; "bulunamadı" demek yalan olur) */
+  ignoreTokens?: string[];
 }

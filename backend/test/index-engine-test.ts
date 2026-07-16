@@ -85,7 +85,7 @@ async function dispatchTestleri() {
   const { MatchingService } = require('../src/modules/matching/matching.service');
   const { TerminologyService, ALIAS_SEEDS, BRAND_SEEDS } = require('../src/modules/matching/terminology.service');
 
-  function svcWith(rows: any[], otherRows: any[] = [], brandName = 'AYVAZ') {
+  function svcWith(rows: any[], otherRows: any[] = [], brandName = 'AYVAZ', hafiza: any = null) {
     const prisma: any = {
       userLibrary: {
         findMany: async (args: any) => {
@@ -95,7 +95,7 @@ async function dispatchTestleri() {
         },
       },
       brand: { findUnique: async () => ({ name: brandName }) },
-      eslesmeHafizasi: { findUnique: async () => null, upsert: async () => {} },
+      eslesmeHafizasi: { findUnique: async () => hafiza, upsert: async () => {} },
       terminologyAlias: { findMany: async () => ALIAS_SEEDS.map((s: any, i: number) => ({ id: `a${i}`, userId: null, active: true, ...s })) },
       brandMaterialType: { findMany: async () => BRAND_SEEDS.map((s: any, i: number) => ({ id: `b${i}`, userId: null, active: true, ...s })) },
     };
@@ -200,6 +200,77 @@ async function dispatchTestleri() {
     const r = (await svc.bulkMatch('u1', 'brand-1', ['Dilatasyon kompansatörü DN25']))['Dilatasyon kompansatörü DN25'];
     check('D6 bos kutuphane → none + aciklama', r?.confidence === 'none' && !!r?.reason,
       `got ${r?.confidence}`);
+  }
+
+  // ══ S3 — v2 SOZLUK/HAFIZA ENTEGRASYONU (Faz 1 denetim bulgusu) ═══
+  // Spec 1.1-B: sozluk (temiz su→PPR, sprink hatti→siyah celik) satir
+  // etiketlemenin PARCASIDIR; sozluk cinsi YAZILI sayilir (T1) → sert filtre.
+
+  // S3-R3: TEMIZ SU + celik-only marka → celik aday YOK + PPR markasi onerisi
+  {
+    const celikBoru = libRow({ kategori: 'Borular', ad: 'Çelik boru', cins: 'Siyah, dikişli', cap: 'DN20', price: 500, urunKodu: 'CB20', sheetName: 'S' });
+    const pprBoru = { ...libRow({ kategori: 'PPR', ad: 'PPR-C Boru', cins: 'PN20', cap: '20mm', price: 80, urunKodu: 'P20', sheetName: 'S' }),
+      brand: { id: 'b-hakan', name: 'HAKAN PLASTIK' } };
+    const borusanCelik = { ...libRow({ kategori: 'Borular', ad: 'Çelik boru', cins: 'Siyah, dikişli', cap: 'DN20', price: 480, urunKodu: 'BC20', sheetName: 'S' }),
+      brand: { id: 'b-borusan', name: 'BORUSAN' } };
+    const svc = svcWith([celikBoru], [pprBoru, borusanCelik], 'ÇAYIROVA');
+    const r = (await svc.bulkMatch('u1', 'brand-1', ['TEMİZ SU BORULARI DN20']))['TEMİZ SU BORULARI DN20'];
+    check('S3-R3 temiz su → celik aday YOK, fiyat yazilmadi',
+      r?.confidence === 'none' && r?.netPrice === 0, `got ${r?.confidence} net=${r?.netPrice} "${r?.reason}"`);
+    const altMarkalar = (r?.alternatives ?? []).map((a: any) => a.brandName);
+    check('S3-R3 M3: PPR markasi onerildi (HAKAN PLASTIK)',
+      altMarkalar.includes('HAKAN PLASTIK'), JSON.stringify(altMarkalar));
+    check('S3-R3 M3: celik marka ONERILMEDI (sozluk alternatiflere de islenir)',
+      !altMarkalar.includes('BORUSAN'), JSON.stringify(altMarkalar));
+  }
+
+  // S3-R1: SPRINK HATTI → siyah beklentisi; galvaniz TABAN elenir,
+  // kirmizi boyali VARYANT OLARAK KALIR (Duzeltme Talebi dersi)
+  {
+    const B = { kategori: 'Borular', sheetName: 'S' };
+    const svc = svcWith([
+      libRow({ ...B, ad: 'Çelik boru', cins: 'Siyah, dikişli', cap: 'DN50', price: 900, urunKodu: 'S50' }),
+      libRow({ ...B, ad: 'Çelik boru', cins: 'Galvanizli, dikişli', cap: 'DN50', price: 1100, urunKodu: 'G50' }),
+      libRow({ ...B, ad: 'Çelik boru', cins: 'Kırmızı boyalı, dikişli', cap: 'DN50', price: 950, urunKodu: 'K50' }),
+    ], [], 'ÇAYIROVA');
+    const r = (await svc.bulkMatch('u1', 'brand-1', ['SPRİNK HATTI BORULARI DN50']))['SPRİNK HATTI BORULARI DN50'];
+    const adlar = (r?.candidates ?? []).map((c: any) => c.materialName);
+    check('S3-R1 sprink hatti → fiyatli secim listesi (otomatik yazim yok)',
+      r?.confidence === 'multi' && r?.netPrice === 0, `got ${r?.confidence} net=${r?.netPrice}`);
+    check('S3-R1 GALVANIZLI taban ELENDI (siyah beklentisi)',
+      !adlar.some((a: string) => /galvaniz/i.test(a)), JSON.stringify(adlar));
+    check('S3-R1 KIRMIZI BOYALI varyant KALDI (taban degil, kaplama)',
+      adlar.some((a: string) => /kırmızı|kirmizi/i.test(a)), JSON.stringify(adlar));
+    check('S3-R1 siyah aday listede', adlar.some((a: string) => /siyah/i.test(a)), JSON.stringify(adlar));
+  }
+
+  // S3-E8: boru sozlugu (dogalgaz→celik boru) VANA satirina dayatilamaz
+  {
+    const V = { kategori: 'Vanalar', sheetName: 'S' };
+    const svc = svcWith([
+      libRow({ ...V, ad: 'Küresel vana', cins: 'doğalgaz, tam geçişli', cap: 'DN50', price: 2000, urunKodu: 'KV50' }),
+      libRow({ ...V, ad: 'Sürgülü vana', cins: 'pik döküm', cap: 'DN50', price: 1800, urunKodu: 'SV50' }),
+    ]);
+    const r = (await svc.bulkMatch('u1', 'brand-1', ['DOĞALGAZ VANASI KÜRESEL DN50']))['DOĞALGAZ VANASI KÜRESEL DN50'];
+    check('S3-E8 vana satiri vana ailesinde kaldi → kuresel tek eslesme',
+      r?.confidence === 'high' && r?.netPrice === 2000, `got ${r?.confidence} net=${r?.netPrice} "${r?.reason}"`);
+  }
+
+  // S3-H: OGRENME HAFIZASI v2'de de ON-SECILI getirir (otomatik doldurmaz)
+  {
+    const C = { kategori: 'Çekvalfler', sheetName: 'S' };
+    const yayli = libRow({ ...C, ad: 'Çekvalf', cins: 'yaylı', cap: 'DN40', price: 1000, urunKodu: 'Y1' });
+    const disko = libRow({ ...C, ad: 'Çekvalf', cins: 'disko', cap: 'DN40', price: 1200, urunKodu: 'D1' });
+    const secilen = yayli.product.displayName; // 'Çekvalf · yaylı · DN40'
+    const svc = svcWith([yayli, disko], [], 'AYVAZ', { secilenAd: secilen, secimSayisi: 3 });
+    const r = (await svc.bulkMatch('u1', 'brand-1', ['ÇEKVALF DN40']))['ÇEKVALF DN40'];
+    check('S3-H cekvalf DN40 → sorulmadan YAZILMAZ (R16)',
+      r?.confidence === 'multi' && r?.netPrice === 0, `got ${r?.confidence} net=${r?.netPrice}`);
+    check('S3-H gecmis secim BASA alindi + preferred isaretli',
+      r?.candidates?.[0]?.materialName === secilen && r?.candidates?.[0]?.preferred === true,
+      `got first=${r?.candidates?.[0]?.materialName} pref=${r?.candidates?.[0]?.preferred}`);
+    check('S3-H nedeni soyluyor (Geçmiş seçiminiz)',
+      !!r?.reason?.includes('Geçmiş seçiminiz'), `got "${r?.reason}"`);
   }
 }
 
@@ -515,6 +586,23 @@ async function run() {
     const r2 = m('Düz Flanş DN250', havuz);
     check('FLANS gercek flans URUNU hala bulunur (ayrim bozulmadi)',
       r2.confidence === 'high' && r2.netPrice === 1400, `got ${r2.confidence} net=${r2.netPrice}`);
+  }
+
+  // ══ U — BIRIM SINYALI (E2/I9): celiskide otomatik yazim KAPANIR ═══
+  // "metre" birimli satir EKIPMAN ailesine tek adayla inse bile fiyat
+  // sorulmadan yazilamaz — sinyaller celisiyor, onay listesi sunulur.
+  {
+    const havuz = [
+      prod({ kategori: 'Sprinkler', ad: 'Sprinkler', cins: 'Pendent 68°C', cap: '1/2"', price: 120, urunKodu: 'SP1' }),
+    ];
+    const r = m('SPRINKLER 68°C 1/2"', havuz, { unit: 'metre' });
+    check('U1 metre birimli EKIPMAN satiri → otomatik yazim YOK (onay listesi)',
+      r.confidence === 'multi' && r.netPrice === 0, `got ${r.confidence} net=${r.netPrice} "${r.reason}"`);
+    check('U1 nedeni birim celiskisini soyluyor',
+      !!r.reason && /birim/i.test(r.reason), `got "${r.reason}"`);
+    const r2 = m('SPRINKLER 68°C 1/2"', havuz, { unit: 'adet' });
+    check('U2 adet birimli sprinkler → celiski yok, tek eslesme yazilir',
+      r2.confidence === 'high' && r2.netPrice === 120, `got ${r2.confidence} net=${r2.netPrice}`);
   }
 
   // ══ DISPATCH: MatchingService UZERINDEN v2 yolu ══════════════════

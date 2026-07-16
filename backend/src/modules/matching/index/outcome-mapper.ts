@@ -125,7 +125,10 @@ export function toMatchResult(
       for (const c of cands) if (c.label === enSik && sayim.get(enSik)! > 1) c.popular = true;
 
       let reason = `${outcome.rows.length} seçenek — ${SORU_METNI[outcome.askColumn]} (fiyat yalnız tek ürün kalınca otomatik yazılır).`;
-      if (outcome.variantMissing) {
+      if (outcome.uyariNot) {
+        // E2: birim celiskisi — tek aday olsa bile onay istenir, neden soylenir
+        reason = `${outcome.uyariNot} — onaylayın. ${reason}`;
+      } else if (outcome.variantMissing) {
         reason = 'Seçilen varyant bu çapta kütüphanede yok — elle seçin.';
       } else if (outcome.bilinmeyen?.length) {
         // KARAR #3: taninmayan kelimeyi SOYLE — kullanici neden tum ailenin

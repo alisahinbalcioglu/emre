@@ -10,8 +10,8 @@ import { TerminologyService } from './terminology.service';
 import { parseLine } from './index/line-parser';
 import { runQuery } from './index/query-engine';
 import { toMatchResult } from './index/outcome-mapper';
-import { INDEX_VERSION } from './index/product-index';
-import type { IndexedRow, LineQuery } from './index/types';
+import { INDEX_VERSION, tokenize } from './index/product-index';
+import type { IndexedRow, LineQuery, QueryOpts } from './index/types';
 import type { AliasHint, BrandClassHint } from './terminology.service';
 import { ExchangeRatesService } from '../../exchange-rates/exchange-rates.service';
 import { AD_DNLI_SLUGS } from './ad-resolver';
@@ -255,60 +255,8 @@ export class MatchingService {
       if (!excelName.trim()) continue;
       let result = this.matchSingle(excelName, allPrices, libItems, ctx, variantTags, units?.[excelName]);
 
-      // ── OGRENME HAFIZASI (PRD Adim 8) ─────────────────────────────
-      // Belirsiz kararindan ONCE oku: ayni imza icin kullanici daha once
-      // secim yaptiysa seciciyi atla, o urunle 'suggestion' doldur.
-      if (result.confidence === 'multi' && result.candidates?.length) {
-        const imza = this.buildImza(excelName, brandId);
-        // Savunmaci: tablo/client henuz yoksa (migration oncesi) akisi BOZMA.
-        let mem: any = null;
-        try {
-          mem = await (this.prisma as any).eslesmeHafizasi?.findUnique({
-            where: { userId_imza: { userId, imza } },
-          });
-        } catch { mem = null; }
-        if (mem) {
-          // DUZELTME (A2/A5): hafiza tam-imza artik OTOMATIK DOLDURMAZ —
-          // "ilk secim her zaman kullanicinin". Gecmis secim listenin BASINA
-          // preferred olarak alinir; kullanici tek tikla onaylar (V5 ile tutarli).
-          const idx = result.candidates.findIndex((c) => c.materialName === mem.secilenAd);
-          if (idx >= 0) {
-            console.log(`[Matching] HAFIZA ON-SECILI: "${excelName}" → "${mem.secilenAd}" (${mem.secimSayisi}×) basa alindi`);
-            const cand = { ...result.candidates[idx], preferred: true };
-            const rest = result.candidates.filter((_, i) => i !== idx);
-            result = {
-              ...result,
-              candidates: [cand, ...rest],
-              reason: `Geçmiş seçiminiz (${mem.secimSayisi}×) önde — onaylayın. ${result.reason ?? ''}`.trim(),
-            };
-          }
-        }
-      }
-
-      // ── CINS TERCIHI (V5, PRD v1.3): ON-SECILI getir, OTOMATIK DOLDURMA ──
-      // "İlk satırdaki seçim yine kullanıcıya aittir; dosyalar arası otomatik
-      // atama yapılmaz" — tercih edilen adaylar listenin BASINA alinir ve
-      // preferred=true isaretlenir; secim kullanicinin.
-      if (result.confidence === 'multi' && result.candidates?.length) {
-        let kmem: any = null;
-        try {
-          kmem = await (this.prisma as any).eslesmeHafizasi?.findUnique({
-            where: { userId_imza: { userId, imza: this.buildKindImza(excelName, brandId, ctx.aliases) } },
-          });
-        } catch { kmem = null; }
-        if (kmem) {
-          const preferred = result.candidates.filter((c) => c.tags?.includes(kmem.secilenAd));
-          if (preferred.length > 0 && preferred.length < result.candidates.length) {
-            const rest = result.candidates.filter((c) => !c.tags?.includes(kmem.secilenAd));
-            console.log(`[Matching] CINS TERCIHI ON-SECILI: "${excelName}" → ${kmem.secilenAd} (${preferred.length} aday one alindi)`);
-            result = {
-              ...result,
-              candidates: [...preferred.map((c) => ({ ...c, preferred: true })), ...rest],
-              reason: `${result.reason ?? ''} Geçmiş tercihiniz (${kmem.secilenAd}) önde.`.trim(),
-            };
-          }
-        }
-      }
+      // OGRENME HAFIZASI + CINS TERCIHI (ortak yol — v2 ile AYNI kural)
+      result = await this.hafizaOnSecim(userId, brandId, excelName, result, ctx.aliases);
 
       // ── M3 (Duzeltme: markada olmayan urun): sonuc YOK ve satirin urun
       // ailesi belliyse, kullanicinin kutuphanesindeki DIGER markalarda ara —
@@ -365,16 +313,48 @@ export class MatchingService {
       urun: li.product,
     }));
 
+    // ── S3: SOZLUK v2'DE DE OKUNUR (Faz 1 denetim bulgusu) ───────────
+    // Satir etiketleme (PRD 1.1-B) sozluksuz eksikti: "temiz su→PPR" gibi
+    // seed'ler ve S4 kullanici alias'lari YAZILIYOR ama v2 OKUMUYORDU.
+    // Istek basina 1 kez yuklenir; hint'ler QueryOpts ile motora gecer.
+    const aliases = await this.terminology.loadAliases(userId);
+
     const out: Record<string, MatchResult> = {};
     for (const name of materialNames) {
       if (!name?.trim()) continue;
       const line = parseLine(name, units?.[name]);
-      const outcome = runQuery(line, pool, { variantTags });
+
+      let hint = this.terminology.resolveAlias(name, aliases);
+      // E8: satirin KENDI ailesi cozulduyse sozluk BASKA aile dayatamaz
+      // ("DOĞALGAZ VANASI KÜRESEL" — dogalgaz alias'i boru der, satir vana).
+      if (hint?.impliedType && line.familySlug && hint.impliedType !== line.familySlug) hint = null;
+      // E2: adet birimli satira boru sozlugu dayatilamaz (birim sinyali)
+      if (hint?.impliedType === 'boru' && line.unitSignal === 'equipment' && line.familySlug !== 'boru') hint = null;
+
+      const opts: QueryOpts = {
+        variantTags,
+        hintFamily: hint?.impliedType ?? null,
+        sizeClassHint: hint?.sizeClass ?? null,
+        hintClass: hint?.sizeClass === 'plastic' || hint?.sizeClass === 'steel' ? hint.sizeClass : null,
+        hintBases: (hint?.kinds ?? []).filter((k) => k === 'siyah' || k === 'galvaniz'),
+        hintLabel: hint ? (hint.kinds.join('/') || hint.canonical) : undefined,
+        // Alias'in kendi kelimeleri + stripTags kisit/bilinmeyen sayilmaz
+        ignoreTokens: hint ? Array.from(new Set([...tokenize(hint.alias), ...hint.stripTags])) : undefined,
+      };
+      if (hint) {
+        console.log(`[Matching] v2 sozluk: "${name}" → ${hint.alias} (${opts.hintClass ?? '-'}${opts.hintBases?.length ? `, taban=${opts.hintBases.join('/')}` : ''})`);
+      }
+
+      const outcome = runQuery(line, pool, opts);
       let r = toMatchResult(outcome, line, toTry);
 
+      // OGRENME HAFIZASI + CINS TERCIHI — v1 ile AYNI kural (on-secili
+      // getirir, OTOMATIK DOLDURMAZ). Motor-bagimsiz ortak yol.
+      r = await this.hafizaOnSecim(userId, brandId, name, r, aliases);
+
       // M3: "bu markada yok" cevabi ALTERNATIFSIZ birakilmaz (PRD Bolum 3).
-      if (r.confidence === 'none' && !r.notProduct && line.familySlug) {
-        const alts = await this.findAlternativesV2(userId, brandId, line);
+      if (r.confidence === 'none' && !r.notProduct && (line.familySlug || opts.hintFamily)) {
+        const alts = await this.findAlternativesV2(userId, brandId, line, opts);
         if (alts.length > 0) r = { ...r, alternatives: alts };
       }
       out[name] = r;
@@ -387,7 +367,7 @@ export class MatchingService {
    * M3 (v2): satirin ailesi+capi DIGER markalarin indeksli kutuphanesinde var mi?
    * Ayni sert kurallar — yalniz GERCEKTEN o urunu sunan markalar onerilir.
    */
-  private async findAlternativesV2(userId: string, brandId: string, line: LineQuery): Promise<BrandAlternative[]> {
+  private async findAlternativesV2(userId: string, brandId: string, line: LineQuery, opts?: QueryOpts): Promise<BrandAlternative[]> {
     const others = await this.prisma.userLibrary.findMany({
       where: { userId, brandId: { not: brandId } },
       include: { brand: { select: { id: true, name: true } }, product: true } as any,
@@ -420,8 +400,11 @@ export class MatchingService {
       markaGruplari.get(m.id)!.push(row);
     }
 
+    // S3: sozluk ipuclari alternatif taramaya da islenir (R3: temiz su icin
+    // CELIK marka onerilemez) — yalniz varyant filtresi tasinmaz.
+    const altOpts: QueryOpts | undefined = opts ? { ...opts, variantTags: undefined } : undefined;
     for (const [mid, rows] of markaGruplari) {
-      const outcome = runQuery(line, rows);
+      const outcome = runQuery(line, rows, altOpts);
       // Yalniz KESIN sonuc alternatif olur — "belki" onerilmez
       if (outcome.kind !== 'single') continue;
       const m = markaOf.get(outcome.row.id)!;
@@ -1099,6 +1082,71 @@ export class MatchingService {
   // ═══════════════════════════════════════════
   // OGRENME HAFIZASI (PRD Adim 8) — imza + kaydet
   // ═══════════════════════════════════════════
+
+  /**
+   * OGRENME HAFIZASI + CINS TERCIHI — ON-SECILI getirir, OTOMATIK DOLDURMAZ.
+   * Motor-BAGIMSIZ: v1 (matchSingle) ve v2 (matchV2) sonuclarina ayni uygulanir.
+   * (Faz 1 denetim bulgusu S3: matchV2 erken donusu bu bloklari atliyordu —
+   * "önceki tercihiniz ✓" ozelligi indeksli markalarda OLUYDU.)
+   */
+  private async hafizaOnSecim(
+    userId: string,
+    brandId: string,
+    excelName: string,
+    result: MatchResult,
+    aliases: AliasHint[],
+  ): Promise<MatchResult> {
+    // ── TAM IMZA (PRD Adim 8): ayni belirsizlik daha once cozulduyse ────
+    // DUZELTME (A2/A5): hafiza OTOMATIK DOLDURMAZ — "ilk secim her zaman
+    // kullanicinin". Gecmis secim listenin BASINA preferred olarak alinir.
+    if (result.confidence === 'multi' && result.candidates?.length) {
+      const imza = this.buildImza(excelName, brandId);
+      // Savunmaci: tablo/client henuz yoksa (migration oncesi) akisi BOZMA.
+      let mem: any = null;
+      try {
+        mem = await (this.prisma as any).eslesmeHafizasi?.findUnique({
+          where: { userId_imza: { userId, imza } },
+        });
+      } catch { mem = null; }
+      if (mem) {
+        const idx = result.candidates.findIndex((c) => c.materialName === mem.secilenAd);
+        if (idx >= 0) {
+          console.log(`[Matching] HAFIZA ON-SECILI: "${excelName}" → "${mem.secilenAd}" (${mem.secimSayisi}×) basa alindi`);
+          const cand = { ...result.candidates[idx], preferred: true };
+          const rest = result.candidates.filter((_, i) => i !== idx);
+          result = {
+            ...result,
+            candidates: [cand, ...rest],
+            reason: `Geçmiş seçiminiz (${mem.secimSayisi}×) önde — onaylayın. ${result.reason ?? ''}`.trim(),
+          };
+        }
+      }
+    }
+
+    // ── CINS TERCIHI (V5, PRD v1.3): olcu-bagimsiz cins on-secimi ──────
+    if (result.confidence === 'multi' && result.candidates?.length) {
+      let kmem: any = null;
+      try {
+        kmem = await (this.prisma as any).eslesmeHafizasi?.findUnique({
+          where: { userId_imza: { userId, imza: this.buildKindImza(excelName, brandId, aliases) } },
+        });
+      } catch { kmem = null; }
+      if (kmem) {
+        const preferred = result.candidates.filter((c) => c.tags?.includes(kmem.secilenAd));
+        if (preferred.length > 0 && preferred.length < result.candidates.length) {
+          const rest = result.candidates.filter((c) => !c.tags?.includes(kmem.secilenAd));
+          console.log(`[Matching] CINS TERCIHI ON-SECILI: "${excelName}" → ${kmem.secilenAd} (${preferred.length} aday one alindi)`);
+          result = {
+            ...result,
+            candidates: [...preferred.map((c) => ({ ...c, preferred: true })), ...rest],
+            reason: `${result.reason ?? ''} Geçmiş tercihiniz (${kmem.secilenAd}) önde.`.trim(),
+          };
+        }
+      }
+    }
+
+    return result;
+  }
 
   /** Belirsizligin parmak izi: marka + kanonik olcu + tip + cins(+ipucu).
    *  Ayni imza = ayni secim sorusu → hafizadan cevaplanabilir. */
