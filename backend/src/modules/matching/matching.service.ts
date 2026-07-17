@@ -269,8 +269,15 @@ export class MatchingService {
         hintClass: !yaziliSinif && (hint?.sizeClass === 'plastic' || hint?.sizeClass === 'steel') ? hint.sizeClass : null,
         hintBases: yaziliSinif ? [] : (hint?.kinds ?? []).filter((k) => k === 'siyah' || k === 'galvaniz'),
         hintLabel: hint ? (hint.kinds.join('/') || hint.canonical) : undefined,
-        // Alias'in kendi kelimeleri + stripTags kisit/bilinmeyen sayilmaz
-        ignoreTokens: hint ? Array.from(new Set([...tokenize(hint.alias), ...hint.stripTags])) : undefined,
+        // Alias'in kendi kelimeleri + stripTags kisit/bilinmeyen sayilmaz —
+        // YALNIZ GERCEK CEVIRIDE (impliedType). S4 ZEHRI (canli 17.07,
+        // 218-secenek vakasi): ogrenilmis AD-alias'lari ('test drenaj
+        // vanasi' — impliedType YOK, urun adinin kendisi) satirin ad
+        // kelimelerini yutuyor ama karsiliginda aile kisiti vermiyordu →
+        // satir adsiz kaliyor, R11 yoluyla captaki TUM aile listeleniyordu.
+        // Sinif/taban varsayimi (sizeClass/kinds) kelime yemeyi HAKLAMAZ;
+        // o hint'ler kelimeler dururken de uygulanir.
+        ignoreTokens: hint?.impliedType ? Array.from(new Set([...tokenize(hint.alias), ...hint.stripTags])) : undefined,
       };
       if (hint) {
         console.log(`[Matching] v2 sozluk: "${name}" → ${hint.alias} (${opts.hintClass ?? '-'}${opts.hintBases?.length ? `, taban=${opts.hintBases.join('/')}` : ''})`);

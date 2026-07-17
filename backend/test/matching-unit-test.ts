@@ -19,7 +19,7 @@ function lib(name: string, price: number) {
 // Marka adi → fake Prisma (brand.findUnique bu adi doner)
 // eslesmeHafizasi: in-memory (V5 cins tercihi testi icin gercek upsert/find)
 // otherBrandRows: M3 alternatif taramasi (brandId: {not}) bu havuzu gorur
-function fakePrisma(brandName: string, libRows: any[], otherBrandRows: any[] = []): any {
+function fakePrisma(brandName: string, libRows: any[], otherBrandRows: any[] = [], extraAliases: any[] = []): any {
   const memStore = new Map<string, any>();
   const memKey = (w: any) => `${w.userId_imza.userId}|${w.userId_imza.imza}`;
   return {
@@ -41,13 +41,17 @@ function fakePrisma(brandName: string, libRows: any[], otherBrandRows: any[] = [
       },
     },
     terminologyAlias: {
-      findMany: async () => ALIAS_SEEDS.map((s, i) => ({ id: `a${i}`, userId: null, active: true, ...s })),
+      // extraAliases: S4 kullanici alias'lari (ogrenilmis) — zehir testleri icin
+      findMany: async () => [
+        ...ALIAS_SEEDS.map((s, i) => ({ id: `a${i}`, userId: null, active: true, ...s })),
+        ...extraAliases.map((s, i) => ({ id: `u${i}`, userId: 'u1', active: true, ...s })),
+      ],
     },
   };
 }
 
-function makeService(brandName: string, libRows: any[], otherBrandRows: any[] = []): MatchingService {
-  const prisma = fakePrisma(brandName, libRows, otherBrandRows);
+function makeService(brandName: string, libRows: any[], otherBrandRows: any[] = [], extraAliases: any[] = []): MatchingService {
+  const prisma = fakePrisma(brandName, libRows, otherBrandRows, extraAliases);
   const term = new TerminologyService(prisma);
   // Z4: sahte kur servisi — TRY satirlarda hic cagrilmaz; dovizli fixture
   // eklenirse sabit kur kullanilir (DB'siz determinizm)
@@ -456,6 +460,34 @@ async function run() {
     const uyarilar = (r?.candidates ?? []).map((c) => c.uyari ?? '');
     check('H1b/E3 nitelik farki uyarisi ("93°C istendi — bu ürün 68°C")',
       uyarilar.some((u) => u.includes('93°C istendi') && u.includes('68°C')), JSON.stringify(uyarilar));
+  }
+
+  // ══ S4 ZEHIR REGRESYONU (canli 17.07 — "218 secenek" vakasi) ═══════
+  // Ogrenilmis AD-alias'i ('test drenaj vanasi' — impliedType YOK, kinds
+  // pirinc, sizeClass steel; CANLIDAN birebir) satirin ad kelimelerini
+  // ignoreTokens ile yutuyordu → satir adsiz kaliyor → captaki TUM vana
+  // ailesi listeleniyordu (kelebek/kuresel dahil, 218 secenek).
+  // Kural: sozluk yalniz GERCEK CEVIRIDE (impliedType) kelime tuketir.
+  {
+    const zehirliAlias = {
+      alias: 'test drenaj vanasi',
+      canonical: 'Test ve drenaj vanası · K=57 orifisli · NPT dişli · 1"',
+      kinds: ['pirinc'], impliedType: null, sizeClass: 'steel', stripTags: [],
+    };
+    const svc = makeService('AYVAZ', [
+      lib('Test ve Drenaj Vanası K=57 Orifisli NPT Dişli 2"', 465),
+      lib('Test ve Drenaj Vanası K=80 Orifisli NPT Dişli 2"', 465),
+      lib('Kelebek Vana Wafer DN50', 250),
+      lib('Küresel Vana Pirinç 2"', 850),
+    ], [], [zehirliAlias]);
+    const q = "2 ''Test Drenaj Vanası";
+    const r = (await svc.bulkMatch('u1', 'brand-1', [q]))[q];
+    const adlar = (r?.candidates ?? []).map((c) => c.materialName);
+    check('S4 ZEHIR: adaylar YALNIZ test-drenaj (kelebek/kuresel ASLA)',
+      adlar.length === 2 && adlar.every((a) => a.includes('Test ve Drenaj')),
+      `got ${r?.confidence} adaylar: ${adlar.join(' | ') || r?.matchedName} (${r?.reason})`);
+    check('S4 ZEHIR: fiyat yazilmadi (cins sorusu)', r?.netPrice === 0 && r?.confidence === 'multi',
+      `got ${r?.confidence} net=${r?.netPrice}`);
   }
 
   // ══ HAFIZA TEK-ADAY OTOYAZ (kullanici karari 17.07 — cekvalf vakasi) ══
