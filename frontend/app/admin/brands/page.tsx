@@ -187,7 +187,17 @@ export default function AdminBrandsPage() {
       setNewBrandName('');
       fetchBrands();
     } catch (e: any) {
-      toast({ title: 'Hata', description: e?.response?.data?.message ?? 'Marka eklenemedi', variant: 'destructive' });
+      // 409 = marka SUNUCUDA ZATEN VAR (canli vaka 17.07: ilk istek basarili
+      // olup yaniti ag kopmasinda kaybolunca panel "eklenemedi" saniyor,
+      // sonraki denemeler 409 aliyor ve liste bayat kaliyordu). 409'da liste
+      // YENILENIR — kayit gorunur olur, kullanici cikmaz sokakta kalmaz (I7).
+      if (e?.response?.status === 409) {
+        toast({ title: 'Bu marka zaten kayıtlı', description: `${name} listede — liste yenilendi.` });
+        setNewBrandName('');
+        fetchBrands();
+      } else {
+        toast({ title: 'Hata', description: e?.response?.data?.message ?? 'Marka eklenemedi', variant: 'destructive' });
+      }
     }
   }
 

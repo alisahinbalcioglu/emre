@@ -130,7 +130,7 @@ export class BrandsService {
   // Admin CRUD
   async create(dto: CreateBrandDto) {
     const existing = await this.prisma.brand.findUnique({ where: { name: dto.name } });
-    if (existing) throw new ConflictException('Brand already exists');
+    if (existing) throw new ConflictException('Bu marka zaten kayıtlı');
     return this.prisma.brand.create({ data: { name: dto.name, logoUrl: dto.logoUrl, discipline: dto.discipline ?? 'mechanical' } });
   }
 
