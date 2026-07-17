@@ -355,9 +355,12 @@ export class MatchingService {
       const m = markaOf.get(tekAday.id)!;
       const list = toTry(tekAday.listPrice, tekAday.currency);
       const isk = tekAday.discountRate ?? 0;
-      const net = tekAday.customPrice != null && tekAday.customPrice > 0
+      // Kutuphane ekrani formulu (outcome-mapper.netFiyat ile AYNI):
+      // custom TABANI degistirir, iskonto HER ZAMAN uygulanir.
+      const taban = tekAday.customPrice != null && tekAday.customPrice > 0
         ? toTry(tekAday.customPrice, tekAday.currency)
-        : hesaplaNetFiyat(list, isk);
+        : list;
+      const net = hesaplaNetFiyat(taban, isk);
       byBrand.set(mid, {
         brandId: m.id, brandName: m.name,
         materialName: gorunenAd(tekAday), // boy'lu urunde boy gorunur (hidrant vakasi)

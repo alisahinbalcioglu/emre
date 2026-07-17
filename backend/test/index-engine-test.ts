@@ -24,12 +24,12 @@ function check(name: string, cond: boolean, detail?: string) {
 }
 
 /** 11 kolonlu urun satiri → kutuphane satiri (uretim indeksleyicisiyle) */
-function prod(c: ProductColumns & { discount?: number }): IndexedRow {
+function prod(c: ProductColumns & { discount?: number; custom?: number }): IndexedRow {
   const idx = buildProductIndex(c);
   return {
     id: `lib-${idx.rowKey}`,
     listPrice: c.price,
-    customPrice: null,
+    customPrice: c.custom ?? null,
     discountRate: c.discount ?? 0,
     currency: (c.paraBirimi as string) ?? 'TRY',
     urun: {
@@ -881,6 +881,32 @@ async function run() {
     const r2 = m("6'' Islak Alarm Vanası Yivli", havuz);
     check('SUPERSET: tek kayitta eklenmez — otomatik yazim surer (K2)',
       r2.confidence === 'high' && r2.netPrice === 1327, `got ${r2.confidence} net=${r2.netPrice} "${r2.reason}"`);
+  }
+
+  // ══ ISKONTO — EKRAN NE GOSTERIYORSA O YAZILIR (canli vaka 17.07) ══
+  // Kutuphanede %90 iskonto girilmis 6" boru (customPrice=listPrice dolu —
+  // 187 satirin HEPSI boyle) eslestirmede LISTE fiyatiyla yaziliyordu:
+  // eski kural custom'i AYNEN yazip iskontoyu carpmiyordu. Yeni kural
+  // kutuphane ekrani formulu: net = (custom ?? liste) × (1 − iskonto).
+  {
+    const B = { kategori: 'Borular', cins: 'siyah · TS EN 10255', baglanti: 'düz uçlu', birim: 'metre', paraBirimi: 'TRY', sheetName: 'S' };
+    // CANLI VERI birebir: liste 778.39, custom 778.39 (kopya artigi), %90
+    const havuz = [prod({ ...B, ad: 'Çelik boru', cap: '6"', price: 778.39, custom: 778.39, discount: 90, urunKodu: 'CB6' })];
+    const r = m('6" Siyah Çelik Boru Düz Uçlu', havuz, { unit: 'metre' });
+    check('ISKONTO: custom=liste dolu olsa da %90 UYGULANIR (77.9)',
+      r.confidence === 'high' && r.netPrice === 77.9, `got ${r.confidence} net=${r.netPrice} "${r.reason}"`);
+    check('ISKONTO: listPrice alani liste fiyatini korur', r.listPrice === 778.39, `got ${r.listPrice}`);
+
+    // GERCEK ozel fiyat: custom TABANI degistirir, iskonto yine carpilir
+    const havuz2 = [prod({ ...B, ad: 'Çelik boru', cap: '6"', price: 778.39, custom: 500, discount: 10, urunKodu: 'CB6b' })];
+    const r2 = m('6" Siyah Çelik Boru Düz Uçlu', havuz2, { unit: 'metre' });
+    check('ISKONTO: gercek ozel fiyat 500 + %10 → 450 (ekranla ayni)',
+      r2.netPrice === 450, `got net=${r2.netPrice}`);
+
+    // Iskontosuz ozel fiyat: davranis degismedi (custom aynen yazilir)
+    const havuz3 = [prod({ ...B, ad: 'Çelik boru', cap: '6"', price: 778.39, custom: 500, urunKodu: 'CB6c' })];
+    const r3 = m('6" Siyah Çelik Boru Düz Uçlu', havuz3, { unit: 'metre' });
+    check('ISKONTO: iskontosuz ozel fiyat AYNEN (500)', r3.netPrice === 500, `got net=${r3.netPrice}`);
   }
 
   // ══ DISPATCH: MatchingService UZERINDEN v2 yolu ══════════════════

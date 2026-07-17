@@ -33,15 +33,24 @@ export function gorunenAd(r: IndexedRow): string {
   return r.urun.boyMm ? `${r.urun.displayName} · ${r.urun.boyMm} mm` : r.urun.displayName;
 }
 
-/** Kullanicinin kendi fiyati: ozel fiyat > liste × (1 - iskonto) */
+/**
+ * Kullanicinin kendi fiyati — KUTUPHANE EKRANIYLA AYNI FORMUL:
+ *   net = (customPrice ?? listPrice) × (1 − iskonto)
+ * (frontend library/page.tsx calcNetPrice ile birebir.)
+ *
+ * CANLI VAKA (17.07): eski kural "customPrice doluysa AYNEN yaz" idi —
+ * iskontoyu CARPMIYORDU. Kutuphanede 187 iskontolu satirin HEPSINDE
+ * customPrice=listPrice dolu oldugundan (%90 girilen 6" boruda bile)
+ * eslestirme liste fiyatini yaziyordu; kutuphane ekrani ise 77,9 gosteriyordu.
+ * Kural: EKRAN NE GOSTERIYORSA ESLESTIRME ONU YAZAR — customPrice yalniz
+ * TABANI degistirir, iskonto her zaman uygulanir. custom=liste olan mevcut
+ * veriyle sonuc birebir ayni kalir (veri temizligi gerekmez).
+ */
 function netFiyat(r: IndexedRow, toTry: (v: number, cur: string) => number): { net: number; list: number; isk: number } {
   const list = toTry(r.listPrice ?? r.urun.price, r.currency);
   const isk = r.discountRate ?? 0;
-  if (r.customPrice != null && r.customPrice > 0) {
-    const c = toTry(r.customPrice, r.currency);
-    return { net: c, list, isk };
-  }
-  return { net: hesaplaNetFiyat(list, isk), list, isk };
+  const taban = r.customPrice != null && r.customPrice > 0 ? toTry(r.customPrice, r.currency) : list;
+  return { net: hesaplaNetFiyat(taban, isk), list, isk };
 }
 
 /**
