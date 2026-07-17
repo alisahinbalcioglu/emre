@@ -143,6 +143,8 @@ export function toMatchResult(
         reason,
         donusum: outcome.donusum ?? undefined,
         variantMissing: outcome.variantMissing ?? undefined,
+        // Faz 2b: dogrulanamayan yazili kelimeler — M3 multi'de de kosulsun
+        dogrulanamadi: outcome.bilinmeyen?.length ? outcome.bilinmeyen : undefined,
       };
     }
 

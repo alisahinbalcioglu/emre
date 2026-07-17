@@ -16,7 +16,7 @@
  */
 
 import { MatchingService } from '../src/modules/matching/matching.service';
-import { TerminologyService, ALIAS_SEEDS, BRAND_SEEDS } from '../src/modules/matching/terminology.service';
+import { TerminologyService, ALIAS_SEEDS } from '../src/modules/matching/terminology.service';
 import type { MatchResult, MatchCandidate, BrandAlternative } from '../src/modules/matching/types';
 
 function lib(name: string, price: number) {
@@ -46,9 +46,6 @@ function fakePrisma(brandName: string, libRows: any[], otherBrandRows: any[] = [
     },
     terminologyAlias: {
       findMany: async () => ALIAS_SEEDS.map((s, i) => ({ id: `a${i}`, userId: null, active: true, ...s })),
-    },
-    brandMaterialType: {
-      findMany: async () => BRAND_SEEDS.map((s, i) => ({ id: `b${i}`, userId: null, active: true, ...s })),
     },
   };
 }

@@ -53,11 +53,16 @@ export function parseLine(text: string, unit?: string | null): LineQuery {
     return { raw, notProduct: true, familySlug: null, tokens: [], aileKelimeleri: [], capInfo: null, boyTag: null, unit: unit ?? null, unitSignal };
   }
 
-  const familySlug = resolveLineFamily(raw);
+  // PARANTEZ ICI = NOT/NITELIK (Faz 2b, canli H1/R6 vakasi): satir sonundaki
+  // "(ROZET DAHİL)" notu sondan-cozumde 'rozet' desenine takilip aileyi
+  // sprinkler-aksesuar'a KACIRIYORDU. Parantez blogu aile cozumune ve kisit
+  // token'larina GIRMEZ (cap/boy cikarimi ham metinden calismaya devam eder —
+  // "(73 mm) (DN65)" gibi capli notlar kaybolmaz).
+  const parantezsiz = raw.replace(/\([^)]*\)/g, ' ');
 
-  // Token'lar KOK ALINMIS gelir (tokenize) — urun tarafiyla ayni kural.
-  // "Kompansatör"/"kompansatörü" ayni koke iner; 'cekvalf' AYIRT EDICI kalir.
-  const adaylar = tokenize(raw);
+  const familySlug = resolveLineFamily(parantezsiz);
+
+  const adaylar = tokenize(parantezsiz);
 
   // Cap: kaynak-farkinda (DN mi, inc mi, mm mi yazilmis?) — cevrim tablosu
   // secimi buna bagli (PPR'de DN=mm, celikte DN≠mm). v1 ile ayni primitif.

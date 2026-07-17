@@ -83,7 +83,7 @@ function libRow(c: ProductColumns & { discount?: number; custom?: number }) {
 
 async function dispatchTestleri() {
   const { MatchingService } = require('../src/modules/matching/matching.service');
-  const { TerminologyService, ALIAS_SEEDS, BRAND_SEEDS } = require('../src/modules/matching/terminology.service');
+  const { TerminologyService, ALIAS_SEEDS } = require('../src/modules/matching/terminology.service');
 
   function svcWith(rows: any[], otherRows: any[] = [], brandName = 'AYVAZ', hafiza: any = null) {
     const prisma: any = {
@@ -97,7 +97,6 @@ async function dispatchTestleri() {
       brand: { findUnique: async () => ({ name: brandName }) },
       eslesmeHafizasi: { findUnique: async () => hafiza, upsert: async () => {} },
       terminologyAlias: { findMany: async () => ALIAS_SEEDS.map((s: any, i: number) => ({ id: `a${i}`, userId: null, active: true, ...s })) },
-      brandMaterialType: { findMany: async () => BRAND_SEEDS.map((s: any, i: number) => ({ id: `b${i}`, userId: null, active: true, ...s })) },
     };
     const fx = { getRates: async () => ({ usdTry: 40, eurTry: 48, usdTryBuying: 40, eurTryBuying: 48, source: 'fake', date: '' }) };
     return new MatchingService(prisma, new TerminologyService(prisma), fx);
@@ -138,27 +137,24 @@ async function dispatchTestleri() {
     check('D3 USD 100 → TRY 4000 (kur 40, cevrim teklif aninda)', r?.netPrice === 4000, `got ${r?.netPrice}`);
   }
 
-  // D4: KARISIK havuz (bir satir indekssiz) → v2 DEVREYE GIRMEZ, v1 calisir
+  // D4 (Faz 2b GUNCELLENDI): KARISIK havuz → v1 YOK ARTIK; manuel satir
+  // ISTEK ANINDA indekslenir, v2 TEK motor olarak calisir (fallback yasagi).
   {
     const karisik = [...HAVUZ, { id: 'manuel-1', material: null, materialName: 'Elle eklenen boru DN25',
       listPrice: 100, customPrice: null, discountRate: 0, currency: 'TRY', productIndexId: null, product: null }];
     const svc = svcWith(karisik);
     const r = (await svc.bulkMatch('u1', 'brand-1', ['Dilatasyon kompansatörü DN25']))['Dilatasyon kompansatörü DN25'];
-    // v2'nin single reason'i "AD + ÇAP" ifadesini tasir (outcome-mapper) —
-    // v1 bunu ASLA uretmez. Yani bu ifadenin YOKLUGU v1'e dusuldugunun kaniti.
-    check('D4 karisik havuz → v2 DEVREYE GIRMEDI (v1 rozeti)',
-      !r?.reason?.includes('AD + ÇAP'), `got reason="${r?.reason}"`);
-    // Ve kritik: v2'ye girseydi product:null satirda cokerdi — girmedigi icin
-    // sonuc uretildi. Sessiz tutarsizlik yerine bilinen v1 davranisi.
-    check('D4 karisik havuzda sonuc yine de uretildi (cokme yok)',
-      r !== undefined && typeof r.netPrice === 'number', `got ${JSON.stringify(r)?.slice(0, 80)}`);
+    check('D4 karisik havuz → v2 CALISTI (tek motor, v1 sokuldu)',
+      !!r?.reason?.includes('AD + ÇAP') && r?.netPrice === 18015, `got net=${r?.netPrice} reason="${r?.reason}"`);
+    // Manuel satirin KENDISI de artik eslesebilir (istek-ani indeksleme)
+    const r2 = (await svc.bulkMatch('u1', 'brand-1', ['Elle eklenen boru DN25']))['Elle eklenen boru DN25'];
+    check('D4 manuel satir istek aninda indekslendi ve BULUNUR',
+      (r2?.netPrice ?? 0) > 0 || (r2?.candidates?.length ?? 0) > 0, `got ${r2?.confidence} net=${r2?.netPrice} "${r2?.reason}"`);
   }
 
-  // D4b: BAYAT INDEKS → v2 SESSIZCE yanlis cevap VERMEZ, v1'e duser
-  // Canli vaka (15.07): tokenizer "aile kelimesini dus"ten "kok al"a gecti;
-  // indeks eski surumde kaldi → "İZLENEBİLİR KELEBEK VANA" satirina
-  // "bu markada 'vana' tasiyan urun yok" dedi (oysa 23 tane vardi), cunku
-  // indekste 'vana' token'i eski kuralla ATILMISTI. Sessiz yanlis cevap.
+  // D4b (Faz 2b GUNCELLENDI): BAYAT INDEKS → v1'e dusme YOK; bayat satir
+  // ISTEK ANINDA canli tokenizer'la yeniden uretilir → DOGRU cevap. 15.07
+  // vakasi ("indekste 'vana' atilmisti → yok yalani") yapisal olarak olur.
   {
     const eski = HAVUZ.map((r) => ({
       ...r,
@@ -170,11 +166,8 @@ async function dispatchTestleri() {
     }));
     const svc = svcWith(eski);
     const r = (await svc.bulkMatch('u1', 'brand-1', ['Dilatasyon kompansatörü DN25']))['Dilatasyon kompansatörü DN25'];
-    // v2'nin single rozeti "AD + ÇAP" ifadesini tasir; YOKLUGU v1'e dusuldugunun kaniti
-    check('D4b BAYAT indeks → v2 DEVRE DISI (v1\'e dusuldu)',
-      !r?.reason?.includes('AD + ÇAP'), `got reason="${r?.reason}"`);
-    check('D4b bayat indekste yine de sonuc uretildi (sessiz cokme yok)',
-      r !== undefined && typeof r.netPrice === 'number');
+    check('D4b BAYAT indeks → istek aninda yeniden uretildi, v2 DOGRU cevap',
+      !!r?.reason?.includes('AD + ÇAP') && r?.netPrice === 18015, `got net=${r?.netPrice} reason="${r?.reason}"`);
   }
 
   // D5: M3 — bu markada yok, DIGER indeksli markada var
@@ -715,11 +708,19 @@ async function run() {
       r.confidence === 'multi' && r.netPrice === 0, `got ${r.confidence} net=${r.netPrice} matched=${r.matchedName}`);
     check('Ç1 nedeni soyluyor (capsiz/onay)',
       !!r.reason && /çap|onaylayın/i.test(r.reason), `got "${r.reason}"`);
-    // Koruma: urun CAPLIYSA tek eslesme YINE yazilir (K2 bozulmaz)
+    // Koruma: TUM kelimeleri dogrulanan satirda tek eslesme YINE yazilir (K2)
     const boru = prod({ kategori: 'Borular', ad: 'Çelik boru', cins: 'siyah', cap: 'DN50', price: 900, urunKodu: 'B50' });
-    const r2 = m('SPRİNK HATTI BORULARI DN50', [boru]);
-    check('Ç2 capli urun tek eslesme → yazilir (K2 korunur)',
+    const r2 = m('SİYAH ÇELİK BORU DN50', [boru]);
+    check('Ç2 tumu dogrulanmis satir + tek eslesme → yazilir (K2 korunur)',
       r2.confidence === 'high' && r2.netPrice === 900, `got ${r2.confidence} net=${r2.netPrice}`);
+
+    // Ç3 (H6/A2/E9 kapisi): DOGRULANAMAYAN yazili kelime varken tek aday
+    // otomatik YAZILMAZ — onay listesi + kelime acikca soylenir.
+    const r3 = m('SPRİNK HATTI BORULARI DN50', [boru]);
+    check('Ç3 dogrulanamayan kelime (sprink/hatti) + tek aday → ONAY listesi',
+      r3.confidence === 'multi' && r3.netPrice === 0, `got ${r3.confidence} net=${r3.netPrice}`);
+    check('Ç3 nedeni kelimeyi soyluyor',
+      !!r3.reason && /doğrulanamadı/.test(r3.reason), `got "${r3.reason}"`);
   }
 
   // ══ S — AD-GEVSETME: cins ISABETLIYSE yanlis ad daraltmasi geri alinir ══

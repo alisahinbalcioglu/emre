@@ -25,6 +25,10 @@ export interface MatchResult {
   // M3: secilen markada bu urun ailesi+boyut YOK — kullanicinin kutuphanesinde
   // ayni urunu sunan DIGER markalar (net fiyatlariyla, tiklanabilir)
   alternatives?: BrandAlternative[];
+  // Faz 2b: satirin YAZILI ama bu markada DOGRULANAMAYAN kelimeleri
+  // ('kuresel', 'dogalgaz'...) — doluysa M3 alternatif taramasi multi'de de
+  // kosulur (istenen sey baska markada olabilir). FE icin bilgilendirici.
+  dogrulanamadi?: string[];
 }
 
 // M3: alternatif marka onerisi — marka+urun+fiyat birlikte secilir

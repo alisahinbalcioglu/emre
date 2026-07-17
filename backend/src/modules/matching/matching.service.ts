@@ -2,96 +2,25 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { generateTags } from './tag-generator';
 import { hesaplaNetFiyat } from './pricing';
-import { extractMaterialKind, extractMaterialType, extractSurfaces, normalizeText } from './normalizer';
-import { extractSizeInfo, sizeEquivalents, isSizeTag } from './conversion';
-import type { SizeClass, SizeInfo, SizeEquivalents } from './conversion';
+import { extractMaterialKind } from './normalizer';
+import { extractSizeInfo } from './conversion';
 import { TerminologyService } from './terminology.service';
-// FAZ 4: indeksli + Ad-kilitli motor (saf cekirdek — test:index K1-K7)
+// TEK MOTOR (Faz 2b): indeksli + Ad-kilitli cekirdek (saf — test:index K1-K7)
 import { parseLine } from './index/line-parser';
 import { runQuery } from './index/query-engine';
 import { toMatchResult } from './index/outcome-mapper';
-import { INDEX_VERSION, tokenize } from './index/product-index';
+import { INDEX_VERSION, tokenize, buildProductIndex, rebuildIndexFields } from './index/product-index';
+import type { ProductColumns } from './index/product-index';
 import type { IndexedRow, LineQuery, QueryOpts } from './index/types';
-import type { AliasHint, BrandClassHint } from './terminology.service';
+import type { AliasHint } from './terminology.service';
 import { ExchangeRatesService } from '../../exchange-rates/exchange-rates.service';
-import { AD_DNLI_SLUGS } from './ad-resolver';
 import type { MatchResult, BrandAlternative } from './types';
-import {
-  splitExcelTags,
-  scoreCandidates,
-  narrowTopCandidates,
-  buildCandidateList,
-  POPULAR_MATERIALS,
-  MATERIAL_SUBTYPE_KEYS,
-  KIND_TAGS,
-  SURFACE_TAGS,
-  CONNECTION_TAGS,
-  EQUIPMENT_TYPE_TAGS,
-  isAttrTag,
-} from './shared-tag-matcher';
+import { KIND_TAGS } from './shared-tag-matcher';
 
-// ═══════════════════════════════════════════
-// FAZ 3 — Islevsel baslik → malzeme cinsi/tipi ipucu sozlugu
-// ═══════════════════════════════════════════
-// Kesif Excel'lerinde malzeme kimligi cogu zaman SATIR'da degil, ust GRUP
-// BASLIGI'nda ve genelde ISLEVSEL ("sprink hat", "pis su") — cins ("celik")
-// degil. Bu sozluk baslik anahtar kelimesini cins/tip ipucuna cevirir.
-//
-// KRITIK: ipucu HARD FILTER DEGIL. `preferredKinds` yalniz esit-skorlu
-// adaylar arasinda tie-break (o cinsi one cikar, digerlerini SILME). `impliedType`
-// tip belirsizligini cozer. `stripTags` ise generateTags'in bu islevsel
-// kelimeden urettigi tag'i (orn 'sprink') mustMatch havuzundan cikarir —
-// yoksa kutuphanedeki "Celik Dikisli Boru" adayinda o tag olmadigindan
-// eslesme 0'a duser.
-interface HeaderHint {
-  test: RegExp;
-  stripTags: string[];
-  preferredKinds: string[];
-  impliedType?: string;
-}
-
-const HEADER_HINTS: HeaderHint[] = [
-  // Yangin/sprinkler HATTI → celik boru.
-  // E2 (Boru Disi Kalemler PRD): yalin "sprink|sprinkler" YAKALANMAZ —
-  // "ASMA TAVAN SPRINK 68°C" bir SPRINKLER BASLIGIDIR (adet), boru degil.
-  // Onceki /\bsprink|sprinkler/ deseni bu satirlara celik-boru ailesi dayatip
-  // 'sprink' tag'ini strip ediyordu → gercek sprinkler urunleri subtype
-  // elemesinde dusuyor, dn15'li Fan-Coil hortumlari aday kaliyordu (H1 vakasi).
-  { test: /sprink\w*\s*hat|sprinkler\s*(pipe|line)|yangin\s*hat|yangin\s*tesisat/, stripTags: ['sprink'], preferredKinds: ['celik'], impliedType: 'boru' },
-  // Pis su / atik su / kanalizasyon → PVC veya HDPE (cift cins → belirsiz kalabilir)
-  { test: /\bpis\s*su|pissu|atik\s*su|atiksu|kanalizasyon|kanal\b|drenaj/, stripTags: [], preferredKinds: ['pvc', 'hdpe'], impliedType: 'boru' },
-  // Kalorifer / isitma → celik boru
-  { test: /kalorifer|isitma\s*hat|radyator\s*hat|petek\s*hat/, stripTags: [], preferredKinds: ['celik'], impliedType: 'boru' },
-  // Dogalgaz → celik boru
-  { test: /dogalgaz|gaz\s*hat/, stripTags: [], preferredKinds: ['celik'], impliedType: 'boru' },
-  // NOT: "temiz su / kullanma suyu" BILEREK YOK — cins belirsiz (ppr/galvaniz/pex),
-  // otomatik doldurmak yerine popup'a birakilir.
-];
-
-// MaterialPrice + Material tipleri (Prisma'dan ayrisan minimum shape)
-type MaterialPriceItem = {
-  price: number;
-  material: {
-    id: string;
-    name: string;
-    tags: string[];
-    normalizedName: string | null;
-    materialType: string | null;
-  };
-};
-
-type LibItem = {
-  materialName: string | null;
-  listPrice: number | null;
-  discountRate: number | null;
-  customPrice: number | null;
-};
-
-/** matchSingle'a tasinan istek-kapsamli baglam (sozluk + marka sinifi). */
-interface MatchContext {
-  aliases: AliasHint[];
-  brandClass: BrandClassHint | null;
-}
+// NOT (Faz 2b sokum — 17.07): v1 skor motoru (matchSingle zinciri,
+// HEADER_HINTS kod-ici sozlugu, marka→sinif cikarimi) kod tabanindan
+// SILINDI. Islevsel baslik sozlugu artik TEK yerde yasar: TerminologyAlias
+// (DB seed + S4 kullanici ogrenmesi) → matchV2 QueryOpts ipuclari.
 
 @Injectable()
 export class MatchingService {
@@ -165,154 +94,149 @@ export class MatchingService {
       return empty;
     }
 
-    // UserLibrary satirlarini matcher'in bekledigi MaterialPriceItem sekline
-    // cevir. Havuzdan aktarilanlar Material.tags'ini tasir; kullanicinin
-    // MANUEL ekledigi satirlarda (materialId yok) tag'ler anlik uretilir.
     // Z4: dovizli satirlar teklif aninda TRY tabanina cevrilir.
     const toTry = await this.buildTryConverter(libRows as { currency?: string | null }[]);
 
-    // ══ FAZ 4: MARKA BAZLI DISPATCH ═══════════════════════════════════
-    // Bu markanin kutuphane satirlarinin TAMAMI indekslenmisse Ad-kilitli v2
-    // motor calisir; degilse v1 aynen devam eder. Boylece gecis marka marka
-    // olur ve kullanici hicbir gun "bugun hicbir sey eslesmiyor" demez.
-    //
-    // TAMAMI sarti bilincli: karisik havuzda (yarisi indeksli) iki farkli
-    // kimlik/filtre mantigini ayni sorguda kosturmak sessiz tutarsizlik uretir.
-    // Manuel eklenen satirlarin indeksi yoktur → o marka v1'de kalir (bilinen
-    // sinirlama; manuel satiri indekslemek ayri is).
-    const indeksli = (libRows as any[]).filter((r) => r.productIndexId && r.product);
-    // ── BAYAT INDEKS KAPISI ──────────────────────────────────────────
-    // adTokens VERITABANINDA saklidir; teklif satiri CANLI kodla cozulur.
-    // Tokenizer degisip indeks eski surumde kalirsa motor SESSIZCE yanlis
-    // cevap uretir. Canli vaka (15.07): "İZLENEBİLİR KELEBEK VANA" →
-    // "bu markada 'vana' tasiyan urun yok" dedi; oysa 23 tane vardi —
-    // indeks 'vana' token'ini eski kuralla ATMISTI.
-    // Bayat indekste v2 CALISMAZ: v1'e duser ve UYARIR (sessiz yanlis
-    // cevap yerine gorunur uyari + ne yapilacagi).
-    const bayat = indeksli.filter((r) => (r.product.indexVersion ?? 1) !== INDEX_VERSION);
-    if (bayat.length > 0) {
-      console.warn(`[Matching] ⚠ BAYAT INDEKS: ${bayat.length}/${libRows.length} satir eski surumde ` +
-        `(v${bayat[0].product.indexVersion ?? 1} ≠ v${INDEX_VERSION}) → v2 DEVRE DISI, v1'e dusuldu. ` +
-        `COZUM: fiyat listesini yeniden yukleyin (rowKey upsert id'leri korur, iskonto kaybolmaz).`);
-    } else if (indeksli.length === libRows.length) {
-      console.log(`[Matching] v2 INDEKSLI MOTOR (Ad kilitli): ${libRows.length} satir, brand=${brandId}`);
-      return this.matchV2(userId, brandId, materialNames, libRows as any[], toTry, variantTags, units);
-    } else if (indeksli.length > 0) {
-      console.log(`[Matching] v1 LEGACY: ${indeksli.length}/${libRows.length} satir indeksli — TAMAMI indekslenmeden v2 devreye girmez`);
-    }
+    // ══ TEK MOTOR (Faz 2b SOKUM — 17.07): v1 skor motoru SILINDI ══════
+    // PRD Bolum 7: fallback YASAK — uc sonuc vardir (yaz / fiyatli sec / yok).
+    // Eski "TAMAMI indeksli olmali" sarti kalkti: motor degistirilmez, VERI
+    // MOTORA GETIRILIR — indekssiz (manuel/legacy) satir istek aninda
+    // indekslenir, bayat indeks istek aninda yeniden uretilir (hazirlaPool).
+    const pool = this.hazirlaPool(libRows as any[]);
+    console.log(`[Matching] v2 INDEKSLI MOTOR (Ad kilitli): ${pool.length} satir, brand=${brandId}`);
+    return this.matchV2(userId, brandId, materialNames, pool, toTry, variantTags, units);
+  }
 
-    const allPrices: MaterialPriceItem[] = libRows.map((li) => {
-      const name = li.material?.name ?? li.materialName ?? '';
-      const basePrice = toTry(li.customPrice ?? li.listPrice ?? 0, (li as any).currency);
-      if (li.material) {
-        return { price: basePrice, material: li.material };
+  /**
+   * UserLibrary satiri → IndexedRow (v2 havuzu). UC DURUM:
+   *  1. Guncel indeks → oldugu gibi kullanilir.
+   *  2. BAYAT indeks → istek aninda CANLI tokenizer'la yeniden uretilir
+   *     (rebuildIndexFields) — 15.07 vakasindaki "sessiz yanlis cevap"
+   *     yapisal olarak imkansizlasir; kalici cozum icin reindex onerilir.
+   *  3. Indeks YOK (manuel/legacy satir) → istek aninda indekslenir.
+   *     Manuel satir SERBEST METINDIR: cap kolonu yoksa metinden cikarilir
+   *     (extractSizeInfo) — Karar #1'in "kolondan oku" kurali urun tablosu
+   *     icindir; kaynagi zaten kolonsuz olan satirda satir-tarzi cikarim
+   *     mesrudur (aksi halde capsiz kalir, Ç-kapisi hep onay isterdi).
+   */
+  private hazirlaPool(libRows: any[]): IndexedRow[] {
+    let bayatSayisi = 0;
+    let indekssizSayisi = 0;
+    const pool: IndexedRow[] = libRows.map((li) => {
+      let urun: IndexedRow['urun'];
+      if (li.productIndexId && li.product) {
+        if ((li.product.indexVersion ?? 1) !== INDEX_VERSION) {
+          bayatSayisi++;
+          const cols: ProductColumns = {
+            kategori: li.product.kategori, ad: li.product.ad, cins: li.product.cins,
+            baglanti: li.product.baglanti, cap: li.product.capRaw, boy: li.product.boyMm,
+            birim: li.product.birim, price: li.product.price, paraBirimi: li.product.currency,
+            urunKodu: li.product.urunKodu, not: li.product.not, sheetName: li.product.sheetName,
+          };
+          urun = { ...li.product, ...rebuildIndexFields(cols, { adSlug: li.product.adSlug, belirsiz: li.product.belirsiz }) };
+        } else {
+          urun = li.product;
+        }
+      } else {
+        indekssizSayisi++;
+        const name: string = li.material?.name ?? li.materialName ?? '';
+        const price = li.listPrice ?? 0;
+        const cap = li.cap ?? extractSizeInfo(name)?.display ?? null;
+        // AD'den olcu ifadesi SOYULUR: adBucket/adTokens capa kilitlenmesin.
+        // Yoksa "...Boru 1\"" ile "...Boru 1 1/4\"" farkli AD sayilir → V4
+        // varyant kimligi (ad:bucket) caplar arasi YAYILAMAZ, tam-ad
+        // eslesmesi de kacar. Cap zaten cap kolonuna tasindi (yukarida).
+        const adTemiz = (li.cap ? name : name
+          .replace(/\b(dn|pn|od)\s*-?\d+(?:[.,]\d+)?\b/gi, ' ')
+          .replace(/\d+\s+\d+\/\d+\s*(?:"|''|inch|inc\b)?/gi, ' ')
+          .replace(/\d+\/\d+\s*(?:"|''|inch|inc\b)?/gi, ' ')
+          .replace(/\d+(?:[.,]\d+)?\s*(?:"|''|inch\b|inc\b|mm\b)/gi, ' ')
+          .replace(/[øØ]\s*\d+/g, ' ')
+          .replace(/\s[-·—]\s/g, ' ') // olcu soyulunca sarkan ayrac artigi
+          .replace(/\s{2,}/g, ' ').trim()) || name;
+        // MANUEL SATIRI KOLONLARA AYRISTIR: yuzey/cins kelimeleri CINS'e,
+        // baglanti sifatlari BAGLANTI'ya tasinir. Yoksa "... Siyah Dişli
+        // Manşonlu" gibi adlarda sondaki 'manşonlu' sondan-aile-cozumunu
+        // fitting'e kaciriyordu (bas isim ortada kaliyor: 'Borusu').
+        const CINS_K = new Set(['siyah', 'galvaniz', 'galvanizli', 'kirmizi', 'boyali', 'celik',
+          'paslanmaz', 'pirinc', 'dokum', 'bronz', 'bakir', 'ppr', 'pprc', 'pvc', 'pe', 'pex',
+          'hdpe', 'polietilen', 'plastik', 'wafer', 'lug']);
+        const BAGLANTI_K = new Set(['disli', 'mansonlu', 'kaynakli', 'flansli', 'yivli',
+          'vidali', 'gecmeli', 'rakorlu', 'presli', 'sokedli', 'kaplinli', 'duz', 'uclu']);
+        // YALNIZ SONDAN ardisik cins/baglanti kelimeleri soyulur — Turkcede
+        // bas isim SONDADIR; ortadan kelime cekmek adi bozar ("Su ve Yangın
+        // Tesisat Borusu"nun ortasindan 'yangin' cekilemez). Sondaki sifat
+        // kuyrugu ("... - Siyah Dişli Manşonlu") ise aile cozumunu kacirtan
+        // gercek gurultudur → kolonlarina tasinir. HAM kelime korunur
+        // (displayName Turkce karakteriyle cizilir).
+        const parcalar = adTemiz.split(/\s+/).filter(Boolean);
+        const cinsK: string[] = []; const bagK: string[] = []; const kuyruk: string[] = [];
+        while (parcalar.length > 1) {
+          const ham = parcalar[parcalar.length - 1];
+          const w = tokenize(ham)[0] ?? '';
+          if (!w) { kuyruk.unshift(parcalar.pop()!); continue; } // stopword ('Tip') soymayi KESMEZ
+          if (CINS_K.has(w)) cinsK.unshift(parcalar.pop()!);
+          else if (BAGLANTI_K.has(w)) bagK.unshift(parcalar.pop()!);
+          else break;
+        }
+        // stopword kuyrugu en yakin kovaya iade ("Lug Tip" → cins 'Lug Tip')
+        if (kuyruk.length && cinsK.length) cinsK.push(...kuyruk);
+        else if (kuyruk.length && bagK.length) bagK.push(...kuyruk);
+        else parcalar.push(...kuyruk);
+        const adK = parcalar;
+        const idx = buildProductIndex({
+          kategori: li.kategori ?? null,
+          ad: adK.join(' ') || adTemiz,
+          cins: li.cins ?? (cinsK.length ? cinsK.join(' ') : null),
+          baglanti: bagK.length ? bagK.join(' ') : null,
+          cap,
+          birim: li.unit ?? null,
+          price,
+        });
+        urun = {
+          ...idx,
+          ad: name, cins: li.cins ?? null, baglanti: null,
+          capRaw: cap, boyMm: null, kategori: li.kategori ?? null,
+          urunKodu: null, sheetName: null, price,
+        };
       }
-      const gen = generateTags(name);
       return {
-        price: basePrice,
-        material: {
-          id: li.id,
-          name,
-          tags: gen.tags,
-          normalizedName: gen.normalizedName,
-          materialType: gen.materialType,
-        },
+        id: li.id,
+        listPrice: li.listPrice ?? urun.price,
+        customPrice: li.customPrice ?? null,
+        discountRate: li.discountRate ?? 0,
+        currency: li.currency ?? 'TRY',
+        urun,
       };
     });
-
-    // Iskonto/liste fiyati lookup'i icin ayni satirlar (calcPrice ad ile bulur)
-    const libItems: LibItem[] = libRows.map((li) => ({
-      materialName: li.material?.name ?? li.materialName,
-      listPrice: (li.customPrice ?? li.listPrice) != null
-        ? toTry((li.customPrice ?? li.listPrice)!, (li as any).currency)
-        : null,
-      discountRate: li.discountRate,
-      customPrice: li.customPrice != null ? toTry(li.customPrice, (li as any).currency) : null,
-    }));
-
-    console.log(`[Matching] KUTUPHANE modu: ${materialNames.length} malzeme, ${libRows.length} kutuphane kaydi (brand=${brandId})`);
-
-    // ── PRD v1.1: sozluk + marka→sinif baglami (istek basina 1 kez) ──
-    // Marka adi → celik/PPR sinifi (D2/P1): DN↔inc mi, DN=mm mi buradan belli olur.
-    let brandName: string | null = null;
-    try {
-      const brand = await this.prisma.brand.findUnique({ where: { id: brandId }, select: { name: true } });
-      brandName = brand?.name ?? null;
-    } catch { brandName = null; }
-    const ctx: MatchContext = {
-      aliases: await this.terminology.loadAliases(userId),
-      brandClass: await this.terminology.resolveBrandClass(brandName, userId),
-    };
-    if (ctx.brandClass) {
-      console.log(`[Matching] Marka sinifi: "${brandName}" → ${ctx.brandClass.sizeClass} (${ctx.brandClass.kinds.join('/')})`);
+    if (bayatSayisi > 0) {
+      console.warn(`[Matching] ⚠ BAYAT INDEKS: ${bayatSayisi} satir istek aninda yeniden uretildi (v${INDEX_VERSION}). ` +
+        `KALICI COZUM: POST /admin/reindex-products (her istekte yeniden hesap = gereksiz yuk).`);
     }
-
-    // 3. Her Excel malzemesi icin tag-based eslestirme
-    const results: Record<string, MatchResult> = {};
-    let matchCount = 0;
-
-    for (const excelName of materialNames) {
-      if (!excelName.trim()) continue;
-      let result = this.matchSingle(excelName, allPrices, libItems, ctx, variantTags, units?.[excelName]);
-
-      // OGRENME HAFIZASI + CINS TERCIHI (ortak yol — v2 ile AYNI kural)
-      result = await this.hafizaOnSecim(userId, brandId, excelName, result, ctx.aliases);
-
-      // ── M3 (Duzeltme: markada olmayan urun): sonuc YOK ve satirin urun
-      // ailesi belliyse, kullanicinin kutuphanesindeki DIGER markalarda ara —
-      // "Cayirova'da PP kuresel vana yok; su markalarda var" listesi.
-      // ASLA otomatik yazilmaz (M1) — kullanici marka+fiyati birlikte secer.
-      if (result.confidence === 'none' && !result.notProduct) {
-        const alts = await this.findAlternatives(userId, brandId, excelName, ctx);
-        if (alts.length > 0) {
-          result = {
-            ...result,
-            alternatives: alts,
-            reason: `Bu markada eşleşme yok — ürün şu markalarda var: ${alts.map((a) => a.brandName).join(', ')}`,
-          };
-        }
-      }
-
-      results[excelName] = result;
-      if (result.confidence !== 'none') matchCount++;
+    if (indekssizSayisi > 0) {
+      console.log(`[Matching] ${indekssizSayisi} indekssiz satir istek aninda indekslendi (manuel/legacy)`);
     }
-
-    console.log(`[Matching] Sonuc: ${matchCount}/${materialNames.length} eslesti`);
-    return results;
+    return pool;
   }
 
   // ═══════════════════════════════════════════
-  // TEK MALZEME ESLESTIRME
-  // 3 ZORUNLU etiket: malzeme tipi + malzeme cinsi + cap
-  // 1 bile eksikse → eslestirme YAPMA
-  // Birden fazla aday varsa → candidates listesi dondur
+  // TEK MOTOR: INDEKSLI + AD-KILITLI (v2) — baska motor YOKTUR (Faz 2b)
   // ═══════════════════════════════════════════
 
   /**
-   * FAZ 4: INDEKSLI + AD-KILITLI MOTOR (v2).
-   *
    * Skor YOK, aday URETILMEZ — havuz FILTRELENIR (Ad → Cap → yazili nitelik).
    * Cekirdek saf modullerde (index/*), DB'siz test edilir: test:index (K1-K7).
-   * Bu metot yalniz veriyi hazirlar ve M3 alternatiflerini ekler.
+   * Bu metot yalniz sozluk/hafiza baglar ve M3 alternatiflerini ekler.
    */
   private async matchV2(
     userId: string,
     brandId: string,
     materialNames: string[],
-    libRows: any[],
+    pool: IndexedRow[],
     toTry: (v: number, cur?: string | null) => number,
     variantTags?: string[],
     units?: Record<string, string>,
   ): Promise<Record<string, MatchResult>> {
-    const pool: IndexedRow[] = libRows.map((li) => ({
-      id: li.id,
-      listPrice: li.listPrice ?? li.product.price,
-      customPrice: li.customPrice ?? null,
-      discountRate: li.discountRate ?? 0,
-      currency: li.currency ?? 'TRY',
-      urun: li.product,
-    }));
-
     // ── S3: SOZLUK v2'DE DE OKUNUR (Faz 1 denetim bulgusu) ───────────
     // Satir etiketleme (PRD 1.1-B) sozluksuz eksikti: "temiz su→PPR" gibi
     // seed'ler ve S4 kullanici alias'lari YAZILIYOR ama v2 OKUMUYORDU.
@@ -330,13 +254,20 @@ export class MatchingService {
       if (hint?.impliedType && line.familySlug && hint.impliedType !== line.familySlug) hint = null;
       // E2: adet birimli satira boru sozlugu dayatilamaz (birim sinyali)
       if (hint?.impliedType === 'boru' && line.unitSignal === 'equipment' && line.familySlug !== 'boru') hint = null;
+      // T3/T5: SATIR KAZANIR — satirda ACIK sinif/cins kelimesi yaziliysa
+      // sozluk sinif/taban DAYATAMAZ ("TEMİZ SU başlığı altında DN50 GALVANİZ
+      // ÇELİK BORU" satiri CELIKTIR; alias plastic filtresi onu ELIYORDU ve
+      // PPR yaziliyordu — R4 ihlali). Sozluk yalniz SINIFSIZ satira
+      // varsayilan verir; yazili kelime cins filtresi olarak zaten serttir.
+      const YAZILI_SINIF = /(^|\s)(celik|paslanmaz|pirinc|dokum|bronz|bakir|galvaniz\w*|siyah|ppr\w*|pex|pvc|hdpe|polietilen|plastik)(\s|$)/;
+      const yaziliSinif = YAZILI_SINIF.test(line.tokens.join(' '));
 
       const opts: QueryOpts = {
         variantTags,
         hintFamily: hint?.impliedType ?? null,
-        sizeClassHint: hint?.sizeClass ?? null,
-        hintClass: hint?.sizeClass === 'plastic' || hint?.sizeClass === 'steel' ? hint.sizeClass : null,
-        hintBases: (hint?.kinds ?? []).filter((k) => k === 'siyah' || k === 'galvaniz'),
+        sizeClassHint: yaziliSinif ? null : hint?.sizeClass ?? null,
+        hintClass: !yaziliSinif && (hint?.sizeClass === 'plastic' || hint?.sizeClass === 'steel') ? hint.sizeClass : null,
+        hintBases: yaziliSinif ? [] : (hint?.kinds ?? []).filter((k) => k === 'siyah' || k === 'galvaniz'),
         hintLabel: hint ? (hint.kinds.join('/') || hint.canonical) : undefined,
         // Alias'in kendi kelimeleri + stripTags kisit/bilinmeyen sayilmaz
         ignoreTokens: hint ? Array.from(new Set([...tokenize(hint.alias), ...hint.stripTags])) : undefined,
@@ -353,7 +284,11 @@ export class MatchingService {
       r = await this.hafizaOnSecim(userId, brandId, name, r, aliases);
 
       // M3: "bu markada yok" cevabi ALTERNATIFSIZ birakilmaz (PRD Bolum 3).
-      if (r.confidence === 'none' && !r.notProduct && (line.familySlug || opts.hintFamily)) {
+      // Faz 2b genislemesi: satirin yazili kelimesi bu markada DOGRULANAMADIYSA
+      // ('PP KÜRESEL' → Cayirova'da kuresel yok) istenen sey baska markada
+      // olabilir — multi cevapta da alternatif taranir (R5/R9).
+      if (!r.notProduct && (line.familySlug || opts.hintFamily)
+          && (r.confidence === 'none' || (r.dogrulanamadi?.length ?? 0) > 0)) {
         const alts = await this.findAlternativesV2(userId, brandId, line, opts);
         if (alts.length > 0) r = { ...r, alternatives: alts };
       }
@@ -370,22 +305,19 @@ export class MatchingService {
   private async findAlternativesV2(userId: string, brandId: string, line: LineQuery, opts?: QueryOpts): Promise<BrandAlternative[]> {
     const others = await this.prisma.userLibrary.findMany({
       where: { userId, brandId: { not: brandId } },
-      include: { brand: { select: { id: true, name: true } }, product: true } as any,
+      include: {
+        brand: { select: { id: true, name: true } },
+        product: true,
+        material: { select: { name: true } },
+      } as any,
     });
-    const pool: IndexedRow[] = (others as any[])
-      .filter((r) => r.productIndexId && r.product)
-      .map((r) => ({
-        id: r.id,
-        listPrice: r.listPrice ?? r.product.price,
-        customPrice: r.customPrice ?? null,
-        discountRate: r.discountRate ?? 0,
-        currency: r.currency ?? 'TRY',
-        urun: r.product,
-      }));
+    // Faz 2b: diger markalarin manuel/bayat satirlari da ayni yoldan gecer
+    const pool = this.hazirlaPool(others as any[]);
     if (pool.length === 0) return [];
 
     const toTry = await this.buildTryConverter(others as { currency?: string | null }[]);
     const byBrand = new Map<string, BrandAlternative>();
+    const kesinlik = new Map<string, 'single' | 'ask1'>();
     const markaOf = new Map<string, { id: string; name: string }>(
       (others as any[]).map((r) => [r.id, r.brand]),
     );
@@ -405,678 +337,34 @@ export class MatchingService {
     const altOpts: QueryOpts | undefined = opts ? { ...opts, variantTags: undefined } : undefined;
     for (const [mid, rows] of markaGruplari) {
       const outcome = runQuery(line, rows, altOpts);
-      // Yalniz KESIN sonuc alternatif olur — "belki" onerilmez
-      if (outcome.kind !== 'single') continue;
-      const m = markaOf.get(outcome.row.id)!;
-      const list = toTry(outcome.row.listPrice, outcome.row.currency);
-      const isk = outcome.row.discountRate ?? 0;
-      const net = outcome.row.customPrice != null && outcome.row.customPrice > 0
-        ? toTry(outcome.row.customPrice, outcome.row.currency)
+      // KESIN sonuc (single) VEYA tek-adayli onay listesi alternatif olur.
+      // (Faz 2b: 'PP KÜRESEL' → KALDE'de tek PPR kuresel; 'pp' dogrulanamadi
+      // notu tek adayi ask'a dusurur — oneri zaten fiyatli SECENEKTIR,
+      // kesinlik iddiasi yok; kullanici marka+fiyati birlikte secer.)
+      const tekAday = outcome.kind === 'single' ? outcome.row
+        : outcome.kind === 'ask' && outcome.rows.length === 1 ? outcome.rows[0]
+        : null;
+      if (!tekAday) continue;
+      const m = markaOf.get(tekAday.id)!;
+      const list = toTry(tekAday.listPrice, tekAday.currency);
+      const isk = tekAday.discountRate ?? 0;
+      const net = tekAday.customPrice != null && tekAday.customPrice > 0
+        ? toTry(tekAday.customPrice, tekAday.currency)
         : hesaplaNetFiyat(list, isk);
       byBrand.set(mid, {
         brandId: m.id, brandName: m.name,
-        materialName: outcome.row.urun.displayName,
+        materialName: tekAday.urun.displayName,
         netPrice: net, listPrice: list, discount: isk,
       });
+      kesinlik.set(mid, outcome.kind === 'single' ? 'single' : 'ask1');
     }
-    return Array.from(byBrand.values());
-  }
-
-  private matchSingle(
-    excelName: string,
-    allPrices: MaterialPriceItem[],
-    libItems: LibItem[],
-    ctx: MatchContext,
-    variantTags?: string[],
-    unit?: string | null,
-  ): MatchResult {
-    const excelTags = generateTags(excelName);
-
-    if (excelTags.tags.length === 0) {
-      return { netPrice: 0, listPrice: 0, discount: 0, confidence: 'none', reason: 'Etiket cikarilmadi' };
-    }
-
-    // ── FAZ 1: TEK ZORUNLU KOSUL = CAP ─────────────────────────────
-    // Kaynak-farkinda olcu (PRD §6-7): DN mi, inc mi, mm mi yazilmis?
-    // Cevrim tablosu secimi buna baglidir (PPR'de DN=mm, celikte DN≠mm).
-    let sizeInfo: SizeInfo | null = extractSizeInfo(excelName);
-    if (!sizeInfo) {
-      // Ciplak PE yolu ("63 PE100 SDR17"): generateTags od-63 uretmis olabilir —
-      // conversion parser'i ciplak sayiyi BILEREK yakalamaz (yanlis pozitif).
-      const legacy = excelTags.tags.find((t) => isSizeTag(t));
-      if (legacy) {
-        sizeInfo = legacy.startsWith('od-')
-          ? { source: 'mm', value: parseInt(legacy.slice(3), 10), display: legacy }
-          : { source: 'dn', value: parseInt(legacy.slice(2), 10), display: legacy.toUpperCase() };
-      }
-    }
-    const hasDiameter = sizeInfo !== null;
-    // E1/H3 (Boru Disi Kalemler PRD): EKIPMAN ailelerinde cap ZORUNLU DEGIL —
-    // "ESNEK SPRINKLER HORTUMU (50 cm)" capsizdir, uzunluk/nitelikle eslesir.
-    // Aile (tip) must-match oldugu icin capsiz sorgu yine dar kalir.
-    const isEquipment = EQUIPMENT_TYPE_TAGS.has(excelTags.materialType);
-    if (!hasDiameter && !isEquipment) {
-      // URUN DEGIL (spec ALTIN KURAL yardimcisi): "FITTINGS ORANI",
-      // "MONTAJ ISCILIGI" gibi oran/hizmet satirlari malzeme degildir —
-      // fiyat BEKLENMEZ. 'yok'tan ayri isaretlenir ki kullanici bunlari
-      // "eksik eslesme" sanmasin. Muhafazakar liste: yalniz net hizmet
-      // kelimeleri (boya DEGIL — POLISAN antipas gercek urun olabilir).
-      // PRD Adim 7 genisletmesi: fitting orani/bedeli (TR+EN), paket satirlari
-      // (boru+fittings+support+sarf), sarf malzeme. "SET" ve "boya" BILEREK
-      // yok: "GAZ ALARM SETI" / POLISAN antipas gercek urun olabilir.
-      const NOT_PRODUCT_RE = /\borani?\b|\biscilik\b|\bmontaj\b|\bnakliye\b|\bdevreye\s*alma\b|\bgenel\s*gider|fittings?\s*(orani|bedeli|oran)\b|boru\s*\+\s*fitting|\bsarf\b/;
-      const normName = excelName
-        .replace(/İ/g, 'i').replace(/I/g, 'i').replace(/ı/g, 'i')
-        .replace(/[şŞ]/g, 's').replace(/[çÇ]/g, 'c').replace(/[üÜ]/g, 'u')
-        .replace(/[öÖ]/g, 'o').replace(/[ğĞ]/g, 'g').toLowerCase();
-      if (NOT_PRODUCT_RE.test(normName)) {
-        return {
-          netPrice: 0, listPrice: 0, discount: 0, confidence: 'none',
-          notProduct: true,
-          reason: 'Ürün değil (oran/hizmet satırı) — fiyat beklenmiyor',
-        };
-      }
-      return {
-        netPrice: 0, listPrice: 0, discount: 0, confidence: 'none',
-        reason: `Eksik bilgi: cap yok. Etiketler: [${excelTags.tags.join(', ')}]`,
-      };
-    }
-
-    // ── FAZ 3 + PRD §5: baslik/terim sozlugu (DB) — kod fallback'li ──
-    // DB sozlugu (seed + kullanici alias'lari) once; tablo henuz yoksa
-    // koddaki HEADER_HINTS ayni isi gorur.
-    const dictHint = this.terminology.resolveAlias(excelName, ctx.aliases);
-    const legacyHint = dictHint ? null : this.deriveHeaderHint(excelName);
-    let hint: { kinds: string[]; impliedType: string | null; sizeClass: SizeClass | null; stripTags: string[] } | null =
-      dictHint
-        ? { kinds: dictHint.kinds, impliedType: dictHint.impliedType, sizeClass: dictHint.sizeClass, stripTags: dictHint.stripTags }
-        : legacyHint
-          ? {
-              kinds: legacyHint.preferredKinds,
-              impliedType: legacyHint.impliedType ?? null,
-              sizeClass: legacyHint.preferredKinds.some((k) => ['ppr', 'pe', 'pvc', 'hdpe'].includes(k)) ? 'plastic' : 'steel',
-              stripTags: legacyHint.stripTags,
-            }
-          : null;
-
-    // ── E8 on-kosulu: BORU alias'i boru-olmayan satira dayatilamaz ──
-    // "DOGALGAZ VANASI KURESEL" satiri 'dogalgaz' alias'ini (dogalgaz→celik
-    // BORU) tetikliyordu → vana satirina celik-boru ailesi + siyah beklentisi
-    // biniyordu. Satirin KENDI tipi belli ve boru degilse boru ipucu dusulur.
-    if (hint?.impliedType === 'boru' && excelTags.materialType !== 'diger' && excelTags.materialType !== 'boru') {
-      console.log(`[Matching] "${excelName}": satir tipi (${excelTags.materialType}) boru alias'ini gecersiz kildi (E8)`);
-      hint = null;
-    }
-
-    // ── E2: BIRIM SINYALI (metre→boru, adet→ekipman) ────────────────
-    // Satirin kendisi ekipman tipi tasirken sozluk/baslik boru ailesi dayatamaz;
-    // adet birimli satira boru ipucu uygulanmaz. Sinyaller CELISIRSE otomatik
-    // yazim yerine onay listesi sunulur (asagida 'capped').
-    const unitNorm = unit ? normalizeText(unit) : '';
-    const unitSignal: 'pipe' | 'equipment' | null =
-      unitNorm && /metre|mtul|^mt\.?$|^m\.?$/.test(unitNorm) ? 'pipe'
-      : unitNorm && /adet|^ad\.?$|takim|^tk\.?$/.test(unitNorm) ? 'equipment'
-      : null;
-    let unitConflict: string | null = null;
-    if (unitSignal === 'equipment' && hint?.impliedType === 'boru' && excelTags.materialType !== 'boru') {
-      // adet birimli, boru olmayan satira baslik/sozluk boru ailesi dayatmasin
-      console.log(`[Matching] "${excelName}": birim (${unit}) boru ipucusuyla celisti — ipucu birakildi (E2)`);
-      hint = null;
-      if (excelTags.materialType === 'diger') {
-        unitConflict = `Birim (${unit}) başlık ipucusuyla (boru) çelişiyor — aile belirsiz`;
-      }
-    }
-    if (unitSignal === 'pipe' && isEquipment) {
-      unitConflict = `Birim (${unit}) ekipman ailesiyle çelişiyor`;
-    }
-
-    // ── MALZEME SINIFI COZ (cevrim tablosu secimi) ───────────────────
-    // T5 (Duzeltme Talebi): oncelik SATIR ACIK MALZEME > baslik/sozluk > marka.
-    // "TEMIZ SU BORULARI" (varsayilan PPR) altindaki "DN50 GALVANIZ CELIK BORU"
-    // satiri CELIK cevrimiyle cozulur — satir detayi basligi EZER (T3).
-    // NOT: generateTags'in DEFAULT-CELIK'i satir ipucu SAYILMAZ (o bir
-    // varsayim) — ham extractMaterialKind/extractSurfaces kullanilir.
-    const rawKinds = extractMaterialKind(excelName);
-    const rawSurfaces = extractSurfaces(excelName);
-    const lineClass: SizeClass | null = rawKinds.some((k) => ['ppr', 'pe', 'pvc', 'hdpe'].includes(k))
-      ? 'plastic'
-      : rawKinds.some((k) => ['celik', 'paslanmaz', 'pirinc', 'dokum', 'bronz', 'bakir'].includes(k))
-        ? 'steel'
-        // Yuzey sinyali: galvaniz/siyah kaplama CELIK ailesidir ("DN32 GALVANIZ
-        // KAPLAMA" — 'celik' kelimesi gecmese de plastik boru galvanizlenmez)
-        : rawSurfaces.includes('galvaniz') || rawSurfaces.includes('siyah')
-          ? 'steel'
-          : null;
-    // Metal tip aileleri (vana/fitting/flans... + E5 ekipmanlar + DN'li
-    // sozluk aileleri) DN'i celik anlaminda kullanir — satirda plastik cins
-    // yoksa. H4: "FLOW SWITCH DN 65" → celik cevrimi → 2 1/2" (Paddle Tip).
-    const metalTypeClass: SizeClass | null =
-      lineClass === null && (['vana', 'fitting', 'flans', 'pompa', 'radyator', 'kombi', 'kazan',
-        'sprinkler', 'hortum', 'akis-anahtari', 'akis-olcer'].includes(excelTags.materialType)
-        || AD_DNLI_SLUGS.has(excelTags.materialType))
-        ? 'steel'
-        : null;
-    const sizeClass: SizeClass = lineClass ?? hint?.sizeClass ?? ctx.brandClass?.sizeClass ?? metalTypeClass ?? 'unknown';
-    if (lineClass && hint?.sizeClass && lineClass !== hint.sizeClass) {
-      console.log(`[Matching] "${excelName}": satir sinifi (${lineClass}) baslik varsayilanini (${hint.sizeClass}) EZDI (T3/T5)`);
-    }
-
-    // ── PRD §6-7: sinifa gore cap esdegerleri ────────────────────────
-    // H3: capsiz ekipman satirinda notr equiv — boyut kisiti uygulanmaz,
-    // aile (tip) must-match + nitelik bonuslariyla eslesir.
-    const equiv: SizeEquivalents = sizeInfo
-      ? sizeEquivalents(sizeClass, sizeInfo)
-      : { tags: [], rozet: null, noConversion: false, ambiguous: false };
-    // Cevrim hic tag uretemediyse (inc degeri tabloda yok) eski tekil tag'e dus
-    const sizeAnyOf = equiv.tags.length > 0
-      ? equiv.tags
-      : excelTags.tags.filter((t) => isSizeTag(t));
-    if (sizeAnyOf.length === 0 && !isEquipment) {
-      return {
-        netPrice: 0, listPrice: 0, discount: 0, confidence: 'none',
-        reason: `Çevrim tablosunda yok: ${sizeInfo!.display} — kütüphanede elle arayın`,
-      };
-    }
-
-    // Islevsel kelimeden uretilen tag'i (orn 'sprink') mustMatch'ten cikar —
-    // yoksa kutuphanede o tag'i tasimayan gercek aday elenirdi.
-    let effectiveTags = (hint
-      ? excelTags.tags.filter((t) => !hint.stripTags.includes(t))
-      : excelTags.tags
-    ).filter((t) => !isSizeTag(t)); // cap artik sizeAnyOf kumesiyle aranir
-
-    // T1/T2 (temiz su) + PIS SU bug'i: sinif PLASTIK cozulduyse ve satir ham
-    // metninde 'celik' YOKSA, generateTags'in DEFAULT-CELIK varsayimi sorgudan
-    // atilir — yoksa excelKinds=['celik'] cins filtresi PPR/PVC/HDPE adaylarini
-    // SESSIZCE eliyordu ("TEMIZ SU BORULARI DN50" hic eslesemezdi).
-    if (sizeClass === 'plastic' && !rawKinds.includes('celik')) {
-      effectiveTags = effectiveTags.filter((t) => t !== 'celik');
-    }
-
-    // Satirin KENDISI tam tanimli mi? (cap + bilinen tip + cins) → 'high'
-    // Yalniz cap veya baslik-ipucu ile bulunmus → 'suggestion' (oneri)
-    const excelTypeKnown = excelTags.materialType !== 'diger';
-    const excelHasKind = excelTags.tags.some((t) => KIND_TAGS.has(t));
-    const fullyQualified = excelTypeKnown && excelHasKind;
-
-    // Shared helper: tag'leri parcala, adaylari skorla.
-    // 'material' modu (PRD Adim 4): sert filtre = OLCU + TIP; et kalinligi/
-    // PN/standart/subtype elemez, bonus verir.
-    const split = splitExcelTags(effectiveTags, 'material');
-    split.sizeAnyOf = sizeAnyOf;
-
-    // ── N1 AILE KILIDI (Duzeltme: PPR hattina celik aday) ────────────
-    // Cozumlenen urun ailesinin cinsleri (oncelik T5: satir > sozluk) aday
-    // havuzunu SERT sinirlar — MARKA bu kilidi degistiremez/genisletemez.
-    // scoreCandidates'in excelKinds kurali tam istenen semantik: cins tag'i
-    // TASIYAN aday uyusmali; cins tag'i olmayan duz-adli kayitlar gecer.
-    // (Onceki "yumusak tie-break" yaklasimi deliniyordu: plastik 20mm ile
-    // celik DN20 ayni dn20 tag'ini paylasir → Cayirova celik borulari
-    // TEMIZ SU (PPR) hattina aday oluyordu.)
-    // DIKKAT: once KIND_TAGS filtresi, sonra bosluk kontrolu — rawKinds 'su'
-    // gibi cins-olmayan etiketler dondurebilir (temiz SU), hint'e dusus bozulurdu.
-    const rawFamily = rawKinds.filter((k) => KIND_TAGS.has(k));
-    const familyKinds = rawFamily.length > 0
-      ? rawFamily
-      : (hint?.kinds ?? []).filter((k) => KIND_TAGS.has(k));
-    if (familyKinds.length > 0) {
-      split.excelKinds = Array.from(new Set([...split.excelKinds, ...familyKinds]));
-    }
-
-    // ── E6: AILE COZULDU MU? ─────────────────────────────────────────
-    // Tip bilinmiyor + cins yok + sozluk/baslik ipucu yok = aile belirsiz.
-    // Bu durumda YUKSEK metin/olcu skoru bile OTOMATIK yazima donusmez —
-    // adaylar "aile belirlenemedi" isaretiyle onay listesine gider; secim
-    // hafizaya yazilir (E7), sonraki dosyada on-secili gelir.
-    const familyResolved = excelTypeKnown || familyKinds.length > 0 || !!hint;
-
-    let allCandidates = scoreCandidates(
-      allPrices,
-      (p) => p.material.tags,
-      split,
-    );
-
-    // ── E8/E9 (vana): yuva SIKILASTIRMASI ───────────────────────────
-    // Celiskili adaylar scoreCandidates'ta elendi; burada: istenen yuva
-    // degerini TASIYAN aday varsa yalniz tasiyanlar kalir (H7 "yalnizca
-    // kuresel + dogalgaza uygun"). DOGALGAZ ozel SERT kural (E9): gaz
-    // uygunlugu ISARETSIZ urun de gosterilmez — tasiyan yoksa sonuc YOK,
-    // M3 alternatif markalar devreye girer (E10).
-    if (excelTags.materialType === 'vana' && split.slotTags && split.slotTags.length > 0) {
-      // 3-ETIKET MODELI: yuva basina KUME — "KURESEL VE KELEBEK VANALAR"
-      // iki aday ad uretir, kumeden herhangi birini tasiyan gecer.
-      for (const prefix of ['vt-', 'akiskan-'] as const) {
-        const wanted = split.slotTags.filter((t) => t.startsWith(prefix));
-        if (wanted.length === 0) continue;
-        const carriers = allCandidates.filter((c) => c.priceItem.material.tags.some((t) => wanted.includes(t)));
-        if (carriers.length > 0) {
-          if (carriers.length < allCandidates.length) {
-            console.log(`[Matching]   Yuva daraltmasi (${wanted.join('|')}): ${allCandidates.length} → ${carriers.length}`);
-          }
-          allCandidates = carriers;
-        } else if (prefix === 'vt-' || wanted.includes('akiskan-gaz')) {
-          // E9/H7 SERT (canli vaka 13.07): tip ACIKCA istendiyse yalniz o
-          // tipi tasiyanlar sunulabilir — tasiyan yoksa isaretsiz motorlu/
-          // selenoid listesi DEGIL, "bu markada yok" + M3. Gazda ayni kural.
-          console.log(`[Matching]   SERT yuva (${wanted.join('|')}): tasiyan aday yok → sonuc YOK (M3'e duser)`);
-          allCandidates = [];
-          break;
-        }
-      }
-    }
-
-    // ── ALTIN KURAL HAVUZU (Birlestirme Talimati R16-R18) ────────────
-    // "Fiyatin sorulmadan yazilabilmesinin TEK kosulu: AD + CAP (+ satirda
-    // YAZILI CINS + sozluk cinsi) SERT filtreleri sonrasi markada TEK URUN
-    // kalmasi." Yumusak katman (marka tie-break, refine skoru, subtype
-    // elemesi) sunulan listeyi SIRALAR/daraltir ama secimi GASP EDEMEZ —
-    // hardPool > 1 iken otomatik yazim ISTISNASIZ yasak.
-    // Yazili cins = satirdaki cins/yuzey/baglanti/PN/subtype/nitelik/yuva
-    // tag'leri; sozluk cinsi (hint.kinds, orn sprink hatti=siyah celik)
-    // yazili sayilir (T1); MARKA cikarimi SAYILMAZ (I4: marka yalniz dogrular).
-    const writtenCins = Array.from(new Set([
-      ...effectiveTags.filter((t) =>
-        KIND_TAGS.has(t) || SURFACE_TAGS.has(t) || CONNECTION_TAGS.has(t)
-        || /^pn\d+$/.test(t) || MATERIAL_SUBTYPE_KEYS.has(t) || isAttrTag(t)),
-      ...(hint?.kinds ?? []),
-    ]));
-    let hardPool = allCandidates;
-    // Yuva kumeleri (vt-/akiskan-) KUME icinde OR: "KURESEL VE KELEBEK" iki
-    // aday ad — tek tek AND'lenirse ilk deger digerini duurur (R15 dersi).
-    for (const prefix of ['vt-', 'akiskan-'] as const) {
-      const wanted = writtenCins.filter((t) => t.startsWith(prefix));
-      if (wanted.length === 0) continue;
-      const carriers = hardPool.filter((c) => c.priceItem.material.tags.some((t) => wanted.includes(t)));
-      if (carriers.length > 0) hardPool = carriers;
-    }
-    for (const v of writtenCins.filter((t) => !t.startsWith('vt-') && !t.startsWith('akiskan-'))) {
-      const carriers = hardPool.filter((c) => c.priceItem.material.tags.includes(v));
-      if (carriers.length > 0) hardPool = carriers;
-    }
-
-    if (allCandidates.length === 0) {
-      console.log(`[Matching] "${excelName}" → ESLESMEDI. Olcu: [${sizeAnyOf.join(',')}] (${sizeClass}), zorunlu: [${split.mustMatchTags.join(',')}], refine: [${split.refineTags.join(',')}]`);
-      return {
-        netPrice: 0, listPrice: 0, discount: 0, confidence: 'none',
-        reason: `Kutuphanede eslesme yok. Olcu: [${sizeAnyOf.join(', ')}], zorunlu: [${split.mustMatchTags.join(', ')}]`,
-        donusum: equiv.rozet ?? undefined,
-      };
-    }
-
-    // En yuksek skor grubu
-    allCandidates.sort((a, b) => b.totalScore - a.totalScore);
-    const topScore = allCandidates[0].totalScore;
-    let topCandidates = allCandidates.filter((c) => c.totalScore === topScore);
-    console.log(`[Matching] "${excelName}" → ${allCandidates.length} aday, topScore=${topScore}, topCount=${topCandidates.length}, sinif=${sizeClass}, hint=${hint ? hint.kinds.join('/') : 'yok'}`);
-
-    // ── V4 (PRD v1.3): GRUP VARYANT FILTRESI ────────────────────────
-    // Grupta ilk secim yapildi, ayni varyant bu satirin capinda araniyor.
-    // Tag'lerin TAMAMI eslesmeli (kutuphaneden dinamik turetilmis kimlik).
-    // R16 dersi: KULLANICININ SECIMI marka tie-break'inden ONCE uygulanir —
-    // eskiden pref-kind (Cayirova=celik) pirinc secimini DN32'de eleyip
-    // varyant yayilimini kiriyordu; kullanici sinyali marka sinyalini ezer.
-    if (variantTags && variantTags.length > 0) {
-      const matching = topCandidates.filter((c) =>
-        variantTags.every((t) => c.priceItem.material.tags.includes(t)),
-      );
-      if (matching.length === 1) {
-        const winner = matching[0];
-        const libItem = libItems.find(
-          (l) => (l.materialName ?? '').toLowerCase().trim() === winner.priceItem.material.name.toLowerCase().trim(),
-        );
-        const discount = libItem?.discountRate ?? 0;
-        const listPrice = libItem?.listPrice ?? winner.priceItem.price;
-        const netPrice = hesaplaNetFiyat(listPrice, discount);
-        console.log(`[Matching] "${excelName}" → V4 OTOMATIK VARYANT (${variantTags.join(',')}) → "${winner.priceItem.material.name}"`);
-        return {
-          netPrice, listPrice, discount,
-          confidence: 'suggestion',
-          autoVariant: true,
-          matchedName: winner.priceItem.material.name,
-          donusum: equiv.rozet ?? undefined,
-          reason: `Grup varyantı uygulandı (${variantTags.join(', ')})`,
-        };
-      }
-      if (matching.length === 0) {
-        // V4.5: varyant bu capta yok — otomatik atama YAPMA, fiyatli listeyle
-        // "secim bekliyor" birak, nedeni soyle.
-        console.log(`[Matching] "${excelName}" → V4.5 varyant yok (${variantTags.join(',')}) → secim bekliyor`);
-        const r = this.buildMultiResult(topCandidates, libItems, `Seçilen varyant (${variantTags.join(', ')}) bu çapta kütüphanede yok — elle seçin.`, equiv.rozet, effectiveTags);
-        return { ...r, variantMissing: true };
-      }
-      // >1: varyant tag'leri bu capta birden fazla urunu tutuyor — daraltilmis popup
-      topCandidates = matching;
-    }
-
-    // ── FAZ 3 + PRD: cins ipucu tie-break (SILME DEGIL, one cikarma) ──
-    // Oncelik: baslik/sozluk cinsi > marka cinsi. Uyan aday yoksa dokunma
-    // (yanlis eleme yapma).
-    const preferredKinds = hint?.kinds?.length ? hint.kinds : (ctx.brandClass?.kinds ?? []);
-    if (preferredKinds.length > 0) {
-      const preferred = topCandidates.filter((c) =>
-        c.priceItem.material.tags.some((t) => preferredKinds.includes(t)),
-      );
-      if (preferred.length > 0 && preferred.length < topCandidates.length) {
-        console.log(`[Matching]   Cins ipucu (${preferredKinds.join('/')}) ile ${topCandidates.length} → ${preferred.length}`);
-        topCandidates = preferred;
-      }
-      // YUZEY tercihi (sozluk "SIYAH celik boru" der — sprink hatti siyah
-      // borudur, galvaniz DEGIL): CAKISAN TABAN yuzeyi tasiyan adaylari ele.
-      // Duzeltme Talebi dersi: "siyah'a daralt" yanlisti — Kirmizi Boyali boru
-      // (siyah celigin boyalisi) listeden dusuyordu; varyant secenegi olarak
-      // KALMALI. Taban yuzeyler (siyah/galvaniz) birbirini dislar; kirmizi/
-      // boyali taban degil, kaplama — elenmez.
-      const BASE_SURFACES = ['siyah', 'galvaniz'];
-      const prefSurfaces = preferredKinds.filter((k) => SURFACE_TAGS.has(k));
-      if (prefSurfaces.length > 0 && topCandidates.length > 1) {
-        const kept = topCandidates.filter((c) => {
-          const bases = c.priceItem.material.tags.filter((t) => BASE_SURFACES.includes(t));
-          return bases.length === 0 || bases.some((b) => prefSurfaces.includes(b));
-        });
-        if (kept.length > 0 && kept.length < topCandidates.length) {
-          console.log(`[Matching]   Cakisan taban yuzey elendi (${prefSurfaces.join('/')} tercih) ${topCandidates.length} → ${kept.length}`);
-          topCandidates = kept;
-        }
-      }
-    }
-
-    // ── TIP BELIRSIZLIGI KORUMASI ───────────────────────────────────
-    // Cap-only satirda adaylar birden cok MALZEME TIPINE (boru/vana/fitting)
-    // yayiliyorsa ASLA otomatik secme — narrowTopCandidates cinsi ayni
-    // sanip yanlis tek adaya cokertebilir. impliedType varsa once ona indir.
-    const typeOf = (c: typeof topCandidates[number]) =>
-      c.priceItem.material.materialType ?? 'diger';
-    if (hint?.impliedType) {
-      const typed = topCandidates.filter((c) => typeOf(c) === hint.impliedType);
-      if (typed.length > 0 && typed.length < topCandidates.length) {
-        topCandidates = typed;
-      }
-    }
-    const distinctTypes = new Set(topCandidates.map(typeOf));
-    if (distinctTypes.size > 1) {
-      console.log(`[Matching]   Tip belirsiz (${Array.from(distinctTypes).join(',')}) → popup`);
-      return this.buildMultiResult(topCandidates, libItems, 'Malzeme tipi belirsiz (boru/vana/fitting).', equiv.rozet, effectiveTags);
-    }
-
-    // ── P4: SINIF BELIRSIZLIGI KORUMASI ─────────────────────────────
-    // Sinif cozulemedi (celik mi PPR mi?) ve adaylar iki yorumun kesisiminde:
-    // adaylar farkli CINS'lere yayiliyorsa asla otomatik secme — popup.
-    // (Ayni DN 32: celik 1 1/4" / PPR 32mm — sessiz karar YASAK.)
-    if (equiv.ambiguous) {
-      const kindOf = (c: typeof topCandidates[number]) => {
-        const plastic = c.priceItem.material.tags.some((t) => ['ppr', 'pe', 'pvc', 'hdpe'].includes(t));
-        return plastic ? 'plastic' : 'steel';
-      };
-      const classes = new Set(topCandidates.map(kindOf));
-      if (classes.size > 1) {
-        console.log(`[Matching]   Sinif belirsiz (celik/PPR yorumlari) → popup`);
-        return this.buildMultiResult(topCandidates, libItems, 'Malzeme sınıfı belirsiz: çelik (DN↔inç) ve PPR (DN=mm) yorumları farklı ürünlere gidiyor.', null, effectiveTags);
-      }
-    }
-
-    // Shared helper: subtype elemesi. autoPick=false (Duzeltme Talebi K1/K2):
-    // varyant belirsizse — baglanti farki dahil — OTOMATIK SECIM YASAK,
-    // coklu aday fiyatli popup'a gider. "Tahmini eslesme" kalibi bu yoldan
-    // kalkti; excel metni varyanti soylediyse (disli vb.) refine skoru zaten
-    // tek adaya indirir (A5), popup acilmaz.
-    // HATA RAPORU F2: effectiveTags GECILIR (excelTags.tags DEGIL) — baslik
-    // sozlugunun strip ettigi 'sprink' tag'i excelHasSubtype'i true yapip
-    // subtype elemesini KAPATIYORDU → EN-standart/alt-tipli tum varyantlar
-    // listede kaliyordu (20 aday). Strip sonrasi gercek subtype yoksa eleme
-    // calisir, aday sayisi varyant sayisina iner.
-    const { narrowed, autoPickedDisli } = narrowTopCandidates(
-      topCandidates,
-      effectiveTags,
-      (p) => p.material.tags,
-      MATERIAL_SUBTYPE_KEYS,
-      false, // autoPick KAPALI — material tarafinda otomatik-Disli yok
-    );
-    if (narrowed.length < topCandidates.length) {
-      console.log(`[Matching]   Subtype elendi: ${topCandidates.length} → ${narrowed.length}`);
-    }
-    topCandidates = narrowed;
-
-    // Fiyat hesaplama helper (library discount dahil)
-    const calcPrice = (priceItem: MaterialPriceItem) => {
-      const libItem = libItems.find(
-        (l) => (l.materialName ?? '').toLowerCase().trim() === priceItem.material.name.toLowerCase().trim(),
-      );
-      const discount = libItem?.discountRate ?? 0;
-      const listPrice = libItem?.listPrice ?? priceItem.price;
-      const netPrice = hesaplaNetFiyat(listPrice, discount); // spec: yukari yuvarla, 1 hane
-      return { netPrice, listPrice, discount };
-    };
-
-    // TEK ADAY — DUZELTME: "ONERI" (sari auto-write) KADEMESI KALDIRILDI.
-    // Sistem tek adayda bile yalniz CELISKISIZSE yazar (yesil/high).
-    // Celiski = adayin TABAN yuzeyi (siyah|galvaniz) satir+sozluk beklentisinin
-    // TERSI — orn sprink hatti (siyah beklenir) icin tek aday GALVANIZLI ise
-    // fiyat YAZILMAZ, 1 secenekli fiyatli liste sunulur (kullanici onaylar).
-    // Sinif-belirsiz (P4) ve cevrim-tablosunda-yok (D5) tek adaylar da ayni:
-    // otomatik yazma yok, onayli liste. ("Tahmini eslesme — kontrol edin"
-    // pasif balonu tum akislardan kalkti — A5/B3.)
-    if (topCandidates.length === 1) {
-      const winner = topCandidates[0];
-      const winnerTags = winner.priceItem.material.tags;
-      const expectedBases = new Set<string>(
-        [...rawSurfaces, ...(hint?.kinds ?? [])].filter((s) => s === 'siyah' || s === 'galvaniz'),
-      );
-      const winnerBases = winnerTags.filter((t) => t === 'siyah' || t === 'galvaniz');
-      const surfaceConflict =
-        expectedBases.size > 0 && winnerBases.length > 0 && !winnerBases.some((b) => expectedBases.has(b));
-      // E6: aile belirlenemedi / E2: birim celiskisi de otomatik yazimi kapatir
-      const capped = equiv.ambiguous || equiv.noConversion || !familyResolved || !!unitConflict;
-
-      if (surfaceConflict || capped) {
-        const why = surfaceConflict
-          ? `Tek aday (${winnerBases.join('/')}) başlık/satır beklentisiyle (${Array.from(expectedBases).join('/')}) çelişiyor — onaylayın.`
-          : !familyResolved
-            ? 'Ürün ailesi belirlenemedi — eşleşme yalnız ölçü benzerliğiyle bulundu, onaylayın.'
-            : unitConflict
-              ? `${unitConflict} — onaylayın.`
-              : equiv.ambiguous
-                ? 'Malzeme sınıfı (çelik/PPR) belirsiz — onaylayın.'
-                : `Çevrim tablosunda yok (${sizeInfo!.display}) — onaylayın.`;
-        console.log(`[Matching] "${excelName}" → tek aday ama ONAY GEREKLI (${surfaceConflict ? 'yuzey celiskisi' : !familyResolved ? 'aile belirsiz' : unitConflict ? 'birim celiskisi' : 'kademe kapagi'}) → popup(1)`);
-        return this.buildMultiResult(topCandidates, libItems, why, equiv.rozet, effectiveTags);
-      }
-
-      // ── ALTIN KURAL KAPISI (R16/R17): sunulan liste 1'e inmis olsa bile
-      // SERT havuzda >1 urun varsa yumusak katman (marka tie-break/skor)
-      // secim yapmis demektir — fiyat YAZILMAZ, kalan cinslerin TAMAMI net
-      // fiyatlariyla sorulur. Istisnasiz.
-      if (hardPool.length > 1) {
-        console.log(`[Matching] "${excelName}" → ALTIN KURAL: sert havuzda ${hardPool.length} urun (yumusak katman 1'e indirmisti) → CINS secimi popup`);
-        return this.buildMultiResult(hardPool, libItems,
-          `${hardPool.length} cins/varyant mevcut — seçim sizin (fiyat yalnız tek ürün kalınca otomatik yazılır).`,
-          equiv.rozet, effectiveTags);
-      }
-
-      const { netPrice, listPrice, discount } = calcPrice(winner.priceItem);
-      console.log(`[Matching] "${excelName}" → high → "${winner.priceItem.material.name}" = ${winner.priceItem.price} (net=${netPrice})${equiv.rozet ? ` | ${equiv.rozet}` : ''}`);
-      return {
-        netPrice, listPrice, discount,
-        confidence: 'high',
-        matchedName: winner.priceItem.material.name,
-        donusum: equiv.rozet ?? undefined,
-        // R18: "tek eslesme" rozeti — AD+CAP(+cins) sonrasi markada tek urun
-        reason: `Tek eşleşme — AD+ÇAP${writtenCins.length ? '+cins' : ''} sonrası markada tek ürün${equiv.rozet ? ` · ${equiv.rozet}` : ''}`,
-      };
-    }
-
-    // BIRDEN FAZLA ADAY — kullaniciya secenekleri sun.
-    // E6/E2: aile belirsizligi ve birim celiskisi nedene islenir (isaretli liste).
-    const multiWhy = !familyResolved
-      ? 'Ürün ailesi belirlenemedi — adaylar yalnız ölçü benzerliğiyle bulundu; seçiminiz öğrenilir.'
-      : unitConflict
-        ? `${unitConflict}.`
-        : 'Birden fazla aday — malzeme cinsi belirtilmemis.';
-    return this.buildMultiResult(topCandidates, libItems, multiWhy, equiv.rozet, effectiveTags);
-  }
-
-  /** ScoredCandidate listesinden 'multi' MatchResult uretir (popup icin).
-   *  excelTags (E3): aday nitelik FARKI tasiyorsa uyari uretilir. */
-  private buildMultiResult(
-    topCandidates: ReturnType<typeof scoreCandidates<MaterialPriceItem>>,
-    libItems: LibItem[],
-    reason: string,
-    rozet: string | null = null,
-    excelTags?: string[],
-  ): MatchResult {
-    const calcPrice = (priceItem: MaterialPriceItem) => {
-      const libItem = libItems.find(
-        (l) => (l.materialName ?? '').toLowerCase().trim() === priceItem.material.name.toLowerCase().trim(),
-      );
-      const discount = libItem?.discountRate ?? 0;
-      const listPrice = libItem?.listPrice ?? priceItem.price;
-      const netPrice = hesaplaNetFiyat(listPrice, discount); // spec: yukari yuvarla, 1 hane
-      return { netPrice, listPrice, discount };
-    };
-    const candidates = buildCandidateList(topCandidates, {
-      calcPrice,
-      getName: (p) => p.material.name,
-      getTags: (p) => p.material.tags,
-      useSurfaceLevelLabels: true,
-      excelTags,
-    });
-    // V7: en fazla 8 aday goster — fazlasi sorgunun daralmadigina isaret (log)
-    if (candidates.length > 8) {
-      console.warn(`[Matching] V7: ${candidates.length} aday > 8 — sorgu yeterince daralmiyor`);
-    }
-    return {
-      netPrice: 0, listPrice: 0, discount: 0,
-      confidence: 'multi',
-      reason: `${candidates.length} aday bulundu. ${reason}`,
-      candidates,
-      donusum: rozet ?? undefined,
-    };
-  }
-
-  // ═══════════════════════════════════════════
-  // M3 — ALTERNATIF MARKA ARAMASI
-  // Secilen markada urun ailesi+boyut yoksa, kullanicinin kutuphanesindeki
-  // DIGER markalarda ayni aile+boyutu ara. Marka basina en iyi 1 urun, en
-  // fazla 6 marka. Yalniz urun ailesi BELLI satirlar icin (yalın "DN 20"
-  // gibi tipsiz satirlarda gurultu uretmez).
-  // ═══════════════════════════════════════════
-
-  private async findAlternatives(
-    userId: string,
-    excludeBrandId: string,
-    excelName: string,
-    ctx: MatchContext,
-  ): Promise<BrandAlternative[]> {
-    try {
-      const excelTags = generateTags(excelName);
-      if (excelTags.materialType === 'diger') return []; // aile belirsiz — onerme
-      // N1/N2: alternatif taramasi da AILE KILITLIDIR — sozluk/satir cinsleri
-      // uygulanir (temiz su → yalniz PPR markalari onerilir, celik ASLA).
-      let altHint = this.terminology.resolveAlias(excelName, ctx.aliases);
-      // E8: boru alias'i boru-olmayan satira dayatilamaz (matchSingle ile ayni)
-      if (altHint?.impliedType === 'boru' && excelTags.materialType !== 'boru') {
-        altHint = null;
-      }
-      const altRawKinds = extractMaterialKind(excelName);
-      const altRawFamily = altRawKinds.filter((k) => KIND_TAGS.has(k));
-      const altFamilyKinds = altRawFamily.length > 0
-        ? altRawFamily
-        : (altHint?.kinds ?? []).filter((k) => KIND_TAGS.has(k));
-
-      let sizeInfo = extractSizeInfo(excelName);
-      if (!sizeInfo) {
-        const legacy = excelTags.tags.find((t) => isSizeTag(t));
-        if (legacy) {
-          sizeInfo = legacy.startsWith('od-')
-            ? { source: 'mm', value: parseInt(legacy.slice(3), 10), display: legacy }
-            : { source: 'dn', value: parseInt(legacy.slice(2), 10), display: legacy.toUpperCase() };
-        }
-      }
-      if (!sizeInfo) return [];
-
-      const rows = await this.prisma.userLibrary.findMany({
-        where: { userId, brandId: { not: excludeBrandId } },
-        include: {
-          material: { select: { id: true, name: true, tags: true, normalizedName: true, materialType: true } },
-          brand: { select: { id: true, name: true } },
-        },
-      });
-      if (rows.length === 0) return [];
-
-      // Sinif markaya gore degisir (Cayirova DN≠mm, Kalde DN=mm) — alternatif
-      // taramasi 'unknown' union ile yapilir; her aday GERCEK kutuphane kaydi
-      // oldugundan yanlis-fiyat riski yok, yalnizca oneri genisler.
-      const equiv = sizeEquivalents('unknown', sizeInfo);
-      // Plastik ailede DEFAULT-CELIK varsayimi sorguyu bozmasin (matchSingle
-      // ile ayni kural) — yoksa PPR alternatifleri cins filtresinde elenirdi.
-      let altTags = excelTags.tags.filter((t) => !isSizeTag(t));
-      if (altHint?.sizeClass === 'plastic' && !altRawKinds.includes('celik')) {
-        altTags = altTags.filter((t) => t !== 'celik');
-      }
-      const split = splitExcelTags(altTags, 'material');
-      split.sizeAnyOf = equiv.tags;
-      if (altFamilyKinds.length > 0) {
-        split.excelKinds = Array.from(new Set([...split.excelKinds, ...altFamilyKinds]));
-      }
-
-      type AltItem = {
-        brand: { id: string; name: string };
-        name: string;
-        tags: string[];
-        listPrice: number;
-        discount: number;
-      };
-      // Z4: alternatif fiyatlar da teklif aninda TRY tabanina cevrilir
-      const altToTry = await this.buildTryConverter(rows as { currency?: string | null }[]);
-      const items: AltItem[] = rows.map((li: any) => {
-        const name = li.material?.name ?? li.materialName ?? '';
-        const tags = li.material?.tags?.length ? li.material.tags : generateTags(name).tags;
-        return {
-          brand: li.brand,
-          name,
-          tags,
-          listPrice: altToTry(li.customPrice ?? li.listPrice ?? 0, li.currency),
-          discount: li.discountRate ?? 0,
-        };
-      }).filter((x: AltItem) => x.name && x.listPrice > 0);
-
-      let scored = scoreCandidates(items, (x) => x.tags, split);
-      // E8/E9/E10 (vana): alternatifler de yuva kurallarina uyar — tasiyan
-      // varsa tasiyanlara daralt; dogalgazda isaretsiz urun onerilmez.
-      if (excelTags.materialType === 'vana' && split.slotTags && split.slotTags.length > 0) {
-        // SERT yuva, KUME semantigi (matchSingle ile ayni)
-        for (const prefix of ['vt-', 'akiskan-'] as const) {
-          const wanted = split.slotTags.filter((t) => t.startsWith(prefix));
-          if (wanted.length === 0) continue;
-          const carriers = scored.filter((c) => (c.priceItem as AltItem).tags.some((t) => wanted.includes(t)));
-          if (carriers.length > 0) scored = carriers;
-          else if (prefix === 'vt-' || wanted.includes('akiskan-gaz')) { scored = []; break; }
-        }
-      }
-      scored.sort((a, b) => b.totalScore - a.totalScore);
-
-      const out: BrandAlternative[] = [];
-      const seenBrands = new Set<string>();
-      for (const c of scored) {
-        const it = c.priceItem as AltItem;
-        if (seenBrands.has(it.brand.id)) continue; // marka basina en iyi 1
-        seenBrands.add(it.brand.id);
-        out.push({
-          brandId: it.brand.id,
-          brandName: it.brand.name,
-          materialName: it.name,
-          netPrice: hesaplaNetFiyat(it.listPrice, it.discount),
-          listPrice: it.listPrice,
-          discount: it.discount,
-        });
-        if (out.length >= 6) break;
-      }
-      if (out.length > 0) {
-        console.log(`[Matching] M3 ALTERNATIF: "${excelName}" → ${out.map((a) => a.brandName).join(', ')}`);
-      }
-      return out;
-    } catch {
-      return []; // alternatif arama opsiyonel — ana akisi bozmaz
-    }
+    // KESINLIK ONCELIGI: satiri TAM dogrulayan marka (single) varken,
+    // "dogrulanamadi" notlu tek-adaylar onerilmez — 'PP KÜRESEL' icin
+    // KALDE (PPR) dururken DUYAR (pirinc) listelenmez; gazda ayni (E9 ruhu).
+    const singleVar = Array.from(kesinlik.values()).includes('single');
+    return Array.from(byBrand.entries())
+      .filter(([mid]) => !singleVar || kesinlik.get(mid) === 'single')
+      .map(([, v]) => v);
   }
 
   // ═══════════════════════════════════════════
@@ -1085,7 +373,6 @@ export class MatchingService {
 
   /**
    * OGRENME HAFIZASI + CINS TERCIHI — ON-SECILI getirir, OTOMATIK DOLDURMAZ.
-   * Motor-BAGIMSIZ: v1 (matchSingle) ve v2 (matchV2) sonuclarina ayni uygulanir.
    * (Faz 1 denetim bulgusu S3: matchV2 erken donusu bu bloklari atliyordu —
    * "önceki tercihiniz ✓" ozelligi indeksli markalarda OLUYDU.)
    */
@@ -1152,12 +439,11 @@ export class MatchingService {
    *  Ayni imza = ayni secim sorusu → hafizadan cevaplanabilir. */
   private buildImza(excelName: string, brandId: string): string {
     const tags = generateTags(excelName);
-    const hint = this.deriveHeaderHint(excelName);
     const olcu = tags.tags.filter((t) => t.startsWith('dn') || t.startsWith('od-')).sort().join(',');
-    const kinds = Array.from(new Set([
-      ...tags.tags.filter((t) => KIND_TAGS.has(t)),
-      ...(hint?.preferredKinds ?? []),
-    ])).sort().join(',');
+    // Faz 2b: HEADER_HINTS katkisi kalkti — imza yalniz satirin KENDI
+    // etiketlerinden uretilir. (Baslik-ipuclu eski imzalar dogal olarak
+    // devre disi kalir; secimler yeniden ogrenilir — on-secim kaybi gecici.)
+    const kinds = tags.tags.filter((t) => KIND_TAGS.has(t)).sort().join(',');
     return `${brandId}|${olcu}|${tags.materialType}|${kinds}`;
   }
 
@@ -1208,16 +494,6 @@ export class MatchingService {
     } catch { /* cins tercihi opsiyonel — ana hafiza yazildi */ }
 
     return { ok: true, imza };
-  }
-
-  /** Islevsel grup basligini (sprink/pis su...) cins+tip ipucuna cevirir. */
-  private deriveHeaderHint(excelName: string): HeaderHint | null {
-    const norm = excelName
-      .replace(/İ/g, 'i').replace(/I/g, 'i').replace(/ı/g, 'i')
-      .replace(/[şŞ]/g, 's').replace(/[çÇ]/g, 'c')
-      .replace(/[üÜ]/g, 'u').replace(/[öÖ]/g, 'o').replace(/[ğĞ]/g, 'g')
-      .toLowerCase();
-    return HEADER_HINTS.find((h) => h.test.test(norm)) ?? null;
   }
 
   // ═══════════════════════════════════════════

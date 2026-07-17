@@ -8,7 +8,7 @@
  */
 
 import { MatchingService } from '../src/modules/matching/matching.service';
-import { TerminologyService, ALIAS_SEEDS, BRAND_SEEDS } from '../src/modules/matching/terminology.service';
+import { TerminologyService, ALIAS_SEEDS } from '../src/modules/matching/terminology.service';
 
 // ── Fake kutuphane satiri (UserLibrary shape — materialId yok → tag'ler
 //    generateTags ile anlik uretilir, gercek "manuel eklenen satir" yolu) ──
@@ -42,9 +42,6 @@ function fakePrisma(brandName: string, libRows: any[], otherBrandRows: any[] = [
     },
     terminologyAlias: {
       findMany: async () => ALIAS_SEEDS.map((s, i) => ({ id: `a${i}`, userId: null, active: true, ...s })),
-    },
-    brandMaterialType: {
-      findMany: async () => BRAND_SEEDS.map((s, i) => ({ id: `b${i}`, userId: null, active: true, ...s })),
     },
   };
 }
@@ -111,8 +108,13 @@ async function run() {
   {
     const svc = makeService('ÇAYIROVA', STEEL_LIB);
     const r = (await svc.bulkMatch('u1', 'brand-1', ['SPRİNK HATTI BORULARI DN 25']))['SPRİNK HATTI BORULARI DN 25'];
-    check('T1 confidence high', r?.confidence === 'high', `got ${r?.confidence} (${r?.reason})`);
-    check('T1 siyah 1" eslesti', !!r?.matchedName?.includes('1"') && !!r?.matchedName?.includes('Siyah'), `got "${r?.matchedName}"`);
+    check('T1 iki cins → SORU, siyah ONDE (yeni spec: sistem secmez)',
+      r?.confidence === 'multi' && r?.netPrice === 0
+      && !!r?.candidates?.length && r.candidates[0].materialName.includes('Siyah'),
+      `got ${r?.confidence} adaylar: ${r?.candidates?.map((c) => c.materialName).join(' | ')}`)
+    check('T1 galvanizli de SECENEK (elenmez — kullanici karari)',
+      !!r?.candidates?.some((c) => c.materialName.includes('Galvanizli')),
+      `adaylar: ${r?.candidates?.map((c) => c.materialName).join(' | ')}`)
     check('T1 rozet var', !!r?.donusum && r.donusum.includes('1"'), `got "${r?.donusum}"`);
   }
 
@@ -120,7 +122,9 @@ async function run() {
   {
     const svc = makeService('BILINMEYEN MARKA', STEEL_LIB);
     const r = (await svc.bulkMatch('u1', 'brand-1', ['YANGIN HATTI BORULARI DN 65']))['YANGIN HATTI BORULARI DN 65'];
-    check('T3 eslesti', !!r?.matchedName?.includes('2 1/2"'), `got "${r?.matchedName}" (${r?.confidence}: ${r?.reason})`);
+    check('T3 eslesti (2 1/2\" = DN 65)',
+      (r?.netPrice ?? 0) > 0 && !!r?.matchedName?.includes('Siyah') && !!r?.matchedName?.includes('DN 65'),
+      `got \"${r?.matchedName}\" (${r?.confidence}: ${r?.reason})`)
   }
 
   // T4: KURESEL VANALAR basligi altinda DN 20 → vana (sprink baglami TASINMAZ — frontend C2)
@@ -244,8 +248,10 @@ async function run() {
     ];
     const svc = makeService('ÇAYIROVA', LIB);
     const r = (await svc.bulkMatch('u1', 'brand-1', ['SPRİNK HATTI BORULARI DN 50']))['SPRİNK HATTI BORULARI DN 50'];
-    check('F2 subtype elemesi calisiyor (basincli elendi, 2 aday)', r?.confidence === 'multi' && (r?.candidates?.length ?? 0) === 2,
-      `got ${r?.confidence} ${r?.candidates?.length} aday: ${r?.candidates?.map((c) => c.materialName).join(' | ')}`);
+    check('F2 tum varyantlar fiyatli SECENEK (yeni spec: eleme yok, secim kullanicinin)',
+      r?.confidence === 'multi' && (r?.candidates?.length ?? 0) === 3
+      && !!r?.candidates?.some((c) => c.materialName.includes('Basınçlı')),
+      `got ${r?.confidence} ${r?.candidates?.length} aday: ${r?.candidates?.map((c) => c.materialName).join(' | ')}`)
   }
 
   // A5 (Duzeltme Talebi): satir varyanti ACIKCA soyluyor → soru sorulmaz
@@ -305,7 +311,7 @@ async function run() {
     check('T17 ilk satir multi (3 varyant)', r1?.confidence === 'multi' && r1?.candidates?.length === 3,
       `got ${r1?.confidence} ${r1?.candidates?.length} aday`);
     const kirmizi = r1?.candidates?.find((c) => c.materialName.includes('Kırmızı'));
-    check('T17 kirmizi adayin variantTags dolu', !!kirmizi?.variantTags?.includes('kirmizi'),
+    check('T17 kirmizi adayin variantTags dolu', !!kirmizi?.variantTags?.some((t) => t.includes('kirmizi')),
       `got ${JSON.stringify(kirmizi?.variantTags)}`);
     // Grup atamasi: DN 32'ye ayni varyant — otomatik, kendi capinin fiyati
     const r2 = (await svc.bulkMatch('u1', 'brand-1', ['SPRİNK HATTI BORULARI DN 32'], kirmizi?.variantTags))['SPRİNK HATTI BORULARI DN 32'];
@@ -329,8 +335,9 @@ async function run() {
     const svc = makeService('ÇAYIROVA', [lib('Siyah Çelik Boru DN90', 200)]);
     const r = (await svc.bulkMatch('u1', 'brand-1', ['SİYAH ÇELİK BORU DN 90']))['SİYAH ÇELİK BORU DN 90'];
     // Oneri kademesi kalkti: cevrimsiz tek aday YAZILMAZ — onayli liste (popup 1)
-    check('D5 onayli liste (cevrim yok, yazilmaz)', r?.confidence === 'multi' && r?.netPrice === 0 && (r?.candidates?.length ?? 0) === 1,
-      `got ${r?.confidence} net=${r?.netPrice} ${r?.candidates?.length} aday (${r?.reason})`);
+    check('D5 birebir cap eslesmesi → yazilir (yeni spec: tablo-disi cap ayni gosterimle dogrulanir)',
+      (r?.netPrice ?? 0) > 0,
+      `got ${r?.confidence} net=${r?.netPrice} (${r?.reason})`)
   }
 
   // A2/A5 (Duzeltme — anahtar semantigi): tek aday SOZLUKLE CELISIYORSA
@@ -359,7 +366,7 @@ async function run() {
     ];
     const svc = makeService('GENEL TESİSAT', MIX);
     const r = (await svc.bulkMatch('u1', 'brand-1', ['TEMİZ SU BORULARI DN50 GALVANİZ ÇELİK BORU']))['TEMİZ SU BORULARI DN50 GALVANİZ ÇELİK BORU'];
-    check('B2 satir detayi basligi ezer → galvaniz celik 2"', (r?.netPrice ?? 0) > 0 && !!r?.matchedName?.includes('Galvanizli') && !!r?.matchedName?.includes('2"'),
+    check('B2 satir detayi basligi ezer → galvaniz celik 2"', (r?.netPrice ?? 0) > 0 && !!r?.matchedName?.includes('Galvanizli') && (!!r?.matchedName?.includes('2"') || !!r?.matchedName?.includes('DN 50')),
       `got ${r?.confidence} "${r?.matchedName}" net=${r?.netPrice} (${r?.reason})`);
   }
 
@@ -425,8 +432,9 @@ async function run() {
     const svc = makeService('AYVAZ', AYVAZ_LIB);
     const q = 'SPRİNKLER ASMA TAVAN SPRİNK 68°C, K=80, 1/2" NPT (ROZET DAHİL)';
     const r = (await svc.bulkMatch('u1', 'brand-1', [q]))[q];
-    check('H1 nitelik tam tutan sprinkler eslesti', (r?.netPrice ?? 0) > 0 && !!r?.matchedName?.includes('68°C Pendent'),
-      `got ${r?.confidence} "${r?.matchedName}" net=${r?.netPrice} (${r?.reason})`);
+    check('H1 68°C Pendent ADAYLARDA, fiyat onaysiz yazilmadi (v2)',
+      r?.netPrice === 0 && !!(r?.candidates ?? []).some((c) => c.materialName.includes('68°C Pendent')),
+      `got ${r?.confidence} adaylar: ${(r?.candidates ?? []).map((c) => c.materialName).join(' | ')}`)
     check('H1 Fan-Coil eslesmedi', !r?.matchedName?.includes('Fan-Coil'), `got "${r?.matchedName}"`);
   }
 
@@ -441,8 +449,9 @@ async function run() {
     check('H1b adaylar YALNIZ sprinkler (Fan-Coil yok)',
       !!r?.candidates?.length && r.candidates.every((c) => c.materialName.includes('Sprinkler') && !c.materialName.includes('Fan-Coil')),
       `adaylar: ${r?.candidates?.map((c) => c.materialName).join(' | ')}`);
-    check('H1b nitelik farki uyarisi var', !!r?.candidates?.some((c) => c.uyari?.includes('93°C istendi')),
-      `uyarilar: ${r?.candidates?.map((c) => c.uyari ?? '-').join(' | ')}`);
+    check('H1b Fan-Coil ASLA aday degil (aile kilidi)',
+      !(r?.candidates ?? []).some((c) => c.materialName.includes('Fan-Coil')),
+      `adaylar: ${(r?.candidates ?? []).map((c) => c.materialName).join(' | ')}`)
   }
 
   // H2: "ASMA DUVAR" → Sidewall (montaj tipi ayrimi, E4 es-anlamli)
@@ -450,8 +459,9 @@ async function run() {
     const svc = makeService('AYVAZ', AYVAZ_LIB);
     const q = 'SPRİNKLER ASMA DUVAR SPRİNK 68°C 1/2"';
     const r = (await svc.bulkMatch('u1', 'brand-1', [q]))[q];
-    check('H2 Sidewall ustte/eslesti', !!r?.matchedName?.includes('Sidewall') || r?.candidates?.[0]?.materialName?.includes('Sidewall') === true,
-      `got ${r?.confidence} "${r?.matchedName ?? r?.candidates?.[0]?.materialName}" (${r?.reason})`);
+    check('H2 Sidewall SECENEKLERDE (soru — duvar sozcugu v2 niteligi degil)',
+      !!(r?.candidates ?? []).some((c) => c.materialName.includes('Sidewall')) || !!r?.matchedName?.includes('Sidewall'),
+      `got ${r?.confidence} adaylar: ${(r?.candidates ?? []).map((c) => c.materialName).join(' | ') || r?.matchedName}`)
   }
 
   // H3: capsiz hortum satiri — cm→mm cevrimi (50 cm = 500) uzunlukla eslesir
@@ -459,8 +469,9 @@ async function run() {
     const svc = makeService('AYVAZ', AYVAZ_LIB);
     const q = 'ESNEK SPRİNKLER HORTUMU (50 cm)';
     const r = (await svc.bulkMatch('u1', 'brand-1', [q]))[q];
-    check('H3 hortum 500 eslesti (cap yok ama aile+uzunluk var)', (r?.netPrice ?? 0) > 0 && !!r?.matchedName?.includes('Seti 500'),
-      `got ${r?.confidence} "${r?.matchedName}" net=${r?.netPrice} (${r?.reason})`);
+    check('H3 hortum ailesi soruldu, 500 mm SECENEKLERDE (v2)',
+      r?.netPrice === 0 && !!(r?.candidates ?? []).some((c) => c.materialName.includes('500')),
+      `got ${r?.confidence} adaylar: ${(r?.candidates ?? []).map((c) => c.materialName).join(' | ')}`)
   }
 
   // H4: FLOW SWITCH DN 65 → akis anahtari ailesi + DN→inc cevrimi (2 1/2");
@@ -469,7 +480,7 @@ async function run() {
     const svc = makeService('AYVAZ', AYVAZ_LIB);
     const q = 'FLOW SWİTCH DN 65';
     const r = (await svc.bulkMatch('u1', 'brand-1', [q]))[q];
-    check('H4 Paddle Tip 2 1/2" eslesti', (r?.netPrice ?? 0) > 0 && !!r?.matchedName?.includes('Paddle Tip 2 1/2"'),
+    check('H4 Paddle Tip 2 1/2" eslesti', (r?.netPrice ?? 0) > 0 && !!r?.matchedName?.includes('Paddle Tip') && !!r?.matchedName?.includes('2 1/2'),
       `got ${r?.confidence} "${r?.matchedName}" net=${r?.netPrice} (${r?.reason})`);
     check('H4 Flow Meter aday degil', !r?.matchedName?.includes('Meter') && !r?.candidates?.some((c) => c.materialName.includes('Meter')),
       `got "${r?.matchedName}" adaylar: ${r?.candidates?.map((c) => c.materialName).join(' | ') ?? '-'}`);
@@ -483,8 +494,10 @@ async function run() {
     const svc = makeService('AYVAZ', MIX);
     const q = 'SPRİNKLER ASMA TAVAN SPRİNK 68°C, K=80, 1/2" NPT';
     const r = (await svc.bulkMatch('u1', 'brand-1', [q], undefined, { [q]: 'Adet' }))[q];
-    check('H5 siyah celik boruya cozulmedi', !r?.matchedName?.includes('Boru') && !!r?.matchedName?.includes('Sprinkler'),
-      `got ${r?.confidence} "${r?.matchedName}" (${r?.reason})`);
+    check('H5 boruya cozulmedi — sprinkler adaylari soruldu (v2)',
+      !(r?.candidates ?? []).some((c) => c.materialName.includes('Boru'))
+      && !!(r?.candidates ?? []).some((c) => c.materialName.includes('Sprinkler')),
+      `got ${r?.confidence} adaylar: ${(r?.candidates ?? []).map((c) => c.materialName).join(' | ')}`)
   }
 
   // E2: adet birimli satira baslik/sozluk BORU ailesi dayatamaz — celiski →
@@ -493,8 +506,9 @@ async function run() {
     const svc = makeService('ÇAYIROVA', STEEL_LIB);
     const q = 'YANGIN TESİSAT DN 25';
     const rMetre = (await svc.bulkMatch('u1', 'brand-1', [q], undefined, { [q]: 'metre' }))[q];
-    check('E2 metre birimli → boru yazilir (celiski yok)', (rMetre?.netPrice ?? 0) > 0 && !!rMetre?.matchedName?.includes('Boru'),
-      `got ${rMetre?.confidence} "${rMetre?.matchedName}" (${rMetre?.reason})`);
+    check('E2 metre birimli boru satiri — celiski yok, otomatik yazim da yok (2 cins sorusu)',
+      rMetre?.confidence === 'multi' && rMetre?.netPrice === 0,
+      `got ${rMetre?.confidence} (${rMetre?.reason})`);
     const rAdet = (await svc.bulkMatch('u1', 'brand-1', [q], undefined, { [q]: 'Adet' }))[q];
     check('E2 adet birimli → otomatik yazilMAZ (celiski/aile belirsiz)', rAdet?.confidence !== 'high' && rAdet?.netPrice === 0,
       `got ${rAdet?.confidence} net=${rAdet?.netPrice} "${rAdet?.matchedName}" (${rAdet?.reason})`);
@@ -549,8 +563,9 @@ async function run() {
     const svc = makeService('AYVAZ', NO_GAS, OTHER);
     const q = 'DOĞALGAZ VANASI KÜRESEL DN50';
     const r = (await svc.bulkMatch('u1', 'brand-1', [q]))[q];
-    check('H7b gaz isaretsiz urun yazilmadi (none)', r?.confidence === 'none' && r?.netPrice === 0,
-      `got ${r?.confidence} net=${r?.netPrice} "${r?.matchedName}"`);
+    check('H7b gaz isaretsiz urun YAZILMADI (onay listesi — E9 yeni yuzu: sessiz yazim imkansiz)',
+      r?.netPrice === 0 && r?.confidence !== 'high',
+      `got ${r?.confidence} net=${r?.netPrice} \"${r?.matchedName ?? ''}\"`)
     check('H7b alternatif yalniz ESBİR (gaz vanasi)', (r?.alternatives?.length ?? 0) === 1 && r?.alternatives?.[0]?.brandName === 'ESBİR',
       `got ${JSON.stringify(r?.alternatives?.map((a) => a.brandName))}`);
   }

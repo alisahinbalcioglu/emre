@@ -22,11 +22,9 @@ export interface AliasHint {
   stripTags: string[];
 }
 
-export interface BrandClassHint {
-  pattern: string;
-  kinds: string[];
-  sizeClass: SizeClass;
-}
+// NOT (Faz 2b sokum): BrandClassHint + resolveBrandClass + BRAND_SEEDS
+// SILINDI — marka→sinif cikarimi I4'un ihlaliydi ("marka etiketleri
+// degistiremez"); v2 sinifi urunun KENDI kolonlarindan cozer.
 
 // ── SEED: Terminoloji (PRD §5.2 + mevcut HEADER_HINTS gocu + EN v1) ──
 const CELIK = {
@@ -104,36 +102,6 @@ export const ALIAS_SEEDS: Array<{ alias: string } & typeof CELIK> = [
   { alias: 'icme suyu', ...TEMIZ_SU },
 ];
 
-// ── SEED: Marka → sinif (PRD D2 celik + P1 PPR + HDPE) ──
-export const BRAND_SEEDS: Array<{ pattern: string; kinds: string[]; sizeClass: string }> = [
-  // Celik boru ureticileri (D2)
-  { pattern: 'cayirova', kinds: ['celik'], sizeClass: 'steel' },
-  { pattern: 'erbosan', kinds: ['celik'], sizeClass: 'steel' },
-  { pattern: 'borusan', kinds: ['celik'], sizeClass: 'steel' },
-  { pattern: 'toscelik', kinds: ['celik'], sizeClass: 'steel' },
-  { pattern: 'yucel', kinds: ['celik'], sizeClass: 'steel' },
-  { pattern: 'noksel', kinds: ['celik'], sizeClass: 'steel' },
-  { pattern: 'emek boru', kinds: ['celik'], sizeClass: 'steel' },
-  { pattern: 'ozborsan', kinds: ['celik'], sizeClass: 'steel' },
-  { pattern: 'sardogan', kinds: ['celik'], sizeClass: 'steel' },
-  // PPR-C ureticileri (P1) — Wespo/Vesbo yazim varyantlari ayri desen
-  { pattern: 'hakan plastik', kinds: ['ppr'], sizeClass: 'plastic' },
-  { pattern: 'hakan', kinds: ['ppr'], sizeClass: 'plastic' },
-  { pattern: 'vesbo', kinds: ['ppr'], sizeClass: 'plastic' },
-  { pattern: 'wespo', kinds: ['ppr'], sizeClass: 'plastic' },
-  { pattern: 'kalde', kinds: ['ppr'], sizeClass: 'plastic' },
-  { pattern: 'pilsa', kinds: ['ppr'], sizeClass: 'plastic' },
-  { pattern: 'wavin', kinds: ['ppr'], sizeClass: 'plastic' },
-  { pattern: 'teba', kinds: ['ppr'], sizeClass: 'plastic' },
-  { pattern: 'nova plastik', kinds: ['ppr'], sizeClass: 'plastic' },
-  // Dizayn ve Firat hem PPR hem HDPE uretir — sinif plastic, cins cift
-  { pattern: 'dizayn', kinds: ['ppr', 'pe', 'hdpe'], sizeClass: 'plastic' },
-  { pattern: 'firat', kinds: ['ppr', 'pe', 'hdpe'], sizeClass: 'plastic' },
-  // HDPE PE100 ureticileri (hidrant hatti — PRD v1.1 notu)
-  { pattern: 'kuzeyboru', kinds: ['hdpe', 'pe'], sizeClass: 'plastic' },
-  { pattern: 'superlit', kinds: ['hdpe', 'pe'], sizeClass: 'plastic' },
-];
-
 @Injectable()
 export class TerminologyService implements OnModuleInit {
   constructor(private readonly prisma: PrismaService) {}
@@ -161,18 +129,7 @@ export class TerminologyService implements OnModuleInit {
           });
         }
       }
-      for (const s of BRAND_SEEDS) {
-        const exists = await p.brandMaterialType.findFirst({
-          where: { userId: null, pattern: s.pattern },
-          select: { id: true },
-        });
-        if (!exists) {
-          await p.brandMaterialType.create({
-            data: { userId: null, pattern: s.pattern, kinds: s.kinds, sizeClass: s.sizeClass, createdBy: 'seed' },
-          });
-        }
-      }
-      console.log(`[Terminology] Seed hazir: ${ALIAS_SEEDS.length} alias, ${BRAND_SEEDS.length} marka deseni`);
+      console.log(`[Terminology] Seed hazir: ${ALIAS_SEEDS.length} alias`);
     } catch (e) {
       console.warn('[Terminology] Seed atlandi (tablo henuz yok olabilir — prisma db push gerekir):', (e as Error).message);
     }
@@ -209,27 +166,6 @@ export class TerminologyService implements OnModuleInit {
     return null;
   }
 
-  /** Marka adindan malzeme sinifi cikar (D2/P1). En uzun desen kazanir. */
-  async resolveBrandClass(brandName: string | null | undefined, userId: string): Promise<BrandClassHint | null> {
-    if (!brandName) return null;
-    try {
-      const rows = await (this.prisma as any).brandMaterialType.findMany({
-        where: { active: true, OR: [{ userId: null }, { userId }] },
-      });
-      const norm = normalizeText(brandName);
-      let best: BrandClassHint | null = null;
-      for (const r of rows) {
-        if (norm.includes(r.pattern)) {
-          if (!best || r.pattern.length > best.pattern.length) {
-            best = { pattern: r.pattern, kinds: r.kinds ?? [], sizeClass: r.sizeClass as SizeClass };
-          }
-        }
-      }
-      return best;
-    } catch {
-      return null;
-    }
-  }
 
   /** S4: kullanici alias'i kaydet (secim sonrasi ogrenme). Var olani gunceller. */
   async saveUserAlias(userId: string, input: {

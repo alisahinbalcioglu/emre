@@ -114,12 +114,25 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   //   • tek basina cozemeyen ('flow'/'switch' — esi lazim) veya ailenin
   //     kendisi olan ('vana', 'borulari'→boru) → muaf (es anlamli/aile adi).
   const aileMuaf = (t: string) => {
+    // AILENIN KENDISI her kosulda muaf: 'borulari'~'boru'. aileKelimeleri
+    // listesine girmemis olabilir — "SPRİNK HATTI BORULARI"nda 'borulari'
+    // kaldirilinca kalan 'sprink hatti' de boru cozer (normalizer H1 kurali),
+    // yani aile onsuz da ayakta → listeye girmez; ama kelime yine ailenin
+    // adidir, 'bulunamadi/kisit' sayilamaz (tokenEsit 'borusu'↔'borulari'
+    // gibi iki EKLI formu birbirine baglayamaz — ikisi de slug'a baglanir).
+    if (familySlug && tokenEsit(t, familySlug)) return true;
     if (!line.aileKelimeleri.includes(t)) return false;
     const tekBasina = resolveLineFamily(t);
     if (tekBasina && !tokenEsit(t, tekBasina)) return false; // alt-tip adi (cekvalf)
     return true;
   };
   const bilinmeyen = yol.bilinmeyen.filter((t) => !aileMuaf(t));
+
+  // CEKIRDEK AD (Faz 2b, R19 vakasi): aile-es kelime ('vana') urun adinda
+  // GECMEYEBILIR ("İzleme Anahtarlı Kelebek" — adi 'Kelebek'le biter). Aile
+  // ZATEN kilitli; tam-ad/alt-kume testleri aile-es kelimeler HARIC yapilir.
+  const adCekirdek = yol.ad.filter((t) => !(familySlug && tokenEsit(t, familySlug)));
+  const adTest = adCekirdek.length > 0 ? adCekirdek : yol.ad;
 
   if (yol.ad.length) {
     // ── TAM AD ESLESMESI ONCELIKLIDIR (PRD §4: "bucket kilitlenir — YALNIZ bu ad")
@@ -133,14 +146,17 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     //
     // Tam eslesme = token kumeleri ESIT (alt-kume + ayni sayida).
     const tam = rows.filter(
-      (r) => r.urun.adTokens.length === yol.ad.length && altKume(yol.ad, r.urun.adTokens),
+      (r) => {
+        const urunCekirdek = r.urun.adTokens.filter((x) => !(familySlug && tokenEsit(x, familySlug)));
+        return urunCekirdek.length === adTest.length && altKume(adTest, urunCekirdek);
+      },
     );
     if (tam.length > 0) {
       rows = tam;
     } else {
       // Tam ad yok → alt-kume: teklif UST ad yazmis olabilir ("kompansatör"),
       // ya da urun adi daha uzundur ("Omega V-Flex dilatasyon kompansatörü").
-      const daralt = rows.filter((r) => altKume(yol.ad, r.urun.adTokens));
+      const daralt = rows.filter((r) => altKume(adTest, r.urun.adTokens));
       if (daralt.length > 0) rows = daralt;
       else {
         // ── AD-TOKEN DUSURME (canli vaka 16.07: izleme anahtarli) ────
@@ -154,12 +170,21 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
         // asagidaki K8 kapisina duser (tum aile ASLA listelenmez).
         let kalan = rows;
         let uygulanan = 0;
-        for (const t of [...yol.ad].reverse()) {
+        const dusenler: string[] = [];
+        for (const t of [...adTest].reverse()) {
           const d = kalan.filter((r) => r.urun.adTokens.some((x) => tokenEsit(t, x)));
           if (d.length > 0) { kalan = d; uygulanan++; }
-          else bilinmeyen.push(t);
+          else { bilinmeyen.push(t); dusenler.push(t); }
         }
-        if (uygulanan === 0) return { kind: 'none', reason: 'ad-yok', detail: yol.ad.join(' ') };
+        if (uygulanan === 0) return { kind: 'none', reason: 'ad-yok', detail: adTest.join(' ') };
+        // R15 UNION ("KÜRESEL VE KELEBEK VANALAR"): dusen token baska bir
+        // ALT-AD olabilir — tek basina tuttugu urunler SORUYA eklenir.
+        // Sistem yine secmez; iki aday ad fiyatlariyla yan yana sorulur.
+        for (const t of dusenler) {
+          for (const r2 of rows.filter((r) => r.urun.adTokens.some((x) => tokenEsit(t, x)))) {
+            if (!kalan.includes(r2)) kalan = [...kalan, r2];
+          }
+        }
         rows = kalan;
       }
     }
@@ -174,6 +199,12 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   // cekvalf satirina ADAY OLAMAZ → YOK + M3 alternatif markalar.
   //   • hic ad kelimesi YOK ("DN 20")     → bir sey sorulmadi → SOR (R11)
   //   • kelime VAR ama hicbiri eslesmiyor → var olmayan sey soruldu → YOK
+  //
+  // NOT (Faz 2b): "eslesen yalniz aile adi + bilinmeyen var → none"
+  // genellemesi DENENDI ve GERI ALINDI — Karar #3'un yazim-hatasi hakkini
+  // ('dilatsyon kompansatörü' → alt-ad sorusu) yiyordu. R9/H7 guvenligi
+  // asagida bilinmeyenNotu kapisiyla saglanir: dogrulanamayan kelime varken
+  // fiyat ASLA otomatik yazilmaz (E9'un dogdugu vaka "sessiz yazim"di).
   if (yol.ad.length === 0 && bilinmeyen.length > 0) {
     return { kind: 'none', reason: 'ad-yok', detail: bilinmeyen.join(' ') };
   }
@@ -340,10 +371,21 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   const gevsetmeNotu = adGevsetildi
     ? 'Ad birebir eşleşmedi — yazılı nitelik üzerinden bulundu'
     : null;
+  // ── H6/A2/E9 KAPISI (Faz 2b): DOGRULANAMAYAN yazili kelime varken tek
+  // aday otomatik YAZILMAZ — "DOĞALGAZ KÜRESEL VANA" satirinda 'dogalgaz'
+  // hicbir urunde yoksa kalan tek kuresel vanaya fiyat yazmak TAHMINDIR
+  // (I6). Onay listesi sunulur; kelime acikca soylenir.
+  const bilinmeyenNotu = bilinmeyen.length > 0
+    ? `"${bilinmeyen.join(' ')}" doğrulanamadı`
+    : null;
+  // H6: aile HIC cozulmemisken tek aday = yalniz olcu benzerligi = TAHMIN.
+  const aileNotu = !familySlug
+    ? 'Ürün ailesi belirlenemedi — eşleşme yalnız ölçüyle bulundu'
+    : null;
 
   // ── SONUC: UC YOL, DORDUNCU YOK ──────────────────────────────────
   if (rows.length === 1) {
-    const celiski = unitConflict ?? surfaceConflict ?? capsizNotu ?? gevsetmeNotu;
+    const celiski = unitConflict ?? surfaceConflict ?? capsizNotu ?? gevsetmeNotu ?? bilinmeyenNotu ?? aileNotu;
     if (celiski) {
       return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, uyariNot: celiski };
     }

@@ -128,10 +128,15 @@ const ONEK_MIN = 4;
  */
 const OLUMSUZLUK_EKI = /^s[iu]z/;
 
+/** ONEK_MIN altinda kalan ama guvenle onek sayilabilen malzeme kisaltmalari:
+ *  'ppr' ⊂ 'pprc' (PPR-C), 'pvc' ⊂ 'pvcu'. Turkce kelime koku degiller —
+ *  yanlis pozitif uretmezler ('dis'⊂'disko' gibi). */
+const KISA_KOKLER: ReadonlySet<string> = new Set(['pp', 'ppr', 'pvc', 'pex']);
+
 export function tokenEsit(a: string, b: string): boolean {
   if (a === b) return true;
-  if (a.length >= ONEK_MIN && b.startsWith(a)) return !OLUMSUZLUK_EKI.test(b.slice(a.length));
-  if (b.length >= ONEK_MIN && a.startsWith(b)) return !OLUMSUZLUK_EKI.test(a.slice(b.length));
+  if ((a.length >= ONEK_MIN || KISA_KOKLER.has(a)) && b.startsWith(a)) return !OLUMSUZLUK_EKI.test(b.slice(a.length));
+  if ((b.length >= ONEK_MIN || KISA_KOKLER.has(b)) && a.startsWith(b)) return !OLUMSUZLUK_EKI.test(a.slice(b.length));
   return false;
 }
 
