@@ -76,11 +76,16 @@ export interface ProductIndexFields {
  *     plastik siniflaniyordu (bkz. resolveProductSizeClass); ad onceligi +
  *     cift-sinyalde steel kurali. capTags de sizeClass'tan turedigi icin
  *     REINDEX SART (POST /admin/reindex-products).
+ * v6: S5 sozluk genislemesi (Aksa gercek dosya olcumu) — yeni aileler
+ *     nozul/kabin, fitting regex'ine 'plug', kolektor'e 'kollektor' yazimi.
+ *     Bu adlari tasiyan urunlerin familySlug'i degisir → REINDEX ONERILIR
+ *     (bayat satirlar istek aninda rebuildIndexFields ile de yenilenir).
  *
- * Dispatch bu surumu KONTROL EDER (matching.service): bayat indekste v2
- * CALISMAZ, v1'e duser ve uyarir. Sessiz yanlis cevap yerine gorunur uyari.
+ * Dispatch bu surumu KONTROL EDER (matching.service.hazirlaPool): bayat
+ * satir istek aninda rebuildIndexFields ile CANLI tokenizer'dan yeniden
+ * uretilir (Faz 2b — v1 fallback SILINDI); kalici cozum reindex'tir.
  */
-export const INDEX_VERSION = 5;
+export const INDEX_VERSION = 6;
 
 /** adSlug cozulemeyen satirin tasidigi isaret — eslestirmeye ADAY OLAMAZ. */
 export const BELIRSIZ_SLUG = 'belirsiz';

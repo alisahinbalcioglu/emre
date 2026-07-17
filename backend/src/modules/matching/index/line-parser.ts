@@ -19,8 +19,13 @@ import type { LineQuery, FamilyVocab, RoutedTokens, IndexedRow } from './types';
  * "FITTINGS ORANI", "İşçilik", "Nakliye" — fiyat BEKLENMEYEN satirlar.
  * v1'den birebir tasindi (matching.service.ts:346) — davranis degismemeli
  * (spec R12 bu deseni assert ediyor).
+ *
+ * S5 (gercek Aksa dosyasi olcumu): hizmet/is kalemleri eklendi — kazi,
+ * dolgu, boyama, projelendirme, muhendislik, tasima. Bunlar TEKLIF satiri
+ * tarafinda calisir, urun indeksine dokunmaz. 'imalat' SATIR SONUNA demirli:
+ * "Çelik İmalatlar" hizmettir ama "özel imalat çelik kolektör" URUNDUR.
  */
-const NOT_PRODUCT_RE = /\borani?\b|\biscilik\b|\bmontaj\b|\bnakliye\b|\bdevreye\s*alma\b|\bgenel\s*gider|fittings?\s*(orani|bedeli|oran)\b|boru\s*\+\s*fitting|\bsarf\b/;
+const NOT_PRODUCT_RE = /\borani?\b|\biscilik\b|\bmontaj\b|\bnakliye\b|\bdevreye\s*alma\b|\bgenel\s*gider|fittings?\s*(orani|bedeli|oran)\b|boru\s*\+\s*fitting|\bsarf\b|\bkazi\b|\bdolgu\b|\bboyama\b|\bprojelendirme\b|\bmuhendislik\b|\btasima\b|\bimalat(lar)?i?\s*$/;
 
 /**
  * Satirin ailesini cozer. Urun tarafiyla AYNI iki kaynak (regex → sozluk),

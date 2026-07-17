@@ -48,6 +48,10 @@ export const AD_SOZLUGU: AdSozlukGirdisi[] = [
   { slug: 'hidrant', ad: 'Yangın hidrantı', grup: 'YANGIN', dnli: true, patterns: ['yangin hidranti', 'yerustu hidrant', 'yeralti hidrant', 'hidrant'] },
   { slug: 'hidrofor', ad: 'Hidrofor', grup: 'POMPALAR', dnli: false, patterns: ['hidrofor', 'paket hidrofor', 'hidrofor grubu'] },
   { slug: 'itfaiye-agzi', ad: 'İtfaiye bağlantı ağzı', grup: 'YANGIN', dnli: true, patterns: ['itfaiye baglanti agzi', 'itfaiye su alma agzi', 'siamese connection'] },
+  // S5 (Aksa gercek dosya): "Vana İstasyonu Kabini" sondan-cozumde 'vana'ya
+  // dusuyordu (YANLIS POZITIF — kabin bir vana degildir). Bas isim 'kabin'
+  // sondadir, once o cozulur; vana adaylari artik onerilmez.
+  { slug: 'kabin', ad: 'Kabin', grup: 'SIHHİ TESİSAT / EKİPMAN', dnli: false, patterns: ['kabin', 'vana istasyonu kabini', 'koruma kabini'] },
   { slug: 'kalorimetre', ad: 'Kalorimetre', grup: 'SIHHİ TESİSAT / EKİPMAN', dnli: true, patterns: ['kalorimetre', 'isi sayaci'] },
   { slug: 'kanal', ad: 'Hava kanalı', grup: 'HAVALANDIRMA', dnli: false, patterns: ['kanal', 'hava kanali', 'galvaniz kanal', 'dikdortgen kanal', 'spiral yuvarlak kanal', 'flexible hava kanali', 'flexible kanal', 'izoleli flexible'] },
   // YALIN AD SART: desenler yalniz cok-kelimeli ifadeler tasiyordu, aile
@@ -57,12 +61,17 @@ export const AD_SOZLUGU: AdSozlukGirdisi[] = [
   { slug: 'kelepce', ad: 'Boru kelepçesi', grup: 'İZOLASYON / ASKI', dnli: false, patterns: ['kelepce', 'boru kelepcesi', 'kaucuklu kelepce', 'aski kelepcesi', 'somunlu kelepce', 'havalandirma kelepcesi'] },
   { slug: 'klima', ad: 'Split klima', grup: 'SOĞUTMA / KLİMA', dnli: false, patterns: ['split klima', 'duvar tipi klima', 'inverter klima'] },
   { slug: 'klima-santrali', ad: 'Klima santrali', grup: 'SOĞUTMA / KLİMA', dnli: false, patterns: ['klima santrali', 'ahu', 'hucreli klima santrali', 'isi geri kazanimli santral'] },
-  { slug: 'kolektor', ad: 'Kolektör', grup: 'ISITMA', dnli: true, patterns: ['kolektor', 'celik kolektor', 'dagitim kolektoru'] },
+  // YAZIM VARYANTI (S5): sahada cift-L 'kollektör' cok yaygin ("Trafolar
+  // Kollektör Grubu") — contains 'kolektor' cift-L'yi YAKALAMAZ, ayri desen.
+  { slug: 'kolektor', ad: 'Kolektör', grup: 'ISITMA', dnli: true, patterns: ['kolektor', 'kollektor', 'celik kolektor', 'dagitim kolektoru'] },
   { slug: 'kompansator', ad: 'Kompansatör', grup: 'SIHHİ TESİSAT / EKİPMAN', dnli: true, patterns: ['kompansator', 'eksenel metal koruklu kompansator', 'kaucuk kompansator', 'titresim yutucu'] },
   { slug: 'kondenstop', ad: 'Kondenstop', grup: 'SIHHİ TESİSAT / EKİPMAN', dnli: true, patterns: ['kondenstop', 'buhar kapani', 'termodinamik kondenstop', 'samandirali kondenstop', 'termostatik kondenstop'] },
   { slug: 'kuru-sogutucu', ad: 'Kuru soğutucu', grup: 'SOĞUTMA / KLİMA', dnli: false, patterns: ['kuru sogutucu', 'dry cooler'] },
   { slug: 'manometre', ad: 'Manometre', grup: 'SIHHİ TESİSAT / EKİPMAN', dnli: false, patterns: ['manometre', 'basinc gostergesi', 'gliserinli manometre'] },
   { slug: 'menfez', ad: 'Menfez', grup: 'HAVALANDIRMA', dnli: false, patterns: ['menfez', 'egzoz menfezi', 'emis menfezi', 'lineer menfez', 'kapi menfezi'] },
+  // S5 (Aksa gercek dosya, 9 satir): su sisi / water-spray sistemlerinin
+  // puskurtme nozullari — sprinkler DEGIL, ayri ailedir.
+  { slug: 'nozul', ad: 'Su püskürtme nozulu', grup: 'YANGIN', dnli: false, patterns: ['nozul', 'nozzle', 'su puskurtme nozulu', 'puskurtme nozulu'] },
   { slug: 'panjur', ad: 'Panjur', grup: 'HAVALANDIRMA', dnli: false, patterns: ['panjur', 'dis hava panjuru'] },
   { slug: 'rooftop', ad: 'Rooftop', grup: 'SOĞUTMA / KLİMA', dnli: false, patterns: ['rooftop', 'cati tipi paket klima'] },
   // 'kalorimetre' ('isi sayaci') yalin 'sayac'tan UZUN oldugu icin onu yener —

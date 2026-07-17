@@ -751,6 +751,32 @@ async function run() {
       r2.confidence === 'none', `got ${r2.confidence} net=${r2.netPrice} "${r2.reason}"`);
   }
 
+  // ══ S5: SATIR ETIKETLEME BOSLUKLARI (Aksa gercek dosya olcumu) ═══
+  // Olcum araci: test/audit-real-excel.ts — aile cozumu %62'ydi; bosluklar
+  // GENEL kurallarla kapatildi (ornege ozel desen YOK).
+  {
+    // Hizmet/is kalemleri fiyat BEKLENMEYEN satirdir (R12 ailesi).
+    for (const q of ['Kazı Dolgu', 'Çelik İmalatlar', 'Boru Boyama İşleri',
+      'PROJELENDİRME-MÜHENDİSLİK', 'Ürünlerin Sahaya Sevki, Yatay Düşey Taşıma']) {
+      check(`S5 hizmet satiri → notProduct: "${q}"`, parseLine(q).notProduct === true);
+    }
+    // 'imalat' SATIR SONUNA demirli — urun adinin ortasindaki "özel imalat"
+    // niteligi urunu YUTMAZ (yanlis susturma olmaz).
+    const ozel = parseLine('Özel imalat çelik kolektör DN80');
+    check('S5 "özel imalat ... kolektör" URUN kalir', ozel.notProduct !== true && ozel.familySlug === 'kolektor',
+      `got notProduct=${ozel.notProduct} aile=${ozel.familySlug}`);
+
+    // Yeni aileler / es anlamlilar
+    const noz = parseLine('Orta Hızlı Su Püskürtme Nozulu, K:22');
+    check('S5 nozul ailesi cozulur', noz.familySlug === 'nozul', `got ${noz.familySlug}`);
+    const plug = parseLine('Blow-off plug');
+    check('S5 "plug" → fitting (tapa es anlamlisi)', plug.familySlug === 'fitting', `got ${plug.familySlug}`);
+    const kabin = parseLine('Vana İstasyonu Kabini');
+    check('S5 kabin — vana YANLIS POZITIFI bitti', kabin.familySlug === 'kabin', `got ${kabin.familySlug}`);
+    const kol = parseLine('1.Ünite Trafolar Kollektör Grubu');
+    check('S5 cift-L "kollektör" → kolektor', kol.familySlug === 'kolektor', `got ${kol.familySlug}`);
+  }
+
   // ══ DISPATCH: MatchingService UZERINDEN v2 yolu ══════════════════
   // Yukaridaki testler SAF cekirdegi kanitliyor. Bu blok GERCEK servisi
   // (marka bazli dispatch + matchV2 + havuz esleme + M3) kosturuyor —

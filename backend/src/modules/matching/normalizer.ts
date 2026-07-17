@@ -297,7 +297,8 @@ const TYPE_PATTERNS: { pattern: RegExp; type: string }[] = [
   // kullanicinin listesinde ek parca alt-adiyla yazilir (Trakya "Tapa",
   // Wavin/Kalde "Çift Çatal 87°", Hakan "İstavroz", Wavin "ES Sifonu").
   // 'kor tapa' zaten yukarida; yalin "Tapa" da ek parcadir.
-  { pattern: /\btapa\b/i, type: 'fitting' },
+  // 'plug' = tapanin Ingilizcesi ("Blow-off plug" — S5 Aksa olcumu, 8 satir).
+  { pattern: /\btapa\b|\bplug\b/i, type: 'fitting' },
   { pattern: /istavroz|\bcatal\b/i, type: 'fitting' },
   // "sifon" vitrifiye ailesinden CALMAZ — dogrulandi: vitrifiye desenleri
   // klozet/lavabo/rezervuar, 'sifon' iceren desen YOK.
