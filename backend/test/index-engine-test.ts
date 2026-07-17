@@ -700,6 +700,56 @@ async function run() {
       r2.confidence === 'none', `got ${r2.confidence} cand=${r2.candidates?.length}`);
   }
 
+  // ══ Ç — CAPSIZ URUN ISTISNASI KAPISI (canli vaka 16.07: yiv makinesi) ══
+  // "SPRİNK HATTI BORULARI DN50" (AYVAZ) → "Yiv açma makinesi" 373.825 TL
+  // OTOMATIK yazildi: makine kategori fallback'iyle 'boru' ailesine cozulmus,
+  // capi parse edilemedigi icin capsiz-istisna cap filtresini delmis, tek
+  // kalinca K2 yazmisti. Kural: satirda cap YAZILIYKEN capsiz urune inen
+  // TEK aday otomatik yazilmaz — onay listesi (I6: tahmini yazim yasak).
+  {
+    const makine = prod({ kategori: 'Boru Hazırlama', ad: 'Yiv açma makinesi', cins: 'TWG-II · TUWEI', price: 373825.8, urunKodu: 'TWG2' });
+    // Saf cekirdek (alias'siz): canli vakada 'sprink hatti' kelimelerini
+    // sozluk tuketiyordu; burada es davranisi yalin 'BORU DN50' verir.
+    const r = m('BORU DN50', [makine]);
+    check('Ç1 satir capli + urun capsiz + tek aday → OTOMATIK YAZILMAZ',
+      r.confidence === 'multi' && r.netPrice === 0, `got ${r.confidence} net=${r.netPrice} matched=${r.matchedName}`);
+    check('Ç1 nedeni soyluyor (capsiz/onay)',
+      !!r.reason && /çap|onaylayın/i.test(r.reason), `got "${r.reason}"`);
+    // Koruma: urun CAPLIYSA tek eslesme YINE yazilir (K2 bozulmaz)
+    const boru = prod({ kategori: 'Borular', ad: 'Çelik boru', cins: 'siyah', cap: 'DN50', price: 900, urunKodu: 'B50' });
+    const r2 = m('SPRİNK HATTI BORULARI DN50', [boru]);
+    check('Ç2 capli urun tek eslesme → yazilir (K2 korunur)',
+      r2.confidence === 'high' && r2.netPrice === 900, `got ${r2.confidence} net=${r2.netPrice}`);
+  }
+
+  // ══ S — AD-GEVSETME: cins ISABETLIYSE yanlis ad daraltmasi geri alinir ══
+  // Canli vaka: "6\"-DN150 Swing Çek Vana" → urun "Çekvalf BC-100 ·
+  // çalpara (swing)". Satirdaki 'vana' AD kisiti kelebek/kuresel'e daraltti
+  // (Çekvalf adinda 'vana' yok), 'swing' cinsi onlari eledi → "yok" deniyordu.
+  // Kural: cins AILE havuzunda TASINIYORSA ad daraltmasi gevsetilir ve
+  // sonuc HER ZAMAN SORUDUR (fiyat yazilmaz — ad birebir eslesmedi cunku).
+  {
+    const V = { sheetName: 'S' };
+    const havuz = [
+      prod({ ...V, kategori: 'Çekvalfler', ad: 'Çekvalf BC-100', cins: 'çalpara (swing) · bronz (CC491K)', cap: '6"', price: 5000, urunKodu: 'BC150' }),
+      prod({ ...V, kategori: 'Vanalar', ad: 'Kelebek vana', cins: 'wafer', cap: '6"', price: 2500, urunKodu: 'KV150' }),
+      prod({ ...V, kategori: 'Vanalar', ad: 'Küresel vana', cins: 'pirinç', cap: '6"', price: 2000, urunKodu: 'KR150' }),
+    ];
+    const r = m('6"-DN150 Swing Çek Vana', havuz);
+    const adlar = (r.candidates ?? []).map((c) => c.materialName);
+    check('S1 swing cek vana → SORU acilir (yok DEGIL, yazilmaz da)',
+      r.confidence === 'multi' && r.netPrice === 0, `got ${r.confidence} net=${r.netPrice} "${r.reason}"`);
+    check('S1 Çekvalf (calpara swing) ADAYLARDA',
+      adlar.some((a) => a.toLocaleLowerCase('tr').includes('çekvalf') || a.toLocaleLowerCase('tr').includes('cekvalf')),
+      JSON.stringify(adlar));
+    // K6/K8 koruması: gevsetme CILGIN aday uretmez — cins isabetli olsa da
+    // CAP tutmuyorsa sonuc yine YOK (cap serttir, gevsetilmez).
+    const kucukCekvalf = prod({ ...V, kategori: 'Çekvalfler', ad: 'Çekvalf BC-100', cins: 'çalpara (swing) · bronz', cap: '2"', price: 900, urunKodu: 'BC50' });
+    const r2 = m('6" Swing Kelebek Vana', [kucukCekvalf, havuz[1]]);
+    check('S2 gevsetme cap SERTLIGINI asamaz → none',
+      r2.confidence === 'none', `got ${r2.confidence} net=${r2.netPrice} "${r2.reason}"`);
+  }
+
   // ══ DISPATCH: MatchingService UZERINDEN v2 yolu ══════════════════
   // Yukaridaki testler SAF cekirdegi kanitliyor. Bu blok GERCEK servisi
   // (marka bazli dispatch + matchV2 + havuz esleme + M3) kosturuyor —

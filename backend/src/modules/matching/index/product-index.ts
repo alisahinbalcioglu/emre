@@ -72,11 +72,15 @@ export interface ProductIndexFields {
  * v2: aile kelimesi artik ATILMIYOR · v3: bas-isim aile cozumu (sondan)
  * v4: KOK ALMA KALDIRILDI → onek toleransi (bkz. tokenEsit) — Turkcede -lı
  *     eki ile govde-sonu -l sozluksuz ayirt edilemiyordu ('kanalı'→'kana').
+ * v5: sizeClass KAPLAMA TUZAGI — 'PE kapli/polietilen kapli' CELIK boru
+ *     plastik siniflaniyordu (bkz. resolveProductSizeClass); ad onceligi +
+ *     cift-sinyalde steel kurali. capTags de sizeClass'tan turedigi icin
+ *     REINDEX SART (POST /admin/reindex-products).
  *
  * Dispatch bu surumu KONTROL EDER (matching.service): bayat indekste v2
  * CALISMAZ, v1'e duser ve uyarir. Sessiz yanlis cevap yerine gorunur uyari.
  */
-export const INDEX_VERSION = 4;
+export const INDEX_VERSION = 5;
 
 /** adSlug cozulemeyen satirin tasidigi isaret — eslestirmeye ADAY OLAMAZ. */
 export const BELIRSIZ_SLUG = 'belirsiz';
@@ -216,10 +220,23 @@ function basIsimAilesi(text: string): string | null {
  * yoruma yayilan adayi gorunce ASLA otomatik yazmaz (P4 korumasi).
  */
 export function resolveProductSizeClass(ad: string, cins?: string | null, kategori?: string | null): SizeClass {
-  const text = `${cins ?? ''} ${ad}`;
-  const norm = normalizeText(text);
-  if (/\b(ppr|pe-?100|pe-?80|pex|pvc|hdpe|polietilen|plastik)\b/.test(norm)) return 'plastic';
-  if (/\b(celik|paslanmaz|pirinc|dokum|bronz|bakir|galvaniz|siyah|st\s*37)\b/.test(norm)) return 'steel';
+  const PLASTIK = /\b(ppr|pe-?100|pe-?80|pex|pvc|hdpe|polietilen|plastik)\b/;
+  const CELIK = /\b(celik|paslanmaz|pirinc|dokum|bronz|bakir|galvaniz|siyah|st\s*37)\b/;
+  // ── KAPLAMA TUZAGI (canli Çayırova vakasi 16.07 — INDEX_VERSION 5) ──
+  // "Çelik boru · PE kaplı doğalgaz · sarı POLIETILEN 3 kat kaplı":
+  // 'polietilen' KAPLAMADIR, govde CELIKTIR. plastic once kosunca urun
+  // plastik siniflaniyor → TEMIZ SU (plastic) filtresi onu GECIRIYOR ve
+  // celik boruya fiyat yaziliyordu. Kural onceligi:
+  //   1. AD urunun kimligidir (Karar #1): ad'de celik/plastik gecen kazanir.
+  //   2. Cins dahil metinde IKI sinyal birden varsa STEEL kazanir — plastik
+  //      boru adinda/cinsinde 'celik' GECMEZ, celik boru ise 'PE kapli'
+  //      olabilir (v1'in "plastik boru galvanizlenmez" mantiginin simetrigi).
+  const adNorm = normalizeText(ad);
+  if (CELIK.test(adNorm)) return 'steel';
+  if (PLASTIK.test(adNorm)) return 'plastic';
+  const norm = normalizeText(`${cins ?? ''} ${ad}`);
+  if (CELIK.test(norm)) return 'steel';
+  if (PLASTIK.test(norm)) return 'plastic';
   const slug = resolveFamily(ad, kategori);
   if (slug && (AD_DNLI_SLUGS.has(slug) || slug === 'boru' || slug === 'vana' || slug === 'fitting')) {
     return 'steel';

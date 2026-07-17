@@ -352,6 +352,23 @@ function run() {
       `got ${JSON.stringify(tokenize('V-Flex - X,Y,Z ±40 mm hareket'))}`);
     check('P8 resolveProductSizeClass PPR → plastic',
       resolveProductSizeClass('PPR-C Boru', 'PN20') === 'plastic');
+
+    // ── P8b: KAPLAMA TUZAGI (canli Çayırova vakasi 16.07) ──────────
+    // "Çelik boru · PE kaplı doğalgaz · sarı polietilen 3 kat kaplı" →
+    // 'polietilen' KAPLAMADIR, govde CELIKTIR. plastic regex once kostugu
+    // icin urun 'plastic' siniflaniyordu → TEMIZ SU (plastic) filtresi
+    // onu geciriyor, DN20 nominal cevrim ¾" celigi tutturuyor, tek kalinca
+    // 209.6 TL OTOMATIK yaziliyordu. Kural: ayni metinde iki sinyal varsa
+    // STEEL kazanir (plastik boru 'celik' icermez; celik boru 'PE kapli'
+    // olabilir) — v1'in "plastik boru galvanizlenmez" mantığının simetriği.
+    check('P8b PE kapli CELIK boru → steel (kaplama govde degildir)',
+      resolveProductSizeClass('Çelik boru', 'PE kaplı doğalgaz · DIN 30670 / TS 5139 · sarı polietilen 3 kat kaplı') === 'steel');
+    check('P8b ad notr + cins "polietilen kapli celik" → steel',
+      resolveProductSizeClass('Boru', 'sarı polietilen kaplı çelik') === 'steel');
+    check('P8b saf plastik KORUNUR: HDPE PE100 → plastic',
+      resolveProductSizeClass('HDPE PE100 Boru', 'SDR11') === 'plastic');
+    check('P8b saf plastik KORUNUR: ad notr + cins PPR → plastic',
+      resolveProductSizeClass('Boru', 'PPR PN20') === 'plastic');
     check('P8 buildRowKey saf/deterministik (ayni girdi → ayni cikti)',
       buildProductIndex(AYVAZ_FLANSLI_DN65).rowKey === buildProductIndex(AYVAZ_FLANSLI_DN65).rowKey);
   }

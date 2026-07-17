@@ -98,6 +98,9 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   // Dagarcik: aile cozulduyse aile havuzundan, cozulmediyse TUM havuzdan.
   const vocab = buildFamilyVocab(rows);
   const yol = classifyTokens(tokens, vocab);
+  // S-vakasi (ad-gevsetme) icin AD filtreleri oncesi aile havuzu:
+  const aileHavuzu = rows;
+  let adGevsetildi = false;
   // Aileyi COZEN kelimeler "taninmayan" sayilmaz — onlar ailenin adidir
   // (es anlamli olabilir: "flow switch" ↔ "Akış anahtarı"). Yalniz FILTRE
   // DISI kalirlar; kullaniciya eksikmis gibi RAPORLANMAZLAR.
@@ -191,7 +194,19 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     const diger = yol.cins.filter((t) => !yuzeyToken(t));
     if (diger.length) {
       const d = rows.filter((r) => altKume(diger, r.urun.cinsTokens));
-      if (d.length > 0) rows = d; else return { kind: 'none', reason: 'kriter-yok', detail: diger.join(' ') };
+      if (d.length > 0) rows = d;
+      else {
+        // ── AD-GEVSETME (canli vaka 16.07: "Swing Çek Vana") ─────────
+        // Urun "Çekvalf BC-100 · çalpara (swing)" — satirdaki 'vana' AD
+        // kisiti kelebek/kuresel'e daraltti (Çekvalf adinda 'vana' yok),
+        // 'swing' cinsi onlari eledi → "yok" YALANI. Cins AILE havuzunda
+        // TASINIYORSA ad daraltmasi yanlis bucket'a kilitlemis demektir:
+        // gevset ve devam et. Bu yoldan gelen sonuc ASLA otomatik
+        // yazilmaz (asagida adGevsetildi kapisi) — ad birebir eslesmedi.
+        const d2 = aileHavuzu.filter((r) => altKume(diger, r.urun.cinsTokens));
+        if (d2.length > 0) { rows = d2; adGevsetildi = true; }
+        else return { kind: 'none', reason: 'kriter-yok', detail: diger.join(' ') };
+      }
     }
     if (yuzeyler.length) {
       const d = rows.filter((r) => altKume(yuzeyler, r.urun.cinsTokens));
@@ -204,7 +219,13 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   }
   if (yol.baglanti.length) {
     const d = rows.filter((r) => altKume(yol.baglanti, r.urun.baglantiTokens));
-    if (d.length > 0) rows = d; else return { kind: 'none', reason: 'kriter-yok', detail: yol.baglanti.join(' ') };
+    if (d.length > 0) rows = d;
+    else {
+      // Ad-gevsetme baglanti icin de simetrik (ayni hastalik, ayni ilac)
+      const d2 = aileHavuzu.filter((r) => altKume(yol.baglanti, r.urun.baglantiTokens));
+      if (d2.length > 0) { rows = d2; adGevsetildi = true; }
+      else return { kind: 'none', reason: 'kriter-yok', detail: yol.baglanti.join(' ') };
+    }
     if (yuzeyGenis) yuzeyGenis = yuzeyGenis.filter((r) => altKume(yol.baglanti, r.urun.baglantiTokens));
   }
   if (rows.length === 0) return { kind: 'none', reason: 'ad-yok' };
@@ -213,6 +234,7 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   // Esdegerlik INDEKSTE on-hesapli (capTags): teklifteki 2" ile kutuphanedeki
   // DN50 burada bulusur, sorgu aninda cevrim TABLOSU aranmaz.
   let donusum: string | null = null;
+  let capsizDusum = false;
   if (line.capInfo) {
     const cls = resolveLineClass(rows, opts?.sizeClassHint);
     const equiv = sizeEquivalents(cls, line.capInfo);
@@ -223,8 +245,16 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
       // Capsiz ekipman (E1/H3): urunun capi yoksa cap filtresi ELEMEZ —
       // "kompansator 40cm hortum" gibi satirlarda cap satira degil urune ait
       // olmayabilir. Capi OLAN urunler arasinda ise filtre serttir.
+      // ⚠ Ç-vakasi (16.07): bu istisnadan gecen TEK aday otomatik YAZILMAZ
+      // (capsizDusum kapisi) — "Yiv açma makinesi" 373.825 TL sprink hattina
+      // yazilmisti: cap dogrulanamadi = tahmin, tahmin fiyat yazamaz (I6).
       const capsiz = rows.filter((r) => r.urun.capTags.length === 0);
-      rows = d.length > 0 || capsiz.length === 0 ? d : capsiz;
+      if (d.length > 0 || capsiz.length === 0) {
+        rows = d;
+      } else {
+        rows = capsiz;
+        capsizDusum = true;
+      }
       if (rows.length === 0) return { kind: 'none', reason: 'cap-yok', detail: line.capInfo.display, donusum };
       if (yuzeyGenis) yuzeyGenis = yuzeyGenis.filter(capUyar); // genis kume de AYNI capta
     }
@@ -303,15 +333,23 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     if (ekstra.length > 0) rows = [...rows, ...ekstra];
   }
 
+  // ── Ç/S KAPILARI: dogrulanamayan eslesme fiyat YAZAMAZ (I6) ───────
+  const capsizNotu = capsizDusum && line.capInfo
+    ? `Satır çaplı (${line.capInfo.display}) ama ürünün çapı doğrulanamadı`
+    : null;
+  const gevsetmeNotu = adGevsetildi
+    ? 'Ad birebir eşleşmedi — yazılı nitelik üzerinden bulundu'
+    : null;
+
   // ── SONUC: UC YOL, DORDUNCU YOK ──────────────────────────────────
   if (rows.length === 1) {
-    const celiski = unitConflict ?? surfaceConflict;
+    const celiski = unitConflict ?? surfaceConflict ?? capsizNotu ?? gevsetmeNotu;
     if (celiski) {
       return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, uyariNot: celiski };
     }
     return { kind: 'single', row: rows[0], donusum };
   }
-  return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, uyariNot: unitConflict ?? undefined };
+  return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, uyariNot: unitConflict ?? capsizNotu ?? gevsetmeNotu ?? undefined };
 }
 
 /**
