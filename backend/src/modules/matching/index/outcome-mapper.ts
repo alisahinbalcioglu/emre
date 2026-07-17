@@ -13,7 +13,7 @@
 // ════════════════════════════════════════════════════════════════════
 
 import { hesaplaNetFiyat } from '../pricing';
-import { extractAttrTags } from '../normalizer';
+import { extractAttrTags, extractFluid } from '../normalizer';
 import { buildAttrUyari } from '../shared-tag-matcher';
 import { urunVariantTags } from './query-engine';
 import type { MatchResult, MatchCandidate } from '../types';
@@ -175,6 +175,14 @@ export function toMatchResult(
         // KARAR #3: taninmayan kelimeyi SOYLE — kullanici neden tum ailenin
         // listelendigini anlasin, yazim hatasini gorebilsin.
         reason = `"${outcome.bilinmeyen.join(' ')}" bu markada bulunamadı — ${SORU_METNI[outcome.askColumn].toLowerCase()}`;
+      }
+
+      // I3 ISTISNA ISARETI (kullanici sarti 18.07): satirin AKISKAN kelimesi
+      // (dogalgaz/buhar/sivi) bu markada dogrulanamadiysa liste ACIK UYARIYLA
+      // gelir; hafiza otoyazi da matching.service'te ayni kosulla BLOKE —
+      // akiskan riski varken fiyat HICBIR KOSULDA otomatik yazilmaz.
+      if (outcome.bilinmeyen?.some((t) => extractFluid(t) !== null)) {
+        reason = `Akışkan bilgisi doğrulanamadı — kontrol edin. ${reason}`;
       }
 
       return {

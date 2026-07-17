@@ -35,6 +35,15 @@ export class MatchingController {
     return this.service.remember(userId, body.brandId, body.materialName, body.secilenAd);
   }
 
+  /** I7 (kullanici sarti 18.07): BAYAT INDEKS gorunurlugu — kutuphanede
+   *  guncel INDEX_VERSION'da olmayan / hic indekslenmemis satir sayisi.
+   *  FE teklif ekraninda kucuk sari rozetle gosterir (yalniz log YETMEZ). */
+  @Get('index-health')
+  async indexHealth(@Req() req: any) {
+    const userId: string = req.user?.id ?? req.user?.sub;
+    return this.service.indexHealth(userId);
+  }
+
   // ── TERMINOLOJI SOZLUGU (PRD §5) ─────────────────────────────
 
   /** Sozluk listesi: seed + kullanicinin kendi alias'lari */

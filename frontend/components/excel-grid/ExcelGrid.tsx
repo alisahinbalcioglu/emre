@@ -58,6 +58,8 @@ interface Props {
     donusum?: string;
     // V4: varyant filtresi tek adaya indi (grup otomatik atamasi)
     autoVariant?: boolean;
+    // I6 rozeti (18.07): fiyat GECMIS SECIMDEN otomatik atandi
+    hafizaOtoyaz?: boolean;
     // V4.5: varyant bu capta yok — secim bekliyor
     variantMissing?: boolean;
     // M3: bu markada urun yok — ayni urunu sunan diger markalar (fiyatli)
@@ -261,6 +263,14 @@ function BrandDropdown(props: ICellRendererParams & {
         node.setDataValue('_matVariantMode', 'auto');
         node.data._matVariantTags = gv!.tags;
         node.data._matVariantLabel = gv!.label;
+      }
+      // I6 KANIT ROZETI (kullanici sarti 18.07): hafizadan otoyazilan satir
+      // ISARETLENIR — mavi hucre + tooltip "Geçmiş seçiminizden atandı";
+      // marka menusu yeniden acilinca oto-kacis TAM LISTE sunar (tek tikla
+      // cozulur, secim manuel olur) — sessiz/izsiz otomatik yazim YOK.
+      if (result.hafizaOtoyaz) {
+        node.setDataValue('_matAutoVariant', 'Geçmiş seçiminizden atandı');
+        node.setDataValue('_matVariantMode', 'auto');
       }
       return;
     }

@@ -507,6 +507,32 @@ async function run() {
       `got ${r2?.confidence} net=${r2?.netPrice} cand=${r2?.candidates?.length}`);
     check('OTOYAZ nedenini soyler (gecmis secim)',
       !!r2?.reason?.includes('Geçmiş seçiminiz'), `got "${r2?.reason}"`);
+    // I6 kanit rozeti (18.07): FE "Geçmiş seçiminizden atandı" rozetini
+    // bu bayraktan cizer — sessiz/izsiz otomatik yazim YOK.
+    check('OTOYAZ rozet bayragi (hafizaOtoyaz=true)', (r2 as any)?.hafizaOtoyaz === true,
+      `got ${(r2 as any)?.hafizaOtoyaz}`);
+  }
+
+  // ══ I3 AKISKAN SINIRI (kullanici sarti 18.07) ═══════════════════════
+  // Markada AKISKAN kelimesi (dogalgaz/buhar/sivi) dogrulanamiyorsa:
+  // (a) liste ACIK UYARI tasir, (b) HAFIZA BILE otomatik yazamaz —
+  // akiskan uyusmazligi riskinde fiyat hicbir kosulda otomatik yazilmaz.
+  {
+    const svc = makeService('AYVAZ', [lib('Küresel Vana Pirinç 1" DN25', 850)]);
+    const q = 'DOĞALGAZ KÜRESEL VANA DN25';
+    const r1 = (await svc.bulkMatch('u1', 'brand-1', [q]))[q];
+    check('AKISKAN: uyari isareti ("Akışkan bilgisi doğrulanamadı")',
+      !!r1?.reason?.includes('Akışkan bilgisi doğrulanamadı'), `got "${r1?.reason}"`);
+    check('AKISKAN: fiyat yazilmadi (tek aday onay listesi)',
+      r1?.netPrice === 0 && r1?.candidates?.length === 1,
+      `got net=${r1?.netPrice} cand=${r1?.candidates?.length}`);
+    await svc.remember('u1', 'brand-1', q, r1!.candidates![0].materialName);
+    const r2 = (await svc.bulkMatch('u1', 'brand-1', [q]))[q];
+    check('AKISKAN: hafiza BILE otoyazamaz (multi kalir)',
+      r2?.confidence === 'multi' && r2?.netPrice === 0 && !(r2 as any)?.hafizaOtoyaz,
+      `got ${r2?.confidence} net=${r2?.netPrice} otoyaz=${(r2 as any)?.hafizaOtoyaz}`);
+    check('AKISKAN: on-secim isareti yine calisir (preferred ✓)',
+      r2?.candidates?.[0]?.preferred === true, JSON.stringify(r2?.candidates?.map((c) => c.preferred)));
   }
 
   // H2: "ASMA DUVAR" → Sidewall (montaj tipi ayrimi, E4 es-anlamli)

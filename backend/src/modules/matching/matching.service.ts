@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { generateTags } from './tag-generator';
 import { hesaplaNetFiyat } from './pricing';
-import { extractMaterialKind } from './normalizer';
+import { extractMaterialKind, extractFluid } from './normalizer';
 import { extractSizeInfo } from './conversion';
 import { TerminologyService } from './terminology.service';
 // TEK MOTOR (Faz 2b): indeksli + Ad-kilitli cekirdek (saf — test:index K1-K7)
@@ -377,6 +377,19 @@ export class MatchingService {
       .map(([, v]) => v);
   }
 
+  /** I7 (kullanici sarti 18.07): bayat/indekssiz satir sayisi — FE rozeti.
+   *  hazirlaPool istek aninda tamir ediyor ama KALICI cozum reindex;
+   *  kullanici durumu GORMELI (yalniz log yetmez). */
+  async indexHealth(userId: string) {
+    const [bayat, indekssiz] = await Promise.all([
+      this.prisma.userLibrary.count({
+        where: { userId, productIndexId: { not: null }, product: { indexVersion: { not: INDEX_VERSION } } },
+      }),
+      this.prisma.userLibrary.count({ where: { userId, productIndexId: null } }),
+    ]);
+    return { bayat, indekssiz, surum: INDEX_VERSION };
+  }
+
   // ═══════════════════════════════════════════
   // OGRENME HAFIZASI (PRD Adim 8) — imza + kaydet
   // ═══════════════════════════════════════════
@@ -414,7 +427,11 @@ export class MatchingService {
           // onay gecmiste zaten verilmisti (ayni satir imzasi, ayni urun).
           // variantMissing haric — o "istenen varyant bu capta yok" der,
           // hafiza onu ortemez.
-          if (result.candidates.length === 1 && !result.variantMissing) {
+          // I3 SINIRI (kullanici sarti 18.07): satirin AKISKAN kelimesi
+          // (dogalgaz/buhar/sivi) bu markada DOGRULANAMADIYSA hafiza bile
+          // otomatik YAZAMAZ — akiskan uyusmazligi riski onay ister.
+          const akiskanSupheli = (result.dogrulanamadi ?? []).some((t) => extractFluid(t) !== null);
+          if (result.candidates.length === 1 && !result.variantMissing && !akiskanSupheli) {
             const c = result.candidates[idx];
             console.log(`[Matching] HAFIZA TEK-ADAY OTOYAZ: "${excelName}" → "${mem.secilenAd}" (${mem.secimSayisi}×)`);
             return {
@@ -424,6 +441,9 @@ export class MatchingService {
               matchedName: c.materialName,
               candidates: undefined,
               dogrulanamadi: undefined,
+              // I6 kanit rozeti: FE hucrede "Geçmiş seçiminizden atandı"
+              // gosterir; marka menusu yeniden acilinca tek tikla cozulur.
+              hafizaOtoyaz: true,
               reason: `Geçmiş seçiminiz (${mem.secimSayisi}×) — tek aday, otomatik uygulandı.`,
             };
           }

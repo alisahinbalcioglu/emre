@@ -381,6 +381,11 @@ export default function NewQuotePage() {
   // V4.4 (PRD v1.3): grup ici otomatik varyant atama anahtari — varsayilan ACIK.
   // Kapaliyken her satir icin secenek listesi tek tek sunulur.
   const [autoVariantEnabled, setAutoVariantEnabled] = useState(true);
+  // I7 (18.07): BAYAT INDEKS gorunurlugu — yalniz log YETMEZ, kucuk rozet.
+  const [indexHealth, setIndexHealth] = useState<{ bayat: number; indekssiz: number } | null>(null);
+  useEffect(() => {
+    api.get('/matching/index-health').then(({ data }) => setIndexHealth(data)).catch(() => {});
+  }, []);
   // Sheet disiplinleri (kullanici override edebilir)
   const [sheetDisciplines, setSheetDisciplines] = useState<Record<number, 'mechanical' | 'electrical' | null>>({});
   // Iscilik firmalari + secilen firma (sheet bazli)
@@ -1365,6 +1370,16 @@ export default function NewQuotePage() {
               <span className="text-slate-500">
                 (Fiyat eşleşmiyorsa doğru sütunu seçin — marka değil, malzeme/çap sütunu)
               </span>
+              {/* I7 (18.07): bayat indeks rozeti — istek aninda oto-tamir var
+                  ama KALICI cozum reindex; kullanici durumu GORMELI. */}
+              {indexHealth && indexHealth.bayat > 0 && (
+                <span
+                  title={`${indexHealth.bayat} kütüphane satırı eski indeks sürümünde — eşleştirme her istekte yeniden hesaplıyor (yavaş). Kalıcı çözüm: yönetici "yeniden indeksleme" çalıştırmalı.`}
+                  className="ml-2 inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800"
+                >
+                  ⚠ {indexHealth.bayat} satır eski indeks
+                </span>
+              )}
               {/* Duzeltme Talebi §3 (K18): SaaS switch (pill) — onay kutusu DEGIL.
                   ACIK: dolgulu/canli (⚡ renkli) · KAPALI: gri/pasif ·
                   klavye (Space/Enter, role=switch) + tooltip + 180ms gecis. */}
@@ -1777,7 +1792,9 @@ export default function NewQuotePage() {
                     : `🟢 ${displayPrice(netPrice)} — ${materialName.slice(0, 50)}`,
                   description: `Eslesti: ${match.matchedName?.slice(0, 80) ?? 'Bilinmeyen'}${rozet}`,
                 });
-                return { netPrice, matchedName: match.matchedName, candidates: match.candidates, reason: match.reason, confidence: match.confidence, donusum: match.donusum, autoVariant: match.autoVariant };
+                // hafizaOtoyaz (I6 rozeti): fiyat GECMIS SECIMDEN atandi — grid
+                // hucrede "Geçmiş seçiminizden atandı" rozeti gosterir.
+                return { netPrice, matchedName: match.matchedName, candidates: match.candidates, reason: match.reason, confidence: match.confidence, donusum: match.donusum, autoVariant: match.autoVariant, hafizaOtoyaz: match.hafizaOtoyaz };
               }
 
               // Eslesme bulundu ama fiyat 0 — kullaniciya uyari

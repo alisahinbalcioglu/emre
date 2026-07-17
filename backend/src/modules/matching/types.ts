@@ -29,6 +29,10 @@ export interface MatchResult {
   // ('kuresel', 'dogalgaz'...) — doluysa M3 alternatif taramasi multi'de de
   // kosulur (istenen sey baska markada olabilir). FE icin bilgilendirici.
   dogrulanamadi?: string[];
+  /** I6 kanit rozeti (kullanici sarti 18.07): fiyat GECMIS SECIMDEN otomatik
+   *  yazildi — FE hucrede "Geçmiş seçiminizden atandı" rozeti gosterir,
+   *  marka menusu yeniden acilarak tek tikla cozulur (oto-kacis). */
+  hafizaOtoyaz?: boolean;
 }
 
 // M3: alternatif marka onerisi — marka+urun+fiyat birlikte secilir
