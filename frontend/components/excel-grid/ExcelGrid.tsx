@@ -65,6 +65,13 @@ interface Props {
   } | null>;
   /** V4.4: grup ici otomatik varyant atama anahtari (varsayilan ACIK) */
   autoVariantEnabled?: boolean;
+  /** Duzeltme Talebi §4.2: surukle-doldur ACIK NIYETTIR — grid anahtari
+   *  otomatik ACAR (ve Ctrl+Z'de eski durumuna dondurur). Parent state'i
+   *  gunceller (quotes/new: setAutoVariantEnabled). */
+  onAutoVariantChange?: (on: boolean) => void;
+  /** Duzeltme Talebi §3: yayilim/fill sonrasi "n satır güncellendi" bilgisi —
+   *  parent toast gosterir. */
+  onAutoVariantApplied?: (info: { applied: number; waiting: number; missing: number; kaynak: string }) => void;
   // Iscilik tarafi
   laborFirms?: LaborFirm[];
   sheetDiscipline?: 'mechanical' | 'electrical' | null;
@@ -122,8 +129,9 @@ function BrandDropdown(props: ICellRendererParams & {
   diameterField?: string;
   groupVariants: React.MutableRefObject<GroupVariantMap>;
   autoVariantEnabled: boolean;
+  onAutoVariantApplied?: Props['onAutoVariantApplied'];
 }) {
-  const { data, brands, onBrandChange, nameField, noField, brandField, quantityField, materialUnitPriceField, materialTotalField, diameterField, groupVariants, autoVariantEnabled, api, node } = props;
+  const { data, brands, onBrandChange, nameField, noField, brandField, quantityField, materialUnitPriceField, materialTotalField, diameterField, groupVariants, autoVariantEnabled, onAutoVariantApplied, api, node } = props;
   const [candidates, setCandidates] = React.useState<MatchCandidate[] | null>(null);
   const [popupPos, setPopupPos] = React.useState<{ top: number; left: number } | null>(null);
   // HATA RAPORU FIX: popup konumu WRAPPER div'den alinir — onceki triggerRef
@@ -251,6 +259,8 @@ function BrandDropdown(props: ICellRendererParams & {
       if (result.autoVariant && useVariant) {
         node.setDataValue('_matAutoVariant', gv!.label);
         node.setDataValue('_matVariantMode', 'auto');
+        node.data._matVariantTags = gv!.tags;
+        node.data._matVariantLabel = gv!.label;
       }
       return;
     }
@@ -315,6 +325,9 @@ function BrandDropdown(props: ICellRendererParams & {
           writePriceToNode(n, r.netPrice, true);
           n.setDataValue('_matAutoVariant', variant.label); // V4.1 rozeti
           n.setDataValue('_matVariantMode', 'auto');
+          // Fill-handle kaynagi olabilsin diye varyant kimligi satirda tasinir
+          n.data._matVariantTags = variant.tags;
+          n.data._matVariantLabel = variant.label;
           applied++;
         } else if (r && r.variantMissing) {
           // V4.5: varyant bu capta yok — secim bekliyor, neden tooltip'te
@@ -324,6 +337,8 @@ function BrandDropdown(props: ICellRendererParams & {
       } catch { /* satir atlanir */ }
     }
     console.log(`[BrandDropdown] V4 grup atamasi "${groupKey}" (${variant.label}): ${applied} otomatik, ${waiting} secim bekliyor, ${targets.length} hedef`);
+    // Duzeltme Talebi §3: "n satır güncellendi" bilgisi (parent toast'u)
+    if (applied + waiting > 0) onAutoVariantApplied?.({ applied, waiting, missing: 0, kaynak: variant.label });
   };
 
   const handleCandidateSelect = async (c: MatchCandidate) => {
@@ -333,6 +348,11 @@ function BrandDropdown(props: ICellRendererParams & {
     writePrice(c.netPrice, false);
     node.setDataValue('_matVariantMode', 'manual');
     node.setDataValue('_matAutoVariant', null);
+    // Duzeltme Talebi §4.2: SECIMIN KIMLIGI SATIRDA TASINIR — fill-handle
+    // kaynak satirin marka+cins'ini buradan okur (anahtar KAPALI secilmis
+    // olsa bile). Grid kolonu yok → dogrudan data'ya yazilir (render disi).
+    node.data._matVariantTags = c.variantTags && c.variantTags.length > 0 ? c.variantTags : null;
+    node.data._matVariantLabel = c.label ?? null;
     setCandidates(null);
     setPopupPos(null);
     setStage2(null);
@@ -372,9 +392,12 @@ function BrandDropdown(props: ICellRendererParams & {
     // CHECKBOX yalniz ANLIK yayilimi belirler; yayilim SADECE henuz FIYATSIZ
     // satirlara gider — dolu otomatik hucreler geriye donuk DEGISTIRILMEZ,
     // manuel hucrelere hic dokunulmaz.
-    if (autoVariantEnabled && hdr && c.variantTags && c.variantTags.length > 0) {
+    // Duzeltme Talebi §2: "SON SECIM" anahtar durumundan BAGIMSIZ saklanir —
+    // anahtar sonradan ACILDIGINDA veya fill-handle kullanildiginda bu secim
+    // uygulanabilir olmali. YAYILIM ise yalniz anahtar ACIKKEN calisir (I10).
+    if (hdr && c.variantTags && c.variantTags.length > 0) {
       groupVariants.current[hdr] = { tags: c.variantTags, label: c.label }; // son secim
-      if (applyToGroup) {
+      if (autoVariantEnabled && applyToGroup) {
         await applyVariantToGroup(hdr, groupVariants.current[hdr]);
       }
     }
@@ -995,11 +1018,26 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
   libraryPriceField = 'materialUnitPriceField',
   currencySymbol, conversionRate,
   autoVariantEnabled = true,
+  onAutoVariantChange,
+  onAutoVariantApplied,
 }, ref) {
   const gridRef = useRef<AgGridReact<ExcelRowData>>(null);
 
   // V4: grup (baslik) → secilen varyant. Cell renderer'lar paylasir.
   const groupVariantsRef = useRef<GroupVariantMap>({});
+
+  // ── Duzeltme Talebi §4.5/K19: MARKA FILL geri-alma yigini ──────────
+  // Her surukleme TEK adim: kapsanan satirlarin onceki alanlari + anahtarin
+  // onceki durumu birlikte kaydedilir; Ctrl+Z hepsini butun olarak dondurur.
+  const markaFillUndoStack = useRef<{
+    prevSwitch: boolean;
+    entries: { rowId: string; prev: Record<string, any> }[];
+  }[]>([]);
+  // updatePinnedBottom asagida tanimlanir (useCallback) — erken tanimli
+  // callback'ler (undoLastMarkaFill) ref koprusuyle erisir.
+  const updatePinnedBottomRef = useRef<(() => void) | null>(null);
+  // K19: fill sonrasi odak buraya verilir ki Ctrl+Z yakalanabilsin
+  const rootWrapperRef = useRef<HTMLDivElement>(null);
 
   // ═══════════ ISKONTO TOPLU ISLEMLERI (Iskonto Surukle-Doldur PRD) ═══════════
   // S5: geri alma yigini — her toplu islem (fill / yapistir / gruba veya tum
@@ -1094,14 +1132,46 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     if (applied > 0) toast({ title: `Tüm listeye %${v} iskonto uygulandı`, description: `${applied} satır güncellendi — kaydetmeyi unutmayın` });
   }, [bulkDiscountInput, applyDiscountBulk]);
 
+  /** K19: son MARKA sureklemesini BUTUN olarak geri al — fiyatlar, statuler,
+   *  rozetler ve ANAHTAR DURUMU tek adimda eski haline doner. */
+  const undoLastMarkaFill = useCallback((): boolean => {
+    const api = gridRef.current?.api;
+    const op = markaFillUndoStack.current.pop();
+    if (!api || !op) return false;
+    const byId = new Map(op.entries.map((en) => [en.rowId, en]));
+    api.forEachNode((n: any) => {
+      const en = n.data ? byId.get(String(n.data._rowIdx)) : undefined;
+      if (!en) return;
+      for (const [k, v] of Object.entries(en.prev)) n.data[k] = v;
+    });
+    api.refreshCells({ force: true });
+    onAutoVariantChange?.(op.prevSwitch);
+    updatePinnedBottomRef.current?.();
+    if (onRowDataChange) {
+      const all: ExcelRowData[] = [];
+      api.forEachNode((n: any) => { if (n.data) all.push(n.data); });
+      onRowDataChange(all);
+    }
+    console.log(`[FillHandle] Ctrl+Z: ${op.entries.length} satir geri alindi (anahtar → ${op.prevSwitch ? 'Açık' : 'Kapalı'})`);
+    return true;
+  }, [onAutoVariantChange, onRowDataChange]);
+
   /** S2a: Ctrl+D — ustteki en yakin veri satirinin iskontosunu kopyala;
-   *  S5: Ctrl+Z — son toplu islemi geri al (hucre editi acikken karisilmaz). */
+   *  S5: Ctrl+Z — son toplu islemi geri al (hucre editi acikken karisilmaz).
+   *  K19: quote modunda Ctrl+Z son marka sureklemesini geri alir. */
   const handleLibraryKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (mode !== 'library') return;
     const api = gridRef.current?.api;
     if (!api) return;
     const isMod = e.ctrlKey || e.metaKey;
     if (!isMod) return;
+    // K19: teklif modunda Ctrl+Z = marka surekleme geri-alma
+    if (mode === 'quote') {
+      if ((e.key === 'z' || e.key === 'Z') && api.getEditingCells().length === 0) {
+        if (undoLastMarkaFill()) e.preventDefault();
+      }
+      return;
+    }
+    if (mode !== 'library') return;
     if ((e.key === 'z' || e.key === 'Z') && api.getEditingCells().length === 0) {
       if (undoLastDiscountOp()) e.preventDefault();
       return;
@@ -1118,7 +1188,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       const target = api.getDisplayedRowAtIndex(fc.rowIndex);
       if (src != null && target?.data?._isDataRow) applyDiscountBulk([{ node: target, value: src }]);
     }
-  }, [mode, undoLastDiscountOp, applyDiscountBulk]);
+  }, [mode, undoLastDiscountOp, applyDiscountBulk, undoLastMarkaFill]);
 
   /** S3: Excel'den cok satirli iskonto yapistirma — odakli hucreden asagi,
    *  grup bantlari atlanir; sigmayan degerlerde uyari (satir uyusmazligi). */
@@ -1274,8 +1344,46 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     };
 
     if (result.field === '_marka' && onBrandChange) {
-      // Marka fill → her satir icin matching tetikle (baslik baglami + V4.6
-      // grup varyanti dahil — surukle-doldur da ayni akistan gecer)
+      // ── Duzeltme Talebi §4: SUREKLE-DOLDUR = ACIK NIYET ──────────────
+      // 1) Anahtar otomatik ACILIR (Ctrl+Z eski durumuna dondurur).
+      // 2) Kaynak satirin marka + CINS'i (varyant kimligi) "kullanici secti"
+      //    kabul edilir — kaynak KENDI satirinda saklanir (_matVariantTags),
+      //    yoksa grubun son secimi kullanilir.
+      // 3) Her satira KENDI capinin fiyati motor uzerinden yazilir — kaynak
+      //    fiyat ASLA kopyalanmaz (K17 yapisal: deger degil SORGU tasinir).
+      // 4) Manuel satir ATLANMAZ — acik niyet uzerine yazar (rozetten cozulur).
+      const prevSwitch = autoVariantEnabled;
+      onAutoVariantChange?.(true); // K15/K18: anahtar gorsel geciyle ACILIR
+      const srcNode = api.getDisplayedRowAtIndex(result.sourceRowIndex);
+      const srcDet = buildMaterialContextDetailed(
+        api, result.sourceRowIndex,
+        nameField, data.columnRoles.noField, data.columnRoles.brandField, quantityField,
+      );
+      const srcTags: string[] | undefined =
+        (srcNode?.data?._matVariantTags && srcNode.data._matVariantTags.length > 0
+          ? srcNode.data._matVariantTags
+          : undefined) ??
+        (srcDet.header ? groupVariantsRef.current[srcDet.header]?.tags : undefined);
+      const srcLabel: string =
+        srcNode?.data?._matVariantLabel ??
+        (srcDet.header ? groupVariantsRef.current[srcDet.header]?.label : undefined) ??
+        '';
+
+      // K19: geri-alma anligi — kapsanan satirlarin ONCEKI degerleri
+      const SNAP_FIELDS = ['_marka', '_matNetPrice', '_matSuggestion', '_matStatus',
+        '_matVariantMode', '_matAutoVariant', '_matVariantTags', '_matVariantLabel'];
+      const undoEntries: { rowId: string; prev: Record<string, any> }[] = [];
+      for (const node of result.targetRowNodes) {
+        if (!node.data?._isDataRow) continue;
+        const prev: Record<string, any> = {};
+        for (const f of SNAP_FIELDS) prev[f] = node.data[f];
+        if (materialUnitPriceField) prev[materialUnitPriceField] = node.data[materialUnitPriceField];
+        if (materialTotalField) prev[materialTotalField] = node.data[materialTotalField];
+        undoEntries.push({ rowId: String(node.data._rowIdx), prev });
+      }
+      markaFillUndoStack.current.push({ prevSwitch, entries: undoEntries });
+
+      let applied = 0; let waiting = 0; let missing = 0;
       for (const node of result.targetRowNodes) {
         if (!node.data?._isDataRow) continue;
         node.setDataValue('_marka', result.value);
@@ -1286,8 +1394,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
             api, node.rowIndex ?? 0,
             nameField, data.columnRoles.noField, data.columnRoles.brandField, quantityField,
           );
-          const gv = autoVariantEnabled && det.header ? groupVariantsRef.current[det.header] : undefined;
-          const opts = gv && node.data._matVariantMode !== 'manual' ? { variantTags: gv.tags } : undefined;
+          const opts = srcTags ? { variantTags: srcTags, silent: true } : { silent: true };
           // M1/M4: TEK SORGU — baslik+satir; aile bilgisiz fallback YASAK
           // (yanlis aileden fiyat yazilmasin — "Cayirova'ya PP vana" vakasi)
           const matchResult = await onBrandChange(node.data._rowIdx, result.value, det.name || currentName, opts);
@@ -1295,23 +1402,34 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
             node.setDataValue('_matNetPrice', matchResult.netPrice);
             node.setDataValue('_matSuggestion', matchResult.confidence === 'suggestion');
             node.setDataValue('_matStatus', '');
-            if (matchResult.autoVariant && gv) {
-              node.setDataValue('_matAutoVariant', gv.label); // V4.1 rozeti
-              node.setDataValue('_matVariantMode', 'auto');
-            }
+            // Surukleme kapsami = kullanici secimi kabul (manuel dahi ezilir,
+            // rozetle cozulebilir otomatik statusune gecer)
+            node.setDataValue('_matAutoVariant', srcLabel || null);
+            node.setDataValue('_matVariantMode', 'auto');
+            node.data._matVariantTags = srcTags ?? null;
+            node.data._matVariantLabel = srcLabel || null;
             const kar = parseFloat(String(node.data._malzKar ?? 0)) || 0;
             const finalPrice = hesaplaSatisBirimFiyat(matchResult.netPrice, kar);
             const qty = quantityField ? parseFloat(String(node.data[quantityField] ?? 0)) || 0 : 0;
             if (materialUnitPriceField) node.setDataValue(materialUnitPriceField, finalPrice.toFixed(1));
             if (materialTotalField) node.setDataValue(materialTotalField, hesaplaSatirToplam(finalPrice, qty).toFixed(1));
+            applied++;
           } else if (matchResult?.candidates?.length) {
-            // Coklu varyant — secim bekliyor (kirmizi 'yok' DEGIL)
+            // K-sart 4: marka+cins sonrasi >1 urun — "secim gerekli" rozeti
             node.setDataValue('_matStatus', 'belirsiz');
+            waiting++;
           } else {
+            // K16: cap bu markada yok — fiyat yazilmaz, eylemli isaret
+            // (hucreye tiklaninca M3 alternatif markalar akisi zaten calisir)
             node.setDataValue('_matStatus', matchResult?.notProduct ? 'urun_degil' : 'yok');
+            missing++;
           }
         } catch {}
       }
+      // §3: "n satır güncellendi" bilgisi (parent toast)
+      onAutoVariantApplied?.({ applied, waiting, missing, kaynak: srcLabel || 'marka' });
+      // K19: Ctrl+Z'nin yakalanmasi icin odak grid sarmalayicisina
+      rootWrapperRef.current?.focus();
     } else if (result.field === '_firma' && onFirmaChange) {
       // Firma fill → her satir icin labor matching tetikle
       for (const node of result.targetRowNodes) {
@@ -1386,7 +1504,8 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     }, 100);
 
     console.log(`[FillHandle] Complete: ${result.targetRowNodes.length} rows filled, field=${result.field}`);
-  }, [data.columnRoles, onBrandChange, onFirmaChange, onRowDataChange, applyDiscountBulk]);
+  }, [data.columnRoles, onBrandChange, onFirmaChange, onRowDataChange, applyDiscountBulk,
+      autoVariantEnabled, onAutoVariantChange, onAutoVariantApplied]);
 
   useFillHandle({
     gridRef,
@@ -1464,6 +1583,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
 
     setPinnedBottomRow([pinnedRow]);
   }, [data.columnRoles]);
+  updatePinnedBottomRef.current = updatePinnedBottom;
 
   // Data yuklenince pinned bottom hesapla
   React.useEffect(() => {
@@ -1580,6 +1700,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
             diameterField={data.columnRoles.diameterField}
             groupVariants={groupVariantsRef}
             autoVariantEnabled={autoVariantEnabled}
+            onAutoVariantApplied={onAutoVariantApplied}
           />
         );
         base.editable = false;
@@ -1988,7 +2109,9 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
   }, []);
 
   return (
-    <div className="w-full" onKeyDown={handleLibraryKeyDown} onPaste={handleLibraryPaste}>
+    // tabIndex=-1: surukle-doldur sonrasi programatik odak — Ctrl+Z (K19)
+    // wrapper'a ulassin (odak grid disinda kalirsa keydown yakalanamazdi)
+    <div className="w-full outline-none" tabIndex={-1} ref={rootWrapperRef} onKeyDown={handleLibraryKeyDown} onPaste={handleLibraryPaste}>
       {/* GUVEN KAPISI SAYACI (PRD Bolum 9): eslesmeyen/belirsiz satirlar
           gorunur kilinir — "eslestirme emin degilse fiyat uydurmaz". */}
       {mode === 'quote' && pendingCount > 0 && (

@@ -1365,18 +1365,39 @@ export default function NewQuotePage() {
               <span className="text-slate-500">
                 (Fiyat eşleşmiyorsa doğru sütunu seçin — marka değil, malzeme/çap sütunu)
               </span>
-              {/* V4.4: grup ici otomatik varyant atama anahtari */}
-              <label className="ml-auto flex cursor-pointer items-center gap-1.5 whitespace-nowrap text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={autoVariantEnabled}
-                  onChange={(e) => setAutoVariantEnabled(e.target.checked)}
-                  className="h-3.5 w-3.5 accent-sky-600"
-                />
-                <span title="Açıkken: grupta ilk varyant seçimi, aynı başlık altındaki diğer satırlara kendi çaplarının fiyatıyla otomatik uygulanır (⚡ mavi hücre). Kapalıyken her satır tek tek sorulur.">
-                  ⚡ Otomatik varyant atama
+              {/* Duzeltme Talebi §3 (K18): SaaS switch (pill) — onay kutusu DEGIL.
+                  ACIK: dolgulu/canli (⚡ renkli) · KAPALI: gri/pasif ·
+                  klavye (Space/Enter, role=switch) + tooltip + 180ms gecis. */}
+              <button
+                type="button"
+                role="switch"
+                aria-checked={autoVariantEnabled}
+                onClick={() => setAutoVariantEnabled(!autoVariantEnabled)}
+                title="Açıkken son seçiminiz gruptaki diğer satırlara kendi çap fiyatlarıyla uygulanır"
+                className={`ml-auto flex items-center gap-2 whitespace-nowrap rounded-full px-1 py-0.5 outline-none transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-1 ${
+                  autoVariantEnabled ? 'text-slate-800' : 'text-slate-400'
+                }`}
+              >
+                <span
+                  aria-hidden
+                  className={`relative inline-flex h-4.5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 ${
+                    autoVariantEnabled ? 'bg-sky-600' : 'bg-slate-300'
+                  }`}
+                  style={{ height: 18, width: 36 }}
+                >
+                  <span
+                    className="inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform duration-200"
+                    style={{ transform: autoVariantEnabled ? 'translateX(19px)' : 'translateX(3px)' }}
+                  />
                 </span>
-              </label>
+                <span className="flex items-center gap-1 text-xs">
+                  <span className={autoVariantEnabled ? 'text-amber-500' : 'opacity-40 grayscale'}>⚡</span>
+                  Otomatik varyant atama ·{' '}
+                  <b className={autoVariantEnabled ? 'text-sky-700' : 'text-slate-400'}>
+                    {autoVariantEnabled ? 'Açık' : 'Kapalı'}
+                  </b>
+                </span>
+              </button>
             </div>
           );
         })()}
@@ -1594,6 +1615,17 @@ export default function NewQuotePage() {
           ref={excelGridRef}
           key={multiSheet ? `sheet-${activeSheetIndex}` : 'single'}
           autoVariantEnabled={autoVariantEnabled}
+          // Duzeltme Talebi §4.2: surukle-doldur anahtari otomatik ACAR
+          // (Ctrl+Z eski durumuna dondurur)
+          onAutoVariantChange={setAutoVariantEnabled}
+          // §3: yayilim bilgisi — "n satır güncellendi"
+          onAutoVariantApplied={({ applied, waiting, missing }) => {
+            const parca: string[] = [];
+            if (applied > 0) parca.push(`${applied} satır güncellendi`);
+            if (waiting > 0) parca.push(`${waiting} seçim bekliyor`);
+            if (missing > 0) parca.push(`${missing} markada yok`);
+            if (parca.length > 0) toast({ title: '⚡ Otomatik varyant atama', description: parca.join(' · ') });
+          }}
           // Excel-vari "en altta hep bos satir" — DWG metraj grid'inde aktif
           // (Excel yolunda backend kolonlari cok genis, davranis degismesin)
           autoAppendRow={multiSheet?.sheets?.length === 1 && multiSheet.sheets[0]?.name === 'DWG Metraj'}

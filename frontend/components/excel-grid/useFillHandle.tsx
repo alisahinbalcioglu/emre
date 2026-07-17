@@ -39,6 +39,8 @@ export function useFillHandle({
   const highlightedCells = useRef<HTMLElement[]>([]);
   const lastTargetRowIdx = useRef<number>(-1);
   const sourceCellEl = useRef<HTMLElement | null>(null);
+  // Duzeltme Talebi §4.6: surukleme sirasinda tutamacta CANLI satir sayisi
+  const countBadgeEl = useRef<HTMLElement | null>(null);
 
   const clearHighlights = useCallback(() => {
     for (const el of highlightedCells.current) {
@@ -48,6 +50,10 @@ export function useFillHandle({
     if (sourceCellEl.current) {
       sourceCellEl.current.classList.remove('fill-handle-source');
       sourceCellEl.current = null;
+    }
+    if (countBadgeEl.current) {
+      countBadgeEl.current.remove();
+      countBadgeEl.current = null;
     }
     document.body.classList.remove('fill-handle-dragging');
   }, []);
@@ -157,6 +163,18 @@ export function useFillHandle({
         highlightedCells.current.push(cellEl);
       }
     }
+
+    // Canli satir sayaci — imlecin yaninda "N satır" rozeti
+    if (!countBadgeEl.current) {
+      const el = document.createElement('div');
+      el.className = 'fill-handle-count-badge';
+      document.body.appendChild(el);
+      countBadgeEl.current = el;
+    }
+    countBadgeEl.current.textContent = `${targetNodes.length} satır`;
+    countBadgeEl.current.style.left = `${e.clientX + 14}px`;
+    countBadgeEl.current.style.top = `${e.clientY + 10}px`;
+    countBadgeEl.current.style.display = targetNodes.length > 0 ? 'block' : 'none';
   }, [getTargetNodes, getCellElement]);
 
   // mouseup — doldurmayi uygula
