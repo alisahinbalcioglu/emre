@@ -13,6 +13,8 @@
 // ════════════════════════════════════════════════════════════════════
 
 import { hesaplaNetFiyat } from '../pricing';
+import { extractAttrTags } from '../normalizer';
+import { buildAttrUyari } from '../shared-tag-matcher';
 import { urunVariantTags } from './query-engine';
 import type { MatchResult, MatchCandidate } from '../types';
 import type { IndexedRow, QueryOutcome, AskColumn, LineQuery } from './types';
@@ -48,7 +50,7 @@ function etiket(r: IndexedRow, kolon: AskColumn): string {
   }
 }
 
-function adayla(r: IndexedRow, kolon: AskColumn, toTry: (v: number, cur: string) => number): MatchCandidate {
+function adayla(r: IndexedRow, kolon: AskColumn, toTry: (v: number, cur: string) => number, lineAttr: string[]): MatchCandidate {
   const { net, list, isk } = netFiyat(r, toTry);
   return {
     materialName: r.urun.displayName,
@@ -69,6 +71,13 @@ function adayla(r: IndexedRow, kolon: AskColumn, toTry: (v: number, cur: string)
     // v1 anlami: "asama 1 (cins/yuzey) mi, asama 2 (baglanti) mi?"
     surfaceLevel: kolon === 'ad' || kolon === 'cins',
     variantTags: urunVariantTags(r),
+    // E3: satirin yapilandirilmis nitelikleri (sicaklik/K/montaj/uzunluk/
+    // govde) adayinkiyle karsilastirilir — FARKLI deger tasiyan aday
+    // isaretlenir ("68°C istendi — bu ürün 141°C"). Karar #3 geregi bu
+    // nitelikler ELEMEZ (soru zaten aciliyor); uyari secimi bilinclendirir.
+    uyari: lineAttr.length
+      ? buildAttrUyari(lineAttr, extractAttrTags(`${r.urun.ad} ${r.urun.cins ?? ''}`)) ?? undefined
+      : undefined,
   };
 }
 
@@ -117,7 +126,10 @@ export function toMatchResult(
 
     // ── COK KAYIT: fiyatli secim listesi — SISTEM SECMEZ ────────────
     case 'ask': {
-      const cands = outcome.rows.map((r) => adayla(r, outcome.askColumn, toTry));
+      // E3: satirin nitelik tag'leri ham metinden bir kez cikarilir
+      // (parantez notlari DAHIL — "(68°C)" bir kisit degil ama uyari kaynagidir).
+      const lineAttr = extractAttrTags(line.raw);
+      const cands = outcome.rows.map((r) => adayla(r, outcome.askColumn, toTry, lineAttr));
       // En sik cins/ad "populer" isaretli (★) — SIRALAMA ipucu, secim DEGIL.
       const sayim = new Map<string, number>();
       for (const c of cands) sayim.set(c.label, (sayim.get(c.label) ?? 0) + 1);

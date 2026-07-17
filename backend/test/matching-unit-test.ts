@@ -452,6 +452,10 @@ async function run() {
     check('H1b Fan-Coil ASLA aday degil (aile kilidi)',
       !(r?.candidates ?? []).some((c) => c.materialName.includes('Fan-Coil')),
       `adaylar: ${(r?.candidates ?? []).map((c) => c.materialName).join(' | ')}`)
+    // E3 (backlog kapandi): farkli °C tasiyan adaylar UYARI ile isaretli
+    const uyarilar = (r?.candidates ?? []).map((c) => c.uyari ?? '');
+    check('H1b/E3 nitelik farki uyarisi ("93°C istendi — bu ürün 68°C")',
+      uyarilar.some((u) => u.includes('93°C istendi') && u.includes('68°C')), JSON.stringify(uyarilar));
   }
 
   // H2: "ASMA DUVAR" → Sidewall (montaj tipi ayrimi, E4 es-anlamli)

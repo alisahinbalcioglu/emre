@@ -777,6 +777,55 @@ async function run() {
     check('S5 cift-L "kollektör" → kolektor', kol.familySlug === 'kolektor', `got ${kol.familySlug}`);
   }
 
+  // ══ E3: ADAY KARTI NITELIK-FARKI UYARISI (Faz 2b backlog'undan) ══
+  // "68°C istendi — bu ürün 141°C": satirin yapilandirilmis nitelikleri
+  // (temp/K/montaj/uzunluk/govde) adayla karsilastirilir. ELEMEZ (Karar #3),
+  // yalniz soru kartinda isaretler. FE alani hazir (ExcelGrid c.uyari).
+  {
+    const S = { kategori: 'Sprinkler', birim: 'adet', paraBirimi: 'TL', sheetName: 'S' };
+    const havuz = [
+      prod({ ...S, ad: 'Sprinkler', cins: '141°C kırmızı · upright', cap: '1/2"', price: 90, urunKodu: 'S141' }),
+      prod({ ...S, ad: 'Sprinkler', cins: '182°C yeşil · upright', cap: '1/2"', price: 95, urunKodu: 'S182' }),
+    ];
+    // Markada 68°C YOK → '68°c' taninmaz (Karar #3: kisit degil, soru) —
+    // adaylar farkli sicaklik tasidigi icin UYARILI gelir.
+    const r = m('Sprinkler 68°C 1/2"', havuz);
+    check('E3 fiyat yazilmadi (soru acildi)', r.confidence === 'multi' && r.netPrice === 0,
+      `got ${r.confidence} net=${r.netPrice}`);
+    const uyarilar = (r.candidates ?? []).map((c) => c.uyari ?? '');
+    check('E3 farkli sicaklik adayi UYARILI (68°C istendi — 141°C)',
+      uyarilar.some((u) => u.includes('68°C istendi') && u.includes('141°C')), JSON.stringify(uyarilar));
+    check('E3 TUM farkli-sicaklik adaylari isaretli (182°C dahil)',
+      uyarilar.some((u) => u.includes('182°C')), JSON.stringify(uyarilar));
+
+    // Ayni sicaklik markada VARSA soru acilmaz — dogrudan tek eslesme,
+    // uyari kavrami dogmaz (nitelik zaten kisit olarak calisti).
+    const havuz2 = [...havuz,
+      prod({ ...S, ad: 'Sprinkler', cins: '68°C · upright', cap: '1/2"', price: 85, urunKodu: 'S68' })];
+    const r2 = m('Sprinkler 68°C 1/2"', havuz2);
+    check('E3 sicaklik markada varsa TEK eslesme (uyari gerekmez)',
+      r2.confidence === 'high' && r2.netPrice === 85, `got ${r2.confidence} net=${r2.netPrice} "${r2.reason}"`);
+
+    // K-faktoru — S5 nozul ailesiyle birlikte (Aksa gercek vakasi):
+    // satir K:22 istiyor, markada yalniz K=33 var → soru + uyari.
+    const N = { kategori: 'Su Sisi', birim: 'adet', paraBirimi: 'TL', sheetName: 'S' };
+    const nozulHavuz = [
+      prod({ ...N, ad: 'Su püskürtme nozulu', cins: 'K=33 orta hızlı', cap: '1/2"', price: 60, urunKodu: 'N33' }),
+      prod({ ...N, ad: 'Su püskürtme nozulu', cins: 'K=56 yüksek hızlı', cap: '1/2"', price: 75, urunKodu: 'N56' }),
+    ];
+    const rn = m('Orta Hızlı Su Püskürtme Nozulu 1/2" K:22', nozulHavuz);
+    check('E3+S5 nozul satiri soruya duser (K:22 markada yok)',
+      rn.confidence === 'multi' && rn.netPrice === 0, `got ${rn.confidence} net=${rn.netPrice} "${rn.reason}"`);
+    const nUyari = (rn.candidates ?? []).map((c) => c.uyari ?? '');
+    check('E3 K-faktoru farki isaretli (K=22 istendi — K=33)',
+      nUyari.some((u) => u.includes('K=22 istendi') && u.includes('K=33')), JSON.stringify(nUyari));
+
+    // Nitelik tasimayan satir → uyari uretilmez (bos kalir, gurultu yok).
+    const rd = m('Sprinkler 1/2"', havuz);
+    check('E3 niteliksiz satirda uyari YOK',
+      (rd.candidates ?? []).every((c) => !c.uyari), JSON.stringify((rd.candidates ?? []).map((c) => c.uyari)));
+  }
+
   // ══ DISPATCH: MatchingService UZERINDEN v2 yolu ══════════════════
   // Yukaridaki testler SAF cekirdegi kanitliyor. Bu blok GERCEK servisi
   // (marka bazli dispatch + matchV2 + havuz esleme + M3) kosturuyor —

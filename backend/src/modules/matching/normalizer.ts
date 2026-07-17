@@ -572,6 +572,29 @@ export function extractLengthMm(text: string): string | null {
   return null;
 }
 
+/** E3 (v2): yapilandirilmis NITELIK tag'lerini tek catida toplar
+ *  (temp-68 / k-80 / pendent / len-500 / wafer|lug — attrCategory ile ayni
+ *  kategoriler). outcome-mapper satir↔aday karsilastirmasinda buildAttrUyari'ye
+ *  verir: SERT FILTRE DEGIL, yalniz fark uyarisi ("68°C istendi — bu ürün
+ *  141°C"). Ayni cikarim satirin ham metnine de urunun ad+cins kolonlarina da
+ *  uygulanir — iki taraf ayni dili konusur. */
+export function extractAttrTags(text: string): string[] {
+  const out: string[] = [];
+  const temp = extractTemperature(text);
+  if (temp) out.push(temp);
+  const k = extractKFactor(text);
+  if (k) out.push(k);
+  const mount = extractMountType(text);
+  if (mount) out.push(mount);
+  const len = extractLengthMm(text);
+  if (len) out.push(len);
+  // Kelebek govde tipi (attrCategory 'govde'): wafer ↔ lug
+  const norm = normalizeText(text).toLowerCase();
+  if (/\bwafer\b/.test(norm)) out.push('wafer');
+  if (/\blug\b/.test(norm)) out.push('lug');
+  return out;
+}
+
 /** Aksesuar: "(rozet dahil)" → 'aks-rozet' (refine bonus). */
 export function extractAccessory(text: string): string | null {
   return /rozet/i.test(normalizeText(text)) ? 'aks-rozet' : null;
