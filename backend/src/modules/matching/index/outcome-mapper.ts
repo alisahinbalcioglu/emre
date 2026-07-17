@@ -19,6 +19,20 @@ import { urunVariantTags } from './query-engine';
 import type { MatchResult, MatchCandidate } from '../types';
 import type { IndexedRow, QueryOutcome, AskColumn, LineQuery } from './types';
 
+/**
+ * Kullaniciya gorunen urun adi: indeksteki displayName + (varsa) BOY.
+ * Boy, displayName'e INDEKSTE eklenmedi (INDEX_VERSION artisi + reindex
+ * gerektirirdi) — sunum tek cikis noktasinda zenginlestirilir.
+ * Canli vaka (17.07): 4 "Yerüstü yangın hidrantı" adayi yalniz BOYLA
+ * (1300/1700/2150/2450) ayrisiyordu ama kartlarda OZDES gorunuyordu —
+ * kullanici fiyat farkinin neden oldugunu goremiyordu. Boy isme girince
+ * hafiza on-secimi de boy'a ozgu calisir (ozdes isimlerde hep ILK aday
+ * isaretleniyordu — gizli belirsizlik kapandi).
+ */
+export function gorunenAd(r: IndexedRow): string {
+  return r.urun.boyMm ? `${r.urun.displayName} · ${r.urun.boyMm} mm` : r.urun.displayName;
+}
+
 /** Kullanicinin kendi fiyati: ozel fiyat > liste × (1 - iskonto) */
 function netFiyat(r: IndexedRow, toTry: (v: number, cur: string) => number): { net: number; list: number; isk: number } {
   const list = toTry(r.listPrice ?? r.urun.price, r.currency);
@@ -53,7 +67,7 @@ function etiket(r: IndexedRow, kolon: AskColumn): string {
 function adayla(r: IndexedRow, kolon: AskColumn, toTry: (v: number, cur: string) => number, lineAttr: string[]): MatchCandidate {
   const { net, list, isk } = netFiyat(r, toTry);
   return {
-    materialName: r.urun.displayName,
+    materialName: gorunenAd(r),
     netPrice: net,
     listPrice: list,
     discount: isk,
@@ -103,7 +117,7 @@ export function toMatchResult(
       return {
         netPrice: net, listPrice: list, discount: isk,
         confidence: 'high',
-        matchedName: outcome.row.urun.displayName,
+        matchedName: gorunenAd(outcome.row),
         // R18 asserti bu substring'i ariyor — contract-test.ts C2 de.
         reason: 'Tek eşleşme — AD + ÇAP (+ yazılı nitelikler) sonrası markada tek ürün kaldı.',
         donusum: outcome.donusum ?? undefined,
@@ -118,7 +132,7 @@ export function toMatchResult(
         netPrice: net, listPrice: list, discount: isk,
         confidence: 'suggestion',
         autoVariant: true,
-        matchedName: outcome.row.urun.displayName,
+        matchedName: gorunenAd(outcome.row),
         reason: 'Grup varyantı uygulandı (önceki seçiminiz bu çapa taşındı).',
         donusum: outcome.donusum ?? undefined,
       };

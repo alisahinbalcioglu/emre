@@ -8,7 +8,7 @@ import { TerminologyService } from './terminology.service';
 // TEK MOTOR (Faz 2b): indeksli + Ad-kilitli cekirdek (saf — test:index K1-K7)
 import { parseLine } from './index/line-parser';
 import { runQuery } from './index/query-engine';
-import { toMatchResult } from './index/outcome-mapper';
+import { toMatchResult, gorunenAd } from './index/outcome-mapper';
 import { INDEX_VERSION, tokenize, buildProductIndex, rebuildIndexFields } from './index/product-index';
 import type { ProductColumns } from './index/product-index';
 import type { IndexedRow, LineQuery, QueryOpts } from './index/types';
@@ -353,7 +353,7 @@ export class MatchingService {
         : hesaplaNetFiyat(list, isk);
       byBrand.set(mid, {
         brandId: m.id, brandName: m.name,
-        materialName: tekAday.urun.displayName,
+        materialName: gorunenAd(tekAday), // boy'lu urunde boy gorunur (hidrant vakasi)
         netPrice: net, listPrice: list, discount: isk,
       });
       kesinlik.set(mid, outcome.kind === 'single' ? 'single' : 'ask1');

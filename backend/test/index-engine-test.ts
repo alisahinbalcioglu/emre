@@ -826,6 +826,36 @@ async function run() {
       (rd.candidates ?? []).every((c) => !c.uyari), JSON.stringify((rd.candidates ?? []).map((c) => c.uyari)));
   }
 
+  // ══ BOY GORUNURLUGU (canli vaka 17.07 — hidrant) ═════════════════
+  // 4 "Yerüstü yangın hidrantı" adayi yalniz BOYLA ayrisiyordu; kartlarda
+  // ozdes gorunuyor, fiyat farkinin nedeni anlasilamiyordu. gorunenAd
+  // displayName'e boy'u ekler (indekste degil — reindex gerektirmez).
+  {
+    const H = { kategori: 'Yangın / Hidrant', cins: 'GG-25 pik döküm gövde · paslanmaz çelik hareket mili',
+      baglanti: 'flanşlı (PN16)', birim: 'adet', paraBirimi: 'TL', sheetName: 'S' };
+    const havuz = [
+      prod({ ...H, ad: 'Yerüstü yangın hidrantı', cap: 'DN100', boy: 1300, price: 32700, urunKodu: 'H1300' }),
+      prod({ ...H, ad: 'Yerüstü yangın hidrantı', cap: 'DN100', boy: 1700, price: 38580, urunKodu: 'H1700' }),
+      prod({ ...H, ad: 'Yerüstü yangın hidrantı', cap: 'DN100', boy: 2150, price: 44440, urunKodu: 'H2150' }),
+    ];
+    const r = m('Yerüstü yangın hidrantı DN100', havuz);
+    check('BOY: soru acildi, fiyat yazilmadi', r.confidence === 'multi' && r.netPrice === 0,
+      `got ${r.confidence} net=${r.netPrice}`);
+    const adlar = (r.candidates ?? []).map((c) => c.materialName);
+    check('BOY: her aday adinda BOY gorunur (1300/1700/2150 mm)',
+      adlar.some((a) => a.includes('1300 mm')) && adlar.some((a) => a.includes('1700 mm')) && adlar.some((a) => a.includes('2150 mm')),
+      JSON.stringify(adlar));
+    check('BOY: aday adlari birbirinden AYRISIR (ozdes kart kalmadi)',
+      new Set(adlar).size === adlar.length, JSON.stringify(adlar));
+    // Boy'suz urunun adi DEGISMEZ (gereksiz ek yok)
+    const V = { kategori: 'Vanalar', birim: 'adet', paraBirimi: 'TL', sheetName: 'S' };
+    const r2 = m('Küresel vana DN25', [
+      prod({ ...V, ad: 'Küresel vana', cins: 'pirinç', cap: 'DN25', price: 850, urunKodu: 'KV25' })]);
+    check('BOY: boysuz urunde ada " mm" EKLENMEZ',
+      r2.confidence === 'high' && !!r2.matchedName && !r2.matchedName.includes(' mm'),
+      `got "${r2.matchedName}"`);
+  }
+
   // ══ DISPATCH: MatchingService UZERINDEN v2 yolu ══════════════════
   // Yukaridaki testler SAF cekirdegi kanitliyor. Bu blok GERCEK servisi
   // (marka bazli dispatch + matchV2 + havuz esleme + M3) kosturuyor —
