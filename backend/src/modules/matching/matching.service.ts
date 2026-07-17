@@ -398,6 +398,25 @@ export class MatchingService {
       if (mem) {
         const idx = result.candidates.findIndex((c) => c.materialName === mem.secilenAd);
         if (idx >= 0) {
+          // KULLANICI KARARI (17.07, canli test): TEK aday kaldiysa VE o aday
+          // gecmis secimin KENDISIYSE onay TEKRARI istenmez — fiyat yazilir.
+          // I6/373K korumasi BOZULMAZ: hafizasiz tek adayda onay surer; burada
+          // onay gecmiste zaten verilmisti (ayni satir imzasi, ayni urun).
+          // variantMissing haric — o "istenen varyant bu capta yok" der,
+          // hafiza onu ortemez.
+          if (result.candidates.length === 1 && !result.variantMissing) {
+            const c = result.candidates[idx];
+            console.log(`[Matching] HAFIZA TEK-ADAY OTOYAZ: "${excelName}" → "${mem.secilenAd}" (${mem.secimSayisi}×)`);
+            return {
+              ...result,
+              netPrice: c.netPrice, listPrice: c.listPrice, discount: c.discount,
+              confidence: 'high',
+              matchedName: c.materialName,
+              candidates: undefined,
+              dogrulanamadi: undefined,
+              reason: `Geçmiş seçiminiz (${mem.secimSayisi}×) — tek aday, otomatik uygulandı.`,
+            };
+          }
           console.log(`[Matching] HAFIZA ON-SECILI: "${excelName}" → "${mem.secilenAd}" (${mem.secimSayisi}×) basa alindi`);
           const cand = { ...result.candidates[idx], preferred: true };
           const rest = result.candidates.filter((_, i) => i !== idx);

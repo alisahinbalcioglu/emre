@@ -458,6 +458,25 @@ async function run() {
       uyarilar.some((u) => u.includes('93°C istendi') && u.includes('68°C')), JSON.stringify(uyarilar));
   }
 
+  // ══ HAFIZA TEK-ADAY OTOYAZ (kullanici karari 17.07 — cekvalf vakasi) ══
+  // Dogrulanamayan kelime tek adayi ONAY listesine dusurur (I6/373K kapisi).
+  // Ayni satir imzasi icin o aday GECMISTE secildiyse onay tekrari istenmez.
+  {
+    const svc = makeService('AYVAZ', [lib('Küresel Vana Pirinç 1" DN25', 850)]);
+    const q = 'ÇİFT ETKİLİ KÜRESEL VANA DN25';
+    const r1 = (await svc.bulkMatch('u1', 'brand-1', [q]))[q];
+    check('OTOYAZ oncesi: tek aday ONAY listesi (dogrulanamayan kelime kapisi)',
+      r1?.confidence === 'multi' && r1?.candidates?.length === 1 && r1?.netPrice === 0,
+      `got ${r1?.confidence} cand=${r1?.candidates?.length} net=${r1?.netPrice} "${r1?.reason}"`);
+    await svc.remember('u1', 'brand-1', q, r1!.candidates![0].materialName);
+    const r2 = (await svc.bulkMatch('u1', 'brand-1', [q]))[q];
+    check('OTOYAZ: hafiza onayli TEK aday otomatik yazildi',
+      r2?.confidence === 'high' && r2?.netPrice === 850 && !r2?.candidates,
+      `got ${r2?.confidence} net=${r2?.netPrice} cand=${r2?.candidates?.length}`);
+    check('OTOYAZ nedenini soyler (gecmis secim)',
+      !!r2?.reason?.includes('Geçmiş seçiminiz'), `got "${r2?.reason}"`);
+  }
+
   // H2: "ASMA DUVAR" → Sidewall (montaj tipi ayrimi, E4 es-anlamli)
   {
     const svc = makeService('AYVAZ', AYVAZ_LIB);

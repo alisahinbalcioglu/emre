@@ -101,6 +101,8 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   // S-vakasi (ad-gevsetme) icin AD filtreleri oncesi aile havuzu:
   const aileHavuzu = rows;
   let adGevsetildi = false;
+  // Satir adini TAM ICEREN superset adlar ("...takımı") — soru acilirsa SONA
+  let adGenis: IndexedRow[] | null = null;
   // Aileyi COZEN kelimeler "taninmayan" sayilmaz — onlar ailenin adidir
   // (es anlamli olabilir: "flow switch" ↔ "Akış anahtarı"). Yalniz FILTRE
   // DISI kalirlar; kullaniciya eksikmis gibi RAPORLANMAZLAR.
@@ -152,6 +154,17 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
       },
     );
     if (tam.length > 0) {
+      // ── SUPERSET ADLAR SONA (kullanici karari 17.07, islak alarm vakasi) ──
+      // "Islak Alarm Vanası" satiri tam bucket'i kilitleyince "...takımı" /
+      // "...trim seti" gibi satir adini TAM ICEREN diger adlar ELENIYORDU.
+      // Karar: soru ZATEN acilacaksa bunlar listenin SONUNA eklenir (tam ad
+      // onde); tek tam kayit yine otomatik yazilir (K2 bozulmaz). Dilatasyon
+      // dersi bilinclice geri alindi: Omega serileri de sonda gorunur —
+      // gruplu soru (ad kolonu) karisik 16'li listeden farklidir.
+      // Sonraki sert filtreler (cins/baglanti/cap/boy) bu kumeye de uygulanir.
+      const tamIds = new Set(tam.map((r) => r.id));
+      const genis = rows.filter((r) => !tamIds.has(r.id) && altKume(adTest, r.urun.adTokens));
+      if (genis.length > 0) adGenis = genis;
       rows = tam;
     } else {
       // Tam ad yok → alt-kume: teklif UST ad yazmis olabilir ("kompansatör"),
@@ -224,6 +237,7 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     const yuzeyler = yol.cins.filter(yuzeyToken);
     const diger = yol.cins.filter((t) => !yuzeyToken(t));
     if (diger.length) {
+      if (adGenis) adGenis = adGenis.filter((r) => altKume(diger, r.urun.cinsTokens));
       const d = rows.filter((r) => altKume(diger, r.urun.cinsTokens));
       if (d.length > 0) rows = d;
       else {
@@ -240,6 +254,7 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
       }
     }
     if (yuzeyler.length) {
+      if (adGenis) adGenis = adGenis.filter((r) => altKume(yuzeyler, r.urun.cinsTokens));
       const d = rows.filter((r) => altKume(yuzeyler, r.urun.cinsTokens));
       if (d.length > 0) {
         if (familySlug === 'boru') yuzeyGenis = rows; // yuzey uygulanmamis kume
@@ -249,6 +264,7 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     }
   }
   if (yol.baglanti.length) {
+    if (adGenis) adGenis = adGenis.filter((r) => altKume(yol.baglanti, r.urun.baglantiTokens));
     const d = rows.filter((r) => altKume(yol.baglanti, r.urun.baglantiTokens));
     if (d.length > 0) rows = d;
     else {
@@ -288,6 +304,8 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
       }
       if (rows.length === 0) return { kind: 'none', reason: 'cap-yok', detail: line.capInfo.display, donusum };
       if (yuzeyGenis) yuzeyGenis = yuzeyGenis.filter(capUyar); // genis kume de AYNI capta
+      // Superset adlar da AYNI capta (capsiz kayit gecer — takim/set capsiz olabilir)
+      if (adGenis) adGenis = adGenis.filter((r) => capUyar(r) || r.urun.capTags.length === 0);
     }
   }
 
@@ -296,6 +314,7 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     const d = rows.filter((r) => r.urun.boyTag === line.boyTag);
     if (d.length > 0) rows = d;
     if (yuzeyGenis) yuzeyGenis = yuzeyGenis.filter((r) => r.urun.boyTag === line.boyTag || !r.urun.boyTag);
+    if (adGenis) adGenis = adGenis.filter((r) => r.urun.boyTag === line.boyTag || !r.urun.boyTag);
   }
 
   // ── 5b. TABAN YUZEY BEKLENTISI (S3/R1) — SIRALAR, ELEMEZ ─────────
@@ -361,6 +380,17 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     const ekstra = yuzeyGenis
       .filter((r) => !eldekiler.has(r.id))
       .sort((a, b) => tabanSirasi(a, yaziliTabanlar) - tabanSirasi(b, yaziliTabanlar));
+    if (ekstra.length > 0) rows = [...rows, ...ekstra];
+  }
+
+  // ── SUPERSET ADLAR — merge (kullanici karari 17.07, yalniz POPUP'ta) ──
+  // Tam-ad kilidinin eledigi "...takımı"/"...trim seti" tarzi adlar soru
+  // ZATEN acilacaksa listenin SONUNA girer. rows.length===1 ise DOKUNULMAZ
+  // (K2: tek tam eslesme otomatik yazilir); V4 varyant akisi kullanicinin
+  // KENDI secimidir — genisletme uygulanmaz.
+  if (adGenis && rows.length > 1 && !opts?.variantTags?.length) {
+    const eldekiler = new Set(rows.map((r) => r.id));
+    const ekstra = adGenis.filter((r) => !eldekiler.has(r.id));
     if (ekstra.length > 0) rows = [...rows, ...ekstra];
   }
 

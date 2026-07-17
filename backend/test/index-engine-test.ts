@@ -497,21 +497,20 @@ async function run() {
       prod({ kategori: 'Dilatasyon', ad: 'Omega U-Flex dilatasyon kompansatörü', cins: 'U-Flex ±40 mm', baglanti: 'flanşlı', cap: 'DN25', price: 16325, urunKodu: 'U1', sheetName: 'S' }),
       prod({ kategori: 'Dilatasyon', ad: 'Omega V-Flex dilatasyon kompansatörü', cins: 'V-Flex ±40 mm', baglanti: 'flanşlı', cap: 'DN25', price: 17080, urunKodu: 'V1', sheetName: 'S' }),
     ];
+    // ⚠ SPEC REVIZE (kullanici karari 17.07, islak alarm vakasi): tam-ad
+    // kilidi superset adlari ELIYORDU ("...takımı" gorunmuyordu). Yeni kural:
+    // tam ad ONDE, satir adini TAM ICEREN diger adlar (Omega serileri dahil)
+    // SONDA fiyatli secenek. Sistem yine SECMEZ, fiyat yazmaz. Eski assert
+    // ("Omega'lar elendi") bilinclice kaldirildi — trade-off soruda soylendi.
     const r = m('Dilatasyon kompansatörü DN25', havuz);
     const adlar = (r.candidates ?? []).map((c) => c.materialName);
-    check('TAM AD: yalniz BIREBIR ad kaldi (Omega\'lar elendi) — PRD §4',
-      (r.candidates?.length ?? 0) === 2 && !adlar.some((a) => /Omega/.test(a)),
+    check('TAM AD ONDE: ilk adaylar BIREBIR ad (Dilatasyon kompansatörü)',
+      adlar.length === 4 && adlar[0].startsWith('Dilatasyon kompansatörü ·') && adlar[1].startsWith('Dilatasyon kompansatörü ·'),
       `got ${r.candidates?.length} → ${JSON.stringify(adlar)}`);
-    // Soru artik ALT-AD degil, urunun kendi niteligi. Hangi kolonun sorulacagi
-    // (cins mi baglanti mi) VERIYE baglidir — gercek Ayvaz satirlarinda cins
-    // de baglanti da ayrisir ("±50 (DLTKF-50)" = döner flanşlı). Kabul olcutu
-    // kolonun ADI degil, sorunun TEK TIKTA cozulmesi: her etiket benzersiz olmali.
-    const etiketler = (r.candidates ?? []).map((c) => c.label);
-    check('TAM AD: soru alt-ad DEGIL, urun niteligi (Omega secenegi yok)',
-      !etiketler.some((l) => /Omega|kompansat/i.test(l)), JSON.stringify(etiketler));
-    check('TAM AD: soru TEK TIKTA cozulur (her etiket benzersiz)',
-      new Set(etiketler).size === etiketler.length && etiketler.length === 2,
-      JSON.stringify(etiketler));
+    check('SUPERSET SONDA: Omega\'lar listenin SONUNDA (fiyatli secenek)',
+      /Omega/.test(adlar[2] ?? '') && /Omega/.test(adlar[3] ?? ''), JSON.stringify(adlar));
+    check('TAM AD: fiyat YAZILMADI (soru — sistem secmez)',
+      r.confidence === 'multi' && r.netPrice === 0, `got ${r.confidence} net=${r.netPrice}`);
 
     // UST ad yazilirsa tam eslesme YOK → alt-kume calisir → K5
     const r2 = m('Kompansatör DN25', havuz);
@@ -854,6 +853,34 @@ async function run() {
     check('BOY: boysuz urunde ada " mm" EKLENMEZ',
       r2.confidence === 'high' && !!r2.matchedName && !r2.matchedName.includes(' mm'),
       `got "${r2.matchedName}"`);
+  }
+
+  // ══ SUPERSET ADLAR SONA (kullanici karari 17.07 — islak alarm vakasi) ══
+  // Tam-ad kilidi "...takımı"/"...trim seti"ni ELIYORDU; karar: soru zaten
+  // acilacaksa satir adini TAM ICEREN adlar SONA eklenir, tam ad ONDE.
+  {
+    const A = { kategori: 'Yangın / Islak Alarm', birim: 'adet', paraBirimi: 'USD', sheetName: 'S' };
+    const havuz = [
+      prod({ ...A, ad: 'Islak alarm vanası', cins: '250 PSI', baglanti: 'ANSI flanşlı', cap: '6"', price: 1365, urunKodu: 'A1' }),
+      prod({ ...A, ad: 'Islak alarm vanası', cins: '250 PSI', baglanti: 'yivli', cap: '6"', price: 1327, urunKodu: 'A2' }),
+      prod({ ...A, ad: 'Islak alarm vanası takımı', cins: 'komple takım (vana + trim + gong)', baglanti: 'ANSI flanşlı', cap: '6"', price: 3350, urunKodu: 'A3' }),
+      prod({ ...A, ad: 'Islak alarm vanası trim seti', baglanti: 'ANSI flanşlı', cap: '6"', price: 820, urunKodu: 'A4' }),
+      prod({ ...A, ad: 'Su motor gong', cins: 'mekanik alarm zili', baglanti: 'ANSI flanşlı', cap: '6"', price: 440, urunKodu: 'A5' }),
+    ];
+    const r = m("6'' Islak Alarm Vanası", havuz);
+    const adlar = (r.candidates ?? []).map((c) => c.materialName);
+    check('SUPERSET: soru acildi, fiyat yazilmadi', r.confidence === 'multi' && r.netPrice === 0,
+      `got ${r.confidence} net=${r.netPrice}`);
+    check('SUPERSET: takım + trim seti SECENEKLERDE',
+      adlar.some((a) => a.includes('takımı')) && adlar.some((a) => a.includes('trim seti')), JSON.stringify(adlar));
+    check('SUPERSET: tam ad ONDE (ilk aday yalın ad)',
+      adlar[0]?.startsWith('Islak alarm vanası ·') ?? false, JSON.stringify(adlar));
+    check('SUPERSET: satir adini icermeyen "Su motor gong" ADAY DEGIL (K6)',
+      !adlar.some((a) => a.startsWith('Su motor gong')), JSON.stringify(adlar));
+    // K2 KORUNUR: yazili baglanti tek kayda indirir → superset EKLENMEZ
+    const r2 = m("6'' Islak Alarm Vanası Yivli", havuz);
+    check('SUPERSET: tek kayitta eklenmez — otomatik yazim surer (K2)',
+      r2.confidence === 'high' && r2.netPrice === 1327, `got ${r2.confidence} net=${r2.netPrice} "${r2.reason}"`);
   }
 
   // ══ DISPATCH: MatchingService UZERINDEN v2 yolu ══════════════════

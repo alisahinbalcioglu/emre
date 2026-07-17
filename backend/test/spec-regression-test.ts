@@ -364,12 +364,18 @@ async function run() {
     check('R19 yalniz izleme-anahtarli kelebekler sunuldu (2)', names.length === 2 && names.every((n) => n.includes('İzleme Anahtarlı')),
       `got ${r?.confidence} adaylar: ${names.join(' | ')} (${r?.reason})`);
     check('R19 fiyat yazilmadi (cins secimi kullanicinin)', r?.netPrice === 0, `got net=${r?.netPrice}`);
-    // Duz "KELEBEK VANA" satiri: izleme-anahtarlilar subtype elemesiyle
-    // one gecmez — duz kelebekler sunulur (ters yon regresyonu)
+    // Duz "KELEBEK VANA" satiri — SPEC REVIZE (kullanici karari 17.07,
+    // islak alarm vakasi): satir adini TAM ICEREN superset adlar (İzleme
+    // Anahtarlı Kelebek) artik ELENMEZ, listenin SONUNA fiyatli secenek
+    // olarak girer. Duz kelebekler ONDE; sistem yine secmez, fiyat yazmaz.
     const r2 = await m(svc, 'KELEBEK VANA DN80');
     const names2 = r2?.candidates?.map((c) => c.materialName) ?? (r2?.matchedName ? [r2.matchedName] : []);
-    check('R19b duz kelebek satiri → duz kelebekler (izleme elenir)', names2.length === 2 && names2.every((n) => n.includes('Kelebek Vana')),
+    check('R19b duz kelebekler ONDE (superset sonda kurali)',
+      names2.length >= 2 && [names2[0], names2[1]].every((n) => n.includes('Kelebek Vana') && !n.includes('İzleme')),
       `got adaylar: ${names2.join(' | ')}`);
+    check('R19b izleme-anahtarlilar SONDA, fiyat yazilmadi',
+      r2?.netPrice === 0 && names2.slice(2).every((n) => n.includes('İzleme')),
+      `got net=${r2?.netPrice} adaylar: ${names2.join(' | ')}`);
   }
 
   // ── R20 (AD-CINS SOZLUGU seed): sozluk aileleri aile kilidiyle calisir;
