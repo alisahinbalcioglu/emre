@@ -36,6 +36,11 @@ export function resolveLineClass(rows: IndexedRow[], hint?: SizeClass | null): S
 /** Ayrisan ILK kolon sorulur. "Cins tekrar sorulmaz" veriden duser (K3). */
 export function ayrisanKolon(rows: IndexedRow[]): AskColumn {
   if (distinctSayisi(rows, (r) => r.urun.adBucket) > 1) return 'ad'; // K5
+  // GRUP KADEMESI (kullanici karari 17.07): ad COZULMUS ama adaylar birden
+  // fazla bolum basligindan geliyorsa ("6'' siyah boru" → Tesisat + Basınçlı)
+  // once GRUP sorulur; kullanici gruba girince cins/baglanti kademeleri
+  // aynen devam eder. AD sorusu onceligi korunur (K5 ust-aile bozulmaz).
+  if (distinctSayisi(rows, (r) => (r.urun.kategori ?? r.urun.sheetName ?? '').trim()) > 1) return 'kategori';
   if (distinctSayisi(rows, (r) => r.urun.cinsNorm ?? '') > 1) return 'cins';
   if (distinctSayisi(rows, (r) => r.urun.baglantiNorm ?? '') > 1) return 'baglanti'; // K3
   if (distinctSayisi(rows, (r) => r.urun.boyTag ?? '') > 1) return 'boy';

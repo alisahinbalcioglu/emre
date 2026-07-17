@@ -85,7 +85,10 @@ export interface RoutedTokens {
   bilinmeyen: string[];
 }
 
-export type AskColumn = 'ad' | 'cins' | 'baglanti' | 'boy' | 'urun';
+/** 'kategori' = GRUP KADEMESI (kullanici karari 17.07): ayni urun adi birden
+ *  fazla bolum basligindan geliyorsa ("Tesisat Boruları" / "Basınçlı Borular")
+ *  ILK soru grup olur; grup secilince mevcut kademeler aynen devam eder. */
+export type AskColumn = 'ad' | 'kategori' | 'cins' | 'baglanti' | 'boy' | 'urun';
 
 export type NoneReason =
   | 'urun-degil'

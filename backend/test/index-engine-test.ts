@@ -909,6 +909,44 @@ async function run() {
     check('ISKONTO: iskontosuz ozel fiyat AYNEN (500)', r3.netPrice === 500, `got net=${r3.netPrice}`);
   }
 
+  // ══ GRUP (KATEGORI) KADEMESI — kullanici karari 17.07 aksam ═══════
+  // Ayni urun adi ("Çelik boru") birden fazla bolum basligindan geliyorsa
+  // ("Su ve Yangın Tesisat Boruları" / "Basınçlı Borular") ILK soru grup
+  // olur; grup secilince cins/baglanti kademeleri aynen devam eder.
+  {
+    const T = { ad: 'Çelik boru', baglanti: 'düz uçlu', birim: 'metre', paraBirimi: 'TRY', sheetName: 'S' };
+    const TESISAT = 'Su ve Yangın Tesisat Boruları (TS EN 10255 Orta Seri)';
+    const BASINCLI = 'Basınçlı Borular (TS EN 10217-1)';
+    const havuz = [
+      prod({ ...T, kategori: TESISAT, cins: 'siyah · TS EN 10255 orta seri', cap: '6"', price: 778.4, urunKodu: 'T1' }),
+      prod({ ...T, kategori: TESISAT, cins: 'siyah · TS EN 10255 orta seri · PN25', cap: '6"', price: 800, urunKodu: 'T2' }),
+      prod({ ...T, kategori: BASINCLI, cins: 'siyah · TS EN 10217-1 · et 3,6 mm', cap: '6"', price: 141.6, urunKodu: 'B1' }),
+      prod({ ...T, kategori: BASINCLI, cins: 'siyah · TS EN 10217-1 · et 4,0 mm', cap: '6"', price: 148.3, urunKodu: 'B2' }),
+    ];
+    const r = m('6" Siyah Çelik Boru', havuz, { unit: 'metre' });
+    const etiketler = Array.from(new Set((r.candidates ?? []).map((c) => c.label)));
+    check('GRUP: ilk soru bolum basliklari (2 grup)',
+      r.confidence === 'multi' && etiketler.length === 2 && etiketler.includes(TESISAT) && etiketler.includes(BASINCLI),
+      `got ${JSON.stringify(etiketler)}`);
+    check('GRUP: soru metni "Hangi grup?"', !!r.reason?.includes('Hangi grup'), `got "${r.reason}"`);
+    check('GRUP: fiyat yazilmadi', r.netPrice === 0, `got ${r.netPrice}`);
+    check('GRUP: adaylar asama-1 (surfaceLevel) — quotes sayfasi gizlemesin',
+      (r.candidates ?? []).every((c) => c.surfaceLevel === true), 'surfaceLevel false var');
+
+    // TEK grup kaldiysa grup sorusu ACILMAZ — dogrudan cins sorulur
+    const r2 = m('6" Siyah Çelik Boru', havuz.slice(0, 2), { unit: 'metre' });
+    const et2 = (r2.candidates ?? []).map((c) => c.label);
+    check('GRUP: tek grupta soru CINS kademesine iner',
+      r2.confidence === 'multi' && et2.every((l) => l.includes('TS EN 10255')), `got ${JSON.stringify(et2)}`);
+
+    // K5 ONCELIGI KORUNUR: ad ayrisiyorsa ilk soru yine AD (grup degil)
+    const havuz3 = [...havuz.slice(0, 1),
+      prod({ ...T, kategori: BASINCLI, ad: 'Dikişli çelik boru', cins: 'siyah', cap: '6"', price: 120, urunKodu: 'D1' })];
+    const r3 = m('6" Siyah Boru', havuz3, { unit: 'metre' });
+    check('GRUP: ad ayrisirken ilk soru AD kalir (K5)',
+      !!r3.reason?.includes('Hangi ürün'), `got "${r3.reason}"`);
+  }
+
   // ══ DISPATCH: MatchingService UZERINDEN v2 yolu ══════════════════
   // Yukaridaki testler SAF cekirdegi kanitliyor. Bu blok GERCEK servisi
   // (marka bazli dispatch + matchV2 + havuz esleme + M3) kosturuyor —

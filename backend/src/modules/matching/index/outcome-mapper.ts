@@ -62,6 +62,8 @@ function netFiyat(r: IndexedRow, toTry: (v: number, cur: string) => number): { n
 function etiket(r: IndexedRow, kolon: AskColumn): string {
   switch (kolon) {
     case 'ad': return r.urun.ad || r.urun.adBucket;
+    // Grup etiketi = fiyat listesindeki bolum basliginin KENDISI
+    case 'kategori': return r.urun.kategori || r.urun.sheetName || '—';
     case 'cins': return r.urun.cins || '—';
     case 'baglanti': return r.urun.baglanti || '—';
     case 'boy': return r.urun.boyMm ? `${r.urun.boyMm} mm` : '—';
@@ -92,7 +94,10 @@ function adayla(r: IndexedRow, kolon: AskColumn, toTry: (v: number, cur: string)
     popular: false,
     label: etiket(r, kolon),
     // v1 anlami: "asama 1 (cins/yuzey) mi, asama 2 (baglanti) mi?"
-    surfaceLevel: kolon === 'ad' || kolon === 'cins',
+    // 'kategori' (grup kademesi) de ASAMA 1'dir — quotes sayfasi asama 1'de
+    // yalniz surfaceLevel adaylari gosterir (quotes/new/page.tsx:1956),
+    // false kalsaydi grup secenekleri hic gorunmezdi.
+    surfaceLevel: kolon === 'ad' || kolon === 'kategori' || kolon === 'cins',
     variantTags: urunVariantTags(r),
     // E3: satirin yapilandirilmis nitelikleri (sicaklik/K/montaj/uzunluk/
     // govde) adayinkiyle karsilastirilir — FARKLI deger tasiyan aday
@@ -106,6 +111,7 @@ function adayla(r: IndexedRow, kolon: AskColumn, toTry: (v: number, cur: string)
 
 const SORU_METNI: Record<AskColumn, string> = {
   ad: 'Hangi ürün?',
+  kategori: 'Hangi grup?',
   cins: 'Hangi cins?',
   baglanti: 'Hangi bağlantı şekli?',
   boy: 'Hangi boy?',
