@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Package, Plus, Search, Upload, Loader2 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { ArrowLeft, Package, Plus, Search, Upload, Loader2, X, Save } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,8 +11,9 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import api from '@/lib/api';
-import PdfToExcelButton from '@/components/library/PdfToExcelButton';
 import { toast } from '@/hooks/use-toast';
+import { ExcelGrid } from '@/components/excel-grid/ExcelGrid';
+import type { ExcelGridData, ExcelRowData } from '@/components/excel-grid/types';
 
 interface LibraryBrand {
   brandId: string;
@@ -35,7 +37,51 @@ function getRole(): string | null {
   try { return JSON.parse(localStorage.getItem('user') || '{}').role ?? null; } catch { return null; }
 }
 
+// ── "Marka Ekle" bos tablosu — foto 3 formatinin bos hali ──
+// Sabit sema (ProductIndex 11 kolonuyla birebir). Kullanici uygulama icinde
+// doldurur; en alta autoAppendRow ile hep bos satir eklenir. Kayitta bos
+// (Malzeme Adi girilmemis) satirlar elenir.
+const MANUAL_COLUMNS: ExcelGridData['columnDefs'] = [
+  { field: 'col0', headerName: 'No', width: 56, editable: false },
+  { field: 'ad', headerName: 'Malzeme Adı', width: 340, editable: true },
+  { field: 'cins', headerName: 'Cinsi', width: 150, editable: true },
+  { field: 'baglanti', headerName: 'Bağlantı Şekli', width: 130, editable: true },
+  { field: 'cap', headerName: 'Çap', width: 90, editable: true },
+  { field: 'boy', headerName: 'Boy (mm)', width: 90, editable: true },
+  { field: 'urunKodu', headerName: 'Ürün Kodu', width: 120, editable: true },
+  { field: 'not', headerName: 'Not', width: 180, editable: true },
+  { field: 'birim', headerName: 'Birim', width: 90, editable: true },
+  { field: 'fiyat', headerName: 'Liste Fiyat', width: 120, editable: true },
+  { field: 'iskonto', headerName: 'İskonto %', width: 90, editable: true },
+];
+const MANUAL_ROLES = { noField: 'col0', nameField: 'ad', unitField: 'birim', materialUnitPriceField: 'fiyat' };
+
+function buildBlankManualGrid(dataRows = 18): ExcelGridData {
+  const blank = (idx: number, spare = false): ExcelRowData => {
+    const row: any = { _rowIdx: idx, _isDataRow: true, _isHeaderRow: false };
+    if (spare) row._isSpareRow = true;
+    for (const c of MANUAL_COLUMNS) if (!c.field.startsWith('_')) row[c.field] = '';
+    return row;
+  };
+  const rowData: ExcelRowData[] = [];
+  for (let i = 0; i < dataRows; i++) rowData.push(blank(i));
+  rowData.push(blank(dataRows, true)); // en altta hep-bos spare satir
+  return { columnDefs: MANUAL_COLUMNS, rowData, columnRoles: MANUAL_ROLES, brands: [], headerEndRow: 0 };
+}
+
+function trimOrU(v: unknown): string | undefined {
+  const s = String(v ?? '').trim();
+  return s === '' ? undefined : s;
+}
+function numOrU(v: unknown): number | undefined {
+  const s = String(v ?? '').trim().replace(',', '.');
+  if (s === '') return undefined;
+  const n = parseFloat(s);
+  return isNaN(n) ? undefined : n;
+}
+
 export default function MechanicalBrandsPage() {
+  const router = useRouter();
   const [brands, setBrands] = useState<LibraryBrand[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -44,13 +90,12 @@ export default function MechanicalBrandsPage() {
   // Pool brands for dropdowns
   const [poolBrands, setPoolBrands] = useState<PoolBrand[]>([]);
 
-  // Malzeme Ekle dialog state
-  const [addOpen, setAddOpen] = useState(false);
-  const [addLoading, setAddLoading] = useState(false);
-  const [materialName, setMaterialName] = useState('');
-  const [unit, setUnit] = useState('');
-  const [customPrice, setCustomPrice] = useState('');
-  const [selectedBrandId, setSelectedBrandId] = useState('');
+  // "Marka Ekle" — uygulama ici bos tablo state
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualSaving, setManualSaving] = useState(false);
+  const [newBrandName, setNewBrandName] = useState('');
+  const [manualGrid, setManualGrid] = useState<ExcelGridData | null>(null);
+  const [manualRows, setManualRows] = useState<ExcelRowData[]>([]);
 
   // PDF Yukle dialog state
   const [pdfOpen, setPdfOpen] = useState(false);
@@ -88,11 +133,21 @@ export default function MechanicalBrandsPage() {
     b.brandName.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  function resetAddDialog() {
-    setMaterialName('');
-    setUnit('');
-    setCustomPrice('');
-    setSelectedBrandId('');
+  function openManual() {
+    const g = buildBlankManualGrid();
+    setManualGrid(g);
+    setManualRows(g.rowData);
+    setNewBrandName('');
+    setManualOpen(true);
+  }
+
+  function closeManual() {
+    const dolu = manualRows.some((r: any) => r._isDataRow && !r._isSpareRow && String(r.ad ?? '').trim() !== '');
+    if ((dolu || newBrandName.trim()) && !window.confirm('Girdiğiniz bilgiler kaybolacak. Kapatılsın mı?')) return;
+    setManualOpen(false);
+    setManualGrid(null);
+    setManualRows([]);
+    setNewBrandName('');
   }
 
   function resetPdfDialog() {
@@ -102,25 +157,52 @@ export default function MechanicalBrandsPage() {
     setPdfStep('upload');
   }
 
-  async function handleAddMaterial() {
-    const trimmed = materialName.trim();
-    if (!trimmed || !unit || !selectedBrandId) return;
-    setAddLoading(true);
+  async function handleSaveManualBrand() {
+    const name = newBrandName.trim();
+    if (!name) {
+      toast({ title: 'Marka adı gerekli', description: 'Önce marka adını girin.', variant: 'destructive' });
+      return;
+    }
+    const dataRows = manualRows.filter(
+      (r: any) => r._isDataRow && !r._isSpareRow && String(r.ad ?? '').trim() !== '',
+    );
+    if (dataRows.length === 0) {
+      toast({ title: 'Malzeme yok', description: 'En az bir satırda Malzeme Adı girin.', variant: 'destructive' });
+      return;
+    }
+    const rows = dataRows.map((r: any) => ({
+      ad: String(r.ad).trim(),
+      cins: trimOrU(r.cins),
+      baglanti: trimOrU(r.baglanti),
+      cap: trimOrU(r.cap),
+      boy: trimOrU(r.boy),
+      urunKodu: trimOrU(r.urunKodu),
+      not: trimOrU(r.not),
+      birim: trimOrU(r.birim),
+      price: numOrU(r.fiyat),
+      discountRate: numOrU(r.iskonto),
+    }));
+
+    setManualSaving(true);
     try {
-      await api.post('/library', {
-        materialName: trimmed,
-        unit,
-        customPrice: customPrice ? parseFloat(customPrice) : undefined,
-        brandId: selectedBrandId,
+      const { data } = await api.post('/library/manual-brand', {
+        brandName: name,
+        discipline: 'mechanical',
+        rows,
       });
-      toast({ title: 'Eklendi', description: `"${trimmed}" kutuphanenize eklendi.` });
-      setAddOpen(false);
-      resetAddDialog();
-      fetchBrands();
-    } catch {
-      toast({ title: 'Hata', description: 'Malzeme eklenemedi.', variant: 'destructive' });
+      toast({
+        title: 'Marka oluşturuldu',
+        description: `"${data.brandName}" kütüphanenize eklendi · ${data.created} malzeme.`,
+      });
+      setManualOpen(false);
+      setManualGrid(null);
+      setManualRows([]);
+      setNewBrandName('');
+      router.push(`/library/brand/${data.brandId}`);
+    } catch (e: any) {
+      toast({ title: 'Hata', description: e?.response?.data?.message ?? 'Marka oluşturulamadı.', variant: 'destructive' });
     } finally {
-      setAddLoading(false);
+      setManualSaving(false);
     }
   }
 
@@ -200,12 +282,11 @@ export default function MechanicalBrandsPage() {
           <p className="mt-1 text-sm text-muted-foreground">Kutuphanenizdeki mekanik malzeme markalari</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => setAddOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />Malzeme Ekle
+          <Button onClick={openManual}>
+            <Plus className="mr-2 h-4 w-4" />Marka Ekle
           </Button>
-          <PdfToExcelButton label="PDF'den Excel'e Cevir" />
           {isAdmin && (
-            <Button onClick={() => setPdfOpen(true)}>
+            <Button variant="outline" onClick={() => setPdfOpen(true)}>
               <Upload className="mr-2 h-4 w-4" />PDF Yukle (Admin)
             </Button>
           )}
@@ -257,70 +338,52 @@ export default function MechanicalBrandsPage() {
         </div>
       )}
 
-      {/* Malzeme Ekle Dialog */}
-      <Dialog open={addOpen} onOpenChange={(open) => { setAddOpen(open); if (!open) resetAddDialog(); }}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Malzeme Ekle</DialogTitle></DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Marka</Label>
-              <Select value={selectedBrandId} onValueChange={setSelectedBrandId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Marka secin" />
-                </SelectTrigger>
-                <SelectContent>
-                  {poolBrands.map((pb) => (
-                    <SelectItem key={pb.id} value={pb.id}>{pb.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+      {/* Marka Ekle — uygulama ici bos tablo (foto 3 formatinin bos hali) */}
+      {manualOpen && manualGrid && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-2">
+          <div className="flex h-full max-h-[98vh] w-full max-w-[98vw] flex-col overflow-hidden rounded-lg bg-background shadow-2xl">
+            <div className="flex items-center justify-between gap-4 border-b p-3">
+              <div className="flex flex-1 items-center gap-3">
+                <h2 className="whitespace-nowrap text-base font-bold">Yeni Marka</h2>
+                <Input
+                  autoFocus
+                  placeholder="Marka adı (örn: AYVAZ)"
+                  value={newBrandName}
+                  onChange={(e) => setNewBrandName(e.target.value)}
+                  className="h-9 max-w-xs"
+                />
+                <p className="hidden text-xs text-muted-foreground lg:block">
+                  Boş tabloyu doldurun · en alta yeni satır otomatik eklenir · yalnız Malzeme Adı zorunlu
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={closeManual} disabled={manualSaving}>
+                  <X className="mr-1 h-3.5 w-3.5" />İptal
+                </Button>
+                <Button size="sm" onClick={handleSaveManualBrand} disabled={manualSaving || !newBrandName.trim()}>
+                  {manualSaving ? (
+                    <><Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />Kaydediliyor...</>
+                  ) : (
+                    <><Save className="mr-1 h-3.5 w-3.5" />Markayı Kaydet</>
+                  )}
+                </Button>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>Malzeme Adi</Label>
-              <Input
-                value={materialName}
-                onChange={(e) => setMaterialName(e.target.value)}
-                placeholder="Orn: PPR Boru 20mm"
-                autoFocus
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Birim</Label>
-              <Select value={unit} onValueChange={setUnit}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Birim secin" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Adet">Adet</SelectItem>
-                  <SelectItem value="Metre">Metre</SelectItem>
-                  <SelectItem value="Kg">Kg</SelectItem>
-                  <SelectItem value="Paket">Paket</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Fiyat (TL)</Label>
-              <Input
-                type="number"
-                min="0"
-                step="0.01"
-                value={customPrice}
-                onChange={(e) => setCustomPrice(e.target.value)}
-                placeholder="0.00"
+            <div className="flex-1 overflow-auto">
+              <ExcelGrid
+                data={manualGrid}
+                brands={[]}
+                currencySymbol="₺"
+                conversionRate={1}
+                autoAppendRow
+                enableStructureEdit
+                onBrandChange={async () => null}
+                onRowDataChange={setManualRows}
               />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setAddOpen(false); resetAddDialog(); }}>Iptal</Button>
-            <Button
-              onClick={handleAddMaterial}
-              disabled={addLoading || !materialName.trim() || !unit || !selectedBrandId}
-            >
-              {addLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Ekleniyor...</> : 'Ekle'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </div>
+      )}
 
       {/* PDF Yukle Dialog */}
       <Dialog open={pdfOpen} onOpenChange={(open) => { setPdfOpen(open); if (!open) resetPdfDialog(); }}>

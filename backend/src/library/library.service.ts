@@ -5,11 +5,20 @@ import { UpdateLibraryItemDto } from './dto/update-library-item.dto';
 import { ImportPriceListDto } from './dto/import-price-list.dto';
 import { BulkDiscountDto } from './dto/bulk-discount.dto';
 import { BulkUpdateItemsDto } from './dto/bulk-update-items.dto';
+import { CreateManualBrandDto } from './dto/create-manual-brand.dto';
 import { buildLibrarySheetRows } from './library-sheet-builder';
+import {
+  buildProductIndex,
+  ProductColumns,
+} from '../modules/matching/index/product-index';
+import { TerminologyService } from '../modules/matching/terminology.service';
 
 @Injectable()
 export class LibraryService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private terminology: TerminologyService,
+  ) {}
 
   async findAll(userId: string) {
     return this.prisma.userLibrary.findMany({
@@ -76,6 +85,157 @@ export class LibraryService {
       },
       include: { material: true, brand: true },
     });
+  }
+
+  /**
+   * "Marka Ekle" — kullanici bos tabloyu (foto 3 formati) elle doldurup yeni
+   * bir marka olusturur. Havuz Excel/PDF yolu YOK; satirlar dogrudan kullanicinin
+   * kutuphanesine yazilir.
+   *
+   * Admin ice-aktarim ile AYNI indeksleme sozlesmesi (admin.service save-bulk):
+   *  - Her satir buildProductIndex ile 11 kolondan indekslenir → ProductIndex
+   *    (ownerUserId=userId → kullanicinin kendi manuel satiri, havuz DEGIL).
+   *  - Baglanti/Boy/Kod/Not TEK gercek ProductIndex'te yasar → kutuphane gorunumu
+   *    (rebuildUserBrandLibrary → product join) bu alanlari cizer.
+   *  - UserLibrary.productIndexId indekse baglanir → v2 motor bu markayi "indeksli"
+   *    sayar; iskonto (discountRate) kullaniciya ait kalir.
+   *  - KÜTÜPHANE=HAFIZA: sozluksuz ama anlamli-adli urunler self-family olur ve
+   *    learnFamilyAliases ile (PER-USER) ogrenilir.
+   */
+  async createManualBrand(userId: string, dto: CreateManualBrandDto) {
+    const brandName = dto.brandName?.trim();
+    if (!brandName) throw new BadRequestException('Marka adi zorunlu');
+
+    const discipline = dto.discipline === 'electrical' ? 'electrical' : 'mechanical';
+
+    // Bos ad'li satirlar elenir (spare/yarim satirlar)
+    const rows = (dto.rows ?? []).filter((r) => (r.ad ?? '').trim().length > 0);
+    if (rows.length === 0) {
+      throw new BadRequestException('En az bir malzeme satiri (Malzeme Adi dolu) gerekli');
+    }
+
+    // ── Marka: ad @unique → find-or-create. Ayni isim havuzda varsa ona baglanir
+    //    (kullanicinin satirlari ownerUserId ile izole kalir). ──
+    const brand = await this.prisma.brand.upsert({
+      where: { name: brandName },
+      update: {},
+      create: { name: brandName, discipline },
+    });
+
+    // Her "Marka Ekle" islemi kendi fiyat listesini olusturur (kaynak izlenebilir)
+    const priceList = await this.prisma.priceList.create({
+      data: { name: `${brandName} — Manuel Liste`, brandId: brand.id },
+    });
+
+    const p = this.prisma as any;
+    let created = 0;
+    let belirsizSayisi = 0;
+    const gorulenRowKeys = new Set<string>();
+    const rowKeyTekrar = new Map<string, number>();
+    // KÜTÜPHANE=HAFIZA: self-family adBucket → canonical ad
+    const ogrenilecekAileler = new Map<string, string>();
+
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      const price = typeof r.price === 'number' && !isNaN(r.price) ? r.price : 0;
+      const boyMm = r.boy != null && String(r.boy).trim() !== ''
+        ? parseFloat(String(r.boy).replace(',', '.')) || null
+        : null;
+
+      const pcols: ProductColumns = {
+        kategori: r.kategori?.trim() || null,
+        ad: r.ad.trim(),
+        cins: r.cins?.trim() || null,
+        baglanti: r.baglanti?.trim() || null,
+        cap: r.cap?.trim() || null,
+        boy: boyMm,
+        birim: r.birim?.trim() || null,
+        price,
+        paraBirimi: r.currency || 'TRY',
+        urunKodu: r.urunKodu?.trim() || null,
+        not: r.not?.trim() || null,
+        sheetName: 'Manuel',
+        sourceRow: i,
+        sortOrder: i,
+      };
+      const idx = buildProductIndex(pcols);
+
+      if (idx.belirsiz) belirsizSayisi++;
+      else if (idx.adSlug === idx.adBucket && !ogrenilecekAileler.has(idx.adBucket)) {
+        ogrenilecekAileler.set(idx.adBucket, pcols.ad);
+      }
+
+      // rowKey cakismasi (ayni demet iki kez) → #2/#3 soneki, idempotent sira
+      let rowKey = idx.rowKey;
+      if (gorulenRowKeys.has(rowKey)) {
+        const kacinci = (rowKeyTekrar.get(idx.rowKey) ?? 1) + 1;
+        rowKeyTekrar.set(idx.rowKey, kacinci);
+        rowKey = `${idx.rowKey}#${kacinci}`;
+      }
+      gorulenRowKeys.add(rowKey);
+
+      const pi = await p.productIndex.create({
+        data: {
+          brandId: brand.id,
+          priceListId: priceList.id,
+          ownerUserId: userId, // ← kullanicinin kendi manuel satiri
+          kategori: pcols.kategori, ad: pcols.ad, cins: pcols.cins,
+          baglanti: pcols.baglanti, capRaw: pcols.cap, boyMm,
+          birim: pcols.birim, price, currency: pcols.paraBirimi ?? 'TRY',
+          urunKodu: pcols.urunKodu, not: pcols.not,
+          sheetName: pcols.sheetName, sourceRow: pcols.sourceRow, sortOrder: pcols.sortOrder,
+          adSlug: idx.adSlug, adBucket: idx.adBucket, adTokens: idx.adTokens,
+          cinsNorm: idx.cinsNorm, cinsTokens: idx.cinsTokens,
+          baglantiNorm: idx.baglantiNorm, baglantiTokens: idx.baglantiTokens,
+          sizeClass: idx.sizeClass, capTags: idx.capTags, capNorm: idx.capNorm,
+          boyTag: idx.boyTag, displayName: idx.displayName, rowKey,
+          indexVersion: idx.indexVersion, belirsiz: idx.belirsiz,
+        },
+      });
+
+      await this.prisma.userLibrary.create({
+        data: {
+          userId,
+          brandId: brand.id,
+          sourcePriceListId: priceList.id,
+          productIndexId: pi.id,
+          materialId: null,
+          materialName: idx.displayName,
+          adRaw: pcols.ad,
+          listPrice: price,
+          customPrice: price,
+          currency: pcols.paraBirimi ?? 'TRY',
+          unit: pcols.birim || 'Adet',
+          kategori: pcols.kategori,
+          cins: pcols.cins,
+          cap: pcols.cap,
+          discountRate: r.discountRate ?? null,
+          sortOrder: i,
+        } as any,
+      });
+      created++;
+    }
+
+    // KÜTÜPHANE=HAFIZA (PER-USER): sozluksuz self-family adlari kullaniciya ozel
+    // aile olarak ogren → kullanicinin satirlari ayni aileye kilitlenir.
+    if (ogrenilecekAileler.size > 0) {
+      await this.terminology.learnFamilyAliases(
+        Array.from(ogrenilecekAileler, ([adBucket, canonical]) => ({ adBucket, canonical })),
+        userId,
+      ).catch((e) => console.warn('[ManualBrand] aile ogrenme atlandi:', (e as Error).message));
+    }
+
+    await this.rebuildUserBrandLibrary(userId, brand.id);
+
+    console.log(`[ManualBrand] "${brandName}" (${discipline}): ${created} satir, ${belirsizSayisi} belirsiz, ${ogrenilecekAileler.size} self-family (userId=${userId})`);
+
+    return {
+      brandId: brand.id,
+      brandName: brand.name,
+      created,
+      belirsiz: belirsizSayisi,
+      ogrenilenAile: ogrenilecekAileler.size,
+    };
   }
 
   async update(userId: string, id: string, dto: UpdateLibraryItemDto) {

@@ -8,6 +8,7 @@ import { UpdateLibraryItemDto } from './dto/update-library-item.dto';
 import { ImportPriceListDto } from './dto/import-price-list.dto';
 import { BulkDiscountDto } from './dto/bulk-discount.dto';
 import { BulkUpdateItemsDto } from './dto/bulk-update-items.dto';
+import { CreateManualBrandDto } from './dto/create-manual-brand.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
@@ -39,6 +40,13 @@ export class LibraryController {
   @Post()
   create(@CurrentUser() user: any, @Body() dto: CreateLibraryItemDto) {
     return this.libraryService.create(user.id, dto);
+  }
+
+  /** "Marka Ekle" — kullanici bos tabloyu doldurup yeni marka olusturur.
+   *  Satirlar indekslenip dogrudan kullanicinin kutuphanesine yazilir. */
+  @Post('manual-brand')
+  createManualBrand(@CurrentUser() user: any, @Body() dto: CreateManualBrandDto) {
+    return this.libraryService.createManualBrand(user.id, dto);
   }
 
   @Put(':id')
