@@ -947,6 +947,34 @@ async function run() {
       !!r3.reason?.includes('Hangi ürün'), `got "${r3.reason}"`);
   }
 
+  // ══ SAHA KISALTMALARI (18.07 — Trakya "Glvz." canli vakasi) ═══════
+  // 'Glvz.' taninmayinca cins filtresi calismiyor, Siyah/Galvaniz ayrimi
+  // kullaniciya kaliyordu (Nipel satirina SIYAH yazilmisti: 24,5 vs 32).
+  {
+    const T = { kategori: 'Dövme Demir Bağlantı Parçaları (TS 11 / EN 10242)', birim: 'adet', paraBirimi: 'TRY', sheetName: 'S' };
+    const havuz = [
+      prod({ ...T, ad: 'Nipel', cins: 'Siyah', cap: '1" (DN25)', price: 24.5, urunKodu: 'N1' }),
+      prod({ ...T, ad: 'Nipel', cins: 'Galvaniz', cap: '1" (DN25)', price: 32, urunKodu: 'N2' }),
+      prod({ ...T, ad: '90° Köşe Düz Rakor Dirsekli', cins: 'Siyah', cap: '1" (DN25)', price: 126, urunKodu: 'D1' }),
+      prod({ ...T, ad: '90° Köşe Düz Rakor Dirsekli', cins: 'Galvaniz', cap: '1" (DN25)', price: 158, urunKodu: 'D2' }),
+      prod({ ...T, ad: '90° Kuyruklu Konik Rakor Dirsekli', cins: 'Siyah', cap: '1" (DN25)', price: 165, urunKodu: 'D3' }),
+      prod({ ...T, ad: '90° Kuyruklu Konik Rakor Dirsekli', cins: 'Galvaniz', cap: '1" (DN25)', price: 205, urunKodu: 'D4' }),
+    ];
+    // K2 KANITI: "Glvz." acilinca cins filtresi calisir → TEK Galvaniz nipel
+    const r = m('1"-DN25 Glvz. Nipel', havuz, { unit: 'Adet' });
+    check('KISALTMA: "Glvz." → galvaniz; TEK eslesme otomatik (32, 24.5 DEGIL)',
+      r.confidence === 'high' && r.netPrice === 32, `got ${r.confidence} net=${r.netPrice} "${r.reason}"`);
+    // Coklu adayda: yalniz GALVANIZ'ler kalir (Siyah elenir), 'glvz' artik
+    // "dogrulanamadi" listesinde DEGILDIR.
+    const r2 = m('1"-DN25 Glvz. Dişli Dirsek 90°', havuz, { unit: 'Adet' });
+    const adlar2 = (r2.candidates ?? []).map((c) => c.materialName);
+    check('KISALTMA: dirsek adaylari yalniz GALVANIZ (Siyah elendi)',
+      r2.netPrice === 0 && adlar2.length === 2 && adlar2.every((a) => a.includes('Galvaniz')),
+      `got net=${r2.netPrice} ${JSON.stringify(adlar2)}`);
+    check('KISALTMA: glvz artik dogrulanamadi listesinde YOK',
+      !(r2.dogrulanamadi ?? []).includes('glvz'), JSON.stringify(r2.dogrulanamadi));
+  }
+
   // ══ DISPATCH: MatchingService UZERINDEN v2 yolu ══════════════════
   // Yukaridaki testler SAF cekirdegi kanitliyor. Bu blok GERCEK servisi
   // (marka bazli dispatch + matchV2 + havuz esleme + M3) kosturuyor —

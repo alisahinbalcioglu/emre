@@ -67,7 +67,17 @@ export function parseLine(text: string, unit?: string | null): LineQuery {
 
   const familySlug = resolveLineFamily(parantezsiz);
 
-  const adaylar = tokenize(parantezsiz);
+  // SAHA KISALTMALARI (18.07, Trakya "Glvz." vakasi): satir SERBEST metindir,
+  // yaygin kisaltmalar ACILIR ki cins filtresi calisabilsin — "Glvz. Nipel"
+  // satirinda galvaniz taninmayinca Siyah/Galvaniz ayrimi yapilamiyor,
+  // kullanici yanlis cinse dusebiliyordu (24,5 vs 32 TL). Yalniz TARTISMASIZ
+  // yaygin kisaltmalar (genel kural — ornege ozel degil); urun tarafina
+  // UYGULANMAZ (kolonlar tam kelime yazar, Karar #1).
+  const KISALTMALAR: Record<string, string> = {
+    glvz: 'galvaniz',
+    galv: 'galvaniz',
+  };
+  const adaylar = Array.from(new Set(tokenize(parantezsiz).map((t) => KISALTMALAR[t] ?? t)));
 
   // Cap: kaynak-farkinda (DN mi, inc mi, mm mi yazilmis?) — cevrim tablosu
   // secimi buna bagli (PPR'de DN=mm, celikte DN≠mm). v1 ile ayni primitif.
