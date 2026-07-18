@@ -52,7 +52,8 @@ const MANUAL_COLUMNS: ExcelGridData['columnDefs'] = [
   { field: 'not', headerName: 'Not', width: 180, editable: true },
   { field: 'birim', headerName: 'Birim', width: 90, editable: true },
   { field: 'fiyat', headerName: 'Liste Fiyat', width: 120, editable: true },
-  { field: 'iskonto', headerName: 'İskonto %', width: 90, editable: true },
+  // İskonto % + Net Fiyat kolonlarini ExcelGrid library modu OTOMATIK ekler
+  // (_draftDiscount editable + Net = Liste × (1 − İskonto/100), canli hesap).
 ];
 const MANUAL_ROLES = { noField: 'col0', nameField: 'ad', unitField: 'birim', materialUnitPriceField: 'fiyat' };
 
@@ -180,7 +181,8 @@ export default function MechanicalBrandsPage() {
       not: trimOrU(r.not),
       birim: trimOrU(r.birim),
       price: numOrU(r.fiyat),
-      discountRate: numOrU(r.iskonto),
+      // İskonto library modunda _draftDiscount alaninda tutulur
+      discountRate: numOrU(r._draftDiscount),
     }));
 
     setManualSaving(true);
@@ -375,6 +377,8 @@ export default function MechanicalBrandsPage() {
                 brands={[]}
                 currencySymbol="₺"
                 conversionRate={1}
+                mode="library"
+                libraryPriceField="materialUnitPriceField"
                 autoAppendRow
                 enableStructureEdit
                 onBrandChange={async () => null}
