@@ -139,7 +139,33 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   // GECMEYEBILIR ("İzleme Anahtarlı Kelebek" — adi 'Kelebek'le biter). Aile
   // ZATEN kilitli; tam-ad/alt-kume testleri aile-es kelimeler HARIC yapilir.
   const adCekirdek = yol.ad.filter((t) => !(familySlug && tokenEsit(t, familySlug)));
-  const adTest = adCekirdek.length > 0 ? adCekirdek : yol.ad;
+
+  // ── AÇI KURALI (fitting) — kullanici karari 18.07 (Trakya dirsek vakasi)
+  // "90°" MUHENDISLIKTE VARSAYILAN acidir: yalin "Dirsek" (adinda aci
+  // YAZMAZ) zaten 90°'dir. Satir "90°" derse adinda aci OLMAYAN urunler
+  // (yalin Dirsek ₺37) DISLANMAMALI — eski davranista "90°" bir ad token'i
+  // gibi isimde araniyor, yalniz "90° ... Rakor Dirsekli" varyantlari
+  // kaliyordu. FARKLI aci (45°/135°) SERT kalir (gercekten farkli urun).
+  // Uygulama: (1) aci-uyumsuz urunler elenir; (2) aci token'i isim
+  // daraltmasindan CIKARILIR ki yalin adlar kalsin. YALNIZ fitting ailesi.
+  const aciOku = (text: string): string | null => {
+    const mm = (text ?? '').match(/(\d{2,3})\s*(?:°|derece)/i);
+    return mm ? mm[1] : null;
+  };
+  const aciTokenMi = (t: string) => /^\d{2,3}°$/.test(t);
+  let adCekirdekAci = adCekirdek;
+  if (familySlug === 'fitting') {
+    const satirAci = aciOku(line.raw);
+    if (satirAci) {
+      rows = rows.filter((r) => {
+        const urunAci = aciOku(r.urun.ad);
+        return urunAci === satirAci || (urunAci === null && satirAci === '90');
+      });
+      if (rows.length === 0) return { kind: 'none', reason: 'kriter-yok', detail: `${satirAci}°` };
+      adCekirdekAci = adCekirdek.filter((t) => !aciTokenMi(t));
+    }
+  }
+  const adTest = adCekirdekAci.length > 0 ? adCekirdekAci : adCekirdek.length > 0 ? adCekirdek : yol.ad;
 
   if (yol.ad.length) {
     // ── TAM AD ESLESMESI ONCELIKLIDIR (PRD §4: "bucket kilitlenir — YALNIZ bu ad")

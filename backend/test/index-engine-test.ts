@@ -975,6 +975,32 @@ async function run() {
       !(r2.dogrulanamadi ?? []).includes('glvz'), JSON.stringify(r2.dogrulanamadi));
   }
 
+  // ══ AÇI KURALI (18.07 — Trakya "Dişli Dirsek 90°" canli vakasi) ═══
+  // "90°" fitting'te VARSAYILAN acidir: yalin "Dirsek" (adinda aci yok)
+  // 90°'dir → DISLANMAZ. "45°" SERT (gercekten farkli urun).
+  {
+    const T = { kategori: 'Dövme Demir Bağlantı Parçaları (TS 11 / EN 10242)', birim: 'adet', paraBirimi: 'TRY', sheetName: 'S' };
+    const havuz = [
+      prod({ ...T, ad: 'Dirsek', cins: 'Siyah', cap: '1" (DN25)', price: 29, urunKodu: 'E1' }),
+      prod({ ...T, ad: 'Dirsek', cins: 'Galvaniz', cap: '1" (DN25)', price: 37, urunKodu: 'E2' }),
+      prod({ ...T, ad: '45° Dirsek', cins: 'Galvaniz', cap: '1" (DN25)', price: 103, urunKodu: 'E3' }),
+      prod({ ...T, ad: '90° Köşe Düz Rakor Dirsekli', cins: 'Galvaniz', cap: '1" (DN25)', price: 158, urunKodu: 'E4' }),
+    ];
+    // 90°: yalin Galvaniz Dirsek ADAYLARDA (eski davranista eleniyordu)
+    const r = m('1"-DN25 Glvz. Dişli Dirsek 90°', havuz, { unit: 'Adet' });
+    const adlar = (r.candidates ?? []).map((c) => c.materialName);
+    check('AÇI: "90°" satirinda yalin Dirsek Galvaniz (₺37) ADAYLARDA',
+      (adlar.some((a) => /^Dirsek · Galvaniz/.test(a)) || r.matchedName?.includes('Dirsek · Galvaniz')) === true,
+      `got ${r.confidence} net=${r.netPrice} ${JSON.stringify(adlar)} matched="${r.matchedName}"`);
+    check('AÇI: 45° Dirsek 90° satirina ADAY DEGIL (sert filtre)',
+      !adlar.some((a) => a.startsWith('45°')) && !(r.matchedName ?? '').startsWith('45°'), JSON.stringify(adlar));
+    // 45°: yalniz 45° kalir; yalin (90°) ve rakor ELENIR
+    const r45 = m('1"-DN25 Glvz. Dişli Dirsek 45°', havuz, { unit: 'Adet' });
+    const adlar45 = (r45.candidates ?? []).map((c) => c.materialName).concat(r45.matchedName ? [r45.matchedName] : []);
+    check('AÇI: "45°" satiri yalniz 45° Dirsek (yalin/90° elenir)',
+      adlar45.length >= 1 && adlar45.every((a) => a.startsWith('45°')), JSON.stringify(adlar45));
+  }
+
   // ══ DISPATCH: MatchingService UZERINDEN v2 yolu ══════════════════
   // Yukaridaki testler SAF cekirdegi kanitliyor. Bu blok GERCEK servisi
   // (marka bazli dispatch + matchV2 + havuz esleme + M3) kosturuyor —
