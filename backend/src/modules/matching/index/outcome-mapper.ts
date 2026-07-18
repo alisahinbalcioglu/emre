@@ -203,7 +203,7 @@ export function toMatchResult(
       // (dogalgaz/buhar/sivi) bu markada dogrulanamadiysa liste ACIK UYARIYLA
       // gelir; hafiza otoyazi da matching.service'te ayni kosulla BLOKE —
       // akiskan riski varken fiyat HICBIR KOSULDA otomatik yazilmaz.
-      if (outcome.bilinmeyen?.some((t) => extractFluid(t) !== null)) {
+      if (outcome.bilinmeyen?.some((t) => extractFluid(t) !== null) && !reason.includes('Akışkan')) {
         reason = `Akışkan bilgisi doğrulanamadı — kontrol edin. ${reason}`;
       }
 

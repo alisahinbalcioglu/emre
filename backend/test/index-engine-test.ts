@@ -988,23 +988,44 @@ async function run() {
       prod({ ...T, ad: '45° Dirsek', cins: 'Galvaniz', cap: '1" (DN25)', price: 103, urunKodu: 'E3' }),
       prod({ ...T, ad: '90° Köşe Düz Rakor Dirsekli', cins: 'Galvaniz', cap: '1" (DN25)', price: 158, urunKodu: 'E4' }),
     ];
-    // 90°: yalin Galvaniz Dirsek ADAYLARDA (eski davranista eleniyordu)
+    // 90°: yalin Galvaniz Dirsek — tek aday, 'Dişli' TANIMLAYICI kelime
+    // artik engellemez (kullanici karari 18.07) → OTOMATIK yazilir ₺37.
     const r = m('1"-DN25 Glvz. Dişli Dirsek 90°', havuz, { unit: 'Adet' });
-    const adlar = (r.candidates ?? []).map((c) => c.materialName);
-    check('AÇI: "90°" satirinda yalin Dirsek Galvaniz (₺37) ADAYLARDA',
-      (adlar.some((a) => /^Dirsek · Galvaniz/.test(a)) || r.matchedName?.includes('Dirsek · Galvaniz')) === true,
-      `got ${r.confidence} net=${r.netPrice} ${JSON.stringify(adlar)} matched="${r.matchedName}"`);
-    check('AÇI: 45° Dirsek 90° satirina ADAY DEGIL (sert filtre)',
-      !adlar.some((a) => a.startsWith('45°')) && !(r.matchedName ?? '').startsWith('45°'), JSON.stringify(adlar));
-    // ETIKET urun kimligi olmali — bolum basligi ("Dövme Demir...") DEGIL
-    check('ETIKET: aday etiketi urun kimligi (Dirsek · Galvaniz), bolum basligi DEGIL',
-      (r.candidates ?? []).every((c) => /Dirsek/.test(c.label) && !/Dövme Demir/.test(c.label)),
-      JSON.stringify((r.candidates ?? []).map((c) => c.label)));
-    // 45°: yalniz 45° kalir; yalin (90°) ve rakor ELENIR
+    check('AÇI+OTOYAZ: "90°" → yalin Dirsek Galvaniz ₺37 (tek aday otomatik)',
+      r.confidence === 'high' && r.netPrice === 37 && !!r.matchedName?.includes('Dirsek · Galvaniz'),
+      `got ${r.confidence} net=${r.netPrice} matched="${r.matchedName}"`);
+    check('AÇI: 45° Dirsek 90° satirina eslesmedi (sert filtre)',
+      !(r.matchedName ?? '').startsWith('45°'), `got "${r.matchedName}"`);
+    // 45°: yalniz 45° kalir; yalin (90°) ve rakor ELENIR → tek aday otomatik
     const r45 = m('1"-DN25 Glvz. Dişli Dirsek 45°', havuz, { unit: 'Adet' });
-    const adlar45 = (r45.candidates ?? []).map((c) => c.materialName).concat(r45.matchedName ? [r45.matchedName] : []);
-    check('AÇI: "45°" satiri yalniz 45° Dirsek (yalin/90° elenir)',
-      adlar45.length >= 1 && adlar45.every((a) => a.startsWith('45°')), JSON.stringify(adlar45));
+    check('AÇI: "45°" → yalniz 45° Dirsek Galvaniz ₺103 (yalin/90° elenir)',
+      (r45.matchedName ?? (r45.candidates ?? []).map((c) => c.materialName).join('|')).startsWith('45°'),
+      `got ${r45.confidence} net=${r45.netPrice} "${r45.matchedName}"`);
+  }
+
+  // ══ TEK ADAY OTOYAZ (kullanici karari 18.07 — "Dişli" vakasi) ═════
+  // "tek secenek varken sorma, yaz." TANIMLAYICI dogrulanamayan kelime
+  // ('disli' — Trakya baglanti kolonu bos) tek adayi ENGELLEMEZ.
+  // ISTISNA: AKISKAN (dogalgaz/buhar) dogrulanamazsa YINE sorar (madde-4).
+  {
+    const T = { kategori: 'Dövme Demir Bağlantı Parçaları', birim: 'adet', paraBirimi: 'TRY', sheetName: 'S' };
+    const havuz = [prod({ ...T, ad: 'Te', cins: 'Galvaniz', cap: '1" (DN25)', price: 58, urunKodu: 'TE1' })];
+    const r = m('1"-DN25 Glvz. Dişli Te', havuz, { unit: 'Adet' });
+    check('OTOYAZ: "Dişli" tanimlayici → tek aday OTOMATIK yazildi (₺58)',
+      r.confidence === 'high' && r.netPrice === 58 && !!r.matchedName?.includes('Te · Galvaniz'),
+      `got ${r.confidence} net=${r.netPrice} "${r.matchedName}"`);
+
+    // AKISKAN istisnasi: 'dogalgaz' dogrulanamiyorsa tek aday YAZILMAZ
+    const V = { kategori: 'Küresel Vanalar', birim: 'adet', paraBirimi: 'TRY', sheetName: 'S' };
+    const vHavuz = [prod({ ...V, ad: 'Küresel vana', cins: 'pirinç', cap: '1" (DN25)', price: 850, urunKodu: 'KV1' })];
+    const rv = m('DOĞALGAZ KÜRESEL VANA DN25', vHavuz, { unit: 'Adet' });
+    check('OTOYAZ: AKISKAN istisnasi — dogalgaz tek adayi YAZMAZ (sorar)',
+      rv.netPrice === 0 && rv.confidence === 'multi' && !!rv.reason?.includes('Akışkan'),
+      `got ${rv.confidence} net=${rv.netPrice} "${rv.reason}"`);
+    // Ask'a dusen tek adayda ETIKET urun kimligi (bolum basligi DEGIL)
+    check('ETIKET: ask tek-adayda etiket urun kimligi (Küresel vana), baslik DEGIL',
+      (rv.candidates ?? []).every((c) => /Küresel vana/.test(c.label) && !/Vanalar$/.test(c.label)),
+      JSON.stringify((rv.candidates ?? []).map((c) => c.label)));
   }
 
   // ══ DISPATCH: MatchingService UZERINDEN v2 yolu ══════════════════

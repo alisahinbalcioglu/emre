@@ -14,6 +14,7 @@
 // ════════════════════════════════════════════════════════════════════
 
 import { sizeEquivalents, SizeClass } from '../conversion';
+import { extractFluid } from '../normalizer';
 import { altKumeMi, tokenEsit } from './product-index';
 import { EQUIPMENT_TYPE_TAGS } from '../shared-tag-matcher';
 import { buildFamilyVocab, distinctSayisi } from './vocab';
@@ -432,12 +433,27 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   const gevsetmeNotu = adGevsetildi
     ? 'Ad birebir eşleşmedi — yazılı nitelik üzerinden bulundu'
     : null;
-  // ── H6/A2/E9 KAPISI (Faz 2b): DOGRULANAMAYAN yazili kelime varken tek
-  // aday otomatik YAZILMAZ — "DOĞALGAZ KÜRESEL VANA" satirinda 'dogalgaz'
-  // hicbir urunde yoksa kalan tek kuresel vanaya fiyat yazmak TAHMINDIR
-  // (I6). Onay listesi sunulur; kelime acikca soylenir.
-  const bilinmeyenNotu = bilinmeyen.length > 0
-    ? `"${bilinmeyen.join(' ')}" doğrulanamadı`
+  // ── I6 KAPISI DARALTILDI (kullanici karari 18.07 — Trakya "Dişli" vakasi)
+  // Eski kural: dogrulanamayan HERHANGI kelime varken tek aday otomatik
+  // YAZILMIYORDU. Ama "Dişli" gibi BAGLANTI TANIMLAYICILARI (Trakya dovme
+  // fittinglerde baglanti kolonu bos — hicbir urun deklare etmez, yani
+  // AYIRT EDICI DEGIL) gereksiz onay uretiyordu.
+  // Yeni kural: dogrulanamayan kelime YALNIZ guvenli BAGLANTI tanimlayicisi
+  // ise (dişli/kaynaklı/yivli...) tek adayi ENGELLEMEZ → otomatik yazilir.
+  // KRITIK kelimeler (akiskan dogalgaz/buhar, K-faktoru, 'sprink', 'pp',
+  // tip farki...) AYIRT EDICIDIR → yazimi YINE engeller (yanlis urun riski;
+  // ornek: K:22 nozul ≠ K:33 — yangin guvenligi). Akiskan icin ozel mesaj.
+  // NOT: capsizNotu / aileNotu kapilari BAGIMSIZ durur → 373K korumasi yerinde.
+  const GUVENLI_TANIMLAYICI = new Set([
+    'disli', 'kaynakli', 'vidali', 'flansli', 'yivli', 'soketli', 'presli',
+    'rakorlu', 'gecmeli', 'mansonlu', 'lehimli', 'kaplinli', 'uclu', 'duz', 'dizayn',
+  ]);
+  const engelleyen = bilinmeyen.filter((t) => !GUVENLI_TANIMLAYICI.has(t));
+  const akiskanVar = engelleyen.some((t) => extractFluid(t) !== null);
+  const bilinmeyenNotu = engelleyen.length > 0
+    ? (akiskanVar
+        ? `Akışkan bilgisi doğrulanamadı ("${engelleyen.join(' ')}") — kontrol edin`
+        : `"${engelleyen.join(' ')}" doğrulanamadı`)
     : null;
   // H6: aile HIC cozulmemisken tek aday = yalniz olcu benzerligi = TAHMIN.
   const aileNotu = !familySlug
