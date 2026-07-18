@@ -444,6 +444,10 @@ export class MatchingService {
               // I6 kanit rozeti: FE hucrede "Geçmiş seçiminizden atandı"
               // gosterir; marka menusu yeniden acilinca tek tikla cozulur.
               hafizaOtoyaz: true,
+              // Canli bulgu 18.07: otoyaz "son secim" zincirini beslemeli —
+              // varyant kimligi FE'ye tasinir, gruptaki sonraki satirlar
+              // (anahtar ACIKSA) ayni varyantla otomatik dolar.
+              variantTags: c.variantTags,
               reason: `Geçmiş seçiminiz (${mem.secimSayisi}×) — tek aday, otomatik uygulandı.`,
             };
           }

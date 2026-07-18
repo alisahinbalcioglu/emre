@@ -33,6 +33,10 @@ export interface MatchResult {
    *  yazildi — FE hucrede "Geçmiş seçiminizden atandı" rozeti gosterir,
    *  marka menusu yeniden acilarak tek tikla cozulur (oto-kacis). */
   hafizaOtoyaz?: boolean;
+  /** Otoyazan adayin VARYANT KIMLIGI (canli bulgu 18.07): otoyaz "son secim"
+   *  zincirini beslemiyordu — ayni gruptaki sonraki satirlar otomatik
+   *  DOLMUYORDU. FE bunu groupVariants'a yazar ve yayilimi tetikler. */
+  variantTags?: string[];
 }
 
 // M3: alternatif marka onerisi — marka+urun+fiyat birlikte secilir

@@ -511,6 +511,11 @@ async function run() {
     // bu bayraktan cizer — sessiz/izsiz otomatik yazim YOK.
     check('OTOYAZ rozet bayragi (hafizaOtoyaz=true)', (r2 as any)?.hafizaOtoyaz === true,
       `got ${(r2 as any)?.hafizaOtoyaz}`);
+    // Canli bulgu 18.07: otoyaz SON SECIM zincirini besler — varyant
+    // kimligi doner ki gruptaki sonraki satirlar otomatik dolabilsin.
+    check('OTOYAZ varyant kimligi tasir (zincir beslenir)',
+      Array.isArray((r2 as any)?.variantTags) && (r2 as any).variantTags.length > 0,
+      `got ${JSON.stringify((r2 as any)?.variantTags)}`);
   }
 
   // ══ I3 AKISKAN SINIRI (kullanici sarti 18.07) ═══════════════════════

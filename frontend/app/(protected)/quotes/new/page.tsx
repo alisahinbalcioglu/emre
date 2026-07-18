@@ -1794,7 +1794,7 @@ export default function NewQuotePage() {
                 });
                 // hafizaOtoyaz (I6 rozeti): fiyat GECMIS SECIMDEN atandi — grid
                 // hucrede "Geçmiş seçiminizden atandı" rozeti gosterir.
-                return { netPrice, matchedName: match.matchedName, candidates: match.candidates, reason: match.reason, confidence: match.confidence, donusum: match.donusum, autoVariant: match.autoVariant, hafizaOtoyaz: match.hafizaOtoyaz };
+                return { netPrice, matchedName: match.matchedName, candidates: match.candidates, reason: match.reason, confidence: match.confidence, donusum: match.donusum, autoVariant: match.autoVariant, hafizaOtoyaz: match.hafizaOtoyaz, variantTags: match.variantTags };
               }
 
               // Eslesme bulundu ama fiyat 0 — kullaniciya uyari

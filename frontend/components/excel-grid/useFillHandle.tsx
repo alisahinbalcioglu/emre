@@ -24,7 +24,7 @@ interface UseFillHandleOptions {
   enabled?: boolean;
 }
 
-const BOTTOM_ZONE_PX = 8; // alt kenardan kac px icinde mousedown tetiklenir
+const BOTTOM_ZONE_PX = 10; // alt kenardan kac px icinde mousedown tetiklenir (18.07: 8→10, kesfedilebilirlik)
 
 export function useFillHandle({
   gridRef,

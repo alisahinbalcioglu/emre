@@ -60,6 +60,8 @@ interface Props {
     autoVariant?: boolean;
     // I6 rozeti (18.07): fiyat GECMIS SECIMDEN otomatik atandi
     hafizaOtoyaz?: boolean;
+    // Otoyazan adayin varyant kimligi — "son secim" zincirini besler
+    variantTags?: string[];
     // V4.5: varyant bu capta yok — secim bekliyor
     variantMissing?: boolean;
     // M3: bu markada urun yok — ayni urunu sunan diger markalar (fiyatli)
@@ -271,6 +273,19 @@ function BrandDropdown(props: ICellRendererParams & {
       if (result.hafizaOtoyaz) {
         node.setDataValue('_matAutoVariant', 'Geçmiş seçiminizden atandı');
         node.setDataValue('_matVariantMode', 'auto');
+        // CANLI BULGU (18.07): otoyaz "SON SECIM" zincirini BESLEMIYORDU —
+        // ilk satir hafizadan doluyor, ayni gruptaki sonraki satirlar grup
+        // sorusuna dusuyordu ("otomatik atamiyor"). Varyant kimligi artik
+        // zincire yazilir ve anahtar ACIKSA grubun kalani da otomatik dolar.
+        const hdr2 = headerRef.current;
+        if (hdr2 && result.variantTags && result.variantTags.length > 0) {
+          groupVariants.current[hdr2] = { tags: result.variantTags, label: 'Geçmiş seçiminiz' };
+          node.data._matVariantTags = result.variantTags;
+          node.data._matVariantLabel = 'Geçmiş seçiminiz';
+          if (autoVariantEnabled) {
+            await applyVariantToGroup(hdr2, groupVariants.current[hdr2]);
+          }
+        }
       }
       return;
     }
