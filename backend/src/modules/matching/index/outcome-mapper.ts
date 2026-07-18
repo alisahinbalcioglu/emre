@@ -159,6 +159,28 @@ export function toMatchResult(
       // (parantez notlari DAHIL — "(68°C)" bir kisit degil ama uyari kaynagidir).
       const lineAttr = extractAttrTags(line.raw);
       const cands = outcome.rows.map((r) => adayla(r, outcome.askColumn, toTry, lineAttr));
+
+      // ── 'urun' KOLONU: ETIKET = URUN KIMLIGI (canli bulgu 18.07) ──────
+      // Ayrisan kolon 'urun' oldugunda (K7 fallback + tek-aday artigi) etiket
+      // BOLUM BASLIGINI gosteriyordu ("Dövme Demir Bağlantı Parçaları...") —
+      // kullanici urunun NE oldugunu goremiyordu ("Dirsek · Galvaniz · 1"").
+      // Kural: etiket urun kimligi (materialName) olsun; AYNI kimlikten >1
+      // kayit varsa (K7: ayni urun iki fiyat/kaynak) kaynak eklenip AYIRT
+      // edilir. Diger kolonlar (cins/baglanti/boy/kategori-grup) DEGISMEZ.
+      if (outcome.askColumn === 'urun') {
+        const say = new Map<string, number>();
+        for (const c of cands) say.set(c.materialName, (say.get(c.materialName) ?? 0) + 1);
+        cands.forEach((c, idx) => {
+          if (say.get(c.materialName)! > 1) {
+            const u = outcome.rows[idx].urun;
+            const kaynak = (u.sheetName || u.urunKodu || u.kategori || '').slice(0, 30);
+            c.label = kaynak ? `${c.materialName} · ${kaynak}` : c.materialName;
+          } else {
+            c.label = c.materialName;
+          }
+        });
+      }
+
       // En sik cins/ad "populer" isaretli (★) — SIRALAMA ipucu, secim DEGIL.
       const sayim = new Map<string, number>();
       for (const c of cands) sayim.set(c.label, (sayim.get(c.label) ?? 0) + 1);

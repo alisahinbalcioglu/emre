@@ -361,9 +361,11 @@ async function run() {
     const r = m('Dilatasyon kompansatörü DN80', havuz);
     check('K7 ikisi de sunuldu (biri digerini EZMEDI)', (r.candidates?.length ?? 0) === 2,
       `got ${r.candidates?.length}`);
-    check('K7 kolonlar ayni → kayit kaynagiyla ayirt edildi',
-      (r.candidates ?? []).map((c) => c.label).sort().join('|') === 'Dilatasyon Omega V-Flex|Dilatasyon Omega V-Flex'
-      || (r.candidates ?? []).every((c) => !!c.label), JSON.stringify(r.candidates?.map((c) => c.label)));
+    // Etiket artik URUN KIMLIGI + kaynak (bolum basligi degil) — DISTINCT
+    check('K7 kolonlar ayni → etiket urun kimligi + kaynakla AYIRT edildi',
+      new Set((r.candidates ?? []).map((c) => c.label)).size === 2
+      && (r.candidates ?? []).every((c) => c.label.includes('Dilatasyon kompansatörü')),
+      JSON.stringify(r.candidates?.map((c) => c.label)));
     check('K7 iki fiyat da korundu', (r.candidates ?? []).some((c) => c.netPrice === 30775)
       && (r.candidates ?? []).some((c) => c.netPrice === 28900));
   }
@@ -994,6 +996,10 @@ async function run() {
       `got ${r.confidence} net=${r.netPrice} ${JSON.stringify(adlar)} matched="${r.matchedName}"`);
     check('AÇI: 45° Dirsek 90° satirina ADAY DEGIL (sert filtre)',
       !adlar.some((a) => a.startsWith('45°')) && !(r.matchedName ?? '').startsWith('45°'), JSON.stringify(adlar));
+    // ETIKET urun kimligi olmali — bolum basligi ("Dövme Demir...") DEGIL
+    check('ETIKET: aday etiketi urun kimligi (Dirsek · Galvaniz), bolum basligi DEGIL',
+      (r.candidates ?? []).every((c) => /Dirsek/.test(c.label) && !/Dövme Demir/.test(c.label)),
+      JSON.stringify((r.candidates ?? []).map((c) => c.label)));
     // 45°: yalniz 45° kalir; yalin (90°) ve rakor ELENIR
     const r45 = m('1"-DN25 Glvz. Dişli Dirsek 45°', havuz, { unit: 'Adet' });
     const adlar45 = (r45.candidates ?? []).map((c) => c.materialName).concat(r45.matchedName ? [r45.matchedName] : []);
