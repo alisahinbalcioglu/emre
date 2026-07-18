@@ -66,9 +66,13 @@ const item = (id: string, name: string, kategori: string | null, extra: Partial<
   check('Z4 _currency tasinir', row._currency === 'USD', `got ${row._currency}`);
   check('Iskonto korunur (_libraryDiscountRate)', row._libraryDiscountRate === 15, `got ${row._libraryDiscountRate}`);
 
+  // TEK TIP DUZEN (kullanici istegi): veri olmasa da kolonlar HEP cizilir —
+  // olusturulan marka ile iceri aktarilan marka birebir ayni gorunur.
   const sade = buildLibrarySheetRows([item('d1', 'Vana', null)]);
-  check('L1 cins/cap verisi yoksa kolon da yok',
-    !sade.columnDefs.some((c) => c.field === 'col_cins' || c.field === 'col_cap'));
+  check('TEK TIP: cins/cap verisi olmasa da kolon HEP var',
+    sade.columnDefs.some((c) => c.field === 'col_cins') && sade.columnDefs.some((c) => c.field === 'col_cap'));
+  const sadeRow = sade.rowData.find((r) => r._isDataRow)!;
+  check('TEK TIP: veri yoksa hucre bos string', sadeRow.col_cins === '' && sadeRow.col_cap === '');
 }
 
 // ── Kategorisiz aradaki satir: banda dahil olmaz, grup akisi bozulmaz ──

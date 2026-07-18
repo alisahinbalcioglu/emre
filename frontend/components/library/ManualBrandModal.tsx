@@ -27,7 +27,7 @@ const MANUAL_COLUMNS: ExcelGridData['columnDefs'] = [
 ];
 const MANUAL_ROLES = { noField: 'col0', nameField: 'ad', unitField: 'birim', materialUnitPriceField: 'fiyat' };
 
-function buildBlankManualGrid(dataRows = 18): ExcelGridData {
+function buildBlankManualGrid(dataRows = 30): ExcelGridData {
   const blank = (idx: number, spare = false): ExcelRowData => {
     const row: any = { _rowIdx: idx, _isDataRow: true, _isHeaderRow: false };
     if (spare) row._isSpareRow = true;

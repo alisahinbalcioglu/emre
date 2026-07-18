@@ -38,31 +38,26 @@ export interface LibrarySheet {
 }
 
 export function buildLibrarySheetRows(items: LibrarySheetItem[]): LibrarySheet {
-  const hasCins = items.some((i) => i.cins);
-  const hasCap = items.some((i) => i.cap);
-  const hasBaglanti = items.some((i) => i.baglanti);
-  const hasBoy = items.some((i) => i.boy != null);
-  const hasKod = items.some((i) => i.urunKodu);
-  const hasNot = items.some((i) => i.not);
-
-  // L1: havuz gorunumuyle ayni alan sirasi — No / Malzeme / (Cinsi) /
-  // (Baglanti) / (Cap) / (Boy) / (Kod) / (Not) / Birim / Fiyat.
-  // Kod+Not BILEREK Birim'den ONCE: ExcelGrid library modu Iskonto/Net'i
-  // fiyatin ARKASINA cizer — fiyat blogu bolunmesin.
+  // TEK TIP DUZEN: TUM markalar ayni kolon setini gosterir (kullanici istegi —
+  // olusturulan marka ile iceri aktarilan marka birebir ayni gorunur). Bos olsa
+  // bile Cinsi/Baglanti/Cap/Boy/Urun Kodu/Not kolonlari cizilir.
+  //
+  // Yapisal kolonlar (cins/baglanti/cap/boy/kod/not) editable=false: mevcut
+  // satirlarda salt-okunur. FE (marka-detay) YENI (bos) satirlar icin bunlari
+  // editable yapar (inline malzeme girisi). Ad/Birim/Fiyat her zaman editable
+  // (save-sheets bunlari kalici yazar).
   const columnDefs: LibrarySheet['columnDefs'] = [
     { field: 'col0', headerName: 'No', width: 60, editable: false },
-    { field: 'col1', headerName: 'Malzeme Adi', width: 400, editable: true },
-  ];
-  if (hasCins) columnDefs.push({ field: 'col_cins', headerName: 'Cinsi', width: 160, editable: false });
-  if (hasBaglanti) columnDefs.push({ field: 'col_baglanti', headerName: 'Bağlantı Şekli', width: 130, editable: false });
-  if (hasCap) columnDefs.push({ field: 'col_cap', headerName: 'Cap', width: 90, editable: false });
-  if (hasBoy) columnDefs.push({ field: 'col_boy', headerName: 'Boy (mm)', width: 90, editable: false });
-  if (hasKod) columnDefs.push({ field: 'col_kod', headerName: 'Ürün Kodu', width: 120, editable: false });
-  if (hasNot) columnDefs.push({ field: 'col_not', headerName: 'Not', width: 200, editable: false });
-  columnDefs.push(
+    { field: 'col1', headerName: 'Malzeme Adı', width: 400, editable: true },
+    { field: 'col_cins', headerName: 'Cinsi', width: 160, editable: false },
+    { field: 'col_baglanti', headerName: 'Bağlantı Şekli', width: 130, editable: false },
+    { field: 'col_cap', headerName: 'Çap', width: 90, editable: false },
+    { field: 'col_boy', headerName: 'Boy (mm)', width: 90, editable: false },
+    { field: 'col_kod', headerName: 'Ürün Kodu', width: 120, editable: false },
+    { field: 'col_not', headerName: 'Not', width: 200, editable: false },
     { field: 'col2', headerName: 'Birim', width: 100, editable: true },
     { field: 'col3', headerName: 'Liste Fiyat', width: 130, editable: true },
-  );
+  ];
 
   const columnRoles = {
     noField: 'col0',
@@ -114,13 +109,14 @@ export function buildLibrarySheetRows(items: LibrarySheetItem[]): LibrarySheet {
       col1: item.adRaw ?? item.materialName ?? '',
       col2: item.unit ?? 'Adet',
       col3: item.listPrice,
+      // TEK TIP: yapisal kolonlar her satirda (bos olsa da) — kolon setiyle esles
+      col_cins: item.cins ?? '',
+      col_baglanti: item.baglanti ?? '',
+      col_cap: item.cap ?? '',
+      col_boy: item.boy ?? '',
+      col_kod: item.urunKodu ?? '',
+      col_not: item.not ?? '',
     };
-    if (hasCins) row.col_cins = item.cins ?? '';
-    if (hasBaglanti) row.col_baglanti = item.baglanti ?? '';
-    if (hasCap) row.col_cap = item.cap ?? '';
-    if (hasBoy) row.col_boy = item.boy ?? '';
-    if (hasKod) row.col_kod = item.urunKodu ?? '';
-    if (hasNot) row.col_not = item.not ?? '';
     rowData.push(row);
   }
 
