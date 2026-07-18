@@ -2167,6 +2167,14 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       setTimeout(() => { recalcGrand(); updatePinnedBottom(); }, 0);
     }
 
+    // ── Library mode: HERHANGI gercek kolon edit'i _dirty isaretler ──
+    // Onceden YALNIZ _draftDiscount isaretliyordu → mevcut satirda Liste Fiyat/
+    // Malzeme Adi/Birim degisikligi sessizce kayboluyordu (Kaydet butonu cikmaz,
+    // save-sheets o satiri okumaz). Artik ad/fiyat/birim/yapisal her edit sayilir.
+    if (mode === 'library' && e.source === 'edit' && !!e.colDef.field && !e.colDef.field.startsWith('_')) {
+      row._dirty = true;
+    }
+
     // ── Library mode: iskonto cell edit ──
     if (e.colDef.field === '_draftDiscount' && e.source === 'edit') {
       // _dirty flag set et — handleRowsChange dirty count'u alir

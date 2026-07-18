@@ -161,6 +161,10 @@ export default function LibraryBrandDetailPage() {
           libraryItemId: r._libraryItemId,
           listPrice: priceField ? parseFloat(String(r[priceField] ?? '')) || 0 : undefined,
           discountRate: r._draftDiscount ?? r._libraryDiscountRate ?? 0,
+          // Birim edit'i de kalici (save-sheets trim'ler). materialName BILEREK
+          // gonderilmez: imported markada col1=adRaw, Material.name kisa sürümle
+          // ezilmesin (kaynak sadakati).
+          unit: unitField ? String(r[unitField] ?? '').trim() || undefined : undefined,
         }));
         const { data } = await api.post(`/library/brand/${brandId}/save-sheets`, { dirtyRows: payload });
         updated = data.updated ?? 0;
