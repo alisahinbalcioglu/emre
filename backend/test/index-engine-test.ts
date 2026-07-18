@@ -1028,6 +1028,37 @@ async function run() {
       JSON.stringify((rv.candidates ?? []).map((c) => c.label)));
   }
 
+  // ══ BILESIK/REDUKSIYON CAP (18.07 — "3"x1" Dişli Mekanik Te" canli) ══
+  // extractSizeInfo tek olcu aliyordu → line "3"x1"-DN80 x DN25" (dn25) yalniz
+  // "2 1/2" x 1"" (dn25) ile eslesiyordu; istenen "3" x 1"" (dn80) iskalaniyordu.
+  // Kanonik DN imzasi (kume) ile line "3"x1" → yalniz "3" x 1"" eslesir.
+  {
+    const M = { kategori: 'Dişli Mekanik Te', ad: 'Dişli mekanik te', cins: 'GGG 40.3 sfero döküm',
+      baglanti: 'dişli çıkış', birim: 'adet', paraBirimi: 'USD', sheetName: 'S' };
+    const havuz = [
+      prod({ ...M, cap: '2 1/2" x 1"', price: 23, urunKodu: 'A1' }),
+      prod({ ...M, cap: '3" x 1"', price: 26, urunKodu: 'A2' }),
+      prod({ ...M, cap: '4" x 1"', price: 33, urunKodu: 'A3' }),
+      prod({ ...M, cap: '3" x 2"', price: 33, urunKodu: 'A4' }),
+    ];
+    const r = m('3"x1"-DN80 x DN25 Dişli Mekanik Te', havuz, { unit: 'Adet' });
+    check('BILESIK CAP: "3"x1" → yalniz "3" x 1"" (₺26) — tek eslesme otomatik',
+      r.confidence === 'high' && r.netPrice === 26 && !!r.matchedName?.includes('3" x 1"'),
+      `got ${r.confidence} net=${r.netPrice} "${r.matchedName}"`);
+
+    // 4"x1 1/4 line → yalniz "4" x 1 1/4"" (varsa) — burada YOK → cap-yok
+    const r2 = m('4"x1 1/4"-DN100 x DN32 Dişli Mekanik Te', havuz, { unit: 'Adet' });
+    check('BILESIK CAP: "4"x1 1/4" havuzda yok → eslesme yok (yanlis reduksiyon yazilmaz)',
+      r2.netPrice === 0, `got ${r2.confidence} net=${r2.netPrice} "${r2.matchedName}"`);
+
+    // TEKIL cap line reduksiyon urune ESLESMEZ (imza uzunlugu farkli)
+    const tekil = [prod({ kategori: 'Te', ad: 'Te', cins: 'Galvaniz', baglanti: null, cap: '1" (DN25)', price: 58, urunKodu: 'T1', birim: 'adet', paraBirimi: 'TRY', sheetName: 'S' }), ...havuz];
+    const r3 = m('1"-DN25 Glvz. Dişli Te', tekil, { unit: 'Adet' });
+    check('BILESIK CAP: tekil "1" Te" reduksiyon mekanik te\'ye ESLESMEZ → yalin Te ₺58',
+      r3.confidence === 'high' && r3.netPrice === 58 && !!r3.matchedName?.includes('Te · Galvaniz'),
+      `got ${r3.confidence} net=${r3.netPrice} "${r3.matchedName}"`);
+  }
+
   // ══ DISPATCH: MatchingService UZERINDEN v2 yolu ══════════════════
   // Yukaridaki testler SAF cekirdegi kanitliyor. Bu blok GERCEK servisi
   // (marka bazli dispatch + matchV2 + havuz esleme + M3) kosturuyor —

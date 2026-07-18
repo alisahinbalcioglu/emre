@@ -13,7 +13,7 @@
 // SAF: DB yok, I/O yok. Test DB'siz kosar.
 // ════════════════════════════════════════════════════════════════════
 
-import { sizeEquivalents, SizeClass } from '../conversion';
+import { sizeEquivalents, SizeClass, capImzasi } from '../conversion';
 import { extractFluid } from '../normalizer';
 import { altKumeMi, tokenEsit } from './product-index';
 import { EQUIPMENT_TYPE_TAGS } from '../shared-tag-matcher';
@@ -296,16 +296,23 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     }
   }
   if (yol.baglanti.length) {
-    if (adGenis) adGenis = adGenis.filter((r) => altKume(yol.baglanti, r.urun.baglantiTokens));
-    const d = rows.filter((r) => altKume(yol.baglanti, r.urun.baglantiTokens));
+    // BOS BAGLANTI = BELIRTILMEMIS, ELENMEZ (18.07 canli — Trakya "Dişli Te"):
+    // 'disli' mekanik te'lerin "dişli çıkış" baglantisina takilip YALIN Te'yi
+    // (baglanti kolonu bos) eliyordu. Bos kolon "belirtilmemis/uyumlu" demektir
+    // — CAKISAN baglanti (kaynakli vs disli) elenir, BOS olan gecer. (Cap'taki
+    // "capsiz ekipman" istisnasinin baglanti karsiligi; "eksik kriter=filtre
+    // degil" ilkesi.) altKume zaten bos urun-token'inda false doner → ozel gec.
+    const bagUyar = (r: IndexedRow) => r.urun.baglantiTokens.length === 0 || altKume(yol.baglanti, r.urun.baglantiTokens);
+    if (adGenis) adGenis = adGenis.filter(bagUyar);
+    const d = rows.filter(bagUyar);
     if (d.length > 0) rows = d;
     else {
       // Ad-gevsetme baglanti icin de simetrik (ayni hastalik, ayni ilac)
-      const d2 = aileHavuzu.filter((r) => altKume(yol.baglanti, r.urun.baglantiTokens));
+      const d2 = aileHavuzu.filter(bagUyar);
       if (d2.length > 0) { rows = d2; adGevsetildi = true; }
       else return { kind: 'none', reason: 'kriter-yok', detail: yol.baglanti.join(' ') };
     }
-    if (yuzeyGenis) yuzeyGenis = yuzeyGenis.filter((r) => altKume(yol.baglanti, r.urun.baglantiTokens));
+    if (yuzeyGenis) yuzeyGenis = yuzeyGenis.filter(bagUyar);
   }
   if (rows.length === 0) return { kind: 'none', reason: 'ad-yok' };
 
@@ -319,7 +326,21 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     const equiv = sizeEquivalents(cls, line.capInfo);
     donusum = equiv.rozet;
     if (equiv.tags.length) {
-      const capUyar = (r: IndexedRow) => r.urun.capTags.some((t) => equiv.tags.includes(t));
+      // ── BILESIK/REDUKSIYON CAP (18.07 canli — "3"x1" Dişli Mekanik Te") ──
+      // extractSizeInfo tek olcu doner → reduksiyon fitting "3" x 1"" ile line
+      // "3"x1"-DN80 x DN25" HIZALANMIYORDU (biri dn80, biri dn25). Kanonik DN
+      // IMZASI (kume) ile karsilastir: line VEYA urun BILESIKSE imzalar ESIT
+      // olmali (3"x1" → {dn25,dn80}); "2.5"x1"/"4"x1" ELENIR. Ayrica tekil bir
+      // satir ("1" Te") artik REDUKSIYON urune eslesmez (imza uzunlugu farkli).
+      const lineImza = capImzasi(line.raw, cls);
+      const capUyar = (r: IndexedRow) => {
+        const urunBilesik = !!r.urun.capRaw && capImzasi(r.urun.capRaw, cls).bilesik;
+        if (lineImza.bilesik || urunBilesik) {
+          const ui = capImzasi(r.urun.capRaw ?? '', cls).imza;
+          return ui.length === lineImza.imza.length && ui.every((t, i) => t === lineImza.imza[i]);
+        }
+        return r.urun.capTags.some((t) => equiv.tags.includes(t));
+      };
       const d = rows.filter(capUyar);
       // Capsiz ekipman (E1/H3): urunun capi yoksa cap filtresi ELEMEZ —
       // "kompansator 40cm hortum" gibi satirlarda cap satira degil urune ait

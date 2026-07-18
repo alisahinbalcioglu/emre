@@ -203,6 +203,30 @@ export function extractSizeInfo(text: string): SizeInfo | null {
   return null;
 }
 
+/**
+ * BILESIK / REDUKSIYON CAP IMZASI (18.07 canli — "3"x1" Dişli Mekanik Te").
+ *
+ * extractSizeInfo TEK olcu doner; reduksiyon fitting "3" x 1"" iki olcu tasir
+ * ve line/urun HIZALANMIYORDU (line "3"x1"-DN80 x DN25" → DN25; urun "3" x 1""
+ * → 3" → dn80). Bu fonksiyon capi REDUKSIYON AYIRICI ("x") uzerinden parcalar,
+ * her parcanin kanonik DN etiketini toplar ve SIRALI KANONIK KUME (imza) uretir.
+ * Iki notasyon ("3"" ve "DN80") ayni DN'e indirgenip DEDUP edilir.
+ *
+ * Eslesme: line VEYA urun bilesikse imzalar ESIT olmali (kume). Tekil caplarda
+ * bilesik=false → cagiran mevcut capTags kesisimini kullanmaya devam eder.
+ */
+export function capImzasi(text: string, cls: SizeClass): { imza: string[]; bilesik: boolean } {
+  const norm = normalizeText(text).replace(/'{2}/g, '"');
+  const dns = new Set<string>();
+  for (const seg of norm.split(/x/i)) {
+    const info = extractSizeInfo(seg);
+    if (!info) continue;
+    const dn = sizeEquivalents(cls, info).tags.find((t) => /^dn\d+$/.test(t));
+    dns.add(dn ?? `${info.source}:${Math.round(info.value * 100)}`);
+  }
+  return { imza: Array.from(dns).sort(), bilesik: dns.size >= 2 };
+}
+
 // ────────────────────────────────────────────
 // SINIFA GORE ESDEGER TAG URETIMI
 // ────────────────────────────────────────────

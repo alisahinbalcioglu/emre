@@ -113,8 +113,12 @@ export function parseLine(text: string, unit?: string | null): LineQuery {
   // '"dn25" bu markada bulunamadı' denildi — capi bulunamamis gibi, yanlis bilgi.
   const olcuOnEk = /^(dn|od|nd|pn|cap)$/;
   const olcuBitisik = /^(dn|od|nd|pn)\d+([.,]\d+)?$/;
+  // REDUKSIYON CAP ARTIGI (18.07, "3"x1"" vakasi): tokenize "3\"x1\"" → '3'
+  // (len<2 duser) + 'x1' → 'x1' bir OLCU NOTASYONU artigidir (reduksiyon
+  // "x1"), ad kelimesi DEGIL. Bilinmeyen sayilip gereksiz onay uretmesin.
+  const capArtigi = /^x\d/;
   const tokens = adaylar.filter((t) => {
-    if (olcuOnEk.test(t) || olcuBitisik.test(t)) return false;
+    if (olcuOnEk.test(t) || olcuBitisik.test(t) || capArtigi.test(t)) return false;
     if (!capInfo) return true;
     const n = parseFloat(t.replace(',', '.'));
     return !(Number.isFinite(n) && n === capInfo.value);
@@ -147,6 +151,16 @@ export function parseLine(text: string, unit?: string | null): LineQuery {
  *
  * Oncelik KAPALI kumeden GENIS kumeye: baglanti → cins → ad.
  */
+/** Evrensel BAGLANTI tanimlayicilari — urun ADINDA gecseler bile (ornek:
+ *  "Dişli mekanik te") aslinda BAGLANTI turudur. Ailenin baglanti dagarciginda
+ *  da varlarsa AD yerine BAGLANTI'ya yonlenirler (18.07 canli — Trakya "Te").
+ *  Baglanti-dagarcigi SARTI: "dişli kutusu" (aktuator) gibi 'disli'nin gercekten
+ *  ad parcasi oldugu ailelerde reroute YAPILMAZ. */
+const BAGLANTI_TANIMLAYICI = new Set([
+  'disli', 'kaynakli', 'vidali', 'flansli', 'yivli', 'soketli', 'presli',
+  'rakorlu', 'gecmeli', 'mansonlu', 'lehimli', 'kaplinli',
+]);
+
 export function classifyTokens(tokens: string[], vocab: FamilyVocab): RoutedTokens {
   const out: RoutedTokens = { ad: [], cins: [], baglanti: [], bilinmeyen: [] };
   for (const t of tokens) {
@@ -162,7 +176,12 @@ export function classifyTokens(tokens: string[], vocab: FamilyVocab): RoutedToke
     // ONEK TOLERANSLI arama: dagarcikta 'galvanizli' varken teklif 'galvaniz'
     // yazmis olabilir. Set.has() birebir arar ve kacirirdi.
     const varMi = (k: Set<string>) => { for (const v of k) if (tokenEsit(t, v)) return true; return false; };
-    if (varMi(vocab.ad)) out.ad.push(t);
+    // BAGLANTI TANIMLAYICISI ISTISNASI (18.07): 'disli' hem "Dişli mekanik te"
+    // ADinda hem "dişli çıkış" BAGLANTIsinda gecince, AD onceligi YALIN Te'yi
+    // (baglanti bos, ad='te') eliyordu. Evrensel baglanti kelimesi + ailenin
+    // baglanti dagarciginda VARSA → baglanti (yalin urunler korunur).
+    if (BAGLANTI_TANIMLAYICI.has(t) && varMi(vocab.baglanti)) out.baglanti.push(t);
+    else if (varMi(vocab.ad)) out.ad.push(t);
     else if (varMi(vocab.baglanti)) out.baglanti.push(t);
     else if (varMi(vocab.cins)) out.cins.push(t);
     else out.bilinmeyen.push(t);
