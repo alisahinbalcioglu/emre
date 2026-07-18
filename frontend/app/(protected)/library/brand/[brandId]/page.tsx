@@ -6,13 +6,14 @@ export const runtime = 'edge';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Loader2, Save, Trash2 } from 'lucide-react';
+import { ArrowLeft, Loader2, Save, Trash2, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import api from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 import { ExcelGrid } from '@/components/excel-grid/ExcelGrid';
 import type { ExcelGridData, ExcelRowData } from '@/components/excel-grid/types';
+import ManualBrandModal from '@/components/library/ManualBrandModal';
 
 interface BrandLibraryResponse {
   id: string;
@@ -32,6 +33,7 @@ export default function LibraryBrandDetailPage() {
   const [brandName, setBrandName] = useState('');
   const [liveRows, setLiveRows] = useState<ExcelRowData[]>([]);
   const [dirtyCount, setDirtyCount] = useState(0);
+  const [addOpen, setAddOpen] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -168,6 +170,9 @@ export default function LibraryBrandDetailPage() {
               )}
             </Button>
           )}
+          <Button size="sm" onClick={() => setAddOpen(true)}>
+            <Plus className="mr-1 h-3.5 w-3.5" />Malzeme Ekle
+          </Button>
           <Button size="sm" variant="outline" onClick={handleRemoveBrand}>
             <Trash2 className="mr-1 h-3.5 w-3.5" />Markayi Kaldir
           </Button>
@@ -186,6 +191,14 @@ export default function LibraryBrandDetailPage() {
           onRowDataChange={handleRowsChange}
         />
       </Card>
+
+      {/* Malzeme Ekle — bu markaya yeni malzeme(ler) ekle (marka adi kilitli) */}
+      <ManualBrandModal
+        open={addOpen}
+        lockedBrandName={brandName}
+        onClose={() => setAddOpen(false)}
+        onSaved={() => { setAddOpen(false); fetchData(); }}
+      />
     </div>
   );
 }

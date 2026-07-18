@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Package, Plus, Search, Upload, Loader2, X, Save } from 'lucide-react';
+import { ArrowLeft, Package, Plus, Search, Upload, Loader2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,8 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import api from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
-import { ExcelGrid } from '@/components/excel-grid/ExcelGrid';
-import type { ExcelGridData, ExcelRowData } from '@/components/excel-grid/types';
+import ManualBrandModal from '@/components/library/ManualBrandModal';
 
 interface LibraryBrand {
   brandId: string;
@@ -37,50 +36,6 @@ function getRole(): string | null {
   try { return JSON.parse(localStorage.getItem('user') || '{}').role ?? null; } catch { return null; }
 }
 
-// ── "Marka Ekle" bos tablosu — foto 3 formatinin bos hali ──
-// Sabit sema (ProductIndex 11 kolonuyla birebir). Kullanici uygulama icinde
-// doldurur; en alta autoAppendRow ile hep bos satir eklenir. Kayitta bos
-// (Malzeme Adi girilmemis) satirlar elenir.
-const MANUAL_COLUMNS: ExcelGridData['columnDefs'] = [
-  { field: 'col0', headerName: 'No', width: 56, editable: false },
-  { field: 'ad', headerName: 'Malzeme Adı', width: 340, editable: true },
-  { field: 'cins', headerName: 'Cinsi', width: 150, editable: true },
-  { field: 'baglanti', headerName: 'Bağlantı Şekli', width: 130, editable: true },
-  { field: 'cap', headerName: 'Çap', width: 90, editable: true },
-  { field: 'boy', headerName: 'Boy (mm)', width: 90, editable: true },
-  { field: 'urunKodu', headerName: 'Ürün Kodu', width: 120, editable: true },
-  { field: 'not', headerName: 'Not', width: 180, editable: true },
-  { field: 'birim', headerName: 'Birim', width: 90, editable: true },
-  { field: 'fiyat', headerName: 'Liste Fiyat', width: 120, editable: true },
-  // İskonto % + Net Fiyat kolonlarini ExcelGrid library modu OTOMATIK ekler
-  // (_draftDiscount editable + Net = Liste × (1 − İskonto/100), canli hesap).
-];
-const MANUAL_ROLES = { noField: 'col0', nameField: 'ad', unitField: 'birim', materialUnitPriceField: 'fiyat' };
-
-function buildBlankManualGrid(dataRows = 18): ExcelGridData {
-  const blank = (idx: number, spare = false): ExcelRowData => {
-    const row: any = { _rowIdx: idx, _isDataRow: true, _isHeaderRow: false };
-    if (spare) row._isSpareRow = true;
-    for (const c of MANUAL_COLUMNS) if (!c.field.startsWith('_')) row[c.field] = '';
-    return row;
-  };
-  const rowData: ExcelRowData[] = [];
-  for (let i = 0; i < dataRows; i++) rowData.push(blank(i));
-  rowData.push(blank(dataRows, true)); // en altta hep-bos spare satir
-  return { columnDefs: MANUAL_COLUMNS, rowData, columnRoles: MANUAL_ROLES, brands: [], headerEndRow: 0 };
-}
-
-function trimOrU(v: unknown): string | undefined {
-  const s = String(v ?? '').trim();
-  return s === '' ? undefined : s;
-}
-function numOrU(v: unknown): number | undefined {
-  const s = String(v ?? '').trim().replace(',', '.');
-  if (s === '') return undefined;
-  const n = parseFloat(s);
-  return isNaN(n) ? undefined : n;
-}
-
 export default function MechanicalBrandsPage() {
   const router = useRouter();
   const [brands, setBrands] = useState<LibraryBrand[]>([]);
@@ -91,12 +46,8 @@ export default function MechanicalBrandsPage() {
   // Pool brands for dropdowns
   const [poolBrands, setPoolBrands] = useState<PoolBrand[]>([]);
 
-  // "Marka Ekle" — uygulama ici bos tablo state
+  // "Marka Ekle" — uygulama ici bos tablo modali
   const [manualOpen, setManualOpen] = useState(false);
-  const [manualSaving, setManualSaving] = useState(false);
-  const [newBrandName, setNewBrandName] = useState('');
-  const [manualGrid, setManualGrid] = useState<ExcelGridData | null>(null);
-  const [manualRows, setManualRows] = useState<ExcelRowData[]>([]);
 
   // PDF Yukle dialog state
   const [pdfOpen, setPdfOpen] = useState(false);
@@ -134,78 +85,11 @@ export default function MechanicalBrandsPage() {
     b.brandName.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  function openManual() {
-    const g = buildBlankManualGrid();
-    setManualGrid(g);
-    setManualRows(g.rowData);
-    setNewBrandName('');
-    setManualOpen(true);
-  }
-
-  function closeManual() {
-    const dolu = manualRows.some((r: any) => r._isDataRow && !r._isSpareRow && String(r.ad ?? '').trim() !== '');
-    if ((dolu || newBrandName.trim()) && !window.confirm('Girdiğiniz bilgiler kaybolacak. Kapatılsın mı?')) return;
-    setManualOpen(false);
-    setManualGrid(null);
-    setManualRows([]);
-    setNewBrandName('');
-  }
-
   function resetPdfDialog() {
     setPdfFile(null);
     setPdfBrandId('');
     setExtractedItems([]);
     setPdfStep('upload');
-  }
-
-  async function handleSaveManualBrand() {
-    const name = newBrandName.trim();
-    if (!name) {
-      toast({ title: 'Marka adı gerekli', description: 'Önce marka adını girin.', variant: 'destructive' });
-      return;
-    }
-    const dataRows = manualRows.filter(
-      (r: any) => r._isDataRow && !r._isSpareRow && String(r.ad ?? '').trim() !== '',
-    );
-    if (dataRows.length === 0) {
-      toast({ title: 'Malzeme yok', description: 'En az bir satırda Malzeme Adı girin.', variant: 'destructive' });
-      return;
-    }
-    const rows = dataRows.map((r: any) => ({
-      ad: String(r.ad).trim(),
-      cins: trimOrU(r.cins),
-      baglanti: trimOrU(r.baglanti),
-      cap: trimOrU(r.cap),
-      boy: trimOrU(r.boy),
-      urunKodu: trimOrU(r.urunKodu),
-      not: trimOrU(r.not),
-      birim: trimOrU(r.birim),
-      price: numOrU(r.fiyat),
-      // İskonto library modunda _draftDiscount alaninda tutulur
-      discountRate: numOrU(r._draftDiscount),
-    }));
-
-    setManualSaving(true);
-    try {
-      const { data } = await api.post('/library/manual-brand', {
-        brandName: name,
-        discipline: 'mechanical',
-        rows,
-      });
-      toast({
-        title: 'Marka oluşturuldu',
-        description: `"${data.brandName}" kütüphanenize eklendi · ${data.created} malzeme.`,
-      });
-      setManualOpen(false);
-      setManualGrid(null);
-      setManualRows([]);
-      setNewBrandName('');
-      router.push(`/library/brand/${data.brandId}`);
-    } catch (e: any) {
-      toast({ title: 'Hata', description: e?.response?.data?.message ?? 'Marka oluşturulamadı.', variant: 'destructive' });
-    } finally {
-      setManualSaving(false);
-    }
   }
 
   async function handlePdfExtract() {
@@ -284,7 +168,7 @@ export default function MechanicalBrandsPage() {
           <p className="mt-1 text-sm text-muted-foreground">Kutuphanenizdeki mekanik malzeme markalari</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button onClick={openManual}>
+          <Button onClick={() => setManualOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />Marka Ekle
           </Button>
           {isAdmin && (
@@ -340,54 +224,13 @@ export default function MechanicalBrandsPage() {
         </div>
       )}
 
-      {/* Marka Ekle — uygulama ici bos tablo (foto 3 formatinin bos hali) */}
-      {manualOpen && manualGrid && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-2">
-          <div className="flex h-full max-h-[98vh] w-full max-w-[98vw] flex-col overflow-hidden rounded-lg bg-background shadow-2xl">
-            <div className="flex items-center justify-between gap-4 border-b p-3">
-              <div className="flex flex-1 items-center gap-3">
-                <h2 className="whitespace-nowrap text-base font-bold">Yeni Marka</h2>
-                <Input
-                  autoFocus
-                  placeholder="Marka adı (örn: AYVAZ)"
-                  value={newBrandName}
-                  onChange={(e) => setNewBrandName(e.target.value)}
-                  className="h-9 max-w-xs"
-                />
-                <p className="hidden text-xs text-muted-foreground lg:block">
-                  Boş tabloyu doldurun · en alta yeni satır otomatik eklenir · yalnız Malzeme Adı zorunlu
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={closeManual} disabled={manualSaving}>
-                  <X className="mr-1 h-3.5 w-3.5" />İptal
-                </Button>
-                <Button size="sm" onClick={handleSaveManualBrand} disabled={manualSaving || !newBrandName.trim()}>
-                  {manualSaving ? (
-                    <><Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />Kaydediliyor...</>
-                  ) : (
-                    <><Save className="mr-1 h-3.5 w-3.5" />Markayı Kaydet</>
-                  )}
-                </Button>
-              </div>
-            </div>
-            <div className="flex-1 overflow-auto">
-              <ExcelGrid
-                data={manualGrid}
-                brands={[]}
-                currencySymbol="₺"
-                conversionRate={1}
-                mode="library"
-                libraryPriceField="materialUnitPriceField"
-                autoAppendRow
-                enableStructureEdit
-                onBrandChange={async () => null}
-                onRowDataChange={setManualRows}
-              />
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Marka Ekle — uygulama ici bos tablo (reusable) */}
+      <ManualBrandModal
+        open={manualOpen}
+        onClose={() => setManualOpen(false)}
+        onSaved={(brandId) => { setManualOpen(false); router.push(`/library/brand/${brandId}`); }}
+        discipline="mechanical"
+      />
 
       {/* PDF Yukle Dialog */}
       <Dialog open={pdfOpen} onOpenChange={(open) => { setPdfOpen(open); if (!open) resetPdfDialog(); }}>

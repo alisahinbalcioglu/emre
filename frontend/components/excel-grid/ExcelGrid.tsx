@@ -1222,30 +1222,122 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     const api = gridRef.current?.api;
     if (!api) return;
     const fc = api.getFocusedCell();
-    if (!fc || fc.column.getColId() !== '_draftDiscount') return;
+    if (!fc) return;
     if (api.getEditingCells().length > 0) return; // hucre editoru kendi paste'ini yapar
-    const values = parseDiscountPaste(e.clipboardData.getData('text'));
-    if (values.length === 0) return;
+
+    // ── Iskonto sutununa odakliysa: eski davranis (tek sutun iskonto) ──
+    if (fc.column.getColId() === '_draftDiscount') {
+      const values = parseDiscountPaste(e.clipboardData.getData('text'));
+      if (values.length === 0) return;
+      e.preventDefault();
+      const pairs: { node: any; value: number }[] = [];
+      let vi = 0;
+      for (let i = fc.rowIndex; vi < values.length; i++) {
+        const n = api.getDisplayedRowAtIndex(i);
+        if (!n) break;
+        if (!n.data?._isDataRow) continue; // grup bandi/baslik atla
+        pairs.push({ node: n, value: values[vi++] });
+      }
+      const applied = applyDiscountBulk(pairs);
+      if (vi < values.length) {
+        toast({
+          title: 'Satır sayısı uyuşmazlığı',
+          description: `${values.length} değerden ${applied} satıra uygulandı — ${values.length - vi} değer tabloya sığmadı`,
+          variant: 'destructive',
+        });
+      } else if (applied > 0) {
+        toast({ title: `${applied} iskonto değeri yapıştırıldı`, description: 'Kaydetmeyi unutmayın' });
+      }
+      return;
+    }
+
+    // ── GENEL BLOK YAPISTIRMA: Excel'den cok satir/cok sutun veri ──
+    // Odakli editable veri kolonundan itibaren sagi+asagi doldurur. Gerekirse
+    // (autoAppendRow) yeni satir ekler. No/Net Fiyat/Iskonto hedef DEGIL.
+    const text = e.clipboardData.getData('text');
+    if (!text || !text.trim()) return;
+    const matrix = text.replace(/\r/g, '').split('\n');
+    if (matrix.length && matrix[matrix.length - 1] === '') matrix.pop();
+    const cells = matrix.map((line) => line.split('\t'));
+
+    // Hedef editable veri kolonlari (No + '_'-onekli sistem kolonlari haric)
+    const noField = data.columnRoles?.noField;
+    const targets = data.columnDefs
+      .filter((c) => c.editable && !c.field.startsWith('_') && c.field !== noField)
+      .map((c) => c.field);
+    if (targets.length === 0) return;
+    const startCol = Math.max(0, targets.indexOf(fc.column.getColId()));
+
     e.preventDefault();
-    const pairs: { node: any; value: number }[] = [];
-    let vi = 0;
-    for (let i = fc.rowIndex; vi < values.length; i++) {
-      const n = api.getDisplayedRowAtIndex(i);
-      if (!n) break;
-      if (!n.data?._isDataRow) continue; // grup bandi/baslik atla
-      pairs.push({ node: n, value: values[vi++] });
+
+    const makeBlank = (): any => {
+      let maxIdx = 0;
+      api.forEachNode((n) => { if (n.data && n.data._rowIdx > maxIdx) maxIdx = n.data._rowIdx; });
+      const row: any = {
+        _rowIdx: maxIdx + 1, _isDataRow: true, _isHeaderRow: false,
+        _malzKar: 0, _iscKar: 0, _marka: null, _firma: null, _matNetPrice: 0, _labNetPrice: 0,
+      };
+      for (const c of data.columnDefs) if (!c.field.startsWith('_')) row[c.field] = '';
+      return row;
+    };
+
+    // Hedef satir dugumlerini topla (odakli satirdan asagi, grup bantlari atlanir)
+    const rowNodes: any[] = [];
+    let ri = fc.rowIndex;
+    while (rowNodes.length < cells.length) {
+      const n = api.getDisplayedRowAtIndex(ri);
+      if (n) {
+        ri++;
+        if (!n.data?._isDataRow) continue; // grup bandi/baslik atla
+        // spare satiri gercek satira cevir (autoAppend bozulmasin)
+        if (n.data._isSpareRow) n.data._isSpareRow = false;
+        rowNodes.push(n);
+      } else {
+        if (!autoAppendRow) break; // yeni satir eklenemiyorsa dur
+        const blank = makeBlank();
+        api.applyTransaction({ add: [blank] });
+        const added = api.getDisplayedRowAtIndex(api.getDisplayedRowCount() - 1);
+        if (!added) break;
+        ri = added.rowIndex! + 1;
+        rowNodes.push(added);
+      }
     }
-    const applied = applyDiscountBulk(pairs);
-    if (vi < values.length) {
-      toast({
-        title: 'Satır sayısı uyuşmazlığı',
-        description: `${values.length} değerden ${applied} satıra uygulandı — ${values.length - vi} değer tabloya sığmadı`,
-        variant: 'destructive',
-      });
-    } else if (applied > 0) {
-      toast({ title: `${applied} iskonto değeri yapıştırıldı`, description: 'Kaydetmeyi unutmayın' });
+
+    // Degerleri yaz (dogrudan mutasyon → tek refresh; cellValueChanged tetiklemez)
+    let yazilan = 0;
+    for (let i = 0; i < rowNodes.length && i < cells.length; i++) {
+      const cols = cells[i];
+      for (let j = 0; j < cols.length; j++) {
+        const field = targets[startCol + j];
+        if (!field) break; // sagda hedef kolon kalmadi
+        rowNodes[i].data[field] = cols[j];
+        yazilan++;
+      }
     }
-  }, [mode, applyDiscountBulk]);
+
+    // autoAppendRow ise en altta hep-bos spare satir kalsin
+    if (autoAppendRow) {
+      const last = api.getDisplayedRowAtIndex(api.getDisplayedRowCount() - 1);
+      const lastData = last?.data;
+      const lastDolu = !!lastData && data.columnDefs.some(
+        (c) => !c.field.startsWith('_') && String(lastData[c.field] ?? '').trim() !== '',
+      );
+      if (lastDolu) {
+        const spare = makeBlank();
+        spare._isSpareRow = true;
+        api.applyTransaction({ add: [spare] });
+      }
+    }
+
+    api.refreshCells({ force: true });
+    // Disariya canli rowData yayinla (emitRows asagida tanimli — inline)
+    if (onRowDataChange) {
+      const all: ExcelRowData[] = [];
+      api.forEachNode((n) => { if (n.data) all.push(n.data); });
+      onRowDataChange(all);
+    }
+    if (yazilan > 0) toast({ title: `${cells.length} satır yapıştırıldı`, description: 'Kaydetmeyi unutmayın' });
+  }, [mode, applyDiscountBulk, data.columnDefs, data.columnRoles, autoAppendRow, onRowDataChange]);
 
   // Grup bandi renderer'ina library etkilesimleri context ile gider
   // (quote modunda bos — band eski salt-gorsel davranisinda kalir)
