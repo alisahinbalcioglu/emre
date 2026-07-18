@@ -25,6 +25,9 @@ interface BrandLibraryResponse {
 // YENI (bos) satirlarda editable (inline malzeme girisi).
 const STRUCT_FIELDS = ['col_cins', 'col_baglanti', 'col_cap', 'col_boy', 'col_kod', 'col_not'];
 const BLANK_ROW_COUNT = 30;
+// STABIL referans — ExcelGrid'e her render'da YENI [] gecersek columnDefs useMemo
+// recompute eder → AG-Grid kolon genislikleri resetlenir + aktif editor iptal olur.
+const EMPTY_BRANDS: any[] = [];
 
 function strOrU(v: unknown): string | undefined {
   const s = String(v ?? '').trim();
@@ -119,7 +122,9 @@ export default function LibraryBrandDetailPage() {
 
   const nameField = gridData?.columnRoles.nameField ?? 'col1';
 
-  function handleRowsChange(rows: ExcelRowData[]) {
+  // STABIL — memoize edilmezse her render'da yeni ref → columnDefs recompute →
+  // kolon reset + editor iptal. deps: nameField (fetch'te bir kez degisir).
+  const handleRowsChange = useCallback((rows: ExcelRowData[]) => {
     const fresh = [...rows];
     setLiveRows(fresh);
     const dirty = fresh.filter((r: any) => r._isDataRow && r._libraryItemId && r._dirty).length;
@@ -128,7 +133,8 @@ export default function LibraryBrandDetailPage() {
     ).length;
     setDirtyCount(dirty);
     setNewCount(yeni);
-  }
+  }, [nameField]);
+  const noBrandChange = useCallback(async () => null, []);
 
   async function handleSave() {
     if (!gridData) return;
@@ -257,14 +263,14 @@ export default function LibraryBrandDetailPage() {
       <Card className="overflow-hidden">
         <ExcelGrid
           data={gridData}
-          brands={[]}
+          brands={EMPTY_BRANDS}
           currencySymbol="₺"
           conversionRate={1}
           mode="library"
           libraryPriceField="materialUnitPriceField"
           autoAppendRow
           enableStructureEdit
-          onBrandChange={async () => null}
+          onBrandChange={noBrandChange}
           onRowDataChange={handleRowsChange}
         />
       </Card>

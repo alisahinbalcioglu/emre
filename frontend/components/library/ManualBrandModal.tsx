@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { X, Save, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,6 +26,8 @@ const MANUAL_COLUMNS: ExcelGridData['columnDefs'] = [
   { field: 'fiyat', headerName: 'Liste Fiyat', width: 120, editable: true },
 ];
 const MANUAL_ROLES = { noField: 'col0', nameField: 'ad', unitField: 'birim', materialUnitPriceField: 'fiyat' };
+// STABIL referans — her render'da yeni [] gecersek columnDefs recompute → editor iptal
+const EMPTY_BRANDS: any[] = [];
 
 function buildBlankManualGrid(dataRows = 30): ExcelGridData {
   const blank = (idx: number, spare = false): ExcelRowData => {
@@ -70,6 +72,7 @@ interface Props {
 
 export default function ManualBrandModal({ open, onClose, onSaved, lockedBrandName, discipline = 'mechanical' }: Props) {
   const append = !!lockedBrandName;
+  const noBrandChange = useCallback(async () => null, []);
   const [saving, setSaving] = useState(false);
   const [brandName, setBrandName] = useState('');
   const [grid, setGrid] = useState<ExcelGridData | null>(null);
@@ -176,14 +179,14 @@ export default function ManualBrandModal({ open, onClose, onSaved, lockedBrandNa
         <div className="flex-1 overflow-auto">
           <ExcelGrid
             data={grid}
-            brands={[]}
+            brands={EMPTY_BRANDS}
             currencySymbol="₺"
             conversionRate={1}
             mode="library"
             libraryPriceField="materialUnitPriceField"
             autoAppendRow
             enableStructureEdit
-            onBrandChange={async () => null}
+            onBrandChange={noBrandChange}
             onRowDataChange={setRows}
           />
         </div>
