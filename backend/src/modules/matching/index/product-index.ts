@@ -80,12 +80,15 @@ export interface ProductIndexFields {
  *     nozul/kabin, fitting regex'ine 'plug', kolektor'e 'kollektor' yazimi.
  *     Bu adlari tasiyan urunlerin familySlug'i degisir → REINDEX ONERILIR
  *     (bayat satirlar istek aninda rebuildIndexFields ile de yenilenir).
+ * v7: 'u-bolt' ailesi (NORM KELEPÇE "U Bolt" — 18.07 canli, aile cozulemeyip
+ *     'belirsiz' kaliyor, hic aday olamiyordu). U Bolt urunleri artik
+ *     belirsiz DEGIL → REINDEX SART (belirsiz bayragi indekste on-hesapli).
  *
  * Dispatch bu surumu KONTROL EDER (matching.service.hazirlaPool): bayat
  * satir istek aninda rebuildIndexFields ile CANLI tokenizer'dan yeniden
  * uretilir (Faz 2b — v1 fallback SILINDI); kalici cozum reindex'tir.
  */
-export const INDEX_VERSION = 6;
+export const INDEX_VERSION = 7;
 
 /** adSlug cozulemeyen satirin tasidigi isaret — eslestirmeye ADAY OLAMAZ. */
 export const BELIRSIZ_SLUG = 'belirsiz';

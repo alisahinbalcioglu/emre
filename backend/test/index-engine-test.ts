@@ -1059,6 +1059,27 @@ async function run() {
       `got ${r3.confidence} net=${r3.netPrice} "${r3.matchedName}"`);
   }
 
+  // ══ U-BOLT AILESI (18.07 canli — NORM KELEPÇE "U Bolt") ═══════════
+  // "U Bolt" hicbir sozlukte yoktu → urun 'belirsiz' → HIC ADAY OLAMIYOR.
+  // Sozluge 'u-bolt' ailesi eklendi; DN'li (6"↔DN150 celik).
+  {
+    const U = { kategori: 'U Bolt', ad: 'U Bolt', cins: null, baglanti: null,
+      birim: 'adet', paraBirimi: 'TRY', sheetName: 'S' };
+    const havuz = [
+      prod({ ...U, cap: '4"', price: 42, urunKodu: 'U4' }),
+      prod({ ...U, cap: '6"', price: 96, urunKodu: 'U6' }),
+      prod({ ...U, cap: '8"', price: 116, urunKodu: 'U8' }),
+    ];
+    check('U-BOLT: urun artik BELIRSIZ DEGIL (aile cozuldu)', havuz[0].urun.belirsiz === false,
+      `belirsiz=${havuz[0].urun.belirsiz} adSlug=${havuz[0].urun.adSlug}`);
+    const r = m('6"-DN150 U Bolt', havuz, { unit: 'Adet' });
+    check('U-BOLT: "6"-DN150 U Bolt" → ₺96 tek eslesme otomatik',
+      r.confidence === 'high' && r.netPrice === 96, `got ${r.confidence} net=${r.netPrice} "${r.matchedName ?? r.reason}"`);
+    const r4 = m('4"-DN100 U Bolt', havuz, { unit: 'Adet' });
+    check('U-BOLT: "4"-DN100 U Bolt" → ₺42 (dogru cap)',
+      r4.confidence === 'high' && r4.netPrice === 42, `got ${r4.confidence} net=${r4.netPrice}`);
+  }
+
   // ══ DISPATCH: MatchingService UZERINDEN v2 yolu ══════════════════
   // Yukaridaki testler SAF cekirdegi kanitliyor. Bu blok GERCEK servisi
   // (marka bazli dispatch + matchV2 + havuz esleme + M3) kosturuyor —

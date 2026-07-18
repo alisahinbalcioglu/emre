@@ -27,6 +27,10 @@ export const AD_SOZLUGU: AdSozlukGirdisi[] = [
   // ════════════════════════════════════════════════════════════════
   { slug: 'aktuator', ad: 'Aktüatör', grup: 'VANA / OTOMASYON', dnli: false, patterns: ['aktuator', 'actuator', 'disli kutusu', 'vana aktuatoru', 'elektrikli aktuator', 'pnomatik aktuator'] }, // Duyar 22
   { slug: 'aski', ad: 'Askı tiji', grup: 'İZOLASYON / ASKI', dnli: false, patterns: ['aski tiji', 'tij', 'aski cubugu m8', 'aski cubugu m10', 'konsol', 'boru konsolu', 'destek profili', 'sismik aski', 'deprem askisi'] },
+  // U-bolt / U cıvatası — boruyu askıya/mesnede baglayan U somun. NORM KELEPÇE
+  // 375 malzemede aile cozulemeyip 'belirsiz' kaliyordu → hic aday olamiyordu
+  // (18.07 canli). DN'li: 6"↔DN150 celik cevrimi (boru capiyla anilir).
+  { slug: 'u-bolt', ad: 'U bolt', grup: 'İZOLASYON / ASKI', dnli: true, patterns: ['u bolt', 'u-bolt', 'ubolt', 'u civata', 'u civatasi', 'u somun'] },
   { slug: 'conta', ad: 'Conta', grup: 'BAĞLANTI ELEMANI', dnli: false, patterns: ['conta', 'klingrit', 'klingrit conta', 'flans contasi', 'yedek conta'] }, // Sardogan 29 + Ayvaz
   { slug: 'dubel', ad: 'Dübel', grup: 'BAĞLANTI ELEMANI', dnli: false, patterns: ['dubel', 'celik dubel', 'plastik dubel', 'sac gomlekli dubel', 'kimyasal dubel'] }, // Norm 38
   { slug: 'seviye-elektrodu', ad: 'Seviye elektrodu', grup: 'OTOMASYON', dnli: false, patterns: ['seviye elektrodu', 'kapasitif seviye elektrodu', 'elektrod', 'elektrot'] }, // Ayvaz 28
