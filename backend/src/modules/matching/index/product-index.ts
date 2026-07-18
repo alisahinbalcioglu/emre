@@ -83,15 +83,29 @@ export interface ProductIndexFields {
  * v7: 'u-bolt' ailesi (NORM KELEPÇE "U Bolt" — 18.07 canli, aile cozulemeyip
  *     'belirsiz' kaliyor, hic aday olamiyordu). U Bolt urunleri artik
  *     belirsiz DEGIL → REINDEX SART (belirsiz bayragi indekste on-hesapli).
+ * v8: KÜTÜPHANE = HAFIZA (Option 2) — sozluk cozemeyen ama ANLAMLI adli urun
+ *     artik belirsiz DEGIL, kendi normalize adi (adBucket) aile kimligi olur
+ *     (bkz. buildProductIndex + anlamliAd). Onceden belirsiz olan binlerce
+ *     urun artik self-family → REINDEX SART.
  *
  * Dispatch bu surumu KONTROL EDER (matching.service.hazirlaPool): bayat
  * satir istek aninda rebuildIndexFields ile CANLI tokenizer'dan yeniden
  * uretilir (Faz 2b — v1 fallback SILINDI); kalici cozum reindex'tir.
  */
-export const INDEX_VERSION = 7;
+export const INDEX_VERSION = 8;
 
 /** adSlug cozulemeyen satirin tasidigi isaret — eslestirmeye ADAY OLAMAZ. */
 export const BELIRSIZ_SLUG = 'belirsiz';
+
+/**
+ * KÜTÜPHANE = HAFIZA guard: bir normalize ad "anlamli" mi (aile kimligi
+ * olabilir mi)? En az bir 3+ harfli ALFABETIK token tasimali. Boylece
+ * "1000", "dn25", "1/2\"" gibi olcu/sayi-only veya bos adlar aile OLMAZ
+ * (garbage koruma); "u bolt", "sp inegal te" gibi gercek adlar aile olur.
+ */
+export function anlamliAd(adBucket: string): boolean {
+  return /[a-zçğıöşü]{3,}/i.test(adBucket);
+}
 
 /**
  * Gurultu kelimeleri: ayirt edici olmadiklari halde token kumesine girip
@@ -307,13 +321,24 @@ export function buildRowKey(c: ProductColumns, f: Pick<ProductIndexFields, 'adBu
 export function buildProductIndex(c: ProductColumns): ProductIndexFields {
   const ad = (c.ad ?? '').trim();
   const familySlug = ad ? resolveFamily(ad, c.kategori) : null;
-  const belirsiz = !ad || familySlug === null;
-  const adSlug = familySlug ?? BELIRSIZ_SLUG;
 
   // Seviye2 bucket: Ad kolonunun normalize hali = ALT-AD.
   // (Karar #1'in dogal sonucu: Ad kolonu standart olunca alt-adlar zaten
   // veridir — ayri bir alt-ad sozlugu KURMAYA GEREK YOK.)
   const adBucket = normalizeText(ad);
+
+  // ── KÜTÜPHANE = HAFIZA (18.07 kullanici karari, Option 2) ─────────
+  // Yerlesik sozluk aileyi cozemezse (familySlug null) ama ad ANLAMLI ise
+  // (en az bir [a-z]{3,} alfabetik token — "u bolt"→✓, "1000"/"dn25"→✗)
+  // urun BELIRSIZ KALMAZ: kendi normalize adi (adBucket) AILE KIMLIGI olur
+  // → havuza girer, eslesebilir. Boylece kullanicinin yukledigi her anlamli
+  // urun kendi kolonlariyla eslesebilir; sozluk yalniz es anlamlilar icin
+  // kalir. Satir tarafi ogrenilmis alias (impliedType=adBucket) ile ayni
+  // aileye kilitlenir (terminology + matchV2 mevcut plumbing).
+  // Anlamsiz/olcu-only/bos adlar YINE belirsiz (garbage aile olmaz).
+  const anlamli = anlamliAd(adBucket);
+  const belirsiz = !ad || (familySlug === null && !anlamli);
+  const adSlug = familySlug ?? (anlamli ? adBucket : BELIRSIZ_SLUG);
 
   // Ad kolonunun token'lari — KOK ALINMIS, hicbiri atilmaz.
   // ("kompansatörü" → 'kompansator'; 'cekvalf' AYIRT EDICI olarak yasar)

@@ -328,12 +328,21 @@ function run() {
       `got ${resolveFamily('Dişli kutusu')}`);
   }
 
-  // ══ P7: BELIRSIZ — aile cozulemedi → eslestirmeye giremez ═══════════
-  // PRD 2A: "sessizce yanlis eslesmektense gorunur sekilde eksik kal"
+  // ══ P7: BELIRSIZ vs KÜTÜPHANE=HAFIZA (v8, 18.07 kullanici karari) ═══
+  // PRD 2A + Option 2: aile cozulemedi AMA ad ANLAMLI ise urun belirsiz
+  // DEGIL — kendi normalize adi (adBucket) aile kimligi olur (self-family).
+  // Yalniz ANLAMSIZ (olcu/sayi-only) veya bos ad belirsiz kalir (garbage koruma).
   {
-    const f = buildProductIndex({ ...AYVAZ_FLANSLI_DN65, ad: 'Zxqw Blorp 9000', kategori: null, urunKodu: 'Z1' });
-    check('P7 aile cozulemedi → belirsiz=true', f.belirsiz === true, `got ${f.belirsiz}`);
-    check('P7 belirsiz satir BELIRSIZ_SLUG tasir', f.adSlug === BELIRSIZ_SLUG, `got ${f.adSlug}`);
+    // Anlamli-ama-sozluksuz ad → SELF-FAMILY (belirsiz DEGIL)
+    const self = buildProductIndex({ ...AYVAZ_FLANSLI_DN65, ad: 'Zxqw Blorp Aparat', kategori: null, urunKodu: 'Z1' });
+    check('P7 sozluksuz ama ANLAMLI ad → belirsiz DEGIL (self-family)', self.belirsiz === false, `got ${self.belirsiz}`);
+    check('P7 self-family adSlug = adBucket', self.adSlug === self.adBucket && self.adSlug === 'zxqw blorp aparat', `got ${self.adSlug}`);
+    // Sayi-only ad → belirsiz (garbage koruma)
+    const sayi = buildProductIndex({ ...AYVAZ_FLANSLI_DN65, ad: '9000', kategori: null, urunKodu: 'N1' });
+    check('P7 sayi-only ad → belirsiz', sayi.belirsiz === true && sayi.adSlug === BELIRSIZ_SLUG, `got ${sayi.adSlug} belirsiz=${sayi.belirsiz}`);
+    // Olcu-only ad ("DN25") → belirsiz (3+ harfli token yok)
+    const olcu = buildProductIndex({ ...AYVAZ_FLANSLI_DN65, ad: 'DN25', kategori: null, urunKodu: 'O1' });
+    check('P7 olcu-only ad → belirsiz', olcu.belirsiz === true, `got ${olcu.adSlug} belirsiz=${olcu.belirsiz}`);
     check('P7 cozulen satir belirsiz DEGIL', buildProductIndex(AYVAZ_FLANSLI_DN65).belirsiz === false);
     const bosAd = buildProductIndex({ ...AYVAZ_FLANSLI_DN65, ad: '', kategori: null, urunKodu: 'B1' });
     check('P7 bos Ad → belirsiz', bosAd.belirsiz === true);
@@ -388,10 +397,11 @@ function run() {
     check('P9a rebuild surumu guncel', yeniden.indexVersion === INDEX_VERSION);
 
     // P9b: ADMIN KURTARMASI — yeni hesap 'belirsiz' derken mevcut kayit
-    // cozulmusse (adOverride ile), o cozum KAYBEDILMEZ.
-    const sozlukDisi: ProductColumns = { ad: 'XQZ-9 Ozel Aparat', price: 100 };
+    // cozulmusse (adOverride ile), o cozum KAYBEDILMEZ. (v8: artik yalniz
+    // ANLAMSIZ ad belirsiz — admin kurtarma o dar durumda korunur.)
+    const sozlukDisi: ProductColumns = { ad: '9000', price: 100 };
     const tazeB = buildProductIndex(sozlukDisi);
-    check('P9b on-kosul: sozluk disi ad gercekten belirsiz', tazeB.belirsiz);
+    check('P9b on-kosul: anlamsiz ad gercekten belirsiz', tazeB.belirsiz);
     const kurtarilan = rebuildIndexFields(sozlukDisi, { adSlug: 'kompansator', belirsiz: false });
     check('P9b admin duzeltmesi KORUNUR (adSlug)', kurtarilan.adSlug === 'kompansator');
     check('P9b admin duzeltmesi KORUNUR (belirsiz=false)', kurtarilan.belirsiz === false);

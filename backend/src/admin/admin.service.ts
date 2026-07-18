@@ -2,6 +2,7 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import * as XLSX from 'xlsx';
 import { PrismaService } from '../prisma/prisma.service';
 import { AiService } from '../ai/ai.service';
+import { TerminologyService } from '../modules/matching/terminology.service';
 import {
   buildMaterialContextFromRows,
   ColumnRoles,
@@ -93,6 +94,7 @@ export class AdminService {
   constructor(
     private prisma: PrismaService,
     private aiService: AiService,
+    private terminology: TerminologyService,
   ) {}
 
   // ═════════ USERS ═════════
@@ -925,6 +927,9 @@ export class AdminService {
     const kategoriler = new Set<string>();
     // ── ProductIndex dual-write sayaclari (F2) ──
     let belirsizSayisi = 0;
+    // KÜTÜPHANE = HAFIZA (v8): sozluk cozemeyip kendi adiyla self-family olan
+    // urunlerin adBucket'lari — dongu sonunda global alias olarak ogrenilir.
+    const ogrenilecekAileler = new Map<string, string>(); // adBucket → canonical ad
     const gorulenRowKeys = new Map<string, number>();
     const rowKeyTekrar = new Map<string, number>();
     const rowKeyCakismalari: { rowKey: string; ad: string; ilk: number; ikinci: number }[] = [];
@@ -1023,6 +1028,11 @@ export class AdminService {
         idx.belirsiz = false;
       }
       if (idx.belirsiz) belirsizSayisi++;
+      // KÜTÜPHANE = HAFIZA: urun sozluksuz ama self-family olduysa (adSlug =
+      // kendi adBucket'i) o aileyi ogrenilecekler'e ekle (override/dict haric).
+      else if (idx.adSlug === idx.adBucket && !ogrenilecekAileler.has(idx.adBucket)) {
+        ogrenilecekAileler.set(idx.adBucket, pcols.ad);
+      }
       // ── AYNI DEMET IKI KEZ → SESSIZCE EZME, AYIR ────────────────────
       // Demet kimligi (sayfa+ad+cins+baglanti+cap+boy+kod) esit olan iki
       // satir dosyada gercekten olabilir (orn. ayni flans iki kez, farkli
@@ -1084,8 +1094,18 @@ export class AdminService {
       take: 50,
     }).catch(() => [] as any[]);
 
+    // KÜTÜPHANE = HAFIZA (v8): sozluksuz self-family urunlerin adlarini GLOBAL
+    // aile olarak ogren → satir tarafi (matchV2 resolveAlias → hintFamily) ayni
+    // aileye kilitlenir. Idempotent; akisi bozmaz (hata yalniz loglanir).
+    if (ogrenilecekAileler.size > 0) {
+      await this.terminology.learnFamilyAliases(
+        Array.from(ogrenilecekAileler, ([adBucket, canonical]) => ({ adBucket, canonical })),
+        null,
+      ).catch((e) => console.warn('[SaveBulk] aile ogrenme atlandi:', (e as Error).message));
+    }
+
     console.log(`[SaveBulk] Sonuc: ${imported} yeni, ${updated} guncel, ${removed} eski kalem temizlendi, ${kategoriler.size} kategori${adDuzeltilen ? `, ${adDuzeltilen} AD duzeltmesi` : ''}`);
-    console.log(`[SaveBulk] ProductIndex: ${gorulenRowKeys.size} indeksli satir${belirsizSayisi ? `, ${belirsizSayisi} BELIRSIZ (aile cozulemedi → eslestirmeye giremez)` : ''}${rowKeyCakismalari.length ? `, ${rowKeyCakismalari.length} rowKey CAKISMASI` : ''}${bayatlar.length ? `, ${bayatlar.length} satir dosyadan KALKMIS (silinmedi, raporlandi)` : ''}`);
+    console.log(`[SaveBulk] ProductIndex: ${gorulenRowKeys.size} indeksli satir${belirsizSayisi ? `, ${belirsizSayisi} BELIRSIZ (aile cozulemedi → eslestirmeye giremez)` : ''}${ogrenilecekAileler.size ? `, ${ogrenilecekAileler.size} self-family (KÜTÜPHANE=HAFIZA)` : ''}${rowKeyCakismalari.length ? `, ${rowKeyCakismalari.length} rowKey CAKISMASI` : ''}${bayatlar.length ? `, ${bayatlar.length} satir dosyadan KALKMIS (silinmedi, raporlandi)` : ''}`);
     return {
       imported, updated, skipped, removed,
       kategoriSayisi: kategoriler.size,
@@ -1363,6 +1383,9 @@ export class AdminService {
   }> {
     const rows = await (this.prisma as any).productIndex.findMany();
     let guncellenen = 0, atlanan = 0, belirsizOnce = 0, belirsizSonra = 0, korunanDuzeltme = 0;
+    // KÜTÜPHANE = HAFIZA (v8): reindex mevcut belirsiz urunleri self-family'ye
+    // cevirir → adlarini GLOBAL aile olarak ogren (migrasyon yolu).
+    const ogrenilecekAileler = new Map<string, string>();
 
     for (const r of rows) {
       if (r.belirsiz) belirsizOnce++;
@@ -1383,6 +1406,10 @@ export class AdminService {
         korunanDuzeltme++; // admin kurtarmasi devrede (P9b)
       }
       if (f.belirsiz) belirsizSonra++;
+      // Self-family olduysa (sozluksuz ama anlamli) aileyi ogren
+      else if (f.adSlug === f.adBucket && !ogrenilecekAileler.has(f.adBucket)) {
+        ogrenilecekAileler.set(f.adBucket, r.ad ?? f.adBucket);
+      }
       await (this.prisma as any).productIndex.update({
         where: { id: r.id },
         // rowKey BILEREK YOK (P9d): '#2' sonekli mukerrerler ezilmesin
@@ -1398,8 +1425,15 @@ export class AdminService {
       guncellenen++;
     }
 
+    if (ogrenilecekAileler.size > 0) {
+      await this.terminology.learnFamilyAliases(
+        Array.from(ogrenilecekAileler, ([adBucket, canonical]) => ({ adBucket, canonical })),
+        null,
+      ).catch((e) => console.warn('[Reindex] aile ogrenme atlandi:', (e as Error).message));
+    }
+
     console.log(`[Reindex] v${INDEX_VERSION}: ${guncellenen} guncellendi, ${atlanan} zaten guncel, ` +
-      `belirsiz ${belirsizOnce}→${belirsizSonra}${korunanDuzeltme ? `, ${korunanDuzeltme} admin duzeltmesi korundu` : ''}`);
+      `belirsiz ${belirsizOnce}→${belirsizSonra}${korunanDuzeltme ? `, ${korunanDuzeltme} admin duzeltmesi korundu` : ''}${ogrenilecekAileler.size ? `, ${ogrenilecekAileler.size} aile ogrenildi` : ''}`);
     return { toplam: rows.length, guncellenen, atlanan, belirsizOnce, belirsizSonra, korunanDuzeltme, surum: INDEX_VERSION };
   }
 }

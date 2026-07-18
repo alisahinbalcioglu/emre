@@ -1080,6 +1080,29 @@ async function run() {
       r4.confidence === 'high' && r4.netPrice === 42, `got ${r4.confidence} net=${r4.netPrice}`);
   }
 
+  // ══ KÜTÜPHANE = HAFIZA (18.07 — Option 2, self-family + hintFamily) ══
+  // Sozluk tanimayan ama ANLAMLI adli urun self-family olur (adSlug=adBucket,
+  // belirsiz=false). Satir tarafi ogrenilmis alias (hintFamily=adBucket) ile
+  // ayni aileye kilitlenir — yerlesik ailelerle AYNI davranis (aile kilidi).
+  {
+    const O = { kategori: 'Özel Parçalar', cins: 'çelik', baglanti: null, birim: 'adet', paraBirimi: 'TRY', sheetName: 'S' };
+    const havuz = [
+      prod({ ...O, ad: 'Zibbo Klemens', cap: '2"', price: 45, urunKodu: 'Z1' }),
+      prod({ ...O, ad: 'Zibbo Klemens', cap: '3"', price: 60, urunKodu: 'Z2' }),
+      prod({ kategori: 'Vanalar', ad: 'Küresel vana', cins: 'pirinç', cap: '2"', price: 800, urunKodu: 'V1', birim: 'adet', paraBirimi: 'TRY', sheetName: 'S' }),
+    ];
+    check('HAFIZA: sozluksuz-ama-anlamli urun self-family (belirsiz DEGIL)',
+      havuz[0].urun.belirsiz === false && havuz[0].urun.adSlug === 'zibbo klemens',
+      `belirsiz=${havuz[0].urun.belirsiz} adSlug=${havuz[0].urun.adSlug}`);
+    // Ogrenilmis aile (hintFamily=adBucket) → aile-kilitli: yalniz Zibbo,
+    // Küresel vana ADAY DEGIL (aile kilidi korunur — Option 2 farki).
+    const r = m('2"-DN50 Zibbo Klemens', havuz, { hintFamily: 'zibbo klemens', ignoreTokens: ['zibbo', 'klemens'] });
+    check('HAFIZA: ogrenilmis aile → aile-kilitli tek eslesme ₺45 (2")',
+      r.confidence === 'high' && r.netPrice === 45, `got ${r.confidence} net=${r.netPrice} "${r.matchedName ?? r.reason}"`);
+    const r3 = m('3"-DN80 Zibbo Klemens', havuz, { hintFamily: 'zibbo klemens', ignoreTokens: ['zibbo', 'klemens'] });
+    check('HAFIZA: 3" → ₺60 (kendi capi)', r3.confidence === 'high' && r3.netPrice === 60, `got ${r3.confidence} net=${r3.netPrice}`);
+  }
+
   // ══ DISPATCH: MatchingService UZERINDEN v2 yolu ══════════════════
   // Yukaridaki testler SAF cekirdegi kanitliyor. Bu blok GERCEK servisi
   // (marka bazli dispatch + matchV2 + havuz esleme + M3) kosturuyor —

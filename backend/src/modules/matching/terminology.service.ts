@@ -167,6 +167,54 @@ export class TerminologyService implements OnModuleInit {
   }
 
 
+  /**
+   * KÜTÜPHANE = HAFIZA (18.07 — Option 2): import aninda, yerlesik sozluk
+   * TANIMADIGI ama urunun kendi adi AILE olan girisleri ogren. Ogrenilmis
+   * alias `impliedType = adBucket` (kendi adi aile kimligi) — satir tarafi
+   * (matchV2 resolveAlias → hintFamily) bu aileye kilitlenir; urun tarafi
+   * buildProductIndex zaten adSlug=adBucket verir. Ikisi ayni ailede bulusur.
+   *
+   * Idempotent: var olan (userId, alias) atlanir. admin import → userId=null
+   * (GLOBAL, tum kullanicilar yararlanir); kullanici-ozel yukleme → userId.
+   */
+  async learnFamilyAliases(
+    items: { adBucket: string; canonical: string }[],
+    userId: string | null,
+  ): Promise<{ ogrenilen: number }> {
+    if (items.length === 0) return { ogrenilen: 0 };
+    const p = this.prisma as any;
+    // Dedup + gecerli (anlamli, >=3 karakter) alias
+    const map = new Map<string, string>();
+    for (const it of items) {
+      const alias = normalizeText(it.adBucket);
+      if (alias.length >= 3 && !map.has(alias)) map.set(alias, it.canonical);
+    }
+    if (map.size === 0) return { ogrenilen: 0 };
+    let ogrenilen = 0;
+    try {
+      // Mevcut olanlari tek sorguda cek (idempotens)
+      const mevcut = await p.terminologyAlias.findMany({
+        where: { userId, alias: { in: Array.from(map.keys()) } },
+        select: { alias: true },
+      });
+      const varOlan = new Set<string>((mevcut as { alias: string }[]).map((m) => m.alias));
+      const yeni = Array.from(map.entries())
+        .filter(([alias]) => !varOlan.has(alias))
+        .map(([alias, canonical]) => ({
+          userId, alias, canonical, impliedType: alias,
+          kinds: [], sizeClass: null, stripTags: [], createdBy: 'learned',
+        }));
+      if (yeni.length > 0) {
+        await p.terminologyAlias.createMany({ data: yeni, skipDuplicates: true });
+        ogrenilen = yeni.length;
+      }
+      if (ogrenilen > 0) console.log(`[Terminology] KÜTÜPHANE=HAFIZA: ${ogrenilen} yeni aile ogrenildi (userId=${userId ?? 'GLOBAL'})`);
+    } catch (e) {
+      console.warn('[Terminology] learnFamilyAliases atlandi:', (e as Error).message);
+    }
+    return { ogrenilen };
+  }
+
   /** S4: kullanici alias'i kaydet (secim sonrasi ogrenme). Var olani gunceller. */
   async saveUserAlias(userId: string, input: {
     alias: string; canonical?: string; kinds?: string[];

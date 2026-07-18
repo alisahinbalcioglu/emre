@@ -462,6 +462,29 @@ async function run() {
       uyarilar.some((u) => u.includes('93°C istendi') && u.includes('68°C')), JSON.stringify(uyarilar));
   }
 
+  // ══ KÜTÜPHANE = HAFIZA (18.07 — Option 2, UÇTAN UCA alias plumbing) ══
+  // Ogrenilmis aile alias'i (impliedType=adBucket) → matchV2 resolveAlias →
+  // hintFamily → self-family urunle aile-kilitli eslesir. Yerlesik sozluk
+  // olmadan, kullanicinin YUKLEDIGI urun kendi adiyla eslesir.
+  {
+    const ogrenilmis = {
+      alias: 'zibbo klemens', canonical: 'Zibbo Klemens',
+      kinds: [], impliedType: 'zibbo klemens', sizeClass: null, stripTags: [],
+    };
+    const svc = makeService('ÖZELMARKA', [
+      lib('Zibbo Klemens Çelik 2"', 45),
+      lib('Zibbo Klemens Çelik 3"', 60),
+      lib('Küresel Vana Pirinç 2"', 800),
+    ], [], [ogrenilmis]);
+    const q = '2"-DN50 Zibbo Klemens';
+    const r = (await svc.bulkMatch('u1', 'brand-1', [q]))[q];
+    check('HAFIZA uçtan uca: ogrenilmis aile → ₺45 tek eslesme (aile-kilitli)',
+      r?.confidence === 'high' && r?.netPrice === 45, `got ${r?.confidence} net=${r?.netPrice} "${r?.matchedName ?? r?.reason}"`);
+    check('HAFIZA: Küresel vana ADAY DEGIL (aile kilidi — Option 2 farki)',
+      !(r?.matchedName ?? '').includes('Küresel') && !(r?.candidates ?? []).some((c) => c.materialName.includes('Küresel')),
+      `got "${r?.matchedName}" ${JSON.stringify((r?.candidates ?? []).map((c) => c.materialName))}`);
+  }
+
   // ══ S4 ZEHIR REGRESYONU (canli 17.07 — "218 secenek" vakasi) ═══════
   // Ogrenilmis AD-alias'i ('test drenaj vanasi' — impliedType YOK, kinds
   // pirinc, sizeClass steel; CANLIDAN birebir) satirin ad kelimelerini
