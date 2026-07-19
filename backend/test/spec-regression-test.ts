@@ -401,6 +401,33 @@ async function run() {
       `got ${r?.confidence} "${r?.matchedName}" (${r?.reason})`);
   }
 
+  // ── R21 (CANLI 19.07 — HAKAN/DUYAR "otomatik atama yapmiyor"): surukleme
+  // varyant sinyali tasirken (26d8448), hedef capta TEK NOTR urun varsa (rakip
+  // cins/baglanti YOK) fiyat OTOMATIK yazilir. Eski davranis: varyant o capta
+  // eslesmeyince tek notr urunu de "secim bekliyor"a dusuruyor, fiyat
+  // yazmiyordu. C5'in KARSITI: C5'te hedef capta tek aday FARKLI varyant
+  // (Disli) oldugu icin sorulur; burada NOTR oldugu icin yazilir. Ayrim
+  // query-engine.ts eslesen.length===0 dalinda cins:/bag: catismasiyla yapilir.
+  {
+    const svc = makeService('ÇAYIROVA', [
+      lib('Sprinkler Borusu Kırmızı Boyalı 1"', 105.9),
+      lib('Sprinkler Borusu Dişli 1"', 112.7),
+      // 3" (DN80) capinda TEK NOTR urun — cins/baglanti ayrimi yok
+      lib('Sprinkler Borusu 3"', 396.7),
+    ]);
+    // 1) DN25'te varyant sec (Kirmizi Boyali) → variantTags al
+    const r1 = await m(svc, 'SPRİNK HATTI BORULARI DN 25');
+    const kirmizi = r1?.candidates?.find((c) => c.materialName.includes('Kırmızı'));
+    check('R21-a DN25 varyant listesi + kirmizi variantTags dolu',
+      (kirmizi?.variantTags?.length ?? 0) > 0, `got ${JSON.stringify(kirmizi?.variantTags)}`);
+    // 2) Notr 3" (DN80) capina TASI → istenen varyant yok AMA tek notr urun var
+    //    → OTOMATIK yazilir (variantMissing DEGIL)
+    const r2 = await m(svc, 'SPRİNK HATTI BORULARI DN 80', kirmizi?.variantTags);
+    check('R21-b notr tek urun → varyant tasimasinda OTOMATIK fiyat (net>0, variantMissing yok)',
+      (r2?.netPrice ?? 0) > 0 && r2?.variantMissing !== true,
+      `got net=${r2?.netPrice} missing=${r2?.variantMissing} reason=${r2?.reason}`);
+  }
+
   // ── R12 (A-1): FITTINGS ORANI → malzeme eslestirmesi yapilmaz
   {
     const svc = makeService('ÇAYIROVA', [lib('Siyah Çelik Boru 1" DN25 Dişli', 130)]);

@@ -399,6 +399,27 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     const eslesen = rows.filter((r) => v.every((t) => urunVariantTags(r).includes(t)));
     if (eslesen.length === 1) return { kind: 'auto-variant', row: eslesen[0], donusum };
     if (eslesen.length === 0) {
+      // Istenen varyant bu capta hicbir adayda YOK. Iki AYRI durum var:
+      //  (1) Capta TEK aday var VE o aday istenenin DISINDA kendi ayirt edici
+      //      cins/baglanti tasimiyor (notr urun) → varyant ayrimi ANLAMSIZDIR
+      //      (secilecek baska urun yok) → surukleme/grup yayilimi fiyat yazsin.
+      //      CANLI BULGU (19.07): HAKAN "SESSIZ TIP ATIK SU BORUSU", DUYAR
+      //      "PISLIK TUTUCU" — kaynak capta kardesler vardi (varyant sinyali
+      //      tasindi, 26d8448), buyuk caplarda tek notr urun; eski davranis
+      //      "secim bekliyor"a dusurup fiyat yazmiyordu ("otomatik atama
+      //      yapmiyor"). Tek-secim testi kanitladi: filtresiz sorgu ayni capta
+      //      TEK aday buluyor → fiyat geliyor.
+      //  (2) Tek aday olsa bile kendi ayirt edici cins/baglantisi FARKLI ise
+      //      (C5: istenen "Kirmizi Boyali", capta yalniz "Disli") → FARKLI
+      //      urundur; sessiz ikame YASAK → variantMissing, kullanici secer.
+      // Coklu adayda da (gercek belirsizlik) 'ask' korunur.
+      if (rows.length === 1) {
+        const candTags = urunVariantTags(rows[0]);
+        const conflict = candTags.some(
+          (t) => (t.startsWith('cins:') || t.startsWith('bag:')) && !v.includes(t),
+        );
+        if (!conflict) return { kind: 'auto-variant', row: rows[0], donusum };
+      }
       return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, variantMissing: true };
     }
     rows = eslesen;
