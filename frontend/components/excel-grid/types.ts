@@ -6,6 +6,9 @@ export interface ExcelColumnDef {
   cellRenderer?: string;
   pinned?: 'left' | 'right';
   suppressMovable?: boolean;
+  // PRD v3.0 Bolum A: sutun gizle/goster — hide=true ise AG-Grid kolonu cizmez
+  // (VERI DURUR, toplama dahil kalir; "kaldir"dan farkli).
+  hide?: boolean;
 }
 
 export interface ExcelRowData {

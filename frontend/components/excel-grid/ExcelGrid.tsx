@@ -1770,6 +1770,8 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         pinned: c.pinned,
         suppressMovable: c.suppressMovable,
         resizable: true,
+        // PRD v3.0 Bolum A: gizle/goster — hide=true ise AG-Grid cizmez (veri durur)
+        hide: (c as any).hide === true,
       };
 
       // Fill handle indicator — Kar % sutunlari icin (% prefix'li gorsel)
