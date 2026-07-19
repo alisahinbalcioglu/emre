@@ -737,10 +737,20 @@ async function run() {
       prod({ ...V, kategori: 'Vanalar', ad: 'Kelebek vana', cins: 'wafer', cap: '6"', price: 2500, urunKodu: 'KV150' }),
       prod({ ...V, kategori: 'Vanalar', ad: 'Küresel vana', cins: 'pirinç', cap: '6"', price: 2000, urunKodu: 'KR150' }),
     ];
+    // v9 GUNCELLEME (kanonik es anlamli): 'çek vana' artik 'cekvalf' ile
+    // BIREBIR AYNI AD sayilir (kullanici karari 19.07: "bunlar aynı anlamdır")
+    // → gevsetme-soru yolu gereksizlesti; ad+cap+cins dogrulanmis tek aday
+    // OTOMATIK yazilir. Eski beklenti (soru) v9 oncesi ad-uyusmazligi iciondi.
     const r = m('6"-DN150 Swing Çek Vana', havuz);
-    const adlar = (r.candidates ?? []).map((c) => c.materialName);
-    check('S1 swing cek vana → SORU acilir (yok DEGIL, yazilmaz da)',
-      r.confidence === 'multi' && r.netPrice === 0, `got ${r.confidence} net=${r.netPrice} "${r.reason}"`);
+    check('S1 (v9) swing cek vana → Çekvalf ile DIREKT esti (soru degil)',
+      r.confidence === 'high' && r.netPrice === 5000 && !!r.matchedName?.includes('Çekvalf'),
+      `got ${r.confidence} net=${r.netPrice} "${r.matchedName}"`);
+    // AD-GEVSETME KURALI YASAMAYA DEVAM EDER — kanonik sozlukte OLMAYAN ad
+    // uyusmazligi ('vana' yazilmis, urun adi 'Çekvalf') hala SORU acar:
+    const rg = m('6"-DN150 Swing Vana', havuz);
+    const adlar = (rg.candidates ?? []).map((c) => c.materialName);
+    check('S1 gevsetme korunur: swing VANA (cek\'siz) → SORU acilir',
+      rg.confidence === 'multi' && rg.netPrice === 0, `got ${rg.confidence} net=${rg.netPrice} "${rg.reason}"`);
     check('S1 Çekvalf (calpara swing) ADAYLARDA',
       adlar.some((a) => a.toLocaleLowerCase('tr').includes('çekvalf') || a.toLocaleLowerCase('tr').includes('cekvalf')),
       JSON.stringify(adlar));
@@ -896,6 +906,42 @@ async function run() {
     check('BOYVAR: tek-eslesme sonucu variantTags TASIR (kaynak kimliksiz kalmasin)',
       rTek.confidence === 'high' && (rTek.variantTags?.length ?? 0) > 0,
       `got ${rTek.confidence} tags=${JSON.stringify(rTek.variantTags)}`);
+  }
+
+  // ══ KANONIK ES ANLAMLI AD (canli vaka 19.07 — DUYAR "Çek Vana"/"K.Vana") ══
+  // DUYAR fiyat listesi "Çekvalf" yerine "Çek Vana", "Küresel Vana" yerine
+  // "K.Vana" yazar. Satir "ÇEKVALF" tek token, urun ['cek','vana'] →
+  // tokenEsit ONEK_MIN altinda kaliyor → K6 "yok" diyordu (kullanici bildirimi:
+  // "duyar fiyat listesinde çek vana yazdığı için eşleştirme yapamadı").
+  // Fix: tokenize KANONIK_ESANLAM fazi — iki yon de calisir. INDEX_VERSION=9.
+  {
+    const V = { kategori: 'Vanalar', birim: 'adet', paraBirimi: 'TL', sheetName: 'S' };
+    const havuz = [
+      prod({ ...V, ad: 'Çek Vana', cins: 'yaylı · pirinç', cap: '1"', price: 554, urunKodu: 'CV1' }),
+      prod({ ...V, ad: 'K.Vana', cins: 'tam geçişli · pirinç', cap: '1/2"', price: 148, urunKodu: 'KV05' }),
+      prod({ ...V, ad: 'Kelebek Vana', cins: 'wafer', cap: '1"', price: 900, urunKodu: 'KLB1' }),
+    ];
+    // 1) ÇEKVALF satiri "Çek Vana" urunuyle esir (kelebek ADAY DEGIL — K6)
+    const r1 = m('ÇEKVALF - 1"', havuz);
+    check('ESANLAM: ÇEKVALF satiri "Çek Vana" urunuyle OTOMATIK esti',
+      r1.netPrice === 554 && !!r1.matchedName?.includes('Çek Vana'),
+      `got net=${r1.netPrice} "${r1.matchedName}" (${r1.confidence}: ${r1.reason})`);
+    // 2) KÜRESEL VANA satiri "K.Vana" kisaltmasiyla esir
+    const r2 = m('KÜRESEL VANA - 1/2"', havuz);
+    check('ESANLAM: KÜRESEL VANA satiri "K.Vana" ile OTOMATIK esti',
+      r2.netPrice === 148 && !!r2.matchedName?.includes('K.Vana'),
+      `got net=${r2.netPrice} "${r2.matchedName}" (${r2.confidence}: ${r2.reason})`);
+    // 3) TERS YON: satir "ÇEK VANA" yazsa da "Çekvalf" urunu bulunur
+    const r3 = m('ÇEK VANA - 1"', [
+      prod({ ...V, ad: 'Çekvalf', cins: 'yaylı', cap: '1"', price: 620, urunKodu: 'CVF1' })]);
+    check('ESANLAM: ters yon — ÇEK VANA satiri "Çekvalf" urunuyle esti',
+      r3.netPrice === 620, `got net=${r3.netPrice} (${r3.confidence}: ${r3.reason})`);
+    // 4) GUVENLIK: ÇEKVALF satiri kuresel/kelebek vanaya ASLA aday olmaz (K6)
+    const r4 = m('ÇEKVALF - 1/2"', [
+      prod({ ...V, ad: 'K.Vana', cins: 'tam geçişli', cap: '1/2"', price: 148, urunKodu: 'KV05b' })]);
+    check('ESANLAM: ÇEKVALF, K.Vana(kuresel) urunune ADAY DEGIL (K6 korunur)',
+      r4.netPrice === 0 && !r4.candidates?.length,
+      `got net=${r4.netPrice} adaylar=${r4.candidates?.length ?? 0}`);
   }
 
   // ══ SUPERSET ADLAR SONA (kullanici karari 17.07 — islak alarm vakasi) ══

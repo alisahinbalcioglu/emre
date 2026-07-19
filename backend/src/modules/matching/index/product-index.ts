@@ -87,12 +87,16 @@ export interface ProductIndexFields {
  *     artik belirsiz DEGIL, kendi normalize adi (adBucket) aile kimligi olur
  *     (bkz. buildProductIndex + anlamliAd). Onceden belirsiz olan binlerce
  *     urun artik self-family → REINDEX SART.
+ * v9: KANONIK ES ANLAMLILAR (19.07 canli, DUYAR listesi) — tokenize fazda
+ *     'cek vana'/'k.vana' kanoniklestirir ('cekvalf' / 'kuresel vana').
+ *     Bu adlari tasiyan urunlerin adTokens/adBucket'i degisir → REINDEX
+ *     ONERILIR (bayat satirlar istek aninda da yenilenir).
  *
  * Dispatch bu surumu KONTROL EDER (matching.service.hazirlaPool): bayat
  * satir istek aninda rebuildIndexFields ile CANLI tokenizer'dan yeniden
  * uretilir (Faz 2b — v1 fallback SILINDI); kalici cozum reindex'tir.
  */
-export const INDEX_VERSION = 8;
+export const INDEX_VERSION = 9;
 
 /** adSlug cozulemeyen satirin tasidigi isaret — eslestirmeye ADAY OLAMAZ. */
 export const BELIRSIZ_SLUG = 'belirsiz';
@@ -167,13 +171,35 @@ export function altKumeMi(istenen: string[], varolan: string[]): boolean {
   return istenen.every((t) => varolan.some((v) => tokenEsit(t, v)));
 }
 
+/**
+ * KANONIK ES ANLAMLILAR — SIMETRIK katman (satir parse + urun indeksleme
+ * ikisi de tokenize'dan gecer). CANLI VAKA (19.07, DUYAR listesi): Karar #1
+ * "kolonlar tam kelime yazar" varsayimi sahada kirildi — DUYAR "Çekvalf"
+ * yerine "Çek Vana", "Küresel Vana" yerine "K.Vana" yazar. Satir "ÇEKVALF"
+ * tek token, urun ['cek','vana'] → tokenEsit('cek','cekvalf') ONEK_MIN(4)
+ * altinda ('cek' 3 harf) → K6 ad-kilidi "yok" diyordu. "K.Vana"da 'k' tek
+ * harf gurultuye gidiyor, urun ['vana'] kaliyor → 'kuresel' karsiliksiz.
+ * Fazda (split ONCESI) kanoniklestirme iki yonu de cozer: satir "ÇEK VANA"
+ * yazsa da "Çekvalf" urunu bulunur. YALNIZ TARTISMASIZ es anlamlar (genel
+ * kural — ornege ozel degil; KISALTMALAR/Glvz dersiyle ayni cizgi).
+ * ⚠ Urun adTokens DEGISIR → INDEX_VERSION artisi gerektirir (yapildi: v9).
+ */
+const KANONIK_ESANLAM: ReadonlyArray<[RegExp, string]> = [
+  // cek vana / çek-vana / cekvana / cek valf(i) → cekvalf (kanonik tek ad)
+  [/\bcek[\s.]*(?:vana|valf)\w*/g, 'cekvalf'],
+  // k.vana / k. vana → kuresel vana (kisaltma acilir; ciplak "k vana"
+  // BILEREK dahil degil — 'k' baska kisaltmalarin da bas harfi olabilir)
+  [/\bk\s*\.\s*vana(\w*)/g, 'kuresel vana$1'],
+];
+
 /** Metni token'lara ayirir: normalize → bol → gurultuyu at. KOK ALINMAZ. */
 export function tokenize(text: string | null | undefined): string[] {
   if (!text) return [];
   // TIRELI KELIME TEK TOKEN: "V-Flex" → 'vflex'.
   // Yoksa ['v','flex'] olur, 'v' tek harf diye gurultuye gider ve "Omega
   // V-Flex" ile "Omega U-Flex" AYIRT EDILEMEZ hale gelir (canli vaka).
-  const norm = normalizeText(String(text)).replace(/([a-z0-9])-([a-z0-9])/gi, '$1$2');
+  let norm = normalizeText(String(text)).replace(/([a-z0-9])-([a-z0-9])/gi, '$1$2');
+  for (const [re, rep] of KANONIK_ESANLAM) norm = norm.replace(re, rep);
   const raw = norm.split(/[^a-z0-9°%]+/i).filter(Boolean);
   const out: string[] = [];
   for (const t of raw) {
