@@ -857,6 +857,47 @@ async function run() {
       `got "${r2.matchedName}"`);
   }
 
+  // ══ BOY VARYANT TASIMASI (canli vaka 19.07 — HAKAN sessiz atik su) ═══
+  // Boru aileleri her capta BIRDEN COK BOYDA satilir. Kullanici Ø50'de
+  // "PVC Atık Su · 500 mm" secip surukledi; boy varyant kimliginde olmadigi
+  // icin hedef caplarda boylar ayrisamiyor, HER satir soruya dusuyordu
+  // (loglar: "0/1 yazildi, 1 soru" ×4 — "otomatik atama yapmiyor").
+  // Fix: urunVariantTags boy: tasir → hedef capta ayni boy tek adaya iner.
+  {
+    const B = { kategori: 'PVC Atık Su', cins: 'PVC Atık Su', birim: 'adet', paraBirimi: 'TL', sheetName: 'S' };
+    const havuz = [
+      prod({ ...B, ad: 'Atık Su Borusu', cap: 'Ø50', boy: 500, price: 98.1, urunKodu: 'P50-500' }),
+      prod({ ...B, ad: 'Atık Su Borusu', cap: 'Ø50', boy: 3000, price: 470.6, urunKodu: 'P50-3000' }),
+      prod({ ...B, ad: 'Atık Su Borusu', cap: 'Ø110', boy: 500, price: 151.9, urunKodu: 'P110-500' }),
+      prod({ ...B, ad: 'Atık Su Borusu', cap: 'Ø110', boy: 3000, price: 685.6, urunKodu: 'P110-3000' }),
+      // Ø125'te 500 mm YOK — yalniz 3000 mm (boy catismasi: sorulmali)
+      prod({ ...B, ad: 'Atık Su Borusu', cap: 'Ø125', boy: 3000, price: 760, urunKodu: 'P125-3000' }),
+    ];
+    // 1) Kaynak Ø50: iki boy → soru; secilen adayin variantTags'i boy tasir
+    const r1 = m('SESSİZ TİP ATIK SU BORUSU - Ø50', havuz);
+    check('BOYVAR: kaynak capta boy sorusu acildi', r1.confidence === 'multi' && r1.netPrice === 0,
+      `got ${r1.confidence} net=${r1.netPrice}`);
+    const b500 = (r1.candidates ?? []).find((c) => c.materialName.includes('500 mm') && !c.materialName.includes('3000'));
+    check('BOYVAR: 500 mm adayin variantTags icinde boy:500 VAR',
+      !!b500?.variantTags?.includes('boy:500'), JSON.stringify(b500?.variantTags));
+    // 2) Surukleme: ayni tags Ø110'a → 500 mm tek adaya iner → OTOMATIK yazilir
+    const r2 = m('SESSİZ TİP ATIK SU BORUSU - Ø110', havuz, { variantTags: b500?.variantTags });
+    check('BOYVAR: hedef capta ayni boy OTOMATIK yazildi (canli bug fix)',
+      r2.netPrice === 151.9 && r2.autoVariant === true && !!r2.matchedName?.includes('500 mm'),
+      `got net=${r2.netPrice} auto=${r2.autoVariant} "${r2.matchedName}"`);
+    // 3) Ø125'te 500 mm YOK, tek aday 3000 mm — FARKLI boy sessizce YAZILMAZ
+    const r3 = m('SESSİZ TİP ATIK SU BORUSU - Ø125', havuz, { variantTags: b500?.variantTags });
+    check('BOYVAR: hedefte istenen boy yoksa FARKLI boy sessizce yazilmaz (sorulur)',
+      r3.netPrice === 0 && r3.variantMissing === true,
+      `got net=${r3.netPrice} missing=${r3.variantMissing}`);
+    // 4) Tek-eslesme kaynagi da kimligini tasir (popup'siz satirdan surukleme)
+    const rTek = m('Küresel vana DN25', [
+      prod({ kategori: 'Vanalar', birim: 'adet', paraBirimi: 'TL', sheetName: 'S', ad: 'Küresel vana', cins: 'pirinç', cap: 'DN25', price: 850, urunKodu: 'KV25' })]);
+    check('BOYVAR: tek-eslesme sonucu variantTags TASIR (kaynak kimliksiz kalmasin)',
+      rTek.confidence === 'high' && (rTek.variantTags?.length ?? 0) > 0,
+      `got ${rTek.confidence} tags=${JSON.stringify(rTek.variantTags)}`);
+  }
+
   // ══ SUPERSET ADLAR SONA (kullanici karari 17.07 — islak alarm vakasi) ══
   // Tam-ad kilidi "...takımı"/"...trim seti"ni ELIYORDU; karar: soru zaten
   // acilacaksa satir adini TAM ICEREN adlar SONA eklenir, tam ad ONDE.

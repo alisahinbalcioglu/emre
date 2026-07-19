@@ -414,9 +414,11 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
       //      urundur; sessiz ikame YASAK → variantMissing, kullanici secer.
       // Coklu adayda da (gercek belirsizlik) 'ask' korunur.
       if (rows.length === 1) {
+        // boy: de catisma sayilir — farkli uzunluk FARKLI urundur (fiyati
+        // orantili degisir); sessiz ikame yasak, kullanici secer.
         const candTags = urunVariantTags(rows[0]);
         const conflict = candTags.some(
-          (t) => (t.startsWith('cins:') || t.startsWith('bag:')) && !v.includes(t),
+          (t) => (t.startsWith('cins:') || t.startsWith('bag:') || t.startsWith('boy:')) && !v.includes(t),
         );
         if (!conflict) return { kind: 'auto-variant', row: rows[0], donusum };
       }
@@ -522,5 +524,13 @@ export function urunVariantTags(r: IndexedRow): string[] {
   const out: string[] = [`ad:${r.urun.adBucket}`];
   if (r.urun.cinsNorm) out.push(`cins:${r.urun.cinsNorm}`);
   if (r.urun.baglantiNorm) out.push(`bag:${r.urun.baglantiNorm}`);
+  // BOY DAHIL (canli bulgu 19.07, HAKAN "SESSIZ TIP ATIK SU BORUSU"): boru
+  // aileleri her capta BIRDEN COK BOYDA satilir (150/250/500/1000/3000 mm).
+  // Kullanici kaynakta "500 mm" secip surukleyince boy tasinmiyordu → hedef
+  // capta boylar ayrisamiyor, hep soru aciliyordu ("otomatik atama yapmiyor",
+  // loglar: her hedef "0/1 yazildi, 1 soru"). Boy varyant kimligine girince
+  // ayni boy hedef capta tek adaya iner → otomatik yazilir. Boysuz urunlerde
+  // tag hic uretilmez — davranis degismez. (CAP hala DAHIL DEGIL — yayilim.)
+  if (r.urun.boyMm) out.push(`boy:${r.urun.boyMm}`);
   return out;
 }

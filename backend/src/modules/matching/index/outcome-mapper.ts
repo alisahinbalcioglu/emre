@@ -137,6 +137,11 @@ export function toMatchResult(
         reason: 'Tek eşleşme — AD + ÇAP (+ yazılı nitelikler) sonrası markada tek ürün kaldı.',
         donusum: outcome.donusum ?? undefined,
         matchedTags: outcome.row.urun.adTokens,
+        // PRD v3.0 B (canli bulgu 19.07): tek-eslesme kaynagi da varyant
+        // kimligini FE'ye tasir — surukleme/cift-tik yayilimi popup'siz dolan
+        // satirdan da baslayabilsin (FE 26d8448 result.variantTags bekliyor,
+        // 'single' dali hic gondermiyordu → kaynak kimliksiz kaliyordu).
+        variantTags: urunVariantTags(outcome.row),
       };
     }
 
@@ -150,6 +155,8 @@ export function toMatchResult(
         matchedName: gorunenAd(outcome.row),
         reason: 'Grup varyantı uygulandı (önceki seçiminiz bu çapa taşındı).',
         donusum: outcome.donusum ?? undefined,
+        // Hedef satir da ileride surukleme kaynagi olabilir — kimlik tasinir.
+        variantTags: urunVariantTags(outcome.row),
       };
     }
 
