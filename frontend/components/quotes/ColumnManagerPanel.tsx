@@ -5,7 +5,7 @@
 // Kilitli sutunlar (NO + malzeme adi) gizlenemez — fiyat eslestirmesinin cipasi.
 
 import { useEffect, useRef, useState } from 'react';
-import { Columns3, Eye, EyeOff, Lock } from 'lucide-react';
+import { Columns3, Eye, EyeOff, Lock, Trash2 } from 'lucide-react';
 
 export interface ColumnItem {
   field: string;
@@ -22,9 +22,11 @@ interface Props {
   floors?: string[];
   onToggleFloor?: (field: string) => void;
   mikField?: string; // MIK sutunu (kat isaretlenemez — hedef odur)
+  // PRD v3.0 A3 (opsiyonel): sutunu KALICI kaldir (yikici)
+  onRemove?: (field: string) => void;
 }
 
-export default function ColumnManagerPanel({ columns, hidden, locked, onToggleHidden, onShowAll, floors, onToggleFloor, mikField }: Props) {
+export default function ColumnManagerPanel({ columns, hidden, locked, onToggleHidden, onShowAll, floors, onToggleFloor, mikField, onRemove }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const hiddenSet = new Set(hidden);
@@ -120,6 +122,16 @@ export default function ColumnManagerPanel({ columns, hidden, locked, onToggleHi
                       title={isFloor ? 'Kat işaretini kaldır' : "Kat olarak işaretle (MİK'e toplanır)"}
                     >
                       Kat
+                    </button>
+                  )}
+                  {onRemove && !isLocked && !isMik && (
+                    <button
+                      type="button"
+                      onClick={() => onRemove(c.field)}
+                      className="shrink-0 rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                      title="Sütunu kalıcı kaldır (veri silinir)"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   )}
                 </div>

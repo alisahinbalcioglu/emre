@@ -883,6 +883,48 @@ export default function NewQuotePage() {
     setLiveRowDataBySheet((prev) => ({ ...prev, [activeSheetKey]: nextRows }));
   }
 
+  // A3: sutunu KALICI kaldir (yikici — veri silinir, kat idiyse MIK duser).
+  // Dolu sutunda onay + "Gizle" alternatifi (yanlislikla veri/toplam bozulmasin).
+  function removeColumn(field: string) {
+    if (lockedColumns.includes(field)) return;
+    const col = managedColumns.find((c) => c.field === field);
+    const rows = liveRowDataBySheet[activeSheetKey] ?? activeSheetObj?.rowData ?? [];
+    const dolu = rows.filter((r: any) => r._isDataRow && String(r[field] ?? '').trim() !== '').length;
+    if (dolu > 0) {
+      const ok = window.confirm(
+        `"${col?.headerName ?? field}" sütunu KALICI silinecek — ${dolu} kalemde veri var` +
+        (activeFloorFields.includes(field) ? ' (kat sütunu → MİK düşecek)' : '') +
+        `.\n\nYalnızca ekrandan gizlemek için İptal'e basıp panelden göz ikonuyla gizleyin (veri + toplam korunur).\n\nKalıcı silinsin mi?`,
+      );
+      if (!ok) return;
+    }
+    // 1) columnDefs'ten cikar
+    setMultiSheet((prev) => prev ? {
+      ...prev,
+      sheets: prev.sheets.map((s) => s.index === activeSheetKey
+        ? { ...s, columnDefs: (s.columnDefs ?? []).filter((c) => c.field !== field) }
+        : s),
+    } : prev);
+    // 2) floor idiyse cikar; her satirdan field'i sil + (floor ise) MIK yeniden hesap
+    const wasFloor = activeFloorFields.includes(field);
+    const nextFloors = wasFloor ? activeFloorFields.filter((f) => f !== field) : activeFloorFields;
+    if (wasFloor) setColFloorsBySheet((prev) => ({ ...prev, [activeSheetKey]: nextFloors }));
+    const qf = activeSheetObj?.columnRoles?.quantityField;
+    const nextRows = rows.map((r: any) => {
+      const rest = { ...r };
+      delete rest[field];
+      if (wasFloor && r._isDataRow && qf && nextFloors.length > 0) {
+        let sum = 0;
+        for (const f of nextFloors) sum += parseFloat(String(rest[f] ?? '').replace(',', '.')) || 0;
+        rest[qf] = sum === 0 ? '' : String(Math.round(sum * 1000) / 1000);
+      }
+      return rest;
+    });
+    setLiveRowDataBySheet((prev) => ({ ...prev, [activeSheetKey]: nextRows }));
+    // 3) gizli listesinden de temizle
+    setColHiddenBySheet((prev) => ({ ...prev, [activeSheetKey]: (prev[activeSheetKey] ?? []).filter((f) => f !== field) }));
+  }
+
   // ── Hucre degistiginde hesapla ──
   function updateCellAndCalc(key: string, header: string, value: any) {
     setRows((prev) => prev.map((r) => {
@@ -1479,6 +1521,7 @@ export default function NewQuotePage() {
               floors={activeFloorFields}
               onToggleFloor={toggleColumnFloor}
               mikField={activeQtyField}
+              onRemove={removeColumn}
             />
             {(activeHiddenFields ?? []).length > 0 && (
               <span className="text-[11px] text-slate-400">Gizli:</span>
