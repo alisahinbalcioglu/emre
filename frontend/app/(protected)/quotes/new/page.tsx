@@ -378,9 +378,8 @@ export default function NewQuotePage() {
   const [liveRowDataBySheet, setLiveRowDataBySheet] = useState<Record<number, ExcelRowData[]>>({});
   const [sheetMatchCounts, setSheetMatchCounts] = useState<Record<number, { total: number; matched: number }>>({});
   const [isMatchingAllSheets, setIsMatchingAllSheets] = useState(false);
-  // V4.4 (PRD v1.3): grup ici otomatik varyant atama anahtari — varsayilan ACIK.
-  // Kapaliyken her satir icin secenek listesi tek tek sunulur.
-  const [autoVariantEnabled, setAutoVariantEnabled] = useState(true);
+  // PRD v3.0 Bolum B: "Otomatik varyant atama" toggle KALDIRILDI (global gate yok);
+  // yayilim yalniz SURUKLE/CIFT-TIK ile. Motor korunur.
   // I7 (18.07): BAYAT INDEKS gorunurlugu — yalniz log YETMEZ, kucuk rozet.
   const [indexHealth, setIndexHealth] = useState<{ bayat: number; indekssiz: number } | null>(null);
   useEffect(() => {
@@ -1380,39 +1379,18 @@ export default function NewQuotePage() {
                   ⚠ {indexHealth.bayat} satır eski indeks
                 </span>
               )}
-              {/* Duzeltme Talebi §3 (K18): SaaS switch (pill) — onay kutusu DEGIL.
-                  ACIK: dolgulu/canli (⚡ renkli) · KAPALI: gri/pasif ·
-                  klavye (Space/Enter, role=switch) + tooltip + 180ms gecis. */}
-              <button
-                type="button"
-                role="switch"
-                aria-checked={autoVariantEnabled}
-                onClick={() => setAutoVariantEnabled(!autoVariantEnabled)}
-                title="Açıkken son seçiminiz gruptaki diğer satırlara kendi çap fiyatlarıyla uygulanır"
-                className={`ml-auto flex items-center gap-2 whitespace-nowrap rounded-full px-1 py-0.5 outline-none transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-1 ${
-                  autoVariantEnabled ? 'text-slate-800' : 'text-slate-400'
-                }`}
+              {/* PRD v3.0 Bolum B: "Otomatik varyant atama" TOGGLE KALDIRILDI.
+                  Motor korunur; yayilim artik yalniz ACIK NIYET ile — marka
+                  hucresini asagi SURUKLE (aralik) veya tutamaga CIFT-TIK (aile).
+                  Global ac/kapa yok → "anahtar acik miydi?" belirsizligi biter. */}
+              <span
+                className="ml-auto flex items-center gap-1.5 whitespace-nowrap text-xs text-slate-500"
+                title="Bir satırda markayı seç, sonra hücrenin sağ-alt tutamağını aşağı sürükle — her satıra kendi çapının fiyatı yazılır. Tutamağa çift-tık → aile bitene kadar doldurur."
               >
-                <span
-                  aria-hidden
-                  className={`relative inline-flex h-4.5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 ${
-                    autoVariantEnabled ? 'bg-sky-600' : 'bg-slate-300'
-                  }`}
-                  style={{ height: 18, width: 36 }}
-                >
-                  <span
-                    className="inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform duration-200"
-                    style={{ transform: autoVariantEnabled ? 'translateX(19px)' : 'translateX(3px)' }}
-                  />
-                </span>
-                <span className="flex items-center gap-1 text-xs">
-                  <span className={autoVariantEnabled ? 'text-amber-500' : 'opacity-40 grayscale'}>⚡</span>
-                  Otomatik varyant atama ·{' '}
-                  <b className={autoVariantEnabled ? 'text-sky-700' : 'text-slate-400'}>
-                    {autoVariantEnabled ? 'Açık' : 'Kapalı'}
-                  </b>
-                </span>
-              </button>
+                <span className="text-amber-500">⚡</span>
+                Marka seç → <b className="font-semibold text-slate-600">sürükle</b> ya da tutamağa{' '}
+                <b className="font-semibold text-slate-600">çift-tık</b> ile grubu/aileyi doldur
+              </span>
             </div>
           );
         })()}
@@ -1629,10 +1607,10 @@ export default function NewQuotePage() {
         <ExcelGrid
           ref={excelGridRef}
           key={multiSheet ? `sheet-${activeSheetIndex}` : 'single'}
-          autoVariantEnabled={autoVariantEnabled}
-          // Duzeltme Talebi §4.2: surukle-doldur anahtari otomatik ACAR
-          // (Ctrl+Z eski durumuna dondurur)
-          onAutoVariantChange={setAutoVariantEnabled}
+          // PRD v3.0 Bolum B: global oto-varyant KAPALI — dropdown tek-satir
+          // (manuel), yayilim yalniz SURUKLE/CIFT-TIK ile. onAutoVariantChange
+          // GONDERILMEZ: surukleme artik global anahtar acmaz.
+          autoVariantEnabled={false}
           // §3: yayilim bilgisi — "n satır güncellendi"
           onAutoVariantApplied={({ applied, waiting, missing }) => {
             const parca: string[] = [];

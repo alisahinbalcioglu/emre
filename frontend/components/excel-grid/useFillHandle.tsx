@@ -204,18 +204,70 @@ export function useFillHandle({
     clearHighlights();
   }, [getTargetNodes, onFillComplete, clearHighlights]);
 
+  // dblclick — tutamaga (alt kenar) cift-tik: kaynagin AILESI bitene kadar doldur.
+  // PRD v3.0 Bolum B / Q5: aile = kaynaktan asagi ardisik DATA satirlari, bir
+  // sonraki BASLIK (veri-olmayan satir) veya grid sonunda biter.
+  const handleDoubleClick = useCallback((e: MouseEvent) => {
+    if (!enabled) return;
+    const target = e.target as HTMLElement;
+    const cell = target.closest('.fill-handle-cell') as HTMLElement | null;
+    if (!cell) return;
+    const rect = cell.getBoundingClientRect();
+    const relativeY = e.clientY - rect.top;
+    if (relativeY < rect.height - BOTTOM_ZONE_PX) return; // alt kenar (tutamak) degil
+
+    const agCell = cell.closest('.ag-cell') as HTMLElement | null;
+    if (!agCell) return;
+    const colId = agCell.getAttribute('col-id');
+    if (!colId || !fillableFields.has(colId)) return;
+    const agRow = agCell.closest('.ag-row') as HTMLElement | null;
+    if (!agRow) return;
+    const rowIdx = parseInt(agRow.getAttribute('row-index') ?? '', 10);
+    if (isNaN(rowIdx)) return;
+    const api = gridRef.current?.api;
+    if (!api) return;
+    const rowNode = api.getDisplayedRowAtIndex(rowIdx);
+    if (!rowNode?.data) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Aile sonu: bir sonraki veri-olmayan (baslik/grup bandi) satir VEYA grid sonu
+    const total = api.getDisplayedRowCount();
+    let endIdx = rowIdx;
+    for (let i = rowIdx + 1; i < total; i++) {
+      const node = api.getDisplayedRowAtIndex(i);
+      if (!node) break;
+      if (node.rowPinned) continue;
+      if (!node.data?._isDataRow) break; // baslik → aile bitti
+      endIdx = i;
+    }
+    if (endIdx <= rowIdx) return; // altta ailede satir yok
+
+    const targetNodes = getTargetNodes(rowIdx, endIdx);
+    if (targetNodes.length === 0) return;
+    onFillComplete({
+      field: colId,
+      value: rowNode.data[colId],
+      sourceRowIndex: rowIdx,
+      targetRowNodes: targetNodes,
+    });
+  }, [enabled, fillableFields, gridRef, getTargetNodes, onFillComplete]);
+
   useEffect(() => {
     if (!enabled) return;
     document.addEventListener('mousedown', handleMouseDown, true);
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('dblclick', handleDoubleClick, true);
     return () => {
       document.removeEventListener('mousedown', handleMouseDown, true);
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('dblclick', handleDoubleClick, true);
       clearHighlights();
     };
-  }, [enabled, handleMouseDown, handleMouseMove, handleMouseUp, clearHighlights]);
+  }, [enabled, handleMouseDown, handleMouseMove, handleMouseUp, handleDoubleClick, clearHighlights]);
 }
 
 /**
