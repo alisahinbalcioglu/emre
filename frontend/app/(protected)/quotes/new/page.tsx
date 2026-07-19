@@ -32,6 +32,7 @@ import { cn } from '@/lib/utils';
 import { ExcelGrid } from '@/components/excel-grid/ExcelGrid';
 import type { ExcelGridHandle } from '@/components/excel-grid/ExcelGrid';
 import { SheetTabs } from '@/components/excel-grid/SheetTabs';
+import ColumnManagerPanel from '@/components/quotes/ColumnManagerPanel';
 import { buildMaterialContextFromArray } from '@/components/excel-grid/build-material-context';
 import type { ExcelGridData, ExcelRowData, MultiSheetData, SheetData, MatchCandidate as ExcelMatchCandidate } from '@/components/excel-grid/types';
 import { useCapabilities } from '@/contexts/CapabilitiesContext';
@@ -363,6 +364,9 @@ export default function NewQuotePage() {
   // Step 2 state
   const [excelHeaders, setExcelHeaders] = useState<string[]>([]);
   const [columnRoles, setColumnRoles] = useState<Record<string, string>>({});
+  // PRD v3.0 Bolum A1: sayfa-bazli gizli sutun listesi (field adlari). Gizle =
+  // yalniz gorsel (veri durur, toplama dahil). Anahtar = sayfa index'i.
+  const [colHiddenBySheet, setColHiddenBySheet] = useState<Record<number, string[]>>({});
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
   const resizingColumn = useRef<{ name: string; startX: number; startWidth: number } | null>(null);
   const [excelGridData, setExcelGridData] = useState<ExcelGridData | null>(null);
@@ -809,6 +813,43 @@ export default function NewQuotePage() {
       return true;
     });
   }, [excelHeaders, columnRoles]);
+
+  // ── PRD v3.0 Bolum A1: Sutun gizle/goster ──────────────────────────────
+  // Aktif sayfa + o sayfanin gizli sutun listesi. Anahtar = sayfa index'i.
+  const activeSheetObj = multiSheet
+    ? (multiSheet.sheets[activeSheetIndex] ?? multiSheet.sheets.find((s) => !s.isEmpty))
+    : null;
+  const activeSheetKey = activeSheetObj?.index ?? 0;
+  const activeHiddenFields = colHiddenBySheet[activeSheetKey];
+  // Kullaniciya panelde gosterilecek Excel sutunlari (sistem '_' kolonlari haric)
+  const managedColumns = ((activeSheetObj?.columnDefs ?? excelGridData?.columnDefs ?? []) as ExcelGridData['columnDefs'])
+    .filter((c) => c.field && !c.field.startsWith('_'))
+    .map((c) => ({ field: c.field, headerName: c.headerName }));
+  // Kilitli sutunlar: malzeme adi (eslestirme cipasi) + sira no
+  const lockedColumns = [
+    activeSheetObj?.columnRoles?.nameField ?? columnRoles.name,
+    activeSheetObj?.columnRoles?.noField ?? columnRoles.no,
+  ].filter(Boolean) as string[];
+  // GIZLI uygulanmis columnDefs (memoize — her render'da yeni dizi uretme)
+  const displayColumnDefs = useMemo(() => {
+    const cols = (activeSheetObj?.columnDefs ?? excelGridData?.columnDefs ?? []) as ExcelGridData['columnDefs'];
+    const hs = new Set(activeHiddenFields ?? []);
+    if (hs.size === 0) return cols;
+    return cols.map((c) => (hs.has(c.field) ? { ...c, hide: true } : c));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSheetObj?.columnDefs, excelGridData?.columnDefs, activeHiddenFields]);
+
+  function toggleColumnHidden(field: string) {
+    if (lockedColumns.includes(field)) return;
+    setColHiddenBySheet((prev) => {
+      const cur = prev[activeSheetKey] ?? [];
+      const next = cur.includes(field) ? cur.filter((f) => f !== field) : [...cur, field];
+      return { ...prev, [activeSheetKey]: next };
+    });
+  }
+  function showAllColumns() {
+    setColHiddenBySheet((prev) => ({ ...prev, [activeSheetKey]: [] }));
+  }
 
   // ── Hucre degistiginde hesapla ──
   function updateCellAndCalc(key: string, header: string, value: any) {
@@ -1394,6 +1435,37 @@ export default function NewQuotePage() {
             </div>
           );
         })()}
+        {/* PRD v3.0 Bolum A1: "Sutunlar" paneli + gizli-sutun cipleri */}
+        {managedColumns.length > 0 && (
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <ColumnManagerPanel
+              columns={managedColumns}
+              hidden={activeHiddenFields ?? []}
+              locked={lockedColumns}
+              onToggleHidden={toggleColumnHidden}
+              onShowAll={showAllColumns}
+            />
+            {(activeHiddenFields ?? []).length > 0 && (
+              <span className="text-[11px] text-slate-400">Gizli:</span>
+            )}
+            {(activeHiddenFields ?? []).map((f) => {
+              const col = managedColumns.find((c) => c.field === f);
+              if (!col) return null;
+              return (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => toggleColumnHidden(f)}
+                  className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600 hover:bg-slate-100"
+                  title="Sütunu geri getir"
+                >
+                  {col.headerName}
+                  <span className="text-slate-400">×</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
         {/* Toplu fiyatlandirma butonlari kaldirildi — marka secimi satir bazinda */}
         {false && (
           <div>
@@ -1656,7 +1728,8 @@ export default function NewQuotePage() {
                     };
                   }
                   return {
-                    columnDefs: active.columnDefs,
+                    // PRD v3.0 A1: gizli sutunlar uygulanmis (memoize edilmis)
+                    columnDefs: displayColumnDefs,
                     rowData: liveRowDataBySheet[active.index] ?? active.rowData ?? [],
                     columnRoles: active.columnRoles ?? {},
                     brands: multiSheet.brands ?? [],
