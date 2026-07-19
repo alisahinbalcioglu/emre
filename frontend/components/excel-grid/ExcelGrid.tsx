@@ -263,6 +263,19 @@ function BrandDropdown(props: ICellRendererParams & {
     // Tek eslesme — fiyat yaz ('suggestion' ise sari isaretle)
     if (result && result.netPrice > 0) {
       writePrice(result.netPrice, result.confidence === 'suggestion');
+      // PRD v3.0 Bolum B: kaynak satir KENDI varyant kimligini kaydeder —
+      // SURUKLE/CIFT-TIK bunu tasir. Toggle kalkti (autoVariantEnabled=false):
+      // yayilim yalniz acik niyetle → kaynak varyanti HER tek-eslesmede
+      // gerekli. Yoksa surukleme markayi tasir ama varyant ayrimi yapamayip
+      // hedef satirlar belirsize duser (canli bulgu: HAKAN/DUYAR fiyat gelmiyor).
+      if (result.variantTags && result.variantTags.length > 0) {
+        node.data._matVariantTags = result.variantTags;
+        node.data._matVariantLabel = node.data._matVariantLabel ?? 'seçiminiz';
+        const hdrSel = headerRef.current;
+        if (hdrSel && !groupVariants.current[hdrSel]) {
+          groupVariants.current[hdrSel] = { tags: result.variantTags, label: 'seçiminiz' };
+        }
+      }
       // V4.1/V4.6: grup varyantiyla otomatik dolduysa rozeti isle
       if (result.autoVariant && useVariant) {
         node.setDataValue('_matAutoVariant', gv!.label);
