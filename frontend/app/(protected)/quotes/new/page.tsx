@@ -367,6 +367,9 @@ export default function NewQuotePage() {
   // PRD v3.0 Bolum A1: sayfa-bazli gizli sutun listesi (field adlari). Gizle =
   // yalniz gorsel (veri durur, toplama dahil). Anahtar = sayfa index'i.
   const [colHiddenBySheet, setColHiddenBySheet] = useState<Record<number, string[]>>({});
+  // PRD v3.0 Bolum A2: sayfa-bazli "kat" olarak isaretli sutunlar. Dolu ise
+  // MIK = katlarin satir-toplami (hesaplanan, salt-okunur).
+  const [colFloorsBySheet, setColFloorsBySheet] = useState<Record<number, string[]>>({});
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
   const resizingColumn = useRef<{ name: string; startX: number; startWidth: number } | null>(null);
   const [excelGridData, setExcelGridData] = useState<ExcelGridData | null>(null);
@@ -821,6 +824,9 @@ export default function NewQuotePage() {
     : null;
   const activeSheetKey = activeSheetObj?.index ?? 0;
   const activeHiddenFields = colHiddenBySheet[activeSheetKey];
+  // A2: aktif sayfanin "kat" sutunlari + MIK (quantityField)
+  const activeFloorFields = colFloorsBySheet[activeSheetKey] ?? [];
+  const activeQtyField = activeSheetObj?.columnRoles?.quantityField ?? columnRoles.quantity;
   // Kullaniciya panelde gosterilecek Excel sutunlari (sistem '_' kolonlari haric)
   const managedColumns = ((activeSheetObj?.columnDefs ?? excelGridData?.columnDefs ?? []) as ExcelGridData['columnDefs'])
     .filter((c) => c.field && !c.field.startsWith('_'))
@@ -830,14 +836,21 @@ export default function NewQuotePage() {
     activeSheetObj?.columnRoles?.nameField ?? columnRoles.name,
     activeSheetObj?.columnRoles?.noField ?? columnRoles.no,
   ].filter(Boolean) as string[];
-  // GIZLI uygulanmis columnDefs (memoize — her render'da yeni dizi uretme)
+  // GIZLI + (A2) MIK salt-okunur uygulanmis columnDefs (memoize)
   const displayColumnDefs = useMemo(() => {
     const cols = (activeSheetObj?.columnDefs ?? excelGridData?.columnDefs ?? []) as ExcelGridData['columnDefs'];
     const hs = new Set(activeHiddenFields ?? []);
-    if (hs.size === 0) return cols;
-    return cols.map((c) => (hs.has(c.field) ? { ...c, hide: true } : c));
+    const floorsOn = (activeFloorFields?.length ?? 0) > 0;
+    if (hs.size === 0 && !floorsOn) return cols;
+    return cols.map((c) => {
+      let out = c;
+      if (hs.has(c.field)) out = { ...out, hide: true };
+      // A2: kat isaretliyken MIK hesaplanan → salt-okunur
+      if (floorsOn && activeQtyField && c.field === activeQtyField) out = { ...out, editable: false };
+      return out;
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSheetObj?.columnDefs, excelGridData?.columnDefs, activeHiddenFields]);
+  }, [activeSheetObj?.columnDefs, excelGridData?.columnDefs, activeHiddenFields, activeFloorFields, activeQtyField]);
 
   function toggleColumnHidden(field: string) {
     if (lockedColumns.includes(field)) return;
@@ -849,6 +862,25 @@ export default function NewQuotePage() {
   }
   function showAllColumns() {
     setColHiddenBySheet((prev) => ({ ...prev, [activeSheetKey]: [] }));
+  }
+
+  // A2: sutunu "kat" isaretle/kaldir + MIK = katlarin satir-toplami (yeniden hesap)
+  function toggleColumnFloor(field: string) {
+    if (lockedColumns.includes(field)) return;
+    const cur = activeFloorFields;
+    const next = cur.includes(field) ? cur.filter((f) => f !== field) : [...cur, field];
+    setColFloorsBySheet((prev) => ({ ...prev, [activeSheetKey]: next }));
+    // MIK'i yeni kat setine gore tum satirlarda yeniden hesapla
+    const qf = activeSheetObj?.columnRoles?.quantityField;
+    if (!qf) return;
+    const rows = liveRowDataBySheet[activeSheetKey] ?? activeSheetObj?.rowData ?? [];
+    const nextRows = rows.map((r: any) => {
+      if (!r._isDataRow || next.length === 0) return r;
+      let sum = 0;
+      for (const f of next) sum += parseFloat(String(r[f] ?? '').replace(',', '.')) || 0;
+      return { ...r, [qf]: sum === 0 ? '' : String(Math.round(sum * 1000) / 1000) };
+    });
+    setLiveRowDataBySheet((prev) => ({ ...prev, [activeSheetKey]: nextRows }));
   }
 
   // ── Hucre degistiginde hesapla ──
@@ -1444,6 +1476,9 @@ export default function NewQuotePage() {
               locked={lockedColumns}
               onToggleHidden={toggleColumnHidden}
               onShowAll={showAllColumns}
+              floors={activeFloorFields}
+              onToggleFloor={toggleColumnFloor}
+              mikField={activeQtyField}
             />
             {(activeHiddenFields ?? []).length > 0 && (
               <span className="text-[11px] text-slate-400">Gizli:</span>
@@ -1683,6 +1718,8 @@ export default function NewQuotePage() {
           // (manuel), yayilim yalniz SURUKLE/CIFT-TIK ile. onAutoVariantChange
           // GONDERILMEZ: surukleme artik global anahtar acmaz.
           autoVariantEnabled={false}
+          // PRD v3.0 A2: "kat" isaretli sutunlar → MIK = katlarin satir-toplami
+          floorFields={activeFloorFields}
           // §3: yayilim bilgisi — "n satır güncellendi"
           onAutoVariantApplied={({ applied, waiting, missing }) => {
             const parca: string[] = [];

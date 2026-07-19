@@ -76,6 +76,10 @@ interface Props {
   /** Duzeltme Talebi §3: yayilim/fill sonrasi "n satır güncellendi" bilgisi —
    *  parent toast gosterir. */
   onAutoVariantApplied?: (info: { applied: number; waiting: number; missing: number; kaynak: string }) => void;
+  /** PRD v3.0 Bolum A2: "kat" olarak isaretlenen sutunlar. Dolu ise MIK
+   *  (columnRoles.quantityField) = bu sutunlarin satir-toplami; kat hucresi
+   *  duzenlenince MIK otomatik yeniden hesaplanir. */
+  floorFields?: string[];
   // Iscilik tarafi
   laborFirms?: LaborFirm[];
   sheetDiscipline?: 'mechanical' | 'electrical' | null;
@@ -1045,6 +1049,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
   autoVariantEnabled = true,
   onAutoVariantChange,
   onAutoVariantApplied,
+  floorFields,
 }, ref) {
   const gridRef = useRef<AgGridReact<ExcelRowData>>(null);
 
@@ -2027,6 +2032,21 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       return;
     }
 
+    // ── PRD v3.0 Bolum A2: KAT sutunu edit'i → MIK = katlarin toplami ──
+    // Isaretli kat sutunu duzenlenince MIK (quantityField) yeniden hesaplanir;
+    // setDataValue(quantityField) alttaki miktar→toplam→fiyat zincirini tetikler.
+    if (
+      floorFields && floorFields.length > 0 && quantityField &&
+      e.colDef.field && floorFields.includes(e.colDef.field) && e.source === 'edit'
+    ) {
+      let sum = 0;
+      for (const f of floorFields) sum += parseFloat(String(row[f] ?? '').replace(',', '.')) || 0;
+      const yeni = sum === 0 ? '' : String(Math.round(sum * 1000) / 1000);
+      if (String(row[quantityField] ?? '') !== yeni) {
+        e.node.setDataValue(quantityField, yeni);
+      }
+    }
+
     // ── Grand recalc helper (her degisim sonunda cagrilir) ──
     const recalcGrand = () => {
       if (!grandUnitPriceField && !grandTotalField) return;
@@ -2228,7 +2248,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
 
     // Guven kapisi sayaci tazele (PRD Bolum 9)
     recountPending();
-  }, [data.columnRoles, data.columnDefs, onRowDataChange, autoAppendRow, recountPending]);
+  }, [data.columnRoles, data.columnDefs, onRowDataChange, autoAppendRow, recountPending, floorFields]);
 
   // getRowId — stabil row kimligi (re-render'da row'un durumunu korur)
   const getRowId = useCallback((params: GetRowIdParams<ExcelRowData>) => {
