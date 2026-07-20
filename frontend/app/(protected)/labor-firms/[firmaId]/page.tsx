@@ -42,6 +42,9 @@ export default function LaborFirmDetailPage() {
   const [bekleyen, setBekleyen] = useState(0);
   // L1: Manuel Kalem Ekle modali (ManualBrandModal'in iscilik ikizi)
   const [manualOpen, setManualOpen] = useState(false);
+  // Sentetik sheet (save-bulk/manuel liste): nameField = kalemin TAM adi →
+  // ad duzenlemesi guvenle kaydedilebilir (import JSON'unda cap-only olabilir)
+  const [syntheticSheet, setSyntheticSheet] = useState(false);
 
   // Aktif liste icin ExcelGrid data
   const [gridData, setGridData] = useState<ExcelGridData | null>(null);
@@ -95,14 +98,30 @@ export default function LaborFirmDetailPage() {
         return;
       }
       const sheet = data.sheet;
+      // INLINE YENI KALEM (kullanici istegi 20.07): mevcut satirlarin altina
+      // 30 bos satir + hep-bos spare (autoAppendRow) — malzeme marka-detay
+      // sayfasiyla ayni desen. Kaydet: mevcut→save-sheets, yeni→save-bulk.
+      const maxIdx = (sheet.rowData as any[]).reduce((m: number, r: any) => Math.max(m, r._rowIdx ?? 0), 0);
+      const blank = (idx: number, spare = false) => {
+        const row: any = { _rowIdx: idx, _isDataRow: true, _isHeaderRow: false };
+        if (spare) row._isSpareRow = true;
+        for (const c of sheet.columnDefs as any[]) {
+          if (c.field && !String(c.field).startsWith('_')) row[c.field] = '';
+        }
+        return row;
+      };
+      const withBlanks = [...sheet.rowData];
+      for (let i = 1; i <= 30; i++) withBlanks.push(blank(maxIdx + i));
+      withBlanks.push(blank(maxIdx + 31, true));
       setGridData({
         columnDefs: sheet.columnDefs,
-        rowData: sheet.rowData,
+        rowData: withBlanks,
         columnRoles: sheet.columnRoles,
         brands: [],
         headerEndRow: sheet.headerEndRow ?? 0,
       });
-      setLiveRows(sheet.rowData);
+      setLiveRows(withBlanks);
+      setSyntheticSheet(!!sheet.synthetic);
       setDirtyCount(0);
     } catch (e: any) {
       toast({ title: 'Sheet yuklenemedi', description: e?.response?.data?.message, variant: 'destructive' });
@@ -123,35 +142,86 @@ export default function LaborFirmDetailPage() {
     console.log(`[labor-firms detay] handleRowsChange: ${rows.length} satir, ${dirty} dirty`);
   }
 
+  function parseTrNum(v: unknown): number {
+    let s = String(v ?? '').replace(/[₺$€\s]/g, '').trim();
+    if (s === '') return 0;
+    const hasComma = s.includes(',');
+    const hasDot = s.includes('.');
+    if (hasComma && hasDot) s = s.replace(/\./g, '').replace(',', '.'); // TR bicimi
+    else if (hasComma) s = s.replace(',', '.');
+    return parseFloat(s) || 0;
+  }
+
   async function handleSaveDrafts() {
     if (!activeListId || !gridData) return;
-    const dirtyRows = liveRows.filter((r: any) => r._isDataRow && r._dirty);
-    if (dirtyRows.length === 0) {
+    const priceField = gridData.columnRoles.laborUnitPriceField;
+    const unitField = gridData.columnRoles.unitField;
+    const nameField = gridData.columnRoles.nameField;
+
+    // MEVCUT kalemler (dirty + _laborPriceId) → save-sheets
+    const dirtyExisting = liveRows.filter((r: any) => r._isDataRow && r._dirty && r._laborPriceId);
+    // YENI satirlar (inline bos satirlara girilenler) → save-bulk
+    const newFilled = liveRows.filter((r: any) =>
+      r._isDataRow && !r._laborPriceId && !r._isSpareRow
+      && nameField && String(r[nameField] ?? '').trim().length >= 2);
+
+    if (dirtyExisting.length === 0 && newFilled.length === 0) {
       toast({ title: 'Degisiklik yok' });
       return;
     }
 
     setSavingDrafts(true);
     try {
-      const priceField = gridData.columnRoles.laborUnitPriceField;
-      // ONEMLI: laborItemName gondermiyoruz cunku row'daki nameField sadece
-      // cap degeri (ornek "1 1/4\""). Gercek LaborItem.name grup basligi + cap
-      // birlestirilmis tam ad ("SIYAH CELIK BORULAR 1 1/4""). Gondersek backend
-      // name'i kisa versiyonla overwrite eder, tag'ler bozulur, matching fail.
-      const payload = dirtyRows.map((r: any) => ({
-        laborPriceId: r._laborPriceId,
-        listPrice: priceField ? parseFloat(String(r[priceField] ?? '')) || 0 : undefined,
-        discountRate: r._draftDiscount ?? r._laborDiscountRate ?? 0,
-      })).filter((p) => !!p.laborPriceId);
+      // ── Mevcut kalem guncellemeleri ──────────────────────────────
+      // CANLI BULGU (20.07): unit HIC GONDERILMIYORDU — kullanici Birim'i
+      // duzeltti, "kaydedildi" dendi ama DB'ye gitmedi. Artik gider.
+      // Ad yalniz SENTETIK sheet'te gider (nameField=TAM ad); import
+      // JSON'unda nameField cap-only olabilir — ad overwrite YASAK.
+      if (dirtyExisting.length > 0) {
+        const payload = dirtyExisting.map((r: any) => ({
+          laborPriceId: r._laborPriceId,
+          listPrice: priceField ? parseTrNum(r[priceField]) : undefined,
+          discountRate: r._draftDiscount ?? r._laborDiscountRate ?? 0,
+          unit: unitField ? (String(r[unitField] ?? '').trim() || undefined) : undefined,
+          laborItemName: syntheticSheet && nameField
+            ? (String(r[nameField] ?? '').trim() || undefined)
+            : undefined,
+        })).filter((p) => !!p.laborPriceId);
 
-      const { data } = await api.post(`/labor-firms/price-lists/${activeListId}/save-sheets`, {
-        dirtyRows: payload,
-      });
-      toast({ title: 'Kaydedildi', description: `${data.updated} kalem guncellendi` });
-      if (data.errors && data.errors.length > 0) {
-        toast({ title: 'Uyari', description: `${data.errors.length} hata`, variant: 'destructive' });
+        const { data } = await api.post(`/labor-firms/price-lists/${activeListId}/save-sheets`, {
+          dirtyRows: payload,
+        });
+        toast({ title: 'Kaydedildi', description: `${data.updated} kalem guncellendi` });
+        if (data.errors && data.errors.length > 0) {
+          toast({ title: 'Uyari', description: `${data.errors.length} hata`, variant: 'destructive' });
+        }
       }
+
+      // ── Yeni kalemler (inline giris) ─────────────────────────────
+      if (newFilled.length > 0) {
+        const items = newFilled.map((r: any) => ({
+          laborName: String(r[nameField!]).trim(),
+          unit: unitField ? (String(r[unitField] ?? '').trim() || 'Adet') : 'Adet',
+          unitPrice: priceField ? parseTrNum(r[priceField]) : 0,
+          discountRate: r._draftDiscount !== undefined && r._draftDiscount !== null && String(r._draftDiscount) !== ''
+            ? parseTrNum(r._draftDiscount) : undefined,
+        }));
+        const fiyatli = items.filter((i) => i.unitPrice > 0);
+        const fiyatsiz = items.length - fiyatli.length;
+        if (fiyatli.length > 0) {
+          const { data } = await api.post(`/labor-firms/${firmaId}/save-bulk`, {
+            priceListId: activeListId,
+            items: fiyatli,
+          });
+          toast({ title: 'Yeni kalemler eklendi', description: `${data.imported} kalem` });
+        }
+        if (fiyatsiz > 0) {
+          toast({ title: 'Uyari', description: `${fiyatsiz} yeni satırda Birim Fiyat yok — kaydedilmedi.`, variant: 'destructive' });
+        }
+      }
+
       await fetchSheets(activeListId);
+      await fetchFirma(); // bekleyen rozeti tazelensin
     } catch (e: any) {
       toast({ title: 'Kaydetme hatasi', description: e?.response?.data?.message, variant: 'destructive' });
     } finally {
@@ -374,6 +444,7 @@ export default function LaborFirmDetailPage() {
             conversionRate={1}
             mode="library"
             libraryPriceField="laborUnitPriceField"
+            autoAppendRow
             onBrandChange={async () => null}
             onRowDataChange={handleRowsChange}
           />

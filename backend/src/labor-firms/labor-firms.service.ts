@@ -239,6 +239,17 @@ export class LaborFirmsService {
     const unusedPrices = [...prices];
     const matchedIds = new Set<string>();
 
+    // DB → HUCRE BINDIRMESI: birim/fiyat kaynagi LaborPrice'tir (JSON degil).
+    // Canli bulgu (20.07): kullanici Birim'i duzeltip kaydetti, yeniden
+    // yukleyince ESKI deger geldi — JSON hucresi bayatti. Okuma aninda DB
+    // degerleri hucrelere yazilir; JSON yalniz yerlesim/rol tasir.
+    const dbOverlay = (row: any, p: { unit?: string | null; unitPrice?: number; discountRate?: number | null }) => {
+      const out: any = { ...row, _laborDiscountRate: p.discountRate || 0 };
+      if (roles.unitField && p.unit) out[roles.unitField] = p.unit;
+      if (roles.laborUnitPriceField && p.unitPrice !== undefined) out[roles.laborUnitPriceField] = p.unitPrice;
+      return out;
+    };
+
     // ILK GECIS: full name ile match
     for (let i = 0; i < enhanced.length; i++) {
       const row = enhanced[i];
@@ -247,7 +258,7 @@ export class LaborFirmsService {
       if (row._laborPriceId) {
         const p = prices.find((x) => x.id === row._laborPriceId);
         if (p) {
-          enhanced[i] = { ...row, _laborDiscountRate: p.discountRate || 0 };
+          enhanced[i] = dbOverlay(row, p);
           matchedIds.add(p.id);
           matched++;
           continue;
@@ -256,8 +267,9 @@ export class LaborFirmsService {
       const fullName = buildMaterialContextFromRows(enhanced, i, roles);
       const match = priceMap.get(fullName.toLowerCase().trim());
       if (match) {
+        const p = prices.find((x) => x.id === match.id);
         enhanced[i] = {
-          ...row,
+          ...(p ? dbOverlay(row, p) : row),
           _laborPriceId: match.id,
           _laborDiscountRate: match.discountRate,
         };
@@ -280,9 +292,8 @@ export class LaborFirmsService {
         const p = remainingPrices[fallbackIdx];
         if (!p) break;
         enhanced[i] = {
-          ...row,
+          ...dbOverlay(row, p),
           _laborPriceId: p.id,
-          _laborDiscountRate: p.discountRate || 0,
         };
         fallbackIdx++;
       }
@@ -352,6 +363,10 @@ export class LaborFirmsService {
       headerEndRow: 0,
       isEmpty: false,
       discipline: pl.firma.discipline,
+      // SENTETIK sheet: nameField = LaborItem.name'in TAMAMI → FE ad
+      // duzenlemesini guvenle gonderebilir (import JSON'unda nameField
+      // cap-only olabilir, orada ad GONDERILMEZ — 131. satir dersi).
+      synthetic: true,
     };
 
     return {
