@@ -6,13 +6,14 @@ export const runtime = 'edge';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Trash2, Loader2, Wrench, Zap, Upload, X, Save } from 'lucide-react';
+import { ArrowLeft, Trash2, Loader2, Wrench, Zap, Upload, X, Save, PlusCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import api from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 import { ExcelGrid } from '@/components/excel-grid/ExcelGrid';
 import { SheetTabs } from '@/components/excel-grid/SheetTabs';
+import ManualFirmModal from '@/components/library/ManualFirmModal';
 import type { MultiSheetData, ExcelGridData, ExcelRowData } from '@/components/excel-grid/types';
 
 interface LaborFirm {
@@ -37,6 +38,10 @@ export default function LaborFirmDetailPage() {
   const [priceLists, setPriceLists] = useState<PriceList[]>([]);
   const [activeListId, setActiveListId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // L2 BEKLEYEN rozeti: adi cozumlenemedigi icin eslesmeye KAPALI kalem sayisi
+  const [bekleyen, setBekleyen] = useState(0);
+  // L1: Manuel Kalem Ekle modali (ManualBrandModal'in iscilik ikizi)
+  const [manualOpen, setManualOpen] = useState(false);
 
   // Aktif liste icin ExcelGrid data
   const [gridData, setGridData] = useState<ExcelGridData | null>(null);
@@ -57,11 +62,12 @@ export default function LaborFirmDetailPage() {
 
   const fetchFirma = useCallback(async () => {
     try {
-      const { data } = await api.get<{ firma: LaborFirm; priceLists: PriceList[] }>(
+      const { data } = await api.get<{ firma: LaborFirm; priceLists: PriceList[]; bekleyen?: number }>(
         `/labor-firms/${firmaId}/price-lists`,
       );
       setFirma(data.firma);
       setPriceLists(data.priceLists);
+      setBekleyen(data.bekleyen ?? 0);
       if (data.priceLists.length > 0 && !activeListId) {
         setActiveListId(data.priceLists[0].id);
       }
@@ -290,10 +296,21 @@ export default function LaborFirmDetailPage() {
               <h1 className="text-2xl font-bold tracking-tight">{firma.name}</h1>
               <p className="text-sm text-muted-foreground">
                 {firma.discipline === 'mechanical' ? 'Mekanik' : 'Elektrik'} iscilik firmasi
+                {bekleyen > 0 && (
+                  <span
+                    title="Adından iş/malzeme çıkarılamayan kalemler eşleşmeye kapalıdır. Kalem adını düzenleyince otomatik açılır."
+                    className="ml-2 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800 border border-amber-300"
+                  >
+                    ⏳ {bekleyen} bekleyen kalem
+                  </span>
+                )}
               </p>
             </div>
           </div>
           <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setManualOpen(true)}>
+              <PlusCircle className="mr-1 h-4 w-4" />Manuel Kalem Ekle
+            </Button>
             {dirtyCount > 0 && (
               <Button size="sm" onClick={handleSaveDrafts} disabled={savingDrafts}>
                 {savingDrafts ? (
@@ -368,6 +385,19 @@ export default function LaborFirmDetailPage() {
           </div>
         </Card>
       ) : null}
+
+      {/* L1: Manuel Kalem Ekle (7-kolon, Excel yapistirma destekli) */}
+      <ManualFirmModal
+        open={manualOpen}
+        onClose={() => setManualOpen(false)}
+        onSaved={async () => {
+          setManualOpen(false);
+          await fetchFirma();
+          if (activeListId) await fetchSheets(activeListId);
+        }}
+        firmaId={firmaId}
+        firmaName={firma.name}
+      />
 
       {/* Multi-sheet ilk yukleme modal */}
       {editorOpen && multiSheet && (

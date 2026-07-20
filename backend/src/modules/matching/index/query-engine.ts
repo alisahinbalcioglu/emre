@@ -391,6 +391,28 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     rows = [...rows].sort((a, b) => tabanSirasi(a, hb) - tabanSirasi(b, hb)); // stable — grup ici sira korunur
   }
 
+  // ── 5c. ISCILIK L6: BIRIM SERT ───────────────────────────────────
+  // PRD Iscilik: "malzeme metre ise metre bazli iscilik kalemi; adet ise
+  // adet bazli. Uymayan kalem aday olamaz." Malzemedeki E2 (yumusak onay)
+  // AYNEN kalir; bu filtre yalniz birimSert (catalog=iscilik) ile calisir.
+  // Birimsiz kalem / taninmayan birim ELENMEZ; havuz bosalirsa sonuc
+  // 'none' (birim-uyumsuz) — cagiran alternatif firmalari onerir (L5).
+  if (opts?.birimSert && line.unit) {
+    const istenen = birimKanonik(line.unit);
+    if (istenen) {
+      const uyumlu = rows.filter((r) => {
+        const k = birimKanonik(r.urun.birim);
+        return !k || k === istenen;
+      });
+      if (uyumlu.length === 0) {
+        return { kind: 'none', reason: 'birim-uyumsuz', detail: line.unit, donusum };
+      }
+      rows = uyumlu;
+      if (yuzeyGenis) yuzeyGenis = yuzeyGenis.filter((r) => { const k = birimKanonik(r.urun.birim); return !k || k === istenen; });
+      if (adGenis) adGenis = adGenis.filter((r) => { const k = birimKanonik(r.urun.birim); return !k || k === istenen; });
+    }
+  }
+
   // ── 6. V4 GRUP VARYANTI — kullanicinin KENDI secimi ──────────────
   // R16 dersi: kullanici sinyali marka/skor sinyalinden ONCE uygulanir.
   // (v2'de zaten marka tie-break YOK — marka artik stok kapsami.)
@@ -513,6 +535,20 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     return { kind: 'single', row: rows[0], donusum };
   }
   return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, uyariNot: unitConflict ?? capsizNotu ?? gevsetmeNotu ?? undefined };
+}
+
+/**
+ * Birim kanonik sinifi (ISCILIK L6): mt/m/metre → 'metre', ad/adet → 'adet',
+ * tk/takim/set → 'takim'. Taninmayan/bos birim null doner — ELENMEZ
+ * (kanit yok, suclama yok; PRD yalniz ACIK celiskiyi yasaklar).
+ */
+export function birimKanonik(u: string | null | undefined): string | null {
+  const s = (u ?? '').trim().toLocaleLowerCase('tr');
+  if (!s) return null;
+  if (/^(mt|m|mtul|mtül|metre|meter)\.?$/.test(s)) return 'metre';
+  if (/^(ad|adet|pcs|pc|piece)\.?$/.test(s)) return 'adet';
+  if (/^(tk|takim|takım|set)\.?$/.test(s)) return 'takim';
+  return null;
 }
 
 /**

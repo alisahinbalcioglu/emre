@@ -84,11 +84,27 @@ interface Props {
   laborFirms?: LaborFirm[];
   sheetDiscipline?: 'mechanical' | 'electrical' | null;
   laborEnabled?: boolean;
-  onFirmaChange?: (rowIdx: number, firmaId: string, laborName: string) => Promise<{
+  // PRD Iscilik (tek motor): onBrandChange ile AYNI sozlesme — variantTags
+  // (surukleme kalem-cinsi tasimasi, L7) + silent; donuste alternatives (L5),
+  // variantTags/autoVariant/notProduct motor ortak alanlari.
+  onFirmaChange?: (rowIdx: number, firmaId: string, laborName: string, opts?: {
+    variantTags?: string[];
+    silent?: boolean;
+  }) => Promise<{
     netPrice: number;
     matchedName?: string;
     candidates?: MatchCandidate[];
     reason?: string;
+    confidence?: 'high' | 'suggestion' | string;
+    notProduct?: boolean;
+    donusum?: string;
+    autoVariant?: boolean;
+    hafizaOtoyaz?: boolean;
+    variantTags?: string[];
+    variantMissing?: boolean;
+    // L5: bu firmada yok — kalemi sunan diger firmalar (fiyatli).
+    // BrandAlternative alanlari FIRMA tasir (brandId=firmaId, brandName=firma adi).
+    alternatives?: BrandAlternative[];
   } | null>;
   // Hucre duzenleme sonrasi disariya canli rowData'yi yayar (fiyat listesi yuklemede kullanilir)
   onRowDataChange?: (rows: ExcelRowData[]) => void;
@@ -712,6 +728,10 @@ function FirmaDropdown(props: ICellRendererParams & {
     api, node,
   } = props;
   const [candidates, setCandidates] = React.useState<MatchCandidate[] | null>(null);
+  // L5: "bu firmada yok" → kalemi sunan diger firmalar (fiyatli, tiklanabilir)
+  const [alternatives, setAlternatives] = React.useState<BrandAlternative[] | null>(null);
+  // Hafiza (L4 ogrenme): remember bu adla yazilir — secim aninda okunur
+  const lookupNameRef = React.useRef<string>('');
   const [popupPos, setPopupPos] = React.useState<{ top: number; left: number } | null>(null);
   // AYNI FIX (BrandDropdown ile): eski triggerRef hicbir elemana bagli degildi
   // → labor secim popup'i da HIC acilamiyordu. Wrapper + viewport fallback.
@@ -778,6 +798,7 @@ function FirmaDropdown(props: ICellRendererParams & {
   const handleChange = async (firmaId: string) => {
     node.setDataValue('_firma', firmaId || null);
     setCandidates(null);
+    setAlternatives(null);
     if (!firmaId) {
       node.setDataValue('_labNetPrice', 0);
       if (laborUnitPriceField) node.setDataValue(laborUnitPriceField, '');
@@ -793,7 +814,9 @@ function FirmaDropdown(props: ICellRendererParams & {
 
     // M1/M4: TEK SORGU — baslik+satir birlesimi (aile bilgisiz fallback yasak)
     const fullName = buildMaterialContext(api, node.rowIndex ?? 0, nameField, noField, brandField, quantityField);
-    const result = await onFirmaChange(data._rowIdx, firmaId, fullName || currentName);
+    const queryName = fullName || currentName;
+    lookupNameRef.current = queryName; // L4 ogrenme imzasi bu adla uretilir
+    const result = await onFirmaChange(data._rowIdx, firmaId, queryName);
 
     if (result && result.candidates && result.candidates.length > 0) {
       setPopupPos(computePopupPos()); // her kosulda acilir (F1)
@@ -803,6 +826,18 @@ function FirmaDropdown(props: ICellRendererParams & {
 
     if (result && result.netPrice > 0) {
       writeLaborPrice(result.netPrice);
+      // L7: tek-eslesme kaynagi da varyant kimligini SAKLAR — surukleme
+      // kalem cinsini (kaynakli/yivli) tasiyabilsin (malzeme 26d8448 dersi).
+      if (result.variantTags && result.variantTags.length > 0) {
+        node.data._labVariantTags = result.variantTags;
+      }
+      return;
+    }
+
+    // L5: bu firmada yok — kalemi sunan diger firmalar (fiyatli secenek)
+    if (result && result.alternatives && result.alternatives.length > 0) {
+      setPopupPos(computePopupPos());
+      setAlternatives(result.alternatives);
       return;
     }
 
@@ -811,9 +846,35 @@ function FirmaDropdown(props: ICellRendererParams & {
     if (laborTotalField) node.setDataValue(laborTotalField, '');
   };
 
-  const handleCandidateSelect = (c: MatchCandidate) => {
+  const handleCandidateSelect = async (c: MatchCandidate) => {
+    const firmaId = data._firma as string | null;
     writeLaborPrice(c.netPrice);
+    // L7: secimin kimligi satirda tasinir — fill-handle kaynak okur
+    node.data._labVariantTags = c.variantTags && c.variantTags.length > 0 ? c.variantTags : null;
     setCandidates(null);
+    setPopupPos(null);
+    // L4 OGRENME: secim iscilik hafizasina yazilir (iscilik| kapsami — backend)
+    if (firmaId && lookupNameRef.current) {
+      try {
+        await httpApi.post('/labor-matching/remember', {
+          firmaId,
+          laborName: lookupNameRef.current,
+          secilenAd: c.materialName,
+        });
+      } catch { /* hafiza yazilamadi — akis devam */ }
+    }
+  };
+
+  // L5: alternatif firma secimi — firma + fiyat BIRLIKTE atanir
+  const handleAlternativeSelect = (a: BrandAlternative) => {
+    node.setDataValue('_firma', a.brandId); // alan adi marka tasir, deger FIRMA
+    writeLaborPrice(a.netPrice);
+    setAlternatives(null);
+    setPopupPos(null);
+    console.log(`[FirmaDropdown] L5 alternatif firma secildi: ${a.brandName} → "${a.materialName}" = ${a.netPrice}`);
+  };
+  const handleAlternativeCancel = () => {
+    setAlternatives(null);
     setPopupPos(null);
   };
 
@@ -852,6 +913,41 @@ function FirmaDropdown(props: ICellRendererParams & {
               <div style={{ color: '#6b7280', fontSize: 11 }}>{c.netPrice.toFixed(2)} TL</div>
             </button>
           ))}
+        </div>,
+        document.body,
+      )}
+      {/* L5: bu firmada yok — kalemi sunan DIGER firmalar (fiyatli, tiklanabilir) */}
+      {alternatives && alternatives.length > 0 && popupPos && typeof document !== 'undefined' && createPortal(
+        <div style={{
+          position: 'fixed', top: popupPos.top, left: popupPos.left, zIndex: 99999,
+          background: '#eff6ff', border: '2px solid #3b82f6', borderRadius: 6, padding: 8,
+          minWidth: 280, maxWidth: 420, maxHeight: 320, overflowY: 'auto',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.25)', fontSize: 12,
+        }}>
+          <div style={{ fontWeight: 700, color: '#1d4ed8', marginBottom: 6, fontSize: 13 }}>
+            Bu firmada yok — şu firmalarda var:
+          </div>
+          {alternatives.map((a, i) => (
+            <button
+              key={i}
+              onClick={() => handleAlternativeSelect(a)}
+              style={{
+                display: 'block', width: '100%', textAlign: 'left', padding: '6px 8px',
+                border: '1px solid #dbeafe', background: 'white', cursor: 'pointer',
+                fontSize: 12, borderRadius: 4, marginBottom: 4,
+              }}
+            >
+              <div style={{ fontWeight: 700 }}>{a.brandName} — {a.netPrice.toFixed(1)} TL</div>
+              <div style={{ color: '#6b7280', fontSize: 11 }}>{a.materialName}</div>
+            </button>
+          ))}
+          <button onClick={handleAlternativeCancel} style={{
+            display: 'block', width: '100%', padding: '5px 8px', marginTop: 2,
+            border: '1px dashed #93c5fd', background: 'transparent', cursor: 'pointer',
+            fontSize: 11, borderRadius: 4, color: '#1d4ed8',
+          }}>
+            Vazgeç (fiyat yazılmaz)
+          </button>
         </div>,
         document.body,
       )}
@@ -1566,24 +1662,48 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       // K19: Ctrl+Z'nin yakalanmasi icin odak grid sarmalayicisina
       rootWrapperRef.current?.focus();
     } else if (result.field === '_firma' && onFirmaChange) {
-      // Firma fill → her satir icin labor matching tetikle
+      // PRD Iscilik L7: firma fill = ACIK NIYET — her satira KENDI capinin
+      // iscilik fiyati (kaynak fiyat ASLA kopyalanmaz); kaynak satirin kalem
+      // CINSI (kaynakli/yivli — _labVariantTags) hedeflere TASINIR (malzeme
+      // _marka dali 26d8448/14f7741 dersleriyle ayni desen).
+      const srcLabNode = api.getDisplayedRowAtIndex(result.sourceRowIndex);
+      const srcLabTags: string[] | undefined =
+        srcLabNode?.data?._labVariantTags && srcLabNode.data._labVariantTags.length > 0
+          ? srcLabNode.data._labVariantTags
+          : undefined;
+      let labApplied = 0; let labWaiting = 0; let labMissing = 0;
       for (const node of result.targetRowNodes) {
         if (!node.data?._isDataRow) continue;
         node.setDataValue('_firma', result.value);
         const currentName = lookupNameOf(node.data);
         if (!currentName) continue;
         try {
-          const matchResult = await onFirmaChange(node.data._rowIdx, result.value, currentName);
+          // M1/M4: TEK SORGU — baslik+satir (aile bilgisiz fallback yasak)
+          const det = buildMaterialContextDetailed(
+            api, node.rowIndex ?? 0,
+            nameField, data.columnRoles.noField, data.columnRoles.brandField, quantityField,
+          );
+          const opts = srcLabTags ? { variantTags: srcLabTags, silent: true } : { silent: true };
+          const matchResult = await onFirmaChange(node.data._rowIdx, result.value, det.name || currentName, opts);
           if (matchResult && matchResult.netPrice > 0) {
             node.setDataValue('_labNetPrice', matchResult.netPrice);
+            // Hedef satir da ileride surukleme kaynagi olabilir
+            node.data._labVariantTags = srcLabTags ?? matchResult.variantTags ?? null;
             const kar = parseFloat(String(node.data._iscKar ?? 0)) || 0;
             const finalPrice = hesaplaSatisBirimFiyat(matchResult.netPrice, kar);
             const qty = quantityField ? parseFloat(String(node.data[quantityField] ?? 0)) || 0 : 0;
             if (laborUnitPriceField) node.setDataValue(laborUnitPriceField, finalPrice.toFixed(1));
             if (laborTotalField) node.setDataValue(laborTotalField, hesaplaSatirToplam(finalPrice, qty).toFixed(1));
+            labApplied++;
+          } else if (matchResult?.candidates?.length) {
+            labWaiting++; // secim gerekli — hucreye tiklaninca popup acilir
+          } else {
+            labMissing++; // bu firmada yok (L5 alternatifleri tiklaninca acilir)
           }
         } catch {}
       }
+      // §3 paritesi: "n yazıldı · n bekliyor · n yok" bilgisi (parent toast)
+      onAutoVariantApplied?.({ applied: labApplied, waiting: labWaiting, missing: labMissing, kaynak: 'işçilik firması' });
     } else if (result.field === '_malzKar') {
       // Malzeme kar % fill → deger kopyala + fiyat recalc
       const karVal = parseFloat(String(result.value ?? 0)) || 0;

@@ -19,7 +19,8 @@
     "test:index": "ts-node test/index-engine-test.ts",
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "test:labor": "ts-node test/labor-matching-test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

@@ -239,6 +239,8 @@ export function toMatchResult(
         'cap-yok': `Bu markada ${outcome.detail ?? 'bu çap'} yok.`,
         'kriter-yok': `Bu markada "${outcome.detail ?? 'istenen nitelik'}" taşıyan ürün yok.`,
         'etiket-yok': 'Satırdan ürün bilgisi çıkarılamadı.',
+        // ISCILIK L6: birim uyumu sert — mt satirina adet kalemi aday olamaz
+        'birim-uyumsuz': `Satır birimi (${outcome.detail ?? '?'}) ile uyumlu kalem yok.`,
       };
       return {
         ...bos,

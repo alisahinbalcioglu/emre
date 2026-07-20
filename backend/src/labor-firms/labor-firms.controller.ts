@@ -124,7 +124,7 @@ export class LaborFirmsController {
     @Param('id') firmaId: string,
     @Body() body: {
       priceListId: string;
-      items: { laborName: string; unit: string; unitPrice: number; category?: string }[];
+      items: { laborName: string; unit: string; unitPrice: number; category?: string; discountRate?: number; currency?: string }[];
       exchangeRate?: number;
     },
   ) {

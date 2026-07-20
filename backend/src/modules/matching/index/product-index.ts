@@ -192,6 +192,32 @@ const KANONIK_ESANLAM: ReadonlyArray<[RegExp, string]> = [
   [/\bk\s*\.\s*vana(\w*)/g, 'kuresel vana$1'],
 ];
 
+/**
+ * ISCILIK IS-EKI (PRD Iscilik §3.2): katalog kalemi "Siyah çelik boru
+ * MONTAJI" yazar; teklif satiri malzeme adidir ("SİYAH ÇELİK BORU").
+ * Sondaki is kelimesi AD'den soyulur ki aile MALZEME kismindan cozulsun
+ * (sozlukte 'montaj' ailesi var — soyulmazsa kalem 'montaj', satir 'boru'
+ * ailesine duser, K6 kilidi hicbir zaman eslestiremez; test kaniti:
+ * labor-matching-test L3/L6). YALNIZ iscilik indeksleme yollari cagirir —
+ * malzeme indekslemesi DEGISMEZ. Gorunen ad (displayName) TAM kalir,
+ * cagiran tam adla override eder.
+ */
+const ISCILIK_EK: ReadonlySet<string> = new Set([
+  'montaji', 'montaj', 'demontaji', 'demontaj', 'iscilik', 'isciligi',
+  'kurulum', 'kurulumu', 'uygulama', 'uygulamasi', 'dosenmesi', 'dosemesi',
+  'temini', 'temin', 'sokumu', 'sokum', 'imalati', 'imalat',
+]);
+export function iscilikAdCekirdegi(ad: string): string {
+  const parcalar = ad.trim().split(/\s+/).filter(Boolean);
+  while (parcalar.length > 1) {
+    const son = normalizeText(parcalar[parcalar.length - 1]);
+    if (ISCILIK_EK.has(son)) parcalar.pop();
+    else break;
+  }
+  const out = parcalar.join(' ');
+  return out || ad; // ad tamamen is kelimesiyse oldugu gibi kalsin (belirsiz olur)
+}
+
 /** Metni token'lara ayirir: normalize → bol → gurultuyu at. KOK ALINMAZ. */
 export function tokenize(text: string | null | undefined): string[] {
   if (!text) return [];

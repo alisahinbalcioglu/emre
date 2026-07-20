@@ -28,6 +28,10 @@ export interface IndexedRow {
     urunKodu: string | null;
     sheetName: string | null;
     price: number;
+    /** Kalem birimi (mt/adet/takim) — ISCILIK L6 sert filtresi okur.
+     *  Opsiyonel: malzeme yollari spread ile zaten tasir; eski fixture'lar
+     *  belirtmese de derlenir (birimsiz kalem elenmez kurali). */
+    birim?: string | null;
   };
 }
 
@@ -95,7 +99,9 @@ export type NoneReason =
   | 'etiket-yok'
   | 'ad-yok'
   | 'cap-yok'
-  | 'kriter-yok';
+  | 'kriter-yok'
+  // ISCILIK L6: satir birimi ile kalem birimleri celisti (birimSert)
+  | 'birim-uyumsuz';
 
 /**
  * Motorun UC sonucu. Dorduncu yol YOKTUR (PRD Bolum 7: fallback yasagi).
@@ -138,4 +144,8 @@ export interface QueryOpts {
   /** Alias'in KENDI kelimeleri + stripTags — kisit/bilinmeyen SAYILMAZ
    *  (sozluk o kelimeleri zaten tuketti; "bulunamadı" demek yalan olur) */
   ignoreTokens?: string[];
+  /** ISCILIK L6 (PRD Iscilik): birim uyumu SERTTIR — satir birimi ile kalem
+   *  birimi celisirse aday HAVUZA GIREMEZ (malzemedeki E2 yumusak-onay yerine).
+   *  Birimsiz kalem ELENMEZ (kanit yok, suclama yok). catalog='iscilik' acar. */
+  birimSert?: boolean;
 }

@@ -408,16 +408,47 @@ model LaborItem {
   discipline     Discipline
   category       String?
   description    String?
-  tags           String[]     @default([])
-  normalizedName String?
+  tags           String[]     @default([]) // LEGACY v1 (kaldirilacak — su an dokunulmuyor)
+  normalizedName String? // LEGACY v1
   isGlobal       Boolean      @default(true)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   laborPrices    LaborPrice[]
 
+  // ── PRD Iscilik L2: 7-kolon kaynak sadakati (ProductIndex deseni) ──
+  // AD = name (mevcut). Cins/Cap/Boy/Not asagida; Birim = unit (mevcut);
+  // Fiyat/ParaBirimi LaborPrice'ta (firma bazli).
+  cins     String?
+  baglanti String?
+  capRaw   String?
+  boyMm    Float?
+  not      String?
+
+  // ── ON-HESAP (v2 indeks — ProductIndex ile AYNI alanlar, AYNI uretici:
+  // buildProductIndex/rebuildIndexFields. Ayri tablo = ayri bucket seti;
+  // malzeme sorgulari iscilik satiri GOREMEZ — PRD L9 tek MOTOR, D1 karari).
+  adSlug         String?
+  adBucket       String?
+  adTokens       String[] @default([])
+  cinsNorm       String?
+  cinsTokens     String[] @default([])
+  baglantiNorm   String?
+  baglantiTokens String[] @default([])
+  sizeClass      String   @default("unknown")
+  capTags        String[] @default([])
+  capNorm        String?
+  boyTag         String?
+  displayName    String?
+  // 0 = indekssiz/legacy → istek aninda canli tokenizer'la turetilir
+  // (matching.service hazirlaPool yol-3 deseni); reindex kalicilastirir.
+  indexVersion   Int      @default(0)
+  // adSlug cozulemedi + ad anlamsiz → BEKLEYEN (eslesmeye aday olamaz, L2)
+  belirsiz       Boolean  @default(false)
+
   @@index([discipline])
   @@index([name])
   @@index([tags], type: Gin)
+  @@index([adSlug])
 }
 
 // LaborFirm KULLANICIYA AIT — her kullanici kendi firmalarini olusturur
@@ -459,6 +490,9 @@ model LaborPrice {
   unitPrice    Float // liste fiyat
   discountRate Float           @default(0) // iskonto %
   unit         String          @default("Adet")
+  // PRD Iscilik L2: para birimi CEVRILMEZ — ham saklanir, teklif aninda
+  // toTry ile cevrilir (malzeme UserLibrary.currency ile ayni kural).
+  currency     String          @default("TRY")
   createdAt    DateTime        @default(now())
 
   @@unique([laborItemId, firmaId, priceListId])

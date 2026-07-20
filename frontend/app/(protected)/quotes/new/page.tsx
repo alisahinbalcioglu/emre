@@ -1833,39 +1833,67 @@ export default function NewQuotePage() {
             if (disc === 'electrical') return capabilities.electrical.labor;
             return false;
           })()}
-          onFirmaChange={async (rowIdx, firmaId, laborName) => {
+          onFirmaChange={async (rowIdx, firmaId, laborName, opts) => {
             try {
+              // PRD Iscilik: TEK MOTOR — malzeme onBrandChange ile ayni akis.
+              // E2/L6: satirin BIRIMI motora sinyal + SERT filtre (mt↔adet).
+              let units: Record<string, string> | undefined;
+              if (multiSheet) {
+                const active = multiSheet.sheets[activeSheetIndex] ?? multiSheet.sheets.find((s) => !s.isEmpty);
+                const unitField = (active?.columnRoles as any)?.unitField;
+                if (active && unitField) {
+                  const rowsNow = liveRowDataBySheet[active.index] ?? active.rowData ?? [];
+                  const row = rowsNow.find((r: any) => r._rowIdx === rowIdx);
+                  const u = String((row as any)?.[unitField] ?? '').trim();
+                  if (u) units = { [laborName]: u };
+                }
+              }
               const { data: result } = await api.post('/labor-matching/bulk-match', {
                 firmaId,
                 laborNames: [laborName],
+                // L7: surukleme kalem cinsini (kaynakli/yivli) tasir
+                variantTags: opts?.variantTags,
+                units,
               });
               const match = result[laborName];
+              const silent = opts?.silent === true; // fill sirasinda toast yok
               if (!match) {
-                toast({ title: 'Iscilik eslesmedi', description: `"${laborName.slice(0, 40)}"` });
+                if (!silent) toast({ title: 'Iscilik eslesmedi', description: `"${laborName.slice(0, 40)}"` });
                 return null;
               }
+              // L4: secim popup'i ExcelGrid'de acilir — eylemsiz toast YOK (B3)
               if (match.confidence === 'multi' && match.candidates?.length) {
-                toast({ title: `⚠ ${match.candidates.length} aday`, description: match.reason ?? 'Birden fazla secenek var' });
-                return { netPrice: 0, matchedName: match.matchedName, candidates: match.candidates, reason: match.reason };
+                return { netPrice: 0, matchedName: match.matchedName, candidates: match.candidates, reason: match.reason, variantMissing: match.variantMissing };
               }
               if (match.netPrice > 0) {
                 const netPrice = parseFloat(String(match.netPrice)) || 0;
-                toast({
-                  title: `🔧 ${displayPrice(netPrice)} (iscilik)`,
+                if (!silent) toast({
+                  title: match.autoVariant
+                    ? `⚡ Otomatik işçilik: ${displayPrice(netPrice)} — ${laborName.slice(0, 40)}`
+                    : `🔧 ${displayPrice(netPrice)} (iscilik)`,
                   description: `Eslesti: ${match.matchedName?.slice(0, 80) ?? 'Bilinmeyen'}`,
                 });
-                return { netPrice, matchedName: match.matchedName, candidates: match.candidates, reason: match.reason };
+                return { netPrice, matchedName: match.matchedName, reason: match.reason, confidence: match.confidence, autoVariant: match.autoVariant, hafizaOtoyaz: match.hafizaOtoyaz, variantTags: match.variantTags };
               }
               // Eslesme bulundu ama fiyat 0 — kullaniciya uyari
               if (match.confidence === 'high' && match.matchedName) {
-                toast({
+                if (!silent) toast({
                   title: `⚠ Iscilik fiyati 0`,
                   description: `"${match.matchedName.slice(0, 60)}" eslesti ama firma listesinde bu kalemin fiyati girilmemis. Kutuphaneye gidip iskonto/fiyat ekleyin.`,
                   variant: 'destructive',
                 });
                 return { netPrice: 0, matchedName: match.matchedName, candidates: match.candidates, reason: match.reason };
               }
-              toast({ title: 'Iscilik eslesmedi', description: match.reason ?? `"${laborName.slice(0, 40)}"` });
+              // URUN DEGIL (oran/hizmet satiri) — fiyat beklenmiyor
+              if (match.notProduct) {
+                if (!silent) toast({ title: 'Ürün değil', description: 'Oran/hizmet satırı — işçilik beklenmiyor.' });
+                return { netPrice: 0, notProduct: true, reason: match.reason };
+              }
+              // L5: bu firmada yok — alternatif firmalar popup'i ExcelGrid'de
+              if (match.alternatives?.length) {
+                return { netPrice: 0, alternatives: match.alternatives, reason: match.reason };
+              }
+              if (!silent) toast({ title: 'Iscilik eslesmedi', description: match.reason ?? `"${laborName.slice(0, 40)}"` });
               return null;
             } catch (e) {
               console.error('[FirmaDropdown] error:', e);

@@ -1,6 +1,9 @@
 import { Injectable, NotFoundException, ConflictException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { buildMaterialContextFromRows, ColumnRoles, RowData } from '../utils/build-material-context';
+// PRD Iscilik L2: ice aktarim AYNI indeksleyiciden gecer (tek motor/indeksleyici)
+import { MatchingService } from '../modules/matching/matching.service';
+import { INDEX_VERSION } from '../modules/matching/index/product-index';
 
 export interface SheetInput {
   name: string;
@@ -18,7 +21,10 @@ export interface CreateLaborFirmDto {
 
 @Injectable()
 export class LaborFirmsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private matching: MatchingService,
+  ) {}
 
   // ── Sahiplik kontrolu helper ──
   private async assertOwnership(firmaId: string, userId: string) {
@@ -63,7 +69,15 @@ export class LaborFirmsService {
       include: { _count: { select: { prices: true } } },
       orderBy: { uploadedAt: 'desc' },
     });
-    return { firma, priceLists };
+    // L2 BEKLEYEN rozeti: adi cozumlenemedigi icin eslesmeye KAPALI kalemler
+    // (belirsiz=true) — firma detayinda gorunur, ad duzeltilince acilir.
+    let bekleyen = 0;
+    try {
+      bekleyen = await (this.prisma as any).laborItem.count({
+        where: { belirsiz: true, laborPrices: { some: { firmaId } } },
+      });
+    } catch { /* migration oncesi kolon yoksa akisi bozma */ }
+    return { firma, priceLists, bekleyen };
   }
 
   async getPriceListItems(userId: string, priceListId: string) {
@@ -145,6 +159,9 @@ export class LaborFirmsService {
             name: newName,
             tags: tagged.tags,
             normalizedName: tagged.normalizedName,
+            // L2: ad degisti → YENIDEN indekslenir; BEKLEYEN kalem adi
+            // duzeltilince eslesmeye otomatik acilir (belirsiz=false olur).
+            ...this.matching.laborItemIndexData(newName, updated.unit),
           },
         });
       }
@@ -450,7 +467,7 @@ export class LaborFirmsService {
 
     const { generateTags } = require('../modules/matching/tag-generator');
 
-    const results: Array<{ sheetName: string; listName: string; imported: number; skipped: number }> = [];
+    const results: Array<{ sheetName: string; listName: string; imported: number; skipped: number; bekleyen: number }> = [];
     const warnings: string[] = [];
 
     for (const sheet of sheets) {
@@ -508,6 +525,7 @@ export class LaborFirmsService {
 
       let imported = 0;
       let skipped = 0;
+      let bekleyen = 0;
 
       for (let rowIdx = 0; rowIdx < sheet.rowData.length; rowIdx++) {
         const row = sheet.rowData[rowIdx];
@@ -527,6 +545,11 @@ export class LaborFirmsService {
           ? String(row[roles.unitField] ?? '').trim() || 'Adet'
           : 'Adet';
 
+        // L2: ICE AKTARIM AYNI INDEKSLEYICIDEN GECER (index-at-creation).
+        // belirsiz=true → BEKLEYEN kuyrugu (eslesmeye kapali, rozetle gorunur).
+        const indexData = this.matching.laborItemIndexData(fullName, unit);
+        if (indexData.belirsiz) bekleyen++;
+
         // LaborItem upsert
         let laborItem = await this.prisma.laborItem.findFirst({
           where: {
@@ -545,13 +568,16 @@ export class LaborFirmsService {
               tags: tagged.tags,
               normalizedName: tagged.normalizedName,
               isGlobal: true,
+              ...indexData,
             },
           });
-        } else if (!laborItem.tags || laborItem.tags.length === 0) {
+        } else if ((laborItem as any).indexVersion !== INDEX_VERSION) {
+          // Mevcut kalem bayat/indekssiz → canli indeksleyiciyle tazele
+          // (legacy tags de eskiyse birlikte yenilenir — zararsiz).
           const tagged = generateTags(fullName);
           await this.prisma.laborItem.update({
             where: { id: laborItem.id },
-            data: { tags: tagged.tags, normalizedName: tagged.normalizedName },
+            data: { tags: tagged.tags, normalizedName: tagged.normalizedName, ...indexData },
           });
         }
 
@@ -592,8 +618,11 @@ export class LaborFirmsService {
         },
       });
 
-      results.push({ sheetName: sheet.name, listName, imported, skipped });
-      console.log(`[saveFromSheets] "${sheet.name}" → "${listName}": ${imported} kalem (${skipped} atlandi)`);
+      if (bekleyen > 0) {
+        warnings.push(`"${sheet.name}": ${bekleyen} kalem BEKLEYEN — adından iş/malzeme çıkarılamadı, eşleşmeye kapalı (adı düzenleyince açılır).`);
+      }
+      results.push({ sheetName: sheet.name, listName, imported, skipped, bekleyen });
+      console.log(`[saveFromSheets] "${sheet.name}" → "${listName}": ${imported} kalem (${skipped} atlandi, ${bekleyen} bekleyen)`);
     }
 
     const totalImported = results.reduce((s, r) => s + r.imported, 0);
@@ -610,7 +639,9 @@ export class LaborFirmsService {
     userId: string,
     firmaId: string,
     priceListId: string,
-    items: { laborName: string; unit: string; unitPrice: number; category?: string }[],
+    // PRD Iscilik 7-kolon: discountRate + currency (para birimi CEVRILMEZ,
+    // ham saklanir — teklif aninda toTry) ManualFirmModal'dan gelir.
+    items: { laborName: string; unit: string; unitPrice: number; category?: string; discountRate?: number; currency?: string }[],
     exchangeRate?: number,
   ) {
     const firma = await this.assertOwnership(firmaId, userId);
@@ -677,6 +708,8 @@ export class LaborFirmsService {
             tags: tagged.tags,
             normalizedName: tagged.normalizedName,
             isGlobal: true,
+            // L2: index-at-creation (ayni indeksleyici)
+            ...this.matching.laborItemIndexData(name, unit),
           },
         });
       } else if (laborItem.tags?.length === 0) {
@@ -688,10 +721,14 @@ export class LaborFirmsService {
         });
       }
 
+      const iskonto = item.discountRate !== undefined && !isNaN(Number(item.discountRate))
+        ? Math.max(0, Math.min(100, Number(item.discountRate)))
+        : undefined;
+      const paraBirimi = item.currency?.trim() ? item.currency.trim().toUpperCase() : undefined;
       await this.prisma.laborPrice.upsert({
         where: { laborItemId_firmaId_priceListId: { laborItemId: laborItem.id, firmaId, priceListId: priceList.id } },
-        update: { unitPrice: price, unit },
-        create: { laborItemId: laborItem.id, firmaId, priceListId: priceList.id, unitPrice: price, unit },
+        update: { unitPrice: price, unit, ...(iskonto !== undefined ? { discountRate: iskonto } : {}), ...(paraBirimi ? { currency: paraBirimi } as any : {}) },
+        create: { laborItemId: laborItem.id, firmaId, priceListId: priceList.id, unitPrice: price, unit, ...(iskonto !== undefined ? { discountRate: iskonto } : {}), ...(paraBirimi ? { currency: paraBirimi } as any : {}) },
       });
 
       imported++;

@@ -9,7 +9,7 @@ import { TerminologyService } from './terminology.service';
 import { parseLine } from './index/line-parser';
 import { runQuery } from './index/query-engine';
 import { toMatchResult, gorunenAd } from './index/outcome-mapper';
-import { INDEX_VERSION, tokenize, buildProductIndex, rebuildIndexFields } from './index/product-index';
+import { INDEX_VERSION, tokenize, buildProductIndex, rebuildIndexFields, iscilikAdCekirdegi } from './index/product-index';
 import type { ProductColumns } from './index/product-index';
 import type { IndexedRow, LineQuery, QueryOpts } from './index/types';
 import type { AliasHint } from './terminology.service';
@@ -140,65 +140,14 @@ export class MatchingService {
       } else {
         indekssizSayisi++;
         const name: string = li.material?.name ?? li.materialName ?? '';
-        const price = li.listPrice ?? 0;
-        const cap = li.cap ?? extractSizeInfo(name)?.display ?? null;
-        // AD'den olcu ifadesi SOYULUR: adBucket/adTokens capa kilitlenmesin.
-        // Yoksa "...Boru 1\"" ile "...Boru 1 1/4\"" farkli AD sayilir → V4
-        // varyant kimligi (ad:bucket) caplar arasi YAYILAMAZ, tam-ad
-        // eslesmesi de kacar. Cap zaten cap kolonuna tasindi (yukarida).
-        const adTemiz = (li.cap ? name : name
-          .replace(/\b(dn|pn|od)\s*-?\d+(?:[.,]\d+)?\b/gi, ' ')
-          .replace(/\d+\s+\d+\/\d+\s*(?:"|''|inch|inc\b)?/gi, ' ')
-          .replace(/\d+\/\d+\s*(?:"|''|inch|inc\b)?/gi, ' ')
-          .replace(/\d+(?:[.,]\d+)?\s*(?:"|''|inch\b|inc\b|mm\b)/gi, ' ')
-          .replace(/[øØ]\s*\d+/g, ' ')
-          .replace(/\s[-·—]\s/g, ' ') // olcu soyulunca sarkan ayrac artigi
-          .replace(/\s{2,}/g, ' ').trim()) || name;
-        // MANUEL SATIRI KOLONLARA AYRISTIR: yuzey/cins kelimeleri CINS'e,
-        // baglanti sifatlari BAGLANTI'ya tasinir. Yoksa "... Siyah Dişli
-        // Manşonlu" gibi adlarda sondaki 'manşonlu' sondan-aile-cozumunu
-        // fitting'e kaciriyordu (bas isim ortada kaliyor: 'Borusu').
-        const CINS_K = new Set(['siyah', 'galvaniz', 'galvanizli', 'kirmizi', 'boyali', 'celik',
-          'paslanmaz', 'pirinc', 'dokum', 'bronz', 'bakir', 'ppr', 'pprc', 'pvc', 'pe', 'pex',
-          'hdpe', 'polietilen', 'plastik', 'wafer', 'lug']);
-        const BAGLANTI_K = new Set(['disli', 'mansonlu', 'kaynakli', 'flansli', 'yivli',
-          'vidali', 'gecmeli', 'rakorlu', 'presli', 'sokedli', 'kaplinli', 'duz', 'uclu']);
-        // YALNIZ SONDAN ardisik cins/baglanti kelimeleri soyulur — Turkcede
-        // bas isim SONDADIR; ortadan kelime cekmek adi bozar ("Su ve Yangın
-        // Tesisat Borusu"nun ortasindan 'yangin' cekilemez). Sondaki sifat
-        // kuyrugu ("... - Siyah Dişli Manşonlu") ise aile cozumunu kacirtan
-        // gercek gurultudur → kolonlarina tasinir. HAM kelime korunur
-        // (displayName Turkce karakteriyle cizilir).
-        const parcalar = adTemiz.split(/\s+/).filter(Boolean);
-        const cinsK: string[] = []; const bagK: string[] = []; const kuyruk: string[] = [];
-        while (parcalar.length > 1) {
-          const ham = parcalar[parcalar.length - 1];
-          const w = tokenize(ham)[0] ?? '';
-          if (!w) { kuyruk.unshift(parcalar.pop()!); continue; } // stopword ('Tip') soymayi KESMEZ
-          if (CINS_K.has(w)) cinsK.unshift(parcalar.pop()!);
-          else if (BAGLANTI_K.has(w)) bagK.unshift(parcalar.pop()!);
-          else break;
-        }
-        // stopword kuyrugu en yakin kovaya iade ("Lug Tip" → cins 'Lug Tip')
-        if (kuyruk.length && cinsK.length) cinsK.push(...kuyruk);
-        else if (kuyruk.length && bagK.length) bagK.push(...kuyruk);
-        else parcalar.push(...kuyruk);
-        const adK = parcalar;
-        const idx = buildProductIndex({
+        urun = this.manuelUrunIndeksle({
+          name,
+          price: li.listPrice ?? 0,
+          capKolonu: li.cap ?? null,
           kategori: li.kategori ?? null,
-          ad: adK.join(' ') || adTemiz,
-          cins: li.cins ?? (cinsK.length ? cinsK.join(' ') : null),
-          baglanti: bagK.length ? bagK.join(' ') : null,
-          cap,
+          cins: li.cins ?? null,
           birim: li.unit ?? null,
-          price,
         });
-        urun = {
-          ...idx,
-          ad: name, cins: li.cins ?? null, baglanti: null,
-          capRaw: cap, boyMm: null, kategori: li.kategori ?? null,
-          urunKodu: null, sheetName: null, price,
-        };
       }
       return {
         id: li.id,
@@ -219,6 +168,92 @@ export class MatchingService {
     return pool;
   }
 
+  /**
+   * MANUEL/LEGACY SATIR → istek aninda indeks (hazirlaPool yol-3).
+   * PRD Iscilik L9 (tek indeksleyici): malzeme (UserLibrary manuel satiri)
+   * ve iscilik (legacy LaborItem — yalniz ad+birim) AYNI yoldan gecer.
+   * Govde hazirlaPool'un eski else-dalindan AYNEN tasindi — davranis
+   * DEGISMEDI (test:matching/contract/spec bu yolu zaten kilitliyor).
+   */
+  private manuelUrunIndeksle(params: {
+    name: string;
+    price: number;
+    /** Kaynakta cap KOLONU varsa metinden olcu soyulmaz (kolon otorite). */
+    capKolonu?: string | null;
+    kategori?: string | null;
+    cins?: string | null;
+    birim?: string | null;
+    /** ISCILIK: sondaki is kelimesi ('montajı'/'işçiliği'...) AD'den soyulur —
+     *  aile MALZEME kismindan cozulur (bkz. iscilikAdCekirdegi). */
+    iscilikEki?: boolean;
+  }): IndexedRow['urun'] {
+    const { name, price } = params;
+    const cap = params.capKolonu ?? extractSizeInfo(name)?.display ?? null;
+    // AD'den olcu ifadesi SOYULUR: adBucket/adTokens capa kilitlenmesin.
+    // Yoksa "...Boru 1\"" ile "...Boru 1 1/4\"" farkli AD sayilir → V4
+    // varyant kimligi (ad:bucket) caplar arasi YAYILAMAZ, tam-ad
+    // eslesmesi de kacar. Cap zaten cap kolonuna tasindi (yukarida).
+    const adTemiz = (params.capKolonu ? name : name
+      .replace(/\b(dn|pn|od)\s*-?\d+(?:[.,]\d+)?\b/gi, ' ')
+      .replace(/\d+\s+\d+\/\d+\s*(?:"|''|inch|inc\b)?/gi, ' ')
+      .replace(/\d+\/\d+\s*(?:"|''|inch|inc\b)?/gi, ' ')
+      .replace(/\d+(?:[.,]\d+)?\s*(?:"|''|inch\b|inc\b|mm\b)/gi, ' ')
+      .replace(/[øØ]\s*\d+/g, ' ')
+      .replace(/\s[-·—]\s/g, ' ') // olcu soyulunca sarkan ayrac artigi
+      .replace(/\s{2,}/g, ' ').trim()) || name;
+    // ISCILIK: "boru montajı" → aile 'montaj' cozulur, satir 'boru' der →
+    // K6 asla eslesmez. Is-eki AD'den dusurulur (gorunen ad cagiranla korunur).
+    const adKaynak = params.iscilikEki ? iscilikAdCekirdegi(adTemiz) : adTemiz;
+    // MANUEL SATIRI KOLONLARA AYRISTIR: yuzey/cins kelimeleri CINS'e,
+    // baglanti sifatlari BAGLANTI'ya tasinir. Yoksa "... Siyah Dişli
+    // Manşonlu" gibi adlarda sondaki 'manşonlu' sondan-aile-cozumunu
+    // fitting'e kaciriyordu (bas isim ortada kaliyor: 'Borusu').
+    const CINS_K = new Set(['siyah', 'galvaniz', 'galvanizli', 'kirmizi', 'boyali', 'celik',
+      'paslanmaz', 'pirinc', 'dokum', 'bronz', 'bakir', 'ppr', 'pprc', 'pvc', 'pe', 'pex',
+      'hdpe', 'polietilen', 'plastik', 'wafer', 'lug']);
+    const BAGLANTI_K = new Set(['disli', 'mansonlu', 'kaynakli', 'flansli', 'yivli',
+      'vidali', 'gecmeli', 'rakorlu', 'presli', 'sokedli', 'kaplinli', 'duz', 'uclu']);
+    // YALNIZ SONDAN ardisik cins/baglanti kelimeleri soyulur — Turkcede
+    // bas isim SONDADIR; ortadan kelime cekmek adi bozar ("Su ve Yangın
+    // Tesisat Borusu"nun ortasindan 'yangin' cekilemez). Sondaki sifat
+    // kuyrugu ("... - Siyah Dişli Manşonlu") ise aile cozumunu kacirtan
+    // gercek gurultudur → kolonlarina tasinir. HAM kelime korunur
+    // (displayName Turkce karakteriyle cizilir).
+    const parcalar = adKaynak.split(/\s+/).filter(Boolean);
+    const cinsK: string[] = []; const bagK: string[] = []; const kuyruk: string[] = [];
+    while (parcalar.length > 1) {
+      const ham = parcalar[parcalar.length - 1];
+      const w = tokenize(ham)[0] ?? '';
+      if (!w) { kuyruk.unshift(parcalar.pop()!); continue; } // stopword ('Tip') soymayi KESMEZ
+      if (CINS_K.has(w)) cinsK.unshift(parcalar.pop()!);
+      else if (BAGLANTI_K.has(w)) bagK.unshift(parcalar.pop()!);
+      else break;
+    }
+    // stopword kuyrugu en yakin kovaya iade ("Lug Tip" → cins 'Lug Tip')
+    if (kuyruk.length && cinsK.length) cinsK.push(...kuyruk);
+    else if (kuyruk.length && bagK.length) bagK.push(...kuyruk);
+    else parcalar.push(...kuyruk);
+    const adK = parcalar;
+    const idx = buildProductIndex({
+      kategori: params.kategori ?? null,
+      ad: adK.join(' ') || adKaynak,
+      cins: params.cins ?? (cinsK.length ? cinsK.join(' ') : null),
+      baglanti: bagK.length ? bagK.join(' ') : null,
+      cap,
+      birim: params.birim ?? null,
+      price,
+    });
+    return {
+      ...idx,
+      ad: name, cins: params.cins ?? null, baglanti: null,
+      capRaw: cap, boyMm: null, kategori: params.kategori ?? null,
+      urunKodu: null, sheetName: null, price,
+      // ISCILIK L6: birim sert filtresi okur (malzemede birimSert kapali —
+      // tasimak zararsiz, E2 davranisi degismez).
+      birim: params.birim ?? null,
+    };
+  }
+
   // ═══════════════════════════════════════════
   // TEK MOTOR: INDEKSLI + AD-KILITLI (v2) — baska motor YOKTUR (Faz 2b)
   // ═══════════════════════════════════════════
@@ -230,12 +265,18 @@ export class MatchingService {
    */
   private async matchV2(
     userId: string,
+    // Hafiza kapsam anahtari: malzemede brandId, iscilikte `iscilik|<firmaId>`
+    // (PRD Iscilik D3: malzeme hafizasi iscilik secimini KIRLETMEZ — onek
+    // ayristirir, mevcut malzeme imzalari DEGISMEZ).
     brandId: string,
     materialNames: string[],
     pool: IndexedRow[],
     toTry: (v: number, cur?: string | null) => number,
     variantTags?: string[],
     units?: Record<string, string>,
+    // PRD Iscilik L9: TEK MOTOR — katalog turu parametredir, kopya YASAK.
+    // 'iscilik': L6 birim SERT + alternatifler firma havuzundan taranir.
+    catalogOpts?: { tur: 'iscilik'; firmaId: string },
   ): Promise<Record<string, MatchResult>> {
     // ── S3: SOZLUK v2'DE DE OKUNUR (Faz 1 denetim bulgusu) ───────────
     // Satir etiketleme (PRD 1.1-B) sozluksuz eksikti: "temiz su→PPR" gibi
@@ -264,6 +305,8 @@ export class MatchingService {
 
       const opts: QueryOpts = {
         variantTags,
+        // ISCILIK L6: birim uyumu SERT — mt satirina adet kalemi aday olamaz
+        birimSert: catalogOpts?.tur === 'iscilik' || undefined,
         hintFamily: hint?.impliedType ?? null,
         sizeClassHint: yaziliSinif ? null : hint?.sizeClass ?? null,
         hintClass: !yaziliSinif && (hint?.sizeClass === 'plastic' || hint?.sizeClass === 'steel') ? hint.sizeClass : null,
@@ -296,7 +339,10 @@ export class MatchingService {
       // olabilir — multi cevapta da alternatif taranir (R5/R9).
       if (!r.notProduct && (line.familySlug || opts.hintFamily)
           && (r.confidence === 'none' || (r.dogrulanamadi?.length ?? 0) > 0)) {
-        const alts = await this.findAlternativesV2(userId, brandId, line, opts);
+        // L5 (iscilik): "bu firmada yok" → kullanicinin DIGER firmalari taranir
+        const alts = catalogOpts
+          ? await this.findLaborAlternativesV2(userId, catalogOpts.firmaId, line, opts)
+          : await this.findAlternativesV2(userId, brandId, line, opts);
         if (alts.length > 0) r = { ...r, alternatives: alts };
       }
       out[name] = r;
@@ -388,6 +434,238 @@ export class MatchingService {
       this.prisma.userLibrary.count({ where: { userId, productIndexId: null } }),
     ]);
     return { bayat, indekssiz, surum: INDEX_VERSION };
+  }
+
+  // ═══════════════════════════════════════════
+  // ISCILIK KATALOGU (PRD Iscilik L9) — AYNI MOTOR, catalogType parametresi.
+  // Kopya motor YOKTUR: asagidaki metotlar yalniz HAVUZ YUKLER (LaborPrice→
+  // IndexedRow) ve matchV2'yi 'iscilik' katalog opsiyonuyla cagirir.
+  // ═══════════════════════════════════════════
+
+  /** Teklif: satir(lar) icin secili FIRMANIN iscilik fiyatini esle.
+   *  Sahiplik dogrulamasi CAGIRANDA (LaborMatchingService.assertOwnership). */
+  async bulkMatchLabor(
+    userId: string,
+    firmaId: string,
+    laborNames: string[],
+    variantTags?: string[],
+    units?: Record<string, string>,
+  ): Promise<Record<string, MatchResult>> {
+    const prices = await (this.prisma as any).laborPrice.findMany({
+      where: { firmaId },
+      include: { laborItem: true },
+    });
+
+    if (prices.length === 0) {
+      const empty: Record<string, MatchResult> = {};
+      const reason = 'Bu firmanın işçilik fiyat listesi boş. Firma detayından liste yükleyin.';
+      for (const n of laborNames) {
+        if (!n?.trim()) continue;
+        empty[n] = { netPrice: 0, listPrice: 0, discount: 0, confidence: 'none', reason };
+      }
+      return empty;
+    }
+
+    const toTry = await this.buildTryConverter(prices as { currency?: string | null }[]);
+    const pool = this.hazirlaLaborPool(prices as any[]);
+    console.log(`[Matching] v2 ISCILIK MOTORU (tek motor, catalog=iscilik): ${pool.length} kalem, firma=${firmaId}`);
+    return this.matchV2(
+      userId,
+      `iscilik|${firmaId}`, // hafiza kapsami — malzeme imzalariyla CAKISMAZ
+      laborNames, pool, toTry, variantTags, units,
+      { tur: 'iscilik', firmaId },
+    );
+  }
+
+  /**
+   * LaborPrice(+LaborItem) → IndexedRow — malzemedeki hazirlaPool'un ikizi,
+   * AYNI UC DURUM: guncel indeks → oldugu gibi; bayat (kolonlu) →
+   * rebuildIndexFields; indekssiz/legacy (yalniz ad+birim) →
+   * manuelUrunIndeksle (yol-3 ORTAK yardimcisi — tek indeksleyici, L2/L9).
+   */
+  private hazirlaLaborPool(prices: any[]): IndexedRow[] {
+    let bayat = 0; let indekssiz = 0;
+    const pool: IndexedRow[] = prices.map((p) => {
+      const it = p.laborItem;
+      let urun: IndexedRow['urun'];
+      const kolonlu = !!(it.adSlug && it.adBucket);
+      if (kolonlu && it.indexVersion === INDEX_VERSION) {
+        urun = {
+          adSlug: it.adSlug, adBucket: it.adBucket, adTokens: it.adTokens ?? [],
+          cinsNorm: it.cinsNorm ?? null, cinsTokens: it.cinsTokens ?? [],
+          baglantiNorm: it.baglantiNorm ?? null, baglantiTokens: it.baglantiTokens ?? [],
+          sizeClass: it.sizeClass ?? 'unknown', capTags: it.capTags ?? [],
+          capNorm: it.capNorm ?? null, boyTag: it.boyTag ?? null,
+          displayName: it.displayName ?? it.name, rowKey: it.id,
+          indexVersion: it.indexVersion, belirsiz: it.belirsiz ?? false,
+          ad: it.name, cins: it.cins ?? null, baglanti: it.baglanti ?? null,
+          capRaw: it.capRaw ?? null, boyMm: it.boyMm ?? null,
+          kategori: it.category ?? null, urunKodu: null, sheetName: null,
+          price: p.unitPrice, birim: p.unit ?? it.unit ?? null,
+        } as IndexedRow['urun'];
+      } else if (kolonlu) {
+        bayat++;
+        const cols: ProductColumns = {
+          // Is-eki AD'den dusurulur (aile malzeme kismindan cozulsun) —
+          // gorunen ad asagida TAM item adiyla korunur.
+          kategori: it.category ?? null, ad: iscilikAdCekirdegi(it.name), cins: it.cins ?? null,
+          baglanti: it.baglanti ?? null, cap: it.capRaw ?? null, boy: it.boyMm ?? null,
+          birim: p.unit ?? it.unit ?? null, price: p.unitPrice,
+          paraBirimi: p.currency ?? null, urunKodu: null, not: it.not ?? null, sheetName: null,
+        };
+        const f = rebuildIndexFields(cols, { adSlug: it.adSlug ?? '', belirsiz: it.belirsiz ?? true });
+        urun = {
+          ...f, rowKey: it.id, displayName: it.name,
+          ad: it.name, cins: it.cins ?? null, baglanti: it.baglanti ?? null,
+          capRaw: it.capRaw ?? null, boyMm: it.boyMm ?? null,
+          kategori: it.category ?? null, urunKodu: null, sheetName: null,
+          price: p.unitPrice, birim: p.unit ?? it.unit ?? null,
+        } as IndexedRow['urun'];
+      } else {
+        indekssiz++;
+        urun = {
+          ...this.manuelUrunIndeksle({
+            name: it.name, price: p.unitPrice,
+            kategori: it.category ?? null,
+            birim: p.unit ?? it.unit ?? null,
+            iscilikEki: true,
+          }),
+          // Secim kartinda kalemin TAM adi gorunur ("... montajı" dahil)
+          displayName: it.name,
+        };
+      }
+      return {
+        id: p.id,
+        listPrice: p.unitPrice,
+        customPrice: null,
+        discountRate: p.discountRate ?? 0,
+        currency: p.currency ?? 'TRY',
+        urun,
+      };
+    });
+    if (bayat > 0) console.warn(`[Matching] ⚠ ISCILIK BAYAT INDEKS: ${bayat} kalem istek aninda yenilendi (v${INDEX_VERSION}) — POST /labor-matching/reindex onerilir.`);
+    if (indekssiz > 0) console.log(`[Matching] ${indekssiz} indekssiz iscilik kalemi istek aninda indekslendi (legacy)`);
+    return pool;
+  }
+
+  /** L5: "bu firmada yok" → kalemi GERCEKTEN sunan diger firmalar.
+   *  findAlternativesV2'nin ikizi — ayni sert kurallar, firma havuzu. */
+  private async findLaborAlternativesV2(
+    userId: string, firmaId: string, line: LineQuery, opts?: QueryOpts,
+  ): Promise<BrandAlternative[]> {
+    const others = await (this.prisma as any).laborPrice.findMany({
+      where: { firma: { userId, id: { not: firmaId } } },
+      include: { laborItem: true, firma: { select: { id: true, name: true } } },
+    });
+    if (others.length === 0) return [];
+    const pool = this.hazirlaLaborPool(others);
+    const toTry = await this.buildTryConverter(others as { currency?: string | null }[]);
+
+    const firmaOf = new Map<string, { id: string; name: string }>(
+      (others as any[]).map((r) => [r.id, r.firma]),
+    );
+    const gruplar = new Map<string, IndexedRow[]>();
+    for (const row of pool) {
+      const f = firmaOf.get(row.id);
+      if (!f) continue;
+      if (!gruplar.has(f.id)) gruplar.set(f.id, []);
+      gruplar.get(f.id)!.push(row);
+    }
+
+    const altOpts: QueryOpts | undefined = opts ? { ...opts, variantTags: undefined } : undefined;
+    const out: BrandAlternative[] = [];
+    for (const [, rows] of gruplar) {
+      const outcome = runQuery(line, rows, altOpts);
+      const tek = outcome.kind === 'single' ? outcome.row
+        : outcome.kind === 'ask' && outcome.rows.length === 1 ? outcome.rows[0]
+        : null;
+      if (!tek) continue;
+      const f = firmaOf.get(tek.id)!;
+      const list = toTry(tek.listPrice, tek.currency);
+      const isk = tek.discountRate ?? 0;
+      out.push({
+        // Mevcut BrandAlternative sozlesmesi yeniden kullanilir (FE ayni
+        // popup bileseni) — brandId/brandName alanlari FIRMA tasir.
+        brandId: f.id, brandName: f.name,
+        materialName: gorunenAd(tek),
+        netPrice: hesaplaNetFiyat(list, isk), listPrice: list, discount: isk,
+      });
+    }
+    return out;
+  }
+
+  /**
+   * L2 (index-at-creation): iscilik kalemi olusturulur/adi degisirken cagrilir —
+   * LaborItem'a yazilacak v2 indeks alanlarini uretir (AYNI indeksleyici;
+   * is-eki soyulur, gorunen ad TAM kalir). belirsiz=true → BEKLEYEN
+   * (eslesmeye kapali; kullanici duzeltince ad guncellemesi yeniden indeksler).
+   */
+  laborItemIndexData(name: string, birim?: string | null): {
+    adSlug: string; adBucket: string; adTokens: string[];
+    cinsNorm: string | null; cinsTokens: string[];
+    baglantiNorm: string | null; baglantiTokens: string[];
+    sizeClass: string; capTags: string[]; capNorm: string | null;
+    boyTag: string | null; displayName: string;
+    indexVersion: number; belirsiz: boolean;
+  } {
+    const u = this.manuelUrunIndeksle({ name, price: 0, birim: birim ?? null, iscilikEki: true });
+    return {
+      adSlug: u.adSlug, adBucket: u.adBucket, adTokens: u.adTokens,
+      cinsNorm: u.cinsNorm ?? null, cinsTokens: u.cinsTokens,
+      baglantiNorm: u.baglantiNorm ?? null, baglantiTokens: u.baglantiTokens,
+      sizeClass: u.sizeClass, capTags: u.capTags, capNorm: u.capNorm ?? null,
+      boyTag: u.boyTag ?? null, displayName: name,
+      indexVersion: INDEX_VERSION, belirsiz: u.belirsiz,
+    };
+  }
+
+  /** Iscilik reindex (L2 kalicilik): kullanicinin firmalarindaki kalemlerin
+   *  indeks alanlarini yeniden uretip YAZAR. Kolonlu kalem kolonlardan,
+   *  legacy kalem adindan (yol-3) turetilir — AYNI indeksleyici. */
+  async reindexLabor(userId: string): Promise<{ updated: number; total: number; belirsiz: number }> {
+    const items = await (this.prisma as any).laborItem.findMany({
+      where: { laborPrices: { some: { firma: { userId } } } },
+    });
+    let updated = 0; let belirsizSayisi = 0;
+    for (const it of items) {
+      const kolonlu = !!(it.cins || it.baglanti || it.capRaw || it.boyMm);
+      let f: ReturnType<typeof rebuildIndexFields>;
+      if (kolonlu) {
+        const cols: ProductColumns = {
+          kategori: it.category ?? null, ad: iscilikAdCekirdegi(it.name), cins: it.cins ?? null,
+          baglanti: it.baglanti ?? null, cap: it.capRaw ?? null, boy: it.boyMm ?? null,
+          birim: it.unit ?? null, price: it.unitPrice ?? 0,
+          paraBirimi: null, urunKodu: null, not: it.not ?? null, sheetName: null,
+        };
+        f = rebuildIndexFields(cols, { adSlug: it.adSlug ?? '', belirsiz: it.belirsiz ?? true });
+      } else {
+        const urun = this.manuelUrunIndeksle({
+          name: it.name, price: it.unitPrice ?? 0,
+          kategori: it.category ?? null, birim: it.unit ?? null,
+          iscilikEki: true,
+        });
+        const { rowKey: _r, ad: _a, cins: _c, baglanti: _b, capRaw: _cr, boyMm: _bm,
+          kategori: _k, urunKodu: _u, sheetName: _s, price: _p, birim: _bi, ...fields } = urun as any;
+        f = fields;
+      }
+      if (f.belirsiz) belirsizSayisi++;
+      await (this.prisma as any).laborItem.update({
+        where: { id: it.id },
+        data: {
+          adSlug: f.adSlug, adBucket: f.adBucket, adTokens: f.adTokens,
+          cinsNorm: f.cinsNorm, cinsTokens: f.cinsTokens,
+          baglantiNorm: f.baglantiNorm, baglantiTokens: f.baglantiTokens,
+          sizeClass: f.sizeClass, capTags: f.capTags, capNorm: f.capNorm,
+          // Secim kartinda TAM kalem adi gorunur ("... montajı" dahil) —
+          // indeks alanlari is-eki soyulmus AD'den, gorunum tam addan.
+          boyTag: f.boyTag, displayName: it.name,
+          indexVersion: INDEX_VERSION, belirsiz: f.belirsiz,
+        },
+      });
+      updated++;
+    }
+    console.log(`[Matching] ISCILIK REINDEX: ${updated}/${items.length} kalem (belirsiz/bekleyen: ${belirsizSayisi})`);
+    return { updated, total: items.length, belirsiz: belirsizSayisi };
   }
 
   // ═══════════════════════════════════════════
