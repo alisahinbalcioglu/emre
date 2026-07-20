@@ -1,9 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Plus, Eye, Trash2, FileText, Loader2 } from 'lucide-react';
+import { Eye, Trash2, FileText, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import api from '@/lib/api';
@@ -95,15 +94,7 @@ export default function QuotesPage() {
   return (
     <div>
       <div className="mb-6">
-        <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight">Teklifler</h1>
-        <Button asChild>
-          <Link href="/quotes/new">
-            <Plus className="mr-2 h-4 w-4" />
-            Yeni Teklif
-          </Link>
-        </Button>
-        </div>
       </div>
 
       {quotes.length === 0 ? (
@@ -114,7 +105,7 @@ export default function QuotesPage() {
               Henüz teklif oluşturmadınız.
             </p>
             <p className="text-sm text-muted-foreground">
-              &apos;Yeni Teklif&apos; butonuna tıklayarak başlayın.
+              Dashboard&apos;dan keşif dosyanızı (Excel/DWG) yükleyerek başlayın.
             </p>
           </CardContent>
         </Card>
