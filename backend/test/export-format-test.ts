@@ -11,6 +11,7 @@ import {
   scanWorkbook, buildSampleFormat, sheetToGrid, hucreMetni, TANINAN_ETIKETLER,
 } from '../src/quote-formats/format-engine';
 import { buildExportWorkbook } from '../src/quotes/export-engine';
+import { sayfaRolleriTahminEt } from '../src/quote-formats/format-engine';
 
 let passed = 0; let failed = 0; const failures: string[] = [];
 function check(name: string, cond: boolean, detail?: string) {
@@ -291,6 +292,45 @@ async function run() {
     check('T8 orijinalsiz uretim: kapak+icmal+liste mevcut',
       out8.worksheets.length === 3 && out8.worksheets[0].name === 'KAPAK',
       out8.worksheets.map((w) => w.name).join('|'));
+  }
+
+  // ══ MIMARI v2 (kullanici karari 20.07): LISTE YUVASI YER DEGISTIRME ══
+  // Format = KOMPLE eski teklif dosyasi (kapak + esaslar + ESKI IS sayfasi +
+  // kur sayfasi). Cikti = AYNI dosya; eski is sayfasi TEK TUSLA teklifin
+  // liste sayfalariyla yer degistirir, digerleri (kur dahil) aynen kalir.
+  {
+    const fmt = buildSampleFormat(); // KAPAK + İCMAL (yer tutuculu → sabit)
+    const eskiIs = fmt.addWorksheet('CILAS KAUCUK'); // eski is → LISTE YUVASI
+    eskiIs.getCell('A1').value = 'eski teklifin kalemleri';
+    const kur = fmt.addWorksheet('EXCHANGE RATE'); // ad deseni → SABIT
+    kur.getCell('A1').value = '1 USD = 47,07';
+
+    const roller = sayfaRolleriTahminEt(fmt);
+    check('ROL: yer tutuculu sayfalar SABIT, eski is LISTE, kur SABIT',
+      roller['KAPAK'] === 'sabit' && roller['İCMAL'] === 'sabit'
+      && roller['CILAS KAUCUK'] === 'liste' && roller['EXCHANGE RATE'] === 'sabit',
+      JSON.stringify(roller));
+
+    const { orjBuffer, sheetsArr } = await musteriFixture();
+    const sonuc = await buildExportWorkbook({
+      originalFile: orjBuffer, sheetsArr, formatWb: fmt, sheetRoles: roller, ctxTemel, overrides: null,
+    });
+    const out = new ExcelJS.Workbook();
+    await out.xlsx.load(Buffer.from(await sonuc.wb.xlsx.writeBuffer()) as any);
+    const adlar = out.worksheets.map((w) => w.name);
+    check('YUVA: eski is sayfasi CIKTIDA YOK, teklif sayfasi ONUN KONUMUNDA',
+      JSON.stringify(adlar) === JSON.stringify(['KAPAK', 'İCMAL', 'Sıhhi Tesisat', 'EXCHANGE RATE']),
+      adlar.join('|'));
+    check('YUVA: sabit kur sayfasi icerigiyle korundu',
+      hucreMetni(out.getWorksheet('EXCHANGE RATE')!.getCell('A1')) === '1 USD = 47,07', '');
+    check('YUVA: kopyalanan liste sayfasinda fiyat + formul var',
+      (out.getWorksheet('Sıhhi Tesisat')!.getCell(3, 6).value as any)?.formula === 'D3*E3', '');
+    check('YUVA: icmal SUM formulu KOPYADAKI sayfa adina bakar',
+      sonuc.sekmeler[0]?.matFormul === "SUM('Sıhhi Tesisat'!F3:F5)",
+      JSON.stringify(sonuc.sekmeler));
+    check('YUVA: formatSayfalari yalniz SABIT sayfalar (onizleme sekmeleri)',
+      JSON.stringify(sonuc.formatSayfalari) === JSON.stringify(['KAPAK', 'İCMAL', 'EXCHANGE RATE']),
+      JSON.stringify(sonuc.formatSayfalari));
   }
 
   console.log(`\n${'='.repeat(60)}`);

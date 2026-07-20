@@ -433,17 +433,21 @@ export class QuotesService {
     });
   }
 
-  /** Format cozumu: teklifte secili → kullanicinin varsayilani → yerlesik (T8). */
-  private async resolveFormatWb(userId: string, quote: any): Promise<{ wb: ExcelJS.Workbook; formatAdi: string }> {
+  /** Format cozumu: teklifte secili → kullanicinin varsayilani → yerlesik (T8).
+   *  DB'deki bytes DEGISMEZ (T13) — her cagri taze kopya yukler; kurucu bu
+   *  kopya UZERINDE calisir (mimari v2: taban format dosyasidir). */
+  private async resolveFormatWb(userId: string, quote: any): Promise<{
+    wb: ExcelJS.Workbook; formatAdi: string; sheetRoles: Record<string, 'sabit' | 'liste'> | null;
+  }> {
     const kayit = quote.formatId
       ? await (this.prisma as any).quoteFormat.findFirst({ where: { id: quote.formatId, userId } })
       : await (this.prisma as any).quoteFormat.findFirst({ where: { userId, isDefault: true } });
     if (kayit) {
       const wb = new ExcelJS.Workbook();
       await wb.xlsx.load(Buffer.from(kayit.fileBytes) as any);
-      return { wb, formatAdi: kayit.name };
+      return { wb, formatAdi: kayit.name, sheetRoles: (kayit.mapping as any)?.sheetRoles ?? null };
     }
-    return { wb: buildSampleFormat(), formatAdi: 'MetaPrice Varsayılan' };
+    return { wb: buildSampleFormat(), formatAdi: 'MetaPrice Varsayılan', sheetRoles: null };
   }
 
   /** T12: kur notu — ekrandaki (TCMB) kur + tarih. Cikti aninda soru YOK. */
@@ -478,12 +482,13 @@ export class QuotesService {
   }
 
   private async ciktiKur(userId: string, quote: any, rev: number): Promise<ExportSonucu> {
-    const { wb: formatWb } = await this.resolveFormatWb(userId, quote);
+    const { wb: formatWb, sheetRoles } = await this.resolveFormatWb(userId, quote);
     const sheetsArr = Array.isArray(quote.sheets) ? (quote.sheets as any[]) : [];
     return buildExportWorkbook({
       originalFile: quote.originalFile ? Buffer.from(quote.originalFile) : null,
       sheetsArr,
       formatWb,
+      sheetRoles,
       ctxTemel: await this.ctxTemelUret(quote, rev),
       overrides: (quote.exportOverrides ?? null) as ExportOverrides | null,
     });

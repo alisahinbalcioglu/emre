@@ -63,7 +63,7 @@ export class QuoteFormatsController {
   update(
     @CurrentUser() user: any,
     @Param('id') id: string,
-    @Body() body: { name?: string; isDefault?: boolean },
+    @Body() body: { name?: string; isDefault?: boolean; sheetRoles?: Record<string, 'sabit' | 'liste'> },
   ) {
     return this.service.update(user.id, id, body ?? {});
   }

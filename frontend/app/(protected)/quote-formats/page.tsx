@@ -29,13 +29,22 @@ interface OnizlemeSayfa {
   name: string;
   columnDefs: Array<{ field: string; headerName: string; width: number }>;
   rowData: Array<Record<string, any>>;
+  resimSayisi?: number;
 }
+type SayfaRol = 'sabit' | 'liste';
 
 export default function QuoteFormatsPage() {
   const [formats, setFormats] = useState<FormatKaydi[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
-  const [preview, setPreview] = useState<{ name: string; mapping: FormatKaydi['mapping']; sheets: OnizlemeSayfa[] } | null>(null);
+  const [preview, setPreview] = useState<{
+    id: string; name: string;
+    mapping: (FormatKaydi['mapping'] & { sheetRoles?: Record<string, SayfaRol> }) | null;
+    sheets: OnizlemeSayfa[];
+  } | null>(null);
+  const [aktifSayfa, setAktifSayfa] = useState(0);
+  const [roller, setRoller] = useState<Record<string, SayfaRol>>({});
+  const [rolDirty, setRolDirty] = useState(false);
   const uploadRef = useRef<HTMLInputElement>(null);
   const replaceRef = useRef<HTMLInputElement>(null);
   const replaceHedef = useRef<string | null>(null);
@@ -125,9 +134,29 @@ export default function QuoteFormatsPage() {
   async function openPreview(f: FormatKaydi) {
     try {
       const { data } = await api.get(`/quote-formats/${f.id}/preview`);
-      setPreview({ name: f.name, mapping: data.mapping, sheets: data.sheets ?? [] });
+      setPreview({ id: f.id, name: f.name, mapping: data.mapping, sheets: data.sheets ?? [] });
+      setAktifSayfa(0);
+      // Roller: mapping'ten; yoksa hepsi sabit varsayilir
+      const r: Record<string, SayfaRol> = {};
+      for (const s of data.sheets ?? []) {
+        r[s.name] = data.mapping?.sheetRoles?.[s.name] ?? 'sabit';
+      }
+      setRoller(r);
+      setRolDirty(false);
     } catch {
       toast({ title: 'Onizleme yuklenemedi', variant: 'destructive' });
+    }
+  }
+
+  async function rolleriKaydet() {
+    if (!preview) return;
+    try {
+      await api.patch(`/quote-formats/${preview.id}`, { sheetRoles: roller });
+      setRolDirty(false);
+      toast({ title: 'Sayfa rolleri kaydedildi', description: '"Liste yuvası" sayfalar çıktıda teklifin sayfalarıyla değişir.' });
+      await fetchFormats();
+    } catch {
+      toast({ title: 'Kaydedilemedi', variant: 'destructive' });
     }
   }
 
@@ -235,48 +264,105 @@ export default function QuoteFormatsPage() {
         </div>
       )}
 
-      {/* Onizleme modali: tarama sonucu (T3) + sayfalarin basit tablosu */}
+      {/* Onizleme modali: SEKMELI (Excel gibi sayfa sayfa) + rol secimi +
+          tarama sonucu (T3). Gorseller onizlemede gosterilmez, CIKTIDA korunur. */}
       {preview && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3">
-          <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg bg-background shadow-2xl">
+          <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg bg-background shadow-2xl">
             <div className="flex items-center justify-between border-b p-3">
               <h2 className="font-bold">{preview.name} — Onizleme</h2>
-              <Button variant="ghost" size="sm" onClick={() => setPreview(null)}><X className="h-4 w-4" /></Button>
-            </div>
-            <div className="overflow-auto p-4">
-              <div className="mb-4 flex flex-wrap gap-1.5">
-                {(preview.mapping?.bulunan ?? []).map((y, i) => (
-                  <span key={i} className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800">
-                    {`{{${y.etiket}}}`} · {y.sheet}!{y.addr}
-                  </span>
-                ))}
-                {(preview.mapping?.taninmayan ?? []).map((y, i) => (
-                  <span key={`t${i}`} className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800"
-                    title="Taninmayan etiket — doldurulmaz, hucre oldugu gibi kalir">
-                    ⚠ {`{{${y.etiket}}}`} · {y.sheet}!{y.addr}
-                  </span>
-                ))}
+              <div className="flex items-center gap-2">
+                {rolDirty && (
+                  <Button size="sm" onClick={rolleriKaydet}>Rolleri Kaydet</Button>
+                )}
+                <Button variant="ghost" size="sm" onClick={() => setPreview(null)}><X className="h-4 w-4" /></Button>
               </div>
-              {preview.sheets.map((s) => (
-                <div key={s.name} className="mb-5">
-                  <h3 className="mb-1 text-sm font-semibold">{s.name}</h3>
-                  <div className="overflow-x-auto rounded border">
-                    <table className="text-xs">
-                      <tbody>
-                        {s.rowData.slice(0, 30).map((r, ri) => (
-                          <tr key={ri} className="border-b last:border-0">
-                            {s.columnDefs.map((c) => (
-                              <td key={c.field} className="whitespace-nowrap px-2 py-1" style={{ minWidth: 60 }}>
-                                {String(r[c.field] ?? '')}
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+            </div>
+
+            {/* Sayfa sekmeleri (Excel alt sekmeleri gibi) */}
+            <div className="flex flex-wrap gap-1 border-b bg-muted/30 px-3 py-2">
+              {preview.sheets.map((s, i) => (
+                <button
+                  key={s.name}
+                  onClick={() => setAktifSayfa(i)}
+                  className={[
+                    'rounded-md border px-3 py-1 text-xs font-medium',
+                    aktifSayfa === i ? 'border-blue-600 bg-blue-600 text-white' : 'bg-white hover:bg-gray-50',
+                    roller[s.name] === 'liste' ? 'border-dashed' : '',
+                  ].join(' ')}
+                >
+                  {s.name}
+                  {roller[s.name] === 'liste' && <span className="ml-1 opacity-75">⇄</span>}
+                </button>
               ))}
+            </div>
+
+            <div className="overflow-auto p-4">
+              {(() => {
+                const s = preview.sheets[aktifSayfa];
+                if (!s) return null;
+                const rol = roller[s.name] ?? 'sabit';
+                const sayfaTutucular = (preview.mapping?.bulunan ?? []).filter((y) => y.sheet === s.name);
+                const sayfaTaninmayan = (preview.mapping?.taninmayan ?? []).filter((y) => y.sheet === s.name);
+                return (
+                  <div>
+                    {/* Rol secimi: sabit ↔ liste yuvasi (tek tusla yer degistirme) */}
+                    <div className="mb-3 flex flex-wrap items-center gap-2 rounded-md border bg-muted/30 p-2 text-xs">
+                      <span className="font-semibold">Bu sayfa:</span>
+                      <button
+                        onClick={() => { setRoller({ ...roller, [s.name]: 'sabit' }); setRolDirty(true); }}
+                        className={['rounded-full px-3 py-1', rol === 'sabit' ? 'bg-emerald-600 text-white' : 'border bg-white'].join(' ')}
+                      >
+                        Sabit (kapak/şart/icmal — aynen kalır)
+                      </button>
+                      <button
+                        onClick={() => { setRoller({ ...roller, [s.name]: 'liste' }); setRolDirty(true); }}
+                        className={['rounded-full px-3 py-1', rol === 'liste' ? 'bg-blue-600 text-white' : 'border bg-white'].join(' ')}
+                      >
+                        ⇄ Liste yuvası (çıktıda teklifin sayfalarıyla değişir)
+                      </button>
+                    </div>
+
+                    {(s.resimSayisi ?? 0) > 0 && (
+                      <div className="mb-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                        🖼 Bu sayfada {s.resimSayisi} görsel var — önizlemede gösterilmez, <b>çıktıda aynen korunur</b>.
+                      </div>
+                    )}
+
+                    {(sayfaTutucular.length > 0 || sayfaTaninmayan.length > 0) && (
+                      <div className="mb-3 flex flex-wrap gap-1.5">
+                        {sayfaTutucular.map((y, i) => (
+                          <span key={i} className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800">
+                            {`{{${y.etiket}}}`} · {y.addr}
+                          </span>
+                        ))}
+                        {sayfaTaninmayan.map((y, i) => (
+                          <span key={`t${i}`} className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800"
+                            title="Taninmayan etiket — doldurulmaz, hucre oldugu gibi kalir">
+                            ⚠ {`{{${y.etiket}}}`} · {y.addr}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="overflow-x-auto rounded border">
+                      <table className="text-xs">
+                        <tbody>
+                          {s.rowData.slice(0, 60).map((r, ri) => (
+                            <tr key={ri} className="border-b last:border-0">
+                              {s.columnDefs.map((c) => (
+                                <td key={c.field} className="whitespace-nowrap px-2 py-1" style={{ minWidth: 60 }}>
+                                  {String(r[c.field] ?? '')}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>

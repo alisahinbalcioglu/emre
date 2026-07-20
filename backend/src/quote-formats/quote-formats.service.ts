@@ -1,7 +1,22 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import * as ExcelJS from 'exceljs';
-import { scanWorkbook, buildSampleFormat, sheetToGrid, FormatMapping } from './format-engine';
+import {
+  scanWorkbook, buildSampleFormat, sheetToGrid, sayfaRolleriTahminEt,
+  FormatMapping, SheetRoles,
+} from './format-engine';
+
+/** Multer originalname LATIN1 gelir — Turkce karakterler bozuk gorunuyordu
+ *  (canli bulgu 20.07: "Teklif FormatÄ±"). UTF-8'e cevrilir. */
+function dosyaAdiDuzelt(name: string): string {
+  try {
+    const utf8 = Buffer.from(name, 'latin1').toString('utf8');
+    // Cevrim gecersiz karakter uretiyorsa orijinali koru
+    return utf8.includes('�') ? name : utf8;
+  } catch {
+    return name;
+  }
+}
 
 /**
  * PRD Teklif Formatim — kullanicinin teklif sablonlari (KAPAK+ICMAL).
@@ -19,8 +34,12 @@ export class QuoteFormatsService {
     return f;
   }
 
-  /** Yukle + tara. Ilk format otomatik varsayilan olur. */
+  /** Yukle + tara. Ilk format otomatik varsayilan olur.
+   *  mapping.sheetRoles: sabit/liste-yuvasi sezgisel atanir (kullanici
+   *  onizlemede degistirir) — 'liste' sayfalar ciktida teklifin liste
+   *  sayfalariyla YER DEGISTIRIR (kullanici karari 20.07). */
   async upload(userId: string, fileBuffer: Buffer, fileName: string, name?: string) {
+    const adDuzgun = dosyaAdiDuzelt(fileName);
     const wb = new ExcelJS.Workbook();
     try {
       await wb.xlsx.load(fileBuffer as any);
@@ -30,13 +49,13 @@ export class QuoteFormatsService {
     if (wb.worksheets.length === 0) {
       throw new BadRequestException('Dosyada sayfa yok');
     }
-    const mapping = scanWorkbook(wb);
+    const mapping = { ...scanWorkbook(wb), sheetRoles: sayfaRolleriTahminEt(wb) };
     const count = await (this.prisma as any).quoteFormat.count({ where: { userId } });
     const created = await (this.prisma as any).quoteFormat.create({
       data: {
         userId,
-        name: (name?.trim() || fileName.replace(/\.(xlsx|xls)$/i, '')).slice(0, 80),
-        fileName,
+        name: (name?.trim() || adDuzgun.replace(/\.(xlsx|xls)$/i, '')).slice(0, 80),
+        fileName: adDuzgun,
         fileBytes: fileBuffer,
         mapping: mapping as any,
         isDefault: count === 0,
@@ -49,16 +68,17 @@ export class QuoteFormatsService {
   /** Mevcut formatin DOSYASINI degistir (T11: eski ciktilar etkilenmez). */
   async replaceFile(userId: string, id: string, fileBuffer: Buffer, fileName: string) {
     await this.assertOwnership(id, userId);
+    const adDuzgun = dosyaAdiDuzelt(fileName);
     const wb = new ExcelJS.Workbook();
     try {
       await wb.xlsx.load(fileBuffer as any);
     } catch {
       throw new BadRequestException('Dosya .xlsx olarak okunamadi');
     }
-    const mapping = scanWorkbook(wb);
+    const mapping = { ...scanWorkbook(wb), sheetRoles: sayfaRolleriTahminEt(wb) };
     return (this.prisma as any).quoteFormat.update({
       where: { id },
-      data: { fileBytes: fileBuffer, fileName, mapping: mapping as any },
+      data: { fileBytes: fileBuffer, fileName: adDuzgun, mapping: mapping as any },
       select: { id: true, name: true, fileName: true, isDefault: true, mapping: true },
     });
   }
@@ -84,8 +104,8 @@ export class QuoteFormatsService {
     };
   }
 
-  async update(userId: string, id: string, dto: { name?: string; isDefault?: boolean }) {
-    await this.assertOwnership(id, userId);
+  async update(userId: string, id: string, dto: { name?: string; isDefault?: boolean; sheetRoles?: SheetRoles }) {
+    const f = await this.assertOwnership(id, userId);
     if (dto.isDefault === true) {
       // Tek varsayilan: digerleri dusurulur
       await (this.prisma as any).$transaction([
@@ -96,9 +116,17 @@ export class QuoteFormatsService {
     if (dto.name?.trim()) {
       await (this.prisma as any).quoteFormat.update({ where: { id }, data: { name: dto.name.trim().slice(0, 80) } });
     }
+    // Kullanici sayfa rollerini duzeltebilir (sabit ↔ liste yuvasi)
+    if (dto.sheetRoles && typeof dto.sheetRoles === 'object') {
+      const mevcut = (f.mapping ?? {}) as any;
+      await (this.prisma as any).quoteFormat.update({
+        where: { id },
+        data: { mapping: { ...mevcut, sheetRoles: dto.sheetRoles } as any },
+      });
+    }
     return (this.prisma as any).quoteFormat.findUnique({
       where: { id },
-      select: { id: true, name: true, isDefault: true },
+      select: { id: true, name: true, isDefault: true, mapping: true },
     });
   }
 

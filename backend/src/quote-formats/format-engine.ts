@@ -176,6 +176,10 @@ export interface GridSheet {
   headerEndRow: 0;
   /** "B3:C4" merge listesi — FE ileride kullanabilir (v1 gorsel yaklasik) */
   merges: string[];
+  /** Sayfadaki gorsel sayisi — onizlemede "resimler ciktida korunur" notu
+   *  (canli bulgu 20.07: kullanicinin kapagi tamamen logo/gorsel; hucre
+   *  onizlemesi bos gorunuyordu). */
+  resimSayisi: number;
 }
 
 export const KOLON_HARF = (n: number): string => {
@@ -382,6 +386,13 @@ export function sheetToGrid(ws: ExcelJS.Worksheet, editable: boolean): GridSheet
     const wsRow = ws.getRow(r);
     for (let c = 1; c <= colCount; c++) {
       const cell = wsRow.getCell(c);
+      // BIRLESIK HUCRE (canli bulgu 20.07): ExcelJS slave hucreler master'in
+      // degerini dondurur → "TEKLİF ESASLARI" 4 kolonda tekrarlaniyordu.
+      // Yalniz MASTER hucre deger tasir, slave'ler bos gosterilir.
+      if ((cell as any).isMerged && (cell as any).master && (cell as any).master.address !== cell.address) {
+        row[`col${c - 1}`] = '';
+        continue;
+      }
       const v: any = cell.value;
       row[`col${c - 1}`] =
         v === null || v === undefined ? ''
@@ -391,5 +402,36 @@ export function sheetToGrid(ws: ExcelJS.Worksheet, editable: boolean): GridSheet
     rowData.push(row);
   }
   const merges: string[] = Object.keys((ws as any)._merges ?? {});
-  return { name: ws.name, columnDefs, rowData, columnRoles: {} as Record<string, never>, headerEndRow: 0, merges };
+  let resimSayisi = 0;
+  try { resimSayisi = (ws.getImages?.() ?? []).length; } catch { resimSayisi = 0; }
+  return { name: ws.name, columnDefs, rowData, columnRoles: {} as Record<string, never>, headerEndRow: 0, merges, resimSayisi };
+}
+
+// ────────────────────────────────────────────────────────────────────
+// SAYFA ROLLERI (kullanici karari 20.07): format dosyasi KOMPLE bir teklif
+// sablonudur — kapak/sartlar/icmal SABIT kalir, eski is sayfalari "LISTE
+// YUVASI"dir: ciktida teklifin liste sayfalariyla TEK TUSLA yer degistirir.
+// Yukleme aninda sezgisel atanir; kullanici onizlemede degistirebilir
+// (mapping.sheetRoles'a yazilir).
+// ────────────────────────────────────────────────────────────────────
+export type SayfaRol = 'sabit' | 'liste';
+export type SheetRoles = Record<string, SayfaRol>;
+
+const SABIT_AD_DESENI = /kapak|icmal|İcmal|özet|ozet|esas|şart|sart|not|kur|exchange|cover|summary|terms/i;
+
+/** Sezgisel rol atamasi: yer tutucu iceren VEYA sabit-adli VEYA gorselli
+ *  sayfa SABIT; digerleri LISTE YUVASI onerisi. */
+export function sayfaRolleriTahminEt(wb: ExcelJS.Workbook): SheetRoles {
+  const mapping = scanWorkbook(wb);
+  const yerTutuculu = new Set(mapping.bulunan.concat(mapping.taninmayan).map((y) => y.sheet));
+  const roller: SheetRoles = {};
+  for (const ws of wb.worksheets) {
+    let resim = 0;
+    try { resim = (ws.getImages?.() ?? []).length; } catch { resim = 0; }
+    roller[ws.name] =
+      yerTutuculu.has(ws.name) || SABIT_AD_DESENI.test(ws.name) || resim > 0
+        ? 'sabit'
+        : 'liste';
+  }
+  return roller;
 }

@@ -1,18 +1,22 @@
 // ════════════════════════════════════════════════════════════════════
 // PROFESYONEL TEKLIF CIKTISI MOTORU (PRD Teklif Formatim v2.1) — SAF, DB YOK
 //
-// T1: cikti TABANI musteri workbook'unun KENDISIDIR (ExcelJS load — stil/
-//     merge/satir NATIF korunur); yalniz fiyat/tutar hucreleri yazilir.
+// MIMARI v2 (kullanici karari 20.07 — "yuklendigim dosya birebir cikmali,
+// is sayfalari TEK TUSLA yer degistirmeli"):
+//   TABAN = FORMAT workbook'unun KENDISI (ExcelJS load → kapak GORSELLERI,
+//   sartlar, kur sayfasi vb. NATIF korunur — hucre kopyasi resim tasiyamaz,
+//   kullanicinin kapagi tamamen logoydu). 'liste' rollu sayfalar (eski is
+//   sayfalari) SILINIR; teklifin liste sayfalari MUSTERI workbook'undan
+//   fiyatlari yazilmis halde ayni KONUMA kopyalanir.
 // T6: fiyatsiz hucre HIC yazilmaz (0 asla).
 // T7: tutar hucreleri CANLI FORMUL (=miktar*birim); icmal/genel toplam
-//     formullu (format-engine SUM parcalarini buradan alir).
-// Kapak/icmal format workbook'undan hucre-hucre kopyalanir ve BASA alinir.
+//     formullu (SUM parcalari SON sayfa adlariyla kurulur).
 // Test: test/export-format-test.ts
 // ════════════════════════════════════════════════════════════════════
 import * as ExcelJS from 'exceljs';
 import {
-  fillPlaceholders, applyOverrides, KOLON_HARF,
-  FillContext, SekmeOzet, YerTutucu, ExportOverrides,
+  fillPlaceholders, applyOverrides, KOLON_HARF, sayfaRolleriTahminEt,
+  FillContext, SekmeOzet, YerTutucu, ExportOverrides, SheetRoles,
 } from '../quote-formats/format-engine';
 
 const sayi = (v: any): number => {
@@ -34,8 +38,20 @@ interface SheetJson {
   rowData?: Array<Record<string, any>>;
 }
 
+/** Fiyat yazimindan donen HAM sekme bilgisi — SUM formulu SONRADAN
+ *  (kopya sonrasi SON sayfa adiyla) kurulur. */
+export interface SekmeBilgi {
+  wsName: string;
+  matCol: number | null;
+  labCol: number | null;
+  ilkVeri: number;
+  sonVeri: number;
+  matDeger: number;
+  labDeger: number;
+}
+
 /**
- * Musteri workbook'una fiyatlari yazar (IN-PLACE) ve sekme ozetlerini doner.
+ * Musteri workbook'una fiyatlari yazar (IN-PLACE) ve sekme bilgisi doner.
  *
  * BULGU FIX (20.07): eski generateExcel yalniz colN rollerini yaziyordu —
  * fixedSchema sayfalarin sistem alanlari (_matBirim vb.) SESSIZCE dusuyordu.
@@ -45,8 +61,8 @@ interface SheetJson {
 export function writePricesToWorkbook(
   wb: ExcelJS.Workbook,
   sheetsArr: SheetJson[],
-): SekmeOzet[] {
-  const ozetler: SekmeOzet[] = [];
+): SekmeBilgi[] {
+  const ozetler: SekmeBilgi[] = [];
 
   for (let si = 0; si < sheetsArr.length; si++) {
     const sheetData = sheetsArr[si];
@@ -143,21 +159,33 @@ export function writePricesToWorkbook(
       }
     }
 
-    const aralik = (col: number | null): string | null =>
-      col && ilkVeri && sonVeri
-        ? `SUM(${sayfaRef(ws.name)}!${KOLON_HARF(col)}${ilkVeri}:${KOLON_HARF(col)}${sonVeri})`
-        : null;
-
     ozetler.push({
-      name: ws.name,
-      matFormul: aralik(matTotCol),
-      labFormul: aralik(labTotCol),
+      wsName: ws.name,
+      matCol: matTotCol,
+      labCol: labTotCol,
+      ilkVeri,
+      sonVeri,
       matDeger: matToplam,
       labDeger: labToplam,
     });
   }
 
   return ozetler;
+}
+
+/** SekmeBilgi + SON sayfa adi → icmal SUM formullu SekmeOzet (T5/T7). */
+export function sekmeOzetiKur(b: SekmeBilgi, sonAd: string): SekmeOzet {
+  const aralik = (col: number | null): string | null =>
+    col && b.ilkVeri && b.sonVeri
+      ? `SUM(${sayfaRef(sonAd)}!${KOLON_HARF(col)}${b.ilkVeri}:${KOLON_HARF(col)}${b.sonVeri})`
+      : null;
+  return {
+    name: sonAd,
+    matFormul: aralik(b.matCol),
+    labFormul: aralik(b.labCol),
+    matDeger: b.matDeger,
+    labDeger: b.labDeger,
+  };
 }
 
 /**
@@ -202,7 +230,7 @@ export function kopyalaSayfa(
   hedef: ExcelJS.Workbook,
 ): ExcelJS.Worksheet {
   let ad = kaynak.name;
-  if (hedef.worksheets.some((w) => w.name === ad)) ad = `${ad} (Format)`.slice(0, 31);
+  if (hedef.worksheets.some((w) => w.name === ad)) ad = `${ad} (2)`.slice(0, 31);
   const ws = hedef.addWorksheet(ad);
 
   const kolonSayisi = Math.max(kaynak.columnCount || 1, 1);
@@ -226,25 +254,28 @@ export function kopyalaSayfa(
   return ws;
 }
 
-/** Verilen adli sayfalari workbook sirasinin BASINA alir.
- *  ExcelJS worksheets getter'i orderNo'ya gore SIRALAR (doc/workbook.js:123)
- *  — dizi manipulasyonu degil orderNo atamasi gerekir (testte kanitlandi). */
-export function sayfalariBasaAl(wb: ExcelJS.Workbook, adlar: string[]): void {
+/** Sayfalari verilen AD SIRASINA gore dizer. ExcelJS worksheets getter'i
+ *  orderNo'ya gore SIRALAR (doc/workbook.js:123) — dizi manipulasyonu degil
+ *  orderNo atamasi gerekir (testte kanitlandi). Listede olmayanlar sona. */
+export function sayfalariSirala(wb: ExcelJS.Workbook, adSirasi: string[]): void {
   const hepsi: any[] = ((wb as any)._worksheets as any[]).filter(Boolean);
-  const on = adlar
+  const sirali = adSirasi
     .map((a) => hepsi.find((w: any) => w.name === a))
     .filter(Boolean);
   const kalan = hepsi
-    .filter((w: any) => !on.includes(w))
+    .filter((w: any) => !sirali.includes(w))
     .sort((a: any, b: any) => (a.orderNo ?? 0) - (b.orderNo ?? 0));
   let sira = 1;
-  for (const w of [...on, ...kalan]) w.orderNo = sira++;
+  for (const w of [...sirali, ...kalan]) w.orderNo = sira++;
 }
 
 export interface ExportGirdisi {
   originalFile: Buffer | null;
   sheetsArr: SheetJson[];
   formatWb: ExcelJS.Workbook;
+  /** Format sayfa rolleri (mapping.sheetRoles); verilmezse sezgisel tahmin.
+   *  'liste' sayfalari SILINIR ve teklif sayfalari o konuma girer. */
+  sheetRoles?: SheetRoles | null;
   ctxTemel: Omit<FillContext, 'sekmeler'>;
   overrides?: ExportOverrides | null;
 }
@@ -254,35 +285,71 @@ export interface ExportSonucu {
   sekmeler: SekmeOzet[];
   /** Otomatik doldurulan hucreler (T14 haritasi) */
   dolan: YerTutucu[];
-  /** Basa alinan kapak/icmal sayfa adlari */
+  /** Formatin SABIT sayfalari (onizlemede duzenlenebilir olanlar) */
   formatSayfalari: string[];
+  /** Ciktiya giren teklif liste sayfalarinin SON adlari */
+  listeSayfalari: string[];
 }
 
 /**
- * TAM CIKTI KURUCUSU — uc adim (PRD §3):
- *  1. Taban: musteri wb (T1) veya sheets JSON'dan kurulum (geri dusus)
- *  2. Fiyatlar formullu yazilir (T6/T7) → sekme ozetleri
- *  3. Format kapak/icmal kopyalanir + doldurulur (T4/T5) + override (T13/T14)
+ * TAM CIKTI KURUCUSU — MIMARI v2 (kullanici karari 20.07):
+ *  1. TABAN = FORMAT workbook (gorseller/sartlar/kur sayfasi NATIF korunur)
+ *  2. 'liste' rollu sayfalar (eski is sayfalari) SILINIR — konum not edilir
+ *  3. Teklifin liste sayfalari musteri wb'sinde FIYATLARI YAZILIP (T6/T7)
+ *     tabana kopyalanir, silinen yuvanin KONUMUNA yerlesir
+ *  4. Yer tutucular doldurulur (T4/T5) + teklif override'lari (T13/T14)
  */
 export async function buildExportWorkbook(g: ExportGirdisi): Promise<ExportSonucu> {
-  let wb: ExcelJS.Workbook;
+  // ── 1. Taban: format dosyasinin kendisi ──
+  const wb = g.formatWb;
+  const roller = g.sheetRoles ?? sayfaRolleriTahminEt(wb);
+
+  // Orijinal sayfa sirasi (silmeden ONCE) — yuva konumu icin
+  const orijinalSira = wb.worksheets.map((w) => w.name);
+
+  // ── 2. Liste yuvalarini sil ──
+  const silinecek = wb.worksheets.filter((w) => roller[w.name] === 'liste');
+  for (const w of silinecek) wb.removeWorksheet(w.id);
+  const formatSayfalari = wb.worksheets.map((w) => w.name); // kalan = sabit
+
+  // ── 3. Teklif liste sayfalari: fiyat yaz → tabana kopyala ──
+  let musteriWb: ExcelJS.Workbook;
   if (g.originalFile) {
-    wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(g.originalFile as any);
+    musteriWb = new ExcelJS.Workbook();
+    await musteriWb.xlsx.load(g.originalFile as any);
   } else {
-    wb = buildListWorkbookFromSheets(g.sheetsArr);
+    musteriWb = buildListWorkbookFromSheets(g.sheetsArr);
+  }
+  const bilgiler = writePricesToWorkbook(musteriWb, g.sheetsArr);
+
+  const listeSayfalari: string[] = [];
+  const sekmeler: SekmeOzet[] = [];
+  for (const b of bilgiler) {
+    const kaynakWs = musteriWb.getWorksheet(b.wsName);
+    if (!kaynakWs) continue;
+    const yeni = kopyalaSayfa(kaynakWs, wb);
+    listeSayfalari.push(yeni.name);
+    // SUM formulleri SON (kopyadaki) sayfa adiyla kurulur (ad cakismasi
+    // " (2)" eki alabilir — formul her kosulda dogru sayfaya bakar)
+    sekmeler.push(sekmeOzetiKur(b, yeni.name));
   }
 
-  const sekmeler = writePricesToWorkbook(wb, g.sheetsArr);
-
-  const formatSayfalari: string[] = [];
-  for (const ws of g.formatWb.worksheets) {
-    formatSayfalari.push(kopyalaSayfa(ws, wb).name);
+  // ── Sira: ilk liste-yuvasinin konumuna teklif sayfalari girer ──
+  const hedefSira: string[] = [];
+  let listelerEklendi = false;
+  for (const ad of orijinalSira) {
+    if (roller[ad] === 'liste') {
+      if (!listelerEklendi) { hedefSira.push(...listeSayfalari); listelerEklendi = true; }
+      continue; // eski is sayfasi ciktida yok
+    }
+    hedefSira.push(ad);
   }
-  sayfalariBasaAl(wb, formatSayfalari);
+  if (!listelerEklendi) hedefSira.push(...listeSayfalari); // yuva yoksa sona
+  sayfalariSirala(wb, hedefSira);
 
+  // ── 4. Doldur + teklif katmani ──
   const dolan = fillPlaceholders(wb, { ...g.ctxTemel, sekmeler });
   applyOverrides(wb, g.overrides);
 
-  return { wb, sekmeler, dolan, formatSayfalari };
+  return { wb, sekmeler, dolan, formatSayfalari, listeSayfalari };
 }
