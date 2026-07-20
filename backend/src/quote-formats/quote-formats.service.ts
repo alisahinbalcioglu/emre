@@ -136,6 +136,15 @@ export class QuoteFormatsService {
     return { ok: true };
   }
 
+  /** GERCEK GORUNUM onizlemesi: format dosyasi LibreOffice ile PDF'e
+   *  cevrilir (logolar/yerlesim birebir). Donusum yoksa null — FE hucre
+   *  tablosu geri dususunu gosterir. */
+  async previewPdf(userId: string, id: string): Promise<Buffer | null> {
+    const f = await this.assertOwnership(id, userId);
+    const { xlsxToPdf } = await import('../utils/xlsx-to-pdf');
+    return xlsxToPdf(Buffer.from(f.fileBytes));
+  }
+
   /** Indirilebilir ornek format (yer tutuculu sade KAPAK+ICMAL — T8 ikizi). */
   async sample(): Promise<{ buffer: Buffer; filename: string }> {
     const wb = buildSampleFormat();

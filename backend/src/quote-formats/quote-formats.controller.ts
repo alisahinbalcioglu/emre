@@ -48,6 +48,19 @@ export class QuoteFormatsController {
     return this.service.preview(user.id, id);
   }
 
+  /** GERCEK gorunum (LibreOffice xlsx→pdf). 404 = donusturucu yok →
+   *  FE hucre tablosu geri dususu. inline gosterim icin attachment DEGIL. */
+  @Get(':id/preview-pdf')
+  async previewPdf(@CurrentUser() user: any, @Param('id') id: string, @Res() res: Response) {
+    const pdf = await this.service.previewPdf(user.id, id);
+    if (!pdf) {
+      res.status(404).json({ message: 'PDF donusumu bu sunucuda kullanilamiyor' });
+      return;
+    }
+    res.set({ 'Content-Type': 'application/pdf', 'Content-Length': pdf.length });
+    res.end(pdf);
+  }
+
   /** Dosya guncelle (T11: eski uretilmis ciktilar etkilenmez). */
   @Post(':id/file')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))

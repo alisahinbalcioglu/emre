@@ -231,6 +231,20 @@ export default function ExportPreviewPage() {
     }
   }
 
+  /** Uretmeden gercek gorunum: guncel durumun PDF'i yeni sekmede acilir
+   *  (rev ARTMAZ — export-pdf rev degistirmez). */
+  async function gercekGorunum() {
+    try {
+      if (dirty) await kaydetOverrides(true);
+      const r = await api.get(`/quotes/${id}/export-pdf`, { responseType: 'blob' });
+      const url = URL.createObjectURL(new Blob([r.data], { type: 'application/pdf' }));
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (e: any) {
+      toast({ title: 'Onizleme uretilemedi', description: e?.response?.data?.message, variant: 'destructive' });
+    }
+  }
+
   async function revIndir(rev: number, fileName: string) {
     try {
       const r = await api.get(`/quotes/${id}/exports/${rev}`, { responseType: 'blob' });
@@ -277,6 +291,10 @@ export default function ExportPreviewPage() {
               <Save className="mr-1 h-4 w-4" />Duzenlemeleri Kaydet
             </Button>
           )}
+          {/* GERCEK gorunum: uretmeden PDF'i yeni sekmede gor (rev artmaz) */}
+          <Button variant="outline" onClick={gercekGorunum} disabled={busy}>
+            Gerçek Görünüm
+          </Button>
           <Button onClick={olustur} disabled={busy}>
             {busy
               ? <><Loader2 className="mr-1 h-4 w-4 animate-spin" />Olusturuluyor...</>

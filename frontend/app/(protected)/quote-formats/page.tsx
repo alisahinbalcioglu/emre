@@ -45,6 +45,8 @@ export default function QuoteFormatsPage() {
   const [aktifSayfa, setAktifSayfa] = useState(0);
   const [roller, setRoller] = useState<Record<string, SayfaRol>>({});
   const [rolDirty, setRolDirty] = useState(false);
+  // GERCEK gorunum (LibreOffice pdf): varsa iframe, yoksa hucre tablosu
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const uploadRef = useRef<HTMLInputElement>(null);
   const replaceRef = useRef<HTMLInputElement>(null);
   const replaceHedef = useRef<string | null>(null);
@@ -143,9 +145,19 @@ export default function QuoteFormatsPage() {
       }
       setRoller(r);
       setRolDirty(false);
+      // GERCEK gorunum: LibreOffice pdf'i dene (yoksa tablo geri dususu)
+      if (pdfUrl) { URL.revokeObjectURL(pdfUrl); setPdfUrl(null); }
+      api.get(`/quote-formats/${f.id}/preview-pdf`, { responseType: 'blob' })
+        .then((r2) => setPdfUrl(URL.createObjectURL(new Blob([r2.data], { type: 'application/pdf' }))))
+        .catch(() => setPdfUrl(null));
     } catch {
       toast({ title: 'Onizleme yuklenemedi', variant: 'destructive' });
     }
+  }
+
+  function closePreview() {
+    if (pdfUrl) { URL.revokeObjectURL(pdfUrl); setPdfUrl(null); }
+    setPreview(null);
   }
 
   async function rolleriKaydet() {
@@ -275,7 +287,7 @@ export default function QuoteFormatsPage() {
                 {rolDirty && (
                   <Button size="sm" onClick={rolleriKaydet}>Rolleri Kaydet</Button>
                 )}
-                <Button variant="ghost" size="sm" onClick={() => setPreview(null)}><X className="h-4 w-4" /></Button>
+                <Button variant="ghost" size="sm" onClick={closePreview}><X className="h-4 w-4" /></Button>
               </div>
             </div>
 
@@ -323,7 +335,7 @@ export default function QuoteFormatsPage() {
                       </button>
                     </div>
 
-                    {(s.resimSayisi ?? 0) > 0 && (
+                    {(s.resimSayisi ?? 0) > 0 && !pdfUrl && (
                       <div className="mb-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
                         🖼 Bu sayfada {s.resimSayisi} görsel var — önizlemede gösterilmez, <b>çıktıda aynen korunur</b>.
                       </div>
@@ -345,21 +357,32 @@ export default function QuoteFormatsPage() {
                       </div>
                     )}
 
-                    <div className="overflow-x-auto rounded border">
-                      <table className="text-xs">
-                        <tbody>
-                          {s.rowData.slice(0, 60).map((r, ri) => (
-                            <tr key={ri} className="border-b last:border-0">
-                              {s.columnDefs.map((c) => (
-                                <td key={c.field} className="whitespace-nowrap px-2 py-1" style={{ minWidth: 60 }}>
-                                  {String(r[c.field] ?? '')}
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                    {pdfUrl ? (
+                      /* GERCEK GORUNUM (LibreOffice): tum dosyanin birebir
+                         PDF'i — logolar/yerlesim dahil. Sayfa gecisi PDF
+                         icinde kaydirarak yapilir. */
+                      <iframe
+                        src={pdfUrl}
+                        title="Format gercek gorunum"
+                        className="h-[62vh] w-full rounded border"
+                      />
+                    ) : (
+                      <div className="overflow-x-auto rounded border">
+                        <table className="text-xs">
+                          <tbody>
+                            {s.rowData.slice(0, 60).map((r, ri) => (
+                              <tr key={ri} className="border-b last:border-0">
+                                {s.columnDefs.map((c) => (
+                                  <td key={c.field} className="whitespace-nowrap px-2 py-1" style={{ minWidth: 60 }}>
+                                    {String(r[c.field] ?? '')}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </div>
                 );
               })()}

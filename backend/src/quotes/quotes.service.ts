@@ -8,6 +8,7 @@ import * as ExcelJS from 'exceljs';
 import { buildExportWorkbook, ExportSonucu } from './export-engine';
 import { buildSampleFormat, sheetToGrid, ExportOverrides, FillContext } from '../quote-formats/format-engine';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
+import { xlsxToPdf } from '../utils/xlsx-to-pdf';
 
 /** KDV orani — kod sabiti (ayarlanabilirlik backlog) */
 const KDV_ORAN = 0.20;
@@ -588,12 +589,24 @@ export class QuotesService {
     return { buffer: Buffer.from(e.xlsxBytes), filename: e.fileName };
   }
 
-  /** T9: PDF — AYNI kurucudan (mevcut teklif durumu) uretilir; icerik ve
-   *  degerler xlsx ile birebir (formul hucreleri hesaplanmis degerle basilir). */
+  /** T9: PDF — AYNI kurucudan (mevcut teklif durumu) uretilir.
+   *  ONCE LibreOffice ile xlsx→pdf GERCEK gorunum (logolu kapak dahil,
+   *  kullanici is akisi 20.07); soffice yoksa/basarisizsa HTML geri dususu
+   *  (icerik/degerler yine birebir). */
   async exportPdfPro(userId: string, id: string): Promise<{ buffer: Buffer; filename: string }> {
     const quote = await this.quoteGetir(userId, id);
     const rev = Math.max(quote.rev ?? 0, 1);
     const sonuc = await this.ciktiKur(userId, quote, rev);
+
+    const temizBaslikLO = String(quote.title ?? 'Teklif').replace(/[\\/:*?"<>|]/g, '-').slice(0, 60);
+    const pdfAdi = `${quote.quoteNo ?? 'TASLAK'} Rev.${String(rev).padStart(2, '0')} - ${temizBaslikLO}.pdf`;
+    const xlsxBuf = Buffer.from(await sonuc.wb.xlsx.writeBuffer());
+    const gercek = await xlsxToPdf(xlsxBuf);
+    if (gercek) {
+      console.log(`[Export] PDF (LibreOffice, gercek gorunum): ${pdfAdi} (${(gercek.length / 1024).toFixed(0)} KB)`);
+      return { buffer: gercek, filename: pdfAdi };
+    }
+    console.warn('[Export] LibreOffice donusumu kullanilamadi — HTML geri dususu (dev ortami olabilir)');
 
     // Kapak/icmal sayfalari → basit tablo HTML (degerler sheetToGrid'den:
     // formul hucresi RESULT degerini verir → xlsx ile birebir)

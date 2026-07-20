@@ -18,9 +18,13 @@ ENV NODE_ENV=production \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 # openssl+ca-certificates: Prisma icin | chromium+fonts: puppeteer PDF icin
+# libreoffice-calc: teklif ciktisi xlsx→pdf GERCEK gorunum donusumu
+# (kullanici is akisi 20.07: "Excel uzerinde calisilir, PDF'e cevrilip
+# musteriye gonderilir" — HTML taklidi yerine birebir baski gorunumu).
 RUN apt-get update && apt-get install -y --no-install-recommends \
         openssl ca-certificates \
-        chromium fonts-liberation \
+        chromium fonts-liberation fonts-dejavu-core \
+        libreoffice-calc \
     && rm -rf /var/lib/apt/lists/*
 
 # Layer cache: once bagimliliklar
