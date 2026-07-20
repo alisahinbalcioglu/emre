@@ -20,7 +20,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate",
     "prisma:studio": "prisma studio",
-    "test:labor": "ts-node test/labor-matching-test.ts"
+    "test:labor": "ts-node test/labor-matching-test.ts",
+    "test:export": "ts-node test/export-format-test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

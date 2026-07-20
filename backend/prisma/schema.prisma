@@ -47,6 +47,7 @@ model User {
   laborFirms     LaborFirm[]
   quotes         Quote[]
   subscriptions  UserSubscription[]
+  quoteFormats   QuoteFormat[]
 }
 
 // ESLESME HAFIZASI (PRD Adim 8) — belirsiz satirda kullanicinin sectigi urunu
@@ -363,6 +364,62 @@ model Quote {
   originalName String? // Orijinal dosya adi (orn. "SAHINKUL KESIF OZETI.xlsx")
   createdAt    DateTime    @default(now())
   items        QuoteItem[]
+
+  // ── PRD Teklif Formatim (v2.1) ────────────────────────────────────
+  // Teklif kimligi: ILK dis aktarimda atanir (MP-<yil>-<sira>), sonra sabit.
+  quoteNo         String?
+  // Rev sayaci: 0 = hic aktarim yok; ilk aktarim Rev.01 (T10)
+  rev             Int          @default(0)
+  // Teklif bilgileri (kapak yer tutuculari — teklif ekraninda girilir)
+  musteri         String?
+  proje           String?
+  hazirlayan      String?
+  gecerlilik      String?
+  // Secili format (null = kullanicinin varsayilani, o da yoksa yerlesik sade)
+  format          QuoteFormat? @relation(fields: [formatId], references: [id], onDelete: SetNull)
+  formatId        String?
+  // T13/T14: onizleme duzenlemeleri — YALNIZ bu teklifin ciktisina islenir,
+  // ana format DEGISMEZ. {sheetKey: {cellAddr: {value, manual: true}}}
+  exportOverrides Json?
+  exports         QuoteExport[]
+}
+
+// PRD Teklif Formatim: kullanicinin KENDI teklif sablonu (.xlsx —
+// KAPAK + ICMAL + istege bagli sartlar sayfalari, {{YER_TUTUCU}}'lu).
+model QuoteFormat {
+  id        String   @id @default(uuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  name      String
+  fileName  String
+  // Orijinal format workbook'u — ciktida kapak/icmal buradan kopyalanir.
+  // Guncelleme YENI bytes yazar; uretilmis eski ciktilar etkilenmez (T11).
+  fileBytes Bytes
+  // Tarama sonucu: {bulunan: [{etiket, sheet, addr}], taninmayan: [...]} (T3)
+  mapping   Json?
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  quotes    Quote[]
+
+  @@index([userId])
+}
+
+// T10: dis aktarim arsivi — her Rev'in uretilmis .xlsx'i saklanir.
+// PDF saklanmaz (ayni rev verisinden yeniden uretilebilir).
+model QuoteExport {
+  id                String   @id @default(uuid())
+  quote             Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  quoteId           String
+  rev               Int
+  fileName          String
+  xlsxBytes         Bytes
+  // O rev'de uygulanmis onizleme duzenlemeleri (Rev.02, Rev.01'i baz alir)
+  overridesSnapshot Json?
+  createdAt         DateTime @default(now())
+
+  @@unique([quoteId, rev])
+  @@index([quoteId])
 }
 
 model QuoteItem {

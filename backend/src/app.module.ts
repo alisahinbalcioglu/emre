@@ -17,6 +17,7 @@ import { MatchingModule } from './modules/matching/matching.module';
 import { LaborMatchingModule } from './modules/labor-matching/labor-matching.module';
 import { DwgEngineModule } from './modules/dwg-engine/dwg-engine.module';
 import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
+import { QuoteFormatsModule } from './quote-formats/quote-formats.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
     LaborMatchingModule,
     DwgEngineModule,
     ExchangeRatesModule,
+    QuoteFormatsModule,
   ],
   controllers: [HealthController, BootstrapController],
 })
