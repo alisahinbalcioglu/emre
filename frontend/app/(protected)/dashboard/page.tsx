@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  FileText, Database, Tag, Users, Sparkles, Plus,
+  FileText, Database, Tag, Users, Sparkles,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
@@ -11,7 +11,6 @@ import { useCapabilities } from '@/contexts/CapabilitiesContext';
 import QuickStart from '@/components/dashboard/QuickStart';
 import RecentQuotes from '@/components/dashboard/RecentQuotes';
 import QuickAccess from '@/components/dashboard/QuickAccess';
-import Link from 'next/link';
 
 interface DashStats {
   userCount: number;
@@ -163,20 +162,11 @@ export default function DashboardPage() {
   return (
     <div>
       {/* Welcome Banner */}
-      <div className="mb-7 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">
-            Hosgeldiniz{userName ? `, ${userName}` : ''}!
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">MetaPrice kontrol merkeziniz</p>
-        </div>
-        <Link
-          href="/quotes/new"
-          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-700"
-        >
-          <Plus className="h-4 w-4" />
-          Yeni Teklif
-        </Link>
+      <div className="mb-7">
+        <h1 className="text-xl font-semibold tracking-tight">
+          Hosgeldiniz{userName ? `, ${userName}` : ''}!
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">MetaPrice kontrol merkeziniz</p>
       </div>
 
       {/* Stat Cards */}
