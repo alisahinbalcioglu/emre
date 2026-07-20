@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
-import { Plus, Pencil, Trash2, BookOpen, ChevronDown, FolderOpen, Package, Wrench, Zap } from 'lucide-react';
+import { Plus, Pencil, Trash2, BookOpen, ChevronDown, FolderOpen, Package, Wrench, Zap, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -577,7 +577,7 @@ export default function LibraryPage() {
       </div>
 
       {/* Library Navigation */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-6">
         <Link href="/library/mechanical-brands" className="flex flex-col items-center gap-3 rounded-xl border-2 border-muted p-6 text-sm font-medium transition-all hover:border-primary hover:bg-primary/5 hover:shadow-md">
           <Package className="h-8 w-8 text-primary" />
           <span className="text-base font-semibold">Mekanik Markalar</span>
@@ -602,6 +602,11 @@ export default function LibraryPage() {
           <Zap className="h-8 w-8 text-orange-500" />
           <span className="text-base font-semibold">Elektrik Iscilik</span>
           <span className="text-xs text-muted-foreground">Firmalar, fiyat listeleri</span>
+        </Link>
+        <Link href="/quote-formats" className="flex flex-col items-center gap-3 rounded-xl border-2 border-muted p-6 text-sm font-medium transition-all hover:border-emerald-500 hover:bg-emerald-50 hover:shadow-md">
+          <FileText className="h-8 w-8 text-emerald-600" />
+          <span className="text-base font-semibold">Teklif Formatlarım</span>
+          <span className="text-xs text-muted-foreground">Kapak + icmal sablonlari</span>
         </Link>
       </div>
     </div>

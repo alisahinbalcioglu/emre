@@ -6,11 +6,10 @@ export const runtime = 'edge';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Download, FileSpreadsheet, Loader2 } from 'lucide-react';
+import { ArrowLeft, Download, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import api from '@/lib/api';
-import { toast } from '@/hooks/use-toast';
 import { ExcelGrid } from '@/components/excel-grid/ExcelGrid';
 import { SheetTabs } from '@/components/excel-grid/SheetTabs';
 import type { ExcelGridData } from '@/components/excel-grid/types';
@@ -46,44 +45,6 @@ export default function QuoteDetailPage() {
       .catch(() => setError('Teklif yuklenirken hata olustu.'))
       .finally(() => setIsLoading(false));
   }, [id]);
-
-  /* ── PDF ── */
-  async function handleDownloadPDF() {
-    try {
-      const response = await api.get(`/quotes/${id}/pdf`, { responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `teklif-${id.slice(0, 8)}.pdf`;
-      a.click();
-      window.URL.revokeObjectURL(url);
-    } catch {
-      toast({ title: 'Hata', description: 'PDF indirilemedi.', variant: 'destructive' });
-    }
-  }
-
-  /* ── Excel Export — orijinal dosyadan fiyat hucreleri doldurularak indir ── */
-  async function handleDownloadExcel() {
-    if (!quote) return;
-    try {
-      const response = await api.get(`/quotes/${id}/excel`, { responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const a = document.createElement('a');
-      a.href = url;
-      // Content-Disposition header'indan filename al, yoksa default
-      const disposition = response.headers?.['content-disposition'];
-      let filename = `teklif-${id.slice(0, 8)}.xlsx`;
-      if (disposition) {
-        const match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
-        if (match?.[1]) filename = decodeURIComponent(match[1].replace(/['"]/g, ''));
-      }
-      a.download = filename;
-      a.click();
-      window.URL.revokeObjectURL(url);
-    } catch {
-      toast({ title: 'Hata', description: 'Excel indirilemedi. Orijinal dosya kayitli olmayabilir.', variant: 'destructive' });
-    }
-  }
 
   /* ── Render ── */
 
@@ -134,11 +95,13 @@ export default function QuoteDetailPage() {
           <p className="mt-1 text-sm text-muted-foreground">{new Date(quote.createdAt).toLocaleDateString('tr-TR')}</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={handleDownloadPDF}>
-            <Download className="mr-2 h-4 w-4" />PDF Indir
-          </Button>
-          <Button variant="outline" onClick={handleDownloadExcel}>
-            <FileSpreadsheet className="mr-2 h-4 w-4" />Excel Indir
+          {/* PRD Teklif Formatim: tek buton → Cikti Onizleme (kapak+icmal+
+              liste; Excel+PDF oradan uretilir). Eski PDF/Excel endpoint'leri
+              backend'de duruyor. */}
+          <Button asChild>
+            <Link href={`/quotes/${id}/export`}>
+              <Download className="mr-2 h-4 w-4" />Teklifi Dışa Aktar
+            </Link>
           </Button>
         </div>
       </div>

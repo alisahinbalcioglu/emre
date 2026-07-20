@@ -1126,7 +1126,14 @@ export default function NewQuotePage() {
     return rows.reduce((sum, r) => sum + (parseFloat(String(r.cells[totalCol] ?? '')) || 0), 0);
   }, [rows, totalCol]);
 
-  async function handleSave() {
+  // PRD Teklif Formatim: kapak yer tutuculari icin teklif bilgileri
+  // (kaydetle birlikte PATCH :id/info ile gider)
+  const [teklifBilgileri, setTeklifBilgileri] = useState({
+    musteri: '', proje: '', hazirlayan: '', gecerlilik: '',
+  });
+
+  /** sonra='export' → kayittan sonra Cikti Onizleme'ye gider (PRD §3). */
+  async function handleSave(sonra?: 'export') {
     // Baslik bos ise dosya adi veya varsayilan kullan
     const finalTitle = title.trim() || `Teklif ${new Date().toLocaleDateString('tr-TR')}`;
 
@@ -1218,13 +1225,19 @@ export default function NewQuotePage() {
         }));
       }
 
-      await api.post('/quotes', {
+      const { data: created } = await api.post('/quotes', {
         title: finalTitle,
         items: payloadItems,
         sheets: sheetsPayload,
         originalFileBase64: originalFileBase64 ?? undefined,
         originalFileName: originalFileName ?? undefined,
       });
+
+      // Teklif bilgileri (kapak alanlari) — dolu alan varsa kaydet
+      const bilgiVar = Object.values(teklifBilgileri).some((v) => v.trim() !== '');
+      if (created?.id && bilgiVar) {
+        try { await api.patch(`/quotes/${created.id}/info`, teklifBilgileri); } catch { /* kapak alanlari opsiyonel */ }
+      }
 
       // Draft temizle — artik kayitli teklif var
       sessionStorage.removeItem(DRAFT_KEY);
@@ -1234,7 +1247,11 @@ export default function NewQuotePage() {
         title: 'Teklif kaydedildi',
         description: `"${finalTitle}" basariyla olusturuldu.`,
       });
-      router.push('/quotes');
+      if (sonra === 'export' && created?.id) {
+        router.push(`/quotes/${created.id}/export`);
+      } else {
+        router.push('/quotes');
+      }
     } catch {
       toast({
         title: 'Hata',
@@ -2339,20 +2356,54 @@ export default function NewQuotePage() {
 
       {/* Save — sadece excelGridData varsa goster */}
       {excelGridData && (
-        <div className="mt-6 flex justify-end">
-          <Button onClick={handleSave} disabled={isSaving}>
-            {isSaving ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Kaydediliyor...
-              </>
-            ) : (
-              <>
-                <Save className="mr-2 h-4 w-4" />
-                Teklifi Kaydet
-              </>
-            )}
-          </Button>
+        <div className="mt-6 flex flex-col gap-3">
+          {/* PRD Teklif Formatim: kapak yer tutucu alanlari (opsiyonel) */}
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+            <input
+              placeholder="Müşteri (kapak için)"
+              value={teklifBilgileri.musteri}
+              onChange={(e) => setTeklifBilgileri({ ...teklifBilgileri, musteri: e.target.value })}
+              className="h-8 rounded-md border px-2 text-sm"
+            />
+            <input
+              placeholder="Proje"
+              value={teklifBilgileri.proje}
+              onChange={(e) => setTeklifBilgileri({ ...teklifBilgileri, proje: e.target.value })}
+              className="h-8 rounded-md border px-2 text-sm"
+            />
+            <input
+              placeholder="Hazırlayan"
+              value={teklifBilgileri.hazirlayan}
+              onChange={(e) => setTeklifBilgileri({ ...teklifBilgileri, hazirlayan: e.target.value })}
+              className="h-8 rounded-md border px-2 text-sm"
+            />
+            <input
+              placeholder="Geçerlilik (örn. 30 gün)"
+              value={teklifBilgileri.gecerlilik}
+              onChange={(e) => setTeklifBilgileri({ ...teklifBilgileri, gecerlilik: e.target.value })}
+              className="h-8 rounded-md border px-2 text-sm"
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => handleSave()} disabled={isSaving}>
+              {isSaving ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Kaydediliyor...
+                </>
+              ) : (
+                <>
+                  <Save className="mr-2 h-4 w-4" />
+                  Teklifi Kaydet
+                </>
+              )}
+            </Button>
+            {/* PRD §3: soru sormaz — kaydet + Cikti Onizleme'ye git */}
+            <Button onClick={() => handleSave('export')} disabled={isSaving}>
+              <Save className="mr-2 h-4 w-4" />
+              ⬇ Teklifi Dışa Aktar
+            </Button>
+          </div>
         </div>
       )}
     </div>
