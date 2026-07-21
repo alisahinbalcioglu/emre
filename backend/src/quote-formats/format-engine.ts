@@ -419,8 +419,25 @@ export type SheetRoles = Record<string, SayfaRol>;
 
 const SABIT_AD_DESENI = /kapak|icmal|İcmal|özet|ozet|esas|şart|sart|not|kur|exchange|cover|summary|terms/i;
 
-/** Sezgisel rol atamasi: yer tutucu iceren VEYA sabit-adli VEYA gorselli
- *  sayfa SABIT; digerleri LISTE YUVASI onerisi. */
+/** VERI TABLOSU tespiti (GENELLIK bulgusu G1, 21.07): en az `esik` satirda
+ *  ≥2 SAYISAL hucre varsa sayfa eski-is/fiyat tablosu gibidir. */
+function veriTablosuGibi(ws: ExcelJS.Worksheet, esik = 5): boolean {
+  let sayisalSatir = 0;
+  ws.eachRow({ includeEmpty: false }, (row) => {
+    let sayisal = 0;
+    row.eachCell({ includeEmpty: false }, (c) => {
+      if (typeof c.value === 'number') sayisal++;
+    });
+    if (sayisal >= 2) sayisalSatir++;
+  });
+  return sayisalSatir >= esik;
+}
+
+/** Sezgisel rol atamasi — MUHAFAZAKAR (genellik bulgusu G1: rastgele adli
+ *  statik sayfa 'liste' sayilip SESSIZCE siliniyordu; herkesin formati
+ *  baskadir). Kural: 'liste' YALNIZ guclu kanitla (veri-tablosu gorunumu)
+ *  onerilir; suphede SABIT — icerik silmek, eski is sayfasi birakmaktan
+ *  cok daha kotu. Kullanici onizlemede ⇄ ile degistirir (mapping.sheetRoles). */
 export function sayfaRolleriTahminEt(wb: ExcelJS.Workbook): SheetRoles {
   const mapping = scanWorkbook(wb);
   const yerTutuculu = new Set(mapping.bulunan.concat(mapping.taninmayan).map((y) => y.sheet));
@@ -428,10 +445,8 @@ export function sayfaRolleriTahminEt(wb: ExcelJS.Workbook): SheetRoles {
   for (const ws of wb.worksheets) {
     let resim = 0;
     try { resim = (ws.getImages?.() ?? []).length; } catch { resim = 0; }
-    roller[ws.name] =
-      yerTutuculu.has(ws.name) || SABIT_AD_DESENI.test(ws.name) || resim > 0
-        ? 'sabit'
-        : 'liste';
+    const kesinSabit = yerTutuculu.has(ws.name) || SABIT_AD_DESENI.test(ws.name) || resim > 0;
+    roller[ws.name] = !kesinSabit && veriTablosuGibi(ws) ? 'liste' : 'sabit';
   }
   return roller;
 }

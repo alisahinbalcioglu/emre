@@ -297,6 +297,8 @@ async function run() {
     const fmt = buildSampleFormat(); // KAPAK + İCMAL (yer tutuculu → sabit)
     const eskiIs = fmt.addWorksheet('CILAS KAUCUK'); // eski is → LISTE YUVASI
     eskiIs.getCell('A1').value = 'eski teklifin kalemleri';
+    // G1 kurali: liste tahmini VERI TABLOSU kaniti ister (sayisal satirlar)
+    for (let r = 2; r <= 8; r++) { eskiIs.getCell(r, 2).value = r; eskiIs.getCell(r, 3).value = r * 5; }
     const kur = fmt.addWorksheet('EXCHANGE RATE'); // ad deseni → SABIT
     kur.getCell('A1').value = '1 USD = 47,07';
 

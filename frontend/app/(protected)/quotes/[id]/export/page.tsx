@@ -378,6 +378,12 @@ export default function ExportPreviewPage() {
       {/* Aktif sekme */}
       {aktifFormatSheet && formatGridData && (
         <Card className="overflow-hidden">
+          {(aktifFormatSheet as any).resimSayisi > 0 && (
+            <div className="border-b border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+              🖼 Bu sayfada {(aktifFormatSheet as any).resimSayisi} görsel var — tabloda görünmez,
+              <b> çıktıda aynen korunur</b>. Tam görünüm için <b>Gerçek Görünüm</b> düğmesini kullanın.
+            </div>
+          )}
           <ExcelGrid
             key={`fmt-${aktifFormatSheet.name}`}
             data={formatGridData}
