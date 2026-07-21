@@ -269,6 +269,23 @@ async function main() {
     await terminology.deactivateAlias(userId, (kayit as any).id ?? (tekil[0] as any).id);
     const kalan = (await terminology.listAliases(userId)).filter((a: any) => a.alias?.includes('denetim') && (a as any).active !== false);
     check('S4 alias sil/pasif', kalan.length === 0 || (kalan[0] as any).active === false, `kalan=${kalan.length}`);
+
+    // S3: seed alias SILINEMEZ — yalniz pasife alinir (sonra durum geri acilir)
+    const seedRow = await (prisma as any).terminologyAlias.findFirst({ where: { userId: null, active: true } });
+    if (seedRow) {
+      const sonuc = await terminology.deactivateAlias(userId, seedRow.id);
+      check('S3 seed silinmez, pasife alinir', (sonuc as any).deactivated === true && !(sonuc as any).deleted,
+        JSON.stringify(sonuc));
+      await (prisma as any).terminologyAlias.update({ where: { id: seedRow.id }, data: { active: true } }); // durumu geri al
+    }
+    // Yetki: baska kullanicinin alias'i silinemez
+    const baskasi = await (prisma as any).terminologyAlias.findFirst({ where: { userId: { not: null, notIn: [userId] } } });
+    if (baskasi) {
+      const red = await terminology.deactivateAlias(userId, baskasi.id);
+      check('S3 yetki: baskasinin alias\'i silinemez', (red as any).ok === false, JSON.stringify(red));
+    } else {
+      log('S3 yetki dali: baska kullanici alias\'i yok — atlandi (dal kodu okundu: userId esitsizligi → yetki yok)');
+    }
   }
 
   log(`\n${'='.repeat(60)}\nCANLI KOSUM SONUC: ${passed} PASS, ${failed} FAIL`);
