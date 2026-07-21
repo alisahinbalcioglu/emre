@@ -30,14 +30,6 @@ export function hesaplaNetFiyat(listeFiyat: number, iskontoYuzde: number): numbe
   return yukariYuvarla(listeFiyat * (1 - oran));
 }
 
-/** ASAMA B: Net (teklif biriminde) + kar% → SATIS birim.
- *  Kar 0 → satis = net (1 haneye yukari). Cevrim yapmaz. */
-export function hesaplaSatisBirimFiyat(netTeklifParaBirimi: number, karYuzde: number): number {
-  const oran = Math.max(0, karYuzde) / 100;
-  return yukariYuvarla(netTeklifParaBirimi * (1 + oran));
-}
-
-/** Satir toplami = satis birim × miktar. */
-export function hesaplaSatirToplam(satisBirimFiyat: number, miktar: number): number {
-  return yukariYuvarla(satisBirimFiyat * miktar);
-}
+// NOT (denetim 22.07): hesaplaSatisBirimFiyat + hesaplaSatirToplam BE
+// kopyalari SILINDI — satis/satir hesabi yalniz FE'de yapilir
+// (frontend/lib/pricing.ts, testli canli kopya). BE yalniz NET fiyat hesaplar.

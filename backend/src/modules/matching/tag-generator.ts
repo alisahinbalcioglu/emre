@@ -158,14 +158,3 @@ export function generateTags(materialName: string): TaggedMaterial {
     materialType: effectiveType,
   };
 }
-
-/**
- * Toplu tag atama — birden fazla malzeme icin.
- */
-export function generateTagsBulk(materialNames: string[]): Record<string, TaggedMaterial> {
-  const results: Record<string, TaggedMaterial> = {};
-  for (const name of materialNames) {
-    results[name] = generateTags(name);
-  }
-  return results;
-}

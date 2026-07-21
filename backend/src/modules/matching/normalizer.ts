@@ -197,14 +197,6 @@ const SURFACE_PATTERNS: { pattern: RegExp; tag: string }[] = [
   { pattern: /boyali/i, tag: 'boyali' },
 ];
 
-export function extractSurface(text: string): string | null {
-  const normalized = normalizeText(text);
-  for (const { pattern, tag } of SURFACE_PATTERNS) {
-    if (pattern.test(normalized)) return tag;
-  }
-  return null;
-}
-
 /** TUM yuzey tag'lerini toplar (V4 varyant kimligi icin — PRD v1.2/v1.3).
  *  "Siyah Celik Boru Kirmizi Boyali" → ['siyah','kirmizi','boyali']:
  *  tek-yuzey versiyonu 'siyah'ta durur, kirmizi varyant AYIRT EDILEMEZDI. */
@@ -639,10 +631,6 @@ const VALVE_TYPE_PATTERNS: { pattern: RegExp; tag: string }[] = [
   { pattern: /radyator\s*(donus\s*)?van|termostatik|kose\s*radyator/i, tag: 'vt-radyator' },
   { pattern: /pislik\s*tutucu|strainer|y\s*tipi\s*(pislik|filtre)/i, tag: 'vt-pislik-tutucu' },
 ];
-
-export function extractValveType(text: string): string | null {
-  return extractValveTypes(text)[0] ?? null;
-}
 
 /** 3-ETIKET MODELI: coklu AD destegi — "KURESEL VE KELEBEK VANALAR" basligi
  *  IKI aday ad uretir [vt-kuresel, vt-kelebek]; aday bu kumeden HERHANGI
