@@ -34,7 +34,6 @@ import { ExcelGrid } from '@/components/excel-grid/ExcelGrid';
 import type { ExcelGridHandle } from '@/components/excel-grid/ExcelGrid';
 import { SheetTabs } from '@/components/excel-grid/SheetTabs';
 import ColumnManagerPanel from '@/components/quotes/ColumnManagerPanel';
-import { buildMaterialContextFromArray } from '@/components/excel-grid/build-material-context';
 import type { ExcelGridData, ExcelRowData, MultiSheetData, SheetData, MatchCandidate as ExcelMatchCandidate } from '@/components/excel-grid/types';
 import { useCapabilities } from '@/contexts/CapabilitiesContext';
 // DwgUploader artik bagimsiz /dwg-workspace route'unda render ediliyor —
@@ -385,7 +384,6 @@ export default function NewQuotePage() {
   const [activeSheetIndex, setActiveSheetIndex] = useState(0);
   const [liveRowDataBySheet, setLiveRowDataBySheet] = useState<Record<number, ExcelRowData[]>>({});
   const [sheetMatchCounts, setSheetMatchCounts] = useState<Record<number, { total: number; matched: number }>>({});
-  const [isMatchingAllSheets, setIsMatchingAllSheets] = useState(false);
   // PRD v3.0 Bolum B: "Otomatik varyant atama" toggle KALDIRILDI (global gate yok);
   // yayilim yalniz SURUKLE/CIFT-TIK ile. Motor korunur.
   // I7 (18.07): BAYAT INDEKS gorunurlugu — yalniz log YETMEZ, kucuk rozet.
@@ -397,8 +395,6 @@ export default function NewQuotePage() {
   const [sheetDisciplines, setSheetDisciplines] = useState<Record<number, 'mechanical' | 'electrical' | null>>({});
   // Iscilik firmalari + secilen firma (sheet bazli)
   const [laborFirms, setLaborFirms] = useState<LaborFirm[]>([]);
-  const [selectedFirmaBySheet, setSelectedFirmaBySheet] = useState<Record<number, string>>({});
-  const [isMatchingLabor, setIsMatchingLabor] = useState(false);
   const { capabilities } = useCapabilities();
   const excelGridRef = useRef<ExcelGridHandle>(null);
 
@@ -1560,216 +1556,6 @@ export default function NewQuotePage() {
                 </button>
               );
             })}
-          </div>
-        )}
-        {/* Toplu fiyatlandirma butonlari kaldirildi — marka secimi satir bazinda */}
-        {false && (
-          <div>
-            <Button
-              variant="default"
-              size="sm"
-              disabled={isMatchingAllSheets}
-              onClick={async () => {
-                if (!multiSheet) return;
-                const brandId = allBrands[0]?.id;
-                if (!brandId) {
-                  toast({ title: 'Marka bulunamadi', variant: 'destructive' });
-                  return;
-                }
-                setIsMatchingAllSheets(true);
-                try {
-                  const collected: { sheetIdx: number; rowIdx: number; name: string }[] = [];
-                  // E2: birim sinyali (metre→boru, adet→ekipman) — ad→birim map'i
-                  const unitMap: Record<string, string> = {};
-                  multiSheet.sheets.forEach((sheet) => {
-                    if (sheet.isEmpty) return;
-                    const rows = liveRowDataBySheet[sheet.index] ?? sheet.rowData;
-                    const unitField = (sheet.columnRoles as any)?.unitField;
-                    rows.forEach((row, rIdx) => {
-                      if (!row._isDataRow) return;
-                      const name = buildMaterialContextFromArray(rows, rIdx, sheet.columnRoles);
-                      if (name && name.trim().length > 1) {
-                        collected.push({ sheetIdx: sheet.index, rowIdx: rIdx, name });
-                        if (unitField) {
-                          const u = String((row as any)[unitField] ?? '').trim();
-                          if (u && !unitMap[name]) unitMap[name] = u;
-                        }
-                      }
-                    });
-                  });
-                  if (collected.length === 0) {
-                    toast({ title: 'Fiyatlandirilacak malzeme yok' });
-                    return;
-                  }
-                  // 2. Dedupe
-                  const uniqueNames = Array.from(new Set(collected.map((c) => c.name)));
-                  // 3. Tek bulkMatch cagrisi
-                  const { data: results } = await api.post('/matching/bulk-match', {
-                    brandId,
-                    materialNames: uniqueNames,
-                    units: Object.keys(unitMap).length > 0 ? unitMap : undefined,
-                  });
-                  // 4. Sonuclari sheet bazinda dagit
-                  const newCounts: Record<number, { total: number; matched: number }> = {};
-                  setLiveRowDataBySheet((prev) => {
-                    const next = { ...prev };
-                    const sheetBucket: Record<number, ExcelRowData[]> = {};
-                    collected.forEach(({ sheetIdx, rowIdx, name }) => {
-                      const match = results[name];
-                      if (!sheetBucket[sheetIdx]) sheetBucket[sheetIdx] = [...(next[sheetIdx] ?? [])];
-                      const row = { ...sheetBucket[sheetIdx][rowIdx] };
-                      const sheetDef = multiSheet.sheets.find((s) => s.index === sheetIdx)!;
-                      const roles = sheetDef.columnRoles;
-                      newCounts[sheetIdx] = newCounts[sheetIdx] ?? { total: 0, matched: 0 };
-                      newCounts[sheetIdx].total++;
-                      // 'high' (kesin) + 'suggestion' (oneri) fiyat yazar; 'multi'
-                      // (popup gerek) ve 'none' atlanir. Oneriler sari isaretlenir.
-                      const writable = match && match.netPrice > 0 &&
-                        (match.confidence === 'high' || match.confidence === 'suggestion');
-                      if (writable) {
-                        const netPrice = parseFloat(String(match.netPrice)) || 0;
-                        const satis = hesaplaSatisBirimFiyat(netPrice, parseFloat(String(row._malzKar ?? 0)) || 0);
-                        const qty = roles.quantityField ? parseFloat(String(row[roles.quantityField] ?? '')) || 0 : 0;
-                        if (roles.materialUnitPriceField) row[roles.materialUnitPriceField] = satis.toFixed(1);
-                        if (roles.materialTotalField) row[roles.materialTotalField] = hesaplaSatirToplam(satis, qty).toFixed(1);
-                        row._matNetPrice = netPrice;
-                        row._matSuggestion = match.confidence === 'suggestion';
-                        row._marka = match.matchedName ?? null;
-                        newCounts[sheetIdx].matched++;
-                      }
-                      sheetBucket[sheetIdx][rowIdx] = row;
-                    });
-                    Object.keys(sheetBucket).forEach((k) => { next[Number(k)] = sheetBucket[Number(k)]; });
-                    return next;
-                  });
-                  setSheetMatchCounts(newCounts);
-                  // Active sheet'in excelGridData'sini de guncelle
-                  const active = multiSheet.sheets[activeSheetIndex];
-                  if (active) {
-                    setExcelGridData({
-                      columnDefs: active.columnDefs,
-                      rowData: liveRowDataBySheet[active.index] ?? active.rowData,
-                      columnRoles: active.columnRoles,
-                      brands: multiSheet.brands,
-                      headerEndRow: active.headerEndRow,
-                    });
-                  }
-                  const totalMatched = Object.values(newCounts).reduce((a, b) => a + b.matched, 0);
-                  const totalItems = Object.values(newCounts).reduce((a, b) => a + b.total, 0);
-                  toast({
-                    title: `${multiSheet.sheets.filter((s) => !s.isEmpty).length} sayfa fiyatlandirildi`,
-                    description: `${totalItems} malzeme, ${totalMatched} eslesti`,
-                  });
-                } catch (e: any) {
-                  console.error('[matchAllSheets]', e);
-                  toast({ title: 'Fiyatlandirma hatasi', description: e?.message ?? 'Bilinmeyen hata', variant: 'destructive' });
-                } finally {
-                  setIsMatchingAllSheets(false);
-                }
-              }}
-            >
-              {isMatchingAllSheets ? 'Fiyatlandiriliyor...' : 'Tum Sayfalari Fiyatlandir'}
-            </Button>
-            {hasAnyLabor && laborFirms.length > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={isMatchingLabor}
-                onClick={async () => {
-                  if (!multiSheet) return;
-                  setIsMatchingLabor(true);
-                  try {
-                    // Her sheet icin disipline gore bir firma sec (ilk uygun firma)
-                    const collected: Record<number, Array<{ rowIdx: number; name: string; firmaId: string }>> = {};
-                    multiSheet.sheets.forEach((sheet) => {
-                      if (sheet.isEmpty) return;
-                      const disc = sheetDisciplines[sheet.index] ?? sheet.discipline;
-                      if (!disc) return;
-                      // Bu sheet icin labor capability var mi?
-                      const labCap = disc === 'mechanical' ? capabilities.mechanical.labor : capabilities.electrical.labor;
-                      if (!labCap) return;
-                      // Firma sec — sheet bazinda kayitli yoksa ilk uygun firma
-                      const firmaId = selectedFirmaBySheet[sheet.index] ?? laborFirms.find((f) => f.discipline === disc)?.id;
-                      if (!firmaId) return;
-                      const rows = liveRowDataBySheet[sheet.index] ?? sheet.rowData;
-                      const sheetItems: Array<{ rowIdx: number; name: string; firmaId: string }> = [];
-                      rows.forEach((row, rIdx) => {
-                        if (!row._isDataRow) return;
-                        const name = buildMaterialContextFromArray(rows, rIdx, sheet.columnRoles);
-                        if (name && name.trim().length > 1) {
-                          sheetItems.push({ rowIdx: rIdx, name, firmaId });
-                        }
-                      });
-                      if (sheetItems.length > 0) collected[sheet.index] = sheetItems;
-                    });
-
-                    if (Object.keys(collected).length === 0) {
-                      toast({ title: 'Iscilik fiyatlandirilacak sayfa yok' });
-                      return;
-                    }
-
-                    let totalMatched = 0;
-                    let totalItems = 0;
-                    const newLive = { ...liveRowDataBySheet };
-
-                    // Her firma icin ayri bulk-match cagrisi (firmalar farkli olabilir)
-                    for (const [sheetIdxStr, items] of Object.entries(collected)) {
-                      const sheetIdx = Number(sheetIdxStr);
-                      const sheetDef = multiSheet.sheets.find((s) => s.index === sheetIdx)!;
-                      const roles = sheetDef.columnRoles;
-                      const firmaId = items[0].firmaId;
-                      const uniqueNames = Array.from(new Set(items.map((i) => i.name)));
-                      const { data: results } = await api.post('/labor-matching/bulk-match', {
-                        firmaId,
-                        laborNames: uniqueNames,
-                      });
-                      const sheetRows = [...(newLive[sheetIdx] ?? sheetDef.rowData)];
-                      items.forEach(({ rowIdx, name }) => {
-                        totalItems++;
-                        const match = results[name];
-                        if (match && match.confidence === 'high' && match.netPrice > 0) {
-                          const netPrice = parseFloat(String(match.netPrice)) || 0;
-                          const qty = roles.quantityField ? parseFloat(String(sheetRows[rowIdx][roles.quantityField] ?? '')) || 0 : 0;
-                          const row = { ...sheetRows[rowIdx] };
-                          const satisLab = hesaplaSatisBirimFiyat(netPrice, parseFloat(String(row._iscKar ?? 0)) || 0);
-                          if (roles.laborUnitPriceField) row[roles.laborUnitPriceField] = satisLab.toFixed(1);
-                          if (roles.laborTotalField) row[roles.laborTotalField] = hesaplaSatirToplam(satisLab, qty).toFixed(1);
-                          row._labNetPrice = netPrice;
-                          row._firma = match.matchedName ?? firmaId;
-                          sheetRows[rowIdx] = row;
-                          totalMatched++;
-                        }
-                      });
-                      newLive[sheetIdx] = sheetRows;
-                    }
-                    setLiveRowDataBySheet(newLive);
-
-                    // Active sheet'i guncelle
-                    const active = multiSheet.sheets[activeSheetIndex];
-                    if (active) {
-                      setExcelGridData({
-                        columnDefs: active.columnDefs,
-                        rowData: newLive[active.index] ?? active.rowData,
-                        columnRoles: active.columnRoles,
-                        brands: multiSheet.brands,
-                        headerEndRow: active.headerEndRow,
-                      });
-                    }
-                    toast({
-                      title: `Iscilik fiyatlandirildi`,
-                      description: `${totalItems} kalem, ${totalMatched} eslesti`,
-                    });
-                  } catch (e: any) {
-                    console.error('[matchAllLabor]', e);
-                    toast({ title: 'Hata', description: e?.message ?? 'Bilinmeyen', variant: 'destructive' });
-                  } finally {
-                    setIsMatchingLabor(false);
-                  }
-                }}
-              >
-                {isMatchingLabor ? 'Iscilik fiyatlandiriliyor...' : 'Tum Sayfalari Iscilik Fiyatla'}
-              </Button>
-            )}
           </div>
         )}
         <ExcelGrid
