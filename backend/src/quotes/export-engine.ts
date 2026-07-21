@@ -19,9 +19,18 @@ import {
   FillContext, SekmeOzet, YerTutucu, ExportOverrides, SheetRoles,
 } from '../quote-formats/format-engine';
 
+/** TR-bilinçli sayi parse (Bulgu B7/B8 siniri): "1.234,56" → 1234.56,
+ *  "87,5" → 87.5, "313" → 313. Grid hucreleri metin tasiyabilir. */
 const sayi = (v: any): number => {
   if (v === undefined || v === null || v === '') return 0;
-  const n = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'));
+  if (typeof v === 'number') return isNaN(v) ? 0 : v;
+  let s = String(v).replace(/[₺$€\s]/g, '').trim();
+  if (s === '') return 0;
+  const virgul = s.includes(',');
+  const nokta = s.includes('.');
+  if (virgul && nokta) s = s.replace(/\./g, '').replace(',', '.'); // TR: nokta binlik
+  else if (virgul) s = s.replace(',', '.');
+  const n = parseFloat(s);
   return isNaN(n) ? 0 : n;
 };
 
@@ -138,16 +147,21 @@ export function writePricesToWorkbook(
       if (labUnitCol && labUnit > 0) ws.getCell(excelRow, labUnitCol).value = labUnit;
       if (grandUnitCol && grandUnit > 0) ws.getCell(excelRow, grandUnitCol).value = grandUnit;
 
-      // T7: tutar = miktar × birim CANLI FORMUL (miktar kolonu biliniyorsa)
+      // T7: tutar = miktar × birim CANLI FORMUL — ama YALNIZ orijinaldeki
+      // miktar hucresi GERCEKTEN SAYISALSA (Bulgu B8: metin miktar × formul
+      // = #VALUE riski; metinse tutar DUZ SAYI yazilir — "dolu ve sayisal").
+      const qtyHucreSayisal = qtyCol
+        ? typeof ws.getCell(excelRow, qtyCol).value === 'number'
+        : false;
       if (matTotCol && matTot > 0) {
         ws.getCell(excelRow, matTotCol).value =
-          qtyCol && matUnitCol && qty > 0 && matUnit > 0
+          qtyCol && matUnitCol && qtyHucreSayisal && qty > 0 && matUnit > 0
             ? ({ formula: `${KOLON_HARF(qtyCol)}${excelRow}*${KOLON_HARF(matUnitCol)}${excelRow}`, result: matTot } as any)
             : matTot;
       }
       if (labTotCol && labTot > 0) {
         ws.getCell(excelRow, labTotCol).value =
-          qtyCol && labUnitCol && qty > 0 && labUnit > 0
+          qtyCol && labUnitCol && qtyHucreSayisal && qty > 0 && labUnit > 0
             ? ({ formula: `${KOLON_HARF(qtyCol)}${excelRow}*${KOLON_HARF(labUnitCol)}${excelRow}`, result: labTot } as any)
             : labTot;
       }
@@ -188,40 +202,11 @@ export function sekmeOzetiKur(b: SekmeBilgi, sonAd: string): SekmeOzet {
   };
 }
 
-/**
- * Orijinal dosya YOKSA (eski/DWG teklifler): liste sayfalarini sheets
- * JSON'dan ExcelJS ile kur (gorunur kolonlar + fiyat kolonlari; sistem/ic
- * alanlar HARIC — T2). Donen wb ayni akista kullanilir.
- */
-export function buildListWorkbookFromSheets(sheetsArr: SheetJson[]): ExcelJS.Workbook {
-  const wb = new ExcelJS.Workbook();
-  const GIZLI = new Set(['_malzKar', '_marka', '_iscKar', '_firma']);
-  for (const s of sheetsArr) {
-    const ws = wb.addWorksheet((s.name ?? 'Sayfa').slice(0, 31) || 'Sayfa');
-    if (s.isEmpty) continue;
-    const defs = (s.columnDefs ?? []).filter(
-      (d) => d.field && !GIZLI.has(d.field) && (!d.field.startsWith('_') ||
-        Object.values(s.columnRoles ?? {}).includes(d.field)),
-    );
-    defs.forEach((d, i) => {
-      const c = ws.getCell(1, i + 1);
-      c.value = d.headerName ?? '';
-      c.font = { bold: true };
-    });
-    const rows = s.rowData ?? [];
-    for (let ri = 0; ri < rows.length; ri++) {
-      const row = rows[ri];
-      if (!row) continue;
-      defs.forEach((d, i) => {
-        const v = row[d.field];
-        if (v !== undefined && v !== null && v !== '') {
-          ws.getCell(ri + 2, i + 1).value = typeof v === 'number' ? v : String(v);
-        }
-      });
-    }
-  }
-  return wb;
-}
+// NOT (Bulgu Raporu 21.07, B1-B9 → kok neden): grid state'inden workbook
+// ureten `buildListWorkbookFromSheets` SILINDI. Iki yol yan yana kalmaz —
+// cikti YALNIZ iki gercek kaynaktan kurulur: format workbook'u (taban) +
+// musterinin ORIJINAL workbook kopyasi (liste sayfalari). Orijinal dosya
+// olmayan teklif DISA AKTARILAMAZ (acik hata; sessiz sahte cikti YASAK).
 
 /** Format sayfasini hedef workbook'a hucre-hucre kopyalar (deger+stil+
  *  merge+kolon genisligi+satir yuksekligi). Ad cakisirsa " (Format)" eki. */
@@ -270,7 +255,9 @@ export function sayfalariSirala(wb: ExcelJS.Workbook, adSirasi: string[]): void 
 }
 
 export interface ExportGirdisi {
-  originalFile: Buffer | null;
+  /** Musterinin ORIJINAL Excel'i — ZORUNLU (Bulgu Raporu: grid'den uretim
+   *  silindi; dosya yoksa cikti YOK, acik hata verilir). */
+  originalFile: Buffer;
   sheetsArr: SheetJson[];
   formatWb: ExcelJS.Workbook;
   /** Format sayfa rolleri (mapping.sheetRoles); verilmezse sezgisel tahmin.
@@ -312,14 +299,13 @@ export async function buildExportWorkbook(g: ExportGirdisi): Promise<ExportSonuc
   for (const w of silinecek) wb.removeWorksheet(w.id);
   const formatSayfalari = wb.worksheets.map((w) => w.name); // kalan = sabit
 
-  // ── 3. Teklif liste sayfalari: fiyat yaz → tabana kopyala ──
-  let musteriWb: ExcelJS.Workbook;
-  if (g.originalFile) {
-    musteriWb = new ExcelJS.Workbook();
-    await musteriWb.xlsx.load(g.originalFile as any);
-  } else {
-    musteriWb = buildListWorkbookFromSheets(g.sheetsArr);
+  // ── 3. Teklif liste sayfalari: ORIJINAL musteri wb kopyasi + fiyat yaz ──
+  // (Bulgu Raporu kok neden: grid'den uretim SILINDI — tek yol budur.)
+  if (!g.originalFile || g.originalFile.length === 0) {
+    throw new Error('ORIJINAL_DOSYA_YOK');
   }
+  const musteriWb = new ExcelJS.Workbook();
+  await musteriWb.xlsx.load(g.originalFile as any);
   const bilgiler = writePricesToWorkbook(musteriWb, g.sheetsArr);
 
   const listeSayfalari: string[] = [];

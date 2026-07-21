@@ -283,15 +283,10 @@ async function run() {
     check('BULGU/T1: orijinal 4 kolon dokunulmadi',
       hucreMetni(ws.getCell(2, 2)) === 'Boru' && ws.getCell(2, 4).value === 10, '');
 
-    // T8: orijinal dosya HIC yoksa da uretim calisir (sheets JSON'dan)
-    const sonuc8 = await buildExportWorkbook({
-      originalFile: null, sheetsArr, formatWb: buildSampleFormat(), ctxTemel, overrides: null,
-    });
-    const out8 = new ExcelJS.Workbook();
-    await out8.xlsx.load(Buffer.from(await sonuc8.wb.xlsx.writeBuffer()) as any);
-    check('T8 orijinalsiz uretim: kapak+icmal+liste mevcut',
-      out8.worksheets.length === 3 && out8.worksheets[0].name === 'KAPAK',
-      out8.worksheets.map((w) => w.name).join('|'));
+    // T8 GUNCELLENDI (Bulgu Raporu 21.07): T8 = "FORMAT yokken sade
+    // kapak+icmal" (yukarida ana testler zaten buildSampleFormat ile
+    // calisiyor → T8 kapali). ORIJINAL DOSYA yoksa ise artik uretim YOK —
+    // grid'den uretim silindi; acik hata beklenir (asagida BULGU blogu).
   }
 
   // ══ MIMARI v2 (kullanici karari 20.07): LISTE YUVASI YER DEGISTIRME ══
@@ -331,6 +326,64 @@ async function run() {
     check('YUVA: formatSayfalari yalniz SABIT sayfalar (onizleme sekmeleri)',
       JSON.stringify(sonuc.formatSayfalari) === JSON.stringify(['KAPAK', 'İCMAL', 'EXCHANGE RATE']),
       JSON.stringify(sonuc.formatSayfalari));
+  }
+
+  // ══ BULGU RAPORU KABULU (21.07, B1-B9) — grid-uretim yolu SILINDI ═══
+  {
+    // B-kok: orijinal dosya YOKSA cikti YOK (sessiz sahte uretim yasak)
+    let hata = '';
+    try {
+      await buildExportWorkbook({
+        originalFile: Buffer.alloc(0), sheetsArr: [], formatWb: buildSampleFormat(),
+        sheetRoles: null, ctxTemel, overrides: null,
+      });
+    } catch (e: any) { hata = e?.message ?? 'hata'; }
+    check('BULGU: orijinal dosya yoksa ACIK HATA (grid-uretim yolu yok)',
+      hata === 'ORIJINAL_DOSYA_YOK', `got "${hata}"`);
+  }
+  {
+    // B6/B8: fiyatlar SAYISAL yazilir; TR bicimli metin dogru parse edilir;
+    // orijinalde METIN miktar varsa tutar FORMULSUZ DUZ SAYI olur (#VALUE yok)
+    const wb2 = new ExcelJS.Workbook();
+    const ws2 = wb2.addWorksheet('Mekanik');
+    ['Poz', 'Ad', 'Miktar', 'BF', 'Top'].forEach((h, i) => { ws2.getCell(1, i + 1).value = h; });
+    ws2.getColumn(2).width = 42; // B3 kabulu: kolon genisligi korunmali
+    ws2.getCell(2, 1).value = 'M-1'; ws2.getCell(2, 2).value = 'Boru'; ws2.getCell(2, 3).value = '313'; // METIN miktar!
+    ws2.getCell(3, 1).value = 'M-2'; ws2.getCell(3, 2).value = 'Vana'; ws2.getCell(3, 3).value = 4; // sayisal miktar
+    const buf2 = Buffer.from(await wb2.xlsx.writeBuffer());
+    const sheets2 = [{
+      name: 'Mekanik', index: 0, isEmpty: false, columnDefs: [],
+      columnRoles: { nameField: 'col1', quantityField: 'col2', materialUnitPriceField: 'col3', materialTotalField: 'col4' },
+      rowData: [
+        { _rowIdx: 0, _isHeaderRow: true, _isDataRow: false },
+        { _rowIdx: 1, _isDataRow: true, col2: '313', col3: '1.234,56', col4: '386.417,28' }, // TR bicim
+        { _rowIdx: 2, _isDataRow: true, col2: 4, col3: '10', col4: '40' },
+      ],
+    }];
+    const s2 = await buildExportWorkbook({
+      originalFile: buf2, sheetsArr: sheets2, formatWb: buildSampleFormat(),
+      sheetRoles: null, ctxTemel, overrides: null,
+    });
+    const out2 = new ExcelJS.Workbook();
+    await out2.xlsx.load(Buffer.from(await s2.wb.xlsx.writeBuffer()) as any);
+    const mek = out2.getWorksheet('Mekanik')!;
+    const bf = mek.getCell(2, 4).value; // D2 birim fiyat
+    check('BULGU: TR bicimli fiyat SAYISAL yazildi (1.234,56 → 1234.56)',
+      typeof bf === 'number' && Math.abs((bf as number) - 1234.56) < 0.001, `got ${JSON.stringify(bf)} (${typeof bf})`);
+    const topMetin = mek.getCell(2, 5).value; // METIN miktarli satir → formul YOK
+    check('BULGU: metin-miktarli satirda tutar FORMULSUZ DUZ SAYI (#VALUE riski yok)',
+      typeof topMetin === 'number' && Math.abs((topMetin as number) - 386417.28) < 0.01,
+      `got ${JSON.stringify(topMetin)}`);
+    const topSayi: any = mek.getCell(3, 5).value; // sayisal miktarli satir → formul VAR
+    check('BULGU: sayisal-miktarli satirda tutar CANLI FORMUL (=C3*D3)',
+      topSayi?.formula === 'C3*D3' && topSayi?.result === 40, JSON.stringify(topSayi));
+    check('BULGU: kolon genisligi kopyada korunur (B3 kabulu)',
+      Math.round(mek.getColumn(2).width ?? 0) === 42, `got ${mek.getColumn(2).width}`);
+    check('BULGU: roller colN iken baslik satirina EK kolon baslik SARKMAZ (B5)',
+      !mek.getCell(1, 6).value, `got ${JSON.stringify(mek.getCell(1, 6).value)}`);
+    check('BULGU: miktar hucresi orijinaldeki HALIYLE durur (dokunulmadi)',
+      mek.getCell(2, 3).value === '313' && mek.getCell(3, 3).value === 4,
+      `got ${JSON.stringify([mek.getCell(2, 3).value, mek.getCell(3, 3).value])}`);
   }
 
   console.log(`\n${'='.repeat(60)}`);

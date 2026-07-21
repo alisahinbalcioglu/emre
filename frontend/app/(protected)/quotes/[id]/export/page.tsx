@@ -33,6 +33,9 @@ interface PreviewData {
   teklifNo: string | null;
   rev: number;
   formatSheets: GridSheet[];
+  // Bulgu B1 gorunurlugu: hangi format kullaniliyor (yerlesik ise uyari)
+  formatAdi?: string;
+  formatKaynak?: 'kullanici' | 'yerlesik';
   dolan: YerTutucu[];
   overrides: Record<string, Record<string, { value: string | number; manual?: boolean }>>;
   listeAdlari: string[];
@@ -284,6 +287,17 @@ export default function ExportPreviewPage() {
             {data.teklifNo ? `${data.teklifNo} · ` : ''}Üretilecek: Rev.{String(data.rev).padStart(2, '0')}
             {' · '}Kapak/İcmal düzenlenebilir — değişiklik yalnız bu teklifin çıktısına işler.
           </p>
+          {/* Bulgu B1: hangi format kullaniliyor — yerlesikse UYARI */}
+          {data.formatKaynak === 'yerlesik' ? (
+            <p className="mt-1 inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800">
+              ⚠ Teklif formatınız yok — sade varsayılan şablon kullanılacak.{' '}
+              <Link href="/quote-formats" className="ml-1 underline">Format yükleyin</Link>
+            </p>
+          ) : data.formatAdi ? (
+            <p className="mt-1 inline-flex items-center rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800">
+              Format: {data.formatAdi}
+            </p>
+          ) : null}
         </div>
         <div className="flex gap-2">
           {dirty && (

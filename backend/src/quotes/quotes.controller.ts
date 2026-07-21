@@ -35,35 +35,9 @@ export class QuotesController {
     return this.quotesService.findAll(user.id);
   }
 
-  @Get(':id/pdf')
-  async getPdf(
-    @CurrentUser() user: any,
-    @Param('id') id: string,
-    @Res() res: Response,
-  ) {
-    const pdfBuffer = await this.quotesService.generatePdf(user.id, id);
-    res.set({
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="quote-${id.slice(0, 8)}.pdf"`,
-      'Content-Length': pdfBuffer.length,
-    });
-    res.end(pdfBuffer);
-  }
-
-  @Get(':id/excel')
-  async getExcel(
-    @CurrentUser() user: any,
-    @Param('id') id: string,
-    @Res() res: Response,
-  ) {
-    const { buffer, filename } = await this.quotesService.generateExcel(user.id, id);
-    res.set({
-      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="${encodeURIComponent(filename)}"`,
-      'Content-Length': buffer.length,
-    });
-    res.end(buffer);
-  }
+  // NOT (Bulgu Raporu 21.07): eski GET :id/pdf ve GET :id/excel rotalari
+  // SILINDI — grid'den uretim yolu kaldirildi, tek cikti yolu PRD motoru
+  // (POST :id/export + GET :id/export-pdf). Iki yol yan yana KALMAZ.
 
   // ── PRD Teklif Formatim: profesyonel cikti rotalari ──
 
