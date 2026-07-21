@@ -81,6 +81,28 @@ export default function ExportPreviewPage() {
   const [info, setInfo] = useState<PreviewData['info']>({});
   // Grid'in SON bilinen satirlari (hucre diff'i icin) — sheet adi → rows
   const prevRowsRef = useRef<Record<string, ExcelRowData[]>>({});
+  // CANLI GERCEK GORUNUM (kullanici istegi 21.07: "uygulama icinde onizleme
+  // ve duzeltme"): belgenin dolu PDF'i yan panelde; kaydet → otomatik yenilenir.
+  const [canliPdf, setCanliPdf] = useState<string | null>(null);
+  const [pdfYukleniyor, setPdfYukleniyor] = useState(false);
+  const canliPdfRef = useRef<string | null>(null);
+
+  const canliPdfYenile = useCallback(async () => {
+    setPdfYukleniyor(true);
+    try {
+      const r = await api.get(`/quotes/${id}/export-pdf`, { responseType: 'blob' });
+      const url = URL.createObjectURL(new Blob([r.data], { type: 'application/pdf' }));
+      if (canliPdfRef.current) URL.revokeObjectURL(canliPdfRef.current);
+      canliPdfRef.current = url;
+      setCanliPdf(url);
+    } catch {
+      setCanliPdf(null); // LibreOffice yoksa panel gizlenir, grid calismaya devam eder
+    } finally {
+      setPdfYukleniyor(false);
+    }
+  }, [id]);
+
+  useEffect(() => () => { if (canliPdfRef.current) URL.revokeObjectURL(canliPdfRef.current); }, []);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -107,6 +129,8 @@ export default function ExportPreviewPage() {
   }, [id]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
+  // Canli gercek gorunum: sayfa acilinca bir kez uretilir (arka planda)
+  useEffect(() => { canliPdfYenile(); }, [canliPdfYenile]);
 
   // Otomatik dolan hucre haritasi: "sheet|addr" → etiket (T14 rozeti)
   const dolanMap = useMemo(() => {
@@ -183,6 +207,8 @@ export default function ExportPreviewPage() {
       await api.put(`/quotes/${id}/export-overrides`, { overrides });
       setDirty(false);
       if (!sessiz) toast({ title: 'Duzenlemeler kaydedildi', description: 'Yalniz bu teklifin ciktisina islenir — ana format degismez.' });
+      // Canli gercek gorunum duzenlemelerle YENIDEN uretilir (beklenmez)
+      canliPdfYenile();
     } catch (e: any) {
       toast({ title: 'Kaydedilemedi', description: e?.response?.data?.message, variant: 'destructive' });
       throw e;
@@ -375,46 +401,76 @@ export default function ExportPreviewPage() {
         ))}
       </div>
 
-      {/* Aktif sekme */}
-      {aktifFormatSheet && formatGridData && (
-        <Card className="overflow-hidden">
-          {(aktifFormatSheet as any).resimSayisi > 0 && (
-            <div className="border-b border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
-              🖼 Bu sayfada {(aktifFormatSheet as any).resimSayisi} görsel var — tabloda görünmez,
-              <b> çıktıda aynen korunur</b>. Tam görünüm için <b>Gerçek Görünüm</b> düğmesini kullanın.
-            </div>
-          )}
-          <ExcelGrid
-            key={`fmt-${aktifFormatSheet.name}`}
-            data={formatGridData}
-            brands={EMPTY_BRANDS}
-            currencySymbol="₺"
-            conversionRate={1}
-            onBrandChange={noBrandChange}
-            onRowDataChange={handleFormatRowsChange}
-          />
-        </Card>
-      )}
-      {aktifListeSheet && listeGridData && (
-        <>
-          {/* T15: salt okunur + yonlendirme */}
-          <div className="mb-2 rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-            <Lock className="mr-1 inline h-3 w-3" />
-            Liste sayfaları burada değiştirilemez — fiyat/satır düzeltmesi teklif ekranında yapılır (tek doğruluk kaynağı).{' '}
-            <Link href="/quotes" className="font-semibold text-blue-700 hover:underline">Tekliflere git →</Link>
+      {/* Aktif sekme — SOL: canli gercek gorunum (PDF) · SAG: duzenleme grid'i
+          (kullanici istegi 21.07: "uygulama icinde onizleme ve duzeltme").
+          Kaydet → PDF otomatik yenilenir. LibreOffice yoksa panel gizlenir. */}
+      <div className="flex flex-col gap-3 2xl:flex-row">
+        {(canliPdf || pdfYukleniyor) && (
+          <div className="shrink-0 2xl:w-[46%]">
+            <Card className="overflow-hidden">
+              <div className="flex items-center justify-between border-b bg-muted/40 px-3 py-1.5 text-xs">
+                <span className="font-semibold">Gerçek Görünüm — canlı (düzenlemeler kaydedilince yenilenir)</span>
+                <button
+                  onClick={() => canliPdfYenile()}
+                  disabled={pdfYukleniyor}
+                  className="rounded border bg-white px-2 py-0.5 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  {pdfYukleniyor ? 'Yenileniyor…' : 'Yenile'}
+                </button>
+              </div>
+              {pdfYukleniyor && !canliPdf ? (
+                <div className="flex h-[72vh] items-center justify-center text-sm text-muted-foreground">
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />Gerçek görünüm hazırlanıyor…
+                </div>
+              ) : canliPdf ? (
+                <iframe src={canliPdf} title="Gerçek görünüm" className="h-[72vh] w-full" />
+              ) : null}
+            </Card>
           </div>
-          <Card className="overflow-hidden">
-            <ExcelGrid
-              key={`liste-${activeTab}`}
-              data={listeGridData}
-              brands={EMPTY_BRANDS}
-              currencySymbol="₺"
-              conversionRate={1}
-              onBrandChange={noBrandChange}
-            />
-          </Card>
-        </>
-      )}
+        )}
+
+        <div className="min-w-0 flex-1">
+          {aktifFormatSheet && formatGridData && (
+            <Card className="overflow-hidden">
+              {(aktifFormatSheet as any).resimSayisi > 0 && (
+                <div className="border-b border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                  🖼 Bu sayfada {(aktifFormatSheet as any).resimSayisi} görsel var — tabloda görünmez,
+                  <b> çıktıda aynen korunur</b>. Gerçek hali soldaki panelde.
+                </div>
+              )}
+              <ExcelGrid
+                key={`fmt-${aktifFormatSheet.name}`}
+                data={formatGridData}
+                brands={EMPTY_BRANDS}
+                currencySymbol="₺"
+                conversionRate={1}
+                onBrandChange={noBrandChange}
+                onRowDataChange={handleFormatRowsChange}
+              />
+            </Card>
+          )}
+          {aktifListeSheet && listeGridData && (
+            <>
+              {/* T15: salt okunur + yonlendirme */}
+              <div className="mb-2 rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                <Lock className="mr-1 inline h-3 w-3" />
+                Liste sayfaları burada değiştirilemez — fiyat/satır düzeltmesi teklif ekranında yapılır (tek doğruluk kaynağı).{' '}
+                <Link href="/quotes" className="font-semibold text-blue-700 hover:underline">Tekliflere git →</Link>
+              </div>
+              <Card className="overflow-hidden">
+                <ExcelGrid
+                  key={`liste-${activeTab}`}
+                  data={listeGridData}
+                  brands={EMPTY_BRANDS}
+                  currencySymbol="₺"
+                  conversionRate={1}
+                  onBrandChange={noBrandChange}
+                />
+              </Card>
+            </>
+          )}
+        </div>
+      </div>
 
       {/* T10: revizyon arsivi */}
       {exports.length > 0 && (
