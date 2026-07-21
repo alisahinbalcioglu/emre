@@ -26,7 +26,7 @@ const kaydet = (m: string) => {
   console.log('[GridTest]', m);
 };
 
-const CAP_FIYAT: Record<string, number> = { "6''": 600, "4''": 400, "3''": 300, "3/4''": 75 };
+const CAP_FIYAT: Record<string, number> = { "6''": 600, "4''": 400, "3''": 300, "3/4''": 75, "5''": 500, "8''": 800 };
 
 function aday(materialName: string, label: string, netPrice: number, variantTags: string[]): MatchCandidate {
   return {
@@ -70,6 +70,11 @@ export default function GridTestPage() {
         satir(5, '4', "2'' Siyah Boru", '564'),
         satir(6, '5', "1'' Siyah Boru", '872'),
         satir(7, '6', "3/4'' Siyah Boru", '12'),
+        // D9 (denetim): 8 satirlik surukleme kapsami icin ek caplar
+        satir(8, '7', "5'' Siyah Boru", '40'),
+        satir(9, '8', "8'' Siyah Boru", '22'),
+        // D14 (denetim): sorgusu AG HATASI firlatan satir
+        satir(10, '9', "HATALI 7'' Boru", '5'),
       ],
       columnRoles: {
         nameField: 'col1', noField: 'col0', quantityField: 'col2', unitField: 'col3',
@@ -84,6 +89,9 @@ export default function GridTestPage() {
     cagriSayisi.current++;
     const vt = opts?.variantTags?.join(',') ?? '-';
     log(`#${cagriSayisi.current} sorgu: satir=${rowIdx} "${materialName.slice(0, 30)}" varyant=[${vt}]`);
+
+    // D14 (denetim): ag hatasi simulasyonu — sorgu FIRLATIR (fetch reject esdegeri)
+    if (materialName.includes('HATALI')) { log('AG HATASI firlatildi'); throw new Error('ağ hatası (mock)'); }
 
     // K16: 2'' bu markada YOK
     if (materialName.includes("2''")) return { netPrice: 0, confidence: 'none', reason: 'Bu markada 2" yok.' };

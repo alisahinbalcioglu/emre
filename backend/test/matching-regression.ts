@@ -10,6 +10,7 @@
 
 import { PrismaClient } from '@prisma/client';
 import { MatchingService } from '../src/modules/matching/matching.service';
+import { TerminologyService } from '../src/modules/matching/terminology.service';
 import { generateTags } from '../src/modules/matching/tag-generator';
 import { extractDiameter } from '../src/modules/matching/normalizer';
 
@@ -122,7 +123,20 @@ async function runTests() {
   const fakeFx = {
     getRates: async () => ({ usdTry: 40, eurTry: 48, usdTryBuying: 40, eurTryBuying: 48, source: 'fake', date: '' }),
   } as any;
-  const service = new MatchingService(prisma as any, undefined as any, fakeFx);
+  // KUTUPHANEM IZOLASYONU sonrasi havuz kullaniciya ozel: 'test-user' gibi
+  // sahte id ile kutuphane BOS gelir (hep none). Testler markanin kutuphane
+  // sahibinin gercek userId'siyle kosulur; terminology de gercek servistir.
+  const service = new MatchingService(prisma as any, new TerminologyService(prisma as any), fakeFx);
+  const libRow = await prisma.userLibrary.findFirst({
+    where: { brandId: CAYIROVA_ID },
+    select: { userId: true },
+  });
+  if (!libRow) {
+    console.error(`Kutuphanede ${CAYIROVA_ID} markasina ait satir yok — test kosulamaz.`);
+    await prisma.$disconnect();
+    process.exit(1);
+  }
+  const testUserId = libRow.userId;
   let passed = 0;
   let failed = 0;
   const failures: string[] = [];
@@ -149,7 +163,7 @@ async function runTests() {
 
       // 2. Match check
       if (tc.expectedNetPrice !== undefined || tc.expectedConfidence !== undefined) {
-        const result = await service.bulkMatch('test-user', tc.brandId, [tc.input]);
+        const result = await service.bulkMatch(testUserId, tc.brandId, [tc.input]);
         const match = result[tc.input];
 
         if (!match) {
