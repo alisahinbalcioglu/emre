@@ -10,6 +10,7 @@ import { ArrowLeft, Download, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import api from '@/lib/api';
+import { teklifCiktisiniIndir } from '@/lib/export-download';
 import { ExcelGrid } from '@/components/excel-grid/ExcelGrid';
 import { SheetTabs } from '@/components/excel-grid/SheetTabs';
 import type { ExcelGridData } from '@/components/excel-grid/types';
@@ -31,6 +32,7 @@ export default function QuoteDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeSheetIndex, setActiveSheetIndex] = useState(0);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     api.get<QuoteDetail>(`/quotes/${id}`)
@@ -95,13 +97,18 @@ export default function QuoteDetailPage() {
           <p className="mt-1 text-sm text-muted-foreground">{new Date(quote.createdAt).toLocaleDateString('tr-TR')}</p>
         </div>
         <div className="flex gap-2">
-          {/* PRD Teklif Formatim: tek buton → Cikti Onizleme (kapak+icmal+
-              liste; Excel+PDF oradan uretilir). Eski PDF/Excel endpoint'leri
-              backend'de duruyor. */}
-          <Button asChild>
-            <Link href={`/quotes/${id}/export`}>
-              <Download className="mr-2 h-4 w-4" />Teklifi Dışa Aktar
-            </Link>
+          {/* KULLANICI KARARI (21.07): onizleme sayfasi KALDIRILDI — buton
+              DOGRUDAN Excel + PDF indirir (format kapagi + liste degisimi
+              backend'de; rev/arsiv otomatik). */}
+          <Button
+            disabled={exporting}
+            onClick={async () => {
+              setExporting(true);
+              try { await teklifCiktisiniIndir(id); } finally { setExporting(false); }
+            }}
+          >
+            <Download className="mr-2 h-4 w-4" />
+            {exporting ? 'Hazırlanıyor…' : 'Teklifi Dışa Aktar'}
           </Button>
         </div>
       </div>

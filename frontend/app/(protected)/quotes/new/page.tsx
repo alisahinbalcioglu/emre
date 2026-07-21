@@ -16,6 +16,7 @@ import {
   Package,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { teklifCiktisiniIndir } from '@/lib/export-download';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -1248,10 +1249,10 @@ export default function NewQuotePage() {
         description: `"${finalTitle}" basariyla olusturuldu.`,
       });
       if (sonra === 'export' && created?.id) {
-        router.push(`/quotes/${created.id}/export`);
-      } else {
-        router.push('/quotes');
+        // KULLANICI KARARI (21.07): onizleme YOK — dogrudan Excel + PDF indir
+        await teklifCiktisiniIndir(created.id);
       }
+      router.push('/quotes');
     } catch {
       toast({
         title: 'Hata',
