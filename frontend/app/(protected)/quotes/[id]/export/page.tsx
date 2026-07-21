@@ -147,7 +147,9 @@ export default function ExportPreviewPage() {
   const formatGridData: ExcelGridData | null = useMemo(() => {
     if (!aktifFormatSheet) return null;
     return {
-      columnDefs: aktifFormatSheet.columnDefs,
+      // Duzen (kullanici 21.07 "iki taraf duzensiz"): cok dar Excel
+      // kolonlari grid'de metni eziyordu — taban genislik 84px.
+      columnDefs: aktifFormatSheet.columnDefs.map((c) => ({ ...c, width: Math.max(84, c.width ?? 84) })),
       rowData: prevRowsRef.current[aktifFormatSheet.name] ?? aktifFormatSheet.rowData,
       columnRoles: {},
       brands: [],
@@ -423,7 +425,9 @@ export default function ExportPreviewPage() {
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />Gerçek görünüm hazırlanıyor…
                 </div>
               ) : canliPdf ? (
-                <iframe src={canliPdf} title="Gerçek görünüm" className="h-[72vh] w-full" />
+                /* #view=FitH: sayfa GENISLIGE sigdirilir — dar panelde metin
+                   kirpilmasi/zoom dagınıkligi (kullanici 21.07) kalkar */
+                <iframe src={`${canliPdf}#view=FitH`} title="Gerçek görünüm" className="h-[72vh] w-full" />
               ) : null}
             </Card>
           </div>
