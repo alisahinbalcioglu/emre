@@ -32,6 +32,8 @@ async function bootstrap() {
     'http://localhost:3001',
     'http://localhost:3002',
     'http://localhost:3003',
+    'http://localhost:3005', // worktree onizleme (dev)
+    'http://localhost:3010', // Playwright e2e dev sunucusu
     'https://metaprice.pages.dev',         // Cloudflare Pages production
     'https://metaprice.vercel.app',        // Vercel backward-compat
   ];
