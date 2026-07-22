@@ -53,6 +53,9 @@ export default function LaborFirmDetailPage() {
   // Bos firma sabit-format giris grid'i — header "Degisiklikleri Kaydet" tetikler
   const inlineEntryRef = useRef<FirmEntryHandle>(null);
   const [headerSaving, setHeaderSaving] = useState(false);
+  // "+ Yeni Liste": ayni firmaya ilave fiyat listesi (bos giris grid'i acilir,
+  // kaydet YENI liste olusturur). Kullanici istegi 22.07 — "ilave sayfalar".
+  const [newListMode, setNewListMode] = useState(false);
 
   const fetchFirma = useCallback(async () => {
     try {
@@ -240,7 +243,7 @@ export default function LaborFirmDetailPage() {
   async function handleHeaderSave() {
     setHeaderSaving(true);
     try {
-      if (priceLists.length === 0) {
+      if (newListMode || priceLists.length === 0) {
         await inlineEntryRef.current?.save();
       } else {
         await handleSaveDrafts();
@@ -316,17 +319,17 @@ export default function LaborFirmDetailPage() {
         </div>
       </div>
 
-      {/* Fiyat listeleri tab bar */}
+      {/* Fiyat listeleri tab bar + "+ Yeni Liste" (ilave sayfa) */}
       {priceLists.length > 0 && (
         <div className="mb-3 flex flex-wrap items-center gap-1">
           {priceLists.map((pl) => (
             <button
               key={pl.id}
               type="button"
-              onClick={() => setActiveListId(pl.id)}
+              onClick={() => { setNewListMode(false); setActiveListId(pl.id); }}
               className={[
                 'px-3 py-1.5 text-xs rounded-md border transition-colors',
-                activeListId === pl.id
+                !newListMode && activeListId === pl.id
                   ? 'bg-blue-600 text-white border-blue-600'
                   : 'bg-white border-gray-200 hover:bg-gray-50',
               ].join(' ')}
@@ -334,7 +337,20 @@ export default function LaborFirmDetailPage() {
               {pl.name} <span className="opacity-70">({pl._count.prices})</span>
             </button>
           ))}
-          {activeListId && (
+          {/* Ayni firmaya ilave liste ekle */}
+          <button
+            type="button"
+            onClick={() => setNewListMode(true)}
+            className={[
+              'px-3 py-1.5 text-xs rounded-md border border-dashed transition-colors',
+              newListMode
+                ? 'bg-blue-600 text-white border-blue-600'
+                : 'bg-white border-blue-300 text-blue-600 hover:bg-blue-50',
+            ].join(' ')}
+          >
+            + Yeni Liste
+          </button>
+          {!newListMode && activeListId && (
             <Button
               size="sm"
               variant="ghost"
@@ -347,8 +363,20 @@ export default function LaborFirmDetailPage() {
         </div>
       )}
 
-      {/* Aktif liste — ExcelGrid library mode */}
-      {activeListId && gridData ? (
+      {/* KULLANICI KARARI (22.07): boş firmada VEYA "+ Yeni Liste" seçilince
+          sabit-format giriş tablosu (malzeme listesiyle aynı: İskonto%+Net Fiyat);
+          kaydet YENİ liste olusturur+indeksler. Mevcut listede: aktif grid
+          (satır satır düzenle + blank satırlara ilave kalem + autoAppend). */}
+      {newListMode || priceLists.length === 0 ? (
+        <Card className="overflow-hidden p-3">
+          <InlineFirmEntry
+            key={newListMode ? 'yeni-liste' : 'bos-firma'}
+            ref={inlineEntryRef}
+            firmaId={firmaId}
+            onSaved={async () => { setNewListMode(false); await fetchFirma(); }}
+          />
+        </Card>
+      ) : activeListId && gridData ? (
         <Card className="overflow-hidden">
           <ExcelGrid
             key={activeListId}
@@ -361,17 +389,6 @@ export default function LaborFirmDetailPage() {
             autoAppendRow
             onBrandChange={async () => null}
             onRowDataChange={handleRowsChange}
-          />
-        </Card>
-      ) : priceLists.length === 0 ? (
-        /* KULLANICI KARARI (22.07): boş firmada DOĞRUDAN sabit-format giriş
-           tablosu (malzeme listesiyle aynı: İskonto% + Net Fiyat). Kaydet →
-           save-bulk kalemleri oluşturur+indeksler, aktif liste grid'i açılır. */
-        <Card className="overflow-hidden p-3">
-          <InlineFirmEntry
-            ref={inlineEntryRef}
-            firmaId={firmaId}
-            onSaved={async () => { await fetchFirma(); }}
           />
         </Card>
       ) : null}

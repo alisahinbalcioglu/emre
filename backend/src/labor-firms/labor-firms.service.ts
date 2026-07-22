@@ -661,17 +661,29 @@ export class LaborFirmsService {
   ) {
     const firma = await this.assertOwnership(firmaId, userId);
 
+    // Benzersiz liste adi uret (ayni gun icinde birden fazla liste olabilir).
+    const yeniListeOlustur = async () => {
+      const taban = `${firma.name} - ${new Date().toLocaleDateString('tr-TR')}`;
+      let listName = taban;
+      let suffix = 2;
+      while (await this.prisma.laborPriceList.findFirst({ where: { firmaId, name: listName } })) {
+        listName = `${taban} (${suffix++})`;
+        if (suffix > 100) break;
+      }
+      return this.prisma.laborPriceList.create({ data: { name: listName, firmaId } });
+    };
+
     let priceList;
-    if (priceListId === 'auto') {
+    if (priceListId === 'new') {
+      // "+ Yeni Liste": HER ZAMAN yeni (ayri) liste olustur — mevcut listeye
+      // ekleme YAPMAZ (ilave sayfa istegi, kullanici karari 22.07).
+      priceList = await yeniListeOlustur();
+    } else if (priceListId === 'auto') {
       priceList = await this.prisma.laborPriceList.findFirst({
         where: { firmaId },
         orderBy: { uploadedAt: 'desc' },
       });
-      if (!priceList) {
-        priceList = await this.prisma.laborPriceList.create({
-          data: { name: `${firma.name} - ${new Date().toLocaleDateString('tr-TR')}`, firmaId },
-        });
-      }
+      if (!priceList) priceList = await yeniListeOlustur();
     } else {
       priceList = await this.prisma.laborPriceList.findUnique({ where: { id: priceListId } });
       if (!priceList || priceList.firmaId !== firmaId) {

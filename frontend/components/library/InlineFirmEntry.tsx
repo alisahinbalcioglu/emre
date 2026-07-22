@@ -97,7 +97,9 @@ const InlineFirmEntry = forwardRef<FirmEntryHandle, Props>(function InlineFirmEn
       return false;
     }
     try {
-      const { data } = await api.post(`/labor-firms/${firmaId}/save-bulk`, { priceListId: 'auto', items });
+      // 'new': HER giris AYRI liste olusturur (bos firma = 1. liste, "+ Yeni
+      // Liste" = ilave liste). 'auto' en son listeyi yeniden kullaniyordu.
+      const { data } = await api.post(`/labor-firms/${firmaId}/save-bulk`, { priceListId: 'new', items });
       toast({ title: 'Kaydedildi', description: `${data.imported} kalem eklendi ("${data.priceListName}")` });
       onSaved();
       return true;
