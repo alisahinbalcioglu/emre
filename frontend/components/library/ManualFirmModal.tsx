@@ -15,7 +15,9 @@ import { toast } from '@/hooks/use-toast';
 import { ExcelGrid } from '@/components/excel-grid/ExcelGrid';
 import type { ExcelGridData, ExcelRowData } from '@/components/excel-grid/types';
 
-const FIRM_COLUMNS: ExcelGridData['columnDefs'] = [
+// PAYLASIMLI: hem bu modal hem bos-firma satir-ici giris (InlineFirmEntry) ayni
+// 7-kolon semayi + save-bulk esleme mantigini kullanir (tek kaynak).
+export const FIRM_COLUMNS: ExcelGridData['columnDefs'] = [
   { field: 'col0', headerName: 'No', width: 56, editable: false },
   { field: 'ad', headerName: 'İşçilik Kalemi', width: 340, editable: true },
   { field: 'cins', headerName: 'Cinsi/Detay', width: 160, editable: true },
@@ -25,11 +27,11 @@ const FIRM_COLUMNS: ExcelGridData['columnDefs'] = [
   { field: 'para', headerName: 'Para Birimi', width: 100, editable: true },
   { field: 'not', headerName: 'Not', width: 180, editable: true },
 ];
-const FIRM_ROLES = { noField: 'col0', nameField: 'ad', unitField: 'birim', laborUnitPriceField: 'fiyat' };
+export const FIRM_ROLES = { noField: 'col0', nameField: 'ad', unitField: 'birim', laborUnitPriceField: 'fiyat' };
 // STABIL referans — her render'da yeni [] gecersek columnDefs recompute → editor iptal
 const EMPTY_BRANDS: any[] = [];
 
-function buildBlankFirmGrid(dataRows = 30): ExcelGridData {
+export function buildBlankFirmGrid(dataRows = 30): ExcelGridData {
   const blank = (idx: number, spare = false): ExcelRowData => {
     const row: any = { _rowIdx: idx, _isDataRow: true, _isHeaderRow: false };
     if (spare) row._isSpareRow = true;
@@ -55,6 +57,22 @@ function numOrU(v: unknown): number | undefined {
   else if (hasComma) s = s.replace(',', '.');
   const n = parseFloat(s);
   return isNaN(n) ? undefined : n;
+}
+
+/** Doldurulmus satirlari save-bulk payload'una cevir (AD zorunlu; laborName =
+ *  AD + Cins + Cap — indeksleyici cap/cins'i metinden cozer). Modal ve
+ *  satir-ici giris ayni mantigi paylasir. */
+export function buildFirmSaveItems(rows: ExcelRowData[]) {
+  return rows
+    .filter((r: any) => r._isDataRow && !r._isSpareRow && String(r.ad ?? '').trim() !== '')
+    .map((r: any) => ({
+      laborName: [String(r.ad).trim(), trimOrU(r.cins), trimOrU(r.cap)].filter(Boolean).join(' '),
+      unit: trimOrU(r.birim) ?? 'Adet',
+      unitPrice: numOrU(r.fiyat) ?? 0,
+      discountRate: numOrU(r._draftDiscount),
+      currency: trimOrU(r.para),
+      category: trimOrU(r.not),
+    }));
 }
 
 interface Props {
@@ -94,21 +112,13 @@ export default function ManualFirmModal({ open, onClose, onSaved, firmaId, firma
   }
 
   async function handleSave() {
-    const filled = dataRowsFilled();
-    if (filled.length === 0) {
+    // laborName = AD (+ Cins + Cap) — ayni indeksleyici adi cozer (cap/cins
+    // metinden cikarilir); Birim L6 sert filtresine gider. (Paylasimli helper.)
+    const items = buildFirmSaveItems(rows);
+    if (items.length === 0) {
       toast({ title: 'Kalem yok', description: 'En az bir satırda İşçilik Kalemi girin.', variant: 'destructive' });
       return;
     }
-    // laborName = AD (+ Cins + Cap) — ayni indeksleyici adi cozer (cap/cins
-    // metinden cikarilir); Birim L6 sert filtresine gider.
-    const items = filled.map((r: any) => ({
-      laborName: [String(r.ad).trim(), trimOrU(r.cins), trimOrU(r.cap)].filter(Boolean).join(' '),
-      unit: trimOrU(r.birim) ?? 'Adet',
-      unitPrice: numOrU(r.fiyat) ?? 0,
-      discountRate: numOrU(r._draftDiscount),
-      currency: trimOrU(r.para),
-      category: trimOrU(r.not),
-    }));
 
     setSaving(true);
     try {

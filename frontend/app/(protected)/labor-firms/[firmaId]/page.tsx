@@ -14,6 +14,7 @@ import { toast } from '@/hooks/use-toast';
 import { ExcelGrid } from '@/components/excel-grid/ExcelGrid';
 import { SheetTabs } from '@/components/excel-grid/SheetTabs';
 import ManualFirmModal from '@/components/library/ManualFirmModal';
+import InlineFirmEntry from '@/components/library/InlineFirmEntry';
 import type { MultiSheetData, ExcelGridData, ExcelRowData } from '@/components/excel-grid/types';
 
 interface LaborFirm {
@@ -450,10 +451,14 @@ export default function LaborFirmDetailPage() {
           />
         </Card>
       ) : priceLists.length === 0 ? (
-        <Card>
-          <div className="py-12 text-center text-sm text-muted-foreground">
-            Henuz fiyat listesi yok. Yukaridan Excel dosyasi yukleyin.
-          </div>
+        /* KULLANICI KARARI (22.07): boş firmada DOĞRUDAN sabit-format giriş
+           tablosu (malzeme listesiyle aynı: İskonto% + Net Fiyat). Kaydet →
+           save-bulk kalemleri oluşturur+indeksler, aktif liste grid'i açılır. */
+        <Card className="overflow-hidden p-3">
+          <InlineFirmEntry
+            firmaId={firmaId}
+            onSaved={async () => { await fetchFirma(); }}
+          />
         </Card>
       ) : null}
 
