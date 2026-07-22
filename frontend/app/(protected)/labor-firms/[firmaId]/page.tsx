@@ -6,16 +6,15 @@ export const runtime = 'edge';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Trash2, Loader2, Wrench, Zap, Upload, X, Save, PlusCircle } from 'lucide-react';
+import { ArrowLeft, Trash2, Loader2, Wrench, Zap, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import api from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 import { ExcelGrid } from '@/components/excel-grid/ExcelGrid';
-import { SheetTabs } from '@/components/excel-grid/SheetTabs';
-import ManualFirmModal from '@/components/library/ManualFirmModal';
 import InlineFirmEntry from '@/components/library/InlineFirmEntry';
-import type { MultiSheetData, ExcelGridData, ExcelRowData } from '@/components/excel-grid/types';
+import type { FirmEntryHandle } from '@/components/library/InlineFirmEntry';
+import type { ExcelGridData, ExcelRowData } from '@/components/excel-grid/types';
 
 interface LaborFirm {
   id: string;
@@ -41,8 +40,6 @@ export default function LaborFirmDetailPage() {
   const [loading, setLoading] = useState(true);
   // L2 BEKLEYEN rozeti: adi cozumlenemedigi icin eslesmeye KAPALI kalem sayisi
   const [bekleyen, setBekleyen] = useState(0);
-  // L1: Manuel Kalem Ekle modali (ManualBrandModal'in iscilik ikizi)
-  const [manualOpen, setManualOpen] = useState(false);
   // Sentetik sheet (save-bulk/manuel liste): nameField = kalemin TAM adi →
   // ad duzenlemesi guvenle kaydedilebilir (import JSON'unda cap-only olabilir)
   const [syntheticSheet, setSyntheticSheet] = useState(false);
@@ -53,16 +50,9 @@ export default function LaborFirmDetailPage() {
   const [dirtyCount, setDirtyCount] = useState(0);
   const [savingDrafts, setSavingDrafts] = useState(false);
 
-  // Excel yukleme modal state (multi-sheet ilk kayit icin)
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [multiSheet, setMultiSheet] = useState<MultiSheetData | null>(null);
-  const [activeSheetIndex, setActiveSheetIndex] = useState(0);
-  const [liveRowDataBySheet, setLiveRowDataBySheet] = useState<Record<number, ExcelRowData[]>>({});
-  const [uploadedFileName, setUploadedFileName] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [parsing, setParsing] = useState(false);
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Bos firma sabit-format giris grid'i — header "Degisiklikleri Kaydet" tetikler
+  const inlineEntryRef = useRef<FirmEntryHandle>(null);
+  const [headerSaving, setHeaderSaving] = useState(false);
 
   const fetchFirma = useCallback(async () => {
     try {
@@ -245,85 +235,19 @@ export default function LaborFirmDetailPage() {
     }
   }
 
-  // ── Excel upload (multi-sheet ilk kayit akisi — degismedi) ──
-
-  async function handleExcelUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    e.target.value = '';
-
-    setParsing(true);
+  // TEK KAYDET (header'daki tek buton): bos firmada InlineFirmEntry (save-bulk),
+  // dolu firmada aktif liste taslak degisiklikleri (handleSaveDrafts).
+  async function handleHeaderSave() {
+    setHeaderSaving(true);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const { data } = await api.post<MultiSheetData>(
-        `/labor-firms/${firmaId}/parse-full-excel`,
-        formData,
-        { headers: { 'Content-Type': 'multipart/form-data' } },
-      );
-      if (!data?.sheets || data.sheets.length === 0) {
-        toast({ title: 'Excel bos', variant: 'destructive' });
-        return;
+      if (priceLists.length === 0) {
+        await inlineEntryRef.current?.save();
+      } else {
+        await handleSaveDrafts();
       }
-      const nonEmpty = data.sheets.filter((s) => !s.isEmpty);
-      if (nonEmpty.length === 0) {
-        toast({ title: 'Hic dolu sheet bulunamadi', variant: 'destructive' });
-        return;
-      }
-      setMultiSheet(data);
-      setUploadedFileName(file.name);
-      const firstNonEmpty = data.sheets.findIndex((s) => !s.isEmpty);
-      setActiveSheetIndex(firstNonEmpty >= 0 ? firstNonEmpty : 0);
-      const initialLive: Record<number, ExcelRowData[]> = {};
-      data.sheets.forEach((s) => { initialLive[s.index] = s.rowData; });
-      setLiveRowDataBySheet(initialLive);
-      setEditorOpen(true);
-    } catch (e: any) {
-      toast({ title: 'Parse hatasi', description: e?.response?.data?.message ?? 'Bilinmeyen', variant: 'destructive' });
     } finally {
-      setParsing(false);
+      setHeaderSaving(false);
     }
-  }
-
-  async function handleSaveFromSheets() {
-    if (!multiSheet) return;
-    setSaving(true);
-    try {
-      const sheetsToSend = multiSheet.sheets.map((s) => ({
-        name: s.name,
-        index: s.index,
-        isEmpty: s.isEmpty,
-        rowData: liveRowDataBySheet[s.index] ?? s.rowData,
-        columnRoles: s.columnRoles,
-        columnDefs: s.columnDefs,
-        headerEndRow: s.headerEndRow,
-      }));
-      const { data } = await api.post(`/labor-firms/${firmaId}/save-from-sheets`, {
-        sheets: sheetsToSend,
-      });
-      toast({
-        title: 'Kaydedildi',
-        description: `${data.totalListsCreated} liste, ${data.totalImported} kalem`,
-      });
-      if (data.warnings && data.warnings.length > 0) {
-        data.warnings.forEach((w: string) => toast({ title: 'Uyari', description: w }));
-      }
-      setEditorOpen(false);
-      setMultiSheet(null);
-      setLiveRowDataBySheet({});
-      await fetchFirma();
-    } catch (e: any) {
-      toast({ title: 'Kaydetme hatasi', description: e?.response?.data?.message ?? 'Bilinmeyen', variant: 'destructive' });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function closeEditor() {
-    if (!confirm('Kaydedilmemis degisiklikler kaybolacak. Emin misiniz?')) return;
-    setEditorOpen(false);
-    setMultiSheet(null);
-    setLiveRowDataBySheet({});
   }
 
   // beforeunload
@@ -379,24 +303,13 @@ export default function LaborFirmDetailPage() {
             </div>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => setManualOpen(true)}>
-              <PlusCircle className="mr-1 h-4 w-4" />Manuel Kalem Ekle
-            </Button>
-            {dirtyCount > 0 && (
-              <Button size="sm" onClick={handleSaveDrafts} disabled={savingDrafts}>
-                {savingDrafts ? (
-                  <><Loader2 className="mr-1 h-4 w-4 animate-spin" />Kaydediliyor...</>
-                ) : (
-                  <><Save className="mr-1 h-4 w-4" />Degisiklikleri Kaydet ({dirtyCount})</>
-                )}
-              </Button>
-            )}
-            <input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={handleExcelUpload} className="hidden" />
-            <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={parsing}>
-              {parsing ? (
-                <><Loader2 className="mr-1 h-4 w-4 animate-spin" />Yukleniyor...</>
+            {/* TEK BUTON (kullanici karari 22.07): "Manuel Kalem Ekle" ve "Excel
+                Yukle" kaldirildi — sabit-format grid + tek "Degisiklikleri Kaydet". */}
+            <Button size="sm" onClick={handleHeaderSave} disabled={headerSaving || savingDrafts}>
+              {(headerSaving || savingDrafts) ? (
+                <><Loader2 className="mr-1 h-4 w-4 animate-spin" />Kaydediliyor...</>
               ) : (
-                <><Upload className="mr-1 h-4 w-4" />Excel Yukle</>
+                <><Save className="mr-1 h-4 w-4" />Değişiklikleri Kaydet{dirtyCount > 0 ? ` (${dirtyCount})` : ''}</>
               )}
             </Button>
           </div>
@@ -456,97 +369,12 @@ export default function LaborFirmDetailPage() {
            save-bulk kalemleri oluşturur+indeksler, aktif liste grid'i açılır. */
         <Card className="overflow-hidden p-3">
           <InlineFirmEntry
+            ref={inlineEntryRef}
             firmaId={firmaId}
             onSaved={async () => { await fetchFirma(); }}
           />
         </Card>
       ) : null}
-
-      {/* L1: Manuel Kalem Ekle (7-kolon, Excel yapistirma destekli) */}
-      <ManualFirmModal
-        open={manualOpen}
-        onClose={() => setManualOpen(false)}
-        onSaved={async () => {
-          setManualOpen(false);
-          await fetchFirma();
-          if (activeListId) await fetchSheets(activeListId);
-        }}
-        firmaId={firmaId}
-        firmaName={firma.name}
-      />
-
-      {/* Multi-sheet ilk yukleme modal */}
-      {editorOpen && multiSheet && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-2">
-          <div className="w-full h-full max-w-[98vw] max-h-[98vh] rounded-lg bg-background shadow-2xl flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between border-b p-3">
-              <div>
-                <h2 className="text-base font-bold">{uploadedFileName}</h2>
-                <p className="text-xs text-muted-foreground">
-                  {multiSheet.sheets.filter((s) => !s.isEmpty).length} sayfa · Her sayfa ayri bir fiyat listesi olur
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={closeEditor} disabled={saving}>
-                  <X className="mr-1 h-3.5 w-3.5" />Iptal
-                </Button>
-                <Button size="sm" onClick={handleSaveFromSheets} disabled={saving}>
-                  {saving ? (
-                    <><Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />Kaydediliyor...</>
-                  ) : (
-                    <><Save className="mr-1 h-3.5 w-3.5" />Tum Sayfalari Kaydet</>
-                  )}
-                </Button>
-              </div>
-            </div>
-            <div className="flex-1 overflow-hidden flex flex-col">
-              <div className="flex-1 overflow-auto">
-                <ExcelGrid
-                  key={`sheet-${activeSheetIndex}`}
-                  data={(() => {
-                    const active = multiSheet.sheets[activeSheetIndex] ?? multiSheet.sheets.find((s) => !s.isEmpty);
-                    if (!active || !Array.isArray(active.columnDefs) || active.columnDefs.length === 0) {
-                      return {
-                        columnDefs: [],
-                        rowData: [],
-                        columnRoles: {},
-                        brands: [],
-                        headerEndRow: 0,
-                      };
-                    }
-                    return {
-                      columnDefs: active.columnDefs,
-                      rowData: liveRowDataBySheet[active.index] ?? active.rowData ?? [],
-                      columnRoles: active.columnRoles ?? {},
-                      brands: [],
-                      headerEndRow: active.headerEndRow ?? 0,
-                    };
-                  })()}
-                  brands={[]}
-                  currencySymbol="₺"
-                  conversionRate={1}
-                  onBrandChange={async () => null}
-                  onRowDataChange={(rows) => {
-                    const active = multiSheet.sheets[activeSheetIndex];
-                    if (active) {
-                      setLiveRowDataBySheet((prev) => ({ ...prev, [active.index]: rows }));
-                    }
-                  }}
-                />
-              </div>
-              <SheetTabs
-                sheets={multiSheet.sheets.map((s) => ({
-                  name: s.name,
-                  index: s.index,
-                  isEmpty: s.isEmpty,
-                }))}
-                activeIndex={activeSheetIndex}
-                onChange={setActiveSheetIndex}
-              />
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
