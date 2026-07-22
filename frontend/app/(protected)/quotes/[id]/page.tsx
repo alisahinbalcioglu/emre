@@ -74,10 +74,15 @@ export default function QuoteDetailPage() {
   const sheets = Array.isArray(quote.sheets) ? quote.sheets.filter((s: any) => !s.isEmpty) : [];
   const activeSheet = sheets[activeSheetIndex] ?? sheets[0];
 
+  // Kayitta saklanan gizli-sutun tercihi (PRD v3.0 Part A) detayda da uygulanir.
+  const hiddenFields = new Set<string>(activeSheet?.columnConfig?.hidden ?? []);
+
   // Aktif sheet icin ExcelGridData olustur
   const gridData: ExcelGridData | null = activeSheet
     ? {
-        columnDefs: activeSheet.columnDefs ?? [],
+        columnDefs: (activeSheet.columnDefs ?? []).map((c: any) =>
+          hiddenFields.has(c.field) ? { ...c, hide: true } : c,
+        ),
         rowData: activeSheet.rowData ?? [],
         columnRoles: activeSheet.columnRoles ?? {},
         brands: [],

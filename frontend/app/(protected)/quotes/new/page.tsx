@@ -463,6 +463,10 @@ export default function NewQuotePage() {
         setSheetDisciplines(draft.sheetDisciplines ?? {});
         setTitle(draft.title ?? '');
         setAllBrands(draft.allBrands ?? []);
+        // PRD v3.0 Part A kaliciligi: kat + gizli sutun config'i draft'tan geri
+        // yukle (eski v3 draft'larda alan yok → bos obje ile baslar, kirilmaz).
+        setColHiddenBySheet(draft.colHiddenBySheet ?? {});
+        setColFloorsBySheet(draft.colFloorsBySheet ?? {});
         const activeIdx = draft.activeSheetIndex ?? 0;
         const active = draft.multiSheet.sheets?.[activeIdx];
         if (active && Array.isArray(active.columnDefs)) {
@@ -557,6 +561,8 @@ export default function NewQuotePage() {
         sheetDisciplines,
         title,
         allBrands,
+        colHiddenBySheet,
+        colFloorsBySheet,
       }));
     } catch (e) {
       // Kota vb. hata: ESKI draft'i birakma — bayat state restore edilmesin.
@@ -565,7 +571,7 @@ export default function NewQuotePage() {
       sessionStorage.removeItem(DRAFT_KEY);
       console.warn('[quotes/new] Draft save failed, eski draft temizlendi:', e);
     }
-  }, [multiSheet, liveRowDataBySheet, activeSheetIndex, sheetDisciplines, title, allBrands]);
+  }, [multiSheet, liveRowDataBySheet, activeSheetIndex, sheetDisciplines, title, allBrands, colHiddenBySheet, colFloorsBySheet]);
 
   // Marka fiyat cache: brandId → { materialName → PriceLookupResult }
   const brandPriceCacheRef = useRef<Record<string, Record<string, any>>>({});
@@ -1219,6 +1225,12 @@ export default function NewQuotePage() {
           // Spare (en alttaki bos) satir kayda girmez; grup bandi satirlari
           // gorunum icin SAKLANIR (detay sayfasi ayni bantlari cizer).
           rowData: (liveRowDataBySheet[s.index] ?? s.rowData).filter((r) => !r._isSpareRow),
+          // PRD v3.0 Part A kaliciligi: kat + gizli sutun tercihi teklifle
+          // birlikte saklanir (detay sayfasi gizlileri uygular).
+          columnConfig: {
+            hidden: colHiddenBySheet[s.index] ?? [],
+            floors: colFloorsBySheet[s.index] ?? [],
+          },
         }));
       }
 
