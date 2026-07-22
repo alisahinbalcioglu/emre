@@ -57,8 +57,8 @@ export default function MechanicalPoolPage() {
 
   return (
     <div>
-      <Link href="/materials" className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="h-4 w-4" />Malzeme Havuzu
+      <Link href="/dashboard" className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+        <ArrowLeft className="h-4 w-4" />Dashboard
       </Link>
       <div className="mb-6 flex items-center justify-between">
         <div>

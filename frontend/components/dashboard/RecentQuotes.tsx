@@ -19,7 +19,7 @@ export default function RecentQuotes() {
 
   useEffect(() => {
     api
-      .get<QuoteSummary[]>('/quotes', { params: { limit: 5 } })
+      .get<QuoteSummary[]>('/quotes', { params: { limit: 3 } })
       .then(({ data }) => setQuotes(data))
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -44,7 +44,7 @@ export default function RecentQuotes() {
     <div className="flex flex-col rounded-xl border bg-card">
       <div className="flex items-center justify-between border-b px-5 py-3.5">
         <span className="text-sm font-semibold">Son Teklifler</span>
-        <span className="text-[11px] text-muted-foreground">son 5</span>
+        <span className="text-[11px] text-muted-foreground">son 3</span>
       </div>
 
       <div className="flex-1 px-5 py-2">
@@ -58,7 +58,7 @@ export default function RecentQuotes() {
             <p className="text-sm text-muted-foreground">Henuz teklif olusturulmadi</p>
           </div>
         ) : (
-          quotes.map((q) => {
+          quotes.slice(0, 3).map((q) => {
             const itemCount = q._count?.items ?? 0;
             const total = q.totalAmount ?? 0;
             return (

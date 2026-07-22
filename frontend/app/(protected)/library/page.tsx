@@ -576,31 +576,17 @@ export default function LibraryPage() {
         </div>
       </div>
 
-      {/* Library Navigation */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-6">
+      {/* Library Navigation — Elektrik Markalar / Ekipman&Sarf / Elektrik Iscilik
+          KALDIRILDI (kullanici karari 22.07): yalniz Mekanik + Teklif Formatlari. */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
         <Link href="/library/mechanical-brands" className="flex flex-col items-center gap-3 rounded-xl border-2 border-muted p-6 text-sm font-medium transition-all hover:border-primary hover:bg-primary/5 hover:shadow-md">
           <Package className="h-8 w-8 text-primary" />
           <span className="text-base font-semibold">Mekanik Markalar</span>
           <span className="text-xs text-muted-foreground">Malzeme fiyat listeleri</span>
         </Link>
-        <Link href="/library/electrical-brands" className="flex flex-col items-center gap-3 rounded-xl border-2 border-muted p-6 text-sm font-medium transition-all hover:border-amber-500 hover:bg-amber-50 hover:shadow-md">
-          <Zap className="h-8 w-8 text-amber-500" />
-          <span className="text-base font-semibold">Elektrik Markalar</span>
-          <span className="text-xs text-muted-foreground">Kablo, pano, otomat</span>
-        </Link>
-        <Link href="/library/equipment" className="flex flex-col items-center gap-3 rounded-xl border-2 border-muted p-6 text-sm font-medium transition-all hover:border-rose-500 hover:bg-rose-50 hover:shadow-md">
-          <Wrench className="h-8 w-8 text-rose-500" />
-          <span className="text-base font-semibold">Ekipman & Sarf</span>
-          <span className="text-xs text-muted-foreground">Kombi, pompa, vana (DWG icin)</span>
-        </Link>
         <Link href="/labor-firms?discipline=mechanical" className="flex flex-col items-center gap-3 rounded-xl border-2 border-muted p-6 text-sm font-medium transition-all hover:border-blue-500 hover:bg-blue-50 hover:shadow-md">
           <Wrench className="h-8 w-8 text-blue-500" />
           <span className="text-base font-semibold">Mekanik Iscilik</span>
-          <span className="text-xs text-muted-foreground">Firmalar, fiyat listeleri</span>
-        </Link>
-        <Link href="/labor-firms?discipline=electrical" className="flex flex-col items-center gap-3 rounded-xl border-2 border-muted p-6 text-sm font-medium transition-all hover:border-orange-500 hover:bg-orange-50 hover:shadow-md">
-          <Zap className="h-8 w-8 text-orange-500" />
-          <span className="text-base font-semibold">Elektrik Iscilik</span>
           <span className="text-xs text-muted-foreground">Firmalar, fiyat listeleri</span>
         </Link>
         <Link href="/quote-formats" className="flex flex-col items-center gap-3 rounded-xl border-2 border-muted p-6 text-sm font-medium transition-all hover:border-emerald-500 hover:bg-emerald-50 hover:shadow-md">
