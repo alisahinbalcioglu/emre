@@ -1271,8 +1271,10 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     if (applied > 0) toast({ title: `Tüm listeye %${v} iskonto uygulandı`, description: `${applied} satır güncellendi — kaydetmeyi unutmayın` });
   }, [bulkDiscountInput, applyDiscountBulk]);
 
-  /** K19: son MARKA sureklemesini BUTUN olarak geri al — fiyatlar, statuler,
-   *  rozetler ve ANAHTAR DURUMU tek adimda eski haline doner. */
+  /** K19: son MARKA veya FIRMA sureklemesini BUTUN olarak geri al — fiyatlar,
+   *  statuler, rozetler ve ANAHTAR DURUMU tek adimda eski haline doner.
+   *  Jeneriktir: snapshot'taki alanlari geri yukler (marka: _marka/_mat*;
+   *  firma: _firma/_lab*), ikisi ayni LIFO yiginini paylasir. */
   const undoLastMarkaFill = useCallback((): boolean => {
     const api = gridRef.current?.api;
     const op = markaFillUndoStack.current.pop();
@@ -1671,6 +1673,22 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         srcLabNode?.data?._labVariantTags && srcLabNode.data._labVariantTags.length > 0
           ? srcLabNode.data._labVariantTags
           : undefined;
+      // K19 PARITESI: firma sureklemesi de BUTUN olarak Ctrl+Z ile geri alinir
+      // (malzeme _marka dalinda vardi, firma dalinda ATLANMISTI — denetim bulgu
+      // 22.07). Ayni markaFillUndoStack + undoLastMarkaFill kullanilir; firma
+      // anahtari degistirmedigi icin prevSwitch mevcut deger = geri-yukleme
+      // no-op. Stack LIFO: karisik marka+firma sureklemeleri sirayla geri alinir.
+      const LAB_SNAP_FIELDS = ['_firma', '_labNetPrice', '_labVariantTags'];
+      const labUndoEntries: { rowId: string; prev: Record<string, any> }[] = [];
+      for (const node of result.targetRowNodes) {
+        if (!node.data?._isDataRow) continue;
+        const prev: Record<string, any> = {};
+        for (const f of LAB_SNAP_FIELDS) prev[f] = node.data[f];
+        if (laborUnitPriceField) prev[laborUnitPriceField] = node.data[laborUnitPriceField];
+        if (laborTotalField) prev[laborTotalField] = node.data[laborTotalField];
+        labUndoEntries.push({ rowId: String(node.data._rowIdx), prev });
+      }
+      markaFillUndoStack.current.push({ prevSwitch: autoVariantEnabled, entries: labUndoEntries });
       let labApplied = 0; let labWaiting = 0; let labMissing = 0;
       for (const node of result.targetRowNodes) {
         if (!node.data?._isDataRow) continue;
@@ -1704,6 +1722,9 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       }
       // §3 paritesi: "n yazıldı · n bekliyor · n yok" bilgisi (parent toast)
       onAutoVariantApplied?.({ applied: labApplied, waiting: labWaiting, missing: labMissing, kaynak: 'işçilik firması' });
+      // K19 paritesi: Ctrl+Z yakalanabilsin diye odak grid sarmalayicisina
+      // (marka dalinda vardi, firma dalinda ATLANMISTI — undo klavyeyle calismazdi)
+      rootWrapperRef.current?.focus();
     } else if (result.field === '_malzKar') {
       // Malzeme kar % fill → deger kopyala + fiyat recalc
       const karVal = parseFloat(String(result.value ?? 0)) || 0;

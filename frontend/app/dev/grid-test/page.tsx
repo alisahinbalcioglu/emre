@@ -27,6 +27,8 @@ const kaydet = (m: string) => {
 };
 
 const CAP_FIYAT: Record<string, number> = { "6''": 600, "4''": 400, "3''": 300, "3/4''": 75, "5''": 500, "8''": 800 };
+// ISCILIK fiyatlari MALZEMEDEN FARKLI (kaynak kopyasi degil KENDI sorgu kaniti):
+const LAB_FIYAT: Record<string, number> = { "6''": 60, "4''": 40, "3''": 30, "3/4''": 7, "5''": 50, "8''": 80 };
 
 function aday(materialName: string, label: string, netPrice: number, variantTags: string[]): MatchCandidate {
   return {
@@ -59,6 +61,11 @@ export default function GridTestPage() {
         { field: '_marka', headerName: 'Malz. Marka', width: 150, cellRenderer: 'brandRenderer' },
         { field: '_matBirim', headerName: 'Malz. Birim Fiyat', width: 120, editable: true },
         { field: '_matToplam', headerName: 'Malz. Toplam', width: 120, editable: false },
+        // ISCILIK sutunlari (firma fill + K19 firma undo paritesi testi)
+        { field: '_iscKar', headerName: 'İşç. Kar %', width: 80, editable: true },
+        { field: '_firma', headerName: 'İşç. Firma', width: 150, cellRenderer: 'firmaRenderer' },
+        { field: '_labBirim', headerName: 'İşç. Birim Fiyat', width: 120, editable: true },
+        { field: '_labToplam', headerName: 'İşç. Toplam', width: 120, editable: false },
         { field: '_toplam', headerName: 'Toplam', width: 120, editable: false },
       ],
       rowData: [
@@ -79,6 +86,7 @@ export default function GridTestPage() {
       columnRoles: {
         nameField: 'col1', noField: 'col0', quantityField: 'col2', unitField: 'col3',
         materialUnitPriceField: '_matBirim', materialTotalField: '_matToplam', grandTotalField: '_toplam',
+        laborUnitPriceField: '_labBirim', laborTotalField: '_labToplam',
       },
       brands: [],
       headerEndRow: 0,
@@ -128,6 +136,27 @@ export default function GridTestPage() {
     } as any;
   }, []);
 
+  // ISCILIK firma sorgusu mock'u (onBrandChange ikizi, LAB_FIYAT ile) —
+  // firma fill + K19 firma undo paritesi testi icin.
+  const onFirmaChange = useCallback(async (rowIdx: number, firmaId: string, laborName: string, opts?: { variantTags?: string[]; silent?: boolean }) => {
+    cagriSayisi.current++;
+    const vt = opts?.variantTags?.join(',') ?? '-';
+    log(`#${cagriSayisi.current} ISC sorgu: satir=${rowIdx} "${laborName.slice(0, 30)}" varyant=[${vt}]`);
+    if (laborName.includes('HATALI')) { log('ISC AG HATASI firlatildi'); throw new Error('ağ hatası (mock)'); }
+    if (laborName.includes("2''")) return { netPrice: 0, confidence: 'none', reason: 'Bu firmada 2" yok.' } as any;
+    if (laborName.includes("1''")) {
+      return {
+        netPrice: 0, confidence: 'multi',
+        candidates: [aday('Kaynaklı işçilik · 1"', 'kaynaklı', 9, ['v:kaynak']), aday('Dişli işçilik · 1"', 'dişli', 10, ['v:disli'])],
+        reason: '2 seçenek',
+      } as any;
+    }
+    const cap = Object.keys(LAB_FIYAT).sort((a, b) => b.length - a.length).find((c) => laborName.includes(c));
+    const fiyat = cap ? LAB_FIYAT[cap] : 0;
+    // Tek eslesme (kaynak secim + fill hedefleri): kendi cap iscilik fiyati
+    return { netPrice: fiyat, confidence: 'high', matchedName: `Kaynak işçiliği · ${cap}`, variantTags: ['v:kaynak'] } as any;
+  }, []);
+
   const onAutoVariantChange = useCallback((v: boolean) => {
     setAutoVariant(v);
     kaydet(`ANAHTAR → ${v ? 'AÇIK' : 'KAPALI'}`);
@@ -153,6 +182,11 @@ export default function GridTestPage() {
         autoVariantEnabled={autoVariant}
         onAutoVariantChange={onAutoVariantChange}
         onAutoVariantApplied={onAutoVariantApplied}
+        // ISCILIK firma fill testi: laborEnabled + firma listesi + onFirmaChange
+        laborEnabled
+        laborFirms={useMemo(() => [{ id: 'f-yasin', name: 'YASİN USTA', discipline: 'mechanical' as const }, { id: 'f-hakan', name: 'HAKAN USTA', discipline: 'mechanical' as const }], [])}
+        sheetDiscipline="mechanical"
+        onFirmaChange={onFirmaChange as any}
         mode="quote"
         currencySymbol="₺"
         conversionRate={1}

@@ -8,10 +8,10 @@ import { test, expect, Page } from '@playwright/test';
  * D9-D15 testleri: GOREV_Derin_Denetim (22.07) Adim 2 kanitlari.
  */
 
-/** Kaynak satirin _marka hucresinin ALT KENARINDAN hedef satira surukler. */
-async function surukle(page: Page, kaynakRow: number, hedefRow: number) {
-  const kaynak = await page.locator(`[row-index="${kaynakRow}"] [col-id="_marka"]`).boundingBox();
-  const hedef = await page.locator(`[row-index="${hedefRow}"] [col-id="_marka"]`).boundingBox();
+/** Kaynak satirin verilen sutununun (_marka/_firma) ALT KENARINDAN hedef satira surukler. */
+async function surukle(page: Page, kaynakRow: number, hedefRow: number, colId: string = '_marka') {
+  const kaynak = await page.locator(`[row-index="${kaynakRow}"] [col-id="${colId}"]`).boundingBox();
+  const hedef = await page.locator(`[row-index="${hedefRow}"] [col-id="${colId}"]`).boundingBox();
   if (!kaynak || !hedef) throw new Error('hucre koordinati alinamadi');
   const x = kaynak.x + kaynak.width / 2;
   const yBas = kaynak.y + kaynak.height - 3;
@@ -171,5 +171,35 @@ test.describe('ExcelGrid — popup baglama + surukle-doldur', () => {
     await page.keyboard.press('Control+z'); // op1 geri
     await expect(page.locator('[row-index="3"] [col-id="_matBirim"]')).toHaveText(/^\s*$/);
     await expect(page.locator('[row-index="2"] [col-id="_matBirim"]')).toHaveText(/600/);
+  });
+
+  // ── DL: ISCILIK firma fill + K19 FIRMA UNDO PARITESI (denetim fix 22.07) ──
+  // Firma sureklemesi malzeme _marka dalinin ikizi ama undo ATLANMISTI —
+  // Ctrl+Z firma fiyatlarini geri ALMIYORDU. Bu test hem fill'i (satir satir
+  // kendi cap iscilik fiyati, kaynak kopyasi yok) hem YENI undo'yu dogrular.
+  test('DL: firma surukle kendi cap iscilik fiyati + Ctrl+Z firma parite', async ({ page }) => {
+    await page.goto('/dev/grid-test');
+    // Kaynak satir 2 (6''): firma sec → tek eslesme, iscilik 60 yazilir
+    await page.locator('[row-index="2"] [col-id="_firma"] button').click();
+    await page.getByText('YASİN USTA', { exact: true }).click();
+    await expect(page.locator('[row-index="2"] [col-id="_labBirim"]')).toHaveText(/60/);
+
+    // SURUKLE _firma: 2 → 9 (hedefler 4'',3'',2'',1'',3/4'',5'',8'')
+    await surukle(page, 2, 9, '_firma');
+    await expect(page.locator('[row-index="3"] [col-id="_labBirim"]')).toHaveText(/40/); // 4''
+    await expect(page.locator('[row-index="4"] [col-id="_labBirim"]')).toHaveText(/30/); // 3''
+    await expect(page.locator('[row-index="7"] [col-id="_labBirim"]')).toHaveText(/7/);  // 3/4''
+    await expect(page.locator('[row-index="8"] [col-id="_labBirim"]')).toHaveText(/50/); // 5''
+    await expect(page.locator('[row-index="9"] [col-id="_labBirim"]')).toHaveText(/80/); // 8''
+    await expect(page.locator('[row-index="5"] [col-id="_labBirim"]')).toHaveText(/^\s*$/); // 2'' firmada yok
+    await expect(page.locator('[row-index="6"] [col-id="_labBirim"]')).toHaveText(/^\s*$/); // 1'' secim bekliyor
+    // K17 paritesi: kaynak 60 HICBIR hedefe kopyalanmadi (40/30/7/50/80 = kendi cap)
+
+    // K19 PARITE FIX: Ctrl+Z firma sureklemesini de BUTUN olarak geri alir
+    await page.keyboard.press('Control+z');
+    await expect(page.locator('[row-index="3"] [col-id="_labBirim"]')).toHaveText(/^\s*$/);
+    await expect(page.locator('[row-index="8"] [col-id="_labBirim"]')).toHaveText(/^\s*$/);
+    await expect(page.locator('[row-index="9"] [col-id="_labBirim"]')).toHaveText(/^\s*$/);
+    await expect(page.locator('[row-index="2"] [col-id="_labBirim"]')).toHaveText(/60/); // kaynak KORUNUR
   });
 });
