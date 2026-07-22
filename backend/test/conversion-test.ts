@@ -78,6 +78,17 @@ expectSize('ppr d32', 'mm', 32);
 expectSize('PPR-C BORU 32x5.4', 'mm', 32); // T11
 expectSize('celik boru 21,3mm', 'mm', 21.3);
 
+// ── ET CIDAR KALINLIGI cap DEGILDIR (denetim bulgu — yol-3 manuel satir) ──
+// "Dış Cap X mm Et Y mm": ilk mm = dis cap, "et" onekli mm = cidar kalinligi.
+// Onceki hata: son ondalik mm alindigi icin ET secilirdi → yanlis cap.
+expectSize('PE Kaplı Doğalgaz Tesisat Borusu DIN 30670 Dış Cap 114.3mm Et 6.0mm Gr B/X42', 'mm', 114.3);
+expectSize('Su ve Yangın Tesisat Borusu Dış Cap 26.9mm Et 2.6mm', 'mm', 26.9);
+expectSize('Basınçlı Boru Dış Cap 42.4mm Et 4.0mm', 'mm', 42.4);
+// DN/inc oncelik degismedi: DN varsa yine DN kazanir (et etkisiz)
+expectSize('Boru DN80 Dış Cap 88.9mm Et 4.0mm', 'dn', 80);
+// Yalniz et yazan (dis cap yok) patolojik durum: geri dusup et'i alir (kirilmaz)
+expectSize('conta et 3.5mm', 'mm', 3.5);
+
 // ── Olcu yok ───────────────────────────────────────────────
 expectSize('SPRİNK HATTI BORULARI', null);
 expectSize('FİTTİNGS ORANI', null);

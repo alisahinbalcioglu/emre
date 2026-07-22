@@ -95,18 +95,19 @@ async function main() {
       `liste=${row?.listPrice} isk=${row?.discountRate ?? 0} beklenen=${beklenen} gercek=${r?.netPrice} matched="${r?.matchedName}"`);
   }
 
-  // ── D1-EK TESHIS (bulgu adayi): PE Kapli adlarinda DN/inc YOK ("Dış Cap
-  // 114.3mm") — inc sorgusu calisiyor mu? Davranis DEGISTIRILMEZ, yalniz dokum.
+  // ── D1-EK (yol-3 cap fix, denetim bulgu): "Dış Cap 114.3mm Et 6.0mm" adli
+  // urun ET'i cap sanmiyor → inc sorgusu artik ESLESIR. Onceden "4" yok".
   {
-    const { parseLine } = require('../src/modules/matching/index/line-parser');
     const { extractSizeInfo } = require('../src/modules/matching/conversion');
+    const urunAdi = 'PE Kaplı Doğalgaz Tesisat Borusu DIN 30670 Dış Cap 114.3mm Et 6.0mm Gr B/X42';
+    const si = extractSizeInfo(urunAdi);
+    check('D1-EK extractSizeInfo dis cap (et degil)', si?.value === 114.3, `got ${JSON.stringify(si)}`);
+    // 114.3 dis cap PE Kapli satiri cayirova kutuphanesinde 4" (dn100) ile aranir.
     const q = 'PE KAPLI DOĞALGAZ TESİSAT BORUSU 4"';
     const r = (await matching.bulkMatch(userId, cayirova.id, [q]))[q];
-    const line = parseLine(q);
-    const urunAdi = 'PE Kaplı Doğalgaz Tesisat Borusu DIN 30670 Dış Cap 114.3mm Et 6.0mm Gr B/X42';
-    log(`D1-EK TESHIS: sorgu conf=${r?.confidence} reason="${r?.reason}"`);
-    log(`D1-EK line.sizeAnyOf=${JSON.stringify((line as any).sizeAnyOf ?? (line as any).capTags ?? null)} line=${JSON.stringify({ cap: (line as any).cap, sinif: (line as any).sizeClass })}`);
-    log(`D1-EK urun extractSizeInfo=${JSON.stringify(extractSizeInfo(urunAdi))}`);
+    const okuMatched = r?.matchedName ?? '';
+    check('D1-EK yol-3 fix: PE Kapli 4" ARTIK eslesir (fiyat > 0)', (r?.netPrice ?? 0) > 0,
+      `conf=${r?.confidence} net=${r?.netPrice} matched="${okuMatched}" reason="${r?.reason}"`);
   }
 
   // ════ D2 (K8): CEKVALF DN32 → YALNIZ cekvalf adaylari ══════════════

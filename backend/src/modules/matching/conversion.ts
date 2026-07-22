@@ -173,7 +173,17 @@ export function extractSizeInfo(text: string): SizeInfo | null {
   // kaynagi 'mm' olarak isaretleriz; cevirici tabloda arar)
   const decMm = Array.from(normalized.matchAll(/(\d+[.,]\d+)\s*mm\b/g));
   if (decMm.length > 0) {
-    const last = decMm[decMm.length - 1];
+    // "Et" onekli mm = CIDAR KALINLIGI, cap DEGILDIR (denetim bulgu — yol-3
+    // manuel/indekssiz satir: "Dış Cap 114.3mm Et 6.0mm"). Eskiden SON ondalik
+    // mm alindigi icin ET secilir, yanlis cap uretilirdi. "et" onekli olanlari
+    // eleyip dis capi tercih et; hicbiri kalmazsa (yalniz et yazan patolojik
+    // metin) geri dusup son mm'yi al — kirilma yok.
+    const disCap = decMm.filter((mm) => {
+      const onek = normalized.slice(Math.max(0, (mm.index ?? 0) - 5), mm.index ?? 0);
+      return !/\bet\b\s*$/.test(onek);
+    });
+    const secim = disCap.length > 0 ? disCap : decMm;
+    const last = secim[secim.length - 1];
     const raw = last[1].replace(',', '.');
     return { source: 'mm', value: parseFloat(raw), display: `${raw} mm` };
   }
