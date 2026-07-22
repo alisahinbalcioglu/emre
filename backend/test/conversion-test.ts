@@ -71,6 +71,15 @@ expectSize('1¼" boru', 'inch', 1.25);
 expectSize('2 ½" boru', 'inch', 2.5);
 expectSize('yangin borusu 3/4"', 'inch', 0.75);
 
+// ── GRADE SON RAKAMI fraksiyona bulasmasin (denetim D3a — yol-3 serbest metin) ──
+// "P235TR1 3/4"": grade "P235TR1" son rakami "1" bilesik kesire kacip "1 3/4"
+// (1.75") oluyordu → yanlis cap + "1 3/4" etiket artigi. \b duzeltir.
+expectSize('P235TR1 3/4"', 'inch', 0.75);
+expectSize('Basınçlı Boru Siyah Düz Uçlu TS EN 10217-1 P235TR1 3/4" Dış Cap 26.9mm Et 2.0mm', 'inch', 0.75);
+// STANDALONE bilesik BOZULMAZ: gercek "1 1/4" (grade + bosluk + tam sayi) korunur
+expectSize('P235TR1 1 1/4" Dış Cap 42.4mm Et 4.0mm', 'inch', 1.25);
+expectSize('boru 1 3/4"', 'inch', 1.75); // bosluktan sonra gercek 1 3/4 korunur
+
 // ── P3: mm gosterim toleransi ──────────────────────────────
 expectSize('PPR BORU 32 mm', 'mm', 32);
 expectSize('PPR Ø32', 'mm', 32);

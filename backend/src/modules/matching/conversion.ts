@@ -138,13 +138,17 @@ export function extractSizeInfo(text: string): SizeInfo | null {
   const inchHits: { dec: number; index: number; display: string }[] = [];
   let m: RegExpExecArray | null;
 
-  // Bilesik kesir: 2 1/2 (isaret opsiyonel — kesir zaten inc demektir)
-  const compoundRe = /(\d+)\s+(\d+)\/(\d+)\s*(?:"|inch|inc\b)?/g;
+  // Bilesik kesir: 2 1/2 (isaret opsiyonel — kesir zaten inc demektir).
+  // \b: tam-sayi parcasi HARF'e YAPISIK OLMAMALI — "P235TR1 3/4" grade son
+  // rakami "1" bilesige kacip "1 3/4" (1.75") uretiyordu (denetim D3a bulgu).
+  const compoundRe = /\b(\d+)\s+(\d+)\/(\d+)\s*(?:"|inch|inc\b)?/g;
   while ((m = compoundRe.exec(normalized)) !== null) {
     inchHits.push({ dec: fractionToDecimal(m[1], m[2], m[3]), index: m.index, display: `${m[1]} ${m[2]}/${m[3]}"` });
   }
-  // Tek kesir: 1/2, 3/4 (bilesigin parcasi olmasin)
-  const fracRe = /(?<!\d\s)(\d+)\/(\d+)\s*(?:"|inch|inc\b)?/g;
+  // Tek kesir: 1/2, 3/4. Bilesigin parcasi olmadigi OVERLAP kontroluyle
+  // saglanir (asagida ≤5 char) — eski (?<!\d\s) lookbehind'i grade rakami
+  // bulasan "3/4"u da yanlislikla eliyordu; kaldirildi (overlap yeterli).
+  const fracRe = /(\d+)\/(\d+)\s*(?:"|inch|inc\b)?/g;
   while ((m = fracRe.exec(normalized)) !== null) {
     const overlap = inchHits.some((x) => Math.abs(x.index - m!.index) <= 5);
     if (overlap) continue;

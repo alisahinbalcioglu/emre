@@ -125,17 +125,30 @@ async function main() {
     log(`D2 DOKUM: ${JSON.stringify({ conf: r?.confidence, matched: r?.matchedName, adaylar: adlar })}`);
   }
 
-  // ════ D3 (K10/K11): cok kategori → GRUP sorusu; tek kategori → atlanir ═
+  // ════ D3 (K10/K11): cok kategori → GRUP/varyant sorusu; tek kategori → atlanir ═
   {
-    const q = 'SİYAH BORU 2 1/2"'; // Su+Yangin / Basincli / Dogalgaz gruplarinda var
+    // "YANGIN BORUSU 2 1/2"" cayirova'da GERCEK cok-adayli (Su-Yangin: siyah
+    // disli/duz uclu, kirmizi, galvaniz ×2 + Kazan Borusu 76.1mm) — fiyat
+    // YAZILMAZ, secim listesi doner. NOT: "SİYAH BORU 2 1/2"" bilerek
+    // KULLANILMADI — AD-kilidi geregi generic "siyah boru" spesifik "Su ve
+    // Yangın Tesisat Borusu" ailesine baglanmaz (none doner, tasarim/guvenlik).
+    const q = 'YANGIN BORUSU 2 1/2"';
     const r = (await matching.bulkMatch(userId, cayirova.id, [q]))[q];
     const etiketler = (r?.candidates ?? []).map((c) => c.label);
     const grupSorusu = r?.confidence === 'multi' && new Set(etiketler).size > 1;
-    check('D3a cok kategori → grup/varyant sorusu (fiyat YAZILMADI)', r?.netPrice === 0 && r?.confidence === 'multi',
-      `conf=${r?.confidence} net=${r?.netPrice} soru="${r?.reason}" etiketler=[${etiketler.join(' | ')}]`);
-    log(`D3a POPUP DOKUMU: ${JSON.stringify({ reason: r?.reason, secenekler: etiketler })}`);
-    check('D3a secenekler >1 grup/varyant', grupSorusu || etiketler.length > 1, `${etiketler.length} secenek`);
-    log(`D3a-EK aday urun adlari: ${JSON.stringify((r?.candidates ?? []).map((c) => c.materialName))}`);
+    check('D3a cok aday → secim sorusu (fiyat YAZILMADI)', r?.netPrice === 0 && r?.confidence === 'multi',
+      `conf=${r?.confidence} net=${r?.netPrice} soru="${r?.reason}" etiketler=[${etiketler.slice(0, 4).join(' | ')}]`);
+    log(`D3a POPUP DOKUMU: ${JSON.stringify({ reason: r?.reason, secenekler: etiketler.slice(0, 6) })}`);
+    check('D3a secenekler >1', grupSorusu || etiketler.length > 1, `${etiketler.length} secenek`);
+    // D3a-EK (D3a cap-parse fix kaniti): grade son rakami bulasan "1 3/4"
+    // SAHTE etiketi ARTIK YOK — "SİYAH BORU 1 1/4"" adaylari "1 1/4" gosterir.
+    const q3 = 'SİYAH BORU 1 1/4"';
+    const r3 = (await matching.bulkMatch(userId, cayirova.id, [q3]))[q3];
+    const etk3 = (r3?.candidates ?? []).map((c) => c.label);
+    const sahte134 = etk3.some((e) => e.includes('1 3/4'));
+    check('D3a-EK "1 3/4" sahte etiket YOK (grade-bulasma fix)', !sahte134 && etk3.some((e) => e.includes('1 1/4')),
+      `etiketler=${JSON.stringify(etk3.slice(0, 3))}`);
+    log(`D3a-EK aday urun adlari: ${JSON.stringify((r?.candidates ?? []).map((c) => c.materialName).slice(0, 6))}`);
     // Tek kategoriye ozgu ad: Basincli Boru yalniz Basincli grubunda →
     // GRUP sorusu ATLANIR (K11). Baska kolon sorusu (baglanti/urun) olabilir;
     // kriter: soru metni 'Hangi grup?' DEGIL.
