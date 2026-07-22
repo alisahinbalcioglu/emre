@@ -1,3 +1,6 @@
 .vercel
 
 test-results/
+
+# e2e test ciktilari (Playwright screenshot)
+e2e-artifacts/
