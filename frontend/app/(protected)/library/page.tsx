@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
+import { confirm } from '@/hooks/use-confirm';
 import api from '@/lib/api';
 import { hesaplaNetFiyat } from '@/lib/pricing';
 
@@ -548,10 +549,7 @@ export default function LibraryPage() {
   /* ----------------------------- Delete ---------------------------------- */
 
   async function handleDelete(item: LibraryItem) {
-    const confirmed = window.confirm(
-      `"${item.materialName}" malzemesini kütüphaneden silmek istediğinize emin misiniz?`
-    );
-    if (!confirmed) return;
+    if (!(await confirm(`"${item.materialName}" malzemesi kütüphaneden silinsin mi?`))) return;
 
     try {
       await api.delete(`/library/${item.id}`);

@@ -15,6 +15,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { AlertCircle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { confirm } from '@/hooks/use-confirm';
 import api from '@/lib/api';
 import { DxfCanvasViewer } from '@/components/dwg-viewer';
 import { DiameterEditPopup, type EdgeSegment } from '@/components/dwg-metraj';
@@ -561,10 +562,12 @@ export default function DwgProjectWorkspace({
       0,
     );
     if (unassignedInApproved > 0) {
-      const ok = window.confirm(
-        `${unassignedInApproved} boru parçasının çapı hâlâ atanmamış (çizimde neon).\n` +
-        'Bunlar Excel/fiyatlandırmada "Belirtilmemis" olarak görünecek.\n\nYine de devam edilsin mi?',
-      );
+      const ok = await confirm({
+        title: `${unassignedInApproved} boru parçasının çapı atanmamış`,
+        description: 'Çizimde neon görünüyor. Bunlar Excel/fiyatlandırmada "Belirtilmemiş" olarak görünecek. Yine de devam edilsin mi?',
+        confirmText: 'Devam et',
+        tone: 'default',
+      });
       if (!ok) return;
     }
 
@@ -860,16 +863,19 @@ export default function DwgProjectWorkspace({
               // alanlari kaldirildi (UX #3), cap bilgisi Cap Kalemleri'nden.
               calculateLayer(layer);
             }}
-            onComplete={(layer) => {
+            onComplete={async (layer) => {
               // UX #4: "Hesaplamayi Tamamla" — layer onaylanir, etiketleme
               // ekrani sifirlanir (aktif kalem + secim reset).
               const cl = state.calculatedLayers[layer];
               if (!cl) return;
               const empty = cl.edgeSegments.filter((es) => isUnassignedDiameter(es.diameter)).length;
               if (empty > 0) {
-                const ok = window.confirm(
-                  `${empty} segment hâlâ çapsız (çizimde neon).\nYine de bu layer tamamlansın mı?`,
-                );
+                const ok = await confirm({
+                  title: `${empty} segment hâlâ çapsız`,
+                  description: 'Çizimde neon görünüyor. Yine de bu layer tamamlansın mı?',
+                  confirmText: 'Tamamla',
+                  tone: 'default',
+                });
                 if (!ok) return;
               }
               approveLayer(layer);

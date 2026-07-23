@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import api from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
+import { confirm } from '@/hooks/use-confirm';
 
 interface QuoteItem {
   id: string;
@@ -54,10 +55,7 @@ export default function QuotesPage() {
   }, []);
 
   async function handleDelete(id: string, title: string) {
-    const confirmed = window.confirm(
-      `"${title}" teklifini silmek istediğinize emin misiniz?`,
-    );
-    if (!confirmed) return;
+    if (!(await confirm(`"${title}" teklifi silinsin mi?`))) return;
 
     try {
       await api.delete(`/quotes/${id}`);

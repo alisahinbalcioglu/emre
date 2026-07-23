@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import api from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
+import { confirm } from '@/hooks/use-confirm';
 
 interface YerTutucu { etiket: string; sheet: string; addr: string }
 interface FormatKaydi {
@@ -123,7 +124,7 @@ export default function QuoteFormatsPage() {
   }
 
   async function remove(id: string, name: string) {
-    if (!confirm(`"${name}" format silinsin mi? (Uretilmis eski ciktilar etkilenmez)`)) return;
+    if (!(await confirm({ title: `"${name}" format silinsin mi?`, description: 'Üretilmiş eski çıktılar etkilenmez.' }))) return;
     try {
       await api.delete(`/quote-formats/${id}`);
       await fetchFormats();

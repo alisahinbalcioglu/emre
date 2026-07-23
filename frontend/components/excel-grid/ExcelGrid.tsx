@@ -17,6 +17,7 @@ import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, yukariYuva
 import { hasSizeExpression, isSelfSufficientRow } from './build-material-context';
 import httpApi from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
+import { confirm } from '@/hooks/use-confirm';
 
 // Z4: satir bazli para birimi sembolu (row._currency) — kutuphane gridi
 // dovizli satirlari kendi birimiyle gosterir
@@ -434,14 +435,22 @@ function BrandDropdown(props: ICellRendererParams & {
     if (hdr && lookupNameRef.current.startsWith(hdr) && !offeredHeaderAliases.has(hdr)) {
       offeredHeaderAliases.add(hdr);
       const kinds = (c.tags ?? []).filter((t) => FE_KIND_TAGS.includes(t));
-      if (kinds.length > 0 && window.confirm(`"${hdr}" terimi sözlüğe kaydedilsin mi?\nSonraki dosyalarda bu başlık altındaki satırlar otomatik "${kinds.join('/')}" olarak yorumlanır.`)) {
-        httpApi.post('/matching/aliases', {
-          alias: hdr,
-          canonical: c.materialName,
-          kinds,
-          sizeClass: kinds.some((k) => FE_PLASTIC_KINDS.includes(k)) ? 'plastic' : 'steel',
-          impliedType: null,
-        }).catch(() => {});
+      if (kinds.length > 0) {
+        confirm({
+          title: 'Sözlüğe kaydet',
+          description: `"${hdr}" terimi sözlüğe kaydedilsin mi? Sonraki dosyalarda bu başlık altındaki satırlar otomatik "${kinds.join('/')}" olarak yorumlanır.`,
+          confirmText: 'Kaydet',
+          tone: 'default',
+        }).then((ok) => {
+          if (!ok) return;
+          httpApi.post('/matching/aliases', {
+            alias: hdr,
+            canonical: c.materialName,
+            kinds,
+            sizeClass: kinds.some((k) => FE_PLASTIC_KINDS.includes(k)) ? 'plastic' : 'steel',
+            impliedType: null,
+          }).catch(() => {});
+        });
       }
     }
 
@@ -1544,7 +1553,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     onColumnsChange([...data.columnDefs, { field: name, headerName: name, width: 120, editable: true }]);
   }, [onColumnsChange, data.columnDefs]);
 
-  const removeColumn = useCallback((field: string | null) => {
+  const removeColumn = useCallback(async (field: string | null) => {
     setCtxMenu(null);
     if (!onColumnsChange || !field) return;
     // Sistem + rol kolonlari silinemez (hesap/kayit zinciri bozulur)
@@ -1553,7 +1562,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       window.alert('Bu sütun sistem tarafından kullanılıyor, silinemez.');
       return;
     }
-    if (!window.confirm(`"${field}" sütunu ve içindeki veriler tablodan kaldırılacak. Emin misiniz?`)) return;
+    if (!(await confirm({ title: `"${field}" sütunu kaldırılsın mı?`, description: 'Sütun ve içindeki veriler tablodan kaldırılacak.' }))) return;
     onColumnsChange(data.columnDefs.filter((c) => c.field !== field));
   }, [onColumnsChange, data.columnDefs, data.columnRoles]);
 

@@ -9,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import api from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
+import { confirm } from '@/hooks/use-confirm';
 import { useCapabilities } from '@/contexts/CapabilitiesContext';
 
 interface LaborFirm {
@@ -91,7 +92,7 @@ export default function LaborFirmsPage() {
   }
 
   async function deleteFirm(firm: LaborFirm) {
-    if (!confirm(`"${firm.name}" silinsin mi? Tum fiyat listeleri de silinecek.`)) return;
+    if (!(await confirm({ title: `"${firm.name}" silinsin mi?`, description: 'Tüm fiyat listeleri de silinecek.' }))) return;
     try {
       await api.delete(`/labor-firms/${firm.id}`);
       setFirms((prev) => prev.filter((f) => f.id !== firm.id));

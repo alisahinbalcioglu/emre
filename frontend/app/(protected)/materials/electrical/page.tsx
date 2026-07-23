@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import api from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
+import { confirm } from '@/hooks/use-confirm';
 
 interface Brand { id: string; name: string; logoUrl?: string | null; _count?: { priceLists: number; materialPrices: number } }
 
@@ -47,7 +48,7 @@ export default function ElectricalPoolPage() {
   }
 
   async function handleDeleteBrand(brand: Brand) {
-    if (!window.confirm(`"${brand.name}" ve tum fiyat listelerini silmek istediginize emin misiniz?`)) return;
+    if (!(await confirm({ title: `"${brand.name}" silinsin mi?`, description: 'Marka ve tüm fiyat listeleri silinecek.' }))) return;
     try {
       await api.delete(`/brands/${brand.id}`);
       toast({ title: 'Silindi', description: `"${brand.name}" basariyla kaldirildi.` });

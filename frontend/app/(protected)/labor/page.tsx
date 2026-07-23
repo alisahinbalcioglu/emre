@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import api from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
+import { confirm } from '@/hooks/use-confirm';
 import { cn } from '@/lib/utils';
 
 interface LaborItem {
@@ -113,7 +114,7 @@ export default function LaborLibraryPage() {
   }
 
   async function handleDelete(item: LaborItem) {
-    if (!window.confirm(`"${item.name}" silinsin mi?`)) return;
+    if (!(await confirm(`"${item.name}" silinsin mi?`))) return;
     try {
       await api.delete(`/labor/${item.id}`);
       toast({ title: 'Silindi' });

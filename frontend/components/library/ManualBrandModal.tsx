@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import api from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
+import { confirm } from '@/hooks/use-confirm';
 import { ExcelGrid } from '@/components/excel-grid/ExcelGrid';
 import type { ExcelGridData, ExcelRowData } from '@/components/excel-grid/types';
 
@@ -96,9 +97,9 @@ export default function ManualBrandModal({ open, onClose, onSaved, lockedBrandNa
   const dataRowsFilled = () =>
     rows.filter((r: any) => r._isDataRow && !r._isSpareRow && String(r.ad ?? '').trim() !== '');
 
-  function handleClose() {
+  async function handleClose() {
     const dolu = dataRowsFilled().length > 0;
-    if ((dolu || (!append && brandName.trim())) && !window.confirm('Girdiğiniz bilgiler kaybolacak. Kapatılsın mı?')) return;
+    if ((dolu || (!append && brandName.trim())) && !(await confirm({ description: 'Girdiğiniz bilgiler kaybolacak. Kapatılsın mı?', confirmText: 'Kapat' }))) return;
     onClose();
   }
 

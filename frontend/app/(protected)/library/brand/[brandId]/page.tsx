@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import api from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
+import { confirm } from '@/hooks/use-confirm';
 import { ExcelGrid } from '@/components/excel-grid/ExcelGrid';
 import type { ExcelGridData, ExcelRowData } from '@/components/excel-grid/types';
 
@@ -198,7 +199,7 @@ export default function LibraryBrandDetailPage() {
   }
 
   async function handleRemoveBrand() {
-    if (!confirm(`"${brandName}" kutuphanenizden tamamen kaldirilsin mi?`)) return;
+    if (!(await confirm(`"${brandName}" kütüphanenizden tamamen kaldırılsın mı?`))) return;
     try {
       await api.delete(`/library/brand/${brandId}`);
       toast({ title: 'Silindi' });

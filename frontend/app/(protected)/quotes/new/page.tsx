@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/select';
 import api from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
+import { confirm } from '@/hooks/use-confirm';
 import { cn } from '@/lib/utils';
 import { ExcelGrid } from '@/components/excel-grid/ExcelGrid';
 import type { ExcelGridHandle } from '@/components/excel-grid/ExcelGrid';
@@ -888,17 +889,18 @@ export default function NewQuotePage() {
 
   // A3: sutunu KALICI kaldir (yikici — veri silinir, kat idiyse MIK duser).
   // Dolu sutunda onay + "Gizle" alternatifi (yanlislikla veri/toplam bozulmasin).
-  function removeColumn(field: string) {
+  async function removeColumn(field: string) {
     if (lockedColumns.includes(field)) return;
     const col = managedColumns.find((c) => c.field === field);
     const rows = liveRowDataBySheet[activeSheetKey] ?? activeSheetObj?.rowData ?? [];
     const dolu = rows.filter((r: any) => r._isDataRow && String(r[field] ?? '').trim() !== '').length;
     if (dolu > 0) {
-      const ok = window.confirm(
-        `"${col?.headerName ?? field}" sütunu KALICI silinecek — ${dolu} kalemde veri var` +
-        (activeFloorFields.includes(field) ? ' (kat sütunu → MİK düşecek)' : '') +
-        `.\n\nYalnızca ekrandan gizlemek için İptal'e basıp panelden göz ikonuyla gizleyin (veri + toplam korunur).\n\nKalıcı silinsin mi?`,
-      );
+      const ok = await confirm({
+        title: `"${col?.headerName ?? field}" sütunu kalıcı silinsin mi?`,
+        description: `${dolu} kalemde veri var`
+          + (activeFloorFields.includes(field) ? ' (kat sütunu → MİK düşecek)' : '')
+          + '. Yalnızca ekrandan gizlemek için Vazgeç deyip panelden göz ikonuyla gizleyin (veri + toplam korunur).',
+      });
       if (!ok) return;
     }
     // 1) columnDefs'ten cikar

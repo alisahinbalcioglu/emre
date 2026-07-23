@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import api from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
+import { confirm } from '@/hooks/use-confirm';
 import { cn } from '@/lib/utils';
 import { ExcelGrid } from '@/components/excel-grid/ExcelGrid';
 import { SheetTabs } from '@/components/excel-grid/SheetTabs';
@@ -235,7 +236,7 @@ export default function BrandDetailPage() {
   }
 
   async function handleImportToLibrary(listId: string, listName: string) {
-    if (!window.confirm(`"${listName}" listesindeki tüm malzemeleri kütüphanenize aktarmak istiyor musunuz?`)) return;
+    if (!(await confirm({ title: 'Kütüphaneye aktar', description: `"${listName}" listesindeki tüm malzemeler kütüphanenize aktarılsın mı?`, confirmText: 'Aktar', tone: 'default' }))) return;
     setImportingListId(listId);
     try {
       const { data: res } = await api.post('/library/import-price-list', { brandId, priceListId: listId });
@@ -258,7 +259,7 @@ export default function BrandDetailPage() {
   }
 
   async function handleDeleteList(listId: string, listName: string) {
-    if (!window.confirm(`"${listName}" listesini silmek istediğinize emin misiniz?`)) return;
+    if (!(await confirm(`"${listName}" listesi silinsin mi?`))) return;
     try {
       await api.delete(`/admin/price-lists/${listId}`);
       toast({ title: 'Silindi' });
@@ -362,8 +363,8 @@ export default function BrandDetailPage() {
     }
   }
 
-  function closeEditor() {
-    if (!confirm('Kaydedilmemis degisiklikler kaybolacak. Emin misiniz?')) return;
+  async function closeEditor() {
+    if (!(await confirm({ description: 'Kaydedilmemiş değişiklikler kaybolacak. Devam edilsin mi?', confirmText: 'Devam et' }))) return;
     setEditorOpen(false);
     setMultiSheet(null);
     setLiveRowDataBySheet({});

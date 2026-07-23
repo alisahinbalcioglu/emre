@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import api from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
+import { confirm } from '@/hooks/use-confirm';
 import { ExcelGrid } from '@/components/excel-grid/ExcelGrid';
 import InlineFirmEntry from '@/components/library/InlineFirmEntry';
 import type { FirmEntryHandle } from '@/components/library/InlineFirmEntry';
@@ -47,6 +48,12 @@ export default function LaborFirmDetailPage() {
   // Aktif liste icin ExcelGrid data
   const [gridData, setGridData] = useState<ExcelGridData | null>(null);
   const [liveRows, setLiveRows] = useState<ExcelRowData[]>([]);
+  // KRITIK: kaydet sirasinda EN GUNCEL satirlari SENKRON oku. liveRows STATE
+  // async — son hucre commit'i (fiyat) butona tiklama aninda setLiveRows ile
+  // gelir ama handleSaveDrafts ayni tiklamada ESKI liveRows'u okurdu → yeni
+  // satirin fiyati 0 gorunup "Birim Fiyat yok" ile atlaniyordu. Ref senkron.
+  // (InlineFirmEntry de ayni nedenle rowsRef kullanir.)
+  const liveRowsRef = useRef<ExcelRowData[]>([]);
   const [dirtyCount, setDirtyCount] = useState(0);
   const [savingDrafts, setSavingDrafts] = useState(false);
 
@@ -114,6 +121,7 @@ export default function LaborFirmDetailPage() {
         brands: [],
         headerEndRow: sheet.headerEndRow ?? 0,
       });
+      liveRowsRef.current = withBlanks;
       setLiveRows(withBlanks);
       setSyntheticSheet(!!sheet.synthetic);
       setDirtyCount(0);
@@ -130,6 +138,7 @@ export default function LaborFirmDetailPage() {
   function handleRowsChange(rows: ExcelRowData[]) {
     // Yeni array referansi olustur (React state update tetiklemek icin)
     const fresh = [...rows];
+    liveRowsRef.current = fresh; // SENKRON — handleSaveDrafts bunu okur
     setLiveRows(fresh);
     const dirty = fresh.filter((r: any) => r._isDataRow && r._dirty).length;
     setDirtyCount(dirty);
@@ -152,10 +161,13 @@ export default function LaborFirmDetailPage() {
     const unitField = gridData.columnRoles.unitField;
     const nameField = gridData.columnRoles.nameField;
 
+    // liveRowsRef: SENKRON güncel satırlar (son hücre commit'i dahil). liveRows
+    // STATE async olduğu için burada ref okunur — yoksa yeni satırın fiyatı kaçar.
+    const rows = liveRowsRef.current;
     // MEVCUT kalemler (dirty + _laborPriceId) → save-sheets
-    const dirtyExisting = liveRows.filter((r: any) => r._isDataRow && r._dirty && r._laborPriceId);
+    const dirtyExisting = rows.filter((r: any) => r._isDataRow && r._dirty && r._laborPriceId);
     // YENI satirlar (inline bos satirlara girilenler) → save-bulk
-    const newFilled = liveRows.filter((r: any) =>
+    const newFilled = rows.filter((r: any) =>
       r._isDataRow && !r._laborPriceId && !r._isSpareRow
       && nameField && String(r[nameField] ?? '').trim().length >= 2);
 
@@ -224,7 +236,7 @@ export default function LaborFirmDetailPage() {
   }
 
   async function deletePriceList(listId: string) {
-    if (!confirm('Bu fiyat listesi silinsin mi?')) return;
+    if (!(await confirm('Bu fiyat listesi silinsin mi?'))) return;
     try {
       await api.delete(`/labor-firms/price-lists/${listId}`);
       setPriceLists((prev) => prev.filter((pl) => pl.id !== listId));

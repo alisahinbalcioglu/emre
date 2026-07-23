@@ -34,6 +34,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
+import { confirm } from '@/hooks/use-confirm';
 import api from '@/lib/api';
 
 interface Brand {
@@ -202,7 +203,7 @@ export default function EquipmentLibraryPage() {
   }
 
   async function handleDelete(item: EquipmentItem) {
-    if (!window.confirm(`"${item.materialName}" silinsin mi?`)) return;
+    if (!(await confirm(`"${item.materialName}" silinsin mi?`))) return;
     try {
       await api.delete(`/library/${item.id}`);
       toast({ title: 'Silindi', description: item.materialName });

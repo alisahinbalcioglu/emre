@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import api from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
+import { confirm } from '@/hooks/use-confirm';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -202,7 +203,7 @@ export default function AdminBrandsPage() {
   }
 
   async function deleteBrand(b: Brand) {
-    if (!window.confirm(`"${b.name}" markasi, TUM fiyat listeleri VE kullanicilarin bu markadan aktardigi kutuphane kayitlari silinecek. Emin misiniz?`)) return;
+    if (!(await confirm({ title: `"${b.name}" markası silinsin mi?`, description: 'Tüm fiyat listeleri VE kullanıcıların bu markadan aktardığı kütüphane kayıtları silinecek.' }))) return;
     try {
       const { data } = await api.delete(`/brands/${b.id}`);
       toast({
@@ -233,7 +234,7 @@ export default function AdminBrandsPage() {
   }
 
   async function deletePriceList(pl: PriceList) {
-    if (!window.confirm(`"${pl.name}" listesi ve icindeki tum baz fiyatlar silinecek. Emin misiniz?`)) return;
+    if (!(await confirm({ title: `"${pl.name}" listesi silinsin mi?`, description: 'İçindeki tüm baz fiyatlar silinecek.' }))) return;
     try {
       await api.delete(`/admin/price-lists/${pl.id}`);
       toast({ title: 'Liste silindi', description: pl.name });
