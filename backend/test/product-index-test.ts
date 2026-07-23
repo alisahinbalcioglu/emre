@@ -380,6 +380,31 @@ function run() {
       resolveProductSizeClass('Boru', 'PPR PN20') === 'plastic');
     check('P8 buildRowKey saf/deterministik (ayni girdi → ayni cikti)',
       buildProductIndex(AYVAZ_FLANSLI_DN65).rowKey === buildProductIndex(AYVAZ_FLANSLI_DN65).rowKey);
+
+    // ── P8c: PP-R PLASTIK (canli 23.07 — KALDE "PP Boru / PN 20" cins PP-R) ──
+    // normalizeText tireyi KORUR ("pp-r"), duz \bppr\b tutmuyordu → PP borular
+    // STEEL siniflaniyor, "Bu markada DN 25 yok" hatasina katkida bulunuyordu.
+    // "PN 20" BASINÇTIR, cap DEGIL (kullanici uyarisi) — sizeClass cins/ad'dan.
+    check('P8c cins "PP-R" → plastic (tire korunsa da)',
+      resolveProductSizeClass('PP Boru / PN 20', 'PP-R') === 'plastic',
+      `got ${resolveProductSizeClass('PP Boru / PN 20', 'PP-R')}`);
+    check('P8c ad "PP Cam Elyaf Takviyeli Boru" cins PP-R → plastic',
+      resolveProductSizeClass('PP Cam Elyaf Takviyeli Boru / PN 20', 'PP-R') === 'plastic');
+    check('P8c "PP Boru" cins bos → plastic (pp boru baglami)',
+      resolveProductSizeClass('PP Boru / PN 20', null) === 'plastic');
+    // PP-R plastik olunca cap "25 mm" → od-25 + dn25 (celik nominal degil)
+    check('P8c PP-R cap "25 mm" → capTags od-25 + dn25',
+      (() => { const t = buildProductIndex({ ad: 'PP Boru / PN 20', cins: 'PP-R', cap: '25 mm', price: 1 } as any).capTags;
+        return t.includes('od-25') && t.includes('dn25'); })(),
+      JSON.stringify(buildProductIndex({ ad: 'PP Boru / PN 20', cins: 'PP-R', cap: '25 mm', price: 1 } as any).capTags));
+    // PPR-ozel cap DN 63: celik tablosunda YOK (65'e atlar), plastikte 63mm dogru
+    check('P8c PP-R cap "63 mm" (PPR-ozel) → dn63 uretir',
+      buildProductIndex({ ad: 'PP Boru', cins: 'PP-R', cap: '63 mm', price: 1 } as any).capTags.includes('dn63'));
+    // REGRESYON: yanlis-pozitif YOK — celik/dokum/pirinc plastik OLMAZ
+    check('P8c regresyon: Çelik boru → steel (PP-R false-pozitif degil)',
+      resolveProductSizeClass('Dikişli Siyah Çelik Boru', 'Çelik') === 'steel');
+    check('P8c regresyon: Kelebek Vana Döküm → steel',
+      resolveProductSizeClass('Kelebek Vana', 'Döküm') === 'steel');
   }
 
   // ═══════════════════════════════════════════════════════════════

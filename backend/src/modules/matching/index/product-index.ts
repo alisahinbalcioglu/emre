@@ -91,12 +91,16 @@ export interface ProductIndexFields {
  *     'cek vana'/'k.vana' kanoniklestirir ('cekvalf' / 'kuresel vana').
  *     Bu adlari tasiyan urunlerin adTokens/adBucket'i degisir → REINDEX
  *     ONERILIR (bayat satirlar istek aninda da yenilenir).
+ * v10: PP-R PLASTIK TANIMA (23.07 canli, KALDE "PP Boru / PN 20" cins PP-R) —
+ *     normalizeText tireyi koruyor ("pp-r"), duz \bppr\b tutmuyordu → PP borular
+ *     STEEL siniflaniyordu. PLASTIK regex'e pp-?rc?/pprc/polipropilen/'pp boru'
+ *     eklendi. sizeClass → capTags degisir → REINDEX SART.
  *
  * Dispatch bu surumu KONTROL EDER (matching.service.hazirlaPool): bayat
  * satir istek aninda rebuildIndexFields ile CANLI tokenizer'dan yeniden
  * uretilir (Faz 2b — v1 fallback SILINDI); kalici cozum reindex'tir.
  */
-export const INDEX_VERSION = 9;
+export const INDEX_VERSION = 10;
 
 /** adSlug cozulemeyen satirin tasidigi isaret — eslestirmeye ADAY OLAMAZ. */
 export const BELIRSIZ_SLUG = 'belirsiz';
@@ -299,7 +303,10 @@ function basIsimAilesi(text: string): string | null {
  * yoruma yayilan adayi gorunce ASLA otomatik yazmaz (P4 korumasi).
  */
 export function resolveProductSizeClass(ad: string, cins?: string | null, kategori?: string | null): SizeClass {
-  const PLASTIK = /\b(ppr|pe-?100|pe-?80|pex|pvc|hdpe|polietilen|plastik)\b/;
+  // PP-R / PPRC / PP-RC / polipropilen = PLASTIK. normalizeText tireyi KORUR
+  // ("PP-R" → "pp-r"), duz \bppr\b TUTMUYORDU → KALDE "PP Boru / PN 20" (cins
+  // PP-R) STEEL siniflaniyordu (canli 23.07 vaka). "pp boru" da plastiktir.
+  const PLASTIK = /\b(ppr|pp-?rc?|pprc|polipropilen|pp\s+boru|pe-?100|pe-?80|pex|pvc|hdpe|polietilen|plastik)\b/;
   const CELIK = /\b(celik|paslanmaz|pirinc|dokum|bronz|bakir|galvaniz|siyah|st\s*37)\b/;
   // ── KAPLAMA TUZAGI (canli Çayırova vakasi 16.07 — INDEX_VERSION 5) ──
   // "Çelik boru · PE kaplı doğalgaz · sarı POLIETILEN 3 kat kaplı":
