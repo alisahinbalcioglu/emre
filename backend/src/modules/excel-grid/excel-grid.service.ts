@@ -439,6 +439,10 @@ export class ExcelGridService {
           nameMerge?.hidden === true ||
           nameMergeCoversRoleCol ||
           (!!nameVal && nameVal === unitVal);
+        // NOT: "birim hucresi kisa bir simge olmali" (uzunluk/bosluk) daraltmasi
+        // DENENDI ve 133 gercek dosyada OLCULDU: 4 dosyada gercek kalemleri
+        // eledi, 1 dosyayi tamamen bosaltti (birim sutunu "Çap / Ölçü" gibi
+        // metin tasiyabiliyor). Geri alindi — birimin DOLU olmasi yeterli.
         if (r > effHeaderEndRow && nameVal && (unitVal || hasQty) && !isMergedSection) {
           row._isDataRow = true;
         }
