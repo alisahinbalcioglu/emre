@@ -3,7 +3,7 @@
 // Cloudflare Pages icin Edge Runtime (dynamic route)
 export const runtime = 'edge';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Loader2, Save, Trash2 } from 'lucide-react';
@@ -72,6 +72,11 @@ export default function LibraryBrandDetailPage() {
   const [gridData, setGridData] = useState<ExcelGridData | null>(null);
   const [brandName, setBrandName] = useState('');
   const [liveRows, setLiveRows] = useState<ExcelRowData[]>([]);
+  // KRITIK (race fix — işçilikle aynı): handleSave SENKRON güncel satırları
+  // okumalı. liveRows STATE async — son hücre commit'i (fiyat) Kaydet'e tıklama
+  // anında setLiveRows ile gelir ama AYNI event'te handleSave eski liveRows'u
+  // okurdu → yeni malzeme kaçar/kaydedilmez. Ref senkron.
+  const liveRowsRef = useRef<ExcelRowData[]>([]);
   const [dirtyCount, setDirtyCount] = useState(0); // mevcut satir fiyat/iskonto degisikligi
   const [newCount, setNewCount] = useState(0);     // yeni girilen malzeme satiri
 
@@ -108,6 +113,7 @@ export default function LibraryBrandDetailPage() {
         brands: [],
         headerEndRow: firstSheet.headerEndRow ?? 0,
       });
+      liveRowsRef.current = rowData;
       setLiveRows(rowData);
       setDirtyCount(0);
       setNewCount(0);
@@ -127,6 +133,7 @@ export default function LibraryBrandDetailPage() {
   // kolon reset + editor iptal. deps: nameField (fetch'te bir kez degisir).
   const handleRowsChange = useCallback((rows: ExcelRowData[]) => {
     const fresh = [...rows];
+    liveRowsRef.current = fresh; // SENKRON — handleSave bunu okur
     setLiveRows(fresh);
     const dirty = fresh.filter((r: any) => r._isDataRow && r._libraryItemId && r._dirty).length;
     const yeni = fresh.filter(
@@ -142,8 +149,11 @@ export default function LibraryBrandDetailPage() {
     const priceField = gridData.columnRoles.materialUnitPriceField;
     const unitField = gridData.columnRoles.unitField;
 
-    const dirtyExisting = liveRows.filter((r: any) => r._isDataRow && r._libraryItemId && r._dirty);
-    const newRows = liveRows.filter(
+    // liveRowsRef: SENKRON güncel satırlar (son hücre commit'i dahil). liveRows
+    // STATE async olduğu için burada ref okunur — yoksa yeni malzeme kaçar.
+    const rows2 = liveRowsRef.current;
+    const dirtyExisting = rows2.filter((r: any) => r._isDataRow && r._libraryItemId && r._dirty);
+    const newRows = rows2.filter(
       (r: any) => r._isDataRow && !r._libraryItemId && String(r[nameField] ?? '').trim() !== '',
     );
     if (dirtyExisting.length === 0 && newRows.length === 0) {
