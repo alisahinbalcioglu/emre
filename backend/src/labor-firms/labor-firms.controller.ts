@@ -126,9 +126,12 @@ export class LaborFirmsController {
       priceListId: string;
       items: { laborName: string; unit: string; unitPrice: number; category?: string; discountRate?: number; currency?: string }[];
       exchangeRate?: number;
+      // Sabit-format HAM grid (InlineFirmEntry) — Cinsi/Çap/Para/Not sutunlari
+      // burada saklanir (LaborPrice birlesik ad tutar, bu sutunlar DB'de yok).
+      sheet?: { columnDefs: any[]; rowData: any[]; columnRoles: any; headerEndRow?: number };
     },
   ) {
-    return this.service.saveBulkPrices(user.id, firmaId, body.priceListId, body.items, body.exchangeRate);
+    return this.service.saveBulkPrices(user.id, firmaId, body.priceListId, body.items, body.exchangeRate, body.sheet);
   }
 
   // Multi-sheet Excel parse — mevcut ExcelGrid parser'ini kullanir

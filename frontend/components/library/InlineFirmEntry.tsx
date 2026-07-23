@@ -58,18 +58,39 @@ function numOrU(v: unknown): number | undefined {
   return isNaN(n) ? undefined : n;
 }
 
+/** Bir satırın TAM işçilik adı (AD + Cins + Çap birleşik) — save-bulk item'ı
+ *  ve sheet JSON'undaki _laborName eşleşme anahtarı AYNI olmalı. */
+function fullLaborName(r: any): string {
+  return [String(r.ad).trim(), trimOrU(r.cins), trimOrU(r.cap)].filter(Boolean).join(' ');
+}
+
 /** Doldurulmuş satırları save-bulk payload'una çevir (AD zorunlu). */
 function buildFirmSaveItems(rows: ExcelRowData[]) {
   return rows
     .filter((r: any) => r._isDataRow && !r._isSpareRow && String(r.ad ?? '').trim() !== '')
     .map((r: any) => ({
-      laborName: [String(r.ad).trim(), trimOrU(r.cins), trimOrU(r.cap)].filter(Boolean).join(' '),
+      laborName: fullLaborName(r),
       unit: trimOrU(r.birim) ?? 'Adet',
       unitPrice: numOrU(r.fiyat) ?? 0,
       discountRate: numOrU(r._draftDiscount),
       currency: trimOrU(r.para),
       category: trimOrU(r.not),
     }));
+}
+
+/** Girilen HAM grid'i sheet JSON'una çevir — Cinsi/Çap/Para/Not sütunları
+ *  yalnız burada yaşar (LaborPrice birleşik ad tutar). Header + dolu satırlar. */
+function buildFirmSheet(rows: ExcelRowData[]) {
+  const header: any = { _rowIdx: 0, _isDataRow: false, _isHeaderRow: true };
+  for (const c of FIRM_COLUMNS) header[c.field] = c.headerName;
+  const filled = rows.filter((r: any) => r._isDataRow && !r._isSpareRow && String(r.ad ?? '').trim() !== '');
+  const rowData: any[] = [header];
+  filled.forEach((r: any, i: number) => {
+    const row: any = { _rowIdx: i + 1, _isDataRow: true, _isHeaderRow: false, _laborName: fullLaborName(r), col0: String(i + 1) };
+    for (const c of FIRM_COLUMNS) if (c.field !== 'col0') row[c.field] = String(r[c.field] ?? '');
+    rowData.push(row);
+  });
+  return { columnDefs: FIRM_COLUMNS, rowData, columnRoles: FIRM_ROLES, headerEndRow: 0 };
 }
 
 export interface FirmEntryHandle {
@@ -99,7 +120,10 @@ const InlineFirmEntry = forwardRef<FirmEntryHandle, Props>(function InlineFirmEn
     try {
       // 'new': HER giris AYRI liste olusturur (bos firma = 1. liste, "+ Yeni
       // Liste" = ilave liste). 'auto' en son listeyi yeniden kullaniyordu.
-      const { data } = await api.post(`/labor-firms/${firmaId}/save-bulk`, { priceListId: 'new', items });
+      // sheet: girilen HAM 8-sutun grid → tekrar acilista birebir gelir
+      // (Cinsi/Çap/Para/Not korunur; birim/fiyat/iskonto DB'den overlay).
+      const sheet = buildFirmSheet(rowsRef.current);
+      const { data } = await api.post(`/labor-firms/${firmaId}/save-bulk`, { priceListId: 'new', items, sheet });
       toast({ title: 'Kaydedildi', description: `${data.imported} kalem eklendi ("${data.priceListName}")` });
       onSaved();
       return true;

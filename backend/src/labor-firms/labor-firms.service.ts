@@ -302,6 +302,25 @@ export class LaborFirmsService {
       console.log(`[getPriceListSheets] ${matched} matched by name, 0 unmatched`);
     }
 
+    // UCUNCU GECIS: sheet JSON'da HIC temsil edilmeyen LaborPrice'lar (sabit-
+    // format liste DOLUYKEN inline eklenen yeni kalemler — save-bulk sheet'i
+    // guncellemez, yalniz LaborPrice ekler). Bunlar sona yeni satir olarak
+    // eklenmezse render'da KAYBOLURDU. Ad birlesik (cins/cap ayrilamaz) →
+    // nameField hucresine tam ad yazilir.
+    const leftover = prices.filter((p) => !matchedIds.has(p.id));
+    if (leftover.length > 0 && roles.nameField) {
+      let maxIdx = enhanced.reduce((m: number, r: any) => Math.max(m, r?._rowIdx ?? 0), 0);
+      for (const p of leftover) {
+        const row: any = { _rowIdx: ++maxIdx, _isDataRow: true, _isHeaderRow: false, _laborPriceId: p.id, _laborDiscountRate: p.discountRate || 0 };
+        if (roles.noField) row[roles.noField] = String(maxIdx);
+        row[roles.nameField] = p.laborItem.name;
+        if (roles.unitField) row[roles.unitField] = p.unit || 'Adet';
+        if (roles.laborUnitPriceField) row[roles.laborUnitPriceField] = p.unitPrice;
+        enhanced.push(row);
+      }
+      console.log(`[getPriceListSheets] ${leftover.length} sheet-disi kalem sona eklendi`);
+    }
+
     return {
       priceList: { id: pl.id, name: pl.name, firmaId: pl.firmaId },
       firma: pl.firma,
@@ -658,6 +677,12 @@ export class LaborFirmsService {
     // ham saklanir — teklif aninda toTry) ManualFirmModal'dan gelir.
     items: { laborName: string; unit: string; unitPrice: number; category?: string; discountRate?: number; currency?: string }[],
     exchangeRate?: number,
+    // SABIT-FORMAT GRID (kullanici karari 22.07): InlineFirmEntry girilen HAM
+    // 8-sutun grid'i (Cinsi/Detay·Çap·Para·Not dahil) gonderir. LaborPrice
+    // tablosu adi BIRLESIK saklar (cins/cap ayri kolon degil) → bu sutunlar
+    // yalniz sheet JSON'unda yasar. sheet verilmezse render sentetik 4-sutuna
+    // duser (eski davranis, mevcut-liste inline eklemesi vb.).
+    sheet?: { columnDefs: any[]; rowData: any[]; columnRoles: any; headerEndRow?: number },
   ) {
     const firma = await this.assertOwnership(firmaId, userId);
 
@@ -705,6 +730,9 @@ export class LaborFirmsService {
 
     let imported = 0;
     let skipped = 0;
+    // laborName → olusan LaborPrice.id (sheet JSON'una _laborPriceId inject
+    // etmek icin — getPriceListSheets ad-eslesme yerine dogrudan id kullanir).
+    const nameToPriceId = new Map<string, string>();
 
     for (const item of validItems) {
       const name = item.laborName!.trim();
@@ -752,13 +780,45 @@ export class LaborFirmsService {
         ? Math.max(0, Math.min(100, Number(item.discountRate)))
         : undefined;
       const paraBirimi = item.currency?.trim() ? item.currency.trim().toUpperCase() : undefined;
-      await this.prisma.laborPrice.upsert({
+      const saved = await this.prisma.laborPrice.upsert({
         where: { laborItemId_firmaId_priceListId: { laborItemId: laborItem.id, firmaId, priceListId: priceList.id } },
         update: { unitPrice: price, unit, ...(iskonto !== undefined ? { discountRate: iskonto } : {}), ...(paraBirimi ? { currency: paraBirimi } as any : {}) },
         create: { laborItemId: laborItem.id, firmaId, priceListId: priceList.id, unitPrice: price, unit, ...(iskonto !== undefined ? { discountRate: iskonto } : {}), ...(paraBirimi ? { currency: paraBirimi } as any : {}) },
       });
+      nameToPriceId.set(name, saved.id);
 
       imported++;
+    }
+
+    // SABIT-FORMAT sheet sakla — HAM 8-sutun grid tekrar acilista birebir gelir.
+    // Data satirlarina LaborPrice.id inject: getPriceListSheets birim/fiyat/
+    // iskontoyu DB'den overlay eder (guncel), Cinsi/Çap/Para/Not JSON'da kalir.
+    if (sheet && Array.isArray(sheet.rowData)) {
+      const nameField = sheet.columnRoles?.nameField;
+      const rowData = sheet.rowData.map((r: any) => {
+        if (!r?._isDataRow) return r;
+        // FE her data satirina hesapladigi TAM adi (_laborName) koyar; yoksa
+        // nameField hucresinden turet (buildFirmSaveItems ile ayni birlesim degil
+        // ama tek-kolon senaryosunda yeterli).
+        const key = String(r._laborName ?? (nameField ? r[nameField] : '') ?? '').trim();
+        const pid = nameToPriceId.get(key);
+        return pid ? { ...r, _laborPriceId: pid } : r;
+      });
+      await this.prisma.laborPriceList.update({
+        where: { id: priceList.id },
+        data: {
+          sheets: {
+            name: priceList.name,
+            index: 0,
+            columnDefs: sheet.columnDefs ?? [],
+            rowData,
+            columnRoles: sheet.columnRoles ?? {},
+            headerEndRow: sheet.headerEndRow ?? 0,
+            isEmpty: false,
+            synthetic: false,
+          } as any,
+        },
+      });
     }
 
     return {
