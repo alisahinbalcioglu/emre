@@ -277,7 +277,9 @@ export class ExcelGridService {
         .replace(/[öÖ]/g, 'o').replace(/[ğĞ]/g, 'g').toLowerCase();
       for (let c = 0; c < colCount; c++) {
         const h = `${normHdr(rawValues[realHeaderRow]?.[c])} ${normHdr(rawValues[realHeaderRow + 1]?.[c])}`;
-        if (/\b(fiyat|tutar|bedel|toplam)\b/.test(h)) dropCols.add(c);
+        // Turkce ek toleransi: normHdr 'ı'yi 'i' yaptigi icin "Fiyatı" → "fiyati"
+        // olur ve duz \bfiyat\b TUTMAZ → Excel'in kendi fiyat sutunu gride sizardi.
+        if (/\b(fiyat|tutar|bedel|toplam)(?:i|lar|ler|lari|leri)?\b/.test(h)) dropCols.add(c);
       }
       // BOS SUTUN COPU: basligi yok VE hicbir veri satirinda deger yok
       // ("Sutun 11" gibi placeholder'lar). Rol sutunlari (ad/miktar/birim)
@@ -422,9 +424,20 @@ export class ExcelGridService {
         // Merge ile yayilmis bolum basligi: ad hucresi gizli-merge VEYA
         // ad===birim (ayni merge kaynagi) → satir baslik, veri degil.
         const nameMerge = nameColIdx !== undefined ? mergeInfo.get(`${r}-${nameColIdx}`) : undefined;
+        // Genis merge YALNIZ birim/miktar sutununa TASIYORSA baslik sayilir.
+        // (Eski kural "colSpan>2" idi; ama bircok kesifte ad sutununun KENDISI
+        // her satirda 3 sutuna merge'li olur — orn "C:E Ürün Adı" — o zaman TUM
+        // veri satirlari baslik sanilip sayfa bos goruluyordu.)
+        const nameMergeCoversRoleCol = (() => {
+          if (!nameMerge || nameMerge.hidden || nameColIdx === undefined) return false;
+          const lastCol = nameColIdx + (nameMerge.colSpan ?? 1) - 1;
+          return [columnRoles.unit, columnRoles.quantity].some(
+            (idx) => idx !== undefined && idx > nameColIdx && idx <= lastCol,
+          );
+        })();
         const isMergedSection =
           nameMerge?.hidden === true ||
-          (nameMerge?.colSpan ?? 1) > 2 ||
+          nameMergeCoversRoleCol ||
           (!!nameVal && nameVal === unitVal);
         if (r > effHeaderEndRow && nameVal && (unitVal || hasQty) && !isMergedSection) {
           row._isDataRow = true;
@@ -609,6 +622,18 @@ export class ExcelGridService {
           console.log(`[ExcelGrid] Malzeme adi icerikten: col${bestCol} (score=${bestScore}), eski regex col${roles.name}`);
         }
         roles.name = bestCol;
+      }
+    }
+
+    // ── ISIM SUTUNU FIYAT ROLU OLAMAZ ───────────────────────────────
+    // Rol taramasi sutunun TUM metnine bakar; ad sutununda "SARF MALZEMELER"
+    // + altta "TOPLAM:" satiri gecince /malzeme.*toplam/ eslesip malzemeTutar
+    // rolu ad sutununa atanabiliyor. fixedSchema fiyat rollerini ATTIGI icin
+    // malzeme adi sutunu tablodan tamamen DUSUYORDU.
+    for (const rk of ['materialUnitPrice', 'materialTotal', 'laborUnitPrice', 'laborTotal', 'grandUnitPrice', 'grandTotal']) {
+      if (roles[rk] !== undefined && roles[rk] === roles.name) {
+        console.log(`[ExcelGrid] "${rk}" rolu isim sutunuyla cakisti (col${roles.name}) → iptal`);
+        delete roles[rk];
       }
     }
 

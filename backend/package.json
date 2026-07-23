@@ -21,6 +21,7 @@
     "prisma:generate": "prisma generate",
     "prisma:studio": "prisma studio",
     "test:labor": "ts-node test/labor-matching-test.ts",
+    "test:grid": "ts-node test/excel-grid-test.ts",
     "test:export": "ts-node test/export-format-test.ts",
     "test:livesim": "ts-node test/export-live-sim-test.ts"
   },
