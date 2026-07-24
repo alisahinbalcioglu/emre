@@ -12,7 +12,7 @@ import { Card } from '@/components/ui/card';
 import api from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 import { confirm } from '@/hooks/use-confirm';
-import { ExcelGrid } from '@/components/excel-grid/ExcelGrid';
+import { ExcelGrid, type ExcelGridHandle } from '@/components/excel-grid/ExcelGrid';
 import InlineFirmEntry from '@/components/library/InlineFirmEntry';
 import type { FirmEntryHandle } from '@/components/library/InlineFirmEntry';
 import type { ExcelGridData, ExcelRowData } from '@/components/excel-grid/types';
@@ -54,6 +54,8 @@ export default function LaborFirmDetailPage() {
   // satirin fiyati 0 gorunup "Birim Fiyat yok" ile atlaniyordu. Ref senkron.
   // (InlineFirmEntry de ayni nedenle rowsRef kullanir.)
   const liveRowsRef = useRef<ExcelRowData[]>([]);
+  // Aktif liste grid'i — save öncesi stopEditing() + getRowData() için.
+  const gridRef = useRef<ExcelGridHandle>(null);
   const [dirtyCount, setDirtyCount] = useState(0);
   const [savingDrafts, setSavingDrafts] = useState(false);
 
@@ -161,9 +163,14 @@ export default function LaborFirmDetailPage() {
     const unitField = gridData.columnRoles.unitField;
     const nameField = gridData.columnRoles.nameField;
 
-    // liveRowsRef: SENKRON güncel satırlar (son hücre commit'i dahil). liveRows
-    // STATE async olduğu için burada ref okunur — yoksa yeni satırın fiyatı kaçar.
-    const rows = liveRowsRef.current;
+    // HİPOTEZ 1 (talep 24.07): kullanıcı son hücreye yazıp blur ETMEDEN Kaydet'e
+    // basabilir → aktif düzenlemeyi ZORLA commit et (yoksa yazılan çap/satır
+    // payload'a girmez). stopEditing senkron akar (cellValueChanged→onRowDataChange).
+    gridRef.current?.stopEditing();
+    // HİPOTEZ 2: grid'in TAM güncel halini al (getRowData tüm node'ları verir).
+    // liveRowsRef fallback (grid henüz yoksa; ref her değişimde senkron güncel).
+    const gridRows = gridRef.current?.getRowData();
+    const rows = (gridRows && gridRows.length) ? gridRows : liveRowsRef.current;
     // MEVCUT kalemler (dirty + _laborPriceId) → save-sheets
     const dirtyExisting = rows.filter((r: any) => r._isDataRow && r._dirty && r._laborPriceId);
     // YENI satirlar (inline bos satirlara girilenler) → save-bulk
@@ -227,8 +234,15 @@ export default function LaborFirmDetailPage() {
 
       // ── Yeni kalemler (inline giris) ─────────────────────────────
       if (newFilled.length > 0) {
+        // SABIT-FORMAT (24.07 talep KL1): yeni satırda Çap AYRI sütundadır →
+        // laborName ad+cins+çap OLMALI (yoksa çap ne ada ne eşleşmeye girer,
+        // "çap düşüyor"). Ayrıca save-bulk'a TAM güncel sheet gönderilir →
+        // çap SÜTUNU görsel olarak da kalıcı (mevcut kalemler _laborPriceId ile
+        // korunur, yeni satırlar _laborName ile inject edilir).
+        const laborNameOf = (r: any) =>
+          fixedFormat ? (buildLaborName(r) ?? String(r[nameField!]).trim()) : String(r[nameField!]).trim();
         const items = newFilled.map((r: any) => ({
-          laborName: String(r[nameField!]).trim(),
+          laborName: laborNameOf(r),
           unit: unitField ? (String(r[unitField] ?? '').trim() || 'Adet') : 'Adet',
           unitPrice: priceField ? parseTrNum(r[priceField]) : 0,
           discountRate: r._draftDiscount !== undefined && r._draftDiscount !== null && String(r._draftDiscount) !== ''
@@ -237,9 +251,21 @@ export default function LaborFirmDetailPage() {
         const fiyatli = items.filter((i) => i.unitPrice > 0);
         const fiyatsiz = items.length - fiyatli.length;
         if (fiyatli.length > 0) {
+          const newFilledPriced = newFilled.filter((r: any) => (priceField ? parseTrNum(r[priceField]) : 0) > 0);
+          const fullSheet = fixedFormat && gridData
+            ? {
+                columnDefs: gridData.columnDefs,
+                columnRoles: gridData.columnRoles,
+                headerEndRow: gridData.headerEndRow ?? 0,
+                rowData: rows
+                  .filter((r: any) => r._isHeaderRow || (r._isDataRow && r._laborPriceId) || newFilledPriced.includes(r))
+                  .map((r: any) => (r._isDataRow && !r._laborPriceId) ? { ...r, _laborName: laborNameOf(r) } : r),
+              }
+            : undefined;
           const { data } = await api.post(`/labor-firms/${firmaId}/save-bulk`, {
             priceListId: activeListId,
             items: fiyatli,
+            sheet: fullSheet,
           });
           toast({ title: 'Yeni kalemler eklendi', description: `${data.imported} kalem` });
         }
@@ -414,6 +440,7 @@ export default function LaborFirmDetailPage() {
         <Card className="overflow-hidden">
           <ExcelGrid
             key={activeListId}
+            ref={gridRef}
             data={gridData}
             brands={[]}
             currencySymbol="₺"

@@ -12,7 +12,7 @@ import { Card } from '@/components/ui/card';
 import api from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 import { confirm } from '@/hooks/use-confirm';
-import { ExcelGrid } from '@/components/excel-grid/ExcelGrid';
+import { ExcelGrid, type ExcelGridHandle } from '@/components/excel-grid/ExcelGrid';
 import type { ExcelGridData, ExcelRowData } from '@/components/excel-grid/types';
 
 interface BrandLibraryResponse {
@@ -77,6 +77,7 @@ export default function LibraryBrandDetailPage() {
   // anında setLiveRows ile gelir ama AYNI event'te handleSave eski liveRows'u
   // okurdu → yeni malzeme kaçar/kaydedilmez. Ref senkron.
   const liveRowsRef = useRef<ExcelRowData[]>([]);
+  const gridRef = useRef<ExcelGridHandle>(null); // save öncesi stopEditing()+getRowData()
   const [dirtyCount, setDirtyCount] = useState(0); // mevcut satir fiyat/iskonto degisikligi
   const [newCount, setNewCount] = useState(0);     // yeni girilen malzeme satiri
 
@@ -149,9 +150,12 @@ export default function LibraryBrandDetailPage() {
     const priceField = gridData.columnRoles.materialUnitPriceField;
     const unitField = gridData.columnRoles.unitField;
 
-    // liveRowsRef: SENKRON güncel satırlar (son hücre commit'i dahil). liveRows
-    // STATE async olduğu için burada ref okunur — yoksa yeni malzeme kaçar.
-    const rows2 = liveRowsRef.current;
+    // HİPOTEZ 1 (talep 24.07): son hücreye yazıp blur ETMEDEN Kaydet'e basınca
+    // aktif düzenlemeyi ZORLA commit et (yoksa yazılan çap/satır payload'a girmez).
+    gridRef.current?.stopEditing();
+    // HİPOTEZ 2: grid'in TAM güncel halini al; liveRowsRef fallback.
+    const gridRows = gridRef.current?.getRowData();
+    const rows2 = (gridRows && gridRows.length) ? gridRows : liveRowsRef.current;
     const dirtyExisting = rows2.filter((r: any) => r._isDataRow && r._libraryItemId && r._dirty);
     const newRows = rows2.filter(
       (r: any) => r._isDataRow && !r._libraryItemId && String(r[nameField] ?? '').trim() !== '',
@@ -277,6 +281,7 @@ export default function LibraryBrandDetailPage() {
 
       <Card className="overflow-hidden">
         <ExcelGrid
+          ref={gridRef}
           data={gridData}
           brands={EMPTY_BRANDS}
           currencySymbol="₺"

@@ -1152,6 +1152,9 @@ function GroupRowBand(params: ICellRendererParams<ExcelRowData>) {
 export interface ExcelGridHandle {
   /** Aktif grid'den guncel tum row'lari dondurur */
   getRowData(): ExcelRowData[];
+  /** Devam eden hucre duzenlemesini ZORLA commit eder (yazip blur etmeden
+   *  Kaydet'e basinca deger kaybini onler — save handler'i ONCE bunu cagirir). */
+  stopEditing(): void;
 }
 
 export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
@@ -1809,6 +1812,11 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         if (node.data) rows.push(node.data);
       });
       return rows;
+    },
+    stopEditing(): void {
+      // false = commit et (iptal etme). Pending edit → cellValueChanged →
+      // handleCellValueChanged → onRowDataChange, hepsi senkron akar.
+      gridRef.current?.api?.stopEditing(false);
     },
   }));
   const [pinnedBottomRow, setPinnedBottomRow] = React.useState<ExcelRowData[]>([]);

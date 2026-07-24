@@ -23,6 +23,7 @@
     "test:labor": "ts-node test/labor-matching-test.ts",
     "test:grid": "ts-node test/excel-grid-test.ts",
     "test:labor-sheet": "ts-node test/labor-sheet-test.ts",
+    "test:kl": "ts-node test/kl-liste-ekleme-test.ts",
     "test:export": "ts-node test/export-format-test.ts",
     "test:livesim": "ts-node test/export-live-sim-test.ts"
   },
