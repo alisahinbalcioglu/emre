@@ -181,21 +181,43 @@ export default function LaborFirmDetailPage() {
       // ── Mevcut kalem guncellemeleri ──────────────────────────────
       // CANLI BULGU (20.07): unit HIC GONDERILMIYORDU — kullanici Birim'i
       // duzeltti, "kaydedildi" dendi ama DB'ye gitmedi. Artik gider.
-      // Ad yalniz SENTETIK sheet'te gider (nameField=TAM ad); import
-      // JSON'unda nameField cap-only olabilir — ad overwrite YASAK.
+      // AD/ÇAP DÜZENLEME (24.07): SABIT-FORMAT sheet'te (nameField='ad',
+      // InlineFirmEntry) kalemin adı ad+cins+çap BİRLEŞİMİDİR. Kullanıcı Çap
+      // veya Ad hücresini değiştirince laborItemName YENİDEN hesaplanıp gider →
+      // backend LaborItem.name'i günceller + yeniden indeksler (eşleşme açılır).
+      // Sentetik sheet: nameField=TAM ad → doğrudan. Import JSON'da nameField
+      // cap-only olabilir (ne 'ad' ne synthetic) → ad overwrite YASAK, undefined.
+      const fixedFormat = nameField === 'ad'; // InlineFirmEntry sabit-format imzası
+      const buildLaborName = (r: any): string | undefined => {
+        if (fixedFormat) {
+          const parts = [String(r.ad ?? '').trim(), String(r.cins ?? '').trim(), String(r.cap ?? '').trim()].filter(Boolean);
+          return parts.length ? parts.join(' ') : undefined;
+        }
+        return syntheticSheet && nameField ? (String(r[nameField] ?? '').trim() || undefined) : undefined;
+      };
       if (dirtyExisting.length > 0) {
         const payload = dirtyExisting.map((r: any) => ({
           laborPriceId: r._laborPriceId,
           listPrice: priceField ? parseTrNum(r[priceField]) : undefined,
           discountRate: r._draftDiscount ?? r._laborDiscountRate ?? 0,
           unit: unitField ? (String(r[unitField] ?? '').trim() || undefined) : undefined,
-          laborItemName: syntheticSheet && nameField
-            ? (String(r[nameField] ?? '').trim() || undefined)
-            : undefined,
+          laborItemName: buildLaborName(r),
         })).filter((p) => !!p.laborPriceId);
 
+        // SABIT-FORMAT: görsel yerleşim (ad/cins/çap/para/not) sheet JSON'da
+        // yaşar. Ad/Çap düzenlemesi kalıcı olsun diye güncel grid'i de gönder
+        // (header + kayıtlı kalemler; blank + henüz kaydedilmemiş satır HARİÇ).
+        const sheetPayload = fixedFormat && gridData
+          ? {
+              columnDefs: gridData.columnDefs,
+              columnRoles: gridData.columnRoles,
+              headerEndRow: gridData.headerEndRow ?? 0,
+              rowData: rows.filter((r: any) => r._isHeaderRow || (r._isDataRow && r._laborPriceId)),
+            }
+          : undefined;
         const { data } = await api.post(`/labor-firms/price-lists/${activeListId}/save-sheets`, {
           dirtyRows: payload,
+          sheet: sheetPayload,
         });
         toast({ title: 'Kaydedildi', description: `${data.updated} kalem guncellendi` });
         if (data.errors && data.errors.length > 0) {

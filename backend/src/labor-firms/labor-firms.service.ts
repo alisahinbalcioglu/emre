@@ -406,16 +406,22 @@ export class LaborFirmsService {
       laborItemName?: string;
       unit?: string;
     }>,
+    // SABIT-FORMAT sheet güncellemesi (24.07): Ad/Çap düzenleme LaborItem.name'i
+    // updatePriceItem ile günceller AMA sheet JSON'daki görüntü (ad/cins/çap
+    // ayrı kolonlar) DB'de eski kalırdı → tekrar açılışta çap KAYBOLUR gibi
+    // görünürdü. sheet verilirse LaborPriceList.sheets güncellenir → kalıcı.
+    sheet?: { columnDefs: any[]; rowData: any[]; columnRoles: any; headerEndRow?: number },
   ) {
     await this.assertPriceListOwnership(priceListId, userId);
 
-    if (!Array.isArray(dirtyRows) || dirtyRows.length === 0) {
+    const hasSheet = !!(sheet && Array.isArray(sheet.rowData));
+    if ((!Array.isArray(dirtyRows) || dirtyRows.length === 0) && !hasSheet) {
       return { updated: 0, errors: [] };
     }
 
     let updated = 0;
     const errors: Array<{ id: string; error: string }> = [];
-    for (const row of dirtyRows) {
+    for (const row of dirtyRows ?? []) {
       try {
         await this.updatePriceItem(userId, row.laborPriceId, {
           unitPrice: row.listPrice,
@@ -427,6 +433,27 @@ export class LaborFirmsService {
       } catch (e: any) {
         errors.push({ id: row.laborPriceId, error: e?.message ?? 'Bilinmeyen' });
       }
+    }
+
+    // Görsel yerleşim (ad/cins/çap/para/not) sheet JSON'da yaşar — güncel grid
+    // ile üzerine yaz. Blank satırlar FE'de zaten filtrelendi (header + kayıtlı).
+    if (hasSheet) {
+      const pl = await this.prisma.laborPriceList.findUnique({ where: { id: priceListId }, select: { name: true } });
+      await this.prisma.laborPriceList.update({
+        where: { id: priceListId },
+        data: {
+          sheets: {
+            name: pl?.name ?? '',
+            index: 0,
+            columnDefs: sheet!.columnDefs ?? [],
+            rowData: sheet!.rowData,
+            columnRoles: sheet!.columnRoles ?? {},
+            headerEndRow: sheet!.headerEndRow ?? 0,
+            isEmpty: false,
+            synthetic: false,
+          } as any,
+        },
+      });
     }
 
     return { updated, errors };

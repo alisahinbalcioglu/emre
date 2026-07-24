@@ -113,9 +113,11 @@ export class LaborFirmsController {
         laborItemName?: string;
         unit?: string;
       }>;
+      // Sabit-format görsel yerleşim (ad/cins/çap/para/not) — güncel grid JSON.
+      sheet?: { columnDefs: any[]; rowData: any[]; columnRoles: any; headerEndRow?: number };
     },
   ) {
-    return this.service.savePriceListSheets(user.id, listId, body.dirtyRows ?? []);
+    return this.service.savePriceListSheets(user.id, listId, body.dirtyRows ?? [], body.sheet);
   }
 
   @Post(':id/save-bulk')
