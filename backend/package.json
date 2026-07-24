@@ -25,7 +25,8 @@
     "test:labor-sheet": "ts-node test/labor-sheet-test.ts",
     "test:kl": "ts-node test/kl-liste-ekleme-test.ts",
     "test:export": "ts-node test/export-format-test.ts",
-    "test:livesim": "ts-node test/export-live-sim-test.ts"
+    "test:livesim": "ts-node test/export-live-sim-test.ts",
+    "test:ke": "ts-node test/export-kolon-esleme-test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

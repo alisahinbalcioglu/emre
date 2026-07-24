@@ -37,6 +37,50 @@ const sayi = (v: any): number => {
 /** Formul icindeki sayfa adi: tek tirnak kacisli */
 const sayfaRef = (name: string) => `'${name.replace(/'/g, "''")}'`;
 
+/** TR-bilincli baslik normalizasyonu: harf-disi karakter at, kucult, TR
+ *  harfleri katla. "Malz. Birim\nFiyat" → "malzbirimfiyat". */
+const basNorm = (v: any): string =>
+  String(v ?? '')
+    .replace(/İ/g, 'i').replace(/I/g, 'i').replace(/ı/g, 'i')
+    .replace(/Ş/g, 's').replace(/ş/g, 's').replace(/Ç/g, 'c').replace(/ç/g, 'c')
+    .replace(/Ğ/g, 'g').replace(/ğ/g, 'g').replace(/Ü/g, 'u').replace(/ü/g, 'u')
+    .replace(/Ö/g, 'o').replace(/ö/g, 'o')
+    .toLowerCase().replace(/[^a-z0-9]/g, '');
+
+/** ExcelJS hucre degerinden duz metin (richText/formul-sonuc/duz). */
+const hucreDeger = (v: any): string => {
+  if (v == null) return '';
+  if (typeof v === 'object') {
+    if (Array.isArray(v.richText)) return v.richText.map((t: any) => t?.text ?? '').join('');
+    if (v.formula !== undefined) return String(v.result ?? '');
+    if (v.text !== undefined) return String(v.text);
+    return '';
+  }
+  return String(v);
+};
+
+/** Bir fiyat/tutar kolonunun ANLAMI — sistem alanini (fixedSchema) musteri
+ *  workbook'unun KENDI basligina eslemek icin (Duzeltme Talebi 24.07). */
+export type FiyatAnlam = 'matUnit' | 'matTot' | 'labUnit' | 'labTot' | 'grandUnit' | 'grandTot';
+
+/** Normalize edilmis baslik verilen anlama uyar mi? Toleransli (KE3/KE7):
+ *  "Malz."="Malzeme", "İşç."="İşçilik", "Bir. Fiyat"="Birim Fiyat". Birim
+ *  fiyat ≠ tutar ayrimi kritik (aksi halde F↔H karisir). */
+export function basligaUyar(hn: string, anlam: FiyatAnlam): boolean {
+  const malz = hn.includes('malz');
+  const isc = hn.includes('isc');
+  const birimFiyat = hn.includes('bir') && hn.includes('fiyat');
+  const tutar = hn.includes('tutar') || hn.includes('toplam');
+  switch (anlam) {
+    case 'matUnit': return malz && birimFiyat;
+    case 'matTot': return malz && tutar && !birimFiyat;
+    case 'labUnit': return isc && birimFiyat;
+    case 'labTot': return isc && tutar && !birimFiyat;
+    case 'grandUnit': return !malz && !isc && birimFiyat;
+    case 'grandTot': return !malz && !isc && tutar && !birimFiyat;
+  }
+}
+
 interface SheetJson {
   name?: string;
   index?: number;
@@ -62,10 +106,13 @@ export interface SekmeBilgi {
 /**
  * Musteri workbook'una fiyatlari yazar (IN-PLACE) ve sekme bilgisi doner.
  *
- * BULGU FIX (20.07): eski generateExcel yalniz colN rollerini yaziyordu —
- * fixedSchema sayfalarin sistem alanlari (_matBirim vb.) SESSIZCE dusuyordu.
- * Artik colN olmayan fiyat rolleri sayfanin SAGINA yeni kolon olarak eklenir
- * (baslik + degerler); orijinal hucrelere DOKUNULMAZ → T1 diff yine gecer.
+ * KOLON HEDEFI (Duzeltme Talebi 24.07 — kayma fix'i):
+ *  - colN rol → import'un okudugu KONUMA geri yazilir (round-trip, KE5).
+ *  - Sistem alani (fixedSchema _matBirim vb.) → sablonun KENDI fiyat sutunu
+ *    BASLIK ANLAMIYLA bulunur (F–J), degeri oraya yazar. Konumdan bagimsiz
+ *    (KE3). Ikinci kolon seti (eski K–O davranisi) URETILMEZ.
+ *  - Sablonda o fiyat kolonu GERCEKTEN yoksa: dogru uca TEK kolon eklenir
+ *    (eksik-kolon fallback). Orijinal hucrelere yalniz fiyat yazilir → T1 gecer.
  */
 export function writePricesToWorkbook(
   wb: ExcelJS.Workbook,
@@ -92,17 +139,51 @@ export function writePricesToWorkbook(
       if (rowData[ri]?._isDataRow) break;
     }
 
-    // ── field → 1-based kolon; colN degilse SAGA yeni kolon ekle ──
-    let nextCol = Math.max(ws.columnCount || 0, ws.actualColumnCount || 0) + 1;
+    // TUM baslik satirlari (excel 1-based) — cok satirli/kismi baslik destegi
+    const headerRows: number[] = [];
+    for (let ri = 0; ri < rowData.length; ri++) {
+      if (rowData[ri]?._isDataRow) break;
+      if (rowData[ri]?._isHeaderRow) headerRows.push(ri + 1);
+    }
+    if (headerRows.length === 0) headerRows.push(headerRow);
+
+    // ── Musteri workbook'unun KENDI basligindan hedef kolonu coz (KE1-KE7) ──
+    // Duzeltme Talebi 24.07: eski davranis (sistem alanini SAGA ek kolon
+    // yapmak) fiyatlari K–O'ya kaydiriyordu. Dogrusu: fiyat, sablonun mevcut
+    // fiyat sutununa (F–J) BASLIK ANLAMIYLA yazilir; ikinci kolon seti YOK.
+    const enSonKolon = Math.max(ws.columnCount || 0, ws.actualColumnCount || 0);
+    const kullanilanKolon = new Set<number>();
+    const kolonBasligi = (c: number): string =>
+      headerRows.map((hr) => hucreDeger(ws.getCell(hr, c).value)).join(' ');
+    const basligaGoreKolon = (anlam: FiyatAnlam): number | null => {
+      for (let c = 1; c <= enSonKolon; c++) {
+        if (kullanilanKolon.has(c)) continue;
+        if (basligaUyar(basNorm(kolonBasligi(c)), anlam)) { kullanilanKolon.add(c); return c; }
+      }
+      return null;
+    };
+
+    // ── field → 1-based kolon ──
+    let nextCol = enSonKolon + 1;
     const fieldToCol: Record<string, number> = {};
-    const kolonAta = (field: string | undefined, fallbackBaslik: string): number | null => {
+    const kolonAta = (
+      field: string | undefined, fallbackBaslik: string, anlam?: FiyatAnlam,
+    ): number | null => {
       if (!field) return null;
       if (fieldToCol[field]) return fieldToCol[field];
+      // colN: import'un okudugu kolona GERI yaz (round-trip — KE5)
       if (field.startsWith('col')) {
         const idx = parseInt(field.replace('col', ''), 10);
-        if (!isNaN(idx)) { fieldToCol[field] = idx + 1; return idx + 1; }
+        if (!isNaN(idx)) { const col = idx + 1; fieldToCol[field] = col; kullanilanKolon.add(col); return col; }
       }
-      // Sistem alani (fixedSchema) → yeni kolon (bulgu fix'i)
+      // Sistem alani (fixedSchema): ONCE sablonun KENDI fiyat sutununu bul
+      // (baslik anlamiyla — konumdan bagimsiz, KE1/KE3/KE7).
+      if (anlam) {
+        const bulunan = basligaGoreKolon(anlam);
+        if (bulunan) { fieldToCol[field] = bulunan; return bulunan; }
+      }
+      // Sablonda o kolon GERCEKTEN yoksa: dogru uca TEK kolon ekle
+      // (eksik-kolon fallback; kaydirilmis ikinci SET degil).
       const col = nextCol++;
       fieldToCol[field] = col;
       const hCell = ws.getCell(headerRow, col);
@@ -114,12 +195,12 @@ export function writePricesToWorkbook(
     const qtyCol = roles.quantityField && roles.quantityField.startsWith('col')
       ? kolonAta(roles.quantityField, 'Miktar')
       : null; // miktar SISTEM alaniysa orijinalde yok → formul kurulamaz
-    const matUnitCol = kolonAta(roles.materialUnitPriceField, 'Malz. Birim Fiyat');
-    const matTotCol = kolonAta(roles.materialTotalField, 'Malz. Toplam');
-    const labUnitCol = kolonAta(roles.laborUnitPriceField, 'İşç. Birim Fiyat');
-    const labTotCol = kolonAta(roles.laborTotalField, 'İşç. Toplam');
-    const grandUnitCol = kolonAta(roles.grandUnitPriceField, 'Toplam Birim');
-    const grandTotCol = kolonAta(roles.grandTotalField, 'Toplam Tutar');
+    const matUnitCol = kolonAta(roles.materialUnitPriceField, 'Malz. Birim Fiyat', 'matUnit');
+    const matTotCol = kolonAta(roles.materialTotalField, 'Malz. Toplam', 'matTot');
+    const labUnitCol = kolonAta(roles.laborUnitPriceField, 'İşç. Birim Fiyat', 'labUnit');
+    const labTotCol = kolonAta(roles.laborTotalField, 'İşç. Toplam', 'labTot');
+    const grandUnitCol = kolonAta(roles.grandUnitPriceField, 'Toplam Birim', 'grandUnit');
+    const grandTotCol = kolonAta(roles.grandTotalField, 'Toplam Tutar', 'grandTot');
 
     let ilkVeri = 0; let sonVeri = 0;
     let matToplam = 0; let labToplam = 0;
