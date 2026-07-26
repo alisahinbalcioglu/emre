@@ -10,7 +10,7 @@ import { ArrowLeft, Download, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import api from '@/lib/api';
-import { teklifCiktisiniIndir } from '@/lib/export-download';
+import { teklifCiktisiniIndir, fiyatliExceliIndir } from '@/lib/export-download';
 import { ExcelGrid } from '@/components/excel-grid/ExcelGrid';
 import { SheetTabs } from '@/components/excel-grid/SheetTabs';
 import type { ExcelGridData } from '@/components/excel-grid/types';
@@ -102,9 +102,21 @@ export default function QuoteDetailPage() {
           <p className="mt-1 text-sm text-muted-foreground">{new Date(quote.createdAt).toLocaleDateString('tr-TR')}</p>
         </div>
         <div className="flex gap-2">
-          {/* KULLANICI KARARI (21.07): onizleme sayfasi KALDIRILDI — buton
-              DOGRUDAN Excel + PDF indirir (format kapagi + liste degisimi
-              backend'de; rev/arsiv otomatik). */}
+          {/* KULLANICI KARARI (24.07): PDF kaldirildi, cikti IKIYE ayrildi —
+              her tik TEK dosya indirir (Chrome coklu-indirme blogu tetiklenmez).
+              1. Fiyatli Excel: musterinin kesif dosyasi, fiyatlar yazilmis.
+              2. Teklif Formati: kapak/icmal'li tam cikti (rev artar). */}
+          <Button
+            variant="outline"
+            disabled={exporting}
+            onClick={async () => {
+              setExporting(true);
+              try { await fiyatliExceliIndir(id); } finally { setExporting(false); }
+            }}
+          >
+            <Download className="mr-2 h-4 w-4" />
+            Fiyatlandırılmış Excel
+          </Button>
           <Button
             disabled={exporting}
             onClick={async () => {
@@ -113,7 +125,7 @@ export default function QuoteDetailPage() {
             }}
           >
             <Download className="mr-2 h-4 w-4" />
-            {exporting ? 'Hazırlanıyor…' : 'Teklifi Dışa Aktar'}
+            {exporting ? 'Hazırlanıyor…' : 'Teklif Formatında Aktar'}
           </Button>
         </div>
       </div>

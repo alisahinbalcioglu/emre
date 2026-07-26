@@ -1,6 +1,9 @@
-// KULLANICI KARARI (21.07): Cikti Onizleme sayfasi KALDIRILDI — "Teklifi
-// Dışa Aktar" DOGRUDAN Excel + PDF indirir. Tek beklenti: "duzgun inmesi".
-// (Kapak/format/liste degisimi tamamen backend'de; rev/arsiv otomatik.)
+// KULLANICI KARARI (24.07): PDF kaldirildi — cikti IKIYE ayrildi:
+//   1. Fiyatlandirilmis Excel — musterinin yukledigi kesif dosyasi, fiyatlar
+//      yazilmis (teklif formati YOK; "teklif formatinda gondermek
+//      istemeyebilir").
+//   2. Teklif Formati — kapak/icmal/format tabanli tam cikti (rev artar).
+// Her tik TEK dosya indirir → Chrome coklu-indirme blogu tetiklenmez (KE12).
 import api from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 
@@ -15,8 +18,12 @@ function blobIndir(data: Blob, headers: any, fallback: string) {
     if (m?.[1]) filename = decodeURIComponent(m[1].replace(/['"]/g, ''));
   }
   a.download = filename;
+  document.body.appendChild(a);
   a.click();
-  window.URL.revokeObjectURL(url);
+  a.remove();
+  // KE13: revoke'u geciktir — indirme baslamadan URL olmesin; her cagri
+  // YENI blob URL uretir, ikinci tik boşa dusmez.
+  setTimeout(() => window.URL.revokeObjectURL(url), 10_000);
 }
 
 /** responseType:'blob' isteklerinde hata govdesi de Blob gelir — mesaji coz. */
@@ -33,15 +40,29 @@ async function hataMesaji(e: any): Promise<string> {
   }
 }
 
-/** Teklifin Excel + PDF ciktisini uretip DOGRUDAN indirir (rev artar, arsivlenir). */
+/** Teklif Formati ciktisini (.xlsx) uretip indirir (rev artar, arsivlenir). */
 export async function teklifCiktisiniIndir(quoteId: string): Promise<boolean> {
   try {
-    toast({ title: 'Çıktı hazırlanıyor…', description: 'Excel ve PDF üretiliyor (PDF birkaç saniye sürebilir).' });
+    toast({ title: 'Çıktı hazırlanıyor…', description: 'Teklif formatında Excel üretiliyor.' });
     const x = await api.post(`/quotes/${quoteId}/export`, {}, { responseType: 'blob' });
     blobIndir(x.data, x.headers, 'teklif.xlsx');
-    const p = await api.get(`/quotes/${quoteId}/export-pdf`, { responseType: 'blob' });
-    blobIndir(p.data, p.headers, 'teklif.pdf');
-    toast({ title: 'İndirildi', description: 'Excel + PDF bilgisayarınıza indi.' });
+    toast({ title: 'İndirildi', description: 'Teklif Excel dosyası bilgisayarınıza indi.' });
+    return true;
+  } catch (e: any) {
+    // KE14: hata gorunur + buton tekrar denemeye hazir (caller finally ile acar)
+    toast({ title: 'Dışa aktarım hatası', description: await hataMesaji(e), variant: 'destructive' });
+    return false;
+  }
+}
+
+/** Fiyatlandirilmis kesif Excel'ini indirir — musterinin orijinal dosyasi,
+ *  fiyatlar yazilmis; teklif formati YOK, rev ARTMAZ. */
+export async function fiyatliExceliIndir(quoteId: string): Promise<boolean> {
+  try {
+    toast({ title: 'Çıktı hazırlanıyor…', description: 'Fiyatlandırılmış keşif Excel\'i üretiliyor.' });
+    const x = await api.get(`/quotes/${quoteId}/export-priced`, { responseType: 'blob' });
+    blobIndir(x.data, x.headers, 'fiyatlandirilmis-kesif.xlsx');
+    toast({ title: 'İndirildi', description: 'Fiyatlandırılmış keşif bilgisayarınıza indi.' });
     return true;
   } catch (e: any) {
     toast({ title: 'Dışa aktarım hatası', description: await hataMesaji(e), variant: 'destructive' });

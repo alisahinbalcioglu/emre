@@ -79,7 +79,21 @@ export class QuotesController {
     res.end(buffer);
   }
 
-  /** T9: ayni icerigin PDF'i (rev degistirmez) */
+  /** Fiyatlandirilmis kesif Excel'i — teklif formati YOK, rev ARTMAZ
+   *  (kullanici karari 24.07: cikti ikiye ayrildi). */
+  @Get(':id/export-priced')
+  async exportPriced(@CurrentUser() user: any, @Param('id') id: string, @Res() res: Response) {
+    const { buffer, filename } = await this.quotesService.exportPricedXlsx(user.id, id);
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${encodeURIComponent(filename)}"`,
+      'Content-Length': buffer.length,
+    });
+    res.end(buffer);
+  }
+
+  /** T9: ayni icerigin PDF'i (rev degistirmez) — UI'dan kaldirildi (24.07,
+   *  "oncelikle pdf olmasin"); rota arsiv/ileri kullanim icin duruyor. */
   @Get(':id/export-pdf')
   async exportPdf(@CurrentUser() user: any, @Param('id') id: string, @Res() res: Response) {
     const { buffer, filename } = await this.quotesService.exportPdfPro(user.id, id);

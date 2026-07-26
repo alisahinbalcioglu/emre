@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx';
 import * as puppeteer from 'puppeteer';
 import * as ExcelJS from 'exceljs';
 // PRD Teklif Formatim (v2.1): profesyonel cikti motoru
-import { buildExportWorkbook, ExportSonucu } from './export-engine';
+import { buildExportWorkbook, writePricesToWorkbook, ExportSonucu } from './export-engine';
 import { buildSampleFormat, sheetToGrid, ExportOverrides, FillContext } from '../quote-formats/format-engine';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { xlsxToPdf } from '../utils/xlsx-to-pdf';
@@ -324,6 +324,28 @@ export class QuotesService {
 
     console.log(`[Export] ${quoteNo} Rev.${yeniRev} uretildi (${(buffer.length / 1024).toFixed(0)} KB)`);
     return { buffer, filename, rev: yeniRev, quoteNo };
+  }
+
+  /** Fiyatlandirilmis kesif Excel'i: MUSTERININ ORIJINAL dosyasi, fiyatlar
+   *  yazilmis — teklif formati (kapak/icmal) YOK, REV ARTMAZ, arsivlenmez.
+   *  Kullanici karari 24.07: "sadece fiyatlandirdigi exceli indirmek
+   *  isteyebilir (teklif formatinda gondermek istemeyebilir)". */
+  async exportPricedXlsx(userId: string, id: string): Promise<{ buffer: Buffer; filename: string }> {
+    const quote = await this.quoteGetir(userId, id);
+    if (!quote.originalFile) {
+      throw new BadRequestException(
+        'Bu teklifte orijinal Excel dosyası kayıtlı değil — dışa aktarım için keşif Excel\'ini yükleyip teklifi yeniden kaydedin.',
+      );
+    }
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(Buffer.from(quote.originalFile) as any);
+    const sheetsArr = Array.isArray(quote.sheets) ? (quote.sheets as any[]) : [];
+    writePricesToWorkbook(wb, sheetsArr);
+    const buffer = Buffer.from(await wb.xlsx.writeBuffer());
+    const temizBaslik = String(quote.title ?? 'Teklif').replace(/[\\/:*?"<>|]/g, '-').slice(0, 60);
+    const filename = `${temizBaslik} - Fiyatlandırılmış Keşif.xlsx`;
+    console.log(`[Export] Fiyatlandirilmis kesif indirildi (${(buffer.length / 1024).toFixed(0)} KB)`);
+    return { buffer, filename };
   }
 
   /** T10 arsivi: uretilmis revizyonlar. */

@@ -1259,7 +1259,7 @@ export default function NewQuotePage() {
         description: `"${finalTitle}" basariyla olusturuldu.`,
       });
       if (sonra === 'export' && created?.id) {
-        // KULLANICI KARARI (21.07): onizleme YOK — dogrudan Excel + PDF indir
+        // KULLANICI KARARI (24.07): PDF yok — teklif formatinda tek Excel iner
         await teklifCiktisiniIndir(created.id);
       }
       router.push('/quotes');

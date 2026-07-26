@@ -238,6 +238,25 @@ async function run() {
   check('SIM-16 T13: ana format dosyasi DEGISMEDI (yer tutucu hala duruyor)',
     String(fmtKontrol.getWorksheet('KAPAK')?.getCell('B12').value) === 'Sn {{MUSTERI}};', '');
 
+  // ── SIM-17: Fiyatlandirilmis kesif (kullanici karari 24.07 — cikti #1:
+  //    musterinin orijinal dosyasi + fiyatlar, teklif formati YOK, rev SABIT) ──
+  {
+    const revOnce = quote.rev;
+    const rp = await svc.exportPricedXlsx('u1', 'q1');
+    const op = new ExcelJS.Workbook();
+    await op.xlsx.load(rp.buffer as any);
+    check('SIM-17 fiyatli kesif: YALNIZ musteri sayfalari (format kapagi/icmali YOK)',
+      JSON.stringify(op.worksheets.map((w) => w.name)) === JSON.stringify(['mekanik G BLOK', 'elektrik']),
+      op.worksheets.map((w) => w.name).join('|'));
+    const mekP = op.getWorksheet('mekanik G BLOK')!;
+    check('SIM-17 fiyatlar orijinal yapida dolu (E3=10, tutar formullu)',
+      mekP.getCell(3, 5).value === 10 && (mekP.getCell(3, 6).value as any)?.formula === 'D3*E3',
+      `E3=${JSON.stringify(mekP.getCell(3, 5).value)}`);
+    check('SIM-17 dosya adi "Fiyatlandırılmış" + REV DEGISMEDI (arsivlenmez)',
+      rp.filename.includes('Fiyatlandırılmış') && quote.rev === revOnce && exportlar.length === 3,
+      `ad=${rp.filename} rev=${quote.rev} arsiv=${exportlar.length}`);
+  }
+
   // ════════════════════════════════════════════════════════════════
   // GENELLIK MATRISI (kullanici talimati 21.07: "herkesin formati baska —
   // sorunu GENEL coz"). Motor hicbir sayfa adina/hucre konumuna/duzene
