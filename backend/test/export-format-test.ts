@@ -242,7 +242,7 @@ async function run() {
     }
   }
 
-  // ── BULGU FIX + T8: sistem alanli sayfa (fixedSchema) + orijinalsiz ──
+  // ── KE8 + T8: sistem alanli sayfa (fixedSchema), sablonda fiyat kolonu YOK ──
   {
     const sheetsArr = [{
       name: 'Metraj', index: 0, isEmpty: false,
@@ -273,14 +273,15 @@ async function run() {
     const out = new ExcelJS.Workbook();
     await out.xlsx.load(Buffer.from(await sonuc.wb.xlsx.writeBuffer()) as any);
     const ws = out.getWorksheet('Metraj')!;
-    check('BULGU: sistem alani SAGA yeni kolon olarak eklendi (baslik dahil)',
-      hucreMetni(ws.getCell(1, 5)) === 'Birim Fiyat' && hucreMetni(ws.getCell(1, 6)) === 'Tutar',
-      `E1="${hucreMetni(ws.getCell(1, 5))}" F1="${hucreMetni(ws.getCell(1, 6))}"`);
-    const tutar: any = ws.getCell(2, 6).value;
-    check('BULGU: yeni kolonda deger + formul (D2*E2)',
-      ws.getCell(2, 5).value === 5 && !!tutar && tutar.formula === 'D2*E2',
-      `E2=${JSON.stringify(ws.getCell(2, 5).value)} F2=${JSON.stringify(tutar)}`);
-    check('BULGU/T1: orijinal 4 kolon dokunulmadi',
+    // KE8 (Duzeltme Talebi 24.07 — eski "SAGA ekle" davranisi KALDIRILDI):
+    // sablonda fiyat kolonu YOKSA kolon EKLENMEZ, fiyat yazilmaz (append yasak)
+    check('KE8: sablonda fiyat kolonu yok → kolon EKLENMEDI (E/F bos, sag temiz)',
+      !ws.getCell(1, 5).value && !ws.getCell(1, 6).value
+      && !ws.getCell(2, 5).value && !ws.getCell(2, 6).value,
+      `E1=${JSON.stringify(ws.getCell(1, 5).value)} F2=${JSON.stringify(ws.getCell(2, 6).value)}`);
+    check('KE8: yazilamayan tutar yine İCMAL degerinde birikir (matDeger=50)',
+      sonuc.sekmeler[0]?.matDeger === 50, JSON.stringify(sonuc.sekmeler[0]));
+    check('KE8/T1: orijinal 4 kolon dokunulmadi',
       hucreMetni(ws.getCell(2, 2)) === 'Boru' && ws.getCell(2, 4).value === 10, '');
 
     // T8 GUNCELLENDI (Bulgu Raporu 21.07): T8 = "FORMAT yokken sade

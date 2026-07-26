@@ -106,13 +106,14 @@ export interface SekmeBilgi {
 /**
  * Musteri workbook'una fiyatlari yazar (IN-PLACE) ve sekme bilgisi doner.
  *
- * KOLON HEDEFI (Duzeltme Talebi 24.07 — kayma fix'i):
+ * KOLON HEDEFI (Duzeltme Talepleri 24.07 — kayma + fazla-kolon fix'leri):
  *  - colN rol → import'un okudugu KONUMA geri yazilir (round-trip, KE5).
  *  - Sistem alani (fixedSchema _matBirim vb.) → sablonun KENDI fiyat sutunu
  *    BASLIK ANLAMIYLA bulunur (F–J), degeri oraya yazar. Konumdan bagimsiz
  *    (KE3). Ikinci kolon seti (eski K–O davranisi) URETILMEZ.
- *  - Sablonda o fiyat kolonu GERCEKTEN yoksa: dogru uca TEK kolon eklenir
- *    (eksik-kolon fallback). Orijinal hucrelere yalniz fiyat yazilir → T1 gecer.
+ *  - Sablonda o fiyat kolonu YOKSA o veri HIC yazilmaz (KE8-KE11): musteri
+ *    duzeni bilerek kurmus (orn. malzeme-only kesif) — saga kolon APPEND
+ *    YASAK. Yazilamayan tutarlar yine SekmeBilgi'de birikir (İCMAL degeri).
  */
 export function writePricesToWorkbook(
   wb: ExcelJS.Workbook,
@@ -128,9 +129,6 @@ export function writePricesToWorkbook(
 
     const roles = sheetData.columnRoles ?? {};
     const rowData = sheetData.rowData ?? [];
-    const defs = sheetData.columnDefs ?? [];
-    const headerText = (field: string, fallback: string) =>
-      defs.find((d) => d.field === field)?.headerName?.trim() || fallback;
 
     // Baslik satiri: rowData'daki SON _isHeaderRow (excel 1-based = ri+1); yoksa 1
     let headerRow = 1;
@@ -164,11 +162,8 @@ export function writePricesToWorkbook(
     };
 
     // ── field → 1-based kolon ──
-    let nextCol = enSonKolon + 1;
     const fieldToCol: Record<string, number> = {};
-    const kolonAta = (
-      field: string | undefined, fallbackBaslik: string, anlam?: FiyatAnlam,
-    ): number | null => {
+    const kolonAta = (field: string | undefined, anlam?: FiyatAnlam): number | null => {
       if (!field) return null;
       if (fieldToCol[field]) return fieldToCol[field];
       // colN: import'un okudugu kolona GERI yaz (round-trip — KE5)
@@ -176,31 +171,26 @@ export function writePricesToWorkbook(
         const idx = parseInt(field.replace('col', ''), 10);
         if (!isNaN(idx)) { const col = idx + 1; fieldToCol[field] = col; kullanilanKolon.add(col); return col; }
       }
-      // Sistem alani (fixedSchema): ONCE sablonun KENDI fiyat sutununu bul
+      // Sistem alani (fixedSchema): sablonun KENDI fiyat sutununu bul
       // (baslik anlamiyla — konumdan bagimsiz, KE1/KE3/KE7).
       if (anlam) {
         const bulunan = basligaGoreKolon(anlam);
         if (bulunan) { fieldToCol[field] = bulunan; return bulunan; }
       }
-      // Sablonda o kolon GERCEKTEN yoksa: dogru uca TEK kolon ekle
-      // (eksik-kolon fallback; kaydirilmis ikinci SET degil).
-      const col = nextCol++;
-      fieldToCol[field] = col;
-      const hCell = ws.getCell(headerRow, col);
-      hCell.value = headerText(field, fallbackBaslik);
-      hCell.font = { bold: true };
-      return col;
+      // Sablonda o kolon YOK → yazilmaz (KE8-KE11: append YASAK; musteri
+      // duzeni bilerek kurmus, sisteme kolon dayatilmaz).
+      return null;
     };
 
     const qtyCol = roles.quantityField && roles.quantityField.startsWith('col')
-      ? kolonAta(roles.quantityField, 'Miktar')
+      ? kolonAta(roles.quantityField)
       : null; // miktar SISTEM alaniysa orijinalde yok → formul kurulamaz
-    const matUnitCol = kolonAta(roles.materialUnitPriceField, 'Malz. Birim Fiyat', 'matUnit');
-    const matTotCol = kolonAta(roles.materialTotalField, 'Malz. Toplam', 'matTot');
-    const labUnitCol = kolonAta(roles.laborUnitPriceField, 'İşç. Birim Fiyat', 'labUnit');
-    const labTotCol = kolonAta(roles.laborTotalField, 'İşç. Toplam', 'labTot');
-    const grandUnitCol = kolonAta(roles.grandUnitPriceField, 'Toplam Birim', 'grandUnit');
-    const grandTotCol = kolonAta(roles.grandTotalField, 'Toplam Tutar', 'grandTot');
+    const matUnitCol = kolonAta(roles.materialUnitPriceField, 'matUnit');
+    const matTotCol = kolonAta(roles.materialTotalField, 'matTot');
+    const labUnitCol = kolonAta(roles.laborUnitPriceField, 'labUnit');
+    const labTotCol = kolonAta(roles.laborTotalField, 'labTot');
+    const grandUnitCol = kolonAta(roles.grandUnitPriceField, 'grandUnit');
+    const grandTotCol = kolonAta(roles.grandTotalField, 'grandTot');
 
     let ilkVeri = 0; let sonVeri = 0;
     let matToplam = 0; let labToplam = 0;

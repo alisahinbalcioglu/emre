@@ -1,8 +1,11 @@
 /**
- * KOLON ESLEME — KABUL TESTLERI (Duzeltme Talebi 24.07: "fiyatlar sablonun
- * F–J kolonlari yerine K–O'ya kayiyor"). fixedSchema sayfalarda roller sistem
- * alanidir (_matBirim vb.); export bunlari SABLONUN KENDI fiyat sutununa
- * BASLIK ANLAMIYLA yazmali — ikinci kolon seti (K–O) URETMEDEN.
+ * KOLON ESLEME — KABUL TESTLERI (Duzeltme Talepleri 24.07):
+ *  KE1-KE7: "fiyatlar sablonun F–J kolonlari yerine K–O'ya kayiyor" —
+ *   fixedSchema sistem alanlari (_matBirim vb.) SABLONUN KENDI fiyat
+ *   sutununa BASLIK ANLAMIYLA yazilir, ikinci kolon seti URETILMEZ.
+ *  KE8-KE11: "sablonda olmayan kolon ekleniyor" — sablonda karsiligi
+ *   olmayan fiyat kolonu ASLA eklenmez (append yasak; malzeme-only kesifte
+ *   iscilik verisi yazilmaz, musteri duzeni bilerek kurmus).
  *   npx ts-node test/export-kolon-esleme-test.ts   (npm run test:ke)
  *
  * Fixture, ekran goruntusundeki gercek duzenin ikizi:
@@ -177,6 +180,56 @@ async function run() {
     const mek = o.getWorksheet('mekanik G BLOK')!;
     check('KE6e çıkan liste sayfası: F3=26,6 dolu, K–O boş',
       mek.getCell(3, 6).value === 26.6 && bosMu(mek.getCell(3, 11).value), '');
+  }
+
+  // KE10: iscilik kolonlari VAR (F_G sablonu) → degerler O kolonlara yazildi
+  // (append degil, eslesme) — ana senaryonun acik adlandirilmis kaniti.
+  check('KE10 işçilik kolonlu şablon: İşç. değerleri G/I sütunlarında, ek kolon yok',
+    ws.getCell(3, 7).value === 500 && (ws.getCell(3, 9).value as any)?.result === 156500
+    && !ws.getCell(2, 11).value, '');
+
+  // KE11a: genel toplam SABLONUN KENDI Toplam Tutar sutununa (J) yazildi
+  check('KE11a genel toplam şablonun J sütununda (=H3+I3), uydurma kolon yok',
+    j3?.formula === 'H3+I3' && bosMu(ws.getCell(2, 11).value), JSON.stringify(j3));
+
+  // ══ KE8/KE9: MALZEME-ONLY sablon (UYMZ ikizi) — iscilik kolonu YOK ══
+  // I=MALZEME BİRİM FİYATI · J=MALZEME TOPLAM FİYATI; iscilik/toplam kolonu
+  // hic yok → iscilik verisi YAZILMAZ, L/M/N gibi kolon EKLENMEZ.
+  {
+    const BASLIK_MALZ = ['SIRA', 'İŞİN TANIMI', 'AÇIKLAMA', 'BİRİM', 'MİKTAR',
+      'PURSANTAJ', 'MARKA', 'NOT', 'MALZEME BİRİM FİYATI', 'MALZEME TOPLAM FİYATI'];
+    const buf9 = await musteriFixture(BASLIK_MALZ);
+    const wb9 = new ExcelJS.Workbook();
+    await wb9.xlsx.load(buf9 as any);
+    const bilgi9 = writePricesToWorkbook(wb9, sheetsFixture() as any);
+    const w9 = wb9.getWorksheet('mekanik G BLOK')!;
+
+    // KE9: yalniz malzeme kolonlari dolar — I=birim, J=formullu toplam
+    const j9: any = w9.getCell(3, 10).value;
+    check('KE9 malzeme-only şablon: I3=26,6 · J3==E3*I3 (8325,8)',
+      w9.getCell(3, 9).value === 26.6 && j9?.formula === 'E3*I3' && j9?.result === 8325.8,
+      `I3=${JSON.stringify(w9.getCell(3, 9).value)} J3=${JSON.stringify(j9)}`);
+
+    // KE8: iscilik/toplam kolonu EKLENMEDI — K..O basliklari ve verileri BOS
+    const sagTemiz = [2, 3, 4].every((r) =>
+      [11, 12, 13, 14, 15].every((c) => bosMu(w9.getCell(r, c).value)));
+    check('KE8 İşçilik kolonu yok → L/M/N eklenmedi; sağ taraf tamamen temiz',
+      sagTemiz, [11, 12, 13].map((c) => JSON.stringify(w9.getCell(2, c).value)).join('|'));
+
+    // KE8: iscilik DEGERLERI hicbir hucreye yazilmadi (500/600/156500 yok)
+    let iscilikSizdi = '';
+    w9.eachRow((row, rn) => row.eachCell((cell, cn) => {
+      const v: any = cell.value;
+      const n = typeof v === 'number' ? v : (v && typeof v === 'object' ? v.result : NaN);
+      if (n === 500 || n === 600 || n === 156500 || n === 228000) iscilikSizdi = `r${rn}c${cn}=${n}`;
+    }));
+    check('KE8 işçilik verisi hiçbir hücreye sızmadı', iscilikSizdi === '', iscilikSizdi);
+
+    // KE11b: sablonda ayri Toplam kolonu yok → uretilmedi; İCMAL degerleri
+    // yine birikti (iscilik dahil — icmal formatin kendi sayfasi)
+    check('KE11b ayrı Toplam kolonu üretilmedi; İCMAL değerleri birikti (mat=8325,8 lab=384500)',
+      bilgi9[0].labCol === null && bilgi9[0].matDeger === 8325.8 && bilgi9[0].labDeger === 384500,
+      JSON.stringify(bilgi9[0]));
   }
 
   // ══ KE7: KISALTMALI / SATIR-SONLU basliklar yine dogru sutunu bulur ══
