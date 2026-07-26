@@ -289,12 +289,26 @@ export class MatchingService {
       if (!name?.trim()) continue;
       const line = parseLine(name, units?.[name]);
 
-      let hint = this.terminology.resolveAlias(name, aliases);
-      // E8: satirin KENDI ailesi cozulduyse sozluk BASKA aile dayatamaz
-      // ("DOĞALGAZ VANASI KÜRESEL" — dogalgaz alias'i boru der, satir vana).
-      if (hint?.impliedType && line.familySlug && hint.impliedType !== line.familySlug) hint = null;
-      // E2: adet birimli satira boru sozlugu dayatilamaz (birim sinyali)
-      if (hint?.impliedType === 'boru' && line.unitSignal === 'equipment' && line.familySlug !== 'boru') hint = null;
+      // TS vakasi (24.07): alias secimi KADEMELI — en uzun eslesen alias
+      // guard'a takilirsa (veya ceviri degeri tasimiyorsa) SIRADAKI denenir.
+      // Eski tek-kazanan davranista metne degen ogrenilmis bir alias, seed
+      // ceviriyi ("temiz su"→PPR) golgeleyip hint'i tamamen dusurebiliyordu.
+      let hint: AliasHint | null = null;
+      let atlanan = 0;
+      for (const aday of this.terminology.resolveAliasAdaylari(name, aliases)) {
+        // E8: satirin KENDI ailesi cozulduyse sozluk BASKA aile dayatamaz
+        // ("DOĞALGAZ VANASI KÜRESEL" — dogalgaz alias'i boru der, satir vana).
+        if (aday.impliedType && line.familySlug && aday.impliedType !== line.familySlug) { atlanan++; continue; }
+        // E2: adet birimli satira boru sozlugu dayatilamaz (birim sinyali)
+        if (aday.impliedType === 'boru' && line.unitSignal === 'equipment' && line.familySlug !== 'boru') { atlanan++; continue; }
+        // Ceviri degeri tasimayan alias (S4 zehri: saf ogrenilmis AD —
+        // impliedType/sinif/cins hicbiri yok) hint OLAMAZ; arkasindaki
+        // gercek ceviriyi de golgelemesin.
+        if (!aday.impliedType && !aday.sizeClass && aday.kinds.length === 0) { atlanan++; continue; }
+        hint = aday;
+        break;
+      }
+      if (atlanan > 0) console.log(`[Matching] v2 sozluk: "${name}" — ${atlanan} alias adayi guard'la atlandi${hint ? '' : ', hint YOK'}`);
       // T3/T5: SATIR KAZANIR — satirda ACIK sinif/cins kelimesi yaziliysa
       // sozluk sinif/taban DAYATAMAZ ("TEMİZ SU başlığı altında DN50 GALVANİZ
       // ÇELİK BORU" satiri CELIKTIR; alias plastic filtresi onu ELIYORDU ve

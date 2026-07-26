@@ -158,12 +158,20 @@ export class TerminologyService implements OnModuleInit {
 
   /** Metinde geçen EN UZUN alias'i bul (S2 contains + longest-wins). */
   resolveAlias(text: string, aliases: AliasHint[]): AliasHint | null {
-    if (aliases.length === 0) return null;
+    return this.resolveAliasAdaylari(text, aliases)[0] ?? null;
+  }
+
+  /** Metinde geçen TÜM alias'lar, uzunluk sirali (en uzun once).
+   *  TS vakasi (canli 24.07, "TEMİZ SU BORULARI DN 20" → PVC-U): tek-kazanan
+   *  resolveAlias'ta metne degen daha uzun bir ogrenilmis/kullanici alias'i,
+   *  E8 guard'ina takilsa veya ceviri degeri tasimasa bile seed ceviriyi
+   *  ("temiz su" → PPR) GOLGELIYORDU — hint dusuyor, 'temiz su' kelimeleri
+   *  urun-adi filtresi olup PPR'lari eliyordu. Cagiran (matchV2) adaylari
+   *  sirayla dener; guard'i gecen ILK alias kazanir. */
+  resolveAliasAdaylari(text: string, aliases: AliasHint[]): AliasHint[] {
+    if (aliases.length === 0) return [];
     const norm = normalizeText(text);
-    for (const a of aliases) {
-      if (norm.includes(a.alias)) return a; // liste uzunluk sirali — ilk bulunan en uzun
-    }
-    return null;
+    return aliases.filter((a) => norm.includes(a.alias)); // liste zaten uzunluk sirali
   }
 
 

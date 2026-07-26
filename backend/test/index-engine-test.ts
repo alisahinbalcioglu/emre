@@ -282,6 +282,94 @@ async function dispatchTestleri() {
   }
 }
 
+/**
+ * TS VAKASI (canli 24.07, WAVİN): "TEMİZ SU BORULARI DN 20" adaylari
+ * PP-R yerine TSB PVC-U geliyordu. Kok neden: tek-kazanan resolveAlias —
+ * metne degen daha uzun bir ogrenilmis/kullanici alias'i E8'e takilinca
+ * (veya ceviri degeri tasimayinca) seed "temiz su → PPR" ceviriyi
+ * GOLGELIYORDU; hint dusuyor, 'temiz su' kelimeleri urun-adi filtresi olup
+ * PPR'lari eliyordu. Fix: KADEMELI alias — guard'i gecen ILK alias kazanir.
+ */
+async function temizSuTestleri() {
+  const { MatchingService } = require('../src/modules/matching/matching.service');
+  const { TerminologyService, ALIAS_SEEDS } = require('../src/modules/matching/terminology.service');
+
+  function svcAlias(rows: any[], ekAliaslar: any[] = []) {
+    const aliasRows = [
+      ...ALIAS_SEEDS.map((s: any, i: number) => ({ id: `a${i}`, userId: null, active: true, ...s })),
+      ...ekAliaslar.map((s: any, i: number) => ({
+        id: `L${i}`, userId: 'u1', active: true, canonical: 'ogrenilmis',
+        kinds: [], sizeClass: null, stripTags: [], impliedType: null, ...s,
+      })),
+    ];
+    const prisma: any = {
+      userLibrary: {
+        findMany: async (args: any) => {
+          const b = args?.where?.brandId;
+          if (b && typeof b === 'object' && 'not' in b) return [];
+          return rows;
+        },
+      },
+      brand: { findUnique: async () => ({ name: 'WAVIN' }) },
+      eslesmeHafizasi: { findUnique: async () => null, upsert: async () => {} },
+      terminologyAlias: { findMany: async () => aliasRows },
+    };
+    const fx = { getRates: async () => ({ usdTry: 40, eurTry: 48, usdTryBuying: 40, eurTryBuying: 48, source: 'fake', date: '' }) };
+    return new MatchingService(prisma, new TerminologyService(prisma), fx);
+  }
+
+  // WAVİN ikizi (ekran goruntusu): PPR borular + adinda "Temiz Su" geçen PVC-U
+  const W = { kategori: 'PPR Grubu — Borular', birim: 'metre', sheetName: 'WAVIN', paraBirimi: 'TL' };
+  const WAVIN = [
+    libRow({ ...W, ad: 'PP-R Düz Boru PN25 (SF:1,5 - S2,5 - SDR6)', cins: 'PP-R / PP-RCT', cap: '20 mm', price: 57.1, urunKodu: '3050484' }),
+    libRow({ ...W, ad: 'PP-R Düz Boru PN20 (SF:1,5 - S3,2 - SDR7,4)', cins: 'PP-R / PP-RCT', cap: '20 mm', price: 53.8, urunKodu: '3050481' }),
+    libRow({ ...W, kategori: 'PVC Grubu', ad: 'TSB PVC-U Temiz Su Borusu 10 ATÜ', cins: 'PVC-U', cap: '20 mm', price: 14.3, urunKodu: 'TSB10' }),
+    libRow({ ...W, kategori: 'PVC Grubu', ad: 'TSB PVC-U Temiz Su Borusu 16 ATÜ', cins: 'PVC-U', cap: '20 mm', price: 14.3, urunKodu: 'TSB16' }),
+  ];
+  const SATIR = 'TEMİZ SU BORULARI DN 20';
+  const adlar = (r: any) => ((r?.candidates ?? []) as any[]).map((c) => c.materialName).join(' | ');
+
+  // TS1: yalniz seed'ler → "temiz su"→PPR uygulanir; adaylar PP-R, PVC-U YOK
+  {
+    const svc = svcAlias(WAVIN);
+    const r = (await svc.bulkMatch('u1', 'b1', [SATIR]))[SATIR];
+    check('TS1 temiz su → PPR cevirisi: adaylar PP-R, PVC-U elendi',
+      r?.confidence === 'multi' && /PP-R/.test(adlar(r)) && !/PVC/.test(adlar(r)), adlar(r));
+  }
+
+  // TS2: GOLGELEME (asil canli bug) — metne degen daha uzun ogrenilmis
+  // self-family alias E8'e takilir; eski davranis hint'i DUSURUYORDU.
+  // Yeni: atlanir, siradaki seed ('temiz su') uygulanir → yine PP-R.
+  {
+    const svc = svcAlias(WAVIN, [{ alias: 'temiz su borulari', impliedType: 'temiz su borulari' }]);
+    const r = (await svc.bulkMatch('u1', 'b1', [SATIR]))[SATIR];
+    check('TS2 golgeleme fix: E8e takilan ogrenilmis alias seed ceviriyi dusurmez',
+      /PP-R/.test(adlar(r)) && !/PVC/.test(adlar(r)), adlar(r));
+  }
+
+  // TS3: S4 zehri — ceviri degeri tasimayan saf ad-alias'i hint olamaz,
+  // arkasindaki seed'i de golgeleyemez.
+  {
+    const svc = svcAlias(WAVIN, [{ alias: 'temiz su borulari' }]);
+    const r = (await svc.bulkMatch('u1', 'b1', [SATIR]))[SATIR];
+    check('TS3 degersiz (ceviri tasimayan) alias atlanir → seed uygulanir, PP-R',
+      /PP-R/.test(adlar(r)) && !/PVC/.test(adlar(r)), adlar(r));
+  }
+
+  // TS4: E8 REGRESYON — "DOĞALGAZ VANASI" satirina dogalgaz alias'i (boru)
+  // dayatilamaz; kademeli secimde de vana ailesi bulunur.
+  {
+    const svc = svcAlias([
+      libRow({ kategori: 'Vanalar', ad: 'Küresel vana', cins: 'pirinç', baglanti: 'dişli', cap: 'DN25', price: 850, urunKodu: 'V1', sheetName: 'S', birim: 'adet', paraBirimi: 'TL' }),
+    ]);
+    const soru = 'DOĞALGAZ VANASI KÜRESEL DN25';
+    const r = (await svc.bulkMatch('u1', 'b1', [soru]))[soru];
+    check('TS4 E8 korunur: dogalgaz alias boru dayatamaz, vana yine bulunur',
+      (r?.netPrice ?? 0) > 0 || r?.confidence === 'multi' || r?.confidence === 'high',
+      `conf=${r?.confidence} net=${r?.netPrice}`);
+  }
+}
+
 async function run() {
   // ══ K1: Ad kilidi — baska aile ASLA aday olamaz ═══════════════════
   {
@@ -1196,6 +1284,7 @@ async function run() {
   // yani cekirdegin dogru BAGLANDIGINI. Bugun ucu de "test yesil, gercek
   // kirik" deseninden cikan bug'lar tam bu bosluktan gecmisti.
   await dispatchTestleri();
+  await temizSuTestleri();
 
   console.log(`\n${'='.repeat(60)}`);
   console.log(`INDEKSLI MOTOR KABUL (K1-K7 + fallback yasagi): ${passed} PASS, ${failed} FAIL`);
