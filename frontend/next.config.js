@@ -8,6 +8,13 @@ const nextConfig = {
   experimental: {
     serverComponentsExternalPackages: ['xlsx'],
   },
+  // ARINMA Faz 2D: production build'te debug console.log'lar SOKULUR
+  // ([BrandDropdown]/[Save]/[SemanticCache] — veri sizintisi + gurultu
+  // hijyeni). error/warn KALIR (kullanici hata bildirimi icin). Dev'de
+  // loglar aynen durur — teshis akisi degismez.
+  compiler: {
+    removeConsole: process.env.NODE_ENV === 'production' ? { exclude: ['error', 'warn'] } : false,
+  },
 };
 
 // Cloudflare Pages dev mode: wrangler ile lokal preview yaparken
