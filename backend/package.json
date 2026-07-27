@@ -28,7 +28,8 @@
     "test:export": "ts-node test/export-format-test.ts",
     "test:livesim": "ts-node test/export-live-sim-test.ts",
     "test:ke": "ts-node test/export-kolon-esleme-test.ts",
-    "test:tf": "ts-node test/gercek-dosya-test.ts"
+    "test:tf": "ts-node test/gercek-dosya-test.ts",
+    "test:perf": "ts-node test/perf-profil.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

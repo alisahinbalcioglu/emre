@@ -376,6 +376,11 @@ model Quote {
   displayCurrency String       @default("TRY")
   displayRate     Float?
   displayRateDate String?
+
+  // ARINMA Faz 3: kullanici-basina teklif listesi (findMany{userId}) en sik
+  // sorgu — indexsiz full-scan'di ("olcek hep binlerce eszamanli" kurali).
+  @@index([userId])
+  @@index([userId, createdAt])
   // Teklif bilgileri (kapak yer tutuculari — teklif ekraninda girilir)
   musteri         String?
   proje           String?
