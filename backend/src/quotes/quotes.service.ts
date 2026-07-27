@@ -144,6 +144,7 @@ export class QuotesService {
   /** Teklif bilgileri (kapak alanlari) + format secimi. */
   async updateInfo(userId: string, id: string, dto: {
     musteri?: string; proje?: string; hazirlayan?: string; gecerlilik?: string; formatId?: string | null;
+    displayCurrency?: string; displayRate?: number | null; displayRateDate?: string | null;
   }) {
     const quote = await this.prisma.quote.findFirst({ where: { id, userId } });
     if (!quote) throw new NotFoundException('Quote not found');
@@ -151,16 +152,25 @@ export class QuotesService {
       const f = await (this.prisma as any).quoteFormat.findFirst({ where: { id: dto.formatId, userId } });
       if (!f) throw new NotFoundException('Format bulunamadi');
     }
+    // KISMI GUNCELLEME (KH8): gonderilMEyen alan DOKUNULMAZ — detay
+    // sayfasinin para-birimi toggle'i yalniz displayCurrency yollar; eski
+    // "hep null'a ez" davranisi kapak alanlarini SILERDI.
+    const alan = (v?: string) => (v === undefined ? undefined : v.trim() || null);
     return this.prisma.quote.update({
       where: { id },
       data: {
-        musteri: dto.musteri?.trim() || null,
-        proje: dto.proje?.trim() || null,
-        hazirlayan: dto.hazirlayan?.trim() || null,
-        gecerlilik: dto.gecerlilik?.trim() || null,
+        musteri: alan(dto.musteri),
+        proje: alan(dto.proje),
+        hazirlayan: alan(dto.hazirlayan),
+        gecerlilik: alan(dto.gecerlilik),
         formatId: dto.formatId === null ? null : dto.formatId ?? undefined,
+        // SORUN 16: goruntuleme birimi + kayit-ani kuru (arsiv)
+        displayCurrency: ['TRY', 'USD', 'EUR'].includes(dto.displayCurrency ?? '')
+          ? dto.displayCurrency : undefined,
+        displayRate: dto.displayRate === undefined ? undefined : dto.displayRate,
+        displayRateDate: dto.displayRateDate === undefined ? undefined : dto.displayRateDate,
       } as any,
-      select: { id: true, musteri: true, proje: true, hazirlayan: true, gecerlilik: true, formatId: true } as any,
+      select: { id: true, musteri: true, proje: true, hazirlayan: true, gecerlilik: true, formatId: true, displayCurrency: true } as any,
     });
   }
 

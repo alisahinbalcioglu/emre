@@ -100,7 +100,7 @@ export interface ProductIndexFields {
  * satir istek aninda rebuildIndexFields ile CANLI tokenizer'dan yeniden
  * uretilir (Faz 2b — v1 fallback SILINDI); kalici cozum reindex'tir.
  */
-export const INDEX_VERSION = 10;
+export const INDEX_VERSION = 11;
 
 /** adSlug cozulemeyen satirin tasidigi isaret — eslestirmeye ADAY OLAMAZ. */
 export const BELIRSIZ_SLUG = 'belirsiz';

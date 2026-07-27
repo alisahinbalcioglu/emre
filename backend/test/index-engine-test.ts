@@ -401,6 +401,59 @@ async function temizSuTestleri() {
   }
 }
 
+/**
+ * KH4-KH6 (SORUN 15, LİNTU dogalgaz 27.07): kutuphane caplari DIS-CAP mm
+ * (birimsiz "26,7"), teklif caplari inc. Cevrim yoktu → 13'lu popup + AYNI
+ * fiyat (209,6 = 3/4") tum satirlara yayilmisti. Artik OD-mm ↔ inc ↔ DN
+ * eszdegerdir (±0,5 tolerans + alternatif OD'ler); cap SERT filtre TEK
+ * adaya indirir → altin kural sorulmadan dogru fiyati yazar.
+ */
+function odCevrimTestleri() {
+  const PE = { kategori: 'Doğalgaz Boruları', cins: 'Çelik', birim: 'metre', paraBirimi: 'TL', sheetName: 'S' };
+  const CAPLAR: Array<[string, number]> = [
+    ['26,7', 209.6], ['33,4', 250.4], ['42,2', 314.8], ['48,3', 370.5],
+    ['60,3', 473.1], ['73,0', 590], ['88,9', 720], ['114,3', 980],
+    ['141,3', 1250], ['168,3', 1600], ['219,1', 2200], ['273,1', 2900], ['323,9', 3600],
+  ];
+  const HAVUZ = CAPLAR.map(([cap, price], i) =>
+    prod({ ...PE, ad: 'PE Kaplı Doğalgaz Tesisat Borusu', cap, price, urunKodu: `PE-${i}` }));
+
+  // KH5: 1" satiri TEK eslesme — 13'lu popup ACILMAZ, 250,4 otomatik yazilir
+  {
+    const r = m('PE KAPLI ÇELİK BORULAMA 1"', HAVUZ);
+    check('KH5 1" → TEK eşleşme (popup yok), ₺250,4 otomatik (33,4 mm)',
+      r.confidence === 'high' && r.netPrice === 250.4,
+      `conf=${r.confidence} net=${r.netPrice} adaylar=${(r.candidates ?? []).length}`);
+  }
+
+  // KH4: 4 satir KENDI fiyatini alir — 209,6 tekrari IMKANSIZ
+  {
+    const beklenen: Array<[string, number]> = [
+      ['PE KAPLI ÇELİK BORULAMA 1"', 250.4],
+      ['PE KAPLI ÇELİK BORULAMA 1 1/4"', 314.8],
+      ['PE KAPLI ÇELİK BORULAMA 1 1/2"', 370.5],
+      ['PE KAPLI ÇELİK BORULAMA 2"', 473.1],
+    ];
+    for (const [q, fiyat] of beklenen) {
+      const r = m(q, HAVUZ);
+      check(`KH4 "${q.slice(-7)}" → ₺${fiyat} (kendi çapı; 209,6 asla)`,
+        r.confidence === 'high' && r.netPrice === fiyat && r.netPrice !== 209.6,
+        `conf=${r.confidence} net=${r.netPrice}`);
+    }
+  }
+
+  // KH6: "dış çap 21,3" kaydi 1/2" sorgusuyla eslesir (ayni tablo)
+  {
+    const havuz6 = [
+      prod({ ...PE, kategori: 'Basınçlı Borular', ad: 'Basınçlı Boru', cap: '21,3', price: 180, urunKodu: 'B-1' }),
+      prod({ ...PE, kategori: 'Basınçlı Borular', ad: 'Basınçlı Boru', cap: '26,7', price: 210, urunKodu: 'B-2' }),
+    ];
+    const r = m('Basınçlı çelik boru 1/2"', havuz6);
+    check('KH6 dış çap 21,3 kaydı 1/2" sorgusuyla eşleşir (₺180)',
+      r.confidence === 'high' && r.netPrice === 180, `conf=${r.confidence} net=${r.netPrice}`);
+  }
+}
+
 async function run() {
   // ══ K1: Ad kilidi — baska aile ASLA aday olamaz ═══════════════════
   {
@@ -1316,6 +1369,7 @@ async function run() {
   // kirik" deseninden cikan bug'lar tam bu bosluktan gecmisti.
   await dispatchTestleri();
   await temizSuTestleri();
+  odCevrimTestleri();
 
   console.log(`\n${'='.repeat(60)}`);
   console.log(`INDEKSLI MOTOR KABUL (K1-K7 + fallback yasagi): ${passed} PASS, ${failed} FAIL`);

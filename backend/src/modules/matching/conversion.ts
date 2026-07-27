@@ -96,12 +96,36 @@ const NOMINAL_MM_TO_DN: Record<number, string> = {
   200: 'dn200', 219: 'dn200', 250: 'dn250', 273: 'dn250', 300: 'dn300', 323: 'dn300',
 };
 
-/** Celik dis cap mm (21.3, 60.3...) → DN. extractDiameter'in decimal-mm yolu. */
-const STEEL_OD_MM_TO_DN: Record<string, number> = {
-  '21.3': 15, '26.9': 20, '33.7': 25, '42.4': 32, '48.3': 40,
-  '60.3': 50, '76.1': 65, '88.9': 80, '114.3': 100, '139.7': 125,
-  '165.1': 150, '219.1': 200,
-};
+/** Celik DIS CAP mm → DN (SORUN 15, LİNTU dogalgaz vakasi 27.07).
+ *  Standart (EN 10220) + bilinen ALTERNATIF OD'ler (PE kapli/DIN 30670
+ *  listeleri 26,7 · 33,4 · 42,2 · 73,0 · 141,3 · 168,3 · 273,1 yazar).
+ *  Arama ±0,5 mm TOLERANSLIDIR (steelOdToDn). */
+const STEEL_OD_SERIES: Array<{ od: number; dn: number }> = [
+  { od: 21.3, dn: 15 },
+  { od: 26.9, dn: 20 }, { od: 26.7, dn: 20 },
+  { od: 33.7, dn: 25 }, { od: 33.4, dn: 25 },
+  { od: 42.4, dn: 32 }, { od: 42.2, dn: 32 },
+  { od: 48.3, dn: 40 },
+  { od: 60.3, dn: 50 },
+  { od: 76.1, dn: 65 }, { od: 73.0, dn: 65 },
+  { od: 88.9, dn: 80 },
+  { od: 114.3, dn: 100 },
+  { od: 139.7, dn: 125 }, { od: 141.3, dn: 125 },
+  { od: 168.3, dn: 150 }, { od: 165.1, dn: 150 },
+  { od: 219.1, dn: 200 },
+  { od: 273.0, dn: 250 }, { od: 273.1, dn: 250 },
+  { od: 323.9, dn: 300 },
+];
+
+/** Celik dis-cap mm → DN; ±0,5 mm tolerans (26,7≈26,9 vb.). Bulunamazsa null. */
+export function steelOdToDn(mm: number): number | null {
+  let best: { dn: number; fark: number } | null = null;
+  for (const r of STEEL_OD_SERIES) {
+    const fark = Math.abs(r.od - mm);
+    if (fark <= 0.5 && (!best || fark < best.fark)) best = { dn: r.dn, fark };
+  }
+  return best?.dn ?? null;
+}
 
 // ────────────────────────────────────────────
 // KAYNAK-FARKINDA OLCU AYRISTIRMA (D3/D4/P3)
@@ -214,6 +238,17 @@ export function extractSizeInfo(text: string): SizeInfo | null {
     return { source: 'mm', value: v, display: `${v} mm` };
   }
 
+  // SON CARE — CIPLAK SAYI (SORUN 15): kutuphane CAP KOLONLARI birimsiz
+  // yazar ("26,7" OD-mm · "1" inc). YALNIZ metnin TAMAMI tek sayiysa
+  // (serbest metinde tetiklenmez): ≤16 → inc (cap kolonu inc geleneği,
+  // DIAMETER_ORDER), >16 → mm (OD/nominal dis cap).
+  const bare = normalized.trim().match(/^(\d{1,3})(?:[.,](\d{1,2}))?$/);
+  if (bare) {
+    const v = parseFloat(`${bare[1]}.${bare[2] ?? '0'}`);
+    if (v > 0 && v <= 16) return { source: 'inch', value: v, display: `${v}"` };
+    if (v > 16) return { source: 'mm', value: v, display: `${String(v).replace('.', ',')} mm` };
+  }
+
   return null;
 }
 
@@ -269,9 +304,10 @@ function steelEquivalents(info: SizeInfo): SizeEquivalents {
     if (!row) return { tags: [], rozet: null, noConversion: true, ambiguous: false };
     return { tags: [`dn${row.dn}`], rozet: `${info.display} → DN ${row.dn} (çelik)`, noConversion: false, ambiguous: false };
   }
-  // mm: ondalikli ise celik dis capi tablosu, tam sayi ise nominal
-  const key = String(info.value);
-  const viaOd = STEEL_OD_MM_TO_DN[key];
+  // mm: ONCE dis-cap serisi (±0,5 tolerans — 26,7/33,4 gibi alternatif
+  // OD'ler dahil), sonra nominal tablo. (SORUN 15: PE kapli listelerin
+  // OD-mm caplari inc/DN sorgularla ayni kanonik DN'de bulusur.)
+  const viaOd = steelOdToDn(info.value);
   if (viaOd) {
     return { tags: [`dn${viaOd}`], rozet: `${info.display} → DN ${viaOd} (çelik)`, noConversion: false, ambiguous: false };
   }

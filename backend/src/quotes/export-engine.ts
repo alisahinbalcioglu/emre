@@ -282,6 +282,20 @@ export function writePricesToWorkbook(
     const hedefKolonlar = [matUnitCol, matTotCol, labUnitCol, labTotCol, grandUnitCol, grandTotCol]
       .filter((c): c is number => !!c);
     if (hedefKolonlar.length > 0) {
+      // KH1 (Hangar 500 koku): hedef kolonlardaki SHARED formul zincirleri
+      // ONCE degere DONDURULUR — master hucre temizlenince/ezilince oksuz
+      // clone'lar ExcelJS writeBuffer'i patlatiyordu ("Shared Formula master
+      // must exist..."). Tekil formuller (ara-toplam SUM'lari) DOKUNULMAZ.
+      ws.eachRow({ includeEmpty: false }, (row) => {
+        for (const c of hedefKolonlar) {
+          const v: any = row.getCell(c).value;
+          if (v && typeof v === 'object' && (v.sharedFormula || v.shareType === 'shared')) {
+            const sonuc = v.result;
+            row.getCell(c).value =
+              sonuc === undefined || sonuc === null || typeof sonuc === 'object' ? null : sonuc;
+          }
+        }
+      });
       for (let ri = 0; ri < rowData.length; ri++) {
         if (!rowData[ri]?._isDataRow) continue;
         for (const c of hedefKolonlar) ws.getCell(ri + 1, c).value = null;

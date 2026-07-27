@@ -370,6 +370,12 @@ model Quote {
   quoteNo         String?
   // Rev sayaci: 0 = hic aktarim yok; ilk aktarim Rev.01 (T10)
   rev             Int          @default(0)
+  // SORUN 16 (KH8, 27.07): goruntuleme para birimi teklifle KAYDEDILIR —
+  // detay sayfasi ayni birimle acilir. Kur+tarih kayit anindaki ARSIV
+  // degeridir (goruntuleme canli TCMB kuruyla yapilir, etikette gosterilir).
+  displayCurrency String       @default("TRY")
+  displayRate     Float?
+  displayRateDate String?
   // Teklif bilgileri (kapak yer tutuculari — teklif ekraninda girilir)
   musteri         String?
   proje           String?

@@ -581,7 +581,7 @@ export default function NewQuotePage() {
   const [brandPriceCache, setBrandPriceCache] = useState<Record<string, Record<string, any>>>({});
 
   // Currency (TRY/USD/EUR) hook — state + exchange rate + conversion
-  const { currency, setCurrency, ratesLoaded, conversionRate, displayPrice } = useCurrency();
+  const { currency, setCurrency, ratesLoaded, conversionRate, displayPrice, exchangeRates } = useCurrency();
 
   /* ---------- Step 1: Upload ---------- */
 
@@ -1244,10 +1244,18 @@ export default function NewQuotePage() {
         originalFileName: originalFileName ?? undefined,
       });
 
-      // Teklif bilgileri (kapak alanlari) — dolu alan varsa kaydet
+      // Teklif bilgileri (kapak alanlari) + goruntuleme para birimi (KH8:
+      // Duzenle'de secilen birim TEKLIFLE kaydedilir — detay ayni birimle acilir)
       const bilgiVar = Object.values(teklifBilgileri).some((v) => v.trim() !== '');
-      if (created?.id && bilgiVar) {
-        try { await api.patch(`/quotes/${created.id}/info`, teklifBilgileri); } catch { /* kapak alanlari opsiyonel */ }
+      if (created?.id && (bilgiVar || currency !== 'TRY')) {
+        try {
+          await api.patch(`/quotes/${created.id}/info`, {
+            ...teklifBilgileri,
+            displayCurrency: currency,
+            displayRate: currency === 'TRY' ? null : exchangeRates.TRY,
+            displayRateDate: new Date().toLocaleDateString('tr-TR'),
+          });
+        } catch { /* kapak alanlari opsiyonel */ }
       }
 
       // Draft temizle — artik kayitli teklif var

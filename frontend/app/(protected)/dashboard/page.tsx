@@ -50,9 +50,14 @@ export default function DashboardPage() {
       if (stored) {
         const parsed = JSON.parse(stored);
         setUserName(parsed.email?.split('@')[0] ?? '');
+        // KH3 (SORUN 14): /admin/stats yalniz ADMIN oturumunda cagrilir —
+        // normal kullanicida 403 + console kirliligi olusuyordu (veri zaten
+        // gosterilemiyordu).
+        if (parsed.role === 'admin') {
+          api.get<DashStats>('/admin/stats').then(({ data }) => setStats(data)).catch(() => {});
+        }
       }
     } catch {}
-    api.get<DashStats>('/admin/stats').then(({ data }) => setStats(data)).catch(() => {});
   }, []);
 
   /* ── Excel Upload Handler ── */

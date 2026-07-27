@@ -82,6 +82,33 @@ async function run() {
       adlar.some((a: string) => a.includes('Tüp Bölmeli')), adlar.slice(0, 5).join('|'));
   }
 
+  // ── KH1 (SORUN 14, hangar 500): SHARED-FORMULA'li dosya export edilir ──
+  // Dosyanin F kolonunda shared-formula zinciri var; K-A temizligi master'i
+  // silince clone'lar oksuz kaliyor, writeBuffer "Shared Formula master
+  // must exist" ile patliyordu (canli 500'un birebir koku). Fix: hedef
+  // kolonlardaki shared zincirler once degere dondurulur.
+  {
+    const { QuotesService } = require('../src/quotes/quotes.service');
+    const buf = oku('hangar-yss.xlsx');
+    const res = await svc.prepare(buf, { fixedSchema: true });
+    let n = 0;
+    for (const r of (res.sheets[0].rowData ?? []) as any[]) {
+      if (r._isDataRow && n < 2) { r._matBirim = '64637,3'; r._matToplam = ''; n++; }
+    }
+    const quote: any = {
+      id: 'q1', userId: 'u1', title: 'Hangar', sheets: JSON.parse(JSON.stringify(res.sheets)),
+      originalFile: buf, quoteNo: 'MP-1', rev: 1, exportOverrides: null,
+    };
+    const prisma: any = { quote: { findFirst: async () => quote }, quoteFormat: { findFirst: async () => null } };
+    const fx: any = { getRates: async () => ({ usdTry: 47, eurTry: 54, usdTryBuying: 47, eurTryBuying: 54, source: 'f', date: '' }) };
+    const qsvc = new QuotesService(prisma, fx);
+    let hata = ''; let sonuc: any = null;
+    try { sonuc = await qsvc.exportPricedXlsx('u1', 'q1'); } catch (e: any) { hata = e?.message ?? 'hata'; }
+    check('KH1 hangar (shared-formula) export-priced HATASIZ + dosya üretildi',
+      hata === '' && (sonuc?.buffer?.length ?? 0) > 5000 && !sonuc?.uyari,
+      hata || `boyut=${sonuc?.buffer?.length} uyari=${sonuc?.uyari}`);
+  }
+
   console.log(`\n${'='.repeat(60)}`);
   console.log(`GERCEK DOSYA UYUMLULUK (TF1-TF4): ${passed} PASS, ${failed} FAIL`);
   console.log('='.repeat(60));
