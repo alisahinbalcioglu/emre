@@ -288,7 +288,7 @@ export class QuotesService {
   }
 
   /** .xlsx uret + REV artir + arsivle (T10). */
-  async exportXlsx(userId: string, id: string): Promise<{ buffer: Buffer; filename: string; rev: number; quoteNo: string }> {
+  async exportXlsx(userId: string, id: string): Promise<{ buffer: Buffer; filename: string; rev: number; quoteNo: string; uyari?: string }> {
     const quote = await this.quoteGetir(userId, id);
 
     // Teklif no ILK aktarimda atanir, sonra SABIT (T10)
@@ -323,14 +323,20 @@ export class QuotesService {
     ]);
 
     console.log(`[Export] ${quoteNo} Rev.${yeniRev} uretildi (${(buffer.length / 1024).toFixed(0)} KB)`);
-    return { buffer, filename, rev: yeniRev, quoteNo };
+    // KF6/KF7 + K-D: teklif-format yolu da AYNI self-check'i tasir (tek motor)
+    const parcalar: string[] = [];
+    if ((sonuc.eksikDeger ?? 0) > 0) parcalar.push(`${sonuc.eksikDeger} fiyat değeri dosyaya yazılamadı`);
+    if ((sonuc.hataArtisi ?? 0) > 0) parcalar.push(`${sonuc.hataArtisi} hücrede formül hatası oluştu`);
+    const uyari = parcalar.length > 0 ? `${parcalar.join('; ')} — çıktıyı kontrol edin.` : undefined;
+    if (uyari) console.warn(`[Export] ⚠ SELF-CHECK (teklif format): ${uyari}`);
+    return { buffer, filename, rev: yeniRev, quoteNo, uyari };
   }
 
   /** Fiyatlandirilmis kesif Excel'i: MUSTERININ ORIJINAL dosyasi, fiyatlar
    *  yazilmis — teklif formati (kapak/icmal) YOK, REV ARTMAZ, arsivlenmez.
    *  Kullanici karari 24.07: "sadece fiyatlandirdigi exceli indirmek
    *  isteyebilir (teklif formatinda gondermek istemeyebilir)". */
-  async exportPricedXlsx(userId: string, id: string): Promise<{ buffer: Buffer; filename: string }> {
+  async exportPricedXlsx(userId: string, id: string): Promise<{ buffer: Buffer; filename: string; uyari?: string }> {
     const quote = await this.quoteGetir(userId, id);
     if (!quote.originalFile) {
       throw new BadRequestException(
@@ -340,12 +346,21 @@ export class QuotesService {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(Buffer.from(quote.originalFile) as any);
     const sheetsArr = Array.isArray(quote.sheets) ? (quote.sheets as any[]) : [];
-    writePricesToWorkbook(wb, sheetsArr);
+    const bilgiler = writePricesToWorkbook(wb, sheetsArr);
+    // KF6 + K-D self-check: dolu deger sayisi ↔ yazilan + hata artisi.
+    // Uyusmazlik SESSIZ GECILMEZ — kullaniciya gorunur uyari (header → toast).
+    const eksik = bilgiler.reduce((a, b) => a + Math.max(0, b.beklenen - b.yazilan), 0);
+    const hataArt = bilgiler.reduce((a, b) => a + (b.hataArtisi ?? 0), 0);
+    const parcalar: string[] = [];
+    if (eksik > 0) parcalar.push(`${eksik} fiyat değeri dosyaya yazılamadı`);
+    if (hataArt > 0) parcalar.push(`${hataArt} hücrede formül hatası oluştu`);
+    const uyari = parcalar.length > 0 ? `${parcalar.join('; ')} — çıktıyı kontrol edin.` : undefined;
+    if (uyari) console.warn(`[Export] ⚠ SELF-CHECK (fiyatli kesif): ${uyari}`);
     const buffer = Buffer.from(await wb.xlsx.writeBuffer());
     const temizBaslik = String(quote.title ?? 'Teklif').replace(/[\\/:*?"<>|]/g, '-').slice(0, 60);
     const filename = `${temizBaslik} - Fiyatlandırılmış Keşif.xlsx`;
     console.log(`[Export] Fiyatlandirilmis kesif indirildi (${(buffer.length / 1024).toFixed(0)} KB)`);
-    return { buffer, filename };
+    return { buffer, filename, uyari };
   }
 
   /** T10 arsivi: uretilmis revizyonlar. */

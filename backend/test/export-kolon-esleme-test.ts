@@ -55,7 +55,10 @@ async function musteriFixture(basliklar: string[]): Promise<Buffer> {
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
-function sheetsFixture() {
+/** iscilikVar=false → UYMZ gercegi: malzeme-only kesif, iscilik HIC girilmemis
+ *  (KE8/KF3 senaryosu — verisiz kolon dayatilmaz). */
+function sheetsFixture(iscilikVar = true) {
+  const L = (v: string) => (iscilikVar ? v : '');
   return [{
     name: 'mekanik G BLOK', index: 0, isEmpty: false,
     columnRoles: fixedRoles,
@@ -70,9 +73,11 @@ function sheetsFixture() {
       { _rowIdx: 0, _isHeaderRow: false, _isDataRow: false },
       { _rowIdx: 1, _isHeaderRow: true, _isDataRow: false },
       { _rowIdx: 2, _isDataRow: true, col0: '1', col1: 'DN 20', col3: 'metre', col4: 313,
-        _matBirim: '26,6', _matToplam: '8325,8', _labBirim: '500', _labToplam: '156500', _toplam: '164825,8' },
+        _matBirim: '26,6', _matToplam: '8325,8', _labBirim: L('500'), _labToplam: L('156500'),
+        _toplam: iscilikVar ? '164825,8' : '8325,8' },
       { _rowIdx: 3, _isDataRow: true, col0: '2', col1: 'DN 25', col3: 'metre', col4: 380,
-        _matBirim: '', _matToplam: '', _labBirim: '600', _labToplam: '228000', _toplam: '228000' },
+        _matBirim: '', _matToplam: '', _labBirim: L('600'), _labToplam: L('228000'),
+        _toplam: iscilikVar ? '228000' : '' },
     ],
   }];
 }
@@ -192,16 +197,16 @@ async function run() {
   check('KE11a genel toplam şablonun J sütununda (=H3+I3), uydurma kolon yok',
     j3?.formula === 'H3+I3' && bosMu(ws.getCell(2, 11).value), JSON.stringify(j3));
 
-  // ══ KE8/KE9: MALZEME-ONLY sablon (UYMZ ikizi) — iscilik kolonu YOK ══
-  // I=MALZEME BİRİM FİYATI · J=MALZEME TOPLAM FİYATI; iscilik/toplam kolonu
-  // hic yok → iscilik verisi YAZILMAZ, L/M/N gibi kolon EKLENMEZ.
+  // ══ KE8/KE9: MALZEME-ONLY sablon (UYMZ ikizi) — iscilik kolonu YOK ve
+  // iscilik VERISI de yok (gercek UYMZ: iscilik hic girilmemisti) →
+  // verisiz kolon EKLENMEZ (KF3), turetilmis Toplam da uretilmez (KE11).
   {
     const BASLIK_MALZ = ['SIRA', 'İŞİN TANIMI', 'AÇIKLAMA', 'BİRİM', 'MİKTAR',
       'PURSANTAJ', 'MARKA', 'NOT', 'MALZEME BİRİM FİYATI', 'MALZEME TOPLAM FİYATI'];
     const buf9 = await musteriFixture(BASLIK_MALZ);
     const wb9 = new ExcelJS.Workbook();
     await wb9.xlsx.load(buf9 as any);
-    const bilgi9 = writePricesToWorkbook(wb9, sheetsFixture() as any);
+    const bilgi9 = writePricesToWorkbook(wb9, sheetsFixture(false) as any);
     const w9 = wb9.getWorksheet('mekanik G BLOK')!;
 
     // KE9: yalniz malzeme kolonlari dolar — I=birim, J=formullu toplam
@@ -210,26 +215,203 @@ async function run() {
       w9.getCell(3, 9).value === 26.6 && j9?.formula === 'E3*I3' && j9?.result === 8325.8,
       `I3=${JSON.stringify(w9.getCell(3, 9).value)} J3=${JSON.stringify(j9)}`);
 
-    // KE8: iscilik/toplam kolonu EKLENMEDI — K..O basliklari ve verileri BOS
+    // KE8/KF3: iscilik VERISI yok → kolon EKLENMEDI; K..O tamamen bos
     const sagTemiz = [2, 3, 4].every((r) =>
       [11, 12, 13, 14, 15].every((c) => bosMu(w9.getCell(r, c).value)));
-    check('KE8 İşçilik kolonu yok → L/M/N eklenmedi; sağ taraf tamamen temiz',
+    check('KE8/KF3 verisiz İşçilik kolonu eklenmedi; sağ taraf tamamen temiz',
       sagTemiz, [11, 12, 13].map((c) => JSON.stringify(w9.getCell(2, c).value)).join('|'));
 
-    // KE8: iscilik DEGERLERI hicbir hucreye yazilmadi (500/600/156500 yok)
-    let iscilikSizdi = '';
-    w9.eachRow((row, rn) => row.eachCell((cell, cn) => {
-      const v: any = cell.value;
-      const n = typeof v === 'number' ? v : (v && typeof v === 'object' ? v.result : NaN);
-      if (n === 500 || n === 600 || n === 156500 || n === 228000) iscilikSizdi = `r${rn}c${cn}=${n}`;
-    }));
-    check('KE8 işçilik verisi hiçbir hücreye sızmadı', iscilikSizdi === '', iscilikSizdi);
-
-    // KE11b: sablonda ayri Toplam kolonu yok → uretilmedi; İCMAL degerleri
-    // yine birikti (iscilik dahil — icmal formatin kendi sayfasi)
-    check('KE11b ayrı Toplam kolonu üretilmedi; İCMAL değerleri birikti (mat=8325,8 lab=384500)',
-      bilgi9[0].labCol === null && bilgi9[0].matDeger === 8325.8 && bilgi9[0].labDeger === 384500,
+    // KE11b: turetilmis Toplam kolonu uretilmedi; İCMAL malzeme degeri birikti
+    check('KE11b ayrı Toplam kolonu üretilmedi; İCMAL mat=8325,8 (self-check: beklenen==yazılan)',
+      bilgi9[0].labCol === null && bilgi9[0].matDeger === 8325.8
+      && bilgi9[0].beklenen === bilgi9[0].yazilan && bilgi9[0].beklenen === 2,
       JSON.stringify(bilgi9[0]));
+  }
+
+  // ══ KF1-KF7: AKSA_GÖYNÜK ikizi — YENI dosya, sablonda MALZEME kolonu HIC
+  // yok (yalniz İŞÇİLİK basliklari), baslik ~12. satirda, mukerrer MİKTAR +
+  // adsiz kolon. Uygulamada dolu malzeme fiyatlari ciktida KAYBOLMAMALI:
+  // kolon sag uca basligiyla EKLENIR (KF2); verisiz iscilik dayatilmaz (KF3).
+  {
+    const wbA = new ExcelJS.Workbook();
+    const wsA = wbA.addWorksheet('TEKLİF');
+    // 1-11: kapak/karisik satirlar (bosluklu) — dagitilmis baslik toleransi
+    wsA.getCell('B2').value = 'AKSA GÖYNÜK YSS PROJESİ';
+    // 12: baslik satiri — C ve D MUKERRER 'MİKTAR', E ADSIZ (Sütun 119 ikizi)
+    ['I', 'AÇIKLAMA', 'MİKTAR', 'MİKTAR', '', 'İŞÇİLİK BİRİM FİYAT', 'İŞÇİLİK TOPLAM FİYAT']
+      .forEach((h, i) => { if (h) { const c = wsA.getCell(12, i + 1); c.value = h; c.font = { bold: true }; } });
+    wsA.getCell(13, 1).value = '1'; wsA.getCell(13, 2).value = '6"- DN150 Siyah Çelik Boru';
+    wsA.getCell(13, 3).value = 30; wsA.getCell(13, 4).value = 'Metre';
+    wsA.getCell(14, 1).value = '2'; wsA.getCell(14, 2).value = '4"- DN100 Siyah Çelik Boru';
+    wsA.getCell(14, 3).value = 6; wsA.getCell(14, 4).value = 'Metre';
+    const bufA = Buffer.from(await wbA.xlsx.writeBuffer());
+
+    const bosSatir = (i: number) => ({ _rowIdx: i, _isHeaderRow: false, _isDataRow: false });
+    const sheetsA: any[] = [{
+      name: 'TEKLİF', index: 0, isEmpty: false,
+      columnRoles: { noField: 'col0', nameField: 'col1', quantityField: 'col2', unitField: 'col3',
+        materialUnitPriceField: '_matBirim', materialTotalField: '_matToplam',
+        laborUnitPriceField: '_labBirim', laborTotalField: '_labToplam', grandTotalField: '_toplam' },
+      columnDefs: [
+        { field: '_matBirim', headerName: 'Malz. Birim Fiyat' },
+        { field: '_matToplam', headerName: 'Malz. Toplam' },
+      ],
+      rowData: [
+        ...Array.from({ length: 11 }, (_, i) => bosSatir(i)),
+        { _rowIdx: 11, _isHeaderRow: true, _isDataRow: false },
+        { _rowIdx: 12, _isDataRow: true, col0: '1', col1: '6"- DN150 Siyah Çelik Boru', col2: 30, col3: 'Metre',
+          _matBirim: '939,9', _matToplam: '28.197,0', _labBirim: '', _labToplam: '', _toplam: '28.197,0' },
+        { _rowIdx: 13, _isDataRow: true, col0: '2', col1: '4"- DN100 Siyah Çelik Boru', col2: 6, col3: 'Metre',
+          _matBirim: '558,2', _matToplam: '3.349,2', _labBirim: '', _labToplam: '', _toplam: '3.349,2' },
+      ],
+    }];
+
+    const wbT = new ExcelJS.Workbook();
+    await wbT.xlsx.load(bufA as any);
+    const bilgiA = writePricesToWorkbook(wbT, sheetsA);
+    const wT = wbT.getWorksheet('TEKLİF')!;
+
+    // KF2: malzeme kolonlari SAG UCA eklendi (H=birim, I=toplam; baslik 12. satirda)
+    check('KF2 malzeme kolonu yok + dolu veri → H/I eklendi (başlık 12. satır, bold)',
+      String(wT.getCell(12, 8).value) === 'Malz. Birim Fiyat' && wT.getCell(12, 8).font?.bold === true
+      && String(wT.getCell(12, 9).value) === 'Malz. Toplam',
+      `H12=${JSON.stringify(wT.getCell(12, 8).value)} I12=${JSON.stringify(wT.getCell(12, 9).value)}`);
+
+    // KF1: degerler uygulamayla birebir + tutar formullu (=C13*H13)
+    const i13: any = wT.getCell(13, 9).value;
+    check('KF1 fiyatlar dosyada: H13=939,9 · I13==C13*H13 (28.197) · H14=558,2',
+      wT.getCell(13, 8).value === 939.9 && i13?.formula === 'C13*H13' && i13?.result === 28197
+      && wT.getCell(14, 8).value === 558.2,
+      `H13=${JSON.stringify(wT.getCell(13, 8).value)} I13=${JSON.stringify(i13)}`);
+
+    // KF1: GENEL TOPLAM dosya degerlerinden turetilebilir (İCMAL degeri dogru)
+    check('KF1 SekmeBilgi toplamı uygulamayla eşit (28.197+3.349,2=31.546,2)',
+      Math.abs(bilgiA[0].matDeger - 31546.2) < 0.01, `matDeger=${bilgiA[0].matDeger}`);
+
+    // KF3: verisiz İŞÇİLİK sablon kolonlari (F/G) BOS kaldi; EK iscilik
+    // kolonu da uretilmedi (J'den sonrasi temiz)
+    check('KF3 verisiz İşçilik: F/G boş, fazladan kolon yok (J+ temiz)',
+      bosMu(wT.getCell(13, 6).value) && bosMu(wT.getCell(13, 7).value)
+      && bosMu(wT.getCell(12, 10).value) && bosMu(wT.getCell(13, 10).value), '');
+
+    // KF6: self-check — dolu 4 deger (2 satir × birim+tutar), 4'ü de yazildi
+    check('KF6 self-check: beklenen=4, yazılan=4 (sessiz kayıp yok)',
+      bilgiA[0].beklenen === 4 && bilgiA[0].yazilan === 4, JSON.stringify(bilgiA[0]));
+
+    // KF5: AYNI workbook'a IKINCI yazim — eklenen baslik artik ANLAMLA
+    // bulunur, IKINCI set eklenmez (kolon sayisi sabit, ayni hucreler)
+    writePricesToWorkbook(wbT, sheetsA);
+    check('KF5 tekrar export: aynı kolonlar, ikinci set yok (J+ hâlâ temiz)',
+      wT.getCell(13, 8).value === 939.9 && bosMu(wT.getCell(12, 10).value)
+      && bosMu(wT.getCell(12, 11).value), '');
+
+    // KF7: TEKLIF FORMATI yolu AYNI motor — kopyalanan liste sayfasinda
+    // eklenen kolonlar + degerler + İCMAL SUM eklenen kolona bakar; eksik 0
+    const f = new ExcelJS.Workbook();
+    f.addWorksheet('KAPAK').getCell('A1').value = '{{TEKLIF_NO}}';
+    const icmF = f.addWorksheet('İCMAL');
+    icmF.getCell('B3').value = '{{ICMAL_SATIRLARI}}';
+    f.addWorksheet('ESKI').getCell('A1').value = 'x';
+    const s = await buildExportWorkbook({
+      originalFile: bufA, sheetsArr: sheetsA, formatWb: f,
+      sheetRoles: { KAPAK: 'sabit', 'İCMAL': 'sabit', ESKI: 'liste' },
+      ctxTemel: { teklifNo: 'MP-2026-002', rev: 1, tarih: '27.07.2026', musteri: 'AKSA', proje: 'GÖYNÜK',
+        hazirlayan: 'Emre', gecerlilik: '30 gün', kurNotu: 'Kur', kdvOran: 0 },
+      overrides: null,
+    });
+    const o = new ExcelJS.Workbook();
+    await o.xlsx.load(Buffer.from(await s.wb.xlsx.writeBuffer()) as any);
+    const oT = o.getWorksheet('TEKLİF')!;
+    check('KF7 teklif-format yolu: eklenen kolon + değerler kopyada, eksikDeger=0',
+      oT.getCell(13, 8).value === 939.9 && s.eksikDeger === 0
+      && (s.sekmeler[0]?.matFormul ?? '').includes('!I13:I14'),
+      `H13=${JSON.stringify(oT.getCell(13, 8).value)} eksik=${s.eksikDeger} mat=${s.sekmeler[0]?.matFormul}`);
+  }
+
+  // ══ KG1-KG8: EMO AYVAZ ikizi — ONCEDEN FIYATLI kaynak dosya ══════════
+  // Sablon $-formatli, eski fiyat/formuller icinde; MİKTAR/BİRİM basliklari
+  // TERS (E='mt', F=70). Kurallar: K-A hayalet temizligi, K-B toplam her
+  // kosulda formulle (stale 798 ezilir), K-C TL bicimi, K-D hata artisi 0.
+  {
+    const USD = '#,##0.00"USD"';
+    const wbE = new ExcelJS.Workbook();
+    const wsE = wbE.addWorksheet('CİLAS KAUÇUK');
+    ['NO', 'PROJE KOD', 'MARKA MODEL', 'MALZEMENİN CİNSİ', 'MİKTAR', 'BİRİM',
+      'MALZ. BİRİM FİYAT ($)', 'MALZ. TOPLAM FİYAT ($)', 'İŞÇİLİK BİRİM FİYAT ($)', 'İŞÇİLİK TOPLAM FİYAT ($)']
+      .forEach((h, i) => { const c = wsE.getCell(12, i + 1); c.value = h; c.font = { bold: true }; });
+    // r13: kullanicinin fiyat GIRDIGI satir — dosyada ESKI fiyat+formul var
+    wsE.getCell(13, 4).value = '4" Siyah Boru'; wsE.getCell(13, 5).value = 'mt'; wsE.getCell(13, 6).value = 70;
+    wsE.getCell(13, 7).value = 11.4; wsE.getCell(13, 7).numFmt = USD;
+    wsE.getCell(13, 8).value = { formula: 'F13*G13', result: 798 } as any; wsE.getCell(13, 8).numFmt = USD;
+    // r14: fiyat girilen 2. satir
+    wsE.getCell(14, 4).value = '4" Patent Dirsek'; wsE.getCell(14, 5).value = 'ad'; wsE.getCell(14, 6).value = 8;
+    wsE.getCell(14, 7).value = 5.2; wsE.getCell(14, 7).numFmt = USD;
+    wsE.getCell(14, 8).value = { formula: 'F14*G14', result: 41.6 } as any; wsE.getCell(14, 8).numFmt = USD;
+    // r15: kullanicinin GIRMEDIGI satir — dosyanin kendi eski fiyati (HAYALET)
+    wsE.getCell(15, 4).value = '4" PN16 DÜZ FLANŞ'; wsE.getCell(15, 5).value = 'ad'; wsE.getCell(15, 6).value = 4;
+    wsE.getCell(15, 7).value = 10.7; wsE.getCell(15, 7).numFmt = USD;
+    wsE.getCell(15, 8).value = { formula: 'F15*G15', result: 42.8 } as any; wsE.getCell(15, 8).numFmt = USD;
+    // r16: TOPLAM satiri (data DEGIL) — sablon SUM'u korunmali
+    wsE.getCell(16, 4).value = 'TOPLAM';
+    wsE.getCell(16, 8).value = { formula: 'SUM(H13:H15)', result: 882.4 } as any;
+    // Yardimci blok: dosyanin KENDI eski #VALUE! hatasi (E='mt' metin carpimi)
+    wsE.getCell(13, 14).value = { formula: 'L13*E13', result: { error: '#VALUE!' } } as any;
+
+    const sheetsE: any[] = [{
+      name: 'CİLAS KAUÇUK', index: 0, isEmpty: false,
+      // Roller TERS-baslikli dosyadan persist edilmis: quantityField=E (metin!)
+      columnRoles: { noField: 'col0', nameField: 'col3', quantityField: 'col4', unitField: 'col5',
+        materialUnitPriceField: '_matBirim', materialTotalField: '_matToplam',
+        laborUnitPriceField: '_labBirim', laborTotalField: '_labToplam' },
+      columnDefs: [],
+      rowData: [
+        ...Array.from({ length: 11 }, (_, i) => ({ _rowIdx: i, _isHeaderRow: false, _isDataRow: false })),
+        { _rowIdx: 11, _isHeaderRow: true, _isDataRow: false },
+        { _rowIdx: 12, _isDataRow: true, col3: '4" Siyah Boru', col4: 'mt', col5: 70,
+          _matBirim: '558,2', _matToplam: '' }, // app toplami hesaplayamadi (S1b)
+        { _rowIdx: 13, _isDataRow: true, col3: '4" Patent Dirsek', col4: 'ad', col5: 8,
+          _matBirim: '215', _matToplam: '' },
+        { _rowIdx: 14, _isDataRow: true, col3: '4" PN16 DÜZ FLANŞ', col4: 'ad', col5: 4,
+          _matBirim: '', _matToplam: '' }, // kullanici fiyat GIRMEDI
+      ],
+    }];
+
+    const bilgiE = writePricesToWorkbook(wbE, sheetsE);
+    const b = bilgiE[0];
+
+    // KG1: yeni birim yazildi + toplam FORMULLE (etkin miktar F'den) — 798 EZILDI
+    const h13: any = wsE.getCell(13, 8).value;
+    check('KG1 stale toplam ezildi: G13=558,2 · H13==F13*G13 (39.074; 798 kalmadı)',
+      wsE.getCell(13, 7).value === 558.2 && h13?.formula === 'F13*G13' && h13?.result === 39074,
+      `G13=${JSON.stringify(wsE.getCell(13, 7).value)} H13=${JSON.stringify(h13)}`);
+    check('KG1b ikinci satır: G14=215 · H14 result=1720 (8×215)',
+      wsE.getCell(14, 7).value === 215 && (wsE.getCell(14, 8).value as any)?.result === 1720,
+      JSON.stringify(wsE.getCell(14, 8).value));
+
+    // KG2: HAYALET fiyat temizlendi — grid'de olmayan 10,7/42,8 ciktida YOK
+    check('KG2 hayalet fiyat temizlendi: G15/H15 boş (grid ↔ çıktı birebir)',
+      bosMu(wsE.getCell(15, 7).value) && bosMu(wsE.getCell(15, 8).value),
+      `G15=${JSON.stringify(wsE.getCell(15, 7).value)} H15=${JSON.stringify(wsE.getCell(15, 8).value)}`);
+
+    // K-A siniri: TOPLAM satiri (data degil) DOKUNULMADI — sablon SUM'u durur
+    check('KG2b şablon TOPLAM satırının SUM formülü korundu',
+      (wsE.getCell(16, 8).value as any)?.formula === 'SUM(H13:H15)', JSON.stringify(wsE.getCell(16, 8).value));
+
+    // KG4: TL deger $-formatli hucrede "USD" etiketiyle BASILMAZ — bicim TL
+    check('KG4 yazılan hücre biçimi TL\'ye düzeltildi ("USD" kalmadı)',
+      String(wsE.getCell(13, 7).numFmt).includes('TL') && String(wsE.getCell(13, 8).numFmt).includes('TL')
+      && !String(wsE.getCell(13, 7).numFmt).includes('USD'),
+      `G13fmt=${wsE.getCell(13, 7).numFmt} H13fmt=${wsE.getCell(13, 8).numFmt}`);
+
+    // KG5: hata ARTISI sifir (dosyanin kendi eski #VALUE!'su sayilmaz)
+    check('KG5 formül-hata artışı 0 (eski #DEĞER!\'ler artmadı)',
+      b.hataArtisi === 0, `hataArtisi=${b.hataArtisi}`);
+
+    // KG8: self-check — beklenen 2 (girilen birimler), yazilan 4 (+2 turetilen
+    // toplam) → eksik yok; İCMAL degeri turetilen toplamlari icerir
+    check('KG8 self-check: eksik=0, İCMAL matDeger=40.794 (39.074+1.720)',
+      Math.max(0, b.beklenen - b.yazilan) === 0 && Math.abs(b.matDeger - 40794) < 0.01,
+      `beklenen=${b.beklenen} yazilan=${b.yazilan} matDeger=${b.matDeger}`);
   }
 
   // ══ KE7: KISALTMALI / SATIR-SONLU basliklar yine dogru sutunu bulur ══

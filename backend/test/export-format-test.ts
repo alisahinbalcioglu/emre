@@ -242,7 +242,8 @@ async function run() {
     }
   }
 
-  // ── KE8 + T8: sistem alanli sayfa (fixedSchema), sablonda fiyat kolonu YOK ──
+  // ── KF2 + T8: sistem alanli sayfa (fixedSchema), sablonda fiyat kolonu YOK
+  //    ama veri DOLU → kolon eklenir (veri kaybi yasak, Aksa_Göynük 27.07) ──
   {
     const sheetsArr = [{
       name: 'Metraj', index: 0, isEmpty: false,
@@ -273,15 +274,20 @@ async function run() {
     const out = new ExcelJS.Workbook();
     await out.xlsx.load(Buffer.from(await sonuc.wb.xlsx.writeBuffer()) as any);
     const ws = out.getWorksheet('Metraj')!;
-    // KE8 (Duzeltme Talebi 24.07 — eski "SAGA ekle" davranisi KALDIRILDI):
-    // sablonda fiyat kolonu YOKSA kolon EKLENMEZ, fiyat yazilmaz (append yasak)
-    check('KE8: sablonda fiyat kolonu yok → kolon EKLENMEDI (E/F bos, sag temiz)',
-      !ws.getCell(1, 5).value && !ws.getCell(1, 6).value
-      && !ws.getCell(2, 5).value && !ws.getCell(2, 6).value,
-      `E1=${JSON.stringify(ws.getCell(1, 5).value)} F2=${JSON.stringify(ws.getCell(2, 6).value)}`);
-    check('KE8: yazilamayan tutar yine İCMAL degerinde birikir (matDeger=50)',
-      sonuc.sekmeler[0]?.matDeger === 50, JSON.stringify(sonuc.sekmeler[0]));
-    check('KE8/T1: orijinal 4 kolon dokunulmadi',
+    // KF2 (Duzeltme Talebi 27.07, Aksa_Göynük — VERI KAYBI YASAK): sablonda
+    // fiyat kolonu yok ama veri DOLU → kolon basligiyla EKLENIR ve dolar.
+    // (KE8'in dogru kapsami: yalniz VERISIZ kolon eklenmez — test:ke KF3.)
+    check('KF2: dolu veri → kolon EKLENDI (E="Birim Fiyat" F="Tutar" basliklari)',
+      hucreMetni(ws.getCell(1, 5)) === 'Birim Fiyat' && hucreMetni(ws.getCell(1, 6)) === 'Tutar',
+      `E1="${hucreMetni(ws.getCell(1, 5))}" F1="${hucreMetni(ws.getCell(1, 6))}"`);
+    const tutarF: any = ws.getCell(2, 6).value;
+    check('KF2: eklenen kolonda deger + formul (D2*E2) — hicbir deger kaybolmadi',
+      ws.getCell(2, 5).value === 5 && tutarF?.formula === 'D2*E2',
+      `E2=${JSON.stringify(ws.getCell(2, 5).value)} F2=${JSON.stringify(tutarF)}`);
+    check('KF2: İCMAL degeri + self-check eksik=0 (matDeger=50)',
+      sonuc.sekmeler[0]?.matDeger === 50 && sonuc.eksikDeger === 0,
+      `mat=${sonuc.sekmeler[0]?.matDeger} eksik=${sonuc.eksikDeger}`);
+    check('KF2/T1: orijinal 4 kolon dokunulmadi',
       hucreMetni(ws.getCell(2, 2)) === 'Boru' && ws.getCell(2, 4).value === 10, '');
 
     // T8 GUNCELLENDI (Bulgu Raporu 21.07): T8 = "FORMAT yokken sade

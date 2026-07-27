@@ -37,6 +37,25 @@ const sayi = (v: any): number => {
 /** Formul icindeki sayfa adi: tek tirnak kacisli */
 const sayfaRef = (name: string) => `'${name.replace(/'/g, "''")}'`;
 
+/** K-C (S3, EMO AYVAZ): TL deger yabanci para etiketli hucreye basilamaz —
+ *  hedef hucre bicimi USD/EUR ise TL'ye cevrilir ("558,20USD" yaniltmasi). */
+const tlBicimiDuzelt = (cell: ExcelJS.Cell) => {
+  const f = String(cell.numFmt ?? '');
+  if (f && /USD|EUR|GBP|\$|€|£/i.test(f) && !/TL|₺/i.test(f)) cell.numFmt = '#,##0.00" TL"';
+};
+
+/** K-D (S4): sayfadaki formul-hata (cached #DEĞER!/#REF!/#AD?) hucre sayisi.
+ *  Yazim oncesi/sonrasi karsilastirilir — yazim hata sayisini ARTIRAMAZ. */
+const hataSay = (ws: ExcelJS.Worksheet): number => {
+  let n = 0;
+  ws.eachRow({ includeEmpty: false }, (row) => row.eachCell({ includeEmpty: false }, (cell) => {
+    const v: any = cell.value;
+    if (v && typeof v === 'object'
+        && (v.error || (v.result && typeof v.result === 'object' && v.result.error))) n++;
+  }));
+  return n;
+};
+
 /** TR-bilincli baslik normalizasyonu: harf-disi karakter at, kucult, TR
  *  harfleri katla. "Malz. Birim\nFiyat" → "malzbirimfiyat". */
 const basNorm = (v: any): string =>
@@ -101,19 +120,30 @@ export interface SekmeBilgi {
   sonVeri: number;
   matDeger: number;
   labDeger: number;
+  /** KF6 self-check: uygulamada dolu (>0) fiyat/tutar hucre sayisi */
+  beklenen: number;
+  /** KF6 self-check: dosyaya GERCEKTEN yazilan hucre sayisi */
+  yazilan: number;
+  /** K-D (KG5): yazimla ARTAN formul-hata sayisi (0 olmali) */
+  hataArtisi: number;
 }
 
 /**
  * Musteri workbook'una fiyatlari yazar (IN-PLACE) ve sekme bilgisi doner.
  *
- * KOLON HEDEFI (Duzeltme Talepleri 24.07 — kayma + fazla-kolon fix'leri):
+ * KOLON HEDEFI (Duzeltme Talepleri 24-27.07 — kayma/fazla-kolon/veri-kaybi):
  *  - colN rol → import'un okudugu KONUMA geri yazilir (round-trip, KE5).
  *  - Sistem alani (fixedSchema _matBirim vb.) → sablonun KENDI fiyat sutunu
  *    BASLIK ANLAMIYLA bulunur (F–J), degeri oraya yazar. Konumdan bagimsiz
  *    (KE3). Ikinci kolon seti (eski K–O davranisi) URETILMEZ.
- *  - Sablonda o fiyat kolonu YOKSA o veri HIC yazilmaz (KE8-KE11): musteri
- *    duzeni bilerek kurmus (orn. malzeme-only kesif) — saga kolon APPEND
- *    YASAK. Yazilamayan tutarlar yine SekmeBilgi'de birikir (İCMAL degeri).
+ *  - VERI KAYBI YASAK (KF1/KF2, Aksa_Göynük vakasi): eslesen kolon YOK ama
+ *    yazilacak DOLU veri VARSA kolon sablonun sag ucuna basligiyla EKLENIR
+ *    ve doldurulur — uygulamada gorunen hicbir fiyat ciktida kaybolmaz.
+ *  - Veri de yoksa kolon EKLENMEZ (KE8/KF3 — UYMZ: verisiz Isc. basliklari
+ *    dayatilmaz). Turetilmis Toplam (grandUnit/grandTot) yalniz sablonda
+ *    basligi VARSA yazilir; asla eklenmez (KE11 — bilesenleri zaten yazili).
+ *  - KF6 self-check: beklenen (uygulamada dolu) / yazilan hucre sayaclari
+ *    SekmeBilgi'de doner; uyusmazlik cagirana gorunur uyari tasitir.
  */
 export function writePricesToWorkbook(
   wb: ExcelJS.Workbook,
@@ -129,6 +159,19 @@ export function writePricesToWorkbook(
 
     const roles = sheetData.columnRoles ?? {};
     const rowData = sheetData.rowData ?? [];
+    const defs = sheetData.columnDefs ?? [];
+    const headerText = (field: string, fallback: string) =>
+      defs.find((d) => d.field === field)?.headerName?.trim() || fallback;
+
+    // KF2 on-taramasi: bu rolde EN AZ BIR data satirinda dolu (>0) deger
+    // var mi? Kolon-ekleme karari yalniz DOLU veri icin verilir.
+    const rolDolu = (field?: string): boolean => {
+      if (!field) return false;
+      for (const row of rowData) {
+        if (row?._isDataRow && sayi(row[field]) > 0) return true;
+      }
+      return false;
+    };
 
     // Baslik satiri: rowData'daki SON _isHeaderRow (excel 1-based = ri+1); yoksa 1
     let headerRow = 1;
@@ -162,8 +205,26 @@ export function writePricesToWorkbook(
     };
 
     // ── field → 1-based kolon ──
+    // KF2 ekleme ucu: BASLIK satirindaki SON DOLU kolonun sagi. Aksa tuzagi:
+    // ws.columnCount 119 donebilir (stil tanimli BOS kolonlar) — ona gore
+    // eklemek fiyatlari DT120 gibi gorunmez uca atar. Baslik ekseni otorite.
+    let baslikSonDolu = 0;
+    for (const hr of headerRows) {
+      ws.getRow(hr).eachCell({ includeEmpty: false }, (cell, cn) => {
+        if (String(hucreDeger(cell.value)).trim() !== '' && cn > baslikSonDolu) baslikSonDolu = cn;
+      });
+    }
+    let nextCol = (baslikSonDolu || enSonKolon) + 1;
+    // Guvenlik: hedef kolonda baslik doluysa (teorik cakisma) bir sag kay
+    const bosBaslikKolonu = (): number => {
+      while (headerRows.some((hr) => String(hucreDeger(ws.getCell(hr, nextCol).value)).trim() !== '')) nextCol++;
+      return nextCol++;
+    };
     const fieldToCol: Record<string, number> = {};
-    const kolonAta = (field: string | undefined, anlam?: FiyatAnlam): number | null => {
+    const kolonAta = (
+      field: string | undefined, fallbackBaslik: string,
+      anlam?: FiyatAnlam, ekleYasak?: boolean,
+    ): number | null => {
       if (!field) return null;
       if (fieldToCol[field]) return fieldToCol[field];
       // colN: import'un okudugu kolona GERI yaz (round-trip — KE5)
@@ -177,23 +238,61 @@ export function writePricesToWorkbook(
         const bulunan = basligaGoreKolon(anlam);
         if (bulunan) { fieldToCol[field] = bulunan; return bulunan; }
       }
-      // Sablonda o kolon YOK → yazilmaz (KE8-KE11: append YASAK; musteri
-      // duzeni bilerek kurmus, sisteme kolon dayatilmaz).
+      // KF2 (VERI KAYBI YASAK — Aksa_Göynük): eslesen kolon YOK ama DOLU
+      // veri VAR → kolon sag uca basligiyla eklenir. Veri yoksa EKLENMEZ
+      // (KE8/KF3 — UYMZ). Turetilmis Toplam icin ekleme HER KOSULDA yasak
+      // (KE11 — ekleYasak).
+      if (!ekleYasak && rolDolu(field)) {
+        const col = bosBaslikKolonu();
+        fieldToCol[field] = col;
+        kullanilanKolon.add(col);
+        const hCell = ws.getCell(headerRow, col);
+        hCell.value = headerText(field, fallbackBaslik);
+        hCell.font = { bold: true };
+        return col;
+      }
       return null;
     };
 
     const qtyCol = roles.quantityField && roles.quantityField.startsWith('col')
-      ? kolonAta(roles.quantityField)
+      ? kolonAta(roles.quantityField, 'Miktar')
       : null; // miktar SISTEM alaniysa orijinalde yok → formul kurulamaz
-    const matUnitCol = kolonAta(roles.materialUnitPriceField, 'matUnit');
-    const matTotCol = kolonAta(roles.materialTotalField, 'matTot');
-    const labUnitCol = kolonAta(roles.laborUnitPriceField, 'labUnit');
-    const labTotCol = kolonAta(roles.laborTotalField, 'labTot');
-    const grandUnitCol = kolonAta(roles.grandUnitPriceField, 'grandUnit');
-    const grandTotCol = kolonAta(roles.grandTotalField, 'grandTot');
+    // K-B (EMO, S1b): BİRİM kolonu — bazi dosyalarda MİKTAR/BİRİM basliklari
+    // TERS (MİKTAR altinda 'mt', BİRİM altinda 70). Satir duzeyinde sayisal
+    // olan hucre miktar kabul edilir (asagida etkinQty).
+    const unitColIdx = roles.unitField && roles.unitField.startsWith('col')
+      ? parseInt(roles.unitField.replace('col', ''), 10)
+      : NaN;
+    const unitCol = !isNaN(unitColIdx) ? unitColIdx + 1 : null;
+    const matUnitCol = kolonAta(roles.materialUnitPriceField, 'Malz. Birim Fiyat', 'matUnit');
+    const matTotCol = kolonAta(roles.materialTotalField, 'Malz. Toplam', 'matTot');
+    const labUnitCol = kolonAta(roles.laborUnitPriceField, 'İşç. Birim Fiyat', 'labUnit');
+    const labTotCol = kolonAta(roles.laborTotalField, 'İşç. Toplam', 'labTot');
+    const grandUnitCol = kolonAta(roles.grandUnitPriceField, 'Toplam Birim', 'grandUnit', true);
+    const grandTotCol = kolonAta(roles.grandTotalField, 'Toplam Tutar', 'grandTot', true);
+
+    // ── K-D (S4): yazim ONCESI hata sayimi ──
+    const hataOnce = hataSay(ws);
+
+    // ── K-A (S2, EMO AYVAZ — HAYALET FIYAT YASAK) ──────────────────────
+    // Onceden fiyatli kaynak dosyada hedef fiyat kolonlarindaki ESKI
+    // deger/formuller DATA satirlarinda TEMIZLENIR; cikti YALNIZ uygulama
+    // grid'indeki degerleri tasir (grid ↔ cikti birebir). Toplam/ara-toplam
+    // satirlari (_isDataRow degil) DOKUNULMAZ — sablonun SUM'lari korunur.
+    const hedefKolonlar = [matUnitCol, matTotCol, labUnitCol, labTotCol, grandUnitCol, grandTotCol]
+      .filter((c): c is number => !!c);
+    if (hedefKolonlar.length > 0) {
+      for (let ri = 0; ri < rowData.length; ri++) {
+        if (!rowData[ri]?._isDataRow) continue;
+        for (const c of hedefKolonlar) ws.getCell(ri + 1, c).value = null;
+      }
+    }
 
     let ilkVeri = 0; let sonVeri = 0;
     let matToplam = 0; let labToplam = 0;
+    // KF6 self-check sayaclari — grand* turetilmis oldugundan sayilmaz
+    // (bilesenleri matUnit/matTot/labUnit/labTot zaten sayiliyor).
+    let beklenen = 0; let yazilan = 0;
 
     for (let ri = 0; ri < rowData.length; ri++) {
       const row = rowData[ri];
@@ -213,35 +312,72 @@ export function writePricesToWorkbook(
       matToplam += matTot;
       labToplam += labTot;
 
-      // T6: yalniz >0 degerler yazilir — fiyatsiz satir BOS kalir, 0 ASLA.
-      if (matUnitCol && matUnit > 0) ws.getCell(excelRow, matUnitCol).value = matUnit;
-      if (labUnitCol && labUnit > 0) ws.getCell(excelRow, labUnitCol).value = labUnit;
-      if (grandUnitCol && grandUnit > 0) ws.getCell(excelRow, grandUnitCol).value = grandUnit;
+      if (matUnit > 0) beklenen++;
+      if (matTot > 0) beklenen++;
+      if (labUnit > 0) beklenen++;
+      if (labTot > 0) beklenen++;
 
-      // T7: tutar = miktar × birim CANLI FORMUL — ama YALNIZ orijinaldeki
-      // miktar hucresi GERCEKTEN SAYISALSA (Bulgu B8: metin miktar × formul
-      // = #VALUE riski; metinse tutar DUZ SAYI yazilir — "dolu ve sayisal").
-      const qtyHucreSayisal = qtyCol
-        ? typeof ws.getCell(excelRow, qtyCol).value === 'number'
-        : false;
-      if (matTotCol && matTot > 0) {
-        ws.getCell(excelRow, matTotCol).value =
-          qtyCol && matUnitCol && qtyHucreSayisal && qty > 0 && matUnit > 0
-            ? ({ formula: `${KOLON_HARF(qtyCol)}${excelRow}*${KOLON_HARF(matUnitCol)}${excelRow}`, result: matTot } as any)
-            : matTot;
+      // T6: yalniz >0 degerler yazilir — fiyatsiz satir BOS kalir, 0 ASLA.
+      // K-C: yazilan her hucrede yabanci para bicimi TL'ye duzeltilir.
+      const yaz = (col: number, deger: any) => {
+        const cell = ws.getCell(excelRow, col);
+        cell.value = deger;
+        tlBicimiDuzelt(cell);
+        return cell;
+      };
+      if (matUnitCol && matUnit > 0) { yaz(matUnitCol, matUnit); yazilan++; }
+      if (labUnitCol && labUnit > 0) { yaz(labUnitCol, labUnit); yazilan++; }
+      if (grandUnitCol && grandUnit > 0) yaz(grandUnitCol, grandUnit);
+
+      // K-B (S1, EMO): ETKIN MIKTAR — quantityField hucresi sayisal degilse
+      // (MİKTAR/BİRİM basliklari TERS dosyalar: MİKTAR altinda 'mt') BİRİM
+      // kolonundaki SAYISAL deger miktar kabul edilir. Ikisi de degilse
+      // formul kurulmaz (Bulgu B8: metin × formul = #VALUE riski).
+      const qtyHucre = qtyCol ? ws.getCell(excelRow, qtyCol).value : null;
+      const unitHucre = unitCol ? ws.getCell(excelRow, unitCol).value : null;
+      let etkinQtyCol: number | null = null;
+      let etkinQty = 0;
+      if (typeof qtyHucre === 'number' && qtyHucre > 0) { etkinQtyCol = qtyCol; etkinQty = qtyHucre; }
+      else if (typeof unitHucre === 'number' && unitHucre > 0) { etkinQtyCol = unitCol; etkinQty = unitHucre; }
+      else if (qty > 0) etkinQty = qty; // grid degeri (formulsuz hesap icin)
+
+      // K-B: birim fiyat YAZILAN satirda toplam MUTLAKA yazilir — eski/stale
+      // toplam (EMO: 798 = eski birimin kalintisi) ASLA birakilmaz. App
+      // toplami hesaplayamamissa (S1b) miktar × birim'den TURETILIR.
+      const matTotYaz = matTot > 0 ? matTot
+        : matUnit > 0 && etkinQty > 0 ? Math.round(matUnit * etkinQty * 100) / 100 : 0;
+      const labTotYaz = labTot > 0 ? labTot
+        : labUnit > 0 && etkinQty > 0 ? Math.round(labUnit * etkinQty * 100) / 100 : 0;
+      matToplam += matTotYaz - matTot; // İCMAL turetilen toplami da gorur
+      labToplam += labTotYaz - labTot;
+
+      if (matTotCol && matTotYaz > 0) {
+        yaz(matTotCol,
+          etkinQtyCol && matUnitCol && matUnit > 0
+            ? ({ formula: `${KOLON_HARF(etkinQtyCol)}${excelRow}*${KOLON_HARF(matUnitCol)}${excelRow}`, result: matTotYaz } as any)
+            : matTotYaz);
+        yazilan++;
       }
-      if (labTotCol && labTot > 0) {
-        ws.getCell(excelRow, labTotCol).value =
-          qtyCol && labUnitCol && qtyHucreSayisal && qty > 0 && labUnit > 0
-            ? ({ formula: `${KOLON_HARF(qtyCol)}${excelRow}*${KOLON_HARF(labUnitCol)}${excelRow}`, result: labTot } as any)
-            : labTot;
+      if (labTotCol && labTotYaz > 0) {
+        yaz(labTotCol,
+          etkinQtyCol && labUnitCol && labUnit > 0
+            ? ({ formula: `${KOLON_HARF(etkinQtyCol)}${excelRow}*${KOLON_HARF(labUnitCol)}${excelRow}`, result: labTotYaz } as any)
+            : labTotYaz);
+        yazilan++;
       }
-      if (grandTotCol && grandTot > 0) {
-        ws.getCell(excelRow, grandTotCol).value =
-          matTotCol && labTotCol && (matTot > 0 || labTot > 0)
-            ? ({ formula: `${KOLON_HARF(matTotCol)}${excelRow}+${KOLON_HARF(labTotCol)}${excelRow}`, result: grandTot } as any)
-            : grandTot;
+      const grandYaz = grandTot > 0 ? grandTot : Math.round((matTotYaz + labTotYaz) * 100) / 100;
+      if (grandTotCol && grandYaz > 0) {
+        yaz(grandTotCol,
+          matTotCol && labTotCol && (matTotYaz > 0 || labTotYaz > 0)
+            ? ({ formula: `${KOLON_HARF(matTotCol)}${excelRow}+${KOLON_HARF(labTotCol)}${excelRow}`, result: grandYaz } as any)
+            : grandYaz);
       }
+    }
+
+    // K-D (KG5): yazim sonrasi hata sayisi ONCEKINE gore artamaz
+    const hataArtisi = Math.max(0, hataSay(ws) - hataOnce);
+    if (hataArtisi > 0) {
+      console.warn(`[Export] ⚠ K-D: "${ws.name}" sayfasinda yazim ${hataArtisi} formul hatasi URETTI`);
     }
 
     ozetler.push({
@@ -252,6 +388,9 @@ export function writePricesToWorkbook(
       sonVeri,
       matDeger: matToplam,
       labDeger: labToplam,
+      beklenen,
+      yazilan,
+      hataArtisi,
     });
   }
 
@@ -347,6 +486,10 @@ export interface ExportSonucu {
   formatSayfalari: string[];
   /** Ciktiya giren teklif liste sayfalarinin SON adlari */
   listeSayfalari: string[];
+  /** KF6 self-check: dosyaya yazilamayan dolu deger sayisi (0 = kayip yok) */
+  eksikDeger: number;
+  /** K-D (KG5): yazimla artan formul-hata sayisi (0 olmali) */
+  hataArtisi: number;
 }
 
 /**
@@ -378,6 +521,13 @@ export async function buildExportWorkbook(g: ExportGirdisi): Promise<ExportSonuc
   const musteriWb = new ExcelJS.Workbook();
   await musteriWb.xlsx.load(g.originalFile as any);
   const bilgiler = writePricesToWorkbook(musteriWb, g.sheetsArr);
+  // KF6 self-check: yazilamayan dolu deger — sessiz veri kaybi YASAK,
+  // cagiran (controller) kullaniciya gorunur uyari tasir.
+  const eksikDeger = bilgiler.reduce((a, b) => a + Math.max(0, b.beklenen - b.yazilan), 0);
+  if (eksikDeger > 0) {
+    console.warn(`[Export] ⚠ SELF-CHECK: ${eksikDeger} dolu fiyat degeri dosyaya YAZILAMADI`);
+  }
+  const hataArtisi = bilgiler.reduce((a, b) => a + (b.hataArtisi ?? 0), 0);
 
   const listeSayfalari: string[] = [];
   const sekmeler: SekmeOzet[] = [];
@@ -408,5 +558,5 @@ export async function buildExportWorkbook(g: ExportGirdisi): Promise<ExportSonuc
   const dolan = fillPlaceholders(wb, { ...g.ctxTemel, sekmeler });
   applyOverrides(wb, g.overrides);
 
-  return { wb, sekmeler, dolan, formatSayfalari, listeSayfalari };
+  return { wb, sekmeler, dolan, formatSayfalari, listeSayfalari, eksikDeger, hataArtisi };
 }

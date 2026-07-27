@@ -26,6 +26,16 @@ function blobIndir(data: Blob, headers: any, fallback: string) {
   setTimeout(() => window.URL.revokeObjectURL(url), 10_000);
 }
 
+/** KF6: backend self-check uyarisi (X-Export-Warning) — sessiz veri kaybi
+ *  YASAK; dosya inse bile eksik deger varsa kullanici GORUR. */
+function uyariGoster(headers: any) {
+  const u = headers?.['x-export-warning'];
+  if (!u) return;
+  let mesaj = String(u);
+  try { mesaj = decodeURIComponent(mesaj); } catch { /* ham haliyle goster */ }
+  toast({ title: 'Dikkat — eksik değer', description: mesaj, variant: 'destructive' });
+}
+
 /** responseType:'blob' isteklerinde hata govdesi de Blob gelir — mesaji coz. */
 async function hataMesaji(e: any): Promise<string> {
   try {
@@ -46,6 +56,7 @@ export async function teklifCiktisiniIndir(quoteId: string): Promise<boolean> {
     toast({ title: 'Çıktı hazırlanıyor…', description: 'Teklif formatında Excel üretiliyor.' });
     const x = await api.post(`/quotes/${quoteId}/export`, {}, { responseType: 'blob' });
     blobIndir(x.data, x.headers, 'teklif.xlsx');
+    uyariGoster(x.headers);
     toast({ title: 'İndirildi', description: 'Teklif Excel dosyası bilgisayarınıza indi.' });
     return true;
   } catch (e: any) {
@@ -62,6 +73,7 @@ export async function fiyatliExceliIndir(quoteId: string): Promise<boolean> {
     toast({ title: 'Çıktı hazırlanıyor…', description: 'Fiyatlandırılmış keşif Excel\'i üretiliyor.' });
     const x = await api.get(`/quotes/${quoteId}/export-priced`, { responseType: 'blob' });
     blobIndir(x.data, x.headers, 'fiyatlandirilmis-kesif.xlsx');
+    uyariGoster(x.headers);
     toast({ title: 'İndirildi', description: 'Fiyatlandırılmış keşif bilgisayarınıza indi.' });
     return true;
   } catch (e: any) {

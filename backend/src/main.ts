@@ -53,6 +53,9 @@ async function bootstrap() {
       return callback(new Error(`CORS blocked: ${origin}`));
     },
     credentials: true,
+    // KF6: indirme yanitindaki dosya adi + self-check uyarisi cross-origin'de
+    // de okunabilsin (same-origin'de zaten serbest)
+    exposedHeaders: ['Content-Disposition', 'X-Export-Warning'],
   });
 
   app.setGlobalPrefix('api');

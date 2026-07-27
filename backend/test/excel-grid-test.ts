@@ -118,6 +118,26 @@ async function run() {
       `isEmpty=${s.isEmpty} rows=${s.rowData.filter((r: any) => r._isDataRow).length}`);
   }
 
+  // ══ KG6 (EMO AYVAZ 27.07): MİKTAR/BİRİM basliklari TERS dosya ═══════
+  // "MİKTAR" altinda birim METNI ('mt'), "BİRİM" altinda SAYI (70) —
+  // veri karar verir: sayisal oran capraz, roller TAKAS edilir.
+  {
+    const aoa: any[][] = [
+      ['NO', 'MALZEMENİN CİNSİ', 'MİKTAR', 'BİRİM', 'MALZ. BİRİM FİYAT ($)'],
+      ['1', '4" Siyah Boru', 'mt', 70, 0],
+      ['2', '4" Patent Dirsek', 'ad', 8, 0],
+      ['3', 'KONSOL İÇİN NPU100', 'mt', 18, 0],
+    ];
+    const res = await svc.prepare(fixture(aoa, []), { fixedSchema: true });
+    const s = res.sheets[0];
+    check('KG6 ters başlık: miktar rolü SAYI taşıyan kolona (D), birim C\'ye takas edildi',
+      s.columnRoles?.quantityField === 'col3' && s.columnRoles?.unitField === 'col2',
+      `qty=${s.columnRoles?.quantityField} unit=${s.columnRoles?.unitField}`);
+    check('KG6 veri satırları tanındı (3 kalem; miktar parse edilebiliyor)',
+      !s.isEmpty && s.rowData.filter((r: any) => r._isDataRow).length === 3,
+      `isEmpty=${s.isEmpty} rows=${s.rowData.filter((r: any) => r._isDataRow).length}`);
+  }
+
   console.log(`\n${'='.repeat(60)}`);
   console.log(`EXCEL GRID PARSE: ${passed} PASS, ${failed} FAIL`);
   console.log('='.repeat(60));

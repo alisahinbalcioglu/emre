@@ -70,12 +70,13 @@ export class QuotesController {
   /** .xlsx uret (rev artar, arsivlenir — T10) ve indir */
   @Post(':id/export')
   async exportXlsx(@CurrentUser() user: any, @Param('id') id: string, @Res() res: Response) {
-    const { buffer, filename } = await this.quotesService.exportXlsx(user.id, id);
+    const { buffer, filename, uyari } = await this.quotesService.exportXlsx(user.id, id);
     res.set({
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'Content-Disposition': `attachment; filename="${encodeURIComponent(filename)}"`,
       'Content-Length': buffer.length,
     });
+    if (uyari) res.set('X-Export-Warning', encodeURIComponent(uyari)); // KF6
     res.end(buffer);
   }
 
@@ -83,12 +84,13 @@ export class QuotesController {
    *  (kullanici karari 24.07: cikti ikiye ayrildi). */
   @Get(':id/export-priced')
   async exportPriced(@CurrentUser() user: any, @Param('id') id: string, @Res() res: Response) {
-    const { buffer, filename } = await this.quotesService.exportPricedXlsx(user.id, id);
+    const { buffer, filename, uyari } = await this.quotesService.exportPricedXlsx(user.id, id);
     res.set({
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'Content-Disposition': `attachment; filename="${encodeURIComponent(filename)}"`,
       'Content-Length': buffer.length,
     });
+    if (uyari) res.set('X-Export-Warning', encodeURIComponent(uyari)); // KF6
     res.end(buffer);
   }
 

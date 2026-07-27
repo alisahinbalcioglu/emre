@@ -564,6 +564,45 @@ export class ExcelGridService {
       }
     }
 
+    // ── KG6 (EMO AYVAZ 27.07): MİKTAR/BİRİM basliklari TERS dosyalar ──
+    // "MİKTAR" basligi altinda birim METNI ('mt'), "BİRİM" altinda SAYI (70).
+    // Iki hal: (a) quantity yanlis kolona atandi (tek tuk sayi yetti),
+    // (b) quantity HIC atanamadi (MİKTAR kolonu tamamen metin). Iki halde de
+    // VERI karar verir: sayisal ORAN capraz bakilir, roller TAKAS edilir
+    // (icerik otorite, baslik degil — KF4 dagitilmis-baslik ruhu).
+    if (roles.unit !== undefined) {
+      const sayisalOran = (c: number): number => {
+        let dolu = 0; let sayi = 0;
+        const limit = Math.min(60, rawValues.length);
+        for (let r = 0; r < limit; r++) {
+          const s = String(rawValues[r]?.[c] ?? '').trim();
+          if (!s) continue;
+          dolu++;
+          if (!isNaN(parseFloat(s.replace(',', '.')))) sayi++;
+        }
+        return dolu === 0 ? 0 : sayi / dolu;
+      };
+      const uOran = sayisalOran(roles.unit);
+      if (roles.quantity !== undefined) {
+        const qOran = sayisalOran(roles.quantity);
+        if (qOran < 0.4 && uOran > 0.6) {
+          console.log(`[ExcelGrid] KG6: MIKTAR/BIRIM ters (sayisal oran q=${qOran.toFixed(2)} u=${uOran.toFixed(2)}) — roller takas edildi`);
+          const t = roles.quantity; roles.quantity = roles.unit; roles.unit = t;
+        }
+      } else if (uOran > 0.6) {
+        // quantity atanamadi ama BİRİM kolonu sayi tasiyor → miktar odur;
+        // birim rolu (varsa) MİKTAR-desenli metin kolonuna gecer.
+        let miktarKolonu = -1;
+        for (let c = 0; c < colCount; c++) {
+          if (c === roles.unit || assignedCols.has(c)) continue;
+          if (/\bmiktar\b/.test(colTexts[c] ?? '')) { miktarKolonu = c; break; }
+        }
+        console.log(`[ExcelGrid] KG6: miktar rolu atanamadi, BİRİM kolonu sayisal (oran=${uOran.toFixed(2)}) — miktar=BİRİM kolonu${miktarKolonu >= 0 ? ', birim=MİKTAR-baslikli kolon' : ''}`);
+        roles.quantity = roles.unit;
+        if (miktarKolonu >= 0) roles.unit = miktarKolonu; else delete roles.unit;
+      }
+    }
+
     // First data row: ilk miktari olan satir
     let firstDataRow = -1;
     if (roles.quantity !== undefined) {
