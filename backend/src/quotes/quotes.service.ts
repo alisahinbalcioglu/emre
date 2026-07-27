@@ -256,46 +256,10 @@ export class QuotesService {
     return { ...sonuc, formatAdi, formatKaynak };
   }
 
-  /** Cikti Onizleme verisi: DOLDURULMUS kapak/icmal (ExcelGrid JSON) +
-   *  otomatik alan haritasi (T14) + mevcut overrides + liste sekme adlari. */
-  async exportPreview(userId: string, id: string) {
-    const quote = await this.quoteGetir(userId, id);
-    const sonuc = await this.ciktiKur(userId, quote, (quote.rev ?? 0) + 1);
-    const formatSheets = sonuc.formatSayfalari
-      .map((ad) => sonuc.wb.getWorksheet(ad))
-      .filter(Boolean)
-      .map((ws) => sheetToGrid(ws!, true));
-    const listeAdlari = (Array.isArray(quote.sheets) ? (quote.sheets as any[]) : [])
-      .filter((s) => !s.isEmpty)
-      .map((s) => s.name ?? 'Sayfa');
-    return {
-      quoteId: quote.id,
-      teklifNo: quote.quoteNo ?? null,
-      rev: (quote.rev ?? 0) + 1,
-      formatSheets,
-      // B1 gorunurlugu: hangi format kullanildi? (yerlesik ise FE uyarir)
-      formatAdi: sonuc.formatAdi,
-      formatKaynak: sonuc.formatKaynak,
-      dolan: sonuc.dolan,
-      overrides: quote.exportOverrides ?? {},
-      listeAdlari,
-      info: {
-        musteri: quote.musteri, proje: quote.proje,
-        hazirlayan: quote.hazirlayan, gecerlilik: quote.gecerlilik,
-        formatId: quote.formatId ?? null,
-      },
-    };
-  }
-
-  /** T13: onizleme duzenlemeleri teklif KATMANINA yazilir — format DEGISMEZ. */
-  async saveOverrides(userId: string, id: string, overrides: ExportOverrides) {
-    await this.quoteGetir(userId, id);
-    await this.prisma.quote.update({
-      where: { id },
-      data: { exportOverrides: (overrides ?? {}) as any } as any,
-    });
-    return { ok: true };
-  }
+  // ARINMA Faz 2 (A+B): exportPreview + saveOverrides SILINDI — Cikti
+  // Onizleme sayfasi c947983'te kaldirilmisti, FE'de 0 cagri kalmisti.
+  // quote.exportOverrides ALANI ve applyOverrides motoru KORUNUR (T13/T14):
+  // eski kayitli override'lar ciktiKur uzerinden islenmeye devam eder.
 
   /** .xlsx uret + REV artir + arsivle (T10). */
   async exportXlsx(userId: string, id: string): Promise<{ buffer: Buffer; filename: string; rev: number; quoteNo: string; uyari?: string }> {

@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Delete, Patch, Put,
+  Controller, Get, Post, Delete, Patch,
   Body, Param, UseGuards,
   UseInterceptors, UploadedFile,
   Res, HttpCode, HttpException, BadRequestException,
@@ -54,21 +54,8 @@ export class QuotesController {
     return this.quotesService.updateInfo(user.id, id, body ?? {});
   }
 
-  /** Cikti Onizleme verisi (doldurulmus kapak/icmal + otomatik alan haritasi) */
-  @Get(':id/export-preview')
-  exportPreview(@CurrentUser() user: any, @Param('id') id: string) {
-    return this.quotesService.exportPreview(user.id, id);
-  }
-
-  /** T13: teklif-bazli onizleme duzenlemeleri (ana format DEGISMEZ) */
-  @Put(':id/export-overrides')
-  saveOverrides(
-    @CurrentUser() user: any,
-    @Param('id') id: string,
-    @Body() body: { overrides: Record<string, Record<string, { value: string | number; manual?: boolean }>> },
-  ) {
-    return this.quotesService.saveOverrides(user.id, id, body?.overrides ?? {});
-  }
+  // ARINMA Faz 2 (A+B): export-preview + export-overrides rotalari SILINDI
+  // (Onizleme sayfasi c947983'te kalkmisti; FE'de 0 cagri).
 
   /** KH2 (SORUN 14): export HICBIR girdiyle 500 donemez — beklenmeyen hata
    *  yakalanir, sunucuda stack loglanir, kullaniciya neden + kod gider. */
