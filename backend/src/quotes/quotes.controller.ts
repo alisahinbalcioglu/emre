@@ -101,22 +101,9 @@ export class QuotesController {
     }
   }
 
-  /** T9: ayni icerigin PDF'i (rev degistirmez) — UI'dan kaldirildi (24.07,
-   *  "oncelikle pdf olmasin"); rota arsiv/ileri kullanim icin duruyor. */
-  @Get(':id/export-pdf')
-  async exportPdf(@CurrentUser() user: any, @Param('id') id: string, @Res() res: Response) {
-    try {
-      const { buffer, filename } = await this.quotesService.exportPdfPro(user.id, id);
-      res.set({
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="${encodeURIComponent(filename)}"`,
-        'Content-Length': buffer.length,
-      });
-      res.end(buffer);
-    } catch (e) {
-      this.exportHatasi('EXP-PDF', e);
-    }
-  }
+  // ARINMA Faz 2C: teklif export-pdf rotasi SILINDI (kullanici karari 24.07
+  // "pdf olmasin"; FE'de 0 cagri). Format karti PDF onizlemesi
+  // (/quote-formats/:id/preview-pdf, LibreOffice) CANLI ve KORUNDU.
 
   /** T10 arsivi */
   @Get(':id/exports')

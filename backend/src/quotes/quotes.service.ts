@@ -2,13 +2,11 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateQuoteDto } from './dto/create-quote.dto';
 import * as XLSX from 'xlsx';
-import * as puppeteer from 'puppeteer';
 import * as ExcelJS from 'exceljs';
 // PRD Teklif Formatim (v2.1): profesyonel cikti motoru
 import { buildExportWorkbook, writePricesToWorkbook, ExportSonucu } from './export-engine';
-import { buildSampleFormat, sheetToGrid, ExportOverrides, FillContext } from '../quote-formats/format-engine';
+import { buildSampleFormat, ExportOverrides, FillContext } from '../quote-formats/format-engine';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
-import { xlsxToPdf } from '../utils/xlsx-to-pdf';
 
 /** KDV orani — kod sabiti (ayarlanabilirlik backlog) */
 const KDV_ORAN = 0.20;
@@ -354,103 +352,8 @@ export class QuotesService {
     return { buffer: Buffer.from(e.xlsxBytes), filename: e.fileName };
   }
 
-  /** T9: PDF — AYNI kurucudan (mevcut teklif durumu) uretilir.
-   *  ONCE LibreOffice ile xlsx→pdf GERCEK gorunum (logolu kapak dahil,
-   *  kullanici is akisi 20.07); soffice yoksa/basarisizsa HTML geri dususu
-   *  (icerik/degerler yine birebir). */
-  async exportPdfPro(userId: string, id: string): Promise<{ buffer: Buffer; filename: string }> {
-    const quote = await this.quoteGetir(userId, id);
-    const rev = Math.max(quote.rev ?? 0, 1);
-    const sonuc = await this.ciktiKur(userId, quote, rev);
-
-    const temizBaslikLO = String(quote.title ?? 'Teklif').replace(/[\\/:*?"<>|]/g, '-').slice(0, 60);
-    const pdfAdi = `${quote.quoteNo ?? 'TASLAK'} Rev.${String(rev).padStart(2, '0')} - ${temizBaslikLO}.pdf`;
-    const xlsxBuf = Buffer.from(await sonuc.wb.xlsx.writeBuffer());
-    const gercek = await xlsxToPdf(xlsxBuf);
-    if (gercek) {
-      console.log(`[Export] PDF (LibreOffice, gercek gorunum): ${pdfAdi} (${(gercek.length / 1024).toFixed(0)} KB)`);
-      return { buffer: gercek, filename: pdfAdi };
-    }
-    console.warn('[Export] LibreOffice donusumu kullanilamadi — HTML geri dususu (dev ortami olabilir)');
-
-    // Kapak/icmal sayfalari → basit tablo HTML (degerler sheetToGrid'den:
-    // formul hucresi RESULT degerini verir → xlsx ile birebir)
-    const fmtTR = (v: number) => v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const kapakBloklari = sonuc.formatSayfalari.map((ad) => {
-      const ws = sonuc.wb.getWorksheet(ad);
-      if (!ws) return '';
-      const grid = sheetToGrid(ws, false);
-      const satirlar = grid.rowData.map((r) => {
-        const hucreler = grid.columnDefs.map((c) => {
-          const v = r[c.field];
-          const s = typeof v === 'number' ? fmtTR(v) : String(v ?? '');
-          return `<td style="padding:4px 10px;border:none">${s}</td>`;
-        }).join('');
-        return `<tr>${hucreler}</tr>`;
-      }).join('');
-      return `<section style="page-break-after:always"><h2 style="font-size:15px;margin-bottom:10px">${ad}</h2><table style="width:100%;border-collapse:collapse">${satirlar}</table></section>`;
-    }).join('');
-
-    const sheetsArray = Array.isArray(quote.sheets) ? (quote.sheets as any[]) : [];
-    const listeBloklari = this.listeBloklariHtml(sheetsArray, fmtTR);
-
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8" />
-<style>
-* { margin:0; padding:0; box-sizing:border-box; }
-body { font-family: Arial, sans-serif; font-size:12px; color:#1a1a1a; padding:32px; }
-table { width:100%; border-collapse:collapse; margin-bottom:20px; }
-th { background:#1f2937; color:#fff; padding:8px 10px; text-align:left; font-size:10px; }
-td { padding:7px 10px; border-bottom:1px solid #e5e5e5; }
-</style></head><body>${kapakBloklari}${listeBloklari}</body></html>`;
-
-    const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
-    try {
-      const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: 'networkidle0' });
-      const pdf = await page.pdf({ format: 'A4', printBackground: true, margin: { top: '0', right: '0', bottom: '0', left: '0' } });
-      const temizBaslik = String(quote.title ?? 'Teklif').replace(/[\\/:*?"<>|]/g, '-').slice(0, 60);
-      const filename = `${quote.quoteNo ?? 'TASLAK'} Rev.${String(rev).padStart(2, '0')} - ${temizBaslik}.pdf`;
-      return { buffer: Buffer.from(pdf), filename };
-    } finally {
-      await browser.close();
-    }
-  }
-
-  /** Liste sayfalari HTML bloklari (generatePdf ile ayni yapi — T2: ic
-   *  bilgiler [kar/iskonto/maliyet] HICBIR kosulda yazilmaz). */
-  private listeBloklariHtml(sheetsArray: any[], fmtTR: (v: number) => string): string {
-    return sheetsArray
-      .filter((s: any) => !s.isEmpty && Array.isArray(s.rowData) && s.rowData.length > 0)
-      .map((s: any) => {
-        const dataRows = (s.rowData as any[]).filter((r) => r._isDataRow);
-        const roles = s.columnRoles || {};
-        const nameF = roles.nameField; const qtyF = roles.quantityField; const unitF = roles.unitField;
-        const matUpF = roles.materialUnitPriceField; const matTotF = roles.materialTotalField;
-        const labUpF = roles.laborUnitPriceField; const labTotF = roles.laborTotalField;
-        const hasMat = !!matUpF; const hasLab = !!labUpF;
-        const rowsHtml = dataRows.map((r: any, i: number) => {
-          const matUp = matUpF ? parseFloat(String(r[matUpF] ?? '')) || 0 : 0;
-          const matTot = matTotF ? parseFloat(String(r[matTotF] ?? '')) || 0 : 0;
-          const labUp = labUpF ? parseFloat(String(r[labUpF] ?? '')) || 0 : 0;
-          const labTot = labTotF ? parseFloat(String(r[labTotF] ?? '')) || 0 : 0;
-          return `<tr><td>${i + 1}</td><td>${(nameF ? r[nameF] : '') ?? ''}</td><td>${(unitF ? r[unitF] : '') ?? ''}</td><td>${(qtyF ? r[qtyF] : '') ?? ''}</td>
-            ${hasMat ? `<td style="text-align:right">${matUp ? fmtTR(matUp) : ''}</td><td style="text-align:right">${matTot ? fmtTR(matTot) : ''}</td>` : ''}
-            ${hasLab ? `<td style="text-align:right">${labUp ? fmtTR(labUp) : ''}</td><td style="text-align:right">${labTot ? fmtTR(labTot) : ''}</td>` : ''}
-          </tr>`;
-        }).join('');
-        const sumMat = dataRows.reduce((sum: number, r: any) => sum + (matTotF ? parseFloat(String(r[matTotF] ?? '')) || 0 : 0), 0);
-        const sumLab = dataRows.reduce((sum: number, r: any) => sum + (labTotF ? parseFloat(String(r[labTotF] ?? '')) || 0 : 0), 0);
-        return `<section style="margin-bottom:24px">
-          <h2 style="font-size:14px;margin-bottom:8px;padding:6px 10px;background:#1f2937;color:#fff">${s.name || ''}</h2>
-          <table><thead><tr><th>#</th><th>Malzeme</th><th>Birim</th><th>Miktar</th>
-            ${hasMat ? '<th>Malz. Br.</th><th>Malz. Top.</th>' : ''}
-            ${hasLab ? '<th>İşç. Br.</th><th>İşç. Top.</th>' : ''}
-          </tr></thead><tbody>${rowsHtml}</tbody>
-          <tfoot><tr style="font-weight:bold;background:#f3f4f6">
-            <td colspan="4" style="text-align:right">Sayfa Toplamı</td>
-            ${hasMat ? `<td></td><td style="text-align:right">${fmtTR(sumMat)}</td>` : ''}
-            ${hasLab ? `<td></td><td style="text-align:right">${fmtTR(sumLab)}</td>` : ''}
-          </tr></tfoot></table></section>`;
-      }).join('');
-  }
+  // ARINMA Faz 2C: exportPdfPro + HTML-PDF fallback (listeBloklariHtml +
+  // puppeteer) SILINDI — kullanici karari 24.07 "pdf olmasin", FE'de 0
+  // cagri. xlsx-to-pdf util'i KORUNDU (quote-formats preview-pdf canli).
+  // Geri getirme: git show pre-arinma:backend/src/quotes/quotes.service.ts
 }
