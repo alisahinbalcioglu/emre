@@ -368,6 +368,37 @@ async function temizSuTestleri() {
       (r?.netPrice ?? 0) > 0 || r?.confidence === 'multi' || r?.confidence === 'high',
       `conf=${r?.confidence} net=${r?.netPrice}`);
   }
+
+  // TS5 (canli 27.07 — ASIL VAKA): S4 "sozluge kaydet" onerisi basligi
+  // impliedType=NULL + kinds=['pvc'] + sizeClass='plastic' ile kaydediyor
+  // (ExcelGrid). Bu alias uzunluk sirasinda seed'in onune gecip hint olunca
+  // ignoreTokens uygulanmiyor, 'temiz su' ad filtresi PPR'lari eliyordu.
+  // Yeni kural: GERCEK CEVIRI (impliedType'li seed) ONCE → PP-R.
+  {
+    const svc = svcAlias(WAVIN, [{
+      alias: 'temiz su borulari', canonical: 'TSB PVC-U Temiz Su Borusu 10 ATÜ',
+      kinds: ['pvc'], sizeClass: 'plastic', impliedType: null,
+    }]);
+    const r = (await svc.bulkMatch('u1', 'b1', [SATIR]))[SATIR];
+    check('TS5 S4 baslik-alias\'i (impliedType=null, kinds/sizeClass dolu) seed ceviriyi golgelemez → PP-R',
+      /PP-R/.test(adlar(r)) && !/PVC/.test(adlar(r)), adlar(r));
+  }
+
+  // TS6 (HAKAN vakasi): kutuphanede adinda 'temiz su' GECMEYEN yalniz PPR
+  // borular var — hint uygulaninca eslesme BULUNMALI ("bu markada yok"
+  // yanlisti; 'temiz su' kelimeleri hint'le yutulur, aile+cap PPR'i bulur).
+  {
+    const svc = svcAlias([
+      libRow({ kategori: 'PPR', ad: 'PPRC Boru PN20', cins: 'PP-R', cap: '20 mm', price: 45, urunKodu: 'H1', sheetName: 'HAKAN', birim: 'metre', paraBirimi: 'TL' }),
+    ], [{
+      alias: 'temiz su borulari', canonical: 'TSB PVC-U Temiz Su Borusu 10 ATÜ',
+      kinds: ['pvc'], sizeClass: 'plastic', impliedType: null,
+    }]);
+    const r = (await svc.bulkMatch('u1', 'b1', [SATIR]))[SATIR];
+    check('TS6 HAKAN vakasi: adinda temiz-su gecmeyen PPR boru yine BULUNUR (tek eslesme, fiyat yazilir)',
+      (r?.netPrice ?? 0) === 45 || /PPRC/.test(adlar(r)),
+      `conf=${r?.confidence} net=${r?.netPrice} adaylar=${adlar(r)}`);
+  }
 }
 
 async function run() {

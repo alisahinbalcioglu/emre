@@ -289,22 +289,35 @@ export class MatchingService {
       if (!name?.trim()) continue;
       const line = parseLine(name, units?.[name]);
 
-      // TS vakasi (24.07): alias secimi KADEMELI — en uzun eslesen alias
-      // guard'a takilirsa (veya ceviri degeri tasimiyorsa) SIRADAKI denenir.
-      // Eski tek-kazanan davranista metne degen ogrenilmis bir alias, seed
-      // ceviriyi ("temiz su"→PPR) golgeleyip hint'i tamamen dusurebiliyordu.
+      // TS vakasi (24.07/27.07): alias secimi KADEMELI — guard'a takilan
+      // (veya motorun kullanamadigi) alias atlanir, SIRADAKI denenir. Eski
+      // tek-kazanan davranista metne degen bir S4/ogrenilmis alias, seed
+      // ceviriyi ("temiz su"→PPR) golgeleyip hint'i etkisizlestiriyordu.
+      //
+      // GERCEK CEVIRI ONCE (27.07 canli kaniti): S4 baslik-alias'i
+      // ("TEMİZ SU BORULARI" → kinds=['pvc'], sizeClass, impliedType=NULL —
+      // ExcelGrid sozluge-kaydet onerisi) uzunluk sirasinda seed'in onune
+      // geciyordu; impliedType'siz hint ignoreTokens uygulatmadigindan
+      // 'temiz su' kelimeleri urun-adi filtresi olup PPR'lari eliyordu
+      // (yalniz adinda "Temiz Su Borusu" geçen PVC-U kaliyordu; HAKAN'da ise
+      // hic aday kalmiyordu). impliedType'li alias TAM ceviridir (aile +
+      // kelime yutma) — sinif-onsezili alias'tan her kosulda ustundur.
+      const adayTum = this.terminology.resolveAliasAdaylari(name, aliases);
+      const adaylar = [...adayTum.filter((a) => a.impliedType), ...adayTum.filter((a) => !a.impliedType)];
       let hint: AliasHint | null = null;
       let atlanan = 0;
-      for (const aday of this.terminology.resolveAliasAdaylari(name, aliases)) {
+      for (const aday of adaylar) {
         // E8: satirin KENDI ailesi cozulduyse sozluk BASKA aile dayatamaz
         // ("DOĞALGAZ VANASI KÜRESEL" — dogalgaz alias'i boru der, satir vana).
         if (aday.impliedType && line.familySlug && aday.impliedType !== line.familySlug) { atlanan++; continue; }
         // E2: adet birimli satira boru sozlugu dayatilamaz (birim sinyali)
         if (aday.impliedType === 'boru' && line.unitSignal === 'equipment' && line.familySlug !== 'boru') { atlanan++; continue; }
-        // Ceviri degeri tasimayan alias (S4 zehri: saf ogrenilmis AD —
-        // impliedType/sinif/cins hicbiri yok) hint OLAMAZ; arkasindaki
-        // gercek ceviriyi de golgelemesin.
-        if (!aday.impliedType && !aday.sizeClass && aday.kinds.length === 0) { atlanan++; continue; }
+        // Motorun KULLANABILDIGI deger tasimayan alias hint OLAMAZ:
+        // impliedType (aile+ignoreTokens) / sizeClass (sinif filtresi) /
+        // siyah-galvaniz (taban sirasi). kinds=['pvc'] gibi degerler motora
+        // GIRMIYOR — boyle alias arkasindaki gercek ceviriyi golgelemesin.
+        if (!aday.impliedType && !aday.sizeClass
+            && !aday.kinds.some((k) => k === 'siyah' || k === 'galvaniz')) { atlanan++; continue; }
         hint = aday;
         break;
       }
