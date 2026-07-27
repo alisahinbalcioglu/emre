@@ -2,6 +2,17 @@
 // MetaPrice — Fiyat Atama Kurallari (fiyatlandirma cekirdegi)
 // Kaynak: kullanici spec'i 2026-07-08. Backend esi:
 // backend/src/modules/matching/pricing.ts — AYNI kurallar, ikisini birlikte guncelle.
+//
+// SÖZLEŞME — Z3: GRID HESAPLARI (ARINMA Faz 1, 27.07.2026)
+// Çıktı DEĞİŞMEZLERİ:
+//  1. Satış = net × (1+kar%), YUKARI 1 hane; Satır toplamı = satış × miktar;
+//     GENEL TOPLAM = malzeme+işçilik toplamlarının toplamı.
+//  2. MİKTAR = satırdaki SAF-sayı hücre (etkinMiktar): quantityField sayı
+//     değilse unitField'daki sayı miktar kabul edilir — backend
+//     writePricesToWorkbook ile AYNI kural (app ↔ çıktı aynı değeri görür).
+//  3. Para birimi yalnız GÖRÜNTÜLEME çevirisidir (taban TRY, canlı TCMB);
+//     kütüphane fiyatları orijinal biriminde kalır.
+//  Mühür: pricing.test.ts (FE vitest) + backend test:ke KG bloğu.
 // ============================================================
 //
 // ASAMA A — KUTUPHANE: Liste --(iskonto%)--> Net (alis). Cevrim YOK.

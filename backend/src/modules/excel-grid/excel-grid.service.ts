@@ -1,3 +1,19 @@
+// ════════════════════════════════════════════════════════════════════
+// SÖZLEŞME — Z1: EXCEL YÜKLEME / İÇE AKTARIM (ARINMA Faz 1, 27.07.2026)
+// Girdi:  herhangi bir .xlsx/.xlsm buffer (başlıklı/başlıksız/EN/ters
+//         başlıklı/gizli sayfalı/önceden fiyatlı — TF1-TF4 fixture'ları).
+// Çıktı DEĞİŞMEZLERİ:
+//  1. GÖRÜNÜR her sayfa parse edilir; GİZLİ sayfa asla rowData üretmez (R-C).
+//  2. Roller (ad/miktar/birim/no/marka/fiyat) başlık + İÇERİK ile çözülür —
+//     içerik otoritedir: birim=UNIT_VOCAB oranı, miktar=SAF-sayı oranı
+//     (karma metin sayılmaz), ad=malzeme-token yoksa uzun-metin fallback.
+//  3. quantityField SAF-sayı taşımıyorsa rol iptal/takas edilir (KG6/R-B) —
+//     yanlış kolona bağlı kalınmaz.
+//  4. fixedSchema'da fiyat rolleri sistem alanlarına (_matBirim…) yönlenir;
+//     satır tipi: ad + (birim VEYA miktar) = veri; bölüm/nitelik satırı değil.
+//  5. Hiçbir dosya "veri bulunamadı" ile sessiz reddedilmez — 5 gerçek
+//     fixture (test:tf) bu sözleşmenin mühürüdür.
+// ════════════════════════════════════════════════════════════════════
 import { Injectable, BadRequestException } from '@nestjs/common';
 import * as XLSX from 'xlsx';
 import { PrismaService } from '../../prisma/prisma.service';

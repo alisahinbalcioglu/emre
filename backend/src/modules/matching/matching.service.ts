@@ -1,3 +1,21 @@
+// ════════════════════════════════════════════════════════════════════
+// SÖZLEŞME — Z2: FİYAT EŞLEŞTİRME (ARINMA Faz 1, 27.07.2026)
+// Girdi:  satır adı (+birim) + marka kütüphane havuzu.
+// Çıktı DEĞİŞMEZLERİ (sıra = öncelik):
+//  1. AD KİLİDİ: farklı aile ASLA aday olamaz (K1/K6); belirsiz ürün havuza
+//     girmez. Sözlük alias'ları KADEMELİ seçilir — gerçek çeviri
+//     (impliedType) sınıf-önsezisinden üstün; guard'a takılan atlanır (TS).
+//  2. ÇAP SERT filtre: DN ↔ inç ↔ OD-mm tek çevrim modülünden (conversion);
+//     çelikte OD serisi ±0,5 mm, plastikte DN=mm (KH4-7). Bilinmeyen çap
+//     yayılamaz.
+//  3. SONUÇLANDIRMA: tek aday → altın kural fiyat OTOMATİK; ≥2 → soru
+//     (kademe: kategori→cins→bağlantı→boy→ürün); 0 → "yok" + M3 alternatif.
+//     Fiyat sorulmadan ASLA yazılmaz (multi'de netPrice=0).
+//  4. Bayat indeks istek anında INDEX_VERSION'a tazelenir; hafıza ön-seçim
+//     çap-bilinçlidir (imza ölçü içerir), otomatik doldurmaz.
+//  Mühür: test:index (K/TS/KH) + test:matching (D) + test:spec (R) +
+//  test:conversion + test:contract (C1-C10).
+// ════════════════════════════════════════════════════════════════════
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { generateTags } from './tag-generator';

@@ -109,6 +109,88 @@ async function run() {
       hata || `boyut=${sonuc?.buffer?.length} uyari=${sonuc?.uyari}`);
   }
 
+  // ══ ALTIN YOL (ARINMA Faz 1) — Z1→Z2→Z3→Z4→Z5 UCTAN UCA ═══════════
+  // GERCEK dosya (hangar) → parse → ESLESTIR (sahte kutuphane, tek motor)
+  // → fiyat + toplam (etkinMiktar kurali) → IKI export → cikti dogrulama.
+  {
+    const { MatchingService } = require('../src/modules/matching/matching.service');
+    const { TerminologyService, ALIAS_SEEDS } = require('../src/modules/matching/terminology.service');
+    const { buildProductIndex } = require('../src/modules/matching/index/product-index');
+    const { QuotesService } = require('../src/quotes/quotes.service');
+    const { buildSampleFormat } = require('../src/quote-formats/format-engine');
+
+    const buf = oku('hangar-yss.xlsx');
+    const res = await svc.prepare(buf, { fixedSchema: true });
+    const sheet: any = res.sheets[0];
+    const nameField = sheet.columnRoles.nameField;
+    const qtyField = sheet.columnRoles.quantityField;
+    const dataRows = (sheet.rowData ?? []).filter((r: any) => r._isDataRow);
+
+    // Z2: sahte kutuphane — dosyadaki iki gercek kalem adiyla urun
+    const libRow = (ad: string, cap: string, price: number, kod: string) => {
+      const idx = buildProductIndex({ kategori: 'Vanalar', ad, cins: 'çelik', baglanti: 'flanşlı', cap, birim: 'adet', price, paraBirimi: 'TL', urunKodu: kod, sheetName: 'S' });
+      return { id: `l-${kod}`, materialId: null, material: null, materialName: idx.displayName,
+        listPrice: price, customPrice: null, discountRate: 0, currency: 'TRY',
+        productIndexId: `p-${kod}`, product: { ...idx, id: `p-${kod}`, ad, cins: 'çelik', baglanti: 'flanşlı', capRaw: cap, kategori: 'Vanalar', boyMm: null, urunKodu: kod, sheetName: 'S', price } };
+    };
+    const rows = [
+      libRow('Islak Alarm Vanası', '6"', 64637.3, 'IAV6'),
+      libRow('Kelebek Vana', '6"', 28885.6, 'KV6'),
+    ];
+    const prismaM: any = {
+      userLibrary: { findMany: async (a: any) => (a?.where?.brandId && typeof a.where.brandId === 'object' ? [] : rows) },
+      brand: { findUnique: async () => ({ name: 'AYVAZ' }) },
+      eslesmeHafizasi: { findUnique: async () => null, upsert: async () => {} },
+      terminologyAlias: { findMany: async () => ALIAS_SEEDS.map((s: any, i: number) => ({ id: `a${i}`, userId: null, active: true, ...s })) },
+    };
+    const fx: any = { getRates: async () => ({ usdTry: 47, eurTry: 54, usdTryBuying: 47, eurTryBuying: 54, source: 'f', date: '' }) };
+    const msvc = new MatchingService(prismaM, new TerminologyService(prismaM), fx);
+
+    // Dosyadaki yetim-olcu satirlar: "6\"" — FE baglami parent adla birlestirir;
+    // BE altin-yolunda birlesik adla sorgulanir (UY1 sonrasi gercek sorgu sekli).
+    const sorgular = ['ISLAK ALARM VANASI 6"', 'KELEBEK VANA 6"'];
+    const mres = await msvc.bulkMatch('u1', 'b1', sorgular);
+    check('ALTIN Z2: iki kalem tek motorla eşleşti (64.637,3 + 28.885,6)',
+      mres[sorgular[0]]?.netPrice === 64637.3 && mres[sorgular[1]]?.netPrice === 28885.6,
+      JSON.stringify([mres[sorgular[0]]?.netPrice, mres[sorgular[1]]?.netPrice]));
+
+    // Z3: fiyati grid'e yaz + toplam = fiyat × ETKIN miktar (FE kurali ikizi)
+    const olculu = dataRows.filter((r: any) => String(r[nameField] ?? '').trim() === '6"').slice(0, 2);
+    const fiyatlar = [64637.3, 28885.6];
+    olculu.forEach((r: any, i: number) => {
+      r._matBirim = String(fiyatlar[i]).replace('.', ',');
+      const qty = parseFloat(String(r[qtyField] ?? '0').replace(',', '.')) || 0;
+      r._matToplam = qty > 0 ? String(Math.round(fiyatlar[i] * qty * 100) / 100).replace('.', ',') : '';
+    });
+    check('ALTIN Z3: satır toplamı = fiyat × miktar (2×64.637,3=129.274,6)',
+      olculu.length === 2 && parseFloat(String(olculu[0]._matToplam).replace(',', '.')) === 129274.6,
+      `n=${olculu.length} top=${olculu[0]?._matToplam}`);
+
+    // Z4 + Z5: iki export ayni motor/haritayla
+    const quote: any = { id: 'q1', userId: 'u1', title: 'ALTIN', sheets: JSON.parse(JSON.stringify(res.sheets)),
+      originalFile: buf, quoteNo: 'MP-9', rev: 1, exportOverrides: null, musteri: 'X', proje: 'Y', hazirlayan: 'E', gecerlilik: '30' };
+    const prismaQ: any = {
+      quote: { findFirst: async () => quote, count: async () => 0, update: async ({ data }: any) => Object.assign(quote, data) },
+      quoteFormat: { findFirst: async () => null },
+      quoteExport: { create: async () => ({}) },
+      $transaction: async (arg: any) => (Array.isArray(arg) ? Promise.all(arg) : arg(prismaQ)),
+    };
+    const qsvc = new QuotesService(prismaQ, fx);
+    const priced = await qsvc.exportPricedXlsx('u1', 'q1');
+    check('ALTIN Z4: fiyatlandırılmış export hatasız + self-check temiz',
+      priced.buffer.length > 5000 && !priced.uyari, `uyari=${priced.uyari}`);
+
+    const { buildExportWorkbook } = require('../src/quotes/export-engine');
+    const s5 = await buildExportWorkbook({
+      originalFile: buf, sheetsArr: quote.sheets, formatWb: buildSampleFormat(), sheetRoles: null,
+      ctxTemel: { teklifNo: 'MP-9', rev: 1, tarih: '27.07.2026', musteri: 'X', proje: 'Y', hazirlayan: 'E', gecerlilik: '30', kurNotu: 'Kur', kdvOran: 0.2 },
+      overrides: null,
+    });
+    check('ALTIN Z5: teklif-format export — eksikDeger=0, hata artışı=0, İCMAL değeri doğru',
+      s5.eksikDeger === 0 && s5.hataArtisi === 0 && Math.abs((s5.sekmeler[0]?.matDeger ?? 0) - (129274.6 + 57771.2)) < 0.01,
+      `eksik=${s5.eksikDeger} hata=${s5.hataArtisi} mat=${s5.sekmeler[0]?.matDeger}`);
+  }
+
   console.log(`\n${'='.repeat(60)}`);
   console.log(`GERCEK DOSYA UYUMLULUK (TF1-TF4): ${passed} PASS, ${failed} FAIL`);
   console.log('='.repeat(60));

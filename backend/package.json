@@ -8,7 +8,8 @@
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main",
     "lint": "tsc --noEmit",
-    "test:regression": "ts-node test/matching-regression.ts",
+    "test:regression": "ts-node test/regression-all.ts",
+    "test:regression:db": "ts-node test/matching-regression.ts",
     "test:conversion": "ts-node test/conversion-test.ts",
     "test:matching": "ts-node test/matching-unit-test.ts",
     "test:admin-import": "ts-node test/admin-import-test.ts",
@@ -59,6 +60,7 @@
     "@types/passport-jwt": "^4.0.1",
     "@types/passport-local": "^1.0.38",
     "@types/pdf-parse": "^1.1.5",
+    "c8": "^12.0.0",
     "prisma": "^5.10.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3"

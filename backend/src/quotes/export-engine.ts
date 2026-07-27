@@ -1,6 +1,26 @@
 // ════════════════════════════════════════════════════════════════════
 // PROFESYONEL TEKLIF CIKTISI MOTORU (PRD Teklif Formatim v2.1) — SAF, DB YOK
 //
+// SÖZLEŞME — Z4 (Fiyatlandırılmış Excel) + Z5 (Teklif Formatı) — ARINMA
+// Faz 1, 27.07.2026. İKİ export yolu TEK doldurma motorunu
+// (writePricesToWorkbook) ve TEK kolon haritasını kullanır (KF7).
+// Çıktı DEĞİŞMEZLERİ:
+//  1. GRID ↔ ÇIKTI BİREBİR: grid'de görünen her dolu değer dosyada
+//     (yoksa kolon eklenir — KF2); grid'de olmayan hiçbir fiyat dosyada
+//     kalamaz (K-A hayalet temizliği). Verisiz kolon eklenmez (KE8);
+//     türetilmiş Toplam şablonda yoksa üretilmez (KE11).
+//  2. Hedef kolon: colN → round-trip; sistem alanı → BAŞLIK ANLAMIYLA
+//     (KE1-KE7); ekleme ucu başlık ekseninin sağı (DT120 tuzağı yok).
+//  3. Tutar = ETKİN miktar × birim, hücre-referanslı CANLI formül; stale
+//     değer asla kalmaz (KG1); TL değer yabancı para biçimiyle basılmaz
+//     (K-C); shared-formula zincirleri yazım öncesi dondurulur (KH1).
+//  4. SELF-CHECK: beklenen/yazılan sayısı + formül-hata artışı — uyumsuzluk
+//     X-Export-Warning ile KULLANICIYA görünür; endpoint hiçbir girdiyle
+//     500 dönmez (KH2). Z5 ek: format sayfaları natif korunur, liste
+//     yuvası değişimi, İCMAL SUM'ları DOLU kolonlara bağlanır.
+//  Mühür: test:ke (KE/KF/KG) + test:export (T) + test:livesim (SIM/G) +
+//  test:tf (KH1 + ALTIN YOL).
+//
 // MIMARI v2 (kullanici karari 20.07 — "yuklendigim dosya birebir cikmali,
 // is sayfalari TEK TUSLA yer degistirmeli"):
 //   TABAN = FORMAT workbook'unun KENDISI (ExcelJS load → kapak GORSELLERI,
