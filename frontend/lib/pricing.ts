@@ -42,3 +42,26 @@ export function hesaplaSatisBirimFiyat(netTeklifParaBirimi: number, karYuzde: nu
 export function hesaplaSatirToplam(satisBirimFiyat: number, miktar: number): number {
   return yukariYuvarla(satisBirimFiyat * miktar);
 }
+
+/** UY2 (EMO AYVAZ 27.07): ETKIN MIKTAR — MİKTAR/BİRİM basliklari TERS
+ *  persist edilmis tekliflerde quantityField hucresi metin ('mt') kalir,
+ *  gercek sayi unitField'dadir. SAF sayi ise miktar odur; degilse birim
+ *  hucresindeki saf sayi miktar kabul edilir (backend writePrices ile
+ *  AYNI kural — app toplami ve cikti ayni degeri gorur). */
+export function etkinMiktar(
+  row: Record<string, any>,
+  quantityField?: string,
+  unitField?: string,
+): number {
+  const oku = (f?: string): number => {
+    if (!f) return NaN;
+    const s = String(row[f] ?? '').trim();
+    if (!/^-?[0-9.,]+$/.test(s)) return NaN;
+    const n = parseFloat(s.replace(',', '.'));
+    return isNaN(n) ? NaN : n;
+  };
+  const q = oku(quantityField);
+  if (!isNaN(q)) return q;
+  const u = oku(unitField);
+  return !isNaN(u) ? u : 0;
+}

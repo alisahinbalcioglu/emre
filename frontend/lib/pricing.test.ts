@@ -36,3 +36,25 @@ describe('fiyat cekirdegi (spec)', () => {
     expect(hesaplaNetFiyat(100, -10)).toBe(100);
   });
 });
+
+// UY2 (EMO AYVAZ 27.07): MİKTAR/BİRİM ters persist edilmis tekliflerde
+// app toplami hesaplanamiyordu — etkin miktar saf-sayi hucreden okunur.
+import { etkinMiktar } from './pricing';
+
+describe('etkinMiktar (UY2)', () => {
+  it('normal satır: quantityField saf sayı → o kullanılır', () => {
+    expect(etkinMiktar({ col4: '70', col5: 'mt' }, 'col4', 'col5')).toBe(70);
+  });
+  it('TERS başlık (EMO): quantityField="mt" metin → unitField sayısı miktar olur', () => {
+    expect(etkinMiktar({ col4: 'mt', col5: 70 }, 'col4', 'col5')).toBe(70);
+  });
+  it('"32 adet işçi..." karma metni SAF sayı DEĞİL — miktar sayılmaz', () => {
+    expect(etkinMiktar({ col4: '32 adet işçi koğuşunda', col5: 'Adet' }, 'col4', 'col5')).toBe(0);
+  });
+  it('TR ondalık: "12,5" → 12.5', () => {
+    expect(etkinMiktar({ col4: '12,5' }, 'col4', 'col5')).toBe(12.5);
+  });
+  it('ikisi de metin → 0 (formül/toplam kurulmaz)', () => {
+    expect(etkinMiktar({ col4: 'mt', col5: 'ad' }, 'col4', 'col5')).toBe(0);
+  });
+});

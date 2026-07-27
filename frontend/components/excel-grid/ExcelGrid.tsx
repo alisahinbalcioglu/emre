@@ -13,7 +13,7 @@ import { useFillHandle, FillHandleIndicator } from './useFillHandle';
 import { clampDiscount, parseDiscountInput, parseDiscountPaste } from './discount-utils';
 import { CustomDropdown } from './CustomDropdown';
 import { joinMaterialText } from '@/lib/parse-material-text';
-import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, yukariYuvarla } from '@/lib/pricing';
+import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, yukariYuvarla, etkinMiktar } from '@/lib/pricing';
 import { hasSizeExpression, isSelfSufficientRow } from './build-material-context';
 import httpApi from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
@@ -149,6 +149,7 @@ function BrandDropdown(props: ICellRendererParams & {
   noField?: string;
   brandField?: string;
   quantityField?: string;
+  unitField?: string;
   materialUnitPriceField?: string;
   materialTotalField?: string;
   diameterField?: string;
@@ -156,7 +157,7 @@ function BrandDropdown(props: ICellRendererParams & {
   autoVariantEnabled: boolean;
   onAutoVariantApplied?: Props['onAutoVariantApplied'];
 }) {
-  const { data, brands, onBrandChange, nameField, noField, brandField, quantityField, materialUnitPriceField, materialTotalField, diameterField, groupVariants, autoVariantEnabled, onAutoVariantApplied, api, node } = props;
+  const { data, brands, onBrandChange, nameField, noField, brandField, quantityField, unitField, materialUnitPriceField, materialTotalField, diameterField, groupVariants, autoVariantEnabled, onAutoVariantApplied, api, node } = props;
   const [candidates, setCandidates] = React.useState<MatchCandidate[] | null>(null);
   const [popupPos, setPopupPos] = React.useState<{ top: number; left: number } | null>(null);
   // HATA RAPORU FIX: popup konumu WRAPPER div'den alinir — onceki triggerRef
@@ -205,7 +206,7 @@ function BrandDropdown(props: ICellRendererParams & {
     const kar = parseFloat(String(d._malzKar ?? 0)) || 0;
     // SPEC (fiyat cekirdegi): satis = net×(1+kar), YUKARI 1 hane; toplam = satis×miktar.
     const finalPrice = hesaplaSatisBirimFiyat(netPrice, kar);
-    const qty = quantityField ? parseFloat(String(d[quantityField] ?? 0)) || 0 : 0;
+    const qty = etkinMiktar(d, quantityField, unitField); // UY2
     const total = hesaplaSatirToplam(finalPrice, qty);
 
     // AG-Grid sutun tipi string — number degeri reddediyor (warning #135)
@@ -726,13 +727,14 @@ function FirmaDropdown(props: ICellRendererParams & {
   noField?: string;
   brandField?: string;
   quantityField?: string;
+  unitField?: string;
   laborUnitPriceField?: string;
   laborTotalField?: string;
   diameterField?: string;
 }) {
   const {
     data, laborFirms, sheetDiscipline, laborEnabled, onFirmaChange,
-    nameField, noField, brandField, quantityField, laborUnitPriceField, laborTotalField,
+    nameField, noField, brandField, quantityField, unitField, laborUnitPriceField, laborTotalField,
     diameterField,
     api, node,
   } = props;
@@ -795,7 +797,7 @@ function FirmaDropdown(props: ICellRendererParams & {
     const kar = parseFloat(String(data._iscKar ?? 0)) || 0;
     // SPEC: satis = net×(1+kar) yukari 1 hane; toplam = satis×miktar.
     const finalPrice = hesaplaSatisBirimFiyat(netPrice, kar);
-    const qty = quantityField ? parseFloat(String(data[quantityField] ?? 0)) || 0 : 0;
+    const qty = etkinMiktar(data, quantityField, unitField); // UY2
     const total = hesaplaSatirToplam(finalPrice, qty);
 
     node.setDataValue('_labNetPrice', netPrice);
@@ -1054,6 +1056,17 @@ function buildMaterialContextDetailed(
 
     const prevNo = noField ? String(prev.data[noField] ?? '').trim() : '';
     const prevQty = quantityField ? String(prev.data[quantityField] ?? '').trim() : '';
+
+    // R-A/UY1 (skychem: "6\"" yetim satirina "UL listeli, FM onaylı" baslik
+    // olmustu → sorgu "eşleşmedi" toast'i): NITELIK-DEVAM satiri baslik
+    // OLAMAZ — bir ust kalemin devam aciklamasidir. Isaretler: numarasiz +
+    // (nitelik kalibi / kucuk harfle baslayan devam cumlesi / virgulle
+    // biten). Gercek kalem basligina (numarali satir) kadar cikilir.
+    const NITELIK_RE = /listeli|onayl[ıi]\b|ile beraber|\bdahil\b|sertifikal[ıi]|uyumlu\b/i;
+    if (prevNo === '' && (NITELIK_RE.test(prevName) || /^[a-zçğıöşü]/.test(prevName) || /,\s*$/.test(prevName))) {
+      continue;
+    }
+
     // H1/H2: noField dolu VEYA miktari bos olan isimli satir baslik adayidir
     if (prevNo.length > 0 || prevQty === '' || prevQty === '0') {
       foundParent = prevName;
@@ -1578,7 +1591,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     const api = gridRef.current?.api;
     if (!api) return;
 
-    const { nameField, quantityField, materialUnitPriceField, materialTotalField,
+    const { nameField, quantityField, unitField, materialUnitPriceField, materialTotalField,
             laborUnitPriceField, laborTotalField, diameterField } = data.columnRoles;
 
     // AKILLI SUTUN: diameterField varsa eslestirme adi = Çap + Cins birlesimi
@@ -1655,7 +1668,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
             node.data._matVariantLabel = srcLabel || null;
             const kar = parseFloat(String(node.data._malzKar ?? 0)) || 0;
             const finalPrice = hesaplaSatisBirimFiyat(matchResult.netPrice, kar);
-            const qty = quantityField ? parseFloat(String(node.data[quantityField] ?? 0)) || 0 : 0;
+            const qty = etkinMiktar(node.data, quantityField, unitField); // UY2
             if (materialUnitPriceField) node.setDataValue(materialUnitPriceField, finalPrice.toFixed(1));
             if (materialTotalField) node.setDataValue(materialTotalField, hesaplaSatirToplam(finalPrice, qty).toFixed(1));
             applied++;
@@ -1721,7 +1734,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
             node.data._labVariantTags = srcLabTags ?? matchResult.variantTags ?? null;
             const kar = parseFloat(String(node.data._iscKar ?? 0)) || 0;
             const finalPrice = hesaplaSatisBirimFiyat(matchResult.netPrice, kar);
-            const qty = quantityField ? parseFloat(String(node.data[quantityField] ?? 0)) || 0 : 0;
+            const qty = etkinMiktar(node.data, quantityField, unitField); // UY2
             if (laborUnitPriceField) node.setDataValue(laborUnitPriceField, finalPrice.toFixed(1));
             if (laborTotalField) node.setDataValue(laborTotalField, hesaplaSatirToplam(finalPrice, qty).toFixed(1));
             labApplied++;
@@ -1747,7 +1760,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         const netPrice = parseFloat(String(node.data._matNetPrice ?? 0)) || 0;
         if (netPrice > 0) {
           const finalPrice = netPrice * (1 + karVal / 100);
-          const qty = quantityField ? parseFloat(String(node.data[quantityField] ?? 0)) || 0 : 0;
+          const qty = etkinMiktar(node.data, quantityField, unitField); // UY2
           if (materialUnitPriceField) node.setDataValue(materialUnitPriceField, finalPrice.toFixed(2));
           if (materialTotalField) node.setDataValue(materialTotalField, (finalPrice * qty).toFixed(2));
         }
@@ -1762,7 +1775,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         if (netPrice > 0) {
           const kar = iscKarVal;
           const finalPrice = netPrice * (1 + kar / 100);
-          const qty = quantityField ? parseFloat(String(node.data[quantityField] ?? 0)) || 0 : 0;
+          const qty = etkinMiktar(node.data, quantityField, unitField); // UY2
           if (laborUnitPriceField) node.setDataValue(laborUnitPriceField, finalPrice.toFixed(2));
           if (laborTotalField) node.setDataValue(laborTotalField, (finalPrice * qty).toFixed(2));
         }
@@ -1990,6 +2003,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
             noField={data.columnRoles.noField}
             brandField={data.columnRoles.brandField}
             quantityField={data.columnRoles.quantityField}
+            unitField={data.columnRoles.unitField}
             materialUnitPriceField={data.columnRoles.materialUnitPriceField}
             materialTotalField={data.columnRoles.materialTotalField}
             diameterField={data.columnRoles.diameterField}
@@ -2011,6 +2025,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
             noField={data.columnRoles.noField}
             brandField={data.columnRoles.brandField}
             quantityField={data.columnRoles.quantityField}
+            unitField={data.columnRoles.unitField}
             laborUnitPriceField={data.columnRoles.laborUnitPriceField}
             laborTotalField={data.columnRoles.laborTotalField}
             diameterField={data.columnRoles.diameterField}
@@ -2195,7 +2210,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       materialUnitPriceField, materialTotalField,
       laborUnitPriceField, laborTotalField,
       grandUnitPriceField, grandTotalField,
-      quantityField,
+      quantityField, unitField,
     } = data.columnRoles;
 
     // Infinite loop engelleme: grand kolonlarinda degisim olursa recalc tetikleme
@@ -2264,7 +2279,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
 
       if (net > 0) {
         const finalPrice = hesaplaSatisBirimFiyat(net, kar);
-        const qty = parseFloat(String(row[quantityField] ?? 0)) || 0;
+        const qty = etkinMiktar(row, quantityField, unitField); // UY2
         const total = hesaplaSatirToplam(finalPrice, qty);
         e.node.setDataValue(materialUnitPriceField, finalPrice.toFixed(1));
         e.node.setDataValue(materialTotalField, total.toFixed(1));
@@ -2286,7 +2301,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
 
       if (net > 0) {
         const finalPrice = hesaplaSatisBirimFiyat(net, kar);
-        const qty = parseFloat(String(row[quantityField] ?? 0)) || 0;
+        const qty = etkinMiktar(row, quantityField, unitField); // UY2
         const total = hesaplaSatirToplam(finalPrice, qty);
         e.node.setDataValue(laborUnitPriceField, finalPrice.toFixed(1));
         e.node.setDataValue(laborTotalField, total.toFixed(1));
@@ -2332,7 +2347,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       const net = kar > 0 ? enteredPrice / (1 + kar / 100) : enteredPrice;
       e.node.setDataValue('_matNetPrice', net);
       e.node.setDataValue('_matStatus', ''); // manuel fiyat girildi — bekleme isareti kalkar
-      const qty = parseFloat(String(row[quantityField] ?? 0)) || 0;
+      const qty = etkinMiktar(row, quantityField, unitField); // UY2
       e.node.setDataValue(materialTotalField, hesaplaSatirToplam(enteredPrice, qty).toFixed(1));
       setTimeout(() => { recalcGrand(); updatePinnedBottom(); }, 0);
       console.log(`[ExcelGrid] Manuel malz. birim: row=${row._rowIdx}, entered=${enteredPrice}, kar=${kar}%, net=${net.toFixed(2)}, qty=${qty}`);
@@ -2344,7 +2359,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       const kar = parseFloat(String(row._iscKar ?? 0)) || 0;
       const net = kar > 0 ? enteredPrice / (1 + kar / 100) : enteredPrice;
       e.node.setDataValue('_labNetPrice', net);
-      const qty = parseFloat(String(row[quantityField] ?? 0)) || 0;
+      const qty = etkinMiktar(row, quantityField, unitField); // UY2
       e.node.setDataValue(laborTotalField, hesaplaSatirToplam(enteredPrice, qty).toFixed(1));
       setTimeout(() => { recalcGrand(); updatePinnedBottom(); }, 0);
       console.log(`[ExcelGrid] Manuel isc. birim: row=${row._rowIdx}, entered=${enteredPrice}, kar=${kar}%, net=${net.toFixed(2)}, qty=${qty}`);

@@ -117,8 +117,14 @@ export class ExcelGridService {
       }
       usedNames.add(name);
 
+      // R-C (skychem: KAYIT/YAİS_KATSAYILAR 1085 satirlik GIZLI sayfalar):
+      // gizli sayfa kullanicinin teklif verisi DEGILDIR — parse edilmez,
+      // rowData sisirilmez (used-range hijyeni).
+      const sheetInfo: any = (workbook.Workbook?.Sheets ?? []).find((s: any) => s?.name === rawName);
+      const gizli = !!sheetInfo?.Hidden;
       const sheet = workbook.Sheets[rawName];
-      if (!sheet || !sheet['!ref']) {
+      if (gizli) console.log(`[ExcelGrid] "${rawName}" GIZLI sayfa — atlandi (R-C)`);
+      if (gizli || !sheet || !sheet['!ref']) {
         sheets.push({
           name,
           index: i,
@@ -564,42 +570,87 @@ export class ExcelGridService {
       }
     }
 
-    // ── KG6 (EMO AYVAZ 27.07): MİKTAR/BİRİM basliklari TERS dosyalar ──
-    // "MİKTAR" basligi altinda birim METNI ('mt'), "BİRİM" altinda SAYI (70).
-    // Iki hal: (a) quantity yanlis kolona atandi (tek tuk sayi yetti),
-    // (b) quantity HIC atanamadi (MİKTAR kolonu tamamen metin). Iki halde de
-    // VERI karar verir: sayisal ORAN capraz bakilir, roller TAKAS edilir
-    // (icerik otorite, baslik degil — KF4 dagitilmis-baslik ruhu).
-    if (roles.unit !== undefined) {
+    // ── R-B + KG6 (gercek-dosya uyumlulugu 27.07): ICERIK-TABANLI ROL
+    // DOGRULAMA + TAMAMLAMA — baslik yoksa/yanilticiysa VERI otorite.
+    // Gercek vakalar: skychem ("MALZEME BİRİM" fiyat basligi unit'i kapti,
+    // gercek birim BASLIKSIZ D'de) · sefa/demontaj (HIC baslik yok) ·
+    // yangin (yalniz fiyat basliklari basliklandirilmis) · EMO (MİKTAR/BİRİM
+    // basliklari ters). Olcumler veri hucrelerinden (ilk 60 satir).
+    {
+      const limit = Math.min(60, rawValues.length);
+      // SAF sayi orani — parseFloat("32 adet isci...")=32 tuzagina dusmez
+      // (sefa: ad kolonu 'adet' kelimesi + bastaki sayiyla miktar sanilmisti)
       const sayisalOran = (c: number): number => {
         let dolu = 0; let sayi = 0;
-        const limit = Math.min(60, rawValues.length);
         for (let r = 0; r < limit; r++) {
           const s = String(rawValues[r]?.[c] ?? '').trim();
           if (!s) continue;
           dolu++;
-          if (!isNaN(parseFloat(s.replace(',', '.')))) sayi++;
+          if (/^-?[0-9.,]+$/.test(s) && !isNaN(parseFloat(s.replace(',', '.')))) sayi++;
         }
         return dolu === 0 ? 0 : sayi / dolu;
       };
-      const uOran = sayisalOran(roles.unit);
-      if (roles.quantity !== undefined) {
+      const birimOran = (c: number): number => {
+        let dolu = 0; let birim = 0;
+        for (let r = 0; r < limit; r++) {
+          const s = String(rawValues[r]?.[c] ?? '').trim();
+          if (!s) continue;
+          dolu++;
+          if (UNIT_VOCAB.has(norm(s).replace(/\.+$/, ''))) birim++;
+        }
+        return dolu === 0 ? 0 : birim / dolu;
+      };
+
+      // 1) UNIT dogrulama/tamamlama: atanmis kolon birim-degeri tasimiyorsa
+      //    (skychem: "MALZEME BİRİM" fiyat kolonu) veya hic atanamadiysa
+      //    (sefa/yangin: basliksiz) en yuksek birim-oranli kolon birimdir.
+      const eskiUnitOran = roles.unit !== undefined ? birimOran(roles.unit) : -1;
+      if (roles.unit === undefined || eskiUnitOran < 0.3) {
+        let aday = -1; let adayOran = 0;
+        for (let c = 0; c < colCount; c++) {
+          if (c === roles.name || c === roles.quantity) continue;
+          const o = birimOran(c);
+          if (o > adayOran) { adayOran = o; aday = c; }
+        }
+        if (aday >= 0 && adayOran >= 0.5 && aday !== roles.unit) {
+          console.log(`[ExcelGrid] R-B: birim kolonu ICERIKTEN col${aday} (oran=${adayOran.toFixed(2)}${roles.unit !== undefined ? `; eski col${roles.unit}=${eskiUnitOran.toFixed(2)}` : ''})`);
+          roles.unit = aday;
+        }
+      }
+
+      // 2) KG6: MİKTAR/BİRİM ters (EMO) — capraz oran, takas
+      if (roles.quantity !== undefined && roles.unit !== undefined && roles.quantity !== roles.unit) {
         const qOran = sayisalOran(roles.quantity);
+        const uOran = sayisalOran(roles.unit);
         if (qOran < 0.4 && uOran > 0.6) {
           console.log(`[ExcelGrid] KG6: MIKTAR/BIRIM ters (sayisal oran q=${qOran.toFixed(2)} u=${uOran.toFixed(2)}) — roller takas edildi`);
           const t = roles.quantity; roles.quantity = roles.unit; roles.unit = t;
         }
-      } else if (uOran > 0.6) {
-        // quantity atanamadi ama BİRİM kolonu sayi tasiyor → miktar odur;
-        // birim rolu (varsa) MİKTAR-desenli metin kolonuna gecer.
-        let miktarKolonu = -1;
-        for (let c = 0; c < colCount; c++) {
-          if (c === roles.unit || assignedCols.has(c)) continue;
-          if (/\bmiktar\b/.test(colTexts[c] ?? '')) { miktarKolonu = c; break; }
+      }
+
+      // 2b) quantity yanlis kolona atanmis olabilir (sefa: ad kolonundaki
+      //     'adet' kelimesi + "32 adet isci..." bastaki sayi) — SAF-sayi
+      //     orani dusukse rol IPTAL edilir; adim 3 gercek kolonu bulur.
+      if (roles.quantity !== undefined && sayisalOran(roles.quantity) < 0.4) {
+        console.log(`[ExcelGrid] R-B: miktar rolu col${roles.quantity} saf-sayi degil — iptal, icerikten aranacak`);
+        delete roles.quantity;
+      }
+
+      // 3) QUANTITY tamamlama: hic atanamadiysa birim kolonunun KOMSUSU
+      //    sayisal kolon miktardir (kesiflerde miktar birime bitisiktir;
+      //    once bitisikler — uzak fiyat kolonlarina kacmayi onler).
+      if (roles.quantity === undefined && roles.unit !== undefined) {
+        const dolular = new Set(Object.values(roles));
+        for (const d of [1, -1, 2, -2]) {
+          const c = roles.unit + d;
+          if (c < 0 || c >= colCount || dolular.has(c)) continue;
+          const o = sayisalOran(c);
+          if (o >= 0.6) {
+            console.log(`[ExcelGrid] R-B: miktar kolonu ICERIKTEN col${c} (birim komsusu, oran=${o.toFixed(2)})`);
+            roles.quantity = c;
+            break;
+          }
         }
-        console.log(`[ExcelGrid] KG6: miktar rolu atanamadi, BİRİM kolonu sayisal (oran=${uOran.toFixed(2)}) — miktar=BİRİM kolonu${miktarKolonu >= 0 ? ', birim=MİKTAR-baslikli kolon' : ''}`);
-        roles.quantity = roles.unit;
-        if (miktarKolonu >= 0) roles.unit = miktarKolonu; else delete roles.unit;
       }
     }
 
@@ -631,8 +682,8 @@ export class ExcelGridService {
       let bestCol = -1;
       let bestScore = -1;
       for (let c = 0; c < colCount; c++) {
-        // sayisal roller (miktar/birim) isim olamaz
-        if (c === roles.quantity) continue;
+        // sayisal roller (miktar/birim/no) isim olamaz
+        if (c === roles.quantity || c === roles.unit || c === roles.no) continue;
         let material = 0;
         let brand = 0;
         let nonEmpty = 0;
@@ -665,6 +716,27 @@ export class ExcelGridService {
           console.log(`[ExcelGrid] Malzeme adi icerikten: col${bestCol} (score=${bestScore}), eski regex col${roles.name}`);
         }
         roles.name = bestCol;
+      } else if (roles.name === undefined) {
+        // R-B fallback (sefa/demontaj): malzeme-token'i HIC gecmeyen serbest
+        // metinli kesifler ("klima demontaji" gibi) — en uzun ortalama
+        // metinli kolon AD kabul edilir (miktar/birim/no/marka haric).
+        let uzunCol = -1; let uzunOrt = 0;
+        for (let c = 0; c < colCount; c++) {
+          if (c === roles.quantity || c === roles.unit || c === roles.no || c === roles.brand) continue;
+          let toplam = 0; let n = 0;
+          for (let r = dataStart; r < dataEnd; r++) {
+            const v = String(rawValues[r]?.[c] ?? '').trim();
+            if (!v) continue;
+            toplam += v.length; n++;
+          }
+          if (n === 0) continue;
+          const ort = toplam / n;
+          if (ort > uzunOrt) { uzunOrt = ort; uzunCol = c; }
+        }
+        if (uzunCol >= 0 && uzunOrt >= 12) {
+          console.log(`[ExcelGrid] R-B: ad kolonu FALLBACK col${uzunCol} (ort uzunluk=${uzunOrt.toFixed(0)})`);
+          roles.name = uzunCol;
+        }
       }
     }
 
