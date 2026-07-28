@@ -347,14 +347,47 @@ export function writePricesToWorkbook(
       // ONCE degere DONDURULUR — master hucre temizlenince/ezilince oksuz
       // clone'lar ExcelJS writeBuffer'i patlatiyordu ("Shared Formula master
       // must exist..."). Tekil formuller (ara-toplam SUM'lari) DOKUNULMAZ.
+      const dondur = (cell: any) => {
+        const sonuc = cell.value?.result;
+        cell.value = sonuc === undefined || sonuc === null || typeof sonuc === 'object' ? null : sonuc;
+      };
+      // (a) Hedef kolonlardaki shared master'larin ADRESLERI — bunlar birazdan
+      //     temizlenecek; onlara bagli clone'lar oksuz kalirsa ExcelJS
+      //     writeBuffer'i patlar.
+      const silinecekMasterlar = new Set<string>();
       ws.eachRow({ includeEmpty: false }, (row) => {
         for (const c of hedefKolonlar) {
-          const v: any = row.getCell(c).value;
-          if (v && typeof v === 'object' && (v.sharedFormula || v.shareType === 'shared')) {
-            const sonuc = v.result;
-            row.getCell(c).value =
-              sonuc === undefined || sonuc === null || typeof sonuc === 'object' ? null : sonuc;
+          const cell = row.getCell(c);
+          const v: any = cell.value;
+          if (v && typeof v === 'object' && (v.shareType === 'shared' || (v.formula && v.ref))) {
+            silinecekMasterlar.add(cell.address);
           }
+        }
+      });
+      // (b) KH11 (E2E altin yol, F&G Yorel "mekanik G BLOK"): master HEDEF
+      //     kolonda ama clone BASKA kolonda olabilir (I110 → master H110).
+      //     KH1 yalniz hedef kolonlari tariyordu → I110 dondurulmadan H110
+      //     temizleniyor, export 500 veriyordu ("Shared Formula master must
+      //     exist above and or left of clone for cell I110"). Silinecek
+      //     master'a bagli TUM clone'lar (kolon farketmeksizin) dondurulur;
+      //     musterinin diger formulleri DOKUNULMAZ.
+      if (silinecekMasterlar.size > 0) {
+        ws.eachRow({ includeEmpty: false }, (row) => {
+          row.eachCell({ includeEmpty: false }, (cell) => {
+            const v: any = cell.value;
+            if (v && typeof v === 'object' && v.sharedFormula && silinecekMasterlar.has(v.sharedFormula)) {
+              dondur(cell);
+            }
+          });
+        });
+      }
+      // (c) KH1: hedef kolonlardaki shared zincirler (master + clone) degere
+      //     dondurulur. Tekil formuller (ara-toplam SUM'lari) DOKUNULMAZ.
+      ws.eachRow({ includeEmpty: false }, (row) => {
+        for (const c of hedefKolonlar) {
+          const cell = row.getCell(c);
+          const v: any = cell.value;
+          if (v && typeof v === 'object' && (v.sharedFormula || v.shareType === 'shared')) dondur(cell);
         }
       });
       for (let ri = 0; ri < rowData.length; ri++) {

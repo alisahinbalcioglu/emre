@@ -109,6 +109,39 @@ async function run() {
       hata || `boyut=${sonuc?.buffer?.length} uyari=${sonuc?.uyari}`);
   }
 
+  // ── KH11 (E2E ALTIN YOL BULGUSU — F&G Yorel, canli 500) ────────────
+  // KH1 shared-formula dondurmasi YALNIZ hedef kolonlari tariyordu. Bu
+  // dosyada "mekanik G BLOK" sayfasinda master H110 (HEDEF kolon, K-A ile
+  // temizlenir) ama clone I110 BASKA kolonda → dondurulmadan master silinip
+  // export patliyordu: "Shared Formula master must exist above and or left
+  // of clone for cell I110". Fix: silinecek master'a bagli TUM clone'lar
+  // (kolon farketmeksizin) once degere dondurulur.
+  {
+    const { QuotesService } = require('../src/quotes/quotes.service');
+    const buf = oku('fg-yorel-shared.xlsx');
+    const res = await svc.prepare(buf, { fixedSchema: true });
+    // Ilk 2 veri satirina fiyat yaz (K-A temizligi devreye girsin)
+    let yazildi = 0;
+    for (const sh of res.sheets as any[]) {
+      for (const r of (sh.rowData ?? []) as any[]) {
+        if (r._isDataRow && yazildi < 2) { r._matBirim = '1250'; r._matToplam = ''; yazildi++; }
+      }
+      if (yazildi >= 2) break;
+    }
+    const quote: any = {
+      id: 'q9', userId: 'u1', title: 'FG Yorel', sheets: JSON.parse(JSON.stringify(res.sheets)),
+      originalFile: buf, quoteNo: 'MP-9', rev: 1, exportOverrides: null,
+    };
+    const prisma: any = { quote: { findFirst: async () => quote }, quoteFormat: { findFirst: async () => null } };
+    const fx: any = { getRates: async () => ({ usdTry: 47, eurTry: 54, usdTryBuying: 47, eurTryBuying: 54, source: 'f', date: '' }) };
+    const qsvc = new QuotesService(prisma, fx);
+    let hata = ''; let sonuc: any = null;
+    try { sonuc = await qsvc.exportPricedXlsx('u1', 'q9'); } catch (e: any) { hata = e?.message ?? 'hata'; }
+    check('KH11 çapraz-kolon shared-formula (master H110 / clone I110) export HATASIZ',
+      hata === '' && (sonuc?.buffer?.length ?? 0) > 10000,
+      hata || `boyut=${sonuc?.buffer?.length}`);
+  }
+
   // ══ ALTIN YOL (ARINMA Faz 1) — Z1→Z2→Z3→Z4→Z5 UCTAN UCA ═══════════
   // GERCEK dosya (hangar) → parse → ESLESTIR (sahte kutuphane, tek motor)
   // → fiyat + toplam (etkinMiktar kurali) → IKI export → cikti dogrulama.
