@@ -57,11 +57,27 @@ const sayi = (v: any): number => {
 /** Formul icindeki sayfa adi: tek tirnak kacisli */
 const sayfaRef = (name: string) => `'${name.replace(/'/g, "''")}'`;
 
-/** K-C (S3, EMO AYVAZ): TL deger yabanci para etiketli hucreye basilamaz —
- *  hedef hucre bicimi USD/EUR ise TL'ye cevrilir ("558,20USD" yaniltmasi). */
-const tlBicimiDuzelt = (cell: ExcelJS.Cell) => {
+/** PANO 18: export EKRANDAKI para birimini alir — yalniz GORUNTULEME
+ *  cevirisi (kutuphane orijinal birimleri degismez). */
+export interface ExportBirim {
+  kod: 'TRY' | 'USD' | 'EUR';
+  /** TRY → hedef birim carpani (USD: 1/usdTry). TRY'de 1. */
+  katsayi: number;
+  /** Dosyaya yazilacak kur notu ("Fiyatlar USD — 1 USD = ₺47,35 …") */
+  not: string | null;
+}
+const BIRIM_FMT: Record<ExportBirim['kod'], string> = {
+  TRY: '#,##0.00" TL"',
+  USD: '"$"#,##0.00',
+  EUR: '"€"#,##0.00',
+};
+
+/** K-C (S3, EMO AYVAZ) + PANO 18: yazilan hucrenin sayi bicimi HEDEF
+ *  birime cekilir — TL deger "USD" etiketiyle (veya tersi) basilamaz. */
+const birimBicimiDuzelt = (cell: ExcelJS.Cell, kod: ExportBirim['kod']) => {
   const f = String(cell.numFmt ?? '');
-  if (f && /USD|EUR|GBP|\$|€|£/i.test(f) && !/TL|₺/i.test(f)) cell.numFmt = '#,##0.00" TL"';
+  if (kod !== 'TRY') { cell.numFmt = BIRIM_FMT[kod]; return; }
+  if (f && /USD|EUR|GBP|\$|€|£/i.test(f) && !/TL|₺/i.test(f)) cell.numFmt = BIRIM_FMT.TRY;
 };
 
 /** K-D (S4): sayfadaki formul-hata (cached #DEĞER!/#REF!/#AD?) hucre sayisi.
@@ -146,6 +162,8 @@ export interface SekmeBilgi {
   yazilan: number;
   /** K-D (KG5): yazimla ARTAN formul-hata sayisi (0 olmali) */
   hataArtisi: number;
+  /** PANO 21c: hic fiyati olmayan veri satiri sayisi (eslesmemis — bilgi) */
+  fiyatsizSatir: number;
 }
 
 /**
@@ -168,8 +186,14 @@ export interface SekmeBilgi {
 export function writePricesToWorkbook(
   wb: ExcelJS.Workbook,
   sheetsArr: SheetJson[],
+  birim?: ExportBirim | null,
 ): SekmeBilgi[] {
   const ozetler: SekmeBilgi[] = [];
+  // PANO 18: export ekrandaki birimi alir — grid degerleri (TRY taban)
+  // hedef birime cevrilerek YAZILIR; miktar cevrilmez.
+  const birimKod: ExportBirim['kod'] = birim?.kod ?? 'TRY';
+  const katsayi = birim && birim.kod !== 'TRY' ? birim.katsayi : 1;
+  const cevir = (v: number): number => (katsayi === 1 ? v : Math.round(v * katsayi * 100) / 100);
 
   for (let si = 0; si < sheetsArr.length; si++) {
     const sheetData = sheetsArr[si];
@@ -327,6 +351,7 @@ export function writePricesToWorkbook(
     // KF6 self-check sayaclari — grand* turetilmis oldugundan sayilmaz
     // (bilesenleri matUnit/matTot/labUnit/labTot zaten sayiliyor).
     let beklenen = 0; let yazilan = 0;
+    let fiyatsizSatir = 0; // PANO 21c: eslesmemis satir bilgisi
 
     for (let ri = 0; ri < rowData.length; ri++) {
       const row = rowData[ri];
@@ -336,12 +361,13 @@ export function writePricesToWorkbook(
       sonVeri = excelRow;
 
       const qty = roles.quantityField ? sayi(row[roles.quantityField]) : 0;
-      const matUnit = roles.materialUnitPriceField ? sayi(row[roles.materialUnitPriceField]) : 0;
-      const matTot = roles.materialTotalField ? sayi(row[roles.materialTotalField]) : 0;
-      const labUnit = roles.laborUnitPriceField ? sayi(row[roles.laborUnitPriceField]) : 0;
-      const labTot = roles.laborTotalField ? sayi(row[roles.laborTotalField]) : 0;
-      const grandUnit = roles.grandUnitPriceField ? sayi(row[roles.grandUnitPriceField]) : 0;
-      const grandTot = roles.grandTotalField ? sayi(row[roles.grandTotalField]) : 0;
+      // PANO 18: fiyat/tutar degerleri HEDEF birime cevrilir (miktar haric)
+      const matUnit = cevir(roles.materialUnitPriceField ? sayi(row[roles.materialUnitPriceField]) : 0);
+      const matTot = cevir(roles.materialTotalField ? sayi(row[roles.materialTotalField]) : 0);
+      const labUnit = cevir(roles.laborUnitPriceField ? sayi(row[roles.laborUnitPriceField]) : 0);
+      const labTot = cevir(roles.laborTotalField ? sayi(row[roles.laborTotalField]) : 0);
+      const grandUnit = cevir(roles.grandUnitPriceField ? sayi(row[roles.grandUnitPriceField]) : 0);
+      const grandTot = cevir(roles.grandTotalField ? sayi(row[roles.grandTotalField]) : 0);
 
       matToplam += matTot;
       labToplam += labTot;
@@ -350,13 +376,14 @@ export function writePricesToWorkbook(
       if (matTot > 0) beklenen++;
       if (labUnit > 0) beklenen++;
       if (labTot > 0) beklenen++;
+      if (matUnit === 0 && matTot === 0 && labUnit === 0 && labTot === 0) fiyatsizSatir++;
 
       // T6: yalniz >0 degerler yazilir — fiyatsiz satir BOS kalir, 0 ASLA.
       // K-C: yazilan her hucrede yabanci para bicimi TL'ye duzeltilir.
       const yaz = (col: number, deger: any) => {
         const cell = ws.getCell(excelRow, col);
         cell.value = deger;
-        tlBicimiDuzelt(cell);
+        birimBicimiDuzelt(cell, birimKod);
         return cell;
       };
       if (matUnitCol && matUnit > 0) { yaz(matUnitCol, matUnit); yazilan++; }
@@ -408,6 +435,16 @@ export function writePricesToWorkbook(
       }
     }
 
+    // PANO 18: kur notu — verinin ALTINA (gercek dolu aralik sonrasi; TOPLAM
+    // satirlarini ezmemek icin actualRowCount ekseni), sayfa basina bir kez.
+    if (birim?.not && birimKod !== 'TRY' && ilkVeri > 0) {
+      const notSatiri = (ws.actualRowCount || sonVeri) + 2;
+      const notKolonu = qtyCol ?? matUnitCol ?? labUnitCol ?? 1;
+      const cell = ws.getCell(notSatiri, notKolonu);
+      cell.value = birim.not;
+      cell.font = { italic: true, size: 9 };
+    }
+
     // K-D (KG5): yazim sonrasi hata sayisi ONCEKINE gore artamaz
     const hataArtisi = Math.max(0, hataSay(ws) - hataOnce);
     if (hataArtisi > 0) {
@@ -425,6 +462,7 @@ export function writePricesToWorkbook(
       beklenen,
       yazilan,
       hataArtisi,
+      fiyatsizSatir,
     });
   }
 
@@ -509,6 +547,8 @@ export interface ExportGirdisi {
   sheetRoles?: SheetRoles | null;
   ctxTemel: Omit<FillContext, 'sekmeler'>;
   overrides?: ExportOverrides | null;
+  /** PANO 18: ekrandaki goruntuleme birimi — iki export yolu da ayni (KF7) */
+  birim?: ExportBirim | null;
 }
 
 export interface ExportSonucu {
@@ -524,6 +564,11 @@ export interface ExportSonucu {
   eksikDeger: number;
   /** K-D (KG5): yazimla artan formul-hata sayisi (0 olmali) */
   hataArtisi: number;
+  /** PANO 21c: eslesmemis (tamamen fiyatsiz) veri satiri toplami */
+  fiyatsizSatir: number;
+  /** PANO 21a: gorunur ozet icin sayac toplamlari */
+  yazilanDeger: number;
+  beklenenDeger: number;
 }
 
 /**
@@ -554,7 +599,7 @@ export async function buildExportWorkbook(g: ExportGirdisi): Promise<ExportSonuc
   }
   const musteriWb = new ExcelJS.Workbook();
   await musteriWb.xlsx.load(g.originalFile as any);
-  const bilgiler = writePricesToWorkbook(musteriWb, g.sheetsArr);
+  const bilgiler = writePricesToWorkbook(musteriWb, g.sheetsArr, g.birim);
   // KF6 self-check: yazilamayan dolu deger — sessiz veri kaybi YASAK,
   // cagiran (controller) kullaniciya gorunur uyari tasir.
   const eksikDeger = bilgiler.reduce((a, b) => a + Math.max(0, b.beklenen - b.yazilan), 0);
@@ -562,6 +607,9 @@ export async function buildExportWorkbook(g: ExportGirdisi): Promise<ExportSonuc
     console.warn(`[Export] ⚠ SELF-CHECK: ${eksikDeger} dolu fiyat degeri dosyaya YAZILAMADI`);
   }
   const hataArtisi = bilgiler.reduce((a, b) => a + (b.hataArtisi ?? 0), 0);
+  const fiyatsizSatir = bilgiler.reduce((a, b) => a + (b.fiyatsizSatir ?? 0), 0);
+  const yazilanDeger = bilgiler.reduce((a, b) => a + b.yazilan, 0);
+  const beklenenDeger = bilgiler.reduce((a, b) => a + b.beklenen, 0);
 
   const listeSayfalari: string[] = [];
   const sekmeler: SekmeOzet[] = [];
@@ -592,5 +640,5 @@ export async function buildExportWorkbook(g: ExportGirdisi): Promise<ExportSonuc
   const dolan = fillPlaceholders(wb, { ...g.ctxTemel, sekmeler });
   applyOverrides(wb, g.overrides);
 
-  return { wb, sekmeler, dolan, formatSayfalari, listeSayfalari, eksikDeger, hataArtisi };
+  return { wb, sekmeler, dolan, formatSayfalari, listeSayfalari, eksikDeger, hataArtisi, fiyatsizSatir, yazilanDeger, beklenenDeger };
 }

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { teklifCiktisiniIndir } from '@/lib/export-download';
+import { adDisiplinTahmini } from '@/lib/disiplin';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -1650,14 +1651,18 @@ export default function NewQuotePage() {
           laborFirms={laborFirms}
           sheetDiscipline={(() => {
             const idx = activeSheetIndex;
-            return sheetDisciplines[idx] ?? multiSheet?.sheets[idx]?.discipline ?? null;
+            // PANO 17a: kayitli/eski sayfalarda discipline yoksa AD'dan tespit
+            return sheetDisciplines[idx] ?? multiSheet?.sheets[idx]?.discipline
+              ?? adDisiplinTahmini(multiSheet?.sheets[idx]?.name);
           })()}
           laborEnabled={(() => {
             const idx = activeSheetIndex;
-            const disc = sheetDisciplines[idx] ?? multiSheet?.sheets[idx]?.discipline;
-            if (disc === 'mechanical') return capabilities.mechanical.labor;
+            // PANO 17a: disiplin AD'dan da cozulur; hicbiri yoksa mekanik
+            // varsayilir (satir "Disiplin?" ile BLOKLANMAZ — 17c).
+            const disc = sheetDisciplines[idx] ?? multiSheet?.sheets[idx]?.discipline
+              ?? adDisiplinTahmini(multiSheet?.sheets[idx]?.name) ?? 'mechanical';
             if (disc === 'electrical') return capabilities.electrical.labor;
-            return false;
+            return capabilities.mechanical.labor;
           })()}
           onFirmaChange={async (rowIdx, firmaId, laborName, opts) => {
             try {

@@ -122,7 +122,10 @@ export type QueryOutcome =
       /** E2: birim celiskisi gibi "tek aday olsa da ONAY iste" notu */
       uyariNot?: string;
     }
-  | { kind: 'none'; reason: NoneReason; detail?: string; donusum?: string | null }
+  | { kind: 'none'; reason: NoneReason; detail?: string; donusum?: string | null;
+      /** PANO 20: cap-yok'ta markadaki MEVCUT caplar (en yakin sirali) —
+       *  sessiz bos yasak, kullanici eylemli bilgi gorur */
+      mevcutCaplar?: string[] }
   | { kind: 'auto-variant'; row: IndexedRow; donusum?: string | null };
 
 export interface QueryOpts {

@@ -55,7 +55,7 @@ async function bootstrap() {
     credentials: true,
     // KF6: indirme yanitindaki dosya adi + self-check uyarisi cross-origin'de
     // de okunabilsin (same-origin'de zaten serbest)
-    exposedHeaders: ['Content-Disposition', 'X-Export-Warning'],
+    exposedHeaders: ['Content-Disposition', 'X-Export-Warning', 'X-Export-Summary'],
   });
 
   app.setGlobalPrefix('api');

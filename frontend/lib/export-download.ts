@@ -28,6 +28,13 @@ function blobIndir(data: Blob, headers: any, fallback: string) {
 
 /** KF6: backend self-check uyarisi (X-Export-Warning) — sessiz veri kaybi
  *  YASAK; dosya inse bile eksik deger varsa kullanici GORUR. */
+/** PANO 21a: basarida GORUNUR self-check ozeti ("34 değer aktarıldı ✓ …") */
+function ozetMetni(headers: any, varsayilan: string): string {
+  const o = headers?.['x-export-summary'];
+  if (!o) return varsayilan;
+  try { return decodeURIComponent(String(o)); } catch { return varsayilan; }
+}
+
 function uyariGoster(headers: any) {
   const u = headers?.['x-export-warning'];
   if (!u) return;
@@ -57,7 +64,7 @@ export async function teklifCiktisiniIndir(quoteId: string): Promise<boolean> {
     const x = await api.post(`/quotes/${quoteId}/export`, {}, { responseType: 'blob' });
     blobIndir(x.data, x.headers, 'teklif.xlsx');
     uyariGoster(x.headers);
-    toast({ title: 'İndirildi', description: 'Teklif Excel dosyası bilgisayarınıza indi.' });
+    toast({ title: 'İndirildi', description: ozetMetni(x.headers, 'Teklif Excel dosyası bilgisayarınıza indi.') });
     return true;
   } catch (e: any) {
     // KE14: hata gorunur + buton tekrar denemeye hazir (caller finally ile acar)
@@ -74,7 +81,7 @@ export async function fiyatliExceliIndir(quoteId: string): Promise<boolean> {
     const x = await api.get(`/quotes/${quoteId}/export-priced`, { responseType: 'blob' });
     blobIndir(x.data, x.headers, 'fiyatlandirilmis-kesif.xlsx');
     uyariGoster(x.headers);
-    toast({ title: 'İndirildi', description: 'Fiyatlandırılmış keşif bilgisayarınıza indi.' });
+    toast({ title: 'İndirildi', description: ozetMetni(x.headers, 'Fiyatlandırılmış keşif bilgisayarınıza indi.') });
     return true;
   } catch (e: any) {
     toast({ title: 'Dışa aktarım hatası', description: await hataMesaji(e), variant: 'destructive' });

@@ -454,6 +454,49 @@ function odCevrimTestleri() {
   }
 }
 
+/** PANO 19-20 (28.07): Ø/Q cap sembolleri + "markada yok → en yakin caplar". */
+function panoCapTestleri() {
+  // KALDE ikizi PPRC havuzu — caplar mm
+  const PPRC = { kategori: 'PPRC Borular', cins: 'PP-R', birim: 'metre', paraBirimi: 'TL', sheetName: 'K' };
+  const havuz = [20, 25, 32, 40, 50, 63].map((mm, i) =>
+    prod({ ...PPRC, ad: 'PPRC Boru PN20', cap: `${mm} mm`, price: 50 + i * 10, urunKodu: `PP${mm}` }));
+
+  // 19a/19b: Ø'lu 6 satirin tamami KENDI cap fiyatini alir (tek eslesme)
+  const beklenen: Array<[string, number]> = [
+    ['Ø20 mm. PPRC Boru', 50], ['Ø25 mm. PPRC Boru', 60], ['Ø32 mm. PPRC Boru', 70],
+    ['Ø40 mm. PPRC Boru', 80], ['Ø50 mm. PPRC Boru', 90], ['Ø63 mm. PPRC Boru', 100],
+  ];
+  let hepsi = true; let detay = '';
+  for (const [q, f] of beklenen) {
+    const r = m(q, havuz);
+    if (r.confidence !== 'high' || r.netPrice !== f) { hepsi = false; detay += `${q}→${r.confidence}/${r.netPrice} `; }
+  }
+  check('PANO 19a/b Ø\'lü 6 PPRC satırı kendi çap fiyatını alır (tek eşleşme)', hepsi, detay);
+  // "Q" oneki AYRISTIRICI duzeyinde tanınır (Q32→32mm). Uctan uca eslesme
+  // iddiasi YOK: 'q32' ad-tokeni sert-ad filtresinde kalir (Q235 celik
+  // grade cakismasi nedeniyle normalize katmanina dokunulmadi; gercek
+  // kullanici vakasi Ø idi — 19a/b uctan uca yesil).
+  {
+    const { extractSizeInfo } = require('../src/modules/matching/conversion');
+    const q = extractSizeInfo('Q32 boru');
+    check('PANO 19 "Q" öneki çap ayrıştırıcıda tanınır (Q32 → 32 mm)',
+      q?.source === 'mm' && q?.value === 32, JSON.stringify(q));
+  }
+
+  // 20a/20b: kutuphanede OLMAYAN cap → sessiz bos YASAK; "en yakin" bilgisi
+  const pvcHavuz = [
+    prod({ ...PPRC, kategori: 'Sert PVC', cins: 'PVC', ad: 'Kalın Etli Sert PVC Boru', cap: '50 mm', price: 192.1, urunKodu: 'PVC50' }),
+    prod({ ...PPRC, kategori: 'Sert PVC', cins: 'PVC', ad: 'Kalın Etli Sert PVC Boru', cap: '100 mm', price: 309.3, urunKodu: 'PVC100' }),
+  ];
+  const r70 = m('Kalın etli sert PVC Boru Ø70', pvcHavuz);
+  check('PANO 20a Ø70 yokken EYLEMLİ mesaj: "yok · en yakın: 50 mm / 100 mm"',
+    r70.confidence === 'none' && /en yakın: 50 mm \/ 100 mm/.test(r70.reason ?? ''),
+    `conf=${r70.confidence} reason="${r70.reason}"`);
+  check('PANO 20b mevcut çaplar (Ø50/Ø100) normal eşleşir — davranış değişmedi',
+    m('Kalın etli sert PVC Boru Ø50', pvcHavuz).netPrice === 192.1
+    && m('Kalın etli sert PVC Boru Ø100', pvcHavuz).netPrice === 309.3, '');
+}
+
 async function run() {
   // ══ K1: Ad kilidi — baska aile ASLA aday olamaz ═══════════════════
   {
@@ -1370,6 +1413,7 @@ async function run() {
   await dispatchTestleri();
   await temizSuTestleri();
   odCevrimTestleri();
+  panoCapTestleri();
 
   console.log(`\n${'='.repeat(60)}`);
   console.log(`INDEKSLI MOTOR KABUL (K1-K7 + fallback yasagi): ${passed} PASS, ${failed} FAIL`);

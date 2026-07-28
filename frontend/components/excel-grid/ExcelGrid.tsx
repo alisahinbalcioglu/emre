@@ -782,16 +782,9 @@ function FirmaDropdown(props: ICellRendererParams & {
     );
   }
 
-  if (!sheetDiscipline) {
-    return (
-      <span
-        title="Once sheet disiplinini sec"
-        style={{ display: 'flex', alignItems: 'center', height: '100%', padding: '0 6px', fontSize: 11, color: '#9ca3af' }}
-      >
-        Disiplin?
-      </span>
-    );
-  }
+  // PANO 17c: satir-basi "Disiplin?" rozeti KALDIRILDI — disiplin sayfa
+  // duzeyinde otomatik tespit edilir / SheetTabs'tan secilir; tespit
+  // edilemese bile dropdown TUM firmalarla calisir (satir bloklanmaz).
 
   const writeLaborPrice = (netPrice: number) => {
     const kar = parseFloat(String(data._iscKar ?? 0)) || 0;

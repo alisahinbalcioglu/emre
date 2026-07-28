@@ -414,6 +414,32 @@ async function run() {
       `beklenen=${b.beklenen} yazilan=${b.yazilan} matDeger=${b.matDeger}`);
   }
 
+  // ══ PANO 18: export EKRANDAKI para birimini alir (USD/EUR cevirisi) ══
+  // Degerler hedef birime cevrilir, hucre bicimi o birim, kur notu dosyada;
+  // TRY cagrilarinda (birimsiz — ustteki TUM testler) davranis DEGISMEZ.
+  {
+    const bufB = await musteriFixture(BASLIK_TAM);
+    const wbB = new ExcelJS.Workbook();
+    await wbB.xlsx.load(bufB as any);
+    const bilgiB = writePricesToWorkbook(wbB, sheetsFixture() as any,
+      { kod: 'USD', katsayi: 0.5, not: 'Fiyatlar USD — 1 USD = ₺2,00 (TCMB, 28.07.2026)' });
+    const wB = wbB.getWorksheet('mekanik G BLOK')!;
+    const i3: any = wB.getCell(3, 9).value;
+    check('PANO 18a değerler USD\'ye çevrili yazılır (F3=13,3 · İşç.Toplam=78.250)',
+      wB.getCell(3, 6).value === 13.3 && i3?.result === 78250,
+      `F3=${JSON.stringify(wB.getCell(3, 6).value)} I3=${JSON.stringify(i3)}`);
+    check('PANO 18a hücre biçimi $ (yanlış etiket yok)',
+      String(wB.getCell(3, 6).numFmt).includes('$') && !String(wB.getCell(3, 6).numFmt).includes('TL'),
+      `fmt=${wB.getCell(3, 6).numFmt}`);
+    let kurNotuVar = false;
+    wB.eachRow((row) => row.eachCell((c) => {
+      if (String(c.value ?? '').includes('Fiyatlar USD')) kurNotuVar = true;
+    }));
+    check('PANO 18a kur notu dosyada', kurNotuVar, '');
+    check('PANO 18a İCMAL değerleri de çevrili (matDeger=4.162,9)',
+      Math.abs(bilgiB[0].matDeger - 4162.9) < 0.01, `mat=${bilgiB[0].matDeger}`);
+  }
+
   // ══ KE7: KISALTMALI / SATIR-SONLU basliklar yine dogru sutunu bulur ══
   {
     const kisa = ['Sıra', 'Tanım', 'Açıklama', 'Birim', 'Miktar',

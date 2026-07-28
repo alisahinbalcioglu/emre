@@ -17,6 +17,7 @@ import { SheetTabs } from '@/components/excel-grid/SheetTabs';
 import type { ExcelGridData } from '@/components/excel-grid/types';
 import { useCurrency } from '@/hooks/use-currency';
 import { useCapabilities } from '@/contexts/CapabilitiesContext';
+import { adDisiplinTahmini } from '@/lib/disiplin';
 import type { Currency } from '@/types/quotes';
 
 interface QuoteDetail {
@@ -191,11 +192,12 @@ export default function QuoteDetailPage() {
               currencySymbol={currency === 'USD' ? '$' : currency === 'EUR' ? '€' : '₺'}
               conversionRate={conversionRate}
               onBrandChange={async () => null}
-              sheetDiscipline={activeSheet?.discipline ?? null}
+              sheetDiscipline={activeSheet?.discipline ?? adDisiplinTahmini(activeSheet?.name)}
               laborEnabled={(() => {
                 // KH10: PRO kullanicida "Pro Gerekli" HICBIR ekranda gorunmez —
                 // entitlement Duzenle ile ayni kaynaktan (capabilities).
-                const disc = activeSheet?.discipline;
+                // PANO 17a: disiplin yoksa AD'dan tespit; yine yoksa mekanik.
+                const disc = activeSheet?.discipline ?? adDisiplinTahmini(activeSheet?.name);
                 if (disc === 'electrical') return capabilities.electrical.labor;
                 return capabilities.mechanical.labor;
               })()}

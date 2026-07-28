@@ -341,6 +341,7 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
         }
         return r.urun.capTags.some((t) => equiv.tags.includes(t));
       };
+      const capOncesi = rows; // PANO 20: cap-yok'ta mevcut caplari raporla
       const d = rows.filter(capUyar);
       // Capsiz ekipman (E1/H3): urunun capi yoksa cap filtresi ELEMEZ —
       // "kompansator 40cm hortum" gibi satirlarda cap satira degil urune ait
@@ -355,7 +356,23 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
         rows = capsiz;
         capsizDusum = true;
       }
-      if (rows.length === 0) return { kind: 'none', reason: 'cap-yok', detail: line.capInfo.display, donusum };
+      if (rows.length === 0) {
+        // PANO 20 (I7 — sessiz bos YASAK): markadaki MEVCUT caplar, satirin
+        // capina yakinlik sirasiyla raporlanir ("en yakin: 50 / 100 mm").
+        const hedef = line.capInfo.value;
+        const gorulen = new Map<string, number>();
+        for (const r of capOncesi) {
+          const ham = (r.urun.capRaw ?? '').trim() || r.urun.capTags[0] || '';
+          if (!ham || gorulen.has(ham)) continue;
+          const n = parseFloat(ham.replace(',', '.'));
+          gorulen.set(ham, isNaN(n) ? Number.MAX_SAFE_INTEGER : Math.abs(n - hedef));
+        }
+        const mevcutCaplar = Array.from(gorulen.entries())
+          .sort((a, b) => a[1] - b[1])
+          .slice(0, 4)
+          .map(([ham]) => ham);
+        return { kind: 'none', reason: 'cap-yok', detail: line.capInfo.display, donusum, mevcutCaplar };
+      }
       if (yuzeyGenis) yuzeyGenis = yuzeyGenis.filter(capUyar); // genis kume de AYNI capta
       // Superset adlar da AYNI capta (capsiz kayit gecer — takim/set capsiz olabilir)
       if (adGenis) adGenis = adGenis.filter((r) => capUyar(r) || r.urun.capTags.length === 0);

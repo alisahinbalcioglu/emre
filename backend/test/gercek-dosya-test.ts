@@ -179,6 +179,10 @@ async function run() {
     const priced = await qsvc.exportPricedXlsx('u1', 'q1');
     check('ALTIN Z4: fiyatlandırılmış export hatasız + self-check temiz',
       priced.buffer.length > 5000 && !priced.uyari, `uyari=${priced.uyari}`);
+    // PANO 21a: gorunur self-check ozeti ("N değer aktarıldı ✓ · … fiyatsız")
+    check('ALTIN Z4/21a: export özeti üretildi (aktarılan + fiyatsız bilgisi)',
+      /değer aktarıldı/.test(priced.ozet ?? '') && /fiyatsız/.test(priced.ozet ?? ''),
+      `ozet="${priced.ozet}"`);
 
     const { buildExportWorkbook } = require('../src/quotes/export-engine');
     const s5 = await buildExportWorkbook({

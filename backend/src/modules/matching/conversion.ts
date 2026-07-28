@@ -231,6 +231,12 @@ export function extractSizeInfo(text: string): SizeInfo | null {
     const v = parseInt(dMatch[1], 10);
     return { source: 'mm', value: v, display: `d${v}` };
   }
+  // PANO 19: "Q" cap oneki (bazi kesifler Ø yerine Q yazar: "Q32 boru")
+  const qMatch = normalized.match(/(?<![a-z0-9])q\s*(\d{2,3})\b/);
+  if (qMatch) {
+    const v = parseInt(qMatch[1], 10);
+    return { source: 'mm', value: v, display: `Q${v}` };
+  }
   // Bilesik: 32x5.4 (cap x et kalinligi) — ilk sayi dis cap (P3); et v1'de yok sayilir
   const compMatch = normalized.match(/(?<![\d.,])(\d{2,3})\s*x\s*\d+[.,]\d+\b/);
   if (compMatch) {

@@ -236,7 +236,8 @@ export function toMatchResult(
         'ad-yok': outcome.detail
           ? `Bu markada "${outcome.detail}" bulunamadı.`
           : 'Bu markada bu ürün ailesi yok.',
-        'cap-yok': `Bu markada ${outcome.detail ?? 'bu çap'} yok.`,
+        'cap-yok': `Bu markada ${outcome.detail ?? 'bu çap'} yok${
+          outcome.mevcutCaplar?.length ? ` · en yakın: ${outcome.mevcutCaplar.join(' / ')}` : ''}.`,
         'kriter-yok': `Bu markada "${outcome.detail ?? 'istenen nitelik'}" taşıyan ürün yok.`,
         'etiket-yok': 'Satırdan ürün bilgisi çıkarılamadı.',
         // ISCILIK L6: birim uyumu sert — mt satirina adet kalemi aday olamaz

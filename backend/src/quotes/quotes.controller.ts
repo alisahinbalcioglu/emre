@@ -70,13 +70,14 @@ export class QuotesController {
   @Post(':id/export')
   async exportXlsx(@CurrentUser() user: any, @Param('id') id: string, @Res() res: Response) {
     try {
-      const { buffer, filename, uyari } = await this.quotesService.exportXlsx(user.id, id);
+      const { buffer, filename, uyari, ozet } = await this.quotesService.exportXlsx(user.id, id);
       res.set({
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'Content-Disposition': `attachment; filename="${encodeURIComponent(filename)}"`,
         'Content-Length': buffer.length,
       });
       if (uyari) res.set('X-Export-Warning', encodeURIComponent(uyari)); // KF6
+      if (ozet) res.set('X-Export-Summary', encodeURIComponent(ozet)); // PANO 21a
       res.end(buffer);
     } catch (e) {
       this.exportHatasi('EXP-FORMAT', e);
@@ -88,13 +89,14 @@ export class QuotesController {
   @Get(':id/export-priced')
   async exportPriced(@CurrentUser() user: any, @Param('id') id: string, @Res() res: Response) {
     try {
-      const { buffer, filename, uyari } = await this.quotesService.exportPricedXlsx(user.id, id);
+      const { buffer, filename, uyari, ozet } = await this.quotesService.exportPricedXlsx(user.id, id);
       res.set({
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'Content-Disposition': `attachment; filename="${encodeURIComponent(filename)}"`,
         'Content-Length': buffer.length,
       });
       if (uyari) res.set('X-Export-Warning', encodeURIComponent(uyari)); // KF6
+      if (ozet) res.set('X-Export-Summary', encodeURIComponent(ozet)); // PANO 21a
       res.end(buffer);
     } catch (e) {
       this.exportHatasi('EXP-PRICED', e);

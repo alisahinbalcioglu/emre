@@ -4,7 +4,7 @@ import { CreateQuoteDto } from './dto/create-quote.dto';
 import * as XLSX from 'xlsx';
 import * as ExcelJS from 'exceljs';
 // PRD Teklif Formatim (v2.1): profesyonel cikti motoru
-import { buildExportWorkbook, writePricesToWorkbook, ExportSonucu } from './export-engine';
+import { buildExportWorkbook, writePricesToWorkbook, ExportSonucu, ExportBirim } from './export-engine';
 import { buildSampleFormat, ExportOverrides, FillContext } from '../quote-formats/format-engine';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 
@@ -234,6 +234,38 @@ export class QuotesService {
     return quote as any;
   }
 
+  /** PANO 18: teklifin GORUNTULEME birimi → export cevirisi (canli TCMB;
+   *  kutuphane orijinal birimleri DEGISMEZ — yalniz cikti goruntusu). */
+  private async exportBirimi(quote: any): Promise<ExportBirim | null> {
+    const kod = quote.displayCurrency;
+    if (kod !== 'USD' && kod !== 'EUR') return null;
+    try {
+      const r: any = await this.exchangeRates.getRates();
+      const tryPer = kod === 'USD' ? r?.usdTry : r?.eurTry;
+      if (!tryPer || tryPer <= 1) return null; // kur alinamadi → guvenli TL
+      const kur = Number(tryPer).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return {
+        kod,
+        katsayi: 1 / Number(tryPer),
+        not: `Fiyatlar ${kod} — 1 ${kod} = ₺${kur} (TCMB, ${r?.date ?? new Date().toLocaleDateString('tr-TR')})`,
+      };
+    } catch {
+      return null; // kur servisi hatasi exportu DUSUREMEZ — TL yazilir
+    }
+  }
+
+  /** PANO 21a/c: gorunur self-check ozeti ("N değer aktarıldı ✓ …"). */
+  private exportOzeti(
+    t: { yazilan: number; beklenen: number; fiyatsiz: number; toplam: number },
+    birim: ExportBirim | null,
+  ): string {
+    const simge = birim?.kod === 'USD' ? '$' : birim?.kod === 'EUR' ? '€' : '₺';
+    const parca = [`${Math.max(t.yazilan, t.beklenen)} değer aktarıldı ✓`,
+      `toplam ${simge}${t.toplam.toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}`];
+    if (t.fiyatsiz > 0) parca.push(`${t.fiyatsiz} satır fiyatsız (eşleşmemiş)`);
+    return parca.join(' · ');
+  }
+
   private async ciktiKur(userId: string, quote: any, rev: number): Promise<ExportSonucu & { formatAdi: string; formatKaynak: 'kullanici' | 'yerlesik' }> {
     // Bulgu Raporu kok neden: grid'den uretim SILINDI — orijinal dosya ZORUNLU.
     if (!quote.originalFile) {
@@ -250,6 +282,7 @@ export class QuotesService {
       sheetRoles,
       ctxTemel: await this.ctxTemelUret(quote, rev),
       overrides: (quote.exportOverrides ?? null) as ExportOverrides | null,
+      birim: await this.exportBirimi(quote), // PANO 18 (KF7: iki yol ayni)
     });
     return { ...sonuc, formatAdi, formatKaynak };
   }
@@ -260,7 +293,7 @@ export class QuotesService {
   // eski kayitli override'lar ciktiKur uzerinden islenmeye devam eder.
 
   /** .xlsx uret + REV artir + arsivle (T10). */
-  async exportXlsx(userId: string, id: string): Promise<{ buffer: Buffer; filename: string; rev: number; quoteNo: string; uyari?: string }> {
+  async exportXlsx(userId: string, id: string): Promise<{ buffer: Buffer; filename: string; rev: number; quoteNo: string; uyari?: string; ozet?: string }> {
     const quote = await this.quoteGetir(userId, id);
 
     // Teklif no ILK aktarimda atanir, sonra SABIT (T10)
@@ -301,14 +334,21 @@ export class QuotesService {
     if ((sonuc.hataArtisi ?? 0) > 0) parcalar.push(`${sonuc.hataArtisi} hücrede formül hatası oluştu`);
     const uyari = parcalar.length > 0 ? `${parcalar.join('; ')} — çıktıyı kontrol edin.` : undefined;
     if (uyari) console.warn(`[Export] ⚠ SELF-CHECK (teklif format): ${uyari}`);
-    return { buffer, filename, rev: yeniRev, quoteNo, uyari };
+    // PANO 21a: gorunur ozet (KF7 — iki yol ayni self-check'i tasir)
+    const ozet = this.exportOzeti({
+      yazilan: sonuc.yazilanDeger ?? 0,
+      beklenen: sonuc.beklenenDeger ?? 0,
+      fiyatsiz: sonuc.fiyatsizSatir ?? 0,
+      toplam: sonuc.sekmeler.reduce((a, b) => a + b.matDeger + b.labDeger, 0),
+    }, await this.exportBirimi(quote));
+    return { buffer, filename, rev: yeniRev, quoteNo, uyari, ozet };
   }
 
   /** Fiyatlandirilmis kesif Excel'i: MUSTERININ ORIJINAL dosyasi, fiyatlar
    *  yazilmis — teklif formati (kapak/icmal) YOK, REV ARTMAZ, arsivlenmez.
    *  Kullanici karari 24.07: "sadece fiyatlandirdigi exceli indirmek
    *  isteyebilir (teklif formatinda gondermek istemeyebilir)". */
-  async exportPricedXlsx(userId: string, id: string): Promise<{ buffer: Buffer; filename: string; uyari?: string }> {
+  async exportPricedXlsx(userId: string, id: string): Promise<{ buffer: Buffer; filename: string; uyari?: string; ozet?: string }> {
     const quote = await this.quoteGetir(userId, id);
     if (!quote.originalFile) {
       throw new BadRequestException(
@@ -318,7 +358,8 @@ export class QuotesService {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(Buffer.from(quote.originalFile) as any);
     const sheetsArr = Array.isArray(quote.sheets) ? (quote.sheets as any[]) : [];
-    const bilgiler = writePricesToWorkbook(wb, sheetsArr);
+    const birim = await this.exportBirimi(quote); // PANO 18: ekrandaki birim
+    const bilgiler = writePricesToWorkbook(wb, sheetsArr, birim);
     // KF6 + K-D self-check: dolu deger sayisi ↔ yazilan + hata artisi.
     // Uyusmazlik SESSIZ GECILMEZ — kullaniciya gorunur uyari (header → toast).
     const eksik = bilgiler.reduce((a, b) => a + Math.max(0, b.beklenen - b.yazilan), 0);
@@ -328,11 +369,18 @@ export class QuotesService {
     if (hataArt > 0) parcalar.push(`${hataArt} hücrede formül hatası oluştu`);
     const uyari = parcalar.length > 0 ? `${parcalar.join('; ')} — çıktıyı kontrol edin.` : undefined;
     if (uyari) console.warn(`[Export] ⚠ SELF-CHECK (fiyatli kesif): ${uyari}`);
+    // PANO 21a: BASARIDA da gorunur ozet (self-check kaniti)
+    const ozet = this.exportOzeti({
+      yazilan: bilgiler.reduce((a, b) => a + b.yazilan, 0),
+      beklenen: bilgiler.reduce((a, b) => a + b.beklenen, 0),
+      fiyatsiz: bilgiler.reduce((a, b) => a + (b.fiyatsizSatir ?? 0), 0),
+      toplam: bilgiler.reduce((a, b) => a + b.matDeger + b.labDeger, 0),
+    }, birim);
     const buffer = Buffer.from(await wb.xlsx.writeBuffer());
     const temizBaslik = String(quote.title ?? 'Teklif').replace(/[\\/:*?"<>|]/g, '-').slice(0, 60);
     const filename = `${temizBaslik} - Fiyatlandırılmış Keşif.xlsx`;
-    console.log(`[Export] Fiyatlandirilmis kesif indirildi (${(buffer.length / 1024).toFixed(0)} KB)`);
-    return { buffer, filename, uyari };
+    console.log(`[Export] Fiyatlandirilmis kesif indirildi (${(buffer.length / 1024).toFixed(0)} KB) — ${ozet}`);
+    return { buffer, filename, uyari, ozet };
   }
 
   /** T10 arsivi: uretilmis revizyonlar. */
