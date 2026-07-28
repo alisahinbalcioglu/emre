@@ -13,7 +13,9 @@ import { defineConfig } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './e2e-golden',
-  timeout: 900_000, // buyuk dosyalar (231 kalem) + doldurma dongusu
+  // 45dk/dosya: en buyuk fixture 7 sayfa · 1694 satir (Bursa Demirtaş) ve
+  // her aile icin gercek eslestirme istegi atilir — 15dk yetmedi.
+  timeout: 2_700_000,
   retries: 0,
   workers: 1,
   fullyParallel: false,

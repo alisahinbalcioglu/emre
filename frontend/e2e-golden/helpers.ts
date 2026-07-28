@@ -47,13 +47,18 @@ export async function harvestGrid(page: Page): Promise<Harvest> {
     };
     const acc = new Map<number, any>();
     vp.scrollTop = 0;
-    await new Promise((r) => setTimeout(r, 150));
+    await new Promise((r) => setTimeout(r, 120));
     const total = vp.scrollHeight;
-    for (let y = 0; y <= total; y += ROW_H * 10) {
+    // adim = gorunur pencerenin ~%80'i (sabit 10 satir degil) — 1694 satirlik
+    // dosyada 170 iterasyon yerine ~25 iterasyon
+    const adim = Math.max(ROW_H * 10, Math.floor(vp.clientHeight * 0.8));
+    for (let y = 0; y <= total; y += adim) {
       vp.scrollTop = y;
-      await new Promise((r) => setTimeout(r, 120));
+      await new Promise((r) => setTimeout(r, 70));
       readVisible(acc);
     }
+    vp.scrollTop = total;
+    await new Promise((r) => setTimeout(r, 70));
     readVisible(acc);
     // GENEL TOPLAM — sayfadaki ozet satiri (grid disi tfoot veya pinned)
     let genel = '';
@@ -64,8 +69,10 @@ export async function harvestGrid(page: Page): Promise<Harvest> {
         if (rowTxt.length < 200) genel = rowTxt;
       }
     });
-    const rows = [...acc.values()].sort((a, b) => a.idx - b.idx);
-    const colIds = [...new Set(rows.flatMap((r) => Object.keys(r.cells)))];
+    // NOT: spread yerine Array.from — frontend tsconfig'inde `target` yok,
+    // iterator spread'i TS2802 veriyor ve CI'daki `tsc --noEmit` kapisi kirilir.
+    const rows = Array.from(acc.values()).sort((a: any, b: any) => a.idx - b.idx);
+    const colIds = Array.from(new Set(rows.flatMap((r: any) => Object.keys(r.cells))));
     return { rowCount: rows.length, rows, colIds, genelToplam: genel };
   }, ROW_H);
 }
@@ -76,7 +83,7 @@ export async function scrollRowIntoView(page: Page, idx: number) {
     const vp = document.querySelector('.ag-body-viewport') as HTMLElement | null;
     if (vp) vp.scrollTop = Math.max(0, idx * ROW_H - vp.clientHeight / 2);
   }, { idx, ROW_H });
-  await page.waitForTimeout(200);
+  await page.waitForTimeout(120);
 }
 
 function cellLocator(page: Page, idx: number, colId: string): Locator {
@@ -97,13 +104,15 @@ async function closeMenus(page: Page) {
 /** Acik "Secim gerekli" popup'i varsa ILK adayi sec (gorev politikasi) ve logla.
  *  Popup da fixed portal → DOM-click (viewport tasmasi sorunu, bkz selectDropdown). */
 export async function resolvePopupIfAny(page: Page, rowIdx: number, name: string, log: PopupLogEntry[]): Promise<boolean> {
+  // 800ms: popup React state ile ANINDA acilir; 2500ms bekleme buyuk
+  // dosyalarda (1694 satir, yuzlerce aile) saatlerce bos bekleme demekti.
   const header = page.getByText('Seçim gerekli', { exact: false }).first();
-  try { await header.waitFor({ state: 'visible', timeout: 2500 }); } catch { return false; }
+  try { await header.waitFor({ state: 'visible', timeout: 800 }); } catch { return false; }
   const tikla = (geriAtla: boolean) => page.evaluate((skipGeri) => {
-    const hdr = [...document.querySelectorAll('div')].find((d) => /Seçim gerekli/.test(d.textContent ?? '') && d.children.length === 0);
+    const hdr = Array.from(document.querySelectorAll('div')).find((d) => /Seçim gerekli/.test(d.textContent ?? '') && d.children.length === 0);
     const box = hdr?.parentElement;
     if (!box) return null;
-    const btns = [...box.querySelectorAll('button')];
+    const btns = Array.from(box.querySelectorAll('button'));
     const hedef = skipGeri ? btns.find((b) => !/← Geri/.test(b.textContent ?? '')) : btns[0];
     if (!hedef) return null;
     const label = (hedef.textContent ?? '').trim().slice(0, 80);
@@ -132,15 +141,31 @@ const MENU_JS = `[...document.querySelectorAll('body > div')].filter((d) => {
   const st = d.style; return st && st.position === 'fixed' && parseInt(st.zIndex || '0') >= 99999;
 }).pop()`;
 
+/** Hucredeki dropdown TETIKLEYICISINI ac — DOM-click.
+ *  Playwright .click() grid'in en altindaki satirlarda
+ *  "ag-body-horizontal-scroll-container intercepts pointer events" ile
+ *  30sn bekleyip patliyordu (09-fg-yorel, row-index 203). DOM click
+ *  perdeleme kontrolu yapmaz; React onClick aynen tetiklenir. */
+async function triggerAc(page: Page, rowIdx: number, colId: string): Promise<boolean> {
+  const ok = await page.evaluate(({ rowIdx, colId }) => {
+    const rows = document.querySelectorAll(`[row-index="${rowIdx}"]`);
+    for (const r of Array.from(rows)) {
+      const btn = r.querySelector(`[col-id="${colId}"] button`) as HTMLElement | null;
+      if (btn) { btn.scrollIntoView({ block: 'nearest' }); btn.click(); return true; }
+    }
+    return false;
+  }, { rowIdx, colId });
+  if (ok) await page.waitForTimeout(150);
+  return ok;
+}
+
 /** Belirli satirda marka/firma dropdown'undan secim yap (portal menu).
  *  NOT: option tiklamasi DOM-click ile yapilir — menu satir ekranin altindayken
  *  viewport disina tasiyor ve Playwright .click() "outside of the viewport"
  *  diye 30sn bekleyip patliyordu. DOM click React onClick'i aynen tetikler. */
 export async function selectDropdown(page: Page, rowIdx: number, colId: '_marka' | '_firma', optionText: string): Promise<boolean> {
   await scrollRowIntoView(page, rowIdx);
-  const btn = cellLocator(page, rowIdx, colId).locator('button').first();
-  if (!(await btn.isVisible().catch(() => false))) return false;
-  await btn.click();
+  if (!(await triggerAc(page, rowIdx, colId))) return false;
   const searchPh = colId === '_marka' ? 'Marka ara...' : 'Firma ara...';
   const search = page.locator(`input[placeholder="${searchPh}"]`);
   if (await search.isVisible().catch(() => false)) {
@@ -151,7 +176,7 @@ export async function selectDropdown(page: Page, rowIdx: number, colId: '_marka'
     // eslint-disable-next-line no-eval
     const menu = eval(menuJs) as HTMLElement | undefined;
     if (!menu) return false;
-    const opts = [...menu.querySelectorAll('div')].filter((o) => {
+    const opts = Array.from(menu.querySelectorAll('div')).filter((o) => {
       const sp = o.querySelector(':scope > span');
       return !!sp && (sp.textContent ?? '').trim() === text;
     });
@@ -190,8 +215,8 @@ export async function waitForPricesToSettle(page: Page, maxMs = 180_000) {
   while (Date.now() - start < maxMs) {
     const cur = await readCount();
     if (cur !== last) { last = cur; stableSince = Date.now(); }
-    else if (Date.now() - stableSince > 3000) return;
-    await page.waitForTimeout(500);
+    else if (Date.now() - stableSince > 1200) return; // 3000→1200: sayac + spinner birlikte izleniyor
+    await page.waitForTimeout(250);
   }
 }
 
@@ -235,10 +260,8 @@ export function policyBrand(fileBrandText: string, name: string, mevcut: string[
 /** Dropdown'daki mevcut marka etiketlerini ogren (ilk data satirindan bir kez). */
 export async function listDropdownOptions(page: Page, rowIdx: number, colId: '_marka' | '_firma'): Promise<string[]> {
   await scrollRowIntoView(page, rowIdx);
-  const btn = cellLocator(page, rowIdx, colId).locator('button').first();
-  if (!(await btn.isVisible().catch(() => false))) return [];
-  await btn.click();
-  await page.waitForTimeout(300);
+  if (!(await triggerAc(page, rowIdx, colId))) return [];
+  await page.waitForTimeout(200);
   const searchPh = colId === '_marka' ? 'Marka ara...' : 'Firma ara...';
   const search = page.locator(`input[placeholder="${searchPh}"]`);
   const hasSearch = await search.isVisible().catch(() => false);

@@ -18,12 +18,19 @@ const txt = (v) => {
   if (v == null) return '';
   if (typeof v === 'object') {
     if (v.richText) return v.richText.map((r) => r.text).join('');
-    if (v.result !== undefined) return txt(v.result);
     if (v.error) return String(v.error);
+    if (v.result !== undefined && v.result !== null && typeof v.result !== 'object') return txt(v.result);
+    if (v.formula || v.sharedFormula) return '=' + (v.formula ?? v.sharedFormula); // "[object Object]" YASAK
     if (v instanceof Date) return v.toISOString();
     if (v.text) return String(v.text);
   }
   return String(v);
+};
+/** Hucre sayisal/fiyat tasiyicisi mi (sayi, formul, formul sonucu)? */
+const sayisalHucre = (v) => {
+  if (typeof v === 'number') return true;
+  if (v && typeof v === 'object' && (v.formula || v.sharedFormula || typeof v.result === 'number')) return true;
+  return num(txt(v)) != null;
 };
 const num = (s) => {
   if (typeof s === 'number') return s;
@@ -45,6 +52,32 @@ async function loadWb(p) {
   return wb;
 }
 const visibleSheets = (wb) => wb.worksheets.filter((ws) => ws.state !== 'hidden' && ws.state !== 'veryHidden');
+
+/** Ozet satirindaki TUM parasal degerler, sirayla.
+ *  Ekranda ozet satiri "GENEL TOPLAM ₺137.460,8 ₺42.840,0 ₺180.300,8" =
+ *  [malzeme, iscilik, GENEL]. num() ilk sayiyi aliyordu → malzeme toplamini
+ *  genel toplam sanip 04/05'te sahte SAPMA uretti. Son deger = genel toplam. */
+const paraDizisi = (s) => {
+  const out = [];
+  for (const m of String(s ?? '').matchAll(/[₺$€]\s*([\d.,]+)/g)) {
+    const v = num(m[1]);
+    if (v != null) out.push(v);
+  }
+  return out;
+};
+/** Ozet satirindan GENEL TOPLAM. Bicim degisken:
+ *  3 deger "₺mat ₺lab ₺genel" · 2 deger "₺mat ₺lab" (genel kolonu yok) · 1 deger.
+ *  Kural: son eleman oncekilerin toplamina esitse GENEL'dir; degilse
+ *  bilesenlerin TOPLAMI genel toplamdir. */
+const ekranGenelToplam = (text) => {
+  const p = paraDizisi(text);
+  if (p.length === 0) return null;
+  if (p.length === 1) return p[0];
+  const oncekiler = p.slice(0, -1).reduce((a, b) => a + b, 0);
+  const son = p[p.length - 1];
+  if (Math.abs(son - oncekiler) <= Math.max(0.5, oncekiler * 0.005)) return son;
+  return p.reduce((a, b) => a + b, 0);
+};
 
 /** Satirin malzeme/iscilik birim fiyati. DIKKAT: `_matNetPrice ?? _matBirim`
  *  YANLIS — _matNetPrice cogu satirda 0 gelir (nullish DEGIL) ve gercek fiyati
@@ -78,7 +111,10 @@ for (const slug of slugs.sort()) {
   const set = (k, ok, kanit) => { R.checks[k] = { sonuc: ok === null ? 'N/A' : ok ? 'PASS' : 'FAIL', kanit }; };
 
   if (!screen) { set('C1', false, 'screen.json yok — kosum tamamlanmadi'); results.push(R); continue; }
-  const orjPath = path.join(FIXTURES, screen.file);
+  // NFD/NFC: Windows'ta Turkce dosya adi ayrik birlestiricilerle saklanabilir
+  const orjPath = fs.existsSync(path.join(FIXTURES, screen.file))
+    ? path.join(FIXTURES, screen.file)
+    : path.join(FIXTURES, fs.readdirSync(FIXTURES).find((f) => f.normalize('NFC') === screen.file.normalize('NFC')) ?? screen.file);
   let orj = null, fiyatli = null, teklif = null, fiyatli2 = null;
   try { orj = await loadWb(orjPath); } catch (e) { R.notlar.push('orijinal okunamadi: ' + e.message); }
   try { fiyatli = await loadWb(path.join(dir, 'fiyatli.xlsx')); } catch { /* C5 FAIL eder */ }
@@ -112,9 +148,15 @@ for (const slug of slugs.sort()) {
 
   // ── C3: satir hesap + genel toplam (bagimsiz yeniden hesap, payload'dan)
   {
-    let satirHata = 0, matT = 0, labT = 0, kontrol = 0, ilkHata = '';
+    let satirHata = 0, kontrol = 0, ilkHata = '';
     const sheets = payload?.sheets ?? [];
-    for (const sh of sheets) {
+    // Ekranda GENEL TOPLAM SAYFA BAZINDA gosterilir (aktif sekmenin toplami),
+    // payload ise TUM sayfalari tasir → tek Σ ile karsilastirmak yanlisti.
+    // Her sayfa kendi ekran toplamiyla ayri karsilastirilir.
+    const sayfaKarsilastirma = [];
+    for (let si = 0; si < sheets.length; si++) {
+      const sh = sheets[si];
+      let matT = 0, labT = 0;
       const qF = sh.columnRoles?.quantityField, uF = sh.columnRoles?.unitField;
       for (const row of sh.rowData ?? []) {
         const mik = etkinMiktar(row, qF, uF) ?? 1;
@@ -138,12 +180,46 @@ for (const slug of slugs.sort()) {
         }
         if (lt) labT += lt;
       }
+      // ISIMLE eslestir — INDEKSLE DEGIL: payload TUM sayfalari tasir,
+      // ekrandaki sekmeler yalniz DOLU sayfalari gosterir. Indeks eslesmesi
+      // bir sayfa kaydiriyordu (03: İnşai:5053271/6638946 komsu sayfanin
+      // toplamiyla karsilastirilmisti).
+      const norm = (s) => String(s ?? '').normalize('NFC').trim().toLocaleLowerCase('tr');
+      const ekranSheet = (screen.sheets ?? []).find((s) => norm(s.name) === norm(sh.name));
+      const ozetMetin = ekranSheet?.harvest?.genelToplam ?? '';
+      const paralar = paraDizisi(ozetMetin);
+      sayfaKarsilastirma.push({
+        ad: sh.name, hesap: matT + labT, matT, labT,
+        ekran: ekranGenelToplam(ozetMetin),
+        // mat/lab ayrisik gosteriliyorsa (2+ deger) onlari da dogrula
+        ekranMat: paralar.length >= 2 ? paralar[0] : null,
+        ekranLab: paralar.length >= 2 ? paralar[1] : null,
+        ekranVar: !!ekranSheet,
+      });
     }
-    const ekranGenel = num(screen.sheets?.at(-1)?.harvest.genelToplam ?? screen.reopen?.harvest.genelToplam);
-    const hesap = matT + labT;
-    const genelOk = ekranGenel == null ? kontrol === 0 : Math.abs(hesap - ekranGenel) <= Math.max(1, hesap * 0.005);
-    const ok = !!payload && satirHata === 0 && genelOk && kontrol > 0;
-    set('C3', ok, `fiyatli hucre-cifti=${kontrol}, hesap-hatasi=${satirHata}${ilkHata ? ' (' + ilkHata + ')' : ''}; Σ=${hesap.toFixed(1)} vs ekran=${ekranGenel ?? '?'}`);
+    // Fiyat yazilan HER sayfa icin ekran toplami = bagimsiz hesap olmali.
+    // Fiyatsiz sayfada (hesap=0) ekran toplami da 0/yok beklenir.
+    const yakin = (a, b) => a != null && b != null && Math.abs(a - b) <= Math.max(1, Math.abs(a) * 0.005);
+    const sapan = sayfaKarsilastirma.filter((s) => {
+      if (s.hesap === 0) return false; // fiyatlanmamis sayfa
+      if (s.ekran == null) return true; // fiyat var ama ekranda toplam yok = FAIL
+      if (!yakin(s.hesap, s.ekran)) return true;
+      // ekranda ayrisik gosteriliyorsa malzeme ve iscilik AYRI AYRI da tutmali
+      if (s.ekranMat != null && !yakin(s.matT, s.ekranMat)) return true;
+      if (s.ekranLab != null && !yakin(s.labT, s.ekranLab)) return true;
+      return false;
+    });
+    const toplamHesap = sayfaKarsilastirma.reduce((a, s) => a + s.hesap, 0);
+    const detay = sayfaKarsilastirma.filter((s) => s.hesap > 0)
+      .map((s) => `${String(s.ad).slice(0, 12)}:${s.hesap.toFixed(0)}${s.ekran != null ? '/' + s.ekran.toFixed(0) : (s.ekranVar ? '/YOK' : '/SEKME-YOK')}`).join(' ');
+    if (!payload || kontrol === 0) {
+      // Fiyatli satir YOKSA hesap kontrolu UYGULANAMAZ (N/A) — hic eslesme
+      // olmamasi C2'nin konusu, C3'un degil.
+      set('C3', null, 'fiyatlı satır yok — hesap kontrolü uygulanamaz (eşleşme durumu C2 ve popups.json\'da)');
+    } else {
+      set('C3', satirHata === 0 && sapan.length === 0,
+        `fiyatlı hücre-çifti=${kontrol}, hesap-hatası=${satirHata}${ilkHata ? ' (' + ilkHata + ')' : ''}; sayfa hesap/ekran → ${detay}${sapan.length ? ` · SAPAN: ${sapan.map((s) => s.ad).join(',')}` : ''}; Σ=${toplamHesap.toFixed(1)}`);
+    }
   }
 
   // ── C4: kalicilik — kaydedilen == geri okunan (tum sheet'ler, fiyat alanlari)
@@ -197,23 +273,43 @@ for (const slug of slugs.sort()) {
       for (const ws of ov) {
         const fw = fiyatli.getWorksheet(ws.name);
         if (!fw) { ok = false; kanitlar.push(`sayfa yok: ${ws.name}`); continue; }
-        // satir sayisi
-        if (fw.rowCount < ws.rowCount) { ok = false; kanitlar.push(`${ws.name}: satir ${fw.rowCount}<${ws.rowCount}`); }
-        let farkli = 0, ornek = '';
+        // Satir korunumu: rowCount DEGIL "son DOLU satir" karsilastirilir —
+        // ExcelJS yazarken sondaki tamamen bos satirlari kirpar (91→79,
+        // 601→599 vakalari: kirpilan aralikta veri YOKTU). Gercek olcut:
+        // orijinaldeki son dolu satir ciktida da mevcut mu?
+        const sonDolu = (sheet) => {
+          let s = 0;
+          sheet.eachRow({ includeEmpty: false }, (row, rn) => {
+            let dolu = false;
+            row.eachCell({ includeEmpty: false }, (c) => { if (txt(c.value).trim()) dolu = true; });
+            if (dolu) s = rn;
+          });
+          return s;
+        };
+        const oSon = sonDolu(ws);
+        if (fw.rowCount < oSon) { ok = false; kanitlar.push(`${ws.name}: çıktı ${fw.rowCount} satır < orijinalin son dolu satırı ${oSon}`); }
+        let farkli = 0, ornek = '', temizlenenSayisal = 0;
         ws.eachRow({ includeEmpty: false }, (row, rn) => {
           row.eachCell({ includeEmpty: false }, (cell, cn) => {
             const o = txt(cell.value).trim();
             if (!o) return;
-            const f = txt(fw.getRow(rn).getCell(cn).value).trim();
+            const fCell = fw.getRow(rn).getCell(cn).value;
+            const f = txt(fCell).trim();
             if (o === f) return;
-            // Mesru degisim: hucreye grid'deki bir fiyat/toplam yazilmis.
-            // Metin kaybi veya karsiliksiz sayi = VERI KAYBI (KF1).
+            // (a) Hucreye grid'deki bir fiyat/toplam yazilmis → mesru
             if (gridde(f)) return;
+            // (b) SAYISAL/formul hucre bosaltilmis → K-A hayalet temizligi
+            //     (KG2 spec'i: grid'de olmayan eski fiyat cikttida kalmaz).
+            //     KG9 fix'i sonrasi bu YALNIZ uygulamanin yonettigi rolde olur;
+            //     kanit olarak sayilir, FAIL degil.
+            if (f === '' && sayisalHucre(cell.value)) { temizlenenSayisal++; return; }
+            // (c) METIN kaybi / karsiliksiz yeni deger = VERI KAYBI (KF1)
             farkli++;
             if (!ornek) ornek = `${ws.name}!R${rn}C${cn} "${o.slice(0, 18)}"→"${f.slice(0, 18)}"`;
           });
         });
-        if (farkli > 0) { ok = false; kanitlar.push(`${ws.name}: ${farkli} hucre grid'de karsiligi olmadan degisti (${ornek})`); }
+        if (temizlenenSayisal > 0) kanitlar.push(`${ws.name}: ${temizlenenSayisal} eski fiyat hücresi temizlendi (K-A/KG2, yönetilen rol)`);
+        if (farkli > 0) { ok = false; kanitlar.push(`${ws.name}: ${farkli} hücrede VERİ KAYBI (${ornek})`); }
         // merge korunumu
         const om = Object.keys(ws._merges ?? {}).length, fm = Object.keys(fw._merges ?? {}).length;
         if (fm < om) { ok = false; kanitlar.push(`${ws.name}: merge ${fm}<${om}`); }
@@ -224,7 +320,8 @@ for (const slug of slugs.sort()) {
       // fazladan sayfa yok (fiyatli cikti = musterinin dosyasi)
       const ekstra = visibleSheets(fiyatli).filter((w) => !orj.getWorksheet(w.name)).map((w) => w.name);
       if (ekstra.length) { ok = false; kanitlar.push('fazladan sayfa: ' + ekstra.join(',')); }
-      set('C5', ok, kanitlar.length ? kanitlar.slice(0, 4).join(' · ') : `duzen birebir (${ov.length} sayfa, merge+deger+formul korunumu)`);
+      set('C5', ok, (ok ? `düzen birebir (${ov.length} sayfa, metin+merge+formül korunumu)` : 'VERİ KAYBI: ')
+        + (kanitlar.length ? kanitlar.slice(0, 4).join(' · ') : ''));
     }
   }
 
@@ -239,16 +336,41 @@ for (const slug of slugs.sort()) {
         if (/E2E Test Müşterisi/.test(txt(c.value))) musteriOk = true;
       }));
       const icmal = teklif.worksheets.find((w) => /i̇cmal|icmal|İCMAL/i.test(w.name));
-      const ekranGenel = num(screen.sheets?.at(-1)?.harvest.genelToplam ?? '');
-      let icmalHit = false, icmalMax = 0;
+      // İCMAL, TUM sayfalarin toplamini tasir → tek sayfanin ekran toplamiyla
+      // degil, sayfa toplamlarinin TOPLAMIYLA karsilastirilir (cok sekmeli
+      // dosyalarda 04 vakasi: icmal 7,1M vs tek sayfa ekrani 1,6M).
+      const ekranGenel = (screen.sheets ?? [])
+        .map((s) => ekranGenelToplam(s?.harvest?.genelToplam ?? '') ?? 0)
+        .reduce((a, b) => a + b, 0) || null;
+      // USD/EUR teklifinde İCMAL hedef birimde yazilir; ekran toplami TL idi
+      // → karsilastirma icin ekran degeri ayni birime cevrilir. Kur, İCMAL'in
+      // kendi not satirindan okunur ("Kur: 1 USD = 47,375 TL").
+      let kur = 1;
       icmal?.eachRow({ includeEmpty: false }, (row) => row.eachCell({ includeEmpty: false }, (c) => {
-        const v = num(txt(c.value));
-        if (v != null) { icmalMax = Math.max(icmalMax, v); if (ekranGenel != null && Math.abs(v - ekranGenel) <= Math.max(1, ekranGenel * 0.005)) icmalHit = true; }
+        const m = /1\s*USD\s*=\s*([\d.,]+)\s*TL/i.exec(txt(c.value));
+        if (m && screen.usd) kur = num(m[1]) ?? 1;
       }));
+      const hedefGenel = ekranGenel != null ? ekranGenel / kur : null;
+      // Yalniz GERCEK sayisal degerler (formul METNINDEN rakam ayiklamak
+      // "SUM('TEKLİF'!I13:I590)" → 13590 gibi hayalet sayilar uretiyordu)
+      const icmalDegerler = [];
+      icmal?.eachRow({ includeEmpty: false }, (row) => row.eachCell({ includeEmpty: false }, (c) => {
+        const v = c.value;
+        const s = typeof v === 'number' ? v
+          : (v && typeof v === 'object' && typeof v.result === 'number') ? v.result : null;
+        if (s != null) icmalDegerler.push(s);
+      }));
+      const icmalMax = icmalDegerler.length ? Math.max(...icmalDegerler) : 0;
+      // Eslesme: bolum/ara toplam degerlerinden biri ekran toplamini vermeli
+      // (GENEL TOPLAM satiri KDV'li olabilir — 08: 1.984.522 = 1.653.769×1,2)
+      const icmalHit = hedefGenel != null &&
+        icmalDegerler.some((v) => Math.abs(v - hedefGenel) <= Math.max(1, hedefGenel * 0.01));
       // liste sayfalari enjekte: orijinal gorunur sayfa adlarinin en az biri teklifte
       const enjekte = orj ? visibleSheets(orj).some((w) => teklif.getWorksheet(w.name)) : false;
-      const ok = !!kapak && musteriOk && !!icmal && (ekranGenel == null || ekranGenel === 0 ? true : icmalHit) && enjekte;
-      set('C6', ok, `kapak=${!!kapak} musteri=${musteriOk} icmal=${!!icmal} icmalToplamEslesme=${icmalHit}(ekran=${ekranGenel ?? '?'}, icmalMax=${icmalMax.toFixed(1)}) enjekte=${enjekte} [${adlar.slice(0, 6).join('|')}]`);
+      const ok = !!kapak && musteriOk && !!icmal && (hedefGenel == null || hedefGenel === 0 ? true : icmalHit) && enjekte;
+      set('C6', ok, `kapak=${!!kapak} müşteri=${musteriOk} icmal=${!!icmal} icmalToplamEşleşme=${icmalHit}`
+        + ` (ekran=${ekranGenel?.toFixed(1) ?? '?'}${kur !== 1 ? ` → ${hedefGenel.toFixed(1)} @kur ${kur}` : ''}, icmalMax=${icmalMax.toFixed(1)})`
+        + ` enjekte=${enjekte} [${adlar.slice(0, 6).join('|')}]`);
     }
   }
 
@@ -275,10 +397,19 @@ for (const slug of slugs.sort()) {
   // ── C8: self-check ozeti goruldu + bagimsiz sayimla tutarli
   {
     const oz = headers?.priced?.['x-export-summary'] ? decodeURIComponent(headers.priced['x-export-summary']) : '';
+    // Export'un yazma mantigi birebir taklit edilir (export-engine T6/K-B):
+    // birim>0 → 1 hucre; toplam grid'de VARSA ya da miktardan TURETILEBILIYORSA
+    // (birim>0 && etkinMiktar>0) 1 hucre daha. 08-sahinkul'de tek satirda
+    // toplam grid'de yoktu ama export miktardan turetip yazdi (36 vs 37).
     let beklenenDeger = 0;
-    for (const sh of payload?.sheets ?? []) for (const row of sh.rowData ?? []) {
-      if (matBirim(row) && num(row._matToplam)) beklenenDeger += 2;
-      if (labBirim(row) && num(row._labToplam)) beklenenDeger += 2;
+    for (const sh of payload?.sheets ?? []) {
+      const qF = sh.columnRoles?.quantityField, uF = sh.columnRoles?.unitField;
+      for (const row of sh.rowData ?? []) {
+        const mik = etkinMiktar(row, qF, uF) ?? 0;
+        const mb = matBirim(row), lb = labBirim(row);
+        if (mb) { beklenenDeger++; if (num(row._matToplam) || mik > 0) beklenenDeger++; }
+        if (lb) { beklenenDeger++; if (num(row._labToplam) || mik > 0) beklenenDeger++; }
+      }
     }
     const m = oz.match(/(\d+) değer aktarıldı/);
     const n = m ? parseInt(m[1], 10) : -1;

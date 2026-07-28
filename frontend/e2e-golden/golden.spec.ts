@@ -10,6 +10,18 @@ import {
 } from './helpers';
 
 const FIXTURES = path.resolve(__dirname, '../../test-fixtures/e2e');
+
+/** Fixture'in DISKTEKI gercek adini bul. Windows'ta Turkce adlar NFD
+ *  (ayrik birlestirici) saklanabilir; spec'teki NFC string ENOENT verir
+ *  ("F _ G ... işleri ..." vakasi, 09 dosyasi hic kosmamisti). */
+const gercekYol = (ad: string) => {
+  const tam = path.join(FIXTURES, ad);
+  if (fs.existsSync(tam)) return tam;
+  const hedef = ad.normalize('NFC');
+  const bulunan = fs.readdirSync(FIXTURES).find((f) => f.normalize('NFC') === hedef);
+  if (!bulunan) throw new Error(`Fixture bulunamadi: ${ad}`);
+  return path.join(FIXTURES, bulunan);
+};
 const ARTIFACTS = path.resolve(__dirname, '../e2e-artifacts/golden');
 const AUTH = JSON.parse(fs.readFileSync(path.join(__dirname, '.auth.json'), 'utf8'));
 
@@ -28,7 +40,9 @@ const CASES: FileCase[] = [
   { file: 'yangin-temin-montaj.xlsx', slug: '10-yangin-temin-montaj' },
 ];
 
-test.describe.configure({ mode: 'serial' });
+// NOT: serial mode KULLANILMAZ — bir dosyanin FAIL'i digerlerini iptal
+// ederse "10 dosya x C1-C10" matrisi olusmaz (ilk kosumda 03 timeout'a
+// dustu, 7 dosya HIC kosmadi). workers:1 zaten sirali koşturur.
 
 for (const c of CASES) {
   test(`altin yol — ${c.slug}`, async ({ page }) => {
@@ -74,7 +88,7 @@ for (const c of CASES) {
     // ── 1) YUKLE ─────────────────────────────────────────────────────
     let t = t0();
     await page.goto('/quotes/new');
-    await page.locator('#quote-excel-upload').setInputFiles(path.join(FIXTURES, c.file));
+    await page.locator('#quote-excel-upload').setInputFiles(gercekYol(c.file));
     await page.locator('.ag-root').first().waitFor({ state: 'visible', timeout: 180_000 });
     // "N sayfa yuklendi" bilgisi
     const sayfaInfo = await page.getByText(/sayfa yuklendi/).first().textContent().catch(() => '');
@@ -154,6 +168,7 @@ for (const c of CASES) {
         }
       }
       sheetsScreen.push({ name: sheetNames[si], harvest: await harvestGrid(page) });
+      console.log(`  [${c.slug}] sayfa ${si + 1}/${sheetNames.length} "${sheetNames[si]}" — ${families.length} aile, ${dataRows.length} data satiri, ${Math.round((t0() - t) / 1000)}s`);
       // navigasyon korumasi: yanlislikla sayfadan dusulduyse ERKEN ve NET hata
       expect(page.url(), 'fiyatlama sirasinda /quotes/new terk edildi').toContain('/quotes/new');
     }
@@ -184,7 +199,7 @@ for (const c of CASES) {
     await page.waitForTimeout(1000);
     const reopenHarvest = await harvestGrid(page);
     const activeCurrency = await page.evaluate(() => {
-      const btns = [...document.querySelectorAll('button')].filter((b) => ['TL', 'USD', 'EUR'].includes((b.textContent ?? '').trim()));
+      const btns = Array.from(document.querySelectorAll('button')).filter((b) => ['TL', 'USD', 'EUR'].includes((b.textContent ?? '').trim()));
       const act = btns.find((b) => (b.className ?? '').includes('bg-background'));
       return act ? (act.textContent ?? '').trim() : '';
     });
