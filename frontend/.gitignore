@@ -4,3 +4,6 @@ test-results/
 
 # e2e test ciktilari (Playwright screenshot)
 e2e-artifacts/
+
+# E2E altin yol: uretilen dev JWT (repoya GIRMEZ)
+e2e-golden/.auth.json

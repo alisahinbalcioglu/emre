@@ -9,7 +9,8 @@
     "preview:cf": "npx wrangler pages dev",
     "start": "next start",
     "lint": "next lint",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e-golden": "node e2e-golden/run.mjs"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.0.5",
