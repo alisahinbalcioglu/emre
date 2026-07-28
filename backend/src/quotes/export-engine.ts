@@ -359,7 +359,21 @@ export function writePricesToWorkbook(
       });
       for (let ri = 0; ri < rowData.length; ri++) {
         if (!rowData[ri]?._isDataRow) continue;
-        for (const c of hedefKolonlar) ws.getCell(ri + 1, c).value = null;
+        for (const c of hedefKolonlar) {
+          // KG10 (E2E altin yol, yangin-temin-montaj R14): temizlik YALNIZ
+          // FIYAT tasiyan hucreleri hedefler. Musterinin fiyat kolonuna
+          // yazdigi METIN not'u ("ŞİRKET TEMİNİ", "FİYAT ALINACAK", "dahil")
+          // fiyat DEGILDIR — silinirse bilgi geri donusu olmadan kaybolur
+          // (KF1). Sayi, formul ve sayi-benzeri metin temizlenir.
+          const cell = ws.getCell(ri + 1, c);
+          const v: any = cell.value;
+          if (v == null) continue;
+          const sayisal =
+            typeof v === 'number' ||
+            (typeof v === 'object' && (v.formula || v.sharedFormula || typeof v.result === 'number')) ||
+            (typeof v === 'string' && sayi(v) > 0);
+          if (sayisal) cell.value = null;
+        }
       }
     }
 

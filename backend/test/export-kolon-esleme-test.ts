@@ -431,6 +431,54 @@ async function run() {
       bosMu(wsE.getCell(15, 7).value), `G15=${JSON.stringify(wsE.getCell(15, 7).value)}`);
   }
 
+  // ══ KG10 (E2E ALTIN YOL BULGUSU — yangin-temin-montaj R14) ═══════════
+  // Musteri fiyat kolonuna METIN not yazar ("ŞİRKET TEMİNİ" = bu kalemi
+  // sirket temin edecek, fiyat yok). K-A hayalet temizligi bu METNI de
+  // siliyordu → geri donusu olmayan bilgi kaybi (KF1). Sayi/formul/sayi-
+  // benzeri metin temizlenir; GERCEK metin DOKUNULMAZ.
+  {
+    const wbM = new ExcelJS.Workbook();
+    const wsM = wbM.addWorksheet('Sheet1');
+    ['NO', 'MALZEMENİN CİNSİ', 'MİKTAR', 'BİRİM', 'MALZ. BİRİM FİYAT', 'MALZ. TOPLAM']
+      .forEach((h, i) => { const c = wsM.getCell(1, i + 1); c.value = h; c.font = { bold: true }; });
+    // r2: kullanicinin fiyatladigi satir
+    wsM.getCell(2, 2).value = 'Yangın Dolabı'; wsM.getCell(2, 3).value = 1; wsM.getCell(2, 4).value = 'Adet';
+    wsM.getCell(2, 5).value = 12500;
+    // r3: musterinin METIN notu — fiyat DEGIL, korunmali
+    wsM.getCell(3, 2).value = 'Sprinkler Pompası'; wsM.getCell(3, 3).value = 2; wsM.getCell(3, 4).value = 'Adet';
+    wsM.getCell(3, 5).value = 'ŞİRKET TEMİNİ';
+    // r4: musterinin eski SAYISAL fiyati, kullanici fiyatlamadi → hayalet, temizlenir
+    wsM.getCell(4, 2).value = 'Hortum Makarası'; wsM.getCell(4, 3).value = 3; wsM.getCell(4, 4).value = 'Adet';
+    wsM.getCell(4, 5).value = 24500;
+    // r5: sayi-BENZERI metin ("1.250,50") — fiyattir, temizlenir
+    wsM.getCell(5, 2).value = 'Vana'; wsM.getCell(5, 3).value = 1; wsM.getCell(5, 4).value = 'Adet';
+    wsM.getCell(5, 5).value = '1.250,50';
+
+    const sheetsM: any[] = [{
+      name: 'Sheet1', index: 0, isEmpty: false,
+      columnRoles: { nameField: 'col1', quantityField: 'col2', unitField: 'col3',
+        materialUnitPriceField: '_matBirim', materialTotalField: 'col5' },
+      columnDefs: [],
+      rowData: [
+        { _rowIdx: 0, _isHeaderRow: true, _isDataRow: false },
+        { _rowIdx: 1, _isDataRow: true, col1: 'Yangın Dolabı', col2: 1, col3: 'Adet', _matBirim: '9711,9' },
+        { _rowIdx: 2, _isDataRow: true, col1: 'Sprinkler Pompası', col2: 2, col3: 'Adet', _matBirim: '' },
+        { _rowIdx: 3, _isDataRow: true, col1: 'Hortum Makarası', col2: 3, col3: 'Adet', _matBirim: '' },
+        { _rowIdx: 4, _isDataRow: true, col1: 'Vana', col2: 1, col3: 'Adet', _matBirim: '' },
+      ],
+    }];
+    writePricesToWorkbook(wbM, sheetsM);
+
+    check('KG10 müşterinin METİN notu korundu ("ŞİRKET TEMİNİ" silinmedi)',
+      wsM.getCell(3, 5).value === 'ŞİRKET TEMİNİ', `E3=${JSON.stringify(wsM.getCell(3, 5).value)}`);
+    check('KG10b sayısal hayalet fiyat temizlendi (24500 → boş)',
+      bosMu(wsM.getCell(4, 5).value), `E4=${JSON.stringify(wsM.getCell(4, 5).value)}`);
+    check('KG10c sayı-benzeri metin de fiyattır → temizlendi ("1.250,50" → boş)',
+      bosMu(wsM.getCell(5, 5).value), `E5=${JSON.stringify(wsM.getCell(5, 5).value)}`);
+    check('KG10d fiyatlanan satıra yeni değer yazıldı (E2=9.711,9)',
+      wsM.getCell(2, 5).value === 9711.9, `E2=${JSON.stringify(wsM.getCell(2, 5).value)}`);
+  }
+
   // ══ PANO 18: export EKRANDAKI para birimini alir (USD/EUR cevirisi) ══
   // Degerler hedef birime cevrilir, hucre bicimi o birim, kur notu dosyada;
   // TRY cagrilarinda (birimsiz — ustteki TUM testler) davranis DEGISMEZ.
