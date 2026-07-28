@@ -351,6 +351,11 @@ async function run() {
     wsE.getCell(15, 4).value = '4" PN16 DÜZ FLANŞ'; wsE.getCell(15, 5).value = 'ad'; wsE.getCell(15, 6).value = 4;
     wsE.getCell(15, 7).value = 10.7; wsE.getCell(15, 7).numFmt = USD;
     wsE.getCell(15, 8).value = { formula: 'F15*G15', result: 42.8 } as any; wsE.getCell(15, 8).numFmt = USD;
+    // KG9: musterinin KENDI iscilik fiyatlari — kullanici bu dosyada iscilik
+    // fiyatlamasi YAPMAZ (grid'de _labBirim tum satirlarda bos) → korunmali
+    wsE.getCell(13, 9).value = 680; wsE.getCell(13, 9).numFmt = USD;
+    wsE.getCell(14, 9).value = 740; wsE.getCell(14, 9).numFmt = USD;
+    wsE.getCell(15, 9).value = 850; wsE.getCell(15, 9).numFmt = USD;
     // r16: TOPLAM satiri (data DEGIL) — sablon SUM'u korunmali
     wsE.getCell(16, 4).value = 'TOPLAM';
     wsE.getCell(16, 8).value = { formula: 'SUM(H13:H15)', result: 882.4 } as any;
@@ -412,6 +417,18 @@ async function run() {
     check('KG8 self-check: eksik=0, İCMAL matDeger=40.794 (39.074+1.720)',
       Math.max(0, b.beklenen - b.yazilan) === 0 && Math.abs(b.matDeger - 40794) < 0.01,
       `beklenen=${b.beklenen} yazilan=${b.yazilan} matDeger=${b.matDeger}`);
+
+    // KG9 (E2E ALTIN YOL BULGUSU — yangin-temin-montaj.xlsx): kullanici bu
+    // dosyada iscilik fiyati HIC girmedi (rol tamamen bos). Musterinin kendi
+    // ISCILIK BIRIM FIYAT kolonu (I13/I14 = 680/740) K-A hayalet temizligiyle
+    // SILINIYORDU → sessiz VERI KAYBI (KF1 ihlali). Uygulamanin YONETMEDIGI
+    // rolde kolon DOKUNULMAZ; yonetilen malzeme rolunde temizlik aynen surer.
+    check('KG9 yönetilmeyen İŞÇİLİK rolü: müşterinin 680/740 değerleri KORUNDU',
+      wsE.getCell(13, 9).value === 680 && wsE.getCell(14, 9).value === 740
+      && wsE.getCell(15, 9).value === 850,
+      `I13=${JSON.stringify(wsE.getCell(13, 9).value)} I14=${JSON.stringify(wsE.getCell(14, 9).value)} I15=${JSON.stringify(wsE.getCell(15, 9).value)}`);
+    check('KG9b yönetilen MALZEME rolünde hayalet temizliği sürüyor (G15 boş)',
+      bosMu(wsE.getCell(15, 7).value), `G15=${JSON.stringify(wsE.getCell(15, 7).value)}`);
   }
 
   // ══ PANO 18: export EKRANDAKI para birimini alir (USD/EUR cevirisi) ══

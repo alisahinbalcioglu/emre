@@ -323,8 +323,25 @@ export function writePricesToWorkbook(
     // deger/formuller DATA satirlarinda TEMIZLENIR; cikti YALNIZ uygulama
     // grid'indeki degerleri tasir (grid ↔ cikti birebir). Toplam/ara-toplam
     // satirlari (_isDataRow degil) DOKUNULMAZ — sablonun SUM'lari korunur.
-    const hedefKolonlar = [matUnitCol, matTotCol, labUnitCol, labTotCol, grandUnitCol, grandTotCol]
-      .filter((c): c is number => !!c);
+    //
+    // KG9 (E2E altin yol, yangin-temin-montaj): temizlik YALNIZ uygulamanin
+    // YONETTIGI rollere uygulanir. Bir rolde (orn. iscilik) grid'de HICBIR
+    // satirda deger yoksa uygulama o kolona hic dokunmamis demektir; musteri
+    // dosyasindaki kendi verisi (680 TL iscilik birim fiyati) SILINEMEZ —
+    // KF1 veri-kaybi-yasak. Kismi dolu rolde temizlik aynen surer (KG2).
+    const rolYonetiliyor = (unitField?: string, totField?: string) =>
+      rolDolu(unitField) || rolDolu(totField);
+    const matYonetiliyor = rolYonetiliyor(roles.materialUnitPriceField, roles.materialTotalField);
+    const labYonetiliyor = rolYonetiliyor(roles.laborUnitPriceField, roles.laborTotalField);
+    const hedefKolonlar = [
+      matYonetiliyor ? matUnitCol : null,
+      matYonetiliyor ? matTotCol : null,
+      labYonetiliyor ? labUnitCol : null,
+      labYonetiliyor ? labTotCol : null,
+      // toplam (grand) kolonlari iki bilesenden turer — biri bile yonetiliyorsa temizlenir
+      matYonetiliyor || labYonetiliyor ? grandUnitCol : null,
+      matYonetiliyor || labYonetiliyor ? grandTotCol : null,
+    ].filter((c): c is number => !!c);
     if (hedefKolonlar.length > 0) {
       // KH1 (Hangar 500 koku): hedef kolonlardaki SHARED formul zincirleri
       // ONCE degere DONDURULUR — master hucre temizlenince/ezilince oksuz
