@@ -59,6 +59,9 @@ export interface RowData {
   _marka?: string | null;
   _firma?: string | null;
   _matNetPrice?: number;
+  // KG11 kaynak rozeti: degerin nereden geldigi (dosyadan / kutuphane / manuel)
+  _matKaynak?: 'dosya' | 'kutuphane' | 'manuel';
+  _labKaynak?: 'dosya' | 'kutuphane' | 'manuel';
   // Her hucrenin merge bilgisi icin
   _merges?: Record<string, { rowSpan?: number; colSpan?: number; hidden?: boolean }>;
 }
@@ -87,6 +90,11 @@ export interface SheetData {
   headerEndRow: number;
   isEmpty: boolean;
   discipline: 'mechanical' | 'electrical' | null; // otomatik tespit, null = bilinmiyor
+  /** KE15: grid col0'in Excel'deki 0-tabanli kolon indeksi (sheet range
+   *  baslangici). SAHINKUL'da A kolonu bos oldugundan col0 = Excel B → 1.
+   *  Export bu ofseti kullanmadan colN'e geri yazarsa BIR KOLON SOLA kayar
+   *  (birim fiyat F'ye, tutar G'ye). 0 = A'dan basliyor. */
+  colOffset?: number;
 }
 
 export interface MultiSheetData {
@@ -290,14 +298,30 @@ export class ExcelGridService {
     // her kolon. Yerlerine asagida SABIT sistem sutunlari eklenir.
     const dropCols = new Set<number>();
     if (fixedSchema) {
+      // ── KG9 (PRD Kesin Cozum 29.07) — KULLANICI KURALI ────────────────
+      // "Yuklenen excelde onceden kullanicinin girdigi fiyatlar varsa sisteme
+      //  yuklendiginde de bu gorulmeli. Excelde ne varsa fiyatlari ile
+      //  beraber sisteme gelmeli."
+      // ESKI DAVRANIS: rol tespitinden gelen fiyat kolonlari + basligi
+      // fiyat/tutar olan HER kolon dropCols'a alinip gridden ATILIYORDU
+      // ("kolon kaymasi imkansiz olsun" gerekcesiyle). Bedeli: SAHINKUL'un
+      // dolu iscilik fiyatlari (550-960) ekranda hic gorunmedi (679 dolu
+      // hucre → grid'de 0) ve export "eslesen kolon yok" dalina dusup
+      // sablon disina M/N kolonu ekledi + =E108*M108 formulu icat etti.
+      // YENI: ROL ATANMIS fiyat kolonlari KORUNUR (rol → o kolona baglanir,
+      // asagida roleFields ezmesi de kaldirildi). Yalniz rolu OLMAYAN
+      // fiyat/tutar basliklari atilir — bunlar sablonun turetilmis/artik
+      // sutunlaridir ve uygulamanin yazacagi bir karsiligi yoktur.
+      const rolluFiyatKolonlari = new Set<number>();
       for (const rk of ['materialUnitPrice', 'materialTotal', 'laborUnitPrice', 'laborTotal', 'grandUnitPrice', 'grandTotal']) {
-        if (columnRoles[rk] !== undefined) dropCols.add(columnRoles[rk]);
+        if (columnRoles[rk] !== undefined) rolluFiyatKolonlari.add(columnRoles[rk]);
       }
       const normHdr = (s: any) => String(s ?? '')
         .replace(/İ/g, 'i').replace(/I/g, 'i').replace(/ı/g, 'i')
         .replace(/[şŞ]/g, 's').replace(/[çÇ]/g, 'c').replace(/[üÜ]/g, 'u')
         .replace(/[öÖ]/g, 'o').replace(/[ğĞ]/g, 'g').toLowerCase();
       for (let c = 0; c < colCount; c++) {
+        if (rolluFiyatKolonlari.has(c)) continue; // KG9: rollu kolon KORUNUR
         const h = `${normHdr(rawValues[realHeaderRow]?.[c])} ${normHdr(rawValues[realHeaderRow + 1]?.[c])}`;
         // Turkce ek toleransi: normHdr 'ı'yi 'i' yaptigi icin "Fiyatı" → "fiyati"
         // olur ve duz \bfiyat\b TUTMAZ → Excel'in kendi fiyat sutunu gride sizardi.
@@ -333,7 +357,17 @@ export class ExcelGridService {
       // header birlestirmesi korunur (fiyat sutunlari icin gerekliydi).
       let headerName: string;
       if (fixedSchema) {
-        headerName = headerValue1 || `Sütun ${c + 1}`;
+        // KE15 (iki katmanli baslik): alt satir GERCEK bir alt baslik ise
+        // ("BİRİM FİYAT" / "TUTAR") ust satirla BIRLESTIRILIR →
+        // "MALZEME BİRİM FİYAT". Boylece hem grid basligi hem export'un
+        // anlamsal eslestiricisi (basligaUyar: malz+birimFiyat) dogru metni
+        // gorur. Merge'li BOLUM basligi tuzagina dusmemek icin yalniz
+        // fiyat/tutar sozcuklu alt basliklar birlestirilir (yorumun asli:
+        // realHeaderRow+1 cogu keşifte "YANGIN TESİSATI" gibi merge bandi).
+        const altBaslikMi = /\b(birim|fiyat|tutar|bedel|toplam|miktar)/i.test(headerValue2);
+        headerName = altBaslikMi && headerValue2 !== headerValue1
+          ? [headerValue1, headerValue2].filter(Boolean).join(' ')
+          : (headerValue1 || `Sütun ${c + 1}`);
       } else {
         headerName = headerValue1;
         if (headerValue2 && headerValue2 !== headerValue1) {
@@ -357,17 +391,25 @@ export class ExcelGridService {
     if (fixedSchema) {
       // SABIT HESAP BLOGU — her Excel'de ayni, kaymaz. Fiyat/tutarlar bu
       // sistem alanlarina yazilir; frontend rol-tabanli formulle hesaplar.
+      // KG9: dosyanin KENDI fiyat kolonu varsa (rol atanmis) sistem kolonu
+      // EKLENMEZ — tek kolon, tek gercek. Fiyat o kolonda yasar: dosyadan
+      // gelen deger baslangic degeridir, marka secilince kutuphane fiyati
+      // uzerine yazilir (KG11). Yalniz dosyada KARSILIGI OLMAYAN roller icin
+      // sistem alani eklenir (eski davranisin fallback'i).
+      const dosyada = (rk: string) => columnRoles[rk] !== undefined;
       columnDefs.push(
         { field: '_malzKar', headerName: 'Malz. Kar %', width: 85, editable: true, suppressMovable: true },
         { field: '_marka', headerName: 'Malz. Marka', width: 150, cellRenderer: 'brandRenderer', suppressMovable: true },
-        { field: '_matBirim', headerName: 'Malz. Birim Fiyat', width: 120, editable: true, suppressMovable: true },
-        { field: '_matToplam', headerName: 'Malz. Toplam', width: 120, editable: false, suppressMovable: true },
+      );
+      if (!dosyada('materialUnitPrice')) columnDefs.push({ field: '_matBirim', headerName: 'Malz. Birim Fiyat', width: 120, editable: true, suppressMovable: true });
+      if (!dosyada('materialTotal')) columnDefs.push({ field: '_matToplam', headerName: 'Malz. Toplam', width: 120, editable: false, suppressMovable: true });
+      columnDefs.push(
         { field: '_iscKar', headerName: 'İşç. Kar %', width: 85, editable: true, suppressMovable: true },
         { field: '_firma', headerName: 'İşç. Firma', width: 150, cellRenderer: 'firmaRenderer', suppressMovable: true },
-        { field: '_labBirim', headerName: 'İşç. Birim Fiyat', width: 120, editable: true, suppressMovable: true },
-        { field: '_labToplam', headerName: 'İşç. Toplam', width: 120, editable: false, suppressMovable: true },
-        { field: '_toplam', headerName: 'Toplam', width: 130, editable: false, suppressMovable: true },
       );
+      if (!dosyada('laborUnitPrice')) columnDefs.push({ field: '_labBirim', headerName: 'İşç. Birim Fiyat', width: 120, editable: true, suppressMovable: true });
+      if (!dosyada('laborTotal')) columnDefs.push({ field: '_labToplam', headerName: 'İşç. Toplam', width: 120, editable: false, suppressMovable: true });
+      if (!dosyada('grandTotal')) columnDefs.push({ field: '_toplam', headerName: 'Toplam', width: 130, editable: false, suppressMovable: true });
     } else {
       columnDefs.push(
         { field: '_malzKar', headerName: 'Malz. Kar %', width: 90, editable: true, pinned: 'right', suppressMovable: true },
@@ -385,12 +427,18 @@ export class ExcelGridService {
     // Boylece frontend'in rol-tabanli yazma/hesaplama mantigi (writePrice,
     // recalcGrand) Excel sutunu yerine sabit sisteme yazar — kayma imkansiz.
     if (fixedSchema) {
-      roleFields.materialUnitPriceField = '_matBirim';
-      roleFields.materialTotalField = '_matToplam';
-      roleFields.laborUnitPriceField = '_labBirim';
-      roleFields.laborTotalField = '_labToplam';
-      roleFields.grandTotalField = '_toplam';
-      delete roleFields.grandUnitPriceField;
+      // KG9/KE15: rol DOSYADA bulunduysa o kolona bagli kalir (colN) —
+      // export de round-trip ile ayni kolona geri yazar (kolonAta colN dali),
+      // "eslesen kolon yok" → M/N ekleme dali BIR DAHA calismaz.
+      // Rol yoksa eski davranis: sabit sistem alani.
+      if (!roleFields.materialUnitPriceField) roleFields.materialUnitPriceField = '_matBirim';
+      if (!roleFields.materialTotalField) roleFields.materialTotalField = '_matToplam';
+      if (!roleFields.laborUnitPriceField) roleFields.laborUnitPriceField = '_labBirim';
+      if (!roleFields.laborTotalField) roleFields.laborTotalField = '_labToplam';
+      if (!roleFields.grandTotalField) roleFields.grandTotalField = '_toplam';
+      // grandUnitPrice: dosyada varsa korunur (SAHINKUL K kolonu), yoksa
+      // turetilmis oldugu icin kaldirilir (eski davranis).
+      if (!roleFields.grandUnitPriceField) delete roleFields.grandUnitPriceField;
     }
 
     // fixedSchema'da baslik gercek header satirinda biter; firstDataRow-1
@@ -475,6 +523,22 @@ export class ExcelGridService {
         }
       }
 
+      // ── KG11: KAYNAK ROZETI ───────────────────────────────────────────
+      // Dosyadan gelen fiyat/tutar degerleri "dosyadan" olarak isaretlenir.
+      // Marka/firma secilince kutuphane fiyati uzerine yazilir ve rozet
+      // "kutuphane"ye doner (frontend); elle duzenlemede "manuel".
+      // Rozet olmadan kullanici hangi degerin nereden geldigini bilemez
+      // (PRD Kesin Cozum KG11: "Revize serbest · kaynak rozeti tutulur").
+      if (row._isDataRow) {
+        const doluMu = (f?: string) => !!f && String(row[f] ?? '').trim() !== '';
+        if (doluMu(roleFields.materialUnitPriceField) || doluMu(roleFields.materialTotalField)) {
+          row._matKaynak = 'dosya';
+        }
+        if (doluMu(roleFields.laborUnitPriceField) || doluMu(roleFields.laborTotalField)) {
+          row._labKaynak = 'dosya';
+        }
+      }
+
       rowData.push(row);
     }
 
@@ -487,6 +551,7 @@ export class ExcelGridService {
       columnRoles: roleFields,
       headerEndRow: effHeaderEndRow,
       isEmpty: !hasDataRows,
+      colOffset: range.s.c, // KE15: colN → Excel kolonu çevrimi için
     };
   }
 

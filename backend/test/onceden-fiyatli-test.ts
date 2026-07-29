@@ -87,7 +87,10 @@ async function run() {
             if (!isNaN(v) && v > 0) toplamDosyaDegeri++;
           }
         }
-        for (const f of [rr.materialUnitPriceField, rr.materialTotalField, rr.laborUnitPriceField, rr.laborTotalField]) {
+        // TUM fiyat rolleri — TOPLAM (grand) kolonlari da grid alanidir
+        for (const f of [rr.materialUnitPriceField, rr.materialTotalField,
+          rr.laborUnitPriceField, rr.laborTotalField,
+          rr.grandUnitPriceField, rr.grandTotalField]) {
           if (!f) continue;
           const v = parseFloat(String(r[f] ?? '').replace(',', '.'));
           if (!isNaN(v) && v > 0) toplamGridDegeri++;

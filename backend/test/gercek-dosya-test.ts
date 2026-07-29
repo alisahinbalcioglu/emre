@@ -213,9 +213,19 @@ async function run() {
     check('ALTIN Z4: fiyatlandırılmış export hatasız + self-check temiz',
       priced.buffer.length > 5000 && !priced.uyari, `uyari=${priced.uyari}`);
     // PANO 21a: gorunur self-check ozeti ("N değer aktarıldı ✓ · … fiyatsız")
-    check('ALTIN Z4/21a: export özeti üretildi (aktarılan + fiyatsız bilgisi)',
-      /değer aktarıldı/.test(priced.ozet ?? '') && /fiyatsız/.test(priced.ozet ?? ''),
-      `ozet="${priced.ozet}"`);
+    // PANO 21a + KG9: özet HER ZAMAN aktarılan değer sayısı ve toplamı taşır.
+    // "N satır fiyatsız" eki YALNIZ fiyatsız satır varken eklenir — KG9'dan
+    // sonra dosyanın kendi fiyatları da grid'e geldiği için hangar dosyasında
+    // fiyatsız satır KALMIYOR (57 değer aktarıldı). Sözleşme: aktarılan sayı
+    // + toplam zorunlu; fiyatsız eki koşullu ama sayı 0'dan büyükse ZORUNLU.
+    const ozet = priced.ozet ?? '';
+    const aktarilan = parseInt((/(\d+) değer aktarıldı/.exec(ozet) ?? [])[1] ?? '0', 10);
+    check('ALTIN Z4/21a: export özeti üretildi (aktarılan sayı + toplam)',
+      /değer aktarıldı/.test(ozet) && /toplam/.test(ozet) && aktarilan > 0,
+      `ozet="${ozet}"`);
+    check('ALTIN Z4/21a-b: fiyatsız satır varsa özette bildirilir (sessiz eksik yasak)',
+      !/fiyatsız/.test(ozet) || /\d+ satır fiyatsız/.test(ozet),
+      `ozet="${ozet}"`);
 
     const { buildExportWorkbook } = require('../src/quotes/export-engine');
     const s5 = await buildExportWorkbook({

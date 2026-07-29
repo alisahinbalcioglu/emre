@@ -62,10 +62,18 @@ function ikiKatmanliFixture(): ExcelJS.Workbook {
 function sheetsFixture(): any[] {
   return [{
     name: 'SIHHİ', index: 0, isEmpty: false,
+    // Fixture Excel B kolonundan başlıyor (A boş) — gerçek ŞAHİNKUL gibi.
+    // colOffset olmadan colN→Excel çevrimi bir kolon sola kayar.
+    colOffset: 1,
+    // KG9 sonrası GERÇEK parse çıktısı: fiyat rolleri dosyanın KENDİ
+    // kolonlarına bağlı (G=col5, H=col6, I=col7, J=col8, K=col9, L=col10 —
+    // grid col0 = Excel B). Sistem alanı (_matBirim) yalnız dosyada karşılığı
+    // olmayan roller için kullanılır.
     columnRoles: {
       noField: 'col0', nameField: 'col1', brandField: 'col2', quantityField: 'col3', unitField: 'col4',
-      materialUnitPriceField: '_matBirim', materialTotalField: '_matToplam',
-      laborUnitPriceField: '_labBirim', laborTotalField: '_labToplam', grandTotalField: '_toplam',
+      materialUnitPriceField: 'col5', materialTotalField: 'col6',
+      laborUnitPriceField: 'col7', laborTotalField: 'col8',
+      grandUnitPriceField: 'col9', grandTotalField: 'col10',
     },
     columnDefs: [],
     // ÖNEMLİ: _isHeaderRow bayrakları GERÇEK parse çıktısıyla birebir
@@ -77,8 +85,10 @@ function sheetsFixture(): any[] {
       { _rowIdx: 2, _isHeaderRow: true, _isDataRow: false },  // R3 grup basligi
       { _rowIdx: 3, _isHeaderRow: false, _isDataRow: false }, // R4 alt baslik ← parse İŞARETLEMİYOR
       { _rowIdx: 4, _isDataRow: false, col0: 27, col1: 'GALVANİZ ÇELİK BORU' },
-      { _rowIdx: 5, _isDataRow: true, col1: '½"', col3: 6, col4: 'mt.', _matBirim: '52.4', _matToplam: '314.4' },
-      { _rowIdx: 6, _isDataRow: true, col1: '¾"', col3: 565, col4: 'mt.', _matBirim: '65.9', _matToplam: '37233.5' },
+      // Fiyatlar rol alanlarına (dosyanın kolonlarına) yazılır; müşterinin
+      // KENDİ işçilik fiyatları (col7/col8) dosyadan gelmiş halde durur.
+      { _rowIdx: 5, _isDataRow: true, col1: '½"', col3: 6, col4: 'mt.', col5: '52.4', col6: '314.4', col7: '550', col8: '3300' },
+      { _rowIdx: 6, _isDataRow: true, col1: '¾"', col3: 565, col4: 'mt.', col5: '65.9', col6: '37233.5', col7: '600', col8: '339000' },
     ],
   }];
 }
@@ -182,11 +192,14 @@ async function run() {
       const sh = res.sheets.find((s: any) => s.name === 'SIHHİ');
       // GALVANİZ ÇELİK BORU grubuna fiyat yaz (kullanicinin senaryosu)
       const FIYAT: Record<number, number> = { 107: 52.4, 108: 65.9, 109: 92.3 };
+      const bfAlan = sh.columnRoles.materialUnitPriceField;
+      const totAlan = sh.columnRoles.materialTotalField;
       for (const r of sh.rowData ?? []) {
         if (FIYAT[r._rowIdx]) {
-          r._matBirim = String(FIYAT[r._rowIdx]);
+          // Fiyat, grid'in ROL alanına yazılır (frontend de böyle yapar)
+          r[bfAlan] = String(FIYAT[r._rowIdx]);
           const mik = parseFloat(String(r[sh.columnRoles.quantityField] ?? '')) || 0;
-          r._matToplam = (FIYAT[r._rowIdx] * mik).toFixed(1);
+          r[totAlan] = (FIYAT[r._rowIdx] * mik).toFixed(1);
         }
       }
       const wb = new ExcelJS.Workbook();

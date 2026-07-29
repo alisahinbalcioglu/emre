@@ -141,6 +141,10 @@ interface SheetJson {
   index?: number;
   isEmpty?: boolean;
   headerEndRow?: number;
+  /** KE15: grid col0'in Excel'deki 0-tabanli kolon indeksi (parse'in sheet
+   *  range baslangici). SAHINKUL'da A bos → col0 = Excel B → colOffset=1.
+   *  Yok/0 ise col0 = Excel A (eski davranis, tum mevcut fixture'lar). */
+  colOffset?: number;
   columnDefs?: Array<{ field: string; headerName?: string }>;
   columnRoles?: Record<string, string | undefined>;
   rowData?: Array<Record<string, any>>;
@@ -274,7 +278,10 @@ export function writePricesToWorkbook(
       // colN: import'un okudugu kolona GERI yaz (round-trip — KE5)
       if (field.startsWith('col')) {
         const idx = parseInt(field.replace('col', ''), 10);
-        if (!isNaN(idx)) { const col = idx + 1; fieldToCol[field] = col; kullanilanKolon.add(col); return col; }
+        // KE15: colN → 1-tabanli Excel kolonu. Parse'in okumaya basladigi
+        // kolon (colOffset) eklenmezse BIR KOLON SOLA kayar — SAHINKUL'da
+        // birim fiyat F'ye, tutar G'ye yaziliyordu (A kolonu bos, col0 = B).
+        if (!isNaN(idx)) { const col = idx + 1 + (sheetData.colOffset ?? 0); fieldToCol[field] = col; kullanilanKolon.add(col); return col; }
       }
       // Sistem alani (fixedSchema): sablonun KENDI fiyat sutununu bul
       // (baslik anlamiyla — konumdan bagimsiz, KE1/KE3/KE7).
