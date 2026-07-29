@@ -12,6 +12,7 @@ import type { ExcelGridData, ExcelRowData, MatchCandidate, BrandAlternative } fr
 import { useFillHandle, FillHandleIndicator } from './useFillHandle';
 import { clampDiscount, parseDiscountInput, parseDiscountPaste } from './discount-utils';
 import { CustomDropdown } from './CustomDropdown';
+import { fillDown } from './fill-down';
 import { joinMaterialText } from '@/lib/parse-material-text';
 import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, yukariYuvarla, etkinMiktar } from '@/lib/pricing';
 import { hasSizeExpression, isSelfSufficientRow } from './build-material-context';
@@ -1595,153 +1596,97 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     };
 
     if (result.field === '_marka' && onBrandChange) {
-      // ── Duzeltme Talebi §4: SUREKLE-DOLDUR = ACIK NIYET ──────────────
-      // 1) Anahtar otomatik ACILIR (Ctrl+Z eski durumuna dondurur).
-      // 2) Kaynak satirin marka + CINS'i (varyant kimligi) "kullanici secti"
-      //    kabul edilir — kaynak KENDI satirinda saklanir (_matVariantTags),
-      //    yoksa grubun son secimi kullanilir.
-      // 3) Her satira KENDI capinin fiyati motor uzerinden yazilir — kaynak
-      //    fiyat ASLA kopyalanmaz (K17 yapisal: deger degil SORGU tasinir).
-      // 4) Manuel satir ATLANMAZ — acik niyet uzerine yazar (rozetten cozulur).
+      // ── SD1-SD10 (PRD Kesin Cozum 29.07): doldurma IZOLE MODULDE ───────
+      // Eski inline mantik (149 satir; _marka ve _firma icin iki ayri,
+      // birbirinden bagimsiz evrilmis dal) SILINDI. Sozlesme artik
+      // fill-down.ts'te ve fill-down.test.ts ile kilitli:
+      //   SD1 tek motor · SD2 atomik satir sonucu (sessiz bos IMKANSIZ)
+      //   SD3 kaynak fiyat kopyalanmaz · SD7 tek adimda Ctrl+Z
+      // FAZ 0 §A kok nedeni: eski kod isareti setDataValue('_matStatus')
+      // ile yaziyordu; _matStatus grid KOLONU OLMADIGI icin AG-Grid cagriyi
+      // sessizce yok sayiyordu (141 satirin 131'i isaretsiz bos kaldi).
       const prevSwitch = autoVariantEnabled;
       onAutoVariantChange?.(true); // K15/K18: anahtar gorsel geciyle ACILIR
+
       const srcNode = api.getDisplayedRowAtIndex(result.sourceRowIndex);
       const srcDet = buildMaterialContextDetailed(
         api, result.sourceRowIndex,
         nameField, data.columnRoles.noField, data.columnRoles.brandField, quantityField,
       );
-      const srcTags: string[] | undefined =
+      const srcTags: string[] | null =
         (srcNode?.data?._matVariantTags && srcNode.data._matVariantTags.length > 0
           ? srcNode.data._matVariantTags
-          : undefined) ??
-        (srcDet.header ? groupVariantsRef.current[srcDet.header]?.tags : undefined);
+          : null) ??
+        (srcDet.header ? groupVariantsRef.current[srcDet.header]?.tags ?? null : null);
       const srcLabel: string =
         srcNode?.data?._matVariantLabel ??
-        (srcDet.header ? groupVariantsRef.current[srcDet.header]?.label : undefined) ??
-        '';
+        (srcDet.header ? groupVariantsRef.current[srcDet.header]?.label : undefined) ?? '';
 
-      // K19: geri-alma anligi — kapsanan satirlarin ONCEKI degerleri
-      const SNAP_FIELDS = ['_marka', '_matNetPrice', '_matSuggestion', '_matStatus',
-        '_matVariantMode', '_matAutoVariant', '_matVariantTags', '_matVariantLabel'];
-      const undoEntries: { rowId: string; prev: Record<string, any> }[] = [];
-      for (const node of result.targetRowNodes) {
-        if (!node.data?._isDataRow) continue;
-        const prev: Record<string, any> = {};
-        for (const f of SNAP_FIELDS) prev[f] = node.data[f];
-        if (materialUnitPriceField) prev[materialUnitPriceField] = node.data[materialUnitPriceField];
-        if (materialTotalField) prev[materialTotalField] = node.data[materialTotalField];
-        undoEntries.push({ rowId: String(node.data._rowIdx), prev });
-      }
-      markaFillUndoStack.current.push({ prevSwitch, entries: undoEntries });
-
-      let applied = 0; let waiting = 0; let missing = 0;
-      for (const node of result.targetRowNodes) {
-        if (!node.data?._isDataRow) continue;
-        node.setDataValue('_marka', result.value);
-        const currentName = lookupNameOf(node.data);
-        if (!currentName) continue;
-        try {
+      const sonuc = await fillDown({
+        hedefler: result.targetRowNodes,
+        markaId: result.value,
+        roller: data.columnRoles as any,
+        motor: (rowIdx, id, ad, opts) => onBrandChange(rowIdx, id, ad, opts) as any,
+        kaynakVaryantTags: srcTags,
+        kaynakLabel: srcLabel,
+        // SD4: sorgu = grup basligindan miras alinan ad + satirin KENDI capi
+        sorguMetni: (node: any) => {
           const det = buildMaterialContextDetailed(
             api, node.rowIndex ?? 0,
             nameField, data.columnRoles.noField, data.columnRoles.brandField, quantityField,
           );
-          const opts = srcTags ? { variantTags: srcTags, silent: true } : { silent: true };
-          // M1/M4: TEK SORGU — baslik+satir; aile bilgisiz fallback YASAK
-          // (yanlis aileden fiyat yazilmasin — "Cayirova'ya PP vana" vakasi)
-          const matchResult = await onBrandChange(node.data._rowIdx, result.value, det.name || currentName, opts);
-          if (matchResult && matchResult.netPrice > 0) {
-            node.setDataValue('_matNetPrice', matchResult.netPrice);
-            node.setDataValue('_matSuggestion', matchResult.confidence === 'suggestion');
-            node.setDataValue('_matStatus', '');
-            // Surukleme kapsami = kullanici secimi kabul (manuel dahi ezilir,
-            // rozetle cozulebilir otomatik statusune gecer)
-            node.setDataValue('_matAutoVariant', srcLabel || null);
-            node.setDataValue('_matVariantMode', 'auto');
-            node.data._matVariantTags = srcTags ?? null;
-            node.data._matVariantLabel = srcLabel || null;
-            const kar = parseFloat(String(node.data._malzKar ?? 0)) || 0;
-            const finalPrice = hesaplaSatisBirimFiyat(matchResult.netPrice, kar);
-            const qty = etkinMiktar(node.data, quantityField, unitField); // UY2
-            if (materialUnitPriceField) node.setDataValue(materialUnitPriceField, finalPrice.toFixed(1));
-            if (materialTotalField) node.setDataValue(materialTotalField, hesaplaSatirToplam(finalPrice, qty).toFixed(1));
-            applied++;
-          } else if (matchResult?.candidates?.length) {
-            // K-sart 4: marka+cins sonrasi >1 urun — "secim gerekli" rozeti
-            node.setDataValue('_matStatus', 'belirsiz');
-            waiting++;
-          } else {
-            // K16: cap bu markada yok — fiyat yazilmaz, eylemli isaret
-            // (hucreye tiklaninca M3 alternatif markalar akisi zaten calisir)
-            node.setDataValue('_matStatus', matchResult?.notProduct ? 'urun_degil' : 'yok');
-            missing++;
-          }
-        } catch {}
-      }
+          return det.name || lookupNameOf(node.data);
+        },
+      });
+
+      // K19/SD7: doldurmanin TAMAMI tek Ctrl+Z ile geri alinir
+      markaFillUndoStack.current.push({
+        prevSwitch,
+        entries: sonuc.geriAl.map((g) => ({ rowId: String(g.rowIdx), prev: g.oncekiDegerler })),
+      });
+      // _matStatus grid kolonu olmadigindan cellStyle'in yeniden
+      // degerlendirilmesi icin ACIK refresh sart.
+      api.refreshCells({ force: true });
       // §3: "n satır güncellendi" bilgisi (parent toast)
-      onAutoVariantApplied?.({ applied, waiting, missing, kaynak: srcLabel || 'marka' });
-      // K19: Ctrl+Z'nin yakalanmasi icin odak grid sarmalayicisina
+      onAutoVariantApplied?.({
+        applied: sonuc.ozet.fiyatli,
+        waiting: sonuc.ozet.aday,
+        missing: sonuc.ozet.yok + sonuc.ozet.urunDegil + sonuc.ozet.hata + sonuc.ozet.adYok,
+        kaynak: srcLabel || 'marka',
+      });
       rootWrapperRef.current?.focus();
     } else if (result.field === '_firma' && onFirmaChange) {
-      // PRD Iscilik L7: firma fill = ACIK NIYET — her satira KENDI capinin
-      // iscilik fiyati (kaynak fiyat ASLA kopyalanmaz); kaynak satirin kalem
-      // CINSI (kaynakli/yivli — _labVariantTags) hedeflere TASINIR (malzeme
-      // _marka dali 26d8448/14f7741 dersleriyle ayni desen).
+      // PRD Iscilik L7 + SD1: AYNI modul, isçilik alanlariyla. Kaynak fiyat
+      // ASLA kopyalanmaz; kaynak satirin kalem CINSI (_labVariantTags)
+      // hedeflere tasinir. K19 paritesi: firma sureklemesi de tek Ctrl+Z.
       const srcLabNode = api.getDisplayedRowAtIndex(result.sourceRowIndex);
-      const srcLabTags: string[] | undefined =
+      const srcLabTags: string[] | null =
         srcLabNode?.data?._labVariantTags && srcLabNode.data._labVariantTags.length > 0
           ? srcLabNode.data._labVariantTags
-          : undefined;
-      // K19 PARITESI: firma sureklemesi de BUTUN olarak Ctrl+Z ile geri alinir
-      // (malzeme _marka dalinda vardi, firma dalinda ATLANMISTI — denetim bulgu
-      // 22.07). Ayni markaFillUndoStack + undoLastMarkaFill kullanilir; firma
-      // anahtari degistirmedigi icin prevSwitch mevcut deger = geri-yukleme
-      // no-op. Stack LIFO: karisik marka+firma sureklemeleri sirayla geri alinir.
-      const LAB_SNAP_FIELDS = ['_firma', '_labNetPrice', '_labVariantTags'];
-      const labUndoEntries: { rowId: string; prev: Record<string, any> }[] = [];
-      for (const node of result.targetRowNodes) {
-        if (!node.data?._isDataRow) continue;
-        const prev: Record<string, any> = {};
-        for (const f of LAB_SNAP_FIELDS) prev[f] = node.data[f];
-        if (laborUnitPriceField) prev[laborUnitPriceField] = node.data[laborUnitPriceField];
-        if (laborTotalField) prev[laborTotalField] = node.data[laborTotalField];
-        labUndoEntries.push({ rowId: String(node.data._rowIdx), prev });
-      }
-      markaFillUndoStack.current.push({ prevSwitch: autoVariantEnabled, entries: labUndoEntries });
-      let labApplied = 0; let labWaiting = 0; let labMissing = 0;
-      for (const node of result.targetRowNodes) {
-        if (!node.data?._isDataRow) continue;
-        node.setDataValue('_firma', result.value);
-        const currentName = lookupNameOf(node.data);
-        if (!currentName) continue;
-        try {
-          // M1/M4: TEK SORGU — baslik+satir (aile bilgisiz fallback yasak)
-          const det = buildMaterialContextDetailed(
-            api, node.rowIndex ?? 0,
-            nameField, data.columnRoles.noField, data.columnRoles.brandField, quantityField,
-          );
-          const opts = srcLabTags ? { variantTags: srcLabTags, silent: true } : { silent: true };
-          const matchResult = await onFirmaChange(node.data._rowIdx, result.value, det.name || currentName, opts);
-          if (matchResult && matchResult.netPrice > 0) {
-            node.setDataValue('_labNetPrice', matchResult.netPrice);
-            // Hedef satir da ileride surukleme kaynagi olabilir
-            node.data._labVariantTags = srcLabTags ?? matchResult.variantTags ?? null;
-            const kar = parseFloat(String(node.data._iscKar ?? 0)) || 0;
-            const finalPrice = hesaplaSatisBirimFiyat(matchResult.netPrice, kar);
-            const qty = etkinMiktar(node.data, quantityField, unitField); // UY2
-            if (laborUnitPriceField) node.setDataValue(laborUnitPriceField, finalPrice.toFixed(1));
-            if (laborTotalField) node.setDataValue(laborTotalField, hesaplaSatirToplam(finalPrice, qty).toFixed(1));
-            labApplied++;
-          } else if (matchResult?.candidates?.length) {
-            labWaiting++; // secim gerekli — hucreye tiklaninca popup acilir
-          } else {
-            labMissing++; // bu firmada yok (L5 alternatifleri tiklaninca acilir)
-          }
-        } catch {}
-      }
-      // §3 paritesi: "n yazıldı · n bekliyor · n yok" bilgisi (parent toast)
-      onAutoVariantApplied?.({ applied: labApplied, waiting: labWaiting, missing: labMissing, kaynak: 'işçilik firması' });
-      // K19 paritesi: Ctrl+Z yakalanabilsin diye odak grid sarmalayicisina
-      // (marka dalinda vardi, firma dalinda ATLANMISTI — undo klavyeyle calismazdi)
+          : null;
+
+      const sonuc = await fillDown({
+        hedefler: result.targetRowNodes,
+        markaId: result.value,
+        roller: data.columnRoles as any,
+        motor: (rowIdx, id, ad, opts) => onFirmaChange(rowIdx, id, ad, opts) as any,
+        kaynakVaryantTags: srcLabTags,
+        kaynakLabel: '',
+        hedefAlanlar: {
+          dal: 'iscilik',
+          birimFiyat: laborUnitPriceField,
+          toplam: laborTotalField,
+          status: '_labStatus',
+          kaynakRozeti: '_labKaynak',
+        },
+        sorguMetni: (node: any) => lookupNameOf(node.data),
+      });
+
+      markaFillUndoStack.current.push({
+        prevSwitch: autoVariantEnabled,
+        entries: sonuc.geriAl.map((g) => ({ rowId: String(g.rowIdx), prev: g.oncekiDegerler })),
+      });
+      api.refreshCells({ force: true });
       rootWrapperRef.current?.focus();
     } else if (result.field === '_malzKar') {
       // Malzeme kar % fill → deger kopyala + fiyat recalc
