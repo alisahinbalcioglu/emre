@@ -264,6 +264,18 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   const YUZEYLER = ['siyah', 'galvaniz', 'kirmizi', 'boyali'];
   const yuzeyToken = (t: string) => YUZEYLER.some((s) => tokenEsit(s, t));
   let yuzeyGenis: IndexedRow[] | null = null; // boru: yuzey filtresi HARIC gecenler
+  // ── V4.7 VARYANT KURTARMA HAVUZU (TUM AILELER) ────────────────────
+  // Kullanicinin popup'ta sectigi varyant (variantTags) hedef satira
+  // tasinirken, satir metnindeki IKINCIL nitelikler (yuzey: "siyah";
+  // baglanti: "dişli"; cins kelimeleri) havuzu daraltip varyanti eleyebilir
+  // → motor "bu çapta yok" der, OYSA urun kutuphanede vardir.
+  // Bu havuz cins/yuzey/baglanti filtrelerinden ONCE alinir; asagida CAP ve
+  // BOY filtreleri ona da uygulanir (yanlis capa fiyat yazilmasin).
+  // NOT: yuzeyGenis yalniz 'boru' ailesinde doluyordu — bu yuzden ilk
+  // duzeltme yalniz boruyu kurtardi, kelebek vana gibi kalemlerde sorun
+  // surdu (kullanici bildirimi 30.07: "duzeltmenin genel olarak yapilmasi
+  // gerekiyor"). Bu havuz aile-bagimsizdir.
+  let varyantKurtarma: IndexedRow[] = rows;
   let yaziliTabanlar: string[] = []; // yazili yuzeylerin kanonik tabani (siralama)
   if (yol.cins.length) {
     const yuzeyler = yol.cins.filter(yuzeyToken);
@@ -374,6 +386,7 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
         return { kind: 'none', reason: 'cap-yok', detail: line.capInfo.display, donusum, mevcutCaplar };
       }
       if (yuzeyGenis) yuzeyGenis = yuzeyGenis.filter(capUyar); // genis kume de AYNI capta
+      varyantKurtarma = varyantKurtarma.filter(capUyar); // V4.7: kurtarma da AYNI capta
       // Superset adlar da AYNI capta (capsiz kayit gecer — takim/set capsiz olabilir)
       if (adGenis) adGenis = adGenis.filter((r) => capUyar(r) || r.urun.capTags.length === 0);
     }
@@ -384,6 +397,7 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     const d = rows.filter((r) => r.urun.boyTag === line.boyTag);
     if (d.length > 0) rows = d;
     if (yuzeyGenis) yuzeyGenis = yuzeyGenis.filter((r) => r.urun.boyTag === line.boyTag || !r.urun.boyTag);
+    varyantKurtarma = varyantKurtarma.filter((r) => r.urun.boyTag === line.boyTag || !r.urun.boyTag);
     if (adGenis) adGenis = adGenis.filter((r) => r.urun.boyTag === line.boyTag || !r.urun.boyTag);
   }
 
@@ -438,7 +452,7 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     const eslesen = rows.filter((r) => v.every((t) => urunVariantTags(r).includes(t)));
     if (eslesen.length === 1) return { kind: 'auto-variant', row: eslesen[0], donusum };
 
-    // ── V4.7 (CANLI BULGU 30.07): KULLANICI SECIMI YUZEY KELIMESINDEN ONCE ──
+    // ── V4.7 (CANLI BULGU 30.07): KULLANICI SECIMI IKINCIL NITELIKTEN ONCE ──
     // Vaka: kesif satiri "Dikişli SİYAH Çelik Boru, DN65"; kullanici KAYNAK
     // satirda (ayni ad, DN150) popup'tan "kirmizi (astar) boyali"yi SECTI ve
     // asagi surukledi. Satir adindaki "siyah" yuzey filtresi kirmizi urunleri
@@ -450,9 +464,19 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     // yuzey kelimesinden ONCE gelir. Yalniz TAM tag eslesmesi + TEK aday
     // kosuluyla, cap filtresi UYGULANMIS genis havuzda aranir → sessiz ikame
     // degil (sonuc 'auto-variant' = oneri isaretiyle doner).
-    if (eslesen.length === 0 && yuzeyGenis && yuzeyGenis.length > 0) {
-      const genisEslesen = yuzeyGenis.filter((r) => v.every((t) => urunVariantTags(r).includes(t)));
-      if (genisEslesen.length === 1) return { kind: 'auto-variant', row: genisEslesen[0], donusum };
+    // GENEL KURTARMA (TUM AILELER — kullanici bildirimi 30.07: "duzeltmenin
+    // genel olarak yapilmasi gerekiyor"). Ilk surumde yalniz yuzeyGenis
+    // kullanilmisti; o havuz sadece 'boru' ailesinde doluyor ve kelebek vana
+    // gibi kalemlerde sorun suruyordu. varyantKurtarma AILE-BAGIMSIZDIR:
+    // cins/yuzey/baglanti filtrelerinden ONCE alinir, CAP ve BOY filtreleri
+    // uygulanmistir. Kosullar (fren): TAM tag eslesmesi + TEK aday →
+    // sessiz ikame degil, sonuc 'auto-variant' = oneri isaretiyle doner.
+    if (eslesen.length === 0) {
+      for (const havuz of [yuzeyGenis, varyantKurtarma]) {
+        if (!havuz || havuz.length === 0) continue;
+        const kurtarilan = havuz.filter((r) => v.every((t) => urunVariantTags(r).includes(t)));
+        if (kurtarilan.length === 1) return { kind: 'auto-variant', row: kurtarilan[0], donusum };
+      }
     }
 
     if (eslesen.length === 0) {

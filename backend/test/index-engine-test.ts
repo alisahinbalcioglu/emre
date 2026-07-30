@@ -682,6 +682,56 @@ async function run() {
       yok.netPrice === 0, `got net=${yok.netPrice}`);
   }
 
+  // ══ V4.7d-f GENELLIK: kurtarma TUM AILELERDE calisir ═══════════════
+  // Kullanici bildirimi 30.07: "sorunun/mantigin sadece verilen orneklerde
+  // cozulmesi dogru degil — duzeltmenin genel olarak yapilmasi gerekiyor."
+  // Ilk surum yalniz 'boru' ailesinde dolan yuzeyGenis'i kullaniyordu;
+  // kelebek vanada (canli vaka: DN300 → DN150) sorun surdu. Bu blok VANA ve
+  // FITTING ailelerinde ayni senaryoyu sinar.
+  {
+    // VANA: satirda "Kelebek Vana" yazar; kullanici IZLENEBILIR kelebek
+    // vanayi secer (bag:wafer). Hedef capta ayni urun VAR ama satir metni
+    // ikincil nitelik tasidigi icin havuzdan eleniyordu.
+    // Havuz canlıdaki gibi kurulur: AYNI ad ("Kelebek vana"), farklı CİNS
+    // varyantları. Satır metnindeki ikincil nitelik ("redüktörlü") havuzu
+    // daraltır; kullanıcının seçtiği varyant (izleme anahtarlı) elenirdi.
+    const VANA = { kategori: 'Yangın Vanaları', birim: 'adet', paraBirimi: 'TL', sheetName: 'Ayvaz' };
+    const vanaHavuz = [
+      prod({ ...VANA, ad: 'Kelebek vana', cins: 'izleme anahtarlı · sfero döküm gövde', baglanti: 'wafer', cap: 'DN300', price: 88861.4, urunKodu: 'IK300' }),
+      prod({ ...VANA, ad: 'Kelebek vana', cins: 'izleme anahtarlı · sfero döküm gövde', baglanti: 'wafer', cap: 'DN150', price: 28909.6, urunKodu: 'IK150' }),
+      prod({ ...VANA, ad: 'Kelebek vana', cins: 'redüktörlü · el kumandalı', baglanti: 'wafer', cap: 'DN300', price: 210660.6, urunKodu: 'KV300' }),
+      prod({ ...VANA, ad: 'Kelebek vana', cins: 'redüktörlü · el kumandalı', baglanti: 'wafer', cap: 'DN150', price: 46207.9, urunKodu: 'KV150' }),
+    ];
+    const vKaynak = m('Kelebek Vana, DN300', vanaHavuz);
+    const izlenebilir = (vKaynak.candidates ?? []).find((c) => /izleme anahtarlı/i.test(c.materialName ?? ''));
+    check('V4.7d VANA: kaynakta "izleme anahtarlı" varyant aday olarak sunulur',
+      !!izlenebilir, `adaylar=${(vKaynak.candidates ?? []).map((c) => (c.materialName ?? '').slice(0, 30)).join('|')}`);
+
+    // Hedef satır metni İKİNCİL NİTELİK taşır ("redüktörlü") — kullanıcının
+    // seçtiği "izleme anahtarlı" varyant bu yüzden havuzdan eleniyordu.
+    const vHedef = m('Redüktörlü Kelebek Vana, DN150', vanaHavuz, { variantTags: izlenebilir?.variantTags });
+    check('V4.7e VANA: sürüklemede seçim ikincil niteliği YENER (DN150 ₺28.909,6)',
+      vHedef.netPrice === 28909.6,
+      `got net=${vHedef.netPrice} conf=${vHedef.confidence} reason="${(vHedef as any).reason ?? ''}"`);
+
+    // FITTING: ucuncu bir aile — genellik kaniti (boru/vana disinda)
+    const FIT = { kategori: 'Fittings', birim: 'adet', paraBirimi: 'TL', sheetName: 'Test' };
+    const fitHavuz = [
+      prod({ ...FIT, ad: 'Dirsek', cins: 'pres tip · 90 derece', cap: 'DN50', price: 120, urunKodu: 'D50P' }),
+      prod({ ...FIT, ad: 'Dirsek', cins: 'pres tip · 90 derece', cap: 'DN25', price: 45, urunKodu: 'D25P' }),
+      prod({ ...FIT, ad: 'Dirsek', cins: 'vidalı tip · 90 derece', cap: 'DN50', price: 95, urunKodu: 'D50V' }),
+      prod({ ...FIT, ad: 'Dirsek', cins: 'vidalı tip · 90 derece', cap: 'DN25', price: 38, urunKodu: 'D25V' }),
+    ];
+    const fKaynak = m('Dirsek DN50', fitHavuz);
+    const pres = (fKaynak.candidates ?? []).find((c) => /pres tip/i.test(c.materialName ?? ''));
+    // Hedef satır "vidalı" der; kullanıcı kaynakta PRES seçmiştir
+    const fHedef = pres
+      ? m('Vidalı Dirsek DN25', fitHavuz, { variantTags: pres.variantTags })
+      : { netPrice: -1 } as any;
+    check('V4.7f FITTING (3. aile): seçim ikincil niteliği yener (DN25 pres ₺45)',
+      fHedef.netPrice === 45, `got net=${fHedef.netPrice} (presAday=${!!pres})`);
+  }
+
   // ══ ARMAŞ gercek vakasi: aile KATEGORIDEN cozuluyor ══════════════
   {
     // Ad'da 'vana' kelimesi YOK, Kategoride var. Bu satirlar aksi halde
