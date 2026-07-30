@@ -170,6 +170,29 @@ describe('SD1-SD10 sürükle-doldur modülü', () => {
     expect(sonuc.ozet.atlanan).toBe(1);
   });
 
+  it('SD6b CANLI VAKA: kaynağın varyantı hedef çapta yoksa SEBEP + aday sayısı satıra yazılır', async () => {
+    // 30.07 canlı bulgu: DN150'ye "kırmızı (astar) boyalı" seçildi; DN65/DN25
+    // çaplarında o cins yok. Motor doğru davranıp sessiz ikame yapmadı ama
+    // ekranda yalnız pembe hücre vardı → "otomatik varyant çalışmıyor".
+    const motor = async (): Promise<MotorSonucu> => ({
+      netPrice: 0,
+      confidence: 'multi',
+      candidates: [{ label: 'siyah' }, { label: 'galvanizli' }] as any,
+      reason: 'Seçilen varyant bu çapta kütüphanede yok — elle seçin.',
+    });
+    const hedefler = [node(109, 'Dikişli Siyah Çelik Boru, DN65', 34000)];
+    const sonuc = await fillDown({
+      hedefler: hedefler as any, markaId: 'cayirova', roller: ROLLER, motor,
+      kaynakVaryantTags: ['ad:celik boru', 'cins:kirmizi (astar) boyali'], kaynakLabel: 'kırmızı boyalı',
+    });
+    expect(sonuc.satirlar[0].durum).toBe('aday');
+    expect(sonuc.satirlar[0].sebep).toContain('bu çapta kütüphanede yok');
+    // satırda GÖRÜNÜR: sebep + aday sayısı (tooltip bunları okur)
+    expect(hedefler[0].data._matSebep).toContain('elle seçin');
+    expect(hedefler[0].data._matAdaySayisi).toBe(2);
+    expect(hedefler[0].data._matStatus).toBe('belirsiz');
+  });
+
   it('SD2c adı boş satır SESSİZ atlanmaz — işaretlenir', async () => {
     const { motor } = motorFabrikasi();
     const bos = node(130, '', 5);

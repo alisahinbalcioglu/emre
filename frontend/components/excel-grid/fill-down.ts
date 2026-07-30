@@ -35,6 +35,9 @@ export interface MotorSonucu {
   notProduct?: boolean;
   variantTags?: string[];
   variantMissing?: boolean;
+  /** Motorun insan-okur gerekcesi ("Seçilen varyant bu çapta kütüphanede
+   *  yok — elle seçin." / "Bu markada Ø70 yok · en yakın: …"). */
+  reason?: string;
 }
 
 export type FillDurum = 'fiyat' | 'aday' | 'yok' | 'urun_degil' | 'hata' | 'ad-yok';
@@ -45,6 +48,8 @@ export interface FillSatirSonucu {
   fiyat?: number;
   adaySayisi?: number;
   hata?: string;
+  /** SD6: kullaniciya gosterilecek gerekce (motorun reason'i). */
+  sebep?: string;
 }
 
 export interface FillSonuc {
@@ -193,16 +198,27 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
       continue;
     }
 
+    // SD6: EYLEMLI isaret — yalniz renk degil, SEBEP + kac aday oldugu da
+    // satirda tasinir. Canli bulgu (30.07): kullanici DN150'ye "kirmizi
+    // (astar) boyali" secti, DN65/DN25 caplarinda o cins YOK; motor dogru
+    // davranip sessiz ikame yapmadi ama ekranda yalniz pembe hucre gorundu →
+    // kullanici "otomatik varyant calismiyor" olarak yasadi. Sebep ve aday
+    // sayisi gorunur olmadan isaret EYLEMLI degildir.
+    const sebepAlan = iscilikMi ? '_labSebep' : '_matSebep';
+    const adayAlan = iscilikMi ? '_labAdaySayisi' : '_matAdaySayisi';
+    if (r?.reason) yaz(node, sebepAlan, r.reason);
+
     if (r?.candidates?.length) {
       yaz(node, statusAlan, 'belirsiz');
-      sonuc.satirlar.push({ rowIdx, durum: 'aday', adaySayisi: r.candidates.length });
+      yaz(node, adayAlan, r.candidates.length);
+      sonuc.satirlar.push({ rowIdx, durum: 'aday', adaySayisi: r.candidates.length, sebep: r.reason });
       sonuc.ozet.aday++;
       continue;
     }
 
     const durum: FillDurum = r?.notProduct ? 'urun_degil' : 'yok';
     yaz(node, statusAlan, durum === 'urun_degil' ? 'urun_degil' : 'yok');
-    sonuc.satirlar.push({ rowIdx, durum });
+    sonuc.satirlar.push({ rowIdx, durum, sebep: r?.reason });
     if (durum === 'urun_degil') sonuc.ozet.urunDegil++; else sonuc.ozet.yok++;
   }
 

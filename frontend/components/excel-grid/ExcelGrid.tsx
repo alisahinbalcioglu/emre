@@ -2039,8 +2039,19 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
             const d = params.data;
             if (!d || params.node?.rowPinned) return '';
             if (d._matAutoVariant) return `⚡ otomatik: ${d._matAutoVariant} — farklı varyant için marka menüsünü yeniden açın`;
-            if (d._matStatus === 'belirsiz') return 'Seçim bekliyor — marka menüsünü açıp varyant seçin';
-            if (d._matStatus === 'yok') return 'Kütüphanede eşleşme yok';
+            // SD6: isaret EYLEMLI olmali — SEBEP + kac aday oldugu gorunur.
+            // Canli bulgu (30.07): kaynakta "kirmizi (astar) boyali" secilmisti,
+            // hedef caplarda o cins yoktu; ekranda yalniz pembe hucre vardi ve
+            // kullanici "otomatik varyant calismiyor" olarak yasadi.
+            if (d._matStatus === 'belirsiz') {
+              const n = d._matAdaySayisi;
+              return [d._matSebep || 'Seçim bekliyor',
+                n ? `${n} aday var — marka menüsünü açıp seçin` : 'marka menüsünü açıp varyant seçin',
+              ].join(' · ');
+            }
+            if (d._matStatus === 'yok') return d._matSebep || 'Kütüphanede eşleşme yok';
+            if (d._matStatus === 'hata') return `Eşleştirme hatası: ${d._matSebep || 'bilinmeyen'} — tekrar deneyin`;
+            if (d._matStatus === 'ad-yok') return 'Bu satırda malzeme adı yok — fiyat sorgulanamadı';
             if (d._matStatus === 'urun_degil') return 'Oran/hizmet satırı — fiyat beklenmiyor';
             if (d._matSuggestion) return 'Öneri — kontrol edin';
             return '';
