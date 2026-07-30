@@ -119,6 +119,39 @@ async function run() {
       !!satir && !/[$€₺]/.test(ham), `col7="${ham}"`);
   }
 
+  // ── KG9b: MERGE-GIZLI kolon rol tasiyamaz (canli bulgu 30.07) ────────
+  // Kullanici: "MALZ B. FİYAT kolonuna deger yazilmamis." Olcum: rol atanan
+  // kolon veri satirlarinin TAMAMINDA merge-gizli → frontend hucreyi CSS ile
+  // gizliyor, yazilan fiyat GORUNMUYOR. Rol gorunur olmayan kolona
+  // baglanmaz; sistem alanina duser ve sistem kolonu eklenir.
+  {
+    const r2 = await svc.prepare(oku('LİNTU MÜHENDİSLİK-BEYKOZ OKUL PROJESİ AKÇADAĞ.xlsx'), { fixedSchema: true });
+    const sh2 = (r2.sheets as any[]).find((s) => s.name === 'CİLAS KAUÇUK');
+    const R2 = sh2.columnRoles as any;
+    const alanlar2 = new Set(((sh2.columnDefs ?? []) as any[]).map((d) => d.field));
+
+    // merge-gizli olan malzeme birim fiyat kolonu (col12) rol TASIMAMALI
+    const mergeGizli = (alan?: string) => {
+      if (!alan || !alan.startsWith('col')) return false;
+      let gizli = 0; let toplam = 0;
+      for (const row of sh2.rowData ?? []) {
+        if (!row._isDataRow) continue;
+        toplam++;
+        if (row._merges?.[alan]?.hidden) gizli++;
+      }
+      return toplam > 0 && gizli / toplam >= 0.5;
+    };
+    check('KG9b malzeme birim fiyat rolü GÖRÜNÜR bir hedefe bağlı (merge-gizli kolona değil)',
+      !mergeGizli(R2.materialUnitPriceField),
+      `rol=${R2.materialUnitPriceField} (bu kolon veri satırlarında merge-gizli)`);
+    check('KG9b-2 rol sistem alanına düştüyse sistem kolonu EKLENDİ (fiyat görünür)',
+      !R2.materialUnitPriceField?.startsWith('col') ? alanlar2.has('_matBirim') : true,
+      `rol=${R2.materialUnitPriceField} _matBirim kolonu=${alanlar2.has('_matBirim')}`);
+    check('KG9b-3 GÖRÜNÜR dosya kolonları rolde KALIR (işçilik col8/col9)',
+      R2.laborUnitPriceField === 'col8' && R2.laborTotalField === 'col9',
+      `lbf=${R2.laborUnitPriceField} lt=${R2.laborTotalField}`);
+  }
+
   console.log('\n' + '='.repeat(60));
   console.log(`ONCEDEN FIYATLI: ${passed} PASS, ${failed} FAIL`);
   console.log('='.repeat(60));

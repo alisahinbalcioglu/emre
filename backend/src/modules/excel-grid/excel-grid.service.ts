@@ -312,6 +312,32 @@ export class ExcelGridService {
       // asagida roleFields ezmesi de kaldirildi). Yalniz rolu OLMAYAN
       // fiyat/tutar basliklari atilir — bunlar sablonun turetilmis/artik
       // sutunlaridir ve uygulamanin yazacagi bir karsiligi yoktur.
+      // ── KG9b (CANLI BULGU 30.07): MERGE-GIZLI KOLON ROL TASIYAMAZ ────
+      // Kullanici bildirimi: "MALZ B. FİYAT kolonuna deger yazilmamis."
+      // Olcum (Beykoz/CİLAS KAUÇUK): rol atanan col12, VERI SATIRLARININ
+      // 26/26'sinda merge-gizli (_merges.col12.hidden). Frontend o hucreleri
+      // 'hidden-merged-cell' ile CSS'te gizliyor → fiyat YAZILIYOR ama
+      // GORUNMUYOR; kullanici "yazilmadi" olarak yasiyor. Toplam gorunuyordu
+      // cunku o sistem kolonundaydi.
+      // Kural: fiyat rolu yalniz GORUNUR kolona baglanir; kolon merge-gizliyse
+      // rol sistem alanina duser (eski davranis) ve sistem kolonu eklenir.
+      const kolonMergeGizli = (c: number): boolean => {
+        let gizli = 0; let toplam = 0;
+        const bas = firstDataRow >= 0 ? firstDataRow : realHeaderRow + 1;
+        for (let r = bas; r < rowCount; r++) {
+          toplam++;
+          if (mergeInfo.get(`${r}-${c}`)?.hidden) gizli++;
+        }
+        return toplam > 0 && gizli / toplam >= 0.5;
+      };
+      for (const rk of ['materialUnitPrice', 'materialTotal', 'laborUnitPrice', 'laborTotal', 'grandUnitPrice', 'grandTotal']) {
+        const c = columnRoles[rk];
+        if (c !== undefined && kolonMergeGizli(c)) {
+          console.warn(`[ExcelGrid] KG9b: "${rk}" rolü col${c}'e atanmıştı ama kolon merge-gizli — sistem alanına düşürülüyor`);
+          delete columnRoles[rk];
+        }
+      }
+
       const rolluFiyatKolonlari = new Set<number>();
       for (const rk of ['materialUnitPrice', 'materialTotal', 'laborUnitPrice', 'laborTotal', 'grandUnitPrice', 'grandTotal']) {
         if (columnRoles[rk] !== undefined) rolluFiyatKolonlari.add(columnRoles[rk]);
