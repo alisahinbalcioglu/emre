@@ -19,6 +19,7 @@ import { useCurrency } from '@/hooks/use-currency';
 import { useCapabilities } from '@/contexts/CapabilitiesContext';
 import { adDisiplinTahmini } from '@/lib/disiplin';
 import type { Currency } from '@/types/quotes';
+import type { Brand } from '@/types';
 
 interface QuoteDetail {
   id: string;
@@ -39,6 +40,12 @@ export default function QuoteDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeSheetIndex, setActiveSheetIndex] = useState(0);
   const [exporting, setExporting] = useState(false);
+  // C4 (Bölüm D adım 3): marka SEÇİMİ de yeniden açılışta görünmeli. Kayıtta
+  // `_marka` yalnız marka KİMLİĞİ'dir; etiketi çözecek liste bu sayfada hiç
+  // yüklenmiyordu (`brands={[]}`) → fiyatı yazılmış her satır "Marka sec..."
+  // gösteriyordu, kullanıcı "seçimlerim gitmiş" olarak yaşıyordu. Kaynak
+  // Düzenle ekranıyla AYNI: /library/brands (Kütüphanem izolasyonu).
+  const [allBrands, setAllBrands] = useState<Brand[]>([]);
 
   // SORUN 16 (KH8/KH9): goruntuleme para birimi — teklifte KAYITLI birimle
   // acilir; toggle degisince kalici yazilir. Cevrim yalniz GORUNTULEME
@@ -64,6 +71,13 @@ export default function QuoteDetailPage() {
       .finally(() => setIsLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  // Marka etiketleri icin kutuphane markalari (yukaridaki C4 notu)
+  useEffect(() => {
+    api.get<Brand[]>('/library/brands')
+      .then(({ data }) => setAllBrands(data ?? []))
+      .catch(() => { /* etiket cozulemezse gorunum yine calisir */ });
+  }, []);
 
   const birimSec = (c: Currency) => {
     setCurrency(c);
@@ -112,7 +126,7 @@ export default function QuoteDetailPage() {
         ),
         rowData: activeSheet.rowData ?? [],
         columnRoles: activeSheet.columnRoles ?? {},
-        brands: [],
+        brands: allBrands,
         headerEndRow: activeSheet.headerEndRow ?? 0,
       }
     : null;
@@ -188,7 +202,7 @@ export default function QuoteDetailPage() {
             <ExcelGrid
               key={`detail-sheet-${activeSheetIndex}`}
               data={gridData}
-              brands={[]}
+              brands={allBrands}
               currencySymbol={currency === 'USD' ? '$' : currency === 'EUR' ? '€' : '₺'}
               conversionRate={conversionRate}
               onBrandChange={async () => null}

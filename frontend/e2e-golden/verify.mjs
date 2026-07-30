@@ -53,6 +53,71 @@ async function loadWb(p) {
 }
 const visibleSheets = (wb) => wb.worksheets.filter((ws) => ws.state !== 'hidden' && ws.state !== 'veryHidden');
 
+// ── C11 (KE21) yardimcilari: "fazladan kolon yok" ────────────────────────
+/** Sayfadaki SON dolu kolon (1-tabanli). ws.columnCount stil tanimli BOS
+ *  kolonlari da sayar (Aksa: 119) — olcut GERCEK doluluktur. */
+const sonDoluKolon = (ws) => {
+  let m = 0;
+  ws.eachRow({ includeEmpty: false }, (row) => row.eachCell({ includeEmpty: false }, (c, cn) => {
+    if (txt(c.value).trim() !== '' && cn > m) m = cn;
+  }));
+  return m;
+};
+/** Bir kolonun ilk N satirdaki metinleri birlestirilmis hali. KE15 iki
+ *  katmanli baslikta ust satir "MALZEME" + alt satir "BİRİM FİYAT" AYNI
+ *  kolonda durur; anlam ancak BIRLESIK metinden okunur. */
+const kolonYiginMetni = (ws, c, sonSatir) => {
+  const p = [];
+  for (let r = 1; r <= sonSatir; r++) {
+    const t = txt(ws.getCell(r, c).value).trim();
+    if (t && !/^=/.test(t)) p.push(t);
+  }
+  return p.join(' ').replace(/\s+/g, ' ').toLocaleLowerCase('tr');
+};
+/** Kolondaki SAYISAL deger sayisi — KE8 "verisiz kolon" olcutu. Baslik bandi
+ *  cikarilmaz: basliklar METIN, sayisalHucre onlari zaten saymaz (band ile
+ *  kirpmak Skychem'de R12-R13'teki gercek degerleri gorunmez yapiyordu). */
+const kolondaVeriVar = (ws, c) => {
+  let n = 0;
+  ws.eachRow({ includeEmpty: false }, (row) => {
+    const v = row.getCell(c).value;
+    if (v != null && v !== '' && sayisalHucre(v)) n++;
+  });
+  return n;
+};
+/** Export'un ekledigi kolonun basligindan ROL cikar (kolonAta fallback
+ *  basliklari: "Malz. Birim Fiyat" · "Malz. Toplam" · "İşç. Birim Fiyat" …) */
+const rolTani = (bas) => {
+  const b = String(bas ?? '').toLocaleLowerCase('tr');
+  const malz = /malz/.test(b), isc = /i̇şç|isc|işç/.test(b);
+  const birim = /birim/.test(b), toplam = /toplam|tutar/.test(b);
+  if (malz && birim) return 'matUnit';
+  if (malz && toplam) return 'matTot';
+  if (isc && birim) return 'labUnit';
+  if (isc && toplam) return 'labTot';
+  if (/toplam birim/.test(b)) return 'grandUnit';
+  if (/toplam tutar/.test(b)) return 'grandTot';
+  return null;
+};
+/** Sablonun KENDI basliginda bu rolun anlamsal karsiligi var mi?
+ *  BAGIMSIZ olcut — backend'in basligaUyar'i cagirilmaz (cagirilsaydi
+ *  kontrol totoloji olurdu: export ne derse dogrulayici da onu derdi). */
+const ROL_DESEN = {
+  matUnit: (t) => /malz/.test(t) && /(birim|br\.?\s*f|b\.?\s*f\.?)/.test(t),
+  matTot: (t) => /malz/.test(t) && /(tutar|toplam|t\.?\s*f\.?)/.test(t),
+  labUnit: (t) => /(i̇şç|işç|isc)/.test(t) && /(birim|br\.?\s*f|b\.?\s*f\.?)/.test(t),
+  labTot: (t) => /(i̇şç|işç|isc)/.test(t) && /(tutar|toplam|t\.?\s*f\.?)/.test(t),
+  grandUnit: (t) => /(satış|toplam|genel)/.test(t) && /(birim|br\.?\s*f)/.test(t),
+  grandTot: (t) => /(satış|toplam|genel)/.test(t) && /(tutar|toplam)/.test(t),
+};
+const rolBasligiVar = (ws, sonKolon, baslikSonu, rol) => {
+  const test = ROL_DESEN[rol];
+  if (!test) return null;
+  for (let c = 1; c <= sonKolon; c++) if (test(kolonYiginMetni(ws, c, baslikSonu))) return c;
+  return null;
+};
+const KOLON_ADI = (c) => { let s = '', n = c; while (n > 0) { const k = (n - 1) % 26; s = String.fromCharCode(65 + k) + s; n = (n - k - 1) / 26; } return s; };
+
 /** Ozet satirindaki TUM parasal degerler, sirayla.
  *  Ekranda ozet satiri "GENEL TOPLAM ₺137.460,8 ₺42.840,0 ₺180.300,8" =
  *  [malzeme, iscilik, GENEL]. num() ilk sayiyi aliyordu → malzeme toplamini
@@ -104,6 +169,10 @@ for (const slug of slugs.sort()) {
   const payload = J('save-payload.json');
   const saved = J('saved-quote.json');
   const popups = J('popups.json') ?? [];
+  // Bölüm D senaryosu (11. test): hedefli tek aile fiyatlandırılır — "tüm
+  // ailelere marka atandı mı" (C2) ölçütü bu koşum için ANLAMSIZ, senaryonun
+  // kendi şartları spec'te expect ile sınanır (senaryo.json = kanıt).
+  const senaryo = J('senaryo.json');
   const consoleErrs = (J('console.json') ?? []).filter((e) => !/favicon|manifest|Failed to load resource.*40[34]/.test(e));
   const timing = J('timing.json') ?? {};
   const headers = J('export-headers.json') ?? {};
@@ -143,7 +212,11 @@ for (const slug of slugs.sort()) {
       }
     }
     const ok = famToplam > 0 ? famAtandi / famToplam >= 0.9 : null;
-    set('C2', ok, `aile ${famAtandi}/${famToplam} marka atandi; popup=${popups.length} satir (popups.json)`);
+    if (senaryo) {
+      const h = senaryo.SD?.hedefler ?? [];
+      const fy = h.filter((x) => x.fiyat).length, is = h.filter((x) => !x.fiyat && x.isaret).length;
+      set('C2', null, `Bölüm D senaryosu — hedefli tek aile: ${fy}/${h.length} hedef fiyat aldı, ${is} eylemli işaret, sessiz boş 0 (senaryo.json; şartlar spec'te expect ile sınandı)`);
+    } else set('C2', ok, `aile ${famAtandi}/${famToplam} marka atandi; popup=${popups.length} satir (popups.json)`);
   }
 
   // ── C3: satir hesap + genel toplam (bagimsiz yeniden hesap, payload'dan)
@@ -426,11 +499,58 @@ for (const slug of slugs.sort()) {
   // ── C10: sureler kaydedildi (bilgi)
   set('C10', Object.keys(timing).length >= 5, Object.entries(timing).map(([k, v]) => `${k}=${(v / 1000).toFixed(1)}s`).join(' '));
 
+  // ── C11 (KE21): FAZLADAN KOLON YOK ────────────────────────────────────
+  // 28-29.07 kosumu C1-C10'u YESIL verdi ama SAHINKUL ciktisinda sablon
+  // disina M/N ("Malz. Birim Fiyat" / "Malz. Toplam") kolonlari eklenmisti —
+  // hicbir kriter kolon SAYISINA bakmiyordu. KE16: anlamsal eslesme varken
+  // kolon eklemek YASAK. KF2: eslesme GERCEKTEN yoksa (sablonda o rolun
+  // basligi hic yoksa) dolu veri icin ekleme MESRU. KE8: verisiz kolon
+  // hicbir kosulda eklenemez.
+  {
+    if (!orj || !fiyatli) set('C11', false, 'dosya okunamadi');
+    else {
+      const ihlaller = [], mesrular = [];
+      for (const ws of visibleSheets(orj)) {
+        const fw = fiyatli.getWorksheet(ws.name);
+        if (!fw) continue; // C5 zaten FAIL ediyor
+        const orjSon = sonDoluKolon(ws), ciktiSon = sonDoluKolon(fw);
+        if (ciktiSon <= orjSon) continue;
+        // Baslik bandi: en az ilk 12 satir. DAR band tuzagi: headerEndRow=2
+        // ile YALNIZ R1-R3 okununca SAHINKUL'un R4 alt basligi ("BİRİM
+        // FİYAT") gorunmuyor, iki katmanli baslik "MALZEME"de kesiliyor ve
+        // ihlal MESRU EKLEME sanilıyordu.
+        const sh = (payload?.sheets ?? []).find((s) => s.name === ws.name);
+        const baslikSonu = Math.min(30, Math.max(12, (sh?.headerEndRow ?? 0) + 2));
+        for (let c = orjSon + 1; c <= ciktiSon; c++) {
+          const bas = kolonYiginMetni(fw, c, baslikSonu);
+          if (!bas) continue; // baslik yok → salt bicim artigi
+          const rol = rolTani(bas);
+          const veri = kolondaVeriVar(fw, c);
+          const yer = `${ws.name}!${KOLON_ADI(c)} "${bas.slice(0, 22)}"`;
+          if (veri === 0) { ihlaller.push(`${yer} → VERİSİZ kolon eklendi (KE8)`); continue; }
+          const mevcut = rol ? rolBasligiVar(ws, orjSon, baslikSonu, rol) : null;
+          if (mevcut) ihlaller.push(`${yer} → şablonda ${KOLON_ADI(mevcut)} zaten bu anlamda (KE16 ihlali, ${veri} değer)`);
+          else mesrular.push(`${yer} (KF2 meşru: şablonda ${rol ?? '?'} başlığı yok, ${veri} değer)`);
+        }
+      }
+      set('C11', ihlaller.length === 0,
+        (ihlaller.length ? 'FAZLADAN KOLON: ' + ihlaller.slice(0, 4).join(' · ')
+          : mesrular.length ? 'şablon dışına kolon eklenmedi (yalnız meşru ekleme): ' + mesrular.slice(0, 3).join(' · ')
+            : 'şablon dışına kolon eklenmedi'));
+    }
+  }
+
+  if (senaryo) {
+    const h = senaryo.SD?.hedefler ?? [];
+    R.notlar.push(`BÖLÜM D · KG10: ${senaryo.KG10?.iscilikDoluSatir} satırda dosyanın işçilik fiyatı yüklemede görünür`);
+    R.notlar.push(`BÖLÜM D · SD: kaynak ${senaryo.kaynak?.birim} → ${h.map((x) => `${x.cap}=${x.birim || (x.isaret ? 'İŞARET' : 'BOŞ')}`).join(' ')}`);
+    R.notlar.push(`BÖLÜM D · KG13: kur etiketi "${senaryo.KG13?.kurEtiketi}" · malzeme+işçilik oran aralığı ${JSON.stringify(senaryo.KG13?.kurAraligi)}`);
+  }
   results.push(R);
 }
 
 // ── Rapor ──────────────────────────────────────────────────────────────
-const KEYS = ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'C10'];
+const KEYS = ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'C10', 'C11'];
 let failCount = 0;
 const lines = [];
 lines.push('| Dosya | ' + KEYS.join(' | ') + ' |');

@@ -101,25 +101,35 @@ async function closeMenus(page: Page) {
   await page.waitForTimeout(150);
 }
 
-/** Acik "Secim gerekli" popup'i varsa ILK adayi sec (gorev politikasi) ve logla.
- *  Popup da fixed portal → DOM-click (viewport tasmasi sorunu, bkz selectDropdown). */
-export async function resolvePopupIfAny(page: Page, rowIdx: number, name: string, log: PopupLogEntry[]): Promise<boolean> {
+/** Acik "Secim gerekli" popup'i varsa aday sec ve logla.
+ *  Popup da fixed portal → DOM-click (viewport tasmasi sorunu, bkz selectDropdown).
+ *
+ *  `tercih`: adayin ETIKETINE uygulanan tercih deseni. Verilmezse ILK aday
+ *  secilir (10 dosyalik kosumun politikasi). Kullanicinin satirdaki bilgiye
+ *  gore sectigi urunu taklit etmek gerektiginde kullanilir — SAHINKUL'da
+ *  grup basligi "GALVANİZ ÇELİK BORU" oldugu halde ilk-aday politikasi
+ *  "Basınçlı Boru Siyah" seciyordu; o aile diger caplarda bulunmadigi icin
+ *  surukleme tek adimda fiyatlayamiyordu (test kaynakli, urun hatasi degil).
+ *  Desen iki asamada da uygulanir (cins grubu → somut urun). */
+export async function resolvePopupIfAny(page: Page, rowIdx: number, name: string, log: PopupLogEntry[], tercih?: RegExp): Promise<boolean> {
   // 800ms: popup React state ile ANINDA acilir; 2500ms bekleme buyuk
   // dosyalarda (1694 satir, yuzlerce aile) saatlerce bos bekleme demekti.
   const header = page.getByText('Seçim gerekli', { exact: false }).first();
   try { await header.waitFor({ state: 'visible', timeout: 800 }); } catch { return false; }
-  const tikla = (geriAtla: boolean) => page.evaluate((skipGeri) => {
+  const tikla = (geriAtla: boolean) => page.evaluate(({ skipGeri, desen }) => {
     const hdr = Array.from(document.querySelectorAll('div')).find((d) => /Seçim gerekli/.test(d.textContent ?? '') && d.children.length === 0);
     const box = hdr?.parentElement;
     if (!box) return null;
     const btns = Array.from(box.querySelectorAll('button'));
-    const hedef = skipGeri ? btns.find((b) => !/← Geri/.test(b.textContent ?? '')) : btns[0];
+    const secilebilir = skipGeri ? btns.filter((b) => !/← Geri/.test(b.textContent ?? '')) : btns;
+    const re = desen ? new RegExp(desen, 'i') : null;
+    const hedef = (re ? secilebilir.find((b) => re.test(b.textContent ?? '')) : null) ?? secilebilir[0];
     if (!hedef) return null;
     const label = (hedef.textContent ?? '').trim().slice(0, 80);
     hedef.scrollIntoView({ block: 'nearest' });
     hedef.click();
     return { label, adaylar: btns.length };
-  }, geriAtla);
+  }, { skipGeri: geriAtla, desen: tercih?.source ?? null });
 
   const ilk = await tikla(false);
   if (!ilk) return false;
@@ -200,17 +210,22 @@ export async function fillFamilyDown(page: Page, rowIdx: number, colId: string) 
   await page.mouse.dblclick(box.x + box.width / 2, box.y + box.height - 4);
 }
 
-/** Fiyatli hucre sayisi sabitlenene kadar bekle (doldurma/eslesme bitti). */
-export async function waitForPricesToSettle(page: Page, maxMs = 180_000) {
-  const readCount = () => page.evaluate(() => {
+/** Fiyatli hucre sayisi sabitlenene kadar bekle (doldurma/eslesme bitti).
+ *  colIds: fiyat kolonlarinin GERCEK kimlikleri. Dosyanin KENDI fiyat kolonu
+ *  varsa rol `col8` gibi olur (SAHINKUL, Bolum B/C sonrasi) — sistem alanini
+ *  sabitleyen eski varsayim o dosyalarda hicbir hucre saymiyor, bekleme
+ *  aninda geri donuyordu. */
+export async function waitForPricesToSettle(page: Page, maxMs = 180_000, colIds?: string[]) {
+  const secici = (colIds?.length ? colIds : ['_matBirim', '_labBirim']).map((c) => `[col-id="${c}"]`).join(', ');
+  const readCount = () => page.evaluate((sel) => {
     let n = 0;
-    document.querySelectorAll('[col-id="_matBirim"], [col-id="_labBirim"]').forEach((c) => {
+    document.querySelectorAll(sel).forEach((c) => {
       if (/[0-9]/.test(c.textContent ?? '')) n++;
     });
     // devam eden istek gostergesi: donen spinner'lar
     const busy = document.querySelectorAll('.animate-spin').length;
     return n * 1000 + busy;
-  });
+  }, secici);
   let last = -1; let stableSince = Date.now(); const start = Date.now();
   while (Date.now() - start < maxMs) {
     const cur = await readCount();

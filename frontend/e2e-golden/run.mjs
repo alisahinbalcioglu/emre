@@ -11,6 +11,6 @@ const sh = (cmd, args) => spawnSync(cmd, args, { cwd: FE, stdio: 'inherit', shel
 
 console.log('── 1/2 Playwright altin yol kosumu ──');
 const pw = sh('npx', ['playwright', 'test', '-c', 'playwright.golden.config.ts']);
-console.log(`\n── 2/2 Programatik dogrulama (C1-C10) ──`);
+console.log(`\n── 2/2 Programatik dogrulama (C1-C11) ──`);
 const vf = sh('node', [path.join('e2e-golden', 'verify.mjs')]);
 process.exit(pw !== 0 || vf !== 0 ? 1 : 0);
