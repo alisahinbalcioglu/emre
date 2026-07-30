@@ -4,7 +4,8 @@ import { CreateQuoteDto } from './dto/create-quote.dto';
 import * as XLSX from 'xlsx';
 import * as ExcelJS from 'exceljs';
 // PRD Teklif Formatim (v2.1): profesyonel cikti motoru
-import { buildExportWorkbook, writePricesToWorkbook, ExportSonucu, ExportBirim } from './export-engine';
+import { buildExportWorkbook, ExportSonucu, ExportBirim } from './export-engine';
+import { standartCiktiUret } from './standart-cikti';
 import { buildSampleFormat, ExportOverrides, FillContext } from '../quote-formats/format-engine';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 
@@ -348,39 +349,41 @@ export class QuotesService {
    *  yazilmis — teklif formati (kapak/icmal) YOK, REV ARTMAZ, arsivlenmez.
    *  Kullanici karari 24.07: "sadece fiyatlandirdigi exceli indirmek
    *  isteyebilir (teklif formatinda gondermek istemeyebilir)". */
+  /**
+   * "Fiyatlandırılmış Excel" — EX1-EX7 (PRD_Standart_Grid_Semasi §C).
+   *
+   * KULLANICI KARARI (30.07.2026): çıktı artık MÜŞTERİNİN ŞABLONUNA yazılmıyor;
+   * 9 kolonluk STANDART dosya üretiliyor. Kâr oranı ve marka/firma iç bilgidir,
+   * dosyaya hiçbir yerde girmez (EX1/EX2). Böylece kolon-haritalama hatası
+   * sınıfı (KE1-KE21 · KF1-KF7) yapısal olarak ortadan kalkar.
+   *
+   * ESKI YOL: `writePricesToWorkbook` orijinal workbook'a yazıyordu — T1/T3
+   * kapsamında SİLİNDİ (369 satır); iki export yolu da `standartSayfaYaz`
+   * motorunu kullanıyor (KF7).
+   */
   async exportPricedXlsx(userId: string, id: string): Promise<{ buffer: Buffer; filename: string; uyari?: string; ozet?: string }> {
     const quote = await this.quoteGetir(userId, id);
-    if (!quote.originalFile) {
-      throw new BadRequestException(
-        'Bu teklifte orijinal Excel dosyası kayıtlı değil — dışa aktarım için keşif Excel\'ini yükleyip teklifi yeniden kaydedin.',
-      );
-    }
-    const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(Buffer.from(quote.originalFile) as any);
     const sheetsArr = Array.isArray(quote.sheets) ? (quote.sheets as any[]) : [];
-    const birim = await this.exportBirimi(quote); // PANO 18: ekrandaki birim
-    const bilgiler = writePricesToWorkbook(wb, sheetsArr, birim);
-    // KF6 + K-D self-check: dolu deger sayisi ↔ yazilan + hata artisi.
-    // Uyusmazlik SESSIZ GECILMEZ — kullaniciya gorunur uyari (header → toast).
-    const eksik = bilgiler.reduce((a, b) => a + Math.max(0, b.beklenen - b.yazilan), 0);
-    const hataArt = bilgiler.reduce((a, b) => a + (b.hataArtisi ?? 0), 0);
-    const parcalar: string[] = [];
-    if (eksik > 0) parcalar.push(`${eksik} fiyat değeri dosyaya yazılamadı`);
-    if (hataArt > 0) parcalar.push(`${hataArt} hücrede formül hatası oluştu`);
-    const uyari = parcalar.length > 0 ? `${parcalar.join('; ')} — çıktıyı kontrol edin.` : undefined;
-    if (uyari) console.warn(`[Export] ⚠ SELF-CHECK (fiyatli kesif): ${uyari}`);
-    // PANO 21a: BASARIDA da gorunur ozet (self-check kaniti)
-    const ozet = this.exportOzeti({
-      yazilan: bilgiler.reduce((a, b) => a + b.yazilan, 0),
-      beklenen: bilgiler.reduce((a, b) => a + b.beklenen, 0),
-      fiyatsiz: bilgiler.reduce((a, b) => a + (b.fiyatsizSatir ?? 0), 0),
-      toplam: bilgiler.reduce((a, b) => a + b.matDeger + b.labDeger, 0),
-    }, birim);
-    const buffer = Buffer.from(await wb.xlsx.writeBuffer());
-    const temizBaslik = String(quote.title ?? 'Teklif').replace(/[\\/:*?"<>|]/g, '-').slice(0, 60);
-    const filename = `${temizBaslik} - Fiyatlandırılmış Keşif.xlsx`;
-    console.log(`[Export] Fiyatlandirilmis kesif indirildi (${(buffer.length / 1024).toFixed(0)} KB) — ${ozet}`);
-    return { buffer, filename, uyari, ozet };
+    if (sheetsArr.length === 0) {
+      throw new BadRequestException('Bu teklifte sayfa verisi yok — keşif Excel dosyasını yükleyip teklifi yeniden kaydedin.');
+    }
+    const birim = await this.exportBirimi(quote); // PANO 18/EX6: ekrandaki birim
+    const baslikParcalari = [quote.title, (quote as any).customerName, (quote as any).projectName]
+      .map((x: any) => String(x ?? '').trim()).filter(Boolean);
+    const sonuc = await standartCiktiUret({
+      sheetsArr,
+      birim,
+      baslik: baslikParcalari.join(' · '),
+    });
+    // EX7: görünür self-check — fiyatsız satır sayısı da bilgi olarak taşınır
+    const fiyatsiz = sheetsArr.reduce((a: number, sh: any) => a + (sh?.rowData ?? [])
+      .filter((r: any) => r?._isDataRow && !r?._ozet
+        && !(parseFloat(String(r?._matBirim ?? '')) > 0) && !(parseFloat(String(r?._labBirim ?? '')) > 0)).length, 0);
+    const ozet = fiyatsiz > 0 ? `${sonuc.ozet} · ${fiyatsiz} satır fiyatsız (eşleşmemiş)` : sonuc.ozet;
+    const temizBaslik = String(quote.title ?? 'Teklif').replace(/[\/:*?"<>|]/g, '-').slice(0, 60);
+    const filename = `${temizBaslik} - Fiyatlandırılmış Teklif.xlsx`;
+    console.log(`[Export] Standart fiyatlı çıktı (${(sonuc.buffer.length / 1024).toFixed(0)} KB) — ${ozet}`);
+    return { buffer: sonuc.buffer, filename, ozet };
   }
 
   /** T10 arsivi: uretilmis revizyonlar. */

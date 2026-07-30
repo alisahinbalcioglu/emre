@@ -4,7 +4,8 @@ import { ExcelGridService } from '../src/modules/excel-grid/excel-grid.service';
 import { buildProductIndex } from '../src/modules/matching/index/product-index';
 import { parseLine } from '../src/modules/matching/index/line-parser';
 import { runQuery } from '../src/modules/matching/index/query-engine';
-import { writePricesToWorkbook, buildExportWorkbook } from '../src/quotes/export-engine';
+import { buildExportWorkbook } from '../src/quotes/export-engine';
+import { standartCiktiUret } from '../src/quotes/standart-cikti';
 import { buildSampleFormat } from '../src/quote-formats/format-engine';
 import * as ExcelJS from 'exceljs';
 
@@ -47,10 +48,8 @@ async function main() {
   for (const r of (res.sheets[0].rowData ?? []) as any[]) if (r._isDataRow && n < 5) { r._matBirim = '100'; r._matToplam = ''; n++; }
   const sheets = JSON.parse(JSON.stringify(res.sheets));
   await olc('Z4 fiyatli-kesif (load+write+buffer)', async () => {
-    const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(hangar as any);
-    writePricesToWorkbook(wb, sheets);
-    await wb.xlsx.writeBuffer();
+    // T1/T3: eski sablon-yazicisi silindi — olcum artik STANDART yazicida
+    await standartCiktiUret({ sheetsArr: sheets, birim: null });
   }, 3);
   await olc('Z5 teklif-format (tam kurucu)', async () => {
     const s = await buildExportWorkbook({

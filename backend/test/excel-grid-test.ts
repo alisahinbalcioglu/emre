@@ -130,9 +130,17 @@ async function run() {
     ];
     const res = await svc.prepare(fixture(aoa, []), { fixedSchema: true });
     const s = res.sheets[0];
-    check('KG6 ters başlık: miktar rolü SAYI taşıyan kolona (D), birim C\'ye takas edildi',
-      s.columnRoles?.quantityField === 'col3' && s.columnRoles?.unitField === 'col2',
-      `qty=${s.columnRoles?.quantityField} unit=${s.columnRoles?.unitField}`);
+    // SABIT SEMA (GS1): roller artik SABIT alanlari gosterir (_miktar/_birim);
+    // "hangi DOSYA kolonundan geldigi" ic ayrintidir. Olcut ICERIGE tasindi:
+    // ters basliga ragmen miktar SAYI, birim METIN olmali.
+    {
+      const d = s.rowData.filter((r: any) => r._isDataRow);
+      const miktarSayi = d.every((r: any) => typeof r._miktar === 'number');
+      const birimMetin = d.every((r: any) => /^(mt|ad)$/i.test(String(r._birim ?? '').trim()));
+      check('KG6 ters başlık: miktar SAYI, birim METİN olarak yerleşti (içerikten takas)',
+        miktarSayi && birimMetin,
+        `miktar=${d.map((r: any) => r._miktar).join(',')} birim=${d.map((r: any) => r._birim).join(',')}`);
+    }
     check('KG6 veri satırları tanındı (3 kalem; miktar parse edilebiliyor)',
       !s.isEmpty && s.rowData.filter((r: any) => r._isDataRow).length === 3,
       `isEmpty=${s.isEmpty} rows=${s.rowData.filter((r: any) => r._isDataRow).length}`);

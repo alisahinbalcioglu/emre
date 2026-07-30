@@ -369,6 +369,8 @@ export default function NewQuotePage() {
   // PRD v3.0 Bolum A1: sayfa-bazli gizli sutun listesi (field adlari). Gizle =
   // yalniz gorsel (veri durur, toplama dahil). Anahtar = sayfa index'i.
   const [colHiddenBySheet, setColHiddenBySheet] = useState<Record<number, string[]>>({});
+  // GS8: kolon genislik tercihi (sayfa bazinda) — teklifle birlikte saklanir
+  const [colWidthsBySheet, setColWidthsBySheet] = useState<Record<number, Record<string, number>>>({});
   // PRD v3.0 Bolum A2: sayfa-bazli "kat" olarak isaretli sutunlar. Dolu ise
   // MIK = katlarin satir-toplami (hesaplanan, salt-okunur).
   const [colFloorsBySheet, setColFloorsBySheet] = useState<Record<number, string[]>>({});
@@ -468,6 +470,7 @@ export default function NewQuotePage() {
         // PRD v3.0 Part A kaliciligi: kat + gizli sutun config'i draft'tan geri
         // yukle (eski v3 draft'larda alan yok → bos obje ile baslar, kirilmaz).
         setColHiddenBySheet(draft.colHiddenBySheet ?? {});
+        setColWidthsBySheet(draft.colWidthsBySheet ?? {});
         setColFloorsBySheet(draft.colFloorsBySheet ?? {});
         const activeIdx = draft.activeSheetIndex ?? 0;
         const active = draft.multiSheet.sheets?.[activeIdx];
@@ -564,6 +567,7 @@ export default function NewQuotePage() {
         title,
         allBrands,
         colHiddenBySheet,
+        colWidthsBySheet,
         colFloorsBySheet,
       }));
     } catch (e) {
@@ -573,7 +577,7 @@ export default function NewQuotePage() {
       sessionStorage.removeItem(DRAFT_KEY);
       console.warn('[quotes/new] Draft save failed, eski draft temizlendi:', e);
     }
-  }, [multiSheet, liveRowDataBySheet, activeSheetIndex, sheetDisciplines, title, allBrands, colHiddenBySheet, colFloorsBySheet]);
+  }, [multiSheet, liveRowDataBySheet, activeSheetIndex, sheetDisciplines, title, allBrands, colHiddenBySheet, colFloorsBySheet, colWidthsBySheet]);
 
   // Marka fiyat cache: brandId → { materialName → PriceLookupResult }
   const brandPriceCacheRef = useRef<Record<string, Record<string, any>>>({});
@@ -651,21 +655,30 @@ export default function NewQuotePage() {
   // ── Malzeme Adı düzeltme: kullanıcı hangi Excel sütununun malzeme adı
   //    olduğunu değiştirebilir (otomatik tespit yanlışsa). Aktif sayfanın
   //    columnRoles.nameField'ini günceller → eşleştirme yeni sütunu okur.
+  /** GS6: seçici değişince grid ANINDA yeniden doldurulur.
+   *  ESKİ DAVRANIŞ (kök neden §A.2): yalnız `columnRoles.nameField` değişiyordu;
+   *  satırların `_ad` değeri ve `_isDataRow` sınıflandırması sunucuda ESKİ
+   *  sütuna göre hesaplanmış halde kalıyordu → kullanıcı sütunu düzeltse bile
+   *  ekran değişmiyordu. Artık her satırın `_kaynak` metinlerinden `_ad`
+   *  yeniden yazılır ve satır tipi yeniden belirlenir. */
   function handleNameFieldChange(newField: string) {
-    setMultiSheet((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        sheets: prev.sheets.map((s) =>
-          s.index === activeSheetIndex
-            ? { ...s, columnRoles: { ...s.columnRoles, nameField: newField } }
-            : s,
-        ),
-      };
-    });
-    setExcelGridData((prev) =>
-      prev ? { ...prev, columnRoles: { ...prev.columnRoles, nameField: newField } } : prev,
-    );
+    const yenidenDoldur = (s: any) => {
+      if (!s?.rowData?.length || !s.rowData.some((r: any) => r?._kaynak)) {
+        return { ...s, columnRoles: { ...s.columnRoles, nameField: newField } };
+      }
+      const rowData = s.rowData.map((r: any) => {
+        const ad = String(r?._kaynak?.[newField] ?? '').trim();
+        const miktar = String(r?._miktar ?? '').trim();
+        const birim = String(r?._birim ?? '').trim();
+        return { ...r, _ad: ad, _isDataRow: !!ad && (!!birim || (!!miktar && miktar !== '0')) };
+      });
+      return { ...s, rowData, kaynakAdKolonu: newField };
+    };
+    setMultiSheet((prev) => prev ? {
+      ...prev,
+      sheets: prev.sheets.map((s) => (s.index === activeSheetIndex ? yenidenDoldur(s) : s)),
+    } : prev);
+    setExcelGridData((prev) => (prev ? yenidenDoldur(prev) : prev));
   }
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -1232,6 +1245,8 @@ export default function NewQuotePage() {
           // birlikte saklanir (detay sayfasi gizlileri uygular).
           columnConfig: {
             hidden: colHiddenBySheet[s.index] ?? [],
+            // GS8: kullanicinin surukleyerek ayarladigi kolon genislikleri
+            widths: colWidthsBySheet[s.index] ?? {},
             floors: colFloorsBySheet[s.index] ?? [],
           },
         }));
@@ -1501,11 +1516,19 @@ export default function NewQuotePage() {
         {(() => {
           const activeSheet = multiSheet?.sheets.find((s) => s.index === activeSheetIndex);
           if (!activeSheet || activeSheet.isEmpty) return null;
-          const excelCols = (activeSheet.columnDefs ?? []).filter(
-            (c) => c.field && !c.field.startsWith('_'),
-          );
+          // GS6: sabit şemada grid kolonları hep `_`-alanlarıdır; seçici artık
+          // sunucunun gönderdiği KAYNAK kolon listesini gösterir (dosyanın
+          // metin taşıyan sütunları). Şema değişmez — yalnız `_ad`i hangi
+          // sütunun beslediği değişir.
+          const kaynaklar = (activeSheet as any).kaynakKolonlar as
+            | { field: string; headerName: string; ornek: string }[] | undefined;
+          const excelCols = kaynaklar?.length
+            ? kaynaklar.map((k) => ({ field: k.field, headerName: k.ornek ? `${k.headerName} — ör: ${k.ornek}` : k.headerName }))
+            : (activeSheet.columnDefs ?? []).filter((c) => c.field && !c.field.startsWith('_'));
           if (excelCols.length === 0) return null;
-          const current = activeSheet.columnRoles?.nameField ?? '';
+          const current = kaynaklar?.length
+            ? ((activeSheet as any).kaynakAdKolonu ?? '')
+            : (activeSheet.columnRoles?.nameField ?? '');
           return (
             <div className="mb-2 flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50/60 px-3 py-1.5 text-xs">
               <span className="font-medium text-slate-700">Malzeme Adı sütunu:</span>
@@ -1646,6 +1669,8 @@ export default function NewQuotePage() {
               : excelGridData!
           }
           brands={allBrands}
+          columnWidths={colWidthsBySheet[activeSheetKey]}
+          onColumnWidthsChange={(w) => setColWidthsBySheet((prev) => ({ ...prev, [activeSheetKey]: w }))}
           currencySymbol={currency === 'USD' ? '$' : currency === 'EUR' ? '€' : '₺'}
           conversionRate={conversionRate}
           laborFirms={laborFirms}

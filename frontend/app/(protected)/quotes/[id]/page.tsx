@@ -117,13 +117,17 @@ export default function QuoteDetailPage() {
 
   // Kayitta saklanan gizli-sutun tercihi (PRD v3.0 Part A) detayda da uygulanir.
   const hiddenFields = new Set<string>(activeSheet?.columnConfig?.hidden ?? []);
+  // GS8: kullanicinin kaydettigi kolon genislikleri detayda da uygulanir
+  const kayitliGenislikler: Record<string, number> = activeSheet?.columnConfig?.widths ?? {};
 
   // Aktif sheet icin ExcelGridData olustur
   const gridData: ExcelGridData | null = activeSheet
     ? {
-        columnDefs: (activeSheet.columnDefs ?? []).map((c: any) =>
-          hiddenFields.has(c.field) ? { ...c, hide: true } : c,
-        ),
+        columnDefs: (activeSheet.columnDefs ?? []).map((c: any) => {
+          const g = kayitliGenislikler[c.field];
+          const temel = g ? { ...c, width: g } : c;
+          return hiddenFields.has(c.field) ? { ...temel, hide: true } : temel;
+        }),
         rowData: activeSheet.rowData ?? [],
         columnRoles: activeSheet.columnRoles ?? {},
         brands: allBrands,

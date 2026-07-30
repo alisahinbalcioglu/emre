@@ -18,6 +18,7 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import * as XLSX from 'xlsx';
 import { PrismaService } from '../../prisma/prisma.service';
 import { detectSheetDiscipline } from './sheet-discipline';
+import { standartlastir } from './standart-sema';
 
 // ────────────────────────────────────────────
 // Icerik-tabanli sutun tespiti sabitleri
@@ -210,7 +211,12 @@ export class ExcelGridService {
           console.log(`[ExcelGrid] stripPrices "${name}": ${fieldsToClean.size} field, ${cleanedCells} hucre temizlendi`);
         }
 
-        sheets.push({ name, index: i, ...parsed, discipline });
+        // ── GS1-GS14: SABIT GRID SEMASI ────────────────────────────────
+        // Teklif akisinda (fixedSchema) dosyanin kolon duzeni grid'e TASINMAZ.
+        // Dinamik tespit yalnizca KAYNAK secimi icin yasar (hangi dosya kolonu
+        // ad/miktar/birim); sema her sayfada ayni 13 kolondur.
+        const cikti = fixedSchema ? standartlastir(parsed as any) : parsed;
+        sheets.push({ name, index: i, ...(cikti as any), discipline });
       } catch (e) {
         console.warn(`[ExcelGrid] Sheet "${name}" parse edilemedi:`, (e as Error).message);
         sheets.push({
@@ -595,6 +601,12 @@ export class ExcelGridService {
       .replace(/İ/g, 'i').replace(/I/g, 'i').replace(/ı/g, 'i')
       .replace(/[şŞ]/g, 's').replace(/[çÇ]/g, 'c')
       .replace(/[üÜ]/g, 'u').replace(/[öÖ]/g, 'o').replace(/[ğĞ]/g, 'g')
+      // Bolum F bulgusu (31.07): Excel basliklari SATIR SONU tasir —
+      // ornek: "BIRIM FIYAT" + yeni satir + "ISCILIK". JS'de `.` satir sonunu
+      // ESLEMEZ, bu yuzden /birim\s*fiyat.*iscilik/ deseni HIC tutmuyordu →
+      // dosyanin ISCILIK fiyat kolonu role baglanmiyor, degerler grid'e
+      // gelmiyordu (MF1 ihlali). Tum bosluklar tek boslugua indirgenir.
+      .replace(/\s+/g, ' ')
       .toLowerCase().trim();
 
     const maxSearch = Math.min(20, rawValues.length);
@@ -621,10 +633,15 @@ export class ExcelGridService {
       { role: 'brand', patterns: [/\bmarkasi\b/, /\bmarka\b/, /\bbrand\b/], priority: 2 },
       { role: 'quantity', patterns: [/\bmiktar\b/, /\bmik\b/, /\bqty\b/, /\badet\b/, /\bquantity\b/], priority: 2 },
       { role: 'unit', patterns: [/\bbirim\b/, /\bbr\b/, /\bbrm\b/, /\bunit\b/], priority: 2 },
-      { role: 'materialUnitPrice', patterns: [/malzeme.*birim\s*fiyat/, /mlz.*birim\s*fiyat/, /malzeme.*b\.?\s*fiyat/, /mlz.*b\.?\s*fiyat/], priority: 3 },
-      { role: 'materialTotal', patterns: [/malzeme.*tutar/, /mlz.*tutar/, /malzeme.*toplam/], priority: 3 },
-      { role: 'laborUnitPrice', patterns: [/iscilik.*birim\s*fiyat/, /isc.*birim\s*fiyat/, /iscilik.*b\.?\s*fiyat/, /isc.*b\.?\s*fiyat/], priority: 3 },
-      { role: 'laborTotal', patterns: [/iscilik.*tutar/, /isc.*tutar/, /iscilik.*toplam/], priority: 3 },
+      // MF1 (Bolum F bulgusu 31.07): basliklar TERS SIRADA da yazilir —
+      // YILDIZ dosyasinda "BİRİM FİYAT İŞÇİLİK" / "TOPLAM FİYAT İŞÇİLİK".
+      // Tek yonlu desen (iscilik.*birim fiyat) bunlari HIC yakalamiyordu →
+      // rol dosya kolonuna baglanmiyor → dosyanin isCILIK fiyatlari sabit
+      // semaya TASINMIYOR ve grid'de gorunmuyordu (MF1 ihlali).
+      { role: 'materialUnitPrice', patterns: [/malzeme.*birim\s*fiyat/, /birim\s*fiyat.*malzeme/, /mlz.*birim\s*fiyat/, /malzeme.*b\.?\s*fiyat/, /mlz.*b\.?\s*fiyat/], priority: 3 },
+      { role: 'materialTotal', patterns: [/malzeme.*tutar/, /tutar.*malzeme/, /mlz.*tutar/, /malzeme.*toplam/, /toplam\s*fiyat.*malzeme/], priority: 3 },
+      { role: 'laborUnitPrice', patterns: [/iscilik.*birim\s*fiyat/, /birim\s*fiyat.*iscilik/, /isc.*birim\s*fiyat/, /birim\s*fiyat.*isc/, /iscilik.*b\.?\s*fiyat/, /isc.*b\.?\s*fiyat/], priority: 3 },
+      { role: 'laborTotal', patterns: [/iscilik.*tutar/, /tutar.*iscilik/, /isc.*tutar/, /iscilik.*toplam/, /toplam\s*fiyat.*iscilik/], priority: 3 },
       { role: 'grandUnitPrice', patterns: [/toplam.*birim\s*fiyat/, /genel.*birim/], priority: 3 },
       { role: 'grandTotal', patterns: [/toplam.*tutar/, /^toplam$/, /genel\s*toplam/], priority: 3 },
     ];

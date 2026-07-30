@@ -9,6 +9,8 @@ export interface ExcelColumnDef {
   // PRD v3.0 Bolum A: sutun gizle/goster — hide=true ise AG-Grid kolonu cizmez
   // (VERI DURUR, toplama dahil kalir; "kaldir"dan farkli).
   hide?: boolean;
+  /** GS8: uzun malzeme adlari kesilmez — hucre sarar + tooltip */
+  wrapText?: boolean;
 }
 
 export interface ExcelRowData {

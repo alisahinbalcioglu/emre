@@ -1,0 +1,149 @@
+
+ RUN  v4.1.7 C:/Users/basar/Projects/metaprice-saas/.claude/worktrees/unruffled-morse-3c43ab/frontend
+
+ ❯ components/excel-grid/aday-ayirt-edicilik.test.ts (8 tests | 7 failed) 14ms
+     × PU1 malzeme satırının çapı ALTINDAKİ nitelik satırından alınır 7ms
+     × PU1b diğer ayırt edici nitelikler de toplanır (basınç · bağlantı · gövde) 1ms
+     × PU1c nitelik toplama BİR SONRAKİ malzeme satırında durur (sızma yok) 2ms
+     × PU2 hiçbir iki aday görsel olarak aynı değil 1ms
+     × PU3 ayırt edici alan (çap) ÖNDE ve tam yazılı 1ms
+     × PU3b ürün adı KESİLMEZ (60 karakter tuzağı) 1ms
+     × PU7 fark açıklanamıyorsa ayrı aday olarak sunulmaz, işaretlenir 0ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 7 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  components/excel-grid/aday-ayirt-edicilik.test.ts > PU1 — nitelik satırlarındaki çap sorgu bağlamına girer > PU1 malzeme satırının çapı ALTINDAKİ nitelik satırından alınır
+AssertionError: R48 "Çap : DN 250" bağlama girmeli: expected null to be 'DN 250' // Object.is equality
+
+- Expected:
+"DN 250"
+
++ Received:
+null
+
+ ❯ components/excel-grid/aday-ayirt-edicilik.test.ts:32:57
+     30|   it('PU1 malzeme satırının çapı ALTINDAKİ nitelik satırından alınır',…
+     31|     const b = niteliklerdenBaglam(YILDIZ_SATIRLARI, 0);
+     32|     expect(b.cap, 'R48 "Çap : DN 250" bağlama girmeli').toBe('DN 250');
+       |                                                         ^
+     33|   });
+     34|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/7]⎯
+
+ FAIL  components/excel-grid/aday-ayirt-edicilik.test.ts > PU1 — nitelik satırlarındaki çap sorgu bağlamına girer > PU1b diğer ayırt edici nitelikler de toplanır (basınç · bağlantı · gövde)
+AssertionError: expected undefined to be '175 psi' // Object.is equality
+
+- Expected:
+"175 psi"
+
++ Received:
+undefined
+
+ ❯ components/excel-grid/aday-ayirt-edicilik.test.ts:37:43
+     35|   it('PU1b diğer ayırt edici nitelikler de toplanır (basınç · bağlantı…
+     36|     const b = niteliklerdenBaglam(YILDIZ_SATIRLARI, 0);
+     37|     expect(b.nitelikler['Basınç Sınıfı']).toBe('175 psi');
+       |                                           ^
+     38|     expect(b.nitelikler['Bağlantı Türü']).toBe('Flanşlı');
+     39|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/7]⎯
+
+ FAIL  components/excel-grid/aday-ayirt-edicilik.test.ts > PU1 — nitelik satırlarındaki çap sorgu bağlamına girer > PU1c nitelik toplama BİR SONRAKİ malzeme satırında durur (sızma yok)
+AssertionError: expected -1 to be 10 // Object.is equality
+
+- Expected
++ Received
+
+- 10
++ -1
+
+ ❯ components/excel-grid/aday-ayirt-edicilik.test.ts:45:32
+     43|     // 12. satır ikinci malzeme satırı — onun nitelikleri bu bağlama g…
+     44|     expect(Object.keys(b.nitelikler).length).toBeLessThanOrEqual(9);
+     45|     expect(b.sonNitelikSatiri).toBe(10);
+       |                                ^
+     46|   });
+     47|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/7]⎯
+
+ FAIL  components/excel-grid/aday-ayirt-edicilik.test.ts > PU2/PU3 — aday listesinde iki satır asla aynı görünemez > PU2 hiçbir iki aday görsel olarak aynı değil
+AssertionError: tekrar eden etiket: |Sürgülü vana (OS&Y yükselen milli) · 175 psi · elastomer sit / |Sürgülü vana (OS&Y yükselen milli) · 175 psi · elastomer sit / |Sürgülü vana (OS&Y yükselen milli) · 175 psi · elastomer sit / |Sürgülü vana (OS&Y yükselen milli) · 300 psi · elastomer sit / |Sürgülü vana (NRS yükselmeyen milli) · 175 psi · elastomer s: expected 3 to be 5 // Object.is equality
+
+- Expected
++ Received
+
+- 5
++ 3
+
+ ❯ components/excel-grid/aday-ayirt-edicilik.test.ts:68:81
+     66|     const etiketler = adayEtiketleri(ADAYLAR);
+     67|     const gorunen = etiketler.map((e) => `${e.ayirtEdici}|${e.ad}`);
+     68|     expect(new Set(gorunen).size, `tekrar eden etiket: ${gorunen.join(…
+       |                                                                                 ^
+     69|   });
+     70|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/7]⎯
+
+ FAIL  components/excel-grid/aday-ayirt-edicilik.test.ts > PU2/PU3 — aday listesinde iki satır asla aynı görünemez > PU3 ayırt edici alan (çap) ÖNDE ve tam yazılı
+AssertionError: expected '' to contain 'DN65'
+
+- Expected
++ Received
+
+- DN65
+
+ ❯ components/excel-grid/aday-ayirt-edicilik.test.ts:73:37
+     71|   it('PU3 ayırt edici alan (çap) ÖNDE ve tam yazılı', () => {
+     72|     const etiketler = adayEtiketleri(ADAYLAR);
+     73|     expect(etiketler[0].ayirtEdici).toContain('DN65');
+       |                                     ^
+     74|     expect(etiketler[2].ayirtEdici).toContain('DN100');
+     75|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/7]⎯
+
+ FAIL  components/excel-grid/aday-ayirt-edicilik.test.ts > PU2/PU3 — aday listesinde iki satır asla aynı görünemez > PU3b ürün adı KESİLMEZ (60 karakter tuzağı)
+AssertionError: ad kısaltılmamalı: expected 'Sürgülü vana (OS&Y yükselen milli) · …' to be 'Sürgülü vana (OS&Y yükselen milli) · …' // Object.is equality
+
+Expected: "Sürgülü vana (OS&Y yükselen milli) · 175 psi · elastomer sitli · flanşlı · DN65"
+Received: "Sürgülü vana (OS&Y yükselen milli) · 175 psi · elastomer sit"
+
+ ❯ components/excel-grid/aday-ayirt-edicilik.test.ts:80:52
+     78|     const etiketler = adayEtiketleri(ADAYLAR);
+     79|     for (let i = 0; i < ADAYLAR.length; i++) {
+     80|       expect(etiketler[i].ad, 'ad kısaltılmamalı').toBe(ADAYLAR[i].mat…
+       |                                                    ^
+     81|     }
+     82|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/7]⎯
+
+ FAIL  components/excel-grid/aday-ayirt-edicilik.test.ts > PU2/PU3 — aday listesinde iki satır asla aynı görünemez > PU7 fark açıklanamıyorsa ayrı aday olarak sunulmaz, işaretlenir
+AssertionError: aynı ad + farklı fiyat = veri sorunu işareti: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ components/excel-grid/aday-ayirt-edicilik.test.ts:90:97
+     88|     ];
+     89|     const etiketler = adayEtiketleri(ikiz);
+     90|     expect(etiketler.some((e) => e.veriSorunu), 'aynı ad + farklı fiya…
+       |                                                                                                 ^
+     91|   });
+     92| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/7]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  7 failed | 1 passed (8)
+   Start at  20:21:05
+   Duration  1.09s (transform 47ms, setup 0ms, import 69ms, tests 14ms, environment 0ms)
+

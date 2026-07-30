@@ -31,11 +31,18 @@ async function run() {
     const res = await svc.prepare(oku('skychem.xlsm'), { fixedSchema: true });
     const t = res.sheets.find((s: any) => s.name.includes('TEKLİF'))!;
     check('TF1 skychem açılır (59 kalem)', !t.isEmpty && veriSay(t) === 59, `veri=${veriSay(t)}`);
-    check('TF1 birim rolü İÇERİKTEN doğru kolona (D=col3; "MALZEME BİRİM" fiyat başlığına kanmaz)',
-      t.columnRoles?.unitField === 'col3' && t.columnRoles?.quantityField === 'col2',
-      `unit=${t.columnRoles?.unitField} qty=${t.columnRoles?.quantityField}`);
-    check('TF1 marka kolonu A (Çayırova parent satırları)', t.columnRoles?.brandField === 'col0',
-      `brand=${t.columnRoles?.brandField}`);
+    // SABIT SEMA (GS1): roller sabit alanlari gosterir; olcut ICERIGE tasindi —
+    // birim METIN, miktar SAYI olmali ("MALZEME BİRİM" fiyat basligina kanmadan).
+    {
+      const d = (t.rowData ?? []).filter((r: any) => r._isDataRow);
+      const birimMetin = d.filter((r: any) => /[A-Za-zÇĞİÖŞÜçğıöşü]/.test(String(r._birim ?? ''))).length;
+      const miktarSayi = d.filter((r: any) => typeof r._miktar === 'number').length;
+      check('TF1 birim İÇERİKTEN metin, miktar sayı (fiyat başlığına kanmaz)',
+        birimMetin >= d.length * 0.8 && miktarSayi >= d.length * 0.8,
+        `birim-metin=${birimMetin}/${d.length} miktar-sayı=${miktarSayi}/${d.length}`);
+    }
+    // NOT: "marka kolonu" olcutu KALDIRILDI — kullanici karari (30.07):
+    // dosyanin kendi MARKA sutunu sabit semada tamamen atilir (GS1 harfiyen).
     const gizli = res.sheets.filter((s: any) => !s.name.includes('TEKLİF'));
     check('TF1 R-C: GIZLI sayfalar (KAYIT 1085 satır + YAİS) parse edilmez, rowData boş',
       gizli.length === 2 && gizli.every((s: any) => s.isEmpty && (s.rowData ?? []).length === 0),
@@ -48,10 +55,9 @@ async function run() {
     const s = res.sheets[0];
     check('TF2 aksa-algılama açılır (1000+ kalem, EN başlık QTY/Unit/BRAND)',
       !s.isEmpty && veriSay(s) >= 1000, `veri=${veriSay(s)}`);
-    check('TF2 roller: name=DESCRPTION(col3) brand=BRAND(col2) qty=QTY(col4) unit=Unit(col5)',
-      s.columnRoles?.nameField === 'col3' && s.columnRoles?.brandField === 'col2'
-      && s.columnRoles?.quantityField === 'col4' && s.columnRoles?.unitField === 'col5',
-      JSON.stringify(s.columnRoles));
+    check('TF2 EN başlıklı dosyada ad/miktar/birim doğru yerleşti (DESCRPTION/QTY/Unit)',
+      (s.rowData ?? []).filter((r: any) => r._isDataRow && String(r._ad ?? '').trim() && typeof r._miktar === 'number').length >= 900,
+      `ad+miktar dolu satır=${(s.rowData ?? []).filter((r: any) => r._isDataRow && String(r._ad ?? '').trim() && typeof r._miktar === 'number').length}`);
   }
 
   // ── TF3: basliksiz dosyalar (sefa + demontaj) ──
@@ -59,9 +65,11 @@ async function run() {
     const sefa = (await svc.prepare(oku('demontaj-sefa.xlsx'), { fixedSchema: true })).sheets[0];
     check('TF3 sefa (başlıksız + "32 adet..." ad tuzağı) AÇILIR — 8 kalem',
       !sefa.isEmpty && veriSay(sefa) === 8, `veri=${veriSay(sefa)}`);
-    check('TF3 sefa rolleri İÇERİKTEN: ad=col2 birim=col4(Adet/Set) miktar=col5',
-      sefa.columnRoles?.nameField === 'col2' && sefa.columnRoles?.unitField === 'col4'
-      && sefa.columnRoles?.quantityField === 'col5', JSON.stringify(sefa.columnRoles));
+    check('TF3 sefa: başlıksız dosyada ad/birim/miktar İÇERİKTEN yerleşti (Adet/Set)',
+      (sefa.rowData ?? []).filter((r: any) => r._isDataRow).every((r: any) =>
+        String(r._ad ?? '').trim() !== '' && /adet|set/i.test(String(r._birim ?? ''))),
+      (sefa.rowData ?? []).filter((r: any) => r._isDataRow).slice(0, 3)
+        .map((r: any) => `${String(r._ad).slice(0, 18)}|${r._miktar}|${r._birim}`).join(' · '));
 
     const dem = (await svc.prepare(oku('demontaj.xlsx'), { fixedSchema: true })).sheets[0];
     check('TF3 demontaj (başlıksız + önceden fiyatlı) AÇILIR — 42 kalem',
@@ -73,11 +81,13 @@ async function run() {
     const y = (await svc.prepare(oku('yangin-temin-montaj.xlsx'), { fixedSchema: true })).sheets[0];
     check('TF4 yangın AÇILIR — 16 kalem (yetim-ölçü 2"/2½"/3"/4" satırları dahil)',
       !y.isEmpty && veriSay(y) === 16, `veri=${veriSay(y)}`);
-    check('TF4 rolleri İÇERİKTEN: ad=col2 birim=col4(Metre/SET/Adet) miktar=col5',
-      y.columnRoles?.nameField === 'col2' && y.columnRoles?.unitField === 'col4'
-      && y.columnRoles?.quantityField === 'col5', JSON.stringify(y.columnRoles));
+    check('TF4 ad/birim/miktar İÇERİKTEN yerleşti (Metre/SET/Adet)',
+      (y.rowData ?? []).filter((r: any) => r._isDataRow).every((r: any) =>
+        String(r._ad ?? '').trim() !== '' && /metre|set|adet/i.test(String(r._birim ?? ''))),
+      (y.rowData ?? []).filter((r: any) => r._isDataRow).slice(0, 3)
+        .map((r: any) => `${String(r._ad).slice(0, 18)}|${r._miktar}|${r._birim}`).join(' · '));
     // R-F: fiyat kolonunda metin ("ŞİRKET TEMİNİ") parse'i KIRMAZ — satir yine veri
-    const adlar = (y.rowData ?? []).filter((r: any) => r._isDataRow).map((r: any) => String(r.col2 ?? ''));
+    const adlar = (y.rowData ?? []).filter((r: any) => r._isDataRow).map((r: any) => String(r._ad ?? ''));
     check('TF4 R-F: "ŞİRKET TEMİNİ" fiyatlı satır veri olarak korunur',
       adlar.some((a: string) => a.includes('Tüp Bölmeli')), adlar.slice(0, 5).join('|'));
   }

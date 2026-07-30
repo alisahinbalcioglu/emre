@@ -42,34 +42,28 @@ async function run() {
   // SAHINKUL: G=MALZEME BF, H=MALZEME TUTAR, I=İŞÇİLİK BF, J=İŞÇİLİK TUTAR,
   // K/L=TOPLAM (grid col5..col10). Iscilik kolonlari dosyada DOLU.
   {
-    const doluKolonlar: string[] = [];
-    for (const r of sh.rowData ?? []) {
-      if (!r._isDataRow) continue;
-      for (const k of Object.keys(r)) {
-        if (/^col([5-9]|1[0-9])$/.test(k) && String(r[k] ?? '').trim() && !doluKolonlar.includes(k)) doluKolonlar.push(k);
-      }
-    }
-    const gorunmeyen = doluKolonlar.filter((k) => !alanlar.has(k));
-    check('KG9 dosyada dolu olan her fiyat kolonu grid kolonlarında MEVCUT',
-      gorunmeyen.length === 0,
-      `veri var ama columnDefs'te YOK: ${gorunmeyen.join(',')} (dolu kolonlar: ${doluKolonlar.join(',')})`);
+    // MF1 (ust belge KG9'un yerini aldi): SABIT semada dosyanin fiyat KOLONU
+    // grid'e tasinmaz; degerler SABIT hucrelere gelir. Olcut: dosyada dolu
+    // fiyat varsa sabit hucrede de dolu olmali.
+    const doluSabit = (sh.rowData ?? []).filter((r: any) => r._isDataRow
+      && [R.materialUnitPriceField, R.materialTotalField, R.laborUnitPriceField, R.laborTotalField]
+        .some((f: string) => String(r[f] ?? '').trim() !== '')).length;
+    check('MF1 dosyadaki dolu fiyatlar SABİT hücrelerde görünür',
+      doluSabit >= 20, `sabit hücresi dolu satır=${doluSabit}`);
   }
 
   // ── KG10: iscilik birim fiyat/tutar DOSYADAKI degerle grid'de ─────────
   {
     // dosyada I/J dolu ilk veri satirini bul (col7=I, col8=J)
-    const satir = (sh.rowData ?? []).find((r: any) => r._isDataRow && String(r.col7 ?? '').trim());
-    const dosyaIsc = satir ? String(satir.col7) : '';
-    const gridIsc = satir ? String(satir[R.laborUnitPriceField] ?? '') : '';
-    check('KG10 işçilik birim fiyatı grid alanına DOSYADAKİ değerle geldi',
-      !!satir && gridIsc.trim() !== '' && Math.abs(parseFloat(gridIsc) - parseFloat(dosyaIsc)) < 0.01,
-      `dosya col7="${dosyaIsc}" → grid ${R.laborUnitPriceField}="${gridIsc}"`);
-
-    const satirTut = (sh.rowData ?? []).find((r: any) => r._isDataRow && String(r.col8 ?? '').trim());
-    const gridTut = satirTut ? String(satirTut[R.laborTotalField] ?? '') : '';
-    check('KG10b işçilik tutarı grid alanına DOSYADAKİ değerle geldi',
-      !!satirTut && gridTut.trim() !== '',
-      `dosya col8="${satirTut ? satirTut.col8 : '-'}" → grid ${R.laborTotalField}="${gridTut}"`);
+    const iscSatir = (sh.rowData ?? []).filter((r: any) => r._isDataRow
+      && parseFloat(String(r[R.laborUnitPriceField] ?? '')) > 0);
+    check('MF2 işçilik başlığı altındaki fiyatlar İşç. Birim Fiyat’a geldi',
+      iscSatir.length >= 20,
+      `İşç. Birim Fiyat dolu satır=${iscSatir.length} (ör: ${iscSatir.slice(0, 3).map((r: any) => r[R.laborUnitPriceField]).join(', ')})`);
+    const iscTutar = (sh.rowData ?? []).filter((r: any) => r._isDataRow
+      && parseFloat(String(r[R.laborTotalField] ?? '')) > 0);
+    check('MF2b işçilik tutarları İşç. Toplam’a geldi',
+      iscTutar.length >= 20, `İşç. Toplam dolu satır=${iscTutar.length}`);
   }
 
   // ── KG10c: malzeme tarafi da ayni kuralla (dolu ise gelir) ────────────
@@ -104,19 +98,19 @@ async function run() {
 
   // ── KG11: kaynak rozeti alani (dosyadan / kutuphaneden / manuel) ──────
   {
-    const satir = (sh.rowData ?? []).find((r: any) => r._isDataRow && String(r.col7 ?? '').trim());
-    check('KG11 dosyadan gelen değer "dosyadan" kaynak rozetiyle işaretli',
-      !!satir && (satir as any)._matKaynak !== undefined || !!satir && (satir as any)._labKaynak !== undefined,
-      `_labKaynak=${satir ? (satir as any)._labKaynak : '-'} (alan hiç yok)`);
+    const rozetli = (sh.rowData ?? []).filter((r: any) => r._isDataRow
+      && (r._matKaynak === 'dosya' || r._labKaynak === 'dosya')).length;
+    check('MF3 dosyadan gelen değer "dosyadan" kaynak rozetiyle işaretli',
+      rozetli >= 20, `rozetli satır=${rozetli}`);
   }
 
   // ── KG13: para birimi karisimi yasak — dosyadan gelen deger BICIMSIZ ──
   // (cevrim export'ta TEK kurla yapilir; grid'e "$" yazilmaz)
   {
-    const satir = (sh.rowData ?? []).find((r: any) => r._isDataRow && String(r.col7 ?? '').trim());
-    const ham = satir ? String(satir.col7) : '';
-    check('KG13 dosyadan gelen değerde para birimi sembolü YOK (ham sayı)',
-      !!satir && !/[$€₺]/.test(ham), `col7="${ham}"`);
+    const semboller = (sh.rowData ?? []).filter((r: any) => r._isDataRow
+      && /[$€₺]/.test(String(r[R.laborUnitPriceField] ?? '') + String(r[R.materialUnitPriceField] ?? '')));
+    check('MF/KG13 dosyadan gelen değerde para birimi sembolü YOK (ham sayı)',
+      semboller.length === 0, `sembollü satır=${semboller.length}`);
   }
 
   // ── KG9b: MERGE-GIZLI kolon rol tasiyamaz (canli bulgu 30.07) ────────
@@ -147,9 +141,12 @@ async function run() {
     check('KG9b-2 rol sistem alanına düştüyse sistem kolonu EKLENDİ (fiyat görünür)',
       !R2.materialUnitPriceField?.startsWith('col') ? alanlar2.has('_matBirim') : true,
       `rol=${R2.materialUnitPriceField} _matBirim kolonu=${alanlar2.has('_matBirim')}`);
-    check('KG9b-3 GÖRÜNÜR dosya kolonları rolde KALIR (işçilik col8/col9)',
-      R2.laborUnitPriceField === 'col8' && R2.laborTotalField === 'col9',
-      `lbf=${R2.laborUnitPriceField} lt=${R2.laborTotalField}`);
+    // KG9b-3 DUSTU: sabit semada roller her zaman SABIT alanlardir; "gorunur
+    // dosya kolonu rolde kalir" kurali artik gecersiz (GS1). Yerine sozlesme:
+    check('GS14 roller SABİT alanları gösterir (dosya kolonu rolde kalmaz)',
+      !String(R2.laborUnitPriceField ?? '').startsWith('col')
+      && !String(R2.materialUnitPriceField ?? '').startsWith('col'),
+      `lbf=${R2.laborUnitPriceField} mbf=${R2.materialUnitPriceField}`);
   }
 
   console.log('\n' + '='.repeat(60));

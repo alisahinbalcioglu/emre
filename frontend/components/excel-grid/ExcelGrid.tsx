@@ -16,6 +16,7 @@ import { fillDown } from './fill-down';
 import { joinMaterialText } from '@/lib/parse-material-text';
 import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, yukariYuvarla, etkinMiktar } from '@/lib/pricing';
 import { hasSizeExpression, isSelfSufficientRow } from './build-material-context';
+import { niteliklerdenBaglam, adayEtiketleri } from './aday-ayirt-edicilik';
 import httpApi from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 import { confirm } from '@/hooks/use-confirm';
@@ -110,6 +111,11 @@ interface Props {
   } | null>;
   // Hucre duzenleme sonrasi disariya canli rowData'yi yayar (fiyat listesi yuklemede kullanilir)
   onRowDataChange?: (rows: ExcelRowData[]) => void;
+  /** GS8: kullanici kolon genisligini surukleyerek degistirdiginde — teklifle
+   *  birlikte kaydedilmesi icin parent'a bildirilir. */
+  onColumnWidthsChange?: (widths: Record<string, number>) => void;
+  /** GS8: kayittan gelen genislik tercihi (teklif yeniden acildiginda) */
+  columnWidths?: Record<string, number>;
   /** Excel-vari "en altta hep bos satir": _isSpareRow satiri dolunca otomatik
    *  yenisi eklenir ('Satir Ekle' butonu YOK). DWG metraj akisinda acilir. */
   autoAppendRow?: boolean;
@@ -184,6 +190,12 @@ function BrandDropdown(props: ICellRendererParams & {
   const headerRef = React.useRef<string | null>(null);
   // V7: 8+ aday oldugunda "tumunu gor" acildi mi
   const [showAllCandidates, setShowAllCandidates] = React.useState(false);
+  // PU4: kullanicinin popup genislik tercihi oturum boyunca hatirlanir
+  const [popupGenislik] = React.useState<number>(() => {
+    if (typeof window === 'undefined') return 520;
+    const k = Number(window.localStorage.getItem('metaprice.adayPopupGenislik'));
+    return Number.isFinite(k) && k >= 360 ? k : 520;
+  });
   // K6 zincirleme secim: 1. soru = varyant (label grubu), 2. soru = alt tip
   // (ayni label'da birden fazla urun — "Tip A / Tip B"). Fiyat ancak tek
   // urune inilince yazilir.
@@ -521,10 +533,15 @@ function BrandDropdown(props: ICellRendererParams & {
           border: '2px solid #f59e0b',
           borderRadius: 6,
           padding: 8,
-          minWidth: 260,
-          maxWidth: 400,
-          maxHeight: 320,
-          overflowY: 'auto',
+          // PU4: popup YENIDEN BOYUTLANDIRILABILIR ve metin kesilmez.
+          // Eski sabit 400x320 kutu uzun urun adlarini goruntulenemez
+          // kiliyordu; genislik tercihi oturum boyunca hatirlanir.
+          width: popupGenislik,
+          minWidth: 360,
+          maxWidth: '90vw',
+          maxHeight: '70vh',
+          resize: 'both',
+          overflow: 'auto',
           boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
           fontSize: 12,
         }}>
@@ -563,14 +580,34 @@ function BrandDropdown(props: ICellRendererParams & {
                   <button onClick={() => setStage2(null)} style={{ ...btnStyle, textAlign: 'center', background: '#f9fafb', color: '#6b7280', fontSize: 11 }}>
                     ← Geri (varyantlar)
                   </button>
-                  {stage2.map((c, i) => (
-                    <button key={i} onClick={() => handleCandidateSelect(c)} style={btnStyle} {...hover}>
-                      <div style={{ fontWeight: 600 }}>{c.preferred && '✓ '}{c.materialName.slice(0, 60)}</div>
-                      <div style={{ color: '#6b7280', fontSize: 11 }}>{c.netPrice.toFixed(1)} TL</div>
-                      {/* E3: nitelik farki uyarisi ("68°C istendi — bu ürün 141°C") */}
-                      {c.uyari && <div style={{ color: '#dc2626', fontSize: 10, marginTop: 2 }}>⚠ {c.uyari}</div>}
-                    </button>
-                  ))}
+                  {/* PU2/PU3: ayirt edici alan ONDE ve BUYUK, urun adi KESILMEZ.
+                      Eski kod adi 60 karakterde kesiyordu; kutuphane adlari capi
+                      SONA koydugu icin DN65/DN80/DN100 ekranda BIREBIR AYNI
+                      goruniyordu (FAZ0 §B.2). */}
+                  {(() => {
+                    const etiketler = adayEtiketleri(stage2.map((c) => ({ materialName: c.materialName, netPrice: c.netPrice })));
+                    return stage2.map((c, i) => (
+                      <button key={i} onClick={() => handleCandidateSelect(c)} style={btnStyle} {...hover}>
+                        {etiketler[i].ayirtEdici && (
+                          <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a' }}>
+                            {c.preferred && '✓ '}{etiketler[i].ayirtEdici}
+                          </div>
+                        )}
+                        <div style={{ fontWeight: 500, color: '#334155', whiteSpace: 'normal', wordBreak: 'break-word' }}>
+                          {!etiketler[i].ayirtEdici && c.preferred && '✓ '}{etiketler[i].ad}
+                        </div>
+                        <div style={{ color: '#6b7280', fontSize: 11 }}>{c.netPrice.toFixed(1)} TL</div>
+                        {/* PU7: fark aciklanamiyorsa veri sorunu olarak isaretle */}
+                        {etiketler[i].veriSorunu && (
+                          <div style={{ color: '#b45309', fontSize: 10, marginTop: 2 }}>
+                            ⚠ Aynı ürün adı, farklı fiyat — kütüphane verisi gözden geçirilmeli
+                          </div>
+                        )}
+                        {/* E3: nitelik farki uyarisi ("68°C istendi — bu ürün 141°C") */}
+                        {c.uyari && <div style={{ color: '#dc2626', fontSize: 10, marginTop: 2 }}>⚠ {c.uyari}</div>}
+                      </button>
+                    ));
+                  })()}
                 </>
               );
             }
@@ -1031,8 +1068,26 @@ function buildMaterialContextDetailed(
   const currentName = String(currentNode.data[nameField] ?? '').trim();
   if (!currentName) return { name: '', header: null };
 
+  // ── PU1: ALTTAKI NITELIK SATIRLARINDAN CAP ────────────────────────────
+  // Kok neden (FAZ0 §B.1): YILDIZ'da malzeme satirinin capi bir ALT satirda
+  // durur ("Yükselen Milli Vana (OS&Y Valve)" / "Çap : DN 250"). Baglam yalniz
+  // YUKARI baktigi icin sorguda cap yoktu → sert cap filtresi calisamiyor →
+  // urunun tum caplari aday kaliyor ve popup 5 ayni satiri gosteriyordu.
+  const altBaglam = (() => {
+    const satirlar: { ad: string; veri: boolean }[] = [];
+    for (let i = rowIdx; i < rowIdx + 40; i++) {
+      const n = api.getDisplayedRowAtIndex(i);
+      if (!n) break;
+      satirlar.push({ ad: String(n.data?.[nameField] ?? '').trim(), veri: !!n.data?._isDataRow });
+    }
+    return satirlar.length ? niteliklerdenBaglam(satirlar, 0) : null;
+  })();
+  /** Cap satirda YOKSA alt niteliklerden eklenir (varsa dokunulmaz). */
+  const capliAd = (ad: string) =>
+    altBaglam?.cap && !extractCapFromText(ad) ? `${ad} ${altBaglam.cap}` : ad;
+
   // C3: satir kendi kendine yeterliyse (tip kelimesi / anlamli metin) baslik EKLEME
-  if (isSelfSufficientRow(currentName)) return { name: currentName, header: null };
+  if (isSelfSufficientRow(currentName)) return { name: capliAd(currentName), header: null };
 
   // Ust satirlara bak — data row'lari, olculu satirlari ve brand dolu
   // malzeme satirlarini ATLA; EN YAKIN gercek baslikta dur (C2)
@@ -1068,7 +1123,7 @@ function buildMaterialContextDetailed(
     }
   }
 
-  if (!foundParent) return { name: currentName, header: null };
+  if (!foundParent) return { name: capliAd(currentName), header: null };
 
   // KATMAN 1 SAVUNMA: Cap Sanity Check
   const fullName = `${foundParent} ${currentName}`;
@@ -1078,14 +1133,14 @@ function buildMaterialContextDetailed(
 
   if (parentCap && currentCap && parentCap !== currentCap) {
     console.warn(`[buildMaterialContext] Cap mismatch! parent="${foundParent}" (${parentCap}), current="${currentName}" (${currentCap}). Sadece currentName kullanildi.`);
-    return { name: currentName, header: null };
+    return { name: capliAd(currentName), header: null };
   }
   if (currentCap && fullCap && currentCap !== fullCap) {
     console.warn(`[buildMaterialContext] Full cap mismatch! current=${currentCap}, full=${fullCap}. Sadece currentName kullanildi.`);
-    return { name: currentName, header: null };
+    return { name: capliAd(currentName), header: null };
   }
 
-  return { name: fullName, header: foundParent };
+  return { name: capliAd(fullName), header: foundParent };
 }
 
 function buildMaterialContext(
@@ -1168,6 +1223,8 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
   data, brands, onBrandChange,
   laborFirms = [], sheetDiscipline = null, laborEnabled = false, onFirmaChange,
   onRowDataChange,
+  onColumnWidthsChange,
+  columnWidths,
   autoAppendRow = false,
   enableStructureEdit = false,
   onColumnsChange,
@@ -1787,6 +1844,10 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     let sumLabTotal = 0;
     gridRef.current.api.forEachNode((node) => {
       if (!node.data?._isDataRow) return;
+      // Kullanici karari (30.07): OZET satirlari (İcmal) toplama GIRMEZ —
+      // diger sayfalarin toplamini tekrarladiklari icin teklif geneli iki
+      // katina cikardi (YILDIZ: 62.043.700 → 124.087.400).
+      if (node.data?._ozet) return;
       if (grandTotalField) {
         const v = parseFloat(String(node.data[grandTotalField] ?? '')) || 0;
         sumGrandTotal += v;
@@ -1892,11 +1953,17 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       const base: ColDef<ExcelRowData> = {
         field: c.field,
         headerName: c.headerName,
-        width: c.width ?? 120,
+        width: columnWidths?.[c.field] ?? c.width ?? 120,
         editable: c.editable ?? false,
         pinned: c.pinned,
         suppressMovable: c.suppressMovable,
         resizable: true,
+        // GS8: uzun malzeme adlari KESILMEZ — hucre metni sarilir ve tam
+        // metin tooltip'te gorunur (sunucudan gelen wrapText bayragiyla).
+        wrapText: (c as any).wrapText === true,
+        tooltipValueGetter: (c as any).wrapText === true
+          ? (p: any) => String(p.value ?? '')
+          : undefined,
         // PRD v3.0 Bolum A: gizle/goster — hide=true ise AG-Grid cizmez (veri durur)
         hide: (c as any).hide === true,
       };
@@ -1933,6 +2000,8 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
 
       if (c.cellRenderer === 'brandRenderer') {
         base.cellRenderer = (params: ICellRendererParams) => (
+          // Ozet satiri fiyatlandirilmaz — marka secimi gosterilmez
+          params.data?._ozet ? <span style={{ color: '#94a3b8', fontSize: 11 }}>özet</span> : (
           <BrandDropdown
             {...params}
             brands={brands}
@@ -1949,10 +2018,13 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
             autoVariantEnabled={autoVariantEnabled}
             onAutoVariantApplied={onAutoVariantApplied}
           />
+          )
         );
         base.editable = false;
       } else if (c.cellRenderer === 'firmaRenderer') {
         base.cellRenderer = (params: ICellRendererParams) => (
+          // Ozet satiri isciliklendirilmez
+          params.data?._ozet ? <span style={{ color: '#94a3b8', fontSize: 11 }}>özet</span> : (
           <FirmaDropdown
             {...params}
             laborFirms={laborFirms}
@@ -1968,6 +2040,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
             laborTotalField={data.columnRoles.laborTotalField}
             diameterField={data.columnRoles.diameterField}
           />
+          )
         );
         base.editable = false;
       }
@@ -2454,6 +2527,18 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           suppressMovable: true,
         }}
         getRowId={getRowId}
+        onColumnResized={(e: any) => {
+          // GS8: yalniz kullanici surukleyip BIRAKTIGINDA kaydet (her piksel
+          // degil) — finished bayragi AG-Grid'in son olayini isaret eder.
+          if (!e?.finished || e?.source === 'sizeColumnsToFit' || !onColumnWidthsChange) return;
+          const w: Record<string, number> = {};
+          e.api?.getColumns?.()?.forEach((col: any) => {
+            const f = col.getColId?.();
+            const genislik = col.getActualWidth?.();
+            if (f && genislik) w[f] = Math.round(genislik);
+          });
+          if (Object.keys(w).length) onColumnWidthsChange(w);
+        }}
         onCellValueChanged={handleCellValueChanged}
         stopEditingWhenCellsLoseFocus
         rowHeight={28}

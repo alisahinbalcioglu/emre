@@ -153,38 +153,47 @@ async function run() {
     await orj.xlsx.load(orjBuffer as any);
     const oWs = orj.getWorksheet('Sıhhi Tesisat')!;
     const nWs = out.getWorksheet('Sıhhi Tesisat')!;
-    let fark = '';
-    for (let r = 1; r <= 5 && !fark; r++) {
-      for (let c = 1; c <= 8; c++) {
-        if (r >= 3 && c >= 5) continue; // fiyat hucreleri — kasitli yazildi
-        const a = hucreMetni(oWs.getCell(r, c));
-        const b = hucreMetni(nWs.getCell(r, c));
-        if (a !== b) { fark = `${r},${c}: "${a}" → "${b}"`; break; }
-      }
+    // ── EX8 (kullanici karari 30.07): liste sayfasi artik MUSTERI KOPYASI
+    // DEGIL, 9 kolonluk STANDART tablodur. "Musterinin hucreleri birebir
+    // korunur" olcutu bu yuzden DUSTU; yerine standart sema sozlesmesi +
+    // veri korunumu (ad/miktar/birim kaybolmaz) sinanir.
+    {
+      const basliklar: string[] = [];
+      nWs.getRow(1).eachCell({ includeEmpty: false }, (c) => basliklar.push(String(c.value ?? '')));
+      check('T1/EX8 liste sayfası 9 kolonluk standart tablo',
+        basliklar.length === 9 && basliklar[1] === 'Malzeme Adı' && basliklar[8] === 'Genel Toplam',
+        `[${basliklar.join(' | ')}]`);
+      // Veri korunumu: orijinaldeki malzeme adlari ciktida DA var
+      const ciktiAdlar: string[] = [];
+      nWs.eachRow({ includeEmpty: false }, (row, rn) => { if (rn > 1) ciktiAdlar.push(hucreMetni(row.getCell(2))); });
+      const orjAdlar: string[] = [];
+      oWs.eachRow({ includeEmpty: false }, (row, rn) => { if (rn >= 3) orjAdlar.push(hucreMetni(row.getCell(2))); });
+      const kayip = orjAdlar.filter((a) => a && !ciktiAdlar.some((b) => b.includes(a)));
+      check('T1/EX8 malzeme adları çıktıda kaybolmadı', kayip.length === 0, kayip.join(' | '));
     }
-    check('T1 fiyat-disi TUM hucreler birebir', fark === '', fark);
-    check('T1 merge korunur (A2:H2)', (nWs.model?.merges ?? []).includes('A2:H2'),
-      JSON.stringify(nWs.model?.merges));
-    check('T1 baslik stili korunur (bold)', nWs.getCell(1, 1).font?.bold === true,
+    check('T1 başlık stili (standart tabloda kalın)', nWs.getCell(1, 1).font?.bold === true,
       JSON.stringify(nWs.getCell(1, 1).font));
 
     // ── T6: fiyatsiz satir BOS (0 ASLA yazilmaz) ──
-    const bos = [5, 6, 7, 8].every((c) => {
-      const v = nWs.getCell(5, c).value;
-      return v === null || v === undefined || v === '';
-    });
-    check('T6 fiyatsiz satir (ST-03) hucreleri BOS', bos,
-      [5, 6, 7, 8].map((c) => JSON.stringify(nWs.getCell(5, c).value)).join('|'));
-    // ST-02'nin iscilik hucreleri de bos (satirin yalniz malzemesi var)
-    check('T6 kismi fiyatli satirda bos alanlar yazilmaz',
-      (nWs.getCell(4, 7).value ?? null) === null && (nWs.getCell(4, 8).value ?? null) === null,
-      `G4=${JSON.stringify(nWs.getCell(4, 7).value)} H4=${JSON.stringify(nWs.getCell(4, 8).value)}`);
+    // Satir numaralari EX8 ile kaydi (dosyanin kendi basligi kopyalanmiyor) —
+    // olcut ARTIK ADLA bulunur, sabit satir numarasiyla degil.
+    const satirBul = (parca: string) => {
+      let hedef: any = null;
+      nWs.eachRow({ includeEmpty: false }, (row) => {
+        if (hucreMetni(row.getCell(2)).includes(parca)) hedef = row;
+      });
+      return hedef;
+    };
+    const fiyatsiz = satirBul('Küresel vana') ?? satirBul('ST-03');
+    const bos = fiyatsiz ? [5, 6, 7, 8].every((c) => !fiyatsiz.getCell(c).value) : false;
+    check('T6 fiyatsiz satir hucreleri BOS (0 yazilmaz)', bos,
+      fiyatsiz ? [5, 6, 7, 8].map((c) => JSON.stringify(fiyatsiz.getCell(c).value)).join('|') : 'satır bulunamadı');
 
     // ── T7: tutar = miktar × birim CANLI FORMUL ──
-    const f1: any = nWs.getCell(3, 6).value; // Malz.Top satir3
-    check('T7 tutar formullu (=D3*E3)',
-      !!f1 && typeof f1 === 'object' && f1.formula === 'D3*E3' && f1.result === 1000,
-      JSON.stringify(f1));
+    // EX4: sistem formul ICAT ETMEZ — hesaplanmis DEGER yazar.
+    const f1: any = nWs.getCell(2, 6).value; // ilk veri satiri, Malz. Toplam
+    check('T7/EX4 tutar hesaplanmış DEĞER (1000), sistem formülü yok',
+      f1 === 1000, JSON.stringify(f1));
 
     // ── T4: kapak alanlari ──
     const kapak = out.getWorksheet('KAPAK')!;
@@ -207,7 +216,7 @@ async function run() {
     }));
     check('T5 icmalde sekme satiri (Sıhhi Tesisat) var', icmalDump.includes('Sıhhi Tesisat'), icmalDump.slice(0, 200));
     check('T5 icmal malzeme SUM formulu liste sayfasina bakar',
-      formuller.some((f) => f.includes("SUM('Sıhhi Tesisat'!F3:F5)")), JSON.stringify(formuller));
+      formuller.some((f) => /SUM\('Sıhhi Tesisat'!F\d+:F\d+\)/.test(f)), JSON.stringify(formuller));
     check('T5 genel toplam FORMULLU (KDV dahil — formatta KDV var)',
       formuller.some((f) => f.includes('*1.2')), JSON.stringify(formuller));
 
@@ -277,18 +286,19 @@ async function run() {
     // KF2 (Duzeltme Talebi 27.07, Aksa_Göynük — VERI KAYBI YASAK): sablonda
     // fiyat kolonu yok ama veri DOLU → kolon basligiyla EKLENIR ve dolar.
     // (KE8'in dogru kapsami: yalniz VERISIZ kolon eklenmez — test:ke KF3.)
-    check('KF2: dolu veri → kolon EKLENDI (E="Birim Fiyat" F="Tutar" basliklari)',
-      hucreMetni(ws.getCell(1, 5)) === 'Birim Fiyat' && hucreMetni(ws.getCell(1, 6)) === 'Tutar',
-      `E1="${hucreMetni(ws.getCell(1, 5))}" F1="${hucreMetni(ws.getCell(1, 6))}"`);
-    const tutarF: any = ws.getCell(2, 6).value;
-    check('KF2: eklenen kolonda deger + formul (D2*E2) — hicbir deger kaybolmadi',
-      ws.getCell(2, 5).value === 5 && tutarF?.formula === 'D2*E2',
-      `E2=${JSON.stringify(ws.getCell(2, 5).value)} F2=${JSON.stringify(tutarF)}`);
+    // ── KF2 DUSTU (EX8): "sablonda fiyat kolonu yoksa EKLE" dali artik YOK.
+    // Standart tabloda fiyatin yeri SABIT (E=Malz. Birim Fiyat, F=Malz.
+    // Toplam) — veri kaybi riski yapisal olarak ortadan kalkti.
+    check('EX8: fiyat SABİT kolonda (E/F), veri kaybı yok',
+      hucreMetni(ws.getCell(1, 5)) === 'Malz. Birim Fiyat' && hucreMetni(ws.getCell(1, 6)) === 'Malz. Toplam'
+      && ws.getCell(2, 5).value === 5 && ws.getCell(2, 6).value === 50,
+      `E1="${hucreMetni(ws.getCell(1, 5))}" E2=${JSON.stringify(ws.getCell(2, 5).value)} F2=${JSON.stringify(ws.getCell(2, 6).value)}`);
     check('KF2: İCMAL degeri + self-check eksik=0 (matDeger=50)',
       sonuc.sekmeler[0]?.matDeger === 50 && sonuc.eksikDeger === 0,
       `mat=${sonuc.sekmeler[0]?.matDeger} eksik=${sonuc.eksikDeger}`);
-    check('KF2/T1: orijinal 4 kolon dokunulmadi',
-      hucreMetni(ws.getCell(2, 2)) === 'Boru' && ws.getCell(2, 4).value === 10, '');
+    check('EX8: ad/miktar standart kolonlarda korundu',
+      hucreMetni(ws.getCell(2, 2)) === 'Boru' && ws.getCell(2, 3).value === 10,
+      `B2="${hucreMetni(ws.getCell(2, 2))}" C2=${JSON.stringify(ws.getCell(2, 3).value)}`);
 
     // T8 GUNCELLENDI (Bulgu Raporu 21.07): T8 = "FORMAT yokken sade
     // kapak+icmal" (yukarida ana testler zaten buildSampleFormat ile
@@ -327,10 +337,11 @@ async function run() {
       adlar.join('|'));
     check('YUVA: sabit kur sayfasi icerigiyle korundu',
       hucreMetni(out.getWorksheet('EXCHANGE RATE')!.getCell('A1')) === '1 USD = 47,07', '');
-    check('YUVA: kopyalanan liste sayfasinda fiyat + formul var',
-      (out.getWorksheet('Sıhhi Tesisat')!.getCell(3, 6).value as any)?.formula === 'D3*E3', '');
-    check('YUVA: icmal SUM formulu KOPYADAKI sayfa adina bakar',
-      sonuc.sekmeler[0]?.matFormul === "SUM('Sıhhi Tesisat'!F3:F5)",
+    check('YUVA/EX8: liste sayfasinda fiyat DEGER olarak dolu (formul icat yok)',
+      typeof out.getWorksheet('Sıhhi Tesisat')!.getCell(2, 6).value === 'number',
+      JSON.stringify(out.getWorksheet('Sıhhi Tesisat')!.getCell(2, 6).value));
+    check('YUVA: icmal SUM formulu liste sayfasinin ADINA bakar',
+      /^SUM\('Sıhhi Tesisat'!F\d+:F\d+\)$/.test(sonuc.sekmeler[0]?.matFormul ?? ''),
       JSON.stringify(sonuc.sekmeler));
     check('YUVA: formatSayfalari yalniz SABIT sayfalar (onizleme sekmeleri)',
       JSON.stringify(sonuc.formatSayfalari) === JSON.stringify(['KAPAK', 'İCMAL', 'EXCHANGE RATE']),
@@ -347,8 +358,11 @@ async function run() {
         sheetRoles: null, ctxTemel, overrides: null,
       });
     } catch (e: any) { hata = e?.message ?? 'hata'; }
-    check('BULGU: orijinal dosya yoksa ACIK HATA (grid-uretim yolu yok)',
-      hata === 'ORIJINAL_DOSYA_YOK', `got "${hata}"`);
+    // EX8: standart tablo GRID VERISINDEN uretilir; orijinal dosya artik
+    // ZORUNLU DEGIL. Sessiz sahte cikti riski de kalmadi — sayfa yoksa
+    // cikti da bos olur (asagidaki olcut).
+    check('EX8: orijinal dosya olmadan da çıktı üretilir (sayfasız → boş liste)',
+      hata === '', `beklenmeyen hata: "${hata}"`);
   }
   {
     // B6/B8: fiyatlar SAYISAL yazilir; TR bicimli metin dogru parse edilir;
@@ -376,22 +390,29 @@ async function run() {
     const out2 = new ExcelJS.Workbook();
     await out2.xlsx.load(Buffer.from(await s2.wb.xlsx.writeBuffer()) as any);
     const mek = out2.getWorksheet('Mekanik')!;
-    const bf = mek.getCell(2, 4).value; // D2 birim fiyat
+    const bf = mek.getCell(2, 5).value; // EX8: E = Malz. Birim Fiyat
     check('BULGU: TR bicimli fiyat SAYISAL yazildi (1.234,56 → 1234.56)',
       typeof bf === 'number' && Math.abs((bf as number) - 1234.56) < 0.001, `got ${JSON.stringify(bf)} (${typeof bf})`);
-    const topMetin = mek.getCell(2, 5).value; // METIN miktarli satir → formul YOK
+    const topMetin = mek.getCell(2, 6).value; // EX8: F = Malz. Toplam
     check('BULGU: metin-miktarli satirda tutar FORMULSUZ DUZ SAYI (#VALUE riski yok)',
       typeof topMetin === 'number' && Math.abs((topMetin as number) - 386417.28) < 0.01,
       `got ${JSON.stringify(topMetin)}`);
-    const topSayi: any = mek.getCell(3, 5).value; // sayisal miktarli satir → formul VAR
-    check('BULGU: sayisal-miktarli satirda tutar CANLI FORMUL (=C3*D3)',
-      topSayi?.formula === 'C3*D3' && topSayi?.result === 40, JSON.stringify(topSayi));
-    check('BULGU: kolon genisligi kopyada korunur (B3 kabulu)',
-      Math.round(mek.getColumn(2).width ?? 0) === 42, `got ${mek.getColumn(2).width}`);
-    check('BULGU: roller colN iken baslik satirina EK kolon baslik SARKMAZ (B5)',
-      !mek.getCell(1, 6).value, `got ${JSON.stringify(mek.getCell(1, 6).value)}`);
-    check('BULGU: miktar hucresi orijinaldeki HALIYLE durur (dokunulmadi)',
-      mek.getCell(2, 3).value === '313' && mek.getCell(3, 3).value === 4,
+    const topSayi: any = mek.getCell(3, 6).value;
+    check('BULGU/EX4: sayisal-miktarli satirda tutar hesaplanmis DEGER (40)',
+      topSayi === 40, JSON.stringify(topSayi));
+    // B3 "kolon genisligi kopyada korunur" DUSTU (EX8): standart tablonun
+    // kendi genislikleri var; ad sutunu 58 birim.
+    check('EX8: standart tablo kolon genişlikleri uygulanır',
+      Math.round(mek.getColumn(2).width ?? 0) === 58, `got ${mek.getColumn(2).width}`);
+    // B5 TERSINE DONDU (EX8): eskiden "sablona EK baslik sarkmasin" deniyordu;
+    // artik cikti STANDART tablodur ve 9 baslik HER SAYFADA olmak ZORUNDA.
+    check('EX8: standart başlık satırı tam (F1 = Malz. Toplam)',
+      String(mek.getCell(1, 6).value ?? '') === 'Malz. Toplam',
+      `got ${JSON.stringify(mek.getCell(1, 6).value)}`);
+    // GS12 (ust belge): miktar SAYIYA normalize edilir — metin "313" ciktida
+    // 313 sayisidir. Eski olcut "orijinaldeki haliyle durur" DUSTU.
+    check('GS12: metin miktar sayıya normalize edildi (313 · 4)',
+      mek.getCell(2, 3).value === 313 && mek.getCell(3, 3).value === 4,
       `got ${JSON.stringify([mek.getCell(2, 3).value, mek.getCell(3, 3).value])}`);
   }
 

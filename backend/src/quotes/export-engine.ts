@@ -38,6 +38,7 @@ import {
   fillPlaceholders, applyOverrides, KOLON_HARF, sayfaRolleriTahminEt,
   FillContext, SekmeOzet, YerTutucu, ExportOverrides, SheetRoles,
 } from '../quote-formats/format-engine';
+import { standartSayfaYaz } from './standart-cikti';
 
 /** TR-bilinçli sayi parse (Bulgu B7/B8 siniri): "1.234,56" → 1234.56,
  *  "87,5" → 87.5, "313" → 313. Grid hucreleri metin tasiyabilir. */
@@ -170,375 +171,15 @@ export interface SekmeBilgi {
   fiyatsizSatir: number;
 }
 
-/**
- * Musteri workbook'una fiyatlari yazar (IN-PLACE) ve sekme bilgisi doner.
- *
- * KOLON HEDEFI (Duzeltme Talepleri 24-27.07 — kayma/fazla-kolon/veri-kaybi):
- *  - colN rol → import'un okudugu KONUMA geri yazilir (round-trip, KE5).
- *  - Sistem alani (fixedSchema _matBirim vb.) → sablonun KENDI fiyat sutunu
- *    BASLIK ANLAMIYLA bulunur (F–J), degeri oraya yazar. Konumdan bagimsiz
- *    (KE3). Ikinci kolon seti (eski K–O davranisi) URETILMEZ.
- *  - VERI KAYBI YASAK (KF1/KF2, Aksa_Göynük vakasi): eslesen kolon YOK ama
- *    yazilacak DOLU veri VARSA kolon sablonun sag ucuna basligiyla EKLENIR
- *    ve doldurulur — uygulamada gorunen hicbir fiyat ciktida kaybolmaz.
- *  - Veri de yoksa kolon EKLENMEZ (KE8/KF3 — UYMZ: verisiz Isc. basliklari
- *    dayatilmaz). Turetilmis Toplam (grandUnit/grandTot) yalniz sablonda
- *    basligi VARSA yazilir; asla eklenmez (KE11 — bilesenleri zaten yazili).
- *  - KF6 self-check: beklenen (uygulamada dolu) / yazilan hucre sayaclari
- *    SekmeBilgi'de doner; uyusmazlik cagirana gorunur uyari tasitir.
- */
-export function writePricesToWorkbook(
-  wb: ExcelJS.Workbook,
-  sheetsArr: SheetJson[],
-  birim?: ExportBirim | null,
-): SekmeBilgi[] {
-  const ozetler: SekmeBilgi[] = [];
-  // PANO 18: export ekrandaki birimi alir — grid degerleri (TRY taban)
-  // hedef birime cevrilerek YAZILIR; miktar cevrilmez.
-  const birimKod: ExportBirim['kod'] = birim?.kod ?? 'TRY';
-  const katsayi = birim && birim.kod !== 'TRY' ? birim.katsayi : 1;
-  const cevir = (v: number): number => (katsayi === 1 ? v : Math.round(v * katsayi * 100) / 100);
+// ── T1/T3 (PRD_Standart_Grid §Bolum E): SABLONA YAZAN ESKI MOTOR SILINDI.
+// `writePricesToWorkbook` (352 satir) + anlamsal baslik eslestirici
+// (basNorm · basligaUyar · basligaGoreKolon · bosBaslikKolonu · kolonAta)
+// musterinin workbook'una fiyat yaziyordu. Kullanici karari (30.07.2026)
+// ile iki export yolu da 9 kolonluk STANDART tabloya gecti; bu katmanin
+// URETIMDE TEK BIR CAGIRANI KALMADI (0 referans dogrulandi).
+// Yerine: src/quotes/standart-cikti.ts → standartSayfaYaz (KF7 tek motor).
+// Gecmis: git log -- src/quotes/export-engine.ts
 
-  for (let si = 0; si < sheetsArr.length; si++) {
-    const sheetData = sheetsArr[si];
-    if (!sheetData || sheetData.isEmpty) continue;
-    const ws = wb.worksheets[si];
-    if (!ws) continue;
-
-    const roles = sheetData.columnRoles ?? {};
-    const rowData = sheetData.rowData ?? [];
-    const defs = sheetData.columnDefs ?? [];
-    const headerText = (field: string, fallback: string) =>
-      defs.find((d) => d.field === field)?.headerName?.trim() || fallback;
-
-    // KF2 on-taramasi: bu rolde EN AZ BIR data satirinda dolu (>0) deger
-    // var mi? Kolon-ekleme karari yalniz DOLU veri icin verilir.
-    const rolDolu = (field?: string): boolean => {
-      if (!field) return false;
-      for (const row of rowData) {
-        if (row?._isDataRow && sayi(row[field]) > 0) return true;
-      }
-      return false;
-    };
-
-    // Baslik satiri: rowData'daki SON _isHeaderRow (excel 1-based = ri+1); yoksa 1
-    let headerRow = 1;
-    for (let ri = 0; ri < rowData.length; ri++) {
-      if (rowData[ri]?._isHeaderRow) headerRow = ri + 1;
-      if (rowData[ri]?._isDataRow) break;
-    }
-
-    // TUM baslik satirlari (excel 1-based) — cok satirli/kismi baslik destegi
-    const headerRows: number[] = [];
-    for (let ri = 0; ri < rowData.length; ri++) {
-      if (rowData[ri]?._isDataRow) break;
-      if (rowData[ri]?._isHeaderRow) headerRows.push(ri + 1);
-    }
-    if (headerRows.length === 0) headerRows.push(headerRow);
-
-    // ── Musteri workbook'unun KENDI basligindan hedef kolonu coz (KE1-KE7) ──
-    // Duzeltme Talebi 24.07: eski davranis (sistem alanini SAGA ek kolon
-    // yapmak) fiyatlari K–O'ya kaydiriyordu. Dogrusu: fiyat, sablonun mevcut
-    // fiyat sutununa (F–J) BASLIK ANLAMIYLA yazilir; ikinci kolon seti YOK.
-    const enSonKolon = Math.max(ws.columnCount || 0, ws.actualColumnCount || 0);
-    const kullanilanKolon = new Set<number>();
-    const kolonBasligi = (c: number): string =>
-      headerRows.map((hr) => hucreDeger(ws.getCell(hr, c).value)).join(' ');
-    const basligaGoreKolon = (anlam: FiyatAnlam): number | null => {
-      for (let c = 1; c <= enSonKolon; c++) {
-        if (kullanilanKolon.has(c)) continue;
-        if (basligaUyar(basNorm(kolonBasligi(c)), anlam)) { kullanilanKolon.add(c); return c; }
-      }
-      return null;
-    };
-
-    // ── field → 1-based kolon ──
-    // KF2 ekleme ucu: BASLIK satirindaki SON DOLU kolonun sagi. Aksa tuzagi:
-    // ws.columnCount 119 donebilir (stil tanimli BOS kolonlar) — ona gore
-    // eklemek fiyatlari DT120 gibi gorunmez uca atar. Baslik ekseni otorite.
-    let baslikSonDolu = 0;
-    for (const hr of headerRows) {
-      ws.getRow(hr).eachCell({ includeEmpty: false }, (cell, cn) => {
-        if (String(hucreDeger(cell.value)).trim() !== '' && cn > baslikSonDolu) baslikSonDolu = cn;
-      });
-    }
-    let nextCol = (baslikSonDolu || enSonKolon) + 1;
-    // Guvenlik: hedef kolonda baslik doluysa (teorik cakisma) bir sag kay
-    const bosBaslikKolonu = (): number => {
-      while (headerRows.some((hr) => String(hucreDeger(ws.getCell(hr, nextCol).value)).trim() !== '')) nextCol++;
-      return nextCol++;
-    };
-    const fieldToCol: Record<string, number> = {};
-    const kolonAta = (
-      field: string | undefined, fallbackBaslik: string,
-      anlam?: FiyatAnlam, ekleYasak?: boolean,
-    ): number | null => {
-      if (!field) return null;
-      if (fieldToCol[field]) return fieldToCol[field];
-      // colN: import'un okudugu kolona GERI yaz (round-trip — KE5)
-      if (field.startsWith('col')) {
-        const idx = parseInt(field.replace('col', ''), 10);
-        // KE15: colN → 1-tabanli Excel kolonu. Parse'in okumaya basladigi
-        // kolon (colOffset) eklenmezse BIR KOLON SOLA kayar — SAHINKUL'da
-        // birim fiyat F'ye, tutar G'ye yaziliyordu (A kolonu bos, col0 = B).
-        if (!isNaN(idx)) { const col = idx + 1 + (sheetData.colOffset ?? 0); fieldToCol[field] = col; kullanilanKolon.add(col); return col; }
-      }
-      // Sistem alani (fixedSchema): sablonun KENDI fiyat sutununu bul
-      // (baslik anlamiyla — konumdan bagimsiz, KE1/KE3/KE7).
-      if (anlam) {
-        const bulunan = basligaGoreKolon(anlam);
-        if (bulunan) { fieldToCol[field] = bulunan; return bulunan; }
-      }
-      // KF2 (VERI KAYBI YASAK — Aksa_Göynük): eslesen kolon YOK ama DOLU
-      // veri VAR → kolon sag uca basligiyla eklenir. Veri yoksa EKLENMEZ
-      // (KE8/KF3 — UYMZ). Turetilmis Toplam icin ekleme HER KOSULDA yasak
-      // (KE11 — ekleYasak).
-      if (!ekleYasak && rolDolu(field)) {
-        const col = bosBaslikKolonu();
-        fieldToCol[field] = col;
-        kullanilanKolon.add(col);
-        const hCell = ws.getCell(headerRow, col);
-        hCell.value = headerText(field, fallbackBaslik);
-        hCell.font = { bold: true };
-        return col;
-      }
-      return null;
-    };
-
-    const qtyCol = roles.quantityField && roles.quantityField.startsWith('col')
-      ? kolonAta(roles.quantityField, 'Miktar')
-      : null; // miktar SISTEM alaniysa orijinalde yok → formul kurulamaz
-    // K-B (EMO, S1b): BİRİM kolonu — bazi dosyalarda MİKTAR/BİRİM basliklari
-    // TERS (MİKTAR altinda 'mt', BİRİM altinda 70). Satir duzeyinde sayisal
-    // olan hucre miktar kabul edilir (asagida etkinQty).
-    const unitColIdx = roles.unitField && roles.unitField.startsWith('col')
-      ? parseInt(roles.unitField.replace('col', ''), 10)
-      : NaN;
-    const unitCol = !isNaN(unitColIdx) ? unitColIdx + 1 : null;
-    const matUnitCol = kolonAta(roles.materialUnitPriceField, 'Malz. Birim Fiyat', 'matUnit');
-    const matTotCol = kolonAta(roles.materialTotalField, 'Malz. Toplam', 'matTot');
-    const labUnitCol = kolonAta(roles.laborUnitPriceField, 'İşç. Birim Fiyat', 'labUnit');
-    const labTotCol = kolonAta(roles.laborTotalField, 'İşç. Toplam', 'labTot');
-    const grandUnitCol = kolonAta(roles.grandUnitPriceField, 'Toplam Birim', 'grandUnit', true);
-    const grandTotCol = kolonAta(roles.grandTotalField, 'Toplam Tutar', 'grandTot', true);
-
-    // ── K-D (S4): yazim ONCESI hata sayimi ──
-    const hataOnce = hataSay(ws);
-
-    // ── K-A (S2, EMO AYVAZ — HAYALET FIYAT YASAK) ──────────────────────
-    // Onceden fiyatli kaynak dosyada hedef fiyat kolonlarindaki ESKI
-    // deger/formuller DATA satirlarinda TEMIZLENIR; cikti YALNIZ uygulama
-    // grid'indeki degerleri tasir (grid ↔ cikti birebir). Toplam/ara-toplam
-    // satirlari (_isDataRow degil) DOKUNULMAZ — sablonun SUM'lari korunur.
-    //
-    // KG9 (E2E altin yol, yangin-temin-montaj): temizlik YALNIZ uygulamanin
-    // YONETTIGI rollere uygulanir. Bir rolde (orn. iscilik) grid'de HICBIR
-    // satirda deger yoksa uygulama o kolona hic dokunmamis demektir; musteri
-    // dosyasindaki kendi verisi (680 TL iscilik birim fiyati) SILINEMEZ —
-    // KF1 veri-kaybi-yasak. Kismi dolu rolde temizlik aynen surer (KG2).
-    const rolYonetiliyor = (unitField?: string, totField?: string) =>
-      rolDolu(unitField) || rolDolu(totField);
-    const matYonetiliyor = rolYonetiliyor(roles.materialUnitPriceField, roles.materialTotalField);
-    const labYonetiliyor = rolYonetiliyor(roles.laborUnitPriceField, roles.laborTotalField);
-    const hedefKolonlar = [
-      matYonetiliyor ? matUnitCol : null,
-      matYonetiliyor ? matTotCol : null,
-      labYonetiliyor ? labUnitCol : null,
-      labYonetiliyor ? labTotCol : null,
-      // toplam (grand) kolonlari iki bilesenden turer — biri bile yonetiliyorsa temizlenir
-      matYonetiliyor || labYonetiliyor ? grandUnitCol : null,
-      matYonetiliyor || labYonetiliyor ? grandTotCol : null,
-    ].filter((c): c is number => !!c);
-    if (hedefKolonlar.length > 0) {
-      // KH1 (Hangar 500 koku): hedef kolonlardaki SHARED formul zincirleri
-      // ONCE degere DONDURULUR — master hucre temizlenince/ezilince oksuz
-      // clone'lar ExcelJS writeBuffer'i patlatiyordu ("Shared Formula master
-      // must exist..."). Tekil formuller (ara-toplam SUM'lari) DOKUNULMAZ.
-      const dondur = (cell: any) => {
-        const sonuc = cell.value?.result;
-        cell.value = sonuc === undefined || sonuc === null || typeof sonuc === 'object' ? null : sonuc;
-      };
-      // (a) Hedef kolonlardaki shared master'larin ADRESLERI — bunlar birazdan
-      //     temizlenecek; onlara bagli clone'lar oksuz kalirsa ExcelJS
-      //     writeBuffer'i patlar.
-      const silinecekMasterlar = new Set<string>();
-      ws.eachRow({ includeEmpty: false }, (row) => {
-        for (const c of hedefKolonlar) {
-          const cell = row.getCell(c);
-          const v: any = cell.value;
-          if (v && typeof v === 'object' && (v.shareType === 'shared' || (v.formula && v.ref))) {
-            silinecekMasterlar.add(cell.address);
-          }
-        }
-      });
-      // (b) KH11 (E2E altin yol, F&G Yorel "mekanik G BLOK"): master HEDEF
-      //     kolonda ama clone BASKA kolonda olabilir (I110 → master H110).
-      //     KH1 yalniz hedef kolonlari tariyordu → I110 dondurulmadan H110
-      //     temizleniyor, export 500 veriyordu ("Shared Formula master must
-      //     exist above and or left of clone for cell I110"). Silinecek
-      //     master'a bagli TUM clone'lar (kolon farketmeksizin) dondurulur;
-      //     musterinin diger formulleri DOKUNULMAZ.
-      if (silinecekMasterlar.size > 0) {
-        ws.eachRow({ includeEmpty: false }, (row) => {
-          row.eachCell({ includeEmpty: false }, (cell) => {
-            const v: any = cell.value;
-            if (v && typeof v === 'object' && v.sharedFormula && silinecekMasterlar.has(v.sharedFormula)) {
-              dondur(cell);
-            }
-          });
-        });
-      }
-      // (c) KH1: hedef kolonlardaki shared zincirler (master + clone) degere
-      //     dondurulur. Tekil formuller (ara-toplam SUM'lari) DOKUNULMAZ.
-      ws.eachRow({ includeEmpty: false }, (row) => {
-        for (const c of hedefKolonlar) {
-          const cell = row.getCell(c);
-          const v: any = cell.value;
-          if (v && typeof v === 'object' && (v.sharedFormula || v.shareType === 'shared')) dondur(cell);
-        }
-      });
-      for (let ri = 0; ri < rowData.length; ri++) {
-        if (!rowData[ri]?._isDataRow) continue;
-        for (const c of hedefKolonlar) {
-          // KG10 (E2E altin yol, yangin-temin-montaj R14): temizlik YALNIZ
-          // FIYAT tasiyan hucreleri hedefler. Musterinin fiyat kolonuna
-          // yazdigi METIN not'u ("ŞİRKET TEMİNİ", "FİYAT ALINACAK", "dahil")
-          // fiyat DEGILDIR — silinirse bilgi geri donusu olmadan kaybolur
-          // (KF1). Sayi, formul ve sayi-benzeri metin temizlenir.
-          const cell = ws.getCell(ri + 1, c);
-          const v: any = cell.value;
-          if (v == null) continue;
-          const sayisal =
-            typeof v === 'number' ||
-            (typeof v === 'object' && (v.formula || v.sharedFormula || typeof v.result === 'number')) ||
-            (typeof v === 'string' && sayi(v) > 0);
-          if (sayisal) cell.value = null;
-        }
-      }
-    }
-
-    let ilkVeri = 0; let sonVeri = 0;
-    let matToplam = 0; let labToplam = 0;
-    // KF6 self-check sayaclari — grand* turetilmis oldugundan sayilmaz
-    // (bilesenleri matUnit/matTot/labUnit/labTot zaten sayiliyor).
-    let beklenen = 0; let yazilan = 0;
-    let fiyatsizSatir = 0; // PANO 21c: eslesmemis satir bilgisi
-
-    for (let ri = 0; ri < rowData.length; ri++) {
-      const row = rowData[ri];
-      if (!row || !row._isDataRow) continue;
-      const excelRow = ri + 1;
-      if (!ilkVeri) ilkVeri = excelRow;
-      sonVeri = excelRow;
-
-      const qty = roles.quantityField ? sayi(row[roles.quantityField]) : 0;
-      // PANO 18: fiyat/tutar degerleri HEDEF birime cevrilir (miktar haric)
-      const matUnit = cevir(roles.materialUnitPriceField ? sayi(row[roles.materialUnitPriceField]) : 0);
-      const matTot = cevir(roles.materialTotalField ? sayi(row[roles.materialTotalField]) : 0);
-      const labUnit = cevir(roles.laborUnitPriceField ? sayi(row[roles.laborUnitPriceField]) : 0);
-      const labTot = cevir(roles.laborTotalField ? sayi(row[roles.laborTotalField]) : 0);
-      const grandUnit = cevir(roles.grandUnitPriceField ? sayi(row[roles.grandUnitPriceField]) : 0);
-      const grandTot = cevir(roles.grandTotalField ? sayi(row[roles.grandTotalField]) : 0);
-
-      matToplam += matTot;
-      labToplam += labTot;
-
-      if (matUnit > 0) beklenen++;
-      if (matTot > 0) beklenen++;
-      if (labUnit > 0) beklenen++;
-      if (labTot > 0) beklenen++;
-      if (matUnit === 0 && matTot === 0 && labUnit === 0 && labTot === 0) fiyatsizSatir++;
-
-      // T6: yalniz >0 degerler yazilir — fiyatsiz satir BOS kalir, 0 ASLA.
-      // K-C: yazilan her hucrede yabanci para bicimi TL'ye duzeltilir.
-      const yaz = (col: number, deger: any) => {
-        const cell = ws.getCell(excelRow, col);
-        cell.value = deger;
-        birimBicimiDuzelt(cell, birimKod);
-        return cell;
-      };
-      if (matUnitCol && matUnit > 0) { yaz(matUnitCol, matUnit); yazilan++; }
-      if (labUnitCol && labUnit > 0) { yaz(labUnitCol, labUnit); yazilan++; }
-      if (grandUnitCol && grandUnit > 0) yaz(grandUnitCol, grandUnit);
-
-      // K-B (S1, EMO): ETKIN MIKTAR — quantityField hucresi sayisal degilse
-      // (MİKTAR/BİRİM basliklari TERS dosyalar: MİKTAR altinda 'mt') BİRİM
-      // kolonundaki SAYISAL deger miktar kabul edilir. Ikisi de degilse
-      // formul kurulmaz (Bulgu B8: metin × formul = #VALUE riski).
-      const qtyHucre = qtyCol ? ws.getCell(excelRow, qtyCol).value : null;
-      const unitHucre = unitCol ? ws.getCell(excelRow, unitCol).value : null;
-      let etkinQtyCol: number | null = null;
-      let etkinQty = 0;
-      if (typeof qtyHucre === 'number' && qtyHucre > 0) { etkinQtyCol = qtyCol; etkinQty = qtyHucre; }
-      else if (typeof unitHucre === 'number' && unitHucre > 0) { etkinQtyCol = unitCol; etkinQty = unitHucre; }
-      else if (qty > 0) etkinQty = qty; // grid degeri (formulsuz hesap icin)
-
-      // K-B: birim fiyat YAZILAN satirda toplam MUTLAKA yazilir — eski/stale
-      // toplam (EMO: 798 = eski birimin kalintisi) ASLA birakilmaz. App
-      // toplami hesaplayamamissa (S1b) miktar × birim'den TURETILIR.
-      const matTotYaz = matTot > 0 ? matTot
-        : matUnit > 0 && etkinQty > 0 ? Math.round(matUnit * etkinQty * 100) / 100 : 0;
-      const labTotYaz = labTot > 0 ? labTot
-        : labUnit > 0 && etkinQty > 0 ? Math.round(labUnit * etkinQty * 100) / 100 : 0;
-      matToplam += matTotYaz - matTot; // İCMAL turetilen toplami da gorur
-      labToplam += labTotYaz - labTot;
-
-      if (matTotCol && matTotYaz > 0) {
-        yaz(matTotCol,
-          etkinQtyCol && matUnitCol && matUnit > 0
-            ? ({ formula: `${KOLON_HARF(etkinQtyCol)}${excelRow}*${KOLON_HARF(matUnitCol)}${excelRow}`, result: matTotYaz } as any)
-            : matTotYaz);
-        yazilan++;
-      }
-      if (labTotCol && labTotYaz > 0) {
-        yaz(labTotCol,
-          etkinQtyCol && labUnitCol && labUnit > 0
-            ? ({ formula: `${KOLON_HARF(etkinQtyCol)}${excelRow}*${KOLON_HARF(labUnitCol)}${excelRow}`, result: labTotYaz } as any)
-            : labTotYaz);
-        yazilan++;
-      }
-      const grandYaz = grandTot > 0 ? grandTot : Math.round((matTotYaz + labTotYaz) * 100) / 100;
-      if (grandTotCol && grandYaz > 0) {
-        yaz(grandTotCol,
-          matTotCol && labTotCol && (matTotYaz > 0 || labTotYaz > 0)
-            ? ({ formula: `${KOLON_HARF(matTotCol)}${excelRow}+${KOLON_HARF(labTotCol)}${excelRow}`, result: grandYaz } as any)
-            : grandYaz);
-      }
-    }
-
-    // PANO 18: kur notu — verinin ALTINA (gercek dolu aralik sonrasi; TOPLAM
-    // satirlarini ezmemek icin actualRowCount ekseni), sayfa basina bir kez.
-    if (birim?.not && birimKod !== 'TRY' && ilkVeri > 0) {
-      const notSatiri = (ws.actualRowCount || sonVeri) + 2;
-      const notKolonu = qtyCol ?? matUnitCol ?? labUnitCol ?? 1;
-      const cell = ws.getCell(notSatiri, notKolonu);
-      cell.value = birim.not;
-      cell.font = { italic: true, size: 9 };
-    }
-
-    // K-D (KG5): yazim sonrasi hata sayisi ONCEKINE gore artamaz
-    const hataArtisi = Math.max(0, hataSay(ws) - hataOnce);
-    if (hataArtisi > 0) {
-      console.warn(`[Export] ⚠ K-D: "${ws.name}" sayfasinda yazim ${hataArtisi} formul hatasi URETTI`);
-    }
-
-    ozetler.push({
-      wsName: ws.name,
-      matCol: matTotCol,
-      labCol: labTotCol,
-      ilkVeri,
-      sonVeri,
-      matDeger: matToplam,
-      labDeger: labToplam,
-      beklenen,
-      yazilan,
-      hataArtisi,
-      fiyatsizSatir,
-    });
-  }
-
-  return ozetler;
-}
 
 /** SekmeBilgi + SON sayfa adi → icmal SUM formullu SekmeOzet (T5/T7). */
 export function sekmeOzetiKur(b: SekmeBilgi, sonAd: string): SekmeOzet {
@@ -665,12 +306,12 @@ export async function buildExportWorkbook(g: ExportGirdisi): Promise<ExportSonuc
 
   // ── 3. Teklif liste sayfalari: ORIJINAL musteri wb kopyasi + fiyat yaz ──
   // (Bulgu Raporu kok neden: grid'den uretim SILINDI — tek yol budur.)
-  if (!g.originalFile || g.originalFile.length === 0) {
-    throw new Error('ORIJINAL_DOSYA_YOK');
-  }
-  const musteriWb = new ExcelJS.Workbook();
-  await musteriWb.xlsx.load(g.originalFile as any);
-  const bilgiler = writePricesToWorkbook(musteriWb, g.sheetsArr, g.birim);
+  // ── EX8 (kullanici karari 30.07): liste sayfalari artik MUSTERI
+  // WORKBOOK'UNUN KOPYASI degil, 9 kolonluk STANDART TABLO. Format dosyasinin
+  // kendisi (kapak/İCMAL/yer tutucular) AYNEN korunur — T-serisi gecerli.
+  // KF7: iki export yolu da `standartSayfaYaz` motorunu kullanir; ikinci bir
+  // yazim yolu YOK. Orijinal dosya artik ZORUNLU DEGIL (grid verisi yeterli).
+  const bilgiler: SekmeBilgi[] = [];
   // KF6 self-check: yazilamayan dolu deger — sessiz veri kaybi YASAK,
   // cagiran (controller) kullaniciya gorunur uyari tasir.
   const eksikDeger = bilgiler.reduce((a, b) => a + Math.max(0, b.beklenen - b.yazilan), 0);
@@ -684,14 +325,22 @@ export async function buildExportWorkbook(g: ExportGirdisi): Promise<ExportSonuc
 
   const listeSayfalari: string[] = [];
   const sekmeler: SekmeOzet[] = [];
-  for (const b of bilgiler) {
-    const kaynakWs = musteriWb.getWorksheet(b.wsName);
-    if (!kaynakWs) continue;
-    const yeni = kopyalaSayfa(kaynakWs, wb);
-    listeSayfalari.push(yeni.name);
-    // SUM formulleri SON (kopyadaki) sayfa adiyla kurulur (ad cakismasi
-    // " (2)" eki alabilir — formul her kosulda dogru sayfaya bakar)
-    sekmeler.push(sekmeOzetiKur(b, yeni.name));
+  for (const sh of g.sheetsArr ?? []) {
+    if (!sh || sh.isEmpty) continue;
+    // EX8: standart tablo DOGRUDAN format workbook'una yazilir.
+    // toplamSatiri=false — İCMAL zaten SUM ile topluyor, cift toplam olmasin.
+    const sb = standartSayfaYaz(wb, sh, { birim: g.birim as any, toplamSatiri: false });
+    listeSayfalari.push(sb.wsName);
+    const b: SekmeBilgi = {
+      wsName: sb.wsName, matCol: sb.matCol, labCol: sb.labCol,
+      ilkVeri: sb.ilkVeri, sonVeri: sb.sonVeri,
+      matDeger: sb.matDeger, labDeger: sb.labDeger,
+      beklenen: sb.yazilan, yazilan: sb.yazilan, hataArtisi: 0,
+      fiyatsizSatir: (sh.rowData ?? []).filter((r: any) => r?._isDataRow && !r?._ozet
+        && !(parseFloat(String(r?._matBirim ?? '')) > 0) && !(parseFloat(String(r?._labBirim ?? '')) > 0)).length,
+    };
+    bilgiler.push(b);
+    sekmeler.push(sekmeOzetiKur(b, sb.wsName));
   }
 
   // ── Sira: ilk liste-yuvasinin konumuna teklif sayfalari girer ──

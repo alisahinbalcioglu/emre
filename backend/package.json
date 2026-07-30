@@ -27,11 +27,11 @@
     "test:kl": "ts-node test/kl-liste-ekleme-test.ts",
     "test:export": "ts-node test/export-format-test.ts",
     "test:livesim": "ts-node test/export-live-sim-test.ts",
-    "test:ke": "ts-node test/export-kolon-esleme-test.ts",
-    "test:kb": "ts-node test/iki-katmanli-baslik-test.ts",
     "test:tf": "ts-node test/gercek-dosya-test.ts",
     "test:perf": "ts-node test/perf-profil.ts",
-    "test:of": "ts-node test/onceden-fiyatli-test.ts"
+    "test:of": "ts-node test/onceden-fiyatli-test.ts",
+    "test:gs": "ts-node test/standart-sema-test.ts",
+    "test:ex": "ts-node test/standart-cikti-test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

@@ -1,0 +1,77 @@
+
+> metaprice-backend@1.0.0 test:gs
+> ts-node test/standart-sema-test.ts
+
+
+══════ GS1-GS14 · MF1-MF6: STANDART GRID SEMASI ══════
+
+[ExcelGrid] detectColumnRoles: realHeaderRow=10 (score=1), firstDataRow=-1, headerEndRow=10
+[ExcelGrid] parseSingleSheet 37x6, 36 merge, headerEndRow=10, dataRows=false
+[ExcelGrid] Malzeme adi icerikten: col1 (score=11), eski regex colundefined
+[ExcelGrid] detectColumnRoles: realHeaderRow=6 (score=4), firstDataRow=9, headerEndRow=8
+[ExcelGrid] parseSingleSheet 244x6, 2 merge, headerEndRow=8, dataRows=true
+[ExcelGrid] Malzeme adi icerikten: col2 (score=12), eski regex colundefined
+[ExcelGrid] detectColumnRoles: realHeaderRow=6 (score=4), firstDataRow=9, headerEndRow=8
+[ExcelGrid] parseSingleSheet 151x8, 2 merge, headerEndRow=8, dataRows=true
+[ExcelGrid] R-B: birim kolonu ICERIKTEN col3 (oran=0.82)
+[ExcelGrid] Malzeme adi icerikten: col1 (score=13), eski regex colundefined
+[ExcelGrid] detectColumnRoles: realHeaderRow=1 (score=4), firstDataRow=2, headerEndRow=1
+[ExcelGrid] parseSingleSheet 17x6, 2 merge, headerEndRow=1, dataRows=true
+[ExcelGrid] Malzeme adi icerikten: col1 (score=8), eski regex colundefined
+[ExcelGrid] detectColumnRoles: realHeaderRow=6 (score=4), firstDataRow=9, headerEndRow=8
+[ExcelGrid] parseSingleSheet 176x6, 2 merge, headerEndRow=8, dataRows=true
+[ExcelGrid] Malzeme adi icerikten: col1 (score=39), eski regex colundefined
+[ExcelGrid] detectColumnRoles: realHeaderRow=6 (score=4), firstDataRow=9, headerEndRow=8
+[ExcelGrid] parseSingleSheet 78x6, 1 merge, headerEndRow=8, dataRows=true
+[ExcelGrid] Malzeme adi icerikten: col1 (score=38), eski regex colundefined
+[ExcelGrid] detectColumnRoles: realHeaderRow=6 (score=5), firstDataRow=10, headerEndRow=9
+[ExcelGrid] parseSingleSheet 284x7, 2 merge, headerEndRow=9, dataRows=true
+[ExcelGrid] Malzeme adi icerikten: col1 (score=14), eski regex colundefined
+[ExcelGrid] detectColumnRoles: realHeaderRow=6 (score=4), firstDataRow=9, headerEndRow=8
+[ExcelGrid] parseSingleSheet 71x6, 1 merge, headerEndRow=8, dataRows=true
+[ExcelGrid] R-B: miktar kolonu ICERIKTEN col6 (birim komsusu, oran=0.65)
+[ExcelGrid] Malzeme adi icerikten: col1 (score=10), eski regex colundefined
+[ExcelGrid] detectColumnRoles: realHeaderRow=6 (score=5), firstDataRow=9, headerEndRow=8
+[ExcelGrid] parseSingleSheet 20x7, 2 merge, headerEndRow=8, dataRows=true
+[ExcelGrid] Malzeme adi icerikten: col1 (score=11), eski regex colundefined
+[ExcelGrid] detectColumnRoles: realHeaderRow=6 (score=4), firstDataRow=9, headerEndRow=8
+[ExcelGrid] parseSingleSheet 735x6, 2 merge, headerEndRow=8, dataRows=true
+[ExcelGrid] Malzeme adi icerikten: col1 (score=5), eski regex colundefined
+[ExcelGrid] detectColumnRoles: realHeaderRow=6 (score=5), firstDataRow=-1, headerEndRow=6
+[ExcelGrid] parseSingleSheet 16x7, 2 merge, headerEndRow=6, dataRows=true
+[ExcelGrid] 11 sheet parse edildi, 10 dolu
+PASS: GS13 sayfa sayısı dosyadaki görünür sayfa sayısına eşit — parse=11 dosya=11 (İcmal, Yangın.Pompa.Odası, Hidrant.Sistemi, Pres2-3 Çelik Kule, Trafo.Su.Püskürtme, Sprinkler.Sistemi, Konveyör.Sprink, Toz.Ambarı, Pompa.Odası.Sprink, Otomatik.Köpüklü, Yangın.Durdurucu)
+PASS: GS13b hiçbir sayfa düşürülmedi (İcmal dahil) — tümü var
+FAIL: GS2c İcmal sayfası kullanılabilir (isEmpty=false + veri satırı var) — isEmpty=true dataSatırı=0 (dosyada 9 bölüm satırı var)
+FAIL: GS1/GS2 her sayfada aynı 13 standart kolon — 11 sayfa sapıyor → İcmal: [S.N | AÇIKLAMA | AÇIKLAMA | Malz. Kar % | Malz. Marka | Malz. Birim Fiyat | Malz. Toplam | İşç. Kar % | İşç. Firma | İşç. Birim Fiyat | İşç. Toplam | Toplam]
+FAIL: GS1b dosyaya özgü fiyat kolonu grid’e sızmıyor — Pres2-3 Çelik Kule!col4="BİRİM FİYAT
+İŞÇİLİK" · Pompa.Odası.Sprink!col5="BİRİM FİYAT
+İŞÇİLİK" · Yangın.Durdurucu!col5="BİRİM FİYAT
+MALZEME"
+FAIL: GS3 İşç. Toplam ve Genel Toplam her sayfada var — eksik: İcmal, Yangın.Pompa.Odası, Hidrant.Sistemi, Pres2-3 Çelik Kule, Trafo.Su.Püskürtme, Sprinkler.Sistemi, Konveyör.Sprink, Toz.Ambarı, Pompa.Odası.Sprink, Otomatik.Köpüklü, Yangın.Durdurucu
+PASS: GS5 nitelik satırları veri satırı DEĞİL (fiyat sorgusuna gitmez) — nitelik satırı=66, yanlışlıkla data olan=0
+PASS: GS7 ilk ekranda veri görünür (afiş/boş/çift başlık grid’i doldurmaz) — ilk 12 satırda data satırı: 1
+PASS: GS12 miktar sayıya normalize edildi — data=510, sayısal olmayan=0
+[ExcelGrid] Malzeme adi icerikten: col1 (score=14), eski regex colundefined
+[ExcelGrid] "grandUnitPrice" rolu isim sutunuyla cakisti (col1) → iptal
+[ExcelGrid] detectColumnRoles: realHeaderRow=2 (score=2), firstDataRow=-1, headerEndRow=2
+[ExcelGrid] parseSingleSheet 20x9, 2 merge, headerEndRow=2, dataRows=false
+[ExcelGrid] detectColumnRoles: realHeaderRow=2 (score=11), firstDataRow=17, headerEndRow=16
+[ExcelGrid] parseSingleSheet 217x11, 10 merge, headerEndRow=16, dataRows=true
+[ExcelGrid] detectColumnRoles: realHeaderRow=2 (score=11), firstDataRow=9, headerEndRow=8
+[ExcelGrid] parseSingleSheet 61x11, 10 merge, headerEndRow=8, dataRows=true
+[ExcelGrid] detectColumnRoles: realHeaderRow=2 (score=11), firstDataRow=17, headerEndRow=16
+[ExcelGrid] parseSingleSheet 181x11, 10 merge, headerEndRow=16, dataRows=true
+[ExcelGrid] detectColumnRoles: realHeaderRow=2 (score=11), firstDataRow=7, headerEndRow=6
+[ExcelGrid] parseSingleSheet 70x11, 9 merge, headerEndRow=6, dataRows=true
+[ExcelGrid] detectColumnRoles: realHeaderRow=2 (score=11), firstDataRow=5, headerEndRow=4
+[ExcelGrid] parseSingleSheet 45x1024, 10 merge, headerEndRow=4, dataRows=true
+[ExcelGrid] 6 sheet parse edildi, 5 dolu
+FAIL: MF2 dosyanın İŞÇİLİK başlığı altındaki fiyatlar İşç. Birim Fiyat’a geldi — İşç. Birim Fiyat dolu satır=0
+FAIL: MF1 dosyadaki malzeme fiyatları Malz. Birim Fiyat’a geldi — Malz. Birim Fiyat dolu satır=0
+PASS: MF3 dosyadan gelen değerlerde kaynak rozeti "dosyadan" — rozetli satır=90
+FAIL: GS2b ŞAHİNKUL’un her sayfasında da aynı 13 kolon — sapan: ICMAL, SIHHİ, HAVALANDIRMA, YANGIN, VRV-VRF, SIFONIK YAĞMUR
+
+============================================================
+STANDART SEMA: 6 PASS, 7 FAIL
+============================================================

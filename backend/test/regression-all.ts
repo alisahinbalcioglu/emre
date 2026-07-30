@@ -23,7 +23,11 @@ const SUITES: Suite[] = [
   { ad: 'Spec regresyon (R1-R12)', script: 'test:spec', zincir: 'Z2' },
   { ad: 'Sözleşme dondurma (C1-C10)', script: 'test:contract', zincir: 'Z2' },
   { ad: 'İşçilik tek motor (L)', script: 'test:labor', zincir: 'Z2' },
-  { ad: 'Kolon eşleme + veri kaybı (KE/KF/KG)', script: 'test:ke', zincir: 'Z4' },
+  // T1/T3/T4: sablona-yazan eski motor SILINDI; "kolon esleme" (test:ke) ve
+  // "iki katmanli baslik" (test:kb) suite'leri onunla birlikte kaldirildi.
+  // Yerine gelen sozlesmeler:
+  { ad: 'Standart grid şeması (GS/MF)', script: 'test:gs', zincir: 'Z1' },
+  { ad: 'Standart çıktı (EX1-EX8)', script: 'test:ex', zincir: 'Z4' },
   { ad: 'Teklif formatı kabul (T/KF2)', script: 'test:export', zincir: 'Z5' },
   { ad: 'Canlı simülasyon (SIM/G)', script: 'test:livesim', zincir: 'Z5' },
   // ── DB gerektirenler (yerelde PG yoksa SKIP; VPS/CI'da kosulur) ──
