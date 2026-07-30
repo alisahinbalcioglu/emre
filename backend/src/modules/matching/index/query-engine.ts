@@ -437,6 +437,24 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     const v = opts.variantTags;
     const eslesen = rows.filter((r) => v.every((t) => urunVariantTags(r).includes(t)));
     if (eslesen.length === 1) return { kind: 'auto-variant', row: eslesen[0], donusum };
+
+    // ── V4.7 (CANLI BULGU 30.07): KULLANICI SECIMI YUZEY KELIMESINDEN ONCE ──
+    // Vaka: kesif satiri "Dikişli SİYAH Çelik Boru, DN65"; kullanici KAYNAK
+    // satirda (ayni ad, DN150) popup'tan "kirmizi (astar) boyali"yi SECTI ve
+    // asagi surukledi. Satir adindaki "siyah" yuzey filtresi kirmizi urunleri
+    // havuzdan eledigi icin varyant aramasi bos kaldi ve motor "Seçilen
+    // varyant bu çapta kütüphanede yok" dedi — OYSA kutuphanede 2½" kirmizi
+    // boyali ₺267,3 ile MEVCUTTU (kullanici ekran goruntusuyle kanitladi).
+    // Tutarsizlik: AYNI secim elle yapilinca kabul, suruklemede ret.
+    // Kural: variantTags kullanicinin ACIK secimidir (surukleme = acik niyet);
+    // yuzey kelimesinden ONCE gelir. Yalniz TAM tag eslesmesi + TEK aday
+    // kosuluyla, cap filtresi UYGULANMIS genis havuzda aranir → sessiz ikame
+    // degil (sonuc 'auto-variant' = oneri isaretiyle doner).
+    if (eslesen.length === 0 && yuzeyGenis && yuzeyGenis.length > 0) {
+      const genisEslesen = yuzeyGenis.filter((r) => v.every((t) => urunVariantTags(r).includes(t)));
+      if (genisEslesen.length === 1) return { kind: 'auto-variant', row: genisEslesen[0], donusum };
+    }
+
     if (eslesen.length === 0) {
       // Istenen varyant bu capta hicbir adayda YOK. Iki AYRI durum var:
       //  (1) Capta TEK aday var VE o aday istenenin DISINDA kendi ayirt edici

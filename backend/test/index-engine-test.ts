@@ -648,6 +648,40 @@ async function run() {
       r3.netPrice === 0, `got net=${r3.netPrice}`);
   }
 
+  // ══ V4.7 (CANLI BULGU 30.07): kullanici secimi YUZEY kelimesinden ONCE ══
+  // Kesif satiri "Dikişli SİYAH Çelik Boru, DN65"; kullanici KAYNAK satirda
+  // (ayni ad, DN150) popup'tan "kirmizi (astar) boyali"yi secip surukledi.
+  // Satirdaki "siyah" kelimesi kirmizi urunleri havuzdan eleyince motor
+  // "Seçilen varyant bu çapta kütüphanede yok" diyordu — oysa kutuphanede
+  // DN65 kirmizi boyali MEVCUT. Ayni secim ELLE yapilinca kabul ediliyordu:
+  // tutarsizlik. Surukleme ACIK NIYET → varyant yuzey kelimesini yener.
+  {
+    const BORU = { kategori: 'Su ve Yangın Tesisat Boruları', birim: 'metre', paraBirimi: 'TL', sheetName: 'Çayırova' };
+    const havuz = [
+      prod({ ...BORU, ad: 'Çelik boru', cins: 'kırmızı (astar) boyalı · TS EN 10255 orta seri · PN25', cap: 'DN150', price: 821.1, urunKodu: 'K150' }),
+      prod({ ...BORU, ad: 'Çelik boru', cins: 'kırmızı (astar) boyalı · TS EN 10255 orta seri · PN25', cap: 'DN65', price: 267.3, urunKodu: 'K65' }),
+      prod({ ...BORU, ad: 'Çelik boru', cins: 'siyah · TS EN 10255 orta seri · PN25', baglanti: 'düz uçlu', cap: 'DN150', price: 939.9, urunKodu: 'S150' }),
+      prod({ ...BORU, ad: 'Çelik boru', cins: 'siyah · TS EN 10255 orta seri · PN25', baglanti: 'düz uçlu', cap: 'DN65', price: 253.4, urunKodu: 'S65' }),
+    ];
+    // Kullanicinin KAYNAK satirda sectigi varyant (canli kanit 30.07):
+    //   ["ad:celik boru", "cins:kirmizi (astar) boyali · ts en 10255 orta seri · pn25"]
+    const kaynak = m('Çelik boru DN150', havuz);
+    const kirmizi = (kaynak.candidates ?? []).find((c) => /kırmızı/i.test(c.materialName ?? ''));
+    check('V4.7a kaynak satırda kırmızı varyant aday olarak sunulur',
+      !!kirmizi, `adaylar=${(kaynak.candidates ?? []).map((c) => c.label).join('|')}`);
+
+    // SURUKLEME: satir adi "SİYAH" derken kullanicinin KIRMIZI secimi tasinir
+    const hedef = m('Siyah Çelik Boru DN65', havuz, { variantTags: kirmizi?.variantTags });
+    check('V4.7b sürüklemede kullanıcı seçimi yüzey kelimesini YENER (DN65 kırmızı ₺267,3)',
+      hedef.netPrice === 267.3,
+      `got net=${hedef.netPrice} conf=${hedef.confidence} reason="${(hedef as any).reason ?? ''}"`);
+
+    // FREN: varyant GERCEKTEN o capta yoksa yine otomatik atama YOK
+    const yok = m('Siyah Çelik Boru DN99', havuz, { variantTags: kirmizi?.variantTags });
+    check('V4.7c fren: varyant o çapta gerçekten yoksa otomatik atama YOK',
+      yok.netPrice === 0, `got net=${yok.netPrice}`);
+  }
+
   // ══ ARMAŞ gercek vakasi: aile KATEGORIDEN cozuluyor ══════════════
   {
     // Ad'da 'vana' kelimesi YOK, Kategoride var. Bu satirlar aksi halde
