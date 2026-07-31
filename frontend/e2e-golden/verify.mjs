@@ -6,6 +6,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+// PK6: `num`/`numHam` AYRI dosyaya alindi — burada gomulu kaldiklari surece
+// test edilemiyorlardi ve "hangi girdi hangi fonksiyon" kurali yalniz yorumda
+// yaziliydi. Artik `lib/sayi-ayristirma.test.ts` hem davranisi hem KAYNAGI
+// (payload alani num() ile okunuyor mu) kilitliyor.
+import { num, numHam } from './sayi-ayristirma.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const requireB = createRequire(path.resolve(__dirname, '../../backend/package.json'));
@@ -31,37 +36,6 @@ const sayisalHucre = (v) => {
   if (typeof v === 'number') return true;
   if (v && typeof v === 'object' && (v.formula || v.sharedFormula || typeof v.result === 'number')) return true;
   return num(txt(v)) != null;
-};
-const num = (s) => {
-  if (typeof s === 'number') return s;
-  const m = String(s ?? '').replace(/[^\d,.\-]/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.');
-  const f = parseFloat(m);
-  return isNaN(f) ? null : f;
-};
-/** MAKINE degeri (payload/grid alanlari) — nokta HER ZAMAN ondalik.
- *
- *  ⚠ 31.07 KOK NEDEN: yukaridaki `num` "nokta + tam 3 rakam + son" gorunce
- *  onu TR BINLIK ayirici sanip atiyor. Bu kural KULLANICIYA GOSTERILEN metin
- *  icin dogru ("1.234" = bin ikiyuz otuz dort), ama payload degerleri JS'in
- *  urettigi makine dizeleridir ("134534.40000000002", "323308.125") ve orada
- *  nokta ONDALIKTIR. Ayrimi yapmayinca:
- *      "323308.125" → 323.308.125  (323 BIN yerine 323 MILYON)
- *      "35.240"     → 35240        (35,24 yerine)
- *      "50.000"     → 50000        (50,0 yerine) → "1×50000≠29400"
- *  Kalan 3 FAIL'in (03-bursa C3+C5, 06-skychem C3) TEK kok nedeni buydu. */
-const numHam = (s) => {
-  if (typeof s === 'number') return isFinite(s) ? s : null;
-  const t = String(s ?? '').replace(/[₺$€\s]/g, '').trim();
-  if (!t) return null;
-  // ⚠ METIN FIYAT ALANINDA OLABILIR. 03-bursa Elektrik'te `_matBirim` ürün
-  // tarifi tasiyor: "35x240mm Üç bölmeli döşeme kanalı". Rakamlari suzen bir
-  // parser bundan 35240 uretiyor ve "ciktida yok" diye HAYALET kayip veriyor.
-  // Kural: alan SAYI GIBI DEGILSE sayi degildir.
-  if (!/^-?[\d.,]+$/.test(t)) return null;
-  // Virgul varsa kullanici bicimi: virgul ondalik, noktalar binlik
-  const m = t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t;
-  const f = parseFloat(m);
-  return isNaN(f) ? null : f;
 };
 const errCells = (ws) => {
   let n = 0;
@@ -438,7 +412,9 @@ for (const slug of slugs.sort()) {
         // "veri kaybi" veriyordu. Katsayi sayfanin kendi toplamlarindan
         // TURETILIR, disaridan varsayilmaz.
         const payloadToplam = satirlar.reduce((a, r) =>
-          a + (num(r._matToplam) ?? 0) + (num(r._labToplam) ?? 0), 0);
+          // PK6: payload alani = MAKINE degeri → numHam. `num` burada
+          // "323308.125"i 323 MILYON okuyup kur katsayisini bozuyordu.
+          a + (numHam(r._matToplam) ?? 0) + (numHam(r._labToplam) ?? 0), 0);
         let ciktiToplam = 0;
         const fw = fiyatli.getWorksheet(sh.name);
         fw?.eachRow({ includeEmpty: false }, (row, rn) => {
@@ -511,7 +487,10 @@ for (const slug of slugs.sort()) {
       const gridDegerleri = new Set();
       for (const sh of payload?.sheets ?? []) for (const row of sh.rowData ?? []) {
         for (const f of ['_matBirim', '_matToplam', '_labBirim', '_labToplam', '_toplam', '_matNetPrice', '_labNetPrice']) {
-          const v = num(row?.[f]); if (v) gridDegerleri.add(v.toFixed(2));
+          // PK6: payload alani = MAKINE degeri → numHam. Asagidaki `gridde(s)`
+          // ise DOSYA metnini okur (insan yazimi) ve `num` ile dogrudur —
+          // ayni satirda iki farkli girdi sinifi var, ikisi ayri fonksiyon.
+          const v = numHam(row?.[f]); if (v) gridDegerleri.add(v.toFixed(2));
         }
       }
       const gridde = (s) => { const v = num(s); return v != null && gridDegerleri.has(v.toFixed(2)); };
