@@ -65,6 +65,24 @@ async function main() {
       try { await wbG.xlsx.load(r.buffer as any); } catch (e: any) { acildi = false; h = e?.message ?? 'hata'; }
       check('EX5/GERÇEK ŞAHİNKUL çıktısı round-trip okunur', acildi, h);
 
+      // GS14c: TEK HESAP MODULU (Kapatma Turu ADIM 5) — ekrandaki toplam ile
+      // ciktidaki toplam AYNI kaynaktan gelmeli. Grid'in pinned-bottom kurali
+      // (ExcelGrid.updatePinnedBottom): ozet satirlari HARIC, matToplam+labToplam.
+      // Ikinci bir hesap yolu eklenirse (yuvarlama/kapsam farki) burasi kirilir.
+      {
+        let gridToplam = 0;
+        for (const sh of parsed.sheets as any[]) {
+          for (const row of (sh.rowData ?? []) as any[]) {
+            if (!row._isDataRow || row._ozet) continue;
+            gridToplam += (parseFloat(String(row._matToplam ?? '')) || 0)
+              + (parseFloat(String(row._labToplam ?? '')) || 0);
+          }
+        }
+        check('GS14c tek hesap modülü — grid toplamı ile çıktı toplamı BİREBİR aynı',
+          Math.abs(gridToplam - r.genelToplam) < 0.01,
+          `grid=${gridToplam.toFixed(2)} · çıktı=${r.genelToplam.toFixed(2)} · fark=${(gridToplam - r.genelToplam).toFixed(2)}`);
+      }
+
       if (acildi) {
         const sapan = wbG.worksheets.filter((w) => w.name !== 'GENEL TOPLAM').filter((w) => {
           const b: string[] = [];
@@ -255,6 +273,40 @@ async function main() {
     check('KF7b başlık imzası standart 9 kolon',
       tekil.length === 1 && tekil[0].split('##')[0] === STANDART_CIKTI_KOLONLARI.join('|'),
       tekil[0]?.split('##')[0]?.slice(0, 90) ?? '');
+  }
+
+  // ── KF6: SELF-CHECK — "eksik = 0" gorunur sekilde dogrulanir ────────────
+  // (Kapatma Turu ADIM 5) KF6'nin hicbir otomatik testi yoktu; kaynakta yalniz
+  // yorum satiri vardi (main.ts:56 · quotes.controller.ts:79/98). Cekirdek sart:
+  // girdideki HER fiyat degeri ciktida bulunur ve ozet bunu SAYIYLA soyler.
+  {
+    const r = await standartCiktiUret({ sheetsArr: SHEETS as any, birim: null });
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(r.buffer as any);
+    const tumDegerler: number[] = [];
+    wb.worksheets.forEach((w) => w.eachRow({ includeEmpty: false }, (row) =>
+      row.eachCell({ includeEmpty: false }, (c) => {
+        const v = c.value as any;
+        const n = typeof v === 'number' ? v : (v && typeof v === 'object' && typeof v.result === 'number' ? v.result : NaN);
+        if (!isNaN(n)) tumDegerler.push(n);
+      })));
+    const beklenen: { alan: string; deger: number }[] = [];
+    for (const sh of SHEETS) {
+      for (const r2 of sh.rowData as any[]) {
+        if (!r2._isDataRow || r2._ozet) continue;
+        for (const alan of ['_matBirim', '_matToplam', '_labBirim', '_labToplam']) {
+          const v = parseFloat(String(r2[alan] ?? ''));
+          if (!isNaN(v) && v !== 0) beklenen.push({ alan: `${sh.name}.${alan}`, deger: v });
+        }
+      }
+    }
+    const eksik = beklenen.filter((b) => !tumDegerler.some((v) => Math.abs(v - b.deger) < 0.005));
+    check('KF6 self-check: girdideki her fiyat değeri çıktıda var (eksik=0)',
+      beklenen.length >= 8 && eksik.length === 0,
+      `beklenen=${beklenen.length}, eksik=${eksik.length}${eksik.length ? ' → ' + eksik.slice(0, 3).map((e) => `${e.alan}=${e.deger}`).join(', ') : ''}`);
+    check('KF6b self-check özeti aktarılan değer SAYISINI taşır',
+      /\d+\s*değer aktarıldı/.test(r.ozet) && r.yazilan > 0,
+      `ozet="${r.ozet.slice(0, 60)}" · yazilan=${r.yazilan}`);
   }
 
   console.log(`\n${'='.repeat(60)}\nSTANDART CIKTI: ${pass} PASS, ${fail} FAIL\n${'='.repeat(60)}`);

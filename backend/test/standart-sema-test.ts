@@ -12,6 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as XLSX from 'xlsx';
 import { ExcelGridService } from '../src/modules/excel-grid/excel-grid.service';
+import { STANDART_KOLONLAR, STANDART_ROLLER } from '../src/modules/excel-grid/standart-sema';
 
 const FIX = path.resolve(__dirname, '../../test-fixtures/e2e');
 /** Turkce katlama — "YILDIZ".toLowerCase('tr') noktasiz ı verir, duz
@@ -251,6 +252,29 @@ async function main() {
     });
     check('KE20b aynı belirsiz başlık işçilik BİRİM FİYAT rolü de doğurmaz',
       sizanIsc.length === 0, `sızan satır=${sizanIsc.length}`);
+  }
+
+  // ── GS14: ROLLER SABIT ALANLARI GOSTERIR — colN YOK (ADIM 5) ────────────
+  // GS14'un otomatik testi yoktu. Kodda tanim: "roller artik SABIT alanlari
+  // gosterir — colN yok" (standart-sema.ts:53). Rol bir dosya kolonuna
+  // kacarsa (colN) grid hesabi ile cikti farkli hucreleri okur ve toplamlar
+  // ayrisir — KE/KF sinifinin kok nedeni buydu.
+  // NOT: gorev dosyasi GS14'u "tek hesap modulu" diye tanimliyor; PRD repoda
+  // olmadigi icin ikisi de sinanir (asagidaki + FE `pricing` sozlesmesi).
+  // ⚠ ILK DENEME TOTOLOJIYDI (31.07): "cikti rollerinde colN yok" diye olctum;
+  //    ama `standartlastir` rolleri HER KOSULDA STANDART_ROLLER'a esitliyor,
+  //    yani o olcum ihlali gostermiyordu — rolu bilerek `col4`e baglayip
+  //    kosunca test yine YESIL kaldi. Duyarsiz test = kanit degil, silindi.
+  //    Yerine gecen iki gercek sart: (GS14b) semanin kendi tutarliligi ve
+  //    (test:ex GS14c) grid toplami ile cikti toplaminin AYNI olmasi.
+  {
+    // GS14b: rol adlarinin isaret ettigi alanlar 13 kolonluk semada GERCEKTEN var
+    const semaAlanlari = new Set(STANDART_KOLONLAR.map((k) => k.field));
+    const yok = Object.entries(STANDART_ROLLER)
+      .filter(([, alan]) => !semaAlanlari.has(alan as string))
+      .map(([rol, alan]) => `${rol}→${alan}`);
+    check('GS14b her rol, 13 kolonluk şemada var olan bir alanı gösterir',
+      yok.length === 0, yok.length ? yok.join(' · ') : `${Object.keys(STANDART_ROLLER).length} rol eşleşti`);
   }
 
   console.log(`\n${'='.repeat(60)}\nSTANDART SEMA: ${pass} PASS, ${fail} FAIL\n${'='.repeat(60)}`);

@@ -24,6 +24,24 @@ function check(name: string, cond: boolean, detail?: string) {
   }
 }
 
+/** BILINEN ACIK: ne PASS ne FAIL — ayri sayilir, ozet tablosunda gorunur.
+ *  Amac: "yesil paket" gorunumu ugruna acigi gizlememek. Acik KAPANIRSA
+ *  (davranis dogruya donerse) burasi UYARI verir ki satir gercek assert'e
+ *  terfi ettirilsin — acik listesi bayatlamaz. */
+const acikListesi: string[] = [];
+function bilinenAcik(ad: string, metin: string, olmasiGereken: number) {
+  const info = extractSizeInfo(metin);
+  const dogruMu = !!info && info.value === olmasiGereken;
+  acikListesi.push(`${ad} — "${metin}" → ${JSON.stringify(info?.value ?? null)} (olması gereken: ${olmasiGereken})`);
+  if (dogruMu) {
+    failed++;
+    failures.push(`AÇIK KAPANMIŞ: "${ad}" artık doğru çalışıyor — gerçek assert'e çevir (bilinenAcik → expectSize)`);
+    console.log(`FAIL: AÇIK KAPANMIŞ — "${ad}" artık doğru; bilinenAcik satırını expectSize yap`);
+  } else {
+    console.log(`AÇIK: ${ad} — "${metin}" → ${info?.value ?? 'null'} (olması gereken ${olmasiGereken})`);
+  }
+}
+
 function expectSize(text: string, source: SizeInfo['source'] | null, value?: number) {
   const info = extractSizeInfo(text);
   if (source === null) {
@@ -137,8 +155,49 @@ check('isSizeTag dn25', isSizeTag('dn25'));
 check('isSizeTag od-63', isSizeTag('od-63'));
 check('isSizeTag celik=false', !isSizeTag('celik'));
 
+// ══ SD4 — MIRAS + CAP AYRISTIRMA (Kapatma Turu ADIM 5, 31.07.2026) ══════
+// SD4'un o gune kadar HIC otomatik testi yoktu; "yapildi" denmesinin tek
+// dayanagi FAZ0 raporundaki elle olcumdu. Surukle-doldur hedef satirin capini
+// bu fonksiyondan okur — cap yanlis cozulurse satir YANLIS fiyat alir.
+// Sinanan bicimler: unicode kesirler · bilesik kesir · tire ayrac · DN · mm.
+{
+  const sd4 = (metin: string, src: SizeInfo['source'] | null, deger?: number) => expectSize(metin, src, deger);
+  // Unicode tek kesirler
+  sd4('½"', 'inch',0.5);
+  sd4('¾"', 'inch',0.75);
+  sd4('¼"', 'inch',0.25);
+  sd4('⅛"', 'inch',0.125);
+  sd4('⅜"', 'inch',0.375);
+  sd4('⅝"', 'inch',0.625);
+  sd4('⅞"', 'inch',0.875);
+  // Bilesik: unicode · bosluklu · tireli — ucu de AYNI degeri vermeli
+  sd4('1¼"', 'inch',1.25);
+  sd4('1 1/4"', 'inch',1.25);
+  // ⚠ BILINEN ACIK (31.07 olculdu): "1-1/4\"" → 0.25 cikiyor (1.25 olmali).
+  // Bilesik kesir deseni ayrac olarak YALNIZ boslugu taniyor:
+  //   /\b(\d+)\s+(\d+)\/(\d+)/   (conversion.ts:168)
+  // `\s` yerine `[\s-]` yazmak tireyi cozer AMA urun kodlarini bozma riski
+  // tasir ("… 10217-1/2" → 0.5 yerine 1.5). Bu yuzden TEK BASINA duzeltilmedi;
+  // karar kullaniciya birakildi. Acik GORUNUR kalsin diye asagida ayri
+  // sayilir — PASS degildir, FAIL de degildir.
+  bilinenAcik('1-1/4" tireli bileşik kesir', '1-1/4"', 1.25);
+  sd4('2½"', 'inch',2.5);
+  sd4('2 1/2"', 'inch',2.5);
+  // Gercek satir baglami (SAHINKUL/YILDIZ bicimi)
+  sd4('Galvaniz Çelik Boru ¾"', 'inch',0.75);
+  sd4('Su ve Yangın Tesisat Borusu 1 1/4" DN32 Dış Cap 42.4', 'dn', 32);
+  // DN · mm
+  sd4('DN 32', 'dn', 32);
+  sd4('Ø32', 'mm', 32);
+  sd4('21.3mm', 'mm', 21.3);
+}
+
 console.log(`\n${'='.repeat(60)}`);
-console.log(`SONUC: ${passed} PASS, ${failed} FAIL`);
+console.log(`SONUC: ${passed} PASS, ${failed} FAIL${acikListesi.length ? `, ${acikListesi.length} BILINEN ACIK` : ''}`);
+if (acikListesi.length) {
+  console.log('\nBILINEN ACIKLAR (PASS DEGIL — kapanmasi gereken davranis):');
+  acikListesi.forEach((a) => console.log('  ⚠ ' + a));
+}
 console.log('='.repeat(60));
 if (failures.length > 0) {
   console.log('\nFAILURES:');
