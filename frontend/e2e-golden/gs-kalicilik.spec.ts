@@ -193,20 +193,26 @@ test('GS6 · GS8 · GS9 — seçici, kolon genişliği kalıcılığı, sola sab
   fs.writeFileSync(path.join(dir, 'rapor.json'), JSON.stringify(rapor, null, 1));
 });
 
-/* GS6b — BİLİNEN AÇIK (31.07.2026 ölçüldü)
+/* GS6b — KAPANDI (PK8, 31.07.2026). Kök neden aşağıda.
  *
  * Kriter: "Malzeme Adı sütunu" seçicisi değişince grid ANINDA yeniden dolar.
- * Durum : KARŞILANMIYOR. Trafo sayfasında seçici col1 → col3 yapıldığında
- *         Malzeme Adı sütunu DEĞİŞMİYOR (aynı satırlar, aynı metinler).
- * Not   : Durum mantığı DOĞRU yazılmış — `handleNameFieldChange`
- *         (quotes/new/page.tsx:664-682) her satırın `_ad` değerini
- *         `_kaynak[newField]`den yeniden yazıyor. Ekrana yansımamasının
- *         sebebi BU TURDA ARAŞTIRILMADI (muhtemel aday: AG-Grid'in satır
- *         modelini tazelememesi — doğrulanmadı, tahmin olarak yazılmıştır).
  *
- * `test.fail()`: bu test BAŞARISIZ olmalı. Açık kapanırsa Playwright
- * "expected to fail but passed" der ve bu blok gerçek assert'e terfi eder —
- * açık listesi bayatlamaz, yeşil görünüp gizlenmez.
+ * KÖK NEDEN (ölçüldü, tahmin değil): satırların İKİ ayrı kaynağı vardı ve
+ * yalnız biri güncelleniyordu.
+ *   1. `handleNameFieldChange` (quotes/new/page.tsx:664-681) `_ad`'ı doğru
+ *      yeniden yazıyordu — backend fixture'ıyla ölçüldü: Trafo sayfasında
+ *      col1 → col3 geçişinde 21 satırda değer GERÇEKTEN değişiyor.
+ *   2. Ama grid rowData'yı oradan okumuyordu:
+ *          page.tsx:1663  rowData: liveRowDataBySheet[active.index] ?? active.rowData
+ *      `liveRowDataBySheet` yüklemenin hemen ardından TÜM sayfalar için
+ *      dolduruluyor (page.tsx:345-347) → `active.rowData` fallback'i hiç
+ *      çalışmıyor. Canlı satırlar tazelenmiş satırları GÖLGELİYORDU.
+ *
+ * FIX: `handleNameFieldChange` artık `setLiveRowDataBySheet` ile gölge
+ * kaynağı da tazeliyor. Aynı bug sınıfı 24.07'de kalem eklemede yaşanmıştı
+ * (`liveRows` race → `liveRowsRef`); kural: satır listesini değiştiren HER
+ * işlem `liveRowDataBySheet`i de güncellemek zorundadır.
+ * Kaynak-seviyesi kilit: `frontend/lib/gs6b-golge-kurali.test.ts`.
  */
 /* GS8b — KOLON GENİŞLİĞİ KALICILIĞI (asıl kriter, kullanıcının şikâyeti)
  *
@@ -260,8 +266,7 @@ test('GS8b — kolon genişliği kaydedilir ve yeniden açılışta korunur', as
     .toBeLessThanOrEqual(6);
 });
 
-test('GS6b — BİLİNEN AÇIK: seçici değişince grid yeniden dolmuyor', async ({ page }) => {
-  test.fail();
+test('GS6b — seçici değişince grid YENİDEN DOLAR (PK8)', async ({ page }) => {
   await page.addInitScript((auth) => {
     localStorage.setItem('token', auth.token);
     localStorage.setItem('user', JSON.stringify(auth.user));

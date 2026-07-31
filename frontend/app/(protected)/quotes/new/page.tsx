@@ -679,6 +679,34 @@ export default function NewQuotePage() {
       sheets: prev.sheets.map((s) => (s.index === activeSheetIndex ? yenidenDoldur(s) : s)),
     } : prev);
     setExcelGridData((prev) => (prev ? yenidenDoldur(prev) : prev));
+
+    // ── GS6b KOK NEDEN (PK8, 31.07.2026) ────────────────────────────────────
+    // Yukaridaki iki setState DOGRUYDU ve `_ad` gercekten yeniden yaziliyordu
+    // (olcum: backend fixture'iyla 21 satirda deger degisiyor). Ama EKRAN
+    // degismiyordu, cunku grid rowData'yi BURADAN okumuyor:
+    //
+    //     page.tsx:1663  rowData: liveRowDataBySheet[active.index] ?? active.rowData
+    //
+    // `liveRowDataBySheet` yuklemenin hemen ardindan TUM sayfalar icin
+    // dolduruluyor (page.tsx:345-347) → `active.rowData` fallback'i HIC
+    // calismiyor. Yani canli satirlar, tazelenen satirlari GOLGELIYOR.
+    // Satirlarin iki ayri kaynagi var ve yalniz biri guncelleniyordu.
+    //
+    // Ayni bug SINIFI daha once yasandi: kalem ekleme `liveRows` STATE race'i
+    // (24.07, `liveRowsRef` ile cozulmustu). Kural: satir listesini degistiren
+    // HER islem `liveRowDataBySheet`i de guncellemek ZORUNDA.
+    setLiveRowDataBySheet((prev) => {
+      const mevcut = prev[activeSheetIndex];
+      if (!mevcut?.length) return prev; // golge yok — fallback zaten dogruyu okur
+      const tazelenmis = mevcut.map((r: any) => {
+        if (!r?._kaynak) return r;
+        const ad = String(r._kaynak?.[newField] ?? '').trim();
+        const miktar = String(r?._miktar ?? '').trim();
+        const birim = String(r?._birim ?? '').trim();
+        return { ...r, _ad: ad, _isDataRow: !!ad && (!!birim || (!!miktar && miktar !== '0')) };
+      });
+      return { ...prev, [activeSheetIndex]: tazelenmis };
+    });
   }
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
