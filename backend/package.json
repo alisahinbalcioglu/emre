@@ -9,6 +9,7 @@
     "start:prod": "node dist/main",
     "lint": "tsc --noEmit",
     "test:regression": "ts-node test/regression-all.ts",
+    "test:tam": "ts-node test/tam-zincir.ts",
     "test:regression:db": "ts-node test/matching-regression.ts",
     "test:conversion": "ts-node test/conversion-test.ts",
     "test:matching": "ts-node test/matching-unit-test.ts",

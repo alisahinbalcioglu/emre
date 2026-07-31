@@ -67,6 +67,39 @@ npm run start              # production server
 npm run lint               # next lint
 ```
 
+## Test zinciri
+
+**Tek komut — her seyi surer** (backend dizininden):
+
+```bash
+npm run test:tam
+```
+
+Ucunu sirayla kosar ve tek ozet tablo basar:
+
+| Halka | Ne kosar | On kosul |
+|---|---|---|
+| Backend regresyon | `test:regression` (Z1-Z5, 17 suite) | DB paketleri icin `PG_REGRESSION=1` |
+| Frontend birim | `npx vitest run` | yok |
+| E2E ALTIN YOL | `test:e2e-golden` (Playwright + `verify.mjs`) | yerel yigin ayakta olmali |
+
+**SKIP, PASS DEGILDIR.** Yerel yigin ayakta degilse E2E halkasi sessizce
+atlanmaz — tabloya SKIP olarak, sebebi ve baslatma adimlariyla yazilir.
+
+E2E halkasi icin yerel yigin:
+
+```bash
+# 1) PostgreSQL 5432 ayakta olmali
+# 2) backend
+npm run build && node dist/main            # :3001
+# 3) frontend — API adresi LOCALHOST olmali, yoksa E2E canliya yazar
+#    frontend/.env.local: NEXT_PUBLIC_API_URL=http://localhost:3001/api
+npm run build && npx next start -p 3005    # :3005
+```
+
+Yalniz bir halkayi surmek icin: `npm run test:regression` (backend) ·
+`npx vitest run` (frontend) · `npm run test:e2e-golden` (frontend).
+
 ## Proje Kurallari
 
 Detayli bilgi icin [`CLAUDE.md`](CLAUDE.md) — ozet:
