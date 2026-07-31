@@ -8,7 +8,12 @@
  *   B.2  aday adi 60 karakterde kesiliyor; ayirt edici alan (DN) gorunmuyor
  */
 import { describe, it, expect } from 'vitest';
-import { niteliklerdenBaglam, adayEtiketleri } from './aday-ayirt-edicilik';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import {
+  niteliklerdenBaglam, adayEtiketleri,
+  popupGenisligiOku, popupGenisligiYaz, PU4_ANAHTAR, PU4_VARSAYILAN, PU4_ASGARI,
+} from './aday-ayirt-edicilik';
 
 /** YILDIZ ENTEGRE KARTEPE · Yangın.Pompa.Odası R47-R57 (gercek dosya) */
 const YILDIZ_SATIRLARI = [
@@ -88,5 +93,69 @@ describe('PU2/PU3 — aday listesinde iki satır asla aynı görünemez', () => 
     ];
     const etiketler = adayEtiketleri(ikiz);
     expect(etiketler.some((e) => e.veriSorunu), 'aynı ad + farklı fiyat = veri sorunu işareti').toBe(true);
+  });
+});
+
+/* PU4 — popup genişlik tercihi GERÇEKTEN hatırlanır.
+ *
+ * ONCE KIRMIZI (31.07): ExcelGrid `metaprice.adayPopupGenislik` anahtarını
+ * yalnızca OKUYORDU; codebase'de o anahtara yazan TEK BİR SATIR yoktu
+ * (`grep adayPopupGenislik` → 1 eşleşme, getItem). Yani kullanıcı popup'ı
+ * genişletse de bir sonraki popup hep varsayılan genişlikte açılıyordu.
+ * Bu blok, yazma halkasının sözleşmesidir. */
+describe('PU4 — aday popup genişlik tercihi', () => {
+  const sahteDepo = (baslangic: Record<string, string> = {}) => {
+    const kv = { ...baslangic };
+    return {
+      kv,
+      getItem: (k: string) => (k in kv ? kv[k] : null),
+      setItem: (k: string, v: string) => { kv[k] = v; },
+    };
+  };
+
+  it('PU4a kayıt yokken varsayılan genişlik döner', () => {
+    expect(popupGenisligiOku(sahteDepo())).toBe(PU4_VARSAYILAN);
+  });
+
+  it('PU4b yazılan genişlik bir sonraki okumada aynen döner (asıl eksik halka)', () => {
+    const d = sahteDepo();
+    expect(popupGenisligiYaz(880, d), 'geçerli genişlik kaydedilmeli').toBe(true);
+    expect(d.kv[PU4_ANAHTAR], 'anahtara GERÇEKTEN yazılmalı').toBe('880');
+    expect(popupGenisligiOku(d)).toBe(880);
+  });
+
+  it('PU4c ondalık genişlik (getBoundingClientRect) yuvarlanarak saklanır', () => {
+    const d = sahteDepo();
+    popupGenisligiYaz(723.4, d);
+    expect(popupGenisligiOku(d)).toBe(723);
+  });
+
+  it('PU4d asgarinin altı kaydedilmez — popup okunamaz hale gelmez', () => {
+    const d = sahteDepo({ [PU4_ANAHTAR]: '900' });
+    expect(popupGenisligiYaz(PU4_ASGARI - 1, d)).toBe(false);
+    expect(popupGenisligiOku(d), 'önceki geçerli tercih korunur').toBe(900);
+  });
+
+  it('PU4e bozuk/dar kayıt varsayılana düşer', () => {
+    expect(popupGenisligiOku(sahteDepo({ [PU4_ANAHTAR]: 'abc' }))).toBe(PU4_VARSAYILAN);
+    expect(popupGenisligiOku(sahteDepo({ [PU4_ANAHTAR]: '120' }))).toBe(PU4_VARSAYILAN);
+  });
+
+  it('PU4f depo yoksa (SSR / private mode) çökmez', () => {
+    expect(popupGenisligiOku(null)).toBe(PU4_VARSAYILAN);
+    expect(popupGenisligiYaz(800, null)).toBe(false);
+  });
+
+  /* PU4g — BAGLANTI KAPISI. Yukaridaki testler yalniz yardimciyi sinar;
+   * ExcelGrid yazma cagrisini kaybederse hepsi YESIL kalir ve tercih yine
+   * hatirlanmaz (bu tuzagin adi: "testler yesil, gercek kirik"). Bu yuzden
+   * popup'in olcum halkasi kaynak duzeyinde de dogrulanir. */
+  it('PU4g ExcelGrid popup genişliğini gerçekten ölçüp kaydediyor', () => {
+    const kaynak = fs.readFileSync(path.join(__dirname, 'ExcelGrid.tsx'), 'utf8');
+    expect(kaynak, 'popup okuma halkasi').toContain('popupGenisligiOku(');
+    expect(kaynak, 'popup YAZMA halkasi — eksikse tercih hic hatirlanmaz').toContain('popupGenisligiYaz(');
+    expect(kaynak, 'CSS resize DOM olayi uretmez → ResizeObserver sart')
+      .toMatch(/new ResizeObserver\([\s\S]{0,200}?popupGenisligiYaz\(/);
+    expect(kaynak, 'olculecek elemana ref bagli olmali').toContain('ref={popupRef}');
   });
 });

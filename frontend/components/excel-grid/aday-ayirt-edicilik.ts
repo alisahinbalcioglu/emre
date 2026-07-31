@@ -136,3 +136,39 @@ export function adayEtiketleri(adaylar: AdayGirdi[]): AdayEtiketi[] {
     };
   });
 }
+
+// ── PU4: aday popup genislik tercihi ────────────────────────────────────
+// KOK NEDEN (31.07): ExcelGrid anahtari yalnizca OKUYORDU, yazan tek satir
+// yoktu — kullanici popup'i genisletse de bir sonraki popup yine 520px
+// aciliyordu. Okuma/yazma buraya alindi ki sozlesme sinanabilsin.
+
+export const PU4_ANAHTAR = 'metaprice.adayPopupGenislik';
+export const PU4_VARSAYILAN = 520;
+/** Bundan dar bir tercih kaydedilmez (popup okunamaz hale gelirdi). */
+export const PU4_ASGARI = 360;
+
+type Depo = Pick<Storage, 'getItem' | 'setItem'>;
+const varsayilanDepo = (): Depo | null =>
+  (typeof window === 'undefined' ? null : window.localStorage);
+
+/** Kayitli genislik tercihi; yoksa/bozuksa/dar ise varsayilan. */
+export function popupGenisligiOku(depo: Depo | null = varsayilanDepo()): number {
+  if (!depo) return PU4_VARSAYILAN;
+  try {
+    const k = Number(depo.getItem(PU4_ANAHTAR));
+    return Number.isFinite(k) && k >= PU4_ASGARI ? k : PU4_VARSAYILAN;
+  } catch {
+    return PU4_VARSAYILAN; // private mode
+  }
+}
+
+/** Tercihi kaydeder. Yazildiysa true — asgarinin alti SESSIZCE atilmaz, false doner. */
+export function popupGenisligiYaz(genislik: number, depo: Depo | null = varsayilanDepo()): boolean {
+  if (!depo || !Number.isFinite(genislik) || genislik < PU4_ASGARI) return false;
+  try {
+    depo.setItem(PU4_ANAHTAR, String(Math.round(genislik)));
+    return true;
+  } catch {
+    return false; // private mode / kota
+  }
+}

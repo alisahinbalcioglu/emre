@@ -83,6 +83,31 @@ async function main() {
       `İcmal.isOzet=${icmal?.isOzet}, özet satır=${ozetSatir}, detay sayfada özet işareti=${detayOzetli}`);
   }
 
+  // GS4b — TEKLIF GENELI, dosyanin KENDI icmal toplamiyla birebir ayni olmali.
+  // Sabit sayi YOK: beklenen deger dosyanin İcmal sayfasindaki "Genel Toplam"
+  // satirindan okunur, gerceklesen ise ExcelGrid'in pinned-bottom hesabinin
+  // AYNISIYLA (materialTotal + laborTotal, ozet satirlari HARIC) uretilir.
+  // Bu kontrol hem cift saymayi (ozet sayfanin toplama girmesi) hem de kayip
+  // satiri yakalar. 31.07 olcumu: 62.043.700 = 62.043.700 (fark 0).
+  {
+    const icmal: any = yildiz.sheets.find((s) => katla(s.name).includes('icmal'));
+    const icmalGenel = ((icmal?.rowData ?? []) as any[])
+      .filter((r) => /genel\s*toplam/i.test(String(r._ad ?? '')))
+      .reduce((m, r) => Math.max(m, Number(r._toplam) || 0), 0);
+    const say = (v: any) => parseFloat(String(v ?? '')) || 0;
+    let teklifGeneli = 0;
+    for (const sh of yildiz.sheets as any[]) {
+      const rol: any = sh.columnRoles ?? {};
+      for (const r of (sh.rowData ?? []) as any[]) {
+        if (!r._isDataRow || r._ozet) continue;
+        teklifGeneli += say(r[rol.materialTotalField]) + say(r[rol.laborTotalField]);
+      }
+    }
+    check('GS4b teklif geneli dosyanın İcmal toplamıyla birebir aynı',
+      icmalGenel > 0 && Math.abs(teklifGeneli - icmalGenel) < 0.01,
+      `teklif=${teklifGeneli.toLocaleString('tr-TR')} · İcmal=${icmalGenel.toLocaleString('tr-TR')} · fark=${(teklifGeneli - icmalGenel).toLocaleString('tr-TR')}`);
+  }
+
   // GS1/GS2: HER sayfada AYNI 13 kolon, ayni sirada
   const semaHatalari: string[] = [];
   const sizanKolonlar: string[] = [];

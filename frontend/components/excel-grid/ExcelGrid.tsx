@@ -16,7 +16,7 @@ import { fillDown } from './fill-down';
 import { joinMaterialText } from '@/lib/parse-material-text';
 import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, yukariYuvarla, etkinMiktar } from '@/lib/pricing';
 import { hasSizeExpression, isSelfSufficientRow } from './build-material-context';
-import { niteliklerdenBaglam, adayEtiketleri } from './aday-ayirt-edicilik';
+import { niteliklerdenBaglam, adayEtiketleri, popupGenisligiOku, popupGenisligiYaz } from './aday-ayirt-edicilik';
 import httpApi from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 import { confirm } from '@/hooks/use-confirm';
@@ -190,12 +190,21 @@ function BrandDropdown(props: ICellRendererParams & {
   const headerRef = React.useRef<string | null>(null);
   // V7: 8+ aday oldugunda "tumunu gor" acildi mi
   const [showAllCandidates, setShowAllCandidates] = React.useState(false);
-  // PU4: kullanicinin popup genislik tercihi oturum boyunca hatirlanir
-  const [popupGenislik] = React.useState<number>(() => {
-    if (typeof window === 'undefined') return 520;
-    const k = Number(window.localStorage.getItem('metaprice.adayPopupGenislik'));
-    return Number.isFinite(k) && k >= 360 ? k : 520;
-  });
+  // PU4: kullanicinin popup genislik tercihi oturum boyunca hatirlanir.
+  // EKSIK HALKA (31.07): anahtar yalnizca OKUNUYOR, yazan tek satir YOKTU —
+  // kullanici popup'i genisletse de bir sonraki popup yine varsayilan
+  // genislikte aciliyordu. CSS `resize: both` DOM olayi uretmedigi icin yeni
+  // genislik ResizeObserver ile yakalanip kaydedilir (sozlesme: PU4_* testleri).
+  const [popupGenislik] = React.useState<number>(() => popupGenisligiOku());
+  const popupRef = React.useRef<HTMLDivElement | null>(null);
+  const popupAcik = !!(candidates && candidates.length > 0 && popupPos);
+  React.useEffect(() => {
+    const el = popupRef.current;
+    if (!popupAcik || !el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => popupGenisligiYaz(el.getBoundingClientRect().width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [popupAcik]);
   // K6 zincirleme secim: 1. soru = varyant (label grubu), 2. soru = alt tip
   // (ayni label'da birden fazla urun — "Tip A / Tip B"). Fiyat ancak tek
   // urune inilince yazilir.
@@ -524,7 +533,7 @@ function BrandDropdown(props: ICellRendererParams & {
         variant="brand"
       />
       {candidates && candidates.length > 0 && popupPos && typeof document !== 'undefined' && createPortal(
-        <div style={{
+        <div ref={popupRef} data-testid="aday-popup" style={{
           position: 'fixed',
           top: popupPos.top,
           left: popupPos.left,
