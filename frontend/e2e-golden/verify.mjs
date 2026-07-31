@@ -38,6 +38,31 @@ const num = (s) => {
   const f = parseFloat(m);
   return isNaN(f) ? null : f;
 };
+/** MAKINE degeri (payload/grid alanlari) — nokta HER ZAMAN ondalik.
+ *
+ *  ⚠ 31.07 KOK NEDEN: yukaridaki `num` "nokta + tam 3 rakam + son" gorunce
+ *  onu TR BINLIK ayirici sanip atiyor. Bu kural KULLANICIYA GOSTERILEN metin
+ *  icin dogru ("1.234" = bin ikiyuz otuz dort), ama payload degerleri JS'in
+ *  urettigi makine dizeleridir ("134534.40000000002", "323308.125") ve orada
+ *  nokta ONDALIKTIR. Ayrimi yapmayinca:
+ *      "323308.125" → 323.308.125  (323 BIN yerine 323 MILYON)
+ *      "35.240"     → 35240        (35,24 yerine)
+ *      "50.000"     → 50000        (50,0 yerine) → "1×50000≠29400"
+ *  Kalan 3 FAIL'in (03-bursa C3+C5, 06-skychem C3) TEK kok nedeni buydu. */
+const numHam = (s) => {
+  if (typeof s === 'number') return isFinite(s) ? s : null;
+  const t = String(s ?? '').replace(/[₺$€\s]/g, '').trim();
+  if (!t) return null;
+  // ⚠ METIN FIYAT ALANINDA OLABILIR. 03-bursa Elektrik'te `_matBirim` ürün
+  // tarifi tasiyor: "35x240mm Üç bölmeli döşeme kanalı". Rakamlari suzen bir
+  // parser bundan 35240 uretiyor ve "ciktida yok" diye HAYALET kayip veriyor.
+  // Kural: alan SAYI GIBI DEGILSE sayi degildir.
+  if (!/^-?[\d.,]+$/.test(t)) return null;
+  // Virgul varsa kullanici bicimi: virgul ondalik, noktalar binlik
+  const m = t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t;
+  const f = parseFloat(m);
+  return isNaN(f) ? null : f;
+};
 const errCells = (ws) => {
   let n = 0;
   ws.eachRow({ includeEmpty: false }, (row) => row.eachCell({ includeEmpty: false }, (c) => {
@@ -147,13 +172,13 @@ const ekranGenelToplam = (text) => {
 /** Satirin malzeme/iscilik birim fiyati. DIKKAT: `_matNetPrice ?? _matBirim`
  *  YANLIS — _matNetPrice cogu satirda 0 gelir (nullish DEGIL) ve gercek fiyati
  *  tasiyan _matBirim hic okunmaz. Once gorunen deger, sonra net. */
-const matBirim = (row) => num(row?._matBirim) || num(row?._matNetPrice);
-const labBirim = (row) => num(row?._labBirim) || num(row?._labNetPrice);
+const matBirim = (row) => numHam(row?._matBirim) || numHam(row?._matNetPrice);
+const labBirim = (row) => numHam(row?._labBirim) || numHam(row?._labNetPrice);
 
 /** UY2 etkinMiktar: quantity saf sayi degilse unit icindeki sayi miktar. */
 function etkinMiktar(row, qF, uF) {
   const q = row?.[qF];
-  if (q != null && /^-?[0-9.,]+$/.test(String(q).trim()) && String(q).trim() !== '') return num(q);
+  if (q != null && /^-?[0-9.,]+$/.test(String(q).trim()) && String(q).trim() !== '') return numHam(q);
   const u = row?.[uF];
   const m = String(u ?? '').match(/-?[\d.,]+/);
   return m ? num(m[0]) : null;
@@ -229,6 +254,7 @@ for (const slug of slugs.sort()) {
   // ── C3: satir hesap + genel toplam (bagimsiz yeniden hesap, payload'dan)
   {
     let satirHata = 0, kontrol = 0, ilkHata = '';
+    let dosyadanSapan = 0; // dosyadan gelen (bizim hesaplamadigimiz) fiyat cifti
     const sheets = payload?.sheets ?? [];
     // Ekranda GENEL TOPLAM SAYFA BAZINDA gosterilir (aktif sekmenin toplami),
     // payload ise TUM sayfalari tasir → tek Σ ile karsilastirmak yanlisti.
@@ -247,21 +273,39 @@ for (const slug of slugs.sort()) {
         if (!row?._isDataRow || row?._ozet) continue;
         const mik = etkinMiktar(row, qF, uF) ?? 1;
         const bp = matBirim(row);
-        const tp = num(row._matToplam);
+        const tp = numHam(row._matToplam);
+        // ⚠ TOPLAM, CARPIM KONTROLUNDEN BAGIMSIZ TOPLANIR (31.07).
+        // Eskiden `matT += tp` YALNIZ `bp && tp` dalinin icindeydi: birim
+        // fiyati olmayan ama tutari olan satirlar toplama HIC girmiyordu.
+        // Boylece "hesap" kismi bir toplam oluyor, ekranin TAM toplamiyla
+        // karsilastirilinca sahte SAPMA veriyordu (Mekanik 21.617.198 vs
+        // 74.350.566). Uygulama ve cikti tum veri satirlarini toplar.
+        // ⚠ CARPIM KONTROLU YALNIZ **BIZIM** HESABIMIZI SINAR (31.07).
+        // `_matKaynak/_labKaynak === 'dosya'` ise deger MUSTERININ dosyasindan
+        // gelmistir; orada birim × miktar = toplam sart DEGILDIR. 06-skychem
+        // R26/R74 "Support imalatı & Askılama": birim 50.000, toplam 29.400
+        // (goturu bedel). Bunu bizim aritmetik hatamiz saymak YANLIS kirmizi.
+        // Sessizce atlanmaz — kanit metninde sayisi gorunur.
         if (bp && tp) {
-          kontrol++;
-          if (Math.abs(mik * bp - tp) > 0.05 * Math.max(1, tp)) {
-            satirHata++;
-            if (!ilkHata) ilkHata = `satir${row._rowIdx}: ${mik}×${bp}≠${tp}`;
+          if (row._matKaynak === 'dosya') dosyadanSapan++;
+          else {
+            kontrol++;
+            if (Math.abs(mik * bp - tp) > 0.05 * Math.max(1, tp)) {
+              satirHata++;
+              if (!ilkHata) ilkHata = `satir${row._rowIdx}: ${mik}×${bp}≠${tp}`;
+            }
           }
-          matT += tp;
         }
-        const lbp = labBirim(row), lt = num(row._labToplam);
+        if (tp) matT += tp;
+        const lbp = labBirim(row), lt = numHam(row._labToplam);
         if (lbp && lt) {
-          kontrol++;
-          if (Math.abs(mik * lbp - lt) > 0.05 * Math.max(1, lt)) {
-            satirHata++;
-            if (!ilkHata) ilkHata = `satir${row._rowIdx} (isc): ${mik}×${lbp}≠${lt}`;
+          if (row._labKaynak === 'dosya') dosyadanSapan++;
+          else {
+            kontrol++;
+            if (Math.abs(mik * lbp - lt) > 0.05 * Math.max(1, lt)) {
+              satirHata++;
+              if (!ilkHata) ilkHata = `satir${row._rowIdx} (isc): ${mik}×${lbp}≠${lt}`;
+            }
           }
         }
         if (lt) labT += lt;
@@ -304,7 +348,7 @@ for (const slug of slugs.sort()) {
       set('C3', null, 'fiyatlı satır yok — hesap kontrolü uygulanamaz (eşleşme durumu C2 ve popups.json\'da)');
     } else {
       set('C3', satirHata === 0 && sapan.length === 0,
-        `fiyatlı hücre-çifti=${kontrol}, hesap-hatası=${satirHata}${ilkHata ? ' (' + ilkHata + ')' : ''}; sayfa hesap/ekran → ${detay}${sapan.length ? ` · SAPAN: ${sapan.map((s) => s.ad).join(',')}` : ''}; Σ=${toplamHesap.toFixed(1)}`);
+        `fiyatlı hücre-çifti=${kontrol}, hesap-hatası=${satirHata}${dosyadanSapan ? `, dosyadan ${dosyadanSapan} çift (çarpım sınanmaz)` : ''}${ilkHata ? ' (' + ilkHata + ')' : ''}; sayfa hesap/ekran → ${detay}${sapan.length ? ` · SAPAN: ${sapan.map((s) => s.ad).join(',')}` : ''}; Σ=${toplamHesap.toFixed(1)}`);
     }
   }
 
@@ -435,7 +479,7 @@ for (const slug of slugs.sort()) {
         const kayipDeger = [];
         for (const r of satirlar) {
           for (const f of alanlar) {
-            const v = num(r?.[f]);
+            const v = numHam(r?.[f]);
             if (v && !varMi(v)) kayipDeger.push(`${f}=${v}`);
           }
         }
