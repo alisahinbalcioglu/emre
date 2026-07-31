@@ -5,9 +5,13 @@
 import { test } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
+// @ts-expect-error — .mjs yardimci (tip bildirimi yok)
+import { artefaktKok } from './artefakt-dizini.cjs';
 
 const FIXTURES = path.resolve(__dirname, '../../test-fixtures/e2e');
-const OUT = path.resolve(__dirname, '../e2e-artifacts/faz0-gs7');
+// PK10: damgali dizin altinda alt-klasor
+const OUT = path.join(artefaktKok(), 'faz0-gs7');
+fs.mkdirSync(OUT, { recursive: true });
 const AUTH = JSON.parse(fs.readFileSync(path.join(__dirname, '.auth.json'), 'utf8'));
 const katla = (s: string) => s.normalize('NFC')
   .replace(/[İIı]/g, 'i').replace(/[Şş]/g, 's').replace(/[Ğğ]/g, 'g')

@@ -7,6 +7,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+// PK10: damgayi ERKEN sabitle — global-setup ANA iSLEMDE, worker'lardan ONCE
+// kosar; `damga()` degeri `process.env.E2E_DAMGA`ya yazar ve worker'lar miras
+// alir. Boylece tum spec'ler AYNI dizine yazar.
+import { damga, artefaktKok } from './artefakt-dizini.cjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BACKEND = path.resolve(__dirname, '../../backend');
@@ -25,7 +29,8 @@ export default async function globalSetup() {
     tier: 'pro',
   };
   const token = jwt.sign({ sub: USER.id, email: USER.email, role: USER.role }, m[1], { expiresIn: '24h' });
-  fs.mkdirSync(path.join(__dirname, '../e2e-artifacts/golden'), { recursive: true });
+  console.log(`[golden-setup] artefakt damgasi: ${damga()}`);
+  artefaktKok();
   fs.writeFileSync(path.join(__dirname, '.auth.json'), JSON.stringify({ token, user: USER }, null, 2));
 
   // 2) Yigin sagligi — backend + frontend ayakta olmali

@@ -8,10 +8,14 @@
 import { test, expect, Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
+// @ts-expect-error — .mjs yardimci (tip bildirimi yok)
+import { artefaktKok } from './artefakt-dizini.cjs';
 import { harvestGrid, scrollRowIntoView } from './helpers';
 
 const FIXTURES = path.resolve(__dirname, '../../test-fixtures/e2e');
-const OUT = path.resolve(__dirname, '../e2e-artifacts/bolum-f');
+// PK10: damgali dizin altinda alt-klasor
+const OUT = path.join(artefaktKok(), 'bolum-f');
+fs.mkdirSync(OUT, { recursive: true });
 const AUTH = JSON.parse(fs.readFileSync(path.join(__dirname, '.auth.json'), 'utf8'));
 
 /** PRD §A.1 — degismez 13 kolon */

@@ -14,9 +14,12 @@
 import { test, expect, Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
+// @ts-expect-error — .mjs yardimci (tip bildirimi yok)
+import { artefaktKok } from './artefakt-dizini.cjs';
 
 const FIXTURES = path.resolve(__dirname, '../../test-fixtures/e2e');
-const ARTIFACTS = path.resolve(__dirname, '../e2e-artifacts/golden');
+// PK10: her kosum kendi damgali dizinine yazar (uzerine yazma yok)
+const ARTIFACTS = artefaktKok();
 const AUTH = JSON.parse(fs.readFileSync(path.join(__dirname, '.auth.json'), 'utf8'));
 const DOSYA = 'YILDIZ ENTEGRE KARTEPE - Yangın Tesisatı.xlsx';
 

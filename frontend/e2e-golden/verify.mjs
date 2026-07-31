@@ -11,13 +11,32 @@ import { createRequire } from 'node:module';
 // yaziliydi. Artik `lib/sayi-ayristirma.test.ts` hem davranisi hem KAYNAGI
 // (payload alani num() ile okunuyor mu) kilitliyor.
 import { num, numHam } from './sayi-ayristirma.mjs';
+// PK10: artefaktlar artik damgali dizinde (pano kalem 44).
+import { GOLDEN_KOK, damga } from './artefakt-dizini.cjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const requireB = createRequire(path.resolve(__dirname, '../../backend/package.json'));
 const ExcelJS = requireB('exceljs');
 
 const FIXTURES = path.resolve(__dirname, '../../test-fixtures/e2e');
-const ROOT = path.resolve(__dirname, '../e2e-artifacts/golden');
+// PK10: bu kosumun damgali dizini. `E2E_DAMGA` varsa (run.mjs / playwright
+// config onu koyar) O kosum okunur; yoksa `latest` isaretcisi izlenir. Boylece
+// verify TEK BASINA calistirildiginda da EN SON kosumu olcer, eski bir
+// artefakti degil.
+const ROOT = (() => {
+  if (process.env.E2E_DAMGA) return path.join(GOLDEN_KOK, process.env.E2E_DAMGA);
+  const junction = path.join(GOLDEN_KOK, 'latest');
+  if (fs.existsSync(junction)) return junction;
+  const metin = path.join(GOLDEN_KOK, 'latest.txt');
+  if (fs.existsSync(metin)) return path.join(GOLDEN_KOK, fs.readFileSync(metin, 'utf-8').trim());
+  return path.join(GOLDEN_KOK, damga()); // hic kosum yok — bos dizin
+})();
+// ⚠ ROOT VAR OLMAK ZORUNDA: verify sonda matrix.json + report.md yazar.
+// Ilk PK10 kablolamasinda bu satir YOKTU ve verify ENOENT ile coktu
+// (`matrix.json` yazilamadi) — yani C1-C11 matrisi yine uretilemedi.
+// Bu, kalem 31'deki "verify.mjs C6'da cokuyordu" hatasinin AYNI SINIFI:
+// dogrulayicinin kendisi sessizce olursa butun iddialar bosa duser.
+fs.mkdirSync(ROOT, { recursive: true });
 
 const txt = (v) => {
   if (v == null) return '';

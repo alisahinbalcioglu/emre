@@ -4,6 +4,8 @@
 import { test, expect, Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
+// @ts-expect-error — .mjs yardimci (tip bildirimi yok)
+import { artefaktKok } from './artefakt-dizini.cjs';
 import {
   harvestGrid, selectDropdown, fillFamilyDown, waitForPricesToSettle,
   resolvePopupIfAny, listDropdownOptions, policyBrand, PopupLogEntry, Harvest,
@@ -22,7 +24,8 @@ const gercekYol = (ad: string) => {
   if (!bulunan) throw new Error(`Fixture bulunamadi: ${ad}`);
   return path.join(FIXTURES, bulunan);
 };
-const ARTIFACTS = path.resolve(__dirname, '../e2e-artifacts/golden');
+// PK10: her kosum kendi damgali dizinine yazar (uzerine yazma yok)
+const ARTIFACTS = artefaktKok();
 const AUTH = JSON.parse(fs.readFileSync(path.join(__dirname, '.auth.json'), 'utf8'));
 
 interface FileCase { file: string; slug: string; usd?: boolean }

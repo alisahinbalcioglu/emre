@@ -1,4 +1,10 @@
 import { defineConfig } from '@playwright/test';
+// PK10: artefakt damgasi (pano kalem 44). Damga BURADA uretilir — config,
+// worker'lardan ve global-setup'tan ONCE degerlendirilir; `damga()` onu
+// `process.env.E2E_DAMGA`ya yazar ve worker'lar miras alir.
+import { damga } from './e2e-golden/artefakt-dizini.cjs';
+
+const DAMGA = damga();
 
 /**
  * E2E ALTIN YOL (GOREV 28.07): 10 gercek dosya, tam yerel yigin uzerinden
@@ -20,7 +26,7 @@ export default defineConfig({
   workers: 1,
   fullyParallel: false,
   globalSetup: './e2e-golden/global-setup.mjs',
-  reporter: [['list'], ['json', { outputFile: 'e2e-artifacts/golden/playwright-report.json' }]],
+  reporter: [['list'], ['json', { outputFile: `e2e-artifacts/golden/${DAMGA}/playwright-report.json` }]],
   use: {
     baseURL: 'http://localhost:3005',
     viewport: { width: 1600, height: 950 },
