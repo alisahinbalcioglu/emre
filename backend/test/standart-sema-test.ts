@@ -304,6 +304,18 @@ async function main() {
       pompa ? `miktar="${pompa._miktar}"` : '-');
     // ⚠ Gevsek sinir (0<x<10000) fiyati da geciriyordu: 821,07 "miktar" olarak
     //   PASS aliyordu. Dosyadaki GERCEK deger yazilir: R21 → 42 mt.
+    // ⚠ CANLI BULGU (31.07): ekranda miktarsız satırlarda "Invalid Number"
+    //   yaziyordu. Kaynak AG-Grid'in SAYI tipi bicimlendiricisi:
+    //     value == null → ""   ·   typeof value !== 'number' → "Invalid Number"
+    //   Bos METIN ('') null DEGILDIR → her bos hucre "Invalid Number" oluyor.
+    //   Sozlesme: `_miktar` ya SAYIDIR ya da NULL — asla bos metin.
+    {
+      const bosMetin = ((sh?.rowData ?? []) as any[]).filter((r) => r._miktar === '');
+      check('GS12b miktarsız satırda _miktar NULL (boş metin AG-Grid’de "Invalid Number" basar)',
+        bosMetin.length === 0,
+        `boş metin taşıyan satır=${bosMetin.length}/${(sh?.rowData ?? []).length}`);
+    }
+
     check('TF/PANOVA ikinci örnek: boru satırı da doğru (R21 = 42 mt)',
       !!boru && Number(boru._miktar) === 42 && String(boru._birim).trim() === 'mt',
       boru ? `"${String(boru._ad).slice(0, 20)}" → miktar="${boru._miktar}" birim="${boru._birim}" (beklenen 42 / mt)` : 'satır bulunamadı');

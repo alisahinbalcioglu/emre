@@ -172,7 +172,14 @@ export function standartlastir(girdi: StandartlastirGirdi): StandartlastirCikti 
       miktarCozulemeyen++;
       yeni._miktarCozulemedi = String(hamMiktar).slice(0, 20); // GS12: sessiz sifir YOK
     }
-    yeni._miktar = mik ?? '';
+    // ⚠ BOS METIN DEGIL, NULL (31.07 canli bulgu). AG-Grid sayi tipindeki
+    // kolonu soyle bicimlendiriyor:
+    //     value == null            → ""
+    //     typeof value !== 'number'→ "Invalid Number"
+    // Bos metin ('') null DEGILDIR; bu yuzden miktari olmayan HER satirda
+    // ekranda "Invalid Number" yaziyordu (PANOVA'da 45 satir). Ayrim
+    // gorunurdur: sayi yoksa hucre BOS kalir, "cozulemedi" isareti ayri alanda.
+    yeni._miktar = mik ?? null;
 
     // Kar alanlari: eskiden geliyorsa korunur, yoksa varsayilan 0 (GS §A.1)
     yeni._malzKar = eski._malzKar ?? 0;
