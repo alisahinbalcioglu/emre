@@ -51,22 +51,33 @@ function dbErisilebilir(): boolean {
   return process.env.PG_REGRESSION === '1';
 }
 
-const sonuclar: Array<{ ad: string; zincir: string; durum: 'PASS' | 'FAIL' | 'SKIP'; sure: string }> = [];
+const sonuclar: Array<{ ad: string; zincir: string; durum: 'PASS' | 'FAIL' | 'SKIP'; sure: string; not?: string }> = [];
 const dbVar = dbErisilebilir();
 
 for (const s of SUITES) {
   if (s.db && !dbVar) {
-    sonuclar.push({ ad: s.ad, zincir: s.zincir, durum: 'SKIP', sure: '-' });
+    sonuclar.push({ ad: s.ad, zincir: s.zincir, durum: 'SKIP', sure: '-', not: 'DB yok — PG_REGRESSION=1 ile koşulur' });
     continue;
   }
   const t0 = Date.now();
   const r = spawnSync('npm', ['run', s.script], { shell: true, encoding: 'utf-8' });
   const sure = `${((Date.now() - t0) / 1000).toFixed(1)}s`;
-  const durum = r.status === 0 ? 'PASS' : 'FAIL';
-  sonuclar.push({ ad: s.ad, zincir: s.zincir, durum, sure });
-  console.log(`${durum === 'PASS' ? '✅' : '❌'} [${s.zincir}] ${s.ad} (${sure})`);
+  // CIKIS KODU SOZLESMESI (31.07): 0 = PASS · 2 = ON KOSUL YOK (fixture
+  // verisi eksik → SKIP) · diger = FAIL. Ayrimin sebebi: veri eksikligi
+  // motor gerilemesi gibi gorunuyordu (test:regression:db 9/10 kirmizi,
+  // oysa ÇAYIROVA fiyat listesinin adlari cokmus + ProductIndex 0 satir).
+  const durum = r.status === 0 ? 'PASS' : r.status === 2 ? 'SKIP' : 'FAIL';
+  const onKosulNotu = (r.stdout ?? '').split('\n').find((l: string) => l.includes('ON KOSUL YOK'))?.trim();
+  sonuclar.push({
+    ad: s.ad, zincir: s.zincir, durum, sure,
+    not: durum === 'SKIP' ? (onKosulNotu ?? 'ÖN KOŞUL YOK (çıkış 2)') : undefined,
+  });
+  console.log(`${durum === 'PASS' ? '✅' : durum === 'SKIP' ? '⚪' : '❌'} [${s.zincir}] ${s.ad} (${sure})`);
   if (durum === 'FAIL') {
     console.log((r.stdout ?? '').split('\n').filter((l: string) => l.includes('FAIL')).slice(0, 10).join('\n'));
+  }
+  if (durum === 'SKIP') {
+    console.log((r.stderr ?? '').split('\n').filter((l: string) => /ON KOSUL|marka fiyat|farkli cap|ProductIndex|→/.test(l)).slice(0, 6).join('\n'));
   }
 }
 
@@ -74,9 +85,11 @@ console.log(`\n${'═'.repeat(64)}`);
 console.log('ARINMA REGRESYON PAKETI — OZET');
 console.log('═'.repeat(64));
 for (const r of sonuclar) {
-  console.log(`  ${r.durum === 'PASS' ? '🟢' : r.durum === 'SKIP' ? '⚪' : '🔴'} ${r.durum.padEnd(4)} [${r.zincir}] ${r.ad} ${r.sure !== '-' ? `(${r.sure})` : '(DB yok — PG_REGRESSION=1 ile koşulur)'}`);
+  console.log(`  ${r.durum === 'PASS' ? '🟢' : r.durum === 'SKIP' ? '⚪' : '🔴'} ${r.durum.padEnd(4)} [${r.zincir}] ${r.ad}`
+    + `${r.sure !== '-' ? ` (${r.sure})` : ''}${r.not ? ` — ${r.not}` : ''}`);
 }
 const fail = sonuclar.filter((r) => r.durum === 'FAIL').length;
 const skip = sonuclar.filter((r) => r.durum === 'SKIP').length;
 console.log(`\nTOPLAM: ${sonuclar.length - fail - skip} PASS · ${fail} FAIL · ${skip} SKIP`);
+if (skip) console.log('⚠ SKIP PASS DEĞİLDİR — atlanan paket doğrulanmamış sayılır.');
 process.exit(fail > 0 ? 1 : 0);

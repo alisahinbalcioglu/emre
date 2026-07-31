@@ -214,6 +214,45 @@ async function main() {
       sapan.length === 0, sapan.length ? `sapan: ${sapan.join(', ')}` : `${sahin.sheets.length} sayfa uyumlu`);
   }
 
+  // ══ KAPATMA TURU ADIM 4: KE20 — silinen `basligaUyar` sozlesmesinin yerine ══
+  // Eski kanit `test:kb` KE20/20b/20c idi; T1/T3 temizliginde suite ile birlikte
+  // silindi ve YERINE HICBIR SEY GELMEDI. Kriterin canli cekirdegi su:
+  // "YALNIZ MALZEME yazan bir baslik, malzeme BIRIM FIYAT rolu DOGURMAZ."
+  // Boyle bir baslik belirsizdir (marka? malzeme adi? tutar?); fiyat sayilirsa
+  // dosyadaki rastgele bir sayi kolonu grid'e fiyat diye sizar.
+  // Olcut davranissal: o kolonun degerleri `_matBirim`e KOPYALANMAMALI.
+  {
+    const aoa = [
+      ['No', 'Malzeme Adı', 'Miktar', 'Birim', 'MALZEME'],
+      ['1', 'Galvaniz Çelik Boru ½"', 6, 'mt.', 123.45],
+      ['2', 'Galvaniz Çelik Boru ¾"', 565, 'mt.', 234.56],
+      ['3', 'Galvaniz Çelik Boru 1"', 140, 'mt.', 345.67],
+      ['4', 'Galvaniz Çelik Boru 1¼"', 230, 'mt.', 456.78],
+      ['5', 'Kelebek Vana DN50', 4, 'Adet', 567.89],
+    ];
+    const wbT = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wbT, XLSX.utils.aoa_to_sheet(aoa), 'BELIRSIZ');
+    const buf = XLSX.write(wbT, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+    const p = await svc.prepare(buf, { fixedSchema: true });
+    const rows = ((p.sheets[0]?.rowData ?? []) as any[]).filter((r) => r._isDataRow);
+    const belirsizDegerler = [123.45, 234.56, 345.67, 456.78, 567.89];
+    const sizan = rows.filter((r) => {
+      const v = parseFloat(String(r._matBirim ?? ''));
+      return !isNaN(v) && belirsizDegerler.some((b) => Math.abs(b - v) < 0.001);
+    });
+    check('KE20 yalnız "MALZEME" yazan başlık malzeme BİRİM FİYAT rolü doğurmaz',
+      rows.length >= 4 && sizan.length === 0,
+      `veri satırı=${rows.length}, sızan fiyat satırı=${sizan.length}` +
+      (sizan.length ? ` (ör. _matBirim="${sizan[0]._matBirim}")` : ''));
+    // KE20b: aynı kolon İŞÇİLİK birim fiyatına da bağlanmamalı
+    const sizanIsc = rows.filter((r) => {
+      const v = parseFloat(String(r._labBirim ?? ''));
+      return !isNaN(v) && belirsizDegerler.some((b) => Math.abs(b - v) < 0.001);
+    });
+    check('KE20b aynı belirsiz başlık işçilik BİRİM FİYAT rolü de doğurmaz',
+      sizanIsc.length === 0, `sızan satır=${sizanIsc.length}`);
+  }
+
   console.log(`\n${'='.repeat(60)}\nSTANDART SEMA: ${pass} PASS, ${fail} FAIL\n${'='.repeat(60)}`);
   process.exit(fail > 0 ? 1 : 0);
 }

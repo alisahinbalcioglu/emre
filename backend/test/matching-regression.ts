@@ -137,6 +137,40 @@ async function runTests() {
     process.exit(1);
   }
   const testUserId = libRow.userId;
+
+  // ── ON KOSUL: INDEKSLENMIS MARKA (31.07.2026, KAPATMA TURU) ─────────────
+  // Bu paket v2 INDEKSLI motoru sinar; motor `ProductIndex` uzerinden calisir.
+  // Marka indekslenmemisse 10 testin 9'u "netPrice 0 != X" der ve bu bir MOTOR
+  // GERILEMESI gibi gorunur — 31.07'de tam olarak bu oldu.
+  //
+  // OLCUM (31.07, yerel DB): veri SAGLAM — 116 farkli ad, beklenen fiyatlarin
+  // hepsi dogru adla mevcut ("Su ve Yangın Tesisat Borusu 1\" DN25 …" = 105,86 ·
+  // "1 1/4\" DN32" = 137,65 · "4\" DN100" = 558,20), UserLibrary 116 satir.
+  // EKSIK OLAN TEK SEY: ProductIndex 0 satir. Sebebi zaman cizelgesinde:
+  // markanin fiyat listesi 31.03.2026'da yuklenmis, indeksli motor ise
+  // 15.07'de geldi (bb1b0b7) — yani bu kayit indeksten ONCEKI donemden.
+  //
+  // ⚠ ACIK SORU (kapatilmadi): motorun "istek aninda indeksle (manuel/legacy)"
+  //    yolu logda calisiyor ("116 indekssiz satir ... indekslendi") ama yine de
+  //    0 eslesme yaziyor. Bu geri-dusus yolunun YETERLI olmasi gerekiyorsa
+  //    ORTADA GERCEK BIR URUN HATASI VAR ve bu kapi onu gizlemez, sadece
+  //    ayirir: indeks varsa paket TAM kosar, gercek gerileme yine KIRMIZI olur.
+  const indeksSatiri = await (prisma as any).productIndex.count({ where: { brandId: CAYIROVA_ID } });
+  if (indeksSatiri === 0) {
+    const fiyatSatiri = await prisma.materialPrice.count({ where: { brandId: CAYIROVA_ID } });
+    console.error('\n' + '='.repeat(70));
+    console.error('ON KOSUL YOK — ÇAYIROVA markasi INDEKSLENMEMIS, paket kosulamaz.');
+    console.error('='.repeat(70));
+    console.error(`  marka fiyat satiri : ${fiyatSatiri}`);
+    console.error(`  ProductIndex satiri: ${indeksSatiri}  ← v2 motor bunu okur`);
+    console.error('  → Fiyat listesini admin panelinden yeniden yukleyin veya');
+    console.error('    indeksi olan bir ortamda (VPS/CI) kosun.');
+    console.error('  → Bu bir MOTOR hatasi DEGILDIR; indeks on kosulu saglanmadi.');
+    console.error('  → ACIK SORU: legacy geri-dusus yolu tek basina yetmeli mi?\n');
+    await prisma.$disconnect();
+    process.exit(2); // regression-all: 2 = ON KOSUL YOK (SKIP), 1 = FAIL
+  }
+
   let passed = 0;
   let failed = 0;
   const failures: string[] = [];

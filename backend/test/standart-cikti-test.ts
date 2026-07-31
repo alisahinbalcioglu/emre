@@ -198,6 +198,65 @@ async function main() {
       formullu === 0, `formüllü hücre=${formullu}`);
   }
 
+  // ══ KAPATMA TURU ADIM 4: SILME SIRASINDA KAYBOLAN KANIT ═══════════════
+  // T1/T3/T4 temizliginde `test:ke` + `test:kb` paketleri silinirken KE17 ve
+  // KF7'nin kaniti da gitti. O iki kriter eskiden TEK assert'i paylasiyordu
+  // (KE17'nin hic kendi assert'i olmamis, KF7'ninkine yamanmisti) — tek assert
+  // silinince ikisi birden kanitsiz kaldi. Bu yuzden burada AYRI AYRI yazilir.
+
+  // ── KE17: harita persist — ayni teklif iki kez aktarilinca BIREBIR ayni ──
+  {
+    const oku = async (buf: Buffer) => {
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(buf as any);
+      const iz: string[] = [];
+      wb.worksheets.forEach((w) => {
+        w.eachRow({ includeEmpty: false }, (row, rn) => {
+          const h: string[] = [];
+          row.eachCell({ includeEmpty: false }, (c, ci) => {
+            const v = c.value as any;
+            h.push(`${ci}:${v && typeof v === 'object' && v.result !== undefined ? v.result : String(v ?? '')}`);
+          });
+          iz.push(`${w.name}!R${rn} ${h.join('|')}`);
+        });
+      });
+      return iz.join('\n');
+    };
+    const a = await standartCiktiUret({ sheetsArr: SHEETS as any, birim: null });
+    const b = await standartCiktiUret({ sheetsArr: JSON.parse(JSON.stringify(SHEETS)), birim: null });
+    const izA = await oku(a.buffer); const izB = await oku(b.buffer);
+    const ilkFark = izA === izB ? '' : (izA.split('\n').find((s, i) => s !== izB.split('\n')[i]) ?? 'satır sayısı farklı');
+    check('KE17 aynı teklif iki kez dışa aktarılınca BİREBİR aynı (harita persist)',
+      izA === izB && a.ozet === b.ozet && a.genelToplam === b.genelToplam,
+      izA === izB ? `${izA.split('\n').length} satır birebir · özet aynı` : `İLK FARK: ${ilkFark.slice(0, 90)}`);
+  }
+
+  // ── KF7: TEK doldurma motoru — her sayfa ayni yazicidan cikar ────────────
+  // Ikinci bir yazici eklenirse (eski `writePricesToWorkbook` hatasi) sayfalar
+  // arasinda baslik/genislik imzasi ayrisir; bu kontrol onu yakalar.
+  {
+    const r = await standartCiktiUret({ sheetsArr: SHEETS as any, birim: null });
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(r.buffer as any);
+    // Olcut VERI sayfalari icindir; uretilen ozet/toplam sayfasinin duzeni
+    // bilerek farklidir (kendi basligi var, `standartSayfaYaz` kullanmaz).
+    const imzalar = wb.worksheets
+      .filter((w) => String(w.getRow(1).getCell(1).value ?? '').trim() === 'No')
+      .map((w) => {
+        const bas: string[] = [];
+        w.getRow(1).eachCell({ includeEmpty: false }, (c) => bas.push(String(c.value ?? '').trim()));
+        const gen = (w.columns ?? []).map((c: any) => c?.width ?? '-').join(',');
+        return `${bas.join('|')}##${gen}`;
+      });
+    const tekil = Array.from(new Set(imzalar));
+    check('KF7 tek doldurma motoru — TÜM veri sayfaları aynı başlık+genişlik imzası',
+      imzalar.length >= 2 && tekil.length === 1,
+      `veri sayfası=${imzalar.length}/${wb.worksheets.length}, farklı imza=${tekil.length}${tekil.length > 1 ? ' → ' + tekil.map((s) => s.slice(0, 40)).join(' ≠ ') : ''}`);
+    check('KF7b başlık imzası standart 9 kolon',
+      tekil.length === 1 && tekil[0].split('##')[0] === STANDART_CIKTI_KOLONLARI.join('|'),
+      tekil[0]?.split('##')[0]?.slice(0, 90) ?? '');
+  }
+
   console.log(`\n${'='.repeat(60)}\nSTANDART CIKTI: ${pass} PASS, ${fail} FAIL\n${'='.repeat(60)}`);
   process.exit(fail > 0 ? 1 : 0);
 }
