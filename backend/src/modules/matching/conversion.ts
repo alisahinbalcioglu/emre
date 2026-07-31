@@ -169,6 +169,23 @@ export function extractSizeInfo(text: string): SizeInfo | null {
   while ((m = compoundRe.exec(normalized)) !== null) {
     inchHits.push({ dec: fractionToDecimal(m[1], m[2], m[3]), index: m.index, display: `${m[1]} ${m[2]}/${m[3]}"` });
   }
+  // PK7a — TIRELI bilesik kesir: "1-1/4" = 1 1/4" = 1,25". Yazim yaygin
+  // (SAHINKUL listesi) ve eskiden bilesigi HIC tanimiyordu → fracRe devraliyor
+  // ve 1-1/4" 0,25 cikiyordu (kullanicinin gordugu SD4 kusuru).
+  //
+  // KORUMA (kullanici karari "korumali duzelt"): tire ayraci YALNIZ tire
+  // oncesi 1-3 basamakli KUCUK tam sayi icin gecerlidir. Iki kalip boyle
+  // ayrilir:
+  //     olcu      → "1-1/4"   · "2-1/2"      (tire oncesi kisa)
+  //     urun kodu → "10217-1/2"              (tire oncesi uzun rakam dizisi)
+  // `\b` zaten uzun dizinin ORTASINDAN yakalamayi engeller: "10217-" icinde
+  // "17-" oncesinde kelime siniri yoktur. {1,3} ise bastan uzun diziyi eler.
+  const compoundTireRe = /\b(\d{1,3})-(\d+)\/(\d+)\s*(?:"|inch|inc\b)?/g;
+  while ((m = compoundTireRe.exec(normalized)) !== null) {
+    const cakisma = inchHits.some((x) => Math.abs(x.index - m!.index) <= 5);
+    if (cakisma) continue;
+    inchHits.push({ dec: fractionToDecimal(m[1], m[2], m[3]), index: m.index, display: `${m[1]} ${m[2]}/${m[3]}"` });
+  }
   // Tek kesir: 1/2, 3/4. Bilesigin parcasi olmadigi OVERLAP kontroluyle
   // saglanir (asagida ≤5 char) — eski (?<!\d\s) lookbehind'i grade rakami
   // bulasan "3/4"u da yanlislikla eliyordu; kaldirildi (overlap yeterli).
@@ -176,6 +193,11 @@ export function extractSizeInfo(text: string): SizeInfo | null {
   while ((m = fracRe.exec(normalized)) !== null) {
     const overlap = inchHits.some((x) => Math.abs(x.index - m!.index) <= 5);
     if (overlap) continue;
+    // PK7b — URUN KODU KUYRUGU: "10217-1/2"deki "1/2" olcu DEGILDIR.
+    // Kalip: kesirden hemen once tire ve tireden once 4+ basamakli rakam
+    // dizisi. (3 basamaga kadar olani compoundTireRe zaten OLCU sayar; ikisi
+    // ayni esikte bulusur, arada bosluk kalmaz.)
+    if (/\d{4,}-$/.test(normalized.slice(0, m.index))) continue;
     inchHits.push({ dec: fractionToDecimal(null, m[1], m[2]), index: m.index, display: `${m[1]}/${m[2]}"` });
   }
   // Ondalik inc: 1.25" veya 1,25 inc — ISARET SART (yoksa 5.4 gibi et kalinligi karisir)

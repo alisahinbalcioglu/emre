@@ -180,7 +180,18 @@ check('isSizeTag celik=false', !isSizeTag('celik'));
   // tasir ("… 10217-1/2" → 0.5 yerine 1.5). Bu yuzden TEK BASINA duzeltilmedi;
   // karar kullaniciya birakildi. Acik GORUNUR kalsin diye asagida ayri
   // sayilir — PASS degildir, FAIL de degildir.
-  bilinenAcik('1-1/4" tireli bileşik kesir', '1-1/4"', 1.25);
+  // ── PK7a (31.07.2026): TIRELI BILESIK KESIR — kullanici karari "korumali
+  //    duzelt". Ayrac artik bosluk VEYA tire; ama tire varyanti YALNIZ
+  //    tire-oncesi 1-3 basamakli kucuk tam sayi icin gecerli (olcu kalibi).
+  //    PK7a ve PK7b AYRI assert'lerdir — tek assert ikisine sayilmaz.
+  sd4('1-1/4"', 'inch', 1.25);
+  sd4('1-1/2"', 'inch', 1.5);
+  sd4('2-1/2"', 'inch', 2.5);
+  sd4('3-3/4"', 'inch', 3.75);
+  // ── PK7b: URUN KODU BOZULMAZ. "10217-1/2" olcu DEGILDIR — tire oncesi
+  //    uzun rakam dizisi urun kodu kalibidir. Ne 1.5, ne 217.5, ne 10217.5,
+  //    ne de 0.5: hicbiri. Olcu olarak COZULMEZ.
+  sd4('10217-1/2', null);
   sd4('2½"', 'inch',2.5);
   sd4('2 1/2"', 'inch',2.5);
   // Gercek satir baglami (SAHINKUL/YILDIZ bicimi)
