@@ -442,7 +442,12 @@ for (const slug of slugs.sort()) {
       const enjekte = orj ? visibleSheets(orj).some((w) => teklif.getWorksheet(w.name)) : false;
       const ok = !!kapak && musteriOk && !!icmal && (hedefGenel == null || hedefGenel === 0 ? true : icmalHit) && enjekte;
       set('C6', ok, `kapak=${!!kapak} müşteri=${musteriOk} icmal=${!!icmal} icmalToplamEşleşme=${icmalHit}`
-        + ` (ekran=${ekranGenel?.toFixed(1) ?? '?'}${kur !== 1 ? ` → ${hedefGenel.toFixed(1)} @kur ${kur}` : ''}, icmalMax=${icmalMax.toFixed(1)})`
+        // ⚠ HARNESS COKMESI (31.07): `ekranGenel` null iken `hedefGenel` de
+        // null olur (satir 426) ama bu ifadede optional-chain YOKTU — USD
+        // artefaktinda (kur !== 1) dal calisip TypeError atiyor, dogrulayici
+        // C6'da olup C1-C11 MATRISI HIC URETILMIYORDU. Kriter degil, rapor
+        // metni cokuyordu; null artik acikca yaziliyor.
+        + ` (ekran=${ekranGenel?.toFixed(1) ?? '?'}${kur !== 1 ? ` → ${hedefGenel?.toFixed(1) ?? '?'} @kur ${kur}` : ''}, icmalMax=${icmalMax.toFixed(1)})`
         + ` enjekte=${enjekte} [${adlar.slice(0, 6).join('|')}]`);
     }
   }
