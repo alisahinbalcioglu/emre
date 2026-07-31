@@ -106,3 +106,8 @@ coverage/
 
 # VPS otomatik yedekler (pg_dump ciktilari) — repo'ya girmesin
 backups/
+
+# PK11: derleme aninda uretilen surum damgasi (her commit-te degisir,
+# agaci kirletmesin diye izlenmez). Yoklugunda src/surum.ts "local" der ve
+# SURUM KAPISI kosumu reddeder — sessizce gecilmez.
+backend/src/surum.generated.ts

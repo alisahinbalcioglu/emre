@@ -37,7 +37,8 @@
     "test:build-sha": "ts-node test/build-sha-kablolama-test.ts",
     "test:pk9": "ts-node test/pk9-sessiz-indeks-test.ts",
     "test:18": "ts-node test/pano18-para-birimi-test.ts",
-    "fixture:anonim": "ts-node test/fixture-anonim.ts"
+    "fixture:anonim": "ts-node test/fixture-anonim.ts",
+    "prebuild": "node scripts/surum-yaz.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

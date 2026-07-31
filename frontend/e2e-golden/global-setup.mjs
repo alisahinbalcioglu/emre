@@ -11,12 +11,25 @@ import { createRequire } from 'node:module';
 // kosar; `damga()` degeri `process.env.E2E_DAMGA`ya yazar ve worker'lar miras
 // alir. Boylece tum spec'ler AYNI dizine yazar.
 import { damga, artefaktKok } from './artefakt-dizini.cjs';
+// PK11: dogrudan `npx playwright test` ile kosulursa run.mjs'in kapisi
+// atlanir — kapi BURADA da calisir. globalSetup'ta atilan hata TUM kosumu
+// durdurur, yani "reddetme" gercekten reddetmedir.
+import { kapiyiCalistir } from './surum-kapisi.cjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BACKEND = path.resolve(__dirname, '../../backend');
 const require = createRequire(path.join(BACKEND, 'package.json'));
 
 export default async function globalSetup() {
+  // 0) SURUM KAPISI (PK11) — her seyden once
+  const kapi = await kapiyiCalistir(path.resolve(__dirname, '..'));
+  console.log(kapi.rapor);
+  if (!kapi.gecti) {
+    // ⚠ HATA YUTULMAZ (PK11b): burada bir try/catch koymak kapinin tamamini
+    // degersiz kilar. Atilan hata Playwright'i baslatmadan durdurur.
+    throw new Error('SURUM KAPISI: kosum reddedildi — uyumsuz surum, olcum yalan uretir.');
+  }
+
   // 1) JWT
   const env = fs.readFileSync(path.join(BACKEND, '.env'), 'utf8');
   const m = env.match(/JWT_SECRET\s*=\s*"?([^"\r\n]+)"?/);
