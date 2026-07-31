@@ -277,6 +277,38 @@ async function main() {
       yok.length === 0, yok.length ? yok.join(' · ') : `${Object.keys(STANDART_ROLLER).length} rol eşleşti`);
   }
 
+  // ══ TF/PANOVA — BASLIK ETIKETI ILE VERI UYUSMUYOR (canli bulgu 31.07) ═══
+  // Kullanici bildirdi: "adet ve birimler patlamis". Olculdu — dosyanin
+  // basligi ile ICERIGI TERS:
+  //   R3 baslik : NO | MALZEME ADI | BİRİM | MİKTAR | BİRİM FİYAT | TOPLAM
+  //   R6 veri   :    | 2000 GPM …  |   1   |  SET   |  2300000    | 2300000
+  // Yani C3'te MIKTAR var ama basligi "BİRİM"; C4'te BIRIM var ama basligi
+  // "MİKTAR". Motor birimi ICERIKTEN dogru buluyor (col3) ama miktari
+  // "birimin komsusu" diye ararken ONCE SAGA bakiyor ve C5'i (BİRİM FİYAT,
+  // %91 sayisal) miktar saniyor. Ekranda 2.300.000 "miktar" gorunuyordu.
+  {
+    const panova = await svc.prepare(fs.readFileSync(dosya('panova-1')), { fixedSchema: true });
+    const sh: any = panova.sheets[0];
+    const veri = ((sh?.rowData ?? []) as any[]).filter((r) => r._isDataRow);
+    const bul = (parca: string) => veri.find((r) => String(r._ad ?? '').includes(parca));
+    const pompa = bul('2000 GPM');
+    const boru = bul('6\'\' Siyah Boru') ?? bul('Siyah Boru');
+
+    check('TF/PANOVA dosya okundu ve veri satırları çıktı',
+      veri.length >= 40, `veri satırı=${veri.length} (dosyada ~57)`);
+    check('TF/PANOVA miktar SAYI, birim METİN (başlık ters olsa da)',
+      !!pompa && Number(pompa._miktar) === 1 && String(pompa._birim).trim() === 'SET',
+      pompa ? `"2000 GPM…" → miktar="${pompa._miktar}" birim="${pompa._birim}" (beklenen 1 / SET)` : 'satır bulunamadı');
+    check('TF/PANOVA fiyat sütunu MİKTAR sanılmıyor',
+      !!pompa && Number(pompa._miktar) !== 2300000,
+      pompa ? `miktar="${pompa._miktar}"` : '-');
+    // ⚠ Gevsek sinir (0<x<10000) fiyati da geciriyordu: 821,07 "miktar" olarak
+    //   PASS aliyordu. Dosyadaki GERCEK deger yazilir: R21 → 42 mt.
+    check('TF/PANOVA ikinci örnek: boru satırı da doğru (R21 = 42 mt)',
+      !!boru && Number(boru._miktar) === 42 && String(boru._birim).trim() === 'mt',
+      boru ? `"${String(boru._ad).slice(0, 20)}" → miktar="${boru._miktar}" birim="${boru._birim}" (beklenen 42 / mt)` : 'satır bulunamadı');
+  }
+
   console.log(`\n${'='.repeat(60)}\nSTANDART SEMA: ${pass} PASS, ${fail} FAIL\n${'='.repeat(60)}`);
   process.exit(fail > 0 ? 1 : 0);
 }

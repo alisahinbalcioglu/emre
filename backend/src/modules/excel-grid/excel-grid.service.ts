@@ -765,9 +765,23 @@ export class ExcelGridService {
       //    once bitisikler — uzak fiyat kolonlarina kacmayi onler).
       if (roles.quantity === undefined && roles.unit !== undefined) {
         const dolular = new Set(Object.values(roles));
+        // ⚠ FIYAT KOLONU MIKTAR OLAMAZ (31.07, PANOVA-1 canli bulgusu).
+        // Komsuluk sirasi ONCE SAGA bakiyor. Basligi ile icerigi TERS olan
+        // dosyalarda (baslik "BİRİM|MİKTAR", veri "miktar|birim") gercek
+        // miktar birimin SOLUNDA, saginda ise BIRIM FIYAT bulunuyor. Fiyat
+        // kolonu da %91 sayisal oldugu icin ilk denemede kazaniyor ve
+        // ekranda miktar olarak 2.300.000 gorunuyordu.
+        // Olcut: fiyat/tutar/bedel basligi tasiyan kolon ATLANIR — boylece
+        // dogru komsu (sol) sinanabilir. Bu, mevcut "isim sutunu fiyat rolu
+        // olamaz" kuralinin miktar icin karsiligidir.
+        const FIYAT_BASLIGI = /\b(fiyat|tutar|bedel)\b/;
         for (const d of [1, -1, 2, -2]) {
           const c = roles.unit + d;
           if (c < 0 || c >= colCount || dolular.has(c)) continue;
+          if (FIYAT_BASLIGI.test(colTexts[c] ?? '')) {
+            console.log(`[ExcelGrid] R-B: col${c} miktar adayi ELENDI — fiyat basligi ("${(colTexts[c] ?? '').slice(0, 30)}")`);
+            continue;
+          }
           const o = sayisalOran(c);
           if (o >= 0.6) {
             console.log(`[ExcelGrid] R-B: miktar kolonu ICERIKTEN col${c} (birim komsusu, oran=${o.toFixed(2)})`);
