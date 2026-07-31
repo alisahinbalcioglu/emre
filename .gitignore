@@ -53,6 +53,21 @@ backend/uploads/
 !**/fixtures/**/*.pdf
 !**/fixtures/**/*.xlsx
 !**/fixtures/**/*.xls
+# PK3 (31.07.2026): E2E altin yol fixture'lari. Dizin adi `test-fixtures`
+# oldugu icin yukaridaki `**/fixtures/**` desenine UYMUYORDU → 12 dosyanin
+# yalnizca 2'si (.xlsm, ignore listesinde olmayan uzanti) repoda vardi.
+# Sonuc: `test:regression` ve `verify.mjs` 11x11 YALNIZ gelistiricinin
+# makinesinde anlamliydi, CI dekoratifti (pano kalem 36).
+# ⚠⚠ ASAGIDAKI IKI SATIR BILEREK KAPALI. Acilmasi PK3'un SON adimidir.
+# Simdi acilirsa `git add -A` ANONIMLESTIRILMEMIS musteri dosyalarini
+# stage'ler ve kimlik git gecmisine KALICI girer — kullanicinin acikca
+# reddettigi sey tam olarak budur ("git add -f ile koymuyoruz").
+# DOGRU SIRA: 1) npm run fixture:anonim -- --yaz
+#             2) parse farki 0 dogrulanir
+#             3) golden.spec.ts CASES + verify.mjs slug adlari guncellenir
+#             4) ANCAK O ZAMAN bu iki satir acilir
+# !test-fixtures/**/*.xlsx
+# !test-fixtures/**/*.xls
 
 # Prisma
 backend/prisma/dev.db
