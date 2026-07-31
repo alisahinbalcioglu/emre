@@ -160,7 +160,14 @@ function etkinMiktar(row, qF, uF) {
 }
 
 const results = [];
-const slugs = fs.existsSync(ROOT) ? fs.readdirSync(ROOT).filter((d) => fs.statSync(path.join(ROOT, d)).isDirectory()) : [];
+// ALTIN YOL artefaktlari: `screen.json` URETEN kosumlar. Kriter-ozel spec'ler
+// (or. 12-gs-kalicilik → GS6/GS8/GS9) altin yol adimlarini kosmaz, kendi
+// artefaktini yazar; matrise girerse 11 kriter birden sahte KIRMIZI olur.
+const slugs = fs.existsSync(ROOT)
+  ? fs.readdirSync(ROOT)
+    .filter((d) => fs.statSync(path.join(ROOT, d)).isDirectory())
+    .filter((d) => fs.existsSync(path.join(ROOT, d, 'screen.json')))
+  : [];
 
 for (const slug of slugs.sort()) {
   const dir = path.join(ROOT, slug);
@@ -325,13 +332,114 @@ for (const slug of slugs.sort()) {
     set('C4', ok, kanit);
   }
 
-  // ── C5: fiyatli.xlsx musteri duzeni birebir + degerler dogru kolonda
+  // ── C5: VERI KORUNUMU — hicbir malzeme satiri ve fiyat degeri dusmez ────
+  //
+  // ⚠ YENIDEN TANIMLANDI (31.07.2026, kullanici karari).
+  // ESKI HALI: "fiyatli.xlsx musterinin dosya DUZENINI birebir korur"
+  // (hucre hucre orijinalle karsilastirma). Bu, ciktinin musterinin dosyasina
+  // YAZILDIGI mimarinin sartiydi. `d0597ea` ile o yaklasim BIRAKILDI —
+  // kullanici karari 30.07: "fiyatli cikti standart 9 kolon olsun, musterinin
+  // sablonuna yazmayi birak". Cikti artik SIFIRDAN uretilen yeni bir dosya,
+  // dolayisiyla "duzen birebir" sorusu urunun bilerek terk ettigi bir sozu
+  // olcuyordu (11 artefaktta 33 FAIL'in kaynagi buydu).
+  //
+  // KORUNAN CEKIRDEK: kriterin gercek degeri "duzen" degil, KAYIP YOK'tu.
+  // Yeni olcut bunu dogrudan sinar: ekranda (kaydedilen grid'de) duran HER
+  // malzeme satiri ve HER fiyat degeri ciktida BULUNUR. Boylece ileride
+  // gercekten satir/deger dusersek yine KIRMIZI olur.
   {
-    if (!orj || !fiyatli) set('C5', false, 'dosya okunamadi');
+    if (!payload || !fiyatli) set('C5', false, 'dosya/payload okunamadi');
     else {
       const kanitlar = [];
       let ok = true;
+      // Ciktidaki tum metin ve sayilar (sayfa bazinda)
+      const ciktiMetin = new Map(); // sayfaAdi → Set(metin)
+      const ciktiSayi = new Map();  // sayfaAdi → Set(sayi.toFixed(2))
+      for (const w of fiyatli.worksheets) {
+        const m = new Set(); const s = new Set();
+        w.eachRow({ includeEmpty: false }, (row) => row.eachCell({ includeEmpty: false }, (c) => {
+          const t = txt(c.value).replace(/\s+/g, ' ').trim();
+          if (t) m.add(t);
+          const v = num(c.value); if (v) s.add(v.toFixed(2));
+        }));
+        ciktiMetin.set(w.name, m); ciktiSayi.set(w.name, s);
+      }
+      for (const sh of payload.sheets ?? []) {
+        const satirlar = (sh.rowData ?? []).filter((r) => r?._isDataRow && !r?._ozet);
+        // BOS sayfa ciktiya yazilmaz (standart-cikti.ts:245 `if (sh.isEmpty) continue`)
+        // — KAPAK/İCMAL/KAYIT gibi veri satiri olmayan sayfalarda kaybolacak
+        // bir sey de yoktur. Bunlari "sayfa yok" diye saymak YANLIS kirmizidir.
+        if (sh.isEmpty || satirlar.length === 0) continue;
+        const mSet = ciktiMetin.get(sh.name); const sSet = ciktiSayi.get(sh.name);
+        if (!mSet) { ok = false; kanitlar.push(`çıktıda sayfa yok: ${sh.name} (${satirlar.length} veri satırı)`); continue; }
+        // (a) malzeme adlari
+        const kayipAd = [];
+        for (const r of satirlar) {
+          const ad = String(r._ad ?? '').replace(/\s+/g, ' ').trim();
+          if (ad && !mSet.has(ad)) kayipAd.push(ad.slice(0, 26));
+        }
+        if (kayipAd.length) {
+          ok = false;
+          kanitlar.push(`${sh.name}: ${kayipAd.length} malzeme adı çıktıda YOK (ör. "${kayipAd[0]}")`);
+        }
+        // (b) fiyat/tutar degerleri — KUR ETKISI HESABA KATILIR.
+        // Cikti USD/EUR secilmisse degerler TEK bir katsayiyla bolunmus olur
+        // (EX6). Ham TL degerini aramak 04-aksa ve 11-sahinkul'de sahte
+        // "veri kaybi" veriyordu. Katsayi sayfanin kendi toplamlarindan
+        // TURETILIR, disaridan varsayilmaz.
+        const payloadToplam = satirlar.reduce((a, r) =>
+          a + (num(r._matToplam) ?? 0) + (num(r._labToplam) ?? 0), 0);
+        let ciktiToplam = 0;
+        const fw = fiyatli.getWorksheet(sh.name);
+        fw?.eachRow({ includeEmpty: false }, (row, rn) => {
+          if (rn === 1) return;
+          if (/toplam/i.test(txt(row.getCell(2).value))) return;
+          const g = row.getCell(9).value;
+          if (typeof g === 'number') ciktiToplam += g;
+        });
+        // Kur YALNIZ cikti TL DISI bir birimdeyse turetilir. Ozetteki para
+        // isareti otoritedir ("genel toplam ₺28.080,0" vs "$1.224,0").
+        // Kor turetme 03-bursa'da kur≈51 gibi sacma bir katsayi uretiyordu:
+        // payload/cikti orani kur degil, YAZILMAYAN satirlarin etkisiydi.
+        const ozetMetni = headers?.priced?.['x-export-summary']
+          ? decodeURIComponent(headers.priced['x-export-summary']) : '';
+        const tlCikti = ozetMetni.includes('₺') || !/[$€]/.test(ozetMetni);
+        const kur = (!tlCikti && payloadToplam > 0 && ciktiToplam > 0) ? payloadToplam / ciktiToplam : 1;
+        const varMi = (v) => {
+          const hedef = v / kur;
+          if (sSet.has(hedef.toFixed(2))) return true;
+          // 1 kurus tolerans (yuvarlama) — set'te yakin deger ara
+          for (const s of sSet) if (Math.abs(parseFloat(s) - hedef) <= Math.max(0.01, Math.abs(hedef) * 0.001)) return true;
+          return false;
+        };
+        const kayipDeger = [];
+        for (const r of satirlar) {
+          for (const f of ['_matBirim', '_matToplam', '_labBirim', '_labToplam']) {
+            const v = num(r?.[f]);
+            if (v && !varMi(v)) kayipDeger.push(`${f}=${v}`);
+          }
+        }
+        if (kayipDeger.length) {
+          ok = false;
+          kanitlar.push(`${sh.name}: ${kayipDeger.length} fiyat değeri çıktıda YOK`
+            + `${kur !== 1 ? ` (kur≈${kur.toFixed(3)})` : ''} (ör. ${kayipDeger[0]})`);
+        }
+      }
+      set('C5', ok, ok
+        ? `veri korunumu tam (${(payload.sheets ?? []).length} sayfa; ad + fiyat değerleri çıktıda)`
+        : 'VERİ KAYBI: ' + kanitlar.slice(0, 4).join(' · '));
+    }
+  }
+
+  // ── C5b: orijinal dosyayla DUZEN farki — YALNIZ BILGI, kriter DEGIL ─────
+  // Eski C5 buydu ve KRITERDI. Standart ciktiya gecince (d0597ea) "duzen
+  // birebir" sarti anlamini yitirdi: cikti artik musterinin dosyasi degil.
+  // Olcum silinmedi ama N/A'ya alindi — fark GORUNUR kalsin, kapi olmasin.
+  {
+    if (!orj || !fiyatli) set('C5b', null, 'dosya okunamadi');
+    else {
       const ov = visibleSheets(orj);
+      let ok = true; const kanitlar = [];
       // Grid'de dolu TUM fiyat/toplam degerleri — dosyada yazilan her yeni sayi
       // bunlardan biri OLMALI (C5: "grid'de dolu her deger dosyada, dogru
       // kolonda"). Fiyatlandirma zaten mevcut fiyat kolonunu gunceller (KG
@@ -393,8 +501,8 @@ for (const slug of slugs.sort()) {
       // fazladan sayfa yok (fiyatli cikti = musterinin dosyasi)
       const ekstra = visibleSheets(fiyatli).filter((w) => !orj.getWorksheet(w.name)).map((w) => w.name);
       if (ekstra.length) { ok = false; kanitlar.push('fazladan sayfa: ' + ekstra.join(',')); }
-      set('C5', ok, (ok ? `düzen birebir (${ov.length} sayfa, metin+merge+formül korunumu)` : 'VERİ KAYBI: ')
-        + (kanitlar.length ? kanitlar.slice(0, 4).join(' · ') : ''));
+      set('C5b', null, (ok ? `düzen birebir (${ov.length} sayfa)` : 'düzen farkı (BEKLENEN — standart çıktı): ')
+        + (kanitlar.length ? kanitlar.slice(0, 3).join(' · ') : ''));
     }
   }
 
@@ -475,19 +583,22 @@ for (const slug of slugs.sort()) {
   // ── C8: self-check ozeti goruldu + bagimsiz sayimla tutarli
   {
     const oz = headers?.priced?.['x-export-summary'] ? decodeURIComponent(headers.priced['x-export-summary']) : '';
-    // Export'un yazma mantigi birebir taklit edilir (export-engine T6/K-B):
-    // birim>0 → 1 hucre; toplam grid'de VARSA ya da miktardan TURETILEBILIYORSA
-    // (birim>0 && etkinMiktar>0) 1 hucre daha. 08-sahinkul'de tek satirda
-    // toplam grid'de yoktu ama export miktardan turetip yazdi (36 vs 37).
+    // ⚠ YENIDEN TANIMLANDI (31.07.2026). ESKI HALI eski export-engine'in yazma
+    // mantigini payload'dan TAKLIT ediyordu; standart yazici (standart-cikti.ts)
+    // baska sayiyor → 11 artefaktta tutmuyordu.
+    // Yeni olcut ARTEFAKTTAN sayar (gercekten bagimsiz): yazici `yazilan`i,
+    // veri satirlarinda 5-9. kolonlardaki SAYISAL hucreler olarak artiriyor
+    // (standart-cikti.ts:199-202); sayfa alti TOPLAM satiri sayilmaz.
     let beklenenDeger = 0;
-    for (const sh of payload?.sheets ?? []) {
-      const qF = sh.columnRoles?.quantityField, uF = sh.columnRoles?.unitField;
-      for (const row of sh.rowData ?? []) {
-        const mik = etkinMiktar(row, qF, uF) ?? 0;
-        const mb = matBirim(row), lb = labBirim(row);
-        if (mb) { beklenenDeger++; if (num(row._matToplam) || mik > 0) beklenenDeger++; }
-        if (lb) { beklenenDeger++; if (num(row._labToplam) || mik > 0) beklenenDeger++; }
-      }
+    for (const fw of fiyatli?.worksheets ?? []) {
+      if (txt(fw.getRow(1).getCell(1).value).trim() !== 'No') continue; // ozet sayfasi
+      fw.eachRow({ includeEmpty: false }, (row, rn) => {
+        if (rn === 1) return;                                    // baslik
+        if (/toplam/i.test(txt(row.getCell(2).value))) return;   // sayfa alti toplam
+        for (let c = 5; c <= 9; c++) {
+          if (typeof row.getCell(c).value === 'number') beklenenDeger++;
+        }
+      });
     }
     const m = oz.match(/(\d+) değer aktarıldı/);
     const n = m ? parseInt(m[1], 10) : -1;
@@ -511,13 +622,54 @@ for (const slug of slugs.sort()) {
   // kolon eklemek YASAK. KF2: eslesme GERCEKTEN yoksa (sablonda o rolun
   // basligi hic yoksa) dolu veri icin ekleme MESRU. KE8: verisiz kolon
   // hicbir kosulda eklenemez.
+  //
+  // ⚠ YENIDEN TANIMLANDI (31.07.2026, kullanici karari: "cikti aynen bu
+  // sekilde olacak, ilave sutun yok"). ESKI HALI ciktiyi ORIJINAL sablonla
+  // karsilastiriyordu ("sablon disina kolon eklenmis mi"). Standart ciktida
+  // sablon YOK — dosya sifirdan uretiliyor. Yeni olcut dogrudan kullanicinin
+  // cumlesi: her VERI sayfasi TAM OLARAK 9 standart kolondur, 10. kolonda
+  // hicbir sey olamaz.
   {
-    if (!orj || !fiyatli) set('C11', false, 'dosya okunamadi');
+    if (!fiyatli) set('C11', false, 'fiyatli.xlsx okunamadi');
+    else {
+      // Kaynak: backend/src/quotes/standart-cikti.ts → STANDART_CIKTI_KOLONLARI
+      const STD = ['No', 'Malzeme Adı', 'Miktar', 'Birim', 'Malz. Birim Fiyat',
+        'Malz. Toplam', 'İşç. Birim Fiyat', 'İşç. Toplam', 'Genel Toplam'];
+      const ihlal = [];
+      let veriSayfa = 0;
+      for (const fw of fiyatli.worksheets) {
+        const bas = [];
+        fw.getRow(1).eachCell({ includeEmpty: false }, (c) => bas.push(txt(c.value).replace(/\s+/g, ' ').trim()));
+        if (bas[0] !== 'No') continue; // ozet/GENEL TOPLAM sayfasi — kendi duzeni
+        veriSayfa++;
+        if (JSON.stringify(bas) !== JSON.stringify(STD)) {
+          ihlal.push(`${fw.name}: başlık standart 9 kolon DEĞİL → [${bas.join('|').slice(0, 60)}]`);
+          continue;
+        }
+        // 10. kolon ve sonrasinda TEK BIR DOLU HUCRE bile olamaz
+        let fazla = 0; let ornek = '';
+        fw.eachRow({ includeEmpty: false }, (row, rn) => row.eachCell({ includeEmpty: false }, (c, cn) => {
+          if (cn <= STD.length) return;
+          if (!txt(c.value).trim()) return;
+          fazla++;
+          if (!ornek) ornek = `R${rn}C${cn}="${txt(c.value).slice(0, 14)}"`;
+        }));
+        if (fazla) ihlal.push(`${fw.name}: 9. kolondan SONRA ${fazla} dolu hücre (${ornek})`);
+      }
+      set('C11', veriSayfa > 0 && ihlal.length === 0,
+        ihlal.length ? 'İLAVE SÜTUN: ' + ihlal.slice(0, 3).join(' · ')
+          : `${veriSayfa} veri sayfası tam 9 standart kolon, ilave sütun yok`);
+    }
+  }
+
+  // ── C11b: eski sablon-kiyaslamasi — YALNIZ BILGI (kriter DEGIL) ─────────
+  {
+    if (!orj || !fiyatli) set('C11b', null, 'dosya okunamadi');
     else {
       const ihlaller = [], mesrular = [];
       for (const ws of visibleSheets(orj)) {
         const fw = fiyatli.getWorksheet(ws.name);
-        if (!fw) continue; // C5 zaten FAIL ediyor
+        if (!fw) continue;
         const orjSon = sonDoluKolon(ws), ciktiSon = sonDoluKolon(fw);
         if (ciktiSon <= orjSon) continue;
         // Baslik bandi: en az ilk 12 satir. DAR band tuzagi: headerEndRow=2
@@ -538,9 +690,9 @@ for (const slug of slugs.sort()) {
           else mesrular.push(`${yer} (KF2 meşru: şablonda ${rol ?? '?'} başlığı yok, ${veri} değer)`);
         }
       }
-      set('C11', ihlaller.length === 0,
-        (ihlaller.length ? 'FAZLADAN KOLON: ' + ihlaller.slice(0, 4).join(' · ')
-          : mesrular.length ? 'şablon dışına kolon eklenmedi (yalnız meşru ekleme): ' + mesrular.slice(0, 3).join(' · ')
+      set('C11b', null,
+        (ihlaller.length ? 'şablona göre fark (BEKLENEN — standart çıktı): ' + ihlaller.slice(0, 3).join(' · ')
+          : mesrular.length ? 'şablon dışına kolon eklenmedi: ' + mesrular.slice(0, 2).join(' · ')
             : 'şablon dışına kolon eklenmedi'));
     }
   }
