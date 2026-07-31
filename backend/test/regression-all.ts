@@ -30,6 +30,14 @@ const SUITES: Suite[] = [
   { ad: 'Standart çıktı (EX1-EX8)', script: 'test:ex', zincir: 'Z4' },
   { ad: 'Teklif formatı kabul (T/KF2)', script: 'test:export', zincir: 'Z5' },
   { ad: 'Canlı simülasyon (SIM/G)', script: 'test:livesim', zincir: 'Z5' },
+  // ── KAPATMA TURU ADIM 2 (31.07.2026): pakette OLMAYAN 4 suite eklendi.
+  //    Delik: bu dordu assert'liydi ama `npm run test:regression` onlari HIC
+  //    kosmuyordu — "regresyon yesil" cumlesi KG9-KG13'u kapsamiyordu.
+  //    Dordu de DB'siz (fixture/saf fonksiyon) → db bayragi YOK, hep kosar.
+  { ad: 'Önceden fiyatlı (KG9-KG13)', script: 'test:of', zincir: 'Z1' },
+  { ad: 'Admin Excel import (import-fidelity)', script: 'test:admin-import', zincir: 'Z1' },
+  { ad: 'Kütüphane sayfa üretici (L1-L3)', script: 'test:library', zincir: 'Z1' },
+  { ad: 'Performans bütçeleri', script: 'test:perf', zincir: 'Z3' },
   // ── DB gerektirenler (yerelde PG yoksa SKIP; VPS/CI'da kosulur) ──
   { ad: 'Eşleştirme DB regresyonu', script: 'test:regression:db', zincir: 'Z2', db: true },
   { ad: 'Kütüphane liste ekleme (KL)', script: 'test:kl', zincir: 'Z1', db: true },
