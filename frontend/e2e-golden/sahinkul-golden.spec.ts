@@ -97,12 +97,22 @@ async function kolonKimlikleri(page: Page) {
     return h?.id ?? fallback;
   };
   const tutar = (t: string) => /tutar|toplam/.test(t);
+  // ⚠ SABIT SEMA TUZAGI (31.07). Eski olcut "X iceren ve tutar OLMAYAN ILK
+  // baslik" idi; standart 13 kolonda bu iki kez yanlis kolonu secti:
+  //   /malz/  → "Malzeme Adı"  (fiyat yerine cap metni "½"" okunuyordu)
+  //   /işç/   → "İşç. Kar %"   (hep 0 → KG10 "0 satir" diyordu)
+  // Birim fiyat kolonu artik NEGATIF eleme ile degil, POZITIF desenle
+  // aranir: hem "birim" hem "fiyat" gecmeli. Dosyanin kendi basliklari da
+  // ayni desene uyar ("BİRİM FİYAT MALZEME" · "TOPLAM FİYAT İŞÇİLİK").
+  const birimFiyat = (t: string) => /birim/.test(t) && /fiyat/.test(t);
+  const malz = (t: string) => /malz/.test(t) && !/malzeme\s*ad/.test(t);
+  const isc = (t: string) => /(i̇şç|işç|isc)/.test(t);
   return {
     basliklar,
-    matUnit: bul((t) => /malz/.test(t) && !tutar(t), '_matBirim'),
-    matTot: bul((t) => /malz/.test(t) && tutar(t), '_matToplam'),
-    labUnit: bul((t) => /(i̇şç|işç|isc)/.test(t) && !tutar(t), '_labBirim'),
-    labTot: bul((t) => /(i̇şç|işç|isc)/.test(t) && tutar(t), '_labToplam'),
+    matUnit: bul((t) => malz(t) && birimFiyat(t), '_matBirim'),
+    matTot: bul((t) => malz(t) && tutar(t), '_matToplam'),
+    labUnit: bul((t) => isc(t) && birimFiyat(t), '_labBirim'),
+    labTot: bul((t) => isc(t) && tutar(t), '_labToplam'),
     miktar: bul((t) => /miktar|metraj/.test(t), ''),
   };
 }
@@ -163,6 +173,14 @@ test('BÖLÜM D — ŞAHİNKUL altın senaryosu (sürükle-doldur · KG10 · KG1
 
   const KOL = await kolonKimlikleri(page);
   senaryo.kolonlar = KOL;
+  // ÖLÇÜM KAPISI (31.07): kolon cozumu sessizce kayarsa asagidaki her sart
+  // anlamsiz bir yerden okur ve hata BASKA kriterin ustune yikilir (KG10 "0
+  // satir" derken ekranda fiyatlar duruyordu). Cozum ARTIK once dogrulanir.
+  for (const [alan, id] of [['matUnit', KOL.matUnit], ['matTot', KOL.matTot],
+    ['labUnit', KOL.labUnit], ['labTot', KOL.labTot]] as const) {
+    expect(id, `kolon çözümü kaydı: ${alan}="${id}" — başlıklar: ${KOL.basliklar.map((b) => b.text).join(' | ')}`)
+      .toMatch(/^(_matBirim|_matToplam|_labBirim|_labToplam|col\d+)$/);
+  }
   const yuklemeHasat = await harvestGrid(page);
   // KG10: dosyada 85 satırda İŞÇİLİK BİRİM FİYAT dolu (I kolonu) — hiçbir
   // fiyatlama yapılmadan grid'de görünmeli. "İçe al / yok say" sorusu YOK.
@@ -180,9 +198,15 @@ test('BÖLÜM D — ŞAHİNKUL altın senaryosu (sürükle-doldur · KG10 · KG1
   // ── ADIM 2: ½" → 2½" SÜRÜKLE-DOLDUR (SD2/SD3/SD5) ───────────────────────
   // Aile satırlarını METINDEN bul (indeks sabitlemek kırılgan): ardışık
   // 7 satırın hücrelerinde ½" ¾" 1" 1¼" 1½" 2" 2½" dizisi.
+  // ⚠ SABIT SEMA (31.07): eski olcut "_ ile baslayan TUM alanlari atla" idi —
+  // cunku cap dosyanin KENDI kolonundaydi (colN). Sabit semada dosyadan yalniz
+  // No·Ad·Miktar·Birim okunuyor ve bu dosyada cap `_ad` alanina dusuyor:
+  // R107-R113 = ½" ¾" 1" 1¼" 1½" 2" 2½" (backend parse olcumu, 31.07).
+  // Eski olcut hicbir hucre goremedigi icin aile bulunamiyordu (kaynakIdx=-1).
+  const CAP_ALANLARI = ['_ad', '_birim'];
   const satirCapi = (r: Harvest['rows'][number]) => {
     for (const [k, v] of Object.entries(r.cells)) {
-      if (k.startsWith('_')) continue;
+      if (k.startsWith('_') && !CAP_ALANLARI.includes(k)) continue;
       const s = sadeCap(v);
       if (CAPLAR.includes(s)) return s;
     }

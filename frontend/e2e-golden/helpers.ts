@@ -61,14 +61,33 @@ export async function harvestGrid(page: Page): Promise<Harvest> {
     await new Promise((r) => setTimeout(r, 70));
     readVisible(acc);
     // GENEL TOPLAM — sayfadaki ozet satiri (grid disi tfoot veya pinned)
+    //
+    // ⚠ GS9 (DONMUS BOLME) TUZAGI, 31.07: No + Malzeme Adı SOLA SABITLENDIGI
+    // icin pinned-bottom satiri IKIYE bolunur — etiket ("GENEL TOPLAM")
+    // `.ag-pinned-left-floating-bottom` icinde, TUTARLAR merkez konteynerde.
+    // Eski olcum etiketin `parentElement`ini okudugu icin yalniz "GENEL TOPLAM"
+    // donuyor, rakam hic gelmiyordu (KG10 satir 185 kirmizisi). Oysa ekranda
+    // deger duruyordu: hata anligindaki DOM'da merkez satir = "₺0,0 ₺3.730.534,0".
+    // Cozum: floating-bottom'un TUM konteynerlerindeki hucreler birlestirilir.
     let genel = '';
-    document.querySelectorAll('td, .ag-floating-bottom .ag-cell, div').forEach((el) => {
-      const t = (el.textContent ?? '').trim();
-      if (/^GENEL TOPLAM/.test(t) && el.parentElement) {
-        const rowTxt = (el.parentElement.textContent ?? '').replace(/\s+/g, ' ').trim();
-        if (rowTxt.length < 200) genel = rowTxt;
-      }
-    });
+    {
+      const parcalar: string[] = [];
+      document.querySelectorAll('.ag-floating-bottom .ag-cell').forEach((c) => {
+        const t = (c.textContent ?? '').replace(/\s+/g, ' ').trim();
+        if (t) parcalar.push(t);
+      });
+      if (parcalar.some((t) => /GENEL TOPLAM/.test(t))) genel = parcalar.join(' ');
+    }
+    // Grid disi gorunumler (eski tfoot tablosu) icin geri dusus
+    if (!genel) {
+      document.querySelectorAll('td, div').forEach((el) => {
+        const t = (el.textContent ?? '').trim();
+        if (/^GENEL TOPLAM/.test(t) && el.parentElement) {
+          const rowTxt = (el.parentElement.textContent ?? '').replace(/\s+/g, ' ').trim();
+          if (rowTxt.length < 200) genel = rowTxt;
+        }
+      });
+    }
     // NOT: spread yerine Array.from — frontend tsconfig'inde `target` yok,
     // iterator spread'i TS2802 veriyor ve CI'daki `tsc --noEmit` kapisi kirilir.
     const rows = Array.from(acc.values()).sort((a: any, b: any) => a.idx - b.idx);
