@@ -212,6 +212,32 @@ test('PU4 — aday popup’ı sürükleyerek genişletilebilir ve geri sıçrama
   expect(Math.abs(kayitli - sonra), `PU4: ölçü localStorage’a yazılmalı (kayıt=${kayitli}, ekran=${sonra})`)
     .toBeLessThanOrEqual(4);
 
+  // ── C) TAŞIMA: başlık çubuğundan sürükleyerek popup yer değiştirir ──────
+  // Kullanıcı 31.07: "seçenekler çerçevesini hareket ettiremiyorum".
+  // Taşıma HİÇ yoktu — popup sabit konumda açılıyor, altındaki satırı
+  // kapatıyordu. Başlık artık tutamak.
+  const konum = () => page.evaluate(() => {
+    const el = document.querySelector('[data-testid="aday-popup"]') as HTMLElement | null;
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { left: Math.round(r.left), top: Math.round(r.top) };
+  });
+  const k0 = (await konum())!;
+  const baslik = page.locator('[data-testid="aday-popup-baslik"]');
+  expect(await baslik.count(), 'PU4c: başlık taşıma tutamağı olmalı').toBe(1);
+  const bk = (await baslik.boundingBox())!;
+  await page.mouse.move(bk.x + bk.width / 2, bk.y + bk.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(bk.x + bk.width / 2 - 160, bk.y + bk.height / 2 + 90, { steps: 12 });
+  await page.mouse.up();
+  await page.waitForTimeout(500);
+  const k1 = (await konum())!;
+  console.log(`[PU4] taşıma: (${k0.left},${k0.top}) → (${k1.left},${k1.top})`);
+  expect(Math.abs(k1.left - k0.left) + Math.abs(k1.top - k0.top),
+    `PU4c: başlıktan sürükleyince popup TAŞINMALI (${k0.left},${k0.top}) → (${k1.left},${k1.top})`)
+    .toBeGreaterThan(60);
+  await page.screenshot({ path: path.join(dir, 'pu4-4-tasindi.png') });
+
   // Native tutamacin sonucu AYRI raporlanir: fix "React silmiyor" sartini
   // cozer, ama tutamak fareyle yakalanamiyorsa kullanici yine genisletemez.
   // Ikisi FARKLI sorundur; tek gec/kal ile ayirt edilemez.

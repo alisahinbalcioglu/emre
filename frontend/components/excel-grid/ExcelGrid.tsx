@@ -569,6 +569,36 @@ function BrandDropdown(props: ICellRendererParams & {
     [brands],
   );
 
+  // ── PU4c: POPUP TASINABILIR (kullanici istegi 31.07) ────────────────────
+  // "seçenekler çerçevesini hareket ettiremiyorum" — tasima HIC yoktu; popup
+  // sabit konumda aciliyordu ve altindaki satiri kapatiyordu. Baslik cubugu
+  // artik tutamaktir. Kutu her zaman ekran icinde kalir (kirpma ile ayni pay).
+  const tasiRef = React.useRef<{ dx: number; dy: number } | null>(null);
+  const baslikBasla = (e: React.MouseEvent) => {
+    const el = popupRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    tasiRef.current = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+    const pay = 12;
+    const hareket = (ev: MouseEvent) => {
+      const s = tasiRef.current;
+      const k = popupRef.current?.getBoundingClientRect();
+      if (!s || !k) return;
+      setPopupPos({
+        left: Math.max(pay, Math.min(ev.clientX - s.dx, window.innerWidth - k.width - pay)),
+        top: Math.max(pay, Math.min(ev.clientY - s.dy, window.innerHeight - k.height - pay)),
+      });
+    };
+    const birak = () => {
+      tasiRef.current = null;
+      window.removeEventListener('mousemove', hareket);
+      window.removeEventListener('mouseup', birak);
+    };
+    window.addEventListener('mousemove', hareket);
+    window.addEventListener('mouseup', birak);
+    e.preventDefault(); // metin secimi tasimayi bozmasin
+  };
+
   return (
     <div ref={wrapperRef} className="fill-handle-cell" style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center' }}>
       <CustomDropdown
@@ -592,15 +622,27 @@ function BrandDropdown(props: ICellRendererParams & {
           // Eski sabit 400x320 kutu uzun urun adlarini goruntulenemez
           // kiliyordu; genislik tercihi oturum boyunca hatirlanir.
           width: popupGenislik,
-          minWidth: 360,
-          maxWidth: '90vw',
-          maxHeight: '70vh',
+          minWidth: 300,
+          maxWidth: '95vw',
+          maxHeight: '85vh',
           resize: 'both',
           overflow: 'auto',
           boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
           fontSize: 12,
         }}>
-          <div style={{ fontWeight: 700, color: '#b45309', marginBottom: 2, fontSize: 13 }}>
+          {/* PU4c: BASLIK = TASIMA TUTAMAGI. Kullanici "hareket ettiremiyorum"
+              dedi; tasima hic yoktu. Imlec `move`, metin secimi kapali. */}
+          <div
+            data-testid="aday-popup-baslik"
+            onMouseDown={baslikBasla}
+            title="Sürükleyerek taşıyın · sağ-alt köşeden boyutlandırın"
+            style={{
+              fontWeight: 700, color: '#b45309', marginBottom: 2, fontSize: 13,
+              cursor: 'move', userSelect: 'none',
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}
+          >
+            <span style={{ letterSpacing: 1, opacity: 0.55, fontSize: 14, lineHeight: 1 }}>⠿</span>
             🟡 Seçim gerekli{stage2 ? ' — tip seçin' : ` (${candidates.length} aday)`}
           </div>
           {(headerRef.current || donusumRef.current) && (
@@ -763,6 +805,18 @@ function BrandDropdown(props: ICellRendererParams & {
           >
             Iptal
           </button>
+          {/* PU4c: boyutlandirma tutamaci GORUNUR olsun. Native CSS `resize`
+              grip'i cizilir ama cok soluk — kullanici varligini fark etmiyor.
+              Bu kare SADECE gorseldir (pointerEvents yok); tiklamalar altindaki
+              gercek grip'e gider. */}
+          <div
+            aria-hidden
+            style={{
+              position: 'sticky', bottom: 0, marginLeft: 'auto', marginTop: 2,
+              width: 14, height: 14, pointerEvents: 'none', opacity: 0.5,
+              background: 'repeating-linear-gradient(135deg, transparent 0 2px, #b45309 2px 3px)',
+            }}
+          />
         </div>,
         document.body,
       )}
