@@ -51,6 +51,11 @@ services:
   backend:
     build:
       context: ./backend
+      args:
+        # PK2: canli surum teyidi. `scripts/deploy.sh` bunu git'ten doldurur;
+        # elle `docker compose build` calistirilirsa "local" kalir (zararsiz,
+        # yalniz /api/health hash yerine "local" doner).
+        BUILD_SHA: ${BUILD_SHA:-local}
     restart: unless-stopped
     depends_on:
       db:

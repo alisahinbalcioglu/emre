@@ -35,6 +35,15 @@ RUN npm install --include=dev --legacy-peer-deps
 COPY . .
 RUN npx prisma generate && npm run build
 
+# PK2 (31.07.2026): CANLI SURUM TEYIDI. `health.controller.ts` zaten
+# `process.env.BUILD_SHA` okuyordu; eksik olan hash'i imaja GECIREN kabloydu.
+# Bu ikilik olmadan `/api/health` her zaman "local" doner ve "canlida hangi
+# surum var?" sorusu ancak sunucu konsoluna girilerek cevaplanir (2 turdur
+# cevaplanamiyor — pano kalem 34/40). ARG build aninda gelir, ENV calisma
+# zamanina tasir; ikisi de sart.
+ARG BUILD_SHA=local
+ENV BUILD_SHA=${BUILD_SHA}
+
 EXPOSE 3001
 
 # Her acilista once migration uygular (DB semasini gunceller), sonra API'yi baslatir.
