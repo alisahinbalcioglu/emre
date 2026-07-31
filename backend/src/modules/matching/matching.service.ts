@@ -180,8 +180,24 @@ export class MatchingService {
       console.warn(`[Matching] ⚠ BAYAT INDEKS: ${bayatSayisi} satir istek aninda yeniden uretildi (v${INDEX_VERSION}). ` +
         `KALICI COZUM: POST /admin/reindex-products (her istekte yeniden hesap = gereksiz yuk).`);
     }
+    // ── PK9 (31.07.2026): SESSIZ GERI-DUSUS YASAK ───────────────────────────
+    // Acik soru: "istek aninda indeksle geri-dusus yolu TEK BASINA yetmeli mi?"
+    // Cevap HAYIR. Geri-dusus KALIR ama SESSIZ KALAMAZ: eksik indeksi sessizce
+    // telafi eden bir yol, yanlis/eksik cevabi DOGRUYMUS gibi verir (fallback
+    // yasagi + I7 sessiz-bos yasagi). Kanal `log` degil `warn` — duz log
+    // uretimde gurultuye karisip goze carpmiyordu.
     if (indekssizSayisi > 0) {
-      console.log(`[Matching] ${indekssizSayisi} indekssiz satir istek aninda indekslendi (manuel/legacy)`);
+      console.warn(`[Matching] ⚠ INDEKSSIZ SATIR: ${indekssizSayisi}/${libRows.length} satir istek aninda indekslendi `
+        + `(manuel/legacy). KALICI COZUM: POST /admin/reindex-products.`);
+    }
+    // MARKANIN TAMAMI indekssizse bu artik "birkac manuel satir" degil, marka
+    // HIC indekslenmemis demektir — CAYIROVA vakasi (116 fiyat satiri, 0
+    // ProductIndex) tam buydu ve `test:regression:db` bu yuzden SKIP'te.
+    // Motor yine cevap uretir, ama bunu YUKSEK SESLE soyler.
+    if (libRows.length > 0 && indekssizSayisi === libRows.length) {
+      console.error(`[Matching] ⛔ MARKA INDEKSLENMEMIS: ${libRows.length} kutuphane satirinin TAMAMI indekssiz. `
+        + `Sonuclar istek-anindaki manuel cikarima dayanir — urun tablosu kalitesinde DEGILDIR. `
+        + `Fiyat listesini yeniden yukleyin veya POST /admin/reindex-products calistirin.`);
     }
     return pool;
   }
