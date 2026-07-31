@@ -38,6 +38,14 @@ const SUITES: Suite[] = [
   { ad: 'Admin Excel import (import-fidelity)', script: 'test:admin-import', zincir: 'Z1' },
   { ad: 'Kütüphane sayfa üretici (L1-L3)', script: 'test:library', zincir: 'Z1' },
   { ad: 'Performans bütçeleri', script: 'test:perf', zincir: 'Z3' },
+  // ── PK1 (31.07.2026): MANIFEST KAPISI. Yukaridaki 4 suite aylarca bu
+  //    listede DEGILDI; kok neden "unutmayi engelleyen kapi yok" idi. Bu suite
+  //    o kapiyi kurar: package.json'daki her `test:*` ya burada olacak ya da
+  //    manifest-kapisi.ts'teki GEREKCELI istisna listesinde.
+  { ad: 'Manifest kapısı (PK1)', script: 'test:manifest', zincir: 'Z0' },
+  { ad: 'build_sha kablolaması (PK2)', script: 'test:build-sha', zincir: 'Z0' },
+  { ad: 'Sessiz indeks geri-düşüşü yasak (PK9)', script: 'test:pk9', zincir: 'Z2' },
+  { ad: 'Para birimi çıktıya geçer (18a-18c)', script: 'test:18', zincir: 'Z4' },
   // ── DB gerektirenler (yerelde PG yoksa SKIP; VPS/CI'da kosulur) ──
   { ad: 'Eşleştirme DB regresyonu', script: 'test:regression:db', zincir: 'Z2', db: true },
   { ad: 'Kütüphane liste ekleme (KL)', script: 'test:kl', zincir: 'Z1', db: true },

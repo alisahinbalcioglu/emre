@@ -32,7 +32,12 @@
     "test:perf": "ts-node test/perf-profil.ts",
     "test:of": "ts-node test/onceden-fiyatli-test.ts",
     "test:gs": "ts-node test/standart-sema-test.ts",
-    "test:ex": "ts-node test/standart-cikti-test.ts"
+    "test:ex": "ts-node test/standart-cikti-test.ts",
+    "test:manifest": "ts-node test/manifest-kapisi.ts",
+    "test:build-sha": "ts-node test/build-sha-kablolama-test.ts",
+    "test:pk9": "ts-node test/pk9-sessiz-indeks-test.ts",
+    "test:18": "ts-node test/pano18-para-birimi-test.ts",
+    "fixture:anonim": "ts-node test/fixture-anonim.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
