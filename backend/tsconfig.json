@@ -12,6 +12,20 @@
     "rootDir": "./src",
     "baseUrl": "./",
     "incremental": true,
+    // PK12b (31.07.2026) — KALEM 47'nin KOK NEDENI VE COZUMU.
+    // `nest-cli.json` `deleteOutDir: true` diyor: her derlemede `dist/` SILINIR.
+    // Ama tsbuildinfo varsayilan olarak dist'in DISINDA (./tsconfig.tsbuildinfo)
+    // duruyordu. Sonuc: dist silinir, tsbuildinfo "her sey guncel" der, TypeScript
+    // HIC EMIT ETMEZ ve `nest build` **cikis kodu 0** doner.
+    //   olculdu: tsbuildinfo VARKEN  -> dist .js = 0   · cikis kodu 0
+    //            tsbuildinfo SILININCE-> dist .js = 100 · cikis kodu 0
+    // Bu, "yesil ama yesil degil" ailesinin en sinsisiydi: derleme basarili
+    // gorunurken uretilen dist BOS/EKSIK kaliyor, sonra `node dist/main`
+    // MODULE_NOT_FOUND ile oluyor ve PORTU ESKI SUREC tutmaya devam ediyor.
+    // 31.07'de tam boyle oldu: koşum 18 saatlik backend'i olctu (kalem 45).
+    // COZUM: damga dist'in ICINDE dursun — dist silinince o da silinir, ikisi
+    // asla ayrisamaz. Artimli derlemenin hizi korunur.
+    "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
     "skipLibCheck": true,
     "strictNullChecks": false,
     "noImplicitAny": false,
