@@ -239,6 +239,12 @@ for (const slug of slugs.sort()) {
       let matT = 0, labT = 0;
       const qF = sh.columnRoles?.quantityField, uF = sh.columnRoles?.unitField;
       for (const row of sh.rowData ?? []) {
+        // ⚠ 31.07: filtre YOKTU — grup/ara-toplam satirlari da toplaniyordu.
+        // 03-bursa Mekanik'te hesap 2.747.107.059 cikiyordu, ekranda 74.350.566
+        // (37 kat). Uygulamanin kurali (ExcelGrid.updatePinnedBottom ve
+        // backend GS14c testi): YALNIZ veri satirlari, ozet satirlari HARIC.
+        // Dogrulayici ucuncu bir kural kullanamaz.
+        if (!row?._isDataRow || row?._ozet) continue;
         const mik = etkinMiktar(row, qF, uF) ?? 1;
         const bp = matBirim(row);
         const tp = num(row._matToplam);
@@ -412,9 +418,23 @@ for (const slug of slugs.sort()) {
           for (const s of sSet) if (Math.abs(parseFloat(s) - hedef) <= Math.max(0.01, Math.abs(hedef) * 0.001)) return true;
           return false;
         };
+        // Fiyat alanlari ROL uzerinden okunur — yazicinin yaptigi gibi
+        // (standart-cikti.ts: `A('materialTotalField', '_matToplam')`).
+        // Sabit alandan okumak, rolu DOSYA kolonuna (colN) bagli sayfalarda
+        // yazicinin hic bakmadigi bir hucreyi "kayip" gosteriyordu.
+        const rolAlan = (rol, vars) => {
+          const v = sh.columnRoles?.[rol];
+          return (typeof v === 'string' && v) ? v : vars;
+        };
+        const alanlar = [
+          rolAlan('materialUnitPriceField', '_matBirim'),
+          rolAlan('materialTotalField', '_matToplam'),
+          rolAlan('laborUnitPriceField', '_labBirim'),
+          rolAlan('laborTotalField', '_labToplam'),
+        ];
         const kayipDeger = [];
         for (const r of satirlar) {
-          for (const f of ['_matBirim', '_matToplam', '_labBirim', '_labToplam']) {
+          for (const f of alanlar) {
             const v = num(r?.[f]);
             if (v && !varMi(v)) kayipDeger.push(`${f}=${v}`);
           }
@@ -544,8 +564,14 @@ for (const slug of slugs.sort()) {
       const icmalMax = icmalDegerler.length ? Math.max(...icmalDegerler) : 0;
       // Eslesme: bolum/ara toplam degerlerinden biri ekran toplamini vermeli
       // (GENEL TOPLAM satiri KDV'li olabilir — 08: 1.984.522 = 1.653.769×1,2)
-      const icmalHit = hedefGenel != null &&
-        icmalDegerler.some((v) => Math.abs(v - hedefGenel) <= Math.max(1, hedefGenel * 0.01));
+      // İCMAL bazen YALNIZ KDV'li toplami tasir (formatin GENEL TOPLAM satiri
+      // KDV ekliyor). 31.07 olcumu: 103.525.586,6 ÷ 1,2 = 86.271.322,2 =
+      // ekran toplami TAM. Eski olcut yalniz KDV'siz degeri ariyordu ve
+      // "eslesme yok" diyordu. KDV'li karsilik da MESRU sayilir.
+      const KDV = 1.2;
+      const yakinMi = (v, hedef) => Math.abs(v - hedef) <= Math.max(1, Math.abs(hedef) * 0.01);
+      const icmalHit = hedefGenel != null && icmalDegerler.some((v) =>
+        yakinMi(v, hedefGenel) || yakinMi(v, hedefGenel * KDV));
       // liste sayfalari enjekte: orijinal gorunur sayfa adlarinin en az biri teklifte
       const enjekte = orj ? visibleSheets(orj).some((w) => teklif.getWorksheet(w.name)) : false;
       const ok = !!kapak && musteriOk && !!icmal && (hedefGenel == null || hedefGenel === 0 ? true : icmalHit) && enjekte;
