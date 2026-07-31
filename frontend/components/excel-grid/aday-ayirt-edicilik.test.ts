@@ -158,4 +158,20 @@ describe('PU4 — aday popup genişlik tercihi', () => {
       .toMatch(/new ResizeObserver\([\s\S]{0,200}?popupGenisligiYaz\(/);
     expect(kaynak, 'olculecek elemana ref bagli olmali').toContain('ref={popupRef}');
   });
+
+  /* PU4h — CANLI BULGU (31.07): kullanici "popup'ı genişletemiyorum" dedi.
+   * Kok neden: `width` REACT KONTROLUNDE bir inline stil (`width: popupGenislik`),
+   * ama CSS `resize` tarayicinin AYNI inline stile yazmasiyla calisir. Her
+   * yeniden render React'in degerini geri yazip surüklemeyi SIFIRLIYORDU
+   * (ozellikle "tip seçin" adimina gecerken). Setter de hic kullanilmiyordu,
+   * yani React kullanicinin olcusunu asla ogrenmiyordu.
+   * Sozlesme: olcu STATE'e geri yazilmali ki React'in degeri ekrandakiyle
+   * ayni kalsin. */
+  it('PU4h ResizeObserver ölçüyü state’e geri yazar (yoksa genişletme geri sıçrar)', () => {
+    const kaynak = fs.readFileSync(path.join(__dirname, 'ExcelGrid.tsx'), 'utf8');
+    expect(kaynak, 'setter tanımlı olmalı — [popupGenislik] tek başına yetmez')
+      .toMatch(/\[\s*popupGenislik\s*,\s*setPopupGenislik\s*\]/);
+    expect(kaynak, 'ResizeObserver ölçüyü state’e yazmalı')
+      .toMatch(/new ResizeObserver\([\s\S]{0,400}?setPopupGenislik\(/);
+  });
 });

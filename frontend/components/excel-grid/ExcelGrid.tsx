@@ -195,16 +195,62 @@ function BrandDropdown(props: ICellRendererParams & {
   // kullanici popup'i genisletse de bir sonraki popup yine varsayilan
   // genislikte aciliyordu. CSS `resize: both` DOM olayi uretmedigi icin yeni
   // genislik ResizeObserver ile yakalanip kaydedilir (sozlesme: PU4_* testleri).
-  const [popupGenislik] = React.useState<number>(() => popupGenisligiOku());
+  // ⚠ IKINCI HALKA (31.07, canli bulgu): genislik REACT KONTROLUNDE bir inline
+  // stildi (`width: popupGenislik`) ama CSS `resize` tarayicinin AYNI inline
+  // stile yazmasiyla calisir. Her yeniden render (tip secimine gecis, filtre,
+  // "tumunu gor") React'in degerini geri yaziyor → kullanici surukluyor, popup
+  // GERI SICRIYOR. Ustelik setter hic kullanilmadigi icin React kullanicinin
+  // olcusunu asla ogrenmiyordu. Cozum: ResizeObserver olcuyu STATE'e de yazar,
+  // boylece React'in degeri her zaman ekrandakiyle ayni olur.
+  const [popupGenislik, setPopupGenislik] = React.useState<number>(() => popupGenisligiOku());
   const popupRef = React.useRef<HTMLDivElement | null>(null);
   const popupAcik = !!(candidates && candidates.length > 0 && popupPos);
   React.useEffect(() => {
     const el = popupRef.current;
     if (!popupAcik || !el || typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(() => popupGenisligiYaz(el.getBoundingClientRect().width));
+    const ro = new ResizeObserver(() => {
+      const r = el.getBoundingClientRect();
+      const w = Math.round(r.width);
+      popupGenisligiYaz(w);
+      // Ayni degerde setState React'te yeniden render URETMEZ; dolayisiyla
+      // ResizeObserver ile sonsuz dongu olusmaz.
+      setPopupGenislik((onceki) => (Math.abs(onceki - w) >= 1 ? w : onceki));
+      // Popup BUYUYUNCE (tip secimine gecis, "tumunu gor", kullanici
+      // surukledi) kutu ekrandan tasabilir ve tutamac erisilemez olur —
+      // her boyut degisiminde konum yeniden kirpilir.
+      const pay = 12;
+      setPopupPos((onceki) => {
+        if (!onceki) return onceki;
+        const left = Math.max(pay, Math.min(onceki.left, window.innerWidth - r.width - pay));
+        const top = Math.max(pay, Math.min(onceki.top, window.innerHeight - r.height - pay));
+        return (Math.abs(left - onceki.left) > 1 || Math.abs(top - onceki.top) > 1)
+          ? { top, left } : onceki;
+      });
+    });
     ro.observe(el);
     return () => ro.disconnect();
   }, [popupAcik]);
+
+  // ⚠ UCUNCU HALKA (31.07, canli bulgu): "seçim çerçevesini genişletemiyorum".
+  // Olculdu — popup'in SAG-ALT KOSESI VIEWPORT DISINDA kaliyordu:
+  //   elementFromPoint(sag-6, alt-6) → null · kosePopupMu=false
+  // Boyutlandirma tutamaci tam orada oldugu icin fare ona hic erisemiyor.
+  // Kok neden: `computePopupPos` konumu 360x420 VARSAYIMIYLA kirpiyor, oysa
+  // gercek kutu 520 genis ve maxHeight 70vh'a kadar uzayabiliyor; tasan kisim
+  // ekran disinda kaliyor. Cozum: popup CIZILDIKTEN sonra GERCEK olcusuyle
+  // yeniden konumlandirilir — tamami (tutamac dahil) ekranda kalir.
+  React.useLayoutEffect(() => {
+    const el = popupRef.current;
+    if (!popupAcik || !el || !popupPos) return;
+    const r = el.getBoundingClientRect();
+    const pay = 12;
+    const left = Math.max(pay, Math.min(popupPos.left, window.innerWidth - r.width - pay));
+    const top = Math.max(pay, Math.min(popupPos.top, window.innerHeight - r.height - pay));
+    // Ayni degerde setState render uretmez → dongu olmaz.
+    if (Math.abs(left - popupPos.left) > 1 || Math.abs(top - popupPos.top) > 1) {
+      setPopupPos({ top, left });
+    }
+  }, [popupAcik, popupPos, popupGenislik]);
   // K6 zincirleme secim: 1. soru = varyant (label grubu), 2. soru = alt tip
   // (ayni label'da birden fazla urun — "Tip A / Tip B"). Fiyat ancak tek
   // urune inilince yazilir.
