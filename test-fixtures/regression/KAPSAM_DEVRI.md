@@ -45,6 +45,23 @@ artık ayrı ayrı yazılıdır.
 
 ---
 
+## 2b. ADIM 5'te ilk kez test kazanan kriterler (31.07)
+
+| Kriter | Yeni kanıt | Kırmızı kanıtı |
+|---|---|---|
+| **SD4** miras + çap ayrıştırma | `test:conversion` — unicode kesirler (¼ ½ ¾ ⅛ ⅜ ⅝ ⅞) · bileşik (1¼" · 1 1/4" · 2½") · DN · Ø/mm | — (yeni kapsam) · ⚠ `1-1/4"` → 0,25 **bilinen açık** |
+| **KF6** self-check eksik=0 | `test:ex` — girdideki her fiyat çıktıda + özet sayıyı taşır | labToplam sıfırlandı → "eksik=2" |
+| **GS14c** tek hesap modülü | `test:ex` — grid toplamı = çıktı toplamı (ŞAHİNKUL 14.124.619,00) | labToplam sıfırlandı → "grid=14124619 · çıktı=0" |
+| **GS14b** rol/şema tutarlılığı | `test:gs` — 9 rol 13 kolonluk şemada var | statik sözleşme |
+| **GS8** kolon genişliği kalıcılığı | `gs-kalicilik.spec.ts` GS8b — sürükle → kaydet → aç → aynı (380→530→530) | — |
+| **GS9** sola sabitleme | `gs-kalicilik.spec.ts` — `pinned-left` + sağa kaydırınca kalır | — |
+| **GS6a** seçici var + veri görünür | `gs-kalicilik.spec.ts` | — |
+| **GS6b** seçici değişince grid dolar | `gs-kalicilik.spec.ts` **`test.fail()`** | KARŞILANMIYOR — bilinen açık |
+
+**Silinen ölçüm:** ilk GS14 denemesi ("çıktı rollerinde colN yok") **totolojiydi** —
+`standartlastir` rolleri her koşulda sabitliyor, rol bilerek `col4`e bağlandığında
+test yine yeşil kaldı. Duyarsız test kanıt değildir; silindi.
+
 ## 3. Hâlâ tek kaynağa bağlı kriterler (dikkat)
 
 | Kriter | Tek kanıt | Risk |
