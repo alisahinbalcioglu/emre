@@ -136,8 +136,21 @@ export async function resolvePopupIfAny(page: Page, rowIdx: number, name: string
   const header = page.getByText('Seçim gerekli', { exact: false }).first();
   try { await header.waitFor({ state: 'visible', timeout: 800 }); } catch { return false; }
   const tikla = (geriAtla: boolean) => page.evaluate(({ skipGeri, desen }) => {
-    const hdr = Array.from(document.querySelectorAll('div')).find((d) => /Seçim gerekli/.test(d.textContent ?? '') && d.children.length === 0);
-    const box = hdr?.parentElement;
+    // KD5c (pano C-D): popup KABI `data-testid` ile bulunur.
+    //
+    // ⚠ ESKI HALI KIRILGANDI ve sessizce kirildi:
+    //     document.querySelectorAll('div')
+    //       .find(d => /Seçim gerekli/.test(d.textContent) && d.children.length === 0)
+    //   yani "Seçim gerekli" yazan ve HIC COCUK ELEMANI OLMAYAN yaprak div.
+    //   `44babd1` basliga surukleme tutamagi ekledi (<span>⠿</span>), children
+    //   1 oldu, finder undefined dondu, popup HIC COZULMEDI ve
+    //   `sahinkul-golden.spec.ts:239` "fiyat bos" diye patladi. Urun dogruydu;
+    //   motor `multi` donup SORUYORDU (I7 / fallback yasagi).
+    //
+    // Sozlesme artik DOM agacinin sekli degil, BILEREK konan bir testid.
+    // Kaynak: ExcelGrid.tsx → <div ref={popupRef} data-testid="aday-popup">
+    // Kilit : frontend/lib/popup-secici-sozlesmesi.test.ts
+    const box = document.querySelector('[data-testid="aday-popup"]');
     if (!box) return null;
     const btns = Array.from(box.querySelectorAll('button'));
     const secilebilir = skipGeri ? btns.filter((b) => !/← Geri/.test(b.textContent ?? '')) : btns;
@@ -151,7 +164,29 @@ export async function resolvePopupIfAny(page: Page, rowIdx: number, name: string
   }, { skipGeri: geriAtla, desen: tercih?.source ?? null });
 
   const ilk = await tikla(false);
-  if (!ilk) return false;
+  // ⚠ SESSIZ KIRILMA DELIGI KAPATILDI (KD5c, pano C-D).
+  //
+  // Eski hali `if (!ilk) return false;` idi ve IKI COK FARKLI durumu ayni
+  // degere eziyordu:
+  //     (a) popup HIC ACILMADI            → false dogru cevap
+  //     (b) popup GORUNUR ama COZULEMEDI  → false YALAN
+  // Yukaridaki `header.waitFor` GECTIYSE popup GORUNUYOR demektir; o noktadan
+  // sonra `tikla()` null donuyorsa bu bir HARNESS ARIZASIDIR, "popup yoktu"
+  // degil. 31.07'de tam bu oldu: DOM secicisi kirildi, buras: sessizce false
+  // dondu, kirmizi 100+ satir ilerideki "fiyat bos" assert'inde patladi ve
+  // kok nedeni bulmak BIR TUR surdu.
+  //
+  // I7 ailesi (sessiz bos yasagi) — artik YUKSEK SESLE oluyor: bir dahaki DOM
+  // degisiminde test tam kirilma noktasinda ve dogru mesajla kirmizi doner.
+  if (!ilk) {
+    throw new Error(
+      `POPUP COZULEMEDI (satir ${rowIdx} · ${name}): "Seçim gerekli" basligi GORUNUR `
+      + `ama [data-testid="aday-popup"] kabi ya da icindeki butonlar bulunamadi. `
+      + `Bu bir HARNESS arizasidir — popup'in yoklugu DEGIL. `
+      + `Muhtemel sebep: popup DOM yapisi degisti; helpers.ts secicisi guncellenmeli `
+      + `(kilit: frontend/lib/popup-secici-sozlesmesi.test.ts).`,
+    );
+  }
   await page.waitForTimeout(500);
   let stage2 = false;
   let secilen = ilk.label;

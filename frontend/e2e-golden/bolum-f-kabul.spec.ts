@@ -8,7 +8,6 @@
 import { test, expect, Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
-// @ts-expect-error — .mjs yardimci (tip bildirimi yok)
 import { artefaktKok } from './artefakt-dizini.cjs';
 import { harvestGrid, scrollRowIntoView } from './helpers';
 

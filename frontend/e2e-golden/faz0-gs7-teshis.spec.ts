@@ -5,7 +5,6 @@
 import { test } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
-// @ts-expect-error — .mjs yardimci (tip bildirimi yok)
 import { artefaktKok } from './artefakt-dizini.cjs';
 
 const FIXTURES = path.resolve(__dirname, '../../test-fixtures/e2e');
