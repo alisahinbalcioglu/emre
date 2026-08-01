@@ -38,10 +38,24 @@ echo "── 4/5 docker compose up -d backend frontend ──"
 docker compose up -d backend frontend
 
 echo "── 5/5 canli dogrulama ──"
+# ⚠ ADRES TUZAGI: `http://localhost/api/health` CALISMAZ. Caddyfile yalniz
+# `{$DOMAIN}` ve `www.{$DOMAIN}` site bloklarini tanimliyor; Host basligi
+# "localhost" olan istek hicbirine uymaz ve Caddy 404 doner. Backend'in
+# 3001 portu ise `expose` (publish DEGIL), yani host'tan erisilemez.
+# Sonuc: deploy BASARILI olsa bile dogrulama bos doner ve script yanlislikla
+# "DOGRULANAMADI" der. Bu yuzden gercek domain uzerinden sorulur.
+DOMAIN_ADI="$(grep -E '^DOMAIN=' .env 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r"'"'"' ')"
+if [ -z "$DOMAIN_ADI" ]; then
+  echo "   ⚠ .env icinde DOMAIN bulunamadi — metapricex.com varsayiliyor"
+  DOMAIN_ADI="metapricex.com"
+fi
+echo "   adres: https://$DOMAIN_ADI/api/health"
+
 # Container'in ayaga kalkmasini bekle (migrate deploy + nest boot).
+YANIT=""
 for i in 1 2 3 4 5 6 7 8 9 10; do
   sleep 3
-  YANIT="$(curl -fsS http://localhost/api/health || true)"
+  YANIT="$(curl -fsSL --max-time 20 "https://$DOMAIN_ADI/api/health" || true)"
   if [ -n "$YANIT" ]; then break; fi
   echo "   ... health henuz cevap vermiyor (deneme $i/10)"
 done
