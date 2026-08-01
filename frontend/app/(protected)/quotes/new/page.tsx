@@ -44,7 +44,7 @@ import type { MetrajResult } from '@/components/dwg-metraj/types';
 import MetrajEditor from '@/components/dwg-metraj/MetrajEditor';
 import { parseMaterialText } from '@/lib/parse-material-text';
 import { mergeMultiSheet } from '@/lib/merge-multisheet';
-import { hesaplaSatisBirimFiyat, hesaplaSatirToplam } from '@/lib/pricing';
+import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, toplamlariTamamla } from '@/lib/pricing';
 import type { Brand } from '@/types';
 import type {
   UploadMode,
@@ -338,6 +338,17 @@ export default function NewQuotePage() {
       // Dashboard'dan gelen multi-sheet verisini yukle
       const multi = data.multiSheetData ?? data.excelGridData;
       if (multi && Array.isArray(multi.sheets)) {
+        // ── KD11 (kalem 54, Yol A): ICE AKTARMADA EKSIK TOPLAMLARI TAMAMLA ──
+        // Backend dosyadaki toplam sutununu YALNIZ KOPYALAR
+        // (standart-sema.ts:191-195); dosyada o sutun yoksa hucre bos kalir
+        // ve ice aktarma hattinda carpma HIC YOKTUR. PANOVA'da 56 satirda
+        // birim fiyat 2.300.000 dolu, Malz. Toplam bostu.
+        // Dosyadan gelen degere DOKUNULMAZ; yalniz BOS hucreler doldurulur.
+        let tamamlanan = 0;
+        for (const s of multi.sheets) {
+          tamamlanan += toplamlariTamamla(s.rowData ?? [], (s.columnRoles ?? {}) as any);
+        }
+        if (tamamlanan > 0) console.log(`[KD11] ice aktarmada ${tamamlanan} eksik toplam hucresi tamamlandi`);
         setMultiSheet(multi);
         const firstNonEmpty = multi.sheets.findIndex((s: any) => !s.isEmpty);
         const activeIdx = firstNonEmpty >= 0 ? firstNonEmpty : 0;

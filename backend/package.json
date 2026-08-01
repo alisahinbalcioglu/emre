@@ -38,7 +38,8 @@
     "test:pk9": "ts-node test/pk9-sessiz-indeks-test.ts",
     "test:18": "ts-node test/pano18-para-birimi-test.ts",
     "fixture:anonim": "ts-node test/fixture-anonim.ts",
-    "prebuild": "node scripts/surum-yaz.js"
+    "prebuild": "node scripts/surum-yaz.js",
+    "test:kd11": "ts-node test/kd11-toplam-yollari-test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

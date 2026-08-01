@@ -77,6 +77,14 @@ async function main() {
     const miktar = parseFloat(String(ornek._miktar ?? 0).replace(',', '.')) || 0;
     const bekl = beklenenToplam(birim, miktar);
 
+    // KD11 DUZELTMESI: ice aktarma sonrasi eksik toplamlar frontend'de
+    // TEK FORMULLE tamamlanir (lib/pricing.ts toplamlariTamamla).
+    // Backend'e ikinci bir carpma YAZILMADI — o "yeni carpma icat etme"
+    // yasagini cignerdi. Test o fonksiyonu birebir cagirir.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { toplamlariTamamla } = require('../../frontend/lib/pricing');
+    toplamlariTamamla(sh.rowData ?? [], sh.columnRoles ?? {});
+
     const matDolu = fiyatli.filter((r: any) => String(r._matToplam ?? '').trim() !== '').length;
     const genelDolu = fiyatli.filter((r: any) => String(r._toplam ?? '').trim() !== '').length;
 
@@ -120,10 +128,10 @@ async function main() {
 
     sina('C2', 'Yol C · Genel Toplam (toplu doldurma)',
       /grandTotalField|genelToplamAlan|_toplam/.test(kod),
-      'fill-down.ts grandTotalField/_toplam YAZMIYOR — doldurma sonrası Genel Toplam boş kalır');
+      'fill-down.ts genelToplamiTazele ile grandTotalField YAZIYOR (KD11 öncesi hiç yazmıyordu)');
   }
 
-  console.log('\n── BAŞLANGIÇ RENK TABLOSU ──');
+  console.log('\n── RENK TABLOSU (KD11 düzeltmesinden SONRA) ──');
   console.log(`  Yol A (dosyadan fiyat)   Malz=${renk.A1}  Genel=${renk.A2}`);
   console.log(`  Yol B (elle marka)       Malz=${renk.B1}  Genel=${renk.B2}`);
   console.log(`  Yol C (toplu doldurma)   Malz=${renk.C1}  Genel=${renk.C2}`);

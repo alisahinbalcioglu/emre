@@ -90,6 +90,15 @@ async function main() {
   // AYNISIYLA (materialTotal + laborTotal, ozet satirlari HARIC) uretilir.
   // Bu kontrol hem cift saymayi (ozet sayfanin toplama girmesi) hem de kayip
   // satiri yakalar. 31.07 olcumu: 62.043.700 = 62.043.700 (fark 0).
+  //
+  // ⚠ BU TEST NE KANITLAR, NE KANITLAMAZ (01.08, kalem 54'un dersi):
+  // Bu test BIR DOSYANIN TOPLAMINI kanitlar — TOPLAM OZELLIGINI DEGIL.
+  // Yildiz'da dogru cikmasinin sebebi o dosyada "Isc. Toplam" sutununun
+  // BULUNMASI ve standart-sema.ts:194'un onu KOPYALAMASIDIR. Malz. Toplam
+  // sutunu olmayan bir dosyada (PANOVA) ayni hesap BOS donuyordu ve bu test
+  // hicbir sey soylemiyordu. Yani yesilligi gercek ama KAPSAMI TEK DOSYA.
+  // Genel kanit icin: test/kd11-toplam-yollari-test.ts (uc yol x iki sutun).
+  // Bu test SILINMEZ, DEGISTIRILMEZ — yanina ikincisi konur.
   {
     const icmal: any = yildiz.sheets.find((s) => katla(s.name).includes('icmal'));
     const icmalGenel = ((icmal?.rowData ?? []) as any[])

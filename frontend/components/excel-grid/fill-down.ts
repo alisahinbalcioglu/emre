@@ -66,6 +66,32 @@ export interface FillNode {
   setDataValue?: (alan: string, deger: any) => void;
 }
 
+/**
+ * KD11 — GENEL TOPLAM tazeleme (kalem 54).
+ *
+ * `recalcGrand` (ExcelGrid.tsx:2386-2397) ile AYNI kural: grandTotal =
+ * matToplam + labToplam. Burada tekrarlanmasinin sebebi, o fonksiyonun
+ * AG-Grid olay nesnesine (`e.node`) bagli olmasi ve doldurma yolunun olay
+ * uretmemesi. Formul (pricing.ts:53) tek; toplama kurali da tek.
+ */
+function genelToplamiTazele(
+  node: FillNode,
+  roller: FillRoller,
+  totAlan: string | undefined,
+  yaz: (n: FillNode, alan: string, deger: unknown) => void,
+): void {
+  const genelAlan = roller.grandTotalField;
+  if (!genelAlan) return;
+  const oku = (alan?: string) => {
+    if (!alan) return 0;
+    const v = parseFloat(String((node.data as Record<string, unknown>)[alan] ?? '').replace(',', '.'));
+    return Number.isFinite(v) ? v : 0;
+  };
+  const mat = oku(totAlan ?? roller.materialTotalField);
+  const lab = oku(roller.laborTotalField);
+  yaz(node, genelAlan, (Math.ceil((mat + lab) * 10) / 10).toFixed(1));
+}
+
 export interface FillRoller {
   nameField?: string;
   noField?: string;
@@ -75,6 +101,10 @@ export interface FillRoller {
   diameterField?: string;
   materialUnitPriceField?: string;
   materialTotalField?: string;
+  /** KD11: Genel Toplam. Doldurma bunlari YAZMIYORDU — Malz. Toplam doluyor
+   *  ama Genel Toplam bos kaliyordu (kalem 54, Yol C). */
+  laborTotalField?: string;
+  grandTotalField?: string;
 }
 
 export interface FillDownArgs {
@@ -193,6 +223,20 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
       }
       if (bfAlan) yaz(node, bfAlan, satisFiyat.toFixed(1));
       if (totAlan) yaz(node, totAlan, hesaplaSatirToplam(satisFiyat, miktar).toFixed(1));
+      // ── KD11 (kalem 54, Yol C): GENEL TOPLAM ────────────────────────────
+      // Buras: eskiden YALNIZ `totAlan`i yaziyordu. Sonuc: toplu doldurmada
+      // Malz. Toplam doluyor, Genel Toplam BOS kaliyordu — kullanicinin
+      // SAHINKUL YANGIN'da gordugu "dokuz satirdan yalniz birinde var" tam
+      // olarak buydu (o bir satir ELLE marka secilendi, Yol B).
+      //
+      // Elle secim yolunda (Yol B) Genel Toplam DOLAYLI doluyor:
+      // setDataValue -> handleCellValueChanged -> recalcGrand (ExcelGrid.tsx
+      // :2500-2507). Doldurma yolu `yaz()` ile node.data'yi dogrudan
+      // guncelledigi icin o olay HIC atesmiyor.
+      //
+      // Yeni carpma ICAT EDILMEDI: ayni tek formul (pricing.ts:53) ve
+      // recalcGrand ile ayni toplama kurali (matToplam + labToplam).
+      genelToplamiTazele(node, roller, totAlan, yaz);
       sonuc.satirlar.push({ rowIdx, durum: 'fiyat', fiyat: satisFiyat });
       sonuc.ozet.fiyatli++;
       continue;

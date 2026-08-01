@@ -76,3 +76,70 @@ export function etkinMiktar(
   const u = oku(unitField);
   return !isNaN(u) ? u : 0;
 }
+
+/**
+ * KD11 — İÇE AKTARMADA EKSİK TOPLAMLARI TAMAMLA (pano kalem 54, Yol A).
+ *
+ * KÖK NEDEN: `backend/.../standart-sema.ts:191-195` dosyadaki toplam
+ * sütununu YALNIZ KOPYALAR. Dosyada "Malz. Toplam" sütunu yoksa hücre boş
+ * kalır ve içe aktarma hattında onu dolduracak ÇARPMA HİÇ YOKTUR.
+ * PANOVA'da ölçüldü: 56 satırda `_matBirim=2300000`, `_matToplam=""`.
+ *
+ * "İşç. Toplam neden çalışıyor?" — çalışmıyor, KOPYALANIYOR: o dosyalarda
+ * "İşç. Toplam" sütunu var. Kanıt: ŞAHİNKUL SIHHİ'de birim dolu 85, toplam
+ * dolu 90 — beş satırda birim yokken toplam var.
+ *
+ * ⚠ YENİ ÇARPMA İCAT EDİLMEZ: `hesaplaSatirToplam` (yukarıda) tek formüldür;
+ * ekranın bütün yolları onu çağırır. Burada da o çağrılır.
+ *
+ * ⚠ DOSYADAN GELEN DEĞERE DOKUNULMAZ: hücre zaten doluysa olduğu gibi kalır.
+ * Dosyanın kendi toplamı, bizim hesabımızdan üstündür (müşterinin verisi).
+ */
+export function toplamlariTamamla(
+  satirlar: Record<string, any>[],
+  roller: Record<string, string | undefined>,
+): number {
+  const { materialUnitPriceField: mBirim, materialTotalField: mTop,
+    laborUnitPriceField: lBirim, laborTotalField: lTop,
+    grandTotalField: genel, quantityField: mikA, unitField: brmA } = roller;
+  const sayi = (v: unknown) => {
+    const n = parseFloat(String(v ?? '').replace(',', '.'));
+    return Number.isFinite(n) ? n : 0;
+  };
+  const bos = (v: unknown) => String(v ?? '').trim() === '';
+  let dokunulan = 0;
+
+  for (const r of satirlar) {
+    if (!r?._isDataRow) continue;
+    const miktar = etkinMiktar(r, mikA, brmA);
+
+    // ⚠ MIKTAR 0 ISE HUCRE BOS BIRAKILMAZ, "0.0" YAZILIR.
+    // Bu benim kararim degil; proje bunu zaten karara baglamis:
+    // ExcelGrid.tsx:2396 → "Miktar 0 ise grand total 0 gosterilir (bos degil,
+    // kullanici 'bos degil sifir' dedi)". PANOVA'da bir satir tam boyle:
+    // `2'' 30 Metre Kaucuk Hortumlu Yangin Dolabi` · miktar=0 · birim fiyat 8250.
+    // Ilk yazdigim `miktar > 0` kosulu o satiri bos birakiyordu — mevcut
+    // kurala aykiriydi, kaldirildi. Olcut: BIRIM FIYAT var mi.
+    if (mTop && mBirim && bos(r[mTop]) && sayi(r[mBirim]) > 0) {
+      r[mTop] = hesaplaSatirToplam(sayi(r[mBirim]), miktar).toFixed(1);
+      dokunulan++;
+    }
+    // İşç. Toplam — aynı kural (dosyada sütun yoksa burası da boştur)
+    if (lTop && lBirim && bos(r[lTop]) && sayi(r[lBirim]) > 0) {
+      r[lTop] = hesaplaSatirToplam(sayi(r[lBirim]), miktar).toFixed(1);
+      dokunulan++;
+    }
+    // Genel Toplam — recalcGrand (ExcelGrid.tsx:2386-2397) ile AYNI kural.
+    // Bileşenlerden EN AZ BİRİ yazılıysa genel toplam da yazılır (0 olsa bile).
+    if (genel && bos(r[genel])) {
+      const matVar = !!mTop && !bos(r[mTop]);
+      const labVar = !!lTop && !bos(r[lTop]);
+      if (matVar || labVar) {
+        const t = sayi(mTop ? r[mTop] : 0) + sayi(lTop ? r[lTop] : 0);
+        r[genel] = yukariYuvarla(t).toFixed(1);
+        dokunulan++;
+      }
+    }
+  }
+  return dokunulan;
+}
