@@ -20,6 +20,16 @@ COPY . .
 # API URL'i build'e goml — compose args ile gelir (ornek: https://metapricex.com/api)
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+# PK11: FE surum damgasi. `prebuild` (scripts/surum-yaz.js) bu degeri arar;
+# `.git` imaja girmedigi icin `git rev-parse` konteynerde CALISMAZ ve deger
+# BURADAN gelmezse "local" kalir.
+#
+# ⚠ 01.08 ilk gercek deploy'da tam bu oldu: backend'e ARG gecirilmisti,
+# frontend'e UNUTULMUSTU. Canli /surum.json "local" dondu, yani FE kendi
+# surumunu SOYLEYEMEDI ve kanit bundle parmak iziyle dolayli kuruldu.
+# Kapi (PK11a) canli ortamda FE icin kor kalirdi.
+ARG BUILD_SHA=local
+ENV BUILD_SHA=${BUILD_SHA}
 RUN npm run build
 
 ENV NODE_ENV=production

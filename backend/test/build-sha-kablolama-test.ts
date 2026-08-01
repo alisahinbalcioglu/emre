@@ -61,6 +61,28 @@ sina('PK2-3b deploy.sh hash okur', /git\s+rev-parse/.test(deploy) && /BUILD_SHA/
 sina('PK2-3c deploy.sh export eder', /export\s+BUILD_SHA/.test(deploy),
   'scripts/deploy.sh BUILD_SHA export etmiyor — `docker compose build` degiskeni GORMEZ.');
 
+// ── PK2-6: FRONTEND de kendi surumunu soyleyebilmeli ────────────────────────
+//
+// KIRMIZISI CANLIDA GORULDU (01.08 ilk gercek deploy): backend `68464232b8d5`
+// donerken `https://metapricex.com/surum.json` **"local"** dondu. Cunku ARG
+// yalniz backend'e gecirilmisti; FE'ninki unutulmustu ve `.git` imaja
+// girmedigi icin konteynerde `git rev-parse` de calismiyor.
+// Sonuc: PK11 kapisi CANLI ortamda FE tarafi icin KOR kalirdi.
+{
+  const feDocker = oku(path.join(repo, 'frontend', 'Dockerfile'));
+  const feArg = /^\s*ARG\s+BUILD_SHA/m.test(feDocker) && /ENV\s+BUILD_SHA=\$\{?BUILD_SHA\}?/.test(feDocker);
+  // Sira sart: ARG/ENV `npm run build`ten ONCE gelmeli, yoksa prebuild goremez.
+  const argIdx = feDocker.search(/^\s*ARG\s+BUILD_SHA/m);
+  const buildIdx = feDocker.search(/RUN\s+npm\s+run\s+build/);
+  sina('PK2-6a frontend Dockerfile ARG+ENV', feArg,
+    'frontend/Dockerfile BUILD_SHA almiyor — canli /surum.json "local" doner.');
+  sina('PK2-6b frontend ARG build`ten ONCE', argIdx >= 0 && buildIdx >= 0 && argIdx < buildIdx,
+    'frontend/Dockerfile ARG BUILD_SHA `npm run build`ten SONRA — prebuild degeri goremez.');
+  const feBlok = compose.split(/^\s{2}frontend:/m)[1]?.split(/^\s{2}\w[\w-]*:/m)[0] ?? '';
+  sina('PK2-6c compose frontend args', /BUILD_SHA:\s*\$\{BUILD_SHA/.test(feBlok),
+    'docker-compose.yml frontend servisinde build.args.BUILD_SHA yok.');
+}
+
 // ── PK2-4: controller regresyon korumasi ─────────────────────────────────────
 //
 // ⚠ KRITER METNI DEGISTI (PK11, 31.07 — gerekce KRITER_DEGISIKLIK_GUNLUGU.md

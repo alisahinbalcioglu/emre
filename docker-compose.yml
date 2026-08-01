@@ -82,6 +82,9 @@ services:
       args:
         # Ayni domain + /api → CORS yok. Caddy /api/* i backend'e yonlendirir.
         NEXT_PUBLIC_API_URL: https://${DOMAIN}/api
+        # PK11: FE de kendi surumunu soyleyebilmeli (/surum.json). Backend'de
+        # vardi, burada UNUTULMUSTU — 01.08 deploy'unda FE "local" dondu.
+        BUILD_SHA: ${BUILD_SHA:-local}
     restart: unless-stopped
     environment:
       NODE_ENV: production
