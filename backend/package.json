@@ -39,7 +39,8 @@
     "test:18": "ts-node test/pano18-para-birimi-test.ts",
     "fixture:anonim": "ts-node test/fixture-anonim.ts",
     "prebuild": "node scripts/surum-yaz.js",
-    "test:kd11": "ts-node test/kd11-toplam-yollari-test.ts"
+    "test:kd11": "ts-node test/kd11-toplam-yollari-test.ts",
+    "test:kd12": "ts-node test/kd12-baslik-satiri-test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

@@ -31,6 +31,26 @@ export interface StandartKolon {
 }
 
 /** GS1/A.1 — degismez 13 kolon, bu sirada. Etiketler PRD tablosuyla birebir. */
+/**
+ * KD12 — satir, dosyanin KENDI baslik satiri mi?
+ *
+ * Olcut ANLAMSAL (konumsal degil): hucrelerinden EN AZ IKISI bilinen bir
+ * baslik etiketi mi. Iki sarti birden istememizin sebebi yanlis-pozitif:
+ * "BIRIM" adinda bir malzeme olabilir, ama "MALZEME ADI" + "MİKTAR" ayni
+ * satirda birlesince o satir malzeme olamaz.
+ *
+ * Turkce kucultme ZORUNLU locale'li — bkz. kullanim yerindeki not.
+ */
+const BASLIK_ETIKETLERI = /^(no|s\.?n\.?|sıra ?no|sıra|malzeme adı|malzeme|birim|miktar|tutar|toplam|birim fiyat|fiyat|açıklama|cinsi|adet|poz|poz no)$/;
+function baslikEtiketiSatiriMi(r: Record<string, any>): boolean {
+  const hucreler = [r._no, r._ad, r._birim, r._miktar]
+    .map((v) => String(v ?? '').trim())
+    .filter((x) => x !== '');
+  if (hucreler.length < 2) return false;
+  const kucult = (x: string) => x.toLocaleLowerCase('tr').replace(/\s+/g, ' ').trim();
+  return hucreler.filter((h) => BASLIK_ETIKETLERI.test(kucult(h))).length >= 2;
+}
+
 export const STANDART_KOLONLAR: StandartKolon[] = [
   // GS9: No + Malzeme Adı SOLA SABITLENIR (donmus bolme) — saga kaydirirken
   // hangi satirda olundugu kaybolmaz. GS8: genislikler kullanici tarafindan
@@ -207,6 +227,30 @@ export function standartlastir(girdi: StandartlastirGirdi): StandartlastirCikti 
       // eslestirmesine ve TEKLIF GENELI toplamina GIRMEZ — aksi halde YILDIZ'da
       // 62.043.700 iki kez sayilip 124.087.400 olurdu.
       if (yeni._isDataRow) yeni._ozet = true;
+    }
+
+    // ── KD12 (kalem 55, madde a): EXCEL'IN KENDI BASLIK SATIRI VERI OLAMAZ ──
+    //
+    // PANOVA'da `MALZEME ADI` / `MİKTAR` satiri `_isDataRow=true` geliyordu:
+    // satir tipi `ad + (birim|miktar)` kuraliyla belirleniyor ve baslik satiri
+    // bu kurali SAGLIYOR. Sonuc: Excel'in kendi basligi malzeme satiri sanilip
+    // gride giriyor.
+    //
+    // ⚠ "ILK N SATIRI ATLA" COZUM DEGIL: YILDIZ'da 5, PANOVA'da 1 cop satir
+    // var; sabit sayi birini duzeltip digerini bozar. Bu yuzden olcut KONUM
+    // degil ANLAM: satirin hucreleri dosyanin kendi BASLIK ETIKETLERI mi?
+    //
+    // ⚠ TURKCE `İ` TUZAGI: kucultme DAIMA `toLocaleLowerCase('tr')` ile.
+    // JS `"MİKTAR".toLowerCase()` → `"mi̇ktar"` (i + birlesik nokta) uretir ve
+    // `/miktar/i` ESLESMEZ. Bu tuzak testin kendisinde bir kez YALANCI YESIL
+    // verdi; ayni sinif hata `çayırova` marka sorgusunda da yasandi.
+    //
+    // KAPSAM OLCULDU: 12 fixture · 3.895 veri satiri → kural YALNIZ 2 satir
+    // yakaliyor ve ikisi de gercek Excel basligi (PANOVA "MALZEME ADI" +
+    // Bursa Demirtas "Açıklama"/"Birim"). Yanlis-pozitif YOK.
+    if (yeni._isDataRow && baslikEtiketiSatiriMi(yeni)) {
+      yeni._isDataRow = false;
+      yeni._isHeaderRow = true;
     }
 
     return yeni;

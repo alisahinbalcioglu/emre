@@ -43,6 +43,21 @@ const sina = (kod: string, ad: string, kosul: boolean, kanit: string) => {
   else { fails.push(`${kod} ${ad}`); console.log(`  ❌ ${kod} ${ad} — ${kanit}`); }
 };
 
+/** BILINEN ACIK — ne PASS ne FAIL. Acik KAPANIRSA test UYARI verir ki satir
+ *  gercek assert'e terfi etsin; boylece acik listesi bayatlamaz.
+ *  (conversion-test.ts'teki `bilinenAcik` ile ayni kalip.) */
+const acikListesi: string[] = [];
+const bilinenAcik = (kod: string, ad: string, duzeldiMi: boolean, kanit: string) => {
+  renk[kod] = duzeldiMi ? 'YEŞİL (ACIK KAPANMIS)' : 'KIRMIZI (BILINEN ACIK)';
+  acikListesi.push(`${kod} ${ad} — ${kanit}`);
+  if (duzeldiMi) {
+    fails.push(`ACIK KAPANMIS: ${kod} artik dogru calisiyor — gercek assert'e cevir`);
+    console.log(`  ❌ ACIK KAPANMIS: ${kod} — ${kanit}`);
+  } else {
+    console.log(`  ⚠ BILINEN ACIK ${kod} ${ad} — ${kanit}`);
+  }
+};
+
 const FIX = path.resolve(__dirname, '../../test-fixtures/e2e');
 const PANOVA = path.join(FIX, 'PANOVA-1.xlsx');
 const YILDIZ = path.join(FIX, 'YILDIZ ENTEGRE KARTEPE - Yangın Tesisatı.xlsx');
@@ -107,7 +122,16 @@ async function main() {
       const m = String(r._miktar ?? '').trim();
       return m !== '' && m !== 'null' && Number.isFinite(parseFloat(m));
     });
-    sina('c', '"8. CADDE" gibi ünvan metninden miktar türetilmiyor',
+    // ⚠ BILEREK ACIK BIRAKILDI (kullanici karari, 01.08). Olcum: naif bir
+    // duzeltme ("adinda N. var ve miktar N ise miktari sil") 12 fixture'da
+    // 12 satir yakaliyor ve 7'si GERCEK MALZEME — AKSA'da `1.1/2"-DN40
+    // Küresel Vana` mik=1. Yani duzeltme, kozmetik bir hatayi gidermek icin
+    // GERCEK MIKTARLARI silme riski tasiyor (sessiz veri kaybi).
+    // Zarar dengesi: bu satirlar `_isDataRow=false` — TOPLAMA GIRMIYORLAR,
+    // fiyat almiyorlar; zarar yalnizca ekranda tuhaf gorunmek.
+    // KAPANMA SARTI: 12/12 fixture repoda olunca (ADIM 6/PK3) dar ve
+    // olculebilir bir kural yazilabilir.
+    bilinenAcik('c', '"8. CADDE" gibi ünvan metninden miktar türetiliyor',
       sayiTuretilen.length === 0,
       unvan.length === 0
         ? 'PANOVA fixture\'ında ünvan satırı bulunamadı (metin r0\'da, veri satırı değil)'
