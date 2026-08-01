@@ -1,0 +1,124 @@
+/**
+ * KD12 — BAŞLIK/ÜNVAN SATIRLARI MALZEME SANILIYOR MU? (pano kalem 55)
+ *
+ * ÜÇ AYRI DAVRANIŞ, ÜÇ AYRI ASSERT (kabul şartı 3):
+ *   (a) ünvan/başlık satırları VERİ SATIRI olarak alınmayacak
+ *   (b) sütun adları SAYFA ADINA dönmeyecek
+ *   (c) "8. CADDE" gibi metinlerden SAYI TÜRETİLMEYECEK
+ *
+ * ⚠ HİPOTEZ ÇÜRÜTÜLDÜ (ölçüldü, varsayılmadı). Kullanıcının hipotezi
+ * "içe aktarıcı ünvan satırını başlık sanıyor; tek kök neden ikisini de
+ * açıklar" idi. Ham hücreler bunu çürüttü:
+ *
+ *   YILDIZ·Hidrant r6: ["","No","HİDRANT SİSTEMİ","Miktar","Birim","BİRİM FİYAT…"]
+ *   PANOVA        r2 : ["NO","MALZEME ADI","BİRİM","MİKTAR","malzeme birim fiyat","TOPLAM TUTAR"]
+ *
+ * → (b) BİR HATA DEĞİL: YILDIZ'da malzeme sütununun başlığı DOSYADA
+ *   gerçekten "HİDRANT SİSTEMİ" yazıyor; sayfa adı da `Hidrant.Sistemi`
+ *   olduğu için ikisi ÇAKIŞIYOR. Program dosyaya sadık davranıyor.
+ *   Başlık satırı seçici (excel-grid.service.ts:901-921) doğru satırı
+ *   buluyor — log da öyle diyor: `realHeaderRow=6 (score=4)`.
+ *
+ * → (a) GERÇEK HATA, ama YILDIZ'da değil PANOVA'da: r2 (Excel'in KENDİ
+ *   başlık satırı) `_isDataRow=true` geliyor. Sebep: `standart-sema.ts`
+ *   satır tipini `ad + (birim|miktar)` kuralıyla belirliyor ve başlık
+ *   satırı bu kuralı SAĞLIYOR ("MALZEME ADI" + "BİRİM"). `headerEndRow`
+ *   bilgisi ELDE VAR ama satır sınıflandırmasında KULLANILMIYOR.
+ *
+ * Yani iki dosya iki AYRI şey gösteriyor; tek kök neden yok.
+ * "İlk N satırı atla" ise çözüm değil: YILDIZ'da 5, PANOVA'da 1 çöp satır var.
+ *
+ * Çıkış kodu sözleşmesi: 0 = PASS · 2 = ÖN ŞART YOK · diğer = FAIL.
+ */
+import * as fs from 'fs';
+import * as path from 'path';
+import { ExcelGridService } from '../src/modules/excel-grid/excel-grid.service';
+
+let pass = 0;
+const fails: string[] = [];
+const renk: Record<string, string> = {};
+const sina = (kod: string, ad: string, kosul: boolean, kanit: string) => {
+  renk[kod] = kosul ? 'YEŞİL' : 'KIRMIZI';
+  if (kosul) { pass++; console.log(`  ✅ ${kod} ${ad} — ${kanit}`); }
+  else { fails.push(`${kod} ${ad}`); console.log(`  ❌ ${kod} ${ad} — ${kanit}`); }
+};
+
+const FIX = path.resolve(__dirname, '../../test-fixtures/e2e');
+const PANOVA = path.join(FIX, 'PANOVA-1.xlsx');
+const YILDIZ = path.join(FIX, 'YILDIZ ENTEGRE KARTEPE - Yangın Tesisatı.xlsx');
+
+/** Excel'in KENDİ başlık satırı: hücreleri başlık kelimesi olan satır. */
+const BASLIK_KELIMELERI = /^(no|s\.?n\.?|sıra|malzeme adı|birim|miktar|tutar|toplam|fiyat|açıklama|cinsi)$/;
+/** ⚠ TÜRKÇE `İ` TUZAĞI — bu yüklem bir kez YALANCI YEŞİL verdi.
+ *  JS `"MİKTAR".toLowerCase()` → `"mi̇ktar"` (i + birleşik nokta), `"miktar"`
+ *  DEĞİL; bu yüzden `/miktar/i` EŞLEŞMEZ. Yalnız `toLocaleLowerCase('tr')`
+ *  doğru sonucu verir. Aynı sınıf hata bu oturumda bir kez daha yaşandı
+ *  (`çayırova` markası `contains:'AYIROVA'` ile bulunamadı). */
+const kucult = (s: string) => s.toLocaleLowerCase('tr').replace(/\s+/g, ' ').trim();
+const baslikSatiriMi = (r: any) => {
+  const hucreler = [r._no, r._ad, r._birim, r._miktar]
+    .map((v) => String(v ?? '').trim()).filter(Boolean);
+  if (hucreler.length < 2) return false;
+  return hucreler.filter((h) => BASLIK_KELIMELERI.test(kucult(h))).length >= 2;
+};
+
+async function main() {
+  console.log('── KD12: BAŞLIK/ÜNVAN SATIRLARI ──\n');
+  for (const p of [PANOVA, YILDIZ]) {
+    if (!fs.existsSync(p)) { console.log(`ON KOSUL YOK — ${p} yok`); process.exit(2); }
+  }
+  const g = () => new ExcelGridService({ brand: { findMany: async () => [] } } as any);
+
+  // ── (a) Excel'in kendi başlık satırı VERİ olamaz ────────────────────────
+  {
+    const o: any = await g().prepare(fs.readFileSync(PANOVA), { fixedSchema: true } as any);
+    const veri = (o.sheets[0].rowData ?? []).filter((r: any) => r._isDataRow);
+    const sizan = veri.filter(baslikSatiriMi);
+    sina('a', 'Excel başlık satırı VERİ satırı olarak alınmıyor',
+      sizan.length === 0,
+      sizan.length
+        ? `${sizan.length} başlık satırı veriye sızdı: ${sizan.map((r: any) => `"${r._ad}"/"${r._birim}"`).join(' · ')}`
+        : `PANOVA'da ${veri.length} veri satırı, hiçbiri başlık değil`);
+  }
+
+  // ── (b) Sütun adı SAYFA ADINA dönmüyor ─────────────────────────────────
+  // Ölçüt: sütun adı, DOSYANIN KENDİ başlık hücresiyle aynı olmalı.
+  // Sayfa adına benzemesi tek başına hata DEĞİLDİR — dosya öyle yazmışsa
+  // program ona sadıktır. Hata, dosyada olmayan bir adın uydurulmasıdır.
+  {
+    const o: any = await g().prepare(fs.readFileSync(YILDIZ), { fixedSchema: true } as any);
+    const sh = o.sheets.find((s: any) => /hidrant/i.test(s.name));
+    const adlar = (sh?.kaynakKolonlar ?? []).map((k: any) => String(k.headerName));
+    // Dosyanın gerçek başlık satırındaki metinler (r6) — parse'tan bağımsız kanıt
+    const dosyadaki = ['HİDRANT SİSTEMİ', 'Birim', 'Miktar', 'No'];
+    const uydurulan = adlar.filter((a: string) =>
+      a.trim() !== '' && !dosyadaki.some((d) => d.toLocaleUpperCase('tr') === a.toLocaleUpperCase('tr')));
+    sina('b', 'Sütun adları dosyanın KENDİ başlık hücrelerinden geliyor',
+      uydurulan.length === 0,
+      `seçicideki adlar=${JSON.stringify(adlar)} · dosyada olmayan=${JSON.stringify(uydurulan)}`);
+  }
+
+  // ── (c) "8. CADDE" gibi metinden SAYI türetilmiyor ──────────────────────
+  {
+    const o: any = await g().prepare(fs.readFileSync(PANOVA), { fixedSchema: true } as any);
+    const tum = o.sheets[0].rowData ?? [];
+    const unvan = tum.filter((r: any) => /CADDE|YANGIN SİSTEMLERİ/i.test(String(r._ad ?? '')));
+    const sayiTuretilen = unvan.filter((r: any) => {
+      const m = String(r._miktar ?? '').trim();
+      return m !== '' && m !== 'null' && Number.isFinite(parseFloat(m));
+    });
+    sina('c', '"8. CADDE" gibi ünvan metninden miktar türetilmiyor',
+      sayiTuretilen.length === 0,
+      unvan.length === 0
+        ? 'PANOVA fixture\'ında ünvan satırı bulunamadı (metin r0\'da, veri satırı değil)'
+        : `${sayiTuretilen.length}/${unvan.length} ünvan satırında miktar var: ${sayiTuretilen.map((r: any) => `"${String(r._ad).slice(0,24)}"→${r._miktar}`).join(' · ')}`);
+  }
+
+  console.log('\n── RENK TABLOSU ──');
+  console.log(`  (a) başlık satırı veri olmuyor        : ${renk.a}`);
+  console.log(`  (b) sütun adı dosyadan geliyor        : ${renk.b}`);
+  console.log(`  (c) ünvandan sayı türetilmiyor        : ${renk.c}`);
+  console.log(`\nSONUC: ${pass} PASS, ${fails.length} FAIL`);
+  if (fails.length) process.exit(1);
+}
+main().catch((e) => { console.error(e); process.exit(1); });
