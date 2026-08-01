@@ -17,6 +17,13 @@
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
+# ── CIKIS KODU DISIPLINI (KD8) ──────────────────────────────────────────
+# Sozlesme: 0 = TAMAM · 2 = ON SART YOK (SKIP) · diger = HATA.
+# `set -e` ile olen bir komut KENDI kodunu birakir (grep 2, curl 22...).
+# Bu yuzden 2 KAZARA donebilir ve "atlandi" gibi okunur — tuzak gercekten
+# yasandi. Trap beklenmedik her olumu 3'e cevirir; 2 yalniz BILEREK verilir.
+trap 'kod=$?; if [ "$kod" -ne 0 ]; then echo ""; echo "❌ DEPLOY YARIDA KESILDI (beklenmedik hata, ham kod=$kod)"; exit 3; fi' ERR
+
 cd "$(dirname "$0")/.."
 
 echo "── 1/5 git pull ──"
@@ -44,7 +51,12 @@ echo "── 5/5 canli dogrulama ──"
 # 3001 portu ise `expose` (publish DEGIL), yani host'tan erisilemez.
 # Sonuc: deploy BASARILI olsa bile dogrulama bos doner ve script yanlislikla
 # "DOGRULANAMADI" der. Bu yuzden gercek domain uzerinden sorulur.
-DOMAIN_ADI="$(grep -E '^DOMAIN=' .env 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r"'"'"' ')"
+# ⚠ `|| true` ZORUNLU: `.env` yoksa `grep` cikis kodu 2 doner, `pipefail` onu
+# tasir ve `set -e` scripti OLDURUR — hem de KOD 2 ile. Bu projede 2 =
+# "ON SART YOK (SKIP)" demek; yani basarisiz bir deploy "atlandi" anlamina
+# gelen bir kod dondururdu. OLCULDU: .env yokken script 5/5 blogundan
+# ONCE, sessizce, kod 2 ile oluyordu.
+DOMAIN_ADI="$(grep -E '^DOMAIN=' .env 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r"'"'"' ' || true)"
 if [ -z "$DOMAIN_ADI" ]; then
   echo "   ⚠ .env icinde DOMAIN bulunamadi — metapricex.com varsayiliyor"
   DOMAIN_ADI="metapricex.com"
