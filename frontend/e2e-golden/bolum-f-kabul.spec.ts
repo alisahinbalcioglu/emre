@@ -88,7 +88,7 @@ test('BÖLÜM F — standart şema kabul senaryosu (YILDIZ, 10 adım)', async ({
 
   // ── ADIM 1: yükle → 10+ sayfanın HER BİRİNDE aynı 13 kolon, boş sayfa yok ──
   await page.goto('/quotes/new');
-  await page.locator('#quote-excel-upload').setInputFiles(fixture('yildiz entegre'));
+  await page.locator('#quote-excel-upload').setInputFiles(fixture('firma-c entegre'));
   await page.locator('.ag-root').first().waitFor({ state: 'visible', timeout: 180_000 });
   await page.waitForTimeout(1200);
 

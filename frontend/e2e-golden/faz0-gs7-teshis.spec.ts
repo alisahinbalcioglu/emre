@@ -29,7 +29,7 @@ test('FAZ0 GS7 teşhis — YILDIZ 11 sayfa', async ({ page }) => {
     localStorage.setItem('user', JSON.stringify(auth.user));
   }, AUTH);
   await page.goto('/quotes/new');
-  await page.locator('#quote-excel-upload').setInputFiles(bul('yildiz entegre'));
+  await page.locator('#quote-excel-upload').setInputFiles(bul('firma-c entegre'));
   await page.locator('.ag-root').first().waitFor({ state: 'visible', timeout: 180_000 });
   await page.waitForTimeout(1500);
 

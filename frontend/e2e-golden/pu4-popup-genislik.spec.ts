@@ -22,7 +22,7 @@ const FIXTURES = path.resolve(__dirname, '../../test-fixtures/e2e');
 // PK10: her kosum kendi damgali dizinine yazar (uzerine yazma yok)
 const ARTIFACTS = artefaktKok();
 const AUTH = JSON.parse(fs.readFileSync(path.join(__dirname, '.auth.json'), 'utf8'));
-const DOSYA = 'ŞAHİNKUL KEŞİF ÖZETİ 251224 R1 - LİNTU MÜHENDİSLİK.xlsx';
+const DOSYA = 'FIRMA-A KEŞİF ÖZETİ 251224 R1 - FIRMA-B MÜHENDİSLİK.xlsx';
 const SAYFA = 'SIHHİ';
 
 const gercekYol = (ad: string) => {

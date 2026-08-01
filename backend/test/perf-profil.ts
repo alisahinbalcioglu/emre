@@ -20,9 +20,9 @@ const olc = async (ad: string, fn: () => Promise<any> | any, tekrar = 1) => {
 async function main() {
   const grid = new ExcelGridService({ brand: { findMany: async () => [] } } as any);
   console.log('── Z1: ICE AKTARIM (prepare) ──');
-  const aksa = fs.readFileSync('test/fixtures/aksa-algilama-iscilik.xlsm');
+  const aksa = fs.readFileSync('test/fixtures/FIRMA-F-algilama-iscilik.xlsm');
   await olc('aksa-algilama 1115 satir (xlsm)', () => grid.prepare(aksa, { fixedSchema: true }));
-  const sky = fs.readFileSync('test/fixtures/skychem.xlsm');
+  const sky = fs.readFileSync('test/fixtures/FIRMA-G.xlsm');
   await olc('skychem 91 satir + 2 gizli sayfa', () => grid.prepare(sky, { fixedSchema: true }));
   const hangar = fs.readFileSync('test/fixtures/hangar-yss.xlsx');
   await olc('hangar 58 satir', () => grid.prepare(hangar, { fixedSchema: true }));

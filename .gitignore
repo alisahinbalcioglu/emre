@@ -58,16 +58,24 @@ backend/uploads/
 # yalnizca 2'si (.xlsm, ignore listesinde olmayan uzanti) repoda vardi.
 # Sonuc: `test:regression` ve `verify.mjs` 11x11 YALNIZ gelistiricinin
 # makinesinde anlamliydi, CI dekoratifti (pano kalem 36).
-# ⚠⚠ ASAGIDAKI IKI SATIR BILEREK KAPALI. Acilmasi PK3'un SON adimidir.
-# Simdi acilirsa `git add -A` ANONIMLESTIRILMEMIS musteri dosyalarini
-# stage'ler ve kimlik git gecmisine KALICI girer — kullanicinin acikca
-# reddettigi sey tam olarak budur ("git add -f ile koymuyoruz").
-# DOGRU SIRA: 1) npm run fixture:anonim -- --yaz
-#             2) parse farki 0 dogrulanir
-#             3) golden.spec.ts CASES + verify.mjs slug adlari guncellenir
-#             4) ANCAK O ZAMAN bu iki satir acilir
-# !test-fixtures/**/*.xlsx
-# !test-fixtures/**/*.xls
+#
+# ── 01.08.2026: KAPATILDI (KD7 kararı da burada) ─────────────────────────
+# Asagidaki iki satir ARTIK ACIK. Acilmadan once yapilanlar:
+#   1) `npm run fixture:anonim -- --yaz` — 19 dosya (test-fixtures/e2e 12 +
+#      backend/test/fixtures 7), 27 kimlik gecisi + 19 dosyada ustveri.
+#   2) `npm run fixture:dogrula` — 57/57 PASS, PARSE FARKI 0.
+#   3) `npm run test:pk3` — haritanin kendisi 15 assert ile mühürlendi.
+#   4) golden.spec.ts CASES + slug adlari guncellendi.
+# Anonimlestirmede yakalanan gercek kusurlar (hepsi test:pk3'te kapali):
+#   · ciplak "Aksa" anahtari "Aksamı/Aksesuar" urun metnini bozuyordu
+#   · takma addaki rakam ("SAHA-3") baslik satirini VERI satirina cevirdi
+#   · adres zengin-metin run'larina bolundugu icin HIC eslesmiyordu
+#   · docProps'ta 11 GERCEK KISI ADI vardi (sharedStrings taramasi gormez)
+# ⚠ `**` DEGIL, YALNIZ `e2e/`: `test-fixtures/regression/` altindaki
+# `SAHINKUL-bilinen-yanlis-cikti.xlsx` bir KANIT artefakti, hicbir test onu
+# okumuyor ve anonimlestirilmedi. `**` desenі onu da repoya sokardi.
+!test-fixtures/e2e/*.xlsx
+!test-fixtures/e2e/*.xls
 
 # Prisma
 backend/prisma/dev.db

@@ -59,8 +59,8 @@ const bilinenAcik = (kod: string, ad: string, duzeldiMi: boolean, kanit: string)
 };
 
 const FIX = path.resolve(__dirname, '../../test-fixtures/e2e');
-const PANOVA = path.join(FIX, 'PANOVA-1.xlsx');
-const YILDIZ = path.join(FIX, 'YILDIZ ENTEGRE KARTEPE - Yangın Tesisatı.xlsx');
+const PANOVA = path.join(FIX, 'FIRMA-D-1.xlsx');
+const YILDIZ = path.join(FIX, 'FIRMA-C ENTEGRE SAHA-UC - Yangın Tesisatı.xlsx');
 
 /** Excel'in KENDİ başlık satırı: hücreleri başlık kelimesi olan satır. */
 const BASLIK_KELIMELERI = /^(no|s\.?n\.?|sıra|malzeme adı|birim|miktar|tutar|toplam|fiyat|açıklama|cinsi)$/;

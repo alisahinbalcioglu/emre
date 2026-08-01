@@ -24,7 +24,7 @@ const dosyaBul = (parca: string) => {
 
 async function main() {
   const svc = new ExcelGridService({ brand: { findMany: async () => [] } } as any);
-  for (const [etiket, parca] of [['YILDIZ', 'yildiz entegre'], ['SAHINKUL', 'kesif ozeti 251224']] as const) {
+  for (const [etiket, parca] of [['YILDIZ', 'firma-c entegre'], ['SAHINKUL', 'kesif ozeti 251224']] as const) {
     let yol: string;
     try { yol = dosyaBul(parca); } catch (e) { console.log(`\n### ${etiket}: ${(e as Error).message}`); continue; }
     console.log(`\n${'='.repeat(78)}\n### ${etiket} — ${path.basename(yol)}\n${'='.repeat(78)}`);

@@ -30,15 +30,15 @@ const AUTH = JSON.parse(fs.readFileSync(path.join(__dirname, '.auth.json'), 'utf
 interface FileCase { file: string; slug: string; usd?: boolean }
 // 10 dosya — usd: gorev §1 "bir teklif USD gorunumune cevrilip kaydedilir"
 const CASES: FileCase[] = [
-  { file: 'LİNTU MÜHENDİSLİK-BEYKOZ OKUL PROJESİ AKÇADAĞ.xlsx', slug: '01-beykoz-okul' },
-  { file: 'Bahçeçicler Mobilya Metraj - Copy.xlsx', slug: '02-bahcecicler-mobilya' },
-  { file: '0_Bursa Demirtaş inşai işler - Revize Keşif (1).xlsx', slug: '03-bursa-demirtas' },
-  { file: '2024-0001-Aksa_Göynük_YSS -R003 -LİNTU.xlsx', slug: '04-aksa-goynuk-yss', usd: true },
+  { file: 'FIRMA-B MÜHENDİSLİK-SAHA-DORT OKUL PROJESİ SAHA-BES.xlsx', slug: '01-firma-b-okul' },
+  { file: 'FIRMA-E Mobilya Metraj - Copy.xlsx', slug: '02-firma-e-mobilya' },
+  { file: '0_Bursa SAHA-BIR inşai işler - Revize Keşif (1).xlsx', slug: '03-bursa-saha-bir' },
+  { file: '2024-0001-FIRMA-F_SAHA-IKI_YSS -R003 -FIRMA-B.xlsx', slug: '04-firma-f-saha-iki-yss', usd: true },
   { file: 'İşçilik_Hangar Yangın Keşif Özeti_R02 (1).xlsx', slug: '05-hangar-yangin' },
-  { file: 'LINTU-2024-0063-R1-Skychem-altnf 1-R1.xlsm', slug: '06-skychem' },
-  { file: '2024-0001-Aksa Enerji-Göynük Algılama - İŞÇİLİK.xlsm', slug: '07-aksa-algilama-iscilik' },
-  { file: 'ŞAHİNKUL KEŞİF ÖZETİ 251224 R1 - LİNTU MÜHENDİSLİK.xlsx', slug: '08-sahinkul' },
-  { file: 'F _ G mekanik-elektrik işleri yorel müh. 14.04.2026 teklif.xlsx', slug: '09-fg-yorel' },
+  { file: 'FIRMA-B-2024-0063-R1-FIRMA-G-altnf 1-R1.xlsm', slug: '06-firma-g' },
+  { file: '2024-0001-FIRMA-F Enerji-SAHA-IKI Algılama - İŞÇİLİK.xlsm', slug: '07-firma-f-algilama-iscilik' },
+  { file: 'FIRMA-A KEŞİF ÖZETİ 251224 R1 - FIRMA-B MÜHENDİSLİK.xlsx', slug: '08-firma-a' },
+  { file: 'F _ G mekanik-elektrik işleri FIRMA-H müh. 14.04.2026 teklif.xlsx', slug: '09-fg-firma-h' },
   { file: 'yangin-temin-montaj.xlsx', slug: '10-yangin-temin-montaj' },
 ];
 

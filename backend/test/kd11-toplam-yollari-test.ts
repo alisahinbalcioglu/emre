@@ -45,13 +45,13 @@ const yukariYuvarla = (n: number) => Math.ceil(n * 10) / 10;
 const beklenenToplam = (birim: number, miktar: number) => yukariYuvarla(birim * miktar);
 
 const FIX = path.resolve(__dirname, '../../test-fixtures/e2e');
-const PANOVA = path.join(FIX, 'PANOVA-1.xlsx');
+const PANOVA = path.join(FIX, 'FIRMA-D-1.xlsx');
 
 async function main() {
   console.log('── KD11: ÜÇ YOL × İKİ SÜTUN ──\n');
 
   if (!fs.existsSync(PANOVA)) {
-    console.log(`ON KOSUL YOK — ${PANOVA} repoda yok (ADIM 6/PK3 kapatacak).`);
+    console.log(`ON KOSUL YOK — ${PANOVA} repoda YOK. ADIM 6/PK3 bu dosyayi repoya aldi — burasi yanarsa fixture depodan CIKARILMIS demektir (bkz. test:pk3-repo).`);
     process.exit(2);
   }
 

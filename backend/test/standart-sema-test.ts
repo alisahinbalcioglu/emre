@@ -45,7 +45,7 @@ async function main() {
   console.log('\n══════ GS1-GS14 · MF1-MF6: STANDART GRID SEMASI ══════\n');
 
   // ── YILDIZ ───────────────────────────────────────────────────────────
-  const yildizYol = dosya('yildiz entegre');
+  const yildizYol = dosya('firma-c entegre');
   const yildizBuf = fs.readFileSync(yildizYol);
   const yildiz = await svc.prepare(yildizBuf, { fixedSchema: true });
 
@@ -296,7 +296,7 @@ async function main() {
   // "birimin komsusu" diye ararken ONCE SAGA bakiyor ve C5'i (BİRİM FİYAT,
   // %91 sayisal) miktar saniyor. Ekranda 2.300.000 "miktar" gorunuyordu.
   {
-    const panova = await svc.prepare(fs.readFileSync(dosya('panova-1')), { fixedSchema: true });
+    const panova = await svc.prepare(fs.readFileSync(dosya('firma-d-1')), { fixedSchema: true });
     const sh: any = panova.sheets[0];
     const veri = ((sh?.rowData ?? []) as any[]).filter((r) => r._isDataRow);
     const bul = (parca: string) => veri.find((r) => String(r._ad ?? '').includes(parca));

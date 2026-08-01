@@ -28,7 +28,7 @@ const veriSay = (s: any) => (s.rowData ?? []).filter((r: any) => r._isDataRow).l
 async function run() {
   // ── TF1: skychem.xlsm ──
   {
-    const res = await svc.prepare(oku('skychem.xlsm'), { fixedSchema: true });
+    const res = await svc.prepare(oku('FIRMA-G.xlsm'), { fixedSchema: true });
     const t = res.sheets.find((s: any) => s.name.includes('TEKLİF'))!;
     check('TF1 skychem açılır (59 kalem)', !t.isEmpty && veriSay(t) === 59, `veri=${veriSay(t)}`);
     // SABIT SEMA (GS1): roller sabit alanlari gosterir; olcut ICERIGE tasindi —
@@ -51,7 +51,7 @@ async function run() {
 
   // ── TF2: aksa-algilama-iscilik.xlsm (EN basliklar, 2 baslik satiri) ──
   {
-    const res = await svc.prepare(oku('aksa-algilama-iscilik.xlsm'), { fixedSchema: true });
+    const res = await svc.prepare(oku('FIRMA-F-algilama-iscilik.xlsm'), { fixedSchema: true });
     const s = res.sheets[0];
     check('TF2 aksa-algılama açılır (1000+ kalem, EN başlık QTY/Unit/BRAND)',
       !s.isEmpty && veriSay(s) >= 1000, `veri=${veriSay(s)}`);
@@ -128,7 +128,7 @@ async function run() {
   // (kolon farketmeksizin) once degere dondurulur.
   {
     const { QuotesService } = require('../src/quotes/quotes.service');
-    const buf = oku('fg-yorel-shared.xlsx');
+    const buf = oku('fg-FIRMA-H-shared.xlsx');
     const res = await svc.prepare(buf, { fixedSchema: true });
     // Ilk 2 veri satirina fiyat yaz (K-A temizligi devreye girsin)
     let yazildi = 0;

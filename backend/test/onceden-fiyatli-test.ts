@@ -27,7 +27,7 @@ function check(name: string, cond: boolean, detail?: string) {
 }
 const oku = (ad: string) => fs.readFileSync(`../test-fixtures/e2e/${ad}`);
 const svc = new ExcelGridService({ brand: { findMany: async () => [] } } as any);
-const SAHINKUL = 'ŞAHİNKUL KEŞİF ÖZETİ 251224 R1 - LİNTU MÜHENDİSLİK.xlsx';
+const SAHINKUL = 'FIRMA-A KEŞİF ÖZETİ 251224 R1 - FIRMA-B MÜHENDİSLİK.xlsx';
 
 async function run() {
   console.log('\n══════ KG9-KG13: ONCEDEN GIRILMIS FIYATLAR ══════\n');
@@ -119,7 +119,7 @@ async function run() {
   // gizliyor, yazilan fiyat GORUNMUYOR. Rol gorunur olmayan kolona
   // baglanmaz; sistem alanina duser ve sistem kolonu eklenir.
   {
-    const r2 = await svc.prepare(oku('LİNTU MÜHENDİSLİK-BEYKOZ OKUL PROJESİ AKÇADAĞ.xlsx'), { fixedSchema: true });
+    const r2 = await svc.prepare(oku('FIRMA-B MÜHENDİSLİK-SAHA-DORT OKUL PROJESİ SAHA-BES.xlsx'), { fixedSchema: true });
     const sh2 = (r2.sheets as any[]).find((s) => s.name === 'CİLAS KAUÇUK');
     const R2 = sh2.columnRoles as any;
     const alanlar2 = new Set(((sh2.columnDefs ?? []) as any[]).map((d) => d.field));

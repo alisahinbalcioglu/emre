@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // FAZ 1 DENETIM ARACI (gecici) — Gercek teklif Excel'i ile satir-cozucu kaniti
-// Dosya: 2024-0001-Aksa_Göynük_YSS -R003 -LİNTU.xlsx
+// Dosya: 2024-0001-FIRMA-F_SAHA-IKI_YSS -R003 -FIRMA-B.xlsx
 // Amac: parseLine (v2 satir etiketleme) gercek veride ne kadar cozuyor?
 // DB YOK — yalniz saf moduller. Rapor stdout'a yazilir.
 // ════════════════════════════════════════════════════════════════════

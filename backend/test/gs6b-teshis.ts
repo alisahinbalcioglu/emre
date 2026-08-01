@@ -14,7 +14,7 @@ import { ExcelGridService } from '../src/modules/excel-grid/excel-grid.service';
 
 async function main() {
   const grid = new ExcelGridService({ brand: { findMany: async () => [] } } as any);
-  const yol = '../test-fixtures/e2e/YILDIZ ENTEGRE KARTEPE - Yangın Tesisatı.xlsx';
+  const yol = '../test-fixtures/e2e/FIRMA-C ENTEGRE SAHA-UC - Yangın Tesisatı.xlsx';
   if (!fs.existsSync(yol)) {
     console.log('ON KOSUL YOK — YILDIZ fixture bulunamadi:', yol);
     process.exit(2);
