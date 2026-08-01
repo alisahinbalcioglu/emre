@@ -31,18 +31,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY package*.json ./
 RUN npm install --include=dev --legacy-peer-deps
 
+# PK2/PK11: SURUM DAMGASI — `npm run build`ten ONCE tanimlanmali.
+#
+# ⚠ SIRA ONEMLI ve bir kez YANLIS yazildi. `ARG` asagida, EXPOSE'un yaninda
+# duruyordu; oysa `prebuild` (scripts/surum-yaz.js) `npm run build` sirasinda
+# kosuyor ve degeri O AN ariyor. Ustelik `.dockerignore` `.git`i disliyor,
+# yani konteynerde `git rev-parse` de CALISMAZ. Ikisi birlesince uretilen
+# `surum.generated.ts` "local" kalirdi.
+#
+# ARG build-arg'dan gelir; ENV hem derleme adimina hem calisma zamanina tasir
+# (ENV imaja GOMULUR — eski bir imaj calistirilirsa eski sha doner, PK11'in
+# istedigi tam budur).
+ARG BUILD_SHA=local
+ENV BUILD_SHA=${BUILD_SHA}
+
 # Sonra kaynak — prisma generate + nest build
 COPY . .
 RUN npx prisma generate && npm run build
-
-# PK2 (31.07.2026): CANLI SURUM TEYIDI. `health.controller.ts` zaten
-# `process.env.BUILD_SHA` okuyordu; eksik olan hash'i imaja GECIREN kabloydu.
-# Bu ikilik olmadan `/api/health` her zaman "local" doner ve "canlida hangi
-# surum var?" sorusu ancak sunucu konsoluna girilerek cevaplanir (2 turdur
-# cevaplanamiyor — pano kalem 34/40). ARG build aninda gelir, ENV calisma
-# zamanina tasir; ikisi de sart.
-ARG BUILD_SHA=local
-ENV BUILD_SHA=${BUILD_SHA}
 
 EXPOSE 3001
 
