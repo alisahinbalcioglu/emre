@@ -38,6 +38,7 @@ const dockerfile = oku(path.join(kok, 'Dockerfile'));
 const compose = oku(path.join(repo, 'docker-compose.yml'));
 const deploy = oku(path.join(repo, 'scripts', 'deploy.sh'));
 const health = oku(path.join(kok, 'src', 'health.controller.ts'));
+const surum = oku(path.join(kok, 'src', 'surum.ts'));
 
 // ── PK2-1: Dockerfile build ARG'i alir ve ENV'e yazar ────────────────────────
 sina('PK2-1a Dockerfile ARG', /^\s*ARG\s+BUILD_SHA/m.test(dockerfile),
@@ -61,21 +62,49 @@ sina('PK2-3c deploy.sh export eder', /export\s+BUILD_SHA/.test(deploy),
   'scripts/deploy.sh BUILD_SHA export etmiyor — `docker compose build` degiskeni GORMEZ.');
 
 // ── PK2-4: controller regresyon korumasi ─────────────────────────────────────
-sina('PK2-4 controller BUILD_SHA okur', /process\.env\.BUILD_SHA/.test(health),
-  'health.controller.ts artik BUILD_SHA okumuyor — kablo kopmus.');
+//
+// ⚠ KRITER METNI DEGISTI (PK11, 31.07 — gerekce KRITER_DEGISIKLIK_GUNLUGU.md
+//   kuralinca burada yazili):
+//   ESKI: `health.controller.ts` DOGRUDAN `process.env.BUILD_SHA` okur.
+//   YENI: `health.controller.ts` surumu `./surum` uzerinden okur; zincir
+//         surum.generated.ts (DERLEME aninda gomulu) → process.env.BUILD_SHA
+//         (Docker ARG) → 'local'.
+//   NEDEN: PK11 surum kapisi, sha'nin DERLEME aninda artefakta gomulmesini
+//         sart kosuyor. Yalniz env'e bakan bir controller, imaj eski olsa
+//         bile ortamdan gelen taze bir degeri dondurebilirdi — kapi kor olurdu.
+//   YON  : GUCLENDI (env tek basina yeterliyken artik gomulu deger onceliklidir).
+sina('PK2-4 controller surumu ./surum uzerinden okur',
+  /from '\.\/surum'/.test(health) && /BUILD_SHA/.test(health),
+  'health.controller.ts artik ./surum modulunden BUILD_SHA okumuyor — kablo kopmus.');
+sina('PK2-4b surum.ts zinciri: gomulu → env → local',
+  /surum\.generated/.test(surum) && /process\.env\.BUILD_SHA/.test(surum) && /'local'/.test(surum),
+  'src/surum.ts uc katmanli zinciri kurmuyor.');
 
-// ── PK2-5: hash "local" olmamali (yalniz env varsa) ──────────────────────────
-// Yerelde env yok → "local" DOGRU cevaptir. Bu yuzden burada davranis sinanir:
-// env verilince controller onu dondurmeli.
+// ── PK2-5: DAVRANIS — gomulu deger yokken env kazanir, o da yoksa "local" ────
+// "local" bir FALLBACK DEGIL, bir ITIRAFTIR: surum kapisi onu gorunce kosumu
+// REDDEDER (PK11a). Bu yuzden zincirin son halkasi da sinanir.
 {
   const eski = process.env.BUILD_SHA;
-  process.env.BUILD_SHA = 'deadbeefcafe1234';
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { HealthController } = require('../src/health.controller');
-  const cikti = new HealthController().check();
-  if (eski === undefined) delete process.env.BUILD_SHA; else process.env.BUILD_SHA = eski;
-  sina('PK2-5 env → yanit', cikti.build_sha === 'deadbeefcafe1234',
-    `BUILD_SHA env verildi ama /health "${cikti.build_sha}" dondu.`);
+  const uretilmis = path.join(kok, 'src', 'surum.generated.ts');
+  const vardi = fs.existsSync(uretilmis);
+  const yedek = vardi ? fs.readFileSync(uretilmis, 'utf-8') : null;
+  try {
+    // Gomulu degeri GECICI olarak bosalt → zincir env'e dusmeli
+    fs.writeFileSync(uretilmis, 'export const BUILD_SHA = "";\nexport const AGAC_KIRLI = false;\nexport const DERLEME_ZAMANI = "";\n', 'utf-8');
+    process.env.BUILD_SHA = 'deadbeefcafe1234';
+    for (const k of Object.keys(require.cache)) {
+      if (/surum(\.generated)?\.ts$|health\.controller\.ts$/.test(k)) delete require.cache[k];
+    }
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { HealthController } = require('../src/health.controller');
+    const cikti = new HealthController().check();
+    sina('PK2-5 gomulu yokken env → yanit', cikti.build_sha === 'deadbeefcafe1234',
+      `BUILD_SHA env verildi ama /health "${cikti.build_sha}" dondu.`);
+  } finally {
+    if (yedek !== null) fs.writeFileSync(uretilmis, yedek, 'utf-8');
+    else fs.rmSync(uretilmis, { force: true });
+    if (eski === undefined) delete process.env.BUILD_SHA; else process.env.BUILD_SHA = eski;
+  }
 }
 
 console.log('── PK2 BUILD_SHA KABLOLAMASI ──');
