@@ -83,6 +83,12 @@ export const KIMLIK_HARITASI: Record<string, string> = {
   // Bunlar dosya ADINDA degil, YALNIZ hucre metninde duruyordu; harita
   // dosya adlarina bakilarak yazildigi icin kacmislardi.
   'HABAŞ': 'FIRMA-I',                                     // Bursa dosyasi, is sahibi
+  // 01.08 · ikinci tur: KD12(c) olcumu sirasinda goruldu. Ilk tarama
+  // "sirket eki" (A.Ş./LTD/ŞTİ) veya iletisim izi ariyordu; bu ad ikisini de
+  // tasimiyor. Ikinci tarama SEKTOR SOZCUGU (HAVACILIK/ENERJI/INSAAT…)
+  // uzerinden yapildi ve 19 fixture'da kacan TEK ad buydu.
+  'BEARO': 'FIRMA-J',
+  'Bearo': 'FIRMA-J',
   // ⚠ ADRES ZENGIN METIN RUN'LARINA BOLUNMUS. Tek parca anahtar
   // ("…No:43/12 Maltepe") ham XML'de HIC eslesmiyordu: arada `</t></r>…<r><t>`
   // etiketleri ve bir `\r\n` run'i var. Anahtarlar run sinirlarina gore

@@ -93,7 +93,22 @@ const KORUNAN_ALANLAR = [
 export function miktarNormalize(ham: unknown): number | null {
   const s = String(ham ?? '').trim();
   if (!s) return null;
-  const m = s.replace(/\s/g, '').match(/-?[\d.,]+/);
+  const d = s.replace(/\s/g, '');
+  // ── KD12(c) · SERBEST METINDEN SAYI TURETILMEZ (01.08.2026) ──────────────
+  // Eski kural sayiyi METNIN HERHANGI BIR YERINDEN cekiyordu. Olcum:
+  // "…SAHA-3 TEİSİSİ YANGIN TESİSATI" basligi `_toplam = -3` uretti ve o
+  // satir `_isDataRow=true` oldu. Gercek veride "TOPLAM - 3. KAT" gibi bir
+  // ozet basligi YANLIS PARA DEGERI uretir.
+  //
+  // KURAL: sayidan ONCE HARF varsa hucre sayi DEGILDIR → null.
+  // Sayi "ilk konumda" sartina indirgenemez: "₺1.234", "(5)", "-3" gecerli;
+  // sinir HARFTIR, konum degil.
+  //
+  // ⚠ "SONRAKI SAYIYI ARA" YAPILMAZ (olculdu ve CURUTULDU): lookbehind ile
+  // konum atlamak "C 35 Betonarme"yi 35 yerine 5 yapiyordu — hatayi
+  // duzeltmek yerine baska bir hata uretiyordu. Hucre ya sayidir ya degildir.
+  if (/^[^\p{L}\d]*\p{L}/u.test(d)) return null;
+  const m = d.match(/-?[\d.,]+/);
   if (!m) return null;
   // "1.234,50" → 1234.50 · "1,5" → 1.5 · "1.5" → 1.5
   let t = m[0];

@@ -61,6 +61,7 @@ const bilinenAcik = (kod: string, ad: string, duzeldiMi: boolean, kanit: string)
 const FIX = path.resolve(__dirname, '../../test-fixtures/e2e');
 const PANOVA = path.join(FIX, 'FIRMA-D-1.xlsx');
 const YILDIZ = path.join(FIX, 'FIRMA-C ENTEGRE SAHA-UC - Yangın Tesisatı.xlsx');
+const BEYKOZ = path.join(FIX, 'FIRMA-B MÜHENDİSLİK-SAHA-DORT OKUL PROJESİ SAHA-BES.xlsx');
 
 /** Excel'in KENDİ başlık satırı: hücreleri başlık kelimesi olan satır. */
 const BASLIK_KELIMELERI = /^(no|s\.?n\.?|sıra|malzeme adı|birim|miktar|tutar|toplam|fiyat|açıklama|cinsi)$/;
@@ -79,7 +80,7 @@ const baslikSatiriMi = (r: any) => {
 
 async function main() {
   console.log('── KD12: BAŞLIK/ÜNVAN SATIRLARI ──\n');
-  for (const p of [PANOVA, YILDIZ]) {
+  for (const p of [PANOVA, YILDIZ, BEYKOZ]) {
     if (!fs.existsSync(p)) { console.log(`ON KOSUL YOK — ${p} yok`); process.exit(2); }
   }
   const g = () => new ExcelGridService({ brand: { findMany: async () => [] } } as any);
@@ -122,26 +123,59 @@ async function main() {
       const m = String(r._miktar ?? '').trim();
       return m !== '' && m !== 'null' && Number.isFinite(parseFloat(m));
     });
-    // ⚠ BILEREK ACIK BIRAKILDI (kullanici karari, 01.08). Olcum: naif bir
-    // duzeltme ("adinda N. var ve miktar N ise miktari sil") 12 fixture'da
-    // 12 satir yakaliyor ve 7'si GERCEK MALZEME — AKSA'da `1.1/2"-DN40
-    // Küresel Vana` mik=1. Yani duzeltme, kozmetik bir hatayi gidermek icin
-    // GERCEK MIKTARLARI silme riski tasiyor (sessiz veri kaybi).
-    // Zarar dengesi: bu satirlar `_isDataRow=false` — TOPLAMA GIRMIYORLAR,
-    // fiyat almiyorlar; zarar yalnizca ekranda tuhaf gorunmek.
-    // KAPANMA SARTI: 12/12 fixture repoda olunca (ADIM 6/PK3) dar ve
-    // olculebilir bir kural yazilabilir.
-    bilinenAcik('c', '"8. CADDE" gibi ünvan metninden miktar türetiliyor',
-      sayiTuretilen.length === 0,
+    // ── 01.08.2026: AÇIK KAPANDI, GERÇEK ASSERT'E TERFİ ETTİ ──────────────
+    // Kapanma şartı ("12/12 fixture repoda olsun") ADIM 6/PK3 ile sağlandı;
+    // kural artık 19 fixture · 10.015 satır üzerinde ÖLÇÜLEBİLİYOR.
+    //
+    // ÇÜRÜTÜLEN NAİF FİX: "adında N. var ve miktar N ise miktarı sil" —
+    // 12 satır yakalıyordu, 7'si GERÇEK MALZEME (AKSA `1.1/2"-DN40 Küresel
+    // Vana` mik=1). Bu yaklaşım satırın ADINA bakıyordu; yanlış yerdi.
+    //
+    // ÇÜRÜTÜLEN İKİNCİ FİX: lookbehind ile "harften sonraki sayıyı atla" —
+    // sayıyı reddetmiyor, BİR SONRAKİNİ buluyordu: "C 35 Betonarme" → 5.
+    //
+    // KABUL EDİLEN KURAL (`standart-sema.ts` miktarNormalize): hücrede
+    // sayıdan ÖNCE harf varsa hücre sayı DEĞİLDİR → null. Yalnız hücrenin
+    // KENDİ şekline bakar, satırın adına bakmaz → AKSA'nın 7 malzemesi
+    // etkilenmez (miktar hücresi zaten "1").
+    //
+    // ÖLÇÜM (19 fixture, 10.015 satır): 21 alan değişti; VERİ satırında
+    // yalnız 1 satır — FIRMA-B/İCMAL r5, `_toplam` 25 → boş. Kaynağı
+    // "TEKLİF NO : T25-0121" idi: TEKLİF NUMARASINDAN para değeri
+    // türetiliyordu. Yani tek veri değişikliği de KAYIP değil DÜZELTME.
+    sina('c', 'ünvan metninden miktar türetilmiyor',
+      unvan.length > 0 && sayiTuretilen.length === 0,
       unvan.length === 0
-        ? 'PANOVA fixture\'ında ünvan satırı bulunamadı (metin r0\'da, veri satırı değil)'
-        : `${sayiTuretilen.length}/${unvan.length} ünvan satırında miktar var: ${sayiTuretilen.map((r: any) => `"${String(r._ad).slice(0,24)}"→${r._miktar}`).join(' · ')}`);
+        ? 'ÖN KOŞUL: PANOVA fixture\'ında ünvan satırı bulunamadı'
+        : sayiTuretilen.length === 0
+          ? `${unvan.length} ünvan satırının hiçbirinde türetilmiş miktar yok`
+          : `${sayiTuretilen.length}/${unvan.length} ünvan satırında miktar TÜRETİLMİŞ: `
+            + sayiTuretilen.map((r: any) => `"${String(r._ad).slice(0, 24)}"→${r._miktar}`).join(' · '));
+  }
+
+  // ── (d) İKİNCİ AİLE: TEKLİF NUMARASINDAN PARA DEĞERİ TÜRETİLMEZ ────────
+  // (c) tek başına "o dosyaya özel yama" olabilirdi. Bu ikinci aile BAŞKA
+  // bir dosya, BAŞKA bir alan (`_toplam`, `_miktar` değil) ve BAŞKA bir
+  // mekanizma (`ozetToplamKaynagi`, quantityField değil) üzerinden ölçer.
+  // Gerçek hücre: "TEKLİF NO : T25-0121" → eski kural `_toplam = 25`
+  // yazıyordu; yani teklif referans numarası PARA olarak grid'e giriyordu.
+  {
+    const o: any = await g().prepare(fs.readFileSync(BEYKOZ), { fixedSchema: true } as any);
+    const sh = o.sheets.find((s: any) => /icmal/i.test(String(s.name).toLocaleLowerCase('tr')))
+      ?? o.sheets[0];
+    const r = (sh?.rowData ?? []).find((x: any) => x._rowIdx === 5);
+    const t = String(r?._toplam ?? '').trim();
+    sina('d', 'teklif numarasından ("T25-0121") para değeri türetilmiyor',
+      !!r && (t === '' || t === 'null'),
+      r ? `r5 _ad="${String(r._ad).slice(0, 20)}" · _toplam=${JSON.stringify(r._toplam)} · _isDataRow=${r._isDataRow}`
+        : 'ÖN KOŞUL: r5 bulunamadı');
   }
 
   console.log('\n── RENK TABLOSU ──');
   console.log(`  (a) başlık satırı veri olmuyor        : ${renk.a}`);
   console.log(`  (b) sütun adı dosyadan geliyor        : ${renk.b}`);
   console.log(`  (c) ünvandan sayı türetilmiyor        : ${renk.c}`);
+  console.log(`  (d) teklif numarası para olmuyor      : ${renk.d}`);
   console.log(`\nSONUC: ${pass} PASS, ${fails.length} FAIL`);
   if (fails.length) process.exit(1);
 }
