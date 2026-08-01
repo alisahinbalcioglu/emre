@@ -50,6 +50,22 @@ async function yiginAyakta(): Promise<{ ok: boolean; eksik: string[] }> {
 }
 
 async function main() {
+  // KD3: BOS DERLEME KAPISI — `test:tam`in ON KOSULU.
+  // "Hic gecilmeyen kapi kapi degildir": zincir, bos bir `dist` uzerinde
+  // olcum yapmasin diye BURADA da kosar. Kalem 47 → kalem 45 zinciri:
+  // bos derleme → MODULE_NOT_FOUND → eski surec portu tutar → 18 saatlik
+  // kod olculur. Cikis kodu 3 (0 da 2 de degil; 2 "atlandi" demek olurdu).
+  {
+    const k = spawnSync('node', ['scripts/derleme-kapisi.js'], { encoding: 'utf-8', shell: true, cwd: BE });
+    process.stdout.write(k.stdout ?? '');
+    if (k.status !== 0) {
+      process.stderr.write(k.stderr ?? '');
+      console.log('
+⛔ TAM ZINCIR BASLATILMADI — derleme bos/eksik (KD3).');
+      process.exit(3);
+    }
+  }
+
   console.log('\n════════ TAM ZINCIR — backend + frontend + E2E ════════\n');
 
   kos('Backend regresyon paketi (Z1-Z5)', 'npm', ['run', 'test:regression'], BE);

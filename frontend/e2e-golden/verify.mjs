@@ -18,6 +18,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const requireB = createRequire(path.resolve(__dirname, '../../backend/package.json'));
 const ExcelJS = requireB('exceljs');
 
+/** KD6: matriste basilacak anahtarlarin SOZLESMESI — tek kaynak. */
+const KEYS_SOZLESME = ['C1', 'C2', 'C3', 'C4', 'C5', 'C5b', 'C6', 'C7', 'C8', 'C9', 'C10', 'C11', 'C11b'];
+
 const FIXTURES = path.resolve(__dirname, '../../test-fixtures/e2e');
 // PK10: bu kosumun damgali dizini. `E2E_DAMGA` varsa (run.mjs / playwright
 // config onu koyar) O kosum okunur; yoksa `latest` isaretcisi izlenir. Boylece
@@ -37,6 +40,29 @@ const ROOT = (() => {
 // Bu, kalem 31'deki "verify.mjs C6'da cokuyordu" hatasinin AYNI SINIFI:
 // dogrulayicinin kendisi sessizce olursa butun iddialar bosa duser.
 fs.mkdirSync(ROOT, { recursive: true });
+
+// ── KD6 OZ DENETIM — EN BASTA KOSAR (pano kalem 49) ─────────────────────
+// `set(...)` ile yazilan her anahtar KEYS listesinde OLMALI. Degilse o blok
+// matriste HIC BASILMAZ ve sessizce yok sayilir: `C5b` ve `C11b` tam boyleydi,
+// KE16 · KG2 · KF1'in "kaniti" oralarda duruyordu. Tehlike somut — biri
+// dosyada `KE16` diye arar, bulur, "kapsanmis" sanir (I7 ailesi).
+//
+// ⚠ EN BASTA olmasi SART: sonda dururken HIC ATESLEMEDI (olculdu). Kapinin
+// kendisi de "hic gecilmeyen kapi" olacakti.
+// Cikis kodu 4 — 0 da 2 de DEGIL; 2 bu projede "atlandi" demek (KD8 dersi).
+{
+  const oz = fs.readFileSync(new URL('./verify.mjs', import.meta.url), 'utf-8');
+  const yazilan = [...new Set([...oz.matchAll(/set\(\s*'([^']+)'/g)].map((m) => m[1]))];
+  const eksik = yazilan.filter((k) => !KEYS_SOZLESME.includes(k)).sort();
+  if (eksik.length) {
+    console.error('');
+    console.error('KD6: set() ile yazilan ama KEYS listesinde OLMAYAN anahtar(lar):');
+    for (const k of eksik) console.error(`   - ${k}  => matriste HIC BASILMIYOR, sessizce yok sayiliyor`);
+    console.error('   Karar sart: ya KEYS listesine gir (N/A olarak gorunsun) ya da SIL.');
+    console.error('   Ucuncu secenek (dosyada durup basilmamak) artik mumkun degil.');
+    process.exit(4);
+  }
+}
 
 const txt = (v) => {
   if (v == null) return '';
@@ -775,7 +801,13 @@ for (const slug of slugs.sort()) {
 }
 
 // ── Rapor ──────────────────────────────────────────────────────────────
-const KEYS = ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'C10', 'C11'];
+// KD6: C5b ve C11b ARTIK MATRISTE. Onceden dosyada duruyor ama `KEYS`'te
+// olmadiklari icin HIC BASILMIYORLARDI — KE16 · KG2 · KF1'in "kaniti" tam
+// olarak oralardaydi. Tehlike somut: biri verify.mjs'te `KE16` diye arar,
+// bulur, "kapsanmis" sanir. Kod var, cikti yok, kimse fark etmiyor (I7 ailesi).
+// Ikisi de N/A doner ("–"); gorunur olmalari, N/A olduklarinin GORULMESI icin.
+const KEYS = KEYS_SOZLESME;
+
 let failCount = 0;
 const lines = [];
 lines.push('| Dosya | ' + KEYS.join(' | ') + ' |');

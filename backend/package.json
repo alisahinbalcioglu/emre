@@ -40,7 +40,8 @@
     "fixture:anonim": "ts-node test/fixture-anonim.ts",
     "prebuild": "node scripts/surum-yaz.js",
     "test:kd11": "ts-node test/kd11-toplam-yollari-test.ts",
-    "test:kd12": "ts-node test/kd12-baslik-satiri-test.ts"
+    "test:kd12": "ts-node test/kd12-baslik-satiri-test.ts",
+    "postbuild": "node scripts/derleme-kapisi.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
