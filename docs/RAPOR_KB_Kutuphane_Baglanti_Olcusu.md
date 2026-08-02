@@ -7,6 +7,27 @@
 
 ---
 
+## ✅ SONUÇ — canlı ölçüm geldi, karar mekanik okundu (02.08 gece)
+
+Kullanıcı üç komutu Hetzner konsolunda koştu (`git pull` → `Fast-forward 81f2521..5502c00`, 7 dosya; `bash scripts/kb5-olcu.sh` → çıktı sözleşmesi birebir: BEGIN / dört sütun / 1 row / ROLLBACK). **Canlı dört sayı:**
+
+| `bagsizsatir` | `bagsizkullanici` | `kismikullanici` | `toplamkullanici` |
+|---|---|---|---|
+| **0** | **0** | **0** | **2** |
+
+**Mekanik karar (§KB6 mühürlü tablo, satır 1):** `bagsizsatir = 0` → **hiçbir şey yapılmaz; kalem kapanır.** Backfill/tamir turu AÇILMAZ.
+
+**Çürüyen hipotez (dürüstçe kayda geçer):** Önceki raporun *"canlıdaki her motor-öncesi kullanıcıyı vurur"* cümlesi canlı ölçümle **ÇÜRÜDÜ** — canlıda bağsız satır hiç yok; ÇAYIROVA 116-NULL vakası YEREL geliştirme verisine özgüymüş (31.03 yerel yüklemesi). Ölçmeden tamire girilseydi, canlıda hiç var olmayan bir sorun için backfill yazılacaktı — bu turun "önce ölçü" sınırı tam bunu engelledi.
+
+**Canlı sürüm değişmedi:** `81f2521143d3` (pull konteynerlere dokunmaz; ekrandaki DEPLOY DOGRULANDI bloğu push'tan önceki koşumun izi).
+
+**Bu kalemin DIŞINDA açık kalanlar (pano adayları, yeşile boyanmadı):**
+1. `matching-regression.ts:153-157` AÇIK SORU duruyor: yol-3 geri-düşüşü 116 satırı indeksleyip 0 eşleşme veriyor — artık canlı baskısı yok ama ürün sorusu cevaplanmadı; yerel ÇAYIROVA verisi test yatağı olarak duruyor.
+2. `test:regression:db` yerelde 9/10 kırmızı kalır — bu artık ürün boşluğu değil, YEREL VERİ durumu (canlıda karşılığı 0).
+3. NULL doğuran iki kod yolu duruyor (POST /library — tasarım gereği; legacy import dalı — indekssiz listelerde) ve `importFromIndex` tekrar-aktarımda legacy satırı bağlamak yerine KOPYA yaratır (:437-439, :458-471). Canlıda legacy satır 0 olduğu için bugün vurmaz; kod yolu açık.
+
+---
+
 ## KB6 · ÜÇ SEÇENEK + EŞİKLİ KARAR KURALI
 
 > **Damga:** Bu bölüm, canlı sayı GELMEDEN yazıldı (görevin şartı). Şeffaflık notu:
