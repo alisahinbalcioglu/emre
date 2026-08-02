@@ -116,6 +116,25 @@ function main() {
 
   console.log('── HARITA DENETIMI ──');
   console.log(`  kod dosyasi        : ${dosyalar.length}`);
+
+  // ⚠ UYARI (cikis kodunu DEGISTIRMEZ — sozlesmede olmayan bir ret sarti
+  // eklemek yok). 02.08'de AYNI tuzak IKI KEZ yasandi: denetim `git add`den
+  // ONCE kosuldu, yeni dosyalar henuz izlenmiyordu, kapi yesil dedi; commit
+  // sonrasi CI kirmizi yandi. Kapi dogru calisiyordu, SIRA yanlisti.
+  // Bu satir o siranin yanlis oldugunu KOSUM ANINDA soyler.
+  let izlenmeyen = [];
+  try {
+    izlenmeyen = execFileSync('git', ['ls-files', '-z', '--others', '--exclude-standard'],
+      { cwd: KOK, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+      .split('\0').filter(Boolean).map(nfc)
+      .filter((y) => kapsam.uzantilar.some((u) => y.endsWith(u)))
+      .filter((y) => !kapsam.disi.some((d) => y.startsWith(d.desen) || (d.desen.startsWith('*') && y.endsWith(d.desen.slice(1)))));
+  } catch { /* olcum basarisizsa sessiz gec — bu bir uyari, kapi degil */ }
+  if (izlenmeyen.length) {
+    console.log(`  ⚠ IZLENMEYEN kod dosyasi: ${izlenmeyen.length} — bunlar HENUZ olculmuyor.`);
+    izlenmeyen.slice(0, 5).forEach((y) => console.log(`     · ${y}`));
+    console.log('     `git add` sonrasi bu denetimi TEKRAR kosun; aksi halde CI\'da kirmizi yanar.');
+  }
   console.log(`  haritada karsiligi : ${dosyalar.filter((y) => haritadaVar(y)).length}`);
   console.log(`  bekleyenlerde      : ${bekleyen.length}${onceki === null ? ' (HEAD`de yok — ilk olusturma)' : ` (HEAD: ${onceki.length})`}`);
 

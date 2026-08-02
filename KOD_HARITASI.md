@@ -78,10 +78,13 @@ Bu projede eksikliğinin bedeli dört kez ödendi:
 | ◑ | `frontend/components/excel-grid/aday-ayirt-edicilik.ts` | Aday ayırt edicilik — hangi adayın gösterileceği | GOREV_Kapatma_Turu; ne yaptığı satır düzeyinde bilinmiyor |
 | ◑ | `standart-sema.ts` | Standart şema — sütun adlarının tek kaynağı (`_matBirim` burada eşleşiyor) | Panel; tam yol bilinmiyor (backend mi frontend mi?) |
 | ⬜ | *(bilinmiyor)* | Sürükle-doldur mantığı | PRD_Kesin_Cozum_SurukleDoldur… var, dosya adı yok |
+| ✅ | `frontend/lib/kaynak-kolon.ts` | **“Malzeme Adı sütunu” seçicisinin etiketi** — tek kaynak. Gerçek başlık varsa YALNIZ başlık; başlık yoksa (`headerName === field`) örnek değer ipucu olarak kalır. | Canlı bulgu 02.08 (kutuda `MALZEME ADI — ör: 2000 GPM…` yazıyordu) · `d14856f` |
+| ✅ | `frontend/lib/kaynak-kolon.test.ts` | Yukarıdakinin mührü — İKİ aile: başlığı olan dosya (yalnız başlık) ve başlığı olmayan dosya (örnek kalır). | vitest 5 assert · eski davranış geri konunca **4'ü kırmızı** (ölçüldü) |
+| ✅ | `frontend/app/(protected)/quotes/new/page.tsx:1565` | Seçiciyi çizen yer — artık kendi dizesini kurmuyor, `kaynakKolonEtiketi()` çağırıyor. | `d14856f` |
 
 **Bu grubun cevapsız soruları:**
 
-- `standart-sema.ts` tam yolu ne? Backend’de mi, frontend’de mi, ikisinde de kopyası var mı?
+- `standart-sema.ts` tam yolu ne? Backend’de mi, frontend’de mi, ikisinde de kopyası var mı? — **CEVAPLANDI (HR1c, 02.08): `backend/src/modules/excel-grid/standart-sema.ts`, tek kopya.**
 
 ## C · EŞLEŞTİRME — malzeme adını kütüphaneyle eşleme
 

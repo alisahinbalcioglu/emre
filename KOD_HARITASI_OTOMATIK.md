@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 297
-Toplam satir: 60029
+Kod dosyasi: 299
+Toplam satir: 60131
 Uc nokta: 124
 test:* scripti: 34
 
@@ -286,6 +286,8 @@ test:* scripti: 34
 | `frontend/lib/disiplin.ts` | 13 |
 | `frontend/lib/export-download.ts` | 91 |
 | `frontend/lib/gs6b-golge-kurali.test.ts` | 60 |
+| `frontend/lib/kaynak-kolon.test.ts` | 49 |
+| `frontend/lib/kaynak-kolon.ts` | 34 |
 | `frontend/lib/merge-multisheet.test.ts` | 112 |
 | `frontend/lib/merge-multisheet.ts` | 185 |
 | `frontend/lib/metraj-excel.ts` | 96 |
@@ -307,7 +309,7 @@ test:* scripti: 34
 | `frontend/vitest.config.ts` | 10 |
 | `scripts/backup.sh` | 15 |
 | `scripts/deploy.sh` | 90 |
-| `scripts/harita-denetle.mjs` | 148 |
+| `scripts/harita-denetle.mjs` | 167 |
 | `scripts/harita-uret.mjs` | 226 |
 
 ## 2 · Import bagliliklari
@@ -556,6 +558,7 @@ test:* scripti: 34
 | `frontend/lib/api.ts` | `axios` |
 | `frontend/lib/export-download.ts` | `@/lib/api` `@/hooks/use-toast` |
 | `frontend/lib/gs6b-golge-kurali.test.ts` | `vitest` `fs` `path` |
+| `frontend/lib/kaynak-kolon.test.ts` | `vitest` `./kaynak-kolon` |
 | `frontend/lib/merge-multisheet.test.ts` | `vitest` `./merge-multisheet` `@/components/excel-grid/types` |
 | `frontend/lib/parse-material-text.test.ts` | `vitest` `./parse-material-text` |
 | `frontend/lib/popup-secici-sozlesmesi.test.ts` | `vitest` `fs` `path` |
