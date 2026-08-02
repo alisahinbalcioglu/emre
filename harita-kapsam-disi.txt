@@ -1,0 +1,36 @@
+# KOD HARİTASI — KAPSAM TANIMI
+#
+# Bu dosya bir İDDİADIR ve bu yüzden betiğin İÇİNE GÖMÜLMEZ.
+# "Şu dosyalar kod sayılır, şunlar sayılmaz" cümlesi tartışılabilir olmalı;
+# betiğin içinde dursaydı kimse görmeden değişirdi.
+#
+# İki bölüm var. Boş satırlar ve "#" ile başlayan satırlar yok sayılır.
+# Desen sözdizimi:
+#   "dizin/"   → yol bu önekle başlıyorsa kapsam dışı
+#   "*.uzanti" → yol bu sonekle bitiyorsa kapsam dışı
+#   "tam/yol"  → birebir eşleşme
+# Her desenin yanında ":: gerekçe" YAZILMASI ZORUNLUDUR (gerekçesiz desen
+# sessiz çöp kutusu olur — manifest kapısındaki istisna kuralının aynısı).
+
+[KOD UZANTILARI]
+# "Kod dosyası" sayılan uzantılar. Buradaki liste haritanın kapsamını belirler:
+# bir uzantı burada yoksa o dosya için harita satırı BEKLENMEZ.
+.ts
+.tsx
+.js
+.jsx
+.mjs
+.cjs
+.py
+.sh
+.prisma
+.sql
+
+[KAPSAM DISI]
+node_modules/ :: Bağımlılık ağacı — bizim kodumuz değil, haritalanmaz.
+dist/ :: Derleme çıktısı — kaynaktan üretilir, kendi satırını hak etmez.
+.next/ :: Next.js derleme çıktısı — aynı gerekçe.
+*.d.ts :: Yalnız tip bildirimi — çalışan davranış içermez.
+*.min.js :: Küçültülmüş çıktı — okunabilir kaynağı başka yerde.
+frontend/e2e-artifacts/ :: Test koşum artefaktları — kanıt, kod değil.
+backend/prisma/migrations/ :: Üretilmiş göç dosyaları — şema kaynağı schema.prisma.

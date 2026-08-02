@@ -51,6 +51,7 @@ const SUITES: Suite[] = [
   { ad: 'Kimlik haritası sözleşmesi (PK3)', script: 'test:pk3', zincir: 'Z0' },
   { ad: 'Fixture kapsama kapısı (PK3-repo)', script: 'test:pk3-repo', zincir: 'Z0' },
   { ad: 'Kur ölçütünün kendisi (KD9)', script: 'test:kd9', zincir: 'Z4' },
+  { ad: 'Kod haritası denetimi (HR3)', script: 'test:harita', zincir: 'Z0' },
   // ── DB gerektirenler (yerelde PG yoksa SKIP; VPS/CI'da kosulur) ──
   { ad: 'Eşleştirme DB regresyonu', script: 'test:regression:db', zincir: 'Z2', db: true },
   { ad: 'Kütüphane liste ekleme (KL)', script: 'test:kl', zincir: 'Z1', db: true },
