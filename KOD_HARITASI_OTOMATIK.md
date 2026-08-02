@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 299
-Toplam satir: 60298
+Kod dosyasi: 300
+Toplam satir: 60360
 Uc nokta: 124
 test:* scripti: 34
 
@@ -268,7 +268,7 @@ test:* scripti: 34
 | `frontend/e2e-golden/bolum-f-kabul.spec.ts` | 195 |
 | `frontend/e2e-golden/faz0-gs7-teshis.spec.ts` | 103 |
 | `frontend/e2e-golden/firma-a-golden.spec.ts` | 534 |
-| `frontend/e2e-golden/global-setup.mjs` | 80 |
+| `frontend/e2e-golden/global-setup.mjs` | 100 |
 | `frontend/e2e-golden/golden.spec.ts` | 245 |
 | `frontend/e2e-golden/gs-kalicilik.spec.ts` | 316 |
 | `frontend/e2e-golden/helpers.ts` | 352 |
@@ -311,6 +311,7 @@ test:* scripti: 34
 | `scripts/deploy.sh` | 90 |
 | `scripts/harita-denetle.mjs` | 167 |
 | `scripts/harita-uret.mjs` | 226 |
+| `scripts/kb5-olcu.sh` | 42 |
 
 ## 2 · Import bagliliklari
 

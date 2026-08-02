@@ -5,12 +5,9 @@
 # Bir dosya haritaya yazıldığında buradan SİLİNİR — tersi yapılmaz.
 # İlk oluşturma: 295 kod dosyasının 283 tanesinin haritada karşılığı yok.
 
-backend/prisma/schema.prisma
 backend/scripts/derleme-kapisi.js
 backend/scripts/surum-yaz.js
-backend/src/admin/admin.controller.ts
 backend/src/admin/admin.module.ts
-backend/src/admin/admin.service.ts
 backend/src/ai/ai.controller.ts
 backend/src/ai/ai.module.ts
 backend/src/ai/ai.service.ts
@@ -44,14 +41,11 @@ backend/src/labor/labor.module.ts
 backend/src/labor/labor.service.ts
 backend/src/library/dto/bulk-discount.dto.ts
 backend/src/library/dto/bulk-update-items.dto.ts
-backend/src/library/dto/create-library-item.dto.ts
 backend/src/library/dto/create-manual-brand.dto.ts
 backend/src/library/dto/import-price-list.dto.ts
 backend/src/library/dto/update-library-item.dto.ts
 backend/src/library/library-sheet-builder.ts
-backend/src/library/library.controller.ts
 backend/src/library/library.module.ts
-backend/src/library/library.service.ts
 backend/src/main.ts
 backend/src/materials/dto/create-material-price.dto.ts
 backend/src/materials/dto/create-material.dto.ts
@@ -91,16 +85,10 @@ backend/src/modules/matching/ad-cins-sozlugu.ts
 backend/src/modules/matching/ad-resolver.ts
 backend/src/modules/matching/conversion.ts
 backend/src/modules/matching/index/line-parser.ts
-backend/src/modules/matching/index/outcome-mapper.ts
-backend/src/modules/matching/index/product-index.ts
-backend/src/modules/matching/index/query-engine.ts
-backend/src/modules/matching/index/types.ts
 backend/src/modules/matching/index/vocab.ts
 backend/src/modules/matching/matching.controller.ts
 backend/src/modules/matching/matching.module.ts
-backend/src/modules/matching/matching.service.ts
 backend/src/modules/matching/normalizer.ts
-backend/src/modules/matching/pricing.ts
 backend/src/modules/matching/shared-tag-matcher.ts
 backend/src/modules/matching/tag-generator.ts
 backend/src/modules/matching/terminology.service.ts
@@ -144,14 +132,12 @@ backend/test/labor-matching-test.ts
 backend/test/labor-sheet-test.ts
 backend/test/library-transfer-test.ts
 backend/test/manifest-kapisi.ts
-backend/test/matching-regression.ts
 backend/test/matching-unit-test.ts
 backend/test/onceden-fiyatli-test.ts
 backend/test/pano18-para-birimi-test.ts
 backend/test/perf-profil.ts
 backend/test/pk3-kimlik-haritasi-test.ts
 backend/test/pk3-repo-kapsama-test.ts
-backend/test/pk9-sessiz-indeks-test.ts
 backend/test/product-index-test.ts
 backend/test/spec-regression-test.ts
 backend/test/standart-cikti-test.ts

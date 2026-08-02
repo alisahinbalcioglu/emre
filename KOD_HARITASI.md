@@ -33,10 +33,12 @@ Bu projede eksikliğinin bedeli dört kez ödendi:
 
 | İşaret | Anlamı | Adet |
 |---|---|---|
-| ✅ | doğrulandı — dosya biliniyor, ne yaptığı biliniyor | **19** |
-| ◑ | kısmen — dosya biliniyor, ne yaptığı tam bilinmiyor | **12** |
-| ⬜ | bakılmadı | **17** |
-| | **toplam satır** | **48** |
+| ✅ | doğrulandı — dosya biliniyor, ne yaptığı biliniyor | **38** |
+| ◑ | kısmen — dosya biliniyor, ne yaptığı tam bilinmiyor | **17** |
+| ⬜ | bakılmadı | **13** |
+| | **toplam satır** | **68** |
+
+> Sayım 02.08 (KALEM 58) `grep -c` ile ÖLÇÜLDÜ; önceki tablo (19/12/17/48) bayattı — 02.08 sabahki oturum satır eklemiş, sayacı güncellememişti.
 
 > Bu harita **çoğunlukla boş ve bu kasıtlı.** İçindeki her dolu satır, bir raporda ya da kanıt zincirinde fiilen geçmiş bir dosyadır. **Tek bir dosya adı tahmin edilerek yazılmadı.** Boş satırları Code oturumu ADIM 0-1 tamirini yaparken dolduracak — ayrı bir proje olarak değil, tamirin yan ürünü olarak.
 
@@ -97,9 +99,11 @@ Bu projede eksikliğinin bedeli dört kez ödendi:
 
 | | Dosya / uç | Ne çalıştırıyor | Kanıt nereden |
 |---|---|---|---|
-| ◑ | `matching.service` | Eşleştirme servisi — PRD’de adı geçiyor, dosya yolu yok | PRD_Mekanik_Iscilik_Kutuphanesi_ve_Eslestirme |
-| ◑ | `query-engine` | Sorgu motoru — PRD’de adı geçiyor, dosya yolu yok | Aynı PRD |
-| ◑ | `ProductIndex` | Ürün indeksi — PRD’de adı geçiyor, dosya yolu yok | Aynı PRD |
+| ✅ | `backend/src/modules/matching/matching.service.ts:92-101` | Eşleştirme servisi — aday havuzu YALNIZ `UserLibrary(userId, brandId)`'den kurulur, global fallback YOK. `hazirlaPool` :140-203 üç durum: gerçek indeks / bayat→bellekte tazele / indekssiz→istek anında `manuelUrunIndeksle` (:158-168). `⛔ MARKA INDEKSLENMEMIS` uyarısı :197-201. | KALEM 58 keşfi 02.08 — okuma + nokta-teyit |
+| ◑ | `backend/src/modules/matching/index/query-engine.ts` | Sorgu motoru — indeksten okuduğu alanlar satır düzeyinde: `belirsiz` :74 (havuz kapısı) · `adSlug` :81 (aile sert kilidi) · `sizeClass` :90 · token/çap filtreleri :354-391 · `boyTag` :397-401 · `birim` :435-443. Skorlama akışının tamamı okunmadı. | KALEM 58 keşfi 02.08 |
+| ✅ | `backend/src/modules/matching/index/product-index.ts:368-374` | Ürün indeksi üretici — `buildRowKey` = sha1_16(sheetKey · adBucket · cinsNorm · baglantiNorm · capNorm · boyTag · kod); FİYATTAN ve sourceRow'dan bağımsız. `buildProductIndex` :380-454, `rebuildIndexFields` :472-481 (rowKey bilerek dışarıda). Kimlik `@@unique([priceListId, rowKey])` → aynı dosya yeniden yüklenince UPDATE, id korunur, kullanıcının iskontosu yaşar. | KALEM 58 keşfi 02.08 — okuma + nokta-teyit |
+| ◑ | `backend/prisma/schema.prisma:308-355` | Veri modeli — `UserLibrary` (ekonomi kullanıcıda) ↔ `ProductIndex` :189-256 (yapı indekste): `productIndexId String?` :349, onDelete Cascade :348. `@@map` tüm şemada 0 → SQL'de tablo/kolon adları tırnaklı ve büyük-küçük duyarlı. Şemanın kalanı bu turda okunmadı. | KALEM 58 · KB1 02.08 |
+| ◑ | `backend/src/modules/matching/index/types.ts:11-36` | `IndexedRow` tipi — id = UserLibrary satır id'si; ekonomi (listPrice/customPrice/discountRate/currency) kullanıcıdan, ürün yapısı indeksten. Dosyanın kalanı okunmadı. | KALEM 58 keşfi 02.08 |
 | ⬜ | *(bilinmiyor)* | YOL A — otomatik marka/varyant ataması | Canlı kanıt: bugün ÇALIŞMIYOR |
 | ⬜ | *(bilinmiyor)* | YOL B — elle marka seçimi | Canlı kanıt: bugün ÇALIŞIYOR (regresyon kapısı) |
 | ⬜ | *(bilinmiyor)* | YOL C — üçüncü tetikleme yolu | Canlı kanıt: yarısı çalışıyor, yarısı çalışmıyor |
@@ -108,6 +112,7 @@ Bu projede eksikliğinin bedeli dört kez ödendi:
 
 - Üç yol tek bir ortak fonksiyona mı giriyor, yoksa üç ayrı kopya mı var?
 - Eşleştirme kuralları kaç dosyada yazılı? (3 PRD var, kod tarafı bilinmiyor.)
+- Legacy `productIndexId=NULL` satırı sonradan indekse bağlayan bir yol var mı? — **CEVAPLANDI (KALEM 58, 02.08): YOK.** Kütüphaneye yazan tek dosya `library.service.ts`; dört oluşturma yolundan ikisi bağlar (manuel marka :196-201 · indeksten aktarım :443-444), ikisi NULL doğurur (POST /library :75-87 · legacy import :351-360); güncelleme yolları `productIndexId`'ye hiç dokunmaz; `importFromIndex` mevcutları YALNIZ `productIndexId` ile eşlediği için (:437-439) NULL'ları göremez — liste indekslendikten sonra tekrar aktarım, bağ kurmak yerine KOPYA satır yaratır.
 
 ## D · FİYAT — birim fiyat, iskonto, para birimi
 
@@ -123,6 +128,8 @@ Bu projede eksikliğinin bedeli dört kez ödendi:
 | ⬜ | *(bilinmiyor)* | İskonto doldurma | PRD_Kutuphaneme_Aktarim_ve_Iskonto_Doldurma |
 | ⬜ | *(bilinmiyor)* | Para birimi çevrimi (USD/EUR) | Duzeltme_Talebi_Export500_OD_Cevrim_ParaBirimi — canlıda ölçülemedi, dosyada döviz satırı var mıydı bilinmiyor |
 | ⬜ | *(bilinmiyor)* | Fiyat biçimi (binlik/ondalık ayracı) | Duzeltme_Talebi_Fiyat_Bicimi_Belirsizligi |
+| ◑ | `backend/src/modules/matching/pricing.ts:28-31` | `hesaplaNetFiyat(listeFiyat, iskontoYüzde)` = yukarıYuvarla(liste × (1 − iskonto/100)). İskonto 0 → net = liste. Yalnız bu fonksiyon okundu. | KALEM 58 keşfi 02.08 |
+| ◑ | `backend/src/modules/matching/index/outcome-mapper.ts:49-54` | Eşleşme fiyatının hesaplandığı yer — `netFiyat`: taban = customPrice varsa o, yoksa toTry(listPrice ?? ürün.price, para birimi); net = hesaplaNetFiyat(taban, iskonto). Yalnız bu blok okundu. | KALEM 58 keşfi 02.08 |
 
 **Bu grubun cevapsız soruları:**
 
@@ -178,7 +185,11 @@ Bu projede eksikliğinin bedeli dört kez ödendi:
 |---|---|---|---|
 | ◑ | `/api/admin/stats` | Yönetim istatistikleri ucu | Panel; ne döndürdüğü bilinmiyor |
 | ◑ | `/api/quotes/` | Teklif ucu | Panel; ne döndürdüğü bilinmiyor |
-| ⬜ | *(bilinmiyor)* | Kütüphaneye liste ekleme / kaydetme | Duzeltme_Talebi_Kutuphane_Liste_Ekleme_Kaydetme |
+| ✅ | `backend/src/library/library.service.ts` | Kütüphaneye (UserLibrary) yazan TEK dosya (grep + okuma ile teyit). Dört oluşturma yolu: `create` :63-88 (POST /library — productIndexId NULL doğar) · `createManualBrand` :105-239 (indeks kurup bağlar :196-201) · `importPriceList` legacy dalı :285-408 (NULL doğar :351-360) · `importFromIndex` :427-518 (bağlar :443-444; mevcutları YALNIZ productIndexId ile eşler :437-439). Güncelleme yolları productIndexId'ye dokunmaz. | KALEM 58 keşfi 02.08 — okuma + nokta-teyit |
+| ◑ | `backend/src/library/library.controller.ts:40-74` | Kütüphane HTTP girişleri: POST /library · /library/manual-brand · /library/import-price-list. Satır oluşturan başka uç yok. Dosyanın kalanı okunmadı. | KALEM 58 keşfi 02.08 |
+| ✅ | `backend/src/library/dto/create-library-item.dto.ts` | Manuel tek-satır ekleme DTO'su (tamamı okundu): `listPrice` alanı VAR ama service kullanmıyor; `productIndexId` alanı YOK. | KALEM 58 keşfi 02.08 |
+| ◑ | `backend/src/admin/admin.service.ts` | İçe aktarım/indeks bölümleri satır düzeyinde: `commitImportCore` :743-802 → `saveBulkMaterials` :856-1130 (çift yazım: MaterialPrice + ProductIndex upsert(priceListId_rowKey) :1068-1072 · `removed` sayacı = MaterialPrice deleteMany :917-918 · bayat indeks satırı bilerek SİLİNMEZ :1085-1095) · `reindexProducts` :1379-1438 (yalnız ProductIndex'i tazeler, UserLibrary'ye hiç dokunmaz). Dosyanın kalanı (stats, kullanıcı yönetimi) okunmadı. | KALEM 58 keşfi 02.08 — okuma + nokta-teyit |
+| ◑ | `backend/src/admin/admin.controller.ts:92-200` | Yönetim uçları haritası: reindex-products :95-98 · import-excel/commit (marka + fiyat listesi) · materials/save-bulk · save-from-sheets (legacy). Dosyanın kalanı okunmadı. | KALEM 58 keşfi 02.08 |
 | ⬜ | *(bilinmiyor)* | Etiketleme motoru | PRD_Kutuphane_Etiketleme_Motoru |
 
 ## H · TESTLER — neyin doğru olduğunu İDDİA EDEN kod
@@ -198,6 +209,8 @@ Bu projede eksikliğinin bedeli dört kez ödendi:
 | ◑ | `bolum-f-kabul.spec.ts` | Bölüm F kabul testi — bir oturumda 0 koşum | GOREV_Kapatma_Turu |
 | ◑ | `frontend/components/excel-grid/aday-ayirt-edicilik.test.ts` | Aday ayırt edicilik testi | GOREV_Kapatma_Turu |
 | ✅ | `regression-all.ts` | SUITES listesi — package.json’daki her test:* burada olmalı (PK1) | GOREV_Sirada |
+| ✅ | `backend/test/matching-regression.ts` | `test:regression:db` — ÇAYIROVA (id :27 hardcoded) gerçek-DB uçtan uca eşleştirme: 10 vaka, 9'unda beklenen netPrice. Ön koşul kapısı :158-172 (ProductIndex=0 → çıkış 2 SKIP). AÇIK SORU :153-157 kapatılmadı: istek-anında-indeksle geri-düşüşü 116 satırı indeksliyor ama 0 eşleşme veriyor. | KALEM 58 keşfi 02.08 — okuma + nokta-teyit |
+| ✅ | `backend/test/pk9-sessiz-indeks-test.ts` | PK9 sözleşmesi — "geri-düşüş tek başına yeter mi? CEVAP: HAYIR": indekssiz satır warn kanalından, markanın tamamı indekssizse INDEKSLENMEMIS uyarısı (mock prisma, DB istemez). | KALEM 58 keşfi 02.08 |
 | ✅ | `package.json` | 13 bilinen test scripti: test:tam · test:regression · test:e2e-golden · test:of · test:library · test:ke · test:admin-import · test:perf · test:kb · test:gs · test:ex · test:export · test:sahte | Belgelerden sayıldı — repoda kaç tane olduğu doğrulanmadı |
 | ✅ | `scripts/harita-uret.mjs` | Haritanın **otomatik alt katmanını** üretir (`git ls-files` → dosya+satır, import bağlılıkları, uç noktalar, gerçek `test:*` listesi). Yorum içermez. `--agac` kipi dizin ağacı basar. | HR1 · komut çıkışı 0: 295 kod dosyası · 59.651 satır · 124 uç · 33 test:* |
 | ✅ | `scripts/harita-denetle.mjs` | **Harita denetim kapısı** (`npm run test:harita`). Kod dosyası ne haritada ne bekleyenlerde ise, bekleyenler uzadıysa ya da bekleyenlerde artık var olmayan dosya varsa **çıkış 1**. | HR3-RET: sahte dosyayla **çıkış 1**, silinince **çıkış 0** — ret yolu ateşlendiği görüldü |
@@ -220,6 +233,8 @@ Bu projede eksikliğinin bedeli dört kez ödendi:
 |---|---|---|---|
 | ✅ | `scripts/deploy.sh` | Dağıtım betiği. Tekrar-deneme yolu ateşlendi (502 → deneme 1/10 → DOĞRULANDI). RET yolu (çıkış kodu 1) HİÇ ateşlenmedi — KD8 açık. Ateşlendiği görülmemiş kapı, kapı değildir. | Panel kalem 53 + KD8 |
 | ✅ | `backup.sh` | Yedekleme — sunucudaki kopyası eski bir commit’teydi | Panel |
+| ✅ | `scripts/kb5-olcu.sh` | KALEM 58 salt-okuma ölçüm betiği (deploy.sh deseni: özel karakterler dosyada durur, konsola düz satır yazılır). Dört sayıyı tek sorguda döner; BEGIN READ ONLY + ROLLBACK; bağlantı yolu = backup servisinin her gün çalışan yolu (backup.sh:7 ikizi). Çıkış: 0 = ölçüm · 2 = ön koşul yok · diğer = hata. | KALEM 58 · KB2-KB4 02.08 — yerelde 0 ve 2 yolları ateşlendi |
+| ✅ | `docker-compose.yml` | Tek sunucu yığını: caddy + frontend + backend + dwg-engine + db (postgres:16, :16-29) + backup (:113-126, günlük pg_dump). DB kimlikleri .env'den (:20-22, :119-122); backend DATABASE_URL :64. | KALEM 58 · KB1 02.08 |
 | ✅ | `setup_env.sh` | Ortam kurulumu — izlenmeyen dosya olarak duruyor (?? setup_env.sh) | CANLI_DOGRULAMA_LISTESI |
 | ✅ | `nest-cli.json:6` | Giriş dosyası ayarı — tsconfig.json:17 ile çelişince MODULE_NOT_FOUND üretti. Düzeltildi, ama TEKRARINI ENGELLEYEN HİÇBİR ŞEY YOK. | Panel kalem 47 + PK12b |
 | ✅ | `backend/tsconfig.json:17` | Yukarıdakinin çelişen tarafı | Panel kalem 47 |
