@@ -72,7 +72,9 @@ console.log('── PK3: KIMLIK HARITASI SOZLESMESI ──\n');
 // Tarama bulgusunun unutulmasini engeller. Biri haritadan dusurulurse
 // (ornegin "artik gerek yok" diye) bu assert kirmiziya doner.
 {
-  const zorunlu = ['emre@lintumuhendislik.com.tr', 'www.lintumuhendislik.com.tr', '+90 505 885 15 64', 'HABAŞ'];
+  // 'HASAN SEVİNDİK' 02.08'de eklendi: KARTEPE fixture'inin Icmal kunyesinde
+  // (İLGİLİ: etiketi ayri hucrede) commit'li GERCEK kisi adi bulundu.
+  const zorunlu = ['emre@lintumuhendislik.com.tr', 'www.lintumuhendislik.com.tr', '+90 505 885 15 64', 'HABAŞ', 'HASAN SEVİNDİK'];
   const eksik = zorunlu.filter((k) => !(k in KIMLIK_HARITASI));
   sina('P7', 'iletişim/adres kimlikleri haritada', eksik.length === 0,
     eksik.length ? `EKSİK: ${eksik.join(', ')}` : `${zorunlu.length} anahtar mevcut`);

@@ -48,6 +48,15 @@ export const KIMLIK_HARITASI: Record<string, string> = {
   'LİNTU': 'FIRMA-B',
   'LINTU': 'FIRMA-B',
   'YILDIZ ENTEGRE': 'FIRMA-C ENTEGRE',
+  'Yıldız Entegre': 'FIRMA-C Entegre',   // AKHISAR'da title-case gecisler (kalinti taramasi yakaladi)
+  // Run bolunmesi (adres dersinin aynisi): "Yıldız Entegre" bazi hucrelerde
+  // rich-text run'larina bolunmus — bilesik anahtar ham XML'de eslesmiyor,
+  // 4 hucrenin 3'u kaciyordu (kalinti taramasi + fixture:dogrula D2 IKISI de
+  // bagimsiz yakaladi). Tek kelimelik anahtar run sinirina takilmaz.
+  // 'Entegre' tek basina EKLENMEZ: jenerik kelime ("yeniden entegre edilmesi"
+  // demontaj fixture'inda gecer). 'Yıldız' sinir korumali oldugu icin guvenli.
+  'Yıldız': 'FIRMA-C',
+  'YILDIZ': 'FIRMA-C',
   'PANOVA': 'FIRMA-D',
   'Bahçeçicler': 'FIRMA-E',
   'BAHÇEÇİCLER': 'FIRMA-E',
@@ -79,6 +88,22 @@ export const KIMLIK_HARITASI: Record<string, string> = {
   'BEYKOZ': 'SAHA-DORT',
   'Akçadağ': 'SAHA-BES',
   'AKÇADAĞ': 'SAHA-BES',
+  // 02.08 — AKHISAR dosyasi (ADIM 1a canli bulgusunun kaynagi) fixture'a alindi.
+  'AKHİSAR': 'SAHA-ALTI',
+  'Akhisar': 'SAHA-ALTI',
+  'Lintu': 'FIRMA-B',   // dosya adinda karisik buyuk-kucuk yazim
+  // "YE" = Yildiz Entegre kisaltmasi (dosya adi "YE_Akhisar"). Iki harf ama
+  // sozcuk siniri korumali: "PROJE" icindeki YE eslesmez (J harfi lookbehind'i
+  // bozar). Kuru kosum sayaciyla olculdu.
+  'YE': 'FIRMA-C',
+  // ⚠ 02.08 SIZINTI: KARTEPE fixture'inin Icmal kunyesinde GERCEK KISI ADI
+  // bulundu ("İLGİLİ: | HASAN SEVİNDİK") — commit'li ve push'luydu. Ilk
+  // taramalar yakalamadi cunku ad ne sirket eki ne iletisim izi tasiyor;
+  // kunye ETIKETI (İLGİLİ:) ayri hucrede oldugu icin desen taramasi da
+  // atlamisti. Kisi adlari haritayla tek tek eklenir (docProps'un aksine
+  // hucre metninde alan-bazli toptan silme yok).
+  'HASAN SEVİNDİK': 'KİŞİ-ANONİM',
+  'Hasan Sevindik': 'KİŞİ-ANONİM',
   // 01.08.2026 — icerik taramasinda haritanin GORMEDIGI kimlikler bulundu.
   // Bunlar dosya ADINDA degil, YALNIZ hucre metninde duruyordu; harita
   // dosya adlarina bakilarak yazildigi icin kacmislardi.

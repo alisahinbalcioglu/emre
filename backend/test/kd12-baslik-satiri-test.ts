@@ -171,11 +171,54 @@ async function main() {
         : 'ÖN KOŞUL: r5 bulunamadı');
   }
 
+  // ── (e) ADIM 1a AİLE 1: MERGE BANDI ÜNVANI BAŞLIK OLAMAZ ────────────────
+  // AKHİSAR canlı bulgusu (02.08): "İCMAL SAYFASI- İŞÇİLİK" 3 kolona merge'lü
+  // ünvan; yayılım 3 kopya üretiyor, her kopya 'işçilik' kelimesiyle puan
+  // alıp gerçek başlığı ("Bölge No | KAPSAM", sözlükte kelimesi yok, skor 0)
+  // eziyordu. Seçici kutusunda sütun adı yerine ünvan görünüyordu.
+  // KIRMIZI-ÖNCE ölçüldü (git stash ile eski kod): headerName
+  // "İCMAL SAYFASI- İŞÇİLİK" · yeni kod: "KAPSAM".
+  {
+    const AKHISAR = path.join(FIX, '2026-0008-FIRMA-C_SAHA-ALTI-FFS - FIRMA-B.xlsx');
+    if (!fs.existsSync(AKHISAR)) { console.log(`ON KOSUL YOK — ${AKHISAR} yok`); process.exit(2); }
+    const o: any = await g().prepare(fs.readFileSync(AKHISAR), { fixedSchema: true } as any);
+    const icmal = o.sheets.find((s: any) => /icmal/i.test(String(s.name).toLocaleLowerCase('tr')));
+    const adlar = (icmal?.kaynakKolonlar ?? []).map((k: any) => String(k.headerName));
+    sina('e', 'merge bandı ünvanı ("İCMAL SAYFASI- İŞÇİLİK") başlık olmuyor, gerçek başlık (KAPSAM) bulunuyor',
+      adlar.includes('KAPSAM') && !adlar.some((a: string) => /icmal sayfasi/i.test(a.toLocaleLowerCase('tr'))),
+      `seçici adları=${JSON.stringify(adlar)}`);
+  }
+
+  // ── (f) ADIM 1a AİLE 2: BAND ELEME SKOR YOLUNU DA DÜZELTİR ──────────────
+  // İKİNCİ AİLE ŞART (genel çözüm kuralı): (e) geri-düşüş yolunu ölçer
+  // (başlıkta sözlük kelimesi yok), bu ise SKOR yolunu — Bursa/Elektrik'te
+  // bandlar ("ELEKTRİK İŞLERİ"×4 + "KAPSAM"×2) elenince sözlük kelimeli
+  // gerçek başlık ("İmalatlar"/"Marka Listesi") kazanıyor.
+  // KIRMIZI-ÖNCE (stash): ELEKTRİK İŞLERİ ×4 · yeni: İmalatlar/Açıklama/….
+  {
+    const BURSA = path.join(FIX, '0_Bursa SAHA-BIR inşai işler - Revize Keşif (1).xlsx');
+    if (!fs.existsSync(BURSA)) { console.log(`ON KOSUL YOK — ${BURSA} yok`); process.exit(2); }
+    const o: any = await g().prepare(fs.readFileSync(BURSA), { fixedSchema: true } as any);
+    const elektrik = o.sheets.find((s: any) => /elektrik/i.test(String(s.name).toLocaleLowerCase('tr')));
+    const adlar = (elektrik?.kaynakKolonlar ?? []).map((k: any) => String(k.headerName));
+    sina('f', 'band elenince sözlük kelimeli GERÇEK başlık kazanıyor (Elektrik: İmalatlar, ELEKTRİK İŞLERİ değil)',
+      adlar.includes('İmalatlar') && !adlar.includes('ELEKTRİK İŞLERİ'),
+      `seçici adları=${JSON.stringify(adlar)}`);
+
+    // Bonus üçüncü kanıt: Bursa İCMAL eskiden TAMAMEN ÖLÜYDÜ (0 veri satırı).
+    const icmal = o.sheets.find((s: any) => /icmal/i.test(String(s.name).toLocaleLowerCase('tr')));
+    const veri = (icmal?.rowData ?? []).filter((r: any) => r._isDataRow).length;
+    sina('f2', 'Bursa İCMAL sayfası dirildi (eskiden 0 veri satırı — sayfa kayıptı)',
+      veri >= 1, `veri satırı=${veri} · başlıklar=${JSON.stringify((icmal?.kaynakKolonlar ?? []).map((k: any) => k.headerName))}`);
+  }
+
   console.log('\n── RENK TABLOSU ──');
   console.log(`  (a) başlık satırı veri olmuyor        : ${renk.a}`);
   console.log(`  (b) sütun adı dosyadan geliyor        : ${renk.b}`);
   console.log(`  (c) ünvandan sayı türetilmiyor        : ${renk.c}`);
   console.log(`  (d) teklif numarası para olmuyor      : ${renk.d}`);
+  console.log(`  (e) merge bandı başlık olmuyor        : ${renk.e}`);
+  console.log(`  (f) band elenince gerçek başlık kazanır: ${renk.f} / ${renk.f2}`);
   console.log(`\nSONUC: ${pass} PASS, ${fails.length} FAIL`);
   if (fails.length) process.exit(1);
 }

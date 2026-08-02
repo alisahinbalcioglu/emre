@@ -53,14 +53,15 @@ Bu projede eksikliğinin bedeli dört kez ödendi:
 | | Dosya / uç | Ne çalıştırıyor | Kanıt nereden |
 |---|---|---|---|
 | ⬜ | *(bilinmiyor)* | Dosya yükleme ucu — yüklenen dosyayı alan uç nokta | Hiçbir raporda geçmedi |
-| ⬜ | *(bilinmiyor)* | Excel okuyucu / sayfa ayrıştırıcı — satırların ekrana dönüştüğü yer | ADIM 1 (kalem 55) bu dosyayı bulmakla başlayacak |
-| ⬜ | *(bilinmiyor)* | Başlık satırı ayıklama — hangi satır veri, hangisi başlık kararı | Canlı test 01.08: başlık satırları ayıklanmamış |
-| ⬜ | *(bilinmiyor)* | Sütun eşleme — dosyadaki sütunun hangi alana gittiği | Duzeltme_Talebi_Teklif_Ciktisi_Kolon_Esleme_Kaymasi (geçmiş), canlı 01.08 (yeni) |
+| ✅ | `backend/src/modules/excel-grid/excel-grid.service.ts:250` | Excel okuyucu / sayfa ayrıştırıcı (`parseSingleSheet`) — satırların ekrana dönüştüğü yer. Merge yayılımı :271-297 (**tek fiziksel hücre N kolona kopyalanır** — ADIM 1a hatasının hammaddesi buydu). | ADIM 1a ölçümü 02.08 |
+| ✅ | `backend/src/modules/excel-grid/excel-grid.service.ts:895-1005` | **Başlık SATIRI kararı** (`realHeaderRow`): sözlük kelimesi skorlaması :895-983 (ayrık-metin sayımı + band eleme + altında-sayısal-veri şartı) + kelimesiz başlık geri-düşüşü :984+ (ilk sayısal satırın hemen üstü; üç sigortalı). | ADIM 1a — AKHİSAR İCMAL canlı bulgusu; 83 sayfa önce/sonra kıyası: 3 değişim (3'ü kazanım), 80 birebir |
+| ✅ | `backend/src/modules/excel-grid/excel-grid.service.ts:630-647` | **Sütun eşleme** (rol desenleri: no/name/quantity/unit/fiyatlar) + içerik-tabanlı doğrulama R-B/KG6 :697+ (başlık yanıltıcıysa VERİ otorite). | KD12(b) · TF suite · ADIM 1a |
+| ✅ | `backend/src/modules/excel-grid/standart-sema.ts:251` | Başlık **ETİKET SATIRI** ayıklama (KD12a: Excel'in kendi başlık satırı veri sayılmaz, `baslikEtiketiSatiriMi`). | KD12(a), kalem 55 |
 
 **Bu grubun cevapsız soruları:**
 
-- Başlık satırı kararı kaç ayrı yerde veriliyor? (Yükleme mi, grid mi, çıktı mı?)
-- “Malzeme adı = sayfa adı” hatası okuyucudan mı, sütun eşlemesinden mi geliyor?
+- Başlık satırı kararı kaç ayrı yerde veriliyor? — **CEVAPLANDI (ADIM 1a, 02.08): ÜÇ yerde.** (1) satır seçimi `excel-grid.service.ts:895-1005`, (2) etiket-satırı ayıklama `standart-sema.ts:251`, (3) seçici görünümü `frontend/lib/kaynak-kolon.ts`. Üçü ayrı katman: hangi satır başlık / hangi satır veri değil / kutuda ne yazar.
+- “Malzeme adı = sayfa adı” hatası okuyucudan mı, sütun eşlemesinden mi geliyor? — **KISMEN CEVAPLANDI (02.08): iki ayrı vaka var.** (a) KARTEPE tipi: dosyanın KENDİ başlık hücresi bölüm adını taşıyor (`No | YANGIN POMPA ODASI | Miktar`) — program dosyaya sadık, hata değil (KD12b kararı). (b) AKHİSAR tipi: merge'lü ünvan bandı yanlış SATIR seçtiriyordu — okuyucu hatasıydı, ADIM 1a düzeltti (KD12 e/f mühürlü).
 
 ## B · TABLO — ekranda gördüğün grid
 

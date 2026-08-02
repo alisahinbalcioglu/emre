@@ -902,21 +902,118 @@ export class ExcelGridService {
     let bestScore = 0;
     const searchEnd = firstDataRow >= 0 ? firstDataRow : Math.min(20, rawValues.length);
 
-    for (let r = 0; r < searchEnd; r++) {
-      let score = 0;
+    // ── KALEM 55 / ADIM 1a (02.08.2026, AKHISAR canli bulgusu) ────────────
+    // Eski skor HUCRE sayardi. Merge yayilimi (yukarida rawValues[r][c] =
+    // sourceValue) tek fiziksel hucreyi N kolona kopyaladigi icin, 3 kolona
+    // merge'lu "İCMAL SAYFASI- İŞÇİLİK" unvan bandi 3 PUAN aliyor ve tek
+    // anahtar kelimesiyle ("iscilik") gercek basligi ("Bölge No | KAPSAM",
+    // skor 0) eziyordu. Iki yapisal kural:
+    //   1. AYNI metin kac kolona yayilirsa yayilsin BIR kez sayilir — tek
+    //      etiket tek oydur.
+    //   2. Coklu kolona yayilmis TEK metinli satir (unvan bandi) baslik
+    //      OLAMAZ: baslik satiri birden cok kolonu AYRI AYRI adlandirir.
+    //      Tek kolonda tek dolu hucre ise banda sayilmaz (tek kolonlu
+    //      listelerin "MALZEME ADI" basligi korunur).
+    const satirDokusu = (r: number) => {
+      const sayac = new Map<string, number>();
+      let doluHucre = 0;
+      let sayisalHucre = 0;
       for (let c = 0; c < colCount; c++) {
-        const cellText = norm(rawValues[r]?.[c] ?? '');
-        if (!cellText) continue;
+        const ham = String(rawValues[r]?.[c] ?? '').trim();
+        if (!ham) continue;
+        doluHucre++;
+        const n = norm(ham);
+        sayac.set(n, (sayac.get(n) ?? 0) + 1);
+        if (/^-?\d[\d.,]*$/.test(ham)) sayisalHucre++;
+      }
+      const maxTekrar = Math.max(0, ...sayac.values());
+      return {
+        ayrik: new Set(sayac.keys()), doluHucre, sayisalHucre, maxTekrar,
+        bandMi: sayac.size === 1 && doluHucre >= 2,
+      };
+    };
+
+    // 3. yapisal kural: baslik, ALTINDA sayisal veri olan satirdir. AKHISAR
+    // ICMAL'de bandlar elenince skoru olan tek satir EN ALTTAKI "TOPLAM"
+    // ozet satiri kaldi (r14, 'toplam' kelimesi) ve baslik ilan edildi —
+    // altinda tek satir veri olmadigi halde. Sonek taramasiyla engellenir.
+    const altindaSayisalVar: boolean[] = new Array(rawValues.length).fill(false);
+    {
+      let gorulen = false;
+      for (let r = rawValues.length - 1; r >= 0; r--) {
+        altindaSayisalVar[r] = gorulen;
+        if (satirDokusu(r).sayisalHucre >= 1) gorulen = true;
+      }
+    }
+    const sayfadaSayisalVar = altindaSayisalVar.some(Boolean)
+      || (rawValues.length > 0 && satirDokusu(0).sayisalHucre >= 1);
+
+    for (let r = 0; r < searchEnd; r++) {
+      const doku = satirDokusu(r);
+      if (doku.bandMi) continue; // unvan bandi — baslik adayi degil
+      // Band + tek serseri hucre de banddir (BEYKOZ ICMAL: "FIRE PROTECTION
+      // SYSTEMS" ×5 + "FİYAT TEKLİFİ" ×1 — 'fiyat' kelimesi satiri baslik
+      // yapiyordu). Ayirt edici KOPYA SAYISI DEGIL AYRIK ETIKET SAYISIDIR:
+      // Bursa'nin GERCEK basligi da 3-kolonluk merge tasiyor ("Şartname No |
+      // İmalatlar×3 | Birim" — ayrik 3+) ve ilk denemedeki duz `maxTekrar>=3`
+      // kurali onu da elemisti (olculdu: 4 sayfa unvan bandina dustu).
+      // Kolon adlandiran satirda ayrik etiket COKTUR; band+serseri'de <=2.
+      // Ikinci katman (BEYKOZ ICMAL olcumu): band cok serseriyle de gelebilir
+      // ("FIRE…"×5 + FİYAT TEKLİFİ + TEKLİF NO + T25-0121 → ayrik 4). Kac
+      // serseri olursa olsun >=4 kopyali etiket kolon adlandirmiyor, bant
+      // tasiyordur. Bursa'nin mesru 3-kolonluk "İmalatlar" merge'u esigin
+      // altinda kalir.
+      if ((doku.maxTekrar >= 3 && doku.ayrik.size <= 2) || doku.maxTekrar >= 4) continue;
+      // Sayfada hic sayisal satir yoksa bu kural uygulanmaz (saf metin listesi).
+      if (sayfadaSayisalVar && !altindaSayisalVar[r]) continue;
+      let score = 0;
+      for (const metin of doku.ayrik) {
         for (const kw of headerKeywords) {
-          if (new RegExp(`\\b${kw}\\b`).test(cellText)) {
+          if (new RegExp(`\\b${kw}\\b`).test(metin)) {
             score++;
-            break; // her hucre 1 kez sayilsin
+            break; // her AYRIK metin 1 kez sayilsin
           }
         }
       }
       if (score > bestScore) {
         bestScore = score;
         realHeaderRow = r;
+      }
+    }
+
+    // ── Geri dusus: HICBIR satir anahtar kelime tasimiyorsa (AKHISAR ICMAL:
+    // gercek baslik "Bölge No | KAPSAM" — sozlukte yok) yapisal ipucu:
+    // baslik, ilk SAYISAL veri satirinin HEMEN ustundeki cok-kolonlu metin
+    // satiridir (headerEndRow = firstDataRow - 1 varsayiminin aynasi).
+    //
+    // UC SIGORTA (ilk deneme 83 sayfalik kiyasta iki regresyon uretti,
+    // ucu de oradan):
+    //  a) r0 KULLANILABILIR basliksa dokunma — Aksa BOQ'da r0 Ingilizce tam
+    //     baslikti (skor 0 ama gecerli); geri dusus onu kisaltmali 2. satirla
+    //     eziyordu.
+    //  b) TIRMANMA YOK — yalniz ilk sayisal satirin HEMEN ustune bakilir.
+    //     Bos satirlari atlayarak yukari cikmak BEYKOZ'da unvan bandini
+    //     ("FIRE PROTECTION SYSTEMS" ×5) yakalatiyordu.
+    //  c) >=3 KOPYALI METIN ICEREN SATIR OLMAZ — band + tek serseri hucre
+    //     kombinasyonu (ayrik=2) sigorta b'yi asarsa burada takilir.
+    //     Esik 3: mesru cift baslik ("AÇIKLAMA" iki kolonda — KARTEPE) gecer.
+    if (bestScore === 0) {
+      const r0doku = satirDokusu(0);
+      if (r0doku.ayrik.size < 2) { // (a)
+        let ilkSayisal = -1;
+        for (let r = 0; r < Math.min(30, rawValues.length); r++) {
+          const doku = satirDokusu(r);
+          if (doku.doluHucre >= 2 && doku.sayisalHucre >= 1) { ilkSayisal = r; break; }
+        }
+        if (ilkSayisal > 0) {
+          const aday = ilkSayisal - 1; // (b)
+          const doku = satirDokusu(aday);
+          if (!doku.bandMi && doku.doluHucre > 0 && doku.ayrik.size >= 2
+            && doku.sayisalHucre === 0 && doku.maxTekrar < 3 /* (c) */) {
+            realHeaderRow = aday;
+            console.log(`[ExcelGrid] baslik geri-dusus: anahtar kelimesiz baslik r${aday} (ilk sayisal veri r${ilkSayisal})`);
+          }
+        }
       }
     }
 

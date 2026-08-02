@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 299
-Toplam satir: 60131
+Toplam satir: 60298
 Uc nokta: 124
 test:* scripti: 34
 
@@ -89,7 +89,7 @@ test:* scripti: 34
 | `backend/src/modules/excel-engine/excel-engine.service.ts` | 195 |
 | `backend/src/modules/excel-grid/excel-grid.controller.ts` | 23 |
 | `backend/src/modules/excel-grid/excel-grid.module.ts` | 13 |
-| `backend/src/modules/excel-grid/excel-grid.service.ts` | 964 |
+| `backend/src/modules/excel-grid/excel-grid.service.ts` | 1061 |
 | `backend/src/modules/excel-grid/sheet-discipline.ts` | 61 |
 | `backend/src/modules/excel-grid/standart-sema.ts` | 331 |
 | `backend/src/modules/labor-matching/labor-matching.controller.ts` | 50 |
@@ -140,13 +140,13 @@ test:* scripti: 34
 | `backend/test/export-format-test.ts` | 427 |
 | `backend/test/export-live-sim-test.ts` | 411 |
 | `backend/test/faz0-gs7-probe.ts` | 74 |
-| `backend/test/fixture-anonim.ts` | 305 |
+| `backend/test/fixture-anonim.ts` | 330 |
 | `backend/test/fixture-dogrula.ts` | 224 |
 | `backend/test/gercek-dosya-test.ts` | 259 |
 | `backend/test/gs6b-teshis.ts` | 85 |
 | `backend/test/index-engine-test.ts` | 1509 |
 | `backend/test/kd11-toplam-yollari-test.ts` | 142 |
-| `backend/test/kd12-baslik-satiri-test.ts` | 183 |
+| `backend/test/kd12-baslik-satiri-test.ts` | 226 |
 | `backend/test/kd9-kur-olcutu-test.ts` | 222 |
 | `backend/test/kl-liste-ekleme-test.ts` | 168 |
 | `backend/test/labor-matching-test.ts` | 196 |
@@ -158,7 +158,7 @@ test:* scripti: 34
 | `backend/test/onceden-fiyatli-test.ts` | 163 |
 | `backend/test/pano18-para-birimi-test.ts` | 172 |
 | `backend/test/perf-profil.ts` | 73 |
-| `backend/test/pk3-kimlik-haritasi-test.ts` | 157 |
+| `backend/test/pk3-kimlik-haritasi-test.ts` | 159 |
 | `backend/test/pk3-repo-kapsama-test.ts` | 79 |
 | `backend/test/pk9-sessiz-indeks-test.ts` | 97 |
 | `backend/test/product-index-test.ts` | 453 |
