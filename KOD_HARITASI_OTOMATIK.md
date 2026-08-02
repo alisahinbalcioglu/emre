@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 297
-Toplam satir: 60026
+Toplam satir: 60029
 Uc nokta: 124
 test:* scripti: 34
 
@@ -186,7 +186,7 @@ test:* scripti: 34
 | `frontend/app/(protected)/quote-formats/page.tsx` | 397 |
 | `frontend/app/(protected)/quotes/[id]/page.tsx` | 244 |
 | `frontend/app/(protected)/quotes/new/error.tsx` | 13 |
-| `frontend/app/(protected)/quotes/new/page.tsx` | 2290 |
+| `frontend/app/(protected)/quotes/new/page.tsx` | 2293 |
 | `frontend/app/(protected)/quotes/page.tsx` | 192 |
 | `frontend/app/admin/brands/page.tsx` | 869 |
 | `frontend/app/admin/layout.tsx` | 80 |
@@ -473,7 +473,7 @@ test:* scripti: 34
 | `frontend/app/(protected)/profile/page.tsx` | `react` `next/navigation` `@/components/ui/button` `@/lib/api` `@/lib/utils` |
 | `frontend/app/(protected)/quote-formats/page.tsx` | `react` `next/link` `@/components/ui/button` `@/components/ui/card` `@/lib/api` `@/hooks/use-toast` `@/hooks/use-confirm` |
 | `frontend/app/(protected)/quotes/[id]/page.tsx` | `react` `next/navigation` `next/link` `lucide-react` `@/components/ui/button` `@/components/ui/card` `@/lib/api` `@/lib/utils` `@/lib/export-download` `@/components/excel-grid/ExcelGrid` `@/components/excel-grid/SheetTabs` `@/components/excel-grid/types` `@/hooks/use-currency` `@/contexts/CapabilitiesContext` `@/lib/disiplin` `@/types/quotes` `@/types` |
-| `frontend/app/(protected)/quotes/new/page.tsx` | `react` `next/navigation` `next/link` `@/components/ui/button` `@/lib/export-download` `@/lib/disiplin` `@/components/ui/card` `@/components/ui/input` `@/components/ui/label` `@/lib/api` `@/hooks/use-toast` `@/hooks/use-confirm` `@/lib/utils` `@/components/excel-grid/ExcelGrid` `@/components/excel-grid/SheetTabs` `@/components/quotes/ColumnManagerPanel` `@/components/excel-grid/types` `@/contexts/CapabilitiesContext` `@/components/dwg-metraj/types` `@/components/dwg-metraj/MetrajEditor` `@/lib/parse-material-text` `@/lib/merge-multisheet` `@/lib/pricing` `@/types` `@/hooks/use-currency` |
+| `frontend/app/(protected)/quotes/new/page.tsx` | `react` `next/navigation` `next/link` `@/components/ui/button` `@/lib/export-download` `@/lib/disiplin` `@/components/ui/card` `@/components/ui/input` `@/components/ui/label` `@/lib/api` `@/hooks/use-toast` `@/hooks/use-confirm` `@/lib/utils` `@/components/excel-grid/ExcelGrid` `@/components/excel-grid/SheetTabs` `@/components/quotes/ColumnManagerPanel` `@/components/excel-grid/types` `@/contexts/CapabilitiesContext` `@/components/dwg-metraj/types` `@/components/dwg-metraj/MetrajEditor` `@/lib/parse-material-text` `@/lib/merge-multisheet` `@/lib/kaynak-kolon` `@/lib/pricing` `@/types` `@/hooks/use-currency` |
 | `frontend/app/(protected)/quotes/page.tsx` | `react` `next/navigation` `lucide-react` `@/components/ui/button` `@/components/ui/card` `@/lib/api` `@/hooks/use-toast` `@/hooks/use-confirm` |
 | `frontend/app/admin/brands/page.tsx` | `react` `@/lib/api` `@/hooks/use-toast` `@/hooks/use-confirm` `@/components/ui/button` `@/components/ui/input` `@/components/ui/badge` `@/components/ui/card` |
 | `frontend/app/admin/layout.tsx` | `react` `next/navigation` `@/components/admin/AdminSidebar` |

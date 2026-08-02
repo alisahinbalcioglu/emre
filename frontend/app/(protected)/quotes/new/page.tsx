@@ -44,6 +44,7 @@ import type { MetrajResult } from '@/components/dwg-metraj/types';
 import MetrajEditor from '@/components/dwg-metraj/MetrajEditor';
 import { parseMaterialText } from '@/lib/parse-material-text';
 import { mergeMultiSheet } from '@/lib/merge-multisheet';
+import { kaynakKolonEtiketi } from '@/lib/kaynak-kolon';
 import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, toplamlariTamamla } from '@/lib/pricing';
 import type { Brand } from '@/types';
 import type {
@@ -1562,7 +1563,9 @@ export default function NewQuotePage() {
           const kaynaklar = (activeSheet as any).kaynakKolonlar as
             | { field: string; headerName: string; ornek: string }[] | undefined;
           const excelCols = kaynaklar?.length
-            ? kaynaklar.map((k) => ({ field: k.field, headerName: k.ornek ? `${k.headerName} — ör: ${k.ornek}` : k.headerName }))
+            // Etiket TEK KAYNAKTAN gelir (lib/kaynak-kolon.ts): gerçek başlık
+            // varsa yalnız başlık, yoksa örnek değer ipucu olarak kalır.
+            ? kaynaklar.map((k) => ({ field: k.field, headerName: kaynakKolonEtiketi(k) }))
             : (activeSheet.columnDefs ?? []).filter((c) => c.field && !c.field.startsWith('_'));
           if (excelCols.length === 0) return null;
           const current = kaynaklar?.length
