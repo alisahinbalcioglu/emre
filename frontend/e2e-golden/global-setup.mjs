@@ -47,15 +47,35 @@ export default async function globalSetup() {
   fs.writeFileSync(path.join(__dirname, '.auth.json'), JSON.stringify({ token, user: USER }, null, 2));
 
   // 2) Yigin sagligi — backend + frontend ayakta olmali
+  //
+  // ⚠ ECONNRESET SIGORTASI (02.08.2026, PK13 sirasinda OLCULDU): surum
+  // kapisi (PK11, yukarida) ayni adreslere `AbortSignal.timeout(5000)` ile
+  // fetch atiyor; o istekler undici baglanti HAVUZUNDA yari-olu soket
+  // birakabiliyor ve buradaki ilk fetch ayni soketi yeniden kullaninca
+  // `fetch failed / cause: ECONNRESET` aliyor. Deterministik uretildi:
+  // kapi ✅ dedigi halde bir sonraki fetch ayni surecte ECONNRESET dustu;
+  // AYNI kabukta taze node sureciyle ayni adres 200 dondu — yani sunucu
+  // degil, HAVUZ sucluydu. Tek yeniden deneme taze soketle acilir ve
+  // gecer. 3 deneme siniri: sunucu GERCEKTEN kapaliysa yine kirmizi.
   for (const [ad, url] of [
     ['backend', 'http://localhost:3001/api/health'],
     ['frontend', 'http://localhost:3005/'],
   ]) {
-    try {
-      const r = await fetch(url);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    } catch (e) {
-      throw new Error(`${ad} ayakta degil (${url}): ${e.message}\nOnce yerel yigini baslatin (bkz playwright.golden.config.ts).`);
+    let sonHata = null;
+    let gecti = false;
+    for (let deneme = 1; deneme <= 3 && !gecti; deneme++) {
+      try {
+        const r = await fetch(url);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        gecti = true;
+      } catch (e) {
+        sonHata = e;
+        console.log(`[golden-setup] ${ad} saglik denemesi ${deneme}/3 basarisiz: ${e.cause?.code ?? e.message}`);
+        await new Promise((coz) => setTimeout(coz, 500));
+      }
+    }
+    if (!gecti) {
+      throw new Error(`${ad} ayakta degil (${url}): ${sonHata.message}\nOnce yerel yigini baslatin (bkz playwright.golden.config.ts).`);
     }
   }
 
