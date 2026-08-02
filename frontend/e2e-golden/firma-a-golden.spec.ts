@@ -22,6 +22,9 @@ import {
   harvestGrid, selectDropdown, fillFamilyDown, waitForPricesToSettle,
   resolvePopupIfAny, listDropdownOptions, scrollRowIntoView, PopupLogEntry, Harvest,
 } from './helpers';
+// KD9: beklenen gosterimi URUNUN KENDI fonksiyonu uretir — test kendi
+// yuvarlama modelini kurarsa urunle ayrisir (kok neden tam buydu).
+import { paraBicim } from '../lib/pricing';
 
 const FIXTURES = path.resolve(__dirname, '../../test-fixtures/e2e');
 // PK10: her kosum kendi damgali dizinine yazar (uzerine yazma yok)
@@ -128,6 +131,9 @@ test('BÖLÜM D — ŞAHİNKUL altın senaryosu (sürükle-doldur · KG10 · KG1
   const popupLog: PopupLogEntry[] = [];
   const senaryo: Record<string, any> = { dosya: DOSYA, sayfa: SAYFA };
   let savePayload: any = null; let savedQuote: any = null; let createdId = '';
+  // KD9 — kutu icinde tutulur: TS, closure icinde atanan bir "let"i okuma
+  // noktasinda hala "null" sanip tipi "never"e daraltiyor.
+  const kurKutu: { yanit: { usdTry?: number; eurTry?: number } | null } = { yanit: null };
   const exportHeaders: Record<string, Record<string, string>> = {};
 
   page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text().slice(0, 300)); });
@@ -139,6 +145,13 @@ test('BÖLÜM D — ŞAHİNKUL altın senaryosu (sürükle-doldur · KG10 · KG1
   });
   page.on('response', async (res) => {
     const u = res.url();
+    // KD9: kur, DOGRULANACAK EKRAN VERISINDEN degil AGDAN alinir. Sayfanin
+    // kendi `/exchange-rates` cevabini yakalariz — yani cevrimde GERCEKTEN
+    // kullanilan sayi. Test kendi HTTP istegini atsaydi backend bu arada
+    // cache'i tazeleyip BASKA bir kur donebilirdi.
+    if (/\/exchange-rates/.test(u)) {
+      try { kurKutu.yanit = await res.json(); } catch { /* no-op */ }
+    }
     if (/\/api\/quotes$/.test(u) && res.request().method() === 'POST') {
       try { createdId = (await res.json())?.id ?? ''; } catch { /* no-op */ }
     }
@@ -363,35 +376,64 @@ test('BÖLÜM D — ŞAHİNKUL altın senaryosu (sürükle-doldur · KG10 · KG1
     if (o.mat && mu) ciftler.push({ idx: o.idx, tip: 'malzeme', tl: o.mat, usd: mu });
     if (o.lab && lu) ciftler.push({ idx: o.idx, tip: 'işçilik', tl: o.lab, usd: lu });
   }
-  // Kur: sayfa üstündeki TCMB rozeti ("USD ₺47,41") ya da "1 USD = ₺…" notu.
+  // ══ KD9 (02.08.2026) — ÖLÇÜT DAİRESELLİKTEN ÇIKARILDI ═══════════════════
+  //
+  // ESKİ MODEL: kur, doğrulanacak EKRAN DEĞERLERİNDEN geri çıkarılıyordu
+  // (`kurAmpirik` = usd≥100 çiftlerinin tl/usd medyanı) ve her çift o kura
+  // karşı SABİT bir toleransla (0,05·kur+0,06 ≈ 2,43 TL) sınanıyordu.
+  // İki kusur birleşiyordu:
+  //   1) Tahminci gürültülü: ekran 1 ondalığa yuvarlı olduğundan usd≈100
+  //      çiftlerinde oran hatası ±0,024 mertebesinde.
+  //   2) Tolerans SABİT ama kur hatasının satır başına katkısı `tl·δ/kur` —
+  //      TL ile ORANTILI büyüyor ve hiç bütçelenmemiş.
+  // Sonuç: ₺50.000'lik bir satırda δ=0,003 (yani %0,006) tüm bütçeyi yiyordu.
+  // 31.07 koşumunda tam bu oldu; sapan çıkan 3 değerin üçünün de "işçilik"
+  // olması bir kolon farkı DEĞİL, sadece dosyadan gelen işçiliklerin
+  // (₺3.000-50.000) kütüphane malzemelerinden (~₺600) BÜYÜK olmasıydı.
+  // Kanıt ve matematik: `backend/test/kd9-kur-olcutu-test.ts` (npm run test:kd9).
+  //
+  // YENİ MODEL: kur AĞDAN alınır (sayfanın kendi /exchange-rates yanıtı),
+  // beklenen gösterim ÜRÜNÜN KENDİ fonksiyonuyla (`paraBicim`) üretilir ve
+  // TAM EŞİTLİK aranır. Tahmin yok → tolerans da yok.
+  // Tek pay: TL değeri de ekrandan 1 ondalıkla okunduğu için gerçek taban
+  // [tl−0,05, tl+0,05] aralığındadır; beklenen USD bu aralığın İKİ UCUNDAN
+  // üretilir ve gözlenen değer bu kümede olmalıdır. Bu pay ÖLÇÜLMÜŞ ve
+  // SINIRLIDIR — tahmin edilmiş değil.
+  const usdTry = Number(kurKutu.yanit?.usdTry);
+  expect(usdTry, 'KG13/KD9: /exchange-rates yanıtı yakalanmalı (kur bağımsız kaynaktan gelir)')
+    .toBeGreaterThan(1);
+  const carpan = 1 / usdTry;                       // use-currency.ts:74 ile AYNI işlem sırası
+
+  // Ekranda görünen kur ETİKETİ — AYRI bir kriter (etiket doğruluğu).
   const kurMetni = await page.evaluate(() => document.body.innerText.slice(0, 4000));
   const kurEsle = /1\s*USD\s*=\s*₺?\s*([\d.,]+)/.exec(kurMetni) ?? /USD\s*₺\s*([\d.,]+)/.exec(kurMetni);
-  const kur = kurEsle ? tlNum(kurEsle[1]) : null;
-  expect(kur, 'KG13: USD görünümünde kur etiketi görünmeli (pano 18)').toBeTruthy();
-  // ÖLÇÜM NOTU (iki yuvarlama tuzağı):
-  //  1) Hücreler 1 ondalıkla gösterilir → TL/USD ORANI küçük değerlerde şişer
-  //     (₺35,1 → $0,7 ⇒ oran 50,1; kur 47,41). Ölçüt oran aralığı OLAMAZ.
-  //  2) Kur ETİKETİ 2 ondalığa yuvarlıdır (₺47,41) ama çevrimde tam değer
-  //     (47,4128…) kullanılır → ₺58.000 → $1.223,3 (etikete göre $1.223,37).
-  // Bu yüzden kur AMPİRİK olarak büyük değerlerden (yuvarlama etkisi ihmal
-  // edilebilir) çıkarılır, etiketle tutarlılığı ayrıca sınanır; her çift bu
-  // kura göre gösterim toleransıyla kontrol edilir.
-  const buyukler = ciftler.filter((c) => c.usd >= 100).map((c) => c.tl / c.usd).sort((a, b) => a - b);
-  const kurAmpirik = buyukler.length ? buyukler[Math.floor(buyukler.length / 2)] : (kur as number);
-  const tolerans = 0.05 * kurAmpirik + 0.06;
-  const sapanlar = ciftler.filter((c) => Math.abs(c.tl - c.usd * kurAmpirik) > tolerans);
+  const kurEtiketi = kurEsle ? tlNum(kurEsle[1]) : null;
+
+  const beklenenKume = (tl: number): string[] => Array.from(new Set([
+    paraBicim(tl - 0.05, carpan), paraBicim(tl, carpan), paraBicim(tl + 0.05, carpan),
+  ]));
+  const sapanlar = ciftler.filter((c) => {
+    const gozlenen = (c.usd as number).toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    return !beklenenKume(c.tl).includes(gozlenen);
+  });
   senaryo.KG13 = {
-    kurEtiketi: kur, kurAmpirik, kurKaynagi: kurEsle?.[0] ?? '', orneklem: ciftler.length, tolerans,
+    usdTry, kurEtiketi, kurKaynagi: kurEsle?.[0] ?? '', orneklem: ciftler.length,
+    olcut: 'KD9: bağımsız kur + ürünün paraBicim fonksiyonu + tam eşitlik (tolerans YOK)',
     malzeme: ciftler.filter((c) => c.tip === 'malzeme').slice(0, 3),
     iscilik: ciftler.filter((c) => c.tip === 'işçilik').slice(0, 3),
-    sapanlar: sapanlar.slice(0, 5),
+    sapanlar: sapanlar.slice(0, 5).map((c) => ({ ...c, beklenen: beklenenKume(c.tl) })),
   };
   expect(ciftler.filter((c) => c.tip === 'işçilik').length,
     'KG13: dosyadan gelen işçilik değerleri de USD görünümde olmalı').toBeGreaterThan(0);
-  expect(Math.abs(kurAmpirik - (kur as number)),
-    `KG13: ekranda kullanılan kur (${kurAmpirik.toFixed(4)}) etiketteki kurla (${kur}) aynı olmalı`).toBeLessThan(0.02);
-  expect(sapanlar.map((c) => `satır${c.idx} ${c.tip}: ₺${c.tl}→$${c.usd} (beklenen $${(c.tl / kurAmpirik).toFixed(2)})`).join(' · '),
-    `KG13: TEK kur (₺${kurAmpirik.toFixed(4)}) — dosyadan gelen işçilikler DAHİL her değer aynı katsayıyla çevrilmeli`).toBe('');
+  expect(ciftler.filter((c) => c.tip === 'malzeme').length,
+    'KG13: kütüphaneden gelen malzeme değerleri de USD görünümde olmalı (ikinci aile)').toBeGreaterThan(0);
+  // Etiket doğruluğu — AYRI kriter: gösterilen kur, çevrimde kullanılanın
+  // 2 ondalığa yuvarlanmış hâli olmalı (ekranda yalan kur yazamaz).
+  expect(kurEtiketi, 'KG13: USD görünümünde kur etiketi görünmeli (pano 18)').toBeTruthy();
+  expect(Math.abs((kurEtiketi as number) - usdTry),
+    `KG13/KD9: etiketteki kur (${kurEtiketi}) çevrimde kullanılanla (${usdTry}) aynı olmalı`).toBeLessThan(0.005);
+  expect(sapanlar.map((c) => `satır${c.idx} ${c.tip}: ₺${c.tl}→$${c.usd} (beklenen ${beklenenKume(c.tl).join('|')})`).join(' · '),
+    `KG13/KD9: TEK kur (₺${usdTry}) — dosyadan gelen işçilikler DAHİL her değer ürünün kendi formülüyle birebir çevrilmeli`).toBe('');
   await page.screenshot({ path: path.join(dir, 'ss-3-usd.png') });
 
   // ── ADIM 3: KAYDET → YENİDEN AÇ ─────────────────────────────────────────

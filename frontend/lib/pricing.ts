@@ -54,6 +54,37 @@ export function hesaplaSatirToplam(satisBirimFiyat: number, miktar: number): num
   return yukariYuvarla(satisBirimFiyat * miktar);
 }
 
+// ══ PARA BIRIMI GOSTERIMI — TEK KAYNAK (KD9, 02.08.2026) ═══════════════════
+//
+// Bu ifade ExcelGrid.tsx icinde IKI KEZ kopyalanmisti (fiyat kolonlari ve
+// kutuphanenin "Net Fiyat" kolonu). Kopya olmasi tek basina sorun degildi;
+// SORUN, E2E testinin bu ifadeyi HIC bilmemesiydi: test gordugu sayilardan
+// kuru GERI CIKARIP kendi modeliyle karsilastiriyordu (bkz. KD9 kok neden).
+// Artik urun de test de AYNI fonksiyonu cagirir; ikisi ayrisamaz.
+//
+// ⚠ `v / kur` DEGIL `v * conversionRate`: urun kodu carpani `1 / tryPerUsd`
+// olarak ONCE hesaplar (use-currency.ts). Bolme ile carpma son bit'te
+// ayrisabilir ve TAM ESITLIK arayan bir assert'i bosuna kirmiziya cevirir.
+// Beklenen degeri ureten testin de AYNI islem sirasini kullanmasi sarttir.
+
+/** Gosterim ondaligi (para hucreleri). SPEC: 1 hane — "3.019,2". */
+export const PARA_ONDALIK = 1;
+
+/**
+ * TRY tabanli degeri gecerli para biriminde gosterim METNINE cevirir
+ * (sembolsuz, TR locale, 1 ondalik).
+ *
+ * YUVARLAMA: `Intl` varsayilani `halfExpand` (yariyi sifirdan uzaga) —
+ * YUKARI yuvarlama DEGILDIR. `yukariYuvarla` bu yola GIRMEZ; o yalniz TL
+ * taban degerlerini (net/satis/satir toplami/genel toplam) uretir.
+ */
+export function paraBicim(vTRY: number, conversionRate: number): string {
+  return (vTRY * conversionRate).toLocaleString('tr-TR', {
+    minimumFractionDigits: PARA_ONDALIK,
+    maximumFractionDigits: PARA_ONDALIK,
+  });
+}
+
 /** UY2 (EMO AYVAZ 27.07): ETKIN MIKTAR — MİKTAR/BİRİM basliklari TERS
  *  persist edilmis tekliflerde quantityField hucresi metin ('mt') kalir,
  *  gercek sayi unitField'dadir. SAF sayi ise miktar odur; degilse birim

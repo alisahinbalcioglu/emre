@@ -14,7 +14,7 @@ import { clampDiscount, parseDiscountInput, parseDiscountPaste } from './discoun
 import { CustomDropdown } from './CustomDropdown';
 import { fillDown } from './fill-down';
 import { joinMaterialText } from '@/lib/parse-material-text';
-import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, yukariYuvarla, etkinMiktar } from '@/lib/pricing';
+import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, yukariYuvarla, etkinMiktar, paraBicim } from '@/lib/pricing';
 import { hasSizeExpression, isSelfSufficientRow } from './build-material-context';
 import { niteliklerdenBaglam, adayEtiketleri, popupGenisligiOku, popupGenisligiYaz } from './aday-ayirt-edicilik';
 import httpApi from '@/lib/api';
@@ -2182,11 +2182,8 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           if (isNaN(v)) return '';
           // Pinned bottom satirinda 0 bile gosterilsin (GENEL TOPLAM satiri)
           if (v === 0 && !params.node?.rowPinned) return '';
-          // SPEC: 1 ondalik hane goster (3.019,2)
-          const formatted = (v * conversionRate).toLocaleString('tr-TR', {
-            minimumFractionDigits: 1,
-            maximumFractionDigits: 1,
-          });
+          // SPEC: 1 ondalik hane goster (3.019,2) — TEK KAYNAK: lib/pricing.ts
+          const formatted = paraBicim(v, conversionRate);
           // Z4: satirin kendi para birimi varsa (_currency — kutuphane gridi)
           // onun sembolu basilir; yoksa global sembol (teklif akisi)
           const rowCurr = (params.data as any)?._currency;
@@ -2316,10 +2313,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         valueFormatter: (p: any) => {
           const v = parseFloat(String(p.value ?? ''));
           if (isNaN(v) || v === 0) return '';
-          const formatted = (v * conversionRate).toLocaleString('tr-TR', {
-            minimumFractionDigits: 1,
-            maximumFractionDigits: 1,
-          });
+          const formatted = paraBicim(v, conversionRate);
           // Z4: net fiyat da satirin kendi para birimiyle gosterilir
           const rowCurr = p.data?._currency;
           const sym = rowCurr ? (ROW_CURRENCY_SYMBOL[rowCurr] ?? currencySymbol) : currencySymbol;
