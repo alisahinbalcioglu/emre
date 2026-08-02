@@ -195,10 +195,14 @@ Bu projede eksikliğinin bedeli dört kez ödendi:
 | ◑ | `frontend/components/excel-grid/aday-ayirt-edicilik.test.ts` | Aday ayırt edicilik testi | GOREV_Kapatma_Turu |
 | ✅ | `regression-all.ts` | SUITES listesi — package.json’daki her test:* burada olmalı (PK1) | GOREV_Sirada |
 | ✅ | `package.json` | 13 bilinen test scripti: test:tam · test:regression · test:e2e-golden · test:of · test:library · test:ke · test:admin-import · test:perf · test:kb · test:gs · test:ex · test:export · test:sahte | Belgelerden sayıldı — repoda kaç tane olduğu doğrulanmadı |
+| ✅ | `scripts/harita-uret.mjs` | Haritanın **otomatik alt katmanını** üretir (`git ls-files` → dosya+satır, import bağlılıkları, uç noktalar, gerçek `test:*` listesi). Yorum içermez. `--agac` kipi dizin ağacı basar. | HR1 · komut çıkışı 0: 295 kod dosyası · 59.651 satır · 124 uç · 33 test:* |
+| ✅ | `scripts/harita-denetle.mjs` | **Harita denetim kapısı** (`npm run test:harita`). Kod dosyası ne haritada ne bekleyenlerde ise, bekleyenler uzadıysa ya da bekleyenlerde artık var olmayan dosya varsa **çıkış 1**. | HR3-RET: sahte dosyayla **çıkış 1**, silinince **çıkış 0** — ret yolu ateşlendiği görüldü |
+| ✅ | `harita-kapsam-disi.txt` | Kapsam tanımı — hangi uzantı kod sayılır, hangi yol dışarıda. Betiğin **içine gömülmedi**: bu bir iddiadır, görünür durmalı. Her desen gerekçeli. | HR1 · `## 5 · Kapsam disi` tablosu |
+| ✅ | `harita-bekleyenler.txt` | Haritada karşılığı olmayan dosyaların **borç listesi**. HR4 cırcırı: yalnız kısalır. | HR4 kasten tetiklendi: 283→284 yapılınca **çıkış 1**, geri alınınca **çıkış 0** |
 
 **Bu grubun cevapsız soruları:**
 
-- package.json’da gerçekten 13 test scripti mi var, daha fazla mı? (Sayı belgelerden çıkarıldı, koddan değil.)
+- ~~package.json’da gerçekten 13 test scripti mi var, daha fazla mı?~~ **CEVAPLANDI (HR1b, 02.08.2026): 33.** Fark +20 (+23 / −3). Belgede olup repoda olmayan: `test:ke` · `test:kb` · `test:sahte`. Sayı belgeden değil, artık `package.json`’dan üretiliyor (`KOD_HARITASI_OTOMATIK.md` §4).
 
 ## I · DERLEME ve CANLIYA ÇIKIŞ
 

@@ -3,10 +3,10 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 295
-Toplam satir: 59651
+Kod dosyasi: 297
+Toplam satir: 60026
 Uc nokta: 124
-test:* scripti: 33
+test:* scripti: 34
 
 ## 1 · Dosyalar ve satir sayilari
 
@@ -162,7 +162,7 @@ test:* scripti: 33
 | `backend/test/pk3-repo-kapsama-test.ts` | 79 |
 | `backend/test/pk9-sessiz-indeks-test.ts` | 97 |
 | `backend/test/product-index-test.ts` | 453 |
-| `backend/test/regression-all.ts` | 109 |
+| `backend/test/regression-all.ts` | 110 |
 | `backend/test/spec-regression-test.ts` | 447 |
 | `backend/test/standart-cikti-test.ts` | 316 |
 | `backend/test/standart-sema-test.ts` | 338 |
@@ -307,6 +307,8 @@ test:* scripti: 33
 | `frontend/vitest.config.ts` | 10 |
 | `scripts/backup.sh` | 15 |
 | `scripts/deploy.sh` | 90 |
+| `scripts/harita-denetle.mjs` | 148 |
+| `scripts/harita-uret.mjs` | 226 |
 
 ## 2 · Import bagliliklari
 
@@ -567,6 +569,8 @@ test:* scripti: 33
 | `frontend/tailwind.config.ts` | `tailwindcss` `tailwindcss-animate` |
 | `frontend/types/quotes.ts` | `./index` |
 | `frontend/vitest.config.ts` | `vitest/config` |
+| `scripts/harita-denetle.mjs` | `node:child_process` `node:fs` `node:path` `node:url` `./harita-uret.mjs` |
+| `scripts/harita-uret.mjs` | `node:child_process` `node:fs` `node:path` `node:url` |
 
 ## 3 · Uc noktalar
 
@@ -732,6 +736,7 @@ test:* scripti: 33
 | `backend/package.json` | `test:kd11` | `ts-node test/kd11-toplam-yollari-test.ts` |
 | `backend/package.json` | `test:kd12` | `ts-node test/kd12-baslik-satiri-test.ts` |
 | `backend/package.json` | `test:kd9` | `ts-node test/kd9-kur-olcutu-test.ts` |
+| `backend/package.json` | `test:harita` | `node ../scripts/harita-denetle.mjs` |
 | `frontend/package.json` | `test:e2e` | `playwright test` |
 | `frontend/package.json` | `test:e2e-golden` | `node e2e-golden/run.mjs` |
 
