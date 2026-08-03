@@ -10,7 +10,7 @@ import * as ExcelJS from 'exceljs';
 import {
   scanWorkbook, buildSampleFormat, sheetToGrid, hucreMetni, TANINAN_ETIKETLER,
 } from '../src/quote-formats/format-engine';
-import { buildExportWorkbook } from '../src/quotes/export-engine';
+import { buildExportWorkbook } from '../src/ozellik/teklif/quotes/export-engine';
 import { sayfaRolleriTahminEt } from '../src/quote-formats/format-engine';
 
 let passed = 0; let failed = 0; const failures: string[] = [];

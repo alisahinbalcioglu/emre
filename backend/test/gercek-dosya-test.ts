@@ -98,7 +98,7 @@ async function run() {
   // must exist" ile patliyordu (canli 500'un birebir koku). Fix: hedef
   // kolonlardaki shared zincirler once degere dondurulur.
   {
-    const { QuotesService } = require('../src/quotes/quotes.service');
+    const { QuotesService } = require('../src/ozellik/teklif/quotes/quotes.service');
     const buf = oku('hangar-yss.xlsx');
     const res = await svc.prepare(buf, { fixedSchema: true });
     let n = 0;
@@ -127,7 +127,7 @@ async function run() {
   // of clone for cell I110". Fix: silinecek master'a bagli TUM clone'lar
   // (kolon farketmeksizin) once degere dondurulur.
   {
-    const { QuotesService } = require('../src/quotes/quotes.service');
+    const { QuotesService } = require('../src/ozellik/teklif/quotes/quotes.service');
     const buf = oku('fg-FIRMA-H-shared.xlsx');
     const res = await svc.prepare(buf, { fixedSchema: true });
     // Ilk 2 veri satirina fiyat yaz (K-A temizligi devreye girsin)
@@ -159,7 +159,7 @@ async function run() {
     const { MatchingService } = require('../src/modules/matching/matching.service');
     const { TerminologyService, ALIAS_SEEDS } = require('../src/modules/matching/terminology.service');
     const { buildProductIndex } = require('../src/modules/matching/index/product-index');
-    const { QuotesService } = require('../src/quotes/quotes.service');
+    const { QuotesService } = require('../src/ozellik/teklif/quotes/quotes.service');
     const { buildSampleFormat } = require('../src/quote-formats/format-engine');
 
     const buf = oku('hangar-yss.xlsx');
@@ -237,7 +237,7 @@ async function run() {
       !/fiyatsız/.test(ozet) || /\d+ satır fiyatsız/.test(ozet),
       `ozet="${ozet}"`);
 
-    const { buildExportWorkbook } = require('../src/quotes/export-engine');
+    const { buildExportWorkbook } = require('../src/ozellik/teklif/quotes/export-engine');
     const s5 = await buildExportWorkbook({
       originalFile: buf, sheetsArr: quote.sheets, formatWb: buildSampleFormat(), sheetRoles: null,
       ctxTemel: { teklifNo: 'MP-9', rev: 1, tarih: '27.07.2026', musteri: 'X', proje: 'Y', hazirlayan: 'E', gecerlilik: '30', kurNotu: 'Kur', kdvOran: 0.2 },

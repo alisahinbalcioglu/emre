@@ -8,8 +8,8 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
 import { QuotesService } from './quotes.service';
 import { CreateQuoteDto } from './dto/create-quote.dto';
-import { JwtAuthGuard } from '../altyapi/auth/guards/jwt-auth.guard';
-import { CurrentUser } from '../altyapi/auth/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../../../altyapi/auth/guards/jwt-auth.guard';
+import { CurrentUser } from '../../../altyapi/auth/decorators/current-user.decorator';
 import { memoryStorage } from 'multer';
 
 @Controller('quotes')

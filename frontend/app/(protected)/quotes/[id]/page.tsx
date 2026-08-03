@@ -18,8 +18,8 @@ import type { ExcelGridData } from '@/components/excel-grid/types';
 import { useCurrency } from '@/hooks/use-currency';
 import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
 import { adDisiplinTahmini } from '@/lib/disiplin';
-import type { Currency } from '@/types/quotes';
-import type { Brand } from '@/types';
+import type { Currency } from '@/ortak/types/quotes';
+import type { Brand } from '@/ortak/types';
 
 interface QuoteDetail {
   id: string;

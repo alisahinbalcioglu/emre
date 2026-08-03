@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import api from '@/ortak/lib/api';
-import type { Currency, ExchangeRates } from '@/types/quotes';
+import type { Currency, ExchangeRates } from '@/ortak/types/quotes';
 
 const CURRENCY_SYMBOLS: Record<Currency, string> = {
   TRY: '\u20BA',

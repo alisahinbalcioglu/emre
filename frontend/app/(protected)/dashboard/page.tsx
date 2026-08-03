@@ -9,7 +9,7 @@ import api from '@/ortak/lib/api';
 import { toast } from '@/ortak/hooks/use-toast';
 import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
 import QuickStart from '@/ortak/kabuk/components/dashboard/QuickStart';
-import RecentQuotes from '@/components/dashboard/RecentQuotes';
+import RecentQuotes from '@/ozellik/teklif/dashboard/RecentQuotes';
 import QuickAccess from '@/ortak/kabuk/components/dashboard/QuickAccess';
 
 interface DashStats {

@@ -32,7 +32,7 @@
  * Cikis kodu sozlesmesi: 0 = PASS · 2 = ON KOSUL YOK · diger = FAIL.
  * DB GEREKTIRMEZ: prisma sahte, yalniz create cagrisinin ITEMS'i okunur.
  */
-import { QuotesService } from '../src/quotes/quotes.service';
+import { QuotesService } from '../src/ozellik/teklif/quotes/quotes.service';
 import { yukariYuvarla } from '../src/modules/matching/pricing';
 
 let pass = 0;

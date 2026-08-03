@@ -37,7 +37,7 @@ import * as ExcelJS from 'exceljs';
 import {
   fillPlaceholders, applyOverrides, KOLON_HARF, sayfaRolleriTahminEt,
   FillContext, SekmeOzet, YerTutucu, ExportOverrides, SheetRoles,
-} from '../quote-formats/format-engine';
+} from '../../../quote-formats/format-engine';
 import { standartSayfaYaz } from './standart-cikti';
 
 /** TR-bilinçli sayi parse (Bulgu B7/B8 siniri): "1.234,56" → 1234.56,

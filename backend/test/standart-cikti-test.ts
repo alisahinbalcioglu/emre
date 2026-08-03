@@ -9,7 +9,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as ExcelJS from 'exceljs';
-import { standartCiktiUret, STANDART_CIKTI_KOLONLARI } from '../src/quotes/standart-cikti';
+import { standartCiktiUret, STANDART_CIKTI_KOLONLARI } from '../src/ozellik/teklif/quotes/standart-cikti';
 import { ExcelGridService } from '../src/modules/excel-grid/excel-grid.service';
 
 let pass = 0; let fail = 0;

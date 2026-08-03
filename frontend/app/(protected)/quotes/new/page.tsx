@@ -46,7 +46,7 @@ import { parseMaterialText } from '@/lib/parse-material-text';
 import { mergeMultiSheet } from '@/lib/merge-multisheet';
 import { kaynakKolonEtiketi } from '@/lib/kaynak-kolon';
 import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, toplamlariTamamla, etkinMiktar } from '@/lib/pricing';
-import type { Brand } from '@/types';
+import type { Brand } from '@/ortak/types';
 import type {
   UploadMode,
   Currency,
@@ -55,7 +55,7 @@ import type {
   UploadResponse,
   MatchCandidate,
   EditableRow,
-} from '@/types/quotes';
+} from '@/ortak/types/quotes';
 import { useCurrency } from '@/hooks/use-currency';
 
 /* ------------------------------------------------------------------ */

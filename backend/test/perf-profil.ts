@@ -4,8 +4,8 @@ import { ExcelGridService } from '../src/modules/excel-grid/excel-grid.service';
 import { buildProductIndex } from '../src/modules/matching/index/product-index';
 import { parseLine } from '../src/modules/matching/index/line-parser';
 import { runQuery } from '../src/modules/matching/index/query-engine';
-import { buildExportWorkbook } from '../src/quotes/export-engine';
-import { standartCiktiUret } from '../src/quotes/standart-cikti';
+import { buildExportWorkbook } from '../src/ozellik/teklif/quotes/export-engine';
+import { standartCiktiUret } from '../src/ozellik/teklif/quotes/standart-cikti';
 import { buildSampleFormat } from '../src/quote-formats/format-engine';
 import * as ExcelJS from 'exceljs';
 

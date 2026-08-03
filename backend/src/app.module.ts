@@ -6,7 +6,7 @@ import { AuthModule } from './altyapi/auth/auth.module';
 import { BrandsModule } from './brands/brands.module';
 import { MaterialsModule } from './materials/materials.module';
 import { LibraryModule } from './library/library.module';
-import { QuotesModule } from './quotes/quotes.module';
+import { QuotesModule } from './ozellik/teklif/quotes/quotes.module';
 import { AdminModule } from './admin/admin.module';
 import { AiModule } from './ai/ai.module';
 import { LaborModule } from './labor/labor.module';

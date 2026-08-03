@@ -25,8 +25,8 @@
  */
 import * as fs from 'fs';
 import * as ExcelJS from 'exceljs';
-import { standartCiktiUret } from '../src/quotes/standart-cikti';
-import { buildExportWorkbook } from '../src/quotes/export-engine';
+import { standartCiktiUret } from '../src/ozellik/teklif/quotes/standart-cikti';
+import { buildExportWorkbook } from '../src/ozellik/teklif/quotes/export-engine';
 import { buildSampleFormat } from '../src/quote-formats/format-engine';
 
 let pass = 0; const fails: string[] = [];

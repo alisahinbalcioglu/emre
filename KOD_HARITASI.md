@@ -156,7 +156,7 @@ Bu projede eksikliğinin bedeli dört kez ödendi:
 | ✅ | `standart-sema.ts:227-229` | Malzeme/işçilik toplam sütunlarını dosyadan YALNIZ KOPYALAR (hesap yok — bilinçli: müşterinin verisi üstündür); eksikler `toplamlariTamamla` ile içe aktarmada tamamlanır. | FAZ 2 · HR5; KD11 kök neden belgesi |
 | ✅ | `frontend/components/excel-grid/ExcelGrid.tsx:2362-2393` | `recalcGrand` — satır düzeyi Genel Toplam (matTop+labTop) 1/4: hücre değişim olaylarında. Diğer üç uygulama: `pricing.ts:165-171` (içe aktarma) · `fill-down.ts:77-94` (toplu doldurma; ⚠ inline yuvarlama epsilonsuz) · `standart-cikti.ts:186` (çıktı satırı). | FAZ 2 · HR5 |
 | ✅ | `frontend/components/excel-grid/ExcelGrid.tsx:1942-1999` | `updatePinnedBottom` — ekranın altındaki GENEL TOPLAM satırı: tüm veri satırlarının mat/lab/genel toplamı; `_ozet` satırları HARİÇ (62.043.700 dersinin kuralı burada yaşıyor). | FAZ 2 · HR5 |
-| ✅ | `backend/src/quotes/quotes.service.ts:44-56` | ⚠ KAYIT yolu toplamları — TEK FORMÜLÜ KULLANMAZ: `matUp×(1+margin)×qty` yuvarlamasız; DB'deki QuoteItem toplamları ekrandan sapabilir. Liste sayfası `quotes/page.tsx:33` bu DB değerlerini toplar. | FAZ 2 · HR5 — "görüldü, dokunulmadı" |
+| ✅ | `backend/src/ozellik/teklif/quotes/quotes.service.ts:44-56` | ⚠ KAYIT yolu toplamları — TEK FORMÜLÜ KULLANMAZ: `matUp×(1+margin)×qty` yuvarlamasız; DB'deki QuoteItem toplamları ekrandan sapabilir. Liste sayfası `quotes/page.tsx:33` bu DB değerlerini toplar. | FAZ 2 · HR5 — "görüldü, dokunulmadı" |
 | ✅ | `backend/test/standart-sema-test.ts` | 62.043.700 testi — TEK dosyanın toplamını doğruluyor, toplam özelliğini değil. Silinmeyecek, yanına ikincisi konacak. | GOREV_Kapatma_Turu; kalem 38 |
 
 **Bu grubun cevapsız soruları:**
@@ -174,7 +174,7 @@ Bu projede eksikliğinin bedeli dört kez ödendi:
 
 | | Dosya / uç | Ne çalıştırıyor | Kanıt nereden |
 |---|---|---|---|
-| ✅ | `backend/src/quotes/standart-cikti.ts:1-288` | Müşterinin şablonuna yazmak yerine **sıfırdan sabit 9 kolonluk tablo üreten TEK yazıcı**: sayfayı workbook'a döker, sayfa toplamlarını üst fonksiyona bildirir; üst fonksiyon tüm sayfaları dolaşıp sonuna genel-toplam sayfası + görünür self-check özeti ekler. Özet sayfaların satırları yazılır ama teklif geneline **girmez**. Çağıranlar: `quotes.service.ts:390` (export-priced) · `export-engine.ts:332`. | HARİTA TAM turu 03.08 |
+| ✅ | `backend/src/ozellik/teklif/quotes/standart-cikti.ts:1-288` | Müşterinin şablonuna yazmak yerine **sıfırdan sabit 9 kolonluk tablo üreten TEK yazıcı**: sayfayı workbook'a döker, sayfa toplamlarını üst fonksiyona bildirir; üst fonksiyon tüm sayfaları dolaşıp sonuna genel-toplam sayfası + görünür self-check özeti ekler. Özet sayfaların satırları yazılır ama teklif geneline **girmez**. Çağıranlar: `quotes.service.ts:390` (export-priced) · `export-engine.ts:332`. | HARİTA TAM turu 03.08 |
 | ✅ | `backend/src/utils/xlsx-to-pdf.ts:18-45` | **Teklif PDF'i ÜRETMİYOR** (o özellik 24.07'de kullanıcı kararıyla kaldırıldı; `quotes.controller.ts:38-40,106-108` silinen rotaları not ediyor). Yaşayan tek kullanım: yüklenmiş teklif **FORMATI** dosyasını headless LibreOffice ile PDF'e çevirip **ekranda önizleme** (`quote-formats.service.ts:142-146` → `controller:53-62` → `quote-formats/page.tsx:151`); inline gösterilir, **indirilemez**. Her çağrı kendi geçici LibreOffice profilini kullanır, 60sn timeout, kurulu değilse `null` → uç 404 → arayüz sessizce hücre görünümüne düşer. ⚠ Windows yerelde `soffice` yok → bu yol yerelde **hiç ölçülemez**, yalnız sunucuda anlaşılır. | HARİTA TAM turu 03.08 |
 | ✅ | `teklif_ciktisi_mockup.html` | ÜRÜNDE DEĞİL — benim çalışma dosyam, referans mockup | 13.833 bayt, 20.07 |
 
@@ -354,7 +354,7 @@ Karıştırılmasın diye ayrı duruyor.
 | `backend/src/quote-formats/format-engine.ts` | Kullanici teklif sablonunda {{yer_tutucu}} tarar, ornek format uretir ve sayfayi grid verisine cevirir |
 | `backend/src/quote-formats/quote-formats.controller.ts` | Teklif format sablonlarinin yukleme, listeleme, onizleme (xlsx/pdf), guncelleme ve silme uclarini sunar |
 | `backend/src/quote-formats/quote-formats.service.ts` | Kullanicinin teklif sablonlarini yukler/tarar/onizler; varsayilan secimi, PDF onizleme ve ornek dosya uretir |
-| `backend/src/quotes/export-engine.ts` | Format workbook'unu taban alip fiyatlanmis liste sayfalarini yerlestirerek profesyonel Excel ciktisi kurar; birim bicimi ve self-check uygular |
+| `backend/src/ozellik/teklif/quotes/export-engine.ts` | Format workbook'unu taban alip fiyatlanmis liste sayfalarini yerlestirerek profesyonel Excel ciktisi kurar; birim bicimi ve self-check uygular |
 | `backend/src/utils/xlsx-to-pdf.ts` | Excel'i LibreOffice headless ile birebir baski gorunumlu PDF'e cevirir; soffice yoksa/timeout'ta null doner |
 | `frontend/app/(protected)/quote-formats/page.tsx` | Kalici teklif format sablonlarini yukleme, yer tutucu tarama onizlemesi, varsayilan yapma ve silme yonetimi |
 | `frontend/lib/export-download.ts` | Iki export ucunu cagirip blob'u dosya olarak indirtir; self-check ozet/uyari toast'larini gosterir |
@@ -608,20 +608,20 @@ Karıştırılmasın diye ayrı duruyor.
 | `backend/src/altyapi/db/prisma.module.ts` | DB erişim servisini tüm uygulamaya global sağlayan modül tanımı |
 | `backend/src/altyapi/db/prisma.service.ts` | PrismaClient'ı yaşam döngüsüne bağlayıp bağlantıyı açan-kapatan sarmalayıcı |
 | `backend/src/quote-formats/quote-formats.module.ts` | Format servis ve controller'ini NestJS'e kablolar, servisi disa acar |
-| `backend/src/quotes/quotes.module.ts` | Quotes servis/controller'i AI, Prisma ve kur modulleriyle NestJS'e kablolar |
+| `backend/src/ozellik/teklif/quotes/quotes.module.ts` | Quotes servis/controller'i AI, Prisma ve kur modulleriyle NestJS'e kablolar |
 
 ### M · TEKLİF YAŞAM DÖNGÜSÜ — 8 dosya
 
 | Dosya | Ne yapıyor |
 |---|---|
-| `backend/src/quotes/dto/create-quote.dto.ts` | Teklif olusturma isteginin kalem alanlarini, sheet yukunu ve orijinal dosya base64'unu dogrular |
-| `backend/src/quotes/quotes.controller.ts` | Teklif CRUD, Excel parse ve export/arsiv rotalarini JWT korumali HTTP uclarina baglar; export hatalarini 500'e dusurmeden sarar |
-| `backend/src/quotes/quotes.service.ts` | Teklif kaydi/listeleme/silme/kismi bilgi guncelleme yapar; format cozumleyip export motorunu cagirir ve revizyon arsivler |
+| `backend/src/ozellik/teklif/quotes/dto/create-quote.dto.ts` | Teklif olusturma isteginin kalem alanlarini, sheet yukunu ve orijinal dosya base64'unu dogrular |
+| `backend/src/ozellik/teklif/quotes/quotes.controller.ts` | Teklif CRUD, Excel parse ve export/arsiv rotalarini JWT korumali HTTP uclarina baglar; export hatalarini 500'e dusurmeden sarar |
+| `backend/src/ozellik/teklif/quotes/quotes.service.ts` | Teklif kaydi/listeleme/silme/kismi bilgi guncelleme yapar; format cozumleyip export motorunu cagirir ve revizyon arsivler |
 | `frontend/app/(protected)/quotes/[id]/page.tsx` | Kayitli teklifi grid'le goruntuler, para birimi secimini teklife kalici yazar, cikti indirme baslatir |
 | `frontend/app/(protected)/quotes/page.tsx` | Kullanicinin tekliflerini tabloda listeler; toplami hesaplar, detaya goturur, onayla siler |
-| `frontend/components/dashboard/RecentQuotes.tsx` | Son 3 teklifi tutar/tarih ozetiyle listeler, detay ve tum liste baglantilari verir |
-| `frontend/types/index.ts` | Teklif sayfalarinin kullandigi cekirdek alan tipleri: kullanici, marka, malzeme, kutuphane kalemi, teklif ve kalemi |
-| `frontend/types/quotes.ts` | Teklif olusturma sayfasinin tipleri: yukleme modu, para birimi, iscilik firmasi, aday eslesme, duzenlenebilir satir, kur |
+| `frontend/ozellik/teklif/dashboard/RecentQuotes.tsx` | Son 3 teklifi tutar/tarih ozetiyle listeler, detay ve tum liste baglantilari verir |
+| `frontend/ortak/types/index.ts` | Teklif sayfalarinin kullandigi cekirdek alan tipleri: kullanici, marka, malzeme, kutuphane kalemi, teklif ve kalemi |
+| `frontend/ortak/types/quotes.ts` | Teklif olusturma sayfasinin tipleri: yukleme modu, para birimi, iscilik firmasi, aday eslesme, duzenlenebilir satir, kur |
 
 ### BELİRSİZ — bu turda satır düşmedi
 

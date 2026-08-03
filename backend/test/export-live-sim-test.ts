@@ -7,7 +7,7 @@
  *   npx ts-node test/export-live-sim-test.ts   (npm run test:livesim)
  */
 import * as ExcelJS from 'exceljs';
-import { QuotesService } from '../src/quotes/quotes.service';
+import { QuotesService } from '../src/ozellik/teklif/quotes/quotes.service';
 
 let passed = 0; let failed = 0; const failures: string[] = [];
 function check(name: string, cond: boolean, detail?: string) {
@@ -293,7 +293,7 @@ async function run() {
   // sorunu GENEL coz"). Motor hicbir sayfa adina/hucre konumuna/duzene
   // bagimli OLMAMALI. Farkli format cesitleri ayni motordan gecer:
   // ════════════════════════════════════════════════════════════════
-  const { buildExportWorkbook } = await import('../src/quotes/export-engine');
+  const { buildExportWorkbook } = await import('../src/ozellik/teklif/quotes/export-engine');
   const ctxTemel = {
     teklifNo: 'MP-2026-009', rev: 1, tarih: '21.07.2026',
     musteri: 'GENEL A.Ş.', proje: 'Proje X', hazirlayan: 'Emre', gecerlilik: '30 gün',
