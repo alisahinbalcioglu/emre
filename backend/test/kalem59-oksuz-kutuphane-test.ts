@@ -23,7 +23,7 @@
  * sessiz birakma yasak, ISARETLE.
  */
 import { PrismaClient } from '@prisma/client';
-import { AdminService } from '../src/admin/admin.service';
+import { AdminService } from '../src/ozellik/kutuphane/admin/admin.service';
 import { TerminologyService } from '../src/modules/matching/terminology.service';
 
 let passed = 0; let failed = 0; const failures: string[] = [];

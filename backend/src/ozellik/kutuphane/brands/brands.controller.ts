@@ -4,9 +4,9 @@ import {
 } from '@nestjs/common';
 import { BrandsService } from './brands.service';
 import { CreateBrandDto } from './dto/create-brand.dto';
-import { JwtAuthGuard } from '../altyapi/auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../altyapi/auth/guards/roles.guard';
-import { Roles } from '../altyapi/auth/decorators/roles.decorator';
+import { JwtAuthGuard } from '../../../altyapi/auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../../altyapi/auth/guards/roles.guard';
+import { Roles } from '../../../altyapi/auth/decorators/roles.decorator';
 
 @Controller('brands')
 @UseGuards(JwtAuthGuard)

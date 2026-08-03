@@ -13,8 +13,8 @@ import api from '@/ortak/lib/api';
 import { toast } from '@/ortak/hooks/use-toast';
 import { confirm } from '@/ortak/hooks/use-confirm';
 import { ExcelGrid, type ExcelGridHandle } from '@/components/excel-grid/ExcelGrid';
-import InlineFirmEntry from '@/components/library/InlineFirmEntry';
-import type { FirmEntryHandle } from '@/components/library/InlineFirmEntry';
+import InlineFirmEntry from '@/ozellik/kutuphane/library/InlineFirmEntry';
+import type { FirmEntryHandle } from '@/ozellik/kutuphane/library/InlineFirmEntry';
 import type { ExcelGridData, ExcelRowData } from '@/components/excel-grid/types';
 
 interface LaborFirm {

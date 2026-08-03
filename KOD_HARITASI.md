@@ -192,13 +192,13 @@ Bu projede eksikliğinin bedeli dört kez ödendi:
 
 | | Dosya / uç | Ne çalıştırıyor | Kanıt nereden |
 |---|---|---|---|
-| ✅ | `GET /api/admin/stats` — `admin.controller.ts:13-23` → `admin.service.ts:191-302` | Admin rolüne kilitli **tek çağrıyla panonun tüm sayıları**: beş ham sayaç · önceki aya göre yüzde değişimler · bu ay teklif oluşturan ayrık kullanıcı oranı · son 30 günün günlük teklif serisi (boş günler sıfırla doldurulmuş) · kütüphanede kullanılan markaların disiplin dağılımı · kütüphaneye en çok aktarılan ilk beş marka. Tüketici: `frontend/lib/admin-stats.ts` + `app/admin/stats/page.tsx`. | HARİTA TAM turu 03.08 |
+| ✅ | `GET /api/admin/stats` — `admin.controller.ts:13-23` → `admin.service.ts:191-302` | Admin rolüne kilitli **tek çağrıyla panonun tüm sayıları**: beş ham sayaç · önceki aya göre yüzde değişimler · bu ay teklif oluşturan ayrık kullanıcı oranı · son 30 günün günlük teklif serisi (boş günler sıfırla doldurulmuş) · kütüphanede kullanılan markaların disiplin dağılımı · kütüphaneye en çok aktarılan ilk beş marka. Tüketici: `frontend/ozellik/kutuphane/admin-stats.ts` + `app/admin/stats/page.tsx`. | HARİTA TAM turu 03.08 |
 | ✅ | `/api/quotes/*` — `quotes.controller.ts:1-144` | **On uç:** dosya ön-ayrıştırma · oluşturma · listeleme · detay · silme · kapak bilgisi yaması · **iki ayrı çıktı yolu** (teklif formatına basar → **rev artar + arşivlenir**; standart fiyatlı Excel → rev artmaz, arşivlenmez) · revizyon arşivi. Davranış: `quotes.service.ts:30-421`. | HARİTA TAM turu 03.08 |
-| ✅ | `backend/src/library/library.service.ts` | Kütüphaneye (UserLibrary) yazan TEK dosya (grep + okuma ile teyit). Dört oluşturma yolu: `create` :63-88 (POST /library — productIndexId NULL doğar) · `createManualBrand` :105-239 (indeks kurup bağlar :196-201) · `importPriceList` legacy dalı :285-408 (NULL doğar :351-360) · `importFromIndex` :427-518 (bağlar :443-444; mevcutları YALNIZ productIndexId ile eşler :437-439). Güncelleme yolları productIndexId'ye dokunmaz. | KALEM 58 keşfi 02.08 — okuma + nokta-teyit |
-| ✅ | `backend/src/library/library.controller.ts:1-109` | **13 uç, tek denetleyici**; sınıf düzeyinde JWT mührü (`:15-16`) ve her metot kullanıcı kimliğini `@CurrentUser()`'dan alıp servise **ilk argüman** geçirir — yani kullanıcı izolasyonu uç düzeyinde değil, **servis imzasında** taşınır. Denetleyicide iş mantığı yok; karşılıkları `library.service.ts:23-644`. | HARİTA TAM turu 03.08 |
-| ✅ | `backend/src/library/dto/create-library-item.dto.ts` | Manuel tek-satır ekleme DTO'su (tamamı okundu): `listPrice` alanı VAR ama service kullanmıyor; `productIndexId` alanı YOK. | KALEM 58 keşfi 02.08 |
-| ✅ | `backend/src/admin/admin.service.ts` | **Dört bölüm, dosyada şeritlerle ayrılmış:** `USERS :100-187` (8 fonksiyon: listeleme + rol/durum/tier güncelleme, önce varlık doğrulaması) · `STATS :189-302` · `AI TASKS/HEALTH :304-421` · `SETTINGS :423-448`. İçe aktarım/indeks: `commitImportCore :743-802` → `saveBulkMaterials :856-1130` (çift yazım MaterialPrice + ProductIndex upsert :1068-1072 · `removed` = MaterialPrice deleteMany :917-918 · bayat indeks bilerek SİLİNMEZ :1085-1095) · `reindexProducts :1379-1438` · ⚠ `saveMaterialsFromSheets :1134-1319` **ProductIndex yazmaz** (kusur). | KALEM 58 + HARİTA TAM turu 03.08 |
-| ✅ | `backend/src/admin/admin.controller.ts:13-200` | **Admin uçlarının tamamı:** `stats :13-23` · kullanıcı yönetimi (liste/rol/durum/tier) · AI görevleri+sağlık · ayarlar · içe aktarım hattı `:126-200` (marka ve fiyat listesi için `import-excel/preview`+`commit` · `materials/save-bulk` · legacy `save-from-sheets` · `reindex-products :95-98`). Tümü `admin.service.ts`'in dört bölümüne karşılık gelir. | HARİTA TAM turu 03.08 |
+| ✅ | `backend/src/ozellik/kutuphane/library/library.service.ts` | Kütüphaneye (UserLibrary) yazan TEK dosya (grep + okuma ile teyit). Dört oluşturma yolu: `create` :63-88 (POST /library — productIndexId NULL doğar) · `createManualBrand` :105-239 (indeks kurup bağlar :196-201) · `importPriceList` legacy dalı :285-408 (NULL doğar :351-360) · `importFromIndex` :427-518 (bağlar :443-444; mevcutları YALNIZ productIndexId ile eşler :437-439). Güncelleme yolları productIndexId'ye dokunmaz. | KALEM 58 keşfi 02.08 — okuma + nokta-teyit |
+| ✅ | `backend/src/ozellik/kutuphane/library/library.controller.ts:1-109` | **13 uç, tek denetleyici**; sınıf düzeyinde JWT mührü (`:15-16`) ve her metot kullanıcı kimliğini `@CurrentUser()`'dan alıp servise **ilk argüman** geçirir — yani kullanıcı izolasyonu uç düzeyinde değil, **servis imzasında** taşınır. Denetleyicide iş mantığı yok; karşılıkları `library.service.ts:23-644`. | HARİTA TAM turu 03.08 |
+| ✅ | `backend/src/ozellik/kutuphane/library/dto/create-library-item.dto.ts` | Manuel tek-satır ekleme DTO'su (tamamı okundu): `listPrice` alanı VAR ama service kullanmıyor; `productIndexId` alanı YOK. | KALEM 58 keşfi 02.08 |
+| ✅ | `backend/src/ozellik/kutuphane/admin/admin.service.ts` | **Dört bölüm, dosyada şeritlerle ayrılmış:** `USERS :100-187` (8 fonksiyon: listeleme + rol/durum/tier güncelleme, önce varlık doğrulaması) · `STATS :189-302` · `AI TASKS/HEALTH :304-421` · `SETTINGS :423-448`. İçe aktarım/indeks: `commitImportCore :743-802` → `saveBulkMaterials :856-1130` (çift yazım MaterialPrice + ProductIndex upsert :1068-1072 · `removed` = MaterialPrice deleteMany :917-918 · bayat indeks bilerek SİLİNMEZ :1085-1095) · `reindexProducts :1379-1438` · ⚠ `saveMaterialsFromSheets :1134-1319` **ProductIndex yazmaz** (kusur). | KALEM 58 + HARİTA TAM turu 03.08 |
+| ✅ | `backend/src/ozellik/kutuphane/admin/admin.controller.ts:13-200` | **Admin uçlarının tamamı:** `stats :13-23` · kullanıcı yönetimi (liste/rol/durum/tier) · AI görevleri+sağlık · ayarlar · içe aktarım hattı `:126-200` (marka ve fiyat listesi için `import-excel/preview`+`commit` · `materials/save-bulk` · legacy `save-from-sheets` · `reindex-products :95-98`). Tümü `admin.service.ts`'in dört bölümüne karşılık gelir. | HARİTA TAM turu 03.08 |
 | ✅ | `tag-generator.ts:38-160` (v1) + `index/product-index.ts:380-454` (v2) | **İKİ etiketleyici, ikisi de canlı.** **v1 — serbest metinden:** müşterinin yapılandırılmamış satırından regex + sözlükle çap/yüzey/bağlantı/cins/et kalınlığı/standart/PN/ekipman nitelikleri çıkarır; regex aileyi çözemezse sözlüğe düşer (en uzun desen kazanır), o da çözemezse vana yuvası etiketi varsa vanaya terfi eder (somun/cıvata/vida/rakor korumasıyla), boru olup cins yoksa varsayılan çelik. **v2 — kolondan:** kütüphane ürününü **metinden tahmin ETMEZ**, 11 kolondan okur; çap denkliklerini (DN65 ≡ 2½") yazma anında bir kez hesaplar; ad çözülemezse ürünün kendi adını aile kimliği yapar. **Canlı eşleştirmenin okuduğu kaynak v2'dir**; v1 artık yalnız hafıza parmak izi + içe aktarım önizlemesi üretir. Yardımcılar: `ad-resolver.ts:12-47` · `ad-cins-sozlugu.ts` · `shared-tag-matcher.ts:18-164` (kümeler+gösterim, motor DEĞİL) · `utils/etiket-display.ts:39-69` (3-Etiket gösterimi). ⚠ `PRD_Kutuphane_Etiketleme_Motoru` **belgesi repoda YOK** (arandı) — kod tarafı tam, belge tarafı yok. | HARİTA TAM turu 03.08 |
 
 ## H · TESTLER — neyin doğru olduğunu İDDİA EDEN kod
@@ -364,24 +364,24 @@ Karıştırılmasın diye ayrı duruyor.
 | Dosya | Ne yapıyor |
 |---|---|
 | `backend/src/bootstrap.controller.ts` | BOOTSTRAP_SECRET env aktifken mevcut kullaniciyi tek seferlik admin/suite'e yukselten endpoint |
-| `backend/src/brands/brands.controller.ts` | Marka listeleme/arama, fiyat listesi malzemeleri ve admin'e ozel marka CRUD uclarini sunar |
-| `backend/src/brands/brands.service.ts` | Marka CRUD, fiyat listesi/havuz malzemesi listeleme ve global malzeme arama saglar |
-| `backend/src/brands/dto/create-brand.dto.ts` | Marka olusturma/guncelleme girdisini dogrular (ad, logo, disiplin) |
-| `backend/src/labor-firms/labor-firms.controller.ts` | Iscilik firmasi CRUD, fiyat listesi/kalem toplu kayit, sheet saklama ve Excel parse uclari |
-| `backend/src/labor-firms/labor-firms.service.ts` | Kullanıcının işçilik firmalarını ve fiyat listelerini sahiplik kontrolüyle yönetir |
-| `backend/src/labor/labor.controller.ts` | Genel iscilik kalemi CRUD uclarini Pro tier kosuluyla sunar |
-| `backend/src/labor/labor.service.ts` | Iscilik kalemi CRUD'u yapar; ada gore iscilik esleme yardimcisi da icerir |
-| `backend/src/library/dto/bulk-discount.dto.ts` | Marka bazli toplu iskonto orani girdisini dogrular (0-100) |
-| `backend/src/library/dto/bulk-update-items.dto.ts` | Secili kutuphane kalemlerine toplu iskonto uygulama girdisini dogrular |
-| `backend/src/library/dto/create-manual-brand.dto.ts` | Elle marka olusturma satirlarini 11-kolon ProductIndex semasiyla dogrular (1-5000 satir) |
-| `backend/src/library/dto/import-price-list.dto.ts` | Fiyat listesini kullanici kutuphanesine aktarma istegini dogrular (marka+liste id) |
-| `backend/src/library/dto/update-library-item.dto.ts` | Kutuphane kalemi guncelleme alanlarini (fiyat, iskonto, spec, kategori) dogrular |
-| `backend/src/library/library-sheet-builder.ts` | Kutuphane kalemlerinden kategori-bantli sentetik grid sheet JSON'u (kolon+satir) uretir |
-| `backend/src/materials/dto/create-material-price.dto.ts` | Havuza malzeme-marka fiyat kaydi ekleme girdisini dogrular |
-| `backend/src/materials/dto/create-material.dto.ts` | Malzeme olusturma isteginde ad alaninin bos olmayan string olmasini dogrular |
-| `backend/src/materials/materials.controller.ts` | Admin-korumali malzeme havuzu CRUD ve marka bazli fiyat atama/silme HTTP uclari |
-| `backend/src/materials/materials.service.ts` | Prisma ile malzeme CRUD ve marka bazli fiyat upsert/silme islemleri |
-| `backend/src/utils/import-fidelity.ts` | Admin fiyat listesi ice aktarimi icin TR sayi/para birimi ayristirma, bicim cikarimi, aykiri fiyat isaretleme, kategori yuruyusu ve kolon haritalama saglar |
+| `backend/src/ozellik/kutuphane/brands/brands.controller.ts` | Marka listeleme/arama, fiyat listesi malzemeleri ve admin'e ozel marka CRUD uclarini sunar |
+| `backend/src/ozellik/kutuphane/brands/brands.service.ts` | Marka CRUD, fiyat listesi/havuz malzemesi listeleme ve global malzeme arama saglar |
+| `backend/src/ozellik/kutuphane/brands/dto/create-brand.dto.ts` | Marka olusturma/guncelleme girdisini dogrular (ad, logo, disiplin) |
+| `backend/src/ozellik/kutuphane/labor-firms/labor-firms.controller.ts` | Iscilik firmasi CRUD, fiyat listesi/kalem toplu kayit, sheet saklama ve Excel parse uclari |
+| `backend/src/ozellik/kutuphane/labor-firms/labor-firms.service.ts` | Kullanıcının işçilik firmalarını ve fiyat listelerini sahiplik kontrolüyle yönetir |
+| `backend/src/ozellik/kutuphane/labor/labor.controller.ts` | Genel iscilik kalemi CRUD uclarini Pro tier kosuluyla sunar |
+| `backend/src/ozellik/kutuphane/labor/labor.service.ts` | Iscilik kalemi CRUD'u yapar; ada gore iscilik esleme yardimcisi da icerir |
+| `backend/src/ozellik/kutuphane/library/dto/bulk-discount.dto.ts` | Marka bazli toplu iskonto orani girdisini dogrular (0-100) |
+| `backend/src/ozellik/kutuphane/library/dto/bulk-update-items.dto.ts` | Secili kutuphane kalemlerine toplu iskonto uygulama girdisini dogrular |
+| `backend/src/ozellik/kutuphane/library/dto/create-manual-brand.dto.ts` | Elle marka olusturma satirlarini 11-kolon ProductIndex semasiyla dogrular (1-5000 satir) |
+| `backend/src/ozellik/kutuphane/library/dto/import-price-list.dto.ts` | Fiyat listesini kullanici kutuphanesine aktarma istegini dogrular (marka+liste id) |
+| `backend/src/ozellik/kutuphane/library/dto/update-library-item.dto.ts` | Kutuphane kalemi guncelleme alanlarini (fiyat, iskonto, spec, kategori) dogrular |
+| `backend/src/ozellik/kutuphane/library/library-sheet-builder.ts` | Kutuphane kalemlerinden kategori-bantli sentetik grid sheet JSON'u (kolon+satir) uretir |
+| `backend/src/ozellik/kutuphane/materials/dto/create-material-price.dto.ts` | Havuza malzeme-marka fiyat kaydi ekleme girdisini dogrular |
+| `backend/src/ozellik/kutuphane/materials/dto/create-material.dto.ts` | Malzeme olusturma isteginde ad alaninin bos olmayan string olmasini dogrular |
+| `backend/src/ozellik/kutuphane/materials/materials.controller.ts` | Admin-korumali malzeme havuzu CRUD ve marka bazli fiyat atama/silme HTTP uclari |
+| `backend/src/ozellik/kutuphane/materials/materials.service.ts` | Prisma ile malzeme CRUD ve marka bazli fiyat upsert/silme islemleri |
+| `backend/src/ozellik/kutuphane/utils/import-fidelity.ts` | Admin fiyat listesi ice aktarimi icin TR sayi/para birimi ayristirma, bicim cikarimi, aykiri fiyat isaretleme, kategori yuruyusu ve kolon haritalama saglar |
 | `frontend/app/(protected)/labor-firms/[firmaId]/page.tsx` | Iscilik firmasinin fiyat listelerini grid ile goruntuleme, duzenleme, yeni liste ekleme ve kaydetme sayfasi |
 | `frontend/app/(protected)/labor-firms/page.tsx` | Iscilik firmalarini disiplin filtresiyle listeler; olusturma ve silme sunar |
 | `frontend/app/(protected)/labor/page.tsx` | Disiplin bazli iscilik kalemleri kutuphanesinde dialog'lu CRUD yonetimi |
@@ -399,10 +399,10 @@ Karıştırılmasın diye ayrı duruyor.
 | `frontend/app/admin/page.tsx` | Admin kok rotasini ilk modul olan kullanicilar sayfasina yonlendirir |
 | `frontend/app/admin/stats/page.tsx` | Platform KPI kartlari ve Recharts grafikleriyle admin kullanim ozetini gosterir |
 | `frontend/app/admin/users/page.tsx` | Kayitli kullanicilari rol/paket/abonelik rozetleriyle listeler, istemci tarafi arama sunar |
-| `frontend/components/admin/AdminSidebar.tsx` | Admin modulleri arasi gezinme, cikis ve uygulamaya donus aksiyonlarini sunar; 'yakinda' rozetli pasif ogeler icerir |
-| `frontend/components/library/InlineFirmEntry.tsx` | Iscilik firmasi icin sabit 8-kolon fiyat giris grid'i; save-bulk ile yeni liste olarak kaydeder |
-| `frontend/components/library/ManualBrandModal.tsx` | Elle marka olusturma / mevcut markaya malzeme ekleme modali; bos sabit-sema grid'ini library/manual-brand'e kaydeder |
-| `frontend/lib/admin-stats.ts` | Admin istatistik sayfasinin servis katmani: /admin/stats yanitini KPI/trend/dagilim sekline donusturur |
+| `frontend/ozellik/kutuphane/admin/AdminSidebar.tsx` | Admin modulleri arasi gezinme, cikis ve uygulamaya donus aksiyonlarini sunar; 'yakinda' rozetli pasif ogeler icerir |
+| `frontend/ozellik/kutuphane/library/InlineFirmEntry.tsx` | Iscilik firmasi icin sabit 8-kolon fiyat giris grid'i; save-bulk ile yeni liste olarak kaydeder |
+| `frontend/ozellik/kutuphane/library/ManualBrandModal.tsx` | Elle marka olusturma / mevcut markaya malzeme ekleme modali; bos sabit-sema grid'ini library/manual-brand'e kaydeder |
+| `frontend/ozellik/kutuphane/admin-stats.ts` | Admin istatistik sayfasinin servis katmani: /admin/stats yanitini KPI/trend/dagilim sekline donusturur |
 
 ### H · TESTLER — 64 dosya
 
@@ -577,7 +577,7 @@ Karıştırılmasın diye ayrı duruyor.
 
 | Dosya | Ne yapıyor |
 |---|---|
-| `backend/src/admin/admin.module.ts` | Admin controller/servisini Prisma, AI, ExcelGrid ve Matching modulleriyle kablolar |
+| `backend/src/ozellik/kutuphane/admin/admin.module.ts` | Admin controller/servisini Prisma, AI, ExcelGrid ve Matching modulleriyle kablolar |
 | `backend/src/ai/ai.module.ts` | AI controller ve servisini Prisma ile kablolar, servisi disa acar |
 | `backend/src/app.module.ts` | Tum backend modullerini kok modulde toplar, health ve bootstrap controller'larini baglar |
 | `backend/src/altyapi/auth/auth.controller.ts` | Kayit, giris ve mevcut kullanici bilgisi (me) HTTP uclarini sunar |
@@ -593,13 +593,13 @@ Karıştırılmasın diye ayrı duruyor.
 | `backend/src/altyapi/auth/guards/roles.guard.ts` | Metadata'daki rol listesi ile istekteki kullanici rolunu karsilastiran kapi |
 | `backend/src/altyapi/auth/guards/tier.guard.ts` | Kullanicinin paket seviyesini DB'den okuyup endpoint'in gerektirdigi minimum seviyeyle karsilastirir |
 | `backend/src/altyapi/auth/strategies/jwt.strategy.ts` | Bearer token'i dogrulayip payload'daki kullaniciyi DB'den yukleyerek request.user'a koyar |
-| `backend/src/brands/brands.module.ts` | Marka servis ve controller'ini kablolar, servisi disa acar |
+| `backend/src/ozellik/kutuphane/brands/brands.module.ts` | Marka servis ve controller'ini kablolar, servisi disa acar |
 | `backend/src/exchange-rates/exchange-rates.module.ts` | Kur servis/controller kablolamasi; servisi baska modullere disa acar |
-| `backend/src/labor-firms/labor-firms.module.ts` | Iscilik firmalari modulunu kablolar; ExcelGrid ve Matching modullerini iceri alir |
-| `backend/src/labor/labor.module.ts` | Iscilik kalemi servis/controller kablolamasi; Prisma modulunu alir, servisi disa acar |
-| `backend/src/library/library.module.ts` | Kutuphane servis/controller kablolamasi; Matching modulunu iceri alir |
+| `backend/src/ozellik/kutuphane/labor-firms/labor-firms.module.ts` | Iscilik firmalari modulunu kablolar; ExcelGrid ve Matching modullerini iceri alir |
+| `backend/src/ozellik/kutuphane/labor/labor.module.ts` | Iscilik kalemi servis/controller kablolamasi; Prisma modulunu alir, servisi disa acar |
+| `backend/src/ozellik/kutuphane/library/library.module.ts` | Kutuphane servis/controller kablolamasi; Matching modulunu iceri alir |
 | `backend/src/main.ts` | Uygulamayi ayaga kaldirir: 500mb body limiti, CORS beyaz listesi+regex, global validation, api prefix |
-| `backend/src/materials/materials.module.ts` | Malzeme servis ve controller'ini NestJS modul sistemine kablolar |
+| `backend/src/ozellik/kutuphane/materials/materials.module.ts` | Malzeme servis ve controller'ini NestJS modul sistemine kablolar |
 | `backend/src/modules/dwg-engine/dwg-engine.module.ts` | DWG motoru servis ve controller'ini NestJS modul sistemine kablolar |
 | `backend/src/modules/excel-engine/excel-engine.module.ts` | Analiz servis ve controller'ini Prisma ile kablolayan NestJS modul tanimi |
 | `backend/src/modules/excel-grid/excel-grid.module.ts` | Grid hazirlama servis/controller'ini Prisma ile kablolayan NestJS modul tanimi |

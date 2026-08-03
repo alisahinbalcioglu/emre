@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { PrismaService } from '../altyapi/db/prisma.service';
+import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { CreateLibraryItemDto } from './dto/create-library-item.dto';
 import { UpdateLibraryItemDto } from './dto/update-library-item.dto';
 import { ImportPriceListDto } from './dto/import-price-list.dto';
@@ -10,8 +10,8 @@ import { buildLibrarySheetRows } from './library-sheet-builder';
 import {
   buildProductIndex,
   ProductColumns,
-} from '../modules/matching/index/product-index';
-import { TerminologyService } from '../modules/matching/terminology.service';
+} from '../../../modules/matching/index/product-index';
+import { TerminologyService } from '../../../modules/matching/terminology.service';
 
 @Injectable()
 export class LibraryService {

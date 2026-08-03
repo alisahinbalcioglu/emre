@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ortak/ui/select';
 import api from '@/ortak/lib/api';
 import { toast } from '@/ortak/hooks/use-toast';
-import ManualBrandModal from '@/components/library/ManualBrandModal';
+import ManualBrandModal from '@/ozellik/kutuphane/library/ManualBrandModal';
 
 interface LibraryBrand {
   brandId: string;

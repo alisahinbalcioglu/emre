@@ -3,8 +3,8 @@ import {
   Body, Param, Query, UseGuards,
 } from '@nestjs/common';
 import { LaborService } from './labor.service';
-import { JwtAuthGuard } from '../altyapi/auth/guards/jwt-auth.guard';
-import { TierGuard, RequireTier } from '../altyapi/auth/guards/tier.guard';
+import { JwtAuthGuard } from '../../../altyapi/auth/guards/jwt-auth.guard';
+import { TierGuard, RequireTier } from '../../../altyapi/auth/guards/tier.guard';
 
 @Controller('labor')
 @UseGuards(JwtAuthGuard, TierGuard)

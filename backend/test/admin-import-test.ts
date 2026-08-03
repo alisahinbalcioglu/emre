@@ -7,7 +7,7 @@ import {
   parseTrNumber, walkCategories, detectExtraRoles, detectCurrency,
   inferPriceFormat, flagPriceOutliers, ImportRowView,
   mapPriceListColumns, yapilandirmaSkoru,
-} from '../src/utils/import-fidelity';
+} from '../src/ozellik/kutuphane/utils/import-fidelity';
 import { deriveEtiketler, isValidAdOverride } from '../src/utils/etiket-display';
 
 let passed = 0; let failed = 0; const failures: string[] = [];

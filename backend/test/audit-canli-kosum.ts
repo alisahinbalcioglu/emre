@@ -13,8 +13,8 @@ import { PrismaClient } from '@prisma/client';
 import * as fs from 'fs';
 import { MatchingService } from '../src/modules/matching/matching.service';
 import { TerminologyService } from '../src/modules/matching/terminology.service';
-import { AdminService } from '../src/admin/admin.service';
-import { LibraryService } from '../src/library/library.service';
+import { AdminService } from '../src/ozellik/kutuphane/admin/admin.service';
+import { LibraryService } from '../src/ozellik/kutuphane/library/library.service';
 import { ExcelGridService } from '../src/modules/excel-grid/excel-grid.service';
 
 const DUYAR_XLSX = 'C:/Users/basar/Downloads/Duyar_Aralik2023_Yapilandirilmis.xlsx';

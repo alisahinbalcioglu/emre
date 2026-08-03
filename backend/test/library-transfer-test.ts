@@ -3,7 +3,7 @@
  *   npx ts-node test/library-transfer-test.ts
  */
 
-import { buildLibrarySheetRows, LibrarySheetItem } from '../src/library/library-sheet-builder';
+import { buildLibrarySheetRows, LibrarySheetItem } from '../src/ozellik/kutuphane/library/library-sheet-builder';
 
 let passed = 0; let failed = 0; const failures: string[] = [];
 function check(name: string, cond: boolean, detail?: string) {

@@ -20,8 +20,8 @@
  * oksuz kalir. I3 bunu olcer.
  */
 import { PrismaClient } from '@prisma/client';
-import { AdminService } from '../src/admin/admin.service';
-import { LibraryService } from '../src/library/library.service';
+import { AdminService } from '../src/ozellik/kutuphane/admin/admin.service';
+import { LibraryService } from '../src/ozellik/kutuphane/library/library.service';
 import { TerminologyService } from '../src/modules/matching/terminology.service';
 
 let passed = 0; let failed = 0; const failures: string[] = [];

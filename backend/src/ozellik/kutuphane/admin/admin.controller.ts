@@ -5,10 +5,10 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { AdminService, MaterialSheetInput, ImportPreviewItem } from './admin.service';
-import { ExcelGridService } from '../modules/excel-grid/excel-grid.service';
-import { JwtAuthGuard } from '../altyapi/auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../altyapi/auth/guards/roles.guard';
-import { Roles } from '../altyapi/auth/decorators/roles.decorator';
+import { ExcelGridService } from '../../../modules/excel-grid/excel-grid.service';
+import { JwtAuthGuard } from '../../../altyapi/auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../../altyapi/auth/guards/roles.guard';
+import { Roles } from '../../../altyapi/auth/decorators/roles.decorator';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)

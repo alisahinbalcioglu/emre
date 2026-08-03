@@ -9,8 +9,8 @@ import { ImportPriceListDto } from './dto/import-price-list.dto';
 import { BulkDiscountDto } from './dto/bulk-discount.dto';
 import { BulkUpdateItemsDto } from './dto/bulk-update-items.dto';
 import { CreateManualBrandDto } from './dto/create-manual-brand.dto';
-import { JwtAuthGuard } from '../altyapi/auth/guards/jwt-auth.guard';
-import { CurrentUser } from '../altyapi/auth/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../../../altyapi/auth/guards/jwt-auth.guard';
+import { CurrentUser } from '../../../altyapi/auth/decorators/current-user.decorator';
 
 @Controller('library')
 @UseGuards(JwtAuthGuard)

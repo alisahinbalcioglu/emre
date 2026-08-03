@@ -5,9 +5,9 @@ import {
 import { MaterialsService } from './materials.service';
 import { CreateMaterialDto } from './dto/create-material.dto';
 import { CreateMaterialPriceDto } from './dto/create-material-price.dto';
-import { JwtAuthGuard } from '../altyapi/auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../altyapi/auth/guards/roles.guard';
-import { Roles } from '../altyapi/auth/decorators/roles.decorator';
+import { JwtAuthGuard } from '../../../altyapi/auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../../altyapi/auth/guards/roles.guard';
+import { Roles } from '../../../altyapi/auth/decorators/roles.decorator';
 
 @Controller('materials')
 @UseGuards(JwtAuthGuard)
