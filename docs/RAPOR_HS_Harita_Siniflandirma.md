@@ -167,7 +167,7 @@ BELİRSİZ = **0**. Görev bunun şüpheyle karşılanmasını ister; açıklama
 
 ## Bu turda GÖRÜLDÜ, DOKUNULMADI (kusur listesi — düzeltme yok, yalnız kayıt)
 
-1. **Hardcoded JWT fallback secret `'metaprice-secret'` ÜÇ kopya:** `auth.module.ts` · `auth.service.ts` (ayrıca secret/expiresIn çift kaynak) · `jwt.strategy.ts`. Env yoksa üretimde tahmin edilebilir imza — güvenlik adayı.
+1. **Hardcoded JWT fallback secret (sabit yedek anahtar) ÜÇ kopya:** `auth.module.ts` · `auth.service.ts` (ayrıca secret/expiresIn çift kaynak) · `jwt.strategy.ts`. Env yoksa üretimde tahmin edilebilir imza — güvenlik adayı. *(KL turunda kapatıldı — kalem 63; anahtarın kendisi bu belgeden de çıkarıldı: sızmış bir sırrı raporda tekrarlamak onu tekrar yayımlamaktır.)*
 2. `bootstrap.controller.ts` — `BOOTSTRAP_SECRET` env silinmezse açık kalan tek-seferlik admin yükseltme ucu (dosyada uyarı yorumu var).
 3. `python/main.py` — `/debug/*` uçları auth'suz (bilinçli not düşülmüş); dosya ~1554 satır, çok-işli.
 4. **Ölü kod adayları:** `python/converter.py` ODA kalıntıları (`find_oda_converter`, `_ODA_VERSION_TARGET` — çağıran yok, grep'le doğrulandı) · `labor-matching.service.ts backfillTags()` (yorumda LEGACY v1) · `useFillHandle.tsx FillHandleIndicator` boş bileşen · `Sidebar.tsx` section-başlığı render dalı (NAV_ITEMS'ta 'section' alanı yok) · `pipe_segments.py` kullanılmayan geri-uyum parametreleri (:920, :948) · `ai.service.ts` pdf-parse v2 dalı (parser kurulup kullanılmıyor) · `test/audit-real-excel.ts` + `test/faz0-gs7-probe.ts` assert'süz geçici ölçüm betikleri.
