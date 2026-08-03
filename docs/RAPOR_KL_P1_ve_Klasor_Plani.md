@@ -15,7 +15,7 @@
 | Commit SHA | **`fa0a01ef4880c45a585c328320a2bdbdedb8eb26`** (`fa0a01e`) |
 | `git status` (commit sonrası) | **boş** — ağaç temiz |
 | `git log origin/master -1` | `fa0a01e docs(faz2+kl1b): FAZ 2 cevaplari haritaya + haritanin kendi eskimesi duzeltildi` |
-| CI | **run #50 · success (yeşil)** |
+| CI | **run #50 · success (yeşil)** · ADIM 2 → #51 ✅ · ADIM 3 → #52 ✅ |
 | Kapılar (add SONRASI) | `test:harita` PASS 300/300 · `test:regression` 27 PASS / 0 FAIL / 3 SKIP |
 
 ## KL1b · Haritanın kendi eskimesi — aynı commit'te
@@ -40,6 +40,21 @@ grep -c JWT_SECRET /opt/metaprice/.env
 ```
 
 Beklenen çıktı: `1` (tanımlı) ya da `0` (tanımsız). Cevap gelmeden ADIM 1 push edilmeyecek.
+
+### ✅ KL2 CEVABI GELDİ (03.08, kullanıcı Hetzner konsolunda koştu): **`0`**
+
+**KÖTÜ dal gerçekleşti:** canlı şu anda kaynak kodda yazan yedek anahtarla token imzalıyor — açık **aktif**. Sonuçları:
+
+1. ADIM 1 tek başına deploy edilirse **backend AÇILMAZ** (compose değişkeni boş dize olarak geçirir, yeni kod boş dizeyi de reddeder).
+2. Sunucu `.env`'ine anahtar eklenmeli. Eklenip yeniden başlatıldığı an **mevcut tüm token'lar geçersiz olur** — herkes bir kez çıkış yapar. Kaçınılmaz: bugünkü anahtar zaten gizli değil, değişmesi şart.
+3. Anahtarı konsolda üretmek imkânsız (dolar/büyüktür/boru karakterleri yazılamıyor) → **`scripts/jwt-secret-kur.sh`** yazıldı. Üç yolu da yerelde ateşlendi: ön koşul yok → **çıkış 2** · ekleme → **çıkış 0** (48 karakter, openssl) · **ikinci koşum → çıkış 0, DOKUNMAZ** (idempotent, mevcut anahtarı asla değiştirmez). Kullanıcının yazacağı üç satır tarandı: altı yasak karakterin **hiçbiri yok**. Anahtar ekrana **yazılmaz** (konsol geçmişi ve ekran görüntüsü sızdırır); `.env` zaman damgalı yedeklenir.
+
+**Doğru sıra — tek kesinti:**
+`git pull` (kod değişmez, canlı eski kodla çalışmaya devam eder) → `bash scripts/jwt-secret-kur.sh` (anahtar `.env`'e girer, oturumlar HÂLÂ sağlam) → **ADIM 1 push edilir** → `bash scripts/deploy.sh` (yeni kod + yeni anahtar aynı anda devreye girer; tek logout).
+
+### ⚠ Bu turda yaşanan kaza (dürüst kayıt)
+
+Raporu güncellemek için `node -e "…"` içine markdown gömdüm; metindeki ters tırnaklar **bash tarafından komut olarak çalıştırıldı** ve içlerinden biri `bash scripts/deploy.sh` idi — betik yerelde koştu, `git pull` yaptı ve `docker: command not found` ile durdu. **Canlıya hiçbir şey gitmedi** (`/api/health` → `81f2521143d3`, değişmedi; HEAD ve `origin/master` de `4cea9ba`'da sabit). Ders: **belge metni kabuk üzerinden yazılmaz** — dosya düzenleme aracıyla yazılır; kabuğa gömülen metindeki ters tırnak çalıştırılabilir koddur.
 
 ## KL3 · P1-a — üç çıkış yolu da ateşlendi
 
