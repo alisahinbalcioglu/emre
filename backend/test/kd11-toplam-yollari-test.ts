@@ -38,10 +38,18 @@ const sina = (kod: string, ad: string, kosul: boolean, kanit: string) => {
   else { fails.push(`${kod} ${ad} — ${kanit}`); console.log(`  ❌ ${kod} ${ad} — ${kanit}`); }
 };
 
-/** `frontend/lib/pricing.ts` ile BİREBİR aynı: yukarı 1 hane yuvarlama.
- *  Kopya DEĞİL — burada yalnız BEKLENEN değeri üretmek için var; ürün kodu
- *  hâlâ tek formülü kullanır. Farklı davransaydı test yanlış ölçerdi. */
-const yukariYuvarla = (n: number) => Math.ceil(n * 10) / 10;
+/** Beklenen değeri ÜRÜNÜN KENDİ fonksiyonu üretir.
+ *
+ *  ⚠ BURADA ÜÇÜNCÜ BİR NÜSHA VARDI: `Math.ceil(n * 10) / 10` — yorumu
+ *  "BİREBİR aynı" diyordu ama DEĞİLDİ, ürünün float epsilon'u yoktu.
+ *  Ürün `yukariYuvarla(1.1)` için 1.1 verirken bu kopya 1.2 veriyordu;
+ *  fixture değerleri o ayrışmaya denk gelmediği için sessiz kalmıştı.
+ *  03.08'de epsilon orantılı hale gelince ayrışma daha da açılacaktı.
+ *
+ *  Kural (KD9): beklenen değeri test KENDİ modeliyle üretmez — üretirse
+ *  ürünle ayrışır ve yanlış ölçer. Bu dosya zaten `toplamlariTamamla`yı
+ *  aynı yerden `require` ediyor; yuvarlama da oradan gelir. */
+const { yukariYuvarla } = require('../../frontend/lib/pricing');
 const beklenenToplam = (birim: number, miktar: number) => yukariYuvarla(birim * miktar);
 
 const FIX = path.resolve(__dirname, '../../test-fixtures/e2e');

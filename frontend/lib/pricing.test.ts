@@ -24,6 +24,40 @@ describe('fiyat cekirdegi (spec)', () => {
     expect(hesaplaSatirToplam(291.2, 120)).toBe(34944);
   });
 
+  // ── BUYUK MERTEBE: sabit epsilon ORANTILI hatayi kapsamaz ────────────
+  // CANLI BULGU (03.08, teklif ekrani): 12200 × ₺152,30 satiri ekranda
+  // ₺1.858.060,10 gosteriyordu; dogrusu ₺1.858.060,00. Musteriye 10 kurus
+  // FAZLA yaziliyordu ve `Math.ceil` oldugu icin sapma HER ZAMAN yukari.
+  //
+  // KOK NEDEN: `1e-9` SABIT. `y = x*10` yaklasik 4,5 milyonu asinca
+  // double'in kendi ulp'u (|y| × 2^-52) 1e-9'u gecer ve epsilon hicbir sey
+  // yapmaz. Yani kusur ~₺450.000 ustu TOPLAMLARDA ortaya cikar; birim
+  // fiyat mertebesinde hic gorunmez (bu yuzden 1.1/100/2622.8 ile yazilmis
+  // alttaki test onu yakalayamamisti).
+  //
+  // ⚠ Beklenen degerler TAM SAYI aritmetigiyle dogrulandi (1523×12200/10),
+  // float ile DEGIL — olcut, olctugu hatanin icine dusmesin.
+  it('buyuk toplam: tam onda-bire oturan carpim UST DILIME TASINMAZ', () => {
+    // 1523 × 12200 = 18.580.600 → /10 = 1.858.060 (tam)
+    expect(hesaplaSatirToplam(152.3, 12200)).toBe(1858060);
+  });
+
+  it('buyuk toplam: ikinci bagimsiz vaka (farkli birim fiyat)', () => {
+    // 7777 × 7873 = 61.228.321 → /10 = 6.122.832,1 (tam)
+    expect(hesaplaSatirToplam(777.7, 7873)).toBe(6122832.1);
+  });
+
+  it('buyuk toplam: yarim kurusa oturan carpim da tasinmaz', () => {
+    // 1523 × 11135 = 16.958.605 → /10 = 1.695.860,5 (tam)
+    expect(hesaplaSatirToplam(152.3, 11135)).toBe(1695860.5);
+  });
+
+  it('buyuk mertebede GERCEK yukari yuvarlama hala calisir', () => {
+    // Duzeltme epsilon'u buyuttugu icin asil davranisin korundugu KANIT:
+    // 1.858.060,05 → bir ust dilime CIKMALI.
+    expect(yukariYuvarla(1858060.05)).toBe(1858060.1);
+  });
+
   it('float epsilon: zaten 1 haneli deger ust dilime TASINMAZ', () => {
     // 1.1*10 = 11.000000000000002 → naive ceil 1.2 yapardi
     expect(yukariYuvarla(1.1)).toBe(1.1);

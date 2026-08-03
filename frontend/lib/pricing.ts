@@ -28,10 +28,32 @@ export function clamp(x: number, lo: number, hi: number): number {
 }
 
 /** Yukari yuvarlama (1 hane). Float epsilonu: 1.1*10=11.000000000000002
- *  gibi ikili artiklarin degeri bir ust dilime tasimasini onler. */
+ *  gibi ikili artiklarin degeri bir ust dilime tasimasini onler.
+ *
+ *  ⚠ EPSILON ORANTILI OLMAK ZORUNDA (canli bulgu 03.08).
+ *  Eskiden SABIT `1e-9` idi. Bir double'in ulp'u |y| × 2^-52 oldugu icin
+ *  `y = x*k` yaklasik 4,5 milyonu asinca ulp 1e-9'u GECER ve sabit epsilon
+ *  hicbir sey yapmaz. Olculen vaka: 12200 × ₺152,30 → ham carpim float'ta
+ *  1858060.0000000002, ceil onu ₺1.858.060,10'a cikariyordu; dogrusu
+ *  ₺1.858.060,00. `Math.ceil` oldugu icin sapma HER ZAMAN yukari — yani
+ *  musteriye sistematik olarak FAZLA yaziliyordu. ~₺450.000 ustu
+ *  toplamlarda goruluyordu; birim fiyat mertebesinde hic gorunmuyordu.
+ *
+ *  Bu, projenin KD9 turunda ogrendigi dersin ta kendisi: SABIT TOLERANS
+ *  ORANTILI HATAYI KAPSAMAZ. Ders olcut tarafinda ogrenilmis, urunun
+ *  yuvarlamasinda ayni kusur duruyormus.
+ *
+ *  `EPSILON * 4` ~4 ulp'luk pay birakir; para mertebesinde 1e-8 TL zaten
+ *  anlamsiz oldugu icin gercek yukari yuvarlamayi bozmaz (kapi:
+ *  pricing.test.ts "buyuk mertebede GERCEK yukari yuvarlama hala calisir").
+ *
+ *  Backend esi `backend/src/modules/matching/pricing.ts` — IKISI BIRLIKTE
+ *  guncellenir. */
 export function yukariYuvarla(x: number, hane = ONDALIK): number {
   const k = 10 ** hane;
-  const r = Math.ceil(x * k - 1e-9) / k;
+  const y = x * k;
+  const eps = Math.max(1e-9, Math.abs(y) * Number.EPSILON * 4);
+  const r = Math.ceil(y - eps) / k;
   return r === 0 ? 0 : r; // -0 normalize (epsilon sifiri eksiye itebilir)
 }
 

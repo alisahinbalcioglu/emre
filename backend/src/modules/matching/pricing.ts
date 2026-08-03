@@ -16,10 +16,20 @@ export function clamp(x: number, lo: number, hi: number): number {
 }
 
 /** Yukari yuvarlama (1 hane). Float epsilonu: 1.1*10=11.000000000000002
- *  gibi ikili artiklarin degeri bir ust dilime tasimasini onler. */
+ *  gibi ikili artiklarin degeri bir ust dilime tasimasini onler.
+ *
+ *  ⚠ EPSILON ORANTILI (canli bulgu 03.08) — sabit `1e-9`, |y| yaklasik 4,5
+ *  milyonu asinca double'in kendi ulp'unun altinda kalir ve islevsizlesir;
+ *  12200 × ₺152,30 satiri ₺1.858.060,10 yaziyordu, dogrusu ₺1.858.060,00.
+ *  `Math.ceil` oldugu icin sapma her zaman YUKARI idi.
+ *
+ *  Frontend esi `frontend/lib/pricing.ts` ile BIREBIR AYNI olmak ZORUNDA —
+ *  ikisi birlikte guncellenir. Gerekce ve kapi orada ayrintili yazili. */
 export function yukariYuvarla(x: number, hane = ONDALIK): number {
   const k = 10 ** hane;
-  const r = Math.ceil(x * k - 1e-9) / k;
+  const y = x * k;
+  const eps = Math.max(1e-9, Math.abs(y) * Number.EPSILON * 4);
+  const r = Math.ceil(y - eps) / k;
   return r === 0 ? 0 : r; // -0 normalize (epsilon sifiri eksiye itebilir)
 }
 
