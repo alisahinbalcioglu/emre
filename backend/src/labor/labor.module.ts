@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { LaborService } from './labor.service';
 import { LaborController } from './labor.controller';
-import { PrismaModule } from '../prisma/prisma.module';
+import { PrismaModule } from '../altyapi/db/prisma.module';
 
 @Module({
   imports: [PrismaModule],

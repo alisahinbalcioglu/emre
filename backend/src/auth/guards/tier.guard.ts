@@ -1,6 +1,6 @@
 import { Injectable, CanActivate, ExecutionContext, ForbiddenException, SetMetadata } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { PrismaService } from '../../prisma/prisma.service';
+import { PrismaService } from '../../altyapi/db/prisma.service';
 
 export const TIER_KEY = 'requiredTier';
 export const RequireTier = (...tiers: string[]) => SetMetadata(TIER_KEY, tiers);

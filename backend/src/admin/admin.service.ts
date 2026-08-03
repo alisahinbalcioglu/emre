@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import * as XLSX from 'xlsx';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../altyapi/db/prisma.service';
 import { AiService } from '../ai/ai.service';
 import { TerminologyService } from '../modules/matching/terminology.service';
 import {

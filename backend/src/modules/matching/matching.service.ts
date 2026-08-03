@@ -17,7 +17,7 @@
 //  test:conversion + test:contract (C1-C10).
 // ════════════════════════════════════════════════════════════════════
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
+import { PrismaService } from '../../altyapi/db/prisma.service';
 import { generateTags } from './tag-generator';
 import { hesaplaNetFiyat } from './pricing';
 import { extractMaterialKind, extractFluid } from './normalizer';

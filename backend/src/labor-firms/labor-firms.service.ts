@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, ConflictException, ForbiddenException, BadRequestException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../altyapi/db/prisma.service';
 import { buildMaterialContextFromRows, ColumnRoles, RowData } from '../utils/build-material-context';
 // PRD Iscilik L2: ice aktarim AYNI indeksleyiciden gecer (tek motor/indeksleyici)
 import { MatchingService } from '../modules/matching/matching.service';

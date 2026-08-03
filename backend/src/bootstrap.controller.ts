@@ -2,7 +2,7 @@ import {
   Controller, Post, Body, BadRequestException, NotFoundException, ForbiddenException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
-import { PrismaService } from './prisma/prisma.service';
+import { PrismaService } from './altyapi/db/prisma.service';
 
 /**
  * Tek seferlik kullanim icin "make-admin" endpoint'i.

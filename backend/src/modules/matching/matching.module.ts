@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { PrismaModule } from '../../prisma/prisma.module';
+import { PrismaModule } from '../../altyapi/db/prisma.module';
 import { MatchingService } from './matching.service';
 import { MatchingController } from './matching.controller';
 import { TerminologyService } from './terminology.service';

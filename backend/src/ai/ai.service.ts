@@ -1,5 +1,5 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../altyapi/db/prisma.service';
 import Anthropic from '@anthropic-ai/sdk';
 // watch-trigger: force NestJS reload
 // pdf-parse v2 has breaking API changes — use safe wrapper

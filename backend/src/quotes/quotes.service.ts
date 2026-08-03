@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../altyapi/db/prisma.service';
 import { CreateQuoteDto } from './dto/create-quote.dto';
 import * as XLSX from 'xlsx';
 import * as ExcelJS from 'exceljs';

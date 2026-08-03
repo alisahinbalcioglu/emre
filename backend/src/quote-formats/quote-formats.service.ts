@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../altyapi/db/prisma.service';
 import * as ExcelJS from 'exceljs';
 import {
   scanWorkbook, buildSampleFormat, sheetToGrid, sayfaRolleriTahminEt,

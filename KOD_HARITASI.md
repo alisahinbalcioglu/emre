@@ -605,8 +605,8 @@ Karıştırılmasın diye ayrı duruyor.
 | `backend/src/modules/excel-grid/excel-grid.module.ts` | Grid hazirlama servis/controller'ini Prisma ile kablolayan NestJS modul tanimi |
 | `backend/src/modules/labor-matching/labor-matching.module.ts` | Iscilik esleme katmanini MatchingModule motoruna baglayan NestJS modul tanimi |
 | `backend/src/modules/matching/matching.module.ts` | Esleme ve terminoloji servislerini Prisma ve kur modulune baglayan NestJS modul tanimi |
-| `backend/src/prisma/prisma.module.ts` | DB erişim servisini tüm uygulamaya global sağlayan modül tanımı |
-| `backend/src/prisma/prisma.service.ts` | PrismaClient'ı yaşam döngüsüne bağlayıp bağlantıyı açan-kapatan sarmalayıcı |
+| `backend/src/altyapi/db/prisma.module.ts` | DB erişim servisini tüm uygulamaya global sağlayan modül tanımı |
+| `backend/src/altyapi/db/prisma.service.ts` | PrismaClient'ı yaşam döngüsüne bağlayıp bağlantıyı açan-kapatan sarmalayıcı |
 | `backend/src/quote-formats/quote-formats.module.ts` | Format servis ve controller'ini NestJS'e kablolar, servisi disa acar |
 | `backend/src/quotes/quotes.module.ts` | Quotes servis/controller'i AI, Prisma ve kur modulleriyle NestJS'e kablolar |
 

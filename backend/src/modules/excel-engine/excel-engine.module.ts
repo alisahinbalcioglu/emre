@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { PrismaModule } from '../../prisma/prisma.module';
+import { PrismaModule } from '../../altyapi/db/prisma.module';
 import { ExcelEngineService } from './excel-engine.service';
 import { ExcelEngineController } from './excel-engine.controller';
 

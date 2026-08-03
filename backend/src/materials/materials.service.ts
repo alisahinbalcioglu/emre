@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../altyapi/db/prisma.service';
 import { CreateMaterialDto } from './dto/create-material.dto';
 import { CreateMaterialPriceDto } from './dto/create-material-price.dto';
 
