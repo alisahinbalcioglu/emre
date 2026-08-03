@@ -580,19 +580,19 @@ Karıştırılmasın diye ayrı duruyor.
 | `backend/src/admin/admin.module.ts` | Admin controller/servisini Prisma, AI, ExcelGrid ve Matching modulleriyle kablolar |
 | `backend/src/ai/ai.module.ts` | AI controller ve servisini Prisma ile kablolar, servisi disa acar |
 | `backend/src/app.module.ts` | Tum backend modullerini kok modulde toplar, health ve bootstrap controller'larini baglar |
-| `backend/src/auth/auth.controller.ts` | Kayit, giris ve mevcut kullanici bilgisi (me) HTTP uclarini sunar |
-| `backend/src/auth/auth.module.ts` | JWT ve Passport'u yapilandirip auth servis/strategy/controller'i kablolar |
-| `backend/src/auth/auth.service.ts` | bcrypt ile kayit/giris dogrulamasi yapar, JWT imzalar, me icin yetenek+abonelik dondurur |
-| `backend/src/auth/capabilities.helper.ts` | Aktif aboneliklerden disiplin bazli malzeme/iscilik/dwg yetki matrisini union mantigiyla turetir |
-| `backend/src/auth/decorators/current-user.decorator.ts` | Istekten request.user nesnesini parametre olarak cikaran dekorator |
-| `backend/src/auth/decorators/roles.decorator.ts` | Rol listesini metadata olarak isaretleyen dekorator tanimi |
-| `backend/src/auth/dto/login.dto.ts` | Giris istegi icin email ve sifre alan dogrulamasi |
-| `backend/src/auth/dto/register.dto.ts` | Kayit istegi icin email ve minimum 6 karakter sifre dogrulamasi |
-| `backend/src/auth/jwt-secret.ts` | Token imza anahtarını ortamdan okur; **yedek değer yoktur** — tanımsızsa uygulama açılışta (modül yüklenirken) açıklayıcı hatayla ölür (KL P1-a, kalem 63) |
-| `backend/src/auth/guards/jwt-auth.guard.ts` | JWT stratejisini endpoint koruması olarak devreye sokan guard |
-| `backend/src/auth/guards/roles.guard.ts` | Metadata'daki rol listesi ile istekteki kullanici rolunu karsilastiran kapi |
-| `backend/src/auth/guards/tier.guard.ts` | Kullanicinin paket seviyesini DB'den okuyup endpoint'in gerektirdigi minimum seviyeyle karsilastirir |
-| `backend/src/auth/strategies/jwt.strategy.ts` | Bearer token'i dogrulayip payload'daki kullaniciyi DB'den yukleyerek request.user'a koyar |
+| `backend/src/altyapi/auth/auth.controller.ts` | Kayit, giris ve mevcut kullanici bilgisi (me) HTTP uclarini sunar |
+| `backend/src/altyapi/auth/auth.module.ts` | JWT ve Passport'u yapilandirip auth servis/strategy/controller'i kablolar |
+| `backend/src/altyapi/auth/auth.service.ts` | bcrypt ile kayit/giris dogrulamasi yapar, JWT imzalar, me icin yetenek+abonelik dondurur |
+| `backend/src/altyapi/auth/capabilities.helper.ts` | Aktif aboneliklerden disiplin bazli malzeme/iscilik/dwg yetki matrisini union mantigiyla turetir |
+| `backend/src/altyapi/auth/decorators/current-user.decorator.ts` | Istekten request.user nesnesini parametre olarak cikaran dekorator |
+| `backend/src/altyapi/auth/decorators/roles.decorator.ts` | Rol listesini metadata olarak isaretleyen dekorator tanimi |
+| `backend/src/altyapi/auth/dto/login.dto.ts` | Giris istegi icin email ve sifre alan dogrulamasi |
+| `backend/src/altyapi/auth/dto/register.dto.ts` | Kayit istegi icin email ve minimum 6 karakter sifre dogrulamasi |
+| `backend/src/altyapi/auth/jwt-secret.ts` | Token imza anahtarını ortamdan okur; **yedek değer yoktur** — tanımsızsa uygulama açılışta (modül yüklenirken) açıklayıcı hatayla ölür (KL P1-a, kalem 63) |
+| `backend/src/altyapi/auth/guards/jwt-auth.guard.ts` | JWT stratejisini endpoint koruması olarak devreye sokan guard |
+| `backend/src/altyapi/auth/guards/roles.guard.ts` | Metadata'daki rol listesi ile istekteki kullanici rolunu karsilastiran kapi |
+| `backend/src/altyapi/auth/guards/tier.guard.ts` | Kullanicinin paket seviyesini DB'den okuyup endpoint'in gerektirdigi minimum seviyeyle karsilastirir |
+| `backend/src/altyapi/auth/strategies/jwt.strategy.ts` | Bearer token'i dogrulayip payload'daki kullaniciyi DB'den yukleyerek request.user'a koyar |
 | `backend/src/brands/brands.module.ts` | Marka servis ve controller'ini kablolar, servisi disa acar |
 | `backend/src/exchange-rates/exchange-rates.module.ts` | Kur servis/controller kablolamasi; servisi baska modullere disa acar |
 | `backend/src/labor-firms/labor-firms.module.ts` | Iscilik firmalari modulunu kablolar; ExcelGrid ve Matching modullerini iceri alir |

@@ -5,8 +5,8 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { LaborFirmsService, CreateLaborFirmDto, SheetInput } from './labor-firms.service';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../altyapi/auth/guards/jwt-auth.guard';
+import { CurrentUser } from '../altyapi/auth/decorators/current-user.decorator';
 import { ExcelGridService } from '../modules/excel-grid/excel-grid.service';
 
 @Controller('labor-firms')

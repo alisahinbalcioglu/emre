@@ -1,5 +1,5 @@
 import { Controller, Post, Get, Delete, Body, Param, UseGuards, Req } from '@nestjs/common';
-import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { JwtAuthGuard } from '../../altyapi/auth/guards/jwt-auth.guard';
 import { MatchingService } from './matching.service';
 import { TerminologyService } from './terminology.service';
 

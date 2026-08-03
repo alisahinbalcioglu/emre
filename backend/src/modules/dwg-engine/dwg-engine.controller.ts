@@ -4,7 +4,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
-import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { JwtAuthGuard } from '../../altyapi/auth/guards/jwt-auth.guard';
 import { DwgEngineService } from './dwg-engine.service';
 import { resolveScaleParam } from './scale-param';
 

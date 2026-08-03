@@ -1,4 +1,4 @@
-import { PrismaService } from '../altyapi/db/prisma.service';
+import { PrismaService } from '../db/prisma.service';
 
 export interface DisciplineCapability {
   material: boolean;

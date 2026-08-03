@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { HealthController } from './health.controller';
 import { BootstrapController } from './bootstrap.controller';
 import { PrismaModule } from './altyapi/db/prisma.module';
-import { AuthModule } from './auth/auth.module';
+import { AuthModule } from './altyapi/auth/auth.module';
 import { BrandsModule } from './brands/brands.module';
 import { MaterialsModule } from './materials/materials.module';
 import { LibraryModule } from './library/library.module';

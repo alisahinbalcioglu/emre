@@ -1,7 +1,7 @@
 import { Controller, Post, UseGuards, UseInterceptors, UploadedFile } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
-import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { JwtAuthGuard } from '../../altyapi/auth/guards/jwt-auth.guard';
 import { ExcelGridService } from './excel-grid.service';
 
 @Controller('excel-grid')

@@ -1,9 +1,9 @@
 import { Controller, Post, Body, UseGuards } from '@nestjs/common';
 import { LaborMatchingService } from './labor-matching.service';
-import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { CurrentUser } from '../../auth/decorators/current-user.decorator';
-import { RolesGuard } from '../../auth/guards/roles.guard';
-import { Roles } from '../../auth/decorators/roles.decorator';
+import { JwtAuthGuard } from '../../altyapi/auth/guards/jwt-auth.guard';
+import { CurrentUser } from '../../altyapi/auth/decorators/current-user.decorator';
+import { RolesGuard } from '../../altyapi/auth/guards/roles.guard';
+import { Roles } from '../../altyapi/auth/decorators/roles.decorator';
 
 @Controller('labor-matching')
 @UseGuards(JwtAuthGuard)
