@@ -57,7 +57,7 @@ async function main() {
     };
     await svc.saveBulkPrices(user.id, firmaId, 'new', [
       { laborName: 'Dikişli Siyah Çelik Boru Kaynaklı DN25', unit: 'metre', unitPrice: 270, currency: 'TRY', discountRate: 10 },
-    ], undefined, sheet as any);
+    ], sheet as any);   // P2-3: olu `exchangeRate` slotu kaldirildi
 
     const lists = await svc.getFirmaPriceLists(user.id, firmaId);
     const listId = lists.priceLists[0].id;

@@ -304,7 +304,28 @@ export class LibraryService {
       orderBy: [{ sortOrder: 'asc' }],
     });
     if (indexRows.length > 0) {
-      return this.importFromIndex(userId, dto, indexRows, priceList);
+      // ⚠ P2-2 KORUMASI — MUKERRER SATIR YASAGI.
+      // `importFromIndex` idempotentligi `productIndexId` uzerinden kurar.
+      // Bu kullanici bu listeyi DAHA ONCE legacy yoldan aktardiysa o
+      // satirlarda alan NULL'dur; indeks yoluna gecilirse hicbiri eslesmez,
+      // hepsi YENI sanilir ve `createMany` MUKERRER satir yaratir —
+      // ustelik kullanicinin iskonto/ozel fiyati eski satirlarda oksuz kalir.
+      //
+      // Cozum olarak legacy satirlari indekse otomatik BAGLAMIYORUZ: guvenli
+      // bir eslestirme anahtari yok (ad/cins/cap sezgiseli yanlis eslerse
+      // kullanicinin iskontosunu YANLIS urune yazar — mukerrerden beteri).
+      // Bunun yerine liste, aktarildigi yolda KALIR. Yeni aktarimlar indeks
+      // yolundan gider. Geriye donuk baglama ayri bir karar/tur.
+      const legacySatir = await this.prisma.userLibrary.count({
+        where: {
+          userId, brandId: dto.brandId, sourcePriceListId: dto.priceListId,
+          productIndexId: null,
+        } as any,
+      });
+      if (legacySatir === 0) {
+        return this.importFromIndex(userId, dto, indexRows, priceList);
+      }
+      console.warn(`[library] liste ${dto.priceListId}: ${legacySatir} legacy satir var — indeks yoluna GECILMEDI (mukerrer yasagi)`);
     }
 
     // L1: KAYNAK SIRASI korunur (sortOrder) — kutuphane havuzla ayni dizilir

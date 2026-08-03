@@ -791,7 +791,7 @@ export class AdminService {
 
     // Y7: dosya kaynak-of-truth — ayni listeye yeniden yukleme listeyi
     // BASTAN YAZAR, degisen fiyatlar raporlanir.
-    const result = await this.saveBulkMaterials(brandId, priceListId, resolved, undefined, { replaceExisting: true });
+    const result = await this.saveBulkMaterials(brandId, priceListId, resolved, { replaceExisting: true });
     return {
       ...result,
       cozulenBelirsizlik,
@@ -870,7 +870,13 @@ export class AdminService {
       urunKodu?: string | null; not?: string | null;
       sheetName?: string | null; sourceRow?: number;
     }[],
-    exchangeRate?: number,
+    // P2-3: `exchangeRate` parametresi KALDIRILDI. Fiyati carpip DB'ye
+    // CEVRILMIS yaziyordu — bu, bu dosyanin kendi kuralinin tersi ("Z4:
+    // fiyatin orijinal para birimi — cevrimsiz saklanir", ~:861). Ustelik
+    // para birimi ORIJINAL etiketiyle yazildigi icin ($100 + kur 30 →
+    // price=3000, currency='USD') teklif aninda `buildTryConverter` bir kez
+    // DAHA carpiyordu: CIFT CEVRIM. Hicbir cagiran deger gecmiyordu, o
+    // yuzden canli davranis degismiyor — kaldirilan sey bir TUZAK.
     opts?: { replaceExisting?: boolean },
   ) {
     const brand = await this.prisma.brand.findUnique({ where: { id: brandId } });
@@ -937,11 +943,8 @@ export class AdminService {
     for (const item of validItems) {
       const name = item.materialName?.trim();
       const unit = item.unit?.trim() || 'Adet';
-      let price = Number(item.unitPrice);
+      const price = Number(item.unitPrice);
       if (!name || isNaN(price) || price <= 0) { skipped++; continue; }
-      if (exchangeRate && exchangeRate > 0) {
-        price = Math.round(price * exchangeRate * 100) / 100;
-      }
       if (item.kategori) kategoriler.add(item.kategori);
 
       // E6: tag metni kategori + ad — aile kilidi/cap cevrimi kategori
@@ -1197,6 +1200,13 @@ export class AdminService {
       let skipped = 0;
       const fiyatDegisimleri: { ad: string; eski: number; yeni: number }[] = [];
       const kategoriler = new Set<string>();
+      // P2-2: ProductIndex dual-write defteri. rowKey carpisma sonegi
+      // `saveBulkMaterials:1046-1053` ile BIREBIR ayni olmali — yoksa
+      // @@unique([priceListId, rowKey]) ayni dosyada tekrarlanan satirda
+      // upsert'i SESSIZ EZMEYE cevirir.
+      const gorulenRowKeys = new Map<string, number>();
+      const rowKeyTekrar = new Map<string, number>();
+      let indekslenen = 0;
 
       for (let rowIdx = 0; rowIdx < sheet.rowData.length; rowIdx++) {
         const row: any = sheet.rowData[rowIdx];
@@ -1287,6 +1297,66 @@ export class AdminService {
           update: { price: unitPrice, ...fidelity },
           create: { materialId: material.id, brandId, priceListId: priceList.id, price: unitPrice, ...fidelity },
         });
+        // ══ P2-2: DUAL-WRITE → ProductIndex ═══════════════════════════
+        // Uc yazma yolundan YALNIZ bu yol indekslemiyordu; oysa Excel
+        // coklu-sayfa editorunun ANA kaydetme yolu bu. Sonuc: buradan
+        // yuklenen marka indekssiz kaliyor ve (a) havuz gorunumu legacy
+        // birlesik-ad daline dusuyor (Baglanti/Boy/Kod/Not kolonlari
+        // kayboluyor), (b) eslestirme motoru istek aninda manuel cikarima
+        // dusuyor — "urun tablosu kalitesinde DEGILDIR" uyarisi tam bu.
+        // Kimlik ADA degil DOSYA SATIRINA (rowKey) bagli; upsert sayesinde
+        // ProductIndex.id korunur → bagli UserLibrary.productIndexId ayakta
+        // kalir → kullanicinin iskontosu kaybolmaz.
+        const pcols: ProductColumns = {
+          kategori: kategori ?? null,
+          ad: adRaw || fullName,
+          cins: cins || null,
+          // Bu yolda AYRI sutun olarak gelmiyorlar; hepsi ProductColumns'ta
+          // opsiyonel ve semada nullable. `baglanti` null oldugu icin rowKey
+          // yalniz ad/cins/cap/boy'dan uretilir — `saveBulkMaterials` ile
+          // AYNI davranis, sessiz ezme YOK (carpisma sonek aliyor).
+          baglanti: null,
+          cap: cap || null,
+          boy: null,
+          birim: birimRaw || unit,
+          price: unitPrice,
+          paraBirimi: 'TRY',
+          urunKodu: null,
+          not: null,
+          sheetName: sheet.name ?? null,
+          sourceRow: rowIdx,
+          sortOrder: rowIdx,
+        };
+        const idx = buildProductIndex(pcols);
+        const oncekiRowKey = gorulenRowKeys.get(idx.rowKey);
+        if (oncekiRowKey !== undefined) {
+          const kacinci = (rowKeyTekrar.get(idx.rowKey) ?? 1) + 1;
+          rowKeyTekrar.set(idx.rowKey, kacinci);
+          idx.rowKey = `${idx.rowKey}#${kacinci}`;
+        }
+        gorulenRowKeys.set(idx.rowKey, rowIdx);
+
+        const piData: any = {
+          brandId, priceListId: priceList.id,
+          kategori: pcols.kategori, ad: pcols.ad, cins: pcols.cins,
+          baglanti: pcols.baglanti, capRaw: pcols.cap, boyMm: null,
+          birim: pcols.birim, price: unitPrice, currency: 'TRY',
+          urunKodu: null, not: null,
+          sheetName: pcols.sheetName, sourceRow: pcols.sourceRow, sortOrder: pcols.sortOrder,
+          adSlug: idx.adSlug, adBucket: idx.adBucket, adTokens: idx.adTokens,
+          cinsNorm: idx.cinsNorm, cinsTokens: idx.cinsTokens,
+          baglantiNorm: idx.baglantiNorm, baglantiTokens: idx.baglantiTokens,
+          sizeClass: idx.sizeClass, capTags: idx.capTags, capNorm: idx.capNorm,
+          boyTag: idx.boyTag, displayName: idx.displayName, rowKey: idx.rowKey,
+          indexVersion: idx.indexVersion, belirsiz: idx.belirsiz,
+        };
+        await (this.prisma as any).productIndex.upsert({
+          where: { priceListId_rowKey: { priceListId: priceList.id, rowKey: idx.rowKey } },
+          update: piData,
+          create: piData,
+        });
+        indekslenen++;
+
         if (prev) {
           updated++;
           if (Math.abs(prev.price - unitPrice) > 0.001 && fiyatDegisimleri.length < 50) {
@@ -1301,7 +1371,7 @@ export class AdminService {
         sheetName: sheet.name, listName, guncellendi: !!existingList,
         imported, updated, skipped, kategoriSayisi: kategoriler.size, fiyatDegisimleri,
       });
-      console.log(`[saveMaterialsFromSheets] "${sheet.name}" → "${listName}"${existingList ? ' (GUNCELLEME)' : ''}: ${imported} yeni, ${updated} guncel, ${skipped} atlandi, ${kategoriler.size} kategori`);
+      console.log(`[saveMaterialsFromSheets] "${sheet.name}" → "${listName}"${existingList ? ' (GUNCELLEME)' : ''}: ${imported} yeni, ${updated} guncel, ${skipped} atlandi, ${kategoriler.size} kategori, ${indekslenen} indekslendi`);
     }
 
     const totalImported = results.reduce((s, r) => s + r.imported, 0);

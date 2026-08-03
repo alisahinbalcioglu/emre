@@ -193,9 +193,12 @@ export class AdminController {
       brandId: string;
       priceListId: string;
       items: { materialName: string; unit: string; unitPrice: number }[];
-      exchangeRate?: number;
+      // P2-3: `exchangeRate` alani KALDIRILDI — servis onu fiyata carpip
+      // DB'ye cevrilmis yaziyordu (cift cevrim tuzagi). Hicbir istemci
+      // gondermiyordu; body inline tip oldugu icin fazladan alan gonderen
+      // istemci 400 almaz, alan sessizce yok sayilir → kirici degisiklik degil.
     },
   ) {
-    return this.adminService.saveBulkMaterials(body.brandId, body.priceListId, body.items, body.exchangeRate);
+    return this.adminService.saveBulkMaterials(body.brandId, body.priceListId, body.items);
   }
 }

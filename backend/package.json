@@ -47,7 +47,8 @@
     "test:kd12": "ts-node test/kd12-baslik-satiri-test.ts",
     "postbuild": "node scripts/derleme-kapisi.js",
     "test:kd9": "ts-node test/kd9-kur-olcutu-test.ts",
-    "test:harita": "node ../scripts/harita-denetle.mjs"
+    "test:harita": "node ../scripts/harita-denetle.mjs",
+    "test:p2-2": "ts-node test/p2-2-sheets-indeks-test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

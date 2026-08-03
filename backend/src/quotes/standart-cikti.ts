@@ -280,7 +280,8 @@ export async function standartCiktiUret(g: StandartCiktiGirdi): Promise<Standart
   // EX7: gorunur self-check
   const ozet = [
     `${yazilan} değer aktarıldı ✓`,
-    `genel toplam ${simge(kod)}${genelToplam.toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}`,
+    // P2-1b: 2 hane — ekran (PARA_ONDALIK) ve bu dosyanin numFmt'i ile ayni.
+    `genel toplam ${simge(kod)}${genelToplam.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
     `${sayfaOzetleri.filter((s) => s.ozet).length ? sayfaOzetleri.filter((s) => s.ozet).length + ' özet sayfa toplama dahil değil' : ''}`,
   ].filter(Boolean).join(' · ');
 

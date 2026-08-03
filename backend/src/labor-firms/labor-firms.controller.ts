@@ -127,13 +127,15 @@ export class LaborFirmsController {
     @Body() body: {
       priceListId: string;
       items: { laborName: string; unit: string; unitPrice: number; category?: string; discountRate?: number; currency?: string }[];
-      exchangeRate?: number;
+      // P2-3: `exchangeRate` alani KALDIRILDI (bkz. servis yorumu).
       // Sabit-format HAM grid (InlineFirmEntry) — Cinsi/Çap/Para/Not sutunlari
       // burada saklanir (LaborPrice birlesik ad tutar, bu sutunlar DB'de yok).
       sheet?: { columnDefs: any[]; rowData: any[]; columnRoles: any; headerEndRow?: number };
     },
   ) {
-    return this.service.saveBulkPrices(user.id, firmaId, body.priceListId, body.items, body.exchangeRate, body.sheet);
+    // ⚠ `sheet` 6. slottan 5. slota GECTI. Kayarsa InlineFirmEntry'nin ham
+    // 8-sutun grid'i sessizce kaydedilmez → `npm run test:labor-sheet` kapisi.
+    return this.service.saveBulkPrices(user.id, firmaId, body.priceListId, body.items, body.sheet);
   }
 
   // Multi-sheet Excel parse — mevcut ExcelGrid parser'ini kullanir

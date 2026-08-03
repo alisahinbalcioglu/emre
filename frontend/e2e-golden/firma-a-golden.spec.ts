@@ -24,7 +24,7 @@ import {
 } from './helpers';
 // KD9: beklenen gosterimi URUNUN KENDI fonksiyonu uretir — test kendi
 // yuvarlama modelini kurarsa urunle ayrisir (kok neden tam buydu).
-import { paraBicim } from '../lib/pricing';
+import { paraBicim, PARA_ONDALIK } from '../lib/pricing';
 
 const FIXTURES = path.resolve(__dirname, '../../test-fixtures/e2e');
 // PK10: her kosum kendi damgali dizinine yazar (uzerine yazma yok)
@@ -413,7 +413,10 @@ test('BÖLÜM D — ŞAHİNKUL altın senaryosu (sürükle-doldur · KG10 · KG1
     paraBicim(tl - 0.05, carpan), paraBicim(tl, carpan), paraBicim(tl + 0.05, carpan),
   ]));
   const sapanlar = ciftler.filter((c) => {
-    const gozlenen = (c.usd as number).toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    // Hane sayisi urunun sabitinden (P2-1b: 1→2); sabit yazilirsa test
+    // urunle ayrisir — KD9'un kok nedeni tam olarak buydu.
+    const gozlenen = (c.usd as number).toLocaleString('tr-TR',
+      { minimumFractionDigits: PARA_ONDALIK, maximumFractionDigits: PARA_ONDALIK });
     return !beklenenKume(c.tl).includes(gozlenen);
   });
   senaryo.KG13 = {

@@ -67,21 +67,39 @@ export function hesaplaSatirToplam(satisBirimFiyat: number, miktar: number): num
 // ayrisabilir ve TAM ESITLIK arayan bir assert'i bosuna kirmiziya cevirir.
 // Beklenen degeri ureten testin de AYNI islem sirasini kullanmasi sarttir.
 
-/** Gosterim ondaligi (para hucreleri). SPEC: 1 hane — "3.019,2". */
-export const PARA_ONDALIK = 1;
+/**
+ * Gosterim ondaligi (para hucreleri) — "3.019,25".
+ *
+ * P2-1b (kullanici karari 03.08): 1 → 2. Eski SPEC 1 haneydi ama urunun
+ * GERI KALANI hic uymuyordu: 15 ayri dosya kendi bicimleyicisinde 2 hane
+ * kullaniyor ve MUSTERIYE GIDEN Excel de 2 hane (`standart-cikti.ts:69`
+ * numFmt). Fark sondaki sifir da degildi: `standart-sema.ts:226` dosyadan
+ * gelen fiyatlari YUVARLAMADAN kopyaladigi icin taban deger 2+ haneli
+ * olabiliyor; ekran onu 1 haneye yuvarlayip gosterirken cikti ayni tabani
+ * 2 haneyle yaziyordu → ayni deger iki yerde FARKLI RAKAM.
+ *
+ * ⚠ `ONDALIK` (yukarida, hesap yuvarlamasi) DEGISMEDI — o hala 1 hane,
+ * YUKARI. Bu sabit yalniz GOSTERIMI belirler, uretilen parasal degeri DEGIL.
+ */
+export const PARA_ONDALIK = 2;
 
 /**
  * TRY tabanli degeri gecerli para biriminde gosterim METNINE cevirir
- * (sembolsuz, TR locale, 1 ondalik).
+ * (sembolsuz, TR locale, PARA_ONDALIK hane).
  *
  * YUVARLAMA: `Intl` varsayilani `halfExpand` (yariyi sifirdan uzaga) —
  * YUKARI yuvarlama DEGILDIR. `yukariYuvarla` bu yola GIRMEZ; o yalniz TL
  * taban degerlerini (net/satis/satir toplami/genel toplam) uretir.
+ *
+ * `hane` YALNIZ tarihsel kayitlar icindir (bkz. kd9-kur-olcutu-test.ts:
+ * GERCEK fixture'i 1 ondalik doneminde kaydedilmis gercek ekran metnidir).
+ * Urun kodu bu parametreyi GECMEZ — varsayilan PARA_ONDALIK'tir. Amac,
+ * testin kendi yuvarlama modelini kurmasini onlemek: tek uygulama, tek yer.
  */
-export function paraBicim(vTRY: number, conversionRate: number): string {
+export function paraBicim(vTRY: number, conversionRate: number, hane: number = PARA_ONDALIK): string {
   return (vTRY * conversionRate).toLocaleString('tr-TR', {
-    minimumFractionDigits: PARA_ONDALIK,
-    maximumFractionDigits: PARA_ONDALIK,
+    minimumFractionDigits: hane,
+    maximumFractionDigits: hane,
   });
 }
 

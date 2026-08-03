@@ -12,7 +12,7 @@ import type { ExcelGridData, ExcelRowData, MatchCandidate, BrandAlternative } fr
 import { useFillHandle, FillHandleIndicator } from './useFillHandle';
 import { clampDiscount, parseDiscountInput, parseDiscountPaste } from './discount-utils';
 import { CustomDropdown } from './CustomDropdown';
-import { fillDown } from './fill-down';
+import { fillDown, karYayilimi } from './fill-down';
 import { joinMaterialText } from '@/lib/parse-material-text';
 import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, yukariYuvarla, etkinMiktar, paraBicim } from '@/lib/pricing';
 import { hasSizeExpression, isSelfSufficientRow } from './build-material-context';
@@ -1860,13 +1860,13 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       for (const node of result.targetRowNodes) {
         if (!node.data?._isDataRow) continue;
         node.setDataValue('_malzKar', karVal);
-        // Fiyat recalc
+        // Fiyat recalc — P2-1a: MUHURLU formul (pricing.ts), ham carpim YASAK.
         const netPrice = parseFloat(String(node.data._matNetPrice ?? 0)) || 0;
-        if (netPrice > 0) {
-          const finalPrice = netPrice * (1 + karVal / 100);
-          const qty = etkinMiktar(node.data, quantityField, unitField); // UY2
-          if (materialUnitPriceField) node.setDataValue(materialUnitPriceField, finalPrice.toFixed(2));
-          if (materialTotalField) node.setDataValue(materialTotalField, (finalPrice * qty).toFixed(2));
+        const qty = etkinMiktar(node.data, quantityField, unitField); // UY2
+        const y = karYayilimi(netPrice, karVal, qty);
+        if (y) {
+          if (materialUnitPriceField) node.setDataValue(materialUnitPriceField, y.birim);
+          if (materialTotalField) node.setDataValue(materialTotalField, y.toplam);
         }
       }
     } else if (result.field === '_iscKar') {
@@ -1875,13 +1875,13 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       for (const node of result.targetRowNodes) {
         if (!node.data?._isDataRow) continue;
         node.setDataValue('_iscKar', iscKarVal);
+        // P2-1a: malzeme dali ile AYNI muhurlu formul — iki dal ayrisamaz.
         const netPrice = parseFloat(String(node.data._labNetPrice ?? 0)) || 0;
-        if (netPrice > 0) {
-          const kar = iscKarVal;
-          const finalPrice = netPrice * (1 + kar / 100);
-          const qty = etkinMiktar(node.data, quantityField, unitField); // UY2
-          if (laborUnitPriceField) node.setDataValue(laborUnitPriceField, finalPrice.toFixed(2));
-          if (laborTotalField) node.setDataValue(laborTotalField, (finalPrice * qty).toFixed(2));
+        const qty = etkinMiktar(node.data, quantityField, unitField); // UY2
+        const y = karYayilimi(netPrice, iscKarVal, qty);
+        if (y) {
+          if (laborUnitPriceField) node.setDataValue(laborUnitPriceField, y.birim);
+          if (laborTotalField) node.setDataValue(laborTotalField, y.toplam);
         }
       }
     } else if (result.field === '_draftDiscount') {
@@ -2182,7 +2182,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           if (isNaN(v)) return '';
           // Pinned bottom satirinda 0 bile gosterilsin (GENEL TOPLAM satiri)
           if (v === 0 && !params.node?.rowPinned) return '';
-          // SPEC: 1 ondalik hane goster (3.019,2) — TEK KAYNAK: lib/pricing.ts
+          // Gosterim hanesi: PARA_ONDALIK (P2-1b'de 1→2) — TEK KAYNAK: lib/pricing.ts
           const formatted = paraBicim(v, conversionRate);
           // Z4: satirin kendi para birimi varsa (_currency — kutuphane gridi)
           // onun sembolu basilir; yoksa global sembol (teklif akisi)

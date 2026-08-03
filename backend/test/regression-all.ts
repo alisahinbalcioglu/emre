@@ -57,6 +57,7 @@ const SUITES: Suite[] = [
   { ad: 'Eşleştirme DB regresyonu', script: 'test:regression:db', zincir: 'Z2', db: true },
   { ad: 'Kütüphane liste ekleme (KL)', script: 'test:kl', zincir: 'Z1', db: true },
   { ad: 'İşçilik sheet (DB)', script: 'test:labor-sheet', zincir: 'Z1', db: true },
+  { ad: 'Sheets indeks + mükerrer yasağı (P2-2)', script: 'test:p2-2', zincir: 'Z1', db: true },
 ];
 
 function dbErisilebilir(): boolean {

@@ -17,6 +17,7 @@ import { X, Check, Trash2, Search, Plus, Wrench } from 'lucide-react';
 import api from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 import type { MarkedEquipment } from './types';
+import { ilkMod } from './equipment-popup-mod';
 
 const COMMON_UNITS = ['adet', 'set', 'm', 'm²', 'kg'];
 
@@ -48,7 +49,7 @@ interface EquipmentDetailPopupProps {
 export default function EquipmentDetailPopup({
   pending, existing, onCancel, onSave, onDelete,
 }: EquipmentDetailPopupProps) {
-  const [mode, setMode] = useState<'library' | 'manual'>(existing?.libraryItemId ? 'library' : 'library');
+  const [mode, setMode] = useState<'library' | 'manual'>(ilkMod(existing));
 
   const [library, setLibrary] = useState<EquipmentLibraryItem[]>([]);
   const [loadingLib, setLoadingLib] = useState(true);

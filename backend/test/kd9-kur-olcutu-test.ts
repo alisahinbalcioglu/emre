@@ -46,7 +46,7 @@
  * Çıkış kodu sözleşmesi: 0 = PASS · 2 = ÖN KOŞUL YOK · diğer = FAIL.
  */
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { paraBicim } = require('../../frontend/lib/pricing');
+const { paraBicim, PARA_ONDALIK } = require('../../frontend/lib/pricing');
 
 let pass = 0;
 const fails: string[] = [];
@@ -67,11 +67,17 @@ function eskiOlcut(ciftler: { tl: number; usd: number }[]) {
   return { kurAmpirik, tolerans, sapanlar: ciftler.filter((c) => Math.abs(c.tl - c.usd * kurAmpirik) > tolerans) };
 }
 
-/** YENİ ÖLÇÜT — kur DIŞARIDAN gelir, beklenen ÜRÜNÜN formülüyle üretilir. */
-function yeniOlcut(ciftler: { tl: number; ekran: string }[], usdTry: number) {
+/** YENİ ÖLÇÜT — kur DIŞARIDAN gelir, beklenen ÜRÜNÜN formülüyle üretilir.
+ *
+ *  `hane`: gözlemin KAYDEDİLDİĞİ ondalık. Varsayılan, ürünün güncel
+ *  `PARA_ONDALIK` değeridir — canlı ölçüm hep onu kullanır. Tarihsel
+ *  fixture'lar (GERÇEK) kendi dönemlerinin hanesini geçer. Beklenen değer
+ *  HER İKİ durumda da ÜRÜNÜN `paraBicim` fonksiyonundan gelir; test kendi
+ *  yuvarlama modelini KURMAZ (KD9'un kök nedeni tam olarak buydu). */
+function yeniOlcut(ciftler: { tl: number; ekran: string }[], usdTry: number, hane?: number) {
   const carpan = 1 / usdTry;                       // use-currency.ts:74 ile AYNI sıra
   return ciftler
-    .map((c) => ({ ...c, beklenen: paraBicim(c.tl, carpan) }))
+    .map((c) => ({ ...c, beklenen: paraBicim(c.tl, carpan, hane) }))
     .filter((c) => c.ekran !== c.beklenen);
 }
 
@@ -79,6 +85,17 @@ console.log('── KD9: KUR ÖLÇÜTÜNÜN KENDİSİ ──\n');
 
 // ══ GERÇEK KAYITLI VERİ (artefakt 2026-07-31T20-33-09-f048ead) ═══════════
 // E2E koşumundan BİREBİR alınmış üç çift. Uydurulmuş değil.
+//
+// ⚠ BU KAYIT 1 ONDALIK DÖNEMİNE AİTTİR. P2-1b (03.08) `PARA_ONDALIK`ı 2'ye
+// çekti; ürün bugün "63,25" gösterir, aşağıdaki "63,3" değil. Kayıt
+// GÜNCELLENMEDİ ve güncellenmemeli: doğrulanacak üründen gözlem türetmek
+// dairesel ölçüt olurdu (bu dosyanın kendi dersi). Bunun yerine kaydın
+// dönemi açıkça sabitlendi — aşağıdaki bloklar `ONDALIK_KAYIT` geçer.
+// Beklenen değer yine ürünün `paraBicim`inden gelir, yalnız hane kaydın.
+//
+// YAPILACAK: bir sonraki golden E2E koşumunda 2 ondalıklı TAZE kayıt alınıp
+// bu fixture'ın yanına ikinci bir dönem olarak eklenmeli.
+const ONDALIK_KAYIT = 1;
 const GERCEK = [
   { tl: 3000, ekran: '63,3' },
   { tl: 50000, ekran: '1.054,2' },
@@ -163,10 +180,10 @@ const GERCEK = [
     const u = trSayi(ekran); return { alt: tl / (u + 0.05), ust: tl / (u - 0.05) };
   });
   const kur = (Math.max(...araliklar.map((a) => a.alt)) + Math.min(...araliklar.map((a) => a.ust))) / 2;
-  const sapan = yeniOlcut(GERCEK, kur);
+  const sapan = yeniOlcut(GERCEK, kur, ONDALIK_KAYIT);   // kayıt 1 ondalık dönemi
   sina('C1', 'YENİ ölçüt gerçek E2E gözlemlerini KABUL ediyor',
     sapan.length === 0,
-    `kur=${kur.toFixed(4)} · ${GERCEK.length} çiftin hepsi birebir · sapan=${sapan.length}`);
+    `kur=${kur.toFixed(4)} · ${GERCEK.length} çiftin hepsi birebir · sapan=${sapan.length} · kayıt ${ONDALIK_KAYIT} ondalık`);
 }
 
 // ── D: YENİ ÖLÇÜTÜN DİŞLERİ VAR — karışık kuru YAKALIYOR ────────────────
@@ -186,9 +203,14 @@ const GERCEK = [
     yeniOlcut(cevrilmemis, kur).length === 1, `sapan=${JSON.stringify(yeniOlcut(cevrilmemis, kur).map((x) => x.tl))}`);
 
   // AİLE 3 — yuvarlama YUKARI yapılmış (ceil) — ürün halfExpand kullanır
+  // ⚠ Hane sayisi URUNUN sabitinden gelir (P2-1b'de 1→2 oldu). Sabit "1"
+  // yazilirsa bu aile, YUVARLAMA YONUNU degil HANE SAYISI farkini olcmeye
+  // baslar ve dogru sebeple yesil olmaktan cikar.
+  const kAdim = 10 ** PARA_ONDALIK;
   const ceilli = temiz.map((c) => {
     const ham = c.tl * carpan;
-    return { ...c, ekran: (Math.ceil(ham * 10) / 10).toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) };
+    return { ...c, ekran: (Math.ceil(ham * kAdim) / kAdim).toLocaleString('tr-TR',
+      { minimumFractionDigits: PARA_ONDALIK, maximumFractionDigits: PARA_ONDALIK }) };
   });
   const ceilSapan = yeniOlcut(ceilli, kur);
   sina('D3', 'YUKARI yuvarlamaya kayış yakalanıyor (halfExpand sözleşmesi)',
@@ -204,9 +226,17 @@ const GERCEK = [
   const eskiKirilan: string[] = [];
   for (const kur of kurlar) {
     const carpan = 1 / kur;
+    // E1 — YENİ ölçüt BUGÜNKÜ gösterim hanesiyle sınanır (canlı davranış).
     const ekranlar = tlDegerleri.map((tl) => ({ tl, ekran: paraBicim(tl, carpan) }));
     if (yeniOlcut(ekranlar, kur).length) kirilan.push(String(kur));
-    const r = eskiOlcut(ekranlar.map((c) => ({ tl: c.tl, usd: trSayi(c.ekran) })));
+    // E2 — ESKİ ölçütün kırılganlığı 1 ONDALIK kuantizasyonundan doğuyordu
+    // (±0,05 USD × kur ≈ 2,4TL > tolerans). 2 haneye geçilince kuantizasyon
+    // ±0,005'e düşer ve eski ölçüt artık kırılmaz — bu bir test arızası
+    // DEĞİL, gerçek bir bulgu. Tarihsel gerekçeyi korumak için bu assert
+    // kaydın kendi dönemiyle ölçülür; yoksa "eski ölçüt neden değişti"
+    // kanıtı sessizce yok olurdu.
+    const ekranlarKayit = tlDegerleri.map((tl) => ({ tl, ekran: paraBicim(tl, carpan, ONDALIK_KAYIT) }));
+    const r = eskiOlcut(ekranlarKayit.map((c) => ({ tl: c.tl, usd: trSayi(c.ekran) })));
     if (r.sapanlar.length) eskiKirilan.push(`${kur}(${r.sapanlar.length})`);
   }
   sina('E1', 'YENİ ölçüt kur değerine duyarsız (6 farklı kur × 7 değer)',

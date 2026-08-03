@@ -45,7 +45,7 @@ import MetrajEditor from '@/components/dwg-metraj/MetrajEditor';
 import { parseMaterialText } from '@/lib/parse-material-text';
 import { mergeMultiSheet } from '@/lib/merge-multisheet';
 import { kaynakKolonEtiketi } from '@/lib/kaynak-kolon';
-import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, toplamlariTamamla } from '@/lib/pricing';
+import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, toplamlariTamamla, etkinMiktar } from '@/lib/pricing';
 import type { Brand } from '@/types';
 import type {
   UploadMode,
@@ -530,7 +530,9 @@ export default function NewQuotePage() {
                       if (match?.netPrice > 0) {
                         const satisRestore = hesaplaSatisBirimFiyat(match.netPrice, parseFloat(String(row._malzKar ?? 0)) || 0);
                         row[roles.materialUnitPriceField] = satisRestore.toFixed(1);
-                        const qty = roles.quantityField ? parseFloat(String(row[roles.quantityField] ?? '')) || 0 : 0;
+                        // UY2 — ExcelGrid.tsx:277 ile AYNI kural. Duz parse,
+                        // MIKTAR/BIRIM basliklari ters yazilmis satirlarda 0 verir.
+                        const qty = etkinMiktar(row, roles.quantityField, roles.unitField);
                         if (roles.materialTotalField) row[roles.materialTotalField] = hesaplaSatirToplam(satisRestore, qty).toFixed(1);
                         row._matNetPrice = match.netPrice;
                         reMatched++;
@@ -1221,6 +1223,16 @@ export default function NewQuotePage() {
         }));
 
       // Multi-sheet: sheets payload'u ve items summary'sini turet
+      // ⚠ P2-4 SONRASI `items` HER ZAMAN BOS. Onu besleyen `columnRoles`
+      // yalniz `/excel-engine/analyze` ciktisindan geliyordu; o cagri
+      // kaldirildi (dashboard/page.tsx), dolayisiyla `nameCol` hep undefined
+      // ve bu filtre hicbir satir gecirmiyor. Yani asagidaki "grid bos
+      // kalirsa yedek" davranisi ARTIK YOK — kayit tamamen `multiItems`e
+      // dayanir. Yedek bilerek kaldirildi: analyze yalniz ILK sayfayi okuyor
+      // ve gizli-sayfa kuralini (R-C, excel-grid.service.ts:148-152)
+      // uygulamiyordu; yani yedek devreye girdiginde gizli sayfa satirlarini
+      // teklife sizdirabiliyordu. Satirlar, legacy `rows` yolu tamamen
+      // silinecegi gun kaldirilmali (bkz. P3 olu kod kalemi).
       let payloadItems = items;
       let sheetsPayload: any[] | undefined;
       if (multiSheet) {
@@ -1261,7 +1273,9 @@ export default function NewQuotePage() {
             multiItems.push({
               materialName: matName,
               unit: roles.unitField ? String(r[roles.unitField] ?? '').trim() || 'Adet' : 'Adet',
-              quantity: roles.quantityField ? parseFloat(String(r[roles.quantityField] ?? '')) || 0 : 0,
+              // UY2: DB'ye yazilan miktar da ekranin gordugu miktardir.
+              // Duz parse, ters baslikli tekliflerde DB'ye 0 yaziyordu.
+              quantity: etkinMiktar(r, roles.quantityField, roles.unitField),
               unitPrice: roles.materialUnitPriceField ? parseFloat(String(r[roles.materialUnitPriceField] ?? '')) || 0 : 0,
               materialUnitPrice: roles.materialUnitPriceField ? parseFloat(String(r[roles.materialUnitPriceField] ?? '')) || 0 : 0,
               laborUnitPrice: roles.laborUnitPriceField ? parseFloat(String(r[roles.laborUnitPriceField] ?? '')) || 0 : 0,

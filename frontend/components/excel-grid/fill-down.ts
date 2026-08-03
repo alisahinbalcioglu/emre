@@ -92,6 +92,36 @@ function genelToplamiTazele(
   yaz(node, genelAlan, (Math.ceil((mat + lab) * 10) / 10).toFixed(1));
 }
 
+/**
+ * KAR% SURUKLE-DOLDUR — satis birim + satir toplami (P2-1a).
+ *
+ * NEDEN BURADA: bu hesap `ExcelGrid.tsx:1857-1891` icinde satir ici
+ * yasiyordu ve oradaki hali MUHURLU FORMULLERI HIC CAGIRMIYORDU —
+ * `netPrice * (1 + kar/100)` ham carpimi + `(finalPrice * qty)` ham carpimi,
+ * ustelik `.toFixed(2)`. Ayni hucrelere diger butun yollar
+ * `hesaplaSatirToplam(...).toFixed(1)` yaziyordu.
+ *
+ * Olculen sapma: net 3.019,2 · kar %10 · miktar 3
+ *   muhurlu yol      → birim 3.321,2 · toplam 9.963,6
+ *   surukle-doldur   → birim 3.321,12 · toplam 9.963,36
+ * Yani AYNI SUTUNDA iki farkli para. Bu, 03.08'de kapanan "cift kar"
+ * hatasiyla ayni sinif: ikinci bir kod yolunun kendi aritmetigini yapmasi.
+ *
+ * Z3 sozlesmesi: carpma ICAT EDILMEZ; tek formul `pricing.ts:47/53`.
+ */
+export function karYayilimi(
+  netPrice: number,
+  karYuzde: number,
+  miktar: number,
+): { birim: string; toplam: string } | null {
+  if (!(netPrice > 0)) return null;   // net yoksa hucreye dokunulmaz (mevcut davranis)
+  const satis = hesaplaSatisBirimFiyat(netPrice, karYuzde);
+  return {
+    birim: satis.toFixed(1),
+    toplam: hesaplaSatirToplam(satis, miktar).toFixed(1),
+  };
+}
+
 export interface FillRoller {
   nameField?: string;
   noField?: string;

@@ -67,7 +67,7 @@ async function main() {
     await labor.saveBulkPrices(uid, firmaId, 'new', [
       { laborName: 'ppr-c boru DN 20', unit: 'metre', unitPrice: 500 },
       { laborName: 'ppr-c boru DN 25', unit: 'metre', unitPrice: 600 },
-    ], undefined, firmSheet([
+    ], firmSheet([
       { ad: 'ppr-c boru', cap: 'DN 20', birim: 'metre', fiyat: '500' },
       { ad: 'ppr-c boru', cap: 'DN 25', birim: 'metre', fiyat: '600' },
     ]) as any);
@@ -86,7 +86,7 @@ async function main() {
     ]);
     preRows.forEach((r: any, i: number) => { kl1Sheet.rowData[i + 1]._laborPriceId = r._laborPriceId; });
     kl1Sheet.rowData[3]._laborName = 'PPR-C BORU DN 32'; // yeni satır eşleşme anahtarı
-    await labor.saveBulkPrices(uid, firmaId, lid, [{ laborName: 'PPR-C BORU DN 32', unit: 'metre', unitPrice: 700 }], undefined, kl1Sheet as any);
+    await labor.saveBulkPrices(uid, firmaId, lid, [{ laborName: 'PPR-C BORU DN 32', unit: 'metre', unitPrice: 700 }], kl1Sheet as any);
     const r1: any = await labor.getPriceListSheets(uid, lid);
     const d1 = r1.sheet.rowData.filter((r: any) => r._isDataRow);
     check('KL1 işçilik: 3 satır tam kalır', d1.length === 3, `${d1.length}`);

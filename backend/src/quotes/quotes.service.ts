@@ -279,7 +279,8 @@ export class QuotesService {
   ): string {
     const simge = birim?.kod === 'USD' ? '$' : birim?.kod === 'EUR' ? '€' : '₺';
     const parca = [`${Math.max(t.yazilan, t.beklenen)} değer aktarıldı ✓`,
-      `toplam ${simge}${t.toplam.toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}`];
+      // P2-1b: 2 hane — ekran (PARA_ONDALIK) ve Excel numFmt ile ayni.
+      `toplam ${simge}${t.toplam.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`];
     if (t.fiyatsiz > 0) parca.push(`${t.fiyatsiz} satır fiyatsız (eşleşmemiş)`);
     return parca.join(' · ');
   }

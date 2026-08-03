@@ -64,21 +64,23 @@ export default function DashboardPage() {
   const handleExcelFile = useCallback(async (file: File) => {
     setExcelUploading(true);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
+      // P2-4: TEK PARSE. Eskiden ayni dosya `/excel-engine/analyze` ve
+      // `/excel-grid/prepare` uclarina BIRDEN gonderiliyordu (sunucuda iki kez
+      // XLSX.read + bir Gemini gidis-donusu). Iki gerekce ile tek uca indi:
+      //  1. analyze ciktisinin (headers/rows/columnRoles) tek tuketicisi
+      //     `quotes/new` icindeki `uploadMode === 'pdf'` daliydi; o dalin tek
+      //     setter'i (`handleModeSwitch`) HICBIR YERDEN cagrilmiyor → olu.
+      //  2. `Promise.all` oldugu icin Gemini/ag hatasi, grid dosyayi basariyla
+      //     ayristirmis olsa bile TUM yuklemeyi catch'e dusuruyordu; kullanici
+      //     "analiz hatasi" gorup teklife hic giremiyordu. Tek-nokta-arizasi.
+      // Ayni akisin sayfa-ici muadili (`quotes/new` Excel yukleme) zaten TEK
+      // uca gidiyor — bu ucun gereksizliginin calisan kaniti.
       const gridFormData = new FormData();
       gridFormData.append('file', file);
 
-      const [analyzeRes, gridRes] = await Promise.all([
-        api.post<UploadResponse>('/excel-engine/analyze', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        }),
-        api.post<any>('/excel-grid/prepare', gridFormData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        }),
-      ]);
-
-      const data = analyzeRes.data;
+      const gridRes = await api.post<any>('/excel-grid/prepare', gridFormData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
 
       // Original file binary → base64
       let fileBase64: string | undefined;
@@ -93,18 +95,19 @@ export default function DashboardPage() {
         });
       } catch {}
 
+      // `headers`/`rows`/`columnRoles`/`usedProvider` ARTIK YAZILMIYOR (P2-4):
+      // hepsi analyze ciktisiydi ve tuketicileri ulasilamaz `pdf` dalindaydi.
+      // Okuyan taraf (`quotes/new:317-330`) `?? []` / `?? {}` korumali.
+      // `brands` de yaziliydi ama tuketilmiyordu — `quotes/new:328` "kutuphanem
+      // izolasyonu" geregi dropdown'i mount'taki /library/brands besliyor.
       sessionStorage.setItem('metaprice_upload_result', JSON.stringify({
-        headers: data.headers,
-        rows: data.rows,
-        brands: data.brands,
-        columnRoles: data.columnRoles,
-        usedProvider: data.usedProvider,
         fileName: file.name,
         multiSheetData: gridRes.data,
         originalFileBase64: fileBase64,
       }));
 
-      toast({ title: 'Analiz tamamlandi', description: `${data.rows?.length ?? 0} satir bulundu.` });
+      const sayfaSayisi = (gridRes.data?.sheets ?? []).filter((s: any) => !s.isEmpty).length;
+      toast({ title: 'Analiz tamamlandi', description: `${sayfaSayisi} sayfa yuklendi.` });
       router.push('/quotes/new?from=dashboard');
     } catch (e: any) {
       toast({

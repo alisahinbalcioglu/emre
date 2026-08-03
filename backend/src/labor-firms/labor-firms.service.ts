@@ -703,7 +703,9 @@ export class LaborFirmsService {
     // PRD Iscilik 7-kolon: discountRate + currency (para birimi CEVRILMEZ,
     // ham saklanir — teklif aninda toTry) ManualFirmModal'dan gelir.
     items: { laborName: string; unit: string; unitPrice: number; category?: string; discountRate?: number; currency?: string }[],
-    exchangeRate?: number,
+    // P2-3: `exchangeRate` KALDIRILDI — hemen ustteki yorumun ("para birimi
+    // CEVRILMEZ, ham saklanir") tam tersini yapiyordu. admin.service'teki
+    // ikizin aynisi; hicbir cagiran deger gecmiyordu, canli davranis degismez.
     // SABIT-FORMAT GRID (kullanici karari 22.07): InlineFirmEntry girilen HAM
     // 8-sutun grid'i (Cinsi/Detay·Çap·Para·Not dahil) gonderir. LaborPrice
     // tablosu adi BIRLESIK saklar (cins/cap ayri kolon degil) → bu sutunlar
@@ -764,11 +766,7 @@ export class LaborFirmsService {
     for (const item of validItems) {
       const name = item.laborName!.trim();
       const unit = item.unit?.trim() || 'Adet';
-      let price = Number(item.unitPrice);
-
-      if (exchangeRate && exchangeRate > 0) {
-        price = Math.round(price * exchangeRate * 100) / 100;
-      }
+      const price = Number(item.unitPrice);
 
       // LaborItem global katalog (discipline bazli)
       let laborItem = await this.prisma.laborItem.findFirst({
