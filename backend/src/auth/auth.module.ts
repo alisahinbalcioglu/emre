@@ -4,12 +4,15 @@ import { PassportModule } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { jwtSecret } from './jwt-secret';
 
 @Module({
   imports: [
     PassportModule,
+    // KL P1-a: anahtar TEK kaynaktan (jwt-secret.ts); yedek deger YOK —
+    // tanimsizsa uygulama burada, acilista, gurultuyle olur.
     JwtModule.register({
-      secret: process.env.JWT_SECRET || 'metaprice-secret',
+      secret: jwtSecret(),
       signOptions: { expiresIn: '7d' },
     }),
   ],

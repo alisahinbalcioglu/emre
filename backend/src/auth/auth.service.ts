@@ -6,6 +6,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
+import { jwtSecret } from './jwt-secret';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { getUserCapabilities } from './capabilities.helper';
@@ -63,7 +64,9 @@ export class AuthService {
     return this.jwtService.sign(
       { sub: id, email, role },
       {
-        secret: process.env.JWT_SECRET || 'metaprice-secret',
+        // KL P1-a: yedek deger yok — anahtar tek kaynaktan (jwt-secret.ts).
+        // Sure kurali DEGISMEDI (JWT_EXPIRES_IN ?? 7d).
+        secret: jwtSecret(),
         expiresIn: process.env.JWT_EXPIRES_IN || '7d',
       },
     );

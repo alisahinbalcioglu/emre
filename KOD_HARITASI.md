@@ -241,6 +241,7 @@ Bu projede eksikliğinin bedeli dört kez ödendi:
 |---|---|---|---|
 | ✅ | `scripts/deploy.sh` | Dağıtım betiği. Tekrar-deneme yolu ateşlendi (502 → deneme 1/10 → DOĞRULANDI). RET yolu (çıkış kodu 1) HİÇ ateşlenmedi — KD8 açık. Ateşlendiği görülmemiş kapı, kapı değildir. | Panel kalem 53 + KD8 |
 | ✅ | `backup.sh` | Yedekleme — sunucudaki kopyası eski bir commit’teydi | Panel |
+| ✅ | `scripts/jwt-secret-kur.sh` | Sunucu `.env`'ine rastgele JWT imza anahtarı ekler (48 karakter, openssl/urandom); **zaten varsa dokunmaz** (idempotent — mevcut anahtarı değiştirmek tüm oturumları boşuna kapatırdı); `.env`'i zaman damgalı yedekler, anahtarı ekrana yazmaz. deploy.sh deseni: özel karakterler dosyada, konsola düz satır. | KL · ADIM 1 ön koşulu, 03.08 — üç yolu da yerelde ateşlendi (2 · 0 · idempotent 0) |
 | ✅ | `scripts/kb5-olcu.sh` | KALEM 58 salt-okuma ölçüm betiği (deploy.sh deseni: özel karakterler dosyada durur, konsola düz satır yazılır). Dört sayıyı tek sorguda döner; BEGIN READ ONLY + ROLLBACK; bağlantı yolu = backup servisinin her gün çalışan yolu (backup.sh:7 ikizi). Çıkış: 0 = ölçüm · 2 = ön koşul yok · diğer = hata. | KALEM 58 · KB2-KB4 02.08 — yerelde 0 ve 2 yolları ateşlendi |
 | ✅ | `docker-compose.yml` | Tek sunucu yığını: caddy + frontend + backend + dwg-engine + db (postgres:16, :16-29) + backup (:113-126, günlük pg_dump). DB kimlikleri .env'den (:20-22, :119-122); backend DATABASE_URL :64. | KALEM 58 · KB1 02.08 |
 | ✅ | `setup_env.sh` | Ortam kurulumu — izlenmeyen dosya olarak duruyor (?? setup_env.sh) | CANLI_DOGRULAMA_LISTESI |
@@ -580,6 +581,7 @@ Karıştırılmasın diye ayrı duruyor.
 | `backend/src/auth/decorators/roles.decorator.ts` | Rol listesini metadata olarak isaretleyen dekorator tanimi |
 | `backend/src/auth/dto/login.dto.ts` | Giris istegi icin email ve sifre alan dogrulamasi |
 | `backend/src/auth/dto/register.dto.ts` | Kayit istegi icin email ve minimum 6 karakter sifre dogrulamasi |
+| `backend/src/auth/jwt-secret.ts` | Token imza anahtarını ortamdan okur; **yedek değer yoktur** — tanımsızsa uygulama açılışta (modül yüklenirken) açıklayıcı hatayla ölür (KL P1-a, kalem 63) |
 | `backend/src/auth/guards/jwt-auth.guard.ts` | JWT stratejisini endpoint koruması olarak devreye sokan guard |
 | `backend/src/auth/guards/roles.guard.ts` | Metadata'daki rol listesi ile istekteki kullanici rolunu karsilastiran kapi |
 | `backend/src/auth/guards/tier.guard.ts` | Kullanicinin paket seviyesini DB'den okuyup endpoint'in gerektirdigi minimum seviyeyle karsilastirir |
