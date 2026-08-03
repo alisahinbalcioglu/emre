@@ -677,3 +677,25 @@ BELİRSİZ = **0**. Görev bunun şüpheyle karşılanmasını ister; açıklama
 | Cırcır son değeri | **0** (283 → 269 → 0) |
 
 **BİTTİ** — durulan nokta yok. Hiçbir etiket adından tahminle yazılmadı (her kayıtta okunan aralık + semboller var); hedefe yetişmek için etiket uydurulmadı — bunun sınaması HS5'in sıfır-belirsiz açıklaması + HS6 çürütme denetimidir.
+
+## HS11 · Kapılar — `git add`'den SONRA koşuldu (sıra kanıtlı)
+
+Koşum sırası: (1) tüm değişiklikler `git add -A` ile stage'lendi → (2) `npm run test:harita` → (3) `npm run test:regression`. CI #42 dersine uygun: `git ls-files` tabanlı kapı, izlenmeyen dosya kalmadan koşuldu (kapının kendi İZLENMEYEN uyarısı da tetiklenmedi).
+
+```
+── HARITA DENETIMI ──
+  kod dosyasi        : 300
+  haritada karsiligi : 300
+  bekleyenlerde      : 0 (HEAD: 269)
+HARITA DENETIMI: PASS — her kod dosyasinin karsiligi var.   → çıkış 0
+```
+
+`test:regression`: **27 PASS · 0 FAIL · 3 SKIP** (3 SKIP = DB paketleri, tasarım gereği PG_REGRESSION=1 ister; SKIP PASS değildir) → çıkış 0.
+
+## HS12 · Kapanış (HR8)
+
+```
+Haritada değişen satır: TAM SINIFLANDIRMA (yeni bölüm) · 269 dosya sığ katmanda A-M'ye dağıtıldı · J/K/L/M grupları HS3'te ilan edilip tanımlandı
+Haritada değişen satır: J · frontend/components/dwg-diameter-engine/useLayerCalc.ts · HS6 denetim düzeltmesi — işlev cümlesi içerikle netleştirildi
+Bekleyenler listesi: 269 -> 0 (cırcır: yalnız kısaldı; HEDEF TUTTU — kod dosyası 300/300 haritada)
+```

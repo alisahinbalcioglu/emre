@@ -1,6 +1,8 @@
 # KOD HARİTASI — MetaPriceX
 
-**v0.1 — TASLAK / ÇOĞUNLUKLA BOŞ** · 01.08.2026 · *insan katmanı (üst katman)*
+**v1.0 — SINIFLANDIRMA TAM (300/300), DERİN KATMAN KISMİ** · 03.08.2026 · *insan katmanı (üst katman)*
+
+> **Sürüm/ortam bilgisi bu belgede TUTULMAZ** (KL1b kararı). Depo ve canlı sürüm hash'leri iki yerde durursa ikisi de eskir; bu haritada bir kez fiilen eskidiler (01.08'in `9635d43`/`6846423` alıntıları iki tur boyunca yanlış durdu). Tek kaynak: **AÇIK KONULAR PANOSU** (güncel hash'ler orada) + `/api/health` (canlının kendi cevabı). Harita neyin NEREDE olduğunu söyler, neyin NE ZAMAN deploy edildiğini değil.
 
 > Bu belge **elle yazılır**. Altındaki otomatik katman (`KOD_HARITASI_OTOMATIK.md`) koddan üretilir ve yalan söyleyemez. Bu belge ise eskiyebilir — o yüzden bir teste bağlıdır (`npm run test:harita`). Harita eskirse test kırmızı olur.
 
@@ -50,11 +52,14 @@ Bu projede eksikliğinin bedeli dört kez ödendi:
 
 **Hata bu grupta şu cümlelerle gelir:** “dosya yüklenmiyor”, “sayfalar eksik geldi”, “satırlar kaymış”, “başlık satırı malzeme gibi gelmiş”
 
-**Durum:** ŞU AN KIRMIZI. Canlıda iki hatadan biri burada: başlık satırları malzeme diye içeri giriyor (“YILDIZ ENTEGRE … TEKLİFİ” 5 kez + düz “MALZEME ADI / MİKTAR” satırı). Ayrıca malzeme adı sütunu her sayfada dosya/sayfa adı olarak geldi.
+**Durum:** Tamir edildi (ADIM 1a, 02.08 — merge bandı unvanı başlık sanılıyordu; kullanıcı canlıda doğruladı). Eski hâli: "başlık satırları malzeme diye içeri giriyor, malzeme adı sütunu sayfa adı olarak geliyor." **Durum satırları bu haritada bir kez eskidi (KL1b dersi); anlık renk panoda tutulur, burada yalnız hangi dosyanın ne yaptığı yazar.**
 
 | | Dosya / uç | Ne çalıştırıyor | Kanıt nereden |
 |---|---|---|---|
-| ⬜ | *(bilinmiyor)* | Dosya yükleme ucu — yüklenen dosyayı alan uç nokta | Hiçbir raporda geçmedi |
+| ✅ | `backend/src/modules/excel-grid/excel-grid.controller.ts:12-21` | **Ana Excel yükleme ucu** `POST /excel-grid/prepare` (sabit şema; 15MB, memoryStorage). Çağıranlar: `quotes/new/page.tsx:758` (ana akış) · `:1504` (ikinci çağrı) · `dashboard/page.tsx:76`. | FAZ 2 · HR6 03.08 |
+| ✅ | `backend/src/modules/excel-engine/excel-engine.controller.ts:14-19` | **PARALEL ikinci Excel ucu** `POST /excel-engine/analyze` — tek çağıranı `dashboard/page.tsx:73`; dashboard AYNI dosyayı `Promise.all` ile İKİ uca birden gönderir (`:72-79`) → her dashboard yüklemesi çift parse. | FAZ 2 · HR6 — "görüldü, dokunulmadı" |
+| ✅ | `backend/src/ai/ai.controller.ts:14-24` | PDF yükleme ucu `POST /ai/analyze` (Pro paket şartı, 10MB) → LLM içerik çıkarımı. | FAZ 2 · HR6; HS4 okuma |
+| ✅ | *(admin içe aktarım uçları)* | Excel'i alan admin uçları: `/admin/brands/:id/import-excel/preview+commit` · `/admin/price-lists/:id/import-excel/*` · `/admin/materials/save-bulk` · `/admin/brands/:id/save-from-sheets` (`admin.controller.ts:92-200`). DWG yüklemesi J grubunun malıdır (`dwg-engine.controller` + python `/upload`), A envanterine girmez. | FAZ 2 · HR6; G/J satırları |
 | ✅ | `backend/src/modules/excel-grid/excel-grid.service.ts:250` | Excel okuyucu / sayfa ayrıştırıcı (`parseSingleSheet`) — satırların ekrana dönüştüğü yer. Merge yayılımı :271-297 (**tek fiziksel hücre N kolona kopyalanır** — ADIM 1a hatasının hammaddesi buydu). | ADIM 1a ölçümü 02.08 |
 | ✅ | `backend/src/modules/excel-grid/excel-grid.service.ts:895-1005` | **Başlık SATIRI kararı** (`realHeaderRow`): sözlük kelimesi skorlaması :895-983 (ayrık-metin sayımı + band eleme + altında-sayısal-veri şartı) + kelimesiz başlık geri-düşüşü :984+ (ilk sayısal satırın hemen üstü; üç sigortalı). | ADIM 1a — AKHİSAR İCMAL canlı bulgusu; 83 sayfa önce/sonra kıyası: 3 değişim (3'ü kazanım), 80 birebir |
 | ✅ | `backend/src/modules/excel-grid/excel-grid.service.ts:630-647` | **Sütun eşleme** (rol desenleri: no/name/quantity/unit/fiyatlar) + içerik-tabanlı doğrulama R-B/KG6 :697+ (başlık yanıltıcıysa VERİ otorite). | KD12(b) · TF suite · ADIM 1a |
@@ -104,13 +109,13 @@ Bu projede eksikliğinin bedeli dört kez ödendi:
 | ✅ | `backend/src/modules/matching/index/product-index.ts:368-374` | Ürün indeksi üretici — `buildRowKey` = sha1_16(sheetKey · adBucket · cinsNorm · baglantiNorm · capNorm · boyTag · kod); FİYATTAN ve sourceRow'dan bağımsız. `buildProductIndex` :380-454, `rebuildIndexFields` :472-481 (rowKey bilerek dışarıda). Kimlik `@@unique([priceListId, rowKey])` → aynı dosya yeniden yüklenince UPDATE, id korunur, kullanıcının iskontosu yaşar. | KALEM 58 keşfi 02.08 — okuma + nokta-teyit |
 | ◑ | `backend/prisma/schema.prisma:308-355` | Veri modeli — `UserLibrary` (ekonomi kullanıcıda) ↔ `ProductIndex` :189-256 (yapı indekste): `productIndexId String?` :349, onDelete Cascade :348. `@@map` tüm şemada 0 → SQL'de tablo/kolon adları tırnaklı ve büyük-küçük duyarlı. Şemanın kalanı bu turda okunmadı. | KALEM 58 · KB1 02.08 |
 | ◑ | `backend/src/modules/matching/index/types.ts:11-36` | `IndexedRow` tipi — id = UserLibrary satır id'si; ekonomi (listPrice/customPrice/discountRate/currency) kullanıcıdan, ürün yapısı indeksten. Dosyanın kalanı okunmadı. | KALEM 58 keşfi 02.08 |
-| ⬜ | *(bilinmiyor)* | YOL A — otomatik marka/varyant ataması | Canlı kanıt: bugün ÇALIŞMIYOR |
-| ⬜ | *(bilinmiyor)* | YOL B — elle marka seçimi | Canlı kanıt: bugün ÇALIŞIYOR (regresyon kapısı) |
-| ⬜ | *(bilinmiyor)* | YOL C — üçüncü tetikleme yolu | Canlı kanıt: yarısı çalışıyor, yarısı çalışmıyor |
+| ✅ | `frontend/app/(protected)/quotes/new/page.tsx:1067` | **YOL A — otomatik toplu eşleştirme:** sayfadaki tüm adlar tek `POST /matching/bulk-match` çağrısıyla (SemanticCache MISS akışı). | FAZ 2 · HR7 03.08 |
+| ✅ | `frontend/app/(protected)/quotes/new/page.tsx:1817` | **YOL B — elle marka seçimi (tek satır):** `onBrandChange` → tek adlı `bulk-match` (variantTags + birim ipucuyla); ExcelGrid marka dropdown'ı buradan geçer, fiyat yazımı `ExcelGrid.tsx:278`. | FAZ 2 · HR7 |
+| ✅ | `frontend/components/excel-grid/ExcelGrid.tsx:1791-1795` → `fill-down.ts:197` | **YOL C — toplu doldurma (sürükle/grup):** `fillDown(motor=onBrandChange)` — motoru YOL B'nin fonksiyonudur; satır satır aynı uca gider. Dördüncü tetik: teklif geri yüklemede yeniden eşleşme (`quotes/new:525`). | FAZ 2 · HR7 |
 
 **Bu grubun cevapsız soruları:**
 
-- Üç yol tek bir ortak fonksiyona mı giriyor, yoksa üç ayrı kopya mı var?
+- Üç yol tek bir ortak fonksiyona mı giriyor, yoksa üç ayrı kopya mı var? — **CEVAPLANDI (FAZ 2 · HR7, 03.08): TEK ORTAK ÇEKİRDEK, kopya yok.** Üç yol da `POST /matching/bulk-match` → `bulkMatch` (`matching.service.ts:74`) → `matchV2` (:300) → **`runQuery` (`query-engine.ts:59`)**. `runQuery`'nin backend'deki TÜM çağrıları: `matching.service.ts:390` (ana) · `:453` (marka alternatifleri) · `:639` (işçilik alternatifleri) — grep+okumayla sayıldı. İşçilik de aynı çekirdek: `labor-matching.service.ts:30-55` yalnız sahiplik kontrolü yapıp `bulkMatchLabor` (:508) üzerinden AYNI `matchV2`'ye iner. Hafıza (`EslesmeHafizasi`) kısa devre DEĞİL: `hafizaOnSecim` (:741-828) yalnız multi sonuçta, motorun kendi aday listesi İÇİNDE ön-seçim yapar; yazımı `remember` (:859-889, çağıran `ExcelGrid.tsx:492`). Frontend'te de B ve C aynı fonksiyonu (`onBrandChange`) paylaşır.
 - Eşleştirme kuralları kaç dosyada yazılı? (3 PRD var, kod tarafı bilinmiyor.)
 - Legacy `productIndexId=NULL` satırı sonradan indekse bağlayan bir yol var mı? — **CEVAPLANDI (KALEM 58, 02.08): YOK.** Kütüphaneye yazan tek dosya `library.service.ts`; dört oluşturma yolundan ikisi bağlar (manuel marka :196-201 · indeksten aktarım :443-444), ikisi NULL doğurur (POST /library :75-87 · legacy import :351-360); güncelleme yolları `productIndexId`'ye hiç dokunmaz; `importFromIndex` mevcutları YALNIZ `productIndexId` ile eşlediği için (:437-439) NULL'ları göremez — liste indekslendikten sonra tekrar aktarım, bağ kurmak yerine KOPYA satır yaratır.
 
@@ -141,19 +146,21 @@ Bu projede eksikliğinin bedeli dört kez ödendi:
 
 **Hata bu grupta şu cümlelerle gelir:** “toplam ₺0 çıkıyor”, “fiyatlar geldi ama toplam gelmedi”, “genel toplam boş”
 
-**Durum:** ŞU AN KIRMIZI — canlıdaki iki hatadan ikincisi. PANOVA’da birim fiyatlar geldi, malzeme toplamı ve genel toplam boş kaldı. ŞAHİNKUL’da fiyatlar genel toplama girmedi. ₺2.300.000,0 birim fiyatın üstünde GENEL TOPLAM ₺0,0 görüldü.
+**Durum:** Tamir edildi (kalem 54 KD11, 01-02.08: içe aktarma tamamlaması + toplu doldurma geneli); "ŞU AN KIRMIZI" tarihe karıştı. FAZ 2 (03.08) ★ soruyu ölçtü — aşağıda.
 
 | | Dosya / uç | Ne çalıştırıyor | Kanıt nereden |
 |---|---|---|---|
-| ✅ | `standart-sema.ts:191-195` | Malzeme toplamı — ÇARPMA EKSİK. ADIM 0’ın hedefi. | Code raporu ADIM 0 §2; şablon ExcelGrid.tsx:285 |
+| ✅ | `frontend/lib/pricing.ts:53-55` | **TEK FORMÜL** `hesaplaSatirToplam(satış, miktar)` — satır toplamının tek kaynağı; 11 çağrı noktası (★ listesinde). `toplamlariTamamla` :129-176 içe aktarmada boş toplamları bu formülle doldurur (Yol A tamiri; çağıran `quotes/new/page.tsx:350`). | FAZ 2 · HR5 03.08 — tüm çağrılar grep+okumayla sayıldı |
+| ✅ | `standart-sema.ts:227-229` | Malzeme/işçilik toplam sütunlarını dosyadan YALNIZ KOPYALAR (hesap yok — bilinçli: müşterinin verisi üstündür); eksikler `toplamlariTamamla` ile içe aktarmada tamamlanır. | FAZ 2 · HR5; KD11 kök neden belgesi |
+| ✅ | `frontend/components/excel-grid/ExcelGrid.tsx:2362-2393` | `recalcGrand` — satır düzeyi Genel Toplam (matTop+labTop) 1/4: hücre değişim olaylarında. Diğer üç uygulama: `pricing.ts:165-171` (içe aktarma) · `fill-down.ts:77-94` (toplu doldurma; ⚠ inline yuvarlama epsilonsuz) · `standart-cikti.ts:186` (çıktı satırı). | FAZ 2 · HR5 |
+| ✅ | `frontend/components/excel-grid/ExcelGrid.tsx:1942-1999` | `updatePinnedBottom` — ekranın altındaki GENEL TOPLAM satırı: tüm veri satırlarının mat/lab/genel toplamı; `_ozet` satırları HARİÇ (62.043.700 dersinin kuralı burada yaşıyor). | FAZ 2 · HR5 |
+| ✅ | `backend/src/quotes/quotes.service.ts:44-56` | ⚠ KAYIT yolu toplamları — TEK FORMÜLÜ KULLANMAZ: `matUp×(1+margin)×qty` yuvarlamasız; DB'deki QuoteItem toplamları ekrandan sapabilir. Liste sayfası `quotes/page.tsx:33` bu DB değerlerini toplar. | FAZ 2 · HR5 — "görüldü, dokunulmadı" |
 | ✅ | `backend/test/standart-sema-test.ts` | 62.043.700 testi — TEK dosyanın toplamını doğruluyor, toplam özelliğini değil. Silinmeyecek, yanına ikincisi konacak. | GOREV_Kapatma_Turu; kalem 38 |
-| ⬜ | *(bilinmiyor)* | İşçilik toplamı — ÇALIŞIYOR. Neden çalıştığı hâlâ yazılı değil. | Code raporu: “İşç. Toplam doluyor” — ama hangi dosyada olduğu söylenmedi |
-| ⬜ | *(bilinmiyor)* | Genel toplam — satır toplamlarını toplayan yer | Canlı 01.08: boş geliyor |
 
 **Bu grubun cevapsız soruları:**
 
-- ★ TOPLAM KAÇ AYRI YERDE HESAPLANIYOR? — Bu sorunun cevabı yok. 62.043.700 dersinin tamamı bu cevabın eksikliğinden çıktı. Haritanın 1 numaralı görevi.
-- İşçilik toplamı neden çalışıyor da malzeme toplamı çalışmıyor? İkisi aynı kodu mu kullanıyor?
+- ★ TOPLAM KAÇ AYRI YERDE HESAPLANIYOR? — **CEVAPLANDI (FAZ 2 · HR5, 03.08): 21 ayrı yerde.** 11'i tek formülün (`pricing.ts:53`) çağrıları: `ExcelGrid.tsx` :278 · :941 · :2408 · :2430 · :2449 · :2460 · :2476 · :2488, `fill-down.ts:225`, `pricing.ts:155+160`, `quotes/new:534`. 10'u bağımsız aritmetik: `recalcGrand:2362` · `pricing.ts:165-171` · `genelToplamiTazele fill-down:77-94` · `standart-cikti.ts:186` (satır geneli) · `updatePinnedBottom:1942` · `standart-cikti.ts:165-209` (sayfa toplamı, DEĞER) · `format-engine.ts:288-289` (İCMAL değerleri) + `export-engine.ts:184-197` (İCMAL canlı SUM formülleri) · `format-engine.ts:295+311` (KDV değer+formül) · `quotes.service.ts:44-56` (kayıt, yuvarlamasız) · `quotes/page.tsx:33` (liste). Test/öz-denetim tarafı ayrı: `verify.mjs`, `kd11`, `standart-sema-test`, `export-engine:321-324`, `quotes.service:343`. Tam kanıt: `docs/RAPOR_FAZ2_Derin_Sorular.md`.
+- İşçilik toplamı neden çalışıyor da malzeme toplamı çalışmıyor? — **CEVAPLANDI (FAZ 2 · HR5b): bugün İKİSİ DE AYNI kodu kullanıyor** (simetrik çiftler: :278/:941 · :2408/:2430 · :2449/:2460 · :2476/:2488 · `pricing.ts:155/:160`). 01.08'deki "işçilik çalışıyor" görüntüsü hesap değil KOPYAydı (dosyada İşç. Toplam sütunu vardı — `standart-sema:229`); malzeme sütunu olmayan dosyalarda çarpma hiç yoktu. Tamir iki tarafı da tek formüle bağladı; dosyadan gelen dolu hücreye bugün de dokunulmaz.
 
 ## F · ÇIKTI — teklif dosyası üretimi
 
@@ -171,7 +178,7 @@ Bu projede eksikliğinin bedeli dört kez ödendi:
 
 **Bu grubun cevapsız soruları:**
 
-- Çıktıdaki toplam sütunu, ekrandaki toplamı mı yazıyor, kendi hesabını mı yapıyor? (İkincisiyse toplam en az iki yerde hesaplanıyor demektir — bkz. grup E’nin ★ sorusu.)
+- Çıktıdaki toplam sütunu, ekrandaki toplamı mı yazıyor, kendi hesabını mı yapıyor? — **CEVAPLANDI (FAZ 2 · HR5, 03.08): KENDİ HESABINI YAPIYOR.** Satır geneli çıktıda yeniden toplanır (`standart-cikti.ts:186` matTot+labTot); sayfa altı SAYFA TOPLAMI değer olarak yazılır (`:165-209`, EX3/EX4: formül değil DEĞER); İCMAL ise CANLI formül taşır (`export-engine.ts:184-197` SUM parçaları + `format-engine.ts:311` KDV formülü, T7 sözleşmesi `export-engine.ts:32`) — yani indirilen dosya Excel'de kendi kendini yeniden hesaplar. ★ sayısındaki 21'in 5'i bu çıktı katmanındadır.
 
 ## G · KÜTÜPHANE ve YÖNETİM
 
@@ -227,7 +234,7 @@ Bu projede eksikliğinin bedeli dört kez ödendi:
 
 **Hata bu grupta şu cümlelerle gelir:** “deploy ettim ama değişmedi”, “canlıdaki sürüm eski”
 
-**Durum:** ŞU AN AÇIK: depodaki sürüm (9635d43) canlıdakinin (6846423) ÖNÜNDE. Bugün canlıda yapılan her test ESKİ yapıyı ölçüyor.
+**Durum:** Makasın açık/kapalı olduğu bu belgede YAZMAZ — hash alıntıları burada iki tur boyunca eskidi (KL1b). Güncel depo/canlı sürümü için: panonun başlığı + `/api/health` (canlının kendi cevabı) + `/surum.json` (FE). Bu grubun işi *makasın hangi dosyalarla ölçüldüğüdür*, makasın anlık değeri değil.
 
 | | Dosya / uç | Ne çalıştırıyor | Kanıt nereden |
 |---|---|---|---|
