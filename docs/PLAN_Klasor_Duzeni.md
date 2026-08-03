@@ -77,6 +77,65 @@ Ağaç şeması da `app/ (… KALIYOR)` yazıyor. Buna rağmen §11 tablosu **30
 **Güncellenen sayılar:** taşınan **236 → 206** · kalıyor **71 → 101** · toplam **307**.
 DURAK 1 (K grubu) **27 → 20 dosya**.
 
+### (7) ★★ KALAN BEŞ DURAK YENİDEN TASARLANDI (04.08 · DURAK 1 sonrası)
+
+DURAK 1 (K, 20 dosya) `8516350` ile kapandı. Öncesinde yapılan altı gruplu denetim **60 ihlal** buldu; bu bölüm o ihlalleri kapatan revize tasarımdır. **Çelişki halinde §11 tablosu değil BU bölüm geçerlidir.**
+
+#### 7.1 · Üç sert engel — bunlar taşınamaz, tablo yanılıyordu
+
+| Dosya | Tablonun hedefi | Neden imkânsız |
+|---|---|---|
+| `backend/src/main.ts` | `src/altyapi/cekirdek/` | Çıktı `dist/main.js` olmak zorunda: Dockerfile `CMD`, `start:prod`, `derleme-kapisi.js` üçü de o yola bağlı |
+| `backend/src/health.controller.ts` | `backend/scripts/` | `src` dışına `.ts` çıkamaz → **TS6059, backend hiç derlenmez** |
+| `backend/src/surum.ts` | `backend/scripts/` | Aynı ihlal + `surum-yaz.js` kardeşini sabit `src/` altına üretiyor |
+
+Ayrıca **kalıyor**: `app.module.ts` (20 göreli modül kablosu taşıyor; taşınırsa her durakta yeniden düzenlenir, kazanç sıfır) · `bootstrap.controller.ts` · `backend/prisma/schema.prisma` (Prisma CLI varsayılan yolu; Dockerfile + render.yaml ona bağlı).
+
+#### 7.2 · ★ H GRUBU (testler) TAŞINMIYOR — kararın gerekçesi
+
+Plan H'yi 3. durağa koymuş, *"ürün koduna dokunmaz, kırılsa üretim etkilenmez"* demişti. Denetim tersini ölçtü: **en çok bağlı grup, 29 ihlal.**
+
+**`backend/test/` altındaki 39 `.ts` dosyasının tamamı YERİNDE KALIR.** Gerekçe tek cümlede: *kazanç sıfır, bedel en yüksek.* Plan onları `test/birim/` altına alıyor ama `test/e2e/` **boş doğuyor** (backend'de e2e testi yok) — net etki yalnız bir seviye derinlik. Buna karşılık kırılanlar: `backend/package.json`'da **~35 script gövdesi** (`ts-node test/<dosya>.ts`) · `manifest-kapisi.ts`/`tam-zincir.ts`/`build-sha-kablolama-test.ts`'in kök-türetme mantığı · `__dirname` göreli fixture kökleri · `test/fixtures/` yolunu metin olarak taşıyan iki denetim.
+
+Bu tek karar 29 ihlalin çoğunu siler. **Taşınan tek şey: 15 frontend e2e dosyası** → `frontend/test/e2e/`.
+
+Ayrıca kalır: `frontend/lib/*.test.ts` (7) ve `frontend/components/excel-grid/*.test.ts` (5) — bunlar kaynağının **kardeşi** ve onu `./` ile çağırıyor; taşınmaları sonraki durakların işini çoğaltır.
+
+#### 7.3 · Revize durak sırası — 5 durak, 9-13 commit
+
+| Durak | Grup | Dosya | Commit | Not |
+|---|---|---|---|---|
+| **2** | L · altyapı **+ I** | 15 + 2 | **2** | 2a: `src/prisma/` → `altyapi/db/` (donmuş bloğa hiç dokunmaz) · 2b: `src/auth/` → `altyapi/auth/` (alt klasörler **düzleştirilmez**). I grubu ayrı durak açmaz, L'nin içine girer |
+| **3** | M · teklif | 7 | **1** | Küçük; revize ritmi büyük duraklardan önce bir kez daha sınar |
+| **4** | G · kütüphane | 34 | **2** | 4a backend (~25) · 4b frontend (~9). İki tarafın kapıları farklı |
+| **5** | A-F · çekirdek | 63 | **3-4** | 5a backend eşleştirme (en yoğun bağımlılık: `terminology.service` 19 tüketici) önce |
+| **6** | H · yalnız FE e2e | 15 | **1** | Geri kalan H taşınmıyor (7.2) |
+
+**Sıra değişti:** H, 3. sıradan sona alındı ve neredeyse tamamen boşaltıldı.
+
+#### 7.4 · Donmuş bloğa dokunan tek satır — bilerek en sona
+
+`dwg-engine.controller.ts:7` → `../../auth/guards/jwt-auth.guard`. Auth taşınınca bu **tek satır** değişir; dosya yerinden oynamaz, sınır yol düzeyinde korunur. Bu yüzden DURAK 2 ikiye bölündü: prisma önce gider, donmuş bloğa dokunan auth adımı **sona** kalır — ters giderse geri alınacak commit en üstte olur.
+
+"Guard kalsın, auth taşınsın" reddedildi: auth'u ikiye böler, *"auth nerede yaşıyor"* sorusunun iki cevabı olur. Ya hepsi ya hiçbiri.
+
+#### 7.5 · Tabloda bulunan iki hedef daha yanlış
+
+- `backend/src/quotes/standart-cikti.ts` → tablo `src/ozellik/toplam/` diyor; **§10 hedef ağacında `toplam` diye bir dizin YOK.** `cikti` olarak düzeltilecek.
+- `jwt-secret.ts` tabloda hiç yok ama üç L dosyası onu **kardeş** olarak import ediyor; auth ile birlikte taşınırsa o üç satırın hiçbiri değişmez.
+
+#### 7.6 · DURAK 1'den kalıcılaşan üç kural
+
+1. **Dizin bazlı import değiştirme yasak** — dosya bazlı tam eşleme. (`lib/`'in 17 dosyasından 2'si taşındı; toplu değiştirme `@/lib/pricing`'i bozardı.)
+2. **Tailwind `content` glob'u** — `./ortak/**` ve `./ozellik/**` eklendi. Bu kalem G · M · B gruplarında da vardı, artık peşin çözülü.
+3. **Sessiz kırılma "build yeşil" ile kapatılmaz** — taşınan dosyalara özgü bir sınıfın üretilen CSS'te olduğu ayrıca ölçülür. DURAK 1'de 322 sınıf denetlendi.
+
+#### 7.7 · `tsc`'nin göremediği üç sınıf — elle doğrulanacak
+
+- `backend/tsconfig.json` `test` dizinini **exclude** ediyor → test kırılmasını `tsc` görmez, tek kapı `test:regression`
+- `admin.service.ts` ve `labor-firms.service.ts` gövde içi **dinamik `require()`** kullanıyor (7 çağrı) — tip denetimi bunları denetlemez
+- `backend/test/**` içindeki `../src/...` belirteçleri (9 satır) aynı sebeple görünmez
+
 ### (5) 7. kalem (harita kapısı) TERS yönde çıktı — ve düzeltildi
 
 Gövde *"taşıma haritayı geçersizleştirir, `test:harita` KIRMIZI yanar"* diyordu. ADIM 1c'de kasten ateşlendi: kapı **YEŞİL** dedi. Sebep, kapının çıplak-dosya-adı geri düşüşüydü; kapsam içi 306 dosyanın **257'sinin (%84)** adı tek olduğu için taşımanın %84'ü denetimsizdi. Kapı `b3ebf74` ile sağlamlaştırıldı (çıplak-ad kaldırıldı + ters yön eklendi) ve kırmızısı ateşlendi. **Taşıma bu kapı olmadan başlamamalıydı.**
