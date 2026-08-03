@@ -6,6 +6,81 @@
 
 ---
 
+## ⚠ TAZELEME — 03.08.2026, uygulama turu (BU BÖLÜM ÖNCELİKLİDİR)
+
+**Onay alındı:** Düzen **C (karma)** · donmuş blok sınırı **YOL düzeyinde**.
+Aşağıdaki gövde 03.08 sabahındaki **300 dosyalık** fotoğrafa göre yazıldı ve iki noktada eskidi. Çelişki halinde **bu bölüm geçerlidir**; gövde tarihsel kayıt olarak korunuyor.
+
+### (1) Repo 300 değil **307** dosya — 7 dosya plandan sonra eklendi
+
+| Dosya | Geldiği commit | Karar |
+|---|---|---|
+| `backend/src/auth/jwt-secret.ts` | `b6266b7` | **TAŞINIR** → `backend/src/altyapi/auth/` |
+| `backend/test/kl-kayit-toplami-test.ts` | `c471622` | **TAŞINIR** → `backend/test/birim/` |
+| `backend/test/p2-2-sheets-indeks-test.ts` | `2c69ecb` | **TAŞINIR** → `backend/test/birim/` |
+| `frontend/components/excel-grid/kar-yayilimi.test.ts` | `2c69ecb` | **TAŞINIR** → `frontend/test/birim/` |
+| `frontend/components/dwg-workspace/equipment-popup-mod.ts` | `2c69ecb` | **KALIYOR** (J, donmuş blok) |
+| `frontend/components/dwg-workspace/equipment-popup-mod.test.ts` | `2c69ecb` | **KALIYOR** (sınır kararı, aşağıda) |
+| `scripts/jwt-secret-kur.sh` | `0163bb6` | **KALIYOR** (kök `scripts/`) |
+
+### (2) ★ Donmuş blok sınırı YOL düzeyinde — 8 dosya taşıma listesinden ÇIKARILDI
+
+Gövdedeki §11 tablosu, grup etiketi J olan 45 dosyanın 45'ini de "kalıyor" gösteriyor — **ama bu ölçüm yalancı yeşildi.** §5'in çizdiği sınırın *içinde* olup H/I etiketi yüzünden taşınan 8 dosya vardı. §5 *"python/tests/** dokunulmaz"* derken §11 tam o dosyaları taşıyordu; iki bölüm birbirini yalanlıyordu.
+
+**Kullanıcı kararı: sınır YOL düzeyinde uygulanır, sekizi de KALIR.**
+
+1. `backend/src/modules/dwg-engine/python/deploy-to-cloudrun.sh`
+2-5. `backend/src/modules/dwg-engine/python/tests/` altındaki 4 Python testi
+6. `backend/src/modules/dwg-engine/scale-param.test.ts`
+7. `frontend/components/dwg-metraj/unit-detection.test.ts`
+8. `frontend/components/dwg-viewer/segment-length.test.ts`
+
+*Gerekçe:* kullanıcının sözü (*"şu an DWG'yi karıştırmayalım"*) harfiyen tutulur; ayrıca DWG Python imajının `docker-compose` derleme bağlamı kendi `tests/` klasörünü kaybetmez. Bedeli açık: bu dokuz dosya yeni test düzenine girmez, DWG turunda taşınır.
+
+### (3) Geçerli sayılar
+
+| | Gövde (eski) | **Geçerli** |
+|---|---|---|
+| Taşınan | 240 | **206** |
+| Kalıyor | 60 | **101** |
+| **Toplam** | 300 | **307** |
+
+206 = 240 + 4 (yeni taşınan) − 8 (donmuş blok, madde 2) − 30 (`frontend/app/`, madde 6) · 101 = 60 + 3 + 8 + 30.
+`KOD_HARITASI.md` J başlığı da **44 → 45** düzeltildi (tablo baştan beri 45 satırdı, başlık güncellenmemişti).
+
+### (4) Gövdedeki §6 "yedi kırılma kalemi" EKSİK — beş kalem eklendi
+
+Ölçüldü, gövdeye güvenilmedi:
+
+| Ek kalem | Durum |
+|---|---|
+| **`nest-cli.json`** (görevin özellikle sorduğu) | Listede **yoktu**. Ölçüldü: `assets`/glob anahtarı yok, `sourceRoot: src` korunuyor → **kırılmaz**. Ama bu "ölçülmüş" değil "şansa denk gelmiş"ti; artık yazılı. |
+| **Alias'lı import metinleri** | 66 dosyada **277 adet** `@/...`. Gövde kalem 1'i yalnız *göreli* import diye tarif ediyor. Taşımanın en hacimli işi sayılmamıştı. |
+| **`package.json` script gövdeleri** | 35+ script sabit `test/<dosya>.ts` yolu taşıyor; plan o dosyaları `test/birim/` altına taşıyor. Hiçbir kalem üstlenmiyordu. |
+| **`docker-compose.yml` + `.dockerignore`** | Doğrudan kaynak yolu taşıyorlar (`.../dwg-engine/python`). Gövde yalnız Dockerfile'a bakmış. Bugün donmuş bloğu işaret ettikleri için güvenli. |
+| ★ **Doğrulama makamı yanlış yazılmış** | Gövde *"doğrulayan makam tip denetleyicidir"* diyor. `backend/tsconfig.json` `test` dizinini **exclude** ediyor — `tsc`, taşınan test dosyalarını **görmez**. Test tarafının tek gerçek kapısı `test:regression` koşumudur. |
+
+### (6) ★★ `frontend/app/` ALTINDAKİ 30 DOSYA TAŞIMA LİSTESİNDEN ÇIKARILDI
+
+**Gövdenin §11 tablosu, kendi §-ağacı ve kendi uyarısıyla çelişiyordu.** Gövde satır 712 açıkça şöyle diyor:
+
+> ⚠ `frontend/app/` Next.js App Router zorunluluğudur: rota ağacı klasör adından türer, **taşınamaz.** Sayfa dosyaları yerinde kalır.
+
+Ağaç şeması da `app/ (… KALIYOR)` yazıyor. Buna rağmen §11 tablosu **30 dosyayı** `frontend/app/` altından çıkarıyordu — altı gruba yayılmış: **K 7 · G 17 · F 1 · M 2 · B 2 · H 1**.
+
+**Bu uygulanırsa ürün tamamen çöker.** Next.js App Router rotaları klasör yolundan türetir; `frontend/app/` ortadan kalkınca uygulamanın **hiçbir rotası kalmaz** — `layout.tsx`, `login/page.tsx`, `dashboard/page.tsx` dahil. Ölçüldü: `next.config.js` içinde app-dizinini geçersiz kılan bir ayar **yok** (`distDir`/`pageExtensions`/`src` yönlendirmesi), ve `frontend/src/` dizini de **yok** — yani `app/` frontend kökünde kalmak zorunda.
+
+**Karar: otuzu da KALIYOR.** Bu bir tercih değil, çerçeve zorunluluğu; tek güvenli seçenek bu. Gövdenin kendi cümlesi zaten yol gösteriyor: *"sayfa dosyaları yerinde kalır; **içlerindeki mantık** özellik klasörlerine çekilebilir — ama bu bir REFAKTÖR işidir, taşıma turunun konusu değildir (ayrı kalem)."*
+
+⚠ **Bu, gövdenin ÜÇÜNCÜ aynı sınıf hatasıdır:** §11 tablosu düz metinle çelişiyor (önceki ikisi: J sınırı ve 240/60 sayıları). Tabloyu üreten adım ile metni yazan adım birbirini denetlememiş. **Kalan gruplara geçmeden önce her grubun listesi, gövdenin kendi kısıtlarına karşı ayrıca okunacak** — tablo tek başına yetkili sayılmayacak.
+
+**Güncellenen sayılar:** taşınan **236 → 206** · kalıyor **71 → 101** · toplam **307**.
+DURAK 1 (K grubu) **27 → 20 dosya**.
+
+### (5) 7. kalem (harita kapısı) TERS yönde çıktı — ve düzeltildi
+
+Gövde *"taşıma haritayı geçersizleştirir, `test:harita` KIRMIZI yanar"* diyordu. ADIM 1c'de kasten ateşlendi: kapı **YEŞİL** dedi. Sebep, kapının çıplak-dosya-adı geri düşüşüydü; kapsam içi 306 dosyanın **257'sinin (%84)** adı tek olduğu için taşımanın %84'ü denetimsizdi. Kapı `b3ebf74` ile sağlamlaştırıldı (çıplak-ad kaldırıldı + ters yön eklendi) ve kırmızısı ateşlendi. **Taşıma bu kapı olmadan başlamamalıydı.**
+
 ## 1 · Neden şimdi yapılabilir
 
 Klasör düzeni tartışması iki turdur erteleniyordu, çünkü ön şartı yoktu: *"hangi dosya nereye gider"* sorusu, **her dosyanın ne yaptığı bilinmeden** cevaplanamaz. O ön şart HS turunda kapandı — 300 kod dosyasının **300'ü** haritada, 269'u okunarak sınıflandırıldı, taksonomi (A-M) donduruldu. Bu plan o sınıflandırmanın üstüne kurulur; başka hiçbir girdisi yok.

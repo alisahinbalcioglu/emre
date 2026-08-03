@@ -490,7 +490,7 @@ Karıştırılmasın diye ayrı duruyor.
 | `frontend/scripts/surum-yaz.js` | Derleme aninda git sha + kirli-agac damgasini public/surum.json'a gomer; canli surum dogrulama kapisi bunu okur |
 | `frontend/tailwind.config.ts` | shadcn/ui CSS degiskenli renk paleti, radius olcekleri ve accordion animasyonlarini tanimlar |
 
-### J · DWG-METRAJ — 44 dosya
+### J · DWG-METRAJ — 45 dosya
 
 | Dosya | Ne yapıyor |
 |---|---|
