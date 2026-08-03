@@ -41,18 +41,39 @@ grep -c JWT_SECRET /opt/metaprice/.env
 
 Beklenen çıktı: `1` (tanımlı) ya da `0` (tanımsız). Cevap gelmeden ADIM 1 push edilmeyecek.
 
-### ✅ KL2 CEVABI GELDİ (03.08, kullanıcı Hetzner konsolunda koştu): **`0`**
+### ⚠ KL2'NİN İLK CEVABI YANLIŞ ÖLÇÜMDÜ — DÜZELTME (03.08)
 
-**KÖTÜ dal gerçekleşti:** canlı şu anda kaynak kodda yazan yedek anahtarla token imzalıyor — açık **aktif**. Sonuçları:
+**Sıralı gerçek:**
+1. Kullanıcıya verdiğim komut: `grep -c JWT_SECRET /opt/metaprice/.env` → konsolda **`0`** döndü.
+2. Bunu "canlıda anahtar yok, açık aktif" diye okudum ve aşağıdaki KÖTÜ dal senaryosunu yazdım.
+3. Sonra `scripts/jwt-secret-kur.sh` koşuldu ve **`ZATEN TANIMLI — .env icinde JWT_SECRET var, DOKUNULMADI`** dedi. İki ölçüm çelişti.
+4. Kök neden ekran görüntüsünde görünüyor: konsola düşen komut **`grep -c JWT-SECRET`** (tire ile). **Hetzner konsolu alt çizgi `_` yazamıyor** — bu tam olarak `scripts/deploy.sh:9-12`'de kayıtlı olan ve KB3 turunda taradığım kural. Aranan dizge `JWT-SECRET` olduğu için sonuç elbette 0 çıktı.
+
+**HATA BENDE:** KB3'te "konsol `% & | $ _ >` bozuyor" diye taradığım kuralı, kullanıcıya verdiğim komuta uygulamadım — komutun içinde `_` vardı. *Konsol-güvenlik taraması yalnız betikler için değil, kullanıcıya verilen HER satır için geçerlidir.*
+
+**DOĞRU DURUM: canlıda `JWT_SECRET` TANIMLI.** Kanıt betiğin çıktısıdır ve güvenilirdir: desen (`^[[:space:]]*JWT_SECRET=`) dosyanın **içinde** durur, konsol onu bozamaz; ayrıca betik idempotent davranıp mevcut anahtara **dokunmadı**.
+
+**Sonuç — İYİ dal geçerli:** yedek değer zaten ölü koddu. ADIM 1 **düşük riskli**: yeni kod aynı ortam değişkenini okuyacak, imza anahtarı **değişmiyor**, dolayısıyla **mevcut oturumlar bozulmaz, kimse çıkış yapmaz.** Deploy sırası: ADIM 1 push → `bash scripts/deploy.sh`.
+
+<details><summary>Yanlış ölçüme dayanan ilk senaryo (kayıt için saklandı)</summary>
+
+**KÖTÜ dal (GERÇEKLEŞMEDİ):** canlı kaynak kodda yazan yedek anahtarla token imzalıyor olsaydı:
 
 1. ADIM 1 tek başına deploy edilirse **backend AÇILMAZ** (compose değişkeni boş dize olarak geçirir, yeni kod boş dizeyi de reddeder).
 2. Sunucu `.env`'ine anahtar eklenmeli. Eklenip yeniden başlatıldığı an **mevcut tüm token'lar geçersiz olur** — herkes bir kez çıkış yapar. Kaçınılmaz: bugünkü anahtar zaten gizli değil, değişmesi şart.
 3. Anahtarı konsolda üretmek imkânsız (dolar/büyüktür/boru karakterleri yazılamıyor) → **`scripts/jwt-secret-kur.sh`** yazıldı. Üç yolu da yerelde ateşlendi: ön koşul yok → **çıkış 2** · ekleme → **çıkış 0** (48 karakter, openssl) · **ikinci koşum → çıkış 0, DOKUNMAZ** (idempotent, mevcut anahtarı asla değiştirmez). Kullanıcının yazacağı üç satır tarandı: altı yasak karakterin **hiçbiri yok**. Anahtar ekrana **yazılmaz** (konsol geçmişi ve ekran görüntüsü sızdırır); `.env` zaman damgalı yedeklenir.
 
-**Doğru sıra — tek kesinti:**
-`git pull` (kod değişmez, canlı eski kodla çalışmaya devam eder) → `bash scripts/jwt-secret-kur.sh` (anahtar `.env`'e girer, oturumlar HÂLÂ sağlam) → **ADIM 1 push edilir** → `bash scripts/deploy.sh` (yeni kod + yeni anahtar aynı anda devreye girer; tek logout).
+**O senaryodaki sıra:** `git pull` → `jwt-secret-kur.sh` → ADIM 1 push → `deploy.sh` (tek logout).
 
-### ⚠ Bu turda yaşanan kaza (dürüst kayıt)
+</details>
+
+**Betiğin kazancı ölçüm yanlış çıksa da kaldı:** artık `.env`'de anahtar olmayan bir ortam (yeni sunucu, yeni geliştirici makinesi) tek komutla doğru kurulur ve mevcut anahtara asla dokunmaz — idempotentliği fiilen ateşlendi (canlıda "ZATEN TANIMLI, DOKUNULMADI" çıktısı bunun canlı kanıtıdır).
+
+### ⚠ Bu turda yaşanan İKİ kaza (dürüst kayıt)
+
+**Kaza 2 — konsol-güvensiz komut (yukarıda ayrıntısı):** kullanıcıya `_` içeren `grep` komutu verdim; konsol `_` yazamadığı için ölçüm 0 döndü ve bir tur boyunca yanlış senaryo üzerinden plan yaptım. Ders: **konsol-güvenlik taraması betiklere değil, kullanıcıya giden HER satıra uygulanır.**
+
+**Kaza 1 — kabuğa metin gömme:**
 
 Raporu güncellemek için `node -e "…"` içine markdown gömdüm; metindeki ters tırnaklar **bash tarafından komut olarak çalıştırıldı** ve içlerinden biri `bash scripts/deploy.sh` idi — betik yerelde koştu, `git pull` yaptı ve `docker: command not found` ile durdu. **Canlıya hiçbir şey gitmedi** (`/api/health` → `81f2521143d3`, değişmedi; HEAD ve `origin/master` de `4cea9ba`'da sabit). Ders: **belge metni kabuk üzerinden yazılmaz** — dosya düzenleme aracıyla yazılır; kabuğa gömülen metindeki ters tırnak çalıştırılabilir koddur.
 
