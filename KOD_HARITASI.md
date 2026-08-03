@@ -445,6 +445,7 @@ Karıştırılmasın diye ayrı duruyor.
 | `backend/test/product-index-test.ts` | Urun indeksleyicinin kolon koruma, aile cozumu ve Turkce token kurallarini DB'siz sinar |
 | `backend/test/spec-regression-test.ts` | Eslestirme motorunun yasanmis gercek vakalarini R1-R14 degismezleriyle sahte Prisma uzerinden dogrular |
 | `backend/test/standart-cikti-test.ts` | 9 kolonlu standart Excel ciktisinin EX1-EX8 kabul kriterlerini gercek fixture dosyayla dogrular |
+| `backend/test/kalem59-oksuz-kutuphane-test.ts` | Fiyat listesi yeniden yüklenince öksüz kalan kütüphane satırlarının RAPORLANDIĞINI sınar. Tetikleyici "yeniden yükleme" değil, iki yükleme arasında **adlandırmanın değişmesi** (birleşik ad → ayrışık kolonlar); farklı ad = farklı Material = farklı materialId = eski satır öksüz. Onarım YAPILMAZ (güvenli anahtar yok), yalnız görünür kılınır (DB gerektirir) |
 | `backend/test/p2-2-sheets-indeks-test.ts` | `saveMaterialsFromSheets` ProductIndex yazar + rowKey upsert kimligi korur + **indekslenme sonrasi 2. kutuphane aktariminda MUKERRER satir yasagi** (DB gerektirir) |
 | `backend/test/tam-zincir.ts` | Backend regresyon, frontend vitest ve Playwright E2E'yi derleme kapisiyla tek komutta kosan zincir kosucusu |
 | `frontend/app/dev/grid-test/page.tsx` | ExcelGrid'i auth'suz ve API'siz, mock eslestirmeyle calistiran gelistirme/e2e dogrulama harness'i |

@@ -914,12 +914,49 @@ export class AdminService {
     // bastan yazilir (eski bozuk adlandirilmis kayitlar da temizlenir).
     const oldPrices = new Map<string, number>();
     let removed = 0;
+    /** KALEM 59: yeniden yuklemenin oksuz biraktigi kutuphane satirlari. */
+    let oksuzUyarisi: { satir: number; iskontolu: number } | null = null;
     if (opts?.replaceExisting) {
       const olds = await (this.prisma as any).materialPrice.findMany({
         where: { priceListId: priceList.id },
         include: { material: { select: { name: true } } },
       });
       for (const o of olds) oldPrices.set(String(o.material?.name ?? '').toLocaleLowerCase('tr'), o.price);
+
+      // ── KALEM 59: OKSUZ KALACAK KUTUPHANE SATIRLARI — SESSIZ BIRAKMA YASAK ──
+      // Bu silme, listeye bagli LEGACY kutuphane satirlarini oksuz birakir.
+      // Mekanizma olculdu (04.08, CAYIROVA): kullanici listeyi yuklemis,
+      // 116 kalemi kutuphanesine aktarmis, 59'una ISKONTO girmis; sonra AYNI
+      // listeyi yeniden yuklemis. Y7 geregi MaterialPrice silinmis, kutuphane
+      // satirlari silinmis kayitlara isaret etmeye devam etmis. Sonuc:
+      // materialId 0/116 cozuluyor, sortOrder hepsinde 0, cins/cap bos —
+      // GERIYE DONUK BAGLANACAK GUVENLI ANAHTAR YOK.
+      //
+      // ⚠ INDEKSLI satirlar BAGISIK: `importFromIndex` ile gelenler
+      // `productIndexId` tasir ve ProductIndex rowKey ile UPSERT edildigi icin
+      // id'leri korunur (bkz. asagidaki dual-write blogu). Kayip yalniz
+      // legacy (materialId tabanli) satirlarda olusur.
+      //
+      // Burada satirlara DOKUNULMUYOR — otomatik yeniden baglama BILEREK
+      // yapilmiyor, cunku yanlis eslesme kullanicinin iskontosunu YANLIS
+      // urune yazar (mukerrer satirdan beter). Yapilan tek sey: kaybi
+      // GORUNUR kilmak. Kalem 58'in muhurlu dersi: sessiz birakma yasak,
+      // isaretle.
+      const oksuzKalacak = await this.prisma.userLibrary.count({
+        where: { sourcePriceListId: priceList.id, productIndexId: null } as any,
+      });
+      if (oksuzKalacak > 0) {
+        const iskontolu = await this.prisma.userLibrary.count({
+          where: { sourcePriceListId: priceList.id, productIndexId: null, discountRate: { gt: 0 } } as any,
+        });
+        oksuzUyarisi = { satir: oksuzKalacak, iskontolu };
+        console.warn(
+          `[SaveBulk] ⚠ KALEM 59 — bu yeniden yukleme ${oksuzKalacak} kutuphane satirini OKSUZ birakiyor` +
+          ` (${iskontolu} tanesinde kullanicinin girdigi iskonto var). Liste ${priceList.id}.` +
+          ' Satirlara dokunulmadi; geriye donuk baglama guvenli anahtar olmadigi icin YAPILMIYOR.',
+        );
+      }
+
       const del = await this.prisma.materialPrice.deleteMany({ where: { priceListId: priceList.id } });
       removed = del.count;
     }
@@ -1111,6 +1148,10 @@ export class AdminService {
     console.log(`[SaveBulk] ProductIndex: ${gorulenRowKeys.size} indeksli satir${belirsizSayisi ? `, ${belirsizSayisi} BELIRSIZ (aile cozulemedi → eslestirmeye giremez)` : ''}${ogrenilecekAileler.size ? `, ${ogrenilecekAileler.size} self-family (KÜTÜPHANE=HAFIZA)` : ''}${rowKeyCakismalari.length ? `, ${rowKeyCakismalari.length} rowKey CAKISMASI` : ''}${bayatlar.length ? `, ${bayatlar.length} satir dosyadan KALKMIS (silinmedi, raporlandi)` : ''}`);
     return {
       imported, updated, skipped, removed,
+      // KALEM 59: null degilse bu yeniden yukleme kutuphane satirlarini
+      // oksuz biraktı. Cagiran uc bunu KULLANICIYA gostermeli — sessiz
+      // kalmasi tam olarak kusurun kendisiydi.
+      oksuzKutuphaneSatiri: oksuzUyarisi,
       kategoriSayisi: kategoriler.size,
       fiyatDegisimleri,
       // 3-Etiket: admin'in elle duzelttigi AD sayisi (rapor)
