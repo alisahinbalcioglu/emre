@@ -8,9 +8,17 @@ import { buildExportWorkbook, ExportSonucu, ExportBirim } from './export-engine'
 import { standartCiktiUret } from './standart-cikti';
 import { buildSampleFormat, ExportOverrides, FillContext } from '../quote-formats/format-engine';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
+import { yukariYuvarla } from '../modules/matching/pricing';
 
 /** KDV orani — kod sabiti (ayarlanabilirlik backlog) */
 const KDV_ORAN = 0.20;
+
+/** Satir toplami — FE `hesaplaSatirToplam` (frontend/lib/pricing.ts:53) ile
+ *  AYNI kural: yukariYuvarla(birim × miktar). Yeni kural ICAT EDILMEZ;
+ *  yuvarlama tek kaynaktan (`modules/matching/pricing.ts`) gelir. Backend'in
+ *  satis/kar hesabi YOKTUR (22.07 karari, pricing.ts:33-35) — burada da yok:
+ *  gelen birim fiyat zaten SATIS fiyatidir. */
+const satirToplami = (birimFiyat: number, miktar: number) => yukariYuvarla(birimFiyat * miktar);
 
 @Injectable()
 export class QuotesService {
@@ -42,17 +50,26 @@ export class QuotesService {
       const matMargin = item.materialMargin ?? 0;
       const labMargin = item.laborMargin ?? 0;
 
-      // Malzeme hesaplama (marja dahil)
-      const matWithMargin = matUp * (1 + matMargin / 100);
-      const materialTotalPrice = matWithMargin * qty;
+      // ── KL P1-b (pano kalem 64): KAYIT EKRANI TEKRARLAMAZ ────────────────
+      // Gelen `materialUnitPrice`, ekranin hucresinde YAZAN degerdir: SATIS
+      // fiyati — kar ZATEN uygulanmis ve yukari yuvarlanmistir
+      // (ExcelGrid.tsx:278 `hesaplaSatisBirimFiyat` → hucre; payload
+      // quotes/new/page.tsx:1265-1270 o hucreyi yollar).
+      // ESKI KOD kari BIR KEZ DAHA uyguluyordu (`matUp * (1 + margin/100)`);
+      // olculdu: kar %10'da DB'ye ekrandan ₺34,95 FAZLA toplam yaziliyordu
+      // (test/kl-kayit-toplami-test.ts K1). Ekran hatasi gecici, kaydedilen
+      // yanlis toplam KALICI — bu yuzden P1.
+      //
+      // KURAL BURADA BELIRLENMEZ: satir toplami = yukariYuvarla(birim × miktar)
+      // — FE `hesaplaSatirToplam` (frontend/lib/pricing.ts:53) ile AYNI kural,
+      // yuvarlama tek kaynaktan (`matching/pricing.ts` yukariYuvarla) gelir.
+      // Marj alanlari yalnizca KAYIT icin tasinir; hesaba GIRMEZ.
+      const materialTotalPrice = item.materialTotalPrice ?? satirToplami(matUp, qty);
+      const laborTotalPrice = item.laborTotalPrice ?? satirToplami(labUp, qty);
 
-      // İşçilik hesaplama (marja dahil)
-      const labWithMargin = labUp * (1 + labMargin / 100);
-      const laborTotalPrice = labWithMargin * qty;
-
-      // Toplamlar
-      const totalUnitPrice = matWithMargin + labWithMargin;
-      const totalPrice = materialTotalPrice + laborTotalPrice;
+      // Toplamlar — birim fiyatlar geldigi gibi (sisirilmez)
+      const totalUnitPrice = yukariYuvarla(matUp + labUp);
+      const totalPrice = yukariYuvarla(materialTotalPrice + laborTotalPrice);
 
       // Eski alan geriye uyum
       const discount = item.discount ?? 0;

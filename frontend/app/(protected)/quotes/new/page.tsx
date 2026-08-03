@@ -1265,6 +1265,11 @@ export default function NewQuotePage() {
               unitPrice: roles.materialUnitPriceField ? parseFloat(String(r[roles.materialUnitPriceField] ?? '')) || 0 : 0,
               materialUnitPrice: roles.materialUnitPriceField ? parseFloat(String(r[roles.materialUnitPriceField] ?? '')) || 0 : 0,
               laborUnitPrice: roles.laborUnitPriceField ? parseFloat(String(r[roles.laborUnitPriceField] ?? '')) || 0 : 0,
+              // KL P1-b (kalem 64): EKRANDAKI toplam da gonderilir — backend
+              // onu yeniden turetmesin. Birim fiyat alanlari zaten SATIS
+              // fiyatidir (kar uygulanmis); backend kari tekrar uyguluyordu.
+              materialTotalPrice: roles.materialTotalField ? parseFloat(String(r[roles.materialTotalField] ?? '')) || 0 : undefined,
+              laborTotalPrice: roles.laborTotalField ? parseFloat(String(r[roles.laborTotalField] ?? '')) || 0 : undefined,
               materialMargin: r._malzKar || 0,
               laborMargin: r._iscKar || 0,
             });

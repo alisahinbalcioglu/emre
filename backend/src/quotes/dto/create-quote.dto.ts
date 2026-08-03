@@ -32,6 +32,20 @@ export class QuoteItemDto {
   @Min(0)
   laborUnitPrice?: number;
 
+  // ── KL P1-b: EKRANIN hesapladigi satir toplamlari (tek kaynak) ─────────
+  // Ekran hucresinde ne yaziyorsa o kaydedilir; backend yeniden turetmez.
+  // Gonderilmezse (eski istemci) backend yukariYuvarla(birim × miktar) ile
+  // ayni kurali uygular — quotes.service.ts satirToplami().
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  materialTotalPrice?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  laborTotalPrice?: number;
+
   @IsOptional()
   @IsNumber()
   @Min(0)

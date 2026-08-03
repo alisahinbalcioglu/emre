@@ -43,6 +43,7 @@
     "test:pk3-repo": "ts-node test/pk3-repo-kapsama-test.ts",
     "prebuild": "node scripts/surum-yaz.js",
     "test:kd11": "ts-node test/kd11-toplam-yollari-test.ts",
+    "test:kl-kayit": "ts-node test/kl-kayit-toplami-test.ts",
     "test:kd12": "ts-node test/kd12-baslik-satiri-test.ts",
     "postbuild": "node scripts/derleme-kapisi.js",
     "test:kd9": "ts-node test/kd9-kur-olcutu-test.ts",

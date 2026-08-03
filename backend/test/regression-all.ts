@@ -47,6 +47,7 @@ const SUITES: Suite[] = [
   { ad: 'Sessiz indeks geri-düşüşü yasak (PK9)', script: 'test:pk9', zincir: 'Z2' },
   { ad: 'Para birimi çıktıya geçer (18a-18c)', script: 'test:18', zincir: 'Z4' },
   { ad: 'Toplamlar: üç yol × iki sütun (KD11)', script: 'test:kd11', zincir: 'Z1' },
+  { ad: 'Kayıt toplamı ekranla aynı (KL P1-b)', script: 'test:kl-kayit', zincir: 'Z1' },
   { ad: 'Başlık satırı veri sayılmaz (KD12)', script: 'test:kd12', zincir: 'Z1' },
   { ad: 'Kimlik haritası sözleşmesi (PK3)', script: 'test:pk3', zincir: 'Z0' },
   { ad: 'Fixture kapsama kapısı (PK3-repo)', script: 'test:pk3-repo', zincir: 'Z0' },
