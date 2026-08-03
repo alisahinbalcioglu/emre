@@ -17,12 +17,27 @@
  *       üretilmemiş, ya da KOD_HARITASI.md yok
  *
  * ── "HARİTADA VAR" NE DEMEK (bu bir İDDİA, o yüzden açıkça yazılıyor) ──
- * Bir kod dosyası haritada SAYILIR eğer:
- *   (a) tam repo-göreli yolu metinde geçiyorsa            → kesin, tercih edilen
- *   (b) YA DA dosya adı repoda TEKSE ve metinde geçiyorsa → tek anlamlı
- * `package.json` gibi repoda BİRDEN ÇOK bulunan adlar (b) ile sayılmaz:
- * "package.json" yazan bir satır hangi paketten söz ettiğini söylemiyorsa
- * o satır bir konum bildirmiyor demektir.
+ * Bir kod dosyası haritada SAYILIR eğer haritada, o dosyaya çözülen ve
+ * EN AZ BİR `/` içeren bir YOL ifadesi geçiyorsa. Kısayol serbesttir
+ * (`e2e-golden/helpers.ts`, tek dosyaya çözüldüğü sürece); çıplak dosya
+ * adı SAYILMAZ.
+ *
+ * ⚠ ÇIPLAK-AD GERİ DÜŞÜŞÜ 03.08'de KALDIRILDI — ve sebebi ölçümdür, fikir
+ * değil. Eski kural "adı repoda TEKSE çıplak ad yeter" diyordu. Klasör
+ * taşıma turunun ADIM 1c'sinde kapı KASTEN ateşlendi: bir dosya taşındı,
+ * harita güncellenmedi, kapı **YEŞİL** dedi (307/307, çıkış 0). Ölçüldü:
+ * kapsam içi 306 dosyanın 257'sinin (%84) adı tek — yani taşımanın %84'ü
+ * denetimsizdi. Kapı "her dosya haritada ANILMIŞ mı" diye bakıyordu;
+ * oysa taşıma turunda sorulması gereken "her dosya haritada DOĞRU YERDE
+ * mi" sorusudur. Çıplak ad bir KONUM bildirmez.
+ *
+ * ── TERS YÖN (03.08'de eklendi) ──
+ * Haritada geçen her yol ifadesi, izlenen bir dosyaya çözülmek ZORUNDA.
+ * Bu yön hiç denetlenmiyordu ve ilk koşumunda gerçek bir bayat referans
+ * buldu: `e2e-golden/sahinkul-golden.spec.ts` — dosya `5d3c30b`
+ * (fixture anonimleştirme) commit'inde `firma-a-golden.spec.ts` olmuştu,
+ * harita eski adı taşımaya devam ediyordu. Düz metin artıkları ve derleme
+ * çıktıları `harita-yol-istisna.txt` ile muaf tutulur.
  *
  * ── HR4 CIRCIR ──
  * `harita-bekleyenler.txt` yalnız KISALIR. HEAD'deki hâlinden uzunsa kapı
@@ -69,18 +84,32 @@ function main() {
   const dosyalar = kodDosyalari(kapsam).map(nfc);
   const haritaMetni = nfc(fs.readFileSync(HARITA, 'utf8'));
 
-  // Ad tekligi: yalniz TEK olan dosya adlari cıplak adla sayılabilir.
-  const adSayaci = new Map();
-  for (const y of dosyalar) {
-    const ad = y.split('/').pop();
-    adSayaci.set(ad, (adSayaci.get(ad) ?? 0) + 1);
-  }
-  const haritadaVar = (y) => {
-    if (haritaMetni.includes(y)) return 'tam-yol';
-    const ad = y.split('/').pop();
-    if (adSayaci.get(ad) === 1 && haritaMetni.includes(ad)) return 'tek-ad';
-    return null;
-  };
+  // ── YOL IFADELERI — haritadan bir kez cikarilir, iki yonde de kullanilir ──
+  // Uzantilar KAPSAM DOSYASINDAN turetilir, elle yazilmaz — kapsam
+  // genisledigi gun (or. `.prisma` eklendigi gun) kapi kendiliginde takip
+  // etsin. Elle yazdigimda `.prisma`yi atlamistim ve schema.prisma yanlislikla
+  // "listesiz" gorunmustu.
+  // ⚠ UZUN UZANTI ONCE: `tsx|ts` sirasi sart. `ts|tsx` yazilirsa regex
+  // alternasyonu soldan eslestigi icin `ExcelGrid.tsx` -> `ExcelGrid.ts`
+  // diye KIRPILIR ve olcut, olcmedigi bir dosyayi "yok" sanir. Bu tuzak
+  // 03.08'de bu kapiyi yazarken bir kez yasandi.
+  const uzantiAlt = kapsam.uzantilar
+    .map((u) => u.replace(/^\./, ''))
+    .sort((a, b) => b.length - a.length)        // uzun once
+    .map((u) => u.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('|');
+  const YOL_DESENI = new RegExp(`([A-Za-z0-9_.\\-]+/[A-Za-z0-9_.\\-/[\\]()]*\\.(?:${uzantiAlt}))`, 'g');
+  const yolTokenlari = new Set();
+  for (const m of haritaMetni.matchAll(YOL_DESENI)) yolTokenlari.add(m[1]);
+
+  /** Bir token, izlenen dosyalardan hangisine cozulur? (tam yol ya da kisayol) */
+  const cozulenler = (token) => dosyalar.filter((y) => y === token || y.endsWith('/' + token));
+
+  // ILERI YON: dosya, haritada kendisine cozulen bir YOL ifadesiyle anilmis mi?
+  // Ciplak ad SAYILMAZ — konum bildirmez (bkz. bas yorumdaki olcum).
+  const yolluAnilanlar = new Set();
+  for (const t of yolTokenlari) for (const y of cozulenler(t)) yolluAnilanlar.add(y);
+  const haritadaVar = (y) => (yolluAnilanlar.has(y) ? 'yol' : null);
 
   // ── --bekleyen: ilk olusturma ──────────────────────────────────────────
   if (argv.includes('--bekleyen')) {
@@ -113,6 +142,21 @@ function main() {
   // (c) bekleyenlerde artık var olmayan dosya
   const dosyaKume = new Set(dosyalar);
   const hayalet = bekleyen.filter((y) => !dosyaKume.has(y));
+
+  // (d) TERS YON — haritada yazan ama hicbir dosyaya cozulmeyen yol.
+  // Tasima turunun asil riski bu: dosya tasinir, harita eski yolu tasimaya
+  // devam eder ve hicbir sey sikayet etmez. Istisna listesi duz metin
+  // artiklari (`.js/.ts` gibi) ve derleme ciktilari (`dist/main.js`) icindir.
+  const ISTISNA = path.join(KOK, 'harita-yol-istisna.txt');
+  const istisna = new Set(
+    fs.existsSync(ISTISNA)
+      ? fs.readFileSync(ISTISNA, 'utf8').split(/\r?\n/)
+        .map((s) => s.trim()).filter((s) => s && !s.startsWith('#')).map(nfc)
+      : [],
+  );
+  const olmayanYol = [...yolTokenlari]
+    .filter((t) => !istisna.has(t) && cozulenler(t).length === 0)
+    .sort();
 
   console.log('── HARITA DENETIMI ──');
   console.log(`  kod dosyasi        : ${dosyalar.length}`);
@@ -151,6 +195,12 @@ function main() {
   if (hayalet.length) {
     hatalar.push(`BEKLEYENLERDE HAYALET: ${hayalet.length} dosya artik yok`);
     hayalet.slice(0, 15).forEach((y) => console.log(`  ❌ hayalet: ${y}`));
+  }
+  if (olmayanYol.length) {
+    hatalar.push(`HARITADA OLMAYAN YOL: ${olmayanYol.length} ifade hicbir dosyaya cozulmuyor`);
+    olmayanYol.slice(0, 15).forEach((y) => console.log(`  ❌ bayat yol: ${y}`));
+    if (olmayanYol.length > 15) console.log(`  … +${olmayanYol.length - 15} ifade daha`);
+    console.log('     (kasitli ise harita-yol-istisna.txt icine yazin)');
   }
 
   if (hatalar.length) {

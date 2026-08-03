@@ -1,0 +1,19 @@
+# HARİTA — YOL İSTİSNALARI
+#
+# `harita-denetle.mjs` TERS YÖN denetiminden muaf tutulan yol ifadeleri.
+# Kural: haritada geçen her yol ifadesi izlenen bir dosyaya çözülmelidir.
+# Buradaki satırlar o kuralın BİLEREK yapılmış istisnalarıdır.
+#
+# ⚠ Bu liste bir KAÇAMAK DEĞİL. Bir yol buraya ancak "gerçekten dosya değil"
+# ya da "üretim çıktısı, repoda olmaması DOĞRU" ise girer. Taşıma sonrası
+# bayat kalmış bir yolu buraya yazmak, kapıyı kapatmak demektir.
+#
+# Her satırın YANINDA gerekçesi durur; gerekçesiz satır eklenmez.
+
+# ── Düz metin artıkları: cümle içinde uzantı sayarken oluşan sahte yollar ──
+.js/.ts
+backend/tsconfig.js
+
+# ── Derleme çıktıları: repoda OLMAMALARI doğru, .gitignore'da ──
+dist/main.js
+public/surum.js
