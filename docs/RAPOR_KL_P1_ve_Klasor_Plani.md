@@ -55,6 +55,21 @@ Beklenen çıktı: `1` (tanımlı) ya da `0` (tanımsız). Cevap gelmeden ADIM 1
 
 **Sonuç — İYİ dal geçerli:** yedek değer zaten ölü koddu. ADIM 1 **düşük riskli**: yeni kod aynı ortam değişkenini okuyacak, imza anahtarı **değişmiyor**, dolayısıyla **mevcut oturumlar bozulmaz, kimse çıkış yapmaz.** Deploy sırası: ADIM 1 push → `bash scripts/deploy.sh`.
 
+### ✅ CANLI DOĞRULAMA (03.08, 18:39) — ÜÇÜNCÜ ve KESİN ÖLÇÜM
+
+Kullanıcı `bash scripts/deploy.sh` koştu; betiğin kendi doğrulaması:
+
+```
+── 5/5 canli dogrulama ──
+   adres: https://metapricex.com/api/health
+   /api/health → {"status":"ok","service":"metaprice-api","build_sha":"ebca28576e8e","tree_dirty":false,...}
+✅ DEPLOY DOGRULANDI — canli surum: ebca28576e8e
+```
+
+**Bu çıktı, JWT ölçümünün bağımsız üçüncü kanıtıdır ve tartışmayı kapatır:** yeni kodda yedek anahtar **yok**; `JWT_SECRET` tanımsız olsaydı backend modül yüklenirken ölür, konteyner ayağa kalkmaz ve `/api/health` **hiç cevap vermezdi**. Sağlık ucu 200 döndüğüne göre değişken canlıda **fiilen tanımlı** — yani düzeltilmiş ölçüm doğru, ilk `0` sonucu konsolun alt çizgiyi yazamamasının ürünüydü.
+
+Ayrıca build log'unda backend `COPY . .` satırı **CACHED değil** (0.3s) ve `npm run build` koştu → 30.07'nin "eski kod deploy edildi" tuzağı bu deploy'da yok. Aynı deploy P1-b düzeltmesini de (teklif kaydında çift kar) canlıya taşıdı.
+
 <details><summary>Yanlış ölçüme dayanan ilk senaryo (kayıt için saklandı)</summary>
 
 **KÖTÜ dal (GERÇEKLEŞMEDİ):** canlı kaynak kodda yazan yedek anahtarla token imzalıyor olsaydı:
