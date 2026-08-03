@@ -3,14 +3,14 @@
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Zap, Loader2, Search, BookmarkPlus, Trash2, Plus } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import api from '@/lib/api';
-import { toast } from '@/hooks/use-toast';
-import { confirm } from '@/hooks/use-confirm';
+import { Card, CardContent } from '@/ortak/ui/card';
+import { Button } from '@/ortak/ui/button';
+import { Input } from '@/ortak/ui/input';
+import { Label } from '@/ortak/ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ortak/ui/dialog';
+import api from '@/ortak/lib/api';
+import { toast } from '@/ortak/hooks/use-toast';
+import { confirm } from '@/ortak/hooks/use-confirm';
 
 interface Brand { id: string; name: string; logoUrl?: string | null; _count?: { priceLists: number; materialPrices: number } }
 

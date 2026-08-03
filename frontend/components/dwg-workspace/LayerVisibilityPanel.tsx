@@ -17,7 +17,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { Eye, EyeOff, Lightbulb, LightbulbOff, Layers, ChevronDown, ChevronRight, CheckCircle2, Droplets } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/ortak/lib/utils';
 
 interface LayerVisibilityPanelProps {
   availableLayers: string[];

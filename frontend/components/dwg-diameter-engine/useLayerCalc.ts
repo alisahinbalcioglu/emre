@@ -13,8 +13,8 @@
  */
 
 import { useCallback, useState } from 'react';
-import api from '@/lib/api';
-import { toast } from '@/hooks/use-toast';
+import api from '@/ortak/lib/api';
+import { toast } from '@/ortak/hooks/use-toast';
 import type { EdgeSegment } from '@/components/dwg-metraj';
 import type { CalculatedLayer } from '@/components/dwg-workspace/types';
 import type { MetrajResult, LayerCalcResult } from './types';

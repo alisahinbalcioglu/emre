@@ -2,8 +2,8 @@
 
 import { useRef, useState, useCallback } from 'react';
 import { Upload, FileSpreadsheet, FileText, Loader2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { toast } from '@/hooks/use-toast';
+import { cn } from '@/ortak/lib/utils';
+import { toast } from '@/ortak/hooks/use-toast';
 
 interface QuickStartProps {
   onExcelFile: (file: File) => void;

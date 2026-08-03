@@ -11,7 +11,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 // collapsed state layout'tan gelir
-import { cn } from '@/lib/utils';
+import { cn } from '@/ortak/lib/utils';
 
 interface SidebarProps {
   user: { email: string; role: string; tier?: string } | null;

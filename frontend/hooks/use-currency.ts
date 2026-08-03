@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import api from '@/lib/api';
+import api from '@/ortak/lib/api';
 import type { Currency, ExchangeRates } from '@/types/quotes';
 
 const CURRENCY_SYMBOLS: Record<Currency, string> = {

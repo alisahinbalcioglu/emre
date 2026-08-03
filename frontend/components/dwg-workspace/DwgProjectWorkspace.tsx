@@ -14,9 +14,9 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { AlertCircle } from 'lucide-react';
-import { toast } from '@/hooks/use-toast';
-import { confirm } from '@/hooks/use-confirm';
-import api from '@/lib/api';
+import { toast } from '@/ortak/hooks/use-toast';
+import { confirm } from '@/ortak/hooks/use-confirm';
+import api from '@/ortak/lib/api';
 import { DxfCanvasViewer } from '@/components/dwg-viewer';
 import { DiameterEditPopup, type EdgeSegment } from '@/components/dwg-metraj';
 import type { MetrajResult } from '@/components/dwg-metraj/types';

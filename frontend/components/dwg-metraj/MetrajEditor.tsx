@@ -2,8 +2,8 @@
 
 import React, { useState, useMemo } from 'react';
 import { Plus, Trash2, Check, AlertCircle, Download, ChevronDown, ChevronRight } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { toast } from '@/hooks/use-toast';
+import { cn } from '@/ortak/lib/utils';
+import { toast } from '@/ortak/hooks/use-toast';
 import type { MetrajResult } from './types';
 
 interface MetrajRow {

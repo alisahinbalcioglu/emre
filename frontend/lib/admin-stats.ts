@@ -8,7 +8,7 @@
  * (sayfa cokmez, "veri alinamadi" rozeti gosterilir).
  */
 
-import api from '@/lib/api';
+import api from '@/ortak/lib/api';
 
 export interface KpiMetric {
   value: number;

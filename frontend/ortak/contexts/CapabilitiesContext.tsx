@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
-import api from '@/lib/api';
+import api from '@/ortak/lib/api';
 
 export interface DisciplineCapability {
   material: boolean;

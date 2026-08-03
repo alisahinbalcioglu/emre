@@ -7,9 +7,9 @@ import {
   Database, Wrench, FileText, LogOut, Loader2,
   CheckCircle, Clock, Package,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import api from '@/lib/api';
-import { cn } from '@/lib/utils';
+import { Button } from '@/ortak/ui/button';
+import api from '@/ortak/lib/api';
+import { cn } from '@/ortak/lib/utils';
 
 interface UserProfile {
   id: string;

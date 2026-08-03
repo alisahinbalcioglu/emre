@@ -551,26 +551,26 @@ Karıştırılmasın diye ayrı duruyor.
 | `frontend/app/login/page.tsx` | E-posta/sifreyle giris yapar, token ve kullaniciyi localStorage'a yazip dashboard'a yonlendirir |
 | `frontend/app/page.tsx` | Token varligina gore kullaniciyi dashboard'a ya da giris sayfasina yonlendirir |
 | `frontend/app/register/page.tsx` | Yeni hesap olusturur, donen token'i saklayip dashboard'a yonlendirir |
-| `frontend/components/dashboard/QuickAccess.tsx` | Dashboard'da malzeme havuzu ve kutuphaneye hizli gecis kartlari sunar |
-| `frontend/components/dashboard/QuickStart.tsx` | Excel ve DWG dosyalarini surukle-birak/tiklama ile alir; DWG icin birim secim dialogu acar |
-| `frontend/components/layout/Breadcrumb.tsx` | URL path parcalarindan Turkce etiketli gezinme kirintisi uretir, admin/materials icin ozel etiket |
-| `frontend/components/layout/Sidebar.tsx` | Sabit sol gezinme cubugu: ana sayfalar, daralt/genislet, kullanici tier rozeti ve profil linki |
-| `frontend/components/ui/badge.tsx` | shadcn rozet primitifi; rol/tier/durum icin 8 renk varyanti (cva) |
-| `frontend/components/ui/button.tsx` | Varyant/boyut seçenekli genel tıklama bileşeni |
-| `frontend/components/ui/card.tsx` | Başlık/içerik/alt bölümlü kutu düzeni parçaları |
-| `frontend/components/ui/confirm-dialog.tsx` | use-confirm singleton'ini dinleyip tiklama noktasinda klavye destekli onay karti acan tekil renderer |
-| `frontend/components/ui/dialog.tsx` | Radix tabanli modal pencere primitifleri: overlay, icerik, baslik, aciklama, kapatma dugmesi |
-| `frontend/components/ui/input.tsx` | Ref iletimli standart metin giriş kutusu |
-| `frontend/components/ui/label.tsx` | Form alanlarına erişilebilir etiket bağlayan sarmalayıcı |
-| `frontend/components/ui/select.tsx` | Radix tabanli acilir secim kutusu primitifleri: tetik, liste, oge, kaydirma dugmeleri |
-| `frontend/components/ui/table.tsx` | Bagimliliksiz shadcn HTML tablo primitifleri; admin panel veri tablolari icin stillenmis |
-| `frontend/components/ui/toast.tsx` | Radix tabanli bildirim balonu primitifleri: viewport, varyantlar (default/destructive), kapatma, aksiyon |
-| `frontend/components/ui/toaster.tsx` | useToast kuyrugundaki bildirimleri ToastProvider icinde ekrana basan render bileseni |
-| `frontend/contexts/CapabilitiesContext.tsx` | /auth/me'den kullanici disiplin/yetenek bayraklarini cekip saglayan React context ve yardimci sorgular |
-| `frontend/hooks/use-confirm.ts` | Tıklanan noktada açılan Promise tabanlı onay popover'ı |
-| `frontend/hooks/use-toast.ts` | Bildirim mesajlarının yaşam döngüsünü yöneten reducer |
-| `frontend/lib/api.ts` | JWT ekleyen, 401'de oturumu temizleyip girişe yönlendiren merkezi HTTP istemcisi |
-| `frontend/lib/utils.ts` | Tailwind sınıf birleştirme (cn) + sayı biçimleme yardımcıları |
+| `frontend/ortak/kabuk/components/dashboard/QuickAccess.tsx` | Dashboard'da malzeme havuzu ve kutuphaneye hizli gecis kartlari sunar |
+| `frontend/ortak/kabuk/components/dashboard/QuickStart.tsx` | Excel ve DWG dosyalarini surukle-birak/tiklama ile alir; DWG icin birim secim dialogu acar |
+| `frontend/ortak/kabuk/components/layout/Breadcrumb.tsx` | URL path parcalarindan Turkce etiketli gezinme kirintisi uretir, admin/materials icin ozel etiket |
+| `frontend/ortak/kabuk/components/layout/Sidebar.tsx` | Sabit sol gezinme cubugu: ana sayfalar, daralt/genislet, kullanici tier rozeti ve profil linki |
+| `frontend/ortak/ui/badge.tsx` | shadcn rozet primitifi; rol/tier/durum icin 8 renk varyanti (cva) |
+| `frontend/ortak/ui/button.tsx` | Varyant/boyut seçenekli genel tıklama bileşeni |
+| `frontend/ortak/ui/card.tsx` | Başlık/içerik/alt bölümlü kutu düzeni parçaları |
+| `frontend/ortak/ui/confirm-dialog.tsx` | use-confirm singleton'ini dinleyip tiklama noktasinda klavye destekli onay karti acan tekil renderer |
+| `frontend/ortak/ui/dialog.tsx` | Radix tabanli modal pencere primitifleri: overlay, icerik, baslik, aciklama, kapatma dugmesi |
+| `frontend/ortak/ui/input.tsx` | Ref iletimli standart metin giriş kutusu |
+| `frontend/ortak/ui/label.tsx` | Form alanlarına erişilebilir etiket bağlayan sarmalayıcı |
+| `frontend/ortak/ui/select.tsx` | Radix tabanli acilir secim kutusu primitifleri: tetik, liste, oge, kaydirma dugmeleri |
+| `frontend/ortak/ui/table.tsx` | Bagimliliksiz shadcn HTML tablo primitifleri; admin panel veri tablolari icin stillenmis |
+| `frontend/ortak/ui/toast.tsx` | Radix tabanli bildirim balonu primitifleri: viewport, varyantlar (default/destructive), kapatma, aksiyon |
+| `frontend/ortak/ui/toaster.tsx` | useToast kuyrugundaki bildirimleri ToastProvider icinde ekrana basan render bileseni |
+| `frontend/ortak/contexts/CapabilitiesContext.tsx` | /auth/me'den kullanici disiplin/yetenek bayraklarini cekip saglayan React context ve yardimci sorgular |
+| `frontend/ortak/hooks/use-confirm.ts` | Tıklanan noktada açılan Promise tabanlı onay popover'ı |
+| `frontend/ortak/hooks/use-toast.ts` | Bildirim mesajlarının yaşam döngüsünü yöneten reducer |
+| `frontend/ortak/lib/api.ts` | JWT ekleyen, 401'de oturumu temizleyip girişe yönlendiren merkezi HTTP istemcisi |
+| `frontend/ortak/lib/utils.ts` | Tailwind sınıf birleştirme (cn) + sayı biçimleme yardımcıları |
 
 ### L · ÇEKİRDEK BACKEND ALTYAPISI — 31 dosya
 

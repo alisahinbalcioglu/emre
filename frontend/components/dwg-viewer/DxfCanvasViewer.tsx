@@ -22,7 +22,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import RBush from 'rbush';
 import { Loader2, AlertCircle, ZoomIn, ZoomOut, Maximize2, Eraser, Undo2, RotateCcw, Check, X } from 'lucide-react';
-import api from '@/lib/api';
+import api from '@/ortak/lib/api';
 import type { GeometryResult } from './types';
 import type { EdgeSegment } from '@/components/dwg-metraj/types';
 import { diameterToColor } from '@/components/dwg-metraj/diameter-colors';

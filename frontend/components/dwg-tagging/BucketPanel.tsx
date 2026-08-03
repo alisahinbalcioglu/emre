@@ -14,8 +14,8 @@
 
 import React, { useState } from 'react';
 import { Tag, Plus, X, Wand2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { toast } from '@/hooks/use-toast';
+import { cn } from '@/ortak/lib/utils';
+import { toast } from '@/ortak/hooks/use-toast';
 import { useTaggingStore, useActiveBucket } from './useTaggingStore';
 
 interface BucketPanelProps {

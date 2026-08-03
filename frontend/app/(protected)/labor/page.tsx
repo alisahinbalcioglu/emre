@@ -4,20 +4,20 @@ import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Plus, Pencil, Trash2, Wrench, Loader2, Zap } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle } from '@/ortak/ui/card';
+import { Button } from '@/ortak/ui/button';
+import { Input } from '@/ortak/ui/input';
+import { Label } from '@/ortak/ui/label';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
+} from '@/ortak/ui/select';
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
-} from '@/components/ui/dialog';
-import api from '@/lib/api';
-import { toast } from '@/hooks/use-toast';
-import { confirm } from '@/hooks/use-confirm';
-import { cn } from '@/lib/utils';
+} from '@/ortak/ui/dialog';
+import api from '@/ortak/lib/api';
+import { toast } from '@/ortak/hooks/use-toast';
+import { confirm } from '@/ortak/hooks/use-confirm';
+import { cn } from '@/ortak/lib/utils';
 
 interface LaborItem {
   id: string;

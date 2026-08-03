@@ -15,29 +15,29 @@ import {
   Trash2,
   Package,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button } from '@/ortak/ui/button';
 import { teklifCiktisiniIndir } from '@/lib/export-download';
 import { adDisiplinTahmini } from '@/lib/disiplin';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle } from '@/ortak/ui/card';
+import { Input } from '@/ortak/ui/input';
+import { Label } from '@/ortak/ui/label';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import api from '@/lib/api';
-import { toast } from '@/hooks/use-toast';
-import { confirm } from '@/hooks/use-confirm';
-import { cn } from '@/lib/utils';
+} from '@/ortak/ui/select';
+import api from '@/ortak/lib/api';
+import { toast } from '@/ortak/hooks/use-toast';
+import { confirm } from '@/ortak/hooks/use-confirm';
+import { cn } from '@/ortak/lib/utils';
 import { ExcelGrid } from '@/components/excel-grid/ExcelGrid';
 import type { ExcelGridHandle } from '@/components/excel-grid/ExcelGrid';
 import { SheetTabs } from '@/components/excel-grid/SheetTabs';
 import ColumnManagerPanel from '@/components/quotes/ColumnManagerPanel';
 import type { ExcelGridData, ExcelRowData, MultiSheetData, SheetData, MatchCandidate as ExcelMatchCandidate } from '@/components/excel-grid/types';
-import { useCapabilities } from '@/contexts/CapabilitiesContext';
+import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
 // DwgUploader artik bagimsiz /dwg-workspace route'unda render ediliyor —
 // ana quotes bundle'i DWG viewer agirligindan kurtuldu.
 import type { MetrajResult } from '@/components/dwg-metraj/types';

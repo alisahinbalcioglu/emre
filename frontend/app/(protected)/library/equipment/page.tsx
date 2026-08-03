@@ -16,26 +16,26 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { Plus, Pencil, Trash2, ArrowLeft, X, Wrench } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Button } from '@/ortak/ui/button';
+import { Input } from '@/ortak/ui/input';
+import { Label } from '@/ortak/ui/label';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from '@/components/ui/dialog';
+} from '@/ortak/ui/dialog';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import { toast } from '@/hooks/use-toast';
-import { confirm } from '@/hooks/use-confirm';
-import api from '@/lib/api';
+} from '@/ortak/ui/select';
+import { toast } from '@/ortak/hooks/use-toast';
+import { confirm } from '@/ortak/hooks/use-confirm';
+import api from '@/ortak/lib/api';
 
 interface Brand {
   id: string;

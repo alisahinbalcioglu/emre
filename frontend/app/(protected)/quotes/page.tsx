@@ -3,11 +3,11 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, Trash2, FileText, Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import api from '@/lib/api';
-import { toast } from '@/hooks/use-toast';
-import { confirm } from '@/hooks/use-confirm';
+import { Button } from '@/ortak/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/ortak/ui/card';
+import api from '@/ortak/lib/api';
+import { toast } from '@/ortak/hooks/use-toast';
+import { confirm } from '@/ortak/hooks/use-confirm';
 
 interface QuoteItem {
   id: string;

@@ -17,9 +17,9 @@ import { joinMaterialText } from '@/lib/parse-material-text';
 import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, yukariYuvarla, etkinMiktar, paraBicim } from '@/lib/pricing';
 import { hasSizeExpression, isSelfSufficientRow } from './build-material-context';
 import { niteliklerdenBaglam, adayEtiketleri, popupGenisligiOku, popupGenisligiYaz } from './aday-ayirt-edicilik';
-import httpApi from '@/lib/api';
-import { toast } from '@/hooks/use-toast';
-import { confirm } from '@/hooks/use-confirm';
+import httpApi from '@/ortak/lib/api';
+import { toast } from '@/ortak/hooks/use-toast';
+import { confirm } from '@/ortak/hooks/use-confirm';
 
 // Z4: satir bazli para birimi sembolu (row._currency) — kutuphane gridi
 // dovizli satirlari kendi birimiyle gosterir

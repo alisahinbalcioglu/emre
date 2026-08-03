@@ -19,7 +19,7 @@ import {
   LogOut,
   ShieldCheck,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/ortak/lib/utils';
 
 interface NavItem {
   href: string;

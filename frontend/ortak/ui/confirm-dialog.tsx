@@ -7,8 +7,8 @@
 
 import * as React from 'react';
 import { AlertTriangle } from 'lucide-react';
-import { useConfirmController } from '@/hooks/use-confirm';
-import { cn } from '@/lib/utils';
+import { useConfirmController } from '@/ortak/hooks/use-confirm';
+import { cn } from '@/ortak/lib/utils';
 
 const CARD_W = 300; // px — clamp hesabı için
 const MARGIN = 12;

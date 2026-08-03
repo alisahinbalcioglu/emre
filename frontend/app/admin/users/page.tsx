@@ -12,14 +12,14 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Loader2, Search, Users as UsersIcon, RefreshCw, AlertCircle } from 'lucide-react';
-import api from '@/lib/api';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
+import api from '@/ortak/lib/api';
+import { Input } from '@/ortak/ui/input';
+import { Button } from '@/ortak/ui/button';
+import { Badge } from '@/ortak/ui/badge';
+import { Card, CardContent } from '@/ortak/ui/card';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from '@/components/ui/table';
+} from '@/ortak/ui/table';
 
 interface AdminUser {
   id: string;

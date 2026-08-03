@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/ortak/lib/utils';
 
 /** shadcn/ui Table primitifleri — Admin panel Data Table'lari icin.
  *  Bagimliliksiz (TanStack yok): sade, veri odakli, hizli. */

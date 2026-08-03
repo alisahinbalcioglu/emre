@@ -9,8 +9,8 @@
 // L2 indeksler, eşleştirme buradan çalışır.
 
 import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react';
-import api from '@/lib/api';
-import { toast } from '@/hooks/use-toast';
+import api from '@/ortak/lib/api';
+import { toast } from '@/ortak/hooks/use-toast';
 import { ExcelGrid } from '@/components/excel-grid/ExcelGrid';
 import type { ExcelGridData, ExcelRowData } from '@/components/excel-grid/types';
 

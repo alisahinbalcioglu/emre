@@ -10,9 +10,9 @@ import {
   ChevronDown,
   Settings,
 } from 'lucide-react';
-import { CapabilitiesProvider } from '@/contexts/CapabilitiesContext';
-import Sidebar from '@/components/layout/Sidebar';
-import Breadcrumb from '@/components/layout/Breadcrumb';
+import { CapabilitiesProvider } from '@/ortak/contexts/CapabilitiesContext';
+import Sidebar from '@/ortak/kabuk/components/layout/Sidebar';
+import Breadcrumb from '@/ortak/kabuk/components/layout/Breadcrumb';
 
 /* ------------------------------------------------------------------ */
 /*  Currency Widget                                                    */
@@ -31,7 +31,7 @@ function useCurrencyRates(): ExchangeRates {
       try {
         // CANLI TCMB kuru — backend /exchange-rates (today.xml + 1 saat cache,
         // er-api fallback). Statik degil: her sayfa yuklemesinde guncel deger.
-        const api = (await import('@/lib/api')).default;
+        const api = (await import('@/ortak/lib/api')).default;
         const { data } = await api.get<{ usdTry: number; eurTry: number }>('/exchange-rates');
         if (!data?.usdTry || data.usdTry <= 1) return;
         setRates({ usdTry: data.usdTry, eurTry: data.eurTry });

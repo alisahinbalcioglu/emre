@@ -16,22 +16,22 @@ import {
   Package, Plus, Trash2, Loader2, ChevronRight, RefreshCw, AlertCircle, Upload,
   AlertTriangle,
 } from 'lucide-react';
-import api from '@/lib/api';
-import { toast } from '@/hooks/use-toast';
-import { confirm } from '@/hooks/use-confirm';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import api from '@/ortak/lib/api';
+import { toast } from '@/ortak/hooks/use-toast';
+import { confirm } from '@/ortak/hooks/use-confirm';
+import { Button } from '@/ortak/ui/button';
+import { Input } from '@/ortak/ui/input';
+import { Badge } from '@/ortak/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/ortak/ui/card';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from '@/components/ui/table';
+} from '@/ortak/ui/table';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
+} from '@/ortak/ui/select';
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
-} from '@/components/ui/dialog';
+} from '@/ortak/ui/dialog';
 
 interface Brand {
   id: string;

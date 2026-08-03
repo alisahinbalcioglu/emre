@@ -2,9 +2,9 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Upload, Loader2, AlertCircle } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { toast } from '@/hooks/use-toast';
-import api from '@/lib/api';
+import { cn } from '@/ortak/lib/utils';
+import { toast } from '@/ortak/hooks/use-toast';
+import api from '@/ortak/lib/api';
 import { MetrajResult } from './types';
 import { DwgProjectWorkspace } from '@/components/dwg-workspace';
 

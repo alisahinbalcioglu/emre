@@ -2,11 +2,11 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { X, Save, Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import api from '@/lib/api';
-import { toast } from '@/hooks/use-toast';
-import { confirm } from '@/hooks/use-confirm';
+import { Button } from '@/ortak/ui/button';
+import { Input } from '@/ortak/ui/input';
+import api from '@/ortak/lib/api';
+import { toast } from '@/ortak/hooks/use-toast';
+import { confirm } from '@/ortak/hooks/use-confirm';
 import { ExcelGrid } from '@/components/excel-grid/ExcelGrid';
 import type { ExcelGridData, ExcelRowData } from '@/components/excel-grid/types';
 

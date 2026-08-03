@@ -6,6 +6,12 @@ const config: Config = {
     './pages/**/*.{ts,tsx}',
     './components/**/*.{ts,tsx}',
     './app/**/*.{ts,tsx}',
+    // DURAK 1 (03.08): ortak/ altina tasinan bilesenler. Tailwind v3'te
+    // sinif taramasi YALNIZ bu glob'larla yapilir — eklenmezse butonlar,
+    // dialoglar ve sidebar STILSIZ render olur ve hicbir kapi kirmizi
+    // yanmaz (build/tsc/test/CI hepsi yesil kalir). Sessiz kirilma.
+    './ortak/**/*.{ts,tsx}',
+    './ozellik/**/*.{ts,tsx}',
   ],
   theme: {
     extend: {

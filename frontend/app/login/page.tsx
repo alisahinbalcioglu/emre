@@ -3,12 +3,12 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import api from '@/lib/api';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { toast } from '@/hooks/use-toast';
+import api from '@/ortak/lib/api';
+import { Button } from '@/ortak/ui/button';
+import { Input } from '@/ortak/ui/input';
+import { Label } from '@/ortak/ui/label';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/ortak/ui/card';
+import { toast } from '@/ortak/hooks/use-toast';
 
 export default function LoginPage() {
   const router = useRouter();

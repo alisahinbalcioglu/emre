@@ -19,9 +19,9 @@ import {
   PieChart, Pie, Cell, Legend,
   BarChart, Bar,
 } from 'recharts';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/ortak/ui/button';
+import { Badge } from '@/ortak/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/ortak/ui/card';
 import { fetchAdminStats, type AdminStats, type KpiMetric } from '@/lib/admin-stats';
 
 const PIE_COLORS = ['#3b82f6', '#f59e0b'];

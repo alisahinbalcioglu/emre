@@ -5,12 +5,12 @@ import { useRouter } from 'next/navigation';
 import {
   FileText, Database, Tag, Users, Sparkles,
 } from 'lucide-react';
-import api from '@/lib/api';
-import { toast } from '@/hooks/use-toast';
-import { useCapabilities } from '@/contexts/CapabilitiesContext';
-import QuickStart from '@/components/dashboard/QuickStart';
+import api from '@/ortak/lib/api';
+import { toast } from '@/ortak/hooks/use-toast';
+import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
+import QuickStart from '@/ortak/kabuk/components/dashboard/QuickStart';
 import RecentQuotes from '@/components/dashboard/RecentQuotes';
-import QuickAccess from '@/components/dashboard/QuickAccess';
+import QuickAccess from '@/ortak/kabuk/components/dashboard/QuickAccess';
 
 interface DashStats {
   userCount: number;

@@ -4,13 +4,13 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Plus, Trash2, Wrench, Zap, Loader2, ArrowRight } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import api from '@/lib/api';
-import { toast } from '@/hooks/use-toast';
-import { confirm } from '@/hooks/use-confirm';
-import { useCapabilities } from '@/contexts/CapabilitiesContext';
+import { Button } from '@/ortak/ui/button';
+import { Card, CardContent } from '@/ortak/ui/card';
+import { Input } from '@/ortak/ui/input';
+import api from '@/ortak/lib/api';
+import { toast } from '@/ortak/hooks/use-toast';
+import { confirm } from '@/ortak/hooks/use-confirm';
+import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
 
 interface LaborFirm {
   id: string;

@@ -4,8 +4,8 @@
 //      istemeyebilir").
 //   2. Teklif Formati — kapak/icmal/format tabanli tam cikti (rev artar).
 // Her tik TEK dosya indirir → Chrome coklu-indirme blogu tetiklenmez (KE12).
-import api from '@/lib/api';
-import { toast } from '@/hooks/use-toast';
+import api from '@/ortak/lib/api';
+import { toast } from '@/ortak/hooks/use-toast';
 
 function blobIndir(data: Blob, headers: any, fallback: string) {
   const url = window.URL.createObjectURL(new Blob([data]));

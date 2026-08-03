@@ -4,14 +4,14 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Package, Plus, Search, Upload, Loader2 } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import api from '@/lib/api';
-import { toast } from '@/hooks/use-toast';
+import { Card, CardContent } from '@/ortak/ui/card';
+import { Button } from '@/ortak/ui/button';
+import { Input } from '@/ortak/ui/input';
+import { Label } from '@/ortak/ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ortak/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ortak/ui/select';
+import api from '@/ortak/lib/api';
+import { toast } from '@/ortak/hooks/use-toast';
 import ManualBrandModal from '@/components/library/ManualBrandModal';
 
 interface LibraryBrand {

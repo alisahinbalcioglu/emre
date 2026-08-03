@@ -14,8 +14,8 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { X, Check, Trash2, Search, Plus, Wrench } from 'lucide-react';
-import api from '@/lib/api';
-import { toast } from '@/hooks/use-toast';
+import api from '@/ortak/lib/api';
+import { toast } from '@/ortak/hooks/use-toast';
 import type { MarkedEquipment } from './types';
 import { ilkMod } from './equipment-popup-mod';
 
