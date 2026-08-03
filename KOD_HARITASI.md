@@ -261,6 +261,353 @@ Karıştırılmasın diye ayrı duruyor.
 
 ---
 
+---
+
+## TAM SINIFLANDIRMA — sığ katman (HS turu, 03.08.2026)
+
+> **Ne bu:** HS1-HS12 turunun çıktısı — bekleyenler listesindeki **269 dosyanın TAMAMI okunarak** tek satırla sınıflandırıldı, liste sıfırlandı (269 → 0). Buradaki satırlar SIĞ iddialardır ("bu dosya ne işi yapıyor, hangi alanın malı"); üstteki grup bölümleri kanıt zincirli DERİN katmandır. Her satırın okunan aralığı + karar veren sembolleri `docs/RAPOR_HS_Harita_Siniflandirma.md`'de kayıtlıdır. Şema HS3'te donduruldu (A-M); adından tahminle yazılmış TEK satır yoktur.
+>
+> **HS3'te ilan edilen dört yeni grup:**
+> **J · DWG-METRAJ** — ikinci ürün hattı: DWG/DXF yükleme-dönüşüm (Python motoru), çizim görüntüleme, tıkla-etiketle çap atama, boru segmentasyon/topoloji, metraj ve Excel'e metraj ihracı.
+> **K · ORTAK UI, KABUK ve İSTEMCİ** — uygulama geneli arayüz primitifleri (ui/*), genel hook'lar, merkezi HTTP+auth istemcisi, layout/navigasyon, kabuk sayfaları (login/register/profil/dashboard), context'ler.
+> **L · ÇEKİRDEK BACKEND ALTYAPISI** — auth guard/strategy/decorator/DTO, Prisma bağlantı katmanı, NestJS modül kablolaması (`*.module.ts`, `app.module`, `main.ts`), yetki/rol/tier kapıları.
+> **M · TEKLİF YAŞAM DÖNGÜSÜ** — teklifin kaydı/listelenmesi/detayı; üretim hattı (A-F) teklifi KURAR, M kurulanı SAKLAR ve yeniden açar.
+>
+> **E (TOPLAM) bu listede boş** — dürüst boşluk: toplam hesabı, zaten derin katmanda kayıtlı `standart-sema.ts:191-195`'te yaşıyor; bekleyenler evreninde E'ye düşen dosya çıkmadı.
+
+### A · GİRİŞ — 7 dosya
+
+| Dosya | Ne yapıyor |
+|---|---|
+| `backend/src/ai/ai.controller.ts` | Pro paket sartiyla PDF dosyasi alip AI icerik cikarimina (analyze) yonlendiren endpoint |
+| `backend/src/ai/ai.service.ts` | PDF/Excel içeriğinden LLM'lerle malzeme satırları ve sütun rolleri çıkarır |
+| `backend/src/modules/excel-engine/excel-engine.controller.ts` | Yuklenen Excel dosyasini JWT korumali tek uc uzerinden analiz servisine iletir |
+| `backend/src/modules/excel-engine/excel-engine.service.ts` | Excel'i okuyup Gemini ile header satiri ve kolon rollerini tespit eder, satirlari objeye cevirir |
+| `backend/src/modules/excel-grid/excel-grid.controller.ts` | Yuklenen Excel'i sabit-sema grid verisine hazirlayan tek POST ucunu sunar |
+| `backend/src/modules/excel-grid/excel-grid.service.ts` | Yüklenen xlsx'i sayfa sayfa ayrıştırıp kolon rollerini içerikten tespit eder |
+| `backend/src/modules/excel-grid/sheet-discipline.ts` | Sayfa adi ve ornek satir metninden mekanik/elektrik disiplinini anahtar kelime skoruyla tahmin eder |
+
+### B · TABLO — 11 dosya
+
+| Dosya | Ne yapıyor |
+|---|---|
+| `frontend/app/(protected)/quotes/new/error.tsx` | Teklif olusturma rotasinda yakalanan hatayi mesaj ve stack ile gosterir, tekrar dene sunar |
+| `frontend/app/(protected)/quotes/new/page.tsx` | Teklif oluşturma akışının tamamını tek sayfada yürüten orkestratör (çok gruba dokunur, evi B) |
+| `frontend/components/excel-grid/CustomDropdown.tsx` | Grid hucrelerinde marka/firma secimi icin aranabilir, portal'la cizilen ozel acilir liste |
+| `frontend/components/excel-grid/fill-down.ts` | Surukle-doldur hedeflerini eslestirme motoruyla tek tek sorgular; fiyat/durum yazar, toplamlari tazeler, geri-alma anligi uretir |
+| `frontend/components/excel-grid/SheetTabs.tsx` | Alt sayfa sekmeleri: aktif sayfa secimi, disiplin (mekanik/elektrik) toggle'i ve eslesme sayaci rozetleri |
+| `frontend/components/excel-grid/types.ts` | Grid kolon tanımı, satır meta alanları, kolon rolleri, aday/marka tipleri |
+| `frontend/components/excel-grid/useFillHandle.tsx` | AG-Grid Community icin DOM-seviyesi doldurma tutamaci: alt kenardan surukleme, canli sayac rozeti, cift-tik aile doldurma |
+| `frontend/components/quotes/ColumnManagerPanel.tsx` | Sutun gizle/goster paneli: kilitli sutun korumasi, kat isaretleme (MIK toplami) ve kalici sutun kaldirma |
+| `frontend/lib/disiplin.ts` | Sekme adindan mekanik/elektrik disiplinini tahmin eden hafif fallback; tespit yoksa null |
+| `frontend/lib/merge-multisheet.ts` | Yeni yuklenen Excel'i mevcut grid durumuyla satir/sheet bazinda birlestirir; kullanici girdilerini ve ozel sutunlari korur |
+| `frontend/lib/parse-material-text.ts` | "Ø110 PVC BORU" gibi metni regex desenleriyle cap ve cins olarak ayirir, gerekirse geri birlestirir |
+
+### C · EŞLEŞTİRME — 16 dosya
+
+| Dosya | Ne yapıyor |
+|---|---|
+| `backend/src/modules/labor-matching/labor-matching.controller.ts` | Iscilik kalemleri icin toplu esleme, secim hafizasi, reindex ve admin backfill uclarini sunar |
+| `backend/src/modules/labor-matching/labor-matching.service.ts` | Firma sahipligini dogrulayip iscilik eslemeyi ortak eslesme motoruna delege eder |
+| `backend/src/modules/matching/ad-cins-sozlugu.ts` | Malzeme ailesi slug'lari, es anlamli desenler ve cins yuvalarini iceren seed sozluk verisi |
+| `backend/src/modules/matching/ad-resolver.ts` | Normalize metinde en uzun sozluk desenini bulup malzeme ailesi slug'ini cozer |
+| `backend/src/modules/matching/conversion.ts` | Çelik/plastik borularda DN-inç-mm çap eşdeğerlerini tablolarla çevirir |
+| `backend/src/modules/matching/index/line-parser.ts` | Serbest teklif satiri metnini aile, cap/boy, birim sinyali ve yonlendirilmis token sorgusuna cevirir |
+| `backend/src/modules/matching/index/vocab.ts` | Aile+marka indeksindeki urun token'larindan ad/cins/baglanti kelime dagarcigi kurar |
+| `backend/src/modules/matching/matching.controller.ts` | Malzeme toplu esleme, secim hafizasi, indeks sagligi ve terminoloji alias CRUD uclarini sunar |
+| `backend/src/modules/matching/normalizer.ts` | Türkçe/unicode metni normalleştirir; satırdan çap, yüzey, bağlantı, PN etiketleri çıkarır |
+| `backend/src/modules/matching/shared-tag-matcher.ts` | Yuzey/cins/baglanti/tip tag kumeleri, etiket gorunum adlari ve nitelik-tag yardimcilarini saglar |
+| `backend/src/modules/matching/tag-generator.ts` | Malzeme adindan regex/lookup ile cap, yuzey, cins, baglanti, standart ve nitelik tag'leri uretir |
+| `backend/src/modules/matching/terminology.service.ts` | Takma adları malzeme ailesine çevirir; kullanıcı alias'larını öğrenip saklar |
+| `backend/src/modules/matching/types.ts` | Esleme sonucu, aday, marka alternatifi ve tag'lenmis malzeme arayuz tanimlarini tasir |
+| `backend/src/utils/build-material-context.ts` | Grid satirlarindan ust grup basligini bulup tam malzeme adini kurar; cap tutarsizliginda guvenli tarafta sadece satir adini doner |
+| `backend/src/utils/etiket-display.ts` | Serbest metinden AD/CINS/CAP etiket gosterimlerini eslestirme motoru tag'leriyle turetir; admin AD duzeltmesini dogrular |
+| `frontend/components/excel-grid/build-material-context.ts` | Eslestirme sorgusu icin satirin olcu ifadesi tasiyip tasimadigini ve baslik baglami gerekip gerekmedigini belirler |
+
+### D · FİYAT — 5 dosya
+
+| Dosya | Ne yapıyor |
+|---|---|
+| `backend/src/exchange-rates/exchange-rates.controller.ts` | Canli kuru guard'siz public GET ucu olarak sunar |
+| `backend/src/exchange-rates/exchange-rates.service.ts` | TCMB XML'den USD/EUR kuru ceker; er-api fallback, 1 saatlik cache, thundering-herd korumasi |
+| `frontend/components/excel-grid/discount-utils.ts` | Iskonto yuzdesini 0-100'e sabitler, TR bicimli/%'li girisi ve cok satirli Excel yapistirmasini sayiya cevirir |
+| `frontend/hooks/use-currency.ts` | TRY bazli fiyatlari canli TCMB kuruyla USD/EUR'a ceviren ve bicimleyen para birimi hook'u |
+| `frontend/lib/pricing.ts` | Iskonto→net, kar→satis, yukari-1-hane yuvarlama, para birimi gosterim bicimi ve etkin miktar kurallarinin tek kaynagi |
+
+### E · TOPLAM — bu turda satır düşmedi
+
+### F · ÇIKTI — 7 dosya
+
+| Dosya | Ne yapıyor |
+|---|---|
+| `backend/src/quote-formats/format-engine.ts` | Kullanici teklif sablonunda {{yer_tutucu}} tarar, ornek format uretir ve sayfayi grid verisine cevirir |
+| `backend/src/quote-formats/quote-formats.controller.ts` | Teklif format sablonlarinin yukleme, listeleme, onizleme (xlsx/pdf), guncelleme ve silme uclarini sunar |
+| `backend/src/quote-formats/quote-formats.service.ts` | Kullanicinin teklif sablonlarini yukler/tarar/onizler; varsayilan secimi, PDF onizleme ve ornek dosya uretir |
+| `backend/src/quotes/export-engine.ts` | Format workbook'unu taban alip fiyatlanmis liste sayfalarini yerlestirerek profesyonel Excel ciktisi kurar; birim bicimi ve self-check uygular |
+| `backend/src/utils/xlsx-to-pdf.ts` | Excel'i LibreOffice headless ile birebir baski gorunumlu PDF'e cevirir; soffice yoksa/timeout'ta null doner |
+| `frontend/app/(protected)/quote-formats/page.tsx` | Kalici teklif format sablonlarini yukleme, yer tutucu tarama onizlemesi, varsayilan yapma ve silme yonetimi |
+| `frontend/lib/export-download.ts` | Iki export ucunu cagirip blob'u dosya olarak indirtir; self-check ozet/uyari toast'larini gosterir |
+
+### G · KÜTÜPHANE ve YÖNETİM — 40 dosya
+
+| Dosya | Ne yapıyor |
+|---|---|
+| `backend/src/bootstrap.controller.ts` | BOOTSTRAP_SECRET env aktifken mevcut kullaniciyi tek seferlik admin/suite'e yukselten endpoint |
+| `backend/src/brands/brands.controller.ts` | Marka listeleme/arama, fiyat listesi malzemeleri ve admin'e ozel marka CRUD uclarini sunar |
+| `backend/src/brands/brands.service.ts` | Marka CRUD, fiyat listesi/havuz malzemesi listeleme ve global malzeme arama saglar |
+| `backend/src/brands/dto/create-brand.dto.ts` | Marka olusturma/guncelleme girdisini dogrular (ad, logo, disiplin) |
+| `backend/src/labor-firms/labor-firms.controller.ts` | Iscilik firmasi CRUD, fiyat listesi/kalem toplu kayit, sheet saklama ve Excel parse uclari |
+| `backend/src/labor-firms/labor-firms.service.ts` | Kullanıcının işçilik firmalarını ve fiyat listelerini sahiplik kontrolüyle yönetir |
+| `backend/src/labor/labor.controller.ts` | Genel iscilik kalemi CRUD uclarini Pro tier kosuluyla sunar |
+| `backend/src/labor/labor.service.ts` | Iscilik kalemi CRUD'u yapar; ada gore iscilik esleme yardimcisi da icerir |
+| `backend/src/library/dto/bulk-discount.dto.ts` | Marka bazli toplu iskonto orani girdisini dogrular (0-100) |
+| `backend/src/library/dto/bulk-update-items.dto.ts` | Secili kutuphane kalemlerine toplu iskonto uygulama girdisini dogrular |
+| `backend/src/library/dto/create-manual-brand.dto.ts` | Elle marka olusturma satirlarini 11-kolon ProductIndex semasiyla dogrular (1-5000 satir) |
+| `backend/src/library/dto/import-price-list.dto.ts` | Fiyat listesini kullanici kutuphanesine aktarma istegini dogrular (marka+liste id) |
+| `backend/src/library/dto/update-library-item.dto.ts` | Kutuphane kalemi guncelleme alanlarini (fiyat, iskonto, spec, kategori) dogrular |
+| `backend/src/library/library-sheet-builder.ts` | Kutuphane kalemlerinden kategori-bantli sentetik grid sheet JSON'u (kolon+satir) uretir |
+| `backend/src/materials/dto/create-material-price.dto.ts` | Havuza malzeme-marka fiyat kaydi ekleme girdisini dogrular |
+| `backend/src/materials/dto/create-material.dto.ts` | Malzeme olusturma isteginde ad alaninin bos olmayan string olmasini dogrular |
+| `backend/src/materials/materials.controller.ts` | Admin-korumali malzeme havuzu CRUD ve marka bazli fiyat atama/silme HTTP uclari |
+| `backend/src/materials/materials.service.ts` | Prisma ile malzeme CRUD ve marka bazli fiyat upsert/silme islemleri |
+| `backend/src/utils/import-fidelity.ts` | Admin fiyat listesi ice aktarimi icin TR sayi/para birimi ayristirma, bicim cikarimi, aykiri fiyat isaretleme, kategori yuruyusu ve kolon haritalama saglar |
+| `frontend/app/(protected)/labor-firms/[firmaId]/page.tsx` | Iscilik firmasinin fiyat listelerini grid ile goruntuleme, duzenleme, yeni liste ekleme ve kaydetme sayfasi |
+| `frontend/app/(protected)/labor-firms/page.tsx` | Iscilik firmalarini disiplin filtresiyle listeler; olusturma ve silme sunar |
+| `frontend/app/(protected)/labor/page.tsx` | Disiplin bazli iscilik kalemleri kutuphanesinde dialog'lu CRUD yonetimi |
+| `frontend/app/(protected)/library/brand/[brandId]/page.tsx` | Kutuphane markasinin sayfa verisini grid'de duzenleme, yeni malzeme satiri girisi ve kaydetme |
+| `frontend/app/(protected)/library/electrical-brands/page.tsx` | Elektrik kutuphane markalarini listeler; manuel malzeme ekleme ve PDF'ten AI cikarimla toplu aktarim sunar |
+| `frontend/app/(protected)/library/equipment/page.tsx` | DWG akisinda secilecek ekipman/sarf kayitlarini serbest spec alanlariyla yoneten kutuphane ekrani |
+| `frontend/app/(protected)/library/mechanical-brands/page.tsx` | Mekanik kutuphane markalarini listeler; manuel marka modali ve PDF'ten cikarimla aktarim sunar |
+| `frontend/app/(protected)/library/page.tsx` | Kullanici kutuphanesi ana ekrani; kalem ekleme/duzenleme, iskonto ve net fiyat gosterimi |
+| `frontend/app/(protected)/materials/[brandId]/page.tsx` | Marka fiyat listelerini gösterir, kütüphaneye aktarır, admin Excel düzenleyici açar |
+| `frontend/app/(protected)/materials/electrical/page.tsx` | Elektrik malzeme havuzu marka listesi; admin icin marka ekleme/silme |
+| `frontend/app/(protected)/materials/mechanical/page.tsx` | Mekanik malzeme havuzu marka listesi; admin icin marka ekleme/silme |
+| `frontend/app/(protected)/materials/page.tsx` | Havuz ara kart sayfasini atlayip dogrudan mekanik havuza yonlendiren redirect stub'u |
+| `frontend/app/admin/brands/page.tsx` | Global havuz CRUD'u: marka/liste/malzeme + iki fazlı Excel içe aktarım önizlemesi |
+| `frontend/app/admin/layout.tsx` | Admin rotalarini e-posta tabanli guard ile korur, sidebar'li sayfa iskeleti saglar |
+| `frontend/app/admin/page.tsx` | Admin kok rotasini ilk modul olan kullanicilar sayfasina yonlendirir |
+| `frontend/app/admin/stats/page.tsx` | Platform KPI kartlari ve Recharts grafikleriyle admin kullanim ozetini gosterir |
+| `frontend/app/admin/users/page.tsx` | Kayitli kullanicilari rol/paket/abonelik rozetleriyle listeler, istemci tarafi arama sunar |
+| `frontend/components/admin/AdminSidebar.tsx` | Admin modulleri arasi gezinme, cikis ve uygulamaya donus aksiyonlarini sunar; 'yakinda' rozetli pasif ogeler icerir |
+| `frontend/components/library/InlineFirmEntry.tsx` | Iscilik firmasi icin sabit 8-kolon fiyat giris grid'i; save-bulk ile yeni liste olarak kaydeder |
+| `frontend/components/library/ManualBrandModal.tsx` | Elle marka olusturma / mevcut markaya malzeme ekleme modali; bos sabit-sema grid'ini library/manual-brand'e kaydeder |
+| `frontend/lib/admin-stats.ts` | Admin istatistik sayfasinin servis katmani: /admin/stats yanitini KPI/trend/dagilim sekline donusturur |
+
+### H · TESTLER — 64 dosya
+
+| Dosya | Ne yapıyor |
+|---|---|
+| `backend/src/modules/dwg-engine/python/tests/__init__.py` | Test dizinini Python paketi yapan bos isaret dosyasi |
+| `backend/src/modules/dwg-engine/python/tests/test_block_to_line_split.py` | INSERT noktalarinin boruyu segmentlere bolmesini blok adi/layer'dan bagimsiz dogrular |
+| `backend/src/modules/dwg-engine/python/tests/test_pipe_segments.py` | Segment uzunluk dogrulugunu (10x hata hipotezi) duz cizgi, T-junction ve polyline ile test eder |
+| `backend/src/modules/dwg-engine/python/tests/test_scale_normalization.py` | Kullanici birim seciminin (mm/cm/m) metraja deterministik uygulanmasini entegrasyon duzeyinde test eder |
+| `backend/src/modules/dwg-engine/scale-param.test.ts` | Birim parametresi cozumlemesinin varsayilan/gecersiz/gecerli durumlarini node assert ile dogrular |
+| `backend/test/admin-import-test.ts` | Fiyat listesi ice aktarim yardimcilarinin (TR sayi, kategori yuruyusu, kolon/etiket tespiti) DB'siz kabul testlerini kosar |
+| `backend/test/audit-canli-kosum.ts` | Gercek servisler ve yerel DB ile eslestirme/import akisinin canli kanit dokumunu ureten denetim kosumu |
+| `backend/test/audit-real-excel.ts` | Gercek teklif Excel'inde satir-cozucunun aile/cap cozum oranlarini stdout'a raporlayan tanilama araci |
+| `backend/test/build-sha-kablolama-test.ts` | BUILD_SHA'nin Dockerfile/compose/deploy scripti/health zincirinde kablolu oldugunu dosya iceriklerini regex'leyerek dogrular |
+| `backend/test/contract-test.ts` | Eslestirme motorunun dis yuzey sozlesmesini (alan/tip/tasinan deger sekli) donduran, davranis degil sekil test eden suite |
+| `backend/test/conversion-test.ts` | Cap cevrim motorunun PRD kabul senaryolarini (DN-inc, PPR mm, belirsizlik) kosar; bilinen aciklari ayri sinifta izler |
+| `backend/test/excel-grid-test.ts` | Kesif Excel'inin grid'e ayristirilmasini (merge'li ad sutunu, bolum basligi eleme, fiyat sutunu sizmasi) bellekte kurulan fixture'larla test eder |
+| `backend/test/export-format-test.ts` | Format tarama (yer tutucu/richText) ve export motorunun T1-T15 kabul senaryolarini bellekte kurulan workbook'larla kosar |
+| `backend/test/export-live-sim-test.ts` | Gercek QuotesService.exportXlsx'i sahte Prisma ile kosup uretilen Excel'i hucre hucre denetler |
+| `backend/test/faz0-gs7-probe.ts` | Ad-sutunu tespit hatasini gercek fixture'lar uzerinde kolon profiliyle olcen tani probu |
+| `backend/test/fixture-anonim.ts` | Musteri kimliklerini xlsx sharedStrings ve dosya adlarinda takma adlarla degistiren anonimlestirme araci |
+| `backend/test/fixture-dogrula.ts` | Anonimlestirmenin kimlik dizeleri disinda hicbir byte'i degistirmedigini ZIP ve parse katmaninda kanitlar |
+| `backend/test/gercek-dosya-test.ts` | Bes sorunlu gercek musteri Excel'inin prepare'dan dogru rol ve satir sayisiyla gectigini sinar |
+| `backend/test/gs6b-teshis.ts` | Ad-sutunu secici bug'unun veri mi render borusu mu kaynakli oldugunu ayirt eden teshis scripti |
+| `backend/test/index-engine-test.ts` | İndeksli motorun K1-K7 kabulünü gerçek indeksleyiciyle DB'siz doğrular |
+| `backend/test/kd11-toplam-yollari-test.ts` | Uc fiyat-giris yolunda malzeme ve genel toplam hesabini alti ayri assert'le sinar |
+| `backend/test/kd12-baslik-satiri-test.ts` | Unvan/baslik satirlarinin veri satiri sanilmadigini ve metinden sayi turetilmedigini sinar |
+| `backend/test/kd9-kur-olcutu-test.ts` | Kur cevrim olcutunun kendisini sinar: dairesel tahminci yerine urun formuluyle tam esitlik |
+| `backend/test/kl-liste-ekleme-test.ts` | Gercek PG uzerinde iscilik ve kutuphane grid kayitlarinin round-trip sadakatini dogrular |
+| `backend/test/labor-matching-test.ts` | Iscilik eslestirmenin malzemeyle ayni motoru (matchV2/runQuery) kullandigini sahte Prisma'yla sinar |
+| `backend/test/labor-sheet-test.ts` | Iscilik 8-sutun sabit sheet'in kayitta korunup DB overlay'iyle geri dondugunu dogrular |
+| `backend/test/library-transfer-test.ts` | Kutuphane sheet kurucusunun gruplama, siralama ve alan sadakatini DB'siz birim testiyle sinar |
+| `backend/test/manifest-kapisi.ts` | Her test scriptinin regresyon SUITES listesinde veya gerekceli istisnada oldugunu zorlayan kapi |
+| `backend/test/matching-unit-test.ts` | bulkMatch akışını fake Prisma + gerçek seed'lerle uçtan uca DB'siz test eder |
+| `backend/test/onceden-fiyatli-test.ts` | Dosyada onceden girilmis fiyatlarin ice aktarimda sabit sema hucrelerine geldigini dogrular |
+| `backend/test/pano18-para-birimi-test.ts` | USD/TL secimiyle iki export yolunun da cevrilmis deger, para bicimi ve kur notu urettigini sinar |
+| `backend/test/perf-profil.ts` | Ice aktarim, eslestirme ve export surelerini gercek fixture ve sentetik 1500-kalem havuzla olcer |
+| `backend/test/pk3-kimlik-haritasi-test.ts` | Anonimlestirme kimlik haritasinin sinir ve kapsam kurallarini saf fonksiyon assert'leriyle sinar |
+| `backend/test/pk3-repo-kapsama-test.ts` | Diskteki tum xlsx fixture'larin git tarafindan izlendigini dogrulayan kapsama kapisi |
+| `backend/test/product-index-test.ts` | Urun indeksleyicinin kolon koruma, aile cozumu ve Turkce token kurallarini DB'siz sinar |
+| `backend/test/spec-regression-test.ts` | Eslestirme motorunun yasanmis gercek vakalarini R1-R14 degismezleriyle sahte Prisma uzerinden dogrular |
+| `backend/test/standart-cikti-test.ts` | 9 kolonlu standart Excel ciktisinin EX1-EX8 kabul kriterlerini gercek fixture dosyayla dogrular |
+| `backend/test/tam-zincir.ts` | Backend regresyon, frontend vitest ve Playwright E2E'yi derleme kapisiyla tek komutta kosan zincir kosucusu |
+| `frontend/app/dev/grid-test/page.tsx` | ExcelGrid'i auth'suz ve API'siz, mock eslestirmeyle calistiran gelistirme/e2e dogrulama harness'i |
+| `frontend/components/dwg-metraj/unit-detection.test.ts` | Birim-metre donusum sabitlerini ve fallback davranislarini vitest ile dogrular |
+| `frontend/components/dwg-viewer/segment-length.test.ts` | Hover uzunluk cozumlemenin scale=0 bug reprosu dahil davranislarini vitest ile dogrular |
+| `frontend/components/excel-grid/build-material-context.test.ts` | Olcu ifadesi tespiti ve yetim-satir kararinin H4/C3 birim testleri |
+| `frontend/components/excel-grid/discount-utils.test.ts` | Iskonto ayristirma/sabitleme ve Excel kolon yapistirma yardimcilarinin birim testleri |
+| `frontend/components/excel-grid/fill-down.test.ts` | Surukle-doldur modulunun SD1-SD10 sozlesme kabul testleri (sessiz-bos yasak, kaynak fiyat kopyalanmaz) |
+| `frontend/e2e-golden/artefakt-dizini.cjs` | Her E2E koşumuna damgalı artefakt dizini açar, latest işaretçisini günceller |
+| `frontend/e2e-golden/faz0-gs7-teshis.spec.ts` | Assert'siz olcum araci: gercek dosya yuklenip her sekmenin baslik/satir doluluk kaniti toplanir |
+| `frontend/e2e-golden/firma-a-golden.spec.ts` | Altin senaryo E2E: yukle, surukle-doldur, USD cevrim, kaydet/yeniden ac, export akisini tarayicida sinar |
+| `frontend/e2e-golden/global-setup.mjs` | Kosum oncesi hazirlik: surum kapisi, dev JWT uretimi, yigin saglik kontrolu, eski test tekliflerinin temizligi |
+| `frontend/e2e-golden/gs-kalicilik.spec.ts` | Grid E2E testleri: kolon sola sabitleme, genislik kaliciligi ve ad-sutunu secicisinin davranisi |
+| `frontend/e2e-golden/pu4-popup-genislik.spec.ts` | Aday popup'inin boyutlandirma, render sonrasi genislik korunumu ve tasima davranisini tarayicida sinar |
+| `frontend/e2e-golden/run.mjs` | Altin yol orkestratoru: surum kapisi + Playwright kosumu + verify'i damgali artefakt dizinine baglar |
+| `frontend/e2e-golden/sayi-ayristirma.mjs` | Dogrulama araclari icin iki sinif sayi cozumleyici: insan yazimi TR metin ve makine degeri |
+| `frontend/e2e-golden/surum-kapisi.cjs` | Kosum oncesi uc surumu (agac HEAD, FE build, BE build) karsilastirip uyumsuzsa testi reddeder |
+| `frontend/e2e-golden/verify.mjs` | E2E artefaktlarını bağımsız yeniden hesaplayıp C1-C11 PASS/FAIL matrisi üretir |
+| `frontend/e2e/grid.spec.ts` | Mock harness uzerinde grid E2E: popup nesne baglama, surukle-doldur, Ctrl+Z, ag hatasi senaryolari |
+| `frontend/lib/gs6b-golge-kurali.test.ts` | Kaynak-seviyesi vitest kilidi: satir listesi yazan fonksiyonun golge kaynagi da tazeledigini dogrular |
+| `frontend/lib/merge-multisheet.test.ts` | Excel yeniden yuklemede kullanici emeginin (kar, marka, fiyat, ozel sutun, sheet) korundugunu dogrulayan vitest suiti |
+| `frontend/lib/parse-material-text.test.ts` | Birlesik malzeme metninin cap+cins ayrimini ve geri birlestirmeyi 17+ ornekle dogrulayan vitest suiti |
+| `frontend/lib/popup-secici-sozlesmesi.test.ts` | E2E harness ile UI'nin aday popup'i data-testid sozlesmesiyle bulmasini kaynak taramasiyla kilitleyen vitest testi |
+| `frontend/lib/pricing.test.ts` | Fiyat cekirdeginin spec orneklerini, float epsilon davranisini ve etkinMiktar kuralini dogrulayan vitest suiti |
+| `frontend/lib/sayi-ayristirma.test.ts` | E2E dogrulayicisinin num/numHam sayi ayristirmasini ve verify.mjs'te yasak num() kullanimini kaynak taramasiyla kilitler |
+| `frontend/playwright.config.ts` | Mock harness e2e kosumu icin 3010 portunda dev sunucu kaldiran Playwright yapilandirmasi |
+| `frontend/playwright.golden.config.ts` | Altin-yol e2e'yi mevcut tam yigina baglayan, artefakt damgali, tek-worker Playwright yapilandirmasi |
+| `frontend/vitest.config.ts` | Vitest'in Playwright'a ait e2e dizinlerini toplamamasi icin exclude listesi tanimlar |
+
+### I · DERLEME ve CANLIYA ÇIKIŞ — 9 dosya
+
+| Dosya | Ne yapıyor |
+|---|---|
+| `backend/scripts/derleme-kapisi.js` | Build sonrasi dist icindeki .js sayisini sayarak bos/eksik derlemeyi yakalayip cikis 3 verir |
+| `backend/scripts/surum-yaz.js` | Prebuild aninda git sha ve kirlilik bilgisini surum.generated.ts olarak koda gomer |
+| `backend/src/health.controller.ts` | Derleme aninda gomulen surum damgasiyla canli calisan kodun kimligini raporlar |
+| `backend/src/modules/dwg-engine/python/deploy-to-cloudrun.sh` | Python motorunu gcloud ile Google Cloud Run'a dagitir; token ve env kontrolleriyle |
+| `backend/src/surum.ts` | Derleme aninda gomulen commit hash'ini okuyup BUILD_SHA olarak verir; yoksa 'local' isaretler ve surum kapisi reddeder |
+| `frontend/next.config.js` | API URL env'i, xlsx external paketi, production'da console.log sokme ve Cloudflare Pages dev adapteri ayarlar |
+| `frontend/postcss.config.js` | Tailwind ve autoprefixer eklentilerini CSS derleme hattina baglar |
+| `frontend/scripts/surum-yaz.js` | Derleme aninda git sha + kirli-agac damgasini public/surum.json'a gomer; canli surum dogrulama kapisi bunu okur |
+| `frontend/tailwind.config.ts` | shadcn/ui CSS degiskenli renk paleti, radius olcekleri ve accordion animasyonlarini tanimlar |
+
+### J · DWG-METRAJ — 44 dosya
+
+| Dosya | Ne yapıyor |
+|---|---|
+| `backend/src/modules/dwg-engine/dwg-engine.controller.ts` | DWG/DXF yukleme, layer listesi, metraj parse, async upload/status ve geometri HTTP uclari |
+| `backend/src/modules/dwg-engine/dwg-engine.service.ts` | Python DWG motoruna cold-start toleransli, token korumali HTTP proxy; retry ve hata cevirisi |
+| `backend/src/modules/dwg-engine/python/converter.py` | LibreDWG ile DWG'yi DXF'e cevirir, header normalize eder, ezdxf ile butunluk dogrular |
+| `backend/src/modules/dwg-engine/python/geometry.py` | DXF çizim öğelerini viewer'ın çizebileceği koordinat listesine çevirir |
+| `backend/src/modules/dwg-engine/python/graph.py` | Boru cizgilerinden Union-Find ile ag grafi kurar; tee/uc/sprinkler noktalarini tespit eder |
+| `backend/src/modules/dwg-engine/python/main.py` | DWG yükleme, DXF dönüşümü, layer/metraj/geometri servislerini HTTP'den sunan FastAPI uygulaması |
+| `backend/src/modules/dwg-engine/python/models.py` | Metraj sonuclarinin Pydantic semalarini tanimlar: layer listesi, segment, dal noktasi, toplam |
+| `backend/src/modules/dwg-engine/python/parse_worker.py` | Metraj analizini izole subprocess'te kosar; stdin JSON alir, stdout'a sanitize JSON yazar |
+| `backend/src/modules/dwg-engine/python/pipe_segments.py` | Boru çizgilerini kesişim/T-noktası/sprinkler konumlarından bölüp işaretlenebilir hat parçaları üretir |
+| `backend/src/modules/dwg-engine/python/topology.py` | Boru grafinda kolinear zincirleri dallara gruplar, layer bazli uzunluk metraji ve dal noktalari cikarir |
+| `backend/src/modules/dwg-engine/python/upload_worker.py` | DWG-DXF donusumu, tek ezdxf parse ve geometri cache yazimini izole subprocess'te yapar |
+| `backend/src/modules/dwg-engine/scale-param.ts` | Kullanicinin sectigi birimi Python motoruna gidecek carpana cevirir; gecersizde mm varsayar |
+| `frontend/app/(protected)/dwg-workspace/page.tsx` | DWG analiz akisini lazy yukleyen bagimsiz route; onaylanan metraji sessionStorage ile teklif sayfasina aktarir |
+| `frontend/components/dwg-diameter-engine/DiameterLegendPanel.tsx` | Hesaplanan cap gruplarini renk kupu, uzunluk ve segment sayisiyla listeler; tiklamayla cizimde segment gezdirir |
+| `frontend/components/dwg-diameter-engine/index.ts` | Modulun disa acilan yuzeyini toplar (iki hook, legend paneli, tip export'lari) |
+| `frontend/components/dwg-diameter-engine/types.ts` | Cap-legend tiplerini tanimlar ve layer'lardan canonical cap bazli legend girdilerini turetir |
+| `frontend/components/dwg-diameter-engine/useLayerCalc.ts` | Tek layer için backend'e metraj isteği atar; SAF geometri+uzunluk sonucunu (çapsız segmentler) callback ile parent'a verir — HS6 denetiminde netleştirildi |
+| `frontend/components/dwg-diameter-engine/useOriginalColorState.ts` | Cap-bazli dinamik renkler ile orijinal layer renkleri arasindaki render bayragini yonetir |
+| `frontend/components/dwg-metraj/constants.ts` | Atanmamis cap sentinel'lerini merkezi tanimlar ve display label'a cevirir |
+| `frontend/components/dwg-metraj/diameter-colors.ts` | Cap string'ini nominal mm'e cevirip 12'lik palete renk atar; cap metnini kanonik forma indirger |
+| `frontend/components/dwg-metraj/DiameterEditPopup.tsx` | Boru segmentine tiklaninca acilan popup ile standart/ozel cap secimi ve kanonik kaydetme |
+| `frontend/components/dwg-metraj/DwgUploader.tsx` | DWG/DXF yukleme, async upload + status polling, session restore ve birim secimiyle workspace acar |
+| `frontend/components/dwg-metraj/index.ts` | Modulun disa acilan yuzeyini toplar (uploader, editor, popup, tipler, renk yardimcilari) |
+| `frontend/components/dwg-metraj/MetrajEditor.tsx` | Cikarilan metraji hat tipine gore gruplu duzenlenebilir tabloda sunar; Excel indirme ve onaylama |
+| `frontend/components/dwg-metraj/types.ts` | Boru segmenti, çap, layer agregesi, ekipman ve metraj sonucu veri tipleri |
+| `frontend/components/dwg-metraj/unit-detection.ts` | Kullanicinin sectigi cizim birimini deterministik olarak metreye cevirir; tahmin yapmaz |
+| `frontend/components/dwg-tagging/BucketPanel.tsx` | Cap kalemi (bucket) ekleme/secme paneli; aktif kalemi capsiz segmentlere toplu uygulatir |
+| `frontend/components/dwg-tagging/index.ts` | Manuel etiketleme modulunun disa acilan yuzeyini toplar (panel, store, tip) |
+| `frontend/components/dwg-tagging/useTaggingStore.ts` | Cap kalemi listesi ve aktif kalem secimini localStorage-persist'li Zustand store'da tutar |
+| `frontend/components/dwg-viewer/aci-colors.ts` | AutoCAD renk indeksini (ACI) CSS hex'e cevirir; bilinmeyenlere HSL hash dagitir |
+| `frontend/components/dwg-viewer/DxfCanvasViewer.tsx` | Çizim geometrisini Canvas2D'de çizer; pan/zoom, hit-test, silgi, çap-renkli vurgu |
+| `frontend/components/dwg-viewer/index.ts` | Viewer modulunun disa acilan yuzeyini toplar (canvas viewer, geometri tipleri, viewport hook) |
+| `frontend/components/dwg-viewer/segment-length.ts` | Hover tooltip uzunlugunu cozer: edge'de backend metre degerine guvenir, line'da ham koordinat x scale |
+| `frontend/components/dwg-viewer/types.ts` | Backend geometry endpoint'inden gelen cizim varliklarinin (line/insert/text/circle/arc) ve viewport'un tiplerini tanimlar |
+| `frontend/components/dwg-viewer/useViewport.ts` | Canvas zoom/pan state'ini yonetir: wheel zoom, drag-vs-click ayrimi, fitKey basina tek otomatik fit (kamera kilidi) |
+| `frontend/components/dwg-workspace/DwgProjectWorkspace.tsx` | Layer seçip tıkla-etiketle çap atayan, ekipman işaretleyen, metrajı onaylatan akışı yönetir |
+| `frontend/components/dwg-workspace/EquipmentDetailPopup.tsx` | INSERT ekipmanina kutuphane listesinden veya manuel girisle ad/birim/fiyat atayan popup |
+| `frontend/components/dwg-workspace/index.ts` | Modulun disa acilan yuzeyini toplar (workspace bileseni, tipler, state hook re-export) |
+| `frontend/components/dwg-workspace/LayerInfoSidebar.tsx` | Secili boru layer'i icin segmentlere ayirma (/parse) ve hesaplamayi tamamlama aksiyonlarini sunar |
+| `frontend/components/dwg-workspace/LayerVisibilityPanel.tsx` | Layer listesinde gorunurluk/soluklastirma/sprinkler isaretleme ve secim+cap popup tetikleme |
+| `frontend/components/dwg-workspace/MetrajSummaryPanel.tsx` | Hesaplanmis layer metrajlarini cap dagilimiyla ve ekipman gruplarini listeleyip tek tek onaylatan panel |
+| `frontend/components/dwg-workspace/types.ts` | DWG calisma alaninin tip sozlesmeleri: layer konfig/hesap sonucu, isaretli ekipman, genel state |
+| `frontend/components/dwg-workspace/useWorkspaceState.ts` | Layer secim/onay, cap atama+1-hop komsu yayilimi ve ekipman state'ini localStorage'a (icerik-hash anahtarli) kalici tutar |
+| `frontend/lib/metraj-excel.ts` | DWG metraj sonuclarini coklu-sheet XLSX dosyasina yazip indirtir; sheet adi sanitize/benzersizlestirme yapar |
+
+### K · ORTAK UI, KABUK ve İSTEMCİ — 27 dosya
+
+| Dosya | Ne yapıyor |
+|---|---|
+| `frontend/app/(protected)/dashboard/page.tsx` | Karsilama/istatistik kabuk sayfasi; Excel ve DWG hizli yuklemeyle teklif akisini baslatip quotes/new'e yonlendirir |
+| `frontend/app/(protected)/layout.tsx` | Korumali alan kabugu: sidebar/breadcrumb, canli TCMB kur widget'i ve kullanici dropdown'u ile sarmalar |
+| `frontend/app/(protected)/profile/page.tsx` | Kullanici profili, abonelik/tier ve yetkinlik bilgilerini gosterir; oturum kapatma sunar |
+| `frontend/app/layout.tsx` | Kok HTML iskeletini kurar; font, global toaster ve onay dialog kokunu baglar |
+| `frontend/app/login/page.tsx` | E-posta/sifreyle giris yapar, token ve kullaniciyi localStorage'a yazip dashboard'a yonlendirir |
+| `frontend/app/page.tsx` | Token varligina gore kullaniciyi dashboard'a ya da giris sayfasina yonlendirir |
+| `frontend/app/register/page.tsx` | Yeni hesap olusturur, donen token'i saklayip dashboard'a yonlendirir |
+| `frontend/components/dashboard/QuickAccess.tsx` | Dashboard'da malzeme havuzu ve kutuphaneye hizli gecis kartlari sunar |
+| `frontend/components/dashboard/QuickStart.tsx` | Excel ve DWG dosyalarini surukle-birak/tiklama ile alir; DWG icin birim secim dialogu acar |
+| `frontend/components/layout/Breadcrumb.tsx` | URL path parcalarindan Turkce etiketli gezinme kirintisi uretir, admin/materials icin ozel etiket |
+| `frontend/components/layout/Sidebar.tsx` | Sabit sol gezinme cubugu: ana sayfalar, daralt/genislet, kullanici tier rozeti ve profil linki |
+| `frontend/components/ui/badge.tsx` | shadcn rozet primitifi; rol/tier/durum icin 8 renk varyanti (cva) |
+| `frontend/components/ui/button.tsx` | Varyant/boyut seçenekli genel tıklama bileşeni |
+| `frontend/components/ui/card.tsx` | Başlık/içerik/alt bölümlü kutu düzeni parçaları |
+| `frontend/components/ui/confirm-dialog.tsx` | use-confirm singleton'ini dinleyip tiklama noktasinda klavye destekli onay karti acan tekil renderer |
+| `frontend/components/ui/dialog.tsx` | Radix tabanli modal pencere primitifleri: overlay, icerik, baslik, aciklama, kapatma dugmesi |
+| `frontend/components/ui/input.tsx` | Ref iletimli standart metin giriş kutusu |
+| `frontend/components/ui/label.tsx` | Form alanlarına erişilebilir etiket bağlayan sarmalayıcı |
+| `frontend/components/ui/select.tsx` | Radix tabanli acilir secim kutusu primitifleri: tetik, liste, oge, kaydirma dugmeleri |
+| `frontend/components/ui/table.tsx` | Bagimliliksiz shadcn HTML tablo primitifleri; admin panel veri tablolari icin stillenmis |
+| `frontend/components/ui/toast.tsx` | Radix tabanli bildirim balonu primitifleri: viewport, varyantlar (default/destructive), kapatma, aksiyon |
+| `frontend/components/ui/toaster.tsx` | useToast kuyrugundaki bildirimleri ToastProvider icinde ekrana basan render bileseni |
+| `frontend/contexts/CapabilitiesContext.tsx` | /auth/me'den kullanici disiplin/yetenek bayraklarini cekip saglayan React context ve yardimci sorgular |
+| `frontend/hooks/use-confirm.ts` | Tıklanan noktada açılan Promise tabanlı onay popover'ı |
+| `frontend/hooks/use-toast.ts` | Bildirim mesajlarının yaşam döngüsünü yöneten reducer |
+| `frontend/lib/api.ts` | JWT ekleyen, 401'de oturumu temizleyip girişe yönlendiren merkezi HTTP istemcisi |
+| `frontend/lib/utils.ts` | Tailwind sınıf birleştirme (cn) + sayı biçimleme yardımcıları |
+
+### L · ÇEKİRDEK BACKEND ALTYAPISI — 31 dosya
+
+| Dosya | Ne yapıyor |
+|---|---|
+| `backend/src/admin/admin.module.ts` | Admin controller/servisini Prisma, AI, ExcelGrid ve Matching modulleriyle kablolar |
+| `backend/src/ai/ai.module.ts` | AI controller ve servisini Prisma ile kablolar, servisi disa acar |
+| `backend/src/app.module.ts` | Tum backend modullerini kok modulde toplar, health ve bootstrap controller'larini baglar |
+| `backend/src/auth/auth.controller.ts` | Kayit, giris ve mevcut kullanici bilgisi (me) HTTP uclarini sunar |
+| `backend/src/auth/auth.module.ts` | JWT ve Passport'u yapilandirip auth servis/strategy/controller'i kablolar |
+| `backend/src/auth/auth.service.ts` | bcrypt ile kayit/giris dogrulamasi yapar, JWT imzalar, me icin yetenek+abonelik dondurur |
+| `backend/src/auth/capabilities.helper.ts` | Aktif aboneliklerden disiplin bazli malzeme/iscilik/dwg yetki matrisini union mantigiyla turetir |
+| `backend/src/auth/decorators/current-user.decorator.ts` | Istekten request.user nesnesini parametre olarak cikaran dekorator |
+| `backend/src/auth/decorators/roles.decorator.ts` | Rol listesini metadata olarak isaretleyen dekorator tanimi |
+| `backend/src/auth/dto/login.dto.ts` | Giris istegi icin email ve sifre alan dogrulamasi |
+| `backend/src/auth/dto/register.dto.ts` | Kayit istegi icin email ve minimum 6 karakter sifre dogrulamasi |
+| `backend/src/auth/guards/jwt-auth.guard.ts` | JWT stratejisini endpoint koruması olarak devreye sokan guard |
+| `backend/src/auth/guards/roles.guard.ts` | Metadata'daki rol listesi ile istekteki kullanici rolunu karsilastiran kapi |
+| `backend/src/auth/guards/tier.guard.ts` | Kullanicinin paket seviyesini DB'den okuyup endpoint'in gerektirdigi minimum seviyeyle karsilastirir |
+| `backend/src/auth/strategies/jwt.strategy.ts` | Bearer token'i dogrulayip payload'daki kullaniciyi DB'den yukleyerek request.user'a koyar |
+| `backend/src/brands/brands.module.ts` | Marka servis ve controller'ini kablolar, servisi disa acar |
+| `backend/src/exchange-rates/exchange-rates.module.ts` | Kur servis/controller kablolamasi; servisi baska modullere disa acar |
+| `backend/src/labor-firms/labor-firms.module.ts` | Iscilik firmalari modulunu kablolar; ExcelGrid ve Matching modullerini iceri alir |
+| `backend/src/labor/labor.module.ts` | Iscilik kalemi servis/controller kablolamasi; Prisma modulunu alir, servisi disa acar |
+| `backend/src/library/library.module.ts` | Kutuphane servis/controller kablolamasi; Matching modulunu iceri alir |
+| `backend/src/main.ts` | Uygulamayi ayaga kaldirir: 500mb body limiti, CORS beyaz listesi+regex, global validation, api prefix |
+| `backend/src/materials/materials.module.ts` | Malzeme servis ve controller'ini NestJS modul sistemine kablolar |
+| `backend/src/modules/dwg-engine/dwg-engine.module.ts` | DWG motoru servis ve controller'ini NestJS modul sistemine kablolar |
+| `backend/src/modules/excel-engine/excel-engine.module.ts` | Analiz servis ve controller'ini Prisma ile kablolayan NestJS modul tanimi |
+| `backend/src/modules/excel-grid/excel-grid.module.ts` | Grid hazirlama servis/controller'ini Prisma ile kablolayan NestJS modul tanimi |
+| `backend/src/modules/labor-matching/labor-matching.module.ts` | Iscilik esleme katmanini MatchingModule motoruna baglayan NestJS modul tanimi |
+| `backend/src/modules/matching/matching.module.ts` | Esleme ve terminoloji servislerini Prisma ve kur modulune baglayan NestJS modul tanimi |
+| `backend/src/prisma/prisma.module.ts` | DB erişim servisini tüm uygulamaya global sağlayan modül tanımı |
+| `backend/src/prisma/prisma.service.ts` | PrismaClient'ı yaşam döngüsüne bağlayıp bağlantıyı açan-kapatan sarmalayıcı |
+| `backend/src/quote-formats/quote-formats.module.ts` | Format servis ve controller'ini NestJS'e kablolar, servisi disa acar |
+| `backend/src/quotes/quotes.module.ts` | Quotes servis/controller'i AI, Prisma ve kur modulleriyle NestJS'e kablolar |
+
+### M · TEKLİF YAŞAM DÖNGÜSÜ — 8 dosya
+
+| Dosya | Ne yapıyor |
+|---|---|
+| `backend/src/quotes/dto/create-quote.dto.ts` | Teklif olusturma isteginin kalem alanlarini, sheet yukunu ve orijinal dosya base64'unu dogrular |
+| `backend/src/quotes/quotes.controller.ts` | Teklif CRUD, Excel parse ve export/arsiv rotalarini JWT korumali HTTP uclarina baglar; export hatalarini 500'e dusurmeden sarar |
+| `backend/src/quotes/quotes.service.ts` | Teklif kaydi/listeleme/silme/kismi bilgi guncelleme yapar; format cozumleyip export motorunu cagirir ve revizyon arsivler |
+| `frontend/app/(protected)/quotes/[id]/page.tsx` | Kayitli teklifi grid'le goruntuler, para birimi secimini teklife kalici yazar, cikti indirme baslatir |
+| `frontend/app/(protected)/quotes/page.tsx` | Kullanicinin tekliflerini tabloda listeler; toplami hesaplar, detaya goturur, onayla siler |
+| `frontend/components/dashboard/RecentQuotes.tsx` | Son 3 teklifi tutar/tarih ozetiyle listeler, detay ve tum liste baglantilari verir |
+| `frontend/types/index.ts` | Teklif sayfalarinin kullandigi cekirdek alan tipleri: kullanici, marka, malzeme, kutuphane kalemi, teklif ve kalemi |
+| `frontend/types/quotes.ts` | Teklif olusturma sayfasinin tipleri: yukleme modu, para birimi, iscilik firmasi, aday eslesme, duzenlenebilir satir, kur |
+
+### BELİRSİZ — bu turda satır düşmedi
+
 ## Otomatik katman (alt katman)
 
 `KOD_HARITASI_OTOMATIK.md` — koddan üretilir, elle dokunulmaz. İçeriği:
