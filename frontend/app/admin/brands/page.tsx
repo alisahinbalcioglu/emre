@@ -19,6 +19,8 @@ import {
 import api from '@/ortak/lib/api';
 import { toast } from '@/ortak/hooks/use-toast';
 import { confirm } from '@/ortak/hooks/use-confirm';
+import { silmeOnayMetni } from '@/lib/silme-onay-metni';
+import { silmeEtkisiGetir } from '@/lib/silme-etkisi-getir';
 import { Button } from '@/ortak/ui/button';
 import { Input } from '@/ortak/ui/input';
 import { Badge } from '@/ortak/ui/badge';
@@ -203,9 +205,18 @@ export default function AdminBrandsPage() {
   }
 
   async function deleteBrand(b: Brand) {
-    if (!(await confirm({ title: `"${b.name}" markası silinsin mi?`, description: 'Tüm fiyat listeleri VE kullanıcıların bu markadan aktardığı kütüphane kayıtları silinecek.' }))) return;
+    // A-1: ne kaybedilecegi SILMEDEN ONCE sayilir. Uc salt-okuma; cagri
+    // basarisiz olursa metin sayi UYDURMAZ (silmeOnayMetni null'i durustce
+    // "hesaplanamadı" diye yazar) ve akis durmaz.
+    const etki = await silmeEtkisiGetir(`/brands/${b.id}/silme-etkisi`);
+    const metin = silmeOnayMetni({ tur: 'marka', ad: b.name, etki });
+    if (!(await confirm({ ...metin, tone: 'danger' }))) return;
     try {
-      const { data } = await api.delete(`/brands/${b.id}`);
+      // Onay YALNIZ kullanici gercek sayilari GORDUYSE gonderilir. Sayim ucu
+      // cokmusse onay gonderilmez: backend'in 409'u devreye girer ve hata
+      // metnindeki gercek rakamlar catch blogundaki toast'a duser.
+      const onay = metin.bilgilendirilmisOnay ? '?onaylandi=true' : '';
+      const { data } = await api.delete(`/brands/${b.id}${onay}`);
       toast({
         title: 'Marka silindi',
         description: data?.deletedLibraryRows
@@ -234,9 +245,15 @@ export default function AdminBrandsPage() {
   }
 
   async function deletePriceList(pl: PriceList) {
-    if (!(await confirm({ title: `"${pl.name}" listesi silinsin mi?`, description: 'İçindeki tüm baz fiyatlar silinecek.' }))) return;
+    // ESKI METIN YANLISTI: yalniz "İçindeki tüm baz fiyatlar silinecek." diyor,
+    // kullanici kutuphanelerine dokunuldugundan HIC bahsetmiyordu. Yeni metin
+    // gercek sayilari gosterir — ve B'den sonra satirlarin SILINMEDIGINI,
+    // yalniz urun baginin koptugunu soyler (bkz. lib/silme-onay-metni.ts).
+    const etki = await silmeEtkisiGetir(`/admin/price-lists/${pl.id}/silme-etkisi`);
+    const metin = silmeOnayMetni({ tur: 'liste', ad: pl.name, etki });
+    if (!(await confirm({ ...metin, tone: 'danger' }))) return;
     try {
-      await api.delete(`/admin/price-lists/${pl.id}`);
+      await api.delete(`/admin/price-lists/${pl.id}${metin.bilgilendirilmisOnay ? '?onaylandi=true' : ''}`);
       toast({ title: 'Liste silindi', description: pl.name });
       if (selectedList?.id === pl.id) { setSelectedList(null); setMaterials([]); }
       if (selectedBrand) openBrand(selectedBrand);

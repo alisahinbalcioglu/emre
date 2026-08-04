@@ -13,6 +13,8 @@ import { Input } from '@/ortak/ui/input';
 import api from '@/ortak/lib/api';
 import { toast } from '@/ortak/hooks/use-toast';
 import { confirm } from '@/ortak/hooks/use-confirm';
+import { silmeOnayMetni } from '@/lib/silme-onay-metni';
+import { silmeEtkisiGetir } from '@/lib/silme-etkisi-getir';
 import { cn } from '@/ortak/lib/utils';
 import { ExcelGrid } from '@/ozellik/tablo/excel-grid/ExcelGrid';
 import { SheetTabs } from '@/ozellik/tablo/excel-grid/SheetTabs';
@@ -259,9 +261,15 @@ export default function BrandDetailPage() {
   }
 
   async function handleDeleteList(listId: string, listName: string) {
-    if (!(await confirm(`"${listName}" listesi silinsin mi?`))) return;
+    // ESKI HALI CIPLAK bir onaydi: `confirm("... silinsin mi?")` — kullanici
+    // kutuphanelere ne oldugunu HIC goremiyordu. A-1: sayim ucundan gercek
+    // rakamlar alinir; satirlarin SILINMEDIGI, yalniz urun baginin koptugu
+    // yazilir (bkz. lib/silme-onay-metni.ts).
+    const etki = await silmeEtkisiGetir(`/admin/price-lists/${listId}/silme-etkisi`);
+    const metin = silmeOnayMetni({ tur: 'liste', ad: listName, etki });
+    if (!(await confirm({ ...metin, tone: 'danger' }))) return;
     try {
-      await api.delete(`/admin/price-lists/${listId}`);
+      await api.delete(`/admin/price-lists/${listId}${metin.bilgilendirilmisOnay ? '?onaylandi=true' : ''}`);
       toast({ title: 'Silindi' });
       if (expandedListId === listId) { setExpandedListId(null); setListMaterials([]); }
       await fetchBrand();

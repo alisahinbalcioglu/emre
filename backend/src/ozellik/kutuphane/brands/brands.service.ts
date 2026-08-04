@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { CreateBrandDto } from './dto/create-brand.dto';
+import { SilmeEtkisi, EKONOMI_TASIYAN } from '../silme-etkisi';
 
 @Injectable()
 export class BrandsService {
@@ -142,9 +143,70 @@ export class BrandsService {
     return this.prisma.brand.update({ where: { id }, data });
   }
 
-  async remove(id: string) {
+  /**
+   * A-1 — Bir marka silinirse KUTUPHANEDE ne olur? (SALT-OKUMA)
+   *
+   * Fiyat listesi ucunun (admin.service `fiyatListesiSilmeEtkisi`) ESI ama
+   * BASKA bir gercegi anlatir: burada satirlar GERCEKTEN silinir, cunku
+   * asagidaki `remove` elle `deleteMany` kosar. Bu yuzden `etki` alani
+   * 'satir-silinir' doner ve ekran metni "geri getirilemez" der.
+   * Ayrinti: `../silme-etkisi.ts`.
+   *
+   * Filtre `remove`'un deleteMany filtresiyle AYNI (yalniz brandId — userId
+   * YOK). Kasitli: sayim, gercekten silinecek kumeyi anlatmali. Capraz-tenant
+   * gercegi `etkilenenKullanici` ile GORUNUR kilinir, gizlenmez.
+   */
+  async markaSilmeEtkisi(id: string): Promise<SilmeEtkisi> {
+    const brand = await this.prisma.brand.findUnique({ where: { id } });
+    if (!brand) throw new NotFoundException('Marka bulunamadi');
+    return this.etkiOlc(brand.name, { brandId: id } as any);
+  }
+
+  /** Verilen filtreye giren satirlarin kirilimli sayimi (TEK yerde —
+   *  uc, 409 mesaji ve loglar ayni sayilari kullansin diye). */
+  private async etkiOlc(ad: string, kosul: any): Promise<SilmeEtkisi> {
+    const [ulSatiri, iskontoluSatir, ozelFiyatliSatir, kullanicilar] = await Promise.all([
+      this.prisma.userLibrary.count({ where: kosul }),
+      this.prisma.userLibrary.count({ where: { AND: [kosul, { discountRate: { gt: 0 } }] } as any }),
+      this.prisma.userLibrary.count({ where: { AND: [kosul, { customPrice: { not: null } }] } as any }),
+      this.prisma.userLibrary.findMany({ where: kosul, select: { userId: true }, distinct: ['userId'] }),
+    ]);
+    return {
+      ad, etki: 'satir-silinir',
+      ulSatiri, iskontoluSatir, ozelFiyatliSatir,
+      etkilenenKullanici: kullanicilar.length,
+    };
+  }
+
+  async remove(id: string, opts?: { kutuphaneSilmeOnayi?: boolean }) {
     const brand = await this.prisma.brand.findUnique({ where: { id } });
     if (!brand) throw new NotFoundException('Brand not found');
+
+    // ── EKONOMI KORUMASI ────────────────────────────────────────────────
+    // Iskonto (discountRate) ve ozel fiyat (customPrice) kullanicinin
+    // PAZARLIKLA elde ettigi veridir; silinirse hicbir yerden geri uretilemez.
+    // Bu yuzden ekonomi tasiyan satir varsa ACIK ONAY olmadan silme BASLAMAZ.
+    // Ekonomi tasimayan markalar (test markasi temizligi) onaysiz silinmeye
+    // devam eder — asagidaki sayim 0 dondugunde bu blok atlanir.
+    //
+    // A-1: sayim artik `markaSilmeEtkisi` ile AYNI fonksiyondan gelir. Ayri
+    // yazilsaydi ucun gosterdigi sayi ile 409 metnindeki sayi zamanla ayrisir
+    // ve kullanici ekranda baska, hatada baska rakam gorurdu.
+    const etki = await this.etkiOlc(brand.name, { brandId: id } as any);
+    const ekonomiliSatir = await this.prisma.userLibrary.count({
+      where: { brandId: id, OR: EKONOMI_TASIYAN } as any,
+    });
+    const etkilenenKullanici = etki.etkilenenKullanici;
+
+    if (ekonomiliSatir > 0 && opts?.kutuphaneSilmeOnayi !== true) {
+      throw new ConflictException(
+        `"${brand.name}" markasi silinirse ${etki.ulSatiri} kutuphane satiri ` +
+        `(${etkilenenKullanici} kullaniciya ait) kaldirilacak; bunlarin ${ekonomiliSatir} tanesi ` +
+        `girilmis fiyat bilgisi tasiyor (${etki.iskontoluSatir} iskonto). Bu bilgi geri getirilemez. ` +
+        `Devam etmek icin silme istegini onay ile tekrarlayin (?onaylandi=true).`,
+      );
+    }
+
     // UserLibrary.brand ZORUNLU iliski + onDelete tanimsiz (Restrict) —
     // kullanici kutuphane kayitlari temizlenmeden marka silinemiyordu
     // (FK hatasi: "Cayirova/TEST_MARKA_X silinemiyor" sikayeti).
@@ -154,7 +216,19 @@ export class BrandsService {
       this.prisma.userLibrary.deleteMany({ where: { brandId: id } }),
       this.prisma.brand.delete({ where: { id } }),
     ]);
-    console.log(`[Brands] "${brand.name}" silindi — ${libDel.count} kullanici kutuphane kaydi temizlendi`);
-    return { ok: true, name: brand.name, deletedLibraryRows: libDel.count };
+    console.log(
+      `[Brands] "${brand.name}" silindi — ${libDel.count} kullanici kutuphane kaydi temizlendi ` +
+      `(${etkilenenKullanici} kullanici, ${ekonomiliSatir} fiyat bilgili satir)`,
+    );
+    return {
+      ok: true,
+      name: brand.name,
+      deletedLibraryRows: libDel.count,
+      deletedEconomyRows: ekonomiliSatir,
+      affectedUsers: etkilenenKullanici,
+      // Silme ONCESI olculen kirilim — toast'in "ne oldu" ozetini uydurmadan
+      // yazabilmesi icin. (Silme SONRASI ayni sayim 0 dondururdu.)
+      silmeEtkisi: etki,
+    };
   }
 }

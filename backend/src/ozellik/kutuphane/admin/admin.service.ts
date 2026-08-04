@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, ConflictException } from '@nestjs/common';
 import * as XLSX from 'xlsx';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { AiService } from '../../giris/ai/ai.service';
@@ -23,6 +23,7 @@ import {
 } from '../utils/import-fidelity';
 import { deriveEtiketler, isValidAdOverride } from '../../eslestirme/utils/etiket-display';
 import { buildProductIndex, rebuildIndexFields, INDEX_VERSION, ProductColumns } from '../../eslestirme/matching/index/product-index';
+import { SilmeEtkisi, ekonomiVar } from '../silme-etkisi';
 
 export interface MaterialSheetInput {
   name: string;
@@ -455,10 +456,87 @@ export class AdminService {
     return this.prisma.priceList.create({ data: { name, brandId } });
   }
 
-  async deletePriceList(id: string) {
+  /**
+   * A-1 — Bir fiyat listesi silinirse KUTUPHANEDE ne olur? (SALT-OKUMA)
+   *
+   * ★ "Silinecek satir" DEGIL "bagi kopacak satir" sayar. B isinden (04.08)
+   * sonra bu yol hicbir UserLibrary satirini oldurmuyor; ayrinti + olcum
+   * kanitlari `../silme-etkisi.ts` basligi ve `test/a1-silme-etkisi-test.ts`
+   * A0 assertlerinde.
+   *
+   * IKI BAG YOLU DA sayilir — biri digerini kapsamaz:
+   *   · sourcePriceListId = liste          (kutuphaneye bu listeden aktarildi)
+   *   · productIndexId ∈ listenin indeksi  (satir indeks satirina bagli)
+   * Yerel olcumde 1712 satirin TAMAMINDA sourcePriceListId dolu ama 116'sinda
+   * productIndexId NULL — yalniz birine bakan sayim eksik cikar.
+   */
+  async fiyatListesiSilmeEtkisi(id: string): Promise<SilmeEtkisi> {
     const pl = await this.prisma.priceList.findUnique({ where: { id } });
     if (!pl) throw new NotFoundException('Liste bulunamadi');
-    return this.prisma.priceList.delete({ where: { id } });
+    return this.etkiOlc(pl.name, await this.listeEtkiKosulu(id));
+  }
+
+  /** Fiyat listesi silmenin dokunacagi UserLibrary satirlarinin filtresi. */
+  private async listeEtkiKosulu(priceListId: string) {
+    const indeks = await (this.prisma as any).productIndex.findMany({
+      where: { priceListId }, select: { id: true },
+    });
+    const indeksIdleri = indeks.map((i: any) => i.id);
+    // Liste indekssizse (legacy) ikinci kosul HIC eklenmez — `{ in: [] }`
+    // yazmak da dogru sonuc verirdi ama filtreyi okunmaz kilar.
+    const yollar: any[] = [{ sourcePriceListId: priceListId }];
+    if (indeksIdleri.length > 0) yollar.push({ productIndexId: { in: indeksIdleri } });
+    return { OR: yollar } as any;
+  }
+
+  /** Verilen filtreye giren satirlarin kirilimli sayimi (TEK yerde). */
+  private async etkiOlc(ad: string, kosul: any): Promise<SilmeEtkisi> {
+    const [ulSatiri, iskontoluSatir, ozelFiyatliSatir, kullanicilar] = await Promise.all([
+      this.prisma.userLibrary.count({ where: kosul }),
+      this.prisma.userLibrary.count({ where: { AND: [kosul, { discountRate: { gt: 0 } }] } as any }),
+      this.prisma.userLibrary.count({ where: { AND: [kosul, { customPrice: { not: null } }] } as any }),
+      this.prisma.userLibrary.findMany({ where: kosul, select: { userId: true }, distinct: ['userId'] }),
+    ]);
+    return {
+      ad, etki: 'bag-kopar',
+      ulSatiri, iskontoluSatir, ozelFiyatliSatir,
+      etkilenenKullanici: kullanicilar.length,
+    };
+  }
+
+  /**
+   * A-1 — ON KONTROL: ekonomi tasiyan satira dokunuluyorsa ACIK ONAY sart.
+   * (Marka yolundaki ayni desen: brands.service.ts `remove`.)
+   *
+   * ⚠ Buradaki kayip marka yolundakinden HAFIFTIR: satir olmez, iskonto durur;
+   * kaybedilen urun bagidir. Bu yuzden 409 metni "silinecek" demez. Ama kapi
+   * yine de var: bagi kopan satir eslestirmede metin-cikarimina duser ve bu
+   * kullaniciya sessizce yansir — admin bunu BILEREK onaylamali.
+   */
+  async deletePriceList(id: string, opts?: { kutuphaneSilmeOnayi?: boolean }) {
+    const pl = await this.prisma.priceList.findUnique({ where: { id } });
+    if (!pl) throw new NotFoundException('Liste bulunamadi');
+
+    const kosul = await this.listeEtkiKosulu(id);
+    const etki = await this.etkiOlc(pl.name, kosul);
+
+    if (ekonomiVar(etki) && opts?.kutuphaneSilmeOnayi !== true) {
+      throw new ConflictException(
+        `"${pl.name}" listesi silinirse ${etki.ulSatiri} kutuphane satirinin ` +
+        `(${etki.etkilenenKullanici} kullaniciya ait) urun bagi kopar; bunlarin ` +
+        `${etki.iskontoluSatir} tanesinde iskonto, ${etki.ozelFiyatliSatir} tanesinde ozel fiyat var. ` +
+        `Satirlar SILINMEZ ve girilmis fiyatlar korunur, ancak bagi kopan satirlar ` +
+        `eslestirmede urun tablosu yerine satir metnine duser. ` +
+        `Devam etmek icin silme istegini onay ile tekrarlayin (?onaylandi=true).`,
+      );
+    }
+
+    const silinen = await this.prisma.priceList.delete({ where: { id } });
+    console.log(
+      `[Admin] "${pl.name}" fiyat listesi silindi — ${etki.ulSatiri} kutuphane satirinin bagi koptu ` +
+      `(${etki.etkilenenKullanici} kullanici, ${etki.iskontoluSatir} iskontolu, ${etki.ozelFiyatliSatir} ozel fiyatli)`,
+    );
+    return { ...silinen, silmeEtkisi: etki };
   }
 
   // ═════════ MATERIALS: PDF EXTRACT ═════════

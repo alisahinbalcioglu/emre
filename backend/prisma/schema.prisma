@@ -345,7 +345,29 @@ model UserLibrary {
   // Urun YAPISI indekse ait, EKONOMI (customPrice/discountRate) kullaniciya.
   // Denormalizasyon YOK: yapiyi buraya kopyalarsak liste yeniden yuklendiginde
   // kutuphane sessizce eskir. Tek gercek ProductIndex'te durur.
-  product        ProductIndex? @relation(fields: [productIndexId], references: [id], onDelete: Cascade)
+  //
+  // ── onDelete: SetNull (B-1, 04.08 — eskiden Cascade idi) ─────────
+  // TAKAS: bag koparsa satir YASAR ama YAPISIZ kalir. Cascade'de tersiydi —
+  // indeks satiri silinince kullanicinin kutuphane satiri da ucuyordu, yaninda
+  // discountRate/customPrice ile birlikte. Yani admin bir fiyat listesini
+  // silince (priceList.delete → ProductIndex CASCADE → UserLibrary CASCADE)
+  // kullanicinin PAZARLIKLA aldigi iskontosu sessizce yok oluyordu.
+  //
+  // NEDEN BU TARAF: kullanicinin ekonomisi > yapisal butunluk. Yapi
+  // GERI URETILEBILIR (fiyat listesi yeniden yuklenir, reindex kosar,
+  // matching.service.hazirlaPool bagsiz satiri istek aninda materialName'den
+  // yeniden indeksler); kullanicinin iskontosu GERI URETILEMEZ — o veri
+  // kullanicinin kendi ticari bilgisidir, hicbir yerden geri gelmez.
+  //
+  // Bu ayni tablodaki sourcePriceList (:334 SetNull) kuraliyla da tutarli:
+  // artik satira bagli iki FK de "bag kopar, satir yasar" diyor. Oncesinde
+  // ayni satirda biri koruyucu biri oldurucu iki celiskili kural vardi.
+  //
+  // TUKETICILER NULL'A HAZIR (04.08 okundu, degistirilmedi):
+  //   library.service.ts:572-575  → item.product?.X ?? null
+  //   matching.service.ts:145     → if (li.productIndexId && li.product) …
+  //                                 else → manuelUrunIndeksle (metinden)
+  product        ProductIndex? @relation(fields: [productIndexId], references: [id], onDelete: SetNull)
   productIndexId String?
 
   // Motorun ANA sorgusu: userLibrary.findMany({ where: { userId, brandId } })

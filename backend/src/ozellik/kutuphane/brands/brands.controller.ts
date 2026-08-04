@@ -36,6 +36,16 @@ export class BrandsController {
 
   // ── Admin only ──
 
+  /** A-1 SALT-OKUMA: marka silinmeden ONCE kutuphanede ne kaybedilecegini sayar.
+   *  Hicbir sey degistirmez; ekran onay metnini bundan uretir.
+   *  ⚠ Sinif duzeyinde YALNIZ JwtAuthGuard var — admin korumasi METOT
+   *  duzeyinde olmak zorunda, yoksa uc her kullaniciya acilir (baska
+   *  kullanicilarin kutuphane sayilarini sizdirir). */
+  @Get(':id/silme-etkisi')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  markaSilmeEtkisi(@Param('id') id: string) { return this.brandsService.markaSilmeEtkisi(id); }
+
   @Post()
   @UseGuards(RolesGuard)
   @Roles('admin')
@@ -46,8 +56,13 @@ export class BrandsController {
   @Roles('admin')
   update(@Param('id') id: string, @Body() dto: CreateBrandDto) { return this.brandsService.update(id, dto); }
 
+  // ?onaylandi=true — kutuphanedeki iskonto/ozel fiyat tasiyan satirlarin
+  // silinmesini admin ACIKCA onaylar. Onaysiz cagri, ekonomi tasiyan satir
+  // varsa 409 doner ve HICBIR SEY silinmez.
   @Delete(':id')
   @UseGuards(RolesGuard)
   @Roles('admin')
-  remove(@Param('id') id: string) { return this.brandsService.remove(id); }
+  remove(@Param('id') id: string, @Query('onaylandi') onaylandi?: string) {
+    return this.brandsService.remove(id, { kutuphaneSilmeOnayi: onaylandi === 'true' });
+  }
 }

@@ -64,6 +64,22 @@ const SUITES: Suite[] = [
   { ad: 'İşçilik sheet (DB)', script: 'test:labor-sheet', zincir: 'Z1', db: true },
   { ad: 'Sheets indeks + mükerrer yasağı (P2-2)', script: 'test:p2-2', zincir: 'Z1', db: true },
   { ad: 'Öksüz kütüphane satırı raporlanır (kalem 59)', script: 'test:kalem59', zincir: 'Z1', db: true },
+  // ── 04.08.2026 — KULLANICI EKONOMISI SAVUNMA KATMANLARI (B → D → A) ──
+  // Uc suite de kirmizi-once turunda eklendi; UCU DE ARTIK YESIL (duzeltmeler
+  // yapildi). Kirmiziya donerlerse bu bir REGRESYON'dur, "bilincli kirmizi"
+  // DEGIL — o not 04.08'de gecerliydi ve duzeltmelerle birlikte kaldirildi.
+  //
+  // B-1: ProductIndex silinince kutuphane satiri CASCADE ile ucuyordu;
+  //      schema.prisma UserLibrary.product → SetNull yapildi.
+  { ad: 'Kütüphane satırı cascade ile silinmez (B-1)', script: 'test:b1', zincir: 'Z1', db: true },
+  // D-1: marka silinince TUM kullanicilarin kutuphane satirlari (iskonto/ozel
+  //      fiyat dahil) elle deleteMany ile uctuyordu; ekonomi tasiyan satir
+  //      varsa onaysiz silme artik 409 (brands.service.ts `remove`).
+  { ad: 'Marka silme çapraz-tenant kütüphaneyi götürmez (D-1)', script: 'test:d1', zincir: 'Z1', db: true },
+  // A-1: silme ONCESI sayim uclari + fiyat listesi yolunda 409 on kontrolu.
+  //      A0 assertleri ayrica B'nin SetNull'unu canli DB'de olcer — FK geri
+  //      Cascade'e donerse ekran metni yanlis vaat etmeden ONCE burasi kizarir.
+  { ad: 'Silme etkisi sayım uçları + ön kontrol (A-1)', script: 'test:a1', zincir: 'Z1', db: true },
 ];
 
 function dbErisilebilir(): boolean {

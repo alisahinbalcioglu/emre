@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Patch, Delete, Body, Param, UseGuards,
+  Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards,
   UseInterceptors, UploadedFile, ValidationPipe, BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -102,9 +102,19 @@ export class AdminController {
     return this.adminService.createPriceList(brandId, name);
   }
 
+  /** A-1 SALT-OKUMA: liste silinmeden ONCE kutuphanede ne olacagini sayar.
+   *  Hicbir sey degistirmez; ekran onay metnini bundan uretir. */
+  @Get('price-lists/:id/silme-etkisi')
+  priceListSilmeEtkisi(@Param('id') id: string) {
+    return this.adminService.fiyatListesiSilmeEtkisi(id);
+  }
+
+  // ?onaylandi=true — ekonomi (iskonto/ozel fiyat) tasiyan kutuphane satirlarinin
+  // urun bagini koparmayi admin ACIKCA onaylar. Onaysiz cagri, boyle satir varsa
+  // 409 doner ve HICBIR SEY silinmez. (Marka yolundaki desenin esi.)
   @Delete('price-lists/:id')
-  deletePriceList(@Param('id') id: string) {
-    return this.adminService.deletePriceList(id);
+  deletePriceList(@Param('id') id: string, @Query('onaylandi') onaylandi?: string) {
+    return this.adminService.deletePriceList(id, { kutuphaneSilmeOnayi: onaylandi === 'true' });
   }
 
   @Get('brands/:brandId/materials')
