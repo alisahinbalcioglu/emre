@@ -88,15 +88,17 @@ const SUITES: Suite[] = [
   //      A0 assertleri ayrica B'nin SetNull'unu canli DB'de olcer — FK geri
   //      Cascade'e donerse ekran metni yanlis vaat etmeden ONCE burasi kizarir.
   { ad: 'Silme etkisi sayım uçları + ön kontrol (A-1)', script: 'test:a1', zincir: 'Z1', db: true },
-  // ── 04.08.2026 — UÇ GÜVENLİĞİ (K1/K2/K3). DB GEREKTİRMEZ: dekoratör
-  //    metadata'sı + sahte ExecutionContext + sahte Prisma casusu ile ölçülür,
+  // ── 04.08.2026 — UÇ GÜVENLİĞİ (K1/K2/K4). DB GEREKTİRMEZ: dekoratör
+  //    metadata'sı + sahte ExecutionContext + sahte servis casusu ile ölçülür,
   //    gerçek veriye dokunmaz → `db` bayrağı YOK, her koşumda çalışır.
-  //    DURUM: 35 PASS / 0 FAIL — üç kusur da aynı gün düzeltildi (K1 iki uca
-  //    metot düzeyi @Roles · K2 TierGuard getAllAndOverride · K3 deletePrice
-  //    kapsam+varlık kontrolü). KIRMIZIYA DÖNERSE BU BİR REGRESYONDUR.
-  //    O1-O5 ölçüt kontrol vakaları, fixture kapıları ve ★KALKAN assertleri
+  //    DURUM: 41 PASS / 0 FAIL — kusurlar aynı gün düzeltildi (K1 iki uca
+  //    metot düzeyi @Roles · K2 TierGuard getAllAndOverride · K4 ?onaylandi
+  //    bayrağının HTTP→servis kablolaması). KIRMIZIYA DÖNERSE BU BİR REGRESYONDUR.
+  //    ⚠ K3 (materials deletePrice kapsamı) 04.08'de KALDIRILDI — ölçtüğü uç
+  //    ölüydü ve silindi; ayrıntı `guvenlik-uclari-test.ts` baş yorumunda.
+  //    O ölçüt kontrol vakaları, fixture kapıları ve ★KALKAN assertleri
   //    (aynı sınıftaki altı normal-kullanıcı ucu admin İSTEMEMELİ) da buradadır.
-  { ad: 'Uç güvenliği: rol/tier/kapsam sözleşmesi (K1-K3)', script: 'test:guvenlik', zincir: 'Z0' },
+  { ad: 'Uç güvenliği: rol/tier/kapsam sözleşmesi (K1/K2/K4)', script: 'test:guvenlik', zincir: 'Z0' },
   // ── 04.08.2026 — HAFIZA IMZASININ EKSENLERI. DB GEREKTIRMEZ (saf fonksiyon
   //    + fake Prisma) → `db` bayragi YOK, her kosumda calisir.
   //    ARTIK YESIL (28/0) — kirmizi-once turunun ALTI kusuru ayni gun kapandi:

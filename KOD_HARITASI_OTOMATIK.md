@@ -3,9 +3,9 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 328
-Toplam satir: 65321
-Uc nokta: 126
+Kod dosyasi: 330
+Toplam satir: 66066
+Uc nokta: 125
 test:* scripti: 44
 
 ## 1 · Dosyalar ve satir sayilari
@@ -120,9 +120,9 @@ test:* scripti: 44
 | `backend/src/ozellik/kutuphane/library/library.service.ts` | 674 |
 | `backend/src/ozellik/kutuphane/materials/dto/create-material-price.dto.ts` | 14 |
 | `backend/src/ozellik/kutuphane/materials/dto/create-material.dto.ts` | 8 |
-| `backend/src/ozellik/kutuphane/materials/materials.controller.ts` | 65 |
+| `backend/src/ozellik/kutuphane/materials/materials.controller.ts` | 55 |
 | `backend/src/ozellik/kutuphane/materials/materials.module.ts` | 11 |
-| `backend/src/ozellik/kutuphane/materials/materials.service.ts` | 81 |
+| `backend/src/ozellik/kutuphane/materials/materials.service.ts` | 67 |
 | `backend/src/ozellik/kutuphane/silme-etkisi.ts` | 74 |
 | `backend/src/ozellik/kutuphane/utils/import-fidelity.ts` | 347 |
 | `backend/src/ozellik/teklif/quotes/dto/create-quote.dto.ts` | 93 |
@@ -150,9 +150,9 @@ test:* scripti: 44
 | `backend/test/fixture-dogrula.ts` | 224 |
 | `backend/test/gercek-dosya-test.ts` | 259 |
 | `backend/test/gs6b-teshis.ts` | 85 |
-| `backend/test/guvenlik-uclari-test.ts` | 357 |
+| `backend/test/guvenlik-uclari-test.ts` | 365 |
 | `backend/test/imza-ekseni-test.ts` | 325 |
-| `backend/test/index-engine-test.ts` | 1627 |
+| `backend/test/index-engine-test.ts` | 1762 |
 | `backend/test/kalem59-oksuz-kutuphane-test.ts` | 131 |
 | `backend/test/kd11-toplam-yollari-test.ts` | 150 |
 | `backend/test/kd12-baslik-satiri-test.ts` | 226 |
@@ -173,7 +173,7 @@ test:* scripti: 44
 | `backend/test/pk3-repo-kapsama-test.ts` | 79 |
 | `backend/test/pk9-sessiz-indeks-test.ts` | 97 |
 | `backend/test/product-index-test.ts` | 453 |
-| `backend/test/regression-all.ts` | 162 |
+| `backend/test/regression-all.ts` | 164 |
 | `backend/test/spec-regression-test.ts` | 447 |
 | `backend/test/standart-cikti-test.ts` | 316 |
 | `backend/test/standart-sema-test.ts` | 338 |
@@ -265,7 +265,7 @@ test:* scripti: 44
 | `frontend/ortak/kabuk/components/dashboard/QuickStart.tsx` | 216 |
 | `frontend/ortak/kabuk/components/layout/Breadcrumb.tsx` | 73 |
 | `frontend/ortak/kabuk/components/layout/Sidebar.tsx` | 142 |
-| `frontend/ortak/lib/api-401-kapsami.test.ts` | 181 |
+| `frontend/ortak/lib/api-401-kapsami.test.ts` | 232 |
 | `frontend/ortak/lib/api.ts` | 58 |
 | `frontend/ortak/lib/utils.ts` | 16 |
 | `frontend/ortak/types/index.ts` | 64 |
@@ -332,12 +332,14 @@ test:* scripti: 44
 | `frontend/test/e2e-golden/verify.mjs` | 836 |
 | `frontend/test/e2e/grid.spec.ts` | 206 |
 | `frontend/vitest.config.ts` | 10 |
-| `scripts/backup.sh` | 15 |
-| `scripts/deploy.sh` | 90 |
+| `scripts/backup.sh` | 75 |
+| `scripts/deploy.sh` | 136 |
 | `scripts/fk-dogrula.sh` | 94 |
-| `scripts/harita-denetle.mjs` | 217 |
-| `scripts/harita-uret.mjs` | 226 |
+| `scripts/geri-yukle.sh` | 177 |
+| `scripts/harita-denetle.mjs` | 260 |
+| `scripts/harita-uret.mjs` | 253 |
 | `scripts/jwt-secret-kur.sh` | 85 |
+| `scripts/kalem59-olcu.sh` | 220 |
 | `scripts/kb5-olcu.sh` | 42 |
 | `scripts/klasor-denetle.mjs` | 246 |
 
@@ -468,7 +470,7 @@ test:* scripti: 44
 | `backend/test/fixture-dogrula.ts` | `fs` `path` `./fixture-anonim` `../src/ozellik/giris/excel-grid/excel-grid.service` `jszip` |
 | `backend/test/gercek-dosya-test.ts` | `fs` `../src/ozellik/giris/excel-grid/excel-grid.service` `../src/ozellik/teklif/quotes/quotes.service` `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/cikti/quote-formats/format-engine` `../src/ozellik/teklif/quotes/export-engine` |
 | `backend/test/gs6b-teshis.ts` | `fs` `../src/ozellik/giris/excel-grid/excel-grid.service` |
-| `backend/test/guvenlik-uclari-test.ts` | `@nestjs/core` `@nestjs/common` `../src/ozellik/eslestirme/matching/matching.controller` `../src/ozellik/eslestirme/labor-matching/labor-matching.controller` `../src/altyapi/auth/decorators/roles.decorator` `../src/ozellik/kutuphane/labor/labor.controller` `../src/ozellik/giris/ai/ai.controller` `../src/altyapi/auth/guards/tier.guard` `../src/ozellik/kutuphane/materials/materials.controller` `../src/ozellik/kutuphane/materials/materials.service` `reflect-metadata` |
+| `backend/test/guvenlik-uclari-test.ts` | `@nestjs/core` `../src/ozellik/eslestirme/matching/matching.controller` `../src/ozellik/eslestirme/labor-matching/labor-matching.controller` `../src/altyapi/auth/decorators/roles.decorator` `../src/ozellik/kutuphane/labor/labor.controller` `../src/ozellik/giris/ai/ai.controller` `../src/altyapi/auth/guards/tier.guard` `../src/ozellik/kutuphane/brands/brands.controller` `../src/ozellik/kutuphane/admin/admin.controller` `reflect-metadata` |
 | `backend/test/imza-ekseni-test.ts` | `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `../src/ozellik/eslestirme/matching/tag-generator` `../src/ozellik/eslestirme/matching/shared-tag-matcher` |
 | `backend/test/index-engine-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/query-engine` `../src/ozellik/fiyat/matching/index/outcome-mapper` `../src/ozellik/eslestirme/matching/index/types` `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `../src/ozellik/eslestirme/matching/conversion` |
 | `backend/test/kalem59-oksuz-kutuphane-test.ts` | `@prisma/client` `../src/ozellik/kutuphane/admin/admin.service` `../src/ozellik/eslestirme/matching/terminology.service` |
@@ -743,7 +745,6 @@ test:* scripti: 44
 | `backend/src/ozellik/kutuphane/materials/materials.controller.ts` | `PUT /materials/:id` |
 | `backend/src/ozellik/kutuphane/materials/materials.controller.ts` | `DELETE /materials/:id` |
 | `backend/src/ozellik/kutuphane/materials/materials.controller.ts` | `POST /materials/price` |
-| `backend/src/ozellik/kutuphane/materials/materials.controller.ts` | `DELETE /materials/:materialId/price/:brandId` |
 | `backend/src/ozellik/teklif/quotes/quotes.controller.ts` | `POST /quotes/upload-excel` |
 | `backend/src/ozellik/teklif/quotes/quotes.controller.ts` | `POST /quotes` |
 | `backend/src/ozellik/teklif/quotes/quotes.controller.ts` | `GET /quotes` |

@@ -10,9 +10,11 @@
  *
  * ÇIKIŞ KODU SÖZLEŞMESİ:
  *   0 → otomatik katmandaki her kod dosyasının karşılığı var
- *   1 → en az bir dosya hiçbir listede yok   VEYA
- *       bekleyenler listesi UZADI            VEYA
- *       bekleyenlerde artık var olmayan bir dosya duruyor
+ *   1 → en az bir dosya hiçbir listede yok        VEYA
+ *       bekleyenler listesi UZADI                 VEYA
+ *       bekleyenlerde artık var olmayan bir dosya duruyor VEYA
+ *       haritadaki bir yol hiçbir dosyaya çözülmüyor      VEYA
+ *       KOD_HARITASI_OTOMATIK.md BAYAT (üreticinin bugünkü çıktısı değil)
  *   2 → ön koşul yok: git deposu değil, ya da KOD_HARITASI_OTOMATIK.md
  *       üretilmemiş, ya da KOD_HARITASI.md yok
  *
@@ -48,7 +50,7 @@ import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { kapsamOku, kodDosyalari } from './harita-uret.mjs';
+import { kapsamOku, kodDosyalari, uretMetin } from './harita-uret.mjs';
 
 const KOK = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const HARITA = path.join(KOK, 'KOD_HARITASI.md');
@@ -158,6 +160,30 @@ function main() {
     .filter((t) => !istisna.has(t) && cozulenler(t).length === 0)
     .sort();
 
+  // (e) OTOMATIK KATMAN GUNCEL MI — 04.08'de eklendi, sebebi yine olcumdur.
+  // Kapi bugune kadar OTOMATIK dosyanin yalnizca VARLIGINI denetliyordu
+  // (yukaridaki `fs.existsSync(OTOMATIK)` on kosulu). Olculdu: diskteki dosya
+  // "Kod dosyasi: 328" derken gercek 330'du — yani iki dosya haritanin alt
+  // katmaninda HIC gorunmuyordu — ve kapi PASS veriyordu. Var olan bayat bir
+  // dosya, olmayan bir dosyadan daha tehlikelidir: birincisi sessizce yanlis
+  // bilgi verir, ikincisi hic olmazsa on kosul hatasi verir.
+  //
+  // NEDEN YENIDEN URETIP KARSILASTIRMA (daha ucuz alternatif REDDEDILDI):
+  // "ilk satirdaki `Kod dosyasi: N` degerini git ls-files sayimiyla karsilastir"
+  // yolu daha hizli ama YALNIZ dosya SAYISI degisince yakalar. Bir dosya
+  // silinip baskasi eklendiginde sayi ayni kalir; bir dosyanin satir sayisi,
+  // import'lari ya da uc noktalari degistiginde sayi hic kimildamaz. Oysa
+  // otomatik katmanin degeri tam da bu alanlarda. Tam karsilastirma, uretici
+  // ne uretiyorsa ONUN guncel oldugunu olcer — olcut ile olculen ayni kaynaktan
+  // gelir, dolayisiyla kapi ureticiyle birlikte kendiliginden buyur.
+  //
+  // Satir sonlari normalize edilir: repo Windows'ta CRLF ile checkout
+  // edilebilir, bu bir icerik farki DEGILDIR ve kapiyi yaniltmamalidir.
+  const duz = (s) => nfc(s).replace(/\r\n/g, '\n');
+  const beklenenOtomatik = duz(uretMetin(kapsam).metin);
+  const disktekiOtomatik = duz(fs.readFileSync(OTOMATIK, 'utf8'));
+  const otomatikBayat = beklenenOtomatik !== disktekiOtomatik;
+
   console.log('── HARITA DENETIMI ──');
   console.log(`  kod dosyasi        : ${dosyalar.length}`);
 
@@ -201,6 +227,23 @@ function main() {
     olmayanYol.slice(0, 15).forEach((y) => console.log(`  ❌ bayat yol: ${y}`));
     if (olmayanYol.length > 15) console.log(`  … +${olmayanYol.length - 15} ifade daha`);
     console.log('     (kasitli ise harita-yol-istisna.txt icine yazin)');
+  }
+  if (otomatikBayat) {
+    hatalar.push('OTOMATIK KATMAN BAYAT: KOD_HARITASI_OTOMATIK.md ureticinin bugunku ciktisindan farkli');
+    const bSat = beklenenOtomatik.split('\n');
+    const dSat = disktekiOtomatik.split('\n');
+    console.log(`  ❌ otomatik katman bayat: diskte ${dSat.length} satir, uretici ${bSat.length} satir uretiyor`);
+    // ILK FARKLI SATIR — "bir sey farkli" demek yetmez, NE farkli soylenmeli.
+    const n = Math.max(bSat.length, dSat.length);
+    let gosterilen = 0;
+    for (let i = 0; i < n && gosterilen < 3; i++) {
+      if (bSat[i] === dSat[i]) continue;
+      console.log(`     satir ${i + 1}:`);
+      console.log(`       diskte  : ${dSat[i] === undefined ? '(satir yok)' : dSat[i].slice(0, 110)}`);
+      console.log(`       olmasi g: ${bSat[i] === undefined ? '(satir yok)' : bSat[i].slice(0, 110)}`);
+      gosterilen++;
+    }
+    console.log('     DUZELTME: node scripts/harita-uret.mjs kosun, sonra `git add KOD_HARITASI_OTOMATIK.md`.');
   }
 
   if (hatalar.length) {

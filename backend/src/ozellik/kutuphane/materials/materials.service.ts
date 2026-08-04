@@ -63,18 +63,4 @@ export class MaterialsService {
     });
   }
 
-  /** Fiyat sil — kapsam YAZMA ile ayni olmak ZORUNDA.
-   *  setPrice (yukarida) yalniz `priceListId: null` satirini upsert eder;
-   *  burada filtre verilmezse o marka+malzemenin TUM fiyat listelerindeki
-   *  satirlari giderdi (MaterialPrice.priceListId opsiyonel — schema.prisma:280-281).
-   *  Varsayilan `null` = tam olarak setPrice'in yazdigi satir.
-   *  Kardes remove()/update() gibi olmayan kayitta NotFoundException atar;
-   *  deleteMany count=0 hicbir sey silmedigi icin atma oncesi yan etki YOKTUR. */
-  async deletePrice(materialId: string, brandId: string, priceListId: string | null = null) {
-    const sonuc = await this.prisma.materialPrice.deleteMany({
-      where: { materialId, brandId, priceListId },
-    });
-    if (sonuc.count === 0) throw new NotFoundException('Material price not found');
-    return sonuc;
-  }
 }

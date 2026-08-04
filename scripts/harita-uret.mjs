@@ -136,32 +136,25 @@ export function agacKur(yollar) {
   return { satirlar, dizinSayisi };
 }
 
-// ── ana akış ──────────────────────────────────────────────────────────────
-function main() {
-  const argv = process.argv.slice(2);
-  try { execFileSync('git', ['rev-parse', '--is-inside-work-tree'], { cwd: KOK, stdio: 'ignore' }); }
-  catch { console.log('ON KOSUL YOK — git deposu degil.'); process.exit(2); }
-
-  const kapsam = kapsamOku();
-  if (!kapsam) { console.log(`ON KOSUL YOK — ${path.basename(KAPSAM_DOSYASI)} yok.`); process.exit(2); }
-
-  if (argv.includes('--agac')) {
-    // HR1c: TUM izlenen dosyalar (yalniz kod degil) — mevcut duzenin fotografi.
-    const hepsi = execFileSync('git', ['ls-files', '-z'], { cwd: KOK, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
-      .split('\0').filter(Boolean).map((s) => s.normalize('NFC'))
-      .filter((y) => !kapsam.disi.some((d) => eslesir(y, d.desen)));
-    const { satirlar, dizinSayisi } = agacKur(hepsi);
-    console.log(satirlar.join('\n'));
-    console.log(`\n${dizinSayisi} dizin, ${hepsi.length} dosya`);
-    process.exit(0);
-  }
-
-  const dosyalar = kodDosyalari(kapsam);
+// ── üretim ────────────────────────────────────────────────────────────────
+/**
+ * Otomatik katmanın METNİNİ üretir — diske YAZMAZ.
+ *
+ * Ayrı fonksiyon olmasının sebebi denetimdir, zarafet değil: `harita-denetle.mjs`
+ * bu metni yeniden üretip diskteki dosyayla karşılaştırarak dosyanın GÜNCEL
+ * olduğunu ölçer. Üretim main() içinde gömülü kaldığı sürece kapı yalnız
+ * dosyanın VARLIĞINI görebiliyordu; 04.08'de ölçüldü: disk "Kod dosyasi: 328"
+ * derken gerçek 330'du ve kapı PASS veriyordu.
+ *
+ * @returns {{ metin: string, ozet: { dosya: number, satir: number, uc: number, test: number } }}
+ */
+export function uretMetin(kapsam, kok = KOK) {
+  const dosyalar = kodDosyalari(kapsam, kok);
   const olcum = dosyalar.map((y) => {
-    const tam = path.join(KOK, y);
+    const tam = path.join(kok, y);
     return { yol: y, satir: satirSay(tam), imp: importlar(tam), uc: ucNoktalar(y, tam) };
   });
-  const testler = testScriptleri();
+  const testler = testScriptleri(kok);
 
   const L = [];
   L.push('# KOD HARİTASI — OTOMATİK KATMAN');
@@ -208,17 +201,51 @@ function main() {
   for (const d of kapsam.disi) L.push(`| \`${d.desen}\` | ${d.gerekce} |`);
   L.push('');
 
-  const metin = L.join('\n');
+  return {
+    metin: L.join('\n'),
+    ozet: {
+      dosya: olcum.length,
+      satir: olcum.reduce((a, b) => a + Math.max(0, b.satir), 0),
+      uc: olcum.reduce((a, b) => a + b.uc.length, 0),
+      test: testler.length,
+    },
+  };
+}
+
+export const CIKTI_YOLU = CIKTI;
+
+// ── ana akış ──────────────────────────────────────────────────────────────
+function main() {
+  const argv = process.argv.slice(2);
+  try { execFileSync('git', ['rev-parse', '--is-inside-work-tree'], { cwd: KOK, stdio: 'ignore' }); }
+  catch { console.log('ON KOSUL YOK — git deposu degil.'); process.exit(2); }
+
+  const kapsam = kapsamOku();
+  if (!kapsam) { console.log(`ON KOSUL YOK — ${path.basename(KAPSAM_DOSYASI)} yok.`); process.exit(2); }
+
+  if (argv.includes('--agac')) {
+    // HR1c: TUM izlenen dosyalar (yalniz kod degil) — mevcut duzenin fotografi.
+    const hepsi = execFileSync('git', ['ls-files', '-z'], { cwd: KOK, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+      .split('\0').filter(Boolean).map((s) => s.normalize('NFC'))
+      .filter((y) => !kapsam.disi.some((d) => eslesir(y, d.desen)));
+    const { satirlar, dizinSayisi } = agacKur(hepsi);
+    console.log(satirlar.join('\n'));
+    console.log(`\n${dizinSayisi} dizin, ${hepsi.length} dosya`);
+    process.exit(0);
+  }
+
+  const { metin, ozet } = uretMetin(kapsam);
+
   if (argv.includes('--kontrol')) {
-    console.log(`kod dosyasi=${olcum.length} · uc nokta=${L.length && olcum.reduce((a, b) => a + b.uc.length, 0)} · test:*=${testler.length}`);
+    console.log(`kod dosyasi=${ozet.dosya} · uc nokta=${ozet.uc} · test:*=${ozet.test}`);
     process.exit(0);
   }
   fs.writeFileSync(CIKTI, metin);
   console.log(`YAZILDI: ${path.relative(KOK, CIKTI).replace(/\\/g, '/')}`);
-  console.log(`  kod dosyasi : ${olcum.length}`);
-  console.log(`  toplam satir: ${olcum.reduce((a, b) => a + Math.max(0, b.satir), 0)}`);
-  console.log(`  uc nokta    : ${olcum.reduce((a, b) => a + b.uc.length, 0)}`);
-  console.log(`  test:* adedi: ${testler.length}`);
+  console.log(`  kod dosyasi : ${ozet.dosya}`);
+  console.log(`  toplam satir: ${ozet.satir}`);
+  console.log(`  uc nokta    : ${ozet.uc}`);
+  console.log(`  test:* adedi: ${ozet.test}`);
   process.exit(0);
 }
 

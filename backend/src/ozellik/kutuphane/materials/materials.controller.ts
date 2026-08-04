@@ -51,14 +51,4 @@ export class MaterialsController {
   setPrice(@Body() dto: CreateMaterialPriceDto) {
     return this.materialsService.setPrice(dto);
   }
-
-  @Delete(':materialId/price/:brandId')
-  @UseGuards(RolesGuard)
-  @Roles('admin')
-  deletePrice(
-    @Param('materialId') materialId: string,
-    @Param('brandId') brandId: string,
-  ) {
-    return this.materialsService.deletePrice(materialId, brandId);
-  }
 }

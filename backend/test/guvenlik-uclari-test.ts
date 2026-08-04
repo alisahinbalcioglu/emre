@@ -1,5 +1,5 @@
 /**
- * GUVENLIK UCLARI — K1/K2/K3 KIRMIZI KANIT TURU  (`npm run test:guvenlik`)
+ * GUVENLIK UCLARI — K1/K2/K4 UC SOZLESMESI TURU  (`npm run test:guvenlik`)
  *
  * DB GEREKTIRMEZ. Uc kusurun HEPSI ya dekorator metadata'si ya sahte
  * ExecutionContext ya sahte Prisma casusu ile olculur; gercek veriye
@@ -25,18 +25,16 @@
  *       (:574) → core paketli bir kullanici DELETE /api/labor/:id ile TUM
  *       firmalarin iscilik fiyatlarini goturebilir.
  *
- *   K3  ⚠ RAPORUN "UC KORUMASIZ" IDDIASI YANLIS CIKTI — olculdu:
- *       materials.controller.ts:55-57 zaten RolesGuard + @Roles('admin')
- *       tasiyor. GERCEK kusur SERVISTE: materials.service.ts:66-70
- *       `deleteMany({ where: { materialId, brandId } })` — (a) varlik kontrolu
- *       YOK (kardes `remove`/`update` findUnique + NotFoundException yapiyor),
- *       (b) `priceListId` filtresi YOK, oysa MaterialPrice.priceListId opsiyonel
- *       (schema.prisma:280-281) → o marka+malzeme icin TUM listelerdeki fiyat
- *       gider, (c) YAZMA ile SILME ayni kumeyi hedeflemiyor: setPrice (:48-63)
- *       yalniz `priceListId: null` satirini upsert ediyor, deletePrice hepsini
- *       siliyor. FE'de cagiran BULUNAMADI (olu uc) → davranis testi degil
- *       SOZLESME testi yazildi: uc ya dogru kapsamla korunur ya kaldirilir.
- *       SILME ONERISI UYGULANMADI — kullanici karari.
+ *   K3  KALDIRILDI (04.08.2026) — olctugu sey artik YOK.
+ *       K3, `DELETE /api/materials/:materialId/price/:brandId` ucunun silme
+ *       kapsamini olcuyordu. Ucun kendisi 04.08'de SILINDI: FE/BE/test/docs/
+ *       scripts genelinde cagirani yoktu (olu uc) ve K3'un kendi notu zaten
+ *       "uc ya dogru kapsamla korunur ya KALDIRILIR" diyordu — kullanici
+ *       kaldirmayi secti. Controller metodu, servis metodu ve K3 blogu
+ *       birlikte gitti; olculecek davranis kalmadigi icin testi biraktirmak
+ *       yalniz yalanci yesil uretirdi.
+ *       ⚠ Bu bir KAPSAM DARALMASIDIR, kusur ortmesi degil: uc geri
+ *       eklenirse K3 de geri gelmelidir (kapsam + varlik kontrolu sozlesmesi).
  *
  * ── OLCUTU ONCE DOGRULA (O bloklari) ────────────────────────────────────
  * Her kusurun yaninda, AYNI olcume tabi tutulan SAGLAM bir ornek var. Amac:
@@ -54,7 +52,6 @@
  */
 import 'reflect-metadata';
 import { Reflector } from '@nestjs/core';
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
 
 import { MatchingController } from '../src/ozellik/eslestirme/matching/matching.controller';
 import { LaborMatchingController } from '../src/ozellik/eslestirme/labor-matching/labor-matching.controller';
@@ -63,9 +60,6 @@ import { ROLES_KEY } from '../src/altyapi/auth/decorators/roles.decorator';
 import { LaborController } from '../src/ozellik/kutuphane/labor/labor.controller';
 import { AiController } from '../src/ozellik/giris/ai/ai.controller';
 import { TierGuard, TIER_KEY } from '../src/altyapi/auth/guards/tier.guard';
-
-import { MaterialsController } from '../src/ozellik/kutuphane/materials/materials.controller';
-import { MaterialsService } from '../src/ozellik/kutuphane/materials/materials.service';
 
 // K4 — onay bayraginin HTTP→servis kablolamasi (sahte servisle, DB'siz)
 import { BrandsController } from '../src/ozellik/kutuphane/brands/brands.controller';
@@ -229,127 +223,6 @@ async function k2() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// K3 — materials deletePrice: varlik kontrolu ve kapsam SOZLESMESI
-// ══════════════════════════════════════════════════════════════════════════
-/**
- * NEDEN SAHTE PRISMA (DB fixture degil): uc OLU (FE/BE/test genelinde cagiran
- * yok), yani "gercek davranisi" gozlemleyecek bir kullanici yolu yok. Olculen
- * sey servisin DB'ye NE SORDUGU — bu sozlesmedir ve DB'siz, gercek veriye
- * dokunmadan, deterministik olcelir.
- */
-type Cagri = { yol: string; arg: any };
-function casusPrisma(secenek: { materialVar: boolean; silinen: number }) {
-  const cagrilar: Cagri[] = [];
-  const kaydet = (yol: string, don: (arg: any) => any) => async (arg: any) => {
-    cagrilar.push({ yol, arg });
-    return don(arg);
-  };
-  const prisma: any = {
-    material: {
-      findUnique: kaydet('material.findUnique', () => (secenek.materialVar ? { id: 'm1', name: 'X' } : null)),
-      findMany: kaydet('material.findMany', () => []),
-      create: kaydet('material.create', () => ({ id: 'm1' })),
-      update: kaydet('material.update', () => ({ id: 'm1' })),
-      delete: kaydet('material.delete', () => ({ id: 'm1' })),
-    },
-    materialPrice: {
-      findUnique: kaydet('materialPrice.findUnique', () => null),
-      findFirst: kaydet('materialPrice.findFirst', () => null),
-      findMany: kaydet('materialPrice.findMany', () => []),
-      count: kaydet('materialPrice.count', () => 0),
-      upsert: kaydet('materialPrice.upsert', () => ({ id: 'mp1' })),
-      deleteMany: kaydet('materialPrice.deleteMany', () => ({ count: secenek.silinen })),
-      delete: kaydet('materialPrice.delete', () => ({ id: 'mp1' })),
-    },
-  };
-  return { prisma, cagrilar };
-}
-
-/** Ic ice `where` nesnesindeki TUM anahtarlari toplar (materialId_brandId_priceListId gibi bilesik anahtarlar dahil). */
-function anahtarlar(nesne: any, biriktir: Set<string> = new Set()): Set<string> {
-  if (!nesne || typeof nesne !== 'object') return biriktir;
-  for (const k of Object.keys(nesne)) {
-    biriktir.add(k);
-    anahtarlar(nesne[k], biriktir);
-  }
-  return biriktir;
-}
-
-async function k3() {
-  console.log('\n── K3: materials deletePrice sozlesmesi ──────────────────');
-  const sProto: any = MaterialsService.prototype;
-  const cProto: any = MaterialsController.prototype;
-
-  // ── FIXTURE DOLU MU ───────────────────────────────────────────────────
-  check('K3-F1 KAPI: MaterialsService.deletePrice bir fonksiyon',
-    typeof sProto.deletePrice === 'function', `tip=${typeof sProto.deletePrice}`);
-  check('K3-F2 KAPI: MaterialsService.setPrice bir fonksiyon (karsilastirma esi)',
-    typeof sProto.setPrice === 'function', `tip=${typeof sProto.setPrice}`);
-
-  // ── ★ KALKAN: uc BUGUN admin-korumali — raporun "korumasiz" iddiasi YANLIS
-  // Sozlesmenin ilk yarisi: uc DURUYORSA korunmus DURMALI. Bugun yesil;
-  // koruma sokulurse burasi kizarir.
-  check("K3-KALKAN-a deletePrice ucu admin rolu ISTIYOR (bugun YESIL)",
-    JSON.stringify(rolleriOku(cProto.deletePrice, MaterialsController)) === JSON.stringify(['admin']),
-    `roles=${JSON.stringify(rolleriOku(cProto.deletePrice, MaterialsController))}`);
-  check('K3-KALKAN-b deletePrice ucuna RolesGuard bagli (bugun YESIL)',
-    guardAdlari(cProto.deletePrice, MaterialsController).includes('RolesGuard'),
-    `guards=${JSON.stringify(guardAdlari(cProto.deletePrice, MaterialsController))}`);
-
-  // ── O4 OLCUT KONTROL VAKASI: casus, NotFoundException'i gorebiliyor mu ─
-  // Kardes metot `remove` (materials.service.ts:42-46) varlik kontrolu YAPAR.
-  // Ayni casusla ayni cagri sekli kullanilir; buradan atma gelmezse duzenek
-  // bozuktur ve K3-a'nin "atmadi" sonucu anlamsiz olur.
-  {
-    const { prisma } = casusPrisma({ materialVar: false, silinen: 0 });
-    const svc = new MaterialsService(prisma);
-    let hata: any = null;
-    try { await svc.remove('yok'); } catch (e) { hata = e; }
-    check('O4 OLCUT: kardes remove() olmayan kayitta NotFoundException atiyor',
-      hata instanceof NotFoundException, `hata=${hata?.constructor?.name ?? 'yok'}`);
-  }
-
-  // ── O5 OLCUT KONTROL VAKASI: casus, priceListId kapsamini gorebiliyor mu ─
-  // setPrice upsert'inde priceListId ACIKCA var (materials.service.ts:50-55).
-  // Burasi yesilse, K3-b'deki "priceListId yok" sonucu GERCEK YOKLUKTUR.
-  let yazmaAnahtarlari: string[] = [];
-  {
-    const { prisma, cagrilar } = casusPrisma({ materialVar: true, silinen: 0 });
-    const svc = new MaterialsService(prisma);
-    await svc.setPrice({ materialId: 'm1', brandId: 'b1', price: 10 } as any);
-    const upsert = cagrilar.find((c) => c.yol === 'materialPrice.upsert');
-    yazmaAnahtarlari = [...anahtarlar(upsert?.arg?.where)].filter((k) => ['materialId', 'brandId', 'priceListId'].includes(k)).sort();
-    check('O5 OLCUT: ayni olcum setPrice yazma kapsaminda priceListId GORUYOR',
-      yazmaAnahtarlari.includes('priceListId'),
-      `yazma where anahtarlari=${JSON.stringify(yazmaAnahtarlari)}`);
-  }
-
-  // ── IDDIA (bugun KIRMIZI) ─────────────────────────────────────────────
-  let silmeAnahtarlari: string[] = [];
-  {
-    const { prisma, cagrilar } = casusPrisma({ materialVar: false, silinen: 0 });
-    const svc = new MaterialsService(prisma);
-    let hata: any = null;
-    let sonuc: any = null;
-    try { sonuc = await svc.deletePrice('yok-m', 'yok-b'); } catch (e) { hata = e; }
-
-    check('K3-a ⭐ deletePrice olmayan kayitta NotFoundException ATMALI (kardes remove/update gibi)',
-      hata instanceof NotFoundException,
-      `hata=${hata?.constructor?.name ?? 'yok'} · donen=${JSON.stringify(sonuc)}`);
-
-    const dm = cagrilar.find((c) => c.yol === 'materialPrice.deleteMany');
-    silmeAnahtarlari = [...anahtarlar(dm?.arg?.where)].filter((k) => ['materialId', 'brandId', 'priceListId'].includes(k)).sort();
-    check('K3-b ⭐ silme kapsami priceListId TASIMALI (yoksa TUM listelerdeki fiyat gider)',
-      silmeAnahtarlari.includes('priceListId'),
-      `silme where anahtarlari=${JSON.stringify(silmeAnahtarlari)} · cagrilar=${JSON.stringify(cagrilar.map((c) => c.yol))}`);
-  }
-
-  check('K3-c ⭐ ASIMETRI: yazma ve silme AYNI anahtar kumesini hedeflemeli',
-    JSON.stringify(yazmaAnahtarlari) === JSON.stringify(silmeAnahtarlari),
-    `yazma=${JSON.stringify(yazmaAnahtarlari)} · silme=${JSON.stringify(silmeAnahtarlari)}`);
-}
-
-// ══════════════════════════════════════════════════════════════════════════
 // K4 — ?onaylandi=true HTTP KATMANINDAN SERVISE GECIYOR MU (KALICI KILIT, L4)
 // ══════════════════════════════════════════════════════════════════════════
 /**
@@ -483,9 +356,8 @@ async function k4() {
 async function main() {
   k1();
   await k2();
-  await k3();
   await k4();
-  console.log(`\n${'='.repeat(64)}\nGUVENLIK UCLARI (K1/K2/K3): ${passed} PASS, ${failed} FAIL\n${'='.repeat(64)}`);
+  console.log(`\n${'='.repeat(64)}\nGUVENLIK UCLARI (K1/K2/K4): ${passed} PASS, ${failed} FAIL\n${'='.repeat(64)}`);
   if (failed) { failures.forEach((f) => console.log(`  · ${f}`)); process.exit(1); }
 }
 

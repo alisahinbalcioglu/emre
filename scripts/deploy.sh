@@ -11,9 +11,16 @@
 #  Yani kullanici konsola `BUILD_SHA=$(git rev-parse HEAD)` YAZAMAZ. Butun ozel
 #  karakterler bu dosyanin icinde durur; konsolda yazilan satirda hicbiri yok.
 #
-#  NE YAPAR: pull → hash'i olc → build → up → CANLI DOGRULAMA (health + hash
-#  karsilastirmasi). Dogrulama basarisizsa cikis kodu 1 — "deploy oldu sandim"
-#  hatasi bir daha yasanmaz.
+#  NE YAPAR: pull → hash'i olc → DEPLOY ONCESI YEDEK → build → up → CANLI
+#  DOGRULAMA (health + hash karsilastirmasi). Dogrulama basarisizsa cikis
+#  kodu 1 — "deploy oldu sandim" hatasi bir daha yasanmaz.
+#
+#  ── 04.08.2026: YEDEK ADIMI EKLENDI (3/6) ──────────────────────────────────
+#  Oncesinde yedek YALNIZ gunluk dongudeydi (scripts/backup.sh): en kotu
+#  ihtimalle 24 saatlik veri, deploy'un kendisi bozarsa geri alinamazdi.
+#  Artik her deploy KENDI yedegini alir ve YEDEK BASARISIZSA DEPLOY DURUR —
+#  yedeksiz deploy, geri donusu olmayan deploy demektir.
+#  Geri yukleme adimlari: docs/GERI_YUKLEME.md
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -26,25 +33,64 @@ trap 'kod=$?; if [ "$kod" -ne 0 ]; then echo ""; echo "❌ DEPLOY YARIDA KESILDI
 
 cd "$(dirname "$0")/.."
 
-echo "── 1/5 git pull ──"
+echo "── 1/6 git pull ──"
 git pull origin master
 
 # PK2: imaja gomulen surum damgasi. `export` SART — `docker compose build`
 # degiskeni yalnizca ortamdan okur (compose: BUILD_SHA: ${BUILD_SHA:-local}).
 export BUILD_SHA="$(git rev-parse --short=12 HEAD)"
 BEKLENEN="$BUILD_SHA"
-echo "── 2/5 bu deploy'un surumu: $BEKLENEN ──"
+echo "── 2/6 bu deploy'un surumu: $BEKLENEN ──"
 
-echo "── 3/5 docker compose build backend frontend ──"
+# ── 3/6 DEPLOY ONCESI DB YEDEGI ─────────────────────────────────────────────
+# NEREDE: `backup` servisinin icinde. Gerekce — pg_dump, PGPASSWORD ve
+# /backups baglantisi ZATEN orada (docker-compose.yml:113-126); host'a psql
+# kurmak ya da parolayi konsola yazmak GEREKMEZ.
+#
+# AD: `deploy-oncesi-<sha>-<damga>.sql.gz`. BILEREK `metaprice-*` DEGIL —
+# gunluk temizlik deseni (backup.sh) `metaprice-*.sql.gz` arar; deploy
+# yedekleri o desene girmedigi icin 14 gun kuralina TAKILMAZ, kendiliginden
+# silinmez. Bunun bedeli: birikirler. Elle budama komutu GERI_YUKLEME.md'de.
+#
+# ⚠ YEDEK BASARISIZSA DEPLOY DURUR. `|| true` ile ciktiyi yakalayip MARKER
+# ariyoruz; boylece hem hata metni gorunur hem de ERR trap'e dusup "beklenmedik
+# hata (kod 3)" gibi yaniltici bir mesaj cikmaz — bu BILINEN ve KASITLI bir ret.
+echo "── 3/6 deploy oncesi DB yedegi ──"
+YEDEK_ADI="deploy-oncesi-$BEKLENEN-$(date +%Y%m%d-%H%M%S).sql.gz"
+YEDEK_CIKTI="$(docker compose exec -T -e ADI="$YEDEK_ADI" backup sh -c '
+  GECICI="/backups/$ADI.yaziliyor"
+  rm -f /tmp/deploy-dump-kodu
+  ( set +e; pg_dump -h db -U "$POSTGRES_USER" "$POSTGRES_DB"; echo $? > /tmp/deploy-dump-kodu ) | gzip > "$GECICI"
+  KOD="$(cat /tmp/deploy-dump-kodu 2>/dev/null || echo 99)"
+  rm -f /tmp/deploy-dump-kodu
+  if [ "$KOD" -ne 0 ]; then echo "YEDEK HATASI — pg_dump cikis kodu $KOD"; rm -f "$GECICI"; exit 1; fi
+  if ! gzip -t "$GECICI" 2>/dev/null; then echo "YEDEK HATASI — gzip butunluk kontrolu kaldi"; rm -f "$GECICI"; exit 1; fi
+  if ! gzip -dc "$GECICI" 2>/dev/null | tail -20 | grep -q "PostgreSQL database dump complete"; then
+    echo "YEDEK HATASI — dump SONU isareti yok (yarim dump)"; rm -f "$GECICI"; exit 1; fi
+  mv "$GECICI" "/backups/$ADI"
+  echo "YEDEK DOGRULANDI /backups/$ADI $(wc -c < "/backups/$ADI") bayt"
+' 2>&1 || true)"
+printf '%s\n' "$YEDEK_CIKTI" | sed 's/^/   /'
+if ! printf '%s' "$YEDEK_CIKTI" | grep -q 'YEDEK DOGRULANDI'; then
+  echo ""
+  echo "❌ DEPLOY DURDURULDU — deploy oncesi yedek ALINAMADI."
+  echo "   Yedeksiz deploy, geri donusu olmayan deploy demektir; build'e GECILMEDI."
+  echo "   Kod DEGISMEDI, servisler DOKUNULMADI — git pull disinda hicbir sey olmadi."
+  echo "   Once yedegi duzeltin (docker compose ps ile db ve backup servisini kontrol edin),"
+  echo "   sonra bu betigi tekrar kosun."
+  exit 1
+fi
+
+echo "── 4/6 docker compose build backend frontend ──"
 # DIKKAT: build log'unda `COPY . .` satiri CACHED cikiyorsa kod DEGISMEMISTIR
 # (30.07 dersi — iki kez eski kod deploy edildi). BUILD_SHA her deploy'da
 # degistigi icin ARG'i kullanan katman zaten yeniden kurulur.
 docker compose build backend frontend
 
-echo "── 4/5 docker compose up -d backend frontend ──"
+echo "── 5/6 docker compose up -d backend frontend ──"
 docker compose up -d backend frontend
 
-echo "── 5/5 canli dogrulama ──"
+echo "── 6/6 canli dogrulama ──"
 # ⚠ ADRES TUZAGI: `http://localhost/api/health` CALISMAZ. Caddyfile yalniz
 # `{$DOMAIN}` ve `www.{$DOMAIN}` site bloklarini tanimliyor; Host basligi
 # "localhost" olan istek hicbirine uymaz ve Caddy 404 doner. Backend'in
@@ -54,7 +100,7 @@ echo "── 5/5 canli dogrulama ──"
 # ⚠ `|| true` ZORUNLU: `.env` yoksa `grep` cikis kodu 2 doner, `pipefail` onu
 # tasir ve `set -e` scripti OLDURUR — hem de KOD 2 ile. Bu projede 2 =
 # "ON SART YOK (SKIP)" demek; yani basarisiz bir deploy "atlandi" anlamina
-# gelen bir kod dondururdu. OLCULDU: .env yokken script 5/5 blogundan
+# gelen bir kod dondururdu. OLCULDU: .env yokken script 6/6 blogundan
 # ONCE, sessizce, kod 2 ile oluyordu.
 DOMAIN_ADI="$(grep -E '^DOMAIN=' .env 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r"'"'"' ' || true)"
 if [ -z "$DOMAIN_ADI" ]; then

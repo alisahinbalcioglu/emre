@@ -22,14 +22,18 @@
 # KURAL 1 (ALAN KÖKLERİ): kapsam içindeki HER kod dosyası, aşağıda ilan edilmiş
 #   bir alan kökünün altında olacak. Liste KAPALIDIR. Yeni bir alan açmak
 #   bilinçli bir eylemdir: bu dosyaya gerekçeli tek satır yazılır.
-#   Kapsam: 323/323 dosya (kapinin kendi betigi dahil) — hicbiri disarida degil.
+#   Kapsam: 330/330 dosya (kapinin kendi betigi dahil) — hicbiri disarida degil.
+#   ⚠ Bu sayı elle yazılır ve ESKİR: 04.08 akşamı ölçüldüğünde 328'di, buradaki
+#   not hâlâ 323 diyordu. Doğrusu her zaman kapının kendi çıktısıdır; buradaki
+#   rakam yalnızca büyüklük fikri verir, kanıt değildir.
 #
 # KURAL 2 (GRUP↔YOL): `KOD_HARITASI.md`'nin TAM SINIFLANDIRMA bölümünde
 #   X grubunda listelenen dosya, X'in ilan edilmiş yollarından biri altında
 #   olacak — ya da [ISTISNA] bölümünde gerekçesiyle yazılı olacak.
-#   Kapsam: sınıflandırma tablosundaki dosyalar (bugün 288); bunların 31'i
-#   çerçeve bağlı (`frontend/app/**`) olduğu için atlanır → GERÇEKTEN ÖLÇÜLEN 257.
-#   Tabloda olmayan 34 dosya KURAL 2'ye girmez; onları KURAL 1 tutar.
+#   Kapsam: sınıflandırma tablosundaki dosyalar (04.08 akşamı 293); bunların 31'i
+#   çerçeve bağlı (`frontend/app/**`) olduğu için atlanır → GERÇEKTEN ÖLÇÜLEN 262.
+#   Tabloda olmayan 37 dosya KURAL 2'ye girmez; onları KURAL 1 tutar.
+#   (Aynı uyarı: bu üç sayı da elle yazılı ve eskir — kapının çıktısı esastır.)
 #
 # ── KURAL 2'NİN BİLDİĞİ SINIR (dürüst boşluk, gizlenmiyor) ──
 # Grup bilgisi haritadan okunur. Dosyayı yanlış klasöre koyan biri harita
