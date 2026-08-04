@@ -404,7 +404,7 @@ Karıştırılmasın diye ayrı duruyor.
 | `frontend/ozellik/kutuphane/library/ManualBrandModal.tsx` | Elle marka olusturma / mevcut markaya malzeme ekleme modali; bos sabit-sema grid'ini library/manual-brand'e kaydeder |
 | `frontend/ozellik/kutuphane/admin-stats.ts` | Admin istatistik sayfasinin servis katmani: /admin/stats yanitini KPI/trend/dagilim sekline donusturur |
 
-### H · TESTLER — 64 dosya
+### H · TESTLER — 65 dosya
 
 | Dosya | Ne yapıyor |
 |---|---|
@@ -473,6 +473,7 @@ Karıştırılmasın diye ayrı duruyor.
 | `frontend/lib/popup-secici-sozlesmesi.test.ts` | E2E harness ile UI'nin aday popup'i data-testid sozlesmesiyle bulmasini kaynak taramasiyla kilitleyen vitest testi |
 | `frontend/lib/pricing.test.ts` | Fiyat cekirdeginin spec orneklerini, float epsilon davranisini ve etkinMiktar kuralini dogrulayan vitest suiti |
 | `frontend/lib/sayi-ayristirma.test.ts` | E2E dogrulayicisinin num/numHam sayi ayristirmasini ve verify.mjs'te yasak num() kullanimini kaynak taramasiyla kilitler |
+| `frontend/ortak/lib/api-401-kapsami.test.ts` | 401 interceptor'unun UCU sordugunu kilitler: `/auth/login` 401'i oturumu SILMEZ ve yonlendirmez (A1/A2), `/auth/me` 401'i SILER ve yonlendirir (B1/B2 regresyon kalkani). Ayri bir "OLCUT SINAMASI" blogu istegin gercekten adapter'a ulastigini kanitlar — bu repoda jsdom yok, ortam 'node', aksi halde `typeof window === 'undefined'` yuzunden A1/A2 hicbir sey olcmeden yesil donerdi |
 | `frontend/playwright.config.ts` | Mock harness e2e kosumu icin 3010 portunda dev sunucu kaldiran Playwright yapilandirmasi |
 | `frontend/playwright.golden.config.ts` | Altin-yol e2e'yi mevcut tam yigina baglayan, artefakt damgali, tek-worker Playwright yapilandirmasi |
 | `frontend/vitest.config.ts` | Vitest'in Playwright'a ait e2e dizinlerini toplamamasi icin exclude listesi tanimlar |
@@ -570,7 +571,7 @@ Karıştırılmasın diye ayrı duruyor.
 | `frontend/ortak/contexts/CapabilitiesContext.tsx` | /auth/me'den kullanici disiplin/yetenek bayraklarini cekip saglayan React context ve yardimci sorgular |
 | `frontend/ortak/hooks/use-confirm.ts` | Tıklanan noktada açılan Promise tabanlı onay popover'ı |
 | `frontend/ortak/hooks/use-toast.ts` | Bildirim mesajlarının yaşam döngüsünü yöneten reducer |
-| `frontend/ortak/lib/api.ts` | JWT ekleyen, 401'de oturumu temizleyip girişe yönlendiren merkezi HTTP istemcisi |
+| `frontend/ortak/lib/api.ts` | JWT ekleyen merkezi HTTP istemcisi. 401'de oturumu temizleyip girişe yönlendirir — **ancak yalnız korumalı uçlar için**: `/auth/login` ve `/auth/register` 401'i "yanlış şifre" demektir, "oturum düştü" değil; o 401 çağırana reject edilir ki giriş formu kendi hatasını gösterebilsin (04.08). `/auth/me` listede DEĞİLDİR, oradan gelen 401 gerçek oturum düşmesidir |
 | `frontend/ortak/lib/utils.ts` | Tailwind sınıf birleştirme (cn) + sayı biçimleme yardımcıları |
 
 ### L · ÇEKİRDEK BACKEND ALTYAPISI — 31 dosya
