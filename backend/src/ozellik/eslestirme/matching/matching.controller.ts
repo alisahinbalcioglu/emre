@@ -1,5 +1,7 @@
 import { Controller, Post, Get, Delete, Body, Param, UseGuards, Req } from '@nestjs/common';
 import { JwtAuthGuard } from '../../../altyapi/auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../../altyapi/auth/guards/roles.guard';
+import { Roles } from '../../../altyapi/auth/decorators/roles.decorator';
 import { MatchingService } from './matching.service';
 import { TerminologyService } from './terminology.service';
 
@@ -71,14 +73,22 @@ export class MatchingController {
     return this.terminology.deactivateAlias(userId, id);
   }
 
-  /** Admin: Mevcut malzemelere tag at (backfill) */
+  /** Admin: Mevcut malzemelere tag at (backfill).
+   *  ⚠ Koruma UC (metot) duzeyinde: bu controller'daki alti uc NORMAL
+   *  kullanici ucudur (bulk-match, remember, index-health, aliases x3);
+   *  @Roles SINIF duzeyine konursa onlarin HEPSI kirilir.
+   *  Desen kardes controller ile ayni: labor-matching.controller.ts:43-45. */
   @Post('backfill-tags')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
   async backfillTags() {
     return this.service.backfillTags();
   }
 
-  /** Admin: Tek malzeme icin tag test et */
+  /** Admin: Tek malzeme icin tag test et (koruma yine UC duzeyinde). */
   @Post('generate-tags')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
   async generateTags(@Body() body: { materialName: string }) {
     return this.service.generateTagsForTest(body.materialName);
   }

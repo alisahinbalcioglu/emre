@@ -80,6 +80,15 @@ const SUITES: Suite[] = [
   //      A0 assertleri ayrica B'nin SetNull'unu canli DB'de olcer — FK geri
   //      Cascade'e donerse ekran metni yanlis vaat etmeden ONCE burasi kizarir.
   { ad: 'Silme etkisi sayım uçları + ön kontrol (A-1)', script: 'test:a1', zincir: 'Z1', db: true },
+  // ── 04.08.2026 — UÇ GÜVENLİĞİ (K1/K2/K3). DB GEREKTİRMEZ: dekoratör
+  //    metadata'sı + sahte ExecutionContext + sahte Prisma casusu ile ölçülür,
+  //    gerçek veriye dokunmaz → `db` bayrağı YOK, her koşumda çalışır.
+  //    DURUM: 35 PASS / 0 FAIL — üç kusur da aynı gün düzeltildi (K1 iki uca
+  //    metot düzeyi @Roles · K2 TierGuard getAllAndOverride · K3 deletePrice
+  //    kapsam+varlık kontrolü). KIRMIZIYA DÖNERSE BU BİR REGRESYONDUR.
+  //    O1-O5 ölçüt kontrol vakaları, fixture kapıları ve ★KALKAN assertleri
+  //    (aynı sınıftaki altı normal-kullanıcı ucu admin İSTEMEMELİ) da buradadır.
+  { ad: 'Uç güvenliği: rol/tier/kapsam sözleşmesi (K1-K3)', script: 'test:guvenlik', zincir: 'Z0' },
 ];
 
 function dbErisilebilir(): boolean {

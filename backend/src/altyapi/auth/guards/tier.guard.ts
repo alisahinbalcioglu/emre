@@ -16,7 +16,13 @@ export class TierGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const requiredTiers = this.reflector.get<string[]>(TIER_KEY, context.getHandler());
+    // RolesGuard ile AYNI okuma (roles.guard.ts:10-13): metot + SINIF, metot ezer.
+    // Yalniz getHandler() okunursa @RequireTier'i SINIF duzeyine koyan
+    // controller'larda metadata bulunamaz ve guard asagida sessizce true doner.
+    const requiredTiers = this.reflector.getAllAndOverride<string[]>(TIER_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
     if (!requiredTiers || requiredTiers.length === 0) return true;
 
     const request = context.switchToHttp().getRequest();
