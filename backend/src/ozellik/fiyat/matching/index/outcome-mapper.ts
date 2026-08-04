@@ -239,6 +239,10 @@ export function toMatchResult(
         'cap-yok': `Bu markada ${outcome.detail ?? 'bu çap'} yok${
           outcome.mevcutCaplar?.length ? ` · en yakın: ${outcome.mevcutCaplar.join(' / ')}` : ''}.`,
         'kriter-yok': `Bu markada "${outcome.detail ?? 'istenen nitelik'}" taşıyan ürün yok.`,
+        // IS 3-B: satirda birlikte bulunamayan yuzeyler yazili (galvaniz+siyah);
+        // motor OR'a dustu ama o yuzeylerin HICBIRI bu markada yok.
+        'yuzey-celiskisi': `Satırda birlikte bulunamayan yüzeyler yazılı (${
+          (outcome.detail ?? 'yüzey').split(' ').join(' / ')}) — bu markada hiçbirini taşıyan ürün yok.`,
         'etiket-yok': 'Satırdan ürün bilgisi çıkarılamadı.',
         // ISCILIK L6: birim uyumu sert — mt satirina adet kalemi aday olamaz
         'birim-uyumsuz': `Satır birimi (${outcome.detail ?? '?'}) ile uyumlu kalem yok.`,

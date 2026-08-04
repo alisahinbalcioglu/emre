@@ -19,6 +19,7 @@
     "test:contract": "ts-node test/contract-test.ts",
     "test:product-index": "ts-node test/product-index-test.ts",
     "test:index": "ts-node test/index-engine-test.ts",
+    "test:fallback-ad": "ts-node test/fallback-ad-kilidi-test.ts",
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate",
     "prisma:studio": "prisma studio",

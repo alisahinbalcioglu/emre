@@ -159,6 +159,27 @@ export function parseLine(text: string, unit?: string | null): LineQuery {
 const BAGLANTI_TANIMLAYICI = new Set([
   'disli', 'kaynakli', 'vidali', 'flansli', 'yivli', 'soketli', 'presli',
   'rakorlu', 'gecmeli', 'mansonlu', 'lehimli', 'kaplinli',
+  // 04.08 (ÇAYIROVA "2\" Düz Uçlu Boru"): 'duz uclu' evrensel bir BAGLANTI
+  // turudur (plain end) ve indeksleyicinin kendi BAGLANTI_K dagarciginda
+  // (matching.service.ts:248-249) ZATEN vardi — yalniz BURADA eksikti.
+  'duz', 'uclu',
+]);
+
+/** Evrensel CINS (yuzey/malzeme) tanimlayicilari — BAGLANTI_TANIMLAYICI'nin
+ *  IKIZI. Ayni hastalik, ayni ilac: bu kelimeler urun ADINDA gecseler bile
+ *  ("Basınçlı Boru Siyah Düz Uçlu ... Et 2.5mm" — kuyrugu 'Et' ile bittigi
+ *  icin indeksleyicinin sondan-soyma dongusu kirilir, 'siyah' AD token'i
+ *  kalir) aslinda CINS niteligidir. Ailenin cins dagarciginda da VARSA
+ *  AD yerine CINS'e yonlenirler.
+ *  CINS-dagarcigi SARTI zorunludur: 'celik' gercekten adin parcasi oldugu
+ *  ailelerde ("Çelik konstruksiyon") reroute YAPILMAZ — BAGLANTI_TANIMLAYICI'
+ *  daki "dişli kutusu" korumasinin birebir aynisi.
+ *  Kaynak: indeksleyicinin CINS_K dagarcigi (matching.service.ts:245-247);
+ *  iki taraf ayni kelimeleri ayni kolona yazmazsa havuz yanlis kilitlenir. */
+const CINS_TANIMLAYICI = new Set([
+  'siyah', 'galvaniz', 'galvanizli', 'kirmizi', 'boyali', 'celik',
+  'paslanmaz', 'pirinc', 'dokum', 'bronz', 'bakir', 'ppr', 'pprc', 'pvc',
+  'pe', 'pex', 'hdpe', 'polietilen', 'plastik', 'wafer', 'lug',
 ]);
 
 export function classifyTokens(tokens: string[], vocab: FamilyVocab): RoutedTokens {
@@ -181,6 +202,14 @@ export function classifyTokens(tokens: string[], vocab: FamilyVocab): RoutedToke
     // (baglanti bos, ad='te') eliyordu. Evrensel baglanti kelimesi + ailenin
     // baglanti dagarciginda VARSA → baglanti (yalin urunler korunur).
     if (BAGLANTI_TANIMLAYICI.has(t) && varMi(vocab.baglanti)) out.baglanti.push(t);
+    // CINS TANIMLAYICISI ISTISNASI (04.08) — yukaridakinin IKIZI: 'siyah' hem
+    // "Basınçlı Boru Siyah Düz Uçlu ..." ADinda hem "... - Siyah Düz Uçlu"
+    // satirlarinin CINSinde gecince, AD onceligi havuzu ADINDA 'siyah' YAZAN
+    // aileye kilitliyor; hedef cap o ailede olmayinca motor "bu markada 2\" yok"
+    // diyordu — oysa urun kutuphanede VARDI (I7 sessiz-bos yasagi).
+    // K4 BOZULMAZ: cins de SERT filtredir (query-engine.ts:300-308) — kelime
+    // elenmez, yalnizca DOGRU kolona yonlenir.
+    else if (CINS_TANIMLAYICI.has(t) && varMi(vocab.cins)) out.cins.push(t);
     else if (varMi(vocab.ad)) out.ad.push(t);
     else if (varMi(vocab.baglanti)) out.baglanti.push(t);
     else if (varMi(vocab.cins)) out.cins.push(t);

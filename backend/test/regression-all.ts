@@ -18,6 +18,11 @@ const SUITES: Suite[] = [
   { ad: 'Excel grid parse (E/KG6)', script: 'test:grid', zincir: 'Z1' },
   { ad: 'Ürün indeksleyici (P/K)', script: 'test:product-index', zincir: 'Z1' },
   { ad: 'İndeksli motor kabul (K/TS/KH4-6)', script: 'test:index', zincir: 'Z2' },
+  // 04.08.2026: bagsiz (productIndexId=NULL) satirlarda manuelUrunIndeksle fallback'i.
+  // PK1 manifest kapisi bu testi GOREMEZDI: kapi package.json'daki her `test:*`in
+  // SUITES'te olmasini denetler, ama DOSYA→script yonunu denetlemez. Test dosyasi
+  // yazilip script'i hic eklenmezse hicbir kapi fark etmez — bu satir o deligi kapatir.
+  { ad: 'Fallback AD-kilidi (bağsız satır)', script: 'test:fallback-ad', zincir: 'Z2' },
   { ad: 'Eşleştirme birim (D)', script: 'test:matching', zincir: 'Z2' },
   { ad: 'Çap çevrimi (DN/inç/OD-mm)', script: 'test:conversion', zincir: 'Z2' },
   { ad: 'Spec regresyon (R1-R12)', script: 'test:spec', zincir: 'Z2' },

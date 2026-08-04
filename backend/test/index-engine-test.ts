@@ -960,6 +960,121 @@ async function run() {
       `got ${r3.confidence} ${JSON.stringify(adlar3)}`);
   }
 
+  // ══ Y — CELISKILI YAZILI YUZEY (IS 3-A: SADECE KIRMIZI KANIT) ════
+  // KOK (query-engine.ts:300-307): yazili yuzeyler altKume ile istenir —
+  //   const d = rows.filter((r) => altKume(yuzeyler, r.urun.cinsTokens));
+  //   if (d.length > 0) { ...; rows = d; }
+  //   else return { kind:'none', reason:'kriter-yok', detail: yuzeyler.join(' ') };
+  // altKume = altKumeMi = istenen.every(...) → urun YAZILAN TUM yuzeyleri
+  // BIRDEN tasimalidir. Hicbir urun hem galvaniz hem siyah olamaz → havuz
+  // bosalir → SERT none. 16.07 kararinin uygulayicisi olan kurtarma havuzu
+  // (yuzeyGenis, :304) tam da `d.length > 0` dalinin ICINDE doldugu icin
+  // ihtiyac duyuldugu anda NULL kalir — yapisal olarak olu yol.
+  //
+  // OLCULEN GERCEK (cayirova ProductIndex, 359 satir):
+  //   "2\" Galvaniz Siyah boru" → none/kriter-yok/"galvaniz siyah"
+  //   "2\" Kirmizi Boyali boru" → high, ₺209,30, OTOMATIK YAZILDI  ★
+  // Yani kusur "birden fazla yuzey" DEGIL, BIRLIKTE BULUNAMAYAN cift.
+  // Cozum SABIT CELISKI LISTESI olmamali, VERI-TUREVLI olmali.
+  {
+    const YB = { kategori: 'Borular', sheetName: 'S' };
+    const YV = { kategori: 'Vanalar', sheetName: 'S' };
+    const P1 = prod({ ...YB, ad: 'Çelik boru', cins: 'Siyah, dikişli', cap: 'DN50', price: 900, urunKodu: 'YP1' });
+    const P2 = prod({ ...YB, ad: 'Çelik boru', cins: 'Galvanizli, dikişli', cap: 'DN50', price: 1100, urunKodu: 'YP2' });
+    const P3 = prod({ ...YB, ad: 'Çelik boru', cins: 'Kırmızı boyalı, dikişli', cap: 'DN50', price: 980, urunKodu: 'YP3' });
+    const P4 = prod({ ...YV, ad: 'Kelebek vana', cins: 'Siyah', cap: 'DN50', price: 1200, urunKodu: 'YP4' });
+    const P5 = prod({ ...YV, ad: 'Kelebek vana', cins: 'Galvanizli', cap: 'DN50', price: 1400, urunKodu: 'YP5' });
+    const YHAVUZ: IndexedRow[] = [P1, P2, P3, P4, P5];
+    const ham = (t: string) => runQuery(parseLine(t), YHAVUZ);
+    const kodu = (o: any) => o?.row?.urun?.urunKodu ?? '—';
+    const adlar = (r: any): string[] => (r.candidates ?? []).map((c: any) => c.materialName);
+    const fiyatlar = (r: any): number[] => (r.candidates ?? []).map((c: any) => c.netPrice);
+
+    // ── BOS-KUME KAPISI (kural 3+6): ONCE olcut sinanir, urun degil ──
+    check('Y-G1 KAPI: havuz 5 satir (bos-kume yalanci yesili yasak)',
+      YHAVUZ.length === 5, `len=${YHAVUZ.length}`);
+    check('Y-G2 KAPI: P1..P5 capTags "dn50" iceriyor',
+      YHAVUZ.length > 0 && YHAVUZ.every((r) => r.urun.capTags.includes('dn50')),
+      JSON.stringify(YHAVUZ.map((r) => `${r.urun.urunKodu}:${r.urun.capTags.join(',')}`)));
+    const yG3 = ham('2" Siyah boru');
+    const yG3m = m('2" Siyah boru', YHAVUZ);
+    check('Y-G3 KAPI: "2\\" Siyah boru" → kind=single',
+      yG3.kind === 'single', `kind=${yG3.kind} reason=${(yG3 as any).reason ?? '—'} detail=${(yG3 as any).detail ?? '—'}`);
+    check('Y-G3b KAPI: "2\\" Siyah boru" → ₺900',
+      yG3m.netPrice === 900, `net=${yG3m.netPrice} conf=${yG3m.confidence}`);
+    const yG4 = ham('2" Galvaniz boru');
+    const yG4m = m('2" Galvaniz boru', YHAVUZ);
+    check('Y-G4 KAPI: "2\\" Galvaniz boru" → kind=single',
+      yG4.kind === 'single', `kind=${yG4.kind} reason=${(yG4 as any).reason ?? '—'} detail=${(yG4 as any).detail ?? '—'}`);
+    check('Y-G4b KAPI: "2\\" Galvaniz boru" → ₺1100',
+      yG4m.netPrice === 1100, `net=${yG4m.netPrice} conf=${yG4m.confidence}`);
+
+    // ── KIRMIZI ASSERTLER (her kriter AYRI check — kural 4) ──────────
+    const r1 = ham('2" Galvaniz Siyah boru');
+    const r1m = m('2" Galvaniz Siyah boru', YHAVUZ);
+    check('Y-R1 KIRMIZI: "2\\" Galvaniz Siyah boru" → none DEGIL',
+      r1.kind !== 'none', `kind=${r1.kind} reason=${(r1 as any).reason ?? '—'} detail=${(r1 as any).detail ?? '—'}`);
+    check('Y-R1b KIRMIZI: R1 en az 2 aday sunar',
+      (r1m.candidates ?? []).length >= 2, `aday=${(r1m.candidates ?? []).length} ${JSON.stringify(adlar(r1m))}`);
+    check('Y-R1c KIRMIZI: R1 adaylarinin HEPSI netPrice > 0 (liste bos degil)',
+      (r1m.candidates ?? []).length > 0 && (r1m.candidates ?? []).every((c: any) => c.netPrice > 0),
+      `aday=${(r1m.candidates ?? []).length} fiyatlar=${JSON.stringify(fiyatlar(r1m))}`);
+
+    const r2 = ham('2" Kırmızı Siyah boru');
+    const r2m = m('2" Kırmızı Siyah boru', YHAVUZ);
+    check('Y-R2 KIRMIZI (2. cift): "2\\" Kırmızı Siyah boru" → none DEGIL',
+      r2.kind !== 'none', `kind=${r2.kind} reason=${(r2 as any).reason ?? '—'} detail=${(r2 as any).detail ?? '—'}`);
+    check('Y-R2b KIRMIZI (2. cift): en az 2 aday sunar',
+      (r2m.candidates ?? []).length >= 2, `aday=${(r2m.candidates ?? []).length} ${JSON.stringify(adlar(r2m))}`);
+    check('Y-R2c KIRMIZI (2. cift): adaylarin HEPSI netPrice > 0 (liste bos degil)',
+      (r2m.candidates ?? []).length > 0 && (r2m.candidates ?? []).every((c: any) => c.netPrice > 0),
+      `aday=${(r2m.candidates ?? []).length} fiyatlar=${JSON.stringify(fiyatlar(r2m))}`);
+
+    const r3 = ham('2" Boyalı Galvaniz boru');
+    const r3m = m('2" Boyalı Galvaniz boru', YHAVUZ);
+    check('Y-R3 KIRMIZI (3. cift): "2\\" Boyalı Galvaniz boru" → none DEGIL',
+      r3.kind !== 'none', `kind=${r3.kind} reason=${(r3 as any).reason ?? '—'} detail=${(r3 as any).detail ?? '—'}`);
+    check('Y-R3b KIRMIZI (3. cift): en az 2 aday sunar',
+      (r3m.candidates ?? []).length >= 2, `aday=${(r3m.candidates ?? []).length} ${JSON.stringify(adlar(r3m))}`);
+    check('Y-R3c KIRMIZI (3. cift): adaylarin HEPSI netPrice > 0 (liste bos degil)',
+      (r3m.candidates ?? []).length > 0 && (r3m.candidates ?? []).every((c: any) => c.netPrice > 0),
+      `aday=${(r3m.candidates ?? []).length} fiyatlar=${JSON.stringify(fiyatlar(r3m))}`);
+
+    // R4 — IKINCI AILE (kural 5): :300-308'de familySlug kapisi YOK,
+    // dolayisiyla fix aile-bagimsiz olmali; vana ailesi bunun kanitidir.
+    const r4 = ham('2" Galvaniz Siyah Kelebek vana');
+    const r4m = m('2" Galvaniz Siyah Kelebek vana', YHAVUZ);
+    check('Y-R4 KIRMIZI (IKINCI AILE): "2\\" Galvaniz Siyah Kelebek vana" → none DEGIL',
+      r4.kind !== 'none', `kind=${r4.kind} reason=${(r4 as any).reason ?? '—'} detail=${(r4 as any).detail ?? '—'}`);
+    check('Y-R4b KIRMIZI (IKINCI AILE): en az 2 aday sunar',
+      (r4m.candidates ?? []).length >= 2, `aday=${(r4m.candidates ?? []).length} ${JSON.stringify(adlar(r4m))}`);
+    check('Y-R4c KIRMIZI (IKINCI AILE): adaylarin HEPSI netPrice > 0 (liste bos degil)',
+      (r4m.candidates ?? []).length > 0 && (r4m.candidates ?? []).every((c: any) => c.netPrice > 0),
+      `aday=${(r4m.candidates ?? []).length} fiyatlar=${JSON.stringify(fiyatlar(r4m))}`);
+
+    // R5 — celiski "kriter-yok" ile ayni cuvale konmamali: ayri kod istenir
+    check('Y-R5 KIRMIZI: R1 nedeni "kriter-yok" DEGIL (celiski adlandirilmali)',
+      !(r1.kind === 'none' && (r1 as any).reason === 'kriter-yok'),
+      `kind=${r1.kind} reason=${(r1 as any).reason ?? '—'} detail=${(r1 as any).detail ?? '—'}`);
+
+    // ── REGRESYON KILITLERI (muhurlu kurallari korur) ────────────────
+    const l1 = ham('2" Kırmızı Boyalı boru');
+    const l1m = m('2" Kırmızı Boyalı boru', YHAVUZ);
+    check('Y-L1 KILIT: birlikte BULUNABILEN cift ("Kırmızı Boyalı") → kind=single',
+      l1.kind === 'single', `kind=${l1.kind} reason=${(l1 as any).reason ?? '—'} detail=${(l1 as any).detail ?? '—'}`);
+    check('Y-L1b KILIT: "Kırmızı Boyalı" → ₺980 (bozulmadi)',
+      l1m.netPrice === 980, `net=${l1m.netPrice} conf=${l1m.confidence}`);
+    check('Y-L2 KILIT (K4): tek-yuzeyli "siyah" sorgusu P1 kaydina iner (P2/P3 SIZMADI)',
+      yG3.kind === 'single' && kodu(yG3) === 'YP1', `kind=${yG3.kind} kod=${kodu(yG3)}`);
+    check('Y-L3 KILIT (K2): R1 sonucunda netPrice === 0 (belirsizde fiyat yazilmaz)',
+      r1m.netPrice === 0, `net=${r1m.netPrice} conf=${r1m.confidence} [NOT: R1 none iken bu assert BOS-GECER; L4-guard yesillenmeden olcum degeri yoktur]`);
+    check('Y-L4-guard KILIT: L4 olcebilmek icin R1 aday listesi BOS OLMAMALI',
+      (r1m.candidates ?? []).length > 0, `aday=${(r1m.candidates ?? []).length}`);
+    check('Y-L4 KILIT (K4): R1 adaylari arasinda P3 "Kırmızı boyalı" YOK',
+      !adlar(r1m).some((a) => /k[ıi]rm[ıi]z[ıi]/i.test(a)),
+      `aday=${(r1m.candidates ?? []).length} ${JSON.stringify(adlar(r1m))} [NOT: liste bosken BOS-GECER]`);
+  }
+
   // ══ İ — AD-TOKEN DUSURME (canli vaka 16.07: izleme anahtarli) ════
   // "4\"-DN100 İzleme Anahtarlı Kelebek Vana" → kutupanede urun
   // "İzlenebilir kelebek vana" adiyla kayitli. 'izleme' kelimesi BASKA

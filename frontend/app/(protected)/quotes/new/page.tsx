@@ -45,6 +45,7 @@ import MetrajEditor from '@/components/dwg-metraj/MetrajEditor';
 import { parseMaterialText } from '@/ozellik/tablo/parse-material-text';
 import { mergeMultiSheet } from '@/ozellik/tablo/merge-multisheet';
 import { kaynakKolonEtiketi } from '@/ozellik/giris/kaynak-kolon';
+import { indeksUyarilari } from '@/lib/indeks-sagligi';
 import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, toplamlariTamamla, etkinMiktar } from '@/ozellik/fiyat/pricing';
 import type { Brand } from '@/ortak/types';
 import type {
@@ -1605,16 +1606,24 @@ export default function NewQuotePage() {
               <span className="text-slate-500">
                 (Fiyat eşleşmiyorsa doğru sütunu seçin — marka değil, malzeme/çap sütunu)
               </span>
-              {/* I7 (18.07): bayat indeks rozeti — istek aninda oto-tamir var
-                  ama KALICI cozum reindex; kullanici durumu GORMELI. */}
-              {indexHealth && indexHealth.bayat > 0 && (
+              {/* I7 (18.07): indeks sagligi rozetleri — istek aninda oto-tamir var
+                  ama KALICI cozum reindex; kullanici durumu GORMELI.
+                  04.08: `indekssiz` de ciziliyor — backend sayiyi uretiyor, FE
+                  cekiyordu ama HIC gostermiyordu (markanin TAMAMI indekssizken
+                  bile ekran sessizdi). Karar: lib/indeks-sagligi.ts */}
+              {indeksUyarilari(indexHealth).map((u) => (
                 <span
-                  title={`${indexHealth.bayat} kütüphane satırı eski indeks sürümünde — eşleştirme her istekte yeniden hesaplıyor (yavaş). Kalıcı çözüm: yönetici "yeniden indeksleme" çalıştırmalı.`}
-                  className="ml-2 inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800"
+                  key={u.tur}
+                  title={u.baslik}
+                  className={
+                    u.tur === 'indekssiz'
+                      ? 'ml-2 inline-flex items-center gap-1 rounded-full border border-red-300 bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-800'
+                      : 'ml-2 inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800'
+                  }
                 >
-                  ⚠ {indexHealth.bayat} satır eski indeks
+                  {u.etiket}
                 </span>
-              )}
+              ))}
               {/* PRD v3.0 Bolum B: "Otomatik varyant atama" TOGGLE KALDIRILDI.
                   Motor korunur; yayilim artik yalniz ACIK NIYET ile — marka
                   hucresini asagi SURUKLE (aralik) veya tutamaga CIFT-TIK (aile).

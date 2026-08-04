@@ -264,6 +264,10 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   const YUZEYLER = ['siyah', 'galvaniz', 'kirmizi', 'boyali'];
   const yuzeyToken = (t: string) => YUZEYLER.some((s) => tokenEsit(s, t));
   let yuzeyGenis: IndexedRow[] | null = null; // boru: yuzey filtresi HARIC gecenler
+  // ── CELISKILI YAZILI YUZEY (IS 3-B) ─────────────────────────────────
+  // Satirda BIRLIKTE BULUNAMAYAN yuzeyler yazili olabilir ("Galvaniz Siyah
+  // boru"): AND filtresi havuzu bosaltir. Dolu ise not, ask'i zorlar (K2).
+  let yuzeyCeliskiNotu: string | null = null;
   // ── V4.7 VARYANT KURTARMA HAVUZU (TUM AILELER) ────────────────────
   // Kullanicinin popup'ta sectigi varyant (variantTags) hedef satira
   // tasinirken, satir metnindeki IKINCIL nitelikler (yuzey: "siyah";
@@ -298,13 +302,36 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
       }
     }
     if (yuzeyler.length) {
-      if (adGenis) adGenis = adGenis.filter((r) => altKume(yuzeyler, r.urun.cinsTokens));
-      const d = rows.filter((r) => altKume(yuzeyler, r.urun.cinsTokens));
+      const hepsi = (r: IndexedRow) => altKume(yuzeyler, r.urun.cinsTokens);
+      const d = rows.filter(hepsi);
       if (d.length > 0) {
+        if (adGenis) adGenis = adGenis.filter(hepsi);
         if (familySlug === 'boru') yuzeyGenis = rows; // yuzey uygulanmamis kume
         yaziliTabanlar = ['siyah', 'galvaniz'].filter((b) => yuzeyler.some((t) => tokenEsit(b, t)));
         rows = d;
-      } else return { kind: 'none', reason: 'kriter-yok', detail: yuzeyler.join(' ') };
+      } else {
+        // ── CELISKILI YAZILI YUZEY — AND bos ⇒ OR (kullanici karari 04.08) ──
+        // Vaka: "2\" Galvaniz Siyah boru". Hicbir urun hem galvaniz hem siyah
+        // OLAMAZ → AND havuzu bosalir → eski davranis SERT 'none' idi ("bu
+        // markada yok" YALANI: markada hem galvanizli hem siyah boru VARDIR).
+        // Kural VERI-TUREVLIDIR, sabit celiski listesi YOK: cift BIRLIKTE
+        // bulunabiliyorsa ("Kirmizi Boyali") AND dolu doner ve yukaridaki
+        // davranis AYNEN korunur; yalniz havuz bosaldiginda OR'a dusulur.
+        // Diger TUM filtreler (ad/cap/baglanti/boy/birim) yerinde kalir —
+        // asagida bu kumeye de uygulanirlar.
+        // K4 KORUNUR: yazili yuzeylerden HICBIRINI tasimayan urun GIRMEZ.
+        // K2 KORUNUR: not uretilir → tek aday kalsa bile fiyat YAZILMAZ,
+        // popup acilir ve kullanici secer.
+        const biri = (r: IndexedRow) =>
+          yuzeyler.some((t) => r.urun.cinsTokens.some((x) => tokenEsit(t, x)));
+        const orHavuz = rows.filter(biri);
+        if (orHavuz.length === 0) {
+          return { kind: 'none', reason: 'yuzey-celiskisi', detail: yuzeyler.join(' ') };
+        }
+        if (adGenis) adGenis = adGenis.filter(biri);
+        yuzeyCeliskiNotu = `Satırda birlikte bulunamayan yüzeyler yazılı (${yuzeyler.join(' / ')}) — hangisi?`;
+        rows = orHavuz;
+      }
     }
   }
   if (yol.baglanti.length) {
@@ -587,13 +614,13 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
 
   // ── SONUC: UC YOL, DORDUNCU YOK ──────────────────────────────────
   if (rows.length === 1) {
-    const celiski = unitConflict ?? surfaceConflict ?? capsizNotu ?? gevsetmeNotu ?? bilinmeyenNotu ?? aileNotu;
+    const celiski = yuzeyCeliskiNotu ?? unitConflict ?? surfaceConflict ?? capsizNotu ?? gevsetmeNotu ?? bilinmeyenNotu ?? aileNotu;
     if (celiski) {
       return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, uyariNot: celiski };
     }
     return { kind: 'single', row: rows[0], donusum };
   }
-  return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, uyariNot: unitConflict ?? capsizNotu ?? gevsetmeNotu ?? undefined };
+  return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, uyariNot: yuzeyCeliskiNotu ?? unitConflict ?? capsizNotu ?? gevsetmeNotu ?? undefined };
 }
 
 /**

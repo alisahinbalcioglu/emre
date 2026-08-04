@@ -100,6 +100,10 @@ export type NoneReason =
   | 'ad-yok'
   | 'cap-yok'
   | 'kriter-yok'
+  // IS 3-B: satirda birlikte bulunamayan yuzeyler yazili ("galvaniz siyah")
+  // VE bu markada o yuzeylerin HICBIRINI tasiyan urun yok. 'kriter-yok'tan
+  // AYRI kod: neden tek bir niteligin yoklugu degil, yazilanlarin celiskisi.
+  | 'yuzey-celiskisi'
   // ISCILIK L6: satir birimi ile kalem birimleri celisti (birimSert)
   | 'birim-uyumsuz';
 

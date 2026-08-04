@@ -314,7 +314,7 @@ Karıştırılmasın diye ayrı duruyor.
 | `frontend/ozellik/tablo/merge-multisheet.ts` | Yeni yuklenen Excel'i mevcut grid durumuyla satir/sheet bazinda birlestirir; kullanici girdilerini ve ozel sutunlari korur |
 | `frontend/ozellik/tablo/parse-material-text.ts` | "Ø110 PVC BORU" gibi metni regex desenleriyle cap ve cins olarak ayirir, gerekirse geri birlestirir |
 
-### C · EŞLEŞTİRME — 16 dosya
+### C · EŞLEŞTİRME — 17 dosya
 
 | Dosya | Ne yapıyor |
 |---|---|
@@ -333,6 +333,7 @@ Karıştırılmasın diye ayrı duruyor.
 | `backend/src/ozellik/eslestirme/matching/types.ts` | Esleme sonucu, aday, marka alternatifi ve tag'lenmis malzeme arayuz tanimlarini tasir |
 | `backend/src/ozellik/eslestirme/utils/build-material-context.ts` | Grid satirlarindan ust grup basligini bulup tam malzeme adini kurar; cap tutarsizliginda guvenli tarafta sadece satir adini doner |
 | `backend/src/ozellik/eslestirme/utils/etiket-display.ts` | Serbest metinden AD/CINS/CAP etiket gosterimlerini eslestirme motoru tag'leriyle turetir; admin AD duzeltmesini dogrular |
+| `frontend/lib/indeks-sagligi.ts` | `GET /matching/index-health` sayilarindan hangi indeks rozetinin cizilecegine karar verir (saf fonksiyon): bayat = eski surumlu indeks (yavas), indekssiz = urun indeksine HIC bagli olmayan satir (sonuc urun tablosu kalitesinde degil). Cizen yer `quotes/new/page.tsx:1614` |
 | `frontend/ozellik/tablo/excel-grid/build-material-context.ts` | Eslestirme sorgusu icin satirin olcu ifadesi tasiyip tasimadigini ve baslik baglami gerekip gerekmedigini belirler |
 
 ### D · FİYAT — 5 dosya
@@ -428,6 +429,7 @@ Karıştırılmasın diye ayrı duruyor.
 | `backend/test/gercek-dosya-test.ts` | Bes sorunlu gercek musteri Excel'inin prepare'dan dogru rol ve satir sayisiyla gectigini sinar |
 | `backend/test/gs6b-teshis.ts` | Ad-sutunu secici bug'unun veri mi render borusu mu kaynakli oldugunu ayirt eden teshis scripti |
 | `backend/test/index-engine-test.ts` | İndeksli motorun K1-K7 kabulünü gerçek indeksleyiciyle DB'siz doğrular |
+| `backend/test/fallback-ad-kilidi-test.ts` | Bağsız (productIndexId=NULL) kütüphane satırlarında `manuelUrunIndeksle` fallback'inin DÜZ METİN yolunu sınar. Soyma döngüsü yalnız adın SONUNDAN soyduğu için "… Et 2.5mm" ile biten adlarda cins/bağlantı kelimeleri AD token'ı kalır; sorgudaki aynı kelime AD kısıtı sayılıp var olan çapı eler. Havuz gerçek ÇAYIROVA satırlarından, DB istemez |
 | `backend/test/kd11-toplam-yollari-test.ts` | Uc fiyat-giris yolunda malzeme ve genel toplam hesabini alti ayri assert'le sinar |
 | `backend/test/kd12-baslik-satiri-test.ts` | Unvan/baslik satirlarinin veri satiri sanilmadigini ve metinden sayi turetilmedigini sinar |
 | `backend/test/kd9-kur-olcutu-test.ts` | Kur cevrim olcutunun kendisini sinar: dairesel tahminci yerine urun formuluyle tam esitlik |
@@ -468,6 +470,7 @@ Karıştırılmasın diye ayrı duruyor.
 | `frontend/test/e2e-golden/verify.mjs` | E2E artefaktlarını bağımsız yeniden hesaplayıp C1-C11 PASS/FAIL matrisi üretir |
 | `frontend/test/e2e/grid.spec.ts` | Mock harness uzerinde grid E2E: popup nesne baglama, surukle-doldur, Ctrl+Z, ag hatasi senaryolari |
 | `frontend/lib/gs6b-golge-kurali.test.ts` | Kaynak-seviyesi vitest kilidi: satir listesi yazan fonksiyonun golge kaynagi da tazeledigini dogrular |
+| `frontend/lib/indeks-sagligi.test.ts` | Indeks sagligi rozet kararini kilitler — T1 bagsizlik (`indekssiz`) rozeti GORUNMELI (fix oncesi KIRMIZI olculdu), T2 mevcut `bayat` rozeti regresyon kalkani, T3 ikisi de 0'ken hicbir rozet yok, T4 IKI AILE ayni anda cizilir (genellik), T5 veri gelmeden rozet yok |
 | `frontend/lib/merge-multisheet.test.ts` | Excel yeniden yuklemede kullanici emeginin (kar, marka, fiyat, ozel sutun, sheet) korundugunu dogrulayan vitest suiti |
 | `frontend/lib/parse-material-text.test.ts` | Birlesik malzeme metninin cap+cins ayrimini ve geri birlestirmeyi 17+ ornekle dogrulayan vitest suiti |
 | `frontend/lib/popup-secici-sozlesmesi.test.ts` | E2E harness ile UI'nin aday popup'i data-testid sozlesmesiyle bulmasini kaynak taramasiyla kilitleyen vitest testi |
