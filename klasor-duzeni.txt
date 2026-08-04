@@ -1,0 +1,128 @@
+# KLASÖR DÜZENİ — DİSİPLİN TANIMI (ADIM 6, 04.08.2026)
+#
+# Bu dosya bir İDDİADIR ve bu yüzden betiğin İÇİNE GÖMÜLMEZ — `harita-kapsam-disi.txt`
+# ile aynı gerekçe. "Şu dosya şu klasörde durmalı" cümlesi tartışılabilir olmalı;
+# betiğin içinde dursaydı kimse görmeden değişirdi.
+#
+# Denetleyen: `scripts/klasor-denetle.mjs` (`npm run test:klasor`, backend paketinden).
+# Boş satırlar ve "#" ile başlayan satırlar yok sayılır.
+#
+# DESEN SÖZDİZİMİ (üç biçim, `harita-kapsam-disi.txt` ile birebir aynı):
+#   "dizin/"   → yol bu önekle başlıyorsa eşleşir
+#   "*.sonek"  → yol bu sonekle bitiyorsa eşleşir
+#   "tam/yol"  → birebir eşleşme
+#
+# ── NEDEN VAR ──
+# 04.08'de 155 dosya taşındı ve A-M gruplarına göre yeni bir düzen kuruldu.
+# `test:harita` bir dosyanın haritada ANILDIĞINI denetler, DOĞRU KLASÖRDE
+# olduğunu denetlemez. Kapısız düzen bir turluktur: sıradaki geliştirici
+# dosyayı yanlış klasöre koyar, hiçbir şey uyarmaz, düzen erir.
+#
+# ── İKİ KURAL ──
+# KURAL 1 (ALAN KÖKLERİ): kapsam içindeki HER kod dosyası, aşağıda ilan edilmiş
+#   bir alan kökünün altında olacak. Liste KAPALIDIR. Yeni bir alan açmak
+#   bilinçli bir eylemdir: bu dosyaya gerekçeli tek satır yazılır.
+#   Kapsam: 323/323 dosya (kapinin kendi betigi dahil) — hicbiri disarida degil.
+#
+# KURAL 2 (GRUP↔YOL): `KOD_HARITASI.md`'nin TAM SINIFLANDIRMA bölümünde
+#   X grubunda listelenen dosya, X'in ilan edilmiş yollarından biri altında
+#   olacak — ya da [ISTISNA] bölümünde gerekçesiyle yazılı olacak.
+#   Kapsam: sınıflandırma tablosundaki dosyalar (bugün 288); bunların 31'i
+#   çerçeve bağlı (`frontend/app/**`) olduğu için atlanır → GERÇEKTEN ÖLÇÜLEN 257.
+#   Tabloda olmayan 34 dosya KURAL 2'ye girmez; onları KURAL 1 tutar.
+#
+# ── KURAL 2'NİN BİLDİĞİ SINIR (dürüst boşluk, gizlenmiyor) ──
+# Grup bilgisi haritadan okunur. Dosyayı yanlış klasöre koyan biri harita
+# satırını da o klasöre uyan gruba yazarsa kapı yeşil kalır. Kapı, kişinin
+# "bu dosya ne işi yapıyor" cümlesini denetleyemez; denetlediği şey o cümle ile
+# dosyanın yeri arasındaki TUTARLILIKTIR. KURAL 1 bu boşluğun altını örer:
+# grup ne yazılırsa yazılsın, ilan edilmemiş bir klasör kırmızı yanar.
+
+[ALAN KOKLERI]
+# ── backend ──
+backend/prisma/ :: Prisma şema kaynağı (`schema.prisma`) — taşınmadı, DB'nin tek gerçeği.
+backend/scripts/ :: Derleme/sürüm betikleri (derleme-kapisi, surum-yaz) — grup I.
+backend/src/altyapi/ :: Çekirdek backend altyapısı (auth, db) — grup L. 2b durağında kuruldu.
+backend/src/modules/dwg-engine/ :: DONMUŞ BLOK — DWG-metraj (grup J). Taşıma turunda bilerek dokunulmadı.
+# `ozellik/` ALT ALAN ALT ALAN ilan edilir, toptan DEĞİL (ölçülmüş gerekçe). Gerekçe ölçümden: tek satır
+# `backend/src/ozellik/` yazılsaydı `ozellik/yeni-alan/` KURAL 1'den sessizce geçerdi —
+# oysa erimenin en olası yeri tam orası. Yeni alan açmak buraya bir satır yazmaktır.
+backend/src/ozellik/cikti/ :: F · teklif dosyası üretimi.
+backend/src/ozellik/eslestirme/ :: C · malzeme adını kütüphaneyle eşleme.
+backend/src/ozellik/fiyat/ :: D · birim fiyat, iskonto, para birimi.
+backend/src/ozellik/giris/ :: A · dosya yükleme ve okuma.
+backend/src/ozellik/kutuphane/ :: G · kütüphane ve yönetim.
+backend/src/ozellik/teklif/ :: M · teklif yaşam döngüsü.
+backend/src/app.module.ts :: NestJS kök modülü — `src` kökünde kalmak ZORUNDA (RAPOR §6.2).
+backend/src/bootstrap.controller.ts :: İçeriği kütüphane değil güvenlik; kökte kaldı (RAPOR §6.7).
+backend/src/health.controller.ts :: Sağlık ucu — `rootDir` ihlali olmasın diye kökte (RAPOR §6.2).
+backend/src/main.ts :: `dist/main.js` üretilmezse Dockerfile CMD kopar (RAPOR §3.1) — kökte.
+backend/src/surum.ts :: build_sha kablolaması — kökte (RAPOR §6.2).
+backend/test/ :: Grup H. TAŞINMADI (RAPOR §6.4): 46 dosya yerinde (41'i H, 5'i tabloda yok), ölçüt YOL'dur.
+# ── frontend ──
+frontend/app/ :: ÇERÇEVE BAĞLI — Next.js rotaları klasör yolundan türer, taşınamaz (RAPOR §6.1).
+# `components/` DONMUŞ BLOK: yalnız bu beş `dwg-*` klasörü ilan edilir; altıncı bir
+# `components/…` klasörü açılırsa KURAL 1 kırmızı yanar (eski düzene geri akış yasak).
+frontend/components/dwg-diameter-engine/ :: J · çap motoru.
+frontend/components/dwg-metraj/ :: J · metraj editörü.
+frontend/components/dwg-tagging/ :: J · tıkla-etiketle.
+frontend/components/dwg-viewer/ :: J · çizim görüntüleyici.
+frontend/components/dwg-workspace/ :: J · çalışma alanı kabuğu.
+frontend/lib/ :: KALINTI — taşıma turunda boşaltılmadı; grup C/H/J karışık. ⚠ Düz klasör olduğu için KURAL 1 buraya konan YENİ dosyayı yakalamaz; KURAL 2 yakalar (grubunun yolu değil).
+frontend/ortak/ :: Grup K + paylaşımlı tipler. 1. durakta kuruldu.
+frontend/ozellik/cikti/ :: F · çıktı indirme.
+frontend/ozellik/fiyat/ :: D · fiyat/kur.
+frontend/ozellik/giris/ :: A · kaynak kolon.
+frontend/ozellik/kutuphane/ :: G · kütüphane ekranları.
+frontend/ozellik/tablo/ :: B · ekranda görülen grid.
+frontend/ozellik/teklif/ :: M · teklif ekranları.
+frontend/scripts/ :: Sürüm betiği — grup I.
+frontend/test/ :: E2E paketleri (e2e + e2e-golden). 6. durakta kuruldu; ikisi AYRI (RAPOR §6.8).
+frontend/next.config.js :: Next.js yapılandırması — çerçeve kökte arar.
+frontend/postcss.config.js :: PostCSS yapılandırması — çerçeve kökte arar.
+frontend/tailwind.config.ts :: Tailwind yapılandırması — çerçeve kökte arar. `content` glob'ları RAPOR §3.2.
+frontend/playwright.config.ts :: Playwright koşucusu — kökte arar.
+frontend/playwright.golden.config.ts :: Altın yol koşucusu — ayrı tutulur (RAPOR §6.8).
+frontend/vitest.config.ts :: Vitest koşucusu — kökte arar.
+# ── repo kökü ──
+scripts/ :: Depo düzeyi işletim betikleri (deploy, backup, harita, ölçüm) — pakete ait değil.
+
+[GRUP YOLLARI]
+# `<HARF> :: <desen> | <desen> | …`   (desen sözdizimi yukarıdaki üç biçim)
+# Bir grup burada YOKSA KURAL 2 o grubu denetlemez — o yüzden A-M'nin hepsi yazılı.
+A :: backend/src/ozellik/giris/ | frontend/ozellik/giris/
+B :: frontend/ozellik/tablo/
+C :: backend/src/ozellik/eslestirme/
+D :: backend/src/ozellik/fiyat/ | frontend/ozellik/fiyat/
+E :: (bos)
+F :: backend/src/ozellik/cikti/ | frontend/ozellik/cikti/
+G :: backend/src/ozellik/kutuphane/ | frontend/ozellik/kutuphane/
+H :: backend/test/ | frontend/test/ | backend/src/modules/dwg-engine/python/tests/ | *.test.ts | *.test.tsx | *.spec.ts | frontend/playwright.config.ts | frontend/playwright.golden.config.ts | frontend/vitest.config.ts
+I :: backend/scripts/ | frontend/scripts/ | *.sh | backend/src/health.controller.ts | backend/src/surum.ts | frontend/next.config.js | frontend/postcss.config.js | frontend/tailwind.config.ts
+J :: backend/src/modules/dwg-engine/ | frontend/components/dwg-diameter-engine/ | frontend/components/dwg-metraj/ | frontend/components/dwg-tagging/ | frontend/components/dwg-viewer/ | frontend/components/dwg-workspace/
+K :: frontend/ortak/
+L :: backend/src/altyapi/ | *.module.ts | backend/src/main.ts
+M :: backend/src/ozellik/teklif/ | frontend/ozellik/teklif/
+
+[CERCEVE BAGLI]
+# Bu önekin altındaki dosyalar HER gruba açıktır — KURAL 2 onları denetlemez.
+# Gerekçe tek ve serttir: Next.js rotası klasör yolundan türer; taşınırsa rota YOK olur.
+# Planın tablosu bu 30 dosyayı taşımak istiyordu; uygulansaydı `/login` ve `/quotes`
+# 404 dönerdi (RAPOR §3.1). Kapı bu istisnayı kalıcılaştırır, kişiye bırakmaz.
+frontend/app/ :: Next.js App Router — rota = klasör yolu.
+
+[ISTISNA]
+# `<yol> :: <GRUP> :: <gerekce>`
+# ÇIRÇIR: bu liste yalnız KISALIR (HEAD'deki hâlinden uzunsa kapı kırmızı).
+# HAYALET: artık geçerli olmayan (dosyası yok ya da kurala uyar hâle gelmiş)
+#   bir istisna da kırmızıdır — ölü istisna sessiz çöp kutusudur.
+backend/src/ozellik/teklif/quotes/export-engine.ts :: F :: quotes/ TEK PARÇA tutuldu (RAPOR §6.5); bölünse kardeş import'lar çapraz-ağaç yoluna dönerdi. `quotes/` dışından çağıranı yok.
+frontend/ozellik/tablo/excel-grid/build-material-context.ts :: C :: excel-grid/ TEK PARÇA tutuldu (RAPOR §6.5) — kardeş import'ları bölmek sıfır kazanç.
+frontend/ozellik/tablo/excel-grid/discount-utils.ts :: D :: excel-grid/ TEK PARÇA tutuldu (RAPOR §6.5).
+frontend/ortak/types/index.ts :: M :: `frontend/types/` → `ortak/types/` taşındı: paylaşımlı, teklife özgü değil (RAPOR §6.6).
+frontend/ortak/types/quotes.ts :: M :: aynı gerekçe (RAPOR §6.6).
+backend/src/bootstrap.controller.ts :: G :: içeriği kütüphane değil güvenlik; `src` kökünde bırakıldı (RAPOR §6.7).
+frontend/lib/indeks-sagligi.ts :: C :: KALINTI — `frontend/lib/` taşıma turunda boşaltılmadı.
+frontend/lib/silme-etkisi-getir.ts :: C :: KALINTI — aynı.
+frontend/lib/silme-onay-metni.ts :: C :: KALINTI — aynı.
+frontend/lib/metraj-excel.ts :: J :: KALINTI — DWG metraj Excel'i `components/dwg-metraj/` yerine `lib/`de kaldı.

@@ -58,6 +58,14 @@ const SUITES: Suite[] = [
   { ad: 'Fixture kapsama kapısı (PK3-repo)', script: 'test:pk3-repo', zincir: 'Z0' },
   { ad: 'Kur ölçütünün kendisi (KD9)', script: 'test:kd9', zincir: 'Z4' },
   { ad: 'Kod haritası denetimi (HR3)', script: 'test:harita', zincir: 'Z0' },
+  // ── ADIM 6 (04.08.2026): KLASOR↔GRUP DISIPLIN KAPISI.
+  //    `test:harita` bir dosyanin haritada ANILDIGINI denetler, DOGRU KLASORDE
+  //    oldugunu denetlemez. 155 dosya tasindiktan sonra kapisiz duzen BIR
+  //    TURLUKTUR. Iki kural: (1) her kod dosyasi ilan edilmis bir alan kokunde
+  //    olacak — 322/322 · (2) haritada X grubunda yazan dosya X'in yolunda
+  //    olacak — 257 olculur, 31'i cerceve bagli (`frontend/app/**`) atlanir.
+  //    Kural metni `klasor-duzeni.txt`'de, betikte DEGIL.
+  { ad: 'Klasör↔grup disiplini (ADIM 6)', script: 'test:klasor', zincir: 'Z0' },
   // ── DB gerektirenler (yerelde PG yoksa SKIP; VPS/CI'da kosulur) ──
   { ad: 'Eşleştirme DB regresyonu', script: 'test:regression:db', zincir: 'Z2', db: true },
   { ad: 'Kütüphane liste ekleme (KL)', script: 'test:kl', zincir: 'Z1', db: true },

@@ -49,6 +49,7 @@
     "postbuild": "node scripts/derleme-kapisi.js",
     "test:kd9": "ts-node test/kd9-kur-olcutu-test.ts",
     "test:harita": "node ../scripts/harita-denetle.mjs",
+    "test:klasor": "node ../scripts/klasor-denetle.mjs",
     "test:p2-2": "ts-node test/p2-2-sheets-indeks-test.ts",
     "test:kalem59": "ts-node test/kalem59-oksuz-kutuphane-test.ts",
     "test:b1": "ts-node test/b1-kutuphane-cascade-test.ts",

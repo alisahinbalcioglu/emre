@@ -509,7 +509,6 @@ function BrandDropdown(props: ICellRendererParams & {
           title: 'Sözlüğe kaydet',
           description: `"${hdr}" terimi sözlüğe kaydedilsin mi? Sonraki dosyalarda bu başlık altındaki satırlar otomatik "${kinds.join('/')}" olarak yorumlanır.`,
           confirmText: 'Kaydet',
-          tone: 'default',
         }).then((ok) => {
           if (!ok) return;
           httpApi.post('/matching/aliases', {

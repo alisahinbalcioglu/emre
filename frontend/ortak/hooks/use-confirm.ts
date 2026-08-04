@@ -17,8 +17,18 @@ export interface ConfirmOptions {
   confirmText?: string;
   /** Vazgeç butonu metni. Varsayılan "Vazgeç". */
   cancelText?: string;
-  /** danger → kırmızı onay butonu (silme). default → mavi (aktar/kaydet). */
-  tone?: 'danger' | 'default';
+  // K3: `tone?: 'danger' | 'default'` KALDIRILDI. YEDİ çağrı yerinden
+  // geçiriliyordu, ama tek renderer (`ortak/ui/confirm-dialog.tsx`)
+  // `opts.tone`'u hiç okumuyordu — onay butonu her koşulda maviydi. Seçenek
+  // bir davranış VAAT edip tutmuyordu.
+  // ⚠ Çağrı yerlerinin sayısı grep'le 4 sanılmıştı; kaldırma sonrası
+  // `tsc --noEmit` üçünü daha ortaya çıkardı (`DwgProjectWorkspace.tsx` ×2,
+  // `ExcelGrid.tsx` ×1). Ölü kodun yayılımını grep değil derleyici ölçer.
+  // Kırmızı butonu çizdirmek kullanıcıya görünen YENİ bir davranış eklemek
+  // olurdu (bu turun kuralı: yeni özellik ekleme), o yüzden tüketilmedi,
+  // kaldırıldı. İleride gerçekten istenirse renderer ile BİRLİKTE eklenir.
+  // Kural `ortak/hooks/onay-secenekleri.test.ts` ile kilitlendi: burada ilan
+  // edilen her seçeneği renderer okumak zorunda.
 }
 
 interface ConfirmState {

@@ -154,6 +154,57 @@ describe('A — /auth/login den gelen 401', () => {
 });
 
 // ---------------------------------------------------------------------------
+// C — KAYIT UCU (/auth/register): 401 "oturum dustu" DEGILDIR  [KILIT L1]
+//
+// NEDEN AYRI BLOK: KIMLIK_UCLARI listesinde IKI uc var (api.ts:21) ama
+// A blogu yalniz `/auth/login`i kosuyordu. Listeden `/auth/register`
+// silinse A1/A2/B1/B2 DORDU DE YESIL kalir — yani muafiyetin yarisi
+// olculmuyordu. Bu blok o yarisi kilitler.
+//
+// C1/C2, A1/A2'nin IKIZIDIR (ayni kriter, farkli uc). Kural 4 geregi
+// "silinmedi" ve "yonlendirilmedi" AYRI assert'lerdir: tek assert'te
+// birlestirilirse hangi yarinin bozuldugu gorunmez.
+// ---------------------------------------------------------------------------
+describe('C — /auth/register den gelen 401 [KILIT L1]', () => {
+  it('C0 KAPI — istek gercekten /auth/register adresine gitti', async () => {
+    await dortYuzBirAl('/auth/register');
+    // Bos-kume yalanci yesili yasak (kural 3): adapter cagrilmadiysa
+    // asagidaki C1/C2 hicbir sey olcmeden gecerdi.
+    expect(adapterCagrilariUrl).toEqual(['/auth/register']);
+  });
+
+  it('C1 — oturumu SILMEMELI', async () => {
+    // On kosul (kural 3): olcecek bir oturum gercekten var.
+    expect(depo.getItem('token')).toBe(SEANS_JETONU);
+    expect(depo.getItem('user')).toBe(SEANS_KULLANICI);
+
+    await dortYuzBirAl('/auth/register');
+
+    expect({ token: depo.getItem('token'), user: depo.getItem('user') }).toEqual({
+      token: SEANS_JETONU,
+      user: SEANS_KULLANICI,
+    });
+  });
+
+  it('C2 — YONLENDIRME YAPMAMALI (kayit formu kendi hatasini gosterebilsin)', async () => {
+    // On kosul (kural 3): baslangic adresi gercekten yerinde.
+    expect(pencere.location.href).toBe(BASLANGIC_URL);
+
+    await dortYuzBirAl('/auth/register');
+
+    expect(pencere.location.href).toBe(BASLANGIC_URL);
+  });
+
+  it('C3 — TAM URL ile gelse de muaf (err.config.url mutlak olabilir)', async () => {
+    expect(pencere.location.href).toBe(BASLANGIC_URL);
+
+    await dortYuzBirAl('http://localhost:3001/api/auth/register');
+
+    expect(pencere.location.href).toBe(BASLANGIC_URL);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // B — KORUMALI UC (/auth/me): 401 GERCEKTEN oturum dusmesidir (REGRESYON KALKANI)
 //     Bu iki test duzeltmeden ONCE de SONRA da YESIL olmali.
 // ---------------------------------------------------------------------------

@@ -566,7 +566,6 @@ export default function DwgProjectWorkspace({
         title: `${unassignedInApproved} boru parçasının çapı atanmamış`,
         description: 'Çizimde neon görünüyor. Bunlar Excel/fiyatlandırmada "Belirtilmemiş" olarak görünecek. Yine de devam edilsin mi?',
         confirmText: 'Devam et',
-        tone: 'default',
       });
       if (!ok) return;
     }
@@ -874,7 +873,6 @@ export default function DwgProjectWorkspace({
                   title: `${empty} segment hâlâ çapsız`,
                   description: 'Çizimde neon görünüyor. Yine de bu layer tamamlansın mı?',
                   confirmText: 'Tamamla',
-                  tone: 'default',
                 });
                 if (!ok) return;
               }

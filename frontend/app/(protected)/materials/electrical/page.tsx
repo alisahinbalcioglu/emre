@@ -11,6 +11,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import api from '@/ortak/lib/api';
 import { toast } from '@/ortak/hooks/use-toast';
 import { confirm } from '@/ortak/hooks/use-confirm';
+import { silmeOnayMetni } from '@/lib/silme-onay-metni';
+import { silmeEtkisiGetir } from '@/lib/silme-etkisi-getir';
+import { hataMetni } from '@/ozellik/kutuphane/hata-metni';
 
 interface Brand { id: string; name: string; logoUrl?: string | null; _count?: { priceLists: number; materialPrices: number } }
 
@@ -47,13 +50,34 @@ export default function ElectricalPoolPage() {
     finally { setAddLoading(false); }
   }
 
+  // K1: eski hal `catch { ... 'Marka silinirken hata olustu.' }` idi. Backend
+  // ekonomi (iskonto/ozel fiyat) tasiyan kutuphane satirlarinda onaysiz silmeyi
+  // 409 ile durdurur ve mesajinda GERCEK rakamlari + nasil onaylanacagini
+  // yazar; ciplak catch o metni hicbir yere ulastirmiyordu — silme dogru
+  // duruyor ama kullanici sebebi de cikis yolunu da goremiyordu.
+  // `admin/brands/page.tsx:207` deseninin AYNISI: once etki olculur, metin
+  // ortak `silmeOnayMetni`den gelir (ikizlenmezse zamanla ayrisir), onay
+  // YALNIZ gercek sayilar gorulduyse gonderilir.
   async function handleDeleteBrand(brand: Brand) {
-    if (!(await confirm({ title: `"${brand.name}" silinsin mi?`, description: 'Marka ve tüm fiyat listeleri silinecek.' }))) return;
+    const etki = await silmeEtkisiGetir(`/brands/${brand.id}/silme-etkisi`);
+    const metin = silmeOnayMetni({ tur: 'marka', ad: brand.name, etki });
+    if (!(await confirm({ title: metin.title, description: metin.description }))) return;
     try {
-      await api.delete(`/brands/${brand.id}`);
-      toast({ title: 'Silindi', description: `"${brand.name}" basariyla kaldirildi.` });
+      // Sayim ucu cokmusse onay GONDERILMEZ: kullanici hicbir rakam gormeden
+      // onaylamis olurdu. O durumda backend'in 409'u ikinci savunma olarak
+      // devreye girer ve gercek rakamlar asagidaki catch'ten ekrana duser.
+      const onay = metin.bilgilendirilmisOnay ? '?onaylandi=true' : '';
+      const { data } = await api.delete(`/brands/${brand.id}${onay}`);
+      toast({
+        title: 'Silindi',
+        description: data?.deletedLibraryRows
+          ? `"${brand.name}" kaldirildi — ${data.deletedLibraryRows} kullanıcı kütüphane kaydı da temizlendi.`
+          : `"${brand.name}" basariyla kaldirildi.`,
+      });
       fetchBrands();
-    } catch { toast({ title: 'Hata', description: 'Marka silinirken hata olustu.', variant: 'destructive' }); }
+    } catch (e) {
+      toast({ title: 'Hata', description: hataMetni(e, 'Marka silinirken hata olustu.'), variant: 'destructive' });
+    }
   }
 
   return (

@@ -238,7 +238,7 @@ export default function BrandDetailPage() {
   }
 
   async function handleImportToLibrary(listId: string, listName: string) {
-    if (!(await confirm({ title: 'Kütüphaneye aktar', description: `"${listName}" listesindeki tüm malzemeler kütüphanenize aktarılsın mı?`, confirmText: 'Aktar', tone: 'default' }))) return;
+    if (!(await confirm({ title: 'Kütüphaneye aktar', description: `"${listName}" listesindeki tüm malzemeler kütüphanenize aktarılsın mı?`, confirmText: 'Aktar' }))) return;
     setImportingListId(listId);
     try {
       const { data: res } = await api.post('/library/import-price-list', { brandId, priceListId: listId });
@@ -267,7 +267,7 @@ export default function BrandDetailPage() {
     // yazilir (bkz. lib/silme-onay-metni.ts).
     const etki = await silmeEtkisiGetir(`/admin/price-lists/${listId}/silme-etkisi`);
     const metin = silmeOnayMetni({ tur: 'liste', ad: listName, etki });
-    if (!(await confirm({ ...metin, tone: 'danger' }))) return;
+    if (!(await confirm({ ...metin }))) return;
     try {
       await api.delete(`/admin/price-lists/${listId}${metin.bilgilendirilmisOnay ? '?onaylandi=true' : ''}`);
       toast({ title: 'Silindi' });

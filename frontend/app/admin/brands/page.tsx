@@ -21,6 +21,7 @@ import { toast } from '@/ortak/hooks/use-toast';
 import { confirm } from '@/ortak/hooks/use-confirm';
 import { silmeOnayMetni } from '@/lib/silme-onay-metni';
 import { silmeEtkisiGetir } from '@/lib/silme-etkisi-getir';
+import { oksuzKutuphaneUyarisi } from '@/ozellik/kutuphane/oksuz-kutuphane-uyarisi';
 import { Button } from '@/ortak/ui/button';
 import { Input } from '@/ortak/ui/input';
 import { Badge } from '@/ortak/ui/badge';
@@ -210,7 +211,7 @@ export default function AdminBrandsPage() {
     // "hesaplanamadı" diye yazar) ve akis durmaz.
     const etki = await silmeEtkisiGetir(`/brands/${b.id}/silme-etkisi`);
     const metin = silmeOnayMetni({ tur: 'marka', ad: b.name, etki });
-    if (!(await confirm({ ...metin, tone: 'danger' }))) return;
+    if (!(await confirm({ ...metin }))) return;
     try {
       // Onay YALNIZ kullanici gercek sayilari GORDUYSE gonderilir. Sayim ucu
       // cokmusse onay gonderilmez: backend'in 409'u devreye girer ve hata
@@ -251,7 +252,7 @@ export default function AdminBrandsPage() {
     // yalniz urun baginin koptugunu soyler (bkz. lib/silme-onay-metni.ts).
     const etki = await silmeEtkisiGetir(`/admin/price-lists/${pl.id}/silme-etkisi`);
     const metin = silmeOnayMetni({ tur: 'liste', ad: pl.name, etki });
-    if (!(await confirm({ ...metin, tone: 'danger' }))) return;
+    if (!(await confirm({ ...metin }))) return;
     try {
       await api.delete(`/admin/price-lists/${pl.id}${metin.bilgilendirilmisOnay ? '?onaylandi=true' : ''}`);
       toast({ title: 'Liste silindi', description: pl.name });
@@ -355,6 +356,14 @@ export default function AdminBrandsPage() {
           data.atlananSayisi ? `${data.atlananSayisi} satır atlandı` : null,
         ].filter(Boolean).join(' · '),
       });
+      // K2 — KALEM 59: yeniden yukleme legacy kutuphane satirlarini OKSUZ
+      // birakabilir. Backend bunu `oksuzKutuphaneSatiri` ile sayip donuyordu
+      // ama FE'de okuyan TEK BIR YER yoktu — uyari backend'de dogup burada
+      // oluyordu. Kaybi gorunur kilmak backend'in de acikca istedigi sey.
+      const oksuz = oksuzKutuphaneUyarisi(data.oksuzKutuphaneSatiri);
+      if (oksuz) {
+        toast({ title: oksuz.baslik, description: oksuz.aciklama, variant: 'destructive' });
+      }
       if (data.atlananSayisi > 0 && Array.isArray(data.atlananNedenler) && data.atlananNedenler.length) {
         toast({
           title: `${data.atlananSayisi} satır atlandı — nedenler`,

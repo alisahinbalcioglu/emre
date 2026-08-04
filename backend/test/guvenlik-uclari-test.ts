@@ -67,6 +67,10 @@ import { TierGuard, TIER_KEY } from '../src/altyapi/auth/guards/tier.guard';
 import { MaterialsController } from '../src/ozellik/kutuphane/materials/materials.controller';
 import { MaterialsService } from '../src/ozellik/kutuphane/materials/materials.service';
 
+// K4 — onay bayraginin HTTP→servis kablolamasi (sahte servisle, DB'siz)
+import { BrandsController } from '../src/ozellik/kutuphane/brands/brands.controller';
+import { AdminController } from '../src/ozellik/kutuphane/admin/admin.controller';
+
 let passed = 0; let failed = 0; const failures: string[] = [];
 const check = (ad: string, kosul: boolean, kanit?: string) => {
   if (kosul) { passed++; console.log(`PASS: ${ad}`); } else {
@@ -345,10 +349,142 @@ async function k3() {
     `yazma=${JSON.stringify(yazmaAnahtarlari)} · silme=${JSON.stringify(silmeAnahtarlari)}`);
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// K4 — ?onaylandi=true HTTP KATMANINDAN SERVISE GECIYOR MU (KALICI KILIT, L4)
+// ══════════════════════════════════════════════════════════════════════════
+/**
+ * NEDEN BURADA (yeni dosya acilmadi): olculen sey bir UC SOZLESMESIDIR —
+ * "HTTP katmani, kullanici ekonomisini koruyan onay bayragini servise
+ * DOGRU cevirir". Bu dosya zaten uc sozlesmelerinin (rol/tier/kapsam) evi ve
+ * DB'siz kosuyor; K4 de DB'siz. Yeni suite acmak package.json + SUITES +
+ * KOD_HARITASI ucgenini gereksiz yere buyuturdu.
+ *
+ * KAPANAN DELIK: `test:d1` ve `test:a1` onay sozlesmesini olcer ama SERVISI
+ * DOGRUDAN cagirir (`svc.remove(id, { kutuphaneSilmeOnayi: true })`). Ikisi de
+ * DB ister, yani yerelde SKIP olur. Controller'daki
+ *     remove(id, @Query('onaylandi') onaylandi?: string)
+ *       → service.remove(id, { kutuphaneSilmeOnayi: onaylandi === 'true' })
+ * satiri bugune dek YALNIZ Read ile dogrulanmisti. `onaylandi === 'true'`
+ * karsilastirmasi sessizce silinse (ornegin `{ kutuphaneSilmeOnayi: !!onaylandi }`
+ * olsa) `?onaylandi=false` bile ONAY sayilirdi ve HICBIR test kizarmazdi.
+ *
+ * TAM HTTP e2e GEREKMEZ (gerekce): olculen donusum controller METODUNUN
+ * govdesindedir. Nest'in @Query cozumleyicisi framework'un kendi sozlesmesidir
+ * — onu test etmek Nest'i test etmek olur. Metodu dogrudan cagirmak, olcmek
+ * istedigimiz TEK satiri izole eder ve testi ayaga kaldirma maliyeti olmadan
+ * her kosumda calistirir.
+ *
+ * IKI AILE (genellik): ayni desen IKI ayri controller'da yasiyor —
+ * brands.controller.ts:65-67 (marka silme) ve admin.controller.ts:116-118
+ * (fiyat listesi silme). Ikisi de ayri ayri olculur; tek ailede olculen bir
+ * kural "ornege ozel" olabilirdi.
+ */
+async function k4() {
+  console.log('\n── K4: ?onaylandi=true kablolamasi ───────────────────────');
+
+  /** Servisi tamamen sahteleyip metoda GECEN argumanlari kaydeder. */
+  function casusServis() {
+    const cagrilar: Array<{ metot: string; args: any[] }> = [];
+    const yakala = (metot: string) => async (...args: any[]) => {
+      cagrilar.push({ metot, args });
+      return { ok: true };
+    };
+    return { cagrilar, yakala };
+  }
+
+  /** Controller'i sahte servisle kurup remove/deletePriceList cagirir; gecen opts'u doner. */
+  async function gecenOpts(
+    hangi: 'brand' | 'priceList',
+    onaylandi: string | undefined,
+  ): Promise<{ opts: any; args: any[]; adet: number }> {
+    const { cagrilar, yakala } = casusServis();
+    if (hangi === 'brand') {
+      const svc: any = { remove: yakala('remove') };
+      const c = new BrandsController(svc);
+      await (c as any).remove('marka-1', onaylandi);
+    } else {
+      const svc: any = { deletePriceList: yakala('deletePriceList') };
+      // 2. bagimlilik (ExcelGridService) bu uc icin kullanilmaz — bos sahte yeter.
+      const c = new AdminController(svc, {} as any);
+      await (c as any).deletePriceList('liste-1', onaylandi);
+    }
+    const son = cagrilar[cagrilar.length - 1];
+    return { opts: son?.args?.[1], args: son?.args ?? [], adet: cagrilar.length };
+  }
+
+  // ── FIXTURE / OLCUT KAPILARI ──────────────────────────────────────────
+  check('K4-F1 KAPI: BrandsController.remove bir fonksiyon',
+    typeof (BrandsController.prototype as any).remove === 'function',
+    `tip=${typeof (BrandsController.prototype as any).remove}`);
+  check('K4-F2 KAPI: AdminController.deletePriceList bir fonksiyon',
+    typeof (AdminController.prototype as any).deletePriceList === 'function',
+    `tip=${typeof (AdminController.prototype as any).deletePriceList}`);
+
+  const bOnayli = await gecenOpts('brand', 'true');
+  // O6: casus GERCEKTEN kaydediyor mu? Kaydetmiyorsa asagidaki tum `opts`
+  // okumalari undefined doner ve testi "kablolama yok" sanardim.
+  check('K4-O6 OLCUT: casus servis cagrisini kaydetti (tam 1 cagri)',
+    bOnayli.adet === 1, `adet=${bOnayli.adet}`);
+  check('K4-O7 OLCUT: servise IKI arguman gecti (id + opts) — opts DUSMEDI',
+    bOnayli.args.length === 2, `args=${JSON.stringify(bOnayli.args)}`);
+  check('K4-O8 OLCUT: id degismeden geciyor',
+    bOnayli.args[0] === 'marka-1', `id=${JSON.stringify(bOnayli.args[0])}`);
+
+  // ── AILE 1: brands.controller.ts:65-67 ────────────────────────────────
+  check("K4-a MARKA: ?onaylandi=true → kutuphaneSilmeOnayi === true",
+    bOnayli.opts?.kutuphaneSilmeOnayi === true,
+    `opts=${JSON.stringify(bOnayli.opts)}`);
+
+  const bParametresiz = await gecenOpts('brand', undefined);
+  check('K4-b MARKA: parametre YOKken onay VERILMEZ (!== true)',
+    bParametresiz.opts?.kutuphaneSilmeOnayi !== true,
+    `opts=${JSON.stringify(bParametresiz.opts)}`);
+
+  const bFalse = await gecenOpts('brand', 'false');
+  check('K4-c MARKA: ?onaylandi=false onay SAYILMAZ (!== true)',
+    bFalse.opts?.kutuphaneSilmeOnayi !== true,
+    `opts=${JSON.stringify(bFalse.opts)}`);
+
+  // FAIL-CLOSED: karsilastirma 'true' string'ine BIREBIR bagli. Beklenmeyen
+  // bir deger onay uretmemeli — supheli girdi KORUMA yonunde yorumlanir.
+  const bBuyuk = await gecenOpts('brand', 'TRUE');
+  check('K4-d MARKA: beklenmeyen deger ("TRUE") onay SAYILMAZ (fail-closed)',
+    bBuyuk.opts?.kutuphaneSilmeOnayi !== true,
+    `opts=${JSON.stringify(bBuyuk.opts)}`);
+
+  // ── AILE 2: admin.controller.ts:116-118 (ayni desen, ayri uc) ─────────
+  const aOnayli = await gecenOpts('priceList', 'true');
+  check('K4-O9 OLCUT: fiyat listesi ucunda da servise IKI arguman gecti',
+    aOnayli.args.length === 2, `args=${JSON.stringify(aOnayli.args)}`);
+  check("K4-e LISTE: ?onaylandi=true → kutuphaneSilmeOnayi === true",
+    aOnayli.opts?.kutuphaneSilmeOnayi === true,
+    `opts=${JSON.stringify(aOnayli.opts)}`);
+
+  const aParametresiz = await gecenOpts('priceList', undefined);
+  check('K4-f LISTE: parametre YOKken onay VERILMEZ (!== true)',
+    aParametresiz.opts?.kutuphaneSilmeOnayi !== true,
+    `opts=${JSON.stringify(aParametresiz.opts)}`);
+
+  const aFalse = await gecenOpts('priceList', 'false');
+  check('K4-g LISTE: ?onaylandi=false onay SAYILMAZ (!== true)',
+    aFalse.opts?.kutuphaneSilmeOnayi !== true,
+    `opts=${JSON.stringify(aFalse.opts)}`);
+
+  // ── ★ KALKAN: silme uclari admin-korumali KALMALI ─────────────────────
+  // Onay bayragi ancak uc admin'e kapaliysa anlamlidir.
+  check("K4-KALKAN-a marka silme ucu admin rolu ISTIYOR",
+    JSON.stringify(rolleriOku((BrandsController.prototype as any).remove, BrandsController)) === JSON.stringify(['admin']),
+    `roles=${JSON.stringify(rolleriOku((BrandsController.prototype as any).remove, BrandsController))}`);
+  check('K4-KALKAN-b marka silme ucuna RolesGuard bagli',
+    guardAdlari((BrandsController.prototype as any).remove, BrandsController).includes('RolesGuard'),
+    `guards=${JSON.stringify(guardAdlari((BrandsController.prototype as any).remove, BrandsController))}`);
+}
+
 async function main() {
   k1();
   await k2();
   await k3();
+  await k4();
   console.log(`\n${'='.repeat(64)}\nGUVENLIK UCLARI (K1/K2/K3): ${passed} PASS, ${failed} FAIL\n${'='.repeat(64)}`);
   if (failed) { failures.forEach((f) => console.log(`  · ${f}`)); process.exit(1); }
 }

@@ -1078,6 +1078,141 @@ async function run() {
       `aday=${(r1m.candidates ?? []).length} ${JSON.stringify(adlar(r1m))} [NOT: liste bosken BOS-GECER]`);
   }
 
+  // ══ Y-N — 'yuzey-celiskisi' NONE DALI (KALICI KILIT, L2) ═════════
+  // KAPSANAN SATIR: query-engine.ts:328-330
+  //   const orHavuz = rows.filter(biri);
+  //   if (orHavuz.length === 0)
+  //     return { kind:'none', reason:'yuzey-celiskisi', detail: yuzeyler.join(' ') };
+  // Yukaridaki Y blogu OR havuzunun DOLU oldugu yolu olcuyor; havuz da
+  // BOSALABILIR ve o dal bugune dek yalniz gecici bir betikle gorulmustu.
+  // Kilitsiz kalirsa gelecekteki bir sadelestirme (ornegin `if` kaldirilip
+  // dogrudan `rows = orHavuz` yazilmasi) BOS bir aday listesi uretir ve
+  // motor sessizce "aday yok" yerine "aday var ama sifir tane" der.
+  //
+  // ── OLCUTU ONCE DOGRULA (kural 5) — ILK KURGUM YANLISTI ──────────
+  // Once "havuzda hic galvaniz yok" diye kurdum: 'galvaniz' o zaman
+  // BILINMEYEN token olur (dagarcik HAVUZDAN uretiliyor — :105
+  // buildFamilyVocab(rows)), yol.cins'e HIC girmez ve akis :284'e bile
+  // gelmeden 'ask'e duser. Olculen: kind=ask, reason=—. Yani dal
+  // ULASILMAZDI ve test yesil gorunup hicbir sey olcmeyecekti.
+  // DOGRU KURGU: yuzey AILE dagarciginda VAR (baska bir ad altinda),
+  // ama AD filtresinin biraktigi satirlarda YOK.
+  //   ZA 'Çelik boru' · Siyah      ← 'çelik' ad kisiti bunu birakir
+  //   ZB 'Bakır boru' · Galvanizli ← 'galvaniz'i dagarciga sokan satir
+  //   ZC 'Bakır boru' · Kırmızı boyalı
+  //   "2\" Galvaniz Çelik boru" → ad→{ZA}; AND bos; OR da bos → NONE
+  {
+    const NB = { kategori: 'Borular', sheetName: 'S' };
+    const ZA = prod({ ...NB, ad: 'Çelik boru', cins: 'Siyah, dikişli', cap: 'DN50', price: 900, urunKodu: 'ZA' });
+    const ZB = prod({ ...NB, ad: 'Bakır boru', cins: 'Galvanizli', cap: 'DN50', price: 1100, urunKodu: 'ZB' });
+    const ZC = prod({ ...NB, ad: 'Bakır boru', cins: 'Kırmızı boyalı', cap: 'DN50', price: 1200, urunKodu: 'ZC' });
+    const NHAVUZ: IndexedRow[] = [ZA, ZB, ZC];
+    const ham = (t: string) => runQuery(parseLine(t), NHAVUZ);
+    const kodu = (o: any) => o?.row?.urun?.urunKodu ?? '—';
+    const tasiyor = (r: IndexedRow, s: string) => r.urun.cinsTokens.some((t) => t.startsWith(s));
+
+    // ── KAPILAR: girdinin dolu ve dalin ULASILABILIR oldugunu kanitla ──
+    check('Y-N-G1 KAPI: havuz 3 satir (bos-kume yalanci yesili yasak)',
+      NHAVUZ.length === 3, `len=${NHAVUZ.length}`);
+    check('Y-N-G2 KAPI: ZB "galvaniz" tasiyor — token AILE DAGARCIGINDA var',
+      tasiyor(ZB, 'galvaniz'), `ZB cins=${JSON.stringify(ZB.urun.cinsTokens)}`);
+    check('Y-N-G3 KAPI: ZA "galvaniz" TASIMIYOR — OR havuzunun bosalma on kosulu',
+      !tasiyor(ZA, 'galvaniz'), `ZA cins=${JSON.stringify(ZA.urun.cinsTokens)}`);
+    check('Y-N-G4 KAPI: ZA "kirmizi" TASIMIYOR — cift-yuzeyli vakanin on kosulu',
+      !tasiyor(ZA, 'kirmizi'), `ZA cins=${JSON.stringify(ZA.urun.cinsTokens)}`);
+    const nG5 = ham('2" Siyah Çelik boru');
+    check('Y-N-G5 KAPI: ad kisiti gercekten ZA ya iniyor ("Siyah Çelik boru" → ZA)',
+      nG5.kind === 'single' && kodu(nG5) === 'ZA', `kind=${nG5.kind} kod=${kodu(nG5)}`);
+    const nG6 = ham('2" Galvaniz Bakır boru');
+    check('Y-N-G6 KAPI: AYNI havuzda "galvaniz" ESLESEBILIYOR ("Galvaniz Bakır boru" → ZB)',
+      nG6.kind === 'single' && kodu(nG6) === 'ZB', `kind=${nG6.kind} kod=${kodu(nG6)}`);
+
+    // ── KILIT: TEK yazili yuzey, ad kumesinde hic yok ────────────────
+    const n1 = ham('2" Galvaniz Çelik boru');
+    check('Y-N1 KILIT: OR havuzu da bosalinca sonuc none',
+      n1.kind === 'none', `kind=${n1.kind} reason=${(n1 as any).reason ?? '—'}`);
+    check('Y-N2 KILIT: neden "yuzey-celiskisi" (kriter-yok/ad-yok DEGIL)',
+      (n1 as any).reason === 'yuzey-celiskisi', `reason=${(n1 as any).reason ?? '—'}`);
+    check('Y-N3 KILIT: detail YAZILI yuzeyi tasir (ekran metni bunu basar)',
+      (n1 as any).detail === 'galvaniz', `detail=${(n1 as any).detail ?? '—'}`);
+
+    // ── KILIT: IKI yazili yuzey, ikisi de ad kumesinde yok ───────────
+    const n2 = ham('2" Galvaniz Kırmızı Çelik boru');
+    check('Y-N4 KILIT (cift yuzey): sonuc none',
+      n2.kind === 'none', `kind=${n2.kind} reason=${(n2 as any).reason ?? '—'}`);
+    check('Y-N5 KILIT (cift yuzey): neden "yuzey-celiskisi"',
+      (n2 as any).reason === 'yuzey-celiskisi', `reason=${(n2 as any).reason ?? '—'}`);
+    check('Y-N6 KILIT (cift yuzey): detail YAZILI yuzeylerin HEPSINI tasir',
+      typeof (n2 as any).detail === 'string'
+        && (n2 as any).detail.includes('galvaniz') && (n2 as any).detail.includes('kirmizi'),
+      `detail=${(n2 as any).detail ?? '—'}`);
+  }
+
+  // ══ Y-S — ADAY SIRALAMASI: YUZEY SIRALAR, ELEMEZ (KALICI KILIT, L3) ══
+  // KULLANICI KARARI 16.07 (muhurlu): "galvaniz one cikmaz" = listede SONA
+  // duser, ELENMEZ. Uygulayicisi: yuzey genisletmesi (query-engine.ts:562-567)
+  // ekstra varyantlari `tabanSirasi(.., yaziliTabanlar)` ile SONA dizer.
+  //
+  // ★ IZOLASYON (bu blogun tek isi): B1 blogu (yukarida) ayni kurali olcer ama
+  // fixture'i cok degiskenlidir — iki siyah satir farkli ET KALINLIGI tasir,
+  // havuzda ayrica 'Kırmızı boyalı' vardir ve ad/cap/birim alanlari cesitlidir.
+  // Orada bir kirmizi, "yuzey siralamasi bozuldu"dan BASKA sebeplerden de
+  // gelebilir (ad benzerligi, cap yakinligi, uc-nokta siralamasi). Burada
+  // TEK DEGISKEN yuzeydir: ad · cap · birim · kategori UCUNDE DE AYNIDIR.
+  // Boylece bu blok kizardiginda sucu tek bir kural tasir.
+  //
+  // NE ASSERT EDILMEZ: S1 ile S2'nin KENDI aralarindaki sira. Olculdu —
+  // grup ici sira HAVUZ SIRASINI izler (sort stable, :449/:566). Onu
+  // kilitlemek siralamayi degil girdi sirasini olcerdi.
+  {
+    const SB = { kategori: 'Borular', sheetName: 'S', ad: 'Çelik boru', cap: 'DN50', birim: 'metre' };
+    const S1 = prod({ ...SB, cins: 'Siyah', price: 900, urunKodu: 'SR-S1' });
+    const S2 = prod({ ...SB, cins: 'Siyah', price: 950, urunKodu: 'SR-S2' });
+    const G1 = prod({ ...SB, cins: 'Galvanizli', price: 1100, urunKodu: 'SR-G1' });
+    const siyahMi = (ad: string) => /siyah/i.test(ad);
+    const galvanizMi = (ad: string) => /galvaniz/i.test(ad);
+
+    // ── KAPILAR ──────────────────────────────────────────────────────
+    check('Y-S-G1 KAPI: uc satirin ADI AYNI (siralama ad benzerligine bagli degil)',
+      S1.urun.ad === S2.urun.ad && S2.urun.ad === G1.urun.ad,
+      `${S1.urun.ad} | ${S2.urun.ad} | ${G1.urun.ad}`);
+    check('Y-S-G2 KAPI: uc satirin CAP ETIKETI AYNI (siralama cap yakinligina bagli degil)',
+      [S1, S2, G1].every((r) => JSON.stringify(r.urun.capTags) === JSON.stringify(S1.urun.capTags)),
+      JSON.stringify([S1, S2, G1].map((r) => r.urun.capTags)));
+    check('Y-S-G3 KAPI: TEK farkli eksen yuzey (S1/S2 siyah · G1 galvaniz)',
+      S1.urun.cinsTokens.includes('siyah') && S2.urun.cinsTokens.includes('siyah')
+        && G1.urun.cinsTokens.some((t) => t.startsWith('galvaniz')),
+      JSON.stringify([S1, S2, G1].map((r) => r.urun.cinsTokens)));
+
+    const sr = m('2" Siyah boru', [S1, S2, G1]);
+    const srAdlar = (sr.candidates ?? []).map((c) => c.materialName);
+    check('Y-S-G4 KAPI: soru acildi ve UC aday da listede (galvaniz ELENMEDI)',
+      srAdlar.length === 3, `aday=${srAdlar.length} ${JSON.stringify(srAdlar)}`);
+
+    // ── KILITLER (her kriter AYRI assert — kural 4) ──────────────────
+    check('Y-S1 KILIT: YAZILI yuzey (siyah) adaylarin BASINDA',
+      siyahMi(srAdlar[0] ?? ''), JSON.stringify(srAdlar));
+    check('Y-S2 KILIT: CAKISAN taban (galvaniz) adaylarin SONUNDA',
+      galvanizMi(srAdlar[srAdlar.length - 1] ?? ''), JSON.stringify(srAdlar));
+    check('Y-S3 KILIT: HER siyah aday HER galvaniz adaydan ONDE',
+      srAdlar.filter(siyahMi).length > 0 && srAdlar.filter(galvanizMi).length > 0
+        && Math.max(...srAdlar.map((a, i) => (siyahMi(a) ? i : -1)))
+           < Math.min(...srAdlar.map((a, i) => (galvanizMi(a) ? i : Number.MAX_SAFE_INTEGER))),
+      JSON.stringify(srAdlar));
+    check('Y-S4 KILIT (K2): siralama fiyat YAZDIRMAZ — belirsizde netPrice 0',
+      sr.netPrice === 0, `net=${sr.netPrice} conf=${sr.confidence}`);
+
+    // ── GENELLIK: sira HAVUZ SIRASINDAN bagimsiz (galvaniz basta verilse de) ──
+    const srTers = m('2" Siyah boru', [G1, S2, S1]);
+    const srTersAdlar = (srTers.candidates ?? []).map((c) => c.materialName);
+    check('Y-S-G5 KAPI (ters havuz): uc aday da listede',
+      srTersAdlar.length === 3, `aday=${srTersAdlar.length} ${JSON.stringify(srTersAdlar)}`);
+    check('Y-S5 KILIT: havuz galvanizle BASLASA da galvaniz yine SONDA',
+      galvanizMi(srTersAdlar[srTersAdlar.length - 1] ?? ''), JSON.stringify(srTersAdlar));
+    check('Y-S6 KILIT: havuz galvanizle BASLASA da siyah yine BASTA',
+      siyahMi(srTersAdlar[0] ?? ''), JSON.stringify(srTersAdlar));
+  }
+
   // ══ İ — AD-TOKEN DUSURME (canli vaka 16.07: izleme anahtarli) ════
   // "4\"-DN100 İzleme Anahtarlı Kelebek Vana" → kutupanede urun
   // "İzlenebilir kelebek vana" adiyla kayitli. 'izleme' kelimesi BASKA
