@@ -1,9 +1,9 @@
 import { Injectable, NotFoundException, ConflictException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
-import { buildMaterialContextFromRows, ColumnRoles, RowData } from '../../../utils/build-material-context';
+import { buildMaterialContextFromRows, ColumnRoles, RowData } from '../../eslestirme/utils/build-material-context';
 // PRD Iscilik L2: ice aktarim AYNI indeksleyiciden gecer (tek motor/indeksleyici)
-import { MatchingService } from '../../../modules/matching/matching.service';
-import { INDEX_VERSION } from '../../../modules/matching/index/product-index';
+import { MatchingService } from '../../eslestirme/matching/matching.service';
+import { INDEX_VERSION } from '../../eslestirme/matching/index/product-index';
 
 export interface SheetInput {
   name: string;
@@ -151,7 +151,7 @@ export class LaborFirmsService {
     if (data.laborItemName && data.laborItemName.trim().length >= 2) {
       const newName = data.laborItemName.trim();
       if (newName !== existing.laborItem.name) {
-        const { generateTags } = require('../../../modules/matching/tag-generator');
+        const { generateTags } = require('../../eslestirme/matching/tag-generator');
         const tagged = generateTags(newName);
         await this.prisma.laborItem.update({
           where: { id: existing.laborItemId },
@@ -230,7 +230,7 @@ export class LaborFirmsService {
 
     // buildMaterialContextFromRows ile her data row'un full name'ini cikar
     // Eslesen LaborPrice'in discountRate ve id'sini data row'a inject et
-    const { buildMaterialContextFromRows } = require('../../../utils/build-material-context');
+    const { buildMaterialContextFromRows } = require('../../eslestirme/utils/build-material-context');
 
     const enhanced = [...sheet.rowData];
     let matched = 0;
@@ -526,7 +526,7 @@ export class LaborFirmsService {
       throw new BadRequestException('Sheets bos');
     }
 
-    const { generateTags } = require('../../../modules/matching/tag-generator');
+    const { generateTags } = require('../../eslestirme/matching/tag-generator');
 
     const results: Array<{ sheetName: string; listName: string; imported: number; skipped: number; bekleyen: number }> = [];
     const warnings: string[] = [];
@@ -776,7 +776,7 @@ export class LaborFirmsService {
         },
       });
       if (!laborItem) {
-        const { generateTags } = require('../../../modules/matching/tag-generator');
+        const { generateTags } = require('../../eslestirme/matching/tag-generator');
         const tagged = generateTags(name);
         laborItem = await this.prisma.laborItem.create({
           data: {
@@ -793,7 +793,7 @@ export class LaborFirmsService {
           },
         });
       } else if (laborItem.tags?.length === 0) {
-        const { generateTags } = require('../../../modules/matching/tag-generator');
+        const { generateTags } = require('../../eslestirme/matching/tag-generator');
         const tagged = generateTags(name);
         await this.prisma.laborItem.update({
           where: { id: laborItem.id },

@@ -7,7 +7,7 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
-import { ExcelGridService } from '../src/modules/excel-grid/excel-grid.service';
+import { ExcelGridService } from '../src/ozellik/giris/excel-grid/excel-grid.service';
 
 const FIX = path.resolve(__dirname, '../../test-fixtures/e2e');
 /** Turkce katlama — "YILDIZ".toLocaleLowerCase('tr') = "yıldız" (noktasiz ı)

@@ -5,8 +5,8 @@
 // DB YOK — yalniz saf moduller. Rapor stdout'a yazilir.
 // ════════════════════════════════════════════════════════════════════
 import * as XLSX from 'xlsx';
-import { parseLine } from '../src/modules/matching/index/line-parser';
-import { tokenEsit } from '../src/modules/matching/index/product-index';
+import { parseLine } from '../src/ozellik/eslestirme/matching/index/line-parser';
+import { tokenEsit } from '../src/ozellik/eslestirme/matching/index/product-index';
 
 const FILE = process.argv[2];
 if (!FILE) { console.error('kullanim: ts-node audit-real-excel.ts <xlsx>'); process.exit(1); }

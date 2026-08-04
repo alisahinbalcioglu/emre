@@ -7,8 +7,8 @@
  * (T2/T9-T12/T16 conversion-test.ts + frontend tarafinda.)
  */
 
-import { MatchingService } from '../src/modules/matching/matching.service';
-import { TerminologyService, ALIAS_SEEDS } from '../src/modules/matching/terminology.service';
+import { MatchingService } from '../src/ozellik/eslestirme/matching/matching.service';
+import { TerminologyService, ALIAS_SEEDS } from '../src/ozellik/eslestirme/matching/terminology.service';
 
 // ── Fake kutuphane satiri (UserLibrary shape — materialId yok → tag'ler
 //    generateTags ile anlik uretilir, gercek "manuel eklenen satir" yolu) ──

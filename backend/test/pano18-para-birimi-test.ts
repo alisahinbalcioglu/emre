@@ -27,7 +27,7 @@ import * as fs from 'fs';
 import * as ExcelJS from 'exceljs';
 import { standartCiktiUret } from '../src/ozellik/teklif/quotes/standart-cikti';
 import { buildExportWorkbook } from '../src/ozellik/teklif/quotes/export-engine';
-import { buildSampleFormat } from '../src/quote-formats/format-engine';
+import { buildSampleFormat } from '../src/ozellik/cikti/quote-formats/format-engine';
 
 let pass = 0; const fails: string[] = [];
 const check = (ad: string, kosul: boolean, kanit = '') => {

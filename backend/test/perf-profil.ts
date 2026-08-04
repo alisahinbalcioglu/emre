@@ -1,12 +1,12 @@
 /** ARINMA Faz 3 — MIKRO-PROFIL (gercek fixture + sentetik 1500-kalem havuz) */
 import * as fs from 'fs';
-import { ExcelGridService } from '../src/modules/excel-grid/excel-grid.service';
-import { buildProductIndex } from '../src/modules/matching/index/product-index';
-import { parseLine } from '../src/modules/matching/index/line-parser';
-import { runQuery } from '../src/modules/matching/index/query-engine';
+import { ExcelGridService } from '../src/ozellik/giris/excel-grid/excel-grid.service';
+import { buildProductIndex } from '../src/ozellik/eslestirme/matching/index/product-index';
+import { parseLine } from '../src/ozellik/eslestirme/matching/index/line-parser';
+import { runQuery } from '../src/ozellik/eslestirme/matching/index/query-engine';
 import { buildExportWorkbook } from '../src/ozellik/teklif/quotes/export-engine';
 import { standartCiktiUret } from '../src/ozellik/teklif/quotes/standart-cikti';
-import { buildSampleFormat } from '../src/quote-formats/format-engine';
+import { buildSampleFormat } from '../src/ozellik/cikti/quote-formats/format-engine';
 import * as ExcelJS from 'exceljs';
 
 const olc = async (ad: string, fn: () => Promise<any> | any, tekrar = 1) => {

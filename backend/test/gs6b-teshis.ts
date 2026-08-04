@@ -10,7 +10,7 @@
  * veride.
  */
 import * as fs from 'fs';
-import { ExcelGridService } from '../src/modules/excel-grid/excel-grid.service';
+import { ExcelGridService } from '../src/ozellik/giris/excel-grid/excel-grid.service';
 
 async function main() {
   const grid = new ExcelGridService({ brand: { findMany: async () => [] } } as any);

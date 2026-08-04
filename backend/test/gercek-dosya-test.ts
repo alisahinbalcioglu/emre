@@ -11,7 +11,7 @@
  *   npx ts-node test/gercek-dosya-test.ts   (npm run test:tf)
  */
 import * as fs from 'fs';
-import { ExcelGridService } from '../src/modules/excel-grid/excel-grid.service';
+import { ExcelGridService } from '../src/ozellik/giris/excel-grid/excel-grid.service';
 
 let passed = 0; let failed = 0; const failures: string[] = [];
 function check(name: string, cond: boolean, detail?: string) {
@@ -156,11 +156,11 @@ async function run() {
   // GERCEK dosya (hangar) → parse → ESLESTIR (sahte kutuphane, tek motor)
   // → fiyat + toplam (etkinMiktar kurali) → IKI export → cikti dogrulama.
   {
-    const { MatchingService } = require('../src/modules/matching/matching.service');
-    const { TerminologyService, ALIAS_SEEDS } = require('../src/modules/matching/terminology.service');
-    const { buildProductIndex } = require('../src/modules/matching/index/product-index');
+    const { MatchingService } = require('../src/ozellik/eslestirme/matching/matching.service');
+    const { TerminologyService, ALIAS_SEEDS } = require('../src/ozellik/eslestirme/matching/terminology.service');
+    const { buildProductIndex } = require('../src/ozellik/eslestirme/matching/index/product-index');
     const { QuotesService } = require('../src/ozellik/teklif/quotes/quotes.service');
-    const { buildSampleFormat } = require('../src/quote-formats/format-engine');
+    const { buildSampleFormat } = require('../src/ozellik/cikti/quote-formats/format-engine');
 
     const buf = oku('hangar-yss.xlsx');
     const res = await svc.prepare(buf, { fixedSchema: true });

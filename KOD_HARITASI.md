@@ -58,14 +58,14 @@ Bu projede eksikliğinin bedeli dört kez ödendi:
 
 | | Dosya / uç | Ne çalıştırıyor | Kanıt nereden |
 |---|---|---|---|
-| ✅ | `backend/src/modules/excel-grid/excel-grid.controller.ts:12-21` | **Ana Excel yükleme ucu** `POST /excel-grid/prepare` (sabit şema; 15MB, memoryStorage). Çağıranlar: `quotes/new/page.tsx:758` (ana akış) · `:1504` (ikinci çağrı) · `dashboard/page.tsx:76`. | FAZ 2 · HR6 03.08 |
-| ✅ | `backend/src/modules/excel-engine/excel-engine.controller.ts:14-19` | **PARALEL ikinci Excel ucu** `POST /excel-engine/analyze` — tek çağıranı `dashboard/page.tsx:73`; dashboard AYNI dosyayı `Promise.all` ile İKİ uca birden gönderir (`:72-79`) → her dashboard yüklemesi çift parse. | FAZ 2 · HR6 — "görüldü, dokunulmadı" |
-| ✅ | `backend/src/ai/ai.controller.ts:14-24` | PDF yükleme ucu `POST /ai/analyze` (Pro paket şartı, 10MB) → LLM içerik çıkarımı. | FAZ 2 · HR6; HS4 okuma |
+| ✅ | `backend/src/ozellik/giris/excel-grid/excel-grid.controller.ts:12-21` | **Ana Excel yükleme ucu** `POST /excel-grid/prepare` (sabit şema; 15MB, memoryStorage). Çağıranlar: `quotes/new/page.tsx:758` (ana akış) · `:1504` (ikinci çağrı) · `dashboard/page.tsx:76`. | FAZ 2 · HR6 03.08 |
+| ✅ | `backend/src/ozellik/giris/excel-engine/excel-engine.controller.ts:14-19` | **PARALEL ikinci Excel ucu** `POST /excel-engine/analyze` — tek çağıranı `dashboard/page.tsx:73`; dashboard AYNI dosyayı `Promise.all` ile İKİ uca birden gönderir (`:72-79`) → her dashboard yüklemesi çift parse. | FAZ 2 · HR6 — "görüldü, dokunulmadı" |
+| ✅ | `backend/src/ozellik/giris/ai/ai.controller.ts:14-24` | PDF yükleme ucu `POST /ai/analyze` (Pro paket şartı, 10MB) → LLM içerik çıkarımı. | FAZ 2 · HR6; HS4 okuma |
 | ✅ | *(admin içe aktarım uçları)* | Excel'i alan admin uçları: `/admin/brands/:id/import-excel/preview+commit` · `/admin/price-lists/:id/import-excel/*` · `/admin/materials/save-bulk` · `/admin/brands/:id/save-from-sheets` (`admin.controller.ts:92-200`). DWG yüklemesi J grubunun malıdır (`dwg-engine.controller` + python `/upload`), A envanterine girmez. | FAZ 2 · HR6; G/J satırları |
-| ✅ | `backend/src/modules/excel-grid/excel-grid.service.ts:250` | Excel okuyucu / sayfa ayrıştırıcı (`parseSingleSheet`) — satırların ekrana dönüştüğü yer. Merge yayılımı :271-297 (**tek fiziksel hücre N kolona kopyalanır** — ADIM 1a hatasının hammaddesi buydu). | ADIM 1a ölçümü 02.08 |
-| ✅ | `backend/src/modules/excel-grid/excel-grid.service.ts:895-1005` | **Başlık SATIRI kararı** (`realHeaderRow`): sözlük kelimesi skorlaması :895-983 (ayrık-metin sayımı + band eleme + altında-sayısal-veri şartı) + kelimesiz başlık geri-düşüşü :984+ (ilk sayısal satırın hemen üstü; üç sigortalı). | ADIM 1a — AKHİSAR İCMAL canlı bulgusu; 83 sayfa önce/sonra kıyası: 3 değişim (3'ü kazanım), 80 birebir |
-| ✅ | `backend/src/modules/excel-grid/excel-grid.service.ts:630-647` | **Sütun eşleme** (rol desenleri: no/name/quantity/unit/fiyatlar) + içerik-tabanlı doğrulama R-B/KG6 :697+ (başlık yanıltıcıysa VERİ otorite). | KD12(b) · TF suite · ADIM 1a |
-| ✅ | `backend/src/modules/excel-grid/standart-sema.ts:251` | Başlık **ETİKET SATIRI** ayıklama (KD12a: Excel'in kendi başlık satırı veri sayılmaz, `baslikEtiketiSatiriMi`). | KD12(a), kalem 55 |
+| ✅ | `backend/src/ozellik/giris/excel-grid/excel-grid.service.ts:250` | Excel okuyucu / sayfa ayrıştırıcı (`parseSingleSheet`) — satırların ekrana dönüştüğü yer. Merge yayılımı :271-297 (**tek fiziksel hücre N kolona kopyalanır** — ADIM 1a hatasının hammaddesi buydu). | ADIM 1a ölçümü 02.08 |
+| ✅ | `backend/src/ozellik/giris/excel-grid/excel-grid.service.ts:895-1005` | **Başlık SATIRI kararı** (`realHeaderRow`): sözlük kelimesi skorlaması :895-983 (ayrık-metin sayımı + band eleme + altında-sayısal-veri şartı) + kelimesiz başlık geri-düşüşü :984+ (ilk sayısal satırın hemen üstü; üç sigortalı). | ADIM 1a — AKHİSAR İCMAL canlı bulgusu; 83 sayfa önce/sonra kıyası: 3 değişim (3'ü kazanım), 80 birebir |
+| ✅ | `backend/src/ozellik/giris/excel-grid/excel-grid.service.ts:630-647` | **Sütun eşleme** (rol desenleri: no/name/quantity/unit/fiyatlar) + içerik-tabanlı doğrulama R-B/KG6 :697+ (başlık yanıltıcıysa VERİ otorite). | KD12(b) · TF suite · ADIM 1a |
+| ✅ | `backend/src/ozellik/giris/excel-grid/standart-sema.ts:251` | Başlık **ETİKET SATIRI** ayıklama (KD12a: Excel'in kendi başlık satırı veri sayılmaz, `baslikEtiketiSatiriMi`). | KD12(a), kalem 55 |
 
 **Bu grubun cevapsız soruları:**
 
@@ -86,7 +86,7 @@ Bu projede eksikliğinin bedeli dört kez ödendi:
 | ✅ | `frontend/components/excel-grid/ExcelGrid.tsx:645` | Sürükleme tutamağı — commit 44babd1 (PU4c) bu satıra dokundu | Panel kalem 34 + KD5 |
 | ✅ | `frontend/components/excel-grid/ExcelGrid.tsx:285` | Çarpma şablonu — ÇALIŞAN örnek (İşç. Toplam bunun sayesinde doluyor) | Code raporu, ADIM 0 §2 |
 | ✅ | `frontend/components/excel-grid/aday-ayirt-edicilik.ts:18-174` | **Adı yanıltıcı: hangi adayın gösterileceğine karar VERMEZ** (hepsi gösterilir) — her adayın yanına konacak *ayırt edici metni* hesaplar. Adları ` · `/`\|`/2+ boşlukla bileşenlere ayırır; TÜM adaylarda geçen bileşen elenir, kalan fark etiket olur. Çağıranlar: `ExcelGrid.tsx:205`/`:214` (popup genişliği) · `:685` (aday etiketleri) · `:1192` (nitelik bağlamı). | HARİTA TAM turu 03.08 |
-| ✅ | `backend/src/modules/excel-grid/standart-sema.ts:19-330` | Sabit 13 kolonluk şemaya dönüştürücü — dosyadan yalnız 4 alan taşınır (No · Malzeme Adı · Miktar · Birim), dosyanın MARKA sütunu tamamen atılır, fiyat rolleri bağlıysa hücre değerleri sabit alanlara kopyalanır. Çağıran: `excel-grid.service.ts:218` (`fixedSchema ? standartlastir(parsed) : parsed`). | HARİTA TAM turu 03.08 |
+| ✅ | `backend/src/ozellik/giris/excel-grid/standart-sema.ts:19-330` | Sabit 13 kolonluk şemaya dönüştürücü — dosyadan yalnız 4 alan taşınır (No · Malzeme Adı · Miktar · Birim), dosyanın MARKA sütunu tamamen atılır, fiyat rolleri bağlıysa hücre değerleri sabit alanlara kopyalanır. Çağıran: `excel-grid.service.ts:218` (`fixedSchema ? standartlastir(parsed) : parsed`). | HARİTA TAM turu 03.08 |
 | ✅ | `frontend/components/excel-grid/useFillHandle.tsx:88-270` → `ExcelGrid.tsx:1750-1913` → `fill-down.ts:141-275` | **Sürükle-doldur ÜÇ katman:** (1) JEST — hücrenin alt 10px'inden sürükleme/çift tık, iş kuralı bilmez, yalnız hedef satırları bildirir; (2) YÖNLENDİRİCİ `handleFillComplete` — alana göre 6 dal; (3) MANTIK `fill-down.ts` — `_marka`/`_firma` dallarını koşar (her satır kendi çapıyla motora yeniden sorulur, hiçbir satır sessiz kalmaz) **+ kar% aritmetiği `karYayilimi`** (P2-1a, 03.08: eskiden `ExcelGrid.tsx` içinde satır içiydi ve mühürlü formülleri HİÇ çağırmıyordu — ham çarpım + `toFixed(2)`; net 3.019,2 · kar %10 · miktar 3'te aynı sütuna 9.963,36 yazıyordu, doğrusu 9.963,6). **İskonto dalı hâlâ satır içi** (`applyDiscountBulk`). AG-Grid'in kendi fill özelliği KULLANILMIYOR (grep: 0). | HARİTA TAM turu 03.08 · P2-1a 03.08 (`kar-yayilimi.test.ts` kapısı) |
 | ✅ | `frontend/lib/kaynak-kolon.ts` | **“Malzeme Adı sütunu” seçicisinin etiketi** — tek kaynak. Gerçek başlık varsa YALNIZ başlık; başlık yoksa (`headerName === field`) örnek değer ipucu olarak kalır. | Canlı bulgu 02.08 (kutuda `MALZEME ADI — ör: 2000 GPM…` yazıyordu) · `d14856f` |
 | ✅ | `frontend/lib/kaynak-kolon.test.ts` | Yukarıdakinin mührü — İKİ aile: başlığı olan dosya (yalnız başlık) ve başlığı olmayan dosya (örnek kalır). | vitest 5 assert · eski davranış geri konunca **4'ü kırmızı** (ölçüldü) |
@@ -94,7 +94,7 @@ Bu projede eksikliğinin bedeli dört kez ödendi:
 
 **Bu grubun cevapsız soruları:**
 
-- `standart-sema.ts` tam yolu ne? Backend’de mi, frontend’de mi, ikisinde de kopyası var mı? — **CEVAPLANDI (HR1c, 02.08): `backend/src/modules/excel-grid/standart-sema.ts`, tek kopya.**
+- `standart-sema.ts` tam yolu ne? Backend’de mi, frontend’de mi, ikisinde de kopyası var mı? — **CEVAPLANDI (HR1c, 02.08): `backend/src/ozellik/giris/excel-grid/standart-sema.ts`, tek kopya.**
 
 ## C · EŞLEŞTİRME — malzeme adını kütüphaneyle eşleme
 
@@ -106,11 +106,11 @@ Bu projede eksikliğinin bedeli dört kez ödendi:
 
 | | Dosya / uç | Ne çalıştırıyor | Kanıt nereden |
 |---|---|---|---|
-| ✅ | `backend/src/modules/matching/matching.service.ts:92-101` | Eşleştirme servisi — aday havuzu YALNIZ `UserLibrary(userId, brandId)`'den kurulur, global fallback YOK. `hazirlaPool` :140-203 üç durum: gerçek indeks / bayat→bellekte tazele / indekssiz→istek anında `manuelUrunIndeksle` (:158-168). `⛔ MARKA INDEKSLENMEMIS` uyarısı :197-201. | KALEM 58 keşfi 02.08 — okuma + nokta-teyit |
-| ✅ | `backend/src/modules/matching/index/query-engine.ts:59-597` | **Skor YOK — sert filtre zinciri, üç sonuç (single/ask/none).** Gerçek yürütme sırası: ürün-değil :61 → sözlüğün tükettiği kelimeler ayıklanır :66-68 → `belirsiz` elenir :74 → **aile/adSlug sert kilit** → sizeClass → **cins :280 → bağlantı :310 → ÇAP :331** → boy → birim. Yardımcılar: `ayrisanKolon:38-49` · `resolveLineClass:30-35` · `birimKanonik:604-611` · `urunVariantTags:618-631`. ⚠ **Haritanın önceki sırası YANLIŞTI** (çapı cins/bağlantıdan önce gösteriyordu); yorumlardaki "2./3./4." numaraları da yürütme sırasını yansıtmıyor. | HARİTA TAM turu 03.08 — tam okundu |
-| ✅ | `backend/src/modules/matching/index/product-index.ts:368-374` | Ürün indeksi üretici — `buildRowKey` = sha1_16(sheetKey · adBucket · cinsNorm · baglantiNorm · capNorm · boyTag · kod); FİYATTAN ve sourceRow'dan bağımsız. `buildProductIndex` :380-454, `rebuildIndexFields` :472-481 (rowKey bilerek dışarıda). Kimlik `@@unique([priceListId, rowKey])` → aynı dosya yeniden yüklenince UPDATE, id korunur, kullanıcının iskontosu yaşar. | KALEM 58 keşfi 02.08 — okuma + nokta-teyit |
+| ✅ | `backend/src/ozellik/eslestirme/matching/matching.service.ts:92-101` | Eşleştirme servisi — aday havuzu YALNIZ `UserLibrary(userId, brandId)`'den kurulur, global fallback YOK. `hazirlaPool` :140-203 üç durum: gerçek indeks / bayat→bellekte tazele / indekssiz→istek anında `manuelUrunIndeksle` (:158-168). `⛔ MARKA INDEKSLENMEMIS` uyarısı :197-201. | KALEM 58 keşfi 02.08 — okuma + nokta-teyit |
+| ✅ | `backend/src/ozellik/eslestirme/matching/index/query-engine.ts:59-597` | **Skor YOK — sert filtre zinciri, üç sonuç (single/ask/none).** Gerçek yürütme sırası: ürün-değil :61 → sözlüğün tükettiği kelimeler ayıklanır :66-68 → `belirsiz` elenir :74 → **aile/adSlug sert kilit** → sizeClass → **cins :280 → bağlantı :310 → ÇAP :331** → boy → birim. Yardımcılar: `ayrisanKolon:38-49` · `resolveLineClass:30-35` · `birimKanonik:604-611` · `urunVariantTags:618-631`. ⚠ **Haritanın önceki sırası YANLIŞTI** (çapı cins/bağlantıdan önce gösteriyordu); yorumlardaki "2./3./4." numaraları da yürütme sırasını yansıtmıyor. | HARİTA TAM turu 03.08 — tam okundu |
+| ✅ | `backend/src/ozellik/eslestirme/matching/index/product-index.ts:368-374` | Ürün indeksi üretici — `buildRowKey` = sha1_16(sheetKey · adBucket · cinsNorm · baglantiNorm · capNorm · boyTag · kod); FİYATTAN ve sourceRow'dan bağımsız. `buildProductIndex` :380-454, `rebuildIndexFields` :472-481 (rowKey bilerek dışarıda). Kimlik `@@unique([priceListId, rowKey])` → aynı dosya yeniden yüklenince UPDATE, id korunur, kullanıcının iskontosu yaşar. | KALEM 58 keşfi 02.08 — okuma + nokta-teyit |
 | ✅ | `backend/prisma/schema.prisma` | **Tüm modeller haritalandı:** `User:37-51` · `EslesmeHafizasi:57-68` · `TerminologyAlias:74-98` · `BrandMaterialType:102-116` · `UserBrandLibrary:120-132` · `UserSubscription:134-147` · `Brand:149-160` · `PriceList` · `Material/MaterialPrice:258-306` · `ProductIndex:189-256` · `UserLibrary:308-355` · `Quote:357-396` (çok sayfalı grid ham durumu + orijinal dosya binary'si + teklif no/rev + kayıt anındaki kur) · `QuoteItem` · `Labor*` · `QuoteFormat/QuoteExport`. Kritik: `@@map` şemada **0** (SQL adları tırnaklı, büyük-küçük duyarlı) · Quote→user Cascade, formatId SetNull. | HARİTA TAM turu 03.08 |
-| ✅ | `backend/src/modules/matching/index/types.ts:43-154` | Motorun **iç sözleşmesi** (dış tip başka dosyada): `LineQuery:43-69` (ham metin + ürün-değil bayrağı + **sert kilit aile slug'ı**; null = aile çözülemedi → her zaman soru) · `FamilyVocab:72-76` · `RoutedTokens:79-90` · `AskColumn:95` · `NoneReason:97-104` · `QueryOutcome:111-129` · `QueryOpts`. | HARİTA TAM turu 03.08 |
+| ✅ | `backend/src/ozellik/eslestirme/matching/index/types.ts:43-154` | Motorun **iç sözleşmesi** (dış tip başka dosyada): `LineQuery:43-69` (ham metin + ürün-değil bayrağı + **sert kilit aile slug'ı**; null = aile çözülemedi → her zaman soru) · `FamilyVocab:72-76` · `RoutedTokens:79-90` · `AskColumn:95` · `NoneReason:97-104` · `QueryOutcome:111-129` · `QueryOpts`. | HARİTA TAM turu 03.08 |
 | ✅ | `frontend/app/(protected)/quotes/new/page.tsx:1067` | **YOL A — otomatik toplu eşleştirme:** sayfadaki tüm adlar tek `POST /matching/bulk-match` çağrısıyla (SemanticCache MISS akışı). | FAZ 2 · HR7 03.08 |
 | ✅ | `frontend/app/(protected)/quotes/new/page.tsx:1817` | **YOL B — elle marka seçimi (tek satır):** `onBrandChange` → tek adlı `bulk-match` (variantTags + birim ipucuyla); ExcelGrid marka dropdown'ı buradan geçer, fiyat yazımı `ExcelGrid.tsx:278`. | FAZ 2 · HR7 |
 | ✅ | `frontend/components/excel-grid/ExcelGrid.tsx:1791-1795` → `fill-down.ts:197` | **YOL C — toplu doldurma (sürükle/grup):** `fillDown(motor=onBrandChange)` — motoru YOL B'nin fonksiyonudur; satır satır aynı uca gider. Dördüncü tetik: teklif geri yüklemede yeniden eşleşme (`quotes/new:525`). | FAZ 2 · HR7 |
@@ -135,8 +135,8 @@ Bu projede eksikliğinin bedeli dört kez ödendi:
 | ✅ | `library.controller.ts:52-98` → `library.service.ts:241-277, 592-644` | **İskonto DÖRT ayrı uçtan yazılır:** tek satır · marka bazlı toplu · seçili kimlik listesine toplu (sürükle-doldur) · grid'in kirli satırlarını kaydeden yol (bu sonuncusu oranı 0-100'e sıkıştırır). **Net fiyat DB'ye HİÇ yazılmaz** — her gösterimde tek formülden üretilir (`liste × (1 − oran/100)`, yukarı 1 hane). | HARİTA TAM turu 03.08 |
 | ✅ | `exchange-rates.service.ts:39-134` · `matching.service.ts:57-68,116` · `outcome-mapper.ts:49-54` · `use-currency.ts` | **Çevrim DÖRT ayrı yerde, her biri farklı aşamada:** (1) içe aktarımda çevrim **YOK** (para birimi yalnız etiket, fiyat kaynak biriminde saklanır) · (2) **TABAN:** eşleştirme anında dövizli satırlar TCMB kuruyla TL'ye çevrilir (kur istek başına en fazla bir kez, yalnız dövizli satır varsa) · (3) **GÖSTERİM:** ekranın seçtiği birimde, yalnız görüntü · (4) çıktı/persist. ✅ **BEŞİNCİ NOKTA KALDIRILDI (P2-3, 03.08):** `admin.service.saveBulkMaterials` ve **ikizi** `labor-firms.service.saveBulkPrices` `exchangeRate` parametresi alıp fiyatı **DB'ye çevrilmiş** yazıyordu (kuralın tam tersi; para birimi orijinal etiketiyle kaldığı için teklif anında `buildTryConverter` bir kez daha çarpıyordu = **çift çevrim**). Hiçbir canlı çağıran değer geçmiyordu → çalışma zamanı davranışı değişmedi, kaldırılan bir **tuzaktı**. Çevrim artık yalnız yukarıdaki dört noktada. | HARİTA TAM turu 03.08 · P2-3 03.08 |
 | ✅ | `frontend/lib/pricing.ts:81-86` (merkezi) + 8 yerel biçimleyici | **Tek biçimleyici YOK — en az ÜÇ aile ve ÇELİŞİYORLAR:** merkezi `paraBicim` **1 ondalık** ("3.019,2"), diğer tüm FE biçimleyicileri ve Excel `numFmt`'ları **2 ondalık** ("3.019,20") → aynı değer gridde ve çıktıda farklı yazılır. TL sembolü ve binlik ayracı da ekseninde ayrışıyor. | HARİTA TAM turu 03.08 — "görüldü, dokunulmadı" |
-| ✅ | `backend/src/modules/matching/pricing.ts:1-36` | Fiyat çekirdeğinin **BE yarısı** (tamamı 36 satır): `yukariYuvarla` (1 ondalık, 1e-9 epsilonla ikili artık taşması engellenir, −0 normalize) · `clamp` · `hesaplaNetFiyat`. **Satış (kar) ve satır toplamı BURADA YOK** (22.07 kararı) — dışarıya yalnız yuvarlama yardımcısı ödünç verilir (çağıranlar: `outcome-mapper:15,53` · `matching.service:22,470,652` · `quotes.service:21` KL P1-b sonrası). | HARİTA TAM turu 03.08 |
-| ✅ | `backend/src/modules/matching/index/outcome-mapper.ts:1-254` | **Motorun tek çıkış kapısı:** iç sonucu dış sözleşmeye çevirir ve *"fiyat yalnız tek-eşleşme/oto-varyant dalından çıkar"* kuralını **yapısal olarak** dayatır — diğer tüm dallar sıfır fiyatla döner. Aday listesinde her adaya: görünür ad (boy ekli), net/liste/iskonto üçlüsü, sorulan kolona göre etiket, varyant kimliği, nitelik uyarısı. | HARİTA TAM turu 03.08 |
+| ✅ | `backend/src/ozellik/fiyat/matching/pricing.ts:1-36` | Fiyat çekirdeğinin **BE yarısı** (tamamı 36 satır): `yukariYuvarla` (1 ondalık, 1e-9 epsilonla ikili artık taşması engellenir, −0 normalize) · `clamp` · `hesaplaNetFiyat`. **Satış (kar) ve satır toplamı BURADA YOK** (22.07 kararı) — dışarıya yalnız yuvarlama yardımcısı ödünç verilir (çağıranlar: `outcome-mapper:15,53` · `matching.service:22,470,652` · `quotes.service:21` KL P1-b sonrası). | HARİTA TAM turu 03.08 |
+| ✅ | `backend/src/ozellik/fiyat/matching/index/outcome-mapper.ts:1-254` | **Motorun tek çıkış kapısı:** iç sonucu dış sözleşmeye çevirir ve *"fiyat yalnız tek-eşleşme/oto-varyant dalından çıkar"* kuralını **yapısal olarak** dayatır — diğer tüm dallar sıfır fiyatla döner. Aday listesinde her adaya: görünür ad (boy ekli), net/liste/iskonto üçlüsü, sorulan kolona göre etiket, varyant kimliği, nitelik uyarısı. | HARİTA TAM turu 03.08 |
 
 **Bu grubun cevapsız soruları:**
 
@@ -175,7 +175,7 @@ Bu projede eksikliğinin bedeli dört kez ödendi:
 | | Dosya / uç | Ne çalıştırıyor | Kanıt nereden |
 |---|---|---|---|
 | ✅ | `backend/src/ozellik/teklif/quotes/standart-cikti.ts:1-288` | Müşterinin şablonuna yazmak yerine **sıfırdan sabit 9 kolonluk tablo üreten TEK yazıcı**: sayfayı workbook'a döker, sayfa toplamlarını üst fonksiyona bildirir; üst fonksiyon tüm sayfaları dolaşıp sonuna genel-toplam sayfası + görünür self-check özeti ekler. Özet sayfaların satırları yazılır ama teklif geneline **girmez**. Çağıranlar: `quotes.service.ts:390` (export-priced) · `export-engine.ts:332`. | HARİTA TAM turu 03.08 |
-| ✅ | `backend/src/utils/xlsx-to-pdf.ts:18-45` | **Teklif PDF'i ÜRETMİYOR** (o özellik 24.07'de kullanıcı kararıyla kaldırıldı; `quotes.controller.ts:38-40,106-108` silinen rotaları not ediyor). Yaşayan tek kullanım: yüklenmiş teklif **FORMATI** dosyasını headless LibreOffice ile PDF'e çevirip **ekranda önizleme** (`quote-formats.service.ts:142-146` → `controller:53-62` → `quote-formats/page.tsx:151`); inline gösterilir, **indirilemez**. Her çağrı kendi geçici LibreOffice profilini kullanır, 60sn timeout, kurulu değilse `null` → uç 404 → arayüz sessizce hücre görünümüne düşer. ⚠ Windows yerelde `soffice` yok → bu yol yerelde **hiç ölçülemez**, yalnız sunucuda anlaşılır. | HARİTA TAM turu 03.08 |
+| ✅ | `backend/src/ozellik/cikti/utils/xlsx-to-pdf.ts:18-45` | **Teklif PDF'i ÜRETMİYOR** (o özellik 24.07'de kullanıcı kararıyla kaldırıldı; `quotes.controller.ts:38-40,106-108` silinen rotaları not ediyor). Yaşayan tek kullanım: yüklenmiş teklif **FORMATI** dosyasını headless LibreOffice ile PDF'e çevirip **ekranda önizleme** (`quote-formats.service.ts:142-146` → `controller:53-62` → `quote-formats/page.tsx:151`); inline gösterilir, **indirilemez**. Her çağrı kendi geçici LibreOffice profilini kullanır, 60sn timeout, kurulu değilse `null` → uç 404 → arayüz sessizce hücre görünümüne düşer. ⚠ Windows yerelde `soffice` yok → bu yol yerelde **hiç ölçülemez**, yalnız sunucuda anlaşılır. | HARİTA TAM turu 03.08 |
 | ✅ | `teklif_ciktisi_mockup.html` | ÜRÜNDE DEĞİL — benim çalışma dosyam, referans mockup | 13.833 bayt, 20.07 |
 
 **Bu grubun cevapsız soruları:**
@@ -290,13 +290,13 @@ Karıştırılmasın diye ayrı duruyor.
 
 | Dosya | Ne yapıyor |
 |---|---|
-| `backend/src/ai/ai.controller.ts` | Pro paket sartiyla PDF dosyasi alip AI icerik cikarimina (analyze) yonlendiren endpoint |
-| `backend/src/ai/ai.service.ts` | PDF/Excel içeriğinden LLM'lerle malzeme satırları ve sütun rolleri çıkarır |
-| `backend/src/modules/excel-engine/excel-engine.controller.ts` | Yuklenen Excel dosyasini JWT korumali tek uc uzerinden analiz servisine iletir |
-| `backend/src/modules/excel-engine/excel-engine.service.ts` | Excel'i okuyup Gemini ile header satiri ve kolon rollerini tespit eder, satirlari objeye cevirir |
-| `backend/src/modules/excel-grid/excel-grid.controller.ts` | Yuklenen Excel'i sabit-sema grid verisine hazirlayan tek POST ucunu sunar |
-| `backend/src/modules/excel-grid/excel-grid.service.ts` | Yüklenen xlsx'i sayfa sayfa ayrıştırıp kolon rollerini içerikten tespit eder |
-| `backend/src/modules/excel-grid/sheet-discipline.ts` | Sayfa adi ve ornek satir metninden mekanik/elektrik disiplinini anahtar kelime skoruyla tahmin eder |
+| `backend/src/ozellik/giris/ai/ai.controller.ts` | Pro paket sartiyla PDF dosyasi alip AI icerik cikarimina (analyze) yonlendiren endpoint |
+| `backend/src/ozellik/giris/ai/ai.service.ts` | PDF/Excel içeriğinden LLM'lerle malzeme satırları ve sütun rolleri çıkarır |
+| `backend/src/ozellik/giris/excel-engine/excel-engine.controller.ts` | Yuklenen Excel dosyasini JWT korumali tek uc uzerinden analiz servisine iletir |
+| `backend/src/ozellik/giris/excel-engine/excel-engine.service.ts` | Excel'i okuyup Gemini ile header satiri ve kolon rollerini tespit eder, satirlari objeye cevirir |
+| `backend/src/ozellik/giris/excel-grid/excel-grid.controller.ts` | Yuklenen Excel'i sabit-sema grid verisine hazirlayan tek POST ucunu sunar |
+| `backend/src/ozellik/giris/excel-grid/excel-grid.service.ts` | Yüklenen xlsx'i sayfa sayfa ayrıştırıp kolon rollerini içerikten tespit eder |
+| `backend/src/ozellik/giris/excel-grid/sheet-discipline.ts` | Sayfa adi ve ornek satir metninden mekanik/elektrik disiplinini anahtar kelime skoruyla tahmin eder |
 
 ### B · TABLO — 11 dosya
 
@@ -318,29 +318,29 @@ Karıştırılmasın diye ayrı duruyor.
 
 | Dosya | Ne yapıyor |
 |---|---|
-| `backend/src/modules/labor-matching/labor-matching.controller.ts` | Iscilik kalemleri icin toplu esleme, secim hafizasi, reindex ve admin backfill uclarini sunar |
-| `backend/src/modules/labor-matching/labor-matching.service.ts` | Firma sahipligini dogrulayip iscilik eslemeyi ortak eslesme motoruna delege eder |
-| `backend/src/modules/matching/ad-cins-sozlugu.ts` | Malzeme ailesi slug'lari, es anlamli desenler ve cins yuvalarini iceren seed sozluk verisi |
-| `backend/src/modules/matching/ad-resolver.ts` | Normalize metinde en uzun sozluk desenini bulup malzeme ailesi slug'ini cozer |
-| `backend/src/modules/matching/conversion.ts` | Çelik/plastik borularda DN-inç-mm çap eşdeğerlerini tablolarla çevirir |
-| `backend/src/modules/matching/index/line-parser.ts` | Serbest teklif satiri metnini aile, cap/boy, birim sinyali ve yonlendirilmis token sorgusuna cevirir |
-| `backend/src/modules/matching/index/vocab.ts` | Aile+marka indeksindeki urun token'larindan ad/cins/baglanti kelime dagarcigi kurar |
-| `backend/src/modules/matching/matching.controller.ts` | Malzeme toplu esleme, secim hafizasi, indeks sagligi ve terminoloji alias CRUD uclarini sunar |
-| `backend/src/modules/matching/normalizer.ts` | Türkçe/unicode metni normalleştirir; satırdan çap, yüzey, bağlantı, PN etiketleri çıkarır |
-| `backend/src/modules/matching/shared-tag-matcher.ts` | Yuzey/cins/baglanti/tip tag kumeleri, etiket gorunum adlari ve nitelik-tag yardimcilarini saglar |
-| `backend/src/modules/matching/tag-generator.ts` | Malzeme adindan regex/lookup ile cap, yuzey, cins, baglanti, standart ve nitelik tag'leri uretir |
-| `backend/src/modules/matching/terminology.service.ts` | Takma adları malzeme ailesine çevirir; kullanıcı alias'larını öğrenip saklar |
-| `backend/src/modules/matching/types.ts` | Esleme sonucu, aday, marka alternatifi ve tag'lenmis malzeme arayuz tanimlarini tasir |
-| `backend/src/utils/build-material-context.ts` | Grid satirlarindan ust grup basligini bulup tam malzeme adini kurar; cap tutarsizliginda guvenli tarafta sadece satir adini doner |
-| `backend/src/utils/etiket-display.ts` | Serbest metinden AD/CINS/CAP etiket gosterimlerini eslestirme motoru tag'leriyle turetir; admin AD duzeltmesini dogrular |
+| `backend/src/ozellik/eslestirme/labor-matching/labor-matching.controller.ts` | Iscilik kalemleri icin toplu esleme, secim hafizasi, reindex ve admin backfill uclarini sunar |
+| `backend/src/ozellik/eslestirme/labor-matching/labor-matching.service.ts` | Firma sahipligini dogrulayip iscilik eslemeyi ortak eslesme motoruna delege eder |
+| `backend/src/ozellik/eslestirme/matching/ad-cins-sozlugu.ts` | Malzeme ailesi slug'lari, es anlamli desenler ve cins yuvalarini iceren seed sozluk verisi |
+| `backend/src/ozellik/eslestirme/matching/ad-resolver.ts` | Normalize metinde en uzun sozluk desenini bulup malzeme ailesi slug'ini cozer |
+| `backend/src/ozellik/eslestirme/matching/conversion.ts` | Çelik/plastik borularda DN-inç-mm çap eşdeğerlerini tablolarla çevirir |
+| `backend/src/ozellik/eslestirme/matching/index/line-parser.ts` | Serbest teklif satiri metnini aile, cap/boy, birim sinyali ve yonlendirilmis token sorgusuna cevirir |
+| `backend/src/ozellik/eslestirme/matching/index/vocab.ts` | Aile+marka indeksindeki urun token'larindan ad/cins/baglanti kelime dagarcigi kurar |
+| `backend/src/ozellik/eslestirme/matching/matching.controller.ts` | Malzeme toplu esleme, secim hafizasi, indeks sagligi ve terminoloji alias CRUD uclarini sunar |
+| `backend/src/ozellik/eslestirme/matching/normalizer.ts` | Türkçe/unicode metni normalleştirir; satırdan çap, yüzey, bağlantı, PN etiketleri çıkarır |
+| `backend/src/ozellik/eslestirme/matching/shared-tag-matcher.ts` | Yuzey/cins/baglanti/tip tag kumeleri, etiket gorunum adlari ve nitelik-tag yardimcilarini saglar |
+| `backend/src/ozellik/eslestirme/matching/tag-generator.ts` | Malzeme adindan regex/lookup ile cap, yuzey, cins, baglanti, standart ve nitelik tag'leri uretir |
+| `backend/src/ozellik/eslestirme/matching/terminology.service.ts` | Takma adları malzeme ailesine çevirir; kullanıcı alias'larını öğrenip saklar |
+| `backend/src/ozellik/eslestirme/matching/types.ts` | Esleme sonucu, aday, marka alternatifi ve tag'lenmis malzeme arayuz tanimlarini tasir |
+| `backend/src/ozellik/eslestirme/utils/build-material-context.ts` | Grid satirlarindan ust grup basligini bulup tam malzeme adini kurar; cap tutarsizliginda guvenli tarafta sadece satir adini doner |
+| `backend/src/ozellik/eslestirme/utils/etiket-display.ts` | Serbest metinden AD/CINS/CAP etiket gosterimlerini eslestirme motoru tag'leriyle turetir; admin AD duzeltmesini dogrular |
 | `frontend/components/excel-grid/build-material-context.ts` | Eslestirme sorgusu icin satirin olcu ifadesi tasiyip tasimadigini ve baslik baglami gerekip gerekmedigini belirler |
 
 ### D · FİYAT — 5 dosya
 
 | Dosya | Ne yapıyor |
 |---|---|
-| `backend/src/exchange-rates/exchange-rates.controller.ts` | Canli kuru guard'siz public GET ucu olarak sunar |
-| `backend/src/exchange-rates/exchange-rates.service.ts` | TCMB XML'den USD/EUR kuru ceker; er-api fallback, 1 saatlik cache, thundering-herd korumasi |
+| `backend/src/ozellik/fiyat/exchange-rates/exchange-rates.controller.ts` | Canli kuru guard'siz public GET ucu olarak sunar |
+| `backend/src/ozellik/fiyat/exchange-rates/exchange-rates.service.ts` | TCMB XML'den USD/EUR kuru ceker; er-api fallback, 1 saatlik cache, thundering-herd korumasi |
 | `frontend/components/excel-grid/discount-utils.ts` | Iskonto yuzdesini 0-100'e sabitler, TR bicimli/%'li girisi ve cok satirli Excel yapistirmasini sayiya cevirir |
 | `frontend/hooks/use-currency.ts` | TRY bazli fiyatlari canli TCMB kuruyla USD/EUR'a ceviren ve bicimleyen para birimi hook'u |
 | `frontend/lib/pricing.ts` | Iskonto→net, kar→satis, yukari-1-hane yuvarlama, para birimi gosterim bicimi ve etkin miktar kurallarinin tek kaynagi |
@@ -351,11 +351,11 @@ Karıştırılmasın diye ayrı duruyor.
 
 | Dosya | Ne yapıyor |
 |---|---|
-| `backend/src/quote-formats/format-engine.ts` | Kullanici teklif sablonunda {{yer_tutucu}} tarar, ornek format uretir ve sayfayi grid verisine cevirir |
-| `backend/src/quote-formats/quote-formats.controller.ts` | Teklif format sablonlarinin yukleme, listeleme, onizleme (xlsx/pdf), guncelleme ve silme uclarini sunar |
-| `backend/src/quote-formats/quote-formats.service.ts` | Kullanicinin teklif sablonlarini yukler/tarar/onizler; varsayilan secimi, PDF onizleme ve ornek dosya uretir |
+| `backend/src/ozellik/cikti/quote-formats/format-engine.ts` | Kullanici teklif sablonunda {{yer_tutucu}} tarar, ornek format uretir ve sayfayi grid verisine cevirir |
+| `backend/src/ozellik/cikti/quote-formats/quote-formats.controller.ts` | Teklif format sablonlarinin yukleme, listeleme, onizleme (xlsx/pdf), guncelleme ve silme uclarini sunar |
+| `backend/src/ozellik/cikti/quote-formats/quote-formats.service.ts` | Kullanicinin teklif sablonlarini yukler/tarar/onizler; varsayilan secimi, PDF onizleme ve ornek dosya uretir |
 | `backend/src/ozellik/teklif/quotes/export-engine.ts` | Format workbook'unu taban alip fiyatlanmis liste sayfalarini yerlestirerek profesyonel Excel ciktisi kurar; birim bicimi ve self-check uygular |
-| `backend/src/utils/xlsx-to-pdf.ts` | Excel'i LibreOffice headless ile birebir baski gorunumlu PDF'e cevirir; soffice yoksa/timeout'ta null doner |
+| `backend/src/ozellik/cikti/utils/xlsx-to-pdf.ts` | Excel'i LibreOffice headless ile birebir baski gorunumlu PDF'e cevirir; soffice yoksa/timeout'ta null doner |
 | `frontend/app/(protected)/quote-formats/page.tsx` | Kalici teklif format sablonlarini yukleme, yer tutucu tarama onizlemesi, varsayilan yapma ve silme yonetimi |
 | `frontend/lib/export-download.ts` | Iki export ucunu cagirip blob'u dosya olarak indirtir; self-check ozet/uyari toast'larini gosterir |
 
@@ -578,7 +578,7 @@ Karıştırılmasın diye ayrı duruyor.
 | Dosya | Ne yapıyor |
 |---|---|
 | `backend/src/ozellik/kutuphane/admin/admin.module.ts` | Admin controller/servisini Prisma, AI, ExcelGrid ve Matching modulleriyle kablolar |
-| `backend/src/ai/ai.module.ts` | AI controller ve servisini Prisma ile kablolar, servisi disa acar |
+| `backend/src/ozellik/giris/ai/ai.module.ts` | AI controller ve servisini Prisma ile kablolar, servisi disa acar |
 | `backend/src/app.module.ts` | Tum backend modullerini kok modulde toplar, health ve bootstrap controller'larini baglar |
 | `backend/src/altyapi/auth/auth.controller.ts` | Kayit, giris ve mevcut kullanici bilgisi (me) HTTP uclarini sunar |
 | `backend/src/altyapi/auth/auth.module.ts` | JWT ve Passport'u yapilandirip auth servis/strategy/controller'i kablolar |
@@ -594,20 +594,20 @@ Karıştırılmasın diye ayrı duruyor.
 | `backend/src/altyapi/auth/guards/tier.guard.ts` | Kullanicinin paket seviyesini DB'den okuyup endpoint'in gerektirdigi minimum seviyeyle karsilastirir |
 | `backend/src/altyapi/auth/strategies/jwt.strategy.ts` | Bearer token'i dogrulayip payload'daki kullaniciyi DB'den yukleyerek request.user'a koyar |
 | `backend/src/ozellik/kutuphane/brands/brands.module.ts` | Marka servis ve controller'ini kablolar, servisi disa acar |
-| `backend/src/exchange-rates/exchange-rates.module.ts` | Kur servis/controller kablolamasi; servisi baska modullere disa acar |
+| `backend/src/ozellik/fiyat/exchange-rates/exchange-rates.module.ts` | Kur servis/controller kablolamasi; servisi baska modullere disa acar |
 | `backend/src/ozellik/kutuphane/labor-firms/labor-firms.module.ts` | Iscilik firmalari modulunu kablolar; ExcelGrid ve Matching modullerini iceri alir |
 | `backend/src/ozellik/kutuphane/labor/labor.module.ts` | Iscilik kalemi servis/controller kablolamasi; Prisma modulunu alir, servisi disa acar |
 | `backend/src/ozellik/kutuphane/library/library.module.ts` | Kutuphane servis/controller kablolamasi; Matching modulunu iceri alir |
 | `backend/src/main.ts` | Uygulamayi ayaga kaldirir: 500mb body limiti, CORS beyaz listesi+regex, global validation, api prefix |
 | `backend/src/ozellik/kutuphane/materials/materials.module.ts` | Malzeme servis ve controller'ini NestJS modul sistemine kablolar |
 | `backend/src/modules/dwg-engine/dwg-engine.module.ts` | DWG motoru servis ve controller'ini NestJS modul sistemine kablolar |
-| `backend/src/modules/excel-engine/excel-engine.module.ts` | Analiz servis ve controller'ini Prisma ile kablolayan NestJS modul tanimi |
-| `backend/src/modules/excel-grid/excel-grid.module.ts` | Grid hazirlama servis/controller'ini Prisma ile kablolayan NestJS modul tanimi |
-| `backend/src/modules/labor-matching/labor-matching.module.ts` | Iscilik esleme katmanini MatchingModule motoruna baglayan NestJS modul tanimi |
-| `backend/src/modules/matching/matching.module.ts` | Esleme ve terminoloji servislerini Prisma ve kur modulune baglayan NestJS modul tanimi |
+| `backend/src/ozellik/giris/excel-engine/excel-engine.module.ts` | Analiz servis ve controller'ini Prisma ile kablolayan NestJS modul tanimi |
+| `backend/src/ozellik/giris/excel-grid/excel-grid.module.ts` | Grid hazirlama servis/controller'ini Prisma ile kablolayan NestJS modul tanimi |
+| `backend/src/ozellik/eslestirme/labor-matching/labor-matching.module.ts` | Iscilik esleme katmanini MatchingModule motoruna baglayan NestJS modul tanimi |
+| `backend/src/ozellik/eslestirme/matching/matching.module.ts` | Esleme ve terminoloji servislerini Prisma ve kur modulune baglayan NestJS modul tanimi |
 | `backend/src/altyapi/db/prisma.module.ts` | DB erişim servisini tüm uygulamaya global sağlayan modül tanımı |
 | `backend/src/altyapi/db/prisma.service.ts` | PrismaClient'ı yaşam döngüsüne bağlayıp bağlantıyı açan-kapatan sarmalayıcı |
-| `backend/src/quote-formats/quote-formats.module.ts` | Format servis ve controller'ini NestJS'e kablolar, servisi disa acar |
+| `backend/src/ozellik/cikti/quote-formats/quote-formats.module.ts` | Format servis ve controller'ini NestJS'e kablolar, servisi disa acar |
 | `backend/src/ozellik/teklif/quotes/quotes.module.ts` | Quotes servis/controller'i AI, Prisma ve kur modulleriyle NestJS'e kablolar |
 
 ### M · TEKLİF YAŞAM DÖNGÜSÜ — 8 dosya

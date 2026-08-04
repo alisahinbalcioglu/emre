@@ -10,8 +10,8 @@ import { buildLibrarySheetRows } from './library-sheet-builder';
 import {
   buildProductIndex,
   ProductColumns,
-} from '../../../modules/matching/index/product-index';
-import { TerminologyService } from '../../../modules/matching/terminology.service';
+} from '../../eslestirme/matching/index/product-index';
+import { TerminologyService } from '../../eslestirme/matching/terminology.service';
 
 @Injectable()
 export class LibraryService {

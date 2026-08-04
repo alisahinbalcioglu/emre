@@ -16,7 +16,7 @@
  * Kosum: npx ts-node test/onceden-fiyatli-test.ts   (npm run test:of)
  */
 import * as fs from 'fs';
-import { ExcelGridService } from '../src/modules/excel-grid/excel-grid.service';
+import { ExcelGridService } from '../src/ozellik/giris/excel-grid/excel-grid.service';
 
 let passed = 0; let failed = 0; const failures: string[] = [];
 function check(name: string, cond: boolean, detail?: string) {

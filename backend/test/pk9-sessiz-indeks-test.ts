@@ -17,8 +17,8 @@
  *
  * Cikis kodu sozlesmesi: 0 = PASS · digeri = FAIL.
  */
-import { MatchingService } from '../src/modules/matching/matching.service';
-import { TerminologyService, ALIAS_SEEDS } from '../src/modules/matching/terminology.service';
+import { MatchingService } from '../src/ozellik/eslestirme/matching/matching.service';
+import { TerminologyService, ALIAS_SEEDS } from '../src/ozellik/eslestirme/matching/terminology.service';
 
 let passed = 0; const failures: string[] = [];
 const check = (ad: string, kosul: boolean, detay?: string) => {

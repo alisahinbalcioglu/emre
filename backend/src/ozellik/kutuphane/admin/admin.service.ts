@@ -1,13 +1,13 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import * as XLSX from 'xlsx';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
-import { AiService } from '../../../ai/ai.service';
-import { TerminologyService } from '../../../modules/matching/terminology.service';
+import { AiService } from '../../giris/ai/ai.service';
+import { TerminologyService } from '../../eslestirme/matching/terminology.service';
 import {
   buildMaterialContextFromRows,
   ColumnRoles,
   RowData,
-} from '../../../utils/build-material-context';
+} from '../../eslestirme/utils/build-material-context';
 import {
   parseTrNumber,
   walkCategories,
@@ -21,8 +21,8 @@ import {
   yapilandirmaSkoru,
   PriceListCols,
 } from '../utils/import-fidelity';
-import { deriveEtiketler, isValidAdOverride } from '../../../utils/etiket-display';
-import { buildProductIndex, rebuildIndexFields, INDEX_VERSION, ProductColumns } from '../../../modules/matching/index/product-index';
+import { deriveEtiketler, isValidAdOverride } from '../../eslestirme/utils/etiket-display';
+import { buildProductIndex, rebuildIndexFields, INDEX_VERSION, ProductColumns } from '../../eslestirme/matching/index/product-index';
 
 export interface MaterialSheetInput {
   name: string;
@@ -961,7 +961,7 @@ export class AdminService {
       removed = del.count;
     }
 
-    const { generateTags } = require('../../../modules/matching/tag-generator');
+    const { generateTags } = require('../../eslestirme/matching/tag-generator');
     let imported = 0;
     let updated = 0;
     let skipped = 0;
@@ -1182,7 +1182,7 @@ export class AdminService {
       throw new BadRequestException('Sheets bos');
     }
 
-    const { generateTags } = require('../../../modules/matching/tag-generator');
+    const { generateTags } = require('../../eslestirme/matching/tag-generator');
     const results: {
       sheetName: string; listName: string; guncellendi: boolean;
       imported: number; updated: number; skipped: number; kategoriSayisi: number;

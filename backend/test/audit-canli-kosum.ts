@@ -11,11 +11,11 @@
 
 import { PrismaClient } from '@prisma/client';
 import * as fs from 'fs';
-import { MatchingService } from '../src/modules/matching/matching.service';
-import { TerminologyService } from '../src/modules/matching/terminology.service';
+import { MatchingService } from '../src/ozellik/eslestirme/matching/matching.service';
+import { TerminologyService } from '../src/ozellik/eslestirme/matching/terminology.service';
 import { AdminService } from '../src/ozellik/kutuphane/admin/admin.service';
 import { LibraryService } from '../src/ozellik/kutuphane/library/library.service';
-import { ExcelGridService } from '../src/modules/excel-grid/excel-grid.service';
+import { ExcelGridService } from '../src/ozellik/giris/excel-grid/excel-grid.service';
 
 const DUYAR_XLSX = 'C:/Users/basar/Downloads/Duyar_Aralik2023_Yapilandirilmis.xlsx';
 // Dosya adi diskte NFD (ş/ü ayrik birlesik karakter) — readdir ile cozulur.
@@ -98,7 +98,7 @@ async function main() {
   // ── D1-EK (yol-3 cap fix, denetim bulgu): "Dış Cap 114.3mm Et 6.0mm" adli
   // urun ET'i cap sanmiyor → inc sorgusu artik ESLESIR. Onceden "4" yok".
   {
-    const { extractSizeInfo } = require('../src/modules/matching/conversion');
+    const { extractSizeInfo } = require('../src/ozellik/eslestirme/matching/conversion');
     const urunAdi = 'PE Kaplı Doğalgaz Tesisat Borusu DIN 30670 Dış Cap 114.3mm Et 6.0mm Gr B/X42';
     const si = extractSizeInfo(urunAdi);
     check('D1-EK extractSizeInfo dis cap (et degil)', si?.value === 114.3, `got ${JSON.stringify(si)}`);

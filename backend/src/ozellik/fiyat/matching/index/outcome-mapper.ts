@@ -13,11 +13,11 @@
 // ════════════════════════════════════════════════════════════════════
 
 import { hesaplaNetFiyat } from '../pricing';
-import { extractAttrTags, extractFluid } from '../normalizer';
-import { buildAttrUyari } from '../shared-tag-matcher';
-import { urunVariantTags } from './query-engine';
-import type { MatchResult, MatchCandidate } from '../types';
-import type { IndexedRow, QueryOutcome, AskColumn, LineQuery } from './types';
+import { extractAttrTags, extractFluid } from '../../../eslestirme/matching/normalizer';
+import { buildAttrUyari } from '../../../eslestirme/matching/shared-tag-matcher';
+import { urunVariantTags } from '../../../eslestirme/matching/index/query-engine';
+import type { MatchResult, MatchCandidate } from '../../../eslestirme/matching/types';
+import type { IndexedRow, QueryOutcome, AskColumn, LineQuery } from '../../../eslestirme/matching/index/types';
 
 /**
  * Kullaniciya gorunen urun adi: indeksteki displayName + (varsa) BOY.

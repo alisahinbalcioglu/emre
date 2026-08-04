@@ -22,7 +22,7 @@
 import { PrismaClient } from '@prisma/client';
 import { AdminService } from '../src/ozellik/kutuphane/admin/admin.service';
 import { LibraryService } from '../src/ozellik/kutuphane/library/library.service';
-import { TerminologyService } from '../src/modules/matching/terminology.service';
+import { TerminologyService } from '../src/ozellik/eslestirme/matching/terminology.service';
 
 let passed = 0; let failed = 0; const failures: string[] = [];
 function check(name: string, cond: boolean, detail?: string) {
@@ -84,7 +84,7 @@ async function main() {
 
     // I1c: indeks surumu GUNCEL — eski surumle yazilirsa motor gorur ama
     // yanlis semayla gorur. (Ayni bos-dizi tuzagi burada da var.)
-    const { INDEX_VERSION } = require('../src/modules/matching/index/product-index');
+    const { INDEX_VERSION } = require('../src/ozellik/eslestirme/matching/index/product-index');
     check('I1c indexVersion GUNCEL',
       idx1.length > 0 && idx1.every((r: any) => r.indexVersion === INDEX_VERSION),
       `beklenen ${INDEX_VERSION}, gelen ${[...new Set(idx1.map((r: any) => r.indexVersion))].join(',')}`);

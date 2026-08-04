@@ -8,16 +8,16 @@ import { MaterialsModule } from './ozellik/kutuphane/materials/materials.module'
 import { LibraryModule } from './ozellik/kutuphane/library/library.module';
 import { QuotesModule } from './ozellik/teklif/quotes/quotes.module';
 import { AdminModule } from './ozellik/kutuphane/admin/admin.module';
-import { AiModule } from './ai/ai.module';
+import { AiModule } from './ozellik/giris/ai/ai.module';
 import { LaborModule } from './ozellik/kutuphane/labor/labor.module';
 import { LaborFirmsModule } from './ozellik/kutuphane/labor-firms/labor-firms.module';
-import { ExcelEngineModule } from './modules/excel-engine/excel-engine.module';
-import { ExcelGridModule } from './modules/excel-grid/excel-grid.module';
-import { MatchingModule } from './modules/matching/matching.module';
-import { LaborMatchingModule } from './modules/labor-matching/labor-matching.module';
+import { ExcelEngineModule } from './ozellik/giris/excel-engine/excel-engine.module';
+import { ExcelGridModule } from './ozellik/giris/excel-grid/excel-grid.module';
+import { MatchingModule } from './ozellik/eslestirme/matching/matching.module';
+import { LaborMatchingModule } from './ozellik/eslestirme/labor-matching/labor-matching.module';
 import { DwgEngineModule } from './modules/dwg-engine/dwg-engine.module';
-import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
-import { QuoteFormatsModule } from './quote-formats/quote-formats.module';
+import { ExchangeRatesModule } from './ozellik/fiyat/exchange-rates/exchange-rates.module';
+import { QuoteFormatsModule } from './ozellik/cikti/quote-formats/quote-formats.module';
 
 @Module({
   imports: [

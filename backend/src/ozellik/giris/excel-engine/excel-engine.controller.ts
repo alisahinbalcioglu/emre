@@ -3,7 +3,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
-import { JwtAuthGuard } from '../../altyapi/auth/guards/jwt-auth.guard';
+import { JwtAuthGuard } from '../../../altyapi/auth/guards/jwt-auth.guard';
 import { ExcelEngineService } from './excel-engine.service';
 
 @Controller('excel-engine')

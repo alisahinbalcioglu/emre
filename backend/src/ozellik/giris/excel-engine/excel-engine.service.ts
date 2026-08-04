@@ -1,5 +1,5 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { PrismaService } from '../../altyapi/db/prisma.service';
+import { PrismaService } from '../../../altyapi/db/prisma.service';
 import * as XLSX from 'xlsx';
 
 // ────────────────────────────────────────────

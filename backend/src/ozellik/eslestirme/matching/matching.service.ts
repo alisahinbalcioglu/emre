@@ -17,21 +17,21 @@
 //  test:conversion + test:contract (C1-C10).
 // ════════════════════════════════════════════════════════════════════
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../../altyapi/db/prisma.service';
+import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { generateTags } from './tag-generator';
-import { hesaplaNetFiyat } from './pricing';
+import { hesaplaNetFiyat } from '../../fiyat/matching/pricing';
 import { extractMaterialKind, extractFluid } from './normalizer';
 import { extractSizeInfo } from './conversion';
 import { TerminologyService } from './terminology.service';
 // TEK MOTOR (Faz 2b): indeksli + Ad-kilitli cekirdek (saf — test:index K1-K7)
 import { parseLine } from './index/line-parser';
 import { runQuery } from './index/query-engine';
-import { toMatchResult, gorunenAd } from './index/outcome-mapper';
+import { toMatchResult, gorunenAd } from '../../fiyat/matching/index/outcome-mapper';
 import { INDEX_VERSION, tokenize, buildProductIndex, rebuildIndexFields, iscilikAdCekirdegi } from './index/product-index';
 import type { ProductColumns } from './index/product-index';
 import type { IndexedRow, LineQuery, QueryOpts } from './index/types';
 import type { AliasHint } from './terminology.service';
-import { ExchangeRatesService } from '../../exchange-rates/exchange-rates.service';
+import { ExchangeRatesService } from '../../fiyat/exchange-rates/exchange-rates.service';
 import type { MatchResult, BrandAlternative } from './types';
 import { KIND_TAGS } from './shared-tag-matcher';
 

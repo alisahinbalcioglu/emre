@@ -9,11 +9,11 @@
  * Vakalar kullanicinin GERCEK dosyalarindan (Ayvaz S5-161 TAM, ARMAŞ).
  */
 
-import { buildProductIndex, type ProductColumns } from '../src/modules/matching/index/product-index';
-import { parseLine } from '../src/modules/matching/index/line-parser';
-import { runQuery } from '../src/modules/matching/index/query-engine';
-import { toMatchResult } from '../src/modules/matching/index/outcome-mapper';
-import type { IndexedRow } from '../src/modules/matching/index/types';
+import { buildProductIndex, type ProductColumns } from '../src/ozellik/eslestirme/matching/index/product-index';
+import { parseLine } from '../src/ozellik/eslestirme/matching/index/line-parser';
+import { runQuery } from '../src/ozellik/eslestirme/matching/index/query-engine';
+import { toMatchResult } from '../src/ozellik/fiyat/matching/index/outcome-mapper';
+import type { IndexedRow } from '../src/ozellik/eslestirme/matching/index/types';
 
 let passed = 0; let failed = 0; const failures: string[] = [];
 function check(name: string, cond: boolean, detail?: string) {
@@ -82,8 +82,8 @@ function libRow(c: ProductColumns & { discount?: number; custom?: number }) {
 }
 
 async function dispatchTestleri() {
-  const { MatchingService } = require('../src/modules/matching/matching.service');
-  const { TerminologyService, ALIAS_SEEDS } = require('../src/modules/matching/terminology.service');
+  const { MatchingService } = require('../src/ozellik/eslestirme/matching/matching.service');
+  const { TerminologyService, ALIAS_SEEDS } = require('../src/ozellik/eslestirme/matching/terminology.service');
 
   function svcWith(rows: any[], otherRows: any[] = [], brandName = 'AYVAZ', hafiza: any = null) {
     const prisma: any = {
@@ -291,8 +291,8 @@ async function dispatchTestleri() {
  * PPR'lari eliyordu. Fix: KADEMELI alias — guard'i gecen ILK alias kazanir.
  */
 async function temizSuTestleri() {
-  const { MatchingService } = require('../src/modules/matching/matching.service');
-  const { TerminologyService, ALIAS_SEEDS } = require('../src/modules/matching/terminology.service');
+  const { MatchingService } = require('../src/ozellik/eslestirme/matching/matching.service');
+  const { TerminologyService, ALIAS_SEEDS } = require('../src/ozellik/eslestirme/matching/terminology.service');
 
   function svcAlias(rows: any[], ekAliaslar: any[] = []) {
     const aliasRows = [
@@ -477,7 +477,7 @@ function panoCapTestleri() {
   // grade cakismasi nedeniyle normalize katmanina dokunulmadi; gercek
   // kullanici vakasi Ø idi — 19a/b uctan uca yesil).
   {
-    const { extractSizeInfo } = require('../src/modules/matching/conversion');
+    const { extractSizeInfo } = require('../src/ozellik/eslestirme/matching/conversion');
     const q = extractSizeInfo('Q32 boru');
     check('PANO 19 "Q" öneki çap ayrıştırıcıda tanınır (Q32 → 32 mm)',
       q?.source === 'mm' && q?.value === 32, JSON.stringify(q));

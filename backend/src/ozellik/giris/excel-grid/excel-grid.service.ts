@@ -16,7 +16,7 @@
 // ════════════════════════════════════════════════════════════════════
 import { Injectable, BadRequestException } from '@nestjs/common';
 import * as XLSX from 'xlsx';
-import { PrismaService } from '../../altyapi/db/prisma.service';
+import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { detectSheetDiscipline } from './sheet-discipline';
 import { standartlastir } from './standart-sema';
 

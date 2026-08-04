@@ -7,7 +7,7 @@
  * "Excel dosyasinda fiyatlandirilacak veri bulunamadi" ile reddediliyordu.
  */
 import * as XLSX from 'xlsx';
-import { ExcelGridService } from '../src/modules/excel-grid/excel-grid.service';
+import { ExcelGridService } from '../src/ozellik/giris/excel-grid/excel-grid.service';
 
 let passed = 0; let failed = 0; const failures: string[] = [];
 function check(name: string, cond: boolean, detail?: string) {

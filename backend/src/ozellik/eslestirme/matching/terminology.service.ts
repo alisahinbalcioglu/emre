@@ -9,7 +9,7 @@
 // ────────────────────────────────────────────
 
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { PrismaService } from '../../altyapi/db/prisma.service';
+import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { normalizeText } from './normalizer';
 import type { SizeClass } from './conversion';
 

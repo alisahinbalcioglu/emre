@@ -6,9 +6,9 @@ import * as ExcelJS from 'exceljs';
 // PRD Teklif Formatim (v2.1): profesyonel cikti motoru
 import { buildExportWorkbook, ExportSonucu, ExportBirim } from './export-engine';
 import { standartCiktiUret } from './standart-cikti';
-import { buildSampleFormat, ExportOverrides, FillContext } from '../../../quote-formats/format-engine';
-import { ExchangeRatesService } from '../../../exchange-rates/exchange-rates.service';
-import { yukariYuvarla } from '../../../modules/matching/pricing';
+import { buildSampleFormat, ExportOverrides, FillContext } from '../../cikti/quote-formats/format-engine';
+import { ExchangeRatesService } from '../../fiyat/exchange-rates/exchange-rates.service';
+import { yukariYuvarla } from '../../fiyat/matching/pricing';
 
 /** KDV orani — kod sabiti (ayarlanabilirlik backlog) */
 const KDV_ORAN = 0.20;

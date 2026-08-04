@@ -5,13 +5,13 @@
 // AD cozulemezse satir isaretlenir, admin elle duzeltebilir (adOverride).
 // ────────────────────────────────────────────
 
-import { generateTags } from '../modules/matching/tag-generator';
+import { generateTags } from '../matching/tag-generator';
 import {
   TAG_LABELS, attrLabel, isAttrTag,
   KIND_TAGS, SURFACE_TAGS, CONNECTION_TAGS, MATERIAL_SUBTYPE_KEYS,
   MATERIAL_TYPE_TAGS,
-} from '../modules/matching/shared-tag-matcher';
-import { AD_DISPLAY } from '../modules/matching/ad-resolver';
+} from '../matching/shared-tag-matcher';
+import { AD_DISPLAY } from '../matching/ad-resolver';
 
 /** AD (malzeme adi/ailesi) Turkce etiketleri — admin duzeltme dropdown'u da
  *  bu listeden secer. */

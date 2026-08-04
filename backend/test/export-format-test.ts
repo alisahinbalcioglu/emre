@@ -9,9 +9,9 @@
 import * as ExcelJS from 'exceljs';
 import {
   scanWorkbook, buildSampleFormat, sheetToGrid, hucreMetni, TANINAN_ETIKETLER,
-} from '../src/quote-formats/format-engine';
+} from '../src/ozellik/cikti/quote-formats/format-engine';
 import { buildExportWorkbook } from '../src/ozellik/teklif/quotes/export-engine';
-import { sayfaRolleriTahminEt } from '../src/quote-formats/format-engine';
+import { sayfaRolleriTahminEt } from '../src/ozellik/cikti/quote-formats/format-engine';
 
 let passed = 0; let failed = 0; const failures: string[] = [];
 function check(name: string, cond: boolean, detail?: string) {

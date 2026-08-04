@@ -7,8 +7,8 @@
  * T9 (ters yon), T11 (32x5.4), T13 (HDPE 110), D3/D4/P3 gosterim toleranslari.
  */
 
-import { extractSizeInfo, sizeEquivalents, isSizeTag } from '../src/modules/matching/conversion';
-import type { SizeClass, SizeInfo } from '../src/modules/matching/conversion';
+import { extractSizeInfo, sizeEquivalents, isSizeTag } from '../src/ozellik/eslestirme/matching/conversion';
+import type { SizeClass, SizeInfo } from '../src/ozellik/eslestirme/matching/conversion';
 
 let passed = 0;
 let failed = 0;

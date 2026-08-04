@@ -8,7 +8,7 @@ import {
   inferPriceFormat, flagPriceOutliers, ImportRowView,
   mapPriceListColumns, yapilandirmaSkoru,
 } from '../src/ozellik/kutuphane/utils/import-fidelity';
-import { deriveEtiketler, isValidAdOverride } from '../src/utils/etiket-display';
+import { deriveEtiketler, isValidAdOverride } from '../src/ozellik/eslestirme/utils/etiket-display';
 
 let passed = 0; let failed = 0; const failures: string[] = [];
 function check(name: string, cond: boolean, detail?: string) {

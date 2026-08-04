@@ -11,9 +11,9 @@
  * manuelUrunIndeksle ORTAK yardimcisi) boylece dogrudan test edilir.
  */
 
-import { MatchingService } from '../src/modules/matching/matching.service';
-import { LaborMatchingService } from '../src/modules/labor-matching/labor-matching.service';
-import { TerminologyService, ALIAS_SEEDS } from '../src/modules/matching/terminology.service';
+import { MatchingService } from '../src/ozellik/eslestirme/matching/matching.service';
+import { LaborMatchingService } from '../src/ozellik/eslestirme/labor-matching/labor-matching.service';
+import { TerminologyService, ALIAS_SEEDS } from '../src/ozellik/eslestirme/matching/terminology.service';
 
 let passed = 0; let failed = 0; const failures: string[] = [];
 function check(name: string, cond: boolean, detail?: string) {

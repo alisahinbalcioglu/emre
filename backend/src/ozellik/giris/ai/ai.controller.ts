@@ -2,9 +2,9 @@ import { Controller, Post, UseGuards, UseInterceptors, UploadedFile } from '@nes
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { AiService } from './ai.service';
-import { JwtAuthGuard } from '../altyapi/auth/guards/jwt-auth.guard';
-import { TierGuard, RequireTier } from '../altyapi/auth/guards/tier.guard';
-import { CurrentUser } from '../altyapi/auth/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../../../altyapi/auth/guards/jwt-auth.guard';
+import { TierGuard, RequireTier } from '../../../altyapi/auth/guards/tier.guard';
+import { CurrentUser } from '../../../altyapi/auth/decorators/current-user.decorator';
 
 @Controller('ai')
 @UseGuards(JwtAuthGuard, TierGuard)

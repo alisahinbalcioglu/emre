@@ -9,10 +9,10 @@
  */
 
 import { PrismaClient } from '@prisma/client';
-import { MatchingService } from '../src/modules/matching/matching.service';
-import { TerminologyService } from '../src/modules/matching/terminology.service';
-import { generateTags } from '../src/modules/matching/tag-generator';
-import { extractDiameter } from '../src/modules/matching/normalizer';
+import { MatchingService } from '../src/ozellik/eslestirme/matching/matching.service';
+import { TerminologyService } from '../src/ozellik/eslestirme/matching/terminology.service';
+import { generateTags } from '../src/ozellik/eslestirme/matching/tag-generator';
+import { extractDiameter } from '../src/ozellik/eslestirme/matching/normalizer';
 
 interface TestCase {
   name: string;

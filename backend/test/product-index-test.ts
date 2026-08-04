@@ -13,7 +13,7 @@ import {
   buildProductIndex, buildRowKey, tokenize, resolveFamily, tokenEsit,
   resolveProductSizeClass, buildBoyTag, rebuildIndexFields,
   BELIRSIZ_SLUG, INDEX_VERSION, type ProductColumns,
-} from '../src/modules/matching/index/product-index';
+} from '../src/ozellik/eslestirme/matching/index/product-index';
 
 let passed = 0; let failed = 0; const failures: string[] = [];
 function check(name: string, cond: boolean, detail?: string) {

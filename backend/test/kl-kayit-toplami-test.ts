@@ -33,7 +33,7 @@
  * DB GEREKTIRMEZ: prisma sahte, yalniz create cagrisinin ITEMS'i okunur.
  */
 import { QuotesService } from '../src/ozellik/teklif/quotes/quotes.service';
-import { yukariYuvarla } from '../src/modules/matching/pricing';
+import { yukariYuvarla } from '../src/ozellik/fiyat/matching/pricing';
 
 let pass = 0;
 const fails: string[] = [];

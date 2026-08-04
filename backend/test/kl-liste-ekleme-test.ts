@@ -15,8 +15,8 @@
 import { PrismaClient } from '@prisma/client';
 import { LaborFirmsService } from '../src/ozellik/kutuphane/labor-firms/labor-firms.service';
 import { LibraryService } from '../src/ozellik/kutuphane/library/library.service';
-import { MatchingService } from '../src/modules/matching/matching.service';
-import { TerminologyService } from '../src/modules/matching/terminology.service';
+import { MatchingService } from '../src/ozellik/eslestirme/matching/matching.service';
+import { TerminologyService } from '../src/ozellik/eslestirme/matching/terminology.service';
 
 let passed = 0; let failed = 0; const failures: string[] = [];
 function check(name: string, cond: boolean, detail?: string) {

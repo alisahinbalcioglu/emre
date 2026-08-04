@@ -15,9 +15,9 @@
  * gevsetmek = sozlesmeyi bozmak. Once burayi oku, sonra motoru degistir.
  */
 
-import { MatchingService } from '../src/modules/matching/matching.service';
-import { TerminologyService, ALIAS_SEEDS } from '../src/modules/matching/terminology.service';
-import type { MatchResult, MatchCandidate, BrandAlternative } from '../src/modules/matching/types';
+import { MatchingService } from '../src/ozellik/eslestirme/matching/matching.service';
+import { TerminologyService, ALIAS_SEEDS } from '../src/ozellik/eslestirme/matching/terminology.service';
+import type { MatchResult, MatchCandidate, BrandAlternative } from '../src/ozellik/eslestirme/matching/types';
 
 function lib(name: string, price: number) {
   return { id: `lib-${name}`, material: null, materialName: name, customPrice: null, listPrice: price, discountRate: 0 };

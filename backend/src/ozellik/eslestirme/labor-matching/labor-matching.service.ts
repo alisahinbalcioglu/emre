@@ -1,5 +1,5 @@
 import { Injectable, ForbiddenException } from '@nestjs/common';
-import { PrismaService } from '../../altyapi/db/prisma.service';
+import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { MatchingService } from '../matching/matching.service';
 import { generateTags } from '../matching/tag-generator';
 import type { MatchResult } from '../matching/types';

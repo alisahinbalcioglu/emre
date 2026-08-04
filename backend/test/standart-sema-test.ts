@@ -11,8 +11,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as XLSX from 'xlsx';
-import { ExcelGridService } from '../src/modules/excel-grid/excel-grid.service';
-import { STANDART_KOLONLAR, STANDART_ROLLER } from '../src/modules/excel-grid/standart-sema';
+import { ExcelGridService } from '../src/ozellik/giris/excel-grid/excel-grid.service';
+import { STANDART_KOLONLAR, STANDART_ROLLER } from '../src/ozellik/giris/excel-grid/standart-sema';
 
 const FIX = path.resolve(__dirname, '../../test-fixtures/e2e');
 /** Turkce katlama — "YILDIZ".toLowerCase('tr') noktasiz ı verir, duz

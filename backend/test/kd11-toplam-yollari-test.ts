@@ -27,7 +27,7 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
-import { ExcelGridService } from '../src/modules/excel-grid/excel-grid.service';
+import { ExcelGridService } from '../src/ozellik/giris/excel-grid/excel-grid.service';
 
 let pass = 0;
 const fails: string[] = [];
