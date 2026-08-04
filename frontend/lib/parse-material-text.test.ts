@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseMaterialText, joinMaterialText } from './parse-material-text';
+import { parseMaterialText, joinMaterialText } from '../ozellik/tablo/parse-material-text';
 
 describe('parseMaterialText — DWG bucket metnini cap + cins ayirma', () => {
   it('Ø-prefix: "Ø110 PVC BORU"', () => {

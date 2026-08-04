@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { yukariYuvarla, hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam } from './pricing';
+import { yukariYuvarla, hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam } from '../ozellik/fiyat/pricing';
 
 // Spec'in "Kucuk kendi kendine test" bolumu — birebir.
 describe('fiyat cekirdegi (spec)', () => {
@@ -73,7 +73,7 @@ describe('fiyat cekirdegi (spec)', () => {
 
 // UY2 (EMO AYVAZ 27.07): MİKTAR/BİRİM ters persist edilmis tekliflerde
 // app toplami hesaplanamiyordu — etkin miktar saf-sayi hucreden okunur.
-import { etkinMiktar } from './pricing';
+import { etkinMiktar } from '../ozellik/fiyat/pricing';
 
 describe('etkinMiktar (UY2)', () => {
   it('normal satır: quantityField saf sayı → o kullanılır', () => {

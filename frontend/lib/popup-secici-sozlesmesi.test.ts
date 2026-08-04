@@ -32,7 +32,7 @@ const kodu = (s: string) => s
   .split('\n').map((l) => l.split('//')[0]).join('\n');
 
 const helpers = kodu(oku('../e2e-golden/helpers.ts'));
-const grid = kodu(oku('../components/excel-grid/ExcelGrid.tsx'));
+const grid = kodu(oku('../ozellik/tablo/excel-grid/ExcelGrid.tsx'));
 
 describe('KD5c — aday popup seçici sözleşmesi', () => {
   it('KD5c-a: harness kırılgan "yaprak div" taramasına yaslanmaz', () => {

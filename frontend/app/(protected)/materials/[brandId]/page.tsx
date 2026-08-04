@@ -14,9 +14,9 @@ import api from '@/ortak/lib/api';
 import { toast } from '@/ortak/hooks/use-toast';
 import { confirm } from '@/ortak/hooks/use-confirm';
 import { cn } from '@/ortak/lib/utils';
-import { ExcelGrid } from '@/components/excel-grid/ExcelGrid';
-import { SheetTabs } from '@/components/excel-grid/SheetTabs';
-import type { MultiSheetData, ExcelRowData } from '@/components/excel-grid/types';
+import { ExcelGrid } from '@/ozellik/tablo/excel-grid/ExcelGrid';
+import { SheetTabs } from '@/ozellik/tablo/excel-grid/SheetTabs';
+import type { MultiSheetData, ExcelRowData } from '@/ozellik/tablo/excel-grid/types';
 
 /* ── Types ── */
 

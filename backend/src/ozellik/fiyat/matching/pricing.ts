@@ -1,6 +1,6 @@
 // ============================================================
 // MetaPrice — Fiyat Atama Kurallari (fiyatlandirma cekirdegi)
-// Kaynak: kullanici spec'i 2026-07-08. Frontend esi: frontend/lib/pricing.ts
+// Kaynak: kullanici spec'i 2026-07-08. Frontend esi: frontend/ozellik/fiyat/pricing.ts
 // Iki dosya AYNI kurallari tasimali — degistirirken ikisini de guncelle.
 // ============================================================
 //
@@ -23,7 +23,7 @@ export function clamp(x: number, lo: number, hi: number): number {
  *  12200 × ₺152,30 satiri ₺1.858.060,10 yaziyordu, dogrusu ₺1.858.060,00.
  *  `Math.ceil` oldugu icin sapma her zaman YUKARI idi.
  *
- *  Frontend esi `frontend/lib/pricing.ts` ile BIREBIR AYNI olmak ZORUNDA —
+ *  Frontend esi `frontend/ozellik/fiyat/pricing.ts` ile BIREBIR AYNI olmak ZORUNDA —
  *  ikisi birlikte guncellenir. Gerekce ve kapi orada ayrintili yazili. */
 export function yukariYuvarla(x: number, hane = ONDALIK): number {
   const k = 10 ** hane;
@@ -42,4 +42,4 @@ export function hesaplaNetFiyat(listeFiyat: number, iskontoYuzde: number): numbe
 
 // NOT (denetim 22.07): hesaplaSatisBirimFiyat + hesaplaSatirToplam BE
 // kopyalari SILINDI — satis/satir hesabi yalniz FE'de yapilir
-// (frontend/lib/pricing.ts, testli canli kopya). BE yalniz NET fiyat hesaplar.
+// (frontend/ozellik/fiyat/pricing.ts, testli canli kopya). BE yalniz NET fiyat hesaplar.

@@ -15,7 +15,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { karYayilimi } from './fill-down';
-import { hesaplaSatisBirimFiyat, hesaplaSatirToplam } from '../../lib/pricing';
+import { hesaplaSatisBirimFiyat, hesaplaSatirToplam } from '../../fiyat/pricing';
 
 describe('karYayilimi — kar% surukle-doldur', () => {
   it('birim fiyat YUKARI 1 haneye yuvarlanir (ham carpim degil)', () => {

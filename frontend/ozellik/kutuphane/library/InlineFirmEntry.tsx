@@ -11,8 +11,8 @@
 import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react';
 import api from '@/ortak/lib/api';
 import { toast } from '@/ortak/hooks/use-toast';
-import { ExcelGrid } from '@/components/excel-grid/ExcelGrid';
-import type { ExcelGridData, ExcelRowData } from '@/components/excel-grid/types';
+import { ExcelGrid } from '@/ozellik/tablo/excel-grid/ExcelGrid';
+import type { ExcelGridData, ExcelRowData } from '@/ozellik/tablo/excel-grid/types';
 
 // 7-kolon sabit sema — İşçilik Kalemi (AD) · Cins · Çap · Birim · Birim Fiyat ·
 // Para · Not. İskonto%/Net Fiyat kütüphane modu kolonlarıdır (_draftDiscount /

@@ -13,8 +13,8 @@
  */
 
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { ExcelGrid } from '@/components/excel-grid/ExcelGrid';
-import type { ExcelGridData, MatchCandidate } from '@/components/excel-grid/types';
+import { ExcelGrid } from '@/ozellik/tablo/excel-grid/ExcelGrid';
+import type { ExcelGridData, MatchCandidate } from '@/ozellik/tablo/excel-grid/types';
 
 // Loglar REACT DISI tutulur (window.__olay): setState her sorguda parent'i
 // re-render edip AG Grid hucrelerini remount ettiriyordu → popup state'i

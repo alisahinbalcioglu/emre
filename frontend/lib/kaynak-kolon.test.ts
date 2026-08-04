@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { kaynakKolonEtiketi } from './kaynak-kolon';
+import { kaynakKolonEtiketi } from '../ozellik/giris/kaynak-kolon';
 
 /**
  * KULLANICI BULGUSU (canlı, 02.08.2026): "Malzeme Adı sütunu" kutusunda

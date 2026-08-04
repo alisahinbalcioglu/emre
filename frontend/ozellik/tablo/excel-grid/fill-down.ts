@@ -25,7 +25,7 @@
  */
 // NOT: relative import — vitest.config.ts'te '@/' alias'i tanimli degil ve
 // bu modul birim testle sinaniyor (fill-down.test.ts).
-import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, etkinMiktar } from '../../lib/pricing';
+import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, etkinMiktar } from '../../fiyat/pricing';
 
 /** Eslestirme motorunun (onBrandChange/onFirmaChange) dondurdugu sonuc. */
 export interface MotorSonucu {

@@ -12,8 +12,8 @@ import { Card } from '@/ortak/ui/card';
 import api from '@/ortak/lib/api';
 import { toast } from '@/ortak/hooks/use-toast';
 import { confirm } from '@/ortak/hooks/use-confirm';
-import { ExcelGrid, type ExcelGridHandle } from '@/components/excel-grid/ExcelGrid';
-import type { ExcelGridData, ExcelRowData } from '@/components/excel-grid/types';
+import { ExcelGrid, type ExcelGridHandle } from '@/ozellik/tablo/excel-grid/ExcelGrid';
+import type { ExcelGridData, ExcelRowData } from '@/ozellik/tablo/excel-grid/types';
 
 interface BrandLibraryResponse {
   id: string;

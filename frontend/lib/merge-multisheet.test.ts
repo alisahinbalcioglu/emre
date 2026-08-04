@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { mergeMultiSheet } from './merge-multisheet';
-import type { MultiSheetData, ExcelRowData } from '@/components/excel-grid/types';
+import { mergeMultiSheet } from '../ozellik/tablo/merge-multisheet';
+import type { MultiSheetData, ExcelRowData } from '@/ozellik/tablo/excel-grid/types';
 
 const ROLES = { noField: 'No', nameField: 'Ad', quantityField: 'Miktar', materialUnitPriceField: 'Birim Fiyat' };
 

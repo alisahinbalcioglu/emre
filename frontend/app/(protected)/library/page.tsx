@@ -24,7 +24,7 @@ import {
 import { toast } from '@/ortak/hooks/use-toast';
 import { confirm } from '@/ortak/hooks/use-confirm';
 import api from '@/ortak/lib/api';
-import { hesaplaNetFiyat } from '@/lib/pricing';
+import { hesaplaNetFiyat } from '@/ozellik/fiyat/pricing';
 
 /* -------------------------------------------------------------------------- */
 /*  Types                                                                      */

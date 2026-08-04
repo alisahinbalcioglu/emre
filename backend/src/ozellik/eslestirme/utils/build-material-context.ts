@@ -3,7 +3,7 @@
  * Used in save-from-sheets endpoints to reconstruct full material names
  * from grid rows (parent group header + current row name).
  *
- * Kept in sync with frontend/components/excel-grid/build-material-context.ts
+ * Kept in sync with frontend/ozellik/tablo/excel-grid/build-material-context.ts
  */
 
 export interface ColumnRoles {

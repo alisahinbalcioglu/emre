@@ -7,8 +7,8 @@ import { Input } from '@/ortak/ui/input';
 import api from '@/ortak/lib/api';
 import { toast } from '@/ortak/hooks/use-toast';
 import { confirm } from '@/ortak/hooks/use-confirm';
-import { ExcelGrid } from '@/components/excel-grid/ExcelGrid';
-import type { ExcelGridData, ExcelRowData } from '@/components/excel-grid/types';
+import { ExcelGrid } from '@/ozellik/tablo/excel-grid/ExcelGrid';
+import type { ExcelGridData, ExcelRowData } from '@/ozellik/tablo/excel-grid/types';
 
 // ── "Marka Ekle" / "Malzeme Ekle" bos tablosu — foto formatinin bos hali ──
 // Sabit sema (ProductIndex 11 kolonuyla birebir). İskonto %/Net Fiyat kolonlari

@@ -19,7 +19,7 @@
 
 import type {
   MultiSheetData, SheetData, ExcelRowData, ColumnRoles, ExcelColumnDef,
-} from '@/components/excel-grid/types';
+} from '@/ozellik/tablo/excel-grid/types';
 
 /** Kullanici emegi tasiyan alanlar — merge'de HER ZAMAN eski satirdan korunur. */
 const SYSTEM_FIELDS = [

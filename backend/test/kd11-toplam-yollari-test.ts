@@ -20,7 +20,7 @@
  *     `_labBirim` dolu 85, `_labToplam` dolu 90 — beş satırda birim fiyat
  *     yokken toplam var; hesaplansaydı bu imkânsızdı.
  *
- * TEK FORMÜL: `frontend/lib/pricing.ts:53` hesaplaSatirToplam(satış, miktar).
+ * TEK FORMÜL: `frontend/ozellik/fiyat/pricing.ts:53` hesaplaSatirToplam(satış, miktar).
  * Yeni çarpma İCAT EDİLMEZ; Yol A da bu formülü kullanacak.
  *
  * Çıkış kodu sözleşmesi: 0 = PASS · 2 = ÖN ŞART YOK · diğer = FAIL.
@@ -49,7 +49,7 @@ const sina = (kod: string, ad: string, kosul: boolean, kanit: string) => {
  *  Kural (KD9): beklenen değeri test KENDİ modeliyle üretmez — üretirse
  *  ürünle ayrışır ve yanlış ölçer. Bu dosya zaten `toplamlariTamamla`yı
  *  aynı yerden `require` ediyor; yuvarlama da oradan gelir. */
-const { yukariYuvarla } = require('../../frontend/lib/pricing');
+const { yukariYuvarla } = require('../../frontend/ozellik/fiyat/pricing');
 const beklenenToplam = (birim: number, miktar: number) => yukariYuvarla(birim * miktar);
 
 const FIX = path.resolve(__dirname, '../../test-fixtures/e2e');
@@ -90,7 +90,7 @@ async function main() {
     // Backend'e ikinci bir carpma YAZILMADI — o "yeni carpma icat etme"
     // yasagini cignerdi. Test o fonksiyonu birebir cagirir.
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { toplamlariTamamla } = require('../../frontend/lib/pricing');
+    const { toplamlariTamamla } = require('../../frontend/ozellik/fiyat/pricing');
     toplamlariTamamla(sh.rowData ?? [], sh.columnRoles ?? {});
 
     const matDolu = fiyatli.filter((r: any) => String(r._matToplam ?? '').trim() !== '').length;
@@ -126,7 +126,7 @@ async function main() {
   // Genel Toplam: fill-down HİÇBİR YERDE grandTotalField yazmıyor.
   {
     const fillDown = fs.readFileSync(
-      path.resolve(__dirname, '../../frontend/components/excel-grid/fill-down.ts'), 'utf-8');
+      path.resolve(__dirname, '../../frontend/ozellik/tablo/excel-grid/fill-down.ts'), 'utf-8');
     const kod = fillDown.replace(/\/\*[\s\S]*?\*\//g, '')
       .split('\n').map((l) => l.split('//')[0]).join('\n');
 

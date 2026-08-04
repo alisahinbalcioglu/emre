@@ -16,8 +16,8 @@ import {
   Package,
 } from 'lucide-react';
 import { Button } from '@/ortak/ui/button';
-import { teklifCiktisiniIndir } from '@/lib/export-download';
-import { adDisiplinTahmini } from '@/lib/disiplin';
+import { teklifCiktisiniIndir } from '@/ozellik/cikti/export-download';
+import { adDisiplinTahmini } from '@/ozellik/tablo/disiplin';
 import { Card, CardContent, CardHeader, CardTitle } from '@/ortak/ui/card';
 import { Input } from '@/ortak/ui/input';
 import { Label } from '@/ortak/ui/label';
@@ -32,20 +32,20 @@ import api from '@/ortak/lib/api';
 import { toast } from '@/ortak/hooks/use-toast';
 import { confirm } from '@/ortak/hooks/use-confirm';
 import { cn } from '@/ortak/lib/utils';
-import { ExcelGrid } from '@/components/excel-grid/ExcelGrid';
-import type { ExcelGridHandle } from '@/components/excel-grid/ExcelGrid';
-import { SheetTabs } from '@/components/excel-grid/SheetTabs';
-import ColumnManagerPanel from '@/components/quotes/ColumnManagerPanel';
-import type { ExcelGridData, ExcelRowData, MultiSheetData, SheetData, MatchCandidate as ExcelMatchCandidate } from '@/components/excel-grid/types';
+import { ExcelGrid } from '@/ozellik/tablo/excel-grid/ExcelGrid';
+import type { ExcelGridHandle } from '@/ozellik/tablo/excel-grid/ExcelGrid';
+import { SheetTabs } from '@/ozellik/tablo/excel-grid/SheetTabs';
+import ColumnManagerPanel from '@/ozellik/tablo/quotes/ColumnManagerPanel';
+import type { ExcelGridData, ExcelRowData, MultiSheetData, SheetData, MatchCandidate as ExcelMatchCandidate } from '@/ozellik/tablo/excel-grid/types';
 import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
 // DwgUploader artik bagimsiz /dwg-workspace route'unda render ediliyor —
 // ana quotes bundle'i DWG viewer agirligindan kurtuldu.
 import type { MetrajResult } from '@/components/dwg-metraj/types';
 import MetrajEditor from '@/components/dwg-metraj/MetrajEditor';
-import { parseMaterialText } from '@/lib/parse-material-text';
-import { mergeMultiSheet } from '@/lib/merge-multisheet';
-import { kaynakKolonEtiketi } from '@/lib/kaynak-kolon';
-import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, toplamlariTamamla, etkinMiktar } from '@/lib/pricing';
+import { parseMaterialText } from '@/ozellik/tablo/parse-material-text';
+import { mergeMultiSheet } from '@/ozellik/tablo/merge-multisheet';
+import { kaynakKolonEtiketi } from '@/ozellik/giris/kaynak-kolon';
+import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, toplamlariTamamla, etkinMiktar } from '@/ozellik/fiyat/pricing';
 import type { Brand } from '@/ortak/types';
 import type {
   UploadMode,
@@ -56,7 +56,7 @@ import type {
   MatchCandidate,
   EditableRow,
 } from '@/ortak/types/quotes';
-import { useCurrency } from '@/hooks/use-currency';
+import { useCurrency } from '@/ozellik/fiyat/use-currency';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */

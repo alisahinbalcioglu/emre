@@ -12,10 +12,10 @@ import { Card } from '@/ortak/ui/card';
 import api from '@/ortak/lib/api';
 import { toast } from '@/ortak/hooks/use-toast';
 import { confirm } from '@/ortak/hooks/use-confirm';
-import { ExcelGrid, type ExcelGridHandle } from '@/components/excel-grid/ExcelGrid';
+import { ExcelGrid, type ExcelGridHandle } from '@/ozellik/tablo/excel-grid/ExcelGrid';
 import InlineFirmEntry from '@/ozellik/kutuphane/library/InlineFirmEntry';
 import type { FirmEntryHandle } from '@/ozellik/kutuphane/library/InlineFirmEntry';
-import type { ExcelGridData, ExcelRowData } from '@/components/excel-grid/types';
+import type { ExcelGridData, ExcelRowData } from '@/ozellik/tablo/excel-grid/types';
 
 interface LaborFirm {
   id: string;

@@ -69,7 +69,7 @@ Bu projede eksikliğinin bedeli dört kez ödendi:
 
 **Bu grubun cevapsız soruları:**
 
-- Başlık satırı kararı kaç ayrı yerde veriliyor? — **CEVAPLANDI (ADIM 1a, 02.08): ÜÇ yerde.** (1) satır seçimi `excel-grid.service.ts:895-1005`, (2) etiket-satırı ayıklama `standart-sema.ts:251`, (3) seçici görünümü `frontend/lib/kaynak-kolon.ts`. Üçü ayrı katman: hangi satır başlık / hangi satır veri değil / kutuda ne yazar.
+- Başlık satırı kararı kaç ayrı yerde veriliyor? — **CEVAPLANDI (ADIM 1a, 02.08): ÜÇ yerde.** (1) satır seçimi `excel-grid.service.ts:895-1005`, (2) etiket-satırı ayıklama `standart-sema.ts:251`, (3) seçici görünümü `frontend/ozellik/giris/kaynak-kolon.ts`. Üçü ayrı katman: hangi satır başlık / hangi satır veri değil / kutuda ne yazar.
 - “Malzeme adı = sayfa adı” hatası okuyucudan mı, sütun eşlemesinden mi geliyor? — **KISMEN CEVAPLANDI (02.08): iki ayrı vaka var.** (a) KARTEPE tipi: dosyanın KENDİ başlık hücresi bölüm adını taşıyor (`No | YANGIN POMPA ODASI | Miktar`) — program dosyaya sadık, hata değil (KD12b kararı). (b) AKHİSAR tipi: merge'lü ünvan bandı yanlış SATIR seçtiriyordu — okuyucu hatasıydı, ADIM 1a düzeltti (KD12 e/f mühürlü).
 
 ## B · TABLO — ekranda gördüğün grid
@@ -82,13 +82,13 @@ Bu projede eksikliğinin bedeli dört kez ödendi:
 
 | | Dosya / uç | Ne çalıştırıyor | Kanıt nereden |
 |---|---|---|---|
-| ✅ | `frontend/components/excel-grid/ExcelGrid.tsx` | Ana tablo bileşeni — ekrandaki grid | KD5 kanıt zinciri; kalem 34; GOREV_Kapatma_Turu |
-| ✅ | `frontend/components/excel-grid/ExcelGrid.tsx:645` | Sürükleme tutamağı — commit 44babd1 (PU4c) bu satıra dokundu | Panel kalem 34 + KD5 |
-| ✅ | `frontend/components/excel-grid/ExcelGrid.tsx:285` | Çarpma şablonu — ÇALIŞAN örnek (İşç. Toplam bunun sayesinde doluyor) | Code raporu, ADIM 0 §2 |
-| ✅ | `frontend/components/excel-grid/aday-ayirt-edicilik.ts:18-174` | **Adı yanıltıcı: hangi adayın gösterileceğine karar VERMEZ** (hepsi gösterilir) — her adayın yanına konacak *ayırt edici metni* hesaplar. Adları ` · `/`\|`/2+ boşlukla bileşenlere ayırır; TÜM adaylarda geçen bileşen elenir, kalan fark etiket olur. Çağıranlar: `ExcelGrid.tsx:205`/`:214` (popup genişliği) · `:685` (aday etiketleri) · `:1192` (nitelik bağlamı). | HARİTA TAM turu 03.08 |
+| ✅ | `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | Ana tablo bileşeni — ekrandaki grid | KD5 kanıt zinciri; kalem 34; GOREV_Kapatma_Turu |
+| ✅ | `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx:645` | Sürükleme tutamağı — commit 44babd1 (PU4c) bu satıra dokundu | Panel kalem 34 + KD5 |
+| ✅ | `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx:285` | Çarpma şablonu — ÇALIŞAN örnek (İşç. Toplam bunun sayesinde doluyor) | Code raporu, ADIM 0 §2 |
+| ✅ | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.ts:18-174` | **Adı yanıltıcı: hangi adayın gösterileceğine karar VERMEZ** (hepsi gösterilir) — her adayın yanına konacak *ayırt edici metni* hesaplar. Adları ` · `/`\|`/2+ boşlukla bileşenlere ayırır; TÜM adaylarda geçen bileşen elenir, kalan fark etiket olur. Çağıranlar: `ExcelGrid.tsx:205`/`:214` (popup genişliği) · `:685` (aday etiketleri) · `:1192` (nitelik bağlamı). | HARİTA TAM turu 03.08 |
 | ✅ | `backend/src/ozellik/giris/excel-grid/standart-sema.ts:19-330` | Sabit 13 kolonluk şemaya dönüştürücü — dosyadan yalnız 4 alan taşınır (No · Malzeme Adı · Miktar · Birim), dosyanın MARKA sütunu tamamen atılır, fiyat rolleri bağlıysa hücre değerleri sabit alanlara kopyalanır. Çağıran: `excel-grid.service.ts:218` (`fixedSchema ? standartlastir(parsed) : parsed`). | HARİTA TAM turu 03.08 |
-| ✅ | `frontend/components/excel-grid/useFillHandle.tsx:88-270` → `ExcelGrid.tsx:1750-1913` → `fill-down.ts:141-275` | **Sürükle-doldur ÜÇ katman:** (1) JEST — hücrenin alt 10px'inden sürükleme/çift tık, iş kuralı bilmez, yalnız hedef satırları bildirir; (2) YÖNLENDİRİCİ `handleFillComplete` — alana göre 6 dal; (3) MANTIK `fill-down.ts` — `_marka`/`_firma` dallarını koşar (her satır kendi çapıyla motora yeniden sorulur, hiçbir satır sessiz kalmaz) **+ kar% aritmetiği `karYayilimi`** (P2-1a, 03.08: eskiden `ExcelGrid.tsx` içinde satır içiydi ve mühürlü formülleri HİÇ çağırmıyordu — ham çarpım + `toFixed(2)`; net 3.019,2 · kar %10 · miktar 3'te aynı sütuna 9.963,36 yazıyordu, doğrusu 9.963,6). **İskonto dalı hâlâ satır içi** (`applyDiscountBulk`). AG-Grid'in kendi fill özelliği KULLANILMIYOR (grep: 0). | HARİTA TAM turu 03.08 · P2-1a 03.08 (`kar-yayilimi.test.ts` kapısı) |
-| ✅ | `frontend/lib/kaynak-kolon.ts` | **“Malzeme Adı sütunu” seçicisinin etiketi** — tek kaynak. Gerçek başlık varsa YALNIZ başlık; başlık yoksa (`headerName === field`) örnek değer ipucu olarak kalır. | Canlı bulgu 02.08 (kutuda `MALZEME ADI — ör: 2000 GPM…` yazıyordu) · `d14856f` |
+| ✅ | `frontend/ozellik/tablo/excel-grid/useFillHandle.tsx:88-270` → `ExcelGrid.tsx:1750-1913` → `fill-down.ts:141-275` | **Sürükle-doldur ÜÇ katman:** (1) JEST — hücrenin alt 10px'inden sürükleme/çift tık, iş kuralı bilmez, yalnız hedef satırları bildirir; (2) YÖNLENDİRİCİ `handleFillComplete` — alana göre 6 dal; (3) MANTIK `fill-down.ts` — `_marka`/`_firma` dallarını koşar (her satır kendi çapıyla motora yeniden sorulur, hiçbir satır sessiz kalmaz) **+ kar% aritmetiği `karYayilimi`** (P2-1a, 03.08: eskiden `ExcelGrid.tsx` içinde satır içiydi ve mühürlü formülleri HİÇ çağırmıyordu — ham çarpım + `toFixed(2)`; net 3.019,2 · kar %10 · miktar 3'te aynı sütuna 9.963,36 yazıyordu, doğrusu 9.963,6). **İskonto dalı hâlâ satır içi** (`applyDiscountBulk`). AG-Grid'in kendi fill özelliği KULLANILMIYOR (grep: 0). | HARİTA TAM turu 03.08 · P2-1a 03.08 (`kar-yayilimi.test.ts` kapısı) |
+| ✅ | `frontend/ozellik/giris/kaynak-kolon.ts` | **“Malzeme Adı sütunu” seçicisinin etiketi** — tek kaynak. Gerçek başlık varsa YALNIZ başlık; başlık yoksa (`headerName === field`) örnek değer ipucu olarak kalır. | Canlı bulgu 02.08 (kutuda `MALZEME ADI — ör: 2000 GPM…` yazıyordu) · `d14856f` |
 | ✅ | `frontend/lib/kaynak-kolon.test.ts` | Yukarıdakinin mührü — İKİ aile: başlığı olan dosya (yalnız başlık) ve başlığı olmayan dosya (örnek kalır). | vitest 5 assert · eski davranış geri konunca **4'ü kırmızı** (ölçüldü) |
 | ✅ | `frontend/app/(protected)/quotes/new/page.tsx:1565` | Seçiciyi çizen yer — artık kendi dizesini kurmuyor, `kaynakKolonEtiketi()` çağırıyor. | `d14856f` |
 
@@ -113,7 +113,7 @@ Bu projede eksikliğinin bedeli dört kez ödendi:
 | ✅ | `backend/src/ozellik/eslestirme/matching/index/types.ts:43-154` | Motorun **iç sözleşmesi** (dış tip başka dosyada): `LineQuery:43-69` (ham metin + ürün-değil bayrağı + **sert kilit aile slug'ı**; null = aile çözülemedi → her zaman soru) · `FamilyVocab:72-76` · `RoutedTokens:79-90` · `AskColumn:95` · `NoneReason:97-104` · `QueryOutcome:111-129` · `QueryOpts`. | HARİTA TAM turu 03.08 |
 | ✅ | `frontend/app/(protected)/quotes/new/page.tsx:1067` | **YOL A — otomatik toplu eşleştirme:** sayfadaki tüm adlar tek `POST /matching/bulk-match` çağrısıyla (SemanticCache MISS akışı). | FAZ 2 · HR7 03.08 |
 | ✅ | `frontend/app/(protected)/quotes/new/page.tsx:1817` | **YOL B — elle marka seçimi (tek satır):** `onBrandChange` → tek adlı `bulk-match` (variantTags + birim ipucuyla); ExcelGrid marka dropdown'ı buradan geçer, fiyat yazımı `ExcelGrid.tsx:278`. | FAZ 2 · HR7 |
-| ✅ | `frontend/components/excel-grid/ExcelGrid.tsx:1791-1795` → `fill-down.ts:197` | **YOL C — toplu doldurma (sürükle/grup):** `fillDown(motor=onBrandChange)` — motoru YOL B'nin fonksiyonudur; satır satır aynı uca gider. Dördüncü tetik: teklif geri yüklemede yeniden eşleşme (`quotes/new:525`). | FAZ 2 · HR7 |
+| ✅ | `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx:1791-1795` → `fill-down.ts:197` | **YOL C — toplu doldurma (sürükle/grup):** `fillDown(motor=onBrandChange)` — motoru YOL B'nin fonksiyonudur; satır satır aynı uca gider. Dördüncü tetik: teklif geri yüklemede yeniden eşleşme (`quotes/new:525`). | FAZ 2 · HR7 |
 
 **Bu grubun cevapsız soruları:**
 
@@ -134,7 +134,7 @@ Bu projede eksikliğinin bedeli dört kez ödendi:
 | ✅ | `admin.controller.ts:126-200` → `admin.service.ts:489-1130` + `utils/import-fidelity.ts:22-305` | **Fiyat listesi içe aktarma — İKİ FAZLI:** önce dosya bellekte ayrıştırılır ve **hiçbir şey yazılmaz** (önizleme: kolon haritası + TR sayı ayrıştırma + para birimi etiketi + sapma işareti + "nokta binlik mi ondalık mı" tek sorusu); admin onaylayınca yazılır (liste bulunur/açılır, eski kalemler silinip baştan yazılır; her satır Material → MaterialPrice → ProductIndex zincirine gider). ⚠ **KUSUR:** ikinci yol `saveMaterialsFromSheets` (`:1134-1319`) yalnız `materialPrice.upsert` yapıyor, **ProductIndex YAZMIYOR** → o yoldan gelen marka indekssiz kalır. | HARİTA TAM turu 03.08 |
 | ✅ | `library.controller.ts:52-98` → `library.service.ts:241-277, 592-644` | **İskonto DÖRT ayrı uçtan yazılır:** tek satır · marka bazlı toplu · seçili kimlik listesine toplu (sürükle-doldur) · grid'in kirli satırlarını kaydeden yol (bu sonuncusu oranı 0-100'e sıkıştırır). **Net fiyat DB'ye HİÇ yazılmaz** — her gösterimde tek formülden üretilir (`liste × (1 − oran/100)`, yukarı 1 hane). | HARİTA TAM turu 03.08 |
 | ✅ | `exchange-rates.service.ts:39-134` · `matching.service.ts:57-68,116` · `outcome-mapper.ts:49-54` · `use-currency.ts` | **Çevrim DÖRT ayrı yerde, her biri farklı aşamada:** (1) içe aktarımda çevrim **YOK** (para birimi yalnız etiket, fiyat kaynak biriminde saklanır) · (2) **TABAN:** eşleştirme anında dövizli satırlar TCMB kuruyla TL'ye çevrilir (kur istek başına en fazla bir kez, yalnız dövizli satır varsa) · (3) **GÖSTERİM:** ekranın seçtiği birimde, yalnız görüntü · (4) çıktı/persist. ✅ **BEŞİNCİ NOKTA KALDIRILDI (P2-3, 03.08):** `admin.service.saveBulkMaterials` ve **ikizi** `labor-firms.service.saveBulkPrices` `exchangeRate` parametresi alıp fiyatı **DB'ye çevrilmiş** yazıyordu (kuralın tam tersi; para birimi orijinal etiketiyle kaldığı için teklif anında `buildTryConverter` bir kez daha çarpıyordu = **çift çevrim**). Hiçbir canlı çağıran değer geçmiyordu → çalışma zamanı davranışı değişmedi, kaldırılan bir **tuzaktı**. Çevrim artık yalnız yukarıdaki dört noktada. | HARİTA TAM turu 03.08 · P2-3 03.08 |
-| ✅ | `frontend/lib/pricing.ts:81-86` (merkezi) + 8 yerel biçimleyici | **Tek biçimleyici YOK — en az ÜÇ aile ve ÇELİŞİYORLAR:** merkezi `paraBicim` **1 ondalık** ("3.019,2"), diğer tüm FE biçimleyicileri ve Excel `numFmt`'ları **2 ondalık** ("3.019,20") → aynı değer gridde ve çıktıda farklı yazılır. TL sembolü ve binlik ayracı da ekseninde ayrışıyor. | HARİTA TAM turu 03.08 — "görüldü, dokunulmadı" |
+| ✅ | `frontend/ozellik/fiyat/pricing.ts:81-86` (merkezi) + 8 yerel biçimleyici | **Tek biçimleyici YOK — en az ÜÇ aile ve ÇELİŞİYORLAR:** merkezi `paraBicim` **1 ondalık** ("3.019,2"), diğer tüm FE biçimleyicileri ve Excel `numFmt`'ları **2 ondalık** ("3.019,20") → aynı değer gridde ve çıktıda farklı yazılır. TL sembolü ve binlik ayracı da ekseninde ayrışıyor. | HARİTA TAM turu 03.08 — "görüldü, dokunulmadı" |
 | ✅ | `backend/src/ozellik/fiyat/matching/pricing.ts:1-36` | Fiyat çekirdeğinin **BE yarısı** (tamamı 36 satır): `yukariYuvarla` (1 ondalık, 1e-9 epsilonla ikili artık taşması engellenir, −0 normalize) · `clamp` · `hesaplaNetFiyat`. **Satış (kar) ve satır toplamı BURADA YOK** (22.07 kararı) — dışarıya yalnız yuvarlama yardımcısı ödünç verilir (çağıranlar: `outcome-mapper:15,53` · `matching.service:22,470,652` · `quotes.service:21` KL P1-b sonrası). | HARİTA TAM turu 03.08 |
 | ✅ | `backend/src/ozellik/fiyat/matching/index/outcome-mapper.ts:1-254` | **Motorun tek çıkış kapısı:** iç sonucu dış sözleşmeye çevirir ve *"fiyat yalnız tek-eşleşme/oto-varyant dalından çıkar"* kuralını **yapısal olarak** dayatır — diğer tüm dallar sıfır fiyatla döner. Aday listesinde her adaya: görünür ad (boy ekli), net/liste/iskonto üçlüsü, sorulan kolona göre etiket, varyant kimliği, nitelik uyarısı. | HARİTA TAM turu 03.08 |
 
@@ -152,10 +152,10 @@ Bu projede eksikliğinin bedeli dört kez ödendi:
 
 | | Dosya / uç | Ne çalıştırıyor | Kanıt nereden |
 |---|---|---|---|
-| ✅ | `frontend/lib/pricing.ts:53-55` | **TEK FORMÜL** `hesaplaSatirToplam(satış, miktar)` — satır toplamının tek kaynağı; 11 çağrı noktası (★ listesinde). `toplamlariTamamla` :129-176 içe aktarmada boş toplamları bu formülle doldurur (Yol A tamiri; çağıran `quotes/new/page.tsx:350`). | FAZ 2 · HR5 03.08 — tüm çağrılar grep+okumayla sayıldı |
+| ✅ | `frontend/ozellik/fiyat/pricing.ts:53-55` | **TEK FORMÜL** `hesaplaSatirToplam(satış, miktar)` — satır toplamının tek kaynağı; 11 çağrı noktası (★ listesinde). `toplamlariTamamla` :129-176 içe aktarmada boş toplamları bu formülle doldurur (Yol A tamiri; çağıran `quotes/new/page.tsx:350`). | FAZ 2 · HR5 03.08 — tüm çağrılar grep+okumayla sayıldı |
 | ✅ | `standart-sema.ts:227-229` | Malzeme/işçilik toplam sütunlarını dosyadan YALNIZ KOPYALAR (hesap yok — bilinçli: müşterinin verisi üstündür); eksikler `toplamlariTamamla` ile içe aktarmada tamamlanır. | FAZ 2 · HR5; KD11 kök neden belgesi |
-| ✅ | `frontend/components/excel-grid/ExcelGrid.tsx:2362-2393` | `recalcGrand` — satır düzeyi Genel Toplam (matTop+labTop) 1/4: hücre değişim olaylarında. Diğer üç uygulama: `pricing.ts:165-171` (içe aktarma) · `fill-down.ts:77-94` (toplu doldurma; ⚠ inline yuvarlama epsilonsuz) · `standart-cikti.ts:186` (çıktı satırı). | FAZ 2 · HR5 |
-| ✅ | `frontend/components/excel-grid/ExcelGrid.tsx:1942-1999` | `updatePinnedBottom` — ekranın altındaki GENEL TOPLAM satırı: tüm veri satırlarının mat/lab/genel toplamı; `_ozet` satırları HARİÇ (62.043.700 dersinin kuralı burada yaşıyor). | FAZ 2 · HR5 |
+| ✅ | `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx:2362-2393` | `recalcGrand` — satır düzeyi Genel Toplam (matTop+labTop) 1/4: hücre değişim olaylarında. Diğer üç uygulama: `pricing.ts:165-171` (içe aktarma) · `fill-down.ts:77-94` (toplu doldurma; ⚠ inline yuvarlama epsilonsuz) · `standart-cikti.ts:186` (çıktı satırı). | FAZ 2 · HR5 |
+| ✅ | `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx:1942-1999` | `updatePinnedBottom` — ekranın altındaki GENEL TOPLAM satırı: tüm veri satırlarının mat/lab/genel toplamı; `_ozet` satırları HARİÇ (62.043.700 dersinin kuralı burada yaşıyor). | FAZ 2 · HR5 |
 | ✅ | `backend/src/ozellik/teklif/quotes/quotes.service.ts:44-56` | ⚠ KAYIT yolu toplamları — TEK FORMÜLÜ KULLANMAZ: `matUp×(1+margin)×qty` yuvarlamasız; DB'deki QuoteItem toplamları ekrandan sapabilir. Liste sayfası `quotes/page.tsx:33` bu DB değerlerini toplar. | FAZ 2 · HR5 — "görüldü, dokunulmadı" |
 | ✅ | `backend/test/standart-sema-test.ts` | 62.043.700 testi — TEK dosyanın toplamını doğruluyor, toplam özelliğini değil. Silinmeyecek, yanına ikincisi konacak. | GOREV_Kapatma_Turu; kalem 38 |
 
@@ -216,7 +216,7 @@ Bu projede eksikliğinin bedeli dört kez ödendi:
 | ✅ | `frontend/e2e-golden/firma-a-golden.spec.ts:362-422` | KG13 — USD/işçilik tek kur ölçütü. Panel "hâlâ kırmızı" diyor; **bu turda KOŞULMADI, doğrulanmadı.** Eski harita bunu `:394` diye gösteriyordu, o satır bugün bir yorum parçası. | Panel kalem 51 · konum 03.08'de düzeltildi |
 | ✅ | `frontend/e2e-golden/golden.spec.ts:161` | 17a’nın repodaki TEK izi — ve o da bir YORUM SATIRI. Yorum kod değildir. | Panel satır 17 |
 | ✅ | `frontend/e2e-golden/bolum-f-kabul.spec.ts:1-194` | Tek uçtan uca senaryo: gerçek tarayıcıda **11 sayfalık** gerçek dosya yüklenir → her sekmede sabit 13 kolon doğrulanır → dosyadan gelen fiyatların ekrana düştüğü ölçülür → bir hücreye kar% girilip toplamın **anında** değiştiği görülür → her sayfada iki toplam kolonu taranır → teklif kaydedilip yeniden açılır. Koşum: `run.mjs` + `playwright.golden.config.ts` (sunucu + fixture ister). | HARİTA TAM turu 03.08 |
-| ✅ | `frontend/components/excel-grid/aday-ayirt-edicilik.test.ts:1-177` | **3 sözleşme kümesi · 16 test · 29 assert:** (1) nitelik bağlamı — çap kendi satırında değil ALTINDAKİ nitelik satırlarındaysa sorguya girmeli (basınç/bağlantı da toplanır, toplama bir sonda durur); (2) ayırt edici metin seçimi; (3) veri sorunu işaretleri. Mühürlediği kod: `aday-ayirt-edicilik.ts:74-91, 113-138, 145-174`. | HARİTA TAM turu 03.08 |
+| ✅ | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts:1-177` | **3 sözleşme kümesi · 16 test · 29 assert:** (1) nitelik bağlamı — çap kendi satırında değil ALTINDAKİ nitelik satırlarındaysa sorguya girmeli (basınç/bağlantı da toplanır, toplama bir sonda durur); (2) ayırt edici metin seçimi; (3) veri sorunu işaretleri. Mühürlediği kod: `aday-ayirt-edicilik.ts:74-91, 113-138, 145-174`. | HARİTA TAM turu 03.08 |
 | ✅ | `backend/test/regression-all.ts` | SUITES listesi — package.json’daki her test:* burada olmalı (PK1) | GOREV_Sirada |
 | ✅ | `backend/test/matching-regression.ts` | `test:regression:db` — ÇAYIROVA (id :27 hardcoded) gerçek-DB uçtan uca eşleştirme: 10 vaka, 9'unda beklenen netPrice. Ön koşul kapısı :158-172 (ProductIndex=0 → çıkış 2 SKIP). AÇIK SORU :153-157 kapatılmadı: istek-anında-indeksle geri-düşüşü 116 satırı indeksliyor ama 0 eşleşme veriyor. | KALEM 58 keşfi 02.08 — okuma + nokta-teyit |
 | ✅ | `backend/test/kl-kayit-toplami-test.ts` | **KL P1-b mührü** — kaydedilen toplamın ekrandakiyle aynı olduğunu 5 assert'le sınar (K1 malzeme · K2 işçilik · K3 satır · K4 birim şişmez · K5 FE toplamı korunur). Sahte prisma, DB istemez. Kırmızı-önce ölçüldü: tamir öncesi **0 PASS · 5 FAIL** (kar %10'da ₺34,95 fazla). | KL · ADIM 2, 03.08 |
@@ -304,15 +304,15 @@ Karıştırılmasın diye ayrı duruyor.
 |---|---|
 | `frontend/app/(protected)/quotes/new/error.tsx` | Teklif olusturma rotasinda yakalanan hatayi mesaj ve stack ile gosterir, tekrar dene sunar |
 | `frontend/app/(protected)/quotes/new/page.tsx` | Teklif oluşturma akışının tamamını tek sayfada yürüten orkestratör (çok gruba dokunur, evi B) |
-| `frontend/components/excel-grid/CustomDropdown.tsx` | Grid hucrelerinde marka/firma secimi icin aranabilir, portal'la cizilen ozel acilir liste |
-| `frontend/components/excel-grid/fill-down.ts` | Surukle-doldur hedeflerini eslestirme motoruyla tek tek sorgular; fiyat/durum yazar, toplamlari tazeler, geri-alma anligi uretir |
-| `frontend/components/excel-grid/SheetTabs.tsx` | Alt sayfa sekmeleri: aktif sayfa secimi, disiplin (mekanik/elektrik) toggle'i ve eslesme sayaci rozetleri |
-| `frontend/components/excel-grid/types.ts` | Grid kolon tanımı, satır meta alanları, kolon rolleri, aday/marka tipleri |
-| `frontend/components/excel-grid/useFillHandle.tsx` | AG-Grid Community icin DOM-seviyesi doldurma tutamaci: alt kenardan surukleme, canli sayac rozeti, cift-tik aile doldurma |
-| `frontend/components/quotes/ColumnManagerPanel.tsx` | Sutun gizle/goster paneli: kilitli sutun korumasi, kat isaretleme (MIK toplami) ve kalici sutun kaldirma |
-| `frontend/lib/disiplin.ts` | Sekme adindan mekanik/elektrik disiplinini tahmin eden hafif fallback; tespit yoksa null |
-| `frontend/lib/merge-multisheet.ts` | Yeni yuklenen Excel'i mevcut grid durumuyla satir/sheet bazinda birlestirir; kullanici girdilerini ve ozel sutunlari korur |
-| `frontend/lib/parse-material-text.ts` | "Ø110 PVC BORU" gibi metni regex desenleriyle cap ve cins olarak ayirir, gerekirse geri birlestirir |
+| `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | Grid hucrelerinde marka/firma secimi icin aranabilir, portal'la cizilen ozel acilir liste |
+| `frontend/ozellik/tablo/excel-grid/fill-down.ts` | Surukle-doldur hedeflerini eslestirme motoruyla tek tek sorgular; fiyat/durum yazar, toplamlari tazeler, geri-alma anligi uretir |
+| `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | Alt sayfa sekmeleri: aktif sayfa secimi, disiplin (mekanik/elektrik) toggle'i ve eslesme sayaci rozetleri |
+| `frontend/ozellik/tablo/excel-grid/types.ts` | Grid kolon tanımı, satır meta alanları, kolon rolleri, aday/marka tipleri |
+| `frontend/ozellik/tablo/excel-grid/useFillHandle.tsx` | AG-Grid Community icin DOM-seviyesi doldurma tutamaci: alt kenardan surukleme, canli sayac rozeti, cift-tik aile doldurma |
+| `frontend/ozellik/tablo/quotes/ColumnManagerPanel.tsx` | Sutun gizle/goster paneli: kilitli sutun korumasi, kat isaretleme (MIK toplami) ve kalici sutun kaldirma |
+| `frontend/ozellik/tablo/disiplin.ts` | Sekme adindan mekanik/elektrik disiplinini tahmin eden hafif fallback; tespit yoksa null |
+| `frontend/ozellik/tablo/merge-multisheet.ts` | Yeni yuklenen Excel'i mevcut grid durumuyla satir/sheet bazinda birlestirir; kullanici girdilerini ve ozel sutunlari korur |
+| `frontend/ozellik/tablo/parse-material-text.ts` | "Ø110 PVC BORU" gibi metni regex desenleriyle cap ve cins olarak ayirir, gerekirse geri birlestirir |
 
 ### C · EŞLEŞTİRME — 16 dosya
 
@@ -333,7 +333,7 @@ Karıştırılmasın diye ayrı duruyor.
 | `backend/src/ozellik/eslestirme/matching/types.ts` | Esleme sonucu, aday, marka alternatifi ve tag'lenmis malzeme arayuz tanimlarini tasir |
 | `backend/src/ozellik/eslestirme/utils/build-material-context.ts` | Grid satirlarindan ust grup basligini bulup tam malzeme adini kurar; cap tutarsizliginda guvenli tarafta sadece satir adini doner |
 | `backend/src/ozellik/eslestirme/utils/etiket-display.ts` | Serbest metinden AD/CINS/CAP etiket gosterimlerini eslestirme motoru tag'leriyle turetir; admin AD duzeltmesini dogrular |
-| `frontend/components/excel-grid/build-material-context.ts` | Eslestirme sorgusu icin satirin olcu ifadesi tasiyip tasimadigini ve baslik baglami gerekip gerekmedigini belirler |
+| `frontend/ozellik/tablo/excel-grid/build-material-context.ts` | Eslestirme sorgusu icin satirin olcu ifadesi tasiyip tasimadigini ve baslik baglami gerekip gerekmedigini belirler |
 
 ### D · FİYAT — 5 dosya
 
@@ -341,9 +341,9 @@ Karıştırılmasın diye ayrı duruyor.
 |---|---|
 | `backend/src/ozellik/fiyat/exchange-rates/exchange-rates.controller.ts` | Canli kuru guard'siz public GET ucu olarak sunar |
 | `backend/src/ozellik/fiyat/exchange-rates/exchange-rates.service.ts` | TCMB XML'den USD/EUR kuru ceker; er-api fallback, 1 saatlik cache, thundering-herd korumasi |
-| `frontend/components/excel-grid/discount-utils.ts` | Iskonto yuzdesini 0-100'e sabitler, TR bicimli/%'li girisi ve cok satirli Excel yapistirmasini sayiya cevirir |
-| `frontend/hooks/use-currency.ts` | TRY bazli fiyatlari canli TCMB kuruyla USD/EUR'a ceviren ve bicimleyen para birimi hook'u |
-| `frontend/lib/pricing.ts` | Iskonto→net, kar→satis, yukari-1-hane yuvarlama, para birimi gosterim bicimi ve etkin miktar kurallarinin tek kaynagi |
+| `frontend/ozellik/tablo/excel-grid/discount-utils.ts` | Iskonto yuzdesini 0-100'e sabitler, TR bicimli/%'li girisi ve cok satirli Excel yapistirmasini sayiya cevirir |
+| `frontend/ozellik/fiyat/use-currency.ts` | TRY bazli fiyatlari canli TCMB kuruyla USD/EUR'a ceviren ve bicimleyen para birimi hook'u |
+| `frontend/ozellik/fiyat/pricing.ts` | Iskonto→net, kar→satis, yukari-1-hane yuvarlama, para birimi gosterim bicimi ve etkin miktar kurallarinin tek kaynagi |
 
 ### E · TOPLAM — bu turda satır düşmedi
 
@@ -357,7 +357,7 @@ Karıştırılmasın diye ayrı duruyor.
 | `backend/src/ozellik/teklif/quotes/export-engine.ts` | Format workbook'unu taban alip fiyatlanmis liste sayfalarini yerlestirerek profesyonel Excel ciktisi kurar; birim bicimi ve self-check uygular |
 | `backend/src/ozellik/cikti/utils/xlsx-to-pdf.ts` | Excel'i LibreOffice headless ile birebir baski gorunumlu PDF'e cevirir; soffice yoksa/timeout'ta null doner |
 | `frontend/app/(protected)/quote-formats/page.tsx` | Kalici teklif format sablonlarini yukleme, yer tutucu tarama onizlemesi, varsayilan yapma ve silme yonetimi |
-| `frontend/lib/export-download.ts` | Iki export ucunu cagirip blob'u dosya olarak indirtir; self-check ozet/uyari toast'larini gosterir |
+| `frontend/ozellik/cikti/export-download.ts` | Iki export ucunu cagirip blob'u dosya olarak indirtir; self-check ozet/uyari toast'larini gosterir |
 
 ### G · KÜTÜPHANE ve YÖNETİM — 40 dosya
 
@@ -452,10 +452,10 @@ Karıştırılmasın diye ayrı duruyor.
 | `frontend/components/dwg-metraj/unit-detection.test.ts` | Birim-metre donusum sabitlerini ve fallback davranislarini vitest ile dogrular |
 | `frontend/components/dwg-workspace/equipment-popup-mod.test.ts` | Ekipman popup'inin acilis sekmesi kurali (P2-6): manuel kayit manuel sekmede acilir, yeni isaretleme kutuphane modunda kalir |
 | `frontend/components/dwg-viewer/segment-length.test.ts` | Hover uzunluk cozumlemenin scale=0 bug reprosu dahil davranislarini vitest ile dogrular |
-| `frontend/components/excel-grid/build-material-context.test.ts` | Olcu ifadesi tespiti ve yetim-satir kararinin H4/C3 birim testleri |
-| `frontend/components/excel-grid/discount-utils.test.ts` | Iskonto ayristirma/sabitleme ve Excel kolon yapistirma yardimcilarinin birim testleri |
-| `frontend/components/excel-grid/fill-down.test.ts` | Surukle-doldur modulunun SD1-SD10 sozlesme kabul testleri (sessiz-bos yasak, kaynak fiyat kopyalanmaz) |
-| `frontend/components/excel-grid/kar-yayilimi.test.ts` | Kar% surukle-doldur MUHURLU formulu kullanir kapisi (P2-1a): ham carpim ve 2 ondalik sizarsa kirmizi yanar |
+| `frontend/ozellik/tablo/excel-grid/build-material-context.test.ts` | Olcu ifadesi tespiti ve yetim-satir kararinin H4/C3 birim testleri |
+| `frontend/ozellik/tablo/excel-grid/discount-utils.test.ts` | Iskonto ayristirma/sabitleme ve Excel kolon yapistirma yardimcilarinin birim testleri |
+| `frontend/ozellik/tablo/excel-grid/fill-down.test.ts` | Surukle-doldur modulunun SD1-SD10 sozlesme kabul testleri (sessiz-bos yasak, kaynak fiyat kopyalanmaz) |
+| `frontend/ozellik/tablo/excel-grid/kar-yayilimi.test.ts` | Kar% surukle-doldur MUHURLU formulu kullanir kapisi (P2-1a): ham carpim ve 2 ondalik sizarsa kirmizi yanar |
 | `frontend/e2e-golden/artefakt-dizini.cjs` | Her E2E koşumuna damgalı artefakt dizini açar, latest işaretçisini günceller |
 | `frontend/e2e-golden/faz0-gs7-teshis.spec.ts` | Assert'siz olcum araci: gercek dosya yuklenip her sekmenin baslik/satir doluluk kaniti toplanir |
 | `frontend/e2e-golden/firma-a-golden.spec.ts` | Altin senaryo E2E: yukle, surukle-doldur, USD cevrim, kaydet/yeniden ac, export akisini tarayicida sinar |

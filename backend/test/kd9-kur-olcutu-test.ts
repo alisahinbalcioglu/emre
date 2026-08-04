@@ -39,14 +39,14 @@
  * ── YENİ ÖLÇÜT ──────────────────────────────────────────────────────────
  * Kur, doğrulanacak veriden DEĞİL bağımsız kaynaktan (backend
  * `/exchange-rates`) alınır; beklenen gösterim ÜRÜNÜN KENDİ fonksiyonuyla
- * (`frontend/lib/pricing.ts` → `paraBicim`) üretilir ve TAM EŞİTLİK aranır.
+ * (`frontend/ozellik/fiyat/pricing.ts` → `paraBicim`) üretilir ve TAM EŞİTLİK aranır.
  * Tolerans YOKTUR — çünkü tahmin de yoktur.
  *
  * Bu dosya tarayıcı/DB GEREKTİRMEZ: ölçütün kendisi saf fonksiyondur.
  * Çıkış kodu sözleşmesi: 0 = PASS · 2 = ÖN KOŞUL YOK · diğer = FAIL.
  */
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { paraBicim, PARA_ONDALIK } = require('../../frontend/lib/pricing');
+const { paraBicim, PARA_ONDALIK } = require('../../frontend/ozellik/fiyat/pricing');
 
 let pass = 0;
 const fails: string[] = [];
