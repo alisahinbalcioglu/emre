@@ -33,7 +33,7 @@ import type { IndexedRow, LineQuery, QueryOpts } from './index/types';
 import type { AliasHint } from './terminology.service';
 import { ExchangeRatesService } from '../../fiyat/exchange-rates/exchange-rates.service';
 import type { MatchResult, BrandAlternative } from './types';
-import { KIND_TAGS } from './shared-tag-matcher';
+import { KIND_TAGS, SURFACE_TAGS, CONNECTION_TAGS } from './shared-tag-matcher';
 
 // NOT (Faz 2b sokum — 17.07): v1 skor motoru (matchSingle zinciri,
 // HEADER_HINTS kod-ici sozlugu, marka→sinif cikarimi) kod tabanindan
@@ -748,8 +748,14 @@ export class MatchingService {
     // ── TAM IMZA (PRD Adim 8): ayni belirsizlik daha once cozulduyse ────
     // DUZELTME (A2/A5): hafiza OTOMATIK DOLDURMAZ — "ilk secim her zaman
     // kullanicinin". Gecmis secim listenin BASINA preferred olarak alinir.
-    if (result.confidence === 'multi' && result.candidates?.length) {
-      const imza = this.buildImza(excelName, brandId);
+    // DUZELTME E: olcusu cozulemeyen satirin ANAHTARI YOK (buildImza null
+    // doner) — hafiza sorgusu da YAPILMAZ; yoksa `null` imzayla arama tum
+    // olcusuz satirlari tek kayitta esitlerdi. Kosulun on yuzu DEGISMEDI:
+    // imza yalniz 'multi' satirda hesaplanir (gereksiz generateTags yok).
+    const imza = result.confidence === 'multi' && result.candidates?.length
+      ? this.buildImza(excelName, brandId)
+      : null;
+    if (imza) {
       // Savunmaci: tablo/client henuz yoksa (migration oncesi) akisi BOZMA.
       let mem: any = null;
       try {
@@ -787,7 +793,11 @@ export class MatchingService {
               // varyant kimligi FE'ye tasinir, gruptaki sonraki satirlar
               // (anahtar ACIKSA) ayni varyantla otomatik dolar.
               variantTags: c.variantTags,
-              reason: `Geçmiş seçiminiz (${mem.secimSayisi}×) — tek aday, otomatik uygulandı.`,
+              // DUZELTME C: sayac SATIRA degil ANAHTARA ait (ayni olcu/tipteki
+              // tum satirlarin toplami) ve artisin buyuk kismi kullanicinin
+              // BAGIMSIZ yargisi degil, sistemin kendi onerisinin teyididir.
+              // Metin kanittan guclu konusmaz.
+              reason: `Aynı soruda kayıtlı seçim (${mem.secimSayisi}×) — tek aday, otomatik uygulandı.`,
             };
           }
           console.log(`[Matching] HAFIZA ON-SECILI: "${excelName}" → "${mem.secilenAd}" (${mem.secimSayisi}×) basa alindi`);
@@ -796,7 +806,10 @@ export class MatchingService {
           result = {
             ...result,
             candidates: [cand, ...rest],
-            reason: `Geçmiş seçiminiz (${mem.secimSayisi}×) önde — onaylayın. ${result.reason ?? ''}`.trim(),
+            // DUZELTME C: "onaylayın" ONAYLATICI dildi — sistem kendi onerisini
+            // kullanici karariymis gibi mesrulastiriyordu. Sayi da satira degil
+            // ANAHTARA (ayni soruya) ait; metin bunu soyler ve KONTROL ister.
+            reason: `Aynı soruda kayıtlı seçim (${mem.secimSayisi}×) önde — kontrol edin. ${result.reason ?? ''}`.trim(),
           };
         }
       }
@@ -827,16 +840,37 @@ export class MatchingService {
     return result;
   }
 
-  /** Belirsizligin parmak izi: marka + kanonik olcu + tip + cins(+ipucu).
-   *  Ayni imza = ayni secim sorusu → hafizadan cevaplanabilir. */
-  private buildImza(excelName: string, brandId: string): string {
+  /** Belirsizligin parmak izi: marka + kanonik olcu + tip + cins + YUZEY + BAGLANTI.
+   *  Ayni imza = ayni secim sorusu → hafizadan cevaplanabilir.
+   *
+   *  DUZELTME A (04.08.2026 — `imza-ekseni-test.ts` A-R1/A-R2/A-R3): imza
+   *  yalniz KIND_TAGS suzuyordu; `shared-tag-matcher.ts`'te TANIMLI olan
+   *  SURFACE_TAGS (siyah/galvaniz/kirmizi/boyali) ve CONNECTION_TAGS
+   *  (disli/kaynakli/flans/pres/duz-uclu/yivli) imzaya HIC girmiyordu.
+   *  Sonuc: "2\" Siyah boru" · "2\" Galvanizli boru" · "2\" Dogalgaz borusu"
+   *  TEK anahtara dusuyor, birinde verilen karar otekine "gecmis seciminiz"
+   *  diye gosteriliyordu. Gercek veride olculen bedel: galvanizli boru
+   *  siyahtan %20,5-%46,9, disli mansonlu duz uclidan %17,1 pahali.
+   *  Etiketler SIRALANIR — ayni sorgu her zaman ayni imzayi uretir (L2a).
+   *
+   *  DUZELTME E (ayni tur — E-R1): OLCU BOS ise imza URETILMEZ (null).
+   *  Capi cozulemeyen HER satir tek kayda dusup hafizayi kirletiyordu
+   *  (04.08 olcumu: `…||boru|celik` 55×, `…||diger|` 118×). Mevcut kayitlar
+   *  SILINMEZ — yalniz yeni kirlenme durur.
+   *
+   *  Faz 2b: HEADER_HINTS katkisi kalkti — imza yalniz satirin KENDI
+   *  etiketlerinden uretilir. (Baslik-ipuclu eski imzalar dogal olarak
+   *  devre disi kalir; secimler yeniden ogrenilir — on-secim kaybi gecici.)
+   *  ⚠ Ayni gerekce bu turda da gecerli: format degistigi icin eski tam-imza
+   *  kayitlari eslesmez olur. BILINCLI ve kabul edilmis yan etkidir. */
+  private buildImza(excelName: string, brandId: string): string | null {
     const tags = generateTags(excelName);
     const olcu = tags.tags.filter((t) => t.startsWith('dn') || t.startsWith('od-')).sort().join(',');
-    // Faz 2b: HEADER_HINTS katkisi kalkti — imza yalniz satirin KENDI
-    // etiketlerinden uretilir. (Baslik-ipuclu eski imzalar dogal olarak
-    // devre disi kalir; secimler yeniden ogrenilir — on-secim kaybi gecici.)
+    if (!olcu) return null;
     const kinds = tags.tags.filter((t) => KIND_TAGS.has(t)).sort().join(',');
-    return `${brandId}|${olcu}|${tags.materialType}|${kinds}`;
+    const surface = tags.tags.filter((t) => SURFACE_TAGS.has(t)).sort().join(',');
+    const connection = tags.tags.filter((t) => CONNECTION_TAGS.has(t)).sort().join(',');
+    return `${brandId}|${olcu}|${tags.materialType}|${kinds}|${surface}|${connection}`;
   }
 
   /** Cins tercihinin imzasi (V5): olcu YOK — marka + malzeme tipi + AILE.
@@ -861,12 +895,20 @@ export class MatchingService {
       return { ok: false, reason: 'eksik parametre' };
     }
     const imza = this.buildImza(materialName, brandId);
-    await (this.prisma as any).eslesmeHafizasi.upsert({
-      where: { userId_imza: { userId, imza } },
-      update: { secilenAd, secimSayisi: { increment: 1 } },
-      create: { userId, imza, secilenAd },
-    });
-    console.log(`[Matching] HAFIZA YAZ: user=${userId} imza="${imza}" → "${secilenAd}"`);
+    // DUZELTME E (04.08.2026): olcusu cozulemeyen satirin ANAHTARI YOKTUR —
+    // YAZILMAZ. Once bos olculu satirlar da yaziliyordu ve tipi/capi
+    // cozulemeyen HER satir tek kayda birikiyordu (55× ve 118× ornekleri).
+    // Cins tercihi (olcu-bagimsiz) yazma yolu KORUNUR — asagida surer.
+    if (imza) {
+      await (this.prisma as any).eslesmeHafizasi.upsert({
+        where: { userId_imza: { userId, imza } },
+        update: { secilenAd, secimSayisi: { increment: 1 } },
+        create: { userId, imza, secilenAd },
+      });
+      console.log(`[Matching] HAFIZA YAZ: user=${userId} imza="${imza}" → "${secilenAd}"`);
+    } else {
+      console.log(`[Matching] HAFIZA YAZILMADI (ölçü çözülemedi): "${materialName}"`);
+    }
 
     // ── CINS TERCIHI YAZ (V5): secilen urun TEK cins tasiyorsa kaydet ──
     // (orn "Kuresel Vana DN25 Pirinç" → pirinc). Olcu-bagimsiz: sonraki

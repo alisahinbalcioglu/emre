@@ -277,8 +277,11 @@ async function dispatchTestleri() {
     check('S3-H gecmis secim BASA alindi + preferred isaretli',
       r?.candidates?.[0]?.materialName === secilen && r?.candidates?.[0]?.preferred === true,
       `got first=${r?.candidates?.[0]?.materialName} pref=${r?.candidates?.[0]?.preferred}`);
-    check('S3-H nedeni soyluyor (Geçmiş seçiminiz)',
-      !!r?.reason?.includes('Geçmiş seçiminiz'), `got "${r?.reason}"`);
+    // 04.08.2026: metin "Geçmiş seçiminiz (N×) önde — onaylayın" idi; onaylatici
+    // dil kaldirildi ve sayacin ANAHTARA ait oldugu soylenir oldu (C-R1a/b).
+    // Assert'in olctugu sey degismedi: neden ON-SECIMI aciklamali.
+    check('S3-H nedeni soyluyor (aynı soruda kayıtlı seçim)',
+      !!r?.reason?.includes('Aynı soruda kayıtlı seçim'), `got "${r?.reason}"`);
   }
 }
 

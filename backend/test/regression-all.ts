@@ -89,6 +89,17 @@ const SUITES: Suite[] = [
   //    O1-O5 ölçüt kontrol vakaları, fixture kapıları ve ★KALKAN assertleri
   //    (aynı sınıftaki altı normal-kullanıcı ucu admin İSTEMEMELİ) da buradadır.
   { ad: 'Uç güvenliği: rol/tier/kapsam sözleşmesi (K1-K3)', script: 'test:guvenlik', zincir: 'Z0' },
+  // ── 04.08.2026 — HAFIZA IMZASININ EKSENLERI. DB GEREKTIRMEZ (saf fonksiyon
+  //    + fake Prisma) → `db` bayragi YOK, her kosumda calisir.
+  //    ARTIK YESIL (28/0) — kirmizi-once turunun ALTI kusuru ayni gun kapandi:
+  //    A-R1 yuzey · A-R2 baglanti · A-R3 akiskan ekseni imzaya girdi
+  //    (`marka|olcu|tip|cins|yuzey|baglanti`, etiketler sirali); E-R1 olcu
+  //    cozulemezse imza URETILMEZ ve `remember` tam imzayi YAZMAZ; C-R1a/b
+  //    on-secim metni "onaylayin" demeyi birakti, sayacin ANAHTARA ait
+  //    oldugunu soyluyor. Ö* olcut kapilari ve L* regresyon kilitleri
+  //    (buildKindImza kasitli genis + determinizm + asiri daraltma yasagi)
+  //    duzeltme ONCESI de SONRASI da YESIL. Kirmiziya donerse REGRESYONDUR.
+  { ad: 'Hafıza imzasının eksenleri (A-R/E-R/C-R)', script: 'test:imza', zincir: 'Z2' },
 ];
 
 function dbErisilebilir(): boolean {

@@ -747,10 +747,16 @@ function BrandDropdown(props: ICellRendererParams & {
                       style={btnStyle}
                       {...hover}
                     >
-                      <div style={{ fontWeight: 600 }}>{g.preferred && '✓ '}{single && c.popular && '★ '}{g.label}</div>
+                      {/* DUZELTME C (04.08.2026): rozet ONAYLATICI konusuyordu —
+                          "✓ önceki tercihiniz" sanki bu satirda daha once
+                          onaylanmis gibi okunuyor. Oysa kayit SATIRA degil ayni
+                          olcu/tipteki ANAHTARA ait. Isaret notrlestirildi, metin
+                          kanitin tasidigi anlama indirildi. Sira/fiyat/aday
+                          listesi DEGISMEDI — yalniz metin. */}
+                      <div style={{ fontWeight: 600 }}>{g.preferred && '• '}{single && c.popular && '★ '}{g.label}</div>
                       <div style={{ color: '#6b7280', fontSize: 11 }}>
                         {single ? `${c.netPrice.toFixed(1)} TL` : `${g.items.length} alt tip →`}
-                        {g.preferred && <span style={{ color: '#059669', marginLeft: 6, fontWeight: 600 }}>önceki tercihiniz</span>}
+                        {g.preferred && <span style={{ color: '#059669', marginLeft: 6, fontWeight: 600 }}>aynı soruda kayıtlı</span>}
                       </div>
                       {/* E3: nitelik farki uyarisi ("68°C istendi — bu ürün 141°C") */}
                       {single && c.uyari && <div style={{ color: '#dc2626', fontSize: 10, marginTop: 2 }}>⚠ {c.uyari}</div>}

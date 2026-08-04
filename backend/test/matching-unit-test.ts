@@ -528,8 +528,11 @@ async function run() {
     check('OTOYAZ: hafiza onayli TEK aday otomatik yazildi',
       r2?.confidence === 'high' && r2?.netPrice === 850 && !r2?.candidates,
       `got ${r2?.confidence} net=${r2?.netPrice} cand=${r2?.candidates?.length}`);
-    check('OTOYAZ nedenini soyler (gecmis secim)',
-      !!r2?.reason?.includes('Geçmiş seçiminiz'), `got "${r2?.reason}"`);
+    // 04.08.2026 (C-R1a/b): metin "Geçmiş seçiminiz (N×)" idi — sayi satira
+    // aitmis gibi okunuyordu. Assert'in olctugu sey degismedi: otoyaz izini
+    // birakmali, sessiz yazim YOK.
+    check('OTOYAZ nedenini soyler (aynı soruda kayıtlı seçim)',
+      !!r2?.reason?.includes('Aynı soruda kayıtlı seçim'), `got "${r2?.reason}"`);
     // I6 kanit rozeti (18.07): FE "Geçmiş seçiminizden atandı" rozetini
     // bu bayraktan cizer — sessiz/izsiz otomatik yazim YOK.
     check('OTOYAZ rozet bayragi (hafizaOtoyaz=true)', (r2 as any)?.hafizaOtoyaz === true,
