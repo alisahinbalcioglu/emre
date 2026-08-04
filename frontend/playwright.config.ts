@@ -5,7 +5,7 @@ import { defineConfig } from '@playwright/test';
  * Kosum: npm run test:e2e  (dev sunucuyu 3010'da kendisi kaldirir)
  */
 export default defineConfig({
-  testDir: './e2e',
+  testDir: './test/e2e',
   timeout: 60_000,
   retries: 0,
   use: {

@@ -14,7 +14,7 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
-import { num, numHam, PAYLOAD_ALANLARI } from '../e2e-golden/sayi-ayristirma.mjs';
+import { num, numHam, PAYLOAD_ALANLARI } from '../test/e2e-golden/sayi-ayristirma.mjs';
 
 describe('PK6a — makine degeri vs insan yazimi (DAVRANIS)', () => {
   it('numHam makine degerini BOZMAZ', () => {
@@ -46,7 +46,7 @@ describe('PK6a — makine degeri vs insan yazimi (DAVRANIS)', () => {
 
 describe('PK6b — payload alanlari num() ile okunamaz (KAYNAK TARAMASI)', () => {
   const kaynak = fs.readFileSync(
-    path.resolve(__dirname, '../e2e-golden/verify.mjs'), 'utf-8',
+    path.resolve(__dirname, '../test/e2e-golden/verify.mjs'), 'utf-8',
   );
 
   it('verify.mjs hicbir payload alanini num() ile okumaz', () => {

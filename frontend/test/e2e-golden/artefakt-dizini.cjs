@@ -31,8 +31,8 @@ const { execSync } = require('node:child_process');
 // dizinine (frontend/) kurar, `run.mjs` de alt surecleri orada calistirir.
 const FE_KOK = (() => {
   const cwd = process.cwd();
-  if (fs.existsSync(path.join(cwd, 'e2e-golden'))) return cwd;
-  if (fs.existsSync(path.join(cwd, 'frontend', 'e2e-golden'))) return path.join(cwd, 'frontend');
+  if (fs.existsSync(path.join(cwd, 'test', 'e2e-golden'))) return cwd;
+  if (fs.existsSync(path.join(cwd, 'frontend', 'test', 'e2e-golden'))) return path.join(cwd, 'frontend');
   return cwd;
 })();
 const GOLDEN_KOK = path.resolve(FE_KOK, 'e2e-artifacts/golden');

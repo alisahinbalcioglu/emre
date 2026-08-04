@@ -38,7 +38,7 @@ console.log(`   dizin: ${KOK}`);
 console.log('── 2/4 Playwright altin yol kosumu ──');
 const pw = sh('npx', ['playwright', 'test', '-c', 'playwright.golden.config.ts']);
 console.log(`\n── 2/2 Programatik dogrulama (C1-C11) ──`);
-const vf = sh('node', [path.join('e2e-golden', 'verify.mjs')]);
+const vf = sh('node', [path.join('test', 'e2e-golden', 'verify.mjs')]);
 const bag = latestIsaretle(KOK);
 console.log(`
 ── 4/4 latest -> ${bag.hedef} (${bag.tip})`);

@@ -212,10 +212,10 @@ Bu projede eksikliğinin bedeli dört kez ödendi:
 | | Dosya / uç | Ne çalıştırıyor | Kanıt nereden |
 |---|---|---|---|
 | ✅ | `e2e-golden/helpers.ts:139` | Popup kabı arayıcı — DOM’un ŞEKLİNE bakıyordu, iki farklı durumu tek değere eziyordu. DÜZELTİLDİ (KD5). Projenin en iyi kanıt zinciri. | Panel kalem 50 + KD5 |
-| ✅ | `frontend/e2e-golden/firma-a-golden.spec.ts` | Eski kırmızı (`:239`) — çözüldü. ⚠ **Dosya ADI DEĞİŞTİ:** `sahinkul-golden.spec.ts` → `firma-a-golden.spec.ts`, `5d3c30b` (fixture anonimleştirme). Harita eski adı taşımaya devam ediyordu; **haritanın ters-yön kapısı 03.08'de bunu ilk koşumunda yakaladı.** Eski `:239` satır numarası artık boş satıra düşüyor — yeniden adlandırmayla numaralar kaydı, o yüzden satır referansı kaldırıldı. | GOREV_Kapanis_Devam_2 · ters-yön kapısı 03.08 |
-| ✅ | `frontend/e2e-golden/firma-a-golden.spec.ts:362-422` | KG13 — USD/işçilik tek kur ölçütü. Panel "hâlâ kırmızı" diyor; **bu turda KOŞULMADI, doğrulanmadı.** Eski harita bunu `:394` diye gösteriyordu, o satır bugün bir yorum parçası. | Panel kalem 51 · konum 03.08'de düzeltildi |
-| ✅ | `frontend/e2e-golden/golden.spec.ts:161` | 17a’nın repodaki TEK izi — ve o da bir YORUM SATIRI. Yorum kod değildir. | Panel satır 17 |
-| ✅ | `frontend/e2e-golden/bolum-f-kabul.spec.ts:1-194` | Tek uçtan uca senaryo: gerçek tarayıcıda **11 sayfalık** gerçek dosya yüklenir → her sekmede sabit 13 kolon doğrulanır → dosyadan gelen fiyatların ekrana düştüğü ölçülür → bir hücreye kar% girilip toplamın **anında** değiştiği görülür → her sayfada iki toplam kolonu taranır → teklif kaydedilip yeniden açılır. Koşum: `run.mjs` + `playwright.golden.config.ts` (sunucu + fixture ister). | HARİTA TAM turu 03.08 |
+| ✅ | `frontend/test/e2e-golden/firma-a-golden.spec.ts` | Eski kırmızı (`:239`) — çözüldü. ⚠ **Dosya ADI DEĞİŞTİ:** `sahinkul-golden.spec.ts` → `firma-a-golden.spec.ts`, `5d3c30b` (fixture anonimleştirme). Harita eski adı taşımaya devam ediyordu; **haritanın ters-yön kapısı 03.08'de bunu ilk koşumunda yakaladı.** Eski `:239` satır numarası artık boş satıra düşüyor — yeniden adlandırmayla numaralar kaydı, o yüzden satır referansı kaldırıldı. | GOREV_Kapanis_Devam_2 · ters-yön kapısı 03.08 |
+| ✅ | `frontend/test/e2e-golden/firma-a-golden.spec.ts:362-422` | KG13 — USD/işçilik tek kur ölçütü. Panel "hâlâ kırmızı" diyor; **bu turda KOŞULMADI, doğrulanmadı.** Eski harita bunu `:394` diye gösteriyordu, o satır bugün bir yorum parçası. | Panel kalem 51 · konum 03.08'de düzeltildi |
+| ✅ | `frontend/test/e2e-golden/golden.spec.ts:161` | 17a’nın repodaki TEK izi — ve o da bir YORUM SATIRI. Yorum kod değildir. | Panel satır 17 |
+| ✅ | `frontend/test/e2e-golden/bolum-f-kabul.spec.ts:1-194` | Tek uçtan uca senaryo: gerçek tarayıcıda **11 sayfalık** gerçek dosya yüklenir → her sekmede sabit 13 kolon doğrulanır → dosyadan gelen fiyatların ekrana düştüğü ölçülür → bir hücreye kar% girilip toplamın **anında** değiştiği görülür → her sayfada iki toplam kolonu taranır → teklif kaydedilip yeniden açılır. Koşum: `run.mjs` + `playwright.golden.config.ts` (sunucu + fixture ister). | HARİTA TAM turu 03.08 |
 | ✅ | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts:1-177` | **3 sözleşme kümesi · 16 test · 29 assert:** (1) nitelik bağlamı — çap kendi satırında değil ALTINDAKİ nitelik satırlarındaysa sorguya girmeli (basınç/bağlantı da toplanır, toplama bir sonda durur); (2) ayırt edici metin seçimi; (3) veri sorunu işaretleri. Mühürlediği kod: `aday-ayirt-edicilik.ts:74-91, 113-138, 145-174`. | HARİTA TAM turu 03.08 |
 | ✅ | `backend/test/regression-all.ts` | SUITES listesi — package.json’daki her test:* burada olmalı (PK1) | GOREV_Sirada |
 | ✅ | `backend/test/matching-regression.ts` | `test:regression:db` — ÇAYIROVA (id :27 hardcoded) gerçek-DB uçtan uca eşleştirme: 10 vaka, 9'unda beklenen netPrice. Ön koşul kapısı :158-172 (ProductIndex=0 → çıkış 2 SKIP). AÇIK SORU :153-157 kapatılmadı: istek-anında-indeksle geri-düşüşü 116 satırı indeksliyor ama 0 eşleşme veriyor. | KALEM 58 keşfi 02.08 — okuma + nokta-teyit |
@@ -456,17 +456,17 @@ Karıştırılmasın diye ayrı duruyor.
 | `frontend/ozellik/tablo/excel-grid/discount-utils.test.ts` | Iskonto ayristirma/sabitleme ve Excel kolon yapistirma yardimcilarinin birim testleri |
 | `frontend/ozellik/tablo/excel-grid/fill-down.test.ts` | Surukle-doldur modulunun SD1-SD10 sozlesme kabul testleri (sessiz-bos yasak, kaynak fiyat kopyalanmaz) |
 | `frontend/ozellik/tablo/excel-grid/kar-yayilimi.test.ts` | Kar% surukle-doldur MUHURLU formulu kullanir kapisi (P2-1a): ham carpim ve 2 ondalik sizarsa kirmizi yanar |
-| `frontend/e2e-golden/artefakt-dizini.cjs` | Her E2E koşumuna damgalı artefakt dizini açar, latest işaretçisini günceller |
-| `frontend/e2e-golden/faz0-gs7-teshis.spec.ts` | Assert'siz olcum araci: gercek dosya yuklenip her sekmenin baslik/satir doluluk kaniti toplanir |
-| `frontend/e2e-golden/firma-a-golden.spec.ts` | Altin senaryo E2E: yukle, surukle-doldur, USD cevrim, kaydet/yeniden ac, export akisini tarayicida sinar |
-| `frontend/e2e-golden/global-setup.mjs` | Kosum oncesi hazirlik: surum kapisi, dev JWT uretimi, yigin saglik kontrolu, eski test tekliflerinin temizligi |
-| `frontend/e2e-golden/gs-kalicilik.spec.ts` | Grid E2E testleri: kolon sola sabitleme, genislik kaliciligi ve ad-sutunu secicisinin davranisi |
-| `frontend/e2e-golden/pu4-popup-genislik.spec.ts` | Aday popup'inin boyutlandirma, render sonrasi genislik korunumu ve tasima davranisini tarayicida sinar |
-| `frontend/e2e-golden/run.mjs` | Altin yol orkestratoru: surum kapisi + Playwright kosumu + verify'i damgali artefakt dizinine baglar |
-| `frontend/e2e-golden/sayi-ayristirma.mjs` | Dogrulama araclari icin iki sinif sayi cozumleyici: insan yazimi TR metin ve makine degeri |
-| `frontend/e2e-golden/surum-kapisi.cjs` | Kosum oncesi uc surumu (agac HEAD, FE build, BE build) karsilastirip uyumsuzsa testi reddeder |
-| `frontend/e2e-golden/verify.mjs` | E2E artefaktlarını bağımsız yeniden hesaplayıp C1-C11 PASS/FAIL matrisi üretir |
-| `frontend/e2e/grid.spec.ts` | Mock harness uzerinde grid E2E: popup nesne baglama, surukle-doldur, Ctrl+Z, ag hatasi senaryolari |
+| `frontend/test/e2e-golden/artefakt-dizini.cjs` | Her E2E koşumuna damgalı artefakt dizini açar, latest işaretçisini günceller |
+| `frontend/test/e2e-golden/faz0-gs7-teshis.spec.ts` | Assert'siz olcum araci: gercek dosya yuklenip her sekmenin baslik/satir doluluk kaniti toplanir |
+| `frontend/test/e2e-golden/firma-a-golden.spec.ts` | Altin senaryo E2E: yukle, surukle-doldur, USD cevrim, kaydet/yeniden ac, export akisini tarayicida sinar |
+| `frontend/test/e2e-golden/global-setup.mjs` | Kosum oncesi hazirlik: surum kapisi, dev JWT uretimi, yigin saglik kontrolu, eski test tekliflerinin temizligi |
+| `frontend/test/e2e-golden/gs-kalicilik.spec.ts` | Grid E2E testleri: kolon sola sabitleme, genislik kaliciligi ve ad-sutunu secicisinin davranisi |
+| `frontend/test/e2e-golden/pu4-popup-genislik.spec.ts` | Aday popup'inin boyutlandirma, render sonrasi genislik korunumu ve tasima davranisini tarayicida sinar |
+| `frontend/test/e2e-golden/run.mjs` | Altin yol orkestratoru: surum kapisi + Playwright kosumu + verify'i damgali artefakt dizinine baglar |
+| `frontend/test/e2e-golden/sayi-ayristirma.mjs` | Dogrulama araclari icin iki sinif sayi cozumleyici: insan yazimi TR metin ve makine degeri |
+| `frontend/test/e2e-golden/surum-kapisi.cjs` | Kosum oncesi uc surumu (agac HEAD, FE build, BE build) karsilastirip uyumsuzsa testi reddeder |
+| `frontend/test/e2e-golden/verify.mjs` | E2E artefaktlarını bağımsız yeniden hesaplayıp C1-C11 PASS/FAIL matrisi üretir |
+| `frontend/test/e2e/grid.spec.ts` | Mock harness uzerinde grid E2E: popup nesne baglama, surukle-doldur, Ctrl+Z, ag hatasi senaryolari |
 | `frontend/lib/gs6b-golge-kurali.test.ts` | Kaynak-seviyesi vitest kilidi: satir listesi yazan fonksiyonun golge kaynagi da tazeledigini dogrular |
 | `frontend/lib/merge-multisheet.test.ts` | Excel yeniden yuklemede kullanici emeginin (kar, marka, fiyat, ozel sutun, sheet) korundugunu dogrulayan vitest suiti |
 | `frontend/lib/parse-material-text.test.ts` | Birlesik malzeme metninin cap+cins ayrimini ve geri birlestirmeyi 17+ ornekle dogrulayan vitest suiti |

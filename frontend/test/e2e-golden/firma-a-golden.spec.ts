@@ -24,7 +24,7 @@ import {
 } from './helpers';
 // KD9: beklenen gosterimi URUNUN KENDI fonksiyonu uretir — test kendi
 // yuvarlama modelini kurarsa urunle ayrisir (kok neden tam buydu).
-import { paraBicim, PARA_ONDALIK } from '../ozellik/fiyat/pricing';
+import { paraBicim, PARA_ONDALIK } from '../../ozellik/fiyat/pricing';
 
 const FIXTURES = path.resolve(__dirname, '../../test-fixtures/e2e');
 // PK10: her kosum kendi damgali dizinine yazar (uzerine yazma yok)

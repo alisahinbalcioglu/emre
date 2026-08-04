@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test';
 // PK10: artefakt damgasi (pano kalem 44). Damga BURADA uretilir — config,
 // worker'lardan ve global-setup'tan ONCE degerlendirilir; `damga()` onu
 // `process.env.E2E_DAMGA`ya yazar ve worker'lar miras alir.
-import { damga } from './e2e-golden/artefakt-dizini.cjs';
+import { damga } from './test/e2e-golden/artefakt-dizini.cjs';
 
 const DAMGA = damga();
 
@@ -18,7 +18,7 @@ const DAMGA = damga();
  * workers:1 — determinism (ayni kullanici hesabi, sirali kosum).
  */
 export default defineConfig({
-  testDir: './e2e-golden',
+  testDir: './test/e2e-golden',
   // 45dk/dosya: en buyuk fixture 7 sayfa · 1694 satir (Bursa Demirtaş) ve
   // her aile icin gercek eslestirme istegi atilir — 15dk yetmedi.
   timeout: 2_700_000,

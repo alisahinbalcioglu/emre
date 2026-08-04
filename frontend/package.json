@@ -10,7 +10,7 @@
     "start": "next start",
     "lint": "next lint",
     "test:e2e": "playwright test",
-    "test:e2e-golden": "node e2e-golden/run.mjs",
+    "test:e2e-golden": "node test/e2e-golden/run.mjs",
     "prebuild": "node scripts/surum-yaz.js"
   },
   "dependencies": {
