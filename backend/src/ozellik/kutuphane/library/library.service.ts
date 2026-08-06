@@ -647,7 +647,19 @@ export class LibraryService {
           data.discountRate = Math.max(0, Math.min(100, row.discountRate));
         }
         if (row.materialName && row.materialName.trim().length >= 2) {
-          data.materialName = row.materialName.trim();
+          const yeniAd = row.materialName.trim();
+          data.materialName = yeniAd;
+          // ── IKI ALAN BIRDEN (06.08 kullanici bildirimi) ────────────────────
+          // Sheet uretici adi `col1 = adRaw ?? materialName` sirasiyla okur
+          // (library-sheet-builder). Yani `adRaw` DOLUYKEN yalniz materialName
+          // yazmak, degisikligi kullanicinin GORMEDIGI bir alana yazmaktir:
+          // ekran "Kaydedildi" der, ad eski kalir. Bug tam olarak buydu.
+          //
+          // ⚠ KAYNAK SADAKATI BOZULMAZ: bu iki alan da `UserLibrary`ye, yani
+          // kullanicinin KENDI kopyasina aittir. Paylasilan `Material` katalogu
+          // bu yoldan HIC guncellenmez (test C1 bunu olcer). "Adi ezmeyelim"
+          // endisesi dogruydu ama BASKA bir alan icindi.
+          data.adRaw = yeniAd;
         }
         if (row.unit !== undefined) data.unit = row.unit.trim() || 'Adet';
 

@@ -127,6 +127,21 @@ interface Props {
   /** Sutun ekle/sil sonrasi YENI columnDefs — parent (quotes/new) multiSheet
    *  state'ini gunceller; draft + kayit (sheetsPayload) otomatik persist olur. */
   onColumnsChange?: (defs: ExcelGridData['columnDefs']) => void;
+  /**
+   * KALICI SATIR SILME (06.08 kullanici bildirimi: "ilave eklediklerimi
+   * silemiyorum").
+   *
+   * VERILMEZSE davranis DEGISMEZ: `deleteRow` satiri yalnizca gridden kaldirir.
+   * Teklif ekraninda DOGRUSU budur — orada satir zaten sayfanin kendi
+   * kaydiyla persist olur. Kutuphanede ise satirin arkasinda kendi kaydi
+   * (UserLibrary) vardir; yalniz gridden silmek sayfa yenilenince satirin
+   * GERI GELMESI demekti — kullanicinin gordugu semptom buydu.
+   *
+   * Sozlesme: `true` donerse satir gridden kaldirilir, `false` donerse
+   * KALDIRILMAZ (silme reddedildi/iptal edildi/basarisiz). Boylece "ekrandan
+   * gitti ama sunucuda duruyor" hali YAPISAL OLARAK imkansiz.
+   */
+  onRowDelete?: (row: ExcelRowData) => Promise<boolean>;
   // Mod: 'quote' (teklif — brand/firma dropdown + kar %) veya 'library' (iskonto + net fiyat)
   mode?: 'quote' | 'library';
   // library mode'da hangi fiyat alanini kullanir? (material veya labor)
@@ -1356,6 +1371,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
   autoAppendRow = false,
   enableStructureEdit = false,
   onColumnsChange,
+  onRowDelete,
   mode = 'quote',
   libraryPriceField = 'materialUnitPriceField',
   currencySymbol, conversionRate,
@@ -1741,11 +1757,24 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     setTimeout(emitRows, 0);
   }, [makeBlankRow, emitRows]);
 
-  const deleteRow = useCallback((row: ExcelRowData | null) => {
+  // Ref: deleteRow'un kimligi sabit kalsin (context menu her render'da yeniden
+  // baglanmasin) ama parent'in guncel kancasini okusun — onRowDataChangeRef
+  // ile ayni desen.
+  const onRowDeleteRef = React.useRef(onRowDelete);
+  onRowDeleteRef.current = onRowDelete;
+
+  const deleteRow = useCallback(async (row: ExcelRowData | null) => {
     const api = gridRef.current?.api;
     if (!api || !row) return;
-    api.applyTransaction({ remove: [row] });
     setCtxMenu(null);
+    // KALICI SILME KANCASI: parent verdiyse ONCE o karar verir. Gridden
+    // kaldirma yalniz onay gelirse yapilir — "ekrandan gitti ama sunucuda
+    // duruyor" hali boylece imkansiz (bkz. onRowDelete sozlesmesi).
+    if (onRowDeleteRef.current) {
+      const ok = await onRowDeleteRef.current(row);
+      if (!ok) return;
+    }
+    api.applyTransaction({ remove: [row] });
     setTimeout(emitRows, 0);
   }, [emitRows]);
 

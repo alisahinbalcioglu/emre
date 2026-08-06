@@ -56,6 +56,14 @@ const SUITES: Suite[] = [
   //    Bu suite kurtarmayi da, gurultu yasagini da, "fiyat otomatik
   //    YAZILMAZ" kuralini da kilitler.
   { ad: 'Aile uyuşmazlığı teşhisi (S6)', script: 'test:aile-uyusmazligi', zincir: 'Z2' },
+  // ── 06.08.2026: KUTUPHANEDE AD DUZENLEME. Kullanici adi degistirip
+  //    kaydettiginde ekran "Kaydedildi" diyor, ad ESKI kaliyordu. Iki katman:
+  //    FE adi HIC gondermiyordu (gerekce dogru ama YANLIS alana uygulanmisti)
+  //    ve BE yalniz `materialName` yaziyordu — oysa sheet uretici adi
+  //    `adRaw ?? materialName` sirasiyla okur, yani degisiklik kullanicinin
+  //    GORMEDIGI alana gidiyordu. B blogu o tuzagi kilitler; C blogu
+  //    paylasilan `Material` katalogunun DOKUNULMADIGINI olcer.
+  { ad: 'Kütüphanede ad düzenleme + kaynak sadakati', script: 'test:kb-ad', zincir: 'Z1' },
   // T1/T3/T4: sablona-yazan eski motor SILINDI; "kolon esleme" (test:ke) ve
   // "iki katmanli baslik" (test:kb) suite'leri onunla birlikte kaldirildi.
   // Yerine gelen sozlesmeler:

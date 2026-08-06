@@ -176,10 +176,16 @@ export default function LibraryBrandDetailPage() {
           libraryItemId: r._libraryItemId,
           listPrice: priceField ? parseFloat(String(r[priceField] ?? '')) || 0 : undefined,
           discountRate: r._draftDiscount ?? r._libraryDiscountRate ?? 0,
-          // Birim edit'i de kalici (save-sheets trim'ler). materialName BILEREK
-          // gonderilmez: imported markada col1=adRaw, Material.name kisa sürümle
-          // ezilmesin (kaynak sadakati).
+          // Birim edit'i de kalici (save-sheets trim'ler).
           unit: unitField ? String(r[unitField] ?? '').trim() || undefined : undefined,
+          // ── AD DA GONDERILIR (06.08 kullanici bildirimi) ──────────────────
+          // Onceden BILEREK gonderilmiyordu; gerekce "Material.name kisa
+          // surumle ezilmesin (kaynak sadakati)" idi. Gerekce dogruydu ama
+          // YANLIS ALANA uygulanmis: `save-sheets` paylasilan `Material`e HIC
+          // dokunmaz, yalniz kullanicinin KENDI `UserLibrary` satirini yazar
+          // (backend testi C1 bunu olcer). Bedeli su oldu: kullanici adi
+          // degistiriyor, ekran "Kaydedildi" diyor, ad eski kaliyordu.
+          materialName: String(r[nameField] ?? '').trim() || undefined,
         }));
         const { data } = await api.post(`/library/brand/${brandId}/save-sheets`, { dirtyRows: payload });
         updated = data.updated ?? 0;
@@ -211,6 +217,42 @@ export default function LibraryBrandDetailPage() {
       setSaving(false);
     }
   }
+
+  /**
+   * KALICI SATIR SILME (06.08 kullanici bildirimi: "ilave eklediklerimi
+   * silemiyorum").
+   *
+   * ESKI DAVRANIS: sag tik → "Satırı sil" satiri YALNIZ gridden kaldiriyordu
+   * (ExcelGrid.deleteRow → applyTransaction). Kutuphane satirinin arkasinda
+   * kendi kaydi (UserLibrary) oldugu icin sayfa yenilenince satir GERI
+   * GELIYORDU — kullanicinin "silemiyorum" dedigi sey buydu.
+   *
+   * Iki satir tipi AYRI: kaydi olan satir sunucudan da silinir; henuz
+   * kaydedilmemis (bos/yeni) satirin sunucuda karsiligi YOKTUR, dogrudan
+   * gridden kalkar. Onay YALNIZ gercek kayit icin istenir — bos satir
+   * silmek icin onay sormak gurultudur.
+   */
+  const handleRowDelete = useCallback(async (row: ExcelRowData): Promise<boolean> => {
+    const itemId = (row as any)._libraryItemId as string | undefined;
+    if (!itemId) return true; // kaydedilmemis satir — sunucuda karsiligi yok
+
+    const ad = String((row as any)[nameField] ?? '').trim() || 'Bu malzeme';
+    if (!(await confirm(`"${ad}" kütüphanenizden silinsin mi?`))) return false;
+    try {
+      await api.delete(`/library/${itemId}`);
+      toast({ title: 'Silindi', description: ad });
+      return true;
+    } catch (e: any) {
+      // Sessiz basarisizlik YASAK: silinemediyse satir EKRANDA KALIR ve
+      // kullanici nedenini gorur (yoksa "sildim sandim" hali dogar).
+      toast({
+        title: 'Silinemedi',
+        description: e?.response?.data?.message ?? 'Sunucu satiri silemedi.',
+        variant: 'destructive',
+      });
+      return false;
+    }
+  }, [nameField]);
 
   async function handleRemoveBrand() {
     if (!(await confirm(`"${brandName}" kütüphanenizden tamamen kaldırılsın mı?`))) return;
@@ -290,6 +332,7 @@ export default function LibraryBrandDetailPage() {
           libraryPriceField="materialUnitPriceField"
           autoAppendRow
           enableStructureEdit
+          onRowDelete={handleRowDelete}
           onBrandChange={noBrandChange}
           onRowDataChange={handleRowsChange}
         />
