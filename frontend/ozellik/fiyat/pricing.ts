@@ -20,6 +20,26 @@
 //                      Satis × Miktar = Satir Toplami.
 // ALTIN KURAL: fiyat ASLA uretilmez; eslesme yoksa hucre bos + isaretli.
 
+// ============================================================
+// ADIM 8 (Kar Analizi onkosul turu, 06.08) — ONDALIK TEK KURAL (kalem 67)
+//
+// Iki soru, TEK yerde cevaplanir; baska dosya kendi kararini VEREMEZ:
+//
+//  1) YUVARLAMA NEREDE? → YALNIZ SATIRDA. `yukariYuvarla` ile, YUKARI,
+//     ONDALIK hane. TOPLAMDA IKINCI YUVARLAMA YASAK — toplamlar yuvarlanmis
+//     satir degerlerinin kurus-tam toplamidir (bkz. sayfaToplamlari).
+//     Gerekce: ₺49M'lik teklifte satir/toplam yuvarlama farki kurus degil
+//     BINLERDIR; iki kez yuvarlayan yol o farki uretir.
+//
+//  2) KAC HANE? → KATMANA GORE, ikisi de buradaki sabitten:
+//     · HESAP/DEGER katmani: ONDALIK = 1 (hucreye yazilan deger).
+//     · GOSTERIM katmani: PARA_ONDALIK = 2 (paraBicim; backend Excel
+//       numFmt'leri de ayni karari uygular: '#,##0.00' — export-engine
+//       BIRIM_FMT + standart-cikti fmt).
+//     Kalem 67'nin "bicimde 1, bicimlendiricilerde 2" gerilimi KATMAN
+//     farkidir ve bilinclidir: deger 1 hane tasinir, para 2 hane gosterilir.
+// ============================================================
+
 /** Yuvarlama: YUKARI, virgulden sonra TEK hane. */
 export const ONDALIK = 1;
 

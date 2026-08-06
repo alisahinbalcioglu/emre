@@ -16,7 +16,7 @@ import { clampDiscount, parseDiscountInput, parseDiscountPaste } from './discoun
 import { CustomDropdown } from './CustomDropdown';
 import { fillDown, karYayilimi } from './fill-down';
 import { joinMaterialText } from '@/ozellik/tablo/parse-material-text';
-import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, yukariYuvarla, etkinMiktar, paraBicim, sayfaToplamlari } from '@/ozellik/fiyat/pricing';
+import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, yukariYuvarla, etkinMiktar, paraBicim, sayfaToplamlari, PARA_ONDALIK } from '@/ozellik/fiyat/pricing';
 import { hasSizeExpression, isSelfSufficientRow } from './build-material-context';
 import { niteliklerdenBaglam, adayEtiketleri, popupGenisligiOku, popupGenisligiYaz } from './aday-ayirt-edicilik';
 import httpApi from '@/ortak/lib/api';
@@ -2029,15 +2029,17 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       _isPinnedTotal: true,
     };
     if (nameField) pinnedRow[nameField] = 'GENEL TOPLAM';
-    if (materialTotalField) pinnedRow[materialTotalField] = sumMatTotal.toFixed(2);
-    if (laborTotalField) pinnedRow[laborTotalField] = sumLabTotal.toFixed(2);
+    // ADIM 8: hane karari TEK yerden (pricing.PARA_ONDALIK) — toplam satiri
+    // GOSTERIM katmanidir, ciplak sabit yazilamaz.
+    if (materialTotalField) pinnedRow[materialTotalField] = sumMatTotal.toFixed(PARA_ONDALIK);
+    if (laborTotalField) pinnedRow[laborTotalField] = sumLabTotal.toFixed(PARA_ONDALIK);
     // Toplam Tutar: grandTotalField varsa ona yaz
     if (grandTotalField) {
-      pinnedRow[grandTotalField] = genelToplam.toFixed(2);
+      pinnedRow[grandTotalField] = genelToplam.toFixed(PARA_ONDALIK);
     }
     // grandTotalField yoksa ama grandUnitPriceField varsa, oraya toplam yaz (fallback)
     if (!grandTotalField && grandUnitPriceField) {
-      pinnedRow[grandUnitPriceField] = genelToplam.toFixed(2);
+      pinnedRow[grandUnitPriceField] = genelToplam.toFixed(PARA_ONDALIK);
     }
     // grandUnitPriceField ayrıca varsa boş bırak (birim toplamı anlamsız)
     if (grandUnitPriceField && grandTotalField) {
