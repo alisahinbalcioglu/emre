@@ -432,7 +432,16 @@ export default function NewQuotePage() {
     if (!hasAnyLabor) return;
     api.get<LaborFirm[]>('/labor-firms').then(({ data }) => {
       setLaborFirms(data);
-    }).catch(() => {});
+    // SESSIZ BOS YASAK: marka listesiyle ayni gerekce — firma dropdown'i bos
+    // kalirsa "hic firmam yok" ile ayirt edilemez, iscilik fiyatlanamaz.
+    }).catch((e: any) => {
+      const kod = e?.response?.status;
+      toast({
+        title: 'Iscilik firmalari yuklenemedi',
+        description: `Firma listesi alinamadi${kod ? ` (HTTP ${kod})` : ''} — liste bos gorunuyor ama BOS OLDUGU ICIN DEGIL. Sayfayi yenileyin.`,
+        variant: 'destructive',
+      });
+    });
   }, [hasAnyLabor]);
   const [title, setTitle] = useState('');
   const [rows, setRows] = useState<EditableRow[]>([]);
@@ -445,7 +454,17 @@ export default function NewQuotePage() {
   useEffect(() => {
     api.get<Brand[]>('/library/brands')
       .then(({ data }) => setAllBrands(data ?? []))
-      .catch(() => {});
+      // SESSIZ BOS YASAK: bu istek dusetse marka dropdown'i BOS kalir ve
+      // "kutuphanemde hic marka yok" ile AYNI gorunur — kullanici hicbir
+      // satiri fiyatlandiramaz, sebebini de goremez.
+      .catch((e: any) => {
+        const kod = e?.response?.status;
+        toast({
+          title: 'Marka listesi yuklenemedi',
+          description: `Kutuphane markalari alinamadi${kod ? ` (HTTP ${kod})` : ''} — liste bos gorunuyor ama BOS OLDUGU ICIN DEGIL. Sayfayi yenileyin.`,
+          variant: 'destructive',
+        });
+      });
   }, []);
   const [usedProvider, setUsedProvider] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -1076,8 +1095,22 @@ export default function NewQuotePage() {
         const matchCount = Object.values(data).filter((r: any) => r.confidence !== 'none').length;
         console.log(`[SemanticCache] CACHED: ${brandId}, ${matchCount}/${uniqueNames.length} eslesti`);
         return data;
-      } catch (e) {
+      } catch (e: any) {
+        // ── SESSIZ BOS YASAK (06.08) ──────────────────────────────────────
+        // Eskiden burada YALNIZ console.error vardi ve `{}` donuyordu. `{}`
+        // "hicbiri eslesmedi" demektir — yani sunucu 500 dondugunde ekran
+        // TAM OLARAK "bu markada hicbir sey bulunamadi" gibi gorunuyordu.
+        // Butun satirlar sessizce fiyatsiz kaliyor, kullanici sebebini
+        // goremiyordu; 06.08'de bir teshisi saatlerce zorlastiran sey buydu.
+        // Akis DEGISMEZ (`{}` donmeye devam eder, cagiranlar kirilmaz) —
+        // degisen tek sey: basarisizlik artik GORUNUR.
+        const kod = e?.response?.status;
         console.error('[SemanticCache] Error:', e);
+        toast({
+          title: 'Fiyatlar alinamadi',
+          description: `${uniqueNames.length} malzeme sorgulanamadi${kod ? ` (HTTP ${kod})` : ''} — satirlar fiyatsiz kaldi, "eslesme yok" DEGIL. Tekrar deneyin.`,
+          variant: 'destructive',
+        });
         return {};
       } finally {
         delete brandFetchPromises.current[brandId];
