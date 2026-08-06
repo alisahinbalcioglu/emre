@@ -16,7 +16,6 @@ import {
   Package,
 } from 'lucide-react';
 import { Button } from '@/ortak/ui/button';
-import { teklifCiktisiniIndir } from '@/ozellik/cikti/export-download';
 import { adDisiplinTahmini } from '@/ozellik/tablo/disiplin';
 import { Card, CardContent, CardHeader, CardTitle } from '@/ortak/ui/card';
 import { Input } from '@/ortak/ui/input';
@@ -1226,14 +1225,7 @@ export default function NewQuotePage() {
     return rows.reduce((sum, r) => sum + (parseFloat(String(r.cells[totalCol] ?? '')) || 0), 0);
   }, [rows, totalCol]);
 
-  // PRD Teklif Formatim: kapak yer tutuculari icin teklif bilgileri
-  // (kaydetle birlikte PATCH :id/info ile gider)
-  const [teklifBilgileri, setTeklifBilgileri] = useState({
-    musteri: '', proje: '', hazirlayan: '', gecerlilik: '',
-  });
-
-  /** sonra='export' → kayittan sonra Cikti Onizleme'ye gider (PRD §3). */
-  async function handleSave(sonra?: 'export') {
+  async function handleSave() {
     // Baslik bos ise dosya adi veya varsayilan kullan
     const finalTitle = title.trim() || `Teklif ${new Date().toLocaleDateString('tr-TR')}`;
 
@@ -1358,18 +1350,18 @@ export default function NewQuotePage() {
         originalFileName: originalFileName ?? undefined,
       });
 
-      // Teklif bilgileri (kapak alanlari) + goruntuleme para birimi (KH8:
-      // Duzenle'de secilen birim TEKLIFLE kaydedilir — detay ayni birimle acilir)
-      const bilgiVar = Object.values(teklifBilgileri).some((v) => v.trim() !== '');
-      if (created?.id && (bilgiVar || currency !== 'TRY')) {
+      // Goruntuleme para birimi (KH8: Duzenle'de secilen birim TEKLIFLE
+      // kaydedilir — detay ayni birimle acilir). Kapak alanlari bu ekrandan
+      // kaldirildi (06.08 istegi); detay sayfasindan girilir — PATCH kismi
+      // guncelleme yaptigi icin gonderilmeyen alanlara dokunulmaz.
+      if (created?.id && currency !== 'TRY') {
         try {
           await api.patch(`/quotes/${created.id}/info`, {
-            ...teklifBilgileri,
             displayCurrency: currency,
-            displayRate: currency === 'TRY' ? null : exchangeRates.TRY,
+            displayRate: exchangeRates.TRY,
             displayRateDate: new Date().toLocaleDateString('tr-TR'),
           });
-        } catch { /* kapak alanlari opsiyonel */ }
+        } catch { /* goruntuleme birimi opsiyonel */ }
       }
 
       // Draft temizle — artik kayitli teklif var
@@ -1380,10 +1372,6 @@ export default function NewQuotePage() {
         title: 'Teklif kaydedildi',
         description: `"${finalTitle}" basariyla olusturuldu.`,
       });
-      if (sonra === 'export' && created?.id) {
-        // KULLANICI KARARI (24.07): PDF yok — teklif formatinda tek Excel iner
-        await teklifCiktisiniIndir(created.id);
-      }
       router.push('/quotes');
     } catch {
       toast({
@@ -1428,7 +1416,7 @@ export default function NewQuotePage() {
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col items-end gap-2">
           {/* Currency Toggle */}
           <div className="flex rounded-lg border bg-muted p-0.5">
             {currencies.map((c) => (
@@ -1449,7 +1437,22 @@ export default function NewQuotePage() {
             ))}
           </div>
 
-          {/* Fiyatlandirma butonu kaldirildi — yeni yapida gerek yok */}
+          {/* Teklifi Kaydet — 06.08 istegi: alt sagdan buraya tasindi */}
+          {excelGridData && (
+            <Button onClick={() => handleSave()} disabled={isSaving}>
+              {isSaving ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Kaydediliyor...
+                </>
+              ) : (
+                <>
+                  <Save className="mr-2 h-4 w-4" />
+                  Teklifi Kaydet
+                </>
+              )}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -2304,58 +2307,6 @@ export default function NewQuotePage() {
         </div>
       ) : null}
 
-      {/* Save — sadece excelGridData varsa goster */}
-      {excelGridData && (
-        <div className="mt-6 flex flex-col gap-3">
-          {/* PRD Teklif Formatim: kapak yer tutucu alanlari (opsiyonel) */}
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-            <input
-              placeholder="Müşteri (kapak için)"
-              value={teklifBilgileri.musteri}
-              onChange={(e) => setTeklifBilgileri({ ...teklifBilgileri, musteri: e.target.value })}
-              className="h-8 rounded-md border px-2 text-sm"
-            />
-            <input
-              placeholder="Proje"
-              value={teklifBilgileri.proje}
-              onChange={(e) => setTeklifBilgileri({ ...teklifBilgileri, proje: e.target.value })}
-              className="h-8 rounded-md border px-2 text-sm"
-            />
-            <input
-              placeholder="Hazırlayan"
-              value={teklifBilgileri.hazirlayan}
-              onChange={(e) => setTeklifBilgileri({ ...teklifBilgileri, hazirlayan: e.target.value })}
-              className="h-8 rounded-md border px-2 text-sm"
-            />
-            <input
-              placeholder="Geçerlilik (örn. 30 gün)"
-              value={teklifBilgileri.gecerlilik}
-              onChange={(e) => setTeklifBilgileri({ ...teklifBilgileri, gecerlilik: e.target.value })}
-              className="h-8 rounded-md border px-2 text-sm"
-            />
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => handleSave()} disabled={isSaving}>
-              {isSaving ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Kaydediliyor...
-                </>
-              ) : (
-                <>
-                  <Save className="mr-2 h-4 w-4" />
-                  Teklifi Kaydet
-                </>
-              )}
-            </Button>
-            {/* PRD §3: soru sormaz — kaydet + Cikti Onizleme'ye git */}
-            <Button onClick={() => handleSave('export')} disabled={isSaving}>
-              <Save className="mr-2 h-4 w-4" />
-              ⬇ Teklifi Dışa Aktar
-            </Button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
