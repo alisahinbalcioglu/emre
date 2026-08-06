@@ -286,7 +286,7 @@ function BrandDropdown(props: ICellRendererParams & {
 
   // Fiyati HERHANGI bir node'un hucrelerine yaz (V4 benzer-satir uygulamasi
   // baska node'lara da yazar). isSuggestion=true → sari 'oneri' isareti.
-  const writePriceToNode = (targetNode: any, netPrice: number, isSuggestion = false) => {
+  const writePriceToNode = (targetNode: any, netPrice: number, isSuggestion = false, kaynakKur?: any) => {
     const d = targetNode.data;
     const kar = parseFloat(String(d._malzKar ?? 0)) || 0;
     // SPEC (fiyat cekirdegi): satis = net×(1+kar), YUKARI 1 hane; toplam = satis×miktar.
@@ -296,6 +296,10 @@ function BrandDropdown(props: ICellRendererParams & {
 
     // AG-Grid sutun tipi string — number degeri reddediyor (warning #135)
     targetNode.setDataValue('_matNetPrice', netPrice);
+    // KUR DONMASI (06.08): dovizli kaynaktan gelen fiyatin kuru satirla
+    // birlikte KAYDEDILIR (sheets JSON'a aynen girer). TRY'de null.
+    // Kolon degil veri alani — dogrudan mutasyon yeterli (emitRows tasir).
+    d._matKurBilgi = kaynakKur ?? null;
     targetNode.setDataValue('_matSuggestion', isSuggestion);
     targetNode.setDataValue('_matStatus', ''); // eslesme geldi — bekleme isareti kalkar
     if (materialUnitPriceField) targetNode.setDataValue(materialUnitPriceField, finalPrice.toFixed(1));
@@ -303,7 +307,7 @@ function BrandDropdown(props: ICellRendererParams & {
 
     console.log(`[BrandDropdown] row=${d._rowIdx}, net=${netPrice}, kar=${kar}%, final=${finalPrice}, qty=${qty}, total=${total}, suggestion=${isSuggestion}`);
   };
-  const writePrice = (netPrice: number, isSuggestion = false) => writePriceToNode(node, netPrice, isSuggestion);
+  const writePrice = (netPrice: number, isSuggestion = false, kaynakKur?: any) => writePriceToNode(node, netPrice, isSuggestion, kaynakKur);
 
   const handleChange = async (brandId: string) => {
     node.setDataValue('_marka', brandId || null);
@@ -311,6 +315,7 @@ function BrandDropdown(props: ICellRendererParams & {
     setAlternatives(null);
     if (!brandId) {
       node.setDataValue('_matNetPrice', 0);
+      node.data._matKurBilgi = null; // kur donmasi: fiyatla birlikte temizlenir
       if (materialUnitPriceField) node.setDataValue(materialUnitPriceField, '');
       if (materialTotalField) node.setDataValue(materialTotalField, '');
       return;
@@ -365,7 +370,7 @@ function BrandDropdown(props: ICellRendererParams & {
 
     // Tek eslesme — fiyat yaz ('suggestion' ise sari isaretle)
     if (result && result.netPrice > 0) {
-      writePrice(result.netPrice, result.confidence === 'suggestion');
+      writePrice(result.netPrice, result.confidence === 'suggestion', (result as any).kaynakKur);
       // PRD v3.0 Bolum B: kaynak satir KENDI varyant kimligini kaydeder —
       // SURUKLE/CIFT-TIK bunu tasir. Toggle kalkti (autoVariantEnabled=false):
       // yayilim yalniz acik niyetle → kaynak varyanti HER tek-eslesmede
@@ -430,6 +435,7 @@ function BrandDropdown(props: ICellRendererParams & {
     // ALTIN KURAL: fiyat uretilmez — hucre bos + ISARETLI.
     // 'urun_degil' (oran/hizmet, gri) vs 'yok' (kutuphanede eslesme yok, kirmizi).
     node.setDataValue('_matNetPrice', 0);
+    node.data._matKurBilgi = null; // kur donmasi: fiyatla birlikte temizlenir
     node.setDataValue('_matSuggestion', false);
     node.setDataValue('_matStatus', result?.notProduct ? 'urun_degil' : 'yok');
     if (materialUnitPriceField) node.setDataValue(materialUnitPriceField, '');
@@ -467,7 +473,7 @@ function BrandDropdown(props: ICellRendererParams & {
         const det = buildMaterialContextDetailed(api, n.rowIndex ?? 0, nameField, noField, brandField, quantityField);
         const r = await onBrandChange(d._rowIdx, d._marka, det.name || nm, { variantTags: variant.tags, silent: true });
         if (r && r.autoVariant && r.netPrice > 0) {
-          writePriceToNode(n, r.netPrice, true);
+          writePriceToNode(n, r.netPrice, true, (r as any).kaynakKur);
           n.setDataValue('_matAutoVariant', variant.label); // V4.1 rozeti
           n.setDataValue('_matVariantMode', 'auto');
           // Fill-handle kaynagi olabilsin diye varyant kimligi satirda tasinir
@@ -490,7 +496,7 @@ function BrandDropdown(props: ICellRendererParams & {
     const brandId = data._marka as string | null;
     // Kullanici popup'tan bilincli sectiginde 'oneri' degil kesin sayilir.
     // V4.2: popup'tan secim = MANUEL — grup degisse bile uzerine yazilmaz.
-    writePrice(c.netPrice, false);
+    writePrice(c.netPrice, false, (c as any).kaynakKur);
     node.setDataValue('_matVariantMode', 'manual');
     node.setDataValue('_matAutoVariant', null);
     // Duzeltme Talebi §4.2: SECIMIN KIMLIGI SATIRDA TASINIR — fill-handle
@@ -565,7 +571,7 @@ function BrandDropdown(props: ICellRendererParams & {
   // M3: alternatif marka secimi — marka + fiyat BIRLIKTE atanir, satir manuel
   const handleAlternativeSelect = (a: BrandAlternative) => {
     node.setDataValue('_marka', a.brandId);
-    writePrice(a.netPrice, false);
+    writePrice(a.netPrice, false, (a as any).kaynakKur);
     node.setDataValue('_matVariantMode', 'manual');
     node.setDataValue('_matAutoVariant', null);
     setAlternatives(null);
@@ -961,7 +967,7 @@ function FirmaDropdown(props: ICellRendererParams & {
   // duzeyinde otomatik tespit edilir / SheetTabs'tan secilir; tespit
   // edilemese bile dropdown TUM firmalarla calisir (satir bloklanmaz).
 
-  const writeLaborPrice = (netPrice: number) => {
+  const writeLaborPrice = (netPrice: number, kaynakKur?: any) => {
     const kar = parseFloat(String(data._iscKar ?? 0)) || 0;
     // SPEC: satis = net×(1+kar) yukari 1 hane; toplam = satis×miktar.
     const finalPrice = hesaplaSatisBirimFiyat(netPrice, kar);
@@ -969,6 +975,8 @@ function FirmaDropdown(props: ICellRendererParams & {
     const total = hesaplaSatirToplam(finalPrice, qty);
 
     node.setDataValue('_labNetPrice', netPrice);
+    // KUR DONMASI: malzeme ikiziyle AYNI kural (ikizi unutma dersi)
+    node.data._labKurBilgi = kaynakKur ?? null;
     if (laborUnitPriceField) node.setDataValue(laborUnitPriceField, finalPrice.toFixed(1));
     if (laborTotalField) node.setDataValue(laborTotalField, total.toFixed(1));
     console.log(`[FirmaDropdown] row=${data._rowIdx}, net=${netPrice}, kar=${kar}%, final=${finalPrice}, qty=${qty}`);
@@ -980,6 +988,7 @@ function FirmaDropdown(props: ICellRendererParams & {
     setAlternatives(null);
     if (!firmaId) {
       node.setDataValue('_labNetPrice', 0);
+      node.data._labKurBilgi = null; // kur donmasi: fiyatla birlikte temizlenir
       if (laborUnitPriceField) node.setDataValue(laborUnitPriceField, '');
       if (laborTotalField) node.setDataValue(laborTotalField, '');
       return;
@@ -1004,7 +1013,7 @@ function FirmaDropdown(props: ICellRendererParams & {
     }
 
     if (result && result.netPrice > 0) {
-      writeLaborPrice(result.netPrice);
+      writeLaborPrice(result.netPrice, (result as any).kaynakKur);
       // L7: tek-eslesme kaynagi da varyant kimligini SAKLAR — surukleme
       // kalem cinsini (kaynakli/yivli) tasiyabilsin (malzeme 26d8448 dersi).
       if (result.variantTags && result.variantTags.length > 0) {
@@ -1021,13 +1030,14 @@ function FirmaDropdown(props: ICellRendererParams & {
     }
 
     node.setDataValue('_labNetPrice', 0);
+    node.data._labKurBilgi = null; // kur donmasi: fiyatla birlikte temizlenir
     if (laborUnitPriceField) node.setDataValue(laborUnitPriceField, '');
     if (laborTotalField) node.setDataValue(laborTotalField, '');
   };
 
   const handleCandidateSelect = async (c: MatchCandidate) => {
     const firmaId = data._firma as string | null;
-    writeLaborPrice(c.netPrice);
+    writeLaborPrice(c.netPrice, (c as any).kaynakKur);
     // L7: secimin kimligi satirda tasinir — fill-handle kaynak okur
     node.data._labVariantTags = c.variantTags && c.variantTags.length > 0 ? c.variantTags : null;
     setCandidates(null);
@@ -1047,7 +1057,7 @@ function FirmaDropdown(props: ICellRendererParams & {
   // L5: alternatif firma secimi — firma + fiyat BIRLIKTE atanir
   const handleAlternativeSelect = (a: BrandAlternative) => {
     node.setDataValue('_firma', a.brandId); // alan adi marka tasir, deger FIRMA
-    writeLaborPrice(a.netPrice);
+    writeLaborPrice(a.netPrice, (a as any).kaynakKur);
     setAlternatives(null);
     setPopupPos(null);
     console.log(`[FirmaDropdown] L5 alternatif firma secildi: ${a.brandName} → "${a.materialName}" = ${a.netPrice}`);
@@ -2555,6 +2565,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       // Net'i geriye hesapla
       const net = kar > 0 ? enteredPrice / (1 + kar / 100) : enteredPrice;
       e.node.setDataValue('_matNetPrice', net);
+      row._matKurBilgi = null; // elle girilen TL fiyatin kaynak kuru yoktur
       e.node.setDataValue('_matStatus', ''); // manuel fiyat girildi — bekleme isareti kalkar
       const qty = etkinMiktar(row, quantityField, unitField); // UY2
       e.node.setDataValue(materialTotalField, hesaplaSatirToplam(enteredPrice, qty).toFixed(1));
@@ -2568,6 +2579,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       const kar = parseFloat(String(row._iscKar ?? 0)) || 0;
       const net = kar > 0 ? enteredPrice / (1 + kar / 100) : enteredPrice;
       e.node.setDataValue('_labNetPrice', net);
+      row._labKurBilgi = null; // elle girilen TL fiyatin kaynak kuru yoktur
       const qty = etkinMiktar(row, quantityField, unitField); // UY2
       e.node.setDataValue(laborTotalField, hesaplaSatirToplam(enteredPrice, qty).toFixed(1));
       setTimeout(() => { recalcGrand(); updatePinnedBottom(); }, 0);

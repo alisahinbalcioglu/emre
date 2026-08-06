@@ -16,8 +16,32 @@ import { hesaplaNetFiyat } from '../pricing';
 import { extractAttrTags, extractFluid } from '../../../eslestirme/matching/normalizer';
 import { buildAttrUyari } from '../../../eslestirme/matching/shared-tag-matcher';
 import { urunVariantTags } from '../../../eslestirme/matching/index/query-engine';
-import type { MatchResult, MatchCandidate } from '../../../eslestirme/matching/types';
+import type { MatchResult, MatchCandidate, KaynakKur } from '../../../eslestirme/matching/types';
 import type { IndexedRow, QueryOutcome, AskColumn, LineQuery } from '../../../eslestirme/matching/index/types';
+
+/**
+ * KUR DONMASI (06.08) — cevirici fonksiyonun USTUNDE kur metaverisi tasinir.
+ *
+ * Neden bu bicim: `toTry` imzasi motorun her katmanindan geciyor
+ * (matchV2 → toMatchResult → adayla → netFiyat); ayri bir parametre eklemek
+ * dort imzayi ve tum cagiranlari degistirirdi. Metaveri fonksiyona ILISTIRILIR
+ * (buildTryConverter atar), okuyan yalniz bu dosyadir. `.kur` YOKSA kaynakKur
+ * URETILMEZ — kur bilinmiyorken tarih/kur uydurmak yasak (kapi D1).
+ */
+export type TryCevirici = ((v: number, cur: string) => number) & {
+  kur?: { usdTry: number; eurTry: number; tarih: string };
+};
+
+/** Dovizli satir icin cevrimde kullanilan kuru cikar; TRY'de undefined. */
+function kurOf(r: IndexedRow, toTry: TryCevirici): KaynakKur | undefined {
+  const cur = r.currency;
+  if ((cur !== 'USD' && cur !== 'EUR') || !toTry.kur) return undefined;
+  return {
+    currency: cur,
+    kur: cur === 'USD' ? toTry.kur.usdTry : toTry.kur.eurTry,
+    tarih: toTry.kur.tarih,
+  };
+}
 
 /**
  * Kullaniciya gorunen urun adi: indeksteki displayName + (varsa) BOY.
@@ -82,6 +106,8 @@ function adayla(r: IndexedRow, kolon: AskColumn, toTry: (v: number, cur: string)
     netPrice: net,
     listPrice: list,
     discount: isk,
+    // Kur donmasi: aday secilirse FE bu kuru satira yazar
+    kaynakKur: kurOf(r, toTry as TryCevirici),
     // Geriye uyum: FE (ExcelGrid.tsx:358) tags'ten baslik→alias onerisi
     // uretiyor — ciplak cins token'lari korunur, yoksa o ozellik susar.
     tags: [
@@ -131,6 +157,7 @@ export function toMatchResult(
       const { net, list, isk } = netFiyat(outcome.row, toTry);
       return {
         netPrice: net, listPrice: list, discount: isk,
+        kaynakKur: kurOf(outcome.row, toTry as TryCevirici),
         confidence: 'high',
         matchedName: gorunenAd(outcome.row),
         // R18 asserti bu substring'i ariyor — contract-test.ts C2 de.
@@ -150,6 +177,7 @@ export function toMatchResult(
       const { net, list, isk } = netFiyat(outcome.row, toTry);
       return {
         netPrice: net, listPrice: list, discount: isk,
+        kaynakKur: kurOf(outcome.row, toTry as TryCevirici),
         confidence: 'suggestion',
         autoVariant: true,
         matchedName: gorunenAd(outcome.row),

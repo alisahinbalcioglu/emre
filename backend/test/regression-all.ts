@@ -71,6 +71,12 @@ const SUITES: Suite[] = [
   //    sheet JSON'undan okur, yalniz `laborPrice.delete` demek satiri geri
   //    getirirdi. Bu suite o "geri gelme"yi kilitler.
   { ad: 'İşçilik satır silme kalıcı (ikiz)', script: 'test:isc-sil', zincir: 'Z1' },
+  // ── 06.08.2026: KUR DONMASI (kullanici karari: "dovizli maliyetin kuru
+  //    teklife donsun — evet donsun"). Dovizli kutuphane satirindan fiyat
+  //    yazildiginda cevrimde kullanilan kur sonucla tasinir (kaynakKur) ve
+  //    FE satira yazar → teklif JSON'uyla donar. TRY'de ve kur metaverisi
+  //    olmayan ceviricide alan HIC uretilmez (uydurma kur yasak).
+  { ad: 'Kur donması (kaynakKur sözleşmesi)', script: 'test:kur', zincir: 'Z2' },
   // T1/T3/T4: sablona-yazan eski motor SILINDI; "kolon esleme" (test:ke) ve
   // "iki katmanli baslik" (test:kb) suite'leri onunla birlikte kaldirildi.
   // Yerine gelen sozlesmeler:

@@ -1,7 +1,27 @@
+/**
+ * KUR DONMASI (kullanici karari 06.08: "dovizli maliyetin kuru teklife
+ * donsun"). Dovizli (USD/EUR) kutuphane satirindan fiyat yazildiginda,
+ * TRY'ye cevrimde KULLANILAN kur sonucla birlikte tasinir; FE bunu satira
+ * (`_matKurBilgi`/`_labKurBilgi`) yazar ve teklif JSON'uyla KAYDEDILIR.
+ * Boylece cuma acilan teklif pazartesinin sayisini VE o sayinin hangi
+ * kurla dogdugunu soyler. TRY satirlarda alan HIC uretilmez (kur kavrami
+ * yok); kur metaverisi olmayan ceviricide de uretilmez — uydurma tarih/kur
+ * YASAK (kapi: test/kur-donmasi-test.ts D1).
+ */
+export interface KaynakKur {
+  currency: 'USD' | 'EUR';
+  /** 1 birim doviz = kac TL (TCMB ForexSelling — cevirici bununla carpti) */
+  kur: number;
+  /** Kurun ait oldugu gun (TCMB Tarih) */
+  tarih: string;
+}
+
 export interface MatchResult {
   netPrice: number;
   listPrice: number;
   discount: number;
+  /** Dovizli kaynak satirda cevrimde kullanilan kur — bkz. KaynakKur */
+  kaynakKur?: KaynakKur;
   // 'high' = kesin (satir cap+tip+cins tasiyor, tek aday)
   // 'suggestion' = oneri (yalniz cap veya baslik-ipucu ile tek aday bulundu;
   //                fiyat doldurulur AMA gorsel isaretlenir — sessiz hata onlemi)
@@ -47,6 +67,8 @@ export interface BrandAlternative {
   netPrice: number;
   listPrice: number;
   discount: number;
+  /** Kur donmasi: oneri secilirse FE bu kuru satira yazar (bkz. KaynakKur) */
+  kaynakKur?: KaynakKur;
   /** S2 (06.08.2026): bu ONERI KESIN DEGIL — aday, ana ekranda otomatik
    *  yazilmasini engelleyen bir I6 kapisindan gecemedi ve o kapinin
    *  gerekcesini beraberinde tasiyor ("'paslanmaz' doğrulanamadı").
@@ -68,6 +90,8 @@ export interface MatchCandidate {
   netPrice: number;
   listPrice: number;
   discount: number;
+  /** Kur donmasi: aday secilirse FE bu kuru satira yazar (bkz. KaynakKur) */
+  kaynakKur?: KaynakKur;
   tags: string[];
   popular: boolean;
   // Bu adayi digerlerinden ayiran ozellik (Galvanizli, Siyah, Kirmizi vb.)

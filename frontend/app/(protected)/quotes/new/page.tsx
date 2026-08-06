@@ -555,6 +555,7 @@ export default function NewQuotePage() {
                         const qty = etkinMiktar(row, roles.quantityField, roles.unitField);
                         if (roles.materialTotalField) row[roles.materialTotalField] = hesaplaSatirToplam(satisRestore, qty).toFixed(1);
                         row._matNetPrice = match.netPrice;
+                        row._matKurBilgi = (match as any).kaynakKur ?? null; // kur donmasi
                         reMatched++;
                       }
                     } catch {}
@@ -1163,7 +1164,7 @@ export default function NewQuotePage() {
           if (priceCol) newCells[priceCol] = finalPrice;
           if (totalCol) newCells[totalCol] = total;
 
-          return { ...r, brandId, _matNetPrice: netPrice, _candidates: null, cells: newCells };
+          return { ...r, brandId, _matNetPrice: netPrice, _matKurBilgi: (result as any).kaynakKur ?? null, _candidates: null, cells: newCells };
         }));
 
         const icon = result.confidence === 'high' ? '🟢' : result.confidence === 'medium' ? '🟡' : '🟠';
@@ -1836,7 +1837,7 @@ export default function NewQuotePage() {
                     : `🔧 ${displayPrice(netPrice)} (iscilik)`,
                   description: `Eslesti: ${match.matchedName?.slice(0, 80) ?? 'Bilinmeyen'}`,
                 });
-                return { netPrice, matchedName: match.matchedName, reason: match.reason, confidence: match.confidence, autoVariant: match.autoVariant, hafizaOtoyaz: match.hafizaOtoyaz, variantTags: match.variantTags };
+                return { netPrice, matchedName: match.matchedName, reason: match.reason, confidence: match.confidence, autoVariant: match.autoVariant, hafizaOtoyaz: match.hafizaOtoyaz, variantTags: match.variantTags, kaynakKur: (match as any).kaynakKur };
               }
               // Eslesme bulundu ama fiyat 0 — kullaniciya uyari
               if (match.confidence === 'high' && match.matchedName) {
@@ -1916,7 +1917,7 @@ export default function NewQuotePage() {
                 });
                 // hafizaOtoyaz (I6 rozeti): fiyat GECMIS SECIMDEN atandi — grid
                 // hucrede "Geçmiş seçiminizden atandı" rozeti gosterir.
-                return { netPrice, matchedName: match.matchedName, candidates: match.candidates, reason: match.reason, confidence: match.confidence, donusum: match.donusum, autoVariant: match.autoVariant, hafizaOtoyaz: match.hafizaOtoyaz, variantTags: match.variantTags };
+                return { netPrice, matchedName: match.matchedName, candidates: match.candidates, reason: match.reason, confidence: match.confidence, donusum: match.donusum, autoVariant: match.autoVariant, hafizaOtoyaz: match.hafizaOtoyaz, variantTags: match.variantTags, kaynakKur: (match as any).kaynakKur };
               }
 
               // Eslesme bulundu ama fiyat 0 — kullaniciya uyari
@@ -2152,7 +2153,7 @@ export default function NewQuotePage() {
                                         const nc = { ...r.cells };
                                         if (priceCol) nc[priceCol] = fp;
                                         if (totalCol) nc[totalCol] = hesaplaSatirToplam(fp, qty);
-                                        return { ...r, _matNetPrice: netPrice, _candidates: null, cells: nc };
+                                        return { ...r, _matNetPrice: netPrice, _matKurBilgi: (c as any).kaynakKur ?? null, _candidates: null, cells: nc };
                                       }));
                                       toast({ title: `🟢 ${c.label}`, description: `${displayPrice(netPrice)} — ${c.materialName.slice(0, 50)}` });
                                     }}

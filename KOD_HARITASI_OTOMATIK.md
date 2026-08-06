@@ -3,10 +3,10 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 347
-Toplam satir: 70308
+Kod dosyasi: 348
+Toplam satir: 70507
 Uc nokta: 125
-test:* scripti: 50
+test:* scripti: 51
 
 ## 1 · Dosyalar ve satir sayilari
 
@@ -71,18 +71,18 @@ test:* scripti: 50
 | `backend/src/ozellik/eslestirme/matching/index/vocab.ts` | 37 |
 | `backend/src/ozellik/eslestirme/matching/matching.controller.ts` | 96 |
 | `backend/src/ozellik/eslestirme/matching/matching.module.ts` | 15 |
-| `backend/src/ozellik/eslestirme/matching/matching.service.ts` | 1044 |
+| `backend/src/ozellik/eslestirme/matching/matching.service.ts` | 1053 |
 | `backend/src/ozellik/eslestirme/matching/normalizer.ts` | 683 |
 | `backend/src/ozellik/eslestirme/matching/shared-tag-matcher.ts` | 165 |
 | `backend/src/ozellik/eslestirme/matching/tag-generator.ts` | 161 |
 | `backend/src/ozellik/eslestirme/matching/terminology.service.ts` | 288 |
-| `backend/src/ozellik/eslestirme/matching/types.ts` | 92 |
+| `backend/src/ozellik/eslestirme/matching/types.ts` | 116 |
 | `backend/src/ozellik/eslestirme/utils/build-material-context.ts` | 126 |
 | `backend/src/ozellik/eslestirme/utils/etiket-display.ts` | 70 |
 | `backend/src/ozellik/fiyat/exchange-rates/exchange-rates.controller.ts` | 15 |
 | `backend/src/ozellik/fiyat/exchange-rates/exchange-rates.module.ts` | 11 |
 | `backend/src/ozellik/fiyat/exchange-rates/exchange-rates.service.ts` | 136 |
-| `backend/src/ozellik/fiyat/matching/index/outcome-mapper.ts` | 259 |
+| `backend/src/ozellik/fiyat/matching/index/outcome-mapper.ts` | 287 |
 | `backend/src/ozellik/fiyat/matching/pricing.ts` | 46 |
 | `backend/src/ozellik/giris/ai/ai.controller.ts` | 26 |
 | `backend/src/ozellik/giris/ai/ai.module.ts` | 13 |
@@ -163,6 +163,7 @@ test:* scripti: 50
 | `backend/test/kd9-kur-olcutu-test.ts` | 252 |
 | `backend/test/kl-kayit-toplami-test.ts` | 144 |
 | `backend/test/kl-liste-ekleme-test.ts` | 168 |
+| `backend/test/kur-donmasi-test.ts` | 111 |
 | `backend/test/kutuphane-ad-duzenleme-test.ts` | 151 |
 | `backend/test/labor-matching-test.ts` | 196 |
 | `backend/test/labor-sheet-test.ts` | 102 |
@@ -179,7 +180,7 @@ test:* scripti: 50
 | `backend/test/pk3-repo-kapsama-test.ts` | 79 |
 | `backend/test/pk9-sessiz-indeks-test.ts` | 97 |
 | `backend/test/product-index-test.ts` | 453 |
-| `backend/test/regression-all.ts` | 207 |
+| `backend/test/regression-all.ts` | 213 |
 | `backend/test/s45-malzeme-aile-test.ts` | 440 |
 | `backend/test/s45-olcum.ts` | 188 |
 | `backend/test/sozluk-golgeleme-olcum.ts` | 125 |
@@ -206,7 +207,7 @@ test:* scripti: 50
 | `frontend/app/(protected)/quote-formats/page.tsx` | 397 |
 | `frontend/app/(protected)/quotes/[id]/page.tsx` | 244 |
 | `frontend/app/(protected)/quotes/new/error.tsx` | 13 |
-| `frontend/app/(protected)/quotes/new/page.tsx` | 2361 |
+| `frontend/app/(protected)/quotes/new/page.tsx` | 2362 |
 | `frontend/app/(protected)/quotes/page.tsx` | 192 |
 | `frontend/app/admin/brands/page.tsx` | 895 |
 | `frontend/app/admin/layout.tsx` | 80 |
@@ -308,7 +309,7 @@ test:* scripti: 50
 | `frontend/ozellik/kutuphane/oksuz-kutuphane-uyarisi.ts` | 60 |
 | `frontend/ozellik/tablo/disiplin.ts` | 13 |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 233 |
-| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 2810 |
+| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 2830 |
 | `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | 109 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts` | 178 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.ts` | 175 |
@@ -500,6 +501,7 @@ test:* scripti: 50
 | `backend/test/kd9-kur-olcutu-test.ts` | `../../frontend/ozellik/fiyat/pricing` |
 | `backend/test/kl-kayit-toplami-test.ts` | `../src/ozellik/teklif/quotes/quotes.service` `../src/ozellik/fiyat/matching/pricing` |
 | `backend/test/kl-liste-ekleme-test.ts` | `@prisma/client` `../src/ozellik/kutuphane/labor-firms/labor-firms.service` `../src/ozellik/kutuphane/library/library.service` `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` |
+| `backend/test/kur-donmasi-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/query-engine` `../src/ozellik/fiyat/matching/index/outcome-mapper` `../src/ozellik/eslestirme/matching/index/types` |
 | `backend/test/kutuphane-ad-duzenleme-test.ts` | `../src/ozellik/kutuphane/library/library-sheet-builder` `../src/ozellik/kutuphane/library/library.service` |
 | `backend/test/labor-matching-test.ts` | `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/labor-matching/labor-matching.service` `../src/ozellik/eslestirme/matching/terminology.service` |
 | `backend/test/labor-sheet-test.ts` | `@prisma/client` `../src/ozellik/kutuphane/labor-firms/labor-firms.service` `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` |
@@ -840,6 +842,7 @@ test:* scripti: 50
 | `backend/package.json` | `test:aile-uyusmazligi` | `ts-node test/aile-uyusmazligi-test.ts` |
 | `backend/package.json` | `test:kb-ad` | `ts-node test/kutuphane-ad-duzenleme-test.ts` |
 | `backend/package.json` | `test:isc-sil` | `ts-node test/iscilik-satir-silme-test.ts` |
+| `backend/package.json` | `test:kur` | `ts-node test/kur-donmasi-test.ts` |
 | `frontend/package.json` | `test:e2e` | `playwright test` |
 | `frontend/package.json` | `test:e2e-golden` | `node test/e2e-golden/run.mjs` |
 

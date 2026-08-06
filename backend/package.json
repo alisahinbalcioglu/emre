@@ -62,7 +62,8 @@
     "test:aile": "ts-node test/aile-oncelik-test.ts",
     "test:aile-uyusmazligi": "ts-node test/aile-uyusmazligi-test.ts",
     "test:kb-ad": "ts-node test/kutuphane-ad-duzenleme-test.ts",
-    "test:isc-sil": "ts-node test/iscilik-satir-silme-test.ts"
+    "test:isc-sil": "ts-node test/iscilik-satir-silme-test.ts",
+    "test:kur": "ts-node test/kur-donmasi-test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

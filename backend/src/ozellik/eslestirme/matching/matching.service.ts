@@ -60,11 +60,20 @@ export class MatchingService {
     const needsFx = rows.some((r) => r.currency && r.currency !== 'TRY');
     if (!needsFx) return (v) => v;
     const rates = await this.exchangeRates.getRates();
-    return (v, currency) => {
+    const cevirici = ((v: number, currency?: string | null) => {
       if (currency === 'USD') return Math.round(v * rates.usdTry * 100) / 100;
       if (currency === 'EUR') return Math.round(v * rates.eurTry * 100) / 100;
       return v;
+    }) as ((value: number, currency?: string | null) => number) & {
+      kur?: { usdTry: number; eurTry: number; tarih: string };
     };
+    // ── KUR DONMASI (kullanici karari 06.08) ────────────────────────────
+    // Cevrimde kullanilan kur metaveri olarak ceviricinin USTUNDE tasinir;
+    // outcome-mapper dovizli satirin sonucuna `kaynakKur` yazar, FE satira
+    // (`_matKurBilgi`) kaydeder. Boylece TRY tutar zaten donarken (statik
+    // JSON) o tutarin HANGI KURLA dogdugu da teklifle birlikte donar.
+    cevirici.kur = { usdTry: rates.usdTry, eurTry: rates.eurTry, tarih: rates.date };
+    return cevirici;
   }
 
   // ═══════════════════════════════════════════
