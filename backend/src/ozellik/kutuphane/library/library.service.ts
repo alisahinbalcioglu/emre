@@ -5,7 +5,8 @@ import { UpdateLibraryItemDto } from './dto/update-library-item.dto';
 import { ImportPriceListDto } from './dto/import-price-list.dto';
 import { BulkDiscountDto } from './dto/bulk-discount.dto';
 import { BulkUpdateItemsDto } from './dto/bulk-update-items.dto';
-import { CreateManualBrandDto } from './dto/create-manual-brand.dto';
+import { CreateManualBrandDto, ManualBrandRowDto } from './dto/create-manual-brand.dto';
+import { AddLibraryRowsDto } from './dto/add-library-rows.dto';
 import { buildLibrarySheetRows } from './library-sheet-builder';
 import {
   buildProductIndex,
@@ -127,6 +128,35 @@ export class LibraryService {
       data: { name: `${brandName} — Manuel Liste`, brandId: brand.id },
     });
 
+    const sonuc = await this.insertLibraryRows(userId, brand.id, priceList.id, null, rows, 0);
+
+    await this.rebuildUserBrandLibrary(userId, brand.id);
+
+    console.log(`[ManualBrand] "${brandName}" (${discipline}): ${sonuc.created} satir, ${sonuc.belirsiz} belirsiz, ${sonuc.ogrenilenAile} self-family (userId=${userId})`);
+
+    return {
+      brandId: brand.id,
+      brandName: brand.name,
+      created: sonuc.created,
+      belirsiz: sonuc.belirsiz,
+      ogrenilenAile: sonuc.ogrenilenAile,
+    };
+  }
+
+  /**
+   * ORTAK SATIR EKLEME CEKIRDEGI — createManualBrand ve addRowsToBrandList
+   * ayni indeksleme + ogrenme sozlesmesinden gecer (tek yol, iki kapi):
+   * her satir buildProductIndex ile indekslenir (ProductIndex.ownerUserId),
+   * UserLibrary satiri indekse baglanir, self-family adlar PER-USER ogrenilir.
+   */
+  private async insertLibraryRows(
+    userId: string,
+    brandId: string,
+    priceListId: string,
+    libraryListId: string | null,
+    rows: ManualBrandRowDto[],
+    sortBase: number,
+  ): Promise<{ created: number; belirsiz: number; ogrenilenAile: number }> {
     const p = this.prisma as any;
     let created = 0;
     let belirsizSayisi = 0;
@@ -156,7 +186,7 @@ export class LibraryService {
         not: r.not?.trim() || null,
         sheetName: 'Manuel',
         sourceRow: i,
-        sortOrder: i,
+        sortOrder: sortBase + i,
       };
       const idx = buildProductIndex(pcols);
 
@@ -180,8 +210,8 @@ export class LibraryService {
 
       const pi = await p.productIndex.create({
         data: {
-          brandId: brand.id,
-          priceListId: priceList.id,
+          brandId,
+          priceListId,
           ownerUserId: userId, // ← kullanicinin kendi manuel satiri
           kategori: pcols.kategori, ad: pcols.ad, cins: pcols.cins,
           baglanti: pcols.baglanti, capRaw: pcols.cap, boyMm,
@@ -200,8 +230,9 @@ export class LibraryService {
       await this.prisma.userLibrary.create({
         data: {
           userId,
-          brandId: brand.id,
-          sourcePriceListId: priceList.id,
+          brandId,
+          sourcePriceListId: priceListId,
+          libraryListId,
           productIndexId: pi.id,
           materialId: null,
           materialName: idx.displayName,
@@ -214,7 +245,7 @@ export class LibraryService {
           cins: pcols.cins,
           cap: pcols.cap,
           discountRate: r.discountRate ?? null,
-          sortOrder: i,
+          sortOrder: sortBase + i,
         } as any,
       });
       created++;
@@ -229,17 +260,7 @@ export class LibraryService {
       ).catch((e) => console.warn('[ManualBrand] aile ogrenme atlandi:', (e as Error).message));
     }
 
-    await this.rebuildUserBrandLibrary(userId, brand.id);
-
-    console.log(`[ManualBrand] "${brandName}" (${discipline}): ${created} satir, ${belirsizSayisi} belirsiz, ${ogrenilecekAileler.size} self-family (userId=${userId})`);
-
-    return {
-      brandId: brand.id,
-      brandName: brand.name,
-      created,
-      belirsiz: belirsizSayisi,
-      ogrenilenAile: ogrenilecekAileler.size,
-    };
+    return { created, belirsiz: belirsizSayisi, ogrenilenAile: ogrenilecekAileler.size };
   }
 
   async update(userId: string, id: string, dto: UpdateLibraryItemDto) {
@@ -561,24 +582,7 @@ export class LibraryService {
       return null;
     }
 
-    const built = buildLibrarySheetRows(
-      items.map((item: any) => ({
-        id: item.id,
-        materialName: item.materialName,
-        adRaw: item.adRaw,
-        unit: item.unit,
-        listPrice: item.customPrice ?? item.listPrice ?? 0,
-        discountRate: item.discountRate,
-        currency: item.currency,
-        kategori: item.kategori,
-        cins: item.cins,
-        cap: item.cap,
-        baglanti: item.product?.baglanti ?? null,
-        boy: item.product?.boyMm ?? null,
-        urunKodu: item.product?.urunKodu ?? null,
-        not: item.product?.not ?? null,
-      })),
-    );
+    const built = buildLibrarySheetRows(items.map((item: any) => this.sheetItemOf(item)));
 
     const sheets = [
       {
@@ -601,15 +605,183 @@ export class LibraryService {
     return result;
   }
 
+  /** UserLibrary satiri → sheet-builder girdisi (rebuild + liste filtresi ORTAK). */
+  private sheetItemOf(item: any) {
+    return {
+      id: item.id,
+      materialName: item.materialName,
+      adRaw: item.adRaw,
+      unit: item.unit,
+      listPrice: item.customPrice ?? item.listPrice ?? 0,
+      discountRate: item.discountRate,
+      currency: item.currency,
+      kategori: item.kategori,
+      cins: item.cins,
+      cap: item.cap,
+      baglanti: item.product?.baglanti ?? null,
+      boy: item.product?.boyMm ?? null,
+      urunKodu: item.product?.urunKodu ?? null,
+      not: item.product?.not ?? null,
+    };
+  }
+
   // ── GET — ExcelGrid render icin sheets + guncel iskontolar ──
   // HER ZAMAN taze rebuild: kayitli sheets eski formatta olabilir (header
   // satirli / grupsuz) — UserLibrary kaynak-of-truth'tur, gorunum ondan uretilir.
-  async getBrandSheets(userId: string, brandId: string) {
+  // listId verilirse YALNIZ o listenin satirlari doner (sekme gorunumu).
+  // BOS liste sheet DONDURUR (satirsiz, TAM kolon seti) — iscilik dersi:
+  // "bos liste = kolonlar kayboldu" bir daha yasanmasin.
+  async getBrandSheets(userId: string, brandId: string, listId?: string) {
+    if (listId) {
+      const p = this.prisma as any;
+      const list = await p.libraryList.findFirst({ where: { id: listId, userId, brandId } });
+      if (!list) throw new NotFoundException('Liste bulunamadi');
+      const items = await this.prisma.userLibrary.findMany({
+        where: { userId, brandId, libraryListId: listId } as any,
+        include: { product: { select: { baglanti: true, boyMm: true, urunKodu: true, not: true } } } as any,
+        orderBy: [{ sortOrder: 'asc' }, { materialName: 'asc' }],
+      });
+      const built = buildLibrarySheetRows(items.map((item: any) => this.sheetItemOf(item)));
+      return {
+        id: `liste-${listId}`,
+        userId,
+        brandId,
+        sheets: {
+          sheets: [{
+            name: list.name,
+            index: 0,
+            columnDefs: built.columnDefs,
+            rowData: built.rowData,
+            columnRoles: built.columnRoles,
+            headerEndRow: 0,
+            isEmpty: false,
+            discipline: null,
+          }],
+        },
+      };
+    }
+
     const count = await this.prisma.userLibrary.count({ where: { userId, brandId } });
     if (count === 0) throw new NotFoundException('Kutuphanenizde bu markaya ait kayit yok');
     const built = await this.rebuildUserBrandLibrary(userId, brandId);
     if (!built) throw new NotFoundException('Olusturulamadi');
     return built;
+  }
+
+  // ── KUTUPHANE FIYAT LISTELERI (07.08 — iscilik "ilave sayfa"nin ikizi) ──
+
+  /**
+   * Markanin liste sekmeleri. LAZY GOC: libraryListId NULL satirlar (ozellik
+   * oncesi kayitlar + havuzdan yeni aktarimlar) ilk acilista markanin
+   * VARSAYILAN (en eski) listesine baglanir — boylece tum sorgular tekduze
+   * kalir, NULL ozel durumu asagi katmanlara sizmaz. Idempotent supurge.
+   */
+  async getBrandLists(userId: string, brandId: string) {
+    const p = this.prisma as any;
+    const sahipsiz = await this.prisma.userLibrary.count({
+      where: { userId, brandId, libraryListId: null } as any,
+    });
+    if (sahipsiz > 0) {
+      let varsayilan = await p.libraryList.findFirst({
+        where: { userId, brandId },
+        orderBy: { uploadedAt: 'asc' },
+      });
+      if (!varsayilan) {
+        varsayilan = await p.libraryList.create({
+          data: { userId, brandId, name: 'Fiyat Listesi' },
+        });
+      }
+      await this.prisma.userLibrary.updateMany({
+        where: { userId, brandId, libraryListId: null } as any,
+        data: { libraryListId: varsayilan.id } as any,
+      });
+    }
+    const lists = await p.libraryList.findMany({
+      where: { userId, brandId },
+      orderBy: { uploadedAt: 'asc' },
+      include: { _count: { select: { items: true } } },
+    });
+    return { lists };
+  }
+
+  /**
+   * Mevcut markaya satir ekleme — hedef liste secilir ('new' = yeni sekme).
+   *
+   * ── ISCILIK DERSI (06.08): ONCE DOGRULA, SONRA LISTE OLUSTUR ──────────
+   * saveBulkPrices'ta liste dogrulamadan ONCE olusuyordu; tum satirlar
+   * gecersizse geriye bos HAYALET liste kaliyordu. Burada ayni sinif hata
+   * bastan kapali: gecerli satir yoksa 'new' liste HIC olusturulmaz.
+   */
+  async addRowsToBrandList(userId: string, brandId: string, dto: AddLibraryRowsDto) {
+    const brand = await this.prisma.brand.findUnique({ where: { id: brandId } });
+    if (!brand) throw new NotFoundException('Marka bulunamadi');
+    // Sahiplik esdegeri: marka global olabilir — kullanicinin kutuphanesinde
+    // bu markadan kayit olmali (sekmeli sayfa zaten yalniz oradan acilir).
+    const sahiplik = await this.prisma.userLibrary.count({ where: { userId, brandId } });
+    if (sahiplik === 0) throw new NotFoundException('Kutuphanenizde bu marka yok');
+
+    const rows = (dto.rows ?? []).filter((r) => (r.ad ?? '').trim().length > 0);
+    if (rows.length === 0) {
+      throw new BadRequestException('En az bir satirda Malzeme Adi dolu olmali — liste olusturulmadi.');
+    }
+
+    const p = this.prisma as any;
+    let liste;
+    if (dto.listId === 'new') {
+      // Iscilikle ayni adlandirma: "<marka> - <tarih>", ayni gun icinde (2)...
+      const taban = `${brand.name} - ${new Date().toLocaleDateString('tr-TR')}`;
+      let name = taban;
+      let suffix = 2;
+      while (await p.libraryList.findFirst({ where: { userId, brandId, name } })) {
+        name = `${taban} (${suffix++})`;
+        if (suffix > 100) break;
+      }
+      liste = await p.libraryList.create({ data: { userId, brandId, name } });
+    } else {
+      liste = await p.libraryList.findFirst({ where: { id: dto.listId, userId, brandId } });
+      if (!liste) throw new NotFoundException('Liste bulunamadi');
+    }
+
+    // Kaynak izlenebilirlik + ProductIndex.priceListId zorunlulugu: her ekleme
+    // turu kendi havuz PriceList'ini alir (createManualBrand ile ayni desen).
+    const priceList = await this.prisma.priceList.create({
+      data: { name: `${brand.name} — ${liste.name}`, brandId },
+    });
+
+    // Yeni satirlar listenin SONUNA dizilir (kaynak sirasi korunur).
+    const maxSort = await this.prisma.userLibrary.aggregate({
+      _max: { sortOrder: true },
+      where: { userId, brandId, libraryListId: liste.id } as any,
+    });
+    const sortBase = (maxSort._max.sortOrder ?? -1) + 1;
+
+    const sonuc = await this.insertLibraryRows(userId, brandId, priceList.id, liste.id, rows, sortBase);
+    await this.rebuildUserBrandLibrary(userId, brandId);
+
+    console.log(`[LibraryList] "${brand.name}" / "${liste.name}": ${sonuc.created} satir eklendi (userId=${userId})`);
+    return {
+      brandId,
+      listId: liste.id,
+      listName: liste.name,
+      created: sonuc.created,
+      belirsiz: sonuc.belirsiz,
+      ogrenilenAile: sonuc.ogrenilenAile,
+    };
+  }
+
+  /** Liste sekmesini sil — satirlar + liste. Kullanicinin KENDI kopyasi
+   *  silinir; havuz (PriceList/ProductIndex) DOKUNULMAZ. */
+  async deleteBrandList(userId: string, brandId: string, listId: string) {
+    const p = this.prisma as any;
+    const liste = await p.libraryList.findFirst({ where: { id: listId, userId, brandId } });
+    if (!liste) throw new NotFoundException('Liste bulunamadi');
+    const silinen = await this.prisma.userLibrary.deleteMany({
+      where: { userId, brandId, libraryListId: listId } as any,
+    });
+    await p.libraryList.delete({ where: { id: listId } });
+    // 0 satir kaldiysa rebuild UserBrandLibrary'yi de siler (marka kutuphaneden duser).
+    await this.rebuildUserBrandLibrary(userId, brandId);
+    return { ok: true, deletedRows: silinen.count };
   }
 
   // ── SAVE — ExcelGrid'den gelen dirty satirlari kaydet ──

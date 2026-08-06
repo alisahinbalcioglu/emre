@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Put, Delete,
-  Body, Param, UseGuards,
+  Body, Param, Query, UseGuards,
 } from '@nestjs/common';
 import { LibraryService } from './library.service';
 import { CreateLibraryItemDto } from './dto/create-library-item.dto';
@@ -9,6 +9,7 @@ import { ImportPriceListDto } from './dto/import-price-list.dto';
 import { BulkDiscountDto } from './dto/bulk-discount.dto';
 import { BulkUpdateItemsDto } from './dto/bulk-update-items.dto';
 import { CreateManualBrandDto } from './dto/create-manual-brand.dto';
+import { AddLibraryRowsDto } from './dto/add-library-rows.dto';
 import { JwtAuthGuard } from '../../../altyapi/auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../../altyapi/auth/decorators/current-user.decorator';
 
@@ -75,9 +76,42 @@ export class LibraryController {
 
   // ── ExcelGrid sheets (kullanicinin marka kutuphanesi gorunumu) ──
 
+  /** listId verilirse yalniz o sekmenin satirlari (bos liste = satirsiz sheet,
+   *  TAM kolon seti); verilmezse markanin tum satirlari (geriye uyum). */
   @Get('brand/:brandId/sheets')
-  getBrandSheets(@CurrentUser() user: any, @Param('brandId') brandId: string) {
-    return this.libraryService.getBrandSheets(user.id, brandId);
+  getBrandSheets(
+    @CurrentUser() user: any,
+    @Param('brandId') brandId: string,
+    @Query('listId') listId?: string,
+  ) {
+    return this.libraryService.getBrandSheets(user.id, brandId, listId || undefined);
+  }
+
+  // ── Kutuphane fiyat listeleri (sekmeler — iscilik "ilave sayfa" ikizi) ──
+
+  @Get('brand/:brandId/lists')
+  getBrandLists(@CurrentUser() user: any, @Param('brandId') brandId: string) {
+    return this.libraryService.getBrandLists(user.id, brandId);
+  }
+
+  /** Mevcut markaya satir ekle — listId 'new' ise yeni sekme olusturur.
+   *  ISCILIK DERSI: gecerli satir yoksa liste OLUSMAZ (400). */
+  @Post('brand/:brandId/rows')
+  addRowsToBrandList(
+    @CurrentUser() user: any,
+    @Param('brandId') brandId: string,
+    @Body() dto: AddLibraryRowsDto,
+  ) {
+    return this.libraryService.addRowsToBrandList(user.id, brandId, dto);
+  }
+
+  @Delete('brand/:brandId/lists/:listId')
+  deleteBrandList(
+    @CurrentUser() user: any,
+    @Param('brandId') brandId: string,
+    @Param('listId') listId: string,
+  ) {
+    return this.libraryService.deleteBrandList(user.id, brandId, listId);
   }
 
   @Post('brand/:brandId/save-sheets')

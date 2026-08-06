@@ -64,7 +64,8 @@
     "test:kb-ad": "ts-node test/kutuphane-ad-duzenleme-test.ts",
     "test:isc-sil": "ts-node test/iscilik-satir-silme-test.ts",
     "test:kur": "ts-node test/kur-donmasi-test.ts",
-    "test:alias-yutma": "ts-node test/alias-kelime-yutma-test.ts"
+    "test:alias-yutma": "ts-node test/alias-kelime-yutma-test.ts",
+    "test:kb-liste": "ts-node test/kutuphane-liste-test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

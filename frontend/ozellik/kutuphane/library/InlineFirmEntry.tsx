@@ -125,6 +125,16 @@ const InlineFirmEntry = forwardRef<FirmEntryHandle, Props>(function InlineFirmEn
       const sheet = buildFirmSheet(rowsRef.current);
       const { data } = await api.post(`/labor-firms/${firmaId}/save-bulk`, { priceListId: 'new', items, sheet });
       toast({ title: 'Kaydedildi', description: `${data.imported} kalem eklendi ("${data.priceListName}")` });
+      // Fiyatsiz satirlar sessizce atlanmasin — kullanici hangi satirlarin
+      // kaydedilmedigini bilsin (tumu gecersizse backend zaten 400 doner,
+      // liste olusmaz ve girilenler ekranda kalir).
+      if (data.skipped > 0) {
+        toast({
+          title: 'Uyari',
+          description: `${data.skipped} satırda Birim Fiyat yok — o satırlar kaydedilmedi.`,
+          variant: 'destructive',
+        });
+      }
       onSaved();
       return true;
     } catch (e: any) {

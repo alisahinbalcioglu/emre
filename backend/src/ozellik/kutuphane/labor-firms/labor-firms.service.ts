@@ -389,21 +389,32 @@ export class LaborFirmsService {
       orderBy: { laborItem: { name: 'asc' } },
     });
 
+    // SABIT 8-KOLON FORMAT — InlineFirmEntry (FE FIRM_COLUMNS) ile BIREBIR.
+    // Eski sentetik 4 jenerik kolon uretiyordu (No/Kalem/Birim/Fiyat); sheet
+    // JSON'suz bir listeye gecen kullanici "sutunlar kayboldu" goruyordu
+    // (06.08 canli bulgu). Kayitli kalemin adi BIRLESIKTIR (cins/cap geri
+    // ayrilamaz) → tam ad 'ad' kolonuna yazilir, cins/cap/not bos kalir.
+    // nameField='ad' oldugu icin FE sabit-format yolu calisir ve ilk kayitta
+    // liste kalici 8-kolon sheet kazanir (savePriceListSheets sheet payload).
     const columnDefs = [
-      { field: 'col0', headerName: 'No', width: 60, editable: false },
-      { field: 'col1', headerName: 'Iscilik Kalemi', width: 400, editable: true },
-      { field: 'col2', headerName: 'Birim', width: 100, editable: true },
-      { field: 'col3', headerName: 'Liste Fiyat', width: 130, editable: true },
+      { field: 'col0', headerName: 'No', width: 56, editable: false },
+      { field: 'ad', headerName: 'İşçilik Kalemi', width: 340, editable: true },
+      { field: 'cins', headerName: 'Cinsi/Detay', width: 160, editable: true },
+      { field: 'cap', headerName: 'Çap', width: 90, editable: true },
+      { field: 'birim', headerName: 'Birim', width: 90, editable: true },
+      { field: 'fiyat', headerName: 'Birim Fiyat', width: 120, editable: true },
+      { field: 'para', headerName: 'Para Birimi', width: 100, editable: true },
+      { field: 'not', headerName: 'Not', width: 180, editable: true },
     ];
     const columnRoles = {
       noField: 'col0',
-      nameField: 'col1',
-      unitField: 'col2',
-      laborUnitPriceField: 'col3',
+      nameField: 'ad',
+      unitField: 'birim',
+      laborUnitPriceField: 'fiyat',
     };
-    const rowData: any[] = [
-      { _rowIdx: 0, _isDataRow: false, _isHeaderRow: true, col0: 'No', col1: 'Iscilik Kalemi', col2: 'Birim', col3: 'Liste Fiyat' },
-    ];
+    const header: any = { _rowIdx: 0, _isDataRow: false, _isHeaderRow: true };
+    for (const c of columnDefs) header[c.field] = c.headerName;
+    const rowData: any[] = [header];
     prices.forEach((p, i) => {
       rowData.push({
         _rowIdx: i + 1,
@@ -412,9 +423,13 @@ export class LaborFirmsService {
         _laborPriceId: p.id,
         _laborDiscountRate: p.discountRate || 0,
         col0: String(i + 1),
-        col1: p.laborItem.name,
-        col2: p.unit || 'Adet',
-        col3: p.unitPrice,
+        ad: p.laborItem.name,
+        cins: '',
+        cap: '',
+        birim: p.unit || 'Adet',
+        fiyat: p.unitPrice,
+        para: (p as any).currency ?? '',
+        not: '',
       });
     });
 
@@ -760,6 +775,27 @@ export class LaborFirmsService {
   ) {
     const firma = await this.assertOwnership(firmaId, userId);
 
+    // ── ONCE DOGRULA, SONRA LISTE OLUSTUR (06.08 canli bulgu) ──────────────
+    // Eski sira tersti: 'new' yolunda liste kalemler dogrulanmadan olusuyordu.
+    // Tum satirlar gecersizse (ornegin fiyatsiz) geriye SIFIR kalemli, sheet'siz
+    // bir HAYALET liste kaliyordu; sheet'siz liste sentetik 4 kolona dustugu
+    // icin kullanici bunu "sutunlar kayboldu + kaydetmiyor" olarak goruyordu.
+    const validItems = items.filter((item) => {
+      const name = item.laborName?.trim();
+      const price = Number(item.unitPrice);
+      if (!name || name.length < 2) return false;
+      if (isNaN(price) || price <= 0) return false;
+      return true;
+    });
+
+    if (priceListId === 'new' && validItems.length === 0) {
+      // Liste OLUSTURULMAZ; FE hata toast'i gosterir ve girilen satirlar
+      // ekranda kalir — kullanici fiyatlari doldurup tekrar kaydedebilir.
+      throw new BadRequestException(
+        'Hiçbir satırda İşçilik Kalemi + geçerli Birim Fiyat yok — yeni liste oluşturulmadı. Fiyatları girip tekrar kaydedin.',
+      );
+    }
+
     // Benzersiz liste adi uret (ayni gun icinde birden fazla liste olabilir).
     const yeniListeOlustur = async () => {
       const taban = `${firma.name} - ${new Date().toLocaleDateString('tr-TR')}`;
@@ -790,20 +826,13 @@ export class LaborFirmsService {
       }
     }
 
-    const validItems = items.filter((item) => {
-      const name = item.laborName?.trim();
-      const price = Number(item.unitPrice);
-      if (!name || name.length < 2) return false;
-      if (isNaN(price) || price <= 0) return false;
-      return true;
-    });
-
     if (validItems.length === 0) {
       return { imported: 0, skipped: items.length, total: items.length, firmaName: firma.name, priceListName: priceList.name };
     }
 
     let imported = 0;
-    let skipped = 0;
+    // FE "N satirda Birim Fiyat yok" uyarisini bundan uretir — 0 sabitti.
+    const skipped = items.length - validItems.length;
     // laborName → olusan LaborPrice.id (sheet JSON'una _laborPriceId inject
     // etmek icin — getPriceListSheets ad-eslesme yerine dogrudan id kullanir).
     const nameToPriceId = new Map<string, string>();

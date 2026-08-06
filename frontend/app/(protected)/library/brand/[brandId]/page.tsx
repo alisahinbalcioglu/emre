@@ -22,6 +22,14 @@ interface BrandLibraryResponse {
   sheets: { sheets: Array<any> };
 }
 
+/** Markanin fiyat listesi sekmesi (iscilik "ilave sayfa"nin ikizi). */
+interface LibraryListInfo {
+  id: string;
+  name: string;
+  uploadedAt: string;
+  _count: { items: number };
+}
+
 // Yapisal kolonlar — MEVCUT satirlarda salt-okunur (kaynak sadakati),
 // YENI (bos) satirlarda editable (inline malzeme girisi).
 const STRUCT_FIELDS = ['col_cins', 'col_baglanti', 'col_cap', 'col_boy', 'col_kod', 'col_not'];
@@ -71,6 +79,13 @@ export default function LibraryBrandDetailPage() {
   const [saving, setSaving] = useState(false);
   const [gridData, setGridData] = useState<ExcelGridData | null>(null);
   const [brandName, setBrandName] = useState('');
+  // Liste sekmeleri (iscilik deseni): aktif sekme + "+ Yeni Liste" modu
+  const [lists, setLists] = useState<LibraryListInfo[]>([]);
+  const [activeListId, setActiveListId] = useState<string | null>(null);
+  const [newListMode, setNewListMode] = useState(false);
+  // Yeni-liste bos grid'i icin son yuklenen kolon seti (backend hep tam set doner)
+  const colDefsRef = useRef<any[] | null>(null);
+  const colRolesRef = useRef<any | null>(null);
   const [liveRows, setLiveRows] = useState<ExcelRowData[]>([]);
   // KRITIK (race fix — işçilikle aynı): handleSave SENKRON güncel satırları
   // okumalı. liveRows STATE async — son hücre commit'i (fiyat) Kaydet'e tıklama
@@ -81,23 +96,40 @@ export default function LibraryBrandDetailPage() {
   const [dirtyCount, setDirtyCount] = useState(0); // mevcut satir fiyat/iskonto degisikligi
   const [newCount, setNewCount] = useState(0);     // yeni girilen malzeme satiri
 
-  const fetchData = useCallback(async () => {
+  /** Liste sekmelerini ceker (backend NULL satirlari varsayilan listeye gocurur). */
+  const fetchLists = useCallback(async (): Promise<LibraryListInfo[]> => {
+    const { data } = await api.get<{ lists: LibraryListInfo[] }>(`/library/brand/${brandId}/lists`);
+    setLists(data.lists ?? []);
+    return data.lists ?? [];
+  }, [brandId]);
+
+  // BAYAT CEVAP KORUMASI: hizli sekme gecisinde (veya kayit sonrasi gecişte)
+  // YAVAS donen eski istek, yeni sekmenin grid'ini ezebiliyordu — canli
+  // dogrulamada birebir yasandi (116 satirli eski liste, 1 satirli yeni
+  // listeden GEC dondu ve ekrani geri aldi). Yalniz SON istegin cevabi yazilir.
+  const fetchSeq = useRef(0);
+
+  /** Aktif sekmenin grid'ini yukler. Bos liste de gecerli: backend satirsiz
+   *  ama TAM kolonlu sheet doner (iscilik "kolonlar kayboldu" dersi). */
+  const fetchData = useCallback(async (listId: string) => {
+    const seq = ++fetchSeq.current;
     setLoading(true);
     try {
-      const { data } = await api.get<BrandLibraryResponse>(`/library/brand/${brandId}/sheets`);
+      const { data } = await api.get<BrandLibraryResponse>(
+        `/library/brand/${brandId}/sheets?listId=${listId}`,
+      );
+      if (seq !== fetchSeq.current) return; // bayat cevap — yenisi yolda
       const firstSheet = data.sheets?.sheets?.[0];
       if (!firstSheet) {
         toast({ title: 'Veri yok', variant: 'destructive' });
         router.push('/library');
         return;
       }
-      try {
-        const { data: brand } = await api.get<{ name: string }>(`/brands/${brandId}`);
-        setBrandName(brand.name);
-      } catch {}
 
       // TEK TIP kolonlar (backend hep tam set doner) + yeni-satir editable
       const cols = withNewRowEditable(firstSheet.columnDefs ?? []);
+      colDefsRef.current = firstSheet.columnDefs ?? [];
+      colRolesRef.current = firstSheet.columnRoles;
       const existing: ExcelRowData[] = firstSheet.rowData ?? [];
 
       // Inline giris: en alta 30 bos satir + 1 spare (autoAppendRow devami)
@@ -126,7 +158,54 @@ export default function LibraryBrandDetailPage() {
     }
   }, [brandId, router]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  // Mount: marka adi + sekmeler → ilk sekme aktif
+  useEffect(() => {
+    (async () => {
+      try {
+        try {
+          const { data: brand } = await api.get<{ name: string }>(`/brands/${brandId}`);
+          setBrandName(brand.name);
+        } catch {}
+        const ls = await fetchLists();
+        if (ls.length === 0) {
+          toast({ title: 'Veri yok', variant: 'destructive' });
+          router.push('/library');
+          return;
+        }
+        setActiveListId(ls[0].id);
+      } catch (e: any) {
+        toast({ title: 'Yuklenemedi', description: e?.response?.data?.message, variant: 'destructive' });
+        router.push('/library');
+      }
+    })();
+  }, [brandId, fetchLists, router]);
+
+  // Aktif sekme degisince grid'i yukle (yeni-liste modunda fetch YOK)
+  useEffect(() => {
+    if (activeListId && !newListMode) fetchData(activeListId);
+  }, [activeListId, newListMode, fetchData]);
+
+  /** "+ Yeni Liste": bos grid (ayni kolon seti, tum satirlar yeni=editable). */
+  function enterNewListMode() {
+    const defs = colDefsRef.current;
+    if (!defs) return;
+    const cols = withNewRowEditable(defs);
+    const rowData: ExcelRowData[] = [];
+    for (let i = 0; i < BLANK_ROW_COUNT; i++) rowData.push(makeBlankLibRow(cols, i));
+    rowData.push(makeBlankLibRow(cols, BLANK_ROW_COUNT, true));
+    setGridData({
+      columnDefs: cols,
+      rowData,
+      columnRoles: colRolesRef.current,
+      brands: [],
+      headerEndRow: 0,
+    });
+    liveRowsRef.current = rowData;
+    setLiveRows(rowData);
+    setDirtyCount(0);
+    setNewCount(0);
+    setNewListMode(true);
+  }
 
   const nameField = gridData?.columnRoles.nameField ?? 'col1';
 
@@ -165,8 +244,39 @@ export default function LibraryBrandDetailPage() {
       return;
     }
 
+    const rowsPayload = (list: any[]) => list.map((r: any) => ({
+      ad: String(r[nameField]).trim(),
+      cins: strOrU(r.col_cins),
+      baglanti: strOrU(r.col_baglanti),
+      cap: strOrU(r.col_cap),
+      boy: strOrU(r.col_boy),
+      urunKodu: strOrU(r.col_kod),
+      not: strOrU(r.col_not),
+      birim: strOrU(unitField ? r[unitField] : undefined),
+      price: numOrU(priceField ? r[priceField] : undefined),
+      discountRate: numOrU(r._draftDiscount),
+    }));
+
     setSaving(true);
     try {
+      // ── YENI LISTE MODU: satirlar 'new' hedefiyle gider (iscilik ikizi). ──
+      // Backend ISCILIK DERSINI uygular: gecerli satir yoksa 400 doner ve liste
+      // HIC OLUSMAZ — catch'e duseriz, mod acik kalir, girilenler ekranda durur.
+      if (newListMode) {
+        const { data } = await api.post(`/library/brand/${brandId}/rows`, {
+          listId: 'new',
+          rows: rowsPayload(newRows),
+        });
+        toast({ title: 'Kaydedildi', description: `"${data.listName}" olusturuldu · ${data.created} malzeme` });
+        // Iki set AYNI senkron blokta: tek render → effect BIR kez, yeni id ile
+        // kosar. Once mod kapatilip await edilseydi effect eski id ile de
+        // atesleniyordu (iki istek yarisir, yavas olan ekrani ezerdi).
+        setActiveListId(data.listId);
+        setNewListMode(false);
+        await fetchLists();
+        return;
+      }
+
       let updated = 0;
       let added = 0;
 
@@ -191,30 +301,45 @@ export default function LibraryBrandDetailPage() {
         updated = data.updated ?? 0;
       }
 
-      // 2) Yeni malzemeler → mevcut markaya ekle (find-or-create)
-      if (newRows.length > 0) {
-        const rows = newRows.map((r: any) => ({
-          ad: String(r[nameField]).trim(),
-          cins: strOrU(r.col_cins),
-          baglanti: strOrU(r.col_baglanti),
-          cap: strOrU(r.col_cap),
-          boy: strOrU(r.col_boy),
-          urunKodu: strOrU(r.col_kod),
-          not: strOrU(r.col_not),
-          birim: strOrU(unitField ? r[unitField] : undefined),
-          price: numOrU(priceField ? r[priceField] : undefined),
-          discountRate: numOrU(r._draftDiscount),
-        }));
-        const { data } = await api.post('/library/manual-brand', { brandName, discipline: 'mechanical', rows });
+      // 2) Yeni malzemeler → AKTIF listeye ekle. Eski yol `manual-brand` idi:
+      //    marka ADIYLA calisir ve her kayitta gorunmez yeni PriceList acardi;
+      //    sekmeler varken satirlar hedefsiz kalirdi — artik sekmeye gider.
+      if (newRows.length > 0 && activeListId) {
+        const { data } = await api.post(`/library/brand/${brandId}/rows`, {
+          listId: activeListId,
+          rows: rowsPayload(newRows),
+        });
         added = data.created ?? 0;
       }
 
       toast({ title: 'Kaydedildi', description: `${updated} guncellendi · ${added} yeni malzeme` });
-      await fetchData();
+      await fetchLists(); // sekme sayaclari tazelensin
+      if (activeListId) await fetchData(activeListId);
     } catch (e: any) {
       toast({ title: 'Kaydetme hatasi', description: e?.response?.data?.message, variant: 'destructive' });
     } finally {
       setSaving(false);
+    }
+  }
+
+  /** Aktif liste sekmesini sil (satirlariyla birlikte — onayli). */
+  async function deleteActiveList() {
+    const liste = lists.find((l) => l.id === activeListId);
+    if (!liste) return;
+    const sayi = liveRows.filter((r: any) => r._isDataRow && r._libraryItemId).length;
+    if (!(await confirm(`"${liste.name}" listesi ve içindeki ${sayi} malzeme kütüphanenizden silinsin mi?`))) return;
+    try {
+      await api.delete(`/library/brand/${brandId}/lists/${liste.id}`);
+      toast({ title: 'Silindi', description: liste.name });
+      const kalan = await fetchLists();
+      if (kalan.length === 0) {
+        // Son liste de gitti → marka kutuphaneden dustu
+        router.push('/library/mechanical-brands');
+        return;
+      }
+      setActiveListId(kalan[0].id);
+    } catch (e: any) {
+      toast({ title: 'Silinemedi', description: e?.response?.data?.message, variant: 'destructive' });
     }
   }
 
@@ -241,6 +366,7 @@ export default function LibraryBrandDetailPage() {
     try {
       await api.delete(`/library/${itemId}`);
       toast({ title: 'Silindi', description: ad });
+      fetchLists().catch(() => {}); // sekme sayaci tazelensin (kritik degil)
       return true;
     } catch (e: any) {
       // Sessiz basarisizlik YASAK: silinemediyse satir EKRANDA KALIR ve
@@ -299,7 +425,9 @@ export default function LibraryBrandDetailPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{brandName || 'Marka'}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {malzemeSayisi} malzeme
+            {newListMode
+              ? 'Yeni liste — satırları doldurup Kaydet\'e basın'
+              : `${malzemeSayisi} malzeme`}
             <span className="ml-2 text-xs text-muted-foreground/70">
               · Yeni malzeme için en alttaki boş satırları doldurun (Excel&apos;den yapıştırabilirsiniz)
             </span>
@@ -321,8 +449,52 @@ export default function LibraryBrandDetailPage() {
         </div>
       </div>
 
+      {/* Fiyat listesi sekmeleri + "+ Yeni Liste" (iscilik firma detayindaki desen) */}
+      {lists.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-1">
+          {lists.map((l) => (
+            <button
+              key={l.id}
+              type="button"
+              onClick={() => { setNewListMode(false); setActiveListId(l.id); }}
+              className={[
+                'px-3 py-1.5 text-xs rounded-md border transition-colors',
+                !newListMode && activeListId === l.id
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white border-gray-200 hover:bg-gray-50',
+              ].join(' ')}
+            >
+              {l.name} <span className="opacity-70">({l._count.items})</span>
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={enterNewListMode}
+            className={[
+              'px-3 py-1.5 text-xs rounded-md border border-dashed transition-colors',
+              newListMode
+                ? 'bg-blue-600 text-white border-blue-600'
+                : 'bg-white border-blue-300 text-blue-600 hover:bg-blue-50',
+            ].join(' ')}
+          >
+            + Yeni Liste
+          </button>
+          {!newListMode && activeListId && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2 text-xs text-destructive"
+              onClick={deleteActiveList}
+            >
+              <Trash2 className="mr-1 h-3 w-3" />Listeyi Sil
+            </Button>
+          )}
+        </div>
+      )}
+
       <Card className="overflow-hidden">
         <ExcelGrid
+          key={newListMode ? 'yeni-liste' : (activeListId ?? 'liste')}
           ref={gridRef}
           data={gridData}
           brands={EMPTY_BRANDS}

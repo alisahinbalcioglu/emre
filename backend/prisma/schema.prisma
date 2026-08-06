@@ -44,6 +44,7 @@ model User {
   createdAt      DateTime           @default(now())
   library        UserLibrary[]
   brandLibraries UserBrandLibrary[]
+  libraryLists   LibraryList[]
   laborFirms     LaborFirm[]
   quotes         Quote[]
   subscriptions  UserSubscription[]
@@ -155,6 +156,7 @@ model Brand {
   materialPrices MaterialPrice[]
   userLibrary    UserLibrary[]
   userLibraries  UserBrandLibrary[]
+  libraryLists   LibraryList[]
   quoteItems     QuoteItem[]
   productIndex   ProductIndex[]
 }
@@ -380,10 +382,36 @@ model UserLibrary {
   product        ProductIndex? @relation(fields: [productIndexId], references: [id], onDelete: SetNull)
   productIndexId String?
 
+  // ── KUTUPHANE LISTE BAGI (07.08 — iscilikteki "ilave sayfa"nin ikizi) ──
+  // null = varsayilan liste (lazy goc: library.service.getBrandLists ilk
+  // acilista null satirlari varsayilan LibraryList'e baglar). SetNull: liste
+  // silme akisi satirlari ZATEN acikca siler; bu yalniz emniyet kemeri.
+  libraryList   LibraryList? @relation(fields: [libraryListId], references: [id], onDelete: SetNull)
+  libraryListId String?
+
   // Motorun ANA sorgusu: userLibrary.findMany({ where: { userId, brandId } })
   // — bugune kadar bu tabloda HIC index yoktu (full scan).
   @@index([userId, brandId])
   @@index([productIndexId])
+  @@index([libraryListId])
+}
+
+// ── MALZEME KUTUPHANESI FIYAT LISTESI (07.08) ─────────────────────────
+// Iscilikteki LaborPriceList'in kutuphane ikizi: bir markanin satirlari
+// sekmelere ("sayfa") bolunur. ESLESTIRME MOTORUNA GORUNMEZ — motor
+// UserLibrary'yi userId+brandId ile okur (tum listelerin BIRLESIMI),
+// iscilikle ayni semantik (bulkMatchLabor da firmaId ile tum listeleri okur).
+model LibraryList {
+  id         String        @id @default(uuid())
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  brand      Brand         @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  brandId    String
+  name       String
+  uploadedAt DateTime      @default(now())
+  items      UserLibrary[]
+
+  @@index([userId, brandId])
 }
 
 model Quote {

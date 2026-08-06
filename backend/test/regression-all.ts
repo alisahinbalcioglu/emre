@@ -64,6 +64,11 @@ const SUITES: Suite[] = [
   //    GORMEDIGI alana gidiyordu. B blogu o tuzagi kilitler; C blogu
   //    paylasilan `Material` katalogunun DOKUNULMADIGINI olcer.
   { ad: 'Kütüphanede ad düzenleme + kaynak sadakati', script: 'test:kb-ad', zincir: 'Z1' },
+  // ── 07.08.2026: HAYALET LISTE sinifi (iscilik + kutuphane, IKI AILE).
+  //    'new' hedefli kayitta liste dogrulamadan ONCE olusuyordu; ayrica
+  //    sheet'siz liste 4 jenerik kolona dusuyordu ("sutunlar kayboldu").
+  //    Kutuphane liste sekmeleri ayni sozlesmeyle dogdu (lazy goc dahil).
+  { ad: 'Kütüphane liste sekmeleri + hayalet liste yasağı', script: 'test:kb-liste', zincir: 'Z1' },
   // ── 06.08.2026: ISCILIK IKIZI. Malzeme tarafinda satir silme baglanirken bu
   //    taraf UNUTULDU (kullanici bildirdi). Ustelik burada silme HIC YOKTU:
   //    `enableStructureEdit` verilmedigi icin sag tik menusu bile acilmiyordu.
