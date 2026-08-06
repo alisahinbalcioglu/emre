@@ -62,7 +62,21 @@ export const AD_SOZLUGU: AdSozlukGirdisi[] = [
   // isminin KENDISI yoktu → "Somunlu Kelepçe" (Norm, 293 satir) ailesiz
   // kaliyordu. "En uzun desen kazanir" kurali sayesinde yalin ad eklemek
   // ozel ifadeleri BOZMAZ (orn. 'boru kelepcesi' hala 'kelepce'yi yener).
-  { slug: 'kelepce', ad: 'Boru kelepçesi', grup: 'İZOLASYON / ASKI', dnli: false, patterns: ['kelepce', 'boru kelepcesi', 'kaucuklu kelepce', 'aski kelepcesi', 'somunlu kelepce', 'havalandirma kelepcesi'] },
+  // ── 06.08.2026: "BORU ASKISI" ⇒ BORU KELEPCESI ────────────────────────────
+  // Kullanici sikayeti: NORM KELEPÇE hicbir eslestirme yapmiyor. Olculen kok
+  // neden — teklif satiri "Sprinkler Boru Askisi, DN150" icindeki "Boru"
+  // kelimesi yuzunden 'boru' ailesine cozuluyordu; NORM urunleri 'kelepce'
+  // ailesinde → AD kilidi tutmuyor, `ad-yok`.
+  // Kanit repo'nun KENDI uzman verisidir, fikir degil: bu dosyanin sonundaki
+  // CINS_YUVALARI'nda `Boru kelepçesi · Tip · [..., 'sprinkler askısı']` yazar.
+  // ⚠ YALIN 'aski' EKLENMEDI ve EKLENMEMELI: "Sismik Aski" / "Deprem Askisi"
+  //   gergi-tij ailesidir, kelepce degil (test/aile-oncelik-test.ts C2 blogu
+  //   bu ucunu ve 'Boru Konsolu'nu kilitler).
+  // ⚠ 'kanal askisi' BILEREK DISARIDA: kanal askisi profil/tij sistemidir;
+  //   kelepce oldugunu gosteren hicbir verimiz yok. Kanit cikarsa ayri tur.
+  // ON KOSUL: bu iki cok-kelimeli desen ancak KAPSAMA USTUNLUGU (66d7373) ile
+  //   ulasilabilir — oncesinde regex /boru/ ve /sprink/ onlari yutuyordu.
+  { slug: 'kelepce', ad: 'Boru kelepçesi', grup: 'İZOLASYON / ASKI', dnli: false, patterns: ['kelepce', 'boru kelepcesi', 'kaucuklu kelepce', 'aski kelepcesi', 'somunlu kelepce', 'havalandirma kelepcesi', 'boru askisi', 'sprinkler askisi'] },
   { slug: 'klima', ad: 'Split klima', grup: 'SOĞUTMA / KLİMA', dnli: false, patterns: ['split klima', 'duvar tipi klima', 'inverter klima'] },
   { slug: 'klima-santrali', ad: 'Klima santrali', grup: 'SOĞUTMA / KLİMA', dnli: false, patterns: ['klima santrali', 'ahu', 'hucreli klima santrali', 'isi geri kazanimli santral'] },
   // YAZIM VARYANTI (S5): sahada cift-L 'kollektör' cok yaygin ("Trafolar

@@ -117,6 +117,56 @@ if (KORUMA.length === 0) throw new Error('BOS KUME — yalanci yesil.');
 for (const [metin, beklenen, gerekce] of KORUMA) bekle(metin, beklenen, gerekce);
 
 // ═══════════════════════════════════════════════════════════════════════════
+// C) NORM KELEPCE — "BORU ASKISI" ⇒ BORU KELEPCESI
+//
+// KULLANICI SIKAYETI (06.08): NORM KELEPÇE markasi hicbir eslestirme yapmiyor.
+// OLCULEN kok neden: teklif satiri `"Sprinkler Boru Askisi, DN150"` icindeki
+// "Boru" kelimesi yuzunden 'boru' ailesine cozuluyor, NORM urunleri ise
+// 'kelepce' ailesinde → AD KILIDI tutmuyor, `ad-yok`.
+//
+// KANIT (repo'nun KENDI uzman verisi, fikir degil): `ad-cins-sozlugu.ts`
+// CINS_YUVALARI son satiri — `{ ad: 'Boru kelepçesi', yuva: 'Tip',
+// degerler: [..., 'sprinkler askısı'] }`. Yani sprinkler askisi, boru
+// kelepcesinin bir TIPI olarak zaten tanimli.
+//
+// ⚠ COK KELIMELI OLMAK ZORUNDA: yalin "aski" kelimesini kelepceye baglamak
+// YANLIS olurdu — "Sismik Aski" ve "Deprem Askisi" gergi/tij ailesidir.
+// Bu yuzden asagida hem KURTARMA hem KAYMA-YASAK vakalari var.
+//
+// ⚠ BILINEN SINIR (kasitli, olculdu): "Kanal Askisi" DOKUNULMADI → 'kanal'
+// kalir. Kanal askisi profil/tij sistemidir, kelepce degildir; kelepce
+// oldugunu gosteren hicbir verimiz yok. Kanit cikarsa ayri tur.
+// ═══════════════════════════════════════════════════════════════════════════
+console.log('── C) NORM KELEPÇE: aski ⇒ kelepce ──');
+const KELEPCE_KURTARMA: [string, string][] = [
+  ['Sprinkler Boru Askısı, DN150', 'kelepce'],  // kullanicinin GERCEK satiri
+  ['Boru Askısı', 'kelepce'],
+  ['Boru Askısı DN100', 'kelepce'],
+  ['Galvaniz Boru Askısı 4"', 'kelepce'],
+  ['Sprinkler Askısı', 'kelepce'],              // repo'nun kendi CINS_YUVALARI beyani
+];
+for (const [metin, beklenen] of KELEPCE_KURTARMA) {
+  bekle(metin, beklenen, 'boru/sprinkler askisi = boru kelepcesi (CINS_YUVALARI beyani)');
+}
+
+console.log('── C2) KAYMA YASAK: gergi/tij ailesi kelepceye KAYMAYACAK ──');
+const KELEPCE_KAYMA_YASAK: [string, string, string][] = [
+  ['Sismik Askı', 'aski', 'Sismik aski gergi/tij sistemidir — kelepce DEGIL'],
+  ['Deprem Askısı', 'aski', 'Deprem askisi gergi/tij — 06.08 olcumunde kayma riski olarak isaretlendi'],
+  ['Boru Konsolu', 'aski', 'Konsol mesnettir, kelepce degil'],
+  ['Askı Tiji M8', 'aski', 'Tij = gergi cubugu'],
+  ['Askı Çubuğu M10', 'aski', 'Ayni gerekce'],
+  ['Kanal Askısı', 'kanal', 'BILEREK dokunulmadi — kelepce oldugu KANITLANMADI'],
+  ['Sert Yivli Boru Bağlantı Kelepçesi, DN150', 'kelepce', 'Zaten dogruydu, bozulmamali'],
+  ['Branşman Kelepçesi, DN65 x DN25', 'kelepce', 'Zaten dogruydu (kalan sorunu CIFT OLCU, aile degil)'],
+  ['Somunlu Kelepçe', 'kelepce', 'Norm 293 satir — yalin ad kaydi bozulmamali'],
+];
+if (KELEPCE_KURTARMA.length === 0 || KELEPCE_KAYMA_YASAK.length === 0) {
+  throw new Error('BOS KUME — yalanci yesil.');
+}
+for (const [metin, beklenen, gerekce] of KELEPCE_KAYMA_YASAK) bekle(metin, beklenen, gerekce);
+
+// ═══════════════════════════════════════════════════════════════════════════
 console.log('');
 console.log('════════════════════════════════════════════════════════════════');
 const toplam = gecti + hatalar.length;

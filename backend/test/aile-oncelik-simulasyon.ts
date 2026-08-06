@@ -20,11 +20,13 @@
  *
  *  BU BETIK NE YAPAR:
  *    0) normalizeText idempotent mi — indeks karsilastirmasinin on kosulu.
- *    1) R0 (bugunku kural) REPLIKASI uretim `resolveFamily` ile BIREBIR mi?
- *       Ayrilirsa simulasyon yanlistir, sayilar okunmaz. (Dairesel olcut
- *       yasagi: beklenen degeri veriden degil, URETIM KODUNDAN aliyoruz.)
- *    2) R0 vs K1 farkini UC ayri girdi kumesinde sayar + tam liste basar:
- *         A. sozlugun kendi desenleri (295)
+ *    1) IC TUTARLILIK: K3 replikasi uretim `resolveFamily` ile BIREBIR mi?
+ *       Ayrilirsa simulasyon yanlistir, sayilar okunmaz ve exit 1 verilir.
+ *       ⚠ K3 ARTIK URETIMDE (66d7373) — denetim bu yuzden K3'e bakar; R0
+ *       tarihsel TABANDIR (302a21e davranisi) ve fark sutunlarinin sifir
+ *       noktasidir. Denetimi R0'a birakmak her kosumda yalanci alarm verirdi.
+ *    2) R0 → aday kural farkini UC ayri girdi kumesinde sayar + liste basar:
+ *         A. sozlugun kendi desenleri
  *         B. gercek urun havuzu (yerel ProductIndex dokumu)
  *         C. gercek teklif satirlari (test/fixtures/*.xls*)
  *
@@ -109,6 +111,7 @@ function kapsayanSozluk(tamMetin: string, a: number, b: number, cokKelimeSart: b
   }
   return null;
 }
+
 
 function aileK2(text: string, cokKelimeSart: boolean): string | null {
   const tam = normalizeText(text);
@@ -236,8 +239,13 @@ for (const kume of kumeler) {
   for (const metin of benzersiz) {
     const uretim = resolveFamily(metin);
     const r0 = aileR0(metin);
-    if (uretim !== r0) {
-      if (replikaHatasi < 5) console.error(`REPLIKA AYRILDI: "${metin}" uretim=${uretim} replika=${r0}`);
+    // ⚠ K3 ARTIK URETIMDE (66d7373). Bu yuzden ic tutarlilik denetimi K3
+    // replikasina bakar; R0 tarihsel TABANDIR (302a21e davranisi) ve fark
+    // sutunlarinin baslangic noktasidir. Denetimi R0'a birakmak, fix
+    // birlestikten sonra her kosumda "olcum gecersiz" derdi.
+    const k3 = aileK3(metin);
+    if (uretim !== k3) {
+      if (replikaHatasi < 5) console.error(`REPLIKA AYRILDI: "${metin}" uretim=${uretim} K3replika=${k3}`);
       replikaHatasi++;
     }
     for (const v of VARYANTLAR) {
@@ -276,8 +284,8 @@ for (const kume of kumeler) {
 yaz();
 yaz('════════════════════════════════════════════════════════════════════════');
 if (replikaHatasi > 0) {
-  yaz(` ✗ REPLIKA URETIMDEN AYRILDI: ${replikaHatasi}/${toplamGirdi} girdi. OLCUM GECERSIZ.`);
+  yaz(` ✗ K3 REPLIKASI URETIMDEN AYRILDI: ${replikaHatasi}/${toplamGirdi} girdi. OLCUM GECERSIZ.`);
   process.exit(1);
 }
-yaz(` ✓ R0 replikasi uretim resolveFamily ile BIREBIR (${toplamGirdi} girdi) — olcum gecerli.`);
+yaz(` ✓ K3 replikasi uretim resolveFamily ile BIREBIR (${toplamGirdi} girdi) — olcum gecerli.`);
 yaz('════════════════════════════════════════════════════════════════════════');

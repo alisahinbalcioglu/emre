@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 340
-Toplam satir: 68726
+Toplam satir: 68798
 Uc nokta: 125
 test:* scripti: 47
 
@@ -61,7 +61,7 @@ test:* scripti: 47
 | `backend/src/ozellik/eslestirme/labor-matching/labor-matching.controller.ts` | 50 |
 | `backend/src/ozellik/eslestirme/labor-matching/labor-matching.module.ts` | 14 |
 | `backend/src/ozellik/eslestirme/labor-matching/labor-matching.service.ts` | 74 |
-| `backend/src/ozellik/eslestirme/matching/ad-cins-sozlugu.ts` | 231 |
+| `backend/src/ozellik/eslestirme/matching/ad-cins-sozlugu.ts` | 245 |
 | `backend/src/ozellik/eslestirme/matching/ad-resolver.ts` | 117 |
 | `backend/src/ozellik/eslestirme/matching/conversion.ts` | 411 |
 | `backend/src/ozellik/eslestirme/matching/index/line-parser.ts` | 220 |
@@ -134,8 +134,8 @@ test:* scripti: 47
 | `backend/src/surum.ts` | 30 |
 | `backend/test/a1-silme-etkisi-test.ts` | 330 |
 | `backend/test/admin-import-test.ts` | 264 |
-| `backend/test/aile-oncelik-simulasyon.ts` | 284 |
-| `backend/test/aile-oncelik-test.ts` | 132 |
+| `backend/test/aile-oncelik-simulasyon.ts` | 292 |
+| `backend/test/aile-oncelik-test.ts` | 182 |
 | `backend/test/audit-canli-kosum.ts` | 313 |
 | `backend/test/audit-real-excel.ts` | 82 |
 | `backend/test/b1-kutuphane-cascade-test.ts` | 185 |
