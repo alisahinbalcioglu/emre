@@ -79,6 +79,14 @@ export interface ProductIndexFields {
   displayName: string;
   rowKey: string;
   belirsiz: boolean;
+  /**
+   * "Sozluk cozemedi, kendi adi aile oldu" (KUTUPHANE=HAFIZA v8).
+   * SAKLANMAZ — hesaplanan, cagiranin okumasi icin acilan alan.
+   * Aile ogrenme kapisi (learnFamilyAliases) BUNA bakar; onceden
+   * `adSlug === adBucket` proxy'sine bakiyordu ve sozlugun cozdugu
+   * tek kelimelik adlarda YANLIS ATESLIYORDU (bkz. asagidaki gerekce).
+   */
+  selfFamily: boolean;
   indexVersion: number;
 }
 
@@ -517,6 +525,20 @@ export function buildProductIndex(c: ProductColumns): ProductIndexFields {
   const anlamli = anlamliAd(adBucket);
   const belirsiz = !ad || (familySlug === null && !anlamli);
   const adSlug = familySlug ?? (anlamli ? adBucket : BELIRSIZ_SLUG);
+  // ── SELF-FAMILY: "sozluk cozemedi, kendi adi aile oldu" (06.08) ──────────
+  // Bu bilgi ONCEDEN TAHMIN EDILIYORDU: cagiranlar `adSlug === adBucket`
+  // proxy'sine bakiyordu (library.service:164, admin.service:1151 ve :1602).
+  // Proxy YANLIS: sozlugun COZDUGU tek kelimelik adlarda da esitlik dogar —
+  //   ad="Sprinkler" → familySlug='sprinkler' (SOZLUKTEN), adBucket='sprinkler'
+  // → sozlugun tanidigi ad "sozluksuz" sanilip GLOBAL alias ogreniliyordu
+  //   (alias='sprinkler', impliedType='sprinkler'), o alias da teklif
+  //   satirindaki 'sprinkler' kelimesini yutup satiri ADSIZ birakiyordu
+  //   (bkz. test/alias-kelime-yutma-test.ts — canli AYVAZ vakasi).
+  // Olculdu: 381 ad adayinin 68'i bu tuzaga dusuyor (Fan, Damper, Conta,
+  // Dubel, Kelepce, Kanal, Hidrant...). Artik TAHMIN yok, alan ACIK.
+  // ⚠ SAKLANMAZ: ProductIndex tablosuna yazilmaz (cagiranlar `data:` alanlarini
+  // TEK TEK sayar, spread yok) — INDEX_VERSION artisi GEREKMEZ.
+  const selfFamily = familySlug === null && anlamli;
 
   // Ad kolonunun token'lari — KOK ALINMIS, hicbiri atilmaz.
   // ("kompansatörü" → 'kompansator'; 'cekvalf' AYIRT EDICI olarak yasar)
@@ -576,6 +598,7 @@ export function buildProductIndex(c: ProductColumns): ProductIndexFields {
     displayName,
     rowKey,
     belirsiz,
+    selfFamily,
     indexVersion: INDEX_VERSION,
   };
 }

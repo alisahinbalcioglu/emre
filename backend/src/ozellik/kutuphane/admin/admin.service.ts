@@ -1148,7 +1148,11 @@ export class AdminService {
       if (idx.belirsiz) belirsizSayisi++;
       // KÜTÜPHANE = HAFIZA: urun sozluksuz ama self-family olduysa (adSlug =
       // kendi adBucket'i) o aileyi ogrenilecekler'e ekle (override/dict haric).
-      else if (idx.adSlug === idx.adBucket && !ogrenilecekAileler.has(idx.adBucket)) {
+      // ADIM: sozluk GERCEKTEN cozemedi mi? Onceden `adSlug === adBucket`
+      // proxy'siydi; sozlugun cozdugu tek kelimelik adlarda (Sprinkler, Fan,
+      // Damper...) YANLIS atesliyor ve o adin kelimesini yutan bir alias
+      // ogreniyordu (bkz. test/alias-kelime-yutma-test.ts).
+      else if (idx.selfFamily && !ogrenilecekAileler.has(idx.adBucket)) {
         ogrenilecekAileler.set(idx.adBucket, pcols.ad);
       }
       // ── AYNI DEMET IKI KEZ → SESSIZCE EZME, AYIR ────────────────────
@@ -1599,7 +1603,11 @@ export class AdminService {
       }
       if (f.belirsiz) belirsizSonra++;
       // Self-family olduysa (sozluksuz ama anlamli) aileyi ogren
-      else if (f.adSlug === f.adBucket && !ogrenilecekAileler.has(f.adBucket)) {
+      // ADIM: sozluk GERCEKTEN cozemedi mi? Onceden `adSlug === adBucket`
+      // proxy'siydi; sozlugun cozdugu tek kelimelik adlarda (Sprinkler, Fan,
+      // Damper...) YANLIS atesliyor ve o adin kelimesini yutan bir alias
+      // ogreniyordu (bkz. test/alias-kelime-yutma-test.ts).
+      else if (f.selfFamily && !ogrenilecekAileler.has(f.adBucket)) {
         ogrenilecekAileler.set(f.adBucket, r.ad ?? f.adBucket);
       }
       await (this.prisma as any).productIndex.update({

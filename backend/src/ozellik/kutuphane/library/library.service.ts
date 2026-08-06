@@ -161,7 +161,11 @@ export class LibraryService {
       const idx = buildProductIndex(pcols);
 
       if (idx.belirsiz) belirsizSayisi++;
-      else if (idx.adSlug === idx.adBucket && !ogrenilecekAileler.has(idx.adBucket)) {
+      // ADIM: sozluk GERCEKTEN cozemedi mi? Onceden `adSlug === adBucket`
+      // proxy'siydi; sozlugun cozdugu tek kelimelik adlarda (Sprinkler, Fan,
+      // Damper...) YANLIS atesliyor ve o adin kelimesini yutan bir alias
+      // ogreniyordu (bkz. test/alias-kelime-yutma-test.ts).
+      else if (idx.selfFamily && !ogrenilecekAileler.has(idx.adBucket)) {
         ogrenilecekAileler.set(idx.adBucket, pcols.ad);
       }
 

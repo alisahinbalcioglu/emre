@@ -106,6 +106,21 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   // Dagarcik: aile cozulduyse aile havuzundan, cozulmediyse TUM havuzdan.
   const vocab = buildFamilyVocab(rows);
   const yol = classifyTokens(tokens, vocab);
+  /**
+   * ALIAS SATIRIN AD KELIMESINI YUTTU MU? (06.08 canli AYVAZ vakasi)
+   *
+   * Alias suzgeci UYGULANMASAYDI satir bir ad kelimesi yazmis olur muydu?
+   * Yalniz K8 kapisinin KARARI icin sorulur — daraltma/kisit zinciri
+   * DEGISMEZ (alias kelimeleri filtreli kalir).
+   *
+   * ⚠ ILK YAZIMDA GENIS TUTMUSTUM (yol'u tamamen tam-token'la degistiriyordu)
+   * ve regresyon paketi bunu YAKALADI: `test:matching T3` ("sprink hatti"
+   * alias'inda 'hatti' bilinmeyen sayilip tek eslesme multi'ye dustu) ve
+   * `test:spec R1` (galvaniz siralamasi) kirmizi verdi. Daraltmaya
+   * dokunmamak SART; yalniz "satir hic ad yazmadi" HUKMU yanlisti.
+   */
+  const aliasAdYuttu = (): boolean =>
+    !!opts?.ignoreTokens?.length && classifyTokens(line.tokens, vocab).ad.length > 0;
   // S-vakasi (ad-gevsetme) icin AD filtreleri oncesi aile havuzu:
   const aileHavuzu = rows;
   let adGevsetildi = false;
@@ -252,7 +267,12 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   // ('dilatsyon kompansatörü' → alt-ad sorusu) yiyordu. R9/H7 guvenligi
   // asagida bilinmeyenNotu kapisiyla saglanir: dogrulanamayan kelime varken
   // fiyat ASLA otomatik yazilmaz (E9'un dogdugu vaka "sessiz yazim"di).
-  if (yol.ad.length === 0 && bilinmeyen.length > 0) {
+  // ⚠ ALIAS ISTISNASI (06.08): satirin ad kelimesini SOZLUK yuttuysa "satir
+  // hicbir ad yazmamis" hukmu YANLISTIR — satir ailenin ADINI yazmisti, biz
+  // onu gurultu sayip cikardik. Canli vaka: "Otomatik Sprinkler Kafasi",
+  // ogrenilmis 'sprinkler' alias'i yuzunden ad'siz kalip 0 aday donuyordu
+  // (yuzlerce sprinkler duruyorken). Kapi: test/alias-kelime-yutma-test.ts
+  if (yol.ad.length === 0 && bilinmeyen.length > 0 && !aliasAdYuttu()) {
     return { kind: 'none', reason: 'ad-yok', detail: bilinmeyen.join(' ') };
   }
 

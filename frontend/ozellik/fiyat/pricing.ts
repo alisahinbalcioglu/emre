@@ -368,6 +368,35 @@ export function sayfaToplamlari(
   return o;
 }
 
+/**
+ * MALIYETI GERIYE TURET — hucrede SATIS var, o an gecerli olan kar biliniyor.
+ *
+ * NEDEN GEREKLI (06.08 canli hata): teklif gridinde kar yuzdesi degistiginde
+ * motor "net"i `_matNetPrice` alanindan okur. O alan bir GRID KOLONU DEGIL ve
+ * AG-Grid `setDataValue` kolon yoksa veriye DOKUNMADAN `false` doner — yani
+ * alan hep 0 kaliyordu (bugune kadar KAYDEDILMIS her teklifte de 0). Kod bu
+ * durumda hucreyi "net" sanip okuyordu; oysa hucre SATIS tasir:
+ *     net 1558,5 · kar %20 → hucre 1870,2
+ *     kar %0     → hesaplaSatisBirimFiyat(1870,2, 0) = 1870,2  → DEGISMIYOR
+ *     kar %30    → 1870,2 × 1,3 = 2431,3  (dogrusu 2026,1 — ₺405,20 fazla)
+ * Kullanicinin "0 yapinca net fiyata donmuyor" dedigi sey bu hatanin
+ * carpan=1 ozel halidir; hata her kar degisiminde BILESIK carpiyordu.
+ *
+ * ⚠ Bu, mühürlü modelin ZATEN yazili kurali: `sayfaToplamlari` icindeki
+ * "kar > 0, net yok → net' = birim/(1+kar/100)" satiri ve ExcelGrid'in
+ * manuel-fiyat dali AYNI turetmeyi yapar. Burada tek yere alindi.
+ *
+ * @param hucreSatis  hucrede YAZAN deger (satis birim fiyati)
+ * @param oncekiKar   o deger yazilirken gecerli olan kar yuzdesi
+ */
+export function maliyetiGeriTuret(hucreSatis: number, oncekiKar: number): number {
+  const s = Number(hucreSatis);
+  if (!Number.isFinite(s) || s <= 0) return 0;
+  const k = Number(oncekiKar);
+  if (!Number.isFinite(k) || k <= 0) return s; // kar yoktu → hucre zaten maliyet
+  return s / (1 + k / 100);
+}
+
 // ============================================================
 // ADIM 10 (Kar Analizi, 06.08) — KAR SATIRI URETICI
 //

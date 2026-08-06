@@ -77,6 +77,16 @@ const SUITES: Suite[] = [
   //    FE satira yazar → teklif JSON'uyla donar. TRY'de ve kur metaverisi
   //    olmayan ceviricide alan HIC uretilmez (uydurma kur yasak).
   { ad: 'Kur donması (kaynakKur sözleşmesi)', script: 'test:kur', zincir: 'Z2' },
+  // ── 06.08.2026: ALIAS KELIME YUTMASI. Ogrenme kapisi `adSlug === adBucket`
+  //    proxy'siyle "sozluksuz" tahmini yapiyordu; sozlugun COZDUGU tek
+  //    kelimelik adlarda (Sprinkler, Fan, Damper, Conta, Kelepce... 68 ad)
+  //    YANLIS atesleyip GLOBAL alias ogreniyordu. O alias teklif satirindaki
+  //    ayni kelimeyi yutunca satir ADSIZ kaliyor, K8 kapisi none/ad-yok
+  //    donduruyordu — canli AYVAZ sprinkler vakasi (0 aday).
+  //    Iki katman kilitlenir: (B) kapi artik `selfFamily` acik alanina bakar,
+  //    (C) yutma satiri adsiz birakiyorsa UYGULANMAZ (mevcut alias'lari da
+  //    etkisizler — veri temizligi beklenmez).
+  { ad: 'Alias kelime yutması (AYVAZ sprinkler)', script: 'test:alias-yutma', zincir: 'Z2' },
   // T1/T3/T4: sablona-yazan eski motor SILINDI; "kolon esleme" (test:ke) ve
   // "iki katmanli baslik" (test:kb) suite'leri onunla birlikte kaldirildi.
   // Yerine gelen sozlesmeler:
