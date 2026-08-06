@@ -147,6 +147,40 @@ export default function LaborFirmDetailPage() {
     console.log(`[labor-firms detay] handleRowsChange: ${rows.length} satir, ${dirty} dirty`);
   }
 
+  /**
+   * KALICI SATIR SILME — malzeme kutuphanesindeki ikizin AYNISI (06.08).
+   *
+   * Bu sayfada silme HIC YOKTU: `enableStructureEdit` verilmedigi icin sag tik
+   * menusu bile acilmiyordu (ExcelGrid.tsx: `if (!enableStructureEdit) return`).
+   * Kullanici bildirimi birebir buydu — "urun silme yok".
+   *
+   * Kaydi olan satir sunucudan da silinir; backend ayni islemde satiri liste
+   * sheet JSON'undan da ayiklar (yoksa sayfa yenilenince satir fiyatsiz olarak
+   * GERI GELIRDI — bkz. labor-firms.service.deletePriceItem). Kaydedilmemis
+   * satirin sunucuda karsiligi yoktur, dogrudan gridden kalkar.
+   */
+  const handleRowDelete = useCallback(async (row: ExcelRowData): Promise<boolean> => {
+    const priceItemId = (row as any)._laborPriceId as string | undefined;
+    if (!priceItemId) return true; // kaydedilmemis satir
+
+    const nameField = gridData?.columnRoles.nameField;
+    const ad = String((row as any)[nameField ?? 'ad'] ?? '').trim() || 'Bu kalem';
+    if (!(await confirm(`"${ad}" fiyat listesinden silinsin mi?`))) return false;
+    try {
+      await api.delete(`/labor-firms/price-items/${priceItemId}`);
+      toast({ title: 'Silindi', description: ad });
+      return true;
+    } catch (e: any) {
+      // Sessiz basarisizlik YASAK: silinemediyse satir EKRANDA KALIR.
+      toast({
+        title: 'Silinemedi',
+        description: e?.response?.data?.message ?? 'Sunucu kalemi silemedi.',
+        variant: 'destructive',
+      });
+      return false;
+    }
+  }, [gridData]);
+
   function parseTrNum(v: unknown): number {
     let s = String(v ?? '').replace(/[₺$€\s]/g, '').trim();
     if (s === '') return 0;
@@ -448,6 +482,8 @@ export default function LaborFirmDetailPage() {
             mode="library"
             libraryPriceField="laborUnitPriceField"
             autoAppendRow
+            enableStructureEdit
+            onRowDelete={handleRowDelete}
             onBrandChange={async () => null}
             onRowDataChange={handleRowsChange}
           />

@@ -3,10 +3,10 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 342
-Toplam satir: 69408
+Kod dosyasi: 343
+Toplam satir: 69656
 Uc nokta: 125
-test:* scripti: 49
+test:* scripti: 50
 
 ## 1 · Dosyalar ve satir sayilari
 
@@ -104,7 +104,7 @@ test:* scripti: 49
 | `backend/src/ozellik/kutuphane/brands/dto/create-brand.dto.ts` | 17 |
 | `backend/src/ozellik/kutuphane/labor-firms/labor-firms.controller.ts` | 170 |
 | `backend/src/ozellik/kutuphane/labor-firms/labor-firms.module.ts` | 15 |
-| `backend/src/ozellik/kutuphane/labor-firms/labor-firms.service.ts` | 858 |
+| `backend/src/ozellik/kutuphane/labor-firms/labor-firms.service.ts` | 903 |
 | `backend/src/ozellik/kutuphane/labor/labor.controller.ts` | 47 |
 | `backend/src/ozellik/kutuphane/labor/labor.module.ts` | 13 |
 | `backend/src/ozellik/kutuphane/labor/labor.service.ts` | 85 |
@@ -156,6 +156,7 @@ test:* scripti: 49
 | `backend/test/guvenlik-uclari-test.ts` | 365 |
 | `backend/test/imza-ekseni-test.ts` | 325 |
 | `backend/test/index-engine-test.ts` | 1774 |
+| `backend/test/iscilik-satir-silme-test.ts` | 127 |
 | `backend/test/kalem59-oksuz-kutuphane-test.ts` | 131 |
 | `backend/test/kd11-toplam-yollari-test.ts` | 150 |
 | `backend/test/kd12-baslik-satiri-test.ts` | 226 |
@@ -178,7 +179,7 @@ test:* scripti: 49
 | `backend/test/pk3-repo-kapsama-test.ts` | 79 |
 | `backend/test/pk9-sessiz-indeks-test.ts` | 97 |
 | `backend/test/product-index-test.ts` | 453 |
-| `backend/test/regression-all.ts` | 200 |
+| `backend/test/regression-all.ts` | 207 |
 | `backend/test/s45-malzeme-aile-test.ts` | 440 |
 | `backend/test/s45-olcum.ts` | 188 |
 | `backend/test/sozluk-golgeleme-olcum.ts` | 125 |
@@ -188,7 +189,7 @@ test:* scripti: 49
 | `backend/test/tam-zincir.ts` | 105 |
 | `frontend/app/(protected)/dashboard/page.tsx` | 244 |
 | `frontend/app/(protected)/dwg-workspace/page.tsx` | 79 |
-| `frontend/app/(protected)/labor-firms/[firmaId]/page.tsx` | 459 |
+| `frontend/app/(protected)/labor-firms/[firmaId]/page.tsx` | 495 |
 | `frontend/app/(protected)/labor-firms/page.tsx` | 249 |
 | `frontend/app/(protected)/labor/page.tsx` | 248 |
 | `frontend/app/(protected)/layout.tsx` | 198 |
@@ -205,7 +206,7 @@ test:* scripti: 49
 | `frontend/app/(protected)/quote-formats/page.tsx` | 397 |
 | `frontend/app/(protected)/quotes/[id]/page.tsx` | 244 |
 | `frontend/app/(protected)/quotes/new/error.tsx` | 13 |
-| `frontend/app/(protected)/quotes/new/page.tsx` | 2321 |
+| `frontend/app/(protected)/quotes/new/page.tsx` | 2354 |
 | `frontend/app/(protected)/quotes/page.tsx` | 192 |
 | `frontend/app/admin/brands/page.tsx` | 895 |
 | `frontend/app/admin/layout.tsx` | 80 |
@@ -488,6 +489,7 @@ test:* scripti: 49
 | `backend/test/guvenlik-uclari-test.ts` | `@nestjs/core` `../src/ozellik/eslestirme/matching/matching.controller` `../src/ozellik/eslestirme/labor-matching/labor-matching.controller` `../src/altyapi/auth/decorators/roles.decorator` `../src/ozellik/kutuphane/labor/labor.controller` `../src/ozellik/giris/ai/ai.controller` `../src/altyapi/auth/guards/tier.guard` `../src/ozellik/kutuphane/brands/brands.controller` `../src/ozellik/kutuphane/admin/admin.controller` `reflect-metadata` |
 | `backend/test/imza-ekseni-test.ts` | `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `../src/ozellik/eslestirme/matching/tag-generator` `../src/ozellik/eslestirme/matching/shared-tag-matcher` |
 | `backend/test/index-engine-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/query-engine` `../src/ozellik/fiyat/matching/index/outcome-mapper` `../src/ozellik/eslestirme/matching/index/types` `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `../src/ozellik/eslestirme/matching/conversion` |
+| `backend/test/iscilik-satir-silme-test.ts` | `../src/ozellik/kutuphane/labor-firms/labor-firms.service` |
 | `backend/test/kalem59-oksuz-kutuphane-test.ts` | `@prisma/client` `../src/ozellik/kutuphane/admin/admin.service` `../src/ozellik/eslestirme/matching/terminology.service` |
 | `backend/test/kd11-toplam-yollari-test.ts` | `fs` `path` `../src/ozellik/giris/excel-grid/excel-grid.service` `../../frontend/ozellik/fiyat/pricing` |
 | `backend/test/kd12-baslik-satiri-test.ts` | `fs` `path` `../src/ozellik/giris/excel-grid/excel-grid.service` |
@@ -829,6 +831,7 @@ test:* scripti: 49
 | `backend/package.json` | `test:aile` | `ts-node test/aile-oncelik-test.ts` |
 | `backend/package.json` | `test:aile-uyusmazligi` | `ts-node test/aile-uyusmazligi-test.ts` |
 | `backend/package.json` | `test:kb-ad` | `ts-node test/kutuphane-ad-duzenleme-test.ts` |
+| `backend/package.json` | `test:isc-sil` | `ts-node test/iscilik-satir-silme-test.ts` |
 | `frontend/package.json` | `test:e2e` | `playwright test` |
 | `frontend/package.json` | `test:e2e-golden` | `node test/e2e-golden/run.mjs` |
 

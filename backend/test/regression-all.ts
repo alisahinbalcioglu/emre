@@ -64,6 +64,13 @@ const SUITES: Suite[] = [
   //    GORMEDIGI alana gidiyordu. B blogu o tuzagi kilitler; C blogu
   //    paylasilan `Material` katalogunun DOKUNULMADIGINI olcer.
   { ad: 'Kütüphanede ad düzenleme + kaynak sadakati', script: 'test:kb-ad', zincir: 'Z1' },
+  // ── 06.08.2026: ISCILIK IKIZI. Malzeme tarafinda satir silme baglanirken bu
+  //    taraf UNUTULDU (kullanici bildirdi). Ustelik burada silme HIC YOKTU:
+  //    `enableStructureEdit` verilmedigi icin sag tik menusu bile acilmiyordu.
+  //    Ayrica silmenin IKI YERDE olmasi sart — `getPriceListSheets` satirlari
+  //    sheet JSON'undan okur, yalniz `laborPrice.delete` demek satiri geri
+  //    getirirdi. Bu suite o "geri gelme"yi kilitler.
+  { ad: 'İşçilik satır silme kalıcı (ikiz)', script: 'test:isc-sil', zincir: 'Z1' },
   // T1/T3/T4: sablona-yazan eski motor SILINDI; "kolon esleme" (test:ke) ve
   // "iki katmanli baslik" (test:kb) suite'leri onunla birlikte kaldirildi.
   // Yerine gelen sozlesmeler:

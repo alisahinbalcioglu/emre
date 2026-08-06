@@ -194,9 +194,54 @@ export class LaborFirmsService {
     return { updated, errors };
   }
 
+  /**
+   * Kalemi siler VE listenin sheet JSON'undan satirini ayiklar.
+   *
+   * ── NEDEN IKISI BIRDEN (06.08 kullanici bildirimi: "urun silme yok") ──────
+   * `getPriceListSheets` satirlari `LaborPriceList.sheets` JSON'undan okur;
+   * `LaborPrice` yalniz fiyat/iskonto/birim bindirmesi yapar. Dolayisiyla
+   * SADECE `laborPrice.delete` demek satiri EKRANDAN KALDIRMAZ: sayfa
+   * yenilendiginde satir JSON'dan yeniden gelir, sadece fiyatsiz olur.
+   * Kullanicinin gozunde bu "sildim ama geri geldi"dir — malzeme tarafinda
+   * ayni desenin (`ExcelGrid.deleteRow` yalniz gridden kaldiriyordu) bedeli
+   * zaten odendi. Ikizde tekrarlamamak icin ayiklama BURADA, tek yerde.
+   *
+   * ANAHTAR: `_laborPriceId` — save sirasinda satira enjekte edilir ve JSON'da
+   * SAKLANIR (bkz. getPriceListSheets "Eger save sirasinda inject edildiyse").
+   * Id tasimayan eski satirlar icin AD ile geri dusulur: bagi ad uzerinden
+   * kurulan satir yine ad uzerinden ayiklanir — GET'in kullandigi eslesme
+   * anahtarinin AYNISI (`laborItem.name`, kucuk harf + trim).
+   */
   async deletePriceItem(userId: string, priceItemId: string) {
-    await this.assertPriceItemOwnership(priceItemId, userId);
-    return this.prisma.laborPrice.delete({ where: { id: priceItemId } });
+    const price = await this.assertPriceItemOwnership(priceItemId, userId);
+    const silinenAd = (price.laborItem?.name ?? '').toLowerCase().trim();
+
+    const silinen = await this.prisma.laborPrice.delete({ where: { id: priceItemId } });
+
+    const pl = await this.prisma.laborPriceList.findUnique({
+      where: { id: price.priceListId },
+      select: { sheets: true },
+    });
+    const sheet = pl?.sheets as any;
+    if (sheet && Array.isArray(sheet.rowData)) {
+      const { buildMaterialContextFromRows } = require('../../eslestirme/utils/build-material-context');
+      const roles = sheet.columnRoles || {};
+      const kalan = sheet.rowData.filter((row: any, i: number) => {
+        if (!row?._isDataRow) return true; // baslik/bos satir korunur
+        if (row._laborPriceId) return row._laborPriceId !== priceItemId;
+        if (!silinenAd) return true;
+        const ad = String(buildMaterialContextFromRows(sheet.rowData, i, roles) ?? '')
+          .toLowerCase().trim();
+        return ad !== silinenAd;
+      });
+      if (kalan.length !== sheet.rowData.length) {
+        await this.prisma.laborPriceList.update({
+          where: { id: price.priceListId },
+          data: { sheets: { ...sheet, rowData: kalan } },
+        });
+      }
+    }
+    return silinen;
   }
 
   // ── Sheets GET — ExcelGrid render icin ──
