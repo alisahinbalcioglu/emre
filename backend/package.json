@@ -56,7 +56,9 @@
     "test:d1": "ts-node test/d1-marka-silme-capraz-tenant-test.ts",
     "test:a1": "ts-node test/a1-silme-etkisi-test.ts",
     "test:guvenlik": "ts-node test/guvenlik-uclari-test.ts",
-    "test:imza": "ts-node test/imza-ekseni-test.ts"
+    "test:imza": "ts-node test/imza-ekseni-test.ts",
+    "test:oneri": "ts-node test/oneri-kutusu-cekince-test.ts",
+    "test:s45": "ts-node test/s45-malzeme-aile-test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

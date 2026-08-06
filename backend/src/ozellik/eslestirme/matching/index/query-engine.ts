@@ -19,7 +19,7 @@ import { altKumeMi, tokenEsit } from './product-index';
 import { EQUIPMENT_TYPE_TAGS } from '../shared-tag-matcher';
 import { buildFamilyVocab, distinctSayisi } from './vocab';
 import { classifyTokens, resolveLineFamily } from './line-parser';
-import type { IndexedRow, LineQuery, QueryOutcome, QueryOpts, AskColumn } from './types';
+import type { IndexedRow, LineQuery, QueryOutcome, QueryOpts, AskColumn, KanitKapisi } from './types';
 
 /**
  * Satirin olcu sinifi. YENI ve daha iyi kaynak: aile havuzunun kendisi.
@@ -296,7 +296,7 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
         // TASINIYORSA ad daraltmasi yanlis bucket'a kilitlemis demektir:
         // gevset ve devam et. Bu yoldan gelen sonuc ASLA otomatik
         // yazilmaz (asagida adGevsetildi kapisi) — ad birebir eslesmedi.
-        const d2 = aileHavuzu.filter((r) => altKume(diger, r.urun.cinsTokens));
+        const d2 = aileHavuzu.filter((r) => !r.urun.aileZayif && altKume(diger, r.urun.cinsTokens));
         if (d2.length > 0) { rows = d2; adGevsetildi = true; }
         else return { kind: 'none', reason: 'kriter-yok', detail: diger.join(' ') };
       }
@@ -347,7 +347,7 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     if (d.length > 0) rows = d;
     else {
       // Ad-gevsetme baglanti icin de simetrik (ayni hastalik, ayni ilac)
-      const d2 = aileHavuzu.filter(bagUyar);
+      const d2 = aileHavuzu.filter((r) => !r.urun.aileZayif && bagUyar(r));
       if (d2.length > 0) { rows = d2; adGevsetildi = true; }
       else return { kind: 'none', reason: 'kriter-yok', detail: yol.baglanti.join(' ') };
     }
@@ -388,7 +388,15 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
       // ⚠ Ç-vakasi (16.07): bu istisnadan gecen TEK aday otomatik YAZILMAZ
       // (capsizDusum kapisi) — "Yiv açma makinesi" 373.825 TL sprink hattina
       // yazilmisti: cap dogrulanamadi = tahmin, tahmin fiyat yazamaz (I6).
-      const capsiz = rows.filter((r) => r.urun.capTags.length === 0);
+      // ── S4 FRENI: AILESI ZAYIF ADAY BU ISTISNADAN YARARLANAMAZ ──────
+      // Istisna "urunun capi satirla ilgisiz olabilir" varsayimina dayanir;
+      // o varsayim ancak adayin O AILEDEN oldugu GERCEKTEN biliniyorsa
+      // mesrudur. Ailesi yalnizca KATEGORI basligindan gelen bir kalem
+      // (seviye salteri yedek probu → "Boru Hattı Ekipmanları" → 'boru')
+      // hem aile hem cap ekseninde DOGRULANMAMIS demektir; iki tahminin
+      // ust uste binmesi tam olarak "Yiv açma makinesi 373.825 TL" vakasini
+      // ureten desendir. Ailesi ADdan cozulen capsiz urunler AYNEN gecer.
+      const capsiz = rows.filter((r) => r.urun.capTags.length === 0 && !r.urun.aileZayif);
       if (d.length > 0 || capsiz.length === 0) {
         rows = d;
       } else {
@@ -447,6 +455,27 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   if (opts?.hintBases?.length && rows.length > 1) {
     const hb = opts.hintBases;
     rows = [...rows].sort((a, b) => tabanSirasi(a, hb) - tabanSirasi(b, hb)); // stable — grup ici sira korunur
+  }
+
+  // ── 5b-2. MALZEME BEKLENTISI (S5) — SIRALAR, ELEMEZ ──────────────
+  // Taban yuzey kuralinin (yukarisi) MALZEME eksenindeki ikizi. Sozluk
+  // "pis su = PVC|HDPE" der; havuzda hem PVC hem PP boru olabilir ve ikisi
+  // de `plastic` sinifindadir — sizeClass onlari AYIRT EDEMEZ, malzeme
+  // etiketi eder.
+  //   0 = beklenen malzemeyi tasiyor      → basa
+  //   1 = malzemesi COZULEMEDI (etiketsiz) → ortada (kanit yok, suclama yok)
+  //   2 = baska bir malzeme tasiyor        → sona
+  // Taban sirasindan SONRA uygulanir: iki sort da kararlidir, dolayisiyla
+  // MALZEME birincil, taban ikincil anahtar olur (malzeme kimlik, yuzey
+  // kaplamadir — kimlik once gelir).
+  const malzemeSirasi = (r: IndexedRow, beklenen: string[]): number => {
+    const m = r.urun.malzemeler ?? [];
+    if (m.length === 0) return 1;
+    return m.some((x) => beklenen.includes(x)) ? 0 : 2;
+  };
+  if (opts?.hintMalzeme?.length && rows.length > 1) {
+    const hm = opts.hintMalzeme;
+    rows = [...rows].sort((a, b) => malzemeSirasi(a, hm) - malzemeSirasi(b, hm));
   }
 
   // ── 5c. ISCILIK L6: BIRIM SERT ───────────────────────────────────
@@ -552,6 +581,17 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
       ? `Tek aday sözlük beklentisiyle (${opts.hintBases.join('/')}) çelişiyor`
       : null;
 
+  // ── S5 MALZEME CELISKISI: tek aday BASKA malzeme tasiyorsa yazilmaz ─
+  // surfaceConflict'in birebir ikizi ve AYNI esikte: kapi yalniz CAKISAN
+  // malzemede (sira 2) acilir, malzemesi COZULEMEYEN (sira 1) adayda ACILMAZ.
+  // Sebep taban kuralindakiyle ayni: etiketsizlik bir kanit degildir, onu
+  // celiski saymak binlerce notr urunu gereksiz onaya dusururdu (I6 kapilari
+  // gurultuye bogulunca kimse okumaz — kapinin degeri seyrekliginde).
+  const malzemeConflict =
+    opts?.hintMalzeme?.length && rows.length === 1 && malzemeSirasi(rows[0], opts.hintMalzeme) === 2
+      ? `Tek adayın malzemesi (${(rows[0].urun.malzemeler ?? []).join('/')}) beklenenle (${opts.hintMalzeme.join('/')}) çelişiyor`
+      : null;
+
   // ── BORU YUZEY GENISLETMESI — merge (yalniz POPUP acilacaksa) ─────
   // Yazili yuzey havuzu >1 kayda biraktiysa (soru zaten acilacak), yuzey-
   // haric ayni filtreleri gecen diger yuzey varyantlari TERCIH olarak SONA
@@ -612,15 +652,30 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     ? 'Ürün ailesi belirlenemedi — eşleşme yalnız ölçüyle bulundu'
     : null;
 
+  // ── I6 KAPILARININ YAPISAL LISTESI (S3) ──────────────────────────
+  // uyariNot metni yukaridaki ?? zincirinden TEK bir cumle secer; asagidaki
+  // liste ise ATESLEYEN TUM kapilari tasir. Metni regex'le ayristirmak
+  // kirilgan olurdu (metin kullaniciya ait, degisir) — kapi kimligi
+  // sozlesmedir, ../types.ts KanitKapisi'nde tanimlidir.
+  const kapilar: KanitKapisi[] = [];
+  if (yuzeyCeliskiNotu) kapilar.push('yuzey-celiskisi');
+  if (unitConflict) kapilar.push('birim-celiskisi');
+  if (surfaceConflict) kapilar.push('taban-celiskisi');
+  if (malzemeConflict) kapilar.push('malzeme-celiskisi');
+  if (capsizNotu) kapilar.push('capsiz-dusum');
+  if (gevsetmeNotu) kapilar.push('ad-gevsetildi');
+  if (bilinmeyenNotu) kapilar.push('bilinmeyen-kelime');
+  if (aileNotu) kapilar.push('aile-yok');
+
   // ── SONUC: UC YOL, DORDUNCU YOK ──────────────────────────────────
   if (rows.length === 1) {
-    const celiski = yuzeyCeliskiNotu ?? unitConflict ?? surfaceConflict ?? capsizNotu ?? gevsetmeNotu ?? bilinmeyenNotu ?? aileNotu;
+    const celiski = yuzeyCeliskiNotu ?? unitConflict ?? malzemeConflict ?? surfaceConflict ?? capsizNotu ?? gevsetmeNotu ?? bilinmeyenNotu ?? aileNotu;
     if (celiski) {
-      return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, uyariNot: celiski };
+      return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, uyariNot: celiski, kapilar };
     }
     return { kind: 'single', row: rows[0], donusum };
   }
-  return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, uyariNot: yuzeyCeliskiNotu ?? unitConflict ?? capsizNotu ?? gevsetmeNotu ?? undefined };
+  return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, uyariNot: yuzeyCeliskiNotu ?? unitConflict ?? capsizNotu ?? gevsetmeNotu ?? undefined, kapilar };
 }
 
 /**

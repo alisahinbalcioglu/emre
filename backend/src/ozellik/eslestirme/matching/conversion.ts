@@ -346,20 +346,31 @@ function steelEquivalents(info: SizeInfo): SizeEquivalents {
   return { tags: [`od-${Math.round(info.value)}`], rozet: null, noConversion: true, ambiguous: false };
 }
 
+/**
+ * S7 — ROZET ETIKETI NOTRDUR.
+ *
+ * Bu tablo PPR icin yazildi ama `plastic` sinifinin TAMAMI (PVC, HDPE, PE,
+ * PEX) ayni yoldan gecer: "DN 110 → 110 mm (PPR-mm)" bir PVC pis su borusunda
+ * DUZ YANLIS bir etiketti. Cevrim motoru sinifi bilir, MALZEMEYI bilmez —
+ * bilmedigi seyi soylemez. SAYILAR AYNEN KALIR (mm/inc karsiliklari dogruydu),
+ * yalnizca isim notrlesir.
+ */
+const PLASTIK_ROZET = 'plastik-mm';
+
 function plasticEquivalents(info: SizeInfo): SizeEquivalents {
   if (info.source === 'dn') {
     // PRD Temel kural: plastikte liste-DN = dis cap mm (DN 32 = 32 mm = 1")
     const mm = info.value;
     const row = PPR_BY_MM.get(mm);
     const rozet = row
-      ? `${info.display} → ${mm} mm / ${row.inchDisplay} (PPR-mm)`
-      : `${info.display} → ${mm} mm (PPR-mm)`;
+      ? `${info.display} → ${mm} mm / ${row.inchDisplay} (${PLASTIK_ROZET})`
+      : `${info.display} → ${mm} mm (${PLASTIK_ROZET})`;
     return { tags: plasticTags(mm), rozet, noConversion: false, ambiguous: false };
   }
   if (info.source === 'inch') {
     const row = PPR_BY_INCH.get(info.value);
     if (!row) return { tags: [], rozet: null, noConversion: true, ambiguous: false };
-    return { tags: plasticTags(row.mm), rozet: `${info.display} → ${row.mm} mm (PPR)`, noConversion: false, ambiguous: false };
+    return { tags: plasticTags(row.mm), rozet: `${info.display} → ${row.mm} mm (${PLASTIK_ROZET})`, noConversion: false, ambiguous: false };
   }
   // mm: dogrudan
   const mm = Math.round(info.value);

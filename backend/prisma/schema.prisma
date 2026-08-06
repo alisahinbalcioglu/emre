@@ -231,6 +231,16 @@ model ProductIndex {
   baglantiNorm   String?
   baglantiTokens String[] @default([])
   sizeClass      String   @default("unknown")
+  // S5 MALZEME ETIKETLERI (pvc/pp/ppr/pe/celik/pirinc/paslanmaz...): sizeClass
+  // yalniz steel|plastic|unknown ayrimi yapar ve PVC ile PP'yi AYIRT EDEMEZ.
+  // Sozluk bu bilgiyi zaten tasiyordu (TerminologyAlias.kinds), urun tarafinda
+  // bakilacak alan yoktu. BOS DIZI = "cozulemedi", suclama DEGIL.
+  malzemeler     String[] @default([])
+  // S4: aile YALNIZ kategori basligindan cozuldu (ad hicbir aile vermedi).
+  // Kategori fallback'i kapsamayi kazandirdi, KALIR — ama bu bayrak tahmine
+  // dayali yollari (capsiz istisnasi, ad-gevsetme, capraz-marka onerisi)
+  // o kayda kapatir. Varsayilan false: eski/bilinmeyen kayit FRENSIZ kalir.
+  aileZayif      Boolean  @default(false)
   // ON-HESAP esdegerlik kumesi: teklifteki 2" ile kutuphanedeki DN50 INDEKS
   // duzeyinde bulusur — sorgu aninda cevrim aranmaz (conversion.ts DOKUNULMAZ,
   // yalnizca yazma aninda BIR KEZ calistirilir).
@@ -525,6 +535,11 @@ model LaborItem {
   baglantiNorm   String?
   baglantiTokens String[] @default([])
   sizeClass      String   @default("unknown")
+  // S4/S5 — ProductIndex ile AYNI alanlar, AYNI uretici (buildProductIndex).
+  // Ikiz tablolarin birinde olup digerinde olmamasi, ayni kuralin malzeme
+  // yolunda calisip iscilik yolunda sessizce dusmesi demektir.
+  malzemeler     String[] @default([])
+  aileZayif      Boolean  @default(false)
   capTags        String[] @default([])
   capNorm        String?
   boyTag         String?

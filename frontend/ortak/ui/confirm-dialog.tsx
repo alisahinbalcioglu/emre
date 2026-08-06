@@ -14,20 +14,39 @@ const CARD_W = 300; // px — clamp hesabı için
 const MARGIN = 12;
 
 export function ConfirmRoot() {
-  const { open, x, y, opts, onConfirm, onCancel } = useConfirmController();
+  const { open, x, y, id, opts, onConfirm, onCancel } = useConfirmController();
   const confirmBtnRef = React.useRef<HTMLButtonElement>(null);
+  const inputRef = React.useRef<HTMLInputElement>(null);
 
-  // Klavye: Esc → vazgeç, Enter → onayla. Açılınca onay butonuna odak.
+  // S1: `opts.input` verildiyse kart bir DEĞER kutusu gösterir. Kutunun
+  // metni hem state'te (çizim için) hem ref'te (klavye dinleyicisi kapanış
+  // anında güncel değeri okusun diye) tutulur.
+  const girisVar = !!opts.input;
+  const [deger, setDeger] = React.useState('');
+  const degerRef = React.useRef('');
+  const yaz = React.useCallback((v: string) => { setDeger(v); degerRef.current = v; }, []);
+
+  // Her YENİ açılışta kutuyu başlangıç değerine döndür. Ölçüt `id`: aynı
+  // metinle iki kez sorulduğunda `opts` eşit görünür, `id` görünmez.
+  React.useEffect(() => {
+    yaz(opts.input?.baslangic ?? '');
+  }, [id, opts, yaz]);
+
+  // Klavye: Esc → vazgeç, Enter → onayla. Açılınca odak: kutu varsa kutuya
+  // (metin seçili), yoksa onay butonuna.
   React.useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
-      else if (e.key === 'Enter') { e.preventDefault(); onConfirm(); }
+      else if (e.key === 'Enter') { e.preventDefault(); onConfirm(degerRef.current); }
     };
     window.addEventListener('keydown', onKey);
-    const t = setTimeout(() => confirmBtnRef.current?.focus(), 0);
+    const t = setTimeout(() => {
+      if (girisVar) { inputRef.current?.focus(); inputRef.current?.select(); }
+      else confirmBtnRef.current?.focus();
+    }, 0);
     return () => { window.removeEventListener('keydown', onKey); clearTimeout(t); };
-  }, [open, onConfirm, onCancel]);
+  }, [open, girisVar, onConfirm, onCancel]);
 
   if (!open) return null;
 
@@ -35,8 +54,11 @@ export function ConfirmRoot() {
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1280;
   const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
   const left = Math.min(Math.max(MARGIN, x - CARD_W / 2), vw - CARD_W - MARGIN);
-  const openUp = y > vh - 180; // altta yer yoksa yukarı aç
-  const top = openUp ? undefined : Math.min(y + 12, vh - 160);
+  // Değer kutusu kartı ~50px uzatır — yer hesabı bunu bilmezse kutu ekranın
+  // altından taşardı.
+  const kartY = girisVar ? 210 : 160;
+  const openUp = y > vh - (kartY + 20); // altta yer yoksa yukarı aç
+  const top = openUp ? undefined : Math.min(y + 12, vh - kartY);
   const bottom = openUp ? vh - y + 12 : undefined;
 
   return (
@@ -68,6 +90,19 @@ export function ConfirmRoot() {
             <p className="text-sm leading-snug text-zinc-600 dark:text-zinc-300">
               {opts.description}
             </p>
+            {/* S1 — DEĞER KUTUSU. Görsel dil `ExcelGrid.tsx`'teki çalışan
+                iskonto girişinden alındı (indigo kenarlık, sağa dayalı,
+                küçük punto) — yeni bir tasarım uydurulmadı. */}
+            {girisVar && (
+              <input
+                ref={inputRef}
+                type={opts.input?.tip ?? 'text'}
+                value={deger}
+                onChange={(e) => yaz(e.target.value)}
+                placeholder={opts.input?.yerTutucu}
+                className="mt-2 h-7 w-full rounded border border-indigo-300 bg-white px-2 text-right text-sm text-zinc-900 outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+              />
+            )}
           </div>
         </div>
 
@@ -82,7 +117,7 @@ export function ConfirmRoot() {
           <button
             ref={confirmBtnRef}
             type="button"
-            onClick={onConfirm}
+            onClick={() => onConfirm(deger)}
             className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1"
           >
             {opts.confirmText ?? 'Sil'}

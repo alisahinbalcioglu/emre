@@ -48,6 +48,31 @@ export interface ProductIndexFields {
   baglantiNorm: string | null;
   baglantiTokens: string[];
   sizeClass: SizeClass;
+  /**
+   * S5 — MALZEME ETIKETLERI ('pvc' · 'pp' · 'ppr' · 'pe' · 'celik' ...).
+   *
+   * sizeClass UC degerlidir (steel|plastic|unknown) ve PVC ile PP'yi AYIRT
+   * EDEMEZ — motorun elinde ikisini ayiracak hicbir olcu yoktu. Sozluk ise
+   * bu bilgiyi ZATEN tasiyor (TerminologyAlias.kinds: pis su → pvc|hdpe,
+   * hidrant → hdpe|pe, temiz su → ppr) ama karsiliginda urun tarafinda
+   * bakilacak bir alan bulunmadigi icin dusuyordu.
+   *
+   * BOS DIZI = "malzeme cozulemedi", "malzemesi yok" DEGIL. Motor bunu
+   * SUCLAMA olarak kullanamaz (bkz. query-engine malzemeSirasi: cozulemeyen
+   * urun ORTADA kalir, elenmez).
+   */
+  malzemeler: string[];
+  /**
+   * S4 — AILE YALNIZ KATEGORIDEN COZULDU (ad hicbir aile vermedi).
+   *
+   * resolveFamily'nin kategori fallback'i kapsamayi ciddi olcude artirdi
+   * (12 gercek dosyada 'belirsiz' orani %20 → %11) ve KALIR. Ama bedeli
+   * sudur: kategorisi "Boru Hattı Ekipmanları" olan bir SEVIYE SALTERI
+   * 'boru' ailesine yazilir ve boru satirlarina aday olabilir.
+   * Bu bayrak o adayi ELEMEZ — yalnizca TAHMINE dayali yollari (capsiz
+   * istisnasi, ad-gevsetme, capraz-marka onerisi) ona KAPATIR.
+   */
+  aileZayif: boolean;
   capTags: string[];
   capNorm: string | null;
   boyTag: string | null;
@@ -95,12 +120,18 @@ export interface ProductIndexFields {
  *     normalizeText tireyi koruyor ("pp-r"), duz \bppr\b tutmuyordu → PP borular
  *     STEEL siniflaniyordu. PLASTIK regex'e pp-?rc?/pprc/polipropilen/'pp boru'
  *     eklendi. sizeClass → capTags degisir → REINDEX SART.
+ * v12: S4+S5 (06.08.2026) — IKI YENI ON-HESAP ALANI: `malzemeler` (pvc/pp/ppr/
+ *     pe/celik/pirinc/paslanmaz...) ve `aileZayif` (aile YALNIZ kategoriden
+ *     cozuldu). Ikisi de INDEKSTE saklanir; eski satirlarda alan YOKTUR ve
+ *     sessizce "malzeme cozulemedi / aile guclu" gibi okunur — yani eski veri
+ *     FRENSIZ kalir. REINDEX SART (POST /admin/reindex-products), oncesinde
+ *     `prisma db push` (iki yeni kolon).
  *
  * Dispatch bu surumu KONTROL EDER (matching.service.hazirlaPool): bayat
  * satir istek aninda rebuildIndexFields ile CANLI tokenizer'dan yeniden
  * uretilir (Faz 2b — v1 fallback SILINDI); kalici cozum reindex'tir.
  */
-export const INDEX_VERSION = 11;
+export const INDEX_VERSION = 12;
 
 /** adSlug cozulemeyen satirin tasidigi isaret — eslestirmeye ADAY OLAMAZ. */
 export const BELIRSIZ_SLUG = 'belirsiz';
@@ -257,12 +288,65 @@ export function tokenize(text: string | null | undefined): string[] {
  * degeri sozlukte kompansator deseni tasir → aileyi kacirtir.
  */
 export function resolveFamily(ad: string, kategori?: string | null): string | null {
+  return resolveFamilyKaynakli(ad, kategori).slug;
+}
+
+/**
+ * resolveFamily'nin KAYNAK BILDIREN hali (S4).
+ *
+ * Cagiran taraf ailenin ADdan mi (otorite) yoksa KATEGORIDEN mi (baglam)
+ * geldigini bilmek zorunda: ikisi AYNI GUCTE degildir. Ayni tarama iki kez
+ * yapilmaz — `basIsimAilesi(ad)` sonucu tekrar kullanilir.
+ */
+export function resolveFamilyKaynakli(
+  ad: string,
+  kategori?: string | null,
+): { slug: string | null; kaynak: 'ad' | 'kategori' | null } {
   const bas = basIsimAilesi(ad);
-  if (bas) return bas;
-  if (!kategori?.trim()) return null;
+  if (bas) return { slug: bas, kaynak: 'ad' };
+  if (!kategori?.trim()) return { slug: null, kaynak: null };
   // Ad + kategori birlikte: kategori TEK BASINA cozulmez (baska satirin
   // ailesini bu satira dayatabilir) — ad ile birlikte deger tasir.
-  return basIsimAilesi(`${ad} ${kategori}`);
+  const ile = basIsimAilesi(`${ad} ${kategori}`);
+  return ile ? { slug: ile, kaynak: 'kategori' } : { slug: null, kaynak: null };
+}
+
+/**
+ * S5 — METINDEN MALZEME ETIKETLERI.
+ *
+ * TEK KAYNAK: hem URUN tarafi (ad+cins) hem SOZLUK tarafi (alias `kinds`)
+ * bu fonksiyondan gecer. Simetri sart — iki tarafi ayri listelerle eslemek,
+ * 'hdpe' yazan sozlukle 'pe' yazan urunun bulusmadigi sessiz bir delik acar.
+ *
+ * Etiket kumesi KAPALIDIR ve YUZEY icermez: 'siyah'/'galvaniz' malzeme degil
+ * KAPLAMADIR, onlarin kendi ekseni vardir (hintBases / tabanSirasi). Ikisini
+ * karistirmak "galvanizli celik boru"yu celik-DISI gosterirdi.
+ */
+const MALZEME_DESENLERI: ReadonlyArray<[string, RegExp]> = [
+  ['pvc', /\b(pvcu?|upvc|pvc-u)\b/],
+  ['ppr', /\b(ppr|pprc|pp-r|pp-rc)\b/],
+  // PPR de bir polipropilendir: "pp-r" metni HEM 'ppr' HEM 'pp' etiketi alir
+  // (\bpp\b tire oncesinde kelime siniri gorur). Bu bilerek boyle — 'pp'
+  // bekleyen sozluk PPR urunu CAKISAN saymaz, yalniz 'ppr' bekleyen bir
+  // sozluk duz PP'yi ayirt eder.
+  ['pp', /\b(pp|polipropilen)\b/],
+  ['pe', /\b(pe|pead|hdpe|ldpe|pe-?100|pe-?80|polietilen)\b/],
+  ['pex', /\b(pex)\b/],
+  ['celik', /\b(celik|st\s*37|st37)\b/],
+  ['paslanmaz', /\b(paslanmaz|inox|aisi)\b/],
+  ['pirinc', /\b(pirinc)\b/],
+  ['dokum', /\b(dokum|pik)\b/],
+  ['bronz', /\b(bronz)\b/],
+  ['bakir', /\b(bakir)\b/],
+  ['aluminyum', /\b(aluminyum|aluminium)\b/],
+];
+
+export function malzemeEtiketleri(...metinler: Array<string | null | undefined>): string[] {
+  const norm = normalizeText(metinler.filter((m) => !!m && String(m).trim()).join(' '));
+  if (!norm) return [];
+  const out: string[] = [];
+  for (const [etiket, re] of MALZEME_DESENLERI) if (re.test(norm)) out.push(etiket);
+  return out;
 }
 
 /**
@@ -379,7 +463,12 @@ export function buildRowKey(c: ProductColumns, f: Pick<ProductIndexFields, 'adBu
  */
 export function buildProductIndex(c: ProductColumns): ProductIndexFields {
   const ad = (c.ad ?? '').trim();
-  const familySlug = ad ? resolveFamily(ad, c.kategori) : null;
+  const aile = ad ? resolveFamilyKaynakli(ad, c.kategori) : { slug: null, kaynak: null as null };
+  const familySlug = aile.slug;
+  // S4: aile ADdan cozulduyse OTORITE, yalniz KATEGORIDEN cozulduyse BAGLAM.
+  // (Self-family yolu — sozluk cozemedi ama ad anlamli — zayif DEGILDIR:
+  //  kimlik yine ADIN kendisinden gelir.)
+  const aileZayif = aile.kaynak === 'kategori';
 
   // Seviye2 bucket: Ad kolonunun normalize hali = ALT-AD.
   // (Karar #1'in dogal sonucu: Ad kolonu standart olunca alt-adlar zaten
@@ -418,6 +507,12 @@ export function buildProductIndex(c: ProductColumns): ProductIndexFields {
   const baglantiTokens = tokenize(c.baglanti);
 
   const sizeClass = resolveProductSizeClass(ad, c.cins, c.kategori);
+  // S5: MALZEME kaynagi AD + CINS — KATEGORI BILEREK DISARIDA. Kategori bir
+  // BOLUM BASLIGIDIR ve S4'un kok nedeni tam olarak onun urune ait olmayan
+  // bilgiyi urune yazmasidir ("Boru Hattı Ekipmanları" → 'boru'). Ayni hatayi
+  // malzeme ekseninde tekrarlamak, "PVC Borular" basligi altindaki her CONTAYI
+  // PVC yapardi.
+  const malzemeler = malzemeEtiketleri(ad, c.cins);
   const sizeInfo = c.cap?.trim() ? extractSizeInfo(c.cap) : null;
   // ON-HESAP: cevrim YAZMA aninda BIR KEZ. Sorgu aninda cevrim aranmaz.
   // 'DN65' ve '2 1/2"' ayni kanonik tabana iner (['dn65']) — teklif hangi
@@ -443,6 +538,8 @@ export function buildProductIndex(c: ProductColumns): ProductIndexFields {
     baglantiNorm,
     baglantiTokens,
     sizeClass,
+    malzemeler,
+    aileZayif,
     capTags,
     capNorm,
     boyTag,

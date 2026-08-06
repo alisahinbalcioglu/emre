@@ -47,6 +47,20 @@ export interface BrandAlternative {
   netPrice: number;
   listPrice: number;
   discount: number;
+  /** S2 (06.08.2026): bu ONERI KESIN DEGIL — aday, ana ekranda otomatik
+   *  yazilmasini engelleyen bir I6 kapisindan gecemedi ve o kapinin
+   *  gerekcesini beraberinde tasiyor ("'paslanmaz' doğrulanamadı").
+   *  BOS ise oneri kesindir (motor o markada 'single' buldu).
+   *
+   *  Neden alan: bu bilgi motorda VARDI ama tasima tipinde YOKTU; FE de
+   *  cekinceli adayi kesin adayla ayni "su markalarda var" basligiyla
+   *  ciziyordu. Yani ana ekranda ASLA otomatik yazilmayacak bir aday,
+   *  oneri kutusunda tek secenek ve kesin gibi goruluyordu. */
+  uyariNot?: string;
+  /** S2: satirda YAZILI ama bu markanin/firmanin dagarciginda bulunmayan
+   *  kelimeler. uyariNot cumleyi verir, bu liste kelimeleri — FE hangi
+   *  niteligin dogrulanmadigini ayrica vurgulayabilir. */
+  bilinmeyen?: string[];
 }
 
 export interface MatchCandidate {

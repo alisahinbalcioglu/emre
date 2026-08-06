@@ -5,8 +5,23 @@
 // (ConfirmRoot, layout'ta). confirm() Promise<boolean> döner → drop-in:
 //   if (!(await confirm('Silinsin mi?'))) return;
 // Popover, SON pointer koordinatında açılır ("tıklama yaptığın yerde").
+//
+// S1 (06.08.2026): aynı kart DEĞER de sorabiliyor — `promptValue()` native
+// `window.prompt` yerine geçer ve girilen metni döndürür. Kutu, tıklanan
+// noktadaki kartın içinde açılır; ekranın tepesindeki "site says" kutusu
+// tarayıcının çizdiği, konumu ve biçimi bize ait olmayan bir yüzeydi.
 
 import * as React from 'react';
+
+/** `ConfirmOptions.input` ile açılan değer kutusunun ayarları. */
+export interface ConfirmInput {
+  /** Kutu açılırken içinde yazan değer. Varsayılan boş. */
+  baslangic?: string;
+  /** Kutu boşken görünen ipucu metni. */
+  yerTutucu?: string;
+  /** HTML input `type`'ı (örn 'number'). Varsayılan 'text'. */
+  tip?: string;
+}
 
 export interface ConfirmOptions {
   /** Ana soru metni (zorunlu içerik). */
@@ -29,17 +44,38 @@ export interface ConfirmOptions {
   // kaldırıldı. İleride gerçekten istenirse renderer ile BİRLİKTE eklenir.
   // Kural `ortak/hooks/onay-secenekleri.test.ts` ile kilitlendi: burada ilan
   // edilen her seçeneği renderer okumak zorunda.
+  /**
+   * Verilirse kart bir DEĞER KUTUSU gösterir (onay kartı → giriş kartı).
+   * Alt alanları ayrı arayüzde (`ConfirmInput`) — burada satır satır
+   * yazılsaydı ölü-seçenek kapısının ayrıştırıcısı onları da üst düzey
+   * seçenek sanardı. Kural yine geçerli: `ConfirmInput`'ta ilan edilen her
+   * alan da renderer'da `input?.<ad>` olarak okunmak zorunda.
+   */
+  input?: ConfirmInput;
 }
+
+/**
+ * Tek state, İKİ soru tipi taşır: onay (`boolean`) ve değer (`string | null`).
+ * Hangi varyantın çözüleceği `opts.input`'un varlığına bağlı; TypeScript bu
+ * bağı tek bir state şeklinde ifade edemez. Bu yüzden GİRİŞ NOKTALARI kendi
+ * dar `resolve`'unu burada genişletir (aşağıdaki iki `as GenelCozucu`), ve
+ * doğru varyantın gönderildiğini `settle`/`iptalDegeri` garanti eder —
+ * ikisi de kararı yine `state.opts.input`'tan okur.
+ */
+type GenelCozucu = (v: boolean | string | null) => void;
 
 interface ConfirmState {
   open: boolean;
   x: number;
   y: number;
+  /** Her çağrıda artan sayaç — renderer kutuyu bununla sıfırlar. */
+  id: number;
   opts: ConfirmOptions;
-  resolve?: (v: boolean) => void;
+  // Değer kutusu varsa çözülen tip METİN (iptalde null); yoksa boolean.
+  resolve?: GenelCozucu;
 }
 
-let state: ConfirmState = { open: false, x: 0, y: 0, opts: { description: '' } };
+let state: ConfirmState = { open: false, x: 0, y: 0, id: 0, opts: { description: '' } };
 const listeners = new Set<(s: ConfirmState) => void>();
 
 // Son pointer konumu — confirm() bunu popover ankraji olarak kullanır.
@@ -63,15 +99,40 @@ function emit() {
  */
 export function confirm(input: ConfirmOptions | string): Promise<boolean> {
   const opts: ConfirmOptions = typeof input === 'string' ? { description: input } : input;
-  return new Promise((resolve) => {
+  return new Promise<boolean>((resolve) => {
     // Önceki açık bir onay varsa iptal et (çakışma olmasın).
-    state.resolve?.(false);
-    state = { open: true, x: lastPointer.x, y: lastPointer.y, opts, resolve };
+    state.resolve?.(iptalDegeri());
+    state = { open: true, x: lastPointer.x, y: lastPointer.y, id: state.id + 1, opts, resolve: resolve as GenelCozucu };
     emit();
   });
 }
 
-function settle(result: boolean) {
+/**
+ * `window.prompt` yerine geçen değer sorusu: aynı kart, içinde bir kutu.
+ * Onayla → girilen metin (boş olabilir) · Vazgeç/dışarı/Esc → `null`.
+ * Çağıran, `window.prompt` sözleşmesini birebir korur:
+ *   const ham = await promptValue({ description: 'İskonto %', input: {} });
+ *   if (ham == null || ham.trim() === '') return;
+ */
+export function promptValue(input: ConfirmOptions | string): Promise<string | null> {
+  const ham: ConfirmOptions = typeof input === 'string' ? { description: input } : input;
+  // `input` alanı ZORUNLU olarak var edilir: kartın değer kutusu göstermesi
+  // bu alanın varlığına bağlı, çağıranın onu yazmayı unutması sessizce
+  // kutusuz (yani cevapsız) bir soru üretirdi.
+  const opts: ConfirmOptions = { ...ham, input: ham.input ?? {} };
+  return new Promise<string | null>((resolve) => {
+    state.resolve?.(iptalDegeri());
+    state = { open: true, x: lastPointer.x, y: lastPointer.y, id: state.id + 1, opts, resolve: resolve as GenelCozucu };
+    emit();
+  });
+}
+
+/** Vazgeçme değeri soru TİPİNE bağlıdır: değer sorusunda `null`, onayda `false`. */
+function iptalDegeri(): boolean | string | null {
+  return state.opts.input ? null : false;
+}
+
+function settle(result: boolean | string | null) {
   state.resolve?.(result);
   state = { ...state, open: false, resolve: undefined };
   emit();
@@ -84,9 +145,13 @@ export function useConfirmController() {
     listeners.add(setS);
     return () => { listeners.delete(setS); };
   }, []);
-  return {
-    ...s,
-    onConfirm: () => settle(true),
-    onCancel: () => settle(false),
-  };
+  // ⚠ `useCallback` ŞART: bu ikisi her render'da yeniden üretilseydi
+  // renderer'ın klavye/odak efekti her tuş vuruşunda yeniden kurulur ve
+  // kutunun metnini baştan seçerdi (imleç zıplaması). Bağımlılık listesi
+  // boş olabiliyor çünkü `settle` güncel değeri modül state'inden okur.
+  const onConfirm = React.useCallback((deger?: string) => {
+    settle(state.opts.input ? (deger ?? '') : true);
+  }, []);
+  const onCancel = React.useCallback(() => { settle(iptalDegeri()); }, []);
+  return { ...s, onConfirm, onCancel };
 }

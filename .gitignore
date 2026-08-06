@@ -122,3 +122,6 @@ backend/src/surum.generated.ts
 
 # PK11: FE surum damgasi — derleme aninda uretilir, izlenmez
 frontend/public/surum.json
+
+# S4/S5 olcum araci: yerel URUN DOKUMU (gercek fiyat/marka verisi) — asla commit edilmez
+backend/.olcum-urun-dokumu.json

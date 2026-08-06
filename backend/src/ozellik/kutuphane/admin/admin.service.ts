@@ -1180,6 +1180,8 @@ export class AdminService {
         cinsNorm: idx.cinsNorm, cinsTokens: idx.cinsTokens,
         baglantiNorm: idx.baglantiNorm, baglantiTokens: idx.baglantiTokens,
         sizeClass: idx.sizeClass, capTags: idx.capTags, capNorm: idx.capNorm,
+        // S4/S5: malzeme etiketi + zayif-aile bayragi da INDEKSTE saklanir
+        malzemeler: idx.malzemeler, aileZayif: idx.aileZayif,
         boyTag: idx.boyTag, displayName: idx.displayName, rowKey: idx.rowKey,
         indexVersion: idx.indexVersion, belirsiz: idx.belirsiz,
       };
@@ -1466,6 +1468,7 @@ export class AdminService {
           cinsNorm: idx.cinsNorm, cinsTokens: idx.cinsTokens,
           baglantiNorm: idx.baglantiNorm, baglantiTokens: idx.baglantiTokens,
           sizeClass: idx.sizeClass, capTags: idx.capTags, capNorm: idx.capNorm,
+          malzemeler: idx.malzemeler, aileZayif: idx.aileZayif,
           boyTag: idx.boyTag, displayName: idx.displayName, rowKey: idx.rowKey,
           indexVersion: idx.indexVersion, belirsiz: idx.belirsiz,
         };
@@ -1607,6 +1610,7 @@ export class AdminService {
           cinsNorm: f.cinsNorm, cinsTokens: f.cinsTokens,
           baglantiNorm: f.baglantiNorm, baglantiTokens: f.baglantiTokens,
           sizeClass: f.sizeClass, capTags: f.capTags, capNorm: f.capNorm,
+          malzemeler: f.malzemeler, aileZayif: f.aileZayif,
           boyTag: f.boyTag, displayName: f.displayName,
           belirsiz: f.belirsiz, indexVersion: f.indexVersion,
         },

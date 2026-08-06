@@ -108,6 +108,38 @@ export type NoneReason =
   | 'birim-uyumsuz';
 
 /**
+ * I6 KAPILARI — tek adayin OTOMATIK yazilmasini engelleyen gerekceler.
+ *
+ * `uyariNot` bu kapilarin KULLANICIYA gorunen (tek, oncelikli) cumlesidir;
+ * bu liste ise KARAR VERENLERE gorunen yapisal halidir. Ikisi ayri sey:
+ * metin sirali bir secim yapar ("once yuzey celiskisi, sonra birim..."),
+ * karar mercii ise HANGI kanitlarin eksik oldugunu bilmek zorundadir.
+ *
+ * Neden lazim (S3, 06.08.2026): capraz-marka oneri kutusu "ask + tek aday"i
+ * secenek sayiyordu. Ama tek adayin NEDEN onaya dustugu onemlidir — capi
+ * dogrulanamamis bir aday ile "ek niteligi dogrulanamamis" bir aday ayni
+ * kanit gucunde DEGILDIR. uyariNot metnini regex'le ayirmak kirilgan olurdu
+ * (metin kullaniciya aittir, degisir); kapi kimligi ise sozlesmedir.
+ */
+export type KanitKapisi =
+  /** Satirda birlikte bulunamayan yuzeyler yazili (galvaniz+siyah) */
+  | 'yuzey-celiskisi'
+  /** E2/I9: satir birimi ile aday ailesi celisiyor (mt ↔ ekipman) */
+  | 'birim-celiskisi'
+  /** R1b: tek aday sozluk taban beklentisiyle cakisiyor (galvaniz↔siyah) */
+  | 'taban-celiskisi'
+  /** S5: tek aday sozluk MALZEME beklentisiyle cakisiyor (pis su=PVC ↔ PP) */
+  | 'malzeme-celiskisi'
+  /** Ç-vakasi: satir capli ama adayin capi YOK — cap dogrulanamadi */
+  | 'capsiz-dusum'
+  /** S-vakasi: ad daraltmasi gevsetildi — ad birebir eslesmedi */
+  | 'ad-gevsetildi'
+  /** Karar #3: satirda yazili ama bu havuzun dagarciginda olmayan kelime */
+  | 'bilinmeyen-kelime'
+  /** H6: aile hic cozulemedi — eslesme yalniz olcu benzerligiyle bulundu */
+  | 'aile-yok';
+
+/**
  * Motorun UC sonucu. Dorduncu yol YOKTUR (PRD Bolum 7: fallback yasagi).
  * Bu tip sayesinde "sessiz yazma" yolu YAPISAL OLARAK imkansiz — fiyat
  * yalnizca 'single' dalindan cikar.
@@ -125,6 +157,9 @@ export type QueryOutcome =
       variantMissing?: boolean;
       /** E2: birim celiskisi gibi "tek aday olsa da ONAY iste" notu */
       uyariNot?: string;
+      /** S3: uyariNot'un yapisal hali — hangi I6 kapilari atesledi.
+       *  Capraz-marka oneri kutusu bu listeye BAKARAK zayif adayi eler. */
+      kapilar?: KanitKapisi[];
     }
   | { kind: 'none'; reason: NoneReason; detail?: string; donusum?: string | null;
       /** PANO 20: cap-yok'ta markadaki MEVCUT caplar (en yakin sirali) —
@@ -146,6 +181,22 @@ export interface QueryOpts {
   /** Taban yuzey beklentisi (siyah|galvaniz): CAKISAN tabani tasiyan aday
    *  elenir, taban tasimayan (kirmizi boyali) VARYANT olarak kalir */
   hintBases?: string[];
+  /**
+   * S5 — MALZEME BEKLENTISI (sozluk `kinds`inden turer: pis su → ['pvc','pe'],
+   * hidrant → ['pe'], temiz su → ['ppr','pp']).
+   *
+   * SIRALAR, ELEMEZ — 16.07'de muhurlenen "TABAN YUZEY SIRALAR, ELEMEZ"
+   * kararinin malzeme eksenine dogal genislemesi. Beklenen malzemeyi tasiyan
+   * aday ONE, cakisan malzeme tasiyan SONA gider; cakisan TEK aday kalirsa
+   * fiyat otomatik YAZILMAZ ('malzeme-celiskisi' kapisi).
+   *
+   * ⛔ SERT FILTRE OLARAK KULLANILMAZ. Eleyen surum acikca reddedildi:
+   * malzemesi cozulemeyen (etiketsiz) urunler toptan elenir ve kullanici
+   * "kutuphanemde var ama yok diyor" regresyonunu yasardi — projenin daha
+   * once bedelini odedigi "sessiz bos" sinifi. Satirda malzeme ACIKCA
+   * yaziliysa K4 zaten sert filtredir; bu alan yalniz SOZLUK VARSAYIMIDIR.
+   */
+  hintMalzeme?: string[];
   /** none/elenme mesajlarinda gosterilecek sozluk etiketi ("ppr" gibi) */
   hintLabel?: string;
   /** Alias'in KENDI kelimeleri + stripTags — kisit/bilinmeyen SAYILMAZ

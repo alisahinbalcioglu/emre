@@ -27,9 +27,9 @@ import { TerminologyService } from './terminology.service';
 import { parseLine } from './index/line-parser';
 import { runQuery } from './index/query-engine';
 import { toMatchResult, gorunenAd } from '../../fiyat/matching/index/outcome-mapper';
-import { INDEX_VERSION, tokenize, buildProductIndex, rebuildIndexFields, iscilikAdCekirdegi } from './index/product-index';
+import { INDEX_VERSION, tokenize, buildProductIndex, rebuildIndexFields, iscilikAdCekirdegi, malzemeEtiketleri } from './index/product-index';
 import type { ProductColumns } from './index/product-index';
-import type { IndexedRow, LineQuery, QueryOpts } from './index/types';
+import type { IndexedRow, LineQuery, QueryOpts, QueryOutcome, KanitKapisi } from './index/types';
 import type { AliasHint } from './terminology.service';
 import { ExchangeRatesService } from '../../fiyat/exchange-rates/exchange-rates.service';
 import type { MatchResult, BrandAlternative } from './types';
@@ -348,10 +348,15 @@ export class MatchingService {
         if (aday.impliedType === 'boru' && line.unitSignal === 'equipment' && line.familySlug !== 'boru') { atlanan++; continue; }
         // Motorun KULLANABILDIGI deger tasimayan alias hint OLAMAZ:
         // impliedType (aile+ignoreTokens) / sizeClass (sinif filtresi) /
-        // siyah-galvaniz (taban sirasi). kinds=['pvc'] gibi degerler motora
-        // GIRMIYOR — boyle alias arkasindaki gercek ceviriyi golgelemesin.
+        // siyah-galvaniz (taban sirasi) / MALZEME (S5 — malzeme sirasi).
+        // ⚠ 'kinds=[pvc]' bu listede YOKTU: motorda bakilacak bir malzeme
+        // alani olmadigi icin boyle alias'lar "degersiz" sayilip atlaniyordu.
+        // S5 o alani (ProductIndex.malzemeler) actigi icin kinds ARTIK deger
+        // tasir — suzgec de onu tanimak zorunda, yoksa sozluk yine sessizce
+        // duserdi.
         if (!aday.impliedType && !aday.sizeClass
-            && !aday.kinds.some((k) => k === 'siyah' || k === 'galvaniz')) { atlanan++; continue; }
+            && !aday.kinds.some((k) => k === 'siyah' || k === 'galvaniz')
+            && malzemeEtiketleri(...aday.kinds).length === 0) { atlanan++; continue; }
         hint = aday;
         break;
       }
@@ -372,6 +377,14 @@ export class MatchingService {
         sizeClassHint: yaziliSinif ? null : hint?.sizeClass ?? null,
         hintClass: !yaziliSinif && (hint?.sizeClass === 'plastic' || hint?.sizeClass === 'steel') ? hint.sizeClass : null,
         hintBases: yaziliSinif ? [] : (hint?.kinds ?? []).filter((k) => k === 'siyah' || k === 'galvaniz'),
+        // S5: sozlugun MALZEME bilgisi ('pis su' → pvc|hdpe) motora BURADAN
+        // girer — bugune kadar kinds yalniz siyah/galvaniz suzgecinden
+        // geciyordu, malzeme kismi hicbir yere ulasmiyordu.
+        // T3/T5 SATIR KAZANIR: satirda acik sinif/malzeme kelimesi yaziliysa
+        // (yaziliSinif) sozluk varsayimi DAYATILMAZ — o kelime zaten K4 sert
+        // filtresi olarak calisir, ustune bir de siralama baskisi koymak
+        // "PVC yazdim, PVC elendi" celiskisini dogururdu.
+        hintMalzeme: yaziliSinif ? [] : malzemeEtiketleri(...(hint?.kinds ?? [])),
         hintLabel: hint ? (hint.kinds.join('/') || hint.canonical) : undefined,
         // Alias'in kendi kelimeleri + stripTags kisit/bilinmeyen sayilmaz —
         // YALNIZ GERCEK CEVIRIDE (impliedType). S4 ZEHRI (canli 17.07,
@@ -413,6 +426,55 @@ export class MatchingService {
   }
 
   /**
+   * S3 (06.08.2026) — CAPRAZ-KATALOG ONERI ADAYI SECIMI (TEK KAPI).
+   *
+   * findAlternativesV2 ve findLaborAlternativesV2 IKIZDIR; bu kural ikisinde
+   * de birebir ayni olmak zorunda (birinde daraltip digerinde unutmak kurali
+   * GENEL yapmaz). O yuzden secim buraya tek yere alindi.
+   *
+   * ── KABUL ─────────────────────────────────────────────────────────────
+   *  • 'single'                → KESIN aday (cekince yok).
+   *  • 'ask' + TEK aday        → oneri, AMA yalniz kanit gucu yetiyorsa.
+   *
+   * ── RET (kanit gucu yetmeyen iki kapi) ────────────────────────────────
+   *  • 'capsiz-dusum'  : satir capli, adayin capi YOK → cap DOGRULANMADI.
+   *  • 'ad-gevsetildi' : ad daraltmasi gevsetildi     → ad DOGRULANMADI.
+   * Bu ikisi adayin KIMLIGINE dokunur ("bu urun O urun mu?" sorusu
+   * cevapsiz). Ana ekranda I6 bu adaya fiyat YAZDIRMAZ; oneri kutusunda
+   * tek secenek olarak sunmak ayni tahmini baska bir kapidan geri sokardi.
+   *
+   * ── NEDEN 'bilinmeyen-kelime' RET DEGIL ───────────────────────────────
+   * O kapi satirin EK niteligini ("paslanmaz", "pp") belirsiz birakir,
+   * adayin kimligini degil: ad ve cap TAM tutmustur. Capraz-marka onerisinin
+   * varlik sebebi zaten "bu marka o kelimeyi bilmiyor, baskasi biliyor"
+   * demektir — o kapiyi da elesek mekanizma kendini yerdi (kodun 'PP KURESEL'
+   * → KALDE gerekcesi). Cekince ELEME yerine TASINIR (S2: uyariNot).
+   * Kalan kapilar (yuzey/birim/taban celiskisi, aile-yok) da ayni mantikla
+   * tasinir: hicbiri "aday baska bir urun olabilir" demiyor.
+   */
+  private caprazAdaySec(outcome: QueryOutcome): { row: IndexedRow; uyariNot?: string; bilinmeyen?: string[] } | null {
+    // ── S4 (c): AILESI ZAYIF ADAY CAPRAZ-MARKA ONERISI OLAMAZ ───────────
+    // Kapi 'single' dalinda da gecerlidir: capraz-marka onerisi kullanicinin
+    // HIC bakmadigi bir markadan gelir ve ekranda tek satirlik bir iddia
+    // olarak gorunur ("X MARKA'da var — ₺4.321"). Ailesi yalnizca kategori
+    // basligindan turemis bir kalem icin bu iddia dogrulanabilir degildir;
+    // kendi markasindaki bir onay listesinde kullanici en azindan urunu
+    // gorup reddedebiliyordu, burada goremez.
+    const aday = outcome.kind === 'single' ? outcome.row
+      : outcome.kind === 'ask' && outcome.rows.length === 1 ? outcome.rows[0] : null;
+    if (aday?.urun.aileZayif) return null;
+    if (outcome.kind === 'single') return { row: outcome.row };
+    if (outcome.kind !== 'ask' || outcome.rows.length !== 1) return null;
+    const ZAYIF: KanitKapisi[] = ['capsiz-dusum', 'ad-gevsetildi'];
+    if ((outcome.kapilar ?? []).some((k) => ZAYIF.includes(k))) return null;
+    return {
+      row: outcome.rows[0],
+      uyariNot: outcome.uyariNot,
+      bilinmeyen: outcome.bilinmeyen?.length ? outcome.bilinmeyen : undefined,
+    };
+  }
+
+  /**
    * M3 (v2): satirin ailesi+capi DIGER markalarin indeksli kutuphanesinde var mi?
    * Ayni sert kurallar — yalniz GERCEKTEN o urunu sunan markalar onerilir.
    */
@@ -451,14 +513,13 @@ export class MatchingService {
     const altOpts: QueryOpts | undefined = opts ? { ...opts, variantTags: undefined } : undefined;
     for (const [mid, rows] of markaGruplari) {
       const outcome = runQuery(line, rows, altOpts);
-      // KESIN sonuc (single) VEYA tek-adayli onay listesi alternatif olur.
-      // (Faz 2b: 'PP KÜRESEL' → KALDE'de tek PPR kuresel; 'pp' dogrulanamadi
-      // notu tek adayi ask'a dusurur — oneri zaten fiyatli SECENEKTIR,
-      // kesinlik iddiasi yok; kullanici marka+fiyati birlikte secer.)
-      const tekAday = outcome.kind === 'single' ? outcome.row
-        : outcome.kind === 'ask' && outcome.rows.length === 1 ? outcome.rows[0]
-        : null;
-      if (!tekAday) continue;
+      // KESIN sonuc (single) VEYA kanit gucu yeten tek-adayli onay listesi
+      // alternatif olur. Kabul/ret kurali TEK KAPIDA: caprazAdaySec (S3) —
+      // capi/adi dogrulanamamis aday oneri kutusuna GIRMEZ, cekinceli ama
+      // mesru aday cekincesiyle birlikte GIRER (S2).
+      const secim = this.caprazAdaySec(outcome);
+      if (!secim) continue;
+      const tekAday = secim.row;
       const m = markaOf.get(tekAday.id)!;
       const list = toTry(tekAday.listPrice, tekAday.currency);
       const isk = tekAday.discountRate ?? 0;
@@ -472,6 +533,9 @@ export class MatchingService {
         brandId: m.id, brandName: m.name,
         materialName: gorunenAd(tekAday), // boy'lu urunde boy gorunur (hidrant vakasi)
         netPrice: net, listPrice: list, discount: isk,
+        // S2: cekince ADAYLA BIRLIKTE tasinir — FE kesinlik basligi yerine
+        // "onay gerekiyor" tonunu bu alanlara BAKARAK secer.
+        uyariNot: secim.uyariNot, bilinmeyen: secim.bilinmeyen,
       });
       kesinlik.set(mid, outcome.kind === 'single' ? 'single' : 'ask1');
     }
@@ -556,6 +620,10 @@ export class MatchingService {
           cinsNorm: it.cinsNorm ?? null, cinsTokens: it.cinsTokens ?? [],
           baglantiNorm: it.baglantiNorm ?? null, baglantiTokens: it.baglantiTokens ?? [],
           sizeClass: it.sizeClass ?? 'unknown', capTags: it.capTags ?? [],
+          // S4/S5: kolon henuz yoksa (db push oncesi eski kayit) GUVENLI
+          // varsayilan — malzeme "cozulemedi", aile "zayif degil": eski veri
+          // FRENSIZ kalir, yeni fren yanlislikla eski satirlari kesmez.
+          malzemeler: it.malzemeler ?? [], aileZayif: it.aileZayif ?? false,
           capNorm: it.capNorm ?? null, boyTag: it.boyTag ?? null,
           displayName: it.displayName ?? it.name, rowKey: it.id,
           indexVersion: it.indexVersion, belirsiz: it.belirsiz ?? false,
@@ -637,10 +705,11 @@ export class MatchingService {
     const out: BrandAlternative[] = [];
     for (const [, rows] of gruplar) {
       const outcome = runQuery(line, rows, altOpts);
-      const tek = outcome.kind === 'single' ? outcome.row
-        : outcome.kind === 'ask' && outcome.rows.length === 1 ? outcome.rows[0]
-        : null;
-      if (!tek) continue;
+      // IKIZ KURAL (S3): malzeme yolundaki AYNI kapi — kanit gucu yetmeyen
+      // aday (capi/adi dogrulanamamis) firma onerisi de OLAMAZ.
+      const secim = this.caprazAdaySec(outcome);
+      if (!secim) continue;
+      const tek = secim.row;
       const f = firmaOf.get(tek.id)!;
       const list = toTry(tek.listPrice, tek.currency);
       const isk = tek.discountRate ?? 0;
@@ -650,6 +719,8 @@ export class MatchingService {
         brandId: f.id, brandName: f.name,
         materialName: gorunenAd(tek),
         netPrice: hesaplaNetFiyat(list, isk), listPrice: list, discount: isk,
+        // S2: cekince burada da tasinir (ikiz sozlesme ayrismaz).
+        uyariNot: secim.uyariNot, bilinmeyen: secim.bilinmeyen,
       });
     }
     return out;
@@ -666,6 +737,7 @@ export class MatchingService {
     cinsNorm: string | null; cinsTokens: string[];
     baglantiNorm: string | null; baglantiTokens: string[];
     sizeClass: string; capTags: string[]; capNorm: string | null;
+    malzemeler: string[]; aileZayif: boolean;
     boyTag: string | null; displayName: string;
     indexVersion: number; belirsiz: boolean;
   } {
@@ -675,6 +747,7 @@ export class MatchingService {
       cinsNorm: u.cinsNorm ?? null, cinsTokens: u.cinsTokens,
       baglantiNorm: u.baglantiNorm ?? null, baglantiTokens: u.baglantiTokens,
       sizeClass: u.sizeClass, capTags: u.capTags, capNorm: u.capNorm ?? null,
+      malzemeler: u.malzemeler, aileZayif: u.aileZayif,
       boyTag: u.boyTag ?? null, displayName: name,
       indexVersion: INDEX_VERSION, belirsiz: u.belirsiz,
     };
@@ -717,6 +790,7 @@ export class MatchingService {
           cinsNorm: f.cinsNorm, cinsTokens: f.cinsTokens,
           baglantiNorm: f.baglantiNorm, baglantiTokens: f.baglantiTokens,
           sizeClass: f.sizeClass, capTags: f.capTags, capNorm: f.capNorm,
+          malzemeler: f.malzemeler, aileZayif: f.aileZayif,
           // Secim kartinda TAM kalem adi gorunur ("... montajı" dahil) —
           // indeks alanlari is-eki soyulmus AD'den, gorunum tam addan.
           boyTag: f.boyTag, displayName: it.name,

@@ -146,8 +146,12 @@ expectTags('unknown', '32 mm', ['od-32', 'dn32'], { ambiguous: false }); // mm =
 {
   const eq = sizeEquivalents('steel', extractSizeInfo('DN 25')!);
   check('rozet celik DN 25', eq.rozet === 'DN 25 → 1" (çelik)', `got "${eq.rozet}"`);
+  // S7 (06.08.2026): rozet etiketi NOTRLESTI. Bu tablo PPR icin yazildi ama
+  // `plastic` sinifinin TAMAMI (PVC/HDPE/PE/PEX) ayni yoldan gecer — bir PVC
+  // pis su borusunda "(PPR)" ibaresi duz yanlisti. SAYILAR AYNEN (32 mm).
   const eq2 = sizeEquivalents('plastic', extractSizeInfo('1"')!);
-  check('rozet PPR 1"', eq2.rozet === '1" → 32 mm (PPR)', `got "${eq2.rozet}"`);
+  check('rozet plastik 1"', eq2.rozet === '1" → 32 mm (plastik-mm)', `got "${eq2.rozet}"`);
+  check('rozet plastik: yaniltici PPR ibaresi YOK', !/PPR/i.test(eq2.rozet ?? ''), `got "${eq2.rozet}"`);
 }
 
 // ── isSizeTag ──────────────────────────────────────────────

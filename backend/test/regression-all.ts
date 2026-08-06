@@ -28,6 +28,18 @@ const SUITES: Suite[] = [
   { ad: 'Spec regresyon (R1-R12)', script: 'test:spec', zincir: 'Z2' },
   { ad: 'Sözleşme dondurma (C1-C10)', script: 'test:contract', zincir: 'Z2' },
   { ad: 'İşçilik tek motor (L)', script: 'test:labor', zincir: 'Z2' },
+  // ── S2+S3 (06.08.2026): ÖNERİ KUTUSU. Çapraz-marka/firma önerisi ana
+  //    motoru çağırıyor ve motorun "onaylat" dediği tek adayı KESİN gibi
+  //    sunuyordu. İki kural mühürlendi: kanıt gücü yetmeyen aday (çapı ya da
+  //    adı doğrulanamamış) HİÇ önerilmez; meşru kalan çekinceli aday
+  //    çekincesiyle birlikte taşınır. Malzeme + işçilik ikizinde ölçülür.
+  { ad: 'Öneri kutusu çekince (S2+S3)', script: 'test:oneri', zincir: 'Z2' },
+  // ── S4+S5 (06.08.2026): MALZEME KATMANI + AILE ZAYIFLIGI. Sozlugun
+  //    "pis su = PVC" bilgisi motora HIC ulasmiyordu (kinds yalniz
+  //    siyah/galvaniz suzgecinden geciyordu) ve aile ADdan cozulemeyince
+  //    KATEGORIDEN cozulup alakasiz kalemi 'boru' ailesine yaziyordu.
+  //    Iki eksen tek surumde: ikisi de ProductIndex semasina dokunur.
+  { ad: 'Malzeme katmanı + aile zayıflığı (S4+S5)', script: 'test:s45', zincir: 'Z2' },
   // T1/T3/T4: sablona-yazan eski motor SILINDI; "kolon esleme" (test:ke) ve
   // "iki katmanli baslik" (test:kb) suite'leri onunla birlikte kaldirildi.
   // Yerine gelen sozlesmeler:

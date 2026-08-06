@@ -39,8 +39,8 @@ const rendererKaynak = fs.readFileSync(
  * `matchAll` KULLANILMIYOR: tsconfig target'i eski, `--downlevelIteration`
  * olmadan iterator spread'i `tsc --noEmit` kapisini kirmiziya cevirir.
  */
-function secenekAdlari(kaynak: string): string[] {
-  const blok = kaynak.match(/export interface ConfirmOptions\s*\{([\s\S]*?)\n\}/);
+function secenekAdlari(kaynak: string, arayuz = 'ConfirmOptions'): string[] {
+  const blok = kaynak.match(new RegExp(`export interface ${arayuz}\\s*\\{([\\s\\S]*?)\\n\\}`));
   if (!blok) return [];
   const adlar: string[] = [];
   const desen = /^\s*([A-Za-z][A-Za-z0-9]*)\??\s*:/gm;
@@ -50,6 +50,17 @@ function secenekAdlari(kaynak: string): string[] {
 }
 
 const secenekler = secenekAdlari(kancaKaynak);
+
+/**
+ * S1 (06.08.2026) — KURAL IC ICE GECEN SECENEGE DE UYGULANIR.
+ * `ConfirmOptions.input` alt alanlarini AYRI bir arayuze (`ConfirmInput`)
+ * tasidi. Alt alanlar `ConfirmOptions` blogunun ICINE satir satir yazilsaydi
+ * yukaridaki ayristirici onlari ust duzey secenek sanardi; ayri arayuze
+ * tasinca da denetimsiz kalacaklardi — yani kural bir DELIK kazanacakti.
+ * Bu blok o deligi kapatir: `ConfirmInput`ta ilan edilen her alan
+ * renderer'da `input?.<ad>` ya da `input.<ad>` olarak okunmak zorunda.
+ */
+const girisAlanlari = secenekAdlari(kancaKaynak, 'ConfirmInput');
 
 describe('★ BOS-KUME KAPISI — arayuz gercekten ayristirildi mi', () => {
   // Regex tutmasaydi `secenekler` bos kalir ve asagidaki dongu HIC assert
@@ -63,12 +74,23 @@ describe('★ BOS-KUME KAPISI — arayuz gercekten ayristirildi mi', () => {
   it('renderer kaynagi bos degil', () => {
     expect(rendererKaynak.length).toBeGreaterThan(0);
   });
+  it('ConfirmInput blogundan en az 1 alan ayristirildi', () => {
+    expect(girisAlanlari.length).toBeGreaterThanOrEqual(1);
+  });
 });
 
 describe('K3 — ilan edilen her onay secenegini renderer OKUYOR', () => {
   for (const ad of secenekler) {
     it(`\`${ad}\` renderer'da \`opts.${ad}\` olarak tuketiliyor`, () => {
       expect(rendererKaynak).toContain(`opts.${ad}`);
+    });
+  }
+});
+
+describe('K3/S1 — ilan edilen her GIRIS alanini da renderer OKUYOR', () => {
+  for (const ad of girisAlanlari) {
+    it(`\`${ad}\` renderer'da \`input.${ad}\` olarak tuketiliyor`, () => {
+      expect(rendererKaynak).toMatch(new RegExp(`input\\??\\.${ad}\\b`));
     });
   }
 });

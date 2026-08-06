@@ -9,6 +9,8 @@ import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
 import './fill-handle.css';
 import type { ExcelGridData, ExcelRowData, MatchCandidate, BrandAlternative } from './types';
+// S2: oneri kutusunun kesinlik/onay karari — IKI kutu da buradan okur
+import { oneriBasligi, cekinceSatiri } from './oneri-cekince';
 import { useFillHandle, FillHandleIndicator } from './useFillHandle';
 import { clampDiscount, parseDiscountInput, parseDiscountPaste } from './discount-utils';
 import { CustomDropdown } from './CustomDropdown';
@@ -19,7 +21,7 @@ import { hasSizeExpression, isSelfSufficientRow } from './build-material-context
 import { niteliklerdenBaglam, adayEtiketleri, popupGenisligiOku, popupGenisligiYaz } from './aday-ayirt-edicilik';
 import httpApi from '@/ortak/lib/api';
 import { toast } from '@/ortak/hooks/use-toast';
-import { confirm } from '@/ortak/hooks/use-confirm';
+import { confirm, promptValue } from '@/ortak/hooks/use-confirm';
 
 // Z4: satir bazli para birimi sembolu (row._currency) — kutuphane gridi
 // dovizli satirlari kendi birimiyle gosterir
@@ -825,7 +827,10 @@ function BrandDropdown(props: ICellRendererParams & {
         </div>,
         document.body,
       )}
-      {/* M3: bu markada urun yok — alternatif markalar (fiyatli, tiklanabilir) */}
+      {/* M3: bu markada urun yok — alternatif markalar (fiyatli, tiklanabilir).
+          S2: kutu KESINLIK IDDIA ETMEZ; adaylardan biri bile motorun onay
+          kapisindan gecememisse baslik onay tonuna doner ve her cekinceli
+          adayin GEREKCESI kartinda yazar (karar: oneri-cekince.ts). */}
       {alternatives && alternatives.length > 0 && popupPos && typeof document !== 'undefined' && createPortal(
         <div style={{
           position: 'fixed', top: popupPos.top, left: popupPos.left, zIndex: 99999,
@@ -834,7 +839,7 @@ function BrandDropdown(props: ICellRendererParams & {
           boxShadow: '0 8px 24px rgba(0,0,0,0.25)', fontSize: 12,
         }}>
           <div style={{ fontWeight: 700, color: '#b91c1c', marginBottom: 6, fontSize: 13 }}>
-            Bu markada ürün yok — şu markalarda var:
+            {oneriBasligi(alternatives, 'marka')}
           </div>
           {alternatives.map((a, i) => (
             <button
@@ -842,14 +847,17 @@ function BrandDropdown(props: ICellRendererParams & {
               onClick={() => handleAlternativeSelect(a)}
               style={{
                 display: 'block', width: '100%', textAlign: 'left', padding: '6px 8px',
-                border: '1px solid #e5e7eb', background: 'white', cursor: 'pointer',
+                border: `1px solid ${cekinceSatiri(a) ? '#f59e0b' : '#e5e7eb'}`, background: 'white', cursor: 'pointer',
                 fontSize: 12, borderRadius: 4, marginBottom: 4,
               }}
               onMouseEnter={(e) => { e.currentTarget.style.background = '#dbeafe'; e.currentTarget.style.borderColor = '#3b82f6'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = 'white'; e.currentTarget.style.borderColor = '#e5e7eb'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'white'; e.currentTarget.style.borderColor = cekinceSatiri(a) ? '#f59e0b' : '#e5e7eb'; }}
             >
               <div style={{ fontWeight: 700 }}>{a.onerilen && '★ '}{a.brandName} — {a.netPrice.toFixed(1)} TL{a.onerilen && <span style={{ color: '#059669', marginLeft: 6, fontSize: 10, fontWeight: 600 }}>keşif önerisi</span>}</div>
               <div style={{ color: '#6b7280', fontSize: 11 }}>{a.materialName.slice(0, 60)}</div>
+              {cekinceSatiri(a) && (
+                <div style={{ color: '#b45309', fontSize: 11, marginTop: 2, whiteSpace: 'normal' }}>{cekinceSatiri(a)}</div>
+              )}
             </button>
           ))}
           <button
@@ -1080,8 +1088,11 @@ function FirmaDropdown(props: ICellRendererParams & {
           minWidth: 280, maxWidth: 420, maxHeight: 320, overflowY: 'auto',
           boxShadow: '0 8px 24px rgba(0,0,0,0.25)', fontSize: 12,
         }}>
+          {/* S2 IKIZI: malzeme kutusuyla AYNI karar kaynagi (oneri-cekince.ts).
+              Iki kutu ayri ayri elle yazilsaydi biri guncellenip digeri
+              unutulurdu — davranis tutarsiz kalirdi. */}
           <div style={{ fontWeight: 700, color: '#1d4ed8', marginBottom: 6, fontSize: 13 }}>
-            Bu firmada yok — şu firmalarda var:
+            {oneriBasligi(alternatives, 'firma')}
           </div>
           {alternatives.map((a, i) => (
             <button
@@ -1089,12 +1100,15 @@ function FirmaDropdown(props: ICellRendererParams & {
               onClick={() => handleAlternativeSelect(a)}
               style={{
                 display: 'block', width: '100%', textAlign: 'left', padding: '6px 8px',
-                border: '1px solid #dbeafe', background: 'white', cursor: 'pointer',
+                border: `1px solid ${cekinceSatiri(a) ? '#f59e0b' : '#dbeafe'}`, background: 'white', cursor: 'pointer',
                 fontSize: 12, borderRadius: 4, marginBottom: 4,
               }}
             >
               <div style={{ fontWeight: 700 }}>{a.brandName} — {a.netPrice.toFixed(1)} TL</div>
               <div style={{ color: '#6b7280', fontSize: 11 }}>{a.materialName}</div>
+              {cekinceSatiri(a) && (
+                <div style={{ color: '#b45309', fontSize: 11, marginTop: 2, whiteSpace: 'normal' }}>{cekinceSatiri(a)}</div>
+              )}
             </button>
           ))}
           <button onClick={handleAlternativeCancel} style={{
@@ -1434,12 +1448,25 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     api?.redrawRows(); // band ok isareti (▸/▾) guncellensin
   }, []);
 
-  /** S2c/G6: grup bandindan o kategoriye toplu iskonto. */
-  const promptGroupDiscount = useCallback((key: string) => {
+  /** S2c/G6: grup bandindan o kategoriye toplu iskonto.
+   *  S1 (06.08.2026): deger `window.prompt` ile DEGIL, tiklanan noktada acilan
+   *  uygulama ici kutucukla sorulur (`promptValue`). Sorunun CEVABI ayni
+   *  sozlesmeyi korur — `null` = vazgecildi, bos metin = islem yok — ve
+   *  `parseDiscountInput`/clamp mantigina DOKUNULMADI; yalniz metnin
+   *  NEREDEN geldigi degisti. */
+  const promptGroupDiscount = useCallback(async (key: string) => {
+    if (!gridRef.current?.api) return;
+    const raw = await promptValue({
+      title: `"${key}" grubuna iskonto`,
+      description: 'Bu gruptaki tüm satırlara uygulanacak iskonto % (0-100):',
+      confirmText: 'Uygula',
+      cancelText: 'Vazgeç',
+      input: { yerTutucu: 'örn 30', tip: 'number' },
+    });
+    if (raw == null || raw.trim() === '') return;
+    // Kutu acikken grid degismis olabilir — api YENIDEN okunur.
     const api = gridRef.current?.api;
     if (!api) return;
-    const raw = window.prompt(`"${key}" grubundaki tüm satırlara uygulanacak iskonto % (0-100):`);
-    if (raw == null || raw.trim() === '') return;
     const v = parseDiscountInput(raw);
     const pairs: { node: any; value: number }[] = [];
     // forEachNode DARALTILMIS satirlari da kapsar — grup uyeligi _groupKey

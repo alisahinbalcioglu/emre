@@ -108,4 +108,10 @@ export interface BrandAlternative {
   discount: number;
   // N5-lite: kesif dosyasindaki "MARKA VEYA MUADILI" metnine uyan marka (★ onde)
   onerilen?: boolean;
+  // S2: bu oneri KESIN DEGIL — backend'de aday, ana ekranda otomatik yazimi
+  // engelleyen I6 kapisindan gecemedi ve gerekcesini beraberinde tasiyor.
+  // Bos ise oneri kesindir. (backend BrandAlternative ile AYNI alanlar.)
+  uyariNot?: string;
+  // S2: satirda yazili ama o markanin/firmanin dagarciginda bulunmayan kelimeler
+  bilinmeyen?: string[];
 }

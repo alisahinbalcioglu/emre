@@ -1257,10 +1257,23 @@ async function run() {
     // Saf cekirdek (alias'siz): canli vakada 'sprink hatti' kelimelerini
     // sozluk tuketiyordu; burada es davranisi yalin 'BORU DN50' verir.
     const r = m('BORU DN50', [makine]);
-    check('Ç1 satir capli + urun capsiz + tek aday → OTOMATIK YAZILMAZ',
-      r.confidence === 'multi' && r.netPrice === 0, `got ${r.confidence} net=${r.netPrice} matched=${r.matchedName}`);
-    check('Ç1 nedeni soyluyor (capsiz/onay)',
-      !!r.reason && /çap|onaylayın/i.test(r.reason), `got "${r.reason}"`);
+    // ⚠ OLCUT S4 ILE SERTLESTI (06.08.2026). Kural degismedi ("capi
+    // dogrulanamayan aday fiyat yazamaz"), ILACI degisti:
+    //   ONCE: makine capsiz-istisnasindan GECIYOR, tek aday kaliyor ve
+    //         cekince notuyla ONAY LISTESINE dusuyordu (confidence 'multi').
+    //   SIMDI: makinenin ailesi ('boru') YALNIZ kategoriden ("Boru
+    //         Hazırlama") turedigi icin aileZayif — capsiz istisnasindan
+    //         HIC yararlanamaz, havuzdan duser (confidence 'none').
+    // Yani aday artik onay listesinde bile GORUNMEZ. Eski olcut ('multi')
+    // aynen birakilsaydi S4 kirmizi yanardi; olcutu degistirmek burada
+    // KURALIN KENDISINI korumak icindir, ondan kacmak icin degil — asil
+    // koruma (373.825 TL ASLA yazilmaz) ayri assert olarak asagida durur.
+    check('Ç1 satir capli + urun capsiz + zayif aile → aday HIC OLUSMAZ',
+      r.confidence === 'none', `got ${r.confidence} net=${r.netPrice} matched=${r.matchedName}`);
+    check('Ç1 ASIL KORUMA: 373.825 TL hicbir kosulda yazilmaz',
+      r.netPrice === 0 && !r.matchedName, `got net=${r.netPrice} matched=${r.matchedName}`);
+    check('Ç1 nedeni soyluyor (cap)',
+      !!r.reason && /çap|DN 50|onaylayın/i.test(r.reason), `got "${r.reason}"`);
     // Koruma: TUM kelimeleri dogrulanan satirda tek eslesme YINE yazilir (K2)
     const boru = prod({ kategori: 'Borular', ad: 'Çelik boru', cins: 'siyah', cap: 'DN50', price: 900, urunKodu: 'B50' });
     const r2 = m('SİYAH ÇELİK BORU DN50', [boru]);
