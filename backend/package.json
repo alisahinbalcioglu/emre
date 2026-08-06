@@ -59,7 +59,8 @@
     "test:imza": "ts-node test/imza-ekseni-test.ts",
     "test:oneri": "ts-node test/oneri-kutusu-cekince-test.ts",
     "test:s45": "ts-node test/s45-malzeme-aile-test.ts",
-    "test:aile": "ts-node test/aile-oncelik-test.ts"
+    "test:aile": "ts-node test/aile-oncelik-test.ts",
+    "test:aile-uyusmazligi": "ts-node test/aile-uyusmazligi-test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

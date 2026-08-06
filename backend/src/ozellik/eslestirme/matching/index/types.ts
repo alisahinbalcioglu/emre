@@ -141,7 +141,22 @@ export type KanitKapisi =
   /** Karar #3: satirda yazili ama bu havuzun dagarciginda olmayan kelime */
   | 'bilinmeyen-kelime'
   /** H6: aile hic cozulemedi — eslesme yalniz olcu benzerligiyle bulundu */
-  | 'aile-yok';
+  | 'aile-yok'
+  /**
+   * S6 (06.08): SATIRIN ailesi ile ADAYIN ailesi FARKLI. Aday yalnizca aile
+   * kilidi GECICI olarak kaldirilarak bulundu.
+   *
+   * NEDEN VAR — NORM KELEPÇE vakasi: satir "Sprinkler Boru Askisi, DN150"
+   * icindeki "Boru" yuzunden 'boru' ailesine cozuluyordu; urunler 'kelepce'
+   * ailesindeydi. Sonuc `none/ad-yok` idi ve bu, "bu markada gercekten yok"
+   * ile BIT BIT AYNI gorunuyordu. Kullanicinin gordugu cumle
+   * `Bu markada "boru" bulunamadi.` — motorun kendi urettigi slug.
+   *
+   * Aile kilidi KALKMIYOR (bir kompansator satirina vana yine aday olamaz);
+   * yalniz "kilit yanlis kapandi mi" sorusu SORULUR hale geliyor. Bu kapi
+   * atesledigi anda fiyat OTOMATIK YAZILMAZ — kullanici onaylar.
+   */
+  | 'aile-uyusmazligi';
 
 /**
  * Motorun UC sonucu. Dorduncu yol YOKTUR (PRD Bolum 7: fallback yasagi).
@@ -210,4 +225,18 @@ export interface QueryOpts {
    *  birimi celisirse aday HAVUZA GIREMEZ (malzemedeki E2 yumusak-onay yerine).
    *  Birimsiz kalem ELENMEZ (kanit yok, suclama yok). catalog='iscilik' acar. */
   birimSert?: boolean;
+  /**
+   * S6 (06.08) — AILE KILIDINI GECICI OLARAK KAPAT. YALNIZ TESHIS ICINDIR.
+   *
+   * ⛔ NORMAL SORGU YOLUNDA ASLA KULLANILMAZ. Aile SERT KILITTIR ve oyle
+   * kalir; bu bayrak yalnizca sonuc ZATEN `none/ad-yok` olduktan SONRA,
+   * "kilit yanlis aileye mi kapandi?" sorusunu sormak icin ikinci bir
+   * gecise acilir (bkz. `aileUyusmazligiTeshisi`). Ikinci gecisin bulduğu
+   * aday KESIN sayilmaz — `aile-uyusmazligi` kapisiyla ONAYA duser.
+   *
+   * Bayrak acikken diger TUM kilitler (cap, sinif, yuzey, baglanti, birim,
+   * malzeme) AYNEN calisir — tek fark aile suzgecidir. Boylece "yalnizca
+   * aile yuzunden mi elendi" sorusuna kanitli cevap verilir.
+   */
+  aileKilidiKapali?: boolean;
 }

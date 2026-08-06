@@ -47,6 +47,15 @@ const SUITES: Suite[] = [
   //    Aile tespiti TUM eslestirmenin girdisidir; bu suite hem kurtarilan 9
   //    deseni hem DEGISMEMESI gereken 16 vakayi kilitler.
   { ad: 'Aile çözüm önceliği (kapsama üstünlüğü)', script: 'test:aile', zincir: 'Z2' },
+  // ── 06.08.2026: S6 — AILE UYUSMAZLIGI TESHISI.
+  //    Aile SERT KILIT; kilit YANLIS aileye kapandiginda sonuc none/ad-yok
+  //    oluyordu ve bu "markada gercekten yok" ile BIT BIT AYNI gorunuyordu
+  //    (NORM KELEPÇE: ekranda `Bu markada "boru" bulunamadi.`). Artik sonuc
+  //    zaten none ise ikinci bir gecis YALNIZ aile kilidi kapali kosulur;
+  //    tek ve kimligi dogrulanmis aday varsa durum SOYLENIR ve ONAYA duser.
+  //    Bu suite kurtarmayi da, gurultu yasagini da, "fiyat otomatik
+  //    YAZILMAZ" kuralini da kilitler.
+  { ad: 'Aile uyuşmazlığı teşhisi (S6)', script: 'test:aile-uyusmazligi', zincir: 'Z2' },
   // T1/T3/T4: sablona-yazan eski motor SILINDI; "kolon esleme" (test:ke) ve
   // "iki katmanli baslik" (test:kb) suite'leri onunla birlikte kaldirildi.
   // Yerine gelen sozlesmeler:

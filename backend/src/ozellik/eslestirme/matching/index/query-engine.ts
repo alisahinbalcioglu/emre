@@ -76,7 +76,9 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   // ── 1a. SEVIYE1: AILE (cozulduyse) ───────────────────────────────
   // S3: satir kendi ailesini cozemediyse SOZLUK cozer (hidrant→boru).
   // E8 guard CAGIRANDA: satir ailesi COZULDUYSE hintFamily zaten gelmez.
-  const familySlug = line.familySlug ?? opts?.hintFamily ?? null;
+  // S6: `aileKilidiKapali` YALNIZ teshis gecisinde acilir (bkz. QueryOpts ve
+  // `aileUyusmazligiTeshisi`). Normal yolda aile SERT KILIT olarak kalir.
+  const familySlug = opts?.aileKilidiKapali ? null : (line.familySlug ?? opts?.hintFamily ?? null);
   if (familySlug) {
     rows = rows.filter((r) => r.urun.adSlug === familySlug);
     if (rows.length === 0) return { kind: 'none', reason: 'ad-yok', detail: familySlug };
@@ -727,4 +729,131 @@ export function urunVariantTags(r: IndexedRow): string[] {
   // tag hic uretilmez — davranis degismez. (CAP hala DAHIL DEGIL — yayilim.)
   if (r.urun.boyMm) out.push(`boy:${r.urun.boyMm}`);
   return out;
+}
+
+/**
+ * KANIT BARAJI — "bu sonuc, ekranda TEK SATIRLIK BIR IDDIA olarak sunulacak
+ * kadar guclu mu?"
+ *
+ * S3'te (06.08) capraz-marka oneri kutusu icin yazildi ve o zaman da tek yere
+ * alinmisti: "findAlternativesV2 ve findLaborAlternativesV2 IKIZDIR; bu kural
+ * ikisinde de birebir ayni olmak zorunda". S6 (aile uyusmazligi teshisi)
+ * UCUNCU cagirandir — ayni soruyu soruyor, o yuzden ayni baraji kullanir.
+ * Kural buraya (saf katmana) tasindi; `caprazAdaySec` artik bunun uzerine
+ * kurulu ince bir sarmalayici.
+ *
+ * KABUL: 'single' · 'ask' + TEK aday.
+ * RET  : birden cok aday · ailesi ZAYIF aday (yalniz kategori basligindan
+ *        turemis) · kimligi dogrulanmamis aday ('capsiz-dusum' = capi
+ *        dogrulanmadi, 'ad-gevsetildi' = adi dogrulanmadi).
+ * Bu ikisi adayin KIMLIGINE dokunur ("bu urun O urun mu?" cevapsiz);
+ * digerleri ('bilinmeyen-kelime', 'malzeme-celiskisi'...) adayin EK
+ * niteligini belirsiz birakir, kimligini degil — cekince TASINIR, elenmez.
+ */
+export function guclutekAday(
+  outcome: QueryOutcome,
+): { row: IndexedRow; uyariNot?: string; bilinmeyen?: string[]; kapilar?: KanitKapisi[] } | null {
+  const aday = outcome.kind === 'single' ? outcome.row
+    : outcome.kind === 'ask' && outcome.rows.length === 1 ? outcome.rows[0] : null;
+  if (!aday) return null;
+  if (aday.urun.aileZayif) return null;
+  if (outcome.kind === 'single') return { row: outcome.row };
+  if (outcome.kind !== 'ask') return null;
+  const ZAYIF: KanitKapisi[] = ['capsiz-dusum', 'ad-gevsetildi'];
+  if ((outcome.kapilar ?? []).some((k) => ZAYIF.includes(k))) return null;
+  return {
+    row: outcome.rows[0],
+    uyariNot: outcome.uyariNot,
+    bilinmeyen: outcome.bilinmeyen?.length ? outcome.bilinmeyen : undefined,
+    kapilar: outcome.kapilar,
+  };
+}
+
+/**
+ * S6 (06.08) — AILE UYUSMAZLIGI TESHISI. "Bu markada yok" mu, yoksa
+ * "aileler anlasamadi" mi?
+ *
+ * ── NEDEN VAR ────────────────────────────────────────────────────────────
+ * NORM KELEPÇE vakasi: satir "Sprinkler Boru Askisi, DN150" icindeki "Boru"
+ * yuzunden 'boru' ailesine cozuluyor, urunler 'kelepce' ailesinde kaliyordu.
+ * Aile SERT KILIT oldugu icin sonuc `none/ad-yok` — ve bu, markanin o urunu
+ * GERCEKTEN tasimadigi durumla BIT BIT AYNI gorunuyordu. Ekrandaki cumle
+ * `Bu markada "boru" bulunamadi.` idi: motorun kendi urettigi slug, kullanici
+ * icin anlamsiz. Tespit bir oturum surdu.
+ *
+ * Kok mesele su: aile, IKI BAGIMSIZ METNIN (kutuphanedeki urun adi + teklif
+ * satiri) bulusmak zorunda oldugu ortak kelime dagarcigidir. Kullanicilar
+ * kendi kutuphanelerine kendi adlarini yazdikca bu iki metin AYRI kelimelerle
+ * ayni seyi anlatir ve kilit sessizce yanlis kapanir. Sozluge kayit eklemek
+ * bilinen vakalari kapatir, SINIFI kapatmaz — kullanicinin yarin uyduracagi
+ * adi tahmin edemeyiz. Kapatilan sey su: BOS SONUC ARTIK SESSIZ DEGIL.
+ *
+ * ── NE YAPAR ─────────────────────────────────────────────────────────────
+ * Sonuc ZATEN `none/ad-yok` ise (yani normal yol bitti, kaybedecek bir sey
+ * yok) ayni sorguyu YALNIZ aile kilidi kapali olarak bir kez daha kosar.
+ * Diger TUM kilitler (cap, sinif, yuzey, baglanti, birim, malzeme) aynen
+ * calisir — yani hayatta kalan aday "aile disinda HER SEYI tutan" adaydir.
+ *
+ * ── NE YAPMAZ ────────────────────────────────────────────────────────────
+ * ⛔ Aile kilidini GEVSETMEZ. Bir kompansator satirina vana yine aday olamaz;
+ *    teshisin bulduğu aday KESIN degildir, `ask`e duser, fiyat OTOMATIK
+ *    YAZILMAZ. Kullanici onaylamadan hicbir sey degismez.
+ * ⛔ GURULTU URETMEZ. Baraj `guclutekAday`dir: teshis yalnizca TEK ve kimligi
+ *    dogrulanmis bir aday varsa konusur. Ikinci gecis bes aday buluyorsa
+ *    susar ve sonuc `none` kalir — "belki bunlardan biridir" demek, sokmeye
+ *    calistigimiz tahmin uretme hastaliginin ta kendisi olurdu.
+ * ⛔ Aile ZATEN cozulememisse (familySlug yok) calismaz — ortada uyusmazlik
+ *    kavrami yoktur, ikinci gecis birinciyle ayni sorgudur.
+ *
+ * SAF: runQuery gibi DB'siz. Cagiran: matching.service (malzeme + iscilik).
+ */
+export function aileUyusmazligiTeshisi(
+  line: LineQuery,
+  pool: IndexedRow[],
+  opts: QueryOpts | undefined,
+  sonuc: QueryOutcome,
+): QueryOutcome {
+  if (sonuc.kind !== 'none' || sonuc.reason !== 'ad-yok') return sonuc;
+  if (opts?.aileKilidiKapali) return sonuc; // teshis gecisinin kendisi
+  const aile = line.familySlug ?? opts?.hintFamily ?? null;
+  if (!aile) return sonuc;
+
+  const kor = runQuery(line, pool, { ...opts, aileKilidiKapali: true });
+  const guclu = guclutekAday(kor);
+  if (!guclu) return sonuc;
+
+  // ── K8'IN TESHISE UYGULANMASI (olculerek eklendi) ────────────────────────
+  // Ilk surumde bu kapi YOKTU ve gurultu uretti: "Kalorimetre, DN65" satiri,
+  // yalniz yangin hortumu satan bir markada "Yangın Hortumu DN65"i aday
+  // gosteriyordu. Sebep: satirin TEK ad kelimesi ('kalorimetre') ailenin
+  // kendi adi oldugu icin muaf sayiliyor, geriye HIC ad kisiti kalmiyor ve
+  // eslesme SALT CAPA dayaniyordu. Motorun K8 kurali bunu zaten yasaklar:
+  // "satirin ad-icereginden HICBIR kelime eslesmiyorsa tum aileyi listelemek
+  // K6/K8 ihlalidir" (bkz. yukarisi, satir ~238). Ayni kural burada da gecerli.
+  //
+  // ⚠ 'aile-yok' KAPISINA BAKMAK ISE ISE YARAMAZ — olculdu: kor gecişte
+  // familySlug daima null oldugu icin o kapi UC vakada da yaniyordu
+  // (A1/A2 dogru vakalar dahil). Ayirt edici olan kapi degil, PAYLASILAN
+  // AD KELIMESIDIR.
+  const aileKelimesi = (t: string) => line.aileKelimeleri.some((a) => tokenEsit(a, t));
+  const satirAdi = line.tokens.filter((t) => !aileKelimesi(t));
+  const paylasilan = satirAdi.some((t) => guclu.row.urun.adTokens.some((x) => tokenEsit(t, x)));
+  if (!paylasilan) return sonuc;
+
+  // Aday AYNI ailedeyse bu bir uyusmazlik degildir (ikinci gecis baska bir
+  // sebeple kurtarmis olabilir) — teshis yalniz AILE eksenini iddia eder.
+  const adayAile = guclu.row.urun.adSlug;
+  if (adayAile === aile) return sonuc;
+
+  return {
+    kind: 'ask',
+    askColumn: 'urun',
+    rows: [guclu.row],
+    donusum: kor.kind === 'ask' || kor.kind === 'single' ? kor.donusum : undefined,
+    bilinmeyen: guclu.bilinmeyen,
+    // Metin "onaylayın" ile BITMEZ: outcome-mapper zaten
+    // `${uyariNot} — onaylayın. ...` diye sariyor (ask dali).
+    uyariNot: `Satırın ürün ailesi "${aile}", adayın ailesi "${adayAile}"; aynı ürün olabilir`,
+    kapilar: [...(guclu.kapilar ?? []), 'aile-uyusmazligi'],
+  };
 }

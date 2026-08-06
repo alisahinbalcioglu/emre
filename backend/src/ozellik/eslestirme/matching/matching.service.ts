@@ -25,7 +25,7 @@ import { extractSizeInfo } from './conversion';
 import { TerminologyService } from './terminology.service';
 // TEK MOTOR (Faz 2b): indeksli + Ad-kilitli cekirdek (saf — test:index K1-K7)
 import { parseLine } from './index/line-parser';
-import { runQuery } from './index/query-engine';
+import { runQuery, guclutekAday, aileUyusmazligiTeshisi } from './index/query-engine';
 import { toMatchResult, gorunenAd } from '../../fiyat/matching/index/outcome-mapper';
 import { INDEX_VERSION, tokenize, buildProductIndex, rebuildIndexFields, iscilikAdCekirdegi, malzemeEtiketleri } from './index/product-index';
 import type { ProductColumns } from './index/product-index';
@@ -400,7 +400,14 @@ export class MatchingService {
         console.log(`[Matching] v2 sozluk: "${name}" → ${hint.alias} (${opts.hintClass ?? '-'}${opts.hintBases?.length ? `, taban=${opts.hintBases.join('/')}` : ''})`);
       }
 
-      const outcome = runQuery(line, pool, opts);
+      // S6 (06.08) — "bu markada yok" mu, yoksa AILELER ANLASAMADI mi?
+      // Yalniz sonuc ZATEN none/ad-yok ise ikinci bir gecis kosar; kaybedecek
+      // bir sey yoktur ve mutlu yolda hicbir maliyeti olmaz. Aile kilidi
+      // GEVSEMEZ — bulunan aday onaya duser (bkz. aileUyusmazligiTeshisi).
+      // ⚠ YALNIZ BURADA: capraz-marka yollarinda (515/707) UYGULANMAZ —
+      // kullanicinin HIC bakmadigi bir markadan, ustelik BASKA aileden aday
+      // one surmek iki tahmini ust uste bindirmektir (S3 kanit kurali).
+      const outcome = aileUyusmazligiTeshisi(line, pool, opts, runQuery(line, pool, opts));
       let r = toMatchResult(outcome, line, toTry);
 
       // OGRENME HAFIZASI + CINS TERCIHI — v1 ile AYNI kural (on-secili
@@ -460,18 +467,15 @@ export class MatchingService {
     // basligindan turemis bir kalem icin bu iddia dogrulanabilir degildir;
     // kendi markasindaki bir onay listesinde kullanici en azindan urunu
     // gorup reddedebiliyordu, burada goremez.
-    const aday = outcome.kind === 'single' ? outcome.row
-      : outcome.kind === 'ask' && outcome.rows.length === 1 ? outcome.rows[0] : null;
-    if (aday?.urun.aileZayif) return null;
-    if (outcome.kind === 'single') return { row: outcome.row };
-    if (outcome.kind !== 'ask' || outcome.rows.length !== 1) return null;
-    const ZAYIF: KanitKapisi[] = ['capsiz-dusum', 'ad-gevsetildi'];
-    if ((outcome.kapilar ?? []).some((k) => ZAYIF.includes(k))) return null;
-    return {
-      row: outcome.rows[0],
-      uyariNot: outcome.uyariNot,
-      bilinmeyen: outcome.bilinmeyen?.length ? outcome.bilinmeyen : undefined,
-    };
+    // ── S6 (06.08): KURAL SAF KATMANA TASINDI ───────────────────────────
+    // Ayni baraji ucuncu bir cagiran daha kullaniyor (aile uyusmazligi
+    // teshisi). Yukaridaki "tek yerde olacak" gerekcesi degismedi, yalniz
+    // "tek yer" artik query-engine'deki `guclutekAday` — orasi saf ve
+    // DB'siz test edilebilir. Bu metot ince bir sarmalayici olarak duruyor
+    // ki cagiranlar ve S3 gerekce metni yerinde kalsin.
+    const guclu = guclutekAday(outcome);
+    if (!guclu) return null;
+    return { row: guclu.row, uyariNot: guclu.uyariNot, bilinmeyen: guclu.bilinmeyen };
   }
 
   /**

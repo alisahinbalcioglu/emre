@@ -3,10 +3,10 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 340
-Toplam satir: 68798
+Kod dosyasi: 341
+Toplam satir: 69165
 Uc nokta: 125
-test:* scripti: 47
+test:* scripti: 48
 
 ## 1 · Dosyalar ve satir sayilari
 
@@ -66,12 +66,12 @@ test:* scripti: 47
 | `backend/src/ozellik/eslestirme/matching/conversion.ts` | 411 |
 | `backend/src/ozellik/eslestirme/matching/index/line-parser.ts` | 220 |
 | `backend/src/ozellik/eslestirme/matching/index/product-index.ts` | 609 |
-| `backend/src/ozellik/eslestirme/matching/index/query-engine.ts` | 731 |
-| `backend/src/ozellik/eslestirme/matching/index/types.ts` | 214 |
+| `backend/src/ozellik/eslestirme/matching/index/query-engine.ts` | 860 |
+| `backend/src/ozellik/eslestirme/matching/index/types.ts` | 243 |
 | `backend/src/ozellik/eslestirme/matching/index/vocab.ts` | 37 |
 | `backend/src/ozellik/eslestirme/matching/matching.controller.ts` | 96 |
 | `backend/src/ozellik/eslestirme/matching/matching.module.ts` | 15 |
-| `backend/src/ozellik/eslestirme/matching/matching.service.ts` | 1040 |
+| `backend/src/ozellik/eslestirme/matching/matching.service.ts` | 1044 |
 | `backend/src/ozellik/eslestirme/matching/normalizer.ts` | 683 |
 | `backend/src/ozellik/eslestirme/matching/shared-tag-matcher.ts` | 165 |
 | `backend/src/ozellik/eslestirme/matching/tag-generator.ts` | 161 |
@@ -136,6 +136,7 @@ test:* scripti: 47
 | `backend/test/admin-import-test.ts` | 264 |
 | `backend/test/aile-oncelik-simulasyon.ts` | 292 |
 | `backend/test/aile-oncelik-test.ts` | 182 |
+| `backend/test/aile-uyusmazligi-test.ts` | 196 |
 | `backend/test/audit-canli-kosum.ts` | 313 |
 | `backend/test/audit-real-excel.ts` | 82 |
 | `backend/test/b1-kutuphane-cascade-test.ts` | 185 |
@@ -176,7 +177,7 @@ test:* scripti: 47
 | `backend/test/pk3-repo-kapsama-test.ts` | 79 |
 | `backend/test/pk9-sessiz-indeks-test.ts` | 97 |
 | `backend/test/product-index-test.ts` | 453 |
-| `backend/test/regression-all.ts` | 183 |
+| `backend/test/regression-all.ts` | 192 |
 | `backend/test/s45-malzeme-aile-test.ts` | 440 |
 | `backend/test/s45-olcum.ts` | 188 |
 | `backend/test/sozluk-golgeleme-olcum.ts` | 125 |
@@ -466,6 +467,7 @@ test:* scripti: 47
 | `backend/test/admin-import-test.ts` | `../src/ozellik/eslestirme/utils/etiket-display` |
 | `backend/test/aile-oncelik-simulasyon.ts` | `fs` `path` `../src/ozellik/eslestirme/matching/ad-cins-sozlugu` `../src/ozellik/eslestirme/matching/ad-resolver` `../src/ozellik/eslestirme/matching/index/product-index` `xlsx` |
 | `backend/test/aile-oncelik-test.ts` | `../src/ozellik/eslestirme/matching/ad-cins-sozlugu` `../src/ozellik/eslestirme/matching/index/product-index` |
+| `backend/test/aile-uyusmazligi-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/query-engine` `../src/ozellik/fiyat/matching/index/outcome-mapper` `../src/ozellik/eslestirme/matching/index/types` |
 | `backend/test/audit-canli-kosum.ts` | `@prisma/client` `fs` `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `../src/ozellik/kutuphane/admin/admin.service` `../src/ozellik/kutuphane/library/library.service` `../src/ozellik/giris/excel-grid/excel-grid.service` `../src/ozellik/eslestirme/matching/conversion` |
 | `backend/test/audit-real-excel.ts` | `xlsx` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/product-index` |
 | `backend/test/b1-kutuphane-cascade-test.ts` | `@prisma/client` |
@@ -823,6 +825,7 @@ test:* scripti: 47
 | `backend/package.json` | `test:oneri` | `ts-node test/oneri-kutusu-cekince-test.ts` |
 | `backend/package.json` | `test:s45` | `ts-node test/s45-malzeme-aile-test.ts` |
 | `backend/package.json` | `test:aile` | `ts-node test/aile-oncelik-test.ts` |
+| `backend/package.json` | `test:aile-uyusmazligi` | `ts-node test/aile-uyusmazligi-test.ts` |
 | `frontend/package.json` | `test:e2e` | `playwright test` |
 | `frontend/package.json` | `test:e2e-golden` | `node test/e2e-golden/run.mjs` |
 
