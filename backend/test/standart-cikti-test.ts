@@ -309,6 +309,29 @@ async function main() {
       `ozet="${r.ozet.slice(0, 60)}" · yazilan=${r.yazilan}`);
   }
 
+  // ── KE31 (Kar Analizi, 06.08): MUSTERIYE GIDEN CIKTIDA KAR GORUNMEZ ────
+  // Kar satiri FE'de PINNED yasar (rowData disinda) — kayda ve dolayisiyla
+  // ciktiya YAPISAL olarak giremez. Bu assert o yapisal garantinin uzerine
+  // ACIK bir taramadir: gelecekte biri kar satirini ciktiya "ekleyiverirse"
+  // buradan kirmizi doner. (Format-yolu icin ayrica: format-engine'in sayisal
+  // etiket listesi sabittir ve KAR icermez — format-engine.ts:20.)
+  {
+    const kSonuc = await standartCiktiUret({ sheetsArr: SHEETS as any, birim: null });
+    const kWb = new ExcelJS.Workbook();
+    await kWb.xlsx.load(kSonuc.buffer as any);
+    const karHucreleri: string[] = [];
+    kWb.worksheets.forEach((w) => w.eachRow({ includeEmpty: false }, (row, ri) =>
+      row.eachCell({ includeEmpty: false }, (c, ci) => {
+        const metin = typeof c.value === 'string' ? c.value : '';
+        if (/KÂR|KAR SATIRI|MALZEME KARI|ISCILIK KARI|TOPLAM KARI?\b/i.test(metin)) {
+          karHucreleri.push(`${w.name}!${ri}:${ci} "${metin.slice(0, 30)}"`);
+        }
+      })));
+    check('KE31: musteriye giden ciktida KAR etiketi YOK',
+      karHucreleri.length === 0,
+      karHucreleri.slice(0, 3).join(' · ') || 'temiz');
+  }
+
   console.log(`\n${'='.repeat(60)}\nSTANDART CIKTI: ${pass} PASS, ${fail} FAIL\n${'='.repeat(60)}`);
   process.exit(fail > 0 ? 1 : 0);
 }

@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 343
-Toplam satir: 69656
+Kod dosyasi: 347
+Toplam satir: 70308
 Uc nokta: 125
 test:* scripti: 50
 
@@ -184,7 +184,7 @@ test:* scripti: 50
 | `backend/test/s45-olcum.ts` | 188 |
 | `backend/test/sozluk-golgeleme-olcum.ts` | 125 |
 | `backend/test/spec-regression-test.ts` | 447 |
-| `backend/test/standart-cikti-test.ts` | 316 |
+| `backend/test/standart-cikti-test.ts` | 339 |
 | `backend/test/standart-sema-test.ts` | 338 |
 | `backend/test/tam-zincir.ts` | 105 |
 | `frontend/app/(protected)/dashboard/page.tsx` | 244 |
@@ -206,7 +206,7 @@ test:* scripti: 50
 | `frontend/app/(protected)/quote-formats/page.tsx` | 397 |
 | `frontend/app/(protected)/quotes/[id]/page.tsx` | 244 |
 | `frontend/app/(protected)/quotes/new/error.tsx` | 13 |
-| `frontend/app/(protected)/quotes/new/page.tsx` | 2354 |
+| `frontend/app/(protected)/quotes/new/page.tsx` | 2361 |
 | `frontend/app/(protected)/quotes/page.tsx` | 192 |
 | `frontend/app/admin/brands/page.tsx` | 895 |
 | `frontend/app/admin/layout.tsx` | 80 |
@@ -255,12 +255,16 @@ test:* scripti: 50
 | `frontend/lib/gs6b-golge-kurali.test.ts` | 60 |
 | `frontend/lib/indeks-sagligi.test.ts` | 75 |
 | `frontend/lib/indeks-sagligi.ts` | 64 |
+| `frontend/lib/kar-satiri.test.ts` | 116 |
 | `frontend/lib/kaynak-kolon.test.ts` | 49 |
+| `frontend/lib/marj-tek-kaynak.test.ts` | 80 |
 | `frontend/lib/merge-multisheet.test.ts` | 112 |
 | `frontend/lib/metraj-excel.ts` | 96 |
+| `frontend/lib/ondalik-kurali.test.ts` | 70 |
 | `frontend/lib/parse-material-text.test.ts` | 86 |
 | `frontend/lib/popup-secici-sozlesmesi.test.ts` | 62 |
 | `frontend/lib/pricing.test.ts` | 95 |
+| `frontend/lib/sayfa-toplamlari.test.ts` | 127 |
 | `frontend/lib/sayi-ayristirma.test.ts` | 80 |
 | `frontend/lib/silme-etkisi-getir.ts` | 26 |
 | `frontend/lib/silme-onay-metni.test.ts` | 194 |
@@ -291,7 +295,7 @@ test:* scripti: 50
 | `frontend/ortak/ui/toast.tsx` | 115 |
 | `frontend/ortak/ui/toaster.tsx` | 34 |
 | `frontend/ozellik/cikti/export-download.ts` | 91 |
-| `frontend/ozellik/fiyat/pricing.ts` | 217 |
+| `frontend/ozellik/fiyat/pricing.ts` | 426 |
 | `frontend/ozellik/fiyat/use-currency.ts` | 87 |
 | `frontend/ozellik/giris/kaynak-kolon.ts` | 34 |
 | `frontend/ozellik/kutuphane/admin-stats.ts` | 81 |
@@ -304,7 +308,7 @@ test:* scripti: 50
 | `frontend/ozellik/kutuphane/oksuz-kutuphane-uyarisi.ts` | 60 |
 | `frontend/ozellik/tablo/disiplin.ts` | 13 |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 233 |
-| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 2790 |
+| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 2810 |
 | `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | 109 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts` | 178 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.ts` | 175 |
@@ -574,11 +578,15 @@ test:* scripti: 50
 | `frontend/components/dwg-workspace/useWorkspaceState.ts` | `react` |
 | `frontend/lib/gs6b-golge-kurali.test.ts` | `vitest` `fs` `path` |
 | `frontend/lib/indeks-sagligi.test.ts` | `vitest` `./indeks-sagligi` |
+| `frontend/lib/kar-satiri.test.ts` | `vitest` |
 | `frontend/lib/kaynak-kolon.test.ts` | `vitest` `../ozellik/giris/kaynak-kolon` |
+| `frontend/lib/marj-tek-kaynak.test.ts` | `vitest` `fs` `path` `../ozellik/fiyat/pricing` |
 | `frontend/lib/merge-multisheet.test.ts` | `vitest` `../ozellik/tablo/merge-multisheet` `@/ozellik/tablo/excel-grid/types` |
+| `frontend/lib/ondalik-kurali.test.ts` | `vitest` |
 | `frontend/lib/parse-material-text.test.ts` | `vitest` `../ozellik/tablo/parse-material-text` |
 | `frontend/lib/popup-secici-sozlesmesi.test.ts` | `vitest` `fs` `path` |
 | `frontend/lib/pricing.test.ts` | `vitest` `../ozellik/fiyat/pricing` |
+| `frontend/lib/sayfa-toplamlari.test.ts` | `vitest` |
 | `frontend/lib/sayi-ayristirma.test.ts` | `vitest` `fs` `path` `../test/e2e-golden/sayi-ayristirma.mjs` |
 | `frontend/lib/silme-etkisi-getir.ts` | `@/ortak/lib/api` `./silme-onay-metni` |
 | `frontend/lib/silme-onay-metni.test.ts` | `vitest` `./silme-onay-metni` |

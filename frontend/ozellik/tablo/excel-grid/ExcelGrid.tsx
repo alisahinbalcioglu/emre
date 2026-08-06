@@ -16,7 +16,7 @@ import { clampDiscount, parseDiscountInput, parseDiscountPaste } from './discoun
 import { CustomDropdown } from './CustomDropdown';
 import { fillDown, karYayilimi } from './fill-down';
 import { joinMaterialText } from '@/ozellik/tablo/parse-material-text';
-import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, yukariYuvarla, etkinMiktar, paraBicim, sayfaToplamlari, PARA_ONDALIK } from '@/ozellik/fiyat/pricing';
+import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, yukariYuvarla, etkinMiktar, paraBicim, sayfaToplamlari, karSatiri, PARA_ONDALIK } from '@/ozellik/fiyat/pricing';
 import { hasSizeExpression, isSelfSufficientRow } from './build-material-context';
 import { niteliklerdenBaglam, adayEtiketleri, popupGenisligiOku, popupGenisligiYaz } from './aday-ayirt-edicilik';
 import httpApi from '@/ortak/lib/api';
@@ -2046,8 +2046,18 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       pinnedRow[grandUnitPriceField] = '';
     }
 
-    setPinnedBottomRow([pinnedRow]);
-  }, [data.columnRoles]);
+    // ── ADIM 10 (06.08): GENEL TOPLAM'in HEMEN ALTINA KAR SATIRI ──────────
+    // Kullanicinin 05.08 istegi. Deger AYNI sayfaToplamlari cagrisindan gelir
+    // (kar = maliyet−satis farki) — burada hesap YOK (KE27). Yalniz teklif
+    // akisinda gorunur: kutuphane gridinde kar kavrami yok. Pinned oldugu
+    // icin rowData'ya, kayda ve musteri ciktisina YAPISAL olarak giremez.
+    if (mode !== 'library') {
+      const karRow = karSatiri(ozet, data.columnRoles as any, nameField);
+      setPinnedBottomRow([pinnedRow, karRow]);
+    } else {
+      setPinnedBottomRow([pinnedRow]);
+    }
+  }, [data.columnRoles, mode]);
   updatePinnedBottomRef.current = updatePinnedBottom;
 
   // Data yuklenince pinned bottom hesapla
@@ -2229,6 +2239,29 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         field === data.columnRoles.grandTotalField
       ) {
         base.valueFormatter = (params) => {
+          // ── ADIM 10 / KE29: KAR satiri — bos fiyat SIFIR KAR DEGILDIR ──
+          // Deger null = "o tarafta hic fiyatli satir yok" → '—' basilir,
+          // ₺0,00 BASILMAZ. Kismi fiyatliysa tutarin yanina fiyatsiz sayisi
+          // yazilir. YUZDE hicbir kosulda basilmaz (KE28).
+          if ((params.data as any)?._isKarRow) {
+            // UC HUCRE, BIR TANE FAZLA DEGIL: kar yalniz Malz. Toplam,
+            // Isc. Toplam ve Genel Toplam kolonlarinin altinda gorunur.
+            // Diger para kolonlari (birim fiyatlar) BOS kalir — ilk tarayici
+            // kosumunda '—' oralara da tasmisti, duzeltildi.
+            const alan = params.colDef?.field;
+            const genelAlan = data.columnRoles.grandTotalField ?? data.columnRoles.grandUnitPriceField;
+            const karKolonu = alan === data.columnRoles.materialTotalField
+              || alan === data.columnRoles.laborTotalField || alan === genelAlan;
+            if (!karKolonu) return '';
+            if (params.value === null || params.value === undefined || params.value === '') return '—';
+            const kv = parseFloat(String(params.value));
+            if (isNaN(kv)) return '—';
+            const bilgi = (params.data as any)._karBilgi ?? {};
+            const fiyatsiz = alan === data.columnRoles.materialTotalField ? bilgi.matFiyatsiz
+              : alan === data.columnRoles.laborTotalField ? bilgi.labFiyatsiz : 0;
+            const govde = `${currencySymbol}${paraBicim(kv, conversionRate)}`;
+            return fiyatsiz > 0 ? `${govde} · ${fiyatsiz} fiyatsız` : govde;
+          }
           const v = parseFloat(String(params.value ?? ''));
           if (isNaN(v)) return '';
           // Pinned bottom satirinda 0 bile gosterilsin (GENEL TOPLAM satiri)
@@ -2669,6 +2702,11 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         pinnedBottomRowData={pinnedBottomRow}
         getRowStyle={(p) => {
           if (p.node.rowPinned === 'bottom') {
+            // ADIM 10: KAR satiri toplamdan gorsel olarak ayrisir (ic bilgi —
+            // koyu zemin, musteri ciktisina zaten giremez)
+            if ((p.data as any)?._isKarRow) {
+              return { backgroundColor: '#065f46', color: '#ffffff', fontWeight: 700 };
+            }
             return { backgroundColor: '#1e40af', color: '#ffffff', fontWeight: 700 };
           }
           return undefined;

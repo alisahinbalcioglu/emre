@@ -367,3 +367,59 @@ export function sayfaToplamlari(
   o.genelToplam = o.matToplam + o.labToplam;
   return o;
 }
+
+// ============================================================
+// ADIM 10 (Kar Analizi, 06.08) — KAR SATIRI URETICI
+//
+// Kullanicinin 05.08 istegi, birebir: "asagida toplam fiyatlarin altina bir
+// satir daha acilsin — malzeme toplamin altinda malzeme kar, iscilik
+// toplamin altinda iscilik kar, genel toplamin altinda toplam kar."
+//
+// UC HUCRE, BIR TANE FAZLA DEGIL. Kurallar (hepsi kullanicinin modelinden):
+//  · Kar, sayfaToplamlari'nin maliyet−satis FARKIDIR — burada HESAP YOK,
+//    yalnizca yerlesim (kalem 65'in hastaligi 22. yere tasinmaz, KE27).
+//  · YUZDE YAZILMAZ (KE28): deger alanlarinda sayi durur, '%' uretilmez.
+//  · BOS FIYAT ≠ SIFIR KAR (KE29): o tarafta HIC fiyatli satir yoksa deger
+//    `null` doner — gosterim katmani '—' basar, ₺0,00 BASMAZ. Kismi
+//    fiyatliysa tutar doner ve `fiyatsiz` sayaci yaninda tasinir.
+//  · Bu satir PINNED'dir (_isPinnedTotal): rowData'ya GIRMEZ → kayda ve
+//    musteriye giden ciktiya YAPISAL olarak tasinamaz (KE31'in FE yarisi).
+// ============================================================
+
+export interface KarSatiriBilgi {
+  matYok: boolean;
+  labYok: boolean;
+  matFiyatsiz: number;
+  labFiyatsiz: number;
+}
+
+export function karSatiri(
+  ozet: SayfaToplamOzeti,
+  roller: Record<string, string | undefined>,
+  nameField?: string,
+): Record<string, any> {
+  const { materialTotalField: mTop, laborTotalField: lTop,
+    grandTotalField: genel, grandUnitPriceField: genelBirim } = roller;
+  const row: Record<string, any> = {
+    _rowIdx: -2,
+    _isDataRow: false,
+    _isHeaderRow: false,
+    _isPinnedTotal: true,
+    _isKarRow: true,
+  };
+  const bilgi: KarSatiriBilgi = {
+    matYok: ozet.matFiyatli === 0,
+    labYok: ozet.labFiyatli === 0,
+    matFiyatsiz: ozet.matFiyatsiz,
+    labFiyatsiz: ozet.labFiyatsiz,
+  };
+  row._karBilgi = bilgi;
+  if (nameField) row[nameField] = 'KÂR';
+  if (mTop) row[mTop] = bilgi.matYok ? null : ozet.matKar;
+  if (lTop) row[lTop] = bilgi.labYok ? null : ozet.labKar;
+  // Toplam Kar: GENEL TOPLAM satiri hangi kolona yaziyorsa ayni kolona
+  // (grandTotal, yoksa grandUnitPrice geri dususu — updatePinnedBottom kurali).
+  const genelAlan = genel ?? genelBirim;
+  if (genelAlan) row[genelAlan] = bilgi.matYok && bilgi.labYok ? null : ozet.toplamKar;
+  return row;
+}
