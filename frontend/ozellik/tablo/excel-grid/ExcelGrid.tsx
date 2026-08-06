@@ -16,7 +16,7 @@ import { clampDiscount, parseDiscountInput, parseDiscountPaste } from './discoun
 import { CustomDropdown } from './CustomDropdown';
 import { fillDown, karYayilimi } from './fill-down';
 import { joinMaterialText } from '@/ozellik/tablo/parse-material-text';
-import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, yukariYuvarla, etkinMiktar, paraBicim } from '@/ozellik/fiyat/pricing';
+import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, yukariYuvarla, etkinMiktar, paraBicim, sayfaToplamlari } from '@/ozellik/fiyat/pricing';
 import { hasSizeExpression, isSelfSufficientRow } from './build-material-context';
 import { niteliklerdenBaglam, adayEtiketleri, popupGenisligiOku, popupGenisligiYaz } from './aday-ayirt-edicilik';
 import httpApi from '@/ortak/lib/api';
@@ -2009,30 +2009,18 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       return;
     }
 
-    let sumGrandTotal = 0;
-    let sumMatTotal = 0;
-    let sumLabTotal = 0;
-    gridRef.current.api.forEachNode((node) => {
-      if (!node.data?._isDataRow) return;
-      // Kullanici karari (30.07): OZET satirlari (İcmal) toplama GIRMEZ —
-      // diger sayfalarin toplamini tekrarladiklari icin teklif geneli iki
-      // katina cikardi (YILDIZ: 62.043.700 → 124.087.400).
-      if (node.data?._ozet) return;
-      if (grandTotalField) {
-        const v = parseFloat(String(node.data[grandTotalField] ?? '')) || 0;
-        sumGrandTotal += v;
-      }
-      if (materialTotalField) {
-        const v = parseFloat(String(node.data[materialTotalField] ?? '')) || 0;
-        sumMatTotal += v;
-      }
-      if (laborTotalField) {
-        const v = parseFloat(String(node.data[laborTotalField] ?? '')) || 0;
-        sumLabTotal += v;
-      }
-    });
-    // Genel toplam = mat + lab (her zaman — grand kolonu bos olsa bile)
-    const genelToplam = sumMatTotal + sumLabTotal;
+    // ── ADIM 7 (06.08): kendi `+= parseFloat` dongusu KALDIRILDI ──────────
+    // Sayfa toplami artik TEK fonksiyondan gelir (pricing.sayfaToplamlari) —
+    // kalem 65'in "bagimsiz aritmetik #1"i buydu. _ozet dislama kurali
+    // (30.07 kullanici karari: Icmal cift sayardi) fonksiyonun ICINDE yasar.
+    // KAR SATIRI (ADIM 10) ayni cagrinin matKar/labKar/toplamKar alanlarina
+    // binecek — kar icin ikinci bir hesap yeri ACILMAZ.
+    const satirlar: any[] = [];
+    gridRef.current.api.forEachNode((node) => { if (node.data) satirlar.push(node.data); });
+    const ozet = sayfaToplamlari(satirlar, data.columnRoles as any);
+    const sumMatTotal = ozet.matToplam;
+    const sumLabTotal = ozet.labToplam;
+    const genelToplam = ozet.genelToplam;
 
     const pinnedRow: any = {
       _rowIdx: -1,

@@ -214,3 +214,136 @@ export function toplamlariTamamla(
   }
   return dokunulan;
 }
+
+// ============================================================
+// ADIM 7 (Kar Analizi onkosul turu, 06.08) — TEK SAYFA-TOPLAM FONKSIYONU
+//
+// Kalem 65'in cozumu: sayfa toplamini ureten yerler kendi aritmetigini
+// yapiyordu (updatePinnedBottom `+= parseFloat`, legacy tablo `reduce`...).
+// Bu fonksiyon o hesabin TEK sahibidir ve KAR SATIRI (ADIM 10) buna biner:
+// kar icin 22. bir aritmetik yeri ACILMAZ — kar burada, maliyet ile satisin
+// FARKI olarak dogar.
+//
+// ── MODEL (kullanicinin tanimi, genisletilemez) ──────────────────────────
+//  · Hucre SATIS tasir (Z3 muhru). Kar %0 iken satis = maliyet.
+//  · MALIYET = satis@%0 — yani `hesaplaSatisBirimFiyat(net, 0)`. Bu birebir
+//    kullanicinin cumlesi: "kar marji yuzde sifir girildiginde maliyet olur".
+//  · KAR = satis toplami − maliyet toplami. Ikinci bir yuzde HESAPLANMAZ.
+//  · BOS FIYAT ≠ SIFIR KAR: o tarafta ne birim ne toplam yazan satir
+//    "fiyatlanmamis" SAYILIR (sayaci doner), kara 0 diye GIRMEZ.
+//
+// ── SATIR KURALLARI ──────────────────────────────────────────────────────
+//  satis  : toplam hucresi NEYSE o (dosyadan gelen toplam ustundur — mevcut
+//           updatePinnedBottom davranisi korunur, KE21).
+//  maliyet: kar == 0        → satis (model geregi esit; dosya toplamlari dahil)
+//           kar > 0, net var → hesaplaSatirToplam(satis@0 = yuvarla(net), miktar)
+//           kar > 0, net yok → net' = birim/(1+kar/100) (grid konvansiyonu —
+//                              ExcelGrid manuel-fiyat yolu ayni turetmeyi yapar)
+//  _ozet satirlari TOPLAMA GIRMEZ (30.07 kullanici karari: Icmal cift sayardi).
+// ============================================================
+
+export interface SayfaToplamOzeti {
+  /** Satis toplamlari — bugunku GENEL TOPLAM satirinin uc hucresi */
+  matToplam: number;
+  labToplam: number;
+  genelToplam: number;
+  /** Maliyet toplamlari (satis@%0 kuraliyla) */
+  matMaliyet: number;
+  labMaliyet: number;
+  /** KAR = satis − maliyet (ADIM 10'un uc hucresi) */
+  matKar: number;
+  labKar: number;
+  toplamKar: number;
+  /** Fiyatlanmamis satir sayaclari (bos fiyat ≠ sifir kar — KE29) */
+  matFiyatli: number;
+  matFiyatsiz: number;
+  labFiyatli: number;
+  labFiyatsiz: number;
+}
+
+export function sayfaToplamlari(
+  satirlar: Record<string, any>[],
+  roller: Record<string, string | undefined>,
+): SayfaToplamOzeti {
+  const { materialUnitPriceField: mBirim, materialTotalField: mTop,
+    laborUnitPriceField: lBirim, laborTotalField: lTop,
+    quantityField: mikA, unitField: brmA } = roller;
+  const sayi = (v: unknown) => {
+    const n = parseFloat(String(v ?? '').replace(',', '.'));
+    return Number.isFinite(n) ? n : 0;
+  };
+  const bos = (v: unknown) => String(v ?? '').trim() === '';
+
+  // ── KURUS-TAMSAYI BIRIKTIRME (kapinin ilk kosumunda yakalandi) ──────────
+  // Ham float toplama SIRAYA DUYARLIDIR (IEEE754 birlesme ozelligi yok):
+  // sayfalarin ayri toplamlarinin toplami ile birlesik listenin toplami
+  // ~1e-10 sapiyordu → "sayfalarin kari = Icmal'in kari, kurusu kurusuna"
+  // esitligi (KE30) tutmuyordu. Para kurus-tamsayi olarak biriktirilir
+  // (satir degerleri zaten 1 hane yuvarlanmis — kurus tamsayidir), boylece
+  // toplama SIRADAN BAGIMSIZ ve esitlikler KESIN olur. Gate gevsetilmedi.
+  const K = (v: number) => Math.round(v * 100); // TL → kurus tamsayi
+  let matToplamK = 0, labToplamK = 0, matMaliyetK = 0, labMaliyetK = 0;
+  const o: SayfaToplamOzeti = {
+    matToplam: 0, labToplam: 0, genelToplam: 0,
+    matMaliyet: 0, labMaliyet: 0,
+    matKar: 0, labKar: 0, toplamKar: 0,
+    matFiyatli: 0, matFiyatsiz: 0, labFiyatli: 0, labFiyatsiz: 0,
+  };
+
+  for (const r of satirlar) {
+    if (!r?._isDataRow) continue;
+    if (r._ozet) continue; // Icmal ozet satiri — cift sayim yasagi
+    const miktar = etkinMiktar(r, mikA, brmA);
+
+    // Tek taraf (malzeme/iscilik) icin ortak kural — iki kez cagrilir.
+    const taraf = (
+      birimAlan: string | undefined, topAlan: string | undefined,
+      karAlan: '_malzKar' | '_iscKar', netAlan: '_matNetPrice' | '_labNetPrice',
+    ): { satis: number; maliyet: number; fiyatli: boolean } | null => {
+      if (!birimAlan && !topAlan) return null; // sutun hic yok — sayilmaz
+      const birimBos = !birimAlan || bos(r[birimAlan]);
+      const topBos = !topAlan || bos(r[topAlan]);
+      if (birimBos && topBos) return { satis: 0, maliyet: 0, fiyatli: false };
+
+      const satis = !topBos ? sayi(r[topAlan!])
+        : hesaplaSatirToplam(sayi(r[birimAlan!]), miktar);
+      const kar = sayi(r[karAlan]);
+      let maliyet: number;
+      if (kar <= 0) {
+        maliyet = satis; // %0 → satis = maliyet (dosya toplamlari dahil)
+      } else {
+        const netSakli = typeof r[netAlan] === 'number' && r[netAlan] > 0 ? r[netAlan] : 0;
+        const net = netSakli > 0 ? netSakli
+          : sayi(birimAlan ? r[birimAlan] : 0) / (1 + kar / 100);
+        maliyet = hesaplaSatirToplam(hesaplaSatisBirimFiyat(net, 0), miktar);
+      }
+      return { satis, maliyet, fiyatli: true };
+    };
+
+    const m = taraf(mBirim, mTop, '_malzKar', '_matNetPrice');
+    if (m) {
+      if (m.fiyatli) { o.matFiyatli++; matToplamK += K(m.satis); matMaliyetK += K(m.maliyet); }
+      else o.matFiyatsiz++;
+    }
+    const l = taraf(lBirim, lTop, '_iscKar', '_labNetPrice');
+    if (l) {
+      if (l.fiyatli) { o.labFiyatli++; labToplamK += K(l.satis); labMaliyetK += K(l.maliyet); }
+      else o.labFiyatsiz++;
+    }
+  }
+
+  o.matToplam = matToplamK / 100;
+  o.labToplam = labToplamK / 100;
+  o.matKar = (matToplamK - matMaliyetK) / 100;
+  o.labKar = (labToplamK - labMaliyetK) / 100;
+  o.matMaliyet = matMaliyetK / 100;
+  o.labMaliyet = labMaliyetK / 100;
+  // TANIM GEREGI esitlik (KE26): toplam kar, YAYINLANAN iki kalemin toplami
+  // OLARAK tanimlanir — ayri bir formulden degil. Boylece
+  // `toplamKar === matKar + labKar` JS'te BIT DUZEYINDE dogrudur (ayni ifade).
+  // (Kurus-tamsayidan tek seferde bolmek son bitte ayrisabilirdi: 1/100+2/100
+  // !== 3/100 — IEEE754.)
+  o.toplamKar = o.matKar + o.labKar;
+  o.genelToplam = o.matToplam + o.labToplam;
+  return o;
+}
