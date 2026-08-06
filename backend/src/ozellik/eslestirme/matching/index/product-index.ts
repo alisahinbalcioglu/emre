@@ -15,8 +15,8 @@
 // ════════════════════════════════════════════════════════════════════
 
 import { createHash } from 'crypto';
-import { normalizeText, extractMaterialType } from '../normalizer';
-import { resolveAd, AD_DNLI_SLUGS } from '../ad-resolver';
+import { normalizeText, extractMaterialType, extractMaterialTypeDetayli } from '../normalizer';
+import { resolveAd, resolveAdDetayli, sozlukKapsayan, AD_DNLI_SLUGS } from '../ad-resolver';
 import { extractSizeInfo, sizeEquivalents, SizeClass } from '../conversion';
 
 /** Fiyat listesi Excel'inin 11 kolonu (kaynak sadakati — hicbiri dusmez). */
@@ -130,8 +130,14 @@ export interface ProductIndexFields {
  * Dispatch bu surumu KONTROL EDER (matching.service.hazirlaPool): bayat
  * satir istek aninda rebuildIndexFields ile CANLI tokenizer'dan yeniden
  * uretilir (Faz 2b — v1 fallback SILINDI); kalici cozum reindex'tir.
+ *
+ * v13 (06.08) — AILE COZUMUNDE KAPSAMA USTUNLUGU. `basIsimAilesi` artik bir
+ *     cozucunun kilitlendigi kelimeyi ICINE ALAN daha uzun sozluk ifadesi
+ *     varsa onu tercih ediyor. `adSlug` DEGISEBILIR (olculen: 9 sozluk deseni,
+ *     5 aile) → eski satirlar BAYAT. Reindex kalici cozum; ara donemde
+ *     hazirlaPool istek aninda tazeler.
  */
-export const INDEX_VERSION = 12;
+export const INDEX_VERSION = 13;
 
 /** adSlug cozulemeyen satirin tasidigi isaret — eslestirmeye ADAY OLAMAZ. */
 export const BELIRSIZ_SLUG = 'belirsiz';
@@ -368,15 +374,39 @@ export function malzemeEtiketleri(...metinler: Array<string | null | undefined>)
  * aileyi kacirtmaz.
  */
 function basIsimAilesi(text: string): string | null {
-  const kelimeler = normalizeText(text).split(/\s+/).filter(Boolean);
+  const tam = normalizeText(text);
+  const kelimeler = tam.split(/\s+/).filter(Boolean);
   for (let i = kelimeler.length - 1; i >= 0; i--) {
     const parca = kelimeler.slice(i).join(' ');
-    const byRegex = extractMaterialType(parca);
-    if (byRegex && byRegex !== 'diger') return byRegex;
-    const byDict = resolveAd(parca);
-    if (byDict) return byDict;
+    // parca DAIMA metnin sonundadir → tam metindeki basi basit fark.
+    const ofset = tam.length - parca.length;
+
+    const rx = extractMaterialTypeDetayli(parca);
+    if (rx && rx.type !== 'diger') return kapsayanVarsaOnuAl(tam, ofset, rx.index, rx.length, rx.type);
+
+    const dc = resolveAdDetayli(parca);
+    if (dc) return kapsayanVarsaOnuAl(tam, ofset, dc.index, dc.desen.length, dc.slug);
   }
   return null;
+}
+
+/**
+ * KAPSAMA USTUNLUGU (bkz. `sozlukKapsayan` — gerekce ve olcum orada).
+ *
+ * Cozucu bir kelimeye kilitlendi; TUM METINDE o kelimeyi ICINE ALAN daha uzun
+ * ve cok kelimeli bir sozluk ifadesi varsa AILE ONUNDUR. Kapsayan yoksa
+ * cozucunun kendi cevabi aynen doner — yani bu satir eklenmeden onceki
+ * davranis, kapsayan bulunmayan HER metinde birebir korunur.
+ */
+function kapsayanVarsaOnuAl(
+  tam: string,
+  ofset: number,
+  index: number,
+  uzunluk: number,
+  varsayilan: string,
+): string {
+  const kap = sozlukKapsayan(tam, ofset + index, ofset + index + uzunluk);
+  return kap ? kap.slug : varsayilan;
 }
 
 /**

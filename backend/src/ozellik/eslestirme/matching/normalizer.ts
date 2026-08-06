@@ -334,6 +334,31 @@ export function extractMaterialType(text: string): string {
   return 'diger';
 }
 
+/**
+ * extractMaterialType'in ESLESME YERINI de bildiren hali.
+ *
+ * NEDEN GEREKLI: TYPE_PATTERNS desenleri GEVSEKTIR (/boru/, /vana/, /kazan/)
+ * ve aralarinda longest-wins YOKTUR — dizi sirasinda ILK tutan kazanir.
+ * Sozlukte ("ad-cins-sozlugu") ise uzman eliyle yazilmis COK KELIMELI ve
+ * longest-wins'li desenler var. Ikisi ayni metinde carpistiginda hangisinin
+ * daha OZGUL oldugunu bilebilmek icin eslesmenin NEREDE oldugunu bilmek
+ * gerekir: regex'in tuttugu parca, sozluk deseninin ICINDE kaliyorsa sozluk
+ * o kelimeyi ZATEN sahiplenmis demektir ("vana ceketi" icindeki "vana").
+ *
+ * Davranis degistirmez — `extractMaterialType` aynen durur, bu ek bir gozdur.
+ */
+export function extractMaterialTypeDetayli(
+  text: string,
+): { type: string; index: number; length: number } | null {
+  const normalized = normalizeText(text);
+  for (const { pattern, type } of TYPE_PATTERNS) {
+    // Global olmayan regex'lerde exec state tasimaz — guvenle kullanilir.
+    const m = pattern.exec(normalized);
+    if (m) return { type, index: m.index, length: m[0].length };
+  }
+  return null;
+}
+
 // ────────────────────────────────────────────
 // Malzeme Cinsi Tespiti
 // ────────────────────────────────────────────

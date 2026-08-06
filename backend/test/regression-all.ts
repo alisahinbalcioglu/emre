@@ -40,6 +40,13 @@ const SUITES: Suite[] = [
   //    KATEGORIDEN cozulup alakasiz kalemi 'boru' ailesine yaziyordu.
   //    Iki eksen tek surumde: ikisi de ProductIndex semasina dokunur.
   { ad: 'Malzeme katmanı + aile zayıflığı (S4+S5)', script: 'test:s45', zincir: 'Z2' },
+  // ── 06.08.2026: AILE COZUM ONCELIGI (kapsama ustunlugu).
+  //    `basIsimAilesi` sondan-parca merdiveninde EN KISA cozulen parcada
+  //    duruyordu → daha uzun sozluk ifadesine hic sira gelmiyordu. Olculdu
+  //    (`test/sozluk-golgeleme-olcum.ts`): 295 sozluk deseninin 9'u OLU KOD.
+  //    Aile tespiti TUM eslestirmenin girdisidir; bu suite hem kurtarilan 9
+  //    deseni hem DEGISMEMESI gereken 16 vakayi kilitler.
+  { ad: 'Aile çözüm önceliği (kapsama üstünlüğü)', script: 'test:aile', zincir: 'Z2' },
   // T1/T3/T4: sablona-yazan eski motor SILINDI; "kolon esleme" (test:ke) ve
   // "iki katmanli baslik" (test:kb) suite'leri onunla birlikte kaldirildi.
   // Yerine gelen sozlesmeler:

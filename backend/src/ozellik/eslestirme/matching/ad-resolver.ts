@@ -36,12 +36,81 @@ export const AD_DISPLAY: ReadonlyMap<string, string> = new Map(
 );
 
 export function resolveAd(text: string): string | null {
+  return resolveAdDetayli(text)?.slug ?? null;
+}
+
+/**
+ * resolveAd'in ESLESEN DESENI ve YERINI de bildiren hali.
+ *
+ * NEDEN GEREKLI: sozluk desenleri uzunluk sirali (longest-wins) ve cok
+ * kelimeli olabilir; regex tarafi ise gevsek ve sirasiz. Iki taraf ayni
+ * metinde carpistiginda "kim daha ozgul" sorusunu ancak eslesmenin YERI
+ * cevaplar. Bkz. `extractMaterialTypeDetayli`.
+ *
+ * `resolveAd` bunun uzerine kuruldu — tek tarama, tek dogruluk kaynagi.
+ */
+export function resolveAdDetayli(
+  text: string,
+): { slug: string; desen: string; index: number } | null {
   const norm = normalizeText(text);
   for (const { p, slug } of PATTERNS) {
-    if (!norm.includes(p)) continue;
+    const index = norm.indexOf(p);
+    if (index < 0) continue;
     const guard = NEGATIVE_GUARDS[slug];
     if (guard && guard.test(norm)) continue;
-    return slug;
+    return { slug, desen: p, index };
+  }
+  return null;
+}
+
+/**
+ * KAPSAMA USTUNLUGU — `[a, b)` araligini KAPSAYAN en uzun COK KELIMELI sozluk
+ * desenini dondurur (yoksa null).
+ *
+ * NEDEN VAR — 06.08 olcumu (`test/sozluk-golgeleme-olcum.ts`):
+ * `basIsimAilesi` metni sondan-parcalara bolup EN KISA cozulen parcada durur.
+ * Bu, daha UZUN sozluk ifadesine hic sira gelmemesine yol aciyordu; 295 sozluk
+ * deseninin 9'u OLU KODDU:
+ *   "prefabrik boru yalitimi" → 'boru'  (izolasyon olmaliydi)
+ *   "yangin hortumu dolabi"   → 'hortum'(yangin-dolabi olmaliydi)
+ *   "y suzgec"                → 'suzgec'(pislik-tutucu olmaliydi — kodun KENDI
+ *                                        yorumu bunun calistigini soyluyordu)
+ *
+ * KURAL: bir cozucu metnin bir parcasina kilitlendiginde, o parcayi ICINE ALAN
+ * daha uzun bir sozluk ifadesi varsa SOZLUK kazanir. Sezgi: uzman o kelimeyi
+ * ZATEN sahiplenmis — "vana ceketi" icindeki "vana" bir vana degildir.
+ *
+ * ⚠ KAPSAMIYORSA HICBIR SEY DEGISMEZ. Kural "sozluk her zaman kazanir" DEGIL:
+ *   "yangin dolabi vanasi" → 'vana' ifadenin DISINDA → vana kalir (dogru).
+ * Degisim yuzeyi bu yuzden KANITLANABILIR BICIMDE dardir.
+ *
+ * COK KELIME SARTI bilincli: tek kelimelik desenin gevsek regex'i yenmesi AYRI
+ * bir sorudur ve OLCULMEDI (olculdugunde iki varyant ayni sonucu verdi —
+ * `test/aile-oncelik-simulasyon.ts` K2c vs K2h). Dar olani secildi.
+ */
+const KAPSAYICI_DESENLER = PATTERNS.filter((x) => x.p.includes(' '));
+
+export function sozlukKapsayan(
+  normMetin: string,
+  a: number,
+  b: number,
+): { slug: string; desen: string } | null {
+  const uzunluk = b - a;
+  for (const { p, slug } of KAPSAYICI_DESENLER) {
+    // PATTERNS uzunluk sirali (en uzun once): bu noktadan sonrasi araligi
+    // kapsayamayacak kadar kisa — tara.
+    if (p.length < uzunluk) break;
+    let from = 0;
+    for (;;) {
+      const idx = normMetin.indexOf(p, from);
+      if (idx < 0) break;
+      if (idx <= a && idx + p.length >= b) {
+        const guard = NEGATIVE_GUARDS[slug];
+        if (guard && guard.test(normMetin)) break;
+        return { slug, desen: p };
+      }
+      from = idx + 1;
+    }
   }
   return null;
 }
