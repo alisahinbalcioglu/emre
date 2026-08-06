@@ -1152,13 +1152,16 @@ export default function NewQuotePage() {
         setRows((prev) => prev.map((r) => {
           if (r._key !== key) return r;
           const kar = parseFloat(String(r.materialKar)) || 0;
-          const finalPrice = netPrice * (1 + kar / 100);
+          // ADIM 6 (06.08): HAM `net*(1+kar/100)` KALDIRILDI — kanonik cift
+          // (yukarıYuvarla 1 hane) kullanilir; grid yoluyla (ExcelGrid:2467)
+          // ayni sayiyi uretmek KAR SATIRININ on kosulu.
+          const finalPrice = hesaplaSatisBirimFiyat(netPrice, kar);
           const qty = qtyCol ? (parseFloat(String(r.cells[qtyCol])) || 0) : 0;
-          const total = finalPrice * qty;
+          const total = hesaplaSatirToplam(finalPrice, qty);
 
           const newCells = { ...r.cells };
-          if (priceCol) newCells[priceCol] = parseFloat(finalPrice.toFixed(2));
-          if (totalCol) newCells[totalCol] = parseFloat(total.toFixed(2));
+          if (priceCol) newCells[priceCol] = finalPrice;
+          if (totalCol) newCells[totalCol] = total;
 
           return { ...r, brandId, _matNetPrice: netPrice, _candidates: null, cells: newCells };
         }));
@@ -1196,15 +1199,16 @@ export default function NewQuotePage() {
       const updated = { ...r, materialKar: kar };
       if (r._matNetPrice > 0 && priceCol) {
         const netPrice = parseFloat(String(r._matNetPrice)) || 0;
-        const finalPrice = netPrice * (1 + kar / 100);
+        // ADIM 6: kanonik cift (bkz. 1155'teki not)
+        const finalPrice = hesaplaSatisBirimFiyat(netPrice, kar);
         const qty = qtyCol ? (parseFloat(String(r.cells[qtyCol])) || 0) : 0;
-        const total = finalPrice * qty;
+        const total = hesaplaSatirToplam(finalPrice, qty);
 
         console.log(`[KarChange] netPrice=${netPrice}, kar=${kar}%, finalPrice=${finalPrice}, qty=${qty}, total=${total}`);
 
         const newCells = { ...r.cells };
-        newCells[priceCol] = isNaN(finalPrice) ? 'Hata' : parseFloat(finalPrice.toFixed(2));
-        if (totalCol) newCells[totalCol] = isNaN(total) ? 'Hata' : parseFloat(total.toFixed(2));
+        newCells[priceCol] = isNaN(finalPrice) ? 'Hata' : finalPrice;
+        if (totalCol) newCells[totalCol] = isNaN(total) ? 'Hata' : total;
         updated.cells = newCells;
       }
       return updated;
@@ -2028,11 +2032,12 @@ export default function NewQuotePage() {
                           setRows((prev) => prev.map((r) => {
                             const updated = { ...r, materialKar: kar };
                             if (r._matNetPrice > 0 && priceCol) {
-                              const finalPrice = r._matNetPrice * (1 + kar / 100);
+                              // ADIM 6: kanonik cift (bkz. 1155'teki not)
+                              const finalPrice = hesaplaSatisBirimFiyat(r._matNetPrice, kar);
                               const qty = qtyCol ? (parseFloat(String(r.cells[qtyCol])) || 0) : 0;
                               const newCells = { ...r.cells };
-                              if (priceCol) newCells[priceCol] = parseFloat(finalPrice.toFixed(2));
-                              if (totalCol) newCells[totalCol] = parseFloat((finalPrice * qty).toFixed(2));
+                              if (priceCol) newCells[priceCol] = finalPrice;
+                              if (totalCol) newCells[totalCol] = hesaplaSatirToplam(finalPrice, qty);
                               return { ...updated, cells: newCells };
                             }
                             return updated;
@@ -2141,11 +2146,12 @@ export default function NewQuotePage() {
                                       setRows((prev) => prev.map((r) => {
                                         if (r._key !== row._key) return r;
                                         const kar = parseFloat(String(r.materialKar)) || 0;
-                                        const fp = netPrice * (1 + kar / 100);
+                                        // ADIM 6: kanonik cift (bkz. 1155'teki not)
+                                        const fp = hesaplaSatisBirimFiyat(netPrice, kar);
                                         const qty = qtyCol ? (parseFloat(String(r.cells[qtyCol])) || 0) : 0;
                                         const nc = { ...r.cells };
-                                        if (priceCol) nc[priceCol] = parseFloat(fp.toFixed(2));
-                                        if (totalCol) nc[totalCol] = parseFloat((fp * qty).toFixed(2));
+                                        if (priceCol) nc[priceCol] = fp;
+                                        if (totalCol) nc[totalCol] = hesaplaSatirToplam(fp, qty);
                                         return { ...r, _matNetPrice: netPrice, _candidates: null, cells: nc };
                                       }));
                                       toast({ title: `🟢 ${c.label}`, description: `${displayPrice(netPrice)} — ${c.materialName.slice(0, 50)}` });
@@ -2199,11 +2205,12 @@ export default function NewQuotePage() {
                                     if (i <= idx) return r;
                                     const updated = { ...r, materialKar: kar };
                                     if (r._matNetPrice > 0 && priceCol) {
-                                      const fp = r._matNetPrice * (1 + kar / 100);
+                                      // ADIM 6: kanonik cift (bkz. 1155'teki not)
+                                      const fp = hesaplaSatisBirimFiyat(r._matNetPrice, kar);
                                       const q = qtyCol ? (parseFloat(String(r.cells[qtyCol])) || 0) : 0;
                                       const nc = { ...r.cells };
-                                      if (priceCol) nc[priceCol] = parseFloat(fp.toFixed(2));
-                                      if (totalCol) nc[totalCol] = parseFloat((fp * q).toFixed(2));
+                                      if (priceCol) nc[priceCol] = fp;
+                                      if (totalCol) nc[totalCol] = hesaplaSatirToplam(fp, q);
                                       return { ...updated, cells: nc };
                                     }
                                     return updated;
