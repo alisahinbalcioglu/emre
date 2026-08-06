@@ -1257,19 +1257,18 @@ async function run() {
     // Saf cekirdek (alias'siz): canli vakada 'sprink hatti' kelimelerini
     // sozluk tuketiyordu; burada es davranisi yalin 'BORU DN50' verir.
     const r = m('BORU DN50', [makine]);
-    // ⚠ OLCUT S4 ILE SERTLESTI (06.08.2026). Kural degismedi ("capi
-    // dogrulanamayan aday fiyat yazamaz"), ILACI degisti:
-    //   ONCE: makine capsiz-istisnasindan GECIYOR, tek aday kaliyor ve
-    //         cekince notuyla ONAY LISTESINE dusuyordu (confidence 'multi').
-    //   SIMDI: makinenin ailesi ('boru') YALNIZ kategoriden ("Boru
-    //         Hazırlama") turedigi icin aileZayif — capsiz istisnasindan
-    //         HIC yararlanamaz, havuzdan duser (confidence 'none').
-    // Yani aday artik onay listesinde bile GORUNMEZ. Eski olcut ('multi')
-    // aynen birakilsaydi S4 kirmizi yanardi; olcutu degistirmek burada
-    // KURALIN KENDISINI korumak icindir, ondan kacmak icin degil — asil
-    // koruma (373.825 TL ASLA yazilmaz) ayri assert olarak asagida durur.
-    check('Ç1 satir capli + urun capsiz + zayif aile → aday HIC OLUSMAZ',
-      r.confidence === 'none', `got ${r.confidence} net=${r.netPrice} matched=${r.matchedName}`);
+    // ⚠ OLCUT IKI KEZ DEGISTI — SON HALI 06.08.2026 (S4 DUZELTMESI):
+    //   ILK   : capsiz-istisnasindan gecen tek aday, cekince notuyla ONAY
+    //           LISTESINE dusuyordu (confidence 'multi').
+    //   ARADA : S4 ilk surumu adayi ELIYORDU ('none') — aileZayif sert filtre
+    //           sayilmisti. Bu YANLISTI: kutuphanede VAR OLAN kalem
+    //           kullanicinin EKRANINDAN KAYBOLUYORDU.
+    //   SIMDI : aileZayif ELEME degil EK KANIT KAPISIDIR — aday onay
+    //           listesinde GORUNUR ('multi'), fiyat YINE yazilmaz.
+    // Iki kriter AYRI assert'tir: "gorunur" ile "fiyat yazilmaz" bagimsiz
+    // kosullardir; tek assert'te birlestirilirse biri sessizce kaybolabilir.
+    check('Ç1 satir capli + urun capsiz + zayif aile → aday ONAY LISTESINDE gorunur',
+      r.confidence === 'multi', `got ${r.confidence} net=${r.netPrice} matched=${r.matchedName}`);
     check('Ç1 ASIL KORUMA: 373.825 TL hicbir kosulda yazilmaz',
       r.netPrice === 0 && !r.matchedName, `got net=${r.netPrice} matched=${r.matchedName}`);
     check('Ç1 nedeni soyluyor (cap)',

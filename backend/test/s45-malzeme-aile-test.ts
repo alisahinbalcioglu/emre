@@ -229,27 +229,51 @@ function bolumC() {
   check('C0c VANA: aile yalniz kategoriden cozuldu → aileZayif', zVana.aileZayif === true, `got ${zVana.aileZayif}`);
   check('C0d BORU: aile ADdan cozuldu → aileZayif DEGIL', gBoru.aileZayif === false, `got ${gBoru.aileZayif}`);
   check('C0e VANA: aile ADdan cozuldu → aileZayif DEGIL', gVana.aileZayif === false, `got ${gVana.aileZayif}`);
+  // OLCUT DOGRULAMASI (bos-kume kapisi): asagidaki C1 assert'leri "urunun capi
+  // YOK" varsayimina dayanir. Fixture capli olsaydi capsiz istisnasi HIC
+  // calismaz, testler kusuru degil kendi verisini olcerdi.
+  check('C0f BORU fixture GERCEKTEN capsiz (capTags bos)', zBoru.capTags.length === 0, `got ${JSON.stringify(zBoru.capTags)}`);
+  check('C0g VANA fixture GERCEKTEN capsiz (capTags bos)', zVana.capTags.length === 0, `got ${JSON.stringify(zVana.capTags)}`);
 
-  // ── C1 (a): CAPSIZ ISTISNASINDAN YARARLANAMAZ ────────────────────────
-  // Satir capli, adayin capi YOK. Guclu ailede bu istisna KALIR (ask+cekince);
-  // zayif ailede aday capsiz istisnasina GIREMEZ → "bu capta yok".
+  // ── C1 (a): CAPSIZ ISTISNASI — ELEMEZ, ONAY ISTER (06.08 DUZELTMESI) ──
+  // ONCEKI SURUM (regresyon): zayif aile capsiz istisnasindan GECEMIYOR,
+  // sonuc 'none/cap-yok' oluyordu → kalem KULLANICININ EKRANINDAN KAYBOLUYOR.
+  // Kullanici karari: aileZayif SERT ELEME degil GUVENLIK FRENIDIR. Capsiz
+  // urun icin dogru davranis "hic gosterme" DEGIL, "goster ama ONAY iste".
+  // Ayrim: ad-gevsetme ve capraz-marka frenleri TAHMIN URETIYOR (olmayan bir
+  // eslesmeyi ureten yollar) — capsiz istisnasi ise VAR OLAN bir kalemi
+  // gosteriyor. Bu yuzden o iki fren AYNEN kalir (C2*, D*), bu kalkar.
   {
     const o: any = runQuery(parseLine('YİV AÇMA MAKİNESİ DN 80'), [prod(ZAYIF_BORU_CAPSIZ), prod(GUCLU_BORU)]);
-    check('C1a BORU zayif aile: capsiz istisnasindan gecemez → cap-yok',
-      o.kind === 'none' && o.reason === 'cap-yok', `got ${o.kind}/${o.reason} rows=${o.rows?.length}`);
+    check('C1a BORU zayif aile: capsiz istisnasi ELEMEZ → onay listesi (ask)',
+      o.kind === 'ask', `got ${o.kind}/${o.reason} rows=${o.rows?.length}`);
+    check('C1a2 BORU zayif aile: aday LISTEDE duruyor (ekrandan kaybolmuyor)',
+      o.rows?.length === 1 && o.rows?.[0]?.urun?.ad === 'Yiv açma makinesi', `got rows=${JSON.stringify(o.rows?.map((r: any) => r.urun.ad))}`);
+    check('C1a3 BORU zayif aile: kapi kimligi yapisal listede (aile-zayif)',
+      (o.kapilar ?? []).includes('aile-zayif'), `got ${JSON.stringify(o.kapilar)}`);
+    check('C1a4 BORU zayif aile: capsiz kapisi da atesler (cap dogrulanmadi)',
+      (o.kapilar ?? []).includes('capsiz-dusum'), `got ${JSON.stringify(o.kapilar)}`);
   }
   {
     const o: any = runQuery(parseLine('YEDEK PROB DN 50'), [prod(ZAYIF_VANA_CAPSIZ), prod(GUCLU_VANA)]);
-    check('C1b VANA zayif aile: capsiz istisnasindan gecemez → cap-yok',
-      o.kind === 'none' && o.reason === 'cap-yok', `got ${o.kind}/${o.reason} rows=${o.rows?.length}`);
+    check('C1b VANA zayif aile: capsiz istisnasi ELEMEZ → onay listesi (ask)',
+      o.kind === 'ask', `got ${o.kind}/${o.reason} rows=${o.rows?.length}`);
+    check('C1b2 VANA zayif aile: aday LISTEDE duruyor (ekrandan kaybolmuyor)',
+      o.rows?.length === 1 && o.rows?.[0]?.urun?.ad === 'Yedek prob', `got rows=${JSON.stringify(o.rows?.map((r: any) => r.urun.ad))}`);
+    check('C1b3 VANA zayif aile: kapi kimligi yapisal listede (aile-zayif)',
+      (o.kapilar ?? []).includes('aile-zayif'), `got ${JSON.stringify(o.kapilar)}`);
+    check('C1b4 VANA zayif aile: capsiz kapisi da atesler (cap dogrulanmadi)',
+      (o.kapilar ?? []).includes('capsiz-dusum'), `got ${JSON.stringify(o.kapilar)}`);
   }
   {
-    // KARSIT KONTROL: GUCLU ailede capsiz istisnasi AYNEN durur (S4 freni
-    // her seyi kesmiyor — yalniz zayif aileyi kesiyor).
+    // KALKAN: GUCLU ailede capsiz istisnasi AYNEN durur — davranisi bugunku
+    // gibi kalmali (fren yalniz ZAYIF aileye ek kapi ekler, akisi degistirmez).
     const capsizGuclu = { kategori: 'Tesisat Boruları', ad: 'Siyah çelik boru', cins: 'siyah', price: 800, sheetName: 'S3' };
     const o: any = runQuery(parseLine('SİYAH ÇELİK BORU DN 80'), [prod(capsizGuclu)]);
-    check('C1c KARSIT: guclu ailede capsiz istisnasi AYNEN durur (aday yasar)',
+    check('C1c KALKAN: guclu ailede capsiz istisnasi AYNEN durur (aday yasar)',
       o.kind === 'ask' && o.rows.length === 1, `got ${o.kind} rows=${o.rows?.length}`);
+    check('C1d KALKAN: guclu aile adayinda "aile-zayif" kapisi ACILMAZ',
+      !(o.kapilar ?? []).includes('aile-zayif'), `got ${JSON.stringify(o.kapilar)}`);
   }
 
   // ── C2 (b): AD-GEVSETMEDEN GECEMEZ ───────────────────────────────────
@@ -270,6 +294,52 @@ function bolumC() {
     const o: any = runQuery(parseLine('KELEBEK SWING VANA DN 50'), [prod(GUCLU_VANA), prod(gucluSwing)]);
     check('C2c KARSIT: guclu ailede ad-gevsetme AYNEN calisir',
       o.kind === 'ask' && o.rows.length === 1 && o.rows[0].urun.ad === 'Çekvalf BC-100', `got ${o.kind}/${o.reason} rows=${o.rows?.length}`);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// BOLUM C2 — S4 (a): ONAY ISTENIR ama FIYAT OTOMATIK YAZILMAZ
+// ══════════════════════════════════════════════════════════════════════
+// C1* motor sozlesmesini olcer ('ask' dali). Burada UCTAN UCA olculur:
+// kalem kullaniciya GORUNUR (aday listede) ama netPrice 0 kalir — "goster
+// ama onay iste" kuralinin iki yarisi AYRI assert'lerdir.
+async function bolumC2() {
+  const { MatchingService } = require('../src/ozellik/eslestirme/matching/matching.service');
+  const { TerminologyService, ALIAS_SEEDS } = require('../src/ozellik/eslestirme/matching/terminology.service');
+  function svcWith(rows: any[]) {
+    const prisma: any = {
+      userLibrary: {
+        findMany: async (args: any) => {
+          const b = args?.where?.brandId;
+          if (b && typeof b === 'object' && 'not' in b) return [];
+          return rows;
+        },
+      },
+      brand: { findUnique: async () => ({ name: 'TEST' }) },
+      eslesmeHafizasi: { findUnique: async () => null, upsert: async () => {} },
+      terminologyAlias: { findMany: async () => ALIAS_SEEDS.map((s: any, i: number) => ({ id: `a${i}`, userId: null, active: true, ...s })) },
+    };
+    const fx = { getRates: async () => ({ usdTry: 40, eurTry: 48, usdTryBuying: 40, eurTryBuying: 48, source: 'fake', date: '' }) };
+    return new MatchingService(prisma, new TerminologyService(prisma), fx);
+  }
+
+  // AILE 1 — BORU
+  {
+    const q = 'YİV AÇMA MAKİNESİ DN 80';
+    const r = (await svcWith([libRow(ZAYIF_BORU_CAPSIZ)]).bulkMatch('u1', 'brand-1', [q]))[q];
+    check('C3a BORU zayif aile: kalem EKRANDA (aday uretiliyor)',
+      (r?.candidates?.length ?? 0) === 1, `got ${r?.confidence} adayi=${r?.candidates?.length}`);
+    check('C3b BORU zayif aile: fiyat OTOMATIK YAZILMAZ (netPrice 0)',
+      r?.netPrice === 0, `got net=${r?.netPrice}`);
+  }
+  // AILE 2 — VANA
+  {
+    const q = 'YEDEK PROB DN 50';
+    const r = (await svcWith([libRow(ZAYIF_VANA_CAPSIZ)]).bulkMatch('u1', 'brand-1', [q]))[q];
+    check('C4a VANA zayif aile: kalem EKRANDA (aday uretiliyor)',
+      (r?.candidates?.length ?? 0) === 1, `got ${r?.confidence} adayi=${r?.candidates?.length}`);
+    check('C4b VANA zayif aile: fiyat OTOMATIK YAZILMAZ (netPrice 0)',
+      r?.netPrice === 0, `got net=${r?.netPrice}`);
   }
 }
 
@@ -355,6 +425,8 @@ function bolumE() {
   bolumB();
   console.log('\n=== BOLUM C — S4 aile zayifligi (bayrak + a + b) ===');
   bolumC();
+  console.log('\n=== BOLUM C2 — S4 (a) uctan uca: goster ama onay iste ===');
+  await bolumC2();
   console.log('\n=== BOLUM D — S4 (c) capraz-marka onerisi ===');
   await bolumD();
   console.log('\n=== BOLUM E — S7 rozet ===');

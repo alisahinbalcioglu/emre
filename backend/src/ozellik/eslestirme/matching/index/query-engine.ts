@@ -360,6 +360,9 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   // DN50 burada bulusur, sorgu aninda cevrim TABLOSU aranmaz.
   let donusum: string | null = null;
   let capsizDusum = false;
+  /** S4: capsiz istisnasindan gecen adaylar arasinda ailesi ZAYIF olan var mi
+   *  (aile yalniz kategori basligindan turedi) → ek kanit kapisi. */
+  let capsizAileZayif = false;
   if (line.capInfo) {
     const cls = resolveLineClass(rows, opts?.sizeClassHint);
     const equiv = sizeEquivalents(cls, line.capInfo);
@@ -388,20 +391,27 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
       // ⚠ Ç-vakasi (16.07): bu istisnadan gecen TEK aday otomatik YAZILMAZ
       // (capsizDusum kapisi) — "Yiv açma makinesi" 373.825 TL sprink hattina
       // yazilmisti: cap dogrulanamadi = tahmin, tahmin fiyat yazamaz (I6).
-      // ── S4 FRENI: AILESI ZAYIF ADAY BU ISTISNADAN YARARLANAMAZ ──────
-      // Istisna "urunun capi satirla ilgisiz olabilir" varsayimina dayanir;
-      // o varsayim ancak adayin O AILEDEN oldugu GERCEKTEN biliniyorsa
-      // mesrudur. Ailesi yalnizca KATEGORI basligindan gelen bir kalem
-      // (seviye salteri yedek probu → "Boru Hattı Ekipmanları" → 'boru')
-      // hem aile hem cap ekseninde DOGRULANMAMIS demektir; iki tahminin
-      // ust uste binmesi tam olarak "Yiv açma makinesi 373.825 TL" vakasini
-      // ureten desendir. Ailesi ADdan cozulen capsiz urunler AYNEN gecer.
-      const capsiz = rows.filter((r) => r.urun.capTags.length === 0 && !r.urun.aileZayif);
+      // ── S4 FRENI: AILESI ZAYIF ADAY ELENMEZ, ONAY ISTER (06.08 DUZELTME) ──
+      // Istisna "urunun capi satirla ilgisiz olabilir" varsayimina dayanir; o
+      // varsayim adayin ailesi yalnizca KATEGORI basligindan turemisse
+      // (seviye salteri yedek probu → "Boru Hattı Ekipmanları" → 'boru') iki
+      // tahminin ust uste binmesi demektir — "Yiv açma makinesi 373.825 TL"
+      // vakasini ureten desen budur.
+      // ILK SURUM ADAYI ELIYORDU (`&& !r.urun.aileZayif`) ve bu YANLISTI:
+      // kalem kullanicinin EKRANINDAN KAYBOLUYORDU (none/cap-yok), yani
+      // kutuphanede VAR OLAN bir urun hic gorunmuyordu. Dogru davranis
+      // "gosterme" degil "goster ama ONAY iste": aday listede kalir, asagidaki
+      // aile-zayif kapisi fiyatin OTOMATIK yazilmasini engeller.
+      // AYRIM (S4'un diger iki freni AYNEN durur): ad-gevsetme kurtarmasi ve
+      // capraz-marka onerisi TAHMIN URETIR — olmayan bir eslesmeyi var eder.
+      // Capsiz istisnasi ise VAR OLAN bir kalemi gosterir. Fark budur.
+      const capsiz = rows.filter((r) => r.urun.capTags.length === 0);
       if (d.length > 0 || capsiz.length === 0) {
         rows = d;
       } else {
         rows = capsiz;
         capsizDusum = true;
+        capsizAileZayif = capsiz.some((r) => r.urun.aileZayif);
       }
       if (rows.length === 0) {
         // PANO 20 (I7 — sessiz bos YASAK): markadaki MEVCUT caplar, satirin
@@ -622,6 +632,12 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   const capsizNotu = capsizDusum && line.capInfo
     ? `Satır çaplı (${line.capInfo.display}) ama ürünün çapı doğrulanamadı`
     : null;
+  // S4: capsiz istisnasindan gecen adayin ailesi de dogrulanmamissa (yalniz
+  // kategori basligindan turedi) kapi AYRICA acilir — capsizNotu'ndan daha
+  // AGIR bir cekincedir, bu yuzden uyariNot zincirinde ondan ONCE gelir.
+  const aileZayifNotu = capsizAileZayif
+    ? 'Ürünün ailesi yalnız kategori başlığından türedi ve çapı da doğrulanamadı — kontrol edin'
+    : null;
   const gevsetmeNotu = adGevsetildi
     ? 'Ad birebir eşleşmedi — yazılı nitelik üzerinden bulundu'
     : null;
@@ -662,6 +678,7 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   if (unitConflict) kapilar.push('birim-celiskisi');
   if (surfaceConflict) kapilar.push('taban-celiskisi');
   if (malzemeConflict) kapilar.push('malzeme-celiskisi');
+  if (aileZayifNotu) kapilar.push('aile-zayif');
   if (capsizNotu) kapilar.push('capsiz-dusum');
   if (gevsetmeNotu) kapilar.push('ad-gevsetildi');
   if (bilinmeyenNotu) kapilar.push('bilinmeyen-kelime');
@@ -669,13 +686,13 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
 
   // ── SONUC: UC YOL, DORDUNCU YOK ──────────────────────────────────
   if (rows.length === 1) {
-    const celiski = yuzeyCeliskiNotu ?? unitConflict ?? malzemeConflict ?? surfaceConflict ?? capsizNotu ?? gevsetmeNotu ?? bilinmeyenNotu ?? aileNotu;
+    const celiski = yuzeyCeliskiNotu ?? unitConflict ?? malzemeConflict ?? surfaceConflict ?? aileZayifNotu ?? capsizNotu ?? gevsetmeNotu ?? bilinmeyenNotu ?? aileNotu;
     if (celiski) {
       return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, uyariNot: celiski, kapilar };
     }
     return { kind: 'single', row: rows[0], donusum };
   }
-  return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, uyariNot: yuzeyCeliskiNotu ?? unitConflict ?? capsizNotu ?? gevsetmeNotu ?? undefined, kapilar };
+  return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, uyariNot: yuzeyCeliskiNotu ?? unitConflict ?? aileZayifNotu ?? capsizNotu ?? gevsetmeNotu ?? undefined, kapilar };
 }
 
 /**

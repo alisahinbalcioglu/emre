@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 337
-Toplam satir: 67962
+Toplam satir: 68054
 Uc nokta: 125
 test:* scripti: 46
 
@@ -66,8 +66,8 @@ test:* scripti: 46
 | `backend/src/ozellik/eslestirme/matching/conversion.ts` | 411 |
 | `backend/src/ozellik/eslestirme/matching/index/line-parser.ts` | 220 |
 | `backend/src/ozellik/eslestirme/matching/index/product-index.ts` | 579 |
-| `backend/src/ozellik/eslestirme/matching/index/query-engine.ts` | 714 |
-| `backend/src/ozellik/eslestirme/matching/index/types.ts` | 210 |
+| `backend/src/ozellik/eslestirme/matching/index/query-engine.ts` | 731 |
+| `backend/src/ozellik/eslestirme/matching/index/types.ts` | 214 |
 | `backend/src/ozellik/eslestirme/matching/index/vocab.ts` | 37 |
 | `backend/src/ozellik/eslestirme/matching/matching.controller.ts` | 96 |
 | `backend/src/ozellik/eslestirme/matching/matching.module.ts` | 15 |
@@ -152,7 +152,7 @@ test:* scripti: 46
 | `backend/test/gs6b-teshis.ts` | 85 |
 | `backend/test/guvenlik-uclari-test.ts` | 365 |
 | `backend/test/imza-ekseni-test.ts` | 325 |
-| `backend/test/index-engine-test.ts` | 1775 |
+| `backend/test/index-engine-test.ts` | 1774 |
 | `backend/test/kalem59-oksuz-kutuphane-test.ts` | 131 |
 | `backend/test/kd11-toplam-yollari-test.ts` | 150 |
 | `backend/test/kd12-baslik-satiri-test.ts` | 226 |
@@ -175,7 +175,7 @@ test:* scripti: 46
 | `backend/test/pk9-sessiz-indeks-test.ts` | 97 |
 | `backend/test/product-index-test.ts` | 453 |
 | `backend/test/regression-all.ts` | 176 |
-| `backend/test/s45-malzeme-aile-test.ts` | 368 |
+| `backend/test/s45-malzeme-aile-test.ts` | 440 |
 | `backend/test/s45-olcum.ts` | 188 |
 | `backend/test/spec-regression-test.ts` | 447 |
 | `backend/test/standart-cikti-test.ts` | 316 |

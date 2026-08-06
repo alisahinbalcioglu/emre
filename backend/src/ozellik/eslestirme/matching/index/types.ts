@@ -132,6 +132,10 @@ export type KanitKapisi =
   | 'malzeme-celiskisi'
   /** Ç-vakasi: satir capli ama adayin capi YOK — cap dogrulanamadi */
   | 'capsiz-dusum'
+  /** S4 (06.08): capsiz istisnasindan gecen adayin ailesi yalniz KATEGORI
+   *  basligindan turedi (aileZayif) — hem aile hem cap dogrulanmamis.
+   *  ELEME DEGIL, EK KAPI: aday listede kalir, fiyat otomatik yazilmaz. */
+  | 'aile-zayif'
   /** S-vakasi: ad daraltmasi gevsetildi — ad birebir eslesmedi */
   | 'ad-gevsetildi'
   /** Karar #3: satirda yazili ama bu havuzun dagarciginda olmayan kelime */
