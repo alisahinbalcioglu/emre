@@ -294,7 +294,14 @@ export default function NewQuotePage() {
         const itemCount = rows.filter((r) => r._isDataRow && !r._isSpareRow).length;
         toast({ title: 'Metraj onaylandi', description: `${itemCount} kalem fiyatlandirmaya aktarildi` });
       } catch (e) {
+        // SESSIZ BOS YASAK (06.08): onaylanan metraj ekrana gelmiyorsa
+        // kullanici BILMELI — yoksa "onayladim ama tablo bos" tuzagi dogar.
         console.error('DWG metraj parse failed:', e);
+        toast({
+          title: 'Metraj yuklenemedi',
+          description: 'Onaylanan DWG metraji tabloya aktarilamadi. Cizime donup metraji yeniden onaylayin.',
+          variant: 'destructive',
+        });
       }
       return;
     }
@@ -1176,8 +1183,16 @@ export default function NewQuotePage() {
         const reason = result?.reason ?? 'Fiyat listesinde karsiligi bulunamadi.';
         toast({ title: 'Eslesmedi', description: `"${materialName.slice(0, 40)}" — ${reason}` });
       }
-    } catch (e) {
+    } catch (e: any) {
+      // SESSIZ BOS YASAK (06.08 dersi, a75e41b'nin devami): kullanici tikladi,
+      // sunucu hata verdi — ekran susarsa "eslesme yok" sanilir.
       console.error('[SemanticMatch] Error:', e);
+      const kod = e?.response?.status;
+      toast({
+        title: 'Eslestirme sorgusu basarisiz',
+        description: `"${materialName.slice(0, 40)}" sorgulanamadi${kod ? ` (HTTP ${kod})` : ''} — "eslesme yok" DEGIL. Tekrar deneyin.`,
+        variant: 'destructive',
+      });
     } finally {
       setIsMatching(false);
     }
@@ -1862,8 +1877,16 @@ export default function NewQuotePage() {
               }
               if (!silent) toast({ title: 'Iscilik eslesmedi', description: match.reason ?? `"${laborName.slice(0, 40)}"` });
               return null;
-            } catch (e) {
+            } catch (e: any) {
+              // SESSIZ BOS YASAK (06.08): sunucu hatasi "eslesmedi" gibi
+              // gorunmesin. `silent` toplu yayilimda gurultuyu keser.
               console.error('[FirmaDropdown] error:', e);
+              const kod = e?.response?.status;
+              if (opts?.silent !== true) toast({
+                title: 'Iscilik sorgusu basarisiz',
+                description: `"${laborName.slice(0, 40)}" sorgulanamadi${kod ? ` (HTTP ${kod})` : ''} — "eslesmedi" DEGIL. Tekrar deneyin.`,
+                variant: 'destructive',
+              });
               return null;
             }
           }}
@@ -1947,8 +1970,16 @@ export default function NewQuotePage() {
               // Eslesme yok
               if (!silent) toast({ title: 'Eslesmedi', description: match.reason ?? `"${materialName.slice(0, 40)}"` });
               return null;
-            } catch (e) {
+            } catch (e: any) {
+              // SESSIZ BOS YASAK (06.08): sunucu hatasi "eslesmedi" gibi
+              // gorunmesin. `silent` toplu yayilimda gurultuyu keser.
               console.error('[ExcelGrid] brand change error:', e);
+              const kod = e?.response?.status;
+              if (opts?.silent !== true) toast({
+                title: 'Marka sorgusu basarisiz',
+                description: `"${materialName.slice(0, 40)}" sorgulanamadi${kod ? ` (HTTP ${kod})` : ''} — "eslesmedi" DEGIL. Tekrar deneyin.`,
+                variant: 'destructive',
+              });
               return null;
             }
           }}
