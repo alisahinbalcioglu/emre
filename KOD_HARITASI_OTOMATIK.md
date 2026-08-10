@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 352
-Toplam satir: 71578
+Kod dosyasi: 354
+Toplam satir: 72177
 Uc nokta: 128
 test:* scripti: 53
 
@@ -197,7 +197,7 @@ test:* scripti: 53
 | `frontend/app/(protected)/labor-firms/page.tsx` | 249 |
 | `frontend/app/(protected)/labor/page.tsx` | 248 |
 | `frontend/app/(protected)/layout.tsx` | 198 |
-| `frontend/app/(protected)/library/brand/[brandId]/page.tsx` | 504 |
+| `frontend/app/(protected)/library/brand/[brandId]/page.tsx` | 515 |
 | `frontend/app/(protected)/library/electrical-brands/page.tsx` | 400 |
 | `frontend/app/(protected)/library/equipment/page.tsx` | 458 |
 | `frontend/app/(protected)/library/mechanical-brands/page.tsx` | 312 |
@@ -210,7 +210,7 @@ test:* scripti: 53
 | `frontend/app/(protected)/quote-formats/page.tsx` | 397 |
 | `frontend/app/(protected)/quotes/[id]/page.tsx` | 244 |
 | `frontend/app/(protected)/quotes/new/error.tsx` | 13 |
-| `frontend/app/(protected)/quotes/new/page.tsx` | 2313 |
+| `frontend/app/(protected)/quotes/new/page.tsx` | 2381 |
 | `frontend/app/(protected)/quotes/page.tsx` | 192 |
 | `frontend/app/admin/brands/page.tsx` | 895 |
 | `frontend/app/admin/layout.tsx` | 80 |
@@ -228,7 +228,7 @@ test:* scripti: 53
 | `frontend/components/dwg-diameter-engine/useLayerCalc.ts` | 127 |
 | `frontend/components/dwg-diameter-engine/useOriginalColorState.ts` | 36 |
 | `frontend/components/dwg-metraj/DiameterEditPopup.tsx` | 121 |
-| `frontend/components/dwg-metraj/DwgUploader.tsx` | 484 |
+| `frontend/components/dwg-metraj/DwgUploader.tsx` | 491 |
 | `frontend/components/dwg-metraj/MetrajEditor.tsx` | 459 |
 | `frontend/components/dwg-metraj/constants.ts` | 28 |
 | `frontend/components/dwg-metraj/diameter-colors.ts` | 169 |
@@ -246,16 +246,18 @@ test:* scripti: 53
 | `frontend/components/dwg-viewer/segment-length.ts` | 48 |
 | `frontend/components/dwg-viewer/types.ts` | 76 |
 | `frontend/components/dwg-viewer/useViewport.ts` | 233 |
-| `frontend/components/dwg-workspace/DwgProjectWorkspace.tsx` | 1011 |
+| `frontend/components/dwg-workspace/DwgProjectWorkspace.tsx` | 1150 |
 | `frontend/components/dwg-workspace/EquipmentDetailPopup.tsx` | 372 |
-| `frontend/components/dwg-workspace/LayerInfoSidebar.tsx` | 143 |
+| `frontend/components/dwg-workspace/LayerInfoSidebar.tsx` | 173 |
 | `frontend/components/dwg-workspace/LayerVisibilityPanel.tsx` | 229 |
-| `frontend/components/dwg-workspace/MetrajSummaryPanel.tsx` | 165 |
+| `frontend/components/dwg-workspace/MetrajSummaryPanel.tsx` | 184 |
 | `frontend/components/dwg-workspace/equipment-popup-mod.test.ts` | 41 |
 | `frontend/components/dwg-workspace/equipment-popup-mod.ts` | 28 |
 | `frontend/components/dwg-workspace/index.ts` | 6 |
+| `frontend/components/dwg-workspace/onay-revizyon.test.ts` | 165 |
+| `frontend/components/dwg-workspace/onay-revizyon.ts` | 94 |
 | `frontend/components/dwg-workspace/types.ts` | 79 |
-| `frontend/components/dwg-workspace/useWorkspaceState.ts` | 365 |
+| `frontend/components/dwg-workspace/useWorkspaceState.ts` | 431 |
 | `frontend/lib/gs6b-golge-kurali.test.ts` | 60 |
 | `frontend/lib/indeks-sagligi.test.ts` | 75 |
 | `frontend/lib/indeks-sagligi.ts` | 64 |
@@ -576,15 +578,16 @@ test:* scripti: 53
 | `frontend/components/dwg-viewer/DxfCanvasViewer.tsx` | `react` `rbush` `lucide-react` `@/ortak/lib/api` `./types` `@/components/dwg-metraj/types` `@/components/dwg-metraj/diameter-colors` `@/components/dwg-metraj/constants` `./segment-length` `./useViewport` `./aci-colors` |
 | `frontend/components/dwg-viewer/segment-length.test.ts` | `vitest` `./segment-length` |
 | `frontend/components/dwg-viewer/useViewport.ts` | `react` `./types` |
-| `frontend/components/dwg-workspace/DwgProjectWorkspace.tsx` | `react` `lucide-react` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `@/ortak/lib/api` `@/components/dwg-viewer` `@/components/dwg-metraj` `@/components/dwg-metraj/types` `./LayerInfoSidebar` `./LayerVisibilityPanel` `./MetrajSummaryPanel` `./EquipmentDetailPopup` `./useWorkspaceState` `./types` `@/components/dwg-tagging` `@/components/dwg-metraj/diameter-colors` `@/components/dwg-metraj/constants` `@/lib/metraj-excel` |
+| `frontend/components/dwg-workspace/DwgProjectWorkspace.tsx` | `react` `lucide-react` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `@/ortak/lib/api` `@/components/dwg-viewer` `@/components/dwg-metraj` `@/components/dwg-metraj/types` `./LayerInfoSidebar` `./LayerVisibilityPanel` `./MetrajSummaryPanel` `./EquipmentDetailPopup` `./useWorkspaceState` `./onay-revizyon` `./types` `@/components/dwg-tagging` `@/components/dwg-metraj/diameter-colors` `@/components/dwg-metraj/constants` `@/lib/metraj-excel` |
 | `frontend/components/dwg-workspace/EquipmentDetailPopup.tsx` | `react` `lucide-react` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `./types` `./equipment-popup-mod` |
-| `frontend/components/dwg-workspace/LayerInfoSidebar.tsx` | `react` `lucide-react` `./types` `@/components/dwg-metraj/constants` |
+| `frontend/components/dwg-workspace/LayerInfoSidebar.tsx` | `react` `lucide-react` `./types` `@/components/dwg-metraj/constants` `./onay-revizyon` |
 | `frontend/components/dwg-workspace/LayerVisibilityPanel.tsx` | `react` `lucide-react` `@/ortak/lib/utils` |
-| `frontend/components/dwg-workspace/MetrajSummaryPanel.tsx` | `react` `lucide-react` `./types` `@/components/dwg-metraj/diameter-colors` `@/components/dwg-metraj/constants` |
+| `frontend/components/dwg-workspace/MetrajSummaryPanel.tsx` | `react` `lucide-react` `./types` `./onay-revizyon` `@/components/dwg-metraj/diameter-colors` `@/components/dwg-metraj/constants` |
 | `frontend/components/dwg-workspace/equipment-popup-mod.test.ts` | `vitest` `./equipment-popup-mod` |
 | `frontend/components/dwg-workspace/equipment-popup-mod.ts` | `./types` |
+| `frontend/components/dwg-workspace/onay-revizyon.test.ts` | `vitest` |
 | `frontend/components/dwg-workspace/types.ts` | `@/components/dwg-metraj` |
-| `frontend/components/dwg-workspace/useWorkspaceState.ts` | `react` |
+| `frontend/components/dwg-workspace/useWorkspaceState.ts` | `react` `./onay-revizyon` |
 | `frontend/lib/gs6b-golge-kurali.test.ts` | `vitest` `fs` `path` |
 | `frontend/lib/indeks-sagligi.test.ts` | `vitest` `./indeks-sagligi` |
 | `frontend/lib/kar-degisimi.test.ts` | `vitest` |

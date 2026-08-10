@@ -7,8 +7,9 @@
  */
 
 import React from 'react';
-import { Ruler, Wrench, Trash2, Check } from 'lucide-react';
+import { Ruler, Wrench, Trash2, Check, Undo2 } from 'lucide-react';
 import type { CalculatedLayer, MarkedEquipment } from './types';
+import { kartAksiyonu } from './onay-revizyon';
 import { diameterToColor } from '@/components/dwg-metraj/diameter-colors';
 import { isUnassignedDiameter, UNASSIGNED_LABEL } from '@/components/dwg-metraj/constants';
 
@@ -20,6 +21,9 @@ interface MetrajSummaryPanelProps {
   onEditEquipment: (key: string) => void;
   /** Tek bir layer'i onayla — Excel'e dahil olur, baska layer'a gecilebilir. */
   onApproveLayer: (layer: string) => void;
+  /** ONAYI KALDIR — layer revize moduna doner: cap renkleri + T-noktalari geri
+   *  gelir, segmentler yeniden tiklanabilir. Ayni dugmenin ikinci durumu. */
+  onUnapproveLayer: (layer: string) => void;
   /** Layer kartina tikla -> o layer'i sec (revize). Onayli ise onay
    *  otomatik kalkar, cap renkleri geri gelir. */
   onSelectLayerCard: (layer: string) => void;
@@ -32,6 +36,7 @@ export default function MetrajSummaryPanel({
   onRemoveEquipment,
   onEditEquipment,
   onApproveLayer,
+  onUnapproveLayer,
   onSelectLayerCard,
 }: MetrajSummaryPanelProps) {
   const layerList = Object.values(calculatedLayers).sort((a, b) => a.computedAt - b.computedAt);
@@ -115,21 +120,35 @@ export default function MetrajSummaryPanel({
                 <span className="text-slate-500">Toplam</span>
                 <span className="tabular-nums text-slate-900">{cl.totalLength.toFixed(2)} m</span>
               </div>
-              {/* Inline ONAYLA butonu — her layer kendi onayini alir */}
+              {/* TEK DUGME, IKI DURUM (kullanici karari 07.08):
+                  onaysiz → "Onayla" · onayli → "Onayı Kaldır".
+                  ⚠ `disabled` KALDIRILDI: devre disi dugme tiklama olayi
+                  URETMEZ, bu yuzden hem kendi isini yapmiyor hem de kartin
+                  onClick'ine kabarmiyordu — kullanici tam dogru yere basip
+                  hicbir sey olmadigini goruyordu (07.08 bildirimi). */}
               <button
-                onClick={(e) => { e.stopPropagation(); onApproveLayer(cl.layer); }}
-                disabled={cl.approved}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (kartAksiyonu(cl.approved) === 'onayi-kaldir') onUnapproveLayer(cl.layer);
+                  else onApproveLayer(cl.layer);
+                }}
+                title={cl.approved
+                  ? 'Onayı kaldır → segmentler ve çap renkleri geri gelir, revize edebilirsin'
+                  : 'Bu layer\'ı onayla — metraja/Excel\'e dahil olur'}
                 className={[
                   'mt-2 w-full rounded-lg px-3 py-1.5 text-[11px] font-medium transition-colors flex items-center justify-center gap-1.5',
                   cl.approved
-                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-default'
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-amber-50 hover:text-amber-800 hover:border-amber-300'
                     : 'bg-blue-600 text-white hover:bg-blue-700',
                 ].join(' ')}
               >
                 {cl.approved ? (
                   <>
-                    <Check className="h-3 w-3" />
-                    Onayli
+                    <Check className="h-3 w-3 shrink-0" />
+                    <span>Onaylı</span>
+                    <span className="text-emerald-500/70">·</span>
+                    <Undo2 className="h-3 w-3 shrink-0" />
+                    <span>Onayı Kaldır</span>
                   </>
                 ) : (
                   'Onayla'

@@ -235,6 +235,11 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
       if (!uploadFileId) {
         throw new Error('Sunucudan file_id donmedi');
       }
+      // Sunucu ayni icerigi TANIDI mi? (main.py: hash eslesirse eski file_id +
+      // `dedup:true` doner, dosya YENIDEN parse EDILMEZ.) Bu bayrak bugune
+      // kadar okunmuyordu; ekranda her zaman "Proje hazirlandi" yaziyordu ve
+      // kullanici ayni dosyayi tekrar yukledigini anlamiyordu.
+      const dedupEdildi: boolean = uploadRes.data?.dedup === true;
 
       // 2) POLL /status — background parse bitene kadar
       // Timeout: 240sn (cold-start engine olabilir, sonra ~30-60sn parse)
@@ -297,8 +302,10 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
       setSelectedUnit(opts.override ?? 0.001);  // mm varsayilan
 
       toast({
-        title: 'Proje hazirlandi',
-        description: `${totalLayers} layer`,
+        title: dedupEdildi ? 'Bu dosya daha önce yüklenmişti' : 'Proje hazirlandi',
+        description: dedupEdildi
+          ? `${totalLayers} layer · önceki analiz yeniden kullanıldı, varsa etiketlemeniz geri gelir.`
+          : `${totalLayers} layer`,
       });
 
       if (opts.skipDialog) {

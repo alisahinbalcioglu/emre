@@ -7,6 +7,7 @@ import type {
   CalculatedLayer,
   MarkedEquipment,
 } from './types';
+import { secimSonrasi } from './onay-revizyon';
 
 const emptyConfig = (): LayerConfig => ({
   hatIsmi: '',
@@ -32,6 +33,22 @@ const HASH_KEY_PREFIX = 'metaprice_dwg_ws_h_';
 
 function _storageKey(fileId: string, fileHash?: string | null): string {
   return fileHash ? HASH_KEY_PREFIX + fileHash : STORAGE_KEY_PREFIX + fileId;
+}
+
+/**
+ * BU DOSYANIN kayitli calismasini siler (etiketler + hesaplanmis layer'lar +
+ * onaylar). "Bu dosyayi sifirla" aksiyonunun tek dogru silme yolu.
+ *
+ * ⚠ YALNIZ bu dosyaya ait iki anahtara dokunur (hash + legacy fileId); baska
+ * projelerin kayitlari (`metaprice_dwg_ws_h_*` digerleri) KORUNUR. Bu yuzden
+ * prefix'e gore toplu silme YAPILMAZ.
+ */
+export function clearWorkspaceState(fileId: string, fileHash?: string | null): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (fileHash) window.localStorage.removeItem(HASH_KEY_PREFIX + fileHash);
+    window.localStorage.removeItem(STORAGE_KEY_PREFIX + fileId);
+  } catch { /* storage kapali — sifirlama sessizce atlanir */ }
 }
 
 function _emptyState(fileId: string, scale: number): WorkspaceState {
@@ -71,16 +88,46 @@ function _loadState(fileId: string, scale: number, fileHash?: string | null): Wo
   }
 }
 
+/** Geri yuklenen calismanin ozeti — "onceki calismaniz geri geldi" bandi icin. */
+export interface GeriYuklenenCalisma {
+  /** Diskten gelen hesaplanmis layer sayisi (0 = temiz baslangic). */
+  layers: number;
+  /** Bunlarin kaci onayli (yani revize edilmek icin once onayi kalkmali). */
+  approved: number;
+}
+
+function _ozetle(s: WorkspaceState): GeriYuklenenCalisma {
+  const list = Object.values(s.calculatedLayers);
+  return { layers: list.length, approved: list.filter((l) => l.approved).length };
+}
+
 export function useWorkspaceState(fileId: string, scale: number, fileHash?: string | null) {
   // Mount'ta localStorage'dan restore et — sayfa yenilenmesi VEYA ayni
   // dosyanin yeniden yuklenmesi (yeni file_id) sonrasi hesaplanmis layer'lar,
   // etiketler, ekipmanlar korunur. Kullanici metraji yeniden yapmaz.
   const [state, setState] = useState<WorkspaceState>(() => _loadState(fileId, scale, fileHash));
 
+  /** DISKTEN gelen calismanin ozeti (o anki state degil — yuklendigi andaki).
+   *  Kullanici "yeni yukledim ama eski hali geldi" sasirmasini yasamasin diye
+   *  ekranda acikca gosterilir; bugune kadar bu geri yukleme SESSIZDI. */
+  const [restoredWork, setRestoredWork] = useState<GeriYuklenenCalisma>(() => _ozetle(state));
+
   // fileId/hash degistiginde ilgili kayittan yukle (yoksa bos baslat).
   useEffect(() => {
-    setState(_loadState(fileId, scale, fileHash));
+    const yuklenen = _loadState(fileId, scale, fileHash);
+    setState(yuklenen);
+    setRestoredWork(_ozetle(yuklenen));
   }, [fileId, scale, fileHash]);
+
+  /** "Bu dosyayi sifirla" — SADECE bu dosyanin kayitli calismasini siler ve
+   *  ekrani temiz baslangica alir. Diger projelerin kayitlarina DOKUNMAZ.
+   *  ⚠ Geri donusu yoktur (tek kopya, sunucuda yedegi yok) — cagiran taraf
+   *  MUTLAKA onay sormali. */
+  const resetFileState = useCallback(() => {
+    clearWorkspaceState(fileId, fileHash);
+    setState(_emptyState(fileId, scale));
+    setRestoredWork({ layers: 0, approved: 0 });
+  }, [fileId, fileHash, scale]);
 
   // State degisince localStorage'a kaydet (hash key birincil).
   useEffect(() => {
@@ -96,15 +143,31 @@ export function useWorkspaceState(fileId: string, scale: number, fileHash?: stri
     }
   }, [state, fileHash]);
 
+  /** Kullanici tiklamasi — ayni layer'a tekrar tiklamak secimi KAPATIR (toggle).
+   *  "Secimi kaldir" dugmesi de bu davranisi kullanir. */
   const selectLayer = useCallback((layer: string) => {
     setState((s) => {
-      // Zaten seciliyse (tekrar tikla), secimi temizle (toggle)
-      if (s.selectedLayer === layer) {
-        return { ...s, selectedLayer: null };
-      }
+      const sonraki = secimSonrasi(s.selectedLayer, layer, 'toggle');
+      if (sonraki === null) return { ...s, selectedLayer: null };
       // Ilk kez tikliyorsa config bas
       const configs = s.layerConfigs[layer] ? s.layerConfigs : { ...s.layerConfigs, [layer]: emptyConfig() };
-      return { ...s, selectedLayer: layer, layerConfigs: configs };
+      return { ...s, selectedLayer: sonraki, layerConfigs: configs };
+    });
+  }, []);
+
+  /** ODAKLA — layer'i calisilir hale getir; secim ASLA kapanmaz.
+   *
+   *  Revizyon yolunun (onayi kaldir → hemen duzenle) tek dogru secim yolu.
+   *  Eskiden burada da `selectLayer` cagriliyordu; layer revizyona girerken
+   *  cogu zaman ZATEN secili oldugu icin toggle onu disari atiyor, sag panel
+   *  bosaliyordu — kullanicinin "revize edemiyorum" dedigi ikinci kusur.
+   *  Kilit: `onay-revizyon.test.ts` → "odakla: layer ZATEN seciliyken bile
+   *  secim ACIK kalir". */
+  const focusLayer = useCallback((layer: string) => {
+    setState((s) => {
+      const sonraki = secimSonrasi(s.selectedLayer, layer, 'odakla');
+      const configs = s.layerConfigs[layer] ? s.layerConfigs : { ...s.layerConfigs, [layer]: emptyConfig() };
+      return { ...s, selectedLayer: sonraki, layerConfigs: configs };
     });
   }, []);
 
@@ -342,7 +405,10 @@ export function useWorkspaceState(fileId: string, scale: number, fileHash?: stri
 
   return {
     state,
+    restoredWork,
+    resetFileState,
     selectLayer,
+    focusLayer,
     updateLayerConfig,
     addCalculatedLayer,
     approveLayer,

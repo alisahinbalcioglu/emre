@@ -482,6 +482,7 @@ Karıştırılmasın diye ayrı duruyor.
 | `backend/test/tam-zincir.ts` | Backend regresyon, frontend vitest ve Playwright E2E'yi derleme kapisiyla tek komutta kosan zincir kosucusu |
 | `frontend/app/dev/grid-test/page.tsx` | ExcelGrid'i auth'suz ve API'siz, mock eslestirmeyle calistiran gelistirme/e2e dogrulama harness'i |
 | `frontend/components/dwg-metraj/unit-detection.test.ts` | Birim-metre donusum sabitlerini ve fallback davranislarini vitest ile dogrular |
+| `frontend/components/dwg-workspace/onay-revizyon.test.ts` | Yukaridaki dort karari kilitler (07.08 kullanici bildirimi: "onaylandi butonunu bozabilmeli ve parcalanmis segmentler geri gelmeli"). Her blokta ESKI davranisin replikasi da olculur ve KRITERI IHLAL ETTIGI assert edilir — yani test "yesil yaniyor" degil, "eski davranis buradan GECEMEZDI" der. Kirmizi-once kanit: fix uc fonksiyonda kapatilinca 19 kriterin 5'i kirmiziya doner |
 | `frontend/components/dwg-workspace/equipment-popup-mod.test.ts` | Ekipman popup'inin acilis sekmesi kurali (P2-6): manuel kayit manuel sekmede acilir, yeni isaretleme kutuphane modunda kalir |
 | `frontend/components/dwg-viewer/segment-length.test.ts` | Hover uzunluk cozumlemenin scale=0 bug reprosu dahil davranislarini vitest ile dogrular |
 | `frontend/ozellik/tablo/excel-grid/build-material-context.test.ts` | Olcu ifadesi tespiti ve yetim-satir kararinin H4/C3 birim testleri |
@@ -583,6 +584,7 @@ Karıştırılmasın diye ayrı duruyor.
 | `frontend/components/dwg-workspace/LayerVisibilityPanel.tsx` | Layer listesinde gorunurluk/soluklastirma/sprinkler isaretleme ve secim+cap popup tetikleme |
 | `frontend/components/dwg-workspace/MetrajSummaryPanel.tsx` | Hesaplanmis layer metrajlarini cap dagilimiyla ve ekipman gruplarini listeleyip tek tek onaylatan panel |
 | `frontend/components/dwg-workspace/types.ts` | DWG calisma alaninin tip sozlesmeleri: layer konfig/hesap sonucu, isaretli ekipman, genel state |
+| `frontend/components/dwg-workspace/onay-revizyon.ts` | DWG onay↔revizyon kararlarinin TEK kaynagi (saf, DOM'suz): kart dugmesi onayli iken "onayi kaldir" olur · sag panel hesaplama yokken ASLA aksiyonsuz kalmaz (onaylinin cikisi revizyondur) · layer secimi iki niyet tasir — kullanici tiklamasi TOGGLE, revizyon girisi ODAKLA (secim kapanmaz) · cap renkli gorunurluk = hesaplandi && !onayli. Dordu de uretimde bu modulden okunur (MetrajSummaryPanel · LayerInfoSidebar · useWorkspaceState · DwgProjectWorkspace), kopya karar YOK |
 | `frontend/components/dwg-workspace/useWorkspaceState.ts` | Layer secim/onay, cap atama+1-hop komsu yayilimi ve ekipman state'ini localStorage'a (icerik-hash anahtarli) kalici tutar |
 | `frontend/lib/metraj-excel.ts` | DWG metraj sonuclarini coklu-sheet XLSX dosyasina yazip indirtir; sheet adi sanitize/benzersizlestirme yapar |
 

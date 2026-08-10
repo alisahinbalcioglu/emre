@@ -144,7 +144,34 @@ export default function NewQuotePage() {
       // localStorage'da korunuyor). Kullanici dashboard'a atilmaz.
       setCameFromDwg(true);
       try { sessionStorage.setItem(FROM_DWG_KEY, '1'); } catch {}
-      if (!stored) return;
+      if (!stored) {
+        // SESSIZ BOS YASAK: metraj yuku gelmediyse (ornegin sessionStorage
+        // kotasi doldu ve /dwg-workspace yazamadi) ekran bombos kalir.
+        // ⚠ Bu dalda taslaga DOKUNULMAZ — asagidaki temizlik guard'in
+        // ALTINDADIR. Aksi halde "veri de yok, eski calisman da yok" olurdu.
+        toast({
+          title: 'Metraj aktarılamadı',
+          description: 'Çizimden gelen metraj verisi okunamadı. Çizime dönüp "Tümünü Onayla & Fiyatlandırmaya Geç" adımını tekrarlayın.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      // ── TAZE METRAJ GELDI → eski draft'i TEMIZLE (Excel dalinin ikizi) ──
+      // Bu satir DWG dalinda EKSIKTI. Bedeli, revizyon yolu acilinca gorunur
+      // olur: kullanici cizime donup capi duzeltip TEKRAR fiyatlandirmaya
+      // gectiginde, asagidaki draft-restore efekti bir onceki turdan kalan
+      // taslagi geri yukleyip TAZE metrajin uzerine yaziyor — ekranda eski
+      // rakamlar kaliyor ama toast "Metraj onaylandi" diyor. Ustelik metraj
+      // anahtari yukarida (:141) silindigi icin veri kurtarilamiyor.
+      // Excel yolu ayni korumayi :322'de zaten yapiyor.
+      //
+      // ⚠ BEDELI ACIKCA SOYLENIR: DWG dali satirlari SIFIRDAN kurar
+      // (_marka:null, _malzKar:0) — yani onceki turda secilen marka, girilen
+      // kar ve eslesen birim fiyatlar gider. Sessizce gitmesin diye asagida
+      // kirmizi uyari cikar. (Excel yolundaki gibi merge YOK; metraj satirlari
+      // yeniden gruplandigi icin eslestirilecek stabil bir satir kimligi yok.)
+      const bayatTaslakVardi = !!sessionStorage.getItem(DRAFT_KEY);
+      sessionStorage.removeItem(DRAFT_KEY);
       try {
         const { metraj, fileName } = JSON.parse(stored) as {
           metraj: MetrajResult;
@@ -293,6 +320,16 @@ export default function NewQuotePage() {
         setTitle(fileName.replace(/\.[^.]+$/, '') + ' — DWG Metraj');
         const itemCount = rows.filter((r) => r._isDataRow && !r._isSpareRow).length;
         toast({ title: 'Metraj onaylandi', description: `${itemCount} kalem fiyatlandirmaya aktarildi` });
+        // REVIZYON TURU BEDELI (sessiz kayip yasak): ikinci kez fiyatlandirmaya
+        // gelindiyse tablo TAZE metrajdan sifirdan kurulur — onceki turda
+        // secilen marka/kar/fiyatlar TASINMAZ. Kullanici bunu ekranda gorsun.
+        if (bayatTaslakVardi) {
+          toast({
+            title: 'Fiyatlandırma sıfırlandı',
+            description: 'Metraj yenilendiği için tablo sıfırdan kuruldu — önceki turda seçtiğiniz marka, kâr ve birim fiyatlar taşınmadı.',
+            variant: 'destructive',
+          });
+        }
       } catch (e) {
         // SESSIZ BOS YASAK (06.08): onaylanan metraj ekrana gelmiyorsa
         // kullanici BILMELI — yoksa "onayladim ama tablo bos" tuzagi dogar.

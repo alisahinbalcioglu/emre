@@ -25,6 +25,7 @@ import LayerVisibilityPanel from './LayerVisibilityPanel';
 import MetrajSummaryPanel from './MetrajSummaryPanel';
 import EquipmentDetailPopup from './EquipmentDetailPopup';
 import { useWorkspaceState } from './useWorkspaceState';
+import { capRenkliGorunur } from './onay-revizyon';
 import type { MarkedEquipment, CalculatedLayer } from './types';
 import {
   useLayerCalc,
@@ -53,7 +54,10 @@ export default function DwgProjectWorkspace({
 }: DwgProjectWorkspaceProps) {
   const {
     state,
+    restoredWork,
+    resetFileState,
     selectLayer,
+    focusLayer,
     addCalculatedLayer, approveLayer, unapproveLayer, removeCalculatedLayer,
     updateEdgeSegmentDiameter,
     applyDiameterWithPropagation,
@@ -394,10 +398,14 @@ export default function DwgProjectWorkspace({
   // Onayli layer'lar cap-renkli edge listesinden DUSER — viewer onlara dokunmaz,
   // layer orijinal AutoCAD rengiyle kalir. Kullanici kurali: "onayla = bu layer
   // bitti, dikkati basa cek". T-junction marker'lari da onayli layer'larda gizli.
+  // ⚠ KARAR TEK YERDE: "cap renkli gorunur mu" sorusu `onay-revizyon.ts`de
+  // yasar ve testle kilitlidir. Eskiden bu iki blokta `if (cl.approved)
+  // continue` elle TEKRARLANIYORDU; testin olctugu sey uretimde kullanilmayan
+  // bir kopya olurdu (projenin "proxy olcut yasak" dersi).
   const calculatedEdgesByLayer = useMemo(() => {
     const map: Record<string, EdgeSegment[]> = {};
     for (const [layer, cl] of Object.entries(state.calculatedLayers)) {
-      if (cl.approved) continue;  // onayli -> cap renksiz, orijinal
+      if (!capRenkliGorunur({ hesaplandi: true, onayli: cl.approved })) continue;
       map[layer] = cl.edgeSegments;
     }
     return map;
@@ -406,7 +414,8 @@ export default function DwgProjectWorkspace({
   const calculatedJunctionsByLayer = useMemo(() => {
     const map: Record<string, [number, number][]> = {};
     for (const [layer, cl] of Object.entries(state.calculatedLayers)) {
-      if (cl.approved) continue;  // onayli -> T-junction marker da kapali
+      // T-junction marker'lari cap renkleriyle AYNI kurala tabi.
+      if (!capRenkliGorunur({ hesaplandi: true, onayli: cl.approved })) continue;
       if (cl.junctionPoints && cl.junctionPoints.length > 0) {
         map[layer] = cl.junctionPoints;
       }
@@ -460,6 +469,38 @@ export default function DwgProjectWorkspace({
     selectLayer(target);
     return true;
   };
+
+  /**
+   * REVIZYONA DON — onayi kaldir + layer'i calisilir hale getir (07.08 istegi:
+   * "onaylandi butonunu bozabilmeli ve parcalanmis segmentler geri gelmeli").
+   *
+   * UC ADIM BIRLIKTE olmali; biri eksik kalirsa kullanici yine calisamaz:
+   *  1. `unapproveLayer` — layer cap-renkli listelere geri girer
+   *     (`calculatedEdgesByLayer` onaylilari eler), T-noktalari geri gelir ve
+   *     segmentler yeniden TIKLANABILIR olur (viewer onaylilari raw LINE olarak
+   *     indeksliyordu, o yuzden cap duzeltilemiyordu).
+   *  2. `focusLayer` — secim ACIK kalir. `selectLayer` bir TOGGLE'dir ve layer
+   *     zaten seciliyken cagrildiginda secimi NULL'a cekiyordu; sag panel
+   *     bosalinca revizyon yine mumkun olmuyordu (fix oncesi ikinci kusur).
+   *  3. `enableDiameterColors` — "Fiyatlandirmaya Gec" akisi cikarken
+   *     `restoreOriginalColors()` cagirip cap renklerini GLOBAL kapatiyor
+   *     (PRD §5). Bayrak kapali kalirsa onay kalksa bile ekranda hicbir sey
+   *     degismez; kullanici "yine olmadi" der. Bayrak burada geri acilir.
+   */
+  const revizyonaDon = useCallback((layer: string) => {
+    unapproveLayer(layer);
+    focusLayer(layer);
+    enableDiameterColors();
+    // AKTIF KALEM TEMIZLENIR — onay yollarinin (approveLayer + onComplete)
+    // hepsi bunu yapiyor; revizyon girisi de ayni sozlesmede olmali. Yoksa
+    // onceki layer'dan kalan bayat cap kalemi aktif kalir ve kullanicinin
+    // revize edilen layer'a ilk tiklamasi YANLIS capi yazar.
+    clearActiveBucket();
+    toast({
+      title: 'Revize modu açıldı',
+      description: `${layer} — onay kaldırıldı, segmentler ve çap renkleri geri geldi. Düzeltip tekrar onaylayın (onaylamazsanız teklife girmez).`,
+    });
+  }, [unapproveLayer, focusLayer, enableDiameterColors, clearActiveBucket]);
 
   const handleLineClick = (line: { layer: string; index: number; shiftKey: boolean; screenX: number; screenY: number }) => {
     // LINE click -> SADECE layer secimi. Hesaplama "Hesapla" butonuyla manuel
@@ -570,13 +611,23 @@ export default function DwgProjectWorkspace({
       if (!ok) return;
     }
 
-    // Onaylanmamis layer kalmis mi? Uyari ver ama bloklamadan devam (kullanici karari)
-    const pendingCount = allLayers.length - approvedLayers.length;
-    if (pendingCount > 0) {
-      toast({
-        title: `${pendingCount} layer hala onaylanmadi`,
-        description: 'Onaysiz layer\'lar Excel\'e ve fiyatlandirmaya DAHIL EDILMEYECEK.',
+    // ── ONAYSIZ LAYER = TEKLIFE GIRMEYEN LAYER (BLOKLAYAN UYARI) ───────────
+    // Eskiden burada yalniz bir toast vardi ve hemen ardindan gelen "Excel
+    // olusturuldu" toast'i onu EZIYORDU: layer sessizce teklif disinda
+    // kaliyordu. Revizyon yolu acildigi icin bu artik SIK bir senaryo —
+    // kullanici revize etmek icin onayi kaldirir, duzeltir, yeniden
+    // onaylamayi unutur. Onay sorusu, kullaniciyi durdurup adini soyluyor.
+    const pendingLayers = allLayers.filter((l) => !l.approved);
+    if (pendingLayers.length > 0) {
+      const adlar = pendingLayers.map((l) => l.hatIsmi || l.layer).join(', ');
+      const ok = await confirm({
+        title: `${pendingLayers.length} layer onaylanmadı — teklife GİRMEYECEK`,
+        description:
+          `Onaysız: ${adlar}. Bu layer'lar Excel'e ve fiyatlandırmaya dahil edilmez. ` +
+          'Revize ettiyseniz önce "Hesaplamayı Tamamla" ile yeniden onaylayın.',
+        confirmText: 'Yine de devam et',
       });
+      if (!ok) return;
     }
 
     // Excel indirimi (sadece onayli layer'lar)
@@ -704,6 +755,38 @@ export default function DwgProjectWorkspace({
     ? state.markedEquipments[state.editingEquipmentKey]
     : undefined;
 
+  /** "Onceki calismaniz geri yuklendi" bandi kapatildi mi? (oturumluk) */
+  const [geriYuklemeBandiKapali, setGeriYuklemeBandiKapali] = useState(false);
+  const geriYuklemeBandi = restoredWork.layers > 0 && !geriYuklemeBandiKapali;
+
+  /** Bu dosyanin kayitli calismasini sil — GERI DONUSU YOK, onay sart. */
+  const handleResetThisFile = async () => {
+    // ⚠ SAYIM GUNCEL DURUMDAN: `restoredWork` mount anindaki fotograftir.
+    // Kullanici bu oturumda yeni layer hesapladiysa onay penceresi SILINECEK
+    // isi EKSIK gosterirdi ("1 layer silinecek" deyip 4 layer silmek).
+    const silinecekLayer = Object.keys(state.calculatedLayers).length;
+    const silinecekEkipman = Object.keys(state.markedEquipments).length;
+    const ok = await confirm({
+      title: 'Bu dosyanın kayıtlı çalışması silinsin mi?',
+      description:
+        `${silinecekLayer} hesaplanmış layer ve ${silinecekEkipman} işaretli ekipman (çap etiketleriyle birlikte) silinecek, çizim sıfırdan başlayacak. ` +
+        'Bu işlemin geri dönüşü yoktur (kayıt yalnız bu tarayıcıda tutulur). Diğer projeleriniz etkilenmez.',
+      confirmText: 'Sıfırla',
+    });
+    if (!ok) return;
+    resetFileState();
+    clearActiveBucket();
+    // "Sifirdan baslar" sozu SILGI icin de gecerli olmali — silinen cizgiler
+    // workspace state'inde DEGIL, bu bilesenin kendi state'inde yasiyor.
+    setHiddenLineKeys(new Set());
+    setHiddenInsertKeys(new Set());
+    setHiddenTextKeys(new Set());
+    setPendingErase(null);
+    setEraseHistory([]);
+    setGeriYuklemeBandiKapali(true);
+    toast({ title: 'Sıfırlandı', description: `${fileName} — temiz başlangıç.` });
+  };
+
   return (
     <div>
       {/* Ust bar */}
@@ -734,6 +817,39 @@ export default function DwgProjectWorkspace({
           </button>
         </div>
       </div>
+
+      {/* GERI YUKLEME BANDI — bu geri yukleme bugune kadar SESSIZDI: kullanici
+          ayni dosyayi tekrar yukluyor, ekrana onceki calismasi geliyor ve
+          "yeni yukledim ama segmentlerine ayiramiyorum" diye yasiyordu
+          (onayli layer'lar icin "Segmentlerine Ayir" dugmesi hic cikmaz).
+          Artik ne oldugu YAZIYOR ve iki cikis birden veriliyor. */}
+      {geriYuklemeBandi && (
+        <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+          <span className="text-xs text-amber-900">
+            <strong>Bu dosya daha önce yüklenmişti</strong> — önceki çalışmanız geri yüklendi:{' '}
+            {restoredWork.layers} layer hesaplanmış
+            {restoredWork.approved > 0 && <> · {restoredWork.approved} onaylı</>}.
+            {restoredWork.approved > 0 && (
+              <> Revize etmek için ilgili layer&apos;ın <strong>onayını kaldırın</strong> — segmentler geri gelir.</>
+            )}
+          </span>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={handleResetThisFile}
+              className="rounded-md border border-amber-300 bg-white px-2 py-1 text-[11px] font-medium text-amber-800 hover:bg-amber-100"
+              title="Bu dosyanın kayıtlı çalışmasını sil, sıfırdan başla (geri dönüşü yok)"
+            >
+              Bu dosyayı sıfırla
+            </button>
+            <button
+              onClick={() => setGeriYuklemeBandiKapali(true)}
+              className="text-[11px] text-amber-700 hover:underline"
+            >
+              Tamam
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Ana grid: sol buyuk cizim + sag panel */}
       <div className="grid grid-cols-1 lg:grid-cols-[3fr_1fr] gap-3">
@@ -884,6 +1000,7 @@ export default function DwgProjectWorkspace({
                 description: `${layer} onaylandı. Etiketleme ekranı yeni layer için sıfırlandı.`,
               });
             }}
+            onUnapprove={(layer) => revizyonaDon(layer)}
             onClearSelection={() => selectLayer(state.selectedLayer!)}
             onHideLayer={() => {
               if (!state.selectedLayer) return;
@@ -917,7 +1034,27 @@ export default function DwgProjectWorkspace({
           <MetrajSummaryPanel
             calculatedLayers={state.calculatedLayers}
             markedEquipments={state.markedEquipments}
-            onRemoveLayer={removeCalculatedLayer}
+            onRemoveLayer={async (layer) => {
+              // ⚠ YIKICI VE GERI DONUSU YOK: segmentler + TUM cap etiketleri
+              // gider (yeniden hesaplamak sadece segmentleri geri getirir,
+              // etiketleme emegini DEGIL). Onaysiz calisiyordu; revizyon
+              // dugmesi bunun hemen ustune geldigi icin yanlis tikta
+              // kullanicinin saatlerce sureni tek hamlede silinebilirdi.
+              const cl = state.calculatedLayers[layer];
+              const segment = cl?.edgeSegments.length ?? 0;
+              const etiketli = cl?.edgeSegments.filter((es) => !isUnassignedDiameter(es.diameter)).length ?? 0;
+              const ok = await confirm({
+                title: `"${cl?.hatIsmi || layer}" hesaplaması silinsin mi?`,
+                description:
+                  `${segment} segment ve ${etiketli} çap etiketi silinecek. Geri dönüşü yok — ` +
+                  'yeniden hesaplarsanız segmentler geri gelir ama çap etiketlerini tekrar yapmanız gerekir. ' +
+                  'Sadece revize etmek istiyorsanız "Onayı Kaldır" yeterlidir.',
+                confirmText: 'Sil',
+              });
+              if (!ok) return;
+              removeCalculatedLayer(layer);
+              toast({ title: 'Hesaplama silindi', description: layer });
+            }}
             onRemoveEquipment={removeEquipment}
             onEditEquipment={(key) => {
               const eq = state.markedEquipments[key];
@@ -937,18 +1074,20 @@ export default function DwgProjectWorkspace({
               approveLayer(layer);
               clearActiveBucket();
             }}
+            onUnapproveLayer={(layer) => revizyonaDon(layer)}
             onSelectLayerCard={(layer) => {
               // Hesaplanmis Metraj kartina tikla:
-              //  - Layer onayli ise onayi kaldir (revize moduna gec, cap renkleri donsun)
-              //  - tryChangeLayer guard'indan gec (mevcut onaysiz layer varsa uyari)
+              //  - Layer onayli ise revizyona don (onay kalkar, segmentler doner)
+              //  - Onaysiz ise sadece o layer'i calisilir hale getir
+              // ⚠ `selectLayer` DEGIL `focusLayer`: kart tiklamasi bir toggle
+              // degildir, "bu layer'da calis" demektir. Eskiden selectLayer
+              // cagriliyordu ve layer zaten seciliyse secim kapaniyordu.
               const cl = state.calculatedLayers[layer];
               if (cl?.approved) {
-                unapproveLayer(layer);
+                revizyonaDon(layer);
+                return;
               }
-              // Onaysizlasinca tryChangeLayer (selectedLayer'da onaysiz mevcut var mi)
-              // mantigini bozmamak icin direkt selectLayer cagiriyoruz: bu layer'in
-              // kendisi zaten artik "onaysiz" durumda ve seciliyor.
-              selectLayer(layer);
+              focusLayer(layer);
             }}
           />
         </div>

@@ -12,9 +12,10 @@
  */
 
 import React from 'react';
-import { Loader2, Layers, EyeOff, CheckCircle2, Scissors } from 'lucide-react';
+import { Loader2, Layers, EyeOff, CheckCircle2, Scissors, Undo2 } from 'lucide-react';
 import type { CalculatedLayer } from './types';
 import { isUnassignedDiameter } from '@/components/dwg-metraj/constants';
+import { sidebarAksiyonlari } from './onay-revizyon';
 
 interface LayerInfoSidebarProps {
   selectedLayer: string | null;
@@ -26,6 +27,9 @@ interface LayerInfoSidebarProps {
   onCalculate: (layer: string) => void;
   /** "Hesaplamayi Tamamla" — layer'i onayla + etiketleme ekranini sifirla. */
   onComplete: (layer: string) => void;
+  /** "Onayı Kaldır & Revize Et" — onay kalkar, segmentler/cap renkleri geri
+   *  gelir ve layer SECILI KALIR (odakla). */
+  onUnapprove: (layer: string) => void;
   onClearSelection: () => void;
   /** Secili layer'i cizimden gizle (LayerVisibilityPanel toggle ile ayni). */
   onHideLayer?: () => void;
@@ -37,6 +41,7 @@ export default function LayerInfoSidebar({
   calculating,
   onCalculate,
   onComplete,
+  onUnapprove,
   onClearSelection,
   onHideLayer,
 }: LayerInfoSidebarProps) {
@@ -55,6 +60,15 @@ export default function LayerInfoSidebar({
   const emptySegmentCount = calculatedLayer
     ? calculatedLayer.edgeSegments.filter((es) => isUnassignedDiameter(es.diameter)).length
     : 0;
+
+  // Hangi aksiyon dugmeleri gorunur? Karar saf modulde ve testle kilitli
+  // (`onay-revizyon.test.ts`) — sozlesme: hesaplama yokken panel ASLA
+  // aksiyonsuz kalmaz. Onayli layer'in cikisi REVIZYONdur.
+  const aksiyonlar = sidebarAksiyonlari({
+    hesaplandi: !!calculatedLayer,
+    onayli: !!calculatedLayer?.approved,
+    hesaplaniyor: calculating,
+  });
 
   return (
     <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-3">
@@ -100,7 +114,7 @@ export default function LayerInfoSidebar({
           </p>
           <p className="text-[10px] text-emerald-700">
             {calculatedLayer.approved
-              ? 'Bu layer TAMAMLANDI (onaylı).'
+              ? 'Bu layer TAMAMLANDI (onaylı). Revize etmek için aşağıdan onayı kaldırın.'
               : emptySegmentCount > 0
                 ? `${emptySegmentCount} segment çapsız (neon) — Çap Kalemi seçip tıklayın.`
                 : 'Tüm segmentler etiketli — tamamlayabilirsiniz.'}
@@ -109,7 +123,7 @@ export default function LayerInfoSidebar({
       )}
 
       {/* AKSIYON 1: Segmentlere ayir (henuz hesaplanmadiysa) */}
-      {!calculatedLayer && !calculating && (
+      {aksiyonlar.includes('segmentlere-ayir') && (
         <button
           onClick={() => onCalculate(selectedLayer)}
           className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
@@ -120,7 +134,7 @@ export default function LayerInfoSidebar({
       )}
 
       {/* AKSIYON 2: Hesaplamayi tamamla (hesaplandi + henuz onaysiz) */}
-      {calculatedLayer && !calculatedLayer.approved && !calculating && (
+      {aksiyonlar.includes('hesaplamayi-tamamla') && (
         <button
           onClick={() => onComplete(selectedLayer)}
           className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700"
@@ -135,6 +149,22 @@ export default function LayerInfoSidebar({
               {emptySegmentCount} çapsız
             </span>
           )}
+        </button>
+      )}
+
+      {/* AKSIYON 3: ONAYI KALDIR & REVIZE ET (onayli layer'in cikisi).
+          07.08 oncesinde bu dal HIC YOKTU: onayli layer secilince panelde
+          tek bir aksiyon dugmesi kalmiyor, kullanici cikamiyordu. Onay
+          kalkinca cap renkleri + T-noktalari geri gelir ve segmentler
+          yeniden tiklanabilir olur. */}
+      {aksiyonlar.includes('onayi-kaldir-revize') && (
+        <button
+          onClick={() => onUnapprove(selectedLayer)}
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-500 px-3 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-amber-600"
+          title="Onay kalkar, segmentler ve çap renkleri geri gelir — düzeltip tekrar onaylarsınız"
+        >
+          <Undo2 className="h-4 w-4" />
+          Onayı Kaldır &amp; Revize Et
         </button>
       )}
     </div>
