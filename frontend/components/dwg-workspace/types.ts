@@ -30,24 +30,6 @@ export interface CalculatedLayer {
   approvedAt?: number;
 }
 
-/** Kullanicinin tiklayip isaretledigi bir ekipman (INSERT). */
-export interface MarkedEquipment {
-  key: string;              // "layer:insert_index" — unique
-  insertIndex: number;      // GeometryInsert'ten
-  layer: string;
-  insertName: string;       // DWG block adi (ornek: "SPRINKLER_BLOCK")
-  position: [number, number];
-  userLabel: string;        // kullanicinin girdigi malzeme adi (kütüphaneden ise: materialName)
-  unit: string;             // "adet" default, "set", "m" vs.
-  // Kütüphaneden seçildiyse: ekipman kataloğundaki kayıt referansı +
-  // o kaydın spec (güç/kapasite vs.) ve birim fiyatı. Manuel girilen
-  // ekipmanlarda hepsi null.
-  libraryItemId?: string | null;
-  brandName?: string | null;
-  unitPrice?: number | null;        // ₺
-  specs?: Record<string, string> | null;
-}
-
 /** Workspace'in genel state'i. */
 export interface WorkspaceState {
   fileId: string;
@@ -58,9 +40,10 @@ export interface WorkspaceState {
   layerConfigs: Record<string, LayerConfig>;    // layer -> config
   calculatedLayers: Record<string, CalculatedLayer>;  // hesaplanmis layer'lar
 
-  // Ekipman akisi
-  markedEquipments: Record<string, MarkedEquipment>;
-  editingEquipmentKey: string | null;
+  // NOT: `markedEquipments` / `editingEquipmentKey` alanlari 10.08'de
+  // KALDIRILDI (ekipman isaretleme ozelligi cikarildi). Eski localStorage
+  // kayitlarinda bu anahtarlar durabilir; `_loadState` spread ettigi icin
+  // state'e sizarlar ama okuyan kimse kalmadigi icin zararsizdirlar.
 
   // Sprinkler olarak isaretli layer'lar — LayerVisibilityPanel'de damla ikonu ile toggle
   sprinklerLayers: string[];

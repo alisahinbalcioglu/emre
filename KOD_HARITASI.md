@@ -42,7 +42,7 @@ Bu projede eksikliğinin bedeli dört kez ödendi:
 
 > Sayım 03.08 (HARİTA TAM turu) `grep -c` ile ÖLÇÜLDÜ. Tek ⬜ satırı bir **yokluk kaydıdır**: `tsconfig.build.json` repoda hiç yok (belgeden belgeye kopyalanmış hayalet) — "bakılmadı" değil, "arandı, bulunamadı".
 >
-> **İki katman ayrı:** bu tablo **derin katmanı** (davranış, `dosya:satır`, kanıt zinciri) sayar. **Sığ katman** ayrıca ve tam: aşağıdaki *TAM SINIFLANDIRMA* bölümünde repodaki **300 kod dosyasının 300'ü** tek cümleyle sınıflandırılmış durumda (`test:harita` bunu her koşumda doğrular).
+> **İki katman ayrı:** bu tablo **derin katmanı** (davranış, `dosya:satır`, kanıt zinciri) sayar. **Sığ katman** ayrıca ve tam: aşağıdaki *TAM SINIFLANDIRMA* bölümünde repodaki **296 kod dosyasının 296'sı** tek cümleyle sınıflandırılmış durumda (`test:harita` bunu her koşumda doğrular).
 
 > Bu harita **çoğunlukla boş ve bu kasıtlı.** İçindeki her dolu satır, bir raporda ya da kanıt zincirinde fiilen geçmiş bir dosyadır. **Tek bir dosya adı tahmin edilerek yazılmadı.** Boş satırları Code oturumu ADIM 0-1 tamirini yaparken dolduracak — ayrı bir proje olarak değil, tamirin yan ürünü olarak.
 
@@ -195,7 +195,7 @@ Bu projede eksikliğinin bedeli dört kez ödendi:
 | ✅ | `GET /api/admin/stats` — `admin.controller.ts:13-23` → `admin.service.ts:191-302` | Admin rolüne kilitli **tek çağrıyla panonun tüm sayıları**: beş ham sayaç · önceki aya göre yüzde değişimler · bu ay teklif oluşturan ayrık kullanıcı oranı · son 30 günün günlük teklif serisi (boş günler sıfırla doldurulmuş) · kütüphanede kullanılan markaların disiplin dağılımı · kütüphaneye en çok aktarılan ilk beş marka. Tüketici: `frontend/ozellik/kutuphane/admin-stats.ts` + `app/admin/stats/page.tsx`. | HARİTA TAM turu 03.08 |
 | ✅ | `/api/quotes/*` — `quotes.controller.ts:1-144` | **On uç:** dosya ön-ayrıştırma · oluşturma · listeleme · detay · silme · kapak bilgisi yaması · **iki ayrı çıktı yolu** (teklif formatına basar → **rev artar + arşivlenir**; standart fiyatlı Excel → rev artmaz, arşivlenmez) · revizyon arşivi. Davranış: `quotes.service.ts:30-421`. | HARİTA TAM turu 03.08 |
 | ✅ | `backend/src/ozellik/kutuphane/library/library.service.ts` | Kütüphaneye (UserLibrary) yazan TEK dosya (grep + okuma ile teyit). Dört oluşturma yolu: `create` :63-88 (POST /library — productIndexId NULL doğar) · `createManualBrand` :105-239 (indeks kurup bağlar :196-201) · `importPriceList` legacy dalı :285-408 (NULL doğar :351-360) · `importFromIndex` :427-518 (bağlar :443-444; mevcutları YALNIZ productIndexId ile eşler :437-439). Güncelleme yolları productIndexId'ye dokunmaz. | KALEM 58 keşfi 02.08 — okuma + nokta-teyit |
-| ✅ | `backend/src/ozellik/kutuphane/library/library.controller.ts:1-109` | **13 uç, tek denetleyici**; sınıf düzeyinde JWT mührü (`:15-16`) ve her metot kullanıcı kimliğini `@CurrentUser()`'dan alıp servise **ilk argüman** geçirir — yani kullanıcı izolasyonu uç düzeyinde değil, **servis imzasında** taşınır. Denetleyicide iş mantığı yok; karşılıkları `library.service.ts:23-644`. | HARİTA TAM turu 03.08 |
+| ✅ | `backend/src/ozellik/kutuphane/library/library.controller.ts:1-109` | **12 uç, tek denetleyici**; sınıf düzeyinde JWT mührü (`:15-16`) ve her metot kullanıcı kimliğini `@CurrentUser()`'dan alıp servise **ilk argüman** geçirir — yani kullanıcı izolasyonu uç düzeyinde değil, **servis imzasında** taşınır. Denetleyicide iş mantığı yok; karşılıkları `library.service.ts:23-644`. | HARİTA TAM turu 03.08 |
 | ✅ | `backend/src/ozellik/kutuphane/library/dto/create-library-item.dto.ts` | Manuel tek-satır ekleme DTO'su (tamamı okundu): `listPrice` alanı VAR ama service kullanmıyor; `productIndexId` alanı YOK. | KALEM 58 keşfi 02.08 |
 | ✅ | `backend/src/ozellik/kutuphane/admin/admin.service.ts` | **Dört bölüm, dosyada şeritlerle ayrılmış:** `USERS :100-187` (8 fonksiyon: listeleme + rol/durum/tier güncelleme, önce varlık doğrulaması) · `STATS :189-302` · `AI TASKS/HEALTH :304-421` · `SETTINGS :423-448`. İçe aktarım/indeks: `commitImportCore :743-802` → `saveBulkMaterials :856-1130` (çift yazım MaterialPrice + ProductIndex upsert :1068-1072 · `removed` = MaterialPrice deleteMany :917-918 · bayat indeks bilerek SİLİNMEZ :1085-1095) · `reindexProducts :1379-1438` · ⚠ `saveMaterialsFromSheets :1134-1319` **ProductIndex yazmaz** (kusur). | KALEM 58 + HARİTA TAM turu 03.08 |
 | ✅ | `backend/src/ozellik/kutuphane/admin/admin.controller.ts:13-200` | **Admin uçlarının tamamı:** `stats :13-23` · kullanıcı yönetimi (liste/rol/durum/tier) · AI görevleri+sağlık · ayarlar · içe aktarım hattı `:126-200` (marka ve fiyat listesi için `import-excel/preview`+`commit` · `materials/save-bulk` · legacy `save-from-sheets` · `reindex-products :95-98`). Tümü `admin.service.ts`'in dört bölümüne karşılık gelir. | HARİTA TAM turu 03.08 |
@@ -369,7 +369,7 @@ Karıştırılmasın diye ayrı duruyor.
 | `frontend/app/(protected)/quote-formats/page.tsx` | Kalici teklif format sablonlarini yukleme, yer tutucu tarama onizlemesi, varsayilan yapma ve silme yonetimi |
 | `frontend/ozellik/cikti/export-download.ts` | Iki export ucunu cagirip blob'u dosya olarak indirtir; self-check ozet/uyari toast'larini gosterir |
 
-### G · KÜTÜPHANE ve YÖNETİM — 43 dosya
+### G · KÜTÜPHANE ve YÖNETİM — 42 dosya
 
 | Dosya | Ne yapıyor |
 |---|---|
@@ -399,7 +399,6 @@ Karıştırılmasın diye ayrı duruyor.
 | `frontend/app/(protected)/labor/page.tsx` | Disiplin bazli iscilik kalemleri kutuphanesinde dialog'lu CRUD yonetimi |
 | `frontend/app/(protected)/library/brand/[brandId]/page.tsx` | Kutuphane markasinin sayfa verisini grid'de duzenleme, yeni malzeme satiri girisi ve kaydetme |
 | `frontend/app/(protected)/library/electrical-brands/page.tsx` | Elektrik kutuphane markalarini listeler; manuel malzeme ekleme ve PDF'ten AI cikarimla toplu aktarim sunar |
-| `frontend/app/(protected)/library/equipment/page.tsx` | DWG akisinda secilecek ekipman/sarf kayitlarini serbest spec alanlariyla yoneten kutuphane ekrani |
 | `frontend/app/(protected)/library/mechanical-brands/page.tsx` | Mekanik kutuphane markalarini listeler; manuel marka modali ve PDF'ten cikarimla aktarim sunar |
 | `frontend/app/(protected)/library/page.tsx` | Kullanici kutuphanesi ana ekrani; kalem ekleme/duzenleme, iskonto ve net fiyat gosterimi |
 | `frontend/app/(protected)/materials/[brandId]/page.tsx` | Marka fiyat listelerini gösterir, kütüphaneye aktarır, admin Excel düzenleyici açar |
@@ -418,7 +417,7 @@ Karıştırılmasın diye ayrı duruyor.
 | `frontend/ozellik/kutuphane/hata-metni.ts` | K1 — sunucunun yazdigi hata mesajini kullaniciya ulastiran saf fonksiyon: `response.data.message` metinse AYNEN doner, DIZI ise (Nest ValidationPipe) " · " ile birlestirir, bos/boslukluysa ya da baska tipteyse varsayilana duser. Kusur `materials/{mechanical,electrical}/page.tsx` ciplak `catch { ... 'Marka silinirken hata olustu.' }` idi: backend 409'unun gercek rakamlari ve "nasil onaylanir" bilgisi ekrana HIC ulasmiyordu |
 | `frontend/ozellik/kutuphane/oksuz-kutuphane-uyarisi.ts` | K2 — backend `saveBulkMaterials` → `oksuzKutuphaneSatiri` sayimindan admin'e gosterilecek uyariyi uretir (saf fonksiyon). Sayim yok/0 ise uyari YOK (bos korku yasagi), iskontolu satir varsa kullanicinin elle girdigi emek anilir, yoksa iskonto cumlesi HIC kurulmaz. Onarim VAAT ETMEZ — backend geriye donuk baglamayi guvenli anahtar olmadigi icin bilerek yapmiyor. Cizen yer `admin/brands/page.tsx` `commitImport()` |
 
-### H · TESTLER — 83 dosya
+### H · TESTLER — 82 dosya
 
 | Dosya | Ne yapıyor |
 |---|---|
@@ -483,7 +482,6 @@ Karıştırılmasın diye ayrı duruyor.
 | `frontend/app/dev/grid-test/page.tsx` | ExcelGrid'i auth'suz ve API'siz, mock eslestirmeyle calistiran gelistirme/e2e dogrulama harness'i |
 | `frontend/components/dwg-metraj/unit-detection.test.ts` | Birim-metre donusum sabitlerini ve fallback davranislarini vitest ile dogrular |
 | `frontend/components/dwg-workspace/onay-revizyon.test.ts` | Yukaridaki dort karari kilitler (07.08 kullanici bildirimi: "onaylandi butonunu bozabilmeli ve parcalanmis segmentler geri gelmeli"). Her blokta ESKI davranisin replikasi da olculur ve KRITERI IHLAL ETTIGI assert edilir — yani test "yesil yaniyor" degil, "eski davranis buradan GECEMEZDI" der. Kirmizi-once kanit: fix uc fonksiyonda kapatilinca 19 kriterin 5'i kirmiziya doner |
-| `frontend/components/dwg-workspace/equipment-popup-mod.test.ts` | Ekipman popup'inin acilis sekmesi kurali (P2-6): manuel kayit manuel sekmede acilir, yeni isaretleme kutuphane modunda kalir |
 | `frontend/components/dwg-viewer/segment-length.test.ts` | Hover uzunluk cozumlemenin scale=0 bug reprosu dahil davranislarini vitest ile dogrular |
 | `frontend/ozellik/tablo/excel-grid/build-material-context.test.ts` | Olcu ifadesi tespiti ve yetim-satir kararinin H4/C3 birim testleri |
 | `frontend/ozellik/tablo/excel-grid/discount-utils.test.ts` | Iskonto ayristirma/sabitleme ve Excel kolon yapistirma yardimcilarinin birim testleri |
@@ -537,7 +535,7 @@ Karıştırılmasın diye ayrı duruyor.
 | `frontend/scripts/surum-yaz.js` | Derleme aninda git sha + kirli-agac damgasini public/surum.json'a gomer; canli surum dogrulama kapisi bunu okur |
 | `frontend/tailwind.config.ts` | shadcn/ui CSS degiskenli renk paleti, radius olcekleri ve accordion animasyonlarini tanimlar |
 
-### J · DWG-METRAJ — 45 dosya
+### J · DWG-METRAJ — 43 dosya
 
 | Dosya | Ne yapıyor |
 |---|---|
@@ -565,7 +563,7 @@ Karıştırılmasın diye ayrı duruyor.
 | `frontend/components/dwg-metraj/DwgUploader.tsx` | DWG/DXF yukleme, async upload + status polling, session restore ve birim secimiyle workspace acar |
 | `frontend/components/dwg-metraj/index.ts` | Modulun disa acilan yuzeyini toplar (uploader, editor, popup, tipler, renk yardimcilari) |
 | `frontend/components/dwg-metraj/MetrajEditor.tsx` | Cikarilan metraji hat tipine gore gruplu duzenlenebilir tabloda sunar; Excel indirme ve onaylama |
-| `frontend/components/dwg-metraj/types.ts` | Boru segmenti, çap, layer agregesi, ekipman ve metraj sonucu veri tipleri |
+| `frontend/components/dwg-metraj/types.ts` | Boru segmenti, çap, layer agregesi ve metraj sonucu veri tipleri |
 | `frontend/components/dwg-metraj/unit-detection.ts` | Kullanicinin sectigi cizim birimini deterministik olarak metreye cevirir; tahmin yapmaz |
 | `frontend/components/dwg-tagging/BucketPanel.tsx` | Cap kalemi (bucket) ekleme/secme paneli; aktif kalemi capsiz segmentlere toplu uygulatir |
 | `frontend/components/dwg-tagging/index.ts` | Manuel etiketleme modulunun disa acilan yuzeyini toplar (panel, store, tip) |
@@ -576,16 +574,14 @@ Karıştırılmasın diye ayrı duruyor.
 | `frontend/components/dwg-viewer/segment-length.ts` | Hover tooltip uzunlugunu cozer: edge'de backend metre degerine guvenir, line'da ham koordinat x scale |
 | `frontend/components/dwg-viewer/types.ts` | Backend geometry endpoint'inden gelen cizim varliklarinin (line/insert/text/circle/arc) ve viewport'un tiplerini tanimlar |
 | `frontend/components/dwg-viewer/useViewport.ts` | Canvas zoom/pan state'ini yonetir: wheel zoom, drag-vs-click ayrimi, fitKey basina tek otomatik fit (kamera kilidi) |
-| `frontend/components/dwg-workspace/DwgProjectWorkspace.tsx` | Layer seçip tıkla-etiketle çap atayan, ekipman işaretleyen, metrajı onaylatan akışı yönetir |
-| `frontend/components/dwg-workspace/equipment-popup-mod.ts` | Popup'in ACILIS SEKMESI kurali (saf fonksiyon `ilkMod`) — `libraryItemId` dolu ise kutuphane, manuel kayitta manuel, yeni isaretlemede varsayilan kutuphane. `.tsx` icinde satir ici yasarken test goremiyordu (vitest JSX ayristirmiyor) |
-| `frontend/components/dwg-workspace/EquipmentDetailPopup.tsx` | INSERT ekipmanina kutuphane listesinden veya manuel girisle ad/birim/fiyat atayan popup |
+| `frontend/components/dwg-workspace/DwgProjectWorkspace.tsx` | Layer seçip tıkla-etiketle çap atayan, onayı geri alınabilir revizyon akışını ve metraj onayını yöneten ekran |
 | `frontend/components/dwg-workspace/index.ts` | Modulun disa acilan yuzeyini toplar (workspace bileseni, tipler, state hook re-export) |
 | `frontend/components/dwg-workspace/LayerInfoSidebar.tsx` | Secili boru layer'i icin segmentlere ayirma (/parse) ve hesaplamayi tamamlama aksiyonlarini sunar |
 | `frontend/components/dwg-workspace/LayerVisibilityPanel.tsx` | Layer listesinde gorunurluk/soluklastirma/sprinkler isaretleme ve secim+cap popup tetikleme |
-| `frontend/components/dwg-workspace/MetrajSummaryPanel.tsx` | Hesaplanmis layer metrajlarini cap dagilimiyla ve ekipman gruplarini listeleyip tek tek onaylatan panel |
-| `frontend/components/dwg-workspace/types.ts` | DWG calisma alaninin tip sozlesmeleri: layer konfig/hesap sonucu, isaretli ekipman, genel state |
+| `frontend/components/dwg-workspace/MetrajSummaryPanel.tsx` | Hesaplanmis layer metrajlarini cap dagilimiyla listeleyen, her karti tek tek onaylatan/onayini kaldiran panel |
+| `frontend/components/dwg-workspace/types.ts` | DWG calisma alaninin tip sozlesmeleri: layer konfig, hesap sonucu ve genel state |
 | `frontend/components/dwg-workspace/onay-revizyon.ts` | DWG onay↔revizyon kararlarinin TEK kaynagi (saf, DOM'suz): kart dugmesi onayli iken "onayi kaldir" olur · sag panel hesaplama yokken ASLA aksiyonsuz kalmaz (onaylinin cikisi revizyondur) · layer secimi iki niyet tasir — kullanici tiklamasi TOGGLE, revizyon girisi ODAKLA (secim kapanmaz) · cap renkli gorunurluk = hesaplandi && !onayli. Dordu de uretimde bu modulden okunur (MetrajSummaryPanel · LayerInfoSidebar · useWorkspaceState · DwgProjectWorkspace), kopya karar YOK |
-| `frontend/components/dwg-workspace/useWorkspaceState.ts` | Layer secim/onay, cap atama+1-hop komsu yayilimi ve ekipman state'ini localStorage'a (icerik-hash anahtarli) kalici tutar |
+| `frontend/components/dwg-workspace/useWorkspaceState.ts` | Layer secim/odaklama, onay/onay-kaldirma ve cap atama+1-hop komsu yayilimini localStorage'a (icerik-hash anahtarli) kalici tutar |
 | `frontend/lib/metraj-excel.ts` | DWG metraj sonuclarini coklu-sheet XLSX dosyasina yazip indirtir; sheet adi sanitize/benzersizlestirme yapar |
 
 ### K · ORTAK UI, KABUK ve İSTEMCİ — 27 dosya

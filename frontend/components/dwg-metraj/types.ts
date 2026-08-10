@@ -41,28 +41,13 @@ export interface LayerMetraj {
   segments?: PipeSegment[];
 }
 
-/** DWG'den seçilmiş ekipman (kombi, pompa vs.) — kütüphane referansli
- *  veya manuel girilmis. Çıktıda boru/segmentlerden ayri bir bölümde gösterilir. */
-export interface MetrajEquipment {
-  name: string;                          // örn. "Kombi Yogusmali 24kW"
-  brandName?: string | null;
-  unit: string;                          // "adet", "set"
-  quantity: number;                      // toplam adet
-  unitPrice?: number | null;             // ₺ — kütüphaneden geldiyse
-  totalPrice?: number | null;            // quantity × unitPrice
-  specs?: Record<string, string> | null; // {Güç: "24 kW", Kapasite: "100 m³/h"}
-  layer: string;                         // DWG layer (gruplama için)
-  libraryItemId?: string | null;         // kaynak ekipman kayıt id
-}
-
 export interface MetrajResult {
   layers: LayerMetraj[];
   total_length: number;
   total_layers: number;
   warnings: string[];
-  /** Ekipman listesi — workspace'te kütüphaneden/manuel işaretlenmiş INSERT'ler.
-   *  Quotes/Excel/PDF ihracatları structured data buradan okur. */
-  equipments?: MetrajEquipment[];
+  // NOT: `equipments` alani ve `MetrajEquipment` tipi 10.08'de KALDIRILDI —
+  // ekipman isaretleme ozelligi tamamen cikarildi (kullanici karari).
   /** T-junction noktaları [x, y] — Canvas2D viewer'da marker olarak çizilir.
    *  Her noktada >=3 segment buluşur. Backend pipe_segments._extract_junction_points'tan. */
   junction_points?: [number, number][];

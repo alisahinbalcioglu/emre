@@ -1,24 +1,24 @@
 'use client';
 
 /**
- * Hesaplanmis layer'lar + isaretlenmis ekipmanlarin ozet panel'i.
+ * Hesaplanmis layer'larin ozet panel'i.
  * Her layer item'inda inline "Onayla" butonu: layer'i tek tek onaylamak icin.
  * "Tumunu Onayla & Fiyatlandirmaya Gec" header'a tasindi (DwgProjectWorkspace).
+ *
+ * NOT: "Ekipmanlar" blogu 10.08'de KALDIRILDI (ekipman isaretleme ozelligi
+ * tamamen cikarildi — kullanici karari).
  */
 
 import React from 'react';
-import { Ruler, Wrench, Trash2, Check, Undo2 } from 'lucide-react';
-import type { CalculatedLayer, MarkedEquipment } from './types';
+import { Ruler, Trash2, Check, Undo2 } from 'lucide-react';
+import type { CalculatedLayer } from './types';
 import { kartAksiyonu } from './onay-revizyon';
 import { diameterToColor } from '@/components/dwg-metraj/diameter-colors';
 import { isUnassignedDiameter, UNASSIGNED_LABEL } from '@/components/dwg-metraj/constants';
 
 interface MetrajSummaryPanelProps {
   calculatedLayers: Record<string, CalculatedLayer>;
-  markedEquipments: Record<string, MarkedEquipment>;
   onRemoveLayer: (layer: string) => void;
-  onRemoveEquipment: (key: string) => void;
-  onEditEquipment: (key: string) => void;
   /** Tek bir layer'i onayla — Excel'e dahil olur, baska layer'a gecilebilir. */
   onApproveLayer: (layer: string) => void;
   /** ONAYI KALDIR — layer revize moduna doner: cap renkleri + T-noktalari geri
@@ -31,25 +31,12 @@ interface MetrajSummaryPanelProps {
 
 export default function MetrajSummaryPanel({
   calculatedLayers,
-  markedEquipments,
   onRemoveLayer,
-  onRemoveEquipment,
-  onEditEquipment,
   onApproveLayer,
   onUnapproveLayer,
   onSelectLayerCard,
 }: MetrajSummaryPanelProps) {
   const layerList = Object.values(calculatedLayers).sort((a, b) => a.computedAt - b.computedAt);
-  const equipmentList = Object.values(markedEquipments);
-
-  // Ekipmanlari userLabel'a gore grupla (adet say)
-  const equipmentGroups = equipmentList.reduce<Record<string, { label: string; unit: string; count: number; keys: string[] }>>((acc, eq) => {
-    const groupKey = `${eq.userLabel}__${eq.unit}`;
-    if (!acc[groupKey]) acc[groupKey] = { label: eq.userLabel, unit: eq.unit, count: 0, keys: [] };
-    acc[groupKey].count += 1;
-    acc[groupKey].keys.push(eq.key);
-    return acc;
-  }, {});
 
   return (
     <div className="rounded-xl border bg-white">
@@ -59,7 +46,7 @@ export default function MetrajSummaryPanel({
       </div>
 
       <div className="max-h-[50vh] overflow-y-auto">
-        {layerList.length === 0 && equipmentList.length === 0 && (
+        {layerList.length === 0 && (
           <p className="p-4 text-center text-xs text-muted-foreground">
             Henüz hesaplama yapılmadı.
           </p>
@@ -158,24 +145,6 @@ export default function MetrajSummaryPanel({
           );
         })}
 
-        {/* EKIPMANLAR */}
-        {equipmentList.length > 0 && (
-          <div className="border-t bg-orange-50/30">
-            <div className="flex items-center gap-1.5 px-3 pt-2 pb-1">
-              <Wrench className="h-3 w-3 text-orange-600" />
-              <span className="text-[10px] font-semibold text-orange-800 uppercase tracking-wide">Ekipmanlar</span>
-            </div>
-            {Object.values(equipmentGroups).map((group) => (
-              <div key={`${group.label}-${group.unit}`} className="px-3 py-1.5 flex items-center justify-between gap-2 hover:bg-orange-50/50 cursor-pointer"
-                   onClick={() => onEditEquipment(group.keys[0])}>
-                <p className="min-w-0 flex-1 truncate text-[12px] text-slate-800">{group.label}</p>
-                <span className="tabular-nums text-[11px] font-medium text-slate-600">
-                  {group.count} {group.unit}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
     </div>

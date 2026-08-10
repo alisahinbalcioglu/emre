@@ -3,9 +3,9 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 354
-Toplam satir: 72177
-Uc nokta: 128
+Kod dosyasi: 350
+Toplam satir: 70985
+Uc nokta: 127
 test:* scripti: 53
 
 ## 1 · Dosyalar ve satir sayilari
@@ -111,14 +111,14 @@ test:* scripti: 53
 | `backend/src/ozellik/kutuphane/library/dto/add-library-rows.dto.ts` | 22 |
 | `backend/src/ozellik/kutuphane/library/dto/bulk-discount.dto.ts` | 12 |
 | `backend/src/ozellik/kutuphane/library/dto/bulk-update-items.dto.ts` | 13 |
-| `backend/src/ozellik/kutuphane/library/dto/create-library-item.dto.ts` | 40 |
+| `backend/src/ozellik/kutuphane/library/dto/create-library-item.dto.ts` | 34 |
 | `backend/src/ozellik/kutuphane/library/dto/create-manual-brand.dto.ts` | 46 |
 | `backend/src/ozellik/kutuphane/library/dto/import-price-list.dto.ts` | 10 |
-| `backend/src/ozellik/kutuphane/library/dto/update-library-item.dto.ts` | 32 |
+| `backend/src/ozellik/kutuphane/library/dto/update-library-item.dto.ts` | 27 |
 | `backend/src/ozellik/kutuphane/library/library-sheet-builder.ts` | 125 |
-| `backend/src/ozellik/kutuphane/library/library.controller.ts` | 144 |
+| `backend/src/ozellik/kutuphane/library/library.controller.ts` | 137 |
 | `backend/src/ozellik/kutuphane/library/library.module.ts` | 13 |
-| `backend/src/ozellik/kutuphane/library/library.service.ts` | 862 |
+| `backend/src/ozellik/kutuphane/library/library.service.ts` | 849 |
 | `backend/src/ozellik/kutuphane/materials/dto/create-material-price.dto.ts` | 14 |
 | `backend/src/ozellik/kutuphane/materials/dto/create-material.dto.ts` | 8 |
 | `backend/src/ozellik/kutuphane/materials/materials.controller.ts` | 55 |
@@ -199,7 +199,6 @@ test:* scripti: 53
 | `frontend/app/(protected)/layout.tsx` | 198 |
 | `frontend/app/(protected)/library/brand/[brandId]/page.tsx` | 515 |
 | `frontend/app/(protected)/library/electrical-brands/page.tsx` | 400 |
-| `frontend/app/(protected)/library/equipment/page.tsx` | 458 |
 | `frontend/app/(protected)/library/mechanical-brands/page.tsx` | 312 |
 | `frontend/app/(protected)/library/page.tsx` | 599 |
 | `frontend/app/(protected)/materials/[brandId]/page.tsx` | 646 |
@@ -210,7 +209,7 @@ test:* scripti: 53
 | `frontend/app/(protected)/quote-formats/page.tsx` | 397 |
 | `frontend/app/(protected)/quotes/[id]/page.tsx` | 244 |
 | `frontend/app/(protected)/quotes/new/error.tsx` | 13 |
-| `frontend/app/(protected)/quotes/new/page.tsx` | 2381 |
+| `frontend/app/(protected)/quotes/new/page.tsx` | 2369 |
 | `frontend/app/(protected)/quotes/page.tsx` | 192 |
 | `frontend/app/admin/brands/page.tsx` | 895 |
 | `frontend/app/admin/layout.tsx` | 80 |
@@ -233,31 +232,28 @@ test:* scripti: 53
 | `frontend/components/dwg-metraj/constants.ts` | 28 |
 | `frontend/components/dwg-metraj/diameter-colors.ts` | 169 |
 | `frontend/components/dwg-metraj/index.ts` | 12 |
-| `frontend/components/dwg-metraj/types.ts` | 70 |
+| `frontend/components/dwg-metraj/types.ts` | 55 |
 | `frontend/components/dwg-metraj/unit-detection.test.ts` | 47 |
 | `frontend/components/dwg-metraj/unit-detection.ts` | 37 |
 | `frontend/components/dwg-tagging/BucketPanel.tsx` | 144 |
 | `frontend/components/dwg-tagging/index.ts` | 12 |
 | `frontend/components/dwg-tagging/useTaggingStore.ts` | 110 |
-| `frontend/components/dwg-viewer/DxfCanvasViewer.tsx` | 2011 |
+| `frontend/components/dwg-viewer/DxfCanvasViewer.tsx` | 1989 |
 | `frontend/components/dwg-viewer/aci-colors.ts` | 38 |
 | `frontend/components/dwg-viewer/index.ts` | 6 |
 | `frontend/components/dwg-viewer/segment-length.test.ts` | 54 |
 | `frontend/components/dwg-viewer/segment-length.ts` | 48 |
 | `frontend/components/dwg-viewer/types.ts` | 76 |
 | `frontend/components/dwg-viewer/useViewport.ts` | 233 |
-| `frontend/components/dwg-workspace/DwgProjectWorkspace.tsx` | 1150 |
-| `frontend/components/dwg-workspace/EquipmentDetailPopup.tsx` | 372 |
+| `frontend/components/dwg-workspace/DwgProjectWorkspace.tsx` | 1015 |
 | `frontend/components/dwg-workspace/LayerInfoSidebar.tsx` | 173 |
 | `frontend/components/dwg-workspace/LayerVisibilityPanel.tsx` | 229 |
-| `frontend/components/dwg-workspace/MetrajSummaryPanel.tsx` | 184 |
-| `frontend/components/dwg-workspace/equipment-popup-mod.test.ts` | 41 |
-| `frontend/components/dwg-workspace/equipment-popup-mod.ts` | 28 |
+| `frontend/components/dwg-workspace/MetrajSummaryPanel.tsx` | 153 |
 | `frontend/components/dwg-workspace/index.ts` | 6 |
 | `frontend/components/dwg-workspace/onay-revizyon.test.ts` | 165 |
 | `frontend/components/dwg-workspace/onay-revizyon.ts` | 94 |
-| `frontend/components/dwg-workspace/types.ts` | 79 |
-| `frontend/components/dwg-workspace/useWorkspaceState.ts` | 431 |
+| `frontend/components/dwg-workspace/types.ts` | 62 |
+| `frontend/components/dwg-workspace/useWorkspaceState.ts` | 401 |
 | `frontend/lib/gs6b-golge-kurali.test.ts` | 60 |
 | `frontend/lib/indeks-sagligi.test.ts` | 75 |
 | `frontend/lib/indeks-sagligi.ts` | 64 |
@@ -542,7 +538,6 @@ test:* scripti: 53
 | `frontend/app/(protected)/layout.tsx` | `react` `next/navigation` `next/link` `@/ortak/contexts/CapabilitiesContext` `@/ortak/kabuk/components/layout/Sidebar` `@/ortak/kabuk/components/layout/Breadcrumb` |
 | `frontend/app/(protected)/library/brand/[brandId]/page.tsx` | `react` `next/navigation` `next/link` `lucide-react` `@/ortak/ui/button` `@/ortak/ui/card` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `@/ozellik/tablo/excel-grid/ExcelGrid` `@/ozellik/tablo/excel-grid/types` |
 | `frontend/app/(protected)/library/electrical-brands/page.tsx` | `react` `next/link` `lucide-react` `@/ortak/ui/card` `@/ortak/ui/button` `@/ortak/ui/input` `@/ortak/ui/label` `@/ortak/ui/dialog` `@/ortak/ui/select` `@/ortak/lib/api` `@/ortak/hooks/use-toast` |
-| `frontend/app/(protected)/library/equipment/page.tsx` | `react` `next/link` `lucide-react` `@/ortak/ui/button` `@/ortak/ui/input` `@/ortak/ui/label` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `@/ortak/lib/api` |
 | `frontend/app/(protected)/library/mechanical-brands/page.tsx` | `react` `next/link` `next/navigation` `lucide-react` `@/ortak/ui/card` `@/ortak/ui/button` `@/ortak/ui/input` `@/ortak/ui/label` `@/ortak/ui/dialog` `@/ortak/ui/select` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ozellik/kutuphane/library/ManualBrandModal` |
 | `frontend/app/(protected)/library/page.tsx` | `react` `next/link` `lucide-react` `@/ortak/ui/button` `@/ortak/ui/card` `@/ortak/ui/input` `@/ortak/ui/label` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `@/ortak/lib/api` `@/ozellik/fiyat/pricing` |
 | `frontend/app/(protected)/materials/[brandId]/page.tsx` | `react` `next/navigation` `next/link` `lucide-react` `@/ortak/ui/card` `@/ortak/ui/button` `@/ortak/ui/input` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `@/lib/silme-onay-metni` `@/lib/silme-etkisi-getir` `@/ortak/lib/utils` `@/ozellik/tablo/excel-grid/ExcelGrid` `@/ozellik/tablo/excel-grid/SheetTabs` `@/ozellik/tablo/excel-grid/types` |
@@ -578,13 +573,10 @@ test:* scripti: 53
 | `frontend/components/dwg-viewer/DxfCanvasViewer.tsx` | `react` `rbush` `lucide-react` `@/ortak/lib/api` `./types` `@/components/dwg-metraj/types` `@/components/dwg-metraj/diameter-colors` `@/components/dwg-metraj/constants` `./segment-length` `./useViewport` `./aci-colors` |
 | `frontend/components/dwg-viewer/segment-length.test.ts` | `vitest` `./segment-length` |
 | `frontend/components/dwg-viewer/useViewport.ts` | `react` `./types` |
-| `frontend/components/dwg-workspace/DwgProjectWorkspace.tsx` | `react` `lucide-react` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `@/ortak/lib/api` `@/components/dwg-viewer` `@/components/dwg-metraj` `@/components/dwg-metraj/types` `./LayerInfoSidebar` `./LayerVisibilityPanel` `./MetrajSummaryPanel` `./EquipmentDetailPopup` `./useWorkspaceState` `./onay-revizyon` `./types` `@/components/dwg-tagging` `@/components/dwg-metraj/diameter-colors` `@/components/dwg-metraj/constants` `@/lib/metraj-excel` |
-| `frontend/components/dwg-workspace/EquipmentDetailPopup.tsx` | `react` `lucide-react` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `./types` `./equipment-popup-mod` |
+| `frontend/components/dwg-workspace/DwgProjectWorkspace.tsx` | `react` `lucide-react` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `@/ortak/lib/api` `@/components/dwg-viewer` `@/components/dwg-metraj` `@/components/dwg-metraj/types` `./LayerInfoSidebar` `./LayerVisibilityPanel` `./MetrajSummaryPanel` `./useWorkspaceState` `./onay-revizyon` `./types` `@/components/dwg-tagging` `@/components/dwg-metraj/diameter-colors` `@/components/dwg-metraj/constants` `@/lib/metraj-excel` |
 | `frontend/components/dwg-workspace/LayerInfoSidebar.tsx` | `react` `lucide-react` `./types` `@/components/dwg-metraj/constants` `./onay-revizyon` |
 | `frontend/components/dwg-workspace/LayerVisibilityPanel.tsx` | `react` `lucide-react` `@/ortak/lib/utils` |
 | `frontend/components/dwg-workspace/MetrajSummaryPanel.tsx` | `react` `lucide-react` `./types` `./onay-revizyon` `@/components/dwg-metraj/diameter-colors` `@/components/dwg-metraj/constants` |
-| `frontend/components/dwg-workspace/equipment-popup-mod.test.ts` | `vitest` `./equipment-popup-mod` |
-| `frontend/components/dwg-workspace/equipment-popup-mod.ts` | `./types` |
 | `frontend/components/dwg-workspace/onay-revizyon.test.ts` | `vitest` |
 | `frontend/components/dwg-workspace/types.ts` | `@/components/dwg-metraj` |
 | `frontend/components/dwg-workspace/useWorkspaceState.ts` | `react` `./onay-revizyon` |
@@ -773,7 +765,6 @@ test:* scripti: 53
 | `backend/src/ozellik/kutuphane/labor/labor.controller.ts` | `DELETE /labor/:id` |
 | `backend/src/ozellik/kutuphane/library/library.controller.ts` | `GET /library` |
 | `backend/src/ozellik/kutuphane/library/library.controller.ts` | `GET /library/brands` |
-| `backend/src/ozellik/kutuphane/library/library.controller.ts` | `GET /library/equipment` |
 | `backend/src/ozellik/kutuphane/library/library.controller.ts` | `POST /library` |
 | `backend/src/ozellik/kutuphane/library/library.controller.ts` | `POST /library/manual-brand` |
 | `backend/src/ozellik/kutuphane/library/library.controller.ts` | `PUT /library/:id` |

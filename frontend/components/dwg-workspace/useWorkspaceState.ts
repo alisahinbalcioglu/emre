@@ -5,7 +5,6 @@ import type {
   WorkspaceState,
   LayerConfig,
   CalculatedLayer,
-  MarkedEquipment,
 } from './types';
 import { secimSonrasi } from './onay-revizyon';
 
@@ -58,8 +57,6 @@ function _emptyState(fileId: string, scale: number): WorkspaceState {
     selectedLayer: null,
     layerConfigs: {},
     calculatedLayers: {},
-    markedEquipments: {},
-    editingEquipmentKey: null,
     sprinklerLayers: [],
     hiddenLayers: [],
     dimmedLayers: [],
@@ -328,29 +325,6 @@ export function useWorkspaceState(fileId: string, scale: number, fileHash?: stri
     return { target, propagated };
   }, []);
 
-  const beginEditEquipment = useCallback((key: string) => {
-    setState((s) => ({ ...s, editingEquipmentKey: key }));
-  }, []);
-
-  const cancelEditEquipment = useCallback(() => {
-    setState((s) => ({ ...s, editingEquipmentKey: null }));
-  }, []);
-
-  const saveEquipment = useCallback((eq: MarkedEquipment) => {
-    setState((s) => ({
-      ...s,
-      markedEquipments: { ...s.markedEquipments, [eq.key]: eq },
-      editingEquipmentKey: null,
-    }));
-  }, []);
-
-  const removeEquipment = useCallback((key: string) => {
-    setState((s) => {
-      const { [key]: _, ...rest } = s.markedEquipments;
-      return { ...s, markedEquipments: rest };
-    });
-  }, []);
-
   /** Belirli bir sprinkler layer'i listeden kaldir. */
   const removeSprinklerLayer = useCallback((layer: string) => {
     setState((s) => ({ ...s, sprinklerLayers: s.sprinklerLayers.filter((l) => l !== layer) }));
@@ -416,10 +390,6 @@ export function useWorkspaceState(fileId: string, scale: number, fileHash?: stri
     removeCalculatedLayer,
     updateEdgeSegmentDiameter,
     applyDiameterWithPropagation,
-    beginEditEquipment,
-    cancelEditEquipment,
-    saveEquipment,
-    removeEquipment,
     removeSprinklerLayer,
     toggleSprinklerLayer,
     toggleLayerVisibility,

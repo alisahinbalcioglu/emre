@@ -181,8 +181,6 @@ export default function NewQuotePage() {
         //   seg.layer     = Layer/sistem adi (orn "a-yagmur")   -> "Hat / Sistem"
         //   seg.diameter  = kullanicinin bucket/kalem metni       -> "Malzeme ve Cap"
         //                   (orn "Ø160 HDPE BORU")
-        //   Ekipman satirlari (material_type "Ekipman..." ile baslar) ayri: kalem
-        //   metni ekipman etiketidir, "sistem" yok -> Hat/Sistem = "Ekipman".
         //
         // (Hat/Sistem, Malzeme ve Cap, Birim) bazinda groupBy — ayni kalemin
         // farkli layer'lardaki uzunluklari ayri satir kalir, cap bazli toplam.
@@ -199,19 +197,9 @@ export default function NewQuotePage() {
         for (const layer of metraj.layers) {
           if (layer.segments && layer.segments.length > 0) {
             for (const seg of layer.segments) {
-              const isEquip = (seg.material_type || '').startsWith('Ekipman');
-              if (isEquip) {
-                // "Ekipman · {birim} (marka) [specs]" -> birim ayikla
-                const m = (seg.material_type || '').match(/Ekipman\s*·\s*([^\s(]+)/);
-                const unit = m?.[1]?.trim() || 'adet';
-                // Ekipman kalem metni = layer alani (handleConfirmAll g.label'i buraya koyar)
-                const label = seg.layer || layer.hat_tipi || layer.layer || 'Ekipman';
-                add('Ekipman', label, unit, seg.length || 0);
-              } else {
-                const hatSistem = seg.layer || layer.hat_tipi || layer.layer || '';
-                const malzemeCap = seg.diameter || 'Belirtilmemis';
-                add(hatSistem, malzemeCap, 'm', seg.length || 0);
-              }
+              const hatSistem = seg.layer || layer.hat_tipi || layer.layer || '';
+              const malzemeCap = seg.diameter || 'Belirtilmemis';
+              add(hatSistem, malzemeCap, 'm', seg.length || 0);
             }
           } else {
             // Segment'siz layer (nadir) — sistem adi bilinir, kalem metni yok

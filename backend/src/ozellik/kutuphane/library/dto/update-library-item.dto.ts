@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, Min, Max, IsObject } from 'class-validator';
+import { IsString, IsNumber, IsOptional, Min, Max } from 'class-validator';
 
 export class UpdateLibraryItemDto {
   @IsOptional()
@@ -21,11 +21,6 @@ export class UpdateLibraryItemDto {
   @Min(0)
   listPrice?: number;
 
-  @IsOptional()
-  @IsObject()
-  specs?: Record<string, string>;
-
-  @IsOptional()
-  @IsString()
-  category?: string;
+  // NOT: `specs` / `category` 10.08'de kaldirildi (ekipman ozelligi cikti).
+  // DB kolonlari duruyor — bkz. create-library-item.dto.ts.
 }

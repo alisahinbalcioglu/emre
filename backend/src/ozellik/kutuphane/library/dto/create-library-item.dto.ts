@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, Min, Max, IsObject } from 'class-validator';
+import { IsString, IsNumber, IsOptional, Min, Max } from 'class-validator';
 
 export class CreateLibraryItemDto {
   @IsOptional()
@@ -27,13 +27,7 @@ export class CreateLibraryItemDto {
   @Min(0)
   listPrice?: number;
 
-  // Ekipman ozellikleri (guc, kapasite, voltaj vs) — serbest key-value
-  @IsOptional()
-  @IsObject()
-  specs?: Record<string, string>;
-
-  // "ekipman" | "boru" | "fitting" | null
-  @IsOptional()
-  @IsString()
-  category?: string;
+  // NOT: `specs` ve `category` alanlari 10.08'de KALDIRILDI — ekipman
+  // isaretleme ozelligi cikarildi. DB kolonlari DURUYOR (mevcut veri
+  // kaybolmasin diye); yalnizca yazma yolu kapatildi.
 }

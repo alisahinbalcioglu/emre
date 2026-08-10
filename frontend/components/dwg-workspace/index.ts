@@ -1,5 +1,5 @@
 export { default as DwgProjectWorkspace } from './DwgProjectWorkspace';
 export type {
-  LayerConfig, CalculatedLayer, MarkedEquipment, WorkspaceState,
+  LayerConfig, CalculatedLayer, WorkspaceState,
 } from './types';
 export { useWorkspaceState } from './useWorkspaceState';

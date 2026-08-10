@@ -39,7 +39,6 @@ interface DxfCanvasViewerProps {
   /** Layer adi -> T-junction noktalari ([x,y] listesi). Canvas2D'de marker olarak cizilir. */
   calculatedJunctionsByLayer?: Record<string, [number, number][]>;
   selectedLayer?: string | null;
-  markedEquipmentKeys?: Set<string>;
   onSegmentClick?: (segment: EdgeSegment) => void;
   onLineClick?: (line: { layer: string; index: number; shiftKey: boolean; screenX: number; screenY: number }) => void;
   onInsertClick?: (insert: { layer: string; insertIndex: number; insertName: string; position: [number, number] }) => void;
@@ -110,7 +109,6 @@ const COLOR_PASSIVE = '#94a3b8';
 const COLOR_SELECTED = '#60a5fa';
 const COLOR_TEXT = '#fbbf24';
 const COLOR_SPRINKLER = '#22d3ee';
-const COLOR_MARKED_EQUIPMENT = '#f97316';
 const COLOR_DIMMED = '#475569';            // slate-600
 const COLOR_HOVER = '#fde68a';             // amber-200 glow
 const COLOR_LINE_SELECTED = '#3b82f6';     // brand blue
@@ -120,7 +118,7 @@ const COLOR_UNASSIGNED_NEON = '#39ff14';
 const DIMMED_ALPHA = 0.45;
 const HOVER_TOL_PX = 6;
 
-/** TAM TIKLANABILIRLIK: line/edge'e ek olarak INSERT (ekipman noktasi),
+/** TAM TIKLANABILIRLIK: line/edge'e ek olarak INSERT (blok),
  *  CIRCLE (sembol cemberi) ve TEXT (cap etiketi/olcu/not) de spatial index'e
  *  girer — her biri hover + click alabilen "selectable entity" olur. */
 type EntityKind = 'line' | 'edge' | 'insert' | 'circle' | 'text';
@@ -172,7 +170,6 @@ export default function DxfCanvasViewer({
   calculatedEdgesByLayer,
   calculatedJunctionsByLayer,
   selectedLayer,
-  markedEquipmentKeys,
   onSegmentClick,
   onLineClick,
   onInsertClick,
@@ -518,7 +515,7 @@ export default function DxfCanvasViewer({
       });
 
       // ── TAM TIKLANABILIRLIK: insert/circle/text de selectable entity ──
-      // Ekipman sayimi + metraj icin cizimdeki HER SEY tek tek secilebilir.
+      // Metraj icin cizimdeki HER SEY tek tek secilebilir olmali.
       // Hidden/dimmed/silgi filtreleri SORGU aninda uygulanir (index stabil).
       geometry.inserts.forEach((ins) => {
         const [px, py] = ins.position;
@@ -609,7 +606,7 @@ export default function DxfCanvasViewer({
     };
 
     // ── SAHNE (statik katman) — yalniz sceneDeps degisince cizilir ──
-    // Icerik: grid + raw line/arc/circle/text + ekipman + edge segment'ler +
+    // Icerik: grid + raw line/arc/circle/text + blok + edge segment'ler +
     // T-junction marker'lari. Hover/flash/secim/halo BURADA DEGIL (overlay).
     // 706K cizgide her hover'da bu fonksiyonun kosmasi OOM/kasma sebebiydi.
     const drawScene = (ctx: CanvasRenderingContext2D, w: number, h: number) => {
@@ -803,25 +800,6 @@ export default function DxfCanvasViewer({
           ctx.globalAlpha = 1;
         }
 
-        // ─── Marked equipment (hidden = atla; dimmed = %25 alpha) ─
-        if (markedEquipmentKeys && markedEquipmentKeys.size > 0) {
-          ctx.fillStyle = COLOR_MARKED_EQUIPMENT;
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = strokeWidth * 0.5;
-          for (const ins of geometry.inserts) {
-            const key = `${ins.layer}:${ins.insert_index}`;
-            if (!markedEquipmentKeys.has(key)) continue;
-            if (hiddenLayers?.has(ins.layer)) continue;
-            if (isInsertHidden(ins.insert_index)) continue;  // SILGI: silinmis insert dot'unu cizme
-            ctx.globalAlpha = dimmedLayers?.has(ins.layer) ? DIMMED_ALPHA : 1;
-            ctx.beginPath();
-            ctx.arc(ins.position[0], ins.position[1], 3.5 / viewport.zoom, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
-          }
-          ctx.globalAlpha = 1;
-        }
-
         // ─── Texts (dimmed = gri + %25 alpha, fillText per-text) ──
         // SILGI: hiddenText skip; pendingText turuncu arka plan + outline.
         if (viewport.zoom >= 0.3 && geometry.texts.length > 0) {
@@ -1001,7 +979,7 @@ export default function DxfCanvasViewer({
       const sceneDeps: unknown[] = [
         geometry, allEdgeSegments, viewport.panX, viewport.panY, viewport.zoom,
         selectedLayer, highlightLayer, hiddenLayers, dimmedLayers,
-        sprinklerLayers, markedEquipmentKeys, calculatedJunctionsByLayer,
+        sprinklerLayers, calculatedJunctionsByLayer,
         hiddenLineKeys, hiddenInsertKeys, hiddenTextKeys, pendingTextKeys,
         useDiameterColors, calculatedEdgesByLayer, canvas.width, canvas.height,
       ];
@@ -1273,7 +1251,7 @@ export default function DxfCanvasViewer({
 
     schedule();
     return () => cancelAnimationFrame(rafId);
-  }, [geometry, allEdgeSegments, calculatedJunctionsByLayer, calculatedEdgesByLayer, viewport, selectedLayer, highlightLayer, hiddenLayers, dimmedLayers, sprinklerLayers, markedEquipmentKeys, hovered, selectedLine, pendingLineKeys, pendingInsertKeys, pendingTextKeys, hiddenTextKeys, isLinePending, isInsertPending, isLineHidden, isInsertHidden, isTextHidden, isTextPending, useDiameterColors, focusedSegment, focusedHaloColor, activeTagColor, flashSegment, flashTick, resizeTick]);
+  }, [geometry, allEdgeSegments, calculatedJunctionsByLayer, calculatedEdgesByLayer, viewport, selectedLayer, highlightLayer, hiddenLayers, dimmedLayers, sprinklerLayers, hovered, selectedLine, pendingLineKeys, pendingInsertKeys, pendingTextKeys, hiddenTextKeys, isLinePending, isInsertPending, isLineHidden, isInsertHidden, isTextHidden, isTextPending, useDiameterColors, focusedSegment, focusedHaloColor, activeTagColor, flashSegment, flashTick, resizeTick]);
 
   // ─── Hover detection (rbush ile O(log N)) ────────────────────────
   const computeHovered = useCallback(
@@ -1471,7 +1449,7 @@ export default function DxfCanvasViewer({
       const target = computeHovered(worldX, worldY);
       if (target) {
         if (target.type === 'insert') {
-          setSelectedLine(null); // ekipman popup acilacak — tooltip cakismasin
+          setSelectedLine(null); // sembol tiklamasi layer secer — tooltip cakismasin
           onInsertClick?.({
             layer: target.layer,
             insertIndex: target.index,
@@ -1900,7 +1878,7 @@ export default function DxfCanvasViewer({
           <span>·</span>
           <span className="tabular-nums">{lineCount} cizgi</span>
           <span>·</span>
-          <span className="tabular-nums">{insertCount} ekipman</span>
+          <span className="tabular-nums">{insertCount} blok</span>
           <span>·</span>
           <span className="tabular-nums">{layerCount} layer</span>
           <span className="ml-2 rounded bg-emerald-900/50 px-1.5 py-0.5 text-[10px] text-emerald-400">Canvas2D</span>
@@ -1958,7 +1936,7 @@ function Tooltip({ entity, screenX, screenY, pinned }: TooltipProps) {
     >
       <div className="text-[10px] uppercase tracking-wider opacity-70">
         {entity.type === 'edge' ? 'Segment'
-          : entity.type === 'insert' ? 'Ekipman (Blok)'
+          : entity.type === 'insert' ? 'Blok'
           : entity.type === 'circle' ? 'Sembol (Çember)'
           : entity.type === 'text' ? 'Yazı'
           : 'Boru'}

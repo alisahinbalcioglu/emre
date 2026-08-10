@@ -8,8 +8,11 @@
  *  - Layer secer → "Layer'i Segmentlerine Ayir" → borular capsiz (NEON) cikar
  *  - Cap Kalemi secer → boruya tiklar → cap atanir (ayni capa tekrar tik = geri al)
  *  - "Hesaplamayi Tamamla" → layer onaylanir, kalem/secim resetlenir
- *  - Ekipman (INSERT) noktasina tiklar → popup, ad+birim girer
- *  - Birden fazla layer + ekipman ekleye ekleye finale gider
+ *  - Birden fazla layer ekleye ekleye finale gider
+ *
+ * NOT: "Ekipman isaretleme" akisi 10.08'de KALDIRILDI (kullanici karari).
+ * Sembol (INSERT/CIRCLE) tiklamasi artik boru tiklamasiyla ayni isi yapar:
+ * layer secer / gizleme modunda gizler.
  */
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
@@ -23,10 +26,9 @@ import type { MetrajResult } from '@/components/dwg-metraj/types';
 import LayerInfoSidebar from './LayerInfoSidebar';
 import LayerVisibilityPanel from './LayerVisibilityPanel';
 import MetrajSummaryPanel from './MetrajSummaryPanel';
-import EquipmentDetailPopup from './EquipmentDetailPopup';
 import { useWorkspaceState } from './useWorkspaceState';
 import { capRenkliGorunur } from './onay-revizyon';
-import type { MarkedEquipment, CalculatedLayer } from './types';
+import type { CalculatedLayer } from './types';
 import {
   useLayerCalc,
   useOriginalColorState,
@@ -61,7 +63,6 @@ export default function DwgProjectWorkspace({
     addCalculatedLayer, approveLayer, unapproveLayer, removeCalculatedLayer,
     updateEdgeSegmentDiameter,
     applyDiameterWithPropagation,
-    beginEditEquipment, cancelEditEquipment, saveEquipment, removeEquipment,
     removeSprinklerLayer, toggleSprinklerLayer,
     toggleLayerVisibility, showAllLayers,
     toggleLayerDimmed, showAllDimmed,
@@ -327,9 +328,6 @@ export default function DwgProjectWorkspace({
     ? activeDiameterSegments[Math.min(activeIndex, activeDiameterSegments.length - 1)].segment_id
     : null;
   const focusedHaloColor = activeDiameter ? diameterToColor(activeDiameter) : null;
-  const [pendingEquipment, setPendingEquipment] = useState<null | {
-    key: string; insertIndex: number; layer: string; insertName: string; position: [number, number];
-  }>(null);
 
   // selectedConfig KALDIRILDI (UX #3): hat ismi / malzeme / varsayilan cap
   // form alanlari silindi — cap bilgisi Cap Kalemleri modulunden geliyor.
@@ -344,8 +342,6 @@ export default function DwgProjectWorkspace({
       const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase();
       if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
 
-      if (pendingEquipment) { setPendingEquipment(null); return; }
-      if (state.editingEquipmentKey) { cancelEditEquipment(); return; }
       if (editingSegment) { setEditingSegment(null); return; }
       // Pending erase silgi modundan ONCE — Esc bir kademe geri gider:
       // pending varsa once pending iptal, sonraki Esc silgi modunu kapatir.
@@ -379,7 +375,7 @@ export default function DwgProjectWorkspace({
       window.removeEventListener('keydown', onUndoKey);
       window.removeEventListener('keydown', onEnterKey);
     };
-  }, [pendingEquipment, state.editingEquipmentKey, editingSegment, state.selectedLayer, hideMode, eraseMode, eraseHistory.length, pendingErase, activeDiameter, cancelEditEquipment, selectLayer, handleUndoErase, handleConfirmErase, handleCancelPendingErase, handleClearActiveDiameter]);
+  }, [editingSegment, state.selectedLayer, hideMode, eraseMode, eraseHistory.length, pendingErase, activeDiameter, selectLayer, handleUndoErase, handleConfirmErase, handleCancelPendingErase, handleClearActiveDiameter]);
 
   // Pending erase Set'leri — viewer turuncu highlight icin (immutable Set)
   const pendingLineKeysSet = useMemo(
@@ -422,11 +418,6 @@ export default function DwgProjectWorkspace({
     }
     return map;
   }, [state.calculatedLayers]);
-
-  const markedEquipmentKeys = useMemo(
-    () => new Set(Object.keys(state.markedEquipments)),
-    [state.markedEquipments]
-  );
 
   /** Layer panelinde her layer adının yanında atanmış çapı rozet olarak
    *  göstermek için lookup map. */
@@ -516,42 +507,26 @@ export default function DwgProjectWorkspace({
     tryChangeLayer(line.layer);
   };
 
-  // ── EKIPMAN AKISI ACIK (Tam Tiklanabilirlik PRD) ──
-  // INSERT (blok) tiklamasi = Ekipman Noktasi: popup acilir, kullanici ad +
-  // birim girer → Ekipman Sayimi'na dahil olur. hideMode/shift'te layer gizle.
-  const handleInsertClick = (ins: { layer: string; insertIndex: number; insertName: string; position: [number, number] }) => {
+  // ── SEMBOL (INSERT / CIRCLE) TIKLAMASI = LAYER SECIMI ──────────────────
+  // Ekipman isaretleme ozelligi kaldirildi (kullanici karari 10.08). Bu iki
+  // dal SILINMEDI, cunku viewer sembolleri hala tiklanabilir hedef olarak
+  // indeksliyor: handler kaldirilsaydi tiklama sessizce YUTULURDU (altindaki
+  // boruya da gecmez) — kullanici "tikliyorum bir sey olmuyor" yasardi.
+  // Artik boru tiklamasiyla AYNI isi yapar: gizleme modunda layer'i gizler,
+  // aksi halde layer'i secer.
+  const handleSymbolClick = (layer: string) => {
     if (hideMode) {
-      toggleLayerVisibility(ins.layer);
+      toggleLayerVisibility(layer);
+      toast({
+        title: state.hiddenLayers.includes(layer) ? 'Layer gosterildi' : 'Layer gizlendi',
+        description: layer,
+      });
       return;
     }
-    const key = `${ins.layer}:${ins.insertIndex}`;
-    setPendingEquipment({
-      key,
-      insertIndex: ins.insertIndex,
-      layer: ins.layer,
-      insertName: ins.insertName || 'Blok',
-      position: ins.position,
-    });
-    beginEditEquipment(key);
+    tryChangeLayer(layer);
   };
-
-  // Tekil CIRCLE da Ekipman Noktasi'dir (sprinkler kafasi vb. — cizer blok
-  // yerine cember kullanmis olabilir). Ayri key uzayi: "circle:layer:idx".
-  const handleCircleClick = (c: { layer: string; circleIndex: number; center: [number, number]; radius: number }) => {
-    if (hideMode) {
-      toggleLayerVisibility(c.layer);
-      return;
-    }
-    const key = `circle:${c.layer}:${c.circleIndex}`;
-    setPendingEquipment({
-      key,
-      insertIndex: c.circleIndex,
-      layer: c.layer,
-      insertName: 'Çember Sembol',
-      position: c.center,
-    });
-    beginEditEquipment(key);
-  };
+  const handleInsertClick = (ins: { layer: string }) => handleSymbolClick(ins.layer);
+  const handleCircleClick = (c: { layer: string }) => handleSymbolClick(c.layer);
 
   /** Hesaplanmis ve onaylanmis layer'lardan Excel sheet'leri kur.
    *  Her layer ayri sheet — Cap'lere groupBy, malzeme adi config.materialType. */
@@ -585,9 +560,8 @@ export default function DwgProjectWorkspace({
   const handleConfirmAll = async () => {
     const allLayers = Object.values(state.calculatedLayers);
     const approvedLayers = allLayers.filter((l) => l.approved);
-    const equipments = Object.values(state.markedEquipments);
 
-    if (approvedLayers.length === 0 && equipments.length === 0) {
+    if (approvedLayers.length === 0) {
       toast({
         title: 'Onayli layer yok',
         description: 'Once hesaplanan layer\'lari "Onayla" butonuyla onayla, sonra finallestir.',
@@ -670,75 +644,6 @@ export default function DwgProjectWorkspace({
       warnings: [],
     };
 
-    // Ekipmanlari ayni isim+marka+birim ile grupla — adet topla, fiyatlandir
-    type EqGroup = {
-      label: string;
-      brandName: string | null;
-      unit: string;
-      unitPrice: number | null;
-      specs: Record<string, string> | null;
-      libraryItemId: string | null;
-      layer: string;
-      count: number;
-    };
-    const eqGroups: Record<string, EqGroup> = {};
-    for (const eq of equipments) {
-      const k = `${eq.libraryItemId ?? eq.userLabel}__${eq.unit}`;
-      if (!eqGroups[k]) {
-        eqGroups[k] = {
-          label: eq.userLabel,
-          brandName: eq.brandName ?? null,
-          unit: eq.unit,
-          unitPrice: eq.unitPrice ?? null,
-          specs: eq.specs ?? null,
-          libraryItemId: eq.libraryItemId ?? null,
-          layer: eq.layer,
-          count: 0,
-        };
-      }
-      eqGroups[k].count += 1;
-    }
-
-    // (1) Structured equipments — quotes/Excel/PDF için
-    finalMetraj.equipments = Object.values(eqGroups).map((g) => ({
-      name: g.label,
-      brandName: g.brandName,
-      unit: g.unit,
-      quantity: g.count,
-      unitPrice: g.unitPrice,
-      totalPrice: g.unitPrice != null ? g.unitPrice * g.count : null,
-      specs: g.specs,
-      layer: g.layer,
-      libraryItemId: g.libraryItemId,
-    }));
-
-    // (2) Legacy fake-layer satırı — mevcut MetrajTable görünümü için
-    //     material_type'a marka + specs özetini koy ki tabloda görünsün
-    for (const g of Object.values(eqGroups)) {
-      const specsSummary = g.specs && Object.keys(g.specs).length > 0
-        ? Object.entries(g.specs).map(([k, v]) => `${k}:${v}`).join(', ')
-        : '';
-      const matType = [
-        `Ekipman · ${g.unit}`,
-        g.brandName && `(${g.brandName})`,
-        specsSummary && `[${specsSummary}]`,
-      ].filter(Boolean).join(' ');
-      finalMetraj.layers.push({
-        layer: g.label,
-        length: g.count,
-        line_count: g.count,
-        hat_tipi: g.label,
-        segments: [{
-          segment_id: 0,
-          layer: g.label,
-          length: g.count,
-          line_count: g.count,
-          material_type: matType,
-          diameter: g.unitPrice != null ? `₺${g.unitPrice.toFixed(2)}/${g.unit}` : '',
-        }],
-      });
-    }
-
     onApproved(finalMetraj, fileName);
     // UX #4: final sonrasi etiketleme ekrani da sifirlansin
     clearActiveBucket();
@@ -751,10 +656,6 @@ export default function DwgProjectWorkspace({
     handleClearActiveDiameter();
   };
 
-  const editingEquipmentExisting = state.editingEquipmentKey
-    ? state.markedEquipments[state.editingEquipmentKey]
-    : undefined;
-
   /** "Onceki calismaniz geri yuklendi" bandi kapatildi mi? (oturumluk) */
   const [geriYuklemeBandiKapali, setGeriYuklemeBandiKapali] = useState(false);
   const geriYuklemeBandi = restoredWork.layers > 0 && !geriYuklemeBandiKapali;
@@ -765,11 +666,10 @@ export default function DwgProjectWorkspace({
     // Kullanici bu oturumda yeni layer hesapladiysa onay penceresi SILINECEK
     // isi EKSIK gosterirdi ("1 layer silinecek" deyip 4 layer silmek).
     const silinecekLayer = Object.keys(state.calculatedLayers).length;
-    const silinecekEkipman = Object.keys(state.markedEquipments).length;
     const ok = await confirm({
       title: 'Bu dosyanın kayıtlı çalışması silinsin mi?',
       description:
-        `${silinecekLayer} hesaplanmış layer ve ${silinecekEkipman} işaretli ekipman (çap etiketleriyle birlikte) silinecek, çizim sıfırdan başlayacak. ` +
+        `${silinecekLayer} hesaplanmış layer (çap etiketleriyle birlikte) silinecek, çizim sıfırdan başlayacak. ` +
         'Bu işlemin geri dönüşü yoktur (kayıt yalnız bu tarayıcıda tutulur). Diğer projeleriniz etkilenmez.',
       confirmText: 'Sıfırla',
     });
@@ -795,8 +695,7 @@ export default function DwgProjectWorkspace({
           <h3 className="text-sm font-semibold">Proje: {fileName}</h3>
           <p className="text-xs text-muted-foreground">
             {Object.keys(state.calculatedLayers).length} layer hesaplandı ·{' '}
-            {Object.values(state.calculatedLayers).filter((l) => l.approved).length} onaylı ·{' '}
-            {Object.keys(state.markedEquipments).length} ekipman işaretli
+            {Object.values(state.calculatedLayers).filter((l) => l.approved).length} onaylı
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -860,7 +759,6 @@ export default function DwgProjectWorkspace({
             calculatedEdgesByLayer={calculatedEdgesByLayer}
             calculatedJunctionsByLayer={calculatedJunctionsByLayer}
             selectedLayer={state.selectedLayer}
-            markedEquipmentKeys={markedEquipmentKeys}
             sprinklerLayers={sprinklerLayersSet}
             onLineClick={handleLineClick}
             onInsertClick={handleInsertClick}
@@ -933,7 +831,6 @@ export default function DwgProjectWorkspace({
               <strong>1. Hesapla:</strong> Layer seç + &quot;Hesapla&quot; → borular çıkar (hepsi <span className="font-semibold text-lime-600">neon = çapsız</span>).
               <strong className="ml-2">2. Etiketle:</strong> Çap Kalemi seç → çizimde boruya tıkla, çap atanır.
               <strong className="ml-2">Kalem yokken:</strong> tıklama çap popup&apos;ı açar.
-              <strong className="ml-2">Ekipman:</strong> Noktaya tıkla → ad + birim gir.
             </p>
           </div>
         </div>
@@ -1033,7 +930,6 @@ export default function DwgProjectWorkspace({
 
           <MetrajSummaryPanel
             calculatedLayers={state.calculatedLayers}
-            markedEquipments={state.markedEquipments}
             onRemoveLayer={async (layer) => {
               // ⚠ YIKICI VE GERI DONUSU YOK: segmentler + TUM cap etiketleri
               // gider (yeniden hesaplamak sadece segmentleri geri getirir,
@@ -1054,20 +950,6 @@ export default function DwgProjectWorkspace({
               if (!ok) return;
               removeCalculatedLayer(layer);
               toast({ title: 'Hesaplama silindi', description: layer });
-            }}
-            onRemoveEquipment={removeEquipment}
-            onEditEquipment={(key) => {
-              const eq = state.markedEquipments[key];
-              if (eq) {
-                setPendingEquipment({
-                  key: eq.key,
-                  insertIndex: eq.insertIndex,
-                  layer: eq.layer,
-                  insertName: eq.insertName,
-                  position: eq.position,
-                });
-                beginEditEquipment(key);
-              }
             }}
             onApproveLayer={(layer) => {
               // UX #4: ozet panelinden onay da etiketleme ekranini sifirlar
@@ -1127,23 +1009,6 @@ export default function DwgProjectWorkspace({
         />
       )}
 
-      {/* Ekipman popup */}
-      {pendingEquipment && state.editingEquipmentKey && (
-        <EquipmentDetailPopup
-          pending={pendingEquipment}
-          existing={editingEquipmentExisting}
-          onCancel={() => { cancelEditEquipment(); setPendingEquipment(null); }}
-          onSave={(eq) => {
-            saveEquipment(eq);
-            setPendingEquipment(null);
-            toast({ title: 'Ekipman kaydedildi', description: `${eq.userLabel} (${eq.unit})` });
-          }}
-          onDelete={editingEquipmentExisting ? () => {
-            removeEquipment(editingEquipmentExisting.key);
-            setPendingEquipment(null);
-          } : undefined}
-        />
-      )}
     </div>
   );
 }
