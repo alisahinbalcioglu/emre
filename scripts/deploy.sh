@@ -81,14 +81,23 @@ if ! printf '%s' "$YEDEK_CIKTI" | grep -q 'YEDEK DOGRULANDI'; then
   exit 1
 fi
 
-echo "── 4/6 docker compose build backend frontend ──"
+echo "── 4/6 docker compose build backend frontend dwg-engine ──"
 # DIKKAT: build log'unda `COPY . .` satiri CACHED cikiyorsa kod DEGISMEMISTIR
 # (30.07 dersi — iki kez eski kod deploy edildi). BUILD_SHA her deploy'da
 # degistigi icin ARG'i kullanan katman zaten yeniden kurulur.
-docker compose build backend frontend
+#
+# ── 11.08.2026: dwg-engine EKLENDI ──────────────────────────────────────────
+# Bu betik acildigi gunden beri YALNIZ backend ve frontend'i kuruyordu. Oysa
+# Python motoru (`dwg-engine`) AYRI bir imaj ve AYRI bir servis. Sonuc: DWG
+# motorunda yapilan hicbir degisiklik canliya CIKMIYORDU ve /api/health'in
+# hash'i yesil goründügü icin "deploy oldu" saniliyordu.
+# OLCULDU (11.08): birim otomatik tespiti (unit_detect.py) deploy edildi
+# sanildi; backend+frontend c991b4d idi ama motor eski imajdaydi, metraj
+# 100x yanlis kalmaya devam etti. Asagidaki 6/6 adimi artik bunu YAKALAR.
+docker compose build backend frontend dwg-engine
 
-echo "── 5/6 docker compose up -d backend frontend ──"
-docker compose up -d backend frontend
+echo "── 5/6 docker compose up -d backend frontend dwg-engine ──"
+docker compose up -d backend frontend dwg-engine
 
 echo "── 6/6 canli dogrulama ──"
 # ⚠ ADRES TUZAGI: `http://localhost/api/health` CALISMAZ. Caddyfile yalniz
@@ -121,15 +130,37 @@ done
 echo "   /api/health → $YANIT"
 CANLI="$(printf '%s' "$YANIT" | sed -n 's/.*"build_sha":"\([^"]*\)".*/\1/p')"
 
-if [ "$CANLI" = "$BEKLENEN" ]; then
+if [ "$CANLI" != "$BEKLENEN" ]; then
   echo ""
-  echo "✅ DEPLOY DOGRULANDI — canli surum: $CANLI"
-  echo "   (Bu satir 'sozlu teyit' degil, sunucunun kendi cevabidir.)"
-else
-  echo ""
-  echo "❌ DEPLOY DOGRULANAMADI"
+  echo "❌ DEPLOY DOGRULANAMADI (backend)"
   echo "   beklenen: $BEKLENEN"
   echo "   canli   : ${CANLI:-<okunamadi>}"
   echo "   Olasi sebep: build cache'ten geldi, ya da container yeniden baslamadi."
+  exit 1
+fi
+echo "   backend surumu DOGRULANDI: $CANLI"
+
+# ── MOTOR (dwg-engine) TAZELIGI ────────────────────────────────────────────
+# ⚠ BACKEND'IN HASH'I MOTORUN TAZELIGINI KANITLAMAZ. Ayri imaj, ayri servis.
+# 11.08'de tam olarak bu yasandi: /api/health c991b4d dedi, herkes deploy
+# oldu sandi, ama motor eski imajda kaldi ve DWG metraji 100x yanlis kaldi.
+# Motor ic agda (expose, publish DEGIL) — bu yuzden KENDI icinden sorulur.
+echo "   motor (dwg-engine) surumu sorulunuyor..."
+MOTOR_SHA="$(docker compose exec -T dwg-engine python -c \
+  "import urllib.request,json;print(json.load(urllib.request.urlopen('http://localhost:10000/health'))['build_sha'])" \
+  2>/dev/null | tr -d '\r' | tail -1 || true)"
+
+if [ "$MOTOR_SHA" = "$BEKLENEN" ]; then
+  echo ""
+  echo "✅ DEPLOY DOGRULANDI — backend: $CANLI · motor: $MOTOR_SHA"
+  echo "   (Bu satir 'sozlu teyit' degil, iki servisin de kendi cevabidir.)"
+else
+  echo ""
+  echo "❌ DEPLOY DOGRULANAMADI (dwg-engine MOTORU ESKI KALDI)"
+  echo "   beklenen: $BEKLENEN"
+  echo "   motor    : ${MOTOR_SHA:-<okunamadi>}"
+  echo "   Backend guncel ama DWG motoru degil — metraj/birim sonuclari ESKI koddan gelir."
+  echo "   Once sunu deneyin:  docker compose build --no-cache dwg-engine"
+  echo "   sonra:              docker compose up -d dwg-engine"
   exit 1
 fi

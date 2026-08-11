@@ -56,6 +56,11 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Cache bust marker — Render Docker layer cache'i kod degisikliginde
 # bazen invalidate olmuyor (eski main.py serve ediyor). Bu ARG her commit'te
 # degisik degerle build edilince COPY layer'i kesin yeniden calisir.
+# Surum damgasi — /health bunu doner, deploy.sh motorun tazeligini bununla
+# dogrular (compose'dan gelir; elle build'de "local" kalir, zararsiz).
+ARG BUILD_SHA=local
+ENV BUILD_SHA=${BUILD_SHA}
+
 ARG CACHE_BUST=v2-proximity
 RUN echo "Build marker: $CACHE_BUST"
 

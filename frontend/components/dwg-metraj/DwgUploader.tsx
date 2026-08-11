@@ -139,9 +139,47 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
         .then((res) => {
           if (res?.data?.status === 'ready') {
             setRestoredFileName(session.fileName);
-            // Birim = kullanici sorumlulugu. Session'da kayitli birim varsa onu
-            // kullan, yoksa mm varsayilan. Sistem tahmin ETMEZ.
-            setSelectedUnit(session.scale && session.scale > 0 ? session.scale : 0.001);
+            // ── BIRIMIN TEK GERCEK KAYNAGI SUNUCUDUR ────────────────────
+            // Onceki surum burada localStorage'daki `session.scale`'i geri
+            // yukluyordu. O deger eski oturumlardan kalma mm (0.001) olabilir
+            // ve sunucunun tespitini SESSIZCE eziyordu: sayfa yenilenince
+            // metraj 100x yanlisa donuyordu, hicbir uyari yoktu.
+            // Artik sunucunun tespiti esas; kayitli deger YALNIZ kullanici
+            // bilerek ezmisse (birimElle) korunur.
+            const st = res.data;
+            const sunucuScale = typeof st.suggested_scale === 'number' && st.suggested_scale > 0
+              ? st.suggested_scale
+              : null;
+            const elleEzilmis = session.birimElle === true
+              && typeof session.scale === 'number' && session.scale > 0;
+
+            if (elleEzilmis) {
+              setSelectedUnit(session.scale);
+              setBirimElle(true);
+            } else if (sunucuScale) {
+              setSelectedUnit(sunucuScale);
+              setTespit({
+                scale: sunucuScale,
+                label: st.suggested_unit_label ?? '?',
+                confidence: st.suggested_confidence ?? 'dusuk',
+                method: st.suggested_method ?? '',
+                evidence: Array.isArray(st.suggested_evidence) ? st.suggested_evidence : [],
+              });
+              if (st.suggested_confidence === 'dusuk' || st.suggested_confidence === 'yok') {
+                setBirimPaneli(true);
+              }
+            } else {
+              // Sunucu birim bilgisi vermedi (eski onbellek kaydi ya da eski
+              // motor surumu). SESSIZCE mm varsayma — kullaniciya soyle.
+              setSelectedUnit(session.scale && session.scale > 0 ? session.scale : 0.001);
+              setBirimPaneli(true);
+              toast({
+                title: 'Çizim birimi doğrulanamadı',
+                description: 'Sunucu bu dosya için birim bilgisi döndürmedi (eski önbellek olabilir). '
+                  + 'Metrajı kullanmadan önce birimi doğrulayın veya dosyayı yeniden yükleyin.',
+                variant: 'destructive',
+              });
+            }
             setFileHash(session.fileHash ?? null);
             setFileId(session.fileId);
           } else {
@@ -171,10 +209,15 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
         fileName: fname,
         fileHash,
         scale: selectedUnit,
+        // Kayitli birimin OTOMATIK mi yoksa KULLANICI KARARI mi oldugunu
+        // ayirt etmek sart: restore'da yalnizca kullanici karari sunucunun
+        // tespitini ezebilir. Bu bayrak olmadan eski oturumdan kalma mm,
+        // dogru tespiti sessizce eziyordu.
+        birimElle,
         savedAt: Date.now(),
       }));
     } catch {}
-  }, [fileId, file, restoredFileName, selectedUnit, fileHash]);
+  }, [fileId, file, restoredFileName, selectedUnit, fileHash, birimElle]);
 
   const startTimer = () => {
     setElapsed(0);
@@ -427,19 +470,103 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
     e.target.value = '';
   };
 
+  // ── BIRIM BANDI ────────────────────────────────────────────────
+  // Degisken olarak tutulur cunku IKI ayri return dalinda da render
+  // edilmesi gerekiyor: workspace acikken (asil kullanim) ve yukleme
+  // ekraninda. Ilk surumde yalniz ikincisine konmustu ve workspace
+  // acilinca bant HIC gorunmuyordu — tespiti gorme/duzeltme yolu yoktu.
+  const birimBandi = (tespit || birimElle) ? (
+      <div
+        className={cn(
+          'mt-4 rounded-lg border px-4 py-3',
+          birimElle
+            ? 'border-slate-200 bg-slate-50'
+            : tespit?.confidence === 'kesin' || tespit?.confidence === 'yuksek'
+              ? 'border-emerald-200 bg-emerald-50'
+              : 'border-amber-300 bg-amber-50',
+        )}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-slate-800">
+              {birimElle
+                ? `Çizim birimi (elle): ${BIRIM_SECENEKLERI.find((b) => b.value === selectedUnit)?.label ?? selectedUnit}`
+                : `Çizim birimi otomatik bulundu: ${tespit?.label}`}
+              {!birimElle && tespit && (
+                <span className="ml-2 text-xs font-normal text-slate-500">
+                  ({GUVEN_METNI[tespit.confidence] ?? tespit.confidence})
+                </span>
+              )}
+            </p>
+            {!birimElle && tespit && (tespit.confidence === 'dusuk' || tespit.confidence === 'orta') && (
+              <p className="mt-1 text-xs font-medium text-amber-800">
+                Kanıt zayıf — metrajı kullanmadan önce birimi doğrulayın.
+              </p>
+            )}
+            {!birimElle && tespit?.evidence?.length ? (
+              <ul className="mt-1 space-y-0.5 text-[11px] leading-snug text-slate-500">
+                {tespit.evidence.slice(0, 3).map((k, i) => (
+                  <li key={i}>· {k}</li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+          <button
+            onClick={() => setBirimPaneli((v) => !v)}
+            className="shrink-0 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+          >
+            {birimPaneli ? 'Kapat' : 'Değiştir'}
+          </button>
+        </div>
+
+        {birimPaneli && (
+          <div className="mt-3 border-t border-slate-200 pt-3">
+            <p className="mb-2 text-xs text-slate-500">
+              Çizimde 1 birim gerçekte kaç uzunluk? (metraj bu çarpanla metreye çevrilir)
+            </p>
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+              {BIRIM_SECENEKLERI.map((opt) => (
+                <button
+                  key={opt.label}
+                  onClick={() => birimiDegistir(opt.value)}
+                  className={cn(
+                    'rounded-lg border-2 px-2 py-2 text-center transition-all',
+                    selectedUnit === opt.value
+                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      : 'border-slate-200 text-slate-600 hover:border-slate-300',
+                  )}
+                >
+                  <div className="text-sm font-semibold">{opt.label}</div>
+                  <div className="text-[10px] text-slate-400">{opt.desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+  ) : null;
+
+
   // ── RENDER: fileId hazirsa workspace acilir ──
   // file objesi olabilir (yeni upload) veya restoredFileName (session restore)
   const effectiveFileName = file?.name || restoredFileName;
   if (fileId && effectiveFileName) {
+    // ⚠ BIRIM BANDI BURADA DA RENDER EDILMELI. Ilk surumde bant yalniz
+    // asagidaki (yukleme ekrani) JSX'ine konmustu; bu erken donus yuzunden
+    // workspace acilinca ASLA gorunmuyordu — yani kullanicinin tespiti gorme
+    // ve duzeltme yolu yoktu. Tam da "ozelligi acmak = yolu acmaktir" hatasi.
     return (
-      <DwgProjectWorkspace
-        fileId={fileId}
-        scale={selectedUnit}
-        fileName={effectiveFileName}
-        fileHash={fileHash}
-        onReset={resetAll}
-        onApproved={onMetrajApproved}
-      />
+      <div>
+        {birimBandi}
+        <DwgProjectWorkspace
+          fileId={fileId}
+          scale={selectedUnit}
+          fileName={effectiveFileName}
+          fileHash={fileHash}
+          onReset={resetAll}
+          onApproved={onMetrajApproved}
+        />
+      </div>
     );
   }
 
@@ -503,78 +630,7 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
         </div>
       )}
 
-      {/* BIRIM BANDI — modal DEGIL. Otomatik tespit sonucu + kanit + degistirme yolu.
-          Guven dusukse panel kendiliginden acilir; "kesin"de sadece tek satir. */}
-      {(tespit || birimElle) && (
-        <div
-          className={cn(
-            'mt-4 rounded-lg border px-4 py-3',
-            birimElle
-              ? 'border-slate-200 bg-slate-50'
-              : tespit?.confidence === 'kesin' || tespit?.confidence === 'yuksek'
-                ? 'border-emerald-200 bg-emerald-50'
-                : 'border-amber-300 bg-amber-50',
-          )}
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-slate-800">
-                {birimElle
-                  ? `Çizim birimi (elle): ${BIRIM_SECENEKLERI.find((b) => b.value === selectedUnit)?.label ?? selectedUnit}`
-                  : `Çizim birimi otomatik bulundu: ${tespit?.label}`}
-                {!birimElle && tespit && (
-                  <span className="ml-2 text-xs font-normal text-slate-500">
-                    ({GUVEN_METNI[tespit.confidence] ?? tespit.confidence})
-                  </span>
-                )}
-              </p>
-              {!birimElle && tespit && (tespit.confidence === 'dusuk' || tespit.confidence === 'orta') && (
-                <p className="mt-1 text-xs font-medium text-amber-800">
-                  Kanıt zayıf — metrajı kullanmadan önce birimi doğrulayın.
-                </p>
-              )}
-              {!birimElle && tespit?.evidence?.length ? (
-                <ul className="mt-1 space-y-0.5 text-[11px] leading-snug text-slate-500">
-                  {tespit.evidence.slice(0, 3).map((k, i) => (
-                    <li key={i}>· {k}</li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
-            <button
-              onClick={() => setBirimPaneli((v) => !v)}
-              className="shrink-0 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
-            >
-              {birimPaneli ? 'Kapat' : 'Değiştir'}
-            </button>
-          </div>
-
-          {birimPaneli && (
-            <div className="mt-3 border-t border-slate-200 pt-3">
-              <p className="mb-2 text-xs text-slate-500">
-                Çizimde 1 birim gerçekte kaç uzunluk? (metraj bu çarpanla metreye çevrilir)
-              </p>
-              <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
-                {BIRIM_SECENEKLERI.map((opt) => (
-                  <button
-                    key={opt.label}
-                    onClick={() => birimiDegistir(opt.value)}
-                    className={cn(
-                      'rounded-lg border-2 px-2 py-2 text-center transition-all',
-                      selectedUnit === opt.value
-                        ? 'border-blue-500 bg-blue-50 text-blue-700'
-                        : 'border-slate-200 text-slate-600 hover:border-slate-300',
-                    )}
-                  >
-                    <div className="text-sm font-semibold">{opt.label}</div>
-                    <div className="text-[10px] text-slate-400">{opt.desc}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+    {birimBandi}
     </div>
   );
 }

@@ -652,6 +652,10 @@ def health():
         "version": "2.3",
         "cached_files": cached,
         "build_sha": build_sha,
+        # Birim tespit motorunun surumu. deploy.sh bunu okuyup motorun
+        # GERCEKTEN yenilendigini dogrular — backend'in hash'i motorun
+        # tazeligini KANITLAMAZ (ayri imaj, ayri servis).
+        "detector_version": DETECTOR_VERSION,
     }
 
 

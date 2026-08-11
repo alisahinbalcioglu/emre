@@ -31,6 +31,12 @@ services:
   dwg-engine:
     build:
       context: ./backend/src/modules/dwg-engine/python
+      args:
+        # Motorun da surum damgasi OLMALI. Yoksa /health "local" doner ve
+        # deploy dogrulamasi motorun eski kalip kalmadigini ANLAYAMAZ —
+        # 11.08'de tam olarak bu yasandi: backend+frontend yenilendi, motor
+        # ESKI imajda kaldi, birim tespiti canliya hic cikmadi.
+        BUILD_SHA: ${BUILD_SHA:-local}
     restart: unless-stopped
     environment:
       INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN}
