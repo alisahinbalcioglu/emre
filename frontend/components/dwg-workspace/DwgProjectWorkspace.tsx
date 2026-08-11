@@ -86,6 +86,11 @@ export default function DwgProjectWorkspace({
   // render effect'i tetiklenir → 706K cizgilik sahne bosuna yeniden cizilirdi.
   const sprinklerLayersSet = useMemo(() => new Set(state.sprinklerLayers), [state.sprinklerLayers]);
 
+  /** BOLME MODU (kullanici istegi 11.08): 't' = T noktalarinda bol (varsayilan),
+   *  'none' = bolme yok, her cizim entity'si bastan sona tek parca. Secim
+   *  sidebar radiosundan; hesap kaydina (CalculatedLayer.splitMode) yazilir. */
+  const [splitMode, setSplitMode] = useState<'t' | 'none'>('t');
+
   /** AutoCAD-vari "Layer Gizle Modu". Toolbar'daki goz-kapali butonu ile toggle.
    *  Aktif iken cizimde tikla = o layer'i cizimden cikar. Geri getirmek icin
    *  sag panel "Layer Goruntusu" listesinden goz ikonuyla gosterirsin. */
@@ -266,8 +271,12 @@ export default function DwgProjectWorkspace({
       .reduce((n, cl) => n + cl.edgeSegments.filter((es) => !isUnassignedDiameter(es.diameter)).length, 0);
     const ok = await confirm({
       title: `${bayatSprinklerLayerlari.length} layer yeniden hesaplansın mı?`,
+      // YON-NOTR metin: isaret EKLENMIS de olabilir KALDIRILMIS da — "bolunecek"
+      // demek kaldirma yonunde yalan olurdu. Gercek: hesap guncel isaretlemeyle
+      // yenilenir; isaret varsa sprinkler'da bolunur, yoksa bolunmez.
       description:
-        'Sprinkler işaretlemesi değişti — borular yeni işaretle sprinkler noktalarında bölünecek.' +
+        'Sprinkler işaretlemesi değişti — hesap güncel işaretlemeyle yenilenecek '
+        + '(işaretli layer varsa sprinkler noktalarında bölünür, yoksa bölünmez).' +
         (etiketli > 0
           ? ` DİKKAT: bu layer'lardaki ${etiketli} çap etiketi ve onaylar sıfırlanır.`
           : ' Çap etiketi atanmamış — kayıp yok.'),
@@ -279,7 +288,12 @@ export default function DwgProjectWorkspace({
       // Sirali koş — calculateLayer kendi state'ini yonetiyor, paralel kosum
       // calculatingLayer gostergesini ezerdi.
       // eslint-disable-next-line no-await-in-loop
-      await calculateLayer(cl.layer, { hatIsmi: cl.hatIsmi, materialType: cl.materialType });
+      await calculateLayer(cl.layer, {
+        hatIsmi: cl.hatIsmi,
+        materialType: cl.materialType,
+        // Bolme modu AYNEN korunur — bayatlik sprinkler isaretinden, moddan degil.
+        splitMode: cl.splitMode ?? 't',
+      });
     }
   };
 
@@ -899,6 +913,8 @@ export default function DwgProjectWorkspace({
             selectedLayer={state.selectedLayer}
             calculating={calculating || (!!state.selectedLayer && calculatingLayer === state.selectedLayer)}
             calculatedLayer={state.selectedLayer ? state.calculatedLayers[state.selectedLayer] ?? null : null}
+            splitMode={splitMode}
+            onSplitModeChange={setSplitMode}
             onCalculate={(layer) => {
               if (calculating || calculatingLayer === layer) {
                 toast({ title: 'Devam eden hesaplama var', description: 'Bitince tekrar dene.', variant: 'destructive' });
@@ -914,7 +930,8 @@ export default function DwgProjectWorkspace({
               // "Segmentlerine Ayir" = SAF geometri+uzunluk cikarimi. Cap
               // atamasi YOK — segmentler capsiz (neon) gelir; hat ismi/malzeme
               // alanlari kaldirildi (UX #3), cap bilgisi Cap Kalemleri'nden.
-              calculateLayer(layer);
+              // splitMode: kullanicinin sidebar'daki bolme modu secimi.
+              calculateLayer(layer, { splitMode });
             }}
             onComplete={async (layer) => {
               // UX #4: "Hesaplamayi Tamamla" — layer onaylanir, etiketleme

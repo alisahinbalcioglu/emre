@@ -42,4 +42,22 @@ describe('sprinklerIsaretiBayat', () => {
     // sessizce gecmek PANOVA kor noktasinin kendisidir — uyari verilir.
     expect(sprinklerIsaretiBayat({}, ['SPRİNK'])).toBe(true);
   });
+
+  it("BOLMESIZ hesap (splitMode='none') isaret degisiminden ETKILENMEZ", () => {
+    // Bolmesiz hesap sprinkler'i hic kullanmaz — isaret eklense de kalksa da
+    // sonuc ayni kalirdi; sahte bayatlik banti kullaniciyi bosuna korkutur.
+    expect(sprinklerIsaretiBayat(
+      { splitMode: 'none', sprinklerLayersUsed: [] }, ['SPRİNK'],
+    )).toBe(false);
+    expect(sprinklerIsaretiBayat(
+      { splitMode: 'none', sprinklerLayersUsed: ['SPRİNK'] }, [],
+    )).toBe(false);
+    expect(sprinklerIsaretiBayat({ splitMode: 'none' }, ['SPRİNK'])).toBe(false);
+  });
+
+  it("bolmeli hesap (splitMode='t') normal kurala tabi", () => {
+    expect(sprinklerIsaretiBayat(
+      { splitMode: 't', sprinklerLayersUsed: [] }, ['SPRİNK'],
+    )).toBe(true);
+  });
 });

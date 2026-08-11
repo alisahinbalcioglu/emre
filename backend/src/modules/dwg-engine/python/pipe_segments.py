@@ -859,6 +859,73 @@ def _group_into_runs(
 
 # ── Ana API ──────────────────────────────────────────────────────
 
+def _segments_per_entity(msp, selected: set[str]) -> list[Segment]:
+    """split_mode="none": her cizim entity'si BASTAN SONA tek segment.
+
+    KULLANICI ISTEGI (11.08, PANOVA): bolme olmadan cap atayabilmek —
+    granularite cizerin cizdigi cizgidir. T/kesisme/sprinkler bolmesi YOK;
+    LWPOLYLINE/POLYLINE vertex yolu `polyline` alaninda tasinir (viewer
+    gercek L/Z seklini cizer), uzunluk yol toplamidir.
+    <1.0 birim filtresi _collect_raw_edges ile ayni (cizim artefakti).
+    """
+    segments: list[Segment] = []
+    sid = 0
+
+    def ekle(layer: str, pts: list[tuple[float, float]]) -> None:
+        nonlocal sid
+        if len(pts) < 2:
+            return
+        length = sum(
+            math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1])
+            for i in range(len(pts) - 1)
+        )
+        if length < 1.0:
+            return
+        sid += 1
+        segments.append({
+            "id": sid,
+            "layer": layer,
+            "x1": pts[0][0], "y1": pts[0][1],
+            "x2": pts[-1][0], "y2": pts[-1][1],
+            "length": length,
+            "polyline": [[x, y] for x, y in pts] if len(pts) > 2 else [],
+        })
+
+    for ent in msp.query('LINE'):
+        try:
+            layer = str(ent.dxf.layer)
+            if layer not in selected:
+                continue
+            ekle(layer, [(float(ent.dxf.start.x), float(ent.dxf.start.y)),
+                         (float(ent.dxf.end.x), float(ent.dxf.end.y))])
+        except Exception:
+            continue
+
+    for ent in msp.query('LWPOLYLINE'):
+        try:
+            layer = str(ent.dxf.layer)
+            if layer not in selected:
+                continue
+            pts = [(float(p[0]), float(p[1])) for p in ent.get_points(format='xy')]
+            if bool(getattr(ent, "closed", False)) and len(pts) > 2:
+                pts.append(pts[0])
+            ekle(layer, pts)
+        except Exception:
+            continue
+
+    for ent in msp.query('POLYLINE'):
+        try:
+            layer = str(ent.dxf.layer)
+            if layer not in selected:
+                continue
+            pts = [(float(v.dxf.location.x), float(v.dxf.location.y)) for v in ent.vertices]
+            ekle(layer, pts)
+        except Exception:
+            continue
+
+    return segments
+
+
 def _collect_raw_edges_all_layers(msp) -> list[dict]:
     """Tum LINE+LWPOLYLINE+POLYLINE edge'lerini topla (layer filtresi YOK).
 
@@ -927,6 +994,7 @@ def _extract_segments(
     all_pipe_layers: list[str] | None = None,
     unit_scale: float = 0.001,
     doc=None,
+    split_mode: str = "t",
 ) -> tuple[list[Segment], list[tuple[float, float]]]:
     """Secilen boru layer'larindan topology-aware pipe-run segment'leri uret.
 
@@ -950,12 +1018,23 @@ def _extract_segments(
     Returns:
       (segments, sprinkler_centers) — sprinkler_centers ham (cx, cy) listesi.
 
+      split_mode: "t" (varsayilan) = T/kesisme/sprinkler bolmeleri (mevcut
+        davranis). "none" = HIC bolme — her cizim entity'si bastan sona tek
+        segment (kullanici istegi: hatta tek tikla cap atama). Gecersiz deger
+        SESSIZCE 't' sayilmaz, ValueError firlatir.
+
     PERF: doc opsiyonel — caller'dan paylasilirsa tekrar ezdxf.readfile YOK.
     """
+    if split_mode not in ("t", "none"):
+        raise ValueError(f"split_mode 't' veya 'none' olmali, gelen: {split_mode!r}")
     if doc is None:
         from converter import read_dxf
         doc = read_dxf(dxf_path)
     msp = doc.modelspace()
+
+    # ── BOLMESIZ MOD: entity = segment, graf makinesi HIC calismaz ──
+    if split_mode == "none":
+        return _segments_per_entity(msp, set(pipe_layers)), []
 
     # Topology icin edge'leri topla — SADECE secili layer (pipe_layers) icinden.
     #

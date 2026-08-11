@@ -50,6 +50,7 @@ def main():
             hat_tipi_map=params.get("hat_tipi_map"),
             material_type_map=params.get("material_type_map"),
             sprinkler_layers_manual=params.get("sprinkler_layers_manual"),
+            split_mode=params.get("split_mode", "t"),
         )
 
         # Pydantic model'i dict'e cevir, surrogate/NaN sanitize

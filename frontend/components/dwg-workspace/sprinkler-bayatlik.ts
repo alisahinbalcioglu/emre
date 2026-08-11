@@ -14,6 +14,9 @@ export interface SprinklerAnligiTasiyan {
   /** Hesap ANINDA motora gönderilen sprinkler işaretli layer'lar.
    *  undefined = bu alan eklenmeden ÖNCE hesaplanmış (miras kayıt). */
   sprinklerLayersUsed?: string[];
+  /** Hesabın bölme modu. 'none' = bölmesiz hesap — sprinkler işaretini HİÇ
+   *  kullanmaz, işaret değişimi bu hesabı bayatlatamaz. */
+  splitMode?: 't' | 'none';
 }
 
 /** İki işaret kümesi aynı mı? (sıra ve tekrar duyarsız)
@@ -38,6 +41,8 @@ export function sprinklerIsaretiBayat(
   cl: SprinklerAnligiTasiyan,
   simdikiIsaretler: string[],
 ): boolean {
+  // Bolmesiz hesap sprinkler'i HIC kullanmaz — isaret degisimi onu etkilemez.
+  if (cl.splitMode === 'none') return false;
   if (cl.sprinklerLayersUsed === undefined) {
     return simdikiIsaretler.length > 0;
   }

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
+  gecerliOlcek,
   normalizeToMeters,
   searchRadiusForUnit,
   unitLabelFromScale,
@@ -23,6 +24,26 @@ describe('UNIT_SCALE_TO_METER (tek gercek kaynak)', () => {
   it('emperyal birimler de tanimli', () => {
     expect(normalizeToMeters(39.37007874015748, 'inch')).toBeCloseTo(1);
     expect(normalizeToMeters(3.280839895013123, 'ft')).toBeCloseTo(1);
+  });
+});
+
+describe('gecerliOlcek (0/NaN/negatif olcek suzgeci)', () => {
+  it('0 GECERLI DEGIL — PANOVA hover 0.00 m vakasinin koku', () => {
+    // dashboard `scale: number = 0` default'u + `??` zinciri 0'i gecerli
+    // sayiyordu; selectedUnit=0 -> ham cizgi hover'i 0.00 m gosteriyordu.
+    expect(gecerliOlcek(0)).toBeUndefined();
+  });
+  it('gecerli degerler aynen doner', () => {
+    expect(gecerliOlcek(0.001)).toBe(0.001);
+    expect(gecerliOlcek(0.01)).toBe(0.01);
+    expect(gecerliOlcek(1)).toBe(1);
+  });
+  it('NaN / negatif / tip disi -> undefined', () => {
+    expect(gecerliOlcek(NaN)).toBeUndefined();
+    expect(gecerliOlcek(-0.01)).toBeUndefined();
+    expect(gecerliOlcek(undefined)).toBeUndefined();
+    expect(gecerliOlcek(null)).toBeUndefined();
+    expect(gecerliOlcek('0.01')).toBeUndefined();
   });
 });
 

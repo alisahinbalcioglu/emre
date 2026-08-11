@@ -355,6 +355,7 @@ def analyze_dxf_metraj(
     hat_tipi_map: dict[str, str] | None = None,
     material_type_map: dict[str, str] | None = None,
     sprinkler_layers_manual: list[str] | None = None,
+    split_mode: str = "t",
 ) -> MetrajResult:
     """
     DXF dosyasini parse edip layer bazinda boru uzunlugu hesaplar.
@@ -570,6 +571,7 @@ def analyze_dxf_metraj(
                 sprinkler_layers=sprinkler_layers_manual,
                 unit_scale=scale,
                 doc=doc,
+                split_mode=split_mode,
             )
             edge_segments = []
             for s in _edges:
@@ -591,11 +593,13 @@ def analyze_dxf_metraj(
                     polyline=pl_transformed,
                 ))
             # T-junction marker'lari (frontend Canvas2D'de gosterilir) — bunlar
-            # da view transform'a tabi tutulmalı, edge_segments ile uyumlu olsun
-            _all_edges = _collect_raw_edges_all_layers(doc.modelspace())
-            _node_tol, _ = _compute_tolerances(_all_edges, unit_scale=scale)
-            _raw_junctions = _extract_junction_points(_edges, _node_tol)
-            junction_points = [list(_vt(p[0], p[1])) for p in _raw_junctions]
+            # da view transform'a tabi tutulmalı, edge_segments ile uyumlu olsun.
+            # split_mode="none" ise bolme yok -> T marker'i da anlamsiz, bos kalir.
+            if split_mode != "none":
+                _all_edges = _collect_raw_edges_all_layers(doc.modelspace())
+                _node_tol, _ = _compute_tolerances(_all_edges, unit_scale=scale)
+                _raw_junctions = _extract_junction_points(_edges, _node_tol)
+                junction_points = [list(_vt(p[0], p[1])) for p in _raw_junctions]
         except Exception as _e:
             warnings.append(f"Edge segment cikarma: {str(_e)[:100]}")
 
@@ -1434,6 +1438,7 @@ async def parse_dwg(
     layer_hat_tipi: str = Query("{}", description="JSON object: {layer: hat_tipi} eslestirmesi"),
     layer_material_type: str = Query("{}", description="JSON object: {layer: material_type} eslestirmesi"),
     sprinkler_layers: str = Query("", description="JSON array: kullanici tarafindan sprinkler olarak isaretlenen layer'lar"),
+    split_mode: str = Query("t", description="Bolme modu: 't' = T/kesisme/sprinkler bolmeleri (varsayilan), 'none' = bolme yok, her cizim entity'si bastan sona tek segment"),
 ):
     """
     DWG/DXF dosyasini parse edip layer bazinda metraj cikarir.
@@ -1486,6 +1491,10 @@ async def parse_dwg(
         except json.JSONDecodeError:
             raise HTTPException(400, "layer_material_type gecersiz JSON formati")
 
+    # split_mode dogrulamasi — yazim hatasi sessizce 't' sanilmasin
+    if split_mode not in ("t", "none"):
+        raise HTTPException(400, f"split_mode 't' veya 'none' olmali, gelen: {split_mode!r}")
+
     # sprinkler_layers: kullanicinin manuel isaretledigi sprinkler layer'lar
     sprinkler_layers_manual: list[str] | None = None
     if sprinkler_layers:
@@ -1507,6 +1516,7 @@ async def parse_dwg(
             "hat_tipi_map": hat_tipi_map,
             "material_type_map": mat_type_map,
             "sprinkler_layers_manual": sprinkler_layers_manual,
+            "split_mode": split_mode,
         }
         # Subprocess'i async thread'de calistir, FastAPI event loop bloke olmasin
         result_dict = await asyncio.to_thread(

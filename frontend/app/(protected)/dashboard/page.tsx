@@ -121,7 +121,11 @@ export default function DashboardPage() {
   }, [router]);
 
   /* ── DWG/DXF Upload Handler — quotes/new sayfasina yonlendir (layer secim akisi) ── */
-  const handleDwgFile = useCallback(async (file: File, scale: number = 0) => {
+  // scale OPSIYONEL — verilmezse birim backend'de OTOMATIK tespit edilir.
+  // ⚠ Eski imza `scale: number = 0` idi: birim modali kalkinca 0 asagida
+  // `override` olarak tasiniyor ve `??` zinciri 0'i GECERLI sayiyordu ->
+  // selectedUnit=0, ham cizgi hover'i 0.00 m (PANOVA, 11.08). Default YOK.
+  const handleDwgFile = useCallback(async (file: File, scale?: number) => {
     const ext = file.name.split('.').pop()?.toLowerCase();
 
     if (['dwg', 'dxf'].includes(ext ?? '')) {

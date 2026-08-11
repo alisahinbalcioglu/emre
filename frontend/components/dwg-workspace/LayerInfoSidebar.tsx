@@ -25,6 +25,11 @@ interface LayerInfoSidebarProps {
   calculating: boolean;
   /** "Layer'i Segmentlerine Ayir" — secili layer icin /parse tetikle. */
   onCalculate: (layer: string) => void;
+  /** Bolme modu (kullanici istegi 11.08): 't' = T noktalarinda bol (varsayilan),
+   *  'none' = bolme yok — her cizim entity'si bastan sona TEK parca, hatta tek
+   *  tikla cap atanir. Secim workspace'te yasar (hesap kaydina yazilir). */
+  splitMode: 't' | 'none';
+  onSplitModeChange: (mode: 't' | 'none') => void;
   /** "Hesaplamayi Tamamla" — layer'i onayla + etiketleme ekranini sifirla. */
   onComplete: (layer: string) => void;
   /** "Onayı Kaldır & Revize Et" — onay kalkar, segmentler/cap renkleri geri
@@ -40,6 +45,8 @@ export default function LayerInfoSidebar({
   calculatedLayer,
   calculating,
   onCalculate,
+  splitMode,
+  onSplitModeChange,
   onComplete,
   onUnapprove,
   onClearSelection,
@@ -124,13 +131,46 @@ export default function LayerInfoSidebar({
 
       {/* AKSIYON 1: Segmentlere ayir (henuz hesaplanmadiysa) */}
       {aksiyonlar.includes('segmentlere-ayir') && (
-        <button
-          onClick={() => onCalculate(selectedLayer)}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
-        >
-          <Scissors className="h-4 w-4" />
-          Layer&apos;ı Segmentlerine Ayır
-        </button>
+        <>
+          {/* BOLME MODU (kullanici istegi 11.08 — PANOVA): bazen kullanici
+              bolmeden, cizginin BASLADIGI-BITTIGI araliga tek cap atamak ister.
+              'none' = her cizim entity'si tek parca; T/kesisme/sprinkler
+              bolmesi calismaz. Metraj toplami degismez, yalniz parca sinirlari. */}
+          <div className="mb-2 rounded-lg border border-blue-200 bg-white/70 p-2">
+            <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-blue-900">Bölme modu</p>
+            <label className="flex cursor-pointer items-start gap-2 rounded-md px-1 py-0.5 hover:bg-blue-50">
+              <input
+                type="radio"
+                name="split-mode"
+                checked={splitMode === 't'}
+                onChange={() => onSplitModeChange('t')}
+                className="mt-0.5"
+              />
+              <span className="text-[11px] leading-snug text-slate-700">
+                <strong>T noktalarında böl</strong> — kavşaklarda (💧 işaretliyse sprinkler&apos;da da) ayrı parçalar
+              </span>
+            </label>
+            <label className="flex cursor-pointer items-start gap-2 rounded-md px-1 py-0.5 hover:bg-blue-50">
+              <input
+                type="radio"
+                name="split-mode"
+                checked={splitMode === 'none'}
+                onChange={() => onSplitModeChange('none')}
+                className="mt-0.5"
+              />
+              <span className="text-[11px] leading-snug text-slate-700">
+                <strong>Bölme</strong> — her çizgi baştan sona tek parça, hatta tek tıkla çap
+              </span>
+            </label>
+          </div>
+          <button
+            onClick={() => onCalculate(selectedLayer)}
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
+          >
+            <Scissors className="h-4 w-4" />
+            {splitMode === 'none' ? 'Hatları Çıkar (bölmeden)' : 'Layer’ı Segmentlerine Ayır'}
+          </button>
+        </>
       )}
 
       {/* AKSIYON 2: Hesaplamayi tamamla (hesaplandi + henuz onaysiz) */}

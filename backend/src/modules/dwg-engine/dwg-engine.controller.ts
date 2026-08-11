@@ -48,6 +48,7 @@ export class DwgEngineController {
     @UploadedFile() file: Express.Multer.File,
     @Query('discipline') discipline?: string,
     @Query('scale') scale?: string,
+    @Query('split_mode') splitMode?: string,
     @Query('file_id') fileId?: string,
     @Query('selected_layers') selectedLayers?: string,
     @Query('layer_hat_tipi') layerHatTipi?: string,
@@ -117,6 +118,10 @@ export class DwgEngineController {
       parsedHatTipi,
       parsedMaterialType,
       parsedSprinklerLayers,
+      // Bolme modu: 't' (varsayilan, T noktalarinda bol) | 'none' (bolme yok —
+      // her cizim entity'si bastan sona tek segment; kullanici hatta tek tikla
+      // cap atayabilsin). Dogrulama Python'da (gecersiz deger 400).
+      splitMode,
     );
   }
 

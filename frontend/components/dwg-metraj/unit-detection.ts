@@ -25,6 +25,17 @@ export const UNIT_SCALE_TO_METER: Record<DrawingUnit, number> = {
   ft: 3.280839895013123,
 };
 
+/** Olcek degeri GERCEKTEN kullanilabilir mi? 0 / NaN / negatif -> undefined.
+ *
+ *  NEDEN VAR (11.08, PANOVA hover 0.00 m): dashboard'in eski imzasi
+ *  `scale: number = 0` idi; birim modali kalkinca cagri scale'siz geldi ve
+ *  0, `opts.override ?? otoScale` zincirinde GECERLI sayildi (`??` yalniz
+ *  null/undefined'da duser). selectedUnit=0 -> ham cizgi hover'i 0.00 m,
+ *  arama yaricapi bozuk. Olcek her tuketimden once bu suzgecten gecmeli. */
+export function gecerliOlcek(v: unknown): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined;
+}
+
 /** Backend'in dondurdugu `scale` (metre / cizim birimi) -> birim etiketi. */
 export function unitLabelFromScale(scale: number): DrawingUnit | null {
   const eslesme: [DrawingUnit, number][] = [

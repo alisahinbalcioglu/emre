@@ -34,7 +34,7 @@ export function useLayerCalc({ fileId, scale, sprinklerLayers, onResult, onFileI
   const [calculatingLayer, setCalculatingLayer] = useState<string | null>(null);
 
   const calculateLayer = useCallback(
-    async (layer: string, opts?: { hatIsmi?: string; materialType?: string }) => {
+    async (layer: string, opts?: { hatIsmi?: string; materialType?: string; splitMode?: 't' | 'none' }) => {
       if (!layer) return;
       setCalculatingLayer(layer);
       try {
@@ -51,6 +51,8 @@ export function useLayerCalc({ fileId, scale, sprinklerLayers, onResult, onFileI
           layer_hat_tipi: JSON.stringify(hatTipiMap),
           layer_material_type: JSON.stringify(materialTypeMap),
           sprinkler_layers: JSON.stringify(sprinklerLayers),
+          // Bolme modu — yalniz 'none' gonderilir ('t' varsayilan, parametre yok)
+          ...(opts?.splitMode === 'none' ? { split_mode: 'none' } : {}),
           // use_proximity_diameter + layer_default_diameter KALDIRILDI —
           // backend'de otomatik cap atama motoru artik yok (operasyon Faz 2).
         });
@@ -82,13 +84,16 @@ export function useLayerCalc({ fileId, scale, sprinklerLayers, onResult, onFileI
           // Kopya alinir — state guncellenince ayni referans uzerinden "hep
           // guncel" gorunmesin (sprinkler-bayatlik.ts).
           sprinklerLayersUsed: [...sprinklerLayers],
+          splitMode: opts?.splitMode ?? 't',
         };
 
         onResult({ layer, calculated, raw: data });
 
         toast({
           title: `Layer hesaplandı: ${layer}`,
-          description: `${totalLen.toFixed(1)} m · ${edgeSegs.length} segment — hepsi etiket bekliyor (neon)`,
+          description: opts?.splitMode === 'none'
+            ? `${totalLen.toFixed(1)} m · ${edgeSegs.length} hat (bölme yok) — her hat tek tıkla etiketlenir`
+            : `${totalLen.toFixed(1)} m · ${edgeSegs.length} segment — hepsi etiket bekliyor (neon)`,
         });
         toast({
           title: 'Çap ataması manuel',

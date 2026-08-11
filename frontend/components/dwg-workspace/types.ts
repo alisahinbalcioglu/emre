@@ -32,6 +32,9 @@ export interface CalculatedLayer {
    *  Simdiki isaretlemeyle uyusmuyorsa hesap BAYATTIR (sprinkler-bayatlik.ts) —
    *  PANOVA vakasi: isaret hesaptan SONRA konunca bolme sessizce eksik kaldi. */
   sprinklerLayersUsed?: string[];
+  /** Hesap hangi bolme moduyla yapildi. 't' = T noktalarinda bolme (varsayilan),
+   *  'none' = bolme yok (entity = tek parca). Yeniden hesapta AYNEN korunur. */
+  splitMode?: 't' | 'none';
 }
 
 /** Workspace'in genel state'i. */

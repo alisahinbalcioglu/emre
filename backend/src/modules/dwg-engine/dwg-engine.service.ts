@@ -171,6 +171,7 @@ export class DwgEngineService {
     layerHatTipi?: Record<string, string>,
     layerMaterialType?: Record<string, string>,
     sprinklerLayers?: string[],
+    splitMode?: string,
   ) {
     const params = new URLSearchParams({ discipline });
     // Auto-mode: scale undefined -> parametreyi HIC gonderme. Python query
@@ -194,6 +195,11 @@ export class DwgEngineService {
     }
     if (sprinklerLayers && sprinklerLayers.length > 0) {
       params.set('sprinkler_layers', JSON.stringify(sprinklerLayers));
+    }
+    // split_mode yalniz varsayilan-disi ('none') iken gonderilir — eski Python
+    // motoru parametreyi tanimasa bile 't' akisi hicbir zaman etkilenmez.
+    if (splitMode === 'none') {
+      params.set('split_mode', 'none');
     }
     // layer_default_diameter + use_proximity_diameter KALDIRILDI —
     // otomatik cap atama motoru sokuldu, cap atamasi frontend'de manuel.

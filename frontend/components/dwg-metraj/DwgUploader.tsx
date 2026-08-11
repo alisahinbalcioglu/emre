@@ -6,6 +6,7 @@ import { cn } from '@/ortak/lib/utils';
 import { toast } from '@/ortak/hooks/use-toast';
 import api from '@/ortak/lib/api';
 import { MetrajResult } from './types';
+import { gecerliOlcek } from './unit-detection';
 import { DwgProjectWorkspace } from '@/components/dwg-workspace';
 
 interface DwgUploaderProps {
@@ -115,13 +116,15 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
   useEffect(() => {
     if (initialFileProcessed.current) return;
     const pendingFile = (window as any).__metaprice_dwg_file as File | undefined;
-    const pendingScale = (window as any).__metaprice_dwg_scale as number | undefined;
+    // gecerliOlcek: 0/NaN/negatif ELENIR — eski dashboard imzasi 0 gonderiyordu
+    // ve `??` zinciri 0'i gecerli sayip selectedUnit=0 yapiyordu (hover 0.00 m).
+    const pendingScale = gecerliOlcek((window as any).__metaprice_dwg_scale);
     if (pendingFile) {
       initialFileProcessed.current = true;
       delete (window as any).__metaprice_dwg_file;
       delete (window as any).__metaprice_dwg_scale;
       if (pendingScale) setSelectedUnit(pendingScale);
-      extractLayers(pendingFile, { override: pendingScale });
+      extractLayers(pendingFile, pendingScale ? { override: pendingScale } : {});
       return;
     }
     // SESSION RESTORE: sayfa yenilenmis olabilir, localStorage'da onceki
@@ -385,9 +388,12 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
         ? statusData.suggested_evidence
         : [];
 
-      const kullanilacak = opts.override ?? otoScale ?? 0.001;
+      // SAVUNMA: override yalniz GECERLI bir olcekse kullanilir. 0 gecerli
+      // degildir — `??` 0'i dusurmez, bu satir bir kez selectedUnit=0 uretti.
+      const gecerliOverride = gecerliOlcek(opts.override);
+      const kullanilacak = gecerliOverride ?? otoScale ?? 0.001;
       setSelectedUnit(kullanilacak);
-      setBirimElle(opts.override != null);
+      setBirimElle(gecerliOverride != null);
       setTespit(otoScale
         ? { scale: otoScale, label: etiket, confidence: guven,
             method: statusData.suggested_method ?? '', evidence: kanit }
@@ -396,11 +402,11 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
       // Guven dusukse SESSIZ GECME. "mm" hem "eminim" hem "pes ettim"
       // anlamina gelebiliyordu; kullanici farki goremiyordu.
       const guvensiz = guven === 'dusuk' || guven === 'yok';
-      if (!opts.override && guvensiz) {
+      if (!gecerliOverride && guvensiz) {
         setBirimPaneli(true);
       }
 
-      const birimMetni = opts.override
+      const birimMetni = gecerliOverride
         ? ''
         : ` · birim: ${etiket}${guvensiz ? ' (DOĞRULAYIN)' : ''}`;
       toast({
@@ -408,7 +414,7 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
         description: (dedupEdildi
           ? `${totalLayers} layer · önceki analiz yeniden kullanıldı, varsa etiketlemeniz geri gelir.`
           : `${totalLayers} layer`) + birimMetni,
-        variant: guvensiz && !opts.override ? 'destructive' : undefined,
+        variant: guvensiz && !gecerliOverride ? 'destructive' : undefined,
       });
 
       setFileId(uploadFileId);
