@@ -107,8 +107,10 @@ export class DwgEngineController {
       file?.buffer ?? null,
       file?.originalname ?? '',
       discipline || 'mechanical',
-      // Auto-mode: scale gonderilmezse undefined birak -> Python $INSUNITS+bound
-      // ile OTOMATIK birim tespiti yapar. 0.001'e zorlamak auto-detect'i bypass eder.
+      // AUTO-MODE: scale gonderilmezse resolveScaleParam undefined doner ve
+      // parametre Python'a HIC gitmez -> motor cizim birimini KENDI okur
+      // (python/unit_detect.py: antet pafta olcusu + "ÖLÇEK 1/N" kesisimi).
+      // 0.001'e zorlamak bu dali OLU KODA cevirir — daha once oyleydi.
       resolveScaleParam(scale),
       fileId,
       parsedLayers,

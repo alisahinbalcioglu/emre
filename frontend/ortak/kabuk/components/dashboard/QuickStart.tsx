@@ -7,7 +7,9 @@ import { toast } from '@/ortak/hooks/use-toast';
 
 interface QuickStartProps {
   onExcelFile: (file: File) => void;
-  onDwgFile: (file: File, scale: number) => void;
+  /** scale ARTIK OPSIYONEL: verilmezse backend cizim birimini otomatik tespit
+   *  eder (python/unit_detect.py). Yalnizca kullanici bilerek ezerse gecilir. */
+  onDwgFile: (file: File, scale?: number) => void;
   excelUploading: boolean;
   dwgUploading: boolean;
   elapsed: number;
@@ -25,9 +27,10 @@ export default function QuickStart({
   const excelInputRef = useRef<HTMLInputElement>(null);
   const dwgInputRef = useRef<HTMLInputElement>(null);
 
-  // DWG birim secim dialog — kullanici secer (sistem TAHMIN ETMEZ), mm varsayilan
-  const [unitDialogFile, setUnitDialogFile] = useState<File | null>(null);
-  const [selectedUnit, setSelectedUnit] = useState<number>(0.001); // mm varsayilan
+  // BIRIM DIALOG'U KALDIRILDI: cizim birimi artik backend'de OTOMATIK tespit
+  // ediliyor (python/unit_detect.py — antet pafta olcusu + "ÖLÇEK 1/N" kesisimi).
+  // Kullaniciya dosyayi ACMADAN ONCE birim sormak zaten cevaplanamaz bir soruydu.
+  // Tespit sonucu ve gerekirse degistirme yolu DwgUploader'daki birim bandinda.
 
   // ── Excel Drop ──
   const handleExcelDrop = useCallback((e: React.DragEvent) => {
@@ -40,7 +43,7 @@ export default function QuickStart({
     if (['xlsx', 'xls'].includes(ext ?? '')) {
       onExcelFile(file);
     } else if (['dwg', 'dxf'].includes(ext ?? '')) {
-      setUnitDialogFile(file);
+      onDwgFile(file);
     } else {
       toast({ title: 'Gecersiz dosya', description: 'Excel (.xlsx/.xls) dosyasi yukleyin.', variant: 'destructive' });
     }
@@ -55,8 +58,7 @@ export default function QuickStart({
     if (!file) return;
     const ext = file.name.split('.').pop()?.toLowerCase();
     if (['dwg', 'dxf'].includes(ext ?? '')) {
-      setUnitDialogFile(file);
-      setSelectedUnit(0.001);  // mm varsayilan (kullanici dialog'dan degistirir)
+      onDwgFile(file);
     } else if (['xlsx', 'xls'].includes(ext ?? '')) {
       onExcelFile(file);
     } else {
@@ -72,18 +74,8 @@ export default function QuickStart({
 
   const handleDwgInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setUnitDialogFile(file);
-      setSelectedUnit(0.001);  // mm varsayilan (kullanici dialog'dan degistirir)
-    }
+    if (file) onDwgFile(file);   // birim sorulmaz — otomatik tespit
     e.target.value = '';
-  };
-
-  const handleUnitConfirm = () => {
-    if (unitDialogFile) {
-      onDwgFile(unitDialogFile, selectedUnit);
-      setUnitDialogFile(null);
-    }
   };
 
   return (
@@ -157,59 +149,6 @@ export default function QuickStart({
         )}
       </div>
 
-      {/* DWG Analiz Dialog — birim otomatik tespit, manuel override gizli */}
-      {unitDialogFile && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setUnitDialogFile(null)}>
-          <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-semibold mb-1">Analiz</h3>
-            <p className="text-sm text-muted-foreground mb-4">{unitDialogFile.name}</p>
-
-            {/* BIRIM SECIMI — ANA ADIM (zorunlu, kullanici sorumlulugu) */}
-            <div className="mb-3">
-              <p className="mb-1 text-sm font-semibold text-slate-800">Çizim Birimi</p>
-              <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] font-medium text-amber-800">
-                DWG&apos;de boru uzunlukları hangi birimde ise onu seçiniz
-              </p>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { value: 0.001, label: 'mm', desc: 'Milimetre' },
-                  { value: 0.01, label: 'cm', desc: 'Santimetre' },
-                  { value: 1.0, label: 'm', desc: 'Metre' },
-                ].map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setSelectedUnit(opt.value)}
-                    className={cn(
-                      'rounded-lg border-2 px-2 py-3 text-center transition-all',
-                      selectedUnit === opt.value
-                        ? 'border-blue-500 bg-blue-50 text-blue-700'
-                        : 'border-slate-200 text-slate-600 hover:border-slate-300',
-                    )}
-                  >
-                    <div className="text-base font-semibold">{opt.label}</div>
-                    <div className="text-[10px] text-slate-400">{opt.desc}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setUnitDialogFile(null)}
-                className="rounded-lg border px-4 py-2 text-sm text-slate-500 hover:bg-slate-50"
-              >
-                Iptal
-              </button>
-              <button
-                onClick={handleUnitConfirm}
-                className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700"
-              >
-                Analiz Et
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

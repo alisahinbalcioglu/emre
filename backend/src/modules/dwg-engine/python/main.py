@@ -100,6 +100,11 @@ import hashlib
 
 # CACHE TTL — SaaS gercegi: manuel etiketleme oturumu SAATLER surebilir.
 # Eski 15dk kullanicinin emegini yariyolda birakiyordu ("file_id bilinmiyor").
+# Birim tespit motorunun surumu. Cache'lenmis state bu surumu tasir; surum
+# degisince dedup ATLANIR ve dosya yeniden parse edilir (bkz. upload_async).
+# unit_detect.py'de karar mantigi degistiginde BU DEGERI ARTIR.
+DETECTOR_VERSION = "2026-08-11-kesisim"
+
 # Default 24 saat; env DWG_CACHE_TTL (saniye) ile ayarlanabilir.
 # Disk maliyeti kabul edilebilir: dedup ayni dosyayi coklamaz, cleanup her
 # upload'da kosar, 75GB diskte gunluk DXF hacmi sorun degil.
@@ -363,19 +368,26 @@ def analyze_dxf_metraj(
     doc = read_dxf(dxf_path)
     msp = doc.modelspace()
 
-    # BIRIM = KULLANICI SORUMLULUGU (TAHMIN YOK).
-    # Sistem cizim birimini ASLA tahmin etmez. scale frontend'den gelir
-    # (kullanici dropdown secimi). scale=None ise mm varsayilan (kullanici
-    # secmedi) — auto-detect/bound/medyan mantiklari KALDIRILDI.
+    # BIRIM: OTOMATIK TESPIT (scale=None) veya KULLANICI OVERRIDE (scale verilmis).
+    #
+    # scale=None -> cizimin kendi yazili beyani okunur (antet pafta olcusu +
+    # "ÖLÇEK 1/N" metni), fizik kontrolu ile tekillestirilir. Bu bir TAHMIN
+    # DEGIL, kapali form cozumdur; ayrinti unit_detect.py basliginda.
+    # scale verilmisse kullanici bilerek eziyor demektir — dokunulmaz.
+    from unit_detect import STANDARD_UNITS as _STD_UNITS
+
+    _detection = None
     if scale is None:
-        scale = 0.001  # mm varsayilan
-    _scale_label = (
-        "mm" if abs(scale - 0.001) < 1e-6
-        else "cm" if abs(scale - 0.01) < 1e-6
-        else "m" if abs(scale - 1.0) < 1e-6
-        else f"{scale}"
-    )
-    _scale_auto_reason = f"Kullanici secimi: {_scale_label} (scale={scale})"
+        _detection = _detect_unit_from_dxf(doc)
+        scale = _detection.scale
+        _scale_label = _detection.unit_label
+        _scale_auto_reason = f"Otomatik ({_detection.confidence}): {_detection.reason()}"
+    else:
+        _scale_label = next(
+            (lbl for lbl, m in _STD_UNITS.items() if abs(scale - m) < 1e-9),
+            f"{scale}",
+        )
+        _scale_auto_reason = f"Kullanici secimi: {_scale_label} (scale={scale})"
 
     layer_data: dict[str, dict] = {}  # layer → {length, count}
 
@@ -605,6 +617,9 @@ def analyze_dxf_metraj(
         detected_unit=_scale_label,
         detected_scale=scale,
         detection_reason=_scale_auto_reason,
+        detection_confidence=(_detection.confidence if _detection else "kullanici"),
+        detection_method=(_detection.method if _detection else "override"),
+        detection_rejected=(_detection.rejected[:6] if _detection else []),
     )
 
 
@@ -1085,17 +1100,25 @@ def _safe_response(obj):
             return Response(content=b'{"error":"encode_failure"}', media_type="application/json")
 
 
-def _detect_unit_from_dxf(doc) -> tuple[float, str]:
-    """ezdxf doc'tan birim cikart. $INSUNITS header'i (1=inch, 4=mm, 6=m, ...)."""
+def _detect_unit_from_dxf(doc):
+    """Cizim birimini OTOMATIK tespit et. Donus: unit_detect.UnitDetection.
+
+    ESKI DAVRANIS SILINDI: yalnizca $INSUNITS okunuyordu ve tablo eksikti
+    (1,2,4,5,6). OLCULDU — gercek bir yangin projesinde ($INSUNITS=4 "mm"
+    diyordu) dogru birim DESIMETRE'ydi; header'a guvenmek metraji 100x kucuk
+    veriyordu. Artik cizimin kendi YAZILI BEYANI (antet pafta olcusu + "ÖLÇEK
+    1/100" metni) esas alinir, $INSUNITS yalnizca son care.
+    Ayrintili gerekce: unit_detect.py modul basligi.
+    """
+    from unit_detect import UnitDetection, detect_unit
     try:
-        insunits = int(doc.header.get("$INSUNITS", 0) or 0)
-        _unit_map: dict[int, tuple[float, str]] = {
-            1: (0.0254, "inch"), 2: (0.3048, "feet"),
-            4: (0.001, "mm"), 5: (0.01, "cm"), 6: (1.0, "m"),
-        }
-        return _unit_map.get(insunits, (0.001, "mm"))
-    except Exception:
-        return 0.001, "mm"
+        return detect_unit(doc)
+    except Exception as e:
+        logging.exception("Birim tespiti coktu — mm varsayiliyor")
+        return UnitDetection(
+            0.001, "mm", "dusuk", "hata",
+            [f"Birim tespiti hata verdi ({type(e).__name__}) — mm varsayıldı"], [],
+        )
 
 
 
@@ -1122,6 +1145,10 @@ def _background_pipeline(file_id: str, src_path: str) -> None:
             "total_layers": result.get("total_layers", 0),
             "suggested_scale": result.get("suggested_scale", 0.001),
             "suggested_unit_label": result.get("suggested_unit_label", "mm"),
+            "suggested_confidence": result.get("suggested_confidence", "dusuk"),
+            "suggested_method": result.get("suggested_method", ""),
+            "suggested_evidence": result.get("suggested_evidence", []),
+            "detector_version": DETECTOR_VERSION,
             "entity_count": result.get("entity_count"),
         })
     except BaseException as e:
@@ -1208,8 +1235,17 @@ async def upload_async(file: UploadFile = File(...)):
             _cleanup_cache()
 
             # ── DEDUP: ayni hash zaten islemde/hazir mi? ──
+            # DIKKAT: DEDUP BIRIM TESPITINI DE DONDURUR. Cache TTL 24 saat
+            # oldugu icin, tespit motoru degistikten sonra ayni dosya eski
+            # (yanlis) birimle geri gelebilirdi — kullanici yeniden yukledigini
+            # sanip bayat cevap alirdi. Bu yuzden state'e DETECTOR_VERSION
+            # yazilir ve surum uyusmuyorsa dedup ATLANIR (yeniden parse edilir).
             for fid, st in _iter_states():
                 if st.get("hash") != file_hash:
+                    continue
+                if st.get("detector_version") != DETECTOR_VERSION:
+                    logging.info("Dedup atlandi (birim tespit surumu eski: %s != %s)",
+                                 st.get("detector_version"), DETECTOR_VERSION)
                     continue
                 status = st.get("status")
                 if status == "ready" and os.path.isfile(_cache_path(fid)):
@@ -1232,10 +1268,17 @@ async def upload_async(file: UploadFile = File(...)):
                 "status": "processing",
                 "hash": file_hash,
                 "started_at": time.time(),
-                # Frontend "ready" gelene kadar bunlari kullanir; worker gercek
-                # $INSUNITS degerini okuyup state'e yazar (artik ezilmiyor).
+                # Frontend "ready" gelene kadar bunlari kullanir; worker tespit
+                # sonucunu okuyup state'e yazar (artik ezilmiyor).
+                # DIKKAT: "processing" asamasinda HENUZ TESPIT YAPILMADI —
+                # guven "yok" olarak isaretlenir ki frontend bu ara degeri
+                # gercek bir tespit sanip kullaniciya "mm" gostermesin.
                 "suggested_scale": 0.001,
                 "suggested_unit_label": "mm",
+                "suggested_confidence": "yok",
+                "suggested_method": "beklemede",
+                "suggested_evidence": [],
+                "detector_version": DETECTOR_VERSION,
             })
 
         # Agir is: izole subprocess (upload_worker.py) — event loop bloklanmaz,
@@ -1353,25 +1396,17 @@ async def list_layers(file: UploadFile = File(...)):
             # Log et — silent fail degil, gozlem icin
             logging.exception("Pre-cache geometry failed for file_id=%s", file_id)
 
-        # DWG birimini otomatik tespit et ($INSUNITS header'indan)
-        try:
-            doc = read_dxf(dxf_path)
-            insunits = int(doc.header.get("$INSUNITS", 0) or 0)
-            # DXF standardi: 1=inch, 2=feet, 4=mm, 5=cm, 6=m (digerleri nadir)
-            _unit_map: dict[int, tuple[float, str]] = {
-                1: (0.0254, "inch"),
-                2: (0.3048, "feet"),
-                4: (0.001, "mm"),
-                5: (0.01, "cm"),
-                6: (1.0, "m"),
-            }
-            scale, label = _unit_map.get(insunits, (0.001, "mm"))
-            result.suggested_scale = scale
-            result.suggested_unit_label = label
-        except Exception:
-            # Header yoksa veya okunamiyorsa default mm
-            result.suggested_scale = 0.001
-            result.suggested_unit_label = "mm"
+        # DWG birimini OTOMATIK tespit et.
+        # Eskiden burada yalniz $INSUNITS okunuyordu ve tablo eksikti (14=desimetre
+        # YOKTU, bilinmeyen kod sessizce mm'e dusuyordu). Gercek bir projede
+        # $INSUNITS "mm" derken dogru birim desimetreydi — bu yol 100x hata
+        # uretiyordu. Artik cizimin kendi yazili beyani esas: unit_detect.py
+        det = _detect_unit_from_dxf(doc)
+        result.suggested_scale = det.scale
+        result.suggested_unit_label = det.unit_label
+        result.suggested_confidence = det.confidence
+        result.suggested_method = det.method
+        result.suggested_evidence = det.evidence[:5]
 
         # Not: dxf_base64 alani kaldirildi — frontend kullanmiyordu, sadece I/O +
         # network overhead'i (5MB DXF → 6.7MB base64 string) yaratıyordu.

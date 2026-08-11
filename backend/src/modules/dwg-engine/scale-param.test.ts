@@ -15,18 +15,30 @@ function check(name: string, fn: () => void) {
 
 console.log('resolveScaleParam:');
 
-check('TAHMIN YOK: undefined -> mm default (0.001)', () => {
-  assert.strictEqual(resolveScaleParam(undefined), 0.001);
+// ── AUTO DALI ────────────────────────────────────────────────────
+// Eskiden bu uc vaka 0.001 (mm) donuyordu ve Python'un otomatik birim
+// tespitini BYPASS ediyordu (auto-detect dali hic calismiyordu).
+check('undefined -> undefined (Python OTOMATIK tespit etsin)', () => {
+  assert.strictEqual(resolveScaleParam(undefined), undefined);
 });
 
-check('bos string -> mm default', () => {
-  assert.strictEqual(resolveScaleParam(''), 0.001);
+check('bos string -> undefined (otomatik)', () => {
+  assert.strictEqual(resolveScaleParam(''), undefined);
 });
 
-check('whitespace -> mm default', () => {
-  assert.strictEqual(resolveScaleParam('   '), 0.001);
+check('whitespace -> undefined (otomatik)', () => {
+  assert.strictEqual(resolveScaleParam('   '), undefined);
 });
 
+check('gecersiz "abc" -> undefined (tahmin etmektense cizime sor)', () => {
+  assert.strictEqual(resolveScaleParam('abc'), undefined);
+});
+
+check('negatif/sifir "0" -> undefined (otomatik)', () => {
+  assert.strictEqual(resolveScaleParam('0'), undefined);
+});
+
+// ── KULLANICI OVERRIDE DALI (degismedi) ──────────────────────────
 check('kullanici mm "0.001" -> 0.001', () => {
   assert.strictEqual(resolveScaleParam('0.001'), 0.001);
 });
@@ -35,16 +47,12 @@ check('kullanici cm "0.01" -> 0.01', () => {
   assert.strictEqual(resolveScaleParam('0.01'), 0.01);
 });
 
+check('kullanici dm "0.1" -> 0.1 (gercek projenin birimi)', () => {
+  assert.strictEqual(resolveScaleParam('0.1'), 0.1);
+});
+
 check('kullanici m "1" -> 1', () => {
   assert.strictEqual(resolveScaleParam('1'), 1);
 });
 
-check('gecersiz "abc" -> mm default', () => {
-  assert.strictEqual(resolveScaleParam('abc'), 0.001);
-});
-
-check('negatif/sifir "0" -> mm default', () => {
-  assert.strictEqual(resolveScaleParam('0'), 0.001);
-});
-
-console.log(`\n${passed}/8 PASS`);
+console.log(`\n${passed}/9 PASS`);

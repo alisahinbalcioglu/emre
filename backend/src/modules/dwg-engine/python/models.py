@@ -16,8 +16,14 @@ class LayerListResult(BaseModel):
     total_layers: int = 0
     file_id: str = ""       # cache'teki DXF dosyasinin ID'si (tekrar yukleme gerek yok)
     dxf_base64: str = ""    # DXF dosyasi base64 (frontend DxfViewer icin)
-    suggested_scale: float = 0.001  # DWG $INSUNITS header'indan onerilen birim carpani
-    suggested_unit_label: str = "mm"  # Frontend dialog'unda gosterilecek isim
+    # OTOMATIK tespit edilen cizim birimi. Kaynak artik sadece $INSUNITS DEGIL:
+    # antet pafta olcusu + "ÖLÇEK 1/N" metni (kapali form) > yazi yuksekligi >
+    # fizik elemesi > $INSUNITS. Ayrinti: unit_detect.py
+    suggested_scale: float = 0.001    # metre / cizim birimi
+    suggested_unit_label: str = "mm"  # mm | cm | dm | m | inch | ft
+    suggested_confidence: str = "dusuk"   # kesin | yuksek | orta | dusuk
+    suggested_method: str = ""            # antet+olcek | yazi+olcek | fizik | insunits | varsayilan
+    suggested_evidence: list[str] = []    # kullaniciya gosterilecek kanit satirlari
     warnings: list[str] = []
 
 
@@ -74,6 +80,9 @@ class MetrajResult(BaseModel):
     edge_segments: list[EdgeSegment] = []  # her edge ayri — Canvas2D viewer icin
     junction_points: list[list[float]] = []  # T-junction [x, y] noktalari (degree>=3, marker icin)
     # Birim auto-detect bilgisi (frontend "Algılanan: X" rozetinde gösterir)
-    detected_unit: str = "mm"               # 'mm', 'cm', 'm', 'inch', 'feet'
-    detected_scale: float = 0.001           # ham scale degeri (test/debug için)
-    detection_reason: str = ""              # nasıl belirlendi (metadata, geometri, fallback...)
+    detected_unit: str = "mm"               # mm | cm | dm | m | inch | ft
+    detected_scale: float = 0.001           # metre / cizim birimi
+    detection_reason: str = ""              # kanit metni — kullaniciya gosterilir
+    detection_confidence: str = "dusuk"     # kesin | yuksek | orta | dusuk | kullanici
+    detection_method: str = ""              # antet+olcek | yazi+olcek | fizik | insunits | ...
+    detection_rejected: list[str] = []      # elenen adaylar + eleme gerekcesi

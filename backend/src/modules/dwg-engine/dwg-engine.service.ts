@@ -174,7 +174,8 @@ export class DwgEngineService {
   ) {
     const params = new URLSearchParams({ discipline });
     // Auto-mode: scale undefined -> parametreyi HIC gonderme. Python query
-    // default'u None olur -> $INSUNITS+bound ile otomatik birim tespiti.
+    // default'u None olur -> unit_detect.detect_unit calisir (antet+olcek
+    // kesisimi; $INSUNITS yalnizca son care, cunku YALAN soyleyebiliyor).
     if (scale !== undefined && scale !== null) {
       params.set('scale', String(scale));
     }

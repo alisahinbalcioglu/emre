@@ -51,12 +51,21 @@ interface DwgProjectWorkspaceProps {
   onApproved: (metraj: MetrajResult, fileName: string) => void;
 }
 
+/** Metre carpanini insan-okunur birim adina cevirir (bant metni icin). */
+const BIRIM_ADI = (scale: number): string => {
+  const t: [number, string][] = [[0.001, 'mm'], [0.01, 'cm'], [0.1, 'dm'],
+                                 [1, 'm'], [0.0254, 'inch'], [0.3048, 'ft']];
+  const bulunan = t.find(([m]) => Math.abs(scale - m) / m < 1e-6);
+  return bulunan ? bulunan[1] : `x${scale}`;
+};
+
 export default function DwgProjectWorkspace({
   fileId, scale, fileName, fileHash = null, onReset, onApproved,
 }: DwgProjectWorkspaceProps) {
   const {
     state,
     restoredWork,
+    birimDegisimi,
     resetFileState,
     selectLayer,
     focusLayer,
@@ -716,6 +725,22 @@ export default function DwgProjectWorkspace({
           </button>
         </div>
       </div>
+
+      {/* BIRIM DEGISTI BANDI — kayitli metraj FARKLI cizim birimiyle
+          hesaplanmisti, bu yuzden YUKLENMEDI. Sessizce silmek de sessizce
+          10x farkla karistirmak kadar kotudur; ne oldugu YAZILIR. */}
+      {birimDegisimi && (
+        <div className="mb-3 rounded-lg border border-red-300 bg-red-50 px-3 py-2">
+          <span className="text-xs text-red-900">
+            <strong>Çizim birimi değişti</strong> — bu dosyanın kayıtlı{' '}
+            {birimDegisimi.dusenLayer} hesaplanmış layer&apos;ı{' '}
+            <strong>{BIRIM_ADI(birimDegisimi.eskiScale)}</strong> ile üretilmişti, şimdi{' '}
+            <strong>{BIRIM_ADI(birimDegisimi.yeniScale)}</strong> kullanılıyor. Eski metrajlar
+            geçersiz olduğu için yüklenmedi — layer&apos;ları yeniden hesaplayın.
+            (Etiketleme ve görünürlük tercihleriniz korundu.)
+          </span>
+        </div>
+      )}
 
       {/* GERI YUKLEME BANDI — bu geri yukleme bugune kadar SESSIZDI: kullanici
           ayni dosyayi tekrar yukluyor, ekrana onceki calismasi geliyor ve

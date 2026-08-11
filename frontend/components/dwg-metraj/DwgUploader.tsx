@@ -50,6 +50,27 @@ async function computeFileHash(f: File): Promise<string | null> {
   }
 }
 
+/** Birim override secenekleri — backend'in uretebildigi TUM birimler.
+ *  Eski modal yalniz {mm, cm, m} sunuyordu; motor dm/inch/ft de uretebiliyor ve
+ *  GERCEK bir projede dogru cevap 'dm' cikti — o cevap eski listede ifade dahi
+ *  edilemiyordu, yani kullanicinin duzeltmesi imkansizdi. */
+const BIRIM_SECENEKLERI: { value: number; label: string; desc: string }[] = [
+  { value: 0.001, label: 'mm', desc: 'Milimetre' },
+  { value: 0.01, label: 'cm', desc: 'Santimetre' },
+  { value: 0.1, label: 'dm', desc: 'Desimetre' },
+  { value: 1.0, label: 'm', desc: 'Metre' },
+  { value: 0.0254, label: 'inch', desc: 'İnç' },
+  { value: 0.3048, label: 'ft', desc: 'Fit' },
+];
+
+const GUVEN_METNI: Record<string, string> = {
+  kesin: 'kesin — iki bağımsız kanıt uyuştu',
+  yuksek: 'yüksek — tek kanıt doğruladı',
+  orta: 'orta — yalnız dosya başlığına dayanıyor',
+  dusuk: 'DÜŞÜK — doğrulayın',
+  yok: 'henüz hesaplanmadı',
+};
+
 export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
   // file: dosya nesnesi (yuklemede gerekli). Refresh sonrasi YOK ama
   // fileName + fileId localStorage'dan gelir — workspace acilir.
@@ -72,13 +93,22 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Birim secimi — parse bitince dialog acilir. Birim TAMAMEN kullanici
-  // secimi (PRD: "onerilen birim" gosterimi kaldirildi — organik tespit
-  // degil, sabit mm yaziyordu).
-  const [pendingUnitChoice, setPendingUnitChoice] = useState<{
-    fileId: string;
+  // BIRIM ARTIK OTOMATIK. Yukleme oncesi soru sorulmuyor: backend cizimin
+  // kendi yazili beyanini okuyor (antet pafta olcusu + "ÖLÇEK 1/N" metni
+  // kesisimi — bkz. python/unit_detect.py) ve metre carpanini doniyor.
+  // Kullaniciya modal ACILMAZ; tespit bir bant olarak GOSTERILIR ve gerekirse
+  // oradan degistirilir. Geri alma yolu bilerek birakildi: tespit yanilirsa
+  // kullanicinin duzeltmesi imkansiz olmamali.
+  const [selectedUnit, setSelectedUnit] = useState<number>(0.001);
+  const [tespit, setTespit] = useState<{
+    scale: number;
+    label: string;
+    confidence: string;
+    method: string;
+    evidence: string[];
   } | null>(null);
-  const [selectedUnit, setSelectedUnit] = useState<number>(0.001);  // mm varsayilan (sistem tahmin etmez; kullanici degistirir)
+  const [birimPaneli, setBirimPaneli] = useState(false);
+  const [birimElle, setBirimElle] = useState(false);  // kullanici ezdi mi
 
   // Dashboard'dan gelen dosyayi otomatik isle — birim dialog'u atla (Dashboard zaten belirlemis)
   const initialFileProcessed = useRef(false);
@@ -91,7 +121,7 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
       delete (window as any).__metaprice_dwg_file;
       delete (window as any).__metaprice_dwg_scale;
       if (pendingScale) setSelectedUnit(pendingScale);
-      extractLayers(pendingFile, { skipDialog: true, override: pendingScale });
+      extractLayers(pendingFile, { override: pendingScale });
       return;
     }
     // SESSION RESTORE: sayfa yenilenmis olabilir, localStorage'da onceki
@@ -179,11 +209,14 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
    */
   const extractLayers = useCallback(async (
     f: File,
-    opts: { skipDialog?: boolean; override?: number } = {},
+    // override: kullanici birimi BILEREK ezdiginde gelir; yoksa otomatik tespit
+    opts: { override?: number } = {},
   ) => {
     setFile(f);
     setFileId(null);
-    setPendingUnitChoice(null);
+    setTespit(null);
+    setBirimPaneli(false);
+    setBirimElle(false);
     setError(null);
     setExtractingLayers(true);
     startTimer();
@@ -295,24 +328,47 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
         throw new Error(`Parse zaman asimi (${POLL_MAX_MS / 1000}sn)`);
       }
 
-      // 3) Sonuc — birim TAMAMEN kullanici secimi. "Onerilen birim" toast'i
-      // KALDIRILDI (PRD): eski gosterim organik tespit degildi, header'a
-      // zorla yazilan sabit mm'i geri okuyordu. Kullanici dialogdan secer.
+      // 3) Sonuc — BIRIM OTOMATIK TESPIT EDILDI.
+      // Backend cizimin kendi beyanini okur (antet pafta olcusu + "ÖLÇEK 1/N"
+      // kesisimi). opts.override yalnizca kullanici bilerek ezdiginde gelir.
       const totalLayers = statusData.total_layers ?? (statusData.layers?.length ?? 0);
-      setSelectedUnit(opts.override ?? 0.001);  // mm varsayilan
+      const otoScale: number | undefined =
+        typeof statusData.suggested_scale === 'number' && statusData.suggested_scale > 0
+          ? statusData.suggested_scale
+          : undefined;
+      const guven: string = statusData.suggested_confidence ?? 'dusuk';
+      const etiket: string = statusData.suggested_unit_label ?? 'mm';
+      const kanit: string[] = Array.isArray(statusData.suggested_evidence)
+        ? statusData.suggested_evidence
+        : [];
 
+      const kullanilacak = opts.override ?? otoScale ?? 0.001;
+      setSelectedUnit(kullanilacak);
+      setBirimElle(opts.override != null);
+      setTespit(otoScale
+        ? { scale: otoScale, label: etiket, confidence: guven,
+            method: statusData.suggested_method ?? '', evidence: kanit }
+        : null);
+
+      // Guven dusukse SESSIZ GECME. "mm" hem "eminim" hem "pes ettim"
+      // anlamina gelebiliyordu; kullanici farki goremiyordu.
+      const guvensiz = guven === 'dusuk' || guven === 'yok';
+      if (!opts.override && guvensiz) {
+        setBirimPaneli(true);
+      }
+
+      const birimMetni = opts.override
+        ? ''
+        : ` · birim: ${etiket}${guvensiz ? ' (DOĞRULAYIN)' : ''}`;
       toast({
         title: dedupEdildi ? 'Bu dosya daha önce yüklenmişti' : 'Proje hazirlandi',
-        description: dedupEdildi
+        description: (dedupEdildi
           ? `${totalLayers} layer · önceki analiz yeniden kullanıldı, varsa etiketlemeniz geri gelir.`
-          : `${totalLayers} layer`,
+          : `${totalLayers} layer`) + birimMetni,
+        variant: guvensiz && !opts.override ? 'destructive' : undefined,
       });
 
-      if (opts.skipDialog) {
-        setFileId(uploadFileId);
-      } else {
-        setPendingUnitChoice({ fileId: uploadFileId });
-      }
+      setFileId(uploadFileId);
     } catch (e: any) {
       const msg = e?.response?.data?.message ?? e?.response?.data?.detail ?? e?.message ?? 'Proje yuklenemedi';
       setError(msg);
@@ -328,7 +384,9 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
     setRestoredFileName(null);
     setFileId(null);
     setFileHash(null);
-    setPendingUnitChoice(null);
+    setTespit(null);
+    setBirimPaneli(false);
+    setBirimElle(false);
     setError(null);
     setExtractingLayers(false);
     // Session storage temizle — kullanici yeni DWG yuklemek istiyor
@@ -341,16 +399,19 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
       toast({ title: 'Gecersiz dosya', description: 'Sadece .dwg ve .dxf dosyalari kabul edilir.', variant: 'destructive' });
       return;
     }
-    // Dogrudan /layers cagir — backend birim onerisiyle birlikte dialog acacak
+    // Birim SORULMAZ — backend otomatik tespit eder, sonuc bant olarak gosterilir.
     extractLayers(f);
   };
 
-  const handleUnitConfirm = () => {
-    if (pendingUnitChoice) {
-      // Kullanici birim secimi onayladi → workspace'e gec
-      setFileId(pendingUnitChoice.fileId);
-      setPendingUnitChoice(null);
-    }
+  /** Kullanici otomatik tespiti eziyor. Metraj yeniden hesaplanmali. */
+  const birimiDegistir = (yeniScale: number) => {
+    setSelectedUnit(yeniScale);
+    setBirimElle(true);
+    setBirimPaneli(false);
+    toast({
+      title: 'Birim değiştirildi',
+      description: `Çizim birimi elle ${BIRIM_SECENEKLERI.find((b) => b.value === yeniScale)?.label ?? yeniScale} olarak ayarlandı — hesaplanan metrajları yenileyin.`,
+    });
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -442,47 +503,76 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
         </div>
       )}
 
-      {/* Birim Secim Dialog — /layers bitince acilir, backend onerisi default */}
-      {pendingUnitChoice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setPendingUnitChoice(null)}>
-          <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-semibold mb-1">Cizim Birimi</h3>
-            <p className="text-sm text-muted-foreground mb-4">{file?.name}</p>
-            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-              <p className="text-[12px] font-medium text-amber-800">
-                DWG&apos;de boru uzunlukları hangi birimde ise onu seçiniz
+      {/* BIRIM BANDI — modal DEGIL. Otomatik tespit sonucu + kanit + degistirme yolu.
+          Guven dusukse panel kendiliginden acilir; "kesin"de sadece tek satir. */}
+      {(tespit || birimElle) && (
+        <div
+          className={cn(
+            'mt-4 rounded-lg border px-4 py-3',
+            birimElle
+              ? 'border-slate-200 bg-slate-50'
+              : tespit?.confidence === 'kesin' || tespit?.confidence === 'yuksek'
+                ? 'border-emerald-200 bg-emerald-50'
+                : 'border-amber-300 bg-amber-50',
+          )}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-slate-800">
+                {birimElle
+                  ? `Çizim birimi (elle): ${BIRIM_SECENEKLERI.find((b) => b.value === selectedUnit)?.label ?? selectedUnit}`
+                  : `Çizim birimi otomatik bulundu: ${tespit?.label}`}
+                {!birimElle && tespit && (
+                  <span className="ml-2 text-xs font-normal text-slate-500">
+                    ({GUVEN_METNI[tespit.confidence] ?? tespit.confidence})
+                  </span>
+                )}
               </p>
+              {!birimElle && tespit && (tespit.confidence === 'dusuk' || tespit.confidence === 'orta') && (
+                <p className="mt-1 text-xs font-medium text-amber-800">
+                  Kanıt zayıf — metrajı kullanmadan önce birimi doğrulayın.
+                </p>
+              )}
+              {!birimElle && tespit?.evidence?.length ? (
+                <ul className="mt-1 space-y-0.5 text-[11px] leading-snug text-slate-500">
+                  {tespit.evidence.slice(0, 3).map((k, i) => (
+                    <li key={i}>· {k}</li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
-            <div className="mb-5 grid grid-cols-3 gap-2">
-              {[
-                { value: 0.001, label: 'mm', desc: 'Milimetre' },
-                { value: 0.01, label: 'cm', desc: 'Santimetre' },
-                { value: 1.0, label: 'm', desc: 'Metre' },
-              ].map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => setSelectedUnit(opt.value)}
-                  className={cn(
-                    'rounded-lg border-2 px-3 py-3 text-center transition-all',
-                    selectedUnit === opt.value
-                      ? 'border-blue-500 bg-blue-50 text-blue-700'
-                      : 'border-slate-200 text-slate-600 hover:border-slate-300',
-                  )}
-                >
-                  <div className="text-base font-semibold">{opt.label}</div>
-                  {opt.desc && <div className="text-[10px] text-slate-400">{opt.desc}</div>}
-                </button>
-              ))}
-            </div>
-            <div className="flex justify-end gap-2">
-              <button onClick={() => { setPendingUnitChoice(null); resetAll(); }} className="rounded-lg border px-4 py-2 text-sm text-slate-500 hover:bg-slate-50">
-                Iptal
-              </button>
-              <button onClick={handleUnitConfirm} className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700">
-                Devam Et
-              </button>
-            </div>
+            <button
+              onClick={() => setBirimPaneli((v) => !v)}
+              className="shrink-0 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+            >
+              {birimPaneli ? 'Kapat' : 'Değiştir'}
+            </button>
           </div>
+
+          {birimPaneli && (
+            <div className="mt-3 border-t border-slate-200 pt-3">
+              <p className="mb-2 text-xs text-slate-500">
+                Çizimde 1 birim gerçekte kaç uzunluk? (metraj bu çarpanla metreye çevrilir)
+              </p>
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+                {BIRIM_SECENEKLERI.map((opt) => (
+                  <button
+                    key={opt.label}
+                    onClick={() => birimiDegistir(opt.value)}
+                    className={cn(
+                      'rounded-lg border-2 px-2 py-2 text-center transition-all',
+                      selectedUnit === opt.value
+                        ? 'border-blue-500 bg-blue-50 text-blue-700'
+                        : 'border-slate-200 text-slate-600 hover:border-slate-300',
+                    )}
+                  >
+                    <div className="text-sm font-semibold">{opt.label}</div>
+                    <div className="text-[10px] text-slate-400">{opt.desc}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

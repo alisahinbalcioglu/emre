@@ -65,7 +65,7 @@ def main():
 
         # ── 2) TEK ezdxf parse — birim + layers + geometry paylasimli doc'tan ──
         doc = read_dxf(dxf_out)
-        scale, label = _detect_unit_from_dxf(doc)
+        det = _detect_unit_from_dxf(doc)  # UnitDetection (eskiden (scale, label) tuple'iydi)
         layer_result = extract_layer_info_from_doc(doc)
         geom_result = extract_geometry_from_doc(doc, None)
 
@@ -84,8 +84,11 @@ def main():
                 for l in (layer_result.layers or [])
             ],
             "total_layers": layer_result.total_layers,
-            "suggested_scale": scale,
-            "suggested_unit_label": label,
+            "suggested_scale": det.scale,
+            "suggested_unit_label": det.unit_label,
+            "suggested_confidence": det.confidence,
+            "suggested_method": det.method,
+            "suggested_evidence": det.evidence[:5],
             "entity_count": getattr(geom_result, "entity_count", None),
         }
         json.dump(_json_safe(out), _original_stdout, allow_nan=False, ensure_ascii=False)

@@ -63,7 +63,17 @@ function _emptyState(fileId: string, scale: number): WorkspaceState {
   };
 }
 
+/** Kayitli calisma FARKLI bir cizim birimiyle hesaplanmissa bilgisi. */
+export interface BirimDegisimi {
+  eskiScale: number;
+  yeniScale: number;
+  dusenLayer: number;
+}
+
+let _sonBirimDegisimi: BirimDegisimi | null = null;
+
 function _loadState(fileId: string, scale: number, fileHash?: string | null): WorkspaceState {
+  _sonBirimDegisimi = null;
   if (typeof window === 'undefined') return _emptyState(fileId, scale);
   try {
     // 1) Birincil: hash key (ayni dosya = ayni state, file_id degisse bile)
@@ -79,6 +89,23 @@ function _loadState(fileId: string, scale: number, fileHash?: string | null): Wo
     // Hash-keyed kayitta fileId FARKLI olabilir (sunucu yeni id verdi) — state
     // gecerlidir, fileId guncellenir. Legacy kayitta eski sanity korunur.
     if (!hashKeyed && parsed?.fileId !== fileId) return _emptyState(fileId, scale);
+
+    // ── BIRIM DEGISTIYSE ESKI METRAJ GECERSIZDIR ───────────────────
+    // calculatedLayers.totalLength METRE cinsinden DONDURULMUS sayilardir ve
+    // hangi scale ile uretildikleri satirda yazmaz. Birim degisince (or. elle
+    // cm secilmisken otomatik tespit dm buldu) eski satirlar ile yenileri ayni
+    // teklifte 10x farkla, UYARISIZ toplanirdi. Bu yuzden birim uyusmuyorsa
+    // hesaplanmis layer'lar YUKLENMEZ; etiketleme/gizleme gibi birimden
+    // BAGIMSIZ tercihler korunur.
+    const eski = typeof parsed?.scale === 'number' && parsed.scale > 0 ? parsed.scale : null;
+    if (eski !== null && Math.abs(eski - scale) / scale > 1e-6) {
+      const dusen = Object.keys(parsed?.calculatedLayers ?? {}).length;
+      if (dusen > 0) {
+        _sonBirimDegisimi = { eskiScale: eski, yeniScale: scale, dusenLayer: dusen };
+      }
+      return { ..._emptyState(fileId, scale), ...parsed, calculatedLayers: {}, fileId, scale };
+    }
+
     return { ..._emptyState(fileId, scale), ...parsed, fileId, scale };
   } catch {
     return _emptyState(fileId, scale);
@@ -109,11 +136,17 @@ export function useWorkspaceState(fileId: string, scale: number, fileHash?: stri
    *  ekranda acikca gosterilir; bugune kadar bu geri yukleme SESSIZDI. */
   const [restoredWork, setRestoredWork] = useState<GeriYuklenenCalisma>(() => _ozetle(state));
 
+  /** Kayitli metraj FARKLI birimle hesaplandigi icin dusuruldu mu?
+   *  UI bunu bir bantla soylemeli — sessizce silmek de sessizce karistirmak
+   *  kadar kotudur. */
+  const [birimDegisimi, setBirimDegisimi] = useState<BirimDegisimi | null>(() => _sonBirimDegisimi);
+
   // fileId/hash degistiginde ilgili kayittan yukle (yoksa bos baslat).
   useEffect(() => {
     const yuklenen = _loadState(fileId, scale, fileHash);
     setState(yuklenen);
     setRestoredWork(_ozetle(yuklenen));
+    setBirimDegisimi(_sonBirimDegisimi);
   }, [fileId, scale, fileHash]);
 
   /** "Bu dosyayi sifirla" — SADECE bu dosyanin kayitli calismasini siler ve
@@ -380,6 +413,9 @@ export function useWorkspaceState(fileId: string, scale: number, fileHash?: stri
   return {
     state,
     restoredWork,
+    /** null degilse: kayitli metraj FARKLI cizim birimiyle hesaplanmisti ve
+     *  yuklenmedi. UI kullaniciya soylemeli, sessizce yutmamali. */
+    birimDegisimi,
     resetFileState,
     selectLayer,
     focusLayer,

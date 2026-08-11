@@ -93,6 +93,29 @@ def _compute_tolerances(
     # Alt sinir 1.0 (yuvarlama hatasi koruma) + maksimum 2x bbox (sertlik).
     node_tol = max(1.0, min(epsilon_scale, bbox_node_tol * 2.0))
     sprinkler_tol = max(5.0, min(sprinkler_scale, bbox_sprinkler_tol * 2.0))
+
+    # ── KENAR-UZUNLUGU KELEPCESI (birimden BAGIMSIZ) ─────────────
+    # OLCULEN SORUN: birim yanlis secilirse node_tol siser ve kisa kenarlari
+    # yutar. Gercek bir yangin projesinde (M30, 458 boru kenari) olculdu:
+    #   cm varsayimi -> node_tol 5.0 birim -> 629 dugumun 96'si (%15.3) SAHTE
+    #   KAYNAK (gercekte 0.48 m'ye kadar ayri noktalar tek dugume kaynakliyor)
+    #   -> chain'ler capraz atliyor -> kullanicinin gordugu "cizgilerde yamulma".
+    #   dogru birim (dm) -> node_tol 1.0 -> %0.27.
+    # Kelepce: node_tol, kenarlarin 10. yuzdeliginin %40'ini GECEMEZ. Boylece
+    # birim yanlis olsa bile snap toleransi gercek kenarlardan kucuk kalir.
+    # Gercekten degen borularin uclari zaten CAKISIKTIR; tolerans yalnizca
+    # mikro-bosluklar icindir, bu yuzden kucultmek baglantiyi koparmaz.
+    lengths = sorted(
+        math.hypot(e["x2"] - e["x1"], e["y2"] - e["y1"]) for e in edges
+    )
+    lengths = [L for L in lengths if L > 0]
+    if len(lengths) >= 20:
+        p10 = lengths[int(len(lengths) * 0.10)]
+        cap = p10 * 0.4
+        if cap > 0:
+            node_tol = min(node_tol, cap)
+            sprinkler_tol = min(sprinkler_tol, cap * 5.0)
+
     return node_tol, sprinkler_tol
 
 
