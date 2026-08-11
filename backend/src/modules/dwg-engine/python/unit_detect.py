@@ -366,6 +366,17 @@ def _modal_text_height(doc) -> tuple[float, int] | None:
 
 
 def _sprinkler_spacing(doc) -> tuple[float, int] | None:
+    """Sprinkler sembollerinin en yakin komsu mesafesi medyani (cizim birimi).
+
+    IKI SEMBOL BICIMI taninir — ikisi de GERCEK dosyada olculdu:
+      - INSERT blok (M30: 338 x SPRA002)
+      - CIRCLE, sprinkler-adli layer'da (PANOVA: 980 daire 'SPRİNK' layer'inda,
+        blok YOK). Onceki surum yalniz INSERT'e bakiyordu; bu dosyada fizik
+        vetosu HIC kosamadi ve zincir $INSUNITS yalanina ("mm") dustu — gercek
+        birim cm'di, aralik 300 birim = 3.0 m yalniz cm ile mumkundu.
+    Yaricap esigi BILEREK YOK: birim henuz bilinmedigi icin ham yaricap esigi
+    anlamsizdir. Az sayida buyuk daire (tank/vana) medyani zaten kaydiramaz.
+    """
     pts: list[tuple[float, float]] = []
     try:
         msp = doc.modelspace()
@@ -376,6 +387,14 @@ def _sprinkler_spacing(doc) -> tuple[float, int] | None:
                 if not (SPRINKLER_PATTERN.search(lay) or SPRINKLER_PATTERN.search(nm)):
                     continue
                 pts.append((float(e.dxf.insert.x), float(e.dxf.insert.y)))
+            except Exception:
+                continue
+        for e in msp.query("CIRCLE"):
+            try:
+                lay = str(getattr(e.dxf, "layer", "") or "")
+                if not SPRINKLER_PATTERN.search(lay):
+                    continue
+                pts.append((float(e.dxf.center.x), float(e.dxf.center.y)))
             except Exception:
                 continue
     except Exception:

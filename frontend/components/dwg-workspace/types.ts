@@ -28,6 +28,10 @@ export interface CalculatedLayer {
   approved: boolean;
   /** Onay zamani (audit + Excel sheet siralamasi icin). */
   approvedAt?: number;
+  /** Hesap ANINDA motora gonderilen sprinkler isaretli layer'lar.
+   *  Simdiki isaretlemeyle uyusmuyorsa hesap BAYATTIR (sprinkler-bayatlik.ts) —
+   *  PANOVA vakasi: isaret hesaptan SONRA konunca bolme sessizce eksik kaldi. */
+  sprinklerLayersUsed?: string[];
 }
 
 /** Workspace'in genel state'i. */

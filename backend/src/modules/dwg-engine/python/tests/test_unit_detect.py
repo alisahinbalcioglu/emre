@@ -554,6 +554,39 @@ def test_INSUNITS_elenmis_adayi_geri_getiremez():
     assert any("$INSUNITS" in e for e in r.evidence), f"çelişki kaydedilmemiş: {r.evidence}"
 
 
+@pytest.mark.parametrize("u_m,beklenen", [(0.01, "cm"), (0.001, "mm"), (0.1, "dm")],
+                         ids=["cm-PANOVA-ailesi", "mm", "dm"])
+def test_DAIRE_sprinkler_fizik_capasini_besler(u_m, beklenen):
+    """PANOVA AILESI (gercek dosyadan): sprinkler = CIRCLE, blok YOK, antet YOK,
+    olcek metni YOK, $INSUNITS YALAN soyluyor.
+
+    Onceki surumde _sprinkler_spacing yalniz INSERT'lere bakiyordu; 980 daire
+    goz onundeyken fizik vetosu hic kosmuyor ve tespit $INSUNITS yalanina
+    dusuyordu (mm dedi, gercek cm — kullanici elle duzeltmek zorunda kaldi).
+    Daire araligi 3.0 m yalniz TEK birimle mumkun -> fizik tekillestirir.
+    """
+    doc = ezdxf.new("R2010", setup=True)
+    doc.header["$INSUNITS"] = 4 if u_m != 0.001 else 6  # DAIMA yanlis beyan
+    msp = doc.modelspace()
+    doc.layers.add("SPRİNK")
+    step = 3.0 / u_m          # gercek dunyada 3.0 m aralik
+    r = 0.075 / u_m           # gercek dunyada 7.5 cm yaricap (PANOVA ile ayni)
+    for row in range(6):
+        for col in range(10):
+            msp.add_circle((col * step, row * step), radius=r,
+                           dxfattribs={"layer": "SPRİNK"})
+    doc.layers.add("lnt yangın borusu")
+    for row in range(6):
+        msp.add_line((0.0, row * step), (9 * step, row * step),
+                     dxfattribs={"layer": "lnt yangın borusu"})
+    res = detect_unit(doc)
+    assert res.unit_label == beklenen, (
+        f"daire-sprinkler fizigi calismadi: {res.unit_label} "
+        f"({res.method}) — kanit={res.evidence} | elenen={res.rejected}")
+    assert res.method != "insunits+kesisim", (
+        f"karar yine header'a dustu: {res.evidence}")
+
+
 def test_kanit_daima_doldurulur():
     """detection_reason bos donerse kullanici neye guvenecegini bilemez."""
     doc = build_doc(0.1, plot_scale=100.0)

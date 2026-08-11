@@ -78,6 +78,10 @@ export function useLayerCalc({ fileId, scale, sprinklerLayers, onResult, onFileI
           totalLength: totalLen,
           computedAt: Date.now(),
           approved: false,
+          // Bayatlik tespiti icin anlik: hesap TAM OLARAK bu isaretlerle yapildi.
+          // Kopya alinir — state guncellenince ayni referans uzerinden "hep
+          // guncel" gorunmesin (sprinkler-bayatlik.ts).
+          sprinklerLayersUsed: [...sprinklerLayers],
         };
 
         onResult({ layer, calculated, raw: data });

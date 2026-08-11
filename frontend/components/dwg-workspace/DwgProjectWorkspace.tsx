@@ -28,6 +28,7 @@ import LayerVisibilityPanel from './LayerVisibilityPanel';
 import MetrajSummaryPanel from './MetrajSummaryPanel';
 import { useWorkspaceState } from './useWorkspaceState';
 import { capRenkliGorunur } from './onay-revizyon';
+import { sprinklerIsaretiBayat } from './sprinkler-bayatlik';
 import type { CalculatedLayer } from './types';
 import {
   useLayerCalc,
@@ -243,6 +244,44 @@ export default function DwgProjectWorkspace({
     }
     return map;
   }, [state.calculatedLayers]);
+
+  // ── SPRINKLER ISARETI BAYATLIGI (PANOVA vakasi) ─────────────────────────
+  // Isaret yalniz hesap ANINDA motora gider. Kullanici once hesaplayip sonra
+  // 💧 isaretlerse mevcut hesap sprinkler'da BOLUNMEMIS haliyle kalir ve bunu
+  // hicbir sey soylemezdi. Motor isareti alinca 494→1474 segmente boluyordu
+  // (gercek dosyada olculdu) — kopukluk motorda degil, bu sessizlikteydi.
+  const bayatSprinklerLayerlari = useMemo(
+    () => Object.values(state.calculatedLayers)
+      .filter((cl) => sprinklerIsaretiBayat(cl, state.sprinklerLayers))
+      .map((cl) => cl.layer),
+    [state.calculatedLayers, state.sprinklerLayers],
+  );
+
+  /** Bayat layer'lari simdiki isaretlemeyle YENIDEN hesapla.
+   *  ⚠ Yeniden hesap cap etiketlerini ve onayi SIFIRLAR (motor taze segment
+   *  doner) — bu yuzden once onay sorulur, sessiz kayip yok. */
+  const bayatlariYenidenHesapla = async () => {
+    const etiketli = Object.values(state.calculatedLayers)
+      .filter((cl) => bayatSprinklerLayerlari.includes(cl.layer))
+      .reduce((n, cl) => n + cl.edgeSegments.filter((es) => !isUnassignedDiameter(es.diameter)).length, 0);
+    const ok = await confirm({
+      title: `${bayatSprinklerLayerlari.length} layer yeniden hesaplansın mı?`,
+      description:
+        'Sprinkler işaretlemesi değişti — borular yeni işaretle sprinkler noktalarında bölünecek.' +
+        (etiketli > 0
+          ? ` DİKKAT: bu layer'lardaki ${etiketli} çap etiketi ve onaylar sıfırlanır.`
+          : ' Çap etiketi atanmamış — kayıp yok.'),
+      confirmText: 'Yeniden Hesapla',
+    });
+    if (!ok) return;
+    for (const cl of Object.values(state.calculatedLayers)) {
+      if (!bayatSprinklerLayerlari.includes(cl.layer)) continue;
+      // Sirali koş — calculateLayer kendi state'ini yonetiyor, paralel kosum
+      // calculatingLayer gostergesini ezerdi.
+      // eslint-disable-next-line no-await-in-loop
+      await calculateLayer(cl.layer, { hatIsmi: cl.hatIsmi, materialType: cl.materialType });
+    }
+  };
 
   // EKSIK PARCA TESPITI: bekleyen layer'lardaki capsiz segment sayisi.
   // Viewer bunlari NEON cizer; BucketPanel rozet + toplu-uygula gosterir.
@@ -696,6 +735,26 @@ export default function DwgProjectWorkspace({
             geçersiz olduğu için yüklenmedi — layer&apos;ları yeniden hesaplayın.
             (Etiketleme ve görünürlük tercihleriniz korundu.)
           </span>
+        </div>
+      )}
+
+      {/* SPRINKLER ISARETI DEGISTI BANDI — PANOVA vakasi: isaret hesaptan
+          SONRA konunca mevcut hesap sprinkler'da BOLUNMEMIS kaliyordu ve
+          hicbir sey soylemiyordu. Sessiz bayatlik yasak. */}
+      {bayatSprinklerLayerlari.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-orange-300 bg-orange-50 px-3 py-2">
+          <span className="text-xs text-orange-900">
+            <strong>Sprinkler işaretlemesi değişti</strong> — {bayatSprinklerLayerlari.length} hesaplanmış
+            layer eski işaretlemeyle hesaplandı ({bayatSprinklerLayerlari.join(', ')}). Borular yeni
+            sprinkler noktalarında <strong>bölünmüş değil</strong>; metraj doğru ama segment sınırları eski.
+          </span>
+          <button
+            onClick={bayatlariYenidenHesapla}
+            disabled={calculatingLayer !== null}
+            className="ml-auto shrink-0 rounded-md border border-orange-400 bg-white px-2.5 py-1 text-[11px] font-medium text-orange-800 hover:bg-orange-100 disabled:opacity-50"
+          >
+            {calculatingLayer ? 'Hesaplanıyor...' : 'Yeniden Hesapla'}
+          </button>
         </div>
       )}
 
