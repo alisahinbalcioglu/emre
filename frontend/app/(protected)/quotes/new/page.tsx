@@ -45,6 +45,7 @@ import { parseMaterialText } from '@/ozellik/tablo/parse-material-text';
 import { mergeMultiSheet } from '@/ozellik/tablo/merge-multisheet';
 import { kaynakKolonEtiketi } from '@/ozellik/giris/kaynak-kolon';
 import { indeksUyarilari } from '@/lib/indeks-sagligi';
+import { DWG_SISTEM_ALANLARI, dwgTeklifSemasi } from '@/lib/dwg-teklif-sema';
 import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, toplamlariTamamla, etkinMiktar } from '@/ozellik/fiyat/pricing';
 import type { Brand } from '@/ortak/types';
 import type {
@@ -240,7 +241,9 @@ export default function NewQuotePage() {
             const { cap, cins } = parseMaterialText(it.malzemeCap);
             rows.push({
               _rowIdx: rowIdx++, _isDataRow: true, _isHeaderRow: false,
-              _malzKar: 0, _marka: null, _matNetPrice: 0,
+              // Sistem alanlari TAM SET (iscilik dahil) — alan satirda yoksa
+              // ExcelGrid'in firma fill'i sessizce bos yazar (dwg-teklif-sema).
+              ...DWG_SISTEM_ALANLARI,
               'Malzeme Cinsi': cins || it.malzemeCap,
               'Çapı': cap,
               'Birim': it.unit,
@@ -254,30 +257,14 @@ export default function NewQuotePage() {
         // yeni satir olusur (ExcelGrid autoAppendRow).
         rows.push({
           _rowIdx: rowIdx++, _isDataRow: true, _isHeaderRow: false,
-          _isSpareRow: true, _malzKar: 0, _marka: null, _matNetPrice: 0,
+          _isSpareRow: true, ...DWG_SISTEM_ALANLARI,
           ...emptyDataFields,
         });
-        const columnDefs = [
-          { field: 'Malzeme Cinsi', headerName: 'Malzeme Cinsi', width: 240, editable: true },
-          { field: 'Çapı', headerName: 'Çapı', width: 90, editable: true },
-          { field: 'Birim', headerName: 'Birim', width: 70, editable: true },
-          { field: 'Miktar', headerName: 'Miktar', width: 90, editable: true },
-          { field: '_malzKar', headerName: 'Malz. Kar %', width: 100 },
-          { field: '_marka', headerName: 'Malz. Marka', width: 150, cellRenderer: 'brandRenderer' },
-          { field: 'Birim Fiyat', headerName: 'Birim Fiyat', width: 110, editable: true },
-          { field: 'Tutar', headerName: 'Tutar', width: 120 },
-        ];
-        // nameField=Cins, diameterField=Çap: marka eslestirme adi grid icinde
-        // "Çap + Cins" (orn "Ø110 PVC BORU") olarak birlestirilir — cins tek
-        // basina fiyat listesinde bulunamaz.
-        const dwgColumnRoles = {
-          nameField: 'Malzeme Cinsi',
-          diameterField: 'Çapı',
-          quantityField: 'Miktar',
-          unitField: 'Birim',
-          materialUnitPriceField: 'Birim Fiyat',
-          materialTotalField: 'Tutar',
-        };
+        // SABIT SEMA tek kaynaktan (lib/dwg-teklif-sema): malzeme + ISCILIK
+        // kolonlari + roller. Eskiden burada elle kuruluydu ve iscilik
+        // kolonlari UNUTULMUSTU — kullanici fiyatlandirmada isciligi hic
+        // goremiyordu. Sema artik testle muhurlu.
+        const { columnDefs, columnRoles: dwgColumnRoles } = dwgTeklifSemasi();
         setExcelGridData({
           columnDefs,
           rowData: rows,
@@ -456,7 +443,13 @@ export default function NewQuotePage() {
   //   v3: SABIT SEMA — eski draft'ta nameField marka sutununu, fiyat Excel
   //       sutununu gosteriyordu; sabit sistem sutunlari (_matBirim...) yok.
   //       Eski draft yuklenirse fiyat eslesmez → zorla temizle.
-  const DRAFT_VERSION = 3;
+  //   v4: DWG semasina ISCILIK kolonlari eklendi (dwg-teklif-sema). Draft
+  //       kendi columnDefs'ini tasidigi icin v3 DWG taslagi kolonsuz geri
+  //       gelirdi ve kullanici "iscilik ozelligi gelmemis" sanirdi — taslak
+  //       her kayitta yine eski semayla yazildigi icin durum KENDILIGINDEN
+  //       asla duzelmezdi. BILINCLI TAKAS: artirmak Excel yolundaki kayitsiz
+  //       taslaklari da temizler; sessiz-eski-sema yaniltmasina tercih edildi.
+  const DRAFT_VERSION = 4;
 
   // Iscilik firmalarini cek (capability varsa)
   useEffect(() => {

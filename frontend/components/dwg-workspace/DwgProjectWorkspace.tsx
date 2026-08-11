@@ -37,7 +37,6 @@ import {
 import { BucketPanel, useActiveBucket, useTaggingStore } from '@/components/dwg-tagging';
 import { diameterToColor, canonicalizeDiameter } from '@/components/dwg-metraj/diameter-colors';
 import { isUnassignedDiameter } from '@/components/dwg-metraj/constants';
-import { exportMetrajToExcel, type MetrajSheet } from '@/lib/metraj-excel';
 
 interface DwgProjectWorkspaceProps {
   fileId: string;
@@ -537,35 +536,6 @@ export default function DwgProjectWorkspace({
   const handleInsertClick = (ins: { layer: string }) => handleSymbolClick(ins.layer);
   const handleCircleClick = (c: { layer: string }) => handleSymbolClick(c.layer);
 
-  /** Hesaplanmis ve onaylanmis layer'lardan Excel sheet'leri kur.
-   *  Her layer ayri sheet — Cap'lere groupBy, malzeme adi config.materialType. */
-  const buildExcelSheets = (approvedLayers: CalculatedLayer[]): MetrajSheet[] => {
-    return approvedLayers
-      .slice()
-      .sort((a, b) => (a.approvedAt ?? 0) - (b.approvedAt ?? 0))
-      .map((cl) => {
-        const byDia = new Map<string, number>();
-        for (const seg of cl.edgeSegments) {
-          const cap = seg.diameter || 'Belirtilmemis';
-          byDia.set(cap, (byDia.get(cap) || 0) + (seg.length || 0));
-        }
-        const rows = Array.from(byDia.entries())
-          .sort((a, b) => b[1] - a[1])
-          .map(([diameter, length]) => ({
-            name: cl.materialType || '-',
-            diameter,
-            unit: 'm',
-            qty: Math.round(length * 100) / 100,
-          }));
-        return {
-          sheetName: cl.hatIsmi || cl.layer,
-          rows,
-          totalLength: cl.totalLength,
-          materialType: cl.materialType || undefined,
-        };
-      });
-  };
-
   const handleConfirmAll = async () => {
     const allLayers = Object.values(state.calculatedLayers);
     const approvedLayers = allLayers.filter((l) => l.approved);
@@ -588,7 +558,7 @@ export default function DwgProjectWorkspace({
     if (unassignedInApproved > 0) {
       const ok = await confirm({
         title: `${unassignedInApproved} boru parçasının çapı atanmamış`,
-        description: 'Çizimde neon görünüyor. Bunlar Excel/fiyatlandırmada "Belirtilmemiş" olarak görünecek. Yine de devam edilsin mi?',
+        description: 'Çizimde neon görünüyor. Bunlar fiyatlandırmada "Belirtilmemiş" olarak görünecek. Yine de devam edilsin mi?',
         confirmText: 'Devam et',
       });
       if (!ok) return;
@@ -606,29 +576,16 @@ export default function DwgProjectWorkspace({
       const ok = await confirm({
         title: `${pendingLayers.length} layer onaylanmadı — teklife GİRMEYECEK`,
         description:
-          `Onaysız: ${adlar}. Bu layer'lar Excel'e ve fiyatlandırmaya dahil edilmez. ` +
+          `Onaysız: ${adlar}. Bu layer'lar fiyatlandırmaya dahil edilmez. ` +
           'Revize ettiyseniz önce "Hesaplamayı Tamamla" ile yeniden onaylayın.',
         confirmText: 'Yine de devam et',
       });
       if (!ok) return;
     }
 
-    // Excel indirimi (sadece onayli layer'lar)
-    if (approvedLayers.length > 0) {
-      try {
-        const sheets = buildExcelSheets(approvedLayers);
-        const result = await exportMetrajToExcel(sheets, fileName);
-        if (result.success) {
-          toast({
-            title: 'Excel olusturuldu',
-            description: `${result.sheetCount} layer · ${result.totalItems} satir`,
-          });
-        }
-      } catch (e: any) {
-        console.error('[handleConfirmAll] Excel hatasi:', e);
-        toast({ title: 'Excel hatasi', description: String(e?.message ?? e), variant: 'destructive' });
-      }
-    }
+    // NOT (11.08 kullanici istegi): buradaki OTOMATIK Excel indirmesi
+    // KALDIRILDI. "Tumunu Onayla & Fiyatlandirmaya Gec" artik yalnizca
+    // fiyatlandirmaya gecer — istem disi dosya indirmesi kafa karistiriyordu.
 
     // FinalMetraj sadece ONAYLI layer'lardan kurulur — onaysizlar dahil degil
     const layers = approvedLayers;
@@ -713,7 +670,7 @@ export default function DwgProjectWorkspace({
             onClick={handleConfirmAll}
             disabled={!Object.values(state.calculatedLayers).some((l) => l.approved)}
             className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed"
-            title="Excel olustur + fiyatlandirmaya gec (sadece onayli layer'lar dahil)"
+            title="Fiyatlandirmaya gec (sadece onayli layer'lar dahil)"
           >
             Tümünü Onayla & Fiyatlandırmaya Geç
           </button>

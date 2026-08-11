@@ -18,7 +18,7 @@ import type { ExcelGridData } from '@/ozellik/tablo/excel-grid/types';
 import { useCurrency } from '@/ozellik/fiyat/use-currency';
 import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
 import { adDisiplinTahmini } from '@/ozellik/tablo/disiplin';
-import type { Currency } from '@/ortak/types/quotes';
+import type { Currency, LaborFirm } from '@/ortak/types/quotes';
 import type { Brand } from '@/ortak/types';
 
 interface QuoteDetail {
@@ -46,6 +46,10 @@ export default function QuoteDetailPage() {
   // gösteriyordu, kullanıcı "seçimlerim gitmiş" olarak yaşıyordu. Kaynak
   // Düzenle ekranıyla AYNI: /library/brands (Kütüphanem izolasyonu).
   const [allBrands, setAllBrands] = useState<Brand[]>([]);
+  // C4'UN FIRMA IKIZI (ikizi unutma dersi): `_firma` da yalniz firma KIMLIGI'dir.
+  // laborFirms gecilmeyince kayitli iscilik firmasi "Firma sec..." gorunuyordu —
+  // marka tarafinda yasanan "secimlerim gitmis" algisinin birebir tekrari.
+  const [laborFirms, setLaborFirms] = useState<LaborFirm[]>([]);
 
   // SORUN 16 (KH8/KH9): goruntuleme para birimi — teklifte KAYITLI birimle
   // acilir; toggle degisince kalici yazilir. Cevrim yalniz GORUNTULEME
@@ -77,6 +81,13 @@ export default function QuoteDetailPage() {
     api.get<Brand[]>('/library/brands')
       .then(({ data }) => setAllBrands(data ?? []))
       .catch(() => { /* etiket cozulemezse gorunum yine calisir */ });
+  }, []);
+
+  // Iscilik firma etiketleri — C4'un firma ikizi (yukaridaki not)
+  useEffect(() => {
+    api.get<LaborFirm[]>('/labor-firms')
+      .then(({ data }) => setLaborFirms(data ?? []))
+      .catch(() => { /* etiket cozulemezse fiyatlar yine dogru gorunur */ });
   }, []);
 
   const birimSec = (c: Currency) => {
@@ -207,6 +218,7 @@ export default function QuoteDetailPage() {
               key={`detail-sheet-${activeSheetIndex}`}
               data={gridData}
               brands={allBrands}
+              laborFirms={laborFirms}
               currencySymbol={currency === 'USD' ? '$' : currency === 'EUR' ? '€' : '₺'}
               conversionRate={conversionRate}
               onBrandChange={async () => null}
