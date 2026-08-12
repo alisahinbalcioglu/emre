@@ -3,10 +3,10 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 350
-Toplam satir: 70985
+Kod dosyasi: 365
+Toplam satir: 74984
 Uc nokta: 127
-test:* scripti: 53
+test:* scripti: 54
 
 ## 1 · Dosyalar ve satir sayilari
 
@@ -34,25 +34,29 @@ test:* scripti: 53
 | `backend/src/bootstrap.controller.ts` | 57 |
 | `backend/src/health.controller.ts` | 33 |
 | `backend/src/main.ts` | 68 |
-| `backend/src/modules/dwg-engine/dwg-engine.controller.ts` | 172 |
+| `backend/src/modules/dwg-engine/dwg-engine.controller.ts` | 179 |
 | `backend/src/modules/dwg-engine/dwg-engine.module.ts` | 11 |
-| `backend/src/modules/dwg-engine/dwg-engine.service.ts` | 413 |
+| `backend/src/modules/dwg-engine/dwg-engine.service.ts` | 420 |
 | `backend/src/modules/dwg-engine/python/converter.py` | 598 |
 | `backend/src/modules/dwg-engine/python/deploy-to-cloudrun.sh` | 71 |
 | `backend/src/modules/dwg-engine/python/geometry.py` | 757 |
 | `backend/src/modules/dwg-engine/python/graph.py` | 356 |
-| `backend/src/modules/dwg-engine/python/main.py` | 1554 |
-| `backend/src/modules/dwg-engine/python/models.py` | 80 |
-| `backend/src/modules/dwg-engine/python/parse_worker.py` | 82 |
-| `backend/src/modules/dwg-engine/python/pipe_segments.py` | 1051 |
+| `backend/src/modules/dwg-engine/python/main.py` | 1603 |
+| `backend/src/modules/dwg-engine/python/models.py` | 89 |
+| `backend/src/modules/dwg-engine/python/parse_worker.py` | 83 |
+| `backend/src/modules/dwg-engine/python/pipe_segments.py` | 1153 |
 | `backend/src/modules/dwg-engine/python/tests/__init__.py` | 1 |
 | `backend/src/modules/dwg-engine/python/tests/test_block_to_line_split.py` | 104 |
 | `backend/src/modules/dwg-engine/python/tests/test_pipe_segments.py` | 85 |
-| `backend/src/modules/dwg-engine/python/tests/test_scale_normalization.py` | 72 |
+| `backend/src/modules/dwg-engine/python/tests/test_scale_normalization.py` | 127 |
+| `backend/src/modules/dwg-engine/python/tests/test_split_mode.py` | 149 |
+| `backend/src/modules/dwg-engine/python/tests/test_tolerance_robustness.py` | 118 |
+| `backend/src/modules/dwg-engine/python/tests/test_unit_detect.py` | 597 |
 | `backend/src/modules/dwg-engine/python/topology.py` | 268 |
-| `backend/src/modules/dwg-engine/python/upload_worker.py` | 104 |
-| `backend/src/modules/dwg-engine/scale-param.test.ts` | 51 |
-| `backend/src/modules/dwg-engine/scale-param.ts` | 24 |
+| `backend/src/modules/dwg-engine/python/unit_detect.py` | 711 |
+| `backend/src/modules/dwg-engine/python/upload_worker.py` | 107 |
+| `backend/src/modules/dwg-engine/scale-param.test.ts` | 59 |
+| `backend/src/modules/dwg-engine/scale-param.ts` | 30 |
 | `backend/src/ozellik/cikti/quote-formats/format-engine.ts` | 453 |
 | `backend/src/ozellik/cikti/quote-formats/quote-formats.controller.ts` | 89 |
 | `backend/src/ozellik/cikti/quote-formats/quote-formats.module.ts` | 11 |
@@ -92,7 +96,7 @@ test:* scripti: 53
 | `backend/src/ozellik/giris/excel-engine/excel-engine.service.ts` | 195 |
 | `backend/src/ozellik/giris/excel-grid/excel-grid.controller.ts` | 23 |
 | `backend/src/ozellik/giris/excel-grid/excel-grid.module.ts` | 13 |
-| `backend/src/ozellik/giris/excel-grid/excel-grid.service.ts` | 1061 |
+| `backend/src/ozellik/giris/excel-grid/excel-grid.service.ts` | 1072 |
 | `backend/src/ozellik/giris/excel-grid/sheet-discipline.ts` | 61 |
 | `backend/src/ozellik/giris/excel-grid/standart-sema.ts` | 331 |
 | `backend/src/ozellik/kutuphane/admin/admin.controller.ts` | 215 |
@@ -126,11 +130,11 @@ test:* scripti: 53
 | `backend/src/ozellik/kutuphane/materials/materials.service.ts` | 67 |
 | `backend/src/ozellik/kutuphane/silme-etkisi.ts` | 74 |
 | `backend/src/ozellik/kutuphane/utils/import-fidelity.ts` | 347 |
-| `backend/src/ozellik/teklif/quotes/dto/create-quote.dto.ts` | 93 |
+| `backend/src/ozellik/teklif/quotes/dto/create-quote.dto.ts` | 102 |
 | `backend/src/ozellik/teklif/quotes/export-engine.ts` | 365 |
 | `backend/src/ozellik/teklif/quotes/quotes.controller.ts` | 145 |
 | `backend/src/ozellik/teklif/quotes/quotes.module.ts` | 15 |
-| `backend/src/ozellik/teklif/quotes/quotes.service.ts` | 429 |
+| `backend/src/ozellik/teklif/quotes/quotes.service.ts` | 529 |
 | `backend/src/ozellik/teklif/quotes/standart-cikti.ts` | 290 |
 | `backend/src/surum.ts` | 30 |
 | `backend/test/a1-silme-etkisi-test.ts` | 330 |
@@ -156,6 +160,7 @@ test:* scripti: 53
 | `backend/test/gercek-dosya-test.ts` | 259 |
 | `backend/test/gs6b-teshis.ts` | 85 |
 | `backend/test/guvenlik-uclari-test.ts` | 365 |
+| `backend/test/iliskisel-alan-suzgeci-test.ts` | 151 |
 | `backend/test/imza-ekseni-test.ts` | 325 |
 | `backend/test/index-engine-test.ts` | 1774 |
 | `backend/test/iscilik-satir-silme-test.ts` | 127 |
@@ -183,7 +188,7 @@ test:* scripti: 53
 | `backend/test/pk3-repo-kapsama-test.ts` | 79 |
 | `backend/test/pk9-sessiz-indeks-test.ts` | 97 |
 | `backend/test/product-index-test.ts` | 453 |
-| `backend/test/regression-all.ts` | 228 |
+| `backend/test/regression-all.ts` | 237 |
 | `backend/test/s45-malzeme-aile-test.ts` | 440 |
 | `backend/test/s45-olcum.ts` | 188 |
 | `backend/test/sozluk-golgeleme-olcum.ts` | 125 |
@@ -191,7 +196,7 @@ test:* scripti: 53
 | `backend/test/standart-cikti-test.ts` | 339 |
 | `backend/test/standart-sema-test.ts` | 338 |
 | `backend/test/tam-zincir.ts` | 105 |
-| `frontend/app/(protected)/dashboard/page.tsx` | 244 |
+| `frontend/app/(protected)/dashboard/page.tsx` | 248 |
 | `frontend/app/(protected)/dwg-workspace/page.tsx` | 79 |
 | `frontend/app/(protected)/labor-firms/[firmaId]/page.tsx` | 495 |
 | `frontend/app/(protected)/labor-firms/page.tsx` | 249 |
@@ -207,9 +212,9 @@ test:* scripti: 53
 | `frontend/app/(protected)/materials/page.tsx` | 23 |
 | `frontend/app/(protected)/profile/page.tsx` | 336 |
 | `frontend/app/(protected)/quote-formats/page.tsx` | 397 |
-| `frontend/app/(protected)/quotes/[id]/page.tsx` | 244 |
+| `frontend/app/(protected)/quotes/[id]/page.tsx` | 256 |
 | `frontend/app/(protected)/quotes/new/error.tsx` | 13 |
-| `frontend/app/(protected)/quotes/new/page.tsx` | 2369 |
+| `frontend/app/(protected)/quotes/new/page.tsx` | 2415 |
 | `frontend/app/(protected)/quotes/page.tsx` | 192 |
 | `frontend/app/admin/brands/page.tsx` | 895 |
 | `frontend/app/admin/layout.tsx` | 80 |
@@ -224,17 +229,17 @@ test:* scripti: 53
 | `frontend/components/dwg-diameter-engine/DiameterLegendPanel.tsx` | 151 |
 | `frontend/components/dwg-diameter-engine/index.ts` | 16 |
 | `frontend/components/dwg-diameter-engine/types.ts` | 79 |
-| `frontend/components/dwg-diameter-engine/useLayerCalc.ts` | 127 |
+| `frontend/components/dwg-diameter-engine/useLayerCalc.ts` | 136 |
 | `frontend/components/dwg-diameter-engine/useOriginalColorState.ts` | 36 |
 | `frontend/components/dwg-metraj/DiameterEditPopup.tsx` | 121 |
-| `frontend/components/dwg-metraj/DwgUploader.tsx` | 491 |
+| `frontend/components/dwg-metraj/DwgUploader.tsx` | 643 |
 | `frontend/components/dwg-metraj/MetrajEditor.tsx` | 459 |
 | `frontend/components/dwg-metraj/constants.ts` | 28 |
 | `frontend/components/dwg-metraj/diameter-colors.ts` | 169 |
 | `frontend/components/dwg-metraj/index.ts` | 12 |
 | `frontend/components/dwg-metraj/types.ts` | 55 |
-| `frontend/components/dwg-metraj/unit-detection.test.ts` | 47 |
-| `frontend/components/dwg-metraj/unit-detection.ts` | 37 |
+| `frontend/components/dwg-metraj/unit-detection.test.ts` | 118 |
+| `frontend/components/dwg-metraj/unit-detection.ts` | 79 |
 | `frontend/components/dwg-tagging/BucketPanel.tsx` | 144 |
 | `frontend/components/dwg-tagging/index.ts` | 12 |
 | `frontend/components/dwg-tagging/useTaggingStore.ts` | 110 |
@@ -245,15 +250,17 @@ test:* scripti: 53
 | `frontend/components/dwg-viewer/segment-length.ts` | 48 |
 | `frontend/components/dwg-viewer/types.ts` | 76 |
 | `frontend/components/dwg-viewer/useViewport.ts` | 233 |
-| `frontend/components/dwg-workspace/DwgProjectWorkspace.tsx` | 1015 |
-| `frontend/components/dwg-workspace/LayerInfoSidebar.tsx` | 173 |
+| `frontend/components/dwg-workspace/DwgProjectWorkspace.tsx` | 1073 |
+| `frontend/components/dwg-workspace/LayerInfoSidebar.tsx` | 213 |
 | `frontend/components/dwg-workspace/LayerVisibilityPanel.tsx` | 229 |
 | `frontend/components/dwg-workspace/MetrajSummaryPanel.tsx` | 153 |
 | `frontend/components/dwg-workspace/index.ts` | 6 |
 | `frontend/components/dwg-workspace/onay-revizyon.test.ts` | 165 |
 | `frontend/components/dwg-workspace/onay-revizyon.ts` | 94 |
-| `frontend/components/dwg-workspace/types.ts` | 62 |
-| `frontend/components/dwg-workspace/useWorkspaceState.ts` | 401 |
+| `frontend/components/dwg-workspace/sprinkler-bayatlik.test.ts` | 64 |
+| `frontend/components/dwg-workspace/sprinkler-bayatlik.ts` | 51 |
+| `frontend/components/dwg-workspace/types.ts` | 69 |
+| `frontend/components/dwg-workspace/useWorkspaceState.ts` | 437 |
 | `frontend/lib/gs6b-golge-kurali.test.ts` | 60 |
 | `frontend/lib/indeks-sagligi.test.ts` | 75 |
 | `frontend/lib/indeks-sagligi.ts` | 64 |
@@ -278,7 +285,7 @@ test:* scripti: 53
 | `frontend/ortak/hooks/use-confirm.ts` | 158 |
 | `frontend/ortak/hooks/use-toast.ts` | 119 |
 | `frontend/ortak/kabuk/components/dashboard/QuickAccess.tsx` | 49 |
-| `frontend/ortak/kabuk/components/dashboard/QuickStart.tsx` | 216 |
+| `frontend/ortak/kabuk/components/dashboard/QuickStart.tsx` | 155 |
 | `frontend/ortak/kabuk/components/layout/Breadcrumb.tsx` | 73 |
 | `frontend/ortak/kabuk/components/layout/Sidebar.tsx` | 142 |
 | `frontend/ortak/lib/api-401-kapsami.test.ts` | 232 |
@@ -298,7 +305,9 @@ test:* scripti: 53
 | `frontend/ortak/ui/toast.tsx` | 115 |
 | `frontend/ortak/ui/toaster.tsx` | 34 |
 | `frontend/ozellik/cikti/export-download.ts` | 91 |
-| `frontend/ozellik/fiyat/pricing.ts` | 455 |
+| `frontend/ozellik/fiyat/kar-tek-suzgec.test.ts` | 177 |
+| `frontend/ozellik/fiyat/pricing.ts` | 462 |
+| `frontend/ozellik/fiyat/sayi-alani.ts` | 38 |
 | `frontend/ozellik/fiyat/use-currency.ts` | 87 |
 | `frontend/ozellik/giris/kaynak-kolon.ts` | 34 |
 | `frontend/ozellik/kutuphane/admin-stats.ts` | 81 |
@@ -311,7 +320,7 @@ test:* scripti: 53
 | `frontend/ozellik/kutuphane/oksuz-kutuphane-uyarisi.ts` | 60 |
 | `frontend/ozellik/tablo/disiplin.ts` | 13 |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 233 |
-| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 2869 |
+| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 2892 |
 | `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | 109 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts` | 178 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.ts` | 175 |
@@ -319,18 +328,24 @@ test:* scripti: 53
 | `frontend/ozellik/tablo/excel-grid/build-material-context.ts` | 38 |
 | `frontend/ozellik/tablo/excel-grid/discount-utils.test.ts` | 41 |
 | `frontend/ozellik/tablo/excel-grid/discount-utils.ts` | 28 |
-| `frontend/ozellik/tablo/excel-grid/fill-down.test.ts` | 205 |
-| `frontend/ozellik/tablo/excel-grid/fill-down.ts` | 306 |
+| `frontend/ozellik/tablo/excel-grid/fill-down.test.ts` | 329 |
+| `frontend/ozellik/tablo/excel-grid/fill-down.ts` | 332 |
 | `frontend/ozellik/tablo/excel-grid/grup-iskonto-girisi.test.ts` | 186 |
 | `frontend/ozellik/tablo/excel-grid/kar-yayilimi.test.ts` | 63 |
 | `frontend/ozellik/tablo/excel-grid/oneri-cekince.test.ts` | 156 |
 | `frontend/ozellik/tablo/excel-grid/oneri-cekince.ts` | 70 |
-| `frontend/ozellik/tablo/excel-grid/types.ts` | 118 |
+| `frontend/ozellik/tablo/excel-grid/types.ts` | 142 |
 | `frontend/ozellik/tablo/excel-grid/useFillHandle.tsx` | 284 |
 | `frontend/ozellik/tablo/merge-multisheet.ts` | 185 |
 | `frontend/ozellik/tablo/parse-material-text.ts` | 69 |
 | `frontend/ozellik/tablo/quotes/ColumnManagerPanel.tsx` | 146 |
 | `frontend/ozellik/teklif/dashboard/RecentQuotes.tsx` | 97 |
+| `frontend/ozellik/teklif/dwg-teklif-sema.test.ts` | 119 |
+| `frontend/ozellik/teklif/dwg-teklif-sema.ts` | 84 |
+| `frontend/ozellik/teklif/fiyatsiz-kalem-uyarisi.test.ts` | 212 |
+| `frontend/ozellik/teklif/fiyatsiz-kalem-uyarisi.ts` | 159 |
+| `frontend/ozellik/teklif/teklif-kalem.test.ts` | 230 |
+| `frontend/ozellik/teklif/teklif-kalem.ts` | 112 |
 | `frontend/playwright.config.ts` | 21 |
 | `frontend/playwright.golden.config.ts` | 37 |
 | `frontend/postcss.config.js` | 7 |
@@ -352,7 +367,7 @@ test:* scripti: 53
 | `frontend/test/e2e/grid.spec.ts` | 206 |
 | `frontend/vitest.config.ts` | 10 |
 | `scripts/backup.sh` | 75 |
-| `scripts/deploy.sh` | 136 |
+| `scripts/deploy.sh` | 167 |
 | `scripts/fk-dogrula.sh` | 94 |
 | `scripts/geri-yukle.sh` | 177 |
 | `scripts/harita-denetle.mjs` | 260 |
@@ -393,14 +408,18 @@ test:* scripti: 53
 | `backend/src/modules/dwg-engine/python/converter.py` | `dataclasses` `pathlib` `ezdxf` |
 | `backend/src/modules/dwg-engine/python/geometry.py` | `__future__` `typing` `pydantic` `converter` |
 | `backend/src/modules/dwg-engine/python/graph.py` | `collections` `typing` `converter` |
-| `backend/src/modules/dwg-engine/python/main.py` | `collections` `fastapi` `fastapi.middleware.cors` `fastapi.middleware.gzip` `fastapi.responses` `converter` `topology` `geometry` `models` `pipe_segments` |
+| `backend/src/modules/dwg-engine/python/main.py` | `collections` `fastapi` `fastapi.middleware.cors` `fastapi.middleware.gzip` `fastapi.responses` `converter` `topology` `geometry` `models` `unit_detect` `pipe_segments` |
 | `backend/src/modules/dwg-engine/python/models.py` | `pydantic` |
 | `backend/src/modules/dwg-engine/python/parse_worker.py` | `main` |
 | `backend/src/modules/dwg-engine/python/pipe_segments.py` | `typing` `converter` `collections` |
 | `backend/src/modules/dwg-engine/python/tests/test_block_to_line_split.py` | `__future__` `pipe_segments` |
 | `backend/src/modules/dwg-engine/python/tests/test_pipe_segments.py` | `__future__` `pipe_segments` |
 | `backend/src/modules/dwg-engine/python/tests/test_scale_normalization.py` | `__future__` `main` |
+| `backend/src/modules/dwg-engine/python/tests/test_split_mode.py` | `pipe_segments` |
+| `backend/src/modules/dwg-engine/python/tests/test_tolerance_robustness.py` | `pipe_segments` |
+| `backend/src/modules/dwg-engine/python/tests/test_unit_detect.py` | `unit_detect` |
 | `backend/src/modules/dwg-engine/python/topology.py` | `collections` `graph` `models` `converter` |
+| `backend/src/modules/dwg-engine/python/unit_detect.py` | `__future__` `dataclasses` |
 | `backend/src/modules/dwg-engine/python/upload_worker.py` | `converter` `geometry` `main` |
 | `backend/src/modules/dwg-engine/scale-param.test.ts` | `node:assert` `./scale-param` |
 | `backend/src/ozellik/cikti/quote-formats/format-engine.ts` | `exceljs` |
@@ -496,6 +515,7 @@ test:* scripti: 53
 | `backend/test/gercek-dosya-test.ts` | `fs` `../src/ozellik/giris/excel-grid/excel-grid.service` `../src/ozellik/teklif/quotes/quotes.service` `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/cikti/quote-formats/format-engine` `../src/ozellik/teklif/quotes/export-engine` |
 | `backend/test/gs6b-teshis.ts` | `fs` `../src/ozellik/giris/excel-grid/excel-grid.service` |
 | `backend/test/guvenlik-uclari-test.ts` | `@nestjs/core` `../src/ozellik/eslestirme/matching/matching.controller` `../src/ozellik/eslestirme/labor-matching/labor-matching.controller` `../src/altyapi/auth/decorators/roles.decorator` `../src/ozellik/kutuphane/labor/labor.controller` `../src/ozellik/giris/ai/ai.controller` `../src/altyapi/auth/guards/tier.guard` `../src/ozellik/kutuphane/brands/brands.controller` `../src/ozellik/kutuphane/admin/admin.controller` `reflect-metadata` |
+| `backend/test/iliskisel-alan-suzgeci-test.ts` | `../src/ozellik/teklif/quotes/quotes.service` |
 | `backend/test/imza-ekseni-test.ts` | `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `../src/ozellik/eslestirme/matching/tag-generator` `../src/ozellik/eslestirme/matching/shared-tag-matcher` |
 | `backend/test/index-engine-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/query-engine` `../src/ozellik/fiyat/matching/index/outcome-mapper` `../src/ozellik/eslestirme/matching/index/types` `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `../src/ozellik/eslestirme/matching/conversion` |
 | `backend/test/iscilik-satir-silme-test.ts` | `../src/ozellik/kutuphane/labor-firms/labor-firms.service` |
@@ -547,7 +567,7 @@ test:* scripti: 53
 | `frontend/app/(protected)/profile/page.tsx` | `react` `next/navigation` `@/ortak/ui/button` `@/ortak/lib/api` `@/ortak/lib/utils` |
 | `frontend/app/(protected)/quote-formats/page.tsx` | `react` `next/link` `@/ortak/ui/button` `@/ortak/ui/card` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` |
 | `frontend/app/(protected)/quotes/[id]/page.tsx` | `react` `next/navigation` `next/link` `lucide-react` `@/ortak/ui/button` `@/ortak/ui/card` `@/ortak/lib/api` `@/ortak/lib/utils` `@/ozellik/cikti/export-download` `@/ozellik/tablo/excel-grid/ExcelGrid` `@/ozellik/tablo/excel-grid/SheetTabs` `@/ozellik/tablo/excel-grid/types` `@/ozellik/fiyat/use-currency` `@/ortak/contexts/CapabilitiesContext` `@/ozellik/tablo/disiplin` `@/ortak/types/quotes` `@/ortak/types` |
-| `frontend/app/(protected)/quotes/new/page.tsx` | `react` `next/navigation` `next/link` `@/ortak/ui/button` `@/ozellik/tablo/disiplin` `@/ortak/ui/card` `@/ortak/ui/input` `@/ortak/ui/label` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `@/ortak/lib/utils` `@/ozellik/tablo/excel-grid/ExcelGrid` `@/ozellik/tablo/excel-grid/SheetTabs` `@/ozellik/tablo/quotes/ColumnManagerPanel` `@/ozellik/tablo/excel-grid/types` `@/ortak/contexts/CapabilitiesContext` `@/components/dwg-metraj/types` `@/components/dwg-metraj/MetrajEditor` `@/ozellik/tablo/parse-material-text` `@/ozellik/tablo/merge-multisheet` `@/ozellik/giris/kaynak-kolon` `@/lib/indeks-sagligi` `@/ozellik/fiyat/pricing` `@/ortak/types` `@/ozellik/fiyat/use-currency` |
+| `frontend/app/(protected)/quotes/new/page.tsx` | `react` `next/navigation` `next/link` `@/ortak/ui/button` `@/ozellik/tablo/disiplin` `@/ortak/ui/card` `@/ortak/ui/input` `@/ortak/ui/label` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `@/ortak/lib/utils` `@/ozellik/tablo/excel-grid/ExcelGrid` `@/ozellik/tablo/excel-grid/SheetTabs` `@/ozellik/tablo/quotes/ColumnManagerPanel` `@/ozellik/tablo/excel-grid/types` `@/ortak/contexts/CapabilitiesContext` `@/components/dwg-metraj/types` `@/components/dwg-metraj/MetrajEditor` `@/ozellik/tablo/parse-material-text` `@/ozellik/tablo/merge-multisheet` `@/ozellik/giris/kaynak-kolon` `@/lib/indeks-sagligi` `@/ozellik/teklif/dwg-teklif-sema` `@/ozellik/teklif/teklif-kalem` `@/ozellik/fiyat/sayi-alani` `@/ozellik/teklif/fiyatsiz-kalem-uyarisi` `@/ozellik/fiyat/pricing` `@/ortak/types` `@/ozellik/fiyat/use-currency` |
 | `frontend/app/(protected)/quotes/page.tsx` | `react` `next/navigation` `lucide-react` `@/ortak/ui/button` `@/ortak/ui/card` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` |
 | `frontend/app/admin/brands/page.tsx` | `react` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `@/lib/silme-onay-metni` `@/lib/silme-etkisi-getir` `@/ozellik/kutuphane/oksuz-kutuphane-uyarisi` `@/ortak/ui/button` `@/ortak/ui/input` `@/ortak/ui/badge` `@/ortak/ui/card` |
 | `frontend/app/admin/layout.tsx` | `react` `next/navigation` `@/ozellik/kutuphane/admin/AdminSidebar` |
@@ -564,20 +584,21 @@ test:* scripti: 53
 | `frontend/components/dwg-diameter-engine/useLayerCalc.ts` | `react` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/components/dwg-metraj` `@/components/dwg-workspace/types` `./types` |
 | `frontend/components/dwg-diameter-engine/useOriginalColorState.ts` | `react` |
 | `frontend/components/dwg-metraj/DiameterEditPopup.tsx` | `react` `lucide-react` `./types` `./diameter-colors` |
-| `frontend/components/dwg-metraj/DwgUploader.tsx` | `react` `lucide-react` `@/ortak/lib/utils` `@/ortak/hooks/use-toast` `@/ortak/lib/api` `./types` `@/components/dwg-workspace` |
+| `frontend/components/dwg-metraj/DwgUploader.tsx` | `react` `lucide-react` `@/ortak/lib/utils` `@/ortak/hooks/use-toast` `@/ortak/lib/api` `./types` `./unit-detection` `@/components/dwg-workspace` |
 | `frontend/components/dwg-metraj/MetrajEditor.tsx` | `react` `lucide-react` `@/ortak/lib/utils` `@/ortak/hooks/use-toast` `./types` |
 | `frontend/components/dwg-metraj/diameter-colors.ts` | `./constants` |
-| `frontend/components/dwg-metraj/unit-detection.test.ts` | `vitest` `./unit-detection` |
+| `frontend/components/dwg-metraj/unit-detection.test.ts` | `vitest` |
 | `frontend/components/dwg-tagging/BucketPanel.tsx` | `react` `lucide-react` `@/ortak/lib/utils` `@/ortak/hooks/use-toast` `./useTaggingStore` |
 | `frontend/components/dwg-tagging/useTaggingStore.ts` | `zustand` `zustand/middleware` `@/components/dwg-metraj/diameter-colors` |
 | `frontend/components/dwg-viewer/DxfCanvasViewer.tsx` | `react` `rbush` `lucide-react` `@/ortak/lib/api` `./types` `@/components/dwg-metraj/types` `@/components/dwg-metraj/diameter-colors` `@/components/dwg-metraj/constants` `./segment-length` `./useViewport` `./aci-colors` |
 | `frontend/components/dwg-viewer/segment-length.test.ts` | `vitest` `./segment-length` |
 | `frontend/components/dwg-viewer/useViewport.ts` | `react` `./types` |
-| `frontend/components/dwg-workspace/DwgProjectWorkspace.tsx` | `react` `lucide-react` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `@/ortak/lib/api` `@/components/dwg-viewer` `@/components/dwg-metraj` `@/components/dwg-metraj/types` `./LayerInfoSidebar` `./LayerVisibilityPanel` `./MetrajSummaryPanel` `./useWorkspaceState` `./onay-revizyon` `./types` `@/components/dwg-tagging` `@/components/dwg-metraj/diameter-colors` `@/components/dwg-metraj/constants` `@/lib/metraj-excel` |
+| `frontend/components/dwg-workspace/DwgProjectWorkspace.tsx` | `react` `lucide-react` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `@/ortak/lib/api` `@/components/dwg-viewer` `@/components/dwg-metraj` `@/components/dwg-metraj/types` `./LayerInfoSidebar` `./LayerVisibilityPanel` `./MetrajSummaryPanel` `./useWorkspaceState` `./onay-revizyon` `./sprinkler-bayatlik` `./types` `@/components/dwg-tagging` `@/components/dwg-metraj/diameter-colors` `@/components/dwg-metraj/constants` |
 | `frontend/components/dwg-workspace/LayerInfoSidebar.tsx` | `react` `lucide-react` `./types` `@/components/dwg-metraj/constants` `./onay-revizyon` |
 | `frontend/components/dwg-workspace/LayerVisibilityPanel.tsx` | `react` `lucide-react` `@/ortak/lib/utils` |
 | `frontend/components/dwg-workspace/MetrajSummaryPanel.tsx` | `react` `lucide-react` `./types` `./onay-revizyon` `@/components/dwg-metraj/diameter-colors` `@/components/dwg-metraj/constants` |
 | `frontend/components/dwg-workspace/onay-revizyon.test.ts` | `vitest` |
+| `frontend/components/dwg-workspace/sprinkler-bayatlik.test.ts` | `vitest` `./sprinkler-bayatlik` |
 | `frontend/components/dwg-workspace/types.ts` | `@/components/dwg-metraj` |
 | `frontend/components/dwg-workspace/useWorkspaceState.ts` | `react` `./onay-revizyon` |
 | `frontend/lib/gs6b-golge-kurali.test.ts` | `vitest` `fs` `path` |
@@ -620,6 +641,8 @@ test:* scripti: 53
 | `frontend/ortak/ui/toast.tsx` | `react` `@radix-ui/react-toast` `class-variance-authority` `lucide-react` `@/ortak/lib/utils` |
 | `frontend/ortak/ui/toaster.tsx` | `@/ortak/hooks/use-toast` |
 | `frontend/ozellik/cikti/export-download.ts` | `@/ortak/lib/api` `@/ortak/hooks/use-toast` |
+| `frontend/ozellik/fiyat/kar-tek-suzgec.test.ts` | `vitest` `fs` `path` |
+| `frontend/ozellik/fiyat/pricing.ts` | `./sayi-alani` |
 | `frontend/ozellik/fiyat/use-currency.ts` | `react` `@/ortak/lib/api` `@/ortak/types/quotes` |
 | `frontend/ozellik/kutuphane/admin-stats.ts` | `@/ortak/lib/api` |
 | `frontend/ozellik/kutuphane/admin/AdminSidebar.tsx` | `next/link` `next/navigation` `@/ortak/lib/utils` |
@@ -628,19 +651,25 @@ test:* scripti: 53
 | `frontend/ozellik/kutuphane/library/ManualBrandModal.tsx` | `react` `lucide-react` `@/ortak/ui/button` `@/ortak/ui/input` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `@/ozellik/tablo/excel-grid/ExcelGrid` `@/ozellik/tablo/excel-grid/types` |
 | `frontend/ozellik/kutuphane/oksuz-kutuphane-uyarisi.test.ts` | `vitest` `fs` `path` `./oksuz-kutuphane-uyarisi` |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | `react` `react-dom` |
-| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | `react` `react-dom` `ag-grid-react` `ag-grid-community` `./types` `./oneri-cekince` `./useFillHandle` `./discount-utils` `./CustomDropdown` `./fill-down` `@/ozellik/tablo/parse-material-text` `@/ozellik/fiyat/pricing` `./build-material-context` `./aday-ayirt-edicilik` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `ag-grid-community/styles/ag-grid.css` `ag-grid-community/styles/ag-theme-alpine.css` `./fill-handle.css` |
+| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | `react` `react-dom` `ag-grid-react` `ag-grid-community` `./types` `./oneri-cekince` `./useFillHandle` `./discount-utils` `./CustomDropdown` `./fill-down` `@/ozellik/tablo/parse-material-text` `@/ozellik/fiyat/pricing` `@/ozellik/fiyat/sayi-alani` `./build-material-context` `./aday-ayirt-edicilik` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `ag-grid-community/styles/ag-grid.css` `ag-grid-community/styles/ag-theme-alpine.css` `./fill-handle.css` |
 | `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | `react` |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts` | `vitest` `node:fs` `node:path` |
 | `frontend/ozellik/tablo/excel-grid/build-material-context.test.ts` | `vitest` `./build-material-context` |
 | `frontend/ozellik/tablo/excel-grid/discount-utils.test.ts` | `vitest` `./discount-utils` |
 | `frontend/ozellik/tablo/excel-grid/fill-down.test.ts` | `vitest` `./fill-down` |
-| `frontend/ozellik/tablo/excel-grid/fill-down.ts` | `../../fiyat/pricing` |
+| `frontend/ozellik/tablo/excel-grid/fill-down.ts` | `../../fiyat/pricing` `../../fiyat/sayi-alani` |
 | `frontend/ozellik/tablo/excel-grid/grup-iskonto-girisi.test.ts` | `vitest` `fs` `path` |
 | `frontend/ozellik/tablo/excel-grid/kar-yayilimi.test.ts` | `vitest` `./fill-down` `../../fiyat/pricing` |
 | `frontend/ozellik/tablo/excel-grid/oneri-cekince.test.ts` | `vitest` `fs` `path` |
 | `frontend/ozellik/tablo/excel-grid/useFillHandle.tsx` | `react` `ag-grid-react` `ag-grid-community` |
 | `frontend/ozellik/tablo/quotes/ColumnManagerPanel.tsx` | `react` `lucide-react` |
 | `frontend/ozellik/teklif/dashboard/RecentQuotes.tsx` | `react` `next/link` `lucide-react` `@/ortak/lib/api` |
+| `frontend/ozellik/teklif/dwg-teklif-sema.test.ts` | `vitest` |
+| `frontend/ozellik/teklif/dwg-teklif-sema.ts` | `@/ozellik/tablo/excel-grid/types` |
+| `frontend/ozellik/teklif/fiyatsiz-kalem-uyarisi.test.ts` | `vitest` `./teklif-kalem` |
+| `frontend/ozellik/teklif/fiyatsiz-kalem-uyarisi.ts` | `./teklif-kalem` |
+| `frontend/ozellik/teklif/teklif-kalem.test.ts` | `vitest` `./teklif-kalem` |
+| `frontend/ozellik/teklif/teklif-kalem.ts` | `../fiyat/pricing` `../fiyat/sayi-alani` |
 | `frontend/playwright.config.ts` | `@playwright/test` |
 | `frontend/playwright.golden.config.ts` | `@playwright/test` `./test/e2e-golden/artefakt-dizini.cjs` |
 | `frontend/scripts/surum-yaz.js` | `fs` `path` `child_process` |
@@ -850,6 +879,7 @@ test:* scripti: 53
 | `backend/package.json` | `test:kur` | `ts-node test/kur-donmasi-test.ts` |
 | `backend/package.json` | `test:alias-yutma` | `ts-node test/alias-kelime-yutma-test.ts` |
 | `backend/package.json` | `test:kb-liste` | `ts-node test/kutuphane-liste-test.ts` |
+| `backend/package.json` | `test:iliskisel-alan` | `ts-node test/iliskisel-alan-suzgeci-test.ts` |
 | `frontend/package.json` | `test:e2e` | `playwright test` |
 | `frontend/package.json` | `test:e2e-golden` | `node test/e2e-golden/run.mjs` |
 

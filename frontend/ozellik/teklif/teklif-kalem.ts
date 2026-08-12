@@ -17,17 +17,13 @@
 // NOT: goreli yol BILEREK — vitest.config.ts'te '@/' alias'i tanimli degil;
 // alias'li importlar yalniz `import type` oldugu icin (derlemede silinir)
 // bugune kadar sorun cikarmadi. Bu RUNTIME import, goreli olmali.
-import { etkinMiktar } from '../ozellik/fiyat/pricing';
+import { etkinMiktar } from '../fiyat/pricing';
+import { sayiAlani } from '../fiyat/sayi-alani';
 
-/** Payload'a giden sayısal alan süzgeci: her zaman sonlu, negatif olmayan number.
- *
- *  ⚠ `x || 0` YETMEZ: boş olmayan string truthy'dir, aynen geçer.
- *  ⚠ `parseFloat` tek başına yetmez: NaN ve negatif değer DTO'yu düşürür. */
-export function sayiAlani(v: unknown): number {
-  const n = typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(',', '.'));
-  if (!Number.isFinite(n) || n < 0) return 0;
-  return n;
-}
+// Süzgeç `ozellik/fiyat/sayi-alani.ts`e TAŞINDI — ekran yolları (ExcelGrid, fill-down,
+// sayfaToplamlari) da aynı fonksiyonu çağırabilsin diye. Buradan yeniden
+// dışa verilir: mevcut çağıranlar ve `teklif-kalem.test.ts` bozulmasın.
+export { sayiAlani };
 
 export interface KalemRolleri {
   nameField?: string;

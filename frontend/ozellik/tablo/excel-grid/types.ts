@@ -18,10 +18,34 @@ export interface ExcelRowData {
   _rowIdx: number;
   _isDataRow: boolean;
   _isHeaderRow: boolean;
-  _malzKar?: number;
-  _iscKar?: number;
+  /**
+   * Kâr yüzdeleri. ⚠ TİP BİLEREK `number | string`: bu alanlar ÇALIŞMA
+   * ZAMANINDA STRING OLABİLİR ve tip bunu daha önce YALAN söylüyordu.
+   *
+   * Kolonda `cellRenderer` var → AG-Grid `cellDataType` çıkarımını kapatır,
+   * sayı `valueParser`'ı enjekte edilmez; kullanıcı hücreye "50" yazınca
+   * değer STRING olarak saklanır. `_malzKar?: number` diyen tip yüzünden
+   * okuma noktaları güvenle `r._malzKar || 0` yazıyordu ve `"50" || 0`
+   * string'i aynen geçiriyordu → 12.08'de canlıda HTTP 400 (@IsNumber).
+   * Derleyici uyarmadı çünkü okuma noktalarının satır tipi `any` idi.
+   *
+   * KURAL: bu iki alan HER OKUNDUĞUNDA `sayiAlani()` (ozellik/fiyat/sayi-alani)
+   * süzgecinden geçer — ekranın hesabı ile kaydedilen değer ayrışmasın.
+   */
+  _malzKar?: number | string;
+  _iscKar?: number | string;
   _marka?: string | null;
   _firma?: string | null;
+  /**
+   * İCMAL (özet) sayfasından gelen satır. Backend `standart-sema.ts:244`
+   * üretir: sayfada miktar/birim kaynak kolonu yoksa sayfa özet sayılır,
+   * satırlar `_isDataRow=true` KALIR ama para YALNIZ genel toplam hücresinde
+   * durur. Bu satırlar fiyatlandırılamaz — `pricing.ts:318` toplama almaz
+   * (30.07 çift-sayım yasağı), ExcelGrid marka/firma açılırı yerine gri
+   * "özet" yazar, `uyariyaGirerMi` fiyatsız uyarısından dışlar.
+   * ⚠ Alan çalışma zamanında VARDI ama hiçbir tipte İLAN EDİLMEMİŞTİ.
+   */
+  _ozet?: boolean;
   _matNetPrice?: number;
   _merges?: Record<string, { rowSpan?: number; colSpan?: number; hidden?: boolean }>;
   /** Excel-vari GRUP BANDI satiri (orn "Hat / Sistem" basligi). Full-width

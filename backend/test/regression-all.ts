@@ -92,6 +92,15 @@ const SUITES: Suite[] = [
   //    (C) yutma satiri adsiz birakiyorsa UYGULANMAZ (mevcut alias'lari da
   //    etkisizler — veri temizligi beklenmez).
   { ad: 'Alias kelime yutması (AYVAZ sprinkler)', script: 'test:alias-yutma', zincir: 'Z2' },
+  // ── 12.08.2026: ILISKISEL ALAN SUZGECI. Teklif kaydinda marka/isçilik
+  //    firmasi ID'leri QuoteItem'in ILISKISEL alanlarina baglanir; silinmis
+  //    ya da BASKA HESABA ait ID'ler kayit BLOKLANMADAN dusurulur (logout
+  //    sessionStorage'i temizlemedigi icin bayat ID tasiyan taslak olabilir;
+  //    sert 400 teklifin tamamini kaybettirirdi). Suite DB gerektirmez.
+  //    ⚠ Bu satir 12.08'de EKSIKTI: script package.json'a yazilmis ama
+  //    SUITES'e islenmemisti — PK1 manifest kapisi bunu kirmizi gosteriyordu
+  //    ve 10 testlik muhur regresyonda HIC kosmuyordu (muhur var, kapi yok).
+  { ad: 'İlişkisel alan süzgeci (marka + işçilik firması)', script: 'test:iliskisel-alan', zincir: 'Z1' },
   // T1/T3/T4: sablona-yazan eski motor SILINDI; "kolon esleme" (test:ke) ve
   // "iki katmanli baslik" (test:kb) suite'leri onunla birlikte kaldirildi.
   // Yerine gelen sozlesmeler:

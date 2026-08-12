@@ -26,6 +26,9 @@
 // NOT: relative import — vitest.config.ts'te '@/' alias'i tanimli degil ve
 // bu modul birim testle sinaniyor (fill-down.test.ts).
 import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, etkinMiktar } from '../../fiyat/pricing';
+// NOT: goreli yol ZORUNLU — vitest.config.ts'te '@/' alias'i tanimli degil
+// ve bu modul vitest ile kosuyor (fill-down.test.ts).
+import { sayiAlani } from '../../fiyat/sayi-alani';
 
 /** Eslestirme motorunun (onBrandChange/onFirmaChange) dondurdugu sonuc. */
 export interface MotorSonucu {
@@ -77,7 +80,6 @@ export interface FillNode {
 function genelToplamiTazele(
   node: FillNode,
   roller: FillRoller,
-  totAlan: string | undefined,
   yaz: (n: FillNode, alan: string, deger: unknown) => void,
 ): void {
   const genelAlan = roller.grandTotalField;
@@ -87,7 +89,16 @@ function genelToplamiTazele(
     const v = parseFloat(String((node.data as Record<string, unknown>)[alan] ?? '').replace(',', '.'));
     return Number.isFinite(v) ? v : 0;
   };
-  const mat = oku(totAlan ?? roller.materialTotalField);
+  // ⚠ İKİ TARAF DA ROLLERDEN OKUNUR — `totAlan` DAL BİLGİSİ TAŞIR, taraf değil.
+  // Eski hâl `mat = oku(totAlan ?? roller.materialTotalField)` idi: işçilik
+  // dalında `totAlan = laborTotalField` olduğu için mat ve lab AYNI hücreyi
+  // okuyordu → Toplam = 2 × işçilik ve MALZEME TOPLAMI satırdan düşüyordu
+  // (ölçüldü: Malz. 1.000 + İşç. 300 → Toplam 600, doğrusu 1.300; müşteriye
+  // giden satırda −700 ₺). Malzeme dalında totAlan zaten materialTotalField
+  // olduğu için kusur YALNIZ işçilikte görünüyordu — bu turda kapatılan
+  // "işçilik dalı malzeme kârını okuyor" ikizinin tıpatıp aynısı.
+  // Yazma zaten `totAlan`a yapılmış durumda; burada okunan hep güncel hücre.
+  const mat = oku(roller.materialTotalField);
   const lab = oku(roller.laborTotalField);
   yaz(node, genelAlan, (Math.ceil((mat + lab) * 10) / 10).toFixed(1));
 }
@@ -194,10 +205,17 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
     const rowIdx: number = node.data._rowIdx;
 
     // SD7: geri-alma anligi (fiyat alanlari dahil)
+    // KURAL: doldurmanin YAZDIGI her alan burada olmali. `genelToplamiTazele`
+    // asagida genel toplami YAZIYOR ama anliga EKLENMEMISTI — Ctrl+Z'den sonra
+    // Malz. Toplam eskiye donuyor, Toplam yeni degerde KALIYORDU: satir kendi
+    // icinde celisikli ve o haliyle kaydediliyordu (KD11 yazmayi ekledi,
+    // anligi unuttu). Kapi: fill-down.test.ts "GT-4 SD7 SOZLESMESI" —
+    // alan listesi ezberlemez, DEGISEN her alani anlikta arar.
     const oncekiDegerler: Record<string, any> = {};
     for (const f of SNAP) oncekiDegerler[f] = node.data[f];
     if (bfAlan) oncekiDegerler[bfAlan] = node.data[bfAlan];
     if (totAlan) oncekiDegerler[totAlan] = node.data[totAlan];
+    if (roller.grandTotalField) oncekiDegerler[roller.grandTotalField] = node.data[roller.grandTotalField];
     sonuc.geriAl.push({ rowIdx, oncekiDegerler });
 
     // marka/firma her kosulda atanir (kullanicinin acik niyeti)
@@ -238,7 +256,15 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
     }
 
     if (r && r.netPrice > 0) {
-      const kar = parseFloat(String(node.data._malzKar ?? 0)) || 0;
+      // ⚠ İKİZ HATASI (12.08 ölçüldü): burası dal ne olursa olsun `_malzKar`
+      // okuyordu. `secimAlan`/`netAlan`/`tagAlan` daldan türetiliyordu ama KÂR
+      // türetilmemişti — işçilik firmasını sürükleyip doldurunca işçilik birim
+      // fiyatı MALZEME kârıyla çarpılıyordu. Satırda malz %20 / işç %0 ise
+      // işçilik fiyatı %20 şişiyor, `sayfaToplamlari` ise maliyeti `_iscKar=0`
+      // ile hesaplayıp o %20'yi KÂR OLARAK GÖRMÜYORDU. Bu, testle ilan edilmiş
+      // KE15 sözleşmesinin ("malzeme %20 / işçilik %10 KARIŞMAZ",
+      // lib/sayfa-toplamlari.test.ts) doldurma yolundaki ihlaliydi.
+      const kar = sayiAlani(node.data[iscilikMi ? '_iscKar' : '_malzKar']);
       const satisFiyat = hesaplaSatisBirimFiyat(r.netPrice, kar);
       const miktar = etkinMiktar(node.data, roller.quantityField, roller.unitField);
       yaz(node, netAlan, r.netPrice);
@@ -266,7 +292,7 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
       //
       // Yeni carpma ICAT EDILMEDI: ayni tek formul (pricing.ts:53) ve
       // recalcGrand ile ayni toplama kurali (matToplam + labToplam).
-      genelToplamiTazele(node, roller, totAlan, yaz);
+      genelToplamiTazele(node, roller, yaz);
       sonuc.satirlar.push({ rowIdx, durum: 'fiyat', fiyat: satisFiyat });
       sonuc.ozet.fiyatli++;
       continue;

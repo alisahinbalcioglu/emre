@@ -6,7 +6,7 @@
  * tarafı yoktu). Kolon columnDefs'te tanımlı değilken ExcelGrid'in
  * `setDataValue` çağrısı SESSİZCE düşer — işçilik fiyatı hiç yazılmaz ve
  * hata da görünmez. Şema artık burada, testle mühürlü
- * (lib/dwg-teklif-sema.test.ts).
+ * (ozellik/teklif/dwg-teklif-sema.test.ts).
  *
  * Referans sözleşme: Excel yolunun sabit sistem kolonları
  * (app/dev/grid-test/page.tsx) — alan adları birebir aynı tutuldu ki

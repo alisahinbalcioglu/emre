@@ -17,6 +17,10 @@ import { CustomDropdown } from './CustomDropdown';
 import { fillDown, karYayilimi } from './fill-down';
 import { joinMaterialText } from '@/ozellik/tablo/parse-material-text';
 import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, yukariYuvarla, etkinMiktar, paraBicim, sayfaToplamlari, karSatiri, maliyetiGeriTuret, PARA_ONDALIK } from '@/ozellik/fiyat/pricing';
+// KÂR HÜCRESİ TEK SÜZGEÇTEN: `parseFloat(String(x)) || 0` kopyaları
+// kaydetme yolundaki `sayiAlani` ile AYRIŞIYORDU — "12,5" ekranda 12,
+// kayıtta 12,5 oluyordu (TR klavye). Tek fonksiyon, tek sayı.
+import { sayiAlani } from '@/ozellik/fiyat/sayi-alani';
 import { hasSizeExpression, isSelfSufficientRow } from './build-material-context';
 import { niteliklerdenBaglam, adayEtiketleri, popupGenisligiOku, popupGenisligiYaz } from './aday-ayirt-edicilik';
 import httpApi from '@/ortak/lib/api';
@@ -302,7 +306,7 @@ function BrandDropdown(props: ICellRendererParams & {
 
   const writePriceToNode = (targetNode: any, netPrice: number, isSuggestion = false, kaynakKur?: any) => {
     const d = targetNode.data;
-    const kar = parseFloat(String(d._malzKar ?? 0)) || 0;
+    const kar = sayiAlani(d._malzKar);
     // SPEC (fiyat cekirdegi): satis = net×(1+kar), YUKARI 1 hane; toplam = satis×miktar.
     const finalPrice = hesaplaSatisBirimFiyat(netPrice, kar);
     const qty = etkinMiktar(d, quantityField, unitField); // UY2
@@ -988,7 +992,7 @@ function FirmaDropdown(props: ICellRendererParams & {
   };
 
   const writeLaborPrice = (netPrice: number, kaynakKur?: any) => {
-    const kar = parseFloat(String(data._iscKar ?? 0)) || 0;
+    const kar = sayiAlani(data._iscKar);
     // SPEC: satis = net×(1+kar) yukari 1 hane; toplam = satis×miktar.
     const finalPrice = hesaplaSatisBirimFiyat(netPrice, kar);
     const qty = etkinMiktar(data, quantityField, unitField); // UY2
@@ -1947,7 +1951,11 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       rootWrapperRef.current?.focus();
     } else if (result.field === '_malzKar') {
       // Malzeme kar % fill → deger kopyala + fiyat recalc
-      const karVal = parseFloat(String(result.value ?? 0)) || 0;
+      // ⚠ `sayiAlani` ZORUNLU: kaynak hucre kullanicinin yazdigi STRING'i
+      // tasiyor ("12,5"). Ham parseFloat burada 12 verir; kaynak satirin
+      // KENDISI ise 12,5 ile hesaplanir — ayni sutunda IKI FARKLI kar.
+      // (Kapı: ozellik/fiyat/kar-tek-suzgec.test.ts)
+      const karVal = sayiAlani(result.value);
       for (const node of result.targetRowNodes) {
         if (!node.data?._isDataRow) continue;
         node.setDataValue('_malzKar', karVal);
@@ -1962,7 +1970,8 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       }
     } else if (result.field === '_iscKar') {
       // Iscilik kar % fill → deger kopyala + fiyat recalc
-      const iscKarVal = parseFloat(String(result.value ?? 0)) || 0;
+      // Malzeme ikiziyle AYNI suzgec (ikizi unutma).
+      const iscKarVal = sayiAlani(result.value);
       for (const node of result.targetRowNodes) {
         if (!node.data?._isDataRow) continue;
         node.setDataValue('_iscKar', iscKarVal);
@@ -2528,7 +2537,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
 
     // ── Malzeme kar % degisti ──
     if (e.colDef.field === '_malzKar' && materialUnitPriceField && materialTotalField && quantityField) {
-      const kar = parseFloat(String(row._malzKar ?? 0)) || 0;
+      const kar = sayiAlani(row._malzKar);
       // ── MALIYET GERIYE TURETILIR (06.08 canli hata) ──────────────────────
       // Eski kod, `_matNetPrice` bossa hucreyi NET sanip okuyordu. Hucre SATIS
       // tasir: net 1558,5 · kar %20 → hucre 1870,2. Kar 0 yapilinca
@@ -2538,7 +2547,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       // e.oldValue = bu duzenlemeden ONCEKI kar yuzdesi.
       // ⚠ Bu ayni zamanda ESKI KAYITLARI da onarir: bugune kadar kaydedilmis
       //    tekliflerde `_matNetPrice` 0'dir (yazim sessizce dusuyordu).
-      const oncekiKar = parseFloat(String(e.oldValue ?? 0)) || 0;
+      const oncekiKar = sayiAlani(e.oldValue);
       const net = typeof row._matNetPrice === 'number' && row._matNetPrice > 0
         ? row._matNetPrice
         : maliyetiGeriTuret(parseFloat(String(row[materialUnitPriceField] ?? '')) || 0, oncekiKar);
@@ -2560,9 +2569,9 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
 
     // ── Iscilik kar % degisti ──
     if (e.colDef.field === '_iscKar' && laborUnitPriceField && laborTotalField && quantityField) {
-      const kar = parseFloat(String(row._iscKar ?? 0)) || 0;
+      const kar = sayiAlani(row._iscKar);
       // Malzeme ikiziyle AYNI duzeltme (bkz. yukaridaki gerekce).
-      const oncekiKarLab = parseFloat(String(e.oldValue ?? 0)) || 0;
+      const oncekiKarLab = sayiAlani(e.oldValue);
       const net = typeof row._labNetPrice === 'number' && row._labNetPrice > 0
         ? row._labNetPrice
         : maliyetiGeriTuret(parseFloat(String(row[laborUnitPriceField] ?? '')) || 0, oncekiKarLab);
@@ -2587,7 +2596,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       const qty = parseFloat(String(e.newValue ?? 0)) || 0;
 
       if (materialUnitPriceField && materialTotalField) {
-        const matKar = parseFloat(String(row._malzKar ?? 0)) || 0;
+        const matKar = sayiAlani(row._malzKar);
         const matNet = typeof row._matNetPrice === 'number' && row._matNetPrice > 0
           ? row._matNetPrice
           : maliyetiGeriTuret(parseFloat(String(row[materialUnitPriceField] ?? '')) || 0, matKar);
@@ -2598,7 +2607,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       }
 
       if (laborUnitPriceField && laborTotalField) {
-        const labKar = parseFloat(String(row._iscKar ?? 0)) || 0;
+        const labKar = sayiAlani(row._iscKar);
         const labNet = typeof row._labNetPrice === 'number' && row._labNetPrice > 0
           ? row._labNetPrice
           : maliyetiGeriTuret(parseFloat(String(row[laborUnitPriceField] ?? '')) || 0, labKar);
@@ -2613,7 +2622,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     // ── Malzeme birim fiyat manuel degisti (kullanici elle yazdi) ──
     if (e.colDef.field === materialUnitPriceField && e.source === 'edit' && materialTotalField && quantityField) {
       const enteredPrice = parseFloat(String(e.newValue ?? '').replace(',', '.')) || 0;
-      const kar = parseFloat(String(row._malzKar ?? 0)) || 0;
+      const kar = sayiAlani(row._malzKar);
       // Girilen deger ekran hucresinden — kar uygulanmis final kabul et
       // Net'i geriye hesapla
       const net = kar > 0 ? enteredPrice / (1 + kar / 100) : enteredPrice;
@@ -2629,7 +2638,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     // ── Iscilik birim fiyat manuel degisti ──
     if (e.colDef.field === laborUnitPriceField && e.source === 'edit' && laborTotalField && quantityField) {
       const enteredPrice = parseFloat(String(e.newValue ?? '').replace(',', '.')) || 0;
-      const kar = parseFloat(String(row._iscKar ?? 0)) || 0;
+      const kar = sayiAlani(row._iscKar);
       const net = kar > 0 ? enteredPrice / (1 + kar / 100) : enteredPrice;
       yazVeriHucre(e.node, '_labNetPrice', net);
       row._labKurBilgi = null; // elle girilen TL fiyatin kaynak kuru yoktur

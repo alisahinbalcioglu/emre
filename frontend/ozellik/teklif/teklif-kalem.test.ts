@@ -133,6 +133,51 @@ describe('kalemUret — CANLI 400 senaryosu', () => {
     }
   });
 
+  // ── MÜHÜR: LİSTE DEĞİL, ÜRETİLEN ALANLAR SAYILIR ───────────────────────
+  // Yukarıdaki test SABİT bir alan listesini geziyor: `kalemUret`e YENİ bir
+  // sayısal alan eklenip listeye yazılmazsa mühür onu HİÇ görmez. Tam olarak
+  // bu boşluk bekliyordu: ekranın genel toplamı (`_toplam`) hücrede
+  // `.toFixed(1)` ile STRING duruyor; birisi payload'a `grandTotal: r._toplam`
+  // eklediği gün 12.08'deki 400 aynen tekrar ederdi. Aşağıdaki mühür item'ın
+  // GERÇEK anahtarlarını gezer — yeni alan otomatik kapsama girer.
+  const METIN_ALANLARI = new Set(['materialName', 'unit', 'brandId', 'laborFirmaId']);
+
+  it('MÜHÜR: üretilen HER alan ya bilinen METİN ya geçerli SAYI', () => {
+    // Hücreler kasten düşmanca: elle yazılmış string, virgüllü ondalık,
+    // boş, çöp — yani gerçek bir ekranda olabilecek en kötü hâl.
+    const item = kalemUret({
+      ...ekranSatiri('50', '12,5'),
+      Miktar: '794,82', 'Birim Fiyat': 'abc', Tutar: '',
+      _marka: 'brand-1', _firma: 'firm-1',
+    }, roller)!;
+
+    for (const [alan, deger] of Object.entries(item)) {
+      if (deger === undefined) continue;
+      if (METIN_ALANLARI.has(alan)) {
+        expect(typeof deger, `${alan} metin alanı`).toBe('string');
+        continue;
+      }
+      expect(
+        typeof deger,
+        `${alan} SAYI olmalı — gerçekten metin taşıyorsa METIN_ALANLARI'na BİLEREK ekle`,
+      ).toBe('number');
+      expect(Number.isFinite(deger as number), `${alan} sonlu olmalı`).toBe(true);
+      expect(deger as number, `${alan} negatif olamaz (@Min(0))`).toBeGreaterThanOrEqual(0);
+    }
+    // Boş kümede .every()/for-of yalancı yeşil verir — alan sayısı ölçülür.
+    expect(Object.keys(item).length).toBeGreaterThanOrEqual(10);
+  });
+
+  it('MÜHÜR gerçekten ölçüyor: string bir alan eklenirse kırmızıya döner', () => {
+    // Mührün kendisini sınar (mutasyon): payload'a `_toplam` hücresi
+    // eklenmiş gibi davran ve mührün onu YAKALADIĞINI göster.
+    const sahte: Record<string, any> = { ...kalemUret(ekranSatiri(0, 0), roller)!, grandTotal: '1901582.3' };
+    const kirilanlar = Object.entries(sahte).filter(
+      ([alan, deger]) => deger !== undefined && !METIN_ALANLARI.has(alan) && typeof deger !== 'number',
+    );
+    expect(kirilanlar.map(([a]) => a)).toEqual(['grandTotal']);
+  });
+
   it('çap + cins birleşimi ad olur (eşleştirme adı)', () => {
     const item = kalemUret(ekranSatiri(0, 0), roller)!;
     expect(item.materialName).toBe('6" 6" siyah boru');

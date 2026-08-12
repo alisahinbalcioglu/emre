@@ -55,8 +55,19 @@ export interface RowData {
   _rowIdx: number;
   _isDataRow: boolean;
   _isHeaderRow: boolean;
-  _malzKar?: number;
-  _iscKar?: number;
+  // ⚠ `number | string` BİLEREK — frontend `ExcelRowData` ikizinin AYNISI.
+  // Kolonda cellRenderer olduğu için AG-Grid sayı çıkarımını kapatır ve
+  // kullanıcının elle yazdığı "50" hücrede STRING kalır; bu satırlar
+  // sheets.rowData olarak buraya AYNEN gelir. Backend bu alanlarla ARİTMETİK
+  // YAPMAZ (yalnız taşır ve fiyat-kolonu tespitinden dışlar) — ama tipin
+  // "number" demesi, ileride biri hesaba katmak istediğinde 12.08'deki
+  // sessiz string hatasını davet ederdi. Hesaba katılacaksa süzgeçten geçir.
+  _malzKar?: number | string;
+  _iscKar?: number | string;
+  /** İCMAL (özet) sayfası satırı — `standart-sema.ts:244` yazar, ama hiçbir
+   *  tipte İLAN EDİLMEMİŞTİ (frontend `ExcelRowData` ikizi de öyleydi).
+   *  Bu satırlar fiyatlandırılamaz; toplama girmez (çift sayım yasağı). */
+  _ozet?: boolean;
   _marka?: string | null;
   _firma?: string | null;
   _matNetPrice?: number;

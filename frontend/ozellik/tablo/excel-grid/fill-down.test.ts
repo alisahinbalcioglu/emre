@@ -201,4 +201,128 @@ describe('SD1-SD10 sürükle-doldur modülü', () => {
     expect(sonuc.satirlar[0].durum).toBe('ad-yok');
     expect(String(bos.data._matStatus ?? '')).not.toBe('');
   });
+
+  // ── KÂR HÜCRESİNİN OKUNMASI (12.08) ────────────────────────────────────
+  // Beklenen değerler ELDE hesaplandı; ürünün formülünden TÜRETİLMEDİ
+  // (dairesel ölçüt yasak). satış = net × (1+kar), 1 haneye yukarı.
+
+  const ISCILIK_ALANLARI = {
+    birimFiyat: '_labBirim', toplam: '_labToplam',
+    status: '_labStatus', kaynakRozeti: '_labKaynak', dal: 'iscilik' as const,
+  };
+  const netVeren = (net: number) => async (): Promise<MotorSonucu> =>
+    ({ netPrice: net, confidence: 'high' });
+
+  it('KÂR-1 İKİZ: işçilik dalı _iscKar okur — MALZEME kârı işçilik fiyatına BULAŞMAZ', async () => {
+    // Satırda malzeme %50, işçilik %0. Doldurma öncesi hata: dal ne olursa
+    // olsun `_malzKar` okunuyordu → işçilik net 200 iken 300 yazılıyordu ve
+    // `sayfaToplamlari` maliyeti _iscKar=0 ile hesapladığı için o %50 kâr
+    // olarak HİÇ görünmüyordu (KE15 sözleşmesinin ihlali).
+    const h = node(200, 'Montaj bedeli', 2, { _malzKar: 50, _iscKar: 0 });
+    await fillDown({
+      hedefler: [h] as any, markaId: 'firma-1', roller: ROLLER, motor: netVeren(200),
+      kaynakVaryantTags: null, kaynakLabel: '', hedefAlanlar: ISCILIK_ALANLARI,
+    });
+    expect(h.data._labBirim).toBe('200.0');   // kusurlu hâl: '300.0'
+    expect(h.data._labToplam).toBe('400.0');  // kusurlu hâl: '600.0'
+  });
+
+  it('KÂR-2 İKİZ: malzeme dalı _iscKar\'dan ETKİLENMEZ', async () => {
+    const h = node(201, 'Çelik boru', 2, { _malzKar: 0, _iscKar: 50 });
+    await fillDown({
+      hedefler: [h] as any, markaId: 'marka-1', roller: ROLLER, motor: netVeren(200),
+      kaynakVaryantTags: null, kaynakLabel: '',
+    });
+    expect(h.data[ROLLER.materialUnitPriceField]).toBe('200.0');
+  });
+
+  it('KÂR-3 TR KLAVYE: "12,5" ekranda da 12,5 — 12 DEĞİL (kayıtla aynı süzgeç)', async () => {
+    // Kusurlu hâl: `parseFloat("12,5")` = 12 → birim 112.0 / toplam 224.0.
+    // Kayıt yolu (`sayiAlani`) aynı hücreden 12,5 okuyordu: ekranda gördüğün
+    // fiyat ile veritabanına yazılan kâr AYRIŞIYORDU.
+    const h = node(202, 'Çelik boru', 2, { _malzKar: '12,5' });
+    await fillDown({
+      hedefler: [h] as any, markaId: 'marka-1', roller: ROLLER, motor: netVeren(100),
+      kaynakVaryantTags: null, kaynakLabel: '',
+    });
+    expect(h.data[ROLLER.materialUnitPriceField]).toBe('112.5'); // 100 × 1,125
+    expect(h.data[ROLLER.materialTotalField]).toBe('225.0');     // 112,5 × 2
+  });
+
+  // ── GENEL TOPLAM: DOLDURMA YOLU (12.08 çekişmeli inceleme bulgusu) ─────
+  // ⚠ AYRI ROLLER: yukarıdaki ROLLER'da `grandTotalField` YOK — bu yüzden
+  // `genelToplamiTazele` ilk satırındaki `if (!genelAlan) return;` ile hemen
+  // çıkıyor ve SD1-SD10'un hiçbiri o fonksiyonu ÇALIŞTIRMIYORDU. Kusur tam
+  // olarak orada saklandı. ROLLER'ı genişletmek yerine yenisi: mevcut
+  // testlerin beklentileri değişmesin.
+  const ROLLER_GENEL = {
+    ...ROLLER,
+    laborTotalField: '_labToplam',
+    grandTotalField: '_toplam',
+  };
+
+  it('GT-1 İŞÇİLİK doldurmasında Toplam = malzeme + işçilik (işçilik İKİ KEZ sayılmaz)', async () => {
+    // Kusurlu hâl: mat = oku(totAlan ?? materialTotalField) — işçilik dalında
+    // totAlan = '_labToplam' olduğu için mat de lab de AYNI hücreyi okuyordu.
+    // Sonuç: Toplam = 2 × işçilik ve MALZEME TOPLAMI satırdan düşüyordu.
+    const h = node(300, 'Montaj bedeli', 2, { [ROLLER.materialTotalField]: '1000.0', _toplam: '1000.0' });
+    await fillDown({
+      hedefler: [h] as any, markaId: 'firma-1', roller: ROLLER_GENEL, motor: netVeren(150),
+      kaynakVaryantTags: null, kaynakLabel: '', hedefAlanlar: ISCILIK_ALANLARI,
+    });
+    expect(h.data._labToplam).toBe('300.0');            // 150 × 2
+    expect(h.data._toplam).toBe('1300.0');              // kusurlu hâl: '600.0'
+  });
+
+  it('GT-2 MALZEME doldurmasında da Toplam = malzeme + işçilik (ikiz simetrisi)', async () => {
+    const h = node(301, 'Çelik boru', 2, { _labToplam: '1000.0', _toplam: '1000.0' });
+    await fillDown({
+      hedefler: [h] as any, markaId: 'marka-1', roller: ROLLER_GENEL, motor: netVeren(150),
+      kaynakVaryantTags: null, kaynakLabel: '',
+    });
+    expect(h.data[ROLLER.materialTotalField]).toBe('300.0');
+    expect(h.data._toplam).toBe('1300.0');
+  });
+
+  it('GT-3 malzeme toplamı BOŞken işçilik doldurması Toplam\'ı şişirmez', async () => {
+    const h = node(302, 'Montaj bedeli', 2, {});
+    await fillDown({
+      hedefler: [h] as any, markaId: 'firma-1', roller: ROLLER_GENEL, motor: netVeren(150),
+      kaynakVaryantTags: null, kaynakLabel: '', hedefAlanlar: ISCILIK_ALANLARI,
+    });
+    expect(h.data._toplam).toBe('300.0');               // kusurlu hâl: '600.0'
+  });
+
+  it('GT-4 SD7 SÖZLEŞMESİ: YAZILAN her alan geri-alma anlığında da var', async () => {
+    // Kural, alan listesi ezberlemeden: doldurmanın DEĞİŞTİRDİĞİ her alan
+    // snapshot'ta olmalı. Yoksa Ctrl+Z satırı kendi içinde çelişkili bırakır
+    // (Malz. Toplam eskiye döner, Toplam yeni değerde kalır) ve o hâliyle
+    // kaydedilir. KD11 genel toplamı YAZMAYI ekledi, anlığa eklemeyi unuttu.
+    const oncesi = { [ROLLER.materialTotalField]: '1000.0', _toplam: '1000.0', _labToplam: '' };
+    const h = node(303, 'Çelik boru', 2, { ...oncesi });
+    const sonuc = await fillDown({
+      hedefler: [h] as any, markaId: 'marka-1', roller: ROLLER_GENEL, motor: netVeren(150),
+      kaynakVaryantTags: null, kaynakLabel: '',
+    });
+
+    const anlik = sonuc.geriAl[0].oncekiDegerler;
+    const degisenler = Object.keys(h.data).filter((k) => h.data[k] !== (oncesi as any)[k] && k in oncesi);
+    expect(degisenler.length, 'doldurma hiçbir şeyi değiştirmediyse test bir şey ölçmüyor').toBeGreaterThan(0);
+    for (const alan of degisenler) {
+      expect(Object.prototype.hasOwnProperty.call(anlik, alan), `${alan} YAZILDI ama geri-alma anlığında YOK`).toBe(true);
+    }
+    // Geri alma satiri gercekten eski hale dondurur mu (SD7'nin sozu)
+    for (const [k, v] of Object.entries(anlik)) h.data[k] = v;
+    expect(h.data._toplam).toBe('1000.0');
+    expect(h.data[ROLLER.materialTotalField]).toBe('1000.0');
+  });
+
+  it('KÂR-4 ELLE YAZILAN STRING "50" sayı gibi çalışır', async () => {
+    const h = node(203, 'Çelik boru', 2, { _malzKar: '50' });
+    await fillDown({
+      hedefler: [h] as any, markaId: 'marka-1', roller: ROLLER, motor: netVeren(100),
+      kaynakVaryantTags: null, kaynakLabel: '',
+    });
+    expect(h.data[ROLLER.materialUnitPriceField]).toBe('150.0');
+  });
 });

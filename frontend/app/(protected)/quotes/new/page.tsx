@@ -45,8 +45,10 @@ import { parseMaterialText } from '@/ozellik/tablo/parse-material-text';
 import { mergeMultiSheet } from '@/ozellik/tablo/merge-multisheet';
 import { kaynakKolonEtiketi } from '@/ozellik/giris/kaynak-kolon';
 import { indeksUyarilari } from '@/lib/indeks-sagligi';
-import { DWG_SISTEM_ALANLARI, dwgTeklifSemasi } from '@/lib/dwg-teklif-sema';
-import { kalemUret } from '@/lib/teklif-kalem';
+import { DWG_SISTEM_ALANLARI, dwgTeklifSemasi } from '@/ozellik/teklif/dwg-teklif-sema';
+import { kalemUret } from '@/ozellik/teklif/teklif-kalem';
+import { sayiAlani } from '@/ozellik/fiyat/sayi-alani';
+import { fiyatsizKalemOzeti, fiyatsizOnayMetni, uyariyaGirerMi } from '@/ozellik/teklif/fiyatsiz-kalem-uyarisi';
 import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, toplamlariTamamla, etkinMiktar } from '@/ozellik/fiyat/pricing';
 import type { Brand } from '@/ortak/types';
 import type {
@@ -261,7 +263,7 @@ export default function NewQuotePage() {
           _isSpareRow: true, ...DWG_SISTEM_ALANLARI,
           ...emptyDataFields,
         });
-        // SABIT SEMA tek kaynaktan (lib/dwg-teklif-sema): malzeme + ISCILIK
+        // SABIT SEMA tek kaynaktan (ozellik/teklif/dwg-teklif-sema): malzeme + ISCILIK
         // kolonlari + roller. Eskiden burada elle kuruluydu ve iscilik
         // kolonlari UNUTULMUSTU — kullanici fiyatlandirmada isciligi hic
         // goremiyordu. Sema artik testle muhurlu.
@@ -573,7 +575,7 @@ export default function NewQuotePage() {
                       });
                       const match = result[currentName];
                       if (match?.netPrice > 0) {
-                        const satisRestore = hesaplaSatisBirimFiyat(match.netPrice, parseFloat(String(row._malzKar ?? 0)) || 0);
+                        const satisRestore = hesaplaSatisBirimFiyat(match.netPrice, sayiAlani(row._malzKar));
                         row[roles.materialUnitPriceField] = satisRestore.toFixed(1);
                         // UY2 — ExcelGrid.tsx:277 ile AYNI kural. Duz parse,
                         // MIKTAR/BIRIM basliklari ters yazilmis satirlarda 0 verir.
@@ -1177,7 +1179,7 @@ export default function NewQuotePage() {
 
         setRows((prev) => prev.map((r) => {
           if (r._key !== key) return r;
-          const kar = parseFloat(String(r.materialKar)) || 0;
+          const kar = sayiAlani(r.materialKar);
           // ADIM 6 (06.08): HAM `net*(1+kar/100)` KALDIRILDI — kanonik cift
           // (yukarıYuvarla 1 hane) kullanilir; grid yoluyla (ExcelGrid:2467)
           // ayni sayiyi uretmek KAR SATIRININ on kosulu.
@@ -1267,6 +1269,9 @@ export default function NewQuotePage() {
     // ⚠ try DISINDA: catch blogu teshis icin bunlari okur (sessiz hata yutma
     // kapatildiginda payload ozeti konsola yazilir).
     let payloadItems: any[] = [];
+    // Uyari adaylari = kaydedilenlerin Icmal (_ozet) satirlari CIKARILMIS hali.
+    // Legacy `rows` dalinda `_ozet` kavrami yok; orada iki liste ayni.
+    let uyariKalemleri: any[] = [];
     let sheetsPayload: any[] | undefined;
     try {
       // columnRoles'u kullanarak DTO alanlarini dogru maple
@@ -1286,8 +1291,11 @@ export default function NewQuotePage() {
           unitPrice: priceCol ? (parseFloat(String(row.cells[priceCol] ?? '')) || 0) : 0,
           materialUnitPrice: priceCol ? (parseFloat(String(row.cells[priceCol] ?? '')) || 0) : 0,
           laborUnitPrice: laborPriceCol ? (parseFloat(String(row.cells[laborPriceCol] ?? '')) || 0) : 0,
-          materialMargin: row.materialKar || 0,
-          laborMargin: row.laborKar || 0,
+          // ⚠ 12.08 CANLI 400'ÜN LİTERAL BİÇİMİ: `x || 0` sayı süzgeci değildir
+          // (boş olmayan string aynen geçer). Çok-sayfa dalında kapatılmıştı,
+          // legacy dalda DURUYORDU — kâr süzgeci kapısı yakaladı.
+          materialMargin: sayiAlani(row.materialKar),
+          laborMargin: sayiAlani(row.laborKar),
           brandId: row.brandId || undefined,
           // IKIZ: brandId vardi, laborFirmaId YOKTU — cok-sayfa dalinda
           // kapatilan asimetrinin bu daldaki esi.
@@ -1306,6 +1314,7 @@ export default function NewQuotePage() {
       // teklife sizdirabiliyordu. Satirlar, legacy `rows` yolu tamamen
       // silinecegi gun kaldirilmali (bkz. P3 olu kod kalemi).
       payloadItems = items;
+      uyariKalemleri = items;
       if (multiSheet) {
         // KRITIK: Aktif sheet icin AG-Grid'den guncel rowData'yi al
         if (excelGridRef.current) {
@@ -1322,6 +1331,11 @@ export default function NewQuotePage() {
         });
 
         const multiItems: any[] = [];
+        // Fiyatsiz UYARISININ adaylari — kaydedilen kalemlerden AYRI liste.
+        // Fark tek: Icmal (`_ozet`) satirlari uyariya girmez (bkz.
+        // `uyariyaGirerMi`). Kayit davranisi DEGISMEZ: ozet satiri bugune kadar
+        // nasil kaydediliyorsa oyle kaydedilmeye devam eder (o ayri bir is).
+        const uyariAdaylari: any[] = [];
         multiSheet.sheets.forEach((sheet) => {
           if (sheet.isEmpty) return;
           // AG-Grid'den guncel veri varsa onu kullan, yoksa liveRowData, yoksa sheet.rowData
@@ -1337,16 +1351,17 @@ export default function NewQuotePage() {
             if (!r._isDataRow || r._isGroupRow || r._isSpareRow) return;
             // AKILLI SUTUN: Çapı ayri sutundaysa kayit adi = "Çap + Cins"
             // (orn "Ø110 PVC BORU") — PDF/Excel ciktisinda tam metin gorunur.
-            // KALEM URETIMI TEK KAYNAKTAN (lib/teklif-kalem). Burasi satir ici
+            // KALEM URETIMI TEK KAYNAKTAN (ozellik/teklif/teklif-kalem). Burasi satir ici
             // yazilinca `materialMargin`/`laborMargin` parseFloat SUZGECI
             // ALMAMISTI: Kar % hucresine elle yazilan "50" STRING olarak
             // gidiyor ve backend @IsNumber() reddedip HTTP 400 veriyordu.
             const kalem = kalemUret(r, roles as any);
             if (!kalem) return;
             multiItems.push(kalem);
+            if (uyariyaGirerMi(r)) uyariAdaylari.push(kalem);
           });
         });
-        if (multiItems.length > 0) payloadItems = multiItems;
+        if (multiItems.length > 0) { payloadItems = multiItems; uyariKalemleri = uyariAdaylari; }
         sheetsPayload = multiSheet.sheets.map((s) => ({
           name: s.name,
           index: s.index,
@@ -1366,6 +1381,21 @@ export default function NewQuotePage() {
             floors: colFloorsBySheet[s.index] ?? [],
           },
         }));
+      }
+
+      // ── FİYATSIZ KALEM: BLOKLAMAYAN ONAY (12.08 kullanıcı kararı) ───────
+      // Adı olan ama fiyatı olmayan satır bugüne kadar SESSİZCE kaydediliyordu:
+      // PANOVA'da DWG'den gelen "Belirtilmemis" satırı 3.123,64 m ile ve 0 ₺
+      // ile teklife giriyordu. Yukarıdaki filtre yalnız ADI BOŞ satırı eliyor.
+      // Kullanıcı bilerek fiyatsız kaydedebilir (henüz fiyat alınmamış kalem
+      // olur) — o yüzden bloklamıyoruz, SÖYLÜYORUZ. Çizim tarafındaki çapsız
+      // segment onayının (DwgProjectWorkspace.handleConfirmAll) kayıt anı ikizi.
+      // ⚠ Ölçüt payload üzerinde: ekranda ne göründüğü değil, teklife NE
+      // YAZILACAĞI sorulur (satır süzgeçleri çoktan uygulanmış olur).
+      const fiyatsiz = fiyatsizKalemOzeti(uyariKalemleri);
+      if (fiyatsiz) {
+        // İptal → `finally` bloğu setIsSaving(false) yapar, kayıt yapılmaz.
+        if (!(await confirm(fiyatsizOnayMetni(fiyatsiz)))) return;
       }
 
       const { data: created } = await api.post('/quotes', {
@@ -2090,8 +2120,13 @@ export default function NewQuotePage() {
                     <div className="text-xs whitespace-nowrap mb-1">Malz. Kar %</div>
                     <Input type="number" min={0} step={1} placeholder="Tumu"
                       onChange={(e) => {
-                        const kar = parseFloat(e.target.value);
-                        if (!isNaN(kar)) {
+                        // ⚠ BOŞ/GEÇERSİZ GİRİŞ TOPLU ATAMA YAPMAZ: alanı temizleyen
+                        // kullanıcı bütün satırların kârını 0'a çekmek istemiyor.
+                        // Bunu eskiden `isNaN(parseFloat(''))` sağlıyordu; `sayiAlani`
+                        // çöpü 0'a çevirdiği için niyet artık AÇIKÇA yazılı.
+                        const ham = e.target.value.trim();
+                        if (/^[0-9]+([.,][0-9]+)?$/.test(ham)) {
+                          const kar = sayiAlani(ham);
                           setRows((prev) => prev.map((r) => {
                             const updated = { ...r, materialKar: kar };
                             if (r._matNetPrice > 0 && priceCol) {
@@ -2114,8 +2149,12 @@ export default function NewQuotePage() {
                       <div className="text-xs whitespace-nowrap mb-1">Isc. Kar %</div>
                       <Input type="number" min={0} step={1} placeholder="Tumu"
                         onChange={(e) => {
-                          const kar = parseFloat(e.target.value);
-                          if (!isNaN(kar)) setRows((prev) => prev.map((r) => ({ ...r, laborKar: kar })));
+                          // Malzeme ikiziyle AYNI kural (boş/geçersiz → dokunma).
+                          const ham = e.target.value.trim();
+                          if (/^[0-9]+([.,][0-9]+)?$/.test(ham)) {
+                            const kar = sayiAlani(ham);
+                            setRows((prev) => prev.map((r) => ({ ...r, laborKar: kar })));
+                          }
                         }}
                         className="h-6 w-full border bg-white dark:bg-gray-900 px-1 text-right text-xs rounded" />
                     </th>
@@ -2211,7 +2250,7 @@ export default function NewQuotePage() {
                                       const netPrice = c.netPrice;
                                       setRows((prev) => prev.map((r) => {
                                         if (r._key !== row._key) return r;
-                                        const kar = parseFloat(String(r.materialKar)) || 0;
+                                        const kar = sayiAlani(r.materialKar);
                                         // ADIM 6: kanonik cift (bkz. 1155'teki not)
                                         const fp = hesaplaSatisBirimFiyat(netPrice, kar);
                                         const qty = qtyCol ? (parseFloat(String(r.cells[qtyCol])) || 0) : 0;
@@ -2261,12 +2300,12 @@ export default function NewQuotePage() {
                         {isDataRow ? (
                           <div className="flex items-center gap-0.5">
                             <Input type="number" min={0} step={1} value={row.materialKar}
-                              onChange={(e) => handleMatKarChange(row._key, parseFloat(e.target.value) || 0)}
+                              onChange={(e) => handleMatKarChange(row._key, sayiAlani(e.target.value))}
                               className="h-7 w-full border-0 bg-transparent px-1 text-right text-xs shadow-none focus-visible:ring-1" />
-                            {row.materialKar > 0 && (
+                            {sayiAlani(row.materialKar) > 0 && (
                               <button title="Asagiya kopyala" className="text-muted-foreground hover:text-primary text-xs px-0.5"
                                 onClick={() => {
-                                  const kar = row.materialKar;
+                                  const kar = sayiAlani(row.materialKar);
                                   setRows((prev) => prev.map((r, i) => {
                                     if (i <= idx) return r;
                                     const updated = { ...r, materialKar: kar };
@@ -2291,7 +2330,7 @@ export default function NewQuotePage() {
                         <td className="border border-gray-200 dark:border-gray-700 px-1 py-0.5 bg-blue-50/50 dark:bg-blue-950/20">
                           {isDataRow ? (
                             <Input type="number" min={0} step={1} value={row.laborKar}
-                              onChange={(e) => handleLabKarChange(row._key, parseFloat(e.target.value) || 0)}
+                              onChange={(e) => handleLabKarChange(row._key, sayiAlani(e.target.value))}
                               className="h-7 w-full border-0 bg-transparent px-1 text-right text-xs shadow-none focus-visible:ring-1" />
                           ) : null}
                         </td>

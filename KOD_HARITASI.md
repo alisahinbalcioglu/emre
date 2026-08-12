@@ -304,7 +304,7 @@ Karıştırılmasın diye ayrı duruyor.
 | `backend/src/ozellik/giris/excel-grid/excel-grid.service.ts` | Yüklenen xlsx'i sayfa sayfa ayrıştırıp kolon rollerini içerikten tespit eder |
 | `backend/src/ozellik/giris/excel-grid/sheet-discipline.ts` | Sayfa adi ve ornek satir metninden mekanik/elektrik disiplinini anahtar kelime skoruyla tahmin eder |
 
-### B · TABLO — 11 dosya
+### B · TABLO — 12 dosya
 
 | Dosya | Ne yapıyor |
 |---|---|
@@ -345,10 +345,11 @@ Karıştırılmasın diye ayrı duruyor.
 | `frontend/lib/silme-etkisi-getir.ts` | Silme etkisi ucunu cagiran ince sarmal; hata/bicimsiz yanitta `null` doner (sayim bir KOLAYLIK, silmenin on kosulu degil — asil koruma backend'in 409'u). Saf metin fonksiyonu ag bagimliligindan uzak kalsin diye ayri dosya |
 | `frontend/ozellik/tablo/excel-grid/build-material-context.ts` | Eslestirme sorgusu icin satirin olcu ifadesi tasiyip tasimadigini ve baslik baglami gerekip gerekmedigini belirler |
 
-### D · FİYAT — 5 dosya
+### D · FİYAT — 6 dosya
 
 | Dosya | Ne yapıyor |
 |---|---|
+| `frontend/ozellik/fiyat/sayi-alani.ts` | Grid hucresinden sayiya giden TEK suzgec: string/virgullu/bos/cop/NaN/Infinity/negatif ne gelirse gelsin sonlu ve negatif olmayan `number` verir. Ekran (ExcelGrid, fill-down, sayfaToplamlari) ile kayit yolu ayni fonksiyonu cagirir — "12,5" hucresinin ekranda 12, kayitta 12,5 olmasi sinifi boyle kapandi. Backend DTO'su @IsNumber+@Min(0) uyguladigi icin kelepce oradaki sozlesmenin aynisidir |
 | `backend/src/ozellik/fiyat/exchange-rates/exchange-rates.controller.ts` | Canli kuru guard'siz public GET ucu olarak sunar |
 | `backend/src/ozellik/fiyat/exchange-rates/exchange-rates.service.ts` | TCMB XML'den USD/EUR kuru ceker; er-api fallback, 1 saatlik cache, thundering-herd korumasi |
 | `frontend/ozellik/tablo/excel-grid/discount-utils.ts` | Iskonto yuzdesini 0-100'e sabitler, TR bicimli/%'li girisi ve cok satirli Excel yapistirmasini sayiya cevirir |
@@ -369,7 +370,7 @@ Karıştırılmasın diye ayrı duruyor.
 | `frontend/app/(protected)/quote-formats/page.tsx` | Kalici teklif format sablonlarini yukleme, yer tutucu tarama onizlemesi, varsayilan yapma ve silme yonetimi |
 | `frontend/ozellik/cikti/export-download.ts` | Iki export ucunu cagirip blob'u dosya olarak indirtir; self-check ozet/uyari toast'larini gosterir |
 
-### G · KÜTÜPHANE ve YÖNETİM — 42 dosya
+### G · KÜTÜPHANE ve YÖNETİM — 43 dosya
 
 | Dosya | Ne yapıyor |
 |---|---|
@@ -417,11 +418,20 @@ Karıştırılmasın diye ayrı duruyor.
 | `frontend/ozellik/kutuphane/hata-metni.ts` | K1 — sunucunun yazdigi hata mesajini kullaniciya ulastiran saf fonksiyon: `response.data.message` metinse AYNEN doner, DIZI ise (Nest ValidationPipe) " · " ile birlestirir, bos/boslukluysa ya da baska tipteyse varsayilana duser. Kusur `materials/{mechanical,electrical}/page.tsx` ciplak `catch { ... 'Marka silinirken hata olustu.' }` idi: backend 409'unun gercek rakamlari ve "nasil onaylanir" bilgisi ekrana HIC ulasmiyordu |
 | `frontend/ozellik/kutuphane/oksuz-kutuphane-uyarisi.ts` | K2 — backend `saveBulkMaterials` → `oksuzKutuphaneSatiri` sayimindan admin'e gosterilecek uyariyi uretir (saf fonksiyon). Sayim yok/0 ise uyari YOK (bos korku yasagi), iskontolu satir varsa kullanicinin elle girdigi emek anilir, yoksa iskonto cumlesi HIC kurulmaz. Onarim VAAT ETMEZ — backend geriye donuk baglamayi guvenli anahtar olmadigi icin bilerek yapmiyor. Cizen yer `admin/brands/page.tsx` `commitImport()` |
 
-### H · TESTLER — 82 dosya
+### H · TESTLER — 108 dosya
 
 | Dosya | Ne yapıyor |
 |---|---|
 | `backend/src/modules/dwg-engine/python/tests/__init__.py` | Test dizinini Python paketi yapan bos isaret dosyasi |
+| `backend/src/modules/dwg-engine/python/tests/test_split_mode.py` | `split_mode=none` bayraginda hattin BASTAN SONA tek parca kaldigini (entity=segment, graf hic kosmaz) ve `t` modunda bolmenin surdugunu olcer |
+| `backend/src/modules/dwg-engine/python/tests/test_tolerance_robustness.py` | Dugum birlestirme toleransinin birim yanlisligina dayanikliligini olcer — yanlis birim `node_tol`'u sisirip sahte kaynak dugum uretiyordu (629 dugumun 96'si) |
+| `backend/src/modules/dwg-engine/python/tests/test_unit_detect.py` | Bagimsiz beyanlarin KESISIMIYLE birim tespitini kilitler (antet kagit olcusu ∩ yazi yuksekligi ∩ sprinkler araligi); `$INSUNITS` YALAN soyleyebildigi icin header tek basina kanit sayilmaz |
+| `backend/test/iliskisel-alan-suzgeci-test.ts` | Teklif kaydinda marka/isçilik firmasi ID'lerinin ilişkisel alanlara baglanmasini ve silinmis / BASKA HESABA ait ID'lerin kayit BLOKLANMADAN dusurulmesini 10 vakayla kilitler (DB istemez). Filtreler bilerek asimetrik: `Brand` global katalog → yalniz varlik, `LaborFirm` kullaniciya ait → varlik + sahiplik |
+| `frontend/components/dwg-workspace/sprinkler-bayatlik.test.ts` | Sprinkler isareti hesaptan SONRA konunca hesabin BAYAT kaldigini ve kullaniciya turuncu bantla soylendigini kilitler (motor sucsuzdu: isaretle 494→1474 segment) |
+| `frontend/ozellik/teklif/dwg-teklif-sema.test.ts` | DWG teklif grid semasini muhurler: isçilik kolonlari + roller + genel toplam. Kolon columnDefs'te yokken `setDataValue` SESSIZCE duser — muhrun var olma sebebi bu |
+| `frontend/ozellik/teklif/teklif-kalem.test.ts` | Teklif kalemi payload sozlesmesi (canli 400'un muhru): hucre NE TUTARSA TUTSUN her sayisal alan `number` ve >= 0. ★ Muhur SABIT liste degil item'in GERCEK anahtarlarini gezer — `kalemUret`e yeni bir string alan eklendigi gun (or. `grandTotal: r._toplam`) kendiliginden kirmiziya doner |
+| `frontend/ozellik/fiyat/kar-tek-suzgec.test.ts` | KAYNAK TARAMASI kapisi: adinda "kar" gecen hicbir degisken ham `parseFloat`/`Number` ile doldurulamaz — hepsi `sayiAlani`dan gecer. Bu yollar AG-Grid olay nesnelerine bagli oldugu ve repoda jsdom olmadigi icin birim testiyle KOSULAMIYOR; olculebilen tek sey kaynagin kendisi. Kirmizi-once 6 gercek site yakaladi: ExcelGrid surukle-doldur ×2 (kaynak satir 12,5 · surukleneneler 12 — ayni sutunda iki kar) ve legacy `rows` yolu ×4. Ucuncu blok OLCUTU OLCER (desen gercek ihlal metinlerinde ateslenir, dogru halde ateslenmez) |
+| `frontend/ozellik/teklif/fiyatsiz-kalem-uyarisi.test.ts` | Fiyatsiz kalem uyarisinin olcutunu ve cumlesini kilitler. IKI AILE: kalemler hem DWG hem Excel satir seklinden `kalemUret` ile uretilir — kural akisa ozel degil. Yalniz isçiligi olan kalem fiyatsiz SAYILMAZ; NaN fiyat fiyatsiz SAYILIR |
 | `backend/src/modules/dwg-engine/python/tests/test_block_to_line_split.py` | INSERT noktalarinin boruyu segmentlere bolmesini blok adi/layer'dan bagimsiz dogrular |
 | `backend/src/modules/dwg-engine/python/tests/test_pipe_segments.py` | Segment uzunluk dogrulugunu (10x hata hipotezi) duz cizgi, T-junction ve polyline ile test eder |
 | `backend/src/modules/dwg-engine/python/tests/test_scale_normalization.py` | Kullanici birim seciminin (mm/cm/m) metraja deterministik uygulanmasini entegrasyon duzeyinde test eder |
@@ -535,7 +545,7 @@ Karıştırılmasın diye ayrı duruyor.
 | `frontend/scripts/surum-yaz.js` | Derleme aninda git sha + kirli-agac damgasini public/surum.json'a gomer; canli surum dogrulama kapisi bunu okur |
 | `frontend/tailwind.config.ts` | shadcn/ui CSS degiskenli renk paleti, radius olcekleri ve accordion animasyonlarini tanimlar |
 
-### J · DWG-METRAJ — 43 dosya
+### J · DWG-METRAJ — 46 dosya
 
 | Dosya | Ne yapıyor |
 |---|---|
@@ -583,6 +593,8 @@ Karıştırılmasın diye ayrı duruyor.
 | `frontend/components/dwg-workspace/onay-revizyon.ts` | DWG onay↔revizyon kararlarinin TEK kaynagi (saf, DOM'suz): kart dugmesi onayli iken "onayi kaldir" olur · sag panel hesaplama yokken ASLA aksiyonsuz kalmaz (onaylinin cikisi revizyondur) · layer secimi iki niyet tasir — kullanici tiklamasi TOGGLE, revizyon girisi ODAKLA (secim kapanmaz) · cap renkli gorunurluk = hesaplandi && !onayli. Dordu de uretimde bu modulden okunur (MetrajSummaryPanel · LayerInfoSidebar · useWorkspaceState · DwgProjectWorkspace), kopya karar YOK |
 | `frontend/components/dwg-workspace/useWorkspaceState.ts` | Layer secim/odaklama, onay/onay-kaldirma ve cap atama+1-hop komsu yayilimini localStorage'a (icerik-hash anahtarli) kalici tutar |
 | `frontend/lib/metraj-excel.ts` | DWG metraj sonuclarini coklu-sheet XLSX dosyasina yazip indirtir; sheet adi sanitize/benzersizlestirme yapar |
+| `backend/src/modules/dwg-engine/python/unit_detect.py` | Cizimin gercek birimini BAGIMSIZ BEYANLARIN KESISIMIYLE tespit eder (antet kagit olcusu · yazi yukseklikleri · sprinkler araligi). `$INSUNITS` header'i YALAN soyleyebiliyor — PANOVA'da "mm" diyordu, gercek desimetreydi (127,6 m yerine 1.286,70 m) |
+| `frontend/components/dwg-workspace/sprinkler-bayatlik.ts` | Hesap yapildiktan SONRA sprinkler isaretlenirse sonucun bayat kaldigina karar veren saf fonksiyon (`sprinklerLayersUsed` anligiyla karsilastirir); ekran turuncu bant + tek tik yeniden hesap sunar |
 
 ### K · ORTAK UI, KABUK ve İSTEMCİ — 27 dosya
 
@@ -653,10 +665,13 @@ Karıştırılmasın diye ayrı duruyor.
 | `backend/src/ozellik/cikti/quote-formats/quote-formats.module.ts` | Format servis ve controller'ini NestJS'e kablolar, servisi disa acar |
 | `backend/src/ozellik/teklif/quotes/quotes.module.ts` | Quotes servis/controller'i AI, Prisma ve kur modulleriyle NestJS'e kablolar |
 
-### M · TEKLİF YAŞAM DÖNGÜSÜ — 8 dosya
+### M · TEKLİF YAŞAM DÖNGÜSÜ — 11 dosya
 
 | Dosya | Ne yapıyor |
 |---|---|
+| `frontend/ozellik/teklif/dwg-teklif-sema.ts` | DWG metrajindan teklif grid'ine gecisin SABIT semasi: kolonlar + roller tek kaynakta. Sema sayfanin icinde elle kuruluyken isçilik kolonlari unutulmustu ve kolon tanimsizken `setDataValue` sessizce dusuyordu |
+| `frontend/ozellik/teklif/teklif-kalem.ts` | Grid satirindan QuoteItem payload'i ureten TEK kaynak: her sayisal alan `sayiAlani` suzgecinden, marka/isçilik firmasi ID'leri `kimlikAlani`ndan gecer (bos string FK'yi patlatir, hic gonderilmez). Ad = "Cap + Cins" birlesimidir — cins tek basina fiyat listesinde bulunamaz |
+| `frontend/ozellik/teklif/fiyatsiz-kalem-uyarisi.ts` | Kaydedilecek kalemlerden teklife 0 ₺ ile girecek olanlari sayar ve onay cumlesini kurar (saf, DOM'suz). Olcut SEBEBE degil SONUCA bakar: capsizlik en sik sebep, tek sebep degil (markasi eslesmemis satir da ayni sonucu dogurur). Uyari BLOKLAMAZ — kullanici bilerek fiyatsiz kaydedebilir |
 | `backend/src/ozellik/teklif/quotes/dto/create-quote.dto.ts` | Teklif olusturma isteginin kalem alanlarini, sheet yukunu ve orijinal dosya base64'unu dogrular |
 | `backend/src/ozellik/teklif/quotes/quotes.controller.ts` | Teklif CRUD, Excel parse ve export/arsiv rotalarini JWT korumali HTTP uclarina baglar; export hatalarini 500'e dusurmeden sarar |
 | `backend/src/ozellik/teklif/quotes/quotes.service.ts` | Teklif kaydi/listeleme/silme/kismi bilgi guncelleme yapar; format cozumleyip export motorunu cagirir ve revizyon arsivler |

@@ -13,12 +13,15 @@
 //  3. Para birimi yalnız GÖRÜNTÜLEME çevirisidir (taban TRY, canlı TCMB);
 //     kütüphane fiyatları orijinal biriminde kalır.
 //  Mühür: pricing.test.ts (FE vitest) + backend test:ke KG bloğu.
-// ============================================================
 //
 // ASAMA A — KUTUPHANE: Liste --(iskonto%)--> Net (alis). Cevrim YOK.
 // ASAMA B — TEKLIF:    Net (teklif birimine cevrilmis) --(kar%)--> Satis.
 //                      Satis × Miktar = Satir Toplami.
 // ALTIN KURAL: fiyat ASLA uretilmez; eslesme yoksa hucre bos + isaretli.
+// ============================================================
+
+// NOT: goreli yol ZORUNLU — vitest.config.ts'te '@/' alias'i tanimli degil.
+import { sayiAlani } from './sayi-alani';
 
 // ============================================================
 // ADIM 8 (Kar Analizi onkosul turu, 06.08) — ONDALIK TEK KURAL (kalem 67)
@@ -327,7 +330,11 @@ export function sayfaToplamlari(
 
       const satis = !topBos ? sayi(r[topAlan!])
         : hesaplaSatirToplam(sayi(r[birimAlan!]), miktar);
-      const kar = sayi(r[karAlan]);
+      // KÂR HÜCRESİ: ekranın/kaydın kullandığı SÜZGECİN AYNISI. Yerel `sayi`
+      // negatifi geçirir; aşağıdaki `kar <= 0` dalı negatifi zaten sıfır gibi
+      // ele aldığı için sonuç DEĞİŞMEZ — ama ölçüt tek yerden okunmalı ki
+      // ekran/kayıt/kâr analizi üç ayrı sayı üretemesin.
+      const kar = sayiAlani(r[karAlan]);
       let maliyet: number;
       if (kar <= 0) {
         maliyet = satis; // %0 → satis = maliyet (dosya toplamlari dahil)
