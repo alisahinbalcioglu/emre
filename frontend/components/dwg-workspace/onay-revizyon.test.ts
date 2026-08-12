@@ -21,7 +21,9 @@ import {
   sidebarAksiyonlari,
   secimSonrasi,
   capRenkliGorunur,
+  onaySirasi,
 } from './onay-revizyon';
+import type { CalculatedLayer } from './types';
 
 // ── ESKI DAVRANIS REPLIKALARI (fix oncesi kod) ───────────────────────────────
 
@@ -160,5 +162,55 @@ describe('capRenkliGorunur — "parcalanmis segmentler geri gelmeli"', () => {
     const onaySonrasiKalkti = { ...onayli, onayli: false };
     expect(capRenkliGorunur(onayli)).toBe(false);
     expect(capRenkliGorunur(onaySonrasiKalkti)).toBe(true);
+  });
+});
+
+// ── E) FIYATLANDIRMA SIRASI: approvedAt'in tuketicisi (11.08) ────────────────
+//
+// `approvedAt` alaninin tek tuketicisi buildExcelSheets'in sheet siralamasiydi;
+// 11.08'de otomatik Excel indirmesiyle birlikte kaldirildi ve alan yalniz-yazilir
+// kaldi. Fiyatlandirma yolu Object.values ekleme sirasina (= HESAPLAMA sirasina)
+// dusmustu. `onaySirasi` eski kullanici-gorunur sirayi yeni yolda geri getirir.
+
+/** DwgProjectWorkspace.tsx:644 (fix oncesi) — `approvedLayers` ekleme sirasi
+ *  oldugu gibi kullaniliyordu; approvedAt HIC okunmuyordu. */
+function eskiSira(layers: CalculatedLayer[]): CalculatedLayer[] {
+  return layers;
+}
+
+function katman(layer: string, computedAt: number, approvedAt?: number): CalculatedLayer {
+  return {
+    layer, hatIsmi: layer, materialType: '', defaultDiameter: '',
+    edgeSegments: [], junctionPoints: [], totalLength: 0,
+    computedAt, approved: true, approvedAt,
+  };
+}
+
+describe('onaySirasi — fiyatlandirmaya giden layer sirasi = ONAY sirasi', () => {
+  it('onay sirasi hesaplama sirasindan farkliysa approvedAt kazanir', () => {
+    const a = katman('A', 100, 300); // once hesaplandi, SONRA onaylandi
+    const b = katman('B', 200, 250); // sonra hesaplandi, ONCE onaylandi
+    expect(onaySirasi([a, b]).map((l) => l.layer)).toEqual(['B', 'A']);
+  });
+
+  it('approvedAt olmayan eski kayit computedAt ile siraya girer (legacy fallback)', () => {
+    const eskiKayit = katman('ESKI', 150, undefined); // alan eklenmeden onceki localStorage
+    const yeni = katman('YENI', 100, 400);
+    expect(onaySirasi([yeni, eskiKayit]).map((l) => l.layer)).toEqual(['ESKI', 'YENI']);
+  });
+
+  it('girdi dizisi MUTATE edilmez (immutability kurali)', () => {
+    const a = katman('A', 100, 300);
+    const b = katman('B', 200, 250);
+    const girdi = [a, b];
+    onaySirasi(girdi);
+    expect(girdi.map((l) => l.layer)).toEqual(['A', 'B']);
+  });
+
+  it('ESKI DAVRANIS bu kriteri IHLAL EDERDI — hesaplama sirasi onay sirasini ezerdi', () => {
+    const a = katman('A', 100, 300);
+    const b = katman('B', 200, 250);
+    expect(eskiSira([a, b]).map((l) => l.layer)).toEqual(['A', 'B']); // onay sirasi DEGIL
+    expect(eskiSira([a, b]).map((l) => l.layer)).not.toEqual(onaySirasi([a, b]).map((l) => l.layer));
   });
 });

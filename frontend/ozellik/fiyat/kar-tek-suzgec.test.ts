@@ -33,6 +33,11 @@ const KAPSAM = [
   'ozellik/teklif/teklif-kalem.ts',
   'ozellik/fiyat/pricing.ts',
   'app/(protected)/quotes/new/page.tsx',
+  // 12.08 — DRAFT RESTORE yolu. Bu modul 11.08'de yazilmisti ve kari ham
+  // `parseFloat(String(row[karAlani] ?? 0)) || 0` ile okuyordu; page.tsx'ten
+  // ayri dosyaya tasindigi icin kapsam disinda kalsaydi kapi YESIL yanarken
+  // sizinti geri gelirdi (sessiz kapsam kaybi — bu listenin varlik sebebi).
+  'ozellik/teklif/restore-rematch.ts',
 ];
 
 const KOK = path.resolve(__dirname, '../..');
@@ -100,7 +105,7 @@ describe('KÂR TEK SÜZGEÇ — kaynak taraması', () => {
       expect(fs.existsSync(y), `${d} bulunamadı — kapı kapsamını kaybetmiş olabilir`).toBe(true);
       expect(fs.readFileSync(y, 'utf8').length).toBeGreaterThan(500);
     }
-    expect(KAPSAM.length).toBeGreaterThanOrEqual(5);
+    expect(KAPSAM.length).toBeGreaterThanOrEqual(6);
   });
 
   /** Bir kod satırı kuralı ihlal ediyor mu? (tek yer — test ile ölçüt aynı) */
@@ -147,6 +152,11 @@ describe('KÂR TEK SÜZGEÇ — kaynak taraması', () => {
       'const karVal = parseFloat(String(result.value ?? 0)) || 0;',
       'const iscKarVal = parseFloat(String(result.value ?? 0)) || 0;',
       'const oncekiKar = parseFloat(String(e.oldValue ?? 0)) || 0;',
+      // ★ restore-rematch.ts'in DOLAYLI erisimi (`row[taraf.karAlani]`): alan
+      // adi satirda LITERAL gecmez, dolayisiyla ALAN kurali goremez — bu dosyayi
+      // koruyan yalniz DEGISKEN kuralidir. Kapsam listesine eklerken bunun
+      // gercekten yakalandigi ayrica olculur, varsayilmaz.
+      'const kar = parseFloat(String(row[taraf.karAlani] ?? 0)) || 0;',
     ];
     for (const s of YAKALANMALI) expect(ihlalMi(s), `YAKALANMALIYDI: ${s}`).toBe(true);
 
@@ -168,9 +178,11 @@ describe('KÂR TEK SÜZGEÇ — kaynak taraması', () => {
       '<Input type="number" min={0} step={1} value={row.laborKar}',
       // Kârla ilgisi olmayan ham okuma serbest (kapı fazla geniş değil)
       'const netPrice = parseFloat(String(node.data._matNetPrice ?? 0)) || 0;',
+      // restore-rematch.ts'in DOGRU hali — dolayli erisim + suzgec
+      'const kar = sayiAlani(row[taraf.karAlani]);',
     ];
     for (const s of YAKALANMAMALI) expect(ihlalMi(s), `YAKALANMAMALIYDI: ${s}`).toBe(false);
 
-    expect(YAKALANMALI.length + YAKALANMAMALI.length).toBeGreaterThanOrEqual(16);
+    expect(YAKALANMALI.length + YAKALANMAMALI.length).toBeGreaterThanOrEqual(18);
   });
 });

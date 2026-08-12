@@ -91,3 +91,23 @@ export function secimSonrasi(
 export function capRenkliGorunur(durum: { hesaplandi: boolean; onayli: boolean }): boolean {
   return durum.hesaplandi && !durum.onayli;
 }
+
+/**
+ * FIYATLANDIRMAYA GIDEN LAYER SIRASI — kullanicinin ONAYLADIGI sira.
+ *
+ * `approvedAt` alaninin tek tuketicisi buildExcelSheets'in sheet siralamasiydi;
+ * 11.08'de otomatik Excel indirmesiyle birlikte o tuketici silindi ve alan
+ * yalniz-yazilir kaldi. finalMetraj ise `Object.values(calculatedLayers)`
+ * ekleme sirasina (= hesaplama sirasina) dusmustu — teklif grup bantlari
+ * keyfi dizilirdi. Bu fonksiyon eski kullanici-gorunur sirayi yeni yolda
+ * geri getirir: bantlar onay sirasinda.
+ *
+ * approvedAt yoksa (alan eklenmeden onceki localStorage kayitlari) computedAt'e
+ * duser — legacy layer sirasiz kalmaz. Girdi dizisi mutate edilmez.
+ */
+export function onaySirasi<T extends { approvedAt?: number; computedAt?: number }>(
+  layers: T[],
+): T[] {
+  const zaman = (l: T) => l.approvedAt ?? l.computedAt ?? 0;
+  return [...layers].sort((a, b) => zaman(a) - zaman(b));
+}

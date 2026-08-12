@@ -26,7 +26,9 @@ export interface CalculatedLayer {
   /** Layer kullanici tarafindan onaylandi mi? Yeni hesaplandiginda false.
    *  "Onayla" butonu -> true. Onaylanmadan baska layer'a gecilemez (toast uyarisi). */
   approved: boolean;
-  /** Onay zamani (audit + Excel sheet siralamasi icin). */
+  /** Onay zamani — fiyatlandirmaya giden layer/grup sirasi bundan kurulur
+   *  (onay-revizyon.ts `onaySirasi`; eski tuketici buildExcelSheets 11.08'de
+   *  kaldirilmisti) + audit. */
   approvedAt?: number;
   /** Hesap ANINDA motora gonderilen sprinkler isaretli layer'lar.
    *  Simdiki isaretlemeyle uyusmuyorsa hesap BAYATTIR (sprinkler-bayatlik.ts) —

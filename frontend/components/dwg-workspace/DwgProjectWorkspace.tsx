@@ -27,7 +27,7 @@ import LayerInfoSidebar from './LayerInfoSidebar';
 import LayerVisibilityPanel from './LayerVisibilityPanel';
 import MetrajSummaryPanel from './MetrajSummaryPanel';
 import { useWorkspaceState } from './useWorkspaceState';
-import { capRenkliGorunur } from './onay-revizyon';
+import { capRenkliGorunur, onaySirasi } from './onay-revizyon';
 import { sprinklerIsaretiBayat } from './sprinkler-bayatlik';
 import type { CalculatedLayer } from './types';
 import {
@@ -640,8 +640,11 @@ export default function DwgProjectWorkspace({
     // KALDIRILDI. "Tumunu Onayla & Fiyatlandirmaya Gec" artik yalnizca
     // fiyatlandirmaya gecer — istem disi dosya indirmesi kafa karistiriyordu.
 
-    // FinalMetraj sadece ONAYLI layer'lardan kurulur — onaysizlar dahil degil
-    const layers = approvedLayers;
+    // FinalMetraj sadece ONAYLI layer'lardan, ONAY SIRASINDA kurulur — teklif
+    // grup bantlari kullanicinin onayladigi sirada dizilir. `approvedAt`in
+    // tuketicisi budur: eski Excel sheet siralamasinin (11.08'de kaldirilan
+    // buildExcelSheets) fiyatlandirma yolundaki ikizi (onay-revizyon.test.ts).
+    const layers = onaySirasi(approvedLayers);
 
     const finalMetraj: MetrajResult = {
       layers: layers.map((cl) => ({

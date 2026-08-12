@@ -47,9 +47,12 @@ import { kaynakKolonEtiketi } from '@/ozellik/giris/kaynak-kolon';
 import { indeksUyarilari } from '@/lib/indeks-sagligi';
 import { DWG_SISTEM_ALANLARI, dwgTeklifSemasi } from '@/ozellik/teklif/dwg-teklif-sema';
 import { kalemUret } from '@/ozellik/teklif/teklif-kalem';
+import { restoreRematch } from '@/ozellik/teklif/restore-rematch';
 import { sayiAlani } from '@/ozellik/fiyat/sayi-alani';
 import { fiyatsizKalemOzeti, fiyatsizOnayMetni, uyariyaGirerMi } from '@/ozellik/teklif/fiyatsiz-kalem-uyarisi';
-import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, toplamlariTamamla, etkinMiktar } from '@/ozellik/fiyat/pricing';
+// NOT: `etkinMiktar` buradan DUSTU — tek tuketicisi restore blogunun icindeki
+// satir ici re-matching idi, o da ozellik/teklif/restore-rematch'e tasindi.
+import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, toplamlariTamamla } from '@/ozellik/fiyat/pricing';
 import type { Brand } from '@/ortak/types';
 import type {
   UploadMode,
@@ -544,54 +547,20 @@ export default function NewQuotePage() {
         }
         console.log('[quotes/new] Draft restored from sessionStorage');
 
-        // Marka/firma atanmis satirlar icin otomatik re-matching
-        // (sessionStorage'dan restore edildikten sonra fiyatlar kayip — yeniden match et)
+        // Marka/firma atanmis satirlar icin otomatik re-matching — malzeme +
+        // ISCILIK ikizi TEK MEKANIZMADAN (ozellik/teklif/restore-rematch,
+        // testle muhurlu). Eski inline blok yalniz malzeme tarafini kosuyordu;
+        // _firma atanmis satirlarin iscilik fiyati restore sonrasi sessizce
+        // bos kaliyordu.
         setTimeout(async () => {
           const multi = draft.multiSheet;
           if (!multi?.sheets) return;
           const live = restoredLive;
-          let reMatched = 0;
-
-          for (const sheet of multi.sheets) {
-            if (sheet.isEmpty) continue;
-            const rows = live[sheet.index] ?? sheet.rowData ?? [];
-            const roles = sheet.columnRoles ?? {};
-            if (!roles.nameField) continue;
-
-            for (let ri = 0; ri < rows.length; ri++) {
-              const row = rows[ri];
-              if (!row?._isDataRow) continue;
-
-              // Malzeme re-matching
-              if (row._marka && roles.materialUnitPriceField) {
-                const currentVal = String(row[roles.materialUnitPriceField] ?? '').trim();
-                if (!currentVal || currentVal === '0' || currentVal === '0.00') {
-                  const currentName = String(row[roles.nameField] ?? '').trim();
-                  if (currentName) {
-                    try {
-                      const { data: result } = await api.post('/matching/bulk-match', {
-                        brandId: row._marka,
-                        materialNames: [currentName],
-                      });
-                      const match = result[currentName];
-                      if (match?.netPrice > 0) {
-                        const satisRestore = hesaplaSatisBirimFiyat(match.netPrice, sayiAlani(row._malzKar));
-                        row[roles.materialUnitPriceField] = satisRestore.toFixed(1);
-                        // UY2 — ExcelGrid.tsx:277 ile AYNI kural. Duz parse,
-                        // MIKTAR/BIRIM basliklari ters yazilmis satirlarda 0 verir.
-                        const qty = etkinMiktar(row, roles.quantityField, roles.unitField);
-                        if (roles.materialTotalField) row[roles.materialTotalField] = hesaplaSatirToplam(satisRestore, qty).toFixed(1);
-                        row._matNetPrice = match.netPrice;
-                        row._matKurBilgi = (match as any).kaynakKur ?? null; // kur donmasi
-                        reMatched++;
-                      }
-                    } catch {}
-                  }
-                }
-              }
-            }
-          }
-
+          const reMatched = await restoreRematch(
+            multi.sheets,
+            live,
+            async (url, body) => (await api.post(url, body)).data,
+          );
           if (reMatched > 0) {
             setLiveRowDataBySheet({ ...live });
             console.log(`[quotes/new] Re-matched ${reMatched} rows after restore`);
