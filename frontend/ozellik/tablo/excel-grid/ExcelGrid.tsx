@@ -15,6 +15,7 @@ import { useFillHandle, FillHandleIndicator } from './useFillHandle';
 import { clampDiscount, parseDiscountInput, parseDiscountPaste } from './discount-utils';
 import { CustomDropdown } from './CustomDropdown';
 import { fillDown, karYayilimi } from './fill-down';
+import { isaretStili, isaretTooltip, secimBekliyor, type IsaretGirdisi } from './isaret';
 import { joinMaterialText } from '@/ozellik/tablo/parse-material-text';
 import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, yukariYuvarla, etkinMiktar, paraBicim, sayfaToplamlari, karSatiri, maliyetiGeriTuret, PARA_ONDALIK } from '@/ozellik/fiyat/pricing';
 // KÂR HÜCRESİ TEK SÜZGEÇTEN: `parseFloat(String(x)) || 0` kopyaları
@@ -1001,6 +1002,12 @@ function FirmaDropdown(props: ICellRendererParams & {
     yazVeriLab(node, '_labNetPrice', netPrice);
     // KUR DONMASI: malzeme ikiziyle AYNI kural (ikizi unutma dersi)
     node.data._labKurBilgi = kaynakKur ?? null;
+    // ISARET: fiyat geldi → bekleme kalkar (ExcelGrid.tsx:322 malzeme ikizi).
+    // Fiyat yazan HER iscilik yolu buradan gectigi icin tek yer yeter:
+    // handleChange tek-eslesme · handleCandidateSelect · handleAlternativeSelect.
+    yazVeriLab(node, '_labStatus', '');
+    yazVeriLab(node, '_labSebep', null);
+    yazVeriLab(node, '_labAdaySayisi', null);
     if (laborUnitPriceField) node.setDataValue(laborUnitPriceField, finalPrice.toFixed(1));
     if (laborTotalField) node.setDataValue(laborTotalField, total.toFixed(1));
     console.log(`[FirmaDropdown] row=${data._rowIdx}, net=${netPrice}, kar=${kar}%, final=${finalPrice}, qty=${qty}`);
@@ -1013,6 +1020,11 @@ function FirmaDropdown(props: ICellRendererParams & {
     if (!firmaId) {
       yazVeriLab(node, '_labNetPrice', 0);
       node.data._labKurBilgi = null; // kur donmasi: fiyatla birlikte temizlenir
+      // Firma kaldirildi: satir artik "secim bekleyen" degil — isaret de kalkar,
+      // yoksa firmasiz satir kirmizi kalir ve guven sayacini sisirir.
+      yazVeriLab(node, '_labStatus', '');
+      yazVeriLab(node, '_labSebep', null);
+      yazVeriLab(node, '_labAdaySayisi', null);
       if (laborUnitPriceField) node.setDataValue(laborUnitPriceField, '');
       if (laborTotalField) node.setDataValue(laborTotalField, '');
       return;
@@ -1032,6 +1044,11 @@ function FirmaDropdown(props: ICellRendererParams & {
 
     if (result && result.candidates && result.candidates.length > 0) {
       setPopupPos(computePopupPos()); // her kosulda acilir (F1)
+      // SD6 ikizi: isaret EYLEMLI — sebep + kac aday oldugu satirda tasinir,
+      // popup kapatilsa bile hucre kirmizi kalir ve tooltip ne yapilacagini der.
+      yazVeriLab(node, '_labStatus', 'belirsiz');
+      yazVeriLab(node, '_labAdaySayisi', result.candidates.length);
+      yazVeriLab(node, '_labSebep', (result as any).reason ?? null);
       setCandidates(result.candidates);
       return;
     }
@@ -1049,12 +1066,19 @@ function FirmaDropdown(props: ICellRendererParams & {
     // L5: bu firmada yok — kalemi sunan diger firmalar (fiyatli secenek)
     if (result && result.alternatives && result.alternatives.length > 0) {
       setPopupPos(computePopupPos());
+      yazVeriLab(node, '_labStatus', 'belirsiz'); // malzeme ikizi: ExcelGrid.tsx:448
+      yazVeriLab(node, '_labSebep', (result as any).reason ?? null);
       setAlternatives(result.alternatives);
       return;
     }
 
+    // ALTIN KURAL: fiyat uretilmez — hucre bos + ISARETLI (malzeme ikizi).
+    // 'urun_degil' (oran/hizmet, gri) vs 'yok' (eslesme yok, kirmizi).
     yazVeriLab(node, '_labNetPrice', 0);
     node.data._labKurBilgi = null; // kur donmasi: fiyatla birlikte temizlenir
+    yazVeriLab(node, '_labStatus', (result as any)?.notProduct ? 'urun_degil' : 'yok');
+    yazVeriLab(node, '_labSebep', (result as any)?.reason ?? null);
+    yazVeriLab(node, '_labAdaySayisi', null);
     if (laborUnitPriceField) node.setDataValue(laborUnitPriceField, '');
     if (laborTotalField) node.setDataValue(laborTotalField, '');
   };
@@ -1748,8 +1772,14 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
   }, [onRowDataChange]);
 
   // ── GUVEN KAPISI SAYACI (PRD Bolum 9): "N satir secim bekliyor" ──
-  // _matStatus 'yok'/'belirsiz' olan data satirlari sayilir; her hucre
+  // Durumu 'yok'/'belirsiz' olan data satirlari sayilir; her hucre
   // degisiminde tazelenir (setDataValue de cellValueChanged tetikler).
+  //
+  // ⚠ IKIZ (12.08): sayac eskiden YALNIZ `_matStatus` okuyordu. Iscilik
+  // firmasi surukle-doldur yapilan ve o firmada kalemi olmayan satirlar
+  // sayaca HIC girmiyordu — kullanici "0 satir bekliyor" gorup kaydediyor,
+  // iscilik hucreleri sessizce bos gidiyordu. Olcut `isaret.ts`te tek yerde.
+  // SATIR sayilir: iki taraf da bekliyorsa satir BIR kez sayilir.
   const [pendingCount, setPendingCount] = useState(0);
   const recountPending = useCallback(() => {
     const api = gridRef.current?.api;
@@ -1757,7 +1787,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     let n = 0;
     api.forEachNode((node) => {
       const d: any = node.data;
-      if (d?._isDataRow && (d._matStatus === 'yok' || d._matStatus === 'belirsiz')) n++;
+      if (d?._isDataRow && (secimBekliyor(d._matStatus) || secimBekliyor(d._labStatus))) n++;
     });
     setPendingCount(n);
   }, []);
@@ -2327,50 +2357,40 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           const sym = rowCurr ? (ROW_CURRENCY_SYMBOL[rowCurr] ?? currencySymbol) : currencySymbol;
           return `${sym}${formatted}`;
         };
-        // Malzeme birim fiyat — ALTIN KURAL isaretleri:
+        // Birim fiyat kolonlari — ALTIN KURAL isaretleri:
         //   mavi  = 'otomatik varyant' (V4.1 — grup seciminden atandi)
         //   sari  = 'oneri' (cap-only/baslik-ipucu eslesmesi, kontrol edin)
-        //   kirmizi = 'yok' (kutuphanede eslesme yok — aktarim/secim bekliyor)
+        //   kirmizi = 'yok'/'belirsiz' (eslesme yok — aktarim/secim bekliyor)
         //   gri   = 'urun_degil' (oran/hizmet satiri — fiyat beklenmiyor)
-        if (field === data.columnRoles.materialUnitPriceField) {
+        //
+        // ⚠ IKIZ (12.08): bu blok eskiden YALNIZ malzeme kolonuna baglaniydi.
+        // Doldurma yolu iscilik dalinda `_labStatus`/`_labSebep`/
+        // `_labAdaySayisi` yaziyordu ama HICBIR okuyucu yoktu → iscilik
+        // firmasi surukleyip doldurunca eslesmeyen satirlar tamamen sessiz
+        // kaliyordu. Karar mantigi `isaret.ts`e tasindi (jsdom'suz olculebilen
+        // tek yer) ve iki kolon da AYNI tanimdan besleniyor — isaret.test.ts
+        // malzeme ciktisinin BIREBIR ayni kaldigini da olcer.
+        const iscilikFiyatKolonu = !!data.columnRoles.laborUnitPriceField
+          && field === data.columnRoles.laborUnitPriceField;
+        const malzemeFiyatKolonu = field === data.columnRoles.materialUnitPriceField;
+        if (malzemeFiyatKolonu || iscilikFiyatKolonu) {
+          const girdiden = (d: any): IsaretGirdisi => (malzemeFiyatKolonu
+            ? {
+              dal: 'malzeme', durum: d?._matStatus, sebep: d?._matSebep,
+              adaySayisi: d?._matAdaySayisi, otoVaryant: d?._matAutoVariant, oneri: d?._matSuggestion,
+            }
+            : {
+              dal: 'iscilik', durum: d?._labStatus, sebep: d?._labSebep,
+              adaySayisi: d?._labAdaySayisi,
+            });
           base.cellStyle = ((params: any) => {
-            if (!params.node?.rowPinned) {
-              if (params.data?._matAutoVariant) {
-                return { textAlign: 'right', backgroundColor: '#e0f2fe', color: '#0c4a6e' };
-              }
-              if (params.data?._matSuggestion) {
-                return { textAlign: 'right', backgroundColor: '#fef9c3', color: '#854d0e' };
-              }
-              if (params.data?._matStatus === 'yok' || params.data?._matStatus === 'belirsiz') {
-                return { textAlign: 'right', backgroundColor: '#fee2e2' };
-              }
-              if (params.data?._matStatus === 'urun_degil') {
-                return { textAlign: 'right', backgroundColor: '#f1f5f9' };
-              }
-            }
-            return { textAlign: 'right' };
+            if (params.node?.rowPinned || !params.data) return { textAlign: 'right' };
+            const stil = isaretStili(girdiden(params.data));
+            return stil ? { textAlign: 'right', ...stil } : { textAlign: 'right' };
           }) as any;
-          // V4.1 rozet + neden tooltip'i: otomatik varyant / secim bekliyor
           base.tooltipValueGetter = ((params: any) => {
-            const d = params.data;
-            if (!d || params.node?.rowPinned) return '';
-            if (d._matAutoVariant) return `⚡ otomatik: ${d._matAutoVariant} — farklı varyant için marka menüsünü yeniden açın`;
-            // SD6: isaret EYLEMLI olmali — SEBEP + kac aday oldugu gorunur.
-            // Canli bulgu (30.07): kaynakta "kirmizi (astar) boyali" secilmisti,
-            // hedef caplarda o cins yoktu; ekranda yalniz pembe hucre vardi ve
-            // kullanici "otomatik varyant calismiyor" olarak yasadi.
-            if (d._matStatus === 'belirsiz') {
-              const n = d._matAdaySayisi;
-              return [d._matSebep || 'Seçim bekliyor',
-                n ? `${n} aday var — marka menüsünü açıp seçin` : 'marka menüsünü açıp varyant seçin',
-              ].join(' · ');
-            }
-            if (d._matStatus === 'yok') return d._matSebep || 'Kütüphanede eşleşme yok';
-            if (d._matStatus === 'hata') return `Eşleştirme hatası: ${d._matSebep || 'bilinmeyen'} — tekrar deneyin`;
-            if (d._matStatus === 'ad-yok') return 'Bu satırda malzeme adı yok — fiyat sorgulanamadı';
-            if (d._matStatus === 'urun_degil') return 'Oran/hizmet satırı — fiyat beklenmiyor';
-            if (d._matSuggestion) return 'Öneri — kontrol edin';
-            return '';
+            if (!params.data || params.node?.rowPinned) return '';
+            return isaretTooltip(girdiden(params.data));
           }) as any;
         } else {
           base.cellStyle = { textAlign: 'right' };

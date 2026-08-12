@@ -317,6 +317,72 @@ describe('SD1-SD10 sürükle-doldur modülü', () => {
     expect(h.data[ROLLER.materialTotalField]).toBe('1000.0');
   });
 
+  // ── GT-5..GT-7: SD7 ANLIĞININ İŞÇİLİK İKİZİ (12.08) ───────────────────────
+  //
+  // GT-4 iki yerden birden zayıftı ve ikizi göremiyordu: (a) `hedefAlanlar`
+  // vermediği için MALZEME dalını koşuyor, (b) `k in oncesi` süzgeci ölçümü
+  // tohumlanmış 3 anahtara indiriyor. Snapshot listesi (`SNAP`) yalnız `_mat*`
+  // adlarını sayıyordu; işçilik dalının yazdığı `_labStatus` ve
+  // `_labVariantTags` anlığa HİÇ girmiyordu → Ctrl+Z sonrası satırın firması ve
+  // fiyatı geri dönerken satır 'yok' olarak BOYALI kalıyor, bayat varyant
+  // etiketi de bir sonraki sürükleme sorgusuna FİLTRE olarak gidiyordu.
+
+  /** ExcelGrid.tsx:1553 geri-alma döngüsünün birebir taklidi. */
+  function geriAl(h: any, anlik: Record<string, any>) {
+    for (const [k, v] of Object.entries(anlik)) h.data[k] = v;
+  }
+
+  it('GT-5 İŞÇİLİK: eşleşme yok işareti geri-alma anlığında var — Ctrl+Z sonrası satır boyalı kalmaz', async () => {
+    const h = node(304, 'Montaj bedeli', 2, { _labStatus: '', _labSebep: null });
+    const sonuc = await fillDown({
+      hedefler: [h] as any, markaId: 'firma-1', roller: ROLLER_GENEL,
+      motor: async () => ({ netPrice: 0, confidence: 'none', reason: 'Firmada bu kalem yok' } as any),
+      kaynakVaryantTags: null, kaynakLabel: '', hedefAlanlar: ISCILIK_ALANLARI,
+    });
+    // MEKANİZMA: doldurma işareti GERÇEKTEN yazdı (yoksa test bir şey ölçmüyor)
+    expect(h.data._labStatus).toBe('yok');
+
+    geriAl(h, sonuc.geriAl[0].oncekiDegerler);
+    expect(h.data._labStatus).toBe(''); // kusurlu hâlde 'yok' KALIYORDU
+  });
+
+  it('GT-6 İŞÇİLİK: varyant etiketi geri-alma anlığında var — bayat etiket sonraki sorguya filtre olmaz', async () => {
+    const h = node(305, 'Montaj bedeli', 2, { _labVariantTags: null });
+    const sonuc = await fillDown({
+      hedefler: [h] as any, markaId: 'firma-1', roller: ROLLER_GENEL, motor: netVeren(150),
+      kaynakVaryantTags: ['kaynakli'], kaynakLabel: '', hedefAlanlar: ISCILIK_ALANLARI,
+    });
+    expect(h.data._labVariantTags).toEqual(['kaynakli']); // yazıldığı ölçüldü
+
+    geriAl(h, sonuc.geriAl[0].oncekiDegerler);
+    expect(h.data._labVariantTags).toBeNull(); // kusurlu hâlde ['kaynakli'] KALIYORDU
+  });
+
+  it('GT-7 SD7 SÖZLEŞMESİ İŞÇİLİK DALINDA: doldurmanın DEĞİŞTİRDİĞİ her alan anlıkta', async () => {
+    // ⚠ GT-4'ün aksine süzgeç YOK: tohumlanmamış alanlar da ölçülür.
+    const h = node(306, 'Montaj bedeli', 2, {});
+    const oncesi = { ...h.data };
+    const sonuc = await fillDown({
+      hedefler: [h] as any, markaId: 'firma-1', roller: ROLLER_GENEL,
+      motor: async () => ({ netPrice: 0, confidence: 'multi', candidates: [{ label: 'A' }, { label: 'B' }], reason: 'Birim uyuşmuyor' } as any),
+      kaynakVaryantTags: null, kaynakLabel: '', hedefAlanlar: ISCILIK_ALANLARI,
+    });
+
+    const anlik = sonuc.geriAl[0].oncekiDegerler;
+    const degisenler = Object.keys(h.data).filter((k) => h.data[k] !== (oncesi as any)[k]);
+    expect(degisenler.length, 'doldurma hiçbir şeyi değiştirmediyse test bir şey ölçmüyor').toBeGreaterThan(0);
+    for (const alan of degisenler) {
+      expect(Object.prototype.hasOwnProperty.call(anlik, alan), `${alan} YAZILDI ama geri-alma anlığında YOK`).toBe(true);
+    }
+    // Aday sayısı ve sebep de gerçekten yazıldı mı (payda kilidi)
+    expect(h.data._labAdaySayisi).toBe(2);
+    expect(h.data._labSebep).toBe('Birim uyuşmuyor');
+
+    geriAl(h, anlik);
+    expect(h.data._labAdaySayisi).toBeUndefined();
+    expect(h.data._labSebep).toBeUndefined();
+  });
+
   it('KÂR-4 ELLE YAZILAN STRING "50" sayı gibi çalışır', async () => {
     const h = node(203, 'Çelik boru', 2, { _malzKar: '50' });
     await fillDown({

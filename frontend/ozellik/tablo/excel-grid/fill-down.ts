@@ -189,6 +189,11 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
   const secimAlan = iscilikMi ? '_firma' : '_marka';
   const netAlan = iscilikMi ? '_labNetPrice' : '_matNetPrice';
   const tagAlan = iscilikMi ? '_labVariantTags' : '_matVariantTags';
+  // ⚠ DALDAN TURETILEN ALANLAR TEK YERDE: sebep/aday adlari eskiden dongunun
+  // ICINDE (yalniz yazim dalinda) hesaplaniyordu, bu yuzden geri-alma anligina
+  // GIREMIYORLARDI. Buraya cikarildilar ki anlik onlari da gorsun.
+  const sebepAlan = iscilikMi ? '_labSebep' : '_matSebep';
+  const adayAlan = iscilikMi ? '_labAdaySayisi' : '_matAdaySayisi';
 
   const sonuc: FillSonuc = {
     satirlar: [],
@@ -211,11 +216,22 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
     // icinde celisikli ve o haliyle kaydediliyordu (KD11 yazmayi ekledi,
     // anligi unuttu). Kapi: fill-down.test.ts "GT-4 SD7 SOZLESMESI" —
     // alan listesi ezberlemez, DEGISEN her alani anlikta arar.
+    //
+    // ⚠ SABIT LISTE IKIZI KACIRIYORDU (12.08 olculdu): `SNAP` yalniz MALZEME
+    // alan adlarini sayiyor. Iscilik dalinda doldurma `_labStatus`,
+    // `_labVariantTags`, `_labSebep`, `_labAdaySayisi` YAZIYOR ama bunlarin
+    // hicbiri anliga girmiyordu → Ctrl+Z sonrasi satirin firmasi ve fiyati
+    // geri donuyor, satir 'yok'/'belirsiz' olarak BOYALI kaliyor ve bayat
+    // varyant etiketi bir sonraki surukleme sorgusuna FILTRE olarak gidiyordu.
+    // (Malzeme tarafinda `_matSebep`/`_matAdaySayisi` de ayni sekilde disaridaydi.)
+    // Cozum: dal bilgisinden turetilen HER alan adi anliga dinamik eklenir —
+    // "alan listesi ezberlemez" sozlesmesi artik kodda da gecerli.
     const oncekiDegerler: Record<string, any> = {};
     for (const f of SNAP) oncekiDegerler[f] = node.data[f];
-    if (bfAlan) oncekiDegerler[bfAlan] = node.data[bfAlan];
-    if (totAlan) oncekiDegerler[totAlan] = node.data[totAlan];
-    if (roller.grandTotalField) oncekiDegerler[roller.grandTotalField] = node.data[roller.grandTotalField];
+    for (const f of [bfAlan, totAlan, roller.grandTotalField,
+      statusAlan, rozetAlan, tagAlan, sebepAlan, adayAlan]) {
+      if (f) oncekiDegerler[f] = node.data[f];
+    }
     sonuc.geriAl.push({ rowIdx, oncekiDegerler });
 
     // marka/firma her kosulda atanir (kullanicinin acik niyeti)
@@ -304,8 +320,6 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
     // davranip sessiz ikame yapmadi ama ekranda yalniz pembe hucre gorundu →
     // kullanici "otomatik varyant calismiyor" olarak yasadi. Sebep ve aday
     // sayisi gorunur olmadan isaret EYLEMLI degildir.
-    const sebepAlan = iscilikMi ? '_labSebep' : '_matSebep';
-    const adayAlan = iscilikMi ? '_labAdaySayisi' : '_matAdaySayisi';
     if (r?.reason) yaz(node, sebepAlan, r.reason);
 
     if (r?.candidates?.length) {
