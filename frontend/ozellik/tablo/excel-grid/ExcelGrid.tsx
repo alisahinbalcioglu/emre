@@ -2171,6 +2171,20 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       // Fill handle indicator — Kar % sutunlari icin (% prefix'li gorsel)
       if (mode === 'quote' && (c.field === '_malzKar' || c.field === '_iscKar')) {
         const karField = c.field;
+        // ── SAYI PARSER (KOK FIX, 11.08) ────────────────────────────────
+        // AG-Grid v35: kolonda `cellRenderer` varsa `cellDataType` cikarimi
+        // KAPANIR (canInferCellDataType), dolayisiyla sayi kolonuna otomatik
+        // valueParser ENJEKTE EDILMEZ ve metin editoru degeri STRING birakir.
+        // Sonuc: kullanici Kar %'ye elle "50" yazinca satirda "50" (string)
+        // duruyordu; teklif kaydinda backend @IsNumber() reddedip HTTP 400
+        // veriyordu ve string sessizce sessionStorage draft'ina da yaziliyor,
+        // sayfa yenilense bile duzelmiyordu. `_draftDiscount` kolonu ayni
+        // deseni zaten kullaniyor (asagida) — kar kolonlari unutulmustu.
+        base.valueParser = (p: any) => {
+          const n = parseFloat(String(p.newValue ?? '').replace(',', '.'));
+          if (!Number.isFinite(n) || n < 0) return 0;
+          return n;
+        };
         base.cellRenderer = (params: ICellRendererParams) => {
           if (!params.data?._isDataRow) return null;
           const val = params.value ?? 0;

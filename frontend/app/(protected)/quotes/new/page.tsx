@@ -46,6 +46,7 @@ import { mergeMultiSheet } from '@/ozellik/tablo/merge-multisheet';
 import { kaynakKolonEtiketi } from '@/ozellik/giris/kaynak-kolon';
 import { indeksUyarilari } from '@/lib/indeks-sagligi';
 import { DWG_SISTEM_ALANLARI, dwgTeklifSemasi } from '@/lib/dwg-teklif-sema';
+import { kalemUret } from '@/lib/teklif-kalem';
 import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, toplamlariTamamla, etkinMiktar } from '@/ozellik/fiyat/pricing';
 import type { Brand } from '@/ortak/types';
 import type {
@@ -1263,6 +1264,10 @@ export default function NewQuotePage() {
     const finalTitle = title.trim() || `Teklif ${new Date().toLocaleDateString('tr-TR')}`;
 
     setIsSaving(true);
+    // ⚠ try DISINDA: catch blogu teshis icin bunlari okur (sessiz hata yutma
+    // kapatildiginda payload ozeti konsola yazilir).
+    let payloadItems: any[] = [];
+    let sheetsPayload: any[] | undefined;
     try {
       // columnRoles'u kullanarak DTO alanlarini dogru maple
       const unitCol = Object.entries(columnRoles).find(([, v]) => v === 'unit')?.[0];
@@ -1297,8 +1302,7 @@ export default function NewQuotePage() {
       // uygulamiyordu; yani yedek devreye girdiginde gizli sayfa satirlarini
       // teklife sizdirabiliyordu. Satirlar, legacy `rows` yolu tamamen
       // silinecegi gun kaldirilmali (bkz. P3 olu kod kalemi).
-      let payloadItems = items;
-      let sheetsPayload: any[] | undefined;
+      payloadItems = items;
       if (multiSheet) {
         // KRITIK: Aktif sheet icin AG-Grid'den guncel rowData'yi al
         if (excelGridRef.current) {
@@ -1330,27 +1334,13 @@ export default function NewQuotePage() {
             if (!r._isDataRow || r._isGroupRow || r._isSpareRow) return;
             // AKILLI SUTUN: Çapı ayri sutundaysa kayit adi = "Çap + Cins"
             // (orn "Ø110 PVC BORU") — PDF/Excel ciktisinda tam metin gorunur.
-            const baseName = roles.nameField ? String(r[roles.nameField] ?? '').trim() : '';
-            const diaVal = roles.diameterField ? String(r[roles.diameterField] ?? '').trim() : '';
-            const matName = [diaVal, baseName].filter(Boolean).join(' ');
-            if (!matName) return;
-            multiItems.push({
-              materialName: matName,
-              unit: roles.unitField ? String(r[roles.unitField] ?? '').trim() || 'Adet' : 'Adet',
-              // UY2: DB'ye yazilan miktar da ekranin gordugu miktardir.
-              // Duz parse, ters baslikli tekliflerde DB'ye 0 yaziyordu.
-              quantity: etkinMiktar(r, roles.quantityField, roles.unitField),
-              unitPrice: roles.materialUnitPriceField ? parseFloat(String(r[roles.materialUnitPriceField] ?? '')) || 0 : 0,
-              materialUnitPrice: roles.materialUnitPriceField ? parseFloat(String(r[roles.materialUnitPriceField] ?? '')) || 0 : 0,
-              laborUnitPrice: roles.laborUnitPriceField ? parseFloat(String(r[roles.laborUnitPriceField] ?? '')) || 0 : 0,
-              // KL P1-b (kalem 64): EKRANDAKI toplam da gonderilir — backend
-              // onu yeniden turetmesin. Birim fiyat alanlari zaten SATIS
-              // fiyatidir (kar uygulanmis); backend kari tekrar uyguluyordu.
-              materialTotalPrice: roles.materialTotalField ? parseFloat(String(r[roles.materialTotalField] ?? '')) || 0 : undefined,
-              laborTotalPrice: roles.laborTotalField ? parseFloat(String(r[roles.laborTotalField] ?? '')) || 0 : undefined,
-              materialMargin: r._malzKar || 0,
-              laborMargin: r._iscKar || 0,
-            });
+            // KALEM URETIMI TEK KAYNAKTAN (lib/teklif-kalem). Burasi satir ici
+            // yazilinca `materialMargin`/`laborMargin` parseFloat SUZGECI
+            // ALMAMISTI: Kar % hucresine elle yazilan "50" STRING olarak
+            // gidiyor ve backend @IsNumber() reddedip HTTP 400 veriyordu.
+            const kalem = kalemUret(r, roles as any);
+            if (!kalem) return;
+            multiItems.push(kalem);
           });
         });
         if (multiItems.length > 0) payloadItems = multiItems;
@@ -1406,10 +1396,27 @@ export default function NewQuotePage() {
         description: `"${finalTitle}" basariyla olusturuldu.`,
       });
       router.push('/quotes');
-    } catch {
+    } catch (e: any) {
+      // ── SESSIZ HATA YUTMA KAPANDI (11.08) ─────────────────────────────
+      // Onceki hal `catch {}` idi: backend'in NE dedigi (400 dogrulama
+      // mesaji dahil) tamamen kayboluyordu. Kullanici "bir hata olustu"
+      // goruyor, gelistirici de teshis edemiyordu. Bu, projede daha once
+      // 4 aksiyonda kapatilan desenin bu ekranda kalmis olani.
+      const status = e?.response?.status as number | undefined;
+      const data = e?.response?.data;
+      // NestJS ValidationPipe: { message: string[] , error, statusCode }
+      const detay = Array.isArray(data?.message)
+        ? data.message.join(' · ')
+        : (data?.message ?? data?.detail ?? e?.message ?? 'Bilinmeyen hata');
+      const kisa = String(detay).length > 300 ? String(detay).slice(0, 300) + '…' : String(detay);
+      console.error('[quotes/new] Kayit hatasi:', { status, data, payloadOzet: {
+        itemSayisi: payloadItems?.length,
+        sheetSayisi: sheetsPayload?.length,
+        ilkItem: payloadItems?.[0],
+      } });
       toast({
-        title: 'Hata',
-        description: 'Teklif kaydedilirken bir hata olustu.',
+        title: status ? `Teklif kaydedilemedi (HTTP ${status})` : 'Teklif kaydedilemedi',
+        description: kisa,
         variant: 'destructive',
       });
     } finally {
