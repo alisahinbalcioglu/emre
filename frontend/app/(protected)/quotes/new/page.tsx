@@ -1289,6 +1289,9 @@ export default function NewQuotePage() {
           materialMargin: row.materialKar || 0,
           laborMargin: row.laborKar || 0,
           brandId: row.brandId || undefined,
+          // IKIZ: brandId vardi, laborFirmaId YOKTU — cok-sayfa dalinda
+          // kapatilan asimetrinin bu daldaki esi.
+          laborFirmaId: row.laborFirmaId || undefined,
         }));
 
       // Multi-sheet: sheets payload'u ve items summary'sini turet
@@ -2152,7 +2155,10 @@ export default function NewQuotePage() {
                         defaultValue=""
                       >
                         <option value="">Tumu</option>
-                        {allBrands.map((b) => (<option key={b.id} value={b.id}>{b.name}</option>))}
+                        {/* ⚠ ESKIDEN allBrands IDI: "Isc. Firma" acilir listesi MARKALARI
+                            gosteriyordu ve secilen MARKA ID'si laborFirmaId'ye yaziliyordu.
+                            Kayit zinciri bagli olmadigi icin bugune kadar gorunmedi. */}
+                        {laborFirms.map((f) => (<option key={f.id} value={f.id}>{f.name}</option>))}
                       </select>
                     </th>
                   )}
@@ -2331,7 +2337,8 @@ export default function NewQuotePage() {
                               className="h-7 w-full rounded border border-gray-200 bg-transparent px-1 text-xs"
                             >
                               <option value="">Firma</option>
-                              {allBrands.map((b) => (<option key={b.id} value={b.id}>{b.name}</option>))}
+                              {/* ⚠ ESKIDEN allBrands IDI — yukaridaki ayni kusur */}
+                              {laborFirms.map((f) => (<option key={f.id} value={f.id}>{f.name}</option>))}
                             </select>
                           ) : null}
                         </td>

@@ -43,6 +43,71 @@ export class QuotesService {
   }
 
   async create(userId: string, dto: CreateQuoteDto) {
+    // ── ILISKISEL ALAN SUZGECI ──────────────────────────────────────────────
+    // brandId/laborFirmaId istemciden SERBEST STRING olarak geliyor; dogrudan
+    // Prisma'ya vermek silinmis/olmayan ID'de P2003 (foreign key) -> 500 uretir.
+    // Kayitli sheets.rowData eski bir marka ID'sini AYLARCA tasiyabildigi icin
+    // bu gercek bir senaryo.
+    //
+    // ⚠ IKI MODELIN SAHIPLIK SEMASI FARKLI — filtreler bilerek asimetrik:
+    //   Brand      : GLOBAL havuz (schema.prisma:150 — userId YOK, name @unique).
+    //                Kullanici sahipligi UserBrandLibrary ile ifade edilir.
+    //                Bu yuzden yalniz VARLIK kontrolu yapilir; kutuphane
+    //                uyeligi ARANMAZ — kullanici bir markayi kutuphanesinden
+    //                cikarmis olsa bile o teklifte BILEREK secmisti, iliskiyi
+    //                koparmak veri kaybi olurdu.
+    //   LaborFirm  : KULLANICIYA AIT (schema.prisma:595 — userId var).
+    //                Sahiplik SART: baska hesabin firmasina bagli kalem
+    //                olusmasi izolasyonu deler.
+    //
+    // Maliyet: teklif basina IKI sorgu (kalem basina DEGIL). Gecersiz ID
+    // sessizce null olur, kayit BLOKLANMAZ — fiyat zaten kalemde yazili,
+    // yalniz iliski kopar; teklifin tamami kaybolmaz.
+    const istenenMarka = [...new Set(dto.items.map((i) => i.brandId).filter(Boolean) as string[])];
+    const istenenFirma = [...new Set(dto.items.map((i) => i.laborFirmaId).filter(Boolean) as string[])];
+    const [gecerliMarka, bulunanFirma] = await Promise.all([
+      istenenMarka.length
+        ? this.prisma.brand.findMany({ where: { id: { in: istenenMarka } }, select: { id: true } })
+        : Promise.resolve([] as { id: string }[]),
+      // ⚠ userId FILTRESI SORGUDA DEGIL: "baskasinin firmasi" ile "silinmis
+      // firma" ayirt edilebilsin diye sahiplik BURADA degil asagida kontrol
+      // edilir. Ikisi de null'a duser ama LOG'lari FARKLIDIR — biri istismar/
+      // bug sinyali, digeri sirandan bayat veri. Sorgu sayisi DEGISMEDI.
+      istenenFirma.length
+        ? this.prisma.laborFirm.findMany({
+            where: { id: { in: istenenFirma } },
+            select: { id: true, userId: true },
+          })
+        : Promise.resolve([] as { id: string; userId: string }[]),
+    ]);
+    const markaOk = new Set(gecerliMarka.map((b) => b.id));
+    const firmaOk = new Set(bulunanFirma.filter((f) => f.userId === userId).map((f) => f.id));
+
+    // ── SESSIZ KAYIP YASAK: dusen her iliski LOG'a yazilir ─────────────────
+    // Bu projede "sessiz bos/bayat" defalarca pahaliya mal oldu (fill-down
+    // vakasi: marka atanmis 141 satirin 131'i sessizce bos kalmisti). Iliski
+    // dusmesi de sessiz kalmamali — ustelik ekran markayi sheets.rowData'dan
+    // cizdigi icin kullanici HICBIR ZAMAN fark etmez, yalniz iliskisel alan
+    // ayrisir. Kayit BILEREK BLOKLANMAZ (BadRequestException ATILMAZ):
+    // logout sessionStorage'i temizlemedigi icin hesap degistiren kullanicinin
+    // taslagi eski firma ID'si tasiyabilir; sert 400 teklifin TAMAMINI
+    // kaydedilemez yapardi — kopan bir iliskiden kotu.
+    const dusenMarka = istenenMarka.filter((id) => !markaOk.has(id));
+    if (dusenMarka.length) {
+      console.warn(`[Teklif] ⚠ SELF-CHECK: ${dusenMarka.length} marka iliskisi dusuruldu `
+        + `(bulunamadi): ${dusenMarka.join(', ')}`);
+    }
+    const baskasininFirmasi = bulunanFirma.filter((f) => f.userId !== userId).map((f) => f.id);
+    if (baskasininFirmasi.length) {
+      console.warn(`[Teklif] ⚠ SELF-CHECK: ${baskasininFirmasi.length} iscilik firmasi BASKA `
+        + `HESABA ait, iliski yazilmadi (user=${userId}): ${baskasininFirmasi.join(', ')}`);
+    }
+    const yokFirma = istenenFirma.filter((id) => !bulunanFirma.some((f) => f.id === id));
+    if (yokFirma.length) {
+      console.warn(`[Teklif] ⚠ SELF-CHECK: ${yokFirma.length} silinmis firma iliskisi `
+        + `dusuruldu: ${yokFirma.join(', ')}`);
+    }
+
     const items = dto.items.map((item) => {
       const qty = item.quantity ?? 1;
       const matUp = item.materialUnitPrice ?? item.unitPrice ?? 0;
@@ -80,7 +145,9 @@ export class QuotesService {
       return {
         materialName: item.materialName,
         unit: item.unit ?? 'Adet',
-        brandId: item.brandId || null,
+        brandId: item.brandId && markaOk.has(item.brandId) ? item.brandId : null,
+        // ISCILIGIN IKIZI: sema'da alan vardi ama buraya HIC yazilmiyordu.
+        laborFirmaId: item.laborFirmaId && firmaOk.has(item.laborFirmaId) ? item.laborFirmaId : null,
         quantity: qty,
         materialUnitPrice: matUp,
         materialTotalPrice,
@@ -107,6 +174,32 @@ export class QuotesService {
       } catch {}
     }
 
+    // ── YARIS PENCERESI (TOCTOU) ────────────────────────────────────────────
+    // Yukaridaki dogrulama SELECT'i ile asagidaki INSERT ayri round-trip'ler.
+    // Arada baska bir istek markayi (admin) ya da firmayi (kullanicinin kendi
+    // "Firma Sil" dugmesi) silerse INSERT yine P2003 ile 500 dondurur — yani
+    // suzgecin ONLEMEK ICIN VAR OLDUGU hata. Pencere dar ama sifir degil.
+    // Cozum transaction DEGIL, TEK SEFERLIK GERI DUSUS: iliskiler koparilip
+    // yeniden denenir. Gerekce ayni: teklifin TAMAMINI kaybetmektense
+    // iliskiyi kaybetmek yeglenir (fiyatlar zaten kalemde yazili).
+    try {
+      return await this.quoteYaz(userId, dto, items, originalFile);
+    } catch (e: any) {
+      if (e?.code !== 'P2003') throw e;
+      console.warn('[Teklif] ⚠ SELF-CHECK: kayit sirasinda marka/firma silinmis '
+        + '(P2003) — iliskiler koparilip yeniden deneniyor');
+      const iliskisiz = items.map((i) => ({ ...i, brandId: null, laborFirmaId: null }));
+      return await this.quoteYaz(userId, dto, iliskisiz, originalFile);
+    }
+  }
+
+  /** Teklif INSERT'i — create() iki kez cagirabilsin diye ayrildi (TOCTOU geri dususu). */
+  private quoteYaz(
+    userId: string,
+    dto: CreateQuoteDto,
+    items: any[],
+    originalFile?: Buffer,
+  ) {
     return this.prisma.quote.create({
       data: {
         userId,
@@ -117,7 +210,7 @@ export class QuotesService {
         items: { create: items },
       },
       include: {
-        items: { include: { brand: true } },
+        items: { include: { brand: true, laborFirma: true } },
       },
     });
   }
@@ -126,7 +219,14 @@ export class QuotesService {
     return this.prisma.quote.findMany({
       where: { userId },
       include: {
-        items: { include: { brand: true } },
+        // ⚠ LISTE UCU: yalniz toplam hesabi icin kalem gerekir.
+        // Tuketiciler OLCULDU — hicbiri marka/firma OKUMUYOR:
+        //   quotes/page.tsx:32-33  -> items.reduce(finalPrice)  (tip: {id, finalPrice})
+        //   profile/page.tsx:71-75 -> yalniz dizi UZUNLUGU
+        // brand+laborFirma include etmek DWG tekliflerinde teklif basina
+        // 1474 kaleme kadar gereksiz JOIN + nesne tasiyordu. Detay ve kayit
+        // yanitlarinda (findOne/create) iliskiler DURUYOR.
+        items: { select: { id: true, finalPrice: true } },
         _count: { select: { items: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -137,7 +237,7 @@ export class QuotesService {
     const quote = await this.prisma.quote.findFirst({
       where: { id, userId },
       include: {
-        items: { include: { brand: true } },
+        items: { include: { brand: true, laborFirma: true } },
         user: { select: { email: true } },
       },
     });

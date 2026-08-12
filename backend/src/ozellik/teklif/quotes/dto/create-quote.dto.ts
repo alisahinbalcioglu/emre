@@ -13,6 +13,15 @@ export class QuoteItemDto {
   @IsString()
   brandId?: string;
 
+  /** Secilen iscilik firmasinin ID'si. Sema'da QuoteItem.laborFirmaId ZATEN
+   *  vardi (prisma/schema.prisma) ama DTO'da alan YOKTU: ekranda firma secili
+   *  olmasina ragmen hicbir yere yazilmiyordu — malzeme markasinin ikizi
+   *  unutulmustu. whitelist:true oldugu icin alan tanimlanmadan gelen deger
+   *  SESSIZCE siliniyordu. */
+  @IsOptional()
+  @IsString()
+  laborFirmaId?: string;
+
   @IsNumber()
   @Min(0)
   quantity: number;

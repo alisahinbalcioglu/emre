@@ -142,6 +142,37 @@ describe('kalemUret — CANLI 400 senaryosu', () => {
     expect(kalemUret({ _isDataRow: true, 'Malzeme Cinsi': '', 'Çapı': '' }, roller)).toBeNull();
   });
 
+  it('MARKA ve İŞÇİLİK FİRMASI ilişkisel alan olarak gider', () => {
+    // Ekranda ÇAYIROVA / Yasin Usta seçili olmasına rağmen QuoteItem.brandId
+    // NULL kaydediliyordu: multiSheet dalı brandId'yi HİÇ göndermiyordu
+    // (legacy `items` yolunda vardı — ikizi unutma). İşçilik tarafında ise
+    // alan hiç yoktu. Marka bilgisi yalnız sheets.rowData._marka içinde
+    // kalıyor, ilişkisel alanda değildi → markaya göre sorgu/rapor imkânsız.
+    const item = kalemUret({
+      ...ekranSatiri(50, 50),
+      _marka: 'brand-uuid-cayirova',
+      _firma: 'firm-uuid-yasin',
+    }, roller)!;
+    expect(item.brandId).toBe('brand-uuid-cayirova');
+    expect(item.laborFirmaId).toBe('firm-uuid-yasin');
+  });
+
+  it('seçim yoksa alanlar GÖNDERİLMEZ (undefined) — boş string FK\'yı patlatır', () => {
+    const yok = kalemUret({ ...ekranSatiri(0, 0), _marka: null, _firma: null }, roller)!;
+    expect(yok.brandId).toBeUndefined();
+    expect(yok.laborFirmaId).toBeUndefined();
+
+    const bos = kalemUret({ ...ekranSatiri(0, 0), _marka: '', _firma: '   ' }, roller)!;
+    expect(bos.brandId).toBeUndefined();
+    expect(bos.laborFirmaId).toBeUndefined();
+  });
+
+  it('alan hiç yoksa (eski taslak satırı) çökmez', () => {
+    const item = kalemUret(ekranSatiri(0, 0), roller)!;
+    expect(item.brandId).toBeUndefined();
+    expect(item.laborFirmaId).toBeUndefined();
+  });
+
   it('roller eksikse (labor kolonu olmayan Excel dosyası) çökmez', () => {
     const item = kalemUret(ekranSatiri(0, 0), {
       nameField: 'Malzeme Cinsi', quantityField: 'Miktar',

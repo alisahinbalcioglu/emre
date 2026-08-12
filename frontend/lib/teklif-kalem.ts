@@ -40,9 +40,24 @@ export interface KalemRolleri {
   laborTotalField?: string;
 }
 
+/** Kimlik alanı süzgeci: boş/boşluk/null → undefined.
+ *
+ *  ⚠ BOŞ STRING GÖNDERİLMEZ: backend `brandId || null` ile null'a çevirse de
+ *  DTO'nun `@IsString()`'i boş string'i geçirir ve ileride bir FK'ya bağlanırsa
+ *  Prisma P2003 (foreign key) ile 500 üretir. Yok olan alan hiç gönderilmez. */
+function kimlikAlani(v: unknown): string | undefined {
+  const s = typeof v === 'string' ? v.trim() : '';
+  return s ? s : undefined;
+}
+
 export interface TeklifKalemi {
   materialName: string;
   unit: string;
+  /** Seçilen malzeme markasının ID'si (grid `_marka` alanı ID taşır). */
+  brandId?: string;
+  /** Seçilen işçilik firmasının ID'si (grid `_firma` alanı ID taşır —
+   *  ExcelGrid'de alan adı "marka" desenini taşısa da değer FİRMA'dır). */
+  laborFirmaId?: string;
   quantity: number;
   unitPrice: number;
   materialUnitPrice: number;
@@ -75,6 +90,14 @@ export function kalemUret(
   return {
     materialName,
     unit: roles.unitField ? String(r[roles.unitField] ?? '').trim() || 'Adet' : 'Adet',
+    // ⚠ İLİŞKİSEL ALANLAR — bu ikisi multiSheet dalında HİÇ GÖNDERİLMİYORDU:
+    // ekranda marka/firma seçili olmasına rağmen QuoteItem.brandId NULL
+    // kaydediliyor, işçilik firması ise hiçbir yere yazılmıyordu. Bilgi yalnız
+    // sheets.rowData JSON'unda kalıyor, ilişkisel alanda değil → markaya göre
+    // sorgu/rapor imkânsızdı. (Legacy `items` yolunda brandId vardı; çok-sayfa
+    // ikizinde unutulmuştu.)
+    brandId: kimlikAlani(r._marka),
+    laborFirmaId: kimlikAlani(r._firma),
     // UY2: DB'ye yazılan miktar da ekranın gördüğü miktardır (ters başlıklı
     // tekliflerde düz parse DB'ye 0 yazıyordu).
     quantity: sayiAlani(etkinMiktar(r, roles.quantityField, roles.unitField)),
