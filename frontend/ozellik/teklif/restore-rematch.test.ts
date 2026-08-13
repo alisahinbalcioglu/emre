@@ -13,10 +13,14 @@
  * ⚠ BIR ASSERT TEK KRITERE (proje kurali): her kriter kendi it() blogunda.
  * ⚠ DAIRESEL OLCUT YASAK: parasal beklentiler LITERAL yazilir (110.0, 2750.0
  *   ...), modulun cagirdigi helper'la test icinde YENIDEN URETILMEZ.
- * ⚠ SAHTE DEGISMEZ MUHURLEME YASAK: bu dosyanin ilk hali "sorgu adi capli =
- *   interaktif akisla ayni" diye bir kriteri muhurluyordu; olculdugunde
- *   CANLI etkilesimli yolun capsiz sordugu cikti (ExcelGrid.tsx:358 +
- *   buildMaterialContextDetailed imzasi). Kriter olculen gercege cekildi.
+ * ⚠ SAHTE DEGISMEZ MUHURLEME YASAK — BU DOSYA IKI KEZ DUZELTILDI:
+ *   1) Ilk hali "sorgu adi capli = interaktif akisla ayni" diye MUHURLUYORDU;
+ *      olculdugunde CANLI yolun CAPSIZ sordugu cikti → kriter capsiza cekildi.
+ *   2) Sonra golgelemenin KENDISI kusur cikti (capsiz sorgu sert cap filtresini
+ *      devre disi birakip yanlis capin fiyatini yazdirabiliyordu) ve etkilesimli
+ *      yol duzeltildi → kriter "<CINS> <CAP>"a cekildi.
+ *   Ders: kriter, o an OLCULEN canli davranisi izler; ama once o davranisin
+ *   DOGRU olup olmadigi sorulur.
  */
 import { describe, it, expect } from 'vitest';
 import { restoreRematch, type RematchPoster, type RematchSheet } from './restore-rematch';
@@ -61,10 +65,13 @@ function posterKur(cevaplar: Record<string, Record<string, any>> = {}) {
   return { poster, cagrilar };
 }
 
-/** Sorgu adi: CAPSIZ nameField — canli etkilesimli yolun sordugu adin aynisi. */
-const AD = 'PVC BORU';
-/** 11.08 taslaginin gonderdigi capli ad — ARTIK GONDERILMEMELI. */
-const CAPLI_AD = 'Ø110 PVC BORU';
+/** Sorgu adi: "<CINS> <CAP>" — canli etkilesimli yolun sordugu adin aynisi
+ *  (12.08: cap golgelemesi kapatildi, cap ADIN SONUNA eklenir). */
+const AD = 'PVC BORU Ø110';
+/** Cap DUSMUS hal — golgeleme donemi. Bir daha gonderilmemeli. */
+const CAPSIZ_AD = 'PVC BORU';
+/** Cap BASA konmus hal — S4 sozluk kapisini (startsWith) kirardi. */
+const CAP_BASTA = 'Ø110 PVC BORU';
 
 // ── ESKI DAVRANIS REPLIKASI (page.tsx:558-589, fix oncesi) ──────────────────
 
@@ -215,41 +222,50 @@ describe('restoreRematch — malzeme ↔ iscilik simetrisi', () => {
 
 // ── D) SORGU ADI = CANLI ETKILESIMLI YOLUN SORDUGU AD ───────────────────────
 //
-// OLCULEN GERCEK: etkilesimli yol sorguyu ExcelGrid.tsx:358'de
-// `ctxDetail.name || currentName` ile kurar; buildMaterialContextDetailed
-// (ExcelGrid.tsx:1234) diameterField ALMAZ ve ad hucresi doluyken HER daldan
-// dolu `name` doner → capli `currentName` dali DWG satirlarinda OLUDUR.
-// Yani canli davranis CAPSIZ sorgudur. Restore de capsiz sorar.
+// 12.08: cap golgelemesi KAPATILDI. buildMaterialContextDetailed artik
+// diameterField aliyor ve capi ADIN SONUNA ekliyor (ExcelGrid.tsx `capliAd`).
+// Restore de ayni sirayi kurar. Neden sona: S4 sozluk kapisi ad-basina bagli
+// (`lookupNameRef.current.startsWith(hdr)`) — cap basa gelirse sessizce oler;
+// backend ise konuma toleransli (DN eslesmelerinin SONUNCUSUNU alir).
+//
+// NEDEN ONEMLI: cap sorguya girmezse motorda sert cap filtresi
+// (query-engine.ts `if (line.capInfo)`) HIC kosmaz. Kutuphanede o aileden TEK
+// kalem varsa `kind:'single'` doner ve YANLIS CAPIN fiyati sessizce yazilir.
 
 describe('restoreRematch — sorgu adi (canli etkilesimli yolla ayni)', () => {
-  it('sorgu adi CAPSIZ nameField metnidir', async () => {
+  it('sorgu adi "<CINS> <CAP>" birlesimidir', async () => {
     const row = satir({ _marka: 'marka-1' });
     const { poster, cagrilar } = posterKur();
     await restoreRematch([sayfa([row])], { 0: [row] }, poster);
-    expect(cagrilar[0].body.materialNames).toEqual(['PVC BORU']);
+    expect(cagrilar[0].body.materialNames).toEqual(['PVC BORU Ø110']);
   });
 
-  it('CAPLI ad GONDERILMEZ — capli sorgu belirsizligi kapatip fiyati onaysiz yazardi', async () => {
-    // 11.08 taslagi joinMaterialText(cap, cins) kuruyordu. Cap dolu olunca
-    // motorda sert cap filtresi kosar, 'belirsiz' TEK adaya duser ve restore
-    // kullanicinin popup'ta onaylamadigi varyanti fiyatlardi.
+  it('CAP DUSURULMEZ — capsiz sorgu sert cap filtresini devre disi birakirdi', async () => {
     const row = satir({ _marka: 'marka-1' });
     const { poster, cagrilar } = posterKur();
     await restoreRematch([sayfa([row])], { 0: [row] }, poster);
-    expect(cagrilar[0].body.materialNames).not.toEqual([CAPLI_AD]);
+    expect(cagrilar[0].body.materialNames).not.toEqual([CAPSIZ_AD]);
   });
 
-  it('ESKI satir ici blok ile AYNI adi sorar (bu eksende regresyon yok)', async () => {
+  it('CAP BASA konmaz — basa konmasi S4 sozluk kapisini (startsWith) kirardi', async () => {
+    const row = satir({ _marka: 'marka-1' });
+    const { poster, cagrilar } = posterKur();
+    await restoreRematch([sayfa([row])], { 0: [row] }, poster);
+    expect(cagrilar[0].body.materialNames).not.toEqual([CAP_BASTA]);
+  });
+
+  it('ESKI satir ici blok bu kriteri IHLAL EDERDI — capi dusururdu', async () => {
     const yeniRow = satir({ _marka: 'marka-1' });
     const eskiRow = satir({ _marka: 'marka-1' });
     const yeni = posterKur();
     const eski = posterKur();
     await restoreRematch([sayfa([yeniRow])], { 0: [yeniRow] }, yeni.poster);
     await eskiRestoreRematch([eskiRow], ROLLER, eski.poster);
-    expect(yeni.cagrilar[0].body.materialNames).toEqual(eski.cagrilar[0].body.materialNames);
+    expect(eski.cagrilar[0].body.materialNames).toEqual([CAPSIZ_AD]); // cap dusmus
+    expect(yeni.cagrilar[0].body.materialNames).not.toEqual(eski.cagrilar[0].body.materialNames);
   });
 
-  it('cap kolonu OLMAYAN sayfada da ayni ad sorulur (Excel yolu degismedi)', async () => {
+  it('cap kolonu OLMAYAN sayfada ad oldugu gibi kalir (Excel yolu degismedi)', async () => {
     const { diameterField: _cap, ...capsizRoller } = ROLLER;
     const row = satir({ _marka: 'marka-1' });
     const { poster, cagrilar } = posterKur();

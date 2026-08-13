@@ -8,25 +8,25 @@
  * ayni cozum: iki taraf TEK MEKANIZMADAN gecer, testle muhurlu —
  * restore-rematch.test.ts).
  *
- * ── SORGU ADI: CAPSIZ nameField (CANLI ETKILESIMLI YOLLA BIREBIR) ──────────
- * ⚠ Bu modulun ilk hali sorguyu joinMaterialText(cap, cins) ile kuruyor ve
- * yorumunda "interaktif akisla ayni" DIYORDU. OLCULDU, YANLISMIS: etkilesimli
- * yol sorguyu `ctxDetail.name || currentName` ile kurar (ExcelGrid.tsx:358) ve
- * `buildMaterialContextDetailed` (ExcelGrid.tsx:1234) imzasinda diameterField
- * YOKTUR — ad hucresi doluyken `name` HER daldan dolu doner, dolayisiyla capli
- * `currentName` dali DWG satirlarinda PRATIKTE OLUDUR. Yani canli etkilesimli
- * yol "PVC BORU" sorar, capli hali degil.
+ * ── SORGU ADI: "<CINS> <CAP>" (CANLI ETKILESIMLI YOLLA BIREBIR) ────────────
+ * Bu modul once capli (joinMaterialText), sonra CAPSIZ sorguyordu. Ikisi de
+ * gecici hallerdi ve gerekcesi ayni: SORGU, ETKILESIMLI YOLUN SORDUGU AD
+ * OLMALI — restore kullanici adina KARAR VEREMEZ.
  *
- * Capli sorgu masum bir fark degil: cap dolu olunca motorda sert cap filtresi
- * kosar, 'belirsiz' cevap TEK adaya duser ve restore, kullanicinin popup'ta
- * ONAYLAMADIGI varyantin fiyatini sessizce yazardi. Ayni satirda etkilesimli
- * yol SORU sorarken restore KARAR verirdi. Sozlesme tersidir (asagi bkz).
- * Bu yuzden ad, eski satir ici blokla ve canli etkilesimli yolla ayni
- * kalir: yalniz nameField.
+ * 12.08'de etkilesimli yoldaki cap golgelemesi kapatildi: artik
+ * `buildMaterialContextDetailed` diameterField aliyor ve capi ADIN SONUNA
+ * ekliyor (ExcelGrid.tsx `capliAd`). Bu modul de ayni sirayi kurar.
  *
- * (Etkilesimli yolun kendi ic tutarsizligi — belgelenen niyet "Çap + Cins"
- * iken ctxDetail.name'in onu golgelemesi — AYRI bir istir; burada taklit
- * edilen sey NIYET degil OLCULEN CANLI DAVRANIStir.)
+ * ⚠ CAP SONA: basa koymak S4 sozluk kapisini kirar
+ * (ExcelGrid.tsx `lookupNameRef.current.startsWith(hdr)`); backend ise konuma
+ * toleranslidir (conversion.ts DN eslesmelerinin SONUNCUSUNU alir).
+ *
+ * ⚠ SINIRLILIK AYNEN DURUYOR: baslik-birlestirme (buildMaterialContext, M1/M4)
+ * burada YOK — grid API'si restore aninda hazir degil. Yani basligi olan
+ * satirlarda etkilesimli yol "BASLIK CINS CAP" sorarken restore "CINS CAP"
+ * sorar. Bu, capsiz sormaktan DAHA yakin bir yaklasimdir ve sert cap filtresini
+ * (query-engine.ts `if (line.capInfo)`) calistirdigi icin yanlis capin fiyatini
+ * sessizce yazma yolunu KAPATIR.
  *
  * SESSIZ SECIM YOK: yalniz `netPrice > 0` iken yazilir. Motor 'belirsiz'/'yok'
  * dallarinda netPrice HER ZAMAN 0 doner (outcome-mapper.ts:9 ve :152) —
@@ -135,9 +135,11 @@ async function tarafEslestir(
   // ayni 0'i getirir; yalniz bosa istek olur.
   if (CEVAPLANMIS.has(String(row[taraf.durumAlani] ?? ''))) return 0;
 
-  // ⚠ CAPSIZ: canli etkilesimli yolun sordugu adin AYNISI (bkz. dosya basligi).
-  const ad = roles.nameField ? String(row[roles.nameField] ?? '').trim() : '';
-  if (!ad) return 0;
+  // Sorgu adi = "<CINS> <CAP>" — canli etkilesimli yolla ayni sira (bkz. baslik).
+  const cins = roles.nameField ? String(row[roles.nameField] ?? '').trim() : '';
+  if (!cins) return 0;
+  const cap = roles.diameterField ? String(row[roles.diameterField] ?? '').trim() : '';
+  const ad = cap ? `${cins} ${cap}` : cins;
 
   try {
     const govde: Record<string, unknown> = {

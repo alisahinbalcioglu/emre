@@ -355,7 +355,7 @@ function BrandDropdown(props: ICellRendererParams & {
     // sorgunun dogru "yok" cevabini eziyordu → Cayirova'ya PP vana fiyati
     // yazilmisti. Aile sorgudan ASLA dusmez; markada urun yoksa sonuc YOK'tur
     // (cross-family fallback yasak), M3 alternatif markalar popup'i devreye girer.
-    const ctxDetail = buildMaterialContextDetailed(api, node.rowIndex ?? 0, nameField, noField, brandField, quantityField);
+    const ctxDetail = buildMaterialContextDetailed(api, node.rowIndex ?? 0, nameField, noField, brandField, quantityField, diameterField);
     const queryName = ctxDetail.name || currentName;
     headerRef.current = ctxDetail.header; // S4/V4: grup anahtari + sozluk onerisi
 
@@ -475,7 +475,7 @@ function BrandDropdown(props: ICellRendererParams & {
       // A4: yayilim yalniz FIYATSIZ satirlara — dolu otomatik hucreler
       // geriye donuk degistirilmez (kullanici onayi olmadan)
       if ((parseFloat(String(d._matNetPrice ?? 0)) || 0) > 0) return;
-      const det = buildMaterialContextDetailed(api, n.rowIndex ?? 0, nameField, noField, brandField, quantityField);
+      const det = buildMaterialContextDetailed(api, n.rowIndex ?? 0, nameField, noField, brandField, quantityField, diameterField);
       if (det.header === groupKey) targets.push(n);
     });
     if (targets.length === 0) return;
@@ -489,7 +489,7 @@ function BrandDropdown(props: ICellRendererParams & {
       if (!nm) continue;
       try {
         // M1/M4: TEK SORGU — baslik+satir (aile bilgisiz fallback yasak)
-        const det = buildMaterialContextDetailed(api, n.rowIndex ?? 0, nameField, noField, brandField, quantityField);
+        const det = buildMaterialContextDetailed(api, n.rowIndex ?? 0, nameField, noField, brandField, quantityField, diameterField);
         const r = await onBrandChange(d._rowIdx, d._marka, det.name || nm, { variantTags: variant.tags, silent: true });
         if (r && r.autoVariant && r.netPrice > 0) {
           writePriceToNode(n, r.netPrice, true, (r as any).kaynakKur);
@@ -1037,7 +1037,7 @@ function FirmaDropdown(props: ICellRendererParams & {
     if (!currentName || !onFirmaChange) return;
 
     // M1/M4: TEK SORGU — baslik+satir birlesimi (aile bilgisiz fallback yasak)
-    const fullName = buildMaterialContext(api, node.rowIndex ?? 0, nameField, noField, brandField, quantityField);
+    const fullName = buildMaterialContext(api, node.rowIndex ?? 0, nameField, noField, brandField, quantityField, diameterField);
     const queryName = fullName || currentName;
     lookupNameRef.current = queryName; // L4 ogrenme imzasi bu adla uretilir
     const result = await onFirmaChange(data._rowIdx, firmaId, queryName);
@@ -1255,6 +1255,37 @@ function extractCapFromText(text: string): string | null {
 // PRD v1.1 §4 — build-material-context.ts ile SENKRON tutulur (ikiz mantik):
 // H4 olculu satir baslik olamaz, H1/H2 miktar-bos sinyali, C3 kendi kendine
 // yeterli satira baslik eklenmez. AG-Grid api versiyonu (displayed rows).
+/**
+ * ⚠ `diameterField` 12.08'DE EKLENDI — CAP GOLGELEMESININ KOKU BURASIYDI.
+ *
+ * Bu fonksiyon `diameterField`i HIC bilmiyordu; ad hucresi doluyken her daldan
+ * bos olmayan `name` dondugu icin cagiranlardaki `ctxDetail.name || <capli ad>`
+ * ifadelerinde CAPLI dal PRATIKTE OLUYDU. Yani DWG satirlarinda motora capsiz
+ * ad gidiyordu ve `query-engine.ts:388` sert cap filtresi (`if (line.capInfo)`)
+ * HIC KOSMUYORDU. Bedeli sessiz ve parasal: kutuphanede o aileden TEK kalem
+ * varsa `rows.length === 1` → `kind:'single'` (query-engine.ts:715) →
+ * outcome-mapper fiyati YAZIYOR; yani Ø110 satirina Ø50'nin fiyati giriyordu.
+ * Capli sorguda ayni satir `{kind:'none', reason:'cap-yok', mevcutCaplar}`
+ * (query-engine.ts:453) donup kullaniciya "bu cap yok, en yakin: 50/100" derdi.
+ *
+ * TARIH: cap 7fdf101c (11.07, M1/M4 fix) ile dusmedi — ONCELIK TERS CEVRILDI.
+ * O commit'ten once capli ad BIRINCIL sorguydu, `ctxDetail.name` yedekti.
+ * Commit'in amaci aileyi sorgudan dusurmemekti (Cayirova/PP vana); cap ile
+ * CELISMIYOR, DIK. Dogru sorgu baslik + cins + CAP birlesimidir.
+ *
+ * ⚠ CAP SONA EKLENIR, BASA DEGIL. Uc bagimsiz sebep, ucu de olculdu:
+ *   1. S4 sozluk kapisi ad-basina bagli: ExcelGrid.tsx:546
+ *      `lookupNameRef.current.startsWith(hdr)` — cap basa gelirse SESSIZCE oler.
+ *   2. Backend cap konumuna toleransli: conversion.ts:153-158 DN eslesmelerinin
+ *      SONUNCUSUNU alir; tek cap varsa konum fark etmez.
+ *   3. Bugun calisan tek cap-ekleme yolu (`capliAd`/PU1) da sona ekliyor.
+ *
+ * ⚠ CIFT CAP `extractCapFromText` ILE ENGELLENEMEZ — o fonksiyon Ø-KORDUR:
+ * yalniz `dn<sayi>` (:1223) ve TIRNAKLI inc olculeri (:1242) tanir, "Ø110"da
+ * ne `dn` ne `"` vardir → null doner ve PU1 ikinci bir cap eklerdi
+ * ("PVC BORU Ø110 DN250"). Bu yuzden metinden geri koklamak YERINE capi
+ * EKLEYENIN bilgisi tasinir (`capEklendi`).
+ */
 function buildMaterialContextDetailed(
   api: any,
   rowIdx: number,
@@ -1262,12 +1293,16 @@ function buildMaterialContextDetailed(
   noField?: string,
   brandField?: string,
   quantityField?: string,
+  diameterField?: string,
 ): { name: string; header: string | null } {
   if (!nameField) return { name: '', header: null };
   const currentNode = api.getDisplayedRowAtIndex(rowIdx);
   if (!currentNode) return { name: '', header: null };
   const currentName = String(currentNode.data[nameField] ?? '').trim();
   if (!currentName) return { name: '', header: null };
+
+  // AKILLI SUTUN: cap AYRI kolondaysa sorgunun parcasidir (bkz. fonksiyon basligi).
+  const kolonCapi = diameterField ? String(currentNode.data[diameterField] ?? '').trim() : '';
 
   // ── PU1: ALTTAKI NITELIK SATIRLARINDAN CAP ────────────────────────────
   // Kok neden (FAZ0 §B.1): YILDIZ'da malzeme satirinin capi bir ALT satirda
@@ -1283,9 +1318,16 @@ function buildMaterialContextDetailed(
     }
     return satirlar.length ? niteliklerdenBaglam(satirlar, 0) : null;
   })();
-  /** Cap satirda YOKSA alt niteliklerden eklenir (varsa dokunulmaz). */
-  const capliAd = (ad: string) =>
-    altBaglam?.cap && !extractCapFromText(ad) ? `${ad} ${altBaglam.cap}` : ad;
+  /**
+   * Sorgu adina CAP ekler — TEK KAPI.
+   * Once KOLON capi (diameterField, DWG akisi), o yoksa PU1 alt-nitelik capi.
+   * ⚠ Ikisi birden EKLENMEZ: `capEklendi` bayragi tasinir, cunku metinden geri
+   * koklama (`extractCapFromText`) Ø-kordur ve cift cap uretirdi.
+   */
+  const capliAd = (ad: string) => {
+    if (kolonCapi) return `${ad} ${kolonCapi}`;
+    return altBaglam?.cap && !extractCapFromText(ad) ? `${ad} ${altBaglam.cap}` : ad;
+  };
 
   // C3: satir kendi kendine yeterliyse (tip kelimesi / anlamli metin) baslik EKLEME
   if (isSelfSufficientRow(currentName)) return { name: capliAd(currentName), header: null };
@@ -1351,8 +1393,9 @@ function buildMaterialContext(
   noField?: string,
   brandField?: string,
   quantityField?: string,
+  diameterField?: string,
 ): string {
-  return buildMaterialContextDetailed(api, rowIdx, nameField, noField, brandField, quantityField).name;
+  return buildMaterialContextDetailed(api, rowIdx, nameField, noField, brandField, quantityField, diameterField).name;
 }
 
 // ────────────────────────────────────────────
@@ -1903,6 +1946,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       const srcDet = buildMaterialContextDetailed(
         api, result.sourceRowIndex,
         nameField, data.columnRoles.noField, data.columnRoles.brandField, quantityField,
+        data.columnRoles.diameterField,
       );
       const srcTags: string[] | null =
         (srcNode?.data?._matVariantTags && srcNode.data._matVariantTags.length > 0
@@ -1925,6 +1969,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           const det = buildMaterialContextDetailed(
             api, node.rowIndex ?? 0,
             nameField, data.columnRoles.noField, data.columnRoles.brandField, quantityField,
+            data.columnRoles.diameterField,
           );
           return det.name || lookupNameOf(node.data);
         },
