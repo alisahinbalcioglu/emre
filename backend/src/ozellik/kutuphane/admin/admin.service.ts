@@ -335,8 +335,7 @@ export class AdminService {
      * Artik API'nin dondurdugu gercek olcum. Olculemeyen cagri 0 yazar —
      * 0 "bedava" degil, "OLCULEMEDI" demektir.
      */
-    const ozet = (feature: string) => {
-      const arr = logs.filter((l) => l.feature === feature);
+    const ozetle = (arr: typeof logs) => {
       const okuma = sumCacheRead(arr);
       const girdi = arr.reduce((s, l) => s + l.inputTokens, 0);
       return {
@@ -354,6 +353,7 @@ export class AdminService {
         estimatedCost: Math.round(sumCost(arr) * 10000) / 10000,
       };
     };
+    const ozet = (feature: string) => ozetle(logs.filter((l) => l.feature === feature));
 
     return {
       period: { from: monthStart.toISOString(), to: now.toISOString() },
@@ -361,15 +361,10 @@ export class AdminService {
       excel: ozet('excel_match'),
       quote: ozet('quote_analyze'),
       translate: ozet('translate'),
-      total: {
-        totalCalls: logs.length,
-        successCalls: logs.filter((l) => l.success).length,
-        failedCalls: logs.filter((l) => !l.success).length,
-        totalTokens: sumTokens(logs),
-        cacheReadTokens: sumCacheRead(logs),
-        cacheWriteTokens: sumCacheWrite(logs),
-        estimatedCost: Math.round(sumCost(logs) * 10000) / 10000,
-      },
+      // ⚠ TOPLAM da AYNI ozetleyiciden gecer: elle yazilmis ikinci bir toplam
+      // blogu `cacheHitRate`'i DUSURMUSTU (ozellik satirlarinda vardi, toplamda
+      // yoktu) ve iki blok zamanla birbirinden ayri duserdi.
+      total: ozetle(logs),
     };
   }
 

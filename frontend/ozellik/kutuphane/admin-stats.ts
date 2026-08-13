@@ -78,3 +78,103 @@ export async function fetchAdminStats(): Promise<AdminStats> {
     return EMPTY;
   }
 }
+
+/* ═════════════ AI KULLANIMI (13.08) ═════════════
+ *
+ * `GET /admin/ai-stats` 12.08'den beri VARDI ama frontend'de TEK tuketicisi
+ * yoktu — yani olculen veri hicbir ekrana ulasmiyordu. Ayni turda olcum
+ * borusu gercege baglandi (o gune kadar token'lar cagri yerlerinde ELLE
+ * yazilmis sabitlerdi, [[feedback-olcum-uydurma-yasak]]); bu blok o veriyi
+ * panele tasir.
+ */
+
+/** Bir AI ozelliginin (pdf/excel/quote/translate) bu ayki kullanimi. */
+export interface AiOzellikKullanimi {
+  totalCalls: number;
+  successCalls: number;
+  failedCalls: number;
+  totalTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  /** Prompt onbellegi isabet orani (%): okunan / (okunan + tam fiyatli girdi). */
+  cacheHitRate: number;
+  estimatedCost: number;
+}
+
+export interface AiKullanimi {
+  /** Olcum penceresi — ayin 1'inden simdiye. */
+  period: { from: string; to: string };
+  pdf: AiOzellikKullanimi;
+  excel: AiOzellikKullanimi;
+  quote: AiOzellikKullanimi;
+  translate: AiOzellikKullanimi;
+  total: AiOzellikKullanimi;
+  /** Veri API'den basariyla geldi mi? false ise sifirlar GERCEK DEGIL. */
+  live: boolean;
+}
+
+const BOS_OZELLIK: AiOzellikKullanimi = {
+  totalCalls: 0, successCalls: 0, failedCalls: 0, totalTokens: 0,
+  cacheReadTokens: 0, cacheWriteTokens: 0, cacheHitRate: 0, estimatedCost: 0,
+};
+
+const BOS_AI: AiKullanimi = {
+  period: { from: '', to: '' },
+  pdf: BOS_OZELLIK, excel: BOS_OZELLIK, quote: BOS_OZELLIK,
+  translate: BOS_OZELLIK, total: BOS_OZELLIK,
+  live: false,
+};
+
+/** Eksik alan gelirse sifir yazilir — panel cokmez, ama `live` ile ayirt edilir. */
+function ozellikOku(ham: any): AiOzellikKullanimi {
+  if (!ham || typeof ham !== 'object') return BOS_OZELLIK;
+  const sayi = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+  return {
+    totalCalls: sayi(ham.totalCalls),
+    successCalls: sayi(ham.successCalls),
+    failedCalls: sayi(ham.failedCalls),
+    totalTokens: sayi(ham.totalTokens),
+    cacheReadTokens: sayi(ham.cacheReadTokens),
+    cacheWriteTokens: sayi(ham.cacheWriteTokens),
+    cacheHitRate: sayi(ham.cacheHitRate),
+    estimatedCost: sayi(ham.estimatedCost),
+  };
+}
+
+export async function fetchAiKullanimi(): Promise<AiKullanimi> {
+  try {
+    const { data } = await api.get<any>('/admin/ai-stats');
+    return {
+      period: { from: data?.period?.from ?? '', to: data?.period?.to ?? '' },
+      pdf: ozellikOku(data?.pdf),
+      excel: ozellikOku(data?.excel),
+      quote: ozellikOku(data?.quote),
+      translate: ozellikOku(data?.translate),
+      total: ozellikOku(data?.total),
+      live: true,
+    };
+  } catch {
+    return BOS_AI;
+  }
+}
+
+/** Sistem ayarlari (butce dahil). Hata durumunda BOS obje — panel cokmez. */
+export async function fetchSistemAyarlari(): Promise<Record<string, string>> {
+  try {
+    const { data } = await api.get<Record<string, string>>('/admin/settings');
+    return data ?? {};
+  } catch {
+    return {};
+  }
+}
+
+/** Kismi ayar guncellemesi — `upsert` oldugu icin GONDERILMEYEN anahtara
+ *  dokunulmaz (API anahtarlari guvende kalir). */
+export async function kaydetSistemAyari(anahtar: string, deger: string): Promise<boolean> {
+  try {
+    await api.patch('/admin/settings', { [anahtar]: deger });
+    return true;
+  } catch {
+    return false;
+  }
+}

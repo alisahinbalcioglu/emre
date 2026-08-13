@@ -6,11 +6,13 @@ export const runtime = 'edge';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Download, Loader2 } from 'lucide-react';
+import { ArrowLeft, Download, Languages, Loader2 } from 'lucide-react';
 import { Button } from '@/ortak/ui/button';
 import { Card } from '@/ortak/ui/card';
 import api from '@/ortak/lib/api';
+import { toast } from '@/ortak/hooks/use-toast';
 import { cn } from '@/ortak/lib/utils';
+import { cevrilecekMetinler, ceviriUygula, ceviriGeriAl } from '@/ozellik/teklif/ceviri';
 import { teklifCiktisiniIndir, fiyatliExceliIndir } from '@/ozellik/cikti/export-download';
 import { ExcelGrid } from '@/ozellik/tablo/excel-grid/ExcelGrid';
 import { SheetTabs } from '@/ozellik/tablo/excel-grid/SheetTabs';
@@ -90,6 +92,74 @@ export default function QuoteDetailPage() {
       .catch(() => { /* etiket cozulemezse fiyatlar yine dogru gorunur */ });
   }, []);
 
+  // ── CEVIRI (13.08) — KAYITLI TEKLIFTE DIL SECICI ──────────────────────────
+  // Duzenle ekraniyla AYNI modul (`ozellik/teklif/ceviri.ts`): cap/olcu/sayi
+  // DOKUNULMAZ, karar mantigi orada testle muhurlu. Burada cogu zaman API'ye
+  // HIC gidilmez — `Translation` onbellegi kalici ve GLOBAL oldugu icin ayni
+  // teknik terimler ikinci teklifte onbellekten doner.
+  //
+  // ⚠ BU SAYFA SALT-OKUNUR. Ceviri yalniz EKRANDA yasar; kayda YAZILMAZ
+  // (kayitli bir teklifin `sheets` alanini guncelleyen uc yok — `PATCH
+  // :id/info` yalniz kapak alanlarini alir). Export ise SUNUCUDAN uretilir
+  // (`POST :id/export`, `GET :id/export-priced`), yani indirilen dosya
+  // TURKCE iner. Bu fark kullaniciya ACIKCA gosterilir: aksi halde ekranda
+  // Ingilizce goren kullanici musteriye Turkce dosya gonderir ve FARK ETMEZ.
+  const [ceviriDili, setCeviriDili] = useState<'tr' | 'en'>('tr');
+  const [ceviriYukleniyor, setCeviriYukleniyor] = useState(false);
+  // ExcelGrid'e `rowData={data.rowData}` AYNI dizi referansiyla gider ve
+  // `ceviriUygula` satirlari YERINDE degistirir → AG-Grid degisikligi goremez.
+  // Surum sayaci grid'i yeniden monte eder (sheet degisiminde kullanilan
+  // `key` deseninin aynisi).
+  const [ceviriSurumu, setCeviriSurumu] = useState(0);
+
+  /** Ceviriye girecek sayfalar — bos sayfalar elenir (grid'in gordugu kume). */
+  const ceviriSayfalari = (): any[] => {
+    const hepsi = quote?.sheets;
+    return Array.isArray(hepsi) ? hepsi.filter((s: any) => !s?.isEmpty) : [];
+  };
+
+  const handleCeviri = async () => {
+    const sayfalar = ceviriSayfalari();
+    if (sayfalar.length === 0) return;
+
+    // Turkce'ye donus API'ye HIC gitmez — orijinal metin satirda saklidir.
+    if (ceviriDili === 'en') {
+      ceviriGeriAl(sayfalar);
+      setCeviriDili('tr');
+      setCeviriSurumu((n) => n + 1);
+      return;
+    }
+
+    const metinler = cevrilecekMetinler(sayfalar);
+    if (metinler.length === 0) {
+      toast({
+        title: 'Çevrilecek metin yok',
+        description: 'Bu teklifte çevrilebilir malzeme/iş adı bulunamadı.',
+      });
+      return;
+    }
+
+    setCeviriYukleniyor(true);
+    try {
+      const { data } = await api.post('/ai/translate', { metinler, hedefDil: 'en' });
+      const yazilan = ceviriUygula(sayfalar, data?.harita ?? {});
+      setCeviriDili('en');
+      setCeviriSurumu((n) => n + 1);
+      toast({
+        title: 'Çeviri tamamlandı',
+        description: `${yazilan} hücre çevrildi · ${data?.onbellekten ?? 0} önbellekten, ${data?.cevrilen ?? 0} yeni`,
+      });
+    } catch (e: any) {
+      toast({
+        title: 'Çeviri başarısız',
+        description: e?.response?.data?.message || e?.message || 'Bilinmeyen hata',
+        variant: 'destructive',
+      });
+    } finally {
+      setCeviriYukleniyor(false);
+    }
+  };
+
   const birimSec = (c: Currency) => {
     setCurrency(c);
     // KH8: secim TEKLIFLE kaydedilir (kismi PATCH — kapak alanlarina dokunmaz)
@@ -157,7 +227,26 @@ export default function QuoteDetailPage() {
           <h1 className="text-2xl font-bold tracking-tight">{quote.title}</h1>
           <p className="mt-1 text-sm text-muted-foreground">{new Date(quote.createdAt).toLocaleDateString('tr-TR')}</p>
         </div>
+        <div className="flex flex-col items-end gap-2">
         <div className="flex items-center gap-2">
+          {/* 13.08 istegi: CEVIRI butonu para birimi seciciNIN SOLUNDA —
+              Duzenle ekranindaki yerin birebir ayni'si. */}
+          {sheets.length > 0 && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleCeviri}
+              disabled={ceviriYukleniyor}
+              title="Malzeme/iş adlarını İngilizceye çevirir. Çap, ölçü ve sayılara DOKUNULMAZ."
+            >
+              {ceviriYukleniyor ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Languages className="mr-2 h-4 w-4" />
+              )}
+              {ceviriDili === 'tr' ? 'İngilizceye Çevir' : 'Türkçeye Dön'}
+            </Button>
+          )}
           {/* KH9: TL/USD/EUR — Duzenle'dekiyle ayni bilesen deseni */}
           <div className="flex rounded-lg border bg-muted p-0.5">
             {(['TRY', 'USD', 'EUR'] as Currency[]).map((c) => (
@@ -208,6 +297,15 @@ export default function QuoteDetailPage() {
             {exporting ? 'Hazırlanıyor…' : 'Teklif Formatında Aktar'}
           </Button>
         </div>
+        {/* Ceviri EKRANDA yasar, export SUNUCUDAN uretilir → indirilen dosya
+            Turkce iner. Bu satir olmasa kullanici musteriye Turkce dosya
+            gonderdigini FARK ETMEZDI (sessiz yanlis). */}
+        {ceviriDili === 'en' && (
+          <p className="text-xs text-amber-600">
+            Çeviri yalnız ekranda görünür — indirilen dosyalar Türkçe iner.
+          </p>
+        )}
+        </div>
       </div>
 
       {/* Multi-sheet ExcelGrid render (read-only) */}
@@ -215,7 +313,10 @@ export default function QuoteDetailPage() {
         <>
           <Card className="overflow-hidden">
             <ExcelGrid
-              key={`detail-sheet-${activeSheetIndex}`}
+              // `ceviriSurumu`: satirlar YERINDE cevrildigi icin AG-Grid ayni
+              // dizi referansini gorur ve yeniden cizmez — surum degisimi
+              // grid'i yeniden monte eder.
+              key={`detail-sheet-${activeSheetIndex}-${ceviriSurumu}`}
               data={gridData}
               brands={allBrands}
               laborFirms={laborFirms}
