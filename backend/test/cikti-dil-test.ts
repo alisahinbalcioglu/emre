@@ -63,9 +63,17 @@ ol('ADET → pcs (buyuk harf)', birimCevir('ADET', 'en'), 'pcs');
 ol('ÇİFT → pair (Turkce I sorunu)', birimCevir('ÇİFT', 'en'), 'pair');
 ol('TAKIM → set (noktasiz I)', birimCevir('TAKIM', 'en'), 'set');
 
+// 13.08 canli kesif dosyasinda gorulen kisaltma.
+ol('ADT → pcs (adet kisaltmasi)', birimCevir('ADT', 'en'), 'pcs');
+
 // ⚠ BILINMEYEN BIRIM UYDURULMAZ: yanlis bir Ingilizce karsilik, cevrilmemis
 // birakmaktan DAHA kotudur — musteri okur, yanlis anlar, kimse fark etmez.
 ol('bilinmeyen birim OLDUGU GIBI kalir', birimCevir('vrs', 'en'), 'vrs');
+
+// ⚠ 'GR' BELIRSIZDIR (grup mu gram mi?): canli dosyada "FIRE PUMP SET … GR"
+// GRUP demekti. Sozluge 'gr'→'g' yazilsaydi pompa grubu "g" (gram) inerdi.
+// Belirsiz kisaltma sozluge girmez — oldugu gibi kalir.
+ol('GR uydurulmaz, oldugu gibi kalir (grup/gram belirsiz)', birimCevir('GR', 'en'), 'GR');
 ol('bos birim bos kalir', birimCevir('', 'en'), '');
 
 // ⚠ Dil 'en' DEGILSE hicbir sey degismez — Turkce cikti eski davranisini

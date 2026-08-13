@@ -73,7 +73,21 @@ export default function QuoteDetailPage() {
         // Teklif Ingilizce kaydedildiyse sayfa Ingilizce ACILIR: satirlar
         // zaten cevrilmis durumda, dolayisiyla YENI BIR API CAGRISI YAPILMAZ.
         // Bu satir olmadan export'a dil gecmiyor ve basliklar Turkce kaliyordu.
-        if (data.displayLanguage === 'en') setCeviriDili('en');
+        //
+        // ⚠ IKINCI KOSUL (`_ceviriKaynak`) TAHMIN DEGIL, KENDI ISARETIMIZ:
+        // `ceviriUygula` cevirdigi her satira orijinali `_ceviriKaynak`
+        // olarak yazar ve `ceviriGeriAl` siler. Yani satirda bu alan varsa o
+        // satir TANIM GEREGI ceviri gosteriyordur. `displayLanguage` kolonu
+        // 13.08'de geldi; ONCESINDE Ingilizce kaydedilmis teklifler kayitta
+        // 'tr' gorunur — bu kosul onlari yakalar ve kayit PATCH ile onarilir
+        // (bir sonraki acilis artik kolondan okur).
+        const ceviriliSatirVar = Array.isArray(data.sheets) && data.sheets.some(
+          (s: any) => (s?.rowData ?? []).some((r: any) => r?._ceviriKaynak !== undefined),
+        );
+        if (data.displayLanguage === 'en' || ceviriliSatirVar) {
+          setCeviriDili('en');
+          if (data.displayLanguage !== 'en') dilKaydet('en'); // kaydi onar
+        }
         // Ilk non-empty sheet'i aktif yap
         if (Array.isArray(data.sheets)) {
           const firstNonEmpty = data.sheets.findIndex((s: any) => !s.isEmpty);
@@ -316,7 +330,8 @@ export default function QuoteDetailPage() {
               setExporting(true);
               // Ekran Ingilizce moddaysa dosya da Ingilizce iner (13.08):
               // backend onbellekteki ceviriyi uygular, yeni AI cagrisi YOK.
-              try { await fiyatliExceliIndir(id, ceviriDili === 'en' ? 'en' : undefined); } finally { setExporting(false); }
+              // Dil HER ZAMAN acik gecilir — ekranin anlik durumu kayittan yenidir.
+              try { await fiyatliExceliIndir(id, ceviriDili); } finally { setExporting(false); }
             }}
           >
             <Download className="mr-2 h-4 w-4" />
@@ -326,7 +341,7 @@ export default function QuoteDetailPage() {
             disabled={exporting}
             onClick={async () => {
               setExporting(true);
-              try { await teklifCiktisiniIndir(id, ceviriDili === 'en' ? 'en' : undefined); } finally { setExporting(false); }
+              try { await teklifCiktisiniIndir(id, ceviriDili); } finally { setExporting(false); }
             }}
           >
             <Download className="mr-2 h-4 w-4" />

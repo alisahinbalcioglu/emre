@@ -56,15 +56,19 @@ const BIRIM_EN: Record<string, string> = {
   // alan / hacim
   'm2': 'm²', 'm²': 'm²', "m'2": 'm²', 'metrekare': 'm²',
   'm3': 'm³', 'm³': 'm³', "m'3": 'm³', 'metreküp': 'm³',
-  // adet aileleri
-  'ad': 'pcs', 'ad.': 'pcs', 'adet': 'pcs', 'ade': 'pcs',
+  // adet aileleri — 'adt' canli kesif dosyasinda goruldu (13.08)
+  'ad': 'pcs', 'ad.': 'pcs', 'adet': 'pcs', 'ade': 'pcs', 'adt': 'pcs',
   'set': 'set', 'takım': 'set', 'takim': 'set', 'tk': 'set',
   'çift': 'pair', 'cift': 'pair',
   'paket': 'pack', 'pk': 'pack',
   'rulo': 'roll', 'top': 'roll',
   'boy': 'length',
   // agirlik / hacim
-  'kg': 'kg', 'ton': 'ton', 'gr': 'g', 'g': 'g',
+  // ⚠ 'gr' BILEREK YOK: canli kesif dosyasinda "FIRE PUMP SET … GR" goruldu —
+  // orada 'gr' GRUP demek (hidrofor/pompa grubu), gram degil. 'gr'→'g'
+  // eslemesi pompa grubunu "g" (gram) yazardi: yanlis ceviri, cevrilmemis
+  // birakmaktan DAHA kotu. Belirsiz kisaltma sozluge GIRMEZ, oldugu gibi kalir.
+  'kg': 'kg', 'ton': 'ton', 'g': 'g',
   'lt': 'L', 'litre': 'L', 'l': 'L',
   // zaman / isgucu
   'saat': 'hour', 'sa': 'hour', 'gün': 'day', 'gun': 'day',

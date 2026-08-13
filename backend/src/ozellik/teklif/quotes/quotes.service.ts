@@ -61,6 +61,23 @@ export class QuotesService {
     return ozet ? `${ozet} · ${parca}` : parca;
   }
 
+  /**
+   * EXPORT DILI COZUMU — parametre > kayitli alan (13.08).
+   *
+   * ⚠ NEDEN YALNIZ PARAMETREYE GUVENILMEZ: dil parametresi FRONTEND'in
+   * gonderdigi bir deger ve frontend her zaman guncel degil — kullanicinin
+   * ACIK SEKMESI eski JS bundle'ini calistirmaya devam eder (canli olcum,
+   * 13.08: satirlari Ingilizce kaydedilmis teklif, parametre tasimayan eski
+   * sayfadan Turkce basliklarla indi). Kayitli `displayLanguage` sunucuda
+   * durur ve bayat istemciden ETKILENMEZ. Parametre geldiyse o kazanir
+   * (ekranin ANLIK durumu kayittan yenidir — kullanici az once "Turkceye
+   * Don" demis olabilir); gelmediyse kayit konusur.
+   */
+  private exportDili(quote: any, dil?: string): string | undefined {
+    if (dil) return dil;
+    return quote?.displayLanguage === 'en' ? 'en' : undefined;
+  }
+
   private async sheetleriCevir(
     sheets: any[],
     dil: string | undefined,
@@ -501,7 +518,10 @@ export class QuotesService {
   /** .xlsx uret + REV artir + arsivle (T10). */
   async exportXlsx(userId: string, id: string, dil?: string): Promise<{ buffer: Buffer; filename: string; rev: number; quoteNo: string; uyari?: string; ozet?: string }> {
     const quote = await this.quoteGetir(userId, id);
-    // 13.08: `dil=en` ise sayfa metinleri onbellekteki ceviriyle degistirilir.
+    // 13.08: parametre yoksa teklifin KAYITLI dili konusur (bayat istemci
+    // korumasi — bkz. exportDili).
+    dil = this.exportDili(quote, dil);
+    // `dil=en` ise sayfa metinleri onbellekteki ceviriyle degistirilir.
     // DB'ye YAZILMAZ — yalnizca bu indirmenin kopyasi degisir.
     const ceviriOzeti = await this.sheetleriCevir(quote.sheets as any[], dil);
 
@@ -578,6 +598,7 @@ export class QuotesService {
     // IKIZ (teklif-format yolunun aynisi): iki cikti yolundan biri Ingilizce
     // inip digeri Turkce inseydi, kullanici hangisini indirdigine gore farkli
     // bir gercek yasardi.
+    dil = this.exportDili(quote, dil); // bayat istemci korumasi (bkz. exportDili)
     const ceviriOzeti = await this.sheetleriCevir(sheetsArr, dil);
     const birim = await this.exportBirimi(quote); // PANO 18/EX6: ekrandaki birim
     const baslikParcalari = [quote.title, (quote as any).customerName, (quote as any).projectName]

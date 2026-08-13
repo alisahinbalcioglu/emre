@@ -59,10 +59,11 @@ async function hataMesaji(e: any): Promise<string> {
 
 /** Teklif Formati ciktisini (.xlsx) uretip indirir (rev artar, arsivlenir).
  *
- *  `dil='en'` gecilirse sayfa metinleri ONBELLEKTEKI ceviriyle iner. Cagiran
- *  taraf bunu yalnizca ekran Ingilizce moddayken gecer; boylece onbellek o
- *  teklifin metinleriyle zaten dolu olur. Gecilmezse davranis DEGISMEZ. */
-export async function teklifCiktisiniIndir(quoteId: string, dil?: 'en'): Promise<boolean> {
+ *  `dil` HER ZAMAN ACIK gecilir ('tr' dahil): backend, parametre GELMEYEN
+ *  cagrida teklifin kayitli diline duser (bayat istemci korumasi). Ekrandan
+ *  gelen acik deger ise kayittan YENIDIR — kullanici az once "Turkceye Don"
+ *  demis olabilir ve o secim kayda henuz islenmemis olabilir. */
+export async function teklifCiktisiniIndir(quoteId: string, dil?: 'tr' | 'en'): Promise<boolean> {
   try {
     toast({ title: 'Çıktı hazırlanıyor…', description: 'Teklif formatında Excel üretiliyor.' });
     const x = await api.post(`/quotes/${quoteId}/export`, dil ? { dil } : {}, { responseType: 'blob' });
@@ -79,7 +80,7 @@ export async function teklifCiktisiniIndir(quoteId: string, dil?: 'en'): Promise
 
 /** Fiyatlandirilmis kesif Excel'ini indirir — musterinin orijinal dosyasi,
  *  fiyatlar yazilmis; teklif formati YOK, rev ARTMAZ. */
-export async function fiyatliExceliIndir(quoteId: string, dil?: 'en'): Promise<boolean> {
+export async function fiyatliExceliIndir(quoteId: string, dil?: 'tr' | 'en'): Promise<boolean> {
   try {
     toast({ title: 'Çıktı hazırlanıyor…', description: 'Fiyatlandırılmış keşif Excel\'i üretiliyor.' });
     const x = await api.get(`/quotes/${quoteId}/export-priced`, {
