@@ -324,34 +324,50 @@ export class AdminService {
     const logs = await this.prisma.aiUsageLog.findMany({
       where: { createdAt: { gte: monthStart } },
     });
-    const pdfLogs = logs.filter((l) => l.feature === 'pdf_parse');
-    const excelLogs = logs.filter((l) => l.feature === 'excel_match');
-    const quoteLogs = logs.filter((l) => l.feature === 'quote_analyze');
     const sumTokens = (arr: typeof logs) => arr.reduce((s, l) => s + l.inputTokens + l.outputTokens, 0);
     const sumCost = (arr: typeof logs) => arr.reduce((s, l) => s + l.estimatedCost, 0);
+    const sumCacheRead = (arr: typeof logs) => arr.reduce((s, l) => s + l.cacheReadTokens, 0);
+    const sumCacheWrite = (arr: typeof logs) => arr.reduce((s, l) => s + l.cacheWriteTokens, 0);
+
+    /**
+     * ⚠ 12.08'e kadar bu sayilar KURGUYDU: cagri yerleri token'i uyduruyordu
+     * (`inputTokens: 500`, `uzunluk * 30`) ve `response.usage` hic okunmuyordu.
+     * Artik API'nin dondurdugu gercek olcum. Olculemeyen cagri 0 yazar —
+     * 0 "bedava" degil, "OLCULEMEDI" demektir.
+     */
+    const ozet = (feature: string) => {
+      const arr = logs.filter((l) => l.feature === feature);
+      const okuma = sumCacheRead(arr);
+      const girdi = arr.reduce((s, l) => s + l.inputTokens, 0);
+      return {
+        totalCalls: arr.length,
+        successCalls: arr.filter((l) => l.success).length,
+        failedCalls: arr.filter((l) => !l.success).length,
+        totalTokens: sumTokens(arr),
+        cacheReadTokens: okuma,
+        cacheWriteTokens: sumCacheWrite(arr),
+        // Prompt onbellegi isabet orani: okunan / (okunan + tam fiyatli girdi).
+        // Ceviri ozelliginin ekonomisi buna bagli — dusukse sozluk prefix'i
+        // bozuluyor demektir (bkz. prompt caching: herhangi bir bayt degisimi
+        // onbellegi gecersiz kilar).
+        cacheHitRate: okuma + girdi > 0 ? Math.round((okuma / (okuma + girdi)) * 100) : 0,
+        estimatedCost: Math.round(sumCost(arr) * 10000) / 10000,
+      };
+    };
+
     return {
       period: { from: monthStart.toISOString(), to: now.toISOString() },
-      pdf: {
-        totalCalls: pdfLogs.length,
-        successCalls: pdfLogs.filter((l) => l.success).length,
-        totalTokens: sumTokens(pdfLogs),
-        estimatedCost: Math.round(sumCost(pdfLogs) * 10000) / 10000,
-      },
-      excel: {
-        totalCalls: excelLogs.length,
-        successCalls: excelLogs.filter((l) => l.success).length,
-        totalTokens: sumTokens(excelLogs),
-        estimatedCost: Math.round(sumCost(excelLogs) * 10000) / 10000,
-      },
-      quote: {
-        totalCalls: quoteLogs.length,
-        successCalls: quoteLogs.filter((l) => l.success).length,
-        totalTokens: sumTokens(quoteLogs),
-        estimatedCost: Math.round(sumCost(quoteLogs) * 10000) / 10000,
-      },
+      pdf: ozet('pdf_parse'),
+      excel: ozet('excel_match'),
+      quote: ozet('quote_analyze'),
+      translate: ozet('translate'),
       total: {
         totalCalls: logs.length,
+        successCalls: logs.filter((l) => l.success).length,
+        failedCalls: logs.filter((l) => !l.success).length,
         totalTokens: sumTokens(logs),
+        cacheReadTokens: sumCacheRead(logs),
+        cacheWriteTokens: sumCacheWrite(logs),
         estimatedCost: Math.round(sumCost(logs) * 10000) / 10000,
       },
     };

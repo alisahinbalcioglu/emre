@@ -634,19 +634,54 @@ model LaborPrice {
 }
 
 model AiUsageLog {
-  id            String   @id @default(uuid())
-  feature       String // 'pdf_parse' | 'excel_match' | 'quote_analyze'
-  provider      String // 'claude' | 'gemini' | 'openrouter'
-  model         String? // 'claude-sonnet-4-6' etc.
-  inputTokens   Int      @default(0)
-  outputTokens  Int      @default(0)
-  estimatedCost Float    @default(0) // USD
-  success       Boolean  @default(true)
-  errorMessage  String?
-  createdAt     DateTime @default(now())
+  id       String  @id @default(uuid())
+  feature  String // 'pdf_parse' | 'excel_match' | 'quote_analyze' | 'translate'
+  provider String // 'claude' | 'gemini' | 'openrouter'
+  model    String? // 'claude-opus-5' etc.
+  // ⚠ Bu sayilar 12.08'e kadar UYDURMAYDI (cagri yerlerinde elle yazilmis
+  // sabitler; `response.usage` hic okunmuyordu). Artik API'nin dondurdugu
+  // gercek olcum yazilir — bkz. ai-maliyet.ts.
+  inputTokens      Int     @default(0)
+  outputTokens     Int     @default(0)
+  // Onbellek tokenlari AYRI tutulur: farkli fiyatlanirlar (okuma ~0.1x,
+  // yazma 1.25x) ve cevirinin ekonomisi ONBELLEK ISABET ORANIYLA olculur.
+  cacheWriteTokens Int     @default(0)
+  cacheReadTokens  Int     @default(0)
+  estimatedCost    Float   @default(0) // USD — liste fiyati uzerinden
+  success          Boolean @default(true)
+  errorMessage     String?
+
+  createdAt DateTime @default(now())
 
   @@index([feature])
   @@index([createdAt])
+}
+
+/// TEKNIK METIN CEVIRI ONBELLEGI (13.08).
+///
+/// NEDEN KALICI ONBELLEK: teklif sayfalari 15.000+ satir olabiliyor ama
+/// malzeme adlari MASIF sekilde tekrarliyor ("DN 20", "DN 25"... her baslik
+/// altinda yeniden). Benzersizlestirince 15 bin satir birkac yuz metne
+/// iner; ikinci teklifte ayni metinler zaten burada oldugu icin API cagrisi
+/// SIFIRA yaklasir.
+///
+/// KULLANICIYA OZEL DEGIL (global): teknik terimler evrenseldir — "Küresel
+/// vana" her kullanicida "ball valve"dir. Global olmasi onbellek isabetini
+/// katbekat artirir.
+///
+/// `kaynak` alani AI cevirisi ile KULLANICI DUZELTMESINI ayirir: duzeltme
+/// yazildiginda bir daha AI'ya sorulmaz ve her teklifte gecerli olur.
+model Translation {
+  id             String   @id @default(uuid())
+  sourceText     String // normalize edilmis kaynak metin
+  targetLang     String // 'en'
+  translatedText String
+  kaynak         String   @default("ai") // 'ai' | 'manual'
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([sourceText, targetLang])
+  @@index([targetLang])
 }
 
 model SystemSettings {

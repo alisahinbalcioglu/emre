@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 import Anthropic from '@anthropic-ai/sdk';
+import { kullanimiOlc, type AiKullanim } from './ai-maliyet';
 // watch-trigger: force NestJS reload
 // pdf-parse v2 has breaking API changes — use safe wrapper
 async function extractPdfText(buffer: Buffer): Promise<string> {
@@ -36,12 +37,8 @@ export interface ParsedGlobalMaterial {
   unitPrice: number;
 }
 
-// Token → USD maliyet tahmini (yaklaşık)
-const COST_PER_1K: Record<string, { input: number; output: number }> = {
-  claude: { input: 0.003, output: 0.015 },
-  gemini: { input: 0.0001, output: 0.0004 },
-  openrouter: { input: 0.003, output: 0.015 },
-};
+// Maliyet/token olcumu ai-maliyet.ts'te — MODEL bazli fiyat + onbellek carpanlari.
+// (Eski hali saglayici bazliydi ve token sayilari cagri yerlerinde UYDURULUYORDU.)
 
 // Görev türleri
 type AiTask = 'PDF_EXTRACTION' | 'EXCEL_MAPPING' | 'MATERIAL_PRICING' | 'QUOTE_ANALYSIS';
@@ -103,28 +100,34 @@ export class AiService {
     return result;
   }
 
-  /** AI kullanımını veritabanına logla */
-  private async logUsage(params: {
+  /**
+   * AI kullanimini veritabanina logla.
+   *
+   * ⚠ `usage` API YANITINDAN gelir — tahmin edilmez. Yanit `usage` tasimiyorsa
+   * (hata, ya da olcum dondurmeyen saglayici) tum sayilar 0 yazilir ve panelde
+   * "olculemedi" olarak okunur. Eski hal cagri yerlerinde sabit uyduruyordu
+   * (`inputTokens: 500`, `uzunluk * 30`), yani panel kurgu gosteriyordu.
+   */
+  async logUsage(params: {
     feature: string;
     provider: string;
     model?: string;
-    inputTokens?: number;
-    outputTokens?: number;
+    usage?: AiKullanim | null;
     success: boolean;
     errorMessage?: string;
   }): Promise<void> {
     try {
-      const rates = COST_PER_1K[params.provider] ?? COST_PER_1K.claude;
-      const inputCost = ((params.inputTokens ?? 0) / 1000) * rates.input;
-      const outputCost = ((params.outputTokens ?? 0) / 1000) * rates.output;
+      const olcum = kullanimiOlc(params.usage, params.model, params.provider);
       await this.prisma.aiUsageLog.create({
         data: {
           feature: params.feature,
           provider: params.provider,
           model: params.model,
-          inputTokens: params.inputTokens ?? 0,
-          outputTokens: params.outputTokens ?? 0,
-          estimatedCost: Math.round((inputCost + outputCost) * 10000) / 10000,
+          inputTokens: olcum.inputTokens,
+          outputTokens: olcum.outputTokens,
+          cacheWriteTokens: olcum.cacheWriteTokens,
+          cacheReadTokens: olcum.cacheReadTokens,
+          estimatedCost: olcum.estimatedCost,
           success: params.success,
           errorMessage: params.errorMessage,
         },
@@ -462,7 +465,11 @@ ${text.slice(0, 8000)}`,
   }
 
   // Generic AI call helpers (robust parser ile)
-  private async callClaude<T>(prompt: string, apiKey: string): Promise<T[]> {
+  //
+  // ⚠ KULLANIM DONUS DEGERINDE TASINIR, ORNEK ALANINDA DEGIL. NestJS servisi
+  // singleton'dir: kullanimi `this.sonKullanim` gibi bir alanda tutmak es
+  // zamanli isteklerde birbirinin olcumunu ezerdi (binlerce es zamanli kural).
+  private async callClaude<T>(prompt: string, apiKey: string): Promise<{ data: T[]; usage: AiKullanim }> {
     const client = new Anthropic({ apiKey });
     const message = await client.messages.create({
       model: 'claude-sonnet-4-6',
@@ -471,10 +478,10 @@ ${text.slice(0, 8000)}`,
     });
     const content = message.content[0];
     if (content.type !== 'text') throw new Error('Unexpected response type');
-    return this.robustJsonParse<T>(content.text);
+    return { data: this.robustJsonParse<T>(content.text), usage: message.usage };
   }
 
-  private async callGemini<T>(prompt: string, apiKey: string): Promise<T[]> {
+  private async callGemini<T>(prompt: string, apiKey: string): Promise<{ data: T[]; usage: AiKullanim }> {
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
       {
@@ -489,7 +496,13 @@ ${text.slice(0, 8000)}`,
     const data: any = await response.json();
     if (!response.ok) throw new Error(data.error?.message || 'Gemini API hatasi');
     const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    return this.robustJsonParse<T>(rawText);
+    return {
+      data: this.robustJsonParse<T>(rawText),
+      usage: {
+        input_tokens: data.usageMetadata?.promptTokenCount,
+        output_tokens: data.usageMetadata?.candidatesTokenCount,
+      },
+    };
   }
 
   private async callOpenRouter<T>(prompt: string, apiKey: string): Promise<T[]> {
@@ -564,10 +577,16 @@ KURALLAR:
 
     try {
       let text = '';
+      // Gercek olcum: her saglayici kendi alaninda token dondurur, bizim tek
+      // sekle cevrilir. Dondurmezse null kalir → log 0 yazar (uydurmaz).
+      let kullanim: AiKullanim | null = null;
+      let kullanilanModel: string | undefined;
       if (provider === 'claude') {
         const client = new Anthropic({ apiKey });
         const msg = await client.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 200, messages: [{ role: 'user', content: prompt }] });
         text = (msg.content[0] as any).text || '';
+        kullanim = msg.usage;
+        kullanilanModel = 'claude-sonnet-4-6';
       } else if (provider === 'gemini') {
         const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -576,6 +595,11 @@ KURALLAR:
         const data: any = await res.json();
         if (!res.ok) throw new Error(data.error?.message || 'Gemini error');
         text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        kullanim = {
+          input_tokens: data.usageMetadata?.promptTokenCount,
+          output_tokens: data.usageMetadata?.candidatesTokenCount,
+        };
+        kullanilanModel = 'gemini-2.5-flash';
       } else if (provider === 'openrouter') {
         const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
           method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
@@ -583,11 +607,15 @@ KURALLAR:
         });
         const data: any = await res.json();
         text = data.choices?.[0]?.message?.content || '';
+        kullanim = {
+          input_tokens: data.usage?.prompt_tokens,
+          output_tokens: data.usage?.completion_tokens,
+        };
       }
 
       const match = text.match(/\{[\s\S]*\}/);
       if (match) {
-        await this.logUsage({ feature: 'excel_match', provider, inputTokens: 500, outputTokens: 50, success: true });
+        await this.logUsage({ feature: 'excel_match', provider, model: kullanilanModel, usage: kullanim, success: true });
         return JSON.parse(match[0]);
       }
     } catch (e) {
@@ -661,11 +689,11 @@ ONEMLI: Eksik malzeme kabul edilemez. Dokumandaki malzeme sayisi ne kadarsa, o k
     if (active === 'claude' && claudeKey) {
       try {
         console.log('[AI] Claude Vision deneniyor...');
-        const raw = await this.callClaudeVision(buffer, GLOBAL_PROMPT, claudeKey);
+        const { data: raw, usage } = await this.callClaudeVision(buffer, GLOBAL_PROMPT, claudeKey);
         const cleaned = this.cleanExtractedPrices(raw);
         if (cleaned.length > 0) {
           console.log(`[AI] Claude Vision basarili: ${cleaned.length} malzeme`);
-          await this.logUsage({ feature: 'pdf_parse', provider: 'claude', model: 'claude-sonnet-4-6', inputTokens: 1000, outputTokens: cleaned.length * 30, success: true });
+          await this.logUsage({ feature: 'pdf_parse', provider: 'claude', model: 'claude-sonnet-4-6', usage, success: true });
           return { materials: cleaned, usedProvider: 'claude (vision)' };
         }
         console.log('[AI] Claude Vision sonuc bos, text fallback deneniyor...');
@@ -679,11 +707,11 @@ ONEMLI: Eksik malzeme kabul edilemez. Dokumandaki malzeme sayisi ne kadarsa, o k
       try {
         console.log('[AI] Claude Text deneniyor...');
         const prompt = `${GLOBAL_PROMPT}\n\nAsagidaki metin bir PDF fiyat listesinden cikarilmistir:\n\n${textFallback.slice(0, 30000)}`;
-        const raw = await this.callClaude<ParsedGlobalMaterial>(prompt, claudeKey);
+        const { data: raw, usage } = await this.callClaude<ParsedGlobalMaterial>(prompt, claudeKey);
         const cleaned = this.cleanExtractedPrices(raw);
         if (cleaned.length > 0) {
           console.log(`[AI] Claude Text basarili: ${cleaned.length} malzeme`);
-          await this.logUsage({ feature: 'pdf_parse', provider: 'claude', model: 'claude-sonnet-4-6', inputTokens: Math.round(textFallback.length / 4), outputTokens: cleaned.length * 30, success: true });
+          await this.logUsage({ feature: 'pdf_parse', provider: 'claude', model: 'claude-sonnet-4-6', usage, success: true });
           return { materials: cleaned, usedProvider: 'claude (text)' };
         }
       } catch (textErr) {
@@ -695,11 +723,11 @@ ONEMLI: Eksik malzeme kabul edilemez. Dokumandaki malzeme sayisi ne kadarsa, o k
     if (geminiKey) {
       try {
         console.log('[AI] Gemini Vision deneniyor...');
-        const raw = await this.callGeminiVision(buffer, GLOBAL_PROMPT, geminiKey);
+        const { data: raw, usage } = await this.callGeminiVision(buffer, GLOBAL_PROMPT, geminiKey);
         const cleaned = this.cleanExtractedPrices(raw);
         if (cleaned.length > 0) {
           console.log(`[AI] Gemini Vision basarili: ${cleaned.length} malzeme`);
-          await this.logUsage({ feature: 'pdf_parse', provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: 1000, outputTokens: cleaned.length * 30, success: true });
+          await this.logUsage({ feature: 'pdf_parse', provider: 'gemini', model: 'gemini-2.5-flash', usage, success: true });
           return { materials: cleaned, usedProvider: 'gemini (vision, failover)' };
         }
       } catch (gemErr) {
@@ -712,11 +740,11 @@ ONEMLI: Eksik malzeme kabul edilemez. Dokumandaki malzeme sayisi ne kadarsa, o k
       try {
         console.log('[AI] Gemini Text deneniyor...');
         const prompt = `${GLOBAL_PROMPT}\n\nMetin:\n${textFallback.slice(0, 30000)}`;
-        const raw = await this.callGemini<ParsedGlobalMaterial>(prompt, geminiKey);
+        const { data: raw, usage } = await this.callGemini<ParsedGlobalMaterial>(prompt, geminiKey);
         const cleaned = this.cleanExtractedPrices(raw);
         if (cleaned.length > 0) {
           console.log(`[AI] Gemini Text basarili: ${cleaned.length} malzeme`);
-          await this.logUsage({ feature: 'pdf_parse', provider: 'gemini', model: 'gemini-2.5-flash', inputTokens: Math.round(textFallback.length / 4), outputTokens: cleaned.length * 30, success: true });
+          await this.logUsage({ feature: 'pdf_parse', provider: 'gemini', model: 'gemini-2.5-flash', usage, success: true });
           return { materials: cleaned, usedProvider: 'gemini (text, failover)' };
         }
       } catch (gemTextErr) {
@@ -736,7 +764,7 @@ ONEMLI: Eksik malzeme kabul edilemez. Dokumandaki malzeme sayisi ne kadarsa, o k
   }
 
   // Claude Vision: PDF'i dogrudan base64 olarak gonder
-  private async callClaudeVision(pdfBuffer: Buffer, prompt: string, apiKey: string): Promise<ParsedGlobalMaterial[]> {
+  private async callClaudeVision(pdfBuffer: Buffer, prompt: string, apiKey: string): Promise<{ data: ParsedGlobalMaterial[]; usage: AiKullanim }> {
     const base64 = pdfBuffer.toString('base64');
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -766,11 +794,11 @@ ONEMLI: Eksik malzeme kabul edilemez. Dokumandaki malzeme sayisi ne kadarsa, o k
     }
     const text = data?.content?.[0]?.text || '';
     console.log('[Claude Vision] Yanit uzunlugu:', text.length, '| Ilk 200 char:', text.slice(0, 200));
-    return this.robustJsonParse<ParsedGlobalMaterial>(text);
+    return { data: this.robustJsonParse<ParsedGlobalMaterial>(text), usage: data?.usage ?? null };
   }
 
   // Gemini Vision: PDF inline data
-  private async callGeminiVision(pdfBuffer: Buffer, prompt: string, apiKey: string): Promise<ParsedGlobalMaterial[]> {
+  private async callGeminiVision(pdfBuffer: Buffer, prompt: string, apiKey: string): Promise<{ data: ParsedGlobalMaterial[]; usage: AiKullanim }> {
     const base64 = pdfBuffer.toString('base64');
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
@@ -791,7 +819,13 @@ ONEMLI: Eksik malzeme kabul edilemez. Dokumandaki malzeme sayisi ne kadarsa, o k
     const data: any = await response.json();
     if (!response.ok) throw new Error(data.error?.message || 'Gemini Vision hatasi');
     const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    return this.robustJsonParse<ParsedGlobalMaterial>(rawText);
+    return {
+      data: this.robustJsonParse<ParsedGlobalMaterial>(rawText),
+      usage: {
+        input_tokens: data.usageMetadata?.promptTokenCount,
+        output_tokens: data.usageMetadata?.candidatesTokenCount,
+      },
+    };
   }
 
   // Fiyat temizligi: TL, $, €, nokta/virgul ayiklama

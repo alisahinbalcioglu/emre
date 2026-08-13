@@ -14,6 +14,7 @@ import {
   Plus,
   Trash2,
   Package,
+  Languages,
 } from 'lucide-react';
 import { Button } from '@/ortak/ui/button';
 import { adDisiplinTahmini } from '@/ozellik/tablo/disiplin';
@@ -48,6 +49,7 @@ import { indeksUyarilari } from '@/lib/indeks-sagligi';
 import { DWG_SISTEM_ALANLARI, dwgTeklifSemasi } from '@/ozellik/teklif/dwg-teklif-sema';
 import { kalemUret } from '@/ozellik/teklif/teklif-kalem';
 import { restoreRematch } from '@/ozellik/teklif/restore-rematch';
+import { cevrilecekMetinler, ceviriUygula, ceviriGeriAl } from '@/ozellik/teklif/ceviri';
 import { sayiAlani } from '@/ozellik/fiyat/sayi-alani';
 import { fiyatsizKalemOzeti, fiyatsizOnayMetni, uyariyaGirerMi } from '@/ozellik/teklif/fiyatsiz-kalem-uyarisi';
 // NOT: `etkinMiktar` buradan DUSTU — tek tuketicisi restore blogunun icindeki
@@ -440,6 +442,63 @@ export default function NewQuotePage() {
   const excelGridRef = useRef<ExcelGridHandle>(null);
 
   const hasAnyLabor = capabilities.mechanical.labor || capabilities.electrical.labor;
+
+  // ── CEVIRI (13.08) ─────────────────────────────────────────────────────
+  // Akis: benzersizlestir (dokunulmazlar elenir) → backend onbellek+API →
+  // haritayi satirlara uygula. Cap/olcu/sayi ASLA gonderilmez —
+  // ozellik/teklif/ceviri.ts testle muhurlu.
+  const [ceviriDili, setCeviriDili] = useState<'tr' | 'en'>('tr');
+  const [ceviriYukleniyor, setCeviriYukleniyor] = useState(false);
+
+  const handleCeviri = async () => {
+    if (!multiSheet?.sheets) return;
+    const sheets = multiSheet.sheets;
+
+    // Satirlar YERINDE degistigi icin grid'e YENI dizi referansi verilmeli;
+    // aksi halde AG-Grid ayni diziyi gorup yeniden cizmez.
+    const tazele = () => {
+      const aktif = sheets[activeSheetIndex];
+      if (!aktif) return;
+      const satirlar = liveRowDataBySheet[aktif.index] ?? aktif.rowData ?? [];
+      setExcelGridData((onceki) => (onceki ? { ...onceki, rowData: [...satirlar] } : onceki));
+    };
+
+    // Turkce'ye donus: API'ye HIC gitmez, orijinal metin satirda saklidir.
+    if (ceviriDili === 'en') {
+      const geri = ceviriGeriAl(sheets as any, liveRowDataBySheet);
+      if (geri > 0) setLiveRowDataBySheet({ ...liveRowDataBySheet });
+      setCeviriDili('tr');
+      tazele();
+      return;
+    }
+
+    const metinler = cevrilecekMetinler(sheets as any, liveRowDataBySheet);
+    if (metinler.length === 0) {
+      toast({ title: 'Cevrilecek metin yok', description: 'Bu teklifte cevrilebilir malzeme adi bulunamadi.' });
+      return;
+    }
+
+    setCeviriYukleniyor(true);
+    try {
+      const { data } = await api.post('/ai/translate', { metinler, hedefDil: 'en' });
+      const yazilan = ceviriUygula(sheets as any, data?.harita ?? {}, liveRowDataBySheet);
+      if (yazilan > 0) setLiveRowDataBySheet({ ...liveRowDataBySheet });
+      setCeviriDili('en');
+      tazele();
+      toast({
+        title: 'Ceviri tamamlandi',
+        description: `${yazilan} hucre cevrildi · ${data?.onbellekten ?? 0} onbellekten, ${data?.cevrilen ?? 0} yeni`,
+      });
+    } catch (e: any) {
+      toast({
+        title: 'Ceviri basarisiz',
+        description: e?.response?.data?.message || e?.message || 'Bilinmeyen hata',
+        variant: 'destructive',
+      });
+    } finally {
+      setCeviriYukleniyor(false);
+    }
+  };
 
   // ── SessionStorage draft key ──
   const DRAFT_KEY = 'metaprice_quote_draft';
@@ -1458,7 +1517,25 @@ export default function NewQuotePage() {
           )}
         </div>
 
-        <div className="flex flex-col items-end gap-2">
+        <div className="flex flex-col items-end gap-3">
+          {/* 13.08 istegi: CEVIRI butonu para birimi seciciNIN SOLUNA (pembe cerceve) */}
+          <div className="flex items-center gap-2">
+            {excelGridData && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleCeviri}
+                disabled={ceviriYukleniyor}
+                title="Malzeme/is adlarini Ingilizceye cevirir. Cap, olcu ve sayilara DOKUNULMAZ."
+              >
+                {ceviriYukleniyor ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Languages className="mr-2 h-4 w-4" />
+                )}
+                {ceviriDili === 'tr' ? 'Ingilizceye Cevir' : 'Turkceye Don'}
+              </Button>
+            )}
           {/* Currency Toggle */}
           <div className="flex rounded-lg border bg-muted p-0.5">
             {currencies.map((c) => (
@@ -1478,8 +1555,10 @@ export default function NewQuotePage() {
               </button>
             ))}
           </div>
+          </div>
 
-          {/* Teklifi Kaydet — 06.08 istegi: alt sagdan buraya tasindi */}
+          {/* Teklifi Kaydet — 06.08'de alt sagdan buraya, 13.08'de bir satir
+              asagi tasindi (yesil cerceve): ust satir ceviri + para birimi. */}
           {excelGridData && (
             <Button onClick={() => handleSave()} disabled={isSaving}>
               {isSaving ? (
