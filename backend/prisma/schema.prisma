@@ -436,6 +436,12 @@ model Quote {
   displayCurrency String       @default("TRY")
   displayRate     Float?
   displayRateDate String?
+  // 13.08: teklifin DILI de para birimi gibi KAYDEDILIR ('tr' | 'en').
+  // Neden sart: ceviri satirlara kalici yaziliyordu ama "bu teklif Ingilizce"
+  // bilgisi HICBIR YERDE durmuyordu. Detay sayfasi her acilista dili 'tr'
+  // varsayiyor, dolayisiyla export'a dil GITMIYOR ve musteriye satirlari
+  // Ingilizce ama basliklari/birimleri TURKCE bir dosya gidiyordu.
+  displayLanguage String       @default("tr")
 
   // ARINMA Faz 3: kullanici-basina teklif listesi (findMany{userId}) en sik
   // sorgu — indexsiz full-scan'di ("olcek hep binlerce eszamanli" kurali).

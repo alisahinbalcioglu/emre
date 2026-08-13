@@ -49,6 +49,7 @@ export class QuotesController {
     @Body() body: {
       musteri?: string; proje?: string; hazirlayan?: string; gecerlilik?: string; formatId?: string | null;
       displayCurrency?: string; displayRate?: number | null; displayRateDate?: string | null;
+      displayLanguage?: string;
     },
   ) {
     return this.quotesService.updateInfo(user.id, id, body ?? {});

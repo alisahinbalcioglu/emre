@@ -1449,6 +1449,12 @@ export default function NewQuotePage() {
         sheets: sheetsPayload,
         originalFileBase64: originalFileBase64 ?? undefined,
         originalFileName: originalFileName ?? undefined,
+        // 13.08: ceviri yapildiysa teklif Ingilizce KAYDEDILIR. Bu alan
+        // olmadan satirlar Ingilizce kaydediliyor ama "bu teklif Ingilizce"
+        // bilgisi hicbir yerde durmuyordu; detay sayfasi dili 'tr' varsayip
+        // export'a dil gecmiyor, musteriye satirlari Ingilizce ama
+        // basliklari/birimleri TURKCE bir dosya gidiyordu.
+        displayLanguage: ceviriDili,
       });
 
       // Goruntuleme para birimi (KH8: Duzenle'de secilen birim TEKLIFLE

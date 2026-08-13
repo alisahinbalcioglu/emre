@@ -98,4 +98,14 @@ export class CreateQuoteDto {
   @IsOptional()
   @IsString()
   originalFileName?: string;
+
+  /** Teklifin dili ('tr' | 'en') — Duzenle ekraninda ceviri yapilip
+   *  kaydedildiginde 'en' gelir.
+   *
+   *  ⚠ DTO'ya EKLENMESI SART: `whitelist:true` oldugu icin burada tanimli
+   *  olmayan alan SESSIZCE silinir — marka/firma ikizinde yasanan hatanin
+   *  aynisi (yukaridaki `laborFirmaId` notu). */
+  @IsOptional()
+  @IsString()
+  displayLanguage?: string;
 }

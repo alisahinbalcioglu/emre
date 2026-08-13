@@ -31,6 +31,9 @@ interface QuoteDetail {
   sheets?: any[];
   items: any[];
   displayCurrency?: string;
+  /** Teklifin KAYITLI dili — 'en' ise sayfa Ingilizce acilir ve export'a
+   *  dil gecer (para biriminin birebir ikizi). */
+  displayLanguage?: string;
 }
 
 export default function QuoteDetailPage() {
@@ -67,6 +70,10 @@ export default function QuoteDetailPage() {
         if (data.displayCurrency === 'USD' || data.displayCurrency === 'EUR') {
           setCurrency(data.displayCurrency as Currency);
         }
+        // Teklif Ingilizce kaydedildiyse sayfa Ingilizce ACILIR: satirlar
+        // zaten cevrilmis durumda, dolayisiyla YENI BIR API CAGRISI YAPILMAZ.
+        // Bu satir olmadan export'a dil gecmiyor ve basliklar Turkce kaliyordu.
+        if (data.displayLanguage === 'en') setCeviriDili('en');
         // Ilk non-empty sheet'i aktif yap
         if (Array.isArray(data.sheets)) {
           const firstNonEmpty = data.sheets.findIndex((s: any) => !s.isEmpty);
@@ -112,6 +119,13 @@ export default function QuoteDetailPage() {
   // `key` deseninin aynisi).
   const [ceviriSurumu, setCeviriSurumu] = useState(0);
 
+  /** Dil secimini teklifle KAYDEDER — para birimi toggle'inin birebir ikizi
+   *  (`birimSec`). Kismi PATCH: kapak alanlarina dokunmaz. Sessiz denenir;
+   *  basarisiz olursa ekrandaki dil yine dogru calisir. */
+  const dilKaydet = (d: 'tr' | 'en') => {
+    api.patch(`/quotes/${id}/info`, { displayLanguage: d }).catch(() => { /* goruntuleme etkilenmez */ });
+  };
+
   /** Ceviriye girecek sayfalar — bos sayfalar elenir (grid'in gordugu kume). */
   const ceviriSayfalari = (): any[] => {
     const hepsi = quote?.sheets;
@@ -127,6 +141,7 @@ export default function QuoteDetailPage() {
       ceviriGeriAl(sayfalar);
       setCeviriDili('tr');
       setCeviriSurumu((n) => n + 1);
+      dilKaydet('tr');
       return;
     }
 
@@ -159,6 +174,7 @@ export default function QuoteDetailPage() {
 
       setCeviriDili('en');
       setCeviriSurumu((n) => n + 1);
+      dilKaydet('en');
       const eksik = Number(data?.basarisiz ?? 0) > 0;
       toast({
         title: eksik ? 'Çeviri KISMEN tamamlandı' : 'Çeviri tamamlandı',

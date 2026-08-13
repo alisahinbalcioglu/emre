@@ -286,6 +286,9 @@ export class QuotesService {
         sheets: dto.sheets ? (dto.sheets as any) : undefined,
         originalFile: originalFile ?? undefined,
         originalName: dto.originalFileName ?? undefined,
+        // 13.08: ceviri yapilip kaydedilen teklif Ingilizce ACILIR ve
+        // Ingilizce EXPORT edilir. Beyaz liste disi deger varsayilanda birakir.
+        displayLanguage: dto.displayLanguage === 'en' ? 'en' : undefined,
         items: { create: items },
       },
       include: {
@@ -340,6 +343,7 @@ export class QuotesService {
   async updateInfo(userId: string, id: string, dto: {
     musteri?: string; proje?: string; hazirlayan?: string; gecerlilik?: string; formatId?: string | null;
     displayCurrency?: string; displayRate?: number | null; displayRateDate?: string | null;
+    displayLanguage?: string;
   }) {
     const quote = await this.prisma.quote.findFirst({ where: { id, userId } });
     if (!quote) throw new NotFoundException('Quote not found');
@@ -364,8 +368,11 @@ export class QuotesService {
           ? dto.displayCurrency : undefined,
         displayRate: dto.displayRate === undefined ? undefined : dto.displayRate,
         displayRateDate: dto.displayRateDate === undefined ? undefined : dto.displayRateDate,
+        // 13.08: dil de kalici — beyaz liste disi deger DOKUNMAZ (kismi PATCH).
+        displayLanguage: ['tr', 'en'].includes(dto.displayLanguage ?? '')
+          ? dto.displayLanguage : undefined,
       } as any,
-      select: { id: true, musteri: true, proje: true, hazirlayan: true, gecerlilik: true, formatId: true, displayCurrency: true } as any,
+      select: { id: true, musteri: true, proje: true, hazirlayan: true, gecerlilik: true, formatId: true, displayCurrency: true, displayLanguage: true } as any,
     });
   }
 
