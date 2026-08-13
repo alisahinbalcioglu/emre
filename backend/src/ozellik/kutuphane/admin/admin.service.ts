@@ -2,6 +2,8 @@ import { Injectable, BadRequestException, NotFoundException, ConflictException }
 import * as XLSX from 'xlsx';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { AiService } from '../../giris/ai/ai.service';
+// Saglik kontrolu, CEVIRININ GERCEKTEN kullandigi modeli sinar (asagida).
+import { CEVIRI_MODEL } from '../../giris/ai/ceviri.service';
 import { TerminologyService } from '../../eslestirme/matching/terminology.service';
 import {
   buildMaterialContextFromRows,
@@ -377,7 +379,11 @@ export class AdminService {
         const res = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-          body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 5, messages: [{ role: 'user', content: 'ping' }] }),
+          // ⚠ CEVIRININ KULLANDIGI MODELIN AYNISI (`CEVIRI_MODEL`). Sabit
+          // kodlanmis baska bir model sinamak, "Baglanti basarili" yesilinin
+          // gercek yolu temsil ETMEMESINE yol acar — 13.08'de tam bu oldu:
+          // panel sonnet-4-6 ile yesil verirken ceviri opus-5 cagiriyordu.
+          body: JSON.stringify({ model: CEVIRI_MODEL, max_tokens: 5, messages: [{ role: 'user', content: 'ping' }] }),
         });
         if (res.ok) return { provider, status: 'active', message: 'Bağlantı başarılı' };
         const err: any = await res.json().catch(() => ({}));

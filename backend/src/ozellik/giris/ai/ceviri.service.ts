@@ -78,7 +78,22 @@ const SOZLUK: Array<[string, string]> = [
   ['fittings oranı', 'fittings allowance'],
 ];
 
-const MODEL = 'claude-opus-5';
+/**
+ * CEVIRI MODELI — saglik kontrolu de AYNI sabiti kullanir (admin.service).
+ *
+ * ⚠ 13.08'de bu iki yer AYRI modeller kullaniyordu: panel `claude-sonnet-4-6`
+ * ile "Baglanti basarili" diyordu, ceviri ise `claude-opus-5` cagiriyordu.
+ * Yesil rozet, ceviri yolunun calistigini KANITLAMIYORDU — hesabin o modele
+ * erisimi yoksa ya da fiyati bakiyeyi asiyorsa panel yesil kalirken ceviri
+ * patlardi. Olcut, olcmesi gereken seyin KENDISI olmali.
+ *
+ * Neden Sonnet: bu is ceviri degil ESLEME — sozluk sistem prompt'unda sabit,
+ * cikti json_schema ile YAPISAL olarak zorlanmis. Opus'un ek muhakemesi
+ * burada karsiligi olmayan bir maliyet; ayni bakiye Sonnet'le kat kat daha
+ * uzaga gider.
+ */
+export const CEVIRI_MODEL = 'claude-sonnet-5';
+const MODEL = CEVIRI_MODEL;
 /** Tek istekte gonderilecek metin sayisi — cikti tokenini sinirli tutar. */
 const PARCA = 150;
 
