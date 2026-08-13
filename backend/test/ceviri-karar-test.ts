@@ -99,6 +99,62 @@ ol(
   false,
 );
 
+// ⚠ 13.08 canli vakasi: 9.142 satirlik teklifte ceviri 529 `overloaded_error`
+// aldi. Bu, saglayicinin sunuculari asiri yuklu demektir — anahtar, kota ve
+// kod ile ILGISI YOKTUR. Genel dala dusup "servis yanit vermedi" demek,
+// kullaniciyi CALISAN anahtarini kurcalamaya iterdi.
+ol(
+  '529 asiri yogunluk olarak taninir',
+  ceviriHataMesaji(529, 'Overloaded').includes('asiri yogun'),
+  true,
+);
+
+ol(
+  '529 kullaniciya "sizde sorun YOK" der (anahtar kurcalamaya itmez)',
+  ceviriHataMesaji(529, 'Overloaded').includes('sorun YOK'),
+  true,
+);
+
+ol(
+  '529 mesaji anahtar degistirmeye YONLENDIRMEZ',
+  ceviriHataMesaji(529, 'Overloaded').includes('GECERSIZ'),
+  false,
+);
+
+// 500/502/503 ayni ailedendir — yalniz 529'u tanimak digerlerini disarida
+// birakirdi ve ayni gecici durum farkli mesaj uretirdi.
+ol(
+  '503 de gecici sunucu hatasi ailesinden sayilir',
+  ceviriHataMesaji(503, 'Service Unavailable').includes('asiri yogun'),
+  true,
+);
+
+// ⚠ 500 SINIRIN TA KENDISI: kriter yalniz 503/529 ile yazilsaydi `>= 500`
+// sessizce `> 500`e kayabilir ve gercek "Internal Server Error" genel dala
+// duserdi. Sinir degeri acikca olculur.
+ol(
+  '500 tam sinir — gecici sunucu hatasi sayilir',
+  ceviriHataMesaji(500, 'Internal Server Error').includes('asiri yogun'),
+  true,
+);
+
+// ⚠ 499 sinirin ALT komsusu: `>= 500` yerine `>= 499` ya da `>= 400`
+// yazilsaydi istemci hatalari "bekleyin, gecicidir" diye gosterilirdi.
+ol(
+  '499 gecici sayilmaz (sinirin alt komsusu)',
+  ceviriHataMesaji(499, 'Client Closed Request').includes('asiri yogun'),
+  false,
+);
+
+// ⚠ 4xx SUNUCU hatasi DEGILDIR: ust sinir 600 degil de acik birakilsaydi ya da
+// alt sinir 400'e cekilseydi, gercek istek hatalari "bekleyin, gecicidir"
+// diye gosterilir ve kullanici sonsuza kadar beklerdi.
+ol(
+  '404 gecici yogunluk sayilmaz',
+  ceviriHataMesaji(404, 'not found').includes('asiri yogun'),
+  false,
+);
+
 ol(
   'bilinmeyen durum ham mesaji TASIR (teshis kaybolmaz)',
   ceviriHataMesaji(undefined, 'socket hang up').includes('socket hang up'),

@@ -94,8 +94,27 @@ const SOZLUK: Array<[string, string]> = [
  */
 export const CEVIRI_MODEL = 'claude-sonnet-5';
 const MODEL = CEVIRI_MODEL;
-/** Tek istekte gonderilecek metin sayisi — cikti tokenini sinirli tutar. */
-const PARCA = 150;
+/**
+ * Tek istekte gonderilecek metin sayisi.
+ *
+ * ⚠ 13.08 canli olcumu: 9.142 satirlik teklifte 150'lik parcalar 529
+ * (`overloaded_error`) aldi — AYNI anda ayni anahtarla saglik kontrolu (5
+ * token'lik ping) BASARILIYDI. Yani anahtar/kota degil, ISTEGIN BUYUKLUGU
+ * belirleyici: buyuk istekler yogunluk aninda once reddediliyor.
+ *
+ * 60'a dusurmenin iki olculebilir etkisi var: (1) tek istek daha kisa surer,
+ * reddedilme penceresi daralir; (2) bir parca patladiginda 150 degil 60 metin
+ * kaybolur — gerisi onbellege yazildigi icin tekrar deneme kaldigi yerden
+ * devam eder. Daha da kucultmek istek SAYISINI artirip 429 riskini buyutur.
+ */
+const PARCA = 60;
+
+/**
+ * SDK varsayilani 2 deneme. 529/5xx GECICI oldugu icin tek dogru davranis
+ * beklemek ve yeniden denemek — SDK bunu ustel geri cekilmeyle kendisi yapar.
+ * Kullaniciya hata gostermeden once daha fazla sans verilir.
+ */
+const YENIDEN_DENEME = 5;
 
 export interface CeviriSonucu {
   harita: Record<string, string>;
@@ -119,6 +138,20 @@ export function ceviriHataMesaji(durum: number | undefined, mesaj: string): stri
   }
   if (durum === 429) {
     return 'Claude API istek siniri asildi (429). Kisa bir sure sonra tekrar deneyin.';
+  }
+  /**
+   * 5xx = saglayicinin SUNUCU tarafi. 529 (`overloaded_error`) bunun en sik
+   * gorulen hali: sunucular o an asiri yuklu. Anahtar, kota, bakiye ve kod
+   * ile ILGISI YOK — tek dogru eylem beklemek. Genel dala dusurmek ("servis
+   * yanit vermedi") kullaniciyi CALISAN anahtarini kurcalamaya iterdi.
+   *
+   * ⚠ Bu kosul once `durum === 529 || (… >= 500 && … < 600)` yazilmisti;
+   * mutasyon turu IKI parcanin da OLU oldugunu gosterdi: 529 zaten 5xx
+   * araliginda ve HTTP'de 6xx YOK, yani ust sinir hicbir zaman is yapmiyordu.
+   * Olculemeyen kod, dogru gorunse bile yanlis guven verir — silindi.
+   */
+  if (durum !== undefined && durum >= 500) {
+    return `AI servisi su an asiri yogun (${durum}) — anahtarinizda ya da teklifinizde bir sorun YOK. Birkac dakika sonra tekrar deneyin; cevrilmis metinler onbellege yazildigi icin tekrar deneme kaldigi yerden devam eder.`;
   }
   if (durum === 400) {
     return `Ceviri istegi reddedildi (400): ${mesaj}`;
@@ -199,7 +232,7 @@ export class CeviriService {
       );
     }
 
-    const client = new Anthropic({ apiKey });
+    const client = new Anthropic({ apiKey, maxRetries: YENIDEN_DENEME });
     let cevrilen = 0;
     // Parca sonuclari SAYILIR: "kac denendi / kaci patladi" bilinmeden
     // basarisizligi basaridan ayirmak imkansizdir.
