@@ -145,7 +145,8 @@ export interface ProductIndexFields {
  *     5 aile) → eski satirlar BAYAT. Reindex kalici cozum; ara donemde
  *     hazirlaPool istek aninda tazeler.
  */
-export const INDEX_VERSION = 13;
+// v14 (13.08): KANONIK_ESANLAM'a tee→te eklendi — urun adTokens degisebilir.
+export const INDEX_VERSION = 14;
 
 /** adSlug cozulemeyen satirin tasidigi isaret — eslestirmeye ADAY OLAMAZ. */
 export const BELIRSIZ_SLUG = 'belirsiz';
@@ -239,6 +240,16 @@ const KANONIK_ESANLAM: ReadonlyArray<[RegExp, string]> = [
   // k.vana / k. vana → kuresel vana (kisaltma acilir; ciplak "k vana"
   // BILEREK dahil degil — 'k' baska kisaltmalarin da bas harfi olabilir)
   [/\bk\s*\.\s*vana(\w*)/g, 'kuresel vana$1'],
+  // tee → te (13.08 canli, TRAKYA DOKUM): teklif Ingilizce yazimla "Tee"
+  // yazar ("2 1/2'' Siyah Dişli Tee", "İnegal Tee"), kutuphane Turkce "Te".
+  // tokenEsit ikisini ESLESTIREMEZ: 'tee' 3 harf (ONEK_MIN=4 altinda) ve
+  // 'te' KISA_KOKLER'de degil — ad kilidi (K6) yuzunden TUM Tee satirlari
+  // "bu markada yok" aliyordu; Dirsek satirlari ('dirsek'='dirsek') gecerken.
+  // TARTISMASIZ es anlam: tesisat baglaminda Tee = Te fittings. Ureticinin
+  // kendisi de iki yazimi karisik kullanir. ONEK toleransina KISA_KOKLER'le
+  // acmak yerine kanoniklestirme secildi: 'te' oneki 'tesisat', 'teflon',
+  // 'termostat' gibi kelimeleri de yutardi.
+  [/\btee\b/g, 'te'],
 ];
 
 /**

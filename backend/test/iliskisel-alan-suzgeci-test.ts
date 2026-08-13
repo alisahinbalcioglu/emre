@@ -34,6 +34,10 @@
  */
 import { QuotesService } from '../src/ozellik/teklif/quotes/quotes.service';
 
+/** Sahte CeviriService — bu testler dil gecmez, sheetleriCevir erken doner;
+ *  onbellekHaritasi HIC cagrilmaz. Constructor 13.08'de 3 parametreye cikti;
+ *  tsc test/ dizinini KAPSAMADIGI icin kirigi ancak regresyon yakaladi. */
+const sahteCeviri = { onbellekHaritasi: async () => ({}) };
 let pass = 0;
 const fails: string[] = [];
 const sina = (kod: string, ad: string, kosul: boolean, kanit: string) => {
@@ -94,7 +98,7 @@ async function main() {
   // ── S1-S5: gecerli / gecersiz / baskasinin ───────────────────────────
   {
     const { prisma, sonuc } = sahtePrisma();
-    const service = new QuotesService(prisma, fakeFx);
+    const service = new QuotesService(prisma, fakeFx, sahteCeviri as any);
     const uyarilar: string[] = [];
     const eskiWarn = console.warn;
     console.warn = (...a: any[]) => { uyarilar.push(a.join(' ')); };
@@ -132,7 +136,7 @@ async function main() {
   // ── S6: ID yoksa dogrulama sorgusu KOSMAZ ────────────────────────────
   {
     const { prisma, cagrilar, sonuc } = sahtePrisma();
-    const service = new QuotesService(prisma, fakeFx);
+    const service = new QuotesService(prisma, fakeFx, sahteCeviri as any);
     await service.create(BENIM, { title: 'T', items: [kalem({})] } as any);
     sina('S6', 'ID gonderilmezse dogrulama sorgusu HIC kosmaz',
       cagrilar.brandFindMany === 0 && cagrilar.laborFirmFindMany === 0,

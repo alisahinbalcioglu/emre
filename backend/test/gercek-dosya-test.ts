@@ -13,6 +13,10 @@
 import * as fs from 'fs';
 import { ExcelGridService } from '../src/ozellik/giris/excel-grid/excel-grid.service';
 
+/** Sahte CeviriService — bu testler dil gecmez, sheetleriCevir erken doner;
+ *  onbellekHaritasi HIC cagrilmaz. Constructor 13.08'de 3 parametreye cikti;
+ *  tsc test/ dizinini KAPSAMADIGI icin kirigi ancak regresyon yakaladi. */
+const sahteCeviri = { onbellekHaritasi: async () => ({}) };
 let passed = 0; let failed = 0; const failures: string[] = [];
 function check(name: string, cond: boolean, detail?: string) {
   if (cond) { passed++; console.log(`PASS: ${name}`); } else {
@@ -111,7 +115,7 @@ async function run() {
     };
     const prisma: any = { quote: { findFirst: async () => quote }, quoteFormat: { findFirst: async () => null } };
     const fx: any = { getRates: async () => ({ usdTry: 47, eurTry: 54, usdTryBuying: 47, eurTryBuying: 54, source: 'f', date: '' }) };
-    const qsvc = new QuotesService(prisma, fx);
+    const qsvc = new QuotesService(prisma, fx, sahteCeviri as any);
     let hata = ''; let sonuc: any = null;
     try { sonuc = await qsvc.exportPricedXlsx('u1', 'q1'); } catch (e: any) { hata = e?.message ?? 'hata'; }
     check('KH1 hangar (shared-formula) export-priced HATASIZ + dosya üretildi',
@@ -144,7 +148,7 @@ async function run() {
     };
     const prisma: any = { quote: { findFirst: async () => quote }, quoteFormat: { findFirst: async () => null } };
     const fx: any = { getRates: async () => ({ usdTry: 47, eurTry: 54, usdTryBuying: 47, eurTryBuying: 54, source: 'f', date: '' }) };
-    const qsvc = new QuotesService(prisma, fx);
+    const qsvc = new QuotesService(prisma, fx, sahteCeviri as any);
     let hata = ''; let sonuc: any = null;
     try { sonuc = await qsvc.exportPricedXlsx('u1', 'q9'); } catch (e: any) { hata = e?.message ?? 'hata'; }
     check('KH11 çapraz-kolon shared-formula (master H110 / clone I110) export HATASIZ',
@@ -218,7 +222,7 @@ async function run() {
       quoteExport: { create: async () => ({}) },
       $transaction: async (arg: any) => (Array.isArray(arg) ? Promise.all(arg) : arg(prismaQ)),
     };
-    const qsvc = new QuotesService(prismaQ, fx);
+    const qsvc = new QuotesService(prismaQ, fx, sahteCeviri as any);
     const priced = await qsvc.exportPricedXlsx('u1', 'q1');
     check('ALTIN Z4: fiyatlandırılmış export hatasız + self-check temiz',
       priced.buffer.length > 5000 && !priced.uyari, `uyari=${priced.uyari}`);

@@ -121,6 +121,7 @@ frontend/app/ :: Next.js App Router — rota = klasör yolu.
 # HAYALET: artık geçerli olmayan (dosyası yok ya da kurala uyar hâle gelmiş)
 #   bir istisna da kırmızıdır — ölü istisna sessiz çöp kutusudur.
 backend/src/ozellik/teklif/quotes/export-engine.ts :: F :: quotes/ TEK PARÇA tutuldu (RAPOR §6.5); bölünse kardeş import'lar çapraz-ağaç yoluna dönerdi. `quotes/` dışından çağıranı yok.
+backend/src/ozellik/teklif/quotes/cikti-dil.ts :: F :: quotes/ TEK PARÇA (export-engine emsali, 13.08) — yalnız standart-cikti.ts import eder; cikti/ altına taşımak kardeş import'u çapraz-ağaç yapardı.
 frontend/ozellik/tablo/excel-grid/build-material-context.ts :: C :: excel-grid/ TEK PARÇA tutuldu (RAPOR §6.5) — kardeş import'ları bölmek sıfır kazanç.
 frontend/ozellik/tablo/excel-grid/discount-utils.ts :: D :: excel-grid/ TEK PARÇA tutuldu (RAPOR §6.5).
 frontend/ortak/types/index.ts :: M :: `frontend/types/` → `ortak/types/` taşındı: paylaşımlı, teklife özgü değil (RAPOR §6.6).

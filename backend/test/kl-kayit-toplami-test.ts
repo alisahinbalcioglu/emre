@@ -35,6 +35,10 @@
 import { QuotesService } from '../src/ozellik/teklif/quotes/quotes.service';
 import { yukariYuvarla } from '../src/ozellik/fiyat/matching/pricing';
 
+/** Sahte CeviriService — bu testler dil gecmez, sheetleriCevir erken doner;
+ *  onbellekHaritasi HIC cagrilmaz. Constructor 13.08'de 3 parametreye cikti;
+ *  tsc test/ dizinini KAPSAMADIGI icin kirigi ancak regresyon yakaladi. */
+const sahteCeviri = { onbellekHaritasi: async () => ({}) };
 let pass = 0;
 const fails: string[] = [];
 const sina = (kod: string, ad: string, kosul: boolean, kanit: string) => {
@@ -59,7 +63,7 @@ async function main() {
     },
   };
   const fakeFx: any = { getRates: async () => ({ usdTry: 40, eurTry: 45 }) };
-  const service = new QuotesService(fakePrisma, fakeFx);
+  const service = new QuotesService(fakePrisma, fakeFx, sahteCeviri as any);
 
   // ── VAKA: PANOVA benzeri — kar %10, ekranda satis 116,5 · miktar 3 ──────
   // Ekran zinciri: net 105,86 → satis = yukariYuvarla(105,86 × 1,10) = 116,5

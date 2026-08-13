@@ -11,7 +11,7 @@
 
 import {
   buildProductIndex, buildRowKey, tokenize, resolveFamily, tokenEsit,
-  resolveProductSizeClass, buildBoyTag, rebuildIndexFields,
+  resolveProductSizeClass, buildBoyTag, rebuildIndexFields, altKumeMi,
   BELIRSIZ_SLUG, INDEX_VERSION, type ProductColumns,
 } from '../src/ozellik/eslestirme/matching/index/product-index';
 
@@ -438,6 +438,32 @@ function run() {
     // P9d: rowKey REBUILD CIKTISINDA YOK — servis onu asla ezemez
     check('P9d rebuild rowKey TASIMAZ (id/FK/iskonto korumasi)',
       !('rowKey' in (yeniden as Record<string, unknown>)));
+  }
+
+  // ── P10: tee → te KANONIKLESTIRME (13.08 canli, TRAKYA DOKUM) ─────────
+  // Teklif Ingilizce yazimla "Tee" yazar, kutuphane Turkce "Te". tokenEsit
+  // ikisini ESLESTIREMEZ ('tee' 3 harf, ONEK_MIN=4 altinda; 'te' KISA_KOKLER
+  // disi) — ad kilidi yuzunden TUM Tee satirlari "bu markada yok" aliyordu,
+  // Dirsek satirlari gecerken. Cozum tokenize'da kanoniklestirme: iki taraf
+  // da ayni katmandan gectigi icin esitlik yapisal olarak garantilenir.
+  {
+    check('P10 teklif "1\'\' Tee" → te tokeni uretir (tee DEGIL)',
+      tokenize("1'' Tee").includes('te') && !tokenize("1'' Tee").includes('tee'));
+    // ⚠ Asil olcu ESLESMENIN kendisi: satir tokenleri ⊆ urun tokenleri.
+    check('P10 "2 1/2\'\' Siyah Dişli Tee" ad tokeni kutuphane "Te" ile eslesir',
+      altKumeMi(
+        tokenize("2 1/2 '' Siyah Dişli Tee").filter((t) => t === 'te'),
+        tokenize('Te'),
+      ));
+    check('P10 "İnegal Tee" ↔ "İnegal Te" tam eslesir',
+      altKumeMi(tokenize('İnegal Tee'), tokenize('İnegal Te')));
+    // ⚠ SINIR: \b olmadan 'tee' baska kelimenin icinde de degisirdi.
+    // "steel" → 'steel' kalmali ('s-tee-l' parcalanmamali).
+    check('P10 sinir: "Steel Boru" icindeki tee DOKUNULMAZ',
+      tokenize('Steel Boru').includes('steel'));
+    // ⚠ TERS YON: kutuphane "Tee" yazsa da ayni kanona duser (simetri).
+    check('P10 simetri: urun adi "Tee" da te uretir',
+      tokenize('Tee').includes('te'));
   }
 
   console.log(`\n${'='.repeat(60)}`);

@@ -9,6 +9,10 @@
 import * as ExcelJS from 'exceljs';
 import { QuotesService } from '../src/ozellik/teklif/quotes/quotes.service';
 
+/** Sahte CeviriService — bu testler dil gecmez, sheetleriCevir erken doner;
+ *  onbellekHaritasi HIC cagrilmaz. Constructor 13.08'de 3 parametreye cikti;
+ *  tsc test/ dizinini KAPSAMADIGI icin kirigi ancak regresyon yakaladi. */
+const sahteCeviri = { onbellekHaritasi: async () => ({}) };
 let passed = 0; let failed = 0; const failures: string[] = [];
 function check(name: string, cond: boolean, detail?: string) {
   if (cond) { passed++; console.log(`PASS: ${name}`); } else {
@@ -150,7 +154,7 @@ async function run() {
   }
 
   const { prisma, fx, quote, exportlar } = fakeDb(formatBytes, musteriBuf, sheetsArr);
-  const svc = new QuotesService(prisma, fx);
+  const svc = new QuotesService(prisma, fx, sahteCeviri as any);
 
   // ── CANLI YOL: exportXlsx (ilk aktarim) ─────────────────────────────
   const r1 = await svc.exportXlsx('u1', 'q1');

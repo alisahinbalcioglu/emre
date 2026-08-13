@@ -131,6 +131,9 @@ const SUITES: Suite[] = [
   { ad: 'Fixture kapsama kapısı (PK3-repo)', script: 'test:pk3-repo', zincir: 'Z0' },
   { ad: 'Kur ölçütünün kendisi (KD9)', script: 'test:kd9', zincir: 'Z4' },
   { ad: 'Kod haritası denetimi (HR3)', script: 'test:harita', zincir: 'Z0' },
+  // 13.08 — ceviri turu: DB'siz, deterministik iki suite.
+  { ad: 'Çeviri başarısızlık kararı (sessiz başarı yasağı)', script: 'test:ceviri', zincir: 'Z2' },
+  { ad: 'Çıktı dili sözlüğü (başlık + birim)', script: 'test:cikti-dil', zincir: 'Z4' },
   // ── ADIM 6 (04.08.2026): KLASOR↔GRUP DISIPLIN KAPISI.
   //    `test:harita` bir dosyanin haritada ANILDIGINI denetler, DOGRU KLASORDE
   //    oldugunu denetlemez. 155 dosya tasindiktan sonra kapisiz duzen BIR
