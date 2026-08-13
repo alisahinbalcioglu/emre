@@ -482,12 +482,29 @@ export default function NewQuotePage() {
     try {
       const { data } = await api.post('/ai/translate', { metinler, hedefDil: 'en' });
       const yazilan = ceviriUygula(sheets as any, data?.harita ?? {}, liveRowDataBySheet);
-      if (yazilan > 0) setLiveRowDataBySheet({ ...liveRowDataBySheet });
+
+      // ⚠ Kayitli teklif ekraninin IKIZI — ayni yalan burada da kapatildi:
+      // tek hucre bile degismediyse "tamamlandi" DENMEZ ve dil dugmesi
+      // "Turkceye Don"e GECMEZ (13.08, gecersiz anahtar canli olcumu).
+      if (yazilan === 0) {
+        toast({
+          title: 'Ceviri uygulanamadi',
+          description: 'Sunucudan ceviri gelmedi — hicbir hucre degismedi.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      setLiveRowDataBySheet({ ...liveRowDataBySheet });
       setCeviriDili('en');
       tazele();
+      const eksik = Number(data?.basarisiz ?? 0) > 0;
       toast({
-        title: 'Ceviri tamamlandi',
-        description: `${yazilan} hucre cevrildi · ${data?.onbellekten ?? 0} onbellekten, ${data?.cevrilen ?? 0} yeni`,
+        title: eksik ? 'Ceviri KISMEN tamamlandi' : 'Ceviri tamamlandi',
+        description: eksik
+          ? `${yazilan} hucre cevrildi · ${data.basarisiz} parca basarisiz, o metinler Turkce kaldi`
+          : `${yazilan} hucre cevrildi · ${data?.onbellekten ?? 0} onbellekten, ${data?.cevrilen ?? 0} yeni`,
+        variant: eksik ? 'destructive' : undefined,
       });
     } catch (e: any) {
       toast({

@@ -168,6 +168,27 @@ export async function fetchSistemAyarlari(): Promise<Record<string, string>> {
   }
 }
 
+export interface AiSaglik {
+  status: 'active' | 'no_key' | 'no_credit' | 'error';
+  message: string;
+}
+
+/**
+ * Saglayiciya GERCEK bir istek atar (backend `checkAiHealth`).
+ *
+ * ⚠ Bu, anahtarin "kayitli olup olmadigini" degil GECERLI olup olmadigini
+ * olcer. 13.08'de anahtar KAYITLIYDI ama Anthropic 401 donduruyordu; ceviri
+ * her cagrida sessizce bos donuyordu. Kayitli olmak calisiyor demek degildir.
+ */
+export async function aiSaglikKontrol(provider = 'claude'): Promise<AiSaglik> {
+  try {
+    const { data } = await api.post<AiSaglik>('/admin/ai-health-check', { provider });
+    return { status: data?.status ?? 'error', message: data?.message ?? '' };
+  } catch (e: any) {
+    return { status: 'error', message: e?.response?.data?.message || e?.message || 'Kontrol edilemedi' };
+  }
+}
+
 /** Kismi ayar guncellemesi — `upsert` oldugu icin GONDERILMEYEN anahtara
  *  dokunulmaz (API anahtarlari guvende kalir). */
 export async function kaydetSistemAyari(anahtar: string, deger: string): Promise<boolean> {

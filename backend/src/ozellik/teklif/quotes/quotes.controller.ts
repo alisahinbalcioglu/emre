@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Delete, Patch,
-  Body, Param, UseGuards,
+  Body, Param, Query, UseGuards,
   UseInterceptors, UploadedFile,
   Res, HttpCode, HttpException, BadRequestException,
 } from '@nestjs/common';
@@ -68,9 +68,16 @@ export class QuotesController {
 
   /** .xlsx uret (rev artar, arsivlenir — T10) ve indir */
   @Post(':id/export')
-  async exportXlsx(@CurrentUser() user: any, @Param('id') id: string, @Res() res: Response) {
+  async exportXlsx(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Res() res: Response,
+    // 13.08: `{dil:'en'}` → sayfa metinleri onbellekteki ceviriyle iner.
+    // Gonderilmezse davranis DEGISMEZ (Turkce) — eski istemciler etkilenmez.
+    @Body() body?: { dil?: string },
+  ) {
     try {
-      const { buffer, filename, uyari, ozet } = await this.quotesService.exportXlsx(user.id, id);
+      const { buffer, filename, uyari, ozet } = await this.quotesService.exportXlsx(user.id, id, body?.dil);
       res.set({
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'Content-Disposition': `attachment; filename="${encodeURIComponent(filename)}"`,
@@ -87,9 +94,14 @@ export class QuotesController {
   /** Fiyatlandirilmis kesif Excel'i — teklif formati YOK, rev ARTMAZ
    *  (kullanici karari 24.07: cikti ikiye ayrildi). */
   @Get(':id/export-priced')
-  async exportPriced(@CurrentUser() user: any, @Param('id') id: string, @Res() res: Response) {
+  async exportPriced(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Res() res: Response,
+    @Query('dil') dil?: string,
+  ) {
     try {
-      const { buffer, filename, uyari, ozet } = await this.quotesService.exportPricedXlsx(user.id, id);
+      const { buffer, filename, uyari, ozet } = await this.quotesService.exportPricedXlsx(user.id, id, dil);
       res.set({
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'Content-Disposition': `attachment; filename="${encodeURIComponent(filename)}"`,

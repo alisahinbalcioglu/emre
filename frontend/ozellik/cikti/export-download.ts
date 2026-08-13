@@ -57,11 +57,15 @@ async function hataMesaji(e: any): Promise<string> {
   }
 }
 
-/** Teklif Formati ciktisini (.xlsx) uretip indirir (rev artar, arsivlenir). */
-export async function teklifCiktisiniIndir(quoteId: string): Promise<boolean> {
+/** Teklif Formati ciktisini (.xlsx) uretip indirir (rev artar, arsivlenir).
+ *
+ *  `dil='en'` gecilirse sayfa metinleri ONBELLEKTEKI ceviriyle iner. Cagiran
+ *  taraf bunu yalnizca ekran Ingilizce moddayken gecer; boylece onbellek o
+ *  teklifin metinleriyle zaten dolu olur. Gecilmezse davranis DEGISMEZ. */
+export async function teklifCiktisiniIndir(quoteId: string, dil?: 'en'): Promise<boolean> {
   try {
     toast({ title: 'Çıktı hazırlanıyor…', description: 'Teklif formatında Excel üretiliyor.' });
-    const x = await api.post(`/quotes/${quoteId}/export`, {}, { responseType: 'blob' });
+    const x = await api.post(`/quotes/${quoteId}/export`, dil ? { dil } : {}, { responseType: 'blob' });
     blobIndir(x.data, x.headers, 'teklif.xlsx');
     uyariGoster(x.headers);
     toast({ title: 'İndirildi', description: ozetMetni(x.headers, 'Teklif Excel dosyası bilgisayarınıza indi.') });
@@ -75,10 +79,13 @@ export async function teklifCiktisiniIndir(quoteId: string): Promise<boolean> {
 
 /** Fiyatlandirilmis kesif Excel'ini indirir — musterinin orijinal dosyasi,
  *  fiyatlar yazilmis; teklif formati YOK, rev ARTMAZ. */
-export async function fiyatliExceliIndir(quoteId: string): Promise<boolean> {
+export async function fiyatliExceliIndir(quoteId: string, dil?: 'en'): Promise<boolean> {
   try {
     toast({ title: 'Çıktı hazırlanıyor…', description: 'Fiyatlandırılmış keşif Excel\'i üretiliyor.' });
-    const x = await api.get(`/quotes/${quoteId}/export-priced`, { responseType: 'blob' });
+    const x = await api.get(`/quotes/${quoteId}/export-priced`, {
+      responseType: 'blob',
+      params: dil ? { dil } : undefined,
+    });
     blobIndir(x.data, x.headers, 'fiyatlandirilmis-kesif.xlsx');
     uyariGoster(x.headers);
     toast({ title: 'İndirildi', description: ozetMetni(x.headers, 'Fiyatlandırılmış keşif bilgisayarınıza indi.') });

@@ -8,6 +8,7 @@ import { buildExportWorkbook, ExportSonucu, ExportBirim } from './export-engine'
 import { standartCiktiUret } from './standart-cikti';
 import { buildSampleFormat, ExportOverrides, FillContext } from '../../cikti/quote-formats/format-engine';
 import { ExchangeRatesService } from '../../fiyat/exchange-rates/exchange-rates.service';
+import { CeviriService } from '../../giris/ai/ceviri.service';
 import { yukariYuvarla } from '../../fiyat/matching/pricing';
 
 /** KDV orani — kod sabiti (ayarlanabilirlik backlog) */
@@ -25,7 +26,85 @@ export class QuotesService {
   constructor(
     private prisma: PrismaService,
     private exchangeRates: ExchangeRatesService,
+    private ceviri: CeviriService,
   ) {}
+
+  /**
+   * EXPORT DILI — sayfa metinlerini ONBELLEKTEKI ceviriyle degistirir (13.08).
+   *
+   * ── NEDEN BURADA KARAR YOK ─────────────────────────────────────────────────
+   * Hangi hucrenin cevrilebilecegine (dokunulmazlar: cap/olcu/kod) KARAR VEREN
+   * tek yer frontend'deki saf modul. Burada yalnizca `Translation` onbelleginde
+   * KAYITLI eslesenler uygulanir; onbellek zaten o kuralin ciktisidir, yani
+   * "DN 20" hicbir zaman gonderilmedigi icin burada da degismez. Kurali ikinci
+   * kez yazmak, zamanla birbirinden ayrilan iki gercek uretirdi.
+   *
+   * ── NEDEN API'YE GITMEZ ────────────────────────────────────────────────────
+   * Export bir indirme yolu: 15.000 satirlik bir teklifte AI beklemek indirmeyi
+   * dakikalara cikarir ve kullanicinin ISTEMEDIGI bir harcama uretir. Ekranda
+   * "Ingilizceye Cevir" zaten onbellegi doldurur; export onu KULLANIR.
+   * Onbellekte olmayan metin TURKCE kalir — sessizce degil, cagiran tarafa
+   * sayisi bildirilerek.
+   */
+  /**
+   * Ceviri sonucunu export ozetine ekler.
+   *
+   * ⚠ EKSIK SAYISI GIZLENMEZ: onbellekte bulunmayan metin dosyaya TURKCE iner.
+   * Bunu soylemeyen bir ozet, kullanicinin yarim Ingilizce bir teklifi
+   * musteriye gondermesine ve FARK ETMEMESINE yol acar.
+   */
+  private ceviriOzetiEkle(ozet: string | undefined, c: { cevrilen: number; eksik: number }): string | undefined {
+    if (c.cevrilen === 0 && c.eksik === 0) return ozet;
+    const parca = c.eksik > 0
+      ? `İngilizce: ${c.cevrilen} hücre çevrildi, ${c.eksik} hücre Türkçe kaldı (önbellekte yok)`
+      : `İngilizce: ${c.cevrilen} hücre çevrildi`;
+    return ozet ? `${ozet} · ${parca}` : parca;
+  }
+
+  private async sheetleriCevir(
+    sheets: any[],
+    dil: string | undefined,
+  ): Promise<{ cevrilen: number; eksik: number }> {
+    if (dil !== 'en' || !Array.isArray(sheets)) return { cevrilen: 0, eksik: 0 };
+
+    const anahtar = (v: unknown) => String(v ?? '').trim().replace(/\s+/g, ' ');
+
+    // 1) Aday metinleri topla — yalniz AD alani (insanin okudugu metin).
+    const adaylar: string[] = [];
+    for (const sh of sheets) {
+      const adAlan = sh?.columnRoles?.nameField;
+      if (!adAlan) continue;
+      for (const row of sh?.rowData ?? []) {
+        const a = anahtar(row?.[adAlan]);
+        if (a) adaylar.push(a);
+      }
+    }
+    if (adaylar.length === 0) return { cevrilen: 0, eksik: 0 };
+
+    // 2) Onbellekte KAYITLI olanlari al (karar yok, eslesme var).
+    const harita = await this.ceviri.onbellekHaritasi(adaylar, 'en');
+
+    // 3) Uygula. `_ceviriKaynak` YAZILMAZ: bu, DB'ye donmeyen gecici bir export
+    //    kopyasidir; kaydi kirletmemek icin yalnizca gorunen deger degisir.
+    let cevrilen = 0;
+    let eksik = 0;
+    for (const sh of sheets) {
+      const adAlan = sh?.columnRoles?.nameField;
+      if (!adAlan) continue;
+      for (const row of sh?.rowData ?? []) {
+        const a = anahtar(row?.[adAlan]);
+        if (!a) continue;
+        const ceviri = harita[a];
+        if (ceviri && ceviri !== row[adAlan]) {
+          row[adAlan] = ceviri;
+          cevrilen++;
+        } else if (!ceviri) {
+          eksik++;
+        }
+      }
+    }
+    return { cevrilen, eksik };
+  }
 
   async parseExcel(userId: string, fileBuffer: Buffer) {
     const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
@@ -412,8 +491,11 @@ export class QuotesService {
   // eski kayitli override'lar ciktiKur uzerinden islenmeye devam eder.
 
   /** .xlsx uret + REV artir + arsivle (T10). */
-  async exportXlsx(userId: string, id: string): Promise<{ buffer: Buffer; filename: string; rev: number; quoteNo: string; uyari?: string; ozet?: string }> {
+  async exportXlsx(userId: string, id: string, dil?: string): Promise<{ buffer: Buffer; filename: string; rev: number; quoteNo: string; uyari?: string; ozet?: string }> {
     const quote = await this.quoteGetir(userId, id);
+    // 13.08: `dil=en` ise sayfa metinleri onbellekteki ceviriyle degistirilir.
+    // DB'ye YAZILMAZ — yalnizca bu indirmenin kopyasi degisir.
+    const ceviriOzeti = await this.sheetleriCevir(quote.sheets as any[], dil);
 
     // Teklif no ILK aktarimda atanir, sonra SABIT (T10)
     let quoteNo: string = quote.quoteNo;
@@ -454,12 +536,12 @@ export class QuotesService {
     const uyari = parcalar.length > 0 ? `${parcalar.join('; ')} — çıktıyı kontrol edin.` : undefined;
     if (uyari) console.warn(`[Export] ⚠ SELF-CHECK (teklif format): ${uyari}`);
     // PANO 21a: gorunur ozet (KF7 — iki yol ayni self-check'i tasir)
-    const ozet = this.exportOzeti({
+    const ozet = this.ceviriOzetiEkle(this.exportOzeti({
       yazilan: sonuc.yazilanDeger ?? 0,
       beklenen: sonuc.beklenenDeger ?? 0,
       fiyatsiz: sonuc.fiyatsizSatir ?? 0,
       toplam: sonuc.sekmeler.reduce((a, b) => a + b.matDeger + b.labDeger, 0),
-    }, await this.exportBirimi(quote));
+    }, await this.exportBirimi(quote)), ceviriOzeti);
     return { buffer, filename, rev: yeniRev, quoteNo, uyari, ozet };
   }
 
@@ -479,12 +561,16 @@ export class QuotesService {
    * kapsamında SİLİNDİ (369 satır); iki export yolu da `standartSayfaYaz`
    * motorunu kullanıyor (KF7).
    */
-  async exportPricedXlsx(userId: string, id: string): Promise<{ buffer: Buffer; filename: string; uyari?: string; ozet?: string }> {
+  async exportPricedXlsx(userId: string, id: string, dil?: string): Promise<{ buffer: Buffer; filename: string; uyari?: string; ozet?: string }> {
     const quote = await this.quoteGetir(userId, id);
     const sheetsArr = Array.isArray(quote.sheets) ? (quote.sheets as any[]) : [];
     if (sheetsArr.length === 0) {
       throw new BadRequestException('Bu teklifte sayfa verisi yok — keşif Excel dosyasını yükleyip teklifi yeniden kaydedin.');
     }
+    // IKIZ (teklif-format yolunun aynisi): iki cikti yolundan biri Ingilizce
+    // inip digeri Turkce inseydi, kullanici hangisini indirdigine gore farkli
+    // bir gercek yasardi.
+    const ceviriOzeti = await this.sheetleriCevir(sheetsArr, dil);
     const birim = await this.exportBirimi(quote); // PANO 18/EX6: ekrandaki birim
     const baslikParcalari = [quote.title, (quote as any).customerName, (quote as any).projectName]
       .map((x: any) => String(x ?? '').trim()).filter(Boolean);
@@ -497,7 +583,10 @@ export class QuotesService {
     const fiyatsiz = sheetsArr.reduce((a: number, sh: any) => a + (sh?.rowData ?? [])
       .filter((r: any) => r?._isDataRow && !r?._ozet
         && !(parseFloat(String(r?._matBirim ?? '')) > 0) && !(parseFloat(String(r?._labBirim ?? '')) > 0)).length, 0);
-    const ozet = fiyatsiz > 0 ? `${sonuc.ozet} · ${fiyatsiz} satır fiyatsız (eşleşmemiş)` : sonuc.ozet;
+    const ozet = this.ceviriOzetiEkle(
+      fiyatsiz > 0 ? `${sonuc.ozet} · ${fiyatsiz} satır fiyatsız (eşleşmemiş)` : sonuc.ozet,
+      ceviriOzeti,
+    );
     const temizBaslik = String(quote.title ?? 'Teklif').replace(/[\/:*?"<>|]/g, '-').slice(0, 60);
     const filename = `${temizBaslik} - Fiyatlandırılmış Teklif.xlsx`;
     console.log(`[Export] Standart fiyatlı çıktı (${(sonuc.buffer.length / 1024).toFixed(0)} KB) — ${ozet}`);

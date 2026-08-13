@@ -86,6 +86,50 @@ export interface CeviriSonucu {
   harita: Record<string, string>;
   onbellekten: number;
   cevrilen: number;
+  /** API'ye gidip BASARISIZ olan parca sayisi. 0'dan buyukse ceviri EKSIKTIR. */
+  basarisiz: number;
+}
+
+/**
+ * API hatasini kullanicinin YAPABILECEGI bir eyleme cevirir.
+ *
+ * ⚠ Ham SDK mesaji ("invalid x-api-key") kullaniciya tek basina hicbir sey
+ * soylemiyor. 13.08'de tam olarak bu yasandi: anahtar gecersizdi, her parca
+ * 401 aldi, ama uc 200 + BOS HARITA dondu ve ekran "Ceviri tamamlandi" dedi.
+ * Ozellik calismiyordu ve bunu kimse goremiyordu.
+ */
+export function ceviriHataMesaji(durum: number | undefined, mesaj: string): string {
+  if (durum === 401 || durum === 403) {
+    return 'Claude API anahtari GECERSIZ (401). Admin → Istatistikler → AI Kullanimi bolumunden guncel anahtari girin.';
+  }
+  if (durum === 429) {
+    return 'Claude API istek siniri asildi (429). Kisa bir sure sonra tekrar deneyin.';
+  }
+  if (durum === 400) {
+    return `Ceviri istegi reddedildi (400): ${mesaj}`;
+  }
+  return `Ceviri servisi yanit vermedi: ${mesaj}`;
+}
+
+/**
+ * "Bu sonuc bir BASARISIZLIK mi?" — cevirinin tek kritik karari, saf halde.
+ *
+ * ⚠ Bu karar ayri bir fonksiyon cunku 13.08'e kadar HIC VERILMIYORDU: her
+ * parca hatasi yutuluyor, uc her kosulda 200 donuyordu. Canli olcumde dort
+ * parcanin dordu de 401 aldi, ekran "Ceviri tamamlandi" dedi ve tek bir hucre
+ * bile degismedi. Karari koda gomulu birakmak onu tekrar olcusuz birakirdi;
+ * burada durur ve testle muhurlenir (`test/ceviri-karar-test.ts`).
+ *
+ * KURAL: yalnizca HIC parca gecmemis VE onbellekten de hicbir sey gelmemisse
+ * basarisizliktir. Onbellekten sonuc geldiyse elde gercek bir ceviri var
+ * demektir — eksiklik hata degil, `basarisiz` sayisiyla BILDIRILIR.
+ */
+export function ceviriBasarisizMi(p: {
+  toplamParca: number;
+  basarisizParca: number;
+  onbellekten: number;
+}): boolean {
+  return p.toplamParca > 0 && p.basarisizParca === p.toplamParca && p.onbellekten === 0;
 }
 
 @Injectable()
@@ -118,7 +162,7 @@ export class CeviriService {
     const benzersiz = Array.from(
       new Set(metinler.map((m) => String(m ?? '').trim().replace(/\s+/g, ' ')).filter(Boolean)),
     );
-    if (benzersiz.length === 0) return { harita: {}, onbellekten: 0, cevrilen: 0 };
+    if (benzersiz.length === 0) return { harita: {}, onbellekten: 0, cevrilen: 0, basarisiz: 0 };
 
     // ── 1) ONBELLEK ────────────────────────────────────────────────────────
     const kayitlar = await this.prisma.translation.findMany({
@@ -129,7 +173,7 @@ export class CeviriService {
     const onbellekten = kayitlar.length;
 
     const eksik = benzersiz.filter((m) => harita[m] === undefined);
-    if (eksik.length === 0) return { harita, onbellekten, cevrilen: 0 };
+    if (eksik.length === 0) return { harita, onbellekten, cevrilen: 0, basarisiz: 0 };
 
     // ── 2) API ─────────────────────────────────────────────────────────────
     const ayarlar = await this.prisma.systemSettings.findMany({ where: { key: 'CLAUDE_API_KEY' } });
@@ -142,9 +186,15 @@ export class CeviriService {
 
     const client = new Anthropic({ apiKey });
     let cevrilen = 0;
+    // Parca sonuclari SAYILIR: "kac denendi / kaci patladi" bilinmeden
+    // basarisizligi basaridan ayirmak imkansizdir.
+    let toplamParca = 0;
+    let basarisizParca = 0;
+    let ilkHata: { durum?: number; mesaj: string } | null = null;
 
     for (let i = 0; i < eksik.length; i += PARCA) {
       const parca = eksik.slice(i, i + PARCA);
+      toplamParca++;
       try {
         const yanit = await client.messages.create({
           model: MODEL,
@@ -190,6 +240,9 @@ export class CeviriService {
           });
         }
       } catch (e) {
+        basarisizParca++;
+        const durum = (e as any)?.status as number | undefined;
+        if (!ilkHata) ilkHata = { durum, mesaj: (e as Error).message };
         await this.ai.logUsage({
           feature: 'translate',
           provider: 'claude',
@@ -198,11 +251,54 @@ export class CeviriService {
           errorMessage: (e as Error).message,
         });
         // Parca hatasi digerlerini durdurmaz; cevrilemeyenler Turkce kalir.
-        console.error('[Ceviri] parca hatasi:', (e as Error).message);
+        console.error('[Ceviri] parca hatasi:', durum ?? '-', (e as Error).message);
       }
     }
 
-    return { harita, onbellekten, cevrilen };
+    /**
+     * ⚠ HICBIR PARCA GECMEDIYSE BU BIR BASARI DEGILDIR.
+     *
+     * Eski hali her hatayi yutup `{harita:{}, cevrilen:0}` ile 200 donuyordu;
+     * frontend bunu "ceviri tamamlandi" olarak gosteriyor, dil dugmesi
+     * "Turkceye Don"e geciyor ve kullanici ozelligin CALISTIGINI saniyordu.
+     * 13.08 canli olcumu: anahtar gecersizdi, dort parca da 401 aldi, ekranda
+     * tek bir hucre bile degismedi ve hicbir uyari cikmadi.
+     *
+     * Onbellekten gelen ceviriler VARSA hata ATILMAZ: elde gercek bir sonuc
+     * var demektir; eksiklik `basarisiz` alaniyla bildirilir.
+     */
+    if (ceviriBasarisizMi({ toplamParca, basarisizParca, onbellekten })) {
+      throw new BadRequestException(
+        ceviriHataMesaji(ilkHata?.durum, ilkHata?.mesaj ?? 'bilinmeyen hata'),
+      );
+    }
+
+    return { harita, onbellekten, cevrilen, basarisiz: basarisizParca };
+  }
+
+  /**
+   * YALNIZ ONBELLEK — API'ye ASLA gitmez, hicbir metni "cevrilmeli mi" diye
+   * DEGERLENDIRMEZ. Export yolu bunu kullanir.
+   *
+   * ⚠ NEDEN KARAR VERMEZ: dokunulmazlik kurali (cap/olcu/kod ceviriye
+   * GIRMEZ) frontend'de saf modulde durur ve testle muhurlu
+   * (`ozellik/teklif/ceviri.ts`). Ayni kurali burada ikinci kez yazmak, iki
+   * yerde ayri ayri evrilen IKI GERCEK uretirdi. Onbellek zaten o kuralin
+   * CIKTISIDIR: "DN 20" hicbir zaman gonderilmedigi icin onbellekte YOKTUR,
+   * dolayisiyla export'ta da degismez. Karar tek yerde kalir, burasi yalnizca
+   * kayitli esleseni uygular.
+   */
+  async onbellekHaritasi(metinler: string[], hedefDil = 'en'): Promise<Record<string, string>> {
+    const benzersiz = Array.from(
+      new Set(metinler.map((m) => String(m ?? '').trim().replace(/\s+/g, ' ')).filter(Boolean)),
+    );
+    if (benzersiz.length === 0) return {};
+    const kayitlar = await this.prisma.translation.findMany({
+      where: { targetLang: hedefDil, sourceText: { in: benzersiz } },
+    });
+    const harita: Record<string, string> = {};
+    for (const k of kayitlar) harita[k.sourceText] = k.translatedText;
+    return harita;
   }
 
   /** Kullanici duzeltmesi — AI'nin uzerine yazar ve bir daha sorulmaz. */

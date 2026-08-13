@@ -24,8 +24,8 @@ import { Button } from '@/ortak/ui/button';
 import { Badge } from '@/ortak/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/ortak/ui/card';
 import {
-  fetchAdminStats, fetchAiKullanimi, fetchSistemAyarlari, kaydetSistemAyari,
-  type AdminStats, type KpiMetric, type AiKullanimi, type AiOzellikKullanimi,
+  fetchAdminStats, fetchAiKullanimi, fetchSistemAyarlari, kaydetSistemAyari, aiSaglikKontrol,
+  type AdminStats, type KpiMetric, type AiKullanimi, type AiOzellikKullanimi, type AiSaglik,
 } from '@/ozellik/kutuphane/admin-stats';
 import { butceOku, butceDurumu, AI_BUTCE_ANAHTARI } from '@/ozellik/kutuphane/ai-butce';
 
@@ -100,6 +100,17 @@ export default function AdminStatsPage() {
   const [butceKayitli, setButceKayitli] = useState('');
   const [butceKaydediliyor, setButceKaydediliyor] = useState(false);
   const [butceKaydedildi, setButceKaydedildi] = useState(false);
+  // ── CLAUDE API ANAHTARI ──────────────────────────────────────────────────
+  // ⚠ MASKELEME TUZAGI: `GET /admin/settings` anahtari `sk-a••••••••xyz1`
+  // seklinde MASKELI dondurur. Tek bir kutu kullanip bu degeri geri
+  // kaydetseydik anahtarin YERINE maskeli metin yazilirdi. Bu yuzden iki ayri
+  // sey var: `apiMevcut` SALT-OKUNUR gosterim, `apiYeni` HEP BOS baslar ve
+  // yalnizca doluysa gonderilir.
+  const [apiMevcut, setApiMevcut] = useState('');
+  const [apiYeni, setApiYeni] = useState('');
+  const [apiKaydediliyor, setApiKaydediliyor] = useState(false);
+  const [saglik, setSaglik] = useState<AiSaglik | null>(null);
+  const [saglikKontrol, setSaglikKontrol] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const load = () => {
@@ -110,10 +121,34 @@ export default function AdminStatsPage() {
         setAi(a);
         setButceGirdi(ayarlar[AI_BUTCE_ANAHTARI] ?? '');
         setButceKayitli(ayarlar[AI_BUTCE_ANAHTARI] ?? '');
+        setApiMevcut(ayarlar['CLAUDE_API_KEY'] ?? '');
       })
       .finally(() => setLoading(false));
   };
   useEffect(load, []);
+
+  const apiAnahtarKaydet = async () => {
+    const deger = apiYeni.trim();
+    if (!deger) return; // bos gonderim anahtari SILERDI
+    setApiKaydediliyor(true);
+    setSaglik(null);
+    const ok = await kaydetSistemAyari('CLAUDE_API_KEY', deger);
+    setApiKaydediliyor(false);
+    if (!ok) return;
+    setApiYeni(''); // ⚠ anahtar ekranda ASILI KALMAZ
+    // Kaydetmek "calisiyor" demek DEGILDIR — hemen gercek istekle sinanir.
+    setSaglikKontrol(true);
+    const sonuc = await aiSaglikKontrol('claude');
+    setSaglik(sonuc);
+    setSaglikKontrol(false);
+    load();
+  };
+
+  const saglikSina = async () => {
+    setSaglikKontrol(true);
+    setSaglik(await aiSaglikKontrol('claude'));
+    setSaglikKontrol(false);
+  };
 
   const butceKaydet = async () => {
     setButceKaydediliyor(true);
@@ -297,6 +332,60 @@ export default function AdminStatsPage() {
                       {usd(ai.total.estimatedCost)}
                     </p>
                   </div>
+                </div>
+
+                {/* ── Claude API anahtari ──
+                    13.08: anahtar KAYITLIYDI ama Anthropic 401 donduruyordu ve
+                    ceviri her cagrida sessizce bos donuyordu. Anahtari
+                    girecek HICBIR ekran yoktu (`PATCH /admin/settings` ucunun
+                    frontend'de tek tuketicisi bile yoktu) ve VPS konsolundan
+                    SQL ile girmek de mumkun degil: konsol TR klavyede `_`
+                    yazamiyor, Anthropic anahtarlari ise `_` icerebiliyor. */}
+                <div className="rounded-lg border border-slate-200 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-medium text-slate-600">Claude API anahtarı</p>
+                      <p className="mt-0.5 text-[11px] text-slate-400">
+                        {apiMevcut
+                          ? <>kayıtlı: <span className="font-mono">{apiMevcut}</span></>
+                          : 'kayıtlı anahtar yok'}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="password"
+                        value={apiYeni}
+                        onChange={(e) => setApiYeni(e.target.value)}
+                        placeholder="yeni anahtarı yapıştırın"
+                        autoComplete="off"
+                        className="h-7 w-64 rounded-md border border-slate-200 px-2 font-mono text-xs outline-none focus:border-blue-400"
+                      />
+                      <Button size="sm" variant="outline" onClick={apiAnahtarKaydet} disabled={apiKaydediliyor || !apiYeni.trim()}>
+                        {apiKaydediliyor ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Kaydet'}
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={saglikSina} disabled={saglikKontrol}>
+                        {saglikKontrol ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Test et'}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Kaydetmek CALISIYOR demek degildir — gercek istek sonucu. */}
+                  {saglik && (
+                    <p className={`mt-2 flex items-center gap-1.5 text-xs ${saglik.status === 'active' ? 'text-emerald-600' : 'text-red-600'}`}>
+                      {saglik.status === 'active'
+                        ? <><Check className="h-3.5 w-3.5" />Bağlantı başarılı — çeviri ve diğer AI özellikleri çalışır.</>
+                        : <><AlertTriangle className="h-3.5 w-3.5" />{
+                            saglik.status === 'no_key' ? 'Anahtar girilmemiş.'
+                              : saglik.status === 'no_credit' ? 'Anahtar geçerli ama kredi yetersiz.'
+                                : `Anahtar çalışmıyor: ${saglik.message}`
+                          }</>}
+                    </p>
+                  )}
+
+                  <p className="mt-2 text-[11px] text-slate-400">
+                    Yeni anahtar girilmezse kayıtlı olan korunur. Yukarıdaki maskeli
+                    değer yalnız gösterimdir, kaydedilmez.
+                  </p>
                 </div>
 
                 {/* ── Aylik butce ──

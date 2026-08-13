@@ -143,11 +143,29 @@ export default function QuoteDetailPage() {
     try {
       const { data } = await api.post('/ai/translate', { metinler, hedefDil: 'en' });
       const yazilan = ceviriUygula(sayfalar, data?.harita ?? {});
+
+      // ⚠ TEK HUCRE BILE DEGISMEDIYSE BU BASARI DEGILDIR. 13.08 canli olcumu:
+      // API anahtari gecersizdi, sunucu bos harita dondu, ekran "Ceviri
+      // tamamlandi" dedi ve dugme "Turkceye Don"e gecti — hicbir sey
+      // cevrilmemisken kullanici ozelligin CALISTIGINI sandi.
+      if (yazilan === 0) {
+        toast({
+          title: 'Çeviri uygulanamadı',
+          description: 'Sunucudan çeviri gelmedi — hiçbir hücre değişmedi.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
       setCeviriDili('en');
       setCeviriSurumu((n) => n + 1);
+      const eksik = Number(data?.basarisiz ?? 0) > 0;
       toast({
-        title: 'Çeviri tamamlandı',
-        description: `${yazilan} hücre çevrildi · ${data?.onbellekten ?? 0} önbellekten, ${data?.cevrilen ?? 0} yeni`,
+        title: eksik ? 'Çeviri KISMEN tamamlandı' : 'Çeviri tamamlandı',
+        description: eksik
+          ? `${yazilan} hücre çevrildi · ${data.basarisiz} parça başarısız, o metinler Türkçe kaldı`
+          : `${yazilan} hücre çevrildi · ${data?.onbellekten ?? 0} önbellekten, ${data?.cevrilen ?? 0} yeni`,
+        variant: eksik ? 'destructive' : undefined,
       });
     } catch (e: any) {
       toast({
@@ -280,7 +298,9 @@ export default function QuoteDetailPage() {
             disabled={exporting}
             onClick={async () => {
               setExporting(true);
-              try { await fiyatliExceliIndir(id); } finally { setExporting(false); }
+              // Ekran Ingilizce moddaysa dosya da Ingilizce iner (13.08):
+              // backend onbellekteki ceviriyi uygular, yeni AI cagrisi YOK.
+              try { await fiyatliExceliIndir(id, ceviriDili === 'en' ? 'en' : undefined); } finally { setExporting(false); }
             }}
           >
             <Download className="mr-2 h-4 w-4" />
@@ -290,19 +310,20 @@ export default function QuoteDetailPage() {
             disabled={exporting}
             onClick={async () => {
               setExporting(true);
-              try { await teklifCiktisiniIndir(id); } finally { setExporting(false); }
+              try { await teklifCiktisiniIndir(id, ceviriDili === 'en' ? 'en' : undefined); } finally { setExporting(false); }
             }}
           >
             <Download className="mr-2 h-4 w-4" />
             {exporting ? 'Hazırlanıyor…' : 'Teklif Formatında Aktar'}
           </Button>
         </div>
-        {/* Ceviri EKRANDA yasar, export SUNUCUDAN uretilir → indirilen dosya
-            Turkce iner. Bu satir olmasa kullanici musteriye Turkce dosya
-            gonderdigini FARK ETMEZDI (sessiz yanlis). */}
+        {/* 13.08 (kullanici istegi): ceviri artik EXPORT'A DA gecer. Backend
+            onbellekteki ceviriyi uygular; onbellekte olmayan hucre Turkce
+            kalir ve sayisi indirme ozetinde SOYLENIR — yarim Ingilizce bir
+            teklif sessizce musteriye gitmez. */}
         {ceviriDili === 'en' && (
-          <p className="text-xs text-amber-600">
-            Çeviri yalnız ekranda görünür — indirilen dosyalar Türkçe iner.
+          <p className="text-xs text-emerald-600">
+            İndirilecek dosyalar da İngilizce olur.
           </p>
         )}
         </div>
