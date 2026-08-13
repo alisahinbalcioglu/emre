@@ -14,6 +14,9 @@
  * Kar orani ve marka/firma IC BILGIDIR, musteriye gitmez (EX1/EX2).
  */
 import * as ExcelJS from 'exceljs';
+import {
+  STANDART_KOLONLAR_EN, OZET_KOLONLAR_EN, birimCevir,
+} from './cikti-dil';
 
 /** EX1 — degismez 9 kolon, bu sirada. */
 export const STANDART_CIKTI_KOLONLARI = [
@@ -21,6 +24,9 @@ export const STANDART_CIKTI_KOLONLARI = [
   'Malz. Birim Fiyat', 'Malz. Toplam',
   'İşç. Birim Fiyat', 'İşç. Toplam', 'Genel Toplam',
 ];
+
+/** Cikti dili basliklari — SIRA ayni, yalniz metin degisir. */
+const kolonlar = (dil?: string) => (dil === 'en' ? STANDART_KOLONLAR_EN : STANDART_CIKTI_KOLONLARI);
 
 export interface CiktiBirim {
   kod: 'TRY' | 'USD' | 'EUR';
@@ -33,6 +39,8 @@ export interface StandartCiktiGirdi {
   birim?: CiktiBirim | null;
   /** Kapak/bilgi satiri (opsiyonel) — musteri/proje adi */
   baslik?: string;
+  /** 'en' → basliklar + birimler Ingilizce (sabit sozluk, AI yok). */
+  dil?: string;
 }
 
 export interface StandartCiktiSonuc {
@@ -96,6 +104,9 @@ export interface SayfaYazOpsiyon {
   /** Sayfa alti toplam satiri eklensin mi (fiyatli cikti: EVET,
    *  format yolu: ICMAL zaten topluyor → HAYIR) */
   toplamSatiri?: boolean;
+  /** 'en' → kolon basliklari ve BIRIM kisaltmalari Ingilizce yazilir.
+   *  Bu metinler SABIT oldugu icin AI'ya gitmez (bkz. `cikti-dil.ts`). */
+  dil?: string;
 }
 
 /**
@@ -132,7 +143,7 @@ export function standartSayfaYaz(
   }
   const ws = wb.addWorksheet(ad0);
 
-  const bas = ws.addRow(STANDART_CIKTI_KOLONLARI);
+  const bas = ws.addRow(kolonlar(ops.dil));
   bas.font = { bold: true };
   bas.eachCell((c) => {
     c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
@@ -189,7 +200,9 @@ export function standartSayfaYaz(
       String(r[F.no] ?? ''),
       ad,
       r[F.miktar] === '' || r[F.miktar] === null || r[F.miktar] === undefined ? '' : sayi(r[F.miktar]),
-      String(r[F.birim] ?? ''),
+      // Birim SABIT bir kumedir ("mt", "ad", "set") — sozlukle cevrilir,
+      // AI'ya gitmez; zaten ceviri katmaninda DOKUNULMAZ sayiliyor.
+      birimCevir(r[F.birim], ops.dil),
       matBirim || '', matTot || '',
       labBirim || '', labTot || '',
       genel || '',
@@ -243,7 +256,7 @@ export async function standartCiktiUret(g: StandartCiktiGirdi): Promise<Standart
   // KF7: sayfalar TEK motorla yazilir — format yolu da ayni fonksiyonu cagirir
   for (const sh of g.sheetsArr ?? []) {
     if (!sh || sh.isEmpty) continue;
-    const b = standartSayfaYaz(wb, sh, { birim, toplamSatiri: true });
+    const b = standartSayfaYaz(wb, sh, { birim, toplamSatiri: true, dil: g.dil });
     yazilan += b.yazilan;
     sayfaOzetleri.push({ ad: b.wsName, mat: b.matDeger, lab: b.labDeger, toplam: b.matDeger + b.labDeger, ozet: b.ozet });
     if (!b.ozet) genelToplam += b.matDeger + b.labDeger;
@@ -257,11 +270,14 @@ export async function standartCiktiUret(g: StandartCiktiGirdi): Promise<Standart
     b.font = { bold: true, size: 12 };
     ozetWs.addRow([]);
   }
-  const oBas = ozetWs.addRow(['Sayfa', 'Malz. Toplam', 'İşç. Toplam', 'Genel Toplam']);
+  const oBas = ozetWs.addRow(
+    g.dil === 'en' ? OZET_KOLONLAR_EN : ['Sayfa', 'Malz. Toplam', 'İşç. Toplam', 'Genel Toplam'],
+  );
   oBas.font = { bold: true };
   oBas.eachCell((c) => { c.border = { bottom: { style: 'thin' } }; });
   for (const s of sayfaOzetleri) {
-    const satir = ozetWs.addRow([s.ozet ? `${s.ad} (özet — toplama dahil değil)` : s.ad, s.mat, s.lab, s.toplam]);
+    const ozetNotu = g.dil === 'en' ? '(summary — not included in total)' : '(özet — toplama dahil değil)';
+    const satir = ozetWs.addRow([s.ozet ? `${s.ad} ${ozetNotu}` : s.ad, s.mat, s.lab, s.toplam]);
     for (const c of [2, 3, 4]) satir.getCell(c).numFmt = fmt;
     if (s.ozet) satir.font = { color: { argb: 'FF94A3B8' }, italic: true };
   }

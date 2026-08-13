@@ -261,6 +261,10 @@ export interface ExportGirdisi {
   overrides?: ExportOverrides | null;
   /** PANO 18: ekrandaki goruntuleme birimi — iki export yolu da ayni (KF7) */
   birim?: ExportBirim | null;
+  /** 13.08: 'en' → kolon basliklari + birim kisaltmalari Ingilizce.
+   *  IKIZ KURALI: fiyatli cikti yolu bunu tasiyip bu yol tasimasaydi,
+   *  kullanici hangi butona bastigina gore FARKLI bir dosya alirdi. */
+  dil?: string;
 }
 
 export interface ExportSonucu {
@@ -329,7 +333,7 @@ export async function buildExportWorkbook(g: ExportGirdisi): Promise<ExportSonuc
     if (!sh || sh.isEmpty) continue;
     // EX8: standart tablo DOGRUDAN format workbook'una yazilir.
     // toplamSatiri=false — İCMAL zaten SUM ile topluyor, cift toplam olmasin.
-    const sb = standartSayfaYaz(wb, sh, { birim: g.birim as any, toplamSatiri: false });
+    const sb = standartSayfaYaz(wb, sh, { birim: g.birim as any, toplamSatiri: false, dil: g.dil });
     listeSayfalari.push(sb.wsName);
     const b: SekmeBilgi = {
       wsName: sb.wsName, matCol: sb.matCol, labCol: sb.labCol,

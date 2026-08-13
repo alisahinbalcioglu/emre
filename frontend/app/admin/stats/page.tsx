@@ -438,14 +438,23 @@ export default function AdminStatsPage() {
                         </div>
                       ) : (
                         <p className="mt-2 text-xs text-slate-400">
-                          Bütçe tanımlı değil — kutuya aylık limiti yazıp kaydedin.
+                          Bütçe tanımlı değil — <strong>kalan tutarı görmek için</strong> Claude
+                          Console → Billing sayfasındaki kredinizi kutuya yazıp kaydedin.
                         </p>
                       )}
 
+                      {/* ⚠ Anthropic'te KALAN BAKIYE ucu YOK (13.08'de dogrulandi):
+                          Usage & Cost Admin API yalniz GECMIS harcamayi verir, kredi
+                          bakiyesi sadece Console → Billing'de gorunur. Bu yuzden
+                          "bakiye" cekilmez, kullanicinin girdigi degerden DUSULUR ve
+                          bunun bir OLCUM DEGIL kiyas oldugu acikca yazilir —
+                          uydurulmus bir "kalan bakiye" gercek gibi durur ve yanlis
+                          guven verirdi. */}
                       <p className="mt-2 flex items-start gap-1.5 text-[11px] text-slate-400">
                         <AlertTriangle className="mt-px h-3 w-3 shrink-0" />
-                        Sağlayıcı hesap bakiyesi API&apos;den okunamaz — bu oran, ölçülen
-                        harcamanın buraya girdiğiniz bütçeye kıyasıdır.
+                        Sağlayıcı hesap bakiyesi API&apos;den okunamaz (Anthropic böyle bir uç
+                        sunmuyor) — buradaki kalan, ölçülen harcamanın girdiğiniz tutardan
+                        düşülmesiyle bulunur. Kesin bakiye için Console → Billing.
                       </p>
                     </div>
                   );

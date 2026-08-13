@@ -464,7 +464,7 @@ export class QuotesService {
     return parca.join(' · ');
   }
 
-  private async ciktiKur(userId: string, quote: any, rev: number): Promise<ExportSonucu & { formatAdi: string; formatKaynak: 'kullanici' | 'yerlesik' }> {
+  private async ciktiKur(userId: string, quote: any, rev: number, dil?: string): Promise<ExportSonucu & { formatAdi: string; formatKaynak: 'kullanici' | 'yerlesik' }> {
     // Bulgu Raporu kok neden: grid'den uretim SILINDI — orijinal dosya ZORUNLU.
     if (!quote.originalFile) {
       throw new BadRequestException(
@@ -481,6 +481,7 @@ export class QuotesService {
       ctxTemel: await this.ctxTemelUret(quote, rev),
       overrides: (quote.exportOverrides ?? null) as ExportOverrides | null,
       birim: await this.exportBirimi(quote), // PANO 18 (KF7: iki yol ayni)
+      dil, // 13.08: baslik + birim dili (ikizi fiyatli cikti yolunda)
     });
     return { ...sonuc, formatAdi, formatKaynak };
   }
@@ -508,7 +509,7 @@ export class QuotesService {
     }
     const yeniRev = (quote.rev ?? 0) + 1;
 
-    const sonuc = await this.ciktiKur(userId, { ...quote, quoteNo }, yeniRev);
+    const sonuc = await this.ciktiKur(userId, { ...quote, quoteNo }, yeniRev, dil);
     const out = await sonuc.wb.xlsx.writeBuffer();
     const buffer = Buffer.from(out);
 
@@ -578,6 +579,8 @@ export class QuotesService {
       sheetsArr,
       birim,
       baslik: baslikParcalari.join(' · '),
+      // Kolon basliklari + birim kisaltmalari (sabit sozluk, AI yok).
+      dil,
     });
     // EX7: görünür self-check — fiyatsız satır sayısı da bilgi olarak taşınır
     const fiyatsiz = sheetsArr.reduce((a: number, sh: any) => a + (sh?.rowData ?? [])
