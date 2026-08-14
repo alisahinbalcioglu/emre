@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 379
-Toplam satir: 78973
+Toplam satir: 79031
 Uc nokta: 129
 test:* scripti: 56
 
@@ -67,7 +67,7 @@ test:* scripti: 56
 | `backend/src/ozellik/eslestirme/labor-matching/labor-matching.service.ts` | 74 |
 | `backend/src/ozellik/eslestirme/matching/ad-cins-sozlugu.ts` | 245 |
 | `backend/src/ozellik/eslestirme/matching/ad-resolver.ts` | 117 |
-| `backend/src/ozellik/eslestirme/matching/conversion.ts` | 411 |
+| `backend/src/ozellik/eslestirme/matching/conversion.ts` | 430 |
 | `backend/src/ozellik/eslestirme/matching/index/line-parser.ts` | 220 |
 | `backend/src/ozellik/eslestirme/matching/index/product-index.ts` | 643 |
 | `backend/src/ozellik/eslestirme/matching/index/query-engine.ts` | 880 |
@@ -153,7 +153,7 @@ test:* scripti: 56
 | `backend/test/ceviri-karar-test.ts` | 166 |
 | `backend/test/cikti-dil-test.ts` | 91 |
 | `backend/test/contract-test.ts` | 285 |
-| `backend/test/conversion-test.ts` | 222 |
+| `backend/test/conversion-test.ts` | 261 |
 | `backend/test/d1-marka-silme-capraz-tenant-test.ts` | 235 |
 | `backend/test/excel-grid-test.ts` | 157 |
 | `backend/test/export-format-test.ts` | 427 |

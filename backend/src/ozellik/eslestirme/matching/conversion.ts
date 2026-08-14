@@ -292,10 +292,29 @@ export function extractSizeInfo(text: string): SizeInfo | null {
  * Eslesme: line VEYA urun bilesikse imzalar ESIT olmali (kume). Tekil caplarda
  * bilesik=false → cagiran mevcut capTags kesisimini kullanmaya devam eder.
  */
+/**
+ * REDUKSIYON AYIRICI — "x" VE olcu-sonrasi "-".
+ *
+ * ⚠ 14.08 canli olcumu (TRAKYA DOKUM "Inegal Te"): ayirici YALNIZ "x" idi.
+ * Teklif "1 1/4\" x 1\" x 1 1/4\"" yazar (bilesik ✓) ama kutuphane ayni urunu
+ * TIRE ile yazar: "1 1/4\"-1/2\"-1\"". Tire ayirici sayilmadigi icin urun
+ * tarafi `bilesik: false` cikiyor ve TEK, ustelik YANLIS bir cap goruluyordu:
+ *     "1 1/4\"-1/2\"-1\""  → ["dn15"]   (yalniz ortadaki)
+ *     "1\"-1/2\"-1/2\""    → ["dn50"]   (2 inc — URUNDE HIC YOK)
+ * Ikincisi sadece "bulunamadi" degil YANLIS BULMA riskiydi: 2" arayan bir
+ * satir bu urunu aday gorebilirdi.
+ *
+ * ⚠ TIRE HER ZAMAN AYIRICI DEGILDIR: "1-1/4\"" = 1 1/4 inc (BILESIK KESIR,
+ * PK7a). Ayrim olculebilir: ayirici tire olcunun ARDINDAN gelir, yani
+ * kendinden once bir inc isareti (") vardir; bilesik kesirde tire'den once
+ * RAKAM durur. Lookbehind bu ikisini kesin ayirir — "1-1/4\"" bolunmez.
+ */
+const REDUKSIYON_AYIRICI = /x|(?<=")\s*-/i;
+
 export function capImzasi(text: string, cls: SizeClass): { imza: string[]; bilesik: boolean } {
   const norm = normalizeText(text).replace(/'{2}/g, '"');
   const dns = new Set<string>();
-  for (const seg of norm.split(/x/i)) {
+  for (const seg of norm.split(REDUKSIYON_AYIRICI)) {
     const info = extractSizeInfo(seg);
     if (!info) continue;
     const dn = sizeEquivalents(cls, info).tags.find((t) => /^dn\d+$/.test(t));

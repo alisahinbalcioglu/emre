@@ -7,7 +7,7 @@
  * T9 (ters yon), T11 (32x5.4), T13 (HDPE 110), D3/D4/P3 gosterim toleranslari.
  */
 
-import { extractSizeInfo, sizeEquivalents, isSizeTag } from '../src/ozellik/eslestirme/matching/conversion';
+import { extractSizeInfo, sizeEquivalents, isSizeTag, capImzasi } from '../src/ozellik/eslestirme/matching/conversion';
 import type { SizeClass, SizeInfo } from '../src/ozellik/eslestirme/matching/conversion';
 
 let passed = 0;
@@ -206,6 +206,45 @@ check('isSizeTag celik=false', !isSizeTag('celik'));
   sd4('Ø32', 'mm', 32);
   sd4('21.3mm', 'mm', 21.3);
 }
+
+// ══ RD: REDUKSIYON CAP IMZASI — "x" VE olcu-sonrasi "-" (14.08 canli) ══════
+// TRAKYA DOKUM "Inegal Te": teklif capi "x" ile, kutuphane capi TIRE ile
+// yazilmis. Ayirici yalniz "x" oldugu icin URUN tarafi bilesik SAYILMIYOR ve
+// TEK, ustelik YANLIS bir cap goruluyordu — satirlar fiyatsiz kaliyordu.
+{
+  const imz = (t: string) => capImzasi(t, 'steel' as SizeClass);
+
+  // ⚠ ASIL VAKA: iki notasyon AYNI imzada bulusmali, yoksa eslesme imkansiz.
+  check('RD1 teklif "1 1/4x1x1 1/4" bilesik', imz('1 1/4" x 1" x 1 1/4"').bilesik === true);
+  check('RD2 kutuphane TIRE yazimi da bilesik', imz('1 1/4"-1"-1 1/4"').bilesik === true);
+  check('RD3 iki notasyon AYNI imza uretir',
+    JSON.stringify(imz('1 1/4" x 1" x 1 1/4"').imza) === JSON.stringify(imz('1 1/4"-1"-1 1/4"').imza),
+    'x=' + JSON.stringify(imz('1 1/4" x 1" x 1 1/4"').imza) + ' tire=' + JSON.stringify(imz('1 1/4"-1"-1 1/4"').imza));
+
+  // Uc parcanin UCU de goruluyor (once yalniz ORTADAKI gorulup ["dn15"] cikiyordu)
+  check('RD4 uclu cap UC olcuyu de tasir',
+    JSON.stringify(imz('1 1/4"-1/2"-1"').imza) === JSON.stringify(['dn15', 'dn25', 'dn32']),
+    JSON.stringify(imz('1 1/4"-1/2"-1"').imza));
+
+  // ⚠ UYDURMA OLCU: eskiden ["dn50"] (2 inc) uretiyordu — urunde 2 inc YOK.
+  // Bu "bulunamadi"dan KOTUDUR: 2 inc arayan satir bu urunu aday gorup
+  // YANLIS FIYAT yazabilirdi.
+  check('RD5 uydurma 2inc olcusu URETILMEZ',
+    !imz('1"-1/2"-1/2"').imza.includes('dn50'), JSON.stringify(imz('1"-1/2"-1/2"').imza));
+
+  // ⚠ SINIR: tire HER ZAMAN ayirici DEGIL — "1-1/4" bilesik KESIRDIR (1,25").
+  // Bolunseydi "1" ve "1/4" diye iki olcu uretir, PK7a'da kapatilan SD4
+  // kusuru (1-1/4" → 0,25") geri gelirdi.
+  check('RD6 SINIR: 1-1/4 bilesik kesir BOLUNMEZ',
+    imz('1-1/4"').bilesik === false && JSON.stringify(imz('1-1/4"').imza) === JSON.stringify(['dn32']),
+    JSON.stringify(imz('1-1/4"')));
+  check('RD7 SINIR: 2-1/2 bilesik kesir BOLUNMEZ',
+    imz('2-1/2"').bilesik === false && JSON.stringify(imz('2-1/2"').imza) === JSON.stringify(['dn65']));
+
+  // Tekil cap bilesik SAYILMAZ — cagiran capTags kesisimine devam etmeli
+  check('RD8 tekil cap bilesik degil', imz('2"').bilesik === false);
+}
+
 
 console.log(`\n${'='.repeat(60)}`);
 console.log(`SONUC: ${passed} PASS, ${failed} FAIL${acikListesi.length ? `, ${acikListesi.length} BILINEN ACIK` : ''}`);
