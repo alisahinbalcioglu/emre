@@ -3,6 +3,7 @@
 import { useCallback, useRef, useEffect } from 'react';
 import type { AgGridReact } from 'ag-grid-react';
 import type { IRowNode } from 'ag-grid-community';
+import { SATIR_YUKSEKLIGI } from './types';
 
 /**
  * Custom fill handle hook — AG-Grid Community Edition icin
@@ -140,8 +141,9 @@ export function useFillHandle({
     if (!gridEl) return;
     const gridRect = gridEl.getBoundingClientRect();
     const relativeY = e.clientY - gridRect.top + gridEl.scrollTop;
-    const rowHeight = 28;
-    const approxRowIdx = Math.floor(relativeY / rowHeight);
+    // ⚠ AG-Grid'e verilen `rowHeight` ile AYNI sabit olmak ZORUNDA — ikisi
+    // ayrilirsa surukleme yanlis satirlara doldurur (bkz. types.ts).
+    const approxRowIdx = Math.floor(relativeY / SATIR_YUKSEKLIGI);
 
     if (approxRowIdx === lastTargetRowIdx.current) return;
     lastTargetRowIdx.current = approxRowIdx;

@@ -1,5 +1,28 @@
 'use client';
 
+/**
+ * MARKA / ISCILIK FIRMASI SECICI — soft SaaS gorunumu (14.08).
+ *
+ * ── E2E SOZLESMESI: BU UC SEY DEGISTIRILEMEZ ────────────────────────────────
+ * Golden E2E yollari bu bilesenin DOM'una dogrudan bagli. Uceni de birden
+ * fazla test okuyor; degistirilirse testler yesil kalir ama YANLIS MARKA
+ * secilir ve golden kosumda yanlis fiyat yazilir (sessiz para hatasi):
+ *   1. Tetikleyici `<button>` OLMALI — `helpers.ts:217` `[col-id="..."] button`
+ *      ile tikliyor. `<div role="button">`e cevrilirse secim HIC acilmaz.
+ *   2. Secenek satirinda ETIKET span'i ILK dogrudan cocuk olmali —
+ *      `helpers.ts:243` `o.querySelector(':scope > span')` ilk span'i marka ADI
+ *      sanar. ✓ isareti ya da fiyat one alinirsa test "✓"yu marka adi okur.
+ *   3. "Secimi kaldir" metni CIPLAK TEXT NODE kalmali (span'a SARILMAZ) —
+ *      span'a alinirsa ayni sorgu onu gecerli bir marka secenegi sanar.
+ *
+ * ── VARIANT AYRIMI NEDEN KORUNUYOR ──────────────────────────────────────────
+ * PRD yalniz "marka secici"yi tarif ediyor ama bu bilesen IKIZ kullaniliyor:
+ * malzeme markasi (brand) ve iscilik firmasi (firma). Ikisi ayni gri etikete
+ * indirgenirse kullanici bir hucrenin hangi zincire ait oldugunu goremez —
+ * malzeme ve iscilik bu projede ayri fiyat yollari. PRD'nin YUMUSAK dili
+ * alindi, ayrimi tasiyan RENK korundu (mavi=malzeme, kehribar=iscilik).
+ */
+
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -39,7 +62,7 @@ export function CustomDropdown({
   const openMenu = useCallback(() => {
     if (triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect();
-      setPos({ top: rect.bottom + 3, left: rect.left, width: Math.max(rect.width, 180) });
+      setPos({ top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 200) });
     }
     setOpen(true);
     setSearch('');
@@ -71,49 +94,49 @@ export function CustomDropdown({
     return () => document.removeEventListener('mousedown', handler);
   }, [open, closeMenu]);
 
-  // Filter options
+  /**
+   * ⚠ TURKCE KUCULTME LOCALE'LI: locale'siz `toLowerCase()` "İ" harfini
+   * "i̇" (birlesik nokta) yapar ve "İZOLE" araması "izole" ile ESLESMEZ —
+   * kullanici markasini goremez, listede yok saniyor. Ayni agacta dogrusu
+   * zaten yapiliyor (ExcelGrid.tsx `toLocaleLowerCase('tr')`).
+   */
+  const kucult = (s: string) => s.toLocaleLowerCase('tr');
   const filtered = search
-    ? options.filter((o) => o.label.toLowerCase().includes(search.toLowerCase()))
+    ? options.filter((o) => kucult(o.label).includes(kucult(search)))
     : options;
 
   const isFirma = variant === 'firma';
 
+  /** Pasif hucre: secili deger YUMUSAK ETIKET, bos deger transparan. */
+  const tetikSinif = [
+    'flex w-full items-center justify-between gap-1 rounded-lg px-2.5 text-xs transition-all',
+    'border outline-none',
+    open
+      ? 'border-indigo-500 bg-white ring-2 ring-indigo-500/20'
+      : hasValue
+        ? (isFirma
+            ? 'border-amber-200/70 bg-amber-50 text-amber-800 font-medium hover:bg-amber-100/70'
+            : 'border-blue-200/70 bg-blue-50 text-blue-800 font-medium hover:bg-blue-100/70')
+        : 'border-transparent bg-transparent text-slate-400 hover:bg-slate-100/80',
+    className,
+  ].join(' ');
+
   return (
     <>
+      {/* ⚠ <button> ZORUNLU — E2E `[col-id] button` ile tikliyor (bkz. baslik) */}
       <button
         ref={triggerRef}
         type="button"
         onClick={() => (open ? closeMenu() : openMenu())}
-        className={className}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          width: '100%',
-          height: 28,
-          padding: '0 8px',
-          gap: 4,
-          border: `1px solid ${open ? '#3b82f6' : hasValue ? (isFirma ? '#fde68a' : '#93c5fd') : '#e2e8f0'}`,
-          borderRadius: 6,
-          background: open ? '#f0f9ff' : hasValue ? (isFirma ? '#fffbeb' : '#eff6ff') : 'white',
-          cursor: 'pointer',
-          outline: 'none',
-          fontSize: 12,
-          fontFamily: 'inherit',
-          color: hasValue ? (isFirma ? '#92400e' : '#1e293b') : '#94a3b8',
-          fontWeight: hasValue ? 500 : 400,
-          transition: 'all 0.15s',
-          boxShadow: open ? '0 0 0 2px rgba(59,130,246,0.15)' : 'none',
-        }}
-        onMouseEnter={(e) => { if (!open) { e.currentTarget.style.borderColor = '#93c5fd'; e.currentTarget.style.background = '#f8fafc'; } }}
-        onMouseLeave={(e) => { if (!open) { e.currentTarget.style.borderColor = hasValue ? (isFirma ? '#fde68a' : '#93c5fd') : '#e2e8f0'; e.currentTarget.style.background = hasValue ? (isFirma ? '#fffbeb' : '#eff6ff') : 'white'; } }}
+        className={tetikSinif}
+        style={{ height: 28 }}
       >
-        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>
+        <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-left">
           {selectedOption?.label ?? placeholder}
         </span>
         <svg
           width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-          style={{ flexShrink: 0, color: '#94a3b8', transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'none' }}
+          className={`shrink-0 text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
         >
           <path d="M6 9l6 6 6-6" />
         </svg>
@@ -122,66 +145,53 @@ export function CustomDropdown({
       {open && pos && typeof document !== 'undefined' && createPortal(
         <div
           ref={menuRef}
+          className="rounded-xl border border-slate-200 bg-white p-2 shadow-xl"
           style={{
             position: 'fixed',
             top: pos.top,
             left: pos.left,
             width: pos.width,
-            background: 'white',
-            border: '1px solid #e2e8f0',
-            borderRadius: 8,
-            boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
             zIndex: 99999,
-            padding: 4,
-            maxHeight: 220,
+            maxHeight: 260,
             overflowY: 'auto',
           }}
         >
-          {/* Search */}
+          {/* Arama — buyutec ikonlu, kenarliksiz soft zemin */}
           {options.length > 3 && (
-            <input
-              ref={searchRef}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={isFirma ? 'Firma ara...' : 'Marka ara...'}
-              style={{
-                width: '100%',
-                padding: '6px 8px',
-                border: '1px solid #e2e8f0',
-                borderRadius: 5,
-                fontSize: 11,
-                fontFamily: 'inherit',
-                outline: 'none',
-                marginBottom: 4,
-                color: '#1e293b',
-              }}
-              onFocus={(e) => { e.currentTarget.style.borderColor = '#3b82f6'; }}
-              onBlur={(e) => { e.currentTarget.style.borderColor = '#e2e8f0'; }}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') closeMenu();
-              }}
-            />
+            <div className="relative mb-1.5">
+              <svg
+                width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
+              >
+                <circle cx="11" cy="11" r="7" />
+                <path d="M21 21l-4.35-4.35" strokeLinecap="round" />
+              </svg>
+              <input
+                ref={searchRef}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={isFirma ? 'Firma ara...' : 'Marka ara...'}
+                className="w-full rounded-lg border border-transparent bg-slate-50 py-1.5 pl-8 pr-2.5 text-xs text-slate-800 outline-none transition-colors placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500/20"
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') closeMenu();
+                }}
+              />
+            </div>
           )}
 
-          {/* Clear option */}
+          {/* Secimi kaldir — ⚠ metin CIPLAK TEXT NODE kalmali (bkz. baslik) */}
           {hasValue && (
             <div
               onClick={() => handleSelect('')}
-              style={{
-                display: 'flex', alignItems: 'center', padding: '6px 8px',
-                borderRadius: 5, cursor: 'pointer', fontSize: 11, color: '#94a3b8',
-                marginBottom: 2, transition: 'background 0.1s',
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = '#fef2f2'; e.currentTarget.style.color = '#ef4444'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = ''; e.currentTarget.style.color = '#94a3b8'; }}
+              className="mb-1 flex cursor-pointer items-center rounded-lg px-2.5 py-1.5 text-xs text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
             >
               Secimi kaldir
             </div>
           )}
 
-          {/* Options */}
+          {/* Secenekler */}
           {filtered.length === 0 ? (
-            <div style={{ padding: '12px 8px', textAlign: 'center', fontSize: 11, color: '#94a3b8' }}>
+            <div className="px-2.5 py-3 text-center text-xs text-slate-400">
               Sonuc bulunamadi
             </div>
           ) : (
@@ -191,35 +201,29 @@ export function CustomDropdown({
                 <div
                   key={opt.value}
                   onClick={() => handleSelect(opt.value)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '7px 8px',
-                    borderRadius: 5,
-                    cursor: 'pointer',
-                    fontSize: 12,
-                    color: isSelected ? 'white' : '#475569',
-                    background: isSelected ? '#2563eb' : 'transparent',
-                    fontWeight: isSelected ? 500 : 400,
-                    transition: 'all 0.1s',
-                    marginBottom: 1,
-                  }}
-                  onMouseEnter={(e) => { if (!isSelected) { e.currentTarget.style.background = '#eff6ff'; e.currentTarget.style.color = '#1e293b'; } }}
-                  onMouseLeave={(e) => { if (!isSelected) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#475569'; } }}
+                  className={[
+                    'flex cursor-pointer items-center justify-between rounded-lg px-2.5 py-1.5 text-xs transition-colors',
+                    isSelected
+                      ? (isFirma
+                          ? 'bg-amber-50 font-medium text-amber-700'
+                          : 'bg-blue-50 font-medium text-blue-700')
+                      : 'text-slate-700 hover:bg-slate-100',
+                  ].join(' ')}
                 >
-                  <span style={{ flex: 1 }}>{opt.label}</span>
+                  {/* ⚠ ETIKET ILK SPAN — E2E marka adini buradan okur */}
+                  <span className="flex-1">{opt.label}</span>
                   {opt.price && (
-                    <span style={{
-                      fontSize: 10,
-                      color: isSelected ? 'rgba(255,255,255,0.7)' : '#94a3b8',
-                      fontVariantNumeric: 'tabular-nums',
-                      marginLeft: 8,
-                    }}>
+                    <span
+                      className={`ml-2 text-[10px] ${isSelected ? (isFirma ? 'text-amber-600/80' : 'text-blue-600/80') : 'text-slate-400'}`}
+                      style={{ fontVariantNumeric: 'tabular-nums' }}
+                    >
                       {opt.price}
                     </span>
                   )}
-                  {isSelected && <span style={{ marginLeft: 4, fontSize: 14 }}>✓</span>}
+                  {/* ⚠ ✓ EN SON — one alinirsa E2E onu marka adi sanar */}
+                  {isSelected && (
+                    <span className={`ml-1.5 ${isFirma ? 'text-amber-600' : 'text-blue-600'}`}>✓</span>
+                  )}
                 </div>
               );
             })

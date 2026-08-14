@@ -9,6 +9,7 @@ import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
 import './fill-handle.css';
 import type { ExcelGridData, ExcelRowData, MatchCandidate, BrandAlternative } from './types';
+import { SATIR_YUKSEKLIGI } from './types';
 // S2: oneri kutusunun kesinlik/onay karari — IKI kutu da buradan okur
 import { oneriBasligi, cekinceSatiri } from './oneri-cekince';
 import { useFillHandle, FillHandleIndicator } from './useFillHandle';
@@ -2275,16 +2276,24 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           const hasVal = parseFloat(String(val)) > 0;
           return (
             <div className="fill-handle-cell" style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+              {/* FRAMELESS (14.08): kutu durgun halde CERCEVESIZ ve zemini
+                  seffaf — duz metin gibi durur; hover ve odakta belirir.
+                  Gorunum `kar-kutu` sinifiyla CSS'e tasindi (inline stil
+                  :hover/:focus uretemez). ⚠ GIRIS YOLUNA DOKUNULMADI: bu bir
+                  `<span>`, canli `<input>` DEGIL — deger AG-Grid'in kendi
+                  duzenleyicisinden `valueParser` (yukarida) uzerinden gecer.
+                  Buraya `<input type="number">` konursa `setDataValue`
+                  `valueParser`i CAGIRMAZ ve hucreye STRING yazilir; 5c95cf0'te
+                  kapatilan canli HTTP 400 aynen geri doner. */}
               <div style={{ position: 'relative', width: 68, display: 'flex', alignItems: 'center' }}>
-                <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: '#94a3b8', fontWeight: 500, pointerEvents: 'none' }}>%</span>
-                <span style={{
+                <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: '#94a3b8', fontWeight: 500, pointerEvents: 'none', zIndex: 1 }}>%</span>
+                <span className="kar-kutu" style={{
                   display: 'block', width: '100%', height: 28, padding: '0 8px 0 20px',
-                  border: '1px solid #e2e8f0', borderRadius: 6,
+                  borderRadius: 8,
                   fontSize: 12, textAlign: 'right', lineHeight: '28px',
                   fontVariantNumeric: 'tabular-nums',
                   color: hasVal ? '#059669' : '#1e293b',
                   fontWeight: hasVal ? 500 : 400,
-                  background: 'white',
                 }}>
                   {val}
                 </span>
@@ -2826,7 +2835,13 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           </span>
         </div>
       )}
-    <div className="ag-theme-alpine w-full" style={{ height: '80vh' }}>
+    {/* PRD 14.08: izgara yumusak kavisli, ince sinirli bir kart icinde durur.
+        `overflow-hidden` sart — AG-Grid'in kendi kosesiz zemini kartin
+        kavisini tasar ve alt kosede keskin dikdortgen gorunur. */}
+    <div
+      className="ag-theme-alpine w-full overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm"
+      style={{ height: '80vh' }}
+    >
       <AgGridReact<ExcelRowData>
         ref={gridRef}
         theme="legacy"
@@ -2872,8 +2887,10 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         }}
         onCellValueChanged={handleCellValueChanged}
         stopEditingWhenCellsLoseFocus
-        rowHeight={28}
-        headerHeight={32}
+        // ⚠ Surukle-doldur ayni sabiti okur (useFillHandle) — types.ts'te TEK
+        // kaynak; ayrilirsa surukleme yanlis satirlara doldurur.
+        rowHeight={SATIR_YUKSEKLIGI}
+        headerHeight={34}
         animateRows={false}
         suppressRowTransform
         // Excel-vari GRUP BANDI: _isGroupRow satirlari tum genislikte cizilir
@@ -2945,6 +2962,25 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           --ag-grid-size: 5px;
           --ag-list-item-height: 24px;
           --ag-font-size: 12px;
+          /* PRD 14.08 — yalniz COK HAFIF yatay ayraclar.
+             ⚠ AG-Grid'in KENDI degiskeni kullanilir; ag-row uzerine elle
+             border-bottom kurali YAZILMAZ: AG-Grid satir yuksekligi hesabina
+             ag-row-border-width degiskenini katar ve elle eklenen bir kenarlik
+             28px satirda 1px tasma uretir — 15.000 satirda birikip sanal
+             kaydirma ile gercek satir konumunu kaydirir. */
+          --ag-row-border-color: #f1f5f9;
+          /* Dikey ayraclar: seffaf. Genislik yine 1px rezerve edilir, bu yuzden
+             kullanicinin kaydettigi kolon genislikleri KAYMAZ. */
+          --ag-cell-horizontal-border: solid transparent;
+          /* Odak halkasi — sert mavi cerceve yerine soft indigo */
+          --ag-range-selection-border-color: #6366f1;
+          --ag-selected-row-background-color: rgba(99, 102, 241, 0.06);
+        }
+        /* Alpine'in baslik ayirac cubugu kisa dikey cizgi cizer — PRD'nin
+           "dikey cizgi yok" kurali basligi da kapsar. Yeniden boyutlandirma
+           HALA calisir (kulp gorunmez ama hit alani duruyor). */
+        .ag-theme-alpine .ag-header-cell-resize::after {
+          background-color: transparent;
         }
         .hidden-merged-cell {
           display: none !important;

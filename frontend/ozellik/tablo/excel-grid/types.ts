@@ -139,3 +139,19 @@ export interface BrandAlternative {
   // S2: satirda yazili ama o markanin/firmanin dagarciginda bulunmayan kelimeler
   bilinmeyen?: string[];
 }
+
+/**
+ * IZGARA SATIR YUKSEKLIGI (px) — TEK KAYNAK.
+ *
+ * ⚠ 14.08'e kadar bu deger IKI YERDE ayri ayri sabitti: AG-Grid'e verilen
+ * `rowHeight={28}` (ExcelGrid.tsx) ve surukle-doldur'un hedef satiri hesabi
+ * `const rowHeight = 28` (useFillHandle.tsx). Ikisi paylasilmiyordu.
+ *
+ * Neden tehlikeli: surukleme hedefi `Math.floor(relativeY / rowHeight)` ile
+ * bulunur. Biri degistirilip digeri unutulsaydi surukleme YANLIS SATIRLARA
+ * marka/iskonto/kar doldururdu — hata gorunur bir cokme degil, SESSIZ bir
+ * kaydirma olurdu: kullanici 10 satir surukler, deger 9. veya 11. satirdan
+ * baslardi ve o satirlarin fiyati yeniden hesaplanirdi. Bu projede satir
+ * yuksekligi bir GORSEL tercih degil, PARA yolunun girdisidir.
+ */
+export const SATIR_YUKSEKLIGI = 28;

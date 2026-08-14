@@ -1,134 +1,196 @@
-/* Fill Handle — Alt kenar cizgisi yaklasimi */
+/* ═══════════════════════════════════════════════════════════════════════════
+   EXCEL GRID — SOFT SaaS GORUNUMU + SURUKLE-DOLDUR AFFORDANCE'I
+   ═══════════════════════════════════════════════════════════════════════════
 
-/* Fillable hucrelerde alt kenar cizgisi */
+   ⚠ SINIF ADLARI JS'TE SABIT YAZILI — DEGISTIRILEMEZ:
+     .fill-handle-cell        → useFillHandle.tsx:93  `closest('.fill-handle-cell')`
+     .fill-handle-highlight   → useFillHandle.tsx     (hedef hucrelere takilir)
+     .fill-handle-source      → useFillHandle.tsx:129 (kaynak hucre)
+     .fill-handle-count-badge → useFillHandle.tsx     (imlec yani rozet)
+     body.fill-handle-dragging
+   Bir sinif adi degistirilirse CSS sessizce eslesmez: surukleme CALISMAYA
+   DEVAM EDER ama kullanici hicbir geri bildirim gormez — yani "bozuldu" bile
+   denmez, sadece kor kalir. Yeniden adlandirma JS ile BIRLIKTE yapilmali.
+*/
+
+/* ── FILL HANDLE ─────────────────────────────────────────────────────────── */
+
 .fill-handle-cell {
   position: relative;
 }
 
+/* Alt kenar seridi — TUTAMAGIN KENDISI DEGIL, KESFEDILEBILIRLIK SERIDI.
+   ⚠ SILINEMEZ / "yalniz hover"a cevrilemez: 18.07 canli bulgusu — yalniz
+   hover'da beliren cizgi KESFEDILEMIYORDU, kullanici "surukleme calismiyor"
+   diye bildirdi. Bu yuzden hafif (0.25) ama HEP gorunur. Ayrica tiklama
+   bolgesi hucrenin alt 10px SERIDININ TAMAMI (useFillHandle.tsx:27
+   BOTTOM_ZONE_PX), yani serit gorseli o bolgeyi dogru temsil eder; tek basina
+   kose karesi birakmak gorsel ile tiklanabilir alani AYIRIRDI. */
 .fill-handle-cell::after {
   content: '';
   position: absolute;
   left: 4px;
   right: 4px;
   bottom: 0;
-  height: 3px;
-  background: #3b82f6;
+  height: 2px;
+  background: #6366f1;
   border-radius: 2px 2px 0 0;
-  /* Canli bulgu 18.07: yalniz hover'da beliren cizgi KESFEDILEMIYORDU
-     ("surukleme calismiyor") — hafif ama HEP gorunur. */
-  opacity: 0.25;
+  opacity: 0.22;
   cursor: s-resize;
   transition: opacity 0.15s;
   z-index: 5;
 }
 
 .fill-handle-cell:hover::after {
-  opacity: 1;
+  opacity: 0.9;
 }
 
-/* Excel tarzi SAG-ALT KOSE TUTAMACI — hep gorunur, hover'da parlar */
+/* Sag-alt kose tutamaci — indigo, yumusak kare. Hep gorunur (yukaridaki
+   gerekce), hover'da tam opakliga cikar. */
 .fill-handle-cell::before {
   content: '';
   position: absolute;
-  right: 2px;
+  right: 3px;
   bottom: 2px;
-  width: 7px;
-  height: 7px;
-  background: #2563eb;
-  border: 1px solid #fff;
-  border-radius: 1px;
-  opacity: 0.55;
-  cursor: s-resize;
-  transition: opacity 0.15s;
+  width: 8px;
+  height: 8px;
+  background: #4f46e5;
+  border: 1.5px solid #fff;
+  border-radius: 2px;
+  opacity: 0.5;
+  cursor: crosshair;
+  transition: opacity 0.15s, transform 0.15s;
   z-index: 6;
 }
 
 .fill-handle-cell:hover::before {
   opacity: 1;
+  transform: scale(1.15);
 }
 
-/* Suruklenirken hedef hucreler highlight */
+/* Suruklenirken hedef hucreler — transparan indigo dolgu + kesikli cerceve.
+   ⚠ `border` DEGIL `box-shadow: inset` kullanilir: gercek border AG-Grid'in
+   28px satir kutusuna 2px ekler ve hucre icerigini kaydirir (15.000 satirda
+   gorunur birikme). inset shadow yer KAPLAMAZ. */
 .fill-handle-highlight {
-  background-color: rgba(59, 130, 246, 0.08) !important;
-  box-shadow: inset 0 0 0 1.5px rgba(59, 130, 246, 0.3);
+  background-color: rgba(99, 102, 241, 0.07) !important;
+  box-shadow: inset 0 0 0 1.5px rgba(99, 102, 241, 0.45);
 }
 
-/* Suruklenirken cursor her yerde s-resize */
+/* Suruklenirken imlec her yerde s-resize */
 body.fill-handle-dragging,
 body.fill-handle-dragging * {
   cursor: s-resize !important;
   user-select: none !important;
 }
 
-/* Surukleme sirasinda imlec yaninda canli satir sayaci */
+/* Imlec yaninda canli satir sayaci — soft indigo rozet */
 .fill-handle-count-badge {
   position: fixed;
   z-index: 100000;
-  background: #1d4ed8;
+  background: #4f46e5;
   color: white;
   font-size: 11px;
   font-weight: 600;
-  padding: 2px 8px;
+  padding: 3px 9px;
   border-radius: 9999px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
   pointer-events: none;
   white-space: nowrap;
 }
 
-/* Sadece kaynak ve hedef hucreler yansin */
+/* Yalniz kaynak ve hedef hucreler yansin */
 .fill-handle-source::after {
   opacity: 1 !important;
-  background: #2563eb !important;
+  background: #4f46e5 !important;
   height: 3px;
 }
 
 .fill-handle-highlight::after {
   opacity: 1 !important;
-  background: #93c5fd !important;
+  background: #a5b4fc !important;
   height: 2px;
 }
 
-/* ── AG-Grid genel stil iyilestirmeleri ── */
+/* ── KAR % KUTUSU — FRAMELESS ────────────────────────────────────────────── */
 
+/* Durgun halde duz metin gibi; hover'da hafif zemin, hucre odaginda soft
+   indigo halka. ⚠ Hover tonu NOTR (slate-400 %10) secildi: isaret.ts'teki
+   dort anlam renginden (#fee2e2 eslesme-yok · #f1f5f9 urun-degil ·
+   #e0f2fe varyant · #fef9c3 oneri) hicbiriyle karismasin diye — o renkler
+   hucre zemininde PARA sinyali tasir ve golden E2E onlari okur. */
+.kar-kutu {
+  border: 1px solid transparent;
+  background: transparent;
+  transition: background-color 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+
+.ag-row:hover .kar-kutu {
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.ag-cell-focus .kar-kutu {
+  background: #fff;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.18);
+}
+
+/* ── AG-GRID GENEL GORUNUM ───────────────────────────────────────────────── */
+
+/* Baslik: ince ayrac, yumusak zemin */
 .ag-theme-alpine .ag-header {
-  border-bottom: 2px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+  background-color: #f8fafc;
 }
 
 .ag-theme-alpine .ag-header-cell {
   font-size: 11px;
   font-weight: 600;
   color: #64748b;
+  letter-spacing: 0.02em;
 }
 
+/* Satir hover — YUMUSAK ve SATIR duzeyinde.
+   ⚠ Hucre (.ag-cell) duzeyine TASINAMAZ: hucre zemini isaret.ts'teki para
+   sinyalini tasir (kirmizi=eslesme yok, gri=urun degil, mavi=varyant,
+   sari=oneri) ve hucre hover'i onlari orter. Golden E2E de o renkleri
+   `getComputedStyle` ile okuyup karar verir. */
 .ag-theme-alpine .ag-row:hover {
-  background-color: #fafbfc !important;
+  background-color: #f8fafc !important;
 }
 
-.ag-theme-alpine .ag-cell {
-  border-right: 1px solid #f1f5f9;
-}
+/* ⚠ DIKEY CIZGILER KALDIRILDI (PRD 14.08).
+   Eski hali: `.ag-theme-alpine .ag-cell { border-right: 1px solid #f1f5f9 }`.
+   Kural silindi; AG-Grid'in kendi varsayilani ZATEN seffaf
+   (`--ag-cell-horizontal-border: solid transparent`) ve 1px genislik her iki
+   durumda da rezerve edildigi icin KOLON GENISLIKLERI KAYMAZ (kullanicinin
+   kaydettigi genislikler bozulmaz).
+   ⚠ Asagidaki pinned-bottom kuralindan `border-right-color` DA silindi:
+   yalniz taban kural kaldirilsaydi, GENEL TOPLAM satirinda AG-Grid'in `solid`
+   1px'i o koyu renkle GORUNUR HALE GELIRDI — dikey cizgiler tek satirda geri
+   gelirdi. */
 
-/* Pinned bottom (GENEL TOPLAM) */
+/* Pinned bottom (GENEL TOPLAM / KAR) */
 .ag-theme-alpine .ag-floating-bottom {
   border-top: 2px solid #1e293b;
 }
 
-.ag-theme-alpine .ag-floating-bottom .ag-row {
-  background: #1e293b !important;
-}
-
+/* ⚠ `background` BILEREK VERILMIYOR: KAR satiri kendi yesilini (#065f46)
+   `getRowStyle` ile inline tasir. Burada `.ag-row`a `!important` zemin
+   yazilirsa inline stili EZER ve KAR satiri lacivert gorunur — koddaki
+   yorum "yesil" dese de ekranda yesil OLMAZ. Zemin artik satir bazinda
+   `getRowStyle`dan gelir (ExcelGrid.tsx). */
 .ag-theme-alpine .ag-floating-bottom .ag-cell {
   color: white;
   font-weight: 600;
-  border-right-color: #334155;
 }
 
-/* MetaPrice sistem kolonlari — acik mor arka plan */
+/* MetaPrice sistem kolonlari — cok hafif indigo tonu */
 .ag-theme-alpine .ag-cell[col-id="_malzKar"],
 .ag-theme-alpine .ag-cell[col-id="_marka"],
 .ag-theme-alpine .ag-cell[col-id="_iscKar"],
 .ag-theme-alpine .ag-cell[col-id="_firma"] {
-  background-color: #fafbff;
+  background-color: #fcfcff;
 }
 
 .ag-theme-alpine .ag-header-cell[col-id="_malzKar"],

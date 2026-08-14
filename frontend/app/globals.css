@@ -4,7 +4,12 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
+    /* PRD 14.08 — sayfa zemini #F8FAFC (slate-50).
+       Kartlar (--card) BEYAZ kalir; zemin ile kart arasindaki bu hafif fark,
+       PRD'nin "borderless/soft" dilinde derinligi CIZGI yerine KONTRAST ile
+       uretir. Zemin de beyaz kaldiginda kartin siniri yalnizca border'a
+       kalir ve tablo "sayfaya yapisik" gorunur. */
+    --background: 210 40% 98%;
     --foreground: 222.2 84% 4.9%;
     --card: 0 0% 100%;
     --card-foreground: 222.2 84% 4.9%;
