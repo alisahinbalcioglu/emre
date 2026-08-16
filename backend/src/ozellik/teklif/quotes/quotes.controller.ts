@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Delete, Patch,
-  Body, Param, Query, UseGuards,
+  Body, Param, Query, Put, UseGuards,
   UseInterceptors, UploadedFile,
   Res, HttpCode, HttpException, BadRequestException,
 } from '@nestjs/common';
@@ -28,6 +28,23 @@ export class QuotesController {
   @Post()
   create(@CurrentUser() user: any, @Body() dto: CreateQuoteDto) {
     return this.quotesService.create(user.id, dto);
+  }
+
+  /**
+   * REVIZYON — mevcut teklifi ayni kimlikle gunceller (14.08).
+   *
+   * `create` ile AYNI govdeyi alir ve AYNI hazirliktan gecer (iliskisel alan
+   * suzgeci + kalem uretimi + P2003 geri dususu); yalniz son adim UPDATE olur.
+   * Ayri bir DTO/servis yolu acilmadi — iki kayit yolu zamanla ayrilir ve biri
+   * duzeltilirken oteki unutulur.
+   *
+   * ⚠ `quoteNo` ve `rev` DOKUNULMAZ: export arsivinin kimligi onlara bagli
+   * (T10). Revizyon rev ARTIRMAZ; rev yalnizca "Teklif Formatinda Aktar"
+   * uretiminde artar.
+   */
+  @Put(':id')
+  update(@CurrentUser() user: any, @Param('id') id: string, @Body() dto: CreateQuoteDto) {
+    return this.quotesService.create(user.id, dto, id);
   }
 
   @Get()

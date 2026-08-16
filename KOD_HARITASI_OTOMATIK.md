@@ -4,8 +4,8 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 379
-Toplam satir: 79031
-Uc nokta: 129
+Toplam satir: 79203
+Uc nokta: 130
 test:* scripti: 56
 
 ## 1 · Dosyalar ve satir sayilari
@@ -135,9 +135,9 @@ test:* scripti: 56
 | `backend/src/ozellik/teklif/quotes/cikti-dil.ts` | 96 |
 | `backend/src/ozellik/teklif/quotes/dto/create-quote.dto.ts` | 112 |
 | `backend/src/ozellik/teklif/quotes/export-engine.ts` | 369 |
-| `backend/src/ozellik/teklif/quotes/quotes.controller.ts` | 158 |
+| `backend/src/ozellik/teklif/quotes/quotes.controller.ts` | 175 |
 | `backend/src/ozellik/teklif/quotes/quotes.module.ts` | 15 |
-| `backend/src/ozellik/teklif/quotes/quotes.service.ts` | 649 |
+| `backend/src/ozellik/teklif/quotes/quotes.service.ts` | 713 |
 | `backend/src/ozellik/teklif/quotes/standart-cikti.ts` | 306 |
 | `backend/src/surum.ts` | 30 |
 | `backend/test/a1-silme-etkisi-test.ts` | 330 |
@@ -217,9 +217,9 @@ test:* scripti: 56
 | `frontend/app/(protected)/materials/page.tsx` | 23 |
 | `frontend/app/(protected)/profile/page.tsx` | 336 |
 | `frontend/app/(protected)/quote-formats/page.tsx` | 397 |
-| `frontend/app/(protected)/quotes/[id]/page.tsx` | 409 |
+| `frontend/app/(protected)/quotes/[id]/page.tsx` | 467 |
 | `frontend/app/(protected)/quotes/new/error.tsx` | 13 |
-| `frontend/app/(protected)/quotes/new/page.tsx` | 2486 |
+| `frontend/app/(protected)/quotes/new/page.tsx` | 2519 |
 | `frontend/app/(protected)/quotes/page.tsx` | 192 |
 | `frontend/app/admin/brands/page.tsx` | 895 |
 | `frontend/app/admin/layout.tsx` | 80 |
@@ -583,8 +583,8 @@ test:* scripti: 56
 | `frontend/app/(protected)/materials/page.tsx` | `react` `next/navigation` `lucide-react` |
 | `frontend/app/(protected)/profile/page.tsx` | `react` `next/navigation` `@/ortak/ui/button` `@/ortak/lib/api` `@/ortak/lib/utils` |
 | `frontend/app/(protected)/quote-formats/page.tsx` | `react` `next/link` `@/ortak/ui/button` `@/ortak/ui/card` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` |
-| `frontend/app/(protected)/quotes/[id]/page.tsx` | `react` `next/navigation` `next/link` `lucide-react` `@/ortak/ui/button` `@/ortak/ui/card` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/lib/utils` `@/ozellik/teklif/ceviri` `@/ozellik/cikti/export-download` `@/ozellik/tablo/excel-grid/ExcelGrid` `@/ozellik/tablo/excel-grid/SheetTabs` `@/ozellik/tablo/excel-grid/types` `@/ozellik/fiyat/use-currency` `@/ortak/contexts/CapabilitiesContext` `@/ozellik/tablo/disiplin` `@/ortak/types/quotes` `@/ortak/types` |
-| `frontend/app/(protected)/quotes/new/page.tsx` | `react` `next/navigation` `next/link` `@/ortak/ui/button` `@/ozellik/tablo/disiplin` `@/ortak/ui/card` `@/ortak/ui/input` `@/ortak/ui/label` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `@/ortak/lib/utils` `@/ozellik/tablo/excel-grid/ExcelGrid` `@/ozellik/tablo/excel-grid/SheetTabs` `@/ozellik/tablo/quotes/ColumnManagerPanel` `@/ozellik/tablo/excel-grid/types` `@/ortak/contexts/CapabilitiesContext` `@/components/dwg-metraj/types` `@/components/dwg-metraj/MetrajEditor` `@/ozellik/tablo/parse-material-text` `@/ozellik/tablo/merge-multisheet` `@/ozellik/giris/kaynak-kolon` `@/lib/indeks-sagligi` `@/ozellik/teklif/dwg-teklif-sema` `@/ozellik/teklif/teklif-kalem` `@/ozellik/teklif/restore-rematch` `@/ozellik/teklif/ceviri` `@/ozellik/fiyat/sayi-alani` `@/ozellik/teklif/fiyatsiz-kalem-uyarisi` `@/ozellik/fiyat/pricing` `@/ortak/types` `@/ozellik/fiyat/use-currency` |
+| `frontend/app/(protected)/quotes/[id]/page.tsx` | `react` `next/navigation` `next/link` `lucide-react` `@/ortak/ui/button` `@/ortak/ui/card` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/lib/utils` `@/ozellik/teklif/ceviri` `@/ozellik/teklif/taslak` `@/ozellik/cikti/export-download` `@/ozellik/tablo/excel-grid/ExcelGrid` `@/ozellik/tablo/excel-grid/SheetTabs` `@/ozellik/tablo/excel-grid/types` `@/ozellik/fiyat/use-currency` `@/ortak/contexts/CapabilitiesContext` `@/ozellik/tablo/disiplin` `@/ortak/types/quotes` `@/ortak/types` |
+| `frontend/app/(protected)/quotes/new/page.tsx` | `react` `next/navigation` `next/link` `@/ortak/ui/button` `@/ozellik/tablo/disiplin` `@/ortak/ui/card` `@/ortak/ui/input` `@/ortak/ui/label` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `@/ortak/lib/utils` `@/ozellik/tablo/excel-grid/ExcelGrid` `@/ozellik/tablo/excel-grid/SheetTabs` `@/ozellik/tablo/quotes/ColumnManagerPanel` `@/ozellik/tablo/excel-grid/types` `@/ortak/contexts/CapabilitiesContext` `@/components/dwg-metraj/types` `@/components/dwg-metraj/MetrajEditor` `@/ozellik/tablo/parse-material-text` `@/ozellik/tablo/merge-multisheet` `@/ozellik/giris/kaynak-kolon` `@/lib/indeks-sagligi` `@/ozellik/teklif/dwg-teklif-sema` `@/ozellik/teklif/teklif-kalem` `@/ozellik/teklif/restore-rematch` `@/ozellik/teklif/taslak` `@/ozellik/teklif/ceviri` `@/ozellik/fiyat/sayi-alani` `@/ozellik/teklif/fiyatsiz-kalem-uyarisi` `@/ozellik/fiyat/pricing` `@/ortak/types` `@/ozellik/fiyat/use-currency` |
 | `frontend/app/(protected)/quotes/page.tsx` | `react` `next/navigation` `lucide-react` `@/ortak/ui/button` `@/ortak/ui/card` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` |
 | `frontend/app/admin/brands/page.tsx` | `react` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `@/lib/silme-onay-metni` `@/lib/silme-etkisi-getir` `@/ozellik/kutuphane/oksuz-kutuphane-uyarisi` `@/ortak/ui/button` `@/ortak/ui/input` `@/ortak/ui/badge` `@/ortak/ui/card` |
 | `frontend/app/admin/layout.tsx` | `react` `next/navigation` `@/ozellik/kutuphane/admin/AdminSidebar` |
@@ -841,6 +841,7 @@ test:* scripti: 56
 | `backend/src/ozellik/kutuphane/materials/materials.controller.ts` | `POST /materials/price` |
 | `backend/src/ozellik/teklif/quotes/quotes.controller.ts` | `POST /quotes/upload-excel` |
 | `backend/src/ozellik/teklif/quotes/quotes.controller.ts` | `POST /quotes` |
+| `backend/src/ozellik/teklif/quotes/quotes.controller.ts` | `PUT /quotes/:id` |
 | `backend/src/ozellik/teklif/quotes/quotes.controller.ts` | `GET /quotes` |
 | `backend/src/ozellik/teklif/quotes/quotes.controller.ts` | `PATCH /quotes/:id/info` |
 | `backend/src/ozellik/teklif/quotes/quotes.controller.ts` | `POST /quotes/:id/export` |

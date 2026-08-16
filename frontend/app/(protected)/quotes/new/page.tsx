@@ -49,6 +49,7 @@ import { indeksUyarilari } from '@/lib/indeks-sagligi';
 import { DWG_SISTEM_ALANLARI, dwgTeklifSemasi } from '@/ozellik/teklif/dwg-teklif-sema';
 import { kalemUret } from '@/ozellik/teklif/teklif-kalem';
 import { restoreRematch } from '@/ozellik/teklif/restore-rematch';
+import { TASLAK_ANAHTARI, TASLAK_SURUMU } from '@/ozellik/teklif/taslak';
 import { cevrilecekMetinler, ceviriUygula, ceviriGeriAl } from '@/ozellik/teklif/ceviri';
 import { sayiAlani } from '@/ozellik/fiyat/sayi-alani';
 import { fiyatsizKalemOzeti, fiyatsizOnayMetni, uyariyaGirerMi } from '@/ozellik/teklif/fiyatsiz-kalem-uyarisi';
@@ -518,7 +519,9 @@ export default function NewQuotePage() {
   };
 
   // ── SessionStorage draft key ──
-  const DRAFT_KEY = 'metaprice_quote_draft';
+  // 14.08: deger ORTAK MODULDEN (ozellik/teklif/taslak.ts) — revizyon yolunda
+  // detay sayfasi da ayni anahtara yazar. Iki taraf ayni sabiti KODDAN paylasir.
+  const DRAFT_KEY = TASLAK_ANAHTARI;
   // Draft sema surumu — eski/bozuk draft'lar restore EDILMEZ, otomatik silinir.
   // Sema degistiginde artir.
   //   v2: multi-sheet tek-kopya draft
@@ -531,7 +534,18 @@ export default function NewQuotePage() {
   //       her kayitta yine eski semayla yazildigi icin durum KENDILIGINDEN
   //       asla duzelmezdi. BILINCLI TAKAS: artirmak Excel yolundaki kayitsiz
   //       taslaklari da temizler; sessiz-eski-sema yaniltmasina tercih edildi.
-  const DRAFT_VERSION = 4;
+  const DRAFT_VERSION = TASLAK_SURUMU;
+
+  /**
+   * REVIZYON KIMLIGI (14.08) — dolu ise "Teklifi Kaydet" YENI kayit acmaz,
+   * BU teklifi gunceller. Detay sayfasindaki "Düzenle" butonu taslaga
+   * `quoteId` yazar, asagidaki restore efekti onu buraya tasir.
+   *
+   * ⚠ State'te tutulmasi SART: yalniz taslakta kalsaydi, taslak her
+   * degisiklikte yeniden yazildigi icin kimlik ilk yazimda DUSER ve kullanici
+   * revize ettigini sanirken KOPYA olusturuurdu.
+   */
+  const [revizyonId, setRevizyonId] = useState<string | null>(null);
 
   // Iscilik firmalarini cek (capability varsa)
   useEffect(() => {
@@ -621,7 +635,9 @@ export default function NewQuotePage() {
             headerEndRow: active.headerEndRow ?? 0,
           });
         }
-        console.log('[quotes/new] Draft restored from sessionStorage');
+        if (draft.quoteId) setRevizyonId(draft.quoteId);
+        console.log('[quotes/new] Draft restored from sessionStorage'
+          + (draft.quoteId ? ` (REVIZYON: ${draft.quoteId})` : ''));
 
         // Marka/firma atanmis satirlar icin otomatik re-matching — malzeme +
         // ISCILIK ikizi TEK MEKANIZMADAN (ozellik/teklif/restore-rematch,
@@ -676,6 +692,9 @@ export default function NewQuotePage() {
         colHiddenBySheet,
         colWidthsBySheet,
         colFloorsBySheet,
+        // Revizyon kimligi taslakta KALICI — sayfa yenilense de "guncelle"
+        // davranisi korunur (yoksa yenileme sonrasi KOPYA olusurdu).
+        quoteId: revizyonId ?? undefined,
       }));
     } catch (e) {
       // Kota vb. hata: ESKI draft'i birakma — bayat state restore edilmesin.
@@ -684,7 +703,10 @@ export default function NewQuotePage() {
       sessionStorage.removeItem(DRAFT_KEY);
       console.warn('[quotes/new] Draft save failed, eski draft temizlendi:', e);
     }
-  }, [multiSheet, liveRowDataBySheet, activeSheetIndex, sheetDisciplines, title, allBrands, colHiddenBySheet, colFloorsBySheet, colWidthsBySheet]);
+    // ⚠ `revizyonId` bagimliliga DAHIL: eksik olsaydi bu efekt kimlik
+    // set edilmeden once kapanan closure'i tasir, taslaga `undefined` yazar
+    // ve revizyon SESSIZCE kopyaya donerdi.
+  }, [multiSheet, liveRowDataBySheet, activeSheetIndex, sheetDisciplines, title, allBrands, colHiddenBySheet, colFloorsBySheet, colWidthsBySheet, revizyonId]);
 
   // Marka fiyat cache: brandId → { materialName → PriceLookupResult }
   const brandPriceCacheRef = useRef<Record<string, Record<string, any>>>({});
@@ -1443,7 +1465,10 @@ export default function NewQuotePage() {
         if (!(await confirm(fiyatsizOnayMetni(fiyatsiz)))) return;
       }
 
-      const { data: created } = await api.post('/quotes', {
+      // REVIZYON mu YENI KAYIT mi (14.08): `revizyonId` doluysa AYNI teklif
+      // guncellenir (PUT). Backend her iki yolda da AYNI hazirliktan gecer —
+      // iliskisel alan suzgeci, kalem uretimi ve P2003 geri dususu ortaktir.
+      const govde = {
         title: finalTitle,
         items: payloadItems,
         sheets: sheetsPayload,
@@ -1455,7 +1480,10 @@ export default function NewQuotePage() {
         // export'a dil gecmiyor, musteriye satirlari Ingilizce ama
         // basliklari/birimleri TURKCE bir dosya gidiyordu.
         displayLanguage: ceviriDili,
-      });
+      };
+      const { data: created } = revizyonId
+        ? await api.put(`/quotes/${revizyonId}`, govde)
+        : await api.post('/quotes', govde);
 
       // Goruntuleme para birimi (KH8: Duzenle'de secilen birim TEKLIFLE
       // kaydedilir — detay ayni birimle acilir). Kapak alanlari bu ekrandan
@@ -1476,8 +1504,10 @@ export default function NewQuotePage() {
       sessionStorage.removeItem(FROM_DWG_KEY);
 
       toast({
-        title: 'Teklif kaydedildi',
-        description: `"${finalTitle}" basariyla olusturuldu.`,
+        title: revizyonId ? 'Teklif güncellendi' : 'Teklif kaydedildi',
+        description: revizyonId
+          ? `"${finalTitle}" revize edildi — yeni kopya oluşturulmadı.`
+          : `"${finalTitle}" basariyla olusturuldu.`,
       });
       router.push('/quotes');
     } catch (e: any) {
@@ -1592,7 +1622,10 @@ export default function NewQuotePage() {
               ) : (
                 <>
                   <Save className="mr-2 h-4 w-4" />
-                  Teklifi Kaydet
+                  {/* Revizyonda etiket DEGISIR: kullanici yeni kopya mi
+                      olusturdugunu yoksa mevcut teklifi mi guncelledigini
+                      butona basmadan ONCE gormeli. */}
+                  {revizyonId ? 'Teklifi Güncelle' : 'Teklifi Kaydet'}
                 </>
               )}
             </Button>

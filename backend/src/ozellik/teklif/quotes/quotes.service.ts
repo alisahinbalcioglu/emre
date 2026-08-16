@@ -138,7 +138,18 @@ export class QuotesService {
     return { headers, rows, brands };
   }
 
-  async create(userId: string, dto: CreateQuoteDto) {
+  /**
+   * Teklif OLUSTUR — `guncelleId` verilirse AYNI teklifi GUNCELLER (14.08).
+   *
+   * ── NEDEN AYRI BIR METOD DEGIL ─────────────────────────────────────────────
+   * Kayit yolu yalniz "INSERT" degil: iliskisel alan suzgeci (silinmis marka/
+   * firma ID'lerini eleyen iki sorgu), kalem uretimi, satir toplami kurali ve
+   * P2003 TOCTOU geri dususu bu metodun govdesinde. Guncelleme icin ikinci bir
+   * metod yazmak bunlarin HEPSINI kopyalamak demekti; iki kayit yolu zamanla
+   * ayrilir ve biri duzeltilirken oteki unutulur. Bu yuzden ayrim TEK NOKTADA:
+   * hazirlik ortak, son adim (INSERT mi UPDATE mi) parametreye bakar.
+   */
+  async create(userId: string, dto: CreateQuoteDto, guncelleId?: string) {
     // ── ILISKISEL ALAN SUZGECI ──────────────────────────────────────────────
     // brandId/laborFirmaId istemciden SERBEST STRING olarak geliyor; dogrudan
     // Prisma'ya vermek silinmis/olmayan ID'de P2003 (foreign key) -> 500 uretir.
@@ -279,23 +290,25 @@ export class QuotesService {
     // yeniden denenir. Gerekce ayni: teklifin TAMAMINI kaybetmektense
     // iliskiyi kaybetmek yeglenir (fiyatlar zaten kalemde yazili).
     try {
-      return await this.quoteYaz(userId, dto, items, originalFile);
+      return await this.quoteYaz(userId, dto, items, originalFile, guncelleId);
     } catch (e: any) {
       if (e?.code !== 'P2003') throw e;
       console.warn('[Teklif] ⚠ SELF-CHECK: kayit sirasinda marka/firma silinmis '
         + '(P2003) — iliskiler koparilip yeniden deneniyor');
       const iliskisiz = items.map((i) => ({ ...i, brandId: null, laborFirmaId: null }));
-      return await this.quoteYaz(userId, dto, iliskisiz, originalFile);
+      return await this.quoteYaz(userId, dto, iliskisiz, originalFile, guncelleId);
     }
   }
 
   /** Teklif INSERT'i — create() iki kez cagirabilsin diye ayrildi (TOCTOU geri dususu). */
-  private quoteYaz(
+  private async quoteYaz(
     userId: string,
     dto: CreateQuoteDto,
     items: any[],
     originalFile?: Buffer,
+    guncelleId?: string,
   ) {
+    if (guncelleId) return this.quoteGuncelle(userId, guncelleId, dto, items, originalFile);
     return this.prisma.quote.create({
       data: {
         userId,
@@ -311,6 +324,57 @@ export class QuotesService {
       include: {
         items: { include: { brand: true, laborFirma: true } },
       },
+    });
+  }
+
+  /**
+   * MEVCUT TEKLIFI GUNCELLE — revizyon yolu (14.08).
+   *
+   * Kullanici bildirimi: kayitli teklifi acip revize etmek istiyordu ama
+   * detay sayfasi SALT-OKUNURDU (`onBrandChange` no-op) ve Duzenle ekrani
+   * kayitli bir teklifi ID ile ACAMIYORDU — yani revizyon yolu HIC KURULMAMISTI.
+   *
+   * ⚠ DOKUNULMAYAN ALANLAR ve sebepleri:
+   *   quoteNo / rev  → export ARSIVININ kimligi (T10). Revizyonda artmaz;
+   *                    rev yalnizca "Teklif Formatinda Aktar" uretiminde artar.
+   *                    Burada ellenirse arsivdeki dosya adlariyla kayit ayrisir.
+   *   originalFile   → yeni dosya YUKLENMEDIYSE korunur. `undefined` gecmek
+   *                    Prisma'da "dokunma" demektir; `null` gecseydik musterinin
+   *                    ORIJINAL kesif dosyasi silinir ve "Fiyatlandirilmis Excel"
+   *                    ciktisi bir daha uretilemezdi (o yol dosyayi ZORUNLU ister).
+   *   displayCurrency/Rate → detay sayfasinin kismi PATCH'i yonetir.
+   *
+   * Kalemler REPLACE edilir (sil + yeniden yaz): teklif kalemleri satir satir
+   * eslestirilebilir bir kimlik tasimiyor (grid satiri silinip eklenebiliyor),
+   * bu yuzden fark hesabi degil tam degisim dogru olan. Islem TEK
+   * TRANSACTION icinde: silme gecip yazma patlarsa teklif KALEMSIZ kalirdi.
+   */
+  private async quoteGuncelle(
+    userId: string,
+    id: string,
+    dto: CreateQuoteDto,
+    items: any[],
+    originalFile?: Buffer,
+  ) {
+    // Sahiplik SART — baska hesabin teklifi guncellenemez (izolasyon).
+    const mevcut = await this.prisma.quote.findFirst({ where: { id, userId } });
+    if (!mevcut) throw new NotFoundException('Quote not found');
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.quoteItem.deleteMany({ where: { quoteId: id } });
+      return tx.quote.update({
+        where: { id },
+        data: {
+          title: dto.title || mevcut.title,
+          sheets: dto.sheets ? (dto.sheets as any) : undefined,
+          originalFile: originalFile ?? undefined,
+          originalName: dto.originalFileName ?? undefined,
+          displayLanguage: dto.displayLanguage === 'en' ? 'en'
+            : dto.displayLanguage === 'tr' ? 'tr' : undefined,
+          items: { create: items },
+        },
+        include: { items: { include: { brand: true, laborFirma: true } } },
+      });
     });
   }
 

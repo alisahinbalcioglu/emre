@@ -4,15 +4,16 @@
 export const runtime = 'edge';
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Download, Languages, Loader2 } from 'lucide-react';
+import { ArrowLeft, Download, Languages, Loader2, Pencil } from 'lucide-react';
 import { Button } from '@/ortak/ui/button';
 import { Card } from '@/ortak/ui/card';
 import api from '@/ortak/lib/api';
 import { toast } from '@/ortak/hooks/use-toast';
 import { cn } from '@/ortak/lib/utils';
 import { cevrilecekMetinler, ceviriUygula, ceviriGeriAl } from '@/ozellik/teklif/ceviri';
+import { TASLAK_ANAHTARI, kayittanTaslak } from '@/ozellik/teklif/taslak';
 import { teklifCiktisiniIndir, fiyatliExceliIndir } from '@/ozellik/cikti/export-download';
 import { ExcelGrid } from '@/ozellik/tablo/excel-grid/ExcelGrid';
 import { SheetTabs } from '@/ozellik/tablo/excel-grid/SheetTabs';
@@ -38,6 +39,7 @@ interface QuoteDetail {
 
 export default function QuoteDetailPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const id = params.id;
 
   const [quote, setQuote] = useState<QuoteDetail | null>(null);
@@ -132,6 +134,49 @@ export default function QuoteDetailPage() {
   // Surum sayaci grid'i yeniden monte eder (sheet degisiminde kullanilan
   // `key` deseninin aynisi).
   const [ceviriSurumu, setCeviriSurumu] = useState(0);
+
+  /**
+   * REVIZE ET (14.08) — kayitli teklifi Duzenle ekraninda acar.
+   *
+   * ── NEDEN BU YOL ────────────────────────────────────────────────────────────
+   * Kullanici bildirimi: "teklifi revize etmek istiyorum ancak bu kisimda
+   * herhangi bir islem yapilamiyor (fiyat eslestirme vs)". Olculdu ve dogruydu:
+   * bu sayfa SALT-OKUNUR (`onBrandChange={async () => null}`) ama marka
+   * secicileri GORUNUR ve tiklanabilir duruyordu — ustelik ust bantta "N satir
+   * secim bekliyor" yaziyordu. Yani ekran kullaniciyi islem yapmaya CAGIRIYOR,
+   * arkasinda hicbir sey yoktu. Duzenle ekrani da kayitli bir teklifi ID ile
+   * acamiyordu (URL parametresi HIC okumuyor) — revizyon yolu KURULMAMISTI.
+   *
+   * Cozum ikinci bir duzenleme ekrani ACMAZ: kayit, Duzenle ekraninin ZATEN
+   * kullandigi taslak sozlesmesine cevrilir (`kayittanTaslak`) ve oraya
+   * yonlendirilir. Boylece eslestirme, surukle-doldur, kar girisi ve kayit
+   * akisinin TAMAMI tek yerde kalir; ikinci bir ikiz bakim yuku dogmaz.
+   * Taslaktaki `quoteId` sayesinde "Teklifi Kaydet" YENI kopya acmaz, BU
+   * teklifi gunceller.
+   *
+   * ⚠ Marka listesi taslaga KONUR (`allBrands`): Duzenle ekrani marka
+   * ETIKETLERINI bu listeden cozer. Bos gecilse kullanici kendi sectigi
+   * markalari "Marka sec..." olarak gorur ve secimlerinin gittigini sanir —
+   * C4 kusurunun (11.08) birebir tekrari olurdu.
+   */
+  const revizeEt = () => {
+    if (!quote) return;
+    try {
+      sessionStorage.setItem(TASLAK_ANAHTARI, JSON.stringify(kayittanTaslak(quote, allBrands)));
+    } catch (e) {
+      // Kota asimi: SESSIZ GECMEK YASAK — kullanici Duzenle'ye gidip bos ya da
+      // BAYAT bir ekran gorurdu (eski taslak ayakta kalirsa daha kotusu: baska
+      // bir teklifi revize ettigini sanir).
+      sessionStorage.removeItem(TASLAK_ANAHTARI);
+      toast({
+        title: 'Düzenlemeye geçilemedi',
+        description: 'Teklif tarayıcı belleğine sığmadı. Sekmeleri kapatıp tekrar deneyin.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    router.push('/quotes/new');
+  };
 
   /** Dil secimini teklifle KAYDEDER — para birimi toggle'inin birebir ikizi
    *  (`birimSec`). Kismi PATCH: kapak alanlarina dokunmaz. Sessiz denenir;
@@ -277,6 +322,19 @@ export default function QuoteDetailPage() {
         </div>
         <div className="flex flex-col items-end gap-2">
         <div className="flex items-center gap-2">
+          {/* REVIZE ET (14.08) — kayitli teklifi Duzenle ekraninda acar.
+              Bu sayfanin secicileri SALT-OKUNUR; gercek duzenleme orada. */}
+          {sheets.length > 0 && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={revizeEt}
+              title="Teklifi Düzenle ekranında açar: fiyat eşleştirme, marka seçimi ve kâr girişi orada çalışır. Kaydettiğinde BU teklif güncellenir, kopya oluşmaz."
+            >
+              <Pencil className="mr-2 h-4 w-4" />
+              Revize Et
+            </Button>
+          )}
           {/* 13.08 istegi: CEVIRI butonu para birimi seciciNIN SOLUNDA —
               Duzenle ekranindaki yerin birebir ayni'si. */}
           {sheets.length > 0 && (
