@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 379
-Toplam satir: 79203
+Kod dosyasi: 381
+Toplam satir: 79429
 Uc nokta: 130
 test:* scripti: 56
 
@@ -204,7 +204,7 @@ test:* scripti: 56
 | `frontend/app/(protected)/dashboard/page.tsx` | 248 |
 | `frontend/app/(protected)/dwg-workspace/page.tsx` | 79 |
 | `frontend/app/(protected)/labor-firms/[firmaId]/page.tsx` | 495 |
-| `frontend/app/(protected)/labor-firms/page.tsx` | 249 |
+| `frontend/app/(protected)/labor-firms/page.tsx` | 280 |
 | `frontend/app/(protected)/labor/page.tsx` | 248 |
 | `frontend/app/(protected)/layout.tsx` | 198 |
 | `frontend/app/(protected)/library/brand/[brandId]/page.tsx` | 515 |
@@ -220,7 +220,7 @@ test:* scripti: 56
 | `frontend/app/(protected)/quotes/[id]/page.tsx` | 467 |
 | `frontend/app/(protected)/quotes/new/error.tsx` | 13 |
 | `frontend/app/(protected)/quotes/new/page.tsx` | 2519 |
-| `frontend/app/(protected)/quotes/page.tsx` | 192 |
+| `frontend/app/(protected)/quotes/page.tsx` | 200 |
 | `frontend/app/admin/brands/page.tsx` | 895 |
 | `frontend/app/admin/layout.tsx` | 80 |
 | `frontend/app/admin/page.tsx` | 16 |
@@ -358,6 +358,8 @@ test:* scripti: 56
 | `frontend/ozellik/teklif/fiyatsiz-kalem-uyarisi.ts` | 159 |
 | `frontend/ozellik/teklif/restore-rematch.test.ts` | 509 |
 | `frontend/ozellik/teklif/restore-rematch.ts` | 229 |
+| `frontend/ozellik/teklif/taslak.test.ts` | 89 |
+| `frontend/ozellik/teklif/taslak.ts` | 98 |
 | `frontend/ozellik/teklif/teklif-kalem.test.ts` | 230 |
 | `frontend/ozellik/teklif/teklif-kalem.ts` | 112 |
 | `frontend/playwright.config.ts` | 21 |
@@ -585,7 +587,7 @@ test:* scripti: 56
 | `frontend/app/(protected)/quote-formats/page.tsx` | `react` `next/link` `@/ortak/ui/button` `@/ortak/ui/card` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` |
 | `frontend/app/(protected)/quotes/[id]/page.tsx` | `react` `next/navigation` `next/link` `lucide-react` `@/ortak/ui/button` `@/ortak/ui/card` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/lib/utils` `@/ozellik/teklif/ceviri` `@/ozellik/teklif/taslak` `@/ozellik/cikti/export-download` `@/ozellik/tablo/excel-grid/ExcelGrid` `@/ozellik/tablo/excel-grid/SheetTabs` `@/ozellik/tablo/excel-grid/types` `@/ozellik/fiyat/use-currency` `@/ortak/contexts/CapabilitiesContext` `@/ozellik/tablo/disiplin` `@/ortak/types/quotes` `@/ortak/types` |
 | `frontend/app/(protected)/quotes/new/page.tsx` | `react` `next/navigation` `next/link` `@/ortak/ui/button` `@/ozellik/tablo/disiplin` `@/ortak/ui/card` `@/ortak/ui/input` `@/ortak/ui/label` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `@/ortak/lib/utils` `@/ozellik/tablo/excel-grid/ExcelGrid` `@/ozellik/tablo/excel-grid/SheetTabs` `@/ozellik/tablo/quotes/ColumnManagerPanel` `@/ozellik/tablo/excel-grid/types` `@/ortak/contexts/CapabilitiesContext` `@/components/dwg-metraj/types` `@/components/dwg-metraj/MetrajEditor` `@/ozellik/tablo/parse-material-text` `@/ozellik/tablo/merge-multisheet` `@/ozellik/giris/kaynak-kolon` `@/lib/indeks-sagligi` `@/ozellik/teklif/dwg-teklif-sema` `@/ozellik/teklif/teklif-kalem` `@/ozellik/teklif/restore-rematch` `@/ozellik/teklif/taslak` `@/ozellik/teklif/ceviri` `@/ozellik/fiyat/sayi-alani` `@/ozellik/teklif/fiyatsiz-kalem-uyarisi` `@/ozellik/fiyat/pricing` `@/ortak/types` `@/ozellik/fiyat/use-currency` |
-| `frontend/app/(protected)/quotes/page.tsx` | `react` `next/navigation` `lucide-react` `@/ortak/ui/button` `@/ortak/ui/card` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` |
+| `frontend/app/(protected)/quotes/page.tsx` | `react` `next/navigation` `next/link` `lucide-react` `@/ortak/ui/button` `@/ortak/ui/card` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` |
 | `frontend/app/admin/brands/page.tsx` | `react` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `@/lib/silme-onay-metni` `@/lib/silme-etkisi-getir` `@/ozellik/kutuphane/oksuz-kutuphane-uyarisi` `@/ortak/ui/button` `@/ortak/ui/input` `@/ortak/ui/badge` `@/ortak/ui/card` |
 | `frontend/app/admin/layout.tsx` | `react` `next/navigation` `@/ozellik/kutuphane/admin/AdminSidebar` |
 | `frontend/app/admin/page.tsx` | `react` `next/navigation` |
@@ -692,6 +694,7 @@ test:* scripti: 56
 | `frontend/ozellik/teklif/fiyatsiz-kalem-uyarisi.ts` | `./teklif-kalem` |
 | `frontend/ozellik/teklif/restore-rematch.test.ts` | `vitest` `./restore-rematch` `../tablo/excel-grid/types` |
 | `frontend/ozellik/teklif/restore-rematch.ts` | `../tablo/excel-grid/types` `../fiyat/sayi-alani` |
+| `frontend/ozellik/teklif/taslak.test.ts` | `vitest` `./taslak` |
 | `frontend/ozellik/teklif/teklif-kalem.test.ts` | `vitest` `./teklif-kalem` |
 | `frontend/ozellik/teklif/teklif-kalem.ts` | `../fiyat/pricing` `../fiyat/sayi-alani` |
 | `frontend/playwright.config.ts` | `@playwright/test` |

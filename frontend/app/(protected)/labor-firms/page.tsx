@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Plus, Trash2, Wrench, Zap, Loader2, ArrowRight } from 'lucide-react';
+import { Plus, Trash2, Wrench, Zap, Loader2, ArrowLeft } from 'lucide-react';
 import { Button } from '@/ortak/ui/button';
 import { Card, CardContent } from '@/ortak/ui/card';
 import { Input } from '@/ortak/ui/input';
@@ -40,6 +40,24 @@ export default function LaborFirmsPage() {
   const visibleFirms = disciplineFilter
     ? firms.filter((f) => f.discipline === disciplineFilter)
     : firms;
+
+  /**
+   * GERI baglantisi (14.08 kullanici istegi) — kutuphane sayfalarindaki
+   * desenin aynisi.
+   *
+   * ⚠ Bilesen olarak tanimlandi cunku bu sayfanin DORT cikis dali var
+   * (yukleniyor · Pro yok · mekanik Pro yok · elektrik Pro yok · normal).
+   * Yalniz normal dala eklenseydi, Pro engeline dusen kullanici ekranda
+   * KILITLI kalirdi — cikis yolu yalniz tarayici geri tusu olurdu.
+   */
+  const GeriBaglantisi = () => (
+    <Link
+      href="/dashboard"
+      className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+    >
+      <ArrowLeft className="h-4 w-4" />Dashboard
+    </Link>
+  );
 
   const pageTitle = disciplineFilter === 'mechanical'
     ? 'Mekanik Iscilik Firmalarim'
@@ -113,6 +131,7 @@ export default function LaborFirmsPage() {
   if (!hasAnyLabor) {
     return (
       <div>
+        <GeriBaglantisi />
         <h1 className="text-2xl font-bold tracking-tight mb-4">{pageTitle}</h1>
         <Card>
           <CardContent className="py-16 text-center">
@@ -132,6 +151,7 @@ export default function LaborFirmsPage() {
   if (disciplineFilter === 'mechanical' && !canMechLabor) {
     return (
       <div>
+        <GeriBaglantisi />
         <h1 className="text-2xl font-bold tracking-tight mb-4">{pageTitle}</h1>
         <Card>
           <CardContent className="py-16 text-center">
@@ -144,6 +164,7 @@ export default function LaborFirmsPage() {
   if (disciplineFilter === 'electrical' && !canElecLabor) {
     return (
       <div>
+        <GeriBaglantisi />
         <h1 className="text-2xl font-bold tracking-tight mb-4">{pageTitle}</h1>
         <Card>
           <CardContent className="py-16 text-center">
@@ -156,6 +177,7 @@ export default function LaborFirmsPage() {
 
   return (
     <div>
+      <GeriBaglantisi />
       <div className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight">{pageTitle}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -205,42 +227,51 @@ export default function LaborFirmsPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {visibleFirms.map((firm) => (
-            <Card key={firm.id} className="group hover:shadow-md transition-shadow">
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    {firm.discipline === 'mechanical' ? (
-                      <Wrench className="h-4 w-4 text-blue-600" />
-                    ) : (
-                      <Zap className="h-4 w-4 text-amber-600" />
-                    )}
-                    <h3 className="font-semibold">{firm.name}</h3>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0 text-destructive opacity-0 group-hover:opacity-100"
-                    onClick={() => deleteFirm(firm)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-                <div className="flex items-center gap-3 text-xs text-muted-foreground mb-3">
-                  <span>{firm._count.priceLists} liste</span>
-                  <span>·</span>
-                  <span>{firm._count.laborPrices} kalem</span>
-                </div>
-                <Link
-                  href={`/labor-firms/${firm.id}`}
-                  className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline"
-                >
-                  Yonet <ArrowRight className="h-3 w-3" />
+        /* KART DUZENI = KUTUPHANE MARKA KARTLARI (14.08 kullanici istegi).
+           Izgara, kare oran, bas-harf rozeti ve hover davranisi
+           `library/mechanical-brands` ile BIREBIR ayni — iki liste ayni ise
+           yariyor (bir varligi acip yonetmek), farkli gorunmeleri icin sebep
+           yoktu.
+           ⚠ SILME KORUNDU: marka kartinda silme yok, iscilikte VAR. Buton
+           Link'in ICINE konsaydi tiklama kart navigasyonuyla cakisirdi —
+           bu yuzden Link disinda, sarmalayicida `absolute` duruyor. */
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+          {visibleFirms.map((firm) => {
+            const basHarf = firm.name.slice(0, 2).toLocaleUpperCase('tr');
+            return (
+              <div key={firm.id} className="group relative">
+                <Link href={`/labor-firms/${firm.id}`}>
+                  <Card className="cursor-pointer overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-lg">
+                    <CardContent className="flex aspect-square flex-col items-center justify-center gap-2 p-4">
+                      <div className="flex h-16 w-16 items-center justify-center rounded-2xl border-2 border-muted bg-gradient-to-br from-slate-50 to-slate-100 transition-transform group-hover:scale-105">
+                        <span className="text-xl font-bold text-slate-400">{basHarf}</span>
+                      </div>
+                      <h3 className="flex items-center gap-1.5 text-sm font-semibold">
+                        {firm.discipline === 'mechanical' ? (
+                          <Wrench className="h-3.5 w-3.5 shrink-0 text-blue-600" />
+                        ) : (
+                          <Zap className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+                        )}
+                        {firm.name}
+                      </h3>
+                      <p className="text-[10px] text-muted-foreground">
+                        {firm._count.priceLists} liste · {firm._count.laborPrices} kalem
+                      </p>
+                    </CardContent>
+                  </Card>
                 </Link>
-              </CardContent>
-            </Card>
-          ))}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  title="Firmayı sil"
+                  className="absolute right-1.5 top-1.5 h-7 w-7 p-0 text-destructive opacity-0 transition-opacity group-hover:opacity-100"
+                  onClick={() => deleteFirm(firm)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
