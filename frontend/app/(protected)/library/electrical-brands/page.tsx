@@ -2,8 +2,9 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Zap, Plus, Search, Upload, Loader2 } from 'lucide-react';
+import { Zap, Plus, Search, Upload, Loader2 } from 'lucide-react';
 import { Card, CardContent } from '@/ortak/ui/card';
+import { GeriButonu } from '@/ortak/ui/geri-butonu';
 import { Button } from '@/ortak/ui/button';
 import { Input } from '@/ortak/ui/input';
 import { Label } from '@/ortak/ui/label';
@@ -188,9 +189,7 @@ export default function ElectricalBrandsPage() {
 
   return (
     <div>
-      <Link href="/library" className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="h-4 w-4" />Kutuphanem
-      </Link>
+      <GeriButonu hedef="/library" />
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">

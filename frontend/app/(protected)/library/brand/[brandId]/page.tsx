@@ -6,8 +6,9 @@ export const runtime = 'edge';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Loader2, Save, Trash2 } from 'lucide-react';
+import { Loader2, Save, Trash2 } from 'lucide-react';
 import { Button } from '@/ortak/ui/button';
+import { GeriButonu } from '@/ortak/ui/geri-butonu';
 import { Card } from '@/ortak/ui/card';
 import api from '@/ortak/lib/api';
 import { toast } from '@/ortak/hooks/use-toast';
@@ -415,12 +416,7 @@ export default function LibraryBrandDetailPage() {
 
   return (
     <div>
-      <Link
-        href="/library/mechanical-brands"
-        className="mb-2 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="h-4 w-4" />Geri
-      </Link>
+      <GeriButonu hedef="/library" />
       <div className="mb-4 flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{brandName || 'Marka'}</h1>

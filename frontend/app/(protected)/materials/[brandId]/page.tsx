@@ -6,8 +6,9 @@ export const runtime = 'edge';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Loader2, Package, Search, FileText, Trash2, ChevronDown, BookmarkPlus, Upload, X, Save } from 'lucide-react';
+import { Loader2, Package, Search, FileText, Trash2, ChevronDown, BookmarkPlus, Upload, X, Save } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/ortak/ui/card';
+import { GeriButonu } from '@/ortak/ui/geri-butonu';
 import { Button } from '@/ortak/ui/button';
 import { Input } from '@/ortak/ui/input';
 import api from '@/ortak/lib/api';
@@ -396,7 +397,7 @@ export default function BrandDetailPage() {
 
   if (!data) return (
     <div>
-      <Link href="/materials" className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" />Malzeme Havuzu</Link>
+      <GeriButonu hedef="/materials" />
       <div className="rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">Marka bulunamadı.</div>
     </div>
   );
@@ -406,9 +407,7 @@ export default function BrandDetailPage() {
       {/* Header */}
       <div className="mb-6 flex items-start justify-between">
         <div>
-          <Link href="/materials" className="mb-3 inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground">
-            <ArrowLeft className="h-4 w-4" />Malzeme Havuzu
-          </Link>
+          <GeriButonu hedef="/materials" />
           <h1 className="text-2xl font-bold tracking-tight">{data.brand.name}</h1>
           <p className="mt-1 text-sm text-muted-foreground">{data.priceLists.length} fiyat listesi</p>
         </div>

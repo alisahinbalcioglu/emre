@@ -6,8 +6,9 @@ export const runtime = 'edge';
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Download, Languages, Loader2, Pencil } from 'lucide-react';
+import { Download, Languages, Loader2, Pencil } from 'lucide-react';
 import { Button } from '@/ortak/ui/button';
+import { GeriButonu } from '@/ortak/ui/geri-butonu';
 import { Card } from '@/ortak/ui/card';
 import api from '@/ortak/lib/api';
 import { toast } from '@/ortak/hooks/use-toast';
@@ -276,9 +277,7 @@ export default function QuoteDetailPage() {
   if (error || !quote) {
     return (
       <div>
-        <Link href="/quotes" className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="h-4 w-4" />Teklifler
-        </Link>
+        <GeriButonu hedef="/quotes" />
         <div className="rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
           {error ?? 'Teklif bulunamadi.'}
         </div>
@@ -314,9 +313,7 @@ export default function QuoteDetailPage() {
       {/* Header */}
       <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <Link href="/quotes" className="mb-2 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="h-4 w-4" />Teklifler
-          </Link>
+          <GeriButonu hedef="/quotes" />
           <h1 className="text-2xl font-bold tracking-tight">{quote.title}</h1>
           <p className="mt-1 text-sm text-muted-foreground">{new Date(quote.createdAt).toLocaleDateString('tr-TR')}</p>
         </div>

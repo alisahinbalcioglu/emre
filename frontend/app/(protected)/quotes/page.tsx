@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Eye, Trash2, FileText, Loader2, ArrowLeft } from 'lucide-react';
+import { Eye, Trash2, FileText, Loader2} from 'lucide-react';
 import { Button } from '@/ortak/ui/button';
+import { GeriButonu } from '@/ortak/ui/geri-butonu';
 import { Card, CardContent, CardHeader, CardTitle } from '@/ortak/ui/card';
 import api from '@/ortak/lib/api';
 import { toast } from '@/ortak/hooks/use-toast';
@@ -93,12 +94,7 @@ export default function QuotesPage() {
   return (
     <div>
       {/* GERI (14.08 kullanici istegi) — kutuphane/iscilik sayfalariyla ayni desen */}
-      <Link
-        href="/dashboard"
-        className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="h-4 w-4" />Dashboard
-      </Link>
+      <GeriButonu hedef="/dashboard" />
       <div className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight">Teklifler</h1>
       </div>

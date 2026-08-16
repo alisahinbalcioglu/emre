@@ -2,8 +2,9 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, FolderOpen, Search, Loader2, BookmarkPlus, Trash2, Plus } from 'lucide-react';
+import { FolderOpen, Search, Loader2, BookmarkPlus, Trash2, Plus } from 'lucide-react';
 import { Card, CardContent } from '@/ortak/ui/card';
+import { GeriButonu } from '@/ortak/ui/geri-butonu';
 import { Button } from '@/ortak/ui/button';
 import { Input } from '@/ortak/ui/input';
 import { Label } from '@/ortak/ui/label';
@@ -82,9 +83,7 @@ export default function MechanicalPoolPage() {
 
   return (
     <div>
-      <Link href="/dashboard" className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="h-4 w-4" />Dashboard
-      </Link>
+      <GeriButonu hedef="/materials" />
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">

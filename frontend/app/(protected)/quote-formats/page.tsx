@@ -9,9 +9,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import Link from 'next/link';
 import {
-  ArrowLeft, FileText, Upload, Star, Trash2, Loader2, Download, Eye, X,
+  FileText, Upload, Star, Trash2, Loader2, Download, Eye, X,
 } from 'lucide-react';
 import { Button } from '@/ortak/ui/button';
+import { GeriButonu } from '@/ortak/ui/geri-butonu';
 import { Card, CardContent } from '@/ortak/ui/card';
 import api from '@/ortak/lib/api';
 import { toast } from '@/ortak/hooks/use-toast';
@@ -190,9 +191,7 @@ export default function QuoteFormatsPage() {
   return (
     <div>
       <div className="mb-6">
-        <Link href="/library" className="mb-2 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="h-4 w-4" />Kutuphanem
-        </Link>
+        <GeriButonu hedef="/library" />
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Teklif Formatlarım</h1>

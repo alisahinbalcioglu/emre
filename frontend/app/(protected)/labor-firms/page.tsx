@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Plus, Trash2, Wrench, Zap, Loader2, ArrowLeft } from 'lucide-react';
+import { Plus, Trash2, Wrench, Zap, Loader2 } from 'lucide-react';
 import { Button } from '@/ortak/ui/button';
+import { GeriButonu } from '@/ortak/ui/geri-butonu';
 import { Card, CardContent } from '@/ortak/ui/card';
 import { Input } from '@/ortak/ui/input';
 import api from '@/ortak/lib/api';
@@ -42,22 +43,14 @@ export default function LaborFirmsPage() {
     : firms;
 
   /**
-   * GERI baglantisi (14.08 kullanici istegi) — kutuphane sayfalarindaki
-   * desenin aynisi.
+   * GERI — ortak bilesen (`ortak/ui/geri-butonu`). Gecmiste bir adim geri
+   * gider; gecmis yoksa `hedef`e duser.
    *
-   * ⚠ Bilesen olarak tanimlandi cunku bu sayfanin DORT cikis dali var
-   * (yukleniyor · Pro yok · mekanik Pro yok · elektrik Pro yok · normal).
-   * Yalniz normal dala eklenseydi, Pro engeline dusen kullanici ekranda
-   * KILITLI kalirdi — cikis yolu yalniz tarayici geri tusu olurdu.
+   * ⚠ Bu sayfanin DORT cikis dali var (Pro yok · mekanik Pro yok · elektrik
+   * Pro yok · normal). Baglanti hepsinde bulunmali — yalniz normal dala
+   * konsaydi Pro engeline dusen kullanici ekranda KILITLI kalirdi.
    */
-  const GeriBaglantisi = () => (
-    <Link
-      href="/dashboard"
-      className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-    >
-      <ArrowLeft className="h-4 w-4" />Dashboard
-    </Link>
-  );
+  const GeriBaglantisi = () => <GeriButonu hedef="/library" />;
 
   const pageTitle = disciplineFilter === 'mechanical'
     ? 'Mekanik Iscilik Firmalarim'

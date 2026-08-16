@@ -6,8 +6,9 @@ export const runtime = 'edge';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Trash2, Loader2, Wrench, Zap, Save } from 'lucide-react';
+import { Trash2, Loader2, Wrench, Zap, Save } from 'lucide-react';
 import { Button } from '@/ortak/ui/button';
+import { GeriButonu } from '@/ortak/ui/geri-butonu';
 import { Card } from '@/ortak/ui/card';
 import api from '@/ortak/lib/api';
 import { toast } from '@/ortak/hooks/use-toast';
@@ -371,12 +372,7 @@ export default function LaborFirmDetailPage() {
   return (
     <div>
       <div className="mb-4">
-        <Link
-          href={`/labor-firms?discipline=${firma.discipline}`}
-          className="mb-2 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />Firmalar
-        </Link>
+        <GeriButonu hedef={`/labor-firms?discipline=${firma.discipline}`} />
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-2">
             {firma.discipline === 'mechanical' ? (
