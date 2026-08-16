@@ -2366,6 +2366,33 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         'hidden-merged-cell': (params) => params.data?._merges?.[field]?.hidden === true,
       };
 
+      // ── OZET SERIDI ROZETI (16.08 kullanici tasarimi) ───────────────────
+      // Pinned bottom satirlarindaki "GENEL TOPLAM" / "KÂR" metni rozet
+      // kutucuguna sarilir (gorunum CSS'te: `.ozet-rozet*`).
+      //
+      // ⚠ NEDEN RENDERER: AG-Grid bu hucreyi TEK eleman olarak ciziyor
+      // (`<div class="ag-cell ... ag-cell-value">GENEL TOPLAM</div>` — ic
+      // sarmalayici YOK, tarayicida olculdu). Sinifi hucreye vermek rozeti
+      // hucre genisligi kadar yayardi; dar kutucuk icin bir `<span>` sart.
+      //
+      // ⚠ YALNIZ AD KOLONU ve YALNIZ PINNED SATIR: etiket metni
+      // `updatePinnedBottom` tarafindan `pinnedRow[nameField]`e yaziliyor.
+      // Normal satirlar dokunulmadan varsayilan yoldan gecer — bu kolon
+      // MERGE (colSpan/rowSpan) tasiyor ve bicimlendirmesi degismemeli.
+      if (field === data.columnRoles.nameField) {
+        base.cellRenderer = (params: ICellRendererParams) => {
+          if (params.node?.rowPinned !== 'bottom') {
+            return params.valueFormatted ?? params.value ?? '';
+          }
+          const kar = (params.data as any)?._isKarRow === true;
+          return (
+            <span className={`ozet-rozet ${kar ? 'ozet-rozet-kar' : 'ozet-rozet-toplam'}`}>
+              {params.valueFormatted ?? params.value}
+            </span>
+          );
+        };
+      }
+
       // Para birimi sutunlari icin formatter (TR locale: 10.200,35)
       if (
         field === data.columnRoles.materialUnitPriceField ||
@@ -2856,12 +2883,19 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         pinnedBottomRowData={pinnedBottomRow}
         getRowStyle={(p) => {
           if (p.node.rowPinned === 'bottom') {
-            // ADIM 10: KAR satiri toplamdan gorsel olarak ayrisir (ic bilgi —
-            // koyu zemin, musteri ciktisina zaten giremez)
+            // SOFT OZET SERIDI (16.08 kullanici tasarimi): eski koyu bloklar
+            // (lacivert/yesil + beyaz metin) yerine acik zemin. Satirlari
+            // birbirinden ayiran sey artik ZEMIN degil, etiket ROZETI ve
+            // rakamin rengi — sayfanin geri kalaniyla ayni gorsel dil.
+            //
+            // ⚠ ADIM 10 KORUNDU: KAR satiri hala GORSEL OLARAK ayrisir (yesil
+            // rakam + yesil rozet). Ayrisma sebebi kozmetik degil: kar IC
+            // BILGIDIR, musteriye giden ciktida yeri yoktur ve kullanici onu
+            // toplamla karistirmamalidir.
             if ((p.data as any)?._isKarRow) {
-              return { backgroundColor: '#065f46', color: '#ffffff', fontWeight: 700 };
+              return { backgroundColor: '#f8fafc', color: '#047857', fontWeight: 700 };
             }
-            return { backgroundColor: '#1e40af', color: '#ffffff', fontWeight: 700 };
+            return { backgroundColor: '#f8fafc', color: '#0f172a', fontWeight: 700 };
           }
           return undefined;
         }}

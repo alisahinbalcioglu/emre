@@ -170,20 +170,50 @@ body.fill-handle-dragging * {
    1px'i o koyu renkle GORUNUR HALE GELIRDI — dikey cizgiler tek satirda geri
    gelirdi. */
 
-/* Pinned bottom (GENEL TOPLAM / KAR) */
+/* ── PINNED BOTTOM: SOFT OZET SERIDI (16.08 kullanici tasarimi) ──────────────
+   Eski hali KOYU bloklardi: GENEL TOPLAM lacivert (#1e40af), KAR yesil
+   (#065f46), ikisi de beyaz metinle. Yeni dil PRD'nin geri kalaniyla ayni:
+   acik zemin + RENGI ANLAMDAN gelen rozet etiket + koyu, mono rakam.
+
+   ⚠ `color: white` KURALI KALDIRILDI: acik zeminde beyaz metin OKUNAMAZ.
+   Bu kural burada dururken `getRowStyle`in verecegi hicbir metin rengi
+   gorunmezdi — CSS satir-ici stili ezmez ama HER hucreye ayri ayri
+   uygulandigi icin pratikte her seyi beyaza boyuyordu. */
 .ag-theme-alpine .ag-floating-bottom {
-  border-top: 2px solid #1e293b;
+  border-top: 2px solid #e2e8f0;
 }
 
-/* ⚠ `background` BILEREK VERILMIYOR: KAR satiri kendi yesilini (#065f46)
-   `getRowStyle` ile inline tasir. Burada `.ag-row`a `!important` zemin
-   yazilirsa inline stili EZER ve KAR satiri lacivert gorunur — koddaki
-   yorum "yesil" dese de ekranda yesil OLMAZ. Zemin artik satir bazinda
-   `getRowStyle`dan gelir (ExcelGrid.tsx). */
 .ag-theme-alpine .ag-floating-bottom .ag-cell {
-  color: white;
-  font-weight: 600;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
+
+/* ROZET ETIKET — "GENEL TOPLAM" / "KÂR" metnini saran kutucuk.
+   Sarmalayici <span> ad kolonunun cellRenderer'i tarafindan uretilir
+   (ExcelGrid.tsx). Sinif dogrudan HUCREYE verilseydi rozet hucre genisligi
+   kadar yayilirdi — AG-Grid bu hucreyi ic sarmalayicisiz TEK eleman olarak
+   ciziyor (tarayicida olculdu). */
+.ozet-rozet {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ozet-rozet-toplam {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.ozet-rozet-kar {
+  background: #d1fae5;
+  color: #065f46;
+}
+
 
 /* MetaPrice sistem kolonlari — cok hafif indigo tonu */
 .ag-theme-alpine .ag-cell[col-id="_malzKar"],

@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 381
-Toplam satir: 79400
+Kod dosyasi: 382
+Toplam satir: 79509
 Uc nokta: 130
 test:* scripti: 56
 
@@ -303,6 +303,7 @@ test:* scripti: 56
 | `frontend/ortak/ui/card.tsx` | 56 |
 | `frontend/ortak/ui/confirm-dialog.tsx` | 130 |
 | `frontend/ortak/ui/dialog.tsx` | 94 |
+| `frontend/ortak/ui/geri-butonu.tsx` | 75 |
 | `frontend/ortak/ui/input.tsx` | 24 |
 | `frontend/ortak/ui/label.tsx` | 19 |
 | `frontend/ortak/ui/select.tsx` | 143 |
@@ -327,7 +328,7 @@ test:* scripti: 56
 | `frontend/ozellik/kutuphane/oksuz-kutuphane-uyarisi.ts` | 60 |
 | `frontend/ozellik/tablo/disiplin.ts` | 13 |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 237 |
-| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 2993 |
+| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 3027 |
 | `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | 109 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts` | 178 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.ts` | 175 |
@@ -653,6 +654,7 @@ test:* scripti: 56
 | `frontend/ortak/ui/card.tsx` | `react` `@/ortak/lib/utils` |
 | `frontend/ortak/ui/confirm-dialog.tsx` | `react` `lucide-react` `@/ortak/hooks/use-confirm` `@/ortak/lib/utils` |
 | `frontend/ortak/ui/dialog.tsx` | `react` `@radix-ui/react-dialog` `lucide-react` `@/ortak/lib/utils` |
+| `frontend/ortak/ui/geri-butonu.tsx` | `next/link` `next/navigation` `lucide-react` |
 | `frontend/ortak/ui/input.tsx` | `react` `@/ortak/lib/utils` |
 | `frontend/ortak/ui/label.tsx` | `react` `@radix-ui/react-label` `class-variance-authority` `@/ortak/lib/utils` |
 | `frontend/ortak/ui/select.tsx` | `react` `@radix-ui/react-select` `lucide-react` `@/ortak/lib/utils` |

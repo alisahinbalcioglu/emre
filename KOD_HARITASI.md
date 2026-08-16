@@ -628,6 +628,7 @@ Karıştırılmasın diye ayrı duruyor.
 | `frontend/ortak/ui/button.tsx` | Varyant/boyut seçenekli genel tıklama bileşeni |
 | `frontend/ortak/ui/card.tsx` | Başlık/içerik/alt bölümlü kutu düzeni parçaları |
 | `frontend/ortak/ui/confirm-dialog.tsx` | use-confirm singleton'ini dinleyip tiklama noktasinda klavye destekli onay karti acan tekil renderer; `opts.input` verildiyse ayni kart bir DEGER KUTUSU cizer (S1) — gorsel dil ExcelGrid iskonto arac cubugundan alindi |
+| `frontend/ortak/ui/geri-butonu.tsx` | Gecmiste BIR ADIM geri gider (`router.back()`), gecmis yoksa `hedef`e duser. 12 sayfa once SABIT href yaziyordu ve hedefler tutarsizdi: Kutuphanem uzerinden iscilige girip geri basan kullanici Dashboard'a atiliyordu; `library/brand` ELEKTRIK markasinda bile mekanik listesine goturuyordu. `<a>` olarak kalir — sag tik/yeni sekme ve JS'siz geri dusus calisir |
 | `frontend/ortak/ui/dialog.tsx` | Radix tabanli modal pencere primitifleri: overlay, icerik, baslik, aciklama, kapatma dugmesi |
 | `frontend/ortak/ui/input.tsx` | Ref iletimli standart metin giriş kutusu |
 | `frontend/ortak/ui/label.tsx` | Form alanlarına erişilebilir etiket bağlayan sarmalayıcı |
