@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 383
-Toplam satir: 79780
+Kod dosyasi: 384
+Toplam satir: 80261
 Uc nokta: 130
 test:* scripti: 56
 
@@ -229,7 +229,7 @@ test:* scripti: 56
 | `frontend/app/dev/grid-test/page.tsx` | 200 |
 | `frontend/app/layout.tsx` | 25 |
 | `frontend/app/login/page.tsx` | 108 |
-| `frontend/app/page.tsx` | 20 |
+| `frontend/app/page.tsx` | 470 |
 | `frontend/app/register/page.tsx` | 110 |
 | `frontend/components/dwg-diameter-engine/DiameterLegendPanel.tsx` | 151 |
 | `frontend/components/dwg-diameter-engine/index.ts` | 16 |
@@ -291,6 +291,7 @@ test:* scripti: 56
 | `frontend/ortak/hooks/use-toast.ts` | 119 |
 | `frontend/ortak/kabuk/components/dashboard/QuickAccess.tsx` | 49 |
 | `frontend/ortak/kabuk/components/dashboard/QuickStart.tsx` | 155 |
+| `frontend/ortak/kabuk/components/landing/GirisliyseYonlendir.tsx` | 31 |
 | `frontend/ortak/kabuk/components/layout/Breadcrumb.tsx` | 73 |
 | `frontend/ortak/kabuk/components/layout/Sidebar.tsx` | 157 |
 | `frontend/ortak/lib/api-401-kapsami.test.ts` | 232 |
@@ -598,7 +599,7 @@ test:* scripti: 56
 | `frontend/app/dev/grid-test/page.tsx` | `react` `@/ozellik/tablo/excel-grid/ExcelGrid` `@/ozellik/tablo/excel-grid/types` |
 | `frontend/app/layout.tsx` | `next` `next/font/google` `@/ortak/ui/toaster` `@/ortak/ui/confirm-dialog` `./globals.css` |
 | `frontend/app/login/page.tsx` | `react` `next/navigation` `next/link` `@/ortak/lib/api` `@/ortak/ui/parola-alani` `@/ortak/hooks/use-toast` |
-| `frontend/app/page.tsx` | `react` `next/navigation` |
+| `frontend/app/page.tsx` | `next/link` `lucide-react` `@/ortak/kabuk/components/landing/GirisliyseYonlendir` |
 | `frontend/app/register/page.tsx` | `react` `next/navigation` `next/link` `@/ortak/lib/api` `@/ortak/ui/parola-alani` `@/ortak/hooks/use-toast` |
 | `frontend/components/dwg-diameter-engine/DiameterLegendPanel.tsx` | `react` `lucide-react` `@/components/dwg-metraj/diameter-colors` `./types` |
 | `frontend/components/dwg-diameter-engine/types.ts` | `@/components/dwg-metraj/types` `@/components/dwg-workspace/types` `@/components/dwg-metraj/diameter-colors` `@/components/dwg-metraj/constants` |
@@ -644,6 +645,7 @@ test:* scripti: 56
 | `frontend/ortak/hooks/use-toast.ts` | `react` `@/ortak/ui/toast` |
 | `frontend/ortak/kabuk/components/dashboard/QuickAccess.tsx` | `next/link` `lucide-react` |
 | `frontend/ortak/kabuk/components/dashboard/QuickStart.tsx` | `react` `lucide-react` `@/ortak/lib/utils` `@/ortak/hooks/use-toast` |
+| `frontend/ortak/kabuk/components/landing/GirisliyseYonlendir.tsx` | `react` `next/navigation` |
 | `frontend/ortak/kabuk/components/layout/Breadcrumb.tsx` | `next/navigation` `next/link` `lucide-react` |
 | `frontend/ortak/kabuk/components/layout/Sidebar.tsx` | `next/navigation` `next/link` `@/ortak/lib/utils` |
 | `frontend/ortak/lib/api-401-kapsami.test.ts` | `vitest` `./api` |

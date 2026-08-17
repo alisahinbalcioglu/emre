@@ -618,10 +618,11 @@ Karıştırılmasın diye ayrı duruyor.
 | `frontend/app/(protected)/profile/page.tsx` | Kullanici profili, abonelik/tier ve yetkinlik bilgilerini gosterir; oturum kapatma sunar |
 | `frontend/app/layout.tsx` | Kok HTML iskeletini kurar; font, global toaster ve onay dialog kokunu baglar |
 | `frontend/app/login/page.tsx` | E-posta/sifreyle giris yapar, token ve kullaniciyi localStorage'a yazip dashboard'a yonlendirir. MetaPriceX marka blogu kartin DISINDA; parola alani `ParolaAlani` (goz dugmeli) |
-| `frontend/app/page.tsx` | Token varligina gore kullaniciyi dashboard'a ya da giris sayfasina yonlendirir |
+| `frontend/app/page.tsx` | TANITIM (landing) sayfasi — 17.08'e kadar bos bir yonlendiriciydi. SUNUCU bileseni: metin arama motoru ciktisinda durur, `○ Static` uretilir (417 B); giris yapmis kullaniciyi `GirisliyseYonlendir` dashboard'a gecirir, yani eski davranis KORUNDU. Metin koda karsi DENETLENDI: "otomatik cap atama" ve "ekipman adedi" iddialari SILINDI (o motorlar koddan kaldirilmisti), 10x/%99/50K+ sayilari olculmus degerlerle degistirildi, dayanaksiz footer baglantilari konulmadi |
 | `frontend/app/register/page.tsx` | Yeni hesap olusturur, donen token'i saklayip dashboard'a yonlendirir. 17.08'e kadar eski shadcn kartinda ve INGILIZCE kalmisti — "Kayit Olun"a basan kullanici baska bir uygulamaya dusmus gibi oluyordu; artik giris ekraninin kabugunu birebir paylasir |
 | `frontend/ortak/kabuk/components/dashboard/QuickAccess.tsx` | Dashboard'da malzeme havuzu ve kutuphaneye hizli gecis kartlari sunar |
 | `frontend/ortak/kabuk/components/dashboard/QuickStart.tsx` | Excel ve DWG dosyalarini surukle-birak/tiklama ile alir; DWG icin birim secim dialogu acar |
+| `frontend/ortak/kabuk/components/landing/GirisliyseYonlendir.tsx` | Tanitim sayfasinda token varsa dashboard'a gecirir. AYRI dosya cunku `/` sunucu bileseni; butun sayfa `'use client'` olsaydi tanitim metni sunucu ciktisindan duserdi. Guvenlik kapisi DEGIL — korumali alani `(protected)/layout.tsx` ve backend JWT korur |
 | `frontend/ortak/kabuk/components/layout/Breadcrumb.tsx` | URL path parcalarindan Turkce etiketli gezinme kirintisi uretir, admin/materials icin ozel etiket |
 | `frontend/ortak/kabuk/components/layout/Sidebar.tsx` | Sabit sol gezinme cubugu: ana sayfalar, daralt/genislet, kullanici tier rozeti ve profil linki |
 | `frontend/ortak/ui/badge.tsx` | shadcn rozet primitifi; rol/tier/durum icin 8 renk varyanti (cva) |
