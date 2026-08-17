@@ -20,7 +20,8 @@ interface SidebarProps {
 }
 
 const NAV_ITEMS = [
-  { href: '/dashboard', label: 'Dashboard', icon: Home },
+  // 16.08 marka kimligi: menu Turkcelestirildi.
+  { href: '/dashboard', label: 'Ana Sayfa', icon: Home },
   { href: '/quotes', label: 'Teklifler', icon: FileText },
   'divider' as const,
   { href: '/materials', label: 'Malzeme Havuzu', icon: Database },
@@ -53,15 +54,18 @@ export default function Sidebar({ user, collapsed, onToggle }: SidebarProps) {
         'fixed left-0 top-0 bottom-0 z-40 flex flex-col transition-all duration-200',
         collapsed ? 'w-16' : 'w-60',
       )}
-      style={{ background: '#0f172a' }}
+      // Marka lacivertti (16.08) — eski #0f172a'dan bir ton derin.
+      style={{ background: '#0B1528' }}
     >
       {/* Logo — Dashboard'a yonlendirir */}
       <Link href="/dashboard" className="flex h-14 items-center gap-2.5 border-b border-slate-800 px-4 transition-colors hover:bg-slate-800/50">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-sm font-bold text-white">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-xl font-black text-white shadow-lg shadow-blue-500/30">
           M
         </div>
         {!collapsed && (
-          <span className="text-[15px] font-semibold text-slate-100">MetaPrice</span>
+          <span className="text-xl font-extrabold tracking-tight text-white">
+            MetaPrice<span className="text-blue-500">X</span>
+          </span>
         )}
       </Link>
 
@@ -85,10 +89,10 @@ export default function Sidebar({ user, collapsed, onToggle }: SidebarProps) {
               href={item.href}
               title={collapsed ? item.label : undefined}
               className={cn(
-                'mb-0.5 flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium transition-colors',
+                'mb-1 flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm transition-all',
                 active
-                  ? 'border-l-[3px] border-blue-500 bg-blue-950/50 pl-[9px] text-blue-400'
-                  : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200',
+                  ? 'border-l-4 border-blue-500 bg-blue-600/20 pl-[10px] font-semibold text-blue-400'
+                  : 'font-medium text-slate-400 hover:bg-slate-800/50 hover:text-slate-200',
                 collapsed && 'justify-center px-0',
               )}
             >
@@ -109,24 +113,35 @@ export default function Sidebar({ user, collapsed, onToggle }: SidebarProps) {
         {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
       </button>
 
-      {/* User — Profil sayfasina yonlendirir */}
+      {/* User — Profil sayfasina yonlendirir.
+          16.08: kendi kutusu olan bir kart (koyu zemin + ince cerceve).
+          ⚠ Daralmis halde (`collapsed`) kart cercevesi VERILMEZ: 16px'lik
+          seritte kutu, avatarin etrafinda kirpilmis bir cerceveye donuyordu. */}
       <Link
         href="/profile"
         className="block border-t border-slate-800 px-3 py-3 transition-colors hover:bg-slate-800/50"
       >
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">
+        <div
+          className={cn(
+            'flex items-center gap-3',
+            !collapsed && 'rounded-xl border border-slate-800/60 bg-slate-900/60 p-2',
+          )}
+        >
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
             {initial}
           </div>
           {!collapsed && (
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-[13px] font-medium text-slate-200">
+            <div className="min-w-0 flex-1 overflow-hidden">
+              <p className="truncate text-xs font-semibold text-white">
                 {user?.email?.split('@')[0] ?? 'Kullanici'}
               </p>
+              {/* ⚠ TIER RENGI KORUNDU: kullanicinin tasarimi PRO ornegini
+                  mavi gosteriyor ama renk burada BILGI tasiyor — core gri,
+                  pro mavi, suite mor. Hepsini maviye sabitlemek paket
+                  ayrimini ekrandan silerdi. */}
               <span
                 className={cn(
-                  'inline-block rounded px-1.5 py-px text-[10px] font-semibold uppercase',
-                  tierStyle.bg,
+                  'inline-block text-[10px] font-bold uppercase tracking-wider',
                   tierStyle.text,
                 )}
               >

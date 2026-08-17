@@ -175,10 +175,10 @@ export default function DashboardPage() {
     <div>
       {/* Welcome Banner */}
       <div className="mb-7">
-        <h1 className="text-xl font-semibold tracking-tight">
-          Hosgeldiniz{userName ? `, ${userName}` : ''}!
+        <h1 className="text-2xl font-bold text-slate-900">
+          Hoşgeldiniz{userName ? `, ${userName}` : ''}!
         </h1>
-        <p className="mt-1 text-sm text-muted-foreground">MetaPrice kontrol merkeziniz</p>
+        <p className="mt-1 text-xs text-slate-500">MetaPriceX kontrol merkeziniz</p>
       </div>
 
       {/* Stat Cards */}

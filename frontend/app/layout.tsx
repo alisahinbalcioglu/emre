@@ -7,7 +7,7 @@ import { ConfirmRoot } from '@/ortak/ui/confirm-dialog';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'MetaPrice - Mechanical Pricing SaaS',
+  title: 'MetaPriceX — Teklif ve Metraj Yönetimi',
   description: 'Manage pricing libraries, create quotes, export PDFs',
 };
 

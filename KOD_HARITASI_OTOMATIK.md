@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 382
-Toplam satir: 79509
+Toplam satir: 79551
 Uc nokta: 130
 test:* scripti: 56
 
@@ -228,7 +228,7 @@ test:* scripti: 56
 | `frontend/app/admin/users/page.tsx` | 190 |
 | `frontend/app/dev/grid-test/page.tsx` | 200 |
 | `frontend/app/layout.tsx` | 25 |
-| `frontend/app/login/page.tsx` | 84 |
+| `frontend/app/login/page.tsx` | 111 |
 | `frontend/app/page.tsx` | 20 |
 | `frontend/app/register/page.tsx` | 85 |
 | `frontend/components/dwg-diameter-engine/DiameterLegendPanel.tsx` | 151 |
@@ -292,7 +292,7 @@ test:* scripti: 56
 | `frontend/ortak/kabuk/components/dashboard/QuickAccess.tsx` | 49 |
 | `frontend/ortak/kabuk/components/dashboard/QuickStart.tsx` | 155 |
 | `frontend/ortak/kabuk/components/layout/Breadcrumb.tsx` | 73 |
-| `frontend/ortak/kabuk/components/layout/Sidebar.tsx` | 142 |
+| `frontend/ortak/kabuk/components/layout/Sidebar.tsx` | 157 |
 | `frontend/ortak/lib/api-401-kapsami.test.ts` | 232 |
 | `frontend/ortak/lib/api.ts` | 58 |
 | `frontend/ortak/lib/utils.ts` | 16 |
@@ -596,7 +596,7 @@ test:* scripti: 56
 | `frontend/app/admin/users/page.tsx` | `react` `lucide-react` `@/ortak/lib/api` `@/ortak/ui/input` `@/ortak/ui/button` `@/ortak/ui/badge` `@/ortak/ui/card` |
 | `frontend/app/dev/grid-test/page.tsx` | `react` `@/ozellik/tablo/excel-grid/ExcelGrid` `@/ozellik/tablo/excel-grid/types` |
 | `frontend/app/layout.tsx` | `next` `next/font/google` `@/ortak/ui/toaster` `@/ortak/ui/confirm-dialog` `./globals.css` |
-| `frontend/app/login/page.tsx` | `react` `next/navigation` `next/link` `@/ortak/lib/api` `@/ortak/ui/button` `@/ortak/ui/input` `@/ortak/ui/label` `@/ortak/ui/card` `@/ortak/hooks/use-toast` |
+| `frontend/app/login/page.tsx` | `react` `next/navigation` `next/link` `@/ortak/lib/api` `@/ortak/hooks/use-toast` |
 | `frontend/app/page.tsx` | `react` `next/navigation` |
 | `frontend/app/register/page.tsx` | `react` `next/navigation` `next/link` `@/ortak/lib/api` `@/ortak/ui/button` `@/ortak/ui/input` `@/ortak/ui/label` `@/ortak/ui/card` `@/ortak/hooks/use-toast` |
 | `frontend/components/dwg-diameter-engine/DiameterLegendPanel.tsx` | `react` `lucide-react` `@/components/dwg-metraj/diameter-colors` `./types` |

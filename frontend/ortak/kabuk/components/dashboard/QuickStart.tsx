@@ -101,20 +101,20 @@ export default function QuickStart({
               onDrop={handleExcelDrop}
               onClick={() => excelInputRef.current?.click()}
               className={cn(
-                'cursor-pointer rounded-xl border-2 border-dashed py-8 text-center transition-all',
+                'group cursor-pointer rounded-2xl border-2 border-dashed p-8 text-center transition-all',
                 excelDragOver
-                  ? 'border-emerald-500 bg-emerald-50 scale-[1.01]'
-                  : 'border-slate-200 bg-slate-50/50 hover:border-emerald-400 hover:bg-emerald-50/30',
+                  ? 'scale-[1.01] border-emerald-500 bg-emerald-50'
+                  : 'border-emerald-300 bg-emerald-50/30 hover:bg-emerald-50/60',
               )}
             >
-              <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100">
-                <FileSpreadsheet className="h-5 w-5 text-emerald-600" />
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600 transition-transform group-hover:scale-110">
+                <FileSpreadsheet className="h-6 w-6" />
               </div>
-              <h3 className="text-sm font-semibold">Excel Kesif</h3>
-              <p className="mt-1 text-xs text-muted-foreground">Metraj dosyanizi surukleyin</p>
-              <div className="mt-2 flex items-center justify-center gap-1.5">
-                <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600">.xlsx</span>
-                <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600">.xls</span>
+              <h3 className="text-sm font-bold text-slate-900">Excel Keşif</h3>
+              <p className="mt-1 text-xs text-slate-500">Metraj dosyanızı sürükleyin</p>
+              <div className="mt-3 flex items-center justify-center gap-2">
+                <span className="rounded bg-emerald-100 px-2 py-0.5 font-mono text-[10px] font-medium text-emerald-700">.xlsx</span>
+                <span className="rounded bg-emerald-100 px-2 py-0.5 font-mono text-[10px] font-medium text-emerald-700">.xls</span>
               </div>
               <input ref={excelInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleExcelInput} />
             </div>
@@ -127,20 +127,20 @@ export default function QuickStart({
               onDrop={handleDwgDrop}
               onClick={() => dwgInputRef.current?.click()}
               className={cn(
-                'cursor-pointer rounded-xl border-2 border-dashed py-8 text-center transition-all',
+                'group cursor-pointer rounded-2xl border-2 border-dashed p-8 text-center transition-all',
                 dwgDragOver
-                  ? 'border-blue-500 bg-blue-50 scale-[1.01]'
-                  : 'border-slate-200 bg-slate-50/50 hover:border-blue-400 hover:bg-blue-50/30',
+                  ? 'scale-[1.01] border-blue-500 bg-blue-50'
+                  : 'border-blue-200 bg-blue-50/30 hover:bg-blue-50/60',
               )}
             >
-              <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100">
-                <FileText className="h-5 w-5 text-blue-600" />
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100 text-blue-600 transition-transform group-hover:scale-110">
+                <FileText className="h-6 w-6" />
               </div>
-              <h3 className="text-sm font-semibold">DWG Proje</h3>
-              <p className="mt-1 text-xs text-muted-foreground">Tesisat projesini surukleyin</p>
-              <div className="mt-2 flex items-center justify-center gap-1.5">
-                <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-600">.dwg</span>
-                <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-600">.dxf</span>
+              <h3 className="text-sm font-bold text-slate-900">DWG Proje</h3>
+              <p className="mt-1 text-xs text-slate-500">Tesisat projesini sürükleyin</p>
+              <div className="mt-3 flex items-center justify-center gap-2">
+                <span className="rounded bg-blue-100 px-2 py-0.5 font-mono text-[10px] font-medium text-blue-700">.dwg</span>
+                <span className="rounded bg-blue-100 px-2 py-0.5 font-mono text-[10px] font-medium text-blue-700">.dxf</span>
               </div>
               <span className="mt-2 inline-block rounded bg-blue-600/10 px-2 py-0.5 text-[9px] font-semibold text-blue-600">PRO</span>
               <input ref={dwgInputRef} type="file" accept=".dwg,.dxf" className="hidden" onChange={handleDwgInput} />

@@ -1,13 +1,20 @@
 'use client';
 
+/**
+ * GIRIS EKRANI — MetaPriceX marka kimligi (16.08).
+ *
+ * ⚠ "Parolamı unuttum" BILEREK YOK: kullanicinin tasariminda vardi ama
+ * uygulamada parola sifirlama YOLU YOK (ne `/forgot-password` sayfasi ne de
+ * bir backend ucu — arandi, bulunamadi). Tiklanip hicbir sey yapmayan bir
+ * baglanti koymak, ekranin var olmayan bir sey vaat etmesi olurdu; ayni
+ * hatayi kayitli teklif ekraninda yasadik (marka secicisi gorunuyor ama
+ * `onBrandChange` bostu). Ozellik yazildiginda baglanti da eklenir.
+ */
+
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import api from '@/ortak/lib/api';
-import { Button } from '@/ortak/ui/button';
-import { Input } from '@/ortak/ui/input';
-import { Label } from '@/ortak/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/ortak/ui/card';
 import { toast } from '@/ortak/hooks/use-toast';
 
 export default function LoginPage() {
@@ -27,8 +34,8 @@ export default function LoginPage() {
     } catch (err: any) {
       toast({
         variant: 'destructive',
-        title: 'Login failed',
-        description: err.response?.data?.message || 'Invalid credentials',
+        title: 'Giriş başarısız',
+        description: err.response?.data?.message || 'E-posta veya parola hatalı.',
       });
     } finally {
       setLoading(false);
@@ -36,48 +43,68 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-3xl font-bold tracking-tight">METAPRICE</CardTitle>
-          <CardDescription>Sign in to your account</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </div>
-            <Button type="submit" className="w-full" size="lg" disabled={loading}>
-              {loading ? 'Signing in...' : 'Sign In'}
-            </Button>
-          </form>
-          <p className="text-center text-sm text-muted-foreground mt-4">
-            Don&apos;t have an account?{' '}
-            <Link href="/register" className="font-medium underline">
-              Register
-            </Link>
-          </p>
-        </CardContent>
-      </Card>
+    <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 p-6">
+      {/* Marka bloğu — kartın DIŞINDA */}
+      <div className="mb-8 flex flex-col items-center text-center">
+        <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-blue-600 text-2xl font-black text-white shadow-lg shadow-blue-500/30">
+          M
+        </div>
+        <h1 className="flex items-center gap-0.5 text-2xl font-extrabold tracking-tight text-slate-900">
+          MetaPrice<span className="text-blue-600">X</span>
+        </h1>
+        <p className="mt-1 text-xs text-slate-500">Teklif ve metraj yönetim merkeziniz</p>
+      </div>
+
+      <div className="w-full max-w-sm rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label htmlFor="email" className="mb-1.5 block text-xs font-semibold text-slate-700">
+              E-posta Adresi
+            </label>
+            <input
+              id="email"
+              type="email"
+              autoComplete="email"
+              placeholder="ornek@sirket.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-800 transition-all focus:border-blue-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600/20"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="password" className="mb-1.5 block text-xs font-semibold text-slate-700">
+              Parola
+            </label>
+            <input
+              id="password"
+              type="password"
+              autoComplete="current-password"
+              placeholder="••••••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-800 transition-all focus:border-blue-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600/20"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="mt-2 w-full rounded-xl bg-[#0B1528] px-4 py-2.5 text-sm font-semibold text-white shadow-md transition-all hover:bg-slate-800 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {loading ? 'Giriş yapılıyor…' : 'Giriş Yap'}
+          </button>
+        </form>
+
+        <div className="mt-6 text-center text-xs text-slate-500">
+          Hesabınız yok mu?{' '}
+          <Link href="/register" className="font-bold text-blue-600 hover:text-blue-700">
+            Kayıt Olun
+          </Link>
+        </div>
+      </div>
     </div>
   );
 }

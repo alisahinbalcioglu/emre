@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { ChevronRight } from 'lucide-react';
 
 const LABEL_MAP: Record<string, string> = {
-  dashboard: 'Dashboard',
+  dashboard: 'Ana Sayfa',
   quotes: 'Teklifler',
   new: 'Yeni Teklif',
   materials: 'Malzeme Havuzu',
@@ -35,7 +35,7 @@ export default function Breadcrumb() {
   // Dashboard'da sadece baslik
   if (segments.length === 1 && segments[0] === 'dashboard') {
     return (
-      <div className="text-[13px] font-medium text-foreground">Dashboard</div>
+      <div className="text-[13px] font-medium text-foreground">Ana Sayfa</div>
     );
   }
 
@@ -43,7 +43,7 @@ export default function Breadcrumb() {
     <nav className="flex items-center gap-1.5 text-[13px]">
       {/* Her zaman Dashboard root link */}
       <Link href="/dashboard" className="text-muted-foreground hover:text-foreground transition-colors">
-        Dashboard
+        Ana Sayfa
       </Link>
       {segments.map((seg, i) => {
         // dashboard zaten root'ta gosterildi
