@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 382
-Toplam satir: 79551
+Toplam satir: 79696
 Uc nokta: 130
 test:* scripti: 56
 
@@ -270,7 +270,7 @@ test:* scripti: 56
 | `frontend/lib/indeks-sagligi.test.ts` | 75 |
 | `frontend/lib/indeks-sagligi.ts` | 64 |
 | `frontend/lib/kar-degisimi.test.ts` | 114 |
-| `frontend/lib/kar-satiri.test.ts` | 116 |
+| `frontend/lib/kar-satiri.test.ts` | 174 |
 | `frontend/lib/kaynak-kolon.test.ts` | 49 |
 | `frontend/lib/marj-tek-kaynak.test.ts` | 80 |
 | `frontend/lib/merge-multisheet.test.ts` | 112 |
@@ -312,7 +312,7 @@ test:* scripti: 56
 | `frontend/ortak/ui/toaster.tsx` | 34 |
 | `frontend/ozellik/cikti/export-download.ts` | 99 |
 | `frontend/ozellik/fiyat/kar-tek-suzgec.test.ts` | 189 |
-| `frontend/ozellik/fiyat/pricing.ts` | 462 |
+| `frontend/ozellik/fiyat/pricing.ts` | 501 |
 | `frontend/ozellik/fiyat/sayi-alani.ts` | 38 |
 | `frontend/ozellik/fiyat/use-currency.ts` | 87 |
 | `frontend/ozellik/giris/kaynak-kolon.ts` | 34 |
@@ -328,7 +328,7 @@ test:* scripti: 56
 | `frontend/ozellik/kutuphane/oksuz-kutuphane-uyarisi.ts` | 60 |
 | `frontend/ozellik/tablo/disiplin.ts` | 13 |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 237 |
-| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 3027 |
+| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 3075 |
 | `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | 109 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts` | 178 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.ts` | 175 |

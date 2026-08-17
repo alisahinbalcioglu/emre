@@ -427,6 +427,37 @@ export interface KarSatiriBilgi {
   labYok: boolean;
   matFiyatsiz: number;
   labFiyatsiz: number;
+  /** KAR YUZDELERI (17.08) — yalniz GOSTERIM icin; `null` = gosterilmez. */
+  matYuzde: number | null;
+  labYuzde: number | null;
+  genelYuzde: number | null;
+}
+
+/**
+ * KAR YUZDESI — kar / MALIYET (17.08 kullanici tanimi).
+ *
+ * Kullanicinin cumlesi birebir: "maliyet 100 TL (kar yuzdesi %0 iken), kar
+ * 20 TL ise kar %20'dir." Yani payda SATIS degil MALIYET'tir. Bu ayrim
+ * onemli: ayni rakamlar satisa bolunseydi 20/120 = %16,7 cikardi ve
+ * kullanicinin kar marji anlayisiyla celisirdi.
+ *
+ * ⚠ KE28 ILE CELISMEZ: o kural DEGER (tutar) hucrelerine yuzde basilmasini
+ * yasaklar — "deger alanlarinda sayi durur". Bu yuzde tutar hucresine degil,
+ * ZATEN YUZDE OLAN "Kar %" kolonuna yazilir.
+ *
+ * ⚠ IKINCI BIR KAR HESABI DEGILDIR: kar yine `sayfaToplamlari`nin
+ * maliyet−satis farkidir (KE27). Burada yalnizca o farkin maliyete ORANI
+ * turetilir; hicbir tutar bu fonksiyondan etkilenmez.
+ *
+ * `null` donen durumlar ve SEBEPLERI:
+ *  · kar null      → o tarafta hic fiyatli satir yok (KE29) — oran anlamsiz.
+ *  · maliyet <= 0  → SIFIRA BOLME. Ayrica maliyeti sifir olan bir kalemin
+ *                    kar orani tanimsizdir (%∞ yazmak yanlis guven verirdi).
+ */
+export function karYuzdesi(kar: number | null, maliyet: number): number | null {
+  if (kar === null || !Number.isFinite(kar)) return null;
+  if (!Number.isFinite(maliyet) || maliyet <= 0) return null;
+  return Math.round((kar / maliyet) * 1000) / 10; // 1 ondalik
 }
 
 export function karSatiri(
@@ -443,11 +474,19 @@ export function karSatiri(
     _isPinnedTotal: true,
     _isKarRow: true,
   };
+  const matYok = ozet.matFiyatli === 0;
+  const labYok = ozet.labFiyatli === 0;
   const bilgi: KarSatiriBilgi = {
-    matYok: ozet.matFiyatli === 0,
-    labYok: ozet.labFiyatli === 0,
+    matYok,
+    labYok,
     matFiyatsiz: ozet.matFiyatsiz,
     labFiyatsiz: ozet.labFiyatsiz,
+    // Yuzdeler tutarla AYNI kosula bagli: tutar `null` ise oran da yok.
+    matYuzde: matYok ? null : karYuzdesi(ozet.matKar, ozet.matMaliyet),
+    labYuzde: labYok ? null : karYuzdesi(ozet.labKar, ozet.labMaliyet),
+    genelYuzde: matYok && labYok
+      ? null
+      : karYuzdesi(ozet.toplamKar, ozet.matMaliyet + ozet.labMaliyet),
   };
   row._karBilgi = bilgi;
   if (nameField) row[nameField] = 'KÂR';

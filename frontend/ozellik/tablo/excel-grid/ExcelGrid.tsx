@@ -2271,6 +2271,35 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           return n;
         };
         base.cellRenderer = (params: ICellRendererParams) => {
+          // ── KAR SATIRINDA GERCEKLESEN YUZDE (17.08 kullanici istegi) ────
+          // Kullanicinin tanimi: "maliyet 100 TL (kar yuzdesi %0 iken), kar
+          // 20 TL ise kar %20'dir." Yani bu, satirlara ELLE girilen kar
+          // yuzdesi DEGIL; teklifin tamaminda GERCEKLESEN orandir. Ikisi
+          // ayni kolonda ust uste durur ama farkli seylerdir:
+          //   veri satirlari → kullanicinin GIRDIGI hedef yuzde
+          //   KAR satiri     → maliyete gore OLUSAN yuzde (kar/maliyet)
+          // Oran `pricing.karYuzdesi` ile turetilir; buradaki hesap YOKTUR.
+          //
+          // ⚠ KE28 ihlali DEGIL: o kural TUTAR hucrelerine yuzde basmayi
+          // yasaklar; burasi zaten "Kar %" kolonu.
+          if (params.node?.rowPinned === 'bottom' && (params.data as any)?._isKarRow) {
+            const bilgi = (params.data as any)._karBilgi ?? {};
+            const yuzde = karField === '_malzKar' ? bilgi.matYuzde : bilgi.labYuzde;
+            // `null` = o tarafta fiyatli satir yok ya da maliyet sifir →
+            // '—' basilir. %0 BASILMAZ: sifir kar ile "hesaplanamadi" ayni
+            // sey degildir (KE29'un yuzde tarafi).
+            if (yuzde === null || yuzde === undefined) {
+              return <span style={{ color: '#94a3b8', fontWeight: 600 }}>—</span>;
+            }
+            return (
+              <span style={{
+                color: '#047857', fontWeight: 700, fontSize: 12,
+                fontVariantNumeric: 'tabular-nums',
+              }}>
+                %{yuzde.toLocaleString('tr-TR', { maximumFractionDigits: 1 })}
+              </span>
+            );
+          }
           if (!params.data?._isDataRow) return null;
           const val = params.value ?? 0;
           const hasVal = parseFloat(String(val)) > 0;
@@ -2420,11 +2449,17 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
             if (params.value === null || params.value === undefined || params.value === '') return '—';
             const kv = parseFloat(String(params.value));
             if (isNaN(kv)) return '—';
-            const bilgi = (params.data as any)._karBilgi ?? {};
-            const fiyatsiz = alan === data.columnRoles.materialTotalField ? bilgi.matFiyatsiz
-              : alan === data.columnRoles.laborTotalField ? bilgi.labFiyatsiz : 0;
-            const govde = `${currencySymbol}${paraBicim(kv, conversionRate)}`;
-            return fiyatsiz > 0 ? `${govde} · ${fiyatsiz} fiyatsız` : govde;
+            // ⚠ 17.08: "N fiyatsız" METNI HUCREDEN KALDIRILDI (kullanici
+            // istegi: "sadece rakam olacak"). Kolon dar oldugu icin metin
+            // zaten kirpiliyordu ("₺0,00 · 86 fi…") — yani hem cirkin hem
+            // OKUNAMAZDI.
+            //
+            // ⚠ BILGI SILINMEDI, TASINDI: fiyatsiz satir sayisi kullanicinin
+            // "bu tutar EKSIK" uyarisidir; sessizce dusurulseydi kismi
+            // fiyatlanmis bir teklif tam gorunurdu. Hucrenin `title`
+            // ozniteligine yazilir (uzerine gelince cikar) ve kayit yolundaki
+            // "N/M kalem fiyatsız" onayi zaten yerinde duruyor.
+            return `${currencySymbol}${paraBicim(kv, conversionRate)}`;
           }
           const v = parseFloat(String(params.value ?? ''));
           if (isNaN(v)) return '';
@@ -2437,6 +2472,19 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           const rowCurr = (params.data as any)?._currency;
           const sym = rowCurr ? (ROW_CURRENCY_SYMBOL[rowCurr] ?? currencySymbol) : currencySymbol;
           return `${sym}${formatted}`;
+        };
+
+        // FIYATSIZ SAYACI — hucreden kaldirildi, ipucuna tasindi (17.08).
+        // Kullanici "sadece rakam" istedi; ama sayi tek basina "bu tutar
+        // EKSIK" uyarisini tasimiyor. Ustune gelince gorunur, boylece kismi
+        // fiyatlanmis bir teklif tam sanilmaz.
+        base.tooltipValueGetter = (params: any) => {
+          if (!params.data?._isKarRow) return undefined;
+          const alan = params.colDef?.field;
+          const bilgi = params.data._karBilgi ?? {};
+          const fiyatsiz = alan === data.columnRoles.materialTotalField ? bilgi.matFiyatsiz
+            : alan === data.columnRoles.laborTotalField ? bilgi.labFiyatsiz : 0;
+          return fiyatsiz > 0 ? `${fiyatsiz} satır fiyatsız — bu tutar eksik` : undefined;
         };
         // Birim fiyat kolonlari — ALTIN KURAL isaretleri:
         //   mavi  = 'otomatik varyant' (V4.1 — grup seciminden atandi)

@@ -20,7 +20,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  sayfaToplamlari, karSatiri, hesaplaSatisBirimFiyat, hesaplaSatirToplam,
+  sayfaToplamlari, karSatiri, hesaplaSatisBirimFiyat, hesaplaSatirToplam, karYuzdesi,
 } from '../ozellik/fiyat/pricing';
 
 const ROLLER = {
@@ -111,5 +111,63 @@ describe('ADIM 10 — kar satiri', () => {
     for (const v of Object.values(kr)) {
       expect(String(v ?? '')).not.toContain('%');
     }
+  });
+});
+
+describe('KAR YUZDESI (17.08 kullanici istegi)', () => {
+  // ⚠ KULLANICININ TANIMI, BIREBIR: "maliyet 100 TL (kar yuzdesi %0 iken),
+  // kar 20 TL ise kar %20'dir." Payda SATIS DEGIL MALIYET.
+  it('kullanicinin ornegi: maliyet 100, kar 20 → %20', () => {
+    expect(karYuzdesi(20, 100)).toBe(20);
+  });
+
+  // ⚠ Ayni rakamlar SATISA bolunseydi 20/120 = %16,7 cikardi. Bu kriter
+  // paydanin maliyet oldugunu kilitler.
+  it('payda SATIS degil: 20/120 (%16,7) DEGIL', () => {
+    expect(karYuzdesi(20, 100)).not.toBe(16.7);
+  });
+
+  // ⚠ SIFIRA BOLME: maliyeti sifir olan bir kalemin kar orani TANIMSIZDIR.
+  // Korunmasaydi Infinity uretilir ve ekranda "%∞" yazardi.
+  it('maliyet 0 → null (sifira bolme)', () => {
+    expect(karYuzdesi(20, 0)).toBeNull();
+  });
+
+  it('maliyet negatif → null', () => {
+    expect(karYuzdesi(20, -50)).toBeNull();
+  });
+
+  // KE29'un yuzde tarafi: "fiyatli satir yok" ile "kar sifir" AYNI SEY DEGIL.
+  it('kar null (fiyatli satir yok) → null', () => {
+    expect(karYuzdesi(null, 100)).toBeNull();
+  });
+
+  it('kar 0 ama maliyet var → %0 (null DEGIL — gercek bir olcum)', () => {
+    expect(karYuzdesi(0, 100)).toBe(0);
+  });
+
+  it('bir ondalik basamaga yuvarlanir', () => {
+    expect(karYuzdesi(1, 3)).toBe(33.3);
+  });
+
+  // ── ENTEGRASYON: kar satiri yuzdeleri tasiyor mu ──────────────────────
+  it('kar satiri malzeme yuzdesini tasir (%20 girisi → %20 gerceklesen)', () => {
+    const ozet = sayfaToplamlari([satir({ mat: 100 }, { mat: 20 }, 1)], ROLLER);
+    const kr = karSatiri(ozet, ROLLER);
+    expect(kr._karBilgi.matYuzde).toBe(20);
+  });
+
+  it('fiyatsiz tarafin yuzdesi null (tutarla AYNI kosul)', () => {
+    const ozet = sayfaToplamlari([satir({ mat: 100 }, { mat: 20 }, 1)], ROLLER);
+    const kr = karSatiri(ozet, ROLLER);
+    expect(kr._karBilgi.labYuzde).toBeNull();
+  });
+
+  // ⚠ KE27 KORUNDU: yuzde eklemek TUTARLARI degistirmemeli — kar hala
+  // maliyet−satis farki, 22. bir aritmetik yeri acilmadi.
+  it('yuzde eklemek TUTARI degistirmez', () => {
+    const ozet = sayfaToplamlari([satir({ mat: 100 }, { mat: 20 }, 1)], ROLLER);
+    const kr = karSatiri(ozet, ROLLER);
+    expect(kr._matToplam).toBe(ozet.matKar);
   });
 });
