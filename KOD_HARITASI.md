@@ -617,9 +617,9 @@ Karıştırılmasın diye ayrı duruyor.
 | `frontend/app/(protected)/layout.tsx` | Korumali alan kabugu: sidebar/breadcrumb, canli TCMB kur widget'i ve kullanici dropdown'u ile sarmalar |
 | `frontend/app/(protected)/profile/page.tsx` | Kullanici profili, abonelik/tier ve yetkinlik bilgilerini gosterir; oturum kapatma sunar |
 | `frontend/app/layout.tsx` | Kok HTML iskeletini kurar; font, global toaster ve onay dialog kokunu baglar |
-| `frontend/app/login/page.tsx` | E-posta/sifreyle giris yapar, token ve kullaniciyi localStorage'a yazip dashboard'a yonlendirir |
+| `frontend/app/login/page.tsx` | E-posta/sifreyle giris yapar, token ve kullaniciyi localStorage'a yazip dashboard'a yonlendirir. MetaPriceX marka blogu kartin DISINDA; parola alani `ParolaAlani` (goz dugmeli) |
 | `frontend/app/page.tsx` | Token varligina gore kullaniciyi dashboard'a ya da giris sayfasina yonlendirir |
-| `frontend/app/register/page.tsx` | Yeni hesap olusturur, donen token'i saklayip dashboard'a yonlendirir |
+| `frontend/app/register/page.tsx` | Yeni hesap olusturur, donen token'i saklayip dashboard'a yonlendirir. 17.08'e kadar eski shadcn kartinda ve INGILIZCE kalmisti — "Kayit Olun"a basan kullanici baska bir uygulamaya dusmus gibi oluyordu; artik giris ekraninin kabugunu birebir paylasir |
 | `frontend/ortak/kabuk/components/dashboard/QuickAccess.tsx` | Dashboard'da malzeme havuzu ve kutuphaneye hizli gecis kartlari sunar |
 | `frontend/ortak/kabuk/components/dashboard/QuickStart.tsx` | Excel ve DWG dosyalarini surukle-birak/tiklama ile alir; DWG icin birim secim dialogu acar |
 | `frontend/ortak/kabuk/components/layout/Breadcrumb.tsx` | URL path parcalarindan Turkce etiketli gezinme kirintisi uretir, admin/materials icin ozel etiket |
@@ -632,6 +632,7 @@ Karıştırılmasın diye ayrı duruyor.
 | `frontend/ortak/ui/dialog.tsx` | Radix tabanli modal pencere primitifleri: overlay, icerik, baslik, aciklama, kapatma dugmesi |
 | `frontend/ortak/ui/input.tsx` | Ref iletimli standart metin giriş kutusu |
 | `frontend/ortak/ui/label.tsx` | Form alanlarına erişilebilir etiket bağlayan sarmalayıcı |
+| `frontend/ortak/ui/parola-alani.tsx` | Goz dugmesiyle gizle/goster yapan parola kutusu; giris ve kayit ekrani AYNI bileseni kullanir (ikiz kaymasin diye). Dugmede `type="button"` sart — HTML varsayilani `submit`, eksik birakilirsa goze her basista form gonderilir |
 | `frontend/ortak/ui/select.tsx` | Radix tabanli acilir secim kutusu primitifleri: tetik, liste, oge, kaydirma dugmeleri |
 | `frontend/ortak/ui/table.tsx` | Bagimliliksiz shadcn HTML tablo primitifleri; admin panel veri tablolari icin stillenmis |
 | `frontend/ortak/ui/toast.tsx` | Radix tabanli bildirim balonu primitifleri: viewport, varyantlar (default/destructive), kapatma, aksiyon |

@@ -15,6 +15,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import api from '@/ortak/lib/api';
+import { ParolaAlani } from '@/ortak/ui/parola-alani';
 import { toast } from '@/ortak/hooks/use-toast';
 
 export default function LoginPage() {
@@ -77,15 +78,11 @@ export default function LoginPage() {
             <label htmlFor="password" className="mb-1.5 block text-xs font-semibold text-slate-700">
               Parola
             </label>
-            <input
+            <ParolaAlani
               id="password"
-              type="password"
-              autoComplete="current-password"
-              placeholder="••••••••••••"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-800 transition-all focus:border-blue-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600/20"
+              onChange={setPassword}
+              autoComplete="current-password"
             />
           </div>
 

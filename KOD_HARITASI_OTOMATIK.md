@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 382
-Toplam satir: 79696
+Kod dosyasi: 383
+Toplam satir: 79780
 Uc nokta: 130
 test:* scripti: 56
 
@@ -228,9 +228,9 @@ test:* scripti: 56
 | `frontend/app/admin/users/page.tsx` | 190 |
 | `frontend/app/dev/grid-test/page.tsx` | 200 |
 | `frontend/app/layout.tsx` | 25 |
-| `frontend/app/login/page.tsx` | 111 |
+| `frontend/app/login/page.tsx` | 108 |
 | `frontend/app/page.tsx` | 20 |
-| `frontend/app/register/page.tsx` | 85 |
+| `frontend/app/register/page.tsx` | 110 |
 | `frontend/components/dwg-diameter-engine/DiameterLegendPanel.tsx` | 151 |
 | `frontend/components/dwg-diameter-engine/index.ts` | 16 |
 | `frontend/components/dwg-diameter-engine/types.ts` | 79 |
@@ -306,6 +306,7 @@ test:* scripti: 56
 | `frontend/ortak/ui/geri-butonu.tsx` | 75 |
 | `frontend/ortak/ui/input.tsx` | 24 |
 | `frontend/ortak/ui/label.tsx` | 19 |
+| `frontend/ortak/ui/parola-alani.tsx` | 62 |
 | `frontend/ortak/ui/select.tsx` | 143 |
 | `frontend/ortak/ui/table.tsx` | 77 |
 | `frontend/ortak/ui/toast.tsx` | 115 |
@@ -596,9 +597,9 @@ test:* scripti: 56
 | `frontend/app/admin/users/page.tsx` | `react` `lucide-react` `@/ortak/lib/api` `@/ortak/ui/input` `@/ortak/ui/button` `@/ortak/ui/badge` `@/ortak/ui/card` |
 | `frontend/app/dev/grid-test/page.tsx` | `react` `@/ozellik/tablo/excel-grid/ExcelGrid` `@/ozellik/tablo/excel-grid/types` |
 | `frontend/app/layout.tsx` | `next` `next/font/google` `@/ortak/ui/toaster` `@/ortak/ui/confirm-dialog` `./globals.css` |
-| `frontend/app/login/page.tsx` | `react` `next/navigation` `next/link` `@/ortak/lib/api` `@/ortak/hooks/use-toast` |
+| `frontend/app/login/page.tsx` | `react` `next/navigation` `next/link` `@/ortak/lib/api` `@/ortak/ui/parola-alani` `@/ortak/hooks/use-toast` |
 | `frontend/app/page.tsx` | `react` `next/navigation` |
-| `frontend/app/register/page.tsx` | `react` `next/navigation` `next/link` `@/ortak/lib/api` `@/ortak/ui/button` `@/ortak/ui/input` `@/ortak/ui/label` `@/ortak/ui/card` `@/ortak/hooks/use-toast` |
+| `frontend/app/register/page.tsx` | `react` `next/navigation` `next/link` `@/ortak/lib/api` `@/ortak/ui/parola-alani` `@/ortak/hooks/use-toast` |
 | `frontend/components/dwg-diameter-engine/DiameterLegendPanel.tsx` | `react` `lucide-react` `@/components/dwg-metraj/diameter-colors` `./types` |
 | `frontend/components/dwg-diameter-engine/types.ts` | `@/components/dwg-metraj/types` `@/components/dwg-workspace/types` `@/components/dwg-metraj/diameter-colors` `@/components/dwg-metraj/constants` |
 | `frontend/components/dwg-diameter-engine/useLayerCalc.ts` | `react` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/components/dwg-metraj` `@/components/dwg-workspace/types` `./types` |
@@ -657,6 +658,7 @@ test:* scripti: 56
 | `frontend/ortak/ui/geri-butonu.tsx` | `next/link` `next/navigation` `lucide-react` |
 | `frontend/ortak/ui/input.tsx` | `react` `@/ortak/lib/utils` |
 | `frontend/ortak/ui/label.tsx` | `react` `@radix-ui/react-label` `class-variance-authority` `@/ortak/lib/utils` |
+| `frontend/ortak/ui/parola-alani.tsx` | `react` `lucide-react` |
 | `frontend/ortak/ui/select.tsx` | `react` `@radix-ui/react-select` `lucide-react` `@/ortak/lib/utils` |
 | `frontend/ortak/ui/table.tsx` | `react` `@/ortak/lib/utils` |
 | `frontend/ortak/ui/toast.tsx` | `react` `@radix-ui/react-toast` `class-variance-authority` `lucide-react` `@/ortak/lib/utils` |
