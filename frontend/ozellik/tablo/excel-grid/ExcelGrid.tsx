@@ -2524,6 +2524,13 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         } else {
           base.cellStyle = { textAlign: 'right' };
         }
+
+        // BASLIK HIZASI (18.08): hucreler zaten saga hizali (yukaridaki iki
+        // dal da textAlign:'right' veriyor) ama BASLIKLAR sola yasliydi —
+        // rakam sutunu sagda, adi solda duruyordu. Kolonlar Excel'den
+        // geldigi icin sabit col-id YOK; bu yuzden hiza CSS'ten degil,
+        // hucre hizasinin verildigi AYNI yerden headerClass ile veriliyor.
+        base.headerClass = 'mpx-sag-baslik';
       }
 
       // Grand kolonlari read-only (sistem otomatik hesaplar)

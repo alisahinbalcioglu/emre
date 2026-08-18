@@ -229,3 +229,24 @@ body.fill-handle-dragging * {
 .ag-theme-alpine .ag-header-cell[col-id="_firma"] {
   background-color: #eef2ff;
 }
+
+/* ── SAYISAL BASLIK HIZASI (18.08) ────────────────────────────────────────
+   Hucreler zaten saga hizaliydi, basliklar degildi: "Malz. Toplam" solda,
+   altindaki rakam sagda duruyordu. ExcelGrid sayisal kolonlara
+   `headerClass: 'mpx-sag-baslik'` veriyor (kolonlar Excel'den geldigi icin
+   sabit col-id yok, hiza bu yuzden JS tarafindan isaretleniyor).
+   AG Grid baslik metnini `.ag-header-cell-label` icinde tutar; hizayi
+   oradan cevirmek gerekir, hucrenin kendisinden degil. */
+.ag-theme-alpine .ag-header-cell.mpx-sag-baslik .ag-header-cell-label {
+  justify-content: flex-end;
+}
+
+/* Rakamlar hizali: ayni genislikte basamak. Tasarimin acik hedeflerinden biri
+   ("tabular-nums + saga hizalama; fiyat sutunlari alt alta okunur"). Kar kutusu
+   bunu zaten aliyordu (ExcelGrid.tsx, fontVariantNumeric), simdi TUM hucrelere
+   yayiliyor — 1.092 ile 872 alt alta kaydigi icin okunmuyordu.
+   ⚠ Yalniz basamak GENISLIGINI sabitler; yazi boyu, satir yuksekligi ve hucre
+   zemini DEGISMEZ. */
+.ag-theme-alpine .ag-cell {
+  font-variant-numeric: tabular-nums;
+}

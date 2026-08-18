@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 385
-Toplam satir: 80706
+Toplam satir: 80720
 Uc nokta: 130
 test:* scripti: 56
 
@@ -330,8 +330,8 @@ test:* scripti: 56
 | `frontend/ozellik/kutuphane/oksuz-kutuphane-uyarisi.test.ts` | 136 |
 | `frontend/ozellik/kutuphane/oksuz-kutuphane-uyarisi.ts` | 60 |
 | `frontend/ozellik/tablo/disiplin.ts` | 13 |
-| `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 237 |
-| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 3075 |
+| `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 244 |
+| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 3082 |
 | `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | 109 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts` | 178 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.ts` | 175 |

@@ -114,8 +114,15 @@ export function CustomDropdown({
     open
       ? 'border-indigo-500 bg-white ring-2 ring-indigo-500/20'
       : hasValue
+        // ⚠ FIRMA YESIL (18.08): oncesinde amber'di. Tasarim ve CANLI tanitim
+        // sayfasindaki ekran goruntusu (public/nasil-calisir/.../a2-iscilik-dolu.png)
+        // yesil cip gosteriyordu — urun pazarlamanin gerisinde kalmisti.
+        // Malzeme mavi / iscilik yesil ayrimi teklif tablosunun her yerinde ayni.
+        // Bu YALNIZ secici cipidir; hucre ARKA PLANI degistirilmedi — orasi
+        // isaret.ts'in para sinyali kanali (kirmizi/sari/gri/mavi) ve golden
+        // E2E o RGB'leri okuyor.
         ? (isFirma
-            ? 'border-amber-200/70 bg-amber-50 text-amber-800 font-medium hover:bg-amber-100/70'
+            ? 'border-emerald-200/70 bg-emerald-50 text-emerald-800 font-medium hover:bg-emerald-100/70'
             : 'border-blue-200/70 bg-blue-50 text-blue-800 font-medium hover:bg-blue-100/70')
         : 'border-transparent bg-transparent text-slate-400 hover:bg-slate-100/80',
     className,
