@@ -266,3 +266,11 @@ body.fill-handle-dragging * {
 .ag-cell-focus .kar-kutu.kar-kutu-dolu {
   background: #fff;                  /* duzenlemeye girerken odak halkasi kazanir */
 }
+
+/* Bos (%0) kar cipi — hedef fotografta bos deger de GORUNUR gri cip.
+   (0,2,0): odak kurali (0,3,0) ve satir-hover (0,3,0) bunu ezmeye devam
+   eder — dogru davranis, cip odakta beyazlar, hover'da hafif griler. */
+.kar-kutu.kar-kutu-bos {
+  border-color: #e2e8f0;
+  color: #64748b;
+}

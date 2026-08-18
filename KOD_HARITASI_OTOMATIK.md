@@ -330,8 +330,8 @@ test:* scripti: 56
 | `frontend/ozellik/kutuphane/oksuz-kutuphane-uyarisi.test.ts` | 136 |
 | `frontend/ozellik/kutuphane/oksuz-kutuphane-uyarisi.ts` | 60 |
 | `frontend/ozellik/tablo/disiplin.ts` | 13 |
-| `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 244 |
-| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 3094 |
+| `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 249 |
+| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 3089 |
 | `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | 109 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts` | 178 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.ts` | 175 |

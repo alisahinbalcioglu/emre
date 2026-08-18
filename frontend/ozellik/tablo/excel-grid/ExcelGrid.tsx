@@ -2304,36 +2304,31 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           const val = params.value ?? 0;
           const hasVal = parseFloat(String(val)) > 0;
           return (
-            <div className="fill-handle-cell" style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-              {/* FRAMELESS (14.08): kutu durgun halde CERCEVESIZ ve zemini
-                  seffaf — duz metin gibi durur; hover ve odakta belirir.
-                  Gorunum `kar-kutu` sinifiyla CSS'e tasindi (inline stil
-                  :hover/:focus uretemez). ⚠ GIRIS YOLUNA DOKUNULMADI: bu bir
-                  `<span>`, canli `<input>` DEGIL — deger AG-Grid'in kendi
-                  duzenleyicisinden `valueParser` (yukarida) uzerinden gecer.
-                  Buraya `<input type="number">` konursa `setDataValue`
-                  `valueParser`i CAGIRMAZ ve hucreye STRING yazilir; 5c95cf0'te
-                  kapatilan canli HTTP 400 aynen geri doner. */}
-              <div style={{ position: 'relative', width: 68, display: 'flex', alignItems: 'center' }}>
-                <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: '#94a3b8', fontWeight: 500, pointerEvents: 'none', zIndex: 1 }}>%</span>
-                {/* 18.08 KULLANICI KARARI (hedef tasarim fotografla onaylandi):
-                    DOLU kar kutusu artik MAVI CIP — 14.08'in "durgun halde
-                    cercevesiz" karari bilerek geri cevrildi. Bos kutu (0) hala
-                    cercevesiz/sessiz kalir; cip yalniz gercek bir deger girilince
-                    belirir, boylece bos tablo cip ormanina donmez. Zemin/cerceve
-                    CSS'te (`kar-kutu-dolu`, fill-handle.css) — hover'da kaybolmasin
-                    ve odak halkasi kazansin diye siralamayla cozuldu. */}
-                <span className={hasVal ? 'kar-kutu kar-kutu-dolu' : 'kar-kutu'} style={{
-                  display: 'block', width: '100%', height: 28, padding: '0 8px 0 20px',
-                  borderRadius: 8,
-                  fontSize: 12, textAlign: 'right', lineHeight: '28px',
-                  fontVariantNumeric: 'tabular-nums',
-                  color: hasVal ? '#1e40af' : '#1e293b',
-                  fontWeight: hasVal ? 600 : 400,
-                }}>
-                  {val}
-                </span>
-              </div>
+            <div className="fill-handle-cell" style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {/* 18.08 HEDEF TASARIM (ikinci tur, "hucreler yine uygun degil"):
+                  kutu artik hucreyi DOLDURMAYAN, ortalanmis kompakt bir CIP.
+                  Hedef fotograf bos %0'i da GORUNUR gri cip olarak gosteriyor —
+                  onceki turun "bos kutu sessiz kalsin" karari kullanici
+                  fotografiyla geri cevrildi: dolu=mavi cip, bos=gri cip.
+                  Renk/cerceve CSS'te (`kar-kutu-dolu` / `kar-kutu-bos`,
+                  fill-handle.css) — inline yazilsaydi odak kurali ezilemezdi.
+                  ⚠ GIRIS YOLUNA DOKUNULMADI: bu bir `<span>`, canli `<input>`
+                  DEGIL — deger AG-Grid'in kendi duzenleyicisinden `valueParser`
+                  uzerinden gecer. Buraya `<input type="number">` konursa
+                  `setDataValue` `valueParser`i CAGIRMAZ ve hucreye STRING
+                  yazilir; 5c95cf0'te kapatilan canli HTTP 400 geri doner.
+                  ⚠ Surukle-doldur ETKILENMEZ: kesfedilebilirlik seridi ve
+                  geometri sarmalayicinin (`fill-handle-cell`) uzerinde. */}
+              <span className={hasVal ? 'kar-kutu kar-kutu-dolu' : 'kar-kutu kar-kutu-bos'} style={{
+                display: 'inline-flex', alignItems: 'center', gap: 3,
+                height: 22, padding: '0 9px', borderRadius: 6,
+                fontSize: 12, fontVariantNumeric: 'tabular-nums',
+                color: hasVal ? '#1e40af' : undefined,
+                fontWeight: hasVal ? 600 : 500,
+              }}>
+                <span style={{ fontSize: 11, opacity: 0.75 }}>%</span>
+                {val}
+              </span>
               <FillHandleIndicator field={karField} value={val} rowIdx={params.data._rowIdx} />
             </div>
           );

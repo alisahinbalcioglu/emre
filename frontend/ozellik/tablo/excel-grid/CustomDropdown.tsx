@@ -109,7 +109,12 @@ export function CustomDropdown({
 
   /** Pasif hucre: secili deger YUMUSAK ETIKET, bos deger transparan. */
   const tetikSinif = [
-    'flex w-full items-center justify-between gap-1 rounded-lg px-2.5 text-xs transition-all',
+    // 18.08 hedef tasarim: cip HUCREYI DOLDURMAZ, icerige sarilir ve ortalanir
+    // (w-full + justify-between kaldirildi, mx-auto + max-w-full geldi).
+    // Uzun adlar ic span'in ellipsis'iyle kirpilmaya devam eder; e2e'nin
+    // `[col-id] button` tiklamasi ve surukle-doldur seridi (sarmalayicinin
+    // ::after'i) bundan ETKILENMEZ.
+    'flex max-w-full mx-auto items-center gap-1 rounded-lg px-2.5 text-xs transition-all',
     'border outline-none',
     open
       ? 'border-indigo-500 bg-white ring-2 ring-indigo-500/20'
