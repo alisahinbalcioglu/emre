@@ -1,0 +1,192 @@
+/*
+ * "Nasil Calisir" bolumu — teslim edilen BOLUM.html'in <style> blogu (18.08).
+ *
+ * TESLIM EDILENDEN DORT FARK (hepsi bilerek):
+ *  1. `body{...}` KALDIRILDI. Teslimdeki kural yazi tipini, rengi ve zemini
+ *     GLOBAL olarak eziyordu; uygulama zaten `next/font/google` ile Inter
+ *     yukluyor (app/layout.tsx:2,7,17). Kural kalsaydi Next'in optimize
+ *     ettigi font adini ezip tum siteyi etkilerdi.
+ *  2. `*{box-sizing:border-box}` KALDIRILDI — Tailwind preflight ayni seyi
+ *     zaten yapiyor.
+ *  3. `@media (prefers-reduced-motion)` icindeki `*` secicisi bolume
+ *     KAPSANDI (`.nc *, .nc-buyut *`). Oncesinde hareket azaltma tercihi olan
+ *     ziyaretcide TUM sitenin gecisleri kapaniyordu.
+ *  4. `.kutuphane`, `.kut-sut`, `.kut-kart`, `.kut-satir`, `.kut-rozet`,
+ *     `.kut-ok`, `.kut-not`, `.marka` kurallari SILINDI — teslim edilen
+ *     isaretlemede sekizinin de SIFIR kullanimi var (olculdu). Teslim notu
+ *     "Fazlalik yok" diyordu; vardi.
+ *
+ * `:root` degiskenleri DURUYOR: adlar Turkce (--mavi, --metin, --golge),
+ * uygulamanin shadcn degiskenleriyle (--background, --foreground) cakismiyor.
+ */
+
+/* ══════════════════════════════════════════════════════════════
+   MetaPriceX — "Nasıl Çalışır?" bölümü
+   Tek dosyada bağımsız çalışır. Sitenize gömerken <section class="nc">
+   bloğunu ve <style> içeriğini kopyalamanız yeterli.
+   ══════════════════════════════════════════════════════════════ */
+:root{
+  --mavi:#2563eb; --mavi-acik:#3b82f6; --mavi-solgun:#eff6ff;
+  --lacivert:#0f172a; --metin:#1e293b; --soluk:#64748b; --cizgi:#e2e8f0;
+  --yesil:#16a34a; --yesil-solgun:#f0fdf4; --amber:#d97706; --amber-solgun:#fffbeb;
+  --mor:#7c3aed; --mor-solgun:#f5f3ff;
+  --golge:0 1px 2px rgba(15,23,42,.04), 0 12px 32px -8px rgba(15,23,42,.12);
+  --golge-buyuk:0 2px 4px rgba(15,23,42,.04), 0 28px 64px -12px rgba(15,23,42,.22);
+  --yuvarlak:16px;
+}
+
+.nc{padding:96px 24px 110px;background:
+  radial-gradient(1200px 500px at 50% -120px, #eef4ff 0%, rgba(255,255,255,0) 70%), #fff;
+  position:relative;overflow:hidden}
+.nc::before{content:"";position:absolute;inset:0;
+  background-image:linear-gradient(var(--cizgi) 1px,transparent 1px),
+                   linear-gradient(90deg,var(--cizgi) 1px,transparent 1px);
+  background-size:64px 64px;opacity:.35;
+  mask-image:radial-gradient(700px 380px at 50% 0%,#000 0%,transparent 75%);
+  -webkit-mask-image:radial-gradient(700px 380px at 50% 0%,#000 0%,transparent 75%);
+  pointer-events:none}
+.nc-wrap{max-width:1180px;margin:0 auto;position:relative}
+
+/* ── Başlık ─────────────────────────────────────────────────── */
+.nc-head{text-align:center;max-width:760px;margin:0 auto 52px}
+.pill{display:inline-flex;align-items:center;gap:8px;padding:7px 16px;border-radius:999px;
+  background:var(--mavi-solgun);color:var(--mavi);font-size:13px;font-weight:700;
+  letter-spacing:.06em;text-transform:uppercase;border:1px solid #dbeafe}
+.pill i{width:6px;height:6px;border-radius:50%;background:var(--mavi);display:block}
+.nc-head h2{margin:20px 0 14px;font-size:clamp(30px,4.6vw,50px);line-height:1.1;
+  letter-spacing:-.025em;font-weight:800;color:var(--lacivert)}
+.nc-head h2 em{font-style:normal;color:var(--mavi);white-space:nowrap}
+.nc-head p{margin:0;font-size:clamp(16px,1.9vw,19px);line-height:1.65;color:var(--soluk)}
+
+/* ── Video ──────────────────────────────────────────────────── */
+.nc-video{margin:0 0 84px;border-radius:var(--yuvarlak);overflow:hidden;
+  box-shadow:var(--golge-buyuk);background:#0b1120;border:1px solid #1e293b}
+.nc-chrome{display:flex;align-items:center;gap:8px;padding:11px 16px;background:#111c33;
+  border-bottom:1px solid #1e293b}
+.nc-chrome b{width:11px;height:11px;border-radius:50%;display:block}
+.nc-chrome b:nth-child(1){background:#ff5f57}
+.nc-chrome b:nth-child(2){background:#febd2e}
+.nc-chrome b:nth-child(3){background:#27c93f}
+.nc-chrome span{margin:0 auto;padding:4px 22px;border-radius:7px;background:#0b1424;
+  color:#7b8cab;font-size:12.5px;letter-spacing:.01em}
+.nc-video video{display:block;width:100%;height:auto;background:#0b1120}
+.nc-video figcaption{display:flex;flex-wrap:wrap;gap:10px 22px;justify-content:center;
+  padding:14px 18px;background:#0d1729;color:#93a4c0;font-size:13.5px;border-top:1px solid #1e293b}
+.nc-video figcaption b{color:#dbe6f7;font-weight:600}
+
+/* ── Adımlar ────────────────────────────────────────────────── */
+.nc-steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:88px}
+.step{display:grid;grid-template-columns:0.86fr 1.14fr;gap:56px;align-items:center}
+.step > *{min-width:0}
+.step:nth-child(even) .step-text{order:2}
+.step-num{display:inline-flex;align-items:center;justify-content:center;
+  width:46px;height:46px;border-radius:13px;font-weight:800;font-size:18px;
+  background:var(--mavi);color:#fff;box-shadow:0 8px 20px -6px rgba(37,99,235,.6)}
+.step h3{margin:20px 0 12px;font-size:clamp(23px,2.7vw,31px);line-height:1.22;
+  letter-spacing:-.02em;font-weight:800;color:var(--lacivert)}
+.step > .step-text > p{margin:0 0 22px;font-size:17px;line-height:1.7;color:var(--soluk)}
+.ticks{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:11px}
+.ticks li{display:flex;gap:11px;align-items:flex-start;font-size:15.5px;line-height:1.55}
+.ticks svg{flex:none;margin-top:2px}
+.ticks b{font-weight:650;color:var(--lacivert)}
+
+/* ── Görsel + küçük resim şeridi ────────────────────────────── */
+.shot{border-radius:var(--yuvarlak);overflow:hidden;background:#fff;
+  border:1px solid var(--cizgi);box-shadow:var(--golge)}
+.shot-bar{display:flex;align-items:center;gap:7px;padding:9px 13px;background:#f8fafc;
+  border-bottom:1px solid var(--cizgi)}
+.shot-bar b{width:9px;height:9px;border-radius:50%;display:block;background:#cbd5e1}
+.shot-bar span{margin-left:8px;font-size:12px;color:#94a3b8}
+.shot-img{position:relative;cursor:zoom-in;background:#fff;overflow:hidden}
+.shot-img img{display:block;width:100%;height:auto;transition:transform .5s cubic-bezier(.2,.7,.3,1)}
+.shot-img:hover img{transform:scale(1.02)}
+.shot-img::after{content:"Büyütmek için tıklayın";position:absolute;right:12px;bottom:12px;
+  padding:6px 12px;border-radius:8px;background:rgba(15,23,42,.82);color:#fff;font-size:12px;
+  opacity:0;transition:opacity .25s}
+.shot-img:hover::after{opacity:1}
+.shot-etiket{position:absolute;left:14px;top:14px;padding:6px 13px;border-radius:8px;
+  font-size:12.5px;font-weight:700;color:#fff;background:var(--mavi);
+  box-shadow:0 6px 16px -4px rgba(37,99,235,.55)}
+.shot-etiket.yesil{background:var(--yesil);box-shadow:0 6px 16px -4px rgba(22,163,74,.55)}
+.shot-etiket.amber{background:var(--amber);box-shadow:0 6px 16px -4px rgba(217,119,6,.55)}
+.shot-etiket.mor{background:var(--mor);box-shadow:0 6px 16px -4px rgba(124,58,237,.55)}
+
+.kucukler{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(84px,1fr);
+  gap:9px;margin-top:14px;overflow-x:auto;padding-bottom:3px;scrollbar-width:thin}
+.kucukler button{min-width:0;padding:0;border:1.5px solid var(--cizgi);
+  background:#fff;border-radius:11px;overflow:hidden;cursor:pointer;
+  transition:border-color .2s, transform .2s, box-shadow .2s}
+.kucukler button:hover{transform:translateY(-2px);box-shadow:var(--golge)}
+.kucukler button[aria-selected="true"]{border-color:var(--mavi);
+  box-shadow:0 0 0 3px rgba(37,99,235,.14)}
+.kucukler img{display:block;width:100%;height:52px;object-fit:cover;object-position:top left}
+.kucukler em{display:block;padding:6px 6px 7px;font-style:normal;font-size:11.5px;
+  font-weight:650;color:var(--soluk);text-align:center;line-height:1.25}
+.kucukler button[aria-selected="true"] em{color:var(--mavi)}
+
+
+/* ── Özellik kartları ───────────────────────────────────────── */
+.nc-feats{margin-top:92px;display:grid;grid-template-columns:repeat(4,1fr);gap:18px}
+.feat{padding:26px 22px;border:1px solid var(--cizgi);border-radius:var(--yuvarlak);
+  background:#fff;box-shadow:var(--golge);transition:transform .22s, box-shadow .22s}
+.feat:hover{transform:translateY(-4px);box-shadow:var(--golge-buyuk)}
+.feat .ikon{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;
+  justify-content:center;margin-bottom:15px}
+.feat.b1 .ikon{background:var(--mavi-solgun);color:var(--mavi)}
+.feat.b2 .ikon{background:var(--yesil-solgun);color:var(--yesil)}
+.feat.b3 .ikon{background:var(--amber-solgun);color:var(--amber)}
+.feat.b4 .ikon{background:var(--mor-solgun);color:var(--mor)}
+.feat h4{margin:0 0 8px;font-size:16.5px;font-weight:750;color:var(--lacivert)}
+.feat p{margin:0;font-size:14.5px;line-height:1.6;color:var(--soluk)}
+
+/* ── CTA ────────────────────────────────────────────────────── */
+.nc-cta{margin-top:78px;padding:46px 32px;text-align:center;border-radius:22px;
+  background:linear-gradient(135deg,#0f172a,#1e3a8a);box-shadow:var(--golge-buyuk)}
+.nc-cta h3{margin:0 0 10px;font-size:clamp(23px,3vw,32px);font-weight:800;color:#fff;
+  letter-spacing:-.02em}
+.nc-cta p{margin:0 0 26px;color:#a9bede;font-size:16.5px}
+.nc-cta a{display:inline-block;padding:15px 34px;border-radius:11px;background:#fff;
+  color:#1d4ed8;font-weight:750;font-size:16px;text-decoration:none;
+  box-shadow:0 12px 30px -8px rgba(0,0,0,.5);transition:transform .2s}
+.nc-cta a:hover{transform:translateY(-2px)}
+
+/* ── Büyütme (lightbox) ─────────────────────────────────────── */
+.nc-buyut{position:fixed;inset:0;z-index:9999;display:none;align-items:center;
+  justify-content:center;padding:32px;background:rgba(8,12,22,.93);
+  backdrop-filter:blur(3px);cursor:zoom-out}
+.nc-buyut.acik{display:flex}
+.nc-buyut img{max-width:100%;max-height:92vh;border-radius:12px;
+  box-shadow:0 40px 90px -20px rgba(0,0,0,.9)}
+.nc-buyut .kapat{position:absolute;top:22px;right:26px;width:42px;height:42px;border:0;
+  border-radius:50%;background:rgba(255,255,255,.14);color:#fff;font-size:22px;cursor:pointer}
+.nc-buyut .kapat:hover{background:rgba(255,255,255,.26)}
+
+/* ── Duyarlı ────────────────────────────────────────────────── */
+@media (max-width:960px){
+  .step{grid-template-columns:1fr;gap:26px}
+  .step:nth-child(even) .step-text{order:0}
+  .nc-feats{grid-template-columns:repeat(2,1fr)}
+}
+@media (max-width:600px){
+  .nc{padding:64px 16px 76px}
+  .nc-steps{gap:60px}
+  .nc-feats{grid-template-columns:1fr}
+  .nc-video figcaption{font-size:12.5px}
+}
+@media (prefers-reduced-motion:reduce){
+  .nc *, .nc-buyut *{transition:none!important;animation:none!important}
+}
+
+/* ── Paket (Pro) isaretleri — 18.08 denetiminde EKLENDI ─────────────────
+   Teslim edilen bolum, ucretsiz hesabin GOREMEYECEGI iki ekrani (iscilik
+   firmalari sekmesi ve teklif tablosundaki "Isc. Firma" kolonu) rozetsiz
+   gosteriyordu; hemen altinda da "kredi karti yok" yaziyordu. Olculdu:
+   labor.controller.ts sinif duzeyinde @RequireTier('pro'), arayuzde
+   "Iscilik ozelligi icin Pro paket gerekli" duvari var. */
+.kucukler button{position:relative}
+.pro-rozet{position:absolute;top:6px;right:6px;padding:2px 6px;border-radius:6px;
+  background:var(--amber);color:#fff;font-size:9px;font-weight:800;letter-spacing:.06em;
+  line-height:1.4;box-shadow:0 3px 8px -2px rgba(217,119,6,.6)}
+.pro-not{margin:14px 0 0;padding:9px 13px;border-left:3px solid var(--amber);
+  background:var(--amber-solgun);border-radius:0 8px 8px 0;
+  font-size:13px;line-height:1.55;color:#92400e}

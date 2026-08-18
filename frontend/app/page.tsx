@@ -42,6 +42,7 @@
 import Link from 'next/link';
 import { Home as HomeIcon, FileText, Database, BookOpen } from 'lucide-react';
 import { GirisliyseYonlendir } from '@/ortak/kabuk/components/landing/GirisliyseYonlendir';
+import { NasilCalisir } from '@/ortak/kabuk/components/landing/NasilCalisir';
 
 export const metadata = {
   title: 'MetaPriceX — Mekanik Tesisat Metraj ve Teklif Platformu',
@@ -71,7 +72,7 @@ export default function Home() {
 
       {/* NAVBAR */}
       <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/80 backdrop-blur-md">
-        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-6">
+        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-4 sm:px-6">
           <Link href="/" className="group flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-2xl font-black text-white shadow-lg shadow-blue-500/30 transition-transform group-hover:scale-105">
               M
@@ -91,16 +92,16 @@ export default function Home() {
             </a>
           </nav>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1 sm:gap-4">
             <Link
               href="/login"
-              className="px-5 py-2.5 text-sm font-bold text-slate-700 transition-colors hover:text-blue-600"
+              className="px-3 py-2.5 text-sm font-bold text-slate-700 transition-colors hover:text-blue-600 sm:px-5"
             >
               Giriş Yap
             </Link>
             <Link
               href="/register"
-              className="rounded-xl bg-[#0B1528] px-5 py-2.5 text-sm font-semibold text-white shadow-md transition-all hover:bg-slate-800 active:scale-[0.98]"
+              className="rounded-xl bg-[#0B1528] px-3 py-2.5 text-sm font-semibold text-white shadow-md transition-all hover:bg-slate-800 active:scale-[0.98] sm:px-5"
             >
               Hemen Başla
             </Link>
@@ -386,51 +387,9 @@ export default function Home() {
         </div>
       </section>
 
-      {/* NASIL CALISIR — menudeki baglantinin gercek hedefi */}
-      <section id="nasil-calisir" className="border-t border-slate-200/80 bg-white py-20">
-        <div className="mx-auto max-w-7xl px-6">
-          <div className="mx-auto mb-16 max-w-2xl text-center">
-            <h2 className="mb-2 text-xs font-bold uppercase tracking-widest text-blue-600">
-              Nasıl Çalışır?
-            </h2>
-            <p className="text-3xl font-extrabold text-slate-900">Üç Adımda Teklif</p>
-          </div>
-
-          <div className="grid gap-6 md:grid-cols-3">
-            {[
-              {
-                no: '1',
-                baslik: 'Fiyat listenizi kütüphaneye aktarın',
-                metin:
-                  'Malzeme Havuzundan çalıştığınız markayı seçin, "Kütüphaneme Aktar" ile kendi kütüphanenize kopyalayın. İskontonuzu girin; net fiyat kendiliğinden hesaplanır.',
-              },
-              {
-                no: '2',
-                baslik: 'Keşfi yükleyin',
-                metin:
-                  'Excel metrajınızı sürükleyin ya da DWG projenizden hat boylarını ölçtürüp çapları etiketleyin. Aynı teklife ikinci dosyayı yüklerseniz girdiğiniz marj ve fiyatlar korunarak birleşir.',
-              },
-              {
-                no: '3',
-                baslik: 'Teklifi üretin',
-                metin:
-                  'Malzeme adları kütüphanenizle eşleşir; birden çok aday varsa yazılım tahmin etmez, size sorar. Kaydetmeden önce fiyatsız kalan kalemleri sayıp önünüze koyar.',
-              },
-            ].map(({ no, baslik, metin }) => (
-              <div
-                key={no}
-                className="rounded-2xl border border-slate-200/80 bg-slate-50 p-8 shadow-sm"
-              >
-                <div className="mb-4 flex h-9 w-9 items-center justify-center rounded-xl bg-[#0B1528] text-sm font-black text-white">
-                  {no}
-                </div>
-                <h3 className="mb-2 text-base font-bold text-slate-900">{baslik}</h3>
-                <p className="text-xs leading-relaxed text-slate-600">{metin}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      {/* NASIL CALISIR — teslim edilen bolum (18.08). Metin tabanli 3 adimlik
+          gecici bolumun YERINE gecti; gercek ekran goruntuleri ve video ile. */}
+      <NasilCalisir />
 
       {/* KAPANIS */}
       <section className="bg-[#0B1528] py-16 text-white">
