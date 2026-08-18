@@ -116,20 +116,20 @@ export function CustomDropdown({
     // ::after'i) bundan ETKILENMEZ.
     'flex max-w-full mx-auto items-center gap-1 rounded-lg px-2.5 text-xs transition-all',
     'border outline-none',
+    // 18.08 ikinci tur ("cerceve icinde degil, daha baskin yazilar"):
+    // degerler teslim edilen tasarimdan BIREBIR (mpx-teklif-tablosu.css):
+    //   dolu marka  → cerceve #2563eb (blue-600 TAM renk) · zemin blue-50 · yazi blue-700 · 700
+    //   dolu firma  → cerceve #16a34a (green-600)         · zemin green-50 · yazi green-700 · 700
+    //   bos         → GORUNUR gri cerceve + BEYAZ zemin (onceki seffaf/silik hal
+    //                 kullanici tarafindan reddedildi) · yazi slate-400 · 600
+    // Hucre ARKA PLANI hala isaret.ts'in kanali — cip yalnizca kendi kutusunu boyar.
     open
-      ? 'border-indigo-500 bg-white ring-2 ring-indigo-500/20'
+      ? 'border-blue-600 bg-white ring-2 ring-blue-600/20'
       : hasValue
-        // ⚠ FIRMA YESIL (18.08): oncesinde amber'di. Tasarim ve CANLI tanitim
-        // sayfasindaki ekran goruntusu (public/nasil-calisir/.../a2-iscilik-dolu.png)
-        // yesil cip gosteriyordu — urun pazarlamanin gerisinde kalmisti.
-        // Malzeme mavi / iscilik yesil ayrimi teklif tablosunun her yerinde ayni.
-        // Bu YALNIZ secici cipidir; hucre ARKA PLANI degistirilmedi — orasi
-        // isaret.ts'in para sinyali kanali (kirmizi/sari/gri/mavi) ve golden
-        // E2E o RGB'leri okuyor.
         ? (isFirma
-            ? 'border-emerald-200/70 bg-emerald-50 text-emerald-800 font-medium hover:bg-emerald-100/70'
-            : 'border-blue-200/70 bg-blue-50 text-blue-800 font-medium hover:bg-blue-100/70')
-        : 'border-transparent bg-transparent text-slate-400 hover:bg-slate-100/80',
+            ? 'border-green-600 bg-green-50 text-green-700 font-bold hover:bg-green-100/60'
+            : 'border-blue-600 bg-blue-50 text-blue-700 font-bold hover:bg-blue-100/60')
+        : 'border-slate-200 bg-white text-slate-400 font-semibold hover:border-slate-300',
     className,
   ].join(' ');
 

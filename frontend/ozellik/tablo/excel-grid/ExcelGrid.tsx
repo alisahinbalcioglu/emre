@@ -2319,14 +2319,23 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
                   yazilir; 5c95cf0'te kapatilan canli HTTP 400 geri doner.
                   ⚠ Surukle-doldur ETKILENMEZ: kesfedilebilirlik seridi ve
                   geometri sarmalayicinin (`fill-handle-cell`) uzerinde. */}
-              <span className={hasVal ? 'kar-kutu kar-kutu-dolu' : 'kar-kutu kar-kutu-bos'} style={{
-                display: 'inline-flex', alignItems: 'center', gap: 3,
-                height: 22, padding: '0 9px', borderRadius: 6,
-                fontSize: 12, fontVariantNumeric: 'tabular-nums',
-                color: hasVal ? '#1e40af' : undefined,
-                fontWeight: hasVal ? 600 : 500,
+              {/* Degerler teslim edilen tasarimin BIREBIR kendisi
+                  (mpx-teklif-tablosu.css .mpx-yuzde blogu): cerceve TAM renk
+                  (#2563eb / #16a34a — soluk 200'luk degil), yazi 700, boyut 11,
+                  bos hal beyaz zemin + gorunur gri cerceve. Iscilik kari
+                  YESIL ciptir (spec: .mpx-yuzde.dolu-yesil) — iki taraf ayni
+                  maviye boyanmaz. */}
+              <span className={
+                hasVal
+                  ? (karField === '_iscKar' ? 'kar-kutu kar-kutu-dolu-yesil' : 'kar-kutu kar-kutu-dolu')
+                  : 'kar-kutu kar-kutu-bos'
+              } style={{
+                display: 'inline-flex', alignItems: 'center', gap: 2,
+                height: 22, padding: '0 7px', borderRadius: 6,
+                fontSize: 11, fontWeight: 700, fontVariantNumeric: 'tabular-nums',
+                color: hasVal ? (karField === '_iscKar' ? '#15803d' : '#1d4ed8') : undefined,
               }}>
-                <span style={{ fontSize: 11, opacity: 0.75 }}>%</span>
+                <span>%</span>
                 {val}
               </span>
               <FillHandleIndicator field={karField} value={val} rowIdx={params.data._rowIdx} />

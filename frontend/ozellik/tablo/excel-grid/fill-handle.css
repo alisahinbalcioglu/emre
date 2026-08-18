@@ -256,14 +256,24 @@ body.fill-handle-dragging * {
    kutusu mavi cip olur, bos kutu sessiz kalir. Ozgulluk hesabi:
    `.ag-row:hover .kar-kutu` (0,3,0) yalin cipi (0,2,0) ezerdi ve cip her
    satir hover'inda grilesirdi — hover ve odak icin acik kurallar sart. */
+/* 18.08 ikinci tur ("cerceve icinde degil, daha baskin"): degerler teslim
+   edilen tasarimdan BIREBIR — cerceve TAM renk, soluk 200'luk degil. */
 .kar-kutu.kar-kutu-dolu {
   background: #eff6ff;
-  border-color: rgba(191, 219, 254, 0.7);
+  border-color: #2563eb;
+}
+.kar-kutu.kar-kutu-dolu-yesil {
+  background: #f0fdf4;
+  border-color: #16a34a;
 }
 .ag-row:hover .kar-kutu.kar-kutu-dolu {
   background: #eff6ff;               /* satir hover'i cipi soldurmasin */
 }
-.ag-cell-focus .kar-kutu.kar-kutu-dolu {
+.ag-row:hover .kar-kutu.kar-kutu-dolu-yesil {
+  background: #f0fdf4;
+}
+.ag-cell-focus .kar-kutu.kar-kutu-dolu,
+.ag-cell-focus .kar-kutu.kar-kutu-dolu-yesil {
   background: #fff;                  /* duzenlemeye girerken odak halkasi kazanir */
 }
 
@@ -272,5 +282,6 @@ body.fill-handle-dragging * {
    eder — dogru davranis, cip odakta beyazlar, hover'da hafif griler. */
 .kar-kutu.kar-kutu-bos {
   border-color: #e2e8f0;
-  color: #64748b;
+  background: #fff;                  /* spec: bos cip beyaz zemin, seffaf degil */
+  color: #94a3b8;
 }
