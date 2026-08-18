@@ -392,7 +392,10 @@ export default function QuoteDetailPage() {
             <Download className="mr-2 h-4 w-4" />
             Fiyatlandırılmış Excel
           </Button>
+          {/* 18.08 kullanici karari (hedef tasarim): Teklif Formatinda MAVI —
+              iki cikti dugmesi ayni gorunmesin: Fiyatli Excel outline, bu solid. */}
           <Button
+            className="bg-blue-600 hover:bg-blue-700"
             disabled={exporting}
             onClick={async () => {
               setExporting(true);

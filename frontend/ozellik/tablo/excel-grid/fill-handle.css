@@ -250,3 +250,19 @@ body.fill-handle-dragging * {
 .ag-theme-alpine .ag-cell {
   font-variant-numeric: tabular-nums;
 }
+
+/* ── KAR % DOLU CIP (18.08, kullanici karari — hedef tasarim fotografla) ──
+   14.08'in "cercevesiz" karari BILEREK geri cevrildi: deger girilmis kar
+   kutusu mavi cip olur, bos kutu sessiz kalir. Ozgulluk hesabi:
+   `.ag-row:hover .kar-kutu` (0,3,0) yalin cipi (0,2,0) ezerdi ve cip her
+   satir hover'inda grilesirdi — hover ve odak icin acik kurallar sart. */
+.kar-kutu.kar-kutu-dolu {
+  background: #eff6ff;
+  border-color: rgba(191, 219, 254, 0.7);
+}
+.ag-row:hover .kar-kutu.kar-kutu-dolu {
+  background: #eff6ff;               /* satir hover'i cipi soldurmasin */
+}
+.ag-cell-focus .kar-kutu.kar-kutu-dolu {
+  background: #fff;                  /* duzenlemeye girerken odak halkasi kazanir */
+}

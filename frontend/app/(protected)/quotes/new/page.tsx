@@ -1613,7 +1613,13 @@ export default function NewQuotePage() {
           {/* Teklifi Kaydet — 06.08'de alt sagdan buraya, 13.08'de bir satir
               asagi tasindi (yesil cerceve): ust satir ceviri + para birimi. */}
           {excelGridData && (
-            <Button onClick={() => handleSave()} disabled={isSaving}>
+            /* 18.08 kullanici karari (hedef tasarim): Kaydet YESIL — lacivert
+               birincilden ayrisir, "olumlu/bitirici" eylem rengi. */
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700"
+              onClick={() => handleSave()}
+              disabled={isSaving}
+            >
               {isSaving ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

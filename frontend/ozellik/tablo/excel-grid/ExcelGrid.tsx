@@ -2316,13 +2316,20 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
                   kapatilan canli HTTP 400 aynen geri doner. */}
               <div style={{ position: 'relative', width: 68, display: 'flex', alignItems: 'center' }}>
                 <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: '#94a3b8', fontWeight: 500, pointerEvents: 'none', zIndex: 1 }}>%</span>
-                <span className="kar-kutu" style={{
+                {/* 18.08 KULLANICI KARARI (hedef tasarim fotografla onaylandi):
+                    DOLU kar kutusu artik MAVI CIP — 14.08'in "durgun halde
+                    cercevesiz" karari bilerek geri cevrildi. Bos kutu (0) hala
+                    cercevesiz/sessiz kalir; cip yalniz gercek bir deger girilince
+                    belirir, boylece bos tablo cip ormanina donmez. Zemin/cerceve
+                    CSS'te (`kar-kutu-dolu`, fill-handle.css) — hover'da kaybolmasin
+                    ve odak halkasi kazansin diye siralamayla cozuldu. */}
+                <span className={hasVal ? 'kar-kutu kar-kutu-dolu' : 'kar-kutu'} style={{
                   display: 'block', width: '100%', height: 28, padding: '0 8px 0 20px',
                   borderRadius: 8,
                   fontSize: 12, textAlign: 'right', lineHeight: '28px',
                   fontVariantNumeric: 'tabular-nums',
-                  color: hasVal ? '#059669' : '#1e293b',
-                  fontWeight: hasVal ? 500 : 400,
+                  color: hasVal ? '#1e40af' : '#1e293b',
+                  fontWeight: hasVal ? 600 : 400,
                 }}>
                   {val}
                 </span>
@@ -2943,12 +2950,17 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
             // birbirinden ayiran sey artik ZEMIN degil, etiket ROZETI ve
             // rakamin rengi — sayfanin geri kalaniyla ayni gorsel dil.
             //
-            // ⚠ ADIM 10 KORUNDU: KAR satiri hala GORSEL OLARAK ayrisir (yesil
-            // rakam + yesil rozet). Ayrisma sebebi kozmetik degil: kar IC
-            // BILGIDIR, musteriye giden ciktida yeri yoktur ve kullanici onu
-            // toplamla karistirmamalidir.
+            // ⚠ ADIM 10 KORUNDU: KAR satiri GORSEL OLARAK ayrisir. Ayrisma
+            // sebebi kozmetik degil: kar IC BILGIDIR, musteriye giden ciktida
+            // yeri yoktur ve kullanici onu toplamla karistirmamalidir.
+            //
+            // 18.08 KULLANICI KARARI: ayrisma guclendirildi — KAR satiri artik
+            // ACIK YESIL ZEMIN tasir (hedef tasarim fotografla onaylandi).
+            // 16.08'deki "yalniz metin rengiyle ayris" karari boylece BILEREK
+            // geri cevrildi; yesil-50 tonu isaret.ts'in dort para-sinyali
+            // renginden (kirmizi/sari/gri/mavi) hicbiriyle cakismaz.
             if ((p.data as any)?._isKarRow) {
-              return { backgroundColor: '#f8fafc', color: '#047857', fontWeight: 700 };
+              return { backgroundColor: '#f0fdf4', color: '#047857', fontWeight: 700 };
             }
             return { backgroundColor: '#f8fafc', color: '#0f172a', fontWeight: 700 };
           }
