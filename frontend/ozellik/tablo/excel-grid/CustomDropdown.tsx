@@ -109,12 +109,12 @@ export function CustomDropdown({
 
   /** Pasif hucre: secili deger YUMUSAK ETIKET, bos deger transparan. */
   const tetikSinif = [
-    // 18.08 hedef tasarim: cip HUCREYI DOLDURMAZ, icerige sarilir ve ortalanir
-    // (w-full + justify-between kaldirildi, mx-auto + max-w-full geldi).
-    // Uzun adlar ic span'in ellipsis'iyle kirpilmaya devam eder; e2e'nin
-    // `[col-id] button` tiklamasi ve surukle-doldur seridi (sarmalayicinin
-    // ::after'i) bundan ETKILENMEZ.
-    'flex max-w-full mx-auto items-center gap-1 rounded-lg px-2.5 text-xs transition-all',
+    // 19.08 v1 spec (select bloğu birebir): TEK TIP genislik (min 94 / max 140,
+    // aralikta hucreyi doldurur), metin solda + ok sagda (justify-between),
+    // radius 6 (rounded-md), yazi 12. Ciplerin alt alta AYNI genislikte
+    // durmasi tasarimin ritmi — onceki "icerige saril" yorumu kaldirildi.
+    // e2e `[col-id] button` tiklamasi ve fill-handle ::after ETKILENMEZ.
+    'flex w-full min-w-[94px] max-w-[140px] mx-auto items-center justify-between gap-1 rounded-md px-2 text-[12px] transition-all',
     'border outline-none',
     // 18.08 ikinci tur ("cerceve icinde degil, daha baskin yazilar"):
     // degerler teslim edilen tasarimdan BIREBIR (mpx-teklif-tablosu.css):
@@ -129,7 +129,7 @@ export function CustomDropdown({
         ? (isFirma
             ? 'border-green-600 bg-green-50 text-green-700 font-bold hover:bg-green-100/60'
             : 'border-blue-600 bg-blue-50 text-blue-700 font-bold hover:bg-blue-100/60')
-        : 'border-slate-200 bg-white text-slate-400 font-semibold hover:border-slate-300',
+        : 'border-slate-200 bg-white text-slate-500 font-[650] hover:border-slate-300',
     className,
   ].join(' ');
 
@@ -141,7 +141,7 @@ export function CustomDropdown({
         type="button"
         onClick={() => (open ? closeMenu() : openMenu())}
         className={tetikSinif}
-        style={{ height: 28 }}
+        style={{ height: 29 }} /* v1 spec: 4px dikey dolgu + 12px/1.55 satir + cerceve */
       >
         <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-left">
           {selectedOption?.label ?? placeholder}

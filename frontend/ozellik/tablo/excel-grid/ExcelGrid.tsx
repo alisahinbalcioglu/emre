@@ -1422,9 +1422,11 @@ function GroupRowBand(params: ICellRendererParams<ExcelRowData>) {
       style={{
         display: 'flex', alignItems: 'center', gap: 8,
         height: '100%', padding: '0 10px',
-        background: 'linear-gradient(to right, #eef2ff, #f8fafc)',
-        borderLeft: '3px solid #4f46e5',
-        fontWeight: 700, fontSize: 12, color: '#3730a3',
+        // 19.08 hedef tasarim (spec tr.grup): duz mavi-50 bant, mavi-700 yazi,
+        // 800 — onceki indigo gradyan tasarim dosyasinda yok.
+        background: '#eff6ff',
+        borderLeft: '3px solid #2563eb',
+        fontWeight: 800, fontSize: 12.5, color: '#1d4ed8',
         cursor: canToggle ? 'pointer' : 'default',
         userSelect: 'none',
       }}
@@ -2330,13 +2332,16 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
                   ? (karField === '_iscKar' ? 'kar-kutu kar-kutu-dolu-yesil' : 'kar-kutu kar-kutu-dolu')
                   : 'kar-kutu kar-kutu-bos'
               } style={{
+                // v1 spec (.mpx-yuzde): padding 3/8, yazi 12/750, deger sabit
+                // genislikte SAGA yasli (input width:32 karsiligi) — cipler
+                // alt alta ayni genislikte durur, "% 25" ritmi olusur.
                 display: 'inline-flex', alignItems: 'center', gap: 2,
-                height: 22, padding: '0 7px', borderRadius: 6,
-                fontSize: 11, fontWeight: 700, fontVariantNumeric: 'tabular-nums',
+                height: 27, padding: '0 8px', borderRadius: 6,
+                fontSize: 12, fontWeight: 750, fontVariantNumeric: 'tabular-nums',
                 color: hasVal ? (karField === '_iscKar' ? '#15803d' : '#1d4ed8') : undefined,
               }}>
                 <span>%</span>
-                {val}
+                <span style={{ display: 'inline-block', width: 26, textAlign: 'right' }}>{val}</span>
               </span>
               <FillHandleIndicator field={karField} value={val} rowIdx={params.data._rowIdx} />
             </div>
@@ -2526,14 +2531,33 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           base.cellStyle = ((params: any) => {
             if (params.node?.rowPinned || !params.data) return { textAlign: 'right' };
             const stil = isaretStili(girdiden(params.data));
-            return stil ? { textAlign: 'right', ...stil } : { textAlign: 'right' };
+            // v1 spec td.fiyat: 600 / #0f172a. Kolon zemini (malzeme mavi-50,
+            // iscilik yesil-50) YALNIZ marka/firma seciliyken ve YALNIZ sinyal
+            // yokken — isaret.ts'in para sinyali (kirmizi/sari/gri/mavi) HER
+            // ZAMAN kazanir; golden E2E o RGB'leri okumaya devam eder.
+            const doluTint = malzemeFiyatKolonu
+              ? (params.data._marka ? '#eff6ff' : undefined)
+              : (params.data._firma ? '#f0fdf4' : undefined);
+            const taban = { textAlign: 'right', fontWeight: 600, color: '#0f172a' };
+            return stil ? { ...taban, ...stil } : { ...taban, backgroundColor: doluTint };
           }) as any;
           base.tooltipValueGetter = ((params: any) => {
             if (!params.data || params.node?.rowPinned) return '';
             return isaretTooltip(girdiden(params.data));
           }) as any;
         } else {
-          base.cellStyle = { textAlign: 'right' };
+          // v1 spec td.toplam: 750 / #0f172a (Malz. Toplam ve Isc. Toplam).
+          // Pinned satirlarda hucreye agirlik YAZILMAZ — getRowStyle'in 800'u
+          // gecerli kalsin (satir stili kalitilir, hucre inline'i onu ezerdi).
+          const toplamKolonu =
+            field === data.columnRoles.materialTotalField ||
+            field === data.columnRoles.laborTotalField;
+          base.cellStyle = ((params: any) => {
+            if (params.node?.rowPinned) return { textAlign: 'right' };
+            return toplamKolonu
+              ? { textAlign: 'right', fontWeight: 750, color: '#0f172a' }
+              : { textAlign: 'right' };
+          }) as any;
         }
 
         // BASLIK HIZASI (18.08): hucreler zaten saga hizali (yukaridaki iki
@@ -2555,9 +2579,12 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         // cell backgroundColor override ederse beyaz text acik gri zemin uzerinde KAYBOLUR
         base.cellStyle = ((params: any) => {
           if (params.node?.rowPinned === 'bottom') {
-            return { textAlign: 'right', fontWeight: '700' };
+            // agirlik verilmez: getRowStyle'in 800'u kalitilsin
+            return { textAlign: 'right' };
           }
-          return { textAlign: 'right', backgroundColor: '#f9fafb', fontWeight: '600' };
+          // v1 spec td.genel: 800 / #0f172a, ozel zemin YOK (eski #f9fafb
+          // "read-only" ipucu spec'te bulunmadigi icin kaldirildi; zebra isler)
+          return { textAlign: 'right', fontWeight: 800, color: '#0f172a' };
         }) as any;
       }
 
@@ -2964,9 +2991,10 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
             // geri cevrildi; yesil-50 tonu isaret.ts'in dort para-sinyali
             // renginden (kirmizi/sari/gri/mavi) hicbiriyle cakismaz.
             if ((p.data as any)?._isKarRow) {
-              return { backgroundColor: '#f0fdf4', color: '#047857', fontWeight: 700 };
+              return { backgroundColor: '#f0fdf4', color: '#047857', fontWeight: 800, fontSize: 13 };
             }
-            return { backgroundColor: '#f8fafc', color: '#0f172a', fontWeight: 700 };
+            // v1 spec tfoot: 800 / 13px
+            return { backgroundColor: '#f8fafc', color: '#0f172a', fontWeight: 800, fontSize: 13 };
           }
           return undefined;
         }}
@@ -3066,7 +3094,13 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         .ag-theme-alpine {
           --ag-grid-size: 5px;
           --ag-list-item-height: 24px;
-          --ag-font-size: 12px;
+          /* v1 spec --mpx-yazi 12.5px. ⚠ Alpine HUCRE yazisini
+             calc(--ag-font-size + 1px) hesaplar (olculdu: 12.5 verince hucre
+             13.5 cikti) — degisken bu yuzden 11.5. Baslik zaten CSS'te acik
+             11.5px ile eziliyor, bundan etkilenmez. */
+          --ag-font-size: 11.5px;
+          --ag-odd-row-background-color: #fcfdfe; /* v1 spec --mpx-zebra */
+          --ag-row-hover-color: #f5f9ff;          /* v1 spec --mpx-hover */
           /* PRD 14.08 — yalniz COK HAFIF yatay ayraclar.
              ⚠ AG-Grid'in KENDI degiskeni kullanilir; ag-row uzerine elle
              border-bottom kurali YAZILMAZ: AG-Grid satir yuksekligi hesabina

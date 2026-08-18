@@ -17,7 +17,7 @@ export interface Harvest {
   genelToplam: string; // tfoot/pinned gorunumden
 }
 
-const ROW_H = 28;
+const ROW_H = 40; // = SATIR_YUKSEKLIGI (types.ts) — import edilemiyor, elle esitlenir (19.08: 28→40)
 
 /** Grid viewport'unu adim adim kaydirarak TUM satirlari topla (sanallastirma). */
 export async function harvestGrid(page: Page): Promise<Harvest> {

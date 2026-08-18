@@ -351,7 +351,7 @@ export default function QuoteDetailPage() {
             </Button>
           )}
           {/* KH9: TL/USD/EUR — Duzenle'dekiyle ayni bilesen deseni */}
-          <div className="flex rounded-lg border bg-muted p-0.5">
+          <div className="flex rounded-lg border bg-white p-0.5">
             {(['TRY', 'USD', 'EUR'] as Currency[]).map((c) => (
               <button
                 key={c}
@@ -360,7 +360,7 @@ export default function QuoteDetailPage() {
                 className={cn(
                   'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
                   currency === c
-                    ? 'bg-background text-foreground shadow-sm'
+                    ? 'bg-blue-600 text-white shadow-sm' /* v1 spec .mpx-para .sec: secili para birimi MAVI dolgulu */
                     : 'text-muted-foreground hover:text-foreground',
                 )}
                 disabled={!ratesLoaded && c !== 'TRY'}

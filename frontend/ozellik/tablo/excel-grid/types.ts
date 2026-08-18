@@ -154,4 +154,10 @@ export interface BrandAlternative {
  * baslardi ve o satirlarin fiyati yeniden hesaplanirdi. Bu projede satir
  * yuksekligi bir GORSEL tercih degil, PARA yolunun girdisidir.
  */
-export const SATIR_YUKSEKLIGI = 28;
+/* 19.08 hedef tasarim (%100 istegi): 28 → 40. Cipler 27-29px oldugu icin 28'de
+   hucreye yapisiyordu; teslim edilen onizlemede satir ritmi ~40px olculdu
+   (6px dikey dolgu + cip). ⚠ TEK KAYNAK: AG Grid rowHeight VE surukle-doldur
+   geometrisi (useFillHandle `Math.floor(relativeY / SATIR_YUKSEKLIGI)`) buradan
+   okur — birlikte kayarlar. e2e-golden/helpers.ts:20'deki ROW_H kopyasi AYNI
+   commit'te esitlendi; o dosya bu sabiti import EDEMIYOR (Playwright paketi). */
+export const SATIR_YUKSEKLIGI = 40;

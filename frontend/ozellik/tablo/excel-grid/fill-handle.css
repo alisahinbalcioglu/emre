@@ -143,11 +143,12 @@ body.fill-handle-dragging * {
   background-color: #f8fafc;
 }
 
+/* v1 spec thead th: 11.5 / 750 / #334155 */
 .ag-theme-alpine .ag-header-cell {
-  font-size: 11px;
-  font-weight: 600;
-  color: #64748b;
-  letter-spacing: 0.02em;
+  font-size: 11.5px;
+  font-weight: 750;
+  color: #334155;
+  letter-spacing: 0.01em;
 }
 
 /* Satir hover — YUMUSAK ve SATIR duzeyinde.
@@ -156,7 +157,7 @@ body.fill-handle-dragging * {
    sari=oneri) ve hucre hover'i onlari orter. Golden E2E de o renkleri
    `getComputedStyle` ile okuyup karar verir. */
 .ag-theme-alpine .ag-row:hover {
-  background-color: #f8fafc !important;
+  background-color: #f5f9ff !important; /* v1 spec --mpx-hover */
 }
 
 /* ⚠ DIKEY CIZGILER KALDIRILDI (PRD 14.08).
@@ -184,7 +185,7 @@ body.fill-handle-dragging * {
 }
 
 .ag-theme-alpine .ag-floating-bottom .ag-cell {
-  font-weight: 700;
+  font-weight: 800; /* v1 spec tfoot: 800 — getRowStyle ile ayni deger */
   font-variant-numeric: tabular-nums;
 }
 
@@ -284,4 +285,26 @@ body.fill-handle-dragging * {
   border-color: #e2e8f0;
   background: #fff;                  /* spec: bos cip beyaz zemin, seffaf degil */
   color: #94a3b8;
+}
+
+/* ── v1 SPEC GOVDE TIPOGRAFISI (19.08, %100 istegi) ──────────────────────
+   tbody td: #334155 / 500. Pinned satirlar BILEREK haric: GENEL TOPLAM ve
+   KAR satirlarinin rengini/agirligini getRowStyle verir (satir stili
+   kalitilir); bu kural onlari da yakalasaydi 800'u ezerdi. Fiyat/toplam
+   kolonlarinin inline cellStyle'i (600-800, #0f172a) bu kurali zaten yener. */
+.ag-theme-alpine .ag-row:not(.ag-row-pinned) .ag-cell {
+  color: #334155;
+  font-weight: 500;
+}
+/* Malzeme adi: guclu metin (spec tbody td:nth-child(2): #0f172a / 650).
+   Bu iki kural govde kuralindan SONRA durmali — ayni ozgullukte, sira kazanir. */
+.ag-theme-alpine .ag-row:not(.ag-row-pinned) .ag-cell[col-id="_ad"] {
+  color: #0f172a;
+  font-weight: 650;
+}
+/* No kolonu (spec td:first-child: #64748b / 11.5 / 600) */
+.ag-theme-alpine .ag-row:not(.ag-row-pinned) .ag-cell[col-id="_no"] {
+  color: #64748b;
+  font-size: 11.5px;
+  font-weight: 600;
 }
