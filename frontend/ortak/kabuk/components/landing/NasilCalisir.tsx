@@ -21,7 +21,7 @@
  * Statikler `frontend/public/nasil-calisir/` altinda; yollar koke gore mutlak.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import './nasil-calisir.css';
 
 const KOK = '/nasil-calisir';
@@ -44,21 +44,32 @@ type Gorsel = {
   pro?: boolean;
 };
 
+/** v1 (19.08): bolum IKI YOLLU — kullanici DWG projesinden ya da hazir Excel
+ *  metrajindan baslar. Secim yalniz React state; adim numaralari GORUNUR
+ *  listeden turetilir (teslimin CSS sayaci karsiligi), elle numara tutulmaz. */
+type Yol = 'dwg' | 'excel';
+
 type Adim = {
-  no: string;
+  /** Sekme secim state'inin anahtari — dizin OLMAZ: yol degisince dizinler kayar. */
+  key: string;
   baslik: string;
   metin: string;
+  /** DWG yolunda farkli anlatilan adimlar icin varyant (teslimdeki .dwg-only). */
+  baslikDwg?: string;
+  metinDwg?: string;
   ton: Ton;
   tikler: { kalin: string; devam: string }[];
   url: string;
   gorseller: Gorsel[];
   /** Adimin altina dusen kucuk paket notu (Pro kapisi varsa). */
   pronot?: string;
+  /** DWG adimi mor vurgu alir (step.dwg). */
+  dwg?: boolean;
 };
 
 const ADIMLAR: Adim[] = [
   {
-    no: '1',
+    key: 'kutuphane',
     baslik: 'Fiyat listelerini kütüphaneye aktarın',
     metin:
       'Malzeme Havuzundaki hazır marka listelerinden çalıştıklarınızı kütüphanenize kopyalarsınız. İskontonuzu bir kez girersiniz — kütüphanede artık net fiyatlar durur.',
@@ -103,10 +114,13 @@ const ADIMLAR: Adim[] = [
     ],
   },
   {
-    no: '2',
+    key: 'markala',
     baslik: 'Metrajı yükleyin, markayı seçin — fiyat hücreye gelsin',
+    baslikDwg: 'Markayı seçin — fiyat hücreye gelsin',
     metin:
       'Çok sayfalı Excel metrajınız sayfa sayfa okunur. Satırda markayı seçtiğiniz anda kütüphanenizde arama yapılır.',
+    metinDwg:
+      'Ölçümden gelen metraj tabloya düşer. Satırda markayı seçtiğiniz anda kütüphanenizde arama yapılır.',
     ton: 'mavi',
     tikler: [
       {
@@ -164,7 +178,7 @@ const ADIMLAR: Adim[] = [
     ],
   },
   {
-    no: '3',
+    key: 'kaydet',
     baslik: 'Teklifi kaydedin, iki formatta indirin',
     metin:
       'Teklifi kaydedin; dilediğiniz zaman revize edin. Fiyatlandırılmış Excel ya da kapak–icmal sayfalı teklif formatı olarak indirin.',
@@ -208,6 +222,54 @@ const ADIMLAR: Adim[] = [
     ],
   },
 ];
+
+/** v1 DWG adimi. Metin KODA KARSI DENETLENDI (19.08):
+ *  · "hat boylari kendiliginden olculsun" — DOGRU (koordinat+katman bazli,
+ *    olcek ve birim normalize edilerek; onceki DWG denetiminin bulgusu).
+ *  · "Katmanlari ... bir kez eslestirin" — ISLEVSEL OLARAK DOGRU:
+ *    applyBucketToUnassigned (DwgProjectWorkspace.tsx:315) kalemi secili
+ *    katmandaki TUM capsiz segmentlere tek hamlede uygular; kod yorumu bunu
+ *    "eski layer-default fallback'inin kullanici-tetikli karsiligi" diye
+ *    tanimlar. Otomatik cap TAHMINI iddiasi YOK (o motor silindi, dogru).
+ *  · "Kalem bazinda toplam" — cap bazinda gruplu uzunluklar (lejant/ozet).
+ *  · "Dogrudan metraja aktarim" — metraj teklife aktariliyor (birim m). */
+const DWG_ADIM: Adim = {
+  key: 'dwg',
+  dwg: true,
+  baslik: 'DWG projenizi yükleyin — hat boyları kendiliğinden ölçülsün',
+  metin:
+    'Çizimi olduğu gibi yükleyin. Katmanları hangi kaleme karşılık geldiğiyle bir kez eşleştirin; sistem o katmanlardaki hat boylarını ölçüp metraja dönüştürür.',
+  ton: 'mor',
+  tikler: [
+    { kalin: 'Katman eşleştirme', devam: '— hangi katman hangi boru/çap, bir kez tanımlanır' },
+    { kalin: 'Otomatik hat boyu ölçümü', devam: '— ölçek ve birim dikkate alınarak hesaplanır' },
+    { kalin: 'Kalem bazında toplam', devam: '— çap ve hat türüne göre gruplanmış uzunluklar' },
+    { kalin: 'Doğrudan metraja aktarım', devam: '— çıkan sonuç tek tıkla metraj tablosuna geçer' },
+  ],
+  url: 'metapricex.com/dwg',
+  gorseller: [
+    { sekme: 'DWG yükle', etiket: 'Çizim yüklendi', renk: 'mor', dosya: 'd1-yukle', alt: 'DWG çizimi yüklendi, katmanlar listelendi' },
+    { sekme: 'Katman eşle', etiket: 'Katman → kalem eşleşti', renk: '', dosya: 'd2-katman-esle', alt: 'Katmanın hangi kaleme karşılık geldiği seçiliyor' },
+    { sekme: 'Ölçüm', etiket: 'Hatlar ölçülüyor', renk: 'amber', dosya: 'd3-olcum', alt: 'Hat boyları ölçülüyor' },
+    { sekme: 'Metraj çıktı', etiket: '588,9 m ölçüldü', renk: 'yesil', dosya: 'd4-metraj', alt: 'Kalem bazında gruplanmış metraj sonucu' },
+  ],
+};
+
+/** Yola gore baslik/ozet (teslimdeki METIN sozlugu). */
+const YOL_METIN: Record<Yol, { vurgu: string; oncesi: string; ozet: string }> = {
+  dwg: {
+    oncesi: 'Projeden fiyatlı teklife ',
+    vurgu: 'dört adım',
+    ozet:
+      'DWG projenizdeki hat boyları otomatik ölçülür, metraja dönüşür. Sonrasında markayı seçmeniz yeterli — fiyat, kâr ve toplam otomatik hesaplanır.',
+  },
+  excel: {
+    oncesi: 'Metrajdan fiyatlı teklife ',
+    vurgu: 'üç adım',
+    ozet:
+      'Fiyat listelerinizi bir kez kütüphaneye aktarın; sonrasında her metraj için marka seçmeniz yeterli. Fiyat, kâr ve toplam otomatik hesaplanır.',
+  },
+};
 
 const OZELLIKLER = [
   {
@@ -256,7 +318,8 @@ function Tik({ ton }: { ton: Ton }) {
 }
 
 export function NasilCalisir() {
-  const [aktif, setAktif] = useState<number[]>(() => ADIMLAR.map(() => 0));
+  const [yol, setYol] = useState<Yol>('dwg'); // teslimin varsayilani DWG
+  const [aktif, setAktif] = useState<Record<string, number>>({});
   const [buyutulen, setBuyutulen] = useState<Gorsel | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -306,12 +369,10 @@ export function NasilCalisir() {
               Nasıl Çalışır?
             </span>
             <h2>
-              Metrajdan fiyatlı teklife <em>üç adım</em>
+              {YOL_METIN[yol].oncesi}
+              <em>{YOL_METIN[yol].vurgu}</em>
             </h2>
-            <p>
-              Fiyat listelerinizi bir kez kütüphaneye aktarın; sonrasında her metraj için marka
-              seçmeniz yeterli. Fiyat, kâr ve toplam otomatik hesaplanır.
-            </p>
+            <p>{YOL_METIN[yol].ozet}</p>
           </div>
 
           <figure className="nc-video">
@@ -335,6 +396,11 @@ export function NasilCalisir() {
               <source src={`${KOK}/nasil-calisir.webm`} type="video/webm" />
             </video>
             <figcaption>
+              {yol === 'dwg' && (
+                <span>
+                  <b>DWG</b> Hat boyu ölçümü
+                </span>
+              )}
               <span>
                 <b>1.</b> Fiyat kütüphanesi
               </span>
@@ -350,15 +416,67 @@ export function NasilCalisir() {
             </figcaption>
           </figure>
 
+          {/* ── Baslangic yolu secici (v1) ── */}
+          <div className="nc-yol">
+            <h3>Nereden başlıyorsunuz?</h3>
+            <div className="yollar">
+              <button
+                type="button"
+                className="yol"
+                aria-pressed={yol === 'dwg'}
+                onClick={() => setYol('dwg')}
+              >
+                <span className="rozet">Bize özel</span>
+                <span className="yikon">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M3 17V7l9-4 9 4v10l-9 4-9-4Z" />
+                    <path d="M3 7l9 4 9-4" />
+                    <path d="M12 11v10" />
+                  </svg>
+                </span>
+                <span>
+                  <strong>Elimde proje var (DWG)</strong>
+                  <span>Çizimi yükleyin, hat boyları otomatik ölçülsün — metrajı sistem çıkarsın.</span>
+                </span>
+              </button>
+
+              <span className="yol-veya">veya</span>
+
+              <button
+                type="button"
+                className="yol"
+                aria-pressed={yol === 'excel'}
+                onClick={() => setYol('excel')}
+              >
+                <span className="yikon">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z" />
+                    <path d="M14 3v5h5" />
+                    <path d="M9 13l6 5M15 13l-6 5" />
+                  </svg>
+                </span>
+                <span>
+                  <strong>Metrajım hazır (Excel)</strong>
+                  <span>Çok sayfalı metraj dosyanızı yükleyin, doğrudan fiyatlandırmaya geçin.</span>
+                </span>
+              </button>
+            </div>
+          </div>
+
           <ol className="nc-steps">
-            {ADIMLAR.map((adim, ai) => {
-              const secili = adim.gorseller[aktif[ai]];
+            {(yol === 'dwg'
+              ? [ADIMLAR[0], DWG_ADIM, ADIMLAR[1], ADIMLAR[2]]
+              : ADIMLAR
+            ).map((adim, ai) => {
+              const secili = adim.gorseller[aktif[adim.key] ?? 0];
+              const ters = (ai + 1) % 2 === 0; // zigzag — gorunur siraya gore
               return (
-                <li className="step" key={adim.no}>
+                <Fragment key={adim.key}>
+                <li className={`step${adim.dwg ? ' dwg' : ''}${ters ? ' ters' : ''}`}>
                   <div className="step-text">
-                    <span className="step-num">{adim.no}</span>
-                    <h3>{adim.baslik}</h3>
-                    <p>{adim.metin}</p>
+                    <span className="step-num">{ai + 1}</span>
+                    <h3>{yol === 'dwg' && adim.baslikDwg ? adim.baslikDwg : adim.baslik}</h3>
+                    <p>{yol === 'dwg' && adim.metinDwg ? adim.metinDwg : adim.metin}</p>
                     <ul className="ticks">
                       {adim.tikler.map((t) => (
                         <li key={t.kalin}>
@@ -402,7 +520,7 @@ export function NasilCalisir() {
                     <div
                       className="kucukler"
                       role="tablist"
-                      aria-label={`Adım ${adim.no} ekran görüntüleri`}
+                      aria-label={`Adım ${ai + 1} ekran görüntüleri`}
                     >
                       {adim.gorseller.map((g, gi) => (
                         <button
@@ -410,9 +528,7 @@ export function NasilCalisir() {
                           type="button"
                           role="tab"
                           aria-selected={aktif[ai] === gi}
-                          onClick={() =>
-                            setAktif((o) => o.map((deger, i) => (i === ai ? gi : deger)))
-                          }
+                          onClick={() => setAktif((o) => ({ ...o, [adim.key]: gi }))}
                         >
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={`${KOK}/gorseller/kucuk/${g.dosya}.jpg`} alt="" />
@@ -423,6 +539,13 @@ export function NasilCalisir() {
                     </div>
                   </div>
                 </li>
+                {adim.dwg && (
+                  /* teslimdeki #birlesme — yalniz DWG yolunda, DWG adiminin altinda */
+                  <li className="birlesme" aria-hidden="true">
+                    <span>Buradan sonrası iki yolda da aynı</span>
+                  </li>
+                )}
+                </Fragment>
               );
             })}
           </ol>

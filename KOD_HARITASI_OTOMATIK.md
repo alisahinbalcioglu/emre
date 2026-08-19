@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 385
-Toplam satir: 80790
+Toplam satir: 80913
 Uc nokta: 130
 test:* scripti: 56
 
@@ -292,7 +292,7 @@ test:* scripti: 56
 | `frontend/ortak/kabuk/components/dashboard/QuickAccess.tsx` | 49 |
 | `frontend/ortak/kabuk/components/dashboard/QuickStart.tsx` | 155 |
 | `frontend/ortak/kabuk/components/landing/GirisliyseYonlendir.tsx` | 31 |
-| `frontend/ortak/kabuk/components/landing/NasilCalisir.tsx` | 486 |
+| `frontend/ortak/kabuk/components/landing/NasilCalisir.tsx` | 609 |
 | `frontend/ortak/kabuk/components/layout/Breadcrumb.tsx` | 73 |
 | `frontend/ortak/kabuk/components/layout/Sidebar.tsx` | 157 |
 | `frontend/ortak/lib/api-401-kapsami.test.ts` | 232 |
