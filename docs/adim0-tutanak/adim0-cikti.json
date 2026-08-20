@@ -1,0 +1,318 @@
+[
+  {
+    "adim": "S3/kurulum-1: urun olustur (BASARISIZSA abonelik ozelligi KAPALI demektir)",
+    "istek": {
+      "name": "ADIM0 Olcum Urunu mt19olnu"
+    },
+    "yanit": {
+      "status": "success",
+      "systemTime": 1787215029770,
+      "data": {
+        "referenceCode": "3b932247-d131-4c3d-8215-1e5786341285",
+        "createdDate": 1787215029759,
+        "name": "ADIM0 Olcum Urunu mt19olnu",
+        "status": "ACTIVE",
+        "pricingPlans": []
+      }
+    }
+  },
+  {
+    "adim": "kurulum: plan \"Kademe-1 mt19olnu\" (99 TL, MONTHLY)",
+    "istek": {
+      "name": "Kademe-1 mt19olnu",
+      "price": 99,
+      "paymentInterval": "MONTHLY"
+    },
+    "yanit": {
+      "status": "success",
+      "systemTime": 1787215030035,
+      "data": {
+        "referenceCode": "1d6bf1bf-6f75-4701-9d4e-de869959c1b3",
+        "createdDate": 1787215030030,
+        "name": "Kademe-1 mt19olnu",
+        "price": 99,
+        "paymentInterval": "MONTHLY",
+        "paymentIntervalCount": 1,
+        "trialPeriodDays": 0,
+        "currencyCode": "TRY",
+        "productReferenceCode": "3b932247-d131-4c3d-8215-1e5786341285",
+        "planPaymentType": "RECURRING",
+        "status": "ACTIVE"
+      }
+    }
+  },
+  {
+    "adim": "kurulum: plan \"Kademe-2 mt19olnu\" (199 TL, MONTHLY)",
+    "istek": {
+      "name": "Kademe-2 mt19olnu",
+      "price": 199,
+      "paymentInterval": "MONTHLY"
+    },
+    "yanit": {
+      "status": "success",
+      "systemTime": 1787215030166,
+      "data": {
+        "referenceCode": "8212f943-1a7c-4845-8454-2f2b0f55fc44",
+        "createdDate": 1787215030161,
+        "name": "Kademe-2 mt19olnu",
+        "price": 199,
+        "paymentInterval": "MONTHLY",
+        "paymentIntervalCount": 1,
+        "trialPeriodDays": 0,
+        "currencyCode": "TRY",
+        "productReferenceCode": "3b932247-d131-4c3d-8215-1e5786341285",
+        "planPaymentType": "RECURRING",
+        "status": "ACTIVE"
+      }
+    }
+  },
+  {
+    "adim": "kurulum: plan \"Yillik mt19olnu\" (999 TL, YEARLY)",
+    "istek": {
+      "name": "Yillik mt19olnu",
+      "price": 999,
+      "paymentInterval": "YEARLY"
+    },
+    "yanit": {
+      "status": "success",
+      "systemTime": 1787215030280,
+      "data": {
+        "referenceCode": "2b385168-8216-46f9-8b69-7149009ce5db",
+        "createdDate": 1787215030275,
+        "name": "Yillik mt19olnu",
+        "price": 999,
+        "paymentInterval": "YEARLY",
+        "paymentIntervalCount": 1,
+        "trialPeriodDays": 0,
+        "currencyCode": "TRY",
+        "productReferenceCode": "3b932247-d131-4c3d-8215-1e5786341285",
+        "planPaymentType": "RECURRING",
+        "status": "ACTIVE"
+      }
+    }
+  },
+  {
+    "adim": "S1a: TANIMSIZ quantity/itemCount alanlariyla plan (hata mi, sessiz mi?)",
+    "istek": {
+      "quantity": 3,
+      "itemCount": 3
+    },
+    "yanit": {
+      "status": "success",
+      "systemTime": 1787215030412,
+      "data": {
+        "referenceCode": "98cb6a16-0f21-428c-994e-096df4850b34",
+        "createdDate": 1787215030407,
+        "name": "QuantityDeneme mt19olnu",
+        "price": 10,
+        "paymentInterval": "MONTHLY",
+        "paymentIntervalCount": 1,
+        "trialPeriodDays": 0,
+        "currencyCode": "TRY",
+        "productReferenceCode": "3b932247-d131-4c3d-8215-1e5786341285",
+        "planPaymentType": "RECURRING",
+        "status": "ACTIVE"
+      }
+    }
+  },
+  {
+    "adim": "S1b: update ile price=149 denemesi",
+    "istek": {
+      "price": "149.0"
+    },
+    "yanit": {
+      "status": "success",
+      "systemTime": 1787215030619,
+      "data": {
+        "referenceCode": "1d6bf1bf-6f75-4701-9d4e-de869959c1b3",
+        "createdDate": 1787215030030,
+        "name": "Kademe-1 mt19olnu",
+        "price": 99,
+        "paymentInterval": "MONTHLY",
+        "paymentIntervalCount": 1,
+        "trialPeriodDays": 0,
+        "currencyCode": "TRY",
+        "productReferenceCode": "3b932247-d131-4c3d-8215-1e5786341285",
+        "planPaymentType": "RECURRING",
+        "status": "ACTIVE"
+      }
+    }
+  },
+  {
+    "adim": "S1b-dogrulama: planin guncel hali (price 99 mu kaldi?)",
+    "istek": {},
+    "yanit": {
+      "status": "success",
+      "systemTime": 1787215030776,
+      "data": {
+        "referenceCode": "1d6bf1bf-6f75-4701-9d4e-de869959c1b3",
+        "createdDate": 1787215030030,
+        "name": "Kademe-1 mt19olnu",
+        "price": 99,
+        "paymentInterval": "MONTHLY",
+        "paymentIntervalCount": 1,
+        "trialPeriodDays": 0,
+        "currencyCode": "TRY",
+        "productReferenceCode": "3b932247-d131-4c3d-8215-1e5786341285",
+        "planPaymentType": "RECURRING",
+        "status": "ACTIVE"
+      }
+    }
+  },
+  {
+    "adim": "kurulum: PAHALI planda (199) abonelik baslat — NON-3D, test karti",
+    "istek": {
+      "plan": "Kademe-2"
+    },
+    "yanit": {
+      "status": "success",
+      "systemTime": 1787215031319,
+      "data": {
+        "referenceCode": "154da0a5-9dc0-4083-8a1f-02c4ba91ee64",
+        "parentReferenceCode": "ae817e37-8dd8-4d05-a7ab-64d06e6986dd",
+        "pricingPlanReferenceCode": "8212f943-1a7c-4845-8454-2f2b0f55fc44",
+        "customerReferenceCode": "174f1a1f-dacd-43cb-8733-004a9474b508",
+        "subscriptionStatus": "ACTIVE",
+        "trialDays": 0,
+        "createdDate": 1787215031301,
+        "startDate": 1787215031301
+      }
+    }
+  },
+  {
+    "adim": "S2a: DUSURME 199→99, NEXT_PERIOD (gorevin birebir sorusu)",
+    "istek": {
+      "yeniPlan": "Kademe-1",
+      "upgradePeriod": "NEXT_PERIOD"
+    },
+    "yanit": {
+      "status": "success",
+      "systemTime": 1787215031536,
+      "data": {
+        "referenceCode": "15fbd765-f21f-4257-8673-1e745761be2d",
+        "parentReferenceCode": "ae817e37-8dd8-4d05-a7ab-64d06e6986dd",
+        "pricingPlanReferenceCode": "1d6bf1bf-6f75-4701-9d4e-de869959c1b3",
+        "customerReferenceCode": "174f1a1f-dacd-43cb-8733-004a9474b508",
+        "subscriptionStatus": "ACTIVE",
+        "trialDays": 0,
+        "createdDate": 1787215031529,
+        "startDate": 1789893431301
+      }
+    }
+  },
+  {
+    "adim": "S2a-dogrulama: abonelik hangi planda gorunuyor",
+    "istek": {},
+    "yanit": {
+      "status": "success",
+      "systemTime": 1787215031656,
+      "data": {
+        "referenceCode": "154da0a5-9dc0-4083-8a1f-02c4ba91ee64",
+        "parentReferenceCode": "ae817e37-8dd8-4d05-a7ab-64d06e6986dd",
+        "pricingPlanName": "Kademe-2 mt19olnu",
+        "pricingPlanReferenceCode": "8212f943-1a7c-4845-8454-2f2b0f55fc44",
+        "productName": "ADIM0 Olcum Urunu mt19olnu",
+        "productReferenceCode": "3b932247-d131-4c3d-8215-1e5786341285",
+        "customerEmail": "adim0-mt19olnu@test.metapricex.com",
+        "customerGsmNumber": "+905350000000",
+        "customerReferenceCode": "174f1a1f-dacd-43cb-8733-004a9474b508",
+        "subscriptionStatus": "UPGRADED",
+        "trialDays": 0,
+        "createdDate": 1787215031301,
+        "startDate": 1787215031301,
+        "endDate": 1789893431301,
+        "orders": [
+          {
+            "referenceCode": "8d7f2cfc-abf6-4887-93dc-f21829819e1b",
+            "price": 199,
+            "currencyCode": "TRY",
+            "startPeriod": 1789893431301,
+            "endPeriod": 1792485431301,
+            "orderStatus": "SUBSCRIPTION_UPGRADED",
+            "paymentAttempts": []
+          },
+          {
+            "referenceCode": "17f5ec70-9278-4b1a-bce1-b09fb5af81b6",
+            "price": 199,
+            "currencyCode": "TRY",
+            "startPeriod": 1787215031301,
+            "endPeriod": 1789893431301,
+            "orderStatus": "SUCCESS",
+            "paymentAttempts": [
+              {
+                "conversationId": "b472f252-1cc2-4240-9644-e50967aa44c9",
+                "createdDate": 1787215031301,
+                "paymentId": 37387490,
+                "paymentStatus": "SUCCESS"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "adim": "S2b: NOW ile geri 199a cikis (aninda tahsilat/prorasyon gozlemi)",
+    "istek": {
+      "upgradePeriod": "NOW"
+    },
+    "yanit": {
+      "status": "failure",
+      "errorCode": "201402",
+      "errorMessage": "Bu abonelik yükseltilemez.",
+      "systemTime": 1787215031795
+    }
+  },
+  {
+    "adim": "kisit: MONTHLY aboneligi YEARLY plana upgrade denemesi (hata bekleniyor)",
+    "istek": {
+      "hedef": "Yillik"
+    },
+    "yanit": {
+      "status": "failure",
+      "errorCode": "201402",
+      "errorMessage": "Bu abonelik yükseltilemez.",
+      "systemTime": 1787215031922
+    }
+  },
+  {
+    "adim": "prova: AKTIF abonelikli plani silme denemesi",
+    "istek": {
+      "plan": "Kademe-2"
+    },
+    "yanit": {
+      "status": "failure",
+      "errorCode": "201053",
+      "errorMessage": "Ödeme planı silinmek için uygun değil.",
+      "systemTime": 1787215032087
+    }
+  },
+  {
+    "adim": "temizlik: abonelik iptali",
+    "istek": {},
+    "yanit": {
+      "status": "failure",
+      "errorCode": "201403",
+      "errorMessage": "Bu abonelik iptal edilemez.",
+      "systemTime": 1787215032215
+    }
+  },
+  {
+    "adim": "prova-2: IPTAL SONRASI ayni plani silme (gecmisli plan siliniyor mu?)",
+    "istek": {},
+    "yanit": {
+      "status": "failure",
+      "errorCode": "201053",
+      "errorMessage": "Ödeme planı silinmek için uygun değil.",
+      "systemTime": 1787215032345
+    }
+  },
+  {
+    "adim": "temizlik: hic kullanilmamis YEARLY plani silme (bos plan siliniyor mu?)",
+    "istek": {},
+    "yanit": {
+      "status": "success",
+      "systemTime": 1787215032497
+    }
+  }
+]

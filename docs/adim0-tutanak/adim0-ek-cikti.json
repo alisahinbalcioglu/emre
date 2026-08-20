@@ -1,0 +1,239 @@
+[
+  {
+    "adim": "temizlik+olcum: ilk kosumun COCUK aboneligi (15fbd765...) iptali — yeni referans iptal edilebiliyor mu?",
+    "yanit": {
+      "status": "success",
+      "systemTime": 1787215144191
+    }
+  },
+  {
+    "adim": "kurulum: urun",
+    "yanit": {
+      "status": "success",
+      "systemTime": 1787215144329,
+      "data": {
+        "referenceCode": "cfc394d4-3711-4579-80ec-15e8a6ec735f",
+        "createdDate": 1787215144322,
+        "name": "ADIM0 Ek ekmt19r23c",
+        "status": "ACTIVE",
+        "pricingPlans": []
+      }
+    }
+  },
+  {
+    "adim": "kurulum: plan X-49 ekmt19r23c (49.9, MONTHLY)",
+    "yanit": {
+      "status": "success",
+      "systemTime": 1787215144449,
+      "data": {
+        "referenceCode": "dda0ee21-86e5-4cd7-b529-c110ac34a494",
+        "createdDate": 1787215144445,
+        "name": "X-49 ekmt19r23c",
+        "price": 49.9,
+        "paymentInterval": "MONTHLY",
+        "paymentIntervalCount": 1,
+        "trialPeriodDays": 0,
+        "currencyCode": "TRY",
+        "productReferenceCode": "cfc394d4-3711-4579-80ec-15e8a6ec735f",
+        "planPaymentType": "RECURRING",
+        "status": "ACTIVE"
+      }
+    }
+  },
+  {
+    "adim": "kurulum: plan Y-89 ekmt19r23c (89.9, MONTHLY)",
+    "yanit": {
+      "status": "success",
+      "systemTime": 1787215144588,
+      "data": {
+        "referenceCode": "f6fcd4c1-e7e2-4cd1-bdd8-3423aabff931",
+        "createdDate": 1787215144582,
+        "name": "Y-89 ekmt19r23c",
+        "price": 89.9,
+        "paymentInterval": "MONTHLY",
+        "paymentIntervalCount": 1,
+        "trialPeriodDays": 0,
+        "currencyCode": "TRY",
+        "productReferenceCode": "cfc394d4-3711-4579-80ec-15e8a6ec735f",
+        "planPaymentType": "RECURRING",
+        "status": "ACTIVE"
+      }
+    }
+  },
+  {
+    "adim": "kurulum: plan YL-999 ekmt19r23c (999, YEARLY)",
+    "yanit": {
+      "status": "success",
+      "systemTime": 1787215144704,
+      "data": {
+        "referenceCode": "8d57cf0a-ac36-4cac-b4c0-5f2556949794",
+        "createdDate": 1787215144698,
+        "name": "YL-999 ekmt19r23c",
+        "price": 999,
+        "paymentInterval": "YEARLY",
+        "paymentIntervalCount": 1,
+        "trialPeriodDays": 0,
+        "currencyCode": "TRY",
+        "productReferenceCode": "cfc394d4-3711-4579-80ec-15e8a6ec735f",
+        "planPaymentType": "RECURRING",
+        "status": "ACTIVE"
+      }
+    }
+  },
+  {
+    "adim": "kurulum: X planinda (49.90) taze abonelik",
+    "yanit": {
+      "status": "success",
+      "systemTime": 1787215145004,
+      "data": {
+        "referenceCode": "6124271b-4d1f-45ef-8ab4-ac5043721a02",
+        "parentReferenceCode": "fe5d48e0-2987-48dc-9142-e760310ac763",
+        "pricingPlanReferenceCode": "dda0ee21-86e5-4cd7-b529-c110ac34a494",
+        "customerReferenceCode": "90fdb5a6-f1cb-4c75-938e-8a70f1f1778a",
+        "subscriptionStatus": "ACTIVE",
+        "trialDays": 0,
+        "createdDate": 1787215144990,
+        "startDate": 1787215144990
+      }
+    }
+  },
+  {
+    "adim": "TEST 1: AKTIF abonelikte MONTHLY→YEARLY upgrade (kisitin GERCEK hatasi)",
+    "yanit": {
+      "status": "failure",
+      "errorCode": "201406",
+      "errorMessage": "Abonelik farklı ödeme sıklığına sahip ödeme plana yükseltilemez.",
+      "systemTime": 1787215145129
+    }
+  },
+  {
+    "adim": "TEST 2: NOW ile 49.90→89.90 yukseltme (yanittaki YENI referansa dikkat)",
+    "yanit": {
+      "status": "success",
+      "systemTime": 1787215145256,
+      "data": {
+        "referenceCode": "7e825df8-5015-4ca8-802e-897f8fbb1041",
+        "parentReferenceCode": "fe5d48e0-2987-48dc-9142-e760310ac763",
+        "pricingPlanReferenceCode": "f6fcd4c1-e7e2-4cd1-bdd8-3423aabff931",
+        "customerReferenceCode": "90fdb5a6-f1cb-4c75-938e-8a70f1f1778a",
+        "subscriptionStatus": "ACTIVE",
+        "trialDays": 0,
+        "createdDate": 1787215145251,
+        "startDate": 1787215145248
+      }
+    }
+  },
+  {
+    "adim": "TEST 2-dogrulama: YENI abonelik detayi (orders/paymentAttempts = prorasyon kaniti)",
+    "yanit": {
+      "status": "success",
+      "systemTime": 1787215145376,
+      "data": {
+        "referenceCode": "7e825df8-5015-4ca8-802e-897f8fbb1041",
+        "parentReferenceCode": "fe5d48e0-2987-48dc-9142-e760310ac763",
+        "pricingPlanName": "Y-89 ekmt19r23c",
+        "pricingPlanReferenceCode": "f6fcd4c1-e7e2-4cd1-bdd8-3423aabff931",
+        "productName": "ADIM0 Ek ekmt19r23c",
+        "productReferenceCode": "cfc394d4-3711-4579-80ec-15e8a6ec735f",
+        "customerEmail": "adim0-ekmt19r23c@test.metapricex.com",
+        "customerGsmNumber": "+905350000001",
+        "customerReferenceCode": "90fdb5a6-f1cb-4c75-938e-8a70f1f1778a",
+        "subscriptionStatus": "ACTIVE",
+        "trialDays": 0,
+        "createdDate": 1787215145251,
+        "startDate": 1787215145248,
+        "orders": [
+          {
+            "referenceCode": "549e7fd5-532e-45c2-91f4-80efa4dce15b",
+            "price": 89.9,
+            "currencyCode": "TRY",
+            "startPeriod": 1787215145248,
+            "endPeriod": 1789893545248,
+            "orderStatus": "WAITING",
+            "paymentAttempts": []
+          }
+        ]
+      }
+    }
+  },
+  {
+    "adim": "TEST 2-dogrulama-2: ESKI referansin durumu (UPGRADED beklenir)",
+    "yanit": {
+      "status": "success",
+      "systemTime": 1787215145486,
+      "data": {
+        "referenceCode": "6124271b-4d1f-45ef-8ab4-ac5043721a02",
+        "parentReferenceCode": "fe5d48e0-2987-48dc-9142-e760310ac763",
+        "pricingPlanName": "X-49 ekmt19r23c",
+        "pricingPlanReferenceCode": "dda0ee21-86e5-4cd7-b529-c110ac34a494",
+        "productName": "ADIM0 Ek ekmt19r23c",
+        "productReferenceCode": "cfc394d4-3711-4579-80ec-15e8a6ec735f",
+        "customerEmail": "adim0-ekmt19r23c@test.metapricex.com",
+        "customerGsmNumber": "+905350000001",
+        "customerReferenceCode": "90fdb5a6-f1cb-4c75-938e-8a70f1f1778a",
+        "subscriptionStatus": "UPGRADED",
+        "trialDays": 0,
+        "createdDate": 1787215144990,
+        "startDate": 1787215144990,
+        "endDate": 1787215145248,
+        "orders": [
+          {
+            "referenceCode": "88dc9fcf-ac44-4a41-a7d7-f51060301464",
+            "price": 49.9,
+            "currencyCode": "TRY",
+            "startPeriod": 1789893544991,
+            "endPeriod": 1792485544991,
+            "orderStatus": "SUBSCRIPTION_UPGRADED",
+            "paymentAttempts": []
+          },
+          {
+            "referenceCode": "e382ddae-4890-4cdc-8176-b32c89fc7936",
+            "price": 49.9,
+            "currencyCode": "TRY",
+            "startPeriod": 1787215144991,
+            "endPeriod": 1789893544991,
+            "orderStatus": "SUCCESS",
+            "paymentAttempts": [
+              {
+                "conversationId": "5058a8a8-27ad-4993-bd8f-398515110b85",
+                "createdDate": 1787215144991,
+                "paymentId": 37387528,
+                "paymentStatus": "SUCCESS"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "adim": "temizlik: aktif abonelik iptali",
+    "yanit": {
+      "status": "success",
+      "systemTime": 1787215145611
+    }
+  },
+  {
+    "adim": "temizlik: plan X-49 silme (gecmisli/temiz ayrimi)",
+    "yanit": {
+      "status": "failure",
+      "errorCode": "201053",
+      "errorMessage": "Ödeme planı silinmek için uygun değil.",
+      "systemTime": 1787215145722
+    }
+  },
+  {
+    "adim": "temizlik: plan Y-89 silme (gecmisli/temiz ayrimi)",
+    "yanit": {
+      "status": "success",
+      "systemTime": 1787215145817
+    }
+  },
+  {
+    "adim": "temizlik: plan YL-999 silme (gecmisli/temiz ayrimi)",
+    "yanit": {
+      "status": "success",
+      "systemTime": 1787215145927
+    }
+  }
+]
