@@ -101,6 +101,15 @@ const SUITES: Suite[] = [
   //    SUITES'e islenmemisti — PK1 manifest kapisi bunu kirmizi gosteriyordu
   //    ve 10 testlik muhur regresyonda HIC kosmuyordu (muhur var, kapi yok).
   { ad: 'İlişkisel alan süzgeci (marka + işçilik firması)', script: 'test:iliskisel-alan', zincir: 'Z1' },
+  // ── 24.08.2026: KISISEL LISTE/MARKA IZOLASYONU. Kutuphane "Marka Ekle" /
+  //    "satir ekle" akislari global Brand+PriceList yaratiyordu; admin panel
+  //    ve havuz gorunumleri sahiplik suzgeci olmadan listeliyor, kisisel
+  //    listenin SATIRLARI (fiyat dahil) id bilen herkese aciliyordu
+  //    (capraz-tenant sizinti). Sozlesme: Brand.isGlobal=false + PriceList
+  //    .ownerUserId; havuz/admin uclari suzer, icerigi yalniz sahibi okur,
+  //    admin ayni adla marka acarsa kisisel marka havuza TERFI eder.
+  //    Sahte Prisma where'i KENDISI uygular — suzgec duserse kirmizi. DB'siz.
+  { ad: 'Kişisel liste/marka izolasyonu (24.08)', script: 'test:kisisel-liste', zincir: 'Z1' },
   // T1/T3/T4: sablona-yazan eski motor SILINDI; "kolon esleme" (test:ke) ve
   // "iki katmanli baslik" (test:kb) suite'leri onunla birlikte kaldirildi.
   // Yerine gelen sozlesmeler:

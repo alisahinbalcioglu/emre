@@ -152,6 +152,13 @@ model Brand {
   name           String             @unique
   logoUrl        String?
   discipline     String             @default("mechanical") // 'mechanical' | 'electrical'
+  // KISISEL MARKA IZOLASYONU (24.08): kutuphane "Marka Ekle" akisi Brand'i
+  // global tabloya yazmak zorunda (ad @unique + eslestirme/teklif FK'leri) ama
+  // o marka HAVUZUN MALI DEGILDIR. false = kullanicinin kisisel kapsayicisi —
+  // GET /brands (havuz + admin panel) listelemez; kutuphane uclari (findLibrary
+  // Brands, getBrandLists, findOne) etkilenmez. Admin ayni adla havuz markasi
+  // acmak isterse brands.service.create kisisel markayi havuza TERFI ettirir.
+  isGlobal       Boolean            @default(true)
   priceLists     PriceList[]
   materialPrices MaterialPrice[]
   userLibrary    UserLibrary[]
@@ -166,6 +173,13 @@ model PriceList {
   name          String
   brand         Brand           @relation(fields: [brandId], references: [id], onDelete: Cascade)
   brandId       String
+  // ProductIndex.ownerUserId'nin LISTE-DUZEYI ikizi (24.08): null = havuz
+  // listesi (admin yukledi); dolu = kutuphane akisinin actigi KISISEL liste
+  // (createManualBrand / addRowsToBrandList her eklemede bir PriceList acar —
+  // ProductIndex.priceListId zorunlulugu). Havuz/admin gorunumleri ve
+  // kutuphaneye aktarim kaynagi ownerUserId=null suzer; sahibinden baskasi
+  // (admin dahil) icerigini okuyamaz.
+  ownerUserId   String?
   createdAt     DateTime        @default(now())
   items         MaterialPrice[]
   userLibraries UserLibrary[]

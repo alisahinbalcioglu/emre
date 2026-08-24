@@ -68,7 +68,8 @@
     "test:kur": "ts-node test/kur-donmasi-test.ts",
     "test:alias-yutma": "ts-node test/alias-kelime-yutma-test.ts",
     "test:kb-liste": "ts-node test/kutuphane-liste-test.ts",
-    "test:iliskisel-alan": "ts-node test/iliskisel-alan-suzgeci-test.ts"
+    "test:iliskisel-alan": "ts-node test/iliskisel-alan-suzgeci-test.ts",
+    "test:kisisel-liste": "ts-node test/kisisel-liste-izolasyon-test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

@@ -7,6 +7,7 @@ import { CreateBrandDto } from './dto/create-brand.dto';
 import { JwtAuthGuard } from '../../../altyapi/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../altyapi/auth/guards/roles.guard';
 import { Roles } from '../../../altyapi/auth/decorators/roles.decorator';
+import { CurrentUser } from '../../../altyapi/auth/decorators/current-user.decorator';
 
 @Controller('brands')
 @UseGuards(JwtAuthGuard)
@@ -21,10 +22,11 @@ export class BrandsController {
   @Get('search')
   searchMaterials(@Query('q') q: string) { return this.brandsService.searchMaterials(q); }
 
-  // Fiyat listesi malzemeleri (literal "price-lists" MUST be before :id)
+  // Fiyat listesi malzemeleri (literal "price-lists" MUST be before :id).
+  // Kimlik servise iner: KISISEL (ownerUserId dolu) listeyi yalniz sahibi okur.
   @Get('price-lists/:listId/materials')
-  getPriceListMaterials(@Param('listId') listId: string) {
-    return this.brandsService.getPriceListMaterials(listId);
+  getPriceListMaterials(@CurrentUser() user: any, @Param('listId') listId: string) {
+    return this.brandsService.getPriceListMaterials(listId, user?.id);
   }
 
   // Parameterized routes AFTER literals

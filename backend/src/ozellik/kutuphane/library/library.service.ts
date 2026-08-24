@@ -105,16 +105,22 @@ export class LibraryService {
     }
 
     // ── Marka: ad @unique → find-or-create. Ayni isim havuzda varsa ona baglanir
-    //    (kullanicinin satirlari ownerUserId ile izole kalir). ──
+    //    (kullanicinin satirlari ownerUserId ile izole kalir). YENI acilan marka
+    //    isGlobal:false — kullanicinin kisisel kapsayicisidir, havuz/admin
+    //    listelerinde GORUNMEZ (24.08 kullanici bildirimi: kutuphane klasorleri
+    //    admin panelde listeleniyordu). Mevcut markaya baglanirken update:{}
+    //    bilerek bos: havuz markasi kisisellesmez, kisisel marka havuzlasmaz. ──
     const brand = await this.prisma.brand.upsert({
       where: { name: brandName },
       update: {},
-      create: { name: brandName, discipline },
+      create: { name: brandName, discipline, isGlobal: false },
     });
 
-    // Her "Marka Ekle" islemi kendi fiyat listesini olusturur (kaynak izlenebilir)
+    // Her "Marka Ekle" islemi kendi fiyat listesini olusturur (kaynak izlenebilir).
+    // ownerUserId: liste KISISELDIR — havuz/admin gorunumleri null suzer
+    // (ProductIndex.ownerUserId sozlesmesinin liste-duzeyi ikizi).
     const priceList = await this.prisma.priceList.create({
-      data: { name: `${brandName} — Manuel Liste`, brandId: brand.id },
+      data: { name: `${brandName} — Manuel Liste`, brandId: brand.id, ownerUserId: userId },
     });
 
     const sonuc = await this.insertLibraryRows(userId, brand.id, priceList.id, null, rows, 0);
@@ -302,6 +308,13 @@ export class LibraryService {
     if (!priceList) throw new NotFoundException('Fiyat listesi bulunamadi');
     if (priceList.brandId !== dto.brandId) {
       throw new BadRequestException('Fiyat listesi bu markaya ait degil');
+    }
+    // KISISEL LISTE KORUMASI (24.08): baska kullanicinin kisisel listesi id
+    // bilinse dahi aktarilamaz — fiyatlari onun ticari verisidir. NotFound
+    // (Forbidden degil): ucun varligi bile sizdirilmaz. Kendi kisisel listesi
+    // serbest kalir (zaten kutuphanesindedir, idempotent aktarim zararsiz).
+    if (priceList.ownerUserId && priceList.ownerUserId !== userId) {
+      throw new NotFoundException('Fiyat listesi bulunamadi');
     }
 
     // ── FAZ 3: INDEKS VARSA KAYNAK ODUR ─────────────────────────────
@@ -730,9 +743,12 @@ export class LibraryService {
     }
 
     // Kaynak izlenebilirlik + ProductIndex.priceListId zorunlulugu: her ekleme
-    // turu kendi havuz PriceList'ini alir (createManualBrand ile ayni desen).
+    // turu kendi PriceList'ini alir (createManualBrand ile ayni desen).
+    // ownerUserId: bu liste kullanicinin KISISEL kaydidir, havuza AIT DEGILDIR —
+    // havuz/admin gorunumleri null suzer (24.08: "kirke — Manuel Liste" kopyalari
+    // admin panelde birikiyordu; her satir ekleme yeni PriceList actigi icin).
     const priceList = await this.prisma.priceList.create({
-      data: { name: `${brand.name} — ${liste.name}`, brandId },
+      data: { name: `${brand.name} — ${liste.name}`, brandId, ownerUserId: userId },
     });
 
     // Yeni satirlar listenin SONUNA dizilir (kaynak sirasi korunur).

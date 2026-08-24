@@ -205,10 +205,13 @@ export class AdminService {
       dailyQuotes, libraryByBrand,
     ] = await Promise.all([
       this.prisma.user.count(),
-      this.prisma.brand.count(),
+      // Havuz sayilari (24.08): kutuphane akisinin actigi kisisel marka/liste
+      // (isGlobal=false / ownerUserId dolu) admin istatistigine KARISMAZ —
+      // panel "Global Malzeme Havuzu"nu sayar, kullanicilarin klasorlerini degil.
+      this.prisma.brand.count({ where: { isGlobal: true } }),
       this.prisma.material.count(),
       this.prisma.quote.count(),
-      this.prisma.priceList.count(),
+      this.prisma.priceList.count({ where: { ownerUserId: null } }),
       // Aylik trendler (onceki aya gore %)
       this.prisma.user.count({ where: { createdAt: { gte: monthStart } } }),
       this.prisma.user.count({ where: { createdAt: { gte: prevMonthStart, lt: monthStart } } }),
@@ -1536,8 +1539,12 @@ export class AdminService {
   async getBrandMaterials(brandId: string) {
     const brand = await this.prisma.brand.findUnique({ where: { id: brandId } });
     if (!brand) throw new NotFoundException('Marka bulunamadi');
+    // YALNIZ havuz listeleri (24.08): kutuphane akisinin actigi kisisel
+    // listeler (ownerUserId dolu) admin paneline LISTELENMEZ — "kirke — Manuel
+    // Liste" kopyalarinin panelde birikmesinin koku buydu. Kisisel listeler
+    // kullanicinin klasorudur; admin yalniz havuzu yonetir.
     const priceLists = await this.prisma.priceList.findMany({
-      where: { brandId },
+      where: { brandId, ownerUserId: null },
       include: { _count: { select: { items: true } } },
       orderBy: { createdAt: 'desc' },
     });
@@ -1550,6 +1557,10 @@ export class AdminService {
       include: { brand: true },
     });
     if (!pl) throw new NotFoundException('Liste bulunamadi');
+    // Kisisel liste icerigi admin'e de ACILMAZ (24.08): manuel satirlarin
+    // fiyatlari kullanicinin ticari verisidir. Panel bu listeleri artik
+    // gostermiyor; id elde kalmis olsa bile uc NotFound doner.
+    if (pl.ownerUserId) throw new NotFoundException('Liste bulunamadi');
     // Y5: KAYNAK SIRASI korunur (sortOrder) — sistem alfabetik dayatmaz.
     // Eski listelerde sortOrder=0 → ad sirasi ikincil (legacy fallback).
     const items = await (this.prisma as any).materialPrice.findMany({

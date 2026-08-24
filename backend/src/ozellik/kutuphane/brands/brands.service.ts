@@ -8,10 +8,18 @@ export class BrandsService {
   constructor(private prisma: PrismaService) {}
 
   async findAll(discipline?: string) {
-    const where = discipline ? { discipline } : {};
+    // HAVUZ MARKALARI (24.08): isGlobal=false markalar kullanicinin kutuphane
+    // "Marka Ekle" akisinin actigi KISISEL kapsayicilardir — havuz listesinde
+    // (admin panel + Malzeme Havuzu sayfalari) GORUNMEZLER. Kutuphane taraf
+    // uclari (GET /library/brands, GET /brands/:id) bu suzgecten GECMEZ;
+    // kullanici kendi markasini kutuphanesinde gormeye devam eder.
+    const where = { isGlobal: true, ...(discipline ? { discipline } : {}) };
     const brands = await this.prisma.brand.findMany({
       where,
-      include: { _count: { select: { priceLists: true, materialPrices: true } } },
+      // _count da havuz suzgecinden gecer: havuz markasinin altindaki kisisel
+      // listeler karta "N liste" diye sayilirsa detayda gorunenden FAZLA
+      // sayi yazar (gizli listenin varligi sizmis olur).
+      include: { _count: { select: { priceLists: { where: { ownerUserId: null } }, materialPrices: true } } },
       orderBy: { name: 'asc' },
     });
     return brands;
@@ -23,13 +31,15 @@ export class BrandsService {
     return brand;
   }
 
-  // Bir markanin fiyat listeleri (public — tum kullanicilar gorebilir)
+  // Bir markanin fiyat listeleri (public — tum kullanicilar gorebilir).
+  // YALNIZ havuz listeleri (ownerUserId=null): kutuphane akisinin actigi
+  // kisisel listeler baska kullanicilara da admin'e de LISTELENMEZ (24.08).
   async getBrandPriceLists(brandId: string) {
     const brand = await this.prisma.brand.findUnique({ where: { id: brandId } });
     if (!brand) throw new NotFoundException('Marka bulunamadi');
 
     const priceLists = await this.prisma.priceList.findMany({
-      where: { brandId },
+      where: { brandId, ownerUserId: null },
       include: { _count: { select: { items: true } } },
       orderBy: { createdAt: 'desc' },
     });
@@ -37,13 +47,20 @@ export class BrandsService {
     return { brand, priceLists };
   }
 
-  // Bir fiyat listesinin malzemeleri (public)
-  async getPriceListMaterials(priceListId: string) {
+  // Bir fiyat listesinin malzemeleri (public — havuz listeleri icin).
+  // KISISEL liste korumasi: ownerUserId dolu listeyi YALNIZ sahibi okuyabilir.
+  // Manuel satirlarin fiyatlari kullanicinin ticari verisidir; liste id'si
+  // bilinse dahi baskasina (admin dahil) ACILMAZ — NotFound doner ki ucun
+  // varligi bile sizmasin (requesterUserId JWT'den gelir, bkz. controller).
+  async getPriceListMaterials(priceListId: string, requesterUserId?: string) {
     const pl = await this.prisma.priceList.findUnique({
       where: { id: priceListId },
       include: { brand: true },
     });
     if (!pl) throw new NotFoundException('Liste bulunamadi');
+    if (pl.ownerUserId && pl.ownerUserId !== requesterUserId) {
+      throw new NotFoundException('Liste bulunamadi');
+    }
 
     // ── KAYNAK SADAKATI (kullanici istegi 16.07): liste indekslenmisse havuz
     // gorunumu ProductIndex'ten beslenir — kullanicinin Excel'indeki 11 kolon
@@ -131,7 +148,24 @@ export class BrandsService {
   // Admin CRUD
   async create(dto: CreateBrandDto) {
     const existing = await this.prisma.brand.findUnique({ where: { name: dto.name } });
-    if (existing) throw new ConflictException('Bu marka zaten kayıtlı');
+    if (existing) {
+      // Ad KISISEL bir markada duruyorsa (kutuphane akisi acmis, admin panelde
+      // GORUNMUYOR) admin'e "zaten kayitli" demek cikmaz sokaktir — kaydi
+      // goremez ki silsin. createManualBrand'in aynasi: o havuz markasina
+      // baglanir, burasi kisisel markayi havuza TERFI ettirir. Kullanicinin
+      // kisisel listeleri/satirlari ownerUserId ile izole kalmaya devam eder.
+      if (!existing.isGlobal) {
+        return this.prisma.brand.update({
+          where: { id: existing.id },
+          data: {
+            isGlobal: true,
+            discipline: dto.discipline ?? existing.discipline,
+            ...(dto.logoUrl !== undefined ? { logoUrl: dto.logoUrl } : {}),
+          },
+        });
+      }
+      throw new ConflictException('Bu marka zaten kayıtlı');
+    }
     return this.prisma.brand.create({ data: { name: dto.name, logoUrl: dto.logoUrl, discipline: dto.discipline ?? 'mechanical' } });
   }
 

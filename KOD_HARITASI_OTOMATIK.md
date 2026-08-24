@@ -3,17 +3,18 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 385
-Toplam satir: 80913
+Kod dosyasi: 387
+Toplam satir: 81439
 Uc nokta: 130
-test:* scripti: 56
+test:* scripti: 57
 
 ## 1 · Dosyalar ve satir sayilari
 
 | Dosya | Satir |
 |---|---|
-| `backend/prisma/schema.prisma` | 699 |
+| `backend/prisma/schema.prisma` | 713 |
 | `backend/scripts/derleme-kapisi.js` | 68 |
+| `backend/scripts/kisisel-liste-backfill.js` | 107 |
 | `backend/scripts/surum-yaz.js` | 47 |
 | `backend/src/altyapi/auth/auth.controller.ts` | 28 |
 | `backend/src/altyapi/auth/auth.module.ts` | 24 |
@@ -103,10 +104,10 @@ test:* scripti: 56
 | `backend/src/ozellik/giris/excel-grid/standart-sema.ts` | 331 |
 | `backend/src/ozellik/kutuphane/admin/admin.controller.ts` | 215 |
 | `backend/src/ozellik/kutuphane/admin/admin.module.ts` | 15 |
-| `backend/src/ozellik/kutuphane/admin/admin.service.ts` | 1658 |
-| `backend/src/ozellik/kutuphane/brands/brands.controller.ts` | 69 |
+| `backend/src/ozellik/kutuphane/admin/admin.service.ts` | 1669 |
+| `backend/src/ozellik/kutuphane/brands/brands.controller.ts` | 71 |
 | `backend/src/ozellik/kutuphane/brands/brands.module.ts` | 11 |
-| `backend/src/ozellik/kutuphane/brands/brands.service.ts` | 235 |
+| `backend/src/ozellik/kutuphane/brands/brands.service.ts` | 269 |
 | `backend/src/ozellik/kutuphane/brands/dto/create-brand.dto.ts` | 17 |
 | `backend/src/ozellik/kutuphane/labor-firms/labor-firms.controller.ts` | 170 |
 | `backend/src/ozellik/kutuphane/labor-firms/labor-firms.module.ts` | 15 |
@@ -124,7 +125,7 @@ test:* scripti: 56
 | `backend/src/ozellik/kutuphane/library/library-sheet-builder.ts` | 125 |
 | `backend/src/ozellik/kutuphane/library/library.controller.ts` | 137 |
 | `backend/src/ozellik/kutuphane/library/library.module.ts` | 13 |
-| `backend/src/ozellik/kutuphane/library/library.service.ts` | 849 |
+| `backend/src/ozellik/kutuphane/library/library.service.ts` | 865 |
 | `backend/src/ozellik/kutuphane/materials/dto/create-material-price.dto.ts` | 14 |
 | `backend/src/ozellik/kutuphane/materials/dto/create-material.dto.ts` | 8 |
 | `backend/src/ozellik/kutuphane/materials/materials.controller.ts` | 55 |
@@ -173,6 +174,7 @@ test:* scripti: 56
 | `backend/test/kd11-toplam-yollari-test.ts` | 150 |
 | `backend/test/kd12-baslik-satiri-test.ts` | 226 |
 | `backend/test/kd9-kur-olcutu-test.ts` | 252 |
+| `backend/test/kisisel-liste-izolasyon-test.ts` | 333 |
 | `backend/test/kl-kayit-toplami-test.ts` | 148 |
 | `backend/test/kl-liste-ekleme-test.ts` | 168 |
 | `backend/test/kur-donmasi-test.ts` | 111 |
@@ -193,7 +195,7 @@ test:* scripti: 56
 | `backend/test/pk3-repo-kapsama-test.ts` | 79 |
 | `backend/test/pk9-sessiz-indeks-test.ts` | 97 |
 | `backend/test/product-index-test.ts` | 479 |
-| `backend/test/regression-all.ts` | 240 |
+| `backend/test/regression-all.ts` | 249 |
 | `backend/test/s45-malzeme-aile-test.ts` | 440 |
 | `backend/test/s45-olcum.ts` | 188 |
 | `backend/test/sozluk-golgeleme-olcum.ts` | 125 |
@@ -403,6 +405,7 @@ test:* scripti: 56
 | Dosya | Import ettigi (ham) |
 |---|---|
 | `backend/scripts/derleme-kapisi.js` | `fs` `path` |
+| `backend/scripts/kisisel-liste-backfill.js` | `@prisma/client` |
 | `backend/scripts/surum-yaz.js` | `fs` `path` `child_process` |
 | `backend/src/altyapi/auth/auth.controller.ts` | `@nestjs/common` `./auth.service` `./dto/register.dto` `./dto/login.dto` `./guards/jwt-auth.guard` `./decorators/current-user.decorator` |
 | `backend/src/altyapi/auth/auth.module.ts` | `@nestjs/common` `@nestjs/jwt` `@nestjs/passport` `./auth.service` `./auth.controller` `./strategies/jwt.strategy` `./jwt-secret` |
@@ -481,7 +484,7 @@ test:* scripti: 56
 | `backend/src/ozellik/kutuphane/admin/admin.controller.ts` | `@nestjs/platform-express` `multer` `./admin.service` `../../giris/excel-grid/excel-grid.service` `../../../altyapi/auth/guards/jwt-auth.guard` `../../../altyapi/auth/guards/roles.guard` `../../../altyapi/auth/decorators/roles.decorator` |
 | `backend/src/ozellik/kutuphane/admin/admin.module.ts` | `@nestjs/common` `./admin.controller` `./admin.service` `../../../altyapi/db/prisma.module` `../../giris/ai/ai.module` `../../giris/excel-grid/excel-grid.module` `../../eslestirme/matching/matching.module` |
 | `backend/src/ozellik/kutuphane/admin/admin.service.ts` | `@nestjs/common` `xlsx` `../../../altyapi/db/prisma.service` `../../giris/ai/ai.service` `../../giris/ai/ceviri.service` `../../eslestirme/matching/terminology.service` `../../eslestirme/utils/etiket-display` `../../eslestirme/matching/index/product-index` `../silme-etkisi` `../../eslestirme/matching/tag-generator` |
-| `backend/src/ozellik/kutuphane/brands/brands.controller.ts` | `./brands.service` `./dto/create-brand.dto` `../../../altyapi/auth/guards/jwt-auth.guard` `../../../altyapi/auth/guards/roles.guard` `../../../altyapi/auth/decorators/roles.decorator` |
+| `backend/src/ozellik/kutuphane/brands/brands.controller.ts` | `./brands.service` `./dto/create-brand.dto` `../../../altyapi/auth/guards/jwt-auth.guard` `../../../altyapi/auth/guards/roles.guard` `../../../altyapi/auth/decorators/roles.decorator` `../../../altyapi/auth/decorators/current-user.decorator` |
 | `backend/src/ozellik/kutuphane/brands/brands.module.ts` | `@nestjs/common` `./brands.service` `./brands.controller` |
 | `backend/src/ozellik/kutuphane/brands/brands.service.ts` | `@nestjs/common` `../../../altyapi/db/prisma.service` `./dto/create-brand.dto` `../silme-etkisi` |
 | `backend/src/ozellik/kutuphane/brands/dto/create-brand.dto.ts` | `class-validator` |
@@ -546,6 +549,7 @@ test:* scripti: 56
 | `backend/test/kd11-toplam-yollari-test.ts` | `fs` `path` `../src/ozellik/giris/excel-grid/excel-grid.service` `../../frontend/ozellik/fiyat/pricing` |
 | `backend/test/kd12-baslik-satiri-test.ts` | `fs` `path` `../src/ozellik/giris/excel-grid/excel-grid.service` |
 | `backend/test/kd9-kur-olcutu-test.ts` | `../../frontend/ozellik/fiyat/pricing` |
+| `backend/test/kisisel-liste-izolasyon-test.ts` | `@nestjs/common` `../src/ozellik/kutuphane/brands/brands.service` `../src/ozellik/kutuphane/admin/admin.service` `../src/ozellik/kutuphane/library/library.service` |
 | `backend/test/kl-kayit-toplami-test.ts` | `../src/ozellik/teklif/quotes/quotes.service` `../src/ozellik/fiyat/matching/pricing` |
 | `backend/test/kl-liste-ekleme-test.ts` | `@prisma/client` `../src/ozellik/kutuphane/labor-firms/labor-firms.service` `../src/ozellik/kutuphane/library/library.service` `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` |
 | `backend/test/kur-donmasi-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/query-engine` `../src/ozellik/fiyat/matching/index/outcome-mapper` `../src/ozellik/eslestirme/matching/index/types` |
@@ -920,6 +924,7 @@ test:* scripti: 56
 | `backend/package.json` | `test:alias-yutma` | `ts-node test/alias-kelime-yutma-test.ts` |
 | `backend/package.json` | `test:kb-liste` | `ts-node test/kutuphane-liste-test.ts` |
 | `backend/package.json` | `test:iliskisel-alan` | `ts-node test/iliskisel-alan-suzgeci-test.ts` |
+| `backend/package.json` | `test:kisisel-liste` | `ts-node test/kisisel-liste-izolasyon-test.ts` |
 | `frontend/package.json` | `test:e2e` | `playwright test` |
 | `frontend/package.json` | `test:e2e-golden` | `node test/e2e-golden/run.mjs` |
 
