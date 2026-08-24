@@ -60,6 +60,8 @@ const SUITES: Suite[] = [
   //    (NORM KELEPÇE: ekranda `Bu markada "boru" bulunamadi.`). Artik sonuc
   //    zaten none ise ikinci bir gecis YALNIZ aile kilidi kapali kosulur;
   //    tek ve kimligi dogrulanmis aday varsa durum SOYLENIR ve ONAYA duser.
+  //    S7 (24.08 urun karari): COKLU aday da artik susmaz — kanit-sirali
+  //    SORU acilir (kesit 12, zayif kume acilmaz, paylasilmayan aday girmez).
   //    Bu suite kurtarmayi da, gurultu yasagini da, "fiyat otomatik
   //    YAZILMAZ" kuralini da kilitler.
   { ad: 'Aile uyuşmazlığı teşhisi (S6)', script: 'test:aile-uyusmazligi', zincir: 'Z2' },

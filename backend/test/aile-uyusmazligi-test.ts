@@ -15,14 +15,21 @@
  *  ★ BU DOSYA O TEK VAKAYI DEGIL, SINIFI KORUR. Kullanicilar kendi
  *  kutuphanelerine kendi adlarini yazdikca ayni uyusmazlik tahmin edemeyecegimiz
  *  bicimlerde tekrar dogar; sozluge kayit eklemek bilinen vakalari kapatir,
- *  sinifi kapatmaz. O yuzden buradaki fixture'lar sozlukte KAYITLI OLMAYAN
+ *  sinifi kapatmaz. O yuzden KURTARMA fixture'lari sozlukte KAYITLI OLMAYAN
  *  adlardan secildi — kural veriden degil, MEKANIZMADAN gecmek zorunda.
+ *  (Istisna B2: 'Kalorimetre' sozlukte KAYITLIDIR ve aile cozumu o kayda
+ *  dayanir — orada sinanan sey kurtarma degil, SUSMA kapisidir.)
  *
- *  DORT BLOK:
+ *  BES BLOK:
  *    A) KURTARMA    — uyusmazlik SOYLENMELI (iki ayri aile cifti ile)
  *    B) SESSIZ KALMA— gercekten yoksa teshis KONUSMAMALI (gurultu yasagi)
  *    C) FIYAT YAZMA — teshisin buldugu aday ASLA otomatik yazilmaz
  *    D) BOZMAMA     — normal eslesmeler aynen calisir
+ *    E) S7 COKLU ADAY (24.08 URUN KARARI) — ikinci gecis COKLU aday
+ *       buldugunda eski surum bilerek susuyordu; saha bunun her yeni
+ *       listede "sifir tespit" urettigini gosterdi. Artik kanit sirali
+ *       SORU acilir (fiyat yine YAZILMAZ); zayif kume ('capsiz-dusum'/
+ *       'ad-gevsetildi') hic acilmaz, liste en fazla 12 kayittir.
  *
  *  DB GEREKMEZ: uretim indeksleyicisi + saf motor.
  * ─────────────────────────────────────────────────────────────────────────────
@@ -61,9 +68,9 @@ function prod(c: ProductColumns): IndexedRow {
 function ham(q: string, pool: IndexedRow[]): QueryOutcome {
   return runQuery(parseLine(q), pool, undefined);
 }
-function teshisli(q: string, pool: IndexedRow[]): QueryOutcome {
+function teshisli(q: string, pool: IndexedRow[], opts?: any): QueryOutcome {
   const line = parseLine(q);
-  return aileUyusmazligiTeshisi(line, pool, undefined, runQuery(line, pool, undefined));
+  return aileUyusmazligiTeshisi(line, pool, opts, runQuery(line, pool, opts));
 }
 const kapiVar = (o: QueryOutcome, k: string) => o.kind === 'ask' && (o.kapilar ?? []).includes(k as any);
 const aileOf = (q: string) => parseLine(q).familySlug;
@@ -138,12 +145,15 @@ console.log('── B) SESSIZ KALMA: gercekten yoksa teshis KONUSMAMALI ──')
   check('B2 alakasiz urun adinda teshis SUSUYOR',
     t.kind === 'none', `${t.kind} ${(t as any).kapilar ?? ''}`);
 }
-// B3 — GURULTU YASAGI: ikinci gecis TEK adaya inemiyorsa teshis konusmaz.
-//      (Havuzda ayni ada sahip iki farkli cap var, satirda cap YOK.)
+// B3 — SATIR YALNIZ AILE ADINI YAZMISSA teshis konusmaz — COKLU listede de.
+//      (K8'in S7'ye uygulanmasi: "Vana" satiri kelepce ureticisinde HICBIR
+//      ortak kelime tasimaz; salt "ayni capta/markada var" kanit degildir.
+//      Coklu-aday sessizligi S7 ile kalkti ama BU kapi bilerek kaldi —
+//      kaldirilirsa 'Vana' satirina 3 kelepce "en yakin aday" diye listelenir.)
 {
-  const q = 'Yangın Rakoru';
-  const t = teshisli(q, HORTUMCU);
-  check('B3 ikinci gecis tek adaya inmiyorsa teshis SUSUYOR',
+  const q = 'Vana';
+  const t = teshisli(q, NORM);
+  check('B3 salt aile-adi yazan satirda teshis coklu listede de SUSUYOR',
     !kapiVar(t, 'aile-uyusmazligi'), `${t.kind} kapilar=${(t as any).kapilar ?? '-'}`);
 }
 
@@ -180,6 +190,157 @@ console.log('── D) BOZMAMA: normal yollar aynen calisiyor ──');
   const a = JSON.stringify(teshisli(A1, NORM));
   const b = JSON.stringify(teshisli(A1, NORM));
   check('D3 teshis deterministik (yan etkisiz)', a === b);
+}
+
+console.log('── E) S7: COKLU ADAY — SIRALI SORU (24.08 urun karari) ──');
+
+// E1 — ESKI B3 SOZLESMESININ BILINCLI TERSI: satirda cap yok, ikinci gecis
+//      IKI adaya iniyor → eski surum susuyordu, yeni surum SORAR.
+{
+  const q = 'Yangın Rakoru';
+  const t = teshisli(q, HORTUMCU);
+  check('E1 coklu adayda artik soru aciliyor (ask + aile-uyusmazligi)',
+    t.kind === 'ask' && kapiVar(t, 'aile-uyusmazligi') && t.rows.length === 2,
+    `${t.kind} aday=${t.kind === 'ask' ? t.rows.length : '-'} kapilar=${(t as any).kapilar ?? '-'}`);
+  // Hakem bulgusu (24.08): kor gecisinin yapay 'aile-yok'u DISARI SIZMAZ —
+  // aile aslinda cozuldu; ayni ciktida "cozulemedi"+"uyusmuyor" celiskidir.
+  check('E1c yapay aile-yok kapisi ayiklanmis',
+    t.kind === 'ask' && !(t.kapilar ?? []).includes('aile-yok'), `kapilar=${(t as any).kapilar ?? '-'}`);
+  const r = toMatchResult(t, parseLine(q), (v: number) => v);
+  check('E1b fiyat YINE yazilmiyor (netPrice 0, multi, adaylar listede)',
+    r.netPrice === 0 && r.confidence === 'multi' && (r.candidates?.length ?? 0) === 2,
+    `netPrice=${r.netPrice} conf=${r.confidence} aday=${r.candidates?.length ?? 0}`);
+}
+
+// E2 — SIRALAMA: kaniti COK olan aday ONE gecer. Havuz sirasi bilerek ters:
+//      kor gecisi [R2, R1] uretir (drop+union), kanit R1=2 (ad 'yangin' +
+//      cins 'bağlantı') > R2=1 → sirali liste [R1, R2] olmali.
+{
+  const S7_SIRA: IndexedRow[] = [
+    prod({ kategori: 'Esnek', ad: 'Bağlantı Hortumu', cins: 'örgülü', cap: 'DN65', price: 700, birim: 'Ad.', urunKodu: 'BH-65', sheetName: 'FLEX' }),
+    prod({ kategori: 'Esnek', ad: 'Yangın Hortumu', cins: 'bağlantı örgülü', cap: 'DN65', price: 1250, birim: 'Ad.', urunKodu: 'YH-65B', sheetName: 'FLEX' }),
+  ];
+  const q = 'Yangın Bağlantı Rakoru DN65';
+  const t = teshisli(q, S7_SIRA);
+  check('E2 kanit sayisi sirayi belirliyor (2 kanitli aday one)',
+    t.kind === 'ask' && t.rows.length === 2 && t.rows[0].urun.ad === 'Yangın Hortumu',
+    t.kind === 'ask' ? `sira=[${t.rows.map((r) => r.urun.ad).join(' | ')}]` : t.kind);
+}
+
+// E3 — ZAYIF KUME FRENI: kor gecisi yalniz 'capsiz-dusum' istisnasiyla
+//      hayatta kaldiysa (adaylarin capi DOGRULANAMADI) coklu liste ACILMAZ —
+//      iki tahmin ust uste binmez (S2+S3 kanit dili; 373K vakasinin sinifi).
+{
+  const CAPSIZ: IndexedRow[] = [
+    prod({ kategori: 'Esnek', ad: 'Yangın Hortumu', cins: 'tip 1', price: 900, birim: 'Ad.', urunKodu: 'T1', sheetName: 'FLEX' }),
+    prod({ kategori: 'Esnek', ad: 'Yangın Hortumu', cins: 'tip 2', price: 950, birim: 'Ad.', urunKodu: 'T2', sheetName: 'FLEX' }),
+  ];
+  const q = 'Yangın Rakoru DN65';
+  const t = teshisli(q, CAPSIZ);
+  check('E3 capi dogrulanamayan coklu kumede teshis SUSUYOR',
+    !kapiVar(t, 'aile-uyusmazligi'), `${t.kind} kapilar=${(t as any).kapilar ?? '-'}`);
+}
+
+// E4 — KESIT: liste gurultuye donmesin — en fazla 12 aday.
+{
+  const COK: IndexedRow[] = Array.from({ length: 15 }, (_, i) =>
+    prod({ kategori: 'Esnek', ad: 'Yangın Hortumu', cins: `tip ${i + 1}`, cap: 'DN65', price: 100 + i, birim: 'Ad.', urunKodu: `T${i + 1}`, sheetName: 'FLEX' }));
+  const q = 'Yangın Rakoru DN65';
+  const t = teshisli(q, COK);
+  check('E4 kesit: 15 aday 12\'ye iniyor',
+    t.kind === 'ask' && kapiVar(t, 'aile-uyusmazligi') && t.rows.length === 12,
+    `${t.kind} aday=${t.kind === 'ask' ? t.rows.length : '-'}`);
+  // Hakem bulgusu: kesit yalniz SAYIYLA sinanmisti — hangi 12'nin kaldigi
+  // testsizdi (slice(-KESIT) / ters tie-break mutasyonlari yesil geciyordu).
+  // Esit kanitta sira = kor sirasi (yukleme sirasi): tip 1 basta, tip 13-15 DISARIDA.
+  check('E4b kesit ICERIGI dogru: tip 1 basta, tip 13 listede yok',
+    t.kind === 'ask' && t.rows[0].urun.cinsNorm === 'tip 1'
+      && !t.rows.some((r) => r.urun.cinsNorm === 'tip 13'),
+    t.kind === 'ask' ? `ilk=${t.rows[0].urun.cinsNorm} son=${t.rows[11]?.urun.cinsNorm}` : t.kind);
+  // Tasma SOYLENIR (sessiz eksiltme yasagi): uyariNot 12/15'i acikca yazar.
+  check('E4c tasma uyariNot\'ta raporlaniyor (12/15)',
+    t.kind === 'ask' && !!t.uyariNot && t.uyariNot.includes('12/15'), t.kind === 'ask' ? t.uyariNot : '-');
+}
+
+// E5 — DETERMINIZM (D3'un S7 ikizi): coklu liste yan etkisiz ve kararli.
+{
+  const a = JSON.stringify(teshisli('Yangın Rakoru', HORTUMCU));
+  const b = JSON.stringify(teshisli('Yangın Rakoru', HORTUMCU));
+  check('E5 S7 coklu listesi deterministik', a === b);
+}
+
+// E6 — SOZLUK ALIAS KELIMESI KANIT DEGILDIR (hakem bulgusu, olculdu):
+//      'Temiz Su Borusu' satirinda sozluk 'temiz'/'su' kelimelerini yutar
+//      (ignoreTokens) — runQuery onlari bilerek kisit-disi birakir. Teshis
+//      de ayni kelimeyi KIMLIK KANITI sayamaz; sayarsa borusuz markada
+//      "Su Sayacı" tarzi urunler 'su' kelimesi uzerinden listelenir ve
+//      listenin tek dayanagi sozluk-gurultusu olur.
+{
+  const SAYACCI: IndexedRow[] = [
+    prod({ kategori: 'Sayaçlar', ad: 'Su Sayacı', cins: 'kuru tip', cap: 'DN25', price: 850, birim: 'Ad.', urunKodu: 'SS-25', sheetName: 'SAYAC' }),
+    prod({ kategori: 'Vanalar', ad: 'Su Tahliye Vanası', cins: 'pirinç', cap: 'DN25', price: 320, birim: 'Ad.', urunKodu: 'TV-25', sheetName: 'SAYAC' }),
+  ];
+  const q = 'Temiz Su Borusu DN25';
+  const t = teshisli(q, SAYACCI, { ignoreTokens: ['temiz', 'su'] });
+  check('E6 sozlugun yuttugu kelime kanit sayilmiyor — teshis SUSUYOR',
+    !kapiVar(t, 'aile-uyusmazligi'),
+    `${t.kind} ${t.kind === 'ask' ? `adaylar=[${t.rows.map((r) => r.urun.ad).join(' | ')}]` : ''}`);
+}
+
+// E7 — AILESI ZAYIF ADAY COKLU LISTEYE GIREMEZ: aile yalniz KATEGORI
+//      basligindan turemis (ad kendi aile kelimesini tasimiyor) adaylar
+//      zaten BIR tahmindir; uyusmazlik listesine girmeleri iki tahmini
+//      ust uste bindirir. (Tekli yol ikizi guclutekAday:aileZayif'te.)
+{
+  const ZAYIF_HAVUZ: IndexedRow[] = [
+    prod({ kategori: 'Hortum Grubu', ad: 'R-Flex Bant', cins: 'tip A', cap: 'DN65', price: 90, birim: 'Ad.', urunKodu: 'RB-A', sheetName: 'FLEX' }),
+    prod({ kategori: 'Hortum Grubu', ad: 'R-Flex Bant', cins: 'tip B', cap: 'DN65', price: 95, birim: 'Ad.', urunKodu: 'RB-B', sheetName: 'FLEX' }),
+  ];
+  check('E7 on kosul: fixture ailesi gercekten KATEGORIDEN (aileZayif)',
+    ZAYIF_HAVUZ.every((r) => r.urun.aileZayif && r.urun.adSlug === 'hortum'),
+    ZAYIF_HAVUZ.map((r) => `${r.urun.adSlug}/${r.urun.aileZayif}`).join(','));
+  const t = teshisli('Bant Rakoru DN65', ZAYIF_HAVUZ);
+  check('E7 ailesi zayif adaylarla coklu liste ACILMIYOR',
+    !kapiVar(t, 'aile-uyusmazligi'), `${t.kind} kapilar=${(t as any).kapilar ?? '-'}`);
+}
+
+// E8 — KIMLIK KELIMESI CINS KOLONUNDA TASINAN ADAY GIRER (hakem bulgusu:
+//      S7'nin motive vakasi tam da bu satici-yazimi sinifi) + IKINCI AILE
+//      CIFTI (boru ↔ kelepce — E1-E5'in fitting↔hortum ciftinden farkli;
+//      iki-aile kaniti kurali). Adaylarin AD'inda satir kelimesi YOK
+//      ('Somunlu Kelepçe'), kimlik CINS'te ('sprinkler tipi ...').
+{
+  const NORM2: IndexedRow[] = [
+    prod({ kategori: 'Kelepçeler', ad: 'Somunlu Kelepçe', cins: 'sprinkler tipi lastikli', cap: '6"', price: 41, birim: 'Ad.', urunKodu: 'SM-6L', sheetName: 'NORM' }),
+    prod({ kategori: 'Kelepçeler', ad: 'Somunlu Kelepçe', cins: 'sprinkler tipi çiftli', cap: '6"', price: 47, birim: 'Ad.', urunKodu: 'SM-6C', sheetName: 'NORM' }),
+  ];
+  const q = 'Sprinkler Borusu, 6"';
+  const t = teshisli(q, NORM2);
+  check('E8 cins-kimlikli adaylar listeleniyor (2 aday, ikinci aile cifti)',
+    t.kind === 'ask' && kapiVar(t, 'aile-uyusmazligi') && t.rows.length === 2
+      && t.rows.every((r) => r.urun.adSlug === 'kelepce'),
+    `${t.kind} aday=${t.kind === 'ask' ? t.rows.length : '-'}`);
+}
+
+// E9 — ZAYIF KUMENIN IKINCI UYESI ('ad-gevsetildi') DE FRENDIR (hakem
+//      bulgusu: E3 yalniz 'capsiz-dusum'u sinapordu — uye dusuren mutasyon
+//      yesil geciyordu). Kurgu kor gecisinde ad-gevsetmeyi tetikler: 'yangin'
+//      ad daraltmasi 'düz' cinsli hortuma kilitlenir, satirin 'örgülü'su onu
+//      eler → motor aile havuzuna gevser → COKLU 'Bahçe Hortumu' kalir →
+//      kapida 'ad-gevsetildi' yanar → S7 ACILMAMALI (ad dogrulanmadi).
+{
+  const GEVSEK: IndexedRow[] = [
+    prod({ kategori: 'Esnek', ad: 'Yangın Hortumu', cins: 'düz', cap: 'DN65', price: 900, birim: 'Ad.', urunKodu: 'YD-65', sheetName: 'FLEX' }),
+    prod({ kategori: 'Esnek', ad: 'Bahçe Hortumu', cins: 'örgülü', cap: 'DN65', boy: 10, price: 300, birim: 'Ad.', urunKodu: 'BH-10', sheetName: 'FLEX' }),
+    prod({ kategori: 'Esnek', ad: 'Bahçe Hortumu', cins: 'örgülü', cap: 'DN65', boy: 20, price: 340, birim: 'Ad.', urunKodu: 'BH-20', sheetName: 'FLEX' }),
+  ];
+  const kor = runQuery(parseLine('Örgülü Yangın Rakoru DN65'), GEVSEK, { aileKilidiKapali: true } as any);
+  check('E9 on kosul: kor gecisi gercekten ad-gevsetildi + coklu aday uretiyor',
+    kor.kind === 'ask' && kor.rows.length === 2 && (kor.kapilar ?? []).includes('ad-gevsetildi'),
+    `${kor.kind} aday=${kor.kind === 'ask' ? kor.rows.length : '-'} kapilar=${kor.kind === 'ask' ? kor.kapilar : '-'}`);
+  const t = teshisli('Örgülü Yangın Rakoru DN65', GEVSEK);
+  check('E9 adi dogrulanamayan (ad-gevsetildi) coklu kumede teshis SUSUYOR',
+    !kapiVar(t, 'aile-uyusmazligi'), `${t.kind} kapilar=${(t as any).kapilar ?? '-'}`);
 }
 
 console.log('');

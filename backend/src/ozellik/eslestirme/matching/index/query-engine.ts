@@ -818,12 +818,24 @@ export function guclutekAday(
  * ⛔ Aile kilidini GEVSETMEZ. Bir kompansator satirina vana yine aday olamaz;
  *    teshisin bulduğu aday KESIN degildir, `ask`e duser, fiyat OTOMATIK
  *    YAZILMAZ. Kullanici onaylamadan hicbir sey degismez.
- * ⛔ GURULTU URETMEZ. Baraj `guclutekAday`dir: teshis yalnizca TEK ve kimligi
- *    dogrulanmis bir aday varsa konusur. Ikinci gecis bes aday buluyorsa
- *    susar ve sonuc `none` kalir — "belki bunlardan biridir" demek, sokmeye
- *    calistigimiz tahmin uretme hastaliginin ta kendisi olurdu.
  * ⛔ Aile ZATEN cozulememisse (familySlug yok) calismaz — ortada uyusmazlik
  *    kavrami yoktur, ikinci gecis birinciyle ayni sorgudur.
+ *
+ * ── S7 (24.08, URUN KARARI — coklu aday artik SUSMAZ) ────────────────────
+ * Ilk surum COKLU adayda bilerek susuyordu ("belki bunlardan biridir demek
+ * tahmin uretme hastaligi olurdu"). SAHA bunun tersini gosterdi: her YENI
+ * yuklenen listede satici kendi yazimini kullaniyor (canli 24.08: teklif
+ * "Kauçuk İzolasyon", listede "Elastomerik kauçuk köpüğü boru") ve sozluk
+ * o yazimi tanıyana kadar kullanici SIFIR sonuc goruyor — sozluge desen
+ * eklemek vakayi kapatir, SINIFI kapatmaz. Urun sahibi karari: bos ekran
+ * yerine "yazilan kelimelerle eslesen EN YAKIN adaylar" SIRALI SORU olarak
+ * gelsin (arama motoru hunisi) — secim yine kullanicinin, secim hafizaya
+ * yazilir, ikinci karsilasmada otomatiklesir.
+ * FIYAT YAZMA YASAGI DEGISMEDI: coklu liste `ask`tir, netPrice 0 kalir.
+ * GURULTU FRENLERI: satirin aile-disi AD kelimesini PAYLASMAYAN aday girmez
+ * (K8 — Kalorimetre→Yangin Hortumu gurultusu), ailesi zayif aday girmez,
+ * kimligi dogrulanmamis kume ('capsiz-dusum'/'ad-gevsetildi') hic acilmaz,
+ * liste kanit sayisina gore sirali ve en fazla 12 kayittir.
  *
  * SAF: runQuery gibi DB'siz. Cagiran: matching.service (malzeme + iscilik).
  */
@@ -839,8 +851,6 @@ export function aileUyusmazligiTeshisi(
   if (!aile) return sonuc;
 
   const kor = runQuery(line, pool, { ...opts, aileKilidiKapali: true });
-  const guclu = guclutekAday(kor);
-  if (!guclu) return sonuc;
 
   // ── K8'IN TESHISE UYGULANMASI (olculerek eklendi) ────────────────────────
   // Ilk surumde bu kapi YOKTU ve gurultu uretti: "Kalorimetre, DN65" satiri,
@@ -856,24 +866,99 @@ export function aileUyusmazligiTeshisi(
   // (A1/A2 dogru vakalar dahil). Ayirt edici olan kapi degil, PAYLASILAN
   // AD KELIMESIDIR.
   const aileKelimesi = (t: string) => line.aileKelimeleri.some((a) => tokenEsit(a, t));
-  const satirAdi = line.tokens.filter((t) => !aileKelimesi(t));
-  const paylasilan = satirAdi.some((t) => guclu.row.urun.adTokens.some((x) => tokenEsit(t, x)));
-  if (!paylasilan) return sonuc;
+  // ⚠ ignoreTokens da DUSER (hakem bulgusu 24.08, olculdu): sozlugun yuttugu
+  // alias kelimeleri ('temiz su' → 'su') runQuery'de bilerek kisit-disi
+  // birakilir (:66-68); burada kanit sayilsalardi "Temiz Su Borusu" satiri
+  // borusuz markada 'su' kelimesi uzerinden "Su Sayacı"yi aday gosterirdi —
+  // listenin tek dayanagi sozluk-gurultusu bir kelime olurdu.
+  const satirAdi = line.tokens.filter(
+    (t) => !aileKelimesi(t) && !(opts?.ignoreTokens ?? []).some((ig) => tokenEsit(ig, t)),
+  );
+  // NOT: "satirAdi bos → sus" diye AYRI bir kapi YOK (bilerek): tekli yolda
+  // `paylasilan`, coklu yolda adaylar suzgecinin some(satirAdi) kosulu bos
+  // kumede zaten false doner — ayri kapi olu kod olurdu (mutasyonla olculdu).
+  // 'aile-yok' kapisi kor'dan AYIKLANIR: kor gecisinde familySlug yapay
+  // olarak null'du, oysa satirin ailesi ASLINDA cozuldu (aile degiskeni) —
+  // ayni ciktida hem "aile cozulemedi" hem "aileler uyusmuyor" demek
+  // sozlesme celiskisi olurdu (kapi kimligi sozlesmedir, types.ts).
+  const korKapilari = (kor.kind === 'ask' ? kor.kapilar ?? [] : []).filter((k) => k !== 'aile-yok');
 
-  // Aday AYNI ailedeyse bu bir uyusmazlik degildir (ikinci gecis baska bir
-  // sebeple kurtarmis olabilir) — teshis yalniz AILE eksenini iddia eder.
-  const adayAile = guclu.row.urun.adSlug;
-  if (adayAile === aile) return sonuc;
+  const guclu = guclutekAday(kor);
+  if (guclu) {
+    const paylasilan = satirAdi.some((t) => guclu.row.urun.adTokens.some((x) => tokenEsit(t, x)));
+    if (!paylasilan) return sonuc;
+
+    // Aday AYNI ailedeyse bu bir uyusmazlik degildir (ikinci gecis baska bir
+    // sebeple kurtarmis olabilir) — teshis yalniz AILE eksenini iddia eder.
+    const adayAile = guclu.row.urun.adSlug;
+    if (adayAile === aile) return sonuc;
+
+    return {
+      kind: 'ask',
+      askColumn: 'urun',
+      rows: [guclu.row],
+      donusum: kor.kind === 'ask' || kor.kind === 'single' ? kor.donusum : undefined,
+      bilinmeyen: guclu.bilinmeyen,
+      // Metin "onaylayın" ile BITMEZ: outcome-mapper zaten
+      // `${uyariNot} — onaylayın. ...` diye sariyor (ask dali).
+      uyariNot: `Satırın ürün ailesi "${aile}", adayın ailesi "${adayAile}"; aynı ürün olabilir`,
+      kapilar: [...(guclu.kapilar ?? []).filter((k) => k !== 'aile-yok'), 'aile-uyusmazligi'],
+    };
+  }
+
+  // ── S7 (24.08, URUN KARARI) — COKLU ADAYDA SIRALI SORU ──────────────────
+  // Ikinci gecis birden cok aday buldugunda eski surum bilerek susuyordu;
+  // urun sahibi bunu tersine cevirdi (gerekce: dosya basi docstring §S7).
+  // Frenler:
+  //   • kimligi dogrulanmamis KUME hic acilmaz ('capsiz-dusum' = cap
+  //     dogrulanamadi, 'ad-gevsetildi' = ad dogrulanamadi — guclutekAday'in
+  //     ZAYIF baraji birebir): iki tahmin ust uste binmez;
+  //   • ailesi ZAYIF aday (yalniz kategori basligindan turemis) girmez;
+  //   • ayni-aile adayi girmez (uyusmazlik iddiasi ancak BASKA aile icin
+  //     kurulabilir; ayni ailenin elenme sebebi zaten baska bir kilittir);
+  //   • satirin aile-disi AD kelimesini PAYLASMAYAN aday girmez (K8);
+  //   • liste KANIT SAYISINA gore sirali (cok kelime paylasan one; esitlikte
+  //     kor sirasi — deterministik, D3) ve en fazla KESIT kayittir.
+  if (kor.kind !== 'ask' || kor.rows.length < 2) return sonuc;
+  const ZAYIF_KUME: KanitKapisi[] = ['capsiz-dusum', 'ad-gevsetildi'];
+  if (korKapilari.some((k) => ZAYIF_KUME.includes(k))) return sonuc;
+
+  // GIRIS kaniti = kimlik kelimesi AD ya da CINS kolonunda (hakem bulgusu:
+  // S7'nin motive vakasi tam da kimligi CINS'e yazan satici yazimidir —
+  // ad='Yalıtım', cins='elastomerik kauçuk levha' gibi. Yalniz-ad giris o
+  // adayi disarida birakip listeyi dogru cevapSIZ gurultuya cevirirdi).
+  // Gurultu freni girisin daralmasi degil, satirAdi'nin temizligidir
+  // (aile kelimeleri + sozluk alias kelimeleri dusuruldu, yukarisi).
+  const kanit = (r: IndexedRow) =>
+    satirAdi.filter((t) =>
+      r.urun.adTokens.some((x) => tokenEsit(t, x)) || r.urun.cinsTokens.some((x) => tokenEsit(t, x)),
+    ).length;
+  const adaylar = kor.rows.filter((r) =>
+    !r.urun.aileZayif &&
+    r.urun.adSlug !== aile &&
+    kanit(r) > 0,
+  );
+  if (adaylar.length === 0) return sonuc;
+
+  const KESIT = 12;
+  const rows = adaylar
+    .map((r, i) => ({ r, i, k: kanit(r) }))
+    .sort((a, b) => (b.k - a.k) || (a.i - b.i))
+    .slice(0, KESIT)
+    .map((x) => x.r);
+  const aileler = Array.from(new Set(rows.map((r) => r.urun.adSlug)));
+  // Kesit tasarsa SOYLENIR (sessiz eksiltme yasagi, I7'nin kucuk kardesi);
+  // kor'un kendi pool-notu (orn. yuzey-celiskisi sorusu) da EZILMEZ, eklenir.
+  const kesitNotu = adaylar.length > rows.length ? ` (ilk ${rows.length}/${adaylar.length})` : '';
+  const korNotu = kor.uyariNot ? ` · ${kor.uyariNot}` : '';
 
   return {
     kind: 'ask',
-    askColumn: 'urun',
-    rows: [guclu.row],
-    donusum: kor.kind === 'ask' || kor.kind === 'single' ? kor.donusum : undefined,
-    bilinmeyen: guclu.bilinmeyen,
-    // Metin "onaylayın" ile BITMEZ: outcome-mapper zaten
-    // `${uyariNot} — onaylayın. ...` diye sariyor (ask dali).
-    uyariNot: `Satırın ürün ailesi "${aile}", adayın ailesi "${adayAile}"; aynı ürün olabilir`,
-    kapilar: [...(guclu.kapilar ?? []), 'aile-uyusmazligi'],
+    askColumn: ayrisanKolon(rows),
+    rows,
+    donusum: kor.donusum,
+    bilinmeyen: kor.bilinmeyen,
+    uyariNot: `Satırın ürün ailesi "${aile}" bu markada bulunamadı — yazılan kelimelerle eşleşen en yakın adaylar sıralandı${kesitNotu} (${aileler.slice(0, 3).join(', ')})${korNotu}`,
+    kapilar: [...korKapilari, 'aile-uyusmazligi'],
   };
 }

@@ -427,8 +427,15 @@ export class MatchingService {
       // Faz 2b genislemesi: satirin yazili kelimesi bu markada DOGRULANAMADIYSA
       // ('PP KÜRESEL' → Cayirova'da kuresel yok) istenen sey baska markada
       // olabilir — multi cevapta da alternatif taranir (R5/R9).
+      // S7 duzeltmesi (hakem bulgusu 24.08): teshis none'i ask'e cevirince
+      // confidence 'multi' oluyor ve M3 taramasi SUSUYORDU — oysa bu liste
+      // AILE-DISI tahminlerdir, urunu GERCEKTEN tasiyan marka baska olabilir.
+      // Teshis kapili ask'te alternatifler de taranir: kullanici ayni ekranda
+      // hem yakin adaylari hem dogru markanin onerisini gorur.
+      const teshisKapisi: KanitKapisi = 'aile-uyusmazligi';
+      const teshisAcik = outcome.kind === 'ask' && (outcome.kapilar ?? []).includes(teshisKapisi);
       if (!r.notProduct && (line.familySlug || opts.hintFamily)
-          && (r.confidence === 'none' || (r.dogrulanamadi?.length ?? 0) > 0)) {
+          && (r.confidence === 'none' || (r.dogrulanamadi?.length ?? 0) > 0 || teshisAcik)) {
         // L5 (iscilik): "bu firmada yok" → kullanicinin DIGER firmalari taranir
         const alts = catalogOpts
           ? await this.findLaborAlternativesV2(userId, catalogOpts.firmaId, line, opts)

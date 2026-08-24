@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 388
-Toplam satir: 81585
+Toplam satir: 81840
 Uc nokta: 130
 test:* scripti: 58
 
@@ -71,12 +71,12 @@ test:* scripti: 58
 | `backend/src/ozellik/eslestirme/matching/conversion.ts` | 435 |
 | `backend/src/ozellik/eslestirme/matching/index/line-parser.ts` | 220 |
 | `backend/src/ozellik/eslestirme/matching/index/product-index.ts` | 645 |
-| `backend/src/ozellik/eslestirme/matching/index/query-engine.ts` | 880 |
+| `backend/src/ozellik/eslestirme/matching/index/query-engine.ts` | 965 |
 | `backend/src/ozellik/eslestirme/matching/index/types.ts` | 243 |
 | `backend/src/ozellik/eslestirme/matching/index/vocab.ts` | 37 |
 | `backend/src/ozellik/eslestirme/matching/matching.controller.ts` | 96 |
 | `backend/src/ozellik/eslestirme/matching/matching.module.ts` | 15 |
-| `backend/src/ozellik/eslestirme/matching/matching.service.ts` | 1053 |
+| `backend/src/ozellik/eslestirme/matching/matching.service.ts` | 1060 |
 | `backend/src/ozellik/eslestirme/matching/normalizer.ts` | 684 |
 | `backend/src/ozellik/eslestirme/matching/shared-tag-matcher.ts` | 165 |
 | `backend/src/ozellik/eslestirme/matching/tag-generator.ts` | 161 |
@@ -145,7 +145,7 @@ test:* scripti: 58
 | `backend/test/admin-import-test.ts` | 264 |
 | `backend/test/aile-oncelik-simulasyon.ts` | 292 |
 | `backend/test/aile-oncelik-test.ts` | 182 |
-| `backend/test/aile-uyusmazligi-test.ts` | 196 |
+| `backend/test/aile-uyusmazligi-test.ts` | 357 |
 | `backend/test/alias-kelime-yutma-test.ts` | 181 |
 | `backend/test/audit-canli-kosum.ts` | 313 |
 | `backend/test/audit-real-excel.ts` | 82 |
@@ -196,7 +196,7 @@ test:* scripti: 58
 | `backend/test/pk3-repo-kapsama-test.ts` | 79 |
 | `backend/test/pk9-sessiz-indeks-test.ts` | 97 |
 | `backend/test/product-index-test.ts` | 479 |
-| `backend/test/regression-all.ts` | 256 |
+| `backend/test/regression-all.ts` | 258 |
 | `backend/test/s45-malzeme-aile-test.ts` | 440 |
 | `backend/test/s45-olcum.ts` | 188 |
 | `backend/test/sozluk-golgeleme-olcum.ts` | 125 |
