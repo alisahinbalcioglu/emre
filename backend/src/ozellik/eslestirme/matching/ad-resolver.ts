@@ -25,9 +25,14 @@ const NEGATIVE_GUARDS: Record<string, RegExp> = {
 /** Yeni aile slug'lari (regex disinda sozlukten gelenler) — tip=must kilidi. */
 export const AD_YENI_SLUGS: ReadonlySet<string> = new Set(AD_SOZLUGU.map((e) => e.slug));
 
-/** DN'li sozluk aileleri — celik DN↔inc cevrimi uygulanir (metalTypeClass). */
+/** DN'li sozluk aileleri — celik DN↔inc cevrimi uygulanir (metalTypeClass).
+ *  ⚠ ALL'dan kurulur (24.08 olcum): AD_ZENGINLESTIRME'nin dnli:true bayragi
+ *  (akis-anahtari, hortum, izolasyon, pompa) yalniz-AD_SOZLUGU kurulumunda
+ *  OLU kaliyordu → resolveProductSizeClass 'unknown' donuyor, cap cevrimi
+ *  celik+plastik BIRLESIMINE dusup yapay cift aday uretiyordu (ODE R-Flex:
+ *  1/2'' hem dn15 hem dn20 esdegeri sayildi, tek urun yerine 2 aday cikti). */
 export const AD_DNLI_SLUGS: ReadonlySet<string> = new Set(
-  AD_SOZLUGU.filter((e) => e.dnli).map((e) => e.slug),
+  ALL.filter((e) => e.dnli).map((e) => e.slug),
 );
 
 /** slug → gosterim adi (3-Etiket onizleme AD kolonu). */

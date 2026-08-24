@@ -119,7 +119,13 @@ export const AD_ZENGINLESTIRME: AdSozlukGirdisi[] = [
   { slug: 'akis-anahtari', ad: 'Akış anahtarı', grup: 'YANGIN', dnli: true, patterns: ['akis anahtari', 'flow switch', 'paddle tip akis anahtari', 'su akis dedektoru'] },
   { slug: 'armatur', ad: 'Batarya', grup: 'SIHHİ TESİSAT / EKİPMAN', dnli: false, patterns: ['batarya', 'lavabo bataryasi', 'eviye bataryasi', 'dus bataryasi'] },
   { slug: 'hortum', ad: 'Esnek sprinkler bağlantı hortumu', grup: 'YANGIN', dnli: true, patterns: ['esnek sprinkler baglanti hortumu', 'sprinkler hortumu', 'esnek sprink baglantisi', 'flexible sprinkler hose', 'fan-coil baglanti elemani', 'fan-coil baglanti hortumu', 'fancoil flex set', 'esnek metal hortum', 'orgulu hortum', 'flex hortum', 'esnek baglanti', 'dogalgaz hortumu', 'sayac hortumu', 'counterflex hortum'] },
-  { slug: 'izolasyon', ad: 'Kauçuk köpüğü boru izolasyonu', grup: 'İZOLASYON / ASKI', dnli: true, patterns: ['kaucuk kopugu boru izolasyonu', 'elastomerik kaucuk izolasyon', 'armaflex tip izolasyon', 'cam yunu boru izolasyonu', 'aluminyum folyolu cam yunu', 'prefabrik boru yalitimi', 'vana ceketi', 'tas yunu vana ceketi', 'izolasyon ceketi', 'kanal izolasyonu', 'cam yunu levha', 'kaucuk levha'] },
+  // 'kaucuk kopugu (boru)': ureticiler "izolasyon" kelimesini DUSUREREK yazar
+  // (ODE listesi 24.08 canli olcum: ad="Elastomerik kauçuk köpüğü boru" →
+  // sondaki 'boru' regex'e takilip aile 'boru' cikiyordu, teklif basligi
+  // "Kauçuk İzolasyon" ise 'izolasyon' — SERT aile kilidi SIFIR aday veriyordu).
+  // Cok kelimeli desen kapsama ustunlugunu tetikler: "vana ceketi"ndeki 'vana'
+  // nasil vana degilse, "kaucuk kopugu boru"daki 'boru' da boru degildir.
+  { slug: 'izolasyon', ad: 'Kauçuk köpüğü boru izolasyonu', grup: 'İZOLASYON / ASKI', dnli: true, patterns: ['kaucuk kopugu boru izolasyonu', 'elastomerik kaucuk izolasyon', 'armaflex tip izolasyon', 'cam yunu boru izolasyonu', 'aluminyum folyolu cam yunu', 'prefabrik boru yalitimi', 'vana ceketi', 'tas yunu vana ceketi', 'izolasyon ceketi', 'kanal izolasyonu', 'cam yunu levha', 'kaucuk levha', 'kaucuk kopugu boru', 'kaucuk kopugu'] },
   { slug: 'kazan', ad: 'Çelik kazan', grup: 'ISITMA', dnli: false, patterns: ['celik kazan', '3 gecisli kazan', 'sicak su kazani', 'yogusmali kazan', 'kondenzasyonlu kazan', 'duvar tipi yogusmali'] },
   { slug: 'kombi', ad: 'Kombi', grup: 'ISITMA', dnli: false, patterns: ['kombi', 'yogusmali kombi', 'hermetik kombi'] },
   { slug: 'pompa', ad: 'Sirkülasyon pompası', grup: 'POMPALAR', dnli: true, patterns: ['sirkulasyon pompasi', 'islak rotorlu pompa', 'kuru rotorlu pompa', 'inline pompa', 'yangin pompasi grubu', 'nfpa20 pompa grubu', 'elektrikli+dizel+jokey', 'dalgic / drenaj pompasi', 'drenaj pompasi', 'pis su pompasi', 'dalgic pompa', 'flatorlu pompa', 'foseptik terfi istasyonu', 'atik su terfi unitesi'] },

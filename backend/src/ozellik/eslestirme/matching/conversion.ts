@@ -89,7 +89,12 @@ const PPR_BY_INCH = new Map(PPR_TABLE.map((r) => [r.inchDecimal, r]));
  *  kutuphane plastik urunleri "110mm" yazinca extractDiameter dn100 uretir —
  *  esdegerlik kumesi o tag'i de icermeli ki mevcut kutuphane tag'leri eslessin. */
 const NOMINAL_MM_TO_DN: Record<number, string> = {
-  15: 'dn15', 20: 'dn20', 21: 'dn15', 25: 'dn25', 27: 'dn20', 32: 'dn32', 34: 'dn25',
+  // 22/28/35: YUVARLANMIS ticari OD — izolasyon ic capi boru dis capini izler,
+  // kataloglar 21,3/26,9/33,7 yerine 22/28/35 yazar (ODE R-Flex 24.08 canli
+  // olcum: "22 mm" od-22'ye dusuyor, teklifin 1/2''=dn15'iyle bulusamiyordu.
+  // 42/48/60/76/89/114 steelOdToDn ±0,5 toleransiyla ZATEN tutuyordu — yalniz
+  // kucuk uc eksikti). normalizer.MM_TO_DN bu tablonun IKIZIDIR.
+  15: 'dn15', 20: 'dn20', 21: 'dn15', 22: 'dn15', 25: 'dn25', 27: 'dn20', 28: 'dn20', 32: 'dn32', 34: 'dn25', 35: 'dn25',
   40: 'dn40', 42: 'dn32', 48: 'dn40', 50: 'dn50', 60: 'dn50', 65: 'dn65', 76: 'dn65',
   80: 'dn80', 89: 'dn80', 100: 'dn100', 110: 'dn100', 114: 'dn100',
   125: 'dn125', 140: 'dn125', 150: 'dn150', 160: 'dn150', 168: 'dn150',

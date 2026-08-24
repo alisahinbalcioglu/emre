@@ -146,7 +146,9 @@ export interface ProductIndexFields {
  *     hazirlaPool istek aninda tazeler.
  */
 // v14 (13.08): KANONIK_ESANLAM'a tee→te eklendi — urun adTokens degisebilir.
-export const INDEX_VERSION = 14;
+// v15 (24.08): izolasyon ailesi 'kaucuk kopugu (boru)' desenleri + 22/28/35 mm
+// yuvarlanmis-OD cap cevrimi (ODE R-Flex canli vakasi — adSlug VE capTags degisti).
+export const INDEX_VERSION = 15;
 
 /** adSlug cozulemeyen satirin tasidigi isaret — eslestirmeye ADAY OLAMAZ. */
 export const BELIRSIZ_SLUG = 'belirsiz';

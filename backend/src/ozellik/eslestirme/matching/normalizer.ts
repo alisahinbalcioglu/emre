@@ -175,7 +175,8 @@ export function extractDiameter(text: string): string | null {
 
 /** mm dis cap → nominal DN (bilinenler); PE tipik caplari DN'e cevrilmez, od- kalir. */
 const MM_TO_DN: Record<number, string> = {
-  15: 'dn15', 20: 'dn20', 21: 'dn15', 25: 'dn25', 27: 'dn20', 32: 'dn32', 34: 'dn25',
+  // 22/28/35: yuvarlanmis celik OD (izolasyon ic capi) — conversion.NOMINAL_MM_TO_DN ikizi
+  15: 'dn15', 20: 'dn20', 21: 'dn15', 22: 'dn15', 25: 'dn25', 27: 'dn20', 28: 'dn20', 32: 'dn32', 34: 'dn25', 35: 'dn25',
   40: 'dn40', 42: 'dn32', 48: 'dn40', 50: 'dn50', 60: 'dn50', 65: 'dn65', 76: 'dn65',
   80: 'dn80', 89: 'dn80', 100: 'dn100', 110: 'dn100', 114: 'dn100',
   125: 'dn125', 140: 'dn125', 150: 'dn150', 160: 'dn150', 168: 'dn150',

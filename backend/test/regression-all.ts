@@ -23,6 +23,13 @@ const SUITES: Suite[] = [
   // SUITES'te olmasini denetler, ama DOSYA→script yonunu denetlemez. Test dosyasi
   // yazilip script'i hic eklenmezse hicbir kapi fark etmez — bu satir o deligi kapatir.
   { ad: 'Fallback AD-kilidi (bağsız satır)', script: 'test:fallback-ad', zincir: 'Z2' },
+  // ── 24.08.2026: KAUCUK IZOLASYON VAKASI (KI). Uc bagimsiz kusur ust
+  //    usteydi: (1) "Elastomerik kauçuk köpüğü boru" sondaki 'boru' ile
+  //    yanlis aileye dusuyordu → SERT kilit sifir aday; (2) izolasyonun
+  //    yuvarlanmis OD caplari (22/28/35) cevrimsiz kalip olu od- tag'i
+  //    uretiyordu; (3) AD_ZENGINLESTIRME'nin dnli:true bayragi OLU idi →
+  //    sizeClass unknown → celik+plastik birlesimi yapay 2. aday cikariyordu.
+  { ad: 'Kauçuk izolasyon vakası (KI)', script: 'test:kaucuk', zincir: 'Z2' },
   { ad: 'Eşleştirme birim (D)', script: 'test:matching', zincir: 'Z2' },
   { ad: 'Çap çevrimi (DN/inç/OD-mm)', script: 'test:conversion', zincir: 'Z2' },
   { ad: 'Spec regresyon (R1-R12)', script: 'test:spec', zincir: 'Z2' },
