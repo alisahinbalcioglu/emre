@@ -24,6 +24,7 @@
     "test:fallback-ad": "ts-node test/fallback-ad-kilidi-test.ts",
     "test:kaucuk": "ts-node test/kaucuk-izolasyon-test.ts",
     "test:varyant": "ts-node test/varyant-surukleme-test.ts",
+    "test:kurtarma-mesaj": "ts-node test/kurtarma-mesaj-test.ts",
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate",
     "prisma:studio": "prisma studio",

@@ -36,6 +36,18 @@ const SUITES: Suite[] = [
   // varyantTagEsit toleransi; (2) PARA: capsiz urune kaynak fiyati yayilmasi
   // → capsizAutoYasak; (3) yalin 'pp' plastik sayilmiyordu → DN63 koprusu.
   { ad: 'Varyant sürükleme (VS)', script: 'test:varyant', zincir: 'Z2' },
+  // KM (26.08): VS turunda BILINCLI ERTELENEN dort bulgu — hepsi 'cap-yok'
+  // ERKEN DONUSUNDE bulusuyor. (1) E2: dosyadaki 12 'none'un 12'si de V4.7
+  // kurtarmasindan ONCE donuyordu → kurtarma, ele almak icin yazildigi vakaya
+  // hic ulasamiyordu (kirmizi 2½" kutuphanede dururken "bu markada yok").
+  // (2) E4: yuzey filtresi 'none' DONMEZ, yalniz daraltir → sebep kodunu HER
+  // ZAMAN sonraki (cap) filtre yaziyordu; markada 2" siyah boru DURURKEN
+  // ekran "Bu markada 2\" yok" diyordu. (3) E6: 'en yakin' listesi olculemez
+  // sayilardan uretiliyordu (inc satir ↔ mm kutuphane TERS siralaniyor,
+  // `3/4"` parseFloat ile 3 sayiliyor). (4) E1 PARA: sozluk hint'i
+  // (sizeClassHint/hintClass) kullanicinin ACIK surukleme secimini eziyor,
+  // 140 TL'lik celik boru yerine 18 TL'lik PPR OTOMATIK yaziliyordu.
+  { ad: 'Kurtarma + cap-yok mesajı (KM)', script: 'test:kurtarma-mesaj', zincir: 'Z2' },
   { ad: 'Eşleştirme birim (D)', script: 'test:matching', zincir: 'Z2' },
   { ad: 'Çap çevrimi (DN/inç/OD-mm)', script: 'test:conversion', zincir: 'Z2' },
   { ad: 'Spec regresyon (R1-R12)', script: 'test:spec', zincir: 'Z2' },

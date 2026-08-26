@@ -385,6 +385,47 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   /** S4: capsiz istisnasindan gecen adaylar arasinda ailesi ZAYIF olan var mi
    *  (aile yalniz kategori basligindan turedi) → ek kanit kapisi. */
   let capsizAileZayif = false;
+
+  // ── V4.7 KURTARMA GOVDESI — TEK TANIM, IKI CAGRI YERI (E2, 26.08) ──
+  // Kurtarma bugune kadar YALNIZ V4 blogunun icinde (asagida) yasiyordu ve o
+  // blok dosyadaki 12 'none' donusunun HEPSINDEN SONRA geliyordu. Yani
+  // kurtarma, tam olarak ele almak icin yazildigi vakaya ULASAMIYORDU:
+  // olculdu — kullanici "kirmizi boyali"yi secip surukluyor, hedef satirda
+  // "siyah" yazili; siyah 2" havuzda oldugu icin 2" KURTARILIYOR ama siyah
+  // 2½" olmadigi icin cap filtresi rows'u bosaltip erken 'cap-yok' donuyor,
+  // OYSA kirmizi boyali 2½" kutuphanede DURUYOR. Ayni havuz, ayni secim, iki
+  // farkli cevap. Govdeyi buraya alip cap-yok donusunden de cagiriyoruz.
+  //
+  // PARA KAPISI: kurtarma havuzlarina CAP suzgeci UYGULANMIS olmalidir —
+  // cagiran taraf bunu garanti eder (asagida filtreler donusten ONCE kosar).
+  // Aksi halde kaynak capin fiyati hedef capa yayilir (VS probe M3 sinifi).
+  const capsizAutoYasak = (r: IndexedRow) => !!line.capInfo && r.urun.capTags.length === 0;
+  const capsizOnay = (aday: IndexedRow): QueryOutcome => ({
+    kind: 'ask', askColumn: 'urun', rows: [aday], bilinmeyen, donusum,
+    uyariNot: `Satır çaplı (${line.capInfo!.display}) ama seçilen varyantın ürününde çap doğrulanamadı`,
+    kapilar: ['capsiz-dusum'],
+  });
+  const varyantTagUyar = (v: string[]) => (r: IndexedRow) => {
+    const aday = urunVariantTags(r);
+    return v.every((t) => aday.some((x) => varyantTagEsit(t, x)));
+  };
+  /** Fren: TAM tag eslesmesi + TEK aday. Bulamazsa null → cagiran kendi yolunu surdurur. */
+  const varyantKurtar = (): QueryOutcome | null => {
+    const v = opts?.variantTags;
+    if (!v?.length) return null;
+    const tagUyar = varyantTagUyar(v);
+    for (const havuz of [yuzeyGenis, varyantKurtarma]) {
+      if (!havuz || havuz.length === 0) continue;
+      const kurtarilan = havuz.filter(tagUyar);
+      if (kurtarilan.length === 1) {
+        return capsizAutoYasak(kurtarilan[0])
+          ? capsizOnay(kurtarilan[0])
+          : { kind: 'auto-variant', row: kurtarilan[0], donusum };
+      }
+    }
+    return null;
+  };
+
   if (line.capInfo) {
     const cls = resolveLineClass(rows, opts?.sizeClassHint);
     const equiv = sizeEquivalents(cls, line.capInfo);
@@ -435,7 +476,19 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
         capsizDusum = true;
         capsizAileZayif = capsiz.some((r) => r.urun.aileZayif);
       }
+      // E2 (26.08): bu iki suzgec 'cap-yok' donusunun ALTINDA duruyordu — yani
+      // kurtarma havuzlari cap suzgecinden gecmeden once erken donuluyordu ve
+      // kurtarma HIC calisamiyordu. Suzgecleri ONE aliyoruz: (a) rows doluysa
+      // davranis BIREBIR ayni (arada bu degiskenleri okuyan kod yok), (b) rows
+      // bossa kurtarma artik CAP SUZGECINDEN GECMIS havuzda calisir — para
+      // kapisi budur, kaynak capin fiyati hedef capa YAYILAMAZ.
+      if (yuzeyGenis) yuzeyGenis = yuzeyGenis.filter(capUyar); // genis kume de AYNI capta
+      varyantKurtarma = varyantKurtarma.filter(capUyar); // V4.7: kurtarma da AYNI capta
       if (rows.length === 0) {
+        // E2: kullanicinin ACIK secimi (surukleme) varsa once KURTAR.
+        // Frenler degismedi: TAM tag eslesmesi + TEK aday + capsizAutoYasak.
+        const kurtarilan = varyantKurtar();
+        if (kurtarilan) return kurtarilan;
         // PANO 20 (I7 — sessiz bos YASAK): markadaki MEVCUT caplar, satirin
         // capina yakinlik sirasiyla raporlanir ("en yakin: 50 / 100 mm").
         const hedef = line.capInfo.value;
@@ -452,8 +505,6 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
           .map(([ham]) => ham);
         return { kind: 'none', reason: 'cap-yok', detail: line.capInfo.display, donusum, mevcutCaplar };
       }
-      if (yuzeyGenis) yuzeyGenis = yuzeyGenis.filter(capUyar); // genis kume de AYNI capta
-      varyantKurtarma = varyantKurtarma.filter(capUyar); // V4.7: kurtarma da AYNI capta
       // Superset adlar da AYNI capta (capsiz kayit gecer — takim/set capsiz olabilir)
       if (adGenis) adGenis = adGenis.filter((r) => capUyar(r) || r.urun.capTags.length === 0);
     }
@@ -542,21 +593,10 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     // 'PN 25') ve ada gomulu olcude ('... 20 mm' vs '... 32 mm') TUM grubu
     // variantMissing'e dusuruyordu; boru disinda "surukleme calismiyor"
     // algisinin olculen ana kaynagi buydu.
-    const tagUyar = (r: IndexedRow) => {
-      const aday = urunVariantTags(r);
-      return v.every((t) => aday.some((x) => varyantTagEsit(t, x)));
-    };
-    // VS-PARA (probe M3): satir CAPLIYKEN capsiz urune otomatik fiyat YAZILMAZ.
-    // Ada gomulu-olculu + cap kolonu bos listelerde eslesen===1 kosulu KAYNAK
-    // urunu buluyor ve kaynagin fiyati HER hedef capa yayiliyordu (olculdu —
-    // para hatasi sinifi). Ç-vakasi kapisinin (capsiz-dusum) variant-erken-donus
-    // yoluna uygulanmis hali: aday listede kalir, kullanici onaylar.
-    const capsizAutoYasak = (r: IndexedRow) => !!line.capInfo && r.urun.capTags.length === 0;
-    const capsizOnay = (aday: IndexedRow): QueryOutcome => ({
-      kind: 'ask', askColumn: 'urun', rows: [aday], bilinmeyen, donusum,
-      uyariNot: `Satır çaplı (${line.capInfo!.display}) ama seçilen varyantın ürününde çap doğrulanamadı`,
-      kapilar: ['capsiz-dusum'],
-    });
+    // VS-PARA (probe M3) freni `capsizAutoYasak`/`capsizOnay` ile birlikte
+    // yukari tasindi (E2, 26.08) — kurtarma govdesi artik cap-yok donusunden
+    // de cagriliyor, tek tanim iki cagri yeri.
+    const tagUyar = varyantTagUyar(v);
     const eslesen = rows.filter(tagUyar);
     if (eslesen.length === 1) {
       return capsizAutoYasak(eslesen[0])
@@ -584,15 +624,8 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     // uygulanmistir. Kosullar (fren): TAM tag eslesmesi + TEK aday →
     // sessiz ikame degil, sonuc 'auto-variant' = oneri isaretiyle doner.
     if (eslesen.length === 0) {
-      for (const havuz of [yuzeyGenis, varyantKurtarma]) {
-        if (!havuz || havuz.length === 0) continue;
-        const kurtarilan = havuz.filter(tagUyar);
-        if (kurtarilan.length === 1) {
-          return capsizAutoYasak(kurtarilan[0])
-            ? capsizOnay(kurtarilan[0])
-            : { kind: 'auto-variant', row: kurtarilan[0], donusum };
-        }
-      }
+      const kurtarilan = varyantKurtar();
+      if (kurtarilan) return kurtarilan;
     }
 
     if (eslesen.length === 0) {
