@@ -35,6 +35,13 @@ export interface MotorSonucu {
   netPrice: number;
   confidence?: string;
   candidates?: Array<unknown>;
+  /** E5 (26.08): motorun BASKA MARKALARDA buldugu adaylar (M3 capraz-marka
+   *  taramasi). Alan motor cevabinda VARDI ama bu arayuzde YOKTU ve kodda
+   *  hic okunmuyordu — 'olu bayrak'in ayna goruntusu (uretici yaziyor,
+   *  TUKETICI tipinde yok). Sonucu: ayni motor cevabi etkilesimli yolda
+   *  'belirsiz' ("marka menusunu acip secin" — EYLEMLI), surukleme yolunda
+   *  'yok' ("Bu markada bu urun ailesi yok." — CIKMAZ SOKAK) isaretleniyordu. */
+  alternatives?: Array<unknown>;
   notProduct?: boolean;
   variantTags?: string[];
   variantMissing?: boolean;
@@ -334,10 +341,19 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
     // sayisi gorunur olmadan isaret EYLEMLI degildir.
     if (r?.reason) yaz(node, sebepAlan, r.reason);
 
-    if (r?.candidates?.length) {
+    // E5 (26.08): ETKILESIMLI YOL ILE AYNI ISARET. Motor bu markada bulamayip
+    // BASKA MARKALARDA bulduysa (alternatives), dropdown'dan ayni secim elle
+    // yapildiginda ExcelGrid '_matStatus = belirsiz' yazip alternatif popup'ini
+    // aciyor; surukleme yolu ise ayni cevaba 'yok' yazip kullaniciyi cikmaz
+    // sokaga sokuyordu ("Bu markada bu urun ailesi yok." — oysa motor urunu
+    // BULDU). Ayni girdi iki yolda iki farkli cevap veremez; SD6 geregi isaret
+    // EYLEMLI olmali: 'belirsiz' tooltip'i kullaniciyi marka menusune yollar.
+    // Fiyat YAZILMAZ (netPrice 0) — degisen yalniz isaret ve sebep metni.
+    const adaylar = r?.candidates?.length ? r.candidates : (r?.alternatives?.length ? r.alternatives : null);
+    if (adaylar) {
       yaz(node, statusAlan, 'belirsiz');
-      yaz(node, adayAlan, r.candidates.length);
-      sonuc.satirlar.push({ rowIdx, durum: 'aday', adaySayisi: r.candidates.length, sebep: r.reason });
+      yaz(node, adayAlan, adaylar.length);
+      sonuc.satirlar.push({ rowIdx, durum: 'aday', adaySayisi: adaylar.length, sebep: r?.reason });
       sonuc.ozet.aday++;
       continue;
     }

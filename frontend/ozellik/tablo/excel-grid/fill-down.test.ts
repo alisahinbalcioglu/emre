@@ -174,6 +174,40 @@ describe('SD1-SD10 sürükle-doldur modülü', () => {
     expect(hedefler[1].data._matStatus).toBe('belirsiz');
   });
 
+  // ── E5 (26.08): AYNI CEVAP, IKI YOL, IKI FARKLI ISARET ──────────────
+  // Motor bu markada bulamayip BASKA MARKALARDA bulunca `alternatives` döner.
+  // Dropdown'dan aynı seçim ELLE yapılınca ExcelGrid '_matStatus = belirsiz'
+  // yazıp alternatif popup'ını açıyor; sürükleme yolu ise aynı cevaba 'yok'
+  // yazıyordu → tooltip "Bu markada bu ürün ailesi yok." (ÇIKMAZ SOKAK),
+  // oysa motor ürünü BULMUŞTU. Alan motor cevabında vardı, fill-down'ın
+  // tipinde YOKTU ve hiç okunmuyordu — 'ölü bayrak'ın ayna görüntüsü.
+  it('E5 alternatives dönen cevap sürüklemede de "belirsiz" işaretlenir (etkileşimli yolla aynı)', async () => {
+    const motor = async (_r: number, _b: string, ad: string): Promise<MotorSonucu | null> =>
+      ad.includes('1"')
+        ? { netPrice: 0, confidence: 'none', reason: 'Bu markada bu ürün ailesi yok.',
+            alternatives: [{ brand: 'B', price: 91 }, { brand: 'C', price: 95 }] as any }
+        : { netPrice: KUTUPHANE['¾"'], confidence: 'high' };
+    const hedefler = [node(108, '¾"', 565), node(109, '1"', 140)];
+    const sonuc = await fillDown({ hedefler: hedefler as any, markaId: 'b', roller: ROLLER, motor, kaynakVaryantTags: null, kaynakLabel: '' });
+    const alt = sonuc.satirlar.find((s) => s.rowIdx === 109)!;
+    expect(alt.durum).toBe('aday');           // 'yok' DEGIL
+    expect(alt.adaySayisi).toBe(2);
+    expect(hedefler[1].data._matStatus).toBe('belirsiz');
+    expect(sonuc.ozet.yok).toBe(0);           // ozet/toast sayaci da dogru
+    expect(sonuc.ozet.aday).toBe(1);
+  });
+
+  it('E5 KARSI: alternatives de candidates de yoksa satir AYNEN "yok" kalir', async () => {
+    const motor = async (_r: number, _b: string, ad: string): Promise<MotorSonucu | null> =>
+      ad.includes('1"') ? { netPrice: 0, confidence: 'none', reason: 'Bu üründe 1" yok.' }
+        : { netPrice: KUTUPHANE['¾"'], confidence: 'high' };
+    const hedefler = [node(108, '¾"', 565), node(109, '1"', 140)];
+    const sonuc = await fillDown({ hedefler: hedefler as any, markaId: 'b', roller: ROLLER, motor, kaynakVaryantTags: null, kaynakLabel: '' });
+    expect(sonuc.satirlar.find((s) => s.rowIdx === 109)!.durum).toBe('yok');
+    expect(hedefler[1].data._matStatus).toBe('yok');
+    expect(sonuc.ozet.aday).toBe(0);
+  });
+
   it('SD7 geri-alma anlığı: doldurmadan ÖNCEKİ değerler tek pakette döner', async () => {
     const { motor } = motorFabrikasi();
     const hedefler = sahinkulHedefleri();
