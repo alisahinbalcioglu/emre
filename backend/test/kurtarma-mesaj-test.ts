@@ -296,6 +296,56 @@ console.log('── KM-13..16) E4: cap-yok mesaji kapsam yalani kurmaz ──');
     !/siyah/i.test(m2), `mesaj: ${m2}`);
 }
 
+// ═════════════════════════════════════════════════════════════════════
+//  D) E1 — KULLANICI SECIMI SOZLUGUN VARSAYIMINI SUSTURUR  (PARA)
+// ═════════════════════════════════════════════════════════════════════
+console.log('── KM-18..22) E1: sozluk hint\'i acik kullanici secimini EZEMEZ ──');
+{
+  // Canli desen: 'TEMIZ SU BORULARI' grup basligi surukleme hedeflerine
+  // miras kaliyor; 'temiz su' alias'i sizeClassHint+hintClass='plastic'
+  // uretiyor. Kaynak satirda sinif YAZILI oldugu icin (galvaniz celik) sozluk
+  // SUSUYOR ve kullanici secimini yapabiliyor; hedef satirda YAZILI DEGIL,
+  // sozluk KONUSUYOR ve secimi eziyor. Asimetri buradan dogar.
+  const HAVUZ = [
+    prod({ ad: 'Dikişli Çelik Boru', cins: 'galvaniz', cap: '1/2"', price: 100, urunKodu: 'C-12' }),
+    prod({ ad: 'Dikişli Çelik Boru', cins: 'galvaniz', cap: '3/4"', price: 140, urunKodu: 'C-34' }),
+    // NOT: PPR kaydi bilerek NOTR (ayirt edici cins/baglanti/boy YOK). Boylece
+    // 'variantMissing' catisma testi (yalniz cins:/bag:/boy: eksenlerine bakar)
+    // devreye GIRMEZ ve tek aday OTOMATIK yazilir — canli vakada olculen para
+    // hatasinin tam kosulu budur. Cins verilirse test yanlis sebeple yesil
+    // kalir (mutasyon olcumu bunu yakaladi).
+    prod({ ad: 'PPR Boru', cap: '25', price: 18, urunKodu: 'P-25' }),
+  ];
+  const TAG = urunVariantTags(HAVUZ[0]); // kullanicinin ACIK secimi: galvaniz celik boru
+  const Q = 'TEMİZ SU BORUSU 3/4"';
+  const SOZLUK = { sizeClassHint: 'plastic' as const, hintClass: 'plastic' as const, hintLabel: 'ppr' };
+
+  check('KM-18 on kosul: havuzdaki iki urun FARKLI sinif (steel/plastic) ve fiyat 140 ↔ 18',
+    HAVUZ[1].urun.sizeClass === 'steel' && HAVUZ[2].urun.sizeClass === 'plastic',
+    `${HAVUZ[1].urun.sizeClass}/${HAVUZ[2].urun.sizeClass}`);
+
+  // Tabanı ölç: sözlük hiç konuşmazsa motor doğru ürünü buluyor mu?
+  const oTemiz = runQuery(parseLine(Q, 'mt'), HAVUZ, { variantTags: TAG });
+  check('KM-19 TABAN: sozluk hint\'i yokken kullanicinin sectigi urun gelir (celik 3/4" @140)',
+    oTemiz.kind === 'auto-variant' && fiyat(oTemiz) === 140, `${kod(oTemiz)}@${fiyat(oTemiz)}`);
+
+  // ASIL PARA KUSURU: ayni satir, ayni havuz, TEK degisken sozluk hint'i.
+  const oSozluk = runQuery(parseLine(Q, 'mt'), HAVUZ, { variantTags: TAG, ...SOZLUK });
+  check('KM-20 PARA: sozluk hint\'i kullanici secimini EZEMEZ — 18 TL\'lik PPR YAZILMAZ',
+    fiyat(oSozluk) !== 18, `${kod(oSozluk)}@${fiyat(oSozluk)}`);
+  check('KM-21 sonuc hint\'siz halle AYNI olur (kullanici secimi kazanir)',
+    oSozluk.kind === oTemiz.kind && fiyat(oSozluk) === fiyat(oTemiz),
+    `hintli=${kod(oSozluk)}@${fiyat(oSozluk)} hintsiz=${kod(oTemiz)}@${fiyat(oTemiz)}`);
+
+  // KAPI: kullanici SECMEDIYSE sozluk AYNEN konusur (R3/T1 korunur —
+  // "TEMİZ SU altinda celik aday olamaz" kurali surukleme DISINDA durur).
+  const oSecimsiz = runQuery(parseLine(Q, 'mt'), HAVUZ, SOZLUK);
+  check('KM-22 KAPI: variantTags YOKKEN sozluk sinifi AYNEN eler (R3/T1 bozulmadi)',
+    !(oSecimsiz.kind === 'auto-variant' || oSecimsiz.kind === 'single')
+    || (oSecimsiz.kind === 'single' && oSecimsiz.row.urun.sizeClass !== 'steel'),
+    `${kod(oSecimsiz)}@${fiyat(oSecimsiz)}`);
+}
+
 console.log('');
 console.log(`── SONUC: ${passed} PASS · ${failures.length} FAIL ──`);
 if (failures.length) { failures.forEach((f) => console.log(`  ✗ ${f}`)); process.exit(1); }

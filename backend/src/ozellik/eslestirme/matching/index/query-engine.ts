@@ -81,9 +81,47 @@ export function capEkseni(tags: readonly string[]): { eksen: 'dn' | 'od'; deger:
  */
 const altKume = altKumeMi;
 
+/**
+ * E1 (26.08) — KULLANICI SECIMI SOZLUGUN VARSAYIMINI SUSTURUR.
+ *
+ * PARA HATASI, olculdu (saf motor; tek degisken `opts`):
+ *   havuz : 'Dikisli Celik Boru' galvaniz 3/4" = 140 TL  +  'PPR Boru' 25 = 18 TL
+ *   satir : 'TEMIZ SU BORUSU 3/4"'  (satirda sinif kelimesi YAZILI DEGIL → sozluk konusur)
+ *   secim : kullanici KAYNAK satirda popup'tan galvaniz celik boruyu secip asagi surukluyor
+ *           → variantTags = ["ad:dikisli celik boru", "cins:galvaniz"]
+ *     hint YOKKEN             → auto-variant  Dikisli Celik Boru 3/4" = 140  (DOGRU)
+ *     sizeClassHint='plastic' → auto-variant  PPR Boru 25            =  18  (YANLIS URUN,
+ *                               YANLIS FIYAT — ve OTOMATIK yazilir)
+ *
+ * Kok: 'temiz su' alias'i `sizeClassHint`/`hintClass`='plastic' uretir.
+ * `hintClass` dogrudan SERT eleyicidir; `sizeClassHint` ise filtre gibi
+ * gorunmez ama cap ESDEGERLIK uzayini degistirir (3/4" plastikte 25 mm olur)
+ * → kullanicinin sectigi CELIK urunun capTags'i artik kesismez ve aday CAP
+ * filtresinde duser. Ikisi de `variantTags` blogundan ONCE kosuyordu.
+ *
+ * Kural motorun kendi ilan ettigi kuraldir (asagida V4.7): "variantTags
+ * kullanicinin ACIK secimidir (surukleme = acik niyet)". Bugune kadar yalniz
+ * yuzey/cins/baglanti ekseninde uygulanmisti; SOZLUK ekseni acikta kalmisti.
+ * `yaziliSinif`in (matching.service) ikizi: orada SATIR kazanir, burada
+ * KULLANICI kazanir.
+ *
+ * KAPSAM BILEREK DAR: yalniz sozlugun VARSAYIMI susar.
+ *  · satirda YAZILI kelimeler (K4 sert filtreleri) AYNEN durur,
+ *  · aile kilidi (`familySlug`) ve CAP suzgeci AYNEN durur,
+ *  · yalniz SIRALAYAN hint'ler (`hintBases`/`hintMalzeme`) dokunulmaz —
+ *    olculdu: variantTags yolunda zaten sonucu degistirmiyorlar.
+ */
+export function sozlukSusar(opts?: QueryOpts): boolean {
+  return (opts?.variantTags?.length ?? 0) > 0;
+}
+
 export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts): QueryOutcome {
   // ── 0. URUN DEGIL ────────────────────────────────────────────────
   if (line.notProduct) return { kind: 'none', reason: 'urun-degil' };
+
+  // E1: kullanicinin acik secimi varken sozluk sinifi konusmaz (bkz. sozlukSusar).
+  const hintClass = sozlukSusar(opts) ? null : opts?.hintClass ?? null;
+  const sizeClassHint = sozlukSusar(opts) ? null : opts?.sizeClassHint ?? null;
 
   // ── 0b. SOZLUK KELIMELERI AYIKLANIR (S3) ─────────────────────────
   // Alias'in kendi kelimeleri ('sprink','hatti','temiz','su') sozluk
@@ -112,11 +150,11 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   // ── 1a2. SOZLUK SINIFI — SERT (T1: sozluk cinsi YAZILI sayilir) ──
   // "TEMİZ SU" (→PPR) altinda celik urun ADAY OLAMAZ (R3). Karsit sinif
   // elenir; 'unknown' gecer (urun sinifini soylemiyorsa suclanmaz).
-  if (opts?.hintClass) {
-    const karsit = opts.hintClass === 'plastic' ? 'steel' : 'plastic';
+  if (hintClass) {
+    const karsit = hintClass === 'plastic' ? 'steel' : 'plastic';
     rows = rows.filter((r) => r.urun.sizeClass !== karsit);
     if (rows.length === 0) {
-      return { kind: 'none', reason: 'kriter-yok', detail: opts.hintLabel ?? opts.hintClass };
+      return { kind: 'none', reason: 'kriter-yok', detail: opts?.hintLabel ?? hintClass };
     }
   }
 
@@ -461,7 +499,7 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   };
 
   if (line.capInfo) {
-    const cls = resolveLineClass(rows, opts?.sizeClassHint);
+    const cls = resolveLineClass(rows, sizeClassHint);
     const equiv = sizeEquivalents(cls, line.capInfo);
     donusum = equiv.rozet;
     if (equiv.tags.length) {

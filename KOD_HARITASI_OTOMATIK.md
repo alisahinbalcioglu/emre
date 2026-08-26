@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 390
-Toplam satir: 82623
+Toplam satir: 82711
 Uc nokta: 130
 test:* scripti: 60
 
@@ -71,7 +71,7 @@ test:* scripti: 60
 | `backend/src/ozellik/eslestirme/matching/conversion.ts` | 435 |
 | `backend/src/ozellik/eslestirme/matching/index/line-parser.ts` | 220 |
 | `backend/src/ozellik/eslestirme/matching/index/product-index.ts` | 651 |
-| `backend/src/ozellik/eslestirme/matching/index/query-engine.ts` | 1131 |
+| `backend/src/ozellik/eslestirme/matching/index/query-engine.ts` | 1169 |
 | `backend/src/ozellik/eslestirme/matching/index/types.ts` | 250 |
 | `backend/src/ozellik/eslestirme/matching/index/vocab.ts` | 37 |
 | `backend/src/ozellik/eslestirme/matching/matching.controller.ts` | 96 |
@@ -179,7 +179,7 @@ test:* scripti: 60
 | `backend/test/kl-kayit-toplami-test.ts` | 148 |
 | `backend/test/kl-liste-ekleme-test.ts` | 168 |
 | `backend/test/kur-donmasi-test.ts` | 111 |
-| `backend/test/kurtarma-mesaj-test.ts` | 302 |
+| `backend/test/kurtarma-mesaj-test.ts` | 352 |
 | `backend/test/kutuphane-ad-duzenleme-test.ts` | 151 |
 | `backend/test/kutuphane-liste-test.ts` | 231 |
 | `backend/test/labor-matching-test.ts` | 196 |
