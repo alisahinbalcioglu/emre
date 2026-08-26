@@ -1908,11 +1908,12 @@ export default function NewQuotePage() {
           // PRD v3.0 A2: "kat" isaretli sutunlar → MIK = katlarin satir-toplami
           floorFields={activeFloorFields}
           // §3: yayilim bilgisi — "n satır güncellendi"
-          onAutoVariantApplied={({ applied, waiting, missing }) => {
+          onAutoVariantApplied={({ applied, waiting, missing, hatali }) => {
             const parca: string[] = [];
             if (applied > 0) parca.push(`${applied} satır güncellendi`);
             if (waiting > 0) parca.push(`${waiting} seçim bekliyor`);
             if (missing > 0) parca.push(`${missing} markada yok`);
+            if ((hatali ?? 0) > 0) parca.push(`${hatali} sorgu hatası — tekrar deneyin`);
             if (parca.length > 0) toast({ title: '⚡ Otomatik varyant atama', description: parca.join(' · ') });
           }}
           // Excel-vari "en altta hep bos satir" — DWG metraj grid'inde aktif
@@ -2047,10 +2048,13 @@ export default function NewQuotePage() {
               return null;
             } catch (e: any) {
               // SESSIZ BOS YASAK (06.08): sunucu hatasi "eslesmedi" gibi
-              // gorunmesin. `silent` toplu yayilimda gurultuyu keser.
+              // gorunmesin. VS (25.08): SURUKLEMEDE (silent) hata YUTULMAZ —
+              // fillDown'un SD2b 'hata' dali ancak throw ile canlanir (iscilik
+              // dali malzemenin IKIZI). Etkilesimli tekil cagrida toast kalir.
+              if (opts?.silent === true) throw e;
               console.error('[FirmaDropdown] error:', e);
               const kod = e?.response?.status;
-              if (opts?.silent !== true) toast({
+              toast({
                 title: 'Iscilik sorgusu basarisiz',
                 description: `"${laborName.slice(0, 40)}" sorgulanamadi${kod ? ` (HTTP ${kod})` : ''} — "eslesmedi" DEGIL. Tekrar deneyin.`,
                 variant: 'destructive',
@@ -2116,7 +2120,7 @@ export default function NewQuotePage() {
 
               // Eslesme bulundu ama fiyat 0 — kullaniciya uyari
               if (match.confidence === 'high' && match.matchedName) {
-                toast({
+                if (!silent) toast({
                   title: `⚠ Malzeme fiyati 0`,
                   description: `"${match.matchedName.slice(0, 60)}" eslesti ama kutuphanede fiyat girilmemis. Kutuphaneye gidip fiyat ekleyin.`,
                   variant: 'destructive',
@@ -2127,7 +2131,7 @@ export default function NewQuotePage() {
               // URUN DEGIL (spec): oran/hizmet satiri — fiyat beklenmiyor,
               // hucre gri isaretlenir; hata tonu YOK.
               if (match.notProduct) {
-                toast({ title: 'Ürün değil', description: 'Oran/hizmet satırı — fiyat beklenmiyor.' });
+                if (!silent) toast({ title: 'Ürün değil', description: 'Oran/hizmet satırı — fiyat beklenmiyor.' });
                 return { netPrice: 0, notProduct: true, reason: match.reason };
               }
               // M3: bu markada urun yok ama baska markalarda VAR — tiklanabilir
@@ -2141,9 +2145,13 @@ export default function NewQuotePage() {
             } catch (e: any) {
               // SESSIZ BOS YASAK (06.08): sunucu hatasi "eslesmedi" gibi
               // gorunmesin. `silent` toplu yayilimda gurultuyu keser.
+              // VS (25.08): SURUKLEMEDE (silent) hata YUTULMAZ — fillDown'un
+              // SD2b 'hata' dali ancak throw ile canlanir; null donmek sunucu
+              // hatasini 'kutuphanede yok' pembesine boyuyordu (yanlis bilgi).
+              if (opts?.silent === true) throw e;
               console.error('[ExcelGrid] brand change error:', e);
               const kod = e?.response?.status;
-              if (opts?.silent !== true) toast({
+              toast({
                 title: 'Marka sorgusu basarisiz',
                 description: `"${materialName.slice(0, 40)}" sorgulanamadi${kod ? ` (HTTP ${kod})` : ''} — "eslesmedi" DEGIL. Tekrar deneyin.`,
                 variant: 'destructive',

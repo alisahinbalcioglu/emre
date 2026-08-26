@@ -148,7 +148,7 @@ export interface ProductIndexFields {
 // v14 (13.08): KANONIK_ESANLAM'a tee→te eklendi — urun adTokens degisebilir.
 // v15 (24.08): izolasyon ailesi 'kaucuk kopugu (boru)' desenleri + 22/28/35 mm
 // yuvarlanmis-OD cap cevrimi (ODE R-Flex canli vakasi — adSlug VE capTags degisti).
-export const INDEX_VERSION = 15;
+export const INDEX_VERSION = 16;
 
 /** adSlug cozulemeyen satirin tasidigi isaret — eslestirmeye ADAY OLAMAZ. */
 export const BELIRSIZ_SLUG = 'belirsiz';
@@ -441,7 +441,13 @@ export function resolveProductSizeClass(ad: string, cins?: string | null, katego
   // PP-R / PPRC / PP-RC / polipropilen = PLASTIK. normalizeText tireyi KORUR
   // ("PP-R" → "pp-r"), duz \bppr\b TUTMUYORDU → KALDE "PP Boru / PN 20" (cins
   // PP-R) STEEL siniflaniyordu (canli 23.07 vaka). "pp boru" da plastiktir.
-  const PLASTIK = /\b(ppr|pp-?rc?|pprc|polipropilen|pp\s+boru|pe-?100|pe-?80|pex|pvc|hdpe|polietilen|plastik)\b/;
+  // VS (25.08, olculdu): YALIN 'pp' de PLASTIKTIR — 'PP Küresel Vana' steel
+  // siniflanip cap kolonu '63' od-63'e dusuyor, satirin 'DN 63'u (celik
+  // tablosunda yok) dn63 kaliyordu → kesisim bos → 'bu markada DN 63 yok'
+  // YALANI. malzemeEtiketleri ayni metinden zaten ['pp'] uretiyordu — sinif
+  // katmani ile malzeme katmani ayni kelimeyi farkli taniyordu (ikiz kusuru).
+  // CELIK ONCELIGI DEGISMEDI: 'PE kapli celik' yine steel (once CELIK denenir).
+  const PLASTIK = /\b(ppr|pp-?rc?|pprc|polipropilen|pp\s+boru|pe-?100|pe-?80|pex|pvc|hdpe|polietilen|plastik|pp)\b/;
   const CELIK = /\b(celik|paslanmaz|pirinc|dokum|bronz|bakir|galvaniz|siyah|st\s*37)\b/;
   // ── KAPLAMA TUZAGI (canli Çayırova vakasi 16.07 — INDEX_VERSION 5) ──
   // "Çelik boru · PE kaplı doğalgaz · sarı POLIETILEN 3 kat kaplı":

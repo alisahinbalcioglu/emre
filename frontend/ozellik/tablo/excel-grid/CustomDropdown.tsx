@@ -144,7 +144,10 @@ export function CustomDropdown({
         style={{ height: 29 }} /* v1 spec: 4px dikey dolgu + 12px/1.55 satir + cerceve */
       >
         <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-left">
-          {selectedOption?.label ?? placeholder}
+          {/* VS (25.08): deger DOLU ama listede YOKSA (bayat/erisim-disi id —
+              orn. kisisellestirilen marka) placeholder'a gizlenmez: kullanici
+              'hic secilmemis' sanip kaydediyordu. Acik soylenir. */}
+          {selectedOption?.label ?? (value ? 'Erişilemeyen seçim' : placeholder)}
         </span>
         <svg
           width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"

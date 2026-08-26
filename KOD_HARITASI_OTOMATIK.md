@@ -3,10 +3,10 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 388
-Toplam satir: 81840
+Kod dosyasi: 389
+Toplam satir: 82192
 Uc nokta: 130
-test:* scripti: 58
+test:* scripti: 59
 
 ## 1 · Dosyalar ve satir sayilari
 
@@ -70,8 +70,8 @@ test:* scripti: 58
 | `backend/src/ozellik/eslestirme/matching/ad-resolver.ts` | 122 |
 | `backend/src/ozellik/eslestirme/matching/conversion.ts` | 435 |
 | `backend/src/ozellik/eslestirme/matching/index/line-parser.ts` | 220 |
-| `backend/src/ozellik/eslestirme/matching/index/product-index.ts` | 645 |
-| `backend/src/ozellik/eslestirme/matching/index/query-engine.ts` | 965 |
+| `backend/src/ozellik/eslestirme/matching/index/product-index.ts` | 651 |
+| `backend/src/ozellik/eslestirme/matching/index/query-engine.ts` | 1045 |
 | `backend/src/ozellik/eslestirme/matching/index/types.ts` | 243 |
 | `backend/src/ozellik/eslestirme/matching/index/vocab.ts` | 37 |
 | `backend/src/ozellik/eslestirme/matching/matching.controller.ts` | 96 |
@@ -196,7 +196,7 @@ test:* scripti: 58
 | `backend/test/pk3-repo-kapsama-test.ts` | 79 |
 | `backend/test/pk9-sessiz-indeks-test.ts` | 97 |
 | `backend/test/product-index-test.ts` | 479 |
-| `backend/test/regression-all.ts` | 258 |
+| `backend/test/regression-all.ts` | 264 |
 | `backend/test/s45-malzeme-aile-test.ts` | 440 |
 | `backend/test/s45-olcum.ts` | 188 |
 | `backend/test/sozluk-golgeleme-olcum.ts` | 125 |
@@ -204,6 +204,7 @@ test:* scripti: 58
 | `backend/test/standart-cikti-test.ts` | 339 |
 | `backend/test/standart-sema-test.ts` | 338 |
 | `backend/test/tam-zincir.ts` | 105 |
+| `backend/test/varyant-surukleme-test.ts` | 189 |
 | `frontend/app/(protected)/dashboard/page.tsx` | 248 |
 | `frontend/app/(protected)/dwg-workspace/page.tsx` | 79 |
 | `frontend/app/(protected)/labor-firms/[firmaId]/page.tsx` | 491 |
@@ -222,7 +223,7 @@ test:* scripti: 58
 | `frontend/app/(protected)/quote-formats/page.tsx` | 396 |
 | `frontend/app/(protected)/quotes/[id]/page.tsx` | 467 |
 | `frontend/app/(protected)/quotes/new/error.tsx` | 13 |
-| `frontend/app/(protected)/quotes/new/page.tsx` | 2525 |
+| `frontend/app/(protected)/quotes/new/page.tsx` | 2533 |
 | `frontend/app/(protected)/quotes/page.tsx` | 196 |
 | `frontend/app/admin/brands/page.tsx` | 895 |
 | `frontend/app/admin/layout.tsx` | 80 |
@@ -333,8 +334,8 @@ test:* scripti: 58
 | `frontend/ozellik/kutuphane/oksuz-kutuphane-uyarisi.test.ts` | 136 |
 | `frontend/ozellik/kutuphane/oksuz-kutuphane-uyarisi.ts` | 60 |
 | `frontend/ozellik/tablo/disiplin.ts` | 13 |
-| `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 249 |
-| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 3132 |
+| `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 252 |
+| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 3135 |
 | `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | 109 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts` | 178 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.ts` | 175 |
@@ -343,11 +344,11 @@ test:* scripti: 58
 | `frontend/ozellik/tablo/excel-grid/cap-sorguda.test.ts` | 130 |
 | `frontend/ozellik/tablo/excel-grid/discount-utils.test.ts` | 41 |
 | `frontend/ozellik/tablo/excel-grid/discount-utils.ts` | 28 |
-| `frontend/ozellik/tablo/excel-grid/fill-down.test.ts` | 395 |
-| `frontend/ozellik/tablo/excel-grid/fill-down.ts` | 346 |
+| `frontend/ozellik/tablo/excel-grid/fill-down.test.ts` | 430 |
+| `frontend/ozellik/tablo/excel-grid/fill-down.ts` | 358 |
 | `frontend/ozellik/tablo/excel-grid/grup-iskonto-girisi.test.ts` | 186 |
-| `frontend/ozellik/tablo/excel-grid/isaret.test.ts` | 233 |
-| `frontend/ozellik/tablo/excel-grid/isaret.ts` | 128 |
+| `frontend/ozellik/tablo/excel-grid/isaret.test.ts` | 238 |
+| `frontend/ozellik/tablo/excel-grid/isaret.ts` | 133 |
 | `frontend/ozellik/tablo/excel-grid/kar-yayilimi.test.ts` | 63 |
 | `frontend/ozellik/tablo/excel-grid/oneri-cekince.test.ts` | 156 |
 | `frontend/ozellik/tablo/excel-grid/oneri-cekince.ts` | 70 |
@@ -579,6 +580,7 @@ test:* scripti: 58
 | `backend/test/standart-cikti-test.ts` | `fs` `path` `exceljs` `../src/ozellik/teklif/quotes/standart-cikti` `../src/ozellik/giris/excel-grid/excel-grid.service` |
 | `backend/test/standart-sema-test.ts` | `fs` `path` `xlsx` `../src/ozellik/giris/excel-grid/excel-grid.service` `../src/ozellik/giris/excel-grid/standart-sema` |
 | `backend/test/tam-zincir.ts` | `child_process` `path` |
+| `backend/test/varyant-surukleme-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/query-engine` `../src/ozellik/fiyat/matching/index/outcome-mapper` `../src/ozellik/eslestirme/matching/index/types` |
 | `frontend/app/(protected)/dashboard/page.tsx` | `react` `next/navigation` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/contexts/CapabilitiesContext` `@/ortak/kabuk/components/dashboard/QuickStart` `@/ozellik/teklif/dashboard/RecentQuotes` `@/ortak/kabuk/components/dashboard/QuickAccess` |
 | `frontend/app/(protected)/dwg-workspace/page.tsx` | `next/navigation` `next/dynamic` `lucide-react` `next/link` `@/components/dwg-metraj/types` |
 | `frontend/app/(protected)/labor-firms/[firmaId]/page.tsx` | `react` `next/navigation` `next/link` `lucide-react` `@/ortak/ui/button` `@/ortak/ui/geri-butonu` `@/ortak/ui/card` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `@/ozellik/tablo/excel-grid/ExcelGrid` `@/ozellik/kutuphane/library/InlineFirmEntry` `@/ozellik/tablo/excel-grid/types` |
@@ -887,6 +889,7 @@ test:* scripti: 58
 | `backend/package.json` | `test:index` | `ts-node test/index-engine-test.ts` |
 | `backend/package.json` | `test:fallback-ad` | `ts-node test/fallback-ad-kilidi-test.ts` |
 | `backend/package.json` | `test:kaucuk` | `ts-node test/kaucuk-izolasyon-test.ts` |
+| `backend/package.json` | `test:varyant` | `ts-node test/varyant-surukleme-test.ts` |
 | `backend/package.json` | `test:labor` | `ts-node test/labor-matching-test.ts` |
 | `backend/package.json` | `test:grid` | `ts-node test/excel-grid-test.ts` |
 | `backend/package.json` | `test:labor-sheet` | `ts-node test/labor-sheet-test.ts` |

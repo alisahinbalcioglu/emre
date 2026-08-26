@@ -22,11 +22,16 @@ import { isaretStili, isaretTooltip, secimBekliyor, type IsaretGirdisi } from '.
 
 // ── ESKI OKUYUCULARIN REPLIKASI (ExcelGrid.tsx, fix oncesi) ─────────────────
 
-/** ExcelGrid.tsx:2336-2352 — YALNIZ `_matStatus` okurdu. */
+/** ExcelGrid.tsx:2336-2352 — YALNIZ `_matStatus` okurdu.
+ *  VS GUNCELLEMESI (25.08, BILINCLI SAPMA): 'hata'/'ad-yok' eski okuyucuda
+ *  ZEMINSIZDI — surukleme sirasindaki sunucu hatasi ekranda tamamen sessiz
+ *  kaliyordu (kesif turu bulgusu). Referans artik bu iki durumda TURUNCU
+ *  bekler; parite muhru kalan 8 vakada aynen surer. */
 function eskiStil(d: any): { backgroundColor?: string; color?: string } | null {
   if (d?._matAutoVariant) return { backgroundColor: '#e0f2fe', color: '#0c4a6e' };
   if (d?._matSuggestion) return { backgroundColor: '#fef9c3', color: '#854d0e' };
   if (d?._matStatus === 'yok' || d?._matStatus === 'belirsiz') return { backgroundColor: '#fee2e2' };
+  if (d?._matStatus === 'hata' || d?._matStatus === 'ad-yok') return { backgroundColor: '#ffedd5', color: '#9a3412' };
   if (d?._matStatus === 'urun_degil') return { backgroundColor: '#f1f5f9' };
   return null;
 }

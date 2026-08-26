@@ -86,7 +86,7 @@ interface Props {
   onAutoVariantChange?: (on: boolean) => void;
   /** Duzeltme Talebi §3: yayilim/fill sonrasi "n satır güncellendi" bilgisi —
    *  parent toast gosterir. */
-  onAutoVariantApplied?: (info: { applied: number; waiting: number; missing: number; kaynak: string }) => void;
+  onAutoVariantApplied?: (info: { applied: number; waiting: number; missing: number; kaynak: string; hatali?: number }) => void;
   /** PRD v3.0 Bolum A2: "kat" olarak isaretlenen sutunlar. Dolu ise MIK
    *  (columnRoles.quantityField) = bu sutunlarin satir-toplami; kat hucresi
    *  duzenlenince MIK otomatik yeniden hesaplanir. */
@@ -1990,7 +1990,10 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       onAutoVariantApplied?.({
         applied: sonuc.ozet.fiyatli,
         waiting: sonuc.ozet.aday,
-        missing: sonuc.ozet.yok + sonuc.ozet.urunDegil + sonuc.ozet.hata + sonuc.ozet.adYok,
+        // VS (25.08): 'hata' artik "markada yok" icinde ERIMEZ — sunucu
+        // hatasi ile "kutuphanede gercekten yok" farkli eylemler ister.
+        missing: sonuc.ozet.yok + sonuc.ozet.urunDegil + sonuc.ozet.adYok,
+        hatali: sonuc.ozet.hata,
         kaynak: srcLabel || 'marka',
       });
       rootWrapperRef.current?.focus();

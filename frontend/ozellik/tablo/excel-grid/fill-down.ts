@@ -181,6 +181,15 @@ function yaz(node: FillNode, alan: string, deger: any): void {
 
 export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
   const { hedefler, markaId, roller, motor, kaynakVaryantTags, kaynakLabel } = args;
+  // ── VS TOHUM (25.08 kesif turu) ─────────────────────────────────────
+  // Kaynak satirda varyant etiketi OLMAYABILIR: fiyat elle girilmis ya da
+  // satir, etiketlerin FE'ye tasinmadigi eski bir kayittan geliyor olabilir.
+  // Etiketsiz surukleme her hedefi FILTRESIZ sorgular; coklu adayli (boru
+  // disi) ailelerde tum hedefler 'belirsiz' (pembe) kalir — canli PILSA
+  // vakasinin FE ayagai. Kural: ilk BASARILI hedefin dondurdugu varyant
+  // kimligi sonraki hedeflere TOHUM olur (SD3 bozulmaz — fiyat degil KIMLIK
+  // tasinir; kaynak etiketi varsa tohum hic devreye girmez).
+  let etkinTags: string[] | null = kaynakVaryantTags;
   const bfAlan = args.hedefAlanlar?.birimFiyat ?? roller.materialUnitPriceField;
   const totAlan = args.hedefAlanlar?.toplam ?? roller.materialTotalField;
   const statusAlan = args.hedefAlanlar?.status ?? '_matStatus';
@@ -255,8 +264,8 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
     let r: MotorSonucu | null = null;
     let hataMesaji = '';
     try {
-      const opts = kaynakVaryantTags && kaynakVaryantTags.length > 0
-        ? { variantTags: kaynakVaryantTags, silent: true }
+      const opts = etkinTags && etkinTags.length > 0
+        ? { variantTags: etkinTags, silent: true }
         : { silent: true };
       r = await motor(rowIdx, markaId, ad, opts);
     } catch (e: any) {
@@ -286,7 +295,10 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
       yaz(node, netAlan, r.netPrice);
       yaz(node, statusAlan, '');
       yaz(node, rozetAlan, 'kutuphane'); // KG11: kaynak rozeti guncellenir
-      node.data[tagAlan] = kaynakVaryantTags ?? r.variantTags ?? null;
+      if ((!etkinTags || etkinTags.length === 0) && r.variantTags?.length) {
+        etkinTags = r.variantTags; // tohum: ilk cozulen kimlik gruba yayilir
+      }
+      node.data[tagAlan] = etkinTags ?? r.variantTags ?? null;
       if (!iscilikMi) {
         yaz(node, '_matSuggestion', r.confidence === 'suggestion');
         yaz(node, '_matVariantMode', 'auto');

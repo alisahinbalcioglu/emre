@@ -375,7 +375,7 @@ export class MatchingService {
       // ÇELİK BORU" satiri CELIKTIR; alias plastic filtresi onu ELIYORDU ve
       // PPR yaziliyordu — R4 ihlali). Sozluk yalniz SINIFSIZ satira
       // varsayilan verir; yazili kelime cins filtresi olarak zaten serttir.
-      const YAZILI_SINIF = /(^|\s)(celik|paslanmaz|pirinc|dokum|bronz|bakir|galvaniz\w*|siyah|ppr\w*|pex|pvc|hdpe|polietilen|plastik)(\s|$)/;
+      const YAZILI_SINIF = /(^|\s)(celik|paslanmaz|pirinc|dokum|bronz|bakir|galvaniz\w*|siyah|ppr\w*|pp|pex|pvc|hdpe|polietilen|plastik)(\s|$)/;
       const yaziliSinif = YAZILI_SINIF.test(line.tokens.join(' '));
 
       const opts: QueryOpts = {

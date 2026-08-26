@@ -70,6 +70,41 @@ describe('SD1-SD10 sürükle-doldur modülü', () => {
     expect(cagrilar.some((c) => c.includes('2½"'))).toBe(true);
   });
 
+  it('TOHUM-1 kaynakta etiket yoksa ilk COZULEN hedefin kimligi sonrakilere tasinir (VS 25.08)', async () => {
+    // Canli PILSA vakasinin FE ayagi: kaynak fiyati elle girilmis/eski kayit →
+    // _matVariantTags bos → etiketsiz surukleme her hedefi filtresiz sorgular
+    // ve coklu adayli ailelerde hepsi 'belirsiz' kalirdi. Kural: ilk basarili
+    // hedefin dondurdugu variantTags sonraki cagrilar icin TOHUM olur.
+    const gordugumTags: Array<string[] | undefined> = [];
+    const motor = async (_r: number, _b: string, ad: string, opts?: { variantTags?: string[] }): Promise<MotorSonucu | null> => {
+      gordugumTags.push(opts?.variantTags);
+      const cap = Object.keys(KUTUPHANE).find((k) => ad.includes(k));
+      if (!cap) return { netPrice: 0, confidence: 'none' };
+      return { netPrice: KUTUPHANE[cap], confidence: 'high', variantTags: ['ad:pp kuresel vana', 'cins:yapistirma'] };
+    };
+    const hedefler = sahinkulHedefleri();
+    const sonuc = await fillDown({ hedefler: hedefler as any, markaId: 'b1', roller: ROLLER, motor, kaynakVaryantTags: null, kaynakLabel: '' });
+    expect(sonuc.ozet.fiyatli).toBe(6);
+    // ilk cagri TOHUMSUZ (kaynakta etiket yok), sonraki 5 cagri tohumu tasir
+    expect(gordugumTags[0]).toBeUndefined();
+    for (const t of gordugumTags.slice(1)) expect(t).toEqual(['ad:pp kuresel vana', 'cins:yapistirma']);
+    // satirlara da tohum yazilir (bayat degil, cozulen kimlik)
+    for (const h of hedefler) expect(h.data._matVariantTags).toEqual(['ad:pp kuresel vana', 'cins:yapistirma']);
+  });
+
+  it('TOHUM-2 kaynakta etiket VARSA tohum devreye girmez — kaynak kimligi kazanir', async () => {
+    const gordugumTags: Array<string[] | undefined> = [];
+    const motor = async (_r: number, _b: string, ad: string, opts?: { variantTags?: string[] }): Promise<MotorSonucu | null> => {
+      gordugumTags.push(opts?.variantTags);
+      const cap = Object.keys(KUTUPHANE).find((k) => ad.includes(k));
+      return cap ? { netPrice: KUTUPHANE[cap], confidence: 'high', variantTags: ['cins:BASKA'] } : { netPrice: 0, confidence: 'none' };
+    };
+    const hedefler = sahinkulHedefleri();
+    await fillDown({ hedefler: hedefler as any, markaId: 'b1', roller: ROLLER, motor, kaynakVaryantTags: ['cins:galvaniz'], kaynakLabel: 'Galvaniz' });
+    for (const t of gordugumTags) expect(t).toEqual(['cins:galvaniz']);
+    for (const h of hedefler) expect(h.data._matVariantTags).toEqual(['cins:galvaniz']);
+  });
+
   it('SD2 atomik sonuç: HER hedef satır fiyat VEYA eylemli işaret alır — sessiz boş imkânsız', async () => {
     // 2 satır fiyatlı, 2 satır kütüphanede yok, 2 satır çok adaylı
     const { motor } = motorFabrikasi({ yokOlanlar: ['1¼"', '1½"'], adaylıOlanlar: ['2"', '2½"'] });

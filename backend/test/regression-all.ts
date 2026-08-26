@@ -30,6 +30,12 @@ const SUITES: Suite[] = [
   //    uretiyordu; (3) AD_ZENGINLESTIRME'nin dnli:true bayragi OLU idi →
   //    sizeClass unknown → celik+plastik birlesimi yapay 2. aday cikariyordu.
   { ad: 'Kauçuk izolasyon vakası (KI)', script: 'test:kaucuk', zincir: 'Z2' },
+  // VS (25.08): surukle-doldur varyant yayilimi — canli PILSA "PP KURESEL
+  // VANALAR" vakasi. Uc yapisal kusurun kapisi: (1) tam-dizgi tag esitligi
+  // (yazim kaymasi + ada gomulu olcu grubu variantMissing'e dusuruyordu) →
+  // varyantTagEsit toleransi; (2) PARA: capsiz urune kaynak fiyati yayilmasi
+  // → capsizAutoYasak; (3) yalin 'pp' plastik sayilmiyordu → DN63 koprusu.
+  { ad: 'Varyant sürükleme (VS)', script: 'test:varyant', zincir: 'Z2' },
   { ad: 'Eşleştirme birim (D)', script: 'test:matching', zincir: 'Z2' },
   { ad: 'Çap çevrimi (DN/inç/OD-mm)', script: 'test:conversion', zincir: 'Z2' },
   { ad: 'Spec regresyon (R1-R12)', script: 'test:spec', zincir: 'Z2' },

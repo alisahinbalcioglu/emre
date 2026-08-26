@@ -50,6 +50,10 @@ export interface IsaretStili {
 }
 
 const KIRMIZI: IsaretStili = { backgroundColor: '#fee2e2' };
+// VS (25.08): 'hata'/'ad-yok' HIC zemin almiyordu — surukleme sirasindaki
+// sunucu hatasi ekranda tamamen sessiz kaliyordu (tooltip vardi, gorsel
+// cagri yoktu). Turuncu: kirmizidan (yok/belirsiz) gozle ayrisir.
+const TURUNCU: IsaretStili = { backgroundColor: '#ffedd5', color: '#9a3412' };
 const GRI: IsaretStili = { backgroundColor: '#f1f5f9' };
 const MAVI: IsaretStili = { backgroundColor: '#e0f2fe', color: '#0c4a6e' };
 const SARI: IsaretStili = { backgroundColor: '#fef9c3', color: '#854d0e' };
@@ -82,6 +86,7 @@ export function isaretStili(g: IsaretGirdisi): IsaretStili | null {
   }
   const d = durumu(g);
   if (d === 'yok' || d === 'belirsiz') return KIRMIZI;
+  if (d === 'hata' || d === 'ad-yok') return TURUNCU;
   if (d === 'urun_degil') return GRI;
   return null;
 }

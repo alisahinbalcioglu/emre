@@ -537,8 +537,32 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   // (v2'de zaten marka tie-break YOK — marka artik stok kapsami.)
   if (opts?.variantTags?.length) {
     const v = opts.variantTags;
-    const eslesen = rows.filter((r) => v.every((t) => urunVariantTags(r).includes(t)));
-    if (eslesen.length === 1) return { kind: 'auto-variant', row: eslesen[0], donusum };
+    // VS (25.08, hakem+probe turu): tag karsilastirmasi TOLERANSLI — bkz.
+    // varyantTagEsit. TAM-DIZGI esitligi satici yazim kaymasinda ('PN25' vs
+    // 'PN 25') ve ada gomulu olcude ('... 20 mm' vs '... 32 mm') TUM grubu
+    // variantMissing'e dusuruyordu; boru disinda "surukleme calismiyor"
+    // algisinin olculen ana kaynagi buydu.
+    const tagUyar = (r: IndexedRow) => {
+      const aday = urunVariantTags(r);
+      return v.every((t) => aday.some((x) => varyantTagEsit(t, x)));
+    };
+    // VS-PARA (probe M3): satir CAPLIYKEN capsiz urune otomatik fiyat YAZILMAZ.
+    // Ada gomulu-olculu + cap kolonu bos listelerde eslesen===1 kosulu KAYNAK
+    // urunu buluyor ve kaynagin fiyati HER hedef capa yayiliyordu (olculdu —
+    // para hatasi sinifi). Ç-vakasi kapisinin (capsiz-dusum) variant-erken-donus
+    // yoluna uygulanmis hali: aday listede kalir, kullanici onaylar.
+    const capsizAutoYasak = (r: IndexedRow) => !!line.capInfo && r.urun.capTags.length === 0;
+    const capsizOnay = (aday: IndexedRow): QueryOutcome => ({
+      kind: 'ask', askColumn: 'urun', rows: [aday], bilinmeyen, donusum,
+      uyariNot: `Satır çaplı (${line.capInfo!.display}) ama seçilen varyantın ürününde çap doğrulanamadı`,
+      kapilar: ['capsiz-dusum'],
+    });
+    const eslesen = rows.filter(tagUyar);
+    if (eslesen.length === 1) {
+      return capsizAutoYasak(eslesen[0])
+        ? capsizOnay(eslesen[0])
+        : { kind: 'auto-variant', row: eslesen[0], donusum };
+    }
 
     // ── V4.7 (CANLI BULGU 30.07): KULLANICI SECIMI IKINCIL NITELIKTEN ONCE ──
     // Vaka: kesif satiri "Dikişli SİYAH Çelik Boru, DN65"; kullanici KAYNAK
@@ -562,8 +586,12 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     if (eslesen.length === 0) {
       for (const havuz of [yuzeyGenis, varyantKurtarma]) {
         if (!havuz || havuz.length === 0) continue;
-        const kurtarilan = havuz.filter((r) => v.every((t) => urunVariantTags(r).includes(t)));
-        if (kurtarilan.length === 1) return { kind: 'auto-variant', row: kurtarilan[0], donusum };
+        const kurtarilan = havuz.filter(tagUyar);
+        if (kurtarilan.length === 1) {
+          return capsizAutoYasak(kurtarilan[0])
+            ? capsizOnay(kurtarilan[0])
+            : { kind: 'auto-variant', row: kurtarilan[0], donusum };
+        }
       }
     }
 
@@ -585,11 +613,18 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
       if (rows.length === 1) {
         // boy: de catisma sayilir — farkli uzunluk FARKLI urundur (fiyati
         // orantili degisir); sessiz ikame yasak, kullanici secer.
+        // Catisma karsilastirmasi da TOLERANSLI (varyantTagEsit): yazim
+        // kaymasi gercek catisma DEGILDIR.
         const candTags = urunVariantTags(rows[0]);
         const conflict = candTags.some(
-          (t) => (t.startsWith('cins:') || t.startsWith('bag:') || t.startsWith('boy:')) && !v.includes(t),
+          (t) => (t.startsWith('cins:') || t.startsWith('bag:') || t.startsWith('boy:'))
+            && !v.some((vt) => varyantTagEsit(vt, t)),
         );
-        if (!conflict) return { kind: 'auto-variant', row: rows[0], donusum };
+        if (!conflict) {
+          return capsizAutoYasak(rows[0])
+            ? capsizOnay(rows[0])
+            : { kind: 'auto-variant', row: rows[0], donusum };
+        }
       }
       return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, variantMissing: true };
     }
@@ -749,6 +784,51 @@ export function urunVariantTags(r: IndexedRow): string[] {
   // tag hic uretilmez — davranis degismez. (CAP hala DAHIL DEGIL — yayilim.)
   if (r.urun.boyMm) out.push(`boy:${r.urun.boyMm}`);
   return out;
+}
+
+/**
+ * VS (25.08) — VARYANT TAG KARSILASTIRMASI, TOLERANSLI.
+ *
+ * Eski kural TAM-DIZGI esitligiydi (Array.includes) ve iki olculen sinifta
+ * suruklemeyi TOPTAN kiriyordu (probe matrisi M2b/M3, canli PILSA vakasi):
+ *  1. YAZIM KAYMASI: ayni listede cins bir satirda 'PN25', digerinde 'PN 25'
+ *     yazilmis — anlam ayni, tag farkli → tum grup variantMissing (pembe).
+ *  2. ADA GOMULU OLCU: satici adi "PP Küresel Vana 20 mm" gibi boyut icerir;
+ *     'ad:' tag'i kaynak captan hedefe ASLA tasinamaz. Boru listeleri adlari
+ *     capsiz yazdigi icin bu yalniz boru-DISI ailelerde gorunuyordu —
+ *     kullanicinin "boru harici calismiyor" bildirimiyle birebir.
+ *
+ * Tolerans DAR ve eksene gore ayrik:
+ *  - 'ad' ekseni: olcu ifadeleri ('20 mm', '1/2"', 'dn25', 'ø63') kimlikten
+ *    DUSER — cap zaten ayri SERT filtredir, adin icindeki kopyasi kimlik
+ *    sayilmaz. Ciplak sayi DUSMEZ ('Omega 3' gibi model adlari kimliktir).
+ *  - 'cins'/'bag' ekseni: yalniz bosluk-duyarsiz karsilastirma. Olcu
+ *    SOYULMAZ — '19 mm kalinlik' ile '9 mm kalinlik' FARKLI urunlerdir
+ *    (izolasyon kalinligi cins kimligidir); bosluksuz halleri de farklidir,
+ *    yanlis esleme dogmaz.
+ *  - 'boy' ekseni: sayisal — yalniz tam esitlik (yukaridaki hizli yol).
+ */
+const AD_OLCU_IFADESI =
+  /\b\d+\s+\d+\/\d+\s*(?:"|inc\b|inch\b)?|\b\d+\/\d+\s*(?:"|inc\b|inch\b)?|\b\d+(?:[.,]\d+)?\s*(?:mm|cm|"|inc\b|inch\b)|\bdn\s*\d+\b|\bø\s*\d+\b|\bq\s*\d+\b/g;
+
+export function varyantTagEsit(a: string, b: string): boolean {
+  if (a === b) return true;
+  const ia = a.indexOf(':');
+  const ib = b.indexOf(':');
+  if (ia < 0 || ib < 0) return false;
+  const eksen = a.slice(0, ia);
+  if (eksen !== b.slice(0, ib)) return false;
+  if (eksen === 'boy') return false; // sayisal — tam esitlik yukarida denendi
+  let da = a.slice(ia + 1);
+  let db = b.slice(ib + 1);
+  if (eksen === 'ad') {
+    da = da.replace(AD_OLCU_IFADESI, ' ');
+    db = db.replace(AD_OLCU_IFADESI, ' ');
+  }
+  const kanon = (s: string) => s.replace(/\s+/g, '');
+  const ka = kanon(da);
+  if (ka.length === 0) return false; // olcu soyulunca ad bos kaldi — kimlik yok
+  return ka === kanon(db);
 }
 
 /**
