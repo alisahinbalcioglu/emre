@@ -264,8 +264,32 @@ export function toMatchResult(
         'ad-yok': outcome.detail
           ? `Bu markada "${outcome.detail}" bulunamadı.`
           : 'Bu markada bu ürün ailesi yok.',
-        'cap-yok': `Bu markada ${outcome.detail ?? 'bu çap'} yok${
-          outcome.mevcutCaplar?.length ? ` · en yakın: ${outcome.mevcutCaplar.join(' / ')}` : ''}.`,
+        // ── E4 + E6 (26.08): CAP-YOK MESAJI UC YALANI BIRAKTI ──────────
+        // (1) KAPSAM: "Bu markada" deniyordu ama olculen kume markanin
+        //     tamami DEGIL, satirin AILE/AD suzgecinden gecmis alt kumesi.
+        //     Ayni yalan 'Bu markada 2" yok' olarak canliya ciktI (ÇAYIROVA)
+        //     ve o tur nokta-atisi baska bir kokle kapatilmisti; METIN
+        //     duzeltilmemisti. Artik "bu üründe" denir.
+        // (2) ELEYEN KRITER: satirda YAZILI yuzey ('galvaniz') havuzu
+        //     daraltip capta bosalttiysa sebep CAP degil YUZEYdir — markada
+        //     2" siyah boru DURUYOR olabilir (olculdu). Yuzey anilir ve
+        //     "başka yüzeyde olabilir" denir; `mevcutCaplar` zaten o
+        //     yuzeye ait oldugu icin liste de dogru etiketlenir.
+        // (3) KOPRU: satir inc, kutuphane mm yaziyorsa kullanici '2"' ile
+        //     '22 mm'yi kafasinda baglayamiyordu; cevrim rozeti outcome'da
+        //     URETILIYOR ama bu metne girmiyordu (FE de 'none' dalinda
+        //     tasimiyor). Artik metnin sonunda yer alir.
+        'cap-yok': (() => {
+          const cap = outcome.detail ?? 'bu çap';
+          const yuzey = outcome.yaziliYuzey?.length ? outcome.yaziliYuzey.join(' / ') : null;
+          const yakin = outcome.mevcutCaplar?.length
+            ? ` · en yakın: ${outcome.mevcutCaplar.join(' / ')}`
+            : '';
+          const kopru = outcome.donusum ? ` · çevrim: ${outcome.donusum}` : '';
+          return yuzey
+            ? `Bu üründe ${cap} "${yuzey}" olarak yok${yakin} · başka yüzeyde olabilir${kopru}.`
+            : `Bu üründe ${cap} yok${yakin}${kopru}.`;
+        })(),
         'kriter-yok': `Bu markada "${outcome.detail ?? 'istenen nitelik'}" taşıyan ürün yok.`,
         // IS 3-B: satirda birlikte bulunamayan yuzeyler yazili (galvaniz+siyah);
         // motor OR'a dustu ama o yuzeylerin HICBIRI bu markada yok.

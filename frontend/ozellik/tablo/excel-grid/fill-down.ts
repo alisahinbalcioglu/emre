@@ -39,7 +39,7 @@ export interface MotorSonucu {
   variantTags?: string[];
   variantMissing?: boolean;
   /** Motorun insan-okur gerekcesi ("Seçilen varyant bu çapta kütüphanede
-   *  yok — elle seçin." / "Bu markada Ø70 yok · en yakın: …"). */
+   *  yok — elle seçin." / "Bu üründe Ø70 yok · en yakın: …"). */
   reason?: string;
 }
 

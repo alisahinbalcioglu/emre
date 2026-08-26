@@ -49,6 +49,31 @@ export function ayrisanKolon(rows: IndexedRow[]): AskColumn {
 }
 
 /**
+ * E6 (26.08) — CAP TAG'INDEN OLCULEBILIR EKSEN.
+ *
+ * "en yakin cap" listesi bugune kadar iki FARKLI birimden gelen sayilari ayni
+ * eksende kiyasliyordu: satirin `capInfo.value`si (inc → 2, DN → 50, mm → 70)
+ * ile adayin HAM metninin `parseFloat`i ("22 mm" → 22, `3/4"` → 3). Olculdu:
+ *  · mm-etiketli kutuphane + inc satir → liste TAM TERS siralaniyordu ve
+ *    2''/5''/6'' hedeflerinin UCU de AYNI listeyi uretiyordu ('en yakin'
+ *    kelimesi sifir bilgi tasiyordu),
+ *  · kesirli inc `3/4"` parseFloat ile 3 sayiliyordu (3/4 inc "3" oluyordu).
+ * Cozum: iki taraf da KANONIK tag'inden okunur (`dnNN` tercih, yoksa `od-NN`)
+ * ve YALNIZ AYNI EKSENDE kiyaslanir. Eksen kurulamiyorsa kiyas YAPILMAZ —
+ * uydurma siralama yerine aday sona atilir (bkz. cagiran).
+ */
+export function capEkseni(tags: readonly string[]): { eksen: 'dn' | 'od'; deger: number } | null {
+  let od: number | null = null;
+  for (const t of tags) {
+    const dn = /^dn(\d+)$/.exec(t);
+    if (dn) return { eksen: 'dn', deger: Number(dn[1]) };
+    const o = /^od-(\d+)$/.exec(t);
+    if (o && od === null) od = Number(o[1]);
+  }
+  return od === null ? null : { eksen: 'od', deger: od };
+}
+
+/**
  * Alt-kume testi: teklifin token'lari urununkinin icinde mi?
  * ONEK TOLERANSLI — Turkce eki burada gecilir ('galvaniz' ⊂ 'galvanizli'),
  * kok alma YOK (bkz. product-index.tokenEsit: -lı eki ile govde-sonu -l
@@ -303,6 +328,12 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   // gerekiyor"). Bu havuz aile-bagimsizdir.
   let varyantKurtarma: IndexedRow[] = rows;
   let yaziliTabanlar: string[] = []; // yazili yuzeylerin kanonik tabani (siralama)
+  // E4 (26.08): satirda YAZILI olup havuzu GERCEKTEN daraltan yuzey kelimeleri.
+  // Yuzey filtresi hicbir zaman 'none' DONMEZ — yalniz daraltir; sonuc kodunu
+  // HER ZAMAN sonraki (cap) filtre yazar. Bu yuzden sebep kodu "eleyen kriter"i
+  // degil "SON kriter"i adlandiriyordu: markada 2" siyah boru DURURKEN ekran
+  // `Bu markada 2" yok` diyordu (olculdu). Eleyen kriteri sonuca TASIYORUZ.
+  let yaziliYuzeyler: string[] = [];
   if (yol.cins.length) {
     const yuzeyler = yol.cins.filter(yuzeyToken);
     const diger = yol.cins.filter((t) => !yuzeyToken(t));
@@ -330,6 +361,9 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
         if (adGenis) adGenis = adGenis.filter(hepsi);
         if (familySlug === 'boru') yuzeyGenis = rows; // yuzey uygulanmamis kume
         yaziliTabanlar = ['siyah', 'galvaniz'].filter((b) => yuzeyler.some((t) => tokenEsit(b, t)));
+        // E4: YALNIZ gercekten daralttiysa kaydet. Daraltmadiysa yuzey eleyici
+        // degildir ve mesajda anilmasi kullaniciyi yanlis yere bakdirir.
+        if (d.length < rows.length) yaziliYuzeyler = yuzeyler;
         rows = d;
       } else {
         // ── CELISKILI YAZILI YUZEY — AND bos ⇒ OR (kullanici karari 04.08) ──
@@ -491,19 +525,38 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
         if (kurtarilan) return kurtarilan;
         // PANO 20 (I7 — sessiz bos YASAK): markadaki MEVCUT caplar, satirin
         // capina yakinlik sirasiyla raporlanir ("en yakin: 50 / 100 mm").
-        const hedef = line.capInfo.value;
+        //
+        // E6 (26.08): yakinlik OLCULEBILIR EKSENDE hesaplanir. Eski kod
+        // `hedef`i satirin KENDI ekseninde (inc/DN/mm), adayi ise ham metnin
+        // `parseFloat`i ile aliyordu. Iki sonucu olculdu: (a) mm-etiketli
+        // kutuphane + inc satir → liste TAM TERS siralaniyordu (izolasyonda
+        // 2'' icin en yakin 42 mm iken 22 mm basa geliyordu) ve 2''/5''/6''
+        // hedeflerinin UCU de AYNI listeyi uretiyordu — 'en yakin' kelimesi
+        // sifir bilgi tasiyordu; (b) kesirli inc `3/4"` icin parseFloat 3
+        // donuyordu (3/4 inc "3" sayiliyordu). Artik iki taraf da KANONIK
+        // tag'inden okunur ve YALNIZ AYNI EKSENDE kiyaslanir; eksen
+        // kurulamiyorsa aday sona atilir (uydurma siralama YOK).
+        const hedefEksen = capEkseni(equiv.tags);
         const gorulen = new Map<string, number>();
         for (const r of capOncesi) {
           const ham = (r.urun.capRaw ?? '').trim() || r.urun.capTags[0] || '';
           if (!ham || gorulen.has(ham)) continue;
-          const n = parseFloat(ham.replace(',', '.'));
-          gorulen.set(ham, isNaN(n) ? Number.MAX_SAFE_INTEGER : Math.abs(n - hedef));
+          const adayEksen = capEkseni(r.urun.capTags);
+          const olculebilir = hedefEksen && adayEksen && hedefEksen.eksen === adayEksen.eksen;
+          gorulen.set(ham, olculebilir
+            ? Math.abs(adayEksen!.deger - hedefEksen!.deger)
+            : Number.MAX_SAFE_INTEGER);
         }
         const mevcutCaplar = Array.from(gorulen.entries())
           .sort((a, b) => a[1] - b[1])
           .slice(0, 4)
           .map(([ham]) => ham);
-        return { kind: 'none', reason: 'cap-yok', detail: line.capInfo.display, donusum, mevcutCaplar };
+        return {
+          kind: 'none', reason: 'cap-yok', detail: line.capInfo.display, donusum, mevcutCaplar,
+          // E4: eleyen kriter YUZEY ise mesaj onu ansin — "bu markada 2\" yok"
+          // yalanini kurma. `mevcutCaplar` zaten yuzey-suzulmus kumeden gelir.
+          yaziliYuzey: yaziliYuzeyler.length ? yaziliYuzeyler : undefined,
+        };
       }
       // Superset adlar da AYNI capta (capsiz kayit gecer — takim/set capsiz olabilir)
       if (adGenis) adGenis = adGenis.filter((r) => capUyar(r) || r.urun.capTags.length === 0);

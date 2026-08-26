@@ -3,7 +3,8 @@
  *  KM — CAP-YOK ERKEN DONUSU: KURTARMA ATLANMASI + MESAJ YALANI
  *  (`npm run test:kurtarma-mesaj`)
  *
- *  26.08 turu. VS turunda (25.08) BILINCLI ERTELENEN bulgulardan biri: query-engine'de `cap-yok`
+ *  26.08 turu. VS turunda (25.08) BILINCLI ERTELENEN uc bulgu olculdu ve ucu
+ *  de ONAYLANDI. Ucunun de tek bir kod noktasi var: query-engine'de `cap-yok`
  *  ERKEN DONUSU (rows cap filtresinden sonra bosaldiginda).
  *
  *   E2 — SESSIZ KAYIP: dosyadaki 12 'none' donusunun 12'si de V4.7 varyant
@@ -16,12 +17,26 @@
  *        DURUYOR. (V4.7'nin 30.07 gerekcesiyle BIREBIR ayni vaka; kurtarma
  *        2"de calisip 2½"de calismiyordu — kanit KM-1 vs KM-2.)
  *
- *  DB GEREKMEZ: uretim indeksleyicisi + saf motor.
+ *   E4 — MESAJ YALANI (kapsam): yuzey filtresi hicbir zaman 'none' DONMEZ,
+ *        yalniz havuzu daraltir. Sonuc kodunu HER ZAMAN sonraki (cap) filtre
+ *        yazar → sebep kodu "eleyen kriter"i degil "SON kriter"i adlandirir.
+ *        Ekran: `Bu markada 2" yok` — oysa markada 2" VARDIR (siyah);
+ *        tasinmayan sey "galvaniz 2""dir.
+ *
+ *   E6 — MESAJ YALANI (siralama): 'en yakin' listesi OLCULEMEZ sayilardan
+ *        uretiliyordu — `hedef` satirin kendi ekseninde (inc/DN/mm), aday ise
+ *        `parseFloat(capRaw)` ile HAM metinden. Iki sonuc: (a) mm-etiketli
+ *        kutuphane + inc satir → liste TAM TERS siralanir (izolasyonun tam
+ *        hali: 2'' icin en yakin 42 mm iken 22 mm basa gelir), (b) kesirli
+ *        inc `3/4"` → parseFloat 3 doner (3/4 inc "3" sayilir).
+ *
+ *  DB GEREKMEZ: uretim indeksleyicisi + saf motor + uretim mesaj ureticisi.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 import { buildProductIndex, type ProductColumns } from '../src/ozellik/eslestirme/matching/index/product-index';
 import { parseLine } from '../src/ozellik/eslestirme/matching/index/line-parser';
 import { runQuery, urunVariantTags } from '../src/ozellik/eslestirme/matching/index/query-engine';
+import { toMatchResult } from '../src/ozellik/fiyat/matching/index/outcome-mapper';
 import type { IndexedRow, QueryOutcome } from '../src/ozellik/eslestirme/matching/index/types';
 
 let passed = 0;
@@ -53,7 +68,11 @@ const surukle = (q: string, pool: IndexedRow[], tags: string[], birim = 'mt'): Q
   runQuery(parseLine(q, birim), pool, { variantTags: tags });
 const fiyat = (o: QueryOutcome): number | null =>
   o.kind === 'auto-variant' ? o.row.urun.price : o.kind === 'single' ? o.row.urun.price : null;
+/** Uretim mesaj ureticisinin BIREBIR ciktisi (kullanicinin gordugu metin). */
+const mesaj = (o: QueryOutcome, q: string, birim = 'mt'): string =>
+  toMatchResult(o, parseLine(q, birim), (v) => v).reason ?? '';
 const kod = (o: QueryOutcome): string => (o.kind === 'none' ? `none/${(o as any).reason}` : o.kind);
+const caplar = (o: QueryOutcome): string[] | undefined => (o as any).mevcutCaplar;
 
 // ═════════════════════════════════════════════════════════════════════
 //  A) E2 — CAP-YOK ERKEN DONUSU V4.7 KURTARMASINI ATLIYOR
@@ -165,6 +184,116 @@ console.log('── KM-1..8) E2: surukleme kurtarmasi cap-yok yolunda da calisir
   const o = surukle('Wafer Dişli Kelebek Vana DN65', HAVUZ, TAG, 'adet');
   check('KM-8 IKINCI AILE (vana): kurtarma boru DISINDA da calisir (lug DN65 @700)',
     o.kind === 'auto-variant' && fiyat(o) === 700, `${kod(o)}@${fiyat(o)}`);
+}
+
+// ═════════════════════════════════════════════════════════════════════
+//  B) E6 — 'EN YAKIN' SIRALAMASI KANONIK EKSENDE OLCULUR
+// ═════════════════════════════════════════════════════════════════════
+console.log("── KM-9..12) E6: 'en yakin' listesi olculebilir eksende ──");
+{
+  // Izolasyonun TAM hali: kutuphane mm-etiketli, teklif satiri inc.
+  const AD = 'Elastomerik kauçuk köpüğü boru';
+  const CINS = 'ODE R-Flex PRM/AFK · 19 mm kalınlık';
+  const HAVUZ = ['22 mm', '28 mm', '35 mm', '42 mm'].map((cap, i) =>
+    prod({ ad: AD, cins: CINS, baglanti: 'AFK kaplamalı', cap, price: 111 + i * 11 }));
+
+  // 2'' = DN50. Adaylarin kanonik capi dn15/dn20/dn25/dn32 → en yakin dn32 = 42 mm.
+  const o = runQuery(parseLine("19 mm Kauçuk İzolasyon 2''", 'mt'), HAVUZ);
+  check('KM-9 on kosul: satir cap-yok donuyor ve mevcutCaplar dolu',
+    o.kind === 'none' && (o as any).reason === 'cap-yok' && !!caplar(o)?.length,
+    `${kod(o)} ${JSON.stringify(caplar(o))}`);
+  check("KM-9b inc satir + mm kutuphane: en yakin '42 mm' (dn32), '22 mm' (dn15) DEGIL",
+    caplar(o)?.[0] === '42 mm', `gelen ${JSON.stringify(caplar(o))}`);
+
+  // KM-10: AYNI fiziksel cap, iki yazim → AYNI liste. (Olculdu: bugun birbirinin TERSI.)
+  const oDn = runQuery(parseLine('19 mm Kauçuk İzolasyon DN 50', 'mt'), HAVUZ);
+  check("KM-10 TUTARLILIK: 2'' ve 'DN 50' AYNI 'en yakin' listesini uretir",
+    JSON.stringify(caplar(o)) === JSON.stringify(caplar(oDn)),
+    `2''=${JSON.stringify(caplar(o))} DN50=${JSON.stringify(caplar(oDn))}`);
+
+}
+{
+  // KM-11 SIRALAMA BILGI TASIR: genis havuzda YAKIN ve UZAK hedefler farkli
+  // sira uretmeli. OLCULDU (fix oncesi): 2'' · 5'' · 6'' hedeflerinin UCU de
+  // ["22 mm","42 mm","89 mm","114 mm"] veriyordu — 'en yakin' sifir bilgi.
+  const AD = 'Elastomerik kauçuk köpüğü boru';
+  const CINS = 'ODE R-Flex PRM/AFK · 19 mm kalınlık';
+  const GENIS = ['22 mm', '42 mm', '89 mm', '114 mm'].map((cap, i) =>
+    prod({ ad: AD, cins: CINS, baglanti: 'AFK kaplamalı', cap, price: 100 + i }));
+  // 2''  = dn50  → 42mm(dn32,18) · 89mm(dn80,30) · 22mm(dn15,35) · 114mm(dn100,50)
+  // 6''  = dn150 → 114mm(50) · 89mm(70) · 42mm(118) · 22mm(135)
+  const o2 = runQuery(parseLine("19 mm Kauçuk İzolasyon 2''", 'mt'), GENIS);
+  const o6 = runQuery(parseLine("19 mm Kauçuk İzolasyon 6''", 'mt'), GENIS);
+  check("KM-11a genis havuz · 2'' (dn50) icin en yakin '42 mm' (dn32)",
+    caplar(o2)?.[0] === '42 mm', `gelen ${JSON.stringify(caplar(o2))}`);
+  check("KM-11b genis havuz · 6'' (dn150) icin en yakin '114 mm' (dn100)",
+    caplar(o6)?.[0] === '114 mm', `gelen ${JSON.stringify(caplar(o6))}`);
+}
+{
+  // KM-12 IKINCI AILE KANITI: kesirli inc `3/4"` → parseFloat 3 doner.
+  // Hedef 1" (dn25): 3/4"=dn20 (5) · 2 1/2"=dn65 (40) · 3"=dn80 (55).
+  // Ham sayi ekseninde ise: |3-1|=2 · |2-1|=1 · |3-1|=2 → 2 1/2" basa gelir.
+  const AD = 'Dikişli Çelik Boru';
+  const HAVUZ = [
+    prod({ ad: AD, cins: 'siyah', cap: '3/4"', price: 90 }),
+    prod({ ad: AD, cins: 'siyah', cap: '2 1/2"', price: 300 }),
+    prod({ ad: AD, cins: 'siyah', cap: '3"', price: 400 }),
+  ];
+  const o = runQuery(parseLine('Dikişli Siyah Çelik Boru 1"', 'mt'), HAVUZ);
+  check('KM-12 kesirli inc: hedef 1" icin en yakin 3/4" (parseFloat 3 saymaz)',
+    caplar(o)?.[0] === '3/4"', `gelen ${JSON.stringify(caplar(o))}`);
+}
+
+// ═════════════════════════════════════════════════════════════════════
+//  C) E4 — MESAJ HANGI KRITERIN ELEDIGINI SOYLER
+// ═════════════════════════════════════════════════════════════════════
+console.log('── KM-13..16) E4: cap-yok mesaji kapsam yalani kurmaz ──');
+{
+  const AD = 'Çelik Boru';
+  const HAVUZ = [
+    prod({ ad: AD, cins: 'siyah', cap: '2"', price: 300, urunKodu: 'S-2' }),
+    prod({ ad: AD, cins: 'siyah', cap: '1"', price: 150, urunKodu: 'S-1' }),
+    prod({ ad: AD, cins: 'galvaniz', cap: '1"', price: 200, urunKodu: 'G-1' }),
+    prod({ ad: AD, cins: 'galvaniz', cap: '3/4"', price: 170, urunKodu: 'G-34' }),
+    prod({ ad: AD, cins: 'galvaniz', cap: '4"', price: 600, urunKodu: 'G-4' }),
+  ];
+  const Q = '2" Galvaniz Çelik Boru';
+  const o = runQuery(parseLine(Q, 'mt'), HAVUZ);
+  const m = mesaj(o, Q);
+
+  // ON KOSUL: 2" markada GERCEKTEN var (siyah) — yani "markada 2 yok" YALANDIR.
+  const oSiyah = runQuery(parseLine('2" Siyah Çelik Boru', 'mt'), HAVUZ);
+  check('KM-13 on kosul: markada 2" VAR (siyah @300 tek eslesme)',
+    oSiyah.kind === 'single' && fiyat(oSiyah) === 300, `${kod(oSiyah)}@${fiyat(oSiyah)}`);
+
+  check('KM-14 mesaj YAZILI YUZEYI anar (kullanici hangi kriterin eledigini gorur)',
+    /galvaniz/i.test(m), `mesaj: ${m}`);
+  check('KM-15 mesaj kapsam yalani kurmaz: ciplak "Bu markada 2\\" yok" DEMEZ',
+    !/^Bu markada 2" yok/.test(m), `mesaj: ${m}`);
+}
+{
+  // KM-16..17: YAZILI YUZEY YOKKEN mesajin kalan iki yalani.
+  //  · KAPSAM: "Bu markada" deniyordu ama olculen kume markanin tamami degil,
+  //    satirin AILE/AD suzgecinden gecmis ALT KUMESI ("bu üründe").
+  //  · KOPRU : satir inc, kutuphane mm — kullanici '2"' ile '22 mm'yi
+  //    baglayamiyordu; cevrim rozeti outcome'da URETILIYOR ama metne
+  //    girmiyordu (FE de 'none' dalinda tasimiyor).
+  // PANO 20a sozlesmesi (`· en yakın: A / B`) AYNEN korunur.
+  const AD = 'Çelik Boru';
+  const HAVUZ = ['1"', '3/4"', '4"'].map((cap, i) => prod({ ad: AD, cins: 'siyah', cap, price: 100 + i * 10 }));
+  const Q = 'Çelik Boru 2"';
+  const m = mesaj(runQuery(parseLine(Q, 'mt'), HAVUZ), Q);
+  check('KM-16 KAPSAM: mesaj "bu üründe" der, "Bu markada" DEMEZ · en yakin listesi korunur',
+    /^Bu üründe 2" yok · en yakın: /.test(m), `mesaj: ${m}`);
+  check('KM-17 KOPRU: cevrim rozeti mesaja girer (2" → DN 50)',
+    /çevrim: 2" → DN 50/.test(m), `mesaj: ${m}`);
+
+  // KM-17b DAR KAPSAM: yuzey YAZILI ama havuzu DARALTMADIYSA (tum urunler
+  // zaten o yuzeyde) mesajda ANILMAZ — yoksa kullanici yanlis yere bakar.
+  const Q2 = '2" Siyah Çelik Boru';
+  const m2 = mesaj(runQuery(parseLine(Q2, 'mt'), HAVUZ), Q2);
+  check('KM-17b yuzey yazili ama DARALTMADIYSA mesajda anilmaz',
+    !/siyah/i.test(m2), `mesaj: ${m2}`);
 }
 
 console.log('');

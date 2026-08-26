@@ -102,7 +102,7 @@ export default function GridTestPage() {
     if (materialName.includes('HATALI')) { log('AG HATASI firlatildi'); throw new Error('ağ hatası (mock)'); }
 
     // K16: 2'' bu markada YOK
-    if (materialName.includes("2''")) return { netPrice: 0, confidence: 'none', reason: 'Bu markada 2" yok.' };
+    if (materialName.includes("2''")) return { netPrice: 0, confidence: 'none', reason: 'Bu üründe 2" yok.' };
 
     // K-sart 4: 1'' → marka+cins sonrasi HALA 2 urun (secim gerekli)
     if (materialName.includes("1''")) {

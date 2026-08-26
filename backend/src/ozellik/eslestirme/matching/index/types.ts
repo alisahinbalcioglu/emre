@@ -183,7 +183,14 @@ export type QueryOutcome =
   | { kind: 'none'; reason: NoneReason; detail?: string; donusum?: string | null;
       /** PANO 20: cap-yok'ta markadaki MEVCUT caplar (en yakin sirali) —
        *  sessiz bos yasak, kullanici eylemli bilgi gorur */
-      mevcutCaplar?: string[] }
+      mevcutCaplar?: string[];
+      /** E4 (26.08): 'cap-yok'ta GERCEKTEN eleyen kriter YUZEY ise burada
+       *  durur. Yuzey filtresi hicbir zaman 'none' donmez, yalniz daraltir —
+       *  bu yuzden sonuc kodunu HER ZAMAN sonraki (cap) filtre yaziyor ve
+       *  mesaj `Bu markada 2" yok` diyordu; oysa markada 2" siyah boru
+       *  DURUYORDU (olculdu). `mevcutCaplar` da bu yuzey-suzulmus kumeden
+       *  gelir — mesaj ikisini birlikte durustce anlatir. */
+      yaziliYuzey?: string[] }
   | { kind: 'auto-variant'; row: IndexedRow; donusum?: string | null };
 
 export interface QueryOpts {
