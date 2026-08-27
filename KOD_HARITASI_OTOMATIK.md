@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 396
-Toplam satir: 83742
+Toplam satir: 83786
 Uc nokta: 130
 test:* scripti: 63
 
@@ -406,7 +406,7 @@ test:* scripti: 63
 | `scripts/kalem59-olcu.sh` | 220 |
 | `scripts/kb5-olcu.sh` | 42 |
 | `scripts/klasor-denetle.mjs` | 246 |
-| `scripts/kv-kaucuk-olcu.sh` | 68 |
+| `scripts/kv-kaucuk-olcu.sh` | 112 |
 | `scripts/s45-olcu.sh` | 90 |
 
 ## 2 · Import bagliliklari
