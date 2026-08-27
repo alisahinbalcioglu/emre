@@ -74,6 +74,14 @@ const SUITES: Suite[] = [
   // aday olarak sunulur; fiyat OTOMATIK YAZILMAZ (aday YAZILI bir kisiti
   // ihlal ediyor) ve hafiza otoyazisi da kapatilir.
   { ad: 'Yüzey genişletme kapısı (YG)', script: 'test:yuzey-genisletme', zincir: 'Z2' },
+  // UD (27.08): canli KAUCUK sikayetinin yan bulgusu — "(... dahil)" tarzi
+  // PARANTEZ ICI notlar masum urun satirlarini NOT_PRODUCT'a dusuruyordu
+  // ("Ürün değil" toast'i; satir tam cikmaz sokak: havuz, kurtarma, capraz
+  // oneri hicbiri kosmaz). Hizmet taramasi artik parantezleri soyulmus
+  // metinde — dosyanin ZATEN yaptigi aile-cozumu parantez muafiyetinin
+  // (Faz 2b) hizmet taramasina uygulanmis hali. Gercek hizmet satirlari
+  // (8 ornek) davranisini korur.
+  { ad: 'Ürün-değil parantez muafiyeti (UD)', script: 'test:urun-degil', zincir: 'Z2' },
   { ad: 'Eşleştirme birim (D)', script: 'test:matching', zincir: 'Z2' },
   { ad: 'Çap çevrimi (DN/inç/OD-mm)', script: 'test:conversion', zincir: 'Z2' },
   { ad: 'Spec regresyon (R1-R12)', script: 'test:spec', zincir: 'Z2' },

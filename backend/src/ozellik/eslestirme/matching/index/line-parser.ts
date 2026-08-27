@@ -54,7 +54,18 @@ export function parseLine(text: string, unit?: string | null): LineQuery {
     : unitNorm && /adet|^ad\.?$|takim|^tk\.?$/.test(unitNorm) ? 'equipment'
     : null;
 
-  if (NOT_PRODUCT_RE.test(norm)) {
+  // ── K6-B (27.08): PARANTEZ ICI NOT hizmet taramasindan MUAF ─────────
+  // Olculdu — su MASUM urun satirlari NOT_PRODUCT sayilip komple elenmisti:
+  //   "19 mm Kauçuk İzolasyon 1/2" (yapıştırıcı, bant vb. sarf malzemesi dahil)"
+  //   "2" siyah boru (montaj dahil)" · "1" küresel vana (montaj aparatı dahil)"
+  // Parantez, satiriN KENDISINI degil KAPSAMINI anlatir ("... dahil" notu);
+  // icindeki 'sarf/montaj/nakliye' kelimeleri satiri hizmete cevirmez.
+  // Tarama parantezleri SOYULMUS metinde yapilir — gercek hizmet satiri
+  // ("İşçilik (mekanik)") kelimeyi parantez DISINDA tasidigi icin yine
+  // yakalanir. Parantez icerigi token/cap cikarimina AYNEN girmeye devam
+  // eder (yalniz bu tarama muaf).
+  const hizmetTarama = normalizeText(raw.replace(/\([^)]*\)/g, ' '));
+  if (NOT_PRODUCT_RE.test(hizmetTarama)) {
     return { raw, notProduct: true, familySlug: null, tokens: [], aileKelimeleri: [], capInfo: null, boyTag: null, unit: unit ?? null, unitSignal };
   }
 

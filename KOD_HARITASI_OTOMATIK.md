@@ -3,10 +3,10 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 396
-Toplam satir: 83803
+Kod dosyasi: 397
+Toplam satir: 83922
 Uc nokta: 130
-test:* scripti: 63
+test:* scripti: 64
 
 ## 1 · Dosyalar ve satir sayilari
 
@@ -69,7 +69,7 @@ test:* scripti: 63
 | `backend/src/ozellik/eslestirme/matching/ad-cins-sozlugu.ts` | 251 |
 | `backend/src/ozellik/eslestirme/matching/ad-resolver.ts` | 122 |
 | `backend/src/ozellik/eslestirme/matching/conversion.ts` | 448 |
-| `backend/src/ozellik/eslestirme/matching/index/line-parser.ts` | 220 |
+| `backend/src/ozellik/eslestirme/matching/index/line-parser.ts` | 231 |
 | `backend/src/ozellik/eslestirme/matching/index/product-index.ts` | 651 |
 | `backend/src/ozellik/eslestirme/matching/index/query-engine.ts` | 1458 |
 | `backend/src/ozellik/eslestirme/matching/index/types.ts` | 263 |
@@ -199,7 +199,7 @@ test:* scripti: 63
 | `backend/test/pk3-repo-kapsama-test.ts` | 79 |
 | `backend/test/pk9-sessiz-indeks-test.ts` | 97 |
 | `backend/test/product-index-test.ts` | 479 |
-| `backend/test/regression-all.ts` | 302 |
+| `backend/test/regression-all.ts` | 310 |
 | `backend/test/s45-malzeme-aile-test.ts` | 440 |
 | `backend/test/s45-olcum.ts` | 188 |
 | `backend/test/sozluk-golgeleme-olcum.ts` | 125 |
@@ -207,6 +207,7 @@ test:* scripti: 63
 | `backend/test/standart-cikti-test.ts` | 339 |
 | `backend/test/standart-sema-test.ts` | 338 |
 | `backend/test/tam-zincir.ts` | 105 |
+| `backend/test/urun-degil-test.ts` | 89 |
 | `backend/test/varyant-surukleme-test.ts` | 189 |
 | `backend/test/yuzey-genisletme-test.ts` | 193 |
 | `frontend/app/(protected)/dashboard/page.tsx` | 223 |
@@ -227,7 +228,7 @@ test:* scripti: 63
 | `frontend/app/(protected)/quote-formats/page.tsx` | 396 |
 | `frontend/app/(protected)/quotes/[id]/page.tsx` | 467 |
 | `frontend/app/(protected)/quotes/new/error.tsx` | 13 |
-| `frontend/app/(protected)/quotes/new/page.tsx` | 2110 |
+| `frontend/app/(protected)/quotes/new/page.tsx` | 2117 |
 | `frontend/app/(protected)/quotes/page.tsx` | 196 |
 | `frontend/app/admin/brands/page.tsx` | 895 |
 | `frontend/app/admin/layout.tsx` | 80 |
@@ -341,7 +342,7 @@ test:* scripti: 63
 | `frontend/ozellik/kutuphane/oksuz-kutuphane-uyarisi.ts` | 60 |
 | `frontend/ozellik/tablo/disiplin.ts` | 13 |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 252 |
-| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 3191 |
+| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 3195 |
 | `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | 109 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts` | 178 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.ts` | 175 |
@@ -590,6 +591,7 @@ test:* scripti: 63
 | `backend/test/standart-cikti-test.ts` | `fs` `path` `exceljs` `../src/ozellik/teklif/quotes/standart-cikti` `../src/ozellik/giris/excel-grid/excel-grid.service` |
 | `backend/test/standart-sema-test.ts` | `fs` `path` `xlsx` `../src/ozellik/giris/excel-grid/excel-grid.service` `../src/ozellik/giris/excel-grid/standart-sema` |
 | `backend/test/tam-zincir.ts` | `child_process` `path` |
+| `backend/test/urun-degil-test.ts` | `../src/ozellik/eslestirme/matching/index/line-parser` |
 | `backend/test/varyant-surukleme-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/query-engine` `../src/ozellik/fiyat/matching/index/outcome-mapper` `../src/ozellik/eslestirme/matching/index/types` |
 | `backend/test/yuzey-genisletme-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/query-engine` `../src/ozellik/fiyat/matching/index/outcome-mapper` `../src/ozellik/eslestirme/matching/index/types` |
 | `frontend/app/(protected)/dashboard/page.tsx` | `react` `next/navigation` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/contexts/CapabilitiesContext` `@/ortak/kabuk/components/dashboard/QuickStart` `@/ozellik/teklif/dashboard/RecentQuotes` `@/ortak/kabuk/components/dashboard/QuickAccess` |
@@ -906,6 +908,7 @@ test:* scripti: 63
 | `backend/package.json` | `test:cap-cevrilemedi` | `ts-node test/cap-cevrilemedi-test.ts` |
 | `backend/package.json` | `test:erken-kurtarma` | `ts-node test/erken-kurtarma-test.ts` |
 | `backend/package.json` | `test:yuzey-genisletme` | `ts-node test/yuzey-genisletme-test.ts` |
+| `backend/package.json` | `test:urun-degil` | `ts-node test/urun-degil-test.ts` |
 | `backend/package.json` | `test:labor` | `ts-node test/labor-matching-test.ts` |
 | `backend/package.json` | `test:grid` | `ts-node test/excel-grid-test.ts` |
 | `backend/package.json` | `test:labor-sheet` | `ts-node test/labor-sheet-test.ts` |

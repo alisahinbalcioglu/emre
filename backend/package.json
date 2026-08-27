@@ -28,6 +28,7 @@
     "test:cap-cevrilemedi": "ts-node test/cap-cevrilemedi-test.ts",
     "test:erken-kurtarma": "ts-node test/erken-kurtarma-test.ts",
     "test:yuzey-genisletme": "ts-node test/yuzey-genisletme-test.ts",
+    "test:urun-degil": "ts-node test/urun-degil-test.ts",
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate",
     "prisma:studio": "prisma studio",
