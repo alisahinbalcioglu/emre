@@ -894,7 +894,7 @@ export class MatchingService {
           // ON-SECIM daline duser — kalem ekranda KALIR, yalniz onay istenir.
           // Kapi: test/olcu-anahtari-cakismasi-test.ts (B-R1/B-R2)
           if (result.candidates.length === 1 && !result.variantMissing && !akiskanSupheli
-              && !result.yuzeyGenisletildi && !result.capCevrilemedi) {
+              && !result.yuzeyGenisletildi && !result.capCevrilemedi && !result.dnKoprusu) {
             const c = result.candidates[idx];
             console.log(`[Matching] HAFIZA TEK-ADAY OTOYAZ: "${excelName}" → "${mem.secilenAd}" (${mem.secimSayisi}×)`);
             return {

@@ -47,6 +47,18 @@ export interface MatchResult {
    *  `yuzeyGenisletildi` ile ayni gerekce: bir kez onaylanan secim, ikinci
    *  kosumda dogrulanmamis bir olcuyu dogrulanmis gibi gosteremez. */
   capCevrilemedi?: boolean;
+  /** DN KOPRUSU (27.08): satirin DN'i ile adayin DN'i FARKLI — eslesme yalniz
+   *  `NOMINAL_MM_TO_DN` nominal koprusune dayaniyor, istenen olcu bu urunde
+   *  YOK. `capCevrilemedi` ile ayni gerekce: kapiyi motorda kapatmak YETMEZ,
+   *  cunku hafiza otoyazisi sozlesmeyi okur. Olculdu: kullanici satira bir kez
+   *  cevap verince otoyaz kapinin cumlesini silip 1200 TL'yi 'high' yaziyordu.
+   *
+   *  ⚠ DESEN BORCU: bu, ayni amaca hizmet eden UCUNCU boolean
+   *  (`yuzeyGenisletildi` · `capCevrilemedi` · `dnKoprusu`). Motorun ic
+   *  `kapilar` listesinde 12 kapi var ve otoyaz bunlarin yalnizca ucunu
+   *  gorebiliyor. Dogru cozum kapilarin TOPLUCA tasinmasidir; kapsami
+   *  ('capsiz-dusum' yaygin ekipmanda ateslendigi icin) ayri olcum turu ister. */
+  dnKoprusu?: boolean;
   // URUN DEGIL (spec): "FITTINGS ORANI" gibi oran/hizmet satirlari — fiyat
   // BEKLENMEZ. Hucre bos + gri isaretlenir ('yok' kirmizisindan farkli).
   notProduct?: boolean;

@@ -43,6 +43,8 @@
  *   L*  → ★ REGRESYON KILIDI: mesru kopru ve normal eslesmeler bozulmamali
  */
 
+import { MatchingService } from '../src/ozellik/eslestirme/matching/matching.service';
+import { TerminologyService, ALIAS_SEEDS } from '../src/ozellik/eslestirme/matching/terminology.service';
 import { buildProductIndex, type ProductColumns } from '../src/ozellik/eslestirme/matching/index/product-index';
 import { parseLine } from '../src/ozellik/eslestirme/matching/index/line-parser';
 import { runQuery, urunVariantTags } from '../src/ozellik/eslestirme/matching/index/query-engine';
@@ -96,6 +98,39 @@ const KOPRU: Array<[number, number]> = [
   [219, 200], [273, 250], [323, 300],
 ];
 
+// ── HAFIZA IKIZI icin servis kosumu (DB'siz, imza-ekseni-test.ts uslubu) ──
+function libSatir(name: string, price: number) {
+  return { id: `lib-${name}`, material: null, materialName: name, customPrice: null, listPrice: price, discountRate: 0 };
+}
+function fakePrisma(libRows: any[]): any {
+  const memStore = new Map<string, any>();
+  const memKey = (w: any) => `${w.userId_imza.userId}|${w.userId_imza.imza}`;
+  return {
+    userLibrary: { findMany: async (args: any) => {
+      const b = args?.where?.brandId;
+      if (b && typeof b === 'object' && 'not' in b) return [];
+      return libRows;
+    } },
+    brand: { findUnique: async () => ({ name: 'TEST MARKA' }) },
+    eslesmeHafizasi: {
+      findUnique: async ({ where }: any) => memStore.get(memKey(where)) ?? null,
+      upsert: async ({ where, update, create }: any) => {
+        const k = memKey(where); const ex = memStore.get(k);
+        if (ex) { ex.secilenAd = update.secilenAd ?? ex.secilenAd; ex.secimSayisi++; }
+        else memStore.set(k, { ...create, secimSayisi: 1 });
+      },
+    },
+    terminologyAlias: { findMany: async () => ALIAS_SEEDS.map((s, i) => ({ id: `a${i}`, userId: null, active: true, ...s })) },
+  };
+}
+function makeService(libRows: any[]): any {
+  const prisma = fakePrisma(libRows);
+  const term = new TerminologyService(prisma);
+  const fakeFx = { getRates: async () => ({ usdTry: 40, eurTry: 48, usdTryBuying: 40, eurTryBuying: 48, source: 'fake', date: '' }) } as any;
+  return new MatchingService(prisma, term, fakeFx);
+}
+const BRAND = 'brand-1';
+
 let passed = 0; let failed = 0; const failures: string[] = [];
 function check(name: string, cond: boolean, detail?: string) {
   if (cond) { passed++; console.log(`  PASS: ${name}`); } else {
@@ -104,7 +139,45 @@ function check(name: string, cond: boolean, detail?: string) {
   }
 }
 
-function run() {
+/**
+ * HAFIZA IKIZI (M-R*): kapiyi motorda kapatmak YETMEZ — `MatchResult`
+ * sozlesmesi `outcome.kapilar`i tasimadigi icin hafiza otoyazisi
+ * (matching.service) kapiyi GOREMEZ ve kullanici bir kez cevap verdiginde
+ * UYARI CUMLESINI SILIP fiyati 'high' yazar. `cap-cevrilemedi`de birebir ayni
+ * kusur olculup kapatilmisti (bkz. olcu-anahtari-cakismasi-test.ts B-R*);
+ * bu blok onun DN koprusundeki IKIZIDIR.
+ */
+async function hafizaIkizi() {
+  console.log('\n── M-R: HAFIZA, "dn-koprusu" KAPISINI SİLMEMELİ (CC ikizinin ikizi) ──');
+
+  // Servis yolunda kutuphane satiri SERBEST METINDIR (ayri cap kolonu yok),
+  // bu yuzden urun adinin ICINDE "DN 100" yazar.
+  const HAVUZ = [libSatir('Boru Çelik Dikişli Siyah DN 100', 1200), libSatir('PPR Boru 63 mm', 90)];
+  const SATIR = 'Boru DN 110';
+  const s = makeService(HAVUZ);
+
+  const once = (await s.bulkMatch('u1', BRAND, [SATIR]))[SATIR];
+  check('M-R0 FIXTURE KANITI: köprü kapısı GERÇEKTEN koşuyor (gerekçede "köprü")',
+    /köprü/i.test(once.reason ?? ''), `reason=${once.reason}`);
+  check('M-R0b FIXTURE KANITI: hafızasız hâlde fiyat yazılmıyor, TEK aday var',
+    once.netPrice === 0 && (once.candidates?.length ?? 0) === 1,
+    `NET=${once.netPrice} aday=${once.candidates?.length ?? 0}`);
+  const imza = s.buildImza(SATIR, BRAND);
+  check('M-R0c FIXTURE KANITI: imza ÜRETİLİYOR (hafıza yolu gerçekten sürülüyor)',
+    typeof imza === 'string' && imza.length > 0, `imza=${imza}`);
+
+  // Kullanici popup'tan secer — `secilenAd` ADAYIN materialName'idir.
+  await s.remember('u1', BRAND, SATIR, once.candidates![0].materialName);
+
+  const sonra = (await s.bulkMatch('u1', BRAND, [SATIR]))[SATIR];
+  check('M-R1 hafıza, köprü kapısını SİLMEMELİ (fiyat otomatik yazılmamalı)',
+    sonra.netPrice === 0,
+    `NET=${sonra.netPrice} conf=${sonra.confidence} otoyaz=${sonra.hafizaOtoyaz} reason=${sonra.reason}`);
+  check('M-R2 kalem EKRANDA KALMALI — aday listesi korunmalı (S4)',
+    (sonra.candidates?.length ?? 0) > 0, `aday=${sonra.candidates?.length ?? 0}`);
+}
+
+async function run() {
   // ═══════════════════════════════════════════════════════════════
   console.log('\n── Ö: FIXTURE KANITI (bunlar geçmeden aşağısı kanıt değil) ──');
 
@@ -253,6 +326,8 @@ function run() {
       `kapilar=${JSON.stringify((out as any).kapilar)} reason=${r.reason}`);
   }
 
+  await hafizaIkizi();
+
   console.log(`\n${'='.repeat(64)}`);
   console.log(`SONUC: ${passed} PASS, ${failed} FAIL`);
   console.log('='.repeat(64));
@@ -263,4 +338,4 @@ function run() {
   process.exit(failed > 0 ? 1 : 0);
 }
 
-run();
+run().catch((e) => { console.error(e); process.exit(1); });
