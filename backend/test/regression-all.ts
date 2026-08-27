@@ -82,6 +82,16 @@ const SUITES: Suite[] = [
   // (Faz 2b) hizmet taramasina uygulanmis hali. Gercek hizmet satirlari
   // (8 ornek) davranisini korur.
   { ad: 'Ürün-değil parantez muafiyeti (UD)', script: 'test:urun-degil', zincir: 'Z2' },
+  // TS (27.08): CANLI DUYAR vakasi. TAM-AD kilidi satirla BIREBIR ortusen
+  // kayitlara kilitlenir; adi UST KUME olan "Küresel vana (pirinç)" kayitlari
+  // `adGenis`e SURULUR (dogru davranis) ama hicbir kurtarma yolu adGenis'i
+  // OKUMUYORDU → kullanicinin surukleyerek sectigi kimlik havuzda YAPISAL
+  // olarak bulunamiyor, 3/4"-1" pembe kaliyor ve 1 1/4"te "bu capta yok"
+  // yalani cikiyordu (urun @1227 kutuphanede DURURKEN). Ustelik ayni capta
+  // 3.121 TL'lik FLANSLI urun, 491 TL'lik dogrusu dururken yazilabiliyordu.
+  // Cozum: ucuncu havuz + SIFIR KAPISI (merge DEGIL — merge olculdu ve bugun
+  // dogru calisan bir vakayi cap-yok yalanina dusuruyordu).
+  { ad: 'Tam-ad sürgünü kurtarması (TS)', script: 'test:tam-ad-surgunu', zincir: 'Z2' },
   { ad: 'Eşleştirme birim (D)', script: 'test:matching', zincir: 'Z2' },
   { ad: 'Çap çevrimi (DN/inç/OD-mm)', script: 'test:conversion', zincir: 'Z2' },
   { ad: 'Spec regresyon (R1-R12)', script: 'test:spec', zincir: 'Z2' },

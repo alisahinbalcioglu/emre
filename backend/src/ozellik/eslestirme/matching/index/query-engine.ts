@@ -396,6 +396,28 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   // surdu (kullanici bildirimi 30.07: "duzeltmenin genel olarak yapilmasi
   // gerekiyor"). Bu havuz aile-bagimsizdir.
   let varyantKurtarma: IndexedRow[] = rows;
+  /**
+   * TAM-AD SURGUNU (27.08, CANLI DUYAR VAKASI) — UCUNCU KURTARMA HAVUZU.
+   *
+   * TAM-AD kilidi (yukarida): satir "Küresel Vana" yazinca adi BIREBIR
+   * "Küresel vana" olan kayitlara kilitlenir; adi UST KUME olan
+   * "Küresel vana (pirinç)" kayitlari `adGenis`e SURULUR (parantez ayractir,
+   * 'pirinc' fazladan bir AD token'idir — bu DOGRU davranis). Ama `adGenis`i
+   * hicbir kurtarma yolu okumuyordu, yani kullanicinin SURUKLEYEREK sectigi
+   * kimlik havuzda yapisal olarak bulunamiyordu.
+   *
+   * OLCULEN CANLI SONUC (kullanicinin kutuphanesi, 27.08):
+   *   3/4" ve 1"  → vm=true PEMBE   (disli pirinc @491 / @755 kutuphanede DURUYOR)
+   *   1 1/4"      → none/cap-yok    (@1227 DURUYOR — "yok" YALANI)
+   * Ustelik flansli seri ayni capta bulununca 3.121 TL'lik urun, 491 TL'lik
+   * dogru urun dururken ana yoldan otomatik yaziliyordu.
+   *
+   * ⚠ AYRI DEGISKEN, MERGE DEGIL: surgunu `varyantKurtarma`ya katmak olculdu
+   * ve BUGUN dogru calisan bir vakayi cap-yok yalanina dusuruyordu (yazili-ad
+   * havuzuyla surgun ayni potada carpisinca "tek aday" sarti bozuluyor).
+   * Ayri havuz + asagidaki SIFIR KAPISI o gerilemeyi sifirlar.
+   */
+  let adGenisKurtarma: IndexedRow[] = adGenis ?? [];
 
   let donusum: string | null = null;
   let capsizDusum = false;
@@ -470,9 +492,25 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     const v = opts?.variantTags;
     if (!v?.length) return null;
     const tagUyar = varyantTagUyar(v);
+    // SIFIR KAPISI SAYACI: yazili-ad havuzlari HERHANGI aday urettiyse
+    // (1 → yazilir, ≥2 → GERCEK belirsizlik korunur) surgun havuzu HIC
+    // konusmaz. Boylece bugunku her otomatik yazim bit-bit korunur.
+    let oncekiAday = 0;
     for (const havuz of [yuzeyGenis, varyantKurtarma]) {
       if (!havuz || havuz.length === 0) continue;
       const kurtarilan = havuz.filter(birimUyar).filter(tagUyar);   // L6: birim SERT
+      oncekiAday += kurtarilan.length;
+      if (kurtarilan.length === 1) {
+        return capAutoYasak(kurtarilan[0])
+          ? capsizOnay(kurtarilan[0])
+          : { kind: 'auto-variant', row: kurtarilan[0], donusum };
+      }
+    }
+    // TAM-AD SURGUNU — YALNIZ yazili-ad havuzlari SIFIR aday verdiyse.
+    // ⚠ K7 KORUMASI: sifir kapisi olmasa, iki gecerli adayin (gercek
+    // belirsizlik) oldugu vakada surgundeki ucuncu kayit yazilirdi.
+    if (oncekiAday === 0 && adGenisKurtarma.length > 0) {
+      const kurtarilan = adGenisKurtarma.filter(birimUyar).filter(tagUyar);
       if (kurtarilan.length === 1) {
         return capAutoYasak(kurtarilan[0])
           ? capsizOnay(kurtarilan[0])
@@ -538,14 +576,25 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
       return r.urun.capTags.some((t) => eq.tags.includes(t)) || r.urun.capTags.length === 0;
     };
     const tagUyar = varyantTagUyar(v);
+    let oncekiAday = 0;   // SIFIR KAPISI — bkz. varyantKurtar
     for (const havuz of [yuzeyGenis, varyantKurtarma]) {
       if (!havuz || havuz.length === 0) continue;
       const k = havuz.filter(birimUyar).filter(capSuz).filter(tagUyar);   // L6: birim SERT
+      oncekiAday += k.length;
       if (k.length === 1) {
         return capAutoYasak(k[0])
           ? capsizOnay(k[0])
           // Cap blogu kosmadigi icin `donusum` hala null; cevrim koprusunu
           // (E4/E6) kaybetmemek icin rozeti buradan tasiyoruz.
+          : { kind: 'auto-variant', row: k[0], donusum: eq.rozet };
+      }
+    }
+    // TAM-AD SURGUNU — yalniz yazili-ad havuzlari SIFIR aday verdiyse.
+    if (oncekiAday === 0 && adGenisKurtarma.length > 0) {
+      const k = adGenisKurtarma.filter(birimUyar).filter(capSuz).filter(tagUyar);
+      if (k.length === 1) {
+        return capAutoYasak(k[0])
+          ? capsizOnay(k[0])
           : { kind: 'auto-variant', row: k[0], donusum: eq.rozet };
       }
     }
@@ -710,6 +759,7 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
       if (yuzeyGenis) yuzeyGenis = yuzeyGenis.filter(capUyar); // genis kume de AYNI capta
       if (yuzeyHavuzu) yuzeyHavuzu = yuzeyHavuzu.filter(capUyar);
       varyantKurtarma = varyantKurtarma.filter(capUyar); // V4.7: kurtarma da AYNI capta
+      adGenisKurtarma = adGenisKurtarma.filter(capUyar);  // surgun havuzu da AYNI capta
       if (rows.length === 0) {
         // E2: kullanicinin ACIK secimi (surukleme) varsa once KURTAR.
         // Frenler degismedi: TAM tag eslesmesi + TEK aday + capAutoYasak.
@@ -850,6 +900,7 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
         rows = d2;
         if (yuzeyGenis) yuzeyGenis = yuzeyGenis.filter(capUyar2);
         if (yuzeyHavuzu) yuzeyHavuzu = yuzeyHavuzu.filter(capUyar2);
+        adGenisKurtarma = adGenisKurtarma.filter(capUyar2);
         varyantKurtarma = varyantKurtarma.filter(capUyar2);
         if (adGenis) adGenis = adGenis.filter((r) => capUyar2(r) || !r.urun.capRaw);
       } else if (capsiz2.length > 0) {
@@ -873,6 +924,7 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     if (yuzeyGenis) yuzeyGenis = yuzeyGenis.filter((r) => r.urun.boyTag === line.boyTag || !r.urun.boyTag);
     if (yuzeyHavuzu) yuzeyHavuzu = yuzeyHavuzu.filter((r) => r.urun.boyTag === line.boyTag || !r.urun.boyTag);
     varyantKurtarma = varyantKurtarma.filter((r) => r.urun.boyTag === line.boyTag || !r.urun.boyTag);
+    adGenisKurtarma = adGenisKurtarma.filter((r) => r.urun.boyTag === line.boyTag || !r.urun.boyTag);
     if (adGenis) adGenis = adGenis.filter((r) => r.urun.boyTag === line.boyTag || !r.urun.boyTag);
   }
 
