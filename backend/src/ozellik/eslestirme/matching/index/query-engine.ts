@@ -13,7 +13,7 @@
 // SAF: DB yok, I/O yok. Test DB'siz kosar.
 // ════════════════════════════════════════════════════════════════════
 
-import { sizeEquivalents, SizeClass, capImzasi } from '../conversion';
+import { sizeEquivalents, SizeClass, capImzasi, extractSizeInfo } from '../conversion';
 import { extractFluid } from '../normalizer';
 import { altKumeMi, tokenEsit } from './product-index';
 import { EQUIPMENT_TYPE_TAGS } from '../shared-tag-matcher';
@@ -454,16 +454,58 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
    * zincirinden ONCE doner, yani `kapilar`/`uyariNot` eklemek parayi KESMEZ
    * (olculdu: yalniz mesaj eklendiginde 500 TL yazilmaya devam ediyordu).
    */
+  /**
+   * DN NOMINAL KOPRUSU IHLALI (27.08.2026, olculdu) — PARA KAPISI.
+   *
+   * `NOMINAL_MM_TO_DN` mm etiketli urunleri DN sorgulariyla bulusturur
+   * (24.08 ODE R-Flex: kutuphanedeki "22 mm" izolasyon ↔ teklifin 1/2"=dn15).
+   * Satir tarafinda 'unknown' sinifta celik ve plastik yorumlarin BIRLESIMI
+   * alinir; celikte KARSILIGI OLMAYAN bir DN (steel.noConversion=true) bile
+   * plastik yorumun kopru turevi tag'i sayesinde bir CELIK urune baglanabilir.
+   * Olculdu: satir "Boru DN 110" + havuz {celik "DN 100" @1200, PPR …}
+   *   → kind=single conf=high NET=1200, ONAYSIZ. 19 koprulu olcunun 19'u.
+   *
+   * ⚠ TAG DUSURMEK YANLIS — olculerek curutuldu. Iki urun INDEKSTE BIREBIR
+   * AYNIDIR: cap "DN 100" ve cap "110 mm" ikisi de sizeClass=steel,
+   * capTags=["dn100"]. Tag uzayindaki her eleme, 19 olcunun tamaminda
+   * "DN N satiri ↔ 'N mm' kutuphane satiri" MESRU koprusunu de oldurur →
+   * 19 para hatasi 19 SESSIZ KAYBA doner (24.08'de bedeli odenen sinif).
+   *
+   * AYIRT EDICI TEK SINYAL urunun KENDI olcu GOSTERIMIDIR (`capNorm`):
+   *   "DN 100" → source='dn'  ·  "110 mm" → source='mm'
+   * Kural: satir DN yaziyorsa ve ADAY da DN yazip BASKA bir DN degeri beyan
+   * ediyorsa, eslesme yalnizca kopruye dayanir → fiyat OTOMATIK YAZILMAZ.
+   * Urun mm/inc yaziyorsa (mesru kopru) kapi SUSAR.
+   * ELEME DEGIL KAPI: kalem ekranda kalir, yalniz onay istenir (S4).
+   * Kapi: test/dn-koprusu-test.ts (D-R1..D-R4, kilitler L1..L6)
+   */
+  const dnKoprusuIhlali = (r: IndexedRow): boolean => {
+    if (line.capInfo?.source !== 'dn' || !r.urun.capNorm) return false;
+    const urunOlcu = extractSizeInfo(r.urun.capNorm);
+    return urunOlcu?.source === 'dn' && urunOlcu.value !== line.capInfo.value;
+  };
   const capAutoYasak = (r: IndexedRow) =>
-    !!line.capInfo && (r.urun.capTags.length === 0 || capCevrilemedi);
-  const capsizOnay = (aday: IndexedRow): QueryOutcome => ({
-    kind: 'ask', askColumn: 'urun', rows: [aday], bilinmeyen, donusum,
-    // Hangi olgunun frenlediğini AYIRIR — iki cumle karistirilirsa mesaj yalan olur.
-    uyariNot: capCevrilemedi && aday.urun.capTags.length > 0
-      ? `Satırın çapı (${line.capInfo!.display}) çevrim tablosunda yok — çap süzgeci uygulanmadı, çapı siz doğrulayın`
-      : `Satır çaplı (${line.capInfo!.display}) ama seçilen varyantın ürününde çap doğrulanamadı`,
-    kapilar: [capCevrilemedi && aday.urun.capTags.length > 0 ? 'cap-cevrilemedi' : 'capsiz-dusum'],
-  });
+    !!line.capInfo && (r.urun.capTags.length === 0 || capCevrilemedi || dnKoprusuIhlali(r));
+  const capsizOnay = (aday: IndexedRow): QueryOutcome => {
+    // Hangi olgunun frenlediğini AYIRIR — cumleler karistirilirsa mesaj yalan
+    // olur. UC AYRI OLGU: (a) urunun capi YOK, (b) SATIRIN capi cevrilemiyor,
+    // (c) iki taraf da DN yaziyor ama FARKLI DN — eslesme yalniz nominal
+    // kopruye dayaniyor.
+    if (dnKoprusuIhlali(aday)) {
+      return {
+        kind: 'ask', askColumn: 'urun', rows: [aday], bilinmeyen, donusum,
+        uyariNot: `Bu üründe ${line.capInfo!.display} yok — eşleşme yakın ölçü köprüsüyle kuruldu (ürün: ${aday.urun.capNorm}), çapı siz doğrulayın`,
+        kapilar: ['dn-koprusu'],
+      };
+    }
+    return {
+      kind: 'ask', askColumn: 'urun', rows: [aday], bilinmeyen, donusum,
+      uyariNot: capCevrilemedi && aday.urun.capTags.length > 0
+        ? `Satırın çapı (${line.capInfo!.display}) çevrim tablosunda yok — çap süzgeci uygulanmadı, çapı siz doğrulayın`
+        : `Satır çaplı (${line.capInfo!.display}) ama seçilen varyantın ürününde çap doğrulanamadı`,
+      kapilar: [capCevrilemedi && aday.urun.capTags.length > 0 ? 'cap-cevrilemedi' : 'capsiz-dusum'],
+    };
+  };
   const varyantTagUyar = (v: string[]) => (r: IndexedRow) => {
     const aday = urunVariantTags(r);
     return v.every((t) => aday.some((x) => varyantTagEsit(t, x)));
@@ -1147,6 +1189,14 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   const gevsetmeNotu = adGevsetildi
     ? 'Ad birebir eşleşmedi — yazılı nitelik üzerinden bulundu'
     : null;
+  // DN KOPRUSU (27.08): hayatta kalan adaylarin HEPSI, satirinkinden FARKLI
+  // bir DN beyan ediyor → istenen olcu bu urunde YOK, eslesme yalniz nominal
+  // kopruyle kuruldu. `every` bilerek: adaylardan biri TAM olcuyu yaziyorsa
+  // o mesrudur ve zaten coklu aday soru aciyor.
+  const dnKoprusu = rows.length > 0 && rows.every(dnKoprusuIhlali);
+  const dnKoprusuNotu = dnKoprusu
+    ? `Bu üründe ${line.capInfo!.display} yok — eşleşme yakın ölçü köprüsüyle kuruldu (ürün: ${rows[0].urun.capNorm}), çapı siz doğrulayın`
+    : null;
   // ── I6 KAPISI DARALTILDI (kullanici karari 18.07 — Trakya "Dişli" vakasi)
   // Eski kural: dogrulanamayan HERHANGI kelime varken tek aday otomatik
   // YAZILMIYORDU. Ama "Dişli" gibi BAGLANTI TANIMLAYICILARI (Trakya dovme
@@ -1187,19 +1237,20 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   if (aileZayifNotu) kapilar.push('aile-zayif');
   if (capsizNotu) kapilar.push('capsiz-dusum');
   if (capCevrilemediNotu) kapilar.push('cap-cevrilemedi');
+  if (dnKoprusuNotu) kapilar.push('dn-koprusu');
   if (gevsetmeNotu) kapilar.push('ad-gevsetildi');
   if (bilinmeyenNotu) kapilar.push('bilinmeyen-kelime');
   if (aileNotu) kapilar.push('aile-yok');
 
   // ── SONUC: UC YOL, DORDUNCU YOK ──────────────────────────────────
   if (rows.length === 1) {
-    const celiski = yuzeyCeliskiNotu ?? unitConflict ?? malzemeConflict ?? surfaceConflict ?? aileZayifNotu ?? capsizNotu ?? capCevrilemediNotu ?? gevsetmeNotu ?? bilinmeyenNotu ?? aileNotu;
+    const celiski = yuzeyCeliskiNotu ?? unitConflict ?? malzemeConflict ?? surfaceConflict ?? aileZayifNotu ?? capsizNotu ?? capCevrilemediNotu ?? dnKoprusuNotu ?? gevsetmeNotu ?? bilinmeyenNotu ?? aileNotu;
     if (celiski) {
       return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, uyariNot: celiski, kapilar };
     }
     return { kind: 'single', row: rows[0], donusum };
   }
-  return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, uyariNot: yuzeyCeliskiNotu ?? unitConflict ?? aileZayifNotu ?? capsizNotu ?? capCevrilemediNotu ?? gevsetmeNotu ?? undefined, kapilar };
+  return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, uyariNot: yuzeyCeliskiNotu ?? unitConflict ?? aileZayifNotu ?? capsizNotu ?? capCevrilemediNotu ?? dnKoprusuNotu ?? gevsetmeNotu ?? undefined, kapilar };
 }
 
 /**

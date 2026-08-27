@@ -93,6 +93,7 @@ const SUITES: Suite[] = [
   // dogru calisan bir vakayi cap-yok yalanina dusuruyordu).
   { ad: 'Tam-ad sürgünü kurtarması (TS)', script: 'test:tam-ad-surgunu', zincir: 'Z2' },
   { ad: 'Ölçü anahtarı çakışması + hafızanın CC kapısı', script: 'test:olcu-anahtari', zincir: 'Z2' },
+  { ad: 'DN nominal köprüsü — komşu DN fiyatı yazılmaz', script: 'test:dn-koprusu', zincir: 'Z2' },
   { ad: 'Eşleştirme birim (D)', script: 'test:matching', zincir: 'Z2' },
   { ad: 'Çap çevrimi (DN/inç/OD-mm)', script: 'test:conversion', zincir: 'Z2' },
   { ad: 'Spec regresyon (R1-R12)', script: 'test:spec', zincir: 'Z2' },

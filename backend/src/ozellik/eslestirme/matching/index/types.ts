@@ -138,6 +138,18 @@ export type KanitKapisi =
    *  yok, burada SATIRIN capi cevrilemiyor. Olculdu: kapi yokken 1/2" fiyati
    *  1/4" satirina, 110 mm fiyati 8" satirina OTOMATIK yaziliyordu. */
   | 'cap-cevrilemedi'
+  /** DN KOPRUSU (27.08): SATIR bir DN yaziyor, hayatta kalan ADAYLARIN HEPSI
+   *  de DN yaziyor ama BASKA bir DN degeri. Eslesme yalnizca
+   *  `NOMINAL_MM_TO_DN` koprusune dayaniyor demektir — istenen olcu bu urunde
+   *  YOK, komsu bir olcu bulundu. Olculdu: 19 koprulu olcunun 19'unda komsu
+   *  DN'in fiyati onaysiz yaziliyordu ("Boru DN 110" → celik "DN 100" @1200).
+   *  'cap-cevrilemedi'den AYRIDIR: orada SATIRIN capi cevrilemiyor, burada
+   *  cevrim yapildi ama HEDEF OLCU tutmuyor.
+   *  ⚠ ELEME DEGIL KAPI: kopru tag'ini dusurmek olculerek CURUTULDU — cap
+   *  "DN 100" ve cap "110 mm" urunleri indekste BIREBIR ayni (sizeClass=steel,
+   *  capTags=["dn100"]); tag uzayindaki eleme mesru mm-kurtarmasini da
+   *  oldururdu. Ayirt edici sinyal urunun kendi gosterimi (capNorm). */
+  | 'dn-koprusu'
   /** K4 (27.08): satirda YAZILI yuzey bu capta yok; aday BASKA yuzeyden
    *  geliyor. Fark KAPLAMA olabilir ama cins ekseninde baska farklar da
    *  tasiyabilir (orn. PN sinifi satirda tokenize EDILMIYOR) — bu yuzden

@@ -3,10 +3,10 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 399
-Toplam satir: 84679
+Kod dosyasi: 400
+Toplam satir: 85010
 Uc nokta: 130
-test:* scripti: 66
+test:* scripti: 67
 
 ## 1 · Dosyalar ve satir sayilari
 
@@ -71,8 +71,8 @@ test:* scripti: 66
 | `backend/src/ozellik/eslestirme/matching/conversion.ts` | 448 |
 | `backend/src/ozellik/eslestirme/matching/index/line-parser.ts` | 231 |
 | `backend/src/ozellik/eslestirme/matching/index/product-index.ts` | 651 |
-| `backend/src/ozellik/eslestirme/matching/index/query-engine.ts` | 1510 |
-| `backend/src/ozellik/eslestirme/matching/index/types.ts` | 263 |
+| `backend/src/ozellik/eslestirme/matching/index/query-engine.ts` | 1561 |
+| `backend/src/ozellik/eslestirme/matching/index/types.ts` | 275 |
 | `backend/src/ozellik/eslestirme/matching/index/vocab.ts` | 37 |
 | `backend/src/ozellik/eslestirme/matching/matching.controller.ts` | 96 |
 | `backend/src/ozellik/eslestirme/matching/matching.module.ts` | 15 |
@@ -157,6 +157,7 @@ test:* scripti: 66
 | `backend/test/contract-test.ts` | 285 |
 | `backend/test/conversion-test.ts` | 261 |
 | `backend/test/d1-marka-silme-capraz-tenant-test.ts` | 235 |
+| `backend/test/dn-koprusu-test.ts` | 267 |
 | `backend/test/erken-kurtarma-test.ts` | 402 |
 | `backend/test/excel-grid-test.ts` | 157 |
 | `backend/test/export-format-test.ts` | 427 |
@@ -200,7 +201,7 @@ test:* scripti: 66
 | `backend/test/pk3-repo-kapsama-test.ts` | 79 |
 | `backend/test/pk9-sessiz-indeks-test.ts` | 97 |
 | `backend/test/product-index-test.ts` | 479 |
-| `backend/test/regression-all.ts` | 321 |
+| `backend/test/regression-all.ts` | 322 |
 | `backend/test/s45-malzeme-aile-test.ts` | 440 |
 | `backend/test/s45-olcum.ts` | 188 |
 | `backend/test/sozluk-golgeleme-olcum.ts` | 125 |
@@ -544,6 +545,7 @@ test:* scripti: 66
 | `backend/test/contract-test.ts` | `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `../src/ozellik/eslestirme/matching/types` |
 | `backend/test/conversion-test.ts` | `../src/ozellik/eslestirme/matching/conversion` |
 | `backend/test/d1-marka-silme-capraz-tenant-test.ts` | `@prisma/client` `@nestjs/common` `../src/ozellik/kutuphane/brands/brands.service` |
+| `backend/test/dn-koprusu-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/query-engine` `../src/ozellik/fiyat/matching/index/outcome-mapper` `../src/ozellik/eslestirme/matching/conversion` `../src/ozellik/eslestirme/matching/index/types` |
 | `backend/test/erken-kurtarma-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/query-engine` `../src/ozellik/eslestirme/matching/index/types` |
 | `backend/test/excel-grid-test.ts` | `xlsx` `../src/ozellik/giris/excel-grid/excel-grid.service` |
 | `backend/test/export-format-test.ts` | `exceljs` `../src/ozellik/teklif/quotes/export-engine` `../src/ozellik/cikti/quote-formats/format-engine` |
@@ -915,6 +917,7 @@ test:* scripti: 66
 | `backend/package.json` | `test:urun-degil` | `ts-node test/urun-degil-test.ts` |
 | `backend/package.json` | `test:tam-ad-surgunu` | `ts-node test/tam-ad-surgunu-test.ts` |
 | `backend/package.json` | `test:olcu-anahtari` | `ts-node test/olcu-anahtari-cakismasi-test.ts` |
+| `backend/package.json` | `test:dn-koprusu` | `ts-node test/dn-koprusu-test.ts` |
 | `backend/package.json` | `test:labor` | `ts-node test/labor-matching-test.ts` |
 | `backend/package.json` | `test:grid` | `ts-node test/excel-grid-test.ts` |
 | `backend/package.json` | `test:labor-sheet` | `ts-node test/labor-sheet-test.ts` |
