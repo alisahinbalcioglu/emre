@@ -93,19 +93,26 @@ bolum7() {
   sorgu 'SELECT pi.\"adSlug\" AS aile, pi.\"sizeClass\", count(*) AS satir FROM \"ProductIndex\" pi WHERE pi.ad ILIKE '"'"'%kau%'"'"' OR pi.kategori ILIKE '"'"'%kau%'"'"' OR pi.\"sheetName\" ILIKE '"'"'%kau%'"'"' GROUP BY 1,2 ORDER BY 3 DESC'
 }
 
+bolum8() {
+  echo "── 8 OZET: KAUCUK ad bicimleri — marka + BENZERSIZ ad + satir sayisi ──"
+  echo "   (463 satiri tekil adlara sikistirir — tek sayfada biter. eski_aile"
+  echo "    kolonu BAYAT depolanmis deger olabilir; guncel kod canli turetir)"
+  sorgu 'SELECT b.name AS marka, pi.\"adSlug\" AS eski_aile, pi.ad, count(*) AS satir, min(pi.\"indexVersion\") AS sv FROM \"ProductIndex\" pi JOIN \"Brand\" b ON b.id = pi.\"brandId\" WHERE pi.ad ILIKE '"'"'%kau%'"'"' OR pi.kategori ILIKE '"'"'%kau%'"'"' OR pi.\"sheetName\" ILIKE '"'"'%kau%'"'"' GROUP BY 1,2,3 ORDER BY 4 DESC LIMIT 40'
+}
+
 case "$SECIM" in
-  1|2|3|4|5|6|7)
+  1|2|3|4|5|6|7|8)
     echo "(SAYFALI MOD — SPACE: sonraki sayfa · b: onceki sayfa · q: cikis)"
     "bolum$SECIM" 2>&1 | less
     ;;
   '')
-    bolum1; bolum2; bolum3; bolum4; bolum5; bolum6; bolum7
+    bolum1; bolum2; bolum3; bolum4; bolum5; bolum6; bolum7; bolum8
     echo ""
     echo "BITTI — bolumlerin ciktisini (ekran goruntusu yeterli) geri gonderin."
     echo "Uzun bolumler icin sayfali mod: bash scripts/kv-kaucuk-olcu.sh 3"
     ;;
   *)
-    echo "Gecersiz secim: $SECIM (1-7 arasi bir bolum numarasi ya da bos)"
+    echo "Gecersiz secim: $SECIM (1-8 arasi bir bolum numarasi ya da bos)"
     exit 2
     ;;
 esac
