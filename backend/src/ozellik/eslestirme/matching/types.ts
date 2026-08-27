@@ -35,6 +35,18 @@ export interface MatchResult {
    *  kosumda uyariyi SILIP fiyati high olarak yazmasin. Diger kapilardan
    *  FARKI: burada aday YAZILI bir kisiti IHLAL ediyor. */
   yuzeyGenisletildi?: boolean;
+  /** K2/CC IKIZI (27.08): SATIRIN capi cevrim tablosunda YOK — cap suzgeci
+   *  hicbir adayi dogrulayamadi. 26.08'de motor tarafinda kapatilan kapinin
+   *  (`cap-cevrilemedi`) sozlesme karsiligi.
+   *
+   *  NEDEN GEREKLI: kapi motorun ic `kapilar` listesindeydi ama MatchResult'a
+   *  TASINMIYORDU, dolayisiyla hafiza otoyazisi (matching.service) onu
+   *  GOREMIYORDU. Olculdu: satirda bir kez secim yapilinca otoyaz kapinin
+   *  UYARI CUMLESINI SILIP fiyati 'high' yaziyordu — yani 26.08'de kapatilan
+   *  kapi hafiza yolundan aynen geri aciliyordu (3/8" satirina 1/2" fiyati).
+   *  `yuzeyGenisletildi` ile ayni gerekce: bir kez onaylanan secim, ikinci
+   *  kosumda dogrulanmamis bir olcuyu dogrulanmis gibi gosteremez. */
+  capCevrilemedi?: boolean;
   // URUN DEGIL (spec): "FITTINGS ORANI" gibi oran/hizmet satirlari — fiyat
   // BEKLENMEZ. Hucre bos + gri isaretlenir ('yok' kirmizisindan farkli).
   notProduct?: boolean;

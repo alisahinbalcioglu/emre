@@ -883,8 +883,18 @@ export class MatchingService {
           // kisitlarinin HEPSINI saglar. Burada bir kisiti IHLAL ediyor:
           // bir kez onaylanan secim, ikinci kosumda uyariyi silip fiyati
           // 'high' olarak yazamaz.
+          // K2/CC SINIRI (27.08): SATIRIN capi cevrim tablosunda YOKSA
+          // eslesme OLCUYLE DOGRULANMAMISTIR. 26.08'de motor tarafinda
+          // kapatilan bu kapi hafiza yolundan geri aciliyordu — olculdu:
+          // havuzda yalniz 1/2" varken 3/8" satirina 850 TL 'high' guvenle
+          // yazildi ve kapinin uyari cumlesi ("çevrim tablosunda yok")
+          // TAMAMEN SILINDI. `yuzeyGenisletildi` ile ayni gerekce: bir kez
+          // onaylanan secim, ikinci kosumda dogrulanmamis bir olcuyu
+          // dogrulanmis gibi gosteremez. Kapi ateslediginde akis asagidaki
+          // ON-SECIM daline duser — kalem ekranda KALIR, yalniz onay istenir.
+          // Kapi: test/olcu-anahtari-cakismasi-test.ts (B-R1/B-R2)
           if (result.candidates.length === 1 && !result.variantMissing && !akiskanSupheli
-              && !result.yuzeyGenisletildi) {
+              && !result.yuzeyGenisletildi && !result.capCevrilemedi) {
             const c = result.candidates[idx];
             console.log(`[Matching] HAFIZA TEK-ADAY OTOYAZ: "${excelName}" → "${mem.secilenAd}" (${mem.secimSayisi}×)`);
             return {

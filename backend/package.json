@@ -30,6 +30,7 @@
     "test:yuzey-genisletme": "ts-node test/yuzey-genisletme-test.ts",
     "test:urun-degil": "ts-node test/urun-degil-test.ts",
     "test:tam-ad-surgunu": "ts-node test/tam-ad-surgunu-test.ts",
+    "test:olcu-anahtari": "ts-node test/olcu-anahtari-cakismasi-test.ts",
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate",
     "prisma:studio": "prisma studio",

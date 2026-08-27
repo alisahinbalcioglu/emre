@@ -124,7 +124,23 @@ export function extractDiameter(text: string): string | null {
   }
 
   // Tam sayilar: 1", 2", 3"
-  const intRe = /(\d+)"/g;
+  // ⚠ SOL SINIR ZORUNLU (27.08.2026, olculdu). Sinirsiz `/(\d+)"/g` deseni
+  // '1/4"' metninin ICINDEN '4"' parcasini yakaliyordu: cevrilemez kesirler
+  // (1/8" 1/4" 3/8" 5/8" 7/8") REVERSE_DIAMETER'da KAYITLI OLMADIGI icin
+  // yukaridaki fracRe hicbir sey ekleyemiyor, dolayisiyla `allInch` bos
+  // kaliyor ve asagidaki overlap korumasi da BOS KUME uzerinde calisamiyor.
+  // Olculen sonuc — BES fiziksel olcu TEK etikete cokuyordu:
+  //     dn200 <= 1/8" | 3/8" | 5/8" | 7/8" | 8"
+  //     dn100 <= 1/4" | 4"
+  // Bedeli hafiza anahtarinda (matching.service.buildImza) odendi: kullanicinin
+  // 4" satirinda verdigi karar 1/4" satirina otomatik yaziliyordu (olculdu:
+  // 12.500 TL, conf='high', onaysiz). Motorun KENDI cap yolu (extractSizeInfo /
+  // line-parser / buildProductIndex.capTags) bu yazimlarda zaten DOGRUYDU —
+  // kusur yalniz bu etiket katmanindaydi.
+  // Sol sinir sonrasi bu yazimlar etiket URETMEZ → buildImza null doner →
+  // satir hafizaya YAZILMAZ/OKUNMAZ (DUZELTME E'nin kurulu davranisi).
+  // Kapi: test/olcu-anahtari-cakismasi-test.ts (A-R1/A-R2/A-R3/A-P1)
+  const intRe = /(?<![\d/])(\d+)"/g;
   while ((m = intRe.exec(normalized)) !== null) {
     const overlap = allInch.some((x) => x.index <= m!.index && x.index + 5 >= m!.index);
     if (overlap) continue;
@@ -163,7 +179,19 @@ export function extractDiameter(text: string): string | null {
   // icindeki sayilar harfe bitisik oldugundan yakalanmaz; yalniz BAGIMSIZ
   // 2-3 haneli sayi dis cap sayilir.
   if (/\b(pe\s?100|pe\s?80|\bpe\b|ppr|pvc|hdpe)\b/.test(normalized)) {
-    const bare = normalized.match(/(?<![a-z0-9.,])(\d{2,3})(?![\d.,]*\s*(mm|bar|mt|m\b))(?![a-z0-9])/);
+    // ⚠ INC ISARETI SUZGECI (27.08.2026, olculdu). Bu dal sayiyi MILIMETRE
+    // sayar; inc isaretiyle (") yazilmis olculere uygulanirsa olcu 25 kata
+    // varan oranda yanlis okunur. Olculen ornekler (payda 10 cevrilemez inc
+    // yazimi × 4 plastik aile = 40; 20'si kirliydi):
+    //     20" PPR Boru → dn20   ( 20" ≈ DN500, dn20 = 3/4" )
+    //     16" PPR Boru → od-16  ( 3/16" ile AYNI anahtar )
+    //     18" PVC Boru → od-18  ( "18 mm" ile AYNI anahtar )
+    // Kontrol grubu: plastik kelimesi OLMAYAN ayni yazimlar zaten null
+    // donuyordu — yani kusur bu dala OZGUYDU.
+    // ⚠ `''` (iki apostrof) yazimi bu noktada ZATEN `"` olmustur (satir 87).
+    // Meşru is KORUNUR: mm'siz/Ø'suz gercek mm yazimlari ("63 PE100 - SDR17")
+    // etiket uretmeye devam eder — kilit: test L5.
+    const bare = normalized.match(/(?<![a-z0-9.,])(\d{2,3})(?!\s*")(?![\d.,]*\s*(mm|bar|mt|m\b))(?![a-z0-9])/);
     if (bare) {
       const mm = parseInt(bare[1], 10);
       if (mm >= 16 && mm <= 630) return MM_TO_DN[mm] ?? `od-${mm}`;

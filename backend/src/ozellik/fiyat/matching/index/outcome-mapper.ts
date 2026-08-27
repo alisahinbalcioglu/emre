@@ -254,6 +254,11 @@ export function toMatchResult(
         // Diger kapilarda otoyazi ZATEN kabul edilmis (aday satirin YAZILI sert
         // kisitlarini saglar); burada aday YAZILI bir kisiti IHLAL ediyor.
         yuzeyGenisletildi: outcome.kapilar?.includes('yuzey-genisletildi') || undefined,
+        // K2/CC (27.08): ayni gerekce ikinci kapi icin de gecerli. SATIRIN
+        // capi cevrilemediyse eslesme OLCUYLE DOGRULANMAMISTIR; hafiza
+        // otoyazisi bunu goremedigi icin kapinin cumlesini silip fiyati
+        // 'high' yaziyordu (olculdu: 3/8" satirina 1/2" fiyati, onaysiz).
+        capCevrilemedi: outcome.kapilar?.includes('cap-cevrilemedi') || undefined,
         // Faz 2b: dogrulanamayan yazili kelimeler — M3 multi'de de kosulsun
         dogrulanamadi: outcome.bilinmeyen?.length ? outcome.bilinmeyen : undefined,
       };
