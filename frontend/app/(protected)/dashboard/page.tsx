@@ -19,14 +19,6 @@ interface DashStats {
   quoteCount: number;
 }
 
-interface UploadResponse {
-  headers: string[];
-  rows: Record<string, any>[];
-  brands: { id: string; name: string }[];
-  columnRoles?: Record<string, string>;
-  usedProvider?: string;
-}
-
 export default function DashboardPage() {
   const router = useRouter();
   const [stats, setStats] = useState<DashStats | null>(null);
@@ -35,7 +27,11 @@ export default function DashboardPage() {
 
   // Upload state
   const [excelUploading, setExcelUploading] = useState(false);
-  const [dwgUploading, setDwgUploading] = useState(false);
+  // K6 (27.08): DWG isleyicisi artik SENKRON yonlendiriyor (eski PDF kuyrugu
+  // silindi), yani bu bayrak hic true olmuyor ve DWG spinner'i gorunmuyor —
+  // dogru davranis: bekleyecek bir ag cagrisi kalmadi. QuickStart yine de
+  // bayragi okuyor, cunku Excel tarafinda spinner ISLEVSEL.
+  const [dwgUploading] = useState(false);
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
@@ -126,42 +122,21 @@ export default function DashboardPage() {
   // `override` olarak tasiniyor ve `??` zinciri 0'i GECERLI sayiyordu ->
   // selectedUnit=0, ham cizgi hover'i 0.00 m (PANOVA, 11.08). Default YOK.
   const handleDwgFile = useCallback(async (file: File, scale?: number) => {
-    const ext = file.name.split('.').pop()?.toLowerCase();
+    // K6 (27.08): tur denetimi ARTIK GIRISTE (QuickStart → dosyaTuruSec).
+    // Buraya yalniz .dwg/.dxf ulasir; eski PDF kuyrugu (`/ai/analyze` →
+    // sessionStorage → quotes/new legacy tablosu) ULASILAMAZ hale geldi ve
+    // hedefi olan legacy tablo da bu turda silindi — kuyruk kaldirildi.
+    // Eski cache temizle
+    sessionStorage.removeItem('metaprice_upload_result');
+    sessionStorage.removeItem('metaprice_quote_draft');
+    sessionStorage.removeItem('metaprice_dwg_metraj');
 
-    if (['dwg', 'dxf'].includes(ext ?? '')) {
-      // Eski cache temizle
-      sessionStorage.removeItem('metaprice_upload_result');
-      sessionStorage.removeItem('metaprice_quote_draft');
-      sessionStorage.removeItem('metaprice_dwg_metraj');
+    // Dosyayi global degiskende sakla (File objesi sessionStorage'da saklanamaz)
+    (window as any).__metaprice_dwg_file = file;
+    (window as any).__metaprice_dwg_scale = scale;
 
-      // Dosyayi global degiskende sakla (File objesi sessionStorage'da saklanamaz)
-      (window as any).__metaprice_dwg_file = file;
-      (window as any).__metaprice_dwg_scale = scale;
-
-      // quotes/new'e yonlendir — DwgUploader dosyayi otomatik alacak
-      router.push('/quotes/new?mode=dwg');
-      return;
-    }
-
-    // PDF — eski akis
-    setDwgUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const { data } = await api.post<UploadResponse>('/ai/analyze', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      sessionStorage.setItem('metaprice_upload_result', JSON.stringify({
-        headers: data.headers, rows: data.rows, brands: data.brands,
-        columnRoles: data.columnRoles, usedProvider: data.usedProvider, fileName: file.name,
-      }));
-      toast({ title: 'Analiz tamamlandi', description: `${data.rows?.length ?? 0} satir bulundu.` });
-      router.push('/quotes/new?from=dashboard');
-    } catch {
-      toast({ title: 'Hata', description: 'Dosya analiz edilirken hata olustu.', variant: 'destructive' });
-    } finally {
-      setDwgUploading(false);
-    }
+    // quotes/new'e yonlendir — DwgUploader dosyayi otomatik alacak
+    router.push('/quotes/new?mode=dwg');
   }, [router]);
 
   const STAT_ITEMS = [

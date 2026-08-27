@@ -4,6 +4,7 @@ import { useRef, useState, useCallback } from 'react';
 import { Upload, FileSpreadsheet, FileText, Loader2 } from 'lucide-react';
 import { cn } from '@/ortak/lib/utils';
 import { toast } from '@/ortak/hooks/use-toast';
+import { dosyaTuruSec } from './dosya-turu';
 
 interface QuickStartProps {
   onExcelFile: (file: File) => void;
@@ -32,6 +33,20 @@ export default function QuickStart({
   // Kullaniciya dosyayi ACMADAN ONCE birim sormak zaten cevaplanamaz bir soruydu.
   // Tespit sonucu ve gerekirse degistirme yolu DwgUploader'daki birim bandinda.
 
+  // ── K6 (27.08): DOSYA YONLENDIRME TEK YERDEN ──────────────────────────
+  // Dort giris yolu (Excel drop, DWG drop, Excel secici, DWG secici) ayni
+  // karari verir. OLCULDU: uzanti denetimi yalniz IKI DROP yolunda vardi;
+  // SECICI yollari dosyayi sorgusuz isleyiciye veriyordu ve `accept` bir
+  // ipucu oldugu icin (kullanici "Tum dosyalar"i secebilir) .dwg dosyasi
+  // Excel cozumleyicisine gidebiliyordu. Karar `dosyaTuruSec`te (saf, testten
+  // kosulabilir); burada yalniz yonlendirme + mesaj var.
+  const dosyayiYonlendir = useCallback((file: File, gecersizMesaji: string) => {
+    const tur = dosyaTuruSec(file.name);
+    if (tur === 'excel') onExcelFile(file);
+    else if (tur === 'dwg') onDwgFile(file);
+    else toast({ title: 'Gecersiz dosya', description: gecersizMesaji, variant: 'destructive' });
+  }, [onExcelFile, onDwgFile]);
+
   // ── Excel Drop ──
   const handleExcelDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -39,15 +54,8 @@ export default function QuickStart({
     setExcelDragOver(false);
     const file = e.dataTransfer.files?.[0];
     if (!file) return;
-    const ext = file.name.split('.').pop()?.toLowerCase();
-    if (['xlsx', 'xls'].includes(ext ?? '')) {
-      onExcelFile(file);
-    } else if (['dwg', 'dxf'].includes(ext ?? '')) {
-      onDwgFile(file);
-    } else {
-      toast({ title: 'Gecersiz dosya', description: 'Excel (.xlsx/.xls) dosyasi yukleyin.', variant: 'destructive' });
-    }
-  }, [onExcelFile]);
+    dosyayiYonlendir(file, "Excel (.xlsx/.xls) dosyasi yukleyin.");
+  }, [dosyayiYonlendir]);
 
   // ── DWG Drop ──
   const handleDwgDrop = useCallback((e: React.DragEvent) => {
@@ -56,25 +64,20 @@ export default function QuickStart({
     setDwgDragOver(false);
     const file = e.dataTransfer.files?.[0];
     if (!file) return;
-    const ext = file.name.split('.').pop()?.toLowerCase();
-    if (['dwg', 'dxf'].includes(ext ?? '')) {
-      onDwgFile(file);
-    } else if (['xlsx', 'xls'].includes(ext ?? '')) {
-      onExcelFile(file);
-    } else {
-      toast({ title: 'Gecersiz dosya', description: 'DWG veya DXF dosyasi yukleyin.', variant: 'destructive' });
-    }
-  }, [onExcelFile]);
+    dosyayiYonlendir(file, "DWG veya DXF dosyasi yukleyin.");
+  }, [dosyayiYonlendir]);
 
   const handleExcelInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) onExcelFile(file);
+    // K6: SECICI yolunda da uzanti denetlenir — accept bir ipucudur, garanti degil.
+    if (file) dosyayiYonlendir(file, "Excel (.xlsx/.xls) dosyasi yukleyin.");
     e.target.value = '';
   };
 
   const handleDwgInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) onDwgFile(file);   // birim sorulmaz — otomatik tespit
+    // K6: SECICI yolunda da uzanti denetlenir (birim yine sorulmaz).
+    if (file) dosyayiYonlendir(file, "DWG veya DXF dosyasi yukleyin.");
     e.target.value = '';
   };
 

@@ -58,7 +58,6 @@ import { fiyatsizKalemOzeti, fiyatsizOnayMetni, uyariyaGirerMi } from '@/ozellik
 import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, toplamlariTamamla } from '@/ozellik/fiyat/pricing';
 import type { Brand } from '@/ortak/types';
 import type {
-  UploadMode,
   Currency,
   LaborFirm,
   AvailableBrand,
@@ -105,10 +104,8 @@ export default function NewQuotePage() {
 
   // Step 1 wizard kaldirildi — quotes/new direkt grid + form gosterir.
   // Bu state'ler hala API parametreleri olarak kullanildigi icin tutuluyor.
-  const [uploadMode, setUploadMode] = useState<UploadMode>('excel');
   const [discipline, setDiscipline] = useState<'mechanical' | 'electrical' | 'hybrid'>('mechanical');
   const [laborPref, setLaborPref] = useState<'include' | 'exclude'>('include');
-  const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   // Orijinal Excel dosya binary'si (base64) — kaydetme sirasinda backend'e gonderilir
   const [originalFileBase64, setOriginalFileBase64] = useState<string | null>(null);
@@ -776,10 +773,6 @@ export default function NewQuotePage() {
     return stats;
   }
 
-  function handleModeSwitch(mode: UploadMode) {
-    setUploadMode(mode);
-    setFile(null);
-  }
 
   // ── Malzeme Adı düzeltme: kullanıcı hangi Excel sütununun malzeme adı
   //    olduğunu değiştirebilir (otomatik tespit yanlışsa). Aktif sayfanın
@@ -838,98 +831,7 @@ export default function NewQuotePage() {
     });
   }
 
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const selected = e.target.files?.[0] ?? null;
-    setFile(selected);
-  }
 
-  async function handleUpload() {
-    if (!file) {
-      const fileType = uploadMode === 'excel' ? 'Excel' : 'PDF';
-      toast({
-        title: 'Dosya secin',
-        description: `Lutfen bir ${fileType} dosyasi secin.`,
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setIsUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const endpoint =
-        uploadMode === 'excel' ? '/excel-engine/analyze' : '/ai/analyze';
-
-      // Mevcut analyze + yeni preview parallel
-      const analyzePromise = api.post<UploadResponse>(endpoint, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-
-      // Excel AG-Grid icin cagri
-      if (uploadMode === 'excel') {
-        const gridFormData = new FormData();
-        gridFormData.append('file', file);
-        try {
-          const gridRes = await api.post<MultiSheetData>('/excel-grid/prepare', gridFormData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-          });
-          const multi = gridRes.data;
-          console.log('[ExcelGrid] prepare OK:', multi?.sheets?.length, 'sheet');
-          console.log('[ExcelGrid] RAW response:', multi);
-          if (multi?.sheets) {
-            multi.sheets.forEach((s, i) => {
-              console.log(`[ExcelGrid] sheet[${i}] name="${s?.name}" idx=${s?.index} isEmpty=${s?.isEmpty} colDefs=${Array.isArray(s?.columnDefs) ? s.columnDefs.length : 'NOT_ARRAY:' + typeof s?.columnDefs} rowData=${Array.isArray(s?.rowData) ? s.rowData.length : 'NOT_ARRAY'}`);
-            });
-          }
-          if (multi?.sheets?.length) {
-            // Not: Backend /excel-grid/prepare fiyatlari ARTIK SILMIYOR
-            // (stripPrices:false — 2026-07-07 kullanici karari): dosyadaki
-            // fiyatlar grid'e oldugu gibi gelir.
-            // VERI KORUMA: mevcut grid EZILMEZ — merge (kar/marka/fiyat korunur).
-            applyIncomingMultiSheet(multi);
-          }
-        } catch (err: any) {
-          console.error('[ExcelGrid] prepare HATA:', err);
-          toast({
-            title: 'Excel Hatasi',
-            description: err?.response?.data?.message ?? err?.message ?? 'Bilinmeyen hata',
-            variant: 'destructive',
-          });
-          throw err;
-        }
-      }
-
-      const { data } = await analyzePromise;
-
-      console.log('[QuoteEditor] Backend response:', data.rows?.length, 'rows, headers:', data.headers, 'roles:', data.columnRoles);
-
-      setExcelHeaders(data.headers ?? []);
-      setColumnRoles(data.columnRoles ?? {});
-      const editableRows: EditableRow[] = (data.rows ?? []).map((row: any) => ({
-        _key: nextKey(),
-        cells: row,
-        materialKar: 0, laborKar: 0,
-        brandId: null, laborFirmaId: null,
-        _matNetPrice: 0, _labNetPrice: 0,
-      }));
-
-      setRows(editableRows);
-      // KUTUPHANEM IZOLASYONU: data.brands (global havuz) ARTIK dropdown'i
-      // beslemez — mount'taki /library/brands fetch'i tek dogruluk kaynagi.
-      setUsedProvider(data.usedProvider ?? null);
-    } catch {
-      const fileType = uploadMode === 'excel' ? 'Excel' : 'PDF';
-      toast({
-        title: 'Hata',
-        description: `${fileType} dosyasi analiz edilirken bir hata olustu.`,
-        variant: 'destructive',
-      });
-    } finally {
-      setIsUploading(false);
-    }
-  }
 
   /* ---------- Step 2: Edit rows ---------- */
 
@@ -1329,6 +1231,22 @@ export default function NewQuotePage() {
   }, [rows, totalCol]);
 
   async function handleSave() {
+    // ── K6 (27.08): GORUNMEYEN TABLO KAYDEDILEMEZ ──────────────────────
+    // Kaydin kaynagi ekranda CIZILEN tablodur (`multiSheet` ya da
+    // `excelGridData`). Ikisi de yokken kayit yolu yine de calisip kullanicinin
+    // GORMEDIGI bir icerigi (ya da bos bir teklifi) kaydedebiliyordu.
+    // ⚠ Olcut BILEREK "ekranda ne cizildi" — "items dolu mu" DEGIL: olculdu,
+    // items bazi yollarda DOLU olur ve o kapi bu vakada hic atesmez.
+    // Canli her yol bu ikisinden birini set eder (Excel yukleme, DWG metraj
+    // donusu, taslak restore) — yani kapi mesru bir kaydi engellemez.
+    if (!multiSheet && !excelGridData) {
+      toast({
+        title: 'Kaydedilecek tablo yok',
+        description: 'Ekranda bir tablo gorunmuyor — dosyayi yeniden yukleyin.',
+        variant: 'destructive',
+      });
+      return;
+    }
     // Baslik bos ise dosya adi veya varsayilan kullan
     const finalTitle = title.trim() || `Teklif ${new Date().toLocaleDateString('tr-TR')}`;
 
@@ -1700,28 +1618,7 @@ export default function NewQuotePage() {
 
       {/* DWG akisi artik /dwg-workspace route'unda. Bu sayfa sadece sonradan
           metraj donus akisini ele alir (sessionStorage uzerinden). */}
-      {!multiSheet && !excelGridData && uploadMode === 'dwg' && (
-        <Card className="mb-4">
-          <CardContent className="py-12">
-            <div className="flex flex-col items-center justify-center gap-4">
-              <FileText className="h-10 w-10 text-muted-foreground" />
-              <div className="text-center">
-                <p className="font-medium">DWG analizi ayri sayfada yapilir</p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Tesisat planini analiz etmek icin DWG Workspace'e gidin.
-                </p>
-              </div>
-              <Link
-                href="/dwg-workspace"
-                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-              >
-                DWG Workspace'i Ac
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-      {!multiSheet && !excelGridData && uploadMode !== 'dwg' && (
+      {!multiSheet && !excelGridData && (
         <Card className="mb-4">
           <CardContent className="py-12">
             <div className="flex flex-col items-center justify-center gap-4">
@@ -2014,7 +1911,11 @@ export default function NewQuotePage() {
               }
               // L4: secim popup'i ExcelGrid'de acilir — eylemsiz toast YOK (B3)
               if (match.confidence === 'multi' && match.candidates?.length) {
-                return { netPrice: 0, matchedName: match.matchedName, candidates: match.candidates, reason: match.reason, variantMissing: match.variantMissing };
+                // K3 (27.08): alternatifler MULTI dalinda da tasinir. Motor S7 den
+                // beri coklu adayda da capraz-firma alternatifi uretiyor; FE bu
+                // alani ATTIGI icin kullanici "bu firmada su adaylar" ile "su
+                // firmalarda da var" bilgisinden YALNIZ birini gorebiliyordu.
+                return { netPrice: 0, matchedName: match.matchedName, candidates: match.candidates, alternatives: match.alternatives, reason: match.reason, variantMissing: match.variantMissing };
               }
               if (match.netPrice > 0) {
                 const netPrice = parseFloat(String(match.netPrice)) || 0;
@@ -2096,7 +1997,11 @@ export default function NewQuotePage() {
               // B3: EYLEMSIZ TOAST YOK — secim popup'i ExcelGrid'de acilir,
               // toast gurultusu kaldirildi (hata raporu: "pasif uyari + dead-end").
               if (match.confidence === 'multi' && match.candidates?.length) {
-                return { netPrice: 0, matchedName: match.matchedName, candidates: match.candidates, reason: match.reason, donusum: match.donusum, variantMissing: match.variantMissing };
+                // K3 (27.08): alternatifler MULTI dalinda da tasinir (iscilik ikizi yukarida).
+                // ⚠ K4 ile birlikte ONEMLI: yuzey-genisletilmis satirlar artik 'multi'
+                // donuyor; bu alan tasinmazsa capraz-marka kutusu O SATIRLARDA DUSERDI
+                // (kullanici DOGRU yuzeyli urunu baska markada gormeyi kaybederdi).
+                return { netPrice: 0, matchedName: match.matchedName, candidates: match.candidates, alternatives: match.alternatives, reason: match.reason, donusum: match.donusum, variantMissing: match.variantMissing };
               }
 
               // Tek eslesme basarili
@@ -2193,339 +2098,11 @@ export default function NewQuotePage() {
           />
         )}
         </>
-      ) : uploadMode === 'pdf' ? (
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {rows.length} satir
-            </CardTitle>
-            <Button variant="outline" size="sm" onClick={() => {
-              setRows((prev) => [...prev, {
-                _key: nextKey(),
-                cells: Object.fromEntries(excelHeaders.map((h) => [h, ''])),
-                materialKar: 0, laborKar: 0, brandId: null, laborFirmaId: null, _matNetPrice: 0, _labNetPrice: 0,
-              }]);
-            }}>
-              <Plus className="mr-1 h-3.5 w-3.5" />
-              Satir Ekle
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="max-h-[70vh] overflow-auto">
-            <table className="border-collapse border border-gray-200 dark:border-gray-700 text-xs" style={{ tableLayout: 'auto', width: '100%' }}>
-              <thead className="sticky top-0 z-10 bg-background">
-                <tr className="border bg-muted/60">
-                  <th className="border border-gray-200 dark:border-gray-700 px-2 py-2 text-center text-muted-foreground" style={{ width: 32 }}>#</th>
-                  {visibleHeaders.map((h) => {
-                    const width = columnWidths[h] ?? 120;
-                    return (
-                      <th key={h} className="border border-gray-200 dark:border-gray-700 px-2 py-2 text-left text-muted-foreground whitespace-nowrap text-xs relative group"
-                        style={{ width, minWidth: 60, maxWidth: 600, overflow: 'hidden' }}>
-                        <div className="truncate pr-2">{h}</div>
-                        <div
-                          onMouseDown={(e) => startColumnResize(e, h, width)}
-                          className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-blue-400 active:bg-blue-600 z-20"
-                          style={{ userSelect: 'none' }}
-                          title="Genisligi ayarla"
-                        />
-                      </th>
-                    );
-                  })}
-                  {/* Malz. Kar % — toplu atama */}
-                  <th className="border border-gray-200 dark:border-gray-700 px-1 py-1 text-primary w-20 bg-blue-50/50 dark:bg-blue-950/20">
-                    <div className="text-xs whitespace-nowrap mb-1">Malz. Kar %</div>
-                    <Input type="number" min={0} step={1} placeholder="Tumu"
-                      onChange={(e) => {
-                        // ⚠ BOŞ/GEÇERSİZ GİRİŞ TOPLU ATAMA YAPMAZ: alanı temizleyen
-                        // kullanıcı bütün satırların kârını 0'a çekmek istemiyor.
-                        // Bunu eskiden `isNaN(parseFloat(''))` sağlıyordu; `sayiAlani`
-                        // çöpü 0'a çevirdiği için niyet artık AÇIKÇA yazılı.
-                        const ham = e.target.value.trim();
-                        if (/^[0-9]+([.,][0-9]+)?$/.test(ham)) {
-                          const kar = sayiAlani(ham);
-                          setRows((prev) => prev.map((r) => {
-                            const updated = { ...r, materialKar: kar };
-                            if (r._matNetPrice > 0 && priceCol) {
-                              // ADIM 6: kanonik cift (bkz. 1155'teki not)
-                              const finalPrice = hesaplaSatisBirimFiyat(r._matNetPrice, kar);
-                              const qty = qtyCol ? (parseFloat(String(r.cells[qtyCol])) || 0) : 0;
-                              const newCells = { ...r.cells };
-                              if (priceCol) newCells[priceCol] = finalPrice;
-                              if (totalCol) newCells[totalCol] = hesaplaSatirToplam(finalPrice, qty);
-                              return { ...updated, cells: newCells };
-                            }
-                            return updated;
-                          }));
-                        }
-                      }}
-                      className="h-6 w-full border bg-white dark:bg-gray-900 px-1 text-right text-xs rounded" />
-                  </th>
-                  {isPro && (
-                    <th className="border border-gray-200 dark:border-gray-700 px-1 py-1 text-primary w-20 bg-blue-50/50 dark:bg-blue-950/20">
-                      <div className="text-xs whitespace-nowrap mb-1">Isc. Kar %</div>
-                      <Input type="number" min={0} step={1} placeholder="Tumu"
-                        onChange={(e) => {
-                          // Malzeme ikiziyle AYNI kural (boş/geçersiz → dokunma).
-                          const ham = e.target.value.trim();
-                          if (/^[0-9]+([.,][0-9]+)?$/.test(ham)) {
-                            const kar = sayiAlani(ham);
-                            setRows((prev) => prev.map((r) => ({ ...r, laborKar: kar })));
-                          }
-                        }}
-                        className="h-6 w-full border bg-white dark:bg-gray-900 px-1 text-right text-xs rounded" />
-                    </th>
-                  )}
-                  {/* Malz. Marka — toplu atama */}
-                  <th className="border border-gray-200 dark:border-gray-700 px-1 py-1 text-primary min-w-[110px] bg-blue-50/50 dark:bg-blue-950/20">
-                    <div className="text-xs whitespace-nowrap mb-1">Malz. Marka</div>
-                    <select
-                      onChange={(e) => {
-                        const brandId = e.target.value;
-                        if (!brandId) return;
-                        // Tum miktari olan satirlara marka ata ve eslestirme yap
-                        rows.forEach((row, idx) => {
-                          const qty = qtyCol ? parseFloat(String(row.cells[qtyCol] ?? '')) : NaN;
-                          if (isNaN(qty) || qty <= 0) return;
-                          const matName = buildMaterialContext(idx);
-                          handleBrandChange(row._key, brandId, matName);
-                        });
-                      }}
-                      className="h-6 w-full rounded border bg-white dark:bg-gray-900 px-1 text-xs"
-                      defaultValue=""
-                    >
-                      <option value="">Tumu</option>
-                      {allBrands.map((b) => (<option key={b.id} value={b.id}>{b.name}</option>))}
-                    </select>
-                  </th>
-                  {isPro && (
-                    <th className="border border-gray-200 dark:border-gray-700 px-1 py-1 text-primary min-w-[110px] bg-blue-50/50 dark:bg-blue-950/20">
-                      <div className="text-xs whitespace-nowrap mb-1">Isc. Firma</div>
-                      <select
-                        onChange={(e) => {
-                          const firmaId = e.target.value;
-                          if (!firmaId) return;
-                          setRows((prev) => prev.map((r) => ({ ...r, laborFirmaId: firmaId })));
-                        }}
-                        className="h-6 w-full rounded border bg-white dark:bg-gray-900 px-1 text-xs"
-                        defaultValue=""
-                      >
-                        <option value="">Tumu</option>
-                        {/* ⚠ ESKIDEN allBrands IDI: "Isc. Firma" acilir listesi MARKALARI
-                            gosteriyordu ve secilen MARKA ID'si laborFirmaId'ye yaziliyordu.
-                            Kayit zinciri bagli olmadigi icin bugune kadar gorunmedi. */}
-                        {laborFirms.map((f) => (<option key={f.id} value={f.id}>{f.name}</option>))}
-                      </select>
-                    </th>
-                  )}
-                  <th className="border border-gray-200 dark:border-gray-700 w-8"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row, idx) => {
-                  // Baglamsal tanimlama: parent row'lardan tam malzeme adi olustur
-                  const materialNameForLookup = buildMaterialContext(idx);
-
-                  // Bu satir gercek bir malzeme satiri mi? (miktari olan)
-                  const rowQty = qtyCol ? parseFloat(String(row.cells[qtyCol] ?? '')) : NaN;
-                  const isDataRow = !isNaN(rowQty) && rowQty > 0;
-
-                  return (
-                    <tr key={row._key} className="hover:bg-blue-50/30 dark:hover:bg-blue-950/10">
-                      <td className="border border-gray-200 dark:border-gray-700 px-2 py-1 text-muted-foreground text-center">{idx + 1}</td>
-                      {/* Excel sutunlari — sadece gorunur olanlar */}
-                      {visibleHeaders.map((h) => {
-                        const isCurrencyCol = h === priceCol || h === totalCol;
-                        const rawVal = row.cells[h] ?? '';
-                        const numVal = parseFloat(String(rawVal));
-                        const colWidth = columnWidths[h] ?? 120;
-                        // Para birimi sutunlarinda donusturulmus deger goster
-                        const currencySymbol = currency === 'USD' ? '$' : currency === 'EUR' ? '€' : '₺';
-                        const convertedVal = isCurrencyCol && !isNaN(numVal) && numVal > 0
-                          ? (numVal * conversionRate).toFixed(2)
-                          : '';
-
-                        // Coklu aday varsa fiyat hucresinde secenekleri goster
-                        const showCandidates = h === priceCol && row._candidates && row._candidates.length > 0;
-                        // Asama 1: sadece surfaceLevel adaylar (yuzey/cins farki). Asama 2: tumu
-                        const candidateList = showCandidates
-                          ? (row._showAllCandidates
-                              ? row._candidates!
-                              : row._candidates!.filter((c: MatchCandidate) => c.surfaceLevel))
-                          : [];
-                        const hasMoreCandidates = showCandidates && !row._showAllCandidates && row._candidates!.length > candidateList.length;
-
-                        return (
-                          <td key={h} className="border border-gray-200 dark:border-gray-700 px-1 py-0.5" style={{ width: colWidth, maxWidth: colWidth, overflow: 'hidden' }}>
-                            {showCandidates ? (
-                              <div className="text-xs">
-                                <div className="text-amber-600 font-medium mb-1">⚠ Secin:</div>
-                                {candidateList.map((c: MatchCandidate, ci: number) => (
-                                  <button key={ci}
-                                    className="block w-full text-left px-1 py-0.5 hover:bg-blue-50 dark:hover:bg-blue-950 rounded text-xs"
-                                    onClick={() => {
-                                      const netPrice = c.netPrice;
-                                      setRows((prev) => prev.map((r) => {
-                                        if (r._key !== row._key) return r;
-                                        const kar = sayiAlani(r.materialKar);
-                                        // ADIM 6: kanonik cift (bkz. 1155'teki not)
-                                        const fp = hesaplaSatisBirimFiyat(netPrice, kar);
-                                        const qty = qtyCol ? (parseFloat(String(r.cells[qtyCol])) || 0) : 0;
-                                        const nc = { ...r.cells };
-                                        if (priceCol) nc[priceCol] = fp;
-                                        if (totalCol) nc[totalCol] = hesaplaSatirToplam(fp, qty);
-                                        return { ...r, _matNetPrice: netPrice, _matKurBilgi: (c as any).kaynakKur ?? null, _candidates: null, cells: nc };
-                                      }));
-                                      toast({ title: `🟢 ${c.label}`, description: `${displayPrice(netPrice)} — ${c.materialName.slice(0, 50)}` });
-                                    }}
-                                  >
-                                    <span className="font-medium">{c.popular && '★ '}{c.label}</span>
-                                    <span className="text-muted-foreground"> — {displayPrice(c.netPrice)}</span>
-                                  </button>
-                                ))}
-                                {hasMoreCandidates && (
-                                  <button className="text-blue-600 text-xs px-1 mt-0.5 hover:underline"
-                                    onClick={() => setRows((prev) => prev.map((r) => r._key === row._key ? { ...r, _showAllCandidates: true } : r))}>
-                                    ▸ Digerleri ({row._candidates!.length - candidateList.length})
-                                  </button>
-                                )}
-                                {row._showAllCandidates && (
-                                  <button className="text-gray-500 text-xs px-1 mt-0.5 hover:underline"
-                                    onClick={() => setRows((prev) => prev.map((r) => r._key === row._key ? { ...r, _showAllCandidates: false } : r))}>
-                                    ▴ Gizle
-                                  </button>
-                                )}
-                              </div>
-                            ) : isCurrencyCol && !isNaN(numVal) && numVal > 0 ? (
-                              <span className="block h-7 leading-7 px-1 text-xs text-right tabular-nums">
-                                {currencySymbol}{convertedVal}
-                              </span>
-                            ) : (
-                              <Input
-                                type="text"
-                                value={String(rawVal)}
-                                onChange={(e) => updateCellAndCalc(row._key, h, e.target.value)}
-                                className="h-7 w-full border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-1"
-                              />
-                            )}
-                          </td>
-                        );
-                      })}
-                      {/* === SISTEM SUTUNLARI === */}
-                      {/* Malz. Kar % — sadece veri satirinda */}
-                      <td className="border border-gray-200 dark:border-gray-700 px-1 py-0.5 bg-blue-50/50 dark:bg-blue-950/20">
-                        {isDataRow ? (
-                          <div className="flex items-center gap-0.5">
-                            <Input type="number" min={0} step={1} value={row.materialKar}
-                              onChange={(e) => handleMatKarChange(row._key, sayiAlani(e.target.value))}
-                              className="h-7 w-full border-0 bg-transparent px-1 text-right text-xs shadow-none focus-visible:ring-1" />
-                            {sayiAlani(row.materialKar) > 0 && (
-                              <button title="Asagiya kopyala" className="text-muted-foreground hover:text-primary text-xs px-0.5"
-                                onClick={() => {
-                                  const kar = sayiAlani(row.materialKar);
-                                  setRows((prev) => prev.map((r, i) => {
-                                    if (i <= idx) return r;
-                                    const updated = { ...r, materialKar: kar };
-                                    if (r._matNetPrice > 0 && priceCol) {
-                                      // ADIM 6: kanonik cift (bkz. 1155'teki not)
-                                      const fp = hesaplaSatisBirimFiyat(r._matNetPrice, kar);
-                                      const q = qtyCol ? (parseFloat(String(r.cells[qtyCol])) || 0) : 0;
-                                      const nc = { ...r.cells };
-                                      if (priceCol) nc[priceCol] = fp;
-                                      if (totalCol) nc[totalCol] = hesaplaSatirToplam(fp, q);
-                                      return { ...updated, cells: nc };
-                                    }
-                                    return updated;
-                                  }));
-                                }}>↓</button>
-                            )}
-                          </div>
-                        ) : null}
-                      </td>
-                      {/* Isc. Kar % (Pro+) */}
-                      {isPro && (
-                        <td className="border border-gray-200 dark:border-gray-700 px-1 py-0.5 bg-blue-50/50 dark:bg-blue-950/20">
-                          {isDataRow ? (
-                            <Input type="number" min={0} step={1} value={row.laborKar}
-                              onChange={(e) => handleLabKarChange(row._key, sayiAlani(e.target.value))}
-                              className="h-7 w-full border-0 bg-transparent px-1 text-right text-xs shadow-none focus-visible:ring-1" />
-                          ) : null}
-                        </td>
-                      )}
-                      {/* Malz. Marka — sadece veri satirinda */}
-                      <td className="border border-gray-200 dark:border-gray-700 px-1 py-0.5 bg-blue-50/50 dark:bg-blue-950/20">
-                        {isDataRow ? (
-                          <div className="flex items-center gap-0.5">
-                            <select
-                              value={row.brandId ?? ''}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                handleBrandChange(row._key, val, materialNameForLookup);
-                              }}
-                              className="h-7 w-full rounded border border-gray-200 bg-transparent px-1 text-xs"
-                            >
-                              <option value="">Marka</option>
-                              {allBrands.map((b) => (<option key={b.id} value={b.id}>{b.name}</option>))}
-                            </select>
-                            {row.brandId && (
-                              <button title="Asagiya kopyala" className="text-muted-foreground hover:text-primary text-xs px-0.5"
-                                onClick={() => {
-                                  const brandId = row.brandId!;
-                                  rows.forEach((r, i) => {
-                                    if (i <= idx) return;
-                                    const qty = qtyCol ? parseFloat(String(r.cells[qtyCol] ?? '')) : NaN;
-                                    if (isNaN(qty) || qty <= 0) return;
-                                    const matName = buildMaterialContext(i);
-                                    handleBrandChange(r._key, brandId, matName);
-                                  });
-                                }}>↓</button>
-                            )}
-                          </div>
-                        ) : null}
-                      </td>
-                      {/* Isc. Firma (Pro+) */}
-                      {isPro && (
-                        <td className="border border-gray-200 dark:border-gray-700 px-1 py-0.5 bg-blue-50/50 dark:bg-blue-950/20">
-                          {isDataRow ? (
-                            <select
-                              value={row.laborFirmaId ?? ''}
-                              onChange={(e) => handleFirmaChange(row._key, e.target.value, materialNameForLookup)}
-                              className="h-7 w-full rounded border border-gray-200 bg-transparent px-1 text-xs"
-                            >
-                              <option value="">Firma</option>
-                              {/* ⚠ ESKIDEN allBrands IDI — yukaridaki ayni kusur */}
-                              {laborFirms.map((f) => (<option key={f.id} value={f.id}>{f.name}</option>))}
-                            </select>
-                          ) : null}
-                        </td>
-                      )}
-                      {/* Sil */}
-                      <td className="border border-gray-200 dark:border-gray-700 px-1">
-                        <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setRows((p) => p.filter((r) => r._key !== row._key))}>
-                          <Trash2 className="h-3 w-3 text-muted-foreground" />
-                        </Button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              <tfoot>
-                <tr className="bg-muted/50 font-bold">
-                  <td colSpan={visibleHeaders.length + 1} className="border border-gray-200 dark:border-gray-700 px-2 py-3 text-right text-sm">GENEL TOPLAM</td>
-                  <td colSpan={isPro ? 4 : 2} className="border border-gray-200 dark:border-gray-700 px-2 py-3 text-center text-sm">{displayPrice(grandTotal)}</td>
-                  <td className="border border-gray-200 dark:border-gray-700"></td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
-      ) : uploadMode !== 'dwg' ? (
+      ) : (
         <div className="rounded border-2 border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-muted-foreground">
           Excel yukleniyor veya Excel goruntu alinamadi. Geri donup tekrar yuklemeyi deneyin.
         </div>
-      ) : null}
+      )}
 
     </div>
   );

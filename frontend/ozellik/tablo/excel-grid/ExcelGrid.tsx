@@ -367,6 +367,20 @@ function BrandDropdown(props: ICellRendererParams & {
     const gv = autoVariantEnabled && ctxDetail.header ? groupVariants.current[ctxDetail.header] : undefined;
     const escapeAuto = !!data._matAutoVariant;
     const useVariant = !!gv && !escapeAuto && data._matVariantMode !== 'manual';
+    // N5-lite: kesif dosyasindaki marka metnine uyan alternatif one alinir ve
+    // ★ ile isaretlenir. K3 (27.08): iki cagri yeri paylassin diye yardimciya
+    // alindi. ⚠ ISCILIK IKIZINE YAYILMAZ: brandField MALZEME MARKASI
+    // sutunudur; iscilikte o hucrenin degeri FIRMA dir ve eslestirilirse
+    // UYDURMA bir "keşif önerisi" rozeti basilir (proxy olcut yasagi).
+    const isaretleOneriler = (alts: BrandAlternative[]): BrandAlternative[] => {
+      const brandText = brandField ? String(data[brandField] ?? '').toLocaleLowerCase('tr') : '';
+      const m = alts.map((a) => ({
+        ...a,
+        onerilen: !!brandText && brandText.includes(a.brandName.toLocaleLowerCase('tr').split(' ')[0]),
+      }));
+      m.sort((a, x) => (a.onerilen ? 0 : 1) - (x.onerilen ? 0 : 1));
+      return m;
+    };
     const opts = useVariant ? { variantTags: gv!.tags } : undefined;
 
     console.log(`[BrandDropdown] row=${data._rowIdx}, sorgu="${queryName}"${useVariant ? ` varyant=[${gv!.tags.join(',')}]` : ''}${escapeAuto ? ' (oto-kacis: tam liste)' : ''}`);
@@ -384,6 +398,12 @@ function BrandDropdown(props: ICellRendererParams & {
       // K4: gruba-uygula varsayilani — ilk secimde ACIK, oto-kacista KAPALI
       setApplyToGroup(autoVariantEnabled && !!ctxDetail.header && !escapeAuto);
       donusumRef.current = result.donusum ?? null;
+      // K3 (27.08): adaylar VE alternatifler birlikte gelebilir. Alternatif
+      // portali adaylar acikken kapali; kullanici popup icindeki dugmeyle
+      // gecer. Bu satir olmadan capraz-marka bilgisi coklu adayda KAYBOLUR.
+      setAlternatives(result.alternatives && result.alternatives.length > 0
+        ? isaretleOneriler(result.alternatives)
+        : null);
       setCandidates(result.candidates);
       return;
     }
@@ -440,12 +460,7 @@ function BrandDropdown(props: ICellRendererParams & {
     // N5-lite: kesif dosyasindaki "HAKAN VEYA MUADILI" marka metnine uyan
     // alternatif one alinir ve ★ ile isaretlenir.
     if (result && result.alternatives && result.alternatives.length > 0) {
-      const brandText = brandField ? String(data[brandField] ?? '').toLocaleLowerCase('tr') : '';
-      const marked = result.alternatives.map((a) => ({
-        ...a,
-        onerilen: !!brandText && brandText.includes(a.brandName.toLocaleLowerCase('tr').split(' ')[0]),
-      }));
-      marked.sort((a, b) => (a.onerilen ? 0 : 1) - (b.onerilen ? 0 : 1));
+      const marked = isaretleOneriler(result.alternatives);
       setPopupPos(computePopupPos());
       node.setDataValue('_matStatus', 'belirsiz');
       setAlternatives(marked);
@@ -835,6 +850,23 @@ function BrandDropdown(props: ICellRendererParams & {
               Seçimi bu gruptaki tüm satırlara uygula
             </label>
           )}
+          {/* K3 (27.08): ADAYLAR ile ALTERNATIFLER birlikte donebiliyor (motor
+              S7 den beri coklu adayda da capraz oneri uretiyor; K4 ile yuzey-
+              genisletilmis satirlar da multi donuyor). Iki kutu AYNI konumda
+              ve ayni zIndex te oldugu icin ust uste biniyordu; alternatif
+              portali artik adaylar acikken KAPALI ve gecis BURADAN yapiliyor. */}
+          {alternatives && alternatives.length > 0 && (
+            <button
+              onClick={() => setCandidates(null)}
+              style={{
+                display: 'block', width: '100%', textAlign: 'center', padding: '6px',
+                border: '1px solid #fca5a5', background: '#fef2f2', cursor: 'pointer',
+                fontSize: 11, color: '#b91c1c', borderRadius: 4, marginTop: 4, fontWeight: 600,
+              }}
+            >
+              {`Başka markalarda ${alternatives.length} ürün var — göster`}
+            </button>
+          )}
           <button
             onClick={handleCancel}
             style={{
@@ -872,7 +904,7 @@ function BrandDropdown(props: ICellRendererParams & {
           S2: kutu KESINLIK IDDIA ETMEZ; adaylardan biri bile motorun onay
           kapisindan gecememisse baslik onay tonuna doner ve her cekinceli
           adayin GEREKCESI kartinda yazar (karar: oneri-cekince.ts). */}
-      {alternatives && alternatives.length > 0 && popupPos && typeof document !== 'undefined' && createPortal(
+      {alternatives && alternatives.length > 0 && !(candidates && candidates.length > 0) && popupPos && typeof document !== 'undefined' && createPortal(
         <div style={{
           position: 'fixed', top: popupPos.top, left: popupPos.left, zIndex: 99999,
           background: '#fef2f2', border: '2px solid #ef4444', borderRadius: 6, padding: 8,
@@ -1050,6 +1082,13 @@ function FirmaDropdown(props: ICellRendererParams & {
       yazVeriLab(node, '_labStatus', 'belirsiz');
       yazVeriLab(node, '_labAdaySayisi', result.candidates.length);
       yazVeriLab(node, '_labSebep', (result as any).reason ?? null);
+      // K3 (27.08): adaylar VE capraz-firma alternatifleri birlikte gelebilir
+      // (S7 den beri). Alternatif portali adaylar acikken kapali; gecis popup
+      // icindeki dugmeyle yapilir.
+      // ⚠ ★ "keşif önerisi" isareti BURAYA YAYILMAZ: o isaret MALZEME MARKASI
+      // sutunuyla karsilastirmadan uretilir; iscilikte o hucrenin degeri FIRMA
+      // dir ve eslestirilirse UYDURMA bir rozet basilir (proxy olcut yasagi).
+      setAlternatives((result as any).alternatives ?? null);
       setCandidates(result.candidates);
       return;
     }
@@ -1151,11 +1190,28 @@ function FirmaDropdown(props: ICellRendererParams & {
               <div style={{ color: '#6b7280', fontSize: 11 }}>{c.netPrice.toFixed(2)} TL</div>
             </button>
           ))}
+          {/* K3 (27.08): ADAYLAR ile ALTERNATIFLER birlikte donebiliyor (motor
+              S7 den beri coklu adayda da capraz oneri uretiyor; K4 ile yuzey-
+              genisletilmis satirlar da multi donuyor). Iki kutu AYNI konumda
+              ve ayni zIndex te oldugu icin ust uste biniyordu; alternatif
+              portali artik adaylar acikken KAPALI ve gecis BURADAN yapiliyor. */}
+          {alternatives && alternatives.length > 0 && (
+            <button
+              onClick={() => setCandidates(null)}
+              style={{
+                display: 'block', width: '100%', textAlign: 'center', padding: '6px',
+                border: '1px solid #fca5a5', background: '#fef2f2', cursor: 'pointer',
+                fontSize: 11, color: '#b91c1c', borderRadius: 4, marginTop: 4, fontWeight: 600,
+              }}
+            >
+              {`Başka firmalarda ${alternatives.length} kalem var — göster`}
+            </button>
+          )}
         </div>,
         document.body,
       )}
       {/* L5: bu firmada yok — kalemi sunan DIGER firmalar (fiyatli, tiklanabilir) */}
-      {alternatives && alternatives.length > 0 && popupPos && typeof document !== 'undefined' && createPortal(
+      {alternatives && alternatives.length > 0 && !(candidates && candidates.length > 0) && popupPos && typeof document !== 'undefined' && createPortal(
         <div style={{
           position: 'fixed', top: popupPos.top, left: popupPos.left, zIndex: 99999,
           background: '#eff6ff', border: '2px solid #3b82f6', borderRadius: 6, padding: 8,
