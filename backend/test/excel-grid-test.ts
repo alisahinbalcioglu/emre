@@ -146,6 +146,105 @@ async function run() {
       `isEmpty=${s.isEmpty} rows=${s.rowData.filter((r: any) => r._isDataRow).length}`);
   }
 
+  // ══ İB (27.08, Grand Hyatt canli vakasi): "İşçilik Birim" — FIYATSIZ yazim ══
+  // Kullanicinin dosyasinda fiyat kolonlari "İşçilik Birim" / "İşçilik Toplam"
+  // diye basliklanmis — "fiyat" KELIMESI YOK. laborUnitPrice desenlerinin HEPSI
+  // "fiyat" sartli oldugu icin rol atanmiyordu → G kolonundaki 200/300/350
+  // gride HIC gelmiyordu (İşç. Toplam ise /iscilik.*toplam/ ile geliyordu —
+  // kullanici yarim tablo goruyordu). Ayni yazim ailesi skychem'de de olculmustu
+  // ("MALZEME BİRİM" — R-B yorumu). IKI AILE kaniti: malzeme + iscilik.
+  // KARSI ORNEK korunur: "İşçilik Birimi" basligi altinda GERCEKTEN mt/ad
+  // varsa fiyat rolu ATANMAZ (sayisal icerik sarti) — unit atamasi bozulmaz.
+  {
+    // Kullanicinin gercek dosya sekli: bolum basligi + BOS malzeme fiyat
+    // kolonu + fiyatsiz "İşçilik Birim" basligi.
+    const aoa: any[][] = [
+      ['No', 'Malzeme Adı', 'Birim', 'Miktar', 'Malzeme Birim Fiyat', 'Malzeme Toplam', 'İşçilik Birim', 'İşçilik Toplam', 'Toplam'],
+      ['', 'OFİSLER FAN-COİL DEMONTAJ İŞLERİ', '', '', '', '', '', '', ''],
+      ['', '1/2"-2" Boru Demontaj', 'mt', 1931, '', '', 200, 386200, ''],
+      ['', '2"-4" Boru Demontaj', 'mt', 886, '', '', 300, 265800, ''],
+      ['', '1/2" Siyah Boru', 'mt', 300, '', '', 350, 105000, ''],
+    ];
+    const res = await svc.prepare(fixture(aoa, []), { fixedSchema: true });
+    const s = res.sheets[0];
+    const d = s.rowData.filter((r: any) => r._isDataRow);
+    // FIXTURE KANITI: veri satirlari taniniyor ve İşç. Toplam ZATEN geliyor
+    // (yani asagidaki birim-fiyat iddiasi bos kumeden degil).
+    check('İB0 FIXTURE KANITI: 3 veri satırı tanındı', d.length === 3,
+      `isEmpty=${s.isEmpty} rows=${d.length}`);
+    check('İB0b FIXTURE KANITI: İşç. Toplam Excel\'den geliyor (kontrol grubu)',
+      d.some((r: any) => Number(r._labToplam) === 386200),
+      `_labToplam=${d.map((r: any) => r._labToplam).join(',')}`);
+    // ASIL IDDIA: fiyatsiz "İşçilik Birim" basligi laborUnitPrice olmali ve
+    // degerler sabit alana TASINMALI.
+    check('İB1 "İşçilik Birim" (fiyatsız yazım) → işçilik birim fiyatları gride gelir',
+      d.map((r: any) => Number(r._labBirim)).join(',') === '200,300,350',
+      `_labBirim=${d.map((r: any) => r._labBirim).join(',')}`);
+    // Birim (mt) kolonu fiyat roluyle KARISMAMALI.
+    check('İB1b "Birim" kolonu (mt) hâlâ birim olarak yerleşir',
+      d.every((r: any) => String(r._birim ?? '').trim().toLowerCase() === 'mt'),
+      `_birim=${d.map((r: any) => r._birim).join(',')}`);
+  }
+  // ── İB2: IKIZ — "Malzeme Birim" (fiyatsiz) malzeme tarafinda ──
+  {
+    const aoa: any[][] = [
+      ['No', 'Malzeme Adı', 'Birim', 'Miktar', 'Malzeme Birim', 'Malzeme Toplam'],
+      ['', '1/2" Siyah Boru', 'mt', 300, 150, 45000],
+      ['', '3/4" Siyah Boru', 'mt', 463, 180, 83340],
+    ];
+    const res = await svc.prepare(fixture(aoa, []), { fixedSchema: true });
+    const s = res.sheets[0];
+    const d = s.rowData.filter((r: any) => r._isDataRow);
+    check('İB2 İKİZ: "Malzeme Birim" (fiyatsız yazım) → malzeme birim fiyatları gride gelir',
+      d.map((r: any) => Number(r._matBirim)).join(',') === '150,180',
+      `_matBirim=${d.map((r: any) => r._matBirim).join(',')}`);
+  }
+  // ── İB3: KARSI ORNEK KILIDI — "İşçilik Birimi" altinda GERCEK birim (mt/ad) ──
+  // Sayisal icerik sarti olmasa bu kolon fiyat rolu kapardi; mt/ad metinleri
+  // birim fiyat sanilirdi. Bugunku dogru davranis (unit atamasi) KORUNMALI.
+  // ⚠ FIXTURE DERSI (mutasyonla yakalandi): ilk desen `/birim\b/` idi ve
+  //   "Birimi" (ekli yazim) desene ZATEN tutmuyordu — İB3 sayisal sart
+  //   sayesinde degil, TESADUFEN yesildi (sart kaldirilinca da yesil kaldi).
+  //   Desene ek toleransi (birim(i|leri)?) eklendi; artik bu blok GERCEKTEN
+  //   sayisal sarti olcuyor — İB4 de ayni yazimin fiyat-icerikli halini kilitler.
+  {
+    const aoa: any[][] = [
+      ['No', 'İmalat Tanımı', 'Miktar', 'İşçilik Birimi', 'İşçilik Toplam'],
+      ['1', 'Boru montajı', 100, 'mt', 20000],
+      ['2', 'Vana montajı', 5, 'ad', 1500],
+    ];
+    const res = await svc.prepare(fixture(aoa, []), { fixedSchema: true });
+    const s = res.sheets[0];
+    const d = s.rowData.filter((r: any) => r._isDataRow);
+    // ⚠ OLCUT DERSI (mutasyonla yakalandi, 2. tur): ilk assert
+    //   `!(Number(_labBirim) > 0)` idi — Number('mt')=NaN>0 false oldugu
+    //   icin sart kaldirildiginda da yesil kaliyordu. Mutasyon altinda
+    //   olculen gercek bozulma: ayni kolon HEM unit HEM laborUnitPrice
+    //   rolu aliyor ve 'mt'/'ad' metinleri fiyat alanina TASINIYOR.
+    //   Dogru olcut: fiyat alani TAMAMEN BOS kalmali.
+    check('İB3 ★ "İşçilik Birimi" içeriği mt/ad ise FİYAT ROLÜ ALMAZ (fiyat alanı BOŞ kalır)',
+      d.every((r: any) => /^(mt|ad)$/i.test(String(r._birim ?? '').trim()))
+      && d.every((r: any) => String(r._labBirim ?? '').trim() === ''),
+      `_birim=${d.map((r: any) => r._birim).join(',')} _labBirim=${d.map((r: any) => JSON.stringify(r._labBirim)).join(',')}`);
+  }
+  // ── İB4: EKLI YAZIM + SAYISAL icerik → fiyat rolu ALMALI (İB3'un ikizi) ──
+  // İB3 ile birlikte sayisal sartin IKI YONUNU kilitler: ayni baslik, icerik
+  // sayiysa FIYAT, mt/ad ise BIRIM. Boylece İB3'un dali surdugu de kanitlanir
+  // (desen tutmasaydi İB4 de kirmizi olurdu — bir assert tek kriter).
+  {
+    const aoa: any[][] = [
+      ['No', 'İmalat Tanımı', 'Birim', 'Miktar', 'İşçilik Birimi', 'İşçilik Toplam'],
+      ['1', 'Boru montajı', 'mt', 100, 200, 20000],
+      ['2', 'Vana montajı', 'ad', 5, 300, 1500],
+    ];
+    const res = await svc.prepare(fixture(aoa, []), { fixedSchema: true });
+    const s = res.sheets[0];
+    const d = s.rowData.filter((r: any) => r._isDataRow);
+    check('İB4 "İşçilik Birimi" içeriği SAYI ise fiyat olarak gelir (ek toleransı)',
+      d.map((r: any) => Number(r._labBirim)).join(',') === '200,300',
+      `_labBirim=${d.map((r: any) => r._labBirim).join(',')}`);
+  }
+
   console.log(`\n${'='.repeat(60)}`);
   console.log(`EXCEL GRID PARSE: ${passed} PASS, ${failed} FAIL`);
   console.log('='.repeat(60));

@@ -622,6 +622,22 @@ export class ExcelGridService {
 
     const maxSearch = Math.min(20, rawValues.length);
 
+    // SAF sayi orani — parseFloat("32 adet isci...")=32 tuzagina dusmez
+    // (sefa: ad kolonu 'adet' kelimesi + bastaki sayiyla miktar sanilmisti).
+    // Hem asagidaki R-B/KG6 icerik dogrulamasi hem de FIYATSIZ baslik
+    // desenlerinin (patternsNumeric) sayisal icerik sarti kullanir.
+    const sayisalOran = (c: number): number => {
+      const limit = Math.min(60, rawValues.length);
+      let dolu = 0; let sayi = 0;
+      for (let r = 0; r < limit; r++) {
+        const s = String(rawValues[r]?.[c] ?? '').trim();
+        if (!s) continue;
+        dolu++;
+        if (/^-?[0-9.,]+$/.test(s) && !isNaN(parseFloat(s.replace(',', '.')))) sayi++;
+      }
+      return dolu === 0 ? 0 : sayi / dolu;
+    };
+
     // Her sutun icin birlesik text
     const colTexts: string[] = [];
     for (let c = 0; c < colCount; c++) {
@@ -638,7 +654,10 @@ export class ExcelGridService {
       colTexts.push(parts.join(' ').trim());
     }
 
-    const checks: Array<{ role: string; patterns: RegExp[]; priority: number }> = [
+    // `patternsNumeric`: yalniz kolon icerigi SAF SAYI agirlikliysa
+    // (sayisalOran ≥ 0.5) eslesmis sayilan ZAYIF desenler — "fiyat"
+    // kelimesiz fiyat basliklari icin (İB). `patterns` bittikten sonra denenir.
+    const checks: Array<{ role: string; patterns: RegExp[]; patternsNumeric?: RegExp[]; priority: number }> = [
       { role: 'no', patterns: [/\bsira\s*no\b/, /\bsira\b/, /\bposno\b/, /\bpoz\s*no\b/], priority: 1 },
       { role: 'name', patterns: [/cinsi\s*tanim/, /imalat\s*tanim/, /yapilacak\s*imalat/, /malzeme\s*adi/, /aciklama/, /poz\s*adi/], priority: 2 },
       { role: 'brand', patterns: [/\bmarkasi\b/, /\bmarka\b/, /\bbrand\b/], priority: 2 },
@@ -649,9 +668,19 @@ export class ExcelGridService {
       // Tek yonlu desen (iscilik.*birim fiyat) bunlari HIC yakalamiyordu →
       // rol dosya kolonuna baglanmiyor → dosyanin isCILIK fiyatlari sabit
       // semaya TASINMIYOR ve grid'de gorunmuyordu (MF1 ihlali).
-      { role: 'materialUnitPrice', patterns: [/malzeme.*birim\s*fiyat/, /birim\s*fiyat.*malzeme/, /mlz.*birim\s*fiyat/, /malzeme.*b\.?\s*fiyat/, /mlz.*b\.?\s*fiyat/], priority: 3 },
+      // İB (27.08, Grand Hyatt canli vakasi): fiyat kolonlari "fiyat"
+      // KELIMESIZ de basliklanir — "İşçilik Birim" / "Malzeme Birim"
+      // (skychem "MALZEME BİRİM" ayni aile — asagidaki R-B yorumundaki vaka).
+      // "fiyat" sartli desenlerin hicbiri tutmuyordu → rol atanmiyor →
+      // dosyanin DOLU iscilik fiyatlari (200/300/350...) gride HIC
+      // gelmiyordu; "İşçilik Toplam" ise /iscilik.*toplam/ ile geldigi icin
+      // kullanici YARIM tablo goruyordu. FIYATSIZ yazim `patternsNumeric`te
+      // durur: kolon icerigi SAF SAYI agirlikli olmali (sayisalOran ≥ 0.5).
+      // Sart olmasa "İşçilik Birimi" basligi altindaki GERCEK birim kolonu
+      // (mt/ad) fiyat rolunu kapardi — olculdu, kilit: excel-grid-test İB3.
+      { role: 'materialUnitPrice', patterns: [/malzeme.*birim\s*fiyat/, /birim\s*fiyat.*malzeme/, /mlz.*birim\s*fiyat/, /malzeme.*b\.?\s*fiyat/, /mlz.*b\.?\s*fiyat/], patternsNumeric: [/malzeme.*birim(i|leri)?\b/, /mlz\.?.*birim(i|leri)?\b/], priority: 3 },
       { role: 'materialTotal', patterns: [/malzeme.*tutar/, /tutar.*malzeme/, /mlz.*tutar/, /malzeme.*toplam/, /toplam\s*fiyat.*malzeme/], priority: 3 },
-      { role: 'laborUnitPrice', patterns: [/iscilik.*birim\s*fiyat/, /birim\s*fiyat.*iscilik/, /isc.*birim\s*fiyat/, /birim\s*fiyat.*isc/, /iscilik.*b\.?\s*fiyat/, /isc.*b\.?\s*fiyat/], priority: 3 },
+      { role: 'laborUnitPrice', patterns: [/iscilik.*birim\s*fiyat/, /birim\s*fiyat.*iscilik/, /isc.*birim\s*fiyat/, /birim\s*fiyat.*isc\b/, /iscilik.*b\.?\s*fiyat/, /isc.*b\.?\s*fiyat/], patternsNumeric: [/iscilik.*birim(i|leri)?\b/, /isc\.?.*birim(i|leri)?\b/], priority: 3 },
       { role: 'laborTotal', patterns: [/iscilik.*tutar/, /tutar.*iscilik/, /isc.*tutar/, /iscilik.*toplam/, /toplam\s*fiyat.*iscilik/], priority: 3 },
       { role: 'grandUnitPrice', patterns: [/toplam.*birim\s*fiyat/, /genel.*birim/], priority: 3 },
       { role: 'grandTotal', patterns: [/toplam.*tutar/, /^toplam$/, /genel\s*toplam/], priority: 3 },
@@ -681,13 +710,24 @@ export class ExcelGridService {
         // isEmpty sayildi -> 5 sayfalik dosyada 4 sekme "kayboldu".
         // Yeni kod: GUCLU pattern TUM kolonlarda once aranir; zayif pattern
         // ancak guclusu hic eslesmezse devreye girer.
+        // İB: guclu desenler ("fiyat" kelimeli) ONCE, sayisal-sartli zayif
+        // desenler ("İşçilik Birim" gibi fiyatsiz yazimlar) SONRA denenir.
+        const tumDesenler: Array<{ re: RegExp; sayisalSart: boolean }> = [
+          ...check.patterns.map((re) => ({ re, sayisalSart: false })),
+          ...(check.patternsNumeric ?? []).map((re) => ({ re, sayisalSart: true })),
+        ];
         outer:
-        for (const pattern of check.patterns) {
+        for (const { re: pattern, sayisalSart } of tumDesenler) {
           const candidates: number[] = [];
           for (let c = 0; c < colCount; c++) {
             if (assignedCols.has(c)) continue;
             const text = colTexts[c];
-            if (text && pattern.test(text)) candidates.push(c);
+            if (!text || !pattern.test(text)) continue;
+            // İB sayisal sarti: fiyatsiz yazimda basligin fiyat kolonu mu
+            // birim kolonu mu oldugunu ICERIK soyler — SAF sayi agirlikli
+            // olmayan kolon ("mt"/"ad" metinleri) fiyat rolu ALAMAZ.
+            if (sayisalSart && sayisalOran(c) < 0.5) continue;
+            candidates.push(c);
           }
           if (candidates.length === 0) continue;
           // quantity icin ek dogrulama: secilen kolon SAYI icermeli
@@ -713,18 +753,6 @@ export class ExcelGridService {
     // basliklari ters). Olcumler veri hucrelerinden (ilk 60 satir).
     {
       const limit = Math.min(60, rawValues.length);
-      // SAF sayi orani — parseFloat("32 adet isci...")=32 tuzagina dusmez
-      // (sefa: ad kolonu 'adet' kelimesi + bastaki sayiyla miktar sanilmisti)
-      const sayisalOran = (c: number): number => {
-        let dolu = 0; let sayi = 0;
-        for (let r = 0; r < limit; r++) {
-          const s = String(rawValues[r]?.[c] ?? '').trim();
-          if (!s) continue;
-          dolu++;
-          if (/^-?[0-9.,]+$/.test(s) && !isNaN(parseFloat(s.replace(',', '.')))) sayi++;
-        }
-        return dolu === 0 ? 0 : sayi / dolu;
-      };
       const birimOran = (c: number): number => {
         let dolu = 0; let birim = 0;
         for (let r = 0; r < limit; r++) {
