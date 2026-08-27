@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 395
-Toplam satir: 83674
+Kod dosyasi: 396
+Toplam satir: 83742
 Uc nokta: 130
 test:* scripti: 63
 
@@ -406,6 +406,7 @@ test:* scripti: 63
 | `scripts/kalem59-olcu.sh` | 220 |
 | `scripts/kb5-olcu.sh` | 42 |
 | `scripts/klasor-denetle.mjs` | 246 |
+| `scripts/kv-kaucuk-olcu.sh` | 68 |
 | `scripts/s45-olcu.sh` | 90 |
 
 ## 2 · Import bagliliklari
