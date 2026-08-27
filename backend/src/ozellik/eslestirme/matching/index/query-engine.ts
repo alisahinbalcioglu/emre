@@ -62,6 +62,27 @@ export function ayrisanKolon(rows: IndexedRow[]): AskColumn {
  * ve YALNIZ AYNI EKSENDE kiyaslanir. Eksen kurulamiyorsa kiyas YAPILMAZ —
  * uydurma siralama yerine aday sona atilir (bkz. cagiran).
  */
+/**
+ * SINIF UYUMU — cap tag ad uzayi SINIFA GORE ASIRI YUKLUDUR (27.08).
+ *
+ * `dn25` celikte DN25 (= 1") demek, plastikte 25 mm (= 3/4") demek. Urunun
+ * `capTags`i URUNUN kendi sinifiyla, satirin `equiv.tags`i SATIRIN cozulen
+ * sinifiyla uretilir; ikisi FARKLIYSA tag kiyasi ANLAMSIZDIR ve fiziksel
+ * olarak farkli iki olcuyu esit sayar.
+ *
+ * OLCULEN PARA HATASI (EK-18): havuz {PPR 25 mm, celik DN25 @999, celik DN20 @50},
+ * satir `ÇELİK BORU KAYNAKLI 3/4"`. Yazili baglanti havuzu bosaltiyor,
+ * ad-gevsetme PPR'yi getiriyor, sinif 'plastic' cozuluyor ve 3/4" → 25 mm
+ * okunuyor; sonra kurtarma havuzundaki CELIK DN25 urunu 'dn25' uzerinden
+ * eslesip 999 TL'yi 3/4" satirina OTOMATIK yaziyor. Oysa celik DN25 = 1".
+ *
+ * Kural: iki sinif da BELIRLIYSE esit olmalari sart; taraflardan biri
+ * 'unknown' ise kiyas serbest (kanit yok, suclama yok — mevcut cizgi).
+ */
+export function sinifUyar(r: IndexedRow, cls: SizeClass): boolean {
+  return cls === 'unknown' || r.urun.sizeClass === 'unknown' || r.urun.sizeClass === cls;
+}
+
 export function capEkseni(tags: readonly string[]): { eksen: 'dn' | 'od'; deger: number } | null {
   let od: number | null = null;
   for (const t of tags) {
@@ -349,6 +370,16 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   const YUZEYLER = ['siyah', 'galvaniz', 'kirmizi', 'boyali'];
   const yuzeyToken = (t: string) => YUZEYLER.some((s) => tokenEsit(s, t));
   let yuzeyGenis: IndexedRow[] | null = null; // boru: yuzey filtresi HARIC gecenler
+  /**
+   * K4 (27.08) — YUZEY UYGULANMAMIS KUME, TUM AILELER.
+   * yuzeyGenis'ten AYRI bir degisken BILEREK: yuzeyGenis V4.7 kurtarmasinin
+   * havuz sirasina giriyor ve onu tum ailelerde doldurmak kurtarmanin
+   * davranisini boru DISINDA da degistiriyor (olculdu: ad-gevsetme kumesi
+   * kurtarmaya girip bugun none donen bir vakada SESSIZCE ₺250 yaziyor).
+   * Bu degiskeni YALNIZ asagidaki cap-yok kapisi okur; kurtarma yollari
+   * ONU HIC GORMEZ.
+   */
+  let yuzeyHavuzu: IndexedRow[] | null = null;
   // ── CELISKILI YAZILI YUZEY (IS 3-B) ─────────────────────────────────
   // Satirda BIRLIKTE BULUNAMAYAN yuzeyler yazili olabilir ("Galvaniz Siyah
   // boru"): AND filtresi havuzu bosaltir. Dolu ise not, ask'i zorlar (K2).
@@ -365,6 +396,162 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   // surdu (kullanici bildirimi 30.07: "duzeltmenin genel olarak yapilmasi
   // gerekiyor"). Bu havuz aile-bagimsizdir.
   let varyantKurtarma: IndexedRow[] = rows;
+
+  let donusum: string | null = null;
+  let capsizDusum = false;
+  /** S4: capsiz istisnasindan gecen adaylar arasinda ailesi ZAYIF olan var mi
+   *  (aile yalniz kategori basligindan turedi) → ek kanit kapisi. */
+  let capsizAileZayif = false;
+  /**
+   * K2 (26.08) — SATIRIN capi cevrim tablosunda YOK, suzgec hicbir adayi
+   * DOGRULAYAMADI. `capsizDusum`un AYNASI: orada URUNUN capi yok, burada
+   * SATIRIN capi cevrilemiyor. Ikisi ayri kapi, ayri cumle.
+   */
+  let capCevrilemedi = false;
+
+  // ── V4.7 KURTARMA GOVDESI — TEK TANIM, IKI CAGRI YERI (E2, 26.08) ──
+  // Kurtarma bugune kadar YALNIZ V4 blogunun icinde (asagida) yasiyordu ve o
+  // blok dosyadaki 12 'none' donusunun HEPSINDEN SONRA geliyordu. Yani
+  // kurtarma, tam olarak ele almak icin yazildigi vakaya ULASAMIYORDU:
+  // olculdu — kullanici "kirmizi boyali"yi secip surukluyor, hedef satirda
+  // "siyah" yazili; siyah 2" havuzda oldugu icin 2" KURTARILIYOR ama siyah
+  // 2½" olmadigi icin cap filtresi rows'u bosaltip erken 'cap-yok' donuyor,
+  // OYSA kirmizi boyali 2½" kutuphanede DURUYOR. Ayni havuz, ayni secim, iki
+  // farkli cevap. Govdeyi buraya alip cap-yok donusunden de cagiriyoruz.
+  //
+  // PARA KAPISI: kurtarma havuzlarina CAP suzgeci UYGULANMIS olmalidir —
+  // cagiran taraf bunu garanti eder (asagida filtreler donusten ONCE kosar).
+  // Aksi halde kaynak capin fiyati hedef capa yayilir (VS probe M3 sinifi).
+  /**
+   * OTOMATIK FIYAT YAZIMI YASAGI — cap DOGRULANAMADIYSA (I6).
+   * IKI ayri olgu, tek fren:
+   *  · `capsiz-dusum`     : URUNUN capi yok (kolon bos) — VS/Ç vakasi.
+   *  · `cap-cevrilemedi`  : SATIRIN capi cevrim tablosunda yok, suzgec hicbir
+   *                         adayi dogrulayamadi (K2, 26.08).
+   * ⚠ Bu fren `auto-variant` yolunu kapatan TEK yerdir: o yol celiski
+   * zincirinden ONCE doner, yani `kapilar`/`uyariNot` eklemek parayi KESMEZ
+   * (olculdu: yalniz mesaj eklendiginde 500 TL yazilmaya devam ediyordu).
+   */
+  const capAutoYasak = (r: IndexedRow) =>
+    !!line.capInfo && (r.urun.capTags.length === 0 || capCevrilemedi);
+  const capsizOnay = (aday: IndexedRow): QueryOutcome => ({
+    kind: 'ask', askColumn: 'urun', rows: [aday], bilinmeyen, donusum,
+    // Hangi olgunun frenlediğini AYIRIR — iki cumle karistirilirsa mesaj yalan olur.
+    uyariNot: capCevrilemedi && aday.urun.capTags.length > 0
+      ? `Satırın çapı (${line.capInfo!.display}) çevrim tablosunda yok — çap süzgeci uygulanmadı, çapı siz doğrulayın`
+      : `Satır çaplı (${line.capInfo!.display}) ama seçilen varyantın ürününde çap doğrulanamadı`,
+    kapilar: [capCevrilemedi && aday.urun.capTags.length > 0 ? 'cap-cevrilemedi' : 'capsiz-dusum'],
+  });
+  const varyantTagUyar = (v: string[]) => (r: IndexedRow) => {
+    const aday = urunVariantTags(r);
+    return v.every((t) => aday.some((x) => varyantTagEsit(t, x)));
+  };
+  /**
+   * ISCILIK L6 — BIRIM SERT (27.08 REGRESYON ONARIMI).
+   *
+   * Birim suzgeci akista `cap-yok` donusunun ALTINDA. E2 turu (26.08)
+   * kurtarmayi o donuse baglayinca kurtarma havuzlari BIRIM SUZGECINDEN
+   * GECMEDEN degerlendirilir oldu. OLCULDU: birimi 'mt' olan bir kalem,
+   * birimi 'ad' olan ISCILIK satirina auto-variant ile ₺90 YAZIYOR.
+   *
+   * L6 bir NITELIK kurali degil, miktar × fiyat carpiminin SOZLESMESIDIR:
+   * ihlali dogrudan para hatasidir. Kurtarma bu kurali DELEMEZ.
+   * Birimi olmayan / taninmayan kalem ELENMEZ (mevcut cizgi korunur).
+   */
+  const birimUyar = (r: IndexedRow) => {
+    if (!opts?.birimSert || !line.unit) return true;
+    const istenen = birimKanonik(line.unit);
+    if (!istenen) return true;
+    const k = birimKanonik(r.urun.birim);
+    return !k || k === istenen;
+  };
+  /** Fren: TAM tag eslesmesi + TEK aday. Bulamazsa null → cagiran kendi yolunu surdurur. */
+  const varyantKurtar = (): QueryOutcome | null => {
+    const v = opts?.variantTags;
+    if (!v?.length) return null;
+    const tagUyar = varyantTagUyar(v);
+    for (const havuz of [yuzeyGenis, varyantKurtarma]) {
+      if (!havuz || havuz.length === 0) continue;
+      const kurtarilan = havuz.filter(birimUyar).filter(tagUyar);   // L6: birim SERT
+      if (kurtarilan.length === 1) {
+        return capAutoYasak(kurtarilan[0])
+          ? capsizOnay(kurtarilan[0])
+          : { kind: 'auto-variant', row: kurtarilan[0], donusum };
+      }
+    }
+    return null;
+  };
+
+  /**
+   * K1 (26.08) — ERKEN 'none' DONUSLERINDE KURTARMA.
+   *
+   * E2 turu kurtarmayi yalniz 'cap-yok' donusune baglamisti. Cins / yuzey /
+   * baglanti eksenlerindeki UC erken donus (yazili nitelik havuzu bosaltinca)
+   * hala kurtarmasiz kaliyordu — olculdu: kullanicinin sectigi varyant HEDEF
+   * CAPTA kutuphanede DURURKEN motor 'none' donuyor.
+   *
+   * ⚠ NEDEN AYRI FONKSIYON — paylasilan `varyantKurtar`a dokunulmadi:
+   * o govde 'cap-yok' cagri yerinde CAP SUZGECI ZATEN UYGULANMIS havuzla
+   * calisir. Buraya uygun hale getirmek icin ona kapi eklemek (orn.
+   * `!eq.tags.length` → null) mevcut davranisi bozuyor (olculdu: KM-7b oluyor).
+   *
+   * ⚠ BURADA CAP SUZGECI HENUZ KOSMADI — kendi suzgecini KENDI kurar. Suzgecsiz
+   * cagri olculmus PARA HATASI uretir: hedef DN100 iken havuzdaki DN50'nin
+   * fiyati yazilir (uc eksende de dogrulandi).
+   *
+   * KAPILAR (hepsi olcumle zorunlu):
+   *  (a) capsiz satirda hic calismaz — `boyTag` YALNIZ capInfo yokken uretilir
+   *      (line-parser), yani capli satirda yazili boy OLAMAZ; ayri boy suzgeci
+   *      gerekmez. Bu bir guvenlik sarti degil, YAPISAL kapanistir.
+   *  (b) sinif `rows`tan cozulur — bu uc noktada `rows` ASLA bos degildir
+   *      (450'deki kapi garanti eder). Genis havuzdan cozmek daha sik 'unknown'
+   *      verir, yani daha TEHLIKELIDIR.
+   *  (c) `eq.ambiguous` → HIC KURTARMA. Sinif cozulemeyince celik+plastik
+   *      yorumlarinin BIRLESIMI kullaniliyor ve fiziksel olarak FARKLI iki
+   *      olcu ayni kefeye giriyor; olculdu — bu kapi olmadan 3/4" satirina
+   *      celik DN25 urununun 999 TL'si OTOMATIK yaziliyor.
+   *  (d) CEVRIMSIZ OLCU icin AYRI KAPI YOK — gereksiz oldugu OLCULDU. Cap
+   *      cevrilemiyorsa `capSuz` yalniz capTags i BOS olan urunu gecirir; oyle
+   *      bir urun de `capAutoYasak`i ZATEN atesler, yani fiyat otomatik
+   *      yazilamaz. Ayrica kapi koymak kalemi EKRANDAN GIZLERDI — S4 kurali
+   *      (goster ama ONAY iste) ve CC turunun cizgisiyle celisir.
+   * Kapilarin MALIYETI YOK: bu uc nokta bugun zaten 'none' donuyor, kapi
+   * yalniz "iyilestirmeyelim mi" karari verir, mevcut davranisi KOTULESTIREMEZ.
+   */
+  const erkenKurtar = (): QueryOutcome | null => {
+    const v = opts?.variantTags;
+    if (!v?.length) return null;
+    if (!line.capInfo) return null;                       // (a)
+    const clsK = resolveLineClass(rows, sizeClassHint);   // (b)
+    const eq = sizeEquivalents(clsK, line.capInfo);
+    if (eq.ambiguous) return null;                        // (c)
+    const li = capImzasi(line.raw, clsK);
+    // Cap blogundaki `capUyar` ile AYNI mantik (bilesik/reduksiyon dahil);
+    // capsiz urun GECER — cap satira degil urune ait olmayabilir (E1/H3).
+    const capSuz = (r: IndexedRow) => {
+      const urunBilesik = !!r.urun.capRaw && capImzasi(r.urun.capRaw, clsK).bilesik;
+      if (li.bilesik || urunBilesik) {
+        const ui = capImzasi(r.urun.capRaw ?? '', clsK).imza;
+        return ui.length === li.imza.length && ui.every((t, i) => t === li.imza[i]);
+      }
+      if (!sinifUyar(r, clsK)) return false;   // ad uzayi asiri yuklu (bkz. sinifUyar)
+      return r.urun.capTags.some((t) => eq.tags.includes(t)) || r.urun.capTags.length === 0;
+    };
+    const tagUyar = varyantTagUyar(v);
+    for (const havuz of [yuzeyGenis, varyantKurtarma]) {
+      if (!havuz || havuz.length === 0) continue;
+      const k = havuz.filter(birimUyar).filter(capSuz).filter(tagUyar);   // L6: birim SERT
+      if (k.length === 1) {
+        return capAutoYasak(k[0])
+          ? capsizOnay(k[0])
+          // Cap blogu kosmadigi icin `donusum` hala null; cevrim koprusunu
+          // (E4/E6) kaybetmemek icin rozeti buradan tasiyoruz.
+          : { kind: 'auto-variant', row: k[0], donusum: eq.rozet };
+      }
+    }
+    return null;
+  };
+
   let yaziliTabanlar: string[] = []; // yazili yuzeylerin kanonik tabani (siralama)
   // E4 (26.08): satirda YAZILI olup havuzu GERCEKTEN daraltan yuzey kelimeleri.
   // Yuzey filtresi hicbir zaman 'none' DONMEZ — yalniz daraltir; sonuc kodunu
@@ -389,7 +576,11 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
         // yazilmaz (asagida adGevsetildi kapisi) — ad birebir eslesmedi.
         const d2 = aileHavuzu.filter((r) => !r.urun.aileZayif && altKume(diger, r.urun.cinsTokens));
         if (d2.length > 0) { rows = d2; adGevsetildi = true; }
-        else return { kind: 'none', reason: 'kriter-yok', detail: diger.join(' ') };
+        else {
+          // K1: kullanicinin ACIK secimi hedef capta duruyorsa once KURTAR
+          const k1 = erkenKurtar(); if (k1) return k1;
+          return { kind: 'none', reason: 'kriter-yok', detail: diger.join(' ') };
+        }
       }
     }
     if (yuzeyler.length) {
@@ -397,6 +588,7 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
       const d = rows.filter(hepsi);
       if (d.length > 0) {
         if (adGenis) adGenis = adGenis.filter(hepsi);
+        yuzeyHavuzu = rows;                            // K4: TUM aileler
         if (familySlug === 'boru') yuzeyGenis = rows; // yuzey uygulanmamis kume
         yaziliTabanlar = ['siyah', 'galvaniz'].filter((b) => yuzeyler.some((t) => tokenEsit(b, t)));
         // E4: YALNIZ gercekten daralttiysa kaydet. Daraltmadiysa yuzey eleyici
@@ -420,6 +612,8 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
           yuzeyler.some((t) => r.urun.cinsTokens.some((x) => tokenEsit(t, x)));
         const orHavuz = rows.filter(biri);
         if (orHavuz.length === 0) {
+          // K1: kullanicinin ACIK secimi hedef capta duruyorsa once KURTAR
+          const k1 = erkenKurtar(); if (k1) return k1;
           return { kind: 'none', reason: 'yuzey-celiskisi', detail: yuzeyler.join(' ') };
         }
         if (adGenis) adGenis = adGenis.filter(biri);
@@ -443,61 +637,20 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
       // Ad-gevsetme baglanti icin de simetrik (ayni hastalik, ayni ilac)
       const d2 = aileHavuzu.filter((r) => !r.urun.aileZayif && bagUyar(r));
       if (d2.length > 0) { rows = d2; adGevsetildi = true; }
-      else return { kind: 'none', reason: 'kriter-yok', detail: yol.baglanti.join(' ') };
+      else {
+        // K1: kullanicinin ACIK secimi hedef capta duruyorsa once KURTAR
+        const k1 = erkenKurtar(); if (k1) return k1;
+        return { kind: 'none', reason: 'kriter-yok', detail: yol.baglanti.join(' ') };
+      }
     }
     if (yuzeyGenis) yuzeyGenis = yuzeyGenis.filter(bagUyar);
+    if (yuzeyHavuzu) yuzeyHavuzu = yuzeyHavuzu.filter(bagUyar);
   }
   if (rows.length === 0) return { kind: 'none', reason: 'ad-yok' };
 
   // ── 2. CAP — SERT ────────────────────────────────────────────────
   // Esdegerlik INDEKSTE on-hesapli (capTags): teklifteki 2" ile kutuphanedeki
   // DN50 burada bulusur, sorgu aninda cevrim TABLOSU aranmaz.
-  let donusum: string | null = null;
-  let capsizDusum = false;
-  /** S4: capsiz istisnasindan gecen adaylar arasinda ailesi ZAYIF olan var mi
-   *  (aile yalniz kategori basligindan turedi) → ek kanit kapisi. */
-  let capsizAileZayif = false;
-
-  // ── V4.7 KURTARMA GOVDESI — TEK TANIM, IKI CAGRI YERI (E2, 26.08) ──
-  // Kurtarma bugune kadar YALNIZ V4 blogunun icinde (asagida) yasiyordu ve o
-  // blok dosyadaki 12 'none' donusunun HEPSINDEN SONRA geliyordu. Yani
-  // kurtarma, tam olarak ele almak icin yazildigi vakaya ULASAMIYORDU:
-  // olculdu — kullanici "kirmizi boyali"yi secip surukluyor, hedef satirda
-  // "siyah" yazili; siyah 2" havuzda oldugu icin 2" KURTARILIYOR ama siyah
-  // 2½" olmadigi icin cap filtresi rows'u bosaltip erken 'cap-yok' donuyor,
-  // OYSA kirmizi boyali 2½" kutuphanede DURUYOR. Ayni havuz, ayni secim, iki
-  // farkli cevap. Govdeyi buraya alip cap-yok donusunden de cagiriyoruz.
-  //
-  // PARA KAPISI: kurtarma havuzlarina CAP suzgeci UYGULANMIS olmalidir —
-  // cagiran taraf bunu garanti eder (asagida filtreler donusten ONCE kosar).
-  // Aksi halde kaynak capin fiyati hedef capa yayilir (VS probe M3 sinifi).
-  const capsizAutoYasak = (r: IndexedRow) => !!line.capInfo && r.urun.capTags.length === 0;
-  const capsizOnay = (aday: IndexedRow): QueryOutcome => ({
-    kind: 'ask', askColumn: 'urun', rows: [aday], bilinmeyen, donusum,
-    uyariNot: `Satır çaplı (${line.capInfo!.display}) ama seçilen varyantın ürününde çap doğrulanamadı`,
-    kapilar: ['capsiz-dusum'],
-  });
-  const varyantTagUyar = (v: string[]) => (r: IndexedRow) => {
-    const aday = urunVariantTags(r);
-    return v.every((t) => aday.some((x) => varyantTagEsit(t, x)));
-  };
-  /** Fren: TAM tag eslesmesi + TEK aday. Bulamazsa null → cagiran kendi yolunu surdurur. */
-  const varyantKurtar = (): QueryOutcome | null => {
-    const v = opts?.variantTags;
-    if (!v?.length) return null;
-    const tagUyar = varyantTagUyar(v);
-    for (const havuz of [yuzeyGenis, varyantKurtarma]) {
-      if (!havuz || havuz.length === 0) continue;
-      const kurtarilan = havuz.filter(tagUyar);
-      if (kurtarilan.length === 1) {
-        return capsizAutoYasak(kurtarilan[0])
-          ? capsizOnay(kurtarilan[0])
-          : { kind: 'auto-variant', row: kurtarilan[0], donusum };
-      }
-    }
-    return null;
-  };
-
   if (line.capInfo) {
     const cls = resolveLineClass(rows, sizeClassHint);
     const equiv = sizeEquivalents(cls, line.capInfo);
@@ -516,7 +669,7 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
           const ui = capImzasi(r.urun.capRaw ?? '', cls).imza;
           return ui.length === lineImza.imza.length && ui.every((t, i) => t === lineImza.imza[i]);
         }
-        return r.urun.capTags.some((t) => equiv.tags.includes(t));
+        return sinifUyar(r, cls) && r.urun.capTags.some((t) => equiv.tags.includes(t));
       };
       const capOncesi = rows; // PANO 20: cap-yok'ta mevcut caplari raporla
       const d = rows.filter(capUyar);
@@ -555,10 +708,11 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
       // bossa kurtarma artik CAP SUZGECINDEN GECMIS havuzda calisir — para
       // kapisi budur, kaynak capin fiyati hedef capa YAYILAMAZ.
       if (yuzeyGenis) yuzeyGenis = yuzeyGenis.filter(capUyar); // genis kume de AYNI capta
+      if (yuzeyHavuzu) yuzeyHavuzu = yuzeyHavuzu.filter(capUyar);
       varyantKurtarma = varyantKurtarma.filter(capUyar); // V4.7: kurtarma da AYNI capta
       if (rows.length === 0) {
         // E2: kullanicinin ACIK secimi (surukleme) varsa once KURTAR.
-        // Frenler degismedi: TAM tag eslesmesi + TEK aday + capsizAutoYasak.
+        // Frenler degismedi: TAM tag eslesmesi + TEK aday + capAutoYasak.
         const kurtarilan = varyantKurtar();
         if (kurtarilan) return kurtarilan;
         // PANO 20 (I7 — sessiz bos YASAK): markadaki MEVCUT caplar, satirin
@@ -589,6 +743,57 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
           .sort((a, b) => a[1] - b[1])
           .slice(0, 4)
           .map(([ham]) => ham);
+        // ── K4 (27.08): YUZEY ELEDIYSE URUN EKRANA GELSIN ────────────────
+        // E4 turu (26.08) mesaji durustlestirdi ("bu üründe 2\" galvaniz olarak
+        // yok · başka yüzeyde olabilir") ama kullanicinin GORDUGU sey hala
+        // bostu: markada SIYAH 2" @300 DURUYOR ve ekrana HIC gelmiyordu.
+        // Artik yuzey uygulanmamis havuz (ayni cap/baglanti/boy/birim
+        // suzgeclerinden gecmis) aday olarak SUNULUR.
+        //
+        // FIYAT OTOMATIK YAZILMAZ: aday satirda YAZILI bir kisiti (galvaniz)
+        // IHLAL ediyor — bu bir oneri degil, kullanici KARARIDIR. `kapilar`
+        // dolu oldugu icin tek aday kalsa bile onay istenir (I6).
+        //
+        // ⚠ IKI KAPI, ikisi de OLCUMLE zorunlu:
+        //  · `variantTags` YOKKEN: surukleme yapan kullanicinin kendi kurtarma
+        //    yolu var; ikisini ust uste bindirmek o yolun frenlerini atlatirdi.
+        //  · `!adGevsetildi`: adi GEVSETILEREK bulunmus aday ('Vana' yazan
+        //    satira 'Çekvalf') burada YALNIZ "başka yüzeyde" aciklamasiyla
+        //    sunulurdu — bu donus yapisal olarak 'ad-gevsetildi' rozetini
+        //    URETEMEZ (kapilar listesi 250+ satir asagida kuruluyor). Ad
+        //    dogrulanmamis + yazili yuzey celisiyor = iki tahminin ust uste
+        //    binmesi; S4'un kendi gerekcesi bunu yasaklar. Olculdu: kapisiz
+        //    surumde 'Vana' satirina 'Çekvalf' ₺250 SESSIZCE yaziliyordu.
+        const yuzeyAdaylari = yuzeyHavuzu?.filter(birimUyar) ?? null;
+        if (
+          !opts?.variantTags?.length
+          && !adGevsetildi
+          // ⚠ Bu sart MUTASYONLA ORTULU DEGIL ve bu BILEREK boyle: kaldirildiginda
+          // hicbir assert kirilmiyor, cunku `yuzeyHavuzu` ile `rows` ayni
+          // suzgeclerden gectigi icin "yuzey yazili ama DARALTMADI" halinde
+          // ikisi de bosalir ve kapi zaten atesleyemez. Sart yine de DURUYOR:
+          // atesleseydi asagidaki mesaj `"" olarak yok` diye ANLAMSIZ bir cumle
+          // uretirdi. Yani bu bir davranis kapisi degil, MESAJ kapisidir.
+          && yaziliYuzeyler.length > 0
+          && yuzeyAdaylari && yuzeyAdaylari.length > 0
+        ) {
+          // askColumn: 'urun' tek adayda surfaceLayer=false uretir ve FE'nin
+          // 1. kademesi bos kalir; 'ad'/'kategori' ise surfaceLevel=true verir.
+          // Digerlerinde 'cins'e sabitlenir — fark zaten cins kolonunda gorunur.
+          const k = ayrisanKolon(yuzeyAdaylari);
+          return {
+            kind: 'ask',
+            askColumn: k === 'ad' || k === 'kategori' ? k : 'cins',
+            rows: yuzeyAdaylari,
+            bilinmeyen,
+            donusum,
+            // ⚠ Cumle farkin YALNIZ yuzey oldugunu IDDIA ETMEZ: olculdu, 'PN25'
+            // gibi cins ifadeleri satirda tokenize EDILMIYOR, yani aday baska
+            // eksenlerde de farkli olabilir. Iddia etmek mesaj-yalani olurdu.
+            uyariNot: `Bu üründe ${line.capInfo.display} "${yaziliYuzeyler.join(' / ')}" olarak yok — aşağıdaki ürün farklı bir cins/yüzey taşıyor, kontrol edin`,
+            kapilar: ['yuzey-genisletildi'],
+          };
+        }
         return {
           kind: 'none', reason: 'cap-yok', detail: line.capInfo.display, donusum, mevcutCaplar,
           // E4: eleyen kriter YUZEY ise mesaj onu ansin — "bu markada 2\" yok"
@@ -598,6 +803,66 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
       }
       // Superset adlar da AYNI capta (capsiz kayit gecer — takim/set capsiz olabilir)
       if (adGenis) adGenis = adGenis.filter((r) => capUyar(r) || r.urun.capTags.length === 0);
+    } else {
+      // ── K2 (26.08) — SATIRIN CAPI CEVRILEMIYOR: SESSIZ ATLAMA YASAK ────
+      //
+      // PARA HATASI, o gun CANLIDA olan kod (olculdu, uretim motoru):
+      //   '1/4" Küresel Vana'      + havuzda yalniz 1/2" @850  → single @850
+      //   '8" PVC Pis Su Borusu'   + havuzda yalniz 110 mm @300 → single @300
+      //   surukleme: hedef '1/4"', kullanici 1/2" PN25 @500 secmis → @500
+      // Kok: blok `if (equiv.tags.length)` ile koruluydu; `sizeEquivalents`
+      // bos tag doniyorsa BLOK KOMPLE ATLANIYORDU — cap suzgeci hic kosmuyor,
+      // TUM caplar aday kaliyor ve kullanici capin YOK SAYILDIGINI ogrenmiyor.
+      //
+      // OLCULEN PAYDA (37 yazim × 3 sinif tarandi): celikte 15 yazim
+      // (1/8" 3/16" 1/4" 3/8" 5/8" 7/8" 1 1/8" 1 3/4" 2 1/4" 3 1/2" 7" 9"
+      // 18" 20" 24"), plastikte ayrica 8" 10" 12" 14" 16" — sonuncular pis su
+      // borusunda SIK kullanilir, yani bosluk plastik tarafta daha pahali.
+      //
+      // ⚠ KAPI OLCUTU `tags.length === 0`, `noConversion` DEGIL: olculdu,
+      // celikte 18 yazimda `noConversion=true` iken tag DOLU (DN 90 → ['dn90']).
+      //
+      // (1) GERI DUSUS — IMZA esitligi. Ham-dizgi esitligi BILEREK secilmedi:
+      //     olculdu, reduksiyon satirinda 900 TL'lik urune 100 TL yazdiriyor ve
+      //     `3/8''` / `1-3/4"` gibi yazim kaymalarini kaciriyor. `capImzasi`
+      //     bu dosyada zaten var ve iki vakayi da dogru cozuyor.
+      const lineImza2 = capImzasi(line.raw, cls);
+      const imzaBellek = new Map<string, string[]>();
+      const urunImza = (ham: string): string[] => {
+        let v = imzaBellek.get(ham);
+        if (!v) { v = capImzasi(ham, cls).imza; imzaBellek.set(ham, v); }
+        return v;
+      };
+      const capUyar2 = (r: IndexedRow) => {
+        if (!r.urun.capRaw) return false;
+        const ui = urunImza(r.urun.capRaw);
+        return ui.length === lineImza2.imza.length && ui.every((t, i) => t === lineImza2.imza[i]);
+      };
+      const d2 = rows.filter(capUyar2);
+      // ⚠ `capRaw` bos mu diye bakilir, `capTags.length === 0` DEGIL: cevrilemez
+      // capli urunun capTags'i ZATEN bostur (3/8" → []), o olcut capli urunu
+      // capsiz sanip yanlis kapiyi acardi (olculdu).
+      const capsiz2 = rows.filter((r) => !r.urun.capRaw);
+      if (d2.length > 0) {
+        // Cap DOGRULANDI (iki taraf da ayni cevrilemez olcuyu yaziyor) →
+        // kapi ACILMAZ, fiyat normal yolundan yazilir. Genis havuzlar da
+        // AYNI suzgecten gecer (E2 para kapisinin ikizi).
+        rows = d2;
+        if (yuzeyGenis) yuzeyGenis = yuzeyGenis.filter(capUyar2);
+        if (yuzeyHavuzu) yuzeyHavuzu = yuzeyHavuzu.filter(capUyar2);
+        varyantKurtarma = varyantKurtarma.filter(capUyar2);
+        if (adGenis) adGenis = adGenis.filter((r) => capUyar2(r) || !r.urun.capRaw);
+      } else if (capsiz2.length > 0) {
+        rows = capsiz2;
+        capsizDusum = true;
+        capsizAileZayif = capsiz2.some((r) => r.urun.aileZayif);
+      } else {
+        // (2) KAPI — hicbir aday capla dogrulanamadi. Bu dal ASLA 'none'
+        //     DONMEZ (S4: goster ama ONAY iste — kalem ekrandan kaybolmasin).
+        //     'cap-yok' da DENEMEZ: `equiv.tags` bos oldugu icin `capEkseni`
+        //     null doner, "en yakin" siralamasi URETILEMEZ ve o mesaj yalan olurdu.
+        capCevrilemedi = true;
+      }
     }
   }
 
@@ -606,6 +871,7 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     const d = rows.filter((r) => r.urun.boyTag === line.boyTag);
     if (d.length > 0) rows = d;
     if (yuzeyGenis) yuzeyGenis = yuzeyGenis.filter((r) => r.urun.boyTag === line.boyTag || !r.urun.boyTag);
+    if (yuzeyHavuzu) yuzeyHavuzu = yuzeyHavuzu.filter((r) => r.urun.boyTag === line.boyTag || !r.urun.boyTag);
     varyantKurtarma = varyantKurtarma.filter((r) => r.urun.boyTag === line.boyTag || !r.urun.boyTag);
     if (adGenis) adGenis = adGenis.filter((r) => r.urun.boyTag === line.boyTag || !r.urun.boyTag);
   }
@@ -684,13 +950,13 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     // 'PN 25') ve ada gomulu olcude ('... 20 mm' vs '... 32 mm') TUM grubu
     // variantMissing'e dusuruyordu; boru disinda "surukleme calismiyor"
     // algisinin olculen ana kaynagi buydu.
-    // VS-PARA (probe M3) freni `capsizAutoYasak`/`capsizOnay` ile birlikte
+    // VS-PARA (probe M3) freni `capAutoYasak`/`capsizOnay` ile birlikte
     // yukari tasindi (E2, 26.08) — kurtarma govdesi artik cap-yok donusunden
     // de cagriliyor, tek tanim iki cagri yeri.
     const tagUyar = varyantTagUyar(v);
     const eslesen = rows.filter(tagUyar);
     if (eslesen.length === 1) {
-      return capsizAutoYasak(eslesen[0])
+      return capAutoYasak(eslesen[0])
         ? capsizOnay(eslesen[0])
         : { kind: 'auto-variant', row: eslesen[0], donusum };
     }
@@ -745,7 +1011,7 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
             && !v.some((vt) => varyantTagEsit(vt, t)),
         );
         if (!conflict) {
-          return capsizAutoYasak(rows[0])
+          return capAutoYasak(rows[0])
             ? capsizOnay(rows[0])
             : { kind: 'auto-variant', row: rows[0], donusum };
         }
@@ -813,6 +1079,13 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   const capsizNotu = capsizDusum && line.capInfo
     ? `Satır çaplı (${line.capInfo.display}) ama ürünün çapı doğrulanamadı`
     : null;
+  // K2: SATIRIN capi cevrilemedi → suzgec hicbir adayi dogrulayamadi.
+  // `capsizNotu`nun cumlesini TEKRARLAMAZ: orada URUNUN capi yok, burada
+  // suzgecin kendisi kosamadi. Kullanici hangi olguyla karsi karsiya oldugunu
+  // bilmeden dogru karari veremez.
+  const capCevrilemediNotu = capCevrilemedi && line.capInfo
+    ? `Satırın çapı (${line.capInfo.display}) çevrim tablosunda yok — çap süzgeci uygulanmadı, çapı siz doğrulayın`
+    : null;
   // S4: capsiz istisnasindan gecen adayin ailesi de dogrulanmamissa (yalniz
   // kategori basligindan turedi) kapi AYRICA acilir — capsizNotu'ndan daha
   // AGIR bir cekincedir, bu yuzden uyariNot zincirinde ondan ONCE gelir.
@@ -861,19 +1134,20 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   if (malzemeConflict) kapilar.push('malzeme-celiskisi');
   if (aileZayifNotu) kapilar.push('aile-zayif');
   if (capsizNotu) kapilar.push('capsiz-dusum');
+  if (capCevrilemediNotu) kapilar.push('cap-cevrilemedi');
   if (gevsetmeNotu) kapilar.push('ad-gevsetildi');
   if (bilinmeyenNotu) kapilar.push('bilinmeyen-kelime');
   if (aileNotu) kapilar.push('aile-yok');
 
   // ── SONUC: UC YOL, DORDUNCU YOK ──────────────────────────────────
   if (rows.length === 1) {
-    const celiski = yuzeyCeliskiNotu ?? unitConflict ?? malzemeConflict ?? surfaceConflict ?? aileZayifNotu ?? capsizNotu ?? gevsetmeNotu ?? bilinmeyenNotu ?? aileNotu;
+    const celiski = yuzeyCeliskiNotu ?? unitConflict ?? malzemeConflict ?? surfaceConflict ?? aileZayifNotu ?? capsizNotu ?? capCevrilemediNotu ?? gevsetmeNotu ?? bilinmeyenNotu ?? aileNotu;
     if (celiski) {
       return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, uyariNot: celiski, kapilar };
     }
     return { kind: 'single', row: rows[0], donusum };
   }
-  return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, uyariNot: yuzeyCeliskiNotu ?? unitConflict ?? aileZayifNotu ?? capsizNotu ?? gevsetmeNotu ?? undefined, kapilar };
+  return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, uyariNot: yuzeyCeliskiNotu ?? unitConflict ?? aileZayifNotu ?? capsizNotu ?? capCevrilemediNotu ?? gevsetmeNotu ?? undefined, kapilar };
 }
 
 /**
@@ -983,7 +1257,7 @@ export function guclutekAday(
   if (aday.urun.aileZayif) return null;
   if (outcome.kind === 'single') return { row: outcome.row };
   if (outcome.kind !== 'ask') return null;
-  const ZAYIF: KanitKapisi[] = ['capsiz-dusum', 'ad-gevsetildi'];
+  const ZAYIF: KanitKapisi[] = ['capsiz-dusum', 'cap-cevrilemedi', 'yuzey-genisletildi', 'ad-gevsetildi'];
   if ((outcome.kapilar ?? []).some((k) => ZAYIF.includes(k))) return null;
   return {
     row: outcome.rows[0],
@@ -1054,7 +1328,22 @@ export function aileUyusmazligiTeshisi(
   const aile = line.familySlug ?? opts?.hintFamily ?? null;
   if (!aile) return sonuc;
 
-  const kor = runQuery(line, pool, { ...opts, aileKilidiKapali: true });
+  const kor0 = runQuery(line, pool, { ...opts, aileKilidiKapali: true });
+  // ── K5 (27.08): KOR SORGU 'auto-variant' DONERSE 'ask'e NORMALIZE EDILIR ──
+  // Kullanici surukleme yaptiginda (variantTags) kor sorgu artik kurtarma
+  // yollarina da girebiliyor ve 'auto-variant' donebiliyor. Asagidaki TUM
+  // teshis mantigi (guclutekAday barajlari, paylasilan-kelime, ayni-aile,
+  // aileZayif frenleri ve S7 coklu dali) 'ask' varsayimi uzerine yazili;
+  // 'auto-variant' onlarin HICBIRINE ugramadan gecerdi.
+  // Ayrica AILE KILIDI KAPALI bir sorgunun sonucu TANIM GEREGI dogrulanmamis
+  // bir tahmindir — fiyat OTOMATIK yazamaz (I6). Normalize edince cikti daima
+  // 'ask' → netPrice 0; `guclutekAday` ve capraz-marka yoluna DOKUNULMAZ.
+  // Etki (olculdu): satirla kelime PAYLASAN havuzlarda ("Boru Askısı" /
+  // "Sismik Askı") TAGLI yol artik TAGSIZ yolla AYNI soruyu sorar — bugun
+  // tagli yol susuyordu.
+  const kor: QueryOutcome = kor0.kind === 'auto-variant'
+    ? { kind: 'ask', askColumn: 'urun', rows: [kor0.row], donusum: kor0.donusum }
+    : kor0;
 
   // ── K8'IN TESHISE UYGULANMASI (olculerek eklendi) ────────────────────────
   // Ilk surumde bu kapi YOKTU ve gurultu uretti: "Kalorimetre, DN65" satiri,
@@ -1124,7 +1413,7 @@ export function aileUyusmazligiTeshisi(
   //   • liste KANIT SAYISINA gore sirali (cok kelime paylasan one; esitlikte
   //     kor sirasi — deterministik, D3) ve en fazla KESIT kayittir.
   if (kor.kind !== 'ask' || kor.rows.length < 2) return sonuc;
-  const ZAYIF_KUME: KanitKapisi[] = ['capsiz-dusum', 'ad-gevsetildi'];
+  const ZAYIF_KUME: KanitKapisi[] = ['capsiz-dusum', 'cap-cevrilemedi', 'yuzey-genisletildi', 'ad-gevsetildi'];
   if (korKapilari.some((k) => ZAYIF_KUME.includes(k))) return sonuc;
 
   // GIRIS kaniti = kimlik kelimesi AD ya da CINS kolonunda (hakem bulgusu:

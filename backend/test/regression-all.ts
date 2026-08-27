@@ -48,6 +48,32 @@ const SUITES: Suite[] = [
   // (sizeClassHint/hintClass) kullanicinin ACIK surukleme secimini eziyor,
   // 140 TL'lik celik boru yerine 18 TL'lik PPR OTOMATIK yaziliyordu.
   { ad: 'Kurtarma + cap-yok mesajı (KM)', script: 'test:kurtarma-mesaj', zincir: 'Z2' },
+  // CC (26.08): PARA — satirin capi CEVRILEMEYINCE cap suzgeci sessizce
+  // atlaniyordu. `sizeEquivalents` bos tag donerse blok komple atlaniyor,
+  // TUM caplar aday kaliyor ve yanlis OLCUNUN fiyati OTOMATIK yaziliyordu:
+  // '1/4" Küresel Vana' + havuzda yalniz 1/2" → 850 TL · '8" PVC Pis Su' +
+  // havuzda yalniz 110 mm → 300 TL · surukleme ile 1/4" hedefe 1/2"nin 500 TL'si.
+  // Olculen payda: celikte 15 yazim (1/4" 3/8" 5/8" 7/8" 1 1/8" …), plastikte
+  // ayrica 8" 10" 12" 14" 16" — sonuncular pis su borusunda SIK kullanilir.
+  // Cozum iki parcali: IMZA esitligiyle geri dusus + `cap-cevrilemedi` kapisi
+  // (fiyat otomatik yazilmaz, kalem GORUNUR kalir — S4).
+  { ad: 'Çap çevrilemedi kapısı (CC)', script: 'test:cap-cevrilemedi', zincir: 'Z2' },
+  // EK (27.08): E2 kurtarmayi yalniz 'cap-yok' donusune baglamisti; cins /
+  // yuzey-celiskisi / baglanti eksenlerindeki UC erken 'none' hala kurtarmasizdi
+  // — kullanicinin sectigi varyant HEDEF CAPTA kutuphanede DURURKEN motor "yok"
+  // diyordu. Bu noktalarda CAP SUZGECI HENUZ KOSMADIGI icin `erkenKurtar` kendi
+  // suzgecini kendi kurar; suzgecsiz cagri olculmus PARA HATASI uretiyor
+  // (hedef DN100 iken DN50'nin fiyati). Ayrica bu paket SINIF UYUMUNU da kilitler:
+  // cap tag ad uzayi asiri yuklu ('dn25' celikte DN25=1", plastikte 25mm=3/4")
+  // ve capraz-sinif kiyasi 999 TL'yi 3/4" satirina yazdiriyordu (EK-18).
+  { ad: 'Erken none kurtarması + sınıf uyumu (EK)', script: 'test:erken-kurtarma', zincir: 'Z2' },
+  // YG (27.08): E4'un IKINCI YARISI. E4 mesaji durustlestirdi ("bu üründe 2\"
+  // galvaniz olarak yok") ama kullanicinin GORDUGU sey hala bostu — markada
+  // SIYAH 2" @300 DURURKEN kalem ekrana HIC gelmiyordu. Artik yuzey
+  // uygulanmamis havuz (ayni cap/baglanti/boy/birim suzgeclerinden gecmis)
+  // aday olarak sunulur; fiyat OTOMATIK YAZILMAZ (aday YAZILI bir kisiti
+  // ihlal ediyor) ve hafiza otoyazisi da kapatilir.
+  { ad: 'Yüzey genişletme kapısı (YG)', script: 'test:yuzey-genisletme', zincir: 'Z2' },
   { ad: 'Eşleştirme birim (D)', script: 'test:matching', zincir: 'Z2' },
   { ad: 'Çap çevrimi (DN/inç/OD-mm)', script: 'test:conversion', zincir: 'Z2' },
   { ad: 'Spec regresyon (R1-R12)', script: 'test:spec', zincir: 'Z2' },

@@ -132,6 +132,19 @@ export type KanitKapisi =
   | 'malzeme-celiskisi'
   /** Ç-vakasi: satir capli ama adayin capi YOK — cap dogrulanamadi */
   | 'capsiz-dusum'
+  /** K2 (26.08): SATIRIN capi cevrim tablosunda YOK (celikte 1/4" 3/8" 5/8"
+   *  7/8" …, plastikte ayrica 8" 10" 12") → cap suzgeci KOSAMADI ve hicbir
+   *  aday capla dogrulanamadi. 'capsiz-dusum'den AYRIDIR: orada URUNUN capi
+   *  yok, burada SATIRIN capi cevrilemiyor. Olculdu: kapi yokken 1/2" fiyati
+   *  1/4" satirina, 110 mm fiyati 8" satirina OTOMATIK yaziliyordu. */
+  | 'cap-cevrilemedi'
+  /** K4 (27.08): satirda YAZILI yuzey bu capta yok; aday BASKA yuzeyden
+   *  geliyor. Fark KAPLAMA olabilir ama cins ekseninde baska farklar da
+   *  tasiyabilir (orn. PN sinifi satirda tokenize EDILMIYOR) — bu yuzden
+   *  mesaj farkin YALNIZ yuzey oldugunu iddia etmez. Aday YAZILI bir kisiti
+   *  IHLAL ettigi icin fiyat OTOMATIK yazilamaz ve hafiza otoyazisi da
+   *  kapatilir (bir kez onaylanan secim ikinci kosumda uyariyi silmesin). */
+  | 'yuzey-genisletildi'
   /** S4 (06.08): capsiz istisnasindan gecen adayin ailesi yalniz KATEGORI
    *  basligindan turedi (aileZayif) — hem aile hem cap dogrulanmamis.
    *  ELEME DEGIL, EK KAPI: aday listede kalir, fiyat otomatik yazilmaz. */

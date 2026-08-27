@@ -249,6 +249,11 @@ export function toMatchResult(
         reason,
         donusum: outcome.donusum ?? undefined,
         variantMissing: outcome.variantMissing ?? undefined,
+        // K4 (27.08): ic `kapilar` listesi bu sozlesmeye tasinmiyor; hafiza
+        // otoyazi kapisinin okuyabilmesi icin YALNIZ bu kapi bayraga cevrilir.
+        // Diger kapilarda otoyazi ZATEN kabul edilmis (aday satirin YAZILI sert
+        // kisitlarini saglar); burada aday YAZILI bir kisiti IHLAL ediyor.
+        yuzeyGenisletildi: outcome.kapilar?.includes('yuzey-genisletildi') || undefined,
         // Faz 2b: dogrulanamayan yazili kelimeler — M3 multi'de de kosulsun
         dogrulanamadi: outcome.bilinmeyen?.length ? outcome.bilinmeyen : undefined,
       };

@@ -121,8 +121,17 @@ console.log('── KM-1..8) E2: surukleme kurtarmasi cap-yok yolunda da calisir
   // KM-5 KAPI: kurtarma YALNIZ kullanicinin acik secimi (variantTags) varken
   // calisir. Tag yoksa davranis DEGISMEZ — sessiz ikame uretilmez.
   const oTagsiz = runQuery(parseLine('Dikişli SİYAH Çelik Boru 2 1/2"', 'mt'), HAVUZ);
-  check('KM-5 KAPI: variantTags YOKKEN cap-yok AYNEN doner (kurtarma tetiklenmez)',
-    oTagsiz.kind === 'none' && (oTagsiz as any).reason === 'cap-yok', kod(oTagsiz));
+  // ⚠ 27.08 GUNCELLEME (K4): bu assert once SONUC KODUNU dondururdu
+  // (`none/cap-yok`). K4 turu ayni satirda artik yuzey-genisletilmis bir ASK
+  // aciyor (kalem ekrandan kaybolmasin diye) — yani KOD degisti ama assert'in
+  // NIYETI degismedi: "kullanici secmediyse SESSIZ IKAME uretilmez".
+  // Assert o niyete, yani PARA eksenine cevrildi. ZAYIFLATMA DEGIL: "yeni kapi
+  // ask yerine auto-variant donsun" mutasyonunu bu hali de oldurur.
+  check('KM-5 KAPI: variantTags YOKKEN kurtarma tetiklenmez — fiyat YAZILMAZ',
+    fiyat(oTagsiz) === null, `${kod(oTagsiz)}@${fiyat(oTagsiz)}`);
+  check('KM-5b variantTags YOKKEN cikis yolu yuzey-genisletme kapisidir (K4)',
+    oTagsiz.kind === 'ask' && ((oTagsiz as any).kapilar ?? []).includes('yuzey-genisletildi'),
+    `${kod(oTagsiz)} ${JSON.stringify((oTagsiz as any).kapilar ?? [])}`);
 
   // KM-6 TEK ADAY FRENI: kurtarma havuzunda tag'e uyan IKI aday varsa
   // kurtarma yapilmaz (sessiz ikame yasagi).
@@ -251,7 +260,12 @@ console.log('── KM-13..16) E4: cap-yok mesaji kapsam yalani kurmaz ──');
 {
   const AD = 'Çelik Boru';
   const HAVUZ = [
-    prod({ ad: AD, cins: 'siyah', cap: '2"', price: 300, urunKodu: 'S-2' }),
+    // ⚠ 27.08 (K4): havuzda 2" HICBIR yuzeyde YOK. Onceki fixture'de siyah 2"
+    // vardi ve K4 turundan sonra o satir artik 'yuzey-genisletildi' ask'i
+    // aciyor — yani KM-14/15 E4'un cap-yok MESAJINI degil K4'un mesajini
+    // olcmeye baslamisti (mutasyon yakaladi: yaziliYuzey tasinmasa da yesil
+    // kaliyorlardi). "Urun baska yuzeyde VAR" vakasi artik YG paketinin isi;
+    // burada E4'un kendi yolu korunuyor.
     prod({ ad: AD, cins: 'siyah', cap: '1"', price: 150, urunKodu: 'S-1' }),
     prod({ ad: AD, cins: 'galvaniz', cap: '1"', price: 200, urunKodu: 'G-1' }),
     prod({ ad: AD, cins: 'galvaniz', cap: '3/4"', price: 170, urunKodu: 'G-34' }),
@@ -263,8 +277,9 @@ console.log('── KM-13..16) E4: cap-yok mesaji kapsam yalani kurmaz ──');
 
   // ON KOSUL: 2" markada GERCEKTEN var (siyah) — yani "markada 2 yok" YALANDIR.
   const oSiyah = runQuery(parseLine('2" Siyah Çelik Boru', 'mt'), HAVUZ);
-  check('KM-13 on kosul: markada 2" VAR (siyah @300 tek eslesme)',
-    oSiyah.kind === 'single' && fiyat(oSiyah) === 300, `${kod(oSiyah)}@${fiyat(oSiyah)}`);
+  check('KM-13 FIXTURE KANITI: 2" hicbir yuzeyde yok → K4 kapisi ATESLEMEZ, yol cap-yok',
+    oSiyah.kind === 'none' && o.kind === 'none' && (o as any).reason === 'cap-yok',
+    );
 
   check('KM-14 mesaj YAZILI YUZEYI anar (kullanici hangi kriterin eledigini gorur)',
     /galvaniz/i.test(m), `mesaj: ${m}`);

@@ -28,6 +28,13 @@ export interface MatchResult {
   // 'multi' = birden cok aday, kullaniciya popup
   // 'none' = cap yok veya kutuphanede aday yok
   confidence: 'high' | 'suggestion' | 'medium' | 'low' | 'none' | 'multi';
+  /** K4 (27.08): aday satirda YAZILI olan yuzeyi TASIMIYOR — yuzey suzgeci
+   *  havuzu bosalttigi icin genisletilmis kumeden geldi. Motorun ic
+   *   listesi bu sozlesmeye tasinmiyor; hafiza otoyazisi kapisi
+   *  (matching.service) bu bayragi okur: bir kez onaylanan secim ikinci
+   *  kosumda uyariyi SILIP fiyati high olarak yazmasin. Diger kapilardan
+   *  FARKI: burada aday YAZILI bir kisiti IHLAL ediyor. */
+  yuzeyGenisletildi?: boolean;
   // URUN DEGIL (spec): "FITTINGS ORANI" gibi oran/hizmet satirlari — fiyat
   // BEKLENMEZ. Hucre bos + gri isaretlenir ('yok' kirmizisindan farkli).
   notProduct?: boolean;

@@ -432,8 +432,15 @@ export class MatchingService {
       // AILE-DISI tahminlerdir, urunu GERCEKTEN tasiyan marka baska olabilir.
       // Teshis kapili ask'te alternatifler de taranir: kullanici ayni ekranda
       // hem yakin adaylari hem dogru markanin onerisini gorur.
-      const teshisKapisi: KanitKapisi = 'aile-uyusmazligi';
-      const teshisAcik = outcome.kind === 'ask' && (outcome.kapilar ?? []).includes(teshisKapisi);
+      // K4 (27.08): AYNI TUZAK, IKINCI KAPI. Yuzey-genisletilmis satirlar da
+      // artik none yerine ask donuyor → M3 taramasi yine SUSARDI. Oysa bu tam
+      // olarak kullanicinin DOGRU yuzeyli urunu BASKA MARKADA gormesi gereken
+      // vaka: bu markada galvaniz 2 inc yok, sunulan aday SIYAH; dogru yuzey
+      // baska markada olabilir. Kutu dusseydi K4 kullaniciyi daha KOTU bir
+      // yere birakirdi (once capraz oneri goruyordu, sonra gormeyecekti).
+      const ACIK_KAPILAR: KanitKapisi[] = ['aile-uyusmazligi', 'yuzey-genisletildi'];
+      const teshisAcik = outcome.kind === 'ask'
+        && (outcome.kapilar ?? []).some((k) => ACIK_KAPILAR.includes(k));
       if (!r.notProduct && (line.familySlug || opts.hintFamily)
           && (r.confidence === 'none' || (r.dogrulanamadi?.length ?? 0) > 0 || teshisAcik)) {
         // L5 (iscilik): "bu firmada yok" → kullanicinin DIGER firmalari taranir
@@ -870,7 +877,14 @@ export class MatchingService {
           // (dogalgaz/buhar/sivi) bu markada DOGRULANAMADIYSA hafiza bile
           // otomatik YAZAMAZ — akiskan uyusmazligi riski onay ister.
           const akiskanSupheli = (result.dogrulanamadi ?? []).some((t) => extractFluid(t) !== null);
-          if (result.candidates.length === 1 && !result.variantMissing && !akiskanSupheli) {
+          // K4 SINIRI (27.08): aday YAZILI yuzeyi TASIMIYOR (yuzey suzgeci
+          // havuzu bosaltti, genisletilmis kumeden geldi). Diger kapilarda
+          // hafiza otoyazisi mesrudur — orada aday satirin yazili sert
+          // kisitlarinin HEPSINI saglar. Burada bir kisiti IHLAL ediyor:
+          // bir kez onaylanan secim, ikinci kosumda uyariyi silip fiyati
+          // 'high' olarak yazamaz.
+          if (result.candidates.length === 1 && !result.variantMissing && !akiskanSupheli
+              && !result.yuzeyGenisletildi) {
             const c = result.candidates[idx];
             console.log(`[Matching] HAFIZA TEK-ADAY OTOYAZ: "${excelName}" → "${mem.secilenAd}" (${mem.secimSayisi}×)`);
             return {

@@ -27,9 +27,20 @@ export interface SizeEquivalents {
   tags: string[];
   /** U2 seffaf cevrim rozeti: "DN 25 → 1\" (çelik)" — cevrim yapilmadiysa null */
   rozet: string | null;
-  /** D5: cevrim tablosunda olmayan deger — dusuk guvenli birak */
+  /** D5: cevrim tablosunda olmayan deger.
+   *  ⚠ 26.08 OLCUMU — BU BAYRAK KAPI OLCUTU DEGILDIR ve HICBIR YERDE OKUNMAZ.
+   *  Celikte 18 yazimda noConversion=true iken tags DOLU (DN 90 → ['dn90']).
+   *  Cap suzgecinin gercek olcutu tags.length === 0; query-engine oradan
+   *  capCevrilemedi kapisini acar. Bu alan yalniz bilgi amaclidir. */
   noConversion: boolean;
-  /** P4: celik/plastik yorumlari FARKLI urunlere gidiyor — otomatik 'high' verme */
+  /** P4 NIYETI: celik/plastik yorumlari FARKLI urunlere gidiyor — otomatik
+   *  'high' verilmemeli.
+   *  ⚠ 26.08 OLCUMU — BU BAYRAK DA HICBIR YERDE OKUNMUYOR; niyet UYGULANMIS
+   *  DEGIL. Olculen karsi ornek: havuz [DN 32 celik 480, 20 mm PPR 90], satir
+   *  "DN 32 Boru" → sizeEquivalents('unknown', DN32).ambiguous === true iken
+   *  motor single + confidence 'high' + 480 TL veriyor. Bayragi baglamak
+   *  KENDI olcum turunu ister (yalniz 'unknown' sinifta, 37 yazimin 14'unde
+   *  atesler — kor kapi gereksiz onay seli uretir). */
   ambiguous: boolean;
 }
 
@@ -404,7 +415,9 @@ function plasticEquivalents(info: SizeInfo): SizeEquivalents {
 /**
  * Sinifa gore esdeger cap tag kumesi.
  * unknown → iki yorumun BIRLESIMI + ambiguous isareti (yorumlar farkli urune
- * gidiyorsa). Cagiran taraf ambiguous=true iken asla 'high' vermez (P4).
+ * gidiyorsa).
+ * ⚠ "Cagiran taraf ambiguous=true iken asla 'high' vermez" cumlesi 26.08'de
+ * OLCULEREK CURUTULDU: hicbir cagiran bu bayragi okumuyor (bkz. alan yorumu).
  */
 export function sizeEquivalents(cls: SizeClass, info: SizeInfo): SizeEquivalents {
   if (cls === 'steel') return steelEquivalents(info);
