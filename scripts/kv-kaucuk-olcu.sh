@@ -100,8 +100,18 @@ bolum8() {
   sorgu 'SELECT b.name AS marka, pi.\"adSlug\" AS eski_aile, pi.ad, count(*) AS satir, min(pi.\"indexVersion\") AS sv FROM \"ProductIndex\" pi JOIN \"Brand\" b ON b.id = pi.\"brandId\" WHERE pi.ad ILIKE '"'"'%kau%'"'"' OR pi.kategori ILIKE '"'"'%kau%'"'"' OR pi.\"sheetName\" ILIKE '"'"'%kau%'"'"' GROUP BY 1,2,3 ORDER BY 4 DESC LIMIT 40'
 }
 
+bolum9() {
+  echo "── 9 KUTUPHANE kaucuk — YALNIZ ODE (bolum 4 LIMIT 60a takildi, ODE gorunmedi) ──"
+  sorgu 'SELECT ul.\"materialName\", ul.cins, ul.cap, ul.unit, ul.\"listPrice\", ul.\"discountRate\", (ul.\"productIndexId\" IS NULL) AS bagsiz FROM \"UserLibrary\" ul JOIN \"Brand\" b ON b.id = ul.\"brandId\" WHERE b.name ILIKE '"'"'%ode%'"'"' AND (ul.\"materialName\" ILIKE '"'"'%kau%'"'"' OR ul.\"adRaw\" ILIKE '"'"'%kau%'"'"') ORDER BY ul.\"sortOrder\" LIMIT 80'
+}
+
+bolum10() {
+  echo "── 10 DUYAR kuresel — UCUZ kayitlar (grid 1/2 inc satirina 311 TL yazan KAYNAK urun hangisi) ──"
+  sorgu 'SELECT ul.\"materialName\", pi.ad, pi.cins, pi.\"capRaw\", pi.\"capTags\", pi.\"cinsTokens\", ul.\"listPrice\", ul.\"customPrice\", ul.\"discountRate\" FROM \"UserLibrary\" ul JOIN \"Brand\" b ON b.id = ul.\"brandId\" LEFT JOIN \"ProductIndex\" pi ON pi.id = ul.\"productIndexId\" WHERE b.name ILIKE '"'"'%duyar%'"'"' AND (ul.\"materialName\" ILIKE '"'"'%resel%'"'"' OR pi.ad ILIKE '"'"'%resel%'"'"') AND coalesce(ul.\"customPrice\", ul.\"listPrice\", 99999) < 1500 ORDER BY coalesce(ul.\"customPrice\", ul.\"listPrice\") LIMIT 40'
+}
+
 case "$SECIM" in
-  1|2|3|4|5|6|7|8)
+  1|2|3|4|5|6|7|8|9|10)
     echo "(SAYFALI MOD — SPACE: sonraki sayfa · b: onceki sayfa · q: cikis)"
     "bolum$SECIM" 2>&1 | less
     ;;
@@ -112,7 +122,7 @@ case "$SECIM" in
     echo "Uzun bolumler icin sayfali mod: bash scripts/kv-kaucuk-olcu.sh 3"
     ;;
   *)
-    echo "Gecersiz secim: $SECIM (1-8 arasi bir bolum numarasi ya da bos)"
+    echo "Gecersiz secim: $SECIM (1-10 arasi bir bolum numarasi ya da bos)"
     exit 2
     ;;
 esac
