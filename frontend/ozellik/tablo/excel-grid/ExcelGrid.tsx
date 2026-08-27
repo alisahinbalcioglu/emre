@@ -473,6 +473,10 @@ function BrandDropdown(props: ICellRendererParams & {
     node.data._matKurBilgi = null; // kur donmasi: fiyatla birlikte temizlenir
     node.setDataValue('_matSuggestion', false);
     node.setDataValue('_matStatus', result?.notProduct ? 'urun_degil' : 'yok');
+    // K3-FE (27.08): SEBEP hucreye de yazilir (SD6 — isaret EYLEMLI olmali).
+    // Etkilesimli yol bugune kadar sebebi yalniz TOAST'ta gosteriyordu; toast
+    // kaybolunca hucrede jenerik "Kütüphanede eşleşme yok" kaliyordu.
+    yazVeri(node, '_matSebep', (result as any)?.reason ?? null);
     if (materialUnitPriceField) node.setDataValue(materialUnitPriceField, '');
     if (materialTotalField) node.setDataValue(materialTotalField, '');
   };

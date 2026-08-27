@@ -1946,7 +1946,13 @@ export default function NewQuotePage() {
                 return { netPrice: 0, alternatives: match.alternatives, reason: match.reason };
               }
               if (!silent) toast({ title: 'Iscilik eslesmedi', description: match.reason ?? `"${laborName.slice(0, 40)}"` });
-              return null;
+              // K3-FE (27.08): SEBEP DUSURULMEZ. Eskiden null donuluyordu ve
+              // motorun ozenli gerekce cumlesi (E4/E6: "Bu üründe … yok · en
+              // yakın: … · çevrim: …") SURUKLEME yolunda kullaniciya HIC
+              // ulasmiyordu — hucrede jenerik "Kütüphanede eşleşme yok"
+              // kaliyordu. fill-down r.reason'i zaten sebep alanina yazar;
+              // eksik olan tek sey bu donus nesnesiydi (E5'in reason ikizi).
+              return { netPrice: 0, reason: match.reason };
             } catch (e: any) {
               // SESSIZ BOS YASAK (06.08): sunucu hatasi "eslesmedi" gibi
               // gorunmesin. VS (25.08): SURUKLEMEDE (silent) hata YUTULMAZ —
@@ -2046,7 +2052,8 @@ export default function NewQuotePage() {
               }
               // Eslesme yok
               if (!silent) toast({ title: 'Eslesmedi', description: match.reason ?? `"${materialName.slice(0, 40)}"` });
-              return null;
+              // K3-FE (27.08): SEBEP DUSURULMEZ — iscilik ikiziyle ayni gerekce.
+              return { netPrice: 0, reason: match.reason };
             } catch (e: any) {
               // SESSIZ BOS YASAK (06.08): sunucu hatasi "eslesmedi" gibi
               // gorunmesin. `silent` toplu yayilimda gurultuyu keser.
