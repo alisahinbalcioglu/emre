@@ -16,6 +16,7 @@ import { useFillHandle, FillHandleIndicator } from './useFillHandle';
 import { clampDiscount, parseDiscountInput, parseDiscountPaste } from './discount-utils';
 import { CustomDropdown } from './CustomDropdown';
 import { fillDown, karYayilimi } from './fill-down';
+import { planYapistir, type PasteKolon, type PasteSatir } from './yapistir';
 import { isaretStili, isaretTooltip, secimBekliyor, type IsaretGirdisi } from './isaret';
 import { joinMaterialText } from '@/ozellik/tablo/parse-material-text';
 import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, yukariYuvarla, etkinMiktar, paraBicim, sayfaToplamlari, karSatiri, maliyetiGeriTuret, PARA_ONDALIK } from '@/ozellik/fiyat/pricing';
@@ -1729,14 +1730,91 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
   }, [mode, undoLastDiscountOp, applyDiscountBulk, undoLastMarkaFill]);
 
   /** S3: Excel'den cok satirli iskonto yapistirma — odakli hucreden asagi,
-   *  grup bantlari atlanir; sigmayan degerlerde uyari (satir uyusmazligi). */
+   *  grup bantlari atlanir; sigmayan degerlerde uyari (satir uyusmazligi).
+   *  YP (28.08): quote modunda da pano yapistirma — plan `yapistir.ts`te
+   *  (saf, vitest'le kilitli), yazim elle-giris zincirinden gecer. */
   const handleLibraryPaste = useCallback((e: React.ClipboardEvent) => {
-    if (mode !== 'library') return;
     const api = gridRef.current?.api;
     if (!api) return;
     const fc = api.getFocusedCell();
     if (!fc) return;
     if (api.getEditingCells().length > 0) return; // hucre editoru kendi paste'ini yapar
+
+    // ── YP (28.08, Grand Hyatt canli istegi): QUOTE MODUNDA YAPISTIRMA ──
+    // Yapistirma bugune kadar YALNIZ library modundaydi (asagidaki erken
+    // donus) — kullanici Excel'den kopyaladigi fiyat blogunu teklif gridine
+    // yapistiramiyordu. Kurallar `planYapistir`da (saf + testli):
+    //  · Excel gorunumu ("₺386.200,00") INSAN-YAZIMI sinifiyla cozulur —
+    //    `replace(',', '.')` sinifi binlikli metni BIN KAT yanlis okurdu (PK6).
+    //  · Hesaplanan kolonlar (toplamlar) hedef DEGIL: birim fiyati yapistir,
+    //    toplam formulden gelsin — Excel'in kendi carpimiyla birebir.
+    //  · Yazim `setDataValue(field, v, 'edit')` — 'edit' kaynagi BILEREK:
+    //    elle girisin TUM zinciri (net geriye turetme → satir toplami →
+    //    genel toplam → pinned bottom → spare satir → onRowDataChange)
+    //    handleCellValueChanged'te `e.source === 'edit'` sartina bagli.
+    //    Yapistirma da kullanicinin ACIK eylemidir; ayni kapidan gecer.
+    if (mode === 'quote') {
+      const text = e.clipboardData.getData('text');
+      if (!text || !text.trim()) return;
+      const {
+        quantityField, materialUnitPriceField, laborUnitPriceField,
+        materialTotalField, laborTotalField, grandUnitPriceField, grandTotalField,
+      } = data.columnRoles;
+      const sayisalAlanlar = new Set(
+        [quantityField, materialUnitPriceField, laborUnitPriceField, '_malzKar', '_iscKar']
+          .filter(Boolean) as string[],
+      );
+      // Toplam kolonlari editable olsa bile hedef DEGIL — formul alanina el
+      // yazisi tutarsizlik gomer (KD11 cizgisi: toplam TEK formulden).
+      const hesaplanan = new Set(
+        [materialTotalField, laborTotalField, grandUnitPriceField, grandTotalField]
+          .filter(Boolean) as string[],
+      );
+      const kolonlar: PasteKolon[] = api.getAllDisplayedColumns().map((c: any) => {
+        const def = c.getColDef();
+        return {
+          field: c.getColId(),
+          // editable fonksiyon olabilir — o kolonlar guvenli tarafta hedef disi
+          editable: def.editable === true && !hesaplanan.has(c.getColId()),
+          sayisal: sayisalAlanlar.has(c.getColId()),
+        };
+      });
+      const satirlar: PasteSatir[] = [];
+      for (let i = fc.rowIndex; i < api.getDisplayedRowCount(); i++) {
+        const n = api.getDisplayedRowAtIndex(i);
+        satirlar.push({ isDataRow: !!n?.data?._isDataRow });
+      }
+      const plan = planYapistir(text, kolonlar, fc.column.getColId(), satirlar);
+      e.preventDefault();
+      if (plan.hucreler.length === 0) {
+        const neden = plan.ozet.atlananKolon > 0
+          ? 'Hedef kolon düzenlenemez (toplamlar formülden hesaplanır — birim fiyata yapıştırın)'
+          : plan.ozet.atlananSayiDegil > 0
+            ? 'Kopyalanan değerler sayı olarak çözülemedi'
+            : 'Yapıştırılacak değer bulunamadı';
+        toast({ title: 'Yapıştırılamadı', description: neden, variant: 'destructive' });
+        return;
+      }
+      for (const h of plan.hucreler) {
+        const n = api.getDisplayedRowAtIndex(fc.rowIndex + h.satir);
+        if (!n) continue;
+        // Sayilar nokta-ondalikli string olarak gider — elle giris editorunun
+        // urettigi bicimle birebir (zincir parseFloat ile okur).
+        n.setDataValue(h.field, String(h.deger), 'edit');
+      }
+      const ek: string[] = [];
+      if (plan.ozet.sigmayanSatir > 0) ek.push(`${plan.ozet.sigmayanSatir} satır tabloya sığmadı`);
+      if (plan.ozet.atlananSayiDegil > 0) ek.push(`${plan.ozet.atlananSayiDegil} hücre sayı değildi`);
+      if (plan.ozet.atlananKolon > 0) ek.push(`${plan.ozet.atlananKolon} hücre düzenlenemeyen kolona denk geldi`);
+      toast({
+        title: `${plan.ozet.yazilacak} hücre yapıştırıldı`,
+        description: ek.length ? ek.join(' · ') : 'Toplamlar yeniden hesaplandı',
+        variant: ek.length ? 'destructive' : undefined,
+      });
+      return;
+    }
+
+    if (mode !== 'library') return;
 
     // ── Iskonto sutununa odakliysa: eski davranis (tek sutun iskonto) ──
     if (fc.column.getColId() === '_draftDiscount') {

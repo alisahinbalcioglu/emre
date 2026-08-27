@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 400
-Toplam satir: 85101
+Kod dosyasi: 402
+Toplam satir: 85570
 Uc nokta: 130
 test:* scripti: 67
 
@@ -99,7 +99,7 @@ test:* scripti: 67
 | `backend/src/ozellik/giris/excel-engine/excel-engine.service.ts` | 195 |
 | `backend/src/ozellik/giris/excel-grid/excel-grid.controller.ts` | 23 |
 | `backend/src/ozellik/giris/excel-grid/excel-grid.module.ts` | 13 |
-| `backend/src/ozellik/giris/excel-grid/excel-grid.service.ts` | 1072 |
+| `backend/src/ozellik/giris/excel-grid/excel-grid.service.ts` | 1100 |
 | `backend/src/ozellik/giris/excel-grid/sheet-discipline.ts` | 61 |
 | `backend/src/ozellik/giris/excel-grid/standart-sema.ts` | 331 |
 | `backend/src/ozellik/kutuphane/admin/admin.controller.ts` | 215 |
@@ -159,7 +159,7 @@ test:* scripti: 67
 | `backend/test/d1-marka-silme-capraz-tenant-test.ts` | 235 |
 | `backend/test/dn-koprusu-test.ts` | 342 |
 | `backend/test/erken-kurtarma-test.ts` | 402 |
-| `backend/test/excel-grid-test.ts` | 157 |
+| `backend/test/excel-grid-test.ts` | 256 |
 | `backend/test/export-format-test.ts` | 427 |
 | `backend/test/export-live-sim-test.ts` | 415 |
 | `backend/test/fallback-ad-kilidi-test.ts` | 185 |
@@ -345,7 +345,7 @@ test:* scripti: 67
 | `frontend/ozellik/kutuphane/oksuz-kutuphane-uyarisi.ts` | 60 |
 | `frontend/ozellik/tablo/disiplin.ts` | 13 |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 252 |
-| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 3195 |
+| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 3273 |
 | `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | 109 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts` | 178 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.ts` | 175 |
@@ -364,6 +364,8 @@ test:* scripti: 67
 | `frontend/ozellik/tablo/excel-grid/oneri-cekince.ts` | 70 |
 | `frontend/ozellik/tablo/excel-grid/types.ts` | 164 |
 | `frontend/ozellik/tablo/excel-grid/useFillHandle.tsx` | 286 |
+| `frontend/ozellik/tablo/excel-grid/yapistir.test.ts` | 128 |
+| `frontend/ozellik/tablo/excel-grid/yapistir.ts` | 136 |
 | `frontend/ozellik/tablo/merge-multisheet.ts` | 185 |
 | `frontend/ozellik/tablo/parse-material-text.ts` | 69 |
 | `frontend/ozellik/tablo/quotes/ColumnManagerPanel.tsx` | 146 |
@@ -707,7 +709,7 @@ test:* scripti: 67
 | `frontend/ozellik/kutuphane/library/ManualBrandModal.tsx` | `react` `lucide-react` `@/ortak/ui/button` `@/ortak/ui/input` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `@/ozellik/tablo/excel-grid/ExcelGrid` `@/ozellik/tablo/excel-grid/types` |
 | `frontend/ozellik/kutuphane/oksuz-kutuphane-uyarisi.test.ts` | `vitest` `fs` `path` `./oksuz-kutuphane-uyarisi` |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | `react` `react-dom` |
-| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | `react` `react-dom` `ag-grid-react` `ag-grid-community` `./types` `./oneri-cekince` `./useFillHandle` `./discount-utils` `./CustomDropdown` `./fill-down` `./isaret` `@/ozellik/tablo/parse-material-text` `@/ozellik/fiyat/pricing` `@/ozellik/fiyat/sayi-alani` `./build-material-context` `./aday-ayirt-edicilik` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `ag-grid-community/styles/ag-grid.css` `ag-grid-community/styles/ag-theme-alpine.css` `./fill-handle.css` |
+| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | `react` `react-dom` `ag-grid-react` `ag-grid-community` `./types` `./oneri-cekince` `./useFillHandle` `./discount-utils` `./CustomDropdown` `./fill-down` `./yapistir` `./isaret` `@/ozellik/tablo/parse-material-text` `@/ozellik/fiyat/pricing` `@/ozellik/fiyat/sayi-alani` `./build-material-context` `./aday-ayirt-edicilik` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `ag-grid-community/styles/ag-grid.css` `ag-grid-community/styles/ag-theme-alpine.css` `./fill-handle.css` |
 | `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | `react` |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts` | `vitest` `node:fs` `node:path` |
 | `frontend/ozellik/tablo/excel-grid/build-material-context.test.ts` | `vitest` `./build-material-context` |
@@ -720,6 +722,7 @@ test:* scripti: 67
 | `frontend/ozellik/tablo/excel-grid/kar-yayilimi.test.ts` | `vitest` `./fill-down` `../../fiyat/pricing` |
 | `frontend/ozellik/tablo/excel-grid/oneri-cekince.test.ts` | `vitest` `fs` `path` |
 | `frontend/ozellik/tablo/excel-grid/useFillHandle.tsx` | `react` `ag-grid-react` `ag-grid-community` `./types` |
+| `frontend/ozellik/tablo/excel-grid/yapistir.test.ts` | `vitest` `./yapistir` `../../../test/e2e-golden/sayi-ayristirma.mjs` |
 | `frontend/ozellik/tablo/quotes/ColumnManagerPanel.tsx` | `react` `lucide-react` |
 | `frontend/ozellik/teklif/ceviri.test.ts` | `vitest` `../tablo/excel-grid/types` |
 | `frontend/ozellik/teklif/ceviri.ts` | `../tablo/excel-grid/types` |
