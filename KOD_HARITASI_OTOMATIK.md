@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 404
-Toplam satir: 86035
+Toplam satir: 86143
 Uc nokta: 130
 test:* scripti: 68
 
@@ -176,7 +176,7 @@ test:* scripti: 68
 | `backend/test/index-engine-test.ts` | 1774 |
 | `backend/test/iscilik-satir-silme-test.ts` | 127 |
 | `backend/test/kalem59-oksuz-kutuphane-test.ts` | 131 |
-| `backend/test/kaucuk-izolasyon-test.ts` | 120 |
+| `backend/test/kaucuk-izolasyon-test.ts` | 228 |
 | `backend/test/kd11-toplam-yollari-test.ts` | 150 |
 | `backend/test/kd12-baslik-satiri-test.ts` | 226 |
 | `backend/test/kd9-kur-olcutu-test.ts` | 252 |

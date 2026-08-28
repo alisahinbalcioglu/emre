@@ -115,5 +115,113 @@ check('KI-19 ikiz: extractDiameter("22 mm") dn15 (normalizer.MM_TO_DN)',
   extractDiameter('kaucuk izolasyon 22 mm') === 'dn15',
   `gelen ${extractDiameter('kaucuk izolasyon 22 mm')}`);
 
+// ════════════════════════════════════════════════════════════════════
+// İA (28.08) — IZOLASYON AILE KAPSAMI: kullanicinin KENDI liste basligi
+//
+// CANLI VAKA: kullanici "PRM / AFK BORU" baslikli izolasyon fiyat listesini
+// getirdi. Olculdu — o adla aktarilan kutuphane satiri 'boru' ailesine
+// dusuyor ve izolasyon satirlarina HIC aday veremiyor:
+//     havuzAdi="PRM/AFK boru"                 -> none · "Bu markada
+//                                                'izolasyon' bulunamadı."
+//     havuzAdi="Elastomerik kauçuk köpüğü boru" -> single/high (AYNI kolonlar)
+// Aile SERT KILIT oldugu icin bu, cevrim tablosundan ONCE gelen tikanmadir:
+// cap cevrimi ne kadar dogru olursa olsun aday havuzu BOS kaliyor.
+// Olculen kapsam: 25 gercekci izolasyon ad yaziminin yalniz 11'i (%44)
+// 'izolasyon' cozuyordu.
+//
+// ⚠ GENISLEME KURALI (bu dosyanin KI-4/KI-5/KI-6 karsi ornekleriyle ayni
+// disiplin): her yeni desen EN AZ IKI AILEDEN karsi ornekle sinanir. Yalin
+// 'prm'/'afk' BILEREK EKLENMEDI — 2-3 harfli kisaltma catisma riski yuksek.
+// ════════════════════════════════════════════════════════════════════
+console.log('\n── İA: izolasyon aile kapsami (kullanicinin liste basligi) ──');
+
+// İA-Ö: OLCUT KONTROLU — bugun ZATEN cozulen bir yazim. Bu gecmezse
+// asagidaki "cozuluyor" iddialarinin hicbiri kanit degildir.
+check('İA-Ö ölçüt kontrolü: bugün de çözülen yazım hâlâ izolasyon',
+  resolveFamily('Kauçuk köpüğü boru izolasyonu') === 'izolasyon',
+  `gelen ${resolveFamily('Kauçuk köpüğü boru izolasyonu')}`);
+
+// İA-1..5: KULLANICININ VAKASI — bu yazimlar izolasyon COZMELI
+const IA_COZMELI: Array<[string, string]> = [
+  ['İA-1 kullanıcının liste başlığı', 'PRM/AFK Boru'],
+  ['İA-2 tek seri adı', 'AFK Boru'],
+  ['İA-3 marka + seri', 'ODE R-Flex PRM Boru'],
+  ['İA-4 marka (Armaflex)', 'Armaflex'],
+  ['İA-5 "izolasyon" kelimesiz elastomerik', 'Elastomerik kauçuk boru'],
+];
+for (const [ad, yazim] of IA_COZMELI) {
+  check(`${ad}: "${yazim}" → izolasyon`,
+    resolveFamily(yazim) === 'izolasyon', `gelen ${resolveFamily(yazim)}`);
+}
+
+// İA-K: ★ KARSI ORNEK KILITLERI — genisleme BASKA aileleri CALMAMALI.
+// Iki AYRI aile kaniti (kompansator + boru + vana), KI-4/5/6 ile ayni cizgi.
+const IA_CALMAMALI: Array<[string, string, string]> = [
+  ['İA-K1', 'Kauçuk kompansatör', 'kompansator'],
+  ['İA-K2', 'Kauçuk contalı döküm vana', 'vana'],
+  ['İA-K3', 'Siyah çelik boru', 'boru'],
+  // ⭐ EN KRITIK: govde BORU, yalitim yalniz KAPLAMA. 'boru yalitimi' gibi
+  //   gevsek bir desen eklenirse bu satir izolasyona KAYAR ve gercek boru
+  //   fiyati izolasyon urunuyle eslesir.
+  ['İA-K4', 'Yalıtımlı çelik boru', 'boru'],
+  ['İA-K5', 'PE kaplı çelik boru', 'boru'],
+  // ⭐ OLCULEREK EKLENDI: ilk surumde markanin yalin hali ('r-flex') desene
+  //   konmustu ve BU URUNU caldi — aile-uyusmazligi-test E7 kirmizi yandi
+  //   ("R-Flex Bant" hortum bandidir, izolasyon DEGIL). Marka kelimesi
+  //   desene KONMADI; kullanicinin vakasi 'prm boru' ile zaten cozuluyor.
+];
+for (const [ad, yazim, beklenen] of IA_CALMAMALI) {
+  check(`${ad} ★ karşı: "${yazim}" ${beklenen} KALIR`,
+    resolveFamily(yazim) === beklenen, `gelen ${resolveFamily(yazim)}`);
+}
+
+// İA-K6 ★ OLCULEREK EKLENDI (gercek gerileme yakalandi): ilk surumde markanin
+//   YALIN hali ('r-flex') desene konmustu ve "R-Flex Bant" (hortum bandi)
+//   urununu caldi → aile-uyusmazligi-test E7 KIRMIZI yandi. Marka kelimesi
+//   desenden CIKARILDI; kullanicinin vakasi 'prm boru' ile zaten cozuluyor.
+//   ⚠ OLCUT: ad TEK BASINA 'hortum' DEGIL null doner (E7'de aileyi KATEGORI
+//   'Hortum Grubu' veriyor). Dogru kriter "izolasyon OLMAMALI" — ilk yazdigim
+//   'hortum' beklentisi olcut hatasiydi (feedback_olcutu_once_dogrula).
+check('İA-K6 ★ karşı: "R-Flex Bant" izolasyon OLMAMALI (marka kelimesi desende yok)',
+  resolveFamily('R-Flex Bant') !== 'izolasyon', `gelen ${resolveFamily('R-Flex Bant')}`);
+
+// İA-P: SAYIMLI kapsam — payda ve kirilim basilir (bos kume yalanci yesil vermesin)
+{
+  const PAYDA = [
+    'Kauçuk köpüğü boru izolasyonu', 'Elastomerik kauçuk izolasyon', 'Kauçuk köpüğü boru',
+    'Boru izolasyonu', 'Kauçuk levha', 'Kanal izolasyonu', 'Vana ceketi',
+    'PRM/AFK Boru', 'AFK Boru', 'ODE R-Flex PRM Boru', 'Armaflex', 'Elastomerik kauçuk boru',
+  ];
+  const cozen = PAYDA.filter((a) => resolveFamily(a) === 'izolasyon');
+  check(`İA-P payda ${PAYDA.length} izolasyon yazımının TAMAMI çözülmeli`,
+    cozen.length === PAYDA.length,
+    `çözen=${cozen.length}/${PAYDA.length} · çözemeyen=${PAYDA.filter((a) => !cozen.includes(a)).map((a) => `"${a}"→${resolveFamily(a)}`).join(' | ')}`);
+}
+
+// İA-U: BU DEGISIKLIGIN GERCEK CIKTISI — urun artik izolasyon KIMLIGI tasiyor.
+//
+// ⚠ KAPSAM DURUSTLUGU: aile cozumu ile AD KILIDI motorda AYRI iki kademedir
+//   (query-engine "1a. SEVIYE1: AILE" / "1b. SEVIYE2: AD TOKEN'LARI").
+//   Bu degisiklik SEVIYE1'i acar. SEVIYE2 hala kapali kalabilir: olculdu —
+//     satir  "19 mm Kauçuk İzolasyon 1/2\"" adTokens=[kaucuk, izolasyon]
+//     urun   "PRM/AFK Boru"                 adTokens=[prm, afk, boru]
+//   ortak AD token'i YOK → runQuery 'ad-yok' donuyor. 'kaucuk' AYIRT EDICIDIR
+//   (kaucuk vs cam yunu vs tas yunu FARKLI urunlerdir), yani AD kilidinin
+//   reddi kendi icinde TUTARLI. Kullanicinin kutuphanesinde urun adi/cinsi
+//   'kauçuk' kelimesini tasiyorsa iki kademe de acilir.
+//   AD kademesini gevsetmek AYRI bir olcum turudur — burada IDDIA EDILMIYOR.
+{
+  const idx = buildProductIndex({ ad: 'PRM/AFK Boru', cins: 'ODE R-Flex · 19 mm kalınlık', cap: '22 mm' } as any);
+  check('İA-U-Ö FIXTURE KANITI: satır tarafı izolasyon çözüyor',
+    parseLine('19 mm Kauçuk İzolasyon 1/2"').familySlug === 'izolasyon');
+  check('İA-U ★ kullanıcının liste başlığıyla aktarılan ürün izolasyon KİMLİĞİ alır',
+    idx.adSlug === 'izolasyon', `adSlug=${idx.adSlug}`);
+  // Ad kolonu kauçuğu YAZIYORSA uctan uca da eslesmeli (iki kademe de acik).
+  const urun = prod({ ad: 'PRM/AFK Kauçuk Köpüğü Boru', cins: 'ODE R-Flex · 19 mm kalınlık', cap: '22 mm', price: 560 });
+  const out = runQuery(parseLine('19 mm Kauçuk İzolasyon 1/2"'), [urun]);
+  check('İA-U2 ★ uçtan uca: adında "kauçuk" geçen PRM/AFK ürünü eşleşir',
+    out.kind !== 'none', `kind=${out.kind} reason=${(out as any).reason ?? ''}`);
+}
+
 console.log(`\nKI TOPLAM: ${passed} PASS · ${failed} FAIL`);
 if (failed > 0) { console.log(failures.map((f) => ` - ${f}`).join('\n')); process.exit(1); }
