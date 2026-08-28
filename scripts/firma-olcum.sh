@@ -4,7 +4,15 @@
 #
 #  KULLANIM (Hetzner web konsolunda):
 #      cd /opt/metaprice
-#      bash scripts/firma-olcum.sh
+#      bash scripts/firma-olcum.sh ozet     (TEK EKRANA SIGAR — onerilen)
+#      bash scripts/firma-olcum.sh          (tam dokum, uzun)
+#
+#  ⚠ NEDEN OZET KIPI VAR: Hetzner web konsolunda GERI KAYDIRMA YOK (vt
+#  scrollback kaldirildi; Shift+PageUp da calismaz). Tam dokum ekrandan
+#  tasinca ustteki sayimlar KAYBOLUR — ilk kosumda (28.08) tam olarak bu
+#  yasandi ve K0.1/K0.2/K0.3 okunamadi. `ozet` tum kararlari TEK tabloda
+#  verir. Boru (dikey cizgi) ile head/less kullanilamaz: konsol o karakteri
+#  YAZAMIYOR — bu yuzden sayfalama betigin ICINDE cozulur.
 #
 #  NEDEN SCRIPT (deploy.sh / kv-kaucuk-olcu.sh deseni): Hetzner web konsolu TR
 #  klavyede  $  >  |  _  karakterlerini YAZAMIYOR. Ozel karakterlerin TAMAMI bu
@@ -43,6 +51,32 @@ fi
 sorgu() {
   docker compose exec -T backup sh -c 'psql -h db -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "BEGIN READ ONLY; '"$1"'; ROLLBACK"'
 }
+
+KIP="${1:-tam}"
+
+if [ "$KIP" = "ozet" ]; then
+  echo "=============================================================="
+  echo " ADIM 0 — OZET (tek ekran). Tam dokum: bash scripts/firma-olcum.sh"
+  echo "=============================================================="
+  echo ""
+  echo "── firma migration'lari uygulanmis mi (4 tane bekleniyor) ──"
+  sorgu 'SELECT migration_name AS migration FROM _prisma_migrations WHERE migration_name LIKE '"'"'2026082%'"'"' ORDER BY 1'
+  echo ""
+  echo "── KARAR TABLOSU: bos sutunu HEPSINDE 0 olmali ──"
+  sorgu 'SELECT '"'"'K0.1 User (firmasiz)'"'"' AS olcum, count(*) FILTER (WHERE \"firmaId\" IS NULL) AS bos, count(*) AS toplam FROM \"User\" UNION ALL SELECT '"'"'K0.2 UserLibrary'"'"', count(*) FILTER (WHERE \"firmaId\" IS NULL), count(*) FROM \"UserLibrary\" UNION ALL SELECT '"'"'K0.3 EslesmeHafizasi'"'"', count(*) FILTER (WHERE \"firmaId\" IS NULL AND \"userId\" IS NOT NULL), count(*) FROM \"EslesmeHafizasi\" UNION ALL SELECT '"'"'K0.3 TerminologyAlias'"'"', count(*) FILTER (WHERE \"firmaId\" IS NULL AND \"userId\" IS NOT NULL), count(*) FROM \"TerminologyAlias\" ORDER BY 1'
+  echo ""
+  echo "── KISIT CAKISMASI (uc sayi da 0 olmali) ──"
+  sorgu 'SELECT (SELECT count(*) FROM (SELECT 1 FROM \"EslesmeHafizasi\" WHERE \"firmaId\" IS NOT NULL GROUP BY \"firmaId\", imza HAVING count(*) > 1) a) AS hafiza_cakisma, (SELECT count(*) FROM (SELECT 1 FROM \"TerminologyAlias\" WHERE \"firmaId\" IS NOT NULL GROUP BY \"firmaId\", alias HAVING count(*) > 1) b) AS alias_cakisma, (SELECT count(*) FROM (SELECT 1 FROM \"LaborFirm\" WHERE \"firmaId\" IS NOT NULL GROUP BY \"firmaId\", name HAVING count(*) > 1) c) AS iscilik_cakisma'
+  echo ""
+  echo "── firma basina uye (bugun hepsi 1 olmali) ──"
+  sorgu 'SELECT uye AS firmadaki_uye, count(*) AS firma_adedi FROM (SELECT \"firmaId\", count(*) AS uye FROM \"User\" WHERE \"firmaId\" IS NOT NULL GROUP BY 1) x GROUP BY 1 ORDER BY 1'
+  echo ""
+  echo "=============================================================="
+  echo " OKUMA: 4 migration listelendi + bos sutunu HEPSINDE 0 + uc"
+  echo " cakisma sayisi 0 + firmadaki uye 1 ise PLAN OLDUGU GIBI KOSAR."
+  echo "=============================================================="
+  exit 0
+fi
 
 echo "=============================================================="
 echo " FIRMA GECISI — ADIM 0 SAYIMLARI (salt-okuma, degistirmez)"

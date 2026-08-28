@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 405
-Toplam satir: 86415
+Toplam satir: 86449
 Uc nokta: 130
 test:* scripti: 68
 
@@ -406,7 +406,7 @@ test:* scripti: 68
 | `frontend/vitest.config.ts` | 10 |
 | `scripts/backup.sh` | 75 |
 | `scripts/deploy.sh` | 167 |
-| `scripts/firma-olcum.sh` | 98 |
+| `scripts/firma-olcum.sh` | 132 |
 | `scripts/fk-dogrula.sh` | 94 |
 | `scripts/geri-yukle.sh` | 177 |
 | `scripts/harita-denetle.mjs` | 260 |
