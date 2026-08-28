@@ -34,6 +34,7 @@ import type { AliasHint } from './terminology.service';
 import { ExchangeRatesService } from '../../fiyat/exchange-rates/exchange-rates.service';
 import type { MatchResult, BrandAlternative } from './types';
 import { KIND_TAGS, SURFACE_TAGS, CONNECTION_TAGS } from './shared-tag-matcher';
+import { Kimlik } from '../../../altyapi/auth/kimlik';
 
 // NOT (Faz 2b sokum — 17.07): v1 skor motoru (matchSingle zinciri,
 // HEADER_HINTS kod-ici sozlugu, marka→sinif cikarimi) kod tabanindan
@@ -80,8 +81,29 @@ export class MatchingService {
   // BULK MATCH — Teklif sirasinda (AI YOK)
   // ═══════════════════════════════════════════
 
+  /**
+   * ⚠ G8 (28.08) — ADAY HAVUZU KISIDEN FIRMAYA GECTI.
+   *
+   * Aday havuzu `UserLibrary`den okunur ve bu tablo ADIM 1'de FIRMAYA
+   * gecmisti (library.service her yazmada firmaId yaziyor, okuma yollari
+   * `where: { firmaId: k.firmaId }` kullaniyor). Ama BURASI `userId` ile
+   * suzmeye devam ediyordu. Asimetri bugun GORUNMUYOR cunku her firmada tek
+   * uye var; davet akisi acilir acilmaz AYNI FIRMANIN ikinci uyesi teklif
+   * ekraninda BOS HAVUZ gorurdu ("Kutuphane bos") — kutuphane ekraninda
+   * malzemeler dururken eslestirme hicbirini bulamazdi.
+   *
+   * ⚠ ISIM CAKISMASI — DIKKAT: bu dosyanin ALT KISMINDA (findLaborAlternativesV2,
+   * matchLabor, reindexLabor) gecen `firmaId` ISCILIK FIRMASIDIR (LaborFirm),
+   * kiraci firma DEGIL. Bu yuzden kiraci firma burada CIPLAK `firmaId` olarak
+   * TASINMAZ; `Kimlik` nesnesi (`k`) tasinir ve daima `k.firmaId` yazilir —
+   * quotes.service'teki `f.firmaId === k.firmaId` ayrimiyla ayni kalip.
+   *
+   * HAFIZA (EslesmeHafizasi) BILEREK `k.userId`de kaldi: sema `@@unique
+   * ([userId, imza])` ve eslesme tercihi KISISELDIR. Firmaya tasimak ayri bir
+   * karar + tekillik degisikligi + veri gocu ister; G8'in kapsami havuzdur.
+   */
   async bulkMatch(
-    userId: string,
+    k: Kimlik,
     brandId: string,
     materialNames: string[],
     // V4 (PRD v1.3): grup ici otomatik atama — secilen varyantin tag'leri.
@@ -99,7 +121,8 @@ export class MatchingService {
     // kopyalar, fiyat/iskontoyu ozgurce degistirir, manuel malzeme ekler —
     // teklif eslestirmesi YALNIZ bu kisisel veriyi okur. Global fallback YOK.
     const libRows = await this.prisma.userLibrary.findMany({
-      where: { userId, brandId },
+      // G8: havuz FIRMAYA ait (UserLibrary ADIM 1'de firmaya gecti).
+      where: { firmaId: k.firmaId, brandId },
       include: {
         material: {
           select: { id: true, name: true, tags: true, normalizedName: true, materialType: true },
@@ -110,7 +133,7 @@ export class MatchingService {
     });
 
     if (libRows.length === 0) {
-      console.log(`[Matching] Kutuphane bos: user=${userId}, brand=${brandId}`);
+      console.log(`[Matching] Kutuphane bos: firma=${k.firmaId}, brand=${brandId}`);
       const empty: Record<string, MatchResult> = {};
       const reason =
         'Kütüphanenizde bu markaya ait malzeme yok. Malzeme Havuzu\'ndan "Kütüphaneme Aktar" ile ekleyin.';
@@ -131,7 +154,7 @@ export class MatchingService {
     // indekslenir, bayat indeks istek aninda yeniden uretilir (hazirlaPool).
     const pool = this.hazirlaPool(libRows as any[]);
     console.log(`[Matching] v2 INDEKSLI MOTOR (Ad kilitli): ${pool.length} satir, brand=${brandId}`);
-    return this.matchV2(userId, brandId, materialNames, pool, toTry, variantTags, units);
+    return this.matchV2(k, brandId, materialNames, pool, toTry, variantTags, units);
   }
 
   /**
@@ -307,7 +330,9 @@ export class MatchingService {
    * Bu metot yalniz sozluk/hafiza baglar ve M3 alternatiflerini ekler.
    */
   private async matchV2(
-    userId: string,
+    // G8: kiraci firma `k.firmaId`, kisi `k.userId`. Ciplak `firmaId`
+    // TASINMAZ — bu dosyada o ad ISCILIK FIRMASI icin kullaniliyor.
+    k: Kimlik,
     // Hafiza kapsam anahtari: malzemede brandId, iscilikte `iscilik|<firmaId>`
     // (PRD Iscilik D3: malzeme hafizasi iscilik secimini KIRLETMEZ — onek
     // ayristirir, mevcut malzeme imzalari DEGISMEZ).
@@ -325,7 +350,7 @@ export class MatchingService {
     // Satir etiketleme (PRD 1.1-B) sozluksuz eksikti: "temiz su→PPR" gibi
     // seed'ler ve S4 kullanici alias'lari YAZILIYOR ama v2 OKUMUYORDU.
     // Istek basina 1 kez yuklenir; hint'ler QueryOpts ile motora gecer.
-    const aliases = await this.terminology.loadAliases(userId);
+    const aliases = await this.terminology.loadAliases(k.userId);
 
     const out: Record<string, MatchResult> = {};
     for (const name of materialNames) {
@@ -421,7 +446,7 @@ export class MatchingService {
 
       // OGRENME HAFIZASI + CINS TERCIHI — v1 ile AYNI kural (on-secili
       // getirir, OTOMATIK DOLDURMAZ). Motor-bagimsiz ortak yol.
-      r = await this.hafizaOnSecim(userId, brandId, name, r, aliases);
+      r = await this.hafizaOnSecim(k.userId, brandId, name, r, aliases);
 
       // M3: "bu markada yok" cevabi ALTERNATIFSIZ birakilmaz (PRD Bolum 3).
       // Faz 2b genislemesi: satirin yazili kelimesi bu markada DOGRULANAMADIYSA
@@ -445,8 +470,8 @@ export class MatchingService {
           && (r.confidence === 'none' || (r.dogrulanamadi?.length ?? 0) > 0 || teshisAcik)) {
         // L5 (iscilik): "bu firmada yok" → kullanicinin DIGER firmalari taranir
         const alts = catalogOpts
-          ? await this.findLaborAlternativesV2(userId, catalogOpts.firmaId, line, opts)
-          : await this.findAlternativesV2(userId, brandId, line, opts);
+          ? await this.findLaborAlternativesV2(k.userId, catalogOpts.firmaId, line, opts)
+          : await this.findAlternativesV2(k, brandId, line, opts);
         if (alts.length > 0) r = { ...r, alternatives: alts };
       }
       out[name] = r;
@@ -505,9 +530,10 @@ export class MatchingService {
    * M3 (v2): satirin ailesi+capi DIGER markalarin indeksli kutuphanesinde var mi?
    * Ayni sert kurallar — yalniz GERCEKTEN o urunu sunan markalar onerilir.
    */
-  private async findAlternativesV2(userId: string, brandId: string, line: LineQuery, opts?: QueryOpts): Promise<BrandAlternative[]> {
+  private async findAlternativesV2(k: Kimlik, brandId: string, line: LineQuery, opts?: QueryOpts): Promise<BrandAlternative[]> {
     const others = await this.prisma.userLibrary.findMany({
-      where: { userId, brandId: { not: brandId } },
+      // G8: capraz-marka alternatif havuzu da FIRMAYA ait.
+      where: { firmaId: k.firmaId, brandId: { not: brandId } },
       include: {
         brand: { select: { id: true, name: true } },
         product: true,
@@ -578,12 +604,14 @@ export class MatchingService {
   /** I7 (kullanici sarti 18.07): bayat/indekssiz satir sayisi — FE rozeti.
    *  hazirlaPool istek aninda tamir ediyor ama KALICI cozum reindex;
    *  kullanici durumu GORMELI (yalniz log yetmez). */
-  async indexHealth(userId: string) {
+  // G8: rozet FIRMANIN kutuphanesini sayar (havuzla ayni eksen olmali —
+  // aksi halde ikinci uye 'bayat 0' gorup havuzun bos oldugunu anlamazdi).
+  async indexHealth(k: Kimlik) {
     const [bayat, indekssiz] = await Promise.all([
       this.prisma.userLibrary.count({
-        where: { userId, productIndexId: { not: null }, product: { indexVersion: { not: INDEX_VERSION } } },
+        where: { firmaId: k.firmaId, productIndexId: { not: null }, product: { indexVersion: { not: INDEX_VERSION } } },
       }),
-      this.prisma.userLibrary.count({ where: { userId, productIndexId: null } }),
+      this.prisma.userLibrary.count({ where: { firmaId: k.firmaId, productIndexId: null } }),
     ]);
     return { bayat, indekssiz, surum: INDEX_VERSION };
   }
@@ -597,7 +625,9 @@ export class MatchingService {
   /** Teklif: satir(lar) icin secili FIRMANIN iscilik fiyatini esle.
    *  Sahiplik dogrulamasi CAGIRANDA (LaborMatchingService.assertOwnership). */
   async bulkMatchLabor(
-    userId: string,
+    // ⚠ IKI AYRI KAVRAM: `k.firmaId` KIRACI firma (hesap),
+    // `firmaId` ISCILIK firmasi (LaborFirm). Ayni ad, ayri seyler.
+    k: Kimlik,
     firmaId: string,
     laborNames: string[],
     variantTags?: string[],
@@ -622,7 +652,7 @@ export class MatchingService {
     const pool = this.hazirlaLaborPool(prices as any[]);
     console.log(`[Matching] v2 ISCILIK MOTORU (tek motor, catalog=iscilik): ${pool.length} kalem, firma=${firmaId}`);
     return this.matchV2(
-      userId,
+      k,
       `iscilik|${firmaId}`, // hafiza kapsami — malzeme imzalariyla CAKISMAZ
       laborNames, pool, toTry, variantTags, units,
       { tur: 'iscilik', firmaId },
@@ -783,9 +813,10 @@ export class MatchingService {
   /** Iscilik reindex (L2 kalicilik): kullanicinin firmalarindaki kalemlerin
    *  indeks alanlarini yeniden uretip YAZAR. Kolonlu kalem kolonlardan,
    *  legacy kalem adindan (yol-3) turetilir — AYNI indeksleyici. */
-  async reindexLabor(userId: string): Promise<{ updated: number; total: number; belirsiz: number }> {
+  // G7: iscilik firmalari FIRMAYA ait — yeniden indeksleme de o eksende.
+  async reindexLabor(k: Kimlik): Promise<{ updated: number; total: number; belirsiz: number }> {
     const items = await (this.prisma as any).laborItem.findMany({
-      where: { laborPrices: { some: { firma: { userId } } } },
+      where: { laborPrices: { some: { firma: { firmaId: k.firmaId } } } },
     });
     let updated = 0; let belirsizSayisi = 0;
     for (const it of items) {

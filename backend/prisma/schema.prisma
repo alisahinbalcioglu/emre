@@ -704,7 +704,12 @@ model LaborFirm {
   priceLists  LaborPriceList[]
   quoteItems  QuoteItem[]
 
-  @@unique([userId, name])
+  // G7 (28.08): tekillik KISI'den FIRMA'ya tasindi — UserBrandLibrary'de
+  // ADIM 1'de yapilan degisikligin ayni gerekcesi: iscilik firmasi FIRMAYA
+  // ait. Tekillik kisi bazli kalsaydi ayni firmanin iki uyesi AYNI isimde
+  // iki iscilik firmasi acabilir, teklif ekraninda firma CIFT gorunurdu.
+  // Bugun cakisma imkansiz (her firmada tek uye) — gecis simdi guvenli.
+  @@unique([firmaId, name])
   @@index([userId])
   @@index([discipline])
 

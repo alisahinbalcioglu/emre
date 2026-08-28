@@ -127,7 +127,7 @@ async function olc(rows: any[], sorgular: string[], etiket: string) {
   const sessizW = console.warn; console.warn = () => {};
   const sessizE = console.error; console.error = () => {};
   let res: any;
-  try { res = await svc.bulkMatch('olcum-user', rows[0].brand.id, sorgular); }
+  try { res = await svc.bulkMatch({ userId: 'olcum-user', firmaId: 'olcum-user' }, rows[0].brand.id, sorgular); }
   finally { console.log = sessiz; console.warn = sessizW; console.error = sessizE; }
 
   const sayim = { single: 0, multi: 0, none: 0, digger: 0 };

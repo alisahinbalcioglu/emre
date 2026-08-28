@@ -345,6 +345,26 @@ const SUITES: Suite[] = [
   //    G1-b · labor remove'dan @Roles kalkınca G3-a · getGeometry sahiplik
   //    kontrolü kalkınca G2-a kırmızı. KIRMIZIYA DÖNERSE REGRESYONDUR.
   { ad: 'Güvenlik turu 2: ban/DWG izolasyon/katalog/kimlik (G1-G6)', script: 'test:guvenlik2', zincir: 'Z0' },
+  // ── 28.08.2026 — FİRMA EKSENİ (G7/G8). ADIM 1'in yarım kalan dilimi.
+  //    DB GEREKTİRMEZ: SAHTE PRISMA CASUSU ile Prisma'ya giden gerçek `where`
+  //    nesnesi yakalanır ve EKSENİ ölçülür.
+  //    ⚠ BU PAKET NEDEN TİPE DEĞİL SORGUYA BAKAR: göçürme sırasında
+  //    `tsc --noEmit` TEMİZ verdi ama 13 çağrı hâlâ `user.id` (string)
+  //    geçiriyordu — controller'larda `@CurrentUser() user: any` var ve `any`
+  //    tip kapısını DEVRE DIŞI BIRAKIR. Çalışma anında `k.firmaId` undefined
+  //    olur, `where: { firmaId: undefined }` koşulu SESSİZCE DÜŞER ve HER
+  //    firmanın işçilik firmaları dönerdi. Yani göçürme, düzeltmeye çalıştığı
+  //    şeyden büyük bir çapraz-tenant sızıntısı açabilirdi ve tsc GÖRMEZDİ.
+  //    G7 LaborFirm.create firmaId YAZMIYORDU → deploy sonrası açılan her
+  //      işçilik firması öksüz kalıyor, kullanıcı KENDİ firmasını
+  //      "başkasının firması" uyarısıyla görüyordu (canlıda bozuktu).
+  //    G8 Eşleştirme aday havuzu hâlâ userId ile süzülüyordu → davet akışı
+  //      açılınca aynı firmanın ikinci üyesi BOŞ HAVUZ görürdü.
+  //    C* ★KALKAN: bu dosyalarda `firmaId` İŞÇİLİK FİRMASI anlamına da
+  //      geliyor; kiracı firmanın işçilik havuzuna SIZMADIĞI ölçülür.
+  //    MUTASYONLA ÖLÇÜLDÜ (2/2 öldü): create'ten firmaId kalkınca G7-a ·
+  //    havuz userId'ye dönünce G8-a/b/★ kırmızı.
+  { ad: 'Firma ekseni: havuz + işçilik firması sahipliği (G7/G8)', script: 'test:firma-ekseni', zincir: 'Z0' },
 ];
 
 function dbErisilebilir(): boolean {

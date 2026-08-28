@@ -189,14 +189,14 @@ async function run() {
       !ayniAnahtar, `4"→${imza(DORT)} · 1/4"→${imza(CEYREK)}`);
 
     // FIXTURE KANITI 1: 4" satiri gercekten SORU aciyor (popup yolu kosuyor)
-    const dortOnce = (await s.bulkMatch('u1', BRAND, [DORT]))[DORT];
+    const dortOnce = (await s.bulkMatch({ userId: 'u1', firmaId: 'u1' }, BRAND, [DORT]))[DORT];
     check('A-P0a FIXTURE KANITI: 4" satırı popup açıyor (aday listesi var)',
       (dortOnce.candidates?.length ?? 0) === 1,
       `conf=${dortOnce.confidence} aday=${dortOnce.candidates?.length ?? 0}`);
 
     // FIXTURE KANITI 2: hafizasiz halde 1/4" satiri fiyat YAZMIYOR
     // (yani asagidaki yazim gercekten HAFIZADAN geliyor, tesadüf degil).
-    const oncesi = (await s.bulkMatch('u1', BRAND, [CEYREK]))[CEYREK];
+    const oncesi = (await s.bulkMatch({ userId: 'u1', firmaId: 'u1' }, BRAND, [CEYREK]))[CEYREK];
     check('A-P0b FIXTURE KANITI: hafızasız 1/4" satırı fiyat yazmıyor',
       oncesi.netPrice === 0, `netPrice=${oncesi.netPrice} conf=${oncesi.confidence}`);
 
@@ -204,7 +204,7 @@ async function run() {
     const secilen = dortOnce.candidates![0].materialName;
     await s.remember('u1', BRAND, DORT, secilen);
 
-    const sonrasi = (await s.bulkMatch('u1', BRAND, [CEYREK]))[CEYREK];
+    const sonrasi = (await s.bulkMatch({ userId: 'u1', firmaId: 'u1' }, BRAND, [CEYREK]))[CEYREK];
     check('A-P1 4" seçimi 1/4" satırına fiyat YAZMAMALI',
       sonrasi.netPrice === 0,
       `ayniAnahtar=${ayniAnahtar} netPrice=${sonrasi.netPrice} conf=${sonrasi.confidence} hafizaOtoyaz=${sonrasi.hafizaOtoyaz} matched=${sonrasi.matchedName}`);
@@ -231,7 +231,7 @@ async function run() {
     const s: any = makeService('TEST MARKA', [lib(URUN, 250)]);
     const SATIR = '8" PPR Boru';
 
-    const oncesi = (await s.bulkMatch('u1', BRAND, [SATIR]))[SATIR];
+    const oncesi = (await s.bulkMatch({ userId: 'u1', firmaId: 'u1' }, BRAND, [SATIR]))[SATIR];
     // FIXTURE KANITI: CC dali GERCEKTEN kosuyor (mesajla kanitla)
     check('B-R0 FIXTURE KANITI: CC dalı koşuyor ("çevrim tablosunda yok")',
       /çevrim tablosunda yok/.test(oncesi.reason ?? ''), `reason=${oncesi.reason}`);
@@ -252,7 +252,7 @@ async function run() {
     // verilirse otoyaz dali hic kosmaz ve test yanlis sebeple yesil kalir.
     await s.remember('u1', BRAND, SATIR, oncesi.candidates![0].materialName);
 
-    const sonrasi = (await s.bulkMatch('u1', BRAND, [SATIR]))[SATIR];
+    const sonrasi = (await s.bulkMatch({ userId: 'u1', firmaId: 'u1' }, BRAND, [SATIR]))[SATIR];
     check('B-R1 hafıza, çevrilemez çap kapısını SİLMEMELİ (fiyat otomatik yazılmamalı)',
       sonrasi.netPrice === 0,
       `netPrice=${sonrasi.netPrice} conf=${sonrasi.confidence} hafizaOtoyaz=${sonrasi.hafizaOtoyaz} reason=${sonrasi.reason}`);
@@ -361,14 +361,14 @@ async function run() {
     const URUN = 'Küresel Vana Pirinç 1/2"';
     const s: any = makeService('TEST MARKA', [lib(URUN, 850)]);
     const SATIR = '1/2" Küresel Vana Pirinç Zırhlı';
-    const oncesi = (await s.bulkMatch('u1', BRAND, [SATIR]))[SATIR];
+    const oncesi = (await s.bulkMatch({ userId: 'u1', firmaId: 'u1' }, BRAND, [SATIR]))[SATIR];
     check('L1-Ö FIXTURE KANITI: hafızasız hâlde soru açılıyor, fiyat yazılmıyor',
       oncesi.netPrice === 0 && (oncesi.candidates?.length ?? 0) === 1,
       `netPrice=${oncesi.netPrice} conf=${oncesi.confidence} aday=${oncesi.candidates?.length ?? 0}`);
     check('L1-Ö2 FIXTURE KANITI: kapı ÇAP değil, bilinmeyen-kelime',
       !/çevrim tablosunda yok/.test(oncesi.reason ?? ''), `reason=${oncesi.reason}`);
     await s.remember('u1', BRAND, SATIR, oncesi.candidates![0].materialName);
-    const sonrasi = (await s.bulkMatch('u1', BRAND, [SATIR]))[SATIR];
+    const sonrasi = (await s.bulkMatch({ userId: 'u1', firmaId: 'u1' }, BRAND, [SATIR]))[SATIR];
     check('L1 ★ çevrilebilir çapta hafıza otoyazısı ÇALIŞMAYA DEVAM etmeli',
       sonrasi.netPrice === 850 && sonrasi.hafizaOtoyaz === true,
       `netPrice=${sonrasi.netPrice} hafizaOtoyaz=${sonrasi.hafizaOtoyaz} conf=${sonrasi.confidence}`);

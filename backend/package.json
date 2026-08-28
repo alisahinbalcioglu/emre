@@ -84,7 +84,8 @@
     "test:odeme": "ts-node test/odeme-onyukleme-test.ts",
     "test:migration": "ts-node test/migration-zinciri-test.ts",
     "test:erisim": "ts-node test/erisim-kapisi-test.ts",
-    "test:guvenlik2": "ts-node test/guvenlik-turu-2-test.ts"
+    "test:guvenlik2": "ts-node test/guvenlik-turu-2-test.ts",
+    "test:firma-ekseni": "ts-node test/firma-ekseni-test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

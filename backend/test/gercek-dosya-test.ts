@@ -196,7 +196,7 @@ async function run() {
     // Dosyadaki yetim-olcu satirlar: "6\"" — FE baglami parent adla birlestirir;
     // BE altin-yolunda birlesik adla sorgulanir (UY1 sonrasi gercek sorgu sekli).
     const sorgular = ['ISLAK ALARM VANASI 6"', 'KELEBEK VANA 6"'];
-    const mres = await msvc.bulkMatch('u1', 'b1', sorgular);
+    const mres = await msvc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'b1', sorgular);
     check('ALTIN Z2: iki kalem tek motorla eşleşti (64.637,3 + 28.885,6)',
       mres[sorgular[0]]?.netPrice === 64637.3 && mres[sorgular[1]]?.netPrice === 28885.6,
       JSON.stringify([mres[sorgular[0]]?.netPrice, mres[sorgular[1]]?.netPrice]));

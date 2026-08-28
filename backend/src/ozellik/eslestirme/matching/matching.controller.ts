@@ -4,6 +4,7 @@ import { RolesGuard } from '../../../altyapi/auth/guards/roles.guard';
 import { Roles } from '../../../altyapi/auth/decorators/roles.decorator';
 import { MatchingService } from './matching.service';
 import { TerminologyService } from './terminology.service';
+import { kimlikCoz } from '../../../altyapi/auth/kimlik';
 
 @Controller('matching')
 @UseGuards(JwtAuthGuard)
@@ -23,7 +24,7 @@ export class MatchingController {
     @Req() req: any,
   ) {
     const userId: string = req.user?.id ?? req.user?.sub;
-    return this.service.bulkMatch(userId, body.brandId, body.materialNames, body.variantTags, body.units);
+    return this.service.bulkMatch(kimlikCoz(req.user), body.brandId, body.materialNames, body.variantTags, body.units);
   }
 
   /** OGRENME (PRD Adim 8): secici popup'tan secim yapilinca hafizaya yaz.
@@ -43,7 +44,7 @@ export class MatchingController {
   @Get('index-health')
   async indexHealth(@Req() req: any) {
     const userId: string = req.user?.id ?? req.user?.sub;
-    return this.service.indexHealth(userId);
+    return this.service.indexHealth(kimlikCoz(req.user));
   }
 
   // ── TERMINOLOJI SOZLUGU (PRD §5) ─────────────────────────────

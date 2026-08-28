@@ -156,7 +156,7 @@ async function hafizaIkizi() {
   const SATIR = 'Boru DN 110';
   const s = makeService(HAVUZ);
 
-  const once = (await s.bulkMatch('u1', BRAND, [SATIR]))[SATIR];
+  const once = (await s.bulkMatch({ userId: 'u1', firmaId: 'u1' }, BRAND, [SATIR]))[SATIR];
   check('M-R0 FIXTURE KANITI: köprü kapısı GERÇEKTEN koşuyor (gerekçede "köprü")',
     /köprü/i.test(once.reason ?? ''), `reason=${once.reason}`);
   check('M-R0b FIXTURE KANITI: hafızasız hâlde fiyat yazılmıyor, TEK aday var',
@@ -169,7 +169,7 @@ async function hafizaIkizi() {
   // Kullanici popup'tan secer — `secilenAd` ADAYIN materialName'idir.
   await s.remember('u1', BRAND, SATIR, once.candidates![0].materialName);
 
-  const sonra = (await s.bulkMatch('u1', BRAND, [SATIR]))[SATIR];
+  const sonra = (await s.bulkMatch({ userId: 'u1', firmaId: 'u1' }, BRAND, [SATIR]))[SATIR];
   check('M-R1 hafıza, köprü kapısını SİLMEMELİ (fiyat otomatik yazılmamalı)',
     sonra.netPrice === 0,
     `NET=${sonra.netPrice} conf=${sonra.confidence} otoyaz=${sonra.hafizaOtoyaz} reason=${sonra.reason}`);

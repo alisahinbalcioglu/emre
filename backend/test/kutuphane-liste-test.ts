@@ -41,7 +41,7 @@ function check(ad: string, kosul: boolean, detay?: string) {
   {
     const created: any[] = [];
     const sahte: any = {
-      laborFirm: { findUnique: async () => ({ id: 'f1', userId: 'u1', name: 'Yasin Usta', discipline: 'mechanical' }) },
+      laborFirm: { findUnique: async () => ({ id: 'f1', userId: 'u1', firmaId: 'u1', name: 'Yasin Usta', discipline: 'mechanical' }) },
       laborPriceList: {
         findFirst: async () => null,
         create: async (arg: any) => { created.push(arg); return { id: 'pl-yeni', ...arg.data }; },
@@ -53,7 +53,7 @@ function check(ad: string, kosul: boolean, detay?: string) {
     let hata: any = null;
     try {
       // Kullanicinin yasadigi birebir durum: adlar dolu, fiyatlar bos (0).
-      await svc.saveBulkPrices('u1', 'f1', 'new', [
+      await svc.saveBulkPrices({ userId: 'u1', firmaId: 'u1' }, 'f1', 'new', [
         { laborName: 'PPR-C Boru 20 mm', unit: 'metre', unitPrice: 0 },
         { laborName: 'PPR-C Boru DN25', unit: 'metre', unitPrice: 0 },
       ]);
@@ -65,7 +65,7 @@ function check(ad: string, kosul: boolean, detay?: string) {
     // MEVCUT listeye ekleme yolunda davranis DEGISMEDI: hata yerine imported:0
     // doner (FE o yolda kendi "Birim Fiyat yok" uyarisini verir).
     const sahte: any = {
-      laborFirm: { findUnique: async () => ({ id: 'f1', userId: 'u1', name: 'Yasin Usta', discipline: 'mechanical' }) },
+      laborFirm: { findUnique: async () => ({ id: 'f1', userId: 'u1', firmaId: 'u1', name: 'Yasin Usta', discipline: 'mechanical' }) },
       laborPriceList: {
         findFirst: async () => null,
         create: async () => { throw new Error('mevcut liste yolunda create OLMAMALI'); },
@@ -74,7 +74,7 @@ function check(ad: string, kosul: boolean, detay?: string) {
       laborPrice: { findMany: async () => [] },
     };
     const svc = new LaborFirmsService(sahte, {} as any);
-    const sonuc = await svc.saveBulkPrices('u1', 'f1', 'pl1', [
+    const sonuc = await svc.saveBulkPrices({ userId: 'u1', firmaId: 'u1' }, 'f1', 'pl1', [
       { laborName: 'PPR-C Boru 20 mm', unit: 'metre', unitPrice: 0 },
     ]);
     check('A3 mevcut listede imported:0 + skipped:1 doner', sonuc.imported === 0 && sonuc.skipped === 1, JSON.stringify(sonuc));
@@ -87,7 +87,7 @@ function check(ad: string, kosul: boolean, detay?: string) {
       laborPriceList: {
         findUnique: async () => ({
           id: 'pl1', name: 'Yasin Usta - 06.08.2026', firmaId: 'f1',
-          firma: { id: 'f1', userId: 'u1', discipline: 'mechanical' },
+          firma: { id: 'f1', userId: 'u1', firmaId: 'u1', discipline: 'mechanical' },
           sheets: null,
         }),
       },

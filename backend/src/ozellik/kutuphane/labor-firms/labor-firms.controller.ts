@@ -8,6 +8,7 @@ import { LaborFirmsService, CreateLaborFirmDto, SheetInput } from './labor-firms
 import { JwtAuthGuard } from '../../../altyapi/auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../../altyapi/auth/decorators/current-user.decorator';
 import { ExcelGridService } from '../../giris/excel-grid/excel-grid.service';
+import { kimlikCoz } from '../../../altyapi/auth/kimlik';
 
 @Controller('labor-firms')
 @UseGuards(JwtAuthGuard)
@@ -21,52 +22,52 @@ export class LaborFirmsController {
 
   @Get()
   findAll(@CurrentUser() user: any, @Query('discipline') discipline?: string) {
-    return this.service.findAll(user.id, discipline);
+    return this.service.findAll(kimlikCoz(user), discipline);
   }
 
   // Literal route MUST be before :id catch-all
   @Get('price-lists/:listId/items')
   getPriceListItems(@CurrentUser() user: any, @Param('listId') listId: string) {
-    return this.service.getPriceListItems(user.id, listId);
+    return this.service.getPriceListItems(kimlikCoz(user), listId);
   }
 
   @Get(':id')
   findOne(@CurrentUser() user: any, @Param('id') id: string) {
-    return this.service.findOne(user.id, id);
+    return this.service.findOne(kimlikCoz(user), id);
   }
 
   @Get(':id/price-lists')
   getFirmaPriceLists(@CurrentUser() user: any, @Param('id') id: string) {
-    return this.service.getFirmaPriceLists(user.id, id);
+    return this.service.getFirmaPriceLists(kimlikCoz(user), id);
   }
 
   // ── CRUD ──
 
   @Post()
   create(@CurrentUser() user: any, @Body() dto: CreateLaborFirmDto) {
-    return this.service.create(user.id, dto);
+    return this.service.create(kimlikCoz(user), dto);
   }
 
   @Put(':id')
   update(@CurrentUser() user: any, @Param('id') id: string, @Body() dto: Partial<CreateLaborFirmDto>) {
-    return this.service.update(user.id, id, dto);
+    return this.service.update(kimlikCoz(user), id, dto);
   }
 
   @Delete(':id')
   remove(@CurrentUser() user: any, @Param('id') id: string) {
-    return this.service.remove(user.id, id);
+    return this.service.remove(kimlikCoz(user), id);
   }
 
   // ── Price list & bulk save ──
 
   @Post(':id/price-lists')
   createPriceList(@CurrentUser() user: any, @Param('id') id: string, @Body('name') name: string) {
-    return this.service.createPriceList(user.id, id, name);
+    return this.service.createPriceList(kimlikCoz(user), id, name);
   }
 
   @Delete('price-lists/:listId')
   deletePriceList(@CurrentUser() user: any, @Param('listId') listId: string) {
-    return this.service.deletePriceList(user.id, listId);
+    return this.service.deletePriceList(kimlikCoz(user), listId);
   }
 
   // ── Tekil kalem (LaborPrice) update + delete ──
@@ -77,7 +78,7 @@ export class LaborFirmsController {
     @Param('id') id: string,
     @Body() body: { unitPrice?: number; discountRate?: number; unit?: string; laborItemName?: string },
   ) {
-    return this.service.updatePriceItem(user.id, id, body);
+    return this.service.updatePriceItem(kimlikCoz(user), id, body);
   }
 
   @Post('price-items/bulk-update')
@@ -86,19 +87,19 @@ export class LaborFirmsController {
     @Body() body: { items: Array<{ id: string; unitPrice?: number; discountRate?: number; unit?: string; laborItemName?: string }> },
   ) {
     if (!Array.isArray(body?.items)) throw new BadRequestException('items array gerekli');
-    return this.service.bulkUpdatePriceItems(user.id, body.items);
+    return this.service.bulkUpdatePriceItems(kimlikCoz(user), body.items);
   }
 
   @Delete('price-items/:id')
   deletePriceItem(@CurrentUser() user: any, @Param('id') id: string) {
-    return this.service.deletePriceItem(user.id, id);
+    return this.service.deletePriceItem(kimlikCoz(user), id);
   }
 
   // ── ExcelGrid sheets endpoints ──
 
   @Get('price-lists/:listId/sheets')
   getPriceListSheets(@CurrentUser() user: any, @Param('listId') listId: string) {
-    return this.service.getPriceListSheets(user.id, listId);
+    return this.service.getPriceListSheets(kimlikCoz(user), listId);
   }
 
   @Post('price-lists/:listId/save-sheets')
@@ -117,7 +118,7 @@ export class LaborFirmsController {
       sheet?: { columnDefs: any[]; rowData: any[]; columnRoles: any; headerEndRow?: number };
     },
   ) {
-    return this.service.savePriceListSheets(user.id, listId, body.dirtyRows ?? [], body.sheet);
+    return this.service.savePriceListSheets(kimlikCoz(user), listId, body.dirtyRows ?? [], body.sheet);
   }
 
   @Post(':id/save-bulk')
@@ -135,7 +136,7 @@ export class LaborFirmsController {
   ) {
     // ⚠ `sheet` 6. slottan 5. slota GECTI. Kayarsa InlineFirmEntry'nin ham
     // 8-sutun grid'i sessizce kaydedilmez → `npm run test:labor-sheet` kapisi.
-    return this.service.saveBulkPrices(user.id, firmaId, body.priceListId, body.items, body.sheet);
+    return this.service.saveBulkPrices(kimlikCoz(user), firmaId, body.priceListId, body.items, body.sheet);
   }
 
   // Multi-sheet Excel parse — mevcut ExcelGrid parser'ini kullanir
@@ -149,7 +150,7 @@ export class LaborFirmsController {
     @UploadedFile() file: Express.Multer.File,
   ) {
     if (!file?.buffer) throw new BadRequestException('Dosya bulunamadi');
-    await this.service.findOne(user.id, firmaId); // sahiplik kontrol
+    await this.service.findOne(kimlikCoz(user), firmaId); // sahiplik kontrol
     const result = await this.excelGridService.prepare(file.buffer);
     return result; // {sheets: SheetData[], brands}
   }
@@ -164,6 +165,6 @@ export class LaborFirmsController {
     if (!body?.sheets || !Array.isArray(body.sheets)) {
       throw new BadRequestException('sheets array gerekli');
     }
-    return this.service.saveFromSheets(user.id, firmaId, body.sheets);
+    return this.service.saveFromSheets(kimlikCoz(user), firmaId, body.sheets);
   }
 }

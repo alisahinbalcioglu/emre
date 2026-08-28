@@ -102,11 +102,11 @@ function markali(rows: any[], marka: string) {
 
 async function malzemeAlt(rows: any[], marka: string, satir: string): Promise<MatchResult> {
   const svc = malzemeServis('ANA MARKA', MALZEME_ANA, markali(rows, marka));
-  return (await svc.bulkMatch('u1', 'brand-ana', [satir]))[satir];
+  return (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-ana', [satir]))[satir];
 }
 
 async function malzemeKendi(rows: any[], satir: string): Promise<MatchResult> {
-  return (await malzemeServis('X', rows).bulkMatch('u1', 'brand-x', [satir]))[satir];
+  return (await malzemeServis('X', rows).bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-x', [satir]))[satir];
 }
 
 // ═══════════════ ISCILIK KANADI (findLaborAlternativesV2) ══════════════════
@@ -160,10 +160,10 @@ const L_SAGLAM = [lp('Küresel vana montajı DN20', 600)];
 const L_CEKINCE = [lp('Küresel vana montajı DN20', 600)];
 
 async function iscilikAlt(rows: any[], satir: string): Promise<MatchResult> {
-  return (await iscilikServis(ISCILIK_ANA, rows).bulkMatchLabor('u1', 'firma-A', [satir]))[satir];
+  return (await iscilikServis(ISCILIK_ANA, rows).bulkMatchLabor({ userId: 'u1', firmaId: 'u1' }, 'firma-A', [satir]))[satir];
 }
 async function iscilikKendi(rows: any[], satir: string): Promise<MatchResult> {
-  return (await iscilikServis(rows, []).bulkMatchLabor('u1', 'firma-A', [satir]))[satir];
+  return (await iscilikServis(rows, []).bulkMatchLabor({ userId: 'u1', firmaId: 'u1' }, 'firma-A', [satir]))[satir];
 }
 
 // Cekince alanlari BUGUN tipte yok → `any` uzerinden okunur; alan eklenince
@@ -316,7 +316,7 @@ async function run() {
       { ...lib('PPR-C Küresel Vana 20 mm', 96.1), brand: { id: 'b-kalde', name: 'KALDE' } },
     ]);
     const satir = 'PP KÜRESEL VANALAR DN 20';
-    const r = (await svc.bulkMatch('u1', 'brand-ayvaz', [satir]))[satir];
+    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-ayvaz', [satir]))[satir];
     check('M4 mesru vaka KORUNDU: PP kuresel sunan KALDE hala onerilir',
       (r?.alternatives?.length ?? 0) === 1 && r?.alternatives?.[0]?.brandName === 'KALDE',
       `got ${JSON.stringify(r?.alternatives?.map((a) => a.brandName))}`);

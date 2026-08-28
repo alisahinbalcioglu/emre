@@ -113,24 +113,24 @@ async function run() {
   // cagiriyor. Opsiyonelligi kaybedersek O IKI YOL PATLAR.
   {
     const svc = makeService('AYVAZ', [lib('Yaylı Çekvalf DN50', 1250)]);
-    const r3 = await svc.bulkMatch('u1', 'brand-1', ['ÇEKVALF DN 50']);
+    const r3 = await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', ['ÇEKVALF DN 50']);
     check('C1 bulkMatch 3 argumanla calisir (page.tsx:889/496)', !!r3['ÇEKVALF DN 50'], `got ${JSON.stringify(r3)}`);
 
-    const r4 = await svc.bulkMatch('u1', 'brand-1', ['ÇEKVALF DN 50'], []);
+    const r4 = await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', ['ÇEKVALF DN 50'], []);
     check('C1 bulkMatch 4 argumanla calisir', !!r4['ÇEKVALF DN 50']);
 
-    const r5 = await svc.bulkMatch('u1', 'brand-1', ['ÇEKVALF DN 50'], [], { 'ÇEKVALF DN 50': 'adet' });
+    const r5 = await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', ['ÇEKVALF DN 50'], [], { 'ÇEKVALF DN 50': 'adet' });
     check('C1 bulkMatch 5 argumanla calisir (units)', !!r5['ÇEKVALF DN 50']);
 
     // Donus tipi: Record<materialName, MatchResult> — page.tsx:1723 anahtarla okuyor
     check('C1 donus Record<name, MatchResult>', Object.keys(r3)[0] === 'ÇEKVALF DN 50', `got keys ${JSON.stringify(Object.keys(r3))}`);
-    check('C1 bos liste bos obje doner', Object.keys(await svc.bulkMatch('u1', 'brand-1', [])).length === 0);
+    check('C1 bos liste bos obje doner', Object.keys(await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', [])).length === 0);
   }
 
   // ══ C2: TEK ESLESME sekli (high) ══════════════════════════════════════
   {
     const svc = makeService('AYVAZ', [lib('Yaylı Çekvalf DN50', 1250)]);
-    const r = (await svc.bulkMatch('u1', 'brand-1', ['ÇEKVALF DN 50']))['ÇEKVALF DN 50'];
+    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', ['ÇEKVALF DN 50']))['ÇEKVALF DN 50'];
     assertResultShape('C2 single', r);
     check('C2 matchedName dolu (page.tsx:1723 okur)', isStr(r?.matchedName) && (r?.matchedName?.length ?? 0) > 0, `got "${r?.matchedName}"`);
     check('C2 reason "Tek eşleşme" tasir (R18 asserti)', !!r?.reason?.includes('Tek eşleşme'), `got "${r?.reason}"`);
@@ -145,7 +145,7 @@ async function run() {
       lib('Sprinkler Borusu Kırmızı Boyalı 2"', 227.1),
       lib('Sprinkler Borusu Düz Uçlu 2"', 198.4),
     ]);
-    const r = (await svc.bulkMatch('u1', 'brand-1', ['SPRİNK HATTI BORULARI DN 50']))['SPRİNK HATTI BORULARI DN 50'];
+    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', ['SPRİNK HATTI BORULARI DN 50']))['SPRİNK HATTI BORULARI DN 50'];
     assertResultShape('C3 multi', r);
     check('C3 multi → netPrice === 0 (ALTIN KURAL)', r?.confidence === 'multi' && r?.netPrice === 0,
       `got ${r?.confidence} net=${r?.netPrice}`);
@@ -175,13 +175,13 @@ async function run() {
       // farkli bir durum, farkli bir sozlesme.
       lib('Sprinkler Borusu Dişli 2 1/2"', 288),
     ]);
-    const r1 = (await svc.bulkMatch('u1', 'brand-1', ['SPRİNK HATTI BORULARI DN 25']))['SPRİNK HATTI BORULARI DN 25'];
+    const r1 = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', ['SPRİNK HATTI BORULARI DN 25']))['SPRİNK HATTI BORULARI DN 25'];
     const kirmizi = r1?.candidates?.find((c) => c.materialName.includes('Kırmızı'));
     check('C5 adayda variantTags dizisi var', Array.isArray(kirmizi?.variantTags) && (kirmizi?.variantTags?.length ?? 0) > 0,
       `got ${JSON.stringify(kirmizi?.variantTags)}`);
 
     // Ayni variantTags farkli capta TEK adaya iniyorsa → autoVariant + fiyat
-    const r2 = (await svc.bulkMatch('u1', 'brand-1', ['SPRİNK HATTI BORULARI DN 32'], kirmizi?.variantTags))['SPRİNK HATTI BORULARI DN 32'];
+    const r2 = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', ['SPRİNK HATTI BORULARI DN 32'], kirmizi?.variantTags))['SPRİNK HATTI BORULARI DN 32'];
     assertResultShape('C5 autoVariant', r2);
     check('C5 round-trip → autoVariant boolean true (ExcelGrid.tsx:251-254 oto-atama)',
       r2?.autoVariant === true, `got ${r2?.autoVariant}`);
@@ -190,7 +190,7 @@ async function run() {
       `got ${r2?.confidence} net=${r2?.netPrice}`);
 
     // Varyant o capta yoksa → variantMissing + fiyat YAZILMAZ
-    const r3 = (await svc.bulkMatch('u1', 'brand-1', ['SPRİNK HATTI BORULARI DN 65'], kirmizi?.variantTags))['SPRİNK HATTI BORULARI DN 65'];
+    const r3 = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', ['SPRİNK HATTI BORULARI DN 65'], kirmizi?.variantTags))['SPRİNK HATTI BORULARI DN 65'];
     check('C5 varyant yok → variantMissing true + netPrice 0 (ExcelGrid.tsx:1289 belirsiz)',
       r3?.variantMissing === true && r3?.netPrice === 0, `got missing=${r3?.variantMissing} net=${r3?.netPrice}`);
   }
@@ -201,7 +201,7 @@ async function run() {
       lib('Sprinkler Borusu Kırmızı Boyalı 1 1/4"', 130),
       lib('Sprinkler Borusu Dişli 1 1/4"', 137),
     ]);
-    const r = (await svc.bulkMatch('u1', 'brand-1', ['SPRİNK HATTI BORULARI DN 32']))['SPRİNK HATTI BORULARI DN 32'];
+    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', ['SPRİNK HATTI BORULARI DN 32']))['SPRİNK HATTI BORULARI DN 32'];
     check('C6 donusum rozeti string (DN→inc cevrimi yapildiysa)', r?.donusum === undefined || isStr(r.donusum),
       `got ${typeof r?.donusum} "${r?.donusum}"`);
   }
@@ -216,7 +216,7 @@ async function run() {
       lib('Su ve Yangın Tesisat Boruları Siyah Dişli Manşonlu 3/4" DN20', 69.5),
       lib('Su ve Yangın Tesisat Boruları Galvanizli Dişli Manşonlu 3/4" DN20', 96.1),
     ], OTHER);
-    const r = (await svc.bulkMatch('u1', 'brand-1', ['TEMİZ SU BORULARI DN 20']))['TEMİZ SU BORULARI DN 20'];
+    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', ['TEMİZ SU BORULARI DN 20']))['TEMİZ SU BORULARI DN 20'];
     assertResultShape('C7 none', r);
     check('C7 none → netPrice === 0 (ALTIN KURAL)', r?.confidence === 'none' && r?.netPrice === 0,
       `got ${r?.confidence} net=${r?.netPrice}`);
@@ -229,7 +229,7 @@ async function run() {
   // ExcelGrid.tsx:275-281 → 'urun_degil' (gri) vs 'yok' (kirmizi) ayrimi
   {
     const svc = makeService('ÇAYIROVA', [lib('Siyah Çelik Boru 1" DN25 Dişli', 130)]);
-    const r = (await svc.bulkMatch('u1', 'brand-1', ['FİTTİNGS ORANI']))['FİTTİNGS ORANI'];
+    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', ['FİTTİNGS ORANI']))['FİTTİNGS ORANI'];
     assertResultShape('C8 notProduct', r);
     check('C8 notProduct boolean true + netPrice 0', r?.notProduct === true && r?.netPrice === 0,
       `got notProduct=${r?.notProduct} net=${r?.netPrice}`);
@@ -264,7 +264,7 @@ async function run() {
       lib('Sprinkler Borusu Dişli 2"', 210),
     ]);
     const queries = ['SPRİNK HATTI BORULARI DN 50', 'SPRİNK HATTI DN 50', 'BORU DN 50'];
-    const all = await svc.bulkMatch('u1', 'brand-1', queries);
+    const all = await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', queries);
     const ihlal = Object.entries(all).filter(([, r]) => (r.candidates?.length ?? 0) > 1 && r.netPrice > 0);
     check('C10 hicbir sonucta candidates>1 && netPrice>0 (fallback yasagi)', ihlal.length === 0,
       `ihlal: ${JSON.stringify(ihlal.map(([q, r]) => `${q}: ${r.candidates?.length} aday, net=${r.netPrice}`))}`);

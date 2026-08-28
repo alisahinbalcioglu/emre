@@ -4,6 +4,7 @@ import { buildMaterialContextFromRows, ColumnRoles, RowData } from '../../eslest
 // PRD Iscilik L2: ice aktarim AYNI indeksleyiciden gecer (tek motor/indeksleyici)
 import { MatchingService } from '../../eslestirme/matching/matching.service';
 import { INDEX_VERSION } from '../../eslestirme/matching/index/product-index';
+import { Kimlik } from '../../../altyapi/auth/kimlik';
 
 export interface SheetInput {
   name: string;
@@ -27,27 +28,32 @@ export class LaborFirmsService {
   ) {}
 
   // ── Sahiplik kontrolu helper ──
-  private async assertOwnership(firmaId: string, userId: string) {
+  // ⚠ G7 (28.08): SAHIPLIK KISIDEN FIRMAYA GECTI.
+  // ISIM CAKISMASI — DIKKAT: `firmaId` parametresi ISCILIK FIRMASININ
+  // id'sidir; KIRACI firma daima `k.firmaId`dir. quotes.service:194'teki
+  // `f.firmaId === k.firmaId` ayrimiyla ayni kalip.
+  private async assertOwnership(firmaId: string, k: Kimlik) {
     const firma = await this.prisma.laborFirm.findUnique({ where: { id: firmaId } });
     if (!firma) throw new NotFoundException('Firma bulunamadi');
-    if (firma.userId !== userId) throw new ForbiddenException('Bu firmaya erisim yetkiniz yok');
+    if (firma.firmaId !== k.firmaId) throw new ForbiddenException('Bu firmaya erisim yetkiniz yok');
     return firma;
   }
 
-  private async assertPriceListOwnership(priceListId: string, userId: string) {
+  private async assertPriceListOwnership(priceListId: string, k: Kimlik) {
     const pl = await this.prisma.laborPriceList.findUnique({
       where: { id: priceListId },
       include: { firma: true },
     });
     if (!pl) throw new NotFoundException('Liste bulunamadi');
-    if (pl.firma.userId !== userId) throw new ForbiddenException('Bu listeye erisim yetkiniz yok');
+    if (pl.firma.firmaId !== k.firmaId) throw new ForbiddenException('Bu listeye erisim yetkiniz yok');
     return pl;
   }
 
   // ── Kullanicinin kendi firmalari ──
 
-  async findAll(userId: string, discipline?: string) {
-    const where: any = { userId };
+  async findAll(k: Kimlik, discipline?: string) {
+    // G7: liste FIRMANIN — ayni firmanin uyeleri ayni iscilik firmalarini gorur.
+    const where: any = { firmaId: k.firmaId };
     if (discipline === 'mechanical' || discipline === 'electrical') {
       where.discipline = discipline;
     }
@@ -58,12 +64,12 @@ export class LaborFirmsService {
     });
   }
 
-  async findOne(userId: string, id: string) {
-    return this.assertOwnership(id, userId);
+  async findOne(k: Kimlik, id: string) {
+    return this.assertOwnership(id, k);
   }
 
-  async getFirmaPriceLists(userId: string, firmaId: string) {
-    const firma = await this.assertOwnership(firmaId, userId);
+  async getFirmaPriceLists(k: Kimlik, firmaId: string) {
+    const firma = await this.assertOwnership(firmaId, k);
     const priceLists = await this.prisma.laborPriceList.findMany({
       where: { firmaId },
       include: { _count: { select: { prices: true } } },
@@ -80,8 +86,8 @@ export class LaborFirmsService {
     return { firma, priceLists, bekleyen };
   }
 
-  async getPriceListItems(userId: string, priceListId: string) {
-    const pl = await this.assertPriceListOwnership(priceListId, userId);
+  async getPriceListItems(k: Kimlik, priceListId: string) {
+    const pl = await this.assertPriceListOwnership(priceListId, k);
 
     const items = await this.prisma.laborPrice.findMany({
       where: { priceListId },
@@ -113,24 +119,24 @@ export class LaborFirmsService {
 
   // ── Tekil LaborPrice kalem guncelleme ──
 
-  private async assertPriceItemOwnership(priceItemId: string, userId: string) {
+  private async assertPriceItemOwnership(priceItemId: string, k: Kimlik) {
     const price = await this.prisma.laborPrice.findUnique({
       where: { id: priceItemId },
       include: { firma: true, laborItem: true },
     });
     if (!price) throw new NotFoundException('Kalem bulunamadi');
-    if (price.firma.userId !== userId) {
+    if (price.firma.firmaId !== k.firmaId) {
       throw new ForbiddenException('Bu kaleme erisim yetkiniz yok');
     }
     return price;
   }
 
   async updatePriceItem(
-    userId: string,
+    k: Kimlik,
     priceItemId: string,
     data: { unitPrice?: number; discountRate?: number; unit?: string; laborItemName?: string },
   ) {
-    const existing = await this.assertPriceItemOwnership(priceItemId, userId);
+    const existing = await this.assertPriceItemOwnership(priceItemId, k);
 
     // LaborPrice update
     const updateData: any = {};
@@ -178,14 +184,14 @@ export class LaborFirmsService {
   }
 
   async bulkUpdatePriceItems(
-    userId: string,
+    k: Kimlik,
     items: Array<{ id: string; unitPrice?: number; discountRate?: number; unit?: string; laborItemName?: string }>,
   ) {
     let updated = 0;
     const errors: Array<{ id: string; error: string }> = [];
     for (const it of items) {
       try {
-        await this.updatePriceItem(userId, it.id, it);
+        await this.updatePriceItem(k, it.id, it);
         updated++;
       } catch (e: any) {
         errors.push({ id: it.id, error: e?.message ?? 'Bilinmeyen' });
@@ -212,8 +218,8 @@ export class LaborFirmsService {
    * kurulan satir yine ad uzerinden ayiklanir — GET'in kullandigi eslesme
    * anahtarinin AYNISI (`laborItem.name`, kucuk harf + trim).
    */
-  async deletePriceItem(userId: string, priceItemId: string) {
-    const price = await this.assertPriceItemOwnership(priceItemId, userId);
+  async deletePriceItem(k: Kimlik, priceItemId: string) {
+    const price = await this.assertPriceItemOwnership(priceItemId, k);
     const silinenAd = (price.laborItem?.name ?? '').toLowerCase().trim();
 
     const silinen = await this.prisma.laborPrice.delete({ where: { id: priceItemId } });
@@ -246,8 +252,8 @@ export class LaborFirmsService {
 
   // ── Sheets GET — ExcelGrid render icin ──
   // LaborPriceList.sheets (raw) + LaborPrice iskontolar merge
-  async getPriceListSheets(userId: string, priceListId: string) {
-    const pl = await this.assertPriceListOwnership(priceListId, userId);
+  async getPriceListSheets(k: Kimlik, priceListId: string) {
+    const pl = await this.assertPriceListOwnership(priceListId, k);
 
     if (!pl.sheets) {
       // Eski kayit — sentetik tek sheet olustur
@@ -457,7 +463,7 @@ export class LaborFirmsService {
 
   // ── Sheets SAVE — ExcelGrid dirty rows → LaborPrice update ──
   async savePriceListSheets(
-    userId: string,
+    k: Kimlik,
     priceListId: string,
     dirtyRows: Array<{
       laborPriceId: string;
@@ -472,7 +478,7 @@ export class LaborFirmsService {
     // görünürdü. sheet verilirse LaborPriceList.sheets güncellenir → kalıcı.
     sheet?: { columnDefs: any[]; rowData: any[]; columnRoles: any; headerEndRow?: number },
   ) {
-    await this.assertPriceListOwnership(priceListId, userId);
+    await this.assertPriceListOwnership(priceListId, k);
 
     const hasSheet = !!(sheet && Array.isArray(sheet.rowData));
     if ((!Array.isArray(dirtyRows) || dirtyRows.length === 0) && !hasSheet) {
@@ -483,7 +489,7 @@ export class LaborFirmsService {
     const errors: Array<{ id: string; error: string }> = [];
     for (const row of dirtyRows ?? []) {
       try {
-        await this.updatePriceItem(userId, row.laborPriceId, {
+        await this.updatePriceItem(k, row.laborPriceId, {
           unitPrice: row.listPrice,
           discountRate: row.discountRate,
           unit: row.unit,
@@ -521,9 +527,17 @@ export class LaborFirmsService {
 
   // ── CRUD (kullanici kendi firmalarini yonetir) ──
 
-  async create(userId: string, dto: CreateLaborFirmDto) {
+  async create(k: Kimlik, dto: CreateLaborFirmDto) {
+    // ⚠ G7 ASIL KUSUR BURADAYDI: `firmaId` YAZILMIYORDU. ADIM 1 backfill'i
+    // MEVCUT satirlari doldurmustu (20260828010000_firma_backfill, satir 57),
+    // ama YAZMA yolu guncellenmedigi icin DEPLOY SONRASI acilan her iscilik
+    // firmasi firmaId=NULL kaliyordu. quotes.service:194
+    // `f.firmaId === k.firmaId` karsilastirdigi icin kullanici KENDI actigi
+    // firmayi "baskasinin firmasi" uyarisiyla goruyor ve iliski teklife
+    // YAZILMIYORDU. Backfill mevcutlari kurtardigi icin kusur ancak yeni
+    // firma acildiginda ortaya cikiyordu — sessiz ve gec fark edilen tur.
     const existing = await this.prisma.laborFirm.findFirst({
-      where: { userId, name: dto.name },
+      where: { firmaId: k.firmaId, name: dto.name },
     });
     if (existing) throw new ConflictException('Bu isimde firmaniz zaten var');
     return this.prisma.laborFirm.create({
@@ -531,13 +545,15 @@ export class LaborFirmsService {
         name: dto.name,
         discipline: dto.discipline,
         logo: dto.logo,
-        userId,
+        // userId = YAZAR (kim olusturdu) · firmaId = SAHIP (kim gorur).
+        userId: k.userId,
+        firmaId: k.firmaId,
       },
     });
   }
 
-  async update(userId: string, id: string, dto: Partial<CreateLaborFirmDto>) {
-    const firma = await this.assertOwnership(id, userId);
+  async update(k: Kimlik, id: string, dto: Partial<CreateLaborFirmDto>) {
+    const firma = await this.assertOwnership(id, k);
     return this.prisma.laborFirm.update({
       where: { id },
       data: {
@@ -548,20 +564,20 @@ export class LaborFirmsService {
     });
   }
 
-  async remove(userId: string, id: string) {
-    await this.assertOwnership(id, userId);
+  async remove(k: Kimlik, id: string) {
+    await this.assertOwnership(id, k);
     return this.prisma.laborFirm.delete({ where: { id } });
   }
 
   // ── Price List CRUD ──
 
-  async createPriceList(userId: string, firmaId: string, name: string) {
-    await this.assertOwnership(firmaId, userId);
+  async createPriceList(k: Kimlik, firmaId: string, name: string) {
+    await this.assertOwnership(firmaId, k);
     return this.prisma.laborPriceList.create({ data: { firmaId, name } });
   }
 
-  async deletePriceList(userId: string, priceListId: string) {
-    await this.assertPriceListOwnership(priceListId, userId);
+  async deletePriceList(k: Kimlik, priceListId: string) {
+    await this.assertPriceListOwnership(priceListId, k);
     return this.prisma.laborPriceList.delete({ where: { id: priceListId } });
   }
 
@@ -579,8 +595,8 @@ export class LaborFirmsService {
    * - unitField'den birim cek
    * - LaborItem upsert + LaborPrice upsert
    */
-  async saveFromSheets(userId: string, firmaId: string, sheets: SheetInput[]) {
-    const firma = await this.assertOwnership(firmaId, userId);
+  async saveFromSheets(k: Kimlik, firmaId: string, sheets: SheetInput[]) {
+    const firma = await this.assertOwnership(firmaId, k);
 
     if (!Array.isArray(sheets) || sheets.length === 0) {
       throw new BadRequestException('Sheets bos');
@@ -757,7 +773,7 @@ export class LaborFirmsService {
   }
 
   async saveBulkPrices(
-    userId: string,
+    k: Kimlik,
     firmaId: string,
     priceListId: string,
     // PRD Iscilik 7-kolon: discountRate + currency (para birimi CEVRILMEZ,
@@ -773,7 +789,7 @@ export class LaborFirmsService {
     // duser (eski davranis, mevcut-liste inline eklemesi vb.).
     sheet?: { columnDefs: any[]; rowData: any[]; columnRoles: any; headerEndRow?: number },
   ) {
-    const firma = await this.assertOwnership(firmaId, userId);
+    const firma = await this.assertOwnership(firmaId, k);
 
     // ── ONCE DOGRULA, SONRA LISTE OLUSTUR (06.08 canli bulgu) ──────────────
     // Eski sira tersti: 'new' yolunda liste kalemler dogrulanmadan olusuyordu.

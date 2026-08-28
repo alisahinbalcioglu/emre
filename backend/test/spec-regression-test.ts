@@ -60,7 +60,7 @@ function check(name: string, cond: boolean, detail?: string) {
 }
 
 async function m(svc: MatchingService, q: string, variantTags?: string[], units?: Record<string, string>) {
-  return (await svc.bulkMatch('u1', 'brand-1', [q], variantTags, units))[q];
+  return (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', [q], variantTags, units))[q];
 }
 
 async function run() {

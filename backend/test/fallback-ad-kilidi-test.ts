@@ -122,7 +122,7 @@ async function konusmaYakala<T>(fn: () => Promise<T>): Promise<{ sonuc: T; hepsi
 }
 
 async function sessizEslestir(svc: MatchingService, sorgu: string) {
-  const { sonuc } = await konusmaYakala(() => svc.bulkMatch('u1', 'brand-cayirova', [sorgu]));
+  const { sonuc } = await konusmaYakala(() => svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-cayirova', [sorgu]));
   return (sonuc as any)[sorgu];
 }
 
@@ -134,7 +134,7 @@ async function main() {
   // Bagli havuz kurulmus olsaydi bambaska bir yolu olcuyor olurduk.
   // hazirlaPool indekssiz satirlari YUKSEK SESLE duyurur (PK9 sozlesmesi).
   {
-    const { hepsi } = await konusmaYakala(() => svc.bulkMatch('u1', 'brand-cayirova', ['2" Boru']));
+    const { hepsi } = await konusmaYakala(() => svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-cayirova', ['2" Boru']));
     check('G0 ÖLÇÜT — havuz yol-3 (manuelUrunIndeksle) üzerinden indeksleniyor',
       /INDEKSSIZ SATIR: 14\/14/.test(hepsi),
       `konuşma: ${JSON.stringify(hepsi.split('\n').filter((s) => /INDEKSSIZ|INDEKSLENMEMIS/.test(s)))}`);

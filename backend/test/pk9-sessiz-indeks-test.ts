@@ -67,7 +67,7 @@ async function main() {
       indekssizSatir('Su ve Yangın Tesisat Borusu 2" DN50 - Siyah Dişli Manşonlu', 220),
     ];
     const svc = makeService('ÇAYIROVA', lib);
-    const k = await konusmaYakala(() => svc.bulkMatch('u1', 'brand-1', ['DN 25 çelik boru']));
+    const k = await konusmaYakala(() => svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', ['DN 25 çelik boru']));
     const hepsi = [...k.warn, ...k.error].join('\n');
     check('PK9a — indekssiz satır UYARI kanalından duyurulur (warn/error)',
       /indekssiz/i.test(hepsi),
@@ -83,7 +83,7 @@ async function main() {
       indekssizSatir('Pirinç Küresel Vana 1 1/4"', 150),
     ];
     const svc = makeService('ÇAYIROVA', lib);
-    const k = await konusmaYakala(() => svc.bulkMatch('u1', 'brand-1', ['Küresel vana 1"']));
+    const k = await konusmaYakala(() => svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', ['Küresel vana 1"']));
     const hepsi = [...k.warn, ...k.error].join('\n');
     check('PK9b — markanın TAMAMI indekssizse marka düzeyinde uyarı verilir',
       /INDEKSLENMEMIS|İNDEKSLENMEMİŞ/i.test(hepsi),

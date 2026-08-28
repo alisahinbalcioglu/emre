@@ -95,7 +95,7 @@ async function run() {
       lp('Siyah çelik boru montajı kaynaklı DN65', 110),
       lp('Küresel vana montajı DN50', 120, { unit: 'adet' }),
     ]);
-    const r = (await svc.bulkMatch('u1', 'firma-A', ['SİYAH ÇELİK BORU - DN50'], undefined, { 'SİYAH ÇELİK BORU - DN50': 'mt' }))['SİYAH ÇELİK BORU - DN50'];
+    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'firma-A', ['SİYAH ÇELİK BORU - DN50'], undefined, { 'SİYAH ÇELİK BORU - DN50': 'mt' }))['SİYAH ÇELİK BORU - DN50'];
     check('L3 tek kalem → net fiyat OTOMATIK (montaj toleransi dahil)',
       r?.netPrice === 85 && !!r?.matchedName?.toLocaleLowerCase('tr').includes('montaj'),
       `got net=${r?.netPrice} "${r?.matchedName}" (${r?.confidence}: ${r?.reason})`);
@@ -109,7 +109,7 @@ async function run() {
       lp('Siyah çelik boru montajı kaynaklı DN50', 85),
       lp('Siyah çelik boru montajı yivli DN50', 70),
     ]);
-    const r = (await svc.bulkMatch('u1', 'firma-A', ['SİYAH ÇELİK BORU - DN50']))['SİYAH ÇELİK BORU - DN50'];
+    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'firma-A', ['SİYAH ÇELİK BORU - DN50']))['SİYAH ÇELİK BORU - DN50'];
     check('L4 iki kalem → fiyatli secim listesi, sistem SECMEZ',
       r?.confidence === 'multi' && r?.netPrice === 0 && (r?.candidates?.length ?? 0) === 2,
       `got ${r?.confidence} net=${r?.netPrice} aday=${r?.candidates?.length}`);
@@ -117,7 +117,7 @@ async function run() {
     const kaynakli = r?.candidates?.find((c) => c.materialName.toLocaleLowerCase('tr').includes('kaynak'));
     check('L7 adayda variantTags var (surukleme tasiyabilir)',
       (kaynakli?.variantTags?.length ?? 0) > 0, JSON.stringify(kaynakli?.variantTags));
-    const r2 = (await svc.bulkMatch('u1', 'firma-A', ['SİYAH ÇELİK BORU - DN50'], kaynakli?.variantTags))['SİYAH ÇELİK BORU - DN50'];
+    const r2 = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'firma-A', ['SİYAH ÇELİK BORU - DN50'], kaynakli?.variantTags))['SİYAH ÇELİK BORU - DN50'];
     check('L7 varyant tasiminda kaynakli kalem OTOMATIK yazildi',
       r2?.netPrice === 85 && !!r2?.matchedName?.toLocaleLowerCase('tr').includes('kaynak'),
       `got net=${r2?.netPrice} "${r2?.matchedName}"`);
@@ -128,14 +128,14 @@ async function run() {
     const svc = makeSvc([
       lp('Siyah çelik boru montajı DN50', 300, { unit: 'adet' }),
     ]);
-    const r = (await svc.bulkMatch('u1', 'firma-A', ['SİYAH ÇELİK BORU - DN50'], undefined, { 'SİYAH ÇELİK BORU - DN50': 'mt' }))['SİYAH ÇELİK BORU - DN50'];
+    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'firma-A', ['SİYAH ÇELİK BORU - DN50'], undefined, { 'SİYAH ÇELİK BORU - DN50': 'mt' }))['SİYAH ÇELİK BORU - DN50'];
     check('L6 birim uyumsuz (mt↔adet) → fiyat YOK, aday YOK',
       r?.netPrice === 0 && r?.confidence === 'none' && !r?.candidates?.length,
       `got net=${r?.netPrice} ${r?.confidence} "${r?.reason}"`);
     check('L6 nedeni birimi soyluyor', !!r?.reason && /birim/i.test(r.reason), `got "${r?.reason}"`);
     // Birimsiz kalem ELENMEZ (kanit yok, suclama yok)
     const svc2 = makeSvc([lp('Siyah çelik boru montajı DN50', 85, { unit: '' })]);
-    const r2 = (await svc2.bulkMatch('u1', 'firma-A', ['SİYAH ÇELİK BORU - DN50'], undefined, { 'SİYAH ÇELİK BORU - DN50': 'mt' }))['SİYAH ÇELİK BORU - DN50'];
+    const r2 = (await svc2.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'firma-A', ['SİYAH ÇELİK BORU - DN50'], undefined, { 'SİYAH ÇELİK BORU - DN50': 'mt' }))['SİYAH ÇELİK BORU - DN50'];
     check('L6 birimsiz kalem elenmez → fiyat yazilir', r2?.netPrice === 85, `got net=${r2?.netPrice} (${r2?.reason})`);
   }
 
@@ -145,7 +145,7 @@ async function run() {
       [lp('Küresel vana montajı DN50', 120, { unit: 'adet' })], // A'da yalniz vana
       [lp('Siyah çelik boru montajı kaynaklı DN50', 95)],        // B'de boru var
     );
-    const r = (await svc.bulkMatch('u1', 'firma-A', ['SİYAH ÇELİK BORU - DN50'], undefined, { 'SİYAH ÇELİK BORU - DN50': 'mt' }))['SİYAH ÇELİK BORU - DN50'];
+    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'firma-A', ['SİYAH ÇELİK BORU - DN50'], undefined, { 'SİYAH ÇELİK BORU - DN50': 'mt' }))['SİYAH ÇELİK BORU - DN50'];
     check('L5 firmada yok → fiyat yazilmaz', r?.netPrice === 0, `got net=${r?.netPrice}`);
     const alt = r?.alternatives?.[0];
     check('L5 alternatif firma onerildi (fiyatiyla)',
@@ -156,7 +156,7 @@ async function run() {
   // ══ Z4 ikizi: para birimi CEVRILMEZ, teklif aninda TRY'ye cevrilir ══
   {
     const svc = makeSvc([lp('Siyah çelik boru montajı DN50', 10, { currency: 'USD' })]);
-    const r = (await svc.bulkMatch('u1', 'firma-A', ['SİYAH ÇELİK BORU - DN50']))['SİYAH ÇELİK BORU - DN50'];
+    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'firma-A', ['SİYAH ÇELİK BORU - DN50']))['SİYAH ÇELİK BORU - DN50'];
     check('L2 doviz kalemi teklif aninda TRY (10 USD × 40 = 400)',
       r?.netPrice === 400, `got net=${r?.netPrice}`);
   }

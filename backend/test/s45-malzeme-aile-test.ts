@@ -129,7 +129,7 @@ async function bolumA() {
     const fx = { getRates: async () => ({ usdTry: 40, eurTry: 48, usdTryBuying: 40, eurTryBuying: 48, source: 'fake', date: '' }) };
     return new MatchingService(prisma, new TerminologyService(prisma), fx);
   }
-  const sor = async (svc: any, q: string) => (await svc.bulkMatch('u1', 'brand-1', [q]))[q];
+  const sor = async (svc: any, q: string) => (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', [q]))[q];
 
   // ── A0 BOS KUME KAPISI: sozlukteki malzeme bilgisi GERCEKTEN var mi? ──
   // (Olcut once dogrulanir: assert'lerin dayandigi seed alanlari bos olsaydi
@@ -326,7 +326,7 @@ async function bolumC2() {
   // AILE 1 — BORU
   {
     const q = 'YİV AÇMA MAKİNESİ DN 80';
-    const r = (await svcWith([libRow(ZAYIF_BORU_CAPSIZ)]).bulkMatch('u1', 'brand-1', [q]))[q];
+    const r = (await svcWith([libRow(ZAYIF_BORU_CAPSIZ)]).bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', [q]))[q];
     check('C3a BORU zayif aile: kalem EKRANDA (aday uretiliyor)',
       (r?.candidates?.length ?? 0) === 1, `got ${r?.confidence} adayi=${r?.candidates?.length}`);
     check('C3b BORU zayif aile: fiyat OTOMATIK YAZILMAZ (netPrice 0)',
@@ -335,7 +335,7 @@ async function bolumC2() {
   // AILE 2 — VANA
   {
     const q = 'YEDEK PROB DN 50';
-    const r = (await svcWith([libRow(ZAYIF_VANA_CAPSIZ)]).bulkMatch('u1', 'brand-1', [q]))[q];
+    const r = (await svcWith([libRow(ZAYIF_VANA_CAPSIZ)]).bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', [q]))[q];
     check('C4a VANA zayif aile: kalem EKRANDA (aday uretiliyor)',
       (r?.candidates?.length ?? 0) === 1, `got ${r?.confidence} adayi=${r?.candidates?.length}`);
     check('C4b VANA zayif aile: fiyat OTOMATIK YAZILMAZ (netPrice 0)',
@@ -374,11 +374,11 @@ async function bolumD() {
     const kendi = [libRow({ kategori: 'Küresel Vanalar', ad: 'Küresel vana', cins: 'pirinç', cap: 'DN25', price: 850, sheetName: 'S0' })];
     // BOS KUME KAPISI: ayni mekanizma GUCLU aile ile aday URETIYOR mu?
     const svcG = svcWith(kendi, guclu);
-    const rG = (await svcG.bulkMatch('u1', 'brand-1', ['KELEBEK VANA DN 50']))['KELEBEK VANA DN 50'];
+    const rG = (await svcG.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', ['KELEBEK VANA DN 50']))['KELEBEK VANA DN 50'];
     check('D0a bos-kume kapisi: guclu ailede capraz-marka onerisi URETILIYOR',
       (rG?.alternatives?.length ?? 0) === 1, `got ${JSON.stringify(rG?.alternatives)}`);
     const svcZ = svcWith(kendi, zayif);
-    const rZ = (await svcZ.bulkMatch('u1', 'brand-1', ['KELEBEK VANA DN 50']))['KELEBEK VANA DN 50'];
+    const rZ = (await svcZ.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', ['KELEBEK VANA DN 50']))['KELEBEK VANA DN 50'];
     check('D1 VANA zayif aile: capraz-marka onerisi OLAMAZ',
       (rZ?.alternatives?.length ?? 0) === 0, `got ${JSON.stringify(rZ?.alternatives)}`);
   }
@@ -389,11 +389,11 @@ async function bolumD() {
     const guclu = [marka(libRow({ kategori: 'Tesisat Boruları', ad: 'Gövdeli çelik boru', cins: 'siyah', cap: 'DN80', price: 999, sheetName: 'S4' }), 'b-y', 'Y MARKA')];
     const kendi = [libRow({ kategori: 'Küresel Vanalar', ad: 'Küresel vana', cins: 'pirinç', cap: 'DN25', price: 850, sheetName: 'S0' })];
     const svcG = svcWith(kendi, guclu);
-    const rG = (await svcG.bulkMatch('u1', 'brand-1', ['GÖVDE BORU DN 80']))['GÖVDE BORU DN 80'];
+    const rG = (await svcG.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', ['GÖVDE BORU DN 80']))['GÖVDE BORU DN 80'];
     check('D0b bos-kume kapisi: guclu ailede capraz-marka onerisi URETILIYOR',
       (rG?.alternatives?.length ?? 0) === 1, `got ${JSON.stringify(rG?.alternatives)}`);
     const svcZ = svcWith(kendi, zayif);
-    const rZ = (await svcZ.bulkMatch('u1', 'brand-1', ['GÖVDE BORU DN 80']))['GÖVDE BORU DN 80'];
+    const rZ = (await svcZ.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', ['GÖVDE BORU DN 80']))['GÖVDE BORU DN 80'];
     check('D2 BORU zayif aile: capraz-marka onerisi OLAMAZ',
       (rZ?.alternatives?.length ?? 0) === 0, `got ${JSON.stringify(rZ?.alternatives)}`);
   }

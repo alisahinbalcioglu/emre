@@ -4,6 +4,7 @@ import { JwtAuthGuard } from '../../../altyapi/auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../../altyapi/auth/decorators/current-user.decorator';
 import { RolesGuard } from '../../../altyapi/auth/guards/roles.guard';
 import { Roles } from '../../../altyapi/auth/decorators/roles.decorator';
+import { kimlikCoz } from '../../../altyapi/auth/kimlik';
 
 @Controller('labor-matching')
 @UseGuards(JwtAuthGuard)
@@ -22,7 +23,7 @@ export class LaborMatchingController {
       units?: Record<string, string>;
     },
   ) {
-    return this.service.bulkMatch(user.id, body.firmaId, body.laborNames, body.variantTags, body.units);
+    return this.service.bulkMatch(kimlikCoz(user), body.firmaId, body.laborNames, body.variantTags, body.units);
   }
 
   /** Secici popup'tan kalem secildi — iscilik hafizasina yaz (L4 ogrenme). */
@@ -37,7 +38,7 @@ export class LaborMatchingController {
   /** L2 kalicilik: kullanicinin firma kalemlerini v2 ile yeniden indeksle. */
   @Post('reindex')
   reindex(@CurrentUser() user: any) {
-    return this.service.reindex(user.id);
+    return this.service.reindex(kimlikCoz(user));
   }
 
   @Post('backfill-tags')

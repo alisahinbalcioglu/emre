@@ -111,7 +111,7 @@ async function dispatchTestleri() {
   // D1: indeksli marka → v2 devreye girer ve Ad kilidi CALISIR
   {
     const svc = svcWith(HAVUZ);
-    const r = (await svc.bulkMatch('u1', 'brand-1', ['Dilatasyon kompansatörü DN25']))['Dilatasyon kompansatörü DN25'];
+    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', ['Dilatasyon kompansatörü DN25']))['Dilatasyon kompansatörü DN25'];
     check('D1 dispatch: indeksli marka → v2, tek eslesme yazildi',
       r?.confidence === 'high' && r?.netPrice === 18015, `got ${r?.confidence} net=${r?.netPrice}`);
     check('D1 v2 sonucu "Tek eşleşme" rozetini tasir (sozlesme)',
@@ -123,7 +123,7 @@ async function dispatchTestleri() {
     const svc = svcWith([
       libRow({ ...KOMP, ad: 'Dilatasyon kompansatörü', baglanti: 'flanşlı', cap: 'DN25', price: 20000, discount: 25, urunKodu: 'B1' }),
     ]);
-    const r = (await svc.bulkMatch('u1', 'brand-1', ['Dilatasyon kompansatörü DN25']))['Dilatasyon kompansatörü DN25'];
+    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', ['Dilatasyon kompansatörü DN25']))['Dilatasyon kompansatörü DN25'];
     check('D2 iskonto uygulandi (20000 - %25 = 15000)', r?.netPrice === 15000, `got ${r?.netPrice}`);
     check('D2 listPrice korunur', r?.listPrice === 20000 && r?.discount === 25, `got list=${r?.listPrice} isk=${r?.discount}`);
   }
@@ -133,7 +133,7 @@ async function dispatchTestleri() {
     const svc = svcWith([
       libRow({ ...KOMP, ad: 'Dilatasyon kompansatörü', baglanti: 'flanşlı', cap: 'DN25', price: 100, paraBirimi: 'USD', urunKodu: 'C1' }),
     ]);
-    const r = (await svc.bulkMatch('u1', 'brand-1', ['Dilatasyon kompansatörü DN25']))['Dilatasyon kompansatörü DN25'];
+    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', ['Dilatasyon kompansatörü DN25']))['Dilatasyon kompansatörü DN25'];
     check('D3 USD 100 → TRY 4000 (kur 40, cevrim teklif aninda)', r?.netPrice === 4000, `got ${r?.netPrice}`);
   }
 
@@ -143,11 +143,11 @@ async function dispatchTestleri() {
     const karisik = [...HAVUZ, { id: 'manuel-1', material: null, materialName: 'Elle eklenen boru DN25',
       listPrice: 100, customPrice: null, discountRate: 0, currency: 'TRY', productIndexId: null, product: null }];
     const svc = svcWith(karisik);
-    const r = (await svc.bulkMatch('u1', 'brand-1', ['Dilatasyon kompansatörü DN25']))['Dilatasyon kompansatörü DN25'];
+    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', ['Dilatasyon kompansatörü DN25']))['Dilatasyon kompansatörü DN25'];
     check('D4 karisik havuz → v2 CALISTI (tek motor, v1 sokuldu)',
       !!r?.reason?.includes('AD + ÇAP') && r?.netPrice === 18015, `got net=${r?.netPrice} reason="${r?.reason}"`);
     // Manuel satirin KENDISI de artik eslesebilir (istek-ani indeksleme)
-    const r2 = (await svc.bulkMatch('u1', 'brand-1', ['Elle eklenen boru DN25']))['Elle eklenen boru DN25'];
+    const r2 = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', ['Elle eklenen boru DN25']))['Elle eklenen boru DN25'];
     check('D4 manuel satir istek aninda indekslendi ve BULUNUR',
       (r2?.netPrice ?? 0) > 0 || (r2?.candidates?.length ?? 0) > 0, `got ${r2?.confidence} net=${r2?.netPrice} "${r2?.reason}"`);
   }
@@ -165,7 +165,7 @@ async function dispatchTestleri() {
       },
     }));
     const svc = svcWith(eski);
-    const r = (await svc.bulkMatch('u1', 'brand-1', ['Dilatasyon kompansatörü DN25']))['Dilatasyon kompansatörü DN25'];
+    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', ['Dilatasyon kompansatörü DN25']))['Dilatasyon kompansatörü DN25'];
     check('D4b BAYAT indeks → istek aninda yeniden uretildi, v2 DOGRU cevap',
       !!r?.reason?.includes('AD + ÇAP') && r?.netPrice === 18015, `got net=${r?.netPrice} reason="${r?.reason}"`);
   }
@@ -177,7 +177,7 @@ async function dispatchTestleri() {
         brand: { id: 'b-duyar', name: 'DUYAR' } },
     ];
     const svc = svcWith([HAVUZ[2]], digerMarka); // kendi markasinda YALNIZ vana var
-    const r = (await svc.bulkMatch('u1', 'brand-1', ['Dilatasyon kompansatörü DN25']))['Dilatasyon kompansatörü DN25'];
+    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', ['Dilatasyon kompansatörü DN25']))['Dilatasyon kompansatörü DN25'];
     check('D5 markada yok → none + fiyat 0', r?.confidence === 'none' && r?.netPrice === 0,
       `got ${r?.confidence} net=${r?.netPrice}`);
     check('D5 M3: alternatif marka onerildi (DUYAR)',
@@ -190,7 +190,7 @@ async function dispatchTestleri() {
   // D6: bos kutuphane → v2'ye girmeden anlamli mesaj (sozlesme korunur)
   {
     const svc = svcWith([]);
-    const r = (await svc.bulkMatch('u1', 'brand-1', ['Dilatasyon kompansatörü DN25']))['Dilatasyon kompansatörü DN25'];
+    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', ['Dilatasyon kompansatörü DN25']))['Dilatasyon kompansatörü DN25'];
     check('D6 bos kutuphane → none + aciklama', r?.confidence === 'none' && !!r?.reason,
       `got ${r?.confidence}`);
   }
@@ -207,7 +207,7 @@ async function dispatchTestleri() {
     const borusanCelik = { ...libRow({ kategori: 'Borular', ad: 'Çelik boru', cins: 'Siyah, dikişli', cap: 'DN20', price: 480, urunKodu: 'BC20', sheetName: 'S' }),
       brand: { id: 'b-borusan', name: 'BORUSAN' } };
     const svc = svcWith([celikBoru], [pprBoru, borusanCelik], 'ÇAYIROVA');
-    const r = (await svc.bulkMatch('u1', 'brand-1', ['TEMİZ SU BORULARI DN20']))['TEMİZ SU BORULARI DN20'];
+    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', ['TEMİZ SU BORULARI DN20']))['TEMİZ SU BORULARI DN20'];
     check('S3-R3 temiz su → celik aday YOK, fiyat yazilmadi',
       r?.confidence === 'none' && r?.netPrice === 0, `got ${r?.confidence} net=${r?.netPrice} "${r?.reason}"`);
     const altMarkalar = (r?.alternatives ?? []).map((a: any) => a.brandName);
@@ -228,7 +228,7 @@ async function dispatchTestleri() {
       libRow({ ...B, ad: 'Çelik boru', cins: 'Siyah, dikişli', cap: 'DN50', price: 900, urunKodu: 'S50' }),
       libRow({ ...B, ad: 'Çelik boru', cins: 'Kırmızı boyalı, dikişli', cap: 'DN50', price: 950, urunKodu: 'K50' }),
     ], [], 'ÇAYIROVA');
-    const r = (await svc.bulkMatch('u1', 'brand-1', ['SPRİNK HATTI BORULARI DN50']))['SPRİNK HATTI BORULARI DN50'];
+    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', ['SPRİNK HATTI BORULARI DN50']))['SPRİNK HATTI BORULARI DN50'];
     const adlar = (r?.candidates ?? []).map((c: any) => c.materialName);
     check('S3-R1 sprink hatti → fiyatli secim listesi (otomatik yazim yok)',
       r?.confidence === 'multi' && r?.netPrice === 0, `got ${r?.confidence} net=${r?.netPrice}`);
@@ -244,7 +244,7 @@ async function dispatchTestleri() {
     const svcTek = svcWith([
       libRow({ ...B, ad: 'Çelik boru', cins: 'Galvanizli, dikişli', cap: 'DN50', price: 1100, urunKodu: 'G50' }),
     ], [], 'ÇAYIROVA');
-    const r2 = (await svcTek.bulkMatch('u1', 'brand-1', ['SPRİNK HATTI BORULARI DN50']))['SPRİNK HATTI BORULARI DN50'];
+    const r2 = (await svcTek.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', ['SPRİNK HATTI BORULARI DN50']))['SPRİNK HATTI BORULARI DN50'];
     check('S3-R1b tek aday GALVANIZLI + siyah beklentisi → onay listesi (yazilmaz)',
       r2?.confidence === 'multi' && r2?.netPrice === 0 && (r2?.candidates?.length ?? 0) === 1,
       `got ${r2?.confidence} net=${r2?.netPrice} cand=${r2?.candidates?.length}`);
@@ -259,7 +259,7 @@ async function dispatchTestleri() {
       libRow({ ...V, ad: 'Küresel vana', cins: 'doğalgaz, tam geçişli', cap: 'DN50', price: 2000, urunKodu: 'KV50' }),
       libRow({ ...V, ad: 'Sürgülü vana', cins: 'pik döküm', cap: 'DN50', price: 1800, urunKodu: 'SV50' }),
     ]);
-    const r = (await svc.bulkMatch('u1', 'brand-1', ['DOĞALGAZ VANASI KÜRESEL DN50']))['DOĞALGAZ VANASI KÜRESEL DN50'];
+    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', ['DOĞALGAZ VANASI KÜRESEL DN50']))['DOĞALGAZ VANASI KÜRESEL DN50'];
     check('S3-E8 vana satiri vana ailesinde kaldi → kuresel tek eslesme',
       r?.confidence === 'high' && r?.netPrice === 2000, `got ${r?.confidence} net=${r?.netPrice} "${r?.reason}"`);
   }
@@ -271,7 +271,7 @@ async function dispatchTestleri() {
     const disko = libRow({ ...C, ad: 'Çekvalf', cins: 'disko', cap: 'DN40', price: 1200, urunKodu: 'D1' });
     const secilen = yayli.product.displayName; // 'Çekvalf · yaylı · DN40'
     const svc = svcWith([yayli, disko], [], 'AYVAZ', { secilenAd: secilen, secimSayisi: 3 });
-    const r = (await svc.bulkMatch('u1', 'brand-1', ['ÇEKVALF DN40']))['ÇEKVALF DN40'];
+    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'brand-1', ['ÇEKVALF DN40']))['ÇEKVALF DN40'];
     check('S3-H cekvalf DN40 → sorulmadan YAZILMAZ (R16)',
       r?.confidence === 'multi' && r?.netPrice === 0, `got ${r?.confidence} net=${r?.netPrice}`);
     check('S3-H gecmis secim BASA alindi + preferred isaretli',
@@ -335,7 +335,7 @@ async function temizSuTestleri() {
   // TS1: yalniz seed'ler → "temiz su"→PPR uygulanir; adaylar PP-R, PVC-U YOK
   {
     const svc = svcAlias(WAVIN);
-    const r = (await svc.bulkMatch('u1', 'b1', [SATIR]))[SATIR];
+    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'b1', [SATIR]))[SATIR];
     check('TS1 temiz su → PPR cevirisi: adaylar PP-R, PVC-U elendi',
       r?.confidence === 'multi' && /PP-R/.test(adlar(r)) && !/PVC/.test(adlar(r)), adlar(r));
   }
@@ -345,7 +345,7 @@ async function temizSuTestleri() {
   // Yeni: atlanir, siradaki seed ('temiz su') uygulanir → yine PP-R.
   {
     const svc = svcAlias(WAVIN, [{ alias: 'temiz su borulari', impliedType: 'temiz su borulari' }]);
-    const r = (await svc.bulkMatch('u1', 'b1', [SATIR]))[SATIR];
+    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'b1', [SATIR]))[SATIR];
     check('TS2 golgeleme fix: E8e takilan ogrenilmis alias seed ceviriyi dusurmez',
       /PP-R/.test(adlar(r)) && !/PVC/.test(adlar(r)), adlar(r));
   }
@@ -354,7 +354,7 @@ async function temizSuTestleri() {
   // arkasindaki seed'i de golgeleyemez.
   {
     const svc = svcAlias(WAVIN, [{ alias: 'temiz su borulari' }]);
-    const r = (await svc.bulkMatch('u1', 'b1', [SATIR]))[SATIR];
+    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'b1', [SATIR]))[SATIR];
     check('TS3 degersiz (ceviri tasimayan) alias atlanir → seed uygulanir, PP-R',
       /PP-R/.test(adlar(r)) && !/PVC/.test(adlar(r)), adlar(r));
   }
@@ -366,7 +366,7 @@ async function temizSuTestleri() {
       libRow({ kategori: 'Vanalar', ad: 'Küresel vana', cins: 'pirinç', baglanti: 'dişli', cap: 'DN25', price: 850, urunKodu: 'V1', sheetName: 'S', birim: 'adet', paraBirimi: 'TL' }),
     ]);
     const soru = 'DOĞALGAZ VANASI KÜRESEL DN25';
-    const r = (await svc.bulkMatch('u1', 'b1', [soru]))[soru];
+    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'b1', [soru]))[soru];
     check('TS4 E8 korunur: dogalgaz alias boru dayatamaz, vana yine bulunur',
       (r?.netPrice ?? 0) > 0 || r?.confidence === 'multi' || r?.confidence === 'high',
       `conf=${r?.confidence} net=${r?.netPrice}`);
@@ -382,7 +382,7 @@ async function temizSuTestleri() {
       alias: 'temiz su borulari', canonical: 'TSB PVC-U Temiz Su Borusu 10 ATÜ',
       kinds: ['pvc'], sizeClass: 'plastic', impliedType: null,
     }]);
-    const r = (await svc.bulkMatch('u1', 'b1', [SATIR]))[SATIR];
+    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'b1', [SATIR]))[SATIR];
     check('TS5 S4 baslik-alias\'i (impliedType=null, kinds/sizeClass dolu) seed ceviriyi golgelemez → PP-R',
       /PP-R/.test(adlar(r)) && !/PVC/.test(adlar(r)), adlar(r));
   }
@@ -397,7 +397,7 @@ async function temizSuTestleri() {
       alias: 'temiz su borulari', canonical: 'TSB PVC-U Temiz Su Borusu 10 ATÜ',
       kinds: ['pvc'], sizeClass: 'plastic', impliedType: null,
     }]);
-    const r = (await svc.bulkMatch('u1', 'b1', [SATIR]))[SATIR];
+    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'b1', [SATIR]))[SATIR];
     check('TS6 HAKAN vakasi: adinda temiz-su gecmeyen PPR boru yine BULUNUR (tek eslesme, fiyat yazilir)',
       (r?.netPrice ?? 0) === 45 || /PPRC/.test(adlar(r)),
       `conf=${r?.confidence} net=${r?.netPrice} adaylar=${adlar(r)}`);

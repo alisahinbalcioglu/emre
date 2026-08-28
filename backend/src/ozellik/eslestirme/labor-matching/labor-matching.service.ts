@@ -3,6 +3,7 @@ import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { MatchingService } from '../matching/matching.service';
 import { generateTags } from '../matching/tag-generator';
 import type { MatchResult } from '../matching/types';
+import { Kimlik } from '../../../altyapi/auth/kimlik';
 
 /**
  * PRD Iscilik L9 — TEK MOTOR: v1 skorlayici (shared-tag-matcher zinciri)
@@ -28,15 +29,16 @@ export class LaborMatchingService {
   }
 
   async bulkMatch(
-    userId: string,
+    // ⚠ `k.firmaId` KIRACI firma · `firmaId` ISCILIK firmasi.
+    k: Kimlik,
     firmaId: string,
     laborNames: string[],
     variantTags?: string[],
     units?: Record<string, string>,
   ): Promise<Record<string, MatchResult>> {
-    const firma = await this.assertOwnership(firmaId, userId);
+    const firma = await this.assertOwnership(firmaId, k.userId);
     if (!firma) return {};
-    return this.matching.bulkMatchLabor(userId, firmaId, laborNames, variantTags, units);
+    return this.matching.bulkMatchLabor(k, firmaId, laborNames, variantTags, units);
   }
 
   /** Secici popup'tan kalem secildi — hafiza `iscilik|<firmaId>` kapsaminda
@@ -50,8 +52,8 @@ export class LaborMatchingService {
   /** L2 kalicilik: kullanicinin firmalarindaki kalemleri v2 indeksleyiciyle
    *  yeniden indeksler (bayat/legacy kalemler istek aninda da calisir —
    *  bu cagri kalici hale getirir). */
-  async reindex(userId: string) {
-    return this.matching.reindexLabor(userId);
+  async reindex(k: Kimlik) {
+    return this.matching.reindexLabor(k);
   }
 
   // ── LEGACY (v1 doku): eski tags/normalizedName backfill'i — admin araci,

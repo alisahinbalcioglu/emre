@@ -230,13 +230,13 @@ async function run() {
     // findIndex -1 doner, mesaj hic uretilmez ve C-R1 "yalanci yesil"
     // olurdu (ilk kosumda tam bunu olctuk). Bu yuzden secilen ad,
     // uretim akisinin kendisinden (FE'nin gonderdigi ad) alinir.
-    const on = (await s2.bulkMatch('u1', BRAND, [q]))[q];
+    const on = (await s2.bulkMatch({ userId: 'u1', firmaId: 'u1' }, BRAND, [q]))[q];
     const secilen = on?.candidates?.find((c: any) => /Siyah/.test(c.materialName))?.materialName ?? '';
     check('C-Ö0 ölçüm aracı: seçilebilir "Siyah" aday üretildi',
       secilen.length > 0, `adaylar=${JSON.stringify(on?.candidates?.map((c: any) => c.materialName))}`);
     // 54 kez "secildi" — teshisteki gercek sayaci birebir uretir.
     for (let i = 0; i < 54; i++) await s2.remember('u1', BRAND, q, secilen);
-    const r = (await s2.bulkMatch('u1', BRAND, [q]))[q];
+    const r = (await s2.bulkMatch({ userId: 'u1', firmaId: 'u1' }, BRAND, [q]))[q];
     const reason: string = r?.reason ?? '';
     console.log(`     [üretilen metin] "${reason}"`);
 

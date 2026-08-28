@@ -55,7 +55,7 @@ function sahte(sheet: any) {
     laborPrice: {
       findUnique: async () => ({
         id: SILINECEK, priceListId: LISTE_ID,
-        firma: { userId: 'u1' },
+        firma: { userId: 'u1', firmaId: 'u1' },
         laborItem: { name: 'Vana Montaji DN50' },
       }),
       delete: async ({ where }: any) => { kayit.silinenId = where.id; return { id: where.id }; },
@@ -75,7 +75,7 @@ function sahte(sheet: any) {
     const { kayit, client } = sahte(sheet);
     // MatchingService bu yolda kullanilmaz — bos nesne yeter (sahte oldugu ACIK).
     const svc = new LaborFirmsService(client, {} as any);
-    await svc.deletePriceItem('u1', SILINECEK);
+    await svc.deletePriceItem({ userId: 'u1', firmaId: 'u1' }, SILINECEK);
 
     check('A1 LaborPrice silindi', kayit.silinenId === SILINECEK, String(kayit.silinenId));
     check('A2 sheet JSON GUNCELLENDI', kayit.guncellenenSheet !== null,
@@ -97,7 +97,7 @@ function sahte(sheet: any) {
     const { kayit, client } = sahte(sheet);
     // MatchingService bu yolda kullanilmaz — bos nesne yeter (sahte oldugu ACIK).
     const svc = new LaborFirmsService(client, {} as any);
-    await svc.deletePriceItem('u1', SILINECEK);
+    await svc.deletePriceItem({ userId: 'u1', firmaId: 'u1' }, SILINECEK);
     check('B1 eslesme yoksa sheet guncellenmez', kayit.guncellenenSheet === null,
       'gereksiz yazma yapildi');
     check('B2 kalem yine de silindi', kayit.silinenId === SILINECEK);
@@ -108,7 +108,7 @@ function sahte(sheet: any) {
     const { kayit, client } = sahte(null);
     // MatchingService bu yolda kullanilmaz — bos nesne yeter (sahte oldugu ACIK).
     const svc = new LaborFirmsService(client, {} as any);
-    await svc.deletePriceItem('u1', SILINECEK);
+    await svc.deletePriceItem({ userId: 'u1', firmaId: 'u1' }, SILINECEK);
     check('C1 sheets null iken kalem silinir, hata yok', kayit.silinenId === SILINECEK);
   }
 
