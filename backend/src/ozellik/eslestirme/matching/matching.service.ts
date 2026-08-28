@@ -1007,11 +1007,45 @@ export class MatchingService {
     return `kind|${brandId}|${tags.materialType}|${fam}`;
   }
 
+  /**
+   * ADIM 1 (firma) — YAZMA TARAFI KOPRUSU (28.08).
+   *
+   * Bu servisin OKUMALARI hala kisi bazli (aday havuzu, hafiza anahtari...).
+   * Ama YAZDIGI satirlar firmaId tasimazsa, okuma firmaya dondugu gun o gune
+   * kadar ogrenilen HER SEY gorunmez olur. Backfill migration'i 28.08'de bir
+   * kez kostu; ondan sonraki her satir NULL doguyordu. Bu koprü o buyumeyi
+   * durdurur — ve hicbir sorgu bu alani HENUZ okumadigi icin davranisi
+   * DEGISTIRMEZ.
+   *
+   * Neden imzaya parametre eklemedim: bu servisin kimlik tasiyan 148 cagri
+   * noktasi var (16 test dosyasi dahil); opsiyonel parametre eklemek
+   * cagiranin unutmasi halinde SESSIZCE null yazardi. Kullanicidan firmaya
+   * kopru burada, tek yerde kurulur.
+   *
+   * ⚠ Sahte prisma ile kosan testlerde `user.findUnique` bulunmayabilir —
+   * o durumda null doner (test satirlari zaten firmaya bakmiyor). Uretimde
+   * bu dal ATESLENMEZ: JwtStrategy her istekte gercek kullaniciyi okur.
+   */
+  private async firmaIdBul(userId: string | null | undefined): Promise<string | null> {
+    if (!userId) return null;
+    try {
+      const u = await (this.prisma as any).user?.findUnique?.({
+        where: { id: userId },
+        select: { firmaId: true },
+      });
+      return u?.firmaId ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   /** Kullanici secici popup'tan urun secince cagrilir — senkron, secim aninda. */
   async remember(userId: string, brandId: string, materialName: string, secilenAd: string) {
     if (!userId || !brandId || !materialName?.trim() || !secilenAd?.trim()) {
       return { ok: false, reason: 'eksik parametre' };
     }
+    // Yazilacak satirlarin FIRMA sahipligi (okuma hala kisi bazli — bkz. firmaIdBul).
+    const yaziFirmaId = await this.firmaIdBul(userId);
     const imza = this.buildImza(materialName, brandId);
     // DUZELTME E (04.08.2026): olcusu cozulemeyen satirin ANAHTARI YOKTUR —
     // YAZILMAZ. Once bos olculu satirlar da yaziliyordu ve tipi/capi
@@ -1020,8 +1054,14 @@ export class MatchingService {
     if (imza) {
       await (this.prisma as any).eslesmeHafizasi.upsert({
         where: { userId_imza: { userId, imza } },
-        update: { secilenAd, secimSayisi: { increment: 1 } },
-        create: { userId, imza, secilenAd },
+        // update'te de yazilir: eski (firmaId'siz) satir her teyitte KENDILIGINDEN
+        // iyilesir. null ise DOKUNULMAZ — dolu bir firmaId'yi ezmeyelim.
+        update: {
+          secilenAd,
+          secimSayisi: { increment: 1 },
+          ...(yaziFirmaId ? { firmaId: yaziFirmaId } : {}),
+        },
+        create: { userId, firmaId: yaziFirmaId, imza, secilenAd },
       });
       console.log(`[Matching] HAFIZA YAZ: user=${userId} imza="${imza}" → "${secilenAd}"`);
     } else {
@@ -1038,8 +1078,12 @@ export class MatchingService {
         const kindImza = this.buildKindImza(materialName, brandId, aliases);
         await (this.prisma as any).eslesmeHafizasi.upsert({
           where: { userId_imza: { userId, imza: kindImza } },
-          update: { secilenAd: chosenKinds[0], secimSayisi: { increment: 1 } },
-          create: { userId, imza: kindImza, secilenAd: chosenKinds[0] },
+          update: {
+            secilenAd: chosenKinds[0],
+            secimSayisi: { increment: 1 },
+            ...(yaziFirmaId ? { firmaId: yaziFirmaId } : {}),
+          },
+          create: { userId, firmaId: yaziFirmaId, imza: kindImza, secilenAd: chosenKinds[0] },
         });
         console.log(`[Matching] CINS TERCIHI YAZ: imza="${kindImza}" → ${chosenKinds[0]}`);
       }

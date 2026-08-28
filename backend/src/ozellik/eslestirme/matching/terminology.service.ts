@@ -185,11 +185,44 @@ export class TerminologyService implements OnModuleInit {
    * Idempotent: var olan (userId, alias) atlanir. admin import → userId=null
    * (GLOBAL, tum kullanicilar yararlanir); kullanici-ozel yukleme → userId.
    */
+  /**
+   * ADIM 1 (firma) — YAZMA TARAFI KOPRUSU (28.08).
+   *
+   * Bu servisin OKUMALARI hala kisi bazli (aday havuzu, hafiza anahtari...).
+   * Ama YAZDIGI satirlar firmaId tasimazsa, okuma firmaya dondugu gun o gune
+   * kadar ogrenilen HER SEY gorunmez olur. Backfill migration'i 28.08'de bir
+   * kez kostu; ondan sonraki her satir NULL doguyordu. Bu koprü o buyumeyi
+   * durdurur — ve hicbir sorgu bu alani HENUZ okumadigi icin davranisi
+   * DEGISTIRMEZ.
+   *
+   * Neden imzaya parametre eklemedim: bu servisin kimlik tasiyan 148 cagri
+   * noktasi var (16 test dosyasi dahil); opsiyonel parametre eklemek
+   * cagiranin unutmasi halinde SESSIZCE null yazardi. Kullanicidan firmaya
+   * kopru burada, tek yerde kurulur.
+   *
+   * ⚠ Sahte prisma ile kosan testlerde `user.findUnique` bulunmayabilir —
+   * o durumda null doner (test satirlari zaten firmaya bakmiyor). Uretimde
+   * bu dal ATESLENMEZ: JwtStrategy her istekte gercek kullaniciyi okur.
+   */
+  private async firmaIdBul(userId: string | null | undefined): Promise<string | null> {
+    if (!userId) return null;
+    try {
+      const u = await (this.prisma as any).user?.findUnique?.({
+        where: { id: userId },
+        select: { firmaId: true },
+      });
+      return u?.firmaId ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   async learnFamilyAliases(
     items: { adBucket: string; canonical: string }[],
     userId: string | null,
   ): Promise<{ ogrenilen: number }> {
     if (items.length === 0) return { ogrenilen: 0 };
+    const yaziFirmaId = await this.firmaIdBul(userId);
     const p = this.prisma as any;
     // Dedup + gecerli (anlamli, >=3 karakter) alias
     const map = new Map<string, string>();
@@ -209,7 +242,8 @@ export class TerminologyService implements OnModuleInit {
       const yeni = Array.from(map.entries())
         .filter(([alias]) => !varOlan.has(alias))
         .map(([alias, canonical]) => ({
-          userId, alias, canonical, impliedType: alias,
+          // firmaId: userId null ise (admin/global seed yolu) null kalir — DOGRU.
+          userId, firmaId: yaziFirmaId, alias, canonical, impliedType: alias,
           kinds: [], sizeClass: null, stripTags: [], createdBy: 'learned',
         }));
       if (yeni.length > 0) {
@@ -231,6 +265,7 @@ export class TerminologyService implements OnModuleInit {
     const alias = normalizeText(input.alias);
     if (!alias || alias.length < 3) return { ok: false, reason: 'alias cok kisa' };
     const p = this.prisma as any;
+    const yaziFirmaId = await this.firmaIdBul(userId);
     // S5: ayni alias farkli malzemeye isaret edemez — var olan kullanici kaydi guncellenir
     const existing = await p.terminologyAlias.findFirst({ where: { userId, alias } });
     if (existing) {
@@ -242,13 +277,17 @@ export class TerminologyService implements OnModuleInit {
           impliedType: input.impliedType !== undefined ? input.impliedType : existing.impliedType,
           sizeClass: input.sizeClass !== undefined ? input.sizeClass : existing.sizeClass,
           active: true,
+          // IKIZ SIMETRISI: matching.service'teki hafiza upsert'i de update dalinda
+          // firmaId yaziyor — firmaId'si BOS eski kayit her teyitte iyilesir.
+          // Bu dal yazmasaydi alias tarafi sessizce geride kalirdi.
+          ...(yaziFirmaId ? { firmaId: yaziFirmaId } : {}),
         },
       });
       return { ok: true, updated: true };
     }
     await p.terminologyAlias.create({
       data: {
-        userId, alias,
+        userId, firmaId: yaziFirmaId, alias,
         canonical: input.canonical ?? 'kullanici_tanimli',
         kinds: input.kinds ?? [],
         impliedType: input.impliedType ?? null,
