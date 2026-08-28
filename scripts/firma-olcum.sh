@@ -54,6 +54,36 @@ sorgu() {
 
 KIP="${1:-tam}"
 
+# ── TEsHIS KIPI: K0.3 sifir cikmadiginda "neden" sorusunu cevaplar ──────────
+# Iki hipotez var ve AYIRT EDEN sey satirin TARIHI + sahibinin YASAYIP yasamadigi:
+#   (a) YETIM SATIR — sahibi silinmis kullanici. Bu tablodan User'a FK YOK ve
+#       backfill `FROM "User" u WHERE t."userId" = u."id"` ile JOIN yapiyor;
+#       yetim satir hicbir zaman eslesmez, NULL kalir. Zararsiz, silinir.
+#   (b) YAZMA KOPRUSUNDE DELIK — satir deploy'dan SONRA yazilmissa
+#       firmaIdBul() tutmuyor demektir. O zaman plan ILERLEMEDEN once duzeltilir.
+if [ "$KIP" = "hafiza" ]; then
+  echo "=============================================================="
+  echo " K0.3 TESHIS — firmaId'si BOS hafiza satirlari"
+  echo "=============================================================="
+  echo ""
+  echo "── ozet: sahibi yasiyor mu + en yeni/eski satir ne zaman ──"
+  sorgu 'SELECT (u.id IS NOT NULL) AS sahibi_yasiyor, count(*) AS satir, min(h.\"sonSecimTarihi\") AS en_eski, max(h.\"sonSecimTarihi\") AS en_yeni FROM \"EslesmeHafizasi\" h LEFT JOIN \"User\" u ON u.id = h.\"userId\" WHERE h.\"firmaId\" IS NULL GROUP BY 1'
+  echo ""
+  echo "── satir satir (imza kisaltilmis) ──"
+  sorgu 'SELECT left(h.\"userId\", 8) AS kullanici, (u.id IS NOT NULL) AS yasiyor, left(h.imza, 34) AS imza, h.\"secimSayisi\" AS sayac, h.\"sonSecimTarihi\" AS son_secim FROM \"EslesmeHafizasi\" h LEFT JOIN \"User\" u ON u.id = h.\"userId\" WHERE h.\"firmaId\" IS NULL ORDER BY h.\"sonSecimTarihi\" DESC LIMIT 20'
+  echo ""
+  echo "── KARSILASTIRMA: firmaId DOLU satirlarin tarih araligi ──"
+  echo "   (bos olanlar bu araligin ICINDEyse kopru delik, ONCESINDEyse yetim/eski)"
+  sorgu 'SELECT count(*) AS dolu_satir, min(\"sonSecimTarihi\") AS en_eski, max(\"sonSecimTarihi\") AS en_yeni FROM \"EslesmeHafizasi\" WHERE \"firmaId\" IS NOT NULL'
+  echo ""
+  echo "=============================================================="
+  echo " OKUMA: sahibi_yasiyor=false ise YETIM (zararsiz, silinir)."
+  echo " sahibi_yasiyor=true VE son_secim deploy saatinden SONRA ise"
+  echo " yazma koprusunde DELIK var — plan ilerlemeden duzeltilir."
+  echo "=============================================================="
+  exit 0
+fi
+
 if [ "$KIP" = "ozet" ]; then
   echo "=============================================================="
   echo " ADIM 0 — OZET (tek ekran). Tam dokum: bash scripts/firma-olcum.sh"
