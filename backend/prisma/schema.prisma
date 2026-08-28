@@ -34,6 +34,27 @@ enum SubscriptionScope {
   mep
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// FIRMA (ADIM 1, 20.08) — hesap artik KISI degil FIRMA.
+// Firmaya ait: teklifler, kutuphane, malzeme havuzu aktarimi, iskontolar,
+// iscilik firmalari, ABONELIK. Kisiye ait: kimlik, oturum, yetkiler.
+// ⚠ CLERK KULLANILMIYOR (kullanici karari 20.08): kimlik mevcut JWT'de
+// kalir; firma uyeligi ve davetler bizim semada + SMTP e-postasiyla.
+// GECIS DONEMI: iliskili tablolardaki firmaId'ler NULLABLE — mevcut veri
+// kirilmasin; backfill sonrasi zorlamayi KOD yapar (sema degil).
+// ─────────────────────────────────────────────────────────────────────
+model Firma {
+  id        String   @id @default(uuid())
+  ad        String
+  createdAt DateTime @default(now())
+  uyeler    User[]
+}
+
+enum FirmaRol {
+  sahip
+  uye
+}
+
 model User {
   id             String             @id @default(uuid())
   email          String             @unique
@@ -41,6 +62,10 @@ model User {
   role           Role               @default(user)
   status         UserStatus         @default(active)
   tier           Tier               @default(core)
+  // ADIM 1: firma uyeligi. nullable = henuz firmaya atanmamis eski kayit.
+  firmaId        String?
+  firma          Firma?             @relation(fields: [firmaId], references: [id])
+  firmaRol       FirmaRol           @default(sahip)
   createdAt      DateTime           @default(now())
   library        UserLibrary[]
   brandLibraries UserBrandLibrary[]
@@ -58,6 +83,7 @@ model User {
 model EslesmeHafizasi {
   id             String   @id @default(uuid())
   userId         String
+  firmaId     String?  // ADIM 1 gecis: null=atanmamis; suzgecler backfill sonrasi buna doner
   imza           String
   // Secilen KUTUPHANE urununun ADI (id degil — kutuphane satiri silinip
   // yeniden aktarilabilir; ad ile guncel kutuphanede tekrar bulunur).
@@ -66,6 +92,8 @@ model EslesmeHafizasi {
   sonSecimTarihi DateTime @updatedAt
 
   @@unique([userId, imza])
+
+  @@index([firmaId])
 }
 
 // TERMINOLOJI SOZLUGU (PRD v1.1 §5) — sektorel terim/baslik → kanonik malzeme.
@@ -76,6 +104,7 @@ model TerminologyAlias {
   id          String   @id @default(uuid())
   // null = sistem geneli seed; dolu = kullaniciya (hesaba) ozel
   userId      String?
+  firmaId     String?  // ADIM 1 gecis: null=atanmamis; suzgecler backfill sonrasi buna doner
   // NORMALIZE edilmis terim ("sprink hatti") — contains mantigiyla eslesir,
   // en uzun eslesen alias kazanir (S2)
   alias       String
@@ -96,6 +125,8 @@ model TerminologyAlias {
 
   @@unique([userId, alias])
   @@index([userId])
+
+  @@index([firmaId])
 }
 
 // MARKA → MALZEME TIPI (PRD §10.4, D2/P1) — marka adindaki uretici deseni
@@ -103,6 +134,7 @@ model TerminologyAlias {
 model BrandMaterialType {
   id        String   @id @default(uuid())
   userId    String? // null = seed; dolu = kullanici ekledi
+  firmaId     String?  // ADIM 1 gecis: null=atanmamis; suzgecler backfill sonrasi buna doner
   // NORMALIZE uretici deseni ("cayirova") — marka adinda contains aranir,
   // "X veya muadili" kaliplarini da yakalar
   pattern   String
@@ -114,6 +146,8 @@ model BrandMaterialType {
 
   @@unique([userId, pattern])
   @@index([userId])
+
+  @@index([firmaId])
 }
 
 // Kullanicinin kendi marka kutuphanesi — ExcelGrid gorunumu icin sheets JSON
@@ -122,6 +156,7 @@ model UserBrandLibrary {
   id        String   @id @default(uuid())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId    String
+  firmaId     String?  // ADIM 1 gecis: null=atanmamis; suzgecler backfill sonrasi buna doner
   brand     Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
   brandId   String
   sheets    Json // ExcelGrid raw sheets yapisi (multi-sheet, grup basliklari, merge cells)
@@ -130,12 +165,15 @@ model UserBrandLibrary {
 
   @@unique([userId, brandId])
   @@index([userId])
+
+  @@index([firmaId])
 }
 
 model UserSubscription {
   id        String            @id @default(uuid())
   user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId    String
+  firmaId     String?  // ADIM 1 gecis: null=atanmamis; suzgecler backfill sonrasi buna doner
   level     PackageLevel
   scope     SubscriptionScope
   startsAt  DateTime          @default(now())
@@ -145,6 +183,8 @@ model UserSubscription {
 
   @@unique([userId, level, scope])
   @@index([userId])
+
+  @@index([firmaId])
 }
 
 model Brand {
@@ -210,6 +250,7 @@ model ProductIndex {
   priceListId String?
   // null = havuz (admin yukledi); dolu = kullanicinin kendi manuel satiri
   ownerUserId String?
+  ownerFirmaId String? // ADIM 1 gecis: null=havuz; dolu=firmanin kendi manuel satiri
 
   // ── 11 KOLON BIREBIR (kaynak sadakati — hicbiri dusmez) ──────────
   kategori  String? // Kategori (PDF Bolumu)
@@ -335,6 +376,7 @@ model UserLibrary {
   id                String     @id @default(uuid())
   user              User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId            String
+  firmaId     String?  // ADIM 1 gecis: null=atanmamis; suzgecler backfill sonrasi buna doner
   material          Material?  @relation(fields: [materialId], references: [id])
   materialId        String?
   materialName      String?
@@ -408,6 +450,8 @@ model UserLibrary {
   @@index([userId, brandId])
   @@index([productIndexId])
   @@index([libraryListId])
+
+  @@index([firmaId])
 }
 
 // ── MALZEME KUTUPHANESI FIYAT LISTESI (07.08) ─────────────────────────
@@ -419,6 +463,7 @@ model LibraryList {
   id         String        @id @default(uuid())
   user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId     String
+  firmaId     String?  // ADIM 1 gecis: null=atanmamis; suzgecler backfill sonrasi buna doner
   brand      Brand         @relation(fields: [brandId], references: [id], onDelete: Cascade)
   brandId    String
   name       String
@@ -426,12 +471,15 @@ model LibraryList {
   items      UserLibrary[]
 
   @@index([userId, brandId])
+
+  @@index([firmaId])
 }
 
 model Quote {
   id           String      @id @default(uuid())
   user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId       String
+  firmaId     String?  // ADIM 1 gecis: null=atanmamis; suzgecler backfill sonrasi buna doner
   title        String?
   sheets       Json? // Multi-sheet Excel raw state (SheetData[]), null = legacy tek-sheet quote
   originalFile Bytes? // Orijinal Excel dosya binary'si — indirirken fiyatlar uzerine yazilir
@@ -473,6 +521,8 @@ model Quote {
   // ana format DEGISMEZ. {sheetKey: {cellAddr: {value, manual: true}}}
   exportOverrides Json?
   exports         QuoteExport[]
+
+  @@index([firmaId])
 }
 
 // PRD Teklif Formatim: kullanicinin KENDI teklif sablonu (.xlsx —
@@ -481,6 +531,7 @@ model QuoteFormat {
   id        String   @id @default(uuid())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId    String
+  firmaId     String?  // ADIM 1 gecis: null=atanmamis; suzgecler backfill sonrasi buna doner
   name      String
   fileName  String
   // Orijinal format workbook'u — ciktida kapak/icmal buradan kopyalanir.
@@ -494,6 +545,8 @@ model QuoteFormat {
   quotes    Quote[]
 
   @@index([userId])
+
+  @@index([firmaId])
 }
 
 // T10: dis aktarim arsivi — her Rev'in uretilmis .xlsx'i saklanir.
@@ -613,6 +666,7 @@ model LaborFirm {
   createdAt   DateTime         @default(now())
   user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId      String
+  firmaId     String?  // ADIM 1 gecis: null=atanmamis; suzgecler backfill sonrasi buna doner
   laborPrices LaborPrice[]
   priceLists  LaborPriceList[]
   quoteItems  QuoteItem[]
@@ -620,6 +674,8 @@ model LaborFirm {
   @@unique([userId, name])
   @@index([userId])
   @@index([discipline])
+
+  @@index([firmaId])
 }
 
 model LaborPriceList {

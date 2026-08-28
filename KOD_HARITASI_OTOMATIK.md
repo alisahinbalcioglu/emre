@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 402
-Toplam satir: 85570
+Toplam satir: 85626
 Uc nokta: 130
 test:* scripti: 67
 
@@ -12,7 +12,7 @@ test:* scripti: 67
 
 | Dosya | Satir |
 |---|---|
-| `backend/prisma/schema.prisma` | 713 |
+| `backend/prisma/schema.prisma` | 769 |
 | `backend/scripts/derleme-kapisi.js` | 68 |
 | `backend/scripts/kisisel-liste-backfill.js` | 107 |
 | `backend/scripts/surum-yaz.js` | 47 |
