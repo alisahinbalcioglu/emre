@@ -1757,21 +1757,30 @@ export default function NewQuotePage() {
                 Marka seç → <b className="font-semibold text-slate-600">sürükle</b> ya da tutamağa{' '}
                 <b className="font-semibold text-slate-600">çift-tık</b> ile grubu/aileyi doldur
               </span>
-              {/* KP: elle fiyatlandirma yolu — kullanicinin "kutuphaneden
-                  kopyalayip buraya yapistirayim, gerekirse elle yazayim"
-                  istegi. Ozellik VARDI ama gorunur degildi; kesfedilemeyen
-                  ozellik yok hukmundedir. */}
-              <span
-                className="flex items-center gap-1.5 whitespace-nowrap text-xs text-slate-500"
-                title="Kütüphanede (Malzeme Markası / İşçilik Firması) bir fiyat hücresini Ctrl+C ile kopyalayıp buradaki Malz./İşç. Birim Fiyat hücresine Ctrl+V ile yapıştırın. Hücreye doğrudan yazmak da serbesttir — toplamlar iki yolda da yeniden hesaplanır."
-              >
-                <span className="text-indigo-500">📋</span>
-                Birim fiyat: <b className="font-semibold text-slate-600">Ctrl+V</b> ile yapıştır ya da{' '}
-                <b className="font-semibold text-slate-600">elle yaz</b>
-              </span>
             </div>
           );
         })()}
+        {/* KP: FIYATLANDIRMA IPUCU — "Malzeme Adı sütunu" cubugunun ICINDE
+            DEGIL, kendi seridinde. Oradaydi ve KAYBOLUYORDU: o blok
+            `excelCols.length === 0` ile erken donuyor; sabit semada grid
+            alanlarinin HEPSI `_` onekli oldugu icin, kaydet→"Revize Et"
+            turunda (payload `kaynakKolonlar`i tasimiyor) sutun listesi bos
+            kaliyor ve serit hic cizilmiyordu. Yani ozellik Excel kaynakli
+            HER REVIZYONDA gorunmez oluyordu — kesfedilemeyen ozellik yok
+            hukmundedir. Kutuphane seridiyle simetri icin Ctrl+C de yazili. */}
+        {(multiSheet || excelGridData) && (
+          <div className="mb-2 flex flex-wrap items-center gap-2 rounded-md border border-indigo-200 bg-indigo-50/60 px-3 py-1.5 text-xs text-indigo-900">
+            <span className="text-indigo-500">📋</span>
+            <span>
+              Birim fiyat: kütüphanede <b className="font-semibold">Ctrl+C</b> ile kopyala →
+              buraya <b className="font-semibold">Ctrl+V</b> ile yapıştır ya da hücreye{' '}
+              <b className="font-semibold">elle yaz</b>
+            </span>
+            <span className="text-[11px] text-indigo-400">
+              Blok seçmek için Shift+ok / Shift+tık · toplamlar her iki yolda da yeniden hesaplanır
+            </span>
+          </div>
+        )}
         {/* PRD v3.0 Bolum A1: "Sutunlar" paneli + gizli-sutun cipleri */}
         {managedColumns.length > 0 && (
           <div className="mb-2 flex flex-wrap items-center gap-2">

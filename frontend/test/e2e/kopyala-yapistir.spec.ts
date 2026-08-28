@@ -326,6 +326,27 @@ test('KP15 ★ Dovizli metin teklife YAPISTIRILAMAZ (sessiz ~34 kat hata kapisi)
   await expect(hedef).toHaveText(/^\s*$/);            // hucre DOKUNULMADI
 });
 
+test('KP16 ★ Marka kolonu panoya AD yazar, UUID DEGIL', async ({ page }) => {
+  // Kolon degeri `brandId` (36 karakterlik UUID) tutar; ekranda adi yalniz
+  // `cellRenderer` cizer ve `useFormatter` renderer'i CALISTIRAMAZ. Bicimlendirici
+  // olmadan kullanicinin kendi Excel'ine okunamaz bir kimlik yapisirdi.
+  await moduAyarla(page, 'quote');
+  await page.locator('[row-index="2"] [col-id="_marka"] button').click();
+  await page.getByText('AYVAZ', { exact: true }).click();
+  await page.getByRole('button', { name: /Su ve Yangın/ }).click();
+  await expect(page.locator('[row-index="2"] [col-id="_matBirim"]')).toHaveText(/600/);
+
+  const marka = page.locator('[row-index="2"] [col-id="_marka"]');
+  await marka.click();
+  await expect(marka).toHaveClass(/ag-cell-focus/);
+  await page.keyboard.press('Control+c');
+  await expect(page.getByText(/hücre kopyalandı/).first()).toBeVisible();
+
+  const pano = await page.evaluate(() => navigator.clipboard.readText());
+  expect(pano).toBe('AYVAZ');
+  expect(pano).not.toMatch(/^b-|[0-9a-f]{8}-[0-9a-f]{4}/);   // kimlik SIZMAZ
+});
+
 test('KP7 ★ Shift+Ok ODAGI TASIMAZ — anchor sabit kalir (Excel davranisi)', async ({ page }) => {
   // Regresyon kilidi: keydown bubble fazinda dinlenirse AG Grid'in kendi ok
   // navigasyonu ONCE kosar ve odak secimle birlikte kayar. O halde Shift+Ok

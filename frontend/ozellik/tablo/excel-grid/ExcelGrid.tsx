@@ -2815,6 +2815,16 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       }
 
       if (c.cellRenderer === 'brandRenderer') {
+        // ⚠ KIMLIK DEGIL AD: bu kolon degeri `brandId` (36 karakterlik UUID)
+        // tutar ve ekranda ADI yalniz `cellRenderer` cizer. `useFormatter`
+        // renderer'i CALISTIRAMAZ (React dugumu doner, metin degil) — yani
+        // kopyalama/disa aktarma yollari ham UUID goruyordu. Bicimlendirici,
+        // "panoya ekranda GORDUGUNU yaz" sozlesmesini bu kolonda da kurar.
+        base.valueFormatter = (p: any) => {
+          const id = p.value;
+          if (!id) return '';
+          return brands.find((b) => b.id === id)?.name ?? String(id);
+        };
         base.cellRenderer = (params: ICellRendererParams) => (
           // Ozet satiri fiyatlandirilmaz — marka secimi gosterilmez
           params.data?._ozet ? <span style={{ color: '#94a3b8', fontSize: 11 }}>özet</span> : (
@@ -2838,6 +2848,12 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         );
         base.editable = false;
       } else if (c.cellRenderer === 'firmaRenderer') {
+        // IKIZ: marka kolonuyla ayni gerekce (yukarida) — deger `firmaId`.
+        base.valueFormatter = (p: any) => {
+          const id = p.value;
+          if (!id) return '';
+          return laborFirms.find((f) => f.id === id)?.name ?? String(id);
+        };
         base.cellRenderer = (params: ICellRendererParams) => (
           // Ozet satiri isciliklendirilmez
           params.data?._ozet ? <span style={{ color: '#94a3b8', fontSize: 11 }}>özet</span> : (

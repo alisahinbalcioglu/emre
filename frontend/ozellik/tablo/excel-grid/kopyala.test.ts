@@ -73,9 +73,15 @@ describe('planKopyala — kullanicinin senaryosu', () => {
   });
 
   it('S3 ★ iki boyutlu blok: kolonlar \\t ile (Iskonto + Net)', () => {
-    const oku = (si: number, f: string) => (f === '_draftNetPrice' ? NET_FIYATLAR[si] : '%15');
+    // ⚠ FIXTURE GERCEGE HIZALI: Iskonto hucresi ekranda "%15" gorunur ama
+    // okuyucu (`getCellValue useFormatter:true`) "15" doner — o kolon degeri
+    // `cellRenderer` ile cizilir, `valueFormatter` ile DEGIL ve renderer
+    // calistirilamaz. "%15" yazan bir fixture, uretimin ASLA uretemeyecegi
+    // bir metni olcerdi (proje dersi: fixture dogru dali surmeli).
+    // E2E KP9 bunu tarayicida dogruluyor: pano "0\t₺600,00".
+    const oku = (si: number, f: string) => (f === '_draftNetPrice' ? NET_FIYATLAR[si] : '15');
     const s = planKopyala(aralikKur({ satir: 0, kolon: NET - 1 }, { satir: 1, kolon: NET }), KUTUPHANE, VERI(4), oku);
-    expect(s.metin).toBe('%15\t₺53,30\n%15\t₺64,60');
+    expect(s.metin).toBe('15\t₺53,30\n15\t₺64,60');
     expect(s.hucreSayisi).toBe(4);
   });
 
