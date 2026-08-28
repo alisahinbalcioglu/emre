@@ -116,15 +116,35 @@ export function planYapistir(
   kolonlar: PasteKolon[],
   odakKolonField: string,
   satirlar: PasteSatir[],
+  /**
+   * KP2 — HEDEF SECIM (istege bagli). Kullanici bir aralik secip yapistirinca
+   * Excel'de olan sudur: TEK hucre kopyalanmissa deger SECIMIN TAMAMINA
+   * dagilir ("bir fiyati 10 satira bas"). Verilmezse davranis eskisi gibi
+   * kalir: odakli hucreden asagi, kopya kadar satir.
+   *
+   * ⚠ BLOK ICIN COGALTMA YOK: Excel, blogu secimin kati oldugunda TEKRARLAR.
+   * Bunu BILEREK yapmiyoruz — kullanicinin gormedigi satirlara sessizce fiyat
+   * cogaltmak, bu projenin en pahali hata sinifidir (sessiz para). Blok
+   * kopyalandiysa bir kez yazilir; sigmayan ya da artan kisim ozette bildirilir.
+   */
+  hedefSatirSayisi?: number,
 ): PastePlan {
   const bos: PastePlan = {
     hucreler: [],
     ozet: { yazilacak: 0, atlananBos: 0, atlananSayiDegil: 0, atlananBelirsiz: 0, ornekHamlar: [], atlananKolon: 0, sigmayanSatir: 0 },
   };
-  const matris = panoMatrisi(metin);
+  let matris = panoMatrisi(metin);
   if (matris.length === 0) return bos;
   const odak = kolonlar.findIndex((k) => k.field === odakKolonField);
   if (odak < 0) return bos;
+
+  // TEK HUCRE → SECIMIN TAMAMI. Sart `1×1` olmasidir: tek SATIR ama cok kolonlu
+  // bir kopya (ornegin "Iskonto + Net Fiyat") dagitilirsa kullanicinin sectigi
+  // ikinci kolona yanlis sayi girerdi.
+  if (typeof hedefSatirSayisi === 'number' && hedefSatirSayisi > 1
+    && matris.length === 1 && matris[0].length === 1) {
+    matris = Array.from({ length: hedefSatirSayisi }, () => [matris[0][0]]);
+  }
 
   const plan = bos;
   let mi = 0; // matris satiri

@@ -1742,6 +1742,10 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     const a = aralikKur(anchor, uc);
     secimRef.current = a;
     const kolonlar = api?.getAllDisplayedColumns() ?? [];
+    // ⚠ Kolon dizisi bos donerse (grid yeniden kuruluyor olabilir) secimi
+    // GUNCELLEME: kirpma `length-1` uzerinden yapildigi icin bos dizide kolon
+    // indeksi 0a cokerdi ve tul YANLIS kolonda cizilirdi.
+    if (kolonlar.length === 0) return;
     const kume = new Set<string>();
     for (let i = Math.max(0, a.kolonBas); i <= a.kolonSon && i < kolonlar.length; i++) {
       kume.add((kolonlar[i] as any).getColId());
@@ -1807,6 +1811,35 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     fittingModuRef.current = null;
     setFittingModu(null);
     setFittingStili('');
+  }, []);
+
+  // ═══════════ KP2: FAREYLE SURUKLEYEREK SECIM (Excel'in asil yolu) ═══════
+  // Shift+ok / Shift+tik vardi ama kullanicilarin cogu FARE ile surukler.
+  // ⚠ SURUKLE-DOLDUR TUTAMAGIYLA CAKISMAZ (olculdu): tutamak yalniz dort
+  // kolonda (`fill-handle-cell`: Kar %, Iskonto, Marka, Firma) ve yalniz
+  // hucrenin ALT 10 pikselinde baslar. Kullanicinin sectigi fiyat
+  // kolonlarinda tutamak HIC YOK. Yine de asagidaki kapi, tutamak bolgesinde
+  // basilan fareyi secime HIC sokmaz — oncelik daima tutamaktadir.
+  const surukluyorRef = useRef(false);
+  // Surukleme bittikten sonra tarayici bir `click` uretir; `onCellClicked`in
+  // Shift'siz dali secimi SILERDI. Bu bayrak o TEK tiklamayi yutar.
+  const suruklendiRef = useRef(false);
+
+  /** Fare, tutamagin tetikleme bolgesinde mi? (hucrenin alt 10px'i) */
+  const tutamakBolgesiMi = useCallback((olay: MouseEvent | null): boolean => {
+    const t = olay?.target as HTMLElement | null;
+    const kutu = t?.closest?.('.fill-handle-cell') as HTMLElement | null;
+    if (!kutu) return false;
+    const r = kutu.getBoundingClientRect();
+    return (olay!.clientY - r.top) >= r.height - 10;   // useFillHandle: BOTTOM_ZONE_PX
+  }, []);
+
+  // Surukleme yalniz fare BIRAKILINCA biter; olay grid disinda da olabilir
+  // (kullanici listenin disina tasar), o yuzden dinleyici document'te.
+  React.useEffect(() => {
+    const birak = () => { surukluyorRef.current = false; };
+    document.addEventListener('mouseup', birak);
+    return () => document.removeEventListener('mouseup', birak);
   }, []);
 
   // ═══════════ ISKONTO TOPLU ISLEMLERI (Iskonto Surukle-Doldur PRD) ═══════════
@@ -2078,15 +2111,52 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     // Ayni sekilde kutuda Ctrl+C metni degil grid hucrelerini kopyalar,
     // Shift+Ok metin secmek yerine hucre araligi acardi.
     // ⚠ Input'a capture eklemek COZUM DEGIL: kok capture ondan da once kosar.
-    // Tek dogru yer burasi. AG Grid hucre EDITORU de bir <input>'tur — o da bu
-    // kapiya takilir ve bu ISTENEN sonuctur (editor icindeyken grid kisayollari
-    // calismamali; alttaki `getEditingCells()` kapilari da ayni yonde).
+    // Tek dogru yer burasi.
+    //
+    // ⚠ KAPI IKI SINIFI AYIRIR (28.08 kullanici istegi): AG Grid hucre
+    // EDITORU de bir <input>'tur ama o, gridin KENDI hucresinin icindedir
+    // (`.ag-cell`). Toolbar / marka-arama kutulari degildir. Editorde YUKARI
+    // ve ASAGI ok Excel'deki gibi satir degistirmeli; toolbar kutusunda ise
+    // hicbir grid kisayolu calismamalidir.
     const hedef = e.target as HTMLElement | null;
-    if (hedef && hedef !== rootWrapperRef.current
+    const metinGirisi = !!hedef && hedef !== rootWrapperRef.current
       && typeof hedef.closest === 'function'
-      && hedef.closest('input, textarea, select, [contenteditable="true"]')) {
+      && hedef.closest('input, textarea, select, [contenteditable="true"]');
+    const hucreEditorunde = !!metinGirisi && !!hedef?.closest?.('.ag-cell');
+
+    if (metinGirisi && !hucreEditorunde) return;   // toolbar/dropdown — DOKUNMA
+
+    // ── KP2: EDITORDE ↓/↑ — "300 ↓ 400 ↓ 500" ritmi ──────────────────────
+    // Kullanicinin cumlesi: "300 tl girdik, hemen alt satira yon tuslari ile
+    // gecmek istiyorum ancak olmuyor; hucreden ciktigimda calisiyor."
+    // Olculdu: gridde `suppressKeyboardEvent`/`onCellKeyDown`/`navigateToNextCell`
+    // AYARLI DEGIL — yalniz Enter icin `enterNavigatesVertically` var. Yani
+    // editor acikken ok tusu hicbir sey yapmiyordu.
+    //  · SOL/SAG BILEREK DISARIDA: yazilan metni duzeltmek icin imlec orada
+    //    kalmali (Excel'in duzenleme kipi de boyle).
+    //  · Yeni hucrede editor ACILMAZ: yazmaya baslayinca AG Grid kendi acar ve
+    //    ilk karakter kaybolmaz — Enter davranisiyla simetrik.
+    //  · Hedef bir sonraki VERI satiridir; grup bandi/baslik atlanir.
+    if (hucreEditorunde && !e.ctrlKey && !e.metaKey && !e.altKey
+      && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+      const fc = api.getFocusedCell();
+      if (!fc || fc.rowPinned) return;
+      const yon = e.key === 'ArrowDown' ? 1 : -1;
+      let hedefSatir = -1;
+      for (let i = fc.rowIndex + yon; i >= 0 && i < api.getDisplayedRowCount(); i += yon) {
+        if ((api.getDisplayedRowAtIndex(i)?.data as any)?._isDataRow === true) { hedefSatir = i; break; }
+      }
+      if (hedefSatir < 0) return;                 // sinirda: editor acik kalsin
+      e.preventDefault();
+      e.stopPropagation();
+      api.stopEditing();                          // deger KAYDEDILIR (elle giris zinciri kosar)
+      secimTemizle();
+      api.ensureIndexVisible(hedefSatir);
+      api.setFocusedCell(hedefSatir, fc.column.getColId());
       return;
     }
+
+    if (metinGirisi) return;   // editordeki diger tuslar AG Grid'e/editore ait
 
     const isMod = e.ctrlKey || e.metaKey;
 
@@ -2110,6 +2180,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
 
     if (!isMod && e.shiftKey && OK_YON[e.key] && api.getEditingCells().length === 0) {
       const kolonlar = api.getAllDisplayedColumns();
+      if (kolonlar.length === 0) return;   // grid yeniden kuruluyor — tusu YUTMA yerine ATLA
       // ANCHOR VARKEN `getFocusedCell()` SORULMAZ. Eski kurulumda odak yoksa
       // dal ERKEN DONUYORDU — anchor elde olmasina ragmen. Tarayicida bir kez
       // goruldu: onceki tusun refresh/scroll isi surerken AG Grid bir an
@@ -2263,7 +2334,20 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         const n = api.getDisplayedRowAtIndex(i);
         satirlar.push({ isDataRow: !!n?.data?._isDataRow });
       }
-      const plan = planYapistir(text, kolonlar, fc.column.getColId(), satirlar);
+      // KP2: hedefte bir ARALIK secili mi? Seciliyse ve pano TEK hucreyse
+      // deger secimin tamamina dagilir (Excel davranisi — "bir fiyati N
+      // satira bas"). Sayim VERI satirlarini sayar: grup bandi/baslik
+      // secime girse bile fiyat almaz, sayilsaydi dagitim eksik kalirdi.
+      const sec = secimRef.current;
+      let hedefSatirSayisi: number | undefined;
+      if (sec && sec.satirBas <= fc.rowIndex && fc.rowIndex <= sec.satirSon) {
+        let n = 0;
+        for (let i = sec.satirBas; i <= sec.satirSon; i++) {
+          if ((api.getDisplayedRowAtIndex(i)?.data as any)?._isDataRow === true) n++;
+        }
+        if (n > 1) hedefSatirSayisi = n;
+      }
+      const plan = planYapistir(text, kolonlar, fc.column.getColId(), satirlar, hedefSatirSayisi);
       e.preventDefault();
       const sayiUyarilari = yapistirmaSayiUyarilari(plan.ozet);
       if (plan.hucreler.length === 0) {
@@ -4377,6 +4461,9 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
             if (e.data) fittingKapsamToggle(e.data as ExcelRowData);
             return;
           }
+          // Surukleme bittiginde tarayici bir `click` daha uretir; asagidaki
+          // Shift'siz dal calissaydi yeni kurulan araligi ANINDA silerdi.
+          if (suruklendiRef.current) { suruklendiRef.current = false; return; }
           const kolonlar = e.api.getAllDisplayedColumns();
           const ki = kolonlar.findIndex((c: any) => c.getColId() === e.column.getColId());
           if (ki < 0) return;
@@ -4391,6 +4478,48 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           secimAnchorRef.current = nokta;
           secimUcRef.current = nokta;
           secimUygula(null, null);
+        }}
+        // ── KP2: SURUKLEYEREK SECIM — bas, surukle, birak ────────────────
+        onCellMouseDown={(e) => {
+          const me = e.event as MouseEvent | null;
+          if (!me || me.button !== 0) return;              // yalniz SOL tus
+          if (e.node?.rowPinned || typeof e.rowIndex !== 'number') return;
+          // ── CAKISMA KURALI 1 — FITTING KIPI HER ZAMAN ONCELIKLI (29.09) ──
+          // Fitting kapsami Ctrl+tik ile secilir (CLAUDE.md "Fitting Satiri").
+          // Surukleme seciminin anchor'i burada KOSULSUZ kurulsaydi, Ctrl+tik'in
+          // `click` dali kapsami degistirmeden ONCE mousedown kopya secimini
+          // sifirlar (`secimUygula(null, null)`) ve iki tul (mavi/sari fitting,
+          // mavi kopya) ayni anda yarisirdi. Ctrl/Meta basiliyken surukleme
+          // secimi HIC baslamaz — o tus fitting'e aittir.
+          if (me.ctrlKey || me.metaKey) return;
+          // ── CAKISMA KURALI 2 — KIP ACIKKEN SURUKLEME KAPALI ──────────────
+          // Kapsam secme kipinde kullanicinin tek isi satir isaretlemektir;
+          // surukleme tulu `fittingTulu`nun uzerine biner ve "ne secili?"
+          // sorusunu belirsizlestirir. Kip `Tamam`/Esc ile kapaninca geri gelir.
+          if (fittingModuRef.current) return;
+          if (tutamakBolgesiMi(me)) return;                // ONCELIK TUTAMAKTA
+          if (e.api.getEditingCells().length > 0) return;  // editor kendi metnini secer
+          const kolonlar = e.api.getAllDisplayedColumns();
+          const ki = kolonlar.findIndex((c: any) => c.getColId() === e.column.getColId());
+          if (ki < 0) return;
+          surukluyorRef.current = true;
+          suruklendiRef.current = false;
+          secimAnchorRef.current = { satir: e.rowIndex, kolon: ki };
+          secimUcRef.current = secimAnchorRef.current;
+          secimUygula(null, null);   // tek hucrede tul yok; surukleyince dogar
+        }}
+        onCellMouseOver={(e) => {
+          if (!surukluyorRef.current || !secimAnchorRef.current) return;
+          if (e.node?.rowPinned || typeof e.rowIndex !== 'number') return;
+          const kolonlar = e.api.getAllDisplayedColumns();
+          const ki = kolonlar.findIndex((c: any) => c.getColId() === e.column.getColId());
+          if (ki < 0) return;
+          const uc: Nokta = { satir: e.rowIndex, kolon: ki };
+          const a = secimAnchorRef.current;
+          if (uc.satir === a.satir && uc.kolon === a.kolon) return;  // ayni hucre — aralik yok
+          suruklendiRef.current = true;    // artik bu bir SURUKLEME; click'i yut
+          secimUcRef.current = uc;
+          secimUygula(a, uc);
         }}
         stopEditingWhenCellsLoseFocus
         // ⚠ Surukle-doldur ayni sabiti okur (useFillHandle) — types.ts'te TEK

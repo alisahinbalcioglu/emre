@@ -82,6 +82,50 @@ describe('panoMatrisi — Excel TSV ayristirma', () => {
   });
 });
 
+describe('KP2 — hedef ARALIGA yapistirma (tek fiyati N satira bas)', () => {
+  it('★ TEK hucre kopyasi secimin TAMAMINA dagilir', () => {
+    const p = planYapistir('₺750,00', KOLONLAR, '_matBirim', VERI(6), 4);
+    expect(p.hucreler).toEqual([
+      { satir: 0, field: '_matBirim', deger: 750 },
+      { satir: 1, field: '_matBirim', deger: 750 },
+      { satir: 2, field: '_matBirim', deger: 750 },
+      { satir: 3, field: '_matBirim', deger: 750 },
+    ]);
+    expect(p.ozet.sigmayanSatir).toBe(0);
+  });
+
+  it('★ BLOK kopyasi COGALTILMAZ — secim buyuk olsa bile bir kez yazilir', () => {
+    // Excel blogu secimin kati oldugunda TEKRARLAR. Bunu bilerek yapmiyoruz:
+    // kullanicinin gormedigi satirlara sessizce fiyat cogaltmak bu projenin
+    // en pahali hata sinifi (sessiz para).
+    const p = planYapistir('₺100,00\n₺200,00', KOLONLAR, '_matBirim', VERI(6), 6);
+    expect(p.hucreler).toEqual([
+      { satir: 0, field: '_matBirim', deger: 100 },
+      { satir: 1, field: '_matBirim', deger: 200 },
+    ]);
+  });
+
+  it('★ COK KOLONLU tek satir da dagitilmaz (ikinci kolona yanlis sayi girerdi)', () => {
+    // "15 ⇥ ₺750,00" dagitilsaydi her satirda Kar %'ye 15 ve YANINDAKI kolona
+    // 750 yazilirdi. Dagitim sarti bu yuzden 1×1'dir, "tek satir" degil.
+    // (Ikinci hucre `_marka`ya denk gelir; o dropdown kolonu editable olmadigi
+    // icin zaten yazilmaz — ozette `atlananKolon` olarak gorunur.)
+    const p = planYapistir('15\t₺750,00', KOLONLAR, '_malzKar', VERI(6), 4);
+    expect(p.hucreler).toEqual([{ satir: 0, field: '_malzKar', deger: 15 }]);
+    expect(p.ozet.atlananKolon).toBe(1);
+  });
+
+  it('secim YOKSA (parametre verilmezse) davranis DEGISMEZ', () => {
+    const p = planYapistir('₺750,00', KOLONLAR, '_matBirim', VERI(6));
+    expect(p.hucreler).toEqual([{ satir: 0, field: '_matBirim', deger: 750 }]);
+  });
+
+  it('secim tek satirsa dagitim YOK (1 hedef = eski yol)', () => {
+    const p = planYapistir('₺750,00', KOLONLAR, '_matBirim', VERI(6), 1);
+    expect(p.hucreler.length).toBe(1);
+  });
+});
+
 describe('planYapistir — kullanicinin senaryosu', () => {
   it('S1 ★ tek kolon fiyat blogu → İşç. Birim Fiyat hucrelerine, SAYI olarak', () => {
     const p = planYapistir('₺200,00\r\n₺300,00\r\n₺400,00\r\n', KOLONLAR, '_labBirim', VERI(5));
