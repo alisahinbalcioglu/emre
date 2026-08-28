@@ -21,6 +21,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       where: { id: payload.sub },
     });
     if (!user) throw new UnauthorizedException();
-    return { id: user.id, email: user.email, role: user.role };
+    // ADIM 1 (firma): kimligin DAR BOGAZI burasi — 55 tuketici bu sekli okur.
+    // firmaId EKLENIR (var olan alanlar aynen kalir, hicbir tuketici kirilmaz):
+    // teklif/kutuphane suzgecleri artik kisiyi degil FIRMAYI temel alacak.
+    // Sorgu zaten kullaniciyi cekiyordu — ek maliyet YOK.
+    return { id: user.id, email: user.email, role: user.role, firmaId: user.firmaId };
   }
 }

@@ -10,6 +10,7 @@ import { QuotesService } from './quotes.service';
 import { CreateQuoteDto } from './dto/create-quote.dto';
 import { JwtAuthGuard } from '../../../altyapi/auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../../altyapi/auth/decorators/current-user.decorator';
+import { kimlikCoz } from '../../../altyapi/auth/kimlik';
 import { memoryStorage } from 'multer';
 
 @Controller('quotes')
@@ -27,7 +28,7 @@ export class QuotesController {
 
   @Post()
   create(@CurrentUser() user: any, @Body() dto: CreateQuoteDto) {
-    return this.quotesService.create(user.id, dto);
+    return this.quotesService.create(kimlikCoz(user), dto);
   }
 
   /**
@@ -44,12 +45,12 @@ export class QuotesController {
    */
   @Put(':id')
   update(@CurrentUser() user: any, @Param('id') id: string, @Body() dto: CreateQuoteDto) {
-    return this.quotesService.create(user.id, dto, id);
+    return this.quotesService.create(kimlikCoz(user), dto, id);
   }
 
   @Get()
   findAll(@CurrentUser() user: any) {
-    return this.quotesService.findAll(user.id);
+    return this.quotesService.findAll(kimlikCoz(user));
   }
 
   // NOT (Bulgu Raporu 21.07): eski GET :id/pdf ve GET :id/excel rotalari
@@ -69,7 +70,7 @@ export class QuotesController {
       displayLanguage?: string;
     },
   ) {
-    return this.quotesService.updateInfo(user.id, id, body ?? {});
+    return this.quotesService.updateInfo(kimlikCoz(user), id, body ?? {});
   }
 
   // ARINMA Faz 2 (A+B): export-preview + export-overrides rotalari SILINDI
@@ -95,7 +96,7 @@ export class QuotesController {
     @Body() body?: { dil?: string },
   ) {
     try {
-      const { buffer, filename, uyari, ozet } = await this.quotesService.exportXlsx(user.id, id, body?.dil);
+      const { buffer, filename, uyari, ozet } = await this.quotesService.exportXlsx(kimlikCoz(user), id, body?.dil);
       res.set({
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'Content-Disposition': `attachment; filename="${encodeURIComponent(filename)}"`,
@@ -119,7 +120,7 @@ export class QuotesController {
     @Query('dil') dil?: string,
   ) {
     try {
-      const { buffer, filename, uyari, ozet } = await this.quotesService.exportPricedXlsx(user.id, id, dil);
+      const { buffer, filename, uyari, ozet } = await this.quotesService.exportPricedXlsx(kimlikCoz(user), id, dil);
       res.set({
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'Content-Disposition': `attachment; filename="${encodeURIComponent(filename)}"`,
@@ -140,7 +141,7 @@ export class QuotesController {
   /** T10 arsivi */
   @Get(':id/exports')
   listExports(@CurrentUser() user: any, @Param('id') id: string) {
-    return this.quotesService.listExports(user.id, id);
+    return this.quotesService.listExports(kimlikCoz(user), id);
   }
 
   @Get(':id/exports/:rev')
@@ -150,7 +151,7 @@ export class QuotesController {
     @Param('rev') rev: string,
     @Res() res: Response,
   ) {
-    const { buffer, filename } = await this.quotesService.downloadExport(user.id, id, parseInt(rev, 10) || 0);
+    const { buffer, filename } = await this.quotesService.downloadExport(kimlikCoz(user), id, parseInt(rev, 10) || 0);
     res.set({
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'Content-Disposition': `attachment; filename="${encodeURIComponent(filename)}"`,
@@ -163,12 +164,12 @@ export class QuotesController {
 
   @Get(':id')
   findOne(@CurrentUser() user: any, @Param('id') id: string) {
-    return this.quotesService.findOne(user.id, id);
+    return this.quotesService.findOne(kimlikCoz(user), id);
   }
 
   @Delete(':id')
   @HttpCode(204)
   remove(@CurrentUser() user: any, @Param('id') id: string) {
-    return this.quotesService.remove(user.id, id);
+    return this.quotesService.remove(kimlikCoz(user), id);
   }
 }

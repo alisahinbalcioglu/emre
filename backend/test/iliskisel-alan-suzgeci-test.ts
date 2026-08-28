@@ -45,8 +45,13 @@ const sina = (kod: string, ad: string, kosul: boolean, kanit: string) => {
   else { fails.push(`${kod} ${ad} — ${kanit}`); console.log(`  ❌ ${kod} ${ad} — ${kanit}`); }
 };
 
+// ADIM 1 (firma): suzgec artik KISI degil FIRMA. Kimlik iki alan tasir —
+// userId = kaydin YAZARI, firmaId = kaydi GOREN kapsam.
 const BENIM = 'user-ben';
 const BASKASI = 'user-baskasi';
+const FIRMAM = 'firma-ben';
+const RAKIP_FIRMA = 'firma-rakip';
+const BEN = { userId: BENIM, firmaId: FIRMAM };
 const MARKA_VAR = 'brand-cayirova';
 const MARKA_YOK = 'brand-silinmis';
 const FIRMA_BENIM = 'firm-yasin';
@@ -57,6 +62,7 @@ const FIRMA_YOK = 'firm-silinmis';
 function sahtePrisma() {
   const cagrilar = { brandFindMany: 0, laborFirmFindMany: 0 };
   let yakalanan: any[] = [];
+  let yazilanData: any = null;
   const prisma: any = {
     brand: {
       findMany: async ({ where }: any) => {
@@ -70,8 +76,8 @@ function sahtePrisma() {
         cagrilar.laborFirmFindMany++;
         const istenen: string[] = where?.id?.in ?? [];
         const kayitlar = [
-          { id: FIRMA_BENIM, userId: BENIM },
-          { id: FIRMA_BASKASI, userId: BASKASI },
+          { id: FIRMA_BENIM, firmaId: FIRMAM },
+          { id: FIRMA_BASKASI, firmaId: RAKIP_FIRMA },
         ];
         return kayitlar.filter((k) => istenen.includes(k.id));
       },
@@ -79,11 +85,12 @@ function sahtePrisma() {
     quote: {
       create: async (arg: any) => {
         yakalanan = arg?.data?.items?.create ?? [];
+        yazilanData = arg?.data ?? null;
         return { id: 'q1', items: [] };
       },
     },
   };
-  return { prisma, cagrilar, sonuc: () => yakalanan };
+  return { prisma, cagrilar, sonuc: () => yakalanan, data: () => yazilanData };
 }
 
 const kalem = (ek: Record<string, any>) => ({
@@ -97,13 +104,13 @@ async function main() {
 
   // ── S1-S5: gecerli / gecersiz / baskasinin ───────────────────────────
   {
-    const { prisma, sonuc } = sahtePrisma();
+    const { prisma, sonuc, data: sonucData } = sahtePrisma();
     const service = new QuotesService(prisma, fakeFx, sahteCeviri as any);
     const uyarilar: string[] = [];
     const eskiWarn = console.warn;
     console.warn = (...a: any[]) => { uyarilar.push(a.join(' ')); };
     try {
-      await service.create(BENIM, {
+      await service.create(BEN as any, {
         title: 'T', items: [
           kalem({ brandId: MARKA_VAR, laborFirmaId: FIRMA_BENIM }),
           kalem({ brandId: MARKA_YOK, laborFirmaId: FIRMA_BASKASI }),
@@ -119,17 +126,26 @@ async function main() {
       k[1].brandId === null && k.length === 3, `brandId=${k[1].brandId}, kalem=${k.length}`);
     sina('S3', 'KENDI firmam YAZILIR',
       k[0].laborFirmaId === FIRMA_BENIM, `laborFirmaId=${k[0].laborFirmaId}`);
-    sina('S4', 'BASKA kullanicinin firmasi null olur (izolasyon)',
+    sina('S4', 'BASKA FIRMANIN iscilik firmasi null olur (izolasyon)',
       k[1].laborFirmaId === null, `laborFirmaId=${k[1].laborFirmaId}`);
     sina('S5', 'olmayan firma null olur',
       k[2].laborFirmaId === null, `laborFirmaId=${k[2].laborFirmaId}`);
+
+    // ── S8 (ADIM 1) — KAYIT FIRMAYI YAZAR. Bu assert olmadan quote.create'ten
+    //    firmaId dusseydi teklif hicbir firmanin listesinde GORUNMEZDI ve
+    //    hicbir mevcut test bunu yakalamazdi (hepsi kalemlere bakiyor).
+    const d = sonucData();
+    sina('S8a', 'kayit FIRMA kimligini yazar (suzgecte gorunur)',
+      d?.firmaId === FIRMAM, `firmaId=${d?.firmaId}`);
+    sina('S8b', 'kayit YAZARI da korur (kim olusturdu bilgisi)',
+      d?.userId === BENIM, `userId=${d?.userId}`);
 
     // S7 — sessiz kayip yasak: uc dusme de AYRI mesajla loglanir
     const marka = uyarilar.some((u) => u.includes('marka') && u.includes(MARKA_YOK));
     const baska = uyarilar.some((u) => u.includes('BASKA') && u.includes(FIRMA_BASKASI));
     const silin = uyarilar.some((u) => u.includes('silinmis') && u.includes(FIRMA_YOK));
     sina('S7a', 'dusen marka loglanir', marka, `uyari=${uyarilar.length}`);
-    sina('S7b', 'BASKA hesabin firmasi AYRI loglanir (istismar/bug sinyali)', baska, `uyari=${uyarilar.length}`);
+    sina('S7b', 'BASKA FIRMANIN kaydi AYRI loglanir (istismar/bug sinyali)', baska, `uyari=${uyarilar.length}`);
     sina('S7c', 'silinmis firma AYRI loglanir', silin, `uyari=${uyarilar.length}`);
   }
 
@@ -137,7 +153,7 @@ async function main() {
   {
     const { prisma, cagrilar, sonuc } = sahtePrisma();
     const service = new QuotesService(prisma, fakeFx, sahteCeviri as any);
-    await service.create(BENIM, { title: 'T', items: [kalem({})] } as any);
+    await service.create(BEN as any, { title: 'T', items: [kalem({})] } as any);
     sina('S6', 'ID gonderilmezse dogrulama sorgusu HIC kosmaz',
       cagrilar.brandFindMany === 0 && cagrilar.laborFirmFindMany === 0,
       `brand=${cagrilar.brandFindMany}, laborFirm=${cagrilar.laborFirmFindMany}`);

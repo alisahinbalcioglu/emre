@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { CreateQuoteDto } from './dto/create-quote.dto';
+import { Kimlik } from '../../../altyapi/auth/kimlik';
 import * as XLSX from 'xlsx';
 import * as ExcelJS from 'exceljs';
 // PRD Teklif Formatim (v2.1): profesyonel cikti motoru
@@ -149,7 +150,7 @@ export class QuotesService {
    * ayrilir ve biri duzeltilirken oteki unutulur. Bu yuzden ayrim TEK NOKTADA:
    * hazirlik ortak, son adim (INSERT mi UPDATE mi) parametreye bakar.
    */
-  async create(userId: string, dto: CreateQuoteDto, guncelleId?: string) {
+  async create(k: Kimlik, dto: CreateQuoteDto, guncelleId?: string) {
     // ── ILISKISEL ALAN SUZGECI ──────────────────────────────────────────────
     // brandId/laborFirmaId istemciden SERBEST STRING olarak geliyor; dogrudan
     // Prisma'ya vermek silinmis/olmayan ID'de P2003 (foreign key) -> 500 uretir.
@@ -163,7 +164,7 @@ export class QuotesService {
     //                uyeligi ARANMAZ — kullanici bir markayi kutuphanesinden
     //                cikarmis olsa bile o teklifte BILEREK secmisti, iliskiyi
     //                koparmak veri kaybi olurdu.
-    //   LaborFirm  : KULLANICIYA AIT (schema.prisma:595 — userId var).
+    //   LaborFirm  : FIRMAYA AIT (ADIM 1: firmaId; userId = yaratan kisi).
     //                Sahiplik SART: baska hesabin firmasina bagli kalem
     //                olusmasi izolasyonu deler.
     //
@@ -176,19 +177,21 @@ export class QuotesService {
       istenenMarka.length
         ? this.prisma.brand.findMany({ where: { id: { in: istenenMarka } }, select: { id: true } })
         : Promise.resolve([] as { id: string }[]),
-      // ⚠ userId FILTRESI SORGUDA DEGIL: "baskasinin firmasi" ile "silinmis
+      // ⚠ FIRMA FILTRESI SORGUDA DEGIL: "baskasinin firmasi" ile "silinmis
       // firma" ayirt edilebilsin diye sahiplik BURADA degil asagida kontrol
       // edilir. Ikisi de null'a duser ama LOG'lari FARKLIDIR — biri istismar/
       // bug sinyali, digeri sirandan bayat veri. Sorgu sayisi DEGISMEDI.
       istenenFirma.length
         ? this.prisma.laborFirm.findMany({
             where: { id: { in: istenenFirma } },
-            select: { id: true, userId: true },
+            select: { id: true, firmaId: true },
           })
-        : Promise.resolve([] as { id: string; userId: string }[]),
+        : Promise.resolve([] as { id: string; firmaId: string | null }[]),
     ]);
     const markaOk = new Set(gecerliMarka.map((b) => b.id));
-    const firmaOk = new Set(bulunanFirma.filter((f) => f.userId === userId).map((f) => f.id));
+    // ADIM 1: sahiplik olcusu KISI degil FIRMA — ayni firmanin baska uyesinin
+    // tanimladigi iscilik firmasi da bu teklifte kullanilabilir.
+    const firmaOk = new Set(bulunanFirma.filter((f) => f.firmaId === k.firmaId).map((f) => f.id));
 
     // ── SESSIZ KAYIP YASAK: dusen her iliski LOG'a yazilir ─────────────────
     // Bu projede "sessiz bos/bayat" defalarca pahaliya mal oldu (fill-down
@@ -204,10 +207,10 @@ export class QuotesService {
       console.warn(`[Teklif] ⚠ SELF-CHECK: ${dusenMarka.length} marka iliskisi dusuruldu `
         + `(bulunamadi): ${dusenMarka.join(', ')}`);
     }
-    const baskasininFirmasi = bulunanFirma.filter((f) => f.userId !== userId).map((f) => f.id);
+    const baskasininFirmasi = bulunanFirma.filter((f) => f.firmaId !== k.firmaId).map((f) => f.id);
     if (baskasininFirmasi.length) {
       console.warn(`[Teklif] ⚠ SELF-CHECK: ${baskasininFirmasi.length} iscilik firmasi BASKA `
-        + `HESABA ait, iliski yazilmadi (user=${userId}): ${baskasininFirmasi.join(', ')}`);
+        + `FIRMAYA ait, iliski yazilmadi (firma=${k.firmaId}): ${baskasininFirmasi.join(', ')}`);
     }
     const yokFirma = istenenFirma.filter((id) => !bulunanFirma.some((f) => f.id === id));
     if (yokFirma.length) {
@@ -290,28 +293,31 @@ export class QuotesService {
     // yeniden denenir. Gerekce ayni: teklifin TAMAMINI kaybetmektense
     // iliskiyi kaybetmek yeglenir (fiyatlar zaten kalemde yazili).
     try {
-      return await this.quoteYaz(userId, dto, items, originalFile, guncelleId);
+      return await this.quoteYaz(k, dto, items, originalFile, guncelleId);
     } catch (e: any) {
       if (e?.code !== 'P2003') throw e;
       console.warn('[Teklif] ⚠ SELF-CHECK: kayit sirasinda marka/firma silinmis '
         + '(P2003) — iliskiler koparilip yeniden deneniyor');
       const iliskisiz = items.map((i) => ({ ...i, brandId: null, laborFirmaId: null }));
-      return await this.quoteYaz(userId, dto, iliskisiz, originalFile, guncelleId);
+      return await this.quoteYaz(k, dto, iliskisiz, originalFile, guncelleId);
     }
   }
 
   /** Teklif INSERT'i — create() iki kez cagirabilsin diye ayrildi (TOCTOU geri dususu). */
   private async quoteYaz(
-    userId: string,
+    k: Kimlik,
     dto: CreateQuoteDto,
     items: any[],
     originalFile?: Buffer,
     guncelleId?: string,
   ) {
-    if (guncelleId) return this.quoteGuncelle(userId, guncelleId, dto, items, originalFile);
+    if (guncelleId) return this.quoteGuncelle(k, guncelleId, dto, items, originalFile);
     return this.prisma.quote.create({
       data: {
-        userId,
+        // ADIM 1: userId = YAZAR (kim olusturdu), firmaId = SAHIP (kim gorur).
+        // firmaId YAZILMAZSA teklif firma suzgecinde GORUNMEZ olurdu.
+        userId: k.userId,
+        firmaId: k.firmaId,
         title: dto.title || `Teklif ${new Date().toLocaleDateString('tr-TR')}`,
         sheets: dto.sheets ? (dto.sheets as any) : undefined,
         originalFile: originalFile ?? undefined,
@@ -350,14 +356,14 @@ export class QuotesService {
    * TRANSACTION icinde: silme gecip yazma patlarsa teklif KALEMSIZ kalirdi.
    */
   private async quoteGuncelle(
-    userId: string,
+    k: Kimlik,
     id: string,
     dto: CreateQuoteDto,
     items: any[],
     originalFile?: Buffer,
   ) {
-    // Sahiplik SART — baska hesabin teklifi guncellenemez (izolasyon).
-    const mevcut = await this.prisma.quote.findFirst({ where: { id, userId } });
+    // Sahiplik SART — baska FIRMANIN teklifi guncellenemez (izolasyon).
+    const mevcut = await this.prisma.quote.findFirst({ where: { id, firmaId: k.firmaId } });
     if (!mevcut) throw new NotFoundException('Quote not found');
 
     return this.prisma.$transaction(async (tx) => {
@@ -378,9 +384,9 @@ export class QuotesService {
     });
   }
 
-  async findAll(userId: string) {
+  async findAll(k: Kimlik) {
     return this.prisma.quote.findMany({
-      where: { userId },
+      where: { firmaId: k.firmaId },
       include: {
         // ⚠ LISTE UCU: yalniz toplam hesabi icin kalem gerekir.
         // Tuketiciler OLCULDU — hicbiri marka/firma OKUMUYOR:
@@ -396,9 +402,9 @@ export class QuotesService {
     });
   }
 
-  async findOne(userId: string, id: string) {
+  async findOne(k: Kimlik, id: string) {
     const quote = await this.prisma.quote.findFirst({
-      where: { id, userId },
+      where: { id, firmaId: k.firmaId },
       include: {
         items: { include: { brand: true, laborFirma: true } },
         user: { select: { email: true } },
@@ -408,8 +414,8 @@ export class QuotesService {
     return quote;
   }
 
-  async remove(userId: string, id: string) {
-    const quote = await this.prisma.quote.findFirst({ where: { id, userId } });
+  async remove(k: Kimlik, id: string) {
+    const quote = await this.prisma.quote.findFirst({ where: { id, firmaId: k.firmaId } });
     if (!quote) throw new NotFoundException('Quote not found');
     return this.prisma.quote.delete({ where: { id } });
   }
@@ -421,15 +427,19 @@ export class QuotesService {
   // ═══════════════════════════════════════════════════════════════════
 
   /** Teklif bilgileri (kapak alanlari) + format secimi. */
-  async updateInfo(userId: string, id: string, dto: {
+  async updateInfo(k: Kimlik, id: string, dto: {
     musteri?: string; proje?: string; hazirlayan?: string; gecerlilik?: string; formatId?: string | null;
     displayCurrency?: string; displayRate?: number | null; displayRateDate?: string | null;
     displayLanguage?: string;
   }) {
-    const quote = await this.prisma.quote.findFirst({ where: { id, userId } });
+    const quote = await this.prisma.quote.findFirst({ where: { id, firmaId: k.firmaId } });
     if (!quote) throw new NotFoundException('Quote not found');
     if (dto.formatId) {
-      const f = await (this.prisma as any).quoteFormat.findFirst({ where: { id: dto.formatId, userId } });
+      // ⚠ QuoteFormat suzgeci KASTEN kisiye bagli kaldi: formatlari yazan
+      // servis (quote-formats.service) henuz firmaId YAZMIYOR — burayi tek
+      // basina firmaya cevirmek yeni yuklenen formatlari GORUNMEZ yapardi.
+      // Ikisi birlikte sonraki dilimde cevrilecek (bkz. commit notu).
+      const f = await (this.prisma as any).quoteFormat.findFirst({ where: { id: dto.formatId, userId: k.userId } });
       if (!f) throw new NotFoundException('Format bulunamadi');
     }
     // KISMI GUNCELLEME (KH8): gonderilMEyen alan DOKUNULMAZ — detay
@@ -462,20 +472,20 @@ export class QuotesService {
    *  format yoksa, T8). Kullanicinin formati varken sample'a SESSIZ dusus
    *  YASAK; hangi formatin kullanildigi loglanir ve FE'ye tasinir.
    *  DB'deki bytes DEGISMEZ (T13) — her cagri taze kopya yukler. */
-  private async resolveFormatWb(userId: string, quote: any): Promise<{
+  private async resolveFormatWb(k: Kimlik, quote: any): Promise<{
     wb: ExcelJS.Workbook; formatAdi: string; formatKaynak: 'kullanici' | 'yerlesik';
     sheetRoles: Record<string, 'sabit' | 'liste'> | null;
   }> {
     let kayit = quote.formatId
-      ? await (this.prisma as any).quoteFormat.findFirst({ where: { id: quote.formatId, userId } })
+      ? await (this.prisma as any).quoteFormat.findFirst({ where: { id: quote.formatId, userId: k.userId } })
       : null;
     if (!kayit) {
-      kayit = await (this.prisma as any).quoteFormat.findFirst({ where: { userId, isDefault: true } });
+      kayit = await (this.prisma as any).quoteFormat.findFirst({ where: { userId: k.userId, isDefault: true } });
     }
     if (!kayit) {
       // Varsayilan isaretli yoksa EN SON yuklenen format kullanilir
       kayit = await (this.prisma as any).quoteFormat.findFirst({
-        where: { userId }, orderBy: { createdAt: 'desc' },
+        where: { userId: k.userId }, orderBy: { createdAt: 'desc' },
       });
     }
     if (kayit) {
@@ -513,8 +523,8 @@ export class QuotesService {
     };
   }
 
-  private async quoteGetir(userId: string, id: string) {
-    const quote = await this.prisma.quote.findFirst({ where: { id, userId } });
+  private async quoteGetir(k: Kimlik, id: string) {
+    const quote = await this.prisma.quote.findFirst({ where: { id, firmaId: k.firmaId } });
     if (!quote) throw new NotFoundException('Quote not found');
     return quote as any;
   }
@@ -552,14 +562,14 @@ export class QuotesService {
     return parca.join(' · ');
   }
 
-  private async ciktiKur(userId: string, quote: any, rev: number, dil?: string): Promise<ExportSonucu & { formatAdi: string; formatKaynak: 'kullanici' | 'yerlesik' }> {
+  private async ciktiKur(k: Kimlik, quote: any, rev: number, dil?: string): Promise<ExportSonucu & { formatAdi: string; formatKaynak: 'kullanici' | 'yerlesik' }> {
     // Bulgu Raporu kok neden: grid'den uretim SILINDI — orijinal dosya ZORUNLU.
     if (!quote.originalFile) {
       throw new BadRequestException(
         'Bu teklifte orijinal Excel dosyası kayıtlı değil — dışa aktarım için keşif Excel\'ini yükleyip teklifi yeniden kaydedin.',
       );
     }
-    const { wb: formatWb, formatAdi, formatKaynak, sheetRoles } = await this.resolveFormatWb(userId, quote);
+    const { wb: formatWb, formatAdi, formatKaynak, sheetRoles } = await this.resolveFormatWb(k, quote);
     const sheetsArr = Array.isArray(quote.sheets) ? (quote.sheets as any[]) : [];
     const sonuc = await buildExportWorkbook({
       originalFile: Buffer.from(quote.originalFile),
@@ -580,8 +590,8 @@ export class QuotesService {
   // eski kayitli override'lar ciktiKur uzerinden islenmeye devam eder.
 
   /** .xlsx uret + REV artir + arsivle (T10). */
-  async exportXlsx(userId: string, id: string, dil?: string): Promise<{ buffer: Buffer; filename: string; rev: number; quoteNo: string; uyari?: string; ozet?: string }> {
-    const quote = await this.quoteGetir(userId, id);
+  async exportXlsx(k: Kimlik, id: string, dil?: string): Promise<{ buffer: Buffer; filename: string; rev: number; quoteNo: string; uyari?: string; ozet?: string }> {
+    const quote = await this.quoteGetir(k, id);
     // 13.08: parametre yoksa teklifin KAYITLI dili konusur (bayat istemci
     // korumasi — bkz. exportDili).
     dil = this.exportDili(quote, dil);
@@ -594,13 +604,15 @@ export class QuotesService {
     if (!quoteNo) {
       const yil = new Date().getFullYear();
       const sayac = await this.prisma.quote.count({
-        where: { userId, quoteNo: { not: null } } as any,
+        // Teklif no sayaci FIRMA basina — ayni firmanin iki uyesi ortak
+        // numara dizisini paylasir (MP-2026-001, -002 ...).
+        where: { firmaId: k.firmaId, quoteNo: { not: null } } as any,
       });
       quoteNo = `MP-${yil}-${String(sayac + 1).padStart(3, '0')}`;
     }
     const yeniRev = (quote.rev ?? 0) + 1;
 
-    const sonuc = await this.ciktiKur(userId, { ...quote, quoteNo }, yeniRev, dil);
+    const sonuc = await this.ciktiKur(k, { ...quote, quoteNo }, yeniRev, dil);
     const out = await sonuc.wb.xlsx.writeBuffer();
     const buffer = Buffer.from(out);
 
@@ -653,8 +665,8 @@ export class QuotesService {
    * kapsamında SİLİNDİ (369 satır); iki export yolu da `standartSayfaYaz`
    * motorunu kullanıyor (KF7).
    */
-  async exportPricedXlsx(userId: string, id: string, dil?: string): Promise<{ buffer: Buffer; filename: string; uyari?: string; ozet?: string }> {
-    const quote = await this.quoteGetir(userId, id);
+  async exportPricedXlsx(k: Kimlik, id: string, dil?: string): Promise<{ buffer: Buffer; filename: string; uyari?: string; ozet?: string }> {
+    const quote = await this.quoteGetir(k, id);
     const sheetsArr = Array.isArray(quote.sheets) ? (quote.sheets as any[]) : [];
     if (sheetsArr.length === 0) {
       throw new BadRequestException('Bu teklifte sayfa verisi yok — keşif Excel dosyasını yükleyip teklifi yeniden kaydedin.');
@@ -689,8 +701,8 @@ export class QuotesService {
   }
 
   /** T10 arsivi: uretilmis revizyonlar. */
-  async listExports(userId: string, id: string) {
-    await this.quoteGetir(userId, id);
+  async listExports(k: Kimlik, id: string) {
+    await this.quoteGetir(k, id);
     return (this.prisma as any).quoteExport.findMany({
       where: { quoteId: id },
       select: { id: true, rev: true, fileName: true, createdAt: true },
@@ -698,8 +710,8 @@ export class QuotesService {
     });
   }
 
-  async downloadExport(userId: string, id: string, rev: number): Promise<{ buffer: Buffer; filename: string }> {
-    await this.quoteGetir(userId, id);
+  async downloadExport(k: Kimlik, id: string, rev: number): Promise<{ buffer: Buffer; filename: string }> {
+    await this.quoteGetir(k, id);
     const e = await (this.prisma as any).quoteExport.findFirst({ where: { quoteId: id, rev } });
     if (!e) throw new NotFoundException('Revizyon bulunamadi');
     return { buffer: Buffer.from(e.xlsxBytes), filename: e.fileName };

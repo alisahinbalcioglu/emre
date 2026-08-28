@@ -117,7 +117,7 @@ async function run() {
     const fx: any = { getRates: async () => ({ usdTry: 47, eurTry: 54, usdTryBuying: 47, eurTryBuying: 54, source: 'f', date: '' }) };
     const qsvc = new QuotesService(prisma, fx, sahteCeviri as any);
     let hata = ''; let sonuc: any = null;
-    try { sonuc = await qsvc.exportPricedXlsx('u1', 'q1'); } catch (e: any) { hata = e?.message ?? 'hata'; }
+    try { sonuc = await qsvc.exportPricedXlsx({ userId: 'u1', firmaId: 'f-u1' } as any, 'q1'); } catch (e: any) { hata = e?.message ?? 'hata'; }
     check('KH1 hangar (shared-formula) export-priced HATASIZ + dosya üretildi',
       hata === '' && (sonuc?.buffer?.length ?? 0) > 5000 && !sonuc?.uyari,
       hata || `boyut=${sonuc?.buffer?.length} uyari=${sonuc?.uyari}`);
@@ -150,7 +150,7 @@ async function run() {
     const fx: any = { getRates: async () => ({ usdTry: 47, eurTry: 54, usdTryBuying: 47, eurTryBuying: 54, source: 'f', date: '' }) };
     const qsvc = new QuotesService(prisma, fx, sahteCeviri as any);
     let hata = ''; let sonuc: any = null;
-    try { sonuc = await qsvc.exportPricedXlsx('u1', 'q9'); } catch (e: any) { hata = e?.message ?? 'hata'; }
+    try { sonuc = await qsvc.exportPricedXlsx({ userId: 'u1', firmaId: 'f-u1' } as any, 'q9'); } catch (e: any) { hata = e?.message ?? 'hata'; }
     check('KH11 çapraz-kolon shared-formula (master H110 / clone I110) export HATASIZ',
       hata === '' && (sonuc?.buffer?.length ?? 0) > 10000,
       hata || `boyut=${sonuc?.buffer?.length}`);
@@ -223,7 +223,7 @@ async function run() {
       $transaction: async (arg: any) => (Array.isArray(arg) ? Promise.all(arg) : arg(prismaQ)),
     };
     const qsvc = new QuotesService(prismaQ, fx, sahteCeviri as any);
-    const priced = await qsvc.exportPricedXlsx('u1', 'q1');
+    const priced = await qsvc.exportPricedXlsx({ userId: 'u1', firmaId: 'f-u1' } as any, 'q1');
     check('ALTIN Z4: fiyatlandırılmış export hatasız + self-check temiz',
       priced.buffer.length > 5000 && !priced.uyari, `uyari=${priced.uyari}`);
     // PANO 21a: gorunur self-check ozeti ("N değer aktarıldı ✓ · … fiyatsız")

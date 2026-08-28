@@ -246,6 +246,14 @@ const SUITES: Suite[] = [
   //      A0 assertleri ayrica B'nin SetNull'unu canli DB'de olcer — FK geri
   //      Cascade'e donerse ekran metni yanlis vaat etmeden ONCE burasi kizarir.
   { ad: 'Silme etkisi sayım uçları + ön kontrol (A-1)', script: 'test:a1', zincir: 'Z1', db: true },
+  // ── 28.08.2026 — ÖK2 FIRMA IZOLASYONU (ADIM 1). DB GEREKTIRIR: 2 firma +
+  //    3 kullanici + teklif olusturulup silinir. Teklif suzgecleri 28.08'de
+  //    userId -> firmaId'ye gecti; o degisiklik BUGUN gorunmez (her firmada
+  //    tek kullanici var), yani yanlis yazilsaydi hicbir mevcut test
+  //    kirilmazdi. Bu paket iki uyeli firmayi ELLE kurup olcer:
+  //    ayni firma GORUR · baska firma GORMEZ/ACAMAZ/SILEMEZ/REVIZE EDEMEZ ·
+  //    firmasiz kimlik 403 (Prisma'da undefined kosulu SESSIZCE duserdi).
+  { ad: 'Firma izolasyonu (ÖK2)', script: 'test:firma', zincir: 'Z1', db: true },
   // ── 04.08.2026 — UÇ GÜVENLİĞİ (K1/K2/K4). DB GEREKTİRMEZ: dekoratör
   //    metadata'sı + sahte ExecutionContext + sahte servis casusu ile ölçülür,
   //    gerçek veriye dokunmaz → `db` bayrağı YOK, her koşumda çalışır.

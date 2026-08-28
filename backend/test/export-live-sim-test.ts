@@ -157,7 +157,7 @@ async function run() {
   const svc = new QuotesService(prisma, fx, sahteCeviri as any);
 
   // ── CANLI YOL: exportXlsx (ilk aktarim) ─────────────────────────────
-  const r1 = await svc.exportXlsx('u1', 'q1');
+  const r1 = await svc.exportXlsx({ userId: 'u1', firmaId: 'f-u1' } as any, 'q1');
   check('SIM-1 ilk aktarim: quoteNo atandi + Rev.01', /^MP-\d{4}-/.test(r1.quoteNo) && r1.rev === 1,
     `no=${r1.quoteNo} rev=${r1.rev}`);
 
@@ -232,14 +232,14 @@ async function run() {
     /47,2.*TCMB.*21\.07\.2026/.test(String(icm.getCell('B9').value)), String(icm.getCell('B9').value));
 
   // T10: ikinci aktarim — no sabit, rev artar, arsiv
-  const r2 = await svc.exportXlsx('u1', 'q1');
+  const r2 = await svc.exportXlsx({ userId: 'u1', firmaId: 'f-u1' } as any, 'q1');
   check('SIM-14 T10: ikinci aktarim ayni no + Rev.02 + arsiv 2 kayit',
     r2.quoteNo === r1.quoteNo && r2.rev === 2 && exportlar.length === 2,
     `no=${r2.quoteNo} rev=${r2.rev} arsiv=${exportlar.length}`);
 
   // T13/T14: override — kapak basligi degisir, format bytes DEGISMEZ
   quote.exportOverrides = { KAPAK: { B12: { value: 'Sn Turhan Bey;', manual: true } } };
-  const r3 = await svc.exportXlsx('u1', 'q1');
+  const r3 = await svc.exportXlsx({ userId: 'u1', firmaId: 'f-u1' } as any, 'q1');
   const out3 = new ExcelJS.Workbook();
   await out3.xlsx.load(r3.buffer as any);
   check('SIM-15 T14: manuel override ciktiya islendi',
@@ -254,7 +254,7 @@ async function run() {
   //    musterinin orijinal dosyasi + fiyatlar, teklif formati YOK, rev SABIT) ──
   {
     const revOnce = quote.rev;
-    const rp = await svc.exportPricedXlsx('u1', 'q1');
+    const rp = await svc.exportPricedXlsx({ userId: 'u1', firmaId: 'f-u1' } as any, 'q1');
     const op = new ExcelJS.Workbook();
     await op.xlsx.load(rp.buffer as any);
     // EX1 (kullanici karari 30.07): fiyatli cikti artik MUSTERININ SABLONU

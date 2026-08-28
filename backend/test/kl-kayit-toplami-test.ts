@@ -74,7 +74,7 @@ async function main() {
   const MIKTAR = 3;
   const KAR = 10; // ekranda ZATEN uygulanmis kar yuzdesi
 
-  await service.create('kullanici-1', {
+  await service.create({ userId: 'kullanici-1', firmaId: 'firma-1' } as any, {
     title: 'KL P1-b vakasi',
     items: [{
       materialName: 'Su ve Yangın Tesisat Borusu 1" DN25',
@@ -119,7 +119,7 @@ async function main() {
   // yeniden turetilmez (KG9 dersi: musterinin verisi ustundur).
   yakalanan = [];
   const FE_TOPLAM = 1234.5; // ekranin hucresinde duran, carpimla ortusmeyen deger
-  await service.create('kullanici-1', {
+  await service.create({ userId: 'kullanici-1', firmaId: 'firma-1' } as any, {
     title: 'KL P1-b · FE toplami',
     items: [{
       materialName: 'Elle duzeltilmis toplam',
