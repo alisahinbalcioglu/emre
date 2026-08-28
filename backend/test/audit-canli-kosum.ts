@@ -53,9 +53,10 @@ async function main() {
   // ── Ortam: kutuphane sahibi + markalar ─────────────────────────────
   const cayirova = await prisma.brand.findFirst({ where: { name: { contains: 'ayırova', mode: 'insensitive' } } });
   if (!cayirova) throw new Error('Cayirova markasi yok');
-  const libRow = await prisma.userLibrary.findFirst({ where: { brandId: cayirova.id }, select: { userId: true } });
+  const libRow = await prisma.userLibrary.findFirst({ where: { brandId: cayirova.id }, select: { userId: true, firmaId: true } });
   if (!libRow) throw new Error('Cayirova kutuphanesi bos');
   const userId = libRow.userId;
+  const firmaId = libRow.firmaId; // ADIM 1: kutuphane suzgeci firmaId okur
   log(`ORTAM: userId=${userId} cayirova=${cayirova.id}`);
 
   // ── DUYAR verisini GERCEK import yolundan kur (idempotent) ─────────
@@ -71,7 +72,7 @@ async function main() {
   if (duyarLib === 0) {
     const pl = await prisma.priceList.findFirst({ where: { brandId: duyar.id } });
     if (!pl) throw new Error('DUYAR fiyat listesi yok');
-    const aktarma = await library.importPriceList(userId, { brandId: duyar.id, priceListId: pl.id });
+    const aktarma = await library.importPriceList({ userId, firmaId: firmaId! } as any, { brandId: duyar.id, priceListId: pl.id });
     log(`DUYAR kutuphaneye aktarim: ${JSON.stringify(aktarma).slice(0, 200)}`);
   }
   log(`DUYAR kutuphane satiri: ${await prisma.userLibrary.count({ where: { userId, brandId: duyar.id } })}`);

@@ -163,7 +163,11 @@ model UserBrandLibrary {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([userId, brandId])
+  // ADIM 1 (28.08): tekillik KISI'den FIRMA'ya tasindi. Kutuphane firmaya
+  // ait; tekillik kisi bazli kalsaydi ayni firmanin iki uyesi AYNI marka
+  // icin iki sheet kaydi acar, firma gorunumu markayi CIFT gosterirdi.
+  // Bugun cakisma imkansiz (her firmada tek uye) — gecis simdi guvenli.
+  @@unique([firmaId, brandId])
   @@index([userId])
 
   @@index([firmaId])
@@ -220,10 +224,15 @@ model PriceList {
   // kutuphaneye aktarim kaynagi ownerUserId=null suzer; sahibinden baskasi
   // (admin dahil) icerigini okuyamaz.
   ownerUserId   String?
+  // ADIM 1 (28.08): ownerUserId'nin FIRMA ikizi. Kisisel liste artik firmanin;
+  // ayni firmanin uyesi de okuyabilmeli (kutuphane firmaya ait). null = havuz.
+  ownerFirmaId  String?
   createdAt     DateTime        @default(now())
   items         MaterialPrice[]
   userLibraries UserLibrary[]
   productIndex  ProductIndex[]
+
+  @@index([ownerFirmaId])
 }
 
 // ════════════════════════════════════════════════════════════════════

@@ -48,17 +48,21 @@ export class BrandsService {
   }
 
   // Bir fiyat listesinin malzemeleri (public — havuz listeleri icin).
-  // KISISEL liste korumasi: ownerUserId dolu listeyi YALNIZ sahibi okuyabilir.
+  // KISISEL liste korumasi: ownerUserId dolu listeyi YALNIZ SAHIP FIRMA okur
+  // (ADIM 1, 28.08: kutuphane firmaya ait — ayni firmanin baska uyesi de acar).
   // Manuel satirlarin fiyatlari kullanicinin ticari verisidir; liste id'si
   // bilinse dahi baskasina (admin dahil) ACILMAZ — NotFound doner ki ucun
   // varligi bile sizmasin (requesterUserId JWT'den gelir, bkz. controller).
-  async getPriceListMaterials(priceListId: string, requesterUserId?: string) {
+  async getPriceListMaterials(priceListId: string, requesterFirmaId?: string) {
     const pl = await this.prisma.priceList.findUnique({
       where: { id: priceListId },
       include: { brand: true },
     });
     if (!pl) throw new NotFoundException('Liste bulunamadi');
-    if (pl.ownerUserId && pl.ownerUserId !== requesterUserId) {
+    // ⚠ KAPI YONU: "kisisel mi" olcusu ownerUserId'de KALIR; erisim FIRMAYA
+    // bakar. Backfill'siz bir satir (ownerFirmaId bos) boylece REDDE duser,
+    // acmaya degil — sessiz capraz-tenant sizinti yerine 404.
+    if (pl.ownerUserId && (pl as any).ownerFirmaId !== requesterFirmaId) {
       throw new NotFoundException('Liste bulunamadi');
     }
 

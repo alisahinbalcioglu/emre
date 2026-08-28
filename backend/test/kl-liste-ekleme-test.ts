@@ -53,9 +53,12 @@ async function main() {
   const labor = new LaborFirmsService(prisma as any, matching);
   const library = new LibraryService(prisma as any, terminology);
 
-  const user = await prisma.user.findFirst({ where: { role: 'user' }, select: { id: true } });
+  const user = await prisma.user.findFirst({ where: { role: 'user' }, select: { id: true, firmaId: true } });
   if (!user) throw new Error('Test kullanıcısı yok');
   const uid = user.id;
+  // ADIM 1 (firma): kutuphane suzgecleri firmaId okur; kimlik iki alan tasir.
+  if (!user.firmaId) { console.log('ON KOSUL YOK — kullanicinin firmasi yok (backfill kosmamis)'); process.exit(2); }
+  const kimlik = { userId: uid, firmaId: user.firmaId };
 
   let firmaId = ''; let brandId = '';
   try {
@@ -135,17 +138,17 @@ async function main() {
       `${r5.sheet.rowData.filter((r: any) => r._isDataRow).length}`);
 
     // ═══════════ KÜTÜPHANE MALZEME (KL4, KL7-malzeme) ═══════════
-    const mb = await library.createManualBrand(uid, { brandName: `__KL_MARKA_${Date.now()}`, discipline: 'mechanical', rows: [
+    const mb = await library.createManualBrand(kimlik, { brandName: `__KL_MARKA_${Date.now()}`, discipline: 'mechanical', rows: [
       { ad: 'DN 20 PPR-C Boru', birim: 'metre', price: 100 },
       { ad: 'DN 25 PPR-C Boru', birim: 'metre', price: 120 },
     ] } as any);
     brandId = (mb as any).brandId ?? (mb as any).brand?.id;
 
     // KL4: mevcut markaya ilave malzeme (find-or-create) → 3 malzeme
-    await library.createManualBrand(uid, { brandName: (mb as any).brandName ?? `__KL_MARKA`, discipline: 'mechanical', rows: [
+    await library.createManualBrand(kimlik, { brandName: (mb as any).brandName ?? `__KL_MARKA`, discipline: 'mechanical', rows: [
       { ad: 'DN 32 PPR-C Boru', birim: 'metre', price: 150 },
     ] } as any).catch(() => {});
-    const bs: any = await library.getBrandSheets(uid, brandId);
+    const bs: any = await library.getBrandSheets(kimlik, brandId);
     const libRows = (bs.sheets?.sheets?.[0]?.rowData ?? bs.sheet?.rowData ?? []).filter((r: any) => r._isDataRow);
     check('KL4 kütüphane: ilave malzeme kalıcı (≥3)', libRows.length >= 3, `${libRows.length}`);
     check('KL7 malzeme=işçilik: aynı round-trip davranışı (adlar korunur)',

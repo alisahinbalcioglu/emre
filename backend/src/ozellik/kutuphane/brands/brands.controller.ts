@@ -23,10 +23,10 @@ export class BrandsController {
   searchMaterials(@Query('q') q: string) { return this.brandsService.searchMaterials(q); }
 
   // Fiyat listesi malzemeleri (literal "price-lists" MUST be before :id).
-  // Kimlik servise iner: KISISEL (ownerUserId dolu) listeyi yalniz sahibi okur.
+  // Kimlik servise iner: KISISEL listeyi yalniz SAHIP FIRMA okur (ADIM 1).
   @Get('price-lists/:listId/materials')
   getPriceListMaterials(@CurrentUser() user: any, @Param('listId') listId: string) {
-    return this.brandsService.getPriceListMaterials(listId, user?.id);
+    return this.brandsService.getPriceListMaterials(listId, user?.firmaId);
   }
 
   // Parameterized routes AFTER literals

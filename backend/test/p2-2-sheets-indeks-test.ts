@@ -54,9 +54,12 @@ async function main() {
   const admin = new AdminService(prisma as any, undefined as any, terminology);
   const library = new LibraryService(prisma as any, terminology);
 
-  const user = await prisma.user.findFirst({ where: { role: 'user' }, select: { id: true } });
+  const user = await prisma.user.findFirst({ where: { role: 'user' }, select: { id: true, firmaId: true } });
   if (!user) { console.log('ON KOSUL YOK — test kullanicisi yok'); process.exit(2); }
   const uid = user.id;
+  // ADIM 1 (firma): kutuphane suzgecleri firmaId okur; kimlik iki alan tasir.
+  if (!user.firmaId) { console.log('ON KOSUL YOK — kullanicinin firmasi yok (backfill kosmamis)'); process.exit(2); }
+  const kimlik = { userId: uid, firmaId: user.firmaId };
 
   let brandId = '';
   try {
@@ -125,7 +128,7 @@ async function main() {
     check('I3-kurgu indeks sifirlandi (P2-2 oncesi durum)', idxSifir === 0, `${idxSifir} satir`);
 
     // Legacy aktarim (indeks YOK → legacy dal, satirlar productIndexId'siz)
-    await library.importPriceList(uid, { brandId, priceListId: liste2.id } as any);
+    await library.importPriceList(kimlik, { brandId, priceListId: liste2.id } as any);
     const kut1 = await prisma.userLibrary.count({
       where: { userId: uid, brandId, sourcePriceListId: liste2.id },
     });
@@ -141,7 +144,7 @@ async function main() {
     check('I3b liste artik indeksli', idxLegacy > 0, `${idxLegacy} indeks satiri`);
 
     // IKINCI aktarim — MUKERRER OLMAMALI
-    await library.importPriceList(uid, { brandId, priceListId: liste2.id } as any);
+    await library.importPriceList(kimlik, { brandId, priceListId: liste2.id } as any);
     const kut2 = await prisma.userLibrary.count({
       where: { userId: uid, brandId, sourcePriceListId: liste2.id },
     });

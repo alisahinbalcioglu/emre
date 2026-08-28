@@ -72,7 +72,8 @@ async function kaydet(mevcut: any, dirtyRows: any[]) {
   // rebuildUserBrandLibrary gercek DB ister — bu test onu DEGIL, yazma
   // kararlarini olcuyor. Etkisizlestirilir ve bu ACIKCA soylenir.
   (svc as any).rebuildUserBrandLibrary = async () => undefined;
-  const sonuc = await svc.saveBrandSheets('u1', 'b1', dirtyRows);
+  // ADIM 1 (firma): kimlik {userId, firmaId} — suzgec firmaId, yazar userId.
+  const sonuc = await svc.saveBrandSheets({ userId: 'u1', firmaId: 'f1' } as any, 'b1', dirtyRows);
   return { sonuc, updates: sahte.updates, materialUpdates: sahte.materialUpdates };
 }
 

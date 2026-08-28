@@ -25,6 +25,7 @@ import { PrismaClient } from '@prisma/client';
 import { QuotesService } from '../src/ozellik/teklif/quotes/quotes.service';
 import { kimlikCoz } from '../src/altyapi/auth/kimlik';
 import { QuoteFormatsService } from '../src/ozellik/cikti/quote-formats/quote-formats.service';
+import { LibraryService } from '../src/ozellik/kutuphane/library/library.service';
 
 const prisma = new PrismaClient();
 const fakeFx: any = { getRates: async () => ({ usdTry: 40, eurTry: 45 }) };
@@ -54,8 +55,8 @@ async function main() {
   }
 
   const svc = new QuotesService(prisma as any, fakeFx, sahteCeviri);
-  const temizlik: { firma: string[]; user: string[]; quote: string[]; format: string[] } =
-    { firma: [], user: [], quote: [], format: [] };
+  const temizlik: { firma: string[]; user: string[]; quote: string[]; format: string[]; marka: string[] } =
+    { firma: [], user: [], quote: [], format: [], marka: [] };
 
   try {
     // ── KURULUM: F1 (iki uyeli) + F2 (tek uyeli) ───────────────────────
@@ -176,6 +177,54 @@ async function main() {
     const fmtAd = await (prisma as any).quoteFormat.findUnique({ where: { id: fmt.id }, select: { name: true } });
     sina('F5b ⭐', 'ayni firmanin BASKA uyesi formati duzenleyebilir',
       uyeAdDegistirebildi && fmtAd?.name === `${damga}-uye-yeniad`, `ad=${fmtAd?.name}`);
+
+    // ── L1-L4: KUTUPHANE de firmaya ait (28.08 ucuncu dilim) ───────────
+    const libSvc = new LibraryService(prisma as any, { learnFamilyAliases: async () => undefined } as any);
+    await libSvc.createManualBrand(K1, {
+      brandName: `${damga}-marka`, discipline: 'mechanical',
+      rows: [{ ad: 'Test Borusu', price: 100 }],
+    } as any);
+    const marka = await prisma.brand.findFirst({ where: { name: `${damga}-marka` } });
+    if (marka) temizlik.marka.push(marka.id);
+
+    const kutupU2 = await libSvc.findAll(K2);
+    sina('L1 ⭐', 'ayni firmanin uyesi kutuphane satirini GORUR',
+      kutupU2.some((r: any) => r.brandId === marka?.id), `u2 kutuphane=${kutupU2.length} satir`);
+
+    const kutupU3 = await libSvc.findAll(K3);
+    sina('L2 ⭐', 'baska firma kutuphane satirini GORMEZ',
+      !kutupU3.some((r: any) => r.brandId === marka?.id), `u3 kutuphane=${kutupU3.length} satir`);
+
+    const kisiselListe = await prisma.priceList.findFirst({ where: { brandId: marka?.id ?? '' } });
+    sina('L3 ⭐', 'kutuphane akisinin actigi liste FIRMA sahipligi tasir',
+      (kisiselListe as any)?.ownerFirmaId === f1.id,
+      `ownerFirmaId=${(kisiselListe as any)?.ownerFirmaId?.slice(0, 8)} ownerUserId=${(kisiselListe as any)?.ownerUserId?.slice(0, 8)}`);
+
+    let yabanciAktarabildi = true;
+    try {
+      await libSvc.importPriceList(K3, { brandId: marka?.id ?? '', priceListId: kisiselListe?.id ?? '' } as any);
+    } catch { yabanciAktarabildi = false; }
+    sina('L4 ⭐', 'baska firma bu kisisel listeyi kendi kutuphanesine AKTARAMAZ',
+      !yabanciAktarabildi, `aktarabildi=${yabanciAktarabildi}`);
+
+    // ⚠ try/catch SART: servis bos sonucta NotFound FIRLATIR; yakalanmazsa
+    //    test COKER ve kapi kirmizi yanmak yerine yigin izi basar (bir
+    //    mutasyon tam boyle kacmisti).
+    let sheetsU2: any = null;
+    try { sheetsU2 = await libSvc.getBrandSheets(K2, marka?.id ?? ''); } catch { sheetsU2 = null; }
+    sina('L5 ⭐', 'ayni firmanin uyesi marka sayfalarini ACABILIR',
+      !!sheetsU2 && !!sheetsU2.sheets, `sheets=${!!sheetsU2?.sheets}`);
+
+    // ── L6 ⭐ — AYIRT EDICI VAKA (format diliminde ogrenilen ders).
+    //    L4 "baska firma aktaramaz" der ama baska firma zaten baska KISI;
+    //    sahiplik kapisi yanlislikla kisiye baglansa da L4 yesil kalirdi.
+    //    Ayirt eden: AYNI firma, FARKLI kisi — o da aktarabilmeli.
+    let uyeAktarabildi = true;
+    try {
+      await libSvc.importPriceList(K2, { brandId: marka?.id ?? '', priceListId: kisiselListe?.id ?? '' } as any);
+    } catch { uyeAktarabildi = false; }
+    sina('L6 ⭐', 'ayni firmanin BASKA uyesi kisisel listeyi aktarabilir (sahiplik FIRMA)',
+      uyeAktarabildi, `aktarabildi=${uyeAktarabildi}`);
   } finally {
     for (const id of temizlik.quote) {
       await prisma.quoteItem.deleteMany({ where: { quoteId: id } }).catch(() => {});
@@ -185,6 +234,14 @@ async function main() {
     for (const id of temizlik.format) await (prisma as any).quoteFormat.delete({ where: { id } }).catch(() => {});
     await (prisma as any).quoteFormat.deleteMany({ where: { userId: { in: temizlik.user } } }).catch(() => {});
     for (const id of temizlik.user) await prisma.user.delete({ where: { id } }).catch(() => {});
+    for (const id of temizlik.marka) {
+      await prisma.userLibrary.deleteMany({ where: { brandId: id } }).catch(() => {});
+      await (prisma as any).productIndex.deleteMany({ where: { brandId: id } }).catch(() => {});
+      await prisma.userBrandLibrary.deleteMany({ where: { brandId: id } }).catch(() => {});
+      await (prisma as any).libraryList.deleteMany({ where: { brandId: id } }).catch(() => {});
+      await prisma.priceList.deleteMany({ where: { brandId: id } }).catch(() => {});
+      await prisma.brand.delete({ where: { id } }).catch(() => {});
+    }
     for (const id of temizlik.firma) await (prisma as any).firma.delete({ where: { id } }).catch(() => {});
     await prisma.$disconnect();
   }

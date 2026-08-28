@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
+import { Kimlik } from '../../../altyapi/auth/kimlik';
 import { CreateLibraryItemDto } from './dto/create-library-item.dto';
 import { UpdateLibraryItemDto } from './dto/update-library-item.dto';
 import { ImportPriceListDto } from './dto/import-price-list.dto';
@@ -21,9 +22,9 @@ export class LibraryService {
     private terminology: TerminologyService,
   ) {}
 
-  async findAll(userId: string) {
+  async findAll(k: Kimlik) {
     return this.prisma.userLibrary.findMany({
-      where: { userId },
+      where: { firmaId: k.firmaId },
       include: {
         material: true,
         brand: true,
@@ -39,9 +40,9 @@ export class LibraryService {
 
   /** Kullanicinin kutuphanesindeki DISTINCT markalar — teklif grid'inin
    *  Marka dropdown kaynagi (Kutuphanem izolasyonu). Global havuz DEGIL. */
-  async findLibraryBrands(userId: string) {
+  async findLibraryBrands(k: Kimlik) {
     const rows = await this.prisma.userLibrary.findMany({
-      where: { userId },
+      where: { firmaId: k.firmaId },
       distinct: ['brandId'],
       select: {
         brand: { select: { id: true, name: true, discipline: true, logoUrl: true } },
@@ -52,7 +53,7 @@ export class LibraryService {
   }
 
 
-  async create(userId: string, dto: CreateLibraryItemDto) {
+  async create(k: Kimlik, dto: CreateLibraryItemDto) {
     if (!dto.materialId && !dto.materialName) {
       throw new BadRequestException('Either materialId or materialName is required');
     }
@@ -66,7 +67,8 @@ export class LibraryService {
 
     return this.prisma.userLibrary.create({
       data: {
-        userId,
+        userId: k.userId,
+        firmaId: k.firmaId,
         materialId: dto.materialId || null,
         materialName: resolvedName,
         brandId: dto.brandId,
@@ -84,7 +86,7 @@ export class LibraryService {
    *
    * Admin ice-aktarim ile AYNI indeksleme sozlesmesi (admin.service save-bulk):
    *  - Her satir buildProductIndex ile 11 kolondan indekslenir → ProductIndex
-   *    (ownerUserId=userId → kullanicinin kendi manuel satiri, havuz DEGIL).
+   *    (ownerUserId=k.userId → kullanicinin kendi manuel satiri, havuz DEGIL).
    *  - Baglanti/Boy/Kod/Not TEK gercek ProductIndex'te yasar → kutuphane gorunumu
    *    (rebuildUserBrandLibrary → product join) bu alanlari cizer.
    *  - UserLibrary.productIndexId indekse baglanir → v2 motor bu markayi "indeksli"
@@ -92,7 +94,7 @@ export class LibraryService {
    *  - KÜTÜPHANE=HAFIZA: sozluksuz ama anlamli-adli urunler self-family olur ve
    *    learnFamilyAliases ile (PER-USER) ogrenilir.
    */
-  async createManualBrand(userId: string, dto: CreateManualBrandDto) {
+  async createManualBrand(k: Kimlik, dto: CreateManualBrandDto) {
     const brandName = dto.brandName?.trim();
     if (!brandName) throw new BadRequestException('Marka adi zorunlu');
 
@@ -120,14 +122,20 @@ export class LibraryService {
     // ownerUserId: liste KISISELDIR — havuz/admin gorunumleri null suzer
     // (ProductIndex.ownerUserId sozlesmesinin liste-duzeyi ikizi).
     const priceList = await this.prisma.priceList.create({
-      data: { name: `${brandName} — Manuel Liste`, brandId: brand.id, ownerUserId: userId },
+      data: {
+        name: `${brandName} — Manuel Liste`,
+        brandId: brand.id,
+        // ownerUserId = ACAN kisi (iz), ownerFirmaId = SAHIP (suzgec).
+        ownerUserId: k.userId,
+        ownerFirmaId: k.firmaId,
+      },
     });
 
-    const sonuc = await this.insertLibraryRows(userId, brand.id, priceList.id, null, rows, 0);
+    const sonuc = await this.insertLibraryRows(k, brand.id, priceList.id, null, rows, 0);
 
-    await this.rebuildUserBrandLibrary(userId, brand.id);
+    await this.rebuildUserBrandLibrary(k, brand.id);
 
-    console.log(`[ManualBrand] "${brandName}" (${discipline}): ${sonuc.created} satir, ${sonuc.belirsiz} belirsiz, ${sonuc.ogrenilenAile} self-family (userId=${userId})`);
+    console.log(`[ManualBrand] "${brandName}" (${discipline}): ${sonuc.created} satir, ${sonuc.belirsiz} belirsiz, ${sonuc.ogrenilenAile} self-family (userId=${k.userId})`);
 
     return {
       brandId: brand.id,
@@ -145,7 +153,7 @@ export class LibraryService {
    * UserLibrary satiri indekse baglanir, self-family adlar PER-USER ogrenilir.
    */
   private async insertLibraryRows(
-    userId: string,
+    k: Kimlik,
     brandId: string,
     priceListId: string,
     libraryListId: string | null,
@@ -207,7 +215,8 @@ export class LibraryService {
         data: {
           brandId,
           priceListId,
-          ownerUserId: userId, // ← kullanicinin kendi manuel satiri
+          ownerUserId: k.userId,   // ← ACAN kisi (iz)
+          ownerFirmaId: k.firmaId, // ← SAHIP firma (suzgec; havuz = null)
           kategori: pcols.kategori, ad: pcols.ad, cins: pcols.cins,
           baglanti: pcols.baglanti, capRaw: pcols.cap, boyMm,
           birim: pcols.birim, price, currency: pcols.paraBirimi ?? 'TRY',
@@ -224,7 +233,8 @@ export class LibraryService {
 
       await this.prisma.userLibrary.create({
         data: {
-          userId,
+          userId: k.userId,
+          firmaId: k.firmaId,
           brandId,
           sourcePriceListId: priceListId,
           libraryListId,
@@ -251,15 +261,15 @@ export class LibraryService {
     if (ogrenilecekAileler.size > 0) {
       await this.terminology.learnFamilyAliases(
         Array.from(ogrenilecekAileler, ([adBucket, canonical]) => ({ adBucket, canonical })),
-        userId,
+        k.userId,
       ).catch((e) => console.warn('[ManualBrand] aile ogrenme atlandi:', (e as Error).message));
     }
 
     return { created, belirsiz: belirsizSayisi, ogrenilenAile: ogrenilecekAileler.size };
   }
 
-  async update(userId: string, id: string, dto: UpdateLibraryItemDto) {
-    const item = await this.prisma.userLibrary.findFirst({ where: { id, userId } });
+  async update(k: Kimlik, id: string, dto: UpdateLibraryItemDto) {
+    const item = await this.prisma.userLibrary.findFirst({ where: { id, firmaId: k.firmaId } });
     if (!item) throw new NotFoundException('Library item not found');
 
     const data: Record<string, unknown> = {};
@@ -275,32 +285,32 @@ export class LibraryService {
     });
   }
 
-  async bulkUpdateDiscount(userId: string, dto: BulkDiscountDto) {
+  async bulkUpdateDiscount(k: Kimlik, dto: BulkDiscountDto) {
     const result = await this.prisma.userLibrary.updateMany({
-      where: { userId, brandId: dto.brandId },
+      where: { firmaId: k.firmaId, brandId: dto.brandId },
       data: { discountRate: dto.discountRate },
     });
     return { updated: result.count, brandId: dto.brandId, discountRate: dto.discountRate };
   }
 
-  async bulkUpdateItems(userId: string, dto: BulkUpdateItemsDto) {
+  async bulkUpdateItems(k: Kimlik, dto: BulkUpdateItemsDto) {
     const result = await this.prisma.userLibrary.updateMany({
       where: {
         id: { in: dto.ids },
-        userId,
+        firmaId: k.firmaId,
       },
       data: { discountRate: dto.discountRate },
     });
     return { updated: result.count, discountRate: dto.discountRate };
   }
 
-  async remove(userId: string, id: string) {
-    const item = await this.prisma.userLibrary.findFirst({ where: { id, userId } });
+  async remove(k: Kimlik, id: string) {
+    const item = await this.prisma.userLibrary.findFirst({ where: { id, firmaId: k.firmaId } });
     if (!item) throw new NotFoundException('Library item not found');
     return this.prisma.userLibrary.delete({ where: { id } });
   }
 
-  async importPriceList(userId: string, dto: ImportPriceListDto) {
+  async importPriceList(k: Kimlik, dto: ImportPriceListDto) {
     const priceList = await this.prisma.priceList.findUnique({
       where: { id: dto.priceListId },
       include: { brand: true },
@@ -313,7 +323,12 @@ export class LibraryService {
     // bilinse dahi aktarilamaz — fiyatlari onun ticari verisidir. NotFound
     // (Forbidden degil): ucun varligi bile sizdirilmaz. Kendi kisisel listesi
     // serbest kalir (zaten kutuphanesindedir, idempotent aktarim zararsiz).
-    if (priceList.ownerUserId && priceList.ownerUserId !== userId) {
+    // ADIM 1: kisisel liste artik FIRMANIN — ayni firmanin baska uyesi de
+    // okuyabilmeli. Karsilastirma ownerUserId'den ownerFirmaId'ye gecti.
+    // ⚠ KAPI YONU: "kisisel mi" olcusu ownerUserId'de KALIR (backfill'siz bir
+    // satir ownerFirmaId'si BOS olabilir); erisim ise FIRMAYA bakar. Boylece
+    // eksik backfill REDDE duser, ACMAYA degil — sessiz sizinti yerine 404.
+    if (priceList.ownerUserId && (priceList as any).ownerFirmaId !== k.firmaId) {
       throw new NotFoundException('Fiyat listesi bulunamadi');
     }
 
@@ -343,12 +358,12 @@ export class LibraryService {
       // yolundan gider. Geriye donuk baglama ayri bir karar/tur.
       const legacySatir = await this.prisma.userLibrary.count({
         where: {
-          userId, brandId: dto.brandId, sourcePriceListId: dto.priceListId,
+          firmaId: k.firmaId, brandId: dto.brandId, sourcePriceListId: dto.priceListId,
           productIndexId: null,
         } as any,
       });
       if (legacySatir === 0) {
-        return this.importFromIndex(userId, dto, indexRows, priceList);
+        return this.importFromIndex(k, dto, indexRows, priceList);
       }
       console.warn(`[library] liste ${dto.priceListId}: ${legacySatir} legacy satir var — indeks yoluna GECILMEDI (mukerrer yasagi)`);
     }
@@ -369,7 +384,7 @@ export class LibraryService {
     // girdigi iskonto (discountRate) ve ozel fiyat (customPrice) KORUNUR.
     const existing = await this.prisma.userLibrary.findMany({
       where: {
-        userId,
+        firmaId: k.firmaId,
         brandId: dto.brandId,
         sourcePriceListId: dto.priceListId,
       },
@@ -396,7 +411,8 @@ export class LibraryService {
     if (newItems.length > 0) {
       await this.prisma.userLibrary.createMany({
         data: newItems.map((item) => ({
-          userId,
+          userId: k.userId,
+          firmaId: k.firmaId,
           materialId: item.materialId,
           materialName: item.material.name,
           brandId: dto.brandId,
@@ -427,11 +443,11 @@ export class LibraryService {
 
     // UserBrandLibrary sheets guncelle/olustur — tum kullanicinin o markaya ait
     // UserLibrary satirlarindan sentetik sheet yeniden olustur
-    await this.rebuildUserBrandLibrary(userId, dto.brandId);
+    await this.rebuildUserBrandLibrary(k, dto.brandId);
 
     // L5: AKTARIM DOGRULAMA RAPORU — havuz ↔ kutuphane birebir karsilastirma
     const kutuphaneUrun = await this.prisma.userLibrary.count({
-      where: { userId, brandId: dto.brandId, sourcePriceListId: dto.priceListId },
+      where: { firmaId: k.firmaId, brandId: dto.brandId, sourcePriceListId: dto.priceListId },
     });
     const havuzKategori = new Set(items.map((i) => i.kategori).filter(Boolean)).size;
     const farklar: string[] = [];
@@ -463,7 +479,7 @@ export class LibraryService {
    *  2. Satir productIndexId ile indekse BAGLANIR → v2 motor bu markayi
    *     "indeksli" sayar ve Ad-kilitli sorguyu calistirabilir.
    *
-   * L4 IDEMPOTENT KORUNUR: anahtar (userId + kaynak liste + productIndexId).
+   * L4 IDEMPOTENT KORUNUR: anahtar (k.userId + kaynak liste + productIndexId).
    * Mevcut satir ATLANMAZ — fiyat/yapi guncellenir, kullanicinin girdigi
    * discountRate ve customPrice'a HIC DOKUNULMAZ.
    *
@@ -471,13 +487,13 @@ export class LibraryService {
    * eslestirmeye girmeleri query-engine tarafinda engellenir (PRD 2A).
    */
   private async importFromIndex(
-    userId: string,
+    k: Kimlik,
     dto: ImportPriceListDto,
     rows: any[],
     priceList: { name: string; brand: { name: string } },
   ) {
     const existing = await this.prisma.userLibrary.findMany({
-      where: { userId, brandId: dto.brandId, sourcePriceListId: dto.priceListId },
+      where: { firmaId: k.firmaId, brandId: dto.brandId, sourcePriceListId: dto.priceListId },
       select: { id: true, productIndexId: true } as any,
     });
     const byIdx = new Map(
@@ -507,7 +523,8 @@ export class LibraryService {
     if (newRows.length > 0) {
       await this.prisma.userLibrary.createMany({
         data: newRows.map((r) => ({
-          userId,
+          userId: k.userId,
+          firmaId: k.firmaId,
           brandId: dto.brandId,
           sourcePriceListId: dto.priceListId,
           // Indeks yolunda Material bagi YOK — urun yapisi indekste yasar
@@ -533,11 +550,11 @@ export class LibraryService {
       updated += chunk.length;
     }
 
-    await this.rebuildUserBrandLibrary(userId, dto.brandId);
+    await this.rebuildUserBrandLibrary(k, dto.brandId);
 
     // L5: havuz ↔ kutuphane birebir dogrulama
     const kutuphaneUrun = await this.prisma.userLibrary.count({
-      where: { userId, brandId: dto.brandId, sourcePriceListId: dto.priceListId },
+      where: { firmaId: k.firmaId, brandId: dto.brandId, sourcePriceListId: dto.priceListId },
     });
     const farklar: string[] = [];
     if (kutuphaneUrun !== rows.length) {
@@ -567,10 +584,10 @@ export class LibraryService {
   // UserLibrary satirlarindan tek sheet'lik synthetic grid olusturur
   // (buildLibrarySheetRows — saf, test edilir). L1: kaynak sirasi (sortOrder)
   // + kategori grup bantlari BIREBIR; L2: sentetik header satiri YOK.
-  async rebuildUserBrandLibrary(userId: string, brandId: string) {
+  async rebuildUserBrandLibrary(k: Kimlik, brandId: string) {
     // sortOrder birincil (kaynak sirasi); legacy kayitlarda hepsi 0 → ad sirasi
     const items = await this.prisma.userLibrary.findMany({
-      where: { userId, brandId },
+      where: { firmaId: k.firmaId, brandId },
       // 16.07: Baglanti/Boy/Kod/Not tek gercek ProductIndex'te — join'le gelir
       include: { product: { select: { baglanti: true, boyMm: true, urunKodu: true, not: true } } } as any,
       orderBy: [{ sortOrder: 'asc' }, { materialName: 'asc' }],
@@ -578,7 +595,7 @@ export class LibraryService {
 
     if (items.length === 0) {
       // Kutuphanede hic satir yoksa UserBrandLibrary'yi sil
-      await this.prisma.userBrandLibrary.deleteMany({ where: { userId, brandId } });
+      await this.prisma.userBrandLibrary.deleteMany({ where: { firmaId: k.firmaId, brandId } });
       return null;
     }
 
@@ -598,8 +615,11 @@ export class LibraryService {
     ];
 
     const result = await this.prisma.userBrandLibrary.upsert({
-      where: { userId_brandId: { userId, brandId } },
-      create: { userId, brandId, sheets: { sheets } as any },
+      // ADIM 1: tekillik artik FIRMA bazli (sema @@unique([firmaId, brandId])).
+        // Kisi bazli kalsaydi ayni firmanin iki uyesi ayni marka icin iki
+        // sheet kaydi acar, firma gorunumu markayi CIFT gosterirdi.
+        where: { firmaId_brandId: { firmaId: k.firmaId, brandId } },
+      create: { userId: k.userId, firmaId: k.firmaId, brandId, sheets: { sheets } as any },
       update: { sheets: { sheets } as any },
     });
     return result;
@@ -631,20 +651,21 @@ export class LibraryService {
   // listId verilirse YALNIZ o listenin satirlari doner (sekme gorunumu).
   // BOS liste sheet DONDURUR (satirsiz, TAM kolon seti) — iscilik dersi:
   // "bos liste = kolonlar kayboldu" bir daha yasanmasin.
-  async getBrandSheets(userId: string, brandId: string, listId?: string) {
+  async getBrandSheets(k: Kimlik, brandId: string, listId?: string) {
     if (listId) {
       const p = this.prisma as any;
-      const list = await p.libraryList.findFirst({ where: { id: listId, userId, brandId } });
+      const list = await p.libraryList.findFirst({ where: { id: listId, firmaId: k.firmaId, brandId } });
       if (!list) throw new NotFoundException('Liste bulunamadi');
       const items = await this.prisma.userLibrary.findMany({
-        where: { userId, brandId, libraryListId: listId } as any,
+        where: { firmaId: k.firmaId, brandId, libraryListId: listId } as any,
         include: { product: { select: { baglanti: true, boyMm: true, urunKodu: true, not: true } } } as any,
         orderBy: [{ sortOrder: 'asc' }, { materialName: 'asc' }],
       });
       const built = buildLibrarySheetRows(items.map((item: any) => this.sheetItemOf(item)));
       return {
         id: `liste-${listId}`,
-        userId,
+        userId: k.userId,
+        firmaId: k.firmaId,
         brandId,
         sheets: {
           sheets: [{
@@ -661,9 +682,9 @@ export class LibraryService {
       };
     }
 
-    const count = await this.prisma.userLibrary.count({ where: { userId, brandId } });
+    const count = await this.prisma.userLibrary.count({ where: { firmaId: k.firmaId, brandId } });
     if (count === 0) throw new NotFoundException('Kutuphanenizde bu markaya ait kayit yok');
-    const built = await this.rebuildUserBrandLibrary(userId, brandId);
+    const built = await this.rebuildUserBrandLibrary(k, brandId);
     if (!built) throw new NotFoundException('Olusturulamadi');
     return built;
   }
@@ -676,28 +697,28 @@ export class LibraryService {
    * VARSAYILAN (en eski) listesine baglanir — boylece tum sorgular tekduze
    * kalir, NULL ozel durumu asagi katmanlara sizmaz. Idempotent supurge.
    */
-  async getBrandLists(userId: string, brandId: string) {
+  async getBrandLists(k: Kimlik, brandId: string) {
     const p = this.prisma as any;
     const sahipsiz = await this.prisma.userLibrary.count({
-      where: { userId, brandId, libraryListId: null } as any,
+      where: { firmaId: k.firmaId, brandId, libraryListId: null } as any,
     });
     if (sahipsiz > 0) {
       let varsayilan = await p.libraryList.findFirst({
-        where: { userId, brandId },
+        where: { firmaId: k.firmaId, brandId },
         orderBy: { uploadedAt: 'asc' },
       });
       if (!varsayilan) {
         varsayilan = await p.libraryList.create({
-          data: { userId, brandId, name: 'Fiyat Listesi' },
+          data: { userId: k.userId, firmaId: k.firmaId, brandId, name: 'Fiyat Listesi' },
         });
       }
       await this.prisma.userLibrary.updateMany({
-        where: { userId, brandId, libraryListId: null } as any,
+        where: { firmaId: k.firmaId, brandId, libraryListId: null } as any,
         data: { libraryListId: varsayilan.id } as any,
       });
     }
     const lists = await p.libraryList.findMany({
-      where: { userId, brandId },
+      where: { firmaId: k.firmaId, brandId },
       orderBy: { uploadedAt: 'asc' },
       include: { _count: { select: { items: true } } },
     });
@@ -712,12 +733,12 @@ export class LibraryService {
    * gecersizse geriye bos HAYALET liste kaliyordu. Burada ayni sinif hata
    * bastan kapali: gecerli satir yoksa 'new' liste HIC olusturulmaz.
    */
-  async addRowsToBrandList(userId: string, brandId: string, dto: AddLibraryRowsDto) {
+  async addRowsToBrandList(k: Kimlik, brandId: string, dto: AddLibraryRowsDto) {
     const brand = await this.prisma.brand.findUnique({ where: { id: brandId } });
     if (!brand) throw new NotFoundException('Marka bulunamadi');
     // Sahiplik esdegeri: marka global olabilir — kullanicinin kutuphanesinde
     // bu markadan kayit olmali (sekmeli sayfa zaten yalniz oradan acilir).
-    const sahiplik = await this.prisma.userLibrary.count({ where: { userId, brandId } });
+    const sahiplik = await this.prisma.userLibrary.count({ where: { firmaId: k.firmaId, brandId } });
     if (sahiplik === 0) throw new NotFoundException('Kutuphanenizde bu marka yok');
 
     const rows = (dto.rows ?? []).filter((r) => (r.ad ?? '').trim().length > 0);
@@ -732,13 +753,13 @@ export class LibraryService {
       const taban = `${brand.name} - ${new Date().toLocaleDateString('tr-TR')}`;
       let name = taban;
       let suffix = 2;
-      while (await p.libraryList.findFirst({ where: { userId, brandId, name } })) {
+      while (await p.libraryList.findFirst({ where: { firmaId: k.firmaId, brandId, name } })) {
         name = `${taban} (${suffix++})`;
         if (suffix > 100) break;
       }
-      liste = await p.libraryList.create({ data: { userId, brandId, name } });
+      liste = await p.libraryList.create({ data: { userId: k.userId, firmaId: k.firmaId, brandId, name } });
     } else {
-      liste = await p.libraryList.findFirst({ where: { id: dto.listId, userId, brandId } });
+      liste = await p.libraryList.findFirst({ where: { id: dto.listId, firmaId: k.firmaId, brandId } });
       if (!liste) throw new NotFoundException('Liste bulunamadi');
     }
 
@@ -748,20 +769,25 @@ export class LibraryService {
     // havuz/admin gorunumleri null suzer (24.08: "kirke — Manuel Liste" kopyalari
     // admin panelde birikiyordu; her satir ekleme yeni PriceList actigi icin).
     const priceList = await this.prisma.priceList.create({
-      data: { name: `${brand.name} — ${liste.name}`, brandId, ownerUserId: userId },
+      data: {
+        name: `${brand.name} — ${liste.name}`,
+        brandId,
+        ownerUserId: k.userId,
+        ownerFirmaId: k.firmaId,
+      },
     });
 
     // Yeni satirlar listenin SONUNA dizilir (kaynak sirasi korunur).
     const maxSort = await this.prisma.userLibrary.aggregate({
       _max: { sortOrder: true },
-      where: { userId, brandId, libraryListId: liste.id } as any,
+      where: { firmaId: k.firmaId, brandId, libraryListId: liste.id } as any,
     });
     const sortBase = (maxSort._max.sortOrder ?? -1) + 1;
 
-    const sonuc = await this.insertLibraryRows(userId, brandId, priceList.id, liste.id, rows, sortBase);
-    await this.rebuildUserBrandLibrary(userId, brandId);
+    const sonuc = await this.insertLibraryRows(k, brandId, priceList.id, liste.id, rows, sortBase);
+    await this.rebuildUserBrandLibrary(k, brandId);
 
-    console.log(`[LibraryList] "${brand.name}" / "${liste.name}": ${sonuc.created} satir eklendi (userId=${userId})`);
+    console.log(`[LibraryList] "${brand.name}" / "${liste.name}": ${sonuc.created} satir eklendi (userId=${k.userId})`);
     return {
       brandId,
       listId: liste.id,
@@ -774,23 +800,23 @@ export class LibraryService {
 
   /** Liste sekmesini sil — satirlar + liste. Kullanicinin KENDI kopyasi
    *  silinir; havuz (PriceList/ProductIndex) DOKUNULMAZ. */
-  async deleteBrandList(userId: string, brandId: string, listId: string) {
+  async deleteBrandList(k: Kimlik, brandId: string, listId: string) {
     const p = this.prisma as any;
-    const liste = await p.libraryList.findFirst({ where: { id: listId, userId, brandId } });
+    const liste = await p.libraryList.findFirst({ where: { id: listId, firmaId: k.firmaId, brandId } });
     if (!liste) throw new NotFoundException('Liste bulunamadi');
     const silinen = await this.prisma.userLibrary.deleteMany({
-      where: { userId, brandId, libraryListId: listId } as any,
+      where: { firmaId: k.firmaId, brandId, libraryListId: listId } as any,
     });
     await p.libraryList.delete({ where: { id: listId } });
     // 0 satir kaldiysa rebuild UserBrandLibrary'yi de siler (marka kutuphaneden duser).
-    await this.rebuildUserBrandLibrary(userId, brandId);
+    await this.rebuildUserBrandLibrary(k, brandId);
     return { ok: true, deletedRows: silinen.count };
   }
 
   // ── SAVE — ExcelGrid'den gelen dirty satirlari kaydet ──
   // body: { dirtyRows: [{ libraryItemId, listPrice, discountRate, materialName?, unit? }] }
   async saveBrandSheets(
-    userId: string,
+    k: Kimlik,
     brandId: string,
     dirtyRows: Array<{
       libraryItemId: string;
@@ -810,7 +836,7 @@ export class LibraryService {
     for (const row of dirtyRows) {
       try {
         const item = await this.prisma.userLibrary.findFirst({
-          where: { id: row.libraryItemId, userId, brandId },
+          where: { id: row.libraryItemId, firmaId: k.firmaId, brandId },
         });
         if (!item) {
           errors.push({ id: row.libraryItemId, error: 'Bulunamadi' });
@@ -850,15 +876,15 @@ export class LibraryService {
     }
 
     // Sheets'i yeniden olustur (guncel iskontolar dahil)
-    await this.rebuildUserBrandLibrary(userId, brandId);
+    await this.rebuildUserBrandLibrary(k, brandId);
 
     return { updated, errors };
   }
 
   // Kullanici markayi kutuphanesinden tamamen cikarir
-  async removeBrandFromLibrary(userId: string, brandId: string) {
-    await this.prisma.userLibrary.deleteMany({ where: { userId, brandId } });
-    await this.prisma.userBrandLibrary.deleteMany({ where: { userId, brandId } });
+  async removeBrandFromLibrary(k: Kimlik, brandId: string) {
+    await this.prisma.userLibrary.deleteMany({ where: { firmaId: k.firmaId, brandId } });
+    await this.prisma.userBrandLibrary.deleteMany({ where: { firmaId: k.firmaId, brandId } });
     return { ok: true };
   }
 }

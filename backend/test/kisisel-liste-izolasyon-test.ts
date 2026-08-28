@@ -47,7 +47,13 @@ const check = (ad: string, kosul: boolean, kanit?: string) => {
 };
 
 // ── FIXTURE ─────────────────────────────────────────────────────────────────
+// ADIM 1 (28.08): sahiplik olcusu KISI'den FIRMA'ya gecti. Kisisel liste
+// artik FIRMANIN — ayni firmanin baska uyesi de okuyabilmeli, yabanci firma
+// okuyamamali. U* kisi, F* firma; servisler kimlik ya da firmaId alir.
 const U1 = 'u1-sahip'; const U2 = 'u2-yabanci';
+const F1 = 'f1-sahip-firma'; const F2 = 'f2-yabanci-firma';
+const K1 = { userId: U1, firmaId: F1 };
+const K2 = { userId: U2, firmaId: F2 };
 
 const MARKALAR = [
   { id: 'b-ayvaz', name: 'AYVAZ', discipline: 'mechanical', isGlobal: true, logoUrl: null },
@@ -59,13 +65,13 @@ const MARKALAR = [
 ];
 
 const LISTELER = [
-  { id: 'pl-havuz', name: 'AYVAZ 2026', brandId: 'b-ayvaz', ownerUserId: null, createdAt: new Date('2026-01-01') },
-  { id: 'pl-kisisel', name: 'AYVAZ — Manuel Liste', brandId: 'b-ayvaz', ownerUserId: U1, createdAt: new Date('2026-02-01') },
-  { id: 'pl-kirke', name: 'kirke — Manuel Liste', brandId: 'b-kirke', ownerUserId: U1, createdAt: new Date('2026-03-01') },
+  { id: 'pl-havuz', name: 'AYVAZ 2026', brandId: 'b-ayvaz', ownerUserId: null, ownerFirmaId: null, createdAt: new Date('2026-01-01') },
+  { id: 'pl-kisisel', name: 'AYVAZ — Manuel Liste', brandId: 'b-ayvaz', ownerUserId: U1, ownerFirmaId: F1, createdAt: new Date('2026-02-01') },
+  { id: 'pl-kirke', name: 'kirke — Manuel Liste', brandId: 'b-kirke', ownerUserId: U1, ownerFirmaId: F1, createdAt: new Date('2026-03-01') },
 ];
 
 const INDEKS_SATIRLARI = [
-  { id: 'pi-1', priceListId: 'pl-kirke', brandId: 'b-kirke', ownerUserId: U1, ad: 'Ozel Vana', birim: 'Adet', price: 1234, currency: 'TRY', kategori: null, cins: null, baglanti: null, capRaw: null, boyMm: null, urunKodu: null, not: null, sortOrder: 0, displayName: 'Ozel Vana', belirsiz: false },
+  { id: 'pi-1', priceListId: 'pl-kirke', brandId: 'b-kirke', ownerUserId: U1, ownerFirmaId: F1, ad: 'Ozel Vana', birim: 'Adet', price: 1234, currency: 'TRY', kategori: null, cins: null, baglanti: null, capRaw: null, boyMm: null, urunKodu: null, not: null, sortOrder: 0, displayName: 'Ozel Vana', belirsiz: false },
 ];
 
 const HAVUZ_FIYATLARI = [
@@ -216,17 +222,17 @@ async function main() {
 
   // ══ C — /brands/price-lists/:id/materials: sahiplik korumasi ═════════════
   let cHata: any = null;
-  try { await brandsSvc.getPriceListMaterials('pl-kirke', U2); } catch (e) { cHata = e; }
-  check('C1 ⭐ yabanci kullanici kisisel listeyi OKUYAMAZ (NotFound)',
+  try { await brandsSvc.getPriceListMaterials('pl-kirke', F2); } catch (e) { cHata = e; }
+  check('C1 ⭐ yabanci FIRMA kisisel listeyi OKUYAMAZ (NotFound)',
     cHata instanceof NotFoundException,
     cHata ? `firlatilan: ${cHata?.constructor?.name}` : 'HATA YOK — icerik acildi (sizinti)');
 
-  const sahipSonuc = await brandsSvc.getPriceListMaterials('pl-kirke', U1);
-  check('C2 KALKAN: SAHIBI kendi kisisel listesini okuyabilir',
+  const sahipSonuc = await brandsSvc.getPriceListMaterials('pl-kirke', F1);
+  check('C2 KALKAN: SAHIP FIRMA kendi kisisel listesini okuyabilir',
     sahipSonuc.totalCount === 1 && sahipSonuc.materials[0].materialName === 'Ozel Vana',
     `totalCount=${sahipSonuc.totalCount}`);
 
-  const havuzSonuc = await brandsSvc.getPriceListMaterials('pl-havuz', U2);
+  const havuzSonuc = await brandsSvc.getPriceListMaterials('pl-havuz', F2);
   check('C3 KALKAN: havuz listesi herkese acik kalir',
     havuzSonuc.totalCount === 1, `totalCount=${havuzSonuc.totalCount}`);
 
@@ -266,7 +272,7 @@ async function main() {
     stats.priceListCount === 1, `priceListCount=${stats.priceListCount} (3 ise kisisel listeler sayildi)`);
 
   // ══ L — kutuphane akislari sahipligi YAZAR ═══════════════════════════════
-  const yeni = await librarySvc.createManualBrand(U1, {
+  const yeni = await librarySvc.createManualBrand(K1 as any, {
     brandName: 'YENI MARKA', discipline: 'mechanical',
     rows: [{ ad: 'Test Borusu', price: 100 }],
   } as any);
@@ -276,10 +282,15 @@ async function main() {
   const manuelListe = kayit.plCreate.find((d) => d.name === 'YENI MARKA — Manuel Liste');
   check('L2 ⭐ manuel listenin ownerUserId alani kullaniciya yazilir',
     manuelListe?.ownerUserId === U1, JSON.stringify(manuelListe));
+  // ⭐ L2b (28.08): YAZMA tarafinin firma ikizi. ownerFirmaId yazilmazsa
+  //    okuma kapisi (ownerUserId dolu && ownerFirmaId !== firma) her zaman
+  //    REDDEDER — sahibi bile kendi listesini acamaz.
+  check('L2b ⭐ manuel listenin ownerFirmaId alani FIRMAYA yazilir',
+    manuelListe?.ownerFirmaId === F1, JSON.stringify(manuelListe));
   check('L3 KALKAN: akis tamamlanir (1 satir yazildi)',
     yeni.created === 1, `created=${yeni.created}`);
 
-  await librarySvc.createManualBrand(U1, {
+  await librarySvc.createManualBrand(K1 as any, {
     brandName: 'AYVAZ', discipline: 'mechanical', rows: [{ ad: 'Baska Boru', price: 50 }],
   } as any);
   const ayvazUpsert = kayit.brandUpsert[kayit.brandUpsert.length - 1];
@@ -288,11 +299,14 @@ async function main() {
     JSON.stringify(ayvazUpsert?.update));
 
   kayit.plCreate.length = 0;
-  await librarySvc.addRowsToBrandList(U1, 'b-kirke', {
+  await librarySvc.addRowsToBrandList(K1 as any, 'b-kirke', {
     listId: 'll-1', rows: [{ ad: 'Ek Vana', price: 10 }],
   } as any);
   check('L5 ⭐ addRowsToBrandList listeyi ownerUserId ile acar',
     kayit.plCreate.length === 1 && kayit.plCreate[0].ownerUserId === U1,
+    JSON.stringify(kayit.plCreate));
+  check('L5b ⭐ ayni liste ownerFirmaId ile de acilir (okuma kapisinin ikizi)',
+    kayit.plCreate.length === 1 && kayit.plCreate[0].ownerFirmaId === F1,
     JSON.stringify(kayit.plCreate));
 
   // ══ I — admin marka acma: kisisel marka TERFI eder, havuz 409 kalir ══════
@@ -316,12 +330,12 @@ async function main() {
   // ══ K — importPriceList: yabanci kisisel liste AKTARILAMAZ ═══════════════
   let kHata: any = null;
   try {
-    await librarySvc.importPriceList(U2, { brandId: 'b-kirke', priceListId: 'pl-kirke' } as any);
+    await librarySvc.importPriceList(K2 as any, { brandId: 'b-kirke', priceListId: 'pl-kirke' } as any);
   } catch (e) { kHata = e; }
-  check('K1 ⭐ yabanci kullanici kisisel listeyi kutuphanesine AKTARAMAZ (NotFound)',
+  check('K1 ⭐ yabanci FIRMA kisisel listeyi kutuphanesine AKTARAMAZ (NotFound)',
     kHata instanceof NotFoundException,
     kHata ? `firlatilan: ${kHata?.constructor?.name}` : 'HATA YOK — fiyatlar kopyalandi (sizinti)');
-  const kendiAktarim = await librarySvc.importPriceList(U1, { brandId: 'b-kirke', priceListId: 'pl-kirke' } as any);
+  const kendiAktarim = await librarySvc.importPriceList(K1 as any, { brandId: 'b-kirke', priceListId: 'pl-kirke' } as any);
   check('K2 KALKAN: SAHIBI kendi kisisel listesini aktarabilir (kapi asilir)',
     kendiAktarim.imported === 1, `imported=${kendiAktarim.imported}`);
 

@@ -146,7 +146,7 @@ function check(ad: string, kosul: boolean, detay?: string) {
     (svc as any).rebuildUserBrandLibrary = async () => undefined;
     let hata: any = null;
     try {
-      await svc.addRowsToBrandList('u1', 'b1', { listId: 'new', rows: [{ ad: '' } as any, { ad: '   ' } as any] });
+      await svc.addRowsToBrandList({ userId: 'u1', firmaId: 'f1' } as any, 'b1', { listId: 'new', rows: [{ ad: '' } as any, { ad: '   ' } as any] });
     } catch (e) { hata = e; }
     check('C1 bos satirlarla hata firlar', hata instanceof BadRequestException, String(hata));
     check('C2 HAYALET LISTE OLUSMADI (iscilik dersinin ikizi)', libListCreates.length === 0, `${libListCreates.length} create`);
@@ -155,7 +155,7 @@ function check(ad: string, kosul: boolean, detay?: string) {
     const { client, libListCreates, userLibCreates } = kutuphaneSahte();
     const svc = new LibraryService(client, { learnFamilyAliases: async () => undefined } as any);
     (svc as any).rebuildUserBrandLibrary = async () => undefined;
-    const sonuc = await svc.addRowsToBrandList('u1', 'b1', {
+    const sonuc = await svc.addRowsToBrandList({ userId: 'u1', firmaId: 'f1' } as any, 'b1', {
       listId: 'new',
       rows: [
         { ad: 'PPR-C Boru', cap: 'DN 25', birim: 'metre', price: 50 } as any,
@@ -189,14 +189,14 @@ function check(ad: string, kosul: boolean, detay?: string) {
       },
     };
     const svc = new LibraryService(client, {} as any);
-    const ilk = await svc.getBrandLists('u1', 'b1');
+    const ilk = await svc.getBrandLists({ userId: 'u1', firmaId: 'f1' } as any, 'b1');
     check('E1 varsayilan liste olustu (Fiyat Listesi)', creates.length === 1 && creates[0].data.name === 'Fiyat Listesi', JSON.stringify(creates));
     check('E2 NULL satirlar varsayilana baglandi',
       updateManys.length === 1 && updateManys[0].data.libraryListId === 'll-def' && updateManys[0].where.libraryListId === null,
       JSON.stringify(updateManys));
     check('E3 liste donuyor', ilk.lists.length === 1 && ilk.lists[0]._count.items === 3);
     // Ikinci cagri: sahipsiz kalmadi → goc TEKRAR calismaz (idempotent)
-    await svc.getBrandLists('u1', 'b1');
+    await svc.getBrandLists({ userId: 'u1', firmaId: 'f1' } as any, 'b1');
     check('E4 idempotent (ikinci cagri yeni create/updateMany uretmez)',
       creates.length === 1 && updateManys.length === 1,
       `${creates.length} create, ${updateManys.length} updateMany`);
@@ -210,7 +210,7 @@ function check(ad: string, kosul: boolean, detay?: string) {
       userLibrary: { findMany: async () => [], count: async () => 15 },
     };
     const svc = new LibraryService(client, {} as any);
-    const sonuc = await svc.getBrandSheets('u1', 'b1', 'll2');
+    const sonuc = await svc.getBrandSheets({ userId: 'u1', firmaId: 'f1' } as any, 'b1', 'll2');
     const sheet = (sonuc as any).sheets.sheets[0];
     const fields = (sheet.columnDefs as any[]).map((c) => c.field);
     check('F1 bos liste sheet DONDURUR (throw yok)', !!sheet);
