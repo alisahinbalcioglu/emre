@@ -365,6 +365,25 @@ const SUITES: Suite[] = [
   //    MUTASYONLA ÖLÇÜLDÜ (2/2 öldü): create'ten firmaId kalkınca G7-a ·
   //    havuz userId'ye dönünce G8-a/b/★ kırmızı.
   { ad: 'Firma ekseni: havuz + işçilik firması sahipliği (G7/G8)', script: 'test:firma-ekseni', zincir: 'Z0' },
+  // ── 29.08.2026 — ORTAM DEĞİŞKENLERİ KAPISI. DB/sunucu GEREKTİRMEZ.
+  //    Bu kurulumda bir değişken İKİ YERE birden yazılmak zorunda:
+  //    sunucudaki `.env` (DEĞERİ verir) VE docker-compose.yml
+  //    backend.environment (konteynere GEÇİRİR). Yalnız .env'e yazmak
+  //    YETMEZ — compose'da anılmayan değişken konteynere HİÇ GEÇMEZ.
+  //    Kusurun sinsi tarafı: hiçbir şey patlamaz, .env dolu görünür ve
+  //    kimse compose'a bakmayı akıl etmez.
+  //    Kapı, kodun GERÇEKTEN okuduğu değişkenleri kaynaktan çıkarır ve
+  //    hem compose'da hem .env.example'da anıldığını ölçer. Ayrıca:
+  //    G1 .env.example'a gerçek sır kaçmasın (dosya COMMIT EDİLİR),
+  //    G2 IYZICO_IMZA_ZORUNLU varsayılanı false kalsın (ilk webhook'tan
+  //       önce true = her olay sessizce düşer),
+  //    G3 hiçbir ödeme değişkeni compose'da ZORUNLU kılınmasın (ödeme
+  //       yapılandırması tüm ürünü ayağa kaldırmama hakkına sahip değil).
+  //    ⚠ G1 ilk yazımda YANLIŞ ALARM verdi: `=\s*\S+` deseni `\s`
+  //    newline'ı kapsadığı için BOŞ satırı bir sonrakinin ADIYLA eşledi;
+  //    ölçüldü, kusur üründe değil ÖLÇÜTTEYDİ — desen satıra sabitlendi.
+  //    MUTASYONLA ÖLÇÜLDÜ: .env.example'a sahte anahtar konunca G1 kırmızı.
+  { ad: 'Ortam değişkenleri: kod ↔ compose ↔ .env.example (E/G)', script: 'test:ortam', zincir: 'Z0' },
 ];
 
 function dbErisilebilir(): boolean {

@@ -77,6 +77,54 @@ services:
       DWG_ENGINE_URL: http://dwg-engine:10000
       DWG_ENGINE_TOKEN: ${INTERNAL_API_TOKEN}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      # ── ADIM 2 · ODEME / ABONELIK ────────────────────────────────────
+      # ⚠ HER DEGISKEN IKI YERE YAZILIR: burasi (konteynere gecirir) VE
+      # sunucudaki `.env` (degeri saglar). Yalniz .env'e yazmak YETMEZ —
+      # compose bu blokta anmadigi degiskeni konteynere GECIRMEZ ve
+      # uygulama onu HIC gormez.
+      #
+      # ⚠ HICBIRI ZORUNLU DEGIL: eksikse uygulama ONYUKLENIR, yalnizca
+      # odeme uclari 503 doner (bkz. src/ozellik/odeme/yapilandirma.ts).
+      # Bu bilincli — odeme yapilandirmasi tum urunu rehin almamali.
+      IYZICO_API_KEY: ${IYZICO_API_KEY:-}
+      IYZICO_SECRET_KEY: ${IYZICO_SECRET_KEY:-}
+      # Panelden alinan uye isyeri numarasi (MID). Webhook GOVDESINDE
+      # GELMEZ; imza hesabi bunu ortamdan okur. Yanlissa imza HIC tutmaz —
+      # imza uyusmazliginin en olasi sebebi budur.
+      IYZICO_MERCHANT_ID: ${IYZICO_MERCHANT_ID:-}
+      # Sandbox: https://sandbox-api.iyzipay.com · Canli: https://api.iyzipay.com
+      IYZICO_TABAN_URL: ${IYZICO_TABAN_URL:-https://sandbox-api.iyzipay.com}
+      # ⚠ ILK GERCEK WEBHOOK'A KADAR "false" KALIR. true yapilirsa ve imza
+      # tutmazsa her olay sessizce dusulur. Once gunlukte
+      # `IYZICO_IMZA_SIRASI=... olarak sabitleyin` satirini gorun.
+      IYZICO_IMZA_ZORUNLU: ${IYZICO_IMZA_ZORUNLU:-false}
+      # Dokuman celiskisi: duz metin bir sira, dort kod ornegi baska sira
+      # veriyor. Kod ikisini de hesaplar; tutani gunluge basar. Ogrenince
+      # buraya yazin (merchantId-once | secretKey-once), sonra tek sira denenir.
+      IYZICO_IMZA_SIRASI: ${IYZICO_IMZA_SIRASI:-}
+      # Dunning e-postalarindaki baglantilarin koku.
+      UYGULAMA_URL: ${UYGULAMA_URL:-https://${DOMAIN}}
+      YONETIM_EPOSTA: ${YONETIM_EPOSTA:-}
+      KDV_ORANI: ${KDV_ORANI:-20}
+      # Dunning merdiveni (gun, basarisiz tahsilattan itibaren).
+      # Taahhut sektorunde muhasebe dongusu yavastir; 14/45 daha uygun olabilir.
+      DUNNING_GUN_1: ${DUNNING_GUN_1:-3}
+      DUNNING_GUN_2: ${DUNNING_GUN_2:-7}
+      DUNNING_KISIT_GUNU: ${DUNNING_KISIT_GUNU:-10}
+      DUNNING_GUN_3: ${DUNNING_GUN_3:-20}
+      DUNNING_ASKI_GUNU: ${DUNNING_ASKI_GUNU:-30}
+      # E-posta gonderici. ⚠ BOSSA DUNNING SESSIZ CALISIR: merdiven ilerler,
+      # musteri kisitlanir/askiya alinir ama HICBIR UYARI ALMAZ. Canliya
+      # cikmadan once doldurulmali (bkz. RAPOR).
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EPOSTA_GONDEREN: ${EPOSTA_GONDEREN:-}
+      # Muhasebe: "parasut" YAZMADIKCA hicbir yere fatura gitmez (sahte adaptor).
+      MUHASEBE_SAGLAYICI: ${MUHASEBE_SAGLAYICI:-sahte}
+      PARASUT_FIRMA_ID: ${PARASUT_FIRMA_ID:-}
+      PARASUT_CLIENT_ID: ${PARASUT_CLIENT_ID:-}
+      PARASUT_CLIENT_SECRET: ${PARASUT_CLIENT_SECRET:-}
+      PARASUT_KULLANICI: ${PARASUT_KULLANICI:-}
+      PARASUT_PAROLA: ${PARASUT_PAROLA:-}
       PORT: "3001"
       NODE_ENV: production
     expose:
