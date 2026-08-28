@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 402
-Toplam satir: 85626
+Toplam satir: 85636
 Uc nokta: 130
 test:* scripti: 67
 
@@ -18,7 +18,7 @@ test:* scripti: 67
 | `backend/scripts/surum-yaz.js` | 47 |
 | `backend/src/altyapi/auth/auth.controller.ts` | 28 |
 | `backend/src/altyapi/auth/auth.module.ts` | 24 |
-| `backend/src/altyapi/auth/auth.service.ts` | 75 |
+| `backend/src/altyapi/auth/auth.service.ts` | 85 |
 | `backend/src/altyapi/auth/capabilities.helper.ts` | 65 |
 | `backend/src/altyapi/auth/decorators/current-user.decorator.ts` | 9 |
 | `backend/src/altyapi/auth/decorators/roles.decorator.ts` | 5 |

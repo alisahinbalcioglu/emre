@@ -25,8 +25,18 @@ export class AuthService {
     if (existing) throw new ConflictException('Email already in use');
 
     const hashed = await bcrypt.hash(dto.password, 10);
+    // ADIM 1 (firma): hesap artik KISI degil FIRMA. Her yeni kayit KENDI
+    // firmasini acar ve o firmanin SAHIBI olur. Ic ice create tek islemdir —
+    // kullanici olusup firma olusmazsa ortada suzgeclerin hicbir satiri
+    // gormedigi "firmasiz hesap" kalirdi. Firma adi simdilik e-postanin @
+    // oncesi parcasi (backfill ile ayni kural); sahibi ADIM 2'de degistirecek.
     const user = await this.prisma.user.create({
-      data: { email: dto.email, password: hashed },
+      data: {
+        email: dto.email,
+        password: hashed,
+        firmaRol: 'sahip',
+        firma: { create: { ad: dto.email.split('@')[0] } },
+      },
     });
 
     const token = this.signToken(user.id, user.email, user.role);
