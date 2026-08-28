@@ -26,7 +26,7 @@ export class QuotesController {
   @GerekliYetenek(Yetenek.EXCEL_YUKLE)
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
   parseExcel(@CurrentUser() user: any, @UploadedFile() file: Express.Multer.File) {
-    return this.quotesService.parseExcel(user.id, file.buffer);
+    return this.quotesService.parseExcel(kimlikCoz(user).userId, file.buffer);
   }
 
   @Post()

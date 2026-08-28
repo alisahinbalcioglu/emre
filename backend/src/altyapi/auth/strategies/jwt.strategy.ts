@@ -21,6 +21,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       where: { id: payload.sub },
     });
     if (!user) throw new UnauthorizedException();
+    // ── G1 (28.08): BANLI HESABIN MEVCUT TOKEN'I DA GECERSIZ ─────────────
+    // Girise kapi koymak TEK BASINA yetmez: token omru 7 gundur
+    // (JWT_EXPIRES_IN ?? '7d'), yani banlanan kullanici bir hafta boyunca
+    // calismaya devam ederdi. Kapinin ISE YARADIGI yer burasidir — bu sorgu
+    // zaten her istekte kullaniciyi cekiyordu, EK MALIYET YOK.
+    if (user.status === 'banned') {
+      throw new UnauthorizedException('Hesabiniz askiya alinmis.');
+    }
     // ADIM 1 (firma): kimligin DAR BOGAZI burasi — 55 tuketici bu sekli okur.
     // firmaId EKLENIR (var olan alanlar aynen kalir, hicbir tuketici kirilmaz):
     // teklif/kutuphane suzgecleri artik kisiyi degil FIRMAYI temel alacak.

@@ -8,6 +8,7 @@ import { JwtAuthGuard } from '../../../altyapi/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../altyapi/auth/guards/roles.guard';
 import { Roles } from '../../../altyapi/auth/decorators/roles.decorator';
 import { CurrentUser } from '../../../altyapi/auth/decorators/current-user.decorator';
+import { kimlikCoz } from '../../../altyapi/auth/kimlik';
 
 @Controller('brands')
 @UseGuards(JwtAuthGuard)
@@ -26,7 +27,7 @@ export class BrandsController {
   // Kimlik servise iner: KISISEL listeyi yalniz SAHIP FIRMA okur (ADIM 1).
   @Get('price-lists/:listId/materials')
   getPriceListMaterials(@CurrentUser() user: any, @Param('listId') listId: string) {
-    return this.brandsService.getPriceListMaterials(listId, user?.firmaId);
+    return this.brandsService.getPriceListMaterials(listId, kimlikCoz(user).firmaId);
   }
 
   // Parameterized routes AFTER literals

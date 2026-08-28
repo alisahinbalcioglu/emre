@@ -5,9 +5,11 @@ import {
 import { LaborService } from './labor.service';
 import { JwtAuthGuard } from '../../../altyapi/auth/guards/jwt-auth.guard';
 import { TierGuard, RequireTier } from '../../../altyapi/auth/guards/tier.guard';
+import { RolesGuard } from '../../../altyapi/auth/guards/roles.guard';
+import { Roles } from '../../../altyapi/auth/decorators/roles.decorator';
 
 @Controller('labor')
-@UseGuards(JwtAuthGuard, TierGuard)
+@UseGuards(JwtAuthGuard, TierGuard, RolesGuard)
 @RequireTier('pro') // İşçilik kütüphanesi → minimum Pro
 export class LaborController {
   constructor(private laborService: LaborService) {}
@@ -23,6 +25,7 @@ export class LaborController {
   }
 
   @Post()
+  @Roles('admin')
   create(@Body() body: {
     name: string;
     unit?: string;
@@ -35,11 +38,13 @@ export class LaborController {
   }
 
   @Put(':id')
+  @Roles('admin')
   update(@Param('id') id: string, @Body() body: any) {
     return this.laborService.update(id, body);
   }
 
   @Delete(':id')
+  @Roles('admin')
   remove(@Param('id') id: string) {
     return this.laborService.remove(id);
   }

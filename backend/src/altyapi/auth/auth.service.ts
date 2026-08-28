@@ -54,6 +54,19 @@ export class AuthService {
     const valid = await bcrypt.compare(dto.password, user.password);
     if (!valid) throw new UnauthorizedException('Invalid credentials');
 
+    // ── G1 (28.08): BANLI HESAP GIRIS YAPAMAZ ────────────────────────────
+    // Olculmus kusur: `UserStatus { active, banned }` semada VARDI ve admin
+    // PATCH /api/admin/users/:id/status ile banliyordu, ama `status` alanini
+    // TUM auth katmaninda HICBIR YER OKUMUYORDU (olculdu: auth.service +
+    // jwt.strategy'de sifir gecis). Yani "ban" dugmesi yonetici panelinde
+    // calisiyor gorunup HICBIR SEY YAPMIYORDU: banlanan kullanici giris
+    // yapmaya ve calismaya devam ediyordu.
+    // ⚠ Tek basina burasi YETMEZ — mevcut token'lar 7 gun daha gecerlidir.
+    // Ikinci kapi jwt.strategy.validate'tedir; ikisi BIRLIKTE anlamlidir.
+    if (user.status === 'banned') {
+      throw new UnauthorizedException('Hesabiniz askiya alinmis.');
+    }
+
     const token = this.signToken(user.id, user.email, user.role);
     return { token, user: { id: user.id, email: user.email, role: user.role, tier: user.tier } };
   }

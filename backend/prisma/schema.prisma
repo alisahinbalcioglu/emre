@@ -800,6 +800,36 @@ model SystemSettings {
   updatedAt DateTime @updatedAt
 }
 
+/// DWG DOSYA SAHIPLIGI (G2 guvenlik turu, 28.08).
+///
+/// ⚠ NEDEN VAR — OLCULMUS CAPRAZ-TENANT SIZINTI:
+/// DWG dosyalari Python servisinin cache'inde `file_id` anahtariyla durur ve
+/// bu anahtarin KIME ait oldugunu soyleyen HICBIR KAYIT YOKTU. Yedi ucun
+/// hicbiri kullaniciyi parametre olarak bile ALMIYORDU (ne @CurrentUser ne
+/// req.user), dolayisiyla firma suzgeci YAPISAL OLARAK IMKANSIZDI.
+///
+/// Somut sonuc: `GET /api/dwg-engine/geometry/:fileId` ve `/status/:fileId`
+/// uclarinda fileId'yi bilen HERHANGI bir oturumlu kullanici BASKA bir
+/// firmanin projesinin koordinatlarini okuyabiliyordu. Musteri projeleri
+/// ticari sirdir; mimari cizimin geometrisi projenin ta kendisidir.
+///
+/// Bu tablo fileId→firma bagini kurar: uretici uclar (layers/upload) kaydi
+/// YAZAR, tuketici uclar (parse/status/geometry) DOGRULAR.
+/// Python servisi DONMUS BLOK'tur (klasor-duzeni.txt) — oraya dokunulmadi;
+/// izolasyon tamamen Nest katmaninda kuruldu.
+model DwgDosya {
+  id      String @id @default(uuid())
+  /// Python servisinin cache anahtari.
+  fileId  String @unique
+  firmaId String
+  /// Yukleyen kisi (denetim izi; dosya FIRMAYA ait olsa da bir KISI yukler).
+  olusturanId String
+  dosyaAdi    String?
+  olusturuldu DateTime @default(now())
+
+  @@index([firmaId, olusturuldu])
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  ADIM 2 (28.08) — ABONELIK & ODEME
 // ═══════════════════════════════════════════════════════════════════════════

@@ -7,13 +7,19 @@ import { memoryStorage } from 'multer';
 import { JwtAuthGuard } from '../../altyapi/auth/guards/jwt-auth.guard';
 import { DwgEngineService } from './dwg-engine.service';
 import { resolveScaleParam } from './scale-param';
+import { CurrentUser } from '../../altyapi/auth/decorators/current-user.decorator';
+import { kimlikCoz } from '../../altyapi/auth/kimlik';
+import { DwgSahiplikServisi } from './dwg-sahiplik.servisi';
 import { ErisimGuard, GerekliYetenek } from '../../ozellik/odeme/abonelik/erisim.guard';
 import { Yetenek } from '../../ozellik/odeme/abonelik/erisim.servisi';
 
 @Controller('dwg-engine')
 @UseGuards(JwtAuthGuard, ErisimGuard)
 export class DwgEngineController {
-  constructor(private readonly dwgEngine: DwgEngineService) {}
+  constructor(
+    private readonly dwgEngine: DwgEngineService,
+    private readonly sahiplik: DwgSahiplikServisi,
+  ) {}
 
   /**
    * Layer listesi cikar (hizli, uzunluk hesaplamaz).
@@ -29,11 +35,18 @@ export class DwgEngineController {
     storage: memoryStorage(),
     limits: { fileSize: 1024 * 1024 * 1024 }, // 1 GB
   }))
-  async listLayers(@UploadedFile() file: Express.Multer.File) {
+  async listLayers(
+    @CurrentUser() kullanici: unknown,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    const { firmaId, userId } = kimlikCoz(kullanici);
     if (!file) {
       return { error: 'Dosya yuklenemedi' };
     }
-    return this.dwgEngine.listLayers(file.buffer, file.originalname);
+    const yanit = await this.dwgEngine.listLayers(file.buffer, file.originalname);
+    // G2: uretilen file_id FIRMAYA baglanir — tuketici uclarin kapisi budur.
+    await this.sahiplik.kaydet(yanit, firmaId, userId, file.originalname);
+    return yanit;
   }
 
   /**
@@ -49,6 +62,7 @@ export class DwgEngineController {
     limits: { fileSize: 1024 * 1024 * 1024 }, // 1 GB
   }))
   async parseDwg(
+    @CurrentUser() kullanici: unknown,
     @UploadedFile() file: Express.Multer.File,
     @Query('discipline') discipline?: string,
     @Query('scale') scale?: string,
@@ -60,6 +74,9 @@ export class DwgEngineController {
     @Query('sprinkler_layers') sprinklerLayers?: string,
   ) {
     // file_id varsa dosya gerekmez, yoksa dosya zorunlu
+    // G2: cache'ten okuyorsa (fileId var) sahiplik DOGRULANIR; dosya
+    // govdeden geliyorsa kapi konusu degildir (kendi dosyasini yukluyor).
+    await this.sahiplik.dogrula(fileId, kimlikCoz(kullanici).firmaId);
     if (!fileId && !file) {
       return { error: 'file_id veya dosya yuklenmeli' };
     }
@@ -130,6 +147,7 @@ export class DwgEngineController {
   }
 
   @Post('convert')
+  @GerekliYetenek(Yetenek.DWG_YUKLE)
   @UseInterceptors(FileInterceptor('file', {
     storage: memoryStorage(),
     limits: { fileSize: 1024 * 1024 * 1024 }, // 1 GB
@@ -156,9 +174,15 @@ export class DwgEngineController {
     storage: memoryStorage(),
     limits: { fileSize: 1024 * 1024 * 1024 },
   }))
-  async uploadAsync(@UploadedFile() file: Express.Multer.File) {
+  async uploadAsync(
+    @CurrentUser() kullanici: unknown,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
     if (!file) return { error: 'Dosya yuklenemedi' };
-    return this.dwgEngine.uploadAsync(file.buffer, file.originalname);
+    const { firmaId, userId } = kimlikCoz(kullanici);
+    const yanit = await this.dwgEngine.uploadAsync(file.buffer, file.originalname);
+    await this.sahiplik.kaydet(yanit, firmaId, userId, file.originalname);
+    return yanit;
   }
 
   /**
@@ -166,7 +190,11 @@ export class DwgEngineController {
    * Frontend setInterval ile poll eder, "ready" olunca devam.
    */
   @Get('status/:fileId')
-  async getUploadStatus(@Param('fileId') fileId: string) {
+  async getUploadStatus(
+    @CurrentUser() kullanici: unknown,
+    @Param('fileId') fileId: string,
+  ) {
+    await this.sahiplik.dogrula(fileId, kimlikCoz(kullanici).firmaId);
     return this.dwgEngine.getUploadStatus(fileId);
   }
 
@@ -175,9 +203,12 @@ export class DwgEngineController {
    */
   @Get('geometry/:fileId')
   async getGeometry(
+    @CurrentUser() kullanici: unknown,
     @Param('fileId') fileId: string,
     @Query('layers') layers?: string,
   ) {
+    // G2: cizim GEOMETRISI projenin ta kendisidir — capraz-tenant okuma burada durur.
+    await this.sahiplik.dogrula(fileId, kimlikCoz(kullanici).firmaId);
     return this.dwgEngine.getGeometry(fileId, layers ?? '');
   }
 }

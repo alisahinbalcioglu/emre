@@ -326,6 +326,25 @@ const SUITES: Suite[] = [
   //    MUTASYONLA ÖLÇÜLDÜ (2/2 öldü): kısıtlı moda CIKTI_INDIR eklenince K2
   //    kırmızı; export ucundan dekoratör kaldırılınca W1 kırmızı.
   { ad: 'Erişim kapısı: karar matrisi + uç kablolaması (K/L/W)', script: 'test:erisim', zincir: 'Z0' },
+  // ── 28.08.2026 — GÜVENLİK TURU 2 (G1-G6). DB GEREKTİRMEZ.
+  //    ADIM 2 denetimi sırasında ödeme DIŞINDA bulunan altı kusur; hepsi kod
+  //    OKUNARAK doğrulandı (grep sonucuna güvenilmedi), sonra düzeltildi.
+  //    G1 BANLI KULLANICI GİRİŞ YAPABİLİYORDU — `status` alanını tüm auth
+  //      katmanında hiçbir yer okumuyordu; "ban" düğmesi panelde çalışıyor
+  //      görünüp HİÇBİR ŞEY yapmıyordu. İKİ kapı gerekti: giriş + mevcut
+  //      token (7 günlük pencere).
+  //    G2 DWG ÇAPRAZ-TENANT SIZINTI — fileId'yi bilen herhangi bir oturumlu
+  //      kullanıcı BAŞKA firmanın çizim geometrisini okuyabiliyordu; yedi ucun
+  //      hiçbiri kullanıcıyı parametre olarak bile ALMIYORDU.
+  //    G3 İŞÇİLİK KATALOĞU — pro olan herkes DELETE /labor/:id ile küresel
+  //      kalemi silip TÜM firmaların fiyatlarını cascade ile götürebiliyordu.
+  //    G4 KİMLİK ASİMETRİSİ — upload-excel ham user.id, kardeşi kimlikCoz.
+  //    G5 ÇIPLAK firmaId — `where: { firmaId: undefined }` sessizce düşer.
+  //    G6 BOOTSTRAP HESAP DEVRALMA — govdeden newPassword ile parola sıfırlama.
+  //    MUTASYONLA ÖLÇÜLDÜ (3/3 öldü): jwt.strategy banned kontrolü kalkınca
+  //    G1-b · labor remove'dan @Roles kalkınca G3-a · getGeometry sahiplik
+  //    kontrolü kalkınca G2-a kırmızı. KIRMIZIYA DÖNERSE REGRESYONDUR.
+  { ad: 'Güvenlik turu 2: ban/DWG izolasyon/katalog/kimlik (G1-G6)', script: 'test:guvenlik2', zincir: 'Z0' },
 ];
 
 function dbErisilebilir(): boolean {
