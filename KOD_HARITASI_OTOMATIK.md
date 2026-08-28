@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 404
-Toplam satir: 86143
+Toplam satir: 86173
 Uc nokta: 130
 test:* scripti: 68
 
@@ -71,7 +71,7 @@ test:* scripti: 68
 | `backend/src/ozellik/eslestirme/matching/ad-resolver.ts` | 122 |
 | `backend/src/ozellik/eslestirme/matching/conversion.ts` | 448 |
 | `backend/src/ozellik/eslestirme/matching/index/line-parser.ts` | 231 |
-| `backend/src/ozellik/eslestirme/matching/index/product-index.ts` | 651 |
+| `backend/src/ozellik/eslestirme/matching/index/product-index.ts` | 665 |
 | `backend/src/ozellik/eslestirme/matching/index/query-engine.ts` | 1561 |
 | `backend/src/ozellik/eslestirme/matching/index/types.ts` | 275 |
 | `backend/src/ozellik/eslestirme/matching/index/vocab.ts` | 37 |
@@ -176,7 +176,7 @@ test:* scripti: 68
 | `backend/test/index-engine-test.ts` | 1774 |
 | `backend/test/iscilik-satir-silme-test.ts` | 127 |
 | `backend/test/kalem59-oksuz-kutuphane-test.ts` | 131 |
-| `backend/test/kaucuk-izolasyon-test.ts` | 228 |
+| `backend/test/kaucuk-izolasyon-test.ts` | 244 |
 | `backend/test/kd11-toplam-yollari-test.ts` | 150 |
 | `backend/test/kd12-baslik-satiri-test.ts` | 226 |
 | `backend/test/kd9-kur-olcutu-test.ts` | 252 |
