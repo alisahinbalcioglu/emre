@@ -1757,6 +1757,18 @@ export default function NewQuotePage() {
                 Marka seç → <b className="font-semibold text-slate-600">sürükle</b> ya da tutamağa{' '}
                 <b className="font-semibold text-slate-600">çift-tık</b> ile grubu/aileyi doldur
               </span>
+              {/* KP: elle fiyatlandirma yolu — kullanicinin "kutuphaneden
+                  kopyalayip buraya yapistirayim, gerekirse elle yazayim"
+                  istegi. Ozellik VARDI ama gorunur degildi; kesfedilemeyen
+                  ozellik yok hukmundedir. */}
+              <span
+                className="flex items-center gap-1.5 whitespace-nowrap text-xs text-slate-500"
+                title="Kütüphanede (Malzeme Markası / İşçilik Firması) bir fiyat hücresini Ctrl+C ile kopyalayıp buradaki Malz./İşç. Birim Fiyat hücresine Ctrl+V ile yapıştırın. Hücreye doğrudan yazmak da serbesttir — toplamlar iki yolda da yeniden hesaplanır."
+              >
+                <span className="text-indigo-500">📋</span>
+                Birim fiyat: <b className="font-semibold text-slate-600">Ctrl+V</b> ile yapıştır ya da{' '}
+                <b className="font-semibold text-slate-600">elle yaz</b>
+              </span>
             </div>
           );
         })()}
