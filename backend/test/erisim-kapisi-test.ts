@@ -285,8 +285,90 @@ function kablolama() {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  P — ON YUZ ↔ SUNUCU ESLIGI
+// ═══════════════════════════════════════════════════════════════════════════
+/**
+ * On yuz de ayni karari veriyor (frontend/ozellik/odeme/erisim-durumu.ts):
+ * dugmeleri ona gore gizliyor. Iki kume AYRISIRSA kullanici ACIK GORUNEN
+ * bir dugmeye basar ve 403 yer — yani kisitli mod, duzeltmeye calistigi
+ * seyden daha kotu bir deneyim uretir.
+ *
+ * Kopya mantik kacinilmaz (sunucu kapiyi tutar, on yuz bosuna tiklatmaz),
+ * ama AYRISMASI kacinilmaz DEGIL. Bu blok iki dosyayi karsilastirir.
+ * ⚠ On yuz tarafinda ayrica kendi vitest paketi var; buradaki kapi
+ * ESLIGI olcer, davranisi degil.
+ */
+function onYuzEsligi() {
+  console.log('\n── P · ON YUZ ↔ SUNUCU ESLIGI ──');
+  const fs = require('node:fs') as typeof import('node:fs');
+  const path = require('node:path') as typeof import('node:path');
+
+  const feYol = path.join(
+    __dirname,
+    '../../frontend/ozellik/odeme/erisim-durumu.ts',
+  );
+
+  if (!fs.existsSync(feYol)) {
+    // ON KOSUL: dosya yoksa bu blok olcum YAPAMAZ. Sessizce yesil
+    // gecmek yalanci guven olurdu — gurultuyle kirmizi.
+    check('P-OLCUT on yuz erisim dosyasi bulundu', false, `aranan=${feYol}`);
+    return;
+  }
+  const fe = fs.readFileSync(feYol, 'utf8');
+
+  // On yuzdeki KISITLI_MODDA_ACIK kumesini metinden cikar.
+  const blok = fe.match(
+    /KISITLI_MODDA_ACIK[^=]*=\s*new Set\(\[([\s\S]*?)\]\)/,
+  )?.[1];
+  check(
+    'P-OLCUT on yuzdeki KISITLI_MODDA_ACIK kumesi okunabildi',
+    !!blok,
+    'desen bulunamadi — on yuz dosyasinin bicimi degismis olabilir',
+  );
+  if (!blok) return;
+
+  const feKume = new Set(
+    [...blok.matchAll(/Yetenek\.([A-Z_]+)/g)].map((m) => m[1]),
+  );
+
+  // Sunucu tarafi: ayni kumeyi DAVRANISTAN turet (sabit listeyi
+  // kopyalamak, olcmek degil kendini tekrar etmek olurdu).
+  const kisitli = karar({
+    durum: AbonelikDurumu.KISITLI,
+    erisimVar: true,
+    saltOkunur: true,
+  });
+  const beKume = new Set(
+    (Object.keys(Yetenek) as Array<keyof typeof Yetenek>).filter((ad) =>
+      servis.yetenekKararla(kisitli, Yetenek[ad]),
+    ),
+  );
+
+  check(
+    'P-OLCUT sunucu kumesi bos degil (olcut bozuk degil)',
+    beKume.size > 0,
+    `be=${JSON.stringify([...beKume])}`,
+  );
+
+  const fazla = [...feKume].filter((x) => !beKume.has(x as any));
+  const eksik = [...beKume].filter((x) => !feKume.has(x));
+
+  check(
+    'P1 on yuz SUNUCUDA KAPALI olan bir yetenegi ACIK gostermiyor',
+    fazla.length === 0,
+    `on yuzde fazla: ${JSON.stringify(fazla)} — kullanici tiklar ve 403 yer`,
+  );
+  check(
+    'P2 on yuz SUNUCUDA ACIK olan bir yetenegi gereksiz KAPATMIYOR',
+    eksik.length === 0,
+    `on yuzde eksik: ${JSON.stringify(eksik)} — calisan ozellik gizlenir`,
+  );
+}
+
 kararMatrisi();
 kablolama();
+onYuzEsligi();
 
 console.log(
   `\n${'='.repeat(64)}\nERISIM KAPISI: ${passed} PASS, ${failed} FAIL\n${'='.repeat(64)}`,

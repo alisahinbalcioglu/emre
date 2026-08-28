@@ -50,6 +50,29 @@ api.interceptors.response.use(
       localStorage.removeItem('user');
       window.location.href = '/login';
     }
+
+    // ── ADIM 2: ABONELIK KISITI (403) ──────────────────────────────────
+    // Sunucudaki ErisimGuard, kapali bir yetenek icin `kod:
+    // 'ABONELIK_KISITLI'` tasiyan bir 403 doner. 401'den FARKLI ele alinir:
+    // oturum GECERLIDIR, silinmemeli ve /login'e YONLENDIRILMEMELIDIR —
+    // kullaniciyi cikisa atmak, odeme yapmasi gereken anda urunun disina
+    // atmak olurdu.
+    //
+    // ⚠ YONLENDIRME YAPILMAZ, olay YAYINLANIR: cagiran yer kendi baglamina
+    // uygun mesaji gosterebilsin (indirme butonu ≠ teklif kaydetme).
+    // Kabuktaki serit zaten kalici uyariyi tasiyor; buradaki olay ANLIK
+    // geri bildirim icindir.
+    if (
+      err.response?.status === 403 &&
+      err.response?.data?.kod === 'ABONELIK_KISITLI' &&
+      typeof window !== 'undefined'
+    ) {
+      console.warn('[api] 403 ABONELIK_KISITLI — uc:', err.config?.url, err.response?.data);
+      window.dispatchEvent(
+        new CustomEvent('abonelik-kisitli', { detail: err.response.data }),
+      );
+    }
+
     return Promise.reject(err);
   },
 );

@@ -7,6 +7,7 @@ import {
   FileText,
   Database,
   BookOpen,
+  CreditCard,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
@@ -26,6 +27,11 @@ const NAV_ITEMS = [
   'divider' as const,
   { href: '/materials', label: 'Malzeme Havuzu', icon: Database },
   { href: '/library', label: 'Kutuphanem', icon: BookOpen },
+  'divider' as const,
+  // ADIM 2: abonelik menude DAIMA gorunur. Erisimi kapali firmanin
+  // odeme yapabilecegi tek yol burasi; kosullu gizlemek askidaki
+  // musteriyi urunun disinda kilitlerdi (kilitlenme yasagi).
+  { href: '/abonelik', label: 'Abonelik', icon: CreditCard },
 ];
 
 const TIER_COLORS: Record<string, { bg: string; text: string }> = {

@@ -11,6 +11,7 @@ import {
   Settings,
 } from 'lucide-react';
 import { CapabilitiesProvider } from '@/ortak/contexts/CapabilitiesContext';
+import { AbonelikSeridi } from '@/ozellik/odeme/AbonelikSeridi';
 import Sidebar from '@/ortak/kabuk/components/layout/Sidebar';
 import Breadcrumb from '@/ortak/kabuk/components/layout/Breadcrumb';
 
@@ -185,6 +186,13 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
               <CurrencyWidget />
             </div>
           </header>
+
+          {/* ADIM 2 — abonelik uyarisi: KABUKTA, sayfalarda degil.
+              Deneme bitisi / odeme gecikmesi / kisitli mod uyarisini
+              kullanici HANGI sayfada olursa olsun gormeli; sayfa sayfa
+              eklemek, eklenmeyi unutulan yerde kullaniciyi habersiz
+              birakir ve dunning merdiveni sessizce ilerler. */}
+          <AbonelikSeridi />
 
           {/* Page content */}
           <main className="flex-1 px-8 py-8">

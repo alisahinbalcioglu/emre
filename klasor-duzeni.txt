@@ -85,6 +85,11 @@ frontend/ozellik/cikti/ :: F · çıktı indirme.
 frontend/ozellik/fiyat/ :: D · fiyat/kur.
 frontend/ozellik/giris/ :: A · kaynak kolon.
 frontend/ozellik/kutuphane/ :: G · kütüphane ekranları.
+# YENİ ALAN (28.08.2026, ADIM 2) — backend'deki `ozellik/odeme/` ile aynı
+# gerekçe: ödeme mevcut alanların hiçbirine ait değil, hepsinin ÜSTÜNDE duran
+# ve hepsini kapatabilen ayrı bir eksendir. Ön yüzde kendi dilimi var: erişim
+# şeridi, paket seçimi, kart formu dönüşü. Grup N.
+frontend/ozellik/odeme/ :: N · abonelik ekranları, erişim şeridi.
 frontend/ozellik/tablo/ :: B · ekranda görülen grid.
 frontend/ozellik/teklif/ :: M · teklif ekranları.
 frontend/scripts/ :: Sürüm betiği — grup I.
