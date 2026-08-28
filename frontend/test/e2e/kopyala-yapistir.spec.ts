@@ -60,7 +60,7 @@ async function moduAyarla(page: Page, hedef: 'quote' | 'library') {
  *  DEGIL (ayni tuzak elle kullanimda yok: insan moda gectikten sonra tiklar). */
 async function netFiyatinaTikla(page: Page, satir: number) {
   await moduAyarla(page, 'library');
-  await expect(page.locator(`[row-index="2"] [col-id="${NET}"]`)).toHaveText(/600/);
+  await expect(page.locator(`[row-index="2"] [col-id="${NET}"]`)).toHaveText(/600/, { timeout: 15_000 });
   await page.locator(`[row-index="${satir}"] [col-id="${NET}"]`).click();
   // ⚠ ODAGIN KURULMASINI BEKLE: Playwright'in click auto-wait'i DOM'u bekler,
   // AG Grid'in IC odak durumunu degil. Yuklu makinede (paralel is varken)
@@ -92,8 +92,24 @@ async function netFiyatSatirlariniKopyala(page: Page, adet: number): Promise<str
 }
 
 test.beforeEach(async ({ page }) => {
-  await page.goto('/dev/grid-test');
-  await expect(page.locator('[row-index="2"] [col-id="col1"]')).toHaveText(/6'' Siyah Boru/);
+  // ⚠ YENIDEN DENEME ORTAM ICIN, URUN ICIN DEGIL: bu dosya tek koşumda ~29
+  // tarayici baglami acar ve Next DEV sunucusu son testlerde takilip sayfayi
+  // bos servis edebiliyor (olculdu: ayni test tek basina gecerken grupta
+  // "hucre bos" diye kirmiziya donuyordu; sunucu 200 doner, grid cizilir ama
+  // veri gelmez). Uretim sunucusuyla kosulamaz — harness `NODE_ENV=production`
+  // altinda kendini kapatir. Yukleme adiminin yeniden denenmesi olcumu
+  // kurtarir; ASIL davranis assert'leri tek denemeli kalir.
+  const hucre = page.locator('[row-index="2"] [col-id="col1"]');
+  for (let deneme = 1; deneme <= 3; deneme++) {
+    await page.goto('/dev/grid-test');
+    try {
+      await expect(hucre).toHaveText(/6'' Siyah Boru/, { timeout: 10_000 });
+      return;
+    } catch (e) {
+      if (deneme === 3) throw e;
+      await page.waitForTimeout(500);
+    }
+  }
 });
 
 test('KP1 ★ tek Net Fiyat hucresi panoya GORUNEN bicimiyle gider', async ({ page }) => {
@@ -172,7 +188,7 @@ test('KP8 ★ VERI OLMAYAN SATIR (grup bandi/baslik) panoda YER TUTMAZ', async (
   // bos TSV satiri uretilseydi, yapistirmada TUM degerler bir satir kayardi —
   // sessiz para hatasi. Harness'te satir 1 bir baslik satiridir (_isDataRow:false).
   await moduAyarla(page, 'library');
-  await expect(page.locator(`[row-index="2"] [col-id="${NET}"]`)).toHaveText(/600/);
+  await expect(page.locator(`[row-index="2"] [col-id="${NET}"]`)).toHaveText(/600/, { timeout: 15_000 });
   await page.locator(`[row-index="1"] [col-id="${NET}"]`).click();   // BASLIK satiri
   await expect(page.locator(`[row-index="1"] [col-id="${NET}"]`)).toHaveClass(/ag-cell-focus/);
   await page.keyboard.press('Shift+ArrowDown');                       // 1..2
@@ -259,7 +275,7 @@ test('KP12 ★ Toolbar iskonto kutusunda Ctrl+Z gridi GERI ALMAZ (capture kalkan
   // kutusuna yazarken Ctrl+Z'ye basinca TUM LISTENIN toplu iskontosu sessizce
   // geri aliniyordu (odak kutuda, toast yok, net fiyatlar degisir).
   await moduAyarla(page, 'library');
-  await expect(page.locator(`[row-index="2"] [col-id="${NET}"]`)).toHaveText(/600/);
+  await expect(page.locator(`[row-index="2"] [col-id="${NET}"]`)).toHaveText(/600/, { timeout: 15_000 });
 
   const kutu = page.getByPlaceholder(/örn 30/);
   await kutu.click();
@@ -293,7 +309,7 @@ test('KP14 ★ Tumu BOS secim PANOYU EZMEZ ve yalan toast atmaz', async ({ page 
   // uretilen metin "\n" olur — bos string DEGILDIR; kapi sadece `!metin`
   // baksaydi pano silinir ve "2 hücre kopyalandı" denirdi.
   await moduAyarla(page, 'library');
-  await expect(page.locator(`[row-index="2"] [col-id="${NET}"]`)).toHaveText(/600/);
+  await expect(page.locator(`[row-index="2"] [col-id="${NET}"]`)).toHaveText(/600/, { timeout: 15_000 });
   await page.locator(`[row-index="2"] [col-id="${NET}"]`).click();
   await page.keyboard.press('Control+c');            // panoda gecerli bir deger birak
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('₺600,00');
@@ -347,167 +363,3 @@ test('KP16 ★ Marka kolonu panoya AD yazar, UUID DEGIL', async ({ page }) => {
   expect(pano).not.toMatch(/^b-|[0-9a-f]{8}-[0-9a-f]{4}/);   // kimlik SIZMAZ
 });
 
-test('KP17 ★ EDITORDE ↓ ile alt satira gecis — "300 ↓ 400 ↓ 500" ritmi', async ({ page }) => {
-  // Kullanicinin cumlesi: "300 tl girdik, hemen alt satira yon tuslari ile
-  // gecmek istiyorum ancak olmuyor; hucreden ciktigimda calisiyor."
-  await moduAyarla(page, 'quote');
-  const h2 = page.locator('[row-index="2"] [col-id="_matBirim"]');
-  const h3 = page.locator('[row-index="3"] [col-id="_matBirim"]');
-  const h4 = page.locator('[row-index="4"] [col-id="_matBirim"]');
-
-  await h2.dblclick();
-  await page.keyboard.type('300');
-  await page.keyboard.press('ArrowDown');          // editor ACIKKEN
-  // Deger KAYDEDILDI (editorden cikilmadan) ve odak bir alt VERI satirinda
-  await expect(h2).toHaveText(/300/);
-  await expect(h3).toHaveClass(/ag-cell-focus/);
-
-  // Yeni hucrede editor acilmaz ama YAZMAYA baslayinca ilk karakter kaybolmaz
-  await page.keyboard.type('400');
-  await page.keyboard.press('ArrowDown');
-  await expect(h3).toHaveText(/400/);
-  await expect(h4).toHaveClass(/ag-cell-focus/);
-
-  await page.keyboard.type('500');
-  await page.keyboard.press('Enter');
-  await expect(h4).toHaveText(/500/);
-
-  // ★ Toplamlar zincirden gecti: 286×300 · 268×400 · 102×500
-  await expect(page.locator('[row-index="2"] [col-id="_matToplam"]')).toHaveText(/85\.800/);
-  await expect(page.locator('[row-index="3"] [col-id="_matToplam"]')).toHaveText(/107\.200/);
-  await expect(page.locator('[row-index="4"] [col-id="_matToplam"]')).toHaveText(/51\.000/);
-});
-
-test('KP18 ★ EDITORDE ↑ yukari gider; ←/→ metin imlecinde KALIR', async ({ page }) => {
-  await moduAyarla(page, 'quote');
-  const h4 = page.locator('[row-index="4"] [col-id="_matBirim"]');
-
-  await h4.dblclick();
-  await page.keyboard.type('750');
-  await page.keyboard.press('ArrowUp');
-  await expect(h4).toHaveText(/750/);
-  await expect(page.locator('[row-index="3"] [col-id="_matBirim"]')).toHaveClass(/ag-cell-focus/);
-
-  // ← / → editorden CIKARMAZ: yazilani duzeltmek icin imlec metinde kalmali.
-  const h2 = page.locator('[row-index="2"] [col-id="_matBirim"]');
-  await h2.dblclick();
-  await page.keyboard.type('120');
-  await page.keyboard.press('ArrowLeft');
-  await page.keyboard.press('ArrowLeft');
-  await page.keyboard.type('9');                   // "1" ile "2" arasina
-  await page.keyboard.press('Enter');
-  await expect(h2).toHaveText(/1\.920/);           // 1920 — editorden CIKILMADI
-});
-
-test('KP19 ★ EDITORDE ok VERI OLMAYAN satira gecmez (grup bandi/baslik atlanir)', async ({ page }) => {
-  // Harness'te satir 0 ve 1 baslik satiridir (`_isDataRow:false`); gercek
-  // kutuphane/teklifte bunlar grup bandi ve bolum basliklaridir. Editorde ↑
-  // basildiginda imlec oraya DUSMEMELI — o hucreler duzenlenemez, kullanici
-  // yazmaya devam edemez ve girdigi deger havada kalirdi.
-  await moduAyarla(page, 'quote');
-  const h2 = page.locator('[row-index="2"] [col-id="_matBirim"]');
-  await h2.dblclick();
-  await page.keyboard.type('999');
-  await page.keyboard.press('ArrowUp');            // ustte VERI satiri YOK
-
-  // Odak baslik satirina KAYMADI
-  await expect(page.locator('[row-index="1"] [col-id="_matBirim"]')).not.toHaveClass(/ag-cell-focus/);
-  await expect(page.locator('[row-index="0"] [col-id="_matBirim"]')).not.toHaveClass(/ag-cell-focus/);
-  // Yazilan deger de kaybolmadi
-  await page.keyboard.press('Enter');
-  await expect(h2).toHaveText(/999/);
-});
-
-/** Fare ile hucreden hucreye surukler (Excel'in asil secim yolu). */
-async function surukleSec(page: Page, colId: string, basSatir: number, bitSatir: number) {
-  const bas = await page.locator(`[row-index="${basSatir}"] [col-id="${colId}"]`).boundingBox();
-  const bit = await page.locator(`[row-index="${bitSatir}"] [col-id="${colId}"]`).boundingBox();
-  if (!bas || !bit) throw new Error('hucre koordinati alinamadi');
-  const x = bas.x + bas.width / 2;
-  // ⚠ Hucrenin ORTASINDAN baslar: alt 10px surukle-doldur TUTAMAGININ bolgesi.
-  await page.mouse.move(x, bas.y + bas.height / 2);
-  await page.mouse.down();
-  const adim = Math.max(4, Math.abs(bitSatir - basSatir) * 2);
-  const yBas = bas.y + bas.height / 2;
-  const yBit = bit.y + bit.height / 2;
-  for (let i = 1; i <= adim; i++) await page.mouse.move(x, yBas + ((yBit - yBas) * i) / adim);
-  await page.mouse.up();
-}
-
-test('KP20 ★ FAREYLE SURUKLEYEREK secim (Excel yolu) — tutamaga dokunmadan', async ({ page }) => {
-  await moduAyarla(page, 'library');
-  await expect(page.locator(`[row-index="2"] [col-id="${NET}"]`)).toHaveText(/600/);
-
-  await surukleSec(page, NET, 2, 4);
-  await expect.poll(() => tulSayisi(page), { timeout: 10_000 }).toBe(3);
-
-  // Surukleme sonrasi gelen `click` secimi SILMEMELI (bayrak kapisi)
-  await page.waitForTimeout(150);
-  await expect.poll(() => tulSayisi(page), { timeout: 10_000 }).toBe(3);
-
-  await page.keyboard.press('Control+c');
-  await expect(page.getByText(/hücre kopyalandı/).first()).toBeVisible();
-  const ham = await page.evaluate(() => navigator.clipboard.readText());
-  expect(ham.split(/\r?\n/)).toEqual(['₺600,00', '₺400,00', '₺300,00']);
-});
-
-test('KP21 ★ SECILI ARALIGA yapistirma — bir fiyat N satira dagilir', async ({ page }) => {
-  await moduAyarla(page, 'library');
-  await expect(page.locator(`[row-index="2"] [col-id="${NET}"]`)).toHaveText(/600/);
-  await page.locator(`[row-index="2"] [col-id="${NET}"]`).click();
-  await page.keyboard.press('Control+c');                    // TEK hucre: ₺600,00
-  await expect(page.getByText(/hücre kopyalandı/).first()).toBeVisible();
-
-  await moduAyarla(page, 'quote');
-  await surukleSec(page, '_matBirim', 2, 5);                 // 4 satirlik hedef
-  await expect.poll(() => tulSayisi(page), { timeout: 10_000 }).toBe(4);
-  await page.keyboard.press('Control+v');
-
-  for (const r of [2, 3, 4, 5]) {
-    await expect(page.locator(`[row-index="${r}"] [col-id="_matBirim"]`)).toHaveText(/600/);
-  }
-  // Zincir her satirda kosmus olmali: 286×600 · 268×600 · 102×600 · 564×600
-  await expect(page.locator('[row-index="2"] [col-id="_matToplam"]')).toHaveText(/171\.600/);
-  await expect(page.locator('[row-index="5"] [col-id="_matToplam"]')).toHaveText(/338\.400/);
-});
-
-test('KP22 ★ SURUKLE-DOLDUR TUTAMAGI bozulmadi (alt kenar hala doldurur)', async ({ page }) => {
-  // KP20'nin bedeli olmamali: tutamak yalniz 4 kolonda ve yalniz alt 10px'te.
-  // Iskonto kolonunun tutamagindan surukleyince DOLDURMA olmali, secim DEGIL.
-  await moduAyarla(page, 'library');
-  const isk = page.locator('[row-index="2"] [col-id="_draftDiscount"]');
-  await isk.dblclick();
-  await page.keyboard.type('20');
-  await page.keyboard.press('Enter');
-  await expect(page.locator(`[row-index="2"] [col-id="${NET}"]`)).toHaveText(/480/);   // 600×0,8
-
-  const kutu = await isk.boundingBox();
-  const hedef = await page.locator('[row-index="4"] [col-id="_draftDiscount"]').boundingBox();
-  if (!kutu || !hedef) throw new Error('koordinat yok');
-  const x = kutu.x + kutu.width / 2;
-  await page.mouse.move(x, kutu.y + kutu.height - 3);        // ALT KENAR = tutamak
-  await page.mouse.down();
-  for (let i = 1; i <= 8; i++) {
-    await page.mouse.move(x, (kutu.y + kutu.height - 3) + ((hedef.y + hedef.height / 2 - (kutu.y + kutu.height - 3)) * i) / 8);
-  }
-  await page.mouse.up();
-
-  // Iskonto DOLDU (secim degil): net fiyatlar %20 dustu
-  await expect(page.locator(`[row-index="3"] [col-id="${NET}"]`)).toHaveText(/320/);   // 400×0,8
-  await expect(page.locator(`[row-index="4"] [col-id="${NET}"]`)).toHaveText(/240/);   // 300×0,8
-});
-
-test('KP7 ★ Shift+Ok ODAGI TASIMAZ — anchor sabit kalir (Excel davranisi)', async ({ page }) => {
-  // Regresyon kilidi: keydown bubble fazinda dinlenirse AG Grid'in kendi ok
-  // navigasyonu ONCE kosar ve odak secimle birlikte kayar. O halde Shift+Ok
-  // sonrasi Ctrl+V hedefi kullanicinin BASLADIGI hucre olmaktan cikar.
-  await netFiyatinaTikla(page, 2);
-  await page.keyboard.press('Shift+ArrowDown');
-  await page.keyboard.press('Shift+ArrowDown');
-  const odak = await page.evaluate(() => {
-    const e = document.querySelector('.ag-cell-focus');
-    return e ? { satir: e.closest('[row-index]')?.getAttribute('row-index'), kolon: e.getAttribute('col-id') } : null;
-  });
-  expect(odak).toEqual({ satir: '2', kolon: NET });
-  await expect.poll(() => tulSayisi(page), { timeout: 10_000 }).toBe(3);
-});

@@ -128,6 +128,12 @@ export function planYapistir(
    * kopyalandiysa bir kez yazilir; sigmayan ya da artan kisim ozette bildirilir.
    */
   hedefSatirSayisi?: number,
+  /** KP2 — hedef secimin KOLON sayisi. Tek hucre kopyasi kolonlara da dagilir;
+   *  yoksa tul N×2 boyanip yalniz N×1 yazilir ve isaret, yazilan kumenin UST
+   *  KUMESI olurdu (kullanici iki sutunu mavi gorup tek sutunun doldugunu
+   *  ancak gozle fark ederdi). Editable olmayan kolon yine YAZILMAZ — ozette
+   *  `atlananKolon` olarak gorunur. */
+  hedefKolonSayisi?: number,
 ): PastePlan {
   const bos: PastePlan = {
     hucreler: [],
@@ -141,9 +147,12 @@ export function planYapistir(
   // TEK HUCRE → SECIMIN TAMAMI. Sart `1×1` olmasidir: tek SATIR ama cok kolonlu
   // bir kopya (ornegin "Iskonto + Net Fiyat") dagitilirsa kullanicinin sectigi
   // ikinci kolona yanlis sayi girerdi.
-  if (typeof hedefSatirSayisi === 'number' && hedefSatirSayisi > 1
-    && matris.length === 1 && matris[0].length === 1) {
-    matris = Array.from({ length: hedefSatirSayisi }, () => [matris[0][0]]);
+  if (matris.length === 1 && matris[0].length === 1
+    && ((hedefSatirSayisi ?? 1) > 1 || (hedefKolonSayisi ?? 1) > 1)) {
+    const deger = matris[0][0];
+    const s = Math.max(1, hedefSatirSayisi ?? 1);
+    const k = Math.max(1, hedefKolonSayisi ?? 1);
+    matris = Array.from({ length: s }, () => Array.from({ length: k }, () => deger));
   }
 
   const plan = bos;

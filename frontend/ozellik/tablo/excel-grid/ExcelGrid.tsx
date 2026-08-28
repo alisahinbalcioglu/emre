@@ -1837,10 +1837,53 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
   // Surukleme yalniz fare BIRAKILINCA biter; olay grid disinda da olabilir
   // (kullanici listenin disina tasar), o yuzden dinleyici document'te.
   React.useEffect(() => {
-    const birak = () => { surukluyorRef.current = false; };
+    const birak = () => { surukluyorRef.current = false; kenarYonRef.current = 0; };
     document.addEventListener('mouseup', birak);
     return () => document.removeEventListener('mouseup', birak);
   }, []);
+
+  // ── KENAR KAYDIRMASI: surukleme listenin ucuna dayaninca liste akar ──────
+  // 983 malzemelik kutuphanede ekranda ~20 satir gorunur; bu olmadan kullanici
+  // yalniz gordugu kadarini secebilirdi. Excel de kenarda ayni sekilde akar.
+  // ⚠ Neden ZAMANLAYICI: fare kenarda SABIT dururken `mousemove` gelmez —
+  // yalnizca hareket olayina baglansaydi kaydirma tek adimda durur, kullanici
+  // fareyi surekli titretmek zorunda kalirdi.
+  const kenarYonRef = useRef(0);
+  React.useEffect(() => {
+    const hareket = (ev: MouseEvent) => {
+      if (!surukluyorRef.current) { kenarYonRef.current = 0; return; }
+      const govde = rootWrapperRef.current?.querySelector('.ag-body-viewport') as HTMLElement | null;
+      if (!govde) { kenarYonRef.current = 0; return; }
+      const r = govde.getBoundingClientRect();
+      const esik = 28;
+      kenarYonRef.current = ev.clientY < r.top + esik ? -1
+        : ev.clientY > r.bottom - esik ? 1
+          : 0;
+    };
+    const zamanlayici = setInterval(() => {
+      const yon = kenarYonRef.current;
+      // ⚠ `suruklendiRef` SART: yalniz mousedown ile kenar bolgesinde durmak
+      // (kisa tiklama, hatta hic hareket etmeden) secimi buyutmemeli. Kenar
+      // kaydirmasi GERCEKTEN suruklenmis bir secimin devamidir.
+      if (!yon || !surukluyorRef.current || !suruklendiRef.current) return;
+      const api = gridRef.current?.api;
+      const anchor = secimAnchorRef.current;
+      const uc = secimUcRef.current;
+      if (!api || !anchor || !uc) return;
+      const yeniSatir = Math.max(0, Math.min(api.getDisplayedRowCount() - 1, uc.satir + yon));
+      if (yeniSatir === uc.satir) return;              // liste bitti
+      const yeniUc: Nokta = { satir: yeniSatir, kolon: uc.kolon };
+      suruklendiRef.current = true;
+      secimUcRef.current = yeniUc;
+      api.ensureIndexVisible(yeniSatir);
+      secimUygula(anchor, yeniUc);
+    }, 60);
+    document.addEventListener('mousemove', hareket);
+    return () => {
+      document.removeEventListener('mousemove', hareket);
+      clearInterval(zamanlayici);
+    };
+  }, [secimUygula]);
 
   // ═══════════ ISKONTO TOPLU ISLEMLERI (Iskonto Surukle-Doldur PRD) ═══════════
   // S5: geri alma yigini — her toplu islem (fill / yapistir / gruba veya tum
@@ -2146,13 +2189,44 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       for (let i = fc.rowIndex + yon; i >= 0 && i < api.getDisplayedRowCount(); i += yon) {
         if ((api.getDisplayedRowAtIndex(i)?.data as any)?._isDataRow === true) { hedefSatir = i; break; }
       }
-      if (hedefSatir < 0) return;                 // sinirda: editor acik kalsin
       e.preventDefault();
       e.stopPropagation();
+      if (hedefSatir < 0) {
+        // SINIRDA (son/ilk veri satiri): gidilecek yer yok ama editor de ACIK
+        // BIRAKILAMAZ. Birakilsaydi kullanici ↓ basip yazmaya devam edince
+        // yeni rakamlar AYNI hucredeki eski degerin ucuna eklenirdi
+        // (300 ↓ 400 → "300400"). Deger kaydedilir, odak yerinde kalir;
+        // yazmaya baslayinca AG Grid temiz bir editor acar.
+        api.stopEditing();
+        return;
+      }
+      // ⚠ SIRA: kaydet → GORUNUR KIL → odakla. Sonra secim temizligi.
+      // Olculdu (KP17, 5 kosumda 1 kayip): `ensureIndexVisible` odak
+      // KURULDUKTAN sonra cagrilirsa kaydirma DOM'u degistiriyor ve hemen
+      // ardindan yazilan ilk karakter kayboluyordu — kullanici "300 ↓ 400"
+      // yazarken 400'un basi ucuyordu. Kaydirma once yapilir, odak son
+      // adimdir; `secimTemizle` (React state) en sona alindi ki odak
+      // kurulumuyla ayni kareye dusmesin.
+      const kolonId = fc.column.getColId();
       api.stopEditing();                          // deger KAYDEDILIR (elle giris zinciri kosar)
-      secimTemizle();
       api.ensureIndexVisible(hedefSatir);
-      api.setFocusedCell(hedefSatir, fc.column.getColId());
+      api.setFocusedCell(hedefSatir, kolonId);
+      secimTemizle();
+      // ⚠ IKINCI ODAKLAMA BIR SONRAKI KAREDE — kayip karakter kapisi.
+      // `stopEditing` editoru sokup hucreyi yeniden cizer; bu is AYNI kare
+      // icinde bitmiyor ve odak DOM'a gecmeden yazilan ilk karakter
+      // kayboluyordu ("300 ↓ 400" yazarken 400'un basi ucuyordu — 6 kosumda
+      // 1). Tekrar odaklamak ucuzdur ve idempotenttir: odak zaten dogru
+      // hucredeyse AG Grid hicbir sey yapmaz.
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => {
+          try {
+            const g = gridRef.current?.api;
+            const su = g?.getFocusedCell();
+            if (g && (!su || su.rowIndex !== hedefSatir)) g.setFocusedCell(hedefSatir, kolonId);
+          } catch { /* grid gitti */ }
+        });
+      }
       return;
     }
 
@@ -2316,7 +2390,8 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         [materialTotalField, laborTotalField, grandUnitPriceField, grandTotalField]
           .filter(Boolean) as string[],
       );
-      const kolonlar: PasteKolon[] = api.getAllDisplayedColumns().map((c: any) => {
+      const kolonlarTum = api.getAllDisplayedColumns();
+      const kolonlar: PasteKolon[] = kolonlarTum.map((c: any) => {
         const def = c.getColDef();
         return {
           field: c.getColId(),
@@ -2329,25 +2404,46 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           alan: sayisalAlanlar.get(c.getColId()),
         };
       });
+      // ⚠ BASLANGIC = SECIMIN SOL-UST KOSESI, ODAK DEGIL (kritik para hatasi
+      //   olarak olculdu). Odak, secimin ALT ucunda olabilir — yukari
+      //   surukleme, Shift+tik ve Shift+YukariOk yollarinin UCUNDE de oyle
+      //   olur. Baslangic odaktan alinsaydi (eski hal) sayim secimden,
+      //   yazim odaktan gelir ve ikisi ayrisirdi: kullanicinin MAVI GORDUGU
+      //   satirlar bos kalir, hic secmedigi ALTTAKI satirlara sessizce fiyat
+      //   yazilirdi (olculdu: 872 × 600 = 523.200 TL uydurulmus tutar genel
+      //   toplama girdi). Excel de bloğu secimin sol-ust kosesinden yazar.
+      const sec = secimRef.current;
+      const secKapsiyor = !!sec
+        && sec.satirBas <= fc.rowIndex && fc.rowIndex <= sec.satirSon;
+      const basSatir = secKapsiyor ? sec!.satirBas : fc.rowIndex;
+      const basKolonField = secKapsiyor
+        ? (kolonlarTum[sec!.kolonBas]?.getColId() ?? fc.column.getColId())
+        : fc.column.getColId();
+
       const satirlar: PasteSatir[] = [];
-      for (let i = fc.rowIndex; i < api.getDisplayedRowCount(); i++) {
+      for (let i = basSatir; i < api.getDisplayedRowCount(); i++) {
         const n = api.getDisplayedRowAtIndex(i);
         satirlar.push({ isDataRow: !!n?.data?._isDataRow });
       }
       // KP2: hedefte bir ARALIK secili mi? Seciliyse ve pano TEK hucreyse
-      // deger secimin tamamina dagilir (Excel davranisi — "bir fiyati N
+      // deger secimin TAMAMINA dagilir (Excel davranisi — "bir fiyati N
       // satira bas"). Sayim VERI satirlarini sayar: grup bandi/baslik
       // secime girse bile fiyat almaz, sayilsaydi dagitim eksik kalirdi.
-      const sec = secimRef.current;
+      // ⚠ KOLON boyutu da tasinir: tul N×2 boyanip yalniz N×1 yazilsaydi
+      //   isaret, yazilan kumenin UST KUMESI olurdu — kullanici iki sutunu
+      //   mavi gorup tek sutunun doldugunu ancak gozle fark ederdi.
       let hedefSatirSayisi: number | undefined;
-      if (sec && sec.satirBas <= fc.rowIndex && fc.rowIndex <= sec.satirSon) {
+      let hedefKolonSayisi: number | undefined;
+      if (secKapsiyor && sec) {
         let n = 0;
         for (let i = sec.satirBas; i <= sec.satirSon; i++) {
           if ((api.getDisplayedRowAtIndex(i)?.data as any)?._isDataRow === true) n++;
         }
         if (n > 1) hedefSatirSayisi = n;
+        const k = sec.kolonSon - sec.kolonBas + 1;
+        if (k > 1) hedefKolonSayisi = k;
       }
-      const plan = planYapistir(text, kolonlar, fc.column.getColId(), satirlar, hedefSatirSayisi);
+      const plan = planYapistir(text, kolonlar, basKolonField, satirlar, hedefSatirSayisi, hedefKolonSayisi);
       e.preventDefault();
       const sayiUyarilari = yapistirmaSayiUyarilari(plan.ozet);
       if (plan.hucreler.length === 0) {
@@ -2360,7 +2456,9 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         return;
       }
       for (const h of plan.hucreler) {
-        const n = api.getDisplayedRowAtIndex(fc.rowIndex + h.satir);
+        // Ofset SECIMIN UST UCUNDAN (basSatir) — odaktan DEGIL; gerekce
+        // yukaridaki "SOL-UST KOSE" notunda.
+        const n = api.getDisplayedRowAtIndex(basSatir + h.satir);
         if (!n) continue;
         // Sayilar MAKINE METNI olarak gider — elle giris ayristiricisinin
         // (`hucreGirdisiCoz`) urettigi bicimle birebir ("10,075": 3 ondalik
@@ -2429,7 +2527,22 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     if (!text || !text.trim()) return;
     const matrix = text.replace(/\r/g, '').split('\n');
     if (matrix.length && matrix[matrix.length - 1] === '') matrix.pop();
-    const cells = matrix.map((line) => line.split('\t'));
+    let cells = matrix.map((line) => line.split('\t'));
+
+    // ── IKIZ (KP2): KUTUPHANEDE DE SECILI ARALIGA DAGITIM ────────────────
+    // Kullanicinin cumlesi "her iki taraftan da" idi; dagitim yalniz teklif
+    // dalina eklenmisti. Kutuphane de ayni ise yarar: bir net fiyati ya da
+    // bir iskontoyu secili satirlarin hepsine basmak. Kural teklifle AYNI:
+    // yalniz 1×1 kopya dagitilir, BLOK COGALTILMAZ.
+    const kutSec = secimRef.current;
+    if (kutSec && cells.length === 1 && cells[0].length === 1
+      && kutSec.satirBas <= fc.rowIndex && fc.rowIndex <= kutSec.satirSon) {
+      let veriSatiri = 0;
+      for (let i = kutSec.satirBas; i <= kutSec.satirSon; i++) {
+        if ((api.getDisplayedRowAtIndex(i)?.data as any)?._isDataRow === true) veriSatiri++;
+      }
+      if (veriSatiri > 1) cells = Array.from({ length: veriSatiri }, () => [cells[0][0]]);
+    }
 
     // Hedef editable veri kolonlari (No + '_'-onekli sistem kolonlari haric)
     const noField = data.columnRoles?.noField;
@@ -2452,9 +2565,16 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       return row;
     };
 
-    // Hedef satir dugumlerini topla (odakli satirdan asagi, grup bantlari atlanir)
+    // Hedef satir dugumlerini topla (grup bantlari atlanir).
+    // ⚠ BASLANGIC SECIMIN UST UCU: bir aralik secili ve odak onun ICINDEYSE
+    // yazim oradan baslar. Odaktan baslasaydi yukari yonlu secimde (surukleme
+    // ya da Shift+tik ile odak ALT uctadir) kullanicinin gordugu satirlar bos
+    // kalir, hic secmedigi alttaki satirlar dolardi — teklif dalinda olculen
+    // sessiz para hatasinin kutuphane ikizi.
     const rowNodes: any[] = [];
-    let ri = fc.rowIndex;
+    let ri = (kutSec && kutSec.satirBas <= fc.rowIndex && fc.rowIndex <= kutSec.satirSon)
+      ? kutSec.satirBas
+      : fc.rowIndex;
     while (rowNodes.length < cells.length) {
       const n = api.getDisplayedRowAtIndex(ri);
       if (n) {
@@ -4483,6 +4603,12 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         onCellMouseDown={(e) => {
           const me = e.event as MouseEvent | null;
           if (!me || me.button !== 0) return;              // yalniz SOL tus
+          // ⚠ SHIFT+TIK ANCHOR'I EZMEZ (regresyon olarak olculdu): tarayici
+          // sirasi mousedown → mouseup → click; anchor burada kosulsuz
+          // yazilsaydi onCellClicked'in Shift dali anchor olarak TIKLANAN
+          // hucreyi gorur ve aralik 1×1'e cokerdi. Shift'li basista secimi
+          // kuran taraf click dalidir; surukleme de baslatilmaz (istenmez).
+          if (me.shiftKey) return;
           if (e.node?.rowPinned || typeof e.rowIndex !== 'number') return;
           // ── CAKISMA KURALI 1 — FITTING KIPI HER ZAMAN ONCELIKLI (29.09) ──
           // Fitting kapsami Ctrl+tik ile secilir (CLAUDE.md "Fitting Satiri").
@@ -4516,7 +4642,15 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           if (ki < 0) return;
           const uc: Nokta = { satir: e.rowIndex, kolon: ki };
           const a = secimAnchorRef.current;
-          if (uc.satir === a.satir && uc.kolon === a.kolon) return;  // ayni hucre — aralik yok
+          if (uc.satir === a.satir && uc.kolon === a.kolon) {
+            // Anchor hucresine GERI donuldu: secim tek hucreye inmeli. Eskiden
+            // burada `return` vardi ve onceki (genis) aralik hem ref'te hem
+            // tulde KALIYORDU — kullanici secimi kucultmus sanip Ctrl+C ile
+            // fazlasini kopyalardi.
+            secimUcRef.current = uc;
+            secimUygula(null, null);
+            return;
+          }
           suruklendiRef.current = true;    // artik bu bir SURUKLEME; click'i yut
           secimUcRef.current = uc;
           secimUygula(a, uc);
