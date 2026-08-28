@@ -435,11 +435,7 @@ export class QuotesService {
     const quote = await this.prisma.quote.findFirst({ where: { id, firmaId: k.firmaId } });
     if (!quote) throw new NotFoundException('Quote not found');
     if (dto.formatId) {
-      // ⚠ QuoteFormat suzgeci KASTEN kisiye bagli kaldi: formatlari yazan
-      // servis (quote-formats.service) henuz firmaId YAZMIYOR — burayi tek
-      // basina firmaya cevirmek yeni yuklenen formatlari GORUNMEZ yapardi.
-      // Ikisi birlikte sonraki dilimde cevrilecek (bkz. commit notu).
-      const f = await (this.prisma as any).quoteFormat.findFirst({ where: { id: dto.formatId, userId: k.userId } });
+      const f = await (this.prisma as any).quoteFormat.findFirst({ where: { id: dto.formatId, firmaId: k.firmaId } });
       if (!f) throw new NotFoundException('Format bulunamadi');
     }
     // KISMI GUNCELLEME (KH8): gonderilMEyen alan DOKUNULMAZ — detay
@@ -477,15 +473,15 @@ export class QuotesService {
     sheetRoles: Record<string, 'sabit' | 'liste'> | null;
   }> {
     let kayit = quote.formatId
-      ? await (this.prisma as any).quoteFormat.findFirst({ where: { id: quote.formatId, userId: k.userId } })
+      ? await (this.prisma as any).quoteFormat.findFirst({ where: { id: quote.formatId, firmaId: k.firmaId } })
       : null;
     if (!kayit) {
-      kayit = await (this.prisma as any).quoteFormat.findFirst({ where: { userId: k.userId, isDefault: true } });
+      kayit = await (this.prisma as any).quoteFormat.findFirst({ where: { firmaId: k.firmaId, isDefault: true } });
     }
     if (!kayit) {
       // Varsayilan isaretli yoksa EN SON yuklenen format kullanilir
       kayit = await (this.prisma as any).quoteFormat.findFirst({
-        where: { userId: k.userId }, orderBy: { createdAt: 'desc' },
+        where: { firmaId: k.firmaId }, orderBy: { createdAt: 'desc' },
       });
     }
     if (kayit) {

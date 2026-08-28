@@ -129,7 +129,9 @@ function fakeDb(formatBytes: Buffer, musteriBuf: Buffer, sheetsArr: any[]) {
       count: async () => 0,
       update: async ({ data }: any) => { Object.assign(quote, data); return quote; },
     },
-    quoteFormat: { findFirst: async ({ where }: any) => (where?.isDefault || where?.userId ? format : null) },
+    // ADIM 1: format suzgeci artik FIRMA bazli — sahte de firmaId'yi tanimali,
+    // yoksa yalniz isDefault dalindan gecer ve sozlesmeyi olcmez.
+    quoteFormat: { findFirst: async ({ where }: any) => (where?.isDefault || where?.firmaId ? format : null) },
     quoteExport: {
       create: async ({ data }: any) => { exportlar.push(data); return data; },
       findMany: async () => exportlar,

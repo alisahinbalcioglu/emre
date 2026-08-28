@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
+import { Kimlik } from '../../../altyapi/auth/kimlik';
 import * as ExcelJS from 'exceljs';
 import {
   scanWorkbook, buildSampleFormat, sheetToGrid, sayfaRolleriTahminEt,
@@ -28,9 +29,12 @@ function dosyaAdiDuzelt(name: string): string {
 export class QuoteFormatsService {
   constructor(private prisma: PrismaService) {}
 
-  private async assertOwnership(id: string, userId: string) {
+  /** ADIM 1 (firma): sahiplik olcusu KISI degil FIRMA — ayni firmanin baska
+   *  uyesi de formati gorur/duzenler. Teklifler zaten firmaya ait; format
+   *  kisiye kalsaydi uyenin actigi teklif SAHIBININ formatiyla basilamazdi. */
+  private async assertOwnership(id: string, k: Kimlik) {
     const f = await (this.prisma as any).quoteFormat.findUnique({ where: { id } });
-    if (!f || f.userId !== userId) throw new NotFoundException('Format bulunamadi');
+    if (!f || f.firmaId !== k.firmaId) throw new NotFoundException('Format bulunamadi');
     return f;
   }
 
@@ -38,7 +42,7 @@ export class QuoteFormatsService {
    *  mapping.sheetRoles: sabit/liste-yuvasi sezgisel atanir (kullanici
    *  onizlemede degistirir) — 'liste' sayfalar ciktida teklifin liste
    *  sayfalariyla YER DEGISTIRIR (kullanici karari 20.07). */
-  async upload(userId: string, fileBuffer: Buffer, fileName: string, name?: string) {
+  async upload(k: Kimlik, fileBuffer: Buffer, fileName: string, name?: string) {
     const adDuzgun = dosyaAdiDuzelt(fileName);
     const wb = new ExcelJS.Workbook();
     try {
@@ -50,10 +54,13 @@ export class QuoteFormatsService {
       throw new BadRequestException('Dosyada sayfa yok');
     }
     const mapping = { ...scanWorkbook(wb), sheetRoles: sayfaRolleriTahminEt(wb) };
-    const count = await (this.prisma as any).quoteFormat.count({ where: { userId } });
+    const count = await (this.prisma as any).quoteFormat.count({ where: { firmaId: k.firmaId } });
     const created = await (this.prisma as any).quoteFormat.create({
       data: {
-        userId,
+        // userId = YAZAR, firmaId = SAHIP. firmaId yazilmazsa format firma
+        // suzgecinde GORUNMEZ olur (okuma firmaya bagli).
+        userId: k.userId,
+        firmaId: k.firmaId,
         name: (name?.trim() || adDuzgun.replace(/\.(xlsx|xls)$/i, '')).slice(0, 80),
         fileName: adDuzgun,
         fileBytes: fileBuffer,
@@ -66,8 +73,8 @@ export class QuoteFormatsService {
   }
 
   /** Mevcut formatin DOSYASINI degistir (T11: eski ciktilar etkilenmez). */
-  async replaceFile(userId: string, id: string, fileBuffer: Buffer, fileName: string) {
-    await this.assertOwnership(id, userId);
+  async replaceFile(k: Kimlik, id: string, fileBuffer: Buffer, fileName: string) {
+    await this.assertOwnership(id, k);
     const adDuzgun = dosyaAdiDuzelt(fileName);
     const wb = new ExcelJS.Workbook();
     try {
@@ -83,17 +90,17 @@ export class QuoteFormatsService {
     });
   }
 
-  async list(userId: string) {
+  async list(k: Kimlik) {
     return (this.prisma as any).quoteFormat.findMany({
-      where: { userId },
+      where: { firmaId: k.firmaId },
       select: { id: true, name: true, fileName: true, isDefault: true, mapping: true, createdAt: true, updatedAt: true },
       orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
     });
   }
 
   /** FE onizleme: sayfalar ExcelGrid SheetData olarak + tarama sonucu. */
-  async preview(userId: string, id: string) {
-    const f = await this.assertOwnership(id, userId);
+  async preview(k: Kimlik, id: string) {
+    const f = await this.assertOwnership(id, k);
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(Buffer.from(f.fileBytes) as any);
     return {
@@ -104,12 +111,13 @@ export class QuoteFormatsService {
     };
   }
 
-  async update(userId: string, id: string, dto: { name?: string; isDefault?: boolean; sheetRoles?: SheetRoles }) {
-    const f = await this.assertOwnership(id, userId);
+  async update(k: Kimlik, id: string, dto: { name?: string; isDefault?: boolean; sheetRoles?: SheetRoles }) {
+    const f = await this.assertOwnership(id, k);
     if (dto.isDefault === true) {
       // Tek varsayilan: digerleri dusurulur
       await (this.prisma as any).$transaction([
-        (this.prisma as any).quoteFormat.updateMany({ where: { userId }, data: { isDefault: false } }),
+        // Tek varsayilan FIRMA basina — uyeler ortak varsayilani paylasir.
+        (this.prisma as any).quoteFormat.updateMany({ where: { firmaId: k.firmaId }, data: { isDefault: false } }),
         (this.prisma as any).quoteFormat.update({ where: { id }, data: { isDefault: true } }),
       ]);
     }
@@ -130,8 +138,8 @@ export class QuoteFormatsService {
     });
   }
 
-  async remove(userId: string, id: string) {
-    await this.assertOwnership(id, userId);
+  async remove(k: Kimlik, id: string) {
+    await this.assertOwnership(id, k);
     await (this.prisma as any).quoteFormat.delete({ where: { id } });
     return { ok: true };
   }
@@ -139,8 +147,8 @@ export class QuoteFormatsService {
   /** GERCEK GORUNUM onizlemesi: format dosyasi LibreOffice ile PDF'e
    *  cevrilir (logolar/yerlesim birebir). Donusum yoksa null — FE hucre
    *  tablosu geri dususunu gosterir. */
-  async previewPdf(userId: string, id: string): Promise<Buffer | null> {
-    const f = await this.assertOwnership(id, userId);
+  async previewPdf(k: Kimlik, id: string): Promise<Buffer | null> {
+    const f = await this.assertOwnership(id, k);
     const { xlsxToPdf } = await import('../utils/xlsx-to-pdf');
     return xlsxToPdf(Buffer.from(f.fileBytes));
   }

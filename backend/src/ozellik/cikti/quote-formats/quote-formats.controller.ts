@@ -9,6 +9,7 @@ import { memoryStorage } from 'multer';
 import { QuoteFormatsService } from './quote-formats.service';
 import { JwtAuthGuard } from '../../../altyapi/auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../../altyapi/auth/decorators/current-user.decorator';
+import { kimlikCoz } from '../../../altyapi/auth/kimlik';
 
 @Controller('quote-formats')
 @UseGuards(JwtAuthGuard)
@@ -23,12 +24,12 @@ export class QuoteFormatsController {
     @UploadedFile() file: Express.Multer.File,
     @Body() body: { name?: string },
   ) {
-    return this.service.upload(user.id, file.buffer, file.originalname, body?.name);
+    return this.service.upload(kimlikCoz(user), file.buffer, file.originalname, body?.name);
   }
 
   @Get()
   list(@CurrentUser() user: any) {
-    return this.service.list(user.id);
+    return this.service.list(kimlikCoz(user));
   }
 
   /** Ornek format indir (yer tutuculu sade KAPAK+ICMAL). */
@@ -45,14 +46,14 @@ export class QuoteFormatsController {
 
   @Get(':id/preview')
   preview(@CurrentUser() user: any, @Param('id') id: string) {
-    return this.service.preview(user.id, id);
+    return this.service.preview(kimlikCoz(user), id);
   }
 
   /** GERCEK gorunum (LibreOffice xlsx→pdf). 404 = donusturucu yok →
    *  FE hucre tablosu geri dususu. inline gosterim icin attachment DEGIL. */
   @Get(':id/preview-pdf')
   async previewPdf(@CurrentUser() user: any, @Param('id') id: string, @Res() res: Response) {
-    const pdf = await this.service.previewPdf(user.id, id);
+    const pdf = await this.service.previewPdf(kimlikCoz(user), id);
     if (!pdf) {
       res.status(404).json({ message: 'PDF donusumu bu sunucuda kullanilamiyor' });
       return;
@@ -69,7 +70,7 @@ export class QuoteFormatsController {
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File,
   ) {
-    return this.service.replaceFile(user.id, id, file.buffer, file.originalname);
+    return this.service.replaceFile(kimlikCoz(user), id, file.buffer, file.originalname);
   }
 
   @Patch(':id')
@@ -78,11 +79,11 @@ export class QuoteFormatsController {
     @Param('id') id: string,
     @Body() body: { name?: string; isDefault?: boolean; sheetRoles?: Record<string, 'sabit' | 'liste'> },
   ) {
-    return this.service.update(user.id, id, body ?? {});
+    return this.service.update(kimlikCoz(user), id, body ?? {});
   }
 
   @Delete(':id')
   remove(@CurrentUser() user: any, @Param('id') id: string) {
-    return this.service.remove(user.id, id);
+    return this.service.remove(kimlikCoz(user), id);
   }
 }

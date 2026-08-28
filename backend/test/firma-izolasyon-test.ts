@@ -24,6 +24,7 @@ import 'reflect-metadata';
 import { PrismaClient } from '@prisma/client';
 import { QuotesService } from '../src/ozellik/teklif/quotes/quotes.service';
 import { kimlikCoz } from '../src/altyapi/auth/kimlik';
+import { QuoteFormatsService } from '../src/ozellik/cikti/quote-formats/quote-formats.service';
 
 const prisma = new PrismaClient();
 const fakeFx: any = { getRates: async () => ({ usdTry: 40, eurTry: 45 }) };
@@ -53,7 +54,8 @@ async function main() {
   }
 
   const svc = new QuotesService(prisma as any, fakeFx, sahteCeviri);
-  const temizlik: { firma: string[]; user: string[]; quote: string[] } = { firma: [], user: [], quote: [] };
+  const temizlik: { firma: string[]; user: string[]; quote: string[]; format: string[] } =
+    { firma: [], user: [], quote: [], format: [] };
 
   try {
     // ── KURULUM: F1 (iki uyeli) + F2 (tek uyeli) ───────────────────────
@@ -133,12 +135,55 @@ async function main() {
     const sayacF2 = await prisma.quote.count({ where: { firmaId: f2.id, quoteNo: { not: null } } as any });
     sina('I5', 'teklif no sayaci firma bazli sorgulanabilir',
       Number.isInteger(sayacF1) && Number.isInteger(sayacF2), `F1=${sayacF1}, F2=${sayacF2}`);
+
+    // ── F1-F4: TEKLIF FORMATI da firmaya ait (28.08 ikinci dilim) ──────
+    // Format kisiye kalsaydi, uyenin actigi firma teklifi SAHIBININ
+    // formatiyla basilamazdi — teklif firmanin, sablonu kisinin olurdu.
+    const fmtSvc = new QuoteFormatsService(prisma as any);
+    const ornek = await fmtSvc.sample();
+    const fmt: any = await fmtSvc.upload(K1, ornek.buffer, 'test-format.xlsx', `${damga}-format`);
+    temizlik.format.push(fmt.id);
+
+    const fmtKayit = await (prisma as any).quoteFormat.findUnique({ where: { id: fmt.id } });
+    sina('F1', 'yuklenen format FIRMA kimligini tasir',
+      fmtKayit?.firmaId === f1.id, `firmaId=${fmtKayit?.firmaId?.slice(0, 8)}`);
+
+    const fmtListeU2 = await fmtSvc.list(K2);
+    sina('F2 ⭐', 'ayni firmanin uyesi formati GORUR',
+      fmtListeU2.some((x: any) => x.id === fmt.id), `u2 format listesi=${fmtListeU2.length}`);
+
+    const fmtListeU3 = await fmtSvc.list(K3);
+    sina('F3 ⭐', 'baska firma formati GORMEZ',
+      !fmtListeU3.some((x: any) => x.id === fmt.id), `u3 format listesi=${fmtListeU3.length}`);
+
+    let fmtSilebildi = true;
+    try { await fmtSvc.remove(K3, fmt.id); } catch { fmtSilebildi = false; }
+    const fmtHalaVar = await (prisma as any).quoteFormat.findUnique({ where: { id: fmt.id } });
+    sina('F4 ⭐', 'baska firma formati SILEMEZ ve format yerinde durur',
+      !fmtSilebildi && !!fmtHalaVar, `silebildi=${fmtSilebildi}, kayit=${!!fmtHalaVar}`);
+
+    // ── F5 ⭐ — MUTASYONUN ACIGA CIKARDIGI KAPI (28.08).
+    //    F2-F4 yalnizca "baska firma goremez"i olcuyordu; sahiplik kontrolu
+    //    KISIYE bakacak sekilde bozuldugunda ucu de YESIL kaldi (baska firma
+    //    zaten baska kisi). Ayirt eden vaka: AYNI firma, FARKLI kisi.
+    let uyeDokunabildi = true;
+    try { await fmtSvc.preview(K2, fmt.id); } catch { uyeDokunabildi = false; }
+    sina('F5 ⭐', 'ayni firmanin BASKA uyesi formati acabilir (sahiplik kisi degil FIRMA)',
+      uyeDokunabildi, `uye erisebildi=${uyeDokunabildi}`);
+
+    let uyeAdDegistirebildi = true;
+    try { await fmtSvc.update(K2, fmt.id, { name: `${damga}-uye-yeniad` }); } catch { uyeAdDegistirebildi = false; }
+    const fmtAd = await (prisma as any).quoteFormat.findUnique({ where: { id: fmt.id }, select: { name: true } });
+    sina('F5b ⭐', 'ayni firmanin BASKA uyesi formati duzenleyebilir',
+      uyeAdDegistirebildi && fmtAd?.name === `${damga}-uye-yeniad`, `ad=${fmtAd?.name}`);
   } finally {
     for (const id of temizlik.quote) {
       await prisma.quoteItem.deleteMany({ where: { quoteId: id } }).catch(() => {});
       await prisma.quote.delete({ where: { id } }).catch(() => {});
     }
     await prisma.quote.deleteMany({ where: { userId: { in: temizlik.user } } }).catch(() => {});
+    for (const id of temizlik.format) await (prisma as any).quoteFormat.delete({ where: { id } }).catch(() => {});
+    await (prisma as any).quoteFormat.deleteMany({ where: { userId: { in: temizlik.user } } }).catch(() => {});
     for (const id of temizlik.user) await prisma.user.delete({ where: { id } }).catch(() => {});
     for (const id of temizlik.firma) await (prisma as any).firma.delete({ where: { id } }).catch(() => {});
     await prisma.$disconnect();
