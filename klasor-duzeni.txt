@@ -56,6 +56,13 @@ backend/src/ozellik/eslestirme/ :: C · malzeme adını kütüphaneyle eşleme.
 backend/src/ozellik/fiyat/ :: D · birim fiyat, iskonto, para birimi.
 backend/src/ozellik/giris/ :: A · dosya yükleme ve okuma.
 backend/src/ozellik/kutuphane/ :: G · kütüphane ve yönetim.
+# YENİ ALAN (28.08.2026, ADIM 2) — bilinçli açılış, gerekçesi bu satırdır.
+# Abonelik/ödeme mevcut alanların HİÇBİRİNE ait değil: A-G üretim hattının
+# (dosya→eşleştirme→fiyat→çıktı) adımları, M teklifin yaşam döngüsü, L ise
+# çerçeve altyapısı. Ödeme bunların üstünde duran ve hepsini KAPATABİLEN
+# ayrı bir eksendir (ErisimServisi kararı A/F/M uçlarını kısıtlar), bu yüzden
+# birinin altına gömülmesi bağımlılığı ters çevirirdi. Grup N ilan edildi.
+backend/src/ozellik/odeme/ :: N · abonelik, tahsilat, erişim kararı.
 backend/src/ozellik/teklif/ :: M · teklif yaşam döngüsü.
 backend/src/app.module.ts :: NestJS kök modülü — `src` kökünde kalmak ZORUNDA (RAPOR §6.2).
 backend/src/bootstrap.controller.ts :: İçeriği kütüphane değil güvenlik; kökte kaldı (RAPOR §6.7).
@@ -107,6 +114,11 @@ J :: backend/src/modules/dwg-engine/ | frontend/components/dwg-diameter-engine/ 
 K :: frontend/ortak/
 L :: backend/src/altyapi/ | *.module.ts | backend/src/main.ts
 M :: backend/src/ozellik/teklif/ | frontend/ozellik/teklif/
+# N (28.08.2026) — HS3'te dondurulan A-M şemasına eklenen ilk grup. Emsal:
+# J/K/L/M de HS3'te toplu ilan edilmişti; şema "kapalı" değil "bilinçli
+# genişletilir". Ödeme yalnız backend'de değil ön yüzde de kendi alanını
+# açar (fiyat sayfası, kısıtlı mod şeridi, kart formu).
+N :: backend/src/ozellik/odeme/ | frontend/ozellik/odeme/
 
 [CERCEVE BAGLI]
 # Bu önekin altındaki dosyalar HER gruba açıktır — KURAL 2 onları denetlemez.

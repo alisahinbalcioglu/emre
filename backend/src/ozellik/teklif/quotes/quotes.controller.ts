@@ -12,21 +12,25 @@ import { JwtAuthGuard } from '../../../altyapi/auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../../altyapi/auth/decorators/current-user.decorator';
 import { kimlikCoz } from '../../../altyapi/auth/kimlik';
 import { memoryStorage } from 'multer';
+import { ErisimGuard, GerekliYetenek } from '../../odeme/abonelik/erisim.guard';
+import { Yetenek } from '../../odeme/abonelik/erisim.servisi';
 
 @Controller('quotes')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, ErisimGuard)
 export class QuotesController {
   constructor(private quotesService: QuotesService) {}
 
   // ── Literal routes MUST come BEFORE :id catch-all ──
 
   @Post('upload-excel')
+  @GerekliYetenek(Yetenek.EXCEL_YUKLE)
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
   parseExcel(@CurrentUser() user: any, @UploadedFile() file: Express.Multer.File) {
     return this.quotesService.parseExcel(user.id, file.buffer);
   }
 
   @Post()
+  @GerekliYetenek(Yetenek.TEKLIF_OLUSTUR)
   create(@CurrentUser() user: any, @Body() dto: CreateQuoteDto) {
     return this.quotesService.create(kimlikCoz(user), dto);
   }
@@ -44,6 +48,7 @@ export class QuotesController {
    * uretiminde artar.
    */
   @Put(':id')
+  @GerekliYetenek(Yetenek.TEKLIF_DUZENLE)
   update(@CurrentUser() user: any, @Param('id') id: string, @Body() dto: CreateQuoteDto) {
     return this.quotesService.create(kimlikCoz(user), dto, id);
   }
@@ -87,6 +92,7 @@ export class QuotesController {
 
   /** .xlsx uret (rev artar, arsivlenir — T10) ve indir */
   @Post(':id/export')
+  @GerekliYetenek(Yetenek.CIKTI_INDIR)
   async exportXlsx(
     @CurrentUser() user: any,
     @Param('id') id: string,
@@ -113,6 +119,7 @@ export class QuotesController {
   /** Fiyatlandirilmis kesif Excel'i — teklif formati YOK, rev ARTMAZ
    *  (kullanici karari 24.07: cikti ikiye ayrildi). */
   @Get(':id/export-priced')
+  @GerekliYetenek(Yetenek.CIKTI_INDIR)
   async exportPriced(
     @CurrentUser() user: any,
     @Param('id') id: string,
@@ -145,6 +152,7 @@ export class QuotesController {
   }
 
   @Get(':id/exports/:rev')
+  @GerekliYetenek(Yetenek.CIKTI_INDIR)
   async downloadExport(
     @CurrentUser() user: any,
     @Param('id') id: string,

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { HealthController } from './health.controller';
 import { BootstrapController } from './bootstrap.controller';
 import { PrismaModule } from './altyapi/db/prisma.module';
@@ -18,9 +19,17 @@ import { LaborMatchingModule } from './ozellik/eslestirme/labor-matching/labor-m
 import { DwgEngineModule } from './modules/dwg-engine/dwg-engine.module';
 import { ExchangeRatesModule } from './ozellik/fiyat/exchange-rates/exchange-rates.module';
 import { QuoteFormatsModule } from './ozellik/cikti/quote-formats/quote-formats.module';
+import { OdemeModule } from './ozellik/odeme/odeme.module';
 
 @Module({
   imports: [
+    // ADIM 2 (28.08): @nestjs/config KOK'te bir kez kurulur.
+    // `isGlobal: true` OLMADAN ConfigService yalnizca ConfigModule'u ACIKCA
+    // import eden modullerde cozulur; OdemeModule icindeki `imports:
+    // [ConfigModule]` satiri forRoot cagrilmadigi surece SAGLAYICI URETMEZ
+    // ve butun odeme saglayicilari onyuklemede "Nest can't resolve
+    // dependencies of IyzicoClient (?)" ile patlar.
+    ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
     AuthModule,
     BrandsModule,
@@ -38,6 +47,7 @@ import { QuoteFormatsModule } from './ozellik/cikti/quote-formats/quote-formats.
     DwgEngineModule,
     ExchangeRatesModule,
     QuoteFormatsModule,
+    OdemeModule,
   ],
   controllers: [HealthController, BootstrapController],
 })

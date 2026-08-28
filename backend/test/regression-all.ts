@@ -276,6 +276,56 @@ const SUITES: Suite[] = [
   //    (buildKindImza kasitli genis + determinizm + asiri daraltma yasagi)
   //    duzeltme ONCESI de SONRASI da YESIL. Kirmiziya donerse REGRESYONDUR.
   { ad: 'Hafıza imzasının eksenleri (A-R/E-R/C-R)', script: 'test:imza', zincir: 'Z2' },
+  // ── 28.08.2026 — ADIM 2 ÖDEME/ABONELİK. DB GEREKTİRMEZ: PrismaClient'ın
+  //    `$connect`i no-op'lanır, böylece TÜM sağlayıcılar gerçekten kurulur
+  //    (kurucu gövdeleri koşar) ama hiçbir bağlantı açılmaz → `db` bayrağı YOK.
+  //    Bu ayrım kasıtlı: DI grafiğini "preview" modunda doğrulamak sağlayıcıları
+  //    HİÇ kurmaz ve O1'i kaçırırdı — kusur tam olarak KURUCUDA yaşıyordu.
+  //    Ölçtüğü dört şey, gelen pakette DÖRDÜ DE bozuktu:
+  //    O1 ÖNYÜKLEME KATİLİ — iyzico anahtarları `getOrThrow` ile kurucuda
+  //      okunuyordu; biri eksikse OdemeModule TÜM API'yi düşürürdü (teklif,
+  //      kütüphane, DWG dahil). Test anahtarları AÇIKÇA SİLEREK koşar.
+  //    O2 KORUMASIZ YÖNETİM UÇLARI — havale `@UseGuards` satırı YORUMDAYDI;
+  //      oturum açmış herkes kendi aboneliğini uzatabilirdi.
+  //    O3 SAHTE DENETİM İZİ — aktör istek GÖVDESİNDEN okunuyordu; artık JWT'den.
+  //    O4 SATIN ALMA YOLU YOKLUĞU — 5 iyzico metodunun 5'inin de çağrı yeri
+  //      yoktu, `iyzicoAbonelikKodu` hiç YAZILMIYORDU; kartla abone olmanın
+  //      yolu yoktu ve her webhook eşleşmeyen kodla gelip yutulurdu.
+  //    MUTASYONLA ÖLÇÜLDÜ (2/2 öldü): kurucuya getOrThrow geri konunca O1
+  //    kırmızı; @Roles('admin') kaldırılınca O2 kırmızı. KIRMIZIYA DÖNERSE
+  //    BU BİR REGRESYONDUR.
+  { ad: 'Ödeme önyükleme + uç sözleşmesi (O1-O4/W1)', script: 'test:odeme', zincir: 'Z0' },
+  // ── 28.08.2026 — MIGRATION ZINCIRI (Z1-Z3) + BACKFILL SÖZÜ (B1-B6).
+  //    SUNUCU GEREKTİRMEZ: PGlite (WASM PG16) süreç içinde ayağa kalkar →
+  //    `db` bayrağı YOK, PG_REGRESSION istemez, her koşumda çalışır.
+  //    NEDEN: üretimde şema `prisma migrate deploy` ile uygulanır
+  //    (Dockerfile:55, render.yaml:64) — bozuk migration konteyneri
+  //    AÇILMAZ hâle getirir. Bu depoda zincirin gerçekle ayrışma GEÇMİŞİ
+  //    var: `f2a0b7a` "8 tablo db push'la açılmıştı" diyor; temiz bir DB'de
+  //    `migrate deploy` patlıyordu ve kusur aylarca görünmedi çünkü kimse
+  //    zinciri SIFIRDAN koşmuyordu. Bu paket tam olarak onu yapar.
+  //    Ayrıca ADIM 2 backfill'inin TEK KURALINI veriyle sınar: "hiçbir
+  //    mevcut kullanıcının erişimi kesilmez" — göç öncesi dünya kurulur,
+  //    backfill koşar, her firmanın AKTİF aboneliği ve TAVANDAN seçilmiş
+  //    seviyesi doğrulanır. B6 idempotensi ölçer (aynı SQL iki kez).
+  //    KIRMIZIYA DÖNERSE DEPLOY KIRILIR — bu paket deploy'un ön provasıdır.
+  { ad: 'Migration zinciri + backfill sözü (Z1-Z3/B1-B6)', script: 'test:migration', zincir: 'Z0' },
+  // ── 28.08.2026 — ERİŞİM KAPISI (K/L/W). DB GEREKTİRMEZ: karar matrisi saf
+  //    fonksiyonla, uç kablolaması dekoratör metadata'sıyla ölçülür.
+  //    ADIM 2'nin ürün sözü tek cümledir: "veriyi göstermeye devam et, DEĞER
+  //    ÜRETMEYİ durdur." Bu cümle İKİ ayrı yerde birden doğru olmalı: kararın
+  //    kendisi (erisim.servisi) ve o kararın uçlara BAĞLI olması (guard +
+  //    dekoratörler). İkisi ayrı ayrı doğru olup birlikte yanlış olabilir.
+  //    BU DEPODA ÖNCEDENİ VAR: `getUserCapabilities` motoru doğru yazılmıştı
+  //    ama TEK tüketicisi /auth/me yanıtıydı — hiçbir guard onu okumuyordu,
+  //    yani yetenek matrisi aylarca süs payı olarak durdu. W* blokları o
+  //    hatanın tekrarını engeller.
+  //    L1 EN KRİTİK: ABONELIK_YONET yedi durumun YEDİSİNDE de açık kalmalı;
+  //    kapanırsa askıdaki firma ödeyemez ve askıdan ÇIKAMAZ (kilitlenme).
+  //    W3/W4 ★KALKAN: abonelik ucuna ve görüntüleme uçlarına kapı KONULMAMALI.
+  //    MUTASYONLA ÖLÇÜLDÜ (2/2 öldü): kısıtlı moda CIKTI_INDIR eklenince K2
+  //    kırmızı; export ucundan dekoratör kaldırılınca W1 kırmızı.
+  { ad: 'Erişim kapısı: karar matrisi + uç kablolaması (K/L/W)', script: 'test:erisim', zincir: 'Z0' },
 ];
 
 function dbErisilebilir(): boolean {

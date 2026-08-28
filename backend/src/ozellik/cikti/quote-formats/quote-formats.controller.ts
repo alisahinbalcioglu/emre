@@ -10,9 +10,11 @@ import { QuoteFormatsService } from './quote-formats.service';
 import { JwtAuthGuard } from '../../../altyapi/auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../../altyapi/auth/decorators/current-user.decorator';
 import { kimlikCoz } from '../../../altyapi/auth/kimlik';
+import { ErisimGuard, GerekliYetenek } from '../../odeme/abonelik/erisim.guard';
+import { Yetenek } from '../../odeme/abonelik/erisim.servisi';
 
 @Controller('quote-formats')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, ErisimGuard)
 export class QuoteFormatsController {
   constructor(private service: QuoteFormatsService) {}
 
@@ -34,6 +36,7 @@ export class QuoteFormatsController {
 
   /** Ornek format indir (yer tutuculu sade KAPAK+ICMAL). */
   @Get('sample')
+  @GerekliYetenek(Yetenek.CIKTI_INDIR)
   async sample(@Res() res: Response) {
     const { buffer, filename } = await this.service.sample();
     res.set({
@@ -45,6 +48,7 @@ export class QuoteFormatsController {
   }
 
   @Get(':id/preview')
+  @GerekliYetenek(Yetenek.CIKTI_INDIR)
   preview(@CurrentUser() user: any, @Param('id') id: string) {
     return this.service.preview(kimlikCoz(user), id);
   }
@@ -52,6 +56,7 @@ export class QuoteFormatsController {
   /** GERCEK gorunum (LibreOffice xlsx→pdf). 404 = donusturucu yok →
    *  FE hucre tablosu geri dususu. inline gosterim icin attachment DEGIL. */
   @Get(':id/preview-pdf')
+  @GerekliYetenek(Yetenek.CIKTI_INDIR)
   async previewPdf(@CurrentUser() user: any, @Param('id') id: string, @Res() res: Response) {
     const pdf = await this.service.previewPdf(kimlikCoz(user), id);
     if (!pdf) {

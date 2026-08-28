@@ -429,7 +429,7 @@ Karıştırılmasın diye ayrı duruyor.
 | `frontend/ozellik/kutuphane/hata-metni.ts` | K1 — sunucunun yazdigi hata mesajini kullaniciya ulastiran saf fonksiyon: `response.data.message` metinse AYNEN doner, DIZI ise (Nest ValidationPipe) " · " ile birlestirir, bos/boslukluysa ya da baska tipteyse varsayilana duser. Kusur `materials/{mechanical,electrical}/page.tsx` ciplak `catch { ... 'Marka silinirken hata olustu.' }` idi: backend 409'unun gercek rakamlari ve "nasil onaylanir" bilgisi ekrana HIC ulasmiyordu |
 | `frontend/ozellik/kutuphane/oksuz-kutuphane-uyarisi.ts` | K2 — backend `saveBulkMaterials` → `oksuzKutuphaneSatiri` sayimindan admin'e gosterilecek uyariyi uretir (saf fonksiyon). Sayim yok/0 ise uyari YOK (bos korku yasagi), iskontolu satir varsa kullanicinin elle girdigi emek anilir, yoksa iskonto cumlesi HIC kurulmaz. Onarim VAAT ETMEZ — backend geriye donuk baglamayi guvenli anahtar olmadigi icin bilerek yapmiyor. Cizen yer `admin/brands/page.tsx` `commitImport()` |
 
-### H · TESTLER — 108 dosya
+### H · TESTLER — 111 dosya
 
 | Dosya | Ne yapıyor |
 |---|---|
@@ -511,6 +511,9 @@ Karıştırılmasın diye ayrı duruyor.
 | `backend/test/b1-kutuphane-cascade-test.ts` | ProductIndex silinince kullanicinin kutuphane satirinin (discountRate/customPrice ile) CASCADE ile UCTUGUNU olcer. Ayni tabloda `sourcePriceListId` SET NULL (koruyucu) ile `productIndexId` CASCADE (oldurucu) celisir — schema.prisma:334 vs :348. **ARTIK YESIL** — kusur ayni gun duzeltildi; kirmiziya donerse bu bir REGRESYONDUR |
 | `backend/test/d1-marka-silme-capraz-tenant-test.ts` | Marka silinince `brands.service.ts:154`'teki elle `deleteMany({ where: { brandId } })`'in **TUM kullanicilarin** kutuphane satirlarini (iskonto/ozel fiyat dahil) goturdugunu olcer — filtrede `userId` YOK (capraz-tenant) ve ekonomi ayrimi YOK. DB'nin canli `UserLibrary_brandId_fkey` RESTRICT korumasi bilerek asiliyor (D0 assert'i P2003 ile kanitlar). L1/L2 kalkanlari test markasi temizliginin bozulmamasini korur. **ARTIK YESIL** — kusur ayni gun duzeltildi; kirmiziya donerse bu bir REGRESYONDUR |
 | `backend/test/firma-izolasyon-test.ts` | ÖK2 kabul kapisi: iki uyeli firmayi ELLE kurup teklif suzgecinin FIRMA bazli oldugunu olcer (DB gerektirir). Ayni firmanin diger uyesi teklifi gorur/acar/revize eder; baska firma gormez, acamaz, silemez, revize edemez; firmasiz kimlik reddedilir. Bu paket olmadan userId->firmaId gecisi yanlis yazilsa bile hicbir test kirilmazdi (bugun her firmada tek kullanici var, davranis ayni gorunur) |
+| `backend/test/odeme-onyukleme-test.ts` | ADIM 2 odeme kapisi: iyzico ortam degiskenleri TANIMSIZKEN uygulamanin ONYUKLENDIGINI (paketteki `getOrThrow` kurucuda TUM API'yi dusururdu), eksik degiskenin kullanim aninda 503 verdigini, alti abonelik ucunun ve kuresel onekli webhook ucunun kayitli oldugunu, havale uclarinin admin korumali olup aktoru JWT'den aldigini olcer. PrismaClient.$connect no-op'lanir; DB GEREKTIRMEZ |
+| `backend/test/migration-zinciri-test.ts` | TEMIZ bir PGlite (WASM PG16) veritabaninda migration zincirinin TAMAMINI sirayla kosar — uretimde sema `migrate deploy` ile uygulandigi icin bozuk migration konteyneri acilmaz hale getirir; bu depoda zincirin ayrisma gecmisi var (`f2a0b7a`). Ayrica ADIM 2 backfill'inin sozunu veriyle sinar: her firmaya AKTIF abonelik acildigini, seviyenin TAVANDAN secildigini (erisim daralmaz), miras paketlerinin satisa kapali oldugunu ve backfill'in idempotent oldugunu olcer. Sunucu GEREKTIRMEZ |
+| `backend/test/erisim-kapisi-test.ts` | ADIM 2 erisim kapisi: KISITLI modda goruntulemenin ACIK, teklif olusturma/cikti indirme/yukleme uclarinin KAPALI oldugunu; ASKIDA'da her seyin kapandigini; ODEME_BEKLIYOR toleransinda erisimin TAM kaldigini olcer. W bloklari kararin GERCEKTEN uclara bagli oldugunu dekorator metadata'siyla dogrular (motoru dogru yazip hicbir uca baglamama hatasinin onceden vardir). L1 kilitlenme yasagi: ABONELIK_YONET 7 durumun 7'sinde de acik kalmali |
 | `backend/test/a1-silme-etkisi-test.ts` | Silme ONCESI sayim uclarini ve fiyat listesi yolundaki 409 on kontrolunu dogrular (DB gerektirir). A0 canli DB'de OLCER: fiyat listesi silinince kutuphane satiri yasar, iskonto durur, yalniz bag kopar — ucun `bag-kopar` adi ve ekran metni bu olcume dayanir, FK geri Cascade'e donerse once A0 kizarir. Iki bag yolu da (sourcePriceListId + productIndexId) sayilir; U assertleri uclarin GET ve admin-only oldugunu metadata'dan kanitlar |
 | `backend/test/guvenlik-uclari-test.ts` | Uç güvenliği sözleşmesi (K1/K2/K4), DB'siz. K1: `matching.controller.ts`'in `backfill-tags` + `generate-tags` uçları yorumlarında "Admin:" dediği hâlde RolesGuard/@Roles taşımıyor — RolesGuard'ın FİİLEN okuduğu `getAllAndOverride([metot, sınıf])` ile ölçülür; ★KALKAN assertleri aynı sınıftaki ALTI normal-kullanıcı ucunun admin İSTEMEDİĞİNİ korur (sınıf düzeyine @Roles konursa kırılır). K2: gerçek `TierGuard` + sahte ExecutionContext ile ölçer — `LaborController` @RequireTier'i SINIF düzeyinde tuttuğu ve guard yalnız `getHandler()` okuduğu için CORE kullanıcı BEŞ uçtan da geçiyor. K4: `?onaylandi=true` bayrağının HTTP katmanından servise doğru çevrildiğini sahte servisle, iki ayrı controller ailesinde ölçer. O ölçüt kontrol vakaları her iddianın yanında sağlam bir örneği aynı ölçüme sokar. **ARTIK YEŞİL** (41/0); kırmızıya dönerse bu bir REGRESYONDUR. ⚠ **K3 04.08.2026'da KALDIRILDI** — ölçtüğü `DELETE /api/materials/:materialId/price/:brandId` ucu ölüydü (FE/BE/test/docs/scripts genelinde çağıran yok, kontrol vakasıyla aramanın kör olmadığı kanıtlandı) ve kullanıcı onayıyla silindi; controller metodu + servis metodu + K3 bloğu birlikte gitti (50→41 assert). Uç geri eklenirse K3 de geri gelmelidir |
 | `backend/test/imza-ekseni-test.ts` | Öğrenme hafızasının ANAHTARINI (`matching.service.ts` `buildImza`) sınar, DB'siz. `buildImza` etiketlerden yalnız ölçü + materialType + `KIND_TAGS` süzer; `shared-tag-matcher.ts`'teki `SURFACE_TAGS` (siyah/galvaniz/kırmızı/boyalı) ve `CONNECTION_TAGS` (dişli/kaynaklı/flanş/pres/düz-uçlu/yivli) tanımlı olduğu hâlde imzaya HİÇ girmez → yüzeyi, bağlantısı ve akışkanı farklı sorgular tek kayda düşer ve birinde verilen karar ötekine "önceki tercihiniz" diye gösterilir. A-R1 yüzey · A-R2 bağlantı · A-R3 akışkan ekseni (üç bağımsız aile) · E-R1 ölçüsü çözülemeyen satır da anahtar üretiyor · C-R1a/b ön-seçim metni onaylatıcı konuşuyor ve sayacı satıra aitmiş gibi gösteriyor. Ö1-Ö10 ölçüt kapıları etiket kümesinin BOŞ OLMADIĞINI ve ölçütün kör olmadığını ayrı ayrı kanıtlar (boş küme olsaydı tüm "eşittir" iddiaları yalancı yeşil olurdu); L1-L3 ★ regresyon kilitleri `buildKindImza`'nın kasıtlı genişliğini, determinizmi ve aşırı daraltma yasağını korur. `private` metotlar çalışma zamanında `(svc as any)` ile okunur — üretim kodunda görünürlük değişikliği YAPILMADI. **ARTIK YEŞİL** (28/0) — kırmızı-önce turunun altı kusuru aynı gün düzeltildi: imza artık `marka\|ölçü\|tip\|cins\|yüzey\|bağlantı` üretir (etiketler sıralı), ölçü çözülemezse imza ÜRETİLMEZ (`null`) ve `remember` tam imzayı YAZMAZ (cins tercihi yazma yolu korunur), ön-seçim metni "onaylayın" demeyi bırakıp sayacın ANAHTARA ait olduğunu söyler. ⚠ İmza formatı değiştiği için eski tam-imza kayıtları eşleşmez olur — BİLİNÇLİ (emsali: Faz 2b HEADER_HINTS), kayıtlar SİLİNMEDİ. Kırmızıya dönerse bu bir REGRESYONDUR |
@@ -720,6 +723,43 @@ Karıştırılmasın diye ayrı duruyor.
 | `frontend/ozellik/teklif/dashboard/RecentQuotes.tsx` | Son 3 teklifi tutar/tarih ozetiyle listeler, detay ve tum liste baglantilari verir |
 | `frontend/ortak/types/index.ts` | Teklif sayfalarinin kullandigi cekirdek alan tipleri: kullanici, marka, malzeme, kutuphane kalemi, teklif ve kalemi |
 | `frontend/ortak/types/quotes.ts` | Teklif olusturma sayfasinin tipleri: yukleme modu, para birimi, iscilik firmasi, aday eslesme, duzenlenebilir satir, kur |
+
+### N · ABONELİK ve ÖDEME — 19 dosya
+
+> **HS3'te dondurulan A-M şemasına eklenen ilk grup (28.08.2026, ADIM 2).**
+> Emsal: J/K/L/M de HS3'te toplu ilan edilmişti; şema *kapalı* değil, *bilinçli
+> genişletilir*. Ödeme mevcut alanların hiçbirine ait değil: A-G üretim hattının
+> adımları, M teklifin yaşam döngüsü, L çerçeve altyapısı. Ödeme bunların
+> ÜSTÜNDE duran ve hepsini KAPATABİLEN ayrı bir eksendir — `ErisimServisi`
+> kararı A/F/M uçlarını kısıtlar. Birinin altına gömülmesi bağımlılığı ters
+> çevirirdi.
+>
+> Gelen paketin (`metaprice-odeme-adim2.zip`) 15 dosyası kopyalandı; 3 dosya
+> BU DEPODA yazıldı (`satinalma.servisi.ts`, `abonelik.controller.ts`,
+> `yapilandirma.ts`) çünkü pakette karşılıkları YOKTU — ayrıntı dosya
+> başlıklarında.
+
+| Dosya | Ne yapıyor |
+|---|---|
+| `backend/src/ozellik/odeme/odeme.module.ts` | Ödeme modülünün NestJS kablolaması; muhasebe adaptörünü ortam değişkenine göre gerçek/sahte olarak seçer |
+| `backend/src/ozellik/odeme/yapilandirma.ts` | iyzico ortam değişkenlerini GEÇ okur; eksikse tüm API'yi düşürmek yerine yalnız ödeme ucunda 503 üretir |
+| `backend/src/ozellik/odeme/abonelik/abonelik.servisi.ts` | Abonelik durum makinesi: geçerli geçişleri zorlar, her geçişi denetim günlüğüne yazar, erişimi uzatır |
+| `backend/src/ozellik/odeme/abonelik/erisim.servisi.ts` | "Bu firma şu an ne yapabilir" sorusunun tek cevabı; durum+süreyi yetenek iznine ve kullanıcı uyarısına çevirir |
+| `backend/src/ozellik/odeme/abonelik/satinalma.servisi.ts` | Kart aboneliğini başlatır, iyzico form dönüşünü sonuçlandırır, dönüşü gelmeyen ödemeleri tarayıp kurtarır |
+| `backend/src/ozellik/odeme/abonelik/abonelik.controller.ts` | Müşteriye açık abonelik uçları: paket listesi, erişim durumu, satın alma, dönüş, kart güncelleme, iptal |
+| `backend/src/ozellik/odeme/abonelik/erisim.guard.ts` | Erisim kararini HTTP katmanina baglar; ucun gerektirdigi yetenegi dekoratorden okur, kapaliysa on yuzun serit acmasi icin ABONELIK_KISITLI kodlu 403 doner |
+| `backend/src/ozellik/odeme/abonelik/mutabakat.job.ts` | Webhook'u gelmeyen durum değişimlerini (iptal, süre dolumu, UNPAID) iyzico'ya düzenli sorarak yakalar |
+| `backend/src/ozellik/odeme/dunning/dunning.servisi.ts` | Başarısız tahsilatı kurtarma merdiveni: gün gün yeniden dener, kısıtlar, askıya alır, bildirim gönderir |
+| `backend/src/ozellik/odeme/dunning/dunning.metinleri.ts` | Dunning basamaklarının müşteriye giden e-posta metinleri ile tarih/tutar biçimleyicileri |
+| `backend/src/ozellik/odeme/eposta/eposta.servisi.ts` | Bildirim e-postalarını HTML şablonuna sarıp Resend üzerinden gönderir; anahtar yoksa günlüğe düşer |
+| `backend/src/ozellik/odeme/fatura/fatura.servisi.ts` | Tahsilat başına e-arşiv faturasını kuyruğa alır, üstel geri çekilmeyle dener, tükenirse insana devreder |
+| `backend/src/ozellik/odeme/fatura/muhasebe.adaptor.ts` | Fatura kesimini muhasebe sağlayıcısına bağlayan arayüz; Paraşüt ve günlüğe yazan sahte uygulama |
+| `backend/src/ozellik/odeme/havale/havale.servisi.ts` | Havale/EFT akışı: teklif→fatura→onay adımlarını yürütür ve onayda aboneliği N ay uzatır |
+| `backend/src/ozellik/odeme/havale/havale.controller.ts` | Havale yönetim uçları; yalnız admin rolüne açık, aktör kimliğini istek gövdesinden değil JWT'den alır |
+| `backend/src/ozellik/odeme/iyzico/iyzico.client.ts` | iyzico abonelik REST istemcisi; HMACSHA256 v2 yetkilendirme başlığı üretir ve hata gövdesini sarar |
+| `backend/src/ozellik/odeme/iyzico/imza.ts` | Webhook imzasını iki olası alan sırasıyla hesaplayıp doğrular ve olay için tekilleştirme anahtarı üretir |
+| `backend/src/ozellik/odeme/webhook/webhook.controller.ts` | iyzico abonelik webhook ucu; olayı yalnız diske yazıp 200 döner, tekrar gelen olayı tekillik ihlaliyle yutar |
+| `backend/src/ozellik/odeme/webhook/webhook.isleyici.ts` | Diske yazılan webhook olaylarını istekten bağımsız işler; dürtme kaçarsa dakikalık tarama emniyet ağı toplar |
 
 ### BELİRSİZ — bu turda satır düşmedi
 

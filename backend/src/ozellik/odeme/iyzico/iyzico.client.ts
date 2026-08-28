@@ -1,0 +1,325 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { odemeAyari } from '../yapilandirma';
+import { createHmac, randomBytes } from 'node:crypto';
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  iyzico abonelik istemcisi
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ *  Neden resmî SDK'yı doğrudan kullanmıyoruz:
+ *
+ *  1. `iyzipay` paketi callback tabanlı, Promise döndürmüyor.
+ *  2. TypeScript tipleri paketle gelmiyor. `@types/iyzipay` var ama
+ *     2024'te kalmış ve hatalı: örneğin Locale'i "TR"|"EN" diye tanımlıyor,
+ *     SDK'nın gerçek değerleri ise küçük harf ('tr'|'en').
+ *  3. İstek modelleri katı beyaz liste: SDK'nın tanımadığı alanı SESSİZCE
+ *     düşürüyor. `upgrade` çağrısındaki `resetRecurrenceCount` alanı
+ *     SDK'da yok — SDK üzerinden gönderirseniz hiç gitmez, hata da almazsınız.
+ *
+ *  Bu yüzden REST'e doğrudan gidiyoruz. Yetkilendirme HMACSHA256 (v2).
+ *  SDK'yı yine de kurabilirsiniz; burada gerek yok.
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+
+export type IyzicoAbonelikDurumu =
+  | 'ACTIVE'
+  | 'PENDING'
+  | 'UNPAID'
+  | 'CANCELED' // tek L — iyzico'nun enum değeri böyle
+  | 'EXPIRED'
+  | 'UPGRADED';
+
+export interface IyzicoOdemeDenemesi {
+  paymentAttemptStatus: 'SUCCESS' | 'FAILED';
+  paymentId?: string;
+  errorCode?: string;
+  errorMessage?: string;
+  createdDate?: string;
+}
+
+export interface IyzicoSiparis {
+  referenceCode: string;
+  orderStatus: 'WAITING' | 'SUCCESS' | 'FAILED';
+  startPeriod?: string;
+  endPeriod?: string;
+  price?: number;
+  paidPrice?: number;
+  paymentAttempts?: IyzicoOdemeDenemesi[];
+}
+
+export interface IyzicoAbonelikDetayi {
+  referenceCode: string;
+  parentReferenceCode?: string;
+  pricingPlanReferenceCode: string;
+  customerReferenceCode: string;
+  subscriptionStatus: IyzicoAbonelikDurumu;
+  trialDays?: number;
+  trialStartDate?: string;
+  trialEndDate?: string;
+  createdDate?: string;
+  startDate?: string;
+  endDate?: string;
+  orders?: IyzicoSiparis[];
+}
+
+interface IyzicoYanit<T> {
+  status: 'success' | 'failure';
+  errorCode?: string;
+  errorMessage?: string;
+  systemTime?: number;
+  conversationId?: string;
+  data?: T;
+}
+
+export class IyzicoHatasi extends Error {
+  constructor(
+    readonly kod: string | undefined,
+    mesaj: string,
+    readonly httpDurum?: number,
+  ) {
+    super(mesaj);
+    this.name = 'IyzicoHatasi';
+  }
+}
+
+@Injectable()
+export class IyzicoClient {
+  private readonly logger = new Logger(IyzicoClient.name);
+  private readonly tabanUrl: string;
+
+  // ⚠ apiKey/secretKey KURUCUDA OKUNMAZ — getOrThrow burada cagrilirsa
+  // degisken eksikken TUM API onyuklemede duser (bkz. yapilandirma.ts).
+  // Deger ilk istekte istenir; eksikse yalnizca odeme uclari 503 doner.
+  private get apiKey(): string {
+    return odemeAyari(this.config, 'IYZICO_API_KEY');
+  }
+  private get secretKey(): string {
+    return odemeAyari(this.config, 'IYZICO_SECRET_KEY');
+  }
+
+  constructor(private readonly config: ConfigService) {
+    this.tabanUrl =
+      this.config.get<string>('IYZICO_TABAN_URL') ??
+      'https://sandbox-api.iyzipay.com';
+  }
+
+  // ── Yetkilendirme başlığı (HMACSHA256 / v2) ─────────────────────────────
+  private yetkiBasligi(yol: string, govde: unknown): string {
+    const rastgele = randomBytes(8).toString('hex');
+    const govdeMetni = govde ? JSON.stringify(govde) : '';
+    const imzalanacak = rastgele + yol + govdeMetni;
+    const imza = createHmac('sha256', this.secretKey)
+      .update(imzalanacak)
+      .digest('hex');
+    const yetki = `apiKey:${this.apiKey}&randomKey:${rastgele}&signature:${imza}`;
+    return `IYZWSv2 ${Buffer.from(yetki).toString('base64')}`;
+  }
+
+  private async istek<T>(
+    metot: 'GET' | 'POST',
+    yol: string,
+    govde?: unknown,
+  ): Promise<T> {
+    const url = this.tabanUrl + yol;
+    const cevap = await fetch(url, {
+      method: metot,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: this.yetkiBasligi(yol, govde),
+        'x-iyzi-rnd': randomBytes(8).toString('hex'),
+      },
+      body: govde ? JSON.stringify(govde) : undefined,
+    });
+
+    let json: IyzicoYanit<T>;
+    try {
+      json = (await cevap.json()) as IyzicoYanit<T>;
+    } catch {
+      throw new IyzicoHatasi(
+        undefined,
+        `iyzico yanıtı çözümlenemedi (HTTP ${cevap.status})`,
+        cevap.status,
+      );
+    }
+
+    if (json.status !== 'success') {
+      throw new IyzicoHatasi(
+        json.errorCode,
+        json.errorMessage ?? 'iyzico bilinmeyen hata',
+        cevap.status,
+      );
+    }
+    return (json.data ?? (json as unknown)) as T;
+  }
+
+  // ── Abonelik detayı ─────────────────────────────────────────────────────
+  /**
+   * MUTABAKATIN KALBİ.
+   *
+   * Webhook yalnızca "bir tahsilat başarılı/başarısız" der — abonelik iptal
+   * edildiğinde, süresi dolduğunda ya da UNPAID'e düştüğünde HİÇBİR webhook
+   * gelmez. Bu yüzden düzenli olarak buraya sormak zorundayız.
+   */
+  async abonelikGetir(abonelikKodu: string): Promise<IyzicoAbonelikDetayi> {
+    return this.istek<IyzicoAbonelikDetayi>(
+      'GET',
+      `/v2/subscription/subscriptions/${abonelikKodu}`,
+    );
+  }
+
+  // ── Başarısız tahsilatı yeniden dene ────────────────────────────────────
+  /**
+   * `siparisKodu` = başarısızlık webhook'undaki `orderReferenceCode`.
+   *
+   * DİKKAT: iyzico başarısız tahsilatı KENDİLİĞİNDEN tekrar denemiyor —
+   * dokümante edilmiş otomatik bir dunning takvimi yok. Yeniden deneme
+   * tamamen sizin sorumluluğunuzda. Pencere: başarısızlıktan sonra 160 gün.
+   */
+  async tahsilatiTekrarla(siparisKodu: string): Promise<unknown> {
+    return this.istek('POST', '/v2/subscription/operation/retry', {
+      referenceCode: siparisKodu,
+      locale: 'tr',
+    });
+  }
+
+  // ── İptal ───────────────────────────────────────────────────────────────
+  async abonelikIptal(abonelikKodu: string): Promise<unknown> {
+    return this.istek(
+      'POST',
+      `/v2/subscription/subscriptions/${abonelikKodu}/cancel`,
+      { locale: 'tr' },
+    );
+  }
+
+  async abonelikAktiflestir(abonelikKodu: string): Promise<unknown> {
+    return this.istek(
+      'POST',
+      `/v2/subscription/subscriptions/${abonelikKodu}/activate`,
+      { locale: 'tr' },
+    );
+  }
+
+  // ── Paket değişimi ──────────────────────────────────────────────────────
+  /**
+   * iyzico buna "upgrade" diyor ama düşüş (downgrade) için de aynı uç kullanılır.
+   *
+   * `resetRecurrenceCount` alanı resmî SDK'nın beyaz listesinde YOK; SDK ile
+   * gönderirseniz sessizce düşer. REST'e doğrudan gittiğimiz için burada çalışır.
+   */
+  async paketDegistir(
+    abonelikKodu: string,
+    p: {
+      yeniPlanKodu: string;
+      nezaman?: 'NOW' | 'NEXT_PERIOD';
+      denemeUygula?: boolean;
+      tekrarSayisiniSifirla?: boolean;
+    },
+  ): Promise<unknown> {
+    return this.istek(
+      'POST',
+      `/v2/subscription/subscriptions/${abonelikKodu}/upgrade`,
+      {
+        locale: 'tr',
+        newPricingPlanReferenceCode: p.yeniPlanKodu,
+        upgradePeriod: p.nezaman ?? 'NEXT_PERIOD',
+        useTrial: p.denemeUygula ?? false,
+        resetRecurrenceCount: p.tekrarSayisiniSifirla ?? false,
+      },
+    );
+  }
+
+  // ── Kart güncelleme sayfası ─────────────────────────────────────────────
+  /**
+   * Dunning'in en değerli parçası. Başarısız tahsilatta müşteriye
+   * gönderilecek bağlantı buradan çıkar.
+   *
+   * Dönen `checkoutFormContent` bir HTML parçası; kendi sayfanıza gömersiniz.
+   * Yeni kart, 1 TL çekilip anında iade edilerek doğrulanır.
+   */
+  async kartGuncellemeSayfasi(
+    abonelikKodu: string,
+    donusUrl: string,
+  ): Promise<{
+    token: string;
+    checkoutFormContent: string;
+    tokenExpireTime: number;
+  }> {
+    return this.istek(
+      'POST',
+      '/v2/subscription/card-update/checkoutform/initialize/with-subscription',
+      {
+        locale: 'tr',
+        subscriptionReferenceCode: abonelikKodu,
+        callbackUrl: donusUrl,
+      },
+    );
+  }
+
+  // ── Abonelik başlatma (barındırılan form) ───────────────────────────────
+  /**
+   * DİKKAT — abonelikte 3D Secure YOKTUR.
+   * iyzico dokümanı (yalnızca Türkçe sayfada): "Abonelik işlemlerinde ilk
+   * işlem dahil, tüm işlemler NON3D olarak gerçekleştirilmektedir."
+   * Yani buradaki "checkout form" sadece kart toplama arayüzüdür, 3DS
+   * doğrulaması çalıştırmaz. mdStatus, 3DS callback'i beklemeyin.
+   */
+  async abonelikBaslat(p: {
+    planKodu: string;
+    donusUrl: string;
+    baslangicDurumu?: 'ACTIVE' | 'PENDING';
+    musteri: {
+      name: string;
+      surname: string;
+      email: string;
+      gsmNumber: string;
+      identityNumber: string;
+      billingAddress: {
+        contactName: string;
+        city: string;
+        country: string;
+        address: string;
+        zipCode?: string;
+      };
+    };
+    konusmaId?: string;
+  }): Promise<{
+    token: string;
+    checkoutFormContent: string;
+    tokenExpireTime: number;
+  }> {
+    return this.istek(
+      'POST',
+      '/v2/subscription/checkoutform/initialize',
+      {
+        locale: 'tr',
+        conversationId: p.konusmaId,
+        pricingPlanReferenceCode: p.planKodu,
+        subscriptionInitialStatus: p.baslangicDurumu ?? 'ACTIVE',
+        callbackUrl: p.donusUrl,
+        customer: p.musteri,
+      },
+    );
+  }
+
+  /**
+   * Barındırılan form dönüşünde çağrılır.
+   *
+   * iyzico dönüş adresine POST ile yalnızca `token` gönderiyor ve bu POST'un
+   * imzası dokümante edilmemiş. Bu yüzden dönüş gövdesine ASLA güvenmeyin —
+   * sadece "git ve sor" tetikleyicisi olarak kullanın. Gerçek sonuç budur.
+   */
+  async formSonucu(token: string): Promise<{
+    referenceCode: string;
+    parentReferenceCode?: string;
+    subscriptionStatus: IyzicoAbonelikDurumu;
+    customerReferenceCode: string;
+    pricingPlanReferenceCode: string;
+  }> {
+    return this.istek(
+      'GET',
+      `/v2/subscription/checkoutform/${token}`,
+    );
+  }
+}

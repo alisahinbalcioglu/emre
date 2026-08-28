@@ -7,9 +7,11 @@ import { memoryStorage } from 'multer';
 import { JwtAuthGuard } from '../../altyapi/auth/guards/jwt-auth.guard';
 import { DwgEngineService } from './dwg-engine.service';
 import { resolveScaleParam } from './scale-param';
+import { ErisimGuard, GerekliYetenek } from '../../ozellik/odeme/abonelik/erisim.guard';
+import { Yetenek } from '../../ozellik/odeme/abonelik/erisim.servisi';
 
 @Controller('dwg-engine')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, ErisimGuard)
 export class DwgEngineController {
   constructor(private readonly dwgEngine: DwgEngineService) {}
 
@@ -22,6 +24,7 @@ export class DwgEngineController {
    * kadar tolerans verilir.
    */
   @Post('layers')
+  @GerekliYetenek(Yetenek.DWG_YUKLE)
   @UseInterceptors(FileInterceptor('file', {
     storage: memoryStorage(),
     limits: { fileSize: 1024 * 1024 * 1024 }, // 1 GB
@@ -40,6 +43,7 @@ export class DwgEngineController {
    * file_id yoksa: dosya yuklenmeli (geriye uyumlu).
    */
   @Post('parse')
+  @GerekliYetenek(Yetenek.DWG_YUKLE)
   @UseInterceptors(FileInterceptor('file', {
     storage: memoryStorage(),
     limits: { fileSize: 1024 * 1024 * 1024 }, // 1 GB
@@ -147,6 +151,7 @@ export class DwgEngineController {
    * /geometry/:fileId cache hit (50ms).
    */
   @Post('upload')
+  @GerekliYetenek(Yetenek.DWG_YUKLE)
   @UseInterceptors(FileInterceptor('file', {
     storage: memoryStorage(),
     limits: { fileSize: 1024 * 1024 * 1024 },

@@ -9,13 +9,15 @@ import { PrismaService } from '../db/prisma.service';
 import { jwtSecret } from './jwt-secret';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
-import { getUserCapabilities } from './capabilities.helper';
+import { getFirmaCapabilities } from './capabilities.helper';
+import { ErisimServisi } from '../../ozellik/odeme/abonelik/erisim.servisi';
 
 @Injectable()
 export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
+    private erisim: ErisimServisi,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -59,15 +61,34 @@ export class AuthService {
   async me(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, email: true, role: true, tier: true, createdAt: true },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        tier: true,
+        createdAt: true,
+        firmaId: true,
+      },
     });
     if (!user) return null;
-    const capabilities = await getUserCapabilities(this.prisma, userId);
+
+    const capabilities = await getFirmaCapabilities(this.prisma, user.firmaId);
     const subscriptions = await this.prisma.userSubscription.findMany({
       where: { userId, active: true },
       select: { id: true, level: true, scope: true, startsAt: true, endsAt: true },
     });
-    return { ...user, capabilities, subscriptions };
+
+    // ADIM 2: YETENEK ile ERISIM ayri iki sorudur (bkz. capabilities.helper.ts).
+    // `capabilities` = ne satin alindi · `erisim` = su an kullanilabilir mi.
+    // Ikisi de BURADAN doner cunku on yuzun tek besleme noktasi /auth/me'dir
+    // (login yaniti bunlari TASIMAZ — olculdu: auth.service.ts:55 yalniz
+    // {id,email,role,tier} doner). Serit, kilitli butonlar ve "kalan gun"
+    // sayaci bu tek yanittan beslenir.
+    const erisim = user.firmaId
+      ? await this.erisim.karar(user.firmaId)
+      : null;
+
+    return { ...user, capabilities, subscriptions, erisim };
   }
 
   private signToken(id: string, email: string, role: string) {

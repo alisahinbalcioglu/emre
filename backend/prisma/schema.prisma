@@ -48,6 +48,30 @@ model Firma {
   ad        String
   createdAt DateTime @default(now())
   uyeler    User[]
+
+  // ── ADIM 2 (28.08): FATURA KIMLIGI ────────────────────────────────────
+  // e-Arsiv/e-Fatura kesimi icin gereken alanlar. HEPSI NULLABLE: kayit
+  // akisi bunlari sormaz (surtunme yaratmaz), fatura kesimi sirasinda
+  // eksikse fatura ELLE_MUDAHALE'ye duser ve yoneticiye bildirilir —
+  // tahsilat akisi BLOKLANMAZ. Bkz. fatura.servisi.ts.
+  //
+  // `ad` ile `unvan` ayrimi kasitli: `ad` kayit akisinda e-postanin @
+  // oncesinden turetilen GORUNEN addir ("acme"), `unvan` ise faturaya
+  // yazilacak resmi unvandir ("Acme Muhendislik Ltd. Sti."). Fatura
+  // servisi `unvan ?? ad` okur — unvan girilmemisse gorunen ad kullanilir.
+  unvan         String?
+  // Bildirim adresi. Dunning e-postalari once faturaEposta'ya, o yoksa
+  // yetkiliEposta'ya gider (dunning.servisi.ts:295).
+  yetkiliEposta String?
+  faturaEposta  String?
+  vergiNo       String?
+  vergiDairesi  String?
+  tcKimlikNo    String?
+  faturaAdresi  String?
+  il            String?
+  ilce          String?
+
+  abonelik  Abonelik?
 }
 
 enum FirmaRol {
@@ -774,4 +798,355 @@ model SystemSettings {
   key       String   @unique
   value     String
   updatedAt DateTime @updatedAt
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  ADIM 2 (28.08) — ABONELIK & ODEME
+// ═══════════════════════════════════════════════════════════════════════════
+//
+//  TASARIM ILKESI: iyzico kaynak degil TAHSILAT SERVISIDIR. "Bu firma
+//  uygulamayi kullanabilir mi" sorusunun cevabi DAIMA bu tablolardan gelir;
+//  iyzico'ya sorulmaz. iyzico'dan gelen bilgi bu tablolari GUNCELLER,
+//  karari VERMEZ. Sebep: iyzico'ya giden her istek gecikme ve ariza
+//  noktasidir, ustelik havale ile odeyen firmalarin iyzico'da kaydi yoktur.
+//
+//  ⚠ PROJE UYARLAMASI (paketten sapmalar — kasitli):
+//   1. `cuid()` DEGIL `uuid()` — semadaki diger 26 modelin tamami uuid.
+//   2. `@@map("paket")` YOK — mevcut tablolar PascalCase (User, Brand,
+//      UserSubscription); tek semada iki adlandirma dili tutulmaz.
+//   3. Paket'e `kapsam` + `seviye` EKLENDI (pakette YOKTU). Sebep asagida.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Paket tanimi — fiyattan BAGIMSIZ kimlik. "Profesyonel Paket" gibi;
+/// fiyati degisse de bu kayit ayni kalir, degisen PaketSurumu olur.
+///
+/// ⭐ KAPSAM + SEVIYE (28.08 kullanici karari): gelen pakette paket DUZ idi
+/// (tek `dwgAktif` boolean'i) — oysa urun DISIPLIN BAZLI satiliyor
+/// (UserSubscription.scope = mechanical|electrical|mep, admin panelde
+/// "pro·MEP" rozetleri). Duz paket bir GERILEME olurdu: mep ile mechanical
+/// ayrimi ve ayri fiyatlandirma imkani kaybolurdu.
+///
+/// Bu yuzden paket kapsam+seviye tasir ve `capabilities` matrisi artik
+/// firmanin Abonelik→PaketSurumu→Paket zincirinden TURETILIR (tek dogru
+/// kaynak). Frontend sozlesmesi ({mechanical:{material,labor,dwg},
+/// electrical:{...}}) AYNI kalir — hicbir bilesen kirilmaz.
+/// Bkz. capabilities.helper.ts.
+model Paket {
+  id       String @id @default(uuid())
+  kod      String @unique // "pro-mep", "core-mek"
+  ad       String
+  aciklama String?
+  sira     Int    @default(0)
+
+  /// Hangi disiplin(ler)e erisim verir. `mep` ikisini birden acar.
+  /// Mevcut SubscriptionScope enum'u YENIDEN KULLANILIYOR — yeni bir enum
+  /// tanimlamak ayni kavrami iki adla tasimak olurdu.
+  kapsam SubscriptionScope
+  /// core = malzeme. pro = malzeme + iscilik + dwg.
+  /// Mevcut PackageLevel enum'u yeniden kullaniliyor (ayni gerekce).
+  seviye PackageLevel
+
+  /// Firma basina azami kullanici (davet akisi bunu okuyacak).
+  kullaniciHakki Int @default(5)
+  /// null = sinirsiz. ⚠ ZORLANMIYOR — kota uygulamak icin teklif olusturma
+  /// ucuna sayac eklemek gerekir (bilinen sinir, OKUBENI.md'de de yazili).
+  aylikTeklifHakki Int?
+  /// `seviye`den bagimsiz DWG anahtari. Normalde pro=true/core=false, ama
+  /// ayrik tutuluyor: "dwg'siz pro" ya da "dwg'li core" paketi satilabilsin.
+  /// ErisimServisi bu alani okur (erisim.servisi.ts).
+  dwgAktif Boolean @default(true)
+
+  aktif       Boolean       @default(true)
+  surumler    PaketSurumu[]
+  olusturuldu DateTime      @default(now())
+
+  @@index([aktif, sira])
+}
+
+/// Paket surumu — fiyatin DONDURULMUS hali.
+/// iyzico'da Pricing Plan olusturulduktan sonra fiyati DEGISTIRILEMEZ.
+/// Bu yuzden her fiyat degisikligi yeni bir PaketSurumu + yeni iyzico plani
+/// demektir. Eski aboneler eski surumde kalir; bu tablo onu kaydeder.
+model PaketSurumu {
+  id      String @id @default(uuid())
+  paketId String
+  paket   Paket  @relation(fields: [paketId], references: [id])
+  surumNo Int
+
+  /// iyzico tarafindaki karsiliklari.
+  iyzicoPlanKodu String @unique // pricingPlanReferenceCode
+  iyzicoUrunKodu String // productReferenceCode
+
+  /// Fiyat — SADECE kayit amacli, tahsilati iyzico yapar.
+  /// Decimal(12,2): para asla float tutulmaz (bkz. P2 turu, 03.08 dersi).
+  tutar        Decimal @db.Decimal(12, 2)
+  paraBirimi   String  @default("TRY") // TRY | USD | EUR
+  periyot      String  @default("MONTHLY") // DAILY|WEEKLY|MONTHLY|YEARLY
+  periyotAdedi Int     @default(1)
+  denemeGunu   Int     @default(0)
+
+  /// Yeni satisa kapaliysa false; MEVCUT ABONELER ETKILENMEZ.
+  satistaMi   Boolean            @default(true)
+  olusturuldu DateTime   @default(now())
+  abonelikler Abonelik[]
+  baslatmalar AbonelikBaslatma[]
+
+  @@unique([paketId, surumNo])
+  @@index([satistaMi])
+}
+
+/// Aboneligin sahibi KULLANICI DEGIL FIRMA'dir (ADIM 1 ekseni).
+///
+/// ⚠ `firmaId` ZORUNLU ve @unique: bir firmanin en fazla bir aboneligi olur.
+/// Bu, User.firmaId'nin nullable olmasina ragmen guvenlidir — kayit akisi
+/// her kullaniciya atomik olarak firma acar (auth.service.ts register).
+model Abonelik {
+  id            String      @id @default(uuid())
+  firmaId       String      @unique
+  firma         Firma       @relation(fields: [firmaId], references: [id])
+  paketSurumuId String
+  paketSurumu   PaketSurumu @relation(fields: [paketSurumuId], references: [id])
+
+  durum AbonelikDurumu @default(DENEME)
+
+  /// Erisimin bittigi AN. Kart odemesinde iyzico'dan gelen donem sonu,
+  /// havalede elle uzatilan tarih. ERISIM KARARI BU ALANA BAKAR — durum ne
+  /// olursa olsun bu tarih gecmisse erisim kapanir (ikinci emniyet kemeri:
+  /// zamanlanmis is gec kosarsa bile bedava kullanim olmaz).
+  erisimSonu DateTime
+  denemeSonu DateTime?
+
+  /// iyzico bagi — HAVALE ile odeyen firmalarda null kalir.
+  iyzicoAbonelikKodu String?   @unique // subscriptionReferenceCode
+  iyzicoMusteriKodu  String? // customerReferenceCode
+  iyzicoDurum        String? // ACTIVE|PENDING|UNPAID|CANCELED|EXPIRED|UPGRADED
+  iyzicoSonKontrol   DateTime? // mutabakat isinin son bakisi
+
+  odemeYontemi OdemeYontemi @default(KART)
+
+  /// Dunning (tahsilat kurtarma) durumu.
+  ilkBasarisizlik DateTime?
+  denemeSayisi    Int       @default(0)
+  sonDeneme       DateTime?
+  kisitlandi      DateTime? // salt-okunur moda gecis ani
+
+  /// Musteri iptal etti — donem sonuna kadar erisim SURER.
+  iptalTalebi DateTime?
+  iptalNedeni String?
+
+  olusturuldu DateTime @default(now())
+  guncellendi DateTime @updatedAt
+
+  olaylar   AbonelikOlayi[]
+  faturalar Fatura[]
+  havaleler HavaleOdemesi[]
+
+  @@index([durum, erisimSonu])
+  @@index([durum, sonDeneme]) // dunning taramasi bu indeksi kullanir
+}
+
+/// Satin alma NIYETI — barindirilan iyzico formu acildiginda yazilir.
+///
+/// ⚠ NEDEN ZORUNLU (para kaybettiren delik): iyzico'nun donus adresine SADECE
+/// opak bir `token` gonderilir; govdede firmaId ya da plan bilgisi YOKTUR.
+/// Bu tablo olmasaydi token'i bir firmaya baglamanin YOLU OLMAZDI.
+///
+/// Asil senaryo: musteri karti girdi, tahsilat GECTI, ama donus sayfasi
+/// yuklenmeden sekmeyi kapatti. O anda:
+///   · Abonelik satiri hic olusmamis olur,
+///   · iyzico webhook'u `subscriptionReferenceCode` ile gelir,
+///   · webhook.isleyici o kodla EŞLEŞEN ABONELIK BULAMAZ ve olayi
+///     "bilinmeyen abonelik kodu" diye yutup islendi=true isaretler.
+/// Sonuc: MUSTERI ODEDI, ERISIM ACILMADI ve gunlukte tek satir iz kalir.
+///
+/// Bu tablo + `AbonelikBaslatmaJob` o dongu icin kurtarma yolu acar: donusu
+/// gelmemis niyetler icin iyzico'ya `formSonucu(token)` ile SORULUR ve
+/// tahsilat gectiyse abonelik SUNUCU TARAFINDA acilir. Yani erisim,
+/// musterinin tarayicisini acik tutmasina BAGLI DEGILDIR.
+model AbonelikBaslatma {
+  id            String      @id @default(uuid())
+  /// iyzico checkout form token'i — donus bununla eslesir.
+  token         String      @unique
+  firmaId       String
+  paketSurumuId String
+  paketSurumu   PaketSurumu @relation(fields: [paketSurumuId], references: [id])
+
+  /// Formu acan kisi (denetim izi; abonelik FIRMAYA ait olsa da niyeti
+  /// bir KISI olusturur).
+  olusturanId String
+
+  durum AbonelikBaslatmaDurumu @default(BEKLIYOR)
+  /// Sonuclandiginda iyzico'nun verdigi abonelik kodu.
+  iyzicoAbonelikKodu String?
+  hata               String?
+
+  /// Kurtarma taramasinin son bakisi — ayni niyeti sonsuz sorgulamamak icin.
+  sonKontrol   DateTime?
+  denemeSayisi Int       @default(0)
+
+  olusturuldu  DateTime  @default(now())
+  sonuclandi   DateTime?
+
+  @@index([durum, olusturuldu])
+}
+
+enum AbonelikBaslatmaDurumu {
+  BEKLIYOR // form acildi, donus gelmedi
+  TAMAMLANDI // abonelik acildi
+  BASARISIZ // iyzico odemeyi reddetti
+  VAZGECILDI // pencere doldu, tahsilat da gecmemis
+}
+
+enum AbonelikDurumu {
+  DENEME // deneme suresi, tam erisim
+  AKTIF // odemeler duzenli, tam erisim
+  ODEME_BEKLIYOR // tahsilat basarisiz, tolerans suresinde — HALA tam erisim
+  KISITLI // tolerans doldu — salt okunur
+  ASKIDA // erisim kapali, sadece odeme sayfasi
+  IPTAL // musteri iptal etti, donem sonuna kadar erisim suruyor
+  SONA_ERDI // bitti
+}
+
+enum OdemeYontemi {
+  KART // iyzico abonelik
+  HAVALE // havale/EFT, elle uzatma
+}
+
+/// Webhook ham kaydi + tekillestirme.
+///
+/// iyzico ayni olayi 15 dakikada bir, TOPLAM 3 KEZ gonderir (~45 dk pencere);
+/// sonra olay KALICI OLARAK KAYBOLUR. Bu yuzden controller SADECE buraya
+/// yazip 200 doner, isleme sonra yapilir. Bu sirayi bozmayin.
+model WebhookOlayi {
+  id String @id @default(uuid())
+
+  /// Tekillestirme anahtari — ayni olayin ikinci gelisi burada takilir (P2002).
+  tekilAnahtar String @unique
+
+  kaynak      String  @default("iyzico")
+  olayTipi    String // subscription.order.success | subscription.order.failure
+  hamGovde    Json
+  imzaBasligi String?
+  imzaGecerli Boolean @default(false)
+
+  /// iyzico'nun gonderdigi alanlar.
+  abonelikKodu  String?
+  siparisKodu   String? // orderReferenceCode — retry bunu ister
+  musteriKodu   String?
+  iyzicoRefKodu String?
+  olayZamani    DateTime?
+
+  islendi       Boolean   @default(false)
+  islenmeZamani DateTime?
+  denemeSayisi  Int       @default(0)
+  hata          String?
+
+  alindi DateTime @default(now())
+
+  @@index([islendi, alindi])
+  @@index([abonelikKodu])
+}
+
+/// Abonelik olay gunlugu (denetim izi).
+/// Bir musteri "ben odedim ama hesabim kapandi" dediginde TEK bakilacak yer.
+model AbonelikOlayi {
+  id         String   @id @default(uuid())
+  abonelikId String
+  abonelik   Abonelik @relation(fields: [abonelikId], references: [id])
+
+  tip         String // tahsilat.basarili, dunning.deneme, durum.degisti…
+  oncekiDurum String?
+  yeniDurum   String?
+  aciklama    String?
+  veri        Json?
+  /// "sistem", "webhook", ya da yonetici kullanici ID'si.
+  aktor       String   @default("sistem")
+  olusturuldu DateTime @default(now())
+
+  @@index([abonelikId, olusturuldu])
+}
+
+/// e-Arsiv / e-Fatura.
+/// iyzico MUSTERINIZE fatura KESMEZ, yalnizca kendi komisyonunu size
+/// faturalar. Her tahsilatta e-arsiv/e-fatura uretmek SIZIN yukumlulugunuz.
+model Fatura {
+  id         String   @id @default(uuid())
+  abonelikId String
+  abonelik   Abonelik @relation(fields: [abonelikId], references: [id])
+
+  /// Tekillestirme: ayni tahsilat icin IKI fatura kesilmesin.
+  tahsilatKodu String @unique // orderReferenceCode ya da havale kaydi ID'si
+
+  durum       FaturaDurumu @default(BEKLIYOR)
+  tutar       Decimal      @db.Decimal(12, 2)
+  kdvOrani    Int          @default(20)
+  kdvTutari   Decimal      @db.Decimal(12, 2)
+  toplamTutar Decimal      @db.Decimal(12, 2)
+  paraBirimi  String       @default("TRY")
+
+  /// Muhasebe entegrasyonu (Parasut vb.).
+  saglayici   String?
+  saglayiciId String?
+  faturaNo    String?
+  faturaUrl   String?
+
+  denemeSayisi Int       @default(0)
+  sonDeneme    DateTime?
+  hata         String?
+
+  donemBasi   DateTime
+  donemSonu   DateTime
+  olusturuldu DateTime  @default(now())
+  kesildi     DateTime?
+
+  @@index([durum, sonDeneme])
+}
+
+enum FaturaDurumu {
+  BEKLIYOR
+  KESILDI
+  HATA
+  ELLE_MUDAHALE // otomatik deneme tukendi, insan bakmali
+  IPTAL
+}
+
+/// Havale / EFT odemesi.
+/// Taahhut firmalarinda kurumsal kart limitleri dusuktur; yillik pesin havale
+/// cogu zaman TERCIH EDILEN satin alma bicimidir. Kartin yanina BIRINCI SINIF
+/// bir yol olarak konur, sonradan eklenen bir istisna olarak degil.
+/// iyzico bu akisa HIC karismaz: iyzicoAbonelikKodu null kalir, dunning
+/// taramasi bu kayitlari atlar (where odemeYontemi:'KART').
+model HavaleOdemesi {
+  id         String   @id @default(uuid())
+  abonelikId String
+  abonelik   Abonelik @relation(fields: [abonelikId], references: [id])
+
+  durum      HavaleDurumu @default(TEKLIF)
+  tutar      Decimal      @db.Decimal(12, 2)
+  paraBirimi String       @default("TRY")
+  ayAdedi    Int // kac ay uzatilacak
+
+  /// Belge izi.
+  teklifNo  String? @unique
+  faturaNo  String?
+  dekontUrl String?
+  aciklama  String?
+
+  /// Kim onayladi. ⚠ aktor JWT'den alinir, ISTEK GOVDESINDEN DEGIL.
+  onaylayanId   String?
+  onaylandi     DateTime?
+  uzatilanTarih DateTime?
+
+  olusturuldu DateTime @default(now())
+  guncellendi DateTime @updatedAt
+
+  @@index([durum, olusturuldu])
+}
+
+enum HavaleDurumu {
+  TEKLIF // teklif iletildi
+  FATURA_KESILDI
+  ODEME_BEKLENIYOR
+  ONAYLANDI // dekont dogrulandi, abonelik uzatildi
+  IPTAL
 }
