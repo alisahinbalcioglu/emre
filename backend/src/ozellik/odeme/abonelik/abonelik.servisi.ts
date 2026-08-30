@@ -171,11 +171,105 @@ export class AbonelikServisi {
    * Webhook gövdesinde tutar ve dönem YOK — yalnızca referans kodları var.
    * Bu yüzden dönem sonunu öğrenmek için iyzico'ya sormak zorundayız.
    */
-  async tahsilatBasarili(abonelikKodu: string, siparisKodu: string) {
-    const ab = await this.prisma.abonelik.findUnique({
+  /**
+   * ═════════════════════════════════════════════════════════════════════
+   *  ZINCIR COZUCU — webhook kodunu aboneligimize baglar
+   * ═════════════════════════════════════════════════════════════════════
+   *
+   *  ⚠ NEDEN DUZ `findUnique` YETMEZ (olculmus davranis):
+   *  Paket degisiminde (upgrade/downgrade) iyzico YENI bir
+   *  subscriptionReferenceCode uretir; yeni kayit eskisine
+   *  `parentReferenceCode` ile baglanir, eski kayit UPGRADED durumuna
+   *  duser ve terminal olur. Kaynak: docs/RAPOR_ADIM0_iyzico_Sandbox.md
+   *  (20.08) — "201402 yukseltilemez / 201403 iptal edilemez" hatalari
+   *  sandbox'ta olculmus.
+   *
+   *  Yani plan degisiminden SONRAKI her webhook YENI kodla gelir. Duz
+   *  esleme onu bulamaz, olay "bilinmeyen abonelik kodu" diye yutulur ve
+   *  MUSTERI ODEDIGI HALDE aboneligi guncellenmez. Raporun kendi cumlesi:
+   *  "webhook eslemesi zincir koküyle yapilmali."
+   *
+   *  UC KADEMELI ARAMA:
+   *    1. Guncel uc      — `iyzicoAbonelikKodu` birebir
+   *    2. Zincir koku    — daha once kaydedilmis `iyzicoKokKodu`
+   *    3. iyzico'ya SOR  — `parentReferenceCode` zincirini yukari yuru
+   *
+   *  3. kademe KENDINI ONARIR: zincirden bulunan abonelikte guncel kod
+   *  yazilir, kok kodu sabitlenir. Boylece ayni abonelik icin bir daha
+   *  iyzico'ya sorulmaz — degisim uygulamamiz DISINDA (iyzico panelinden)
+   *  yapilmis olsa bile sistem kendi kendine hizalanir.
+   */
+  private async aboneligiKodlaBul(abonelikKodu: string) {
+    // 1. Guncel uc
+    const dogrudan = await this.prisma.abonelik.findUnique({
       where: { iyzicoAbonelikKodu: abonelikKodu },
       include: { paketSurumu: true },
     });
+    if (dogrudan) return dogrudan;
+
+    // 2. Zincir koku (daha once bir degisim yasanmis ve kok kaydedilmis)
+    const koktenn = await this.prisma.abonelik.findFirst({
+      where: { iyzicoKokKodu: abonelikKodu },
+      include: { paketSurumu: true },
+    });
+    if (koktenn) return koktenn;
+
+    // 3. iyzico'ya sor: bu kodun atasi kim?
+    //    Zincir uzun olabilir (art arda plan degisimleri) — sinirli
+    //    derinlikte yukari yururuz; sonsuz dongu riski alinmaz.
+    let kod: string | undefined = abonelikKodu;
+    for (let adim = 0; adim < 5 && kod; adim++) {
+      let detay: Awaited<ReturnType<IyzicoClient['abonelikGetir']>>;
+      try {
+        detay = await this.iyzico.abonelikGetir(kod);
+      } catch (e) {
+        this.logger.warn(
+          `Zincir cozulemedi (${kod}): ${e instanceof Error ? e.message : e}`,
+        );
+        return null;
+      }
+      const ata = detay?.parentReferenceCode;
+      if (!ata) break;
+
+      const bulunan = await this.prisma.abonelik.findFirst({
+        where: {
+          OR: [{ iyzicoAbonelikKodu: ata }, { iyzicoKokKodu: ata }],
+        },
+        include: { paketSurumu: true },
+      });
+      if (bulunan) {
+        // KENDINI ONARMA: guncel ucu yaz, kokU sabitle.
+        const guncel = await this.prisma.abonelik.update({
+          where: { id: bulunan.id },
+          data: {
+            iyzicoAbonelikKodu: abonelikKodu,
+            iyzicoKokKodu: bulunan.iyzicoKokKodu ?? ata,
+          },
+          include: { paketSurumu: true },
+        });
+        await this.prisma.abonelikOlayi.create({
+          data: {
+            abonelikId: guncel.id,
+            tip: 'iyzico.zincir.hizalandi',
+            aciklama:
+              `Plan degisimi sonrasi yeni abonelik kodu baglandi: ` +
+              `${bulunan.iyzicoAbonelikKodu} → ${abonelikKodu}`,
+            aktor: 'webhook',
+          },
+        });
+        this.logger.warn(
+          `Zincir hizalandi: ${bulunan.iyzicoAbonelikKodu} → ${abonelikKodu}`,
+        );
+        return guncel;
+      }
+      kod = ata; // bir ust halkaya
+    }
+
+    return null;
+  }
+
+  async tahsilatBasarili(abonelikKodu: string, siparisKodu: string) {
+    const ab = await this.aboneligiKodlaBul(abonelikKodu);
     if (!ab) {
       this.logger.warn(
         `Bilinmeyen abonelik kodu: ${abonelikKodu} — webhook yok sayıldı`,
@@ -210,9 +304,10 @@ export class AbonelikServisi {
 
   // ── Webhook'tan gelen başarısız tahsilat ────────────────────────────────
   async tahsilatBasarisiz(abonelikKodu: string, siparisKodu: string) {
-    const ab = await this.prisma.abonelik.findUnique({
-      where: { iyzicoAbonelikKodu: abonelikKodu },
-    });
+    // ⚠ IKIZ: basarili yolla AYNI zincir cozumu. Yalniz birini duzeltmek,
+    // "odeme gecti guncellendi ama basarisizlik kaydedilmedi" gibi yarim
+    // bir durum uretirdi — dunning merdiveni hic baslamazdi.
+    const ab = await this.aboneligiKodlaBul(abonelikKodu);
     if (!ab) {
       this.logger.warn(`Bilinmeyen abonelik kodu: ${abonelikKodu}`);
       return null;

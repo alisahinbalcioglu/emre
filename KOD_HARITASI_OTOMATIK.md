@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 443
-Toplam satir: 95504
+Toplam satir: 95705
 Uc nokta: 142
 test:* scripti: 74
 
@@ -12,7 +12,7 @@ test:* scripti: 74
 
 | Dosya | Satir |
 |---|---|
-| `backend/prisma/schema.prisma` | 1188 |
+| `backend/prisma/schema.prisma` | 1207 |
 | `backend/scripts/derleme-kapisi.js` | 68 |
 | `backend/scripts/kisisel-liste-backfill.js` | 107 |
 | `backend/scripts/paketleri-kur.ts` | 303 |
@@ -137,11 +137,11 @@ test:* scripti: 74
 | `backend/src/ozellik/kutuphane/silme-etkisi.ts` | 74 |
 | `backend/src/ozellik/kutuphane/utils/import-fidelity.ts` | 347 |
 | `backend/src/ozellik/odeme/abonelik/abonelik.controller.ts` | 113 |
-| `backend/src/ozellik/odeme/abonelik/abonelik.servisi.ts` | 298 |
+| `backend/src/ozellik/odeme/abonelik/abonelik.servisi.ts` | 393 |
 | `backend/src/ozellik/odeme/abonelik/erisim.guard.ts` | 90 |
 | `backend/src/ozellik/odeme/abonelik/erisim.servisi.ts` | 269 |
 | `backend/src/ozellik/odeme/abonelik/mutabakat.job.ts` | 155 |
-| `backend/src/ozellik/odeme/abonelik/satinalma.servisi.ts` | 469 |
+| `backend/src/ozellik/odeme/abonelik/satinalma.servisi.ts` | 477 |
 | `backend/src/ozellik/odeme/dunning/dunning.metinleri.ts` | 165 |
 | `backend/src/ozellik/odeme/dunning/dunning.servisi.ts` | 314 |
 | `backend/src/ozellik/odeme/eposta/eposta.servisi.ts` | 132 |
@@ -176,7 +176,7 @@ test:* scripti: 74
 | `backend/test/cap-cevrilemedi-test.ts` | 254 |
 | `backend/test/ceviri-karar-test.ts` | 166 |
 | `backend/test/cikti-dil-test.ts` | 91 |
-| `backend/test/contract-test.ts` | 285 |
+| `backend/test/contract-test.ts` | 364 |
 | `backend/test/conversion-test.ts` | 261 |
 | `backend/test/d1-marka-silme-capraz-tenant-test.ts` | 235 |
 | `backend/test/dn-koprusu-test.ts` | 342 |

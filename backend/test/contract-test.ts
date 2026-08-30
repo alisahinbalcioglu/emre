@@ -13,6 +13,30 @@
  *
  * KURAL: v2 motor bu dosyayi DEGISTIRMEDEN gecmek zorundadir. Bu dosyayi
  * gevsetmek = sozlesmeyi bozmak. Once burayi oku, sonra motoru degistir.
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  ⚠ MUHUR REVIZYONU — 29.08.2026 (G8: eslestirme FIRMA kapsamina gecti)
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ *  YUKARIDAKI KURAL BU TARIHTE BIR KEZ, BILEREK BOZULDU. Kayit altina
+ *  aliniyor cunku sessizce yapilmasi projenin en sert kapisini gevsetmek
+ *  olurdu — nitekim ilk denemede TAM OLARAK O YAPILDI (dosya toplu imza
+ *  gocurmesi sirasinda fark edilmeden duzenlendi) ve sonradan yakalandi.
+ *
+ *  NE DEGISTI: `MatchingService.bulkMatch` ve kardeslerinin ilk parametresi
+ *  `userId: string` → `k: Kimlik` oldu. Bu dosyadaki ~14 cagri yeri
+ *  `{ userId, firmaId }` nesnesi gecirecek sekilde guncellendi.
+ *
+ *  NEDEN KACINILMAZDI: aday havuzu `UserLibrary`den okunuyor ve o tablo
+ *  ADIM 1'de FIRMAYA gecmisti; motor hala `userId` ile suzuyordu. Firma
+ *  kimligini tasimadan bu duzeltilemezdi. Alternatif — servis icinde
+ *  userId'den firmaId'yi DB'den cozmek — her cagride fazladan sorgu ve
+ *  `where: { firmaId: undefined }` sessiz dusme riski demekti.
+ *
+ *  MUHUR KALDIRILMADI, YENIDEN KURULDU: asagidaki **C0-firma** blogu yeni
+ *  dis yuzeyi PINLER. Bundan sonra imzayi degistiren bir sonraki kisi yine
+ *  bu dosyaya carpar — kapinin caydiriciligi korunur.
+ * ═══════════════════════════════════════════════════════════════════════════
  */
 
 import { MatchingService } from '../src/ozellik/eslestirme/matching/matching.service';
@@ -108,6 +132,61 @@ function assertAlternativeShape(tag: string, a: BrandAlternative | undefined) {
 }
 
 async function run() {
+  // ══ C0-firma: KIMLIK SOZLESMESI (muhur revizyonu 29.08 — bkz. dosya basi) ══
+  // Motorun dis yuzeyi artik KIMLIK NESNESI aliyor, ciplak userId DEGIL.
+  // Bu blok o yuzeyi PINLER: imzayi geri cevirmeye calisan bir sonraki
+  // degisiklik burada durur. Muhur kaldirilmadi, YENIDEN KURULDU.
+  {
+    const svc = makeService('AYVAZ', [lib('Yaylı Çekvalf DN50', 1250)]);
+
+    // C0-a: Kimlik nesnesi KABUL EDILIYOR (yeni sozlesme calisiyor).
+    const k = { userId: 'u1', firmaId: 'f1' };
+    const rk = await svc.bulkMatch(k, 'brand-1', ['ÇEKVALF DN 50']);
+    check(
+      'C0-firma-a bulkMatch KIMLIK nesnesi aliyor ({userId, firmaId})',
+      !!rk['ÇEKVALF DN 50'],
+      `got ${JSON.stringify(rk)}`,
+    );
+
+    // C0-b ⭐ AYIRT EDICI: havuz FIRMA ile suzuluyor, KISI ile degil.
+    // Prisma'ya giden `where` yakalanir; tip degil GERCEK SORGU olculur.
+    // (tsc bunu goremez: controller'larda `user: any` tip kapisini deler —
+    //  olculdu, 13 cagri string geciriyordu ve derleyici sustu.)
+    let yakalanan: any = null;
+    const casus: any = {
+      userLibrary: {
+        findMany: async (a: any) => { yakalanan = a?.where; return []; },
+        count: async () => 0,
+      },
+      brand: { findUnique: async () => ({ name: 'AYVAZ' }) },
+      eslesmeHafizasi: { findUnique: async () => null, upsert: async () => ({}) },
+      user: { findUnique: async () => ({ firmaId: 'f1' }) },
+    };
+    const casusSvc = new MatchingService(
+      casus,
+      { loadAliases: async () => [] } as any,
+      { cevir: async (x: any) => x } as any,
+    );
+    await casusSvc
+      .bulkMatch({ userId: 'u1', firmaId: 'f1' }, 'brand-1', ['x'])
+      .catch(() => undefined);
+    check(
+      'C0-firma-b OLCUT: havuz sorgusu yakalandi',
+      yakalanan !== null,
+      'userLibrary.findMany hic cagrilmadi',
+    );
+    check(
+      'C0-firma-c havuz FIRMA ile suzuluyor (where.firmaId === f1)',
+      yakalanan?.firmaId === 'f1',
+      `where=${JSON.stringify(yakalanan)}`,
+    );
+    check(
+      'C0-firma-d havuzda ciplak userId suzgeci YOK (kisi ekseni geri gelmedi)',
+      yakalanan?.userId === undefined,
+      `where=${JSON.stringify(yakalanan)}`,
+    );
+  }
+
   // ══ C1: bulkMatch IMZASI — 4. ve 5. param OPSIYONEL ═══════════════════
   // page.tsx:889 (prefetch) ve :496 (restore re-match) yalnizca 3 argumanla
   // cagiriyor. Opsiyonelligi kaybedersek O IKI YOL PATLAR.

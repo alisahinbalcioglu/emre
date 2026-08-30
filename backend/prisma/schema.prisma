@@ -952,7 +952,24 @@ model Abonelik {
   denemeSonu DateTime?
 
   /// iyzico bagi — HAVALE ile odeyen firmalarda null kalir.
-  iyzicoAbonelikKodu String?   @unique // subscriptionReferenceCode
+  /// ⚠ BU KOD DEGISKENDIR: paket degisiminde (upgrade/downgrade) iyzico
+  /// YENI bir subscriptionReferenceCode uretir, eskisi UPGRADED olur ve
+  /// uzerinde hicbir islem yapilamaz. Bkz. `iyzicoKokKodu`.
+  iyzicoAbonelikKodu String?   @unique // subscriptionReferenceCode (GUNCEL uc)
+
+  /// ⚠ ZINCIR KOKU — plan degisiminde DEGISMEYEN tek kimlik.
+  ///
+  /// OLCULMUS DAVRANIS (docs/RAPOR_ADIM0_iyzico_Sandbox.md, 20.08):
+  /// upgrade/downgrade YENI bir abonelik referansi uretir; yeni kayit
+  /// `parentReferenceCode` ile eskisine baglanir, eski kayit UPGRADED
+  /// durumuna duser ve terminal hale gelir (`201402 yukseltilemez`,
+  /// `201403 iptal edilemez` — ikisi de olculdu).
+  ///
+  /// Bu alan olmadan: paket degisiminden sonra gelen webhook YENI kodla
+  /// gelir, `iyzicoAbonelikKodu` ile eslesmez ve olay "bilinmeyen abonelik
+  /// kodu" diye YUTULUR — musteri odemesine ragmen aboneligi guncellenmez.
+  /// Raporun kendi cumlesi: "webhook eslemesi zincir koküyle yapilmali".
+  iyzicoKokKodu      String?
   iyzicoMusteriKodu  String? // customerReferenceCode
   iyzicoDurum        String? // ACTIVE|PENDING|UNPAID|CANCELED|EXPIRED|UPGRADED
   iyzicoSonKontrol   DateTime? // mutabakat isinin son bakisi
@@ -978,6 +995,8 @@ model Abonelik {
 
   @@index([durum, erisimSonu])
   @@index([durum, sonDeneme]) // dunning taramasi bu indeksi kullanir
+  // Zincir kokuyle arama: webhook YENI kodla geldiginde bu indeks kullanilir.
+  @@index([iyzicoKokKodu])
 }
 
 /// Satin alma NIYETI — barindirilan iyzico formu acildiginda yazilir.

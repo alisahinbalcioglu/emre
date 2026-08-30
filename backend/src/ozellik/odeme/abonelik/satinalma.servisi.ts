@@ -332,6 +332,10 @@ export class SatinAlmaServisi {
           denemeSonu: p.denemeGunu > 0 ? erisimSonu : null,
           odemeYontemi: OdemeYontemi.KART,
           iyzicoAbonelikKodu: p.iyzicoAbonelikKodu,
+          // ILK abonelikte kod KENDISI kokUdur. Plan degisiminde
+          // `iyzicoAbonelikKodu` degisir ama bu SABIT kalir — webhook
+          // eslemesi zincir kokuyle yapilir (abonelik.servisi:aboneligiKodlaBul).
+          iyzicoKokKodu: p.iyzicoAbonelikKodu,
           iyzicoMusteriKodu: p.iyzicoMusteriKodu,
           iyzicoDurum: p.iyzicoDurum,
           iyzicoSonKontrol: simdi,
@@ -350,6 +354,10 @@ export class SatinAlmaServisi {
         denemeSonu: p.denemeGunu > 0 ? erisimSonu : null,
         odemeYontemi: OdemeYontemi.KART,
         iyzicoAbonelikKodu: p.iyzicoAbonelikKodu,
+          // ILK abonelikte kod KENDISI kokUdur. Plan degisiminde
+          // `iyzicoAbonelikKodu` degisir ama bu SABIT kalir — webhook
+          // eslemesi zincir kokuyle yapilir (abonelik.servisi:aboneligiKodlaBul).
+          iyzicoKokKodu: p.iyzicoAbonelikKodu,
         iyzicoMusteriKodu: p.iyzicoMusteriKodu,
         iyzicoDurum: p.iyzicoDurum,
         iyzicoSonKontrol: simdi,
