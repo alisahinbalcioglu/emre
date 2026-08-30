@@ -285,7 +285,15 @@ export default function LibraryBrandDetailPage() {
       if (dirtyExisting.length > 0) {
         const payload = dirtyExisting.map((r: any) => ({
           libraryItemId: r._libraryItemId,
-          listPrice: priceField ? parseFloat(String(r[priceField] ?? '')) || 0 : undefined,
+          // ⚠ `parseFloat` DEGIL `numOrU` (ayni dosyada zaten tanimli, yeni
+          // satir yolunda kullaniliyordu — bu dal atlanmisti):
+          //   parseFloat('6.500,00')   → 6.5   (BIN KAT dusuk, kalici olarak DB'ye)
+          //   parseFloat('₺105.800,00') → NaN → `|| 0` ile 0 (fiyat SILINIR)
+          // Hucrede TR bicimli metin bulunmasi olagan: kullanici elle yazar,
+          // Excel'den ya da kutuphanenin kendi Net Fiyat sutunundan yapistirir.
+          // Iscilik ikizi (labor-firms/[firmaId]/page.tsx: parseTrNum) bu metni
+          // ZATEN dogru okuyordu — ayni alan, ikiz sayfa, iki farkli sonuc.
+          listPrice: priceField ? (numOrU(r[priceField]) ?? 0) : undefined,
           discountRate: r._draftDiscount ?? r._libraryDiscountRate ?? 0,
           // Birim edit'i de kalici (save-sheets trim'ler).
           unit: unitField ? String(r[unitField] ?? '').trim() || undefined : undefined,

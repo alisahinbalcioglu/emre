@@ -17,7 +17,7 @@
  *     girmiyordu (OLU BAYRAK) → sizeClass 'unknown' → celik+plastik BIRLESIM
  *     tag'leri → 1/2'' hem dn15 hem dn20 sayilip yapay 2. aday uretiyordu.
  */
-import { buildProductIndex, resolveFamily, resolveProductSizeClass, type ProductColumns } from '../src/ozellik/eslestirme/matching/index/product-index';
+import { buildProductIndex, resolveFamily, resolveProductSizeClass, INDEX_VERSION, type ProductColumns } from '../src/ozellik/eslestirme/matching/index/product-index';
 import { parseLine } from '../src/ozellik/eslestirme/matching/index/line-parser';
 import { runQuery } from '../src/ozellik/eslestirme/matching/index/query-engine';
 import { AD_DNLI_SLUGS } from '../src/ozellik/eslestirme/matching/ad-resolver';
@@ -184,6 +184,22 @@ for (const [ad, yazim, beklenen] of IA_CALMAMALI) {
 //   'hortum' beklentisi olcut hatasiydi (feedback_olcutu_once_dogrula).
 check('İA-K6 ★ karşı: "R-Flex Bant" izolasyon OLMAMALI (marka kelimesi desende yok)',
   resolveFamily('R-Flex Bant') !== 'izolasyon', `gelen ${resolveFamily('R-Flex Bant')}`);
+
+// İA-V ★ SURUM KAPISI — aile deseni degisti, INDEX_VERSION ARTMALI.
+//
+// ⚠ BU ASSERT'IN VAROLUS SEBEBI OLCULDU: sozluk degisikligi INDEX_VERSION
+//   artmadan indirildiginde duzeltme HICBIR mevcut urune ULASMIYOR, cunku
+//   iki tazeleme yolu da surumle kapili:
+//     · istek-ani onarim : matching.service.ts:155
+//       `if ((li.product.indexVersion ?? 1) !== INDEX_VERSION)`  → esitse ATLAR
+//     · ACIK reindex     : admin.service.ts:1616
+//       `if (r.indexVersion === INDEX_VERSION) { atlanan++; continue; }` → ATLAR
+//   Yani "reindex kos" demek bile YETMIYOR. Duzeltme yalniz YENI ice
+//   aktarimlarda gorunurdu — sessiz yarim is.
+//   Bu satir, aile desenleriyle surum artisini BIRBIRINE BAGLAR: desenler
+//   degisip surum unutulursa test kirmizi yanar.
+check(`İA-V ★ izolasyon desen genişlemesi INDEX_VERSION ≥ 17 gerektirir (bayatlık kapısı)`,
+  INDEX_VERSION >= 17, `INDEX_VERSION=${INDEX_VERSION}`);
 
 // İA-P: SAYIMLI kapsam — payda ve kirilim basilir (bos kume yalanci yesil vermesin)
 {

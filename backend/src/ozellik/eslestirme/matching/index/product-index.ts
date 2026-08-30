@@ -148,7 +148,21 @@ export interface ProductIndexFields {
 // v14 (13.08): KANONIK_ESANLAM'a tee→te eklendi — urun adTokens degisebilir.
 // v15 (24.08): izolasyon ailesi 'kaucuk kopugu (boru)' desenleri + 22/28/35 mm
 // yuvarlanmis-OD cap cevrimi (ODE R-Flex canli vakasi — adSlug VE capTags degisti).
-export const INDEX_VERSION = 16;
+// v17 (28.08): IZOLASYON AILE KAPSAMI — sozluge 'prm boru' · 'afk boru' ·
+//     'prm afk boru' · 'armaflex' · 'elastomerik kaucuk' · 'elastomerik kaucuk
+//     boru' eklendi (kullanicinin "PRM / AFK BORU" baslikli listesi 'boru'
+//     ailesine dusuyordu). `adSlug` DEGISIR → eski satirlar BAYAT olmali.
+//     ⚠ SURUM ARTISI ZORUNLUYDU, olculdu: artmadan bu duzeltme HICBIR mevcut
+//     urune ULASMIYOR. Iki yol da surumle kapili —
+//       · istek-ani onarim : matching.service.ts:155
+//                            `if ((li.product.indexVersion ?? 1) !== INDEX_VERSION)`
+//       · ACIK reindex     : admin.service.ts:1616
+//                            `if (r.indexVersion === INDEX_VERSION) { atlanan++; continue; }`
+//     Yani v16 satirlari ne otomatik tazelenir ne de reindex'te yeniden yazilir;
+//     duzeltme yalniz YENI ice aktarimlarda gorunurdu. 16→17 ile her satir bayat
+//     sayilir ve istek aninda kendiliginden tazelenir (manuel reindex SART DEGIL,
+//     yalniz kalici/performansli cozumdur).
+export const INDEX_VERSION = 17;
 
 /** adSlug cozulemeyen satirin tasidigi isaret — eslestirmeye ADAY OLAMAZ. */
 export const BELIRSIZ_SLUG = 'belirsiz';

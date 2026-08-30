@@ -1,0 +1,161 @@
+#!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────────────────────
+#  FIRMA GECISI — ADIM 0 SAYIMLARI (SALT-OKUMA)
+#
+#  KULLANIM (Hetzner web konsolunda):
+#      cd /opt/metaprice
+#      bash scripts/firma-olcum.sh ozet     (TEK EKRANA SIGAR — onerilen)
+#      bash scripts/firma-olcum.sh          (tam dokum, uzun)
+#
+#  ⚠ NEDEN OZET KIPI VAR: Hetzner web konsolunda GERI KAYDIRMA YOK (vt
+#  scrollback kaldirildi; Shift+PageUp da calismaz). Tam dokum ekrandan
+#  tasinca ustteki sayimlar KAYBOLUR — ilk kosumda (28.08) tam olarak bu
+#  yasandi ve K0.1/K0.2/K0.3 okunamadi. `ozet` tum kararlari TEK tabloda
+#  verir. Boru (dikey cizgi) ile head/less kullanilamaz: konsol o karakteri
+#  YAZAMIYOR — bu yuzden sayfalama betigin ICINDE cozulur.
+#
+#  NEDEN SCRIPT (deploy.sh / kv-kaucuk-olcu.sh deseni): Hetzner web konsolu TR
+#  klavyede  $  >  |  _  karakterlerini YAZAMIYOR. Ozel karakterlerin TAMAMI bu
+#  dosyanin icinde durur; konsola yazilan satirda hicbiri yok. Dosya adinda da
+#  alt cizgi YOKTUR (bilerek "firma-olcum", "firma_olcum" degil).
+#
+#  NE ICIN: 28.08'de teklif/format/kutuphane suzgecleri KISI'den FIRMA'ya gecti.
+#  Sirada ESLESTIRME MOTORU var (docs/PLAN_Eslestirme_Firma_Dilimi.md) ve o plan
+#  UC VARSAYIMA dayaniyor. Varsayimlar KOD okunarak dogrulandi ama VERI ile
+#  DOGRULANMADI. Bu betik onlari olcer. Kod kanit degildir.
+#
+#  Betik hicbir sey DEGISTIRMEZ: sorgular BEGIN READ ONLY icinde, sonda ROLLBACK.
+#
+#  KARAR KURALI — cikti okunurken:
+#    K0.1 (User) bos sayisi SIFIR DEGILSE  -> backfill migration'i canlida
+#         kosmamis demektir. PLAN ORADA DURUR; once migration durumu incelenir.
+#    K0.2 (UserLibrary) bos sayisi SIFIR DEGILSE -> aday havuzu suzgeci
+#         firmaya cevrilirse o satirlar KAYBOLUR (motor "kutuphane bos" der).
+#         Once ikinci backfill kosar, SONRA suzgec cevrilir. Ters sira urunu durdurur.
+#    K0.3 (hafiza/sozluk) bos sayisi > 0 ise -> 28.08 backfill'i ile yazma
+#         koprusu commit'i (6a5ad03) ARASINDAKI pencerede ogrenilen satirlar.
+#         Sessiz kayip: okuma firmaya donunce o satirlar gorunmez olur.
+#         Cozum ucuz — ikinci backfill; ama SAYIYI BILMEDEN "guvenli" denemez.
+#    K0.4 (cakisma) bir tek satir bile DONERSE -> ilgili tekillik kisiti
+#         (firmaId+imza / firmaId+alias / firmaId+ad) o firmada IKI kayit
+#         bulmus demektir. Migration CREATE UNIQUE'te patlar; o adim bloklanir.
+# ─────────────────────────────────────────────────────────────────────────────
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+if ! command -v docker >/dev/null 2>&1; then
+  echo "ON KOSUL YOK — docker bulunamadi. Bu betik sunucuda (/opt/metaprice) kosulur."
+  exit 2
+fi
+
+sorgu() {
+  docker compose exec -T backup sh -c 'psql -h db -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "BEGIN READ ONLY; '"$1"'; ROLLBACK"'
+}
+
+KIP="${1:-tam}"
+
+# ── TEsHIS KIPI: K0.3 sifir cikmadiginda "neden" sorusunu cevaplar ──────────
+# Iki hipotez var ve AYIRT EDEN sey satirin TARIHI + sahibinin YASAYIP yasamadigi:
+#   (a) YETIM SATIR — sahibi silinmis kullanici. Bu tablodan User'a FK YOK ve
+#       backfill `FROM "User" u WHERE t."userId" = u."id"` ile JOIN yapiyor;
+#       yetim satir hicbir zaman eslesmez, NULL kalir. Zararsiz, silinir.
+#   (b) YAZMA KOPRUSUNDE DELIK — satir deploy'dan SONRA yazilmissa
+#       firmaIdBul() tutmuyor demektir. O zaman plan ILERLEMEDEN once duzeltilir.
+if [ "$KIP" = "hafiza" ]; then
+  echo "=============================================================="
+  echo " K0.3 TESHIS — firmaId'si BOS hafiza satirlari"
+  echo "=============================================================="
+  echo ""
+  echo "── ozet: sahibi yasiyor mu + en yeni/eski satir ne zaman ──"
+  sorgu 'SELECT (u.id IS NOT NULL) AS sahibi_yasiyor, count(*) AS satir, min(h.\"sonSecimTarihi\") AS en_eski, max(h.\"sonSecimTarihi\") AS en_yeni FROM \"EslesmeHafizasi\" h LEFT JOIN \"User\" u ON u.id = h.\"userId\" WHERE h.\"firmaId\" IS NULL GROUP BY 1'
+  echo ""
+  echo "── satir satir (imza kisaltilmis) ──"
+  sorgu 'SELECT left(h.\"userId\", 8) AS kullanici, (u.id IS NOT NULL) AS yasiyor, left(h.imza, 34) AS imza, h.\"secimSayisi\" AS sayac, h.\"sonSecimTarihi\" AS son_secim FROM \"EslesmeHafizasi\" h LEFT JOIN \"User\" u ON u.id = h.\"userId\" WHERE h.\"firmaId\" IS NULL ORDER BY h.\"sonSecimTarihi\" DESC LIMIT 20'
+  echo ""
+  echo "── KARSILASTIRMA: firmaId DOLU satirlarin tarih araligi ──"
+  echo "   (bos olanlar bu araligin ICINDEyse kopru delik, ONCESINDEyse yetim/eski)"
+  sorgu 'SELECT count(*) AS dolu_satir, min(\"sonSecimTarihi\") AS en_eski, max(\"sonSecimTarihi\") AS en_yeni FROM \"EslesmeHafizasi\" WHERE \"firmaId\" IS NOT NULL'
+  echo ""
+  echo "=============================================================="
+  echo " OKUMA: sahibi_yasiyor=false ise YETIM (zararsiz, silinir)."
+  echo " sahibi_yasiyor=true VE son_secim deploy saatinden SONRA ise"
+  echo " yazma koprusunde DELIK var — plan ilerlemeden duzeltilir."
+  echo "=============================================================="
+  exit 0
+fi
+
+if [ "$KIP" = "ozet" ]; then
+  echo "=============================================================="
+  echo " ADIM 0 — OZET (tek ekran). Tam dokum: bash scripts/firma-olcum.sh"
+  echo "=============================================================="
+  echo ""
+  echo "── firma migration'lari uygulanmis mi (4 tane bekleniyor) ──"
+  sorgu 'SELECT migration_name AS migration FROM _prisma_migrations WHERE migration_name LIKE '"'"'2026082%'"'"' ORDER BY 1'
+  echo ""
+  echo "── KARAR TABLOSU: bos sutunu HEPSINDE 0 olmali ──"
+  sorgu 'SELECT '"'"'K0.1 User (firmasiz)'"'"' AS olcum, count(*) FILTER (WHERE \"firmaId\" IS NULL) AS bos, count(*) AS toplam FROM \"User\" UNION ALL SELECT '"'"'K0.2 UserLibrary'"'"', count(*) FILTER (WHERE \"firmaId\" IS NULL), count(*) FROM \"UserLibrary\" UNION ALL SELECT '"'"'K0.3 EslesmeHafizasi'"'"', count(*) FILTER (WHERE \"firmaId\" IS NULL AND \"userId\" IS NOT NULL), count(*) FROM \"EslesmeHafizasi\" UNION ALL SELECT '"'"'K0.3 TerminologyAlias'"'"', count(*) FILTER (WHERE \"firmaId\" IS NULL AND \"userId\" IS NOT NULL), count(*) FROM \"TerminologyAlias\" ORDER BY 1'
+  echo ""
+  echo "── KISIT CAKISMASI (uc sayi da 0 olmali) ──"
+  sorgu 'SELECT (SELECT count(*) FROM (SELECT 1 FROM \"EslesmeHafizasi\" WHERE \"firmaId\" IS NOT NULL GROUP BY \"firmaId\", imza HAVING count(*) > 1) a) AS hafiza_cakisma, (SELECT count(*) FROM (SELECT 1 FROM \"TerminologyAlias\" WHERE \"firmaId\" IS NOT NULL GROUP BY \"firmaId\", alias HAVING count(*) > 1) b) AS alias_cakisma, (SELECT count(*) FROM (SELECT 1 FROM \"LaborFirm\" WHERE \"firmaId\" IS NOT NULL GROUP BY \"firmaId\", name HAVING count(*) > 1) c) AS iscilik_cakisma'
+  echo ""
+  echo "── firma basina uye (bugun hepsi 1 olmali) ──"
+  sorgu 'SELECT uye AS firmadaki_uye, count(*) AS firma_adedi FROM (SELECT \"firmaId\", count(*) AS uye FROM \"User\" WHERE \"firmaId\" IS NOT NULL GROUP BY 1) x GROUP BY 1 ORDER BY 1'
+  echo ""
+  echo "=============================================================="
+  echo " OKUMA: 4 migration listelendi + bos sutunu HEPSINDE 0 + uc"
+  echo " cakisma sayisi 0 + firmadaki uye 1 ise PLAN OLDUGU GIBI KOSAR."
+  echo "=============================================================="
+  exit 0
+fi
+
+echo "=============================================================="
+echo " FIRMA GECISI — ADIM 0 SAYIMLARI (salt-okuma, degistirmez)"
+echo "=============================================================="
+echo ""
+
+echo "── 0/5 migration durumu (bu deploy'da neler uygulanmis) ──"
+echo "   Beklenen: 20260827000000, 20260828000000, 20260828010000, 20260828020000"
+sorgu 'SELECT migration_name AS migration, finished_at AS bitis FROM _prisma_migrations ORDER BY finished_at DESC NULLS FIRST LIMIT 8'
+echo ""
+
+echo "── 1/5 K0.1 — KOK KAPI: firmasiz kullanici var mi ──"
+echo "   SIFIR DEGILSE plan burada DURUR (backfill kosmamis demektir)."
+sorgu 'SELECT count(*) FILTER (WHERE \"firmaId\" IS NULL) AS firmasiz, count(*) AS toplam_kullanici, count(DISTINCT \"firmaId\") AS firma_sayisi FROM \"User\"'
+echo ""
+
+echo "── 2/5 K0.2 — TOPTAN RISK: kutuphane satirlarinda bos firmaId ──"
+echo "   SIFIR DEGILSE aday havuzu suzgeci cevrildiginde o satirlar KAYBOLUR."
+sorgu 'SELECT count(*) FILTER (WHERE \"firmaId\" IS NULL) AS bos_firma, count(*) AS toplam_satir FROM \"UserLibrary\"'
+echo ""
+
+echo "── 3/5 K0.3 — SESSIZ RISK: hafiza ve sozlukte bos firmaId ──"
+echo "   (yalniz KISIYE ait satirlar sayilir; userId NULL olanlar sistem seed'idir)"
+echo "   > 0 ise: 28.08 backfill'i ile yazma koprusu arasindaki pencere. Ikinci backfill gerekir."
+echo "   EslesmeHafizasi:"
+sorgu 'SELECT count(*) FILTER (WHERE \"firmaId\" IS NULL AND \"userId\" IS NOT NULL) AS bos_firma, count(*) AS toplam FROM \"EslesmeHafizasi\"'
+echo "   TerminologyAlias (kisiye ait olanlar):"
+sorgu 'SELECT count(*) FILTER (WHERE \"firmaId\" IS NULL AND \"userId\" IS NOT NULL) AS bos_firma, count(*) FILTER (WHERE \"userId\" IS NOT NULL) AS kisiye_ait, count(*) FILTER (WHERE \"userId\" IS NULL) AS sistem_seed, count(*) AS toplam FROM \"TerminologyAlias\"'
+echo ""
+
+echo "── 4/5 K0.4 — KISIT CAKISMASI: yeni tekillikler tutar mi ──"
+echo "   HERHANGI BIR SATIR DONERSE ilgili migration CREATE UNIQUE'te PATLAR."
+echo "   Beklenen: uc sorgu da BOS (0 rows)."
+echo "   (a) EslesmeHafizasi (firmaId, imza):"
+sorgu 'SELECT \"firmaId\", imza, count(*) AS adet FROM \"EslesmeHafizasi\" WHERE \"firmaId\" IS NOT NULL GROUP BY 1,2 HAVING count(*) > 1 LIMIT 20'
+echo "   (b) TerminologyAlias (firmaId, alias):"
+sorgu 'SELECT \"firmaId\", alias, count(*) AS adet FROM \"TerminologyAlias\" WHERE \"firmaId\" IS NOT NULL GROUP BY 1,2 HAVING count(*) > 1 LIMIT 20'
+echo "   (c) LaborFirm (firmaId, ad):"
+sorgu 'SELECT \"firmaId\", name, count(*) AS adet FROM \"LaborFirm\" WHERE \"firmaId\" IS NOT NULL GROUP BY 1,2 HAVING count(*) > 1 LIMIT 20'
+echo ""
+
+echo "── 5/5 EK: firma dagilimi (bugun her firmada TEK uye olmali) ──"
+echo "   Iki uyeli firma cikarsa, davet akisi olmadan uye eklenmis demektir —"
+echo "   plandaki 'bugun davranis degismez' iddiasi O FIRMA icin GECERSIZDIR."
+sorgu 'SELECT uye_sayisi AS firmadaki_uye, count(*) AS firma_adedi FROM (SELECT \"firmaId\", count(*) AS uye_sayisi FROM \"User\" WHERE \"firmaId\" IS NOT NULL GROUP BY 1) x GROUP BY 1 ORDER BY 1'
+echo ""
+
+echo "=============================================================="
+echo " BITTI. Ciktinin ekran goruntusunu paylasin."
+echo " Ozet okuma: K0.1 firmasiz=0 · K0.2 bos=0 · K0.3 bos=0 ise plan"
+echo " oldugu gibi kosar. K0.4'ten satir donerse ilgili adim bloklanir."
+echo "=============================================================="

@@ -39,6 +39,12 @@ function aday(materialName: string, label: string, netPrice: number, variantTags
 
 export default function GridTestPage() {
   const [autoVariant, setAutoVariant] = useState(false); // KAPALI baslar — K15 oto-ACILMA kaniti
+  // KP: pano kopyalama (Ctrl+C) IKI modda da yasar — kutuphane KAYNAK
+  // (Net Fiyat), teklif HEDEF (Birim Fiyat). Library modu ayrica
+  // `_draftDiscount`/`_draftNetPrice` sistem kolonlarini ekler; secim gorseli
+  // orada AYRI cellClassRules ile bagli oldugu icin elle/e2e ancak boyle
+  // olculebiliyor.
+  const [mod, setMod] = useState<'quote' | 'library'>('quote');
   const cagriSayisi = useRef(0);
   const log = kaydet;
 
@@ -47,8 +53,18 @@ export default function GridTestPage() {
       _malzKar: 0, _iscKar: 0, _marka: null, _firma: null, _matNetPrice: 0, _merges: {},
       _matBirim: '', _matToplam: '', _labBirim: '', _labToplam: '', _toplam: '', _labNetPrice: 0,
     };
+    // KP: kutuphane modunda LISTE FIYATI dolu gelir (gercek kutuphanede de
+    // oyle) — Net Fiyat = liste × (1-iskonto) ancak boyle hesaplanir ve
+    // "₺600,00" gibi BICIMLI metnin panoya dogru gittigi olculebilir.
+    // Quote modu (E2E'nin kostugu mod) BILEREK bos kalir: grid.spec.ts fiyat
+    // hucrelerinin bos oldugunu assert eder.
+    const listeFiyati = (ad: string) => {
+      const c = Object.keys(CAP_FIYAT).sort((x, y) => y.length - x.length).find((k) => ad.includes(k));
+      return c ? String(CAP_FIYAT[c]) : '';
+    };
     const satir = (i: number, no: string, ad: string, mik: string, veri = true, baslik = false) => ({
       _rowIdx: i, _isDataRow: veri, _isHeaderRow: baslik, ...sys,
+      _matBirim: veri && mod === 'library' ? listeFiyati(ad) : '',
       col0: no, col1: ad, col2: mik, col3: veri ? 'mt' : '',
     });
     return {
@@ -91,7 +107,7 @@ export default function GridTestPage() {
       brands: [],
       headerEndRow: 0,
     };
-  }, []);
+  }, [mod]);
 
   const onBrandChange = useCallback(async (rowIdx: number, brandId: string, materialName: string, opts?: { variantTags?: string[]; silent?: boolean }) => {
     cagriSayisi.current++;
@@ -174,8 +190,18 @@ export default function GridTestPage() {
       <h1 style={{ fontWeight: 700, marginBottom: 4 }}>🧪 Grid Test — K15-K19 / K9 (mock, API'siz)</h1>
       <div data-testid="switch-state" style={{ fontSize: 13, marginBottom: 8 }}>
         Anahtar durumu: <b>{autoVariant ? 'AÇIK' : 'KAPALI'}</b>
+        {' · '}Mod: <b data-testid="mod-state">{mod}</b>{' '}
+        <button
+          type="button"
+          data-testid="mod-toggle"
+          onClick={() => setMod((m) => (m === 'quote' ? 'library' : 'quote'))}
+          style={{ border: '1px solid #cbd5e1', borderRadius: 4, padding: '1px 6px', fontSize: 12 }}
+        >
+          moda geç
+        </button>
       </div>
       <ExcelGrid
+        key={mod}
         data={data}
         brands={useMemo(() => [{ id: 'b-ayvaz', name: 'AYVAZ' }, { id: 'b-sardogan', name: 'SARDOĞAN' }], [])}
         onBrandChange={onBrandChange as any}
@@ -187,7 +213,8 @@ export default function GridTestPage() {
         laborFirms={useMemo(() => [{ id: 'f-yasin', name: 'YASİN USTA', discipline: 'mechanical' as const }, { id: 'f-hakan', name: 'HAKAN USTA', discipline: 'mechanical' as const }], [])}
         sheetDiscipline="mechanical"
         onFirmaChange={onFirmaChange as any}
-        mode="quote"
+        mode={mod}
+        libraryPriceField="materialUnitPriceField"
         currencySymbol="₺"
         conversionRate={1}
       />

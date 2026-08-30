@@ -308,3 +308,20 @@ body.fill-handle-dragging * {
   font-size: 11.5px;
   font-weight: 600;
 }
+
+/* ═══════════ KP: HUCRE ARALIGI SECIMI (pano kopyalama) ═══════════
+   AG Grid Community'de hucre araligi YOK (Enterprise) — secim kendi
+   ref'imizde tutulur, gorsel burada.
+
+   ⚠ NEDEN `box-shadow` VE ARKA PLAN DEGIL: fiyat kolonlarinin zeminini
+   isaret.ts inline `cellStyle` ile boyuyor (eslesmedi=kirmizi,
+   belirsiz=sari, urun degil=gri). Inline stil sinifi YENER; `background`
+   ile ezmek icin `!important` gerekirdi ve o da PARA SINYALINI KORLESTIRIRDI.
+   `inset` golge sinyal renginin USTUNE mavi tul ceker — ikisi ayni anda
+   okunur. */
+/* ⚠ Kural artik BURADA DEGIL: secim tulu ExcelGrid icinde uretilen bir
+   <style> blogunda yasiyor (satir/kolon ozniteliklerini hedefler). Sebep:
+   AG Grid hucre sinifi + refreshCells yolu, hizli ardisik Shift+Ok'ta tulu
+   arada sirada hic cizmiyordu (45 kosumda ~8) — sinif, grid'in kendi
+   yeniden cizimiyle dusuyordu. CSS kurali satir yeniden yaratilsa bile
+   uygulanir; yani cizim yarisindan yapisal olarak muaftir. */

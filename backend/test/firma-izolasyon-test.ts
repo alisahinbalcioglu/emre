@@ -26,6 +26,8 @@ import { QuotesService } from '../src/ozellik/teklif/quotes/quotes.service';
 import { kimlikCoz } from '../src/altyapi/auth/kimlik';
 import { QuoteFormatsService } from '../src/ozellik/cikti/quote-formats/quote-formats.service';
 import { LibraryService } from '../src/ozellik/kutuphane/library/library.service';
+import { MatchingService } from '../src/ozellik/eslestirme/matching/matching.service';
+import { TerminologyService } from '../src/ozellik/eslestirme/matching/terminology.service';
 
 const prisma = new PrismaClient();
 const fakeFx: any = { getRates: async () => ({ usdTry: 40, eurTry: 45 }) };
@@ -225,6 +227,63 @@ async function main() {
     } catch { uyeAktarabildi = false; }
     sina('L6 ⭐', 'ayni firmanin BASKA uyesi kisisel listeyi aktarabilir (sahiplik FIRMA)',
       uyeAktarabildi, `aktarabildi=${uyeAktarabildi}`);
+
+    // ── H/T: YAZMA TARAFI KOPRUSU (28.08) ──────────────────────────────
+    // Eslestirme motorunun OKUMALARI hala kisi bazli. Ama yazdigi satirlar
+    // firmaId tasimazsa, okuma firmaya dondugu gun o gune kadar ogrenilen
+    // HER SEY gorunmez olur. Backfill tek atimlikti; bu kapilar yeni
+    // satirlarin firmayi isaretledigini olcer.
+    const terminoloji = new TerminologyService(prisma as any);
+    const matchSvc = new MatchingService(prisma as any, terminoloji, fakeFx);
+
+    await matchSvc.remember(u1.id, marka?.id ?? '', 'ÇEKVALF DN 50', 'Yaylı Çekvalf DN50');
+    const hafizaSatirlari = await (prisma as any).eslesmeHafizasi.findMany({ where: { userId: u1.id } });
+    sina('H1 ⭐', 'ogrenilen eslesme hafizasi FIRMA kimligini yazar',
+      hafizaSatirlari.length > 0 && hafizaSatirlari.every((r: any) => r.firmaId === f1.id),
+      `satir=${hafizaSatirlari.length}, firmaId dolu=${hafizaSatirlari.filter((r: any) => r.firmaId === f1.id).length}`);
+
+    // H2 — IYILESME: firmaId'si BOS eski bir satir, yeniden teyit edilince duzelmeli.
+    if (hafizaSatirlari.length > 0) {
+      await (prisma as any).eslesmeHafizasi.update({
+        where: { id: hafizaSatirlari[0].id }, data: { firmaId: null },
+      });
+      await matchSvc.remember(u1.id, marka?.id ?? '', 'ÇEKVALF DN 50', 'Yaylı Çekvalf DN50');
+      const iyilesen = await (prisma as any).eslesmeHafizasi.findUnique({ where: { id: hafizaSatirlari[0].id } });
+      sina('H2 ⭐', 'firmaId BOS eski satir, yeniden teyitte KENDILIGINDEN iyilesir',
+        iyilesen?.firmaId === f1.id, `firmaId=${iyilesen?.firmaId?.slice(0, 8) ?? 'null'}`);
+    }
+
+    await terminoloji.saveUserAlias(u1.id, { alias: `${damga}-alias`, canonical: 'test_kanon' } as any);
+    const aliasSatiri = await (prisma as any).terminologyAlias.findFirst({ where: { alias: `${damga}-alias` } });
+    sina('T1 ⭐', 'kullanicinin sozluk kaydi FIRMA kimligini yazar',
+      aliasSatiri?.firmaId === f1.id, `firmaId=${aliasSatiri?.firmaId?.slice(0, 8) ?? 'null'}`);
+
+    // T4 ⭐ — H2'nin IKIZI. T1 yalniz CREATE dalini olcer; UPDATE dali sessizce
+    //    geride kalabilir (nitekim kalmisti). Ayni alias yeniden kaydedilince
+    //    firmaId'si BOS eski kayit da iyilesmeli.
+    if (aliasSatiri) {
+      await (prisma as any).terminologyAlias.update({
+        where: { id: aliasSatiri.id }, data: { firmaId: null },
+      });
+      await terminoloji.saveUserAlias(u1.id, { alias: `${damga}-alias`, canonical: 'test_kanon_2' } as any);
+      const iyilesenAlias = await (prisma as any).terminologyAlias.findUnique({ where: { id: aliasSatiri.id } });
+      sina('T4 ⭐', 'firmaId BOS alias, yeniden kaydedilince KENDILIGINDEN iyilesir (update dali)',
+        iyilesenAlias?.firmaId === f1.id, `firmaId=${iyilesenAlias?.firmaId?.slice(0, 8) ?? 'null'}`);
+    }
+
+    // T2 — GLOBAL SEED yolu: userId null ise firmaId de NULL KALMALI.
+    //      (TerminologyAlias'ta null = 'sistem geneli', kimlik degil.)
+    await terminoloji.learnFamilyAliases([{ adBucket: `${damga}-global`, canonical: 'kanon' }], null);
+    const globalSatir = await (prisma as any).terminologyAlias.findFirst({ where: { alias: `${damga}-global` } });
+    sina('T2 ⭐', 'GLOBAL seed yolu firmaId YAZMAZ (null = sistem geneli, kimlik degil)',
+      !!globalSatir && globalSatir.firmaId === null && globalSatir.userId === null,
+      `userId=${globalSatir?.userId ?? 'null'} firmaId=${globalSatir?.firmaId ?? 'null'}`);
+
+    // T3 — KISI yolu: library akisi terminolojiyi kullanicinin adina ogrenir.
+    await terminoloji.learnFamilyAliases([{ adBucket: `${damga}-kisi`, canonical: 'kanon' }], u1.id);
+    const kisiSatir = await (prisma as any).terminologyAlias.findFirst({ where: { alias: `${damga}-kisi` } });
+    sina('T3 ⭐', 'ogrenilen aile alias\'i FIRMA kimligini yazar',
+      kisiSatir?.firmaId === f1.id, `firmaId=${kisiSatir?.firmaId?.slice(0, 8) ?? 'null'}`);
   } finally {
     for (const id of temizlik.quote) {
       await prisma.quoteItem.deleteMany({ where: { quoteId: id } }).catch(() => {});
@@ -234,6 +293,8 @@ async function main() {
     for (const id of temizlik.format) await (prisma as any).quoteFormat.delete({ where: { id } }).catch(() => {});
     await (prisma as any).quoteFormat.deleteMany({ where: { userId: { in: temizlik.user } } }).catch(() => {});
     for (const id of temizlik.user) await prisma.user.delete({ where: { id } }).catch(() => {});
+    await (prisma as any).eslesmeHafizasi.deleteMany({ where: { userId: { in: temizlik.user } } }).catch(() => {});
+    await (prisma as any).terminologyAlias.deleteMany({ where: { alias: { startsWith: damga } } }).catch(() => {});
     for (const id of temizlik.marka) {
       await prisma.userLibrary.deleteMany({ where: { brandId: id } }).catch(() => {});
       await (prisma as any).productIndex.deleteMany({ where: { brandId: id } }).catch(() => {});

@@ -17,13 +17,14 @@ import { clampDiscount, parseDiscountInput, parseDiscountPaste } from './discoun
 import { CustomDropdown } from './CustomDropdown';
 import { fillDown, karYayilimi } from './fill-down';
 import { planYapistir, type PasteKolon, type PasteSatir } from './yapistir';
+import { aralikKur, planKopyala, type Aralik, type KopyaKolon, type KopyaSatir, type Nokta } from './kopyala';
 import { isaretStili, isaretTooltip, secimBekliyor, type IsaretGirdisi } from './isaret';
 import { joinMaterialText } from '@/ozellik/tablo/parse-material-text';
 import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, yukariYuvarla, etkinMiktar, paraBicim, sayfaToplamlari, karSatiri, maliyetiGeriTuret, PARA_ONDALIK } from '@/ozellik/fiyat/pricing';
 // KÂR HÜCRESİ TEK SÜZGEÇTEN: `parseFloat(String(x)) || 0` kopyaları
 // kaydetme yolundaki `sayiAlani` ile AYRIŞIYORDU — "12,5" ekranda 12,
 // kayıtta 12,5 oluyordu (TR klavye). Tek fonksiyon, tek sayı.
-import { sayiAlani } from '@/ozellik/fiyat/sayi-alani';
+import { sayiAlani, sayiOku } from '@/ozellik/fiyat/sayi-alani';
 import { hasSizeExpression, isSelfSufficientRow } from './build-material-context';
 import { niteliklerdenBaglam, adayEtiketleri, popupGenisligiOku, popupGenisligiYaz } from './aday-ayirt-edicilik';
 import httpApi from '@/ortak/lib/api';
@@ -36,6 +37,46 @@ const ROW_CURRENCY_SYMBOL: Record<string, string> = { TRY: '₺', USD: '$', EUR:
 
 // AG-Grid Community modules'leri kaydet (v32+)
 ModuleRegistry.registerModules([AllCommunityModule]);
+
+/** KP: Shift+Ok yon vektorleri (satir, kolon). */
+const OK_YON: Record<string, [number, number]> = {
+  ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1],
+};
+/** KP: Shift'siz basildiginda hucre araligi secimini dusuren tuslar. */
+const GEZINME_TUSLARI = new Set([
+  'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab', 'Enter', 'Escape',
+  'Home', 'End', 'PageUp', 'PageDown',
+]);
+
+/** Panoya yaz. Async Clipboard API guvenli baglam (HTTPS/localhost) ve izin
+ *  ister; VPS'te http uzerinden acilan bir sekmede `navigator.clipboard`
+ *  TANIMSIZDIR. O yuzden eski `execCommand('copy')` yolu YEDEK olarak durur —
+ *  tek yol birakilsaydi ozellik ortama gore sessizce olurdu. */
+async function panoYaz(metin: string): Promise<boolean> {
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(metin);
+      return true;
+    }
+  } catch {
+    // izin reddi / guvensiz baglam — yedege dus
+  }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = metin;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.top = '-1000px';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
+}
 
 interface Brand {
   id: string;
@@ -1563,6 +1604,91 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
   // K19: fill sonrasi odak buraya verilir ki Ctrl+Z yakalanabilsin
   const rootWrapperRef = useRef<HTMLDivElement>(null);
 
+  // ═══════════ KP: HUCRE ARALIGI SECIMI (pano kopyalama icin) ═══════════
+  // AG Grid Community'de hucre araligi secimi ve clipboard YOKTUR — ikisi de
+  // Enterprise modulu (`registerModules([AllCommunityModule])` ile kayitli
+  // degiller). Kullanicinin "kutuphanedeki Net Fiyat'i teklife tasi" istegi
+  // bu yuzden KOPYALAMA halkasinda kopuktu. Secim state'i ref'te yasar:
+  // React state olsaydi her Shift+Ok tum gridi yeniden cizerdi (983 satirlik
+  // kutuphanede gorunur takilma) ve `columnDefs` useMemo'su yeniden kosup
+  // acik hucre editorunu iptal ederdi.
+  const secimAnchorRef = useRef<Nokta | null>(null);   // sabit uc
+  const secimUcRef = useRef<Nokta | null>(null);       // hareketli uc
+  const secimRef = useRef<Aralik | null>(null);
+  // Kolon ID kumesi: `cellClassRules` her hucre icin kosar — orada kolon
+  // dizisini her seferinde taramak 983×N tarama demekti.
+  const secimKolonIdRef = useRef<Set<string>>(new Set());
+  // ⚠ SECIM TEMIZLEME `onCellFocused`'A BAGLANAMAZ (tarayicida olculdu):
+  // `secimUygula` → `refreshCells({force:true})` AG Grid'in odak olayini
+  // YENIDEN yayiyor. Odak olayinda temizleme varken IKINCI Shift+Ok kendi
+  // kurdugu secimi aninda siliyordu (ilk Shift'te tiktan kalan bayrak
+  // kazara koruyordu — yani hata "bazen calisiyor" gorunumundeydi).
+  // Temizleme artik yalniz ACIK kullanici eylemlerinde: Shift'siz tik ve
+  // Shift'siz gezinme tuslari.
+
+  /** Secili hucre mi? `cellClassRules` bunu HER hucre icin cagirir. */
+  /**
+   * SECIM TULU — CSS KURALIYLA, AG GRID'IN CIZIM DONGUSUNDEN BAGIMSIZ.
+   *
+   * ⚠ NEDEN `cellClassRules` DEGIL (uc kosumluk olcumun sonucu): sinifi
+   * `cellClassRules` + `refreshCells({force:true})` ile vermek KARARSIZDI —
+   * ardisik hizla Shift+Ok'ta tul arada sirada hic cizilmiyor ya da eksik
+   * kaliyordu (45 kosumda ~8). Sebep AG Grid'in ayni an suren yeniden cizimi:
+   * refresh'in uyguladigi sinif dusuyor ve yeni bir refresh gelmedigi icin
+   * geri gelmiyor. Senkron + rAF + 60ms olmak uzere UC gecis denendi, yine
+   * dustu. Secim DURUMU her zaman dogruydu (pano hep dogru) — kaybolan
+   * yalniz gorsel geri bildirimdi, ki "ne kopyaladigini gorme" guveni tam
+   * olarak odur.
+   *
+   * CSS kurali satir/kolon ozniteliklerini hedefler; AG Grid satiri yeniden
+   * yaratsa bile YENI elemana da uygulanir. Yani cizim yarisindan yapisal
+   * olarak muaftir. Kural tek satirdir (`:is()` ile), secim degisince yeniden
+   * uretilir.
+   *
+   * Kural VERI SATIRLARIYLA sinirlidir: `planKopyala` grup bandi/baslik
+   * satirlarini atlar; tul de atlamasaydi kullanici "3 hucre mavi" gorup
+   * "1 hucre kopyalandi" toast'i alirdi.
+   */
+  const [secimStili, setSecimStili] = useState('');
+  const gridKimlik = React.useId().replace(/[^a-zA-Z0-9]/g, '');
+
+  const secimUygula = useCallback((anchor: Nokta | null, uc: Nokta | null) => {
+    const api = gridRef.current?.api;
+    if (!anchor || !uc) {
+      secimRef.current = null;
+      secimKolonIdRef.current = new Set();
+      setSecimStili('');
+      return;
+    }
+    const a = aralikKur(anchor, uc);
+    secimRef.current = a;
+    const kolonlar = api?.getAllDisplayedColumns() ?? [];
+    const kume = new Set<string>();
+    for (let i = Math.max(0, a.kolonBas); i <= a.kolonSon && i < kolonlar.length; i++) {
+      kume.add((kolonlar[i] as any).getColId());
+    }
+    secimKolonIdRef.current = kume;
+
+    const satirSecicileri: string[] = [];
+    for (let i = a.satirBas; i <= a.satirSon; i++) {
+      const n = api?.getDisplayedRowAtIndex(i);
+      if ((n?.data as any)?._isDataRow === true) satirSecicileri.push(`[row-index="${i}"]`);
+    }
+    const kolonSecicileri = Array.from(kume).map((c) => `[col-id="${c.replace(/"/g, '\\"')}"]`);
+    setSecimStili(
+      satirSecicileri.length && kolonSecicileri.length
+        ? `.mpx-kapsam-${gridKimlik} :is(${satirSecicileri.join(',')}) :is(${kolonSecicileri.join(',')}).ag-cell{box-shadow:inset 0 0 0 9999px rgba(37,99,235,.13);outline:2px solid rgb(37,99,235);outline-offset:-2px}`
+        : '',
+    );
+  }, [gridKimlik]);
+
+  const secimTemizle = useCallback(() => {
+    if (!secimRef.current && !secimAnchorRef.current) return;
+    secimAnchorRef.current = null;
+    secimUcRef.current = null;
+    secimUygula(null, null);
+  }, [secimUygula]);
+
   // ═══════════ ISKONTO TOPLU ISLEMLERI (Iskonto Surukle-Doldur PRD) ═══════════
   // S5: geri alma yigini — her toplu islem (fill / yapistir / gruba veya tum
   // listeye uygula) TEK adim olarak kaydedilir, Ctrl+Z butun olarak geri alir.
@@ -1695,14 +1821,193 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     return true;
   }, [onAutoVariantChange, onRowDataChange]);
 
+  /** KP: secili aralik (yoksa odakli hucre) → pano. Kutuphanedeki "Net Fiyat"i
+   *  teklif gridine tasiyan zincirin ILK halkasi; ikinci halka `handleLibraryPaste`.
+   *  Metin `planKopyala` ile uretilir (saf + testli), hucre degeri AG Grid'in
+   *  KENDI bicimlendiricisinden okunur (`useFormatter: true`) — "₺53,30" gibi
+   *  GORUNEN metin gider, bicimlendirme mantigi burada TEKRARLANMAZ. */
+  const kopyalaSecim = useCallback(async (): Promise<boolean> => {
+    const api = gridRef.current?.api;
+    if (!api) return false;
+    if (api.getEditingCells().length > 0) return false; // hucre editoru kendi kopyasini yapar
+    const kolonlar = api.getAllDisplayedColumns();
+    let aralik = secimRef.current;
+    if (!aralik) {
+      // Secim yoksa ODAKLI TEK HUCRE — kullanicinin en sik yaptigi is
+      // ("kutuphaneden BIR fiyati alip teklife yapistirmak").
+      const fc = api.getFocusedCell();
+      if (!fc || fc.rowPinned) return false;
+      const ki = kolonlar.findIndex((c: any) => c.getColId() === fc.column.getColId());
+      if (ki < 0) return false;
+      aralik = { satirBas: fc.rowIndex, satirSon: fc.rowIndex, kolonBas: ki, kolonSon: ki };
+    }
+    const satirlar: KopyaSatir[] = [];
+    for (let i = 0; i <= aralik.satirSon; i++) {
+      const n = api.getDisplayedRowAtIndex(i);
+      satirlar.push({ isDataRow: !!n?.data?._isDataRow });
+    }
+    const sonuc = planKopyala(
+      aralik,
+      kolonlar.map((c: any) => ({ field: c.getColId() })) as KopyaKolon[],
+      satirlar,
+      (si, field) => {
+        const n = api.getDisplayedRowAtIndex(si);
+        if (!n) return '';
+        return api.getCellValue({ rowNode: n, colKey: field, useFormatter: true }) ?? '';
+      },
+    );
+    if (!sonuc.metin) {
+      toast({
+        title: 'Kopyalanacak değer yok',
+        description: 'Seçili hücreler boş — pano değiştirilmedi',
+        variant: 'destructive',
+      });
+      return false;
+    }
+    // Kopyalamadan ONCE odagi sakla: yedek yol (execCommand) degeri gecici bir
+    // <textarea>'ya alir ve odagi ORADAN body'ye birakir.
+    const odakOnce = api.getFocusedCell();
+    const yazildi = await panoYaz(sonuc.metin);
+    // ⚠ ODAK SARMALAYICIYA DEGIL HUCREYE IADE EDILIR (tarayicida olculdu):
+    // eskiden burada kosulsuz `rootWrapperRef.current?.focus()` vardi. AG Grid'in
+    // ok navigasyonu satir konteynerine bagli oldugu icin odak sarmalayiciya
+    // tasininca IMLEC DONUYORDU: Ctrl+C'den sonra ArrowDown hucreyi hic
+    // hareket ettirmiyor, ikinci Ctrl+C AYNI (bayat) fiyati kopyaliyor ve
+    // toast yine "1 hücre kopyalandı" diyordu. Kullanici bir alt malzemeye
+    // indigini sanip YANLIS fiyati yapistirabilirdi — olumlu geri bildirimle.
+    // Satiri tamamen silmek de olmaz: yedek yol odagi gercekten kaybediyor ve
+    // VPS'te http uzerinden `navigator.clipboard` TANIMSIZDIR (hep yedek kosar).
+    if (odakOnce) {
+      try { api.setFocusedCell(odakOnce.rowIndex, odakOnce.column.getColId()); }
+      catch { rootWrapperRef.current?.focus(); }
+    } else {
+      rootWrapperRef.current?.focus();
+    }
+    if (!yazildi) {
+      toast({ title: 'Panoya yazılamadı', description: 'Tarayıcı pano izni vermedi', variant: 'destructive' });
+      return false;
+    }
+    // ⚠ OLCEK UYARISI (para hatasi sinifi): pano GORUNEN metni tasir ve o metin
+    // iki ayri olcekten gecmis olabilir —
+    //   (1) satir bazli para birimi: kutuphane satiri `_currency='USD'` ise
+    //       hucre "$1.000,00" gosterir; TL'ye cevrim YALNIZ otomatik eslestirme
+    //       yolunda vardir (`toTry`), bu yolda YOKTUR.
+    //   (2) grid kuru: teklif ekrani USD/EUR'daysa formatter degeri
+    //       `conversionRate` ile CARPAR, yapistirma ise ham TRY tabanina yazar.
+    // Yapistiran taraf (`insanSayi`) $ ve € sembolunu SUZER — yani "$1.500,00"
+    // ile "1500" matematiksel olarak ayirt EDILEMEZ. Sessiz kalinsa kalem
+    // teklife ~34 kat yanlis girerdi. Kullaniciyi durdurmuyoruz (kendi
+    // Excel'ine kopyalamak mesru olabilir) ama olcegin degistigini SOYLUYORUZ.
+    const tryDisiSatir = (() => {
+      for (let si = aralik.satirBas; si <= aralik.satirSon; si++) {
+        const n = api.getDisplayedRowAtIndex(si);
+        const c = (n?.data as any)?._currency;
+        if (c && c !== 'TRY') return c as string;
+      }
+      return null;
+    })();
+    const olcekUyarisi = tryDisiSatir
+      ? `${tryDisiSatir} satırı — TL karşılığı DEĞİL, ham döviz tutarı kopyalandı`
+      : (conversionRate !== 1
+        ? 'Ekran kuru uygulanmış tutar kopyalandı — TL tabanı değil'
+        : null);
+    toast({
+      title: `${sonuc.doluHucreSayisi} hücre kopyalandı`,
+      description: olcekUyarisi ?? 'Teklif tablosunda birim fiyat hücresine Ctrl+V ile yapıştırın',
+      variant: olcekUyarisi ? 'destructive' : undefined,
+    });
+    return true;
+  }, [conversionRate]);
+
   /** S2a: Ctrl+D — ustteki en yakin veri satirinin iskontosunu kopyala;
    *  S5: Ctrl+Z — son toplu islemi geri al (hucre editi acikken karisilmaz).
-   *  K19: quote modunda Ctrl+Z son marka sureklemesini geri alir. */
+   *  K19: quote modunda Ctrl+Z son marka sureklemesini geri alir.
+   *  KP: Ctrl+C — secili aralik panoya; Shift+Ok — aralik genislet. */
   const handleLibraryKeyDown = useCallback((e: React.KeyboardEvent) => {
     const api = gridRef.current?.api;
     if (!api) return;
+
+    // ⚠ METIN GIRISLERI DOKUNULMAZ — bu kapi CAPTURE fazina gecisin BEDELI.
+    // Capture kokte, hedefin KENDI dinleyicisinden ONCE kosar; yani toplu
+    // iskonto kutusundaki `e.stopPropagation()` kalkani (asagida, toolbar)
+    // artik bizi DURDURAMAZ. Kapi olmadan olculen sonuc: kullanici "İskonto %"
+    // kutusuna yazarken Ctrl+Z'ye basinca yazdigi metin degil, TUM LISTENIN
+    // toplu iskontosu geri aliniyordu — hem de sessizce (odak kutuda, toast yok).
+    // Ayni sekilde kutuda Ctrl+C metni degil grid hucrelerini kopyalar,
+    // Shift+Ok metin secmek yerine hucre araligi acardi.
+    // ⚠ Input'a capture eklemek COZUM DEGIL: kok capture ondan da once kosar.
+    // Tek dogru yer burasi. AG Grid hucre EDITORU de bir <input>'tur — o da bu
+    // kapiya takilir ve bu ISTENEN sonuctur (editor icindeyken grid kisayollari
+    // calismamali; alttaki `getEditingCells()` kapilari da ayni yonde).
+    const hedef = e.target as HTMLElement | null;
+    if (hedef && hedef !== rootWrapperRef.current
+      && typeof hedef.closest === 'function'
+      && hedef.closest('input, textarea, select, [contenteditable="true"]')) {
+      return;
+    }
+
     const isMod = e.ctrlKey || e.metaKey;
+
+    // ── KP: Shift+Ok ile HUCRE ARALIGI SECIMI ────────────────────────────
+    // AG Grid Community'de hucre araligi YOKTUR (Enterprise ozelligi), bu
+    // yuzden secim kendi ref'imizde yasar. Odak BILEREK tasinmaz: anchor
+    // odakli hucrede kalir, yalniz hareketli uc kayar — Excel davranisi.
+    // Shift'siz gezinme secimi BOZAR (Excel de boyle). AG Grid'in kendi
+    // navigasyonuna karisilmaz — yalniz secim durumu dusurulur.
+    if (!isMod && !e.shiftKey && GEZINME_TUSLARI.has(e.key)) {
+      secimTemizle();
+      return;
+    }
+
+    if (!isMod && e.shiftKey && OK_YON[e.key] && api.getEditingCells().length === 0) {
+      const kolonlar = api.getAllDisplayedColumns();
+      // ANCHOR VARKEN `getFocusedCell()` SORULMAZ. Eski kurulumda odak yoksa
+      // dal ERKEN DONUYORDU — anchor elde olmasina ragmen. Tarayicida bir kez
+      // goruldu: onceki tusun refresh/scroll isi surerken AG Grid bir an
+      // odaksiz kaliyor ve ikinci Shift+Ok sessizce yutuluyordu (secim iki
+      // hucrede takili kalir, kullanici Shift'e basmaya devam eder ama bir sey
+      // buyumez). Anchor'i tiklama zaten kurar; odak yalnizca ANCHOR YOKKEN
+      // (klavyeyle gelinmis hucre) gereklidir.
+      // ⚠ DURUSTLUK NOTU: bu satirlarin E2E'de KANITI YOK — mutasyonla
+      // olculdu, bu korumayi kaldirinca 7/7 hala yesil kaliyor. Cunku asil
+      // kok neden `onKeyDownCapture` gecisiyle kapandi (odak artik Shift+Ok'ta
+      // hic tasinmadigi icin `getFocusedCell` de bosalmiyor). Burasi ucuz bir
+      // savunma olarak duruyor; silinirse test kirmiziya DONMEZ.
+      let anchor = secimAnchorRef.current;
+      if (!anchor) {
+        const fc = api.getFocusedCell();
+        if (!fc || fc.rowPinned) return;
+        const kOdak = kolonlar.findIndex((c: any) => c.getColId() === fc.column.getColId());
+        if (kOdak < 0) return;
+        anchor = { satir: fc.rowIndex, kolon: kOdak };
+      }
+      const onceki = secimUcRef.current ?? anchor;
+      const [ds, dk] = OK_YON[e.key];
+      const uc: Nokta = {
+        satir: Math.max(0, Math.min(api.getDisplayedRowCount() - 1, onceki.satir + ds)),
+        kolon: Math.max(0, Math.min(kolonlar.length - 1, onceki.kolon + dk)),
+      };
+      e.preventDefault();
+      secimAnchorRef.current = anchor;
+      secimUcRef.current = uc;
+      // ⚠ SIRA ONEMLI: ONCE kaydir, SONRA boya. Ters sirada kaydirma,
+      // boyanmis satirlari sanallastirma yuzunden yeniden yaratiyor ve tul
+      // ARADA SIRA kayboluyordu (olculdu: 8 kosumda 1-2 kez, hizli ardisik
+      // Shift+Ok'ta; secim durumu DOGRUYDU, yalniz cizim dusuyordu).
+      api.ensureIndexVisible(uc.satir);
+      secimUygula(anchor, uc);
+      return;
+    }
+
     if (!isMod) return;
+
+    // ── KP: Ctrl+C — HER IKI MODDA (kutuphane kaynak, teklif hedef) ──────
+    if (e.key === 'c' || e.key === 'C') {
+      if (api.getEditingCells().length > 0) return;
+      e.preventDefault();
+      void kopyalaSecim();
+      return;
+    }
     // K19: teklif modunda Ctrl+Z = marka surekleme geri-alma
     if (mode === 'quote') {
       if ((e.key === 'z' || e.key === 'Z') && api.getEditingCells().length === 0) {
@@ -1727,7 +2032,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       const target = api.getDisplayedRowAtIndex(fc.rowIndex);
       if (src != null && target?.data?._isDataRow) applyDiscountBulk([{ node: target, value: src }]);
     }
-  }, [mode, undoLastDiscountOp, applyDiscountBulk, undoLastMarkaFill]);
+  }, [mode, undoLastDiscountOp, applyDiscountBulk, undoLastMarkaFill, kopyalaSecim, secimUygula, secimTemizle]);
 
   /** S3: Excel'den cok satirli iskonto yapistirma — odakli hucreden asagi,
    *  grup bantlari atlanir; sigmayan degerlerde uyari (satir uyusmazligi).
@@ -1756,6 +2061,24 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     if (mode === 'quote') {
       const text = e.clipboardData.getData('text');
       if (!text || !text.trim()) return;
+      // ⚠ DOVIZ SEMBOLU = SESSIZ PARA HATASI → DURDUR.
+      // `insanSayi` $ ve € sembolunu SUZER: "$1.500,00" ile "1500" ayni sayiyi
+      // verir. Teklif alanlari TL tabanlidir; dovizli bir metin buraya ham
+      // girerse kalem kur kati kadar (USD'de ~34x) yanlis fiyatlanir ve
+      // EKRANDA DOGRU GORUNUR — yakalanmasi en zor hata sinifi. Cevirmeyi de
+      // DENEMIYORUZ: panodaki metnin hangi kurdan/tarihten geldigi bilinmez,
+      // bolme yapmak kullanicinin kendi Excel'inden gelen duz sayiyi da bozardi.
+      // Dogru davranis: acikca reddet ve ne yapilacagini soyle.
+      const dovizIsareti = /[$€]/.exec(text);
+      if (dovizIsareti) {
+        e.preventDefault();
+        toast({
+          title: 'Dövizli tutar yapıştırılamaz',
+          description: `Panodaki değer "${dovizIsareti[0]}" içeriyor. Teklif tutarları TL tabanlıdır — TL karşılığını yapıştırın.`,
+          variant: 'destructive',
+        });
+        return;
+      }
       const {
         quantityField, materialUnitPriceField, laborUnitPriceField,
         materialTotalField, laborTotalField, grandUnitPriceField, grandTotalField,
@@ -2492,6 +2815,16 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       }
 
       if (c.cellRenderer === 'brandRenderer') {
+        // ⚠ KIMLIK DEGIL AD: bu kolon degeri `brandId` (36 karakterlik UUID)
+        // tutar ve ekranda ADI yalniz `cellRenderer` cizer. `useFormatter`
+        // renderer'i CALISTIRAMAZ (React dugumu doner, metin degil) — yani
+        // kopyalama/disa aktarma yollari ham UUID goruyordu. Bicimlendirici,
+        // "panoya ekranda GORDUGUNU yaz" sozlesmesini bu kolonda da kurar.
+        base.valueFormatter = (p: any) => {
+          const id = p.value;
+          if (!id) return '';
+          return brands.find((b) => b.id === id)?.name ?? String(id);
+        };
         base.cellRenderer = (params: ICellRendererParams) => (
           // Ozet satiri fiyatlandirilmaz — marka secimi gosterilmez
           params.data?._ozet ? <span style={{ color: '#94a3b8', fontSize: 11 }}>özet</span> : (
@@ -2515,6 +2848,12 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         );
         base.editable = false;
       } else if (c.cellRenderer === 'firmaRenderer') {
+        // IKIZ: marka kolonuyla ayni gerekce (yukarida) — deger `firmaId`.
+        base.valueFormatter = (p: any) => {
+          const id = p.value;
+          if (!id) return '';
+          return laborFirms.find((f) => f.id === id)?.name ?? String(id);
+        };
         base.cellRenderer = (params: ICellRendererParams) => (
           // Ozet satiri isciliklendirilmez
           params.data?._ozet ? <span style={{ color: '#94a3b8', fontSize: 11 }}>özet</span> : (
@@ -2550,6 +2889,11 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       };
       base.cellClassRules = {
         'hidden-merged-cell': (params) => params.data?._merges?.[field]?.hidden === true,
+        // KP: secili aralik gorsel geri bildirimi. Sinif MAVI TUL cizer
+        // (`inset` golge), zemini EZMEZ — isaret.ts'in para sinyalleri
+        // (kirmizi/sari/gri) inline `cellStyle` ile geliyor ve secim
+        // sirasinda da OKUNABILIR kalmali.
+
       };
 
       // ── OZET SERIDI ROZETI (16.08 kullanici tasarimi) ───────────────────
@@ -2618,7 +2962,14 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
             // "N/M kalem fiyatsız" onayi zaten yerinde duruyor.
             return `${currencySymbol}${paraBicim(kv, conversionRate)}`;
           }
-          const v = parseFloat(String(params.value ?? ''));
+          // ⚠ `parseFloat(String(v))` DEGIL — `sayiOku` (E2E'de olculdu):
+          // TR klavyede "1875,5" yazan kullanicinin degeri hucrede VIRGULLU
+          // STRING olarak durur. parseFloat virgulde keserdi → hucre ₺1.875,00
+          // gorunurken satir toplami 1875,5 ile hesaplanmisti (286 × 1875,5 =
+          // ₺536.393). Kullanici ekranda CARPIMI TUTMAYAN iki sayi goruyordu.
+          // `sayiOku` virgulu cozer ve isareti korur (sayiAlani BURADA olmaz:
+          // negatifi 0 gostermek KAR satirindaki zarari gizlerdi).
+          const v = sayiOku(params.value) ?? NaN;
           if (isNaN(v)) return '';
           // Pinned bottom satirinda 0 bile gosterilsin (GENEL TOPLAM satiri)
           if (v === 0 && !params.node?.rowPinned) return '';
@@ -2765,6 +3116,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           );
         },
         cellStyle: { textAlign: 'right' as const },
+
       } as any);
 
       cols.push({
@@ -2792,6 +3144,9 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           return `${sym}${formatted}`;
         },
         cellStyle: { textAlign: 'right' as const, fontWeight: 'bold' as const },
+        // KP: kullanicinin KOPYALADIGI kolon — secim burada gorunmezse ne
+        // aldigini bilemez.
+
       } as any);
     }
 
@@ -2963,7 +3318,21 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       const net = kar > 0 ? enteredPrice / (1 + kar / 100) : enteredPrice;
       yazVeriHucre(e.node, '_matNetPrice', net);
       row._matKurBilgi = null; // elle girilen TL fiyatin kaynak kuru yoktur
-      e.node.setDataValue('_matStatus', ''); // manuel fiyat girildi — bekleme isareti kalkar
+      // ⚠ `setDataValue` BURADA CALISMAZ: `_matStatus` bir grid KOLONU degil,
+      // yalnizca satir verisinde yasayan bir isaret alani. AG Grid kolonu
+      // bulamayinca cagriyi SESSIZCE dusurur (`return false`) — yani kirmizi
+      // "eslesme yok" isareti fiyat elle girilse de EKRANDA KALIYORDU ve
+      // "⚠ N satır seçim bekliyor" bandi sonmuyordu. Ayni kapsamda dogru
+      // yardimci zaten var (`yazVeriHucre`, bir ust satirda kullanilmis).
+      // Bu yol yapistirmayi da tasiyor: Ctrl+V `setDataValue(..., 'edit')` ile
+      // ayni daldan gecer.
+      yazVeriHucre(e.node, '_matStatus', '');
+      yazVeriHucre(e.node, '_matSebep', null);
+      yazVeriHucre(e.node, '_matAdaySayisi', null);
+      yazVeriHucre(e.node, '_matSuggestion', false);
+      // Isaret alanlari KOLON olmadigi icin dogrudan veriye yazilir; boyama
+      // (cellStyle) ancak acik tazelemeyle yeniden kosar.
+      e.api.refreshCells({ rowNodes: [e.node], force: true });
       const qty = etkinMiktar(row, quantityField, unitField); // UY2
       e.node.setDataValue(materialTotalField, hesaplaSatirToplam(enteredPrice, qty).toFixed(1));
       setTimeout(() => { recalcGrand(); updatePinnedBottom(); }, 0);
@@ -2977,6 +3346,15 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       const net = kar > 0 ? enteredPrice / (1 + kar / 100) : enteredPrice;
       yazVeriHucre(e.node, '_labNetPrice', net);
       row._labKurBilgi = null; // elle girilen TL fiyatin kaynak kuru yoktur
+      // IKIZ (bu turda eklendi): isaret temizleme MALZEMEDE vardi, iscilikte
+      // HIC YAZILMAMISTI. `isaret.ts` iki dali da okuyor; firma surukleyip
+      // doldurunca eslesmeyen satirlar kirmizi kaliyor ve kullanici fiyati
+      // ELLE girse bile isaret sonmuyordu. Kullanicinin "manuel olarak da
+      // islem yapmak ister" istegi iki tarafta da ayni sonucu vermeli.
+      yazVeriHucre(e.node, '_labStatus', '');
+      yazVeriHucre(e.node, '_labSebep', null);
+      yazVeriHucre(e.node, '_labAdaySayisi', null);
+      e.api.refreshCells({ rowNodes: [e.node], force: true });
       const qty = etkinMiktar(row, quantityField, unitField); // UY2
       e.node.setDataValue(laborTotalField, hesaplaSatirToplam(enteredPrice, qty).toFixed(1));
       setTimeout(() => { recalcGrand(); updatePinnedBottom(); }, 0);
@@ -3062,7 +3440,18 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
   return (
     // tabIndex=-1: surukle-doldur sonrasi programatik odak — Ctrl+Z (K19)
     // wrapper'a ulassin (odak grid disinda kalirsa keydown yakalanamazdi)
-    <div className="w-full outline-none" tabIndex={-1} ref={rootWrapperRef} onKeyDown={handleLibraryKeyDown} onPaste={handleLibraryPaste}>
+    // ⚠ KEYDOWN "CAPTURE" FAZINDA (KP, tarayicida olculdu): AG Grid kendi
+    // klavye dinleyicisini HUCRE elemanina bagliyor, React ise koke. Bubble
+    // fazinda dinlersek AG Grid'in navigasyonu BIZDEN ONCE kosar ve
+    // `e.preventDefault()` gec kalir — Shift+Ok'ta odak da kayiyordu
+    // (E2E: iki Shift+Asagi sonrasi odak 2 satir asagida). Capture fazi kokte
+    // hucreden ONCE calisir; secim genisletirken odak anchor'da kalir (Excel).
+    <div className={`w-full outline-none mpx-kapsam-${gridKimlik}`} tabIndex={-1} ref={rootWrapperRef} onKeyDownCapture={handleLibraryKeyDown} onPaste={handleLibraryPaste}>
+      {/* SECIM TULU: kural CSS'te yasar, AG Grid'in hucre sinifina DEGIL —
+          gerekce `secimUygula`nin basinda. Kapsam sinifi (`mpx-kapsam-<id>`)
+          sayfada birden fazla grid oldugunda (modal + arka plan) secimlerin
+          birbirine karismasini onler. */}
+      {secimStili ? <style>{secimStili}</style> : null}
       {/* GUVEN KAPISI SAYACI (PRD Bolum 9): eslesmeyen/belirsiz satirlar
           gorunur kilinir — "eslestirme emin degilse fiyat uydurmaz". */}
       {mode === 'quote' && pendingCount > 0 && (
@@ -3092,7 +3481,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
             Tüm listeye uygula
           </button>
           <span className="text-[10px] text-indigo-400">
-            Sürükle-doldur: iskonto hücresinin alt kenarından · Ctrl+D: üstteki değeri kopyala · Ctrl+V: Excel&apos;den sütun yapıştır · Ctrl+Z: son toplu işlemi geri al · Grup bandı: daralt/genişlet + gruba iskonto
+            Sürükle-doldur: iskonto hücresinin alt kenarından · Ctrl+D: üstteki değeri kopyala · <strong className="font-semibold text-indigo-600">Ctrl+C: seçili hücreleri kopyala (Shift+ok / Shift+tık ile blok seç)</strong> · Ctrl+V: Excel&apos;den sütun yapıştır · Ctrl+Z: son toplu işlemi geri al · Grup bandı: daralt/genişlet + gruba iskonto
           </span>
         </div>
       )}
@@ -3160,6 +3549,24 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           if (Object.keys(w).length) onColumnWidthsChange(w);
         }}
         onCellValueChanged={handleCellValueChanged}
+        // ── KP: HUCRE ARALIGI SECIMI (Excel'deki gibi Shift+tik) ──────────
+        onCellClicked={(e) => {
+          if (e.node?.rowPinned || typeof e.rowIndex !== 'number') return;
+          const kolonlar = e.api.getAllDisplayedColumns();
+          const ki = kolonlar.findIndex((c: any) => c.getColId() === e.column.getColId());
+          if (ki < 0) return;
+          const nokta: Nokta = { satir: e.rowIndex, kolon: ki };
+          const me = e.event as MouseEvent | null;
+          if (me?.shiftKey && secimAnchorRef.current) {
+            secimUcRef.current = nokta;
+            secimUygula(secimAnchorRef.current, nokta);
+            return;
+          }
+          // Shift'siz tik: yeni anchor, aralik yok (tek hucre — Ctrl+C onu alir)
+          secimAnchorRef.current = nokta;
+          secimUcRef.current = nokta;
+          secimUygula(null, null);
+        }}
         stopEditingWhenCellsLoseFocus
         // ⚠ Surukle-doldur ayni sabiti okur (useFillHandle) — types.ts'te TEK
         // kaynak; ayrilirsa surukleme yanlis satirlara doldurur.

@@ -31,7 +31,28 @@
  * ⚠ `parseFloat` tek başına yetmez: NaN ve negatif değer DTO'yu düşürür.
  */
 export function sayiAlani(v: unknown): number {
-  const n = typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(',', '.'));
-  if (!Number.isFinite(n) || n < 0) return 0;
+  const n = sayiOku(v);
+  if (n === null || n < 0) return 0;
   return n;
+}
+
+/**
+ * HAM OKUMA — virgüllü ondalık çözülür, İŞARET KORUNUR, sayı değilse `null`.
+ *
+ * NEDEN AYRI: `sayiAlani`nın negatif kelepçesi GÖSTERİM yollarına uymaz.
+ * Ekrandaki para hücresi biçimlendiricisi (`ExcelGrid` valueFormatter)
+ * kendi `parseFloat(String(v))` kopyasını taşıyordu ve TR klavyede yazılan
+ * "1875,5" hücrede STRING olarak durduğu için ekranda ₺1.875,00 görünüyordu —
+ * oysa satır toplamı 1875,5 ile hesaplanmıştı (286 × 1875,5 = 536.393).
+ * Yani kullanıcı ekranda ÇARPIMI TUTMAYAN iki sayı görüyordu: bu, süzgecin
+ * doğduğu "ekran ≠ kayıt" kusurunun GÖSTERİM ikiziydi.
+ *
+ * Biçimlendirici `sayiAlani` kullanamaz: negatifi 0 göstermek gerçeği gizler
+ * (KÂR satırı zarar da yazabilir). Bu yüzden ayrıştırma buraya çıkarıldı;
+ * `sayiAlani` yalnızca KELEPÇE katmanı olarak üstünde durur. Böylece virgül
+ * kuralı TEK yerde kalır ve iki okuyucu ASLA ayrışamaz.
+ */
+export function sayiOku(v: unknown): number | null {
+  const n = typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(',', '.'));
+  return Number.isFinite(n) ? n : null;
 }
