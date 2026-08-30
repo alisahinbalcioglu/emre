@@ -329,6 +329,71 @@ async function main() {
     `guards=${JSON.stringify(abGuardlari)}`,
   );
 
+  // ═══════════════════════════════════════════════════════════════════
+  //  D — DENEME SURESI ve WEBHOOK GECIKME TAMPONU (29.08 kullanici karari)
+  // ═══════════════════════════════════════════════════════════════════
+  //  Karar: kart kayitta alinir, 30 gun kullanilir, 30. gun ilk tahsilat.
+  //  Mekanik karsiligi `trialPeriodDays: 30` — yani ILK AY UCRETSIZ.
+  //
+  //  ⚠ BU BLOK METIN DEGIL DAVRANIS OLCER. Ilk yazimda `TAMPON_GUN`
+  //  kelimesinin kaynakta GECMESINE bakiyordu; o assert `TAMPON_GUN = 0`
+  //  yapilsa bile YESIL kalirdi — yani korumanin varligini degil adinin
+  //  varligini olcuyordu. Hesap saf fonksiyona (`donemTarihleriHesapla`)
+  //  cikarildi ve burada GERCEK TARIHLER karsilastiriliyor.
+  {
+    const { donemTarihleriHesapla, TAMPON_GUN } = await import(
+      '../src/ozellik/odeme/abonelik/satinalma.servisi'
+    );
+    const t0 = new Date('2026-01-01T00:00:00.000Z');
+    const gun = (d: Date) => Math.round((d.getTime() - t0.getTime()) / 86_400_000);
+
+    const denemeli = donemTarihleriHesapla(t0, 30);
+    check(
+      'D-OLCUT saf fonksiyon calisiyor (30 gunluk deneme tarih uretti)',
+      denemeli.denemeSonu !== null,
+    );
+    check(
+      'D1 denemeSonu TAM 30. gun (iyzico bu tarihte tahsil eder)',
+      gun(denemeli.denemeSonu!) === 30,
+      `gun=${gun(denemeli.denemeSonu!)}`,
+    );
+    check(
+      'D2 erisimSonu denemeSonu"ndan SONRA (odeyen musteri kapida kalmaz)',
+      denemeli.erisimSonu.getTime() > denemeli.denemeSonu!.getTime(),
+      `erisim=${gun(denemeli.erisimSonu)} deneme=${gun(denemeli.denemeSonu!)}`,
+    );
+    check(
+      'D3 tampon POZITIF ve tam olarak TAMPON_GUN kadar',
+      TAMPON_GUN > 0 &&
+        gun(denemeli.erisimSonu) - gun(denemeli.denemeSonu!) === TAMPON_GUN,
+      `fark=${gun(denemeli.erisimSonu) - gun(denemeli.denemeSonu!)} TAMPON_GUN=${TAMPON_GUN}`,
+    );
+    check(
+      'D4 tampon ASIRI DEGIL (bedava erisim siniri — en fazla 7 gun)',
+      TAMPON_GUN <= 7,
+      `TAMPON_GUN=${TAMPON_GUN}`,
+    );
+
+    // Denemesiz paket: denemeSonu OLMAMALI, erisim yine tamponlu.
+    const denemesiz = donemTarihleriHesapla(t0, 0);
+    check(
+      'D5 denemesiz pakette denemeSonu NULL (ekran "deneme" demez)',
+      denemesiz.denemeSonu === null,
+    );
+
+    // Kurulum betigi karari yansitiyor mu?
+    const seed = fs.readFileSync(
+      path.join(__dirname, '../scripts/paketleri-kur.ts'),
+      'utf8',
+    );
+    check(
+      'D6 bes paketin BESINDE de denemeGunu 30 (29.08 karari)',
+      (seed.match(/denemeGunu: 30,/g) ?? []).length === 5 &&
+        !/denemeGunu: (?!30,)\d/.test(seed),
+      `30 sayisi=${(seed.match(/denemeGunu: 30,/g) ?? []).length}`,
+    );
+  }
+
   await app.close();
 
   console.log(

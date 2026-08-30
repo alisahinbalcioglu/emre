@@ -52,6 +52,48 @@ import { AbonelikServisi } from './abonelik.servisi';
  *  acar. Erisim, musterinin tarayicisini acik tutmasina bagli DEGILDIR.
  * ═══════════════════════════════════════════════════════════════════════════
  */
+/**
+ * Webhook gecikme tamponu (gun).
+ *
+ * ⚠ OLCULEN KENAR DURUM: deneme 30 gunse iyzico TAM 30. gunde tahsilat
+ * yapar. Erisimimiz de tam 30. gunde bitiyorsa, webhook birkac dakika
+ * gecikirse `ErisimServisi` "deneme suresi doldu" der ve PARASINI ODEMIS
+ * musteriyi kapida birakir. iyzico webhook'u 2xx alana kadar 15 dakikada
+ * bir dener; surec yeniden baslarsa dakikalik emniyet taramasi devreye
+ * girene kadar gecikme uzayabilir.
+ *
+ * Iki yon de tartildi: odeme GERCEKTEN basarisizsa musteri 2 gun fazladan
+ * erisir — sinirli ve kabul edilebilir. Tersi (odeyene kapiyi kapatmak)
+ * destek talebi ve guven kaybi uretir.
+ */
+export const TAMPON_GUN = 2;
+
+/**
+ * Erisim bitisini ve GERCEK deneme bitisini hesaplar. SAF fonksiyon —
+ * DB'siz test edilebilsin diye disari alindi (metin denetimi degil
+ * DAVRANIS olculebilsin).
+ *
+ * ⚠ IKI TARIH AYRIDIR ve ayni degere baglanmamalidir:
+ *   erisimSonu  → teknik emniyet payi TASIR (tampon dahil)
+ *   denemeSonu  → kullaniciya GOSTERILEN ve iyzico'nun tahsilat yapacagi
+ *                 tarih; tamponsuz. Ikisi birlesirse ekran "2 gun daha
+ *                 deneme var" yalanini soyler.
+ */
+export function donemTarihleriHesapla(
+  simdi: Date,
+  denemeGunu: number,
+): { erisimSonu: Date; denemeSonu: Date | null } {
+  const temelGun = denemeGunu > 0 ? denemeGunu : 31;
+  const erisimSonu = new Date(
+    simdi.getTime() + (temelGun + TAMPON_GUN) * 86_400_000,
+  );
+  const denemeSonu =
+    denemeGunu > 0
+      ? new Date(simdi.getTime() + denemeGunu * 86_400_000)
+      : null;
+  return { erisimSonu, denemeSonu };
+}
+
 @Injectable()
 export class SatinAlmaServisi {
   private readonly logger = new Logger(SatinAlmaServisi.name);
@@ -307,12 +349,13 @@ export class SatinAlmaServisi {
     denemeGunu: number;
   }) {
     const simdi = new Date();
-    // Deneme suresi varsa erisim onun sonuna, yoksa ilk donem sonuna kadar.
-    // Kesin donem sonu ilk basarili tahsilat webhook'unda iyzico'dan gelir;
-    // burasi KOPRU degerdir (erisim acikta kalmasin diye).
-    const erisimSonu = new Date(simdi);
-    erisimSonu.setDate(
-      erisimSonu.getDate() + (p.denemeGunu > 0 ? p.denemeGunu : 31),
+    // Donem tarihleri SAF fonksiyondan gelir (donemTarihleriHesapla) —
+    // boylece tampon ve deneme bitisi DB'siz, davranis duzeyinde
+    // olculebilir. Kesin donem sonu ilk basarili tahsilat webhook'unda
+    // iyzico'dan gelip `erisimSonu`nu EZER; burasi kopru degerdir.
+    const { erisimSonu, denemeSonu } = donemTarihleriHesapla(
+      simdi,
+      p.denemeGunu,
     );
 
     const mevcut = await this.prisma.abonelik.findUnique({
@@ -329,7 +372,7 @@ export class SatinAlmaServisi {
           paketSurumuId: p.paketSurumuId,
           durum,
           erisimSonu,
-          denemeSonu: p.denemeGunu > 0 ? erisimSonu : null,
+          denemeSonu,
           odemeYontemi: OdemeYontemi.KART,
           iyzicoAbonelikKodu: p.iyzicoAbonelikKodu,
           // ILK abonelikte kod KENDISI kokUdur. Plan degisiminde
@@ -351,7 +394,7 @@ export class SatinAlmaServisi {
         paketSurumuId: p.paketSurumuId,
         durum,
         erisimSonu,
-        denemeSonu: p.denemeGunu > 0 ? erisimSonu : null,
+        denemeSonu,
         odemeYontemi: OdemeYontemi.KART,
         iyzicoAbonelikKodu: p.iyzicoAbonelikKodu,
           // ILK abonelikte kod KENDISI kokUdur. Plan degisiminde

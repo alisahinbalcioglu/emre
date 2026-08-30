@@ -66,7 +66,7 @@ const PAKETLER = [
     tutar: 22.0,
     paraBirimi: 'USD' as const,
     periyot: 'MONTHLY' as const,
-    denemeGunu: 0,
+    denemeGunu: 30,
     sira: 10,
   },
   {
@@ -81,7 +81,7 @@ const PAKETLER = [
     tutar: 28.0,
     paraBirimi: 'USD' as const,
     periyot: 'MONTHLY' as const,
-    denemeGunu: 0,
+    denemeGunu: 30,
     sira: 20,
   },
   {
@@ -96,7 +96,7 @@ const PAKETLER = [
     tutar: 22.0,
     paraBirimi: 'USD' as const,
     periyot: 'MONTHLY' as const,
-    denemeGunu: 0,
+    denemeGunu: 30,
     sira: 30,
   },
   {
@@ -111,7 +111,7 @@ const PAKETLER = [
     tutar: 28.0,
     paraBirimi: 'USD' as const,
     periyot: 'MONTHLY' as const,
-    denemeGunu: 0,
+    denemeGunu: 30,
     sira: 40,
   },
   {
@@ -129,7 +129,7 @@ const PAKETLER = [
     tutar: 42.0,
     paraBirimi: 'USD' as const,
     periyot: 'MONTHLY' as const,
-    denemeGunu: 0,
+    denemeGunu: 30,
     sira: 50,
   },
 ];

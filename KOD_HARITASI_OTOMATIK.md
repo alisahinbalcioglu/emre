@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 443
-Toplam satir: 95705
+Toplam satir: 95813
 Uc nokta: 142
 test:* scripti: 74
 
@@ -141,7 +141,7 @@ test:* scripti: 74
 | `backend/src/ozellik/odeme/abonelik/erisim.guard.ts` | 90 |
 | `backend/src/ozellik/odeme/abonelik/erisim.servisi.ts` | 269 |
 | `backend/src/ozellik/odeme/abonelik/mutabakat.job.ts` | 155 |
-| `backend/src/ozellik/odeme/abonelik/satinalma.servisi.ts` | 477 |
+| `backend/src/ozellik/odeme/abonelik/satinalma.servisi.ts` | 520 |
 | `backend/src/ozellik/odeme/dunning/dunning.metinleri.ts` | 165 |
 | `backend/src/ozellik/odeme/dunning/dunning.servisi.ts` | 314 |
 | `backend/src/ozellik/odeme/eposta/eposta.servisi.ts` | 132 |
@@ -218,7 +218,7 @@ test:* scripti: 74
 | `backend/test/matching-regression.ts` | 265 |
 | `backend/test/matching-unit-test.ts` | 713 |
 | `backend/test/migration-zinciri-test.ts` | 313 |
-| `backend/test/odeme-onyukleme-test.ts` | 347 |
+| `backend/test/odeme-onyukleme-test.ts` | 412 |
 | `backend/test/olcu-anahtari-cakismasi-test.ts` | 449 |
 | `backend/test/onceden-fiyatli-test.ts` | 163 |
 | `backend/test/oneri-kutusu-cekince-test.ts` | 333 |
