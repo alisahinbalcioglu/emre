@@ -33,5 +33,11 @@
     "forceConsistentCasingInFileNames": false,
     "noFallthroughCasesInSwitch": false
   },
-  "exclude": ["node_modules", "dist", "test"]
+  // `scripts` de DISLANIR (test gibi): oradaki betikler `rootDir: ./src`
+  // disindadir ve `nest build` ciktisina girmemelidir — ts-node ile elle
+  // kosulan operasyon araclaridir. Dislanmazsa tsc TS6059 verir.
+  // ⚠ Bedeli: `npm run lint` (tsc --noEmit) bu dosyalari GORMEZ. Tip
+  // hatasi ancak betik kosuldugunda (ts-node derler) ortaya cikar —
+  // `test/` icin zaten var olan bilinen sinirin aynisi.
+  "exclude": ["node_modules", "dist", "test", "scripts"]
 }

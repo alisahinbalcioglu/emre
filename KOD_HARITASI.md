@@ -566,10 +566,11 @@ Karıştırılmasın diye ayrı duruyor.
 | `frontend/playwright.golden.config.ts` | Altin-yol e2e'yi mevcut tam yigina baglayan, artefakt damgali, tek-worker Playwright yapilandirmasi |
 | `frontend/vitest.config.ts` | Vitest'in Playwright'a ait e2e dizinlerini toplamamasi icin exclude listesi tanimlar |
 
-### I · DERLEME ve CANLIYA ÇIKIŞ — 9 dosya
+### I · DERLEME ve CANLIYA ÇIKIŞ — 10 dosya
 
 | Dosya | Ne yapıyor |
 |---|---|
+| `backend/scripts/paketleri-kur.ts` | Odeme paketlerini iyzico'da (urun + odeme plani) ve veritabaninda (Paket + PaketSurumu) tek komutla acar; referans kodlari iyzico yanitindan ALINIR, elle kopyalanmaz. Varsayilan PROVA — `--uygula` bilincli eylem, cunku olusan plan SILINEMEZ ve fiyati DEGISTIRILEMEZ. Idempotent: mevcut urun/paket atlanir |
 | `backend/scripts/derleme-kapisi.js` | Build sonrasi dist icindeki .js sayisini sayarak bos/eksik derlemeyi yakalayip cikis 3 verir |
 | `backend/scripts/kisisel-liste-backfill.js` | TEK SEFERLIK idempotent geriye-donuk isaretleme (24.08): kutuphane akisinin actigi eski kayitlara sahiplik yazar — ProductIndex satirlarinin TAMAMI ayni kullanicideysa PriceList.ownerUserId o kullanici; tum listeleri kisisel + havuz fiyati olmayan marka isGlobal=false. `prisma db push` SONRASI kosulur; once/sonra sayimlari ve kisisele cekilen marka adlarini raporlar |
 | `backend/scripts/surum-yaz.js` | Prebuild aninda git sha ve kirlilik bilgisini surum.generated.ts olarak koda gomer |

@@ -45,7 +45,7 @@
 [ALAN KOKLERI]
 # ── backend ──
 backend/prisma/ :: Prisma şema kaynağı (`schema.prisma`) — taşınmadı, DB'nin tek gerçeği.
-backend/scripts/ :: Derleme/sürüm betikleri (derleme-kapisi, surum-yaz) — grup I.
+backend/scripts/ :: Derleme/sürüm + KURULUM betikleri (derleme-kapisi, surum-yaz, paketleri-kur) — grup I. 29.08: kapsam "derleme"den "derleme + kurulum"a genişletildi; `paketleri-kur.ts` ödeme paketlerini iyzico'da ve DB'de açan tek seferlik operasyon aracıdır — ürün kodu değil, `dist`e girmez (tsconfig `exclude`).
 backend/src/altyapi/ :: Çekirdek backend altyapısı (auth, db) — grup L. 2b durağında kuruldu.
 backend/src/modules/dwg-engine/ :: DONMUŞ BLOK — DWG-metraj (grup J). Taşıma turunda bilerek dokunulmadı.
 # `ozellik/` ALT ALAN ALT ALAN ilan edilir, toptan DEĞİL (ölçülmüş gerekçe). Gerekçe ölçümden: tek satır

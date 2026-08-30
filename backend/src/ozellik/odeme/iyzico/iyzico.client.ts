@@ -154,6 +154,80 @@ export class IyzicoClient {
     return (json.data ?? (json as unknown)) as T;
   }
 
+  // ── Ürün ve ödeme planı (kurulum) ───────────────────────────────────────
+  /**
+   * ⚠ BU IKI METOT TAHSILAT AKISINDA CAGRILMAZ — yalnizca KURULUM icindir
+   * (`npm run seed:paketler`). Uretimde bir kez kosar, sonra dokunulmaz.
+   *
+   * iyzico'da yapi iki katmanlidir: URUN (yalnizca bir ad) ve ona bagli bir
+   * ya da daha fazla ODEME PLANI (fiyat + periyot). Musteri PLANA abone olur.
+   *
+   * ⚠ URUN ADLARI TEKILDIR: ayni adla ikinci urun yaratilamaz. Bu yuzden
+   * kurulum betigi once mevcut urunleri LISTELER.
+   *
+   * ⚠⚠ PLAN FIYATI OLUSTURULDUKTAN SONRA DEGISTIRILEMEZ. iyzico dokumani
+   * yalnizca `name` ve `trialPeriodDays` guncellemesine izin veriyor.
+   * Semadaki `PaketSurumu` tam olarak bu yuzden var: her fiyat degisikligi
+   * YENI bir plan + yeni bir surum satiri demektir, eski aboneler eski
+   * surumde kalir.
+   */
+  async urunleriListele(): Promise<
+    Array<{ referenceCode: string; name: string }>
+  > {
+    const yanit = await this.istek<
+      { items?: Array<{ referenceCode: string; name: string }> } | Array<{ referenceCode: string; name: string }>
+    >('GET', '/v2/subscription/products?page=1&count=100');
+    // Yanit sekli surumler arasinda degisebiliyor: dizi ya da {items:[…]}.
+    if (Array.isArray(yanit)) return yanit;
+    return yanit?.items ?? [];
+  }
+
+  async urunOlustur(p: {
+    ad: string;
+    aciklama?: string;
+  }): Promise<{ referenceCode: string; name: string }> {
+    return this.istek('POST', '/v2/subscription/products', {
+      locale: 'tr',
+      name: p.ad,
+      description: p.aciklama,
+    });
+  }
+
+  async planOlustur(
+    urunKodu: string,
+    p: {
+      ad: string;
+      /** ⚠ SONRADAN DEGISTIRILEMEZ. */
+      tutar: number;
+      paraBirimi: 'TRY' | 'USD' | 'EUR';
+      periyot: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
+      periyotAdedi?: number;
+      denemeGunu?: number;
+    },
+  ): Promise<{
+    referenceCode: string;
+    productReferenceCode: string;
+    name: string;
+    price: number;
+  }> {
+    return this.istek(
+      'POST',
+      `/v2/subscription/products/${urunKodu}/pricing-plans`,
+      {
+        locale: 'tr',
+        name: p.ad,
+        price: p.tutar,
+        currencyCode: p.paraBirimi,
+        paymentInterval: p.periyot,
+        paymentIntervalCount: p.periyotAdedi ?? 1,
+        // RECURRING = suresiz tekrarlayan. Sinirli tekrar isteseydik
+        // `recurrenceCount` gerekirdi; abonelikte istemiyoruz.
+        planPaymentType: 'RECURRING',
+        trialPeriodDays: p.denemeGunu ?? 0,
+      },
+    );
+  }
+
   // ── Abonelik detayı ─────────────────────────────────────────────────────
   /**
    * MUTABAKATIN KALBİ.

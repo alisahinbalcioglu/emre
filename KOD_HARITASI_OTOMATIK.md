@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 436
-Toplam satir: 93452
+Kod dosyasi: 437
+Toplam satir: 93785
 Uc nokta: 142
 test:* scripti: 74
 
@@ -15,6 +15,7 @@ test:* scripti: 74
 | `backend/prisma/schema.prisma` | 1188 |
 | `backend/scripts/derleme-kapisi.js` | 68 |
 | `backend/scripts/kisisel-liste-backfill.js` | 107 |
+| `backend/scripts/paketleri-kur.ts` | 259 |
 | `backend/scripts/surum-yaz.js` | 47 |
 | `backend/src/altyapi/auth/auth.controller.ts` | 28 |
 | `backend/src/altyapi/auth/auth.module.ts` | 32 |
@@ -149,7 +150,7 @@ test:* scripti: 74
 | `backend/src/ozellik/odeme/havale/havale.controller.ts` | 96 |
 | `backend/src/ozellik/odeme/havale/havale.servisi.ts` | 274 |
 | `backend/src/ozellik/odeme/iyzico/imza.ts` | 206 |
-| `backend/src/ozellik/odeme/iyzico/iyzico.client.ts` | 326 |
+| `backend/src/ozellik/odeme/iyzico/iyzico.client.ts` | 400 |
 | `backend/src/ozellik/odeme/odeme.module.ts` | 72 |
 | `backend/src/ozellik/odeme/webhook/webhook.controller.ts` | 160 |
 | `backend/src/ozellik/odeme/webhook/webhook.isleyici.ts` | 132 |
@@ -455,6 +456,7 @@ test:* scripti: 74
 |---|---|
 | `backend/scripts/derleme-kapisi.js` | `fs` `path` |
 | `backend/scripts/kisisel-liste-backfill.js` | `@prisma/client` |
+| `backend/scripts/paketleri-kur.ts` | `@prisma/client` `@nestjs/config` `../src/ozellik/odeme/iyzico/iyzico.client` `../src/ozellik/odeme/yapilandirma` |
 | `backend/scripts/surum-yaz.js` | `fs` `path` `child_process` |
 | `backend/src/altyapi/auth/auth.controller.ts` | `@nestjs/common` `./auth.service` `./dto/register.dto` `./dto/login.dto` `./guards/jwt-auth.guard` `./decorators/current-user.decorator` |
 | `backend/src/altyapi/auth/auth.module.ts` | `@nestjs/common` `@nestjs/jwt` `@nestjs/passport` `./auth.service` `./auth.controller` `./strategies/jwt.strategy` `./jwt-secret` `../../ozellik/odeme/odeme.module` |
