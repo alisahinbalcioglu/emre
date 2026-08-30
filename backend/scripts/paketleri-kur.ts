@@ -35,6 +35,17 @@ import { odemeYapilandirildiMi } from '../src/ozellik/odeme/yapilandirma';
 /**
  * ⚠ KURULACAK PAKETLER — fiyatlar burada TEK YERDE durur.
  *
+ * FIYATLAR KDV HARIC ve USD (kullanici karari 29.08):
+ *   Mekanik  basic 22 $  · pro 28 $
+ *   Elektrik basic 22 $  · pro 28 $
+ *   MEP      42 $ — iki PRO planin %25 indirimlisi (28+28=56 → 42)
+ *
+ * ⚠ KULLANICI HAKKI HERKESTE 2 (sahip + 1 alt kullanici) ve SABITTIR.
+ * ADIM 0 raporundaki "18 kademeli plan zorunlu" bulgusu DEGISKEN koltuk
+ * sayisi icindi; koltuk sabit oldugu icin kademeye gerek YOK, bes duz plan
+ * yeter. (iyzico'da adet/koltuk carpani olmadigi olculmustu — o kisit
+ * burada bir sorun yaratmiyor cunku carpan zaten gerekmiyor.)
+ *
  * `kapsam` ve `seviye` yetenek matrisini belirler (capabilities.helper.ts):
  *   kapsam: mechanical | electrical | mep   (mep = ikisi birden)
  *   seviye: core (malzeme) | pro (malzeme + iscilik + dwg)
@@ -44,16 +55,16 @@ import { odemeYapilandirildiMi } from '../src/ozellik/odeme/yapilandirma';
  */
 const PAKETLER = [
   {
-    kod: 'core-mek',
-    ad: 'Core — Mekanik',
+    kod: 'basic-mek',
+    ad: 'Basic — Mekanik',
     aciklama: 'Mekanik disiplinde malzeme kutuphanesi ve teklif hazirlama.',
     kapsam: 'mechanical' as const,
     seviye: 'core' as const,
-    kullaniciHakki: 3,
+    kullaniciHakki: 2,
     aylikTeklifHakki: null as number | null,
     dwgAktif: false,
-    tutar: 1499.0,
-    paraBirimi: 'TRY' as const,
+    tutar: 22.0,
+    paraBirimi: 'USD' as const,
     periyot: 'MONTHLY' as const,
     denemeGunu: 14,
     sira: 10,
@@ -64,29 +75,62 @@ const PAKETLER = [
     aciklama: 'Mekanik: malzeme + iscilik + DWG metraj.',
     kapsam: 'mechanical' as const,
     seviye: 'pro' as const,
-    kullaniciHakki: 5,
+    kullaniciHakki: 2,
     aylikTeklifHakki: null as number | null,
     dwgAktif: true,
-    tutar: 2999.0,
-    paraBirimi: 'TRY' as const,
+    tutar: 28.0,
+    paraBirimi: 'USD' as const,
     periyot: 'MONTHLY' as const,
     denemeGunu: 14,
     sira: 20,
   },
   {
-    kod: 'pro-mep',
-    ad: 'Pro — Mekanik + Elektrik',
-    aciklama: 'Iki disiplin: malzeme + iscilik + DWG metraj.',
-    kapsam: 'mep' as const,
-    seviye: 'pro' as const,
-    kullaniciHakki: 10,
+    kod: 'basic-elk',
+    ad: 'Basic — Elektrik',
+    aciklama: 'Elektrik disiplininde malzeme kutuphanesi ve teklif hazirlama.',
+    kapsam: 'electrical' as const,
+    seviye: 'core' as const,
+    kullaniciHakki: 2,
     aylikTeklifHakki: null as number | null,
-    dwgAktif: true,
-    tutar: 4499.0,
-    paraBirimi: 'TRY' as const,
+    dwgAktif: false,
+    tutar: 22.0,
+    paraBirimi: 'USD' as const,
     periyot: 'MONTHLY' as const,
     denemeGunu: 14,
     sira: 30,
+  },
+  {
+    kod: 'pro-elk',
+    ad: 'Pro — Elektrik',
+    aciklama: 'Elektrik: malzeme + iscilik + DWG metraj.',
+    kapsam: 'electrical' as const,
+    seviye: 'pro' as const,
+    kullaniciHakki: 2,
+    aylikTeklifHakki: null as number | null,
+    dwgAktif: true,
+    tutar: 28.0,
+    paraBirimi: 'USD' as const,
+    periyot: 'MONTHLY' as const,
+    denemeGunu: 14,
+    sira: 40,
+  },
+  {
+    // MEP = iki disiplin birden. Fiyat, iki PRO planin %25 indirimlisi:
+    // 28 + 28 = 56 → 56 x 0.75 = 42. (Basic'ten turetilseydi 44 x 0.75 = 33
+    // olurdu; 42 rakami MEP'in PRO seviyesinde oldugunu belirler.)
+    kod: 'pro-mep',
+    ad: 'Pro — Mekanik + Elektrik',
+    aciklama: 'Iki disiplin: malzeme + iscilik + DWG metraj. Ayri ayri almaya gore %25 avantajli.',
+    kapsam: 'mep' as const,
+    seviye: 'pro' as const,
+    kullaniciHakki: 2,
+    aylikTeklifHakki: null as number | null,
+    dwgAktif: true,
+    tutar: 42.0,
+    paraBirimi: 'USD' as const,
+    periyot: 'MONTHLY' as const,
+    denemeGunu: 14,
+    sira: 50,
   },
 ];
 
