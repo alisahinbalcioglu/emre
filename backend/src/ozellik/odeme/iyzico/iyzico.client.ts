@@ -106,8 +106,21 @@ export class IyzicoClient {
   }
 
   // ── Yetkilendirme başlığı (HMACSHA256 / v2) ─────────────────────────────
-  private yetkiBasligi(yol: string, govde: unknown): string {
-    const rastgele = randomBytes(8).toString('hex');
+  /**
+   * ⚠ `rastgele` DISARIDAN GELIR — bu kasitli ve KRITIK.
+   *
+   * OLCULEN KUSUR (01.09, canli sandbox): bu metot kendi rastgele degerini
+   * uretiyordu ve cagiran taraf `x-iyzi-rnd` basligina AYRI bir rastgele
+   * koyuyordu. iyzico imzayi `randomKey` ile dogrular; imza A ile atilip
+   * baslikta B gonderilince HER ISTEK
+   *     "Authentication token is not verified"
+   * ile reddediliyordu. Anahtarlar dogruydu, imza formulu dogruydu —
+   * yalnizca iki rastgele deger AYRISIYORDU.
+   *
+   * Bu yuzden deger TEK YERDE uretilip HEM imzaya HEM baslIga verilir.
+   * Imza ile baslik AYRISAMAZ: ikisi ayni degiskeni okur.
+   */
+  private yetkiBasligi(yol: string, govde: unknown, rastgele: string): string {
     const govdeMetni = govde ? JSON.stringify(govde) : '';
     const imzalanacak = rastgele + yol + govdeMetni;
     const imza = createHmac('sha256', this.secretKey)
@@ -123,12 +136,16 @@ export class IyzicoClient {
     govde?: unknown,
   ): Promise<T> {
     const url = this.tabanUrl + yol;
+    // ⚠ TEK rastgele deger: hem imzaya hem baslIga AYNI deger gider.
+    // Ikisi ayrisirsa iyzico her istegi "Authentication token is not
+    // verified" ile reddeder (01.09'da canli sandbox'ta olculdu).
+    const rastgele = randomBytes(8).toString('hex');
     const cevap = await fetch(url, {
       method: metot,
       headers: {
         'Content-Type': 'application/json',
-        Authorization: this.yetkiBasligi(yol, govde),
-        'x-iyzi-rnd': randomBytes(8).toString('hex'),
+        Authorization: this.yetkiBasligi(yol, govde, rastgele),
+        'x-iyzi-rnd': rastgele,
       },
       body: govde ? JSON.stringify(govde) : undefined,
     });

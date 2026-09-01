@@ -88,6 +88,7 @@
     "test:firma-ekseni": "ts-node test/firma-ekseni-test.ts",
     "test:ortam": "ts-node test/ortam-degiskenleri-test.ts",
     "test:fiyat-capasi": "ts-node test/fiyat-capasi-test.ts",
+    "test:iyzico-basligi": "ts-node test/iyzico-imza-basligi-test.ts",
     "seed:paketler": "ts-node scripts/paketleri-kur.ts",
     "seedpaketler": "ts-node scripts/paketleri-kur.ts"
   },

@@ -400,6 +400,21 @@ const SUITES: Suite[] = [
   //    MUTASYONLA ÖLÇÜLDÜ (2/2 öldü): aşağı yuvarlamaya izin verilince Y1 ·
   //    KDV çarpanı kaldırılınca H1/H2 kırmızı.
   { ad: 'Fiyat çapası: vitrin dolar / sözleşme TL (Y/H/K)', script: 'test:fiyat-capasi', zincir: 'Z0' },
+  // ── 01.09.2026 — iyzico YETKİ BAŞLIĞI (I1-I5). AĞ GEREKTİRMEZ: global
+  //    `fetch` geçici değiştirilip GİDEN İSTEĞİN başlıkları incelenir.
+  //    CANLI SANDBOX'TA ÖLÇÜLDÜ: ilk gerçek iyzico çağrısında her istek
+  //    "Authentication token is not verified" ile reddedildi. Anahtarlar
+  //    paneldekiyle aynıydı, imza formülü doğruydu, URL doğruydu.
+  //    KUSUR: rastgele değer İKİ KEZ üretiliyordu — `yetkiBasligi` kendi
+  //    değerini üretip onunla İMZALIYOR, çağıran ise `x-iyzi-rnd` başlığına
+  //    BAŞKA bir değer koyuyordu. iyzico imzayı randomKey ile doğrular;
+  //    A ile imzalanıp B gönderilince doğrulama TANIM GEREĞİ tutmaz.
+  //    Gözle yakalanması zor: iki satır da tek başına makul görünüyor.
+  //    Ancak GİDEN İSTEK incelenince ortaya çıkıyor — bu paket onu yapar.
+  //    I2/I5-b imzanın formülünü de doğrular (eşleşme tesadüf değil).
+  //    I4 rastgelenin sabitlenmediğini ölçer (tekrar saldırısı).
+  //    MUTASYONLA ÖLÇÜLDÜ: eski kusur geri konunca I1, I4-b ve I5 kırmızı.
+  { ad: 'iyzico yetki başlığı: randomKey eşliği (I1-I5)', script: 'test:iyzico-basligi', zincir: 'Z0' },
 ];
 
 function dbErisilebilir(): boolean {
