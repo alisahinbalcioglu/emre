@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 445
-Toplam satir: 96492
+Toplam satir: 96532
 Uc nokta: 142
 test:* scripti: 76
 
@@ -150,7 +150,7 @@ test:* scripti: 76
 | `backend/src/ozellik/odeme/havale/havale.controller.ts` | 96 |
 | `backend/src/ozellik/odeme/havale/havale.servisi.ts` | 274 |
 | `backend/src/ozellik/odeme/iyzico/imza.ts` | 206 |
-| `backend/src/ozellik/odeme/iyzico/iyzico.client.ts` | 417 |
+| `backend/src/ozellik/odeme/iyzico/iyzico.client.ts` | 435 |
 | `backend/src/ozellik/odeme/odeme.module.ts` | 72 |
 | `backend/src/ozellik/odeme/webhook/webhook.controller.ts` | 160 |
 | `backend/src/ozellik/odeme/webhook/webhook.isleyici.ts` | 132 |
@@ -200,7 +200,7 @@ test:* scripti: 76
 | `backend/test/imza-ekseni-test.ts` | 325 |
 | `backend/test/index-engine-test.ts` | 1774 |
 | `backend/test/iscilik-satir-silme-test.ts` | 127 |
-| `backend/test/iyzico-imza-basligi-test.ts` | 213 |
+| `backend/test/iyzico-imza-basligi-test.ts` | 235 |
 | `backend/test/kalem59-oksuz-kutuphane-test.ts` | 131 |
 | `backend/test/kaucuk-izolasyon-test.ts` | 244 |
 | `backend/test/kd11-toplam-yollari-test.ts` | 150 |

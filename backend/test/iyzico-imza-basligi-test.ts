@@ -146,14 +146,36 @@ async function main() {
 
   // I2: imza gercekten o randomKey + yol (+govde) uzerinden mi uretilmis?
   // Bu, I1'in tesaduf olmadigini gosterir — formul de dogru.
-  const yol = y.url.replace('https://sandbox-api.iyzipay.com', '');
+  const tamYol = y.url.replace('https://sandbox-api.iyzipay.com', '');
+  const sorgusuzYol = tamYol.split('?')[0];
+
+  // OLCUT: bu uc GERCEKTEN sorgu dizesi tasiyor mu? Tasimiyorsa I6 hicbir
+  // sey olcmez ve "tesadufen yesil" kalir.
+  check(
+    'I-OLCUT bu uc sorgu dizesi tasiyor (I6 anlamli)',
+    tamYol.includes('?'),
+    `yol=${tamYol}`,
+  );
+
   const beklenen = createHmac('sha256', SIR)
-    .update(yetki.randomKey + yol + (y.govde ?? ''))
+    .update(yetki.randomKey + sorgusuzYol + (y.govde ?? ''))
     .digest('hex');
   check(
-    'I2 imza = HMAC(sir, randomKey + yol + govde) — formul dogru',
+    'I2 imza = HMAC(sir, randomKey + SORGUSUZ yol + govde)',
     yetki.signature === beklenen,
     `alinan=${yetki.signature?.slice(0, 16)}… beklenen=${beklenen.slice(0, 16)}…`,
+  );
+
+  // ⭐ I6: imza SORGU DIZESINI ICERMEMELI.
+  // iyzico dokumani: "The URI path does not include query strings."
+  // Sorgu dahil edilirse HER GET istegi reddedilir (01.09'da olculdu).
+  const sorguDahilImza = createHmac('sha256', SIR)
+    .update(yetki.randomKey + tamYol + (y.govde ?? ''))
+    .digest('hex');
+  check(
+    'I6 ⭐ imza SORGU DIZESINI ICERMIYOR (iyzico yalniz uc yolunu imzalar)',
+    yetki.signature !== sorguDahilImza,
+    'imza sorgu dizesiyle hesaplanmis — her GET reddedilir',
   );
 
   // I4: rastgele SABITLENMEMIS olmali (tekrar saldirisina acik kalmasin).

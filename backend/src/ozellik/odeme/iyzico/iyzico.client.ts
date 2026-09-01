@@ -136,15 +136,33 @@ export class IyzicoClient {
     govde?: unknown,
   ): Promise<T> {
     const url = this.tabanUrl + yol;
+
     // ⚠ TEK rastgele deger: hem imzaya hem baslIga AYNI deger gider.
     // Ikisi ayrisirsa iyzico her istegi "Authentication token is not
     // verified" ile reddeder (01.09'da canli sandbox'ta olculdu).
-    const rastgele = randomBytes(8).toString('hex');
+    //
+    // Bicim iyzico'nun kendi ornegindeki gibi: zaman damgasi + rakamlar.
+    // Deger imzada ve baslIkta ayni oldugu surece icerigi teknik olarak
+    // serbest; yine de saglayicinin kalibindan sapmiyoruz.
+    const rastgele = `${Date.now()}${randomBytes(4).readUInt32BE(0)}`;
+
+    // ⚠⚠ IMZAYA GIREN YOL SORGU DIZESI ICERMEZ.
+    // iyzico dokumani: "The URI path does not include query strings — only
+    // the endpoint path." Yani `/v2/subscription/products?page=1&count=100`
+    // istegi icin imza `/v2/subscription/products` uzerinden hesaplanir.
+    //
+    // OLCULDU (01.09, canli sandbox): sorgu dizesi imzaya dahil edilince
+    // HER GET istegi "Authentication token is not verified" aliyordu.
+    // Sinsi tarafi: govdesiz POST'lar (sorgusuz) ETKILENMEZDI — yani kusur
+    // yalnizca sorgu tasiyan uclarda gorunurdu. Ilk cagrimiz
+    // `urunleriListele` oldugu icin dogrudan carptik.
+    const imzaYolu = yol.split('?')[0];
+
     const cevap = await fetch(url, {
       method: metot,
       headers: {
         'Content-Type': 'application/json',
-        Authorization: this.yetkiBasligi(yol, govde, rastgele),
+        Authorization: this.yetkiBasligi(imzaYolu, govde, rastgele),
         'x-iyzi-rnd': rastgele,
       },
       body: govde ? JSON.stringify(govde) : undefined,
