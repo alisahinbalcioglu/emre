@@ -6,8 +6,9 @@
 #      cd /opt/metaprice
 #      bash scripts/deploy.sh
 #
-#  NEDEN SCRIPT: Hetzner web konsolu TR klavyede  $  >  |  _  karakterlerini
-#  YAZAMIYOR (27.07 ve 31.07'de iki kez yasandi: pg_dump→pg-dump, $VAR→4VAR).
+#  NEDEN SCRIPT: Hetzner web konsolu TR klavyede  $  >  |  _  :  karakterlerini
+#  YAZAMIYOR (27.07 ve 31.07'de iki kez yasandi: pg_dump→pg-dump, $VAR→4VAR;
+#  01.09'da ucuncusu: `npm run seed:paketler` → `npm run seed;paketler`).
 #  Yani kullanici konsola `BUILD_SHA=$(git rev-parse HEAD)` YAZAMAZ. Butun ozel
 #  karakterler bu dosyanin icinde durur; konsolda yazilan satirda hicbiri yok.
 #

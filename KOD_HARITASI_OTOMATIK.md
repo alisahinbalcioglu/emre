@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 444
-Toplam satir: 96240
+Toplam satir: 96247
 Uc nokta: 142
 test:* scripti: 75
 
@@ -15,7 +15,7 @@ test:* scripti: 75
 | `backend/prisma/schema.prisma` | 1233 |
 | `backend/scripts/derleme-kapisi.js` | 68 |
 | `backend/scripts/kisisel-liste-backfill.js` | 107 |
-| `backend/scripts/paketleri-kur.ts` | 391 |
+| `backend/scripts/paketleri-kur.ts` | 397 |
 | `backend/scripts/surum-yaz.js` | 47 |
 | `backend/src/altyapi/auth/auth.controller.ts` | 28 |
 | `backend/src/altyapi/auth/auth.module.ts` | 32 |
@@ -444,7 +444,7 @@ test:* scripti: 75
 | `frontend/test/e2e/kopyala-yapistir.spec.ts` | 364 |
 | `frontend/vitest.config.ts` | 10 |
 | `scripts/backup.sh` | 75 |
-| `scripts/deploy.sh` | 167 |
+| `scripts/deploy.sh` | 168 |
 | `scripts/firma-olcum.sh` | 162 |
 | `scripts/fk-dogrula.sh` | 94 |
 | `scripts/geri-yukle.sh` | 177 |

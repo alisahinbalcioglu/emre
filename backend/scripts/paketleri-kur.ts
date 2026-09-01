@@ -3,9 +3,15 @@
  *  PAKET KURULUMU — iyzico urun/plan + veritabani satirlari
  * ═══════════════════════════════════════════════════════════════════════════
  *
- *  Kullanim:
- *      npm run seed:paketler            → PROVA (hicbir sey yazmaz)
- *      npm run seed:paketler -- --uygula → GERCEKTEN olusturur
+ *  Kullanim (sunucuda, /opt/metaprice icinden):
+ *      docker compose exec backend npm run seedpaketler
+ *      docker compose exec backend npm run seedpaketler -- --uygula
+ *
+ *  ⚠ NEDEN `seedpaketler` (iki nokta YOK): Hetzner web konsolu TR klavyede
+ *  `:` karakterini `;` yaziyor — 01.09'da yasandi, `npm run seed:paketler`
+ *  konsola `npm run seed;paketler` olarak dustu ve "Missing script: seed"
+ *  hatasi verdi. `deploy.sh` basindaki `$ > | _` listesine `:` de eklenmeli.
+ *  Yerel gelistirmede `npm run seed:paketler` de calisir (ayni betik).
  *
  *  ── NEDEN BETIK, NEDEN ELLE PANEL DEGIL ────────────────────────────────
  *  Panelden yapilinca iki referans kodu (urun + plan) elle kopyalanip
