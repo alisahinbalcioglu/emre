@@ -371,7 +371,11 @@ async function main() {
   if (!uygula) {
     console.log(
       '\n  Bu bir PROVAYDI — hicbir sey olusturulmadi.\n' +
-        '  Gercekten kurmak icin:  npm run seed:paketler -- --uygula\n',
+        // ⚠ IKI NOKTA YOK: bu satir Hetzner konsoluna KOPYALANIYOR ve o
+        // konsol `:` karakterini `;` yaziyor (01.09'da yasandi). Onerilen
+        // komut da bu yuzden `seedpaketler` es adini kullanmali — yoksa
+        // betik kendi cikTisinda calismayan bir komut onermis olur.
+        '  Gercekten kurmak icin:  npm run seedpaketler -- --uygula\n',
     );
   } else {
     console.log(

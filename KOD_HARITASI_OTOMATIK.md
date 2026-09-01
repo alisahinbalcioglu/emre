@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 445
-Toplam satir: 96532
+Toplam satir: 96536
 Uc nokta: 142
 test:* scripti: 76
 
@@ -15,7 +15,7 @@ test:* scripti: 76
 | `backend/prisma/schema.prisma` | 1233 |
 | `backend/scripts/derleme-kapisi.js` | 68 |
 | `backend/scripts/kisisel-liste-backfill.js` | 107 |
-| `backend/scripts/paketleri-kur.ts` | 397 |
+| `backend/scripts/paketleri-kur.ts` | 401 |
 | `backend/scripts/surum-yaz.js` | 47 |
 | `backend/src/altyapi/auth/auth.controller.ts` | 28 |
 | `backend/src/altyapi/auth/auth.module.ts` | 32 |
