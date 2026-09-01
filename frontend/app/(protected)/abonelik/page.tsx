@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import api from '@/ortak/lib/api';
 import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
-import { KAPSAM_ETIKET, SEVIYE_ETIKET, tutarYaz, type Paket } from '@/ozellik/odeme/paket-bicim';
+import { KAPSAM_ETIKET, SEVIYE_ETIKET, vitrinFiyati, type Paket } from '@/ozellik/odeme/paket-bicim';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -92,7 +92,8 @@ export default function AbonelikSayfasi() {
     <div className="mx-auto max-w-5xl">
       <h1 className="mb-1 text-2xl font-bold">Abonelik</h1>
       <p className="mb-6 text-sm text-muted-foreground">
-        Paketinizi secin. Fiyatlar KDV haric aylik tutarlardir.
+        Paketinizi secin. Dolar tutarlari referanstir; tahsilat TL olarak,
+        KDV dahil yapilir.
       </p>
 
       {/* Mevcut durum ozeti */}
@@ -159,10 +160,17 @@ export default function AbonelikSayfasi() {
               )}
 
               <div className="mb-4">
+                {/* VITRIN: dolar buyuk, TL altinda. Sozlesme tutari TL'dir;
+                    ekran hangisinin baglayici oldugunu saklamaz. */}
                 <span className="text-2xl font-bold">
-                  {tutarYaz(p.surum.tutar, p.surum.paraBirimi)}
+                  {vitrinFiyati(p.surum).ana}
                 </span>
                 <span className="text-sm text-muted-foreground"> / ay</span>
+                {vitrinFiyati(p.surum).alt && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {vitrinFiyati(p.surum).alt}
+                  </p>
+                )}
                 {p.surum.denemeGunu > 0 && (
                   <p className="mt-1 text-xs text-emerald-700">
                     {p.surum.denemeGunu} gun ucretsiz deneme

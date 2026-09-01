@@ -4,9 +4,25 @@
 
 export interface PaketSurumu {
   paketSurumuId: string;
-  /** ⚠ STRING olarak gelir, number DEGIL — sebebi asagida. */
+  /**
+   * SOZLESME TUTARI — karttan cekilen, faturaya yazilan tutar (TL, KDV dahil).
+   * ⚠ STRING olarak gelir, number DEGIL — sebebi asagida.
+   */
   tutar: string;
   paraBirimi: string;
+  /**
+   * VITRIN (capa) — musteriye buyuk puntoyla gosterilen dolar tutari.
+   *
+   * ⚠ BU BIR FIYAT DEGIL, BIR ETIKETTIR. Hicbir tahsilat, fatura ya da
+   * erisim karari bunu okumaz; sozlesme tutari daima `tutar`dir (TL).
+   * Ayrim kasitli: doviz cinsinden BEDEL BELIRLEMEK ile doviz cinsinden
+   * FIYAT GOSTERMEK ayri seylerdir.
+   *
+   * null olabilir (eski surumler, havale paketleri) — o durumda ekran
+   * yalnizca TL gosterir.
+   */
+  referansTutar: string | null;
+  referansParaBirimi: string | null;
   periyot: string;
   periyotAdedi: number;
   denemeGunu: number;
@@ -51,4 +67,41 @@ export function tutarYaz(tutar: string, paraBirimi: string): string {
   // Binlik ayraci — TR bicimi: 12.345,67
   const binlikli = tam.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
   return `${sembol}${binlikli},${kesir.padEnd(2, '0').slice(0, 2)}`;
+}
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  VITRIN — musteriye ne gosterilecek
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ *  Kullanici karari (29.08): fiyat DOLAR olarak sunulur, tahsilat TL yapilir.
+ *  Ticari gerekce: "$24" kucuk bir tutar gibi durur, "1.250 TL" buyuk bir
+ *  para gibi. Ayvaz'in euro fiyat listesi + TL fatura kesmesiyle ayni kalip.
+ *
+ *  ⚠ SOZLESME TUTARI DAIMA TL'DIR. Dolar yalnizca capadir; bu fonksiyon
+ *  ikisini AYRI dondurur ki ekran hangisinin baglayici oldugunu saklamasin.
+ *  "≈" isareti ve "olarak tahsil edilir" ifadesi bilincli: musteri neyin
+ *  cekilecegini net gormeli, sonradan surpriz olmamali.
+ *
+ *  Capa YOKSA (null) yalnizca TL doner — uydurma dolar URETILMEZ.
+ */
+export interface VitrinFiyati {
+  /** Buyuk puntoyla gosterilecek — capa varsa dolar, yoksa TL. */
+  ana: string;
+  /** Altinda kucuk punto — capa varsa TL aciklamasi, yoksa null. */
+  alt: string | null;
+}
+
+export function vitrinFiyati(s: PaketSurumu): VitrinFiyati {
+  const sozlesme = tutarYaz(s.tutar, s.paraBirimi);
+
+  if (!s.referansTutar || !s.referansParaBirimi) {
+    // Capa yok → yalniz sozlesme tutari. Dolar UYDURULMAZ.
+    return { ana: sozlesme, alt: null };
+  }
+
+  return {
+    ana: tutarYaz(s.referansTutar, s.referansParaBirimi),
+    alt: `≈ ${sozlesme} olarak tahsil edilir (KDV dahil)`,
+  };
 }

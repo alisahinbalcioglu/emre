@@ -147,8 +147,14 @@ export class SatinAlmaServisi {
           surum: {
             paketSurumuId: s.id,
             // Decimal → string: para JS float'ina DUSURULMEZ (P2 turu dersi).
+            // SOZLESME tutari — karttan cekilen, faturaya yazilan (TL, KDV dahil).
             tutar: s.tutar.toFixed(2),
             paraBirimi: s.paraBirimi,
+            // VITRIN (capa) — yalnizca gosterim. Hicbir tahsilat/fatura
+            // bunu okumaz; on yuz buyuk puntoyla bunu, altinda sozlesme
+            // tutarini gosterir. null ise ekran yalniz TL gosterir.
+            referansTutar: s.referansTutar ? s.referansTutar.toFixed(2) : null,
+            referansParaBirimi: s.referansParaBirimi,
             periyot: s.periyot,
             periyotAdedi: s.periyotAdedi,
             denemeGunu: s.denemeGunu,

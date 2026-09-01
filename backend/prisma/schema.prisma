@@ -912,10 +912,36 @@ model PaketSurumu {
   iyzicoPlanKodu String @unique // pricingPlanReferenceCode
   iyzicoUrunKodu String // productReferenceCode
 
-  /// Fiyat — SADECE kayit amacli, tahsilati iyzico yapar.
+  /// SOZLESME TUTARI — kartlan gercekten cekilen, faturaya yazilan tutar.
+  /// ⚠ KDV DAHIL brut tutardir: iyzico abonelik planinda ayri KDV satiri
+  /// YOKTUR, plan fiyati ne ise o cekilir. `fatura.servisi` bu tutari
+  /// KDV DAHIL kabul edip matrahi geriye hesaplar (satir 64-67).
   /// Decimal(12,2): para asla float tutulmaz (bkz. P2 turu, 03.08 dersi).
   tutar        Decimal @db.Decimal(12, 2)
   paraBirimi   String  @default("TRY") // TRY | USD | EUR
+
+  // ── GORUNEN FIYAT (capa) — 29.08 kullanici karari ────────────────────
+  //
+  // Musteriye "$28/ay" denir, karttan TL cekilir. Gerekce ticari: "24
+  // dolar" kucuk bir tutar gibi durur, "1.250 TL" buyuk bir para gibi.
+  // Ayvaz'in euro fiyat listesi + TL fatura kesmesiyle ayni kalip.
+  //
+  // ⚠ SOZLESME TUTARI `tutar`DIR (TL). Bu alanlar YALNIZCA GOSTERIM icin;
+  // hicbir tahsilat, fatura ya da erisim karari bunlari OKUMAZ. Ayrim
+  // kasitli: doviz cinsinden BEDEL BELIRLEMEK ile doviz cinsinden FIYAT
+  // GOSTERMEK ayri seylerdir — ikincisi yerlesikler arasi sozlesmelerde
+  // soru isareti dogurmaz.
+  //
+  // ⚠ ZAMANLA KAYAR: TL sabitlendigi icin kur oynadikca bu capa gercekten
+  // uzaklasir. Bu yuzden capa YALNIZCA SATIS ANINDA (satistaki surumde)
+  // gosterilir; mevcut abone kendi TL tutarini gorur. Kur oynayinca YENI
+  // surum acilir ve capa yeniden dogru olur.
+  referansTutar      Decimal? @db.Decimal(12, 2) // orn. 28.00
+  referansParaBirimi String? // orn. "USD"
+  /// Bu surum kurulurken kullanilan TCMB kuru ve tarihi — DENETIM IZI.
+  /// "Bu fiyat nereden cikti" sorusunun cevabi; tahminle degil kayitla.
+  kurDegeri          Decimal? @db.Decimal(12, 4)
+  kurTarihi          DateTime?
   periyot      String  @default("MONTHLY") // DAILY|WEEKLY|MONTHLY|YEARLY
   periyotAdedi Int     @default(1)
   denemeGunu   Int     @default(0)

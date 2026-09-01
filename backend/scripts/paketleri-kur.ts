@@ -35,10 +35,29 @@ import { odemeYapilandirildiMi } from '../src/ozellik/odeme/yapilandirma';
 /**
  * ⚠ KURULACAK PAKETLER — fiyatlar burada TEK YERDE durur.
  *
- * FIYATLAR KDV HARIC ve USD (kullanici karari 29.08):
+ * ⭐ GORUNEN FIYAT DOLAR, SOZLESME TUTARI TL (kullanici karari 29.08).
+ *
+ * KDV HARIC USD referanslar:
  *   Mekanik  basic 22 $  · pro 28 $
  *   Elektrik basic 22 $  · pro 28 $
  *   MEP      42 $ — iki PRO planin %25 indirimlisi (28+28=56 → 42)
+ *
+ * TL plan fiyati SU FORMULLE hesaplanir ve iyzico'ya TL olarak yazilir:
+ *     TL(brut) = YUVARLA( USD x TCMB_kuru x (1 + KDV/100) )
+ *
+ * ⚠ NEDEN TL PLAN, NEDEN USD DEGIL — OLCULDU:
+ *   · iyzico abonelik planinin fiyati ve para birimi SABITTIR; kuru takip
+ *     eden degisken tutar abonelik urununde MUMKUN DEGIL.
+ *   · Abonelik dokumani "yabanci para biriminde sadece yabanci kart
+ *     kullanilabilir" diyor — musteriler Turk karti tasiyor.
+ *   · USD plan calissa bile cevrimi IYZICO kendi kurundan yapardi;
+ *     "kesim tarihi kuru" kontrolu yine bizde olmazdi.
+ * Dolar yalnizca VITRINDE durur (referansTutar); sozlesme TL'dir.
+ *
+ * ⚠ KUR KILIDI BEDAVA GELIYOR: plan fiyati degismedigi icin musteri
+ * girdigi gunun kurunda KALIR. Kur oynayinca YENI SURUM acilir, yeni
+ * uyeler yeni fiyattan gelir, eskiler kendi fiyatinda devam eder —
+ * `PaketSurumu` tam bunun icin tasarlandi. Ek kod GEREKMEZ.
  *
  * ⚠ KULLANICI HAKKI HERKESTE 2 (sahip + 1 alt kullanici) ve SABITTIR.
  * ADIM 0 raporundaki "18 kademeli plan zorunlu" bulgusu DEGISKEN koltuk
@@ -63,8 +82,7 @@ const PAKETLER = [
     kullaniciHakki: 2,
     aylikTeklifHakki: null as number | null,
     dwgAktif: false,
-    tutar: 22.0,
-    paraBirimi: 'USD' as const,
+    usdTutar: 22.0,
     periyot: 'MONTHLY' as const,
     denemeGunu: 30,
     sira: 10,
@@ -78,8 +96,7 @@ const PAKETLER = [
     kullaniciHakki: 2,
     aylikTeklifHakki: null as number | null,
     dwgAktif: true,
-    tutar: 28.0,
-    paraBirimi: 'USD' as const,
+    usdTutar: 28.0,
     periyot: 'MONTHLY' as const,
     denemeGunu: 30,
     sira: 20,
@@ -93,8 +110,7 @@ const PAKETLER = [
     kullaniciHakki: 2,
     aylikTeklifHakki: null as number | null,
     dwgAktif: false,
-    tutar: 22.0,
-    paraBirimi: 'USD' as const,
+    usdTutar: 22.0,
     periyot: 'MONTHLY' as const,
     denemeGunu: 30,
     sira: 30,
@@ -108,8 +124,7 @@ const PAKETLER = [
     kullaniciHakki: 2,
     aylikTeklifHakki: null as number | null,
     dwgAktif: true,
-    tutar: 28.0,
-    paraBirimi: 'USD' as const,
+    usdTutar: 28.0,
     periyot: 'MONTHLY' as const,
     denemeGunu: 30,
     sira: 40,
@@ -126,13 +141,38 @@ const PAKETLER = [
     kullaniciHakki: 2,
     aylikTeklifHakki: null as number | null,
     dwgAktif: true,
-    tutar: 42.0,
-    paraBirimi: 'USD' as const,
+    usdTutar: 42.0,
     periyot: 'MONTHLY' as const,
     denemeGunu: 30,
     sira: 50,
   },
 ];
+
+/**
+ * TL fiyatini "psikolojik" bicime yuvarlar: 1267.20 → 1299, 1612.80 → 1649.
+ *
+ * Kural: yuz basamagina yuvarla, sonra 49 ya da 99'a tamamla — hangisi
+ * YUKARIDA ve YAKINSA. Asagi yuvarlama YAPILMAZ: hesaplanan bedelin altina
+ * dusmek gelir kaybidir ve kur zaten anlik, kusurata sadakatin musteriye
+ * faydasi yok.
+ */
+export function fiyatYuvarla(ham: number): number {
+  const yuz = Math.floor(ham / 100) * 100;
+  for (const aday of [yuz + 49, yuz + 99, yuz + 149, yuz + 199]) {
+    if (aday >= ham) return aday;
+  }
+  return Math.ceil(ham / 100) * 100 + 99;
+}
+
+/** USD referanstan KDV DAHIL TL sozlesme tutarini hesaplar. */
+export function tlFiyatHesapla(
+  usd: number,
+  kur: number,
+  kdvOrani: number,
+): { ham: number; yuvarlanmis: number } {
+  const ham = usd * kur * (1 + kdvOrani / 100);
+  return { ham, yuvarlanmis: fiyatYuvarla(ham) };
+}
 
 const uygula = process.argv.includes('--uygula');
 const prisma = new PrismaClient();
@@ -158,6 +198,27 @@ async function main() {
     );
     process.exit(2); // 2 = ON KOSUL YOK (regresyon sozlesmesi)
   }
+
+  // ── TCMB kuru: fiyat BURADAN turetilir, elle girilmez ────────────────
+  // Elle girilen kur "bu fiyat nereden cikti" sorusunu cevapsiz birakir.
+  // Cekilen deger + tarih PaketSurumu'na YAZILIR (denetim izi).
+  const { ExchangeRatesService } = await import(
+    '../src/ozellik/fiyat/exchange-rates/exchange-rates.service'
+  );
+  const kurServisi = new ExchangeRatesService();
+  const kurlar = await kurServisi.getRates();
+  const kur = kurlar.usdTry;
+  const kdvOrani = Number(config.get('KDV_ORANI') ?? 20);
+
+  if (!kur || kur <= 1) {
+    console.error(
+      `\n✗ Gecerli TCMB kuru alinamadi (usdTry=${kur}).\n` +
+        '  Fiyat hesaplanamaz; kur alinamadan plan kurulmaz.\n',
+    );
+    process.exit(1);
+  }
+  console.log(`  TCMB kuru  : 1 USD = ${kur} TL  (${kurlar.date ?? 'tarih yok'})`);
+  console.log(`  KDV orani  : %${kdvOrani}`);
 
   const iyzico = new IyzicoClient(config);
   const taban = config.get('IYZICO_TABAN_URL') ?? 'https://sandbox-api.iyzipay.com';
@@ -187,6 +248,17 @@ async function main() {
 
   for (const p of PAKETLER) {
     baslik(`${p.kod} · ${p.ad}`);
+
+    // GORUNEN dolar → SOZLESME TL'si (KDV DAHIL, yuvarlanmis)
+    const { ham, yuvarlanmis } = tlFiyatHesapla(p.usdTutar, kur, kdvOrani);
+    const tlTutar = yuvarlanmis;
+    console.log(
+      `  vitrin     : $${p.usdTutar}/ay  (KDV haric referans)`,
+      );
+    console.log(
+      `  sozlesme   : ${tlTutar} TL/ay  KDV DAHIL  ` +
+        `(ham ${ham.toFixed(2)} → yuvarlandi)`,
+    );
 
     // ── Veritabaninda zaten var mi? ────────────────────────────────────
     const mevcutPaket = await prisma.paket.findUnique({
@@ -223,13 +295,14 @@ async function main() {
     if (!uygula) {
       console.log(
         `  · plan OLUSTURULACAK: "${planAdi}" — ` +
-          `${p.tutar} ${p.paraBirimi}/${p.periyot}, deneme ${p.denemeGunu} gun`,
+          `${tlTutar} TRY/${p.periyot}, deneme ${p.denemeGunu} gun`,
       );
     } else {
       const plan = await iyzico.planOlustur(urunKodu!, {
         ad: planAdi,
-        tutar: p.tutar,
-        paraBirimi: p.paraBirimi,
+        // ⚠ iyzico'ya TL yazilir — vitrindeki dolar DEGIL.
+        tutar: tlTutar,
+        paraBirimi: 'TRY',
         periyot: p.periyot,
         periyotAdedi: 1,
         denemeGunu: p.denemeGunu,
@@ -241,7 +314,7 @@ async function main() {
     // ── Veritabani satirlari ───────────────────────────────────────────
     if (!uygula) {
       console.log(`  · Paket + PaketSurumu satiri YAZILACAK (kod=${p.kod})`);
-      ozet.push(`${p.kod}: olusturulacak`);
+      ozet.push(`${p.kod}: olusturulacak — $${p.usdTutar} → ${tlTutar} TL`);
       continue;
     }
 
@@ -268,8 +341,15 @@ async function main() {
         surumNo: 1,
         iyzicoPlanKodu: planKodu,
         iyzicoUrunKodu: urunKodu!,
-        tutar: p.tutar,
-        paraBirimi: p.paraBirimi,
+        // SOZLESME tutari (TL, KDV dahil) — tahsilat ve fatura bunu okur.
+        tutar: tlTutar,
+        paraBirimi: 'TRY',
+        // VITRIN (capa) — yalnizca gosterim; hicbir tahsilat bunu okumaz.
+        referansTutar: p.usdTutar,
+        referansParaBirimi: 'USD',
+        // DENETIM IZI: "bu fiyat nereden cikti" sorusunun cevabi.
+        kurDegeri: kur,
+        kurTarihi: new Date(),
         periyot: p.periyot,
         periyotAdedi: 1,
         denemeGunu: p.denemeGunu,
@@ -277,7 +357,7 @@ async function main() {
       },
     });
     console.log('  ✓ veritabani satirlari yazildi');
-    ozet.push(`${p.kod}: OLUSTURULDU (plan=${planKodu})`);
+    ozet.push(`${p.kod}: OLUSTURULDU — $${p.usdTutar} → ${tlTutar} TL (plan=${planKodu})`);
   }
 
   baslik('OZET');
@@ -294,9 +374,17 @@ async function main() {
   }
 }
 
-main()
-  .catch((e) => {
-    console.error('\n✗ HATA:', e instanceof Error ? e.message : e);
-    process.exit(1);
-  })
-  .finally(() => prisma.$disconnect());
+// ⚠ YALNIZCA DOGRUDAN CALISTIRILINCA KOS.
+// Bu dosya `fiyatYuvarla` / `tlFiyatHesapla` saf fonksiyonlarini DISA ACAR
+// ve test paketi (test/fiyat-capasi-test.ts) onlari import eder. Koruma
+// olmadan import ETMEK betigi CALISTIRIR: test, iyzico'ya baglanmaya
+// calisip "ortam degiskeni eksik" ile cikis 2 verirdi (olculdu — ilk
+// kosumda tam olarak bu oldu).
+if (require.main === module) {
+  main()
+    .catch((e) => {
+      console.error('\n✗ HATA:', e instanceof Error ? e.message : e);
+      process.exit(1);
+    })
+    .finally(() => prisma.$disconnect());
+}

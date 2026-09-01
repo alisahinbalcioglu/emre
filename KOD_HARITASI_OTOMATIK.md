@@ -3,19 +3,19 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 443
-Toplam satir: 95813
+Kod dosyasi: 444
+Toplam satir: 96240
 Uc nokta: 142
-test:* scripti: 74
+test:* scripti: 75
 
 ## 1 · Dosyalar ve satir sayilari
 
 | Dosya | Satir |
 |---|---|
-| `backend/prisma/schema.prisma` | 1207 |
+| `backend/prisma/schema.prisma` | 1233 |
 | `backend/scripts/derleme-kapisi.js` | 68 |
 | `backend/scripts/kisisel-liste-backfill.js` | 107 |
-| `backend/scripts/paketleri-kur.ts` | 303 |
+| `backend/scripts/paketleri-kur.ts` | 391 |
 | `backend/scripts/surum-yaz.js` | 47 |
 | `backend/src/altyapi/auth/auth.controller.ts` | 28 |
 | `backend/src/altyapi/auth/auth.module.ts` | 32 |
@@ -141,7 +141,7 @@ test:* scripti: 74
 | `backend/src/ozellik/odeme/abonelik/erisim.guard.ts` | 90 |
 | `backend/src/ozellik/odeme/abonelik/erisim.servisi.ts` | 269 |
 | `backend/src/ozellik/odeme/abonelik/mutabakat.job.ts` | 155 |
-| `backend/src/ozellik/odeme/abonelik/satinalma.servisi.ts` | 520 |
+| `backend/src/ozellik/odeme/abonelik/satinalma.servisi.ts` | 526 |
 | `backend/src/ozellik/odeme/dunning/dunning.metinleri.ts` | 165 |
 | `backend/src/ozellik/odeme/dunning/dunning.servisi.ts` | 314 |
 | `backend/src/ozellik/odeme/eposta/eposta.servisi.ts` | 132 |
@@ -191,6 +191,7 @@ test:* scripti: 74
 | `backend/test/firma-izolasyon-test.ts` | 315 |
 | `backend/test/fixture-anonim.ts` | 330 |
 | `backend/test/fixture-dogrula.ts` | 224 |
+| `backend/test/fiyat-capasi-test.ts` | 185 |
 | `backend/test/gercek-dosya-test.ts` | 263 |
 | `backend/test/gs6b-teshis.ts` | 85 |
 | `backend/test/guvenlik-turu-2-test.ts` | 338 |
@@ -230,7 +231,7 @@ test:* scripti: 74
 | `backend/test/pk3-repo-kapsama-test.ts` | 79 |
 | `backend/test/pk9-sessiz-indeks-test.ts` | 97 |
 | `backend/test/product-index-test.ts` | 479 |
-| `backend/test/regression-all.ts` | 438 |
+| `backend/test/regression-all.ts` | 454 |
 | `backend/test/s45-malzeme-aile-test.ts` | 440 |
 | `backend/test/s45-olcum.ts` | 188 |
 | `backend/test/sozluk-golgeleme-olcum.ts` | 125 |
@@ -243,7 +244,7 @@ test:* scripti: 74
 | `backend/test/varyant-surukleme-test.ts` | 189 |
 | `backend/test/yuzey-genisletme-test.ts` | 193 |
 | `frontend/app/(protected)/abonelik/donus/page.tsx` | 108 |
-| `frontend/app/(protected)/abonelik/page.tsx` | 199 |
+| `frontend/app/(protected)/abonelik/page.tsx` | 207 |
 | `frontend/app/(protected)/dashboard/page.tsx` | 223 |
 | `frontend/app/(protected)/dwg-workspace/page.tsx` | 79 |
 | `frontend/app/(protected)/labor-firms/[firmaId]/page.tsx` | 491 |
@@ -377,9 +378,9 @@ test:* scripti: 74
 | `frontend/ozellik/kutuphane/oksuz-kutuphane-uyarisi.test.ts` | 136 |
 | `frontend/ozellik/kutuphane/oksuz-kutuphane-uyarisi.ts` | 60 |
 | `frontend/ozellik/odeme/AbonelikSeridi.tsx` | 51 |
-| `frontend/ozellik/odeme/erisim-durumu.test.ts` | 138 |
+| `frontend/ozellik/odeme/erisim-durumu.test.ts` | 183 |
 | `frontend/ozellik/odeme/erisim-durumu.ts` | 111 |
-| `frontend/ozellik/odeme/paket-bicim.ts` | 55 |
+| `frontend/ozellik/odeme/paket-bicim.ts` | 108 |
 | `frontend/ozellik/tablo/disiplin.ts` | 13 |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 252 |
 | `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 3680 |
@@ -621,6 +622,7 @@ test:* scripti: 74
 | `backend/test/firma-izolasyon-test.ts` | `@prisma/client` `../src/ozellik/teklif/quotes/quotes.service` `../src/altyapi/auth/kimlik` `../src/ozellik/cikti/quote-formats/quote-formats.service` `../src/ozellik/kutuphane/library/library.service` `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `reflect-metadata` |
 | `backend/test/fixture-anonim.ts` | `fs` `path` `jszip` |
 | `backend/test/fixture-dogrula.ts` | `fs` `path` `./fixture-anonim` `../src/ozellik/giris/excel-grid/excel-grid.service` `jszip` |
+| `backend/test/fiyat-capasi-test.ts` | `../scripts/paketleri-kur` |
 | `backend/test/gercek-dosya-test.ts` | `fs` `../src/ozellik/giris/excel-grid/excel-grid.service` `../src/ozellik/teklif/quotes/quotes.service` `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/cikti/quote-formats/format-engine` `../src/ozellik/teklif/quotes/export-engine` |
 | `backend/test/gs6b-teshis.ts` | `fs` `../src/ozellik/giris/excel-grid/excel-grid.service` |
 | `backend/test/guvenlik-turu-2-test.ts` | `node:fs` `node:path` `../src/altyapi/auth/decorators/roles.decorator` `../src/ozellik/kutuphane/labor/labor.controller` `../src/ozellik/teklif/quotes/quotes.controller` `../src/ozellik/kutuphane/brands/brands.controller` `../src/modules/dwg-engine/dwg-engine.controller` `../src/modules/dwg-engine/dwg-sahiplik.servisi` `reflect-metadata` |
@@ -1058,6 +1060,7 @@ test:* scripti: 74
 | `backend/package.json` | `test:guvenlik2` | `ts-node test/guvenlik-turu-2-test.ts` |
 | `backend/package.json` | `test:firma-ekseni` | `ts-node test/firma-ekseni-test.ts` |
 | `backend/package.json` | `test:ortam` | `ts-node test/ortam-degiskenleri-test.ts` |
+| `backend/package.json` | `test:fiyat-capasi` | `ts-node test/fiyat-capasi-test.ts` |
 | `frontend/package.json` | `test:e2e` | `playwright test` |
 | `frontend/package.json` | `test:e2e-golden` | `node test/e2e-golden/run.mjs` |
 

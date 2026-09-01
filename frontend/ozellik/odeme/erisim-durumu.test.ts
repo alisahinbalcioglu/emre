@@ -6,7 +6,7 @@ import {
   seritSinifi,
   type ErisimKarari,
 } from './erisim-durumu';
-import { tutarYaz } from './paket-bicim';
+import { tutarYaz, vitrinFiyati } from './paket-bicim';
 
 /**
  * ADIM 2 — on yuz erisim mantigi.
@@ -133,5 +133,50 @@ describe('paket — tutar bicimleme', () => {
   it('★ uzun ondalik JS float yuvarlamasina TAKILMAZ (metin islenir)', () => {
     // 0.1+0.2 tuzagi: metin olarak islendigi icin bozulma YOK.
     expect(tutarYaz('1000000.05', 'TRY')).toBe('₺1.000.000,05');
+  });
+});
+
+describe('paket — vitrin fiyati (dolar capa, TL sozlesme)', () => {
+  const temelSurum = {
+    paketSurumuId: 'ps1',
+    tutar: '1649.00',
+    paraBirimi: 'TRY',
+    referansTutar: '28.00',
+    referansParaBirimi: 'USD',
+    periyot: 'MONTHLY',
+    periyotAdedi: 1,
+    denemeGunu: 30,
+  };
+
+  it('capa VARSA dolar buyuk, TL altta', () => {
+    const v = vitrinFiyati(temelSurum);
+    expect(v.ana).toBe('$28,00');
+    expect(v.alt).toContain('₺1.649,00');
+  });
+
+  it('★ alt satir TAHSILATIN TL oldugunu ACIKCA soyler', () => {
+    // Musteri neyin cekilecegini net gormeli; "≈" ve "tahsil edilir"
+    // ifadesi bilincli — sonradan surpriz olmamali.
+    const v = vitrinFiyati(temelSurum);
+    expect(v.alt).toMatch(/tahsil edilir/);
+    expect(v.alt).toMatch(/KDV dahil/);
+  });
+
+  it('★ capa YOKSA dolar UYDURULMAZ — yalniz TL gosterilir', () => {
+    const v = vitrinFiyati({
+      ...temelSurum,
+      referansTutar: null,
+      referansParaBirimi: null,
+    });
+    expect(v.ana).toBe('₺1.649,00');
+    expect(v.alt).toBeNull();
+  });
+
+  it('★ capa SOZLESME TUTARINI GIZLEMEZ (ikisi de ekranda)', () => {
+    // En tehlikeli tasarim hatasi: yalniz dolari gosterip TL'yi saklamak.
+    // Musteri 28 dolar sanip 1649 TL cekilince guven kaybi olur.
+    const v = vitrinFiyati(temelSurum);
+    expect(v.alt).not.toBeNull();
+    expect(v.alt).toContain('1.649');
   });
 });

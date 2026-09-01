@@ -384,6 +384,22 @@ const SUITES: Suite[] = [
   //    ölçüldü, kusur üründe değil ÖLÇÜTTEYDİ — desen satıra sabitlendi.
   //    MUTASYONLA ÖLÇÜLDÜ: .env.example'a sahte anahtar konunca G1 kırmızı.
   { ad: 'Ortam değişkenleri: kod ↔ compose ↔ .env.example (E/G)', script: 'test:ortam', zincir: 'Z0' },
+  // ── 29.08.2026 — FİYAT ÇAPASI (Y/H/K). DB ve AĞ GEREKTİRMEZ.
+  //    Kullanıcı kararı: müşteriye "$28/ay" gösterilir, karttan TL çekilir.
+  //    İki kavram KARIŞIRSA para hatası olur:
+  //      `tutar` (TL)          → SÖZLEŞME; kart bundan çekilir, fatura bunu yazar
+  //      `referansTutar` (USD) → VİTRİN; hiçbir tahsilat/fatura bunu okumaz
+  //    Y  Yuvarlama ASLA aşağı inmez (bedelin altına düşmek gelir kaybıdır)
+  //       ve …49/…99 biçimini korur; fark 100 TL'yi aşmaz.
+  //    H  TL hesabı KDV DAHİL üretir — çünkü iyzico planında ayrı KDV satırı
+  //       yok ve `fatura.servisi` geleni KDV dahil kabul edip matrahı GERİYE
+  //       hesaplıyor. H2 bu iki formülün AYRIŞMADIĞINI ölçer; ayrışırsa KDV
+  //       yanlış beyan edilir.
+  //    K  Kur değişimi fiyata doğru yansır; K3 kur kilidinin çalıştığını
+  //       (eski müşterinin dolar karşılığının düşmesini) belgeler.
+  //    MUTASYONLA ÖLÇÜLDÜ (2/2 öldü): aşağı yuvarlamaya izin verilince Y1 ·
+  //    KDV çarpanı kaldırılınca H1/H2 kırmızı.
+  { ad: 'Fiyat çapası: vitrin dolar / sözleşme TL (Y/H/K)', script: 'test:fiyat-capasi', zincir: 'Z0' },
 ];
 
 function dbErisilebilir(): boolean {
