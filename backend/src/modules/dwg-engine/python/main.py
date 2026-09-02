@@ -103,7 +103,12 @@ import hashlib
 # Birim tespit motorunun surumu. Cache'lenmis state bu surumu tasir; surum
 # degisince dedup ATLANIR ve dosya yeniden parse edilir (bkz. upload_async).
 # unit_detect.py'de karar mantigi degistiginde BU DEGERI ARTIR.
-DETECTOR_VERSION = "2026-08-11-kesisim"
+# KAPI: tests/test_detector_version_kapisi.py bunu MUHURLER — unit_detect'in
+# karar mantigi (AST) degisip bu deger sabit kalirsa test KIRMIZI yanar.
+# 02.09: yorum tek basina yetmedi, sprinkler fizik capasi degisti ve deger
+# artirilmadan commit edildi; 24 saat boyunca dedup eski birimi servis
+# edecekti. Yorum kanit degildir — kapi eklendi.
+DETECTOR_VERSION = "2026-09-02-patlatilmis-sembol"
 
 # Default 24 saat; env DWG_CACHE_TTL (saniye) ile ayarlanabilir.
 # Disk maliyeti kabul edilebilir: dedup ayni dosyayi coklamaz, cleanup her

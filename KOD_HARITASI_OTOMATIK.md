@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 454
-Toplam satir: 99765
+Kod dosyasi: 455
+Toplam satir: 99914
 Uc nokta: 142
 test:* scripti: 78
 
@@ -45,12 +45,13 @@ test:* scripti: 78
 | `backend/src/modules/dwg-engine/python/deploy-to-cloudrun.sh` | 71 |
 | `backend/src/modules/dwg-engine/python/geometry.py` | 757 |
 | `backend/src/modules/dwg-engine/python/graph.py` | 356 |
-| `backend/src/modules/dwg-engine/python/main.py` | 1619 |
+| `backend/src/modules/dwg-engine/python/main.py` | 1624 |
 | `backend/src/modules/dwg-engine/python/models.py` | 99 |
 | `backend/src/modules/dwg-engine/python/parse_worker.py` | 83 |
 | `backend/src/modules/dwg-engine/python/pipe_segments.py` | 1875 |
 | `backend/src/modules/dwg-engine/python/tests/__init__.py` | 1 |
 | `backend/src/modules/dwg-engine/python/tests/test_block_to_line_split.py` | 104 |
+| `backend/src/modules/dwg-engine/python/tests/test_detector_version_kapisi.py` | 144 |
 | `backend/src/modules/dwg-engine/python/tests/test_pipe_segments.py` | 85 |
 | `backend/src/modules/dwg-engine/python/tests/test_scale_normalization.py` | 127 |
 | `backend/src/modules/dwg-engine/python/tests/test_split_mode.py` | 149 |
@@ -506,6 +507,7 @@ test:* scripti: 78
 | `backend/src/modules/dwg-engine/python/parse_worker.py` | `main` |
 | `backend/src/modules/dwg-engine/python/pipe_segments.py` | `typing` `ezdxf` `converter` `collections` |
 | `backend/src/modules/dwg-engine/python/tests/test_block_to_line_split.py` | `__future__` `pipe_segments` |
+| `backend/src/modules/dwg-engine/python/tests/test_detector_version_kapisi.py` | `__future__` |
 | `backend/src/modules/dwg-engine/python/tests/test_pipe_segments.py` | `__future__` `pipe_segments` |
 | `backend/src/modules/dwg-engine/python/tests/test_scale_normalization.py` | `__future__` `main` |
 | `backend/src/modules/dwg-engine/python/tests/test_split_mode.py` | `pipe_segments` |
