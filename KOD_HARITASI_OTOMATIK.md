@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 452
-Toplam satir: 98012
+Toplam satir: 98063
 Uc nokta: 142
 test:* scripti: 78
 
@@ -450,7 +450,7 @@ test:* scripti: 78
 | `frontend/test/e2e/grid.spec.ts` | 206 |
 | `frontend/test/e2e/kopyala-yapistir.spec.ts` | 364 |
 | `frontend/vitest.config.ts` | 10 |
-| `scripts/abonelik-olcum.sh` | 139 |
+| `scripts/abonelik-olcum.sh` | 190 |
 | `scripts/backup.sh` | 75 |
 | `scripts/deploy.sh` | 168 |
 | `scripts/firma-olcum.sh` | 162 |
