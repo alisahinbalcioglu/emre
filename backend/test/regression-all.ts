@@ -415,6 +415,8 @@ const SUITES: Suite[] = [
   //    I4 rastgelenin sabitlenmediğini ölçer (tekrar saldırısı).
   //    MUTASYONLA ÖLÇÜLDÜ: eski kusur geri konunca I1, I4-b ve I5 kırmızı.
   { ad: 'iyzico yetki başlığı: randomKey eşliği (I1-I5)', script: 'test:iyzico-basligi', zincir: 'Z0' },
+  { ad: 'Abonelik ölçüm betiği: SQL geçerliliği (S1-S4b)', script: 'test:olcum-sorgu', zincir: 'Z0' },
+  { ad: 'Satın alma yolu: fatura kapısı + miras muafiyeti (P1-P7)', script: 'test:satinalma', zincir: 'Z0' },
 ];
 
 function dbErisilebilir(): boolean {

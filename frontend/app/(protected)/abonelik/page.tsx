@@ -4,6 +4,14 @@ import { useCallback, useEffect, useState } from 'react';
 import api from '@/ortak/lib/api';
 import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
 import { KAPSAM_ETIKET, SEVIYE_ETIKET, vitrinFiyati, type Paket } from '@/ozellik/odeme/paket-bicim';
+import {
+  ALAN_ETIKET,
+  ZORUNLU_ALANLAR,
+  bosFaturaKimligi,
+  eksikAlanlar,
+  govdeyeCevir,
+  type FaturaKimligi,
+} from '@/ozellik/odeme/fatura-kimligi';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -30,6 +38,9 @@ export default function AbonelikSayfasi() {
   const [hata, setHata] = useState<string | null>(null);
   const [secilen, setSecilen] = useState<string | null>(null);
   const [formHtml, setFormHtml] = useState<string | null>(null);
+  const [faturaAcik, setFaturaAcik] = useState(false);
+  const [fatura, setFatura] = useState<FaturaKimligi>(bosFaturaKimligi());
+  const [gonderiliyor, setGonderiliyor] = useState(false);
 
   const paketleriGetir = useCallback(async () => {
     try {
@@ -46,21 +57,42 @@ export default function AbonelikSayfasi() {
     paketleriGetir();
   }, [paketleriGetir]);
 
-  async function satinAl(paketSurumuId: string) {
-    setSecilen(paketSurumuId);
+  /**
+   * Paket secildi — ONCE fatura kimligi toplanir, SONRA kart formu acilir.
+   *
+   * ⚠ 02.09'DA OLCULDU: burasi dogrudan `/abonelik/basla`ya YALNIZ
+   * `paketSurumuId` gonderiyordu. Sunucu `p.musteri.ad` diye acıyor ve
+   * TypeError firlatiyordu → 500 → ekranda "Odeme baslatilamadi". Yani
+   * HICBIR musteri odeme yapamiyordu. Fatura alanlari iyzico tarafinda
+   * zorunlu; sunucuda otomatik doldurulamiyor cunku `Firma` semasinda
+   * TELEFON alani hic yok.
+   */
+  function paketiSec(paketSurumuId: string) {
     setHata(null);
+    setSecilen(paketSurumuId);
+    setFaturaAcik(true);
+  }
+
+  async function odemeyeGec() {
+    if (!secilen) return;
+    const eksik = eksikAlanlar(fatura);
+    if (eksik.length) {
+      setHata(`Su alanlar zorunlu: ${eksik.join(', ')}`);
+      return;
+    }
+    setHata(null);
+    setGonderiliyor(true);
     try {
-      // Fatura kimligi zorunlu alanlar iyzico tarafinda isteniyor; bu
-      // surumde firmanin kayitli bilgileri kullanilir. Eksikse sunucu
-      // aciklayici hata doner — sessizce bos gonderilmez.
       const { data } = await api.post<{ formIcerigi: string }>('/abonelik/basla', {
-        paketSurumuId,
+        paketSurumuId: secilen,
+        musteri: govdeyeCevir(fatura),
       });
       setFormHtml(data.formIcerigi);
     } catch (e: any) {
       const m = e?.response?.data?.message ?? e?.response?.data?.mesaj;
       setHata(typeof m === 'string' ? m : 'Odeme baslatilamadi.');
-      setSecilen(null);
+    } finally {
+      setGonderiliyor(false);
     }
   }
 
@@ -72,6 +104,88 @@ export default function AbonelikSayfasi() {
     } catch {
       setHata('Iptal islemi tamamlanamadi.');
     }
+  }
+
+  // ── Fatura kimligi adimi (kart formundan ONCE) ──────────────────────
+  // iyzico abonelik formu bu alanlari ZORUNLU tutar. `Firma` semasinda
+  // telefon alani olmadigi icin sunucu tarafinda otomatik doldurulamaz.
+  if (faturaAcik && !formHtml) {
+    const secilenPaket = paketler.find((p) => p.surum.paketSurumuId === secilen);
+    return (
+      <div className="mx-auto max-w-2xl">
+        <h1 className="mb-1 text-2xl font-bold">Fatura bilgileri</h1>
+        <p className="mb-6 text-sm text-muted-foreground">
+          {secilenPaket ? `${secilenPaket.ad} — ` : ''}
+          Faturanizin kesilebilmesi icin bu bilgiler gerekli. Kart bilgisi bir
+          sonraki adimda, dogrudan iyzico formunda alinir.
+        </p>
+
+        {hata && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            {hata}
+          </div>
+        )}
+
+        <div className="grid gap-4 rounded-xl border bg-card p-5 sm:grid-cols-2">
+          {ZORUNLU_ALANLAR.map((alan) => (
+            <div key={alan} className={alan === 'adres' ? 'sm:col-span-2' : ''}>
+              <label htmlFor={`fatura-${alan}`} className="mb-1 block text-xs font-medium">
+                {ALAN_ETIKET[alan]} <span className="text-red-600">*</span>
+              </label>
+              <input
+                id={`fatura-${alan}`}
+                type={alan === 'eposta' ? 'email' : alan === 'telefon' ? 'tel' : 'text'}
+                value={fatura[alan]}
+                onChange={(e) => setFatura({ ...fatura, [alan]: e.target.value })}
+                placeholder={
+                  alan === 'telefon'
+                    ? '+905301234567'
+                    : alan === 'kimlikNo'
+                      ? '11 haneli TC veya vergi no'
+                      : undefined
+                }
+                className="w-full rounded-lg border px-3 py-2 text-sm"
+              />
+            </div>
+          ))}
+          <div>
+            <label htmlFor="fatura-postaKodu" className="mb-1 block text-xs font-medium">
+              {ALAN_ETIKET.postaKodu}{' '}
+              <span className="text-muted-foreground">(istege bagli)</span>
+            </label>
+            <input
+              id="fatura-postaKodu"
+              type="text"
+              value={fatura.postaKodu ?? ''}
+              onChange={(e) => setFatura({ ...fatura, postaKodu: e.target.value })}
+              className="w-full rounded-lg border px-3 py-2 text-sm"
+            />
+          </div>
+        </div>
+
+        <div className="mt-5 flex gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              setFaturaAcik(false);
+              setSecilen(null);
+              setHata(null);
+            }}
+            className="rounded-lg border px-4 py-2 text-sm font-medium"
+          >
+            Geri
+          </button>
+          <button
+            type="button"
+            disabled={gonderiliyor}
+            onClick={odemeyeGec}
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+          >
+            {gonderiliyor ? 'Hazirlaniyor…' : 'Odemeye gec'}
+          </button>
+        </div>
+      </div>
+    );
   }
 
   // ── Kart formu acildiysa yalniz onu goster ──────────────────────────
@@ -191,11 +305,10 @@ export default function AbonelikSayfasi() {
 
               <button
                 type="button"
-                disabled={secilen === p.surum.paketSurumuId}
-                onClick={() => satinAl(p.surum.paketSurumuId)}
+                onClick={() => paketiSec(p.surum.paketSurumuId)}
                 className="mt-auto rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
               >
-                {secilen === p.surum.paketSurumuId ? 'Hazirlaniyor…' : 'Bu paketi sec'}
+                Bu paketi sec
               </button>
             </div>
           ))}

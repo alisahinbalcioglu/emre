@@ -1,0 +1,313 @@
+/**
+ * SATIN ALMA YOLU TURU  (`npm run test:satinalma`)
+ *
+ * AG/DB GEREKTIRMEZ: PrismaService ve IyzicoClient yerine sahte nesneler
+ * konur, `SatinAlmaServisi.baslat` GERCEKTEN cagrilir ve DAVRANISI olculur.
+ *
+ * ── BU DOSYA NEDEN VAR ──────────────────────────────────────────────────
+ * 02.09'da `--uygula` kosup 5 paket acildiktan SONRA olculdu ki satin alma
+ * yolu UCTAN UCA CALISMIYOR. Iki bagimsiz kapi vardi ve ikisi de kapaliydi:
+ *
+ *   (1) HERKESI etkiler — on yuz `/abonelik/basla` ucuna yalniz
+ *       `paketSurumuId` gonderiyordu; servis govdeyi KOSULSUZ aciyordu
+ *       (`p.musteri.ad`). `@Body()` SATIR-ICI TIP LITERALI oldugu icin
+ *       global ValidationPipe devreye girmez (metatype = Object), yani
+ *       eksik govde 400 ile durmaz: TypeError firlar, Nest 500 doner.
+ *
+ *   (2) MEVCUT MUSTERIYI etkiler — ADIM 2 gocu her firmaya `miras-*`
+ *       paketiyle `AKTIF` bir satir yazmisti (goc emniyeti, tutar 0).
+ *       "Zaten etkin aboneliginiz var" kapisi bu satiri saglikli abonelik
+ *       sayip 400 doneriyordu. Mesajin isaret ettigi "yukseltme yolu" ise
+ *       YOK (`paketDegistir` hicbir yerden cagrilmiyor).
+ *
+ * Ikisi birlikte: gelir kanali fiilen SIFIRDI ve hicbir test bunu
+ * yakalamiyordu — cunku testler METNI/tipi olcuyordu, YOLU degil.
+ *
+ * ── OLCULEN ────────────────────────────────────────────────────────────
+ *   P1 eksikMusteriAlanlari: govde yok / eksik / bosluk-only
+ *   P2 mirasPaketiMi ayrimi
+ *   P3 ⭐ musteri govdesi YOKKEN `baslat` 400 atar (TypeError/500 DEGIL)
+ *   P4 ⭐ miras satiri satin almayi ENGELLEMEZ (iyzico'ya gercekten gidilir)
+ *   P5 ⭐ GERCEK paket satiri satin almayi HALA engeller (cift tahsilat kalkani)
+ *   P6 SONA_ERDI/ASKIDA satiri engellemez (eski davranis korundu)
+ *   P7 on yuz ile sunucunun zorunlu alan listeleri AYNI
+ *
+ * Cikis kodu sozlesmesi: 0 = PASS · digeri = FAIL.
+ */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { ConfigService } from '@nestjs/config';
+import { BadRequestException } from '@nestjs/common';
+import {
+  SatinAlmaServisi,
+  eksikMusteriAlanlari,
+  mirasPaketiMi,
+  ZORUNLU_MUSTERI_ALANLARI,
+} from '../src/ozellik/odeme/abonelik/satinalma.servisi';
+
+let passed = 0;
+let failed = 0;
+const failures: string[] = [];
+
+function check(ad: string, kosul: boolean, detay = ''): void {
+  if (kosul) {
+    passed++;
+    console.log(`  ✓ ${ad}`);
+  } else {
+    failed++;
+    failures.push(`${ad}${detay ? ` — ${detay}` : ''}`);
+    console.log(`  ✗ ${ad}${detay ? ` — ${detay}` : ''}`);
+  }
+}
+
+const TAM_MUSTERI = {
+  ad: 'Ayse',
+  soyad: 'Yilmaz',
+  eposta: 'ayse@ornek.com',
+  telefon: '+905301234567',
+  kimlikNo: '11111111111',
+  sehir: 'Istanbul',
+  adres: 'Ornek Mah. 1. Sok. No 2',
+};
+
+/** Verilen paket koduyla bir abonelik satiri dondüren sahte Prisma. */
+function sahtePrisma(mevcutPaketKodu: string | null, mevcutDurum = 'AKTIF') {
+  return {
+    paketSurumu: {
+      findUnique: async () => ({
+        id: 's1',
+        iyzicoPlanKodu: 'plan-1',
+        satistaMi: true,
+        denemeGunu: 30,
+        paket: { kod: 'pro-mek', ad: 'Pro Mekanik' },
+      }),
+    },
+    abonelik: {
+      findUnique: async () =>
+        mevcutPaketKodu === null
+          ? null
+          : {
+              id: 'a1',
+              durum: mevcutDurum,
+              paketSurumu: { paket: { kod: mevcutPaketKodu } },
+            },
+    },
+    firma: {
+      findUnique: async () => ({
+        unvan: null,
+        yetkiliEposta: null,
+        faturaAdresi: null,
+        il: null,
+      }),
+      update: async () => ({}),
+    },
+    abonelikBaslatma: { create: async () => ({ id: 'n1' }) },
+  } as any;
+}
+
+/** iyzico'ya GERCEKTEN gidildi mi olcen sahte istemci. */
+function sahteIyzico() {
+  const cagrilar: any[] = [];
+  return {
+    cagrilar,
+    istemci: {
+      abonelikBaslat: async (g: any) => {
+        cagrilar.push(g);
+        return { checkoutFormContent: '<form>iyzico</form>', token: 't1' };
+      },
+    } as any,
+  };
+}
+
+function servisKur(prisma: any, iyzico: any) {
+  return new SatinAlmaServisi(
+    prisma,
+    iyzico,
+    {} as any,
+    new ConfigService({ UYGULAMA_URL: 'https://ornek.test' }),
+  );
+}
+
+/** `baslat` cagrisinin SONUCUNU siniflandirir: hangi hata tipi dondu? */
+async function baslatSonucu(prisma: any, iyzico: any, musteri: any) {
+  const servis = servisKur(prisma, iyzico);
+  try {
+    await servis.baslat({
+      firmaId: 'f1',
+      kullaniciId: 'u1',
+      paketSurumuId: 's1',
+      musteri,
+    });
+    return { tip: 'BASARILI' as const, mesaj: '' };
+  } catch (e: any) {
+    if (e instanceof BadRequestException)
+      return { tip: 'BAD_REQUEST' as const, mesaj: String(e.message) };
+    if (e instanceof TypeError)
+      return { tip: 'TYPE_ERROR' as const, mesaj: String(e.message) };
+    return { tip: e?.constructor?.name ?? 'BILINMEYEN', mesaj: String(e?.message) };
+  }
+}
+
+async function main() {
+  // ── P1 · SAF: eksik alan tespiti ──────────────────────────────────────
+  console.log('\n── P1 · eksikMusteriAlanlari ──');
+  check(
+    'P1.1 govde YOK ise TUM zorunlu alanlar eksik',
+    eksikMusteriAlanlari(undefined).length === ZORUNLU_MUSTERI_ALANLARI.length,
+    `donen=${eksikMusteriAlanlari(undefined).length} beklenen=${ZORUNLU_MUSTERI_ALANLARI.length}`,
+  );
+  check('P1.2 tam govde ise eksik YOK', eksikMusteriAlanlari(TAM_MUSTERI).length === 0);
+  check(
+    'P1.3 ⭐ bosluk-only deger EKSIK sayilir',
+    eksikMusteriAlanlari({ ...TAM_MUSTERI, telefon: '   ' }).join() === 'telefon',
+    `donen=${eksikMusteriAlanlari({ ...TAM_MUSTERI, telefon: '   ' }).join()}`,
+  );
+  check(
+    'P1.4 eksik alanin ADI doner (hangi alan oldugu belli)',
+    eksikMusteriAlanlari({ ...TAM_MUSTERI, kimlikNo: '' }).join() === 'kimlikNo',
+  );
+  check(
+    'P1.5 postaKodu ZORUNLU DEGIL (iyzico opsiyonel)',
+    !ZORUNLU_MUSTERI_ALANLARI.includes('postaKodu' as any),
+  );
+
+  // ── P2 · SAF: miras paketi ayrimi ─────────────────────────────────────
+  console.log('\n── P2 · mirasPaketiMi ──');
+  check('P2.1 miras-core → true', mirasPaketiMi('miras-core'));
+  check('P2.2 miras-pro → true', mirasPaketiMi('miras-pro'));
+  check('P2.3 pro-mek → false', !mirasPaketiMi('pro-mek'));
+  check('P2.4 basic-elk → false', !mirasPaketiMi('basic-elk'));
+  check('P2.5 null/undefined → false', !mirasPaketiMi(null) && !mirasPaketiMi(undefined));
+
+  // ── P3 ⭐ DAVRANIS: musteri govdesi yokken 400, 500 DEGIL ─────────────
+  console.log('\n── P3 ⭐ musteri govdesi YOK ──');
+  const i3 = sahteIyzico();
+  const s3 = await baslatSonucu(sahtePrisma(null), i3.istemci, undefined);
+  check(
+    'P3.1 ⭐ 400 BadRequest atar (TypeError/500 DEGIL)',
+    s3.tip === 'BAD_REQUEST',
+    `donen=${s3.tip} mesaj=${s3.mesaj.slice(0, 90)}`,
+  );
+  check(
+    'P3.2 hata mesaji hangi alanlarin eksik oldugunu SOYLER',
+    s3.mesaj.includes('telefon') && s3.mesaj.includes('kimlikNo'),
+    `mesaj=${s3.mesaj.slice(0, 120)}`,
+  );
+  check(
+    'P3.3 ⭐ eksik govdede iyzico ucuna HIC gidilmez (bos istek atilmaz)',
+    i3.cagrilar.length === 0,
+    `cagri=${i3.cagrilar.length}`,
+  );
+
+  // Kismi govde de ayni yoldan donmeli.
+  const i3b = sahteIyzico();
+  const s3b = await baslatSonucu(
+    sahtePrisma(null),
+    i3b.istemci,
+    { ad: 'Ayse', soyad: 'Yilmaz' },
+  );
+  check('P3.4 KISMI govde de 400 atar', s3b.tip === 'BAD_REQUEST', `donen=${s3b.tip}`);
+
+  // ── OLCUT: tam govde + abonelik yok → GERCEKTEN basarili olmali ──────
+  // Bu assert olmadan P3/P4 "her sey hata atiyor" halinde de yesil kalirdi.
+  console.log('\n── P-OLCUT · mutlu yol gercekten calisiyor mu ──');
+  const iM = sahteIyzico();
+  const sM = await baslatSonucu(sahtePrisma(null), iM.istemci, TAM_MUSTERI);
+  check(
+    'P-OLCUT abonelik YOK + tam govde → BASARILI',
+    sM.tip === 'BASARILI',
+    `donen=${sM.tip} mesaj=${sM.mesaj.slice(0, 120)}`,
+  );
+  check('P-OLCUT iyzico gercekten cagrildi', iM.cagrilar.length === 1);
+  check(
+    'P-OLCUT govde iyzico alan adlarina cevrildi (ad→name, telefon→gsmNumber)',
+    iM.cagrilar[0]?.musteri?.name === 'Ayse' &&
+      iM.cagrilar[0]?.musteri?.gsmNumber === '+905301234567' &&
+      iM.cagrilar[0]?.musteri?.identityNumber === '11111111111',
+    JSON.stringify(iM.cagrilar[0]?.musteri ?? {}).slice(0, 140),
+  );
+
+  // ── P4 ⭐ DAVRANIS: miras satiri satin almayi ENGELLEMEZ ──────────────
+  console.log('\n── P4 ⭐ miras satiri (goc emniyeti) ──');
+  for (const kod of ['miras-core', 'miras-pro']) {
+    const i4 = sahteIyzico();
+    const s4 = await baslatSonucu(sahtePrisma(kod, 'AKTIF'), i4.istemci, TAM_MUSTERI);
+    check(
+      `P4 ⭐ ${kod} AKTIF iken satin alma GECER`,
+      s4.tip === 'BASARILI' && i4.cagrilar.length === 1,
+      `donen=${s4.tip} mesaj=${s4.mesaj.slice(0, 100)} iyzicoCagri=${i4.cagrilar.length}`,
+    );
+  }
+
+  // ── P5 ⭐ DAVRANIS: GERCEK paket hala engeller (cift tahsilat kalkani) ─
+  console.log('\n── P5 ⭐ gercek paket (cift tahsilat kalkani) ──');
+  const i5 = sahteIyzico();
+  const s5 = await baslatSonucu(sahtePrisma('pro-mek', 'AKTIF'), i5.istemci, TAM_MUSTERI);
+  check(
+    'P5.1 ⭐ pro-mek AKTIF iken satin alma REDDEDILIR',
+    s5.tip === 'BAD_REQUEST',
+    `donen=${s5.tip}`,
+  );
+  check('P5.2 ⭐ reddedilince iyzico ucuna gidilmez', i5.cagrilar.length === 0);
+
+  const i5b = sahteIyzico();
+  const s5b = await baslatSonucu(sahtePrisma('basic-mek', 'DENEME'), i5b.istemci, TAM_MUSTERI);
+  check(
+    'P5.3 DENEME durumundaki gercek paket de engeller',
+    s5b.tip === 'BAD_REQUEST',
+    `donen=${s5b.tip}`,
+  );
+
+  // ── P6 · SONA_ERDI / ASKIDA engellemez (eski davranis korundu) ────────
+  console.log('\n── P6 · geri donen musteri ──');
+  for (const durum of ['SONA_ERDI', 'ASKIDA']) {
+    const i6 = sahteIyzico();
+    const s6 = await baslatSonucu(sahtePrisma('pro-mek', durum), i6.istemci, TAM_MUSTERI);
+    check(
+      `P6 ${durum} durumunda yeniden satin alinabilir`,
+      s6.tip === 'BASARILI',
+      `donen=${s6.tip} mesaj=${s6.mesaj.slice(0, 90)}`,
+    );
+  }
+
+  // ── P7 · On yuz ↔ sunucu zorunlu alan listeleri AYNI ─────────────────
+  // Iki liste ayrisirsa: on yuz gondermez, sunucu ister → musteri kilitlenir.
+  console.log('\n── P7 · on yuz ↔ sunucu alan sozlesmesi ──');
+  const feYol = join(__dirname, '..', '..', 'frontend', 'ozellik', 'odeme', 'fatura-kimligi.ts');
+  let feKaynak = '';
+  try {
+    feKaynak = readFileSync(feYol, 'utf8');
+  } catch {
+    /* asagida OLCUT yakalar */
+  }
+  check('P7-OLCUT on yuz dosyasi okunabildi', feKaynak.length > 0, feYol);
+  if (feKaynak) {
+    const blok = /export const ZORUNLU_ALANLAR = \[([\s\S]*?)\] as const;/.exec(feKaynak);
+    check('P7-OLCUT on yuzde ZORUNLU_ALANLAR blogu bulundu', !!blok);
+    if (blok) {
+      const feAlanlar = [...blok[1].matchAll(/'([a-zA-Z]+)'/g)].map((m) => m[1]);
+      check(
+        'P7 ⭐ on yuz ve sunucu zorunlu alanlari AYNI',
+        feAlanlar.join(',') === [...ZORUNLU_MUSTERI_ALANLARI].join(','),
+        `on yuz=[${feAlanlar.join(',')}] sunucu=[${[...ZORUNLU_MUSTERI_ALANLARI].join(',')}]`,
+      );
+    }
+  }
+
+  son();
+}
+
+function son() {
+  console.log(
+    `\n${'='.repeat(64)}\nSATIN ALMA YOLU: ${passed} PASS, ${failed} FAIL\n${'='.repeat(64)}`,
+  );
+  if (failed) {
+    failures.forEach((f) => console.log(`  · ${f}`));
+    process.exit(1);
+  }
+}
+
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

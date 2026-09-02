@@ -94,6 +94,54 @@ export function donemTarihleriHesapla(
   return { erisimSonu, denemeSonu };
 }
 
+/**
+ * ADIM 2 gocunun actigi miras paketlerinin kod oneki.
+ *
+ * Bu paketler bir TAHSILATI temsil ETMEZ: migration 20260828100000 her
+ * mevcut firmaya `tutar=0`, `satistaMi=false` bir satir yazdi ki goc
+ * sirasinda kimsenin erisimi kesilmesin. Dolayisiyla "zaten aboneligi var"
+ * kapisi bu satirlari SAGLIKLI ABONELIK saymamalidir.
+ */
+export const MIRAS_ONEKI = 'miras-';
+
+/** Paket kodu bir goc (miras) paketi mi? SAF fonksiyon. */
+export function mirasPaketiMi(paketKodu: string | null | undefined): boolean {
+  return !!paketKodu && paketKodu.startsWith(MIRAS_ONEKI);
+}
+
+/**
+ * iyzico'nun abonelik formu icin ZORUNLU tuttugu fatura kimligi alanlari.
+ * `postaKodu` bilerek YOK — iyzico'da opsiyonel.
+ */
+export const ZORUNLU_MUSTERI_ALANLARI = [
+  'ad',
+  'soyad',
+  'eposta',
+  'telefon',
+  'kimlikNo',
+  'sehir',
+  'adres',
+] as const;
+
+/**
+ * Eksik/bos fatura alanlarinin adlarini doner. SAF fonksiyon — govde hic
+ * gelmemis olabilir (`undefined`), o durumda TUM alanlar eksiktir.
+ *
+ * ⚠ Bosluk-only degerler de EKSIK sayilir: `"   "` iyzico'ya gonderilirse
+ * uzak uc reddeder ve hata musteriye "odeme baslatilamadi" diye doner —
+ * yani kapiyi burada kurmak, hatayi anlasilir yerde tutar.
+ */
+export function eksikMusteriAlanlari(
+  musteri: Record<string, unknown> | null | undefined,
+): string[] {
+  if (!musteri || typeof musteri !== 'object')
+    return [...ZORUNLU_MUSTERI_ALANLARI];
+  return ZORUNLU_MUSTERI_ALANLARI.filter((alan) => {
+    const deger = musteri[alan];
+    return typeof deger !== 'string' || deger.trim() === '';
+  });
+}
+
 @Injectable()
 export class SatinAlmaServisi {
   private readonly logger = new Logger(SatinAlmaServisi.name);
@@ -195,14 +243,46 @@ export class SatinAlmaServisi {
     if (!surum.satistaMi)
       throw new BadRequestException('Bu paket surumu satista degil');
 
+    // ── FATURA KIMLIGI KAPISI ────────────────────────────────────────────
+    // ⚠ 02.09'DA OLCULDU: bu kapi YOKTU ve uc, gelen govdeyi kosulsuz
+    // dereference ediyordu (`p.musteri.ad`). `@Body()` bir SATIR-ICI TIP
+    // LITERALI oldugu icin global ValidationPipe devreye GIRMEZ (metatype
+    // = Object), yani eksik govde 400 ile erken durmaz: TypeError firlar ve
+    // Nest varsayilani `500 Internal server error` doner. On yuz de tam o
+    // alani okudugu icin musteri "Odeme baslatilamadi" gorurdu.
+    //
+    // Ayrica on yuzdeki yorum "eksikse sunucu aciklayici hata doner"
+    // diyordu — YANLIS. Yorum kanit degildir; kapiyi kodla kuruyoruz.
+    const eksik = eksikMusteriAlanlari(p.musteri);
+    if (eksik.length) {
+      throw new BadRequestException(
+        `Fatura bilgileri eksik: ${eksik.join(', ')}. ` +
+          'Odeme sayfasindaki fatura formunu doldurun.',
+      );
+    }
+
     // Zaten SAGLIKLI bir aboneligi olan firma yeniden satin alamaz —
     // paket degisimi ayri bir yoldur (paketDegistir). Bu kapi olmazsa ayni
     // firmaya iyzico'da IKI abonelik acilir ve iki kez tahsilat yapilir.
+    //
+    // ⚠ MIRAS SATIRI MUAF. ADIM 2 gocu (migration 20260828100000, satir
+    // 361-383) HER mevcut firmaya `miras-core`/`miras-pro` paketiyle
+    // `AKTIF` + 365 gunluk bir satir yazdi — bu bir TAHSILATI temsil etmez,
+    // goc emniyetidir (tutar 0, `satistaMi=false`). Muafiyet olmadan bu
+    // satir kapiya takilir ve MEVCUT MUSTERILERIN HICBIRI odeme yapamaz;
+    // hata mesajinin isaret ettigi "yukseltme yolu" da yok (`paketDegistir`
+    // iyzico istemcisinde tanimli ama hicbir yerden cagrilmiyor).
+    //
+    // Ikinci abonelik riski YOK: `Abonelik.firmaId` @unique, ve
+    // `aboneligiAcVeyaGuncelle` mevcut satiri UPDATE eder — miras satiri
+    // gercek paketle uzerine yazilir.
     const mevcut = await this.prisma.abonelik.findUnique({
       where: { firmaId: p.firmaId },
+      include: { paketSurumu: { include: { paket: true } } },
     });
     if (
       mevcut &&
+      !mirasPaketiMi(mevcut.paketSurumu.paket.kod) &&
       mevcut.durum !== AbonelikDurumu.SONA_ERDI &&
       mevcut.durum !== AbonelikDurumu.ASKIDA
     ) {
@@ -211,6 +291,27 @@ export class SatinAlmaServisi {
           'abonelik sayfasindaki yukseltme yolunu kullanin.',
       );
     }
+
+    // ── FATURA KIMLIGINI FIRMAYA YAZ ─────────────────────────────────────
+    // `fatura.servisi` faturayi FIRMA satirindan uretir; bu alanlar bosken
+    // her fatura ELLE_MUDAHALE'ye duser. Musteri bilgiyi zaten burada
+    // giriyor — atmak, gelecek ayin tamamini elle isleme sokar.
+    //
+    // ⚠ YALNIZ BOS ALANLAR doldurulur (`??`): yonetici elle girdiyse ya da
+    // e-fatura entegrasyonundan geldiyse ustune YAZILMAZ.
+    const firma = await this.prisma.firma.findUnique({
+      where: { id: p.firmaId },
+      select: { unvan: true, yetkiliEposta: true, faturaAdresi: true, il: true },
+    });
+    await this.prisma.firma.update({
+      where: { id: p.firmaId },
+      data: {
+        unvan: firma?.unvan ?? `${p.musteri.ad} ${p.musteri.soyad}`.trim(),
+        yetkiliEposta: firma?.yetkiliEposta ?? p.musteri.eposta,
+        faturaAdresi: firma?.faturaAdresi ?? p.musteri.adres,
+        il: firma?.il ?? p.musteri.sehir,
+      },
+    });
 
     const sonuc = await this.iyzico.abonelikBaslat({
       planKodu: surum.iyzicoPlanKodu,
