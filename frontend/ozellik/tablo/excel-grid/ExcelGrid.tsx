@@ -3649,23 +3649,43 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           --ag-font-size: 11.5px;
           --ag-odd-row-background-color: #fcfdfe; /* v1 spec --mpx-zebra */
           --ag-row-hover-color: #f5f9ff;          /* v1 spec --mpx-hover */
-          /* PRD 14.08 — yalniz COK HAFIF yatay ayraclar.
-             ⚠ AG-Grid'in KENDI degiskeni kullanilir; ag-row uzerine elle
-             border-bottom kurali YAZILMAZ: AG-Grid satir yuksekligi hesabina
-             ag-row-border-width degiskenini katar ve elle eklenen bir kenarlik
-             28px satirda 1px tasma uretir — 15.000 satirda birikip sanal
-             kaydirma ile gercek satir konumunu kaydirir. */
-          --ag-row-border-color: #f1f5f9;
-          /* Dikey ayraclar: seffaf. Genislik yine 1px rezerve edilir, bu yuzden
-             kullanicinin kaydettigi kolon genislikleri KAYMAZ. */
-          --ag-cell-horizontal-border: solid transparent;
+          /* ── IZGARA CIZGILERI (02.09 kullanici karari) ──────────────────
+             14.08'in "yalniz cok hafif yatay ayrac, dikey ayrac YOK" karari
+             BILEREK geri cevrildi: kullanici izgarayi Excel gibi okuyor ve
+             #f1f5f9 (slate-100) beyaz zeminde pratikte gorunmuyordu.
+             Iki eksen de ayni tonda (slate-200) — Excel'de de yatay/dikey
+             cizgi ayni agirliktadir; farkli tonlar izgarayi carpik gosterir.
+             ⚠ AG-Grid'in KENDI degiskenleri kullanilir; ag-row/ag-cell
+             uzerine elle border kurali YAZILMAZ: AG-Grid satir yuksekligi
+             hesabina ag-row-border-width degiskenini katar ve elle eklenen
+             bir kenarlik 28px satirda 1px tasma uretir — 15.000 satirda
+             birikip sanal kaydirma ile gercek satir konumunu kaydirir. */
+          --ag-row-border-color: #e2e8f0;
+          /* Dikey ayraclar GORUNUR. ⚠ Kolon genislikleri KAYMAZ: onceki hali
+             "solid transparent" idi, yani 1px zaten rezerve ediliyordu —
+             yalnizca rengi degisiyor (kullanicinin kaydettigi genislikler
+             oldugu gibi kalir).
+             ⚠ Hucre ZEMINI dokunulmaz: isaret.ts para sinyalini inline
+             cellStyle'in background'iyla tasir (kirmizi=eslesme yok,
+             gri=urun degil, mavi=varyant, sari=oneri) ve golden E2E onu
+             getComputedStyle ile okur. Kenarlik ayri bir ozelliktir,
+             o sinyalin ustunu ORTMEZ. */
+          --ag-cell-horizontal-border: solid #e2e8f0;
+          /* Baslik kolon ayraci: Excel'de baslik da izgaralidir. AG-Grid'in
+             kendi ayrac ::before'u kullanilir (tam yukseklik, 1px) —
+             .ag-header-cell-resize::after DEGIL: o, tutamagin gorseli
+             (2px / %30 yukseklik), ayrac degil. */
+          --ag-header-column-separator-display: block;
+          --ag-header-column-separator-color: #e2e8f0;
           /* Odak halkasi — sert mavi cerceve yerine soft indigo */
           --ag-range-selection-border-color: #6366f1;
           --ag-selected-row-background-color: rgba(99, 102, 241, 0.06);
         }
-        /* Alpine'in baslik ayirac cubugu kisa dikey cizgi cizer — PRD'nin
-           "dikey cizgi yok" kurali basligi da kapsar. Yeniden boyutlandirma
-           HALA calisir (kulp gorunmez ama hit alani duruyor). */
+        /* Alpine'in yeniden-boyutlandirma TUTAMAGI (2px kalin, %30 yuksek,
+           ortalanmis cubuk) gizli kalir: artik tam yukseklikte gercek bir
+           kolon ayraci var (--ag-header-column-separator-*) ve ikisi ust uste
+           binince baslikta cift cizgi gorunuyor. Yeniden boyutlandirma HALA
+           calisir — yalniz kulbun gorseli gizlenir, hit alani duruyor. */
         .ag-theme-alpine .ag-header-cell-resize::after {
           background-color: transparent;
         }

@@ -137,9 +137,12 @@ body.fill-handle-dragging * {
 
 /* ── AG-GRID GENEL GORUNUM ───────────────────────────────────────────────── */
 
-/* Baslik: ince ayrac, yumusak zemin */
+/* Baslik: ayrac + yumusak zemin.
+   ⚠ Ayrac izgara cizgilerinden (slate-200) BIR TON KOYU olmali (02.09):
+   ikisi ayni tonda oldugunda baslik satiri govdenin ilk satiri gibi
+   okunuyordu — Excel'de de baslik bandi izgaradan daha guclu ayrilir. */
 .ag-theme-alpine .ag-header {
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid #cbd5e1;
   background-color: #f8fafc;
 }
 
@@ -160,16 +163,19 @@ body.fill-handle-dragging * {
   background-color: #f5f9ff !important; /* v1 spec --mpx-hover */
 }
 
-/* ⚠ DIKEY CIZGILER KALDIRILDI (PRD 14.08).
-   Eski hali: `.ag-theme-alpine .ag-cell { border-right: 1px solid #f1f5f9 }`.
-   Kural silindi; AG-Grid'in kendi varsayilani ZATEN seffaf
-   (`--ag-cell-horizontal-border: solid transparent`) ve 1px genislik her iki
-   durumda da rezerve edildigi icin KOLON GENISLIKLERI KAYMAZ (kullanicinin
-   kaydettigi genislikler bozulmaz).
-   ⚠ Asagidaki pinned-bottom kuralindan `border-right-color` DA silindi:
-   yalniz taban kural kaldirilsaydi, GENEL TOPLAM satirinda AG-Grid'in `solid`
-   1px'i o koyu renkle GORUNUR HALE GELIRDI — dikey cizgiler tek satirda geri
-   gelirdi. */
+/* ⚠ DIKEY CIZGILER GERI GELDI (02.09 kullanici karari) — 14.08'in
+   "dikey cizgi yok" karari BILEREK geri cevrildi: izgara Excel gibi
+   okunuyor ve cizgisiz hali "cok belirsiz" bulundu.
+   ⚠ BURAYA `.ag-cell { border-right: ... }` KURALI YAZMA. Renk ExcelGrid.tsx
+   icindeki `--ag-cell-horizontal-border` degiskeninden gelir; elle yazilan
+   bir kenarlik AG-Grid'in 28px satir kutusuna eklenir ve 15.000 satirda
+   birikerek sanal kaydirmayi kaydirir. Degisken yolunda 1px ZATEN rezerve
+   edilmisti (eski deger `solid transparent`), bu yuzden kullanicinin
+   kaydettigi KOLON GENISLIKLERI KAYMAZ — yalniz renk degisti.
+   ⚠ Asagidaki pinned-bottom kuralinda `border-right-color` YOK: GENEL TOPLAM
+   / KAR satirlari da ayni degiskeni miras alir, yani ozet seridi de
+   izgaralidir (Excel'de toplam satiri da izgaralidir). Oraya ayri bir renk
+   yazilirsa serit tek basina farkli tonda kalir. */
 
 /* ── PINNED BOTTOM: SOFT OZET SERIDI (16.08 kullanici tasarimi) ──────────────
    Eski hali KOYU bloklardi: GENEL TOPLAM lacivert (#1e40af), KAR yesil
@@ -180,8 +186,11 @@ body.fill-handle-dragging * {
    Bu kural burada dururken `getRowStyle`in verecegi hicbir metin rengi
    gorunmezdi — CSS satir-ici stili ezmez ama HER hucreye ayri ayri
    uygulandigi icin pratikte her seyi beyaza boyuyordu. */
+/* ⚠ Baslik ayraci gibi bu da izgaradan (slate-200) koyu: 02.09'da izgara
+   gorunur hale gelince 2px slate-200 serit sirali bir satir ayracindan
+   ayirt edilemiyordu. */
 .ag-theme-alpine .ag-floating-bottom {
-  border-top: 2px solid #e2e8f0;
+  border-top: 2px solid #cbd5e1;
 }
 
 .ag-theme-alpine .ag-floating-bottom .ag-cell {
