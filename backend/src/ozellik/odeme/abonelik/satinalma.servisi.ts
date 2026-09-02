@@ -495,12 +495,31 @@ export class SatinAlmaServisi {
 
     // Geri donen musteri: satir yeniden canlandirilir, dunning sayaclari
     // sifirlanir (eski basarisizlik yeni abonelige tasinmaz).
+    //
+    // ⚠ ERISIM ASLA KISALTILMAZ — 02.09'da olculdu.
+    // Burasi `erisimSonu`yu KOSULSUZ eziyordu. Satin alma yolu miras
+    // satirlarina acilinca (ayni gun, `mirasPaketiMi` muafiyeti) bu
+    // sessiz bir CEZAYA donustu: goc satiri 365 gunluk erisim tasiyor;
+    // musteri BUGUN odeseydi `erisimSonu` `simdi+32 gune` duser ve
+    // ~332 gun BUHARLASIRDI. Yani ODEMEK, ODEMEMEKTEN KOTU olurdu.
+    //
+    // Ayni kural miras disinda da dogrudur: zaten verilmis erisimi, kisi
+    // PARA ODEDIGI ICIN geri almak hicbir senaryoda savunulabilir degil.
+    // Suresi gecmis satirda `mevcut.erisimSonu` gecmistedir, yeni tarih
+    // kazanir — geri donen musteri yolu AYNEN calisir.
+    //
+    // Ikizi `abonelik.servisi.ts:erisimiUzat` (satir 379) ZATEN boyleydi:
+    //     const baslangic = ab.erisimSonu > simdi ? ab.erisimSonu : simdi;
+    // Yani webhook yolu koruyor, yalniz BURASI kisaltiyordu.
+    const korunanErisimSonu =
+      mevcut.erisimSonu > erisimSonu ? mevcut.erisimSonu : erisimSonu;
+
     const guncel = await this.prisma.abonelik.update({
       where: { id: mevcut.id },
       data: {
         paketSurumuId: p.paketSurumuId,
         durum,
-        erisimSonu,
+        erisimSonu: korunanErisimSonu,
         denemeSonu,
         odemeYontemi: OdemeYontemi.KART,
         iyzicoAbonelikKodu: p.iyzicoAbonelikKodu,

@@ -31,6 +31,8 @@
  *   P5 ⭐ GERCEK paket satiri satin almayi HALA engeller (cift tahsilat kalkani)
  *   P6 SONA_ERDI/ASKIDA satiri engellemez (eski davranis korundu)
  *   P7 on yuz ile sunucunun zorunlu alan listeleri AYNI
+ *   P8 ⭐ ERISIM KISALTILMIYOR — odemek, odememekten kotu OLMAMALI
+ *      (goc satiri 365 gun tasiyor; odeme `simdi+32 gune` dusuruyordu)
  *
  * Cikis kodu sozlesmesi: 0 = PASS · digeri = FAIL.
  */
@@ -292,6 +294,100 @@ async function main() {
         `on yuz=[${feAlanlar.join(',')}] sunucu=[${[...ZORUNLU_MUSTERI_ALANLARI].join(',')}]`,
       );
     }
+  }
+
+  // ── P8 ⭐ ERISIM KISALTILMIYOR (odemek, odememekten kotu OLMAMALI) ────
+  //
+  // 02.09'da olculdu: `aboneligiAcVeyaGuncelle` `erisimSonu`yu KOSULSUZ
+  // eziyordu. Ayni gun satin alma yolu miras satirlarina acilinca bu
+  // sessiz bir CEZAYA donustu — goc satiri 365 gun tasiyor, musteri
+  // odeseydi `simdi+32 gune` duser ve ~332 gun buharlasirdi.
+  //
+  // Olcum DB'ye GIDEN YUKu yakalar; donen nesneye degil kaydedilen
+  // degere bakar (donen nesne sahte, yuk gercek).
+  console.log('\n── P8 ⭐ erisim kisaltilmiyor ──');
+  {
+    function yukYakalayanPrisma(mevcutErisimSonu: Date | null) {
+      const yazilan: any[] = [];
+      return {
+        yazilan,
+        prisma: {
+          abonelik: {
+            findUnique: async () =>
+              mevcutErisimSonu === null
+                ? null
+                : { id: 'a1', erisimSonu: mevcutErisimSonu },
+            update: async (arg: any) => {
+              yazilan.push(arg.data);
+              return { id: 'a1', ...arg.data };
+            },
+            create: async (arg: any) => {
+              yazilan.push(arg.data);
+              return { id: 'a1', ...arg.data };
+            },
+          },
+          // Guncelleme dali sonrasinda denetim izi yaziliyor
+          // (`abonelik.yeniden.acildi`). Sahtesi olmazsa akis P8'e
+          // varmadan patlar ve olcum YAPILMAMIS olur.
+          abonelikOlayi: { create: async () => ({}) },
+        } as any,
+      };
+    }
+
+    async function erisimSonuYazilan(mevcut: Date | null) {
+      const y = yukYakalayanPrisma(mevcut);
+      const servis = servisKur(y.prisma, sahteIyzico().istemci);
+      await (servis as any).aboneligiAcVeyaGuncelle({
+        firmaId: 'f1',
+        paketSurumuId: 's1',
+        iyzicoAbonelikKodu: 'sub-1',
+        denemeGunu: 30,
+      });
+      return { yuk: y.yazilan[0], adet: y.yazilan.length };
+    }
+
+    const gun = 86_400_000;
+    const simdi = Date.now();
+
+    // OLCUT: mevcut satir YOKKEN normal hesap calisiyor mu? Bu assert
+    // olmadan P8 "her zaman uzun tarih yaziliyor" halinde de yesil kalirdi.
+    const yeni = await erisimSonuYazilan(null);
+    const yeniGun = Math.round((new Date(yeni.yuk.erisimSonu).getTime() - simdi) / gun);
+    check(
+      'P8-OLCUT mevcut satir YOK -> normal donem yazilir (30+2 gun)',
+      yeni.adet === 1 && yeniGun === 32,
+      `gun=${yeniGun} (beklenen 32)`,
+    );
+
+    // ⭐ Miras satiri: 365 gunluk erisim KISALMAMALI.
+    const uzun = new Date(simdi + 365 * gun);
+    const mirasli = await erisimSonuYazilan(uzun);
+    check(
+      'P8.1 ⭐ 365 gunluk erisim odeme sonrasi KISALMIYOR',
+      new Date(mirasli.yuk.erisimSonu).getTime() === uzun.getTime(),
+      `yazilan=${new Date(mirasli.yuk.erisimSonu).toISOString().slice(0, 10)} ` +
+        `beklenen=${uzun.toISOString().slice(0, 10)}`,
+    );
+
+    // Suresi GECMIS satir: yeni tarih kazanmali (geri donen musteri yolu).
+    const gecmis = new Date(simdi - 60 * gun);
+    const donen = await erisimSonuYazilan(gecmis);
+    const donenGun = Math.round((new Date(donen.yuk.erisimSonu).getTime() - simdi) / gun);
+    check(
+      'P8.2 ⭐ suresi GECMIS satirda YENI tarih kazanir (32 gun)',
+      donenGun === 32,
+      `gun=${donenGun} (beklenen 32)`,
+    );
+
+    // Sinir: mevcut tarih yeniden KISA ise yine yeni kazanir.
+    const kisa = new Date(simdi + 5 * gun);
+    const kisali = await erisimSonuYazilan(kisa);
+    const kisaGun = Math.round((new Date(kisali.yuk.erisimSonu).getTime() - simdi) / gun);
+    check(
+      'P8.3 mevcut 5 gun, yeni 32 gun -> UZUN olan (32) yazilir',
+      kisaGun === 32,
+      `gun=${kisaGun}`,
+    );
   }
 
   son();

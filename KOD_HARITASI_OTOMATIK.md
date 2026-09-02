@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 452
-Toplam satir: 98063
+Toplam satir: 98178
 Uc nokta: 142
 test:* scripti: 78
 
@@ -141,7 +141,7 @@ test:* scripti: 78
 | `backend/src/ozellik/odeme/abonelik/erisim.guard.ts` | 90 |
 | `backend/src/ozellik/odeme/abonelik/erisim.servisi.ts` | 269 |
 | `backend/src/ozellik/odeme/abonelik/mutabakat.job.ts` | 155 |
-| `backend/src/ozellik/odeme/abonelik/satinalma.servisi.ts` | 627 |
+| `backend/src/ozellik/odeme/abonelik/satinalma.servisi.ts` | 646 |
 | `backend/src/ozellik/odeme/dunning/dunning.metinleri.ts` | 165 |
 | `backend/src/ozellik/odeme/dunning/dunning.servisi.ts` | 314 |
 | `backend/src/ozellik/odeme/eposta/eposta.servisi.ts` | 132 |
@@ -236,7 +236,7 @@ test:* scripti: 78
 | `backend/test/regression-all.ts` | 471 |
 | `backend/test/s45-malzeme-aile-test.ts` | 440 |
 | `backend/test/s45-olcum.ts` | 188 |
-| `backend/test/satinalma-yolu-test.ts` | 314 |
+| `backend/test/satinalma-yolu-test.ts` | 410 |
 | `backend/test/sozluk-golgeleme-olcum.ts` | 125 |
 | `backend/test/spec-regression-test.ts` | 447 |
 | `backend/test/standart-cikti-test.ts` | 339 |
