@@ -1,10 +1,18 @@
 'use client';
 
 import { useRef, useState, useCallback } from 'react';
+import Link from 'next/link';
 import { Upload, FileSpreadsheet, FileText, Loader2 } from 'lucide-react';
 import { cn } from '@/ortak/lib/utils';
 import { toast } from '@/ortak/hooks/use-toast';
 import { dosyaTuruSec } from './dosya-turu';
+import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
+import {
+  dwgKapisi,
+  dwgTiklanabilir,
+  dwgRozetMetni,
+  dwgIpucu,
+} from '@/ozellik/odeme/dwg-kapisi';
 
 interface QuickStartProps {
   onExcelFile: (file: File) => void;
@@ -27,6 +35,13 @@ export default function QuickStart({
   const [dwgDragOver, setDwgDragOver] = useState(false);
   const excelInputRef = useRef<HTMLInputElement>(null);
   const dwgInputRef = useRef<HTMLInputElement>(null);
+
+  // DWG: Pro'da aktif, Core'da sonuk. `useCapabilities` provider yoksa
+  // savunmaci sekilde "yetenek yok" doner — yani varsayilan SONUKTUR.
+  const { loading: yeteneklerYukleniyor, hasAnyDwg } = useCapabilities();
+  const dwgDurum = dwgKapisi({ loading: yeteneklerYukleniyor, dwgVar: hasAnyDwg() });
+  const dwgAcik = dwgTiklanabilir(dwgDurum);
+  const dwgRozet = dwgRozetMetni(dwgDurum);
 
   // BIRIM DIALOG'U KALDIRILDI: cizim birimi artik backend'de OTOMATIK tespit
   // ediliyor (python/unit_detect.py — antet pafta olcusu + "ÖLÇEK 1/N" kesisimi).
@@ -122,31 +137,60 @@ export default function QuickStart({
               <input ref={excelInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleExcelInput} />
             </div>
 
-            {/* DWG Upload Zone */}
+            {/* DWG Upload Zone
+                ⚠ Core pakette SONUK. Sunucu bu ucu zaten 403 ile kapatiyor
+                (`@GerekliYetenek(DWG_YUKLE)`); onceden on yuz bunu HIC
+                okumuyordu, kutu acik gorunuyor ve dosya surukleyen kullanici
+                sessizce 403 yiyordu. Bkz. `ozellik/odeme/dwg-kapisi.ts`. */}
             <div
-              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDwgDragOver(true); }}
-              onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setDwgDragOver(true); }}
+              onDragOver={(e) => { if (!dwgAcik) return; e.preventDefault(); e.stopPropagation(); setDwgDragOver(true); }}
+              onDragEnter={(e) => { if (!dwgAcik) return; e.preventDefault(); e.stopPropagation(); setDwgDragOver(true); }}
               onDragLeave={() => setDwgDragOver(false)}
-              onDrop={handleDwgDrop}
-              onClick={() => dwgInputRef.current?.click()}
+              onDrop={dwgAcik ? handleDwgDrop : undefined}
+              onClick={() => { if (dwgAcik) dwgInputRef.current?.click(); }}
+              title={dwgIpucu(dwgDurum)}
+              aria-disabled={!dwgAcik}
               className={cn(
-                'group cursor-pointer rounded-2xl border-2 border-dashed p-8 text-center transition-all',
-                dwgDragOver
-                  ? 'scale-[1.01] border-blue-500 bg-blue-50'
-                  : 'border-blue-200 bg-blue-50/30 hover:bg-blue-50/60',
+                'group rounded-2xl border-2 border-dashed p-8 text-center transition-all',
+                !dwgAcik
+                  ? 'cursor-not-allowed border-slate-200 bg-slate-50/60 opacity-60'
+                  : dwgDragOver
+                    ? 'scale-[1.01] cursor-pointer border-blue-500 bg-blue-50'
+                    : 'cursor-pointer border-blue-200 bg-blue-50/30 hover:bg-blue-50/60',
               )}
             >
-              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100 text-blue-600 transition-transform group-hover:scale-110">
+              <div className={cn(
+                'mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl transition-transform',
+                dwgAcik
+                  ? 'bg-blue-100 text-blue-600 group-hover:scale-110'
+                  : 'bg-slate-200 text-slate-400',
+              )}>
                 <FileText className="h-6 w-6" />
               </div>
-              <h3 className="text-sm font-bold text-slate-900">DWG Proje</h3>
-              <p className="mt-1 text-xs text-slate-500">Tesisat projesini sürükleyin</p>
+              <h3 className={cn('text-sm font-bold', dwgAcik ? 'text-slate-900' : 'text-slate-500')}>DWG Proje</h3>
+              <p className="mt-1 text-xs text-slate-500">
+                {dwgAcik ? 'Tesisat projesini sürükleyin' : 'Tesisat projesinden otomatik metraj'}
+              </p>
               <div className="mt-3 flex items-center justify-center gap-2">
-                <span className="rounded bg-blue-100 px-2 py-0.5 font-mono text-[10px] font-medium text-blue-700">.dwg</span>
-                <span className="rounded bg-blue-100 px-2 py-0.5 font-mono text-[10px] font-medium text-blue-700">.dxf</span>
+                <span className={cn('rounded px-2 py-0.5 font-mono text-[10px] font-medium', dwgAcik ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-500')}>.dwg</span>
+                <span className={cn('rounded px-2 py-0.5 font-mono text-[10px] font-medium', dwgAcik ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-500')}>.dxf</span>
               </div>
-              <span className="mt-2 inline-block rounded bg-blue-600/10 px-2 py-0.5 text-[9px] font-semibold text-blue-600">PRO</span>
-              <input ref={dwgInputRef} type="file" accept=".dwg,.dxf" className="hidden" onChange={handleDwgInput} />
+              {dwgRozet && (
+                <span className={cn(
+                  'mt-2 inline-block rounded px-2 py-0.5 text-[9px] font-semibold',
+                  dwgAcik ? 'bg-blue-600/10 text-blue-600' : 'bg-amber-100 text-amber-700',
+                )}>
+                  {dwgRozet}
+                </span>
+              )}
+              {dwgDurum === 'sonuk' && (
+                <p className="mt-2 text-[10px]">
+                  <Link href="/abonelik" className="font-medium text-blue-600 underline underline-offset-2" onClick={(e) => e.stopPropagation()}>
+                    Pro pakete yükselt
+                  </Link>
+                </p>
+              )}
+              <input ref={dwgInputRef} type="file" accept=".dwg,.dxf" className="hidden" onChange={handleDwgInput} disabled={!dwgAcik} />
             </div>
           </div>
         )}

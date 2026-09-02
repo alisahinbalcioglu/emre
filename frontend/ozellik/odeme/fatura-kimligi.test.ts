@@ -81,7 +81,7 @@ describe('govdeyeCevir', () => {
   });
 
   it('tum zorunlu alanlar govdede bulunur', () => {
-    const g = govdeyeCevir(TAM) as Record<string, unknown>;
+    const g = govdeyeCevir(TAM) as unknown as Record<string, unknown>;
     for (const alan of ZORUNLU_ALANLAR) expect(g[alan]).toBeTruthy();
   });
 });
