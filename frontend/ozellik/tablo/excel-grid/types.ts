@@ -62,6 +62,19 @@ export interface ExcelRowData {
   _matVariantMode?: 'auto' | 'manual';
   /** V4.1 rozeti: otomatik atanan varyantin etiketi ("Kırmızı Boyalı") */
   _matAutoVariant?: string | null;
+  /**
+   * FITTING SATIRI (02.09): tutari BASKA satirlardan turetilen veri satiri.
+   * `kapsam` = ayni sayfadaki kapsam satirlarinin `_rowIdx` listesi (Ctrl+tik
+   * ile secilir). Oran satirin KENDI miktar hucresinde durur (birim "%").
+   * Tutar = Σ(kapsam toplam) × oran/100 — kural `pricing.fittingHesapla`.
+   * Alan sheets JSON'una oldugu gibi kaydedilir; yalniz bu alani tasiyan
+   * satir fitting sayilir (birimi % olan eski satirlar ETKILENMEZ).
+   */
+  _fitting?: { kapsam: number[] };
+  /** Bag kurulurken satirdaki ESKI para hucreleri (+ net/kar sistem alanlari);
+   *  "Bagi kaldir" geri yazar — fiyatli satir fitting'e donusurken para
+   *  sessizce silinmez. Bag kaldirilinca alan da silinir. */
+  _fittingOnceki?: Record<string, any>;
 }
 
 export interface ColumnRoles {

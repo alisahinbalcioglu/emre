@@ -21,6 +21,12 @@ import { aralikKur, planKopyala, type Aralik, type KopyaKolon, type KopyaSatir, 
 import { isaretStili, isaretTooltip, secimBekliyor, type IsaretGirdisi } from './isaret';
 import { joinMaterialText } from '@/ozellik/tablo/parse-material-text';
 import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, yukariYuvarla, etkinMiktar, paraBicim, sayfaToplamlari, karSatiri, maliyetiGeriTuret, PARA_ONDALIK } from '@/ozellik/fiyat/pricing';
+// FITTING SATIRI (02.09): kapsam secimi (Ctrl+tik) yardimcilari — para kurali pricing'te
+import {
+  fittingBirimiMi, fittingKapsaminaAlinabilirMi, kapsamDegistir, silinenSatiriKapsamlardanDus,
+  oranMetniniNormalize, fittingRozetMetni, kilitliEditable, yapistirmaHedefiMi, fittingHucreleri,
+  fittingOncekiAl, fittingOncekiFiyatVarMi, fittingParaAlanlari, FITTING_ONCEKI_SISTEM_ALANLARI,
+} from './fitting';
 // KÂR HÜCRESİ TEK SÜZGEÇTEN: `parseFloat(String(x)) || 0` kopyaları
 // kaydetme yolundaki `sayiAlani` ile AYRIŞIYORDU — "12,5" ekranda 12,
 // kayıtta 12,5 oluyordu (TR klavye). Tek fonksiyon, tek sayı.
@@ -1689,6 +1695,44 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     secimUygula(null, null);
   }, [secimUygula]);
 
+  // ═══════════ FITTING SATIRI: KAPSAM SECIM MODU (02.09.2026) ═══════════
+  // Kullanici karari: fitting satirini ELLE yazar (ad + oran + birim "%"),
+  // kapsami Ctrl+tik ile secer, ayni satira tekrar Ctrl+tik cikarir. Tutar
+  // `pricing.fittingHesapla` ile kapsamdan turer (Σ toplam × oran/100).
+  // Mod acikken tul: fitting satiri mavi, kapsami sari. Tul CSS kuraliyla
+  // verilir — kopyalama tuluyla AYNI gerekce (AG Grid'in cizim yarisindan
+  // muaf; bkz. secimUygula). Satir secicisi `row-index` — kopya tulunun
+  // kanitli yolu; kimlik→gorunur indeks `getRowNode(id).rowIndex` ile.
+  const [fittingModu, setFittingModu] = useState<{ rowIdx: number; ad: string; kapsamSayisi: number } | null>(null);
+  const fittingModuRef = useRef<{ rowIdx: number } | null>(null);
+  const [fittingStili, setFittingStili] = useState('');
+  // Gecis hucre yazarken true: hucre-degisim kancasi yeni tam-tablo turu ACMAZ
+  // (inceleme M3 — F fitting × 4 hucre × tam yeniden hesap israfi).
+  const fittingYaziyorRef = useRef(false);
+
+  const fittingTulu = useCallback((rowIdx: number | null) => {
+    const api = gridRef.current?.api;
+    const node = rowIdx === null ? null : api?.getRowNode(String(rowIdx));
+    if (!api || !node?.data) { setFittingStili(''); return; }
+    const kok = `.mpx-kapsam-${gridKimlik}`;
+    const secici = (n: any): string | null =>
+      (typeof n?.rowIndex === 'number' ? `${kok} .ag-row[row-index="${n.rowIndex}"] .ag-cell` : null);
+    const kapsam: number[] = Array.isArray(node.data._fitting?.kapsam) ? node.data._fitting.kapsam : [];
+    const kapsamSec = kapsam.map((i) => secici(api.getRowNode(String(i)))).filter(Boolean).join(',');
+    const kendi = secici(node);
+    setFittingStili(
+      (kendi ? `${kendi}{box-shadow:inset 0 0 0 9999px rgba(37,99,235,.10)}` : '')
+      + (kapsamSec ? `${kapsamSec}{box-shadow:inset 0 0 0 9999px rgba(245,158,11,.22)}` : ''),
+    );
+  }, [gridKimlik]);
+
+  const fittingModunuKapat = useCallback(() => {
+    if (!fittingModuRef.current) return;
+    fittingModuRef.current = null;
+    setFittingModu(null);
+    setFittingStili('');
+  }, []);
+
   // ═══════════ ISKONTO TOPLU ISLEMLERI (Iskonto Surukle-Doldur PRD) ═══════════
   // S5: geri alma yigini — her toplu islem (fill / yapistir / gruba veya tum
   // listeye uygula) TEK adim olarak kaydedilir, Ctrl+Z butun olarak geri alir.
@@ -1948,6 +1992,13 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
 
     const isMod = e.ctrlKey || e.metaKey;
 
+    // ── FITTING (02.09): Esc kapsam secim modunu kapatir ─────────────────
+    if (e.key === 'Escape' && fittingModuRef.current && api.getEditingCells().length === 0) {
+      e.preventDefault();
+      fittingModunuKapat();
+      return;
+    }
+
     // ── KP: Shift+Ok ile HUCRE ARALIGI SECIMI ────────────────────────────
     // AG Grid Community'de hucre araligi YOKTUR (Enterprise ozelligi), bu
     // yuzden secim kendi ref'imizde yasar. Odak BILEREK tasinmaz: anchor
@@ -2032,7 +2083,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       const target = api.getDisplayedRowAtIndex(fc.rowIndex);
       if (src != null && target?.data?._isDataRow) applyDiscountBulk([{ node: target, value: src }]);
     }
-  }, [mode, undoLastDiscountOp, applyDiscountBulk, undoLastMarkaFill, kopyalaSecim, secimUygula, secimTemizle]);
+  }, [mode, undoLastDiscountOp, applyDiscountBulk, undoLastMarkaFill, kopyalaSecim, secimUygula, secimTemizle, fittingModunuKapat]);
 
   /** S3: Excel'den cok satirli iskonto yapistirma — odakli hucreden asagi,
    *  grup bantlari atlanir; sigmayan degerlerde uyari (satir uyusmazligi).
@@ -2098,7 +2149,10 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         return {
           field: c.getColId(),
           // editable fonksiyon olabilir — o kolonlar guvenli tarafta hedef disi
-          editable: def.editable === true && !hesaplanan.has(c.getColId()),
+          // FITTING (02.09): kilit sarmalayicisi altindaki duz-editable kolon
+          // hedef KALIR (`fittingTemel`); fitting satirina yapisan deger gecis
+          // tarafindan bir sonraki yenilemede kapsamdan yeniden yazilir.
+          editable: yapistirmaHedefiMi(def.editable) && !hesaplanan.has(c.getColId()),
           sayisal: sayisalAlanlar.has(c.getColId()),
         };
       });
@@ -2278,6 +2332,48 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     onRowDataChange(all);
   }, [onRowDataChange]);
 
+  /** FITTING (02.09): kapsam secim modunu bu satir icin ac (rozet tiki / birime "%" yazimi).
+   *  Bag yoksa kurar (bos kapsam) — `_fitting` alani satiri fitting yapar. */
+  const fittingModunuAc = useCallback((rowIdx: number) => {
+    const api = gridRef.current?.api;
+    const node = api?.getRowNode(String(rowIdx));
+    if (!api || !node?.data || !node.data._isDataRow) return;
+    const roller = data.columnRoles as Record<string, string | undefined>;
+    if (!node.data._fitting) {
+      // C1: satirda fiyat varsa bag kurulunca para hucreleri kapsamdan
+      // yeniden yazilacak. Eski degerler saklanir, "Bagi kaldir" geri yazar;
+      // kullaniciya SOYLENIR — sessiz para silme yok.
+      const onceki = fittingOncekiAl(node.data, roller);
+      node.data._fittingOnceki = onceki;
+      node.data._fitting = { kapsam: [] };
+      if (fittingOncekiFiyatVarMi(onceki, roller)) {
+        toast({
+          title: 'Satır fitting satırına dönüştü',
+          description: 'Fiyat hücreleri seçtiğiniz kapsamdan yeniden hesaplanacak. Bağı kaldırırsanız (✕) eski değerler geri gelir.',
+        });
+      }
+      // H1: oran hucresine ONCE "%35" yazilmis olabilir — bag kurulurken de
+      // sayiya indirgenir (sira bagimsiz; etkinMiktar yalniz saf sayi okur).
+      const q = roller.quantityField;
+      if (q) {
+        const temiz = oranMetniniNormalize(node.data[q]);
+        if (temiz !== null) node.setDataValue(q, temiz);
+      }
+      api.refreshCells({ rowNodes: [node], force: true }); // rozet + kilit gorunsun
+      emitRows();
+    }
+    const nameField = roller.nameField;
+    fittingModuRef.current = { rowIdx };
+    setFittingModu({
+      rowIdx,
+      ad: nameField ? String(node.data[nameField] ?? '').trim() : '',
+      kapsamSayisi: node.data._fitting.kapsam.length,
+    });
+    fittingTulu(rowIdx);
+    // Odak TASINMAZ (inceleme M4): Enter/Tab akisi bozulmasin. Esc, kokteki
+    // capture dinleyicisine gridin icinden de ulasir.
+  }, [data.columnRoles, fittingTulu, emitRows]);
+
   // ── GUVEN KAPISI SAYACI (PRD Bolum 9): "N satir secim bekliyor" ──
   // Durumu 'yok'/'belirsiz' olan data satirlari sayilir; her hucre
   // degisiminde tazelenir (setDataValue de cellValueChanged tetikler).
@@ -2325,8 +2421,10 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     if (!api) return;
     api.applyTransaction({ add: [makeBlankRow()], addIndex: Math.max(0, atIndex) });
     setCtxMenu(null);
+    // FITTING (inceleme M5): tul `row-index` tabanli — satir eklenince kayar, tazele
+    if (fittingModuRef.current) fittingTulu(fittingModuRef.current.rowIdx);
     setTimeout(emitRows, 0);
-  }, [makeBlankRow, emitRows]);
+  }, [makeBlankRow, emitRows, fittingTulu]);
 
   // Ref: deleteRow'un kimligi sabit kalsin (context menu her render'da yeniden
   // baglanmasin) ama parent'in guncel kancasini okusun — onRowDataChangeRef
@@ -2346,8 +2444,26 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       if (!ok) return;
     }
     api.applyTransaction({ remove: [row] });
+    // ── FITTING (02.09): silinen satir onu tasiyan kapsamlardan duser ──────
+    // Silinen satirin kendisi fitting ise acik mod kapanir. Toplamlar
+    // yenilenir (gecis `updatePinnedBottom` icinde kosar, fitting hucrelerini
+    // yeni kapsamdan yazar).
+    const kalan: ExcelRowData[] = [];
+    api.forEachNode((n) => { if (n.data) kalan.push(n.data); });
+    const daralan = silinenSatiriKapsamlardanDus(kalan, row._rowIdx);
+    const daralanDugumler: any[] = [];
+    for (const d of daralan) {
+      const n = api.getRowNode(String(d.rowIdx));
+      if (n?.data) { n.data._fitting = { kapsam: d.kapsam }; daralanDugumler.push(n); }
+    }
+    // Rozet sayaci ("Σ N satır") bayat kalmasin (inceleme M2)
+    if (daralanDugumler.length) api.refreshCells({ rowNodes: daralanDugumler, force: true });
+    if (fittingModuRef.current?.rowIdx === row._rowIdx) fittingModunuKapat();
+    // Sayfa toplami HER silmede tazelenir (fitting disi satirda da bayat
+    // kaliyordu); gecis daralan fitting hucrelerini yeniden yazar, tulu tazeler.
+    setTimeout(() => updatePinnedBottomRef.current?.(), 0);
     setTimeout(emitRows, 0);
-  }, [emitRows]);
+  }, [emitRows, fittingModunuKapat]);
 
   const addColumn = useCallback(() => {
     setCtxMenu(null);
@@ -2379,9 +2495,18 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     '_malzKar', '_marka', '_iscKar', '_firma', '_draftDiscount',
   ]), []);
 
-  const handleFillComplete = useCallback(async (result: { field: string; value: any; sourceRowIndex: number; targetRowNodes: any[] }) => {
+  const handleFillComplete = useCallback(async (resultHam: { field: string; value: any; sourceRowIndex: number; targetRowNodes: any[] }) => {
     const api = gridRef.current?.api;
     if (!api) return;
+    // FITTING (02.09): fitting satirlari surukle-doldur HEDEFI DEGIL — kar/marka/
+    // firma/fiyat hucreleri kapsamdan turetilir, elle ya da doldurmayla yazilmaz.
+    const result = { ...resultHam, targetRowNodes: resultHam.targetRowNodes.filter((n: any) => !n.data?._fitting) };
+    if (result.targetRowNodes.length === 0) {
+      if (resultHam.targetRowNodes.length > 0) {
+        toast({ title: 'Fitting satırları doldurma hedefi değil', description: 'Bu satırların değerleri seçilen kapsamdan türetilir.' });
+      }
+      return;
+    }
 
     const { nameField, quantityField, unitField, materialUnitPriceField, materialTotalField,
             laborUnitPriceField, laborTotalField, diameterField } = data.columnRoles;
@@ -2580,9 +2705,42 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
   }));
   const [pinnedBottomRow, setPinnedBottomRow] = React.useState<ExcelRowData[]>([]);
 
+  // ── FITTING GECISI (02.09): fitting satirlarinin hucreleri kapsamdan yazilir ──
+  // Her toplam yenilemesinde (her fiyat/miktar/kar degisiminden sonra
+  // `updatePinnedBottom` cagrilir — tek kanca) fitting satirlari kapsamdan
+  // yeniden hesaplanir. YALNIZ DEGISEN hucre yazilir: `setDataValue` →
+  // cellValueChanged → yeniden buraya; degisiklik yoksa zincir biter
+  // (idempotent). Fitting fitting'i kapsayamadigi icin dongu yoktur.
+  const fittingSatirlariniYenile = useCallback(() => {
+    const api = gridRef.current?.api;
+    if (!api) return;
+    // Inceleme H2: salt okunur baglam (detay sayfasi) KAYDEDILENI gosterir —
+    // gecis orada kosmaz; ekran ile musteriye giden dosya ayrismaz.
+    if (!enableStructureEdit) return;
+    const satirlar: ExcelRowData[] = [];
+    api.forEachNode((n) => { if (n.data) satirlar.push(n.data); });
+    // Yazilacak hucreler saf fonksiyondan (fitting.ts, testli); burada yalniz
+    // DEGISEN hucre yazilir.
+    const hucreler = fittingHucreleri(satirlar, data.columnRoles as any);
+    fittingYaziyorRef.current = true;
+    try {
+      for (const h of hucreler) {
+        const node = api.getRowNode(String(h.rowIdx));
+        if (!node?.data || String(node.data[h.alan] ?? '') === h.deger) continue;
+        node.setDataValue(h.alan, h.deger);
+      }
+    } finally {
+      fittingYaziyorRef.current = false;
+    }
+    // Tul `row-index` tabanli: satir ekleme/silme sonrasi tazele (inceleme M5)
+    if (fittingModuRef.current) fittingTulu(fittingModuRef.current.rowIdx);
+  }, [data.columnRoles, enableStructureEdit, fittingTulu]);
+
   // Pinned bottom "GENEL TOPLAM" satirini gunceller — tum data row'larin grand toplamini alir
   const updatePinnedBottom = useCallback(() => {
     if (!gridRef.current?.api) return;
+    // FITTING (02.09): once turetilen satirlar, sonra sayfa toplami — ayni gecis
+    fittingSatirlariniYenile();
     const { grandUnitPriceField, grandTotalField, materialTotalField, laborTotalField, nameField } = data.columnRoles;
     // Dosyada grandTotalField yoksa bile, materialTotal + laborTotal toplamini goster
     if (!grandTotalField && !materialTotalField && !laborTotalField) {
@@ -2638,8 +2796,77 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     } else {
       setPinnedBottomRow([pinnedRow]);
     }
-  }, [data.columnRoles, mode]);
+  }, [data.columnRoles, mode, fittingSatirlariniYenile]);
   updatePinnedBottomRef.current = updatePinnedBottom;
+
+  // ── FITTING (02.09): Ctrl+tik → kapsama ekle/cikar; rozet ✕ → bagi kaldir ──
+  const fittingKapsamToggle = useCallback((hedef: ExcelRowData) => {
+    const api = gridRef.current?.api;
+    const modu = fittingModuRef.current;
+    if (!api || !modu) return;
+    const fitNode = api.getRowNode(String(modu.rowIdx));
+    if (!fitNode?.data?._fitting) { fittingModunuKapat(); return; }
+    if (!fittingKapsaminaAlinabilirMi(hedef, modu.rowIdx)) {
+      toast({
+        title: 'Bu satır kapsama alınamaz',
+        description: hedef?._rowIdx === modu.rowIdx
+          ? 'Fitting satırı kendisini kapsayamaz.'
+          : 'Yalnız fiyatlanabilir veri satırları seçilebilir; başlık, özet ve diğer fitting satırları alınmaz.',
+      });
+      return;
+    }
+    const kapsam = kapsamDegistir(fitNode.data._fitting.kapsam, hedef._rowIdx);
+    fitNode.data._fitting = { kapsam };
+    setFittingModu((m) => (m ? { ...m, kapsamSayisi: kapsam.length } : m));
+    updatePinnedBottom();           // gecis: fitting hucreleri + GENEL TOPLAM + KAR
+    api.refreshCells({ rowNodes: [fitNode], force: true }); // rozet sayaci
+    fittingTulu(modu.rowIdx);
+    emitRows();                     // kapsam degisikligi kayda/taslaga gitsin
+  }, [fittingModunuKapat, updatePinnedBottom, fittingTulu, emitRows]);
+
+  const fittingBagiKaldir = useCallback((rowIdx: number) => {
+    const api = gridRef.current?.api;
+    const node = api?.getRowNode(String(rowIdx));
+    if (!api || !node?.data) return;
+    const roller = data.columnRoles as Record<string, string | undefined>;
+    const onceki = node.data._fittingOnceki;
+    delete node.data._fitting;
+    delete node.data._fittingOnceki;
+    // C1: bag kurulurken saklanan ESKI degerler geri yazilir (yoksa hucre
+    // bosalir — satir siradan, fiyatsiz satira doner).
+    for (const f of fittingParaAlanlari(roller)) {
+      const geri = onceki ? String(onceki[f] ?? '') : '';
+      if (String(node.data[f] ?? '') !== geri) node.setDataValue(f, geri);
+    }
+    for (const a of FITTING_ONCEKI_SISTEM_ALANLARI) {
+      node.data[a] = onceki && onceki[a] !== undefined ? onceki[a] : 0;
+    }
+    if (fittingModuRef.current?.rowIdx === rowIdx) fittingModunuKapat();
+    api.refreshCells({ rowNodes: [node], force: true });
+    updatePinnedBottom();
+    emitRows();
+  }, [data.columnRoles, fittingModunuKapat, updatePinnedBottom, emitRows]);
+
+  // Sayfa degisince / veri yeniden yuklenince acik mod ve tul dusurulur.
+  React.useEffect(() => {
+    if (fittingModuRef.current) fittingModunuKapat();
+    else setFittingStili('');
+  }, [data.rowData, fittingModunuKapat]);
+
+  // Renderer'lar ve hucre-degisim kancasi bu ikisini REF uzerinden cagirir:
+  // `columnDefs` useMemo'su callback kimligine baglanmaz (yeniden kurulum acik
+  // hucre editorunu iptal eder — KP notu). Kimlik `emitRows`→`onRowDataChange`
+  // zinciriyle her parent render'inda degisebilir; ref bunu soğurur.
+  const fittingModunuAcRef = useRef(fittingModunuAc);
+  fittingModunuAcRef.current = fittingModunuAc;
+  const fittingBagiKaldirRef = useRef(fittingBagiKaldir);
+  fittingBagiKaldirRef.current = fittingBagiKaldir;
+  /** Rozet/"%" yolu yalniz DUZENLEME baglaminda. Sinyal `enableStructureEdit`:
+   *  teklif duzenleme sayfasi verir, detay sayfasi (salt okunur) VERMEZ —
+   *  sag tik menusuyle AYNI kapi. (`onRowDataChange` sinyal OLAMAZ: teklif
+   *  sayfasi onu hic gecmiyor — satir nesneleri referansla paylasildigi icin
+   *  `_fitting` yazimi parent'a zaten ulasir; olculdu, quotes/new/page.tsx.) */
+  const fittingDuzenlenebilir = enableStructureEdit;
 
   // Data yuklenince pinned bottom hesapla
   React.useEffect(() => {
@@ -2699,6 +2926,12 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     const filteredColumnDefs = mode === 'library'
       ? data.columnDefs.filter((c) => !QUOTE_SYSTEM_FIELDS.has(c.field))
       : data.columnDefs;
+    // FITTING (02.09): turetilen para hucreleri (gri/italik + kilit)
+    const paraAlanlari = new Set(
+      [data.columnRoles.materialUnitPriceField, data.columnRoles.materialTotalField,
+        data.columnRoles.laborUnitPriceField, data.columnRoles.laborTotalField,
+        data.columnRoles.grandUnitPriceField, data.columnRoles.grandTotalField].filter(Boolean) as string[],
+    );
 
     const cols: ColDef<ExcelRowData>[] = filteredColumnDefs.map((c): ColDef<ExcelRowData> => {
       const base: ColDef<ExcelRowData> = {
@@ -2767,6 +3000,8 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
             );
           }
           if (!params.data?._isDataRow) return null;
+          // FITTING (02.09): satirin kendi kar yuzdesi yok — kapsamin karini tasir
+          if (params.data?._fitting) return null;
           const val = params.value ?? 0;
           const hasVal = parseFloat(String(val)) > 0;
           return (
@@ -2827,7 +3062,8 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         };
         base.cellRenderer = (params: ICellRendererParams) => (
           // Ozet satiri fiyatlandirilmaz — marka secimi gosterilmez
-          params.data?._ozet ? <span style={{ color: '#94a3b8', fontSize: 11 }}>özet</span> : (
+          params.data?._ozet || params.data?._fitting
+            ? <span style={{ color: '#94a3b8', fontSize: 11 }}>{params.data?._fitting ? 'fitting' : 'özet'}</span> : (
           <BrandDropdown
             {...params}
             brands={brands}
@@ -2856,7 +3092,8 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         };
         base.cellRenderer = (params: ICellRendererParams) => (
           // Ozet satiri isciliklendirilmez
-          params.data?._ozet ? <span style={{ color: '#94a3b8', fontSize: 11 }}>özet</span> : (
+          params.data?._ozet || params.data?._fitting
+            ? <span style={{ color: '#94a3b8', fontSize: 11 }}>{params.data?._fitting ? 'fitting' : 'özet'}</span> : (
           <FirmaDropdown
             {...params}
             laborFirms={laborFirms}
@@ -2877,6 +3114,19 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         base.editable = false;
       }
 
+      // ── FITTING (02.09): turetilen hucreler KILITLI ──────────────────────
+      // Birim fiyat ve kar % fitting satirinda elle yazilamaz — deger kapsamdan
+      // gelir; yazilsa gecis bir sonraki yenilemede uzerine yazardi (sessiz
+      // geri alma yerine hucre hic acilmaz).
+      // Kilit kumesi = TUM para kolonlari (birim, toplam, genel — inceleme M1:
+      // dosyadan gelen "Tutar" kolonu da editable geliyor) + iki kar kolonu.
+      // `kilitliEditable` (fitting.ts, testli) `fittingTemel` isaretiyle
+      // yapistirma planlayicisina "altta duz editable vardi" der — 28.08
+      // kutuphane→teklif yapistirma yolu kapanmaz.
+      if (mode === 'quote' && (paraAlanlari.has(c.field) || c.field === '_malzKar' || c.field === '_iscKar')) {
+        base.editable = kilitliEditable(base.editable);
+      }
+
       // Merge cells icin colSpan
       const field = c.field;
       base.colSpan = (params) => {
@@ -2889,6 +3139,8 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       };
       base.cellClassRules = {
         'hidden-merged-cell': (params) => params.data?._merges?.[field]?.hidden === true,
+        // FITTING (02.09): turetilen para hucreleri gri/italik — elle yazilmaz
+        'fitting-turetilmis': (params) => !!params.data?._fitting && paraAlanlari.has(field),
         // KP: secili aralik gorsel geri bildirimi. Sinif MAVI TUL cizer
         // (`inset` golge), zemini EZMEZ — isaret.ts'in para sinyalleri
         // (kirmizi/sari/gri) inline `cellStyle` ile geliyor ve secim
@@ -2912,7 +3164,33 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       if (field === data.columnRoles.nameField) {
         base.cellRenderer = (params: ICellRendererParams) => {
           if (params.node?.rowPinned !== 'bottom') {
-            return params.valueFormatted ?? params.value ?? '';
+            const metin = params.valueFormatted ?? params.value ?? '';
+            // ── FITTING ROZETI (02.09) ──────────────────────────────────
+            // Bag kurulmus ya da birimi "%" olan veri satirinda "Σ N satır"
+            // rozeti: tik → kapsam secim modu (Ctrl+tik). ✕ → bag kaldirilir.
+            // Yalniz DUZENLEME baglaminda (onRowDataChange var): detay
+            // sayfasinda secim yapilsa da hicbir yere kaydedilmezdi.
+            const d: any = params.data;
+            const birim = data.columnRoles.unitField ? d?.[data.columnRoles.unitField] : undefined;
+            if (mode === 'quote' && fittingDuzenlenebilir && d?._isDataRow && !d._isSpareRow
+              && (d._fitting || fittingBirimiMi(birim))) {
+              const n = Array.isArray(d._fitting?.kapsam) ? d._fitting.kapsam.length : 0;
+              return (
+                <span className="fitting-ad">
+                  <span className="fitting-ad-metin">{metin}</span>
+                  <button type="button" className="fitting-rozet" title="Kapsamı seç: Ctrl+tık ekler, tekrar Ctrl+tık çıkarır"
+                    aria-label={`Fitting kapsamını seç, ${n} satır seçili`}
+                    onClick={(ev) => { ev.stopPropagation(); fittingModunuAcRef.current(d._rowIdx); }}>
+                    {fittingRozetMetni(n)}
+                  </button>
+                  {d._fitting ? (
+                    <button type="button" className="fitting-rozet-sil" title="Bağı kaldır" aria-label="Fitting bağını kaldır"
+                      onClick={(ev) => { ev.stopPropagation(); fittingBagiKaldirRef.current(d._rowIdx); }}>✕</button>
+                  ) : null}
+                </span>
+              );
+            }
+            return metin;
           }
           const kar = (params.data as any)?._isKarRow === true;
           return (
@@ -3151,7 +3429,8 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     }
 
     return cols;
-  }, [data, brands, onBrandChange, laborFirms, sheetDiscipline, laborEnabled, onFirmaChange, mode, libraryPriceField, currencySymbol, conversionRate]);
+  }, [data, brands, onBrandChange, laborFirms, sheetDiscipline, laborEnabled, onFirmaChange, mode, libraryPriceField, currencySymbol, conversionRate,
+      fittingDuzenlenebilir]);
 
   // Kar % degistiginde fiyati yeniden hesapla
   // Kolonu olmayan alana yazim — writePriceToNode'daki yazVeri ile AYNI
@@ -3192,6 +3471,28 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       }
     }
 
+    // ── FITTING SATIRI (02.09) ────────────────────────────────────────────
+    // (a) Birim hucresine "%" yazildi → bag kur + kapsam secim modunu ac.
+    //     Yalniz duzenleme baglaminda (onRowDataChange var); eski kayitlardaki
+    //     birimi "%" olan satirlar YUKLENIRKEN buraya girmez (edit degil).
+    if (unitField && e.colDef.field === unitField && e.source === 'edit' && mode === 'quote'
+      && fittingDuzenlenebilir && fittingBirimiMi(e.newValue) && !row._fitting) {
+      fittingModunuAcRef.current(row._rowIdx); // bag yoksa kurar, rozeti cizer
+    }
+    // (b) Fitting satirinda oran hucresine "%35" / "35%" yazildiysa sayiya
+    //     indirgenir: miktar kurali (`etkinMiktar`) YALNIZ saf sayi okur —
+    //     "%" kalsaydi oran 0 olur, kayit ve cikti da 0 gorurdu.
+    //     Inceleme H1: bag henuz yokken de (birimi "%" olan satir) temizlenir —
+    //     kullanici once orani, sonra birimi yazabilir.
+    if ((row._fitting || (unitField && fittingBirimiMi(row[unitField])))
+      && quantityField && e.colDef.field === quantityField && e.source === 'edit') {
+      const temiz = oranMetniniNormalize(e.newValue);
+      if (temiz !== null && temiz !== String(e.newValue ?? '')) {
+        e.node.setDataValue(quantityField, temiz); // temiz degerle yeniden girer
+        return;
+      }
+    }
+
     // ── Grand recalc helper (her degisim sonunda cagrilir) ──
     const recalcGrand = () => {
       if (!grandUnitPriceField && !grandTotalField) return;
@@ -3225,8 +3526,8 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       }
     };
 
-    // ── Malzeme kar % degisti ──
-    if (e.colDef.field === '_malzKar' && materialUnitPriceField && materialTotalField && quantityField) {
+    // ── Malzeme kar % degisti ── (fitting satirinda kar yok: `!row._fitting`)
+    if (e.colDef.field === '_malzKar' && materialUnitPriceField && materialTotalField && quantityField && !row._fitting) {
       const kar = sayiAlani(row._malzKar);
       // ── MALIYET GERIYE TURETILIR (06.08 canli hata) ──────────────────────
       // Eski kod, `_matNetPrice` bossa hucreyi NET sanip okuyordu. Hucre SATIS
@@ -3257,8 +3558,8 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       setTimeout(() => { recalcGrand(); updatePinnedBottom(); }, 0);
     }
 
-    // ── Iscilik kar % degisti ──
-    if (e.colDef.field === '_iscKar' && laborUnitPriceField && laborTotalField && quantityField) {
+    // ── Iscilik kar % degisti ── (fitting satirinda kar yok)
+    if (e.colDef.field === '_iscKar' && laborUnitPriceField && laborTotalField && quantityField && !row._fitting) {
       const kar = sayiAlani(row._iscKar);
       // Malzeme ikiziyle AYNI duzeltme (bkz. yukaridaki gerekce).
       const oncekiKarLab = sayiAlani(e.oldValue);
@@ -3281,8 +3582,15 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       setTimeout(() => { recalcGrand(); updatePinnedBottom(); }, 0);
     }
 
+    // ── FITTING SATIRI: oran (miktar hucresi) degisti → hucreler kapsamdan yeniden yazilir ──
+    // Normal miktar dali bu satirda CALISMAZ: net×kar×miktar carpimi fitting'e
+    // uygulanamaz, tutar `fittingHesapla` ile gecis icinde yazilir.
+    if (row._fitting && e.colDef.field === quantityField) {
+      setTimeout(() => { recalcGrand(); updatePinnedBottom(); }, 0);
+    }
+
     // ── Miktar degisti → malzeme + iscilik tutar yenile + grand recalc ──
-    if (e.colDef.field === quantityField) {
+    if (e.colDef.field === quantityField && !row._fitting) {
       const qty = parseFloat(String(e.newValue ?? 0)) || 0;
 
       if (materialUnitPriceField && materialTotalField) {
@@ -3309,8 +3617,8 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       setTimeout(() => { recalcGrand(); updatePinnedBottom(); }, 0);
     }
 
-    // ── Malzeme birim fiyat manuel degisti (kullanici elle yazdi) ──
-    if (e.colDef.field === materialUnitPriceField && e.source === 'edit' && materialTotalField && quantityField) {
+    // ── Malzeme birim fiyat manuel degisti (kullanici elle yazdi) ── (fitting: hucre kilitli, yapistirma da bu daldan GECMEZ)
+    if (e.colDef.field === materialUnitPriceField && e.source === 'edit' && materialTotalField && quantityField && !row._fitting) {
       const enteredPrice = parseFloat(String(e.newValue ?? '').replace(',', '.')) || 0;
       const kar = sayiAlani(row._malzKar);
       // Girilen deger ekran hucresinden — kar uygulanmis final kabul et
@@ -3339,8 +3647,8 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       console.log(`[ExcelGrid] Manuel malz. birim: row=${row._rowIdx}, entered=${enteredPrice}, kar=${kar}%, net=${net.toFixed(2)}, qty=${qty}`);
     }
 
-    // ── Iscilik birim fiyat manuel degisti ──
-    if (e.colDef.field === laborUnitPriceField && e.source === 'edit' && laborTotalField && quantityField) {
+    // ── Iscilik birim fiyat manuel degisti ── (fitting: ikiz kural)
+    if (e.colDef.field === laborUnitPriceField && e.source === 'edit' && laborTotalField && quantityField && !row._fitting) {
       const enteredPrice = parseFloat(String(e.newValue ?? '').replace(',', '.')) || 0;
       const kar = sayiAlani(row._iscKar);
       const net = kar > 0 ? enteredPrice / (1 + kar / 100) : enteredPrice;
@@ -3368,7 +3676,11 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       e.colDef.field === laborUnitPriceField ||
       e.colDef.field === laborTotalField
     ) {
-      setTimeout(() => { recalcGrand(); updatePinnedBottom(); }, 0);
+      // FITTING gecisi yaziyorsa (inceleme M3): satirin genel toplami HEMEN
+      // tazelenir; sayfa toplami zaten gecisin hemen ardindan (updatePinnedBottom
+      // icinde) hesaplanir — F×4 ek tam-tablo turu ACILMAZ.
+      if (fittingYaziyorRef.current) recalcGrand();
+      else setTimeout(() => { recalcGrand(); updatePinnedBottom(); }, 0);
     }
 
     // ── Library mode: HERHANGI gercek kolon edit'i _dirty isaretler ──
@@ -3430,7 +3742,8 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
 
     // Guven kapisi sayaci tazele (PRD Bolum 9)
     recountPending();
-  }, [data.columnRoles, data.columnDefs, onRowDataChange, autoAppendRow, recountPending, floorFields]);
+  }, [data.columnRoles, data.columnDefs, onRowDataChange, autoAppendRow, recountPending, floorFields,
+      mode, updatePinnedBottom, fittingDuzenlenebilir]);
 
   // getRowId — stabil row kimligi (re-render'da row'un durumunu korur)
   const getRowId = useCallback((params: GetRowIdParams<ExcelRowData>) => {
@@ -3460,6 +3773,19 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           <span className="text-red-600">— kırmızı hücreler: eşleşme yok/belirsiz · sarı: öneri (kontrol edin) · gri: ürün değil</span>
         </div>
       )}
+      {/* FITTING KAPSAM SECIM SERIDI (02.09): mod acikken Ctrl+tik ekler/cikarir */}
+      {fittingModu && (
+        <div data-testid="fitting-serit" className="mb-1 flex flex-wrap items-center gap-2 rounded border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs text-amber-900">
+          <span className="font-semibold">Σ Fitting kapsamı{fittingModu.ad ? `: ${fittingModu.ad}` : ''}</span>
+          <span>Ctrl+tık ile satır ekleyin, tekrar Ctrl+tık ile çıkarın</span>
+          <span className="rounded bg-amber-200 px-2 py-0.5 font-semibold tabular-nums">{fittingModu.kapsamSayisi} satır</span>
+          <button type="button" className="ml-auto rounded bg-amber-600 px-3 py-1 font-semibold text-white hover:bg-amber-700"
+            onClick={fittingModunuKapat}>
+            Tamam
+          </button>
+        </div>
+      )}
+      {fittingStili ? <style>{fittingStili}</style> : null}
       {/* ISKONTO ARAC CUBUGU (S2b): tum listeye tek hamlede iskonto +
           kisayol ipuclari. Yalniz kutuphane modunda. */}
       {mode === 'library' && (
@@ -3549,9 +3875,24 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           if (Object.keys(w).length) onColumnWidthsChange(w);
         }}
         onCellValueChanged={handleCellValueChanged}
+        // ── FITTING (02.09): fitting satirina odaklaninca kapsami gorunur ──
+        // Mod acikken tul moda aittir (dokunulmaz). Salt gorsel; secim
+        // temizleme kurali (onCellFocused'a baglanamaz) burayi ilgilendirmez.
+        onCellFocused={(e) => {
+          if (fittingModuRef.current) return;
+          const n = typeof e.rowIndex === 'number' && !e.rowPinned ? e.api.getDisplayedRowAtIndex(e.rowIndex) : null;
+          fittingTulu(n?.data?._fitting ? n.data._rowIdx : null);
+        }}
         // ── KP: HUCRE ARALIGI SECIMI (Excel'deki gibi Shift+tik) ──────────
         onCellClicked={(e) => {
           if (e.node?.rowPinned || typeof e.rowIndex !== 'number') return;
+          // ── FITTING (02.09): mod acikken Ctrl+tik kapsama ekler / cikarir ──
+          // Kopyalama secimine (Shift) dokunmaz; Ctrl+tik gridde baska ise bagli degil.
+          const meCtrl = e.event as MouseEvent | null;
+          if ((meCtrl?.ctrlKey || meCtrl?.metaKey) && fittingModuRef.current) {
+            if (e.data) fittingKapsamToggle(e.data as ExcelRowData);
+            return;
+          }
           const kolonlar = e.api.getAllDisplayedColumns();
           const ki = kolonlar.findIndex((c: any) => c.getColId() === e.column.getColId());
           if (ki < 0) return;
@@ -3639,6 +3980,15 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         document.body,
       )}
       <style jsx global>{`
+        /* FITTING SATIRI (02.09): turetilen para hucreleri + ad hucresi rozeti */
+        .ag-theme-alpine .ag-cell.fitting-turetilmis { color: #64748b; font-style: italic; }
+        .fitting-ad { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; }
+        .fitting-ad-metin { overflow: hidden; text-overflow: ellipsis; }
+        .fitting-rozet { flex: none; border: 1px solid #f59e0b; background: #fffbeb; color: #b45309;
+          border-radius: 6px; padding: 0 7px; height: 22px; line-height: 20px; font-size: 11px; font-weight: 700; cursor: pointer; }
+        .fitting-rozet:hover { background: #fef3c7; }
+        .fitting-rozet-sil { flex: none; border: 0; background: transparent; color: #94a3b8; font-size: 11px; cursor: pointer; padding: 0 2px; }
+        .fitting-rozet-sil:hover { color: #dc2626; }
         .ag-theme-alpine {
           --ag-grid-size: 5px;
           --ag-list-item-height: 24px;

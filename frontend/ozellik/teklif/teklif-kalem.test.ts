@@ -227,3 +227,29 @@ describe('kalemUret — CANLI 400 senaryosu', () => {
     expect(dtoyaUyar(item)).toEqual([]);
   });
 });
+
+describe('kalemUret — FİTTİNG SATIRI (02.09)', () => {
+  // Birim "%" + oran miktar hücresinde; birim fiyat/tutar hücreleri grid
+  // geçişinin (fittingHesapla) yazdığı türetilmiş değerler. Kayıt yolu bu
+  // satırı SIRADAN kalem gibi taşır — backend'e dokunulmadı, sözleşme burada.
+  const fitting = {
+    _isDataRow: true, _rowIdx: 22,
+    'Malzeme Cinsi': 'dişli fitting oranı', Miktar: '35', Birim: '%',
+    'Birim Fiyat': '10466.0', Tutar: '366310.0', _labBirim: '', _labToplam: '',
+    _fitting: { kapsam: [11, 12, 13, 14, 15, 16] },
+  };
+  it('miktar = oran (35), birim "%", tutarlar EKRANDAKİ gibi gider', () => {
+    const k = kalemUret(fitting, roller)!;
+    expect(k.materialName).toBe('dişli fitting oranı');
+    expect(k.quantity).toBe(35);
+    expect(k.unit).toBe('%');
+    expect(k.materialUnitPrice).toBe(10466);
+    expect(k.materialTotalPrice).toBe(366310);
+    expect(k.laborTotalPrice).toBe(0);
+    expect(dtoyaUyar(k)).toEqual([]);
+  });
+  it('oran hücresinde "%" kalmışsa miktar 0 gider — grid bunu yazımda temizler (oranMetniniNormalize)', () => {
+    const k = kalemUret({ ...fitting, Miktar: '35%' }, roller)!;
+    expect(k.quantity).toBe(0);
+  });
+});

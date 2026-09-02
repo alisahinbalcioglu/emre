@@ -265,6 +265,53 @@ export function toplamlariTamamla(
 //  _ozet satirlari TOPLAMA GIRMEZ (30.07 kullanici karari: Icmal cift sayardi).
 // ============================================================
 
+/**
+ * TEK TARAF (malzeme/iscilik) SATIR KURALI.
+ *
+ * ADIM 7'de `sayfaToplamlari`nin ic kapanisiydi; fitting satiri (02.09)
+ * kapsam tabanini AYNI kuralla okumak zorunda oldugu icin disari alindi.
+ * Davranis birebir korundu (sayfa-toplamlari.test.ts kapisi):
+ *  · sutun hic yoksa `null` — sayilmaz
+ *  · birim ve toplam bos → fiyatsiz (satis 0, maliyet 0)
+ *  · satis = toplam hucresi NEYSE o (dosya toplami ustundur, KE21);
+ *    bossa birim × miktar
+ *  · maliyet: kar ≤ 0 → satis; kar > 0 → net (sakli ya da geri turetilmis) @ %0
+ */
+export function satirTarafi(
+  r: Record<string, any>, miktar: number,
+  birimAlan: string | undefined, topAlan: string | undefined,
+  karAlan: '_malzKar' | '_iscKar', netAlan: '_matNetPrice' | '_labNetPrice',
+): { satis: number; maliyet: number; fiyatli: boolean } | null {
+  const sayi = (v: unknown) => {
+    const n = parseFloat(String(v ?? '').replace(',', '.'));
+    return Number.isFinite(n) ? n : 0;
+  };
+  const bos = (v: unknown) => String(v ?? '').trim() === '';
+
+  if (!birimAlan && !topAlan) return null; // sutun hic yok — sayilmaz
+  const birimBos = !birimAlan || bos(r[birimAlan]);
+  const topBos = !topAlan || bos(r[topAlan]);
+  if (birimBos && topBos) return { satis: 0, maliyet: 0, fiyatli: false };
+
+  const satis = !topBos ? sayi(r[topAlan!])
+    : hesaplaSatirToplam(sayi(r[birimAlan!]), miktar);
+  // KÂR HÜCRESİ: ekranın/kaydın kullandığı SÜZGECİN AYNISI. Yerel `sayi`
+  // negatifi geçirir; aşağıdaki `kar <= 0` dalı negatifi zaten sıfır gibi
+  // ele aldığı için sonuç DEĞİŞMEZ — ama ölçüt tek yerden okunmalı ki
+  // ekran/kayıt/kâr analizi üç ayrı sayı üretemesin.
+  const kar = sayiAlani(r[karAlan]);
+  let maliyet: number;
+  if (kar <= 0) {
+    maliyet = satis; // %0 → satis = maliyet (dosya toplamlari dahil)
+  } else {
+    const netSakli = typeof r[netAlan] === 'number' && r[netAlan] > 0 ? r[netAlan] : 0;
+    const net = netSakli > 0 ? netSakli
+      : sayi(birimAlan ? r[birimAlan] : 0) / (1 + kar / 100);
+    maliyet = hesaplaSatirToplam(hesaplaSatisBirimFiyat(net, 0), miktar);
+  }
+  return { satis, maliyet, fiyatli: true };
+}
+
 export interface SayfaToplamOzeti {
   /** Satis toplamlari — bugunku GENEL TOPLAM satirinin uc hucresi */
   matToplam: number;
@@ -291,11 +338,6 @@ export function sayfaToplamlari(
   const { materialUnitPriceField: mBirim, materialTotalField: mTop,
     laborUnitPriceField: lBirim, laborTotalField: lTop,
     quantityField: mikA, unitField: brmA } = roller;
-  const sayi = (v: unknown) => {
-    const n = parseFloat(String(v ?? '').replace(',', '.'));
-    return Number.isFinite(n) ? n : 0;
-  };
-  const bos = (v: unknown) => String(v ?? '').trim() === '';
 
   // ── KURUS-TAMSAYI BIRIKTIRME (kapinin ilk kosumunda yakalandi) ──────────
   // Ham float toplama SIRAYA DUYARLIDIR (IEEE754 birlesme ozelligi yok):
@@ -318,41 +360,27 @@ export function sayfaToplamlari(
     if (r._ozet) continue; // Icmal ozet satiri — cift sayim yasagi
     const miktar = etkinMiktar(r, mikA, brmA);
 
-    // Tek taraf (malzeme/iscilik) icin ortak kural — iki kez cagrilir.
-    const taraf = (
-      birimAlan: string | undefined, topAlan: string | undefined,
-      karAlan: '_malzKar' | '_iscKar', netAlan: '_matNetPrice' | '_labNetPrice',
-    ): { satis: number; maliyet: number; fiyatli: boolean } | null => {
-      if (!birimAlan && !topAlan) return null; // sutun hic yok — sayilmaz
-      const birimBos = !birimAlan || bos(r[birimAlan]);
-      const topBos = !topAlan || bos(r[topAlan]);
-      if (birimBos && topBos) return { satis: 0, maliyet: 0, fiyatli: false };
+    // Tek taraf (malzeme/iscilik) icin ortak kural — `satirTarafi` (disa
+    // verilmis): fitting tabani da AYNI kurali okur, ikinci aritmetik yok.
+    let m = satirTarafi(r, miktar, mBirim, mTop, '_malzKar', '_matNetPrice');
+    let l = satirTarafi(r, miktar, lBirim, lTop, '_iscKar', '_labNetPrice');
 
-      const satis = !topBos ? sayi(r[topAlan!])
-        : hesaplaSatirToplam(sayi(r[birimAlan!]), miktar);
-      // KÂR HÜCRESİ: ekranın/kaydın kullandığı SÜZGECİN AYNISI. Yerel `sayi`
-      // negatifi geçirir; aşağıdaki `kar <= 0` dalı negatifi zaten sıfır gibi
-      // ele aldığı için sonuç DEĞİŞMEZ — ama ölçüt tek yerden okunmalı ki
-      // ekran/kayıt/kâr analizi üç ayrı sayı üretemesin.
-      const kar = sayiAlani(r[karAlan]);
-      let maliyet: number;
-      if (kar <= 0) {
-        maliyet = satis; // %0 → satis = maliyet (dosya toplamlari dahil)
-      } else {
-        const netSakli = typeof r[netAlan] === 'number' && r[netAlan] > 0 ? r[netAlan] : 0;
-        const net = netSakli > 0 ? netSakli
-          : sayi(birimAlan ? r[birimAlan] : 0) / (1 + kar / 100);
-        maliyet = hesaplaSatirToplam(hesaplaSatisBirimFiyat(net, 0), miktar);
-      }
-      return { satis, maliyet, fiyatli: true };
-    };
+    // ── FITTING SATIRI (02.09): MALIYET KAPSAMDAN TURER ────────────────────
+    // Satis = hucrede yazan (grid gecisi `fittingHesapla` ile yazar; KE21
+    // "hucre neyse o" kurali korunur). Maliyet ise hucreden OKUNAMAZ: bu
+    // satirin kendi kar yuzdesi YOKTUR, kapsamin karini tasir (F3). Ustteki
+    // genel kural burada kar 0 gorup maliyet=satis der ve KAR satiri fitting
+    // karini SIFIR yazardi — maliyet kapsamdan turetilip UZERINE yazilir.
+    if (r._fitting) {
+      const f = fittingHesapla(r, satirlar, roller);
+      if (m?.fiyatli) m = { ...m, maliyet: f?.mat?.maliyet ?? 0 };
+      if (l?.fiyatli) l = { ...l, maliyet: f?.lab?.maliyet ?? 0 };
+    }
 
-    const m = taraf(mBirim, mTop, '_malzKar', '_matNetPrice');
     if (m) {
       if (m.fiyatli) { o.matFiyatli++; matToplamK += K(m.satis); matMaliyetK += K(m.maliyet); }
       else o.matFiyatsiz++;
     }
-    const l = taraf(lBirim, lTop, '_iscKar', '_labNetPrice');
     if (l) {
       if (l.fiyatli) { o.labFiyatli++; labToplamK += K(l.satis); labMaliyetK += K(l.maliyet); }
       else o.labFiyatsiz++;
@@ -497,4 +525,123 @@ export function karSatiri(
   const genelAlan = genel ?? genelBirim;
   if (genelAlan) row[genelAlan] = bilgi.matYok && bilgi.labYok ? null : ozet.toplamKar;
   return row;
+}
+
+// ============================================================
+// FITTING SATIRI (02.09.2026, kullanici istegi)
+//
+// Kullanicinin Excel'i: `=TOPLA(H11:H16)*D22` — boru satirlarinin TOPLAM
+// hucreleri toplanir, "fitting orani" satirindaki yuzdeyle carpilir.
+// Uygulamada fitting satiri = `_fitting: { kapsam: [_rowIdx...] }` tasiyan
+// veri satiri; orani KENDI miktar hucresinde durur (birim "%"), kapsam
+// Ctrl+tik ile secilir. Tutar:
+//
+//     toplam  = Σ(kapsam satirlarinin SATIS toplami) × oran / 100
+//     maliyet = Σ(kapsam satirlarinin MALIYET toplami) × oran / 100
+//     birim   = Σ(satis) / 100   (kapsamin %1'i — "birim × miktar ≈ toplam")
+//
+// Kurallar:
+//  · Kapsam satirinin satis/maliyeti `satirTarafi` ile okunur — sayfa toplami
+//    ile AYNI kural, ikinci aritmetik YOK.
+//  · Malzeme ve iscilik AYRI tabandan, ayni oranla (ikiz kurali). O tarafta
+//    kolon yoksa, oran ≤ 0 ise ya da kapsamda fiyatli satir yoksa taraf `null`
+//    → hucre BOS kalir (₺0 yazilmaz; bos fiyat ≠ sifir).
+//  · Kapsamda bulunamayan/gecersiz satir (silinmis, ozet, baska fitting,
+//    kendisi) toplama GIRMEZ ve `eksik` sayilir — sessiz sifir yok.
+//  · Kurus-tamsayi biriktirme (sayfaToplamlari ile ayni gerekce): sonuc
+//    kapsam sirasindan bagimsiz. Yuvarlama YALNIZ sonucta, YUKARI, 1 hane.
+//  · Satirin kendi kar yuzdesi YOKTUR: kapsam karli ise fitting de ayni
+//    oranda karlidir (kullanici karari: "kapsamin karini tasir").
+// Muhur: ozellik/fiyat/fitting-hesap.test.ts
+// ============================================================
+
+export interface FittingKapsam { kapsam: number[] }
+
+export interface FittingTaraf {
+  /** Kapsam SATIS toplami (TL) — Excel'deki TOPLA(H11:H16) */
+  taban: number;
+  /** Kapsam MALIYET toplami (satirTarafi kurali) */
+  maliyetTaban: number;
+  /** taban × oran / 100 — hucreye yazilan tutar */
+  toplam: number;
+  /** maliyetTaban × oran / 100 — KAR satiri icin */
+  maliyet: number;
+  /** taban / 100 — birim fiyat hucresi (kapsamin %1'i) */
+  birim: number;
+  /** kapsamda o tarafta fiyatli satir sayisi */
+  fiyatli: number;
+}
+
+export interface FittingSonucu {
+  /** Yuzde (35 = %35) — satirin kendi miktar hucresinden (etkinMiktar) */
+  oran: number;
+  /** Kapsamda gecerli bulunan satir sayisi */
+  kapsamSayisi: number;
+  /** Kapsamda olup sayfada bulunamayan / gecersiz satir sayisi */
+  eksik: number;
+  mat: FittingTaraf | null;
+  lab: FittingTaraf | null;
+}
+
+/**
+ * Bu satir bir fitting satirinin kapsamina girebilir mi? Grid'in Ctrl+tik
+ * secimi ve `fittingHesapla` AYNI kurali okur — secilebilen her satir
+ * hesaba girer, hesaba giren her satir secilebilir.
+ */
+export function fittingKapsaminaAlinabilirMi(
+  r: Record<string, any> | null | undefined,
+  fittingRowIdx: number,
+): boolean {
+  return !!r && r._isDataRow === true && !r._ozet && !r._isGroupRow && !r._isSpareRow
+    && !r._fitting && typeof r._rowIdx === 'number' && r._rowIdx !== fittingRowIdx;
+}
+
+export function fittingHesapla(
+  fit: Record<string, any>,
+  satirlar: Record<string, any>[],
+  roller: Record<string, string | undefined>,
+): FittingSonucu | null {
+  const kapsam: unknown = fit?._fitting?.kapsam;
+  if (!Array.isArray(kapsam)) return null;
+  const { materialUnitPriceField: mBirim, materialTotalField: mTop,
+    laborUnitPriceField: lBirim, laborTotalField: lTop,
+    quantityField: mikA, unitField: brmA } = roller;
+  const oran = etkinMiktar(fit, mikA, brmA);
+  const K = (v: number) => Math.round(v * 100); // TL → kurus tamsayi
+
+  const kimlikle = new Map<number, Record<string, any>>();
+  for (const r of satirlar) {
+    if (r && typeof r._rowIdx === 'number') kimlikle.set(r._rowIdx, r);
+  }
+
+  let matK = 0, matMaliyetK = 0, labK = 0, labMaliyetK = 0;
+  let matFiyatli = 0, labFiyatli = 0, kapsamSayisi = 0, eksik = 0;
+  for (const idx of kapsam) {
+    const r = typeof idx === 'number' ? kimlikle.get(idx) : undefined;
+    if (!fittingKapsaminaAlinabilirMi(r, fit._rowIdx)) { eksik++; continue; }
+    kapsamSayisi++;
+    const miktar = etkinMiktar(r!, mikA, brmA);
+    const m = satirTarafi(r!, miktar, mBirim, mTop, '_malzKar', '_matNetPrice');
+    if (m?.fiyatli) { matFiyatli++; matK += K(m.satis); matMaliyetK += K(m.maliyet); }
+    const l = satirTarafi(r!, miktar, lBirim, lTop, '_iscKar', '_labNetPrice');
+    if (l?.fiyatli) { labFiyatli++; labK += K(l.satis); labMaliyetK += K(l.maliyet); }
+  }
+
+  const taraf = (kolonVar: boolean, fiyatli: number, tK: number, mK: number): FittingTaraf | null => {
+    if (!kolonVar || oran <= 0 || fiyatli === 0) return null;
+    return {
+      taban: tK / 100,
+      maliyetTaban: mK / 100,
+      // kurus × yuzde / (100 kurus × 100 yuzde)
+      toplam: yukariYuvarla((tK * oran) / 10000),
+      maliyet: yukariYuvarla((mK * oran) / 10000),
+      birim: yukariYuvarla(tK / 10000),
+      fiyatli,
+    };
+  };
+  return {
+    oran, kapsamSayisi, eksik,
+    mat: taraf(!!(mBirim || mTop), matFiyatli, matK, matMaliyetK),
+    lab: taraf(!!(lBirim || lTop), labFiyatli, labK, labMaliyetK),
+  };
 }
