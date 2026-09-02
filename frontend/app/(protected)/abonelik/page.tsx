@@ -12,6 +12,12 @@ import {
   govdeyeCevir,
   type FaturaKimligi,
 } from '@/ozellik/odeme/fatura-kimligi';
+import { IyzicoFormu } from '@/ozellik/odeme/IyzicoFormu';
+import {
+  bicimle as telefonBicimle,
+  haneleriAl as telefonHaneleri,
+  telefonHatasi,
+} from '@/ozellik/odeme/telefon-bicim';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -80,6 +86,12 @@ export default function AbonelikSayfasi() {
       setHata(`Su alanlar zorunlu: ${eksik.join(', ')}`);
       return;
     }
+    // Bicim hatasi AYRI mesaj alir: "eksik" ile "yarim" ayni sey degil.
+    const telHata = telefonHatasi(fatura.telefon);
+    if (telHata) {
+      setHata(telHata);
+      return;
+    }
     setHata(null);
     setGonderiliyor(true);
     try {
@@ -135,11 +147,24 @@ export default function AbonelikSayfasi() {
               <input
                 id={`fatura-${alan}`}
                 type={alan === 'eposta' ? 'email' : alan === 'telefon' ? 'tel' : 'text'}
-                value={fatura[alan]}
-                onChange={(e) => setFatura({ ...fatura, [alan]: e.target.value })}
+                value={alan === 'telefon' ? telefonBicimle(fatura.telefon) : fatura[alan]}
+                onChange={(e) =>
+                  setFatura({
+                    ...fatura,
+                    // ⚠ Telefonda durumda MASKELI METIN DEGIL, YALNIZ HANELER
+                    // tutulur. Maske daima "+90 " ile basladigi icin maskeli
+                    // metni saklasaydik BOS alan DOLU gorunur ve zorunlu-alan
+                    // kapisi (`eksikAlanlar`, bos-dize kontrolu) sessizce
+                    // delinirdi.
+                    [alan]:
+                      alan === 'telefon'
+                        ? telefonHaneleri(e.target.value)
+                        : e.target.value,
+                  })
+                }
                 placeholder={
                   alan === 'telefon'
-                    ? '+905301234567'
+                    ? '+90 (5xx) (xxx) (xx) (xx)'
                     : alan === 'kimlikNo'
                       ? '11 haneli TC veya vergi no'
                       : undefined
@@ -196,8 +221,14 @@ export default function AbonelikSayfasi() {
         <p className="mb-6 text-sm text-muted-foreground">
           Kart bilgileriniz dogrudan iyzico'ya iletilir, sunucularimiza kaydedilmez.
         </p>
-        {/* iyzico'nun barindirilan formu — kendi script'ini calistirir. */}
-        <div dangerouslySetInnerHTML={{ __html: formHtml }} />
+        {/*
+          ⚠ `dangerouslySetInnerHTML` KULLANILAMAZ. 02.09'da olculdu: bu ekran
+          bombos kaliyordu. HTML spesifikasyonu geregi `innerHTML` ile eklenen
+          `<script>` ASLA YURUTULMEZ; iyzico'nun donen icerigi ise neredeyse
+          tamamen bir betiktir — formu o cizer. `IyzicoFormu` betikleri
+          `createElement` ile YENIDEN uretir, boylece calisirlar.
+        */}
+        <IyzicoFormu html={formHtml} />
       </div>
     );
   }
