@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { APP_FILTER } from '@nestjs/core';
+import { IyzicoHataSuzgeci } from './iyzico/iyzico-hata.filter';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 
@@ -39,6 +41,16 @@ import { EpostaServisi } from './eposta/eposta.servisi';
   imports: [ConfigModule, ScheduleModule.forRoot()],
   controllers: [IyzicoWebhookController, HavaleController, AbonelikController],
   providers: [
+    {
+      // ⚠ APP_FILTER burada tanimlansa da NEST'TE GLOBALDIR. Bilerek:
+      // `IyzicoHatasi` yalniz odeme modulunden cikar, kural da odeme
+      // klasorunde dursun (Grup N izolasyonu). 02.09'da bu suzgec
+      // YOKKEN iyzico'nun reddi kullaniciya duz `500 Internal server
+      // error` olarak donuyordu ve hangi alanin hatali oldugu
+      // GORUNMUYORDU.
+      provide: APP_FILTER,
+      useClass: IyzicoHataSuzgeci,
+    },
     IyzicoClient,
     WebhookIsleyici,
     AbonelikServisi,

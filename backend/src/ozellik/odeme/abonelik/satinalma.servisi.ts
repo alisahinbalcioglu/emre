@@ -124,6 +124,41 @@ export const ZORUNLU_MUSTERI_ALANLARI = [
 ] as const;
 
 /**
+ * Telefonu iyzico'nun bekledigi bicime cevirir. SAF fonksiyon.
+ *
+ * ⚠ 02.09'da canli turda musteri `05330983663` yazdi — Turkiye'de insanlarin
+ * telefonu yazma bicimi budur. iyzico `gsmNumber` alaninda ULKE KODLU bicim
+ * bekler (`+905330983663`). Kullaniciya "basina +90 koyun" demek yerine
+ * donusumu BIZ yapariz: form kurallariyla ugrasmak musterinin isi degil.
+ *
+ * Bicimler:
+ *   "0533 098 36 63" / "(0533) 098-3663" → +905330983663  (bosluk/tire/parantez atilir)
+ *   "05330983663"                        → +905330983663
+ *   "5330983663"                         → +905330983663
+ *   "00905330983663"                     → +905330983663
+ *   "+905330983663"                       → oldugu gibi
+ *
+ * ⚠ TANIMADIGI bicimi BOZMAZ, aynen doner: yurt disi numarasi ya da
+ * beklenmedik uzunlukta bir giris "duzeltiliyorum" diye SAKATLANMAMALI.
+ * Reddetme karari uzak uca aittir; bizim isimiz tahmin etmek degil.
+ */
+export function telefonuNormalize(ham: string): string {
+  const temiz = (ham ?? '').replace(/[\s()\-.]/g, '');
+  if (!temiz) return ham;
+
+  if (temiz.startsWith('+')) return temiz;
+  if (temiz.startsWith('00')) return `+${temiz.slice(2)}`;
+  // 0 + 10 hane (0533...) → yerel yazim
+  if (/^0\d{10}$/.test(temiz)) return `+90${temiz.slice(1)}`;
+  // 10 hane, 5 ile baslar (533...) → bastaki sifir da yazilmamis
+  if (/^5\d{9}$/.test(temiz)) return `+90${temiz}`;
+  // 90 + 10 hane (90533...) → ulke kodu var ama + yok
+  if (/^90\d{10}$/.test(temiz)) return `+${temiz}`;
+
+  return ham;
+}
+
+/**
  * Eksik/bos fatura alanlarinin adlarini doner. SAF fonksiyon — govde hic
  * gelmemis olabilir (`undefined`), o durumda TUM alanlar eksiktir.
  *
@@ -320,7 +355,8 @@ export class SatinAlmaServisi {
         name: p.musteri.ad,
         surname: p.musteri.soyad,
         email: p.musteri.eposta,
-        gsmNumber: p.musteri.telefon,
+        // ⚠ Yerel yazim (`05330983663`) iyzico tarafinda gecerli DEGIL.
+        gsmNumber: telefonuNormalize(p.musteri.telefon),
         identityNumber: p.musteri.kimlikNo,
         billingAddress: {
           contactName: `${p.musteri.ad} ${p.musteri.soyad}`,

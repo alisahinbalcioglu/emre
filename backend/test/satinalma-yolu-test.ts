@@ -33,6 +33,8 @@
  *   P7 on yuz ile sunucunun zorunlu alan listeleri AYNI
  *   P8 ⭐ ERISIM KISALTILMIYOR — odemek, odememekten kotu OLMAMALI
  *      (goc satiri 365 gun tasiyor; odeme `simdi+32 gune` dusuruyordu)
+ *   P9 ⭐ TELEFON BICIMI — yerel yazim (`0533...`) +90'a cevrilir
+ *   P10 ⭐ IYZICO HATASI 500 DEGIL — uzak ucun mesaji kullaniciya ULASIR
  *
  * Cikis kodu sozlesmesi: 0 = PASS · digeri = FAIL.
  */
@@ -44,8 +46,13 @@ import {
   SatinAlmaServisi,
   eksikMusteriAlanlari,
   mirasPaketiMi,
+  telefonuNormalize,
   ZORUNLU_MUSTERI_ALANLARI,
 } from '../src/ozellik/odeme/abonelik/satinalma.servisi';
+import {
+  iyzicoDurumunuHttpyeCevir,
+  kullaniciyaMesaj,
+} from '../src/ozellik/odeme/iyzico/iyzico-hata.filter';
 
 let passed = 0;
 let failed = 0;
@@ -389,6 +396,88 @@ async function main() {
       `gun=${kisaGun}`,
     );
   }
+
+  // ── P9 ⭐ TELEFON BICIMI — giden istekte normalize edilmis mi ─────────
+  //
+  // 02.09 canli turunda musteri `05330983663` yazdi (Turkiye'de standart
+  // yazim) ve uc `500 Internal server error` dondu. iyzico `gsmNumber`
+  // alaninda ULKE KODLU bicim bekler.
+  console.log('\n── P9 ⭐ telefon bicimi ──');
+  check('P9.1 yerel yazim → +90', telefonuNormalize('05330983663') === '+905330983663',
+    telefonuNormalize('05330983663'));
+  check('P9.2 bosluk/tire temizlenir',
+    telefonuNormalize('0533 098 36 63') === '+905330983663',
+    telefonuNormalize('0533 098 36 63'));
+  check('P9.3 parantezli yazim', telefonuNormalize('(0533) 098-3663') === '+905330983663',
+    telefonuNormalize('(0533) 098-3663'));
+  check('P9.4 bastaki sifirsiz (533...)', telefonuNormalize('5330983663') === '+905330983663',
+    telefonuNormalize('5330983663'));
+  check('P9.5 00 oneki → +', telefonuNormalize('00905330983663') === '+905330983663',
+    telefonuNormalize('00905330983663'));
+  check('P9.6 zaten dogru olan DEGISMEZ',
+    telefonuNormalize('+905330983663') === '+905330983663');
+  // ⚠ Fixture'in AYIRT EDICI olmasi sart: `'abc'`de temizlenecek karakter
+  // YOK, yani ham === temiz olur ve "ham yerine temiz don" mutasyonu
+  // HAYATTA KALIR (02.09'da tam boyle oldu). Tanimadigimiz ama BICIMLI
+  // bir girdi lazim: `'123-456'` → temiz '123456', ikisi FARKLI.
+  check('P9.7 ⭐ TANIMADIGI bicimi BOZMAZ — girdi AYNEN doner',
+    telefonuNormalize('123-456') === '123-456',
+    `donen=${telefonuNormalize('123-456')} (beklenen 123-456)`,
+  );
+  check('P9.7-b yurt disi numarasi da bozulmaz',
+    telefonuNormalize('+1 415 555 0100') === '+14155550100',
+    telefonuNormalize('+1 415 555 0100'),
+  );
+
+  // ⭐ DAVRANIS: normalize GERCEKTEN giden isteğe giriyor mu?
+  // Saf fonksiyonun dogru olmasi, cagrildigini kanitlamaz — 02.09'da
+  // `hasAnyDwg` tam boyle "tanimli ama cagrilmiyor" durumundaydi.
+  const i9 = sahteIyzico();
+  await baslatSonucu(sahtePrisma(null), i9.istemci, {
+    ...TAM_MUSTERI,
+    telefon: '0533 098 36 63',
+  });
+  check(
+    'P9.8 ⭐ giden istekte gsmNumber NORMALIZE edilmis',
+    i9.cagrilar[0]?.musteri?.gsmNumber === '+905330983663',
+    `giden=${i9.cagrilar[0]?.musteri?.gsmNumber}`,
+  );
+
+  // ── P10 ⭐ IYZICO HATASI 500 DEGIL, ANLAMLI CEVAP OLMALI ──────────────
+  //
+  // `IyzicoHatasi extends Error` (HttpException DEGIL) oldugu icin Nest'in
+  // varsayilan suzgeci govdeyi `500 Internal server error` yapiyordu ve
+  // iyzico'nun gercek mesaji YUTULUYORDU. Musteri ekranda yalnizca
+  // "Internal server error" goruyordu.
+  console.log('\n── P10 ⭐ iyzico hatasi gorunur oluyor ──');
+  check(
+    'P10.1 iyzico 4xx → 400 (duzeltecek olan KULLANICI)',
+    iyzicoDurumunuHttpyeCevir(400) === 400 && iyzicoDurumunuHttpyeCevir(422) === 400,
+  );
+  check(
+    'P10.2 ⭐ diger/bilinmeyen → 502, 500 DEGIL (hata BIZDE degil)',
+    iyzicoDurumunuHttpyeCevir(500) === 502 &&
+      iyzicoDurumunuHttpyeCevir(undefined) === 502,
+    `${iyzicoDurumunuHttpyeCevir(500)} / ${iyzicoDurumunuHttpyeCevir(undefined)}`,
+  );
+  check(
+    'P10.3 ⭐ mesaj iyzico metnini TASIR (yutulmuyor)',
+    kullaniciyaMesaj({ kod: '5006', message: 'gsmNumber gecersiz' }).includes(
+      'gsmNumber gecersiz',
+    ),
+  );
+  check(
+    'P10.4 hata kodu da gosterilir (destege soylenebilsin)',
+    kullaniciyaMesaj({ kod: '5006', message: 'x' }).includes('5006'),
+  );
+  check(
+    'P10.5 ⭐ mesaj bossa bile "Internal server error" DEMEZ',
+    (() => {
+      const m = kullaniciyaMesaj({ message: '' });
+      return m.length > 0 && !m.toLowerCase().includes('internal server error');
+    })(),
+    kullaniciyaMesaj({ message: '' }),
+  );
 
   son();
 }
