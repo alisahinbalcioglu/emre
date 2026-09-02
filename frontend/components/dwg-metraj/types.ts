@@ -51,4 +51,8 @@ export interface MetrajResult {
   /** T-junction noktaları [x, y] — Canvas2D viewer'da marker olarak çizilir.
    *  Her noktada >=3 segment buluşur. Backend pipe_segments._extract_junction_points'tan. */
   junction_points?: [number, number][];
+  /** Yalnız T modunda ve sprinkler katmanı işaretlenmemişken dolar: adında
+   *  sprinkler geçen, seçili boruların ÜSTÜNDE sembol taşıyan katmanlar
+   *  (çok → az). Ölçülmüş ipucu — karar değil, kullanıcı 💧 ile işaretler. */
+  sprinkler_candidates?: { layer: string; on_pipe: number }[];
 }

@@ -99,6 +99,22 @@ export function useLayerCalc({ fileId, scale, sprinklerLayers, onResult, onFileI
           title: 'Çap ataması manuel',
           description: 'Sağdaki "Çap Kalemleri" panelinden kalem seç, çizimde borulara tıkla.',
         });
+
+        // T modu + hiç 💧 işareti yok + motor "şu katmanda N sembol boruların
+        // ÜSTÜNDE" ölçtü: kullanıcı işaretlemeyi unutmuş olabilir (02.09:
+        // 'YNG SPRİNK PENDENT' işaretsizdi, borular sprinkler'da bölünmüyordu ve
+        // nedeni ekranda hiç görünmüyordu). Karar değil, ölçülmüş ipucu.
+        const adaylar: { layer: string; on_pipe: number }[] = Array.isArray(data.sprinkler_candidates)
+          ? data.sprinkler_candidates
+          : [];
+        if (opts?.splitMode !== 'none' && sprinklerLayers.length === 0 && adaylar.length > 0) {
+          const ilk = adaylar[0];
+          toast({
+            title: 'Sprinkler katmanı işaretli değil',
+            description: `"${ilk.layer}" katmanında ${ilk.on_pipe} sembol boruların üstünde. `
+              + 'Layer listesinde 💧 ile işaretleyip yeniden hesaplayın — borular sprinkler noktalarında bölünür.',
+          });
+        }
       } catch (e: any) {
         const status = e?.response?.status as number | undefined;
         const detail = e?.response?.data?.detail ?? e?.response?.data?.message;

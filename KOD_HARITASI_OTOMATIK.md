@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 453
-Toplam satir: 98443
+Kod dosyasi: 454
+Toplam satir: 99765
 Uc nokta: 142
 test:* scripti: 78
 
@@ -45,19 +45,20 @@ test:* scripti: 78
 | `backend/src/modules/dwg-engine/python/deploy-to-cloudrun.sh` | 71 |
 | `backend/src/modules/dwg-engine/python/geometry.py` | 757 |
 | `backend/src/modules/dwg-engine/python/graph.py` | 356 |
-| `backend/src/modules/dwg-engine/python/main.py` | 1603 |
-| `backend/src/modules/dwg-engine/python/models.py` | 89 |
+| `backend/src/modules/dwg-engine/python/main.py` | 1619 |
+| `backend/src/modules/dwg-engine/python/models.py` | 99 |
 | `backend/src/modules/dwg-engine/python/parse_worker.py` | 83 |
-| `backend/src/modules/dwg-engine/python/pipe_segments.py` | 1153 |
+| `backend/src/modules/dwg-engine/python/pipe_segments.py` | 1875 |
 | `backend/src/modules/dwg-engine/python/tests/__init__.py` | 1 |
 | `backend/src/modules/dwg-engine/python/tests/test_block_to_line_split.py` | 104 |
 | `backend/src/modules/dwg-engine/python/tests/test_pipe_segments.py` | 85 |
 | `backend/src/modules/dwg-engine/python/tests/test_scale_normalization.py` | 127 |
 | `backend/src/modules/dwg-engine/python/tests/test_split_mode.py` | 149 |
+| `backend/src/modules/dwg-engine/python/tests/test_symbol_cluster_split.py` | 499 |
 | `backend/src/modules/dwg-engine/python/tests/test_tolerance_robustness.py` | 118 |
 | `backend/src/modules/dwg-engine/python/tests/test_unit_detect.py` | 597 |
 | `backend/src/modules/dwg-engine/python/topology.py` | 268 |
-| `backend/src/modules/dwg-engine/python/unit_detect.py` | 711 |
+| `backend/src/modules/dwg-engine/python/unit_detect.py` | 766 |
 | `backend/src/modules/dwg-engine/python/upload_worker.py` | 107 |
 | `backend/src/modules/dwg-engine/scale-param.test.ts` | 59 |
 | `backend/src/modules/dwg-engine/scale-param.ts` | 30 |
@@ -282,7 +283,7 @@ test:* scripti: 78
 | `frontend/components/dwg-diameter-engine/DiameterLegendPanel.tsx` | 151 |
 | `frontend/components/dwg-diameter-engine/index.ts` | 16 |
 | `frontend/components/dwg-diameter-engine/types.ts` | 79 |
-| `frontend/components/dwg-diameter-engine/useLayerCalc.ts` | 136 |
+| `frontend/components/dwg-diameter-engine/useLayerCalc.ts` | 152 |
 | `frontend/components/dwg-diameter-engine/useOriginalColorState.ts` | 36 |
 | `frontend/components/dwg-metraj/DiameterEditPopup.tsx` | 121 |
 | `frontend/components/dwg-metraj/DwgUploader.tsx` | 643 |
@@ -290,7 +291,7 @@ test:* scripti: 78
 | `frontend/components/dwg-metraj/constants.ts` | 28 |
 | `frontend/components/dwg-metraj/diameter-colors.ts` | 169 |
 | `frontend/components/dwg-metraj/index.ts` | 12 |
-| `frontend/components/dwg-metraj/types.ts` | 55 |
+| `frontend/components/dwg-metraj/types.ts` | 59 |
 | `frontend/components/dwg-metraj/unit-detection.test.ts` | 118 |
 | `frontend/components/dwg-metraj/unit-detection.ts` | 79 |
 | `frontend/components/dwg-tagging/BucketPanel.tsx` | 144 |
@@ -503,15 +504,16 @@ test:* scripti: 78
 | `backend/src/modules/dwg-engine/python/main.py` | `collections` `fastapi` `fastapi.middleware.cors` `fastapi.middleware.gzip` `fastapi.responses` `converter` `topology` `geometry` `models` `unit_detect` `pipe_segments` |
 | `backend/src/modules/dwg-engine/python/models.py` | `pydantic` |
 | `backend/src/modules/dwg-engine/python/parse_worker.py` | `main` |
-| `backend/src/modules/dwg-engine/python/pipe_segments.py` | `typing` `converter` `collections` |
+| `backend/src/modules/dwg-engine/python/pipe_segments.py` | `typing` `ezdxf` `converter` `collections` |
 | `backend/src/modules/dwg-engine/python/tests/test_block_to_line_split.py` | `__future__` `pipe_segments` |
 | `backend/src/modules/dwg-engine/python/tests/test_pipe_segments.py` | `__future__` `pipe_segments` |
 | `backend/src/modules/dwg-engine/python/tests/test_scale_normalization.py` | `__future__` `main` |
 | `backend/src/modules/dwg-engine/python/tests/test_split_mode.py` | `pipe_segments` |
+| `backend/src/modules/dwg-engine/python/tests/test_symbol_cluster_split.py` | `__future__` `pipe_segments` |
 | `backend/src/modules/dwg-engine/python/tests/test_tolerance_robustness.py` | `pipe_segments` |
 | `backend/src/modules/dwg-engine/python/tests/test_unit_detect.py` | `unit_detect` |
 | `backend/src/modules/dwg-engine/python/topology.py` | `collections` `graph` `models` `converter` |
-| `backend/src/modules/dwg-engine/python/unit_detect.py` | `__future__` `dataclasses` |
+| `backend/src/modules/dwg-engine/python/unit_detect.py` | `__future__` `dataclasses` `pipe_segments` |
 | `backend/src/modules/dwg-engine/python/upload_worker.py` | `converter` `geometry` `main` |
 | `backend/src/modules/dwg-engine/scale-param.test.ts` | `node:assert` `./scale-param` |
 | `backend/src/ozellik/cikti/quote-formats/format-engine.ts` | `exceljs` |

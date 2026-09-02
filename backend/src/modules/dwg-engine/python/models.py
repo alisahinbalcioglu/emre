@@ -71,6 +71,14 @@ class EdgeSegment(BaseModel):
     is_inherited: bool = False   # True = inheritance pass'inden geldi (canvas'ta isaret icin)
 
 
+class SprinklerCandidate(BaseModel):
+    """Isaretlenmemis ama secili borularin USTUNDE sembol tasiyan katman.
+    Karar degil, OLCULMUS ipucu: kullanici katmani 💧 ile isaretlemeyi unutmus
+    olabilir (02.09: 'YNG SPRİNK PENDENT' isaretsizdi, 704 sembol boru ustunde)."""
+    layer: str
+    on_pipe: int   # boru cizgisinin icinden gecen sembol kumesi sayisi
+
+
 class MetrajResult(BaseModel):
     layers: list[LayerMetraj] = []
     total_length: float = 0.0
@@ -79,6 +87,8 @@ class MetrajResult(BaseModel):
     branch_points: list[BranchPoint] = []
     edge_segments: list[EdgeSegment] = []  # her edge ayri — Canvas2D viewer icin
     junction_points: list[list[float]] = []  # T-junction [x, y] noktalari (degree>=3, marker icin)
+    # Yalniz split_mode=t ve sprinkler katmani isaretlenmemisken dolar
+    sprinkler_candidates: list[SprinklerCandidate] = []
     # Birim auto-detect bilgisi (frontend "Algılanan: X" rozetinde gösterir)
     detected_unit: str = "mm"               # mm | cm | dm | m | inch | ft
     detected_scale: float = 0.001           # metre / cizim birimi

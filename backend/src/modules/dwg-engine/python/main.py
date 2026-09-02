@@ -27,7 +27,7 @@ from topology import analyze_topology
 from geometry import extract_geometry, extract_geometry_from_doc, GeometryResult
 from models import (
     LayerInfo, LayerListResult,
-    LayerMetraj, MetrajResult, PipeSegment, EdgeSegment,
+    LayerMetraj, MetrajResult, PipeSegment, EdgeSegment, SprinklerCandidate,
 )
 
 # backend/.env dosyasini yukle (env override icin — AI cap atama kaldirildi)
@@ -541,6 +541,7 @@ def analyze_dxf_metraj(
     # Frontend Canvas2D viewer her edge'i cap bazli renklendirip tiklanabilir yapar.
     edge_segments: list[EdgeSegment] = []
     junction_points: list[list[float]] = []
+    sprinkler_candidates: list[SprinklerCandidate] = []
     if selected_layers:
         try:
             from pipe_segments import (
@@ -548,6 +549,7 @@ def analyze_dxf_metraj(
                 _extract_junction_points,
                 _compute_tolerances,
                 _collect_raw_edges_all_layers,
+                sprinkler_layer_candidates as _sprinkler_layer_candidates,
             )
             # ── VIEW TRANSFORM UYUMU (kritik) ──────────────────────────
             # /geometry endpoint'i (Canvas2D viewer icin) LINE coords'larini
@@ -573,6 +575,19 @@ def analyze_dxf_metraj(
                 doc=doc,
                 split_mode=split_mode,
             )
+            # Isaretsiz T-modu: adinda sprinkler gecen katmanlardan hangisi
+            # secili borularin USTUNDE sembol tasiyor? (02.09: kullanici
+            # 'YNG SPRİNK PENDENT'i isaretlememisti, borular sprinkler'da
+            # bolunmuyordu ve nedeni ekranda gorunmuyordu.) Karar degil,
+            # OLCULMUS ipucu — bolme yalniz kullanici isaretleyince yapilir.
+            if split_mode != "none" and not sprinkler_layers_manual:
+                try:
+                    sprinkler_candidates = [
+                        SprinklerCandidate(**c) for c in
+                        _sprinkler_layer_candidates(doc, selected_layers, unit_scale=scale)
+                    ]
+                except Exception as _ce:
+                    warnings.append(f"Sprinkler aday taramasi: {str(_ce)[:80]}")
             edge_segments = []
             for s in _edges:
                 sx1, sy1 = _vt(s["x1"], s["y1"])
@@ -618,6 +633,7 @@ def analyze_dxf_metraj(
         branch_points=branch_points,
         edge_segments=edge_segments,
         junction_points=junction_points,
+        sprinkler_candidates=sprinkler_candidates,
         detected_unit=_scale_label,
         detected_scale=scale,
         detection_reason=_scale_auto_reason,
