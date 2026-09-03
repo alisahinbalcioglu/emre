@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 455
-Toplam satir: 99367
+Toplam satir: 99391
 Uc nokta: 142
 test:* scripti: 78
 
@@ -402,8 +402,8 @@ test:* scripti: 78
 | `frontend/ozellik/tablo/excel-grid/discount-utils.ts` | 28 |
 | `frontend/ozellik/tablo/excel-grid/fill-down.test.ts` | 464 |
 | `frontend/ozellik/tablo/excel-grid/fill-down.ts` | 374 |
-| `frontend/ozellik/tablo/excel-grid/fitting.test.ts` | 210 |
-| `frontend/ozellik/tablo/excel-grid/fitting.ts` | 148 |
+| `frontend/ozellik/tablo/excel-grid/fitting.test.ts` | 225 |
+| `frontend/ozellik/tablo/excel-grid/fitting.ts` | 157 |
 | `frontend/ozellik/tablo/excel-grid/grup-iskonto-girisi.test.ts` | 186 |
 | `frontend/ozellik/tablo/excel-grid/isaret.test.ts` | 238 |
 | `frontend/ozellik/tablo/excel-grid/isaret.ts` | 133 |

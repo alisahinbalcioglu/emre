@@ -11,7 +11,7 @@
  * girer, hesaba giren her satir secilebilir (tek kural).
  */
 // NOT: goreli yol ZORUNLU — vitest.config.ts'te '@/' alias'i tanimli degil.
-import { fittingHesapla, fittingKapsaminaAlinabilirMi } from '../../fiyat/pricing';
+import { fittingHesapla, fittingKapsaminaAlinabilirMi, yukariYuvarla } from '../../fiyat/pricing';
 
 export { fittingKapsaminaAlinabilirMi };
 
@@ -112,6 +112,15 @@ export function fittingHucreleri(
     ekle(roller.materialTotalField, f.mat?.toplam ?? null);
     ekle(roller.laborUnitPriceField, f.lab?.birim ?? null);
     ekle(roller.laborTotalField, f.lab?.toplam ?? null);
+    // GENEL TOPLAM/BIRIM de kapsamdan (recalcGrand ile AYNI kural: mat+lab,
+    // yukari-1-hane). ⚠ Yalniz recalcGrand'in yan etkisine birakilirsa reload
+    // sonrasi BAYAT kalir: dort para alani taslaktan ayni geldiginde
+    // `setDataValue` atlanir → cellValueChanged → recalcGrand HIC kosmaz →
+    // fitting satirinin Genel Toplam hucresi eski/yanlis degerinde donar
+    // (tarayici turunda olculdu: 491.759,7 kaldi, dogrusu 641.088,2).
+    const varMi = !!(f.mat || f.lab);
+    ekle(roller.grandUnitPriceField, varMi ? yukariYuvarla((f.mat?.birim ?? 0) + (f.lab?.birim ?? 0)) : null);
+    ekle(roller.grandTotalField, varMi ? yukariYuvarla((f.mat?.toplam ?? 0) + (f.lab?.toplam ?? 0)) : null);
   }
   return out;
 }

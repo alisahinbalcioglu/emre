@@ -20,6 +20,7 @@ const ROLLER = {
   quantityField: '_miktar', unitField: '_birim',
   materialUnitPriceField: '_matBirim', materialTotalField: '_matToplam',
   laborUnitPriceField: '_labBirim', laborTotalField: '_labToplam',
+  grandTotalField: '_toplam',
 };
 
 describe('K1 — kapsamDegistir', () => {
@@ -171,26 +172,40 @@ describe('K8 — fittingHucreleri: gecisin yazacagi hucreler saf ve olculur', ()
     { _rowIdx: 11, _isDataRow: true, _miktar: 300, _birim: 'mt', _matBirim: 350, _matToplam: 105000 },
     { _rowIdx: 12, _isDataRow: true, _miktar: 463, _birim: 'mt', _matBirim: 400, _matToplam: 185200 },
   ];
-  it('yalniz fitting satiri icin, dort alan; iscilik yoksa bos string', () => {
+  it('fitting satiri icin dort alan + GENEL TOPLAM; iscilik yoksa bos string', () => {
     const fit = { _rowIdx: 22, _isDataRow: true, _miktar: 35, _birim: '%', _fitting: { kapsam: [11, 12] } };
     const h = fittingHucreleri([...borular, fit], ROLLER);
     expect(h.every((x) => x.rowIdx === 22)).toBe(true);
+    // GENEL TOPLAM da kapsamdan: reload sonrasi bayat kalmasin (recalcGrand'a
+    // baglanmaz — dort alan degismeyince o hic kosmuyordu).
     expect(h).toEqual([
       { rowIdx: 22, alan: '_matBirim', deger: '2902.0' },   // 290.200 / 100
       { rowIdx: 22, alan: '_matToplam', deger: '101570.0' }, // 290.200 × %35
       { rowIdx: 22, alan: '_labBirim', deger: '' },
       { rowIdx: 22, alan: '_labToplam', deger: '' },
+      { rowIdx: 22, alan: '_toplam', deger: '101570.0' },    // mat + lab(0)
     ]);
   });
-  it('kapsam bos → dort hucre bos; fitting olmayan sayfa → hic hucre yok', () => {
+  it('iki tarafli: GENEL TOPLAM = malzeme + iscilik toplami', () => {
+    const rows = [
+      { _rowIdx: 1, _isDataRow: true, _miktar: 10, _matBirim: 100, _matToplam: 1000, _labBirim: 40, _labToplam: 400 },
+    ];
+    const fit = { _rowIdx: 9, _isDataRow: true, _miktar: 50, _birim: '%', _fitting: { kapsam: [1] } };
+    const h = fittingHucreleri([...rows, fit], ROLLER);
+    const al = (a: string) => h.find((x) => x.alan === a)?.deger;
+    expect(al('_matToplam')).toBe('500.0');  // 1000 × %50
+    expect(al('_labToplam')).toBe('200.0');  // 400 × %50
+    expect(al('_toplam')).toBe('700.0');     // 500 + 200
+  });
+  it('kapsam bos → dort para + genel hucre bos; fitting olmayan sayfa → hic hucre yok', () => {
     const fit = { _rowIdx: 22, _isDataRow: true, _miktar: 35, _birim: '%', _fitting: { kapsam: [] } };
-    expect(fittingHucreleri([...borular, fit], ROLLER).map((x) => x.deger)).toEqual(['', '', '', '']);
+    expect(fittingHucreleri([...borular, fit], ROLLER).map((x) => x.deger)).toEqual(['', '', '', '', '']);
     expect(fittingHucreleri(borular, ROLLER)).toEqual([]);
   });
-  it('rolde iscilik kolonu yoksa o alanlar uretilmez', () => {
+  it('rolde iscilik kolonu yoksa o alanlar uretilmez (genel yine yazilir)', () => {
     const fit = { _rowIdx: 22, _isDataRow: true, _miktar: 35, _birim: '%', _fitting: { kapsam: [11] } };
     const roller = { ...ROLLER, laborUnitPriceField: undefined, laborTotalField: undefined };
-    expect(fittingHucreleri([...borular, fit], roller).map((x) => x.alan)).toEqual(['_matBirim', '_matToplam']);
+    expect(fittingHucreleri([...borular, fit], roller).map((x) => x.alan)).toEqual(['_matBirim', '_matToplam', '_toplam']);
   });
 });
 
