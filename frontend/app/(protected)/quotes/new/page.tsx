@@ -1841,6 +1841,16 @@ export default function NewQuotePage() {
           // detay sayfasi salt okunur kalir). Sutun degisimi multiSheet'e yazilir →
           // draft (sessionStorage) + kayit (sheetsPayload) otomatik persist.
           enableStructureEdit
+          // YAPISAL DEGISIKLIK (03.09): satir ekle/sil, spare→gercek satir,
+          // fitting bagi/kapsami. Hucre nesneleri referansla paylasilsa da
+          // EKLENEN satir bu diziye girmiyordu (sekme gecisi/kayit kaybi) ve
+          // yerinde mutasyon taslak efektini tetiklemiyordu (F5 fitting isini
+          // siliyordu). Grid'in guncel listesi yazilir → kayit + taslak gorur.
+          // `onRowDataChange` BILEREK verilmiyor: her hucre yaziminda parent
+          // render acik editoru iptal ederdi; bu kanca yalniz yapisal olayda.
+          onStructureChange={(rows) => {
+            setLiveRowDataBySheet((prev) => ({ ...prev, [activeSheetKey]: rows }));
+          }}
           onColumnsChange={(newDefs) => {
             if (multiSheet) {
               const activeIdx = multiSheet.sheets[activeSheetIndex]?.index ?? activeSheetIndex;
