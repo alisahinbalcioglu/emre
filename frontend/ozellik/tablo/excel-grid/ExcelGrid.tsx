@@ -27,6 +27,9 @@ import {
   oranMetniniNormalize, fittingRozetMetni, kilitliEditable, yapistirmaHedefiMi, fittingHucreleri,
   fittingOncekiAl, fittingOncekiFiyatVarMi, fittingParaAlanlari, FITTING_ONCEKI_SISTEM_ALANLARI,
 } from './fitting';
+// Satir siniflandirma terfisi (03.09): dosyadan gelen bos satira elle yazilinca
+// satir VERI SATIRI olur — yoksa asagidaki kapi her seyi susturur.
+import { veriSatirinaTerfiEtmeliMi } from './satir-terfi';
 // KÂR HÜCRESİ TEK SÜZGEÇTEN: `parseFloat(String(x)) || 0` kopyaları
 // kaydetme yolundaki `sayiAlani` ile AYRIŞIYORDU — "12,5" ekranda 12,
 // kayıtta 12,5 oluyordu (TR klavye). Tek fonksiyon, tek sayı.
@@ -3571,7 +3574,24 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
 
   const handleCellValueChanged = useCallback((e: CellValueChangedEvent<ExcelRowData>) => {
     const row = e.data;
-    if (!row || !row._isDataRow) return;
+    if (!row) return;
+
+    // ── VERI SATIRI TERFISI (03.09 canli bulgu) ───────────────────────────
+    // Dosyadan gelen BOS satirin `_isDataRow`i false'tur (ad yokken oyle
+    // siniflanmis) ve elle ad/miktar yazilinca HIC guncellenmiyordu. Asagidaki
+    // kapi yuzunden o satirda HICBIR SEY kosmuyordu: fitting rozeti/kapsam
+    // modu acilmiyor, kar/birim fiyat/satir toplami hesaplanmiyor, sayfa
+    // toplamina girmiyordu. Kullanici satiri gorur ama satir "olu"dur —
+    // canli turda "fitting bedeli" + "%35" yazildi, hicbir sey olmadi.
+    // Olcut `satir-terfi.ts`te TEK KAYNAK (quotes/new ayni fonksiyonu okur).
+    if (e.source === 'edit' && veriSatirinaTerfiEtmeliMi(row, data.columnRoles as any)) {
+      row._isDataRow = true;
+      // Rozet/kilit/stil bu bayraga bakar → hucreyi yeniden ciz; satir artik
+      // toplama girdigi icin sayfa toplami ve yapisal yayin da tazelenir.
+      e.api.refreshCells({ rowNodes: [e.node], force: true });
+      setTimeout(() => { updatePinnedBottomRef.current?.(); emitRowsRef.current(); }, 0);
+    }
+    if (!row._isDataRow) return;
 
     const {
       materialUnitPriceField, materialTotalField,

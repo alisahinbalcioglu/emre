@@ -33,6 +33,7 @@ import { toast } from '@/ortak/hooks/use-toast';
 import { confirm } from '@/ortak/hooks/use-confirm';
 import { cn } from '@/ortak/lib/utils';
 import { ExcelGrid } from '@/ozellik/tablo/excel-grid/ExcelGrid';
+import { kalemTanimliyorMu } from '@/ozellik/tablo/excel-grid/satir-terfi';
 import type { ExcelGridHandle } from '@/ozellik/tablo/excel-grid/ExcelGrid';
 import { SheetTabs } from '@/ozellik/tablo/excel-grid/SheetTabs';
 import ColumnManagerPanel from '@/ozellik/tablo/quotes/ColumnManagerPanel';
@@ -790,9 +791,10 @@ export default function NewQuotePage() {
       }
       const rowData = s.rowData.map((r: any) => {
         const ad = String(r?._kaynak?.[newField] ?? '').trim();
-        const miktar = String(r?._miktar ?? '').trim();
-        const birim = String(r?._birim ?? '').trim();
-        return { ...r, _ad: ad, _isDataRow: !!ad && (!!birim || (!!miktar && miktar !== '0')) };
+        // Siniflandirma olcutu TEK KAYNAK (`excel-grid/satir-terfi.ts`) — grid'in
+        // elle-yazim terfisi ile bu yol AYRISAMAZ.
+        const aday = { ...r, _ad: ad };
+        return { ...aday, _isDataRow: kalemTanimliyorMu(aday, { nameField: '_ad', quantityField: '_miktar', unitField: '_birim' }) };
       });
       return { ...s, rowData, kaynakAdKolonu: newField };
     };
@@ -823,9 +825,10 @@ export default function NewQuotePage() {
       const tazelenmis = mevcut.map((r: any) => {
         if (!r?._kaynak) return r;
         const ad = String(r._kaynak?.[newField] ?? '').trim();
-        const miktar = String(r?._miktar ?? '').trim();
-        const birim = String(r?._birim ?? '').trim();
-        return { ...r, _ad: ad, _isDataRow: !!ad && (!!birim || (!!miktar && miktar !== '0')) };
+        // Siniflandirma olcutu TEK KAYNAK (`excel-grid/satir-terfi.ts`) — grid'in
+        // elle-yazim terfisi ile bu yol AYRISAMAZ.
+        const aday = { ...r, _ad: ad };
+        return { ...aday, _isDataRow: kalemTanimliyorMu(aday, { nameField: '_ad', quantityField: '_miktar', unitField: '_birim' }) };
       });
       return { ...prev, [activeSheetIndex]: tazelenmis };
     });
