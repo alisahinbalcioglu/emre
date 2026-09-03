@@ -376,14 +376,33 @@ def _sprinkler_spacing(doc) -> tuple[float, int] | None:
         birim cm'di, aralik 300 birim = 3.0 m yalniz cm ile mumkundu.
     Yaricap esigi BILEREK YOK: birim henuz bilinmedigi icin ham yaricap esigi
     anlamsizdir. Az sayida buyuk daire (tank/vana) medyani zaten kaydiramaz.
+
+    UCUNCU BICIM (02.09, gercek proje, 743 sprinkler): sembol PATLATILMIS
+    geometri — 'YNG SPRİNK PENDENT' katmaninda 2 LINE + 2 ELLIPSE + 1 HATCH;
+    blok da daire de YOK, fizik vetosu yine HIC kosamiyordu. Sprinkler-adli
+    katmanlarin tum cizim varliklari kumelenir (pipe_segments ile ayni
+    kumeleme), kume = 1 sprinkler. Kumeleme SART: ayni yerdeki 5 parca ayri
+    sayilirsa komsu mesafesi 0 cikar ve veto HER birimi eler. Kumelenen
+    katmanin INSERT/CIRCLE'lari tekrar sayilmaz (cift sayim = mesafe 0).
     """
     pts: list[tuple[float, float]] = []
     try:
         msp = doc.modelspace()
+        kumelenen: set[str] = set()
+        for lay_obj in doc.layers:
+            lay_name = str(getattr(lay_obj.dxf, "name", "") or "")
+            if not SPRINKLER_PATTERN.search(lay_name):
+                continue
+            centers = _exploded_symbol_centers(doc, lay_name)
+            if centers:
+                pts.extend(centers)
+                kumelenen.add(lay_name)
         for e in msp.query("INSERT"):
             try:
                 lay = str(getattr(e.dxf, "layer", "") or "")
                 nm = str(getattr(e.dxf, "name", "") or "")
+                if lay in kumelenen:
+                    continue
                 if not (SPRINKLER_PATTERN.search(lay) or SPRINKLER_PATTERN.search(nm)):
                     continue
                 pts.append((float(e.dxf.insert.x), float(e.dxf.insert.y)))
@@ -392,6 +411,8 @@ def _sprinkler_spacing(doc) -> tuple[float, int] | None:
         for e in msp.query("CIRCLE"):
             try:
                 lay = str(getattr(e.dxf, "layer", "") or "")
+                if lay in kumelenen:
+                    continue
                 if not SPRINKLER_PATTERN.search(lay):
                     continue
                 pts.append((float(e.dxf.center.x), float(e.dxf.center.y)))
@@ -401,6 +422,14 @@ def _sprinkler_spacing(doc) -> tuple[float, int] | None:
         return None
     if len(pts) < MIN_SPRINKLERS_FOR_VETO:
         return None
+    nn_med = _nn_median(pts)
+    if nn_med is None:
+        return None
+    return nn_med, len(pts)
+
+
+def _nn_median(pts: list[tuple[float, float]]) -> float | None:
+    """En yakin komsu mesafesi medyani (ilk 300 nokta ornegi, O(n^2))."""
     sample = pts[:300]
     nn: list[float] = []
     for i, (x1, y1) in enumerate(sample):
@@ -416,7 +445,33 @@ def _sprinkler_spacing(doc) -> tuple[float, int] | None:
     if not nn:
         return None
     nn.sort()
-    return nn[len(nn) // 2], len(pts)
+    return nn[len(nn) // 2]
+
+
+def _exploded_symbol_centers(doc, layer: str) -> list[tuple[float, float]]:
+    """Sprinkler-adli bir katmandaki sembol KUME merkezleri; katman sembol
+    katmani gibi davranmiyorsa BOS.
+
+    Boru katmani da 'SPRINK' adini tasiyabilir ('3-SPRINK', 141 uzun LINE).
+    Fizik filtresi: sembol, komsu araliginin ucte birinden buyuk olamaz
+    (2r_medyan <= komsu_medyan/3); boru kumeleri bunu ihlal eder ve katman
+    atlanir. Kume sayisi MIN_SPRINKLERS_FOR_VETO altindaysa da atlanir.
+    """
+    try:
+        from pipe_segments import _sprinkler_symbols_from_layers
+        syms = _sprinkler_symbols_from_layers(doc, sprinkler_layers=[layer], node_tol=1e-6)
+    except Exception:
+        return []
+    if len(syms) < MIN_SPRINKLERS_FOR_VETO:
+        return []
+    pts = [(x, y) for x, y, _ in syms]
+    nn_med = _nn_median(pts)
+    if nn_med is None or nn_med <= 0:
+        return []
+    r_med = sorted(r for _, _, r in syms)[len(syms) // 2]
+    if 2.0 * r_med > nn_med / 3.0:
+        return []
+    return pts
 
 
 def _content_bbox(doc) -> tuple[float, int] | None:

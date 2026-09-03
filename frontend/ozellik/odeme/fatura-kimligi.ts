@@ -20,6 +20,8 @@
  *  surtunme yaratir.
  */
 
+import { e164 as telefonE164 } from './telefon-bicim';
+
 export interface FaturaKimligi {
   ad: string;
   soyad: string;
@@ -100,7 +102,10 @@ export function govdeyeCevir(deger: FaturaKimligi): FaturaKimligi {
     ad: kirp(deger.ad),
     soyad: kirp(deger.soyad),
     eposta: kirp(deger.eposta),
-    telefon: kirp(deger.telefon),
+    // ⚠ Durumda YALNIZ HANELER tutulur (`telefon-bicim.ts`); tele gidecek
+    // bicim E.164'tur. Sunucuda ikinci bir kalkan var (`telefonuNormalize`),
+    // ama dogru bicimi ISTEMCIDEN gondermek hatayi hic olusturmaz.
+    telefon: telefonE164(deger.telefon) || kirp(deger.telefon),
     kimlikNo: kirp(deger.kimlikNo),
     sehir: kirp(deger.sehir),
     adres: kirp(deger.adres),

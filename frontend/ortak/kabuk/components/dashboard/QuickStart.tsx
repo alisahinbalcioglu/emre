@@ -13,6 +13,12 @@ import {
   dwgRozetMetni,
   dwgIpucu,
 } from '@/ozellik/odeme/dwg-kapisi';
+import {
+  ipucu,
+  kapiDurumu,
+  rozetMetni,
+  tiklanabilir,
+} from '@/ozellik/odeme/ozellik-kapisi';
 
 interface QuickStartProps {
   onExcelFile: (file: File) => void;
@@ -38,7 +44,15 @@ export default function QuickStart({
 
   // DWG: Pro'da aktif, Core'da sonuk. `useCapabilities` provider yoksa
   // savunmaci sekilde "yetenek yok" doner — yani varsayilan SONUKTUR.
-  const { loading: yeteneklerYukleniyor, hasAnyDwg } = useCapabilities();
+  const { loading: yeteneklerYukleniyor, hasAnyDwg, hasAnyMaterial } = useCapabilities();
+  // EXCEL: 03.09 kullanici karari — "Excel de DWG gibi kapali olmali,
+  // kullanicinin sectigi disipline gore aktif olacak." Kutu TEK oldugu ve
+  // disiplin ancak dosya okununca belli oldugu icin kutu duzeyindeki dogru
+  // kosul "HERHANGI bir disiplinde malzeme yetenegi"dir; disiplin bazli
+  // ayrim izgarada zaten yapiliyor.
+  const excelDurum = kapiDurumu({ loading: yeteneklerYukleniyor, izinVar: hasAnyMaterial() });
+  const excelAcik = tiklanabilir(excelDurum);
+  const excelRozet = rozetMetni(excelDurum);
   const dwgDurum = dwgKapisi({ loading: yeteneklerYukleniyor, dwgVar: hasAnyDwg() });
   const dwgAcik = dwgTiklanabilir(dwgDurum);
   const dwgRozet = dwgRozetMetni(dwgDurum);
@@ -113,28 +127,51 @@ export default function QuickStart({
           <div className="grid grid-cols-2 gap-4">
             {/* Excel Upload Zone */}
             <div
-              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setExcelDragOver(true); }}
-              onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setExcelDragOver(true); }}
+              onDragOver={(e) => { if (!excelAcik) return; e.preventDefault(); e.stopPropagation(); setExcelDragOver(true); }}
+              onDragEnter={(e) => { if (!excelAcik) return; e.preventDefault(); e.stopPropagation(); setExcelDragOver(true); }}
               onDragLeave={() => setExcelDragOver(false)}
-              onDrop={handleExcelDrop}
-              onClick={() => excelInputRef.current?.click()}
+              onDrop={excelAcik ? handleExcelDrop : undefined}
+              onClick={() => { if (excelAcik) excelInputRef.current?.click(); }}
+              title={ipucu(excelDurum, 'Excel kesif icin bir paket gerekir. Abonelik sayfasindan paket secebilirsiniz.')}
+              aria-disabled={!excelAcik}
               className={cn(
-                'group cursor-pointer rounded-2xl border-2 border-dashed p-8 text-center transition-all',
-                excelDragOver
-                  ? 'scale-[1.01] border-emerald-500 bg-emerald-50'
-                  : 'border-emerald-300 bg-emerald-50/30 hover:bg-emerald-50/60',
+                'group rounded-2xl border-2 border-dashed p-8 text-center transition-all',
+                !excelAcik
+                  ? 'cursor-not-allowed border-slate-200 bg-slate-50/60 opacity-60'
+                  : excelDragOver
+                    ? 'scale-[1.01] cursor-pointer border-emerald-500 bg-emerald-50'
+                    : 'cursor-pointer border-emerald-300 bg-emerald-50/30 hover:bg-emerald-50/60',
               )}
             >
-              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600 transition-transform group-hover:scale-110">
+              <div className={cn(
+                'mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl transition-transform',
+                excelAcik
+                  ? 'bg-emerald-100 text-emerald-600 group-hover:scale-110'
+                  : 'bg-slate-200 text-slate-400',
+              )}>
                 <FileSpreadsheet className="h-6 w-6" />
               </div>
-              <h3 className="text-sm font-bold text-slate-900">Excel Keşif</h3>
-              <p className="mt-1 text-xs text-slate-500">Metraj dosyanızı sürükleyin</p>
+              <h3 className={cn('text-sm font-bold', excelAcik ? 'text-slate-900' : 'text-slate-500')}>Excel Keşif</h3>
+              <p className="mt-1 text-xs text-slate-500">
+                {excelAcik ? 'Metraj dosyanızı sürükleyin' : 'Metraj dosyasından otomatik fiyatlandırma'}
+              </p>
               <div className="mt-3 flex items-center justify-center gap-2">
-                <span className="rounded bg-emerald-100 px-2 py-0.5 font-mono text-[10px] font-medium text-emerald-700">.xlsx</span>
-                <span className="rounded bg-emerald-100 px-2 py-0.5 font-mono text-[10px] font-medium text-emerald-700">.xls</span>
+                <span className={cn('rounded px-2 py-0.5 font-mono text-[10px] font-medium', excelAcik ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500')}>.xlsx</span>
+                <span className={cn('rounded px-2 py-0.5 font-mono text-[10px] font-medium', excelAcik ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500')}>.xls</span>
               </div>
-              <input ref={excelInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleExcelInput} />
+              {excelRozet && (
+                <span className="mt-2 inline-block rounded bg-amber-100 px-2 py-0.5 text-[9px] font-semibold text-amber-700">
+                  {excelRozet}
+                </span>
+              )}
+              {excelDurum === 'sonuk' && (
+                <p className="mt-2 text-[10px]">
+                  <Link href="/abonelik" className="font-medium text-emerald-700 underline underline-offset-2" onClick={(e) => e.stopPropagation()}>
+                    Paket seç
+                  </Link>
+                </p>
+              )}
+              <input ref={excelInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleExcelInput} disabled={!excelAcik} />
             </div>
 
             {/* DWG Upload Zone

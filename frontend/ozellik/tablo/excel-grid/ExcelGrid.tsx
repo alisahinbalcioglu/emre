@@ -2998,6 +2998,16 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     // Library mode'da quote-spesifik sistem sutunlarini cikar
     // (Malz. Kar, Marka, Isc. Kar, Firma kolonlari kutuphanede anlamsiz)
     const QUOTE_SYSTEM_FIELDS = new Set(['_malzKar', '_marka', '_iscKar', '_firma']);
+
+    // ── ISCILIK ROL KOLONLARI ─────────────────────────────────────────
+    // Bunlar SABIT alan adi degil: Excel'den gelen kolon adina baglanan
+    // ROLLERDIR. Bu yuzden ad kiyaslamasi degil ROL kiyaslamasi yapilir.
+    // (`iscilikKolonlari` bos olabilir — dosyada iscilik kolonu yoksa.)
+    const iscilikKolonlari = new Set(
+      [data.columnRoles?.laborUnitPriceField, data.columnRoles?.laborTotalField]
+        .filter((f): f is string => !!f),
+    );
+    const iscilikKolonuMu = (alan: string) => iscilikKolonlari.has(alan);
     const filteredColumnDefs = mode === 'library'
       ? data.columnDefs.filter((c) => !QUOTE_SYSTEM_FIELDS.has(c.field))
       : data.columnDefs;
@@ -3013,7 +3023,14 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         field: c.field,
         headerName: c.headerName,
         width: columnWidths?.[c.field] ?? c.width ?? 120,
-        editable: c.editable ?? false,
+        // ⚠ ISCILIK BIRIM/TOPLAM: iscilik kapaliyken DUZENLENEMEZ.
+        // 03.09'da olculdu: firma secici kilitliydi ama BIRIM FIYAT hucresi
+        // elle yazilabiliyordu (`:3343` elle girisi toplama ceviriyor) —
+        // kapinin yarisi takiliydi ve aboneliksiz kullanici ekranda
+        // iscilikli Genel Toplam goruyordu.
+        editable: iscilikKolonuMu(c.field) && !laborEnabled
+          ? false
+          : (c.editable ?? false),
         pinned: c.pinned,
         suppressMovable: c.suppressMovable,
         resizable: true,
@@ -3121,7 +3138,13 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
             </div>
           );
         };
-        base.editable = true;
+        // ⚠ ISCILIK KAPALIYSA KAR KOLONU YAZILAMAZ (03.09 kullanici karari).
+        // Sadece soluk boyamak YETMEZ: `editable` acik kalirsa kullanici
+        // deger yazar, `:3261` birim fiyati geri turetir ve Genel Toplam'a
+        // iscilik girer. `editable=false` ayni zamanda YAPISTIRMA (:2101)
+        // ve DOLDURMA TUTAMAGI (:2180) hedeflerinden de cikarir — uc yolu
+        // birden kapatan TEK kaldirac budur.
+        base.editable = karField === '_iscKar' ? laborEnabled : true;
       }
 
       if (c.cellRenderer === 'brandRenderer') {
@@ -3505,6 +3528,33 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         // aldigini bilemez.
 
       } as any);
+    }
+
+    // ── ISCILIK KAPALIYSA UC KOLONU SOLUKLASTIR ──────────────────────
+    // 03.09 kullanici karari: "Iscilik Kar %, Iscilik Birim Fiyat ve
+    // Iscilik Toplam sutunlari da sonuk olmali, Pro plan degilse."
+    //
+    // ⚠ GORUNUM en SONDA uygulanir: yukaridaki dallar (`:3046`, `:3070`,
+    // `:3095`) kendi `cellStyle`larini ATIYOR. Once boyayip sonra o
+    // dallardan gecseydik boyama SESSIZCE EZILIRDI — kolon yazilamaz ama
+    // normal renkte gorunurdu, yani kullanici neden yazamadigini anlamazdi.
+    //
+    // Yazma engeli AYRI ve yukarida (`editable`); burasi YALNIZ gorunum.
+    if (mode === 'quote' && !laborEnabled) {
+      // ⚠ Set yayilimi (`...set`) bu tsconfig hedefinde derlenmiyor
+      // (TS2802, downlevelIteration kapali) — Array.from ile toplaniyor.
+      const solukAlanlar = new Set<string>(
+        Array.from(iscilikKolonlari).concat('_iscKar'),
+      );
+      for (const c of cols) {
+        if (!c.field || !solukAlanlar.has(c.field)) continue;
+        const oncekiStil = c.cellStyle;
+        c.cellStyle = (params: any) => {
+          const taban = typeof oncekiStil === 'function' ? oncekiStil(params) : oncekiStil;
+          return { ...(taban ?? {}), color: '#94a3b8', background: '#f8fafc' };
+        };
+        c.headerTooltip = 'Iscilik fiyatlandirmasi Pro pakete dahildir.';
+      }
     }
 
     return cols;
@@ -4107,23 +4157,43 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           --ag-font-size: 11.5px;
           --ag-odd-row-background-color: #fcfdfe; /* v1 spec --mpx-zebra */
           --ag-row-hover-color: #f5f9ff;          /* v1 spec --mpx-hover */
-          /* PRD 14.08 — yalniz COK HAFIF yatay ayraclar.
-             ⚠ AG-Grid'in KENDI degiskeni kullanilir; ag-row uzerine elle
-             border-bottom kurali YAZILMAZ: AG-Grid satir yuksekligi hesabina
-             ag-row-border-width degiskenini katar ve elle eklenen bir kenarlik
-             28px satirda 1px tasma uretir — 15.000 satirda birikip sanal
-             kaydirma ile gercek satir konumunu kaydirir. */
-          --ag-row-border-color: #f1f5f9;
-          /* Dikey ayraclar: seffaf. Genislik yine 1px rezerve edilir, bu yuzden
-             kullanicinin kaydettigi kolon genislikleri KAYMAZ. */
-          --ag-cell-horizontal-border: solid transparent;
+          /* ── IZGARA CIZGILERI (02.09 kullanici karari) ──────────────────
+             14.08'in "yalniz cok hafif yatay ayrac, dikey ayrac YOK" karari
+             BILEREK geri cevrildi: kullanici izgarayi Excel gibi okuyor ve
+             #f1f5f9 (slate-100) beyaz zeminde pratikte gorunmuyordu.
+             Iki eksen de ayni tonda (slate-200) — Excel'de de yatay/dikey
+             cizgi ayni agirliktadir; farkli tonlar izgarayi carpik gosterir.
+             ⚠ AG-Grid'in KENDI degiskenleri kullanilir; ag-row/ag-cell
+             uzerine elle border kurali YAZILMAZ: AG-Grid satir yuksekligi
+             hesabina ag-row-border-width degiskenini katar ve elle eklenen
+             bir kenarlik 28px satirda 1px tasma uretir — 15.000 satirda
+             birikip sanal kaydirma ile gercek satir konumunu kaydirir. */
+          --ag-row-border-color: #e2e8f0;
+          /* Dikey ayraclar GORUNUR. ⚠ Kolon genislikleri KAYMAZ: onceki hali
+             "solid transparent" idi, yani 1px zaten rezerve ediliyordu —
+             yalnizca rengi degisiyor (kullanicinin kaydettigi genislikler
+             oldugu gibi kalir).
+             ⚠ Hucre ZEMINI dokunulmaz: isaret.ts para sinyalini inline
+             cellStyle'in background'iyla tasir (kirmizi=eslesme yok,
+             gri=urun degil, mavi=varyant, sari=oneri) ve golden E2E onu
+             getComputedStyle ile okur. Kenarlik ayri bir ozelliktir,
+             o sinyalin ustunu ORTMEZ. */
+          --ag-cell-horizontal-border: solid #e2e8f0;
+          /* Baslik kolon ayraci: Excel'de baslik da izgaralidir. AG-Grid'in
+             kendi ayrac ::before'u kullanilir (tam yukseklik, 1px) —
+             .ag-header-cell-resize::after DEGIL: o, tutamagin gorseli
+             (2px / %30 yukseklik), ayrac degil. */
+          --ag-header-column-separator-display: block;
+          --ag-header-column-separator-color: #e2e8f0;
           /* Odak halkasi — sert mavi cerceve yerine soft indigo */
           --ag-range-selection-border-color: #6366f1;
           --ag-selected-row-background-color: rgba(99, 102, 241, 0.06);
         }
-        /* Alpine'in baslik ayirac cubugu kisa dikey cizgi cizer — PRD'nin
-           "dikey cizgi yok" kurali basligi da kapsar. Yeniden boyutlandirma
-           HALA calisir (kulp gorunmez ama hit alani duruyor). */
+        /* Alpine'in yeniden-boyutlandirma TUTAMAGI (2px kalin, %30 yuksek,
+           ortalanmis cubuk) gizli kalir: artik tam yukseklikte gercek bir
+           kolon ayraci var (--ag-header-column-separator-*) ve ikisi ust uste
+           binince baslikta cift cizgi gorunuyor. Yeniden boyutlandirma HALA
+           calisir — yalniz kulbun gorseli gizlenir, hit alani duruyor. */
         .ag-theme-alpine .ag-header-cell-resize::after {
           background-color: transparent;
         }

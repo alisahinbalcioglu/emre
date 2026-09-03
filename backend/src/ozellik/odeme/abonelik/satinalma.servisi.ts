@@ -124,6 +124,41 @@ export const ZORUNLU_MUSTERI_ALANLARI = [
 ] as const;
 
 /**
+ * Telefonu iyzico'nun bekledigi bicime cevirir. SAF fonksiyon.
+ *
+ * ⚠ 02.09'da canli turda musteri `05330983663` yazdi — Turkiye'de insanlarin
+ * telefonu yazma bicimi budur. iyzico `gsmNumber` alaninda ULKE KODLU bicim
+ * bekler (`+905330983663`). Kullaniciya "basina +90 koyun" demek yerine
+ * donusumu BIZ yapariz: form kurallariyla ugrasmak musterinin isi degil.
+ *
+ * Bicimler:
+ *   "0533 098 36 63" / "(0533) 098-3663" → +905330983663  (bosluk/tire/parantez atilir)
+ *   "05330983663"                        → +905330983663
+ *   "5330983663"                         → +905330983663
+ *   "00905330983663"                     → +905330983663
+ *   "+905330983663"                       → oldugu gibi
+ *
+ * ⚠ TANIMADIGI bicimi BOZMAZ, aynen doner: yurt disi numarasi ya da
+ * beklenmedik uzunlukta bir giris "duzeltiliyorum" diye SAKATLANMAMALI.
+ * Reddetme karari uzak uca aittir; bizim isimiz tahmin etmek degil.
+ */
+export function telefonuNormalize(ham: string): string {
+  const temiz = (ham ?? '').replace(/[\s()\-.]/g, '');
+  if (!temiz) return ham;
+
+  if (temiz.startsWith('+')) return temiz;
+  if (temiz.startsWith('00')) return `+${temiz.slice(2)}`;
+  // 0 + 10 hane (0533...) → yerel yazim
+  if (/^0\d{10}$/.test(temiz)) return `+90${temiz.slice(1)}`;
+  // 10 hane, 5 ile baslar (533...) → bastaki sifir da yazilmamis
+  if (/^5\d{9}$/.test(temiz)) return `+90${temiz}`;
+  // 90 + 10 hane (90533...) → ulke kodu var ama + yok
+  if (/^90\d{10}$/.test(temiz)) return `+${temiz}`;
+
+  return ham;
+}
+
+/**
  * Eksik/bos fatura alanlarinin adlarini doner. SAF fonksiyon — govde hic
  * gelmemis olabilir (`undefined`), o durumda TUM alanlar eksiktir.
  *
@@ -320,7 +355,8 @@ export class SatinAlmaServisi {
         name: p.musteri.ad,
         surname: p.musteri.soyad,
         email: p.musteri.eposta,
-        gsmNumber: p.musteri.telefon,
+        // ⚠ Yerel yazim (`05330983663`) iyzico tarafinda gecerli DEGIL.
+        gsmNumber: telefonuNormalize(p.musteri.telefon),
         identityNumber: p.musteri.kimlikNo,
         billingAddress: {
           contactName: `${p.musteri.ad} ${p.musteri.soyad}`,
@@ -340,6 +376,20 @@ export class SatinAlmaServisi {
         olusturanId: p.kullaniciId,
       },
     });
+
+    // ── TESHIS: iyzico formu HANGI KIPTE cizilecek? ──────────────────────
+    // 03.09'da kart formu DAR BIR POPUP olarak cizildi. Kip, sayfada
+    // `id="iyzipay-checkout-form"` tasiyan bir kap olup olmamasina bagli:
+    // varsa sayfaya GOMULUR (responsive), yoksa iyzico kendi modalini acar.
+    // On yuz kabi kosullu ekliyor (`kabiEkle`) ama iyzico'nun DONEN icerikte
+    // kabi zaten gonderip gondermedigini OLCMEDIK — bu satir onu soyler.
+    // Icerigin KENDISI gunluge YAZILMAZ: token tasiyor.
+    const icerik = sonuc.checkoutFormContent ?? '';
+    this.logger.log(
+      `iyzico form kipi — uzunluk=${icerik.length} ` +
+        `kap=${/id\s*=\s*["']iyzipay-checkout-form["']/i.test(icerik) ? 'VAR' : 'YOK'} ` +
+        `sinif=${/class\s*=\s*["']([^"']*)["']/i.exec(icerik)?.[1] ?? '-'}`,
+    );
 
     return {
       token: sonuc.token,
@@ -495,12 +545,31 @@ export class SatinAlmaServisi {
 
     // Geri donen musteri: satir yeniden canlandirilir, dunning sayaclari
     // sifirlanir (eski basarisizlik yeni abonelige tasinmaz).
+    //
+    // ⚠ ERISIM ASLA KISALTILMAZ — 02.09'da olculdu.
+    // Burasi `erisimSonu`yu KOSULSUZ eziyordu. Satin alma yolu miras
+    // satirlarina acilinca (ayni gun, `mirasPaketiMi` muafiyeti) bu
+    // sessiz bir CEZAYA donustu: goc satiri 365 gunluk erisim tasiyor;
+    // musteri BUGUN odeseydi `erisimSonu` `simdi+32 gune` duser ve
+    // ~332 gun BUHARLASIRDI. Yani ODEMEK, ODEMEMEKTEN KOTU olurdu.
+    //
+    // Ayni kural miras disinda da dogrudur: zaten verilmis erisimi, kisi
+    // PARA ODEDIGI ICIN geri almak hicbir senaryoda savunulabilir degil.
+    // Suresi gecmis satirda `mevcut.erisimSonu` gecmistedir, yeni tarih
+    // kazanir — geri donen musteri yolu AYNEN calisir.
+    //
+    // Ikizi `abonelik.servisi.ts:erisimiUzat` (satir 379) ZATEN boyleydi:
+    //     const baslangic = ab.erisimSonu > simdi ? ab.erisimSonu : simdi;
+    // Yani webhook yolu koruyor, yalniz BURASI kisaltiyordu.
+    const korunanErisimSonu =
+      mevcut.erisimSonu > erisimSonu ? mevcut.erisimSonu : erisimSonu;
+
     const guncel = await this.prisma.abonelik.update({
       where: { id: mevcut.id },
       data: {
         paketSurumuId: p.paketSurumuId,
         durum,
-        erisimSonu,
+        erisimSonu: korunanErisimSonu,
         denemeSonu,
         odemeYontemi: OdemeYontemi.KART,
         iyzicoAbonelikKodu: p.iyzicoAbonelikKodu,

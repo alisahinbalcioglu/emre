@@ -11,6 +11,7 @@ algoritmasi devre disi birakildi — Render free tier gateway timeout sebebiyle)
 
 import math
 import re
+import weakref
 from typing import TypedDict
 
 
@@ -21,8 +22,33 @@ from typing import TypedDict
 _NODE_TOL = 1.0
 _SPRINKLER_TOL = 10.0
 
-# Block radius < bu deger ise (DXF birimi mm varsayilir) sprinkler kandidati sayilir
-_SPRINKLER_MAX_RADIUS_MM = 50.0
+# Sembol parcasi OLMAYAN varlik tipleri: konum tasimazlar ya da yazi/olcu olarak
+# sembolun merkezini kaydirirlar. Geri kalan HER SEY (LINE, ARC, ELLIPSE, HATCH,
+# SPLINE, LWPOLYLINE, INSERT, CIRCLE, POINT, SOLID...) isaretli sprinkler
+# katmaninda sembol parcasidir — bkz. _sprinkler_symbols_from_layers.
+_SYMBOL_SKIP_TYPES = frozenset({
+    "TEXT", "MTEXT", "DIMENSION", "LEADER", "MLEADER", "MULTILEADER",
+    "ATTDEF", "ATTRIB", "VIEWPORT", "IMAGE", "WIPEOUT", "XLINE", "RAY",
+    "TOLERANCE", "ACAD_TABLE", "TABLE",
+})
+# Secili boru katmaninda bu tipler BORUDUR, asla sembol degil (ayni-katman kurali).
+_PIPE_TYPES = frozenset({"LINE", "LWPOLYLINE", "POLYLINE"})
+# Boyut kapilari BIRIMDEN BAGIMSIZDIR (kullanici birimi yanlis secmis olabilir):
+#  - varlik/kume kosegeni, kendi katmanindaki MEDYANIN bu katini asarsa sembol
+#    degildir (sembol katmanina yanlislikla cizilmis boru, buyuk tarama vb.)
+_SYMBOL_MAX_MEDIAN_FACTOR = 3.0
+#  - ve boru aginin p5-p95 kosegeninin bu oranini asamaz (ikinci emniyet)
+_SYMBOL_MAX_NETWORK_FRACTION = 0.10
+#  - blok ornegi (INSERT) icin ag orani daha genis: kapsama dairesi iceren
+#    sprinkler blogu kucuk bir agda %10'u asar; kat/plan buyuklugunde blok ise
+#    yine elenir
+_INSERT_MAX_NETWORK_FRACTION = 0.5
+# Ic ice blok acma: sprinkler'lar bir ust blogun ICINDE olabilir (grup blogu,
+# kat blogu, bilesik sembol). Goruntuleyici bloklari acip gosterir; motor da
+# acar — aksi halde kullanici sembolu gorur, motor gormez (sessiz sifir).
+_INSERT_MAX_DEPTH = 8            # ic ice derinlik siniri (dongu/asiri yuva korumasi)
+_INSERT_EXPAND_BUDGET = 300_000  # acilan toplam varlik siniri (patolojik dosya korumasi)
+_GROUP_MIN_NESTED = 3            # bu kadar nested INSERT iceren blok GRUPTUR (Block-to-Line)
 
 # Sprinkler tespit regex — block name bu pattern'i iceren INSERT'ler sprinkler sayilir
 _SPRINKLER_RE = re.compile(
@@ -119,120 +145,622 @@ def _compute_tolerances(
     return node_tol, sprinkler_tol
 
 
-# ── Sprinkler pozisyon tespiti ───────────────────────────────────
+# ── Sprinkler sembol tespiti (isaretli katman: HERHANGI geometri) ──
+#
+# OLCULDU (02.09, gercek proje, `3-SPRINK` boru katmani, 743 sprinkler):
+# sembol blok DEGIL — `YNG SPRİNK PENDENT` katmaninda 2 LINE (capraz) +
+# 2 ELLIPSE + 1 HATCH olarak cizilmis. Eski tanima yalniz INSERT / kucuk
+# CIRCLE / POINT'e bakiyordu ("LINE asla sprinkler degil"); katman isaretlense
+# bile SIFIR merkez -> "T noktalarinda bol" sprinkler'da hic bolmuyordu.
+#
+# Kural: isaretli katmandaki her cizim varligi sembol PARCASIDIR. Parcalar
+# bbox kesisimiyle kumelenir (capraz + elips + tarama = 1 kume), kumenin
+# merkezi sprinkler konumu, yari-kosegeni sembolun yaricapidir. Boru kumenin
+# icinden geciyorsa (merkez -> boru dik mesafesi <= yaricap + node_tol) boru
+# o noktadan bolunur. Hicbir esik birim varsayimi tasimaz.
+
+
+def _entity_bbox(ent) -> tuple[float, float, float, float] | None:
+    """Varligin 2B bbox'u (minx, miny, maxx, maxy). Sik tiplerde hizli yol;
+    ARC/ELLIPSE/HATCH/SPLINE/INSERT/SOLID vb. icin ezdxf.bbox."""
+    try:
+        etype = ent.dxftype()
+        if etype == "LINE":
+            s, e = ent.dxf.start, ent.dxf.end
+            return (min(s.x, e.x), min(s.y, e.y), max(s.x, e.x), max(s.y, e.y))
+        if etype == "CIRCLE":
+            c, r = ent.dxf.center, abs(float(ent.dxf.radius))
+            return (c.x - r, c.y - r, c.x + r, c.y + r)
+        if etype == "POINT":
+            p = ent.dxf.location
+            return (float(p.x), float(p.y), float(p.x), float(p.y))
+        if etype == "LWPOLYLINE":
+            pts = [(float(p[0]), float(p[1])) for p in ent.get_points(format="xy")]
+            if not pts:
+                return None
+            return (min(p[0] for p in pts), min(p[1] for p in pts),
+                    max(p[0] for p in pts), max(p[1] for p in pts))
+        from ezdxf import bbox as _ezbbox
+        ext = _ezbbox.extents([ent], fast=True)
+        if not ext.has_data:
+            return None
+        return (float(ext.extmin.x), float(ext.extmin.y),
+                float(ext.extmax.x), float(ext.extmax.y))
+    except Exception:
+        return None
+
+
+def _block_index(doc) -> dict[str, tuple[frozenset[str], int]]:
+    """Blok adi -> (icinde IC ICE kullanilan katmanlar, dogrudan nested INSERT
+    sayisi). Katman '0' oldugu gibi tutulur: AutoCAD kuraliyla ust INSERT'in
+    katmanini alir, karar kullanim yerinde verilir. Dongu korumali."""
+    direct: dict[str, tuple[set[str], set[str], int]] = {}
+    for blk in doc.blocks:
+        name = str(blk.name)
+        if name.startswith("*Model_Space") or name.startswith("*Paper_Space"):
+            continue
+        layers: set[str] = set()
+        children: set[str] = set()
+        n_ins = 0
+        for e in blk:
+            try:
+                layers.add(str(e.dxf.layer))
+                if e.dxftype() == "INSERT":
+                    n_ins += 1
+                    children.add(str(e.dxf.name or ""))
+            except Exception:
+                continue
+        direct[name] = (layers, children, n_ins)
+
+    memo: dict[str, frozenset[str]] = {}
+
+    def deep(name: str, stack: frozenset[str]) -> frozenset[str]:
+        if name in memo:
+            return memo[name]
+        if name not in direct or name in stack:
+            return frozenset()
+        layers, children, _ = direct[name]
+        acc = set(layers)
+        for ch in children:
+            acc |= deep(ch, stack | {name})
+        memo[name] = frozenset(acc)
+        return memo[name]
+
+    return {name: (deep(name, frozenset()), direct[name][2]) for name in direct}
+
+
+# Dokuman basina onbellek: blok yerel bbox'lari. Ayni DXF icin ard arda gelen
+# cagrilar (isaretli/isaretsiz cikarim, aday tarama, birim tespiti) yeniden
+# hesaplamaz. WeakKey: dokuman serbest kalinca kayit da gider.
+_DOC_CACHE: "weakref.WeakKeyDictionary" = weakref.WeakKeyDictionary()
+
+
+def _doc_cache(doc) -> dict:
+    try:
+        c = _DOC_CACHE.get(doc)
+        if c is None:
+            c = {}
+            _DOC_CACHE[doc] = c
+        return c
+    except TypeError:
+        return {}
+
+
+_BBOX_SKIP_TYPES = frozenset({"TEXT", "MTEXT", "ATTDEF", "ATTRIB"})
+
+
+def _transform_bbox(bb: tuple[float, float, float, float], M) -> tuple[float, float, float, float]:
+    """Yerel bbox'un 4 kosesini M (ezdxf Matrix44) ile dunyaya tasi, kutusunu
+    al. Dondurulmus blokta biraz genis kalir — guvenli taraf."""
+    xs: list[float] = []
+    ys: list[float] = []
+    for lx, ly in ((bb[0], bb[1]), (bb[2], bb[1]), (bb[2], bb[3]), (bb[0], bb[3])):
+        w = M.transform((lx, ly, 0.0))
+        xs.append(float(w.x))
+        ys.append(float(w.y))
+    return (min(xs), min(ys), max(xs), max(ys))
+
+
+def _block_locals(doc, name: str, memo: dict) -> tuple[tuple, tuple]:
+    """Blok taniminin YEREL icerigi — blok adi basina BIR kez (memo):
+      prims:   ((etype, layer, yerel_bbox), ...)  yazi tipleri ve bbox'suzlar yok
+      inserts: ((ad, layer, M_yerel), ...)        nested blok referanslari
+
+    Sanal varlik (virtual_entities) KOPYASI YOK. OLCULDU (3. gercek aile):
+    lejant bloklarinin 83'er nested INSERT'i her acilista kopyalaniyordu,
+    toplama 12 sn, aday tarama 9 sn. Icerik bir kez okunur, her referansta
+    yalniz matris bilesimi yapilir. Nested'in dunya matrisi: M_yerel @ M_ust.
+    """
+    key = ("locals", name)
+    if key in memo:
+        return memo[key]
+    prims: list[tuple] = []
+    inserts: list[tuple] = []
+    try:
+        blk = doc.blocks.get(name)
+    except Exception:
+        blk = None
+    if blk is not None:
+        for e in blk:
+            try:
+                etype = e.dxftype()
+                layer = str(e.dxf.layer)
+                if etype == "INSERT":
+                    inserts.append((str(e.dxf.name or ""), layer, e.matrix44()))
+                    continue
+                if etype in _BBOX_SKIP_TYPES:
+                    continue
+                bb = _entity_bbox(e)
+                if bb is not None:
+                    prims.append((etype, layer, bb))
+            except Exception:
+                continue
+    memo[key] = (tuple(prims), tuple(inserts))
+    return memo[key]
+
+
+def _block_local_bbox(doc, name: str, memo: dict, stack: frozenset = frozenset()):
+    """Blok taniminin YEREL bbox'u — blok adi basina BIR kez (memo). Nested
+    INSERT icin nested blogun memo'lu bbox'unun kose donusumu alinir.
+
+    NEDEN: ezdxf.bbox.extents her referansta icerigi yeniden acar. OLCULDU
+    (3. gercek aile): 8 lejant blogu x 83 nested INSERT = 24.6 sn/dosya, ve bu
+    her cagrida tekrarlaniyordu. Bu yol toplam varlik sayisiyla orantilidir.
+    Yazi tipleri disarida: sembol boyutunu sisirir, geometri degildir."""
+    key = ("bbox", name)
+    if key in memo:
+        return memo[key]
+    if name in stack:
+        return None  # dongusel referans
+    prims, inserts = _block_locals(doc, name, memo)
+    xs: list[float] = []
+    ys: list[float] = []
+    for _, _, bb in prims:
+        xs.extend((bb[0], bb[2]))
+        ys.extend((bb[1], bb[3]))
+    for sname, _, M_local in inserts:
+        sub = _block_local_bbox(doc, sname, memo, stack | {name})
+        if sub is None:
+            continue
+        tb = _transform_bbox(sub, M_local)
+        xs.extend((tb[0], tb[2]))
+        ys.extend((tb[1], tb[3]))
+    res = (min(xs), min(ys), max(xs), max(ys)) if xs else None
+    memo[key] = res
+    return res
+
+
+def _insert_world_bbox(doc, name: str, M, memo: dict) -> tuple[float, float, float, float] | None:
+    """INSERT'in dunya bbox'u: blok yerel bbox'u (ad basina BIR kez) + ekleme
+    matrisi M ile kose donusumu."""
+    lb = _block_local_bbox(doc, name, memo)
+    return _transform_bbox(lb, M) if lb is not None else None
+
+
+def _merge_colocated_symbols(
+    syms: list[tuple],
+) -> list[tuple[float, float, float]]:
+    """Daireleri kesisen (mesafe <= r1 + r2) semboller AYNI sprinkler'dir.
+
+    Bilesik blok (govde + nested ok) acildiginda govde serbest kume, ok
+    yaprak blok olur: ayni yerde iki sembol = iki bolme = sprinkler basina
+    sahte mikro parca. Komsu sprinkler'lar birlesmez: blok yaricapi komsu
+    araliginin ceyregiyle kelepceli, serbest kume yari-kosegeni de
+    araliktan kucuk — toplamlari araliga ulasmaz.
+
+    Girdi (x, y, r) ya da (x, y, r, tur); tur 'kume' (serbest parca kumesi)
+    ya da 'blok'. IKI 'kume' BIRLESMEZ: serbest parcalar zaten bbox
+    kesisimiyle gruplandi; daire kesisimi daha gevsek oldugu icin komsu
+    semboller zincirlenebilirdi. Birlestirme kume<->blok (bilesik/ikiz) ve
+    blok<->blok (ust uste kopya) icindir. Birlesik merkez: grupta 'kume'
+    varsa yalniz onlarin ortalamasi (govde = kafa; ok/etiket bloklari
+    merkezi kaydirmasin), yoksa hepsinin ortalamasi. Donus daima (x, y, r)."""
+    n = len(syms)
+    if n < 2:
+        return [(float(p[0]), float(p[1]), float(p[2])) for p in syms]
+    rmax = max(p[2] for p in syms)
+    cs = max(rmax * 2.0, 1.0)
+    grid: dict[tuple[int, int], list[int]] = {}
+    for i, p in enumerate(syms):
+        grid.setdefault((int(p[0] // cs), int(p[1] // cs)), []).append(i)
+    parent = list(range(n))
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for i, p in enumerate(syms):
+        x, y, r = p[0], p[1], p[2]
+        kx, ky = int(x // cs), int(y // cs)
+        for cx in (kx - 1, kx, kx + 1):
+            for cy in (ky - 1, ky, ky + 1):
+                for j in grid.get((cx, cy), ()):
+                    if j <= i:
+                        continue
+                    if (len(p) > 3 and p[3] == "kume"
+                            and len(syms[j]) > 3 and syms[j][3] == "kume"):
+                        continue  # kume-kume: bbox kumelemesi karar verdi
+                    x2, y2, r2 = syms[j][0], syms[j][1], syms[j][2]
+                    if math.hypot(x2 - x, y2 - y) <= r + r2:
+                        ra, rb = find(i), find(j)
+                        if ra != rb:
+                            parent[rb] = ra
+    groups: dict[int, list[int]] = {}
+    for i in range(n):
+        groups.setdefault(find(i), []).append(i)
+    out: list[tuple[float, float, float]] = []
+    for members in groups.values():
+        if len(members) == 1:
+            p = syms[members[0]]
+            out.append((float(p[0]), float(p[1]), float(p[2])))
+            continue
+        merkez = [i for i in members if len(syms[i]) > 3 and syms[i][3] == "kume"] or members
+        cx = sum(syms[i][0] for i in merkez) / len(merkez)
+        cy = sum(syms[i][1] for i in merkez) / len(merkez)
+        r = max(syms[i][2] + math.hypot(syms[i][0] - cx, syms[i][1] - cy) for i in members)
+        out.append((cx, cy, r))
+    return out
+
+
+def _network_bbox(edges: list[dict]) -> tuple[float, float, float, float] | None:
+    """Boru aginin (tum uclar) kutusu, kosegenin %5'i kadar genis. Agdan
+    uzak bloklar (lejant, antet, detay) sembol OLAMAZ: bbox'u bu kutuyla
+    kesismeyen INSERT'ler acilmaz — ic ice yuruyus maliyeti sinirlanir."""
+    if not edges:
+        return None
+    xs = [v for e in edges for v in (e["x1"], e["x2"])]
+    ys = [v for e in edges for v in (e["y1"], e["y2"])]
+    x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+    m = math.hypot(x1 - x0, y1 - y0) * 0.05
+    return (x0 - m, y0 - m, x1 + m, y1 + m)
+
+
+def _bbox_disjoint(a: tuple[float, float, float, float],
+                   b: tuple[float, float, float, float]) -> bool:
+    return a[2] < b[0] or b[2] < a[0] or a[3] < b[1] or b[3] < a[1]
+
+
+def _network_diag(edges: list[dict]) -> float:
+    """Boru aginin p5-p95 koordinat kosegeni — antet/detay gibi uc degerlere
+    dayanikli olcek gostergesi. Birim varsayimi ICERMEZ."""
+    xs = sorted(v for e in edges for v in (e["x1"], e["x2"]))
+    ys = sorted(v for e in edges for v in (e["y1"], e["y2"]))
+    if not xs:
+        return 0.0
+    n = len(xs)
+    lo = int(n * 0.05)
+    hi = min(n - 1, max(lo + 1, int(n * 0.95)))  # tek kenarda bile 0 donmez
+    return math.hypot(xs[hi] - xs[lo], ys[hi] - ys[lo])
+
+
+def _cluster_bboxes(
+    items: list[tuple[float, float, float, float]],
+    eps: float,
+) -> list[list[int]]:
+    """bbox'lari eps kadar genisletip kesisenleri birlestir (grid + union-find).
+    Donus: kume listesi; her kume item indeksleri."""
+    n = len(items)
+    parent = list(range(n))
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    diags = sorted(math.hypot(b[2] - b[0], b[3] - b[1]) for b in items)
+    typical = diags[len(diags) // 2] if diags else 1.0
+    cs = max(typical * 2.0, eps * 4.0, 1.0)
+    grid: dict[tuple[int, int], list[int]] = {}
+    for i, (x0, y0, x1, y1) in enumerate(items):
+        for cx in range(int((x0 - eps) // cs), int((x1 + eps) // cs) + 1):
+            for cy in range(int((y0 - eps) // cs), int((y1 + eps) // cs) + 1):
+                grid.setdefault((cx, cy), []).append(i)
+    for cell in grid.values():
+        for a in range(len(cell)):
+            i = cell[a]
+            ax0, ay0, ax1, ay1 = items[i]
+            for b in range(a + 1, len(cell)):
+                j = cell[b]
+                bx0, by0, bx1, by1 = items[j]
+                if (ax0 - eps <= bx1 and bx0 - eps <= ax1
+                        and ay0 - eps <= by1 and by0 - eps <= ay1):
+                    ra, rb = find(i), find(j)
+                    if ra != rb:
+                        parent[rb] = ra
+    groups: dict[int, list[int]] = {}
+    for i in range(n):
+        groups.setdefault(find(i), []).append(i)
+    return list(groups.values())
+
+
+def _sprinkler_symbols_from_layers(
+    doc,
+    sprinkler_layers: list[str] | None = None,
+    pipe_layers: set[str] | None = None,
+    node_tol: float = _NODE_TOL,
+    sprinkler_block_names: set[str] | None = None,
+    network_diag: float | None = None,
+    network_bbox: tuple[float, float, float, float] | None = None,
+) -> list[tuple[float, float, float]]:
+    """Isaretli katmanlardaki sprinkler sembollerini (cx, cy, r) olarak dondur.
+
+    Kaynaklar:
+      1) sprinkler_layers: o katmanlardaki HER cizim varligi sembol parcasi
+         (yazi/olcu tipleri haric: _SYMBOL_SKIP_TYPES). Secili boru
+         katmaninin LINE/POLYLINE'lari borudur, sembol DEGIL (pipe_layers).
+      2) sprinkler_block_names: katman farketmeksizin, adi bu kumede olan
+         INSERT'ler (geriye uyumluluk).
+
+    Kumeleme (serbest parcalar): bbox'lar node_tol kadar genisletilip
+    kesisenler birlestirilir; kume merkezi = bbox merkezi, r = yari-kosegen.
+
+    INSERT (blok ornegi) TEK BASINA semboldur, komsularla ASLA birlesmez:
+    OLCULDU (3. gercek aile, 906 blok) — blok icinde kapsama dairesi vardi,
+    bbox'lar komsuya biniyordu, kesisim kumelemesi 906'sini tek dev kumeye
+    zincirleyip boyut kapisinda kaybediyordu (0 sembol). Merkez = ekleme
+    noktasi (cizerin capasi); yaricap = blok yari-kosegeni, ama ust duzey
+    bloklar arasi komsu araliginin CEYREGINI asamaz (kapsama dairesi 2 m
+    otedeki baska hatti "iceriden geciyor" saydirmasin).
+
+    IC ICE BLOK: kendisi YA DA icerigi isaretli katmanda olan INSERT ele
+    alinir (kapsayici blok isaretsiz bir katmanda olabilir). Kucuk ve YAPRAK
+    (nested INSERT yok) blok atomik semboldur — icerigi patlatilmaz. Nested
+    INSERT iceren blok: kosegeni bilesik esiginin (ust duzey komsu araliginin
+    yarisi; yoksa ag kosegeninin %10'u) altindaysa BILESIK semboldur (govde +
+    ok + etiket) ve atomiktir; ustundeyse GRUPTUR, ici acilir. Agdan buyuk
+    blok KAT'tir, ici acilir. Acilan icerik matris bilesimiyle dunyaya
+    tasinir (sanal kopya yok). Katman-'0' icerik ust INSERT'in katmanini alir.
+    network_bbox verilirse agla kesismeyen bloklar hic ele alinmaz.
+    Acilan bilesik parcalar _merge_colocated_symbols ile tek sprinkler olur.
+
+    Boyut kapilari (birimsiz): varlik kosegeni katman medyaninin 3 katini,
+    kume kosegeni kume medyaninin 3 katini asarsa sembol sayilmaz; network_diag
+    verilmisse (boru aginin p5-p95 kosegeni) ikisi de onun %10'unu, blok
+    ornegi ise %50'sini asamaz. Boylece sembol katmanina yanlislikla cizilmis
+    boru ne sembol olur ne de ustunden gectigi sembolleri kumeye yutar.
+    """
+    layer_set: set[str] = set(sprinkler_layers or ())
+    block_set: set[str] = set(sprinkler_block_names or ())
+    pipe_set: set[str] = set(pipe_layers or ())
+    if not layer_set and not block_set:
+        return []
+    size_cap = (network_diag * _SYMBOL_MAX_NETWORK_FRACTION
+                if network_diag is not None and network_diag > 0 else None)
+    insert_cap = (network_diag * _INSERT_MAX_NETWORK_FRACTION
+                  if network_diag is not None and network_diag > 0 else None)
+
+    items: list[tuple[float, float, float, float]] = []
+    inserts: list[tuple[float, float, float]] = []  # (x, y, r_bbox)
+    bidx = _block_index(doc)
+    memo = _doc_cache(doc)
+    budget = [_INSERT_EXPAND_BUDGET]
+    msp = doc.modelspace()
+
+    def ilgili(name: str, eff: str) -> tuple[bool, bool, frozenset[str], int]:
+        """(kendisi isaretli, icerigi isaretli, ic katmanlar, nested INSERT sayisi)."""
+        marked = eff in layer_set or (bool(block_set) and name in block_set)
+        inner_layers, n_nested = bidx.get(name, (frozenset(), 0))
+        content = bool(inner_layers & layer_set) or ("0" in inner_layers and marked)
+        return marked, content, inner_layers, n_nested
+
+    def anchor(M) -> tuple[float, float]:
+        w = M.transform((0.0, 0.0, 0.0))  # blok orijini = ekleme noktasi
+        return float(w.x), float(w.y)
+
+    def diag(bb: tuple[float, float, float, float]) -> float:
+        return math.hypot(bb[2] - bb[0], bb[3] - bb[1])
+
+    # 1. GECIS — ust duzey ilgili kucuk bloklarin anchor'lari: komsu araligi
+    # bilesik/grup esigini (nn/2) ve blok yaricap kelepcesini (nn/4) verir.
+    top_anchors: list[tuple[float, float]] = []
+    for ent in msp.query("INSERT"):
+        try:
+            name0, own0, M0 = str(ent.dxf.name or ""), str(ent.dxf.layer), ent.matrix44()
+        except Exception:
+            continue
+        marked0, content0, _, _ = ilgili(name0, own0)
+        if not (marked0 or content0):
+            continue
+        bb0 = _insert_world_bbox(doc, name0, M0, memo)
+        if bb0 is None or (network_bbox is not None and _bbox_disjoint(bb0, network_bbox)):
+            continue
+        if insert_cap is not None and diag(bb0) > insert_cap:
+            continue
+        top_anchors.append(anchor(M0))
+    nn_top = _nn_median_xy(top_anchors) if len(top_anchors) >= 3 else None
+    composite_cap: float | None = (
+        nn_top / 2.0 if nn_top
+        else (network_diag * _SYMBOL_MAX_NETWORK_FRACTION
+              if network_diag is not None and network_diag > 0 else None)
+    )
+
+    def part(etype: str, eff_layer: str, bb_fn) -> None:
+        """Serbest sembol parcasi — ust duzey ya da acilmis blok icinden."""
+        if eff_layer not in layer_set or etype in _SYMBOL_SKIP_TYPES:
+            return
+        if eff_layer in pipe_set and etype in _PIPE_TYPES:
+            return  # ayni-katman kurali: boru cizgisi sembol degil
+        bb = bb_fn()
+        if bb is not None:
+            items.append(bb)
+
+    def insert(name: str, own: str, M, parent_layer: str | None, depth: int) -> None:
+        # AutoCAD kurali: blok icindeki katman-'0' varlik ust INSERT'in katmanini alir
+        eff = parent_layer if (own == "0" and parent_layer is not None) else own
+        marked, content_marked, _inner, n_nested = ilgili(name, eff)
+        if not marked and not content_marked:
+            return  # ne kendisi ne icerigi isaretli — dokunma
+        bb = _insert_world_bbox(doc, name, M, memo)
+        if bb is not None and network_bbox is not None and _bbox_disjoint(bb, network_bbox):
+            return  # agdan uzak (lejant/antet/detay) — sembol olamaz, acmaya deger degil
+        d = diag(bb) if bb is not None else 0.0
+        too_big = insert_cap is not None and d > insert_cap
+        if bb is not None and not too_big:
+            # Kucuk blok: YAPRAK ise atomik (icerigi patlatilmaz). Nested INSERT
+            # iceriyorsa boyut karar verir: bilesik esiginin altinda BILESIK
+            # sembol (atomik), ustunde GRUP (acilir). Esik bilinmiyorsa sayi.
+            if n_nested == 0:
+                atomic = True
+            elif composite_cap is not None:
+                atomic = d <= composite_cap
+            else:
+                atomic = n_nested < _GROUP_MIN_NESTED
+            if atomic:
+                ax, ay = anchor(M)
+                inserts.append((ax, ay, d / 2.0))
+                return
+        if depth >= _INSERT_MAX_DEPTH or budget[0] <= 0:
+            return
+        prims, subs = _block_locals(doc, name, memo)
+        budget[0] -= len(prims) + len(subs)
+        for etype, layer, lbb in prims:
+            part(etype, eff if layer == "0" else layer, lambda lbb=lbb: _transform_bbox(lbb, M))
+        for sname, slayer, M_local in subs:
+            insert(sname, slayer, M_local @ M, eff, depth + 1)
+
+    for ent in msp:
+        try:
+            etype = ent.dxftype()
+            layer = str(ent.dxf.layer)
+        except Exception:
+            continue
+        if etype == "INSERT":
+            try:
+                M = ent.matrix44()
+                name = str(ent.dxf.name or "")
+            except Exception:
+                continue
+            insert(name, layer, M, None, 0)
+        else:
+            part(etype, layer, lambda ent=ent: _entity_bbox(ent))
+
+    def _kapi(kosegenler: list[float]) -> float:
+        med = sorted(kosegenler)[len(kosegenler) // 2]
+        cap = max(med * _SYMBOL_MAX_MEDIAN_FACTOR, node_tol)
+        if size_cap is not None and size_cap > 0:
+            cap = min(cap, size_cap)
+        return cap
+
+    out: list[tuple] = []  # (x, y, r, tur) — tur: 'blok' | 'kume'
+    if inserts:
+        # Yaricap kelepcesi komsu araligindan: once UST DUZEY atomik bloklar
+        # (grup icindeki yapraklar birbirine yakin olabilir), yoksa hepsi.
+        r_cap: float | None = None
+        base = top_anchors if len(top_anchors) >= 3 else [(x, y) for x, y, _ in inserts]
+        if len(base) >= 3:
+            nn = _nn_median_xy(base)
+            if nn is not None and nn > 0:
+                r_cap = nn / 4.0
+        out.extend((x, y, min(r, r_cap) if r_cap is not None else r, "blok")
+                   for x, y, r in inserts)
+    if not items:
+        return _merge_colocated_symbols(out)
+
+    ent_diag = [math.hypot(b[2] - b[0], b[3] - b[1]) for b in items]
+    ent_cap = _kapi(ent_diag)
+    items = [b for b, d in zip(items, ent_diag) if d <= ent_cap]
+    if not items:
+        return _merge_colocated_symbols(out)
+
+    boxes: list[tuple[float, float, float, float, float]] = []
+    for members in _cluster_bboxes(items, eps=max(node_tol, 1e-9)):
+        x0 = min(items[i][0] for i in members)
+        y0 = min(items[i][1] for i in members)
+        x1 = max(items[i][2] for i in members)
+        y1 = max(items[i][3] for i in members)
+        boxes.append((x0, y0, x1, y1, math.hypot(x1 - x0, y1 - y0)))
+    cl_cap = _kapi([b[4] for b in boxes])
+    out.extend(((x0 + x1) / 2.0, (y0 + y1) / 2.0, d / 2.0, "kume")
+               for x0, y0, x1, y1, d in boxes if d <= cl_cap)
+    return _merge_colocated_symbols(out)
+
+
+def _nn_median_xy(pts: list[tuple[float, float]]) -> float | None:
+    """Noktalarin en yakin komsu mesafesi medyani (ilk 400 nokta ornegi).
+    Blok sembollerinin yaricapini ve bilesik/grup esigini komsu araligina
+    gore kelepcelemek icin."""
+    sample = pts[:400]
+    if len(sample) < 2:
+        return None
+    nn: list[float] = []
+    for i, (x1, y1) in enumerate(sample):
+        best = math.inf
+        for j, (x2, y2) in enumerate(sample):
+            if i != j:
+                d = math.hypot(x2 - x1, y2 - y1)
+                if 1e-9 < d < best:
+                    best = d
+        if math.isfinite(best):
+            nn.append(best)
+    if not nn:
+        return None
+    nn.sort()
+    return nn[len(nn) // 2]
+
 
 def _sprinkler_centers_from_layers(
     doc,
     sprinkler_layers: list[str] | None = None,
     sprinkler_block_names: set[str] | None = None,
+    pipe_layers: set[str] | None = None,
+    node_tol: float = _NODE_TOL,
+    network_diag: float | None = None,
 ) -> list[tuple[float, float]]:
-    """Sprinkler INSERT/CIRCLE/POINT pozisyonlarini topla.
+    """Sembol kume merkezleri (cx, cy) — _sprinkler_symbols_from_layers'in
+    yaricapsiz gorunumu (geriye uyumlu)."""
+    return [(x, y) for x, y, _ in _sprinkler_symbols_from_layers(
+        doc, sprinkler_layers=sprinkler_layers, pipe_layers=pipe_layers,
+        node_tol=node_tol, sprinkler_block_names=sprinkler_block_names,
+        network_diag=network_diag,
+    )]
 
-    Iki kaynaktan birleşik liste:
-      1) sprinkler_layers verilirse: o layer'lardaki INSERT + kucuk CIRCLE
-         (radius < _SPRINKLER_MAX_RADIUS_MM) + POINT — yani sembol gosteren
-         entity'ler. LINE/POLYLINE/TEXT atilir cunku ayni layer'da boru ya da
-         etiket olabilir.
-      2) sprinkler_block_names verilirse: layer FARKETMEKSIZIN, block adi bu
-         set'te olan tum INSERT'ler.
 
-    "Aynı layer" sorununun cozumu: sprinkler_layers verilse bile LINE'lar
-    sprinkler sayilmaz (boru olarak kalir), sadece sembol entity'leri T
-    noktasi olarak isaretlenir.
-    """
+def _regex_sprinkler_centers(doc) -> list[tuple[float, float]]:
+    """Hic katman/blok isaretlenmediyse: blok adi _SPRINKLER_RE ile eslesen
+    INSERT'lerin ekleme noktalari (eski fallback, aynen korunur)."""
     centers: list[tuple[float, float]] = []
-    msp = doc.modelspace()
-    layer_set: set[str] = set(sprinkler_layers) if sprinkler_layers else set()
-    block_set: set[str] = sprinkler_block_names or set()
-
-    if not layer_set and not block_set:
-        return centers
-
-    # INSERT — ya sprinkler layer'inda ya da sprinkler block adina sahip
-    for ent in msp.query('INSERT'):
+    for ins in doc.modelspace().query('INSERT'):
         try:
-            in_layer = (ent.dxf.layer in layer_set) if layer_set else False
-            block_name = str(ent.dxf.name or '')
-            in_block = (block_name in block_set) if block_set else False
-            if not (in_layer or in_block):
+            if not _SPRINKLER_RE.search(str(ins.dxf.name or '')):
                 continue
-            centers.append((float(ent.dxf.insert.x), float(ent.dxf.insert.y)))
+            centers.append((float(ins.dxf.insert.x), float(ins.dxf.insert.y)))
         except Exception:
             continue
-
-    # CIRCLE — sadece sprinkler layer'inda VE radius esigi altinda
-    if layer_set:
-        for ent in msp.query('CIRCLE'):
-            try:
-                if ent.dxf.layer not in layer_set:
-                    continue
-                radius = float(ent.dxf.radius)
-                if radius > _SPRINKLER_MAX_RADIUS_MM:
-                    continue  # Buyuk daire — sprinkler degil (vana, tank vb.)
-                centers.append((float(ent.dxf.center.x), float(ent.dxf.center.y)))
-            except Exception:
-                continue
-
-        # POINT — sadece sprinkler layer'inda
-        for ent in msp.query('POINT'):
-            try:
-                if ent.dxf.layer not in layer_set:
-                    continue
-                centers.append((float(ent.dxf.location.x), float(ent.dxf.location.y)))
-            except Exception:
-                continue
-
-    # NOT: LINE/LWPOLYLINE/POLYLINE asla sprinkler degil — ayni layer
-    # durumunda boru olarak topology'ye girmesi sart.
     return centers
 
 
-def _detect_sprinkler_positions(
-    doc,
-    node_tol: float = _NODE_TOL,
-    sprinkler_tol: float = _SPRINKLER_TOL,
-    sprinkler_layers: list[str] | None = None,
-    sprinkler_block_names: set[str] | None = None,
-) -> tuple[set[tuple[float, float]], list[tuple[float, float]]]:
-    """Sprinkler pozisyonlarini aura-fill seklinde node_key seti olarak dondur.
-
-    Kaynaklari birlestirir:
-      1) `sprinkler_layers` → entity-type filtre (INSERT + kucuk CIRCLE + POINT,
-         LINE/TEXT atlanir, "ayni layer" sorununu cozer)
-      2) `sprinkler_block_names` → block adina gore (layer'dan bagimsiz)
-      3) Hicbiri yoksa → block adi regex'i (_SPRINKLER_RE) fallback
-
-    Returns:
-      (positions_set, centers_list) — positions aura-fill node key'ler,
-      centers ham (cx, cy) listesi.
-    """
-    positions: set[tuple[float, float]] = set()
-    centers: list[tuple[float, float]] = []
-    if node_tol <= 0:
-        return positions, centers
-    steps = int(sprinkler_tol / node_tol) + 1
-
-    if sprinkler_layers or sprinkler_block_names:
-        centers = _sprinkler_centers_from_layers(
-            doc,
-            sprinkler_layers=sprinkler_layers,
-            sprinkler_block_names=sprinkler_block_names,
-        )
-    else:
-        # Fallback: block adi regex
-        for ins in doc.modelspace().query('INSERT'):
-            try:
-                if not _SPRINKLER_RE.search(str(ins.dxf.name or '')):
-                    continue
-                centers.append((float(ins.dxf.insert.x), float(ins.dxf.insert.y)))
-            except Exception:
-                continue
-
-    for cx, cy in centers:
-        for dx in range(-steps, steps + 1):
-            for dy in range(-steps, steps + 1):
-                positions.add(_node_key(cx + dx * node_tol, cy + dy * node_tol))
-    return positions, centers
+def _node_keys_near_points(
+    graph: dict[tuple[float, float], list[int]],
+    pts: list[tuple[float, float, float]],
+    node_tol: float,
+    sprinkler_tol: float,
+) -> set[tuple[float, float]]:
+    """Sembol merkezine R = max(sprinkler_tol, r + node_tol) icindeki graf
+    dugumleri. Bu dugumler run AYIRICI olur: sprinkler tam bir vertex
+    ustundeyse (iki LINE uc uca) bolme gerekmez ama run orada KIRILMALI.
+    Grid-bucketed; eski "aura doldurma" gibi tolerans oranina gore sismez."""
+    if not graph or not pts:
+        return set()
+    rmax = max(max(sprinkler_tol, r + node_tol) for _, _, r in pts)
+    cs = max(rmax, node_tol, 1.0)
+    grid: dict[tuple[int, int], list[tuple[float, float]]] = {}
+    for key in graph:
+        grid.setdefault((int(key[0] // cs), int(key[1] // cs)), []).append(key)
+    out: set[tuple[float, float]] = set()
+    for x, y, r in pts:
+        R = max(sprinkler_tol, r + node_tol)
+        R2 = R * R
+        kx, ky = int(x // cs), int(y // cs)
+        span = int(R // cs) + 1
+        for cx in range(kx - span, kx + span + 1):
+            for cy in range(ky - span, ky + span + 1):
+                for key in grid.get((cx, cy), ()):
+                    if (key[0] - x) ** 2 + (key[1] - y) ** 2 <= R2:
+                        out.add(key)
+    return out
 
 
 # ── Edge toplama ve splitting ────────────────────────────────────
@@ -545,24 +1073,40 @@ def _split_edges_on_crossings(
 
 def _split_edges_on_points(
     edges: list[dict],
-    points: list[tuple[float, float]],
+    points: list[tuple],
     radius: float,
 ) -> tuple[list[dict], list[tuple[float, float]]]:
-    """Verilen her noktayi en yakin LINE'a project et; perpendicular mesafe
-    `radius` icindeyse ve projeksiyon LINE'in orta bolumundeyse, LINE'i o
-    noktada bol. Kullanim: sprinkler CIRCLE merkezleri boru LINE ortasinda
-    cizildiginde LINE'i sprinkler pozisyonundan bolmek icin.
+    """Her noktayi en yakin kenara dik izdusur; mesafe etkin yaricap icinde ve
+    izdusum kenarin IC bolgesindeyse kenar o noktadan bolunur.
 
-    Donus: (yeni edge listesi, fiilen LINE ustunde split edilen pozisyonlar).
+    points: (cx, cy) ya da (cx, cy, r). Etkin yaricap = max(radius, r) —
+    r sembolun yari-kosegeni (+ node_tol) oldugunda kural "boru sembolun
+    icinden geciyor" olur ve birim/olcek varsayimindan bagimsiz calisir.
+    Grid-bucketed: binlerce sembol x on binlerce kenar O(P*E) patlamaz.
+
+    Donus: (yeni edge listesi, fiilen bolunen izdusum noktalari).
     """
     if not edges or not points:
         return edges, []
 
+    pts = [(float(p[0]), float(p[1]), max(radius, float(p[2])) if len(p) > 2 else radius)
+           for p in points]
+    rmax = max(p[2] for p in pts)
+    cs = max(rmax * 2.0, 10.0)
+    cell_to_edges: dict[tuple[int, int], list[int]] = {}
+    for i, e in enumerate(edges):
+        mnx, mxx = min(e["x1"], e["x2"]), max(e["x1"], e["x2"])
+        mny, mxy = min(e["y1"], e["y2"]), max(e["y1"], e["y2"])
+        for cx in range(int((mnx - rmax) // cs), int((mxx + rmax) // cs) + 1):
+            for cy in range(int((mny - rmax) // cs), int((mxy + rmax) // cs) + 1):
+                cell_to_edges.setdefault((cx, cy), []).append(i)
+
     splits: dict[int, list[tuple[float, float, float]]] = {}
     split_positions: list[tuple[float, float]] = []
-    for cx, cy in points:
+    for cx, cy, R in pts:
         best: tuple[int, float, float, float, float] | None = None
-        for i, e in enumerate(edges):
+        for i in cell_to_edges.get((int(cx // cs), int(cy // cs)), ()):
+            e = edges[i]
             x1, y1, x2, y2 = e["x1"], e["y1"], e["x2"], e["y2"]
             dx, dy = x2 - x1, y2 - y1
             L2 = dx * dx + dy * dy
@@ -574,7 +1118,7 @@ def _split_edges_on_points(
             px = x1 + t * dx
             py = y1 + t * dy
             d = math.hypot(cx - px, cy - py)
-            if d > radius:
+            if d > R:
                 continue
             if best is None or d < best[4]:
                 best = (i, px, py, t, d)
@@ -608,21 +1152,101 @@ def _split_edges_on_points(
 
 # ── Block-to-Line parcalama (insertion point split) ─────────────
 
-def _collect_all_insert_points(doc) -> list[tuple[float, float]]:
+def _median_edge_length(edges: list[dict]) -> float:
+    lens = sorted(e["length"] for e in edges if e.get("length", 0) > 0)
+    return lens[len(lens) // 2] if lens else 0.0
+
+
+def _collect_all_insert_points(
+    doc,
+    network_bbox: tuple[float, float, float, float] | None = None,
+    group_min_diag: float | None = None,
+) -> list[tuple[float, float]]:
     """TUM INSERT'lerin insertion point'lerini topla — blok ADI, SEKLI ve
     LAYER'i ONEMSIZ. Blogun icindeki geometri tamamen yoksayilir.
 
     Degismez kural (PRD): sprinkler/ekipman blogu cizimde her zaman borunun
     TAM USTUNE eklenir. Cizer blogu istedigi isimle/sekille cizebilir; tek
     guvenilir sinyal insertion point'in cizgi guzergahinda olmasidir.
+
+    IC ICE: GRUP bloklari acilir, icindeki kafa bloklarinin dunya-koordinat
+    ekleme noktalari da boruyu boler (matris bilesimi, sanal kopya yok).
+    Grup = nested INSERT var VE (group_min_diag verilmisse) blok kosegeni bu
+    esikten buyuk; esik yoksa >= _GROUP_MIN_NESTED. Bilesik sembol blogu
+    (govde + ok + etiket, kosegen ~50) grup DEGILDIR ve acilmaz: okun ekleme
+    noktasi boru ustune duserse sprinkler basina ikinci bolme (sahte parca)
+    cikardi. Esik: boru kenar medyaninin ceyregi (birimsiz).
     """
     pts: list[tuple[float, float]] = []
+    bidx = _block_index(doc)
+    budget = [_INSERT_EXPAND_BUDGET]
+    memo = _doc_cache(doc)
+
+    def walk(name: str, M, depth: int) -> None:
+        try:
+            w = M.transform((0.0, 0.0, 0.0))
+            pts.append((float(w.x), float(w.y)))
+        except Exception:
+            return
+        _, n_nested = bidx.get(name, (frozenset(), 0))
+        if n_nested == 0 or depth >= _INSERT_MAX_DEPTH or budget[0] <= 0:
+            return
+        if group_min_diag is None and n_nested < _GROUP_MIN_NESTED:
+            return  # boyut esigi yok: sayi kurali (1-2 parcali blok = bilesik sembol)
+        if network_bbox is not None or group_min_diag is not None:
+            bb = _insert_world_bbox(doc, name, M, memo)
+            if bb is not None and network_bbox is not None and _bbox_disjoint(bb, network_bbox):
+                return  # agdan uzak grup (lejant) — icini gezmeye deger degil
+            if (bb is not None and group_min_diag is not None
+                    and math.hypot(bb[2] - bb[0], bb[3] - bb[1]) <= group_min_diag):
+                return  # kucuk blok = bilesik sembol, grup degil
+        _, subs = _block_locals(doc, name, memo)
+        budget[0] -= len(subs)
+        for sname, _, M_local in subs:
+            walk(sname, M_local @ M, depth + 1)
+
     for ent in doc.modelspace().query('INSERT'):
         try:
-            pts.append((float(ent.dxf.insert.x), float(ent.dxf.insert.y)))
+            walk(str(ent.dxf.name or ""), ent.matrix44(), 0)
         except Exception:
             continue
     return pts
+
+
+def _drop_points_near_symbols(
+    points: list[tuple[float, float]],
+    symbols: list[tuple[float, float, float]],
+    node_tol: float,
+) -> list[tuple[float, float]]:
+    """Isaretli bir sembolun yaricapi icindeki INSERT ekleme noktalari AYNI
+    sprinkler'dir — Block-to-Line onlari ikinci kez bolmesin. Bilesik blok
+    (govde + ok) acildiginda sembol merkezi ekleme noktasindan birkac birim
+    kayabilir; iki mekanizma iki ayri noktada bolerse sprinkler basina sahte
+    mikro parca cikar. Bir sprinkler = bir bolme."""
+    if not points or not symbols:
+        return points
+    rmax = max(r for _, _, r in symbols) + node_tol
+    cs = max(rmax, 1.0)
+    grid: dict[tuple[int, int], list[tuple[float, float, float]]] = {}
+    for x, y, r in symbols:
+        grid.setdefault((int(x // cs), int(y // cs)), []).append((x, y, r + node_tol))
+    kept: list[tuple[float, float]] = []
+    for px, py in points:
+        kx, ky = int(px // cs), int(py // cs)
+        near = False
+        for cx in (kx - 1, kx, kx + 1):
+            if near:
+                break
+            for cy in (ky - 1, ky, ky + 1):
+                for x, y, R in grid.get((cx, cy), ()):
+                    if (px - x) ** 2 + (py - y) ** 2 <= R * R:
+                        near = True
+                        break
+                if near:
+                    break
+        if not near:
+            kept.append((px, py))
+    return kept
 
 
 def _split_edges_on_insert_points(
@@ -1001,8 +1625,9 @@ def _extract_segments(
     PRD v2.0 destegi:
     - Snap & Split: dikey bransh endpoint'i yatay ana hatta tam degmiyorsa
       (mikro bosluk veya overshoot), node_tol icinde otomatik yakalanir.
-    - Sprinkler izdusum: sprinkler block borunun yakininda (5-20cm) ise,
-      en yakin LINE'a izdusumden bolme yapilir.
+    - Sprinkler izdusum: isaretli katmandaki sembol KUMELERI (blok, daire,
+      capraz cizgi, elips, tarama — tip farketmez) boruya izdusurulur; boru
+      sembolun icinden geciyorsa o noktadan bolunur (birimsiz boyut kapilari).
 
     Parametreler:
       pipe_layers: SEGMENT ciktisi bu layer'lardan uretilir (secilen layer'lar)
@@ -1070,25 +1695,46 @@ def _extract_segments(
           f"-> {edges_after_2} (crossings) | node_tol={node_tol:.2f}",
           file=_sys.stderr)
 
-    # Sprinkler merkezleri LINE orta kisminda ise LINE'i o noktada bol
+    # ── Sprinkler sembolleri (isaretli katmanlar): HERHANGI geometri kumesi ──
+    # OLCULDU (02.09, gercek dosya): 743 sembol = 2 LINE + 2 ELLIPSE + 1 HATCH,
+    # blok/daire YOK; eski INSERT/CIRCLE/POINT filtresi SIFIR merkez buluyordu.
+    # Boru sembolun icinden geciyorsa (merkez->boru <= yaricap + node_tol, ya da
+    # eski sprinkler_tol) o noktadan bolunur. Boyut kapilari birimsizdir.
     split_sprinkler_keys: set[tuple[float, float]] = set()
-    sp_centers: list[tuple[float, float]] = []
+    symbols: list[tuple[float, float, float]] = []
     if sprinkler_layers or sprinkler_block_names:
-        sp_centers = _sprinkler_centers_from_layers(
+        symbols = _sprinkler_symbols_from_layers(
             doc,
             sprinkler_layers=sprinkler_layers,
+            pipe_layers=set(pipe_layers),
+            node_tol=node_tol,
             sprinkler_block_names=sprinkler_block_names,
+            network_diag=_network_diag(edges),
+            network_bbox=_network_bbox(edges),
         )
-        if sp_centers:
-            edges, split_positions = _split_edges_on_points(edges, sp_centers, radius=sprinkler_tol)
+        if symbols:
+            edges, split_positions = _split_edges_on_points(
+                edges, [(x, y, r + node_tol) for x, y, r in symbols], radius=sprinkler_tol,
+            )
             split_sprinkler_keys = {_node_key(x, y, node_tol) for x, y in split_positions}
+        print(f"[pipe_segments] sprinkler sembol: {len(symbols)} kume, "
+              f"{len(split_sprinkler_keys)} boru-ustu bolme",
+              file=_sys.stderr)
+    sp_centers: list[tuple[float, float]] = [(x, y) for x, y, _ in symbols]
 
     # STEP 3 — Block-to-Line parcalama (PRD): TUM INSERT insertion point'leri,
     # blok adi/sekli/layer'i ONEMSIZ. Nokta boru cizgisinin TAM USTUNDEYSE
     # (dik mesafe <= node_tol) cizgi o dugumden bolunur + run ayirici olur.
     # Boylece sprinkler layer'i hic isaretlenmese bile boru uzerine dizilmis
     # sprinkler bloklarinin arasindaki her parca ayri tiklanabilir segment olur.
-    insert_points = _collect_all_insert_points(doc)
+    insert_points = _collect_all_insert_points(
+        doc, network_bbox=_network_bbox(edges),
+        group_min_diag=_median_edge_length(edges) * 0.25,
+    )
+    if symbols:
+        # Isaretli sembolun temsil ettigi INSERT'i ikinci kez bolme (bir
+        # sprinkler = bir bolme; bilesik blokta merkez anchor'dan kayabilir)
+        insert_points = _drop_points_near_symbols(insert_points, symbols, node_tol)
     insert_separator_keys: set[tuple[float, float]] = set()
     if insert_points:
         edges, insert_separator_keys = _split_edges_on_insert_points(
@@ -1099,11 +1745,13 @@ def _extract_segments(
               file=_sys.stderr)
 
     graph = _build_node_graph(edges, node_tol)
-    sprinkler_keys, _ = _detect_sprinkler_positions(
-        doc, node_tol, sprinkler_tol,
-        sprinkler_layers=sprinkler_layers,
-        sprinkler_block_names=sprinkler_block_names,
-    )
+    # Run ayiricilar: sembol merkezine yakin dugumler (vertex ustundeki sprinkler
+    # dahil). Hic isaret yoksa eski fallback: blok adi regex'i.
+    if sprinkler_layers or sprinkler_block_names:
+        near_pts = symbols
+    else:
+        near_pts = [(x, y, 0.0) for x, y in _regex_sprinkler_centers(doc)]
+    sprinkler_keys = _node_keys_near_points(graph, near_pts, node_tol, sprinkler_tol)
     sprinkler_keys |= split_sprinkler_keys
     sprinkler_keys |= insert_separator_keys
     runs = _group_into_runs(edges, graph, sprinkler_keys, node_tol)
@@ -1150,3 +1798,77 @@ def _extract_junction_points(
             # Gercek koordinat (ilk gorulen) — node_key zaten quantize
             junctions.append(coords_list[0])
     return junctions
+
+
+# ── Sprinkler katman ADAYLARI (kullaniciya OLCULMUS ipucu) ─────────
+
+# Adinda sprinkler gecen katmanlar (tr-normalize). Bu bir KARAR degil, yalniz
+# hangi katmanlarin OLCULECEGINI secer; sonuc "boru ustundeki sembol sayisi"
+# olarak gercek sinyaldir. Kullanici katmani isaretlemeden bolme YAPILMAZ.
+_SPRINKLER_LAYER_HINT_RE = re.compile(
+    r"sprink|sprk|spra|(?<![a-z])spr(?![a-z])|upright|pendent|pendant|sidewall|yagmur|yağmur",
+    re.IGNORECASE,
+)
+
+
+def _norm_layer_name(name: str) -> str:
+    return (name.replace("İ", "I").replace("ı", "i").replace("Ğ", "G").replace("ğ", "g")
+            .replace("Ş", "S").replace("ş", "s").replace("Ö", "O").replace("ö", "o")
+            .replace("Ü", "U").replace("ü", "u").replace("Ç", "C").replace("ç", "c"))
+
+
+def sprinkler_layer_candidates(
+    doc,
+    pipe_layers: list[str],
+    unit_scale: float = 0.001,
+    max_layers: int = 12,
+) -> list[dict]:
+    """Isaretlenmemis ama secili borularin USTUNDE sembol tasiyan katmanlar.
+
+    NEDEN: kullanici "T noktalarinda bol" der, sprinkler'da bolunmez ve nedenini
+    goremez (02.09: `YNG SPRİNK PENDENT` isaretsizdi). Bu fonksiyon adinda
+    sprinkler gecen her katman icin sembol kumelerini boruya izdusurur ve
+    borunun icinden gecen sembol sayisini doner. Yalniz sayisi > 0 olanlar,
+    cok -> az sirali. Boru katmanlarinin kendisi aday DEGILDIR.
+
+    Donus: [{"layer": ad, "on_pipe": n}, ...]
+    """
+    pipe_set = set(pipe_layers)
+    msp = doc.modelspace()
+    edges = _collect_raw_edges(msp, pipe_set)
+    if not edges:
+        return []
+    node_tol, sprinkler_tol = _compute_tolerances(edges, unit_scale=unit_scale)
+    net = _network_diag(edges)
+
+    adaylar: list[str] = []
+    try:
+        for lay in doc.layers:
+            name = str(lay.dxf.name)
+            if name in pipe_set:
+                continue
+            if _SPRINKLER_LAYER_HINT_RE.search(_norm_layer_name(name)):
+                adaylar.append(name)
+    except Exception:
+        return []
+    if len(adaylar) > max_layers:
+        adaylar = adaylar[:max_layers]
+
+    out: list[dict] = []
+    for name in adaylar:
+        try:
+            symbols = _sprinkler_symbols_from_layers(
+                doc, sprinkler_layers=[name], pipe_layers=pipe_set,
+                node_tol=node_tol, network_diag=net, network_bbox=_network_bbox(edges),
+            )
+            if not symbols:
+                continue
+            _, positions = _split_edges_on_points(
+                edges, [(x, y, r + node_tol) for x, y, r in symbols], radius=sprinkler_tol,
+            )
+            if positions:
+                out.append({"layer": name, "on_pipe": len(positions)})
+        except Exception:
+            continue
+    out.sort(key=lambda d: -d["on_pipe"])
+    return out
