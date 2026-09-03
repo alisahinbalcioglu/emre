@@ -34,13 +34,13 @@ import { sayiAlani, sayiOku } from '@/ozellik/fiyat/sayi-alani';
 import { hasSizeExpression, isSelfSufficientRow } from './build-material-context';
 import { niteliklerdenBaglam, adayEtiketleri, popupGenisligiOku, popupGenisligiYaz } from './aday-ayirt-edicilik';
 import httpApi from '@/ortak/lib/api';
+import { toast } from '@/ortak/hooks/use-toast';
+import { confirm, promptValue } from '@/ortak/hooks/use-confirm';
 
 /** FITTING: turetilen para hucresi — gri/italik "elle yazilmaz" sinyali.
  *  Para kolonlarinin inline `cellStyle`i (color #0f172a) CSS sinifini ezdigi
  *  icin sinyal ayni inline yoldan verilir (inceleme: sinif hic cizilmiyordu). */
 const FITTING_TURETILMIS_STIL = { textAlign: 'right', color: '#64748b', fontStyle: 'italic', fontWeight: 400 } as const;
-import { toast } from '@/ortak/hooks/use-toast';
-import { confirm, promptValue } from '@/ortak/hooks/use-confirm';
 
 // Z4: satir bazli para birimi sembolu (row._currency) — kutuphane gridi
 // dovizli satirlari kendi birimiyle gosterir
@@ -194,6 +194,9 @@ interface Props {
    * isi siliyordu). `onRowDataChange` bunun icin kullanilamaz: o HER hucre
    * yaziminda kosar, parent render'i acik editoru iptal eder (KP notu).
    * Bu kanca yalniz YAPISAL olaylarda kosar — editor acikken olmaz.
+   * SOZLESME: parent bu diziyi REFERANSLA saklayip `data.rowData` olarak
+   * geri vermeli (kopyalamamali) — grid kendi yayinini kimlikten tanir ve
+   * o turda ikinci toplam gecisini atlar (icerik olcutu yedek olarak var).
    */
   onStructureChange?: (rows: ExcelRowData[]) => void;
   /** Sutun ekle/sil sonrasi YENI columnDefs — parent (quotes/new) multiSheet
@@ -1728,9 +1731,6 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
   // Gecis hucre yazarken true: hucre-degisim kancasi yeni tam-tablo turu ACMAZ
   // (inceleme M3 — F fitting × 4 hucre × tam yeniden hesap israfi).
   const fittingYaziyorRef = useRef(false);
-  // Son Ctrl+tik (kapsam modu): AG Grid ikinci Ctrl+tik'i CIFT-TIK sayip
-  // editoru acar (shouldStartEditing modifier'a bakmaz) — editor iptal edilir.
-  const sonCtrlTikRef = useRef<{ t: number; rowId: string } | null>(null);
 
   const fittingTulu = useCallback((rowIdx: number | null) => {
     const api = gridRef.current?.api;
@@ -2363,7 +2363,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     if (!onRowDataChange && !onStructureChangeRef.current) return;
     const all: ExcelRowData[] = [];
     api.forEachNode((n) => { if (n.data) all.push(n.data); });
-    sonYayinRef.current = all;
+    if (onStructureChangeRef.current) sonYayinRef.current = all; // kopyalayan tuketicide olu referans tutma
     onRowDataChange?.(all);
     onStructureChangeRef.current?.(all);
   }, [onRowDataChange]);
@@ -2912,11 +2912,16 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
 
   // Sayfa degisince / veri yeniden yuklenince acik mod ve tul dusurulur.
   // ⚠ Kendi yapisal yayinimiz (`emitRows` → parent → `data.rowData`) sayfa
-  // degisimi DEGILDIR: ayni dizi referansi geri gelir, mod acik kalir —
-  // aksi halde her Ctrl+tik (kapsam yayini) modu kapatirdi.
+  // degisimi DEGILDIR — aksi halde her Ctrl+tik (kapsam yayini) modu kapatirdi.
+  // Olcut KIMLIK DEGIL DURUM (inceleme H2): parent diziyi kopyalasa bile
+  // (kutuphane sayfasi `[...rows]` yapiyor) acik modun fitting satiri hala
+  // gridde ve bagi duruyorsa tablo AYNI tablodur; yeni yuklemede dugum
+  // bulunamaz ya da `_fitting` yoktur → kapanir. Kimlik yalniz kisayoldur.
   React.useEffect(() => {
     if (data.rowData === sonYayinRef.current) return;
-    if (fittingModuRef.current) fittingModunuKapat();
+    const m = fittingModuRef.current;
+    if (m && gridRef.current?.api?.getRowNode(String(m.rowIdx))?.data?._fitting) return;
+    if (m) fittingModunuKapat();
     else setFittingStili('');
   }, [data.rowData, fittingModunuKapat]);
 
@@ -2935,8 +2940,11 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
    *  `_fitting` yazimi parent'a zaten ulasir; olculdu, quotes/new/page.tsx.) */
   const fittingDuzenlenebilir = enableStructureEdit;
 
-  // Data yuklenince pinned bottom hesapla
+  // Data yuklenince pinned bottom hesapla. Kendi yapisal yayinimiz geri
+  // geldiginde DEGIL: toplam o olayin icinde zaten tazelendi (inceleme M4 —
+  // her Ctrl+tik'ta ikinci bir tam-tablo gecisi aciliyordu).
   React.useEffect(() => {
+    if (data.rowData === sonYayinRef.current) return;
     const t = setTimeout(() => updatePinnedBottom(), 50);
     return () => clearTimeout(t);
   }, [data.rowData, updatePinnedBottom]);
@@ -3206,8 +3214,6 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       };
       base.cellClassRules = {
         'hidden-merged-cell': (params) => params.data?._merges?.[field]?.hidden === true,
-        // FITTING (02.09): turetilen para hucreleri gri/italik — elle yazilmaz
-        'fitting-turetilmis': (params) => !!params.data?._fitting && paraAlanlari.has(field),
         // KP: secili aralik gorsel geri bildirimi. Sinif MAVI TUL cizer
         // (`inset` golge), zemini EZMEZ — isaret.ts'in para sinyalleri
         // (kirmizi/sari/gri) inline `cellStyle` ile geliyor ve secim
@@ -3808,8 +3814,10 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         }
         gridRef.current.api.applyTransaction({ add: [spare] });
         // YAPISAL: spare→gercek satir parent dizisinde YOKTU (kayitta kayip);
-        // yapisal kanca ile parent'a ulasir. Ref: deps listesi oynamasin.
-        setTimeout(() => emitRowsRef.current(), 0);
+        // yapisal kanca ile parent'a ulasir. Yalniz o kanca varsa: kutuphane
+        // tuketicileri `onRowDataChange`i asagida zaten aliyor, cift yayin
+        // olmasin (inceleme M5). Ref: deps listesi oynamasin.
+        if (onStructureChangeRef.current) setTimeout(() => emitRowsRef.current(), 0);
       }
     }
 
@@ -3957,15 +3965,14 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           if (Object.keys(w).length) onColumnWidthsChange(w);
         }}
         onCellValueChanged={handleCellValueChanged}
-        // ── FITTING: kapsam modunda ikinci Ctrl+tik AG Grid'de CIFT-TIK sayilir
-        // ve editor acilir (shouldStartEditing modifier'a bakmaz; inceleme
-        // orta 3/3). Az once Ctrl+tik yapilan satirda acilan editor iptal.
-        onCellEditingStarted={(e) => {
-          const s = sonCtrlTikRef.current;
-          if (s && fittingModuRef.current && String(e.node?.id ?? '') === s.rowId && Date.now() - s.t < 700) {
-            e.api.stopEditing(true);
-          }
-        }}
+        // ── FITTING: kapsam modu acikken TIK/CIFT-TIK editor ACMAZ. Ikinci
+        // Ctrl+tik AG Grid'de dblclick sayilir (shouldStartEditing modifier'a
+        // BAKMAZ, olculdu: main.cjs.js:46731) ve editor acilirdi. Editoru acip
+        // `cellEditingStarted` icinde iptal etmek AG Grid edit modelinde hayalet
+        // kayit birakiyor (inceleme H1) — bu yuzden hic actirilmaz. Klavye yolu
+        // (F2/Enter/yazma) etkilenmez: shouldStartEditing klavye dalini ONCE
+        // dondurur; mod `Tamam`/Esc ile kapaninca cift-tik geri gelir.
+        suppressClickEdit={!!fittingModu}
         // ── FITTING (02.09): fitting satirina odaklaninca kapsami gorunur ──
         // Mod acikken tul moda aittir (dokunulmaz). Salt gorsel; secim
         // temizleme kurali (onCellFocused'a baglanamaz) burayi ilgilendirmez.
@@ -3981,7 +3988,6 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           // Kopyalama secimine (Shift) dokunmaz; Ctrl+tik gridde baska ise bagli degil.
           const meCtrl = e.event as MouseEvent | null;
           if ((meCtrl?.ctrlKey || meCtrl?.metaKey) && fittingModuRef.current) {
-            sonCtrlTikRef.current = { t: Date.now(), rowId: String(e.node?.id ?? '') };
             if (e.data) fittingKapsamToggle(e.data as ExcelRowData);
             return;
           }
@@ -4073,7 +4079,6 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       )}
       <style jsx global>{`
         /* FITTING SATIRI (02.09): turetilen para hucreleri + ad hucresi rozeti */
-        .ag-theme-alpine .ag-cell.fitting-turetilmis { color: #64748b; font-style: italic; }
         .fitting-ad { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; }
         .fitting-ad-metin { overflow: hidden; text-overflow: ellipsis; }
         .fitting-rozet { flex: none; border: 1px solid #f59e0b; background: #fffbeb; color: #b45309;
