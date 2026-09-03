@@ -2696,6 +2696,16 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     // Library mode'da quote-spesifik sistem sutunlarini cikar
     // (Malz. Kar, Marka, Isc. Kar, Firma kolonlari kutuphanede anlamsiz)
     const QUOTE_SYSTEM_FIELDS = new Set(['_malzKar', '_marka', '_iscKar', '_firma']);
+
+    // ── ISCILIK ROL KOLONLARI ─────────────────────────────────────────
+    // Bunlar SABIT alan adi degil: Excel'den gelen kolon adina baglanan
+    // ROLLERDIR. Bu yuzden ad kiyaslamasi degil ROL kiyaslamasi yapilir.
+    // (`iscilikKolonlari` bos olabilir — dosyada iscilik kolonu yoksa.)
+    const iscilikKolonlari = new Set(
+      [data.columnRoles?.laborUnitPriceField, data.columnRoles?.laborTotalField]
+        .filter((f): f is string => !!f),
+    );
+    const iscilikKolonuMu = (alan: string) => iscilikKolonlari.has(alan);
     const filteredColumnDefs = mode === 'library'
       ? data.columnDefs.filter((c) => !QUOTE_SYSTEM_FIELDS.has(c.field))
       : data.columnDefs;
@@ -2705,7 +2715,14 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         field: c.field,
         headerName: c.headerName,
         width: columnWidths?.[c.field] ?? c.width ?? 120,
-        editable: c.editable ?? false,
+        // ⚠ ISCILIK BIRIM/TOPLAM: iscilik kapaliyken DUZENLENEMEZ.
+        // 03.09'da olculdu: firma secici kilitliydi ama BIRIM FIYAT hucresi
+        // elle yazilabiliyordu (`:3343` elle girisi toplama ceviriyor) —
+        // kapinin yarisi takiliydi ve aboneliksiz kullanici ekranda
+        // iscilikli Genel Toplam goruyordu.
+        editable: iscilikKolonuMu(c.field) && !laborEnabled
+          ? false
+          : (c.editable ?? false),
         pinned: c.pinned,
         suppressMovable: c.suppressMovable,
         resizable: true,
@@ -2811,7 +2828,13 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
             </div>
           );
         };
-        base.editable = true;
+        // ⚠ ISCILIK KAPALIYSA KAR KOLONU YAZILAMAZ (03.09 kullanici karari).
+        // Sadece soluk boyamak YETMEZ: `editable` acik kalirsa kullanici
+        // deger yazar, `:3261` birim fiyati geri turetir ve Genel Toplam'a
+        // iscilik girer. `editable=false` ayni zamanda YAPISTIRMA (:2101)
+        // ve DOLDURMA TUTAMAGI (:2180) hedeflerinden de cikarir — uc yolu
+        // birden kapatan TEK kaldirac budur.
+        base.editable = karField === '_iscKar' ? laborEnabled : true;
       }
 
       if (c.cellRenderer === 'brandRenderer') {
@@ -3148,6 +3171,33 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         // aldigini bilemez.
 
       } as any);
+    }
+
+    // ── ISCILIK KAPALIYSA UC KOLONU SOLUKLASTIR ──────────────────────
+    // 03.09 kullanici karari: "Iscilik Kar %, Iscilik Birim Fiyat ve
+    // Iscilik Toplam sutunlari da sonuk olmali, Pro plan degilse."
+    //
+    // ⚠ GORUNUM en SONDA uygulanir: yukaridaki dallar (`:3046`, `:3070`,
+    // `:3095`) kendi `cellStyle`larini ATIYOR. Once boyayip sonra o
+    // dallardan gecseydik boyama SESSIZCE EZILIRDI — kolon yazilamaz ama
+    // normal renkte gorunurdu, yani kullanici neden yazamadigini anlamazdi.
+    //
+    // Yazma engeli AYRI ve yukarida (`editable`); burasi YALNIZ gorunum.
+    if (mode === 'quote' && !laborEnabled) {
+      // ⚠ Set yayilimi (`...set`) bu tsconfig hedefinde derlenmiyor
+      // (TS2802, downlevelIteration kapali) — Array.from ile toplaniyor.
+      const solukAlanlar = new Set<string>(
+        Array.from(iscilikKolonlari).concat('_iscKar'),
+      );
+      for (const c of cols) {
+        if (!c.field || !solukAlanlar.has(c.field)) continue;
+        const oncekiStil = c.cellStyle;
+        c.cellStyle = (params: any) => {
+          const taban = typeof oncekiStil === 'function' ? oncekiStil(params) : oncekiStil;
+          return { ...(taban ?? {}), color: '#94a3b8', background: '#f8fafc' };
+        };
+        c.headerTooltip = 'Iscilik fiyatlandirmasi Pro pakete dahildir.';
+      }
     }
 
     return cols;

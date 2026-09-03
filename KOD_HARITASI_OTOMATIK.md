@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 460
-Toplam satir: 100658
+Kod dosyasi: 462
+Toplam satir: 100923
 Uc nokta: 142
 test:* scripti: 78
 
@@ -340,7 +340,7 @@ test:* scripti: 78
 | `frontend/ortak/hooks/use-confirm.ts` | 158 |
 | `frontend/ortak/hooks/use-toast.ts` | 119 |
 | `frontend/ortak/kabuk/components/dashboard/QuickAccess.tsx` | 49 |
-| `frontend/ortak/kabuk/components/dashboard/QuickStart.tsx` | 202 |
+| `frontend/ortak/kabuk/components/dashboard/QuickStart.tsx` | 239 |
 | `frontend/ortak/kabuk/components/dashboard/dosya-turu.test.ts` | 47 |
 | `frontend/ortak/kabuk/components/dashboard/dosya-turu.ts` | 24 |
 | `frontend/ortak/kabuk/components/landing/GirisliyseYonlendir.tsx` | 31 |
@@ -386,19 +386,21 @@ test:* scripti: 78
 | `frontend/ozellik/odeme/AbonelikSeridi.tsx` | 51 |
 | `frontend/ozellik/odeme/IyzicoFormu.tsx` | 36 |
 | `frontend/ozellik/odeme/dwg-kapisi.test.ts` | 135 |
-| `frontend/ozellik/odeme/dwg-kapisi.ts` | 79 |
+| `frontend/ozellik/odeme/dwg-kapisi.ts` | 44 |
 | `frontend/ozellik/odeme/erisim-durumu.test.ts` | 183 |
 | `frontend/ozellik/odeme/erisim-durumu.ts` | 111 |
 | `frontend/ozellik/odeme/fatura-kimligi.test.ts` | 134 |
 | `frontend/ozellik/odeme/fatura-kimligi.ts` | 117 |
 | `frontend/ozellik/odeme/iyzico-form.test.ts` | 263 |
 | `frontend/ozellik/odeme/iyzico-form.ts` | 138 |
+| `frontend/ozellik/odeme/ozellik-kapisi.test.ts` | 149 |
+| `frontend/ozellik/odeme/ozellik-kapisi.ts` | 64 |
 | `frontend/ozellik/odeme/paket-bicim.ts` | 108 |
 | `frontend/ozellik/odeme/telefon-bicim.test.ts` | 150 |
 | `frontend/ozellik/odeme/telefon-bicim.ts` | 105 |
 | `frontend/ozellik/tablo/disiplin.ts` | 13 |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 252 |
-| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 3700 |
+| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 3750 |
 | `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | 109 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts` | 178 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.ts` | 175 |
@@ -812,6 +814,7 @@ test:* scripti: 78
 | `frontend/ozellik/odeme/fatura-kimligi.test.ts` | `vitest` `node:fs` `node:path` |
 | `frontend/ozellik/odeme/fatura-kimligi.ts` | `./telefon-bicim` |
 | `frontend/ozellik/odeme/iyzico-form.test.ts` | `vitest` `node:fs` `node:path` |
+| `frontend/ozellik/odeme/ozellik-kapisi.test.ts` | `vitest` `node:fs` `node:path` |
 | `frontend/ozellik/odeme/telefon-bicim.test.ts` | `vitest` `node:fs` `node:path` `./fatura-kimligi` |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | `react` `react-dom` |
 | `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | `react` `react-dom` `ag-grid-react` `ag-grid-community` `./types` `./oneri-cekince` `./useFillHandle` `./discount-utils` `./CustomDropdown` `./fill-down` `./yapistir` `./kopyala` `./isaret` `@/ozellik/tablo/parse-material-text` `@/ozellik/fiyat/pricing` `@/ozellik/fiyat/sayi-alani` `./build-material-context` `./aday-ayirt-edicilik` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `ag-grid-community/styles/ag-grid.css` `ag-grid-community/styles/ag-theme-alpine.css` `./fill-handle.css` |
