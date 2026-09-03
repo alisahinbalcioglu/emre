@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 455
-Toplam satir: 99391
+Toplam satir: 99402
 Uc nokta: 142
 test:* scripti: 78
 
@@ -391,7 +391,7 @@ test:* scripti: 78
 | `frontend/ozellik/odeme/paket-bicim.ts` | 108 |
 | `frontend/ozellik/tablo/disiplin.ts` | 13 |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 252 |
-| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 4127 |
+| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 4138 |
 | `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | 109 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts` | 178 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.ts` | 175 |

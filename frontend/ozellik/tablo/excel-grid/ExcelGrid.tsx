@@ -23,7 +23,7 @@ import { joinMaterialText } from '@/ozellik/tablo/parse-material-text';
 import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, yukariYuvarla, etkinMiktar, paraBicim, sayfaToplamlari, karSatiri, maliyetiGeriTuret, PARA_ONDALIK } from '@/ozellik/fiyat/pricing';
 // FITTING SATIRI (02.09): kapsam secimi (Ctrl+tik) yardimcilari — para kurali pricing'te
 import {
-  fittingBirimiMi, fittingKapsaminaAlinabilirMi, kapsamDegistir, silinenSatiriKapsamlardanDus,
+  FITTING_BIRIMI, fittingBirimiMi, fittingKapsaminaAlinabilirMi, kapsamDegistir, silinenSatiriKapsamlardanDus,
   oranMetniniNormalize, fittingRozetMetni, kilitliEditable, yapistirmaHedefiMi, fittingHucreleri,
   fittingOncekiAl, fittingOncekiFiyatVarMi, fittingParaAlanlari, FITTING_ONCEKI_SISTEM_ALANLARI,
 } from './fitting';
@@ -3557,6 +3557,17 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     if (unitField && e.colDef.field === unitField && e.source === 'edit' && mode === 'quote'
       && fittingDuzenlenebilir && fittingBirimiMi(e.newValue) && !row._fitting) {
       fittingModunuAcRef.current(row._rowIdx); // bag yoksa kurar, rozeti cizer
+    }
+    // (a2) MIKTAR hucresine "%35" / "35%" yazildi → ayni kapi (03.09 canli
+    //      kullanim): kullanicinin ILK refleksi orani miktar hucresine "%35"
+    //      diye yazmak; birim hucresini bos birakinca rozet cikmiyor ve
+    //      "Ctrl ile isaretlenmiyor" oluyordu. "%" isareti NIYETI belirtir —
+    //      birim otomatik "%" yapilir, oran (b) dalinda sayiya indirgenir.
+    //      Duz "35" yazimi tetiklemez: o siradan bir miktardir.
+    if (quantityField && e.colDef.field === quantityField && e.source === 'edit' && mode === 'quote'
+      && fittingDuzenlenebilir && !row._fitting && oranMetniniNormalize(e.newValue) !== null) {
+      if (unitField && !fittingBirimiMi(row[unitField])) e.node.setDataValue(unitField, FITTING_BIRIMI);
+      fittingModunuAcRef.current(row._rowIdx);
     }
     // (a') Bag yokken birim "%"den baska bir seye cevrildi: ad hucresindeki
     //      "Σ satır seç" rozeti kalmasin — ad kolonu tazelenir (inceleme: dusuk).
