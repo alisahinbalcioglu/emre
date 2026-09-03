@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 467
-Toplam satir: 102483
+Toplam satir: 102507
 Uc nokta: 142
 test:* scripti: 78
 
@@ -401,7 +401,7 @@ test:* scripti: 78
 | `frontend/ozellik/odeme/telefon-bicim.ts` | 105 |
 | `frontend/ozellik/tablo/disiplin.ts` | 13 |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 252 |
-| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 4228 |
+| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 4236 |
 | `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | 109 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts` | 178 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.ts` | 175 |
@@ -412,8 +412,8 @@ test:* scripti: 78
 | `frontend/ozellik/tablo/excel-grid/discount-utils.ts` | 28 |
 | `frontend/ozellik/tablo/excel-grid/fill-down.test.ts` | 464 |
 | `frontend/ozellik/tablo/excel-grid/fill-down.ts` | 374 |
-| `frontend/ozellik/tablo/excel-grid/fitting.test.ts` | 225 |
-| `frontend/ozellik/tablo/excel-grid/fitting.ts` | 157 |
+| `frontend/ozellik/tablo/excel-grid/fitting.test.ts` | 234 |
+| `frontend/ozellik/tablo/excel-grid/fitting.ts` | 164 |
 | `frontend/ozellik/tablo/excel-grid/grup-iskonto-girisi.test.ts` | 186 |
 | `frontend/ozellik/tablo/excel-grid/isaret.test.ts` | 238 |
 | `frontend/ozellik/tablo/excel-grid/isaret.ts` | 133 |

@@ -172,21 +172,21 @@ describe('K8 — fittingHucreleri: gecisin yazacagi hucreler saf ve olculur', ()
     { _rowIdx: 11, _isDataRow: true, _miktar: 300, _birim: 'mt', _matBirim: 350, _matToplam: 105000 },
     { _rowIdx: 12, _isDataRow: true, _miktar: 463, _birim: 'mt', _matBirim: 400, _matToplam: 185200 },
   ];
-  it('fitting satiri icin dort alan + GENEL TOPLAM; iscilik yoksa bos string', () => {
+  it('BIRIM FIYAT hucreleri BOS, yalniz toplamlar yazilir (04.09 kullanici karari)', () => {
     const fit = { _rowIdx: 22, _isDataRow: true, _miktar: 35, _birim: '%', _fitting: { kapsam: [11, 12] } };
     const h = fittingHucreleri([...borular, fit], ROLLER);
     expect(h.every((x) => x.rowIdx === 22)).toBe(true);
-    // GENEL TOPLAM da kapsamdan: reload sonrasi bayat kalmasin (recalcGrand'a
-    // baglanmaz — dort alan degismeyince o hic kosmuyordu).
+    // Fitting bir KALEM degil, kapsamin oranidir — birim fiyati yoktur.
+    // GENEL TOPLAM da kapsamdan (recalcGrand'in yan etkisine BAGLANMAZ).
     expect(h).toEqual([
-      { rowIdx: 22, alan: '_matBirim', deger: '2902.0' },   // 290.200 / 100
+      { rowIdx: 22, alan: '_matBirim', deger: '' },
       { rowIdx: 22, alan: '_matToplam', deger: '101570.0' }, // 290.200 × %35
       { rowIdx: 22, alan: '_labBirim', deger: '' },
       { rowIdx: 22, alan: '_labToplam', deger: '' },
       { rowIdx: 22, alan: '_toplam', deger: '101570.0' },    // mat + lab(0)
     ]);
   });
-  it('iki tarafli: GENEL TOPLAM = malzeme + iscilik toplami', () => {
+  it('iki tarafli: toplamlar dolu, HER IKI birim fiyat BOS', () => {
     const rows = [
       { _rowIdx: 1, _isDataRow: true, _miktar: 10, _matBirim: 100, _matToplam: 1000, _labBirim: 40, _labToplam: 400 },
     ];
@@ -196,6 +196,15 @@ describe('K8 — fittingHucreleri: gecisin yazacagi hucreler saf ve olculur', ()
     expect(al('_matToplam')).toBe('500.0');  // 1000 × %50
     expect(al('_labToplam')).toBe('200.0');  // 400 × %50
     expect(al('_toplam')).toBe('700.0');     // 500 + 200
+    // Kapsam DOLU olmasina ragmen birim fiyatlar bos — kural kapsama bagli degil
+    expect(al('_matBirim')).toBe('');
+    expect(al('_labBirim')).toBe('');
+  });
+  it('satirda ESKI birim fiyat varsa gecis onu BOSALTIR (bayat kalmaz)', () => {
+    const rows = [{ _rowIdx: 1, _isDataRow: true, _miktar: 10, _matBirim: 100, _matToplam: 1000 }];
+    const fit = { _rowIdx: 9, _isDataRow: true, _miktar: 50, _birim: '%', _matBirim: '9999.0', _fitting: { kapsam: [1] } };
+    const h = fittingHucreleri([...rows, fit], ROLLER);
+    expect(h.find((x) => x.alan === '_matBirim')?.deger).toBe('');
   });
   it('kapsam bos → dort para + genel hucre bos; fitting olmayan sayfa → hic hucre yok', () => {
     const fit = { _rowIdx: 22, _isDataRow: true, _miktar: 35, _birim: '%', _fitting: { kapsam: [] } };

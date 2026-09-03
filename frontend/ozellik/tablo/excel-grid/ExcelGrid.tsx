@@ -359,6 +359,20 @@ function BrandDropdown(props: ICellRendererParams & {
   const [alternatives, setAlternatives] = React.useState<BrandAlternative[] | null>(null);
   // Popup basliginda gosterilecek cevrim rozeti ("DN 50 → 2\" (çelik)")
   const donusumRef = React.useRef<string | null>(null);
+  // ⚠ HOOK'LAR ERKEN RETURN'DEN ONCE — HEPSI (03.09 canli cokme, React #310).
+  // `brandOptions` (useMemo) ve `tasiRef` (useRef) asagida, `return null`dan
+  // SONRA duruyordu. `_isDataRow` false iken 4, true iken 6 hook kosuyordu.
+  // Satir siniflandirmasi HIC degismedigi surece bu uykuda kaldi; 03.09'da
+  // "bos satira yazinca satir VERI SATIRI olur" terfisi (`satir-terfi.ts`)
+  // bayragi false→true cevirince AYNI bileşen orneginde hook sayisi artti ve
+  // React "Rendered more hooks than during the previous render" ile SAYFAYI
+  // COKERTTI (kullanici: "yuzde belirleyip diger hucreye gecince hata").
+  // KURAL: bu bileşende erken return'un ALTINDA hook OLAMAZ.
+  const brandOptions = React.useMemo(() =>
+    brands.map((b) => ({ value: b.id, label: b.name })),
+    [brands],
+  );
+  const tasiRef = React.useRef<{ dx: number; dy: number } | null>(null);
 
   if (!data?._isDataRow) return null;
 
@@ -697,16 +711,10 @@ function BrandDropdown(props: ICellRendererParams & {
     node.setDataValue('_matStatus', 'yok');
   };
 
-  const brandOptions = React.useMemo(() =>
-    brands.map((b) => ({ value: b.id, label: b.name })),
-    [brands],
-  );
-
   // ── PU4c: POPUP TASINABILIR (kullanici istegi 31.07) ────────────────────
   // "seçenekler çerçevesini hareket ettiremiyorum" — tasima HIC yoktu; popup
   // sabit konumda aciliyordu ve altindaki satiri kapatiyordu. Baslik cubugu
   // artik tutamaktir. Kutu her zaman ekran icinde kalir (kirpma ile ayni pay).
-  const tasiRef = React.useRef<{ dx: number; dy: number } | null>(null);
   const baslikBasla = (e: React.MouseEvent) => {
     const el = popupRef.current;
     if (!el) return;

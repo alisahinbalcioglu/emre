@@ -108,9 +108,16 @@ export function fittingHucreleri(
     const ekle = (alan: string | undefined, v: number | null) => {
       if (alan) out.push({ rowIdx: r._rowIdx, alan, deger: v === null ? '' : v.toFixed(1) });
     };
-    ekle(roller.materialUnitPriceField, f.mat?.birim ?? null);
+    // ⚠ BIRIM FIYAT HUCRELERI BOS BIRAKILIR (04.09 kullanici karari):
+    // "malzeme birim fiyati icin hesap yapmasin, sadece malzeme toplam fiyat
+    // uzerinden hesap yapacak." Fitting bir KALEM degil, kapsamin oranidir —
+    // birim fiyati (kapsamin %1'i) anlamli bir birim fiyat DEGILDI ve
+    // musteriye giden ciktida yanlis okunuyordu. Hucreler acik acik
+    // BOSALTILIR (null): eski bir deger kalirsa satir "birim × miktar ≠ toplam"
+    // gorunurdu ve gecis idempotent oldugu icin kendiliginden temizlenmezdi.
+    ekle(roller.materialUnitPriceField, null);
     ekle(roller.materialTotalField, f.mat?.toplam ?? null);
-    ekle(roller.laborUnitPriceField, f.lab?.birim ?? null);
+    ekle(roller.laborUnitPriceField, null);
     ekle(roller.laborTotalField, f.lab?.toplam ?? null);
     // GENEL TOPLAM/BIRIM de kapsamdan (recalcGrand ile AYNI kural: mat+lab,
     // yukari-1-hane). ⚠ Yalniz recalcGrand'in yan etkisine birakilirsa reload
@@ -119,7 +126,7 @@ export function fittingHucreleri(
     // fitting satirinin Genel Toplam hucresi eski/yanlis degerinde donar
     // (tarayici turunda olculdu: 491.759,7 kaldi, dogrusu 641.088,2).
     const varMi = !!(f.mat || f.lab);
-    ekle(roller.grandUnitPriceField, varMi ? yukariYuvarla((f.mat?.birim ?? 0) + (f.lab?.birim ?? 0)) : null);
+    ekle(roller.grandUnitPriceField, null); // birim fiyat yok (yukaridaki gerekce)
     ekle(roller.grandTotalField, varMi ? yukariYuvarla((f.mat?.toplam ?? 0) + (f.lab?.toplam ?? 0)) : null);
   }
   return out;
