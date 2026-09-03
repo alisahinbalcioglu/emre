@@ -97,13 +97,41 @@ export function betigiElemanaCevir(
   return eleman;
 }
 
+/** iyzico betiginin formu icine cizdigi kabin kimligi (iyzico sabiti). */
+export const KAP_KIMLIGI = 'iyzipay-checkout-form';
+
+/**
+ * Gelen govde, iyzico'nun cizim kabini KENDISI tasiyor mu? SAF fonksiyon.
+ *
+ * Tasimiyorsa betik kabi bulamaz ve KENDI POPUP'ini acar — dar, sabit
+ * genislikte bir modal. Kabi biz saglarsak form SAYFAYA GOMULUR (responsive)
+ * ve bizim kabimizin genisligini alir.
+ */
+export function kapIceriyorMu(govde: string): boolean {
+  return new RegExp(`id\\s*=\\s*["']${KAP_KIMLIGI}["']`, 'i').test(govde);
+}
+
+/**
+ * Govdeye, EKSIKSE, responsive cizim kabini ekler. SAF fonksiyon.
+ *
+ * ⚠ KOSULLU olmasi kasitli: iyzico'nun donen icerigi kabi ZATEN tasiyorsa
+ * ikinci bir tane eklemek MUKERRER `id` uretir ve betik yanlis kabi
+ * secebilir. Hangi ihtimalin dogru oldugunu tahmin etmek yerine, iki
+ * ihtimalde de dogru davranan tek yol budur.
+ */
+export function kabiEkle(govde: string): string {
+  if (kapIceriyorMu(govde)) return govde;
+  return `<div id="${KAP_KIMLIGI}" class="responsive"></div>${govde}`;
+}
+
 /**
  * Kabi temizler, govdeyi basar, betikleri CALISTIRILABILIR sekilde ekler.
  * DOM'a dokunan TEK yer burasi.
  */
 export function iyzicoFormunuBas(kap: HTMLElement, html: string): void {
   const { govde, betikler } = betikleriAyikla(html);
-  kap.innerHTML = govde;
+  // ⚠ Kap betiklerden ONCE DOM'da olmali: betik calistigi anda onu arar.
+  kap.innerHTML = kabiEkle(govde);
   const belge = kap.ownerDocument ?? document;
   for (const b of betikler) kap.appendChild(betigiElemanaCevir(b, belge));
 }

@@ -216,7 +216,9 @@ export default function AbonelikSayfasi() {
   // ── Kart formu acildiysa yalniz onu goster ──────────────────────────
   if (formHtml) {
     return (
-      <div className="mx-auto max-w-2xl">
+      // Odeme ekrani fatura adimindan GENIS: iyzico formu responsive kipte
+      // kabin genisligini alir, dar bir modal olarak sikismaz.
+      <div className="mx-auto max-w-4xl">
         <h1 className="mb-1 text-2xl font-bold">Odeme</h1>
         <p className="mb-6 text-sm text-muted-foreground">
           Kart bilgileriniz dogrudan iyzico'ya iletilir, sunucularimiza kaydedilmez.

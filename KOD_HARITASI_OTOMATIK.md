@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 460
-Toplam satir: 100544
+Toplam satir: 100658
 Uc nokta: 142
 test:* scripti: 78
 
@@ -143,7 +143,7 @@ test:* scripti: 78
 | `backend/src/ozellik/odeme/abonelik/erisim.guard.ts` | 90 |
 | `backend/src/ozellik/odeme/abonelik/erisim.servisi.ts` | 269 |
 | `backend/src/ozellik/odeme/abonelik/mutabakat.job.ts` | 155 |
-| `backend/src/ozellik/odeme/abonelik/satinalma.servisi.ts` | 682 |
+| `backend/src/ozellik/odeme/abonelik/satinalma.servisi.ts` | 696 |
 | `backend/src/ozellik/odeme/dunning/dunning.metinleri.ts` | 165 |
 | `backend/src/ozellik/odeme/dunning/dunning.servisi.ts` | 314 |
 | `backend/src/ozellik/odeme/eposta/eposta.servisi.ts` | 132 |
@@ -250,7 +250,7 @@ test:* scripti: 78
 | `backend/test/varyant-surukleme-test.ts` | 189 |
 | `backend/test/yuzey-genisletme-test.ts` | 193 |
 | `frontend/app/(protected)/abonelik/donus/page.tsx` | 108 |
-| `frontend/app/(protected)/abonelik/page.tsx` | 351 |
+| `frontend/app/(protected)/abonelik/page.tsx` | 353 |
 | `frontend/app/(protected)/dashboard/page.tsx` | 223 |
 | `frontend/app/(protected)/dwg-workspace/page.tsx` | 112 |
 | `frontend/app/(protected)/labor-firms/[firmaId]/page.tsx` | 491 |
@@ -391,8 +391,8 @@ test:* scripti: 78
 | `frontend/ozellik/odeme/erisim-durumu.ts` | 111 |
 | `frontend/ozellik/odeme/fatura-kimligi.test.ts` | 134 |
 | `frontend/ozellik/odeme/fatura-kimligi.ts` | 117 |
-| `frontend/ozellik/odeme/iyzico-form.test.ts` | 193 |
-| `frontend/ozellik/odeme/iyzico-form.ts` | 110 |
+| `frontend/ozellik/odeme/iyzico-form.test.ts` | 263 |
+| `frontend/ozellik/odeme/iyzico-form.ts` | 138 |
 | `frontend/ozellik/odeme/paket-bicim.ts` | 108 |
 | `frontend/ozellik/odeme/telefon-bicim.test.ts` | 150 |
 | `frontend/ozellik/odeme/telefon-bicim.ts` | 105 |

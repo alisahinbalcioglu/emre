@@ -377,6 +377,20 @@ export class SatinAlmaServisi {
       },
     });
 
+    // ── TESHIS: iyzico formu HANGI KIPTE cizilecek? ──────────────────────
+    // 03.09'da kart formu DAR BIR POPUP olarak cizildi. Kip, sayfada
+    // `id="iyzipay-checkout-form"` tasiyan bir kap olup olmamasina bagli:
+    // varsa sayfaya GOMULUR (responsive), yoksa iyzico kendi modalini acar.
+    // On yuz kabi kosullu ekliyor (`kabiEkle`) ama iyzico'nun DONEN icerikte
+    // kabi zaten gonderip gondermedigini OLCMEDIK — bu satir onu soyler.
+    // Icerigin KENDISI gunluge YAZILMAZ: token tasiyor.
+    const icerik = sonuc.checkoutFormContent ?? '';
+    this.logger.log(
+      `iyzico form kipi — uzunluk=${icerik.length} ` +
+        `kap=${/id\s*=\s*["']iyzipay-checkout-form["']/i.test(icerik) ? 'VAR' : 'YOK'} ` +
+        `sinif=${/class\s*=\s*["']([^"']*)["']/i.exec(icerik)?.[1] ?? '-'}`,
+    );
+
     return {
       token: sonuc.token,
       formIcerigi: sonuc.checkoutFormContent,

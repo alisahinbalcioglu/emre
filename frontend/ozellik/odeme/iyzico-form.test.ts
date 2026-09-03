@@ -2,9 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  KAP_KIMLIGI,
   betigiElemanaCevir,
   betikleriAyikla,
   iyzicoFormunuBas,
+  kabiEkle,
+  kapIceriyorMu,
 } from './iyzico-form';
 
 /**
@@ -29,6 +32,11 @@ const IYZICO_ICERIK = `
 var iyziInit = {token: "abc123"};
 //]]>
 </script>
+`;
+
+// Kap TASIMAYAN varyant — `kabiEkle`nin EKLEME dalini surmek icin.
+const KAPSIZ_ICERIK = `
+<script type="text/javascript">var iyziInit = {token: "abc123"};</script>
 `;
 
 describe('betikleriAyikla', () => {
@@ -182,11 +190,73 @@ describe('⭐ BILESEN gercekten script ELEMANI uretiyor (davranis)', () => {
     expect(eklenen[0].text).toContain('iyziInit');
   });
 
-  it('betiksiz icerikte hicbir eleman eklenmez', () => {
+  it('betiksiz icerikte hicbir SCRIPT eklenmez (govde korunur)', () => {
     const { belge } = sahteBelge();
     const { kap, eklenen } = sahteKap(belge);
     iyzicoFormunuBas(kap, '<div>x</div>');
-    expect((kap as any).innerHTML).toBe('<div>x</div>');
+    // ⚠ SOZLESME DEGISTI (03.09): artik cizim kabi da basiliyor, bu yuzden
+    // innerHTML govdenin AYNISI degil — govdeyi ICERIR. Betik yine sifir.
+    expect((kap as any).innerHTML).toContain('<div>x</div>');
+    expect((kap as any).innerHTML).toContain(KAP_KIMLIGI);
     expect(eklenen).toHaveLength(0);
+  });
+
+  it('⭐ cizim kabi DOM.a gercekten basiliyor (form gomulu cizilsin)', () => {
+    const { belge } = sahteBelge();
+    const { kap } = sahteKap(belge);
+    iyzicoFormunuBas(kap, IYZICO_ICERIK);
+    expect(kapIceriyorMu((kap as any).innerHTML)).toBe(true);
+  });
+});
+
+describe('⭐ CIZIM KABI — dar modal yerine sayfaya gomulme', () => {
+  // ⚠ DURUSTLUK NOTU: iyzico'nun GERCEKTE kabi dondurup dondurmedigini
+  // OLCMEDIK. Yukaridaki `IYZICO_ICERIK` fixture'i bir VARSAYIMDIR ve kabi
+  // ICERIR. Canlida form yine de dar bir POPUP olarak cizildi — yani ya
+  // gercek icerik kabi tasimiyor, ya da kip baska bir seyle belirleniyor.
+  // `kabiEkle` IKI IHTIMALDE DE guvenli oldugu icin eklendi; hangisinin
+  // dogru oldugu sunucu gunlugundeki teshis satiriyla belirlenecek
+  // (`satinalma.servisi.ts` — 'iyzico form kipi').
+  it('OLCUT: iki fixture da AYRI dali surer (kosul anlamli)', () => {
+    // Kapli fixture: EKLEME dali kosMAZ. Kapsiz fixture: kosAR.
+    expect(kapIceriyorMu(betikleriAyikla(IYZICO_ICERIK).govde)).toBe(true);
+    expect(kapIceriyorMu(betikleriAyikla(KAPSIZ_ICERIK).govde)).toBe(false);
+  });
+
+  it('⭐ kapsiz icerikte kap EKLENIR (popup yerine gomulu cizim)', () => {
+    const g = betikleriAyikla(KAPSIZ_ICERIK).govde;
+    expect(kapIceriyorMu(kabiEkle(g))).toBe(true);
+  });
+
+  it('⭐ kap YOKSA eklenir ve responsive kip secilir', () => {
+    const sonuc = kabiEkle('<p>form</p>');
+    expect(kapIceriyorMu(sonuc)).toBe(true);
+    expect(sonuc).toContain('class="responsive"');
+  });
+
+  it('kap eklenirken govde KAYBOLMAZ', () => {
+    expect(kabiEkle('<p>form</p>')).toContain('<p>form</p>');
+  });
+
+  it('⭐ kap ZATEN VARSA IKINCISI eklenmez (mukerrer id olmaz)', () => {
+    const mevcut = `<div id="${KAP_KIMLIGI}" class="popup"></div>`;
+    expect(kabiEkle(mevcut)).toBe(mevcut);
+    expect(kabiEkle(mevcut).split(KAP_KIMLIGI)).toHaveLength(2);
+  });
+
+  it('tek tirnakli yazim da taninir', () => {
+    expect(kapIceriyorMu(`<div id='${KAP_KIMLIGI}'></div>`)).toBe(true);
+  });
+
+  it('benzer ama FARKLI kimlik kap sayilmaz', () => {
+    expect(kapIceriyorMu('<div id="iyzipay-checkout-form-eski"></div>')).toBe(false);
+  });
+
+  it('⭐ kap betiklerden ONCE basiliyor (betik calisirken DOM.da olmali)', () => {
+    const modul = readFileSync(join(__dirname, 'iyzico-form.ts'), 'utf8');
+    const i = modul.indexOf('kap.innerHTML = kabiEkle(govde)');
+    const j = modul.indexOf('kap.appendChild(betigiElemanaCevir');
+    expect(i).toBeGreaterThan(-1);
+    expect(j).toBeGreaterThan(i);
   });
 });
