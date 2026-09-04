@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import api from '@/ortak/lib/api';
-import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
 import { KAPSAM_ETIKET, SEVIYE_ETIKET, vitrinFiyati, type Paket } from '@/ozellik/odeme/paket-bicim';
 import {
   ALAN_ETIKET,
@@ -38,7 +37,9 @@ import {
  * ═══════════════════════════════════════════════════════════════════════════
  */
 export default function AbonelikSayfasi() {
-  const { erisim, refresh } = useCapabilities();
+  // ⚠ `erisim`/`refresh` ARTIK KULLANILMIYOR: durum karti ve iptal
+  // dugmesi hesap sayfasina tasindi (03.09). Kancayi bos cagirmak yerine
+  // import da kaldirildi — olu baglanti birakmayalim.
   const [paketler, setPaketler] = useState<Paket[]>([]);
   const [yukleniyor, setYukleniyor] = useState(true);
   const [hata, setHata] = useState<string | null>(null);
@@ -105,16 +106,6 @@ export default function AbonelikSayfasi() {
       setHata(typeof m === 'string' ? m : 'Odeme baslatilamadi.');
     } finally {
       setGonderiliyor(false);
-    }
-  }
-
-  async function iptalEt() {
-    if (!confirm('Aboneliginizi iptal etmek istediginize emin misiniz? Donem sonuna kadar erisiminiz surer.')) return;
-    try {
-      await api.post('/abonelik/iptal', {});
-      await refresh();
-    } catch {
-      setHata('Iptal islemi tamamlanamadi.');
     }
   }
 
@@ -243,36 +234,14 @@ export default function AbonelikSayfasi() {
         KDV dahil yapilir.
       </p>
 
-      {/* Mevcut durum ozeti */}
-      {erisim && (
-        <div className="mb-6 rounded-xl border bg-card p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-xs text-muted-foreground">Mevcut durum</p>
-              <p className="mt-0.5 font-semibold">
-                {erisim.paketKodu ? erisim.paketKodu : 'Abonelik yok'}
-                <span className="ml-2 rounded-md bg-muted px-2 py-0.5 text-xs font-medium">
-                  {erisim.durum}
-                </span>
-              </p>
-              {erisim.kalanGun !== null && (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Kalan sure: {erisim.kalanGun} gun
-                </p>
-              )}
-            </div>
-            {(erisim.durum === 'AKTIF' || erisim.durum === 'DENEME') && (
-              <button
-                type="button"
-                onClick={iptalEt}
-                className="rounded-lg border px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10"
-              >
-                Aboneligi iptal et
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      {/* ⚠ MEVCUT DURUM KARTI VE IPTAL DUGMESI BURADAN KALDIRILDI
+          (03.09 kullanici karari): "Aboneligi iptal et dugmesini buradan
+          kaldir, musterinin gozune sokmayalim. Abonelik bilgisi komple
+          hesap sayfasina tasinsin, iptal en az UC tiklama derinlikte olsun."
+          Yeni yeri: `app/(protected)/profile/page.tsx` → Abonelik bolumu.
+          Bu sayfa artik YALNIZ paket secimidir.
+          ⚠ Sayfanin KENDISI erisim kapisi tasimaz ve tasimamali: askidaki
+          firmanin odeme yapabilecegi TEK kapi burasi (dosya basindaki not). */}
 
       {hata && (
         <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">

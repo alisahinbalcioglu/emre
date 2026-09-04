@@ -10,6 +10,8 @@ import {
 import { Button } from '@/ortak/ui/button';
 import api from '@/ortak/lib/api';
 import { cn } from '@/ortak/lib/utils';
+import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
+import { abonelikOzeti } from '@/ozellik/odeme/abonelik-ozeti';
 
 interface UserProfile {
   id: string;
@@ -64,6 +66,21 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [stats, setStats] = useState<UserStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [yonetimAcik, setYonetimAcik] = useState(false);
+  const { erisim, refresh } = useCapabilities();
+  // Abonelik ozeti GERCEK kaynaktan (`/auth/me` → `erisim`) turetilir.
+  const ozet = abonelikOzeti(erisim);
+
+  async function iptalEt() {
+    if (!confirm('Aboneliginizi iptal etmek istediginize emin misiniz? Donem sonuna kadar erisiminiz surer.')) return;
+    try {
+      await api.post('/abonelik/iptal', {});
+      await refresh();
+      setYonetimAcik(false);
+    } catch {
+      alert('Iptal islemi tamamlanamadi.');
+    }
+  }
 
   useEffect(() => {
     Promise.all([
@@ -242,33 +259,68 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* Abonelikler */}
-      {profile.subscriptions.length > 0 && (
-        <div className="mb-6 rounded-xl border bg-card overflow-hidden">
-          <div className="border-b px-5 py-3.5 text-sm font-semibold">Aktif Abonelikler</div>
-          <div className="divide-y">
-            {profile.subscriptions.map((sub) => (
-              <div key={sub.id} className="flex items-center justify-between px-5 py-3">
-                <div className="flex items-center gap-3">
-                  <span className={cn(
-                    'inline-flex items-center rounded px-2 py-0.5 text-[10px] font-semibold uppercase',
-                    sub.level === 'pro' ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-600',
-                  )}>
-                    {sub.level}
+      {/* ── ABONELIK ────────────────────────────────────────────────────
+           ⚠ 03.09: bu blok ESKI `UserSubscription` tablosunu gosteriyordu
+           (`auth.service.ts:89`) ve `/abonelik` sayfasindaki GERCEK kayitla
+           CELISIYORDU: burada "MEP — Suresiz", orada "miras-pro AKTIF".
+           ADIM 2'den beri yetenekler `Abonelik`ten turetiliyor; eski tablo
+           KALINTI. Kullanici "abonelik bilgisini komple hesap sayfasina
+           tasi" dedigi icin, tasirken DOGRU kaynaga baglandi — yoksa
+           yanlis veri TEK kaynak olurdu. */}
+      <div className="mb-6 rounded-xl border bg-card overflow-hidden">
+        <div className="border-b px-5 py-3.5 text-sm font-semibold">Abonelik</div>
+        <div className="px-5 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="font-semibold">
+                {ozet.baslik}
+                {ozet.durum && (
+                  <span className="ml-2 rounded-md bg-muted px-2 py-0.5 text-xs font-medium">
+                    {ozet.durum}
                   </span>
-                  <span className="text-sm font-medium">{SCOPE_LABEL[sub.scope] ?? sub.scope}</span>
-                </div>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Clock className="h-3 w-3" />
-                  {sub.endsAt
-                    ? `Bitis: ${new Date(sub.endsAt).toLocaleDateString('tr-TR')}`
-                    : 'Suresiz'}
-                </div>
-              </div>
-            ))}
+                )}
+              </p>
+              <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Clock className="h-3 w-3" />
+                {ozet.altMetin}
+              </p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => router.push('/abonelik')}>
+              Paketleri gor
+            </Button>
           </div>
+
+          {/* ── IPTAL: EN AZ UC TIKLAMA DERINLIKTE ──────────────────────
+              03.09 kullanici karari: "Aboneligi iptal et secenegi minimum
+              3 tiklama ile gorulebilsin — musterinin gozune sokmayalim."
+              1) hesap sayfasi  2) bu bolumu ac  3) bagi tikla  4) onayla */}
+          {ozet.iptalEdilebilir && (
+            <div className="mt-4 border-t pt-3">
+              <button
+                type="button"
+                onClick={() => setYonetimAcik((a) => !a)}
+                className="text-xs font-medium text-muted-foreground hover:text-foreground"
+              >
+                Abonelik yonetimi {yonetimAcik ? '▴' : '▾'}
+              </button>
+              {yonetimAcik && (
+                <div className="mt-3 space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    Iptal ettiginizde donem sonuna kadar erisiminiz surer.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={iptalEt}
+                    className="text-xs font-medium text-destructive underline underline-offset-2"
+                  >
+                    Aboneligi iptal et
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Yetenekler */}
       <div className="mb-6 rounded-xl border bg-card overflow-hidden">
