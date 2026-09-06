@@ -38,8 +38,38 @@ export default function OdemeDonusuSayfasi() {
     if (kosuldu.current) return;
     kosuldu.current = true;
 
-    const token =
-      new URLSearchParams(window.location.search).get('token') ?? '';
+    const q = new URLSearchParams(window.location.search);
+
+    // ── ⭐ ASIL YOL: sunucunun yazdigi SONUC ────────────────────────────
+    // 06.09'da olculdu: iyzico token'i POST GOVDESINDE gonderiyor ve
+    // tarayici bu sayfaya POST ile dustugunde istemci JavaScript'i govdeyi
+    // OKUYAMIYOR — asagidaki token okumasi HER SEFERINDE bos donuyordu ve
+    // musteri odemesini yaptiktan sonra "Odeme bilgisi bulunamadi" goruyordu.
+    // Artik POST'u sunucu karsiliyor (`/api/abonelik/iyzico-donus`), isi
+    // bitiriyor ve buraya `?sonuc=` ile yonlendiriyor.
+    const sonuc = q.get('sonuc');
+    if (sonuc) {
+      if (sonuc === 'tamam') {
+        setDurum('tamam');
+        setMesaj('Aboneliginiz baslatildi. Iyi calismalar!');
+        refresh();
+      } else if (sonuc === 'bekliyor') {
+        setDurum('bekliyor');
+        setMesaj(
+          'Odemeniz henuz dogrulanmadi. Tahsilat tamamlandiysa hesabiniz ' +
+            'birkac dakika icinde otomatik olarak acilir — bu sayfayi kapatabilirsiniz.',
+        );
+      } else {
+        setDurum('hata');
+        setMesaj('Odeme bilgisi bulunamadi. Abonelik sayfasindan tekrar deneyin.');
+      }
+      return;
+    }
+
+    // ── YEDEK YOL: token sorgu dizesinde gelirse ───────────────────────
+    // Uzak ucun davranisi degisirse (GET + query) bu yol calisir. Tek
+    // basina GUVENILMEZ oldugu icin ASIL yol degildir.
+    const token = q.get('token') ?? '';
 
     if (!token) {
       setDurum('hata');

@@ -350,7 +350,19 @@ export class SatinAlmaServisi {
 
     const sonuc = await this.iyzico.abonelikBaslat({
       planKodu: surum.iyzicoPlanKodu,
-      donusUrl: `${this.uygulamaUrl}/abonelik/donus`,
+      // ⚠ 06.09'DA OLCULDU — DONUS ADRESI ON YUZ SAYFASI OLAMAZ.
+      // iyzico token'i POST GOVDESINDE gonderiyor (bu dosyanin basindaki
+      // not da boyle diyor). Tarayici POST ile bir Next.js sayfasina
+      // dustugunde istemci JavaScript'i govdeyi OKUYAMAZ — sayfa
+      // `window.location.search`e bakiyordu ve token HER ZAMAN bos
+      // geliyordu. Musteri odemesini yaptiktan sonra "Odeme bilgisi
+      // bulunamadi" goruyordu.
+      //
+      // Artik POST'u SUNUCU karsiliyor; islemi bitirip tarayiciyi sonuc
+      // sayfasina yonlendiriyor. API ayni origin'de servis ediliyor
+      // (`NEXT_PUBLIC_API_URL: https://DOMAIN/api`) — yeni ortam
+      // degiskeni gerekmiyor.
+      donusUrl: `${this.uygulamaUrl}/api/abonelik/iyzico-donus`,
       musteri: {
         name: p.musteri.ad,
         surname: p.musteri.soyad,
@@ -420,6 +432,51 @@ export class SatinAlmaServisi {
     }
 
     return this.niyetiSonuclandir(niyet.id);
+  }
+
+  /**
+   * iyzico'nun DONUS POST'undan cagrilir — OTURUM YOKTUR.
+   *
+   * ⚠ JWT beklenemez: bu POST iyzico'nun alan adindan gelir, yani
+   * CAPRAZ-SITE bir istektir ve `SameSite=Lax` cerezler gonderilmez.
+   * Kimlik dogrulamasi TOKEN'IN KENDISIDIR: opak, tek kullanimlik ve
+   * hangi firmaya ait oldugu BIZIM `AbonelikBaslatma` tablomuzda yazili
+   * (dosya basindaki not: "token→firma baglantisi bizim tablomuzdan gelir;
+   * istekle gelen firmaId'ye guvenilmez").
+   *
+   * Sonuc iyzico'ya SORULARAK belirlenir; donen govdeye guvenilmez.
+   */
+  async donusIyzicodan(token: string): Promise<'tamam' | 'bekliyor' | 'hata'> {
+    if (!token) {
+      this.logger.warn('iyzico donusu TOKENSIZ geldi');
+      return 'hata';
+    }
+    const niyet = await this.prisma.abonelikBaslatma.findUnique({
+      where: { token },
+    });
+    if (!niyet) {
+      // Bilinmeyen token: varligini dogrulamayiz, sessizce hata.
+      this.logger.warn('iyzico donusu BILINMEYEN token ile geldi');
+      return 'hata';
+    }
+    if (niyet.durum === AbonelikBaslatmaDurumu.TAMAMLANDI) return 'tamam';
+
+    try {
+      const sonuc = await this.niyetiSonuclandir(niyet.id);
+      return sonuc?.durum === AbonelikBaslatmaDurumu.TAMAMLANDI
+        ? 'tamam'
+        : 'bekliyor';
+    } catch (e) {
+      // ⚠ HATA YUTULMAZ ama musteriye "odemen kayboldu" DENMEZ: tahsilat
+      // gecmis olabilir ve 10 dakikalik kurtarma taramasi (`bekleyenNiyetleriTara`)
+      // ayni niyeti yeniden sorar. Dogru mesaj "bekliyor".
+      this.logger.error(
+        `iyzico donusu sonuclandirilamadi (niyet=${niyet.id}): ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      );
+      return 'bekliyor';
+    }
   }
 
   /**

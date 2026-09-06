@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import { IyzicoHataSuzgeci } from './iyzico/iyzico-hata.filter';
+import { IyzicoDonusController } from './abonelik/iyzico-donus.controller';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 
@@ -39,7 +40,14 @@ import { EpostaServisi } from './eposta/eposta.servisi';
  */
 @Module({
   imports: [ConfigModule, ScheduleModule.forRoot()],
-  controllers: [IyzicoWebhookController, HavaleController, AbonelikController],
+  controllers: [
+    // ⚠ Guard'siz: iyzico'nun donus POST'u capraz-site gelir, cerez
+    // tasimaz. Kimlik token'in kendisidir (bkz. controller notu).
+    IyzicoDonusController,
+    IyzicoWebhookController,
+    HavaleController,
+    AbonelikController,
+  ],
   providers: [
     {
       // ⚠ APP_FILTER burada tanimlansa da NEST'TE GLOBALDIR. Bilerek:

@@ -35,6 +35,8 @@
  *      (goc satiri 365 gun tasiyor; odeme `simdi+32 gune` dusuruyordu)
  *   P9 ⭐ TELEFON BICIMI — yerel yazim (`0533...`) +90'a cevrilir
  *   P10 ⭐ IYZICO HATASI 500 DEGIL — uzak ucun mesaji kullaniciya ULASIR
+ *   P11 ⭐ DONUS ADRESI on yuz sayfasi DEGIL, sunucu ucu (token POST govdesinde)
+ *   P12 ⭐ donusIyzicodan OTURUMSUZ calisir — kimlik token'in kendisi
  *
  * Cikis kodu sozlesmesi: 0 = PASS · digeri = FAIL.
  */
@@ -478,6 +480,113 @@ async function main() {
     })(),
     kullaniciyaMesaj({ message: '' }),
   );
+
+
+  // ── P11 ⭐ DONUS ADRESI: ON YUZ SAYFASI OLAMAZ ────────────────────────
+  //
+  // 06.09 canli turunda musteri odemeyi TAMAMLADI ve ekranda "Odeme bilgisi
+  // bulunamadi" gordu. Donus adresi `/abonelik/donus` (bir Next.js SAYFASI)
+  // idi ve sayfa token'i SORGU DIZESINDEN okuyordu; iyzico ise token'i POST
+  // GOVDESINDE gonderiyor. Tarayici POST ile sayfaya dustugunde istemci JS
+  // govdeyi OKUYAMAZ — token her seferinde bostu.
+  //
+  // ⚠ Kural bu dosyanin BASINDAKI notta ZATEN yaziliydi ("donus adresine
+  // token POST eder"). Yazili kural, uygulanan kural DEGILDI.
+  console.log('\n── P11 ⭐ donus adresi ──');
+  {
+    const kaynak = readFileSync(
+      join(__dirname, '..', 'src', 'ozellik', 'odeme', 'abonelik', 'satinalma.servisi.ts'),
+      'utf8',
+    );
+    // ⚠ Regex YOK: sablon literal kacislari (`${...}`) test dosyasindan
+    // gecerken bozuluyordu. Duz arama hem kirilgan degil hem okunur.
+    const isaret = 'donusUrl: `${this.uygulamaUrl}';
+    const bas = kaynak.indexOf(isaret);
+    const yol =
+      bas === -1
+        ? null
+        : kaynak.slice(bas + isaret.length, kaynak.indexOf('`', bas + isaret.length));
+    check('P11-OLCUT donusUrl kaynakta bulundu', yol !== null, String(yol));
+    if (yol !== null) {
+      check(
+        'P11.1 ⭐ donus adresi SUNUCU ucuna gidiyor (/api ile basliyor)',
+        yol.startsWith('/api/'),
+        `yol=${yol}`,
+      );
+      check(
+        'P11.2 ⭐ donus adresi ON YUZ sayfasi DEGIL',
+        yol !== '/abonelik/donus',
+        `yol=${yol}`,
+      );
+    }
+
+    const ctrl = readFileSync(
+      join(__dirname, '..', 'src', 'ozellik', 'odeme', 'abonelik', 'iyzico-donus.controller.ts'),
+      'utf8',
+    );
+    check(
+      'P11.3 ⭐ donus ucu GUARD TASIMIYOR (capraz-site POST cerez tasimaz)',
+      // ⚠ Kelime aramak YETMEZ: dosyanin ACIKLAMASI, AbonelikController'in
+      // neden guard tasidigini anlatirken `@UseGuards(JwtAuthGuard)` yaziyor.
+      // Dekorator SATIR BASINDA durur; yorum satirlari `//` ya da `*` ile
+      // baslar. Gercek KULLANIMI ararız.
+      !ctrl
+        .split('\n')
+        .some((satir) => satir.trim().startsWith('@UseGuards')),
+    );
+    check(
+      'P11.4 ⭐ 303 ile yonlendiriyor (302 yonlendirmeyi POST olarak izletir)',
+      ctrl.includes('redirect(303'),
+    );
+    check(
+      'P11.5 uc, donusUrl ile AYNI yolu tanimliyor',
+      ctrl.includes("@Post('iyzico-donus')") && (yol ?? '').endsWith('/iyzico-donus'),
+      `uc=iyzico-donus yol=${yol}`,
+    );
+
+    // Modulde KAYITLI mi? Dosya var ama kayitsizsa uc HIC acilmaz.
+    const modul = readFileSync(
+      join(__dirname, '..', 'src', 'ozellik', 'odeme', 'odeme.module.ts'),
+      'utf8',
+    );
+    check(
+      'P11.6 ⭐ controller `controllers` DIZISINDE (import yetmez)',
+      // ⚠ Dosyanin tamaminda aramak YETMEZ: `import` satiri da eslesiyor.
+      // Controller diziden dusurulse uc HIC acilmaz ama import durur ve
+      // assert TESADUFEN yesil kalir (mutasyonla olculdu, M4 hayatta kaldi).
+      (() => {
+        const bas = modul.indexOf('controllers:');
+        if (bas === -1) return false;
+        const dizi = modul.slice(bas, modul.indexOf(']', bas));
+        return dizi.includes('IyzicoDonusController');
+      })(),
+    );
+  }
+
+  // ── P12 ⭐ OTURUMSUZ DONUS: token kimliktir ───────────────────────────
+  console.log('\n── P12 ⭐ donusIyzicodan ──');
+  {
+    function niyetliPrisma(niyet: any) {
+      return {
+        abonelikBaslatma: { findUnique: async () => niyet },
+      } as any;
+    }
+    const servis = (p: any) => servisKur(p, sahteIyzico().istemci);
+
+    check(
+      'P12.1 tokensiz istek HATA doner (patlamaz)',
+      (await (servis(niyetliPrisma(null)) as any).donusIyzicodan('')) === 'hata',
+    );
+    check(
+      'P12.2 BILINMEYEN token hata doner (varligi dogrulanmaz)',
+      (await (servis(niyetliPrisma(null)) as any).donusIyzicodan('yok')) === 'hata',
+    );
+    check(
+      'P12.3 ⭐ ZATEN tamamlanmis niyet TAMAM doner (mukerrer islem yok)',
+      (await (servis(niyetliPrisma({ id: 'n1', durum: 'TAMAMLANDI' })) as any)
+        .donusIyzicodan('t')) === 'tamam',
+    );
+  }
 
   son();
 }
