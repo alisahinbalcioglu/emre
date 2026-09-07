@@ -61,6 +61,10 @@ const oku = (p: string) => fs.readFileSync(path.join(KOK, p), 'utf8');
 const kodu = (s: string) =>
   s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ 	]*\/\/.*$/gm, '');
 const kaddyKodu = (s: string) => s.replace(/^[ 	]*#.*$/gm, '');
+// Kabuk betikleri icin ayni soyma. Bu kapinin F2 assert'i UC KEZ ayni tuzaga
+// dustu: `indexOf('caddy reload')` kodu degil, kodun yanindaki aciklama
+// satirindaki ayni kelimeleri buluyordu.
+const kabukKodu = (s: string) => s.replace(/^[ 	]*#.*$/gm, '');
 
 function main(): void {
   const proto = AuthController.prototype as unknown as Record<string, unknown>;
@@ -197,7 +201,7 @@ function main(): void {
 
   // ── F. DEPLOY CADDY'YI YENIDEN YUKLUYOR ───────────────────────────────
   console.log('\n── F · DEPLOY → CADDY RELOAD ──');
-  const deploy = oku('scripts/deploy.sh');
+  const deploy = kabukKodu(oku('scripts/deploy.sh'));
   // DESEN KOMUTU HEDEFLEMELI: ilk surumde /caddy reload/ arandi ve bu, komutu
   // degil ASAGIDAKI HATA MESAJINDAKI ayni kelimeleri yakaliyordu — mutant
   // hayatta kaldi. Simdi tam cagri sekli aranıyor.
@@ -206,10 +210,37 @@ function main(): void {
     /exec -T caddy caddy reload/.test(deploy),
     'yoksa Caddyfile degisiklikleri OLU kalir ve deploy yine "DOGRULANDI" der',
   );
+  // ── 07.09.2026 · IKI SESSIZ KUSUR ─────────────────────────────────────
+  // Ikisi de bugun CANLIDA olculdu ve ikisi de "basarili" gorunuyordu.
   check(
+    'F3 deploy.sh KENDINI DEGISTIRME korumasi var (git pull betigi yeni inode ile yazar; bash eski kopyayi surdurur)',
+    /IMZA_SONRA/.test(deploy) && /exec bash "\$0"/.test(deploy),
+    'olculdu: caddy adimi eklendi, deploy "DOGRULANDI" dedi, adim HIC kosmadi',
+  );
+  check(
+    'F4 Caddyfile dogrulamasi HOST dosyasi uzerinden, TAZE mount ile (konteyner icinden dogrulamak bayat kopyayi dogrular)',
+    /docker run --rm -v "\$PWD\/Caddyfile/.test(deploy),
+  );
+  check(
+    'F5 host/konteyner md5 karsilastirilip gerekirse konteyner YENIDEN OLUSTURULUYOR (reload yetmez)',
+    /HOST_MD5/.test(deploy) &&
+      /KAP_MD5/.test(deploy) &&
+      /--force-recreate caddy/.test(deploy),
+    'olculdu: host c374edde (4793B) iken konteyner ebfaeefc (1664B) goruyordu',
+  );
+  check(
+    'F6 yeniden olusturma SONRASI mount tazeligi tekrar OLCULUYOR (iddia degil)',
+    /YENI_MD5/.test(deploy),
+  );
+  check(
+
     'F2 reload`dan ONCE validate var (bozuk yapilandirmayla reload siteyi indirebilir)',
-    deploy.indexOf('caddy caddy validate') !== -1 &&
-      deploy.indexOf('caddy caddy validate') < deploy.indexOf('exec -T caddy caddy reload'),
+    // Dogrulama, DEGISTIREN her adimdan ONCE gelmeli: hem reload hem
+    // force-recreate. Ilk surum yalniz reload'a bakiyordu; recreate eklenince
+    // o assert sessizce eksik kalirdi.
+    deploy.indexOf('caddy validate') !== -1 &&
+      deploy.indexOf('caddy validate') < deploy.indexOf('caddy reload') &&
+      deploy.indexOf('caddy validate') < deploy.indexOf('--force-recreate caddy'),
   );
 
   // ── G. ON YUZ ─────────────────────────────────────────────────────────

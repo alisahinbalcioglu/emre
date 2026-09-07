@@ -34,8 +34,27 @@ trap 'kod=$?; if [ "$kod" -ne 0 ]; then echo ""; echo "❌ DEPLOY YARIDA KESILDI
 
 cd "$(dirname "$0")/.."
 
+# ── KENDINI DEGISTIRME KORUMASI ─────────────────────────────────────────────
+# bash bir betigi TEMBEL okur ve acik dosya tanitiyicisini surdurur. Asagidaki
+# `git pull` bu dosyayi YENI BIR INODE ile degistirdiginde, calismaya devam
+# eden kopya ESKI surumdur — yani deploy.sh'a yapilan her degisiklik BIR DEPLOY
+# GEC devreye girer, uyari da vermez.
+#
+# OLCULDU (07.09.2026): caddy reload adimi eklendi, commit'lendi, deploy kostu,
+# betik "✅ DEPLOY DOGRULANDI" dedi — ama caddy adimi HIC CALISMADI, cunku o
+# adim yalniz diskteki YENI kopyada vardi. Basliklarin canliya cikmadigi ancak
+# disaridan curl ile olculunce anlasildi.
+IMZA_ONCE="${DEPLOY_IMZA:-$(md5sum "$0" | cut -d" " -f1)}"
+
 echo "── 1/6 git pull ──"
 git pull origin master
+
+IMZA_SONRA="$(md5sum "$0" | cut -d" " -f1)"
+if [ "$IMZA_SONRA" != "$IMZA_ONCE" ]; then
+  echo "   deploy.sh bu pull ile DEGISTI — yeni surumle bastan baslatiliyor"
+  echo "   (eski: ${IMZA_ONCE:0:8}  yeni: ${IMZA_SONRA:0:8})"
+  DEPLOY_IMZA="$IMZA_SONRA" exec bash "$0" "$@"
+fi
 
 # PK2: imaja gomulen surum damgasi. `export` SART — `docker compose build`
 # degiskeni yalnizca ortamdan okur (compose: BUILD_SHA: ${BUILD_SHA:-local}).
@@ -109,14 +128,44 @@ docker compose up -d backend frontend dwg-engine
 #
 # Once VALIDATE, sonra RELOAD: bozuk bir Caddyfile ile reload denemek siteyi
 # indirebilir. validate basarisizsa deploy DURUR ve eski yapilandirma yasar.
+# ⚠ BIND MOUNT BAYATLIGI: Caddyfile TEK DOSYA olarak baglaniyor
+# (docker-compose.yml: ./Caddyfile:/etc/caddy/Caddyfile:ro) ve Docker tek-dosya
+# mount'unu INODE'a baglar. `git pull` dosyayi yeni bir inode ile yazdiginda
+# konteyner ESKI inode'u gormeye devam eder. Sonuc: `caddy reload` cikis kodu 0
+# doner, "yeniden yuklendi" der ve ESKI yapilandirmayi yukler.
+#
+# OLCULDU (07.09.2026): host md5 c374edde (4793 bayt, snippet VAR) iken
+# konteyner ebfaeefc (1664 bayt, snippet YOK) goruyordu. Basliklar canliya
+# cikmadi; reload basarili gorunuyordu.
+#
+# Bu yuzden once md5 KARSILASTIRILIR: ayrisma varsa reload YETMEZ, konteyner
+# yeniden olusturulmalidir (mount o zaman guncel inode'a baglanir).
 if ! docker compose ps --status running --services 2>/dev/null | grep -qx caddy; then
   echo "   caddy servisi calismiyor — yapilandirma yenilemesi atlandi"
-elif docker compose exec -T caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1; then
-  docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1     && echo "   caddy yapilandirmasi yeniden yuklendi"     || { echo "❌ caddy reload BASARISIZ — eski yapilandirma calismaya devam ediyor"; exit 1; }
 else
-  echo "❌ Caddyfile GECERSIZ — reload YAPILMADI, eski yapilandirma korundu."
-  docker compose exec -T caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile 2>&1 | tail -5
-  exit 1
+  # Dogrulama HOST dosyasi uzerinden, TAZE bir mount ile yapilir. Konteynerin
+  # icinden dogrulamak bayat kopyayi dogrular ve hicbir sey kanitlamaz.
+  if ! docker run --rm -v "$PWD/Caddyfile:/tmp/C:ro" caddy:2         caddy validate --config /tmp/C --adapter caddyfile </dev/null 2>&1 | grep -q "Valid configuration"; then
+    echo "❌ Caddyfile GECERSIZ — hicbir sey yapilmadi, eski yapilandirma korundu."
+    docker run --rm -v "$PWD/Caddyfile:/tmp/C:ro" caddy:2       caddy validate --config /tmp/C --adapter caddyfile </dev/null 2>&1 | tail -5
+    exit 1
+  fi
+
+  HOST_MD5="$(md5sum Caddyfile | cut -d" " -f1)"
+  KAP_MD5="$(docker compose exec -T caddy md5sum /etc/caddy/Caddyfile </dev/null 2>/dev/null | cut -d" " -f1)"
+  if [ "$HOST_MD5" != "$KAP_MD5" ]; then
+    echo "   Caddyfile degisti ve mount BAYAT (host ${HOST_MD5:0:8} != kap ${KAP_MD5:0:8})"
+    echo "   caddy konteyneri yeniden olusturuluyor (reload YETMEZ)"
+    docker compose up -d --force-recreate caddy </dev/null >/dev/null 2>&1       || { echo "❌ caddy yeniden olusturulamadi"; exit 1; }
+    sleep 3
+    YENI_MD5="$(docker compose exec -T caddy md5sum /etc/caddy/Caddyfile </dev/null 2>/dev/null | cut -d" " -f1)"
+    if [ "$YENI_MD5" != "$HOST_MD5" ]; then
+      echo "❌ mount HALA bayat (kap ${YENI_MD5:0:8}) — elle mudahale gerekir"; exit 1
+    fi
+    echo "   caddy tazelendi ve dogrulandi (${YENI_MD5:0:8})"
+  else
+    docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile </dev/null >/dev/null 2>&1       && echo "   caddy yapilandirmasi yeniden yuklendi (mount zaten taze)"       || { echo "❌ caddy reload BASARISIZ — eski yapilandirma calismaya devam ediyor"; exit 1; }
+  fi
 fi
 
 echo "── 6/6 canli dogrulama ──"
