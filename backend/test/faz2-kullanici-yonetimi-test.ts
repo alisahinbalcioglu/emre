@@ -74,7 +74,11 @@ function main(): void {
   );
   check(
     'A5 getUsers silinmisleri gizliyor',
-    /where:\s*\{\s*deletedAt:\s*null\s*\}/.test(servis),
+    // 07.09'da sunucu tarafi suzgec eklendi: `where` artik nesne olarak
+    // kuruluyor. Desen ONA gore guncellendi; kapi bu degisiklikte KIRMIZI
+    // vererek dogru davrandi.
+    /const where: Record<string, unknown> = \{ deletedAt: null \}/.test(servis),
+    'silinmisler gizlenmezse yumusak silme EKRANDA gorunmez',
   );
   // ⭐ EN KRITIK: bu iki assert olmadan ozellik ekranda calisir, gercekte hayir.
   check(
@@ -202,6 +206,126 @@ function main(): void {
     'F2 sabit ADMIN_EMAIL kaldirilmis',
     !/ADMIN_EMAIL/.test(adminDuzen),
     'backend rol ile karar veriyor; FE`nin e-postaya bakmasi ikinci admin acilinca kirar',
+  );
+
+  // ── G · GERCEK PAKET (yetkili kaynak) ─────────────────────────────────
+  console.log('\n── G · GERCEK PAKET ──');
+  const tierGuard = kodu(oku('backend/src/altyapi/auth/guards/tier.guard.ts'));
+  check(
+    'G1 getUsers YETKILI KAYNAGI (Abonelik -> PaketSurumu -> Paket) okuyor',
+    /prisma\.abonelik\.findMany/.test(servis) && /paketSurumu/.test(servis),
+    'ekran 13.08`den beri User.tier ve UserSubscription gosteriyordu; ikisi de 28.08`den beri yetkili kaynak DEGIL',
+  );
+  check(
+    'G2 kullanici basina AYRI sorgu YOK (N+1 onlendi)',
+    /firmaId: \{ in: firmaIdler \}/.test(servis),
+  );
+  check(
+    'G3 ayrisma ISARETLENIYOR (sessiz erisim kusuru gorunur olsun)',
+    /paketAyrismasi/.test(servis),
+  );
+  check(
+    'G4 ⭐ TierGuard yetkili kaynagi DA okuyor',
+    /prisma\.abonelik\.findUnique/.test(tierGuard),
+    'HICBIR odeme yolu User.tier YAZMIYOR — pro alan firma /labor`da 403 alirdi',
+  );
+  check(
+    'G5 YUKSEK olan kazaniyor (izin GENISLETIR, hicbir kullaniciyi daraltmaz)',
+    /Math\.max\(tierSeviye, abonelikSeviye\)/.test(tierGuard),
+    'yalniz Abonelik`e bakmak `suite` tier`li mevcut hesaplari KIRARDI',
+  );
+  check(
+    'G6 ⟨olcut⟩ User.tier hala okunuyor (kaynagi silmedik, EKLEDIK)',
+    /select: \{ tier: true, firmaId: true \}/.test(tierGuard),
+  );
+  check(
+    'G7 on yuz gercek paketi ve ayrismayi gosteriyor',
+    /gercekPaket/.test(sayfa) && /paketAyrismasi/.test(sayfa),
+  );
+
+  // ── H · AI MALIYET ATFI (2.6) ─────────────────────────────────────────
+  console.log('\n── H · AI MALIYET ATFI ──');
+  const aiServis = kodu(oku('backend/src/ozellik/giris/ai/ai.service.ts'));
+  const aiKontrolcu = kodu(oku('backend/src/ozellik/giris/ai/ai.controller.ts'));
+  check(
+    'H1 AiUsageLog atif alanlari semada (nullable)',
+    /userId\s+String\?/.test(sema) && /firmaId\s+String\?/.test(sema),
+  );
+  check(
+    'H2 atif indeksli (maliyet sorgusu tam tarama olmasin)',
+    /@@index\(\[userId, createdAt\]\)/.test(sema),
+  );
+  check(
+    'H3 logUsage kimlik aliyor ve YAZIYOR',
+    /kimlik\?: \{ userId\?: string \| null; firmaId\?: string \| null \}/.test(aiServis) &&
+      /userId: params\.kimlik\?\.userId \?\? null/.test(aiServis),
+  );
+  check(
+    'H4 ⭐ ceviri ucu KULLANICIYI gecirıyor (zincirin en kolay koptugu yer)',
+    /@CurrentUser\(\) user/.test(aiKontrolcu) && /userId: user\?\.id/.test(aiKontrolcu),
+    'controller kimligi almazsa logUsage`a gecirecek veri OLMAZ ve atif sessizce bos kalir',
+  );
+  check(
+    'H5 havuz PDF ayiklamasi da atifli (yoneticiye yazilir)',
+    /extractGlobalMaterials\(fileBuffer, \{/.test(servis),
+  );
+  check(
+    'H6 ⟨olcut⟩ atif YAZILAMAZSA cagri DUSMUYOR (kimlik istege bagli)',
+    /kimlik\?: \{/.test(aiServis),
+  );
+
+  // ── I · SUNUCU TARAFI SUZGEC (2.1) ────────────────────────────────────
+  console.log('\n── I · SUNUCU TARAFI SUZGEC ──');
+  const kontrolcuHam = oku('backend/src/ozellik/kutuphane/admin/admin.controller.ts');
+  check(
+    'I1 sorgu DTO`su var ve SINIF tipiyle @Query`ye bagli (ValidationPipe bu sekilde CALISIR)',
+    /@Query\(\) sorgu: KullanicilarSorgusuDto/.test(kontrolcuHam),
+  );
+  check(
+    'I2 suzgecler SUNUCUDA uygulaniyor',
+    /where\.role = sorgu\.rol/.test(servis) && /where\.email = \{ contains/.test(servis),
+  );
+  check(
+    'I3 sayfalama sinirli (sinirsiz take tum tabloyu bellege cekerdi)',
+    /Math\.min\(Math\.max\(sorgu\?\.adet \?\? 200, 1\), 500\)/.test(servis),
+  );
+  check(
+    'I4 ⭐ DONUS SEKLI hala DIZI (nesneye cevirmek sayfayi RENDER`da cokertirdi)',
+    /return kayitlar;/.test(kontrolcuHam),
+    '`users.filter is not a function` — fetch`in try/catch`i bunu yakalamaz',
+  );
+  check(
+    'I5 toplam AYRI sayiliyor ve baslikta gonderiliyor',
+    /prisma\.user\.count\(\{ where \}\)/.test(servis) &&
+      /X-Toplam-Kayit/.test(kontrolcuHam),
+    'kayitlar.length yalniz SAYFAYI sayar; ekran yanlis toplam gosterirdi',
+  );
+  check(
+    'I6 on yuz suzgecleri sunucuya gonderiyor',
+    /params\.arama = query\.trim\(\)/.test(sayfa) && /params\.rol = rolSuzgec/.test(sayfa),
+  );
+
+  // ── J · DENETIM EKRANI ────────────────────────────────────────────────
+  console.log('\n── J · DENETIM EKRANI ──');
+  const denetimSayfa = oku('frontend/app/admin/denetim/page.tsx');
+  check('J1 denetim ekrani var ve ucu cagiriyor',
+    /api\.get<YoneticiOlayi\[\]>\('\/admin\/denetim'/.test(denetimSayfa));
+  check(
+    'J2 ⭐ TAMLIK IDDIA ETMIYOR (tavana degince acikca soyluyor)',
+    /tavanaDegildi/.test(denetimSayfa) && /Bu liste eksik olabilir/.test(denetimSayfa),
+    'denetim ekraninda "boyle bir islem yok" yanlis sonucunun bedeli agirdir',
+  );
+  check(
+    'J3 suzgec secenekleri VERIDEN turetiliyor (sabit liste yeni tipi gizlerdi)',
+    /new Set\(olaylar\.map\(\(o\) => o\.tip\)\)/.test(denetimSayfa),
+  );
+  check(
+    'J4 kullanicilar ekranindan tek kullanici gecmisine baglanti var',
+    /admin\/denetim\?hedef=\$\{u\.id\}/.test(sayfa),
+  );
+  check(
+    'J5 menude yer aliyor',
+    /\/admin\/denetim/.test(oku('frontend/ozellik/kutuphane/admin/AdminSidebar.tsx')),
   );
 
   son();

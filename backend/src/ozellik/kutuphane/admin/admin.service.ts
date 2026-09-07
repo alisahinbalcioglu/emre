@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException, NotFoundException, ConflictException } from '@nestjs/common';
 import * as XLSX from 'xlsx';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
+import { KullanicilarSorgusuDto } from './dto/kullanicilar-sorgusu.dto';
 import { AiService } from '../../giris/ai/ai.service';
 // Saglik kontrolu, CEVIRININ GERCEKTEN kullandigi modeli sinar (asagida).
 import { CEVIRI_MODEL } from '../../giris/ai/ceviri.service';
@@ -172,12 +173,50 @@ export class AdminService {
     }
   }
 
-  async getUsers() {
-    return this.prisma.user.findMany({
-      // Yumusak silinmis hesaplar listede GORUNMEZ (2.3).
-      where: { deletedAt: null },
+  async getUsers(sorgu?: KullanicilarSorgusuDto) {
+    // ⚠ UC AYRI PAKET KAYNAGI VAR ve ekran bugune kadar YANLIS IKISINI
+    // gosteriyordu:
+    //   (a) `User.tier`      — TierGuard okuyor, ama odeme yolu YAZMIYOR
+    //   (b) `UserSubscription` — 28.08'de (ADIM 2) KALINTI ilan edildi
+    //   (c) `Abonelik -> PaketSurumu -> Paket` — YETKILI KAYNAK (firma bazli)
+    // Kanit: capabilities.helper.ts:26-41 bunu acikca yaziyor ve `/auth/me`
+    // (c)'yi kullaniyor.
+    //
+    // Ucu de donduruluyor cunku UCU DE gercek: (a) hala iki ucu kapatiyor,
+    // (b) eski kayitlar icin gecmis bilgisi, (c) musterinin satin aldigi sey.
+    // Ekranin isi bunlari AYIRMAK; gizlemek ayrismayi gorunmez yapar.
+    // Suzgecler SUNUCUDA uygulanir (2.1). Istemci tarafi suzgec 4 kullaniciyla
+    // calisiyordu ama kullanici sayisi buyudugunde tum tabloyu tarayiciya
+    // indirmek gerekirdi.
+    //
+    // ⚠ TURKCE ARAMA: `mode: 'insensitive'` Postgres'te ILIKE'a cevrilir ve
+    // veritabaninin lc_ctype'ina bagli calisir. E-postalar ASCII agirlikli
+    // oldugu icin pratikte yeterli; "İ/ı" tam dogrulugu icin normalize edilmis
+    // bir kolon gerekir ve o AYRI bir istir (bugun e-posta disi alanda arama YOK).
+    const where: Record<string, unknown> = { deletedAt: null };
+    if (sorgu?.rol) where.role = sorgu.rol;
+    if (sorgu?.paket) where.tier = sorgu.paket;
+    if (sorgu?.durum) where.status = sorgu.durum;
+    const aramaMetni = sorgu?.arama?.trim();
+    if (aramaMetni) {
+      where.email = { contains: aramaMetni, mode: 'insensitive' };
+    }
+
+    const adet = Math.min(Math.max(sorgu?.adet ?? 200, 1), 500);
+    const sayfa = Math.max(sorgu?.sayfa ?? 1, 1);
+
+    // Toplam AYRI sayilir: `kayitlar.length` yalniz SAYFAYI sayar ve ekran
+    // "4 kullanici" derken aslinda 4 SATIR gosterdigini soylerdi.
+    const toplam = await this.prisma.user.count({ where });
+
+    const kullanicilar = await this.prisma.user.findMany({
+      where,
+      skip: (sayfa - 1) * adet,
+      take: adet,
       select: {
         id: true, email: true, role: true, status: true, tier: true, createdAt: true,
+        firmaId: true,
+        firma: { select: { id: true, ad: true } },
         _count: { select: { quotes: true, library: true } },
         subscriptions: {
           select: { id: true, level: true, scope: true, active: true, endsAt: true },
@@ -186,6 +225,49 @@ export class AdminService {
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    // Firma -> Abonelik 1-1 (schema.prisma: Abonelik.firmaId @unique). Tek
+    // sorguda toplanip eslestirilir: kullanici basina sorgu N+1 uretirdi.
+    const firmaIdler = Array.from(
+      new Set(kullanicilar.map((k) => k.firmaId).filter((x): x is string => !!x)),
+    );
+    const abonelikler = firmaIdler.length
+      ? await this.prisma.abonelik.findMany({
+          where: { firmaId: { in: firmaIdler } },
+          select: {
+            firmaId: true,
+            durum: true,
+            erisimSonu: true,
+            paketSurumu: {
+              select: { paket: { select: { kod: true, ad: true, kapsam: true, seviye: true } } },
+            },
+          },
+        })
+      : [];
+    const abonelikHaritasi = new Map(abonelikler.map((a) => [a.firmaId, a]));
+
+    const kayitlar = kullanicilar.map((k) => {
+      const ab = k.firmaId ? abonelikHaritasi.get(k.firmaId) : undefined;
+      return {
+        ...k,
+        /// YETKILI KAYNAK. `null` = firmasi yok ya da aboneligi yok.
+        gercekPaket: ab
+          ? {
+              kod: ab.paketSurumu.paket.kod,
+              ad: ab.paketSurumu.paket.ad,
+              kapsam: ab.paketSurumu.paket.kapsam,
+              seviye: ab.paketSurumu.paket.seviye,
+              durum: ab.durum,
+              erisimSonu: ab.erisimSonu,
+            }
+          : null,
+        /// `User.tier` ile yetkili kaynak AYRISIYOR MU. Ayrisma sessiz bir
+        /// erisim kusurudur; ekran bunu gorunur kilar.
+        paketAyrismasi: ab ? ab.paketSurumu.paket.seviye !== k.tier : false,
+      };
+    });
+
+    return { kayitlar, toplam };
   }
 
   async updateUserRole(
@@ -687,8 +769,16 @@ export class AdminService {
 
   // ═════════ MATERIALS: PDF EXTRACT ═════════
 
-  async extractMaterialsPdf(fileBuffer: Buffer) {
-    return this.aiService.extractGlobalMaterials(fileBuffer);
+  /// Havuz PDF ayiklamasi. Kimlik ATIF icin tasinir: bu cagrinin AI maliyeti
+  /// bir MUSTERIYE degil, islemi yapan YONETICIYE aittir — bu yuzden firmaId
+  /// bilerek gecirilmez.
+  async extractMaterialsPdf(
+    fileBuffer: Buffer,
+    yonetici?: { id: string },
+  ) {
+    return this.aiService.extractGlobalMaterials(fileBuffer, {
+      userId: yonetici?.id ?? null,
+    });
   }
 
   // ═════════ MATERIALS: SAVE BULK (from PDF extraction) ═════════

@@ -10,15 +10,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import {
-  Users,
-  Package,
-  BarChart3,
-  CreditCard,
-  ArrowLeft,
-  LogOut,
-  ShieldCheck,
-} from 'lucide-react';
+import { Users, Package, BarChart3, CreditCard, ArrowLeft, LogOut, ShieldCheck, ScrollText } from 'lucide-react';
 import { cn } from '@/ortak/lib/utils';
 
 interface NavItem {
@@ -35,6 +27,7 @@ const NAV_ITEMS: NavItem[] = [
   // 'AI Ayarları' KALDIRILDI (2026-07-06): aktif AI entegrasyonu yok —
   // kullanici karari. Backend /admin/ai-* uclari duruyor; UI'da gosterilmez.
   { href: '/admin/stats', label: 'İstatistikler', icon: BarChart3 },
+  { href: '/admin/denetim', label: 'Denetim Kaydı', icon: ScrollText },
   { href: '/admin/payments', label: 'Ödeme Yöntemleri', icon: CreditCard, soon: true },
 ];
 

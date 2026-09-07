@@ -33,8 +33,14 @@ export class AiController {
    * Onbellekte olanlar icin API'ye HIC gidilmez.
    */
   @Post('translate')
-  translate(@Body() body: { metinler: string[]; hedefDil?: string }) {
-    return this.ceviriService.cevir(body?.metinler ?? [], body?.hedefDil ?? 'en');
+  translate(
+    @CurrentUser() user: { id: string; firmaId?: string | null },
+    @Body() body: { metinler: string[]; hedefDil?: string },
+  ) {
+    return this.ceviriService.cevir(body?.metinler ?? [], body?.hedefDil ?? 'en', {
+      userId: user?.id ?? null,
+      firmaId: user?.firmaId ?? null,
+    });
   }
 
   /** Kullanici duzeltmesi — onbellege 'manual' olarak yazilir, AI ezemez. */

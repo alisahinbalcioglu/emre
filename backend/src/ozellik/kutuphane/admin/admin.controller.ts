@@ -1,7 +1,8 @@
 import {
   Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards,
-  UseInterceptors, UploadedFile, ValidationPipe, BadRequestException,
+  UseInterceptors, UploadedFile, ValidationPipe, BadRequestException, Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { AdminService, MaterialSheetInput, ImportPreviewItem } from './admin.service';
@@ -10,6 +11,7 @@ import { JwtAuthGuard } from '../../../altyapi/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../altyapi/auth/guards/roles.guard';
 import { Roles } from '../../../altyapi/auth/decorators/roles.decorator';
 import { CurrentUser } from '../../../altyapi/auth/decorators/current-user.decorator';
+import { KullanicilarSorgusuDto } from './dto/kullanicilar-sorgusu.dto';
 
 /** Denetim kaydina yazilan aktor. jwt.strategy.validate()'in dondurdugu sekil. */
 interface Yonetici { id: string; email: string }
@@ -42,8 +44,20 @@ export class AdminController {
     return this.adminService.checkAiHealth(provider);
   }
 
+  /// ⚠ DONUS SEKLI DEGISMEDI: hala DUZ DIZI. `{veri, toplam}` sekline
+  /// gecmek on yuzu RENDER SIRASINDA cokertirdi (`users.filter is not a
+  /// function`, useMemo icinde — fetch'in try/catch'i bunu YAKALAMAZ ve
+  /// kullanici kirmizi hata kutusu degil BOS SAYFA gorurdu).
+  /// Toplam sayi ayri bir baslikta doner: `X-Toplam-Kayit`.
   @Get('users')
-  getUsers() { return this.adminService.getUsers(); }
+  async getUsers(
+    @Query() sorgu: KullanicilarSorgusuDto,
+    @Res({ passthrough: true }) yanit: Response,
+  ) {
+    const { kayitlar, toplam } = await this.adminService.getUsers(sorgu);
+    yanit.setHeader('X-Toplam-Kayit', String(toplam));
+    return kayitlar;
+  }
 
   // ⚠ Asagidaki alti ucun tamami @CurrentUser aliyor. 07.09.2026'dan once
   // BU DOSYADA @CurrentUser HIC GECMIYORDU: islemi yapan yoneticinin kimligi
@@ -164,8 +178,11 @@ export class AdminController {
 
   @Post('materials/extract-pdf')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } }))
-  extractMaterialsPdf(@UploadedFile() file: Express.Multer.File) {
-    return this.adminService.extractMaterialsPdf(file.buffer);
+  extractMaterialsPdf(
+    @CurrentUser() yonetici: Yonetici,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.adminService.extractMaterialsPdf(file.buffer, yonetici);
   }
 
   @Post('materials/parse-full-excel')

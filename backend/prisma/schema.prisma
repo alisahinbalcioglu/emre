@@ -762,10 +762,23 @@ model AiUsageLog {
   success          Boolean @default(true)
   errorMessage     String?
 
+  /// ATIF (07.09.2026) — bu cagrinin maliyeti KIME yazilacak.
+  /// Plan (2.6): "Anthropic faturasinin hangi kullanicidan geldigini goremiyorsunuz."
+  /// ⚠ NULLABLE ve FK'siz, BILEREK:
+  ///  1. Mevcut satirlarin sahibi BILINMIYOR; NOT NULL migration'i patlatirdi.
+  ///  2. Kullanici yumusak silinince (User.deletedAt) maliyet kaydi KALMALI —
+  ///     FK + Cascade fatura gecmisini silerdi.
+  ///  3. Admin tetikli cagrida (havuz PDF ayiklama) userId dolar ama firmaId
+  ///     bos kalabilir: masraf bir musteriye ait DEGILDIR.
+  userId  String?
+  firmaId String?
+
   createdAt DateTime @default(now())
 
   @@index([feature])
   @@index([createdAt])
+  @@index([userId, createdAt])
+  @@index([firmaId, createdAt])
 }
 
 /// TEKNIK METIN CEVIRI ONBELLEGI (13.08).

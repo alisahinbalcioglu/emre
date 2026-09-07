@@ -22,8 +22,9 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import {
-  Loader2, Search, Users as UsersIcon, RefreshCw, AlertCircle, Trash2,
+  Loader2, Search, Users as UsersIcon, RefreshCw, AlertCircle, Trash2, ScrollText,
 } from 'lucide-react';
 import api from '@/ortak/lib/api';
 import { Input } from '@/ortak/ui/input';
@@ -46,6 +47,20 @@ interface AdminUser {
   status: 'active' | 'banned';
   tier: 'core' | 'pro' | 'suite';
   createdAt: string;
+  firmaId: string | null;
+  firma: { id: string; ad: string } | null;
+  /// YETKILI KAYNAK (Abonelik -> PaketSurumu -> Paket). null = firma ya da
+  /// abonelik yok.
+  gercekPaket: {
+    kod: string;
+    ad: string;
+    kapsam: string;
+    seviye: 'core' | 'pro';
+    durum: string;
+    erisimSonu: string | null;
+  } | null;
+  /// `User.tier` ile yetkili kaynak AYRISIYOR MU.
+  paketAyrismasi: boolean;
   _count: { quotes: number; library: number };
   subscriptions: Array<{
     id: string;
@@ -79,13 +94,26 @@ export default function AdminUsersPage() {
   const [islemdeki, setIslemdeki] = useState<string | null>(null);
   /** Oturumu açık yöneticinin kendi id'si; kendi satırını kilitlemek için. */
   const [kendiId, setKendiId] = useState<string | null>(null);
+  /** Sunucunun bildirdiği TOPLAM kayıt — `users.length` yalnız sayfayı sayar. */
+  const [toplam, setToplam] = useState(0);
 
   async function fetchUsers() {
     setLoading(true);
     setError(null);
     try {
-      const { data } = await api.get<AdminUser[]>('/admin/users');
-      setUsers(data);
+      // Suzgecler SUNUCUYA gider (2.1). Donen sekil hala DUZ DIZI — bilerek:
+      // `{veri, toplam}` sekline gecmek `users.filter` cagrisini render
+      // sirasinda cokertirdi ve kullanici hata kutusu degil BOS SAYFA gorurdu.
+      // Toplam kayit `X-Toplam-Kayit` basliginda gelir.
+      const params: Record<string, string> = {};
+      if (query.trim()) params.arama = query.trim();
+      if (rolSuzgec !== HEPSI) params.rol = rolSuzgec;
+      if (paketSuzgec !== HEPSI) params.paket = paketSuzgec;
+      if (durumSuzgec !== HEPSI) params.durum = durumSuzgec;
+      const yanit = await api.get<AdminUser[]>('/admin/users', { params });
+      setUsers(yanit.data);
+      const basliktaki = yanit.headers?.['x-toplam-kayit'];
+      setToplam(basliktaki !== undefined ? Number(basliktaki) : yanit.data.length);
     } catch (e: any) {
       setError(e?.response?.data?.message ?? e?.message ?? 'Kullanıcılar yüklenemedi');
     } finally {
@@ -93,8 +121,15 @@ export default function AdminUsersPage() {
     }
   }
 
+  // Süzgeç değişince sunucudan yeniden çekilir. Metin araması için 300 ms
+  // gecikme: her tuşta istek atmak sunucuyu gereksiz yorar.
   useEffect(() => {
-    fetchUsers();
+    const t = setTimeout(fetchUsers, query ? 300 : 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, rolSuzgec, paketSuzgec, durumSuzgec]);
+
+  useEffect(() => {
     try {
       const ham = localStorage.getItem('user');
       if (ham) setKendiId((JSON.parse(ham) as { id?: string }).id ?? null);
@@ -184,21 +219,10 @@ export default function AdminUsersPage() {
     }
   }
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return users.filter((u) => {
-      if (rolSuzgec !== HEPSI && u.role !== rolSuzgec) return false;
-      if (paketSuzgec !== HEPSI && u.tier !== paketSuzgec) return false;
-      if (durumSuzgec !== HEPSI && u.status !== durumSuzgec) return false;
-      if (!q) return true;
-      return (
-        u.email.toLowerCase().includes(q) ||
-        u.role.includes(q) ||
-        u.tier.includes(q) ||
-        u.status.includes(q)
-      );
-    });
-  }, [users, query, rolSuzgec, paketSuzgec, durumSuzgec]);
+  // Süzgeçler artık SUNUCUDA uygulanıyor; gelen liste zaten süzülmüştür.
+  // `filtered` bilerek bırakıldı: aşağıdaki tablo ve boş-durum metni ona
+  // bağlı ve ileride istemci tarafı bir inceltme gerekirse yeri hazır.
+  const filtered = users;
 
   return (
     <div className="space-y-4">
@@ -210,8 +234,8 @@ export default function AdminUsersPage() {
             Kullanıcılar
           </h1>
           <p className="mt-0.5 text-sm text-slate-500">
-            {users.length} kayıtlı kullanıcı
-            {filtered.length !== users.length ? ` · ${filtered.length} gösteriliyor` : ''}
+            {toplam} kayıtlı kullanıcı
+            {users.length !== toplam ? ` · ${users.length} gösteriliyor` : ''}
             {' · rol, paket ve abonelik yönetimi'}
           </p>
         </div>
@@ -276,7 +300,8 @@ export default function AdminUsersPage() {
                 <TableRow className="bg-slate-50 hover:bg-slate-50">
                   <TableHead>E-posta</TableHead>
                   <TableHead>Rol</TableHead>
-                  <TableHead>Paket</TableHead>
+                  <TableHead>Paket (tier)</TableHead>
+                  <TableHead>Gerçek paket</TableHead>
                   <TableHead>Durum</TableHead>
                   <TableHead className="text-right">Teklif</TableHead>
                   <TableHead className="text-right">Kütüphane</TableHead>
@@ -288,7 +313,7 @@ export default function AdminUsersPage() {
               <TableBody>
                 {filtered.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={9} className="py-10 text-center text-sm text-slate-400">
+                    <TableCell colSpan={10} className="py-10 text-center text-sm text-slate-400">
                       {query || rolSuzgec !== HEPSI || paketSuzgec !== HEPSI || durumSuzgec !== HEPSI
                         ? 'Süzgeçlerle eşleşen kullanıcı yok'
                         : 'Kayıtlı kullanıcı yok'}
@@ -354,6 +379,39 @@ export default function AdminUsersPage() {
                         </Select>
                       </TableCell>
 
+                      <TableCell>
+                        {u.gercekPaket ? (
+                          <div className="flex flex-col gap-0.5">
+                            <Badge variant={u.gercekPaket.seviye === 'pro' ? 'info' : 'secondary'}>
+                              {u.gercekPaket.ad}
+                            </Badge>
+                            {u.paketAyrismasi && (
+                              <span
+                                className="text-[11px] font-medium text-amber-600"
+                                title={
+                                  'Soldaki tier alanı ile satın alınan paket ayrışıyor. ' +
+                                  'Ödeme yolu tier yazmadığı için bu normaldir; erişim ' +
+                                  'kararında YÜKSEK olan kullanılır.'
+                                }
+                              >
+                                ⚠ tier ile ayrışıyor
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span
+                            className="text-xs text-slate-400"
+                            title={
+                              u.firmaId
+                                ? 'Firması var ama aboneliği yok'
+                                : 'Hesap bir firmaya bağlı değil — ürünün hiçbir yerini kullanamaz'
+                            }
+                          >
+                            {u.firmaId ? 'abonelik yok' : 'firma yok'}
+                          </span>
+                        )}
+                      </TableCell>
+
                       <TableCell className="text-right tabular-nums">{u._count.quotes}</TableCell>
                       <TableCell className="text-right tabular-nums">{u._count.library}</TableCell>
 
@@ -376,6 +434,13 @@ export default function AdminUsersPage() {
                       </TableCell>
 
                       <TableCell className="text-right">
+                        {/* Bu kullanicinin denetim gecmisi. Uc ?hedef=<id>
+                            destekliyor; ekran onu okuyor. */}
+                        <Button variant="ghost" size="sm" asChild className="h-7 px-2">
+                          <Link href={`/admin/denetim?hedef=${u.id}`} title="Bu hesabın işlem geçmişi">
+                            <ScrollText className="h-3.5 w-3.5 text-slate-500" />
+                          </Link>
+                        </Button>
                         <Button
                           variant="ghost"
                           size="sm"

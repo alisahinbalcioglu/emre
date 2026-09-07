@@ -115,6 +115,11 @@ export class AiService {
     usage?: AiKullanim | null;
     success: boolean;
     errorMessage?: string;
+    /// ATIF: cagriyi tetikleyen kullanici/firma. ISTEGE BAGLI, cunku her cagri
+    /// yolunda kimlik ELDE DEGIL (or. cagirani olmayan mapExcelColumns).
+    /// Bos birakmak kaydi kaybetmekten iyidir — maliyet yine yazilir, yalniz
+    /// "sahibi bilinmiyor" olur ve panelde oyle okunur.
+    kimlik?: { userId?: string | null; firmaId?: string | null };
   }): Promise<void> {
     try {
       const olcum = kullanimiOlc(params.usage, params.model, params.provider);
@@ -130,6 +135,8 @@ export class AiService {
           estimatedCost: olcum.estimatedCost,
           success: params.success,
           errorMessage: params.errorMessage,
+          userId: params.kimlik?.userId ?? null,
+          firmaId: params.kimlik?.firmaId ?? null,
         },
       });
     } catch (e) {
@@ -627,7 +634,10 @@ KURALLAR:
   }
 
   // ── Global malzeme havuzu icin PDF ayiklama (Vision + text destegi) ──
-  async extractGlobalMaterials(buffer: Buffer): Promise<{ materials: ParsedGlobalMaterial[]; usedProvider: string }> {
+  async extractGlobalMaterials(
+    buffer: Buffer,
+    kimlik?: { userId?: string | null; firmaId?: string | null },
+  ): Promise<{ materials: ParsedGlobalMaterial[]; usedProvider: string }> {
     if (!buffer || buffer.length === 0) {
       throw new BadRequestException('Dosya bos (0 byte). Lutfen gecerli bir PDF yukleyin.');
     }
@@ -693,7 +703,7 @@ ONEMLI: Eksik malzeme kabul edilemez. Dokumandaki malzeme sayisi ne kadarsa, o k
         const cleaned = this.cleanExtractedPrices(raw);
         if (cleaned.length > 0) {
           console.log(`[AI] Claude Vision basarili: ${cleaned.length} malzeme`);
-          await this.logUsage({ feature: 'pdf_parse', provider: 'claude', model: 'claude-sonnet-4-6', usage, success: true });
+          await this.logUsage({ feature: 'pdf_parse', provider: 'claude', model: 'claude-sonnet-4-6', usage, success: true, kimlik });
           return { materials: cleaned, usedProvider: 'claude (vision)' };
         }
         console.log('[AI] Claude Vision sonuc bos, text fallback deneniyor...');
@@ -711,7 +721,7 @@ ONEMLI: Eksik malzeme kabul edilemez. Dokumandaki malzeme sayisi ne kadarsa, o k
         const cleaned = this.cleanExtractedPrices(raw);
         if (cleaned.length > 0) {
           console.log(`[AI] Claude Text basarili: ${cleaned.length} malzeme`);
-          await this.logUsage({ feature: 'pdf_parse', provider: 'claude', model: 'claude-sonnet-4-6', usage, success: true });
+          await this.logUsage({ feature: 'pdf_parse', provider: 'claude', model: 'claude-sonnet-4-6', usage, success: true, kimlik });
           return { materials: cleaned, usedProvider: 'claude (text)' };
         }
       } catch (textErr) {
@@ -727,7 +737,7 @@ ONEMLI: Eksik malzeme kabul edilemez. Dokumandaki malzeme sayisi ne kadarsa, o k
         const cleaned = this.cleanExtractedPrices(raw);
         if (cleaned.length > 0) {
           console.log(`[AI] Gemini Vision basarili: ${cleaned.length} malzeme`);
-          await this.logUsage({ feature: 'pdf_parse', provider: 'gemini', model: 'gemini-2.5-flash', usage, success: true });
+          await this.logUsage({ feature: 'pdf_parse', provider: 'gemini', model: 'gemini-2.5-flash', usage, success: true, kimlik });
           return { materials: cleaned, usedProvider: 'gemini (vision, failover)' };
         }
       } catch (gemErr) {
@@ -744,7 +754,7 @@ ONEMLI: Eksik malzeme kabul edilemez. Dokumandaki malzeme sayisi ne kadarsa, o k
         const cleaned = this.cleanExtractedPrices(raw);
         if (cleaned.length > 0) {
           console.log(`[AI] Gemini Text basarili: ${cleaned.length} malzeme`);
-          await this.logUsage({ feature: 'pdf_parse', provider: 'gemini', model: 'gemini-2.5-flash', usage, success: true });
+          await this.logUsage({ feature: 'pdf_parse', provider: 'gemini', model: 'gemini-2.5-flash', usage, success: true, kimlik });
           return { materials: cleaned, usedProvider: 'gemini (text, failover)' };
         }
       } catch (gemTextErr) {
@@ -757,7 +767,7 @@ ONEMLI: Eksik malzeme kabul edilemez. Dokumandaki malzeme sayisi ne kadarsa, o k
     const detail = hasText
       ? `PDF metin iceriyor (${textFallback.trim().length} karakter) ama AI fiyat verisi bulamadi.`
       : 'PDF metin icermiyor (taranmis/gorsel PDF olabilir) ve Vision modu basarisiz oldu.';
-    await this.logUsage({ feature: 'pdf_parse', provider: active, success: false, errorMessage: detail });
+    await this.logUsage({ feature: 'pdf_parse', provider: active, success: false, errorMessage: detail, kimlik });
     throw new BadRequestException(
       `PDF'den malzeme ayiklanamadi. ${detail} Lutfen farkli bir PDF deneyin veya Excel olarak yukleyin.`,
     );

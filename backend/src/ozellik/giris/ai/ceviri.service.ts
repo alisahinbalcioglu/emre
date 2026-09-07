@@ -206,7 +206,11 @@ export class CeviriService {
   }
 
   /** Metin listesini cevirir. Onbellekte olanlar icin API'ye HIC gidilmez. */
-  async cevir(metinler: string[], hedefDil = 'en'): Promise<CeviriSonucu> {
+  async cevir(
+    metinler: string[],
+    hedefDil = 'en',
+    kimlik?: { userId?: string | null; firmaId?: string | null },
+  ): Promise<CeviriSonucu> {
     const benzersiz = Array.from(
       new Set(metinler.map((m) => String(m ?? '').trim().replace(/\s+/g, ' ')).filter(Boolean)),
     );
@@ -261,6 +265,7 @@ export class CeviriService {
         } as any);
 
         await this.ai.logUsage({
+          kimlik,
           feature: 'translate',
           provider: 'claude',
           model: MODEL,
@@ -292,6 +297,7 @@ export class CeviriService {
         const durum = (e as any)?.status as number | undefined;
         if (!ilkHata) ilkHata = { durum, mesaj: (e as Error).message };
         await this.ai.logUsage({
+          kimlik,
           feature: 'translate',
           provider: 'claude',
           model: MODEL,
