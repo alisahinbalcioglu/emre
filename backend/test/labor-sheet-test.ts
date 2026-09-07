@@ -37,12 +37,20 @@ async function main() {
   const matching = new MatchingService(prisma as any, terminology, fakeFx);
   const svc = new LaborFirmsService(prisma as any, matching);
 
-  const user = await prisma.user.findFirst({ where: { role: 'user' }, select: { id: true } });
-  if (!user) throw new Error('Test kullanicisi yok');
+  // 07.09.2026: LaborFirmsService imzasi `string` yerine `Kimlik` aliyor
+  // (6eae2de — kutuphane firmaya gecti). Test o gocte guncellenmemisti ve
+  // `PG_REGRESSION=1` olmadan hic kosmadigi + `tsc` backend/test'i kapsamadigi
+  // icin kirikligi GORUNMEZ kalmisti.
+  const user = await prisma.user.findFirst({
+    where: { role: 'user', firmaId: { not: null } },
+    select: { id: true, firmaId: true },
+  });
+  if (!user) throw new Error('Test kullanicisi yok (firmasi olan bir "user" gerekli)');
+  const kimlik = { userId: user.id, firmaId: user.firmaId as string };
 
   let firmaId = '';
   try {
-    const firma = await svc.create(user.id, { name: `__SHEET_TEST_${Date.now()}`, discipline: 'mechanical' });
+    const firma = await svc.create(kimlik, { name: `__SHEET_TEST_${Date.now()}`, discipline: 'mechanical' });
     firmaId = firma.id;
 
     // ── save-bulk + HAM 8-sutun sheet (InlineFirmEntry akisi) ──────────
@@ -55,15 +63,15 @@ async function main() {
         { _rowIdx: 1, _isDataRow: true, _laborName: 'Dikişli Siyah Çelik Boru Kaynaklı DN25', col0: '1', ad: 'Dikişli Siyah Çelik Boru', cins: 'Kaynaklı', cap: 'DN25', birim: 'metre', fiyat: '270', para: 'TRY', not: 'proje notu' },
       ],
     };
-    await svc.saveBulkPrices(user.id, firmaId, 'new', [
+    await svc.saveBulkPrices(kimlik, firmaId, 'new', [
       { laborName: 'Dikişli Siyah Çelik Boru Kaynaklı DN25', unit: 'metre', unitPrice: 270, currency: 'TRY', discountRate: 10 },
     ], sheet as any);   // P2-3: olu `exchangeRate` slotu kaldirildi
 
-    const lists = await svc.getFirmaPriceLists(user.id, firmaId);
+    const lists = await svc.getFirmaPriceLists(kimlik, firmaId);
     const listId = lists.priceLists[0].id;
 
     // ── S1: kayit sonrasi 8-sutun KORUNUR (sentetik degil) ─────────────
-    const r1: any = await svc.getPriceListSheets(user.id, listId);
+    const r1: any = await svc.getPriceListSheets(kimlik, listId);
     const s1 = r1.sheet;
     check('S1 sheet sentetik DEGIL (ham grid saklandi)', s1.synthetic === false, `synthetic=${s1.synthetic}`);
     check('S1 sutun sayisi 8 (Cinsi/Çap/Para/Not dahil)', s1.columnDefs.length === 8, `${s1.columnDefs.length}`);
@@ -78,10 +86,10 @@ async function main() {
     check('S1 _laborPriceId inject', !!d1?._laborPriceId, JSON.stringify(d1?._laborPriceId));
 
     // ── S2: sheet-DOLU listeye inline yeni kalem (sheet YOK) sona eklenir ─
-    await svc.saveBulkPrices(user.id, firmaId, listId, [
+    await svc.saveBulkPrices(kimlik, firmaId, listId, [
       { laborName: 'Kelebek Vana DN150', unit: 'adet', unitPrice: 3000 },
     ]);
-    const r2: any = await svc.getPriceListSheets(user.id, listId);
+    const r2: any = await svc.getPriceListSheets(kimlik, listId);
     const dr2 = r2.sheet.rowData.filter((r: any) => r._isDataRow);
     check('S2 inline eklenen kalem render\'da GORUNUR (ucuncu gecis)', dr2.length === 2, `${dr2.length} satir`);
     check('S2 yeni kalem adi dogru', dr2.some((r: any) => String(r.ad).includes('Kelebek Vana')), JSON.stringify(dr2.map((r: any) => r.ad)));

@@ -132,11 +132,27 @@ async function runTests() {
     select: { userId: true },
   });
   if (!libRow) {
-    console.error(`Kutuphanede ${CAYIROVA_ID} markasina ait satir yok — test kosulamaz.`);
+    // CIKIS KODU 2 = ON SART YOK (SKIP), 1 DEGIL. Bu bir VERI onkosulu:
+    // taze bir veritabaninda bu markanin kutuphane satirlari yoktur ve bu
+    // bir KUSUR degildir. Kod 1 dondurmek toplu turda YANLIS KIRMIZI
+    // uretiyordu; projenin sozlesmesi (0=tamam · 2=on sart yok · digeri=hata)
+    // bu durumu 2 ile ifade eder.
+    console.log(`ON KOSUL YOK — kutuphanede ${CAYIROVA_ID} markasina ait satir yok.`);
     await prisma.$disconnect();
-    process.exit(1);
+    process.exit(2);
   }
   const testUserId = libRow.userId;
+  // 07.09.2026: MatchingService.bulkMatch imzasi `Kimlik` aliyor (6eae2de —
+  // kutuphane firmaya gecti). Kimlik kullanicinin FIRMASINDAN turer.
+  const testUser = await prisma.user.findUnique({
+    where: { id: testUserId },
+    select: { id: true, firmaId: true },
+  });
+  if (!testUser?.firmaId) {
+    console.log('ON KOSUL YOK — kutuphane sahibinin firmasi yok (backfill kosmamis)');
+    process.exit(2);
+  }
+  const kimlik = { userId: testUser.id, firmaId: testUser.firmaId };
 
   // ── ON KOSUL: INDEKSLENMIS MARKA (31.07.2026, KAPATMA TURU) ─────────────
   // Bu paket v2 INDEKSLI motoru sinar; motor `ProductIndex` uzerinden calisir.
@@ -197,7 +213,7 @@ async function runTests() {
 
       // 2. Match check
       if (tc.expectedNetPrice !== undefined || tc.expectedConfidence !== undefined) {
-        const result = await service.bulkMatch(testUserId, tc.brandId, [tc.input]);
+        const result = await service.bulkMatch(kimlik, tc.brandId, [tc.input]);
         const match = result[tc.input];
 
         if (!match) {

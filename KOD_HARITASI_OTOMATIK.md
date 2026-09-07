@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 474
-Toplam satir: 104930
+Toplam satir: 104954
 Uc nokta: 145
 test:* scripti: 80
 
@@ -222,10 +222,10 @@ test:* scripti: 80
 | `backend/test/kutuphane-ad-duzenleme-test.ts` | 152 |
 | `backend/test/kutuphane-liste-test.ts` | 231 |
 | `backend/test/labor-matching-test.ts` | 196 |
-| `backend/test/labor-sheet-test.ts` | 102 |
+| `backend/test/labor-sheet-test.ts` | 110 |
 | `backend/test/library-transfer-test.ts` | 96 |
 | `backend/test/manifest-kapisi.ts` | 77 |
-| `backend/test/matching-regression.ts` | 265 |
+| `backend/test/matching-regression.ts` | 281 |
 | `backend/test/matching-unit-test.ts` | 713 |
 | `backend/test/migration-zinciri-test.ts` | 314 |
 | `backend/test/odeme-onyukleme-test.ts` | 412 |

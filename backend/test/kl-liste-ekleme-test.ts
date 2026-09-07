@@ -63,24 +63,24 @@ async function main() {
   let firmaId = ''; let brandId = '';
   try {
     // ═══════════ İŞÇİLİK (KL1, KL3, KL5, KL6, KL7-çap) ═══════════
-    const firma = await labor.create(uid, { name: `__KL_${Date.now()}`, discipline: 'mechanical' });
+    const firma = await labor.create(kimlik, { name: `__KL_${Date.now()}`, discipline: 'mechanical' });
     firmaId = firma.id;
 
     // İlk kayıt: 2 çaplı kalem
-    await labor.saveBulkPrices(uid, firmaId, 'new', [
+    await labor.saveBulkPrices(kimlik, firmaId, 'new', [
       { laborName: 'ppr-c boru DN 20', unit: 'metre', unitPrice: 500 },
       { laborName: 'ppr-c boru DN 25', unit: 'metre', unitPrice: 600 },
     ], firmSheet([
       { ad: 'ppr-c boru', cap: 'DN 20', birim: 'metre', fiyat: '500' },
       { ad: 'ppr-c boru', cap: 'DN 25', birim: 'metre', fiyat: '600' },
     ]) as any);
-    const lists = await labor.getFirmaPriceLists(uid, firmaId);
+    const lists = await labor.getFirmaPriceLists(kimlik, firmaId);
     const lid = lists.priceLists[0].id;
 
     // KL1: kayıtlı 2 satıra 3. satır (ad+ÇAP AYRI SÜTUN+birim+fiyat) ekle →
     // 3 tam, mevcut çaplar + YENİ SATIR ÇAPI düşmez. FE handleSaveDrafts gibi:
     // save-bulk'a TAM güncel sheet (mevcut _laborPriceId + yeni _laborName,cap).
-    const pre: any = await labor.getPriceListSheets(uid, lid);
+    const pre: any = await labor.getPriceListSheets(kimlik, lid);
     const preRows = pre.sheet.rowData.filter((r: any) => r._isDataRow);
     const kl1Sheet = firmSheet([
       { ad: 'ppr-c boru', cap: 'DN 20', birim: 'metre', fiyat: '500' },
@@ -89,8 +89,8 @@ async function main() {
     ]);
     preRows.forEach((r: any, i: number) => { kl1Sheet.rowData[i + 1]._laborPriceId = r._laborPriceId; });
     kl1Sheet.rowData[3]._laborName = 'PPR-C BORU DN 32'; // yeni satır eşleşme anahtarı
-    await labor.saveBulkPrices(uid, firmaId, lid, [{ laborName: 'PPR-C BORU DN 32', unit: 'metre', unitPrice: 700 }], kl1Sheet as any);
-    const r1: any = await labor.getPriceListSheets(uid, lid);
+    await labor.saveBulkPrices(kimlik, firmaId, lid, [{ laborName: 'PPR-C BORU DN 32', unit: 'metre', unitPrice: 700 }], kl1Sheet as any);
+    const r1: any = await labor.getPriceListSheets(kimlik, lid);
     const d1 = r1.sheet.rowData.filter((r: any) => r._isDataRow);
     check('KL1 işçilik: 3 satır tam kalır', d1.length === 3, `${d1.length}`);
     const caps1 = d1.map((r: any) => String(r.cap ?? ''));
@@ -100,7 +100,7 @@ async function main() {
       caps1.includes('DN 32'), JSON.stringify(caps1));
 
     // KL3: round-trip — tekrar oku, çaplar birebir
-    const r3: any = await labor.getPriceListSheets(uid, lid);
+    const r3: any = await labor.getPriceListSheets(kimlik, lid);
     const caps3 = r3.sheet.rowData.filter((r: any) => r._isDataRow).map((r: any) => String(r.cap ?? '')).sort();
     check('KL3 round-trip: çaplar birebir geri gelir', caps3.includes('DN 20') && caps3.includes('DN 25'), JSON.stringify(caps3));
 
@@ -115,10 +115,10 @@ async function main() {
     ]);
     // _laborPriceId'leri koru
     d1.forEach((r: any, i: number) => { editSheet.rowData[i + 1]._laborPriceId = r._laborPriceId; });
-    await labor.savePriceListSheets(uid, lid,
+    await labor.savePriceListSheets(kimlik, lid,
       [{ laborPriceId: pid, laborItemName: 'ppr-c boru DN 40', listPrice: 700, discountRate: 0, unit: 'metre' }],
       editSheet as any);
-    const r7: any = await labor.getPriceListSheets(uid, lid);
+    const r7: any = await labor.getPriceListSheets(kimlik, lid);
     const cap40 = r7.sheet.rowData.filter((r: any) => r._isDataRow).map((r: any) => String(r.cap ?? ''));
     check('KL7-çap: mevcut kalem çap düzenlemesi KALICI (DN 40)', cap40.includes('DN 40'), JSON.stringify(cap40));
 
@@ -128,12 +128,12 @@ async function main() {
       'boş data satırı sızdı');
 
     // KL5: 3 satıra 3 daha ekle → 6 (talep "5+3=8" örneği; ölçek testi)
-    await labor.saveBulkPrices(uid, firmaId, lid, [
+    await labor.saveBulkPrices(kimlik, firmaId, lid, [
       { laborName: 'ppr-c boru DN 50', unit: 'metre', unitPrice: 800 },
       { laborName: 'ppr-c boru DN 63', unit: 'metre', unitPrice: 900 },
       { laborName: 'ppr-c boru DN 75', unit: 'metre', unitPrice: 1000 },
     ]);
-    const r5: any = await labor.getPriceListSheets(uid, lid);
+    const r5: any = await labor.getPriceListSheets(kimlik, lid);
     check('KL5 ölçek: 3+3 = 6 satır bütün', r5.sheet.rowData.filter((r: any) => r._isDataRow).length === 6,
       `${r5.sheet.rowData.filter((r: any) => r._isDataRow).length}`);
 
