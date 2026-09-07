@@ -223,6 +223,22 @@ if [ "$MOTOR_SHA" = "$BEKLENEN" ]; then
   echo ""
   echo "✅ DEPLOY DOGRULANDI — backend: $CANLI · motor: $MOTOR_SHA"
   echo "   (Bu satir 'sozlu teyit' degil, iki servisin de kendi cevabidir.)"
+
+  # ── BUILD CACHE BUDAMA (SINIRLI) ──────────────────────────────────────────
+  # OLCULDU (07.09.2026): iki deploy 5,94 GB build cache uretti (~3 GB/deploy)
+  # ve disk %15'ten %20'ye cikti. Budama HIC yoktu; disk 06.09'da bu yuzden
+  # %84'e ulasmisti (55,33 GB cache, ACTIVE=0).
+  #
+  # `until=72h`: son uc gunun cache'i KORUNUR (art arda deploy'lar hizli kalsin),
+  # daha eskisi silinir. Kosulsuz `prune -af` her deploy'u yavaslatirdi.
+  #
+  # DOGRULAMA SONRASI calisir: deploy basarisiz olursa cache durur, yeniden
+  # deneme hizli olur. Budama basarisizligi deploy'u DUSURMEZ (|| true) —
+  # disk temizligi, teslimatin onkosulu degildir.
+  ONCE_BOS="$(df --output=avail -BG / | tail -1 | tr -dc '0-9')"
+  docker builder prune -af --filter until=72h >/dev/null 2>&1 || true
+  SONRA_BOS="$(df --output=avail -BG / | tail -1 | tr -dc '0-9')"
+  echo "   build cache budandi: bos alan ${ONCE_BOS}G → ${SONRA_BOS}G (disk %$(df --output=pcent / | tail -1 | tr -dc '0-9'))"
 else
   echo ""
   echo "❌ DEPLOY DOGRULANAMADI (dwg-engine MOTORU ESKI KALDI)"

@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 471
-Toplam satir: 103556
+Toplam satir: 103584
 Uc nokta: 144
 test:* scripti: 79
 
@@ -199,7 +199,7 @@ test:* scripti: 79
 | `backend/test/fiyat-capasi-test.ts` | 185 |
 | `backend/test/gercek-dosya-test.ts` | 263 |
 | `backend/test/gs6b-teshis.ts` | 85 |
-| `backend/test/guvenlik-paket1-test.ts` | 298 |
+| `backend/test/guvenlik-paket1-test.ts` | 310 |
 | `backend/test/guvenlik-turu-2-test.ts` | 338 |
 | `backend/test/guvenlik-uclari-test.ts` | 365 |
 | `backend/test/iliskisel-alan-suzgeci-test.ts` | 171 |
@@ -471,7 +471,7 @@ test:* scripti: 79
 | `frontend/vitest.config.ts` | 10 |
 | `scripts/abonelik-olcum.sh` | 190 |
 | `scripts/backup.sh` | 75 |
-| `scripts/deploy.sh` | 236 |
+| `scripts/deploy.sh` | 252 |
 | `scripts/firma-olcum.sh` | 162 |
 | `scripts/fk-dogrula.sh` | 94 |
 | `scripts/geri-yukle.sh` | 177 |

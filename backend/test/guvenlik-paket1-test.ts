@@ -243,6 +243,18 @@ function main(): void {
       deploy.indexOf('caddy validate') < deploy.indexOf('--force-recreate caddy'),
   );
 
+  check(
+    'F7 build cache SINIRLI budaniyor (budama yoktu; disk 06.09`da %84`e ulasmisti)',
+    /docker builder prune/.test(deploy) && /until=72h/.test(deploy),
+    'olculdu: iki deploy 5,94 GB cache uretti (~3 GB/deploy)',
+  );
+  check(
+    'F8 budama DOGRULAMADAN SONRA ve deploy`u dusurmeyecek sekilde',
+    deploy.indexOf('DEPLOY DOGRULANDI') < deploy.indexOf('docker builder prune') &&
+      deploy.includes('docker builder prune -af --filter until=72h >/dev/null 2>&1 || true'),
+    'budama basarisizligi teslimati dusurmemeli — disk temizligi onkosul degil',
+  );
+
   // ── G. ON YUZ ─────────────────────────────────────────────────────────
   console.log('\n── G · ON YUZ ──');
   const kokLayout = kodu(oku('frontend/app/layout.tsx'));
