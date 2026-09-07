@@ -279,7 +279,37 @@ export class AbonelikServisi {
 
     const detay = await this.iyzico.abonelikGetir(abonelikKodu);
     const siparis = detay.orders?.find((o) => o.referenceCode === siparisKodu);
-    const donemSonu = siparis?.endPeriod
+
+    // GUVENLIK: WEBHOOK GOVDESI TAHSILAT KANITI DEGILDIR.
+    //
+    // Eski hal, siparis kodu iyzico'nun siparis listesinde BULUNAMAYINCA
+    // donemSonuHesapla'ya dusuyor ve erisimi bir donem ILERI atiyordu. Yani
+    // "odemeyi dogrulayamadim" hali "bir donem daha ver" olarak yorumlanıyordu.
+    //
+    // Bu, uc korumasiz oldugu icin (webhook.controller.ts'de @UseGuards yok) ve
+    // imza varsayilan olarak zorunlu olmadigi icin somurulebilirdi: gecerli bir
+    // abonelik kodunu bilen biri (yani mevcut bir musteri) uydurma siparis
+    // kodlariyla art arda POST atarak kendi erisimini bedavaya uzatabilirdi.
+    // Tekilleme anahtari da govdedeki iyziReferenceCode'dan turedigi icin her
+    // istek YENI olay sayiliyor, tekrar korumasi devreye girmiyordu. Mutabakat
+    // isi de bunu geri almiyor: erisimSonu'na yalniz IPTAL dalinda dokunuluyor.
+    //
+    // Karar: kanit yoksa erisim UZATILMAZ. Hata firlatiyoruz ki olay "islendi"
+    // damgasi YEMESIN — iyzico'nun siparis listesi gecikmeli guncellenirse
+    // (eventual consistency) dakikalik tarama tekrar dener ve GERCEK odeme
+    // kaybolmaz.
+    if (!siparis) {
+      this.logger.error(
+        `Tahsilat kanıtı YOK: abonelik=${abonelikKodu} sipariş=${siparisKodu} — ` +
+          `iyzico sipariş listesinde bulunamadı (${detay.orders?.length ?? 0} kayıt). ` +
+          `Erişim UZATILMADI; olay yeniden denenecek.`,
+      );
+      throw new Error(
+        `iyzico siparişi doğrulanamadı: ${siparisKodu} (abonelik ${abonelikKodu})`,
+      );
+    }
+
+    const donemSonu = siparis.endPeriod
       ? new Date(siparis.endPeriod)
       : this.donemSonuHesapla(ab.erisimSonu, ab.paketSurumu.periyot, ab.paketSurumu.periyotAdedi);
 

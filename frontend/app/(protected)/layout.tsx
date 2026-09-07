@@ -184,6 +184,9 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
             <Breadcrumb />
             <div className="flex items-center gap-3">
               <CurrencyWidget />
+              {/* Cikis dugmesi: bilesen ve handleLogout bu dosyada TANIMLIYDI
+                  ama JSX'e hic konmamisti — kullanici oturumu kapatamiyordu. */}
+              {user && <UserDropdown user={user} onLogout={handleLogout} />}
             </div>
           </header>
 

@@ -100,6 +100,25 @@ docker compose build backend frontend dwg-engine
 echo "── 5/6 docker compose up -d backend frontend dwg-engine ──"
 docker compose up -d backend frontend dwg-engine
 
+# ── CADDY YAPILANDIRMASI ────────────────────────────────────────────────────
+# ⚠ Caddyfile bind mount: `git pull` dosyayi degistirir ama Caddy surecinin
+# BELLEGINDEKI yapilandirma degismez. Bu adim olmadan Caddyfile'a yapilan her
+# degisiklik (guvenlik basliklari dahil) SESSIZCE olu kalir — ustelik asagidaki
+# 6/6 dogrulamasi yalniz backend ve motor sha'sina baktigi icin deploy yine
+# "DOGRULANDI" der. Bu, "deploy.sh frontend'i dogrulamaz" tuzaginin ayni ailesi.
+#
+# Once VALIDATE, sonra RELOAD: bozuk bir Caddyfile ile reload denemek siteyi
+# indirebilir. validate basarisizsa deploy DURUR ve eski yapilandirma yasar.
+if ! docker compose ps --status running --services 2>/dev/null | grep -qx caddy; then
+  echo "   caddy servisi calismiyor — yapilandirma yenilemesi atlandi"
+elif docker compose exec -T caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1; then
+  docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1     && echo "   caddy yapilandirmasi yeniden yuklendi"     || { echo "❌ caddy reload BASARISIZ — eski yapilandirma calismaya devam ediyor"; exit 1; }
+else
+  echo "❌ Caddyfile GECERSIZ — reload YAPILMADI, eski yapilandirma korundu."
+  docker compose exec -T caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile 2>&1 | tail -5
+  exit 1
+fi
+
 echo "── 6/6 canli dogrulama ──"
 # ⚠ ADRES TUZAGI: `http://localhost/api/health` CALISMAZ. Caddyfile yalniz
 # `{$DOMAIN}` ve `www.{$DOMAIN}` site bloklarini tanimliyor; Host basligi

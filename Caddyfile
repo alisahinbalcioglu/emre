@@ -10,15 +10,64 @@
     email {$ACME_EMAIL}
 }
 
+# ═════════════════════════════════════════════════════════════════
+#  GUVENLIK BASLIKLARI (plan 1.4)
+# ═════════════════════════════════════════════════════════════════
+#  NEDEN SNIPPET: `header` direktifi SITE BLOGU icinde calisir, yukaridaki
+#  global options blogunda CALISMAZ. Bu dosyada iki site blogu var (www ve
+#  apex). Basliklari iki yere kopyalamak, birine eklenip otekine unutulma
+#  riskidir — nitekim a6a32ce'de tam olarak www blogu unutulmustu.
+# ═════════════════════════════════════════════════════════════════
+(guvenlik) {
+    header {
+        # `defer` ZORUNLU. Asagidaki -X-Powered-By silmesi UPSTREAM'in
+        # (Next.js ve Express) bastigi basligi hedefliyor. defer olmadan Caddy
+        # baslik islemlerini reverse_proxy cevabindan ONCE uygular, upstream
+        # basligi SONRA gelir ve silme SESSIZCE etkisiz kalir.
+        defer
+
+        # 1 yil. includeSubDomains ve preload BILEREK YOK: ikisi de geri
+        # alinmasi cok zor taahhutlerdir ve ileride duz HTTP ile ayaga kalkacak
+        # bir alt alan adini erisilemez yapar.
+        Strict-Transport-Security "max-age=31536000"
+
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+
+        # DENY DEGIL SAMEORIGIN: teklif formati onizlemesi kendi sayfasinda
+        # bir iframe kullaniyor (quote-formats/page.tsx:364). Kaynagi
+        # URL.createObjectURL ile uretilen bir blob, yani ayni kaynak.
+        X-Frame-Options "SAMEORIGIN"
+
+        # Olculdu: uygulamada getUserMedia / geolocation / PaymentRequest
+        # kullanimi YOK, hepsi kapatilabilir.
+        Permissions-Policy "camera=(), microphone=(), geolocation=(), usb=(), magnetometer=(), accelerometer=()"
+
+        # ── CSP: once RAPOR-ONLY ──────────────────────────────────────────
+        # Enforce moda GECMEDEN once tarayici konsolunda ihlal olmadigini
+        # dogrulayin. Next.js uretim derlemesi satir-ici script/style uretir;
+        # 'unsafe-inline' bu yuzden var. Olculdu: uygulama kodunda DIS kaynak
+        # yok (next/font fontlari derleme aninda self-host ediyor), bu yuzden
+        # politika dar tutulabildi. blob: PDF onizlemesi icin zorunlu.
+        Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
+
+        # Framework kimligini sizdiran basliklar (Next.js ve Express basiyor).
+        -X-Powered-By
+        -Server
+    }
+}
+
 # www → apex kalici yonlendirme. Bu blok olmadan Caddy www icin sertifika
 # URETMEZ → tarayici TLS kuramaz → "www ile giris yapilamiyor" (status 000).
 # DNS'te www CNAME kaydi zaten apex'e isaret ediyor; sertifikayi Caddy
 # Let's Encrypt'ten otomatik alir.
 www.{$DOMAIN} {
+    import guvenlik
     redir https://{$DOMAIN}{uri} permanent
 }
 
 {$DOMAIN} {
+    import guvenlik
     encode gzip
 
     # NestJS API — global prefix zaten /api, path'i oldugu gibi iletiriz.

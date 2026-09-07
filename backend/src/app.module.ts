@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { HealthController } from './health.controller';
 import { BootstrapController } from './bootstrap.controller';
 import { PrismaModule } from './altyapi/db/prisma.module';
@@ -30,6 +31,16 @@ import { OdemeModule } from './ozellik/odeme/odeme.module';
     // ve butun odeme saglayicilari onyuklemede "Nest can't resolve
     // dependencies of IyzicoClient (?)" ile patlar.
     ConfigModule.forRoot({ isGlobal: true }),
+    // Hiz siniri altyapisi. Buradaki deger GENEL tavandir; asil dar sinirlar
+    // AuthController'da @Throttle ile uc bazinda veriliyor.
+    //
+    // Guard BILEREK global degil (APP_GUARD ile baglanmadi): DWG durum
+    // sorgusu ve Excel grid gibi normal kullanimda dakikada onlarca istek
+    // atan uclar var; global sinir onlari yanlislikla keserdi.
+    //
+    // IP tespiti main.ts'teki `trust proxy` ayarina BAGIMLIDIR — o satir
+    // olmadan tum kullanicilar caddy'nin IP'si altinda tek kovayi paylasir.
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 60 }]),
     PrismaModule,
     AuthModule,
     BrandsModule,
