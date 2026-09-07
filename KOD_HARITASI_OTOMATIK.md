@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 474
-Toplam satir: 104954
+Kod dosyasi: 475
+Toplam satir: 105107
 Uc nokta: 145
 test:* scripti: 80
 
@@ -473,7 +473,7 @@ test:* scripti: 80
 | `frontend/test/e2e/kopyala-yapistir.spec.ts` | 364 |
 | `frontend/vitest.config.ts` | 10 |
 | `scripts/abonelik-olcum.sh` | 190 |
-| `scripts/backup.sh` | 75 |
+| `scripts/backup.sh` | 80 |
 | `scripts/deploy.sh` | 258 |
 | `scripts/firma-olcum.sh` | 162 |
 | `scripts/fk-dogrula.sh` | 94 |
@@ -486,6 +486,7 @@ test:* scripti: 80
 | `scripts/klasor-denetle.mjs` | 246 |
 | `scripts/kv-kaucuk-olcu.sh` | 129 |
 | `scripts/s45-olcu.sh` | 90 |
+| `scripts/sir-dondur.sh` | 148 |
 
 ## 2 · Import bagliliklari
 
