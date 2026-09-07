@@ -219,7 +219,12 @@ function main(): void {
   );
   check(
     'F4 Caddyfile dogrulamasi HOST dosyasi uzerinden, TAZE mount ile (konteyner icinden dogrulamak bayat kopyayi dogrular)',
-    /docker run --rm -v "\$PWD\/Caddyfile/.test(deploy),
+    deploy.includes('docker run --rm --env-file .env -v "$PWD/Caddyfile'),
+  );
+  check(
+    'F9 dogrulama konteyneri ORTAM DEGISKENLERINI aliyor (--env-file)',
+    deploy.includes('--env-file .env'),
+    'Caddyfile {$DOMAIN}/{$ACME_EMAIL} kullaniyor; env`siz dogrulama GECERLI dosyayi GECERSIZ ilan eder (07.09`da yasandi)',
   );
   check(
     'F5 host/konteyner md5 karsilastirilip gerekirse konteyner YENIDEN OLUSTURULUYOR (reload yetmez)',

@@ -145,9 +145,15 @@ if ! docker compose ps --status running --services 2>/dev/null | grep -qx caddy;
 else
   # Dogrulama HOST dosyasi uzerinden, TAZE bir mount ile yapilir. Konteynerin
   # icinden dogrulamak bayat kopyayi dogrular ve hicbir sey kanitlamaz.
-  if ! docker run --rm -v "$PWD/Caddyfile:/tmp/C:ro" caddy:2         caddy validate --config /tmp/C --adapter caddyfile </dev/null 2>&1 | grep -q "Valid configuration"; then
+  #
+  # ⚠ --env-file ZORUNLU: Caddyfile {$DOMAIN} ve {$ACME_EMAIL} kullaniyor.
+  # Env'siz bir konteynerde bunlar BOSA genisler ve `email` argumansiz kalir;
+  # dogrulama GECERLI bir dosyayi GECERSIZ ilan eder. 07.09.2026'da tam olarak
+  # bu yasandi: deploy kod=3 ile durdu, oysa Caddyfile dogruydu. Dogrulama
+  # ortami gercek calisma ortamiyla AYNI degilse dogrulama degil, gurultudur.
+  if ! docker run --rm --env-file .env -v "$PWD/Caddyfile:/tmp/C:ro" caddy:2         caddy validate --config /tmp/C --adapter caddyfile </dev/null 2>&1 | grep -q "Valid configuration"; then
     echo "❌ Caddyfile GECERSIZ — hicbir sey yapilmadi, eski yapilandirma korundu."
-    docker run --rm -v "$PWD/Caddyfile:/tmp/C:ro" caddy:2       caddy validate --config /tmp/C --adapter caddyfile </dev/null 2>&1 | tail -5
+    docker run --rm --env-file .env -v "$PWD/Caddyfile:/tmp/C:ro" caddy:2       caddy validate --config /tmp/C --adapter caddyfile </dev/null 2>&1 | tail -5
     exit 1
   fi
 
