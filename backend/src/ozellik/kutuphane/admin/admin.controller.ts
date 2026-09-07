@@ -9,6 +9,10 @@ import { ExcelGridService } from '../../giris/excel-grid/excel-grid.service';
 import { JwtAuthGuard } from '../../../altyapi/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../altyapi/auth/guards/roles.guard';
 import { Roles } from '../../../altyapi/auth/decorators/roles.decorator';
+import { CurrentUser } from '../../../altyapi/auth/decorators/current-user.decorator';
+
+/** Denetim kaydina yazilan aktor. jwt.strategy.validate()'in dondurdugu sekil. */
+interface Yonetici { id: string; email: string }
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -41,23 +45,49 @@ export class AdminController {
   @Get('users')
   getUsers() { return this.adminService.getUsers(); }
 
+  // ⚠ Asagidaki alti ucun tamami @CurrentUser aliyor. 07.09.2026'dan once
+  // BU DOSYADA @CurrentUser HIC GECMIYORDU: islemi yapan yoneticinin kimligi
+  // servise ULASMIYORDU, yani denetim kaydi yazilacak olsa yazacak veri yoktu.
+  // Imza degisikligi BILEREK bu uclarin on yuzde hic cagirani yokken yapildi.
+
   @Patch('users/:id/role')
-  updateRole(@Param('id') id: string, @Body('role') role: 'admin' | 'user') {
-    return this.adminService.updateUserRole(id, role);
+  updateRole(
+    @CurrentUser() yonetici: Yonetici,
+    @Param('id') id: string,
+    @Body('role') role: 'admin' | 'user',
+  ) {
+    return this.adminService.updateUserRole(yonetici, id, role);
   }
 
   @Patch('users/:id/status')
-  updateStatus(@Param('id') id: string, @Body('status') status: 'active' | 'banned') {
-    return this.adminService.updateUserStatus(id, status);
+  updateStatus(
+    @CurrentUser() yonetici: Yonetici,
+    @Param('id') id: string,
+    @Body('status') status: 'active' | 'banned',
+  ) {
+    return this.adminService.updateUserStatus(yonetici, id, status);
   }
 
   @Patch('users/:id/tier')
-  updateTier(@Param('id') id: string, @Body('tier') tier: 'core' | 'pro' | 'suite') {
-    return this.adminService.updateUserTier(id, tier);
+  updateTier(
+    @CurrentUser() yonetici: Yonetici,
+    @Param('id') id: string,
+    @Body('tier') tier: 'core' | 'pro' | 'suite',
+  ) {
+    return this.adminService.updateUserTier(yonetici, id, tier);
   }
 
   @Delete('users/:id')
-  deleteUser(@Param('id') id: string) { return this.adminService.deleteUser(id); }
+  deleteUser(@CurrentUser() yonetici: Yonetici, @Param('id') id: string) {
+    return this.adminService.deleteUser(yonetici, id);
+  }
+
+  /// Denetim kaydi okuma ucu. Bir kullanicinin gecmisi (?hedef=<id>) ya da
+  /// son islemlerin tamami.
+  @Get('denetim')
+  denetimKaydi(@Query('hedef') hedef?: string, @Query('limit') limit?: string) {
+    return this.adminService.denetimKaydiGetir(hedef, limit ? Number(limit) : undefined);
+  }
 
   @Get('users/:id/subscriptions')
   getUserSubscriptions(@Param('id') id: string) {
@@ -66,15 +96,20 @@ export class AdminController {
 
   @Post('users/:id/subscriptions')
   addUserSubscription(
+    @CurrentUser() yonetici: Yonetici,
     @Param('id') id: string,
     @Body() body: { level: 'core' | 'pro'; scope: 'mechanical' | 'electrical' | 'mep'; endsAt?: string },
   ) {
-    return this.adminService.addUserSubscription(id, body.level, body.scope, body.endsAt);
+    return this.adminService.addUserSubscription(yonetici, id, body.level, body.scope, body.endsAt);
   }
 
   @Delete('users/:userId/subscriptions/:subId')
-  removeUserSubscription(@Param('userId') userId: string, @Param('subId') subId: string) {
-    return this.adminService.removeUserSubscription(userId, subId);
+  removeUserSubscription(
+    @CurrentUser() yonetici: Yonetici,
+    @Param('userId') userId: string,
+    @Param('subId') subId: string,
+  ) {
+    return this.adminService.removeUserSubscription(yonetici, userId, subId);
   }
 
   @Get('settings')

@@ -102,6 +102,7 @@ async function main() {
     'Abonelik',
     'AbonelikBaslatma',
     'AbonelikOlayi',
+    'YoneticiOlayi',
     'WebhookOlayi',
     'Fatura',
     'HavaleOdemesi',

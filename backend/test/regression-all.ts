@@ -385,6 +385,7 @@ const SUITES: Suite[] = [
   //    MUTASYONLA ÖLÇÜLDÜ: .env.example'a sahte anahtar konunca G1 kırmızı.
   { ad: 'Ortam değişkenleri: kod ↔ compose ↔ .env.example (E/G)', script: 'test:ortam', zincir: 'Z0' },
   { ad: 'Güvenlik paketi 1 kablolaması (A-H)', script: 'test:guvenlik-paket1', zincir: 'Z0' },
+  { ad: 'Faz 2 kullanıcı yönetimi kablolaması (A-F)', script: 'test:faz2', zincir: 'Z0' },
   // ── 29.08.2026 — FİYAT ÇAPASI (Y/H/K). DB ve AĞ GEREKTİRMEZ.
   //    Kullanıcı kararı: müşteriye "$28/ay" gösterilir, karttan TL çekilir.
   //    İki kavram KARIŞIRSA para hatası olur:

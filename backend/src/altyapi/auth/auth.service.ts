@@ -66,6 +66,14 @@ export class AuthService {
     if (user.status === 'banned') {
       throw new UnauthorizedException('Hesabiniz askiya alinmis.');
     }
+    // YUMUSAK SILME KAPISI (2.3, 07.09). Ayni ailenin ikinci kusuru: admin
+    // panelindeki silme dugmesi `deletedAt` damgalar, ama auth katmani bu
+    // alani okumazsa "silinen" kullanici giris yapmaya DEVAM EDER ve ozellik
+    // gorunuste calisip gercekte hicbir sey yapmaz. Ban kapisiyla ayni yerde
+    // duruyor ki biri eklenip digeri unutulmasin.
+    if (user.deletedAt) {
+      throw new UnauthorizedException('Hesabiniz kapatilmis.');
+    }
 
     const token = this.signToken(user.id, user.email, user.role);
     return { token, user: { id: user.id, email: user.email, role: user.role, tier: user.tier } };

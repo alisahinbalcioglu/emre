@@ -29,6 +29,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (user.status === 'banned') {
       throw new UnauthorizedException('Hesabiniz askiya alinmis.');
     }
+    // YUMUSAK SILME (2.3): ban ile ayni gerekce — token omru 7 gun oldugu icin
+    // yalniz girise kapi koymak silinen hesabi bir hafta daha calistirirdi.
+    if (user.deletedAt) {
+      throw new UnauthorizedException('Hesabiniz kapatilmis.');
+    }
     // ADIM 1 (firma): kimligin DAR BOGAZI burasi — 55 tuketici bu sekli okur.
     // firmaId EKLENIR (var olan alanlar aynen kalir, hicbir tuketici kirilmaz):
     // teklif/kutuphane suzgecleri artik kisiyi degil FIRMAYI temel alacak.

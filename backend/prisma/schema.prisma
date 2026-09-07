@@ -71,7 +71,7 @@ model Firma {
   il            String?
   ilce          String?
 
-  abonelik  Abonelik?
+  abonelik Abonelik?
 }
 
 enum FirmaRol {
@@ -91,6 +91,11 @@ model User {
   firma          Firma?             @relation(fields: [firmaId], references: [id])
   firmaRol       FirmaRol           @default(sahip)
   createdAt      DateTime           @default(now())
+  /// YUMUSAK SILME. Dolu ise hesap silinmis sayilir: listede gorunmez, GIRIS
+  /// YAPAMAZ ve mevcut token'i da gecersizdir (auth.service + jwt.strategy).
+  /// Neden sert silme degil: Quote (:onDelete Cascade) ve UserLibrary de
+  /// birlikte giderdi — kullanicinin butun teklifleri geri donusu olmadan.
+  deletedAt      DateTime?
   library        UserLibrary[]
   brandLibraries UserBrandLibrary[]
   libraryLists   LibraryList[]
@@ -98,6 +103,8 @@ model User {
   quotes         Quote[]
   subscriptions  UserSubscription[]
   quoteFormats   QuoteFormat[]
+
+  @@index([deletedAt])
 }
 
 // ESLESME HAFIZASI (PRD Adim 8) — belirsiz satirda kullanicinin sectigi urunu
@@ -107,7 +114,7 @@ model User {
 model EslesmeHafizasi {
   id             String   @id @default(uuid())
   userId         String
-  firmaId     String?  // ADIM 1 gecis: null=atanmamis; suzgecler backfill sonrasi buna doner
+  firmaId        String? // ADIM 1 gecis: null=atanmamis; suzgecler backfill sonrasi buna doner
   imza           String
   // Secilen KUTUPHANE urununun ADI (id degil — kutuphane satiri silinip
   // yeniden aktarilabilir; ad ile guncel kutuphanede tekrar bulunur).
@@ -116,7 +123,6 @@ model EslesmeHafizasi {
   sonSecimTarihi DateTime @updatedAt
 
   @@unique([userId, imza])
-
   @@index([firmaId])
 }
 
@@ -128,7 +134,7 @@ model TerminologyAlias {
   id          String   @id @default(uuid())
   // null = sistem geneli seed; dolu = kullaniciya (hesaba) ozel
   userId      String?
-  firmaId     String?  // ADIM 1 gecis: null=atanmamis; suzgecler backfill sonrasi buna doner
+  firmaId     String? // ADIM 1 gecis: null=atanmamis; suzgecler backfill sonrasi buna doner
   // NORMALIZE edilmis terim ("sprink hatti") — contains mantigiyla eslesir,
   // en uzun eslesen alias kazanir (S2)
   alias       String
@@ -149,7 +155,6 @@ model TerminologyAlias {
 
   @@unique([userId, alias])
   @@index([userId])
-
   @@index([firmaId])
 }
 
@@ -158,7 +163,7 @@ model TerminologyAlias {
 model BrandMaterialType {
   id        String   @id @default(uuid())
   userId    String? // null = seed; dolu = kullanici ekledi
-  firmaId     String?  // ADIM 1 gecis: null=atanmamis; suzgecler backfill sonrasi buna doner
+  firmaId   String? // ADIM 1 gecis: null=atanmamis; suzgecler backfill sonrasi buna doner
   // NORMALIZE uretici deseni ("cayirova") — marka adinda contains aranir,
   // "X veya muadili" kaliplarini da yakalar
   pattern   String
@@ -170,7 +175,6 @@ model BrandMaterialType {
 
   @@unique([userId, pattern])
   @@index([userId])
-
   @@index([firmaId])
 }
 
@@ -180,7 +184,7 @@ model UserBrandLibrary {
   id        String   @id @default(uuid())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId    String
-  firmaId     String?  // ADIM 1 gecis: null=atanmamis; suzgecler backfill sonrasi buna doner
+  firmaId   String? // ADIM 1 gecis: null=atanmamis; suzgecler backfill sonrasi buna doner
   brand     Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
   brandId   String
   sheets    Json // ExcelGrid raw sheets yapisi (multi-sheet, grup basliklari, merge cells)
@@ -193,7 +197,6 @@ model UserBrandLibrary {
   // Bugun cakisma imkansiz (her firmada tek uye) — gecis simdi guvenli.
   @@unique([firmaId, brandId])
   @@index([userId])
-
   @@index([firmaId])
 }
 
@@ -201,7 +204,7 @@ model UserSubscription {
   id        String            @id @default(uuid())
   user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId    String
-  firmaId     String?  // ADIM 1 gecis: null=atanmamis; suzgecler backfill sonrasi buna doner
+  firmaId   String? // ADIM 1 gecis: null=atanmamis; suzgecler backfill sonrasi buna doner
   level     PackageLevel
   scope     SubscriptionScope
   startsAt  DateTime          @default(now())
@@ -211,7 +214,6 @@ model UserSubscription {
 
   @@unique([userId, level, scope])
   @@index([userId])
-
   @@index([firmaId])
 }
 
@@ -276,13 +278,13 @@ model PriceList {
 // Material/MaterialPrice SILINMEZ — yalnizca eslestirme yolundan cikar.
 // ════════════════════════════════════════════════════════════════════
 model ProductIndex {
-  id          String     @id @default(uuid())
-  brand       Brand      @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  brandId     String
-  priceList   PriceList? @relation(fields: [priceListId], references: [id], onDelete: Cascade)
-  priceListId String?
+  id           String     @id @default(uuid())
+  brand        Brand      @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  brandId      String
+  priceList    PriceList? @relation(fields: [priceListId], references: [id], onDelete: Cascade)
+  priceListId  String?
   // null = havuz (admin yukledi); dolu = kullanicinin kendi manuel satiri
-  ownerUserId String?
+  ownerUserId  String?
   ownerFirmaId String? // ADIM 1 gecis: null=havuz; dolu=firmanin kendi manuel satiri
 
   // ── 11 KOLON BIREBIR (kaynak sadakati — hicbiri dusmez) ──────────
@@ -306,13 +308,13 @@ model ProductIndex {
 
   // ── ON-HESAP (YALNIZ yukaridaki kolonlardan turetilir) ───────────
   // Seviye1 AILE — sert kilit: 'kompansator' → vana/hortum ASLA aday olamaz
-  adSlug       String
+  adSlug         String
   // Seviye2 AD BUCKET — alt-ad: 'omega v flex dilatasyon kompansatoru'
-  adBucket     String
+  adBucket       String
   // Ad kolonunun token'lari — teklifin adTokens'i bunun ALT KUMESI olmali (K1)
-  adTokens     String[] @default([])
-  cinsNorm     String?
-  cinsTokens   String[] @default([])
+  adTokens       String[] @default([])
+  cinsNorm       String?
+  cinsTokens     String[] @default([])
   // HAM normalize deger — KANONIKLESTIRILMEZ. extractConnection("döner
   // flanşlı") → 'flans' doner ve "döner"i KAYBEDER; oysa K3'un cevap
   // secenekleri tam olarak "döner flanşlı" / "sabit flanşlı"dir. Ayrica
@@ -334,16 +336,16 @@ model ProductIndex {
   // ON-HESAP esdegerlik kumesi: teklifteki 2" ile kutuphanedeki DN50 INDEKS
   // duzeyinde bulusur — sorgu aninda cevrim aranmaz (conversion.ts DOKUNULMAZ,
   // yalnizca yazma aninda BIR KEZ calistirilir).
-  capTags      String[] @default([])
-  capNorm      String?
-  boyTag       String?
-  displayName  String
+  capTags        String[] @default([])
+  capNorm        String?
+  boyTag         String?
+  displayName    String
   // K7 + idempotent yeniden yukleme kimligi (bkz. product-index.ts)
-  rowKey       String
-  indexVersion Int      @default(1)
+  rowKey         String
+  indexVersion   Int      @default(1)
   // adSlug cozulemedi → eslestirmeye ADAY OLAMAZ (PRD 2A: "sessizce yanlis
   // eslesmektense gorunur sekilde eksik kal"). Admin dropdown'undan duzeltilir.
-  belirsiz     Boolean  @default(false)
+  belirsiz       Boolean  @default(false)
 
   userLibrary UserLibrary[]
 
@@ -409,7 +411,7 @@ model UserLibrary {
   id                String     @id @default(uuid())
   user              User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId            String
-  firmaId     String?  // ADIM 1 gecis: null=atanmamis; suzgecler backfill sonrasi buna doner
+  firmaId           String? // ADIM 1 gecis: null=atanmamis; suzgecler backfill sonrasi buna doner
   material          Material?  @relation(fields: [materialId], references: [id])
   materialId        String?
   materialName      String?
@@ -483,7 +485,6 @@ model UserLibrary {
   @@index([userId, brandId])
   @@index([productIndexId])
   @@index([libraryListId])
-
   @@index([firmaId])
 }
 
@@ -496,7 +497,7 @@ model LibraryList {
   id         String        @id @default(uuid())
   user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId     String
-  firmaId     String?  // ADIM 1 gecis: null=atanmamis; suzgecler backfill sonrasi buna doner
+  firmaId    String? // ADIM 1 gecis: null=atanmamis; suzgecler backfill sonrasi buna doner
   brand      Brand         @relation(fields: [brandId], references: [id], onDelete: Cascade)
   brandId    String
   name       String
@@ -504,7 +505,6 @@ model LibraryList {
   items      UserLibrary[]
 
   @@index([userId, brandId])
-
   @@index([firmaId])
 }
 
@@ -512,7 +512,7 @@ model Quote {
   id           String      @id @default(uuid())
   user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId       String
-  firmaId     String?  // ADIM 1 gecis: null=atanmamis; suzgecler backfill sonrasi buna doner
+  firmaId      String? // ADIM 1 gecis: null=atanmamis; suzgecler backfill sonrasi buna doner
   title        String?
   sheets       Json? // Multi-sheet Excel raw state (SheetData[]), null = legacy tek-sheet quote
   originalFile Bytes? // Orijinal Excel dosya binary'si — indirirken fiyatlar uzerine yazilir
@@ -524,11 +524,11 @@ model Quote {
   // Teklif kimligi: ILK dis aktarimda atanir (MP-<yil>-<sira>), sonra sabit.
   quoteNo         String?
   // Rev sayaci: 0 = hic aktarim yok; ilk aktarim Rev.01 (T10)
-  rev             Int          @default(0)
+  rev             Int           @default(0)
   // SORUN 16 (KH8, 27.07): goruntuleme para birimi teklifle KAYDEDILIR —
   // detay sayfasi ayni birimle acilir. Kur+tarih kayit anindaki ARSIV
   // degeridir (goruntuleme canli TCMB kuruyla yapilir, etikette gosterilir).
-  displayCurrency String       @default("TRY")
+  displayCurrency String        @default("TRY")
   displayRate     Float?
   displayRateDate String?
   // 13.08: teklifin DILI de para birimi gibi KAYDEDILIR ('tr' | 'en').
@@ -536,25 +536,24 @@ model Quote {
   // bilgisi HICBIR YERDE durmuyordu. Detay sayfasi her acilista dili 'tr'
   // varsayiyor, dolayisiyla export'a dil GITMIYOR ve musteriye satirlari
   // Ingilizce ama basliklari/birimleri TURKCE bir dosya gidiyordu.
-  displayLanguage String       @default("tr")
-
-  // ARINMA Faz 3: kullanici-basina teklif listesi (findMany{userId}) en sik
-  // sorgu — indexsiz full-scan'di ("olcek hep binlerce eszamanli" kurali).
-  @@index([userId])
-  @@index([userId, createdAt])
+  displayLanguage String        @default("tr")
   // Teklif bilgileri (kapak yer tutuculari — teklif ekraninda girilir)
   musteri         String?
   proje           String?
   hazirlayan      String?
   gecerlilik      String?
   // Secili format (null = kullanicinin varsayilani, o da yoksa yerlesik sade)
-  format          QuoteFormat? @relation(fields: [formatId], references: [id], onDelete: SetNull)
+  format          QuoteFormat?  @relation(fields: [formatId], references: [id], onDelete: SetNull)
   formatId        String?
   // T13/T14: onizleme duzenlemeleri — YALNIZ bu teklifin ciktisina islenir,
   // ana format DEGISMEZ. {sheetKey: {cellAddr: {value, manual: true}}}
   exportOverrides Json?
   exports         QuoteExport[]
 
+  // ARINMA Faz 3: kullanici-basina teklif listesi (findMany{userId}) en sik
+  // sorgu — indexsiz full-scan'di ("olcek hep binlerce eszamanli" kurali).
+  @@index([userId])
+  @@index([userId, createdAt])
   @@index([firmaId])
 }
 
@@ -564,7 +563,7 @@ model QuoteFormat {
   id        String   @id @default(uuid())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId    String
-  firmaId     String?  // ADIM 1 gecis: null=atanmamis; suzgecler backfill sonrasi buna doner
+  firmaId   String? // ADIM 1 gecis: null=atanmamis; suzgecler backfill sonrasi buna doner
   name      String
   fileName  String
   // Orijinal format workbook'u — ciktida kapak/icmal buradan kopyalanir.
@@ -578,7 +577,6 @@ model QuoteFormat {
   quotes    Quote[]
 
   @@index([userId])
-
   @@index([firmaId])
 }
 
@@ -699,7 +697,7 @@ model LaborFirm {
   createdAt   DateTime         @default(now())
   user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId      String
-  firmaId     String?  // ADIM 1 gecis: null=atanmamis; suzgecler backfill sonrasi buna doner
+  firmaId     String? // ADIM 1 gecis: null=atanmamis; suzgecler backfill sonrasi buna doner
   laborPrices LaborPrice[]
   priceLists  LaborPriceList[]
   quoteItems  QuoteItem[]
@@ -712,7 +710,6 @@ model LaborFirm {
   @@unique([firmaId, name])
   @@index([userId])
   @@index([discipline])
-
   @@index([firmaId])
 }
 
@@ -748,10 +745,10 @@ model LaborPrice {
 }
 
 model AiUsageLog {
-  id       String  @id @default(uuid())
-  feature  String // 'pdf_parse' | 'excel_match' | 'quote_analyze' | 'translate'
-  provider String // 'claude' | 'gemini' | 'openrouter'
-  model    String? // 'claude-opus-5' etc.
+  id               String  @id @default(uuid())
+  feature          String // 'pdf_parse' | 'excel_match' | 'quote_analyze' | 'translate'
+  provider         String // 'claude' | 'gemini' | 'openrouter'
+  model            String? // 'claude-opus-5' etc.
   // ⚠ Bu sayilar 12.08'e kadar UYDURMAYDI (cagri yerlerinde elle yazilmis
   // sabitler; `response.usage` hic okunmuyordu). Artik API'nin dondurdugu
   // gercek olcum yazilir — bkz. ai-maliyet.ts.
@@ -823,10 +820,10 @@ model SystemSettings {
 /// Python servisi DONMUS BLOK'tur (klasor-duzeni.txt) — oraya dokunulmadi;
 /// izolasyon tamamen Nest katmaninda kuruldu.
 model DwgDosya {
-  id      String @id @default(uuid())
+  id          String   @id @default(uuid())
   /// Python servisinin cache anahtari.
-  fileId  String @unique
-  firmaId String
+  fileId      String   @unique
+  firmaId     String
   /// Yukleyen kisi (denetim izi; dosya FIRMAYA ait olsa da bir KISI yukler).
   olusturanId String
   dosyaAdi    String?
@@ -867,11 +864,11 @@ model DwgDosya {
 /// electrical:{...}}) AYNI kalir — hicbir bilesen kirilmaz.
 /// Bkz. capabilities.helper.ts.
 model Paket {
-  id       String @id @default(uuid())
-  kod      String @unique // "pro-mep", "core-mek"
+  id       String  @id @default(uuid())
+  kod      String  @unique // "pro-mep", "core-mek"
   ad       String
   aciklama String?
-  sira     Int    @default(0)
+  sira     Int     @default(0)
 
   /// Hangi disiplin(ler)e erisim verir. `mep` ikisini birden acar.
   /// Mevcut SubscriptionScope enum'u YENIDEN KULLANILIYOR — yeni bir enum
@@ -882,14 +879,14 @@ model Paket {
   seviye PackageLevel
 
   /// Firma basina azami kullanici (davet akisi bunu okuyacak).
-  kullaniciHakki Int @default(5)
+  kullaniciHakki   Int     @default(5)
   /// null = sinirsiz. ⚠ ZORLANMIYOR — kota uygulamak icin teklif olusturma
   /// ucuna sayac eklemek gerekir (bilinen sinir, OKUBENI.md'de de yazili).
   aylikTeklifHakki Int?
   /// `seviye`den bagimsiz DWG anahtari. Normalde pro=true/core=false, ama
   /// ayrik tutuluyor: "dwg'siz pro" ya da "dwg'li core" paketi satilabilsin.
   /// ErisimServisi bu alani okur (erisim.servisi.ts).
-  dwgAktif Boolean @default(true)
+  dwgAktif         Boolean @default(true)
 
   aktif       Boolean       @default(true)
   surumler    PaketSurumu[]
@@ -917,8 +914,8 @@ model PaketSurumu {
   /// YOKTUR, plan fiyati ne ise o cekilir. `fatura.servisi` bu tutari
   /// KDV DAHIL kabul edip matrahi geriye hesaplar (satir 64-67).
   /// Decimal(12,2): para asla float tutulmaz (bkz. P2 turu, 03.08 dersi).
-  tutar        Decimal @db.Decimal(12, 2)
-  paraBirimi   String  @default("TRY") // TRY | USD | EUR
+  tutar      Decimal @db.Decimal(12, 2)
+  paraBirimi String  @default("TRY") // TRY | USD | EUR
 
   // ── GORUNEN FIYAT (capa) — 29.08 kullanici karari ────────────────────
   //
@@ -936,19 +933,19 @@ model PaketSurumu {
   // uzaklasir. Bu yuzden capa YALNIZCA SATIS ANINDA (satistaki surumde)
   // gosterilir; mevcut abone kendi TL tutarini gorur. Kur oynayinca YENI
   // surum acilir ve capa yeniden dogru olur.
-  referansTutar      Decimal? @db.Decimal(12, 2) // orn. 28.00
+  referansTutar      Decimal?  @db.Decimal(12, 2) // orn. 28.00
   referansParaBirimi String? // orn. "USD"
   /// Bu surum kurulurken kullanilan TCMB kuru ve tarihi — DENETIM IZI.
   /// "Bu fiyat nereden cikti" sorusunun cevabi; tahminle degil kayitla.
-  kurDegeri          Decimal? @db.Decimal(12, 4)
+  kurDegeri          Decimal?  @db.Decimal(12, 4)
   kurTarihi          DateTime?
-  periyot      String  @default("MONTHLY") // DAILY|WEEKLY|MONTHLY|YEARLY
-  periyotAdedi Int     @default(1)
-  denemeGunu   Int     @default(0)
+  periyot            String    @default("MONTHLY") // DAILY|WEEKLY|MONTHLY|YEARLY
+  periyotAdedi       Int       @default(1)
+  denemeGunu         Int       @default(0)
 
   /// Yeni satisa kapaliysa false; MEVCUT ABONELER ETKILENMEZ.
   satistaMi   Boolean            @default(true)
-  olusturuldu DateTime   @default(now())
+  olusturuldu DateTime           @default(now())
   abonelikler Abonelik[]
   baslatmalar AbonelikBaslatma[]
 
@@ -981,7 +978,7 @@ model Abonelik {
   /// ⚠ BU KOD DEGISKENDIR: paket degisiminde (upgrade/downgrade) iyzico
   /// YENI bir subscriptionReferenceCode uretir, eskisi UPGRADED olur ve
   /// uzerinde hicbir islem yapilamaz. Bkz. `iyzicoKokKodu`.
-  iyzicoAbonelikKodu String?   @unique // subscriptionReferenceCode (GUNCEL uc)
+  iyzicoAbonelikKodu String? @unique // subscriptionReferenceCode (GUNCEL uc)
 
   /// ⚠ ZINCIR KOKU — plan degisiminde DEGISMEYEN tek kimlik.
   ///
@@ -995,10 +992,10 @@ model Abonelik {
   /// gelir, `iyzicoAbonelikKodu` ile eslesmez ve olay "bilinmeyen abonelik
   /// kodu" diye YUTULUR — musteri odemesine ragmen aboneligi guncellenmez.
   /// Raporun kendi cumlesi: "webhook eslemesi zincir koküyle yapilmali".
-  iyzicoKokKodu      String?
-  iyzicoMusteriKodu  String? // customerReferenceCode
-  iyzicoDurum        String? // ACTIVE|PENDING|UNPAID|CANCELED|EXPIRED|UPGRADED
-  iyzicoSonKontrol   DateTime? // mutabakat isinin son bakisi
+  iyzicoKokKodu     String?
+  iyzicoMusteriKodu String? // customerReferenceCode
+  iyzicoDurum       String? // ACTIVE|PENDING|UNPAID|CANCELED|EXPIRED|UPGRADED
+  iyzicoSonKontrol  DateTime? // mutabakat isinin son bakisi
 
   odemeYontemi OdemeYontemi @default(KART)
 
@@ -1055,7 +1052,7 @@ model AbonelikBaslatma {
   /// bir KISI olusturur).
   olusturanId String
 
-  durum AbonelikBaslatmaDurumu @default(BEKLIYOR)
+  durum              AbonelikBaslatmaDurumu @default(BEKLIYOR)
   /// Sonuclandiginda iyzico'nun verdigi abonelik kodu.
   iyzicoAbonelikKodu String?
   hata               String?
@@ -1064,8 +1061,8 @@ model AbonelikBaslatma {
   sonKontrol   DateTime?
   denemeSayisi Int       @default(0)
 
-  olusturuldu  DateTime  @default(now())
-  sonuclandi   DateTime?
+  olusturuldu DateTime  @default(now())
+  sonuclandi  DateTime?
 
   @@index([durum, olusturuldu])
 }
@@ -1144,6 +1141,46 @@ model AbonelikOlayi {
   olusturuldu DateTime @default(now())
 
   @@index([abonelikId, olusturuldu])
+}
+
+/// YONETICI DENETIM KAYDI — kim, ne zaman, hangi kullaniciya, ne yapti.
+///
+/// Neden: /admin altindaki alti mutasyon ucu (rol, durum, paket, silme,
+/// abonelik ekle/kaldir) bugune kadar HICBIR iz birakmiyordu. Bir kullanicinin
+/// rolu degistiginde ya da hesabi silindiginde bunu kimin yaptigi hicbir yerde
+/// yazmiyordu. Kurumsal satin alma sureclerinde ilk sorulan seylerden biridir.
+///
+/// Sekil AbonelikOlayi'ndan (satir ~1132) KOPYALANDI: ayni alan adlari, ayni
+/// `aktor` sozlesmesi, ayni `veri Json?` kacis kapisi. Yeni bir usul ICAT
+/// EDILMEDI.
+///
+/// FK YOK (hedefKullaniciId ham String): silinen bir kullanicinin denetim
+/// kaydi da silinirse kayit anlamsizlasir — denetim kaydinin varlik sebebi
+/// tam olarak "o kullaniciya ne oldu" sorusudur.
+model YoneticiOlayi {
+  id String @id @default(uuid())
+
+  /// Islemi YAPAN yoneticinin User.id'si.
+  yoneticiId    String
+  /// Denetim kaydi kullanici silinse bile okunabilir kalsin diye e-posta da
+  /// KOPYALANIR (anlik goruntu). Iliskiden turetmek, silme sonrasi bosalirdi.
+  yoneticiEpsta String
+
+  /// Islemin UYGULANDIGI kullanici. FK YOK — bilerek (yukaridaki nota bak).
+  hedefKullaniciId String?
+  hedefEposta      String?
+
+  /// rol.degisti, durum.degisti, paket.degisti, kullanici.silindi,
+  /// abonelik.eklendi, abonelik.kaldirildi
+  tip         String
+  oncekiDeger String?
+  yeniDeger   String?
+  veri        Json?
+  olusturuldu DateTime @default(now())
+
+  @@index([hedefKullaniciId, olusturuldu])
+  @@index([yoneticiId, olusturuldu])
+  @@index([olusturuldu])
 }
 
 /// e-Arsiv / e-Fatura.

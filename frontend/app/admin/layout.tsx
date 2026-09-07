@@ -5,10 +5,9 @@
  *
  * GUVENLIK (PRD):
  *  - Token yok → /login.
- *  - Giris yapan kullanicinin e-postasi admin@metapricex.com DEGILSE →
- *    /dashboard'a yonlendirilir. (Basit e-posta tabanli guard — karmasik
- *    auth provider bilerek YOK; asil kritik guvenlik ileride Odeme Yontemi
- *    modulunde kurulacak.)
+ *  - Kullanicinin ROLU 'admin' DEGILSE → /dashboard'a yonlendirilir.
+ *    (07.09.2026'da e-posta olcutunden ROL olcutune cevrildi; gerekce
+ *    asagida, ADMIN_EMAIL'in kaldirildigi yerde.)
  *  - Ek savunma katmani backend'de zaten var: /admin API'lari
  *    JwtAuthGuard + RolesGuard('admin') ile korunur — frontend guard'i
  *    asilsa bile veri sizmasi olmaz.
@@ -20,8 +19,19 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AdminSidebar from '@/ozellik/kutuphane/admin/AdminSidebar';
 
-/** Admin paneline erisebilen tek hesap (PRD karari). */
-const ADMIN_EMAIL = 'admin@metapricex.com';
+// KAPI OLCUTU: ROL — e-posta DEGIL.
+//
+// Onceki hal sabit bir e-posta ile karar veriyordu ('admin@metapricex.com').
+// Sistemde bes yetki kapisi var ve DORDU rol okuyor: (protected)/layout.tsx
+// (Admin Panel baglantisi), profile, dashboard, admin/users tablosu — ve en
+// onemlisi BACKEND (roles.guard.ts: `user?.role === role`). Yalniz bu dosya
+// e-postaya bakiyordu.
+//
+// Sonuc: ikinci bir admin acildiginda (Faz 2'nin rol degistirme ekraniyla)
+// backend onu admin sayar, menude "Admin Panel" baglantisini GORUR, ama bu
+// satir onu sessizce /dashboard'a atardi. Bugun kirilmis degil — canlida tek
+// admin var ve e-postasi tutuyor (olculdu) — ama rol degistirme ozelligi
+// acilir acilmaz kirilirdi. Bu yuzden 2.2'den ONCE tekillestirildi.
 
 interface StoredUser {
   id: string;
@@ -44,7 +54,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
     try {
       const user = JSON.parse(storedUser) as StoredUser;
-      if (user.email !== ADMIN_EMAIL) {
+      if (user.role !== 'admin') {
         // Admin degil — sessizce uygulamaya geri gonder (PRD: /dashboard)
         router.replace('/dashboard');
         return;

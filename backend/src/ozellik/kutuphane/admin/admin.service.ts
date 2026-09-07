@@ -102,8 +102,80 @@ export class AdminService {
 
   // ═════════ USERS ═════════
 
+  // DENETIM KAYDI (2.5) — TEK yazma noktasi.
+  // Alti mutasyonun hepsi buradan gecer; yeni bir mutasyon eklendiginde
+  // "log yazmayi unutmak" tek bir yerde gorunur olur.
+  //
+  // Denetim yazimi ISLEMI DUSURMEZ: log yazilamazsa yonetici islemi yine de
+  // tamamlanir, yalniz sunucu gunlugune yuksek sesle yazilir. Denetim kaydi
+  // teslimatin onkosulu degildir.
+  private async denetimYaz(
+    yonetici: { id: string; email: string },
+    tip: string,
+    hedef: { id: string; email: string } | null,
+    oncekiDeger?: string | null,
+    yeniDeger?: string | null,
+    veri?: Record<string, unknown>,
+  ): Promise<void> {
+    try {
+      await this.prisma.yoneticiOlayi.create({
+        data: {
+          yoneticiId: yonetici.id,
+          yoneticiEpsta: yonetici.email,
+          hedefKullaniciId: hedef?.id ?? null,
+          hedefEposta: hedef?.email ?? null,
+          tip,
+          oncekiDeger: oncekiDeger ?? null,
+          yeniDeger: yeniDeger ?? null,
+          veri: (veri ?? undefined) as never,
+        },
+      });
+    } catch (e) {
+      console.error('[denetim] YAZILAMADI, islem yine de uygulandi:', tip, e);
+    }
+  }
+
+  async denetimKaydiGetir(hedefKullaniciId?: string, limit = 100) {
+    return this.prisma.yoneticiOlayi.findMany({
+      where: hedefKullaniciId ? { hedefKullaniciId } : undefined,
+      orderBy: { olusturuldu: 'desc' },
+      take: Math.min(Math.max(limit, 1), 500),
+    });
+  }
+
+  // Yoneticinin KENDINI kilitlemesini ve son yoneticinin kaybolmasini onler.
+  // Ikisi de geri donusu ZOR: son admin gidince panele girecek kimse kalmaz.
+  private async kilitlenmeyiOnle(
+    yonetici: { id: string },
+    hedefId: string,
+    islem: 'rol' | 'durum' | 'silme',
+  ): Promise<void> {
+    if (yonetici.id === hedefId) {
+      const mesaj =
+        islem === 'rol'
+          ? 'Kendi rolunuzu degistiremezsiniz.'
+          : islem === 'durum'
+            ? 'Kendi hesabinizi askiya alamazsiniz.'
+            : 'Kendi hesabinizi silemezsiniz.';
+      throw new BadRequestException(mesaj);
+    }
+    const hedef = await this.prisma.user.findUnique({ where: { id: hedefId } });
+    if (hedef?.role === 'admin') {
+      const kalanAdmin = await this.prisma.user.count({
+        where: { role: 'admin', deletedAt: null, NOT: { id: hedefId } },
+      });
+      if (kalanAdmin === 0) {
+        throw new BadRequestException(
+          'Sistemdeki son yonetici. Bu islem paneli erisilemez birakirdi.',
+        );
+      }
+    }
+  }
+
   async getUsers() {
     return this.prisma.user.findMany({
+      // Yumusak silinmis hesaplar listede GORUNMEZ (2.3).
+      where: { deletedAt: null },
       select: {
         id: true, email: true, role: true, status: true, tier: true, createdAt: true,
         _count: { select: { quotes: true, library: true } },
@@ -116,37 +188,76 @@ export class AdminService {
     });
   }
 
-  async updateUserRole(id: string, role: 'admin' | 'user') {
+  async updateUserRole(
+    yonetici: { id: string; email: string },
+    id: string,
+    role: 'admin' | 'user',
+  ) {
+    // @Body('role') tek ozellik cikardigi icin global ValidationPipe bu ucta
+    // DEVREYE GIRMEZ (metatype String olur). Dogrulama bu yuzden elle.
+    if (!['admin', 'user'].includes(role)) throw new BadRequestException('Gecersiz rol');
     const user = await this.prisma.user.findUnique({ where: { id } });
-    if (!user) throw new NotFoundException('User not found');
-    return this.prisma.user.update({
+    if (!user || user.deletedAt) throw new NotFoundException('User not found');
+    if (role !== 'admin') await this.kilitlenmeyiOnle(yonetici, id, 'rol');
+    const sonuc = await this.prisma.user.update({
       where: { id }, data: { role },
       select: { id: true, email: true, role: true, status: true },
     });
+    await this.denetimYaz(yonetici, 'rol.degisti', user, user.role, role);
+    return sonuc;
   }
 
-  async updateUserStatus(id: string, status: 'active' | 'banned') {
+  async updateUserStatus(
+    yonetici: { id: string; email: string },
+    id: string,
+    status: 'active' | 'banned',
+  ) {
+    if (!['active', 'banned'].includes(status)) throw new BadRequestException('Gecersiz durum');
     const user = await this.prisma.user.findUnique({ where: { id } });
-    if (!user) throw new NotFoundException('User not found');
-    return this.prisma.user.update({
+    if (!user || user.deletedAt) throw new NotFoundException('User not found');
+    if (status === 'banned') await this.kilitlenmeyiOnle(yonetici, id, 'durum');
+    const sonuc = await this.prisma.user.update({
       where: { id }, data: { status },
       select: { id: true, email: true, role: true, status: true },
     });
+    await this.denetimYaz(yonetici, 'durum.degisti', user, user.status, status);
+    return sonuc;
   }
 
-  async updateUserTier(id: string, tier: 'core' | 'pro' | 'suite') {
+  async updateUserTier(
+    yonetici: { id: string; email: string },
+    id: string,
+    tier: 'core' | 'pro' | 'suite',
+  ) {
+    if (!['core', 'pro', 'suite'].includes(tier)) throw new BadRequestException('Gecersiz paket');
     const user = await this.prisma.user.findUnique({ where: { id } });
-    if (!user) throw new NotFoundException('User not found');
-    return this.prisma.user.update({
+    if (!user || user.deletedAt) throw new NotFoundException('User not found');
+    const sonuc = await this.prisma.user.update({
       where: { id }, data: { tier },
       select: { id: true, email: true, role: true, tier: true, status: true },
     });
+    await this.denetimYaz(yonetici, 'paket.degisti', user, user.tier, tier);
+    return sonuc;
   }
 
-  async deleteUser(id: string) {
+  // YUMUSAK SILME (2.3). Onceki hal `prisma.user.delete` idi ve Quote ile
+  // UserLibrary `onDelete: Cascade` oldugu icin kullanicinin BUTUN teklifleri
+  // ve kutuphanesi geri donusu olmadan gidiyordu. Artik yalniz `deletedAt`
+  // damgalanir; hesap listede gorunmez, giris yapamaz ve mevcut token'i da
+  // gecersizdir (auth.service.ts + jwt.strategy.ts).
+  async deleteUser(yonetici: { id: string; email: string }, id: string) {
     const user = await this.prisma.user.findUnique({ where: { id } });
-    if (!user) throw new NotFoundException('User not found');
-    return this.prisma.user.delete({ where: { id } });
+    if (!user || user.deletedAt) throw new NotFoundException('User not found');
+    await this.kilitlenmeyiOnle(yonetici, id, 'silme');
+    const sonuc = await this.prisma.user.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+      select: { id: true, email: true, deletedAt: true },
+    });
+    await this.denetimYaz(yonetici, 'kullanici.silindi', user, null, null, {
+      rol: user.role, paket: user.tier, durum: user.status,
+    });
+    return sonuc;
   }
 
   async getUserSubscriptions(userId: string) {
@@ -159,6 +270,7 @@ export class AdminService {
   }
 
   async addUserSubscription(
+    yonetici: { id: string; email: string },
     userId: string,
     level: 'core' | 'pro',
     scope: 'mechanical' | 'electrical' | 'mep',
@@ -169,7 +281,7 @@ export class AdminService {
     if (!['core', 'pro'].includes(level)) throw new BadRequestException('Gecersiz level');
     if (!['mechanical', 'electrical', 'mep'].includes(scope)) throw new BadRequestException('Gecersiz scope');
 
-    return this.prisma.userSubscription.upsert({
+    const sonuc = await this.prisma.userSubscription.upsert({
       where: { userId_level_scope: { userId, level, scope } },
       create: {
         userId, level, scope,
@@ -181,12 +293,26 @@ export class AdminService {
         endsAt: endsAt ? new Date(endsAt) : null,
       },
     });
+    await this.denetimYaz(
+      yonetici, 'abonelik.eklendi', user, null, level + '/' + scope,
+      { endsAt: endsAt ?? null },
+    );
+    return sonuc;
   }
 
-  async removeUserSubscription(userId: string, subId: string) {
+  async removeUserSubscription(
+    yonetici: { id: string; email: string },
+    userId: string,
+    subId: string,
+  ) {
     const sub = await this.prisma.userSubscription.findUnique({ where: { id: subId } });
     if (!sub || sub.userId !== userId) throw new NotFoundException('Subscription not found');
-    return this.prisma.userSubscription.delete({ where: { id: subId } });
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const sonuc = await this.prisma.userSubscription.delete({ where: { id: subId } });
+    await this.denetimYaz(
+      yonetici, 'abonelik.kaldirildi', user, sub.level + '/' + sub.scope, null,
+    );
+    return sonuc;
   }
 
   // ═════════ STATS ═════════

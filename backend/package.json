@@ -70,6 +70,7 @@
     "test:firma": "ts-node test/firma-izolasyon-test.ts",
     "test:guvenlik": "ts-node test/guvenlik-uclari-test.ts",
     "test:guvenlik-paket1": "ts-node test/guvenlik-paket1-test.ts",
+    "test:faz2": "ts-node test/faz2-kullanici-yonetimi-test.ts",
     "test:imza": "ts-node test/imza-ekseni-test.ts",
     "test:oneri": "ts-node test/oneri-kutusu-cekince-test.ts",
     "test:s45": "ts-node test/s45-malzeme-aile-test.ts",
