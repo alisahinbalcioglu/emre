@@ -11,6 +11,7 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { getFirmaCapabilities } from './capabilities.helper';
 import { ErisimServisi } from '../../ozellik/odeme/abonelik/erisim.servisi';
+import { EpostaDogrulamaServisi } from './eposta-dogrulama.servisi';
 
 @Injectable()
 export class AuthService {
@@ -18,6 +19,7 @@ export class AuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private erisim: ErisimServisi,
+    private epostaDogrulama: EpostaDogrulamaServisi,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -40,6 +42,12 @@ export class AuthService {
         firma: { create: { ad: dto.email.split('@')[0] } },
       },
     });
+
+    // FAZ 3.4: doğrulama bağlantısı yollanır. ⚠ `await` EDİLİR ama kendi
+    // içinde hatayı yutar (`…Sessizce`): SMTP erişilemezse yeni kullanıcı
+    // HESAP AÇAMAZ duruma düşmemeli — doğrulama bir işaret, kayıt ise ürünün
+    // kapısıdır. Hata loglanır, kayıt tamamlanır.
+    await this.epostaDogrulama.dogrulamaGonderSessizce(user.id, user.email);
 
     const token = this.signToken(user.id, user.email, user.role);
     return { token, user: { id: user.id, email: user.email, role: user.role, tier: user.tier } };
@@ -89,6 +97,10 @@ export class AuthService {
         tier: true,
         createdAt: true,
         firmaId: true,
+        // FAZ 3.4: uyarı şeridi buradan beslenir. /auth/me ön yüzün TEK
+        // besleme noktasıdır (login yanıtı bunu taşımaz) — alan burada
+        // dönmezse şerit hiçbir zaman görünmez.
+        emailVerified: true,
       },
     });
     if (!user) return null;
@@ -112,7 +124,13 @@ export class AuthService {
     return { ...user, capabilities, subscriptions, erisim };
   }
 
-  private signToken(id: string, email: string, role: string) {
+  /**
+   * ⚠ PUBLIC (Faz 3.5): `ParolaServisi` parola değişiminden sonra TAZE bir
+   * token imzalamak zorunda — `passwordChangedAt` damgası kullanıcının
+   * elindeki token'ı da geçersiz kılıyor. İmza kuralı (anahtar + süre) TEK
+   * yerde kalsın diye kopyalanmadı, buradan paylaşılıyor.
+   */
+  signToken(id: string, email: string, role: string) {
     return this.jwtService.sign(
       { sub: id, email, role },
       {

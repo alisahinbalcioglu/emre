@@ -80,31 +80,95 @@ enum FirmaRol {
 }
 
 model User {
-  id             String             @id @default(uuid())
-  email          String             @unique
-  password       String
-  role           Role               @default(user)
-  status         UserStatus         @default(active)
-  tier           Tier               @default(core)
+  id                       String                   @id @default(uuid())
+  email                    String                   @unique
+  password                 String
+  role                     Role                     @default(user)
+  status                   UserStatus               @default(active)
+  tier                     Tier                     @default(core)
   // ADIM 1: firma uyeligi. nullable = henuz firmaya atanmamis eski kayit.
-  firmaId        String?
-  firma          Firma?             @relation(fields: [firmaId], references: [id])
-  firmaRol       FirmaRol           @default(sahip)
-  createdAt      DateTime           @default(now())
+  firmaId                  String?
+  firma                    Firma?                   @relation(fields: [firmaId], references: [id])
+  firmaRol                 FirmaRol                 @default(sahip)
+  createdAt                DateTime                 @default(now())
   /// YUMUSAK SILME. Dolu ise hesap silinmis sayilir: listede gorunmez, GIRIS
   /// YAPAMAZ ve mevcut token'i da gecersizdir (auth.service + jwt.strategy).
   /// Neden sert silme degil: Quote (:onDelete Cascade) ve UserLibrary de
   /// birlikte giderdi — kullanicinin butun teklifleri geri donusu olmadan.
-  deletedAt      DateTime?
-  library        UserLibrary[]
-  brandLibraries UserBrandLibrary[]
-  libraryLists   LibraryList[]
-  laborFirms     LaborFirm[]
-  quotes         Quote[]
-  subscriptions  UserSubscription[]
-  quoteFormats   QuoteFormat[]
+  deletedAt                DateTime?
+  /// FAZ 3.4 — e-posta dogrulamasi. Yeni kayitlar `false` baslar, dogrulama
+  /// baglantisina tiklayinca `true` olur. GOC: mevcut hesaplar `true`
+  /// isaretlendi (migration icinde) — aksi halde bugunku kullanicilar kendi
+  /// urunlerinden bir gecede kilitlenirdi. Dogrulanmamis hesap GIRIS YAPAR,
+  /// yalnizca uyari seridi gorur (girisi bloke etmek yeni kaydi kirar).
+  emailVerified            Boolean                  @default(false)
+  /// FAZ 3.5 — parola en son ne zaman degisti. NULL = hic degismedi (eski
+  /// hesap); bu durumda jwt.strategy'deki `iat` kapisi HICBIR token'i
+  /// reddetmez. Parola degisince/sifirlanınca now() yazilir ve o andan ONCE
+  /// imzalanmis (calinmis olabilecek) token'lar reddedilir — durumsuz JWT'de
+  /// parola degisiminin eski oturumlari oldurmesinin tek yolu budur.
+  passwordChangedAt        DateTime?
+  library                  UserLibrary[]
+  brandLibraries           UserBrandLibrary[]
+  libraryLists             LibraryList[]
+  laborFirms               LaborFirm[]
+  quotes                   Quote[]
+  subscriptions            UserSubscription[]
+  quoteFormats             QuoteFormat[]
+  parolaSifirlamaTokenlari PasswordResetToken[]
+  epostaDogrulamaTokenlari EmailVerificationToken[]
 
   @@index([deletedAt])
+}
+
+/// ═══════════════════════════════════════════════════════════════════════════
+///  FAZ 3.3 — PAROLA SIFIRLAMA TOKEN'I
+/// ═══════════════════════════════════════════════════════════════════════════
+///
+/// ⚠ TOKEN BURADA DUZ METIN TUTULMAZ — yalniz SHA-256 OZETI (`tokenHash`).
+/// Gerekce olculmus bir gercek: bu deponun yedekleri 07.09'a kadar sunucu
+/// disina DUZ METIN cikiyordu (0.9b ile sifrelendi) ve `.env`/dokum sizintisi
+/// bu projenin gecmisinde somut bir risk oldu. Duz metin tutulan bir sifirlama
+/// token'i, sizan bir dokumde DOGRUDAN HESAP DEVRALMA demektir: saldirgan
+/// token'i okur, /reset-password'e verir, parolayi degistirir.
+/// Ozet tutuldugunda sizan dokum ise yaramaz — ozetten token uretilemez.
+///
+/// TEK KULLANIMLIK: `usedAt` damgalanir. SURE: 1 saat (`expiresAt`).
+/// Yeni token uretilince ayni kullanicinin bekleyen digerleri gecersizlesir
+/// (servis `usedAt` damgalar) — boylece e-posta kutusundaki eski baglantilar
+/// birikmez.
+model PasswordResetToken {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// SHA-256(token). @unique: dogrulama TEK sorguyla yapilir, tarama yok.
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/// FAZ 3.4 — E-POSTA DOGRULAMA TOKEN'I.
+/// Sekil PasswordResetToken'dan KOPYALANDI (ayni hash'leme kurali, ayni
+/// tek-kullanimlik sozlesmesi) — yeni bir usul ICAT EDILMEDI. Tek fark sure:
+/// dogrulama baglantisi 24 saat yasar (kullanici kaydolup e-postasini ertesi
+/// gun acabilir; sifirlama ise 1 saat cunku saldiri penceresi dardir).
+model EmailVerificationToken {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 // ESLESME HAFIZASI (PRD Adim 8) — belirsiz satirda kullanicinin sectigi urunu

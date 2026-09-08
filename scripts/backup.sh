@@ -19,6 +19,11 @@
 # calismaz (olculdu, isaret dosyasi hic yazilmadi). Bu yuzden alt kabugun
 # basinda `set +e` var. Yapi POSIX sh (dash) altinda da dogrulandi.
 
+# 0.9b (07.09.2026): dump dosyalari yalniz root okusun. Konteyner root olarak
+# yazar, host tarafinda da root-disi kullanici yok; yine de 0644 ile dogan bir
+# yedek, ileride eklenecek her hesabin okuyabilecegi bir sir kutusudur.
+umask 077
+
 BEKLETME=86400          # iki dump arasi (saniye)
 SAKLAMA_GUN=14          # bundan eski dogrulanmis yedekler silinir
 ISARET=/tmp/pgdump-kodu

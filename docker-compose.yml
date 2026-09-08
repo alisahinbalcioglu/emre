@@ -125,6 +125,26 @@ services:
       PARASUT_CLIENT_SECRET: ${PARASUT_CLIENT_SECRET:-}
       PARASUT_KULLANICI: ${PARASUT_KULLANICI:-}
       PARASUT_PAROLA: ${PARASUT_PAROLA:-}
+      # ── FAZ 3 · E-POSTA (SMTP) ────────────────────────────────────────
+      # ⚠ AYNI KURAL: burada ANILMAYAN degisken konteynere GECMEZ. Yalniz
+      # .env'e yazmak YETMEZ — uygulama onu HIC gormez.
+      #
+      # ⚠ HICBIRI ZORUNLU DEGIL: eksikse uygulama ONYUKLENIR (olculdu:
+      # test:faz3 A1) ve yalniz e-posta gonderimi devre disi kalir; acilista
+      # tek satirlik uyari duser. Cekirdek degil, eklentidir.
+      # Brevo: SMTP_HOST=smtp-relay.brevo.com · SMTP_PORT=587
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      # Gonderen `noreply@` OLMAMALI: kurumsal alici cevap veremedigi adrese
+      # guvenmez. MAIL_FROM bossa eski EPOSTA_GONDEREN degeri kullanilir.
+      MAIL_FROM: ${MAIL_FROM:-}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-MetaPriceX}
+      EPOSTA_GONDEREN: ${EPOSTA_GONDEREN:-}
+      # Sifirlama/dogrulama baglantilarinin koku. UYGULAMA_URL zaten yukarida
+      # var; APP_URL yeni ad — ikisi de okunur (APP_URL onceliklidir).
+      APP_URL: ${APP_URL:-}
       PORT: "3001"
       NODE_ENV: production
     expose:

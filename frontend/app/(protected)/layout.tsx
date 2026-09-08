@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { CapabilitiesProvider } from '@/ortak/contexts/CapabilitiesContext';
 import { AbonelikSeridi } from '@/ozellik/odeme/AbonelikSeridi';
+import { EpostaDogrulamaSeridi } from '@/ortak/kabuk/components/layout/EpostaDogrulamaSeridi';
 import Sidebar from '@/ortak/kabuk/components/layout/Sidebar';
 import Breadcrumb from '@/ortak/kabuk/components/layout/Breadcrumb';
 
@@ -196,6 +197,10 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
               eklemek, eklenmeyi unutulan yerde kullaniciyi habersiz
               birakir ve dunning merdiveni sessizce ilerler. */}
           <AbonelikSeridi />
+
+          {/* FAZ 3.4 — e-posta dogrulama uyarisi. Ayni gerekce: kabukta durur,
+              her sayfada gorunur. Dogrulanmis hesapta hicbir sey cizmez. */}
+          <EpostaDogrulamaSeridi />
 
           {/* Page content */}
           <main className="flex-1 px-8 py-8">

@@ -4,6 +4,8 @@ import { PassportModule } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { ParolaServisi } from './parola.servisi';
+import { EpostaDogrulamaServisi } from './eposta-dogrulama.servisi';
 import { jwtSecret } from './jwt-secret';
 import { OdemeModule } from '../../ozellik/odeme/odeme.module';
 
@@ -24,7 +26,14 @@ import { OdemeModule } from '../../ozellik/odeme/odeme.module';
     // eklenirse dairesel bagimlilik olusur ve Nest onyuklemede coker.
     OdemeModule,
   ],
-  providers: [AuthService, JwtStrategy],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    // FAZ 3: parola akışları ve e-posta doğrulama. İkisi de OdemeModule'ün
+    // dışa açtığı EpostaServisi'ni kullanır — ikinci bir gönderici YOK.
+    ParolaServisi,
+    EpostaDogrulamaServisi,
+  ],
   controllers: [AuthController],
   exports: [AuthService],
 })

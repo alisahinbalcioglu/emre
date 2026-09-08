@@ -34,6 +34,12 @@ interface CapabilitiesContextValue {
    * null = henuz yuklenmedi VEYA firmasiz hesap.
    */
   erisim: ErisimKarari | null;
+  /**
+   * FAZ 3.4 — e-posta dogrulandi mi. AYNI `/auth/me` yanitindan gelir, AYRI
+   * istek atilmaz (erisim karariyla ayni gerekce: /auth/me on yuzun tek
+   * besleme noktasidir). null = henuz yuklenmedi.
+   */
+  emailVerified: boolean | null;
   loading: boolean;
   refresh: () => Promise<void>;
   // Helper'lar
@@ -49,6 +55,7 @@ const CapabilitiesContext = createContext<CapabilitiesContextValue | null>(null)
 export function CapabilitiesProvider({ children }: { children: ReactNode }) {
   const [capabilities, setCapabilities] = useState<UserCapabilities>(EMPTY_CAPABILITIES);
   const [erisim, setErisim] = useState<ErisimKarari | null>(null);
+  const [emailVerified, setEmailVerified] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
@@ -57,6 +64,7 @@ export function CapabilitiesProvider({ children }: { children: ReactNode }) {
     if (!token) {
       setCapabilities(EMPTY_CAPABILITIES);
       setErisim(null);
+      setEmailVerified(null);
       setLoading(false);
       return;
     }
@@ -71,6 +79,7 @@ export function CapabilitiesProvider({ children }: { children: ReactNode }) {
       // /auth/me on yuzun tek besleme noktasidir (login yaniti bunlari
       // TASIMAZ: auth.service login yalniz {id,email,role,tier} doner).
       setErisim(data?.erisim ?? null);
+      setEmailVerified(typeof data?.emailVerified === 'boolean' ? data.emailVerified : null);
 
       // Satin alma sonrasi PAKET TAZELENMESI: Sidebar paketi
       // localStorage'daki donmus kopyadan okuyor (login aninda yazilir).
@@ -92,6 +101,7 @@ export function CapabilitiesProvider({ children }: { children: ReactNode }) {
     } catch {
       setCapabilities(EMPTY_CAPABILITIES);
       setErisim(null);
+      setEmailVerified(null);
     } finally {
       setLoading(false);
     }
@@ -109,7 +119,7 @@ export function CapabilitiesProvider({ children }: { children: ReactNode }) {
 
   return (
     <CapabilitiesContext.Provider
-      value={{ capabilities, erisim, loading, refresh, hasAnyMaterial, hasAnyLabor, hasAnyDwg, hasDiscipline, hasLaborFor }}
+      value={{ capabilities, erisim, emailVerified, loading, refresh, hasAnyMaterial, hasAnyLabor, hasAnyDwg, hasDiscipline, hasLaborFor }}
     >
       {children}
     </CapabilitiesContext.Provider>
@@ -123,6 +133,7 @@ export function useCapabilities(): CapabilitiesContextValue {
     return {
       capabilities: EMPTY_CAPABILITIES,
       erisim: null,
+      emailVerified: null,
       loading: false,
       refresh: async () => {},
       hasAnyMaterial: () => false,

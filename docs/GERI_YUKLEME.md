@@ -47,6 +47,28 @@ yazabilirsiniz.
 
 ---
 
+## 1b. Dış kopya ŞİFRELİDİR — önce çözün (0.9b, 07.09.2026)
+
+Sunucu dışındaki kopyalar (`C:\Users\basar\MetaPriceYedek\<tarih>\`, ileride Storage Box) `age` ile şifrelidir ve
+**yalnızca kişisel SSH anahtarınızla** (`~/.ssh/basar_metaprice`, parola korumalı) açılır.
+Sunucuda bu anahtarın yalnız AÇIK yarısı vardır (`/etc/metaprice/yedek-alici.pub`); sunucu
+kendi dış kopyasını AÇAMAZ — bilerek: dış kopyayı ele geçiren, sunucuyu ele geçirmeden içini
+okuyamaz.
+
+Kendi makinenizde (bir kez: `winget install FiloSottile.age`):
+
+    age -d -i ~/.ssh/basar_metaprice bekci-20260906-212406.sql.gz.age > bekci-20260906-212406.sql.gz
+    age -d -i ~/.ssh/basar_metaprice yapilandirma-20260907-182237.tgz.age | tar -xz
+
+İlki veritabanı dökümüdür → `scp` ile sunucuda `/opt/metaprice/backups/` altına koyup aşağıdaki
+adımlarla devam edin. İkincisi `.env`, `docker-compose.yml`, `Caddyfile` ve `scripts/` içerir —
+sunucu sıfırdan kuruluyorsa gereken her şey budur. Çözülmüş `.env` düz metin sırdır; işiniz
+bitince silin.
+
+**Anahtarı kaybederseniz dış kopyalar AÇILAMAZ.** `basar_metaprice` özel anahtarını ve parolasını
+parola yöneticinize yedekleyin. Sunucudaki yedekler (`/opt/metaprice/backups/`, yalnız root okur)
+şifresizdir; sunucu ayaktayken bu bölüme gerek yoktur.
+
 ## 2. GERİ YÜKLEME — adım adım
 
 ### Adım 1 — Sunucuya girin ve eldeki yedekleri görün

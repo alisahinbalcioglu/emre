@@ -5,9 +5,10 @@ import { useRouter } from 'next/navigation';
 import {
   User, Mail, Calendar, Shield, Crown, Zap,
   Database, Wrench, FileText, LogOut, Loader2,
-  CheckCircle, Clock, Package,
+  CheckCircle, Clock, Package, KeyRound,
 } from 'lucide-react';
 import { Button } from '@/ortak/ui/button';
+import { ParolaAlani } from '@/ortak/ui/parola-alani';
 import api from '@/ortak/lib/api';
 import { cn } from '@/ortak/lib/utils';
 import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
@@ -70,6 +71,47 @@ export default function ProfilePage() {
   const { erisim, refresh } = useCapabilities();
   // Abonelik ozeti GERCEK kaynaktan (`/auth/me` → `erisim`) turetilir.
   const ozet = abonelikOzeti(erisim);
+
+  // ── FAZ 3.5 · PAROLA DEGISTIRME ──────────────────────────────────────
+  const [mevcutParola, setMevcutParola] = useState('');
+  const [yeniParola, setYeniParola] = useState('');
+  const [yeniTekrar, setYeniTekrar] = useState('');
+  const [parolaYukleniyor, setParolaYukleniyor] = useState(false);
+  const [parolaSonuc, setParolaSonuc] = useState<string | null>(null);
+  const [parolaHata, setParolaHata] = useState<string | null>(null);
+
+  async function parolaDegistir(e: React.FormEvent) {
+    e.preventDefault();
+    setParolaHata(null);
+    setParolaSonuc(null);
+    if (yeniParola !== yeniTekrar) {
+      setParolaHata('Yeni parolalar eslesmiyor.');
+      return;
+    }
+    setParolaYukleniyor(true);
+    try {
+      const { data } = await api.post('/auth/change-password', {
+        mevcutParola,
+        yeniParola,
+      });
+      // ⚠ TAZE TOKEN'I SAKLAMAK ZORUNLU. Sunucu `passwordChangedAt`
+      // damgaladi; elimizdeki ESKI token artik jwt.strategy'deki `iat`
+      // kapisina takilir. Bu satir olmadan kullanici parolasini
+      // degistirdikten sonraki ILK istekte 401 alir ve /login'e atilir —
+      // yani basarili bir islem, cikis yaptirilmis gibi gorunur.
+      if (data?.token) localStorage.setItem('token', data.token);
+      setParolaSonuc(data?.mesaj ?? 'Parolaniz guncellendi.');
+      setMevcutParola('');
+      setYeniParola('');
+      setYeniTekrar('');
+    } catch (err: any) {
+      setParolaHata(
+        err.response?.data?.message || 'Parola guncellenemedi, tekrar deneyin.',
+      );
+    } finally {
+      setParolaYukleniyor(false);
+    }
+  }
 
   async function iptalEt() {
     if (!confirm('Aboneliginizi iptal etmek istediginize emin misiniz? Donem sonuna kadar erisiminiz surer.')) return;
@@ -373,6 +415,74 @@ export default function ProfilePage() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* ── GUVENLIK · PAROLA (Faz 3.5) ───────────────────────────────── */}
+      <div className="mb-6 rounded-xl border bg-card overflow-hidden">
+        <div className="flex items-center gap-2 border-b px-5 py-3.5 text-sm font-semibold">
+          <KeyRound className="h-4 w-4 text-muted-foreground" />
+          Parola
+        </div>
+        <form onSubmit={parolaDegistir} className="space-y-4 px-5 py-4">
+          <p className="text-xs text-muted-foreground">
+            Parolanizi degistirdiginizde diger cihazlardaki oturumlar kapatilir.
+          </p>
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div>
+              <label htmlFor="mevcutParola" className="mb-1.5 block text-xs font-semibold text-slate-700">
+                Mevcut parola
+              </label>
+              <ParolaAlani
+                id="mevcutParola"
+                value={mevcutParola}
+                onChange={setMevcutParola}
+                autoComplete="current-password"
+              />
+            </div>
+            <div>
+              <label htmlFor="yeniParola" className="mb-1.5 block text-xs font-semibold text-slate-700">
+                Yeni parola
+              </label>
+              <ParolaAlani
+                id="yeniParola"
+                value={yeniParola}
+                onChange={setYeniParola}
+                autoComplete="new-password"
+                minLength={8}
+              />
+            </div>
+            <div>
+              <label htmlFor="yeniTekrar" className="mb-1.5 block text-xs font-semibold text-slate-700">
+                Yeni parola (tekrar)
+              </label>
+              <ParolaAlani
+                id="yeniTekrar"
+                value={yeniTekrar}
+                onChange={setYeniTekrar}
+                autoComplete="new-password"
+                minLength={8}
+              />
+            </div>
+          </div>
+
+          {parolaHata && (
+            <p className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700">
+              {parolaHata}
+            </p>
+          )}
+          {parolaSonuc && (
+            <p className="rounded-lg border border-emerald-200 bg-emerald-50 p-2.5 text-xs text-emerald-800">
+              {parolaSonuc}
+            </p>
+          )}
+
+          <div className="flex justify-end">
+            <Button type="submit" size="sm" disabled={parolaYukleniyor}>
+              {parolaYukleniyor ? 'Kaydediliyor...' : 'Parolayi degistir'}
+            </Button>
+          </div>
+        </form>
       </div>
 
       {/* Cikis */}
