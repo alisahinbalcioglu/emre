@@ -86,6 +86,18 @@ import { EpostaServisi } from './eposta/eposta.servisi';
   ],
   // ErisimServisi'ni dışa açıyoruz: teklif/metraj modülleriniz
   // yetenek kontrolü için bunu kullanacak.
-  exports: [ErisimServisi, AbonelikServisi, SatinAlmaServisi, IyzicoClient],
+  //
+  // EpostaServisi de dışa açık (Faz 3.2): parola sıfırlama ve e-posta
+  // doğrulama AuthModule'de yaşar ama AYNI göndericiyi kullanmak ZORUNDA —
+  // ikinci bir gönderici, gönderen adresini ve şablonu ikiye bölerdi.
+  // AuthModule zaten OdemeModule'ü import ediyor (ErisimServisi için), yani
+  // yeni bir modül bağı ya da dairesel bağımlılık OLUŞMUYOR.
+  exports: [
+    ErisimServisi,
+    AbonelikServisi,
+    SatinAlmaServisi,
+    IyzicoClient,
+    EpostaServisi,
+  ],
 })
 export class OdemeModule {}

@@ -3,12 +3,10 @@
 /**
  * GIRIS EKRANI — MetaPriceX marka kimligi (16.08).
  *
- * ⚠ "Parolamı unuttum" BILEREK YOK: kullanicinin tasariminda vardi ama
- * uygulamada parola sifirlama YOLU YOK (ne `/forgot-password` sayfasi ne de
- * bir backend ucu — arandi, bulunamadi). Tiklanip hicbir sey yapmayan bir
- * baglanti koymak, ekranin var olmayan bir sey vaat etmesi olurdu; ayni
- * hatayi kayitli teklif ekraninda yasadik (marka secicisi gorunuyor ama
- * `onBrandChange` bostu). Ozellik yazildiginda baglanti da eklenir.
+ * "Parolamı unuttum" baglantisi 08.09'da EKLENDI (Faz 3.3). 16.08'de bilerek
+ * konmamisti: o gun ne `/forgot-password` sayfasi ne de bir backend ucu vardi
+ * ve tiklanip hicbir sey yapmayan bir baglanti, ekranin var olmayan bir sey
+ * vaat etmesi olurdu. Artik ikisi de var — soz tutuluyor.
  */
 
 import { useState } from 'react';
@@ -75,9 +73,17 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label htmlFor="password" className="mb-1.5 block text-xs font-semibold text-slate-700">
-              Parola
-            </label>
+            <div className="mb-1.5 flex items-baseline justify-between">
+              <label htmlFor="password" className="block text-xs font-semibold text-slate-700">
+                Parola
+              </label>
+              <Link
+                href="/forgot-password"
+                className="text-[11px] font-semibold text-blue-600 hover:text-blue-700"
+              >
+                Parolamı unuttum
+              </Link>
+            </div>
             <ParolaAlani
               id="password"
               value={password}
