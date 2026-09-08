@@ -114,9 +114,9 @@ services:
       DUNNING_GUN_3: ${DUNNING_GUN_3:-20}
       DUNNING_ASKI_GUNU: ${DUNNING_ASKI_GUNU:-30}
       # E-posta gonderici. ⚠ BOSSA DUNNING SESSIZ CALISIR: merdiven ilerler,
-      # musteri kisitlanir/askiya alinir ama HICBIR UYARI ALMAZ. Canliya
-      # cikmadan once doldurulmali (bkz. RAPOR).
-      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      # musteri kisitlanir/askiya alinir ama HICBIR UYARI ALMAZ.
+      # FAZ 3 (08.09): tasiyici SMTP oldu, `RESEND_API_KEY` KALDIRILDI (kodda
+      # okuyan kalmadi). Gonderimi acan degiskenler asagidaki SMTP blogunda.
       EPOSTA_GONDEREN: ${EPOSTA_GONDEREN:-}
       # Muhasebe: "parasut" YAZMADIKCA hicbir yere fatura gitmez (sahte adaptor).
       MUHASEBE_SAGLAYICI: ${MUHASEBE_SAGLAYICI:-sahte}
@@ -141,7 +141,6 @@ services:
       # guvenmez. MAIL_FROM bossa eski EPOSTA_GONDEREN degeri kullanilir.
       MAIL_FROM: ${MAIL_FROM:-}
       MAIL_FROM_NAME: ${MAIL_FROM_NAME:-MetaPriceX}
-      EPOSTA_GONDEREN: ${EPOSTA_GONDEREN:-}
       # Sifirlama/dogrulama baglantilarinin koku. UYGULAMA_URL zaten yukarida
       # var; APP_URL yeni ad — ikisi de okunur (APP_URL onceliklidir).
       APP_URL: ${APP_URL:-}

@@ -168,6 +168,52 @@ function main() {
     `zorunlu kilinan: ${JSON.stringify(zorunluKilinan)}`,
   );
 
+  // ── G4: YINELENEN ANAHTAR — compose'u komple kiran sinif ─────────────
+  //
+  // ⚠ 08.09'da OLCULDU, tahmin degil: Faz 3'te `EPOSTA_GONDEREN` zaten
+  // tanimliyken IKINCI kez eklendi. YAML'da yinelenen mapping anahtari
+  // `docker compose`un TAMAMINI kirar — yalniz yeni ozelligi degil,
+  // `docker compose exec backup pg_dump`i da. Yani deploy'un DEPLOY ONCESI
+  // YEDEK adimi coktu ve deploy (dogru sekilde) durdu. Tek satirlik bir
+  // gozden kacirma, yedek alma yetenegini goturdu.
+  //
+  // Bu kapi o sinifi yakalar: her servis blogunda `environment` altindaki
+  // her anahtar EN FAZLA BIR KEZ gecmeli.
+  const composeSatirlar = compose.split(/\r?\n/);
+  const yinelenen: string[] = [];
+  let ortamda = false;
+  let ortamGirinti = 0;
+  let gorulen = new Set<string>();
+  for (const satir of composeSatirlar) {
+    const girinti = satir.length - satir.trimStart().length;
+    if (/^\s*environment:\s*$/.test(satir)) {
+      ortamda = true;
+      ortamGirinti = girinti;
+      gorulen = new Set<string>();
+      continue;
+    }
+    if (!ortamda) continue;
+    if (satir.trim() === '' || /^\s*#/.test(satir)) continue;
+    // Blok bitti: girinti `environment:` seviyesine dondu.
+    if (girinti <= ortamGirinti) {
+      ortamda = false;
+      continue;
+    }
+    const m = satir.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*:/);
+    if (!m) continue;
+    if (gorulen.has(m[1])) yinelenen.push(m[1]);
+    else gorulen.add(m[1]);
+  }
+  check(
+    'G4 compose environment bloklarinda YINELENEN anahtar YOK (yinelenen anahtar TUM compose komutlarini kirar)',
+    yinelenen.length === 0,
+    `yinelenen: ${JSON.stringify(yinelenen)}`,
+  );
+  check(
+    'G4-OLCUT yineleme tarayicisi calisiyor (environment blogu gercekten okundu)',
+    gorulen.size > 5 || composeSatirlar.some((l) => /^\s*environment:\s*$/.test(l)),
+  );
+
   son();
 }
 

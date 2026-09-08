@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 490
-Toplam satir: 107316
+Toplam satir: 107362
 Uc nokta: 150
 test:* scripti: 81
 
@@ -242,7 +242,7 @@ test:* scripti: 81
 | `backend/test/olcu-anahtari-cakismasi-test.ts` | 449 |
 | `backend/test/onceden-fiyatli-test.ts` | 163 |
 | `backend/test/oneri-kutusu-cekince-test.ts` | 333 |
-| `backend/test/ortam-degiskenleri-test.ts` | 185 |
+| `backend/test/ortam-degiskenleri-test.ts` | 231 |
 | `backend/test/p2-2-sheets-indeks-test.ts` | 169 |
 | `backend/test/pano18-para-birimi-test.ts` | 172 |
 | `backend/test/perf-profil.ts` | 73 |
