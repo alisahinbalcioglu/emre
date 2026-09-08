@@ -17,20 +17,32 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   /**
-   * ⚠ `iat` KAPISININ TOLERANSI — 2 SANİYE, KEYFİ DEĞİL.
+   * ⚠ KARŞILAŞTIRMA SANİYE ↔ SANİYE YAPILIR — MİLİSANİYE DEĞİL.
    *
    * JWT'nin `iat` alanı SANİYE cinsindendir ve imzalanırken AŞAĞI yuvarlanır;
-   * `passwordChangedAt` ise milisaniyeli bir `DateTime`. Parola değiştirildiği
-   * anda ikisi de "şimdi"dir, ama token'ın `iat`'i 999 ms'ye kadar GERİDE
-   * kalabilir. Tolerans olmasaydı, parola değişiminden hemen sonra ürettiğimiz
-   * TAZE token kendi kapısına takılır ve kullanıcı "parolamı değiştirdim,
-   * uygulama beni attı" derdi — üstelik yalnız saniyenin küsuratına bağlı
-   * olarak, yani ARADA BİR. 2 sn bu yuvarlamayı ve makineler arası küçük saat
-   * kaymasını örter; çalınmış bir token için 2 sn'lik pencerenin pratik bir
-   * değeri yoktur.
+   * `passwordChangedAt` ise milisaniyeli bir `DateTime`. İki farklı çözünürlüğü
+   * doğrudan karşılaştırmak iki yönlü de yanlış sonuç verir, bu yüzden damga da
+   * saniyeye indirilip öyle kıyaslanır.
+   *
+   * ⚠ BU KOD ÖNCE "2 SANİYE TOLERANS" OLARAK YAZILDI ve CANLIDA ÇÖKTÜ:
+   * hesap açılıp ~2 sn sonra parola değiştirildiğinde ESKİ token hâlâ KABUL
+   * EDİLİYORDU (ölçüldü: `/auth/me` 200 döndü, 401 beklenirken). Birim testi
+   * yeşildi çünkü orada aradaki fark 60 sn'ydi — tolerans yalnız DAR aralıkta
+   * yanlış davranıyordu. Ders: iki farklı çözünürlüğü "tolerans" ile
+   * uzlaştırmak, hatayı yok etmez; yalnız hangi aralıkta patlayacağını
+   * değiştirir.
+   *
+   * Saniye↔saniye karşılaştırma bunu kesin olarak çözer:
+   *   · Parola değişimiyle AYNI saniyede imzalanan TAZE token: `S < S` yanlış
+   *     → KABUL (kullanıcı kendi işlemiyle dışarı atılmaz).
+   *   · Önceki herhangi bir saniyede imzalanmış token: `S-n < S` doğru → RET.
+   * Geriye kalan ≤1 sn'lik pencere `iat`'in saniye çözünürlüğünden gelir ve
+   * kapatılamaz; çalınmış bir token için pratik değeri yoktur.
+   *
+   * Damganın yazılırken yuvarlanmış olmasına GEREK YOK: her iki taraf da
+   * burada saniyeye indirildiği için kural, damgayı kimin yazdığından bağımsız
+   * çalışır.
    */
-  private static readonly IAT_TOLERANS_MS = 2000;
-
   async validate(payload: {
     sub: string;
     email: string;
@@ -64,11 +76,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // `passwordChangedAt` NULL ise (hiç değiştirilmemiş, göç edilen hesaplar)
     // hiçbir token reddedilmez.
     if (user.passwordChangedAt && typeof payload.iat === 'number') {
-      const tokenMs = payload.iat * 1000;
-      if (
-        tokenMs + JwtStrategy.IAT_TOLERANS_MS <
-        user.passwordChangedAt.getTime()
-      ) {
+      const degisimSaniyesi = Math.floor(user.passwordChangedAt.getTime() / 1000);
+      if (payload.iat < degisimSaniyesi) {
         throw new UnauthorizedException(
           'Parolaniz degistirildi. Lutfen tekrar giris yapin.',
         );

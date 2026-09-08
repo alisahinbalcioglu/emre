@@ -579,6 +579,30 @@ async function main() {
     eskiRet = e;
   }
   check('F1 parola degisiminden ONCEKI token REDDEDILIYOR', eskiRet !== null);
+
+  // ⚠ F1-c CANLIDA OLCULEN KUSURUN TESTI. Ilk surum "2 sn tolerans"
+  // kullaniyordu ve DAR aralikta sessizce basarisiz oluyordu: uretimde hesap
+  // acilip ~2 sn sonra parola degistirildiginde ESKI token hala KABUL
+  // EDILIYORDU (`/auth/me` 200, 401 beklenirken). F1 bunu KACIRDI cunku orada
+  // aradaki fark 60 sn. Ders: iki farkli cozunurlugu (saniye vs milisaniye)
+  // "tolerans" ile uzlastirmak hatayi yok etmez, yalniz hangi aralikta
+  // patlayacagini degistirir. Bu assert o dar araligi tutar.
+  let yakinRet: unknown = null;
+  try {
+    await kullaniciyla(new Date(simdi)).validate({
+      sub: 'u1',
+      email: 'a@b.com',
+      role: 'user',
+      iat: Math.floor((simdi - 2000) / 1000), // yalnizca 2 sn once imzalanmis
+    });
+  } catch (e) {
+    yakinRet = e;
+  }
+  check(
+    'F1-c parola degisiminden 2 SANIYE once imzalanmis token da REDDEDILIYOR ' +
+      '(dar aralik — canlida bu kacmisti)',
+    yakinRet !== null,
+  );
   check(
     'F1-b ret mesaji sebebi soyluyor',
     String((eskiRet as Error)?.message ?? '').toLowerCase().includes('parola'),

@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 490
-Toplam satir: 107362
+Toplam satir: 107395
 Uc nokta: 150
 test:* scripti: 81
 
@@ -38,7 +38,7 @@ test:* scripti: 81
 | `backend/src/altyapi/auth/kimlik.ts` | 35 |
 | `backend/src/altyapi/auth/parola-kurali.ts` | 15 |
 | `backend/src/altyapi/auth/parola.servisi.ts` | 222 |
-| `backend/src/altyapi/auth/strategies/jwt.strategy.ts` | 84 |
+| `backend/src/altyapi/auth/strategies/jwt.strategy.ts` | 93 |
 | `backend/src/altyapi/auth/token-ozet.ts` | 51 |
 | `backend/src/altyapi/db/prisma.module.ts` | 10 |
 | `backend/src/altyapi/db/prisma.service.ts` | 14 |
@@ -203,7 +203,7 @@ test:* scripti: 81
 | `backend/test/fallback-ad-kilidi-test.ts` | 185 |
 | `backend/test/faz0-gs7-probe.ts` | 74 |
 | `backend/test/faz2-kullanici-yonetimi-test.ts` | 345 |
-| `backend/test/faz3-eposta-parola-test.ts` | 736 |
+| `backend/test/faz3-eposta-parola-test.ts` | 760 |
 | `backend/test/firma-ekseni-test.ts` | 287 |
 | `backend/test/firma-izolasyon-test.ts` | 315 |
 | `backend/test/fixture-anonim.ts` | 330 |
