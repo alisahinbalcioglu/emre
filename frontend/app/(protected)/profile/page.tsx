@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   User, Mail, Calendar, Shield, Crown, Zap,
   Database, Wrench, FileText, LogOut, Loader2,
-  CheckCircle, Clock, Package, KeyRound,
+  CheckCircle, Clock, Package, KeyRound, Building2, ImageIcon, Trash2,
 } from 'lucide-react';
 import { Button } from '@/ortak/ui/button';
 import { ParolaAlani } from '@/ortak/ui/parola-alani';
@@ -20,6 +20,20 @@ interface UserProfile {
   role: string;
   tier: string;
   createdAt: string;
+  // FAZ 4.1 — `/auth/me` artik KISI ve FIRMA alanlarini da tasiyor.
+  // ⚠ Once bunlarin HICBIRI donmuyordu: sayfa firmanin ADINI bile
+  //   yazamiyordu (yalniz `firmaId` geliyordu).
+  ad?: string | null;
+  soyad?: string | null;
+  telefon?: string | null;
+  firmaRol?: string;
+  firma?: {
+    id: string; ad: string; unvan: string | null;
+    yetkiliEposta: string | null; faturaEposta: string | null;
+    vergiNo: string | null; vergiDairesi: string | null; tcKimlikNo: string | null;
+    faturaAdresi: string | null; il: string | null; ilce: string | null;
+    telefon: string | null; logoMime: string | null; logoVar?: boolean;
+  } | null;
   capabilities: {
     mechanical: { material: boolean; labor: boolean; dwg: boolean };
     electrical: { material: boolean; labor: boolean; dwg: boolean };
@@ -71,6 +85,90 @@ export default function ProfilePage() {
   const { erisim, refresh } = useCapabilities();
   // Abonelik ozeti GERCEK kaynaktan (`/auth/me` → `erisim`) turetilir.
   const ozet = abonelikOzeti(erisim);
+
+  // ── FAZ 4.1/4.3 · KİŞİ ve FİRMA BİLGİLERİ ────────────────────────────
+  // Ölçüldü: şemadaki `vergiNo`, `vergiDairesi`, `tcKimlikNo`, `ilce`,
+  // `faturaEposta` alanlarını fatura servisi OKUYOR ama hiçbir kod yolu
+  // YAZMIYORDU — bu form o yolun ön yüzü.
+  const [kisi, setKisi] = useState({ ad: '', soyad: '', telefon: '' });
+  const [firma, setFirma] = useState({
+    ad: '', unvan: '', vergiNo: '', vergiDairesi: '', tcKimlikNo: '',
+    faturaAdresi: '', il: '', ilce: '', telefon: '', faturaEposta: '',
+  });
+  const [kisiKaydediliyor, setKisiKaydediliyor] = useState(false);
+  const [firmaKaydediliyor, setFirmaKaydediliyor] = useState(false);
+  const [bilgiSonuc, setBilgiSonuc] = useState<string | null>(null);
+  const [bilgiHata, setBilgiHata] = useState<string | null>(null);
+  const [logoSurum, setLogoSurum] = useState(0); // <img> önbelleğini kırmak için
+  const logoInputRef = useRef<HTMLInputElement>(null);
+
+  // Sunucudan gelen değerleri forma taşı.
+  useEffect(() => {
+    if (!profile) return;
+    setKisi({ ad: profile.ad ?? '', soyad: profile.soyad ?? '', telefon: profile.telefon ?? '' });
+    const f = profile.firma;
+    if (f) {
+      setFirma({
+        ad: f.ad ?? '', unvan: f.unvan ?? '', vergiNo: f.vergiNo ?? '',
+        vergiDairesi: f.vergiDairesi ?? '', tcKimlikNo: f.tcKimlikNo ?? '',
+        faturaAdresi: f.faturaAdresi ?? '', il: f.il ?? '', ilce: f.ilce ?? '',
+        telefon: f.telefon ?? '', faturaEposta: f.faturaEposta ?? '',
+      });
+    }
+  }, [profile]);
+
+  async function kisiKaydet(e: React.FormEvent) {
+    e.preventDefault();
+    setBilgiHata(null); setBilgiSonuc(null); setKisiKaydediliyor(true);
+    try {
+      const { data } = await api.patch<UserProfile>('/auth/profil', kisi);
+      setProfile(data);
+      setBilgiSonuc('Kişi bilgileri kaydedildi.');
+    } catch (err: any) {
+      setBilgiHata(err?.response?.data?.message || 'Kaydedilemedi.');
+    } finally { setKisiKaydediliyor(false); }
+  }
+
+  async function firmaKaydet(e: React.FormEvent) {
+    e.preventDefault();
+    setBilgiHata(null); setBilgiSonuc(null); setFirmaKaydediliyor(true);
+    try {
+      await api.patch('/firma', firma);
+      const { data } = await api.get<UserProfile>('/auth/me');
+      setProfile(data);
+      setBilgiSonuc('Firma bilgileri kaydedildi.');
+    } catch (err: any) {
+      setBilgiHata(err?.response?.data?.message || 'Kaydedilemedi.');
+    } finally { setFirmaKaydediliyor(false); }
+  }
+
+  async function logoYukle(dosya: File) {
+    setBilgiHata(null); setBilgiSonuc(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', dosya);
+      await api.post('/firma/logo', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const { data } = await api.get<UserProfile>('/auth/me');
+      setProfile(data);
+      setLogoSurum((v) => v + 1);
+      setBilgiSonuc('Logo yüklendi.');
+    } catch (err: any) {
+      setBilgiHata(err?.response?.data?.message || 'Logo yüklenemedi.');
+    }
+  }
+
+  async function logoSil() {
+    setBilgiHata(null); setBilgiSonuc(null);
+    try {
+      await api.delete('/firma/logo');
+      const { data } = await api.get<UserProfile>('/auth/me');
+      setProfile(data);
+      setLogoSurum((v) => v + 1);
+      setBilgiSonuc('Logo kaldırıldı.');
+    } catch (err: any) {
+      setBilgiHata(err?.response?.data?.message || 'Logo kaldırılamadı.');
+    }
+  }
 
   // ── FAZ 3.5 · PAROLA DEGISTIRME ──────────────────────────────────────
   const [mevcutParola, setMevcutParola] = useState('');
@@ -159,6 +257,11 @@ export default function ProfilePage() {
     );
   }
 
+  // ⚠ `firmaRol` bu depoda 09.09.2026 oncesinde YAZILIP HIC OKUNMUYORDU.
+  // Backend firma duzenlemeyi `sahip` ile kapiyor; ayni kural burada da
+  // gosteriliyor. Amac guvenlik DEGIL (sunucu zaten reddeder), kullaniciyi
+  // dolduramayacagi bir formla bosuna ugrastirmamak.
+  const sahipMi = (profile.firmaRol ?? 'sahip') === 'sahip';
   const tier = profile.tier ?? 'core';
   const tierConfig = TIER_CONFIG[tier] ?? TIER_CONFIG.core;
   const TierIcon = tierConfig.icon;
@@ -415,6 +518,242 @@ export default function ProfilePage() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* ── FAZ 4.1/4.3 · KİŞİ BİLGİLERİ ──────────────────────────────── */}
+      <div className="mb-6 rounded-xl border bg-card overflow-hidden">
+        <div className="flex items-center gap-2 border-b px-5 py-3.5 text-sm font-semibold">
+          <User className="h-4 w-4 text-muted-foreground" />
+          Kişi Bilgileri
+        </div>
+        <form onSubmit={kisiKaydet} className="space-y-4 px-5 py-4">
+          <p className="text-xs text-muted-foreground">
+            Bu bilgiler teklif çıktısındaki “Hazırlayan” alanında ve iletişimde kullanılır.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-slate-700">Ad</label>
+              <input
+                value={kisi.ad}
+                onChange={(e) => setKisi((o) => ({ ...o, ad: e.target.value }))}
+                placeholder=""
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-slate-700">Soyad</label>
+              <input
+                value={kisi.soyad}
+                onChange={(e) => setKisi((o) => ({ ...o, soyad: e.target.value }))}
+                placeholder=""
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-slate-700">Telefon</label>
+              <input
+                value={kisi.telefon}
+                onChange={(e) => setKisi((o) => ({ ...o, telefon: e.target.value }))}
+                placeholder="0533 000 00 00"
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+          </div>
+          {/* ⚠ E-posta BİLEREK düzenlenemez: adres değişimi kimliğin kendisini
+              değiştirir ve doğrulama zinciri gerektirir (yeni adrese doğrulama,
+              eskisine bilgilendirme, emailVerified sıfırlama). Backend DTO’su da
+              `email` alanını kabul etmez; `whitelist:true` onu sessizce atar. */}
+          <p className="text-[11px] text-muted-foreground">
+            E-posta adresi ({profile.email}) buradan değiştirilemez.
+          </p>
+          <Button type="submit" disabled={kisiKaydediliyor}>
+            {kisiKaydediliyor ? 'Kaydediliyor…' : 'Kişi bilgilerini kaydet'}
+          </Button>
+        </form>
+      </div>
+
+      {/* ── FAZ 4.1/4.3 · FİRMA BİLGİLERİ ─────────────────────────────── */}
+      <div className="mb-6 rounded-xl border bg-card overflow-hidden">
+        <div className="flex items-center gap-2 border-b px-5 py-3.5 text-sm font-semibold">
+          <Building2 className="h-4 w-4 text-muted-foreground" />
+          Firma Bilgileri
+          {!sahipMi && (
+            <span className="ml-2 text-[11px] font-normal text-muted-foreground">
+              (yalnızca firma sahibi düzenleyebilir)
+            </span>
+          )}
+        </div>
+        <form onSubmit={firmaKaydet} className="space-y-4 px-5 py-4">
+          {/* Ölçüldü: vergiNo / vergiDairesi / tcKimlikNo / ilce / faturaEposta
+              alanlarını fatura servisi OKUYOR ama bugüne kadar hiçbir kod yolu
+              YAZMIYORDU — bu form o yolun ön yüzü. Sonuç: her kurumsal fatura
+              vergi numarasız gidiyor ve müşteri e-postasıyla tekilleşiyordu. */}
+          <p className="text-xs text-muted-foreground">
+            Faturada ve teklif çıktısının antedinde bu bilgiler kullanılır. Boş
+            bırakılan alan faturayı engellemez ama fatura elle işleme düşer.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-slate-700">Görünen ad</label>
+              <input
+                value={firma.ad}
+                onChange={(e) => setFirma((o) => ({ ...o, ad: e.target.value }))}
+                placeholder="Kısa ad"
+                disabled={!sahipMi}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-slate-700">Resmi unvan (faturada)</label>
+              <input
+                value={firma.unvan}
+                onChange={(e) => setFirma((o) => ({ ...o, unvan: e.target.value }))}
+                placeholder="Örn. Acme Mühendislik Ltd. Şti."
+                disabled={!sahipMi}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-slate-700">Vergi no</label>
+              <input
+                value={firma.vergiNo}
+                onChange={(e) => setFirma((o) => ({ ...o, vergiNo: e.target.value }))}
+                placeholder=""
+                disabled={!sahipMi}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-slate-700">Vergi dairesi</label>
+              <input
+                value={firma.vergiDairesi}
+                onChange={(e) => setFirma((o) => ({ ...o, vergiDairesi: e.target.value }))}
+                placeholder=""
+                disabled={!sahipMi}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-slate-700">TC kimlik no (şahıs şirketi)</label>
+              <input
+                value={firma.tcKimlikNo}
+                onChange={(e) => setFirma((o) => ({ ...o, tcKimlikNo: e.target.value }))}
+                placeholder=""
+                disabled={!sahipMi}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-slate-700">Fatura e-postası</label>
+              <input
+                value={firma.faturaEposta}
+                onChange={(e) => setFirma((o) => ({ ...o, faturaEposta: e.target.value }))}
+                placeholder=""
+                disabled={!sahipMi}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-slate-700">Telefon</label>
+              <input
+                value={firma.telefon}
+                onChange={(e) => setFirma((o) => ({ ...o, telefon: e.target.value }))}
+                placeholder="0212 000 00 00"
+                disabled={!sahipMi}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-slate-700">İl</label>
+              <input
+                value={firma.il}
+                onChange={(e) => setFirma((o) => ({ ...o, il: e.target.value }))}
+                placeholder=""
+                disabled={!sahipMi}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-slate-700">İlçe</label>
+              <input
+                value={firma.ilce}
+                onChange={(e) => setFirma((o) => ({ ...o, ilce: e.target.value }))}
+                placeholder=""
+                disabled={!sahipMi}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="mb-1.5 block text-xs font-semibold text-slate-700">Fatura adresi</label>
+              <input
+                value={firma.faturaAdresi}
+                onChange={(e) => setFirma((o) => ({ ...o, faturaAdresi: e.target.value }))}
+                placeholder=""
+                disabled={!sahipMi}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
+              />
+            </div>
+          </div>
+
+          {/* ── LOGO ────────────────────────────────────────────────────
+              ⚠ Logo ikili verisi JSON yanıtında GELMEZ (Prisma Bytes→base64 her
+              sayfa açılışında taşınırdı); varlığı `logoVar` ile bildirilir,
+              içeriği ayrı uçtan çekilir. `logoSurum` tarayıcı önbelleğini kırar —
+              yoksa yeni yüklenen logo eskisi gibi görünür ve kullanıcı
+              “yükleme çalışmadı” sanır. */}
+          <div className="flex flex-wrap items-center gap-4 rounded-lg border bg-muted/30 p-4">
+            <div className="flex h-16 w-32 items-center justify-center overflow-hidden rounded border bg-white">
+              {profile.firma?.logoVar ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={`${process.env.NEXT_PUBLIC_API_URL || '/api'}/firma/logo?v=${logoSurum}`}
+                  alt="Firma logosu"
+                  className="max-h-16 max-w-32 object-contain"
+                />
+              ) : (
+                <ImageIcon className="h-6 w-6 text-muted-foreground/40" />
+              )}
+            </div>
+            <div className="flex-1">
+              <p className="text-xs font-semibold text-slate-700">Firma logosu</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                PNG, JPEG veya WEBP · en fazla 2 MB. Teklif çıktısının antedinde kullanılır.
+              </p>
+            </div>
+            <input
+              ref={logoInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) logoYukle(f);
+                // Aynı dosyayı ikinci kez seçebilmek için değeri sıfırla.
+                e.target.value = '';
+              }}
+            />
+            <Button type="button" variant="outline" disabled={!sahipMi}
+              onClick={() => logoInputRef.current?.click()}>
+              {profile.firma?.logoVar ? 'Logoyu değiştir' : 'Logo yükle'}
+            </Button>
+            {profile.firma?.logoVar && (
+              <Button type="button" variant="outline" disabled={!sahipMi}
+                className="text-destructive" onClick={logoSil}>
+                <Trash2 className="mr-1 h-3.5 w-3.5" /> Kaldır
+              </Button>
+            )}
+          </div>
+
+          {bilgiHata && (
+            <p role="alert" className="text-xs text-destructive">{bilgiHata}</p>
+          )}
+          {bilgiSonuc && (
+            <p className="text-xs text-emerald-600">{bilgiSonuc}</p>
+          )}
+          <Button type="submit" disabled={firmaKaydediliyor || !sahipMi}>
+            {firmaKaydediliyor ? 'Kaydediliyor…' : 'Firma bilgilerini kaydet'}
+          </Button>
+        </form>
       </div>
 
       {/* ── GUVENLIK · PAROLA (Faz 3.5) ───────────────────────────────── */}

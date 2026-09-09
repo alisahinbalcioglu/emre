@@ -24,6 +24,7 @@ import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
 import { adDisiplinTahmini } from '@/ozellik/tablo/disiplin';
 import type { Currency, LaborFirm } from '@/ortak/types/quotes';
 import type { Brand } from '@/ortak/types';
+import { TEKLIF_DURUMLARI, teklifDurumGorunumu } from '@/ozellik/teklif/durum';
 
 interface QuoteDetail {
   id: string;
@@ -130,6 +131,51 @@ export default function QuoteDetailPage() {
   // Ingilizce goren kullanici musteriye Turkce dosya gonderir ve FARK ETMEZ.
   const [ceviriDili, setCeviriDili] = useState<'tr' | 'en'>('tr');
   const [ceviriYukleniyor, setCeviriYukleniyor] = useState(false);
+
+  // ── FAZ 4.5 · TEKLİF BİLGİLERİ (kapak alanları) ──────────────────────
+  // ⚠ NEDEN BURADA: bu dört alan şemada, `PATCH :id/info` ucunda ve export
+  // motorunun yer tutucularında ({{MUSTERI}} {{PROJE}} {{HAZIRLAYAN}}
+  // {{GECERLILIK}}) ZATEN vardı — ama 06.08'de (`d0dc27d`) oluşturma
+  // ekranından kaldırılıp "detay sayfasından girilir" denmiş, o ekran ise
+  // hiç yazılmamıştı. Sonuç ölçüldü: canlıdaki 10 teklifin 10'unda `musteri`
+  // NULL. Yani kapak sayfası ürünün içinde vardı ama doldurulamıyordu.
+  //
+  // Kaydetme ODAK ÇIKIŞINDA (blur): her tuşta PATCH atmak gereksiz; kısmi
+  // PATCH olduğu için gönderilmeyen alanlara DOKUNULMAZ (para birimi
+  // seçicisiyle aynı sözleşme).
+  const [kapak, setKapak] = useState({
+    musteri: '', proje: '', hazirlayan: '', gecerlilik: '',
+  });
+  const [durum, setDurum] = useState<string>('HAZIRLANIYOR');
+  const [kapakDurumu, setKapakDurumu] = useState<null | 'kaydediliyor' | 'kaydedildi'>(null);
+
+  // Kayıttan gelen değerleri forma taşı. `quote` değişince çalışır.
+  useEffect(() => {
+    if (!quote) return;
+    setKapak({
+      musteri: (quote as any).musteri ?? '',
+      proje: (quote as any).proje ?? '',
+      hazirlayan: (quote as any).hazirlayan ?? '',
+      gecerlilik: (quote as any).gecerlilik ?? '',
+    });
+    setDurum((quote as any).durum ?? 'HAZIRLANIYOR');
+  }, [quote]);
+
+  async function kapakKaydet(yama: Record<string, string>) {
+    setKapakDurumu('kaydediliyor');
+    try {
+      await api.patch(`/quotes/${id}/info`, yama);
+      setKapakDurumu('kaydedildi');
+      setTimeout(() => setKapakDurumu(null), 1800);
+    } catch (e: any) {
+      setKapakDurumu(null);
+      toast({
+        title: 'Kaydedilemedi',
+        description: e?.response?.data?.message || 'Teklif bilgisi kaydedilemedi.',
+        variant: 'destructive',
+      });
+    }
+  }
   // ExcelGrid'e `rowData={data.rowData}` AYNI dizi referansiyla gider ve
   // `ceviriUygula` satirlari YERINDE degistirir → AG-Grid degisikligi goremez.
   // Surum sayaci grid'i yeniden monte eder (sheet degisiminde kullanilan
@@ -417,6 +463,76 @@ export default function QuoteDetailPage() {
         )}
         </div>
       </div>
+
+      {/* ── FAZ 4.5 · TEKLİF BİLGİLERİ ────────────────────────────────
+          Yer tutucu metinleri E2E golden spec'leriyle AYNI tutuldu
+          (`Müşteri (kapak için)`, `Proje`) — o spec'ler bu kutuları
+          06.08 öncesi ekranda dolduruyordu ve bugün kırıklar; metni
+          değiştirmek onları ikinci kez kırardı. */}
+      <Card className="mb-4">
+        <div className="flex flex-wrap items-end gap-3 p-4">
+          <div className="min-w-[150px] flex-1">
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">Müşteri</label>
+            <input
+              value={kapak.musteri}
+              onChange={(e) => setKapak((o) => ({ ...o, musteri: e.target.value }))}
+              onBlur={() => kapakKaydet({ musteri: kapak.musteri })}
+              placeholder="Müşteri (kapak için)"
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
+          <div className="min-w-[150px] flex-1">
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">Proje</label>
+            <input
+              value={kapak.proje}
+              onChange={(e) => setKapak((o) => ({ ...o, proje: e.target.value }))}
+              onBlur={() => kapakKaydet({ proje: kapak.proje })}
+              placeholder="Proje"
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
+          <div className="min-w-[150px] flex-1">
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">Hazırlayan</label>
+            <input
+              value={kapak.hazirlayan}
+              onChange={(e) => setKapak((o) => ({ ...o, hazirlayan: e.target.value }))}
+              onBlur={() => kapakKaydet({ hazirlayan: kapak.hazirlayan })}
+              placeholder="Hazırlayan"
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
+          <div className="min-w-[150px] flex-1">
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">Geçerlilik</label>
+            <input
+              value={kapak.gecerlilik}
+              onChange={(e) => setKapak((o) => ({ ...o, gecerlilik: e.target.value }))}
+              onBlur={() => kapakKaydet({ gecerlilik: kapak.gecerlilik })}
+              placeholder="Örn. 30 gün"
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
+          <div className="min-w-[150px]">
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">Durum</label>
+            <select
+              value={durum}
+              onChange={(e) => {
+                setDurum(e.target.value);
+                kapakKaydet({ durum: e.target.value });
+              }}
+              aria-label="Teklif durumu"
+              className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+            >
+              {TEKLIF_DURUMLARI.map((d) => (
+                <option key={d} value={d}>{teklifDurumGorunumu(d).etiket}</option>
+              ))}
+            </select>
+          </div>
+          <div className="pb-2 text-xs text-muted-foreground">
+            {kapakDurumu === 'kaydediliyor' && 'Kaydediliyor…'}
+            {kapakDurumu === 'kaydedildi' && '✓ Kaydedildi'}
+          </div>
+        </div>
+      </Card>
 
       {/* Multi-sheet ExcelGrid render (read-only) */}
       {sheets.length > 0 && gridData ? (

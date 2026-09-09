@@ -5,12 +5,28 @@ import Link from 'next/link';
 import { FileText } from 'lucide-react';
 import api from '@/ortak/lib/api';
 
+/**
+ * ⚠ 09.09 — IKI OLU KUSUR ONARILDI (olcumle bulundu):
+ *
+ * 1) `totalAmount` alani BACKEND'DE HIC YOKTU. Tum depoda yalniz bu dosyada
+ *    geciyordu, yani tutar sutunu HER ZAMAN '—' basiyordu ve kimse fark
+ *    etmemisti. Artik toplam, liste sayfasiyla AYNI yoldan (kalemlerin
+ *    `finalPrice` toplami) hesaplaniyor. Sunucuya `toplamTutar` diye ayri
+ *    bir alan EKLENMEDI: ayni sayi icin iki kaynak, bu depoda tekrarlayan
+ *    bir hata sinifi olurdu.
+ *
+ * 2) `params: { limit: 3 }` OLU bir parametreydi — backend `@Query` almiyordu,
+ *    parametre sessizce dusuyor ve bilesen `.slice(0,3)` ile telafi ediyordu.
+ *    Yani dashboard 3 teklif gostermek icin TUM teklifleri (her biri `sheets`
+ *    ve ham .xlsx binary'siyle) indiriyordu. Uc artik `adet` aliyor.
+ */
 interface QuoteSummary {
   id: string;
   title: string | null;
   createdAt: string;
   _count?: { items: number };
-  totalAmount?: number;
+  items?: { id: string; finalPrice: number }[];
+  durum?: string;
 }
 
 export default function RecentQuotes() {
@@ -19,7 +35,9 @@ export default function RecentQuotes() {
 
   useEffect(() => {
     api
-      .get<QuoteSummary[]>('/quotes', { params: { limit: 3 } })
+      // ⚠ Ad `adet` — `limit` DEGIL (backend DTO'suyla birebir; yanlis ad
+      //   sessizce duser ve widget yine hepsini indirir).
+      .get<QuoteSummary[]>('/quotes', { params: { adet: 3 } })
       .then(({ data }) => setQuotes(data))
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -58,9 +76,12 @@ export default function RecentQuotes() {
             <p className="text-sm text-muted-foreground">Henuz teklif olusturulmadi</p>
           </div>
         ) : (
+          // `.slice(0,3)` KORUNDU: sunucu artik 3 kayit donuyor ama eski bir
+          // sekme (bayat JS) hala parametresiz istek atabilir — o durumda
+          // widget yine 3 satir gosterir.
           quotes.slice(0, 3).map((q) => {
             const itemCount = q._count?.items ?? 0;
-            const total = q.totalAmount ?? 0;
+            const total = (q.items ?? []).reduce((s, i) => s + (i.finalPrice ?? 0), 0);
             return (
               <Link
                 key={q.id}
