@@ -63,6 +63,14 @@ backend/src/ozellik/kutuphane/ :: G · kütüphane ve yönetim.
 # ayrı bir eksendir (ErisimServisi kararı A/F/M uçlarını kısıtlar), bu yüzden
 # birinin altına gömülmesi bağımlılığı ters çevirirdi. Grup N ilan edildi.
 backend/src/ozellik/odeme/ :: N · abonelik, tahsilat, erişim kararı.
+# YENİ ALAN (09.09.2026, FAZ 4) — bilinçli açılış, gerekçesi bu satırdır.
+# `Firma` KİRACIDIR (tenant): teklif, kütüphane ve abonelik süzgeçlerinin
+# tamamı `Firma.id`ye bağlı. Profili ÜÇ ayrı alan okur — N fatura kimliğini
+# (vergiNo/vergiDairesi/faturaAdresi), F antet bilgisini (unvan/logo/telefon),
+# L ise `/auth/me` beslemesini. Birinin altına gömmek bağımlılığı ters
+# çevirirdi: N'e koyarsak çıktı ödemeye, F'ye koyarsak fatura çıktıya bağlanır.
+# Aynı gerekçe 28.08'de N için de kullanılmıştı.
+backend/src/ozellik/firma/ :: O · firma (kiracı) profili — fatura kimliği, antet bilgisi, logo.
 backend/src/ozellik/teklif/ :: M · teklif yaşam döngüsü.
 backend/src/app.module.ts :: NestJS kök modülü — `src` kökünde kalmak ZORUNDA (RAPOR §6.2).
 backend/src/bootstrap.controller.ts :: İçeriği kütüphane değil güvenlik; kökte kaldı (RAPOR §6.7).

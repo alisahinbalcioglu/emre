@@ -101,6 +101,37 @@ export class AuthService {
         // besleme noktasıdır (login yanıtı bunu taşımaz) — alan burada
         // dönmezse şerit hiçbir zaman görünmez.
         emailVerified: true,
+        // FAZ 4.1 — KİŞİ alanları. Profil ekranı bunları gösterip düzenler.
+        ad: true,
+        soyad: true,
+        telefon: true,
+        firmaRol: true,
+        // FAZ 4.1 — FİRMA. ⚠ Ölçüldü: ön yüz bugüne kadar firma bilgisini HİÇ
+        // göremiyordu; `/auth/me` yalnız `firmaId` dönüyordu ve `/abonelik/durum`
+        // firma KİMLİĞİ taşımıyordu. Yani profil sayfası firmanın adını bile
+        // yazamıyordu. Düzenlenebilir alan koymadan önce GÖSTERİLECEK değer olmalı.
+        //
+        // ⚠ `logoBytes` BURADA YOK ve olmamalı: Prisma `Bytes`i Buffer döndürür,
+        // JSON'da base64'e çevrilir — logoyu bu yanıta koymak HER sayfa açılışında
+        // binary taşırdı. Varlığı `logoMime` ile bildirilir, içeriği ayrı uçtan
+        // (`GET /firma/logo`) gelir.
+        firma: {
+          select: {
+            id: true,
+            ad: true,
+            unvan: true,
+            yetkiliEposta: true,
+            faturaEposta: true,
+            vergiNo: true,
+            vergiDairesi: true,
+            tcKimlikNo: true,
+            faturaAdresi: true,
+            il: true,
+            ilce: true,
+            telefon: true,
+            logoMime: true,
+          },
+        },
       },
     });
     if (!user) return null;
@@ -121,7 +152,41 @@ export class AuthService {
       ? await this.erisim.karar(user.firmaId)
       : null;
 
-    return { ...user, capabilities, subscriptions, erisim };
+    // `logoVar`: on yuz logoyu ancak varsa cekmeli. Ikili veri bu yanitta YOK.
+    const firma = user.firma
+      ? { ...user.firma, logoVar: Boolean(user.firma.logoMime) }
+      : null;
+
+    return { ...user, firma, capabilities, subscriptions, erisim };
+  }
+
+  /**
+   * FAZ 4.1 — kullanicinin KENDI kisi bilgileri.
+   *
+   * ⚠ NEDEN AYRI BIR UC (firma ucundan bagimsiz): `ad/soyad/telefon` `User`a,
+   * fatura alanlari `Firma`ya aittir. Tek uca yigmak, `firmaRol` kapisini
+   * (yalniz `sahip` firmayi duzenler) kisi bilgilerine de dayatirdi — oysa
+   * herkes KENDI adini degistirebilmeli.
+   *
+   * PATCH semantigi: govdede olmayan alana dokunulmaz, bos string TEMIZLER.
+   */
+  async profilGuncelle(
+    userId: string,
+    dto: { ad?: string; soyad?: string; telefon?: string },
+  ) {
+    const veri: Record<string, string | null> = {};
+    for (const alan of ['ad', 'soyad', 'telefon'] as const) {
+      const deger = dto[alan];
+      if (deger === undefined) continue;
+      const kirpik = deger.trim();
+      veri[alan] = kirpik === '' ? null : kirpik;
+    }
+    if (Object.keys(veri).length > 0) {
+      await this.prisma.user.update({ where: { id: userId }, data: veri });
+    }
+    // Tek besleme noktasi /auth/me oldugu icin GUNCEL tam sekli doneriz —
+    // on yuz ikinci bir istek atmak zorunda kalmasin.
+    return this.me(userId);
   }
 
   /**

@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { CreateQuoteDto } from './dto/create-quote.dto';
+import { TekliflerSorgusuDto } from './dto/teklifler-sorgusu.dto';
 import { Kimlik } from '../../../altyapi/auth/kimlik';
 import * as XLSX from 'xlsx';
 import * as ExcelJS from 'exceljs';
@@ -384,22 +385,70 @@ export class QuotesService {
     });
   }
 
-  async findAll(k: Kimlik) {
-    return this.prisma.quote.findMany({
-      where: { firmaId: k.firmaId },
-      include: {
-        // ⚠ LISTE UCU: yalniz toplam hesabi icin kalem gerekir.
-        // Tuketiciler OLCULDU — hicbiri marka/firma OKUMUYOR:
-        //   quotes/page.tsx:32-33  -> items.reduce(finalPrice)  (tip: {id, finalPrice})
-        //   profile/page.tsx:71-75 -> yalniz dizi UZUNLUGU
-        // brand+laborFirma include etmek DWG tekliflerinde teklif basina
-        // 1474 kaleme kadar gereksiz JOIN + nesne tasiyordu. Detay ve kayit
-        // yanitlarinda (findOne/create) iliskiler DURUYOR.
-        items: { select: { id: true, finalPrice: true } },
-        _count: { select: { items: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+  /**
+   * TEKLIF LISTESI (FAZ 4.6 — durum suzgeci + sunucu tarafi arama/sayfalama).
+   *
+   * ⭐ `include` -> `select` DEGISIMI BU TURUN EN BUYUK TEK KAZANCI.
+   * Olculdu (tip sistemiyle, tahminle degil): `include` Prisma'da SKALERLERI
+   * KISITLAMAZ — yalniz `select` kisitlar. Yani bu uc bugune kadar HER
+   * teklifle birlikte `sheets` (tum cok-sayfali grid JSON) ve `originalFile`
+   * (ham .xlsx BYTEA) donduruyordu. Buffer JSON'a
+   * `{"type":"Buffer","data":[137,80,...]}` seklinde, bayt basina sayi+virgul
+   * olarak serilesir (~4 kat sisme). Dashboard'daki "son 3 teklif" bileseni
+   * bu yuzden BUTUN tekliflerin ham dosyalarini indirip 3'unu gosteriyordu.
+   *
+   * ⚠ `select`e gecerken TUKETICININ OKUDUGU HER ALAN listelenmelidir; eksik
+   * birakilan alan `undefined` doner ve sayfa SESSIZCE bozulur. Tuketiciler
+   * tek tek okundu:
+   *   quotes/page.tsx      -> id, title, createdAt, _count.items, items[].finalPrice
+   *   RecentQuotes.tsx     -> id, title, createdAt, _count.items (+ olmayan totalAmount)
+   *   profile/page.tsx:130 -> yalniz dizi UZUNLUGU
+   *
+   * ⚠ DONUS SEKLI DIZI KALIR (bkz. controller notu). Toplam sayi ayri baslikta.
+   */
+  async findAll(k: Kimlik, sorgu: TekliflerSorgusuDto = {}) {
+    const where: any = { firmaId: k.firmaId };
+    if (sorgu.durum) where.durum = sorgu.durum;
+    const arama = sorgu.arama?.trim();
+    if (arama) {
+      where.OR = [
+        { title: { contains: arama, mode: 'insensitive' } },
+        { musteri: { contains: arama, mode: 'insensitive' } },
+        { proje: { contains: arama, mode: 'insensitive' } },
+        { quoteNo: { contains: arama, mode: 'insensitive' } },
+      ];
+    }
+    const adet = sorgu.adet ?? 100;
+    const sayfa = sorgu.sayfa ?? 1;
+
+    const [kayitlar, toplam] = await Promise.all([
+      this.prisma.quote.findMany({
+        where,
+        select: {
+          id: true,
+          title: true,
+          createdAt: true,
+          updatedAt: true,
+          durum: true,
+          quoteNo: true,
+          rev: true,
+          musteri: true,
+          proje: true,
+          displayCurrency: true,
+          // Toplam tutar ON YUZDE bu diziden hesaplanir (quotes/page.tsx
+          // `calculateTotal`). Sunucudan ayrica bir `toplamTutar` alani
+          // DONDURULMEDI: ayni sayi icin iki kaynak, bu depoda tekrarlayan
+          // bir hata sinifi ("ikiz kaynak") olurdu.
+          items: { select: { id: true, finalPrice: true } },
+          _count: { select: { items: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (sayfa - 1) * adet,
+        take: adet,
+      }),
+      this.prisma.quote.count({ where }),
+    ]);
+    return { kayitlar, toplam };
   }
 
   async findOne(k: Kimlik, id: string) {
@@ -430,7 +479,7 @@ export class QuotesService {
   async updateInfo(k: Kimlik, id: string, dto: {
     musteri?: string; proje?: string; hazirlayan?: string; gecerlilik?: string; formatId?: string | null;
     displayCurrency?: string; displayRate?: number | null; displayRateDate?: string | null;
-    displayLanguage?: string;
+    displayLanguage?: string; durum?: string;
   }) {
     const quote = await this.prisma.quote.findFirst({ where: { id, firmaId: k.firmaId } });
     if (!quote) throw new NotFoundException('Quote not found');
@@ -458,8 +507,21 @@ export class QuotesService {
         // 13.08: dil de kalici — beyaz liste disi deger DOKUNMAZ (kismi PATCH).
         displayLanguage: ['tr', 'en'].includes(dto.displayLanguage ?? '')
           ? dto.displayLanguage : undefined,
+        // FAZ 4.6 — SATIS DURUMU.
+        // ⚠ BEYAZ LISTE SERVISTE, ELLE: bu ucun govdesi controller'da SATIR-ICI
+        // TIP LITERALIYLE aliniyor, yani global ValidationPipe DEVREYE GIRMEZ
+        // (metatype `Object` olur ve pipe susar — bu depoda olculmus bir kusur).
+        // `displayCurrency`/`displayLanguage` ayni sebeple burada suzuluyor;
+        // ayni deseni izliyoruz. Beyaz liste disi deger DOKUNMAZ (kismi PATCH),
+        // yani gecersiz bir durum gonderilirse alan degismeden kalir — Prisma
+        // enum hatasiyla 500 dondurmez.
+        durum: ['HAZIRLANIYOR', 'GONDERILDI', 'KAZANILDI', 'KAYBEDILDI'].includes(dto.durum ?? '')
+          ? dto.durum : undefined,
       } as any,
-      select: { id: true, musteri: true, proje: true, hazirlayan: true, gecerlilik: true, formatId: true, displayCurrency: true, displayLanguage: true } as any,
+      // ⚠ `durum` BURAYA DA EKLENMELI: `select` dar oldugu icin, data'ya yazip
+      // select'e eklemeyi unutmak "yazildi ama yanitta yok" durumu uretir ve
+      // on yuz eski degeri gostermeye devam eder.
+      select: { id: true, musteri: true, proje: true, hazirlayan: true, gecerlilik: true, formatId: true, displayCurrency: true, displayLanguage: true, durum: true } as any,
     });
   }
 
@@ -673,8 +735,14 @@ export class QuotesService {
     dil = this.exportDili(quote, dil); // bayat istemci korumasi (bkz. exportDili)
     const ceviriOzeti = await this.sheetleriCevir(sheetsArr, dil);
     const birim = await this.exportBirimi(quote); // PANO 18/EX6: ekrandaki birim
-    const baslikParcalari = [quote.title, (quote as any).customerName, (quote as any).projectName]
-      .map((x: any) => String(x ?? '').trim()).filter(Boolean);
+    // ⚠ OLU KOD ONARIMI (08.09 olcumu): burasi `customerName` ve `projectName`
+    // okuyordu — bu adlar Prisma semasinda, backend'de ve on yuzde BASKA
+    // HICBIR YERDE gecmiyor (gercek alanlar `musteri` ve `proje`). `as any`
+    // cast'i tsc'yi susturdugu icin kimse gormedi ve sonuc su oldu: bu basliga
+    // musteri/proje adi HIC girmiyordu, baslik daima yalniz `title`di.
+    // Cast KALDIRILDI — bir daha olmayan bir alan okunursa derleme patlar.
+    const baslikParcalari = [quote.title, quote.musteri, quote.proje]
+      .map((x) => String(x ?? '').trim()).filter(Boolean);
     const sonuc = await standartCiktiUret({
       sheetsArr,
       birim,

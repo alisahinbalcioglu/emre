@@ -8,6 +8,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
 import { QuotesService } from './quotes.service';
 import { CreateQuoteDto } from './dto/create-quote.dto';
+import { TekliflerSorgusuDto } from './dto/teklifler-sorgusu.dto';
 import { JwtAuthGuard } from '../../../altyapi/auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../../altyapi/auth/decorators/current-user.decorator';
 import { kimlikCoz } from '../../../altyapi/auth/kimlik';
@@ -53,9 +54,26 @@ export class QuotesController {
     return this.quotesService.create(kimlikCoz(user), dto, id);
   }
 
+  /**
+   * FAZ 4.6 — durum suzgeci + arama + sayfalama.
+   *
+   * ⚠ DONUS SEKLI DUZ DIZI KALDI. `{veri, toplam}` sekline gecmek
+   * `quotes/page.tsx:142`teki `quotes.map` ve `RecentQuotes.tsx:61`deki
+   * `quotes.slice` cagrilarini RENDER SIRASINDA patlatirdi; fetch'in
+   * try/catch'i render hatasini YAKALAMAZ ve bu rota altinda error boundary
+   * YOK — kullanici kirmizi hata degil BOS SAYFA gorurdu. Ayni karar Faz
+   * 2'de admin listesinde de verilmisti. Toplam sayi ayri baslikta:
+   * `X-Toplam-Kayit` (admin.controller.ts:53-59 ile birebir ayni desen).
+   */
   @Get()
-  findAll(@CurrentUser() user: any) {
-    return this.quotesService.findAll(kimlikCoz(user));
+  async findAll(
+    @CurrentUser() user: any,
+    @Query() sorgu: TekliflerSorgusuDto,
+    @Res({ passthrough: true }) yanit: Response,
+  ) {
+    const { kayitlar, toplam } = await this.quotesService.findAll(kimlikCoz(user), sorgu);
+    yanit.setHeader('X-Toplam-Kayit', String(toplam));
+    return kayitlar;
   }
 
   // NOT (Bulgu Raporu 21.07): eski GET :id/pdf ve GET :id/excel rotalari

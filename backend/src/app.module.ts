@@ -21,6 +21,7 @@ import { DwgEngineModule } from './modules/dwg-engine/dwg-engine.module';
 import { ExchangeRatesModule } from './ozellik/fiyat/exchange-rates/exchange-rates.module';
 import { QuoteFormatsModule } from './ozellik/cikti/quote-formats/quote-formats.module';
 import { OdemeModule } from './ozellik/odeme/odeme.module';
+import { FirmaModule } from './ozellik/firma/firma.module';
 
 @Module({
   imports: [
@@ -59,6 +60,7 @@ import { OdemeModule } from './ozellik/odeme/odeme.module';
     ExchangeRatesModule,
     QuoteFormatsModule,
     OdemeModule,
+    FirmaModule,
   ],
   controllers: [HealthController, BootstrapController],
 })

@@ -336,7 +336,12 @@ export class SatinAlmaServisi {
     // e-fatura entegrasyonundan geldiyse ustune YAZILMAZ.
     const firma = await this.prisma.firma.findUnique({
       where: { id: p.firmaId },
-      select: { unvan: true, yetkiliEposta: true, faturaAdresi: true, il: true },
+      select: {
+        unvan: true, yetkiliEposta: true, faturaAdresi: true, il: true,
+        // FAZ 4.1: yeni alan — asagidaki `??` icin mevcut deger okunmali,
+        // yoksa her satin alma kullanicinin profilden girdigi telefonu EZERDI.
+        telefon: true,
+      },
     });
     await this.prisma.firma.update({
       where: { id: p.firmaId },
@@ -345,6 +350,24 @@ export class SatinAlmaServisi {
         yetkiliEposta: firma?.yetkiliEposta ?? p.musteri.eposta,
         faturaAdresi: firma?.faturaAdresi ?? p.musteri.adres,
         il: firma?.il ?? p.musteri.sehir,
+        // ── FAZ 4.1 (08.09 olcumu): TELEFON ARTIK ATILMIYOR ──────────────
+        // Telefon `ZORUNLU_MUSTERI_ALANLARI` icinde, yani her satin almada
+        // musteriden ISTENIYOR ve iyzico'ya gonderiliyordu — ama `Firma`da
+        // alan olmadigi icin DB'ye hic yazilmiyordu. Sonuc: odeme formu her
+        // seferinde sifirdan doldurtuluyordu ve on yuz bunu iki ayri yerde
+        // gerekce olarak yazmisti ("`Firma` semasinda telefon alani hic yok",
+        // abonelik/page.tsx:74 ve :113). Alan eklendi, `??` semantigi KORUNDU:
+        // kullanici profilden girdiyse odeme akisi ustune YAZMAZ.
+        //
+        // ⚠ HAM YAZILIYOR, `telefonuNormalize` UYGULANMIYOR — bilincli.
+        // O fonksiyon iyzico'nun TEL BICIMI icindir (`+905330983663`) ve
+        // yalniz gonderim aninda, `gsmNumber` alaninda uygulanir (:385).
+        // `Firma.telefon` ise bir GORUNUM alanidir: faturada ve teklif
+        // antedinde basilir, ayrica profil formundan serbest metin olarak
+        // duzenlenebilir. Buraya tel bicimini yazmak antette
+        // "+905330983663" gosterirdi ve ayni kolonda iki bicim olusurdu
+        // (odemeden gelen normalize, formdan gelen ham).
+        telefon: firma?.telefon ?? p.musteri.telefon,
       },
     });
 

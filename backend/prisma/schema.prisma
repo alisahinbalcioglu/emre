@@ -70,6 +70,31 @@ model Firma {
   faturaAdresi  String?
   il            String?
   ilce          String?
+  /// FAZ 4.1 — plan listesindeki TEK gercekten eksik fatura alani (olculdu:
+  /// digerlerinin 6/8'i 28.08'den beri vardi). Telefon HER satin almada
+  /// musteriden ZORUNLU olarak aliniyor (ZORUNLU_MUSTERI_ALANLARI,
+  /// satinalma.servisi.ts:120), iyzico'ya gonderiliyor ve DB'ye HIC
+  /// yazilmadan atiliyordu — bu yuzden odeme formu her seferinde sifirdan
+  /// doldurtuluyordu (on yuz bunu iki ayri yerde gerekce olarak yaziyor:
+  /// abonelik/page.tsx:74 ve :113).
+  telefon       String?
+
+  // ── FAZ 4.3 — FIRMA LOGOSU (teklif ciktisi anteti icin) ───────────────
+  // ⚠ NEDEN DISK DEGIL `Bytes`: backend servisinin docker-compose'da HIC
+  // `volumes:` anahtari YOK (olculdu). Diske yazan bir cozum YERELDE calisir,
+  // canlida her deploy'da SESSIZCE kaybolur — kullanici logosunu her surumde
+  // yeniden yukler ve kimse fark etmez. Depodaki TEK calisan kalici dosya
+  // deseni PostgreSQL `Bytes`'tir (QuoteFormat.fileBytes) ve o desen izleniyor.
+  //
+  // ⚠ MIME AYRI SAKLANIR: dosya adindan tahmin edilmez. Servis ucu
+  // (`GET /firma/logo`) Content-Type'i buradan okur — quote-formats.controller
+  // deseninin ayni.
+  //
+  // ⚠ Bu alanlar JSON yanitina KOYULMAZ: Prisma `Bytes`i Buffer dondurur ve
+  // JSON'da base64'e cevrilir; `/auth/me` ya da `GET /firma` icine konursa her
+  // sayfa acilisinda logo binary'si tasinir. Ikili veri AYRI uctan servis edilir.
+  logoBytes Bytes?
+  logoMime  String?
 
   abonelik Abonelik?
 }
@@ -108,6 +133,18 @@ model User {
   /// imzalanmis (calinmis olabilecek) token'lar reddedilir — durumsuz JWT'de
   /// parola degisiminin eski oturumlari oldurmesinin tek yolu budur.
   passwordChangedAt        DateTime?
+  /// FAZ 4.1 — KISI alanlari. Hepsi OPSIYONEL: zorunlu yapmak mevcut kayit
+  /// akisini kirardi (RegisterDto bugun yalniz email+password aliyor) ve
+  /// Firma'nin butun fatura alanlarinin nullable olmasiyla ayni gerekce —
+  /// kayit surtunmesi yaratmadan, profil ekraninda sonradan doldurulur.
+  ///
+  /// ⚠ `unvan` BILEREK YOK: `Firma.unvan` zaten RESMI FIRMA UNVANI. Ayni adi
+  /// User'da "kisi gorev unvani" anlaminda kullanmak, iki farkli seyi tek
+  /// isimle adlandirmak olurdu (bu depoda `firmaId`'nin iki farkli seye
+  /// isaret etmesi tam olarak boyle bir karisiklik uretiyor).
+  ad                       String?
+  soyad                    String?
+  telefon                  String?
   library                  UserLibrary[]
   brandLibraries           UserBrandLibrary[]
   libraryLists             LibraryList[]
@@ -582,6 +619,12 @@ model Quote {
   originalFile Bytes? // Orijinal Excel dosya binary'si — indirirken fiyatlar uzerine yazilir
   originalName String? // Orijinal dosya adi (orn. "SAHINKUL KESIF OZETI.xlsx")
   createdAt    DateTime    @default(now())
+  /// FAZ 4.5 — teklifin ne zaman revize edildigi hicbir yerde yoktu; liste
+  /// siralamasi `createdAt`e mahkumdu. "Ayni teklifin 3-4 revizyonu normaldir"
+  /// senaryosunda son dokunulani gormek sart.
+  /// @default(now()) mevcut satirlar icin gerekli (aksi halde NOT NULL kolon
+  /// eklenemez); yeni yazmalarda Prisma @updatedAt'i kendisi gunceller.
+  updatedAt    DateTime    @default(now()) @updatedAt
   items        QuoteItem[]
 
   // ── PRD Teklif Formatim (v2.1) ────────────────────────────────────
@@ -602,10 +645,26 @@ model Quote {
   // Ingilizce ama basliklari/birimleri TURKCE bir dosya gidiyordu.
   displayLanguage String        @default("tr")
   // Teklif bilgileri (kapak yer tutuculari — teklif ekraninda girilir)
+  // ⚠ OLCULDU (08.09): sema + yazan uc (PATCH /quotes/:id/info) + okuyan
+  // export motoru ({{MUSTERI}} {{PROJE}} {{HAZIRLAYAN}} {{GECERLILIK}}) UCU DE
+  // calisiyordu, ama bu dort kutu 06.08'de `d0dc27d` ile EKRANDAN KALDIRILMIS
+  // ve geri konmamisti — yani sutunlar pratikte DAIMA null'di. "Mekanizma var,
+  // cagiran yok" tuzaginin bu depodaki yedinci ornegi. Ingilizce adli
+  // (customerName/projectName) IKIZ SUTUN ACMAYIN: quotes.service.ts'te o
+  // adlari okuyan olu bir satir vardi, ikiz sutun onu canlandirip ayni bilgi
+  // icin iki kismi dolu kaynak uretirdi.
   musteri         String?
   proje           String?
   hazirlayan      String?
   gecerlilik      String?
+  /// FAZ 4.5/4.6 — SATIS DURUMU. Planin teklif alanlari listesindeki TEK
+  /// gercekten eksik olan sey (digerlerinin 5/6'si zaten vardi).
+  ///
+  /// ⚠ DEGER ADI `TASLAK` DEGIL `HAZIRLANIYOR`: bu depoda `taslak` ZATEN
+  /// baska bir sey demek — sessionStorage'da tutulan YARIM DUZENLEME
+  /// (frontend/ozellik/teklif/taslak.ts, TASLAK_ANAHTARI). Ayni kelimeyi
+  /// satis durumu icin de kullanmak iki kavrami karistirirdi.
+  durum           TeklifDurumu  @default(HAZIRLANIYOR)
   // Secili format (null = kullanicinin varsayilani, o da yoksa yerlesik sade)
   format          QuoteFormat?  @relation(fields: [formatId], references: [id], onDelete: SetNull)
   formatId        String?
@@ -619,6 +678,22 @@ model Quote {
   @@index([userId])
   @@index([userId, createdAt])
   @@index([firmaId])
+  /// ⚠ ustteki yorum BAYAT ve indeks YANLIS KOLONDA. `findAll` firma gocunden
+  /// (`f45fd2f`) beri `where: { firmaId }` + `orderBy: { createdAt }` kosuyor;
+  /// yani en sik sorgu artik kullanici-basina DEGIL FIRMA-basina. Bilesik
+  /// indeks `[userId, createdAt]` bu sorguya HIC yardim etmiyordu — tek
+  /// kolonlu `[firmaId]` bulunuyor, siralama sonra bellekte yapiliyordu.
+  /// Durum suzgeci de ayni sorguya bindigi icin dogru bilesik indeks bu:
+  @@index([firmaId, createdAt])
+}
+
+/// TEKLIF SATIS DURUMU (FAZ 4.6). Enum degerleri UPPER_SNAKE + Turkce —
+/// AbonelikDurumu/FaturaDurumu/HavaleDurumu ile ayni dil.
+enum TeklifDurumu {
+  HAZIRLANIYOR // varsayilan; teklif uzerinde calisiliyor (bkz. `taslak` carpisma notu)
+  GONDERILDI // musteriye iletildi, cevap bekleniyor
+  KAZANILDI // is alindi
+  KAYBEDILDI // is baska firmaya gitti / iptal
 }
 
 // PRD Teklif Formatim: kullanicinin KENDI teklif sablonu (.xlsx —

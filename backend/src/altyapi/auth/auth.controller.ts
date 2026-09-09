@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, HttpCode, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Body, HttpCode, UseGuards } from '@nestjs/common';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { ParolaServisi } from './parola.servisi';
@@ -9,6 +9,7 @@ import { ParolaSifirlamaIsteDto } from './dto/parola-sifirlama-iste.dto';
 import { ParolaSifirlaDto } from './dto/parola-sifirla.dto';
 import { ParolaDegistirDto } from './dto/parola-degistir.dto';
 import { EpostaDogrulaDto } from './dto/eposta-dogrula.dto';
+import { ProfilGuncelleDto } from './dto/profil-guncelle.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { EpostaHizSiniriGuard } from './guards/eposta-hiz-siniri.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
@@ -42,6 +43,23 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   me(@CurrentUser() user: any) {
     return this.authService.me(user.id);
+  }
+
+  // ── FAZ 4.1 · KİŞİ BİLGİLERİ ──────────────────────────────────────────
+  // Ad/soyad/telefon `User`a ait; fatura alanları `Firma`ya (PATCH /firma).
+  // Ayrı tutulmalarının nedeni yetki: firmayı yalnız `sahip` düzenler ama
+  // herkes KENDİ adını değiştirebilmeli.
+  //
+  // Hız sınırı: profil güncelleme ucuz ama sınırsız değil — sınıf düzeyindeki
+  // genel tavan (60/dk) yeterli, ayrıca dar bir @Throttle GEREKMEZ; bu uç bir
+  // deneme-yanılma yüzeyi değil (kimlik doğrulaması zaten şart).
+  @UseGuards(JwtAuthGuard)
+  @Patch('profil')
+  profilGuncelle(
+    @CurrentUser() user: { id: string },
+    @Body() dto: ProfilGuncelleDto,
+  ) {
+    return this.authService.profilGuncelle(user.id, dto);
   }
 
   // ── FAZ 3.3 · PAROLA SIFIRLAMA ────────────────────────────────────────

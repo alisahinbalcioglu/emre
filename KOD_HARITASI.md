@@ -705,7 +705,7 @@ Karıştırılmasın diye ayrı duruyor.
 | `frontend/ortak/lib/api.ts` | JWT ekleyen merkezi HTTP istemcisi. 401'de oturumu temizleyip girişe yönlendirir — **ancak yalnız korumalı uçlar için**: `/auth/login` ve `/auth/register` 401'i "yanlış şifre" demektir, "oturum düştü" değil; o 401 çağırana reject edilir ki giriş formu kendi hatasını gösterebilsin (04.08). `/auth/me` listede DEĞİLDİR, oradan gelen 401 gerçek oturum düşmesidir |
 | `frontend/ortak/lib/utils.ts` | Tailwind sınıf birleştirme (cn) + sayı biçimleme yardımcıları |
 
-### L · ÇEKİRDEK BACKEND ALTYAPISI — 32 dosya
+### L · ÇEKİRDEK BACKEND ALTYAPISI — 33 dosya
 
 | Dosya | Ne yapıyor |
 |---|---|
@@ -724,6 +724,7 @@ Karıştırılmasın diye ayrı duruyor.
 | `backend/src/altyapi/auth/dto/parola-sifirla.dto.ts` | `POST /auth/reset-password` govdesi: token + yeni parola (min 8, max 72 — bcrypt 72 bayttan sonrasini SESSIZCE yok sayar). Turkce mesajlar |
 | `backend/src/altyapi/auth/dto/parola-degistir.dto.ts` | `POST /auth/change-password` govdesi: mevcut + yeni parola. Turkce mesajlar |
 | `backend/src/altyapi/auth/dto/eposta-dogrula.dto.ts` | `POST /auth/verify-email` govdesi: dogrulama token'i. Turkce mesajlar |
+| `backend/src/altyapi/auth/dto/profil-guncelle.dto.ts` | `PATCH /auth/profil` gövdesi: kullanıcının KENDİ kişi alanları (ad/soyad/telefon). ⚠ `email` BİLEREK DIŞARIDA — adres değişimi kimliğin kendisini değiştirir ve doğrulama zinciri gerektirir; `whitelist:true` sayesinde gövdeye konsa bile sessizce atılır, yani bu uç üzerinden hesap devralma yolu yok |
 | `backend/src/altyapi/auth/kimlik.ts` | Istek sahibinden {userId, firmaId} kimligini cozer; firmasi olmayan hesabi 403 ile GURULTULU durdurur — Prisma'da `firmaId: undefined` kosulu SESSIZCE dusurur (butun firmalarin teklifleri gorunurdu), `null` ise atanmamis TUM satirlari dondururdu. firmaId = suzgec (ne gorurum), userId = yazar (kim olusturdu) |
 | `backend/src/altyapi/auth/jwt-secret.ts` | Token imza anahtarını ortamdan okur; **yedek değer yoktur** — tanımsızsa uygulama açılışta (modül yüklenirken) açıklayıcı hatayla ölür (KL P1-a, kalem 63) |
 | `backend/src/altyapi/auth/token-ozet.ts` | Tek kullanimlik token uretimi ve **SHA-256 OZETLEME** (Faz 3.3/3.4). ⚠ Token DB'ye DUZ METIN yazilmaz: sizan bir dokumde duz metin sifirlama token'i DOGRUDAN hesap devralma demektir (bu deponun dis yedekleri 07.09'a kadar duz metin cikiyordu). bcrypt DEGIL sha256 — token 256 bit rastgele oldugu icin yavaslatmanin kazanci yok, buna karsilik deterministik ozet `tokenHash` uzerinde @unique indeks ve TEK sorguluk dogrulama saglar. `base64url` sart: token URL sorgu parcasinda tasinir, duz base64'un `+ / =` karakterleri e-posta istemcilerinde baglantiyi bolerdi. Omurler: sifirlama 1 saat, dogrulama 24 saat |
@@ -752,7 +753,7 @@ Karıştırılmasın diye ayrı duruyor.
 | `backend/src/ozellik/cikti/quote-formats/quote-formats.module.ts` | Format servis ve controller'ini NestJS'e kablolar, servisi disa acar |
 | `backend/src/ozellik/teklif/quotes/quotes.module.ts` | Quotes servis/controller'i AI, Prisma ve kur modulleriyle NestJS'e kablolar |
 
-### M · TEKLİF YAŞAM DÖNGÜSÜ — 11 dosya
+### M · TEKLİF YAŞAM DÖNGÜSÜ — 12 dosya
 
 | Dosya | Ne yapıyor |
 |---|---|
@@ -764,6 +765,7 @@ Karıştırılmasın diye ayrı duruyor.
 | `frontend/ozellik/teklif/fiyatsiz-kalem-uyarisi.ts` | Kaydedilecek kalemlerden teklife 0 ₺ ile girecek olanlari sayar ve onay cumlesini kurar (saf, DOM'suz). Olcut SEBEBE degil SONUCA bakar: capsizlik en sik sebep, tek sebep degil (markasi eslesmemis satir da ayni sonucu dogurur). Uyari BLOKLAMAZ — kullanici bilerek fiyatsiz kaydedebilir |
 | `backend/src/ozellik/teklif/quotes/dto/create-quote.dto.ts` | Teklif olusturma isteginin kalem alanlarini, sheet yukunu ve orijinal dosya base64'unu dogrular |
 | `backend/src/ozellik/teklif/quotes/quotes.controller.ts` | Teklif CRUD, Excel parse ve export/arsiv rotalarini JWT korumali HTTP uclarina baglar; export hatalarini 500'e dusurmeden sarar |
+| `backend/src/ozellik/teklif/quotes/dto/teklifler-sorgusu.dto.ts` | `GET /quotes` sorgu DTO'su (FAZ 4.6): `arama`, `durum`, `sayfa`, `adet`. ⚠ Alan adı `adet` — `limit` DEĞİL: `RecentQuotes.tsx:22` bugüne kadar `limit: 3` gönderiyordu ama backend hiç `@Query` almadığı için parametre SESSİZCE düşüyordu ve bileşen `.slice(0,3)` ile telafi ediyordu (yani dashboard 3 teklif göstermek için TÜM teklifleri ham .xlsx binary'siyle indiriyordu). Ad admin DTO'suyla aynı dilde seçildi ve çağıran AYNI turda güncellendi — yoksa parametre bu sefer ad uyuşmazlığından düşerdi |
 | `backend/src/ozellik/teklif/quotes/quotes.service.ts` | Teklif kaydi/listeleme/silme/kismi bilgi guncelleme yapar; format cozumleyip export motorunu cagirir ve revizyon arsivler |
 | `frontend/app/(protected)/quotes/[id]/page.tsx` | Kayitli teklifi grid'le goruntuler, para birimi secimini teklife kalici yazar, cikti indirme baslatir |
 | `frontend/app/(protected)/quotes/page.tsx` | Kullanicinin tekliflerini tabloda listeler; toplami hesaplar, detaya goturur, onayla siler |
@@ -829,6 +831,30 @@ Karıştırılmasın diye ayrı duruyor.
 | `frontend/ozellik/odeme/abonelik-ozeti.test.ts` | Saf ozet mantigi + **BAGLANTI bekcileri**: iptal dugmesinin `/abonelik` sayfasindan KALKTIGI · o sayfanin erisim kapisi TASIMAMAYA devam ettigi (askidaki firma odeyebilsin) · profilin `abonelikOzeti(erisim)` okudugu (eski tablo DEGIL) · iptal baginin acilir bolumun ICINDE oldugu · onay istedigi. ⚠ Bir assert ilk yazimda YORUMDAKI ayni ifadeyi yakaliyordu; gercek dugmeye (`onClick={iptalEt}`) daraltildi | 03.09 — mutasyon 7/7 |
 | `frontend/ozellik/odeme/ozellik-kapisi.test.ts` | Saf kapi mantigi + **BAGLANTI bekcileri**: QuickStart Excel kutusunun tiklama/surukleme/gizli-input UCUNUN de kapali oldugu · ExcelGrid'de `_iscKar` ve iscilik birim/toplam kolonlarinin `editable=false` yapildigi (yapistirma `:2101` ve doldurma tutamagi `:2180` ayni bayraga baktigi icin uc yol TEK kaldiracla kapanir) · soluk boyamanin EN SONDA uygulandigi (onceki `cellStyle` dallari ezmesin) · `laborEnabled`in kolon `useMemo` bagimliliginda oldugu (yoksa yetenek gelince kolonlar eski halinde kalir). Bugun BES kez "mekanizma var, baglanti yok" kusuru cikti — bu blok onun bekcisi | 03.09 — mutasyon 8/8 |
 | `frontend/ozellik/odeme/dwg-kapisi.test.ts` | Kapi mantigi + **GIRIS NOKTALARI BAGLI MI** blogu. Kusur mantik degil BAGLANTI eksikligiydi; saf fonksiyonu test etmek onu YAKALAMAZ. QuickStart ve `/dwg-workspace` kaynaklarindan tiklama kosulu, `disabled` secici ve render dali okunur. ⚠ Ilk yazimda `toContain('sonuk')` kullanilmisti ve M5 mutasyonu HAYATTA KALDI — kelime dosyanin YORUMUNDA da geciyor; assert dal ifadesinin kendisine (`dwgDurum === 'sonuk'`) cevrildi. | 02.09 — mutasyon 6/6 |
+
+### O · FİRMA (KİRACI) PROFİLİ — 4 dosya
+
+> **Faz 4'te (09.09.2026) açılan grup.** Gerekçe `klasor-duzeni.txt`teki ilan
+> satırıyla aynı: `Firma` kiracıdır ve profilini ÜÇ ayrı alan okur — N fatura
+> kimliğini, F antet bilgisini, L `/auth/me` beslemesini. Birinin altına
+> gömmek bağımlılığı ters çevirirdi.
+>
+> ⚠ **Planın öncülü çürüktü.** Plan "ayrı bir Company modeli oluştur + mevcut
+> kayıtları taşı" diyordu; ölçüm gösterdi ki `Firma` modeli 28.08'den beri VAR
+> (12 alan) ve backfill 28-29.08'de zaten koştu (canlıda ölçüldü: firmasız
+> kullanıcı = 0). Yeni model açmak tenant'ı İKİZLERDİ. Gerçek boşluk şemada
+> değil YOLDAYDI: bütün backend'de `prisma.firma.update` TEK yerde
+> (`satinalma.servisi.ts:341`) ve orada yalnız dört alan doluyordu —
+> `vergiNo`, `vergiDairesi`, `tcKimlikNo`, `ilce`, `faturaEposta` fatura
+> servisi tarafından OKUNUYOR ama hiçbir kod yolu YAZMIYORDU. Sonuç: her
+> kurumsal fatura vergi numarasız gidiyor ve müşteri e-postasıyla tekilleşiyordu.
+
+| Dosya | Ne yapıyor |
+|---|---|
+| `backend/src/ozellik/firma/firma.servisi.ts` | Firma profilini okur/günceller ve logoyu saklar. ⚠ **`firmaRol`ün tüm depodaki İLK OKUYUCUSU** — alan bugüne kadar yalnız `register`da yazılıyor, sıfır kez okunuyordu (ölü alan); firmayı yalnız `sahip` düzenler. Yazma semantiği `set` (satın alma akışının `??` semantiğinin TERSİ ve bilerek: kullanıcı yanlış girdiği vergi numarasını düzeltebilmeli). Logo tür denetimi iki katmanlı: MIME beyaz listesi (PNG/JPEG/WEBP — **SVG YOK**, `<script>` taşıyabilir ve aynı kökenden servis edilirse çalışır) + **magic number** doğrulaması (beyan istemcinin söylediği şeydir) |
+| `backend/src/ozellik/firma/firma.controller.ts` | `GET/PATCH /firma` + `GET/POST/DELETE /firma/logo`. ⚠ `@GerekliYetenek` BİLEREK YOK: ödemesi geciken (KISITLI) firma, ÖDEYEBİLMEK için fatura bilgisini düzeltebilmeli — kapı koymak "ödemek için düzelt, düzeltmek için önce öde" döngüsü üretirdi. ⚠ Logo ucunda `limits` YAZILI: `main.ts`teki 50mb JSON limiti multipart'ı KAPSAMAZ ve multer varsayılanı sınırsızdır; quote-formats'ın iki limitsiz yükleme ucu örnek DEĞİL, kopyalanmaması gereken kusurdur |
+| `backend/src/ozellik/firma/firma.module.ts` | Firma modülünün NestJS kablolaması. `OdemeModule` import EDİLMİYOR (ErisimGuard kullanılmıyor); `PrismaModule` global olduğu için ayrıca gerekmez |
+| `backend/src/ozellik/firma/dto/firma-guncelle.dto.ts` | `PATCH /firma` gövdesi — 11 alan. ⚠ GERÇEK BİR DTO SINIFI: `@Body()` satır-içi tip literali global `ValidationPipe`ı SESSİZCE atlar (bu depoda ödeme yolunu bir kez kırdı; `abonelik.controller.ts:57` hâlâ o desende ve KOPYALANMAMALI). ⚠ `whitelist:true` burada tanımlanmayan alanı SESSİZCE siler — şemaya alan eklemek YETMEZ, buraya da eklenmeli. Vergi no/TCKN'ye katı regex konmadı: geçerli müşteriyi fatura bilgisi giremez hâle getirirdi |
 
 ## Otomatik katman (alt katman)
 
