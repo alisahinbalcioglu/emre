@@ -39,6 +39,7 @@
  * yeni kaydolan kullanici orada CORE gorur.
  */
 
+import { Altbilgi } from '@/ortak/kabuk/components/layout/Altbilgi';
 import Link from 'next/link';
 import { Home as HomeIcon, FileText, Database, BookOpen } from 'lucide-react';
 import { GirisliyseYonlendir } from '@/ortak/kabuk/components/landing/GirisliyseYonlendir';
@@ -411,18 +412,12 @@ export default function Home() {
         </div>
       </section>
 
-      {/*
-        FOOTER — gizlilik/sartlar/iletisim baglantilari BILEREK YOK.
-        Uc sayfanin ucu de repoda mevcut degil (arandi, 0 sonuc); `href="#"`
-        tiklaninca hicbir sey yapmaz. Ayni gerekce login ekraninda "Parolami
-        unuttum"u da engelledi. Sayfalar yazildiginda baglantilar da eklenir —
-        hukuki metinlerde bos vaat, ozellik vaadinden daha agirdir.
-      */}
-      <footer className="border-t border-slate-900 bg-slate-950 py-8 text-xs text-slate-500">
-        <div className="mx-auto max-w-7xl px-6 text-center">
-          <p>© 2026 MetaPriceX. Tüm hakları saklıdır.</p>
-        </div>
-      </footer>
+      {/* FOOTER — 09.09: bağlantılar ARTIK VAR.
+          Buradaki eski not "gizlilik/şartlar/iletişim bağlantıları BİLEREK
+          YOK; üç sayfanın üçü de repoda mevcut değil" diyordu ve haklıydı.
+          Sayfalar Faz 5.2 ile yazıldı, bağlantılar da o yüzden eklendi.
+          Altbilgi artık ORTAK bileşen: üç düzende de aynı liste görünür. */}
+      <Altbilgi koyu />
     </div>
   );
 }

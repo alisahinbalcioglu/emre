@@ -141,6 +141,16 @@ services:
       # guvenmez. MAIL_FROM bossa eski EPOSTA_GONDEREN degeri kullanilir.
       MAIL_FROM: ${MAIL_FROM:-}
       MAIL_FROM_NAME: ${MAIL_FROM_NAME:-MetaPriceX}
+      # FAZ 5.7 — CEVAP ADRESI. BOS BIRAKILMASI GUVENLIDIR.
+      # ⚠ Gonderen adresini otomatik cevap adresi SAYMIYORUZ: bir adresten
+      # gonderebiliyor olmak, o adrese ULASILABILDIGI anlamina gelmez —
+      # metapricex.com'un MX kaydi bugun YOK, yani gelen mail geri doner.
+      # Bu degisken BOSKEN e-posta altbilgisi cevap VAAT ETMEZ; doldurulunca
+      # hem `replyTo` kurulur hem de altbilgi "yanitlayabilirsiniz" der.
+      # Once MX kaydini acip gercek bir kutuya test maili ulastigini GORUN,
+      # sonra burayi doldurun. Ters sira, kullaniciya cevapsiz bir adres
+      # vaat etmek olur (09.09'da canlida tam olarak bu durum olculdu).
+      MAIL_REPLY_TO: ${MAIL_REPLY_TO:-}
       # Sifirlama/dogrulama baglantilarinin koku. UYGULAMA_URL zaten yukarida
       # var; APP_URL yeni ad — ikisi de okunur (APP_URL onceliklidir).
       APP_URL: ${APP_URL:-}

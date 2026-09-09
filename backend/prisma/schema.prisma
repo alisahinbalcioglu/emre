@@ -105,34 +105,34 @@ enum FirmaRol {
 }
 
 model User {
-  id                       String                   @id @default(uuid())
-  email                    String                   @unique
-  password                 String
-  role                     Role                     @default(user)
-  status                   UserStatus               @default(active)
-  tier                     Tier                     @default(core)
+  id                String     @id @default(uuid())
+  email             String     @unique
+  password          String
+  role              Role       @default(user)
+  status            UserStatus @default(active)
+  tier              Tier       @default(core)
   // ADIM 1: firma uyeligi. nullable = henuz firmaya atanmamis eski kayit.
-  firmaId                  String?
-  firma                    Firma?                   @relation(fields: [firmaId], references: [id])
-  firmaRol                 FirmaRol                 @default(sahip)
-  createdAt                DateTime                 @default(now())
+  firmaId           String?
+  firma             Firma?     @relation(fields: [firmaId], references: [id])
+  firmaRol          FirmaRol   @default(sahip)
+  createdAt         DateTime   @default(now())
   /// YUMUSAK SILME. Dolu ise hesap silinmis sayilir: listede gorunmez, GIRIS
   /// YAPAMAZ ve mevcut token'i da gecersizdir (auth.service + jwt.strategy).
   /// Neden sert silme degil: Quote (:onDelete Cascade) ve UserLibrary de
   /// birlikte giderdi — kullanicinin butun teklifleri geri donusu olmadan.
-  deletedAt                DateTime?
+  deletedAt         DateTime?
   /// FAZ 3.4 — e-posta dogrulamasi. Yeni kayitlar `false` baslar, dogrulama
   /// baglantisina tiklayinca `true` olur. GOC: mevcut hesaplar `true`
   /// isaretlendi (migration icinde) — aksi halde bugunku kullanicilar kendi
   /// urunlerinden bir gecede kilitlenirdi. Dogrulanmamis hesap GIRIS YAPAR,
   /// yalnizca uyari seridi gorur (girisi bloke etmek yeni kaydi kirar).
-  emailVerified            Boolean                  @default(false)
+  emailVerified     Boolean    @default(false)
   /// FAZ 3.5 — parola en son ne zaman degisti. NULL = hic degismedi (eski
   /// hesap); bu durumda jwt.strategy'deki `iat` kapisi HICBIR token'i
   /// reddetmez. Parola degisince/sifirlanınca now() yazilir ve o andan ONCE
   /// imzalanmis (calinmis olabilecek) token'lar reddedilir — durumsuz JWT'de
   /// parola degisiminin eski oturumlari oldurmesinin tek yolu budur.
-  passwordChangedAt        DateTime?
+  passwordChangedAt DateTime?
   /// FAZ 4.1 — KISI alanlari. Hepsi OPSIYONEL: zorunlu yapmak mevcut kayit
   /// akisini kirardi (RegisterDto bugun yalniz email+password aliyor) ve
   /// Firma'nin butun fatura alanlarinin nullable olmasiyla ayni gerekce —
@@ -142,9 +142,32 @@ model User {
   /// User'da "kisi gorev unvani" anlaminda kullanmak, iki farkli seyi tek
   /// isimle adlandirmak olurdu (bu depoda `firmaId`'nin iki farkli seye
   /// isaret etmesi tam olarak boyle bir karisiklik uretiyor).
-  ad                       String?
-  soyad                    String?
-  telefon                  String?
+  ad                String?
+  soyad             String?
+  telefon           String?
+
+  // ── FAZ 5.3 — ONAY KAYITLARI (uyusmazlikta ISPAT YUKU BIZDE) ──────────
+  /// Kullanim kosullari / uyelik sozlesmesi onayinin ZAMANI. Boolean DEGIL
+  /// tarih: "onayladi mi" sorusunun cevabi mahkemede yetmez, "NE ZAMAN ve
+  /// HANGI METNI" onayladigi sorulur.
+  sozlesmeOnayiAt    DateTime?
+  /// Onaylanan metnin surumu. Metin degisince eski onay o metni KAPSAMAZ;
+  /// surum tutulmazsa hangi metne onay verildigi geri getirilemez.
+  sozlesmeSurumu     String?
+  /// TICARI ILETI (pazarlama) izni — AYRI ve ONCEDEN ISARETSIZ olmak
+  /// ZORUNDA (ETK/IYS). Sozlesme onayiyla birlestirmek izni gecersiz kilar.
+  /// NULL = izin verilmedi. Bugun hicbir pazarlama gonderimi YOK; alan
+  /// izin ALINMADAN gonderim yapilamasin diye simdiden duruyor.
+  ticariIletiOnayiAt DateTime?
+
+  /// ── FAZ 5.5 — HESAP KAPATMA ──────────────────────────────────────────
+  /// Kapatma aninda `email` alani anonimlestirilir ve ORIJINALI buraya
+  /// tasinir. Neden: `email` @unique — kapatilan hesabin adresi kilitli
+  /// kalirsa kullanici AYNI adresle geri donemez ("Email already in use")
+  /// ve bunu ne kendisi ne yonetici geri alabilir (olculdu: `deletedAt`i
+  /// null'a ceviren TEK BIR SATIR yok). Adres burada saklandigi icin
+  /// denetim/ispat izi de kaybolmaz.
+  kapatilanEposta          String?
   library                  UserLibrary[]
   brandLibraries           UserBrandLibrary[]
   libraryLists             LibraryList[]

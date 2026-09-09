@@ -387,6 +387,8 @@ const SUITES: Suite[] = [
   { ad: 'Güvenlik paketi 1 kablolaması (A-H)', script: 'test:guvenlik-paket1', zincir: 'Z0' },
   { ad: 'Faz 2 kullanıcı yönetimi kablolaması (A-F)', script: 'test:faz2', zincir: 'Z0' },
   { ad: 'Faz 3 e-posta altyapısı + parola akışları (A-G)', script: 'test:faz3', zincir: 'Z0' },
+  { ad: 'Faz 4 firma profili + teklif satış durumu (A-H)', script: 'test:faz4', zincir: 'Z0' },
+  { ad: 'Faz 5 KVKK hakları + hukuki metinler (A-G)', script: 'test:faz5', zincir: 'Z0' },
   // ── 29.08.2026 — FİYAT ÇAPASI (Y/H/K). DB ve AĞ GEREKTİRMEZ.
   //    Kullanıcı kararı: müşteriye "$28/ay" gösterilir, karttan TL çekilir.
   //    İki kavram KARIŞIRSA para hatası olur:

@@ -15,6 +15,7 @@
  * Iskelet: solda sabit AdminSidebar (w-60), sagda icerik alani.
  */
 
+import { Altbilgi } from '@/ortak/kabuk/components/layout/Altbilgi';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AdminSidebar from '@/ozellik/kutuphane/admin/AdminSidebar';
@@ -83,6 +84,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       {/* Icerik — sidebar genisligi kadar sola bosluk */}
       <main className="flex-1 pl-60">
         <div className="px-8 py-8">{children}</div>
+        {/* ⚠ ÜÇÜNCÜ DÜZEN — kolayca gözden kaçar. Yalnız kök ve korumalı
+            düzene eklenen bir altbilgi admin ekranlarında GÖRÜNMEZ. */}
+        <Altbilgi />
       </main>
     </div>
   );

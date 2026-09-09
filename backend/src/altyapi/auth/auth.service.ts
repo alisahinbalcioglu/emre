@@ -7,6 +7,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../db/prisma.service';
 import { jwtSecret } from './jwt-secret';
+import { HUKUKI_METIN_SURUMU } from './hukuki-surum';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { getFirmaCapabilities } from './capabilities.helper';
@@ -34,12 +35,22 @@ export class AuthService {
     // kullanici olusup firma olusmazsa ortada suzgeclerin hicbir satiri
     // gormedigi "firmasiz hesap" kalirdi. Firma adi simdilik e-postanin @
     // oncesi parcasi (backfill ile ayni kural); sahibi ADIM 2'de degistirecek.
+    // FAZ 5.3 — ONAY DAMGALARI. Boolean degil TARIH yaziliyor: uyusmazlikta
+    // "onayladi mi" degil "NE ZAMAN ve HANGI METNI onayladi" sorulur.
+    // ⚠ `sozlesmeOnayi` DTO'da `@Equals(true)` ile zorunlu; buraya ulasan
+    // her istek onay vermistir. Ticari ileti izni AYRI ve varsayilani YOK —
+    // gonderilmediyse izin VERILMEMIS sayilir (ETK/IYS: onceden isaretli ya
+    // da sozlesmeye yedirilmis pazarlama izni gecersizdir).
+    const simdi = new Date();
     const user = await this.prisma.user.create({
       data: {
         email: dto.email,
         password: hashed,
         firmaRol: 'sahip',
         firma: { create: { ad: dto.email.split('@')[0] } },
+        sozlesmeOnayiAt: simdi,
+        sozlesmeSurumu: HUKUKI_METIN_SURUMU,
+        ticariIletiOnayiAt: dto.ticariIletiOnayi === true ? simdi : null,
       },
     });
 

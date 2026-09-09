@@ -6,6 +6,7 @@ import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { ParolaServisi } from './parola.servisi';
 import { EpostaDogrulamaServisi } from './eposta-dogrulama.servisi';
+import { HesapServisi } from './hesap.servisi';
 import { jwtSecret } from './jwt-secret';
 import { OdemeModule } from '../../ozellik/odeme/odeme.module';
 
@@ -33,6 +34,10 @@ import { OdemeModule } from '../../ozellik/odeme/odeme.module';
     // dışa açtığı EpostaServisi'ni kullanır — ikinci bir gönderici YOK.
     ParolaServisi,
     EpostaDogrulamaServisi,
+    // FAZ 5.5 — KVKK m.11 uclari. `SatinAlmaServisi`ye ihtiyac duyar
+    // (hesap kapatilinca abonelik de iptal edilmeli); o servis zaten
+    // OdemeModule tarafindan disa aciliyor.
+    HesapServisi,
   ],
   controllers: [AuthController],
   exports: [AuthService],

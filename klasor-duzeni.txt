@@ -100,6 +100,14 @@ frontend/ozellik/kutuphane/ :: G · kütüphane ekranları.
 frontend/ozellik/odeme/ :: N · abonelik ekranları, erişim şeridi.
 frontend/ozellik/tablo/ :: B · ekranda görülen grid.
 frontend/ozellik/teklif/ :: M · teklif ekranları.
+# YENİ ALAN (09.09.2026, FAZ 5) — bilinçli açılış, gerekçesi bu satırdır.
+# Hukuki metinler ürün özelliği DEĞİL ama ürünün İÇİNDE yaşıyor: dört
+# sayfa, altbilgi bağlantıları ve kayıt ekranındaki onay kutuları hep
+# aynı metin sürümüne bakar. Mevcut alanlardan birine gömülemez —
+# `teklif` teklifin yaşam döngüsü, `odeme` tahsilat, `kabuk` ise düzen.
+# Metin ayrı bir eksendir ve SÜRÜMLENİR (kullanıcının onayladığı sürüm
+# `User.sozlesmeSurumu`ya yazılır).
+frontend/ozellik/hukuki/ :: P · hukuki metinler (KVKK, kullanım, çerez, mesafeli satış).
 frontend/scripts/ :: Sürüm betiği — grup I.
 frontend/test/ :: E2E paketleri (e2e + e2e-golden). 6. durakta kuruldu; ikisi AYRI (RAPOR §6.8).
 frontend/next.config.js :: Next.js yapılandırması — çerçeve kökte arar.

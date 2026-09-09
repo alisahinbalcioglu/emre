@@ -10,6 +10,8 @@ import { ParolaSifirlaDto } from './dto/parola-sifirla.dto';
 import { ParolaDegistirDto } from './dto/parola-degistir.dto';
 import { EpostaDogrulaDto } from './dto/eposta-dogrula.dto';
 import { ProfilGuncelleDto } from './dto/profil-guncelle.dto';
+import { HesapKapatDto } from './dto/hesap-kapat.dto';
+import { HesapServisi } from './hesap.servisi';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { EpostaHizSiniriGuard } from './guards/eposta-hiz-siniri.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
@@ -21,6 +23,7 @@ export class AuthController {
     private authService: AuthService,
     private parola: ParolaServisi,
     private epostaDogrulama: EpostaDogrulamaServisi,
+    private hesap: HesapServisi,
   ) {}
 
   // 15 dakikada 5 kayit denemesi — otomatik hesap uretimini engeller.
@@ -121,5 +124,32 @@ export class AuthController {
   @Post('resend-verification')
   resendVerification(@CurrentUser() user: { id: string }) {
     return this.epostaDogrulama.yenidenGonder(user.id);
+  }
+
+  // ── FAZ 5.5 · KVKK m.11 — VERI INDIRME ve HESAP KAPATMA ───────────────
+  //
+  // ⚠⚠ BU IKI UCTA `@GerekliYetenek` YOK ve OLMAMALI. Mevcut disa aktarim
+  // uclarinin hepsi `CIKTI_INDIR` tasiyor; o yetenek KISITLI modda ACIK
+  // DEGIL (erisim.servisi.ts: KISITLI_MODDA_ACIK yalniz TEKLIF_GORUNTULE,
+  // KUTUPHANE_GORUNTULE, ABONELIK_YONET). Yani odemesi geciken kullanici
+  // KENDI verisini indiremiyordu. Bir KVKK hakki odeme durumuna bagimli
+  // olamaz. Mevcut export uclarini kopyalayarak buraya dekorator eklemeyin.
+  @UseGuards(JwtAuthGuard)
+  @Get('hesabim/verilerim')
+  verilerim(@CurrentUser() user: { id: string }) {
+    return this.hesap.verileriDisaAktar(user.id);
+  }
+
+  // Hesap kapatma DAR sinirli: geri alma yolu YOK, deneme-yanilma yuzeyi
+  // olmamali (parola dogrulamasi da isteniyor).
+  @Throttle({ default: { ttl: 900_000, limit: 5 } })
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(200)
+  @Post('hesabimi-kapat')
+  hesabimiKapat(
+    @CurrentUser() user: { id: string },
+    @Body() dto: HesapKapatDto,
+  ) {
+    return this.hesap.hesabiKapat(user.id, dto.parola);
   }
 }

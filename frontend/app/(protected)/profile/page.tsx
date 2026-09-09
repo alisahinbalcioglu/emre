@@ -13,6 +13,7 @@ import api from '@/ortak/lib/api';
 import { cn } from '@/ortak/lib/utils';
 import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
 import { abonelikOzeti } from '@/ozellik/odeme/abonelik-ozeti';
+import { toast } from '@/ortak/hooks/use-toast';
 
 interface UserProfile {
   id: string;
@@ -167,6 +168,57 @@ export default function ProfilePage() {
       setBilgiSonuc('Logo kaldırıldı.');
     } catch (err: any) {
       setBilgiHata(err?.response?.data?.message || 'Logo kaldırılamadı.');
+    }
+  }
+
+  // ── FAZ 5.5 · KVKK m.11 — VERİ İNDİRME ve HESAP KAPATMA ──────────────
+  const [veriIndiriliyor, setVeriIndiriliyor] = useState(false);
+  const [kapatmaAcik, setKapatmaAcik] = useState(false);
+  const [kapatmaParola, setKapatmaParola] = useState('');
+  const [kapatiliyor, setKapatiliyor] = useState(false);
+  const [kapatmaHata, setKapatmaHata] = useState<string | null>(null);
+
+  async function verileriIndir() {
+    setVeriIndiriliyor(true);
+    try {
+      const { data } = await api.get('/auth/hesabim/verilerim');
+      // Dosya olarak indir: tarayıcıda JSON göstermek 10 teklifte bile
+      // okunamaz bir duvar üretir; kullanıcı dosyayı saklamak ister.
+      const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: 'application/json',
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `metapricex-verilerim-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Veriler indirilemedi',
+        description: err?.response?.data?.message || 'Bir sorun oluştu.',
+      });
+    } finally {
+      setVeriIndiriliyor(false);
+    }
+  }
+
+  async function hesabimiKapat(e: React.FormEvent) {
+    e.preventDefault();
+    setKapatmaHata(null);
+    setKapatiliyor(true);
+    try {
+      await api.post('/auth/hesabimi-kapat', { parola: kapatmaParola });
+      // Oturum sunucuda zaten geçersizleşti (passwordChangedAt damgası);
+      // yerelde de temizlenmezse kullanıcı 401 duvarına çarpar.
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      router.replace('/login');
+    } catch (err: any) {
+      setKapatmaHata(err?.response?.data?.message || 'Hesap kapatılamadı.');
+    } finally {
+      setKapatiliyor(false);
     }
   }
 
@@ -822,6 +874,81 @@ export default function ProfilePage() {
             </Button>
           </div>
         </form>
+      </div>
+
+      {/* ── FAZ 5.5 · KVKK m.11 HAKLARI ────────────────────────────────
+          ⚠ Bu iki uç ÖDEME KAPISININ ARKASINDA DEĞİL. Mevcut dışa aktarım
+          uçlarının hepsi `CIKTI_INDIR` taşıyor ve o yetenek kısıtlı modda
+          KAPALI — yani ödemesi geciken kullanıcı kendi verisini
+          indiremiyordu. Bir KVKK hakkı ödeme durumuna bağlanamaz. */}
+      <div className="mb-6 rounded-xl border bg-card overflow-hidden">
+        <div className="flex items-center gap-2 border-b px-5 py-3.5 text-sm font-semibold">
+          <Shield className="h-4 w-4 text-muted-foreground" />
+          Verileriniz ve Hesabınız
+        </div>
+        <div className="space-y-5 px-5 py-4">
+          <div>
+            <p className="text-xs font-semibold text-slate-700">Verilerimi indir</p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              Hesabınızla ilişkili verilerin makine-okunur (JSON) kopyası. Teklifleriniz,
+              kütüphaneniz, firma bilgileriniz ve abonelik kayıtlarınız dahildir.
+              Yüklediğiniz orijinal dosyalar ile logo ikili veri olduğu için dosyaya
+              gömülmez; adları ve indirme adresleri listelenir.
+            </p>
+            <Button type="button" variant="outline" className="mt-2"
+              disabled={veriIndiriliyor} onClick={verileriIndir}>
+              <Database className="mr-2 h-4 w-4" />
+              {veriIndiriliyor ? 'Hazırlanıyor…' : 'Verilerimi indir (JSON)'}
+            </Button>
+          </div>
+
+          <div className="border-t pt-4">
+            <p className="text-xs font-semibold text-destructive">Hesabımı kapat</p>
+            {/* ⚠ DÜRÜSTLÜK: "verileriniz silinir" DEMİYORUZ, çünkü silinmiyor.
+                Kapatma erişimi keser; veri imhası ayrı bir taleptir. */}
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              Hesabınız kapatılır, oturumunuz sonlandırılır ve varsa aboneliğiniz iptal
+              edilir. Teklifleriniz ve kütüphaneniz sistemde kalmaya devam eder;
+              tamamen imha edilmesini istiyorsanız bunu ayrıca iletmeniz gerekir.
+              Aynı e-posta adresiyle yeniden kayıt olabilirsiniz.
+            </p>
+            {!kapatmaAcik ? (
+              <Button type="button" variant="outline"
+                className="mt-2 text-destructive"
+                onClick={() => setKapatmaAcik(true)}>
+                Hesabımı kapatmak istiyorum
+              </Button>
+            ) : (
+              <form onSubmit={hesabimiKapat} className="mt-3 space-y-3 rounded-lg border border-destructive/40 bg-destructive/5 p-3">
+                <p className="text-[11px] text-muted-foreground">
+                  Bu işlemin geri alma yolu yoktur. Onaylamak için parolanızı girin.
+                </p>
+                <input
+                  type="password"
+                  autoComplete="current-password"
+                  value={kapatmaParola}
+                  onChange={(e) => setKapatmaParola(e.target.value)}
+                  placeholder="Parolanız"
+                  required
+                  className="h-9 w-full max-w-xs rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                />
+                {kapatmaHata && (
+                  <p role="alert" className="text-xs text-destructive">{kapatmaHata}</p>
+                )}
+                <div className="flex gap-2">
+                  <Button type="submit" variant="outline"
+                    className="text-destructive" disabled={kapatiliyor}>
+                    {kapatiliyor ? 'Kapatılıyor…' : 'Hesabımı kapat'}
+                  </Button>
+                  <Button type="button" variant="outline"
+                    onClick={() => { setKapatmaAcik(false); setKapatmaHata(null); }}>
+                    Vazgeç
+                  </Button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Cikis */}

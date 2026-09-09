@@ -23,12 +23,26 @@ export default function RegisterPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  // ── FAZ 5.3 · ONAY KUTULARI ──────────────────────────────────────
+  // ⚠ İKİSİ AYRI OLMAK ZORUNDA. Ticari ileti iznini sözleşme onayına
+  // yedirmek (tek kutu) izni ETK/İYS açısından geçersiz kılar. Ticari
+  // ileti kutusu ÖNCEDEN İŞARETSİZ başlar — `useState(false)`.
+  const [sozlesmeOnayi, setSozlesmeOnayi] = useState(false);
+  const [ticariIletiOnayi, setTicariIletiOnayi] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     try {
-      const { data } = await api.post('/auth/register', { email, password });
+      // Onaylar SUNUCUYA gönderilir ve orada ZAMAN DAMGASI olarak kaydedilir.
+      // ⚠ Buradaki `required` yalnızca tarayıcı kolaylığıdır; isteği elle atan
+      // biri onu hiç görmez. Asıl kapı sunucuda (`@Equals(true)`).
+      const { data } = await api.post('/auth/register', {
+        email,
+        password,
+        sozlesmeOnayi,
+        ticariIletiOnayi,
+      });
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
       router.push('/dashboard');
@@ -86,6 +100,44 @@ export default function RegisterPage() {
               minLength={6}
             />
             <p className="mt-1.5 text-[11px] text-slate-500">En az 6 karakter.</p>
+          </div>
+
+          {/* ── FAZ 5.3 · ONAYLAR ──────────────────────────────────────
+              Sözleşme onayı ZORUNLU ve işaretsiz başlar; ticari ileti izni
+              AYRI, opsiyonel ve ÖNCEDEN İŞARETSİZ. */}
+          <div className="space-y-2.5 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+            <label className="flex cursor-pointer items-start gap-2.5">
+              <input
+                type="checkbox"
+                checked={sozlesmeOnayi}
+                onChange={(e) => setSozlesmeOnayi(e.target.checked)}
+                required
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-600/30"
+              />
+              <span className="text-[11px] leading-relaxed text-slate-600">
+                <Link href="/kullanim-kosullari" target="_blank" className="font-semibold text-blue-600 hover:text-blue-700">
+                  Kullanım Koşulları
+                </Link>
+                {' '}ve{' '}
+                <Link href="/gizlilik" target="_blank" className="font-semibold text-blue-600 hover:text-blue-700">
+                  Gizlilik ve KVKK Aydınlatma Metni
+                </Link>
+                {''}ni okudum, kabul ediyorum.
+              </span>
+            </label>
+            <label className="flex cursor-pointer items-start gap-2.5">
+              <input
+                type="checkbox"
+                checked={ticariIletiOnayi}
+                onChange={(e) => setTicariIletiOnayi(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-600/30"
+              />
+              <span className="text-[11px] leading-relaxed text-slate-600">
+                Kampanya ve yenilik duyurularının e-posta ile gönderilmesine izin
+                veriyorum. <span className="text-slate-400">(isteğe bağlı — bu kutu
+                işaretlenmese de hesabınız açılır)</span>
+              </span>
+            </label>
           </div>
 
           <button

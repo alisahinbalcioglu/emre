@@ -1,5 +1,6 @@
 'use client';
 
+import { Altbilgi } from '@/ortak/kabuk/components/layout/Altbilgi';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -206,6 +207,10 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
           <main className="flex-1 px-8 py-8">
             {children}
           </main>
+
+          {/* FAZ 5.2 — altbilgi KABUKTA. Sayfa sayfa eklemek, eklenmeyi
+              unutulan rotada hukuki bağlantıları görünmez bırakır. */}
+          <Altbilgi />
         </div>
       </div>
     </CapabilitiesProvider>

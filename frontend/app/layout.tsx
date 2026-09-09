@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import { Toaster } from '@/ortak/ui/toaster';
 import { ConfirmRoot } from '@/ortak/ui/confirm-dialog';
+import { DepolamaSeridi } from '@/ortak/kabuk/components/layout/DepolamaSeridi';
 
 // latin-ext ZORUNLU: Turkce'ye ozgu g s I harfleri (U+011E/011F, U+015E/015F,
 // U+0130) Google'in 'latin' alt kumesinde YOK. Eksik olunca tarayici o harfleri
@@ -27,6 +28,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {children}
         <Toaster />
         <ConfirmRoot />
+        {/* FAZ 5.4 — KOK duzende: ziyaretcinin girdigi ILK sayfada gorunmeli.
+            Korumali duzene koymak, pazarlama sayfasini kapsam disi birakirdi. */}
+        <DepolamaSeridi />
       </body>
     </html>
   );

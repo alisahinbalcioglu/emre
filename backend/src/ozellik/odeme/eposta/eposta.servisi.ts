@@ -60,6 +60,19 @@ export interface EpostaIcerigi {
 export class EpostaServisi {
   private readonly logger = new Logger(EpostaServisi.name);
   private readonly gonderen: string;
+  /**
+   * CEVAP ADRESI (FAZ 5.7).
+   *
+   * ⚠ 09.09'da OLCULDU — CANLIDA YANLIS BIR VAAT VARDI: giden her e-postanin
+   * altbilgisi "Sorunuz varsa bu iletiyi yanıtlayabilirsiniz" diyordu, ama
+   * `replyTo` HIC kurulmuyordu ve alan adinin MX kaydi da YOK. Yani her cevap
+   * geri donuyordu ve kullanici bunu ancak yazdiktan sonra ogreniyordu.
+   *
+   * Cozum iki tarafli: (a) adres YAPILANDIRILABILIR oldu, (b) altbilgi metni
+   * adresin VARLIGINA gore degisiyor — adres yoksa cevap VAAT EDILMIYOR.
+   * Bos birakmak guvenlidir; yanlis vaat degildir.
+   */
+  private readonly cevapAdresi?: string;
   private readonly smtp?: {
     host: string;
     port: number;
@@ -81,6 +94,11 @@ export class EpostaServisi {
       ? `${ad} <${adres}>`
       : config.get<string>('EPOSTA_GONDEREN')?.trim() ||
         'MetaPriceX <bilgi@metapricex.com>';
+
+    // Ayri bir MAIL_REPLY_TO tanimlanmadiysa cevap adresi YOKTUR — gonderen
+    // adresini otomatik olarak cevap adresi SAYMIYORUZ: `bilgi@metapricex.com`
+    // gonderilebiliyor olsa da ALINABILIYOR olmasi ayri bir istir (MX kaydi).
+    this.cevapAdresi = config.get<string>('MAIL_REPLY_TO')?.trim() || undefined;
 
     if (host) {
       this.smtp = {
@@ -163,6 +181,9 @@ export class EpostaServisi {
     await this.tasiyiciAl().sendMail({
       from: this.gonderen,
       to: t.kime,
+      // Tanimliysa cevaplar buraya gider. Tanimli degilse alan HIC
+      // gonderilmez ve altbilgi de cevap vaat etmez (bkz. cevapAdresi notu).
+      ...(this.cevapAdresi ? { replyTo: this.cevapAdresi } : {}),
       subject: t.konu,
       // İKİSİ BİRDEN: yalnız HTML gönderen iletilerin spam skoru belirgin
       // biçimde kötüdür ve bazı kurumsal istemciler HTML'i hiç açmaz.
@@ -185,6 +206,17 @@ export class EpostaServisi {
    * kullanıcının tıklayacak bir şeyi olmalı, yoksa parola sıfırlama iletisi
    * onun için işlevsizdir.
    */
+  /**
+   * Altbilginin cevap cumlesi. Cevap adresi YOKSA cevap VAAT EDILMEZ.
+   * ⚠ Bu fonksiyon iki govdede de (HTML + duz metin) kullanilir; birine
+   * koyup otekini unutmak bu depoda tekrarlayan "ikiz" hatasidir.
+   */
+  private cevapVaadi(): string {
+    return this.cevapAdresi
+      ? 'Sorunuz varsa bu iletiyi yanıtlayabilirsiniz.'
+      : 'Bu adres yalnızca gönderim içindir; yanıtlar ulaşmaz.';
+  }
+
   private duzMetin(t: EpostaTalebi): string {
     const parcalar = [t.baslik, '', ...t.paragraflar];
     if (t.dugme) parcalar.push('', `${t.dugme.etiket}: ${t.dugme.url}`);
@@ -192,7 +224,7 @@ export class EpostaServisi {
     parcalar.push(
       '',
       '—',
-      'MetaPriceX · Bu ileti hesabinizla ilgili oldugu icin gonderildi.',
+      `MetaPriceX · Bu ileti hesabinizla ilgili oldugu icin gonderildi. ${this.cevapVaadi()}`,
     );
     return parcalar.join('\n');
   }
@@ -243,7 +275,7 @@ export class EpostaServisi {
         <tr><td style="padding:18px 30px;background:#f8fafc;border-top:1px solid #e2e8f0">
           <p style="margin:0;font-size:12.5px;line-height:1.6;color:#94a3b8">
             Bu e-posta MetaPriceX hesabınızla ilgili olduğu için gönderildi.
-            Sorunuz varsa bu iletiyi yanıtlayabilirsiniz.</p>
+            ${this.cevapVaadi()}</p>
         </td></tr>
       </table>
     </td></tr>
