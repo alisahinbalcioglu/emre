@@ -389,6 +389,15 @@ const SUITES: Suite[] = [
   { ad: 'Faz 3 e-posta altyapısı + parola akışları (A-G)', script: 'test:faz3', zincir: 'Z0' },
   { ad: 'Faz 4 firma profili + teklif satış durumu (A-H)', script: 'test:faz4', zincir: 'Z0' },
   { ad: 'Faz 5 KVKK hakları + hukuki metinler (A-G)', script: 'test:faz5', zincir: 'Z0' },
+  // ── 10.09.2026 — SUNUCU ÜRÜNLERİ (S-W). DB, SUNUCU ve AĞ GEREKTİRMEZ.
+  //    Faz 0 sertleştirmesi sunucuda elle yazılmıştı, depoda yoktu. Kurulum
+  //    listesi ↔ dizin, CR baytı, sshd/ufw sırası ve nöbetçinin saydığı
+  //    etiketin backend'in logladığı etiketle eşitliği burada ölçülür.
+  { ad: 'Sunucu ürünleri: kurulum + sertleştirme + denetim sayacı (S-W)', script: 'test:sunucu', zincir: 'Z0' },
+  // ── 13.09.2026 — SIR DÖNDÜRME KAPSAMI (S/K/D). DB ve AĞ GEREKTİRMEZ; D bloğu bash ister.
+  //    07.09 rotasyonu CLAUDE_API_KEY'i atlamıştı ve kapsam cümlesi sabit metindi
+  //    (SMTP_PASS'i anmıyordu). Rapor artık .env'den türetiliyor ve burada ölçülür.
+  { ad: 'Sır döndürme: türetilmiş kapsam raporu + SMTP koruma + red kanıtı (S/K/D)', script: 'test:sir-dondur', zincir: 'Z0' },
   // ── 29.08.2026 — FİYAT ÇAPASI (Y/H/K). DB ve AĞ GEREKTİRMEZ.
   //    Kullanıcı kararı: müşteriye "$28/ay" gösterilir, karttan TL çekilir.
   //    İki kavram KARIŞIRSA para hatası olur:

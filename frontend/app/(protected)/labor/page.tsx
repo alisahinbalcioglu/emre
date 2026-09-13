@@ -47,6 +47,11 @@ export default function LaborLibraryPage() {
 
   const [items, setItems] = useState<LaborItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  // 13.09.2026: /labor artik abonelik SAGLIGINA bagli (ErisimGuard). Suresi
+  // dolmus ya da askidaki firmada 403 `kod: 'ABONELIK_KISITLI'` doner. Bu
+  // ayrilmazsa liste bos kalir ve ekran "kalem henuz eklenmemis" der —
+  // katalog dolu oldugu halde. Kisitlama BOS KATALOG gibi gosterilmez.
+  const [kisitli, setKisitli] = useState<{ mesaj: string; aciklama?: string } | null>(null);
   const [activeDiscipline, setActiveDiscipline] = useState<Discipline>(urlDiscipline ?? 'mechanical');
 
   // URL değişince discipline'ı güncelle
@@ -67,8 +72,15 @@ export default function LaborLibraryPage() {
     try {
       const { data } = await api.get<LaborItem[]>(`/labor?discipline=${activeDiscipline}`);
       setItems(data);
-    } catch {
-      toast({ title: 'Hata', description: 'İşçilik kalemleri yüklenemedi.', variant: 'destructive' });
+      setKisitli(null);
+    } catch (e: any) {
+      const veri = e?.response?.data;
+      if (e?.response?.status === 403 && veri?.kod === 'ABONELIK_KISITLI') {
+        setItems([]);
+        setKisitli({ mesaj: veri.mesaj ?? 'Erişiminiz kısıtlı', aciklama: veri.aciklama });
+      } else {
+        toast({ title: 'Hata', description: 'İşçilik kalemleri yüklenemedi.', variant: 'destructive' });
+      }
     } finally { setIsLoading(false); }
   }, [activeDiscipline]);
 
@@ -148,6 +160,17 @@ export default function LaborLibraryPage() {
       {/* Content */}
       {isLoading ? (
         <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
+      ) : kisitli ? (
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed py-20 text-center">
+          <Wrench className="mb-4 h-12 w-12 text-muted-foreground/50" />
+          <p className="text-sm font-medium">{kisitli.mesaj}</p>
+          {kisitli.aciklama && (
+            <p className="mt-1 max-w-md text-sm text-muted-foreground">{kisitli.aciklama}</p>
+          )}
+          <Button asChild variant="outline" className="mt-4">
+            <Link href="/abonelik">Aboneliği yönet</Link>
+          </Button>
+        </div>
       ) : items.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed py-20">
           <Wrench className="mb-4 h-12 w-12 text-muted-foreground/50" />

@@ -53,6 +53,33 @@ docker compose ps --status running --format '{{.Service}}' 2>/dev/null | grep -q
 oku() { grep -E "^$1=" .env | head -1 | cut -d= -f2- | tr -d '"\r'; }
 sha() { printf '%s' "$1" | sha256sum | cut -c1-12; }
 
+# ── KAPSAM (13.09.2026, devir Gorev 5) ──────────────────────────────────────
+# 07.09 turunda kapsam raporu SABIT bir cumleydi, yalniz basari dalinda
+# basiliyordu ve o gunden sonra .env'e giren SMTP_PASS'i ANMIYORDU. Olculdu:
+# ayni tur DB'deki CLAUDE_API_KEY'i de atlamisti — "rotasyon yapildi" sanildi.
+# Artik rapor .env'in KENDISINDEN turetilir: dondurulmeyen ve adi sir bildiren
+# her anahtar ADIYLA listelenir, iki cikis dalinda da basilir.
+# Adla eslesme bir TAHMINDIR (sir olmayan bir anahtar da yakalanabilir);
+# yanlis pozitif sessiz atlamadan iyidir.
+DONDURULEN="POSTGRES_PASSWORD JWT_SECRET INTERNAL_API_TOKEN"
+SIR_DESENI='(PASSWORD|PASS|SECRET|TOKEN|_KEY|APIKEY|PAROLA)$'
+KORUNACAK_SMTP="SMTP_HOST SMTP_PORT SMTP_USER SMTP_PASS MAIL_FROM"
+kapsam_raporu() {
+  local ad
+  echo "── KAPSAM RAPORU (.env'den turetildi) ──"
+  for ad in $DONDURULEN; do echo "   ✓ DONDURULDU  $ad"; done
+  for ad in $(grep -oE '^[A-Za-z_][A-Za-z0-9_]*=' .env | tr -d '=' | sort -u); do
+    case " $DONDURULEN " in *" $ad "*) continue ;; esac
+    printf '%s' "$ad" | grep -qE "$SIR_DESENI" || continue
+    if [ -n "$(oku "$ad")" ]; then
+      echo "   ⚠ ATLANDI     $ad — bu betik dondurmez; saglayici panelinden dondurulur"
+    else
+      echo "   · BOS         $ad"
+    fi
+  done
+  echo "   ⚠ ATLANDI     CLAUDE_API_KEY — .env'de DEGIL, DB SystemSettings'te (her pg_dump'in ICINDE); Anthropic Console + admin paneli"
+}
+
 for k in POSTGRES_USER POSTGRES_DB POSTGRES_PASSWORD JWT_SECRET INTERNAL_API_TOKEN DOMAIN; do
   [ -n "$(oku "$k")" ] || { echo "ON KOSUL YOK — .env icinde $k bos ya da yok."; exit 2; }
   [ "$(grep -cE "^$k=" .env)" = 1 ] || { echo "ON KOSUL YOK — .env icinde $k birden fazla satirda."; exit 2; }
@@ -85,13 +112,22 @@ echo "── 3/7 yeni degerler uretildi (ekrana YAZILMAZ) — sha256/12: pg=$(sh
 # ── 4) .env — yedekle, yerine yaz, DOGRULA (dogrulanamazsa geri al, DB'ye dokunma)
 ENV_YEDEK=".env.yedek-sir-$DAMGA"
 cp -p .env "$ENV_YEDEK"; chmod 600 "$ENV_YEDEK"
+# Dondurulmeyen TUM satirlarin parmak izi: sed yalniz uc satiri degistirmeli.
+# SMTP_* 09.09 gecesi girildi ve sizmadi — kaybolmasi ya da degismesi, maili
+# sessizce durdurur (ve "rotasyon basarili" mesajinin arkasinda gizlenir).
+KORUNAN_ONCE="$(grep -vE '^(POSTGRES_PASSWORD|JWT_SECRET|INTERNAL_API_TOKEN)=' .env | sha256sum | cut -c1-12)"
 sed -i -E "s|^POSTGRES_PASSWORD=.*$|POSTGRES_PASSWORD=$YENI_PG|; s|^JWT_SECRET=.*$|JWT_SECRET=$YENI_JWT|; s|^INTERNAL_API_TOKEN=.*$|INTERNAL_API_TOKEN=$YENI_IC|" .env
 chmod 600 .env
+KORUNAN_SONRA="$(grep -vE '^(POSTGRES_PASSWORD|JWT_SECRET|INTERNAL_API_TOKEN)=' .env | sha256sum | cut -c1-12)"
+if [ "$KORUNAN_ONCE" != "$KORUNAN_SONRA" ]; then
+  cp -p "$ENV_YEDEK" .env
+  echo "❌ .env yaziminda dondurulmeyen satirlar DEGISTI ($KORUNAN_ONCE → $KORUNAN_SONRA) — .env GERI ALINDI, DB'ye DOKUNULMADI."; exit 1
+fi
 if [ "$(oku POSTGRES_PASSWORD)" != "$YENI_PG" ] || [ "$(oku JWT_SECRET)" != "$YENI_JWT" ] || [ "$(oku INTERNAL_API_TOKEN)" != "$YENI_IC" ]; then
   cp -p "$ENV_YEDEK" .env
   echo "❌ .env yazimi dogrulanamadi — .env GERI ALINDI, DB'ye DOKUNULMADI."; exit 1
 fi
-echo "── 4/7 .env guncellendi (yedek: $ENV_YEDEK, 0600)"
+echo "── 4/7 .env guncellendi (yedek: $ENV_YEDEK, 0600) · dondurulmeyen satirlar AYNEN ($KORUNAN_SONRA)"
 
 # ── 5) DB PAROLASI — SQL stdin'den; konteyner icinde yerel soket 'trust' oldugundan eski parola gerekmez
 echo "── 5/7 DB parolasi degistiriliyor (ALTER USER)"
@@ -119,10 +155,16 @@ if docker compose exec -T backup psql -h db -U "$PG_USER" -d "$PG_DB" -Atc 'sele
 else
   echo "   ❌ YENI DB parolasiyla baglanti KURULAMADI"; HATA=1
 fi
-if docker compose exec -T -e PGPASSWORD="$ESKI_PG" backup psql -h db -U "$PG_USER" -d "$PG_DB" -Atc 'select 1' </dev/null >/dev/null 2>&1; then
+# ⚠ 13.09: onceki surum exec HERHANGI bir sebeple basarisiz olunca da
+# "reddedildi" yaziyordu (konteyner ayakta degil, psql yok...). Kanit artik
+# yalniz Postgres'in KENDI red cumlesini gorurse yesil.
+ESKI_CIKTI="$(docker compose exec -T -e PGPASSWORD="$ESKI_PG" backup psql -h db -U "$PG_USER" -d "$PG_DB" -Atc 'select 1' </dev/null 2>&1 || true)"
+if printf '%s\n' "$ESKI_CIKTI" | grep -qx '1'; then
   echo "   ❌ ESKI DB parolasi HALA kabul ediliyor — dondurme gercek degil"; HATA=1
+elif printf '%s' "$ESKI_CIKTI" | grep -qi 'password authentication failed'; then
+  echo "   ✓ ESKI DB parolasi reddedildi (Postgres: password authentication failed)"
 else
-  echo "   ✓ ESKI DB parolasi reddedildi"
+  echo "   ❌ ESKI parola reddi OLCULEMEDI — beklenen red cumlesi yok: $(printf '%s' "$ESKI_CIKTI" | head -1 | cut -c1-120)"; HATA=1
 fi
 BE_JWT="$(docker compose exec -T backend sh -c 'printf %s "$JWT_SECRET" | sha256sum | cut -c1-12' </dev/null 2>/dev/null | tr -d '\r' || true)"
 if [ "$BE_JWT" = "$(sha "$YENI_JWT")" ]; then echo "   ✓ backend YENI JWT_SECRET'i tasiyor ($BE_JWT)"
@@ -133,13 +175,23 @@ if [ "$BE_IC" = "$(sha "$YENI_IC")" ] && [ "$MO_IC" = "$(sha "$YENI_IC")" ]; the
 else echo "   ❌ ic token uyusmazligi (backend=$BE_IC motor=$MO_IC beklenen=$(sha "$YENI_IC"))"; HATA=1; fi
 if [ "$KOD" = "200" ]; then echo "   ✓ https://$DOMAIN/api/health → 200"
 else echo "   ❌ /api/health → $KOD (backend ayaga kalkmadi?)"; HATA=1; fi
+SMTP_BOZUK=0
+for k in $KORUNACAK_SMTP; do
+  ONCE_V="$(grep -E "^$k=" "$ENV_YEDEK" | head -1 | cut -d= -f2- | tr -d '"\r' || true)"
+  SONRA_V="$(oku "$k" || true)"
+  if [ -z "$ONCE_V" ] && [ -z "$SONRA_V" ]; then echo "   · $k .env'de yok (once de yoktu)"
+  elif [ "$(sha "$ONCE_V")" = "$(sha "$SONRA_V")" ]; then :
+  else echo "   ❌ $k DEGISTI ya da KAYBOLDU"; SMTP_BOZUK=1; HATA=1; fi
+done
+[ "$SMTP_BOZUK" = 0 ] && echo "   ✓ SMTP satirlari korundu ($KORUNACAK_SMTP — degerler sha256 esit)"
 
+echo ""
+kapsam_raporu
 echo ""
 if [ "$HATA" = 0 ]; then
   echo "SIR DONDURME TAMAM VE KANITLANDI."
   echo "  · Tum oturumlar dustu — herkes bir kez yeniden giris yapar."
   echo "  · Eski .env yedegi ESKI PAROLAYI ICERIR: $ENV_YEDEK — dogrulama bitince silin."
-  echo "  · Bu betigin DOKUNMADIGI sirlar: CLAUDE_API_KEY (DB) · IYZICO_* (.env) — saglayici panelinden."
   exit 0
 else
   echo "❌ EN AZ BIR KANIT BASARISIZ. Geri donus: cp $ENV_YEDEK .env → ALTER USER (eski parola yedekte) → docker compose up -d"

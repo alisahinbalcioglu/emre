@@ -1,0 +1,5 @@
+[Unit]
+Description=MetaPriceX sistem nobetcisi (disk/bellek/konteyner/yedek esikleri)
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/metaprice-nobetci.sh

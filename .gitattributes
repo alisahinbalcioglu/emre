@@ -1,0 +1,6 @@
+# Sunucuya birebir kurulan dosyalar (scripts/sunucu/kur.sh). CRLF ile giden bir
+# betik "bad interpreter" ile olur, systemd birimi de bozulur. Bugun depo LF
+# ama bu katkicinin core.autocrlf ayarina bagliydi; burada kilitlenir.
+# Kapsam bilerek DAR: tum *.sh icin koymak mevcut betikleri yeniden normalize
+# ederdi (gereksiz churn).
+scripts/sunucu/** text eol=lf

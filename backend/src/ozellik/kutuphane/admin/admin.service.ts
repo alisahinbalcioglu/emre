@@ -1,4 +1,8 @@
-import { Injectable, BadRequestException, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable, Logger, BadRequestException, NotFoundException, ConflictException,
+  InternalServerErrorException,
+} from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import * as XLSX from 'xlsx';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { KullanicilarSorgusuDto } from './dto/kullanicilar-sorgusu.dto';
@@ -93,6 +97,7 @@ export interface ImportPreviewItem {
 
 @Injectable()
 export class AdminService {
+  private readonly logger = new Logger(AdminService.name);
   private readonly SENSITIVE_KEYS = ['CLAUDE_API_KEY', 'GEMINI_API_KEY', 'OPENROUTER_API_KEY'];
 
   constructor(
@@ -104,13 +109,25 @@ export class AdminService {
   // ═════════ USERS ═════════
 
   // DENETIM KAYDI (2.5) — TEK yazma noktasi.
-  // Alti mutasyonun hepsi buradan gecer; yeni bir mutasyon eklendiginde
-  // "log yazmayi unutmak" tek bir yerde gorunur olur.
+  // Alti mutasyonun hepsi `denetimliMutasyon`dan gecer; yeni bir mutasyon
+  // eklendiginde "log yazmayi unutmak" tek bir yerde gorunur olur.
   //
-  // Denetim yazimi ISLEMI DUSURMEZ: log yazilamazsa yonetici islemi yine de
-  // tamamlanir, yalniz sunucu gunlugune yuksek sesle yazilir. Denetim kaydi
-  // teslimatin onkosulu degildir.
+  // ⚠ 10.09.2026'ya kadar burada hatayi YUTAN bir try/catch vardi: denetim
+  // satiri yazilamazsa islem yine 200 donuyor, iz yalniz console'da kaliyordu.
+  // Uretimde tablo 0 satirdi ve ekran "Islem denetim kaydina yazilir" diyordu
+  // — ekran vardi, guven vardi, kayit yoktu.
+  //
+  // Artik mutasyon ile denetim satiri AYNI transaction'da: ikisi birlikte
+  // yazilir ya da ikisi de yazilmaz. Transaction'SIZ yalnizca `throw` eklemek
+  // YANLIS olurdu: mutasyon zaten commit edilmisken 500 donmek, uygulanmis bir
+  // islemi "olmadi" diye raporlamaktir.
+  //
+  // BEDEL (bilincli): denetim satiri yazilamazsa yonetici islemi de uygulanmaz
+  // (ban dahil). Tablonun FK'si yok ve zorunlu alanlari aktor + tip; bu
+  // yazimin tek basina patlamasi pratikte veritabaninin kendisinin sorunlu
+  // oldugu anlamina gelir.
   private async denetimYaz(
+    tx: Prisma.TransactionClient,
     yonetici: { id: string; email: string },
     tip: string,
     hedef: { id: string; email: string } | null,
@@ -118,22 +135,49 @@ export class AdminService {
     yeniDeger?: string | null,
     veri?: Record<string, unknown>,
   ): Promise<void> {
-    try {
-      await this.prisma.yoneticiOlayi.create({
-        data: {
-          yoneticiId: yonetici.id,
-          yoneticiEpsta: yonetici.email,
-          hedefKullaniciId: hedef?.id ?? null,
-          hedefEposta: hedef?.email ?? null,
-          tip,
-          oncekiDeger: oncekiDeger ?? null,
-          yeniDeger: yeniDeger ?? null,
-          veri: (veri ?? undefined) as never,
-        },
-      });
-    } catch (e) {
-      console.error('[denetim] YAZILAMADI, islem yine de uygulandi:', tip, e);
-    }
+    await tx.yoneticiOlayi.create({
+      data: {
+        yoneticiId: yonetici.id,
+        yoneticiEpsta: yonetici.email,
+        hedefKullaniciId: hedef?.id ?? null,
+        hedefEposta: hedef?.email ?? null,
+        tip,
+        oncekiDeger: oncekiDeger ?? null,
+        yeniDeger: yeniDeger ?? null,
+        veri: (veri ?? undefined) as never,
+      },
+    });
+  }
+
+  /** Mutasyonu ve denetim satirini TEK transaction'da uygular. */
+  private async denetimliMutasyon<T>(
+    yonetici: { id: string; email: string },
+    tip: string,
+    hedef: { id: string; email: string } | null,
+    oncekiDeger: string | null,
+    yeniDeger: string | null,
+    veri: Record<string, unknown> | undefined,
+    islem: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    return this.prisma.$transaction(async (tx) => {
+      const sonuc = await islem(tx);
+      try {
+        await this.denetimYaz(tx, yonetici, tip, hedef, oncekiDeger, yeniDeger, veri);
+      } catch (e) {
+        // ⚠ `DENETIM-YAZILAMADI` NOBETCININ SAYDIGI etikettir
+        // (scripts/sunucu/metaprice-nobetci.sh). Degistirilirse alarm susar.
+        // E-posta degil id yazilir: sunucu gunlugune kisisel veri dusmesin.
+        this.logger.error(
+          `DENETIM-YAZILAMADI tip=${tip} yonetici=${yonetici.id} hedef=${hedef?.id ?? '-'} ` +
+            `islem GERI ALINDI: ${e instanceof Error ? e.message : String(e)}`,
+        );
+        // Firlatmak transaction'i geri alir; mutasyon da uygulanmaz.
+        throw new InternalServerErrorException(
+          'Denetim kaydı yazılamadığı için işlem UYGULANMADI. Hata sunucu günlüğüne kaydedildi.',
+        );
+      }
+      return sonuc;
+    });
   }
 
   async denetimKaydiGetir(hedefKullaniciId?: string, limit = 100) {
@@ -281,12 +325,12 @@ export class AdminService {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user || user.deletedAt) throw new NotFoundException('User not found');
     if (role !== 'admin') await this.kilitlenmeyiOnle(yonetici, id, 'rol');
-    const sonuc = await this.prisma.user.update({
-      where: { id }, data: { role },
-      select: { id: true, email: true, role: true, status: true },
-    });
-    await this.denetimYaz(yonetici, 'rol.degisti', user, user.role, role);
-    return sonuc;
+    return this.denetimliMutasyon(yonetici, 'rol.degisti', user, user.role, role, undefined, (tx) =>
+      tx.user.update({
+        where: { id }, data: { role },
+        select: { id: true, email: true, role: true, status: true },
+      }),
+    );
   }
 
   async updateUserStatus(
@@ -298,12 +342,12 @@ export class AdminService {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user || user.deletedAt) throw new NotFoundException('User not found');
     if (status === 'banned') await this.kilitlenmeyiOnle(yonetici, id, 'durum');
-    const sonuc = await this.prisma.user.update({
-      where: { id }, data: { status },
-      select: { id: true, email: true, role: true, status: true },
-    });
-    await this.denetimYaz(yonetici, 'durum.degisti', user, user.status, status);
-    return sonuc;
+    return this.denetimliMutasyon(yonetici, 'durum.degisti', user, user.status, status, undefined, (tx) =>
+      tx.user.update({
+        where: { id }, data: { status },
+        select: { id: true, email: true, role: true, status: true },
+      }),
+    );
   }
 
   async updateUserTier(
@@ -314,12 +358,12 @@ export class AdminService {
     if (!['core', 'pro', 'suite'].includes(tier)) throw new BadRequestException('Gecersiz paket');
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user || user.deletedAt) throw new NotFoundException('User not found');
-    const sonuc = await this.prisma.user.update({
-      where: { id }, data: { tier },
-      select: { id: true, email: true, role: true, tier: true, status: true },
-    });
-    await this.denetimYaz(yonetici, 'paket.degisti', user, user.tier, tier);
-    return sonuc;
+    return this.denetimliMutasyon(yonetici, 'paket.degisti', user, user.tier, tier, undefined, (tx) =>
+      tx.user.update({
+        where: { id }, data: { tier },
+        select: { id: true, email: true, role: true, tier: true, status: true },
+      }),
+    );
   }
 
   // YUMUSAK SILME (2.3). Onceki hal `prisma.user.delete` idi ve Quote ile
@@ -331,15 +375,16 @@ export class AdminService {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user || user.deletedAt) throw new NotFoundException('User not found');
     await this.kilitlenmeyiOnle(yonetici, id, 'silme');
-    const sonuc = await this.prisma.user.update({
-      where: { id },
-      data: { deletedAt: new Date() },
-      select: { id: true, email: true, deletedAt: true },
-    });
-    await this.denetimYaz(yonetici, 'kullanici.silindi', user, null, null, {
-      rol: user.role, paket: user.tier, durum: user.status,
-    });
-    return sonuc;
+    return this.denetimliMutasyon(
+      yonetici, 'kullanici.silindi', user, null, null,
+      { rol: user.role, paket: user.tier, durum: user.status },
+      (tx) =>
+        tx.user.update({
+          where: { id },
+          data: { deletedAt: new Date() },
+          select: { id: true, email: true, deletedAt: true },
+        }),
+    );
   }
 
   async getUserSubscriptions(userId: string) {
@@ -363,23 +408,23 @@ export class AdminService {
     if (!['core', 'pro'].includes(level)) throw new BadRequestException('Gecersiz level');
     if (!['mechanical', 'electrical', 'mep'].includes(scope)) throw new BadRequestException('Gecersiz scope');
 
-    const sonuc = await this.prisma.userSubscription.upsert({
-      where: { userId_level_scope: { userId, level, scope } },
-      create: {
-        userId, level, scope,
-        endsAt: endsAt ? new Date(endsAt) : null,
-        active: true,
-      },
-      update: {
-        active: true,
-        endsAt: endsAt ? new Date(endsAt) : null,
-      },
-    });
-    await this.denetimYaz(
+    return this.denetimliMutasyon(
       yonetici, 'abonelik.eklendi', user, null, level + '/' + scope,
       { endsAt: endsAt ?? null },
+      (tx) =>
+        tx.userSubscription.upsert({
+          where: { userId_level_scope: { userId, level, scope } },
+          create: {
+            userId, level, scope,
+            endsAt: endsAt ? new Date(endsAt) : null,
+            active: true,
+          },
+          update: {
+            active: true,
+            endsAt: endsAt ? new Date(endsAt) : null,
+          },
+        }),
     );
-    return sonuc;
   }
 
   async removeUserSubscription(
@@ -390,11 +435,10 @@ export class AdminService {
     const sub = await this.prisma.userSubscription.findUnique({ where: { id: subId } });
     if (!sub || sub.userId !== userId) throw new NotFoundException('Subscription not found');
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    const sonuc = await this.prisma.userSubscription.delete({ where: { id: subId } });
-    await this.denetimYaz(
-      yonetici, 'abonelik.kaldirildi', user, sub.level + '/' + sub.scope, null,
+    return this.denetimliMutasyon(
+      yonetici, 'abonelik.kaldirildi', user, sub.level + '/' + sub.scope, null, undefined,
+      (tx) => tx.userSubscription.delete({ where: { id: subId } }),
     );
-    return sonuc;
   }
 
   // ═════════ STATS ═════════

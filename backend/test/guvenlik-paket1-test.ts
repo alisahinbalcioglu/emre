@@ -260,6 +260,40 @@ function main(): void {
     'budama basarisizligi teslimati dusurmemeli — disk temizligi onkosul degil',
   );
 
+  // ── F10 / F11 (10.09.2026) ────────────────────────────────────────────
+  // F10 KONUMSAL: salt varlik arayan bir assert, umask pg_dump'tan SONRAYA
+  // tasinsa da yesil kalirdi. Dilim sart: `umask 077` backup.sh'ta da geciyor;
+  // dilim onu deploy.sh dump blogunda benzersiz kilar.
+  const dumpBas = deploy.indexOf('docker compose exec -T -e ADI=');
+  const dumpSon = deploy.indexOf('YEDEK DOGRULANDI');
+  const dumpBlok = dumpBas !== -1 && dumpSon > dumpBas ? deploy.slice(dumpBas, dumpSon) : '';
+  check(
+    'F10-OLCUT deploy oncesi dump blogu bulundu',
+    dumpBlok.includes('pg_dump'),
+    `dilim uzunlugu=${dumpBlok.length}`,
+  );
+  check(
+    'F10 deploy oncesi dump 0600 doguyor (umask 077, pg_dump ONCESINDE)',
+    dumpBlok.includes('umask 077') && dumpBlok.indexOf('umask 077') < dumpBlok.indexOf('pg_dump'),
+    'olculdu 09.09: exec kabugu umask=0022, uc deploy dump dosyasi 0644 dogdu',
+  );
+  // ⚠ Bitis BASLANGICTAN SONRA aranir: `DEPLOY DOGRULANAMADI (backend)` basari
+  // dalindan ONCE de geciyor. Ilk surum duz indexOf kullandi, dilim BOS kaldi
+  // ve assert var olan satiri bulamadi (olculdu 13.09).
+  const basariBas = deploy.indexOf('DEPLOY DOGRULANDI');
+  const basariSon = deploy.indexOf('DEPLOY DOGRULANAMADI', basariBas);
+  const basariDali = basariBas !== -1 && basariSon > basariBas ? deploy.slice(basariBas, basariSon) : '';
+  check(
+    'F11-OLCUT basari dali dilimi bulundu (ilk builder prune icinde)',
+    basariDali.includes('docker builder prune -af --filter until=72h'),
+    `dilim uzunlugu=${basariDali.length}`,
+  );
+  check(
+    'F11 build cache MUTLAK TAVANLI (yas suzgeci art arda deploy`larda sifir siliyordu)',
+    basariDali.includes('docker builder prune -af --keep-storage 10GB >/dev/null 2>&1 || true'),
+    'olculdu 09.09: 88 kayit / 12.76 GB, hepsi 72 saatten genc',
+  );
+
   // ── G. ON YUZ ─────────────────────────────────────────────────────────
   console.log('\n── G · ON YUZ ──');
   const kokLayout = kodu(oku('frontend/app/layout.tsx'));

@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { HealthController } from './health.controller';
-import { BootstrapController } from './bootstrap.controller';
 import { PrismaModule } from './altyapi/db/prisma.module';
 import { AuthModule } from './altyapi/auth/auth.module';
 import { BrandsModule } from './ozellik/kutuphane/brands/brands.module';
@@ -62,6 +61,6 @@ import { FirmaModule } from './ozellik/firma/firma.module';
     OdemeModule,
     FirmaModule,
   ],
-  controllers: [HealthController, BootstrapController],
+  controllers: [HealthController],
 })
 export class AppModule {}

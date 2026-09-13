@@ -1,0 +1,7 @@
+[Unit]
+Description=MetaPriceX sistem nobetcisi (saatlik)
+[Timer]
+OnCalendar=hourly
+Persistent=true
+[Install]
+WantedBy=timers.target

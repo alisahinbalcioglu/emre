@@ -40,6 +40,8 @@ import { QuotesController } from '../src/ozellik/teklif/quotes/quotes.controller
 import { QuoteFormatsController } from '../src/ozellik/cikti/quote-formats/quote-formats.controller';
 import { DwgEngineController } from '../src/modules/dwg-engine/dwg-engine.controller';
 import { AbonelikController } from '../src/ozellik/odeme/abonelik/abonelik.controller';
+import { LaborController } from '../src/ozellik/kutuphane/labor/labor.controller';
+import { AiController } from '../src/ozellik/giris/ai/ai.controller';
 
 let passed = 0;
 let failed = 0;
@@ -74,9 +76,28 @@ function karar(p: Partial<ErisimKarari>): ErisimKarari {
   };
 }
 
-/** Bir controller metodunda ilan edilmis yetenekleri okur. */
+/** Bir controller metodunda ilan edilmis yetenekleri okur (YALNIZ metot). */
 function ucYetenekleri(sinif: any, metot: string): Yetenek[] {
   return Reflect.getMetadata(YETENEK_KEY, sinif.prototype[metot]) ?? [];
+}
+
+/** SINIF duzeyinde ilan edilmis yetenekler. */
+function sinifYetenekleri(sinif: any): Yetenek[] {
+  return Reflect.getMetadata(YETENEK_KEY, sinif) ?? [];
+}
+
+/**
+ * ETKIN yetenek — ErisimGuard'in GORDUGU sey.
+ *
+ * ⚠ Guard `getAllAndOverride(YETENEK_KEY, [getHandler(), getClass()])` okur,
+ * yani SINIF duzeyindeki dekorator de baglayicidir. Yalniz metoda bakan bir
+ * assert, sinifa konan bir yetenegi GORMEZ ve "yetenek tasimiyor" diye yesil
+ * kalir — mutasyonla olculdu (M7 hayatta kalmisti). Kalkan assert'leri bunu
+ * kullanmali, ucYetenekleri'ni DEGIL.
+ */
+function etkinYetenekler(sinif: any, metot: string): Yetenek[] {
+  const m = ucYetenekleri(sinif, metot);
+  return m.length > 0 ? m : sinifYetenekleri(sinif);
 }
 
 function guardAdlari(sinif: any): string[] {
@@ -200,6 +221,32 @@ function kararMatrisi() {
     kapali.length === 0,
     `kapali durumlar=${JSON.stringify(kapali)}`,
   );
+
+  // ── L2 ★KALKAN: para harcayan uc KISITLI modda ACILMASIN ──────────────
+  // AI_ANALIZ her cagride Anthropic/OpenRouter'a gercek para harciyor.
+  // KISITLI_MODDA_ACIK kumesine eklenirse odemesi duran firmaya masraf
+  // uretmeye devam ederiz — kapatilmak istenen gelir hatasinin ta kendisi.
+  check(
+    'L2 ★KALKAN KISITLI: AI_ANALIZ KAPALI (para harcayan uc salt-okunur modda acilmaz)',
+    !servis.yetenekKararla(
+      karar({ durum: AbonelikDurumu.KISITLI, erisimVar: true, saltOkunur: true }),
+      Yetenek.AI_ANALIZ,
+    ),
+  );
+  check(
+    'L2 ★KALKAN SURESI DOLMUS: iscilik katalogu KAPALI (gorevin kabul olcutu)',
+    !servis.yetenekKararla(
+      karar({ durum: AbonelikDurumu.SONA_ERDI, erisimVar: false }),
+      Yetenek.KUTUPHANE_GORUNTULE,
+    ),
+  );
+  check(
+    'L2 ★KALKAN SURESI DOLMUS: AI_ANALIZ KAPALI',
+    !servis.yetenekKararla(
+      karar({ durum: AbonelikDurumu.SONA_ERDI, erisimVar: false }),
+      Yetenek.AI_ANALIZ,
+    ),
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -227,6 +274,12 @@ function kablolama() {
     ['POST /dwg-engine/layers', DwgEngineController, 'listLayers', Yetenek.DWG_YUKLE],
     ['POST /dwg-engine/parse', DwgEngineController, 'parseDwg', Yetenek.DWG_YUKLE],
     ['POST /dwg-engine/upload', DwgEngineController, 'uploadAsync', Yetenek.DWG_YUKLE],
+    // 10.09.2026 — abonelik SAGLIGI bu iki alana hic baglanmamisti:
+    // suresi dolmus bir firma iscilik katalogunu okumaya ve PDF analizi
+    // calistirmaya (GERCEK para harcayan uc) devam ediyordu.
+    ['GET /labor', LaborController, 'findAll', Yetenek.KUTUPHANE_GORUNTULE],
+    ['GET /labor/:id', LaborController, 'findOne', Yetenek.KUTUPHANE_GORUNTULE],
+    ['POST /ai/analyze', AiController, 'analyze', Yetenek.AI_ANALIZ],
   ];
 
   for (const [ad, sinif, metot, yetenek] of beklenen) {
@@ -248,6 +301,8 @@ function kablolama() {
     ['QuotesController', QuotesController],
     ['QuoteFormatsController', QuoteFormatsController],
     ['DwgEngineController', DwgEngineController],
+    ['LaborController', LaborController],
+    ['AiController', AiController],
   ] as Array<[string, any]>) {
     check(
       `W2 ${ad} ErisimGuard tasiyor (dekorator tek basina kapatmaz)`,
@@ -278,9 +333,43 @@ function kablolama() {
       continue;
     }
     check(
-      `W4 ★KALKAN ${ad} yetenek dekoratoru TASIMIYOR (kisitli modda goruntuleme acik)`,
-      ucYetenekleri(QuotesController, metot).length === 0,
-      `okunan=${JSON.stringify(ucYetenekleri(QuotesController, metot))}`,
+      `W4 ★KALKAN ${ad} ETKIN yetenek TASIMIYOR (kisitli modda goruntuleme acik)`,
+      etkinYetenekler(QuotesController, metot).length === 0,
+      `etkin=${JSON.stringify(etkinYetenekler(QuotesController, metot))} sinif=${JSON.stringify(sinifYetenekleri(QuotesController))}`,
+    );
+  }
+
+  // ── W5 ★KALKAN: iscilik YAZMA uclari yetenek TASIMAMALI ─────────────
+  // LaborItem KURESEL bir katalog (`isGlobal` varsayilan true) ama platform
+  // yoneticisi de bir firmaya bagli. Bu uclara yetenek verilirse yonetici
+  // KENDI firmasinin abonelik sagligina baglanir ve miras satirlarinin
+  // erisimSonu geldiginde (2027-09-01) kuresel katalogdan kilitlenir.
+  // Sinif duzeyine @GerekliYetenek koymak tam bu hatayi uretir.
+  for (const metot of ['create', 'update', 'remove'] as const) {
+    if (typeof (LaborController.prototype as any)[metot] !== 'function') {
+      check(`W-OLCUT LaborController.${metot} VAR`, false, 'metot bulunamadi');
+      continue;
+    }
+    check(
+      `W5 ★KALKAN POST/PUT/DELETE /labor (${metot}) ETKIN yetenek TASIMIYOR (admin kendi katalogundan kilitlenmesin)`,
+      etkinYetenekler(LaborController, metot).length === 0,
+      `etkin=${JSON.stringify(etkinYetenekler(LaborController, metot))} sinif=${JSON.stringify(sinifYetenekleri(LaborController))}`,
+    );
+  }
+
+  // ── W6 ★KALKAN: ceviri uclarinin davranisi DEGISMEDI ────────────────
+  // Ceviri kotasi Faz 6.2'nin konusu (kademeli satir/dosya tavani).
+  // Buraya tek tarafli yetenek koymak o tasarimla celisirdi; bu assert
+  // kararin bilincli oldugunu kayda gecirir ve sessizce degismesini onler.
+  for (const metot of ['translate', 'translateCorrect'] as const) {
+    if (typeof (AiController.prototype as any)[metot] !== 'function') {
+      check(`W-OLCUT AiController.${metot} VAR`, false, 'metot bulunamadi');
+      continue;
+    }
+    check(
+      `W6 ★KALKAN /ai/${metot} ETKIN yetenek TASIMIYOR (kota karari Faz 6.2'de)`,
+      etkinYetenekler(AiController, metot).length === 0,
+      `etkin=${JSON.stringify(etkinYetenekler(AiController, metot))} sinif=${JSON.stringify(sinifYetenekleri(AiController))}`,
     );
   }
 }
@@ -299,6 +388,29 @@ function kablolama() {
  * ⚠ On yuz tarafinda ayrica kendi vitest paketi var; buradaki kapi
  * ESLIGI olcer, davranisi degil.
  */
+function iscilikEkrani() {
+  console.log('\n── P3 · ISCILIK EKRANI KISITLAMAYI BOS KATALOG SANMIYOR ──');
+  const fs = require('node:fs') as typeof import('node:fs');
+  const path = require('node:path') as typeof import('node:path');
+  const sayfa = fs
+    .readFileSync(path.join(__dirname, '../../frontend/app/(protected)/labor/page.tsx'), 'utf8')
+    .replace(/\r\n/g, '\n')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^[ \t]*\/\/.*$/gm, '');
+  check('P3-OLCUT iscilik sayfasi okundu (/labor istegi var)', sayfa.includes('/labor?discipline='));
+  check(
+    'P3a 403 ABONELIK_KISITLI ayri ele aliniyor (genel hata toast`ina dusmuyor)',
+    /status === 403 && veri\?\.kod === 'ABONELIK_KISITLI'/.test(sayfa),
+  );
+  const kisitliDal = sayfa.indexOf(') : kisitli ? (');
+  const bosDal = sayfa.indexOf(') : items.length === 0 ? (');
+  check(
+    'P3b kisitlama dali BOS KATALOG dalindan ONCE (kisitli firma "henuz eklenmemis" gormez)',
+    kisitliDal !== -1 && bosDal !== -1 && kisitliDal < bosDal,
+    `kisitli=${kisitliDal} bos=${bosDal}`,
+  );
+}
+
 function onYuzEsligi() {
   console.log('\n── P · ON YUZ ↔ SUNUCU ESLIGI ──');
   const fs = require('node:fs') as typeof import('node:fs');
@@ -369,6 +481,7 @@ function onYuzEsligi() {
 kararMatrisi();
 kablolama();
 onYuzEsligi();
+iscilikEkrani();
 
 console.log(
   `\n${'='.repeat(64)}\nERISIM KAPISI: ${passed} PASS, ${failed} FAIL\n${'='.repeat(64)}`,

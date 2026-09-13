@@ -1,0 +1,20 @@
+# MetaPriceX Faz 0.6 — 2026-09-07
+# Sorun: 600 sn ban donen saldirgani durdurmuyordu (olculdu: ban 20:38, geri dondu 20:49).
+[DEFAULT]
+bantime           = 1h
+findtime          = 10m
+maxretry          = 3
+bantime.increment = true
+bantime.factor    = 2
+bantime.maxtime   = 1w
+
+[sshd]
+enabled = true
+
+[recidive]
+enabled   = true
+logpath   = /var/log/fail2ban.log
+banaction = %(banaction_allports)s
+bantime   = 1w
+findtime  = 1d
+maxretry  = 3

@@ -39,6 +39,8 @@
 import 'reflect-metadata';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { ConfigService } from '@nestjs/config';
+import { uygulamaKokuCoz } from '../src/altyapi/auth/uygulama-url';
 
 let passed = 0;
 let failed = 0;
@@ -72,6 +74,15 @@ for (const a of ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'MAIL_FROM'
 process.env.DATABASE_URL ??= 'postgresql://olcum:olcum@localhost:5432/olcum';
 process.env.JWT_SECRET ??= 'olcum-icin-sabit-en-az-otuziki-karakterlik-anahtar';
 process.env.APP_URL ??= 'https://olcum.example.com';
+
+/** Kaynak dosyayi YORUMSUZ okur — iddia yorumdan degil KODDAN olculsun. */
+function kodOku(rel: string): string {
+  return fs
+    .readFileSync(path.join(__dirname, '..', rel), 'utf8')
+    .split(/\r?\n/)
+    .filter((s) => !s.trim().startsWith('//') && !s.trim().startsWith('*'))
+    .join('\n');
+}
 
 async function main() {
   const { PrismaClient } = await import('@prisma/client');
@@ -743,6 +754,87 @@ async function main() {
     'G13 parola degisiminde ON YUZ TAZE TOKENI SAKLIYOR (yoksa kullanici atilir)',
     /localStorage\.setItem\('token'/.test(profil),
   );
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  H — TABAN ADRES (bağlantı kökü)
+  // ═════════════════════════════════════════════════════════════════════════
+  // 09.09.2026'da İLK GERÇEK MAİLDE çıktı: yedek adres `/reset-password?token=…`
+  // diye başlıyordu — başında alan adı yoktu. Kök neden `??` zinciriydi:
+  // compose `APP_URL: ${APP_URL:-}` yazıyor, yani değer BOŞ DİZE geliyor ve
+  // `'' ?? …` boş dizeyi düşürmez. Canlıda ölçüldü: APP_URL uzunluk 0.
+  console.log('\n── H · TABAN ADRES ──');
+  {
+    // ⚠ ÖN KOŞUL: ConfigService `process.env`i kurucu nesnesinden ÖNCE okur
+    // (@nestjs/config 3.x). Silinmezse aşağıdaki senaryolar EZİLİR ve blok
+    // YALANCI YEŞİL verir — mutasyon da yakalayamaz.
+    const oncekiApp = process.env.APP_URL;
+    const oncekiUyg = process.env.UYGULAMA_URL;
+    delete process.env.APP_URL;
+    delete process.env.UYGULAMA_URL;
+
+    const koku = (o: Record<string, string>) =>
+      uygulamaKokuCoz(new ConfigService(o) as any);
+
+    // ÖLÇÜT: araç çalışıyor mu? Dolu bir değer AYNEN dönmeli.
+    check(
+      'H-OLCUT cozucu calisiyor (dolu APP_URL aynen doner)',
+      koku({ APP_URL: 'https://x.example.com' }) === 'https://x.example.com',
+      `donen=${koku({ APP_URL: 'https://x.example.com' })}`,
+    );
+
+    check(
+      'H1 APP_URL BOS DIZE ise UYGULAMA_URL kullanilir (asil kusur)',
+      koku({ APP_URL: '', UYGULAMA_URL: 'https://metapricex.com' }) ===
+        'https://metapricex.com',
+      `donen=${koku({ APP_URL: '', UYGULAMA_URL: 'https://metapricex.com' })}`,
+    );
+    check(
+      'H2 APP_URL yalniz BOSLUK ise de dusurulur',
+      koku({ APP_URL: '   ', UYGULAMA_URL: 'https://metapricex.com' }) ===
+        'https://metapricex.com',
+    );
+    check(
+      'H3 sondaki / kirpilir (…com//reset-password olmasin)',
+      koku({ APP_URL: 'https://x.example.com//' }) === 'https://x.example.com',
+    );
+    check(
+      'H4 ikisi de bos ise varsayilan MUTLAK adres doner (asla bos degil)',
+      koku({ APP_URL: '', UYGULAMA_URL: '' }).startsWith('https://'),
+      `donen=${koku({ APP_URL: '', UYGULAMA_URL: '' })}`,
+    );
+
+    if (oncekiApp !== undefined) process.env.APP_URL = oncekiApp;
+    if (oncekiUyg !== undefined) process.env.UYGULAMA_URL = oncekiUyg;
+  }
+
+  // H5-H8: IKI SERVIS de ayni cozucuyu kullanmali. Biri atlanirsa o akisin
+  // baglantisi SESSIZCE kirik kalir (dogrulama maili kimsenin bakmadigi yer).
+  {
+    const parolaKodu = kodOku('src/altyapi/auth/parola.servisi.ts');
+    const dogrulamaKodu = kodOku('src/altyapi/auth/eposta-dogrulama.servisi.ts');
+
+    check(
+      'H-OLCUT iki servis dosyasi da okundu',
+      parolaKodu.length > 500 && dogrulamaKodu.length > 500,
+      `parola=${parolaKodu.length} dogrulama=${dogrulamaKodu.length}`,
+    );
+    check(
+      'H5 parola.servisi ORTAK cozucuyu kullaniyor',
+      parolaKodu.includes('uygulamaKokuCoz(config)'),
+    );
+    check(
+      'H6 eposta-dogrulama.servisi ORTAK cozucuyu kullaniyor (IKIZ)',
+      dogrulamaKodu.includes('uygulamaKokuCoz(config)'),
+    );
+    check(
+      'H7 parola.servisi kirik `??` zincirini GERI GETIRMEMIS',
+      !/config\.get<string>\('APP_URL'\)\s*\?\?/.test(parolaKodu),
+    );
+    check(
+      'H8 eposta-dogrulama.servisi kirik `??` zincirini GERI GETIRMEMIS',
+      !/config\.get<string>\('APP_URL'\)\s*\?\?/.test(dogrulamaKodu),
+    );
+  }
 
   await app.close();
 

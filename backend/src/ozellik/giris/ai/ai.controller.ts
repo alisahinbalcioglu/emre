@@ -6,9 +6,23 @@ import { CeviriService } from './ceviri.service';
 import { JwtAuthGuard } from '../../../altyapi/auth/guards/jwt-auth.guard';
 import { TierGuard, RequireTier } from '../../../altyapi/auth/guards/tier.guard';
 import { CurrentUser } from '../../../altyapi/auth/decorators/current-user.decorator';
+import { ErisimGuard, GerekliYetenek } from '../../odeme/abonelik/erisim.guard';
+import { Yetenek } from '../../odeme/abonelik/erisim.servisi';
 
+/**
+ * ── ERİŞİM SAĞLIĞI (10.09.2026) ────────────────────────────────────────
+ * `/ai/analyze` her çağrıda Anthropic/OpenRouter'a gerçek para harcıyor ve
+ * ödemesi durmuş bir firmaya kapalı DEĞİLDİ. `ErisimGuard` eklendi.
+ *
+ * ⚠ `translate` ve `translate/correct` BİLEREK yeteneksiz bırakıldı —
+ * ErisimGuard yetenek metadata'sı yoksa geçirir, yani bu iki ucun davranışı
+ * DEĞİŞMEDİ. Sebep: çeviri kotası Faz 6.2'nin konusu (kademeli satır/dosya
+ * tavanı) ve burada tek taraflı kapatmak o tasarımla çelişirdi.
+ * ⚠ AYRICA ÖLÇÜLDÜ: bu iki uçta `@RequireTier` de YOK — çeviri bugün her
+ * core kullanıcıya açık. Faz 6'ya taşınan bilinen açık.
+ */
 @Controller('ai')
-@UseGuards(JwtAuthGuard, TierGuard)
+@UseGuards(JwtAuthGuard, TierGuard, ErisimGuard)
 export class AiController {
   constructor(
     private aiService: AiService,
@@ -17,6 +31,7 @@ export class AiController {
 
   @Post('analyze')
   @RequireTier('pro') // PDF analiz → minimum Pro paketi
+  @GerekliYetenek(Yetenek.AI_ANALIZ) // + aboneliği yürüyor mu?
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),

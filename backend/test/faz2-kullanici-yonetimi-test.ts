@@ -25,6 +25,8 @@
 import 'reflect-metadata';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { InternalServerErrorException } from '@nestjs/common';
+import { AdminService } from '../src/ozellik/kutuphane/admin/admin.service';
 
 let passed = 0;
 let failed = 0;
@@ -47,7 +49,7 @@ const oku = (p: string) => fs.readFileSync(path.join(KOK, p), 'utf8');
 const kodu = (s: string) =>
   s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
 
-function main(): void {
+async function main(): Promise<void> {
   const sema = oku('backend/prisma/schema.prisma');
   const servis = kodu(oku('backend/src/ozellik/kutuphane/admin/admin.service.ts'));
   const kontrolcu = kodu(oku('backend/src/ozellik/kutuphane/admin/admin.controller.ts'));
@@ -118,15 +120,18 @@ function main(): void {
     currentUserSayisi >= 6,
     'rol, durum, paket, silme, abonelik ekle, abonelik kaldir',
   );
-  const denetimCagri = (servis.match(/this\.denetimYaz\(/g) ?? []).length;
+  const denetimCagri = (servis.match(/this\.denetimliMutasyon\(/g) ?? []).length;
   check(
-    `B6 alti mutasyonun hepsi denetim yaziyor (${denetimCagri}/6)`,
+    `B6 alti mutasyonun hepsi denetimli sarmalayicidan geciyor (${denetimCagri}/6)`,
     denetimCagri >= 6,
   );
+  // 10.09.2026'ya kadar B7 tam tersini olcuyordu: "hatayi YUTAN catch var mi".
+  // O davranis kusurun kendisiydi (tablo uretimde 0 satir, ekran "yazilir"
+  // diyordu). Artik mutasyon ile denetim satiri ayni transaction'da olmali.
   check(
-    'B7 denetim yazimi islemi DUSURMUYOR (try/catch)',
-    /catch \(e\) \{[\s\S]{0,200}?\[denetim\]/.test(servis),
-    'log yazilamazsa yonetici islemi yine de tamamlanmali',
+    'B7 denetim satiri mutasyonla AYNI transaction icinde yaziliyor',
+    /\$transaction\(async \(tx\)[\s\S]{0,400}?this\.denetimYaz\(tx/.test(servis),
+    'denetimYaz transaction istemcisiyle cagrilmiyor',
   );
   check(
     'B8 denetim kaydi OKUNABILIYOR (uc var)',
@@ -328,7 +333,117 @@ function main(): void {
     /\/admin\/denetim/.test(oku('frontend/ozellik/kutuphane/admin/AdminSidebar.tsx')),
   );
 
+  await davranis();
   son();
+}
+
+/**
+ * K — DAVRANIS. Sahte veritabaniyla, denetim yazimi KASTEN bozulur.
+ *
+ * Kaynak regex'i mekanizmanin VARLIGINI olcer; bu blok SONUCUNU olcer:
+ * yazim patlayinca islem gercekten 200 donmuyor mu, loga dusuyor mu, geri
+ * aliniyor mu. DB gerektirmez (sahte $transaction geri almayi kaydeder).
+ */
+async function davranis(): Promise<void> {
+  console.log('\n── K · DAVRANIS (denetim yazimi KASTEN bozuk) ──');
+
+  const hedef = {
+    id: 'hedef-1', email: 'hedef@ornek.test',
+    role: 'user', status: 'active', tier: 'core', deletedAt: null,
+  };
+  const yonetici = { id: 'yonetici-1', email: 'yonetici@ornek.test' };
+
+  const kur = (denetimBozuk: boolean) => {
+    const iz = {
+      txMutasyon: 0, disMutasyon: 0,
+      txDenetim: 0, disDenetim: 0,
+      geriAlindi: false,
+      loglar: [] as string[],
+    };
+    const tx = {
+      user: { update: async () => { iz.txMutasyon++; return { id: hedef.id }; } },
+      yoneticiOlayi: {
+        create: async () => {
+          if (denetimBozuk) throw new Error('KASITLI-BOZUK-DENETIM');
+          iz.txDenetim++;
+          return {};
+        },
+      },
+    };
+    const prisma = {
+      user: {
+        findUnique: async () => hedef,
+        update: async () => { iz.disMutasyon++; return { id: hedef.id }; },
+      },
+      yoneticiOlayi: { create: async () => { iz.disDenetim++; return {}; } },
+      $transaction: async (fn: (t: unknown) => Promise<unknown>) => {
+        try {
+          return await fn(tx);
+        } catch (e) {
+          iz.geriAlindi = true;
+          throw e;
+        }
+      },
+    };
+    const servis = new AdminService(prisma as any, {} as any, {} as any);
+    (servis as any).logger = {
+      error: (m: unknown) => iz.loglar.push(String(m)),
+      warn: () => undefined,
+      log: () => undefined,
+    };
+    return { servis, iz };
+  };
+
+  // OLCUT: arac saglam yolda calisiyor mu? Calismiyorsa asagidaki K
+  // assert'leri yanlis sebeple kirmizi ya da yesil olur.
+  {
+    const { servis, iz } = kur(false);
+    const sonuc = await servis
+      .updateUserTier(yonetici, hedef.id, 'pro')
+      .then(() => 'basarili', (e: unknown) => e);
+    check('K-OLCUT1 saglam yolda islem BASARILI', sonuc === 'basarili', `sonuc=${String(sonuc)}`);
+    check(
+      'K-OLCUT2 saglam yolda denetim satiri transaction ile YAZILDI',
+      iz.txDenetim === 1 && iz.disDenetim === 0,
+      `tx=${iz.txDenetim} dis=${iz.disDenetim}`,
+    );
+  }
+
+  const { servis, iz } = kur(true);
+  const hata: any = await servis
+    .updateUserTier(yonetici, hedef.id, 'pro')
+    .then(() => null, (e: unknown) => e);
+
+  check(
+    'K1 denetim yazilamayinca islem BASARILI DONMUYOR',
+    hata !== null,
+    'islem sessizce basarili dondu — 10.09 oncesi kusur geri geldi',
+  );
+  check(
+    'K2 yoneticiye "islem uygulanmadi" hatasi donuyor (InternalServerErrorException)',
+    hata instanceof InternalServerErrorException,
+    `hata=${hata?.constructor?.name}`,
+  );
+  check(
+    'K3 hata DENETIM-YAZILAMADI etiketiyle loglandi (nobetcinin saydigi dize)',
+    iz.loglar.some((l) => l.includes('DENETIM-YAZILAMADI')),
+    `loglar=${JSON.stringify(iz.loglar)}`,
+  );
+  check(
+    'K4 transaction GERI ALINDI (hata transaction icinden firlatildi)',
+    iz.geriAlindi,
+    'hata transaction disinda firlatildi ya da yutuldu',
+  );
+  check(
+    'K5 mutasyon transaction ICINDE yapildi (disaridaki user.update cagrilmadi)',
+    iz.txMutasyon === 1 && iz.disMutasyon === 0,
+    `tx=${iz.txMutasyon} dis=${iz.disMutasyon}`,
+  );
+  check(
+    'K6 log satirina e-posta DUSMEDI (id yaziliyor)',
+    !iz.loglar.some((l) => l.includes('@ornek.test')),
+    `loglar=${JSON.stringify(iz.loglar)}`,
+  );
 }
 
 function son(): void {
@@ -341,4 +456,7 @@ function son(): void {
   }
 }
 
-main();
+main().catch((e) => {
+  console.error('KAPI COKTU:', e);
+  process.exit(1);
+});

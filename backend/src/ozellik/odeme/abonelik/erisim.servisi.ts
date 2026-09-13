@@ -27,6 +27,10 @@ export enum Yetenek {
   KUTUPHANE_DUZENLE = 'kutuphane.duzenle',
   KULLANICI_DAVET = 'kullanici.davet',
   ABONELIK_YONET = 'abonelik.yonet', // her zaman açık — ödeme sayfası
+  // ⚠ KISITLI_MODDA_ACIK'e EKLENMEZ: bu uç her çağrıda Anthropic/OpenRouter'a
+  // GERÇEK para harcar. Ödemesi duran bir firmaya masraf üretmeye devam etmek,
+  // kapatılmak istenen gelir hatasının ta kendisidir.
+  AI_ANALIZ = 'ai.analiz',
 }
 
 /**

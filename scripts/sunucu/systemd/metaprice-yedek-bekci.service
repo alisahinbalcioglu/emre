@@ -1,0 +1,5 @@
+[Unit]
+Description=MetaPriceX yedek tazelik bekcisi
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/metaprice-yedek-bekci.sh

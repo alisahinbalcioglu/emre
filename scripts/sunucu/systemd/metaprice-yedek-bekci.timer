@@ -1,0 +1,7 @@
+[Unit]
+Description=MetaPriceX yedek tazelik bekcisi (gunluk)
+[Timer]
+OnCalendar=*-*-* 05:30:00
+Persistent=true
+[Install]
+WantedBy=timers.target

@@ -56,6 +56,8 @@ export enum Yetenek {
   KUTUPHANE_DUZENLE = 'kutuphane.duzenle',
   KULLANICI_DAVET = 'kullanici.davet',
   ABONELIK_YONET = 'abonelik.yonet',
+  // Backend ikizi: KISITLI_MODDA_ACIK'e girmez (para harcayan uç).
+  AI_ANALIZ = 'ai.analiz',
 }
 
 /**

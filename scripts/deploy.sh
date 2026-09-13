@@ -76,8 +76,15 @@ echo "── 2/6 bu deploy'un surumu: $BEKLENEN ──"
 # ariyoruz; boylece hem hata metni gorunur hem de ERR trap'e dusup "beklenmedik
 # hata (kod 3)" gibi yaniltici bir mesaj cikmaz — bu BILINEN ve KASITLI bir ret.
 echo "── 3/6 deploy oncesi DB yedegi ──"
+# UMASK (10.09.2026): `docker compose exec` ile acilan kabuk backup.sh icindeki
+# `umask 077`yi MIRAS ALMAZ. Olculdu 09.09: exec kabugunda umask 0022, ve
+# 07.09 sertlestirmesinden sonraki UC deploy dump dosyasinin UCU de 0644 dogdu
+# (0600 olanlar o gun elle chmod edilmisti — kalici degildi). umask yukun ILK
+# ifadesi: gzip yonlendirmesi ayni kabukta, mv modu korur. chmod yerine umask,
+# cunku chmod dosyanin 0644 dogup sonra duzeltildigi bir pencere birakir.
 YEDEK_ADI="deploy-oncesi-$BEKLENEN-$(date +%Y%m%d-%H%M%S).sql.gz"
 YEDEK_CIKTI="$(docker compose exec -T -e ADI="$YEDEK_ADI" backup sh -c '
+  umask 077
   GECICI="/backups/$ADI.yaziliyor"
   rm -f /tmp/deploy-dump-kodu
   ( set +e; pg_dump -h db -U "$POSTGRES_USER" "$POSTGRES_DB"; echo $? > /tmp/deploy-dump-kodu ) | gzip > "$GECICI"
@@ -241,10 +248,21 @@ if [ "$MOTOR_SHA" = "$BEKLENEN" ]; then
   # DOGRULAMA SONRASI calisir: deploy basarisiz olursa cache durur, yeniden
   # deneme hizli olur. Budama basarisizligi deploy'u DUSURMEZ (|| true) —
   # disk temizligi, teslimatin onkosulu degildir.
+  #
+  # TAVAN (10.09.2026): yas suzgeci TEK BASINA yetmiyor. Olculdu 09.09: uc
+  # gunde uc deploy -> build cache 88 kayit / 12.76 GB ve kayitlarin HEPSI 72
+  # saatten gencti, yani `until=72h` SIFIR bayt siliyordu; disk %15 -> %30.
+  # Ikinci satir cache'e mutlak bir tavan koyar (~2 build'lik iz).
+  # `image prune` BILEREK YOK: ayni gun olculdu, 6 imajin 5'i calisan
+  # konteynerde, dangling 0 — kurtaracagi alan ~26 kB idi.
   ONCE_BOS="$(df --output=avail -BG / | tail -1 | tr -dc '0-9')"
   docker builder prune -af --filter until=72h >/dev/null 2>&1 || true
+  docker builder prune -af --keep-storage 10GB >/dev/null 2>&1 || true
   SONRA_BOS="$(df --output=avail -BG / | tail -1 | tr -dc '0-9')"
-  echo "   build cache budandi: bos alan ${ONCE_BOS}G → ${SONRA_BOS}G (disk %$(df --output=pcent / | tail -1 | tr -dc '0-9'))"
+  # `|| true` SART: betik `set -euo pipefail` + ERR trap ile kosuyor; bu satir
+  # bir bilgi satiri icin basarili deploy'u "YARIDA KESILDI" diye dusurmemeli.
+  CACHE_SONRA="$(docker system df --format '{{if eq .Type "Build Cache"}}{{.Size}}{{end}}' 2>/dev/null | tr -d '\n' || true)"
+  echo "   build cache budandi: bos alan ${ONCE_BOS}G → ${SONRA_BOS}G · cache=${CACHE_SONRA:-?} (disk %$(df --output=pcent / | tail -1 | tr -dc '0-9'))"
 else
   echo ""
   echo "❌ DEPLOY DOGRULANAMADI (dwg-engine MOTORU ESKI KALDI)"

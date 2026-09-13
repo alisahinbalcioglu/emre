@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../db/prisma.service';
 import { EpostaServisi } from '../../ozellik/odeme/eposta/eposta.servisi';
 import { DOGRULAMA_OMRU_MS, tokenOzetle, tokenUret } from './token-ozet';
+import { uygulamaKokuCoz } from './uygulama-url';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -28,11 +29,9 @@ export class EpostaDogrulamaServisi {
     private readonly eposta: EpostaServisi,
     config: ConfigService,
   ) {
-    this.uygulamaUrl = (
-      config.get<string>('APP_URL') ??
-      config.get<string>('UYGULAMA_URL') ??
-      'https://www.metapricex.com'
-    ).replace(/\/+$/, '');
+    // ⚠ İKİZ ONARIM (10.09.2026): parola sıfırlamayla AYNI kusur buradaydı.
+    // Yalnız biri düzeltilseydi doğrulama bağlantısı sessizce kırık kalırdı.
+    this.uygulamaUrl = uygulamaKokuCoz(config);
   }
 
   /**

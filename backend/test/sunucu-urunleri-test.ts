@@ -1,0 +1,224 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  SUNUCU URUNLERI KAPISI  (devir Gorev 6 + Gorev 7 sayaci, 10.09.2026)
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * Faz 0 sertlestirmesi (nobetci, bekci, sshd, fail2ban, systemd birimleri)
+ * 06-07.09'da sunucuda ELLE yazildi ve depoda YOKTU. Artik `scripts/sunucu/`
+ * tek kaynak, `kur.sh` kurucu. Bu kapi o kablolamanin sessizce kopmasini olcer:
+ *
+ *   - Kurulum listesi ile dizin AYRISIRSA bir dosya hic kurulmaz (ya da
+ *     olmayan dosya kurulmaya calisilir) ve kimse fark etmez.
+ *   - CRLF ile giden bir betik sunucuda "bad interpreter" ile olur.
+ *   - sshd dogrulamasiz yeniden yuklenirse erisim kesilebilir; ufw OpenSSH
+ *     izninden ONCE etkinlestirilirse oturum kesilir.
+ *   - Nobetcinin saydigi etiket, backend'in logladigi etiketten AYRISIRSA
+ *     denetim kaydi alarmi SESSIZCE susar. Iki dosya ayri dillerde yazildigi
+ *     icin ortak sabit yok; esitlik burada olculur.
+ *
+ * DB, SUNUCU ve AG GEREKTIRMEZ. Cikis: 0 = PASS · digeri = FAIL.
+ */
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
+let passed = 0;
+let failed = 0;
+const failures: string[] = [];
+
+function check(ad: string, kosul: boolean, detay = ''): void {
+  if (kosul) {
+    passed++;
+    console.log(`  ✓ ${ad}`);
+  } else {
+    failed++;
+    failures.push(`${ad}${detay ? ` — ${detay}` : ''}`);
+    console.log(`  ✗ ${ad}${detay ? ` — ${detay}` : ''}`);
+  }
+}
+
+const KOK = path.join(__dirname, '../..');
+const SUNUCU = path.join(KOK, 'scripts/sunucu');
+// ⚠ Calisma agaci Windows'ta CRLF olabilir; metin karsilastirmasi LF uzerinden.
+const oku = (p: string) => fs.readFileSync(path.join(KOK, p), 'utf8').replace(/\r\n/g, '\n');
+/** Kabuk: tam satir `#` yorumlarini soyar — iddia yorumdan degil KODDAN olculsun. */
+const kabukKodu = (s: string) => s.replace(/^[ \t]*#.*$/gm, '');
+/** TS: blok ve satir yorumlarini soyar. */
+const tsKodu = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
+
+function dosyalar(dizin: string, biriktir: string[] = []): string[] {
+  for (const g of fs.readdirSync(dizin, { withFileTypes: true })) {
+    const tam = path.join(dizin, g.name);
+    if (g.isDirectory()) dosyalar(tam, biriktir);
+    else biriktir.push(tam);
+  }
+  return biriktir;
+}
+
+function main(): void {
+  const kur = kabukKodu(oku('scripts/sunucu/kur.sh'));
+
+  // ── S · KURULUM LISTESI ─────────────────────────────────────────────────
+  console.log('\n── S · KURULUM LISTESI ──');
+  const blok = /KALEMLER="\n([\s\S]*?)\n"/.exec(kur)?.[1] ?? '';
+  const kalemler = blok
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => {
+      const [kaynak, hedef, izin] = s.split('|');
+      return { kaynak, hedef, izin };
+    });
+
+  // OLCUT: liste gercekten okundu mu? Okunmadiysa asagidaki "her kalem ..."
+  // assert'leri BOS kume uzerinde yesil kalirdi.
+  check('S-OLCUT kurulum listesi ayristirildi (>= 8 kalem)', kalemler.length >= 8, `kalem=${kalemler.length}`);
+
+  const eksikKaynak = kalemler.filter((k) => !fs.existsSync(path.join(SUNUCU, k.kaynak)));
+  check(
+    'S1 listedeki her kaynak dosya depoda VAR',
+    eksikKaynak.length === 0,
+    `eksik=${JSON.stringify(eksikKaynak.map((k) => k.kaynak))}`,
+  );
+
+  const listede = new Set(kalemler.map((k) => k.kaynak));
+  const dizindekiler = dosyalar(SUNUCU)
+    .map((p) => path.relative(SUNUCU, p).split(path.sep).join('/'))
+    .filter((p) => p !== 'kur.sh');
+  const listedeYok = dizindekiler.filter((p) => !listede.has(p));
+  check(
+    'S2 scripts/sunucu altindaki her dosya kurulum listesinde (kurulmayan urun yok)',
+    listedeYok.length === 0,
+    `listede olmayan=${JSON.stringify(listedeYok)}`,
+  );
+
+  const izinHatali = kalemler.filter((k) =>
+    k.kaynak.startsWith('sbin/') ? k.izin !== '755' : k.izin !== '644',
+  );
+  check(
+    'S3 izinler: betikler 755, yapilandirma ve birimler 644',
+    izinHatali.length === 0,
+    `hatali=${JSON.stringify(izinHatali)}`,
+  );
+
+  // ── T · SATIR SONU ──────────────────────────────────────────────────────
+  console.log('\n── T · SATIR SONU ──');
+  // Bayt olarak sayilir. 13.09'da kabukta `grep -c $'\r'` ile olculdu ve
+  // YANLIS sonuc verdi (Git Bash deseni bosa cevirip her satiri saydi).
+  const crli = dosyalar(SUNUCU).filter((p) => fs.readFileSync(p).includes(0x0d));
+  check('T1 sunucuya giden hicbir dosyada CR bayti yok', crli.length === 0, `CR iceren=${JSON.stringify(crli)}`);
+  check(
+    'T2 .gitattributes scripts/sunucu icin eol=lf zorluyor',
+    /^scripts\/sunucu\/\*\*\s+text\s+eol=lf\s*$/m.test(oku('.gitattributes')),
+  );
+
+  // ── U · KURULUM GUVENLIGI ───────────────────────────────────────────────
+  console.log('\n── U · KURULUM GUVENLIGI ──');
+  check(
+    'U1 varsayilan mod KONTROL (salt okunur) — yanlislikla kosulan betik bir sey degistirmez',
+    kur.includes('MOD="${1:---kontrol}"'),
+  );
+  // Uygula bolumu ayri dilimlenir: `sshd -t` kontrol fonksiyonunda da geciyor,
+  // duz indexOf onu bulup sirayi yanlis olcerdi (13.09'da boyle kirmizi dondu).
+  const uygulaBas = kur.indexOf('DAMGA=$(date');
+  const uygula = uygulaBas !== -1 ? kur.slice(uygulaBas) : '';
+  const kontrolFonk = /^kontrol\(\) \{\n([\s\S]*?)\n\}$/m.exec(kur)?.[1] ?? '';
+  check('U-OLCUT uygula bolumu ve kontrol fonksiyonu ayristirildi', uygula.length > 0 && kontrolFonk.length > 0);
+  const sshdTest = uygula.indexOf('sshd -t');
+  const sshdReload = uygula.indexOf('systemctl try-reload-or-restart ssh');
+  check(
+    'U2 sshd yapilandirmasi yeniden yuklemeden ONCE dogrulaniyor',
+    sshdTest !== -1 && sshdReload !== -1 && sshdTest < sshdReload,
+    `sshd -t=${sshdTest} reload=${sshdReload}`,
+  );
+  const ufwIzin = kur.indexOf('ufw allow "$kural"');
+  const ufwAc = kur.indexOf('ufw --force enable');
+  check(
+    'U3 ufw: OpenSSH izni etkinlestirmeden ONCE (ters sira oturumu keser)',
+    ufwIzin !== -1 && ufwAc !== -1 && ufwIzin < ufwAc && /UFW_KURALLARI="[^"]*OpenSSH/.test(kur),
+    `allow=${ufwIzin} enable=${ufwAc}`,
+  );
+  const f2bTest = uygula.indexOf('fail2ban-client -t');
+  const f2bReload = uygula.indexOf('systemctl reload-or-restart fail2ban');
+  check(
+    'U4 fail2ban yeniden yuklemeden ONCE dogrulaniyor',
+    f2bTest !== -1 && f2bReload !== -1 && f2bTest < f2bReload,
+  );
+  // 13.09 inceleme bulgusu 1: dogrulama/yukleme "bu kosumda degisen" bayraklarina
+  // bagliydi; yarida kalan kosumdan sonra ikinci kosum ikisini de atliyordu.
+  check(
+    'U5 dogrulama ve yeniden yukleme KOSULSUZ (degisim bayragina bagli degil — yarida kalan kosum yakinsar)',
+    !/_DEGISTI/.test(kur) && /^sshd -t|^if ! sshd -t; then$/m.test(uygula) && /^systemctl try-reload-or-restart ssh$/m.test(uygula),
+  );
+  // 13.09 inceleme bulgusu 2: fail2ban dogrulamasi basarisizken gecersiz dosya diskte kaliyordu.
+  const sshdHata = uygula.slice(uygula.indexOf('if ! sshd -t; then'), uygula.indexOf('if ! fail2ban-client -t'));
+  const f2bHata = uygula.slice(uygula.indexOf('if ! fail2ban-client -t'), uygula.indexOf('echo "  sshd ve fail2ban yapilandirmasi gecerli"'));
+  check(
+    'U6 iki dogrulama da basarisizlikta bu kosumda kurulanlarin HEPSINI geri aliyor',
+    /geri_al\n[\s\S]*?exit 1/.test(sshdHata) && /geri_al\n[\s\S]*?exit 1/.test(f2bHata) && /for h in \$KURULAN; do/.test(kur),
+  );
+  check(
+    'U7 kontrol modu yapilandirma GECERLILIGINI ve servislerin calistigini olcuyor (md5 esitligi yetmez)',
+    kontrolFonk.includes('sshd -t') && kontrolFonk.includes('fail2ban-client -t') && kontrolFonk.includes('systemctl is-active --quiet fail2ban'),
+  );
+
+  // ── V · SERTLESTIRME ICERIGI ────────────────────────────────────────────
+  console.log('\n── V · SERTLESTIRME ICERIGI ──');
+  const sshdKalem = kalemler.find((k) => k.kaynak.startsWith('ssh/'));
+  check(
+    'V1 sshd dosyasi 00- onekli (OpenSSH ILK degeri alir; 50-cloud-init parola girisini aciyor)',
+    !!sshdKalem && /\/sshd_config\.d\/00-/.test(sshdKalem.hedef),
+    `hedef=${sshdKalem?.hedef}`,
+  );
+  const sshd = kabukKodu(oku('scripts/sunucu/ssh/00-sertlestirme.conf'));
+  check('V2 sshd: parola girisi KAPALI', /^PasswordAuthentication no$/m.test(sshd));
+  check('V3 sshd: root yalniz anahtarla', /^PermitRootLogin prohibit-password$/m.test(sshd));
+  const f2b = kabukKodu(oku('scripts/sunucu/fail2ban/00-metaprice.local'));
+  check(
+    'V4 fail2ban: sshd ve recidive jail etkin',
+    /\[sshd\]\s*\nenabled = true/.test(f2b) && /\[recidive\]\s*\nenabled\s*= true/.test(f2b),
+  );
+  const sbinHedefler = new Set(kalemler.filter((k) => k.kaynak.startsWith('sbin/')).map((k) => k.hedef));
+  const birimler = kalemler.filter((k) => k.kaynak.endsWith('.service'));
+  const kopukBirim = birimler.filter((k) => {
+    const exec = /^ExecStart=(\S+)/m.exec(oku(`scripts/sunucu/${k.kaynak}`))?.[1];
+    return !exec || !sbinHedefler.has(exec);
+  });
+  check(
+    'V5 her systemd servisi, listede KURULAN bir betigi calistiriyor',
+    birimler.length >= 2 && kopukBirim.length === 0,
+    `servis=${birimler.length} kopuk=${JSON.stringify(kopukBirim.map((k) => k.kaynak))}`,
+  );
+
+  // ── W · DENETIM SAYACI (Gorev 7) ────────────────────────────────────────
+  console.log('\n── W · DENETIM SAYACI ──');
+  const nobetci = kabukKodu(oku('scripts/sunucu/sbin/metaprice-nobetci.sh'));
+  const servis = tsKodu(oku('backend/src/ozellik/kutuphane/admin/admin.service.ts'));
+  const nobetciEtiket = /docker logs --since \d+m metaprice-backend-1 2>&1 \| grep -c '([A-Z-]+)'/.exec(nobetci)?.[1];
+  const servisEtiket = /this\.logger\.error\(\s*`([A-Z][A-Z-]+) /.exec(servis)?.[1];
+  check(
+    'W-OLCUT iki etiket de okundu',
+    !!nobetciEtiket && !!servisEtiket,
+    `nobetci=${nobetciEtiket} servis=${servisEtiket}`,
+  );
+  check(
+    'W1 nobetcinin saydigi etiket = backend`in logladigi etiket (ayrisirsa alarm SESSIZCE susar)',
+    !!nobetciEtiket && nobetciEtiket === servisEtiket,
+    `nobetci=${nobetciEtiket} servis=${servisEtiket}`,
+  );
+  check(
+    'W2 sayac saglik kararina bagli (0dan buyukse SORUN)',
+    /\[ "\$DENETIM_HATA" -gt 0\s*\] && SORUN="\$SORUN denetim_yazilamadi=\$DENETIM_HATA"/.test(nobetci),
+  );
+  check(
+    'W3 sayac durum.json`a yaziliyor (dis izleme okuyabilsin)',
+    /"denetim_yazilamadi_1sa":\$DENETIM_HATA/.test(nobetci),
+  );
+
+  console.log(`\n${'='.repeat(64)}\nSUNUCU URUNLERI: ${passed} PASS, ${failed} FAIL\n${'='.repeat(64)}`);
+  if (failed) {
+    failures.forEach((f) => console.log(`  · ${f}`));
+    process.exit(1);
+  }
+}
+
+main();

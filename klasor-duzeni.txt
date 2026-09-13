@@ -73,7 +73,6 @@ backend/src/ozellik/odeme/ :: N · abonelik, tahsilat, erişim kararı.
 backend/src/ozellik/firma/ :: O · firma (kiracı) profili — fatura kimliği, antet bilgisi, logo.
 backend/src/ozellik/teklif/ :: M · teklif yaşam döngüsü.
 backend/src/app.module.ts :: NestJS kök modülü — `src` kökünde kalmak ZORUNDA (RAPOR §6.2).
-backend/src/bootstrap.controller.ts :: İçeriği kütüphane değil güvenlik; kökte kaldı (RAPOR §6.7).
 backend/src/health.controller.ts :: Sağlık ucu — `rootDir` ihlali olmasın diye kökte (RAPOR §6.2).
 backend/src/main.ts :: `dist/main.js` üretilmezse Dockerfile CMD kopar (RAPOR §3.1) — kökte.
 backend/src/surum.ts :: build_sha kablolaması — kökte (RAPOR §6.2).
@@ -117,7 +116,7 @@ frontend/playwright.config.ts :: Playwright koşucusu — kökte arar.
 frontend/playwright.golden.config.ts :: Altın yol koşucusu — ayrı tutulur (RAPOR §6.8).
 frontend/vitest.config.ts :: Vitest koşucusu — kökte arar.
 # ── repo kökü ──
-scripts/ :: Depo düzeyi işletim betikleri (deploy, backup, harita, ölçüm) — pakete ait değil.
+scripts/ :: Depo düzeyi işletim betikleri (deploy, backup, harita, ölçüm) — pakete ait değil · 10.09: sunucu ürünleri (scripts/sunucu/) — nöbetçi/bekçi betikleri, systemd birimleri, sshd/fail2ban yapılandırması ve idempotent kurulum betiği; sunucuda ELLE yazılmış dosyaların depodaki tek kaynağı.
 
 [GRUP YOLLARI]
 # `<HARF> :: <desen> | <desen> | …`   (desen sözdizimi yukarıdaki üç biçim)
@@ -159,7 +158,6 @@ frontend/ozellik/tablo/excel-grid/build-material-context.ts :: C :: excel-grid/ 
 frontend/ozellik/tablo/excel-grid/discount-utils.ts :: D :: excel-grid/ TEK PARÇA tutuldu (RAPOR §6.5).
 frontend/ortak/types/index.ts :: M :: `frontend/types/` → `ortak/types/` taşındı: paylaşımlı, teklife özgü değil (RAPOR §6.6).
 frontend/ortak/types/quotes.ts :: M :: aynı gerekçe (RAPOR §6.6).
-backend/src/bootstrap.controller.ts :: G :: içeriği kütüphane değil güvenlik; `src` kökünde bırakıldı (RAPOR §6.7).
 frontend/lib/indeks-sagligi.ts :: C :: KALINTI — `frontend/lib/` taşıma turunda boşaltılmadı.
 frontend/lib/silme-etkisi-getir.ts :: C :: KALINTI — aynı.
 frontend/lib/silme-onay-metni.ts :: C :: KALINTI — aynı.

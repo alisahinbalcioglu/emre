@@ -41,10 +41,13 @@
  *       capraz-tenant okuma. kimlikCoz'un tum varlik sebebi (firmasizi
  *       GURULTUYLE durdurmak) burada devre disiydi.
  *
- *   G6  BOOTSTRAP HESAP DEVRALMA. /bootstrap/make-admin govdede
- *       `newPassword` kabul edip HERHANGI bir hesabin parolasini
- *       sifirliyordu; ustelik uc, sir ortamda durdugu SURECE aciktı ve
- *       kapanmasi "env'i silmeyi hatirlama"ya baglanmisti.
+ *   G6  BOOTSTRAP UCU KALDIRILDI (10.09.2026). 28.08'de iki yetki
+ *       daraltilmisti (parola sifirlama cikarildi, admin varsa uc kendini
+ *       kapatiyordu) ama rota DURUYORDU: kimlik dogrulamasi olmayan bir POST,
+ *       yalnizca BOOTSTRAP_SECRET tanimsiz oldugu icin reddediyordu. Guvenlik
+ *       bir ortam degiskeninin YOKLUGUNA baglanamaz. Uc tamamen silindi;
+ *       G6 artik VARLIGI degil YOKLUGU olcuyor ve rota geri acilirsa kirmizi
+ *       doner (yalniz o dosyaya degil, src'nin tamamina bakar).
  *
  * ── OLCUTU ONCE DOGRULA ─────────────────────────────────────────────────
  * Her blokta olcum aracinin calistigini kanitlayan bir O-satiri var.
@@ -284,34 +287,61 @@ function g4_g5_kimlik() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+/**
+ * `backend/src` altindaki tum .ts dosyalarini gezer.
+ *
+ * ⚠ Tek bir dosyayi okumak YETMEZ: G6'nin korudugu sey "su dosya boyle" degil,
+ * "bu ROTA hicbir yerde geri acilmadi". Silinen bir uc, baska bir klasorde
+ * yeniden dogabilir; kapi buna kor kalmamali.
+ */
+function srcDosyalari(dizin: string = SRC, biriktir: string[] = []): string[] {
+  for (const giris of fs.readdirSync(dizin, { withFileTypes: true })) {
+    const tam = path.join(dizin, giris.name);
+    if (giris.isDirectory()) srcDosyalari(tam, biriktir);
+    else if (giris.name.endsWith('.ts')) biriktir.push(tam);
+  }
+  return biriktir;
+}
+
 function g6_bootstrap() {
-  console.log('\n── G6 · BOOTSTRAP ──');
-  const bsKodu = kodu(oku('bootstrap.controller.ts'));
+  console.log('\n── G6 · BOOTSTRAP UCU KALDIRILDI ──');
+
+  // ⚠ IKI AYRI OKUYUCU var (oku/kodu ve srcDosyalari); ikisinin de CALISTIGI
+  // ayri ayri kanitlanmali. Kanitlanmazsa asagidaki YOKLUK assert'leri, yol
+  // yanlis olsa BILE yesil kalir — bos kumede her sey dogrudur.
+  const src = srcDosyalari();
+  check(
+    'G6-OLCUT1 src taramasi calisiyor (app.module.ts bulundu)',
+    src.some((y) => y.endsWith('app.module.ts')),
+    `taranan=${src.length}`,
+  );
+
+  const modulKodu = kodu(oku('app.module.ts'));
+  check(
+    'G6-OLCUT2 app.module okundu (HealthController kayitli)',
+    modulKodu.includes('HealthController'),
+    `uzunluk=${modulKodu.length}`,
+  );
 
   check(
-    'G6-OLCUT bootstrap.controller okundu (makeAdmin var)',
-    bsKodu.includes('makeAdmin'),
-  );
-
-  check(
-    'G6-a newPassword SOZLESMEDEN kaldirildi (hesap devralma yolu kapandi)',
-    !bsKodu.includes('newPassword'),
-    'newPassword hala kodda',
+    'G6-a bootstrap.controller.ts DOSYASI YOK',
+    !fs.existsSync(path.join(SRC, 'bootstrap.controller.ts')),
+    'dosya hala duruyor',
   );
   check(
-    'G6-b parola HASH"lenmiyor (sifirlama yetenegi tamamen yok)',
-    !bsKodu.includes('bcrypt.hash'),
-    'bcrypt.hash hala kodda',
+    'G6-b kok modul BootstrapController KAYDETMIYOR',
+    !modulKodu.includes('BootstrapController'),
+    'app.module hala kaydediyor',
   );
   check(
-    'G6-c admin VARSA uc kendini kapatiyor (guvenlik insan hatirlamasina bagli degil)',
-    /role:\s*'admin'\s*\}\s*\}\)/.test(bsKodu) && bsKodu.includes('count('),
-    'admin sayimi bulunamadi',
+    'G6-c src altinda "bootstrap" onekli DENETLEYICI yok (uc geri acilmadi)',
+    !src.some((y) => /@Controller\(\s*['"]bootstrap/.test(kodu(fs.readFileSync(y, 'utf8')))),
+    'bir denetleyici bootstrap onekini geri acmis',
   );
   check(
-    'G6-d status:"active" YAZILMIYOR (ban dolanma yolu kapandi)',
-    !/status:\s*'active'/.test(bsKodu),
-    "status: 'active' hala kodda",
+    'G6-d BOOTSTRAP_SECRET src altinda HIC OKUNMUYOR',
+    !src.some((y) => kodu(fs.readFileSync(y, 'utf8')).includes('BOOTSTRAP_SECRET')),
+    'BOOTSTRAP_SECRET hala okunuyor',
   );
 }
 

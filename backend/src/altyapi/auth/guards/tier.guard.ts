@@ -50,6 +50,14 @@ export class TierGuard implements CanActivate {
     // Cozum YUKSEK OLANI almak: kesinlikle IZIN GENISLETIR, hicbir kullanicinin
     // mevcut erisimini DARALTMAZ. Dar yon (yalniz Abonelik'e bakmak) `suite`
     // tier'li mevcut hesaplari kirardi — `PackageLevel` enum'unda `suite` YOK.
+    // ⚠ `durum` ve `erisimSonu` BURADA BİLEREK SÜZÜLMEZ (10.09.2026).
+    // Bir denetim turu bunu eksik bir WHERE sandı; ölçüm etkisiz olduğunu
+    // gösterdi: aşağıdaki `Math.max` yüzünden abonelik seviyesi 0'a düşse
+    // bile `User.tier` tek başına kapıyı açar ve `User.tier`i hiçbir ödeme
+    // yolu yazmaz (ölçüldü: `ozellik/odeme` altında sıfır `user.update`).
+    // SEVİYE ile SAĞLIK ayrı eksenlerdir: seviye burada, sağlık
+    // `ErisimGuard`ta ölçülür. İkisini burada birleştirmek `capabilities`
+    // yardımcısıyla da çelişirdi (o da bilerek süzgeçsizdir).
     let paketSeviyesi: string | null = null;
     if (user.firmaId) {
       const ab = await this.prisma.abonelik.findUnique({

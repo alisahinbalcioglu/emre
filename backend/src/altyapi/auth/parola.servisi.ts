@@ -10,6 +10,7 @@ import { PrismaService } from '../db/prisma.service';
 import { EpostaServisi } from '../../ozellik/odeme/eposta/eposta.servisi';
 import { AuthService } from './auth.service';
 import { SIFIRLAMA_OMRU_MS, tokenOzetle, tokenUret } from './token-ozet';
+import { uygulamaKokuCoz } from './uygulama-url';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -40,15 +41,11 @@ export class ParolaServisi {
     private readonly auth: AuthService,
     config: ConfigService,
   ) {
-    // APP_URL yeni ad (Faz 3), UYGULAMA_URL bugün üretimde compose'dan geçen
-    // ad. İkincisini okumayı bırakmak, bağlantıları sessizce varsayılana
-    // düşürürdü. Sondaki '/' kırpılır: aksi halde URL '…com//reset-password'
-    // olur ve bazı e-posta istemcileri bunu bozar.
-    this.uygulamaUrl = (
-      config.get<string>('APP_URL') ??
-      config.get<string>('UYGULAMA_URL') ??
-      'https://www.metapricex.com'
-    ).replace(/\/+$/, '');
+    // ⚠ Bu satır 10.09.2026'da ONARILDI. Eskiden `??` zinciriydi ve `??`
+    // BOŞ DİZEDE DÜŞMEZ: compose `APP_URL: ${APP_URL:-}` yazdığı için değer
+    // boş dize geliyordu ve bağlantı alan adsız çıkıyordu. Kural artık
+    // doluluk kontrolü — gerekçesi `uygulama-url.ts` başında.
+    this.uygulamaUrl = uygulamaKokuCoz(config);
   }
 
   /**

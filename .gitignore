@@ -12,6 +12,9 @@ yarn-error.log*
 .env.*.local
 .env.development
 .env.production
+# Sir dondurme yedegi (scripts/sir-dondur.sh) — ESKI sirlari DUZ METIN tasir ve
+# sunucudaki /opt/metaprice bir git calisma agacidir.
+.env.yedek-*
 
 # Next.js
 .next/
