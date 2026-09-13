@@ -214,6 +214,54 @@ function main(): void {
     /"denetim_yazilamadi_1sa":\$DENETIM_HATA/.test(nobetci),
   );
 
+  // ── Y · DUMP IZINLERI — TUM pg_dump CAGRILARI ───────────────────────────
+  // 13.09.2026 bagimsiz canli olcum: rotasyonun kendi yedegi 0644 dogdu ve
+  // icinde CLAUDE_API_KEY vardi. Sebep deploy.sh'ta 10.09'da duzeltilen kalibin
+  // IKIZIYDI: `docker compose exec`/`docker exec` kabugu backup.sh'taki
+  // umask 077'yi miras almaz (olculdu 0022). Kusur uc betikte daha duruyordu.
+  // Bu blok tek betige bakmaz: scripts/ altindaki HER pg_dump cagrisi, AYNI
+  // calisma baglaminda (sh -c yuku ya da betigin kendisi) ondan once umask 077
+  // tasimali. Yeni bir dump noktasi eklendiginde kendiliginden olculur.
+  console.log('\n── Y · DUMP IZINLERI (tum pg_dump cagrilari) ──');
+  const betikler = dosyalar(path.join(KOK, 'scripts')).filter((p) => p.endsWith('.sh'));
+  const dumpNoktalari: Array<{ dosya: string; satir: number; umaskVar: boolean; tirnakTemiz: boolean }> = [];
+  for (const p of betikler) {
+    const metin = kabukKodu(fs.readFileSync(p, 'utf8').replace(/\r\n/g, '\n'));
+    const re = /pg_dump -h db/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(metin))) {
+      const once = metin.slice(0, m.index);
+      const acici = Math.max(once.lastIndexOf("sh -c '"), once.lastIndexOf('sh -c "'));
+      const baglam = acici !== -1 ? once.slice(acici) : once;
+      // Tek tirnakli yukte kesme isareti yuku ERKEN kapatir (deploy'u kirar).
+      const tekTirnakli = acici !== -1 && once.slice(acici, acici + 7) === "sh -c '";
+      dumpNoktalari.push({
+        dosya: path.relative(KOK, p).split(path.sep).join('/'),
+        satir: once.split('\n').length,
+        // Oncesinde tirnak da olabilir: `sh -c "umask 077; ...` (bekci tek satir yuk).
+        umaskVar: /(^|[\s;("'])umask 077\b/.test(baglam),
+        tirnakTemiz: !tekTirnakli || !baglam.slice(7).includes("'"),
+      });
+    }
+  }
+  check(
+    'Y-OLCUT tarama calisti (en az 5 pg_dump noktasi: backup, deploy, sir-dondur, geri-yukle, bekci)',
+    dumpNoktalari.length >= 5,
+    `bulunan=${JSON.stringify(dumpNoktalari.map((d) => `${d.dosya}:${d.satir}`))}`,
+  );
+  const umasksiz = dumpNoktalari.filter((d) => !d.umaskVar);
+  check(
+    'Y1 her pg_dump ayni calisma baglaminda umask 077 ile doguyor (dump 0600)',
+    umasksiz.length === 0,
+    `umask'siz=${JSON.stringify(umasksiz.map((d) => `${d.dosya}:${d.satir}`))}`,
+  );
+  const tirnakKirik = dumpNoktalari.filter((d) => !d.tirnakTemiz);
+  check(
+    'Y2 tek tirnakli dump yuklerinde kesme isareti yok (yuk erken kapanmaz)',
+    tirnakKirik.length === 0,
+    `kirik=${JSON.stringify(tirnakKirik.map((d) => `${d.dosya}:${d.satir}`))}`,
+  );
+
   console.log(`\n${'='.repeat(64)}\nSUNUCU URUNLERI: ${passed} PASS, ${failed} FAIL\n${'='.repeat(64)}`);
   if (failed) {
     failures.forEach((f) => console.log(`  · ${f}`));

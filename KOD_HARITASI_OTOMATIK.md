@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 515
-Toplam satir: 112043
+Toplam satir: 112100
 Uc nokta: 157
 test:* scripti: 85
 
@@ -270,7 +270,7 @@ test:* scripti: 85
 | `backend/test/spec-regression-test.ts` | 447 |
 | `backend/test/standart-cikti-test.ts` | 339 |
 | `backend/test/standart-sema-test.ts` | 338 |
-| `backend/test/sunucu-urunleri-test.ts` | 225 |
+| `backend/test/sunucu-urunleri-test.ts` | 273 |
 | `backend/test/tam-ad-surgunu-test.ts` | 190 |
 | `backend/test/tam-zincir.ts` | 105 |
 | `backend/test/urun-degil-test.ts` | 89 |
@@ -514,7 +514,7 @@ test:* scripti: 85
 | `scripts/deploy.sh` | 276 |
 | `scripts/firma-olcum.sh` | 162 |
 | `scripts/fk-dogrula.sh` | 94 |
-| `scripts/geri-yukle.sh` | 177 |
+| `scripts/geri-yukle.sh` | 181 |
 | `scripts/harita-denetle.mjs` | 260 |
 | `scripts/harita-uret.mjs` | 253 |
 | `scripts/jwt-secret-kur.sh` | 85 |
@@ -523,10 +523,10 @@ test:* scripti: 85
 | `scripts/klasor-denetle.mjs` | 246 |
 | `scripts/kv-kaucuk-olcu.sh` | 129 |
 | `scripts/s45-olcu.sh` | 90 |
-| `scripts/sir-dondur.sh` | 200 |
+| `scripts/sir-dondur.sh` | 204 |
 | `scripts/sunucu/kur.sh` | 242 |
 | `scripts/sunucu/sbin/metaprice-nobetci.sh` | 71 |
-| `scripts/sunucu/sbin/metaprice-yedek-bekci.sh` | 28 |
+| `scripts/sunucu/sbin/metaprice-yedek-bekci.sh` | 29 |
 
 ## 2 · Import bagliliklari
 

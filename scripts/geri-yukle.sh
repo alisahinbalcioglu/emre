@@ -102,7 +102,11 @@ fi
 echo ""
 echo "── 3/7 mevcut durumun yedegi aliniyor (yanlis dosyayi sectiyseniz tek donusunuz) ──"
 CAN_ADI="geri-yukleme-oncesi-$(date +%Y%m%d-%H%M%S).sql.gz"
+# UMASK (13.09.2026): exec kabugu backup.sh icindeki umask 077'yi MIRAS
+# ALMAZ (olculdu: 0022). Ayni tur rotasyon yedegi bu yuzden 0644 dogdu;
+# bu can simidi dump da ayni kaliptaydi. Ikizi deploy.sh'ta 10.09'da duzeltilmisti.
 CAN_CIKTI="$(docker compose exec -T -e ADI="$CAN_ADI" backup sh -c '
+  umask 077
   GECICI="/backups/$ADI.yaziliyor"
   rm -f /tmp/geri-dump-kodu
   ( set +e; pg_dump -h db -U "$POSTGRES_USER" "$POSTGRES_DB"; echo $? > /tmp/geri-dump-kodu ) | gzip > "$GECICI"

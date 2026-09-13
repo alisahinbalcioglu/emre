@@ -92,7 +92,11 @@ echo "── 1/7 on kosullar tamam — db $PG_USER@$PG_DB · eski sirlar (sha256
 DAMGA="$(date +%Y%m%d-%H%M%S)"
 YEDEK_ADI="sir-dondurme-oncesi-$DAMGA.sql.gz"
 echo "── 2/7 yedek aliniyor: backups/$YEDEK_ADI"
+# UMASK (13.09.2026): exec kabugu backup.sh icindeki umask 077'yi MIRAS
+# ALMAZ (olculdu: 0022). Bu tur rotasyonun kendi yedegi bu yuzden 0644 dogdu
+# ve icinde CLAUDE_API_KEY vardi. Ikizi deploy.sh'ta 10.09'da duzeltilmisti.
 YEDEK_CIKTI="$(docker compose exec -T -e ADI="$YEDEK_ADI" backup sh -c '
+  umask 077
   GECICI="/backups/$ADI.yaziliyor"
   if pg_dump -h db -U "$POSTGRES_USER" "$POSTGRES_DB" | gzip > "$GECICI" \
      && gzip -t "$GECICI" && gzip -dc "$GECICI" | tail -20 | grep -q "PostgreSQL database dump complete"; then

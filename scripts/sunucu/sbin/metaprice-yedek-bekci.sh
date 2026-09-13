@@ -17,7 +17,8 @@ fi
 
 logger -t metaprice-yedek -p user.err "UYARI: son yedek $((YAS/3600)) saat once — BAYAT. Bekci kendi yedegini aliyor."
 D=$(date +%Y%m%d-%H%M%S); G="$DIZIN/.bekci-$D.yaziliyor"; H="$DIZIN/bekci-$D.sql.gz"; I="/tmp/bekci-kod-$D"
-docker exec metaprice-backup-1 sh -c "( set +e; pg_dump -h db -U \"\$POSTGRES_USER\" \"\$POSTGRES_DB\"; echo \$? > $I ) | gzip > /backups/$(basename "$G")" 2>/dev/null
+# umask 077 (13.09): exec kabugu backup.sh umask'ini miras almaz (olculdu 0022).
+docker exec metaprice-backup-1 sh -c "umask 077; ( set +e; pg_dump -h db -U \"\$POSTGRES_USER\" \"\$POSTGRES_DB\"; echo \$? > $I ) | gzip > /backups/$(basename "$G")" 2>/dev/null
 KOD=$(docker exec metaprice-backup-1 cat "$I" 2>/dev/null || echo 99)
 if [ "$KOD" = "0" ] && gzip -t "$G" 2>/dev/null && gzip -dc "$G" | tail -20 | grep -q 'PostgreSQL database dump complete'; then
   mv "$G" "$H"; logger -t metaprice-yedek -p user.warning "KURTARMA: bekci yedegi alindi -> $(basename "$H")"
