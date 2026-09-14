@@ -3,6 +3,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { ValidationPipe } from '@nestjs/common';
 import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
+import { guvenlikBasliklariniKur } from './altyapi/http/guvenlik-basliklari';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -14,6 +15,10 @@ async function bootstrap() {
   // Deger 1 = yalniz EN SON proxy guvenilir; `true` olsaydi istemcinin
   // uydurdugu X-Forwarded-For zinciri de yutulur ve sinir asilabilirdi.
   app.set('trust proxy', 1);
+
+  // Kenar katmani (Caddy) atlanirsa da guvenlik basliklari gelsin, `X-Powered-By`
+  // gitmesin (B3 · plan 1.15). Route'lardan ONCE: hata yanitlari da tasir.
+  guvenlikBasliklariniKur(app);
 
   // Govde limiti 500mb -> 50mb. Buyuk DWG/Excel DOSYALARI buradan gecmez;
   // onlar multer ile ayri akistan gelir ve kendi fileSize limitine tabidir.

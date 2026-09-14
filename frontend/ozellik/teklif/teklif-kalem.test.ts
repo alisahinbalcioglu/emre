@@ -253,3 +253,35 @@ describe('kalemUret — FİTTİNG SATIRI (02.09)', () => {
     expect(k.quantity).toBe(0);
   });
 });
+
+// ── G1: ÖZET SATIRI KAYDA KALEM OLARAK GİTMEZ (para doğruluğu turu, 14.09) ──
+// FIRMA-C: ekran sayfa toplamları 62.043.700, kayıtlı teklif listesi toplamı
+// 186.131.100 idi — müşterinin İcmal satırları (`_ozet`) kalem olarak
+// yazılıyordu. Uçtan uca sayısal kanıt: backend `test:hesap` H9 (gerçek dosya,
+// gerçek QuotesService.create).
+describe('kalemUret — G1 özet (İcmal / ara toplam) satırı', () => {
+  const icmalSatiri = {
+    _isDataRow: true, _ozet: true,
+    'Malzeme Cinsi': 'MEKANİK TESİSAT İŞLERİ', 'Çapı': '', Miktar: '', Birim: '',
+    'Birim Fiyat': '', Tutar: '', _labBirim: '', _labToplam: '62043700', _toplam: '62043700',
+  };
+
+  it('para taşıyan özet satırı kalem ÜRETMEZ (null — kayıt döngüsü atlar)', () => {
+    expect(kalemUret(icmalSatiri, roller)).toBeNull();
+  });
+
+  it('ara toplam satırı (_ozet, sayfa ortasında) da kalem üretmez', () => {
+    expect(kalemUret({ _isDataRow: true, _ozet: true, 'Malzeme Cinsi': 'ARA TOPLAM', Tutar: '10675', 'Birim Fiyat': '' }, roller)).toBeNull();
+  });
+
+  it('KARŞI: aynı satır özet işareti taşımıyorsa kalem üretilir (kural fazla geniş değil)', () => {
+    const { _ozet: _yok, ...normal } = icmalSatiri;
+    const k = kalemUret(normal, roller);
+    expect(k?.materialName).toBe('MEKANİK TESİSAT İŞLERİ');
+    expect(k?.laborTotalPrice).toBe(62043700);
+  });
+
+  it('_ozet: false ya da tanımsız dışlanmaz', () => {
+    expect(kalemUret({ ...icmalSatiri, _ozet: false }, roller)).not.toBeNull();
+  });
+});

@@ -1,0 +1,43 @@
+{
+  "tur": "para-dogrulugu-turu (14.09.2026)",
+  "not": "Bu turda dokunulan ve DISARIDAN gorulebilen her sey. Surum numarasi tek basina yetmez (plan 1.12). Isaret metinleri 14.09'da canli pakette (8c71c7836441) YOK olarak olculdu — bos yere yesil yanamazlar.",
+  "taban": "https://metapricex.com",
+  "olcumler": [
+    {
+      "ad": "backend surumu",
+      "neden": "taban kosul — tek basina YETMEZ",
+      "tip": "json", "yol": "/api/health", "alan": "build_sha", "esit": "$SHA"
+    },
+    {
+      "ad": "frontend surumu",
+      "neden": "deploy.sh frontend'i dogrulamaz (12.08 dersi); bu turun A1/A2 duzeltmeleri on yuzde",
+      "tip": "json", "yol": "/surum.json", "alan": "build_sha", "esit": "$SHA"
+    },
+    {
+      "ad": "B3 uygulama katmani basligi canlida",
+      "neden": "X-Permitted-Cross-Domain-Policies yalniz uygulamadan gelir (Caddyfile'da yok — test:guvenlik-basliklari G2b)",
+      "tip": "baslik", "yol": "/api/health",
+      "var": { "X-Permitted-Cross-Domain-Policies": "none", "X-Content-Type-Options": "nosniff" },
+      "yok": ["X-Powered-By"]
+    },
+    {
+      "ad": "A1 kur alinamadi isareti on yuz paketinde",
+      "neden": "eslestirme fiyat yazmayinca on yuz satiri 'hata' isaretler ve tost basar (quotes/new)",
+      "tip": "paket-metni", "yol": "/quotes/new",
+      "icerir": ["kurAlinamadi", "Kur alınamadı — fiyat yazılmadı"]
+    },
+    {
+      "ad": "A2 grup iskonto kutusu yuzde kabul ediyor",
+      "neden": "tip:'number' kalkti; yer tutucu yeni metin (ExcelGrid grup istemi)",
+      "tip": "paket-metni", "yol": "/quotes/new",
+      "icerir": ["örn 30 ya da %30"]
+    }
+  ],
+  "olculemeyenler": [
+    { "ad": "A1 eslestirme ucu: kur geri dususunde dovizli satir fiyatsiz", "neden": "oturum ister ve kur kaynaklarinin dusurulmesini gerektirir; disaridan tetiklenemez (yerelde: test:kur E-K)" },
+    { "ad": "A3 FIRMA-C kayit toplami = 62.043.700", "neden": "oturumla FIRMA-C teklifinin yeniden kaydini ister; parola girisi bu olcumu yapan ajana yasak (yerelde: test:hesap H9)" },
+    { "ad": "K1 kutuphane ozel fiyat donmasi", "neden": "oturum + havuz fiyat guncellemesi ister (yerelde: test:kb-fiyat)" },
+    { "ad": "I9/I10 GENEL TOPLAM sayfa adi cakismasi", "neden": "oturumlu Excel indirmesi ister (yerelde: test:hesap H10)" },
+    { "ad": "B3 ic agdan (Caddy atlanarak) basliklar", "neden": "sunucu erisimi ister — Faz 0 turunun alani (yerelde gercek HTTP ile: test:guvenlik-basliklari G1)" }
+  ]
+}

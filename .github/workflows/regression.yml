@@ -20,7 +20,14 @@ jobs:
       - run: npm ci --legacy-peer-deps
       - run: npx prisma generate
       - run: npx tsc --noEmit -p tsconfig.json
-      - name: Tek regresyon paketi (Z1-Z5)
+      # B1 (14.09.2026): tsconfig.json test/ dizinini dislar — testlerin tip
+      # hatasi CI'da gorunmuyordu (tam-zincir.ts derlenmiyordu, test:firma kirikti).
+      - name: Testlerin tip denetimi (src + test)
+        run: npm run typecheck:test
+      # SKIP artik basari sayilmaz: gercek SKIP kumesi regression-all.ts'teki
+      # BEKLENEN_SKIP_DB_YOK defterinden saparsa paket exit 1 verir.
+      # Postgres servisi YOK (karar ve gerekcesi: para dogrulugu turu raporu, B1).
+      - name: Tek regresyon paketi (Z1-Z5) + SKIP defteri
         run: npm run test:regression
 
   frontend:

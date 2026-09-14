@@ -197,7 +197,8 @@ const KRITERLER: Array<{ ad: string; gecer: (s: string) => boolean }> = [
   { ad: 'sayac IKI tarafi da okur', gecer: (s) => /secimBekliyor\(d\._matStatus\)/.test(s) && /secimBekliyor\(d\._labStatus\)/.test(s) },
   { ad: 'FirmaDropdown fiyat yazarken isareti temizler', gecer: (s) => /yazVeriLab\(node, '_labStatus', ''\)/.test(s) },
   { ad: "FirmaDropdown aday donunce 'belirsiz' isaretler", gecer: (s) => /yazVeriLab\(node, '_labStatus', 'belirsiz'\)/.test(s) },
-  { ad: "FirmaDropdown eslesme yokken 'yok'/'urun_degil' isaretler", gecer: (s) => /_labStatus',\s*\(result as any\)\?\.notProduct \? 'urun_degil' : 'yok'/.test(s) },
+  // 14.09 KUR-01: 'yok' dalinin onune kur alinamadi → 'hata' girdi (satir kur donunce yeniden eslesir).
+  { ad: "FirmaDropdown eslesme yokken 'yok'/'urun_degil' isaretler", gecer: (s) => /_labStatus',\s*\(result as any\)\?\.notProduct \? 'urun_degil' : \(\(result as any\)\?\.kurAlinamadi \? 'hata' : 'yok'\)/.test(s) },
   // TEK KAYNAK: isaret renkleri modulde kaldi, ExcelGrid'e KOPYALANMADI.
   { ad: 'isaret renkleri ExcelGrid icinde kopyalanmamis', gecer: (s) => !/#fee2e2|#e0f2fe|#fef9c3/.test(s) },
 ];

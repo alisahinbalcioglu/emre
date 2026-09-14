@@ -1,0 +1,18 @@
+{
+  // B1 (para dogrulugu turu, 14.09.2026) — YALNIZ TIP DENETIMI, emit yok.
+  // `tsconfig.json` test/ dizinini DISLAR (nest build ciktisina girmesin diye).
+  // Bedeli: CI'daki `tsc --noEmit` testlerin tip hatasini HIC gormuyordu —
+  // `test:tam` (tam-zincir.ts:63, sonlanmamis dize) derlenmeden duruyordu ve
+  // hicbir kapi fark etmedi. Bu dosya o kapiyi kapatir: `npm run typecheck:test`.
+  // `incremental` KAPALI: temel ayardaki damga dist'in icinde duruyor (PK12b);
+  // bu denetim o damgaya DOKUNMAMALI, yoksa `nest build` bos dist uretebilir.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "incremental": false,
+    "tsBuildInfoFile": null
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

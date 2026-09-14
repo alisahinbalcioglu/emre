@@ -97,14 +97,260 @@ console.log('── D) KUR METAVERISI OLMAYAN cevirici: sonuc kur IDDIA ETMEZ �
     (r as any).kaynakKur === undefined, JSON.stringify((r as any).kaynakKur));
 }
 
-console.log('');
-console.log('════════════════════════════════════════════════════════════════');
-const toplam = passed + failures.length;
-if (failures.length) {
-  console.log(` ✗ KUR DONMASI: ${passed}/${toplam} gecti, ${failures.length} BASARISIZ`);
-  for (const f of failures) console.log(`   ✗ ${f}`);
-  console.log('════════════════════════════════════════════════════════════════');
-  process.exit(1);
+// ═════════════════════════════════════════════════════════════════════════
+// E-K) KUR GERI DUSUSU — GERCEK ExchangeRatesService + GERCEK MatchingService
+//      (para dogrulugu turu, 14.09.2026 · KUR-01 / KUR-02)
+//
+// NEDEN BURADA GERCEK SERVISLER: yukaridaki A-D bloklari saf outcome-mapper'i
+// ELLE yazilmis bir ceviriciyle sinar — uretimdeki `buildTryConverter`
+// hic cagrilmiyordu. KUR-01 tam o boslukta yasadi: TCMB ve yedek kaynak
+// dusup onbellek bosken servis `usdTry = 1` (source 'fallback') doner,
+// cevirici kaynaga bakmadan 100 dolarlik kalemi 100 TL yazar ve satir
+// "tek eslesme · yuksek guven" alirdi (olculdu: 47,35 kat dusuk teklif).
+// Yalniz global fetch taklit edilir (ag); prisma sahtedir (DB yok).
+// ═════════════════════════════════════════════════════════════════════════
+const { MatchingService } = require('../src/ozellik/eslestirme/matching/matching.service');
+const { TerminologyService, ALIAS_SEEDS } = require('../src/ozellik/eslestirme/matching/terminology.service');
+const { ExchangeRatesService } = require('../src/ozellik/fiyat/exchange-rates/exchange-rates.service');
+
+const TCMB_XML = `<?xml version="1.0" encoding="UTF-8"?><Tarih_Date Tarih="12.09.2026" Date="09/12/2026">
+<Currency CrossOrder="0" Kod="USD" CurrencyCode="USD"><Unit>1</Unit><ForexBuying>47.20</ForexBuying><ForexSelling>47.35</ForexSelling></Currency>
+<Currency CrossOrder="9" Kod="EUR" CurrencyCode="EUR"><Unit>1</Unit><ForexBuying>54.00</ForexBuying><ForexSelling>54.10</ForexSelling></Currency>
+</Tarih_Date>`;
+type AgModu = 'ag-yok' | 'tcmb-ok';
+let agModu: AgModu = 'ag-yok';
+let fetchSayac = 0;
+(global as any).fetch = async (url: string) => {
+  fetchSayac++;
+  if (agModu === 'ag-yok') throw new Error('getaddrinfo ENOTFOUND (test)');
+  return url.includes('tcmb')
+    ? { ok: true, status: 200, text: async () => TCMB_XML }
+    : { ok: true, status: 200, json: async () => ({ rates: { TRY: 47.3, EUR: 0.875 } }) };
+};
+const sessizKur = () => { const fx = new ExchangeRatesService(); (fx as any).logger = { warn: () => {}, log: () => {} }; return fx; };
+
+const KOMP = { kategori: 'Dilatasyon Omega V-Flex', cins: 'V-Flex - X,Y,Z ±40 mm hareket', birim: 'adet', sheetName: 'S' };
+function kutuphaneSatiri(c: any, brand = { id: 'brand-1', name: 'AYVAZ' }) {
+  const idx = buildProductIndex(c);
+  return {
+    id: `lib-${brand.id}-${idx.rowKey}`, materialId: null, material: null, materialName: idx.displayName,
+    listPrice: c.price, customPrice: c.custom ?? null, discountRate: c.discount ?? 0,
+    currency: c.paraBirimi ?? 'TRY', productIndexId: `pi-${idx.rowKey}`, brand,
+    product: { ...idx, id: `pi-${idx.rowKey}`, ad: c.ad, cins: c.cins ?? null, baglanti: c.baglanti ?? null,
+      capRaw: c.cap ?? null, kategori: c.kategori ?? null, boyMm: null, urunKodu: c.urunKodu ?? null,
+      sheetName: c.sheetName ?? null, price: c.price },
+  };
 }
-console.log(` ✓ KUR DONMASI: ${passed}/${toplam} kriter gecti`);
-console.log('════════════════════════════════════════════════════════════════');
+function iscilikFiyati(name: string, unitPrice: number, currency: string, unit = 'mt', firma?: any) {
+  return {
+    id: `lp|${name}|${unit}|${firma?.id ?? 'A'}`, unitPrice, discountRate: 0, unit, currency, firma,
+    laborItem: { id: `li|${name}`, name, unit, unitPrice, discipline: 'mechanical', category: null, description: null,
+      cins: null, baglanti: null, capRaw: null, boyMm: null, not: null, adSlug: null, adBucket: null, adTokens: [],
+      cinsNorm: null, cinsTokens: [], baglantiNorm: null, baglantiTokens: [], sizeClass: 'unknown', capTags: [],
+      capNorm: null, boyTag: null, displayName: null, indexVersion: 0, belirsiz: false },
+  };
+}
+function eslestirici(fx: any, satirlar: any[], digerMarka: any[] = [], iscilikAna: any[] = [], iscilikDiger: any[] = [], hafiza: any = null) {
+  const prisma: any = {
+    userLibrary: { findMany: async (a: any) => (a?.where?.brandId && typeof a.where.brandId === 'object' ? digerMarka : satirlar) },
+    laborPrice: { findMany: async (a: any) => (a?.where?.firmaId ? iscilikAna : a?.where?.firma ? iscilikDiger : []) },
+    brand: { findUnique: async () => ({ name: 'AYVAZ' }) },
+    eslesmeHafizasi: { findUnique: async () => hafiza, upsert: async () => {} },
+    terminologyAlias: { findMany: async () => ALIAS_SEEDS.map((s: any, i: number) => ({ id: `a${i}`, userId: null, active: true, ...s })) },
+    user: { findUnique: async () => ({ firmaId: 'f1' }) },
+  };
+  return new MatchingService(prisma, new TerminologyService(prisma), fx);
+}
+const KIMLIK = { userId: 'u1', firmaId: 'f1' };
+const SATIR = 'Dilatasyon kompansatörü DN25';
+const tekKomp = (paraBirimi: string, price = 100, discount = 0) =>
+  [kutuphaneSatiri({ ...KOMP, ad: 'Dilatasyon kompansatörü', baglanti: 'flanşlı', cap: 'DN25', price, discount, paraBirimi, urunKodu: `C-${paraBirimi}` })];
+/** Hicbir yolda NaN / null / sonsuz fiyat sizmasin (cevrilemez satirin guvenlik agi). */
+const fiyatlarSayi = (r: any) => [r?.netPrice, r?.listPrice, ...(r?.candidates ?? []).map((c: any) => c.netPrice),
+  ...(r?.alternatives ?? []).map((a: any) => a.netPrice)].every((v) => typeof v === 'number' && Number.isFinite(v));
+
+async function kurGeriDususu() {
+  const realLog = console.log; const realWarn = console.warn;
+  const sus = () => { console.log = () => {}; console.warn = () => {}; };
+  const ac = () => { console.log = realLog; console.warn = realWarn; };
+
+  console.log('── E) KUR-01: TCMB + yedek kaynak YOK, onbellek BOS → dovizli satira fiyat YAZILMAZ ──');
+  {
+    agModu = 'ag-yok';
+    const fx = sessizKur();
+    sus();
+    const usd = (await eslestirici(fx, tekKomp('USD')).bulkMatch(KIMLIK, 'brand-1', [SATIR]))[SATIR];
+    const eur = (await eslestirici(fx, tekKomp('EUR', 200, 10)).bulkMatch(KIMLIK, 'brand-1', [SATIR]))[SATIR];
+    ac();
+    check('E0 olcutun kendisi: kur servisi gercekten geri dustu (source=fallback, usdTry=1)',
+      (await (async () => { sus(); const k = await sessizKur().getRates(); ac(); return k.source === 'fallback' && k.usdTry === 1; })()));
+    check('E1 USD tek aday: fiyat YAZILMAZ (netPrice 0) — 100 dolar 100 TL olamaz', usd?.netPrice === 0 && usd?.listPrice === 0,
+      `net=${usd?.netPrice} list=${usd?.listPrice} conf=${usd?.confidence}`);
+    check('E2 USD tek aday: yuksek guven YOK, satir "kur alinamadi" ile isaretli', usd?.confidence === 'none' && usd?.kurAlinamadi === true,
+      `conf=${usd?.confidence} kurAlinamadi=${usd?.kurAlinamadi}`);
+    check('E3 kullanici nedeni gorur: "Kur alınamadı" sebep metni', /Kur alınamadı/.test(usd?.reason ?? ''), `reason=${usd?.reason}`);
+    check('E4 uydurma "kur 1" teklife DONMAZ (kaynakKur yok)', usd?.kaynakKur === undefined, JSON.stringify(usd?.kaynakKur));
+    check('E5 EUR + %10 iskonto: ayni karar (fiyatsiz + isaretli)', eur?.netPrice === 0 && eur?.kurAlinamadi === true,
+      `net=${eur?.netPrice} kurAlinamadi=${eur?.kurAlinamadi}`);
+    check('E6 kur servisi geri dustugunde baska marka onerisi de acilmaz ("bu markada yok" DEGIL, urun var)',
+      !usd?.alternatives?.length, `alternatives=${usd?.alternatives?.length}`);
+  }
+
+  console.log('── F) COKLU ADAY + KARISIK HAVUZ: karar SATIR BAZINDA ──');
+  {
+    agModu = 'ag-yok';
+    const fx = sessizKur();
+    const cok = [
+      kutuphaneSatiri({ ...KOMP, ad: 'Omega V-Flex dilatasyon kompansatörü', baglanti: 'flanşlı', cap: 'DN25', price: 100, paraBirimi: 'USD', urunKodu: 'M1' }),
+      kutuphaneSatiri({ ...KOMP, ad: 'Eksenel metal körüklü kompansatör', baglanti: 'flanşlı', cap: 'DN25', price: 80, paraBirimi: 'USD', urunKodu: 'M2' }),
+    ];
+    const karisik = [
+      ...tekKomp('USD'),
+      kutuphaneSatiri({ kategori: 'Küresel Vanalar', ad: 'Küresel vana', cins: 'pirinç', baglanti: 'dişli', cap: 'DN25', price: 850, urunKodu: 'V1', sheetName: 'S' }),
+    ];
+    sus();
+    const rc = (await eslestirici(fx, cok).bulkMatch(KIMLIK, 'brand-1', ['Kompansatör DN25']))['Kompansatör DN25'];
+    const rk = await eslestirici(fx, karisik).bulkMatch(KIMLIK, 'brand-1', [SATIR, 'Küresel vana DN25']);
+    ac();
+    check('F1 coklu dovizli aday: fiyatli secim listesi SUNULMAZ (aday "X TL" diye gorunmez)',
+      rc?.netPrice === 0 && !rc?.candidates?.length && rc?.kurAlinamadi === true,
+      `conf=${rc?.confidence} aday=${rc?.candidates?.length} kurAlinamadi=${rc?.kurAlinamadi}`);
+    check('F2 ayni istekte TL satiri etkilenmez: kur dusukken TL fiyat YAZILIR', rk['Küresel vana DN25']?.netPrice === 850,
+      `TL satir net=${rk['Küresel vana DN25']?.netPrice} conf=${rk['Küresel vana DN25']?.confidence}`);
+    check('F3 ayni istekte dovizli satir fiyatsiz + isaretli', rk[SATIR]?.netPrice === 0 && rk[SATIR]?.kurAlinamadi === true,
+      `USD satir net=${rk[SATIR]?.netPrice}`);
+    check('F4 hicbir yolda NaN/null fiyat sizmaz', [rc, rk[SATIR], rk['Küresel vana DN25']].every(fiyatlarSayi));
+  }
+
+  console.log('── G) KUR GERI GELINCE yeniden eslestirme fiyatlar (donmus yanlis fiyat yok) ──');
+  {
+    const fx = sessizKur(); // AYNI servis ornegi: geri dusus onbellege yazilmamali
+    sus();
+    agModu = 'ag-yok';
+    const once = (await eslestirici(fx, tekKomp('USD')).bulkMatch(KIMLIK, 'brand-1', [SATIR]))[SATIR];
+    agModu = 'tcmb-ok';
+    const sonra = (await eslestirici(fx, tekKomp('USD')).bulkMatch(KIMLIK, 'brand-1', [SATIR]))[SATIR];
+    ac();
+    check('G1 once isaretli, kur donunce ayni satir TCMB kuruyla fiyatlanir (100 USD × 47,35 = 4.735)',
+      once?.kurAlinamadi === true && sonra?.netPrice === 4735 && sonra?.confidence === 'high' && !sonra?.kurAlinamadi,
+      `once=${once?.netPrice}/${once?.kurAlinamadi} sonra=${sonra?.netPrice}/${sonra?.confidence}`);
+    check('G2 kur donunce kaynakKur gercek kuru tasir (USD 47,35 · 12.09.2026)',
+      sonra?.kaynakKur?.currency === 'USD' && sonra?.kaynakKur?.kur === 47.35 && sonra?.kaynakKur?.tarih === '12.09.2026',
+      JSON.stringify(sonra?.kaynakKur));
+  }
+
+  console.log('── H) ONERI YOLLARI: baska marka / baska firma dovizli onerisi ──');
+  {
+    const ana = [kutuphaneSatiri({ kategori: 'Küresel Vanalar', ad: 'Küresel vana', cins: 'pirinç', baglanti: 'dişli', cap: 'DN25', price: 850, urunKodu: 'V1', sheetName: 'S' })];
+    const diger = tekKomp('USD').map((r) => ({ ...r, id: `${r.id}-b2`, brand: { id: 'brand-2', name: 'DOVIZ MARKA' } }));
+    const L = 'SİYAH ÇELİK BORU - DN50';
+    const sonuc: Record<string, any> = {};
+    for (const m of ['ag-yok', 'tcmb-ok'] as AgModu[]) {
+      agModu = m;
+      const fx = sessizKur();
+      sus();
+      sonuc[`marka-${m}`] = (await eslestirici(fx, ana, diger).bulkMatch(KIMLIK, 'brand-1', [SATIR]))[SATIR];
+      sonuc[`isc-${m}`] = (await eslestirici(fx, [], [], [iscilikFiyati('Siyah çelik boru montajı kaynaklı DN50', 10, 'USD')])
+        .bulkMatchLabor(KIMLIK, 'firma-A', [L], undefined, { [L]: 'mt' }))[L];
+      sonuc[`isc-alt-${m}`] = (await eslestirici(fx, [], [], [iscilikFiyati('Küresel vana montajı DN50', 120, 'TRY', 'adet')],
+        [iscilikFiyati('Siyah çelik boru montajı kaynaklı DN50', 10, 'EUR', 'mt', { id: 'firma-B', name: 'B FIRMASI' })])
+        .bulkMatchLabor(KIMLIK, 'firma-A', [L], undefined, { [L]: 'mt' }))[L];
+      ac();
+    }
+    const altOk = sonuc['marka-tcmb-ok']?.alternatives?.[0];
+    check('H0 olcutun kendisi: kur varken baska marka dovizli onerisi GERCEKTEN geliyor (fixture kaniti)',
+      altOk?.netPrice === 4735, JSON.stringify(sonuc['marka-tcmb-ok']?.alternatives));
+    check('H1 kur yokken dovizli baska marka onerisi SUNULMAZ (secilince 1:1 yazardi)',
+      !(sonuc['marka-ag-yok']?.alternatives ?? []).some((a: any) => a.brandName === 'DOVIZ MARKA'),
+      JSON.stringify(sonuc['marka-ag-yok']?.alternatives));
+    check('H2 kur varken oneri de kaynakKur tasir (secilen onerinin kuru donar)',
+      altOk?.kaynakKur?.currency === 'USD' && altOk?.kaynakKur?.kur === 47.35, JSON.stringify(altOk?.kaynakKur));
+    check('H3 iscilik USD kalem: kur yokken fiyatsiz + isaretli (malzeme ikizi)',
+      sonuc['isc-ag-yok']?.netPrice === 0 && sonuc['isc-ag-yok']?.kurAlinamadi === true,
+      `net=${sonuc['isc-ag-yok']?.netPrice} conf=${sonuc['isc-ag-yok']?.confidence}`);
+    check('H4 iscilik USD kalem: kur varken fiyatlanir (10 × 47,35 = 473,5)', sonuc['isc-tcmb-ok']?.netPrice === 473.5,
+      `net=${sonuc['isc-tcmb-ok']?.netPrice}`);
+    check('H5 kur yokken baska firmanin EUR iscilik onerisi SUNULMAZ',
+      !(sonuc['isc-alt-ag-yok']?.alternatives ?? []).length, JSON.stringify(sonuc['isc-alt-ag-yok']?.alternatives));
+    check('H6 kur varken baska firma EUR onerisi gelir ve kuru tasir (fixture kaniti + baglanti)',
+      sonuc['isc-alt-tcmb-ok']?.alternatives?.[0]?.netPrice === 541 && sonuc['isc-alt-tcmb-ok']?.alternatives?.[0]?.kaynakKur?.currency === 'EUR',
+      JSON.stringify(sonuc['isc-alt-tcmb-ok']?.alternatives));
+  }
+
+  console.log('── I) HAFIZA OTOYAZI kur yokken fiyat YAZAMAZ ──');
+  {
+    let kanit: any = null;
+    let dusuk: any = null;
+    for (const satir of ['Paslanmaz Dilatasyon kompansatörü DN25', 'Dilatasyon kompansatörü DN25 PN16 özel']) {
+      agModu = 'tcmb-ok';
+      sus();
+      const ilk = (await eslestirici(sessizKur(), tekKomp('USD')).bulkMatch(KIMLIK, 'brand-1', [satir]))[satir];
+      ac();
+      if (ilk?.confidence !== 'multi' || ilk.candidates?.length !== 1) continue;
+      const hafiza = { secilenAd: ilk.candidates[0].materialName, secimSayisi: 3 };
+      sus();
+      kanit = (await eslestirici(sessizKur(), tekKomp('USD'), [], [], [], hafiza).bulkMatch(KIMLIK, 'brand-1', [satir]))[satir];
+      agModu = 'ag-yok';
+      dusuk = (await eslestirici(sessizKur(), tekKomp('USD'), [], [], [], hafiza).bulkMatch(KIMLIK, 'brand-1', [satir]))[satir];
+      ac();
+      break;
+    }
+    check('I0 olcutun kendisi: kur varken hafiza otoyazisi GERCEKTEN ateslendi (fixture kaniti)',
+      kanit?.hafizaOtoyaz === true && kanit?.netPrice === 4735, `otoyaz=${kanit?.hafizaOtoyaz} net=${kanit?.netPrice}`);
+    check('I1 kur yokken hafiza otoyazisi fiyat yazmaz, satir isaretli', dusuk?.netPrice === 0 && !dusuk?.hafizaOtoyaz && dusuk?.kurAlinamadi === true,
+      `net=${dusuk?.netPrice} otoyaz=${dusuk?.hafizaOtoyaz} kurAlinamadi=${dusuk?.kurAlinamadi}`);
+  }
+
+  console.log('── J) KUR-02: para birimi kodu yazim bicimi 1:1 TL uretmez ──');
+  {
+    agModu = 'tcmb-ok';
+    const olc = async (kod: string) => {
+      sus();
+      const fx = sessizKur();
+      fetchSayac = 0;
+      const r = (await eslestirici(fx, tekKomp(kod)).bulkMatch(KIMLIK, 'brand-1', [SATIR]))[SATIR];
+      ac();
+      return { r, fetch: fetchSayac };
+    };
+    const sonuclar: Record<string, any> = {};
+    for (const kod of ['usd', 'DOLAR', '$', ' USD ', 'EURO', 'AVRO', '€', 'eur', 'GBP', '£', 'TL', '₺']) sonuclar[kod] = await olc(kod);
+    const usdYazimlari = ['usd', 'DOLAR', '$', ' USD '].filter((k) => sonuclar[k].r?.netPrice !== 4735 || sonuclar[k].r?.kaynakKur?.currency !== 'USD');
+    const eurYazimlari = ['EURO', 'AVRO', '€', 'eur'].filter((k) => sonuclar[k].r?.netPrice !== 5410 || sonuclar[k].r?.kaynakKur?.currency !== 'EUR');
+    check('J1 USD yazimlari (usd · DOLAR · $ · bosluklu) TCMB kuruyla cevrilir ve kuru tasir', usdYazimlari.length === 0,
+      usdYazimlari.map((k) => `${k}=${sonuclar[k].r?.netPrice}`).join(' | '));
+    check('J2 EUR yazimlari (EURO · AVRO · € · eur) TCMB kuruyla cevrilir ve kuru tasir', eurYazimlari.length === 0,
+      eurYazimlari.map((k) => `${k}=${sonuclar[k].r?.netPrice}`).join(' | '));
+    const taninmayan = ['GBP', '£'].filter((k) => !(sonuclar[k].r?.netPrice === 0 && /Para birimi tanınmadı/.test(sonuclar[k].r?.reason ?? '')));
+    check('J3 taninmayan para birimi (GBP · £) fiyatsiz kalir ve nedeni soylenir — 1:1 TL YAZILMAZ', taninmayan.length === 0,
+      taninmayan.map((k) => `${k}: net=${sonuclar[k].r?.netPrice} reason=${sonuclar[k].r?.reason}`).join(' | '));
+    check('J4 taninmayan para birimi "kur alinamadi" SAYILMAZ (yeniden denemek duzeltmez, kutuphane duzeltilmeli)',
+      ['GBP', '£'].every((k) => !sonuclar[k].r?.kurAlinamadi));
+    check('J5 TL yazimlari (TL · ₺) TRY sayilir: kur servisine hic gidilmez, fiyat aynen yazilir',
+      ['TL', '₺'].every((k) => sonuclar[k].r?.netPrice === 100 && sonuclar[k].fetch === 0),
+      ['TL', '₺'].map((k) => `${k}: net=${sonuclar[k].r?.netPrice} fetch=${sonuclar[k].fetch}`).join(' | '));
+  }
+
+  console.log('── K) KUR GECERLILIK KURALI: kaynak VE deger birlikte ──');
+  {
+    const { kurGecerli, paraBirimiKodu } = require('../src/ozellik/fiyat/exchange-rates/exchange-rates.service');
+    check('K1 source=fallback ise kur degeri ne olursa olsun GECERSIZ', kurGecerli({ usdTry: 47.35, eurTry: 54.1, source: 'fallback' }, 'USD') === false);
+    check('K2 kur 1 ya da alti GECERSIZ (1:1 TL ile ayni anlam)', kurGecerli({ usdTry: 1, eurTry: 1, source: 'tcmb' }, 'EUR') === false
+      && kurGecerli({ usdTry: 0, eurTry: 54.1, source: 'cache' }, 'USD') === false);
+    check('K3 TCMB / er-api / onbellek kuru GECERLI', ['tcmb', 'er-api', 'cache'].every((s) => kurGecerli({ usdTry: 47.35, eurTry: 54.1, source: s }, 'USD')));
+    check('K4 bos / tanimsiz para birimi TRY sayilir (eski satirlar)', paraBirimiKodu(null) === 'TRY' && paraBirimiKodu('') === 'TRY' && paraBirimiKodu(undefined) === 'TRY');
+  }
+}
+
+kurGeriDususu().then(() => {
+  console.log('');
+  console.log('════════════════════════════════════════════════════════════════');
+  const toplam = passed + failures.length;
+  if (failures.length) {
+    console.log(` ✗ KUR DONMASI: ${passed}/${toplam} gecti, ${failures.length} BASARISIZ`);
+    for (const f of failures) console.log(`   ✗ ${f}`);
+    console.log('════════════════════════════════════════════════════════════════');
+    process.exit(1);
+  }
+  console.log(` ✓ KUR DONMASI: ${passed}/${toplam} kriter gecti`);
+  console.log('════════════════════════════════════════════════════════════════');
+}).catch((e) => { console.error('BEKLENMEYEN HATA:', e); process.exit(1); });

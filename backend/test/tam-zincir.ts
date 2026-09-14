@@ -60,8 +60,7 @@ async function main() {
     process.stdout.write(k.stdout ?? '');
     if (k.status !== 0) {
       process.stderr.write(k.stderr ?? '');
-      console.log('
-⛔ TAM ZINCIR BASLATILMADI — derleme bos/eksik (KD3).');
+      console.log('\n⛔ TAM ZINCIR BASLATILMADI — derleme bos/eksik (KD3).');
       process.exit(3);
     }
   }

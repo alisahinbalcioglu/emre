@@ -845,8 +845,20 @@ export class LibraryService {
 
         const data: any = {};
         if (row.listPrice !== undefined && !isNaN(row.listPrice) && row.listPrice >= 0) {
-          data.listPrice = row.listPrice;
-          data.customPrice = row.listPrice;
+          // ── YALNIZ FIYAT DEGISTIYSE YAZ (K1, para dogrulugu turu 14.09) ──────
+          // On yuz kayit yuku HER kirli satirda ekrandaki fiyati gonderir —
+          // yalniz iskonto ya da ad degisse bile. Kosulsuz yazmak customPrice'i
+          // o anki liste fiyatina DONDURUYORDU: havuz fiyati sonra guncellenip
+          // "Kutuphaneme Aktar" yeniden yapilinca listPrice yenilenir, ama ekran
+          // ve eslestirme (customPrice ?? listPrice) ESKI fiyatta kalirdi.
+          // Olculen: iskonto 10 kaydi + havuz x1,2 → eslestirme 90 (dogrusu 108).
+          // Ikiz yol bu kurali zaten uyguluyordu: library/page.tsx saveInlinePrice
+          // `if (newVal === oldVal) return;`.
+          const gosterilen = item.customPrice ?? item.listPrice;
+          if (gosterilen == null || row.listPrice !== gosterilen) {
+            data.listPrice = row.listPrice;
+            data.customPrice = row.listPrice;
+          }
         }
         if (row.discountRate !== undefined && !isNaN(row.discountRate)) {
           data.discountRate = Math.max(0, Math.min(100, row.discountRate));

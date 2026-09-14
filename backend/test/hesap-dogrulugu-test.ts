@@ -549,6 +549,89 @@ async function run() {
       `numFmt="${yerelFmt}"`);
   }
 
+  // ── H9: KAYIT TOPLAMI = EKRAN (para dogrulugu turu, 14.09 — G1) ──────
+  // Musterinin kendi İcmal satirlari (`_ozet`) ekranda toplanmiyor ama kayda
+  // KALEM olarak gidiyordu: FIRMA-C teklif listesi 186.131.100, ekran 62.043.700.
+  // Olcut ekranin tek hesap modulunden; kayit yolu URETIMDEKI zincir:
+  // page.tsx handleSave dongusunun suzgeci → gercek `kalemUret` (FE) →
+  // gercek `QuotesService.create` (satir toplami + finalPrice kurali).
+  {
+    const FEKALEM = require('../../frontend/ozellik/teklif/teklif-kalem');
+    let yakalanan: any[] = [];
+    const prisma: any = { quote: { create: async (arg: any) => { yakalanan = arg?.data?.items?.create ?? []; return { id: 'h9', items: [] }; } } };
+    const kayitServisi = new QuotesService(prisma, fxSabit(), { onbellekHaritasi: async () => ({}) } as any);
+    const sheets = await gercekTeklif('FIRMA-C ENTEGRE SAHA-UC - Yangın Tesisatı.xlsx');
+    const kalemler: any[] = [];
+    let ozetSatiri = 0;
+    let ozetTutariK = 0; // olcutun kendisi: dislanmasaydi kayda girecek para
+    for (const sh of sheets) {
+      if (sh.isEmpty) continue;
+      for (const r of sh.rowData ?? []) {
+        if (!r._isDataRow || r._isGroupRow || r._isSpareRow) continue; // page.tsx:1339 suzgeci
+        if (r._ozet) {
+          ozetSatiri++;
+          const { _ozet: _yok, ...isaretsiz } = r;
+          const hayali = FEKALEM.kalemUret(isaretsiz, sh.columnRoles);
+          if (hayali) ozetTutariK += K((hayali.materialTotalPrice ?? 0) + (hayali.laborTotalPrice ?? 0));
+        }
+        const k = FEKALEM.kalemUret(r, sh.columnRoles);
+        if (k) kalemler.push(k);
+      }
+    }
+    await kayitServisi.create(KIM, { title: 'H9', items: kalemler } as any);
+    const kayitK = yakalanan.reduce((a, it) => a + K(it.finalPrice), 0);
+    const ekranK = sheets.filter((s) => !s.isEmpty).reduce((a, s) => { const e = ekranToplami(s); return a + e.mat + e.lab; }, 0);
+    check('H9 ölçütün kendisi: FIRMA-C İcmal satırları GERÇEKTEN para taşıyor (dışlanmasa kayda 124.087.400 girerdi)',
+      ozetSatiri > 0 && ozetTutariK === 12408740000, `özet satırı=${ozetSatiri} tutar=${tl(ozetTutariK)}`);
+    check('H9 G1: kayıtlı teklif toplamı (Σ finalPrice) = ekrandaki sayfa toplamları, kuruşu kuruşuna — FIRMA-C 62.043.700',
+      kayitK === ekranK && ekranK === 6204370000, `kayıt=${tl(kayitK)} ekran=${tl(ekranK)} kalem=${yakalanan.length}`);
+  }
+
+  // ── H10: SAYFA ADI CAKISMASI CIKTIYI DUSURMEZ (14.09 — I9 / I10) ─────
+  // Olculdu: teklifte "GENEL TOPLAM" adli sayfa varsa fiyatli cikti HTTP 400 ile
+  // dusuyordu; "ICMAL" formati + "icmal" teklif sayfasi (ve "MEKANIK" + "Mekanik")
+  // TR kucultmesiyle farkli, ExcelJS'in duz kucultmesiyle AYNI sayildigi icin
+  // format ve fiyatli yol dusuyordu. Dosya inmezse rakamin dogrulugu anlamsiz.
+  {
+    const cakisan = [
+      sayfa('Genel Toplam', [veri(1, 'Kalem A', 2, '100', '200')]),
+      sayfa('MEKANIK', [veri(1, 'Kalem B', 1, '50', '50')]),
+      sayfa('Mekanik', [veri(1, 'Kalem C', 1, '25', '25')]),
+    ];
+    let fiyatliHata = '';
+    let fwb: ExcelJS.Workbook | null = null;
+    try {
+      const r = await standartCiktiUret({ sheetsArr: cakisan });
+      fwb = await ac(r.buffer);
+    } catch (e: any) { fiyatliHata = e?.message ?? String(e); }
+    let genel: number | null = null;
+    fwb?.getWorksheet('GENEL TOPLAM')?.eachRow((row) => { if (row.getCell(1).value === 'TEKLİF GENEL TOPLAMI') genel = K(Number(row.getCell(4).value)); });
+    check('H10 I9: "Genel Toplam" adlı teklif sayfası fiyatlı çıktıyı düşürmez; özet sayfa adını KORUR ve toplam doğru',
+      !fiyatliHata && genel === K(275) && fwb!.worksheets.some((w) => w.name === 'Genel Toplam (2)'),
+      `hata="${fiyatliHata}" genel=${genel} sayfalar=${fwb?.worksheets.map((w) => w.name).join(' | ')}`);
+    check('H10 I10: "MEKANIK" + "Mekanik" (ExcelJS\'in eşit saydığı çift) fiyatlı çıktıda ayrı sayfa olur',
+      !fiyatliHata && !!fwb?.getWorksheet('MEKANIK') && fwb!.worksheets.some((w) => w.name === 'Mekanik (2)'),
+      `sayfalar=${fwb?.worksheets.map((w) => w.name).join(' | ')}`);
+
+    const kullaniciFormati = new ExcelJS.Workbook();
+    kullaniciFormati.addWorksheet('KAPAK').getCell('B2').value = '{{MUSTERI}}';
+    const icmalFmt = kullaniciFormati.addWorksheet('ICMAL');
+    icmalFmt.getCell('B3').value = '{{ICMAL_SATIRLARI}}';
+    icmalFmt.getCell('E6').value = '{{GENEL_TOPLAM}}';
+    let formatHata = '';
+    let sonuc: any = null;
+    try {
+      sonuc = await buildExportWorkbook({
+        originalFile: Buffer.from('x'), formatWb: kullaniciFormati, sheetRoles: null,
+        sheetsArr: [sayfa('icmal', [veri(1, 'Kalem D', 4, '10', '40')])],
+        ctxTemel: { teklifNo: 'T', rev: 1, tarih: '', kurNotu: '', kdvOran: 0.2 },
+      });
+    } catch (e: any) { formatHata = e?.message ?? String(e); }
+    check('H10 I10: "ICMAL" formatı + "icmal" teklif sayfası format çıktısını düşürmez, formüller doğru',
+      !formatHata && !!sonuc && formulDenetimi(sonuc.wb).sorun.length === 0 && sonuc.listeSayfalari.length === 1,
+      `hata="${formatHata}" liste=${sonuc?.listeSayfalari?.join(',')}`);
+  }
+
   // ── H7: FE ↔ BE fiyat cekirdegi paritesi ─────────────────────────────
   {
     let tohum = 20260913;

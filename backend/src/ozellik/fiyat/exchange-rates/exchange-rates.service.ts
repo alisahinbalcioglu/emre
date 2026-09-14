@@ -24,6 +24,51 @@ export interface ExchangeRatesResult {
   fetchedAt: string;
 }
 
+/** Eslestirmenin tanidigi para birimleri — kutuphane fiyatlari yalniz bunlarla TL'ye cevrilir. */
+export type ParaBirimiKodu = 'TRY' | 'USD' | 'EUR';
+
+const PARA_BIRIMI_YAZIMLARI: Record<string, ParaBirimiKodu> = {
+  '': 'TRY', TRY: 'TRY', TL: 'TRY', '₺': 'TRY', YTL: 'TRY',
+  USD: 'USD', $: 'USD', US$: 'USD', DOLAR: 'USD', DOLLAR: 'USD',
+  EUR: 'EUR', '€': 'EUR', EURO: 'EUR', AVRO: 'EUR',
+};
+
+/**
+ * Kutuphane satirinin para birimi metni → kanonik kod. Taninmayan (GBP, "£")
+ * `null` — CAGIRAN O SATIRA FIYAT YAZMAZ.
+ *
+ * ⚠ NEDEN (para dogrulugu turu, 14.09 — KUR-02, olculdu): cevirici yalniz
+ * birebir 'USD'/'EUR' taniyordu; 'EURO', '€', 'DOLAR' TCMB calisirken bile
+ * 1:1 TL sayiliyordu. Isciligin "Para Birimi" kolonu serbest metin oldugu
+ * icin bu kodlar arayuzden DB'ye yazilabiliyor. Bos/tanimsiz = TRY (eski
+ * satirlar para birimi tasimaz).
+ */
+export function paraBirimiKodu(ham: unknown): ParaBirimiKodu | null {
+  if (ham === null || ham === undefined) return 'TRY';
+  const s = String(ham).trim().toUpperCase().replace(/\s+/g, '');
+  return PARA_BIRIMI_YAZIMLARI[s] ?? null;
+}
+
+/**
+ * Bu kur sonucuyla bu doviz TL'ye CEVRILEBILIR mi?
+ *
+ * ⚠ KUR-01 (kodla dogrulandi, 14.09): TCMB ve yedek kaynak dusup onbellek
+ * bosken `getRates` hata firlatmaz, `usdTry = eurTry = 1` ve
+ * `source: 'fallback'` doner. Bu deger GOSTERIM icin zararsizdi (on yuz
+ * `usdTry > 1` sartiyla doviz dugmelerini kapatir), ama eslestirme cevirici
+ * kaynaga bakmadigi icin 100 dolarlik kalemi 100 TL yaziyordu.
+ * Kural: kaynak 'fallback' ise ya da kur 1'i gecmiyorsa kur YOKTUR. Esik
+ * cikti (quotes.service `exportBirimi`) ve on yuz (use-currency) ile AYNI.
+ */
+export function kurGecerli(
+  r: { usdTry?: number; eurTry?: number; source?: string } | null | undefined,
+  kod: 'USD' | 'EUR',
+): boolean {
+  if (!r || r.source === 'fallback') return false;
+  const kur = Number(kod === 'USD' ? r.usdTry : r.eurTry);
+  return Number.isFinite(kur) && kur > 1;
+}
+
 const TCMB_URL = 'https://www.tcmb.gov.tr/kurlar/today.xml';
 const ERAPI_URL = 'https://open.er-api.com/v6/latest/USD';
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 saat

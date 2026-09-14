@@ -13,7 +13,7 @@ import { SATIR_YUKSEKLIGI } from './types';
 // S2: oneri kutusunun kesinlik/onay karari — IKI kutu da buradan okur
 import { oneriBasligi, cekinceSatiri } from './oneri-cekince';
 import { useFillHandle, FillHandleIndicator } from './useFillHandle';
-import { clampDiscount, parseDiscountInput, parseDiscountPaste } from './discount-utils';
+import { clampDiscount, parseDiscountInput, parseDiscountPaste, iskontoHucresiOku } from './discount-utils';
 import { CustomDropdown } from './CustomDropdown';
 import { fillDown, karYayilimi } from './fill-down';
 import { planYapistir, type PasteKolon, type PasteSatir } from './yapistir';
@@ -33,7 +33,7 @@ import { veriSatirinaTerfiEtmeliMi } from './satir-terfi';
 // KÂR HÜCRESİ TEK SÜZGEÇTEN: `parseFloat(String(x)) || 0` kopyaları
 // kaydetme yolundaki `sayiAlani` ile AYRIŞIYORDU — "12,5" ekranda 12,
 // kayıtta 12,5 oluyordu (TR klavye). Tek fonksiyon, tek sayı.
-import { sayiAlani, sayiOku } from '@/ozellik/fiyat/sayi-alani';
+import { sayiAlani, sayiOku, karYuzdesiOku } from '@/ozellik/fiyat/sayi-alani';
 import { hasSizeExpression, isSelfSufficientRow } from './build-material-context';
 import { niteliklerdenBaglam, adayEtiketleri, popupGenisligiOku, popupGenisligiYaz } from './aday-ayirt-edicilik';
 import httpApi from '@/ortak/lib/api';
@@ -121,6 +121,8 @@ interface Props {
     confidence?: 'high' | 'suggestion' | string;
     // spec: oran/hizmet satiri — fiyat beklenmiyor (gri isaret)
     notProduct?: boolean;
+    // KUR-01 (14.09): urun var, dovizli fiyat TL'ye cevrilemedi → 'hata' isareti
+    kurAlinamadi?: boolean;
     // U2 seffaf cevrim rozeti: "DN 25 → 1\" (çelik)"
     donusum?: string;
     // V4: varyant filtresi tek adaya indi (grup otomatik atamasi)
@@ -164,6 +166,7 @@ interface Props {
     reason?: string;
     confidence?: 'high' | 'suggestion' | string;
     notProduct?: boolean;
+    kurAlinamadi?: boolean; // KUR-01 ikizi (malzeme sozlesmesiyle ayni)
     donusum?: string;
     autoVariant?: boolean;
     hafizaOtoyaz?: boolean;
@@ -555,10 +558,13 @@ function BrandDropdown(props: ICellRendererParams & {
 
     // ALTIN KURAL: fiyat uretilmez — hucre bos + ISARETLI.
     // 'urun_degil' (oran/hizmet, gri) vs 'yok' (kutuphanede eslesme yok, kirmizi).
+    // KUR-01 (14.09): kur alinamadiysa 'hata' (turuncu, "tekrar deneyin") —
+    // urun VAR, eksik olan kur. 'yok' YAZILMAZ: taslak geri yuklemesi 'yok'u
+    // cevaplanmis sayar ve kur donunce satiri YENIDEN FIYATLAMAZDI.
     yazVeri(node, '_matNetPrice', 0);
     node.data._matKurBilgi = null; // kur donmasi: fiyatla birlikte temizlenir
     node.setDataValue('_matSuggestion', false);
-    node.setDataValue('_matStatus', result?.notProduct ? 'urun_degil' : 'yok');
+    node.setDataValue('_matStatus', result?.notProduct ? 'urun_degil' : (result?.kurAlinamadi ? 'hata' : 'yok'));
     // K3-FE (27.08): SEBEP hucreye de yazilir (SD6 — isaret EYLEMLI olmali).
     // Etkilesimli yol bugune kadar sebebi yalniz TOAST'ta gosteriyordu; toast
     // kaybolunca hucrede jenerik "Kütüphanede eşleşme yok" kaliyordu.
@@ -1200,7 +1206,8 @@ function FirmaDropdown(props: ICellRendererParams & {
     // 'urun_degil' (oran/hizmet, gri) vs 'yok' (eslesme yok, kirmizi).
     yazVeriLab(node, '_labNetPrice', 0);
     node.data._labKurBilgi = null; // kur donmasi: fiyatla birlikte temizlenir
-    yazVeriLab(node, '_labStatus', (result as any)?.notProduct ? 'urun_degil' : 'yok');
+    // KUR-01 ikizi: kur alinamadiysa 'hata' — kur donunce yeniden fiyatlanabilsin.
+    yazVeriLab(node, '_labStatus', (result as any)?.notProduct ? 'urun_degil' : ((result as any)?.kurAlinamadi ? 'hata' : 'yok'));
     yazVeriLab(node, '_labSebep', (result as any)?.reason ?? null);
     yazVeriLab(node, '_labAdaySayisi', null);
     if (laborUnitPriceField) node.setDataValue(laborUnitPriceField, '');
@@ -1848,7 +1855,9 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       description: 'Bu gruptaki tüm satırlara uygulanacak iskonto % (0-100):',
       confirmText: 'Uygula',
       cancelText: 'Vazgeç',
-      input: { yerTutucu: 'örn 30', tip: 'number' },
+      // K5 (14.09): `number` kutusu "%30" yazmaya IZIN VERMIYORDU (deger '' donup
+      // islem sessizce iptal oluyordu); metin kutusu + ayni yuzde kurali.
+      input: { yerTutucu: 'örn 30 ya da %30' },
     });
     if (raw == null || raw.trim() === '') return;
     // Kutu acikken grid degismis olabilir — api YENIDEN okunur.
@@ -2714,7 +2723,8 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     } else if (result.field === '_draftDiscount') {
       // S1: iskonto fill — undo kaydi + _dirty + net fiyat tek refresh'te
       // (applyDiscountBulk refreshAndEmit yapar; asagidaki genel emit de zararsiz)
-      const v = clampDiscount(parseFloat(String(result.value ?? '').replace(',', '.')));
+      // K5 ikizi: surukle-doldur da AYNI yuzde kuralini okur (elle/grup/yapistirma ile esit).
+      const v = iskontoHucresiOku(result.value);
       applyDiscountBulk(result.targetRowNodes.map((n) => ({ node: n, value: v })));
     } else {
       // Diger basit deger kopyalama
@@ -3067,11 +3077,10 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         // veriyordu ve string sessizce sessionStorage draft'ina da yaziliyor,
         // sayfa yenilense bile duzelmiyordu. `_draftDiscount` kolonu ayni
         // deseni zaten kullaniyor (asagida) — kar kolonlari unutulmustu.
-        base.valueParser = (p: any) => {
-          const n = parseFloat(String(p.newValue ?? '').replace(',', '.'));
-          if (!Number.isFinite(n) || n < 0) return 0;
-          return n;
-        };
+        // K5 ikizi (14.09): "%30" elle yazilinca parseFloat NaN → kar SESSIZCE 0
+        // oluyordu (fiyat maliyete iner); yapistirma ayni metni 30 okuyordu.
+        // Yuzde kurali TEK kaynaktan: sayi-alani `karYuzdesiOku`.
+        base.valueParser = (p: any) => karYuzdesiOku(p.newValue);
         base.cellRenderer = (params: ICellRendererParams) => {
           // ── KAR SATIRINDA GERCEKLESEN YUZDE (17.08 kullanici istegi) ────
           // Kullanicinin tanimi: "maliyet 100 TL (kar yuzdesi %0 iken), kar
@@ -3488,12 +3497,9 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         editable: (p: any) => p.data?._isDataRow === true,
         pinned: 'right' as const,
         suppressMovable: true,
-        valueParser: (p: any) => {
-          let val = parseFloat(String(p.newValue ?? '').replace(',', '.'));
-          if (isNaN(val) || val < 0) val = 0;
-          if (val > 100) val = 100;
-          return val;
-        },
+        // K5 (14.09): "%30" / " %15 " elle yazilinca 0 oluyordu (net = liste);
+        // grup/tum liste/yapistirma ayni metni 30 okuyordu. Tek yol.
+        valueParser: (p: any) => iskontoHucresiOku(p.newValue),
         // S1: fill-handle-cell sarmalayici — hucrenin alt kenarindan
         // surukle-doldur baslar (kar % kolonlariyla ayni mekanizma)
         cellRenderer: (p: any) => {
@@ -3765,13 +3771,19 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
 
     // ── Miktar degisti → malzeme + iscilik tutar yenile + grand recalc ──
     if (e.colDef.field === quantityField && !row._fitting) {
-      const qty = parseFloat(String(e.newValue ?? 0)) || 0;
+      // G2 (para dogrulugu turu, 14.09 — olculdu): burasi ham
+      // `parseFloat(e.newValue)` kullaniyordu ve TR virgulunu KESIYORDU: "12,5"
+      // satir toplaminda 12 (1.440; dogrusu 1.500) iken kar maliyeti, kayit ve
+      // Excel 12,5 okuyordu — satir kendi icinde celisiyordu, sonraki bir kar
+      // degisikligi toplami sessizce degistiriyordu. Diger 8 miktar okuyucusu
+      // gibi `etkinMiktar` (UY2 kurali dahil).
+      const qty = etkinMiktar(row, quantityField, unitField);
 
       if (materialUnitPriceField && materialTotalField) {
         const matKar = sayiAlani(row._malzKar);
         const matNet = typeof row._matNetPrice === 'number' && row._matNetPrice > 0
           ? row._matNetPrice
-          : maliyetiGeriTuret(parseFloat(String(row[materialUnitPriceField] ?? '')) || 0, matKar);
+          : maliyetiGeriTuret(sayiAlani(row[materialUnitPriceField]), matKar);
         if (matNet > 0) {
           const finalPrice = hesaplaSatisBirimFiyat(matNet, matKar);
           e.node.setDataValue(materialTotalField, hesaplaSatirToplam(finalPrice, qty).toFixed(1));
@@ -3782,7 +3794,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         const labKar = sayiAlani(row._iscKar);
         const labNet = typeof row._labNetPrice === 'number' && row._labNetPrice > 0
           ? row._labNetPrice
-          : maliyetiGeriTuret(parseFloat(String(row[laborUnitPriceField] ?? '')) || 0, labKar);
+          : maliyetiGeriTuret(sayiAlani(row[laborUnitPriceField]), labKar);
         if (labNet > 0) {
           const finalPrice = hesaplaSatisBirimFiyat(labNet, labKar);
           e.node.setDataValue(laborTotalField, hesaplaSatirToplam(finalPrice, qty).toFixed(1));

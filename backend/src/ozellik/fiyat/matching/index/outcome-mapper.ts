@@ -13,6 +13,7 @@
 // ════════════════════════════════════════════════════════════════════
 
 import { hesaplaNetFiyat } from '../pricing';
+import { paraBirimiKodu } from '../../exchange-rates/exchange-rates.service';
 import { extractAttrTags, extractFluid } from '../../../eslestirme/matching/normalizer';
 import { buildAttrUyari } from '../../../eslestirme/matching/shared-tag-matcher';
 import { urunVariantTags } from '../../../eslestirme/matching/index/query-engine';
@@ -30,16 +31,53 @@ import type { IndexedRow, QueryOutcome, AskColumn, LineQuery } from '../../../es
  */
 export type TryCevirici = ((v: number, cur: string) => number) & {
   kur?: { usdTry: number; eurTry: number; tarih: string };
+  /**
+   * KUR-01 (14.09): bu para birimi TL'ye CEVRILEMIYOR mu? (kur alinamadi ya da
+   * para birimi taninmadi). `buildTryConverter` atar; yoksa her satir
+   * cevrilebilir sayilir (eski/saf test ceviricileri icin geriye uyum).
+   */
+  cevrilemez?: (cur?: string | null) => boolean;
 };
 
-/** Dovizli satir icin cevrimde kullanilan kuru cikar; TRY'de undefined. */
-function kurOf(r: IndexedRow, toTry: TryCevirici): KaynakKur | undefined {
-  const cur = r.currency;
-  if ((cur !== 'USD' && cur !== 'EUR') || !toTry.kur) return undefined;
+const cevrilemezMi = (r: IndexedRow, toTry: (v: number, cur: string) => number): boolean =>
+  !!(toTry as TryCevirici).cevrilemez?.(r.currency);
+
+/** Dovizli satir icin cevrimde kullanilan kuru cikar; TRY'de ve cevrilemeyen satirda undefined.
+ *  Para birimi YAZIMI kanonige cevrilir ('€' → EUR) — cevirici de oyle cevirir (KUR-02). */
+export function kurOf(r: IndexedRow, toTry: (v: number, cur: string) => number): KaynakKur | undefined {
+  const t = toTry as TryCevirici;
+  const kod = paraBirimiKodu(r.currency);
+  if ((kod !== 'USD' && kod !== 'EUR') || !t.kur || cevrilemezMi(r, toTry)) return undefined;
   return {
-    currency: cur,
-    kur: cur === 'USD' ? toTry.kur.usdTry : toTry.kur.eurTry,
-    tarih: toTry.kur.tarih,
+    currency: kod,
+    kur: kod === 'USD' ? t.kur.usdTry : t.kur.eurTry,
+    tarih: t.kur.tarih,
+  };
+}
+
+/**
+ * Cevrilemeyen dovizli satirin sonucu: FIYAT YOK, neden SOYLENIR.
+ *
+ * Kur alinamadiysa `kurAlinamadi: true` — on yuz satiri "hata" (turuncu,
+ * "tekrar deneyin") olarak isaretler ve taslak geri yuklemesi / yeniden
+ * eslestirme kur donunce fiyatlar. Para birimi TANINMADIYSA bayrak YOK:
+ * yeniden denemek duzeltmez, kutuphane satiri duzeltilmelidir (kirmizi "yok").
+ */
+function cevrilemezSonuc(r: IndexedRow): MatchResult {
+  const kod = paraBirimiKodu(r.currency);
+  const bos = { netPrice: 0, listPrice: 0, discount: 0 };
+  if (kod === null) {
+    return {
+      ...bos,
+      confidence: 'none',
+      reason: `Para birimi tanınmadı ("${String(r.currency ?? '').trim()}") — kütüphanede TRY, USD ya da EUR yazın; fiyat yazılmadı.`,
+    };
+  }
+  return {
+    ...bos,
+    confidence: 'none',
+    kurAlinamadi: true,
+    reason: `Kur alınamadı (${kod}) — dövizli fiyat TL'ye çevrilemedi, yazılmadı. Kur gelince yeniden eşleştirin.`,
   };
 }
 
@@ -154,6 +192,7 @@ export function toMatchResult(
   switch (outcome.kind) {
     // ── TEK ESLESME: fiyatin yazilabildigi TEK yol ──────────────────
     case 'single': {
+      if (cevrilemezMi(outcome.row, toTry)) return cevrilemezSonuc(outcome.row); // KUR-01
       const { net, list, isk } = netFiyat(outcome.row, toTry);
       return {
         netPrice: net, listPrice: list, discount: isk,
@@ -174,6 +213,7 @@ export function toMatchResult(
 
     // ── V4: kullanicinin KENDI grup secimi bu capa yayildi ──────────
     case 'auto-variant': {
+      if (cevrilemezMi(outcome.row, toTry)) return cevrilemezSonuc(outcome.row); // KUR-01
       const { net, list, isk } = netFiyat(outcome.row, toTry);
       return {
         netPrice: net, listPrice: list, discount: isk,
@@ -190,6 +230,12 @@ export function toMatchResult(
 
     // ── COK KAYIT: fiyatli secim listesi — SISTEM SECMEZ ────────────
     case 'ask': {
+      // KUR-01: adaylardan BIRI bile cevrilemiyorsa fiyatli liste SUNULMAZ.
+      // Kismi liste yaniltir: kullanici "X TL" gorunen TL adayini secer, oysa
+      // satira uyan urun kuru alinamayan dovizli aday olabilir. Kur donunce
+      // yeniden eslestirme listeyi eksiksiz getirir.
+      const cevrilemeyen = outcome.rows.find((r) => cevrilemezMi(r, toTry));
+      if (cevrilemeyen) return cevrilemezSonuc(cevrilemeyen);
       // E3: satirin nitelik tag'leri ham metinden bir kez cikarilir
       // (parantez notlari DAHIL — "(68°C)" bir kisit degil ama uyari kaynagidir).
       const lineAttr = extractAttrTags(line.raw);

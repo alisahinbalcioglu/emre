@@ -461,3 +461,90 @@ describe('SD1-SD10 sürükle-doldur modülü', () => {
     expect(h.data[ROLLER.materialUnitPriceField]).toBe('150.0');
   });
 });
+
+// ── KUR-01: KUR ALINAMADI (para doğruluğu turu, 14.09) ─────────────────────
+//
+// Backend kur servisi TCMB + yedek kaynak düşünce 1:1 döner; eşleştirme artık
+// dövizli satıra fiyat YAZMAZ ve `kurAlinamadi: true` ile nedenini söyler.
+// Doldurma bu kararı "yok" diye boyarsa taslak geri yüklemesi satırı
+// "cevaplanmış" sayar ve kur dönünce yeniden FİYATLAMAZ — bu yüzden "hata".
+describe('KUR-01 kur alınamadı — sürükle-doldur', () => {
+  const KUR_YOK_SEBEP = "Kur alınamadı (USD) — dövizli fiyat TL'ye çevrilemedi, yazılmadı. Kur gelince yeniden eşleştirin.";
+  const kurYokMotor = async (): Promise<MotorSonucu> =>
+    ({ netPrice: 0, confidence: 'none', kurAlinamadi: true, reason: KUR_YOK_SEBEP });
+  const ISCILIK = {
+    birimFiyat: '_labBirim', toplam: '_labToplam',
+    status: '_labStatus', kaynakRozeti: '_labKaynak', dal: 'iscilik' as const,
+  };
+
+  it('KUR-1 malzeme: satır "hata" işaretlenir — "yok" DEĞİL (kur dönünce yeniden fiyatlanabilsin)', async () => {
+    const h = node(500, 'Kompansatör DN25', 3);
+    await fillDown({ hedefler: [h] as any, markaId: 'b1', roller: ROLLER, motor: kurYokMotor, kaynakVaryantTags: null, kaynakLabel: '' });
+    expect(h.data._matStatus).toBe('hata');
+  });
+
+  it('KUR-2 malzeme: fiyat yazılmaz, nedeni satırda (işaret eylemli)', async () => {
+    const h = node(501, 'Kompansatör DN25', 3);
+    await fillDown({ hedefler: [h] as any, markaId: 'b1', roller: ROLLER, motor: kurYokMotor, kaynakVaryantTags: null, kaynakLabel: '' });
+    expect(h.data[ROLLER.materialUnitPriceField] ?? '').toBe('');
+    expect(h.data._matSebep).toBe(KUR_YOK_SEBEP);
+  });
+
+  it('KUR-3 işçilik dalı AYNI kararı verir (_labStatus "hata")', async () => {
+    const h = node(502, 'Boru montajı DN50', 3);
+    await fillDown({ hedefler: [h] as any, markaId: 'f1', roller: ROLLER, motor: kurYokMotor, kaynakVaryantTags: null, kaynakLabel: '', hedefAlanlar: ISCILIK });
+    expect(h.data._labStatus).toBe('hata');
+    expect(h.data._labSebep).toBe(KUR_YOK_SEBEP);
+  });
+
+  it('KUR-4 özet: hata sayacına girer, "yok" sayacına girmez', async () => {
+    const sonuc = await fillDown({ hedefler: [node(503, 'Kompansatör DN25', 1)] as any, markaId: 'b1', roller: ROLLER, motor: kurYokMotor, kaynakVaryantTags: null, kaynakLabel: '' });
+    expect(sonuc.ozet.hata).toBe(1);
+    expect(sonuc.ozet.yok).toBe(0);
+  });
+
+  it('KUR-5 başarılı doldurma fiyatın kurunu da yazar (kur donması — etkileşimli yolla aynı)', async () => {
+    const kur = { currency: 'USD', kur: 47.35, tarih: '12.09.2026' };
+    const h = node(504, 'Kompansatör DN25', 2);
+    await fillDown({ hedefler: [h] as any, markaId: 'b1', roller: ROLLER, motor: async () => ({ netPrice: 4735, confidence: 'high', kaynakKur: kur }), kaynakVaryantTags: null, kaynakLabel: '' });
+    expect(h.data._matKurBilgi).toEqual(kur);
+  });
+
+  it('KUR-6 TL fiyatlı doldurma önceki kaynaktan kalan BAYAT kuru temizler (14.09 ölçüldü: EUR 30 kalıyordu)', async () => {
+    const h = node(505, 'Küresel vana DN25', 2, { _matKurBilgi: { currency: 'EUR', kur: 30, tarih: '2026-01-01' } });
+    await fillDown({ hedefler: [h] as any, markaId: 'b1', roller: ROLLER, motor: async () => ({ netPrice: 850, confidence: 'high' }), kaynakVaryantTags: null, kaynakLabel: '' });
+    expect(h.data._matKurBilgi).toBeNull();
+  });
+
+  it('KUR-7 işçilik: kur _labKurBilgi alanına yazılır (malzeme alanına DEĞİL)', async () => {
+    const kur = { currency: 'EUR', kur: 54.1, tarih: '12.09.2026' };
+    const h = node(506, 'Boru montajı DN50', 2);
+    await fillDown({ hedefler: [h] as any, markaId: 'f1', roller: ROLLER, motor: async () => ({ netPrice: 541, confidence: 'high', kaynakKur: kur }), kaynakVaryantTags: null, kaynakLabel: '', hedefAlanlar: ISCILIK });
+    expect(h.data._labKurBilgi).toEqual(kur);
+    expect(h.data._matKurBilgi).toBeUndefined();
+  });
+
+  it('G3 float gürültüsü Genel Toplamı ŞİŞİRMEZ: malz 0,1 + işç 0,2 → 0.3 (eskisi 0.4); 1,1 + 4,2 → 5.3', async () => {
+    const roller = { ...ROLLER, laborTotalField: '_labToplam', grandTotalField: '_toplam' };
+    const h1 = node(508, 'Vida', 1, { _labToplam: '0.2' });
+    await fillDown({ hedefler: [h1] as any, markaId: 'b1', roller, motor: async () => ({ netPrice: 0.1, confidence: 'high' }), kaynakVaryantTags: null, kaynakLabel: '' });
+    expect(h1.data._toplam).toBe('0.3');
+    const h2 = node(509, 'Dübel', 1, { _labToplam: '4.2' });
+    await fillDown({ hedefler: [h2] as any, markaId: 'b1', roller, motor: async () => ({ netPrice: 1.1, confidence: 'high' }), kaynakVaryantTags: null, kaynakLabel: '' });
+    expect(h2.data._toplam).toBe('5.3');
+    // Kural YUKARI 1 hane (restore-rematch ve recalcGrand ile ayni) — en yakina
+    // yuvarlama degil. Dosyadan 2 haneli gelen iscilik toplami bunu ayirir:
+    // 1,1 + 0,01 = 1,11 → 1.2 (en yakina yuvarlama 1.1 derdi). Mutasyon M18
+    // `toFixed(1)` bu satir yokken HAYATTA kalmisti (14.09).
+    const h3 = node(510, 'Pul', 1, { _labToplam: '0.01' });
+    await fillDown({ hedefler: [h3] as any, markaId: 'b1', roller, motor: async () => ({ netPrice: 1.1, confidence: 'high' }), kaynakVaryantTags: null, kaynakLabel: '' });
+    expect(h3.data._toplam).toBe('1.2');
+  });
+
+  it('KUR-8 geri-alma anlığı kur alanını da taşır (SD7: YAZILAN her alan anlıkta)', async () => {
+    const eski = { currency: 'EUR', kur: 30, tarih: '2026-01-01' };
+    const h = node(507, 'Kompansatör DN25', 2, { _matKurBilgi: eski });
+    const sonuc = await fillDown({ hedefler: [h] as any, markaId: 'b1', roller: ROLLER, motor: async () => ({ netPrice: 850, confidence: 'high' }), kaynakVaryantTags: null, kaynakLabel: '' });
+    expect(sonuc.geriAl[0].oncekiDegerler._matKurBilgi).toEqual(eski);
+  });
+});

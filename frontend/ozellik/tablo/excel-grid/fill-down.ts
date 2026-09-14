@@ -25,7 +25,7 @@
  */
 // NOT: relative import — vitest.config.ts'te '@/' alias'i tanimli degil ve
 // bu modul birim testle sinaniyor (fill-down.test.ts).
-import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, etkinMiktar } from '../../fiyat/pricing';
+import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, etkinMiktar, yukariYuvarla } from '../../fiyat/pricing';
 // NOT: goreli yol ZORUNLU — vitest.config.ts'te '@/' alias'i tanimli degil
 // ve bu modul vitest ile kosuyor (fill-down.test.ts).
 import { sayiAlani } from '../../fiyat/sayi-alani';
@@ -43,6 +43,12 @@ export interface MotorSonucu {
    *  'yok' ("Bu markada bu urun ailesi yok." — CIKMAZ SOKAK) isaretleniyordu. */
   alternatives?: Array<unknown>;
   notProduct?: boolean;
+  /** KUR-01 (14.09): urun var, dovizli fiyat TL'ye cevrilemedi (kur yok) —
+   *  satir 'hata' isaretlenir ki kur donunce yeniden fiyatlanabilsin. */
+  kurAlinamadi?: boolean;
+  /** Kur donmasi: fiyatin dogdugu kur (dovizli kaynakta). Doldurma fiyat
+   *  yazarken bunu da yazar — yazmazsa satirda ONCEKI kaynagin kuru kaliyordu. */
+  kaynakKur?: unknown;
   variantTags?: string[];
   variantMissing?: boolean;
   /** Motorun insan-okur gerekcesi ("Seçilen varyant bu çapta kütüphanede
@@ -107,7 +113,12 @@ function genelToplamiTazele(
   // Yazma zaten `totAlan`a yapılmış durumda; burada okunan hep güncel hücre.
   const mat = oku(roller.materialTotalField);
   const lab = oku(roller.laborTotalField);
-  yaz(node, genelAlan, (Math.ceil((mat + lab) * 10) / 10).toFixed(1));
+  // G3 (para dogrulugu turu, 14.09 — olculdu): burasi epsilonsuz
+  // `Math.ceil((mat+lab)*10)/10` idi — 0,1 + 0,2 = 0,30000000000000004 → '0.4'.
+  // Iki tarafli satirlarin %5-7'sinde Genel Toplam +0,1 cikiyordu ve `yaz()`
+  // veriyi olaydan once degistirdigi icin recalcGrand bunu HIC duzeltmiyordu.
+  // Tek yuvarlama fonksiyonu (orantili epsilon): pricing `yukariYuvarla`.
+  yaz(node, genelAlan, yukariYuvarla(mat + lab).toFixed(1));
 }
 
 /**
@@ -210,6 +221,7 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
   // GIREMIYORLARDI. Buraya cikarildilar ki anlik onlari da gorsun.
   const sebepAlan = iscilikMi ? '_labSebep' : '_matSebep';
   const adayAlan = iscilikMi ? '_labAdaySayisi' : '_matAdaySayisi';
+  const kurAlan = iscilikMi ? '_labKurBilgi' : '_matKurBilgi';
 
   const sonuc: FillSonuc = {
     satirlar: [],
@@ -245,7 +257,7 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
     const oncekiDegerler: Record<string, any> = {};
     for (const f of SNAP) oncekiDegerler[f] = node.data[f];
     for (const f of [bfAlan, totAlan, roller.grandTotalField,
-      statusAlan, rozetAlan, tagAlan, sebepAlan, adayAlan]) {
+      statusAlan, rozetAlan, tagAlan, sebepAlan, adayAlan, kurAlan]) {
       if (f) oncekiDegerler[f] = node.data[f];
     }
     sonuc.geriAl.push({ rowIdx, oncekiDegerler });
@@ -300,6 +312,11 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
       const satisFiyat = hesaplaSatisBirimFiyat(r.netPrice, kar);
       const miktar = etkinMiktar(node.data, roller.quantityField, roller.unitField);
       yaz(node, netAlan, r.netPrice);
+      // KUR DONMASI (14.09 olculdu): doldurma kur bilgisini HIC yazmiyordu —
+      // USD fiyat yazilan satirda onceki kaynagin kuru (ornek: EUR 30) kaliyor,
+      // iscilikte hic yazilmiyordu. Etkilesimli yol (ExcelGrid writePriceToNode)
+      // ile AYNI kural: TRY'de null. Kolon degil veri alani — dogrudan yazilir.
+      node.data[kurAlan] = r.kaynakKur ?? null;
       yaz(node, statusAlan, '');
       yaz(node, rozetAlan, 'kutuphane'); // KG11: kaynak rozeti guncellenir
       if ((!etkinTags || etkinTags.length === 0) && r.variantTags?.length) {
@@ -340,6 +357,17 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
     // kullanici "otomatik varyant calismiyor" olarak yasadi. Sebep ve aday
     // sayisi gorunur olmadan isaret EYLEMLI degildir.
     if (r?.reason) yaz(node, sebepAlan, r.reason);
+
+    // KUR-01 (14.09): urun VAR, dovizli fiyat TL'ye cevrilemedi. Etkilesimli
+    // yol ile AYNI isaret: 'hata' (turuncu, "tekrar deneyin"). 'yok' YAZILMAZ —
+    // taslak geri yuklemesi 'yok'u cevaplanmis sayar, kur donunce satiri
+    // yeniden FIYATLAMAZDI (donmus fiyatsiz satir).
+    if (r?.kurAlinamadi) {
+      yaz(node, statusAlan, 'hata');
+      sonuc.satirlar.push({ rowIdx, durum: 'hata', hata: r.reason ?? 'Kur alınamadı' });
+      sonuc.ozet.hata++;
+      continue;
+    }
 
     // E5 (26.08): ETKILESIMLI YOL ILE AYNI ISARET. Motor bu markada bulamayip
     // BASKA MARKALARDA bulduysa (alternatives), dropdown'dan ayni secim elle

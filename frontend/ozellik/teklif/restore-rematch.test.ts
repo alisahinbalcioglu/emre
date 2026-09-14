@@ -506,3 +506,49 @@ describe('restoreRematch — kenar durumlar', () => {
     expect(bayat['Birim Fiyat']).toBe(''); // bayat kopyaya dokunulmadi
   });
 });
+
+// ── KUR-01: KUR ALINAMADI (para dogrulugu turu, 14.09) ─────────────────────
+// Eslestirme kur yokken dovizli satira fiyat yazmaz (`kurAlinamadi`). Geri
+// yukleme bunu GORUNUR isaretler ve — 'hata' CEVAPLANMIS sayilmadigi icin —
+// kur donunce sonraki geri yuklemede satiri FIYATLAR (donmus fiyatsiz satir yok).
+describe('restoreRematch — KUR-01 kur alinamadi', () => {
+  const KUR_YOK = { netPrice: 0, confidence: 'none', kurAlinamadi: true, reason: 'Kur alınamadı (USD) — dövizli fiyat TL\'ye çevrilemedi, yazılmadı. Kur gelince yeniden eşleştirin.' };
+
+  it("kur yokken malzeme satiri 'hata' isaretlenir ve sebep yazilir — fiyat yazilmaz", async () => {
+    const row = satir({ _marka: 'marka-1' });
+    const { poster } = posterKur({ '/matching/bulk-match': { [AD]: KUR_YOK } });
+    expect(await restoreRematch([sayfa([row])], { 0: [row] }, poster)).toBe(0);
+    expect(row._matStatus).toBe('hata');
+    expect(row._matSebep).toBe(KUR_YOK.reason);
+    expect(row['Birim Fiyat']).toBe('');
+  });
+
+  it("iscilik ikizi: kur yokken _labStatus 'hata' + _labSebep", async () => {
+    const row = satir({ _firma: 'firma-1' });
+    const { poster } = posterKur({ '/labor-matching/bulk-match': { [AD]: KUR_YOK } });
+    await restoreRematch([sayfa([row])], { 0: [row] }, poster);
+    expect(row._labStatus).toBe('hata');
+    expect(row._labSebep).toBe(KUR_YOK.reason);
+  });
+
+  it("kur donunce 'hata' satiri SORULUR ve TCMB kuruyla fiyatlanir (yok gibi atlanmaz)", async () => {
+    const row = satir({ _marka: 'marka-1' });
+    await restoreRematch([sayfa([row])], { 0: [row] }, posterKur({ '/matching/bulk-match': { [AD]: KUR_YOK } }).poster);
+    const { poster, cagrilar } = posterKur({
+      '/matching/bulk-match': { [AD]: { netPrice: 4735, confidence: 'high', kaynakKur: { currency: 'USD', kur: 47.35, tarih: '12.09.2026' } } },
+    });
+    expect(await restoreRematch([sayfa([row])], { 0: [row] }, poster)).toBe(1);
+    expect(cagrilar).toHaveLength(1);
+    // net 4735, kar %10 → satis 5208.5; miktar 25 → toplam 130212.5 (LITERAL)
+    expect(row['Birim Fiyat']).toBe('5208.5');
+    expect(row._matStatus).toBe('');
+    expect(row._matKurBilgi).toEqual({ currency: 'USD', kur: 47.35, tarih: '12.09.2026' });
+  });
+
+  it("KARSI: 'yok' isaretli satir kur donse de sorulmaz — isaretin 'hata' olmasi bu yuzden sart", async () => {
+    const row = satir({ _marka: 'marka-1', _matStatus: 'yok' });
+    const { poster, cagrilar } = posterKur({ '/matching/bulk-match': { [AD]: { netPrice: 4735 } } });
+    expect(await restoreRematch([sayfa([row])], { 0: [row] }, poster)).toBe(0);
+    expect(cagrilar).toHaveLength(0);
+  });
+});

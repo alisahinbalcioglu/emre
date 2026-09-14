@@ -116,7 +116,39 @@ export interface StandartSayfaBilgi {
   ozet: boolean;
 }
 
+/** Ciktinin kendi ozet sayfasi — teklif sayfalari bu adi ALAMAZ (I9). */
+export const GENEL_TOPLAM_SAYFA_ADI = 'GENEL TOPLAM';
+
+/**
+ * Workbook'ta ALINMAMIS sayfa adi: cakisirsa " (2)", " (3)" … eklenir, Excel'in
+ * 31 karakter siniri korunur.
+ *
+ * ⚠ IKI KUCULTME BIRDEN (para dogrulugu turu, 14.09 — I10, olculdu): Turkce
+ * yerel ayarli kucultme "ICMAL"i "ıcmal" yapar, ExcelJS'in kendi kontrolu duz
+ * `toLowerCase` ile "icmal" yapar. Yalniz TR kuralina bakan kontrol "ICMAL" +
+ * "icmal" ciftini FARKLI sanip gecirir, ExcelJS "Worksheet name already exists"
+ * ile ciktiyi DUSURURDU (HTTP 400, dosya inmez). Iki kuraldan BIRINDE esit olan
+ * ad alinmis sayilir.
+ * ⚠ REZERVE AD (I9): fiyatli cikti sonuna kendi "GENEL TOPLAM" sayfasini ekler;
+ * teklifte ayni adli sayfa varsa once o adi alip ozet sayfasini dusuruyordu.
+ */
+export function benzersizSayfaAdi(wb: ExcelJS.Workbook, istenen: string, rezerveAdlar: readonly string[] = []): string {
+  const anahtarlar = (x: string) => [x.toLocaleLowerCase('tr'), x.toLowerCase()];
+  const alinmis = new Set<string>();
+  for (const ad of [...wb.worksheets.map((w) => w.name), ...rezerveAdlar]) anahtarlar(ad).forEach((k) => alinmis.add(k));
+  const cakisir = (ad: string) => anahtarlar(ad).some((k) => alinmis.has(k));
+  const temel = istenen.slice(0, 31);
+  let ad = temel;
+  for (let n = 2; cakisir(ad); n++) {
+    const ek = ` (${n})`;
+    ad = temel.slice(0, 31 - ek.length) + ek;
+  }
+  return ad;
+}
+
 export interface SayfaYazOpsiyon {
+  /** Teklif sayfalarinin ALAMAYACAGI adlar (ciktinin kendi sayfalari — I9). */
+  rezerveAdlar?: readonly string[];
   /** EX6: hedef para birimi (null = TRY, cevrim yok) */
   birim?: CiktiBirim | null;
   /** Sayfa alti toplam satiri eklensin mi (fiyatli cikti: EVET,
@@ -159,14 +191,7 @@ export function standartSayfaYaz(
   // NOT: karsilastirma HARF DUYARSIZ olmali — ExcelJS "İCMAL" ile "İcmal"i
   // ayni sayar; harf duyarli kontrol cakismayi kaciriyor ve export 500 ile
   // dusuyordu (Bolum F bulgusu).
-  const kucuk = (x: string) => x.toLocaleLowerCase('tr');
-  const temel = String(sh.name ?? 'Sayfa').slice(0, 31);
-  let ad0 = temel;
-  for (let n = 2; wb.worksheets.some((w) => kucuk(w.name) === kucuk(ad0)); n++) {
-    const ek = ` (${n})`;
-    ad0 = temel.slice(0, 31 - ek.length) + ek;
-  }
-  const ws = wb.addWorksheet(ad0);
+  const ws = wb.addWorksheet(benzersizSayfaAdi(wb, String(sh.name ?? 'Sayfa'), ops.rezerveAdlar));
 
   // ANTET (plan 4.4): tablo YAZILMADAN once. Sonradan satir eklemek YASAK —
   // ExcelJS formul referanslarini guncellemez (bkz. antet.ts SUM GUVENLIGI).
@@ -294,7 +319,7 @@ export async function standartCiktiUret(g: StandartCiktiGirdi): Promise<Standart
   // KF7: sayfalar TEK motorla yazilir — format yolu da ayni fonksiyonu cagirir
   for (const sh of g.sheetsArr ?? []) {
     if (!sh || sh.isEmpty) continue;
-    const b = standartSayfaYaz(wb, sh, { birim, toplamSatiri: true, dil: g.dil, antet: g.antet });
+    const b = standartSayfaYaz(wb, sh, { birim, toplamSatiri: true, dil: g.dil, antet: g.antet, rezerveAdlar: [GENEL_TOPLAM_SAYFA_ADI] });
     yazilan += b.yazilan;
     fiyatsizSatir += b.fiyatsizSatir;
     // Kurus tamsayi — sayfa toplamlari ile teklif geneli AYNI kuralla toplanir
@@ -305,7 +330,7 @@ export async function standartCiktiUret(g: StandartCiktiGirdi): Promise<Standart
 
   // ── EX3/EX6: dosya sonunda GENEL TOPLAM + kur notu ─────────────────────
   const genelToplam = genelToplamK / 100;
-  const ozetWs = wb.addWorksheet('GENEL TOPLAM');
+  const ozetWs = wb.addWorksheet(GENEL_TOPLAM_SAYFA_ADI); // rezerve — teklif sayfalari bu adi alamaz (I9)
   ozetWs.columns = [{ width: 38 }, { width: 18 }, { width: 18 }, { width: 20 }];
   // Formulsuz sayfa (EX4) — antet satir kaydirmasi toplam riski tasimaz.
   // Logo D kolonunda: A+B (~56 karakter) uzun "Tel · E-posta" satirini

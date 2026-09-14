@@ -88,6 +88,7 @@ interface Taraf {
   netAlani: '_matNetPrice' | '_labNetPrice';
   kurAlani: '_matKurBilgi' | '_labKurBilgi';
   durumAlani: '_matStatus' | '_labStatus';
+  sebepAlani: '_matSebep' | '_labSebep';
   birimRolu: 'materialUnitPriceField' | 'laborUnitPriceField';
   toplamRolu: 'materialTotalField' | 'laborTotalField';
   url: '/matching/bulk-match' | '/labor-matching/bulk-match';
@@ -98,13 +99,13 @@ interface Taraf {
 const TARAFLAR: readonly Taraf[] = [
   {
     atamaAlani: '_marka', karAlani: '_malzKar',
-    netAlani: '_matNetPrice', kurAlani: '_matKurBilgi', durumAlani: '_matStatus',
+    netAlani: '_matNetPrice', kurAlani: '_matKurBilgi', durumAlani: '_matStatus', sebepAlani: '_matSebep',
     birimRolu: 'materialUnitPriceField', toplamRolu: 'materialTotalField',
     url: '/matching/bulk-match', idAnahtari: 'brandId', adAnahtari: 'materialNames',
   },
   {
     atamaAlani: '_firma', karAlani: '_iscKar',
-    netAlani: '_labNetPrice', kurAlani: '_labKurBilgi', durumAlani: '_labStatus',
+    netAlani: '_labNetPrice', kurAlani: '_labKurBilgi', durumAlani: '_labStatus', sebepAlani: '_labSebep',
     birimRolu: 'laborUnitPriceField', toplamRolu: 'laborTotalField',
     url: '/labor-matching/bulk-match', idAnahtari: 'firmaId', adAnahtari: 'laborNames',
   },
@@ -151,6 +152,14 @@ async function tarafEslestir(
 
     const sonuc = await poster(taraf.url, govde);
     const match = sonuc?.[ad];
+    // KUR-01 (14.09): kur hala alinamiyorsa satir GORUNUR sekilde isaretlenir
+    // ('hata' + sebep) — sessizce fiyatsiz birakilmaz. 'hata' CEVAPLANMIS
+    // kumesinde OLMADIGI icin sonraki geri yuklemede kur donmusse fiyatlanir.
+    if (match?.kurAlinamadi) {
+      row[taraf.durumAlani] = 'hata';
+      row[taraf.sebepAlani] = match.reason ?? 'Kur alınamadı';
+      return 0;
+    }
     if (!match || !(match.netPrice > 0)) return 0;
 
     // ⚠ TEK SUZGEC: ham parseFloat kullanilirsa "12,5" → 12 olur ve ekranda

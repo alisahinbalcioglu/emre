@@ -85,7 +85,9 @@ async function main() {
     sina('I0b', 'yeni teklif YAZARI da tasir', kayit?.userId === u1.id, `userId=${kayit?.userId?.slice(0, 8)}`);
 
     // ── I1: AYNI firmanin DIGER uyesi ayni teklifi GORUR ───────────────
-    const listeU2 = await svc.findAll(K2);
+    // findAll Faz 4'te sayfalandi ({ kayitlar, toplam }). Bu DB paketi CI'da
+    // hep SKIP oldugu icin `.some` kirigini kimse gormedi (B1, 14.09).
+    const { kayitlar: listeU2 } = await svc.findAll(K2);
     sina('I1 ⭐', 'ayni firmanin diger uyesi teklifi GORUR (OK2)',
       listeU2.some((q: any) => q.id === teklif.id), `u2 listesi=${listeU2.length} kayit`);
 
@@ -93,7 +95,7 @@ async function main() {
     sina('I1b', 'ayni firmanin uyesi teklifi ACABILIR', detayU2?.id === teklif.id, `id=${detayU2?.id === teklif.id}`);
 
     // ── I2: BASKA firma HICBIRINI gormez ───────────────────────────────
-    const listeU3 = await svc.findAll(K3);
+    const { kayitlar: listeU3 } = await svc.findAll(K3);
     sina('I2 ⭐', 'baska firma teklifi GORMEZ (OK2)',
       !listeU3.some((q: any) => q.id === teklif.id), `u3 listesi=${listeU3.length} kayit`);
 

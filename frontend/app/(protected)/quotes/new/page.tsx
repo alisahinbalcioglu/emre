@@ -68,7 +68,7 @@ import type {
   MatchCandidate,
   EditableRow,
 } from '@/ortak/types/quotes';
-import { useCurrency } from '@/ozellik/fiyat/use-currency';
+import { useCurrency, paraSimgesi } from '@/ozellik/fiyat/use-currency';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -712,7 +712,7 @@ export default function NewQuotePage() {
   const [brandPriceCache, setBrandPriceCache] = useState<Record<string, Record<string, any>>>({});
 
   // Currency (TRY/USD/EUR) hook — state + exchange rate + conversion
-  const { currency, setCurrency, ratesLoaded, conversionRate, displayPrice, exchangeRates } = useCurrency();
+  const { currency, gosterimCurrency, setCurrency, ratesLoaded, conversionRate, displayPrice, exchangeRates } = useCurrency();
 
   /* ---------- Step 1: Upload ---------- */
 
@@ -736,6 +736,19 @@ export default function NewQuotePage() {
       multi.sheets.forEach((s) => { live[s.index] = s.rowData; });
       stats = { matchedRows: 0, newRows: 0, preservedRows: 0, newSheets: multi.sheets.length };
     }
+    // ── G5 (para dogrulugu turu, 14.09 — olculdu): EKSIK TOPLAMLARI TAMAMLA ──
+    // Dashboard yolu (?from=dashboard, yukarida KD11) ice aktarmada
+    // `toplamlariTamamla` cagiriyordu; bu yol ("Dosya Seç" + yeniden yukleme)
+    // CAGIRMIYORDU. Toplam kolonu bos, birim fiyati dolu satirlarda ekran
+    // birim × miktar'i sayiyor, kayit ve Excel ciktisi hucreyi 0 okuyordu:
+    // FIRMA-D-1 ekranda 23.394.553, kayitta ve musterinin Excel'inde 0.
+    // BIRLESTIRMEDEN SONRA calisir: korunan eski satirin dolu birimi + bos
+    // toplami da tamamlanir. Dolu hucreye DOKUNULMAZ (dosyanin toplami ustundur).
+    let tamamlanan = 0;
+    for (const s of merged.sheets) {
+      tamamlanan += toplamlariTamamla(live[s.index] ?? s.rowData ?? [], (s.columnRoles ?? {}) as any);
+    }
+    if (tamamlanan > 0) console.log(`[G5] yuklemede ${tamamlanan} eksik toplam hucresi tamamlandi`);
     setMultiSheet(merged);
     setLiveRowDataBySheet(live);
     const firstNonEmpty = merged.sheets.findIndex((s) => !s.isEmpty);
@@ -1904,7 +1917,7 @@ export default function NewQuotePage() {
           brands={allBrands}
           columnWidths={colWidthsBySheet[activeSheetKey]}
           onColumnWidthsChange={(w) => setColWidthsBySheet((prev) => ({ ...prev, [activeSheetKey]: w }))}
-          currencySymbol={currency === 'USD' ? '$' : currency === 'EUR' ? '€' : '₺'}
+          currencySymbol={paraSimgesi(gosterimCurrency)}
           conversionRate={conversionRate}
           laborFirms={laborFirms}
           sheetDiscipline={(() => {
@@ -1985,6 +1998,13 @@ export default function NewQuotePage() {
               // L5: bu firmada yok — alternatif firmalar popup'i ExcelGrid'de
               if (match.alternatives?.length) {
                 return { netPrice: 0, alternatives: match.alternatives, reason: match.reason };
+              }
+              // KUR-01 (14.09): kalem VAR, dovizli fiyat TL'ye cevrilemedi —
+              // "eslesmedi" DEGIL. Bayrak TASINMAZSA ExcelGrid/fill-down satiri
+              // kirmizi 'yok' boyar ve kur donunce yeniden fiyatlanmazdi.
+              if (match.kurAlinamadi) {
+                if (!silent) toast({ title: 'Kur alınamadı — işçilik fiyatı yazılmadı', description: match.reason, variant: 'destructive' });
+                return { netPrice: 0, kurAlinamadi: true, reason: match.reason };
               }
               if (!silent) toast({ title: 'Iscilik eslesmedi', description: match.reason ?? `"${laborName.slice(0, 40)}"` });
               // K3-FE (27.08): SEBEP DUSURULMEZ. Eskiden null donuluyordu ve
@@ -2090,6 +2110,12 @@ export default function NewQuotePage() {
               // alternatif listesi ExcelGrid popup'inda acilir (eylemsiz toast yok)
               if (match.alternatives?.length) {
                 return { netPrice: 0, alternatives: match.alternatives, reason: match.reason };
+              }
+              // KUR-01 (14.09): urun VAR, dovizli fiyat TL'ye cevrilemedi — iscilik
+              // ikiziyle ayni gerekce: bayrak tasinir, satir 'hata' isaretlenir.
+              if (match.kurAlinamadi) {
+                if (!silent) toast({ title: 'Kur alınamadı — fiyat yazılmadı', description: match.reason, variant: 'destructive' });
+                return { netPrice: 0, kurAlinamadi: true, reason: match.reason };
               }
               // Eslesme yok
               if (!silent) toast({ title: 'Eslesmedi', description: match.reason ?? `"${materialName.slice(0, 40)}"` });

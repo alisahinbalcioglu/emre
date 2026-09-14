@@ -4,11 +4,11 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import api from '@/ortak/lib/api';
 import type { Currency, ExchangeRates } from '@/ortak/types/quotes';
 
-const CURRENCY_SYMBOLS: Record<Currency, string> = {
-  TRY: '\u20BA',
-  USD: '$',
-  EUR: '\u20AC',
-};
+import { CURRENCY_SYMBOLS, gosterimParaBirimi, donusumCarpani } from './para-gosterim';
+
+// Saf gosterim kurallari para-gosterim.ts'te (vitest'te kosulabilsin diye);
+// sayfalar mevcut import yolunu kullanmaya devam edebilsin.
+export { paraSimgesi, gosterimParaBirimi, donusumCarpani } from './para-gosterim';
 
 /** Verilen tutari gecerli para birimi simgesi + binlik ayracli Turkce formatla. */
 export function formatPrice(value: number, currency: Currency): string {
@@ -20,7 +20,10 @@ export function formatPrice(value: number, currency: Currency): string {
 }
 
 export interface UseCurrencyResult {
+  /** Kullanicinin SECTIGI (ve teklifte kayitli) birim — gosterim icin KULLANMA. */
   currency: Currency;
+  /** Ekranda GORUNEN birim: kur yuklenmediyse TRY (bkz. gosterimParaBirimi). */
+  gosterimCurrency: Currency;
   setCurrency: (c: Currency) => void;
   exchangeRates: ExchangeRates;
   ratesLoaded: boolean;
@@ -67,20 +70,17 @@ export function useCurrency(): UseCurrencyResult {
     fetchRates();
   }, []);
 
-  // TRY → hedef para birimi carpani
-  const conversionRate = useMemo(() => {
-    if (currency === 'TRY') return 1;
-    const tryPerUsd = exchangeRates.TRY;
-    if (currency === 'USD') return 1 / tryPerUsd;
-    // EUR: TRY → USD → EUR
-    const eurPerUsd = exchangeRates.EUR;
-    return eurPerUsd / tryPerUsd;
-  }, [currency, exchangeRates]);
-
-  const displayPrice = useCallback(
-    (valueTRY: number) => formatPrice(valueTRY * conversionRate, currency),
-    [conversionRate, currency],
+  // Carpan ve simge GOSTERIM biriminden turer — kur yoksa TL (KUR-01 ikizi).
+  const gosterimCurrency = gosterimParaBirimi(currency, ratesLoaded);
+  const conversionRate = useMemo(
+    () => donusumCarpani(gosterimCurrency, exchangeRates),
+    [gosterimCurrency, exchangeRates],
   );
 
-  return { currency, setCurrency, exchangeRates, ratesLoaded, conversionRate, displayPrice };
+  const displayPrice = useCallback(
+    (valueTRY: number) => formatPrice(valueTRY * conversionRate, gosterimCurrency),
+    [conversionRate, gosterimCurrency],
+  );
+
+  return { currency, gosterimCurrency, setCurrency, exchangeRates, ratesLoaded, conversionRate, displayPrice };
 }

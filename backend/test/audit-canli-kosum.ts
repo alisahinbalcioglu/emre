@@ -57,6 +57,9 @@ async function main() {
   if (!libRow) throw new Error('Cayirova kutuphanesi bos');
   const userId = libRow.userId;
   const firmaId = libRow.firmaId; // ADIM 1: kutuphane suzgeci firmaId okur
+  // bulkMatch ADIM 1'den beri Kimlik ister; ham userId verilince firmaId
+  // undefined kalir ve suzgec bos doner (tip denetimi test/'i kapsayinca cikti, B1 14.09).
+  const kimlik = { userId, firmaId: firmaId! };
   log(`ORTAM: userId=${userId} cayirova=${cayirova.id}`);
 
   // ── DUYAR verisini GERCEK import yolundan kur (idempotent) ─────────
@@ -81,7 +84,7 @@ async function main() {
   // Kirmizi Boyali 5" (DN125) — yazili 'kirmizi' SERT (K4) → capinda tek kayit.
   {
     const q = 'KIRMIZI BOYALI YANGIN BORUSU 5"';
-    const r = (await matching.bulkMatch(userId, cayirova.id, [q]))[q];
+    const r = (await matching.bulkMatch(kimlik, cayirova.id, [q]))[q];
     const row = await prisma.userLibrary.findFirst({
       where: {
         userId, brandId: cayirova.id,
@@ -105,7 +108,7 @@ async function main() {
     check('D1-EK extractSizeInfo dis cap (et degil)', si?.value === 114.3, `got ${JSON.stringify(si)}`);
     // 114.3 dis cap PE Kapli satiri cayirova kutuphanesinde 4" (dn100) ile aranir.
     const q = 'PE KAPLI DOĞALGAZ TESİSAT BORUSU 4"';
-    const r = (await matching.bulkMatch(userId, cayirova.id, [q]))[q];
+    const r = (await matching.bulkMatch(kimlik, cayirova.id, [q]))[q];
     const okuMatched = r?.matchedName ?? '';
     check('D1-EK yol-3 fix: PE Kapli 4" ARTIK eslesir (fiyat > 0)', (r?.netPrice ?? 0) > 0,
       `conf=${r?.confidence} net=${r?.netPrice} matched="${okuMatched}" reason="${r?.reason}"`);
@@ -114,7 +117,7 @@ async function main() {
   // ════ D2 (K8): CEKVALF DN32 → YALNIZ cekvalf adaylari ══════════════
   {
     const q = 'ÇEKVALF DN32';
-    const r = (await matching.bulkMatch(userId, duyar.id, [q]))[q];
+    const r = (await matching.bulkMatch(kimlik, duyar.id, [q]))[q];
     const adlar = (r?.candidates ?? []).map((c) => c.materialName);
     const hepsiCek = adlar.length > 0
       ? adlar.every((a) => /çek|cek/i.test(a))
@@ -134,7 +137,7 @@ async function main() {
     // KULLANILMADI — AD-kilidi geregi generic "siyah boru" spesifik "Su ve
     // Yangın Tesisat Borusu" ailesine baglanmaz (none doner, tasarim/guvenlik).
     const q = 'YANGIN BORUSU 2 1/2"';
-    const r = (await matching.bulkMatch(userId, cayirova.id, [q]))[q];
+    const r = (await matching.bulkMatch(kimlik, cayirova.id, [q]))[q];
     const etiketler = (r?.candidates ?? []).map((c) => c.label);
     const grupSorusu = r?.confidence === 'multi' && new Set(etiketler).size > 1;
     check('D3a cok aday → secim sorusu (fiyat YAZILMADI)', r?.netPrice === 0 && r?.confidence === 'multi',
@@ -144,7 +147,7 @@ async function main() {
     // D3a-EK (D3a cap-parse fix kaniti): grade son rakami bulasan "1 3/4"
     // SAHTE etiketi ARTIK YOK — "SİYAH BORU 1 1/4"" adaylari "1 1/4" gosterir.
     const q3 = 'SİYAH BORU 1 1/4"';
-    const r3 = (await matching.bulkMatch(userId, cayirova.id, [q3]))[q3];
+    const r3 = (await matching.bulkMatch(kimlik, cayirova.id, [q3]))[q3];
     const etk3 = (r3?.candidates ?? []).map((c) => c.label);
     const sahte134 = etk3.some((e) => e.includes('1 3/4'));
     check('D3a-EK "1 3/4" sahte etiket YOK (grade-bulasma fix)', !sahte134 && etk3.some((e) => e.includes('1 1/4')),
@@ -154,7 +157,7 @@ async function main() {
     // GRUP sorusu ATLANIR (K11). Baska kolon sorusu (baglanti/urun) olabilir;
     // kriter: soru metni 'Hangi grup?' DEGIL.
     const q2 = 'BASINÇLI BORU 1"';
-    const r2 = (await matching.bulkMatch(userId, cayirova.id, [q2]))[q2];
+    const r2 = (await matching.bulkMatch(kimlik, cayirova.id, [q2]))[q2];
     check('D3b tek kategori → GRUP sorusu atlanir', !(r2?.reason ?? '').includes('Hangi grup?'),
       `conf=${r2?.confidence} net=${r2?.netPrice} soru="${(r2?.reason ?? '').slice(0, 90)}" matched="${r2?.matchedName ?? '-'}"`);
   }
@@ -165,7 +168,7 @@ async function main() {
   // 'ppr' dogrulanamadi bilgisi kullaniciya tasinir.
   {
     const q = 'PPR BORU 32mm';
-    const r = (await matching.bulkMatch(userId, cayirova.id, [q]))[q];
+    const r = (await matching.bulkMatch(kimlik, cayirova.id, [q]))[q];
     const pprBilgisi = (r?.reason ?? '').toLowerCase().includes('ppr')
       || (r?.dogrulanamadi ?? []).some((d) => d.toLowerCase().includes('ppr'));
     check('D4 fiyat YAZILMADI (otomatik yazim yok)', (r?.netPrice ?? 0) === 0,
@@ -177,7 +180,7 @@ async function main() {
   // ════ D5 (R9): dogalgaz kuresel → surgulu/kelebek ASLA ═════════════
   {
     const q = 'DOĞALGAZ KÜRESEL VANA 1"';
-    const r = (await matching.bulkMatch(userId, duyar.id, [q]))[q];
+    const r = (await matching.bulkMatch(kimlik, duyar.id, [q]))[q];
     const adlar = (r?.candidates ?? []).map((c) => `${c.materialName} [${c.label}]`);
     const havuz = adlar.length ? adlar.join(' | ') : `${r?.matchedName ?? '-'} (tek)`;
     // YASAK = surgulu VANA / kelebek VANA urunleri. 'Kelebek kollu' kuresel
@@ -205,7 +208,7 @@ async function main() {
       const d = dup[0];
       const ornek = await prisma.productIndex.findFirst({ where: { brandId: duyar!.id, adSlug: d.adSlug, capNorm: d.capNorm } });
       const q = `${ornek!.ad} ${ornek!.capRaw ?? ''}`.trim();
-      const r = (await matching.bulkMatch(userId, duyar!.id, [q]))[q];
+      const r = (await matching.bulkMatch(kimlik, duyar!.id, [q]))[q];
       const fiyatlar = (r?.candidates ?? []).map((c) => c.netPrice);
       check('D6 iki kayit da secenekte (farkli fiyatlarla)', (r?.candidates?.length ?? 0) >= 2 && new Set(fiyatlar).size >= 2,
         `q="${q}" conf=${r?.confidence} fiyatlar=[${fiyatlar.join(', ')}]`);
@@ -233,7 +236,7 @@ async function main() {
     const uniq = Array.from(new Set(isimler));
     log(`D7 DOSYA: ${multi.sheets.length} sayfa, ${isimler.length} veri satiri, ${uniq.length} benzersiz ad`);
     const t0 = Date.now(); const m0 = process.memoryUsage().heapUsed;
-    const sonuc = await matching.bulkMatch(userId, cayirova.id, uniq);
+    const sonuc = await matching.bulkMatch(kimlik, cayirova.id, uniq);
     const sure = Date.now() - t0; const bellek = (process.memoryUsage().heapUsed - m0) / 1024 / 1024;
     const hist: Record<string, number> = {};
     for (const n of uniq) {
@@ -264,7 +267,7 @@ async function main() {
   // notProduct isaretlenir).
   {
     const ornekler = ['MEKANİK TESİSAT', 'FİTTİNGS ORANI %3', 'GENEL TOPLAM', 'KDV %20', 'NAKLİYE BEDELİ'];
-    const r = await matching.bulkMatch(userId, cayirova.id, ornekler);
+    const r = await matching.bulkMatch(kimlik, cayirova.id, ornekler);
     for (const o of ornekler) {
       const m = r[o];
       check(`D8 "${o}" fiyat yazilmadi`, (m?.netPrice ?? 0) === 0,

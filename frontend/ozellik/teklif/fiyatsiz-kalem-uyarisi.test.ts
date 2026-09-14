@@ -157,7 +157,11 @@ describe('uyariyaGirerMi — İCMAL satırı yanlış alarm üretmez (ÜÇÜNCÜ
   it('ÖLÇÜT SINAMASI: dışlanmasaydı İcmal satırı FİYATSIZ sayılırdı', () => {
     // Bu assert olmadan yukarıdaki ikisi "hiçbir şeyi olmayan bir kuralı"
     // ölçerdi: dışlamanın GEREKLİ olduğunu ayrıca kanıtla.
-    const kalem = kalemUret(icmalSatiri, ICMAL_ROLLER)!;
+    // 14.09 (G1): `kalemUret` özet satırından ARTIK kalem üretmez; kural
+    // ölçülebilsin diye aynı satırın özet işareti OLMAYAN kopyası kullanılır.
+    const { _ozet: _yok, ...isaretsiz } = icmalSatiri;
+    expect(kalemUret(icmalSatiri, ICMAL_ROLLER)).toBeNull();
+    const kalem = kalemUret(isaretsiz, ICMAL_ROLLER)!;
     expect(kalem.materialName).toBe('MEKANİK TESİSAT İŞLERİ');
     expect(kalemFiyatsizMi(kalem)).toBe(true);          // ← yanlış alarmın kaynağı
     expect(fiyatsizKalemOzeti([kalem])).not.toBeNull();

@@ -13,6 +13,8 @@
 # ── Düz metin artıkları: cümle içinde uzantı sayarken oluşan sahte yollar ──
 .js/.ts
 backend/tsconfig.js
+# `backend/tsconfig.test.json` (B1, 14.09) — `.json` kod uzantisi degil, desen `.js` diye kirpar (ustteki satirin ikizi)
+backend/tsconfig.test.js
 
 # ── Derleme çıktıları: repoda OLMAMALARI doğru, .gitignore'da ──
 dist/main.js

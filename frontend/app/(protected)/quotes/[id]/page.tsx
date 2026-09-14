@@ -22,7 +22,7 @@ import { teklifCiktisiniIndir, fiyatliExceliIndir } from '@/ozellik/cikti/export
 import { ExcelGrid } from '@/ozellik/tablo/excel-grid/ExcelGrid';
 import { SheetTabs } from '@/ozellik/tablo/excel-grid/SheetTabs';
 import type { ExcelGridData } from '@/ozellik/tablo/excel-grid/types';
-import { useCurrency } from '@/ozellik/fiyat/use-currency';
+import { useCurrency, paraSimgesi } from '@/ozellik/fiyat/use-currency';
 import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
 import { adDisiplinTahmini } from '@/ozellik/tablo/disiplin';
 import type { Currency, LaborFirm } from '@/ortak/types/quotes';
@@ -66,7 +66,7 @@ export default function QuoteDetailPage() {
   // SORUN 16 (KH8/KH9): goruntuleme para birimi — teklifte KAYITLI birimle
   // acilir; toggle degisince kalici yazilir. Cevrim yalniz GORUNTULEME
   // (kutuphane fiyatlari orijinal biriminde kalir), canli TCMB kuru.
-  const { currency, setCurrency, exchangeRates, ratesLoaded, conversionRate } = useCurrency();
+  const { currency, gosterimCurrency, setCurrency, exchangeRates, ratesLoaded, conversionRate } = useCurrency();
   // KH10: Pro entitlement DUZENLE ekraniyla AYNI kaynaktan (/auth/me)
   const { capabilities } = useCapabilities();
 
@@ -532,7 +532,8 @@ export default function QuoteDetailPage() {
               data={gridData}
               brands={allBrands}
               laborFirms={laborFirms}
-              currencySymbol={currency === 'USD' ? '$' : currency === 'EUR' ? '€' : '₺'}
+              // KUR-01 ikizi: simge GOSTERIM biriminden — kur yuklenmeden TL rakam "$" ile basilmaz
+              currencySymbol={paraSimgesi(gosterimCurrency)}
               conversionRate={conversionRate}
               onBrandChange={async () => null}
               sheetDiscipline={activeSheet?.discipline ?? adDisiplinTahmini(activeSheet?.name)}

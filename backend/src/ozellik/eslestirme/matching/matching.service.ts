@@ -26,12 +26,13 @@ import { TerminologyService } from './terminology.service';
 // TEK MOTOR (Faz 2b): indeksli + Ad-kilitli cekirdek (saf — test:index K1-K7)
 import { parseLine } from './index/line-parser';
 import { runQuery, guclutekAday, aileUyusmazligiTeshisi } from './index/query-engine';
-import { toMatchResult, gorunenAd } from '../../fiyat/matching/index/outcome-mapper';
+import { toMatchResult, gorunenAd, kurOf } from '../../fiyat/matching/index/outcome-mapper';
+import type { TryCevirici } from '../../fiyat/matching/index/outcome-mapper';
 import { INDEX_VERSION, tokenize, buildProductIndex, rebuildIndexFields, iscilikAdCekirdegi, malzemeEtiketleri } from './index/product-index';
 import type { ProductColumns } from './index/product-index';
 import type { IndexedRow, LineQuery, QueryOpts, QueryOutcome, KanitKapisi } from './index/types';
 import type { AliasHint } from './terminology.service';
-import { ExchangeRatesService } from '../../fiyat/exchange-rates/exchange-rates.service';
+import { ExchangeRatesService, paraBirimiKodu, kurGecerli } from '../../fiyat/exchange-rates/exchange-rates.service';
 import type { MatchResult, BrandAlternative } from './types';
 import { KIND_TAGS, SURFACE_TAGS, CONNECTION_TAGS } from './shared-tag-matcher';
 import { Kimlik } from '../../../altyapi/auth/kimlik';
@@ -55,25 +56,47 @@ export class MatchingService {
   // fiyatlar o anki TCMB kuruyla TRY tabanina cevrilir; teklif ekraninin
   // gorunum birimi (TL/USD/EUR) bu tabani kendi secimine cevirir.
   // Kur, istek basina EN FAZLA 1 kez cekilir (yalniz doviz satiri varsa).
+  //
+  // ── KUR YOKSA FIYAT YOK (para dogrulugu turu, 14.09 — KUR-01) ─────────
+  // TCMB ve yedek kaynak dusup onbellek bosken kur servisi 1:1 doner
+  // (`source: 'fallback'`). Eskiden cevirici kaynaga bakmadan carpiyordu:
+  // 100 dolarlik kalem 100 TL, "tek eslesme · yuksek guven" ve uydurma
+  // "kur 1" teklife DONUYORDU (olculdu: teklif 47 kat dusuk). Artik karar
+  // SATIR BAZINDA verilir: cevrilemeyen doviz satirinin fiyati hesaplanmaz,
+  // `cevrilemez(currency)` bunu soyler; cagiranlar (outcome-mapper, oneri
+  // yollari) o satira fiyat YAZMAZ. TRY satirlar etkilenmez.
+  // Taninmayan para birimi (GBP, "£") da cevrilemez — 1:1 TL sayilmaz (KUR-02).
   private async buildTryConverter(
     rows: { currency?: string | null }[],
-  ): Promise<(value: number, currency?: string | null) => number> {
-    const needsFx = rows.some((r) => r.currency && r.currency !== 'TRY');
-    if (!needsFx) return (v) => v;
-    const rates = await this.exchangeRates.getRates();
+  ): Promise<TryCevirici> {
+    const kodlar = new Set(rows.map((r) => paraBirimiKodu(r.currency)));
+    const dovizVar = kodlar.has('USD') || kodlar.has('EUR');
+    const rates = dovizVar ? await this.exchangeRates.getRates() : null;
+    const gecerli = { USD: kurGecerli(rates, 'USD'), EUR: kurGecerli(rates, 'EUR') };
     const cevirici = ((v: number, currency?: string | null) => {
-      if (currency === 'USD') return Math.round(v * rates.usdTry * 100) / 100;
-      if (currency === 'EUR') return Math.round(v * rates.eurTry * 100) / 100;
-      return v;
-    }) as ((value: number, currency?: string | null) => number) & {
-      kur?: { usdTry: number; eurTry: number; tarih: string };
+      const kod = paraBirimiKodu(currency);
+      if (kod === 'TRY') return v;
+      if (kod === 'USD' && gecerli.USD) return Math.round(v * rates!.usdTry * 100) / 100;
+      if (kod === 'EUR' && gecerli.EUR) return Math.round(v * rates!.eurTry * 100) / 100;
+      // Cevrilemez: cagiran `cevrilemez` ile ONCEDEN sorar. Unutulan bir yol
+      // olursa NaN sizar — sessiz 1:1 TL'den farkli olarak GORUNUR (ve JSON'da
+      // null → on yuz fiyat yok sayar), asla dogru gorunen yanlis rakam olmaz.
+      return NaN;
+    }) as TryCevirici;
+    cevirici.cevrilemez = (currency?: string | null) => {
+      const kod = paraBirimiKodu(currency);
+      return kod === null || (kod === 'USD' && !gecerli.USD) || (kod === 'EUR' && !gecerli.EUR);
     };
     // ── KUR DONMASI (kullanici karari 06.08) ────────────────────────────
     // Cevrimde kullanilan kur metaveri olarak ceviricinin USTUNDE tasinir;
     // outcome-mapper dovizli satirin sonucuna `kaynakKur` yazar, FE satira
     // (`_matKurBilgi`) kaydeder. Boylece TRY tutar zaten donarken (statik
     // JSON) o tutarin HANGI KURLA dogdugu da teklifle birlikte donar.
-    cevirici.kur = { usdTry: rates.usdTry, eurTry: rates.eurTry, tarih: rates.date };
+    // Gecersiz kur (1:1 geri dusus) metaveri OLARAK DA tasinmaz — uydurma
+    // "kur 1" teklife donmasin (kapi D1, test:kur E4).
+    if (rates && (gecerli.USD || gecerli.EUR)) {
+      cevirici.kur = { usdTry: rates.usdTry, eurTry: rates.eurTry, tarih: rates.date };
+    }
     return cevirici;
   }
 
@@ -466,7 +489,10 @@ export class MatchingService {
       const ACIK_KAPILAR: KanitKapisi[] = ['aile-uyusmazligi', 'yuzey-genisletildi'];
       const teshisAcik = outcome.kind === 'ask'
         && (outcome.kapilar ?? []).some((k) => ACIK_KAPILAR.includes(k));
-      if (!r.notProduct && (line.familySlug || opts.hintFamily)
+      // KUR-01 (14.09): kur alinamadigi icin fiyatsiz kalan satir "bu markada
+      // yok" DEGILDIR — urun bu markada VAR. Baska marka onerisi acilmaz;
+      // acilsaydi kullanici var olan urun yerine baska markayi secmeye itilirdi.
+      if (!r.notProduct && !r.kurAlinamadi && (line.familySlug || opts.hintFamily)
           && (r.confidence === 'none' || (r.dogrulanamadi?.length ?? 0) > 0 || teshisAcik)) {
         // L5 (iscilik): "bu firmada yok" → kullanicinin DIGER firmalari taranir
         const alts = catalogOpts
@@ -573,6 +599,9 @@ export class MatchingService {
       const secim = this.caprazAdaySec(outcome);
       if (!secim) continue;
       const tekAday = secim.row;
+      // KUR-01: kur alinamayan (ya da taninmayan) dovizli oneri SUNULMAZ —
+      // on yuz oneriyi secince fiyati kontrolsuz yazar (1:1 TL).
+      if (toTry.cevrilemez?.(tekAday.currency)) continue;
       const m = markaOf.get(tekAday.id)!;
       const list = toTry(tekAday.listPrice, tekAday.currency);
       const isk = tekAday.discountRate ?? 0;
@@ -586,6 +615,10 @@ export class MatchingService {
         brandId: m.id, brandName: m.name,
         materialName: gorunenAd(tekAday), // boy'lu urunde boy gorunur (hidrant vakasi)
         netPrice: net, listPrice: list, discount: isk,
+        // Kur donmasi ikizi: on yuz tipi `BrandAlternative.kaynakKur` bekliyor
+        // (secimde satira yazar) ama bu uretici HIC doldurmuyordu — oneriden
+        // secilen dovizli fiyatin kuru kayit disi kaliyordu (14.09 olculdu).
+        kaynakKur: kurOf(tekAday, toTry),
         // S2: cekince ADAYLA BIRLIKTE tasinir — FE kesinlik basligi yerine
         // "onay gerekiyor" tonunu bu alanlara BAKARAK secer.
         uyariNot: secim.uyariNot, bilinmeyen: secim.bilinmeyen,
@@ -767,6 +800,8 @@ export class MatchingService {
       const secim = this.caprazAdaySec(outcome);
       if (!secim) continue;
       const tek = secim.row;
+      // KUR-01 ikizi: kur alinamayan dovizli firma onerisi SUNULMAZ.
+      if (toTry.cevrilemez?.(tek.currency)) continue;
       const f = firmaOf.get(tek.id)!;
       const list = toTry(tek.listPrice, tek.currency);
       const isk = tek.discountRate ?? 0;
@@ -776,6 +811,7 @@ export class MatchingService {
         brandId: f.id, brandName: f.name,
         materialName: gorunenAd(tek),
         netPrice: hesaplaNetFiyat(list, isk), listPrice: list, discount: isk,
+        kaynakKur: kurOf(tek, toTry), // kur donmasi ikizi (malzeme onerisiyle ayni)
         // S2: cekince burada da tasinir (ikiz sozlesme ayrismaz).
         uyariNot: secim.uyariNot, bilinmeyen: secim.bilinmeyen,
       });

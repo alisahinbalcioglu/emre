@@ -137,6 +137,11 @@ const SUITES: Suite[] = [
   //    GORMEDIGI alana gidiyordu. B blogu o tuzagi kilitler; C blogu
   //    paylasilan `Material` katalogunun DOKUNULMADIGINI olcer.
   { ad: 'Kütüphanede ad düzenleme + kaynak sadakati', script: 'test:kb-ad', zincir: 'Z1' },
+  // ── 14.09.2026: OZEL FIYAT DONMASI (para dogrulugu turu, K1). Kayit yuku her
+  //    kirli satirda ekrandaki fiyati gonderdigi icin yalniz iskonto/ad kaydi
+  //    customPrice'i o anki liste fiyatina donduruyordu; havuz guncellenip
+  //    yeniden aktarilinca ekran ve eslestirme ESKI fiyatta kaliyordu (90 ≠ 108).
+  { ad: 'Kütüphanede özel fiyat donması (K1)', script: 'test:kb-fiyat', zincir: 'Z1' },
   // ── 07.08.2026: HAYALET LISTE sinifi (iscilik + kutuphane, IKI AILE).
   //    'new' hedefli kayitta liste dogrulamadan ONCE olusuyordu; ayrica
   //    sheet'siz liste 4 jenerik kolona dusuyordu ("sutunlar kayboldu").
@@ -408,6 +413,13 @@ const SUITES: Suite[] = [
   //    Excel formul sinirlari olculur; antetli ve antetsiz kosum ayni rakam.
   { ad: 'İCMAL = sayfa toplamları · KDV · kur · parite (H0-H7)', script: 'test:hesap', zincir: 'Z4' },
   { ad: 'Teklif çıktısı anteti (plan 4.4, AN0-AN6)', script: 'test:antet', zincir: 'Z4' },
+  // ── PARA DOGRULUGU TURU (14.09.2026) — olcum borcu (Blok B). DB ve AG GEREKTIRMEZ.
+  //    B3: Caddy atlaninca uygulama ciplakti (X-Powered-By, sifir guvenlik basligi);
+  //    gercek Nest+Express portta kaldirilip GERCEK HTTP ile olculur + Caddyfile paritesi.
+  //    B2: deploy dogrulamasi yalniz surum numarasina bakiyordu; olcum defteri
+  //    kosucusunun kararlari yerel sunucuya karsi olculur (kacisli paket metni dahil).
+  { ad: 'Uygulama katmanı güvenlik başlıkları + Caddy paritesi (B3, G0-G3)', script: 'test:guvenlik-basliklari', zincir: 'Z0' },
+  { ad: 'Deploy sonrası dokunulanı ölç: defter koşucusu (B2, D1-D6)', script: 'test:deploy-olcum', zincir: 'Z0' },
   // ── 29.08.2026 — FİYAT ÇAPASI (Y/H/K). DB ve AĞ GEREKTİRMEZ.
   //    Kullanıcı kararı: müşteriye "$28/ay" gösterilir, karttan TL çekilir.
   //    İki kavram KARIŞIRSA para hatası olur:
@@ -443,6 +455,20 @@ const SUITES: Suite[] = [
   { ad: 'Satın alma yolu: fatura kapısı + miras muafiyeti (P1-P7)', script: 'test:satinalma', zincir: 'Z0' },
 ];
 
+// ── SKIP DEFTERI (B1, para dogrulugu turu 14.09.2026) ──────────────────────
+// Kapi SKIP'i BASARI sayiyordu (`fail > 0 ? 1 : 0`): bir paket ON KOSUL YOK
+// (cikis 2) ile atlasa ya da yeni bir DB paketi eklense CI yesil kaliyordu.
+// Olculen kurban: `test:firma` Faz 4'te `findAll` sayfalaninca kirildi; CI'da
+// hep SKIP oldugu icin kimse gormedi (tip denetimi test/'i kapsayinca cikti).
+// KURAL: DB'siz kosumda atlanmasi BEKLENEN paketler burada ADIYLA yazilir.
+// Gercek SKIP kumesi bu listeden HERHANGI YONDE saparsa paket KIRMIZI —
+// liste bilincli guncellenir, sessiz buyume yok. PG_REGRESSION=1 iken
+// beklenen SKIP BOS kumedir: her paket kosmali (veri yoksa "gecti" sayilmaz).
+const BEKLENEN_SKIP_DB_YOK = [
+  'test:regression:db', 'test:kl', 'test:labor-sheet', 'test:p2-2', 'test:kalem59',
+  'test:b1', 'test:d1', 'test:a1', 'test:firma',
+];
+
 function dbErisilebilir(): boolean {
   // Hizli TCP kontrolu yerine: DATABASE_URL tanimli + PG_REGRESSION=1 bayragi
   // (yerel gelistirmede PG cogu zaman kapali — yanlis negatif kirmizi yerine
@@ -450,12 +476,12 @@ function dbErisilebilir(): boolean {
   return process.env.PG_REGRESSION === '1';
 }
 
-const sonuclar: Array<{ ad: string; zincir: string; durum: 'PASS' | 'FAIL' | 'SKIP'; sure: string; not?: string }> = [];
+const sonuclar: Array<{ ad: string; script: string; zincir: string; durum: 'PASS' | 'FAIL' | 'SKIP'; sure: string; not?: string }> = [];
 const dbVar = dbErisilebilir();
 
 for (const s of SUITES) {
   if (s.db && !dbVar) {
-    sonuclar.push({ ad: s.ad, zincir: s.zincir, durum: 'SKIP', sure: '-', not: 'DB yok — PG_REGRESSION=1 ile koşulur' });
+    sonuclar.push({ ad: s.ad, script: s.script, zincir: s.zincir, durum: 'SKIP', sure: '-', not: 'DB yok — PG_REGRESSION=1 ile koşulur' });
     continue;
   }
   const t0 = Date.now();
@@ -468,7 +494,7 @@ for (const s of SUITES) {
   const durum = r.status === 0 ? 'PASS' : r.status === 2 ? 'SKIP' : 'FAIL';
   const onKosulNotu = (r.stdout ?? '').split('\n').find((l: string) => l.includes('ON KOSUL YOK'))?.trim();
   sonuclar.push({
-    ad: s.ad, zincir: s.zincir, durum, sure,
+    ad: s.ad, script: s.script, zincir: s.zincir, durum, sure,
     not: durum === 'SKIP' ? (onKosulNotu ?? 'ÖN KOŞUL YOK (çıkış 2)') : undefined,
   });
   console.log(`${durum === 'PASS' ? '✅' : durum === 'SKIP' ? '⚪' : '❌'} [${s.zincir}] ${s.ad} (${sure})`);
@@ -491,4 +517,13 @@ const fail = sonuclar.filter((r) => r.durum === 'FAIL').length;
 const skip = sonuclar.filter((r) => r.durum === 'SKIP').length;
 console.log(`\nTOPLAM: ${sonuclar.length - fail - skip} PASS · ${fail} FAIL · ${skip} SKIP`);
 if (skip) console.log('⚠ SKIP PASS DEĞİLDİR — atlanan paket doğrulanmamış sayılır.');
-process.exit(fail > 0 ? 1 : 0);
+
+const beklenenSkip = new Set(dbVar ? [] : BEKLENEN_SKIP_DB_YOK);
+const gercekSkip = new Set(sonuclar.filter((r) => r.durum === 'SKIP').map((r) => r.script));
+const beklenmeyenSkip = [...gercekSkip].filter((s) => !beklenenSkip.has(s));
+const kosanBeklenenSkip = [...beklenenSkip].filter((s) => !gercekSkip.has(s));
+const skipSapmasi = beklenmeyenSkip.length + kosanBeklenenSkip.length > 0;
+console.log(`SKIP DEFTERİ: beklenen ${beklenenSkip.size} · gerçek ${gercekSkip.size}${dbVar ? ' (PG_REGRESSION=1: hepsi koşmalı)' : ''}`);
+for (const s of beklenmeyenSkip) console.log(`  🔴 BEKLENMEYEN SKIP: ${s} — atlanan paket geçti sayılmaz; ön koşulu düzelt ya da defteri BİLİNÇLİ güncelle`);
+for (const s of kosanBeklenenSkip) console.log(`  🔴 DEFTER BAYAT: ${s} atlanmadı (koştu ya da SUITES'te yok) — BEKLENEN_SKIP_DB_YOK güncellenmeli`);
+process.exit(fail > 0 || skipSapmasi ? 1 : 0);

@@ -67,15 +67,27 @@ export interface TeklifKalemi {
 }
 
 /**
- * Bir grid satırından teklif kalemi üretir. Adı boş satır için `null` döner.
+ * Bir grid satırından teklif kalemi üretir. Adı boş satır ve ÖZET satırı
+ * (`_ozet`) için `null` döner.
  *
  * Ad = "Çap + Cins" birleşimi (örn "Ø110 PVC BORU") — cins tek başına fiyat
  * listesinde bulunamıyor, eşleştirme tam metni istiyor.
+ *
+ * ⚠ ÖZET SATIRI KALEM DEĞİLDİR (para doğruluğu turu, 14.09 — G1, kodla ve
+ * FIRMA-C ile ölçüldü): müşterinin kendi İcmal sayfasındaki satırlar (ve ara
+ * toplam satırları) `_ozet` taşır. Ekran (`sayfaToplamlari`) ve Excel çıktısı
+ * onları toplamaz; kayıt ise kalem olarak yazıyordu → teklif listesi ve pano
+ * toplamı FIRMA-C'de 186.131.100, ekrandaki sayfa toplamları 62.043.700 (tam
+ * 3 kat: İcmal'in 10 bölüm satırı + "Genel Toplam" satırı). Aynı teklifin iki
+ * farklı toplamı olamaz. Satır `sheets` JSON'unda KALIR — çıktı motoru onu
+ * görünür yazar (İCMAL'de dışlar); yalnız ilişkisel kalem listesine girmez.
+ * Geçmiş kayıtlar kendiliğinden düzelmez (Düzenle → yeniden kaydet düzeltir).
  */
 export function kalemUret(
   r: Record<string, any>,
   roles: KalemRolleri,
 ): TeklifKalemi | null {
+  if (r?._ozet) return null;
   const baseName = roles.nameField ? String(r[roles.nameField] ?? '').trim() : '';
   const diaVal = roles.diameterField ? String(r[roles.diameterField] ?? '').trim() : '';
   const materialName = [diaVal, baseName].filter(Boolean).join(' ');

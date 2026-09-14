@@ -56,3 +56,28 @@ export function sayiOku(v: unknown): number | null {
   const n = typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(',', '.'));
   return Number.isFinite(n) ? n : null;
 }
+
+/**
+ * YÜZDE HÜCRESİ — kâr % ve iskonto % için TEK okuma kuralı. `%` işareti
+ * (başta, sonda, boşluklu) ve kenar boşlukları atılır; kalan `sayiOku`
+ * kuralıyla okunur (virgüllü ondalık dahil). Okunamazsa `null`.
+ *
+ * ⚠ NEDEN (para doğruluğu turu, 14.09 — K5, ölçüldü): kâr ve iskonto
+ * hücrelerinin ELLE YAZMA ayrıştırıcısı `parseFloat("%30")` = NaN → 0
+ * yapıyordu; aynı "%30" yapıştırılınca ya da "tüm listeye uygula" kutusuna
+ * yazılınca 30 okunuyordu. Kâr hücresi ekranda "%" önekiyle çizildiği için
+ * "%30" yazmak doğal refleks — sonuç: kâr SESSİZCE 0, fiyat maliyete iner
+ * (10 adet × net 120 → 1.200; niyet 1.560). Aynı metin her yolda aynı sayı.
+ */
+export function yuzdeOku(v: unknown): number | null {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  const s = String(v ?? '').replace(/%/g, '').trim();
+  return s === '' ? null : sayiOku(s);
+}
+
+/** Kâr % hücresine YAZILAN değer — yüzde kuralıyla okunur; negatif/okunamayan 0
+ *  (üst sınır YOK: %150 kâr meşrudur). ExcelGrid kâr kolonlarının valueParser'ı. */
+export function karYuzdesiOku(v: unknown): number {
+  const n = yuzdeOku(v);
+  return n === null || n < 0 ? 0 : n;
+}

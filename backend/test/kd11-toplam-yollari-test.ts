@@ -139,6 +139,28 @@ async function main() {
       'fill-down.ts genelToplamiTazele ile grandTotalField YAZIYOR (KD11 öncesi hiç yazmıyordu)');
   }
 
+  // ══ D — İÇE AKTARMA BAĞLANTISI (para doğruluğu turu, 14.09 · G5) ═════════
+  // Fonksiyon doğruydu, İKİ giriş yolundan biri onu ÇAĞIRMIYORDU: "Dosya Seç"
+  // (applyIncomingMultiSheet) tamamlamasız yüklüyordu → FIRMA-D-1 ekranda
+  // 23.394.553, kayıtta ve Excel'de 0 (A1/A2 fonksiyonu doğrudan çağırdığı
+  // için bunu GÖREMEZDİ). Kural: tamamlamayı kuran HER yükleme yolu ölçülür.
+  {
+    const sayfa = fs.readFileSync(
+      path.resolve(__dirname, '../../frontend/app/(protected)/quotes/new/page.tsx'), 'utf-8');
+    const kod = sayfa.replace(/\/\*[\s\S]*?\*\//g, '')
+      .split('\n').map((l) => l.split('//')[0]).join('\n');
+    // ⚠ page.tsx CRLF — gövde sonu `\r?\n  }\r?\n` (yalnız \n aranırsa ölçüt BOŞ döner, D0 yakalar)
+    const yuklemeGovdesi = kod.match(/function applyIncomingMultiSheet\([\s\S]*?\r?\n {2}\}\r?\n/)?.[0] ?? '';
+    sina('D0', 'ölçütün kendisi: "Dosya Seç" yükleme fonksiyonu kaynakta BULUNDU',
+      yuklemeGovdesi.length > 200, `gövde ${yuklemeGovdesi.length} karakter`);
+    sina('D1', 'Yol "Dosya Seç" · içe aktarmada eksik toplamlar tamamlanır (G5)',
+      /toplamlariTamamla\(/.test(yuklemeGovdesi),
+      'applyIncomingMultiSheet toplamlariTamamla çağırıyor (14.09 öncesi çağırmıyordu)');
+    sina('D2', 'Yol dashboard · tamamlama bağlantısı hâlâ yerinde (regresyon bekçisi)',
+      (kod.match(/toplamlariTamamla\(/g) ?? []).length >= 2,
+      `page.tsx toplamlariTamamla çağrı sayısı=${(kod.match(/toplamlariTamamla\(/g) ?? []).length}`);
+  }
+
   console.log('\n── RENK TABLOSU (KD11 düzeltmesinden SONRA) ──');
   console.log(`  Yol A (dosyadan fiyat)   Malz=${renk.A1}  Genel=${renk.A2}`);
   console.log(`  Yol B (elle marka)       Malz=${renk.B1}  Genel=${renk.B2}`);

@@ -62,6 +62,11 @@ export interface MatchResult {
   // URUN DEGIL (spec): "FITTINGS ORANI" gibi oran/hizmet satirlari — fiyat
   // BEKLENMEZ. Hucre bos + gri isaretlenir ('yok' kirmizisindan farkli).
   notProduct?: boolean;
+  /** KUR-01 (14.09): urun bu markada VAR ama dovizli fiyat TL'ye cevrilemedi
+   *  (TCMB + yedek kaynak yok, onbellek bos). Fiyat 0, `reason` nedeni soyler.
+   *  On yuz satiri "hata" isaretler — kur donunce yeniden eslestirme fiyatlar.
+   *  Taninmayan para birimi bu bayragi TASIMAZ (yeniden denemek duzeltmez). */
+  kurAlinamadi?: boolean;
   matchedName?: string;
   reason?: string;
   matchedTags?: string[];
