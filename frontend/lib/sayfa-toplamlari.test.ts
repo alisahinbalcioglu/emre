@@ -17,8 +17,10 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 import { describe, it, expect } from 'vitest';
+import * as fs from 'fs';
+import * as path from 'path';
 import {
-  sayfaToplamlari, hesaplaSatisBirimFiyat, hesaplaSatirToplam,
+  sayfaToplamlari, hesaplaSatisBirimFiyat, hesaplaSatirToplam, kalemToplami, satirGenelToplamiGosterim, kurusTamsayi,
 } from '../ozellik/fiyat/pricing';
 
 const ROLLER = {
@@ -122,5 +124,110 @@ describe('ADIM 7 — sayfaToplamlari', () => {
     const o = sayfaToplamlari([r], ROLLER);
     expect(o.labToplam).toBe(270850);
     expect(o.labKar).toBe(0); // %0 → maliyet = satis, kar 0
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// TUR 3 (14.09.2026) — A4a (G4/K11) ve A4b (Orta-2): EKRAN = CIKTI, KURUSU KURUSUNA
+//  A4a: kalem toplami (malzeme + iscilik) KURUS katmaninda; ikinci kez yukari
+//       1 haneye yuvarlanmaz. Bursa: 41 kalem +2,42 TL (satir hucreleri ve kayit
+//       295.272.924,70; ekran, cikti ve ICMAL 295.272.922,28).
+//  A4b: dovizde ekran toplami SATIR SATIR cevrilir (cikti motoru standart-cikti
+//       kurus() ile ayni sira). Eski ekran TL toplamini tek seferde ceviriyordu:
+//       13 dosyanin 147 sayfa toplaminda USD 25, EUR 31 fark (en cok 16 sent).
+//  Kaynak taramasi: ExcelGrid'in AG-Grid'e bagli yollari jsdom'suz kosamaz
+//  (kar-tek-suzgec.test.ts deseni); kural saf fonksiyonlarda, bagli olduklari
+//  kaynaktan olculur.
+// ═════════════════════════════════════════════════════════════════════════════
+describe('A4b / Orta-2 — dovizde sayfa toplami satir satir cevrilir', () => {
+  const USD = 1 / 47.35; // use-currency: TRY taban, 1 USD = ₺47,35
+  const uc = (ek: Record<string, unknown> = {}) =>
+    [1, 2, 3].map(() => ({ _isDataRow: true, _miktar: 1, _birim: 'Ad.', _matBirim: '100', _matToplam: '100', ...ek }));
+
+  it('3 × ₺100 → $6,33 (her satir K(100/47,35) = 2,11); eski tek seferde cevirme $6,34 derdi', () => {
+    const o = sayfaToplamlari(uc(), ROLLER, USD);
+    expect(o.matToplam).toBe(6.33);
+    expect(o.genelToplam).toBe(6.33);
+    // olcutun kendisi: bu fixture iki kurali GERCEKTEN ayirir
+    expect(kurusTamsayi(sayfaToplamlari(uc(), ROLLER).matToplam * USD) / 100).toBe(6.34);
+  });
+
+  it('oran 1 (TRY) kimliktir: oransiz cagriyla birebir ayni ozet', () => {
+    const satirlar = [...uc({ _malzKar: 10, _matNetPrice: 90.9 }), { _isDataRow: true, _miktar: 2, _labBirim: '10.075', _labToplam: '20.15' }];
+    expect(sayfaToplamlari(satirlar, ROLLER, 1)).toEqual(sayfaToplamlari(satirlar, ROLLER));
+  });
+
+  it('KAR da satir bazli: satis ₺100 / maliyet ₺70 × 3 → $1,89 (TL kari × oran $1,90 derdi)', () => {
+    const o = sayfaToplamlari(uc({ _malzKar: 42.9, _matNetPrice: 70 }), ROLLER, USD);
+    expect(o.matKar).toBe(1.89);
+    expect(o.toplamKar).toBe(1.89);
+    expect(kurusTamsayi(sayfaToplamlari(uc({ _malzKar: 42.9, _matNetPrice: 70 }), ROLLER).matKar * USD) / 100).toBe(1.9);
+  });
+});
+
+describe('A4a/A4b — satir Genel Toplami parcalardan (kalemToplami · satirGenelToplamiGosterim)', () => {
+  it('A4a kalem toplami kurus katmaninda: 100,25 + 0 = 100,25 (eski yukari-1-hane 100,3); 1,1 + 0,01 = 1,11', () => {
+    expect(kalemToplami(100.25, 0)).toBe(100.25);
+    expect(kalemToplami(1.1, 0.01)).toBe(1.11);
+    expect(kalemToplami(0.1, 0.2)).toBe(0.3); // float gurultusu toplama sizmaz
+  });
+
+  it('TL gosterim = kalemToplami (bayat "100.3" hucresi ekranda ciktiyla ayni 100,25)', () => {
+    expect(satirGenelToplamiGosterim(100.25, null, 1)).toBe(100.25);
+    expect(satirGenelToplamiGosterim(1.1, 0.01, 1)).toBe(kalemToplami(1.1, 0.01));
+  });
+
+  it('dovizde parcalar AYRI cevrilir: ₺192.244,5 + ₺5.890,5 → $4.184,47 (cikti satir I); tek seferde $4.184,48', () => {
+    const oran = 1 / 47.35;
+    expect(satirGenelToplamiGosterim(192244.5, 5890.5, oran)).toBe(4184.47);
+    expect(kurusTamsayi((192244.5 + 5890.5) * oran) / 100).toBe(4184.48); // olcutun kendisi
+  });
+
+  it('parca yoksa null (dosyadan gelen tek toplam aynen gosterilir); parcalar 0 ise 0', () => {
+    expect(satirGenelToplamiGosterim(null, null, 1)).toBeNull();
+    expect(satirGenelToplamiGosterim(0, null, 1 / 47.35)).toBe(0);
+  });
+});
+
+describe('A4a/A4b KAYNAK KAPISI — ExcelGrid ve iki doldurma yolu kurala BAGLI', () => {
+  const kok = path.resolve(__dirname, '..');
+  const kodu = (yol: string) => fs.readFileSync(path.join(kok, yol), 'utf8')
+    .split(/\r?\n/).filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+  const grid = kodu('ozellik/tablo/excel-grid/ExcelGrid.tsx');
+  const KURAL = {
+    pinnedOranli: /sayfaToplamlari\(\s*satirlar\s*,\s*data\.columnRoles as any\s*,\s*conversionRate\s*\)/,
+    ikinciCarpmaYok: /paraBicim\(\s*g[pk]\[\s*alan[PK]\s*\]\s*,\s*1\s*\)/,
+    ikinciCarpmaVar: /paraBicim\(\s*g[pk]\[\s*alan[PK]\s*\]\s*,\s*conversionRate\s*\)/,
+    bagimlilik: /\[data\.columnRoles, mode, fittingSatirlariniYenile, conversionRate\]/,
+    kurEfekti: /useEffect\(\s*\(\)\s*=>\s*\{\s*updatePinnedBottomRef\.current\?\.\(\);\s*\}\s*,\s*\[conversionRate\]\s*\)/,
+    recalcKurus: /setDataValue\(grandTotalField,\s*kalemToplami\(/,
+    recalcEski: /setDataValue\(grandTotalField,\s*yukariYuvarla\(/,
+    satirIkizi: /satirGenelToplamiGosterim\([\s\S]{0,200}?conversionRate,?\s*\)/,
+  };
+
+  it('olcutun kendisi: desenler bilinen KOTU satirlari yakalar, iyileri gecirir', () => {
+    const kotu = 'const formatted = gp && gp.oran === conversionRate ? paraBicim(gp[alanP], conversionRate) : x;';
+    expect(KURAL.ikinciCarpmaVar.test(kotu) && !KURAL.ikinciCarpmaYok.test(kotu)).toBe(true);
+    expect(KURAL.recalcEski.test('e.node.setDataValue(grandTotalField, yukariYuvarla(grandTotal).toFixed(1));')).toBe(true);
+  });
+
+  it('A4b: pinned toplam oranla kurulur, ikinci kez carpilmaz; carpan degisince yeniden kurulur', () => {
+    expect(KURAL.pinnedOranli.test(grid)).toBe(true);
+    expect(KURAL.ikinciCarpmaYok.test(grid)).toBe(true);
+    expect(KURAL.ikinciCarpmaVar.test(grid)).toBe(false);
+    expect(KURAL.bagimlilik.test(grid) && KURAL.kurEfekti.test(grid)).toBe(true);
+  });
+
+  it('A4a/A4b: recalcGrand kalemToplami yazar; bicimlendirici satir Genel Toplamini parcalardan gosterir', () => {
+    expect(KURAL.recalcKurus.test(grid)).toBe(true);
+    expect(KURAL.recalcEski.test(grid)).toBe(false);
+    expect(KURAL.satirIkizi.test(grid)).toBe(true);
+  });
+
+  it('A4a: surukle-doldur, taslak geri yukleme, fitting ve ice aktarma tamamlamasi AYNI kural', () => {
+    expect(kodu('ozellik/tablo/excel-grid/fill-down.ts')).toMatch(/kalemToplami\(mat, lab\)\.toFixed\(PARA_ONDALIK\)/);
+    expect(kodu('ozellik/teklif/restore-rematch.ts')).toMatch(/kalemToplami\(mat, lab\)\.toFixed\(PARA_ONDALIK\)/);
+    expect(kodu('ozellik/tablo/excel-grid/fitting.ts')).toMatch(/kalemToplami\(f\.mat\?\.toplam \?\? 0, f\.lab\?\.toplam \?\? 0\)\.toFixed\(PARA_ONDALIK\)/);
+    expect(kodu('ozellik/fiyat/pricing.ts')).toMatch(/r\[genel\] = kalemToplami\(/);
   });
 });

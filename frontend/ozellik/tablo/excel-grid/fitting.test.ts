@@ -183,7 +183,7 @@ describe('K8 — fittingHucreleri: gecisin yazacagi hucreler saf ve olculur', ()
       { rowIdx: 22, alan: '_matToplam', deger: '101570.0' }, // 290.200 × %35
       { rowIdx: 22, alan: '_labBirim', deger: '' },
       { rowIdx: 22, alan: '_labToplam', deger: '' },
-      { rowIdx: 22, alan: '_toplam', deger: '101570.0' },    // mat + lab(0)
+      { rowIdx: 22, alan: '_toplam', deger: '101570.00' },   // mat + lab(0), kuruş katmanı (recalcGrand ile aynı metin — tur 3 A4a)
     ]);
   });
   it('iki tarafli: toplamlar dolu, HER IKI birim fiyat BOS', () => {
@@ -195,7 +195,7 @@ describe('K8 — fittingHucreleri: gecisin yazacagi hucreler saf ve olculur', ()
     const al = (a: string) => h.find((x) => x.alan === a)?.deger;
     expect(al('_matToplam')).toBe('500.0');  // 1000 × %50
     expect(al('_labToplam')).toBe('200.0');  // 400 × %50
-    expect(al('_toplam')).toBe('700.0');     // 500 + 200
+    expect(al('_toplam')).toBe('700.00');    // 500 + 200 (kuruş katmanı, 2 hane)
     // Kapsam DOLU olmasina ragmen birim fiyatlar bos — kural kapsama bagli degil
     expect(al('_matBirim')).toBe('');
     expect(al('_labBirim')).toBe('');

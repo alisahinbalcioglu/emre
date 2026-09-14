@@ -25,7 +25,7 @@
  */
 // NOT: relative import — vitest.config.ts'te '@/' alias'i tanimli degil ve
 // bu modul birim testle sinaniyor (fill-down.test.ts).
-import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, etkinMiktar, yukariYuvarla } from '../../fiyat/pricing';
+import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, etkinMiktar, kalemToplami, PARA_ONDALIK } from '../../fiyat/pricing';
 // NOT: goreli yol ZORUNLU — vitest.config.ts'te '@/' alias'i tanimli degil
 // ve bu modul vitest ile kosuyor (fill-down.test.ts).
 import { sayiAlani } from '../../fiyat/sayi-alani';
@@ -118,7 +118,7 @@ function genelToplamiTazele(
   // Iki tarafli satirlarin %5-7'sinde Genel Toplam +0,1 cikiyordu ve `yaz()`
   // veriyi olaydan once degistirdigi icin recalcGrand bunu HIC duzeltmiyordu.
   // Tek yuvarlama fonksiyonu (orantili epsilon): pricing `yukariYuvarla`.
-  yaz(node, genelAlan, yukariYuvarla(mat + lab).toFixed(1));
+  yaz(node, genelAlan, kalemToplami(mat, lab).toFixed(PARA_ONDALIK));
 }
 
 /**

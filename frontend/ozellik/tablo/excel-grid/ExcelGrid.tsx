@@ -18,9 +18,9 @@ import { CustomDropdown } from './CustomDropdown';
 import { fillDown, karYayilimi } from './fill-down';
 import { planYapistir, type PasteKolon, type PasteSatir } from './yapistir';
 import { aralikKur, planKopyala, type Aralik, type KopyaKolon, type KopyaSatir, type Nokta } from './kopyala';
-import { isaretStili, isaretTooltip, secimBekliyor, type IsaretGirdisi } from './isaret';
+import { isaretStili, isaretTooltip, secimBekliyor, kutuphaneFiyatAyrisimi, type IsaretGirdisi } from './isaret';
 import { joinMaterialText } from '@/ozellik/tablo/parse-material-text';
-import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, yukariYuvarla, etkinMiktar, paraBicim, sayfaToplamlari, karSatiri, maliyetiGeriTuret, PARA_ONDALIK } from '@/ozellik/fiyat/pricing';
+import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, yukariYuvarla, etkinMiktar, paraBicim, sayfaToplamlari, karSatiri, maliyetiGeriTuret, PARA_ONDALIK, kalemToplami, satirGenelToplamiGosterim } from '@/ozellik/fiyat/pricing';
 // FITTING SATIRI (02.09): kapsam secimi (Ctrl+tik) yardimcilari — para kurali pricing'te
 import {
   FITTING_BIRIMI, fittingBirimiMi, fittingKapsaminaAlinabilirMi, kapsamDegistir, silinenSatiriKapsamlardanDus,
@@ -2841,6 +2841,9 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     const satirlar: any[] = [];
     gridRef.current.api.forEachNode((node) => { if (node.data) satirlar.push(node.data); });
     const ozet = sayfaToplamlari(satirlar, data.columnRoles as any);
+    // A4b: EKRAN BIRIMINDEKI toplam satir satir cevrilir (cikti ile ayni kurus).
+    // Standart alanlar TL kalir; cevrilmis degerler `_gosterim`de, uretildigi carpanla.
+    const gosterimOzeti = conversionRate === 1 ? ozet : sayfaToplamlari(satirlar, data.columnRoles as any, conversionRate);
     const sumMatTotal = ozet.matToplam;
     const sumLabTotal = ozet.labToplam;
     const genelToplam = ozet.genelToplam;
@@ -2868,6 +2871,10 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     if (grandUnitPriceField && grandTotalField) {
       pinnedRow[grandUnitPriceField] = '';
     }
+    pinnedRow._gosterim = { oran: conversionRate };
+    if (materialTotalField) pinnedRow._gosterim[materialTotalField] = gosterimOzeti.matToplam;
+    if (laborTotalField) pinnedRow._gosterim[laborTotalField] = gosterimOzeti.labToplam;
+    if (grandTotalField ?? grandUnitPriceField) pinnedRow._gosterim[(grandTotalField ?? grandUnitPriceField)!] = gosterimOzeti.genelToplam;
 
     // ── ADIM 10 (06.08): GENEL TOPLAM'in HEMEN ALTINA KAR SATIRI ──────────
     // Kullanicinin 05.08 istegi. Deger AYNI sayfaToplamlari cagrisindan gelir
@@ -2876,12 +2883,20 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     // icin rowData'ya, kayda ve musteri ciktisina YAPISAL olarak giremez.
     if (mode !== 'library') {
       const karRow = karSatiri(ozet, data.columnRoles as any, nameField);
+      const karGosterim = karSatiri(gosterimOzeti, data.columnRoles as any, nameField);
+      karRow._gosterim = { oran: conversionRate };
+      for (const alan of [materialTotalField, laborTotalField, grandTotalField ?? grandUnitPriceField]) {
+        if (alan) karRow._gosterim[alan] = karGosterim[alan];
+      }
       setPinnedBottomRow([pinnedRow, karRow]);
     } else {
       setPinnedBottomRow([pinnedRow]);
     }
-  }, [data.columnRoles, mode, fittingSatirlariniYenile]);
+  }, [data.columnRoles, mode, fittingSatirlariniYenile, conversionRate]);
   updatePinnedBottomRef.current = updatePinnedBottom;
+  // Kur yuklenince / birim degisince pinned YENIDEN kurulur: data.rowData efekti
+  // kendi yayinimizda (sonYayinRef) erken doner, ona guvenilemez.
+  React.useEffect(() => { updatePinnedBottomRef.current?.(); }, [conversionRate]);
 
   // ── FITTING (02.09): Ctrl+tik → kapsama ekle/cikar; rozet ✕ → bagi kaldir ──
   const fittingKapsamToggle = useCallback((hedef: ExcelRowData) => {
@@ -3357,6 +3372,11 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
             // fiyatlanmis bir teklif tam gorunurdu. Hucrenin `title`
             // ozniteligine yazilir (uzerine gelince cikar) ve kayit yolundaki
             // "N/M kalem fiyatsız" onayi zaten yerinde duruyor.
+            // A4b: ekran birimindeki satir-bazli deger; carpan damgasi tutmuyorsa
+            // (kur yeni degisti, pinned henuz kurulmadi) bugunku TL × oran'a duser.
+            const gk = (params.data as any)?._gosterim;
+            const alanK = params.colDef?.field as string;
+            if (gk && gk.oran === conversionRate && typeof gk[alanK] === 'number') return `${currencySymbol}${paraBicim(gk[alanK], 1)}`;
             return `${currencySymbol}${paraBicim(kv, conversionRate)}`;
           }
           // ⚠ `parseFloat(String(v))` DEGIL — `sayiOku` (E2E'de olculdu):
@@ -3371,11 +3391,28 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           // Pinned bottom satirinda 0 bile gosterilsin (GENEL TOPLAM satiri)
           if (v === 0 && !params.node?.rowPinned) return '';
           // Gosterim hanesi: PARA_ONDALIK (P2-1b'de 1→2) — TEK KAYNAK: lib/pricing.ts
-          const formatted = paraBicim(v, conversionRate);
+          const gp = params.node?.rowPinned ? (params.data as any)?._gosterim : null;
+          const alanP = params.colDef?.field as string;
           // Z4: satirin kendi para birimi varsa (_currency — kutuphane gridi)
           // onun sembolu basilir; yoksa global sembol (teklif akisi)
           const rowCurr = (params.data as any)?._currency;
           const sym = rowCurr ? (ROW_CURRENCY_SYMBOL[rowCurr] ?? currencySymbol) : currencySymbol;
+          // A4a/A4b SATIR IKIZI (tur 3, 14.09): veri satirinin Genel Toplam hucresi
+          // PARCALARDAN, HER birimde — kural tek yerde (`satirGenelToplamiGosterim`,
+          // cikti satir I ile ayni). Parca YOKSA hucre degeri aynen gosterilir.
+          const R0 = data.columnRoles;
+          const d0 = params.data as any;
+          if (!params.node?.rowPinned && alanP === R0.grandTotalField && d0?._isDataRow) {
+            const gosterim = satirGenelToplamiGosterim(
+              R0.materialTotalField ? sayiOku(d0[R0.materialTotalField]) : null,
+              R0.laborTotalField ? sayiOku(d0[R0.laborTotalField]) : null,
+              conversionRate,
+            );
+            if (gosterim != null) return gosterim === 0 ? '' : `${sym}${paraBicim(gosterim, 1)}`;
+          }
+          const formatted = gp && gp.oran === conversionRate && typeof gp[alanP] === 'number'
+            ? paraBicim(gp[alanP], 1)            // A4b: pinned — zaten ekran biriminde, ikinci carpma yok
+            : paraBicim(v, conversionRate);
           return `${sym}${formatted}`;
         };
 
@@ -3420,7 +3457,9 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           base.cellStyle = ((params: any) => {
             if (params.node?.rowPinned || !params.data) return { textAlign: 'right' };
             if (params.data._fitting) return FITTING_TURETILMIS_STIL; // turetilmis: gri/italik
-            const stil = isaretStili(girdiden(params.data));
+            // K1 (tur 3 A4c): kutuphanede ozel fiyat havuzdan AYRISMIS — sari, tahmin yok
+            const ayrisim = mode === 'library' ? kutuphaneFiyatAyrisimi(params.data) : null;
+            const stil = ayrisim?.stil ?? isaretStili(girdiden(params.data));
             // v1 spec td.fiyat: 600 / #0f172a. Kolon zemini (malzeme mavi-50,
             // iscilik yesil-50) YALNIZ marka/firma seciliyken ve YALNIZ sinyal
             // yokken — isaret.ts'in para sinyali (kirmizi/sari/gri/mavi) HER
@@ -3433,7 +3472,8 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           }) as any;
           base.tooltipValueGetter = ((params: any) => {
             if (!params.data || params.node?.rowPinned) return '';
-            return isaretTooltip(girdiden(params.data));
+            const ayrisim = mode === 'library' ? kutuphaneFiyatAyrisimi(params.data) : null;
+            return ayrisim?.ipucu ?? isaretTooltip(girdiden(params.data));
           }) as any;
         } else {
           // v1 spec td.toplam: 750 / #0f172a (Malz. Toplam ve Isc. Toplam).
@@ -3692,17 +3732,13 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       }
 
       // Grand total = matTotal + labTotal
-      const matTotal = materialTotalField
-        ? parseFloat(String(row[materialTotalField] ?? '')) || 0
-        : 0;
-      const labTotal = laborTotalField
-        ? parseFloat(String(row[laborTotalField] ?? '')) || 0
-        : 0;
-      const grandTotal = matTotal + labTotal;
+      // Tek okuyucu (virgul + isaret): sayfaToplamlari/fill-down ile ayni sayi
+      const matTotal = materialTotalField ? (sayiOku(row[materialTotalField]) ?? 0) : 0;
+      const labTotal = laborTotalField ? (sayiOku(row[laborTotalField]) ?? 0) : 0;
 
       if (grandTotalField) {
         // Miktar 0 ise grand total 0 gosterilir (bos degil, kullanici "bos degil sifir" dedi)
-        e.node.setDataValue(grandTotalField, yukariYuvarla(grandTotal).toFixed(1));
+        e.node.setDataValue(grandTotalField, kalemToplami(matTotal, labTotal).toFixed(PARA_ONDALIK));
       }
     };
 

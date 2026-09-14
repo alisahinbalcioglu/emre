@@ -23,7 +23,12 @@ export class ManualBrandRowDto {
 
   @IsOptional() @IsNumber() @Min(0) price?: number;
   @IsOptional() @IsNumber() @Min(0) @Max(100) discountRate?: number;
-  @IsOptional() @IsString() @MaxLength(8) currency?: string; // 'TRY' | 'USD' | 'EUR'
+  // 'TRY' | 'USD' | 'EUR' — yazim kurali serviste (`paraBirimleriniDogrula`, KUR-02):
+  // bos/taninmayan kod satir adiyla 400. Burada yalniz tip; mesaj ayni dilde.
+  @IsOptional()
+  @IsString({ message: 'para birimi metin olmalı — TRY, USD ya da EUR yazın' })
+  @MaxLength(8, { message: 'para birimi tanınmadı — TRY, USD ya da EUR yazın' })
+  currency?: string;
 }
 
 export class CreateManualBrandDto {

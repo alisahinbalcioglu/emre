@@ -11,7 +11,7 @@
  * girer, hesaba giren her satir secilebilir (tek kural).
  */
 // NOT: goreli yol ZORUNLU — vitest.config.ts'te '@/' alias'i tanimli degil.
-import { fittingHesapla, fittingKapsaminaAlinabilirMi, yukariYuvarla } from '../../fiyat/pricing';
+import { fittingHesapla, fittingKapsaminaAlinabilirMi, kalemToplami, PARA_ONDALIK } from '../../fiyat/pricing';
 
 export { fittingKapsaminaAlinabilirMi };
 
@@ -127,7 +127,8 @@ export function fittingHucreleri(
     // (tarayici turunda olculdu: 491.759,7 kaldi, dogrusu 641.088,2).
     const varMi = !!(f.mat || f.lab);
     ekle(roller.grandUnitPriceField, null); // birim fiyat yok (yukaridaki gerekce)
-    ekle(roller.grandTotalField, varMi ? yukariYuvarla((f.mat?.toplam ?? 0) + (f.lab?.toplam ?? 0)) : null);
+    // Genel toplam recalcGrand ile AYNI metin bicimi (PARA_ONDALIK) — gecisin "degisti mi" karsilastirmasi ayrismasin
+    if (roller.grandTotalField) out.push({ rowIdx: r._rowIdx, alan: roller.grandTotalField, deger: varMi ? kalemToplami(f.mat?.toplam ?? 0, f.lab?.toplam ?? 0).toFixed(PARA_ONDALIK) : '' });
   }
   return out;
 }

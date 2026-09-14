@@ -31,6 +31,7 @@ import {
 import { deriveEtiketler, isValidAdOverride } from '../../eslestirme/utils/etiket-display';
 import { buildProductIndex, rebuildIndexFields, INDEX_VERSION, ProductColumns } from '../../eslestirme/matching/index/product-index';
 import { SilmeEtkisi, ekonomiVar } from '../silme-etkisi';
+import { paraBirimiKodu, paraBirimleriniDogrula, satirAdi } from '../../fiyat/exchange-rates/exchange-rates.service';
 
 export interface MaterialSheetInput {
   name: string;
@@ -57,8 +58,9 @@ export interface ImportPreviewItem {
   /** Belirsiz satirda iki yorum (dialog gosterimi icin, backend hesaplar). */
   asThousands?: number | null;
   asDecimal?: number | null;
-  /** Z4: satirin orijinal para birimi — CEVRIM YAPILMAZ. */
-  currency?: 'TRY' | 'USD' | 'EUR';
+  /** Z4: satirin orijinal para birimi — CEVRIM YAPILMAZ. Kanonik TRY/USD/EUR;
+   *  Para Birimi kolonundaki TANINMAYAN yazim ham tasinir (commit 400 verir). */
+  currency?: string;
   kategori?: string | null;
   cins?: string | null;
   cap?: string | null;
@@ -903,6 +905,8 @@ export class AdminService {
     const effectiveDot: DotMeaning | null = dotMeaningIn ?? inferred.dotMeaning;
 
     const items: ImportPreviewItem[] = [];
+    /** Para Birimi kolonunda taninmayan yazim → satir sayisi (onizleme uyarisi). */
+    const taninmayanParaBirimi = new Map<string, number>();
     for (const p of sheetPlans) {
       const { sheetName, grid, headerRow, cols } = p;
       // Para birimi baslikta olabilir: "Birim Fiyat (USD)" / "Liste Fiyati €"
@@ -949,10 +953,17 @@ export class AdminService {
 
         // ── Z4: para birimi satir bazinda ETIKETLENIR, CEVRIM YAPILMAZ.
         // Oncelik: satir kolonu > fiyat hucresi sembolu > baslik > TRY
-        const curr = detectCurrency(cols.curr !== undefined ? row[cols.curr] : null)
-          ?? detectCurrency(rawPrice)
-          ?? headerCurrency
-          ?? 'TRY';
+        // KUR-02 (tur 3 A3): Para Birimi KOLONU doluysa yalniz tam yazim
+        // taninir (`paraBirimiKodu`: EURO → EUR, TL → TRY). Tanınmayan kod
+        // (GBP, xyz, "CAD $") HAM kalir: onizlemede gorunur, commit o satirda
+        // 400 verir. Eski hali detectCurrency'di: GBP'yi taniyamayinca baslik/
+        // TRY'ye dusuyor, "CAD $"i USD sayiyordu — tanınmayan kod commit'e hic
+        // ulasmiyor, 1:1 TL yaziliyordu.
+        const kolonHam = cols.curr !== undefined ? String(row[cols.curr] ?? '').trim() : '';
+        const curr: string = kolonHam
+          ? (paraBirimiKodu(kolonHam) ?? kolonHam)
+          : (detectCurrency(rawPrice) ?? headerCurrency ?? 'TRY');
+        if (kolonHam && paraBirimiKodu(kolonHam) === null) taninmayanParaBirimi.set(kolonHam, (taninmayanParaBirimi.get(kolonHam) ?? 0) + 1);
 
         const price = parsed.value != null ? Math.round(parsed.value * 100) / 100 : null;
         const unit = cols.unit !== undefined ? String(row[cols.unit] ?? '').trim() : '';
@@ -1002,6 +1013,17 @@ export class AdminService {
       if (sheetCount > 0) {
         console.log(`[PriceListImport] "${sheetName}": ${sheetCount} kalem okundu`);
       }
+    }
+
+    if (taninmayanParaBirimi.size > 0) {
+      // Dosya basina TEK uyari, listenin BASINA (on yuz ilk 3 uyariyi gosterir):
+      // commit bu satirlar duzeltilmeden 400 verecek.
+      const satir = [...taninmayanParaBirimi.values()].reduce((a, b) => a + b, 0);
+      const yazimlar = [...taninmayanParaBirimi.keys()].slice(0, 5).map((y) => `"${y}"`).join(', ');
+      warnings.unshift(
+        `${satir} satırda Para Birimi tanınmadı (${yazimlar}${taninmayanParaBirimi.size > 5 ? ', …' : ''}) — ` +
+        'bu satırlar düzeltilmeden içe aktarım kaydedilmez; dosyada TRY, USD ya da EUR yazın.',
+      );
     }
 
     if (items.length === 0) {
@@ -1240,6 +1262,20 @@ export class AdminService {
     const brand = await this.prisma.brand.findUnique({ where: { id: brandId } });
     if (!brand) throw new NotFoundException('Marka bulunamadi');
 
+    // ── KUR-02 (tur 3 A3): PARA BIRIMI 'auto' LISTEDEN ve replaceExisting
+    // SILMESINDEN ONCE. Uc uc buradan gecer (marka commit, liste commit,
+    // save-bulk). Tanınmayan kod 400; hicbir satir yazilmaz, eski liste
+    // silinmez. Eski hali 'EURO'/'GBP'yi ham, ''i bos metin yaziyordu.
+    const paraBirimleri = paraBirimleriniDogrula(
+      items,
+      (it) => it.currency,
+      (it, i) => satirAdi(
+        it.sheetName && typeof it.sourceRow === 'number' ? `"${it.sheetName}" satır ${it.sourceRow + 1}` : `Kalem ${i + 1}`,
+        it.adRaw || it.materialName,
+      ),
+    );
+    const kalemler = items.map((it, i) => ({ ...it, currency: paraBirimleri[i] }));
+
     let priceList: { id: string; createdAt: Date; name: string; brandId: string } | null;
     if (priceListId === 'auto') {
       priceList = await this.prisma.priceList.findFirst({ where: { brandId }, orderBy: { createdAt: 'desc' } });
@@ -1253,7 +1289,7 @@ export class AdminService {
       if (!priceList) throw new NotFoundException('Fiyat listesi bulunamadi');
     }
 
-    const validItems = items.filter((item) => {
+    const validItems = kalemler.filter((item) => {
       const name = item.materialName?.trim();
       const price = Number(item.unitPrice);
       if (!name || name.length < 2) return false;

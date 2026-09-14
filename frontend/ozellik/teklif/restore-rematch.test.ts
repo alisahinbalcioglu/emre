@@ -380,8 +380,8 @@ describe('restoreRematch — satirin GENEL TOPLAM alani tazelenir', () => {
       '/labor-matching/bulk-match': { [AD]: { netPrice: 50 } },
     });
     await restoreRematch([sayfa([row])], { 0: [row] }, poster);
-    // 2750.0 + 1500.0 = 4250.0 (LITERAL)
-    expect(row._toplam).toBe('4250.0');
+    // 2750.0 + 1500.0 = 4250.00 (LITERAL; Genel Toplam kuruş katmanında 2 hane — tur 3 A4a)
+    expect(row._toplam).toBe('4250.00');
   });
 
   it('yalniz iscilik yazilirsa genel toplam MALZEME toplamini da toplar (2x iscilik degil)', async () => {
@@ -392,15 +392,15 @@ describe('restoreRematch — satirin GENEL TOPLAM alani tazelenir', () => {
     });
     const { poster } = posterKur({ '/labor-matching/bulk-match': { [AD]: { netPrice: 50 } } });
     await restoreRematch([sayfa([row])], { 0: [row] }, poster);
-    expect(row._toplam).toBe('2500.0'); // 1000 + 1500
-    expect(row._toplam).not.toBe('3000.0'); // 2 × iscilik kusuru
+    expect(row._toplam).toBe('2500.00'); // 1000 + 1500
+    expect(row._toplam).not.toBe('3000.00'); // 2 × iscilik kusuru
   });
 
   it('bayat genel toplam EZILIR (eski deger satirda kalmaz)', async () => {
     const row = satir({ _firma: 'firma-1', _toplam: '99999.9' });
     const { poster } = posterKur({ '/labor-matching/bulk-match': { [AD]: { netPrice: 50 } } });
     await restoreRematch([sayfa([row])], { 0: [row] }, poster);
-    expect(row._toplam).toBe('1500.0');
+    expect(row._toplam).toBe('1500.00');
   });
 
   it('hicbir yazim olmadiysa genel toplama DOKUNULMAZ', async () => {
@@ -422,9 +422,9 @@ describe('restoreRematch — satirin GENEL TOPLAM alani tazelenir', () => {
     const row = satir({ _firma: 'firma-1', _toplam: '1000.0' });
     const { poster } = posterKur({ '/labor-matching/bulk-match': { [AD]: { netPrice: 50 } } });
     await restoreRematch([sayfa([row])], { 0: [row] }, poster);
-    // Eski hal genel toplama dokunmadigi icin '1000.0' kalirdi; yeni hal 1500.0 yazar.
+    // Eski hal genel toplama dokunmadigi icin '1000.0' kalirdi; yeni hal 1500.00 yazar.
     expect(eskiGenelToplam(row)).not.toBe('1000.0');
-    expect(row._toplam).toBe('1500.0');
+    expect(row._toplam).toBe('1500.00');
   });
 });
 

@@ -405,6 +405,39 @@ async function run() {
     }
   }
 
+  // ── H4b: DOVIZDE EKRAN SAYFA TOPLAMI = CIKTI SAYFA TOPLAMI (tur 3 A4b — Orta-2) ──
+  // Ekran TL toplamini TEK SEFERDE ceviriyordu, cikti her satiri AYRI cevirip
+  // kuruslar: 13 dosyanin 147 sayfa toplaminda USD 25, EUR 31 fark (en cok 16
+  // sent). Oran use-currency.ts siralamasiyla satir icinde (para-gosterim.ts
+  // `@/` alias'i ts-node'da cozulmez).
+  {
+    const USD_TRY = 47.35; const EUR_TRY = 54.1;
+    const oranlar: Record<string, number> = { USD: 1 / USD_TRY, EUR: (USD_TRY / EUR_TRY) / USD_TRY };
+    const teklifler: Array<[string, any[]]> = [['3×₺100', [sayfa('Mekanik', [veri(1, 'A', 1, '100', '100'), veri(2, 'B', 1, '100', '100'), veri(3, 'C', 1, '100', '100')])]]];
+    for (const dosya of GERCEK_DOSYALAR) teklifler.push([dosya.slice(0, 14), await gercekTeklif(dosya)]);
+    for (const kod of ['USD', 'EUR']) {
+      let sayfaSayisi = 0; let tekSeferdeAyrisan = 0; const farklar: string[] = [];
+      for (const [ad, sheets] of teklifler) {
+        const r = await servis(JSON.parse(JSON.stringify(sheets)), { displayCurrency: kod, fx: fxSabit(USD_TRY, EUR_TRY) }).exportPricedXlsx(KIM, 'q1');
+        const wb = await ac(r.buffer);
+        for (const sh of sheets.filter((s: any) => !s.isEmpty)) {
+          const ws = wb.worksheets.find((w) => w.name === sh.name);
+          const st = ws ? sayfaToplamSatiri(ws) : null;
+          if (!st) { farklar.push(`${ad}/${sh.name}: çıktıda sayfa toplamı yok`); continue; }
+          sayfaSayisi++;
+          const e = FE.sayfaToplamlari(sh.rowData ?? [], sh.columnRoles ?? {}, oranlar[kod]);
+          if (K(e.matToplam) !== st.mat || K(e.labToplam) !== st.lab) farklar.push(`${ad}/${sh.name}: ekran ${K(e.matToplam)}/${K(e.labToplam)} çıktı ${st.mat}/${st.lab}`);
+          const tlOzet = FE.sayfaToplamlari(sh.rowData ?? [], sh.columnRoles ?? {});
+          if (K(tlOzet.matToplam * oranlar[kod]) !== st.mat || K(tlOzet.labToplam * oranlar[kod]) !== st.lab) tekSeferdeAyrisan++;
+        }
+      }
+      check(`H4b ölçütün kendisi (${kod}): TL toplamını tek seferde çevirmek en az bir sayfada çıktıdan AYRIŞIR`,
+        tekSeferdeAyrisan > 0, `ayrışan=${tekSeferdeAyrisan}/${sayfaSayisi}`);
+      check(`H4b Orta-2 (${kod}): sayfaToplamlari(…, oran) = çıktı SAYFA TOPLAMI kuruşu kuruşuna (sentetik + 3 gerçek dosya)`,
+        farklar.length === 0 && sayfaSayisi > 3, `sayfa=${sayfaSayisi} fark=${farklar.slice(0, 3).join(' | ')}`);
+    }
+  }
+
   // ── H5: bos / tek kalem / katkisiz sayfa ─────────────────────────────
   {
     const bos = await buildExportWorkbook({
@@ -587,6 +620,55 @@ async function run() {
       kayitK === ekranK && ekranK === 6204370000, `kayıt=${tl(kayitK)} ekran=${tl(ekranK)} kalem=${yakalanan.length}`);
   }
 
+  // ── H11: KALEM TOPLAMI KURUS KATMANINDA (tur 3 A4a — G4/K11, 14.09) ──
+  // Satirin Genel Toplami (malzeme + iscilik) ikinci kez YUKARI 1 haneye
+  // yuvarlaniyordu: Bursa'da 41 kalem +2,42 TL — satir hucreleri ve kayit
+  // 295.272.924,70, ekran/cikti/ICMAL 295.272.922,28. Olcut hucre METNINDEN
+  // bagimsiz kurus (urun kodu kullanmaz); kayit yolu H9 ile ayni uretim zinciri.
+  {
+    const FEKALEM = require('../../frontend/ozellik/teklif/teklif-kalem');
+    const bagimsizKurus = (v: unknown): bigint => {
+      const m = String(v ?? '').trim().replace(',', '.').match(/^(-?)(\d+)(?:\.(\d+))?$/);
+      if (!m) return 0n;
+      const ond = `${m[3] ?? ''}000`.slice(0, 3);
+      const k = BigInt(m[2]) * 100n + BigInt(ond.slice(0, 2)) + (Number(ond[2]) >= 5 ? 1n : 0n);
+      return m[1] ? -k : k;
+    };
+    let yakalanan: any[] = [];
+    const prisma: any = { quote: { create: async (arg: any) => { yakalanan = arg?.data?.items?.create ?? []; return { id: 'h11', items: [] }; } } };
+    const kayitServisi = new QuotesService(prisma, fxSabit(), { onbellekHaritasi: async () => ({}) } as any);
+    const sheets = await gercekTeklif(GERCEK_DOSYALAR[1]); // Bursa
+    const kalemler: any[] = [];
+    let hucreK = 0n; let satirHucreK = 0n; let ayrisan = 0; let ekranK = 0;
+    for (const sh of sheets.filter((s: any) => !s.isEmpty)) {
+      const R = sh.columnRoles ?? {};
+      const e = ekranToplami(sh); ekranK += e.mat + e.lab;
+      for (const r of sh.rowData ?? []) {
+        if (!r._isDataRow || r._isGroupRow || r._isSpareRow) continue; // page.tsx kayit suzgeci
+        const k = FEKALEM.kalemUret(r, R);
+        if (k) kalemler.push(k);
+        if (r._ozet) continue;
+        const bk = bagimsizKurus(R.materialTotalField ? r[R.materialTotalField] : '') + bagimsizKurus(R.laborTotalField ? r[R.laborTotalField] : '');
+        hucreK += bk;
+        if ((bk + 9n) / 10n * 10n !== bk) ayrisan++; // yukari 1 hanede sapacak kalem
+        if (R.grandTotalField && String(r[R.grandTotalField] ?? '').trim() !== '') satirHucreK += bagimsizKurus(r[R.grandTotalField]);
+      }
+    }
+    await kayitServisi.create(KIM, { title: 'H11', items: kalemler } as any);
+    const kayitK = yakalanan.reduce((a, it) => a + K(it.finalPrice), 0);
+    check('H11 ölçütün kendisi: Bursa\'da kuruşu 10\'a bölünmeyen (yukarı 1 hanede sapacak) kalem VAR', ayrisan > 0, `ayrışan=${ayrisan}`);
+    check('H11 G4 kayıt: Σ K(finalPrice) = hücre kuruşu = ekran — Bursa 295.272.922,28',
+      BigInt(kayitK) === hucreK && BigInt(ekranK) === hucreK && hucreK === 29527292228n,
+      `kayıt=${tl(kayitK)} ekran=${tl(ekranK)} hücre=${hucreK}`);
+    check('H11 G4 satır: Genel Toplam hücreleri (içe aktarma tamamlaması) toplamı = hücre kuruşu', satirHucreK === hucreK,
+      `satır=${satirHucreK} hücre=${hucreK}`);
+    yakalanan = [];
+    await kayitServisi.create(KIM, { title: 'H11s', items: [FEKALEM.kalemUret(veri(1, 'Sentetik', 1, '100.25', '100.25'), ROLLER)] } as any);
+    check('H11 G4 sentetik: malzeme toplamı 100,25 → totalPrice = finalPrice = 100,25 (eskisi 100,3)',
+      yakalanan[0]?.totalPrice === 100.25 && yakalanan[0]?.finalPrice === 100.25,
+      `total=${yakalanan[0]?.totalPrice} final=${yakalanan[0]?.finalPrice}`);
+  }
+
   // ── H10: SAYFA ADI CAKISMASI CIKTIYI DUSURMEZ (14.09 — I9 / I10) ─────
   // Olculdu: teklifte "GENEL TOPLAM" adli sayfa varsa fiyatli cikti HTTP 400 ile
   // dusuyordu; "ICMAL" formati + "icmal" teklif sayfasi (ve "MEKANIK" + "Mekanik")
@@ -644,11 +726,13 @@ async function run() {
       if (FE.yukariYuvarla(x) !== BE.yukariYuvarla(x)) farklar.push(`yukariYuvarla(${x})`);
       if (FE.hesaplaNetFiyat(x, isk) !== BE.hesaplaNetFiyat(x, isk)) farklar.push(`hesaplaNetFiyat(${x},${isk})`);
       if (FE.kurusTamsayi(x) !== BE.kurusTamsayi(x) || FE.kurusTamsayi(-x) !== BE.kurusTamsayi(-x)) farklar.push(`kurusTamsayi(${x})`);
+      // tur 3 A4a: kalem toplami iki yanda ayni kural (ekran satiri ↔ kayit totalPrice)
+      if (FE.kalemToplami(x, isk) !== BE.kalemToplami(x, isk)) farklar.push(`kalemToplami(${x},${isk})`);
     }
     for (const x of [10.075, 1.015, 0.285, 1858060.05, 152.3 * 12200, -0.005]) {
       if (FE.yukariYuvarla(x) !== BE.yukariYuvarla(x) || FE.kurusTamsayi(x) !== BE.kurusTamsayi(x)) farklar.push(`sinir ${x}`);
     }
-    check('H7 FE ↔ BE parite: yukariYuvarla · hesaplaNetFiyat · kurusTamsayi 20.000 girdide + sınırlarda BİREBİR',
+    check('H7 FE ↔ BE parite: yukariYuvarla · hesaplaNetFiyat · kurusTamsayi · kalemToplami 20.000 girdide + sınırlarda BİREBİR',
       farklar.length === 0, farklar.join(' | '));
   }
 

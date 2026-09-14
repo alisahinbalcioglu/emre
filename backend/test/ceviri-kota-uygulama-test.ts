@@ -375,9 +375,31 @@ function sahteDb(s: Sahne): any {
       findFirst: async ({ where, orderBy, select }: any) => {
         const l = tuketimSuz(where);
         if (orderBy) {
-          const [alan, yon] = Object.entries(orderBy)[0] as [string, string];
-          const deger = (k: Satir) => (k[alan] instanceof Date ? k[alan].getTime() : -Infinity);
-          l.sort((a, b) => (yon === 'desc' ? deger(b) - deger(a) : deger(a) - deger(b)));
+          // Prisma gibi: `{ alan: yon }` ya da `[{ a: yon }, { b: yon }]` (sıra =
+          // öncelik), nesne başına TEK alan. Eşitlikte sonraki anahtara geçilir;
+          // hepsi eşitse ekleme sırası kalır (sort kararlı). Postgres eşitlerin
+          // sırasını garanti etmez — testler en kötü sırayı kurar. (İlk hali
+          // yalnız ilk anahtara bakıyordu: dizi gelse sessizce sıralamazdı.)
+          const anahtarlar = (Array.isArray(orderBy) ? orderBy : [orderBy]).map((o: Record<string, unknown>) => {
+            const g = Object.entries(o);
+            if (g.length !== 1 || (g[0][1] !== 'asc' && g[0][1] !== 'desc')) throw new Error(`sahte Prisma: tanınmayan orderBy ${JSON.stringify(o)}`);
+            return g[0] as [string, 'asc' | 'desc'];
+          });
+          const sayi = (alan: string, v: unknown): number => {
+            if (v instanceof Date) return v.getTime();
+            if (typeof v === 'number') return v;
+            throw new Error(`sahte Prisma: "${alan}" sıralanamaz (${typeof v})`);
+          };
+          // Postgres varsayılanı: NULL en büyüktür (DESC'te başa gelir).
+          const kiyas = (alan: string, x: unknown, y: unknown): number =>
+            x == null || y == null ? (x == null ? 1 : 0) - (y == null ? 1 : 0) : sayi(alan, x) - sayi(alan, y);
+          l.sort((a, b) => {
+            for (const [alan, yon] of anahtarlar) {
+              const fark = kiyas(alan, a[alan], b[alan]);
+              if (fark !== 0) return yon === 'desc' ? -fark : fark;
+            }
+            return 0;
+          });
         }
         const k = l[0];
         if (!k) return null;
@@ -574,6 +596,38 @@ async function wBlogu(): Promise<void> {
 
     await t.servis.teklifiCevir(K1, Q);
     check('W21f tamamlandıktan sonra aynı istek tekrardır (yeni kayıt yok)', t.s.tuketim.length === 2, `${t.s.tuketim.length}`);
+  }
+
+  {
+    // 14.09 tur 3 · A1: W21f kapı komutuyla 20 koşumda 3 düşüyordu. Zaman ölçümü
+    // (40 koşum): düşen 3 koşumun üçünde de iki halkanın `sonuclandi`'si aynı
+    // ms'deydi; `sonuclandi desc` eşitlenince yarım (KISMI) halka seçiliyor,
+    // tamamlanmış çeviri devam sanılıp kalan satırı bir kez daha düşüyordu.
+    // Aynı ölçümde 3 koşumda iki halka aynı ms'de OLUŞTURULMUŞTU — dört damga
+    // da aynı ms'ye düşerse `olusturuldu` da eşitlenir. Eşitlik burada
+    // zamanlamaya bırakılmaz, kurulur; ekleme sırası en kötü sıradır.
+    const an = new Date(Date.now() - 5 * DK);
+    const zincir = { icerikOzeti: OZET, satirSayisi: 3, olusturuldu: an, sonuclandi: an };
+    const t = kur({
+      tuketim: [
+        tuketimKaydi({ ...zincir, id: 'halka-1', durum: 'KISMI', dusulenSatir: 2, toplamTeslim: 2 }),
+        tuketimKaydi({ ...zincir, id: 'halka-2', durum: 'BASARILI', dusulenSatir: 1, toplamTeslim: 3, devam: true }),
+      ],
+    });
+    const o = await t.kota.onizleme(K1, Q);
+    check('W21j ★ zincirin dört damgası aynı ms\'de: son halka seçilir, istek tekrardır, satır yemez', o.tekrar === true && o.devam === false && o.gerekenSatir === 0, JSON.stringify({ tekrar: o.tekrar, devam: o.devam, gereken: o.gerekenSatir }));
+
+    // Zaman aşımına düşmüş iş geç biterse `sonuclandir` onu da kapatır; pencerede
+    // iki BASARILI kayıt olur. Aynı ms'de sonuçlanmışlarsa teslimleri de eşittir —
+    // karar `olusturuldu`: tekrar yanıtı en son OLUŞTURULAN kaydı gösterir.
+    const t2 = kur({
+      tuketim: [
+        tuketimKaydi({ icerikOzeti: OZET, satirSayisi: 3, id: 'gec-biten', durum: 'BASARILI', olusturuldu: new Date(an.getTime() - 95 * DK), sonuclandi: an }),
+        tuketimKaydi({ icerikOzeti: OZET, satirSayisi: 3, id: 'yeniden-deneme', durum: 'BASARILI', olusturuldu: new Date(an.getTime() - DK), sonuclandi: an }),
+      ],
+    });
+    const r = await t2.kota.rezerveEt(K1, Q, 'en');
+    check('W21k aynı ms\'de sonuçlanmış iki tamamlanmış kayıt: tekrar en son oluşturulanı gösterir', r.tur === 'tekrar' && r.kayitId === 'yeniden-deneme', r.tur === 'tekrar' ? r.kayitId : r.tur);
   }
 
   {

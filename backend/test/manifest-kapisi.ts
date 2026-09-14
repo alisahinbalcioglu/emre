@@ -17,7 +17,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-/** Istisna = pakete GIRMEMESI dogru olan script. Gerekce ZORUNLU. */
+/** Istisna = pakete GIRMEMESI dogru olan script. Gerekce ZORUNLU.
+ *  KARARSIZ TEST (14.09.2026 kurali): duzeltilemeyen kararsiz test SUITES'ten
+ *  cikarilacaksa buraya ADIYLA, gerekce + tarihle yazilir — sessizce silinmez. */
 const ISTISNALAR: Record<string, string> = {
   'test:regression': 'Paketin KENDISI (orkestrator) — kendini calistiramaz, sonsuz dongu olur.',
   'test:tam': 'Ust zincir: test:regression + FE vitest + Playwright. Paketi KAPSAR, icine giremez.',

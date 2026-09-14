@@ -12,7 +12,7 @@ import { buildSampleFormat, ExportOverrides, FillContext } from '../../cikti/quo
 import { ExchangeRatesService } from '../../fiyat/exchange-rates/exchange-rates.service';
 import { CeviriService } from '../../giris/ai/ceviri.service';
 import { ceviriAnahtari } from '../../giris/ai/ceviri-kurali';
-import { yukariYuvarla } from '../../fiyat/matching/pricing';
+import { yukariYuvarla, kalemToplami } from '../../fiyat/matching/pricing';
 import { AntetBilgi, antetKur, antetLogoNotu, ANTET_FIRMA_ALANLARI } from '../../cikti/utils/antet';
 
 /** KDV orani — kod sabiti (ayarlanabilirlik backlog) */
@@ -249,7 +249,7 @@ export class QuotesService {
 
       // Toplamlar — birim fiyatlar geldigi gibi (sisirilmez)
       const totalUnitPrice = yukariYuvarla(matUp + labUp);
-      const totalPrice = yukariYuvarla(materialTotalPrice + laborTotalPrice);
+      const totalPrice = kalemToplami(materialTotalPrice, laborTotalPrice);
 
       // Eski alan geriye uyum
       const discount = item.discount ?? 0;

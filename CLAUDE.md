@@ -41,6 +41,12 @@ Prisma veya Node.js EPERM/EBUSY hatasi alirsan:
 - Sadece ilgili portu kapat: `npx kill-port 3000` veya `npx kill-port 3001`
 - Sonra `npx prisma db push` ile devam et
 
+## CI ve Deploy Kurali (14.09.2026)
+- **Kirmizi CI kosumuyla deploy EDILMEZ.** Deploy'dan once o commit'in GitHub Actions `regression-gate` kosumu yesil olmali. Depo acik; kosum durumu girissiz okunur: `https://api.github.com/repos/alisahinbalcioglu/emre/actions/runs?head_sha=<40 haneli sha>`.
+- **Kararsiz test "bazen dusuyor" diye BIRAKILMAZ.** Ya duzeltilir ya da devre disi birakilip ADIYLA kaydedilir: `backend/test/regression-all.ts` SUITES'ten cikarilir, `backend/test/manifest-kapisi.ts` ISTISNALAR listesine gerekce + tarihle yazilir (manifest kapisi gerekcesiz cikarmayi reddeder). Kirmiziyi anlamsizlastiran test kapiyi curutur: insanlar kirmiziyi gormezden gelmeye baslar.
+- Vaka: `eb424f3` (14.09) master kosumu (34831257774) "Tek regresyon paketi" adiminda kirmiziydi ve yine de canliya cikti. Gunluk girissiz okunamadi; en guclu aday Faz 6 `W21f` (kapi komutuyla 20 kosumda 3 dustu).
+- Kararsizlik kaniti kapinin KENDI komutuyla alinir (`npm run test:<x>`). `ts-node --transpile-only` zamanlamayi degistirir: ayni test onunla 20/20 yesil, kapi komutuyla 20'de 3 dustu.
+
 ## Tech Stack
 - **Backend**: NestJS, Prisma, PostgreSQL, JWT auth
 - **Frontend**: Next.js 13+ (App Router), Tailwind CSS, shadcn/ui

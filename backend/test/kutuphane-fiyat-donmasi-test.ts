@@ -73,6 +73,8 @@ function sahtePrisma() {
     const r = { ...row };
     if (!include) return r;
     if (include.product && model === 'userLibrary') r.product = db.productIndex.find((p) => p.id === row.productIndexId) ?? null;
+    // Tur 3 A4c: K1 ayrisim isareti kaynak listenin sahip alanlarini okur
+    if (include.sourcePriceList && model === 'userLibrary') r.sourcePriceList = db.priceList.find((p) => p.id === row.sourcePriceListId) ?? null;
     if (include.material) r.material = null;
     if (include.brand) r.brand = db.brand.find((b) => b.id === row.brandId) ?? null;
     if (include._count && model === 'libraryList') r._count = { items: db.userLibrary.filter((u) => u.libraryListId === row.id).length };
@@ -205,6 +207,32 @@ function havuzUrunu(id: string, cap: string, fiyat: number, sira: number) {
   check('K4a iskontolu satir: net = 120 × (1 − %10) = 108', net('Küresel vana 1/2"') === 108, `netPrice=${net('Küresel vana 1/2"')} (donmus 90)`);
   check('K4b adi degisen satir: net = 360', net('Küresel vana 1"') === 360, `netPrice=${net('Küresel vana 1"')} (donmus 300)`);
   check('K5c kullanicinin yazdigi fiyat eslestirmede de 150', net('Küresel vana 3/4"') === 150, `netPrice=${net('Küresel vana 3/4"')}`);
+
+  console.log('── K6) AYRISMIS FIYAT ISARETI (tur 3 A4c): tahmin yok, iki fiyat gorunur ──');
+  const ekranSatiri = (cap: string) => sonra.satirlar.find((r: any) => r.col_cap === cap);
+  check('K6a havuz fiyati degisip ozel fiyattan AYRISINCA satir isaretli: ozel 150 · havuz liste 240',
+    JSON.stringify(ekranSatiri('3/4"')?._fiyatAyrisik) === JSON.stringify({ ozel: 150, havuz: 240 }), JSON.stringify(ekranSatiri('3/4"')?._fiyatAyrisik));
+  check('K6b gosterilen fiyat DEGISMEZ — ekran hangisinin gecerli oldugunu tahmin etmez (3/4" hala 150)',
+    fiyat('3/4"') === 150, `3/4" Liste Fiyat=${fiyat('3/4"')}`);
+  check('K6c ozel fiyati olmayan satirlar ISARETSIZ (1/2", 1")',
+    !ekranSatiri('1/2"')?._fiyatAyrisik && !ekranSatiri('1"')?._fiyatAyrisik, `${JSON.stringify(ekranSatiri('1/2"')?._fiyatAyrisik)} ${JSON.stringify(ekranSatiri('1"')?._fiyatAyrisik)}`);
+  {
+    const { havuzFiyatAyrisimi } = require('../src/ozellik/kutuphane/library/library-sheet-builder');
+    const havuz = { sourcePriceList: { ownerUserId: null, ownerFirmaId: null }, productIndexId: 'pi', product: { ownerUserId: null, ownerFirmaId: null } };
+    const kisi = { ownerUserId: 'u1', ownerFirmaId: 'f1' };
+    const durumlar: Array<[string, any, boolean]> = [
+      ['havuz C≠L', { ...havuz, customPrice: 100, listPrice: 120 }, true],
+      ['legacy havuz (indekssiz) C≠L', { sourcePriceList: havuz.sourcePriceList, productIndexId: null, customPrice: 500, listPrice: 600 }, true],
+      ['kisisel liste', { ...havuz, sourcePriceList: kisi, customPrice: 100, listPrice: 120 }, false],
+      ['eski kisisel (liste sahipsiz, indeks sahipli)', { ...havuz, product: kisi, customPrice: 100, listPrice: 120 }, false],
+      ['yetim (kaynak yok)', { customPrice: 100, listPrice: 120 }, false],
+      ['esit (float 0,1+0,2 = 0,3)', { ...havuz, customPrice: 0.1 + 0.2, listPrice: 0.3 }, false],
+      ['ozel fiyat yok', { ...havuz, customPrice: null, listPrice: 120 }, false],
+      ['liste fiyati yok', { ...havuz, customPrice: 400, listPrice: null }, false],
+    ];
+    const yanlis = durumlar.filter(([, girdi, beklenen]) => (havuzFiyatAyrisimi(girdi) !== null) !== beklenen).map(([ad]) => ad);
+    check('K6d tanim migration\'daki "ayrismis" ile ayni: yalniz HAVUZA BAGLI ve C≠L (kisisel, yetim, esit, bos isaretsiz)', yanlis.length === 0, yanlis.join(' · ') || `${durumlar.length} durum`);
+  }
 
   console.log(`\nSONUC: ${passed} PASS, ${failures.length} FAIL`);
   if (failures.length) {

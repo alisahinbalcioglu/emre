@@ -5,6 +5,7 @@ import { buildMaterialContextFromRows, ColumnRoles, RowData } from '../../eslest
 import { MatchingService } from '../../eslestirme/matching/matching.service';
 import { INDEX_VERSION } from '../../eslestirme/matching/index/product-index';
 import { Kimlik } from '../../../altyapi/auth/kimlik';
+import { paraBirimleriniDogrula, satirAdi } from '../../fiyat/exchange-rates/exchange-rates.service';
 
 export interface SheetInput {
   name: string;
@@ -791,12 +792,20 @@ export class LaborFirmsService {
   ) {
     const firma = await this.assertOwnership(firmaId, k);
 
+    // ── KUR-02 (tur 3 A3): PARA BIRIMI YAZIMDAN VE LISTEDEN ONCE ────────────
+    // Tanınmayan kod ('EURO', '$', 'GBP', bos) 400 alir; liste acilmaz, hicbir
+    // satir yazilmaz. Eski hali 'EURO'yu ham yaziyordu (eslestirme o satiri
+    // fiyatsiz birakir), sayi gelince liste acildiktan SONRA 500 veriyordu.
+    // Alan yoksa `undefined` kalir: guncellemede mevcut para birimi korunur.
+    const paraBirimleri = paraBirimleriniDogrula(items, (it) => it.currency, (it, i) => satirAdi(`Satır ${i + 1}`, it.laborName));
+    const kalemler = items.map((it, i) => ({ ...it, currency: paraBirimleri[i] }));
+
     // ── ONCE DOGRULA, SONRA LISTE OLUSTUR (06.08 canli bulgu) ──────────────
     // Eski sira tersti: 'new' yolunda liste kalemler dogrulanmadan olusuyordu.
     // Tum satirlar gecersizse (ornegin fiyatsiz) geriye SIFIR kalemli, sheet'siz
     // bir HAYALET liste kaliyordu; sheet'siz liste sentetik 4 kolona dustugu
     // icin kullanici bunu "sutunlar kayboldu + kaydetmiyor" olarak goruyordu.
-    const validItems = items.filter((item) => {
+    const validItems = kalemler.filter((item) => {
       const name = item.laborName?.trim();
       const price = Number(item.unitPrice);
       if (!name || name.length < 2) return false;
@@ -894,7 +903,7 @@ export class LaborFirmsService {
       const iskonto = item.discountRate !== undefined && !isNaN(Number(item.discountRate))
         ? Math.max(0, Math.min(100, Number(item.discountRate)))
         : undefined;
-      const paraBirimi = item.currency?.trim() ? item.currency.trim().toUpperCase() : undefined;
+      const paraBirimi = item.currency; // kanonik (yukarida dogrulandi) ya da undefined
       const saved = await this.prisma.laborPrice.upsert({
         where: { laborItemId_firmaId_priceListId: { laborItemId: laborItem.id, firmaId, priceListId: priceList.id } },
         update: { unitPrice: price, unit, ...(iskonto !== undefined ? { discountRate: iskonto } : {}), ...(paraBirimi ? { currency: paraBirimi } as any : {}) },

@@ -8,6 +8,11 @@
  *  - DB gerektirenler (gercek PostgreSQL) baglanti yoksa SKIP raporlanir
  *    (CI/VPS'te DB varken tam kosulur) — sessiz atlama YOK, tabloya yazilir.
  * MUHUR KURALI (Faz 4): bu paket yesil olmadan hicbir degisiklik birlesmez.
+ * KARARSIZ TEST KURALI (14.09.2026): kirmizi CI kosumuyla deploy edilmez.
+ *   Kararsiz test ya duzeltilir ya SUITES'ten cikarilip manifest-kapisi.ts
+ *   ISTISNALAR listesine gerekce + tarihle yazilir; "bazen dusuyor" diye
+ *   birakilmaz (vaka: eb424f3 kirmizi kosumla canliya cikti; aday W21f,
+ *   20 kosumda 3). Ayrinti: CLAUDE.md.
  */
 import { spawnSync } from 'child_process';
 
@@ -160,6 +165,11 @@ const SUITES: Suite[] = [
   //    FE satira yazar → teklif JSON'uyla donar. TRY'de ve kur metaverisi
   //    olmayan ceviricide alan HIC uretilmez (uydurma kur yasak).
   { ad: 'Kur donması (kaynakKur sözleşmesi)', script: 'test:kur', zincir: 'Z2' },
+  // ── 14.09.2026 (tur 3 A3): KUR-02 YAZMA YOLLARI. Alti yazma ucunun hicbiri
+  //    400 donmuyordu ('EURO', '$', 'GBP', 'xyz' 201 ile ham); admin onizlemesi
+  //    Para Birimi kolonundaki GBP'yi TRY yapiyordu. Tanınmayan kod gerekceli
+  //    400, liste/marka acilmaz; onizleme ham tasir, commit reddeder.
+  { ad: 'Para birimi yazım kapısı (KUR-02 yazma yolları)', script: 'test:para-birimi-yazim', zincir: 'Z2' },
   // ── 06.08.2026: ALIAS KELIME YUTMASI. Ogrenme kapisi `adSlug === adBucket`
   //    proxy'siyle "sozluksuz" tahmini yapiyordu; sozlugun COZDUGU tek
   //    kelimelik adlarda (Sprinkler, Fan, Damper, Conta, Kelepce... 68 ad)

@@ -18,7 +18,7 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
-import { isaretStili, isaretTooltip, secimBekliyor, type IsaretGirdisi } from './isaret';
+import { isaretStili, isaretTooltip, secimBekliyor, kutuphaneFiyatAyrisimi, type IsaretGirdisi } from './isaret';
 
 // ── ESKI OKUYUCULARIN REPLIKASI (ExcelGrid.tsx, fix oncesi) ─────────────────
 
@@ -201,6 +201,8 @@ const KRITERLER: Array<{ ad: string; gecer: (s: string) => boolean }> = [
   { ad: "FirmaDropdown eslesme yokken 'yok'/'urun_degil' isaretler", gecer: (s) => /_labStatus',\s*\(result as any\)\?\.notProduct \? 'urun_degil' : \(\(result as any\)\?\.kurAlinamadi \? 'hata' : 'yok'\)/.test(s) },
   // TEK KAYNAK: isaret renkleri modulde kaldi, ExcelGrid'e KOPYALANMADI.
   { ad: 'isaret renkleri ExcelGrid icinde kopyalanmamis', gecer: (s) => !/#fee2e2|#e0f2fe|#fef9c3/.test(s) },
+  // Tur 3 A4c (14.09): kutuphane fiyat hucresi K1 ayrisim isaretini STIL ve IPUCU olarak okur.
+  { ad: 'kutuphane fiyat hucresi K1 ayrisimini stil + ipucu olarak okur', gecer: (s) => (s.match(/mode === 'library' \? kutuphaneFiyatAyrisimi\(params\.data\) : null/g) ?? []).length === 2 && /ayrisim\?\.stil \?\? isaretStili\(/.test(s) && /ayrisim\?\.ipucu \?\? isaretTooltip\(/.test(s) },
 ];
 
 describe('isaret — ExcelGrid baglanti kapisi (kaynak taramasi)', () => {
@@ -234,5 +236,27 @@ describe('isaret — ExcelGrid baglanti kapisi (kaynak taramasi)', () => {
     const gecenler = KRITERLER.filter((k) => k.gecer(ESKI)).map((k) => k.ad);
     // Eski icerik kriterlerin HICBIRINI saglamamali (renk kopyasi dahil).
     expect(gecenler, 'ESKI icerik bu kriterleri gecmemeliydi: ' + gecenler.join(', ')).toEqual([]);
+  });
+});
+
+// ── K1 AYRISMIS KUTUPHANE FIYATI (tur 3 A4c, 14.09) ─────────────────────────
+describe('kutuphaneFiyatAyrisimi — havuzdan ayrismis ozel fiyat isaretlenir, tahmin edilmez', () => {
+  it('sinyal yoksa null (normal stil) — bos, bozuk ya da eksik sinyal dahil', () => {
+    expect(kutuphaneFiyatAyrisimi({ col3: 150 })).toBeNull();
+    expect(kutuphaneFiyatAyrisimi(null)).toBeNull();
+    expect(kutuphaneFiyatAyrisimi({ _fiyatAyrisik: 'evet' })).toBeNull();
+    expect(kutuphaneFiyatAyrisimi({ _fiyatAyrisik: { ozel: 150 } })).toBeNull();
+  });
+
+  it('sinyal varsa SARI zemin ve IKI fiyati birlikte gosteren ipucu (satirin para birimiyle)', () => {
+    const tl = kutuphaneFiyatAyrisimi({ _fiyatAyrisik: { ozel: 150, havuz: 240 }, _currency: 'TRY' });
+    expect(tl?.stil).toEqual(isaretStili({ dal: 'malzeme', oneri: true })); // modulun SARI'si — kopya renk yok
+    expect(tl?.ipucu).toBe('Özel fiyat ₺150,00 · havuz liste fiyatı ₺240,00 — havuz fiyatı değişmiş; geçerli fiyatı bu hücreye yazın');
+    const usd = kutuphaneFiyatAyrisimi({ _fiyatAyrisik: { ozel: 10.5, havuz: 12 }, _currency: 'USD' });
+    expect(usd?.ipucu.startsWith('Özel fiyat $10,50 · havuz liste fiyatı $12,00')).toBe(true);
+  });
+
+  it('sifir ozel fiyat da ayrisimdir (ekran 0, eslestirme liste fiyati kullanir)', () => {
+    expect(kutuphaneFiyatAyrisimi({ _fiyatAyrisik: { ozel: 0, havuz: 100 } })?.ipucu).toContain('Özel fiyat ₺0,00');
   });
 });

@@ -29,6 +29,37 @@ export interface LibrarySheetItem {
   boy?: number | null;
   urunKodu?: string | null;
   not?: string | null;
+  /** K1 ayrismis fiyat (tur 3 A4c) — `havuzFiyatAyrisimi`; yoksa null/undefined. */
+  fiyatAyrisik?: { ozel: number; havuz: number } | null;
+}
+
+/** Satirin havuz iliskisi (UserLibrary + `product` / `sourcePriceList` include'lari). */
+export interface HavuzBagi {
+  customPrice?: number | null;
+  listPrice?: number | null;
+  productIndexId?: string | null;
+  sourcePriceList?: { ownerUserId?: string | null; ownerFirmaId?: string | null } | null;
+  product?: { ownerUserId?: string | null; ownerFirmaId?: string | null } | null;
+}
+
+/**
+ * K1 AYRISMIS FIYAT (tur 3 A4c, 14.09) — HAVUZA BAGLI satirda ozel fiyat (C)
+ * liste fiyatindan (L) FARKLI. Migration 20260914180000_k1_donmus_ozel_fiyat'in
+ * "ayrismis" tanimiyla AYNI: kaynak fiyat listesi sahipsiz (havuz) VE urun
+ * indeksi yok ya da sahipsiz; C ve L dolu; |C − L| >= 1e-6. Kisisel liste ve
+ * yetim satir havuza bagli DEGILDIR (indeksi sahipli ama listesi sahipsiz eski
+ * kisisel liste de degil). Hangisinin gecerli oldugu TAHMIN EDILMEZ: havuz
+ * guncellenip yeniden aktarilmis ve ozel fiyat eski havuz fiyatinda donmus
+ * olabilir — ya da kullanici bilerek yazmistir. Ekran iki fiyati isaretle
+ * gosterir, karar kullanicinin.
+ */
+export function havuzFiyatAyrisimi(s: HavuzBagi): { ozel: number; havuz: number } | null {
+  const liste = s.sourcePriceList;
+  if (!liste || liste.ownerUserId != null || liste.ownerFirmaId != null) return null;
+  if (s.productIndexId != null && (!s.product || s.product.ownerUserId != null || s.product.ownerFirmaId != null)) return null;
+  if (s.customPrice == null || s.listPrice == null) return null;
+  if (Math.abs(s.customPrice - s.listPrice) < 0.000001) return null;
+  return { ozel: s.customPrice, havuz: s.listPrice };
 }
 
 export interface LibrarySheet {
@@ -116,6 +147,8 @@ export function buildLibrarySheetRows(items: LibrarySheetItem[]): LibrarySheet {
       col_boy: item.boy ?? '',
       col_kod: item.urunKodu ?? '',
       col_not: item.not ?? '',
+      // K1 (tur 3 A4c): ozel fiyat havuz liste fiyatindan ayrismis — ekran isaretler
+      ...(item.fiyatAyrisik ? { _fiyatAyrisik: item.fiyatAyrisik } : {}),
     };
     rowData.push(row);
   }

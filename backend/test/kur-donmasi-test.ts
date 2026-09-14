@@ -117,12 +117,16 @@ const TCMB_XML = `<?xml version="1.0" encoding="UTF-8"?><Tarih_Date Tarih="12.09
 <Currency CrossOrder="0" Kod="USD" CurrencyCode="USD"><Unit>1</Unit><ForexBuying>47.20</ForexBuying><ForexSelling>47.35</ForexSelling></Currency>
 <Currency CrossOrder="9" Kod="EUR" CurrencyCode="EUR"><Unit>1</Unit><ForexBuying>54.00</ForexBuying><ForexSelling>54.10</ForexSelling></Currency>
 </Tarih_Date>`;
-type AgModu = 'ag-yok' | 'tcmb-ok';
+type AgModu = 'ag-yok' | 'tcmb-ok' | 'asili';
 let agModu: AgModu = 'ag-yok';
 let fetchSayac = 0;
+/** L blogu sahte saati: 'asili' fetch saati 8 sn ilerletir (kaynak zaman asimi), gercek bekleme yok. */
+const saat = { t: 1_000_000 };
 (global as any).fetch = async (url: string) => {
   fetchSayac++;
   if (agModu === 'ag-yok') throw new Error('getaddrinfo ENOTFOUND (test)');
+  // undici'nin asili sunucuda urettigi hata (14.09 gercek sunucuyla olculdu)
+  if (agModu === 'asili') { saat.t += 8000; throw new DOMException('The operation was aborted due to timeout', 'TimeoutError'); }
   return url.includes('tcmb')
     ? { ok: true, status: 200, text: async () => TCMB_XML }
     : { ok: true, status: 200, json: async () => ({ rates: { TRY: 47.3, EUR: 0.875 } }) };
@@ -338,6 +342,96 @@ async function kurGeriDususu() {
       && kurGecerli({ usdTry: 0, eurTry: 54.1, source: 'cache' }, 'USD') === false);
     check('K3 TCMB / er-api / onbellek kuru GECERLI', ['tcmb', 'er-api', 'cache'].every((s) => kurGecerli({ usdTry: 47.35, eurTry: 54.1, source: s }, 'USD')));
     check('K4 bos / tanimsiz para birimi TRY sayilir (eski satirlar)', paraBirimiKodu(null) === 'TRY' && paraBirimiKodu('') === 'TRY' && paraBirimiKodu(undefined) === 'TRY');
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L) NEGATIF ONBELLEK (tur 3 A4d, 14.09): iki kaynak ASILI kalinca her
+  //    getRates 16 sn bekliyordu (gercek zamanla olculdu); surukle-doldur 10
+  //    satir ≈ 160 sn. Yalniz asili (>= 4 sn) hatadan sonra 60 sn aga cikilmaz;
+  //    hizli hata pencere acmaz (G1/G2). Zaman SAHTE: servis `simdi` alanindan
+  //    okur, asili fetch saati 8 sn ilerletir — gercek bekleme yok. (Gercek
+  //    AbortSignal zamanlayicisi unref'li: bekleme ortasinda surec exit 0 ile
+  //    biter, yarida kesilen cikti "yesil" gorunur — olculdu.)
+  // ═══════════════════════════════════════════════════════════════════════
+  console.log('── L) NEGATIF ONBELLEK: asili kaynak her istekte 16 sn bekletmez ──');
+  {
+    const { kurGecerli } = require('../src/ozellik/fiyat/exchange-rates/exchange-rates.service');
+    const saatliKur = () => { const fx = sessizKur(); (fx as any).simdi = () => saat.t; return fx; };
+    const BAYAT_KUR = { usdTry: 47.35, eurTry: 54.1, usdTryBuying: 47.2, eurTryBuying: 54, source: 'tcmb', date: '12.09.2026', fetchedAt: '' };
+    const TL_ANA = [kutuphaneSatiri({ kategori: 'Küresel Vanalar', ad: 'Küresel vana', cins: 'pirinç', baglanti: 'dişli', cap: 'DN25', price: 850, urunKodu: 'V1', sheetName: 'S' })];
+    const CAPLAR = ['DN25', 'DN32', 'DN40', 'DN50', 'DN65'];
+    const USD_DIGER = CAPLAR.map((cap) => kutuphaneSatiri({ ...KOMP, ad: 'Dilatasyon kompansatörü', baglanti: 'flanşlı', cap, price: 100, paraBirimi: 'USD', urunKodu: `C-${cap}` }, { id: 'brand-2', name: 'DOVIZ MARKA' }));
+
+    sus();
+    agModu = 'asili'; saat.t = 1_000_000; fetchSayac = 0;
+    const r0 = await saatliKur().getRates();
+    const l0 = { fetch: fetchSayac, saat: saat.t, source: r0.source };
+
+    agModu = 'asili'; saat.t = 1_000_000; fetchSayac = 0;
+    const fx1 = saatliKur();
+    await fx1.getRates();
+    const pencerede: any[] = [];
+    for (let i = 0; i < 5; i++) { saat.t += 1000; pencerede.push(await fx1.getRates()); }
+    const l1Fetch = fetchSayac;
+
+    agModu = 'asili'; saat.t = 10_000_000; fetchSayac = 0;
+    const fx2 = saatliKur();
+    (fx2 as any).cache = { ...BAYAT_KUR }; (fx2 as any).cacheAt = saat.t - 2 * 60 * 60 * 1000;
+    const b1 = await fx2.getRates();
+    saat.t += 1000;
+    const b2 = await fx2.getRates();
+    const l2Fetch = fetchSayac;
+
+    agModu = 'asili'; saat.t = 20_000_000; fetchSayac = 0;
+    const fx3 = saatliKur();
+    await fx3.getRates();
+    const bitis = saat.t;
+    saat.t = bitis + 59_000; await fx3.getRates(); const f59 = fetchSayac;
+    saat.t = bitis + 61_000; await fx3.getRates(); const f61 = fetchSayac;
+
+    agModu = 'asili'; saat.t = 30_000_000; fetchSayac = 0;
+    const fx4 = saatliKur();
+    await fx4.getRates();
+    saat.t += 61_000; agModu = 'tcmb-ok';
+    const d1 = await fx4.getRates();
+    agModu = 'asili'; saat.t += 5_000;
+    const d2 = await fx4.getRates();
+
+    agModu = 'ag-yok'; saat.t = 40_000_000; fetchSayac = 0;
+    const fx5 = saatliKur();
+    const h1 = await fx5.getRates();
+    agModu = 'tcmb-ok';
+    const h2 = await fx5.getRates();
+
+    agModu = 'asili'; saat.t = 50_000_000; fetchSayac = 0;
+    const fx6 = saatliKur();
+    const doldur: any[] = [];
+    for (let i = 0; i < 10; i++) doldur.push((await eslestirici(fx6, tekKomp('USD')).bulkMatch(KIMLIK, 'brand-1', [SATIR]))[SATIR]);
+    const l6Fetch = fetchSayac;
+
+    agModu = 'asili'; saat.t = 60_000_000; fetchSayac = 0;
+    await eslestirici(saatliKur(), TL_ANA, USD_DIGER).bulkMatch(KIMLIK, 'brand-1', CAPLAR.map((c) => `Dilatasyon kompansatörü ${c}`));
+    const l7Fetch = fetchSayac;
+    agModu = 'ag-yok';
+    ac();
+
+    check('L0 olcutun kendisi: asili deneme 2 kaynaga gitti, saat 16 sn ilerledi, geri dusus dondu',
+      l0.fetch === 2 && l0.saat === 1_016_000 && l0.source === 'fallback', JSON.stringify(l0));
+    check('L1a ★ pencere icinde 5 cagri daha: aga cikilmaz (fetch 2de kalir)', l1Fetch === 2, `fetch=${l1Fetch}`);
+    check('L1b pencerede donen deger fallback, kurGecerli USD/EUR false (KUR-01 aynen)',
+      pencerede.every((r) => r.source === 'fallback' && !kurGecerli(r, 'USD') && !kurGecerli(r, 'EUR')), pencerede.map((r) => r.source).join(','));
+    check('L2a bayat basarili onbellek + asili kaynak: ilk cagri bayat kuru doner (cache, 47,35)', b1.source === 'cache' && b1.usdTry === 47.35, `${b1.source} ${b1.usdTry}`);
+    check('L2b pencerede bayat kur ONCE doner, aga cikilmaz, kurGecerli true',
+      b2.source === 'cache' && b2.usdTry === 47.35 && kurGecerli(b2, 'USD') && l2Fetch === 2, `${b2.source} ${b2.usdTry} fetch=${l2Fetch}`);
+    check('L3a pencere bitmeden (+59 sn) aga cikilmaz', f59 === 2, `fetch=${f59}`);
+    check('L3b pencere bitince (+61 sn) yeniden denenir', f61 === 4, `fetch=${f61}`);
+    check('L4a pencereden sonra kur donunce TCMB kuru (47,35)', d1.source === 'tcmb' && d1.usdTry === 47.35, `${d1.source} ${d1.usdTry}`);
+    check('L4b kur donduktan sonra kaynak yeniden asili olsa da pozitif onbellek doner', d2.source === 'cache' && d2.usdTry === 47.35, `${d2.source} ${d2.usdTry}`);
+    check('L5 ★ HIZLI hata pencere acmaz: kur hemen donerse ayni servis ornegi TCMB kurunu verir', h1.source === 'fallback' && h2.source === 'tcmb', `${h1.source} → ${h2.source}`);
+    check('L6a ★ 10 satirlik surukle-doldur (ayni servis): toplam fetch 2 (onceden 20 ≈ 160 sn)', l6Fetch === 2, `fetch=${l6Fetch}`);
+    check('L6b pencerede de her satir fiyatsiz + "kur alinamadi" (KUR-01)', doldur.every((r) => r?.netPrice === 0 && r?.kurAlinamadi === true),
+      doldur.map((r) => `${r?.netPrice}/${r?.kurAlinamadi}`).join(','));
+    check('L7 ★ tek istekte 5 "bu markada yok" adi (diger markada USD): fetch 2 (onceden 10)', l7Fetch === 2, `fetch=${l7Fetch}`);
   }
 }
 

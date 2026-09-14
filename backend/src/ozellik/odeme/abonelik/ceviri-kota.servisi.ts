@@ -263,9 +263,15 @@ export class CeviriKotaServisi implements OnApplicationBootstrap {
       where: { ...ayni, durum: 'ISLENIYOR', olusturuldu: { gt: new Date(simdi.getTime() - dk(ISLENIYOR_ZAMAN_ASIMI_DK)) } },
       select: { id: true },
     });
+    // Zincirin son halkası. Damgalar ms çözünürlüklü ve Postgres eşitlerin
+    // sırasını garanti etmez: aynı ms'de sonuçlanan yarım (KISMI) halka
+    // seçilirse tamamlanmış çeviri devam sanılır, kalan satır bir kez daha
+    // düşer. Eşitlikte önce son OLUŞTURULAN; o da eşitse (tüm zincir tek ms'de)
+    // zincirde en çok TESLİM EDEN — toplamTeslim zincir boyunca azalmaz,
+    // BASARILI halkanınki KISMI'ninkinden büyüktür. (W21f · W21j · W21k)
     const son = await db.ceviriTuketimi.findFirst({
       where: { ...ayni, durum: { in: ['BASARILI', 'KISMI'] }, sonuclandi: { gt: new Date(simdi.getTime() - dk(TEKRAR_PENCERESI_DK)) } },
-      orderBy: { sonuclandi: 'desc' },
+      orderBy: [{ sonuclandi: 'desc' }, { olusturuldu: 'desc' }, { toplamTeslim: 'desc' }],
       select: { id: true, durum: true, toplamTeslim: true },
     });
     return {

@@ -8,12 +8,24 @@ import { BulkDiscountDto } from './dto/bulk-discount.dto';
 import { BulkUpdateItemsDto } from './dto/bulk-update-items.dto';
 import { CreateManualBrandDto, ManualBrandRowDto } from './dto/create-manual-brand.dto';
 import { AddLibraryRowsDto } from './dto/add-library-rows.dto';
-import { buildLibrarySheetRows } from './library-sheet-builder';
+import { buildLibrarySheetRows, havuzFiyatAyrisimi } from './library-sheet-builder';
 import {
   buildProductIndex,
   ProductColumns,
 } from '../../eslestirme/matching/index/product-index';
 import { TerminologyService } from '../../eslestirme/matching/terminology.service';
+import { paraBirimleriniDogrula, satirAdi } from '../../fiyat/exchange-rates/exchange-rates.service';
+
+/**
+ * Kutuphane gorunumunun (sheet) UserLibrary join'leri — iki cagiran AYNI icerik.
+ * 16.07: Baglanti/Boy/Kod/Not tek gercek ProductIndex'te. Tur 3 A4c (14.09):
+ * indeks ve kaynak listenin SAHIP alanlari → `havuzFiyatAyrisimi` (K1 ayrismis
+ * fiyat isareti; migration'daki "havuza bagli" tanimi).
+ */
+const KUTUPHANE_GORUNUM_ICERIGI = {
+  product: { select: { baglanti: true, boyMm: true, urunKodu: true, not: true, ownerUserId: true, ownerFirmaId: true } },
+  sourcePriceList: { select: { ownerUserId: true, ownerFirmaId: true } },
+};
 
 @Injectable()
 export class LibraryService {
@@ -100,8 +112,9 @@ export class LibraryService {
 
     const discipline = dto.discipline === 'electrical' ? 'electrical' : 'mechanical';
 
-    // Bos ad'li satirlar elenir (spare/yarim satirlar)
-    const rows = (dto.rows ?? []).filter((r) => (r.ad ?? '').trim().length > 0);
+    // Bos ad'li satirlar elenir (spare/yarim satirlar); para birimi marka
+    // acilmadan dogrulanir (KUR-02).
+    const rows = this.doluSatirlar(dto.rows ?? []);
     if (rows.length === 0) {
       throw new BadRequestException('En az bir malzeme satiri (Malzeme Adi dolu) gerekli');
     }
@@ -144,6 +157,18 @@ export class LibraryService {
       belirsiz: sonuc.belirsiz,
       ogrenilenAile: sonuc.ogrenilenAile,
     };
+  }
+
+  /**
+   * Adi dolu satirlar, para birimi YAZIMDAN ONCE dogrulanmis (KUR-02, tur 3 A3).
+   * Gecersiz kod ('EURO', '$', 'GBP', bos) → 400; marka/liste/satir ACILMAZ.
+   * Eski hali ham yaziyordu ('usd' → 'usd', '   ' → '   '). Satir numarasi
+   * kullanicinin tablosundaki sira (bos satirlar elenmeden once).
+   */
+  private doluSatirlar(tum: ManualBrandRowDto[]): ManualBrandRowDto[] {
+    const dolu = tum.map((r, sira) => ({ r, sira })).filter(({ r }) => (r.ad ?? '').trim().length > 0);
+    const kodlar = paraBirimleriniDogrula(dolu, ({ r }) => r.currency, ({ r, sira }) => satirAdi(`Satır ${sira + 1}`, r.ad));
+    return dolu.map(({ r }, i) => ({ ...r, currency: kodlar[i] }));
   }
 
   /**
@@ -589,7 +614,7 @@ export class LibraryService {
     const items = await this.prisma.userLibrary.findMany({
       where: { firmaId: k.firmaId, brandId },
       // 16.07: Baglanti/Boy/Kod/Not tek gercek ProductIndex'te — join'le gelir
-      include: { product: { select: { baglanti: true, boyMm: true, urunKodu: true, not: true } } } as any,
+      include: KUTUPHANE_GORUNUM_ICERIGI as any,
       orderBy: [{ sortOrder: 'asc' }, { materialName: 'asc' }],
     });
 
@@ -642,6 +667,9 @@ export class LibraryService {
       boy: item.product?.boyMm ?? null,
       urunKodu: item.product?.urunKodu ?? null,
       not: item.product?.not ?? null,
+      // K1 (tur 3 A4c): gosterilen fiyat DEGISMEZ (col3 = C ?? L, saveBrandSheets
+      // karsilastirmasi ona dayanir); ayrisim yalniz ISARET olarak tasinir.
+      fiyatAyrisik: havuzFiyatAyrisimi(item),
     };
   }
 
@@ -658,7 +686,7 @@ export class LibraryService {
       if (!list) throw new NotFoundException('Liste bulunamadi');
       const items = await this.prisma.userLibrary.findMany({
         where: { firmaId: k.firmaId, brandId, libraryListId: listId } as any,
-        include: { product: { select: { baglanti: true, boyMm: true, urunKodu: true, not: true } } } as any,
+        include: KUTUPHANE_GORUNUM_ICERIGI as any,
         orderBy: [{ sortOrder: 'asc' }, { materialName: 'asc' }],
       });
       const built = buildLibrarySheetRows(items.map((item: any) => this.sheetItemOf(item)));
@@ -741,7 +769,7 @@ export class LibraryService {
     const sahiplik = await this.prisma.userLibrary.count({ where: { firmaId: k.firmaId, brandId } });
     if (sahiplik === 0) throw new NotFoundException('Kutuphanenizde bu marka yok');
 
-    const rows = (dto.rows ?? []).filter((r) => (r.ad ?? '').trim().length > 0);
+    const rows = this.doluSatirlar(dto.rows ?? []);
     if (rows.length === 0) {
       throw new BadRequestException('En az bir satirda Malzeme Adi dolu olmali — liste olusturulmadi.');
     }

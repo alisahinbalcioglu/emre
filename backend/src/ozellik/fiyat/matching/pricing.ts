@@ -48,6 +48,11 @@ export function kurusTamsayi(tl: number): number {
   return tl < 0 && k !== 0 ? -k : k;
 }
 
+/** KALEM TOPLAMI — malzeme + iscilik kurus katmaninda (FE esi pricing.ts kalemToplami). */
+export function kalemToplami(mat: number, lab: number): number {
+  return (kurusTamsayi(mat) + kurusTamsayi(lab)) / 100;
+}
+
 /** ASAMA A: Liste fiyatina TEK iskonto → NET (alis). Listenin biriminde.
  *  hesaplaNetFiyat(3354.64, 10) === 3019.2 ; iskonto 0 → net = liste. */
 export function hesaplaNetFiyat(listeFiyat: number, iskontoYuzde: number): number {

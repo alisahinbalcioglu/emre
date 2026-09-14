@@ -111,6 +111,31 @@ export function kurusTamsayi(tl: number): number {
   return tl < 0 && k !== 0 ? -k : k;
 }
 
+/**
+ * KALEM TOPLAMI = malzeme + iscilik, KURUS katmaninda (A4a / G4-K11).
+ * Taraf toplamlari (hesaplaSatirToplam: YUKARI 1 hane; dosyadan gelen deger
+ * aynen) DEGISMEZ — yalniz ikisinin TOPLAMI ikinci kez yuvarlanmaz.
+ * Cikti (standart-cikti.ts satir I hucresi) ve sayfa toplami ayni kurali
+ * zaten uyguluyor. Backend esi matching/pricing.ts — ikisi birlikte.
+ */
+export function kalemToplami(mat: number, lab: number): number {
+  return (kurusTamsayi(mat) + kurusTamsayi(lab)) / 100;
+}
+
+/**
+ * SATIR GENEL TOPLAMI — EKRAN BIRIMINDE, PARCALARDAN (A4a/A4b, tur 3 14.09).
+ * Cikti motorunun satir I hucresiyle AYNI kural: K(mat×oran) + K(lab×oran).
+ *  - Dovizde `_toplam × oran` tek seferde cevrilince 1 kurus kayiyordu (4400
+ *    Genel Toplam hucresinin USD'de 139'u, EUR'da 111'i — olculdu).
+ *  - TL'de (oran 1) `kalemToplami` ile ayni: eski yukari-1-hane kuraliyla
+ *    kaydedilmis bayat hucre ("100.3") ekranda ciktiyla ayni kurusu gosterir.
+ * Parca YOKSA null: cagiran hucre degerini aynen gosterir (dosyadan gelen tek toplam).
+ */
+export function satirGenelToplamiGosterim(mat: number | null, lab: number | null, oran = 1): number | null {
+  if (mat == null && lab == null) return null;
+  return (kurusTamsayi((mat ?? 0) * oran) + kurusTamsayi((lab ?? 0) * oran)) / 100;
+}
+
 /** ASAMA A: Liste fiyatina TEK iskonto → NET (alis). Listenin biriminde.
  *  hesaplaNetFiyat(3354.64, 10) === 3019.2 ; iskonto 0 → net = liste. */
 export function hesaplaNetFiyat(listeFiyat: number, iskontoYuzde: number): number {
@@ -260,8 +285,7 @@ export function toplamlariTamamla(
       const matVar = !!mTop && !bos(r[mTop]);
       const labVar = !!lTop && !bos(r[lTop]);
       if (matVar || labVar) {
-        const t = sayi(mTop ? r[mTop] : 0) + sayi(lTop ? r[lTop] : 0);
-        r[genel] = yukariYuvarla(t).toFixed(1);
+        r[genel] = kalemToplami(sayi(mTop ? r[mTop] : 0), sayi(lTop ? r[lTop] : 0)).toFixed(PARA_ONDALIK);
         dokunulan++;
       }
     }
@@ -365,6 +389,9 @@ export interface SayfaToplamOzeti {
 export function sayfaToplamlari(
   satirlar: Record<string, any>[],
   roller: Record<string, string | undefined>,
+  /** Gosterim carpani (TRY = 1). Her satir AYRI cevrilip kuruslanir —
+   *  cikti motoru (standart-cikti.ts kurus()) ile ayni sira (A4b / Orta-2). */
+  oran = 1,
 ): SayfaToplamOzeti {
   const { materialUnitPriceField: mBirim, materialTotalField: mTop,
     laborUnitPriceField: lBirim, laborTotalField: lTop,
@@ -409,11 +436,11 @@ export function sayfaToplamlari(
     }
 
     if (m) {
-      if (m.fiyatli) { o.matFiyatli++; matToplamK += K(m.satis); matMaliyetK += K(m.maliyet); }
+      if (m.fiyatli) { o.matFiyatli++; matToplamK += K(m.satis * oran); matMaliyetK += K(m.maliyet * oran); }
       else o.matFiyatsiz++;
     }
     if (l) {
-      if (l.fiyatli) { o.labFiyatli++; labToplamK += K(l.satis); labMaliyetK += K(l.maliyet); }
+      if (l.fiyatli) { o.labFiyatli++; labToplamK += K(l.satis * oran); labMaliyetK += K(l.maliyet * oran); }
       else o.labFiyatsiz++;
     }
   }

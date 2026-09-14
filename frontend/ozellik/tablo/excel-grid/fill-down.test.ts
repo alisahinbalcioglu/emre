@@ -340,7 +340,7 @@ describe('SD1-SD10 sürükle-doldur modülü', () => {
       kaynakVaryantTags: null, kaynakLabel: '', hedefAlanlar: ISCILIK_ALANLARI,
     });
     expect(h.data._labToplam).toBe('300.0');            // 150 × 2
-    expect(h.data._toplam).toBe('1300.0');              // kusurlu hâl: '600.0'
+    expect(h.data._toplam).toBe('1300.00');             // kusurlu hâl: '600.0' · 2 hane: tur 3 A4a (kuruş katmanı)
   });
 
   it('GT-2 MALZEME doldurmasında da Toplam = malzeme + işçilik (ikiz simetrisi)', async () => {
@@ -349,8 +349,8 @@ describe('SD1-SD10 sürükle-doldur modülü', () => {
       hedefler: [h] as any, markaId: 'marka-1', roller: ROLLER_GENEL, motor: netVeren(150),
       kaynakVaryantTags: null, kaynakLabel: '',
     });
-    expect(h.data[ROLLER.materialTotalField]).toBe('300.0');
-    expect(h.data._toplam).toBe('1300.0');
+    expect(h.data[ROLLER.materialTotalField]).toBe('300.0');   // taraf toplamı: YUKARI 1 hane (değişmedi)
+    expect(h.data._toplam).toBe('1300.00');
   });
 
   it('GT-3 malzeme toplamı BOŞken işçilik doldurması Toplam\'ı şişirmez', async () => {
@@ -359,7 +359,7 @@ describe('SD1-SD10 sürükle-doldur modülü', () => {
       hedefler: [h] as any, markaId: 'firma-1', roller: ROLLER_GENEL, motor: netVeren(150),
       kaynakVaryantTags: null, kaynakLabel: '', hedefAlanlar: ISCILIK_ALANLARI,
     });
-    expect(h.data._toplam).toBe('300.0');               // kusurlu hâl: '600.0'
+    expect(h.data._toplam).toBe('300.00');              // kusurlu hâl: '600.0'
   });
 
   it('GT-4 SD7 SÖZLEŞMESİ: YAZILAN her alan geri-alma anlığında da var', async () => {
@@ -524,21 +524,23 @@ describe('KUR-01 kur alınamadı — sürükle-doldur', () => {
     expect(h.data._matKurBilgi).toBeUndefined();
   });
 
-  it('G3 float gürültüsü Genel Toplamı ŞİŞİRMEZ: malz 0,1 + işç 0,2 → 0.3 (eskisi 0.4); 1,1 + 4,2 → 5.3', async () => {
+  it('G3 kalem toplamı KURUŞ katmanında: malz 0,1 + işç 0,2 → 0.30 (float 0.4 değil); 1,1 + 4,2 → 5.30; 1,1 + 0,01 → 1.11', async () => {
     const roller = { ...ROLLER, laborTotalField: '_labToplam', grandTotalField: '_toplam' };
     const h1 = node(508, 'Vida', 1, { _labToplam: '0.2' });
     await fillDown({ hedefler: [h1] as any, markaId: 'b1', roller, motor: async () => ({ netPrice: 0.1, confidence: 'high' }), kaynakVaryantTags: null, kaynakLabel: '' });
-    expect(h1.data._toplam).toBe('0.3');
+    expect(h1.data._toplam).toBe('0.30');
     const h2 = node(509, 'Dübel', 1, { _labToplam: '4.2' });
     await fillDown({ hedefler: [h2] as any, markaId: 'b1', roller, motor: async () => ({ netPrice: 1.1, confidence: 'high' }), kaynakVaryantTags: null, kaynakLabel: '' });
-    expect(h2.data._toplam).toBe('5.3');
-    // Kural YUKARI 1 hane (restore-rematch ve recalcGrand ile ayni) — en yakina
-    // yuvarlama degil. Dosyadan 2 haneli gelen iscilik toplami bunu ayirir:
-    // 1,1 + 0,01 = 1,11 → 1.2 (en yakina yuvarlama 1.1 derdi). Mutasyon M18
-    // `toFixed(1)` bu satir yokken HAYATTA kalmisti (14.09).
+    expect(h2.data._toplam).toBe('5.30');
+    // Kural (tur 3 A4a / G4-K11, 14.09): malzeme + işçilik KURUŞ katmanında
+    // toplanır (`kalemToplami`), ikinci kez yuvarlanmaz — çıktının satır I
+    // hücresi ve sayfa toplamıyla aynı. Dosyadan 2 haneli gelen işçilik toplamı
+    // kuralları ayırır: 1,1 + 0,01 = 1,11. Eski YUKARI-1-hane kuralı 1.2 derdi
+    // (Bursa'da 41 kalem, +₺2,42), en yakına 1 hane 1.1 derdi. (Önceki turda bu
+    // satır eski kuralı mühürlüyordu: '1.2'.)
     const h3 = node(510, 'Pul', 1, { _labToplam: '0.01' });
     await fillDown({ hedefler: [h3] as any, markaId: 'b1', roller, motor: async () => ({ netPrice: 1.1, confidence: 'high' }), kaynakVaryantTags: null, kaynakLabel: '' });
-    expect(h3.data._toplam).toBe('1.2');
+    expect(h3.data._toplam).toBe('1.11');
   });
 
   it('KUR-8 geri-alma anlığı kur alanını da taşır (SD7: YAZILAN her alan anlıkta)', async () => {

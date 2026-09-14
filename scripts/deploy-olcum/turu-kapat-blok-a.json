@@ -1,0 +1,31 @@
+{
+  "tur": "turu-kapat Blok A (14.09.2026, tur 3)",
+  "not": "Bu turun Blok A'sinda DISARIDAN gorulebilen her sey. Surum tek basina yetmez (plan 1.12). Isaret metinleri canli pakette (eae583e576ad) YOK — bos yere yesil yanamazlar. Oturum/DB/sunucu isteyenler 'olculemeyenler'de, yerel kapilariyla.",
+  "taban": "https://metapricex.com",
+  "olcumler": [
+    {
+      "ad": "backend surumu",
+      "neden": "taban kosul — tek basina YETMEZ",
+      "tip": "json", "yol": "/api/health", "alan": "build_sha", "esit": "$SHA"
+    },
+    {
+      "ad": "frontend surumu",
+      "neden": "deploy.sh frontend'i dogrulamaz (12.08 dersi); A4a/A4b/A4c ve A2 on yuzde",
+      "tip": "json", "yol": "/surum.json", "alan": "build_sha", "esit": "$SHA"
+    },
+    {
+      "ad": "A4c ayrismis kutuphane fiyati isareti on yuz paketinde",
+      "neden": "havuza bagli satirda ozel fiyat havuz liste fiyatindan ayrisinca hucre sari + iki fiyatli ipucu (isaret.ts, ExcelGrid parcasi)",
+      "tip": "paket-metni", "yol": "/quotes/new",
+      "icerir": ["havuz liste fiyatı", "geçerli fiyatı bu hücreye yazın"]
+    }
+  ],
+  "olculemeyenler": [
+    { "ad": "A1 ceviri kotasi zincir siralamasi (W21f kararsiz test)", "neden": "backend ic davranis, disaridan tetiklenmez — CI 'Tek regresyon paketi' adiminin yesili + yerelde test:ceviri-kota-uygulama W21j/W21k (kapi komutuyla 20/20)" },
+    { "ad": "A3 KUR-02 yazma yollari gerekceli 400", "neden": "oturum ister; parola girisi bu olcumu yapan ajana yasak (yerelde: test:para-birimi-yazim, gercek ValidationPipe dahil)" },
+    { "ad": "A4a Bursa kayit toplami 295.272.922,28", "neden": "oturumla dosya yukleyip kaydetmeyi ister (yerelde: test:hesap H11)" },
+    { "ad": "A4b USD/EUR ekran sayfa toplami = cikti", "neden": "oturum + dovizli teklif ekrani ister (yerelde: test:hesap H4b + lib/sayfa-toplamlari.test.ts)" },
+    { "ad": "A4c K1 donmus ozel fiyat migration'i", "neden": "veritabani erisimi ister — Faz 0 oturumunun alani: migrate deploy gunlugunde 'K1 temizlik: yedeklenip temizlenen=… · ayrismis=…' NOTICE'i ve SELECT count(*) FROM \"KutuphaneOzelFiyatYedegi\" (yerelde: test:migration K bloku)" },
+    { "ad": "A4d asili kur kaynagi negatif onbellegi", "neden": "TCMB ve yedek kaynagin asili kalmasini ister; disaridan uretilemez (yerelde: test:kur L bloku)" }
+  ]
+}

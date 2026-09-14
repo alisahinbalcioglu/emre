@@ -27,6 +27,9 @@
  * demektir.
  */
 
+// NOT: goreli yol ZORUNLU — vitest.config.ts'te '@/' alias'i tanimli degil.
+import { paraBicim } from '../../fiyat/pricing';
+
 /** Isaretin okundugu dal. Metinler menu adini bundan turetir. */
 export type IsaretDal = 'malzeme' | 'iscilik';
 
@@ -129,4 +132,30 @@ export function isaretTooltip(g: IsaretGirdisi): string {
   if (d === 'urun_degil') return 'Oran/hizmet satırı — fiyat beklenmiyor';
   if (malzemeDali(g) && g.oneri) return 'Öneri — kontrol edin';
   return '';
+}
+
+const PARA_SEMBOLU: Record<string, string> = { TRY: '₺', USD: '$', EUR: '€' };
+
+/**
+ * K1 AYRISMIS KUTUPHANE FIYATI (tur 3 A4c, 14.09) — kutuphane "Liste Fiyat"
+ * hucresi. HAVUZA BAGLI satirda ozel fiyat havuz liste fiyatindan ayrismis:
+ * havuz guncellenip yeniden aktarilmis ve ozel fiyat eski havuz fiyatinda
+ * donmus OLABILIR — ya da kullanici bilerek yazmistir. Hangisinin gecerli
+ * oldugu TAHMIN EDILMEZ: hucre SARI, ipucu iki fiyati gosterir, kullanici
+ * gecerli fiyati hucreye yazar. Sinyal backend'den gelir (`_fiyatAyrisik`,
+ * library-sheet-builder `havuzFiyatAyrisimi` — migration'daki "ayrismis"
+ * tanimi). Sinyal yoksa null: cagiran normal stili uygular.
+ */
+export function kutuphaneFiyatAyrisimi(d: unknown): { stil: IsaretStili; ipucu: string } | null {
+  const satir = d as { _fiyatAyrisik?: { ozel?: unknown; havuz?: unknown }; _currency?: unknown } | null | undefined;
+  const a = satir?._fiyatAyrisik;
+  if (!a || typeof a !== 'object') return null;
+  const ozel = Number(a.ozel);
+  const havuz = Number(a.havuz);
+  if (a.ozel == null || a.havuz == null || !Number.isFinite(ozel) || !Number.isFinite(havuz)) return null;
+  const sembol = PARA_SEMBOLU[String(satir?._currency ?? 'TRY')] ?? '₺';
+  return {
+    stil: SARI,
+    ipucu: `Özel fiyat ${sembol}${paraBicim(ozel, 1)} · havuz liste fiyatı ${sembol}${paraBicim(havuz, 1)} — havuz fiyatı değişmiş; geçerli fiyatı bu hücreye yazın`,
+  };
 }

@@ -1035,6 +1035,22 @@ enum CeviriTuketimDurumu {
   BASARISIZ
 }
 
+/// K1 DONMUS OZEL FIYAT YEDEGI (tur 3 A4c, 14.09) — migration
+/// 20260914180000_k1_donmus_ozel_fiyat'in NULL'a cektigi `UserLibrary.customPrice`
+/// degerleri. Geri alma: migration dosyasindaki GERI ALMA blogu (yalniz hala
+/// NULL olan satiri yazar). Semada DURMAK ZORUNDA: `prisma db push` semada
+/// olmayan tabloyu siler. FK yok: kutuphane satiri silinse de iz kalir.
+model KutuphaneOzelFiyatYedegi {
+  userLibraryId   String   @id
+  firmaId         String?
+  eskiCustomPrice Float
+  listPrice       Float
+  kaynakFiyat     Float
+  /// 'K1-donmus-ozel-fiyat'
+  sebep           String
+  temizlendi      DateTime @default(now())
+}
+
 model SystemSettings {
   id        String   @id @default(uuid())
   key       String   @unique

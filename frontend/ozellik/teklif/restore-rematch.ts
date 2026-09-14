@@ -61,7 +61,8 @@ import {
   hesaplaSatisBirimFiyat,
   hesaplaSatirToplam,
   etkinMiktar,
-  yukariYuvarla,
+  kalemToplami,
+  PARA_ONDALIK,
 } from '../fiyat/pricing';
 import { sayiAlani } from '../fiyat/sayi-alani';
 
@@ -201,7 +202,7 @@ function genelToplamiTazele(row: ExcelRowData, roles: ColumnRoles): void {
   };
   const mat = oku(roles.materialTotalField);
   const lab = oku(roles.laborTotalField);
-  row[genelAlan] = yukariYuvarla(mat + lab).toFixed(1);
+  row[genelAlan] = kalemToplami(mat, lab).toFixed(PARA_ONDALIK);
 }
 
 /**
