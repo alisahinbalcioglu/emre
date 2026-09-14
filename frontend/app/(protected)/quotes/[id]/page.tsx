@@ -13,7 +13,10 @@ import { Card } from '@/ortak/ui/card';
 import api from '@/ortak/lib/api';
 import { toast } from '@/ortak/hooks/use-toast';
 import { cn } from '@/ortak/lib/utils';
-import { cevrilecekMetinler, ceviriUygula, ceviriGeriAl } from '@/ozellik/teklif/ceviri';
+import { ceviriUygula, ceviriGeriAl } from '@/ozellik/teklif/ceviri';
+import { teklifCevirisiAl } from '@/ozellik/teklif/ceviri-akisi';
+import { bosSonucBildirimi, sonucBildirimi } from '@/ozellik/teklif/ceviri-kota';
+import { confirm } from '@/ortak/hooks/use-confirm';
 import { TASLAK_ANAHTARI, kayittanTaslak } from '@/ozellik/teklif/taslak';
 import { teklifCiktisiniIndir, fiyatliExceliIndir } from '@/ozellik/cikti/export-download';
 import { ExcelGrid } from '@/ozellik/tablo/excel-grid/ExcelGrid';
@@ -251,53 +254,36 @@ export default function QuoteDetailPage() {
       return;
     }
 
-    const metinler = cevrilecekMetinler(sayfalar);
-    if (metinler.length === 0) {
-      toast({
-        title: 'Çevrilecek metin yok',
-        description: 'Bu teklifte çevrilebilir malzeme/iş adı bulunamadı.',
-      });
+    // Faz 6.2: istemci METIN LISTESI gondermez. Sunucu kayitli teklifi okur,
+    // cevrilecekleri ve kotadan dusecek satiri kendisi hesaplar; once
+    // onizleme gosterilir, onaydan sonra cevrilir.
+    const sonuc = await teklifCevirisiAl(id, {
+      get: (url, ayar) => api.get(url, ayar),
+      post: (url, govde) => api.post(url, govde),
+      onay: confirm,
+      bildir: toast,
+      yukleniyor: setCeviriYukleniyor,
+    });
+    if (!sonuc) return;
+
+    const yazilan = ceviriUygula(sayfalar, sonuc.harita ?? {});
+
+    // ⚠ TEK HUCRE BILE DEGISMEDIYSE BU BASARI DEGILDIR. 13.08 canli olcumu:
+    // API anahtari gecersizdi, sunucu bos harita dondu, ekran "Ceviri
+    // tamamlandi" dedi ve dugme "Turkceye Don"e gecti — hicbir sey
+    // cevrilmemisken kullanici ozelligin CALISTIGINI sandi. Kotadan satir
+    // dustuyse mesaj bunu da soyler (14.09 incelemesi O3).
+    if (yazilan === 0) {
+      const bos = bosSonucBildirimi(sonuc);
+      toast({ title: bos.baslik, description: bos.aciklama, variant: 'destructive' });
       return;
     }
 
-    setCeviriYukleniyor(true);
-    try {
-      const { data } = await api.post('/ai/translate', { metinler, hedefDil: 'en' });
-      const yazilan = ceviriUygula(sayfalar, data?.harita ?? {});
-
-      // ⚠ TEK HUCRE BILE DEGISMEDIYSE BU BASARI DEGILDIR. 13.08 canli olcumu:
-      // API anahtari gecersizdi, sunucu bos harita dondu, ekran "Ceviri
-      // tamamlandi" dedi ve dugme "Turkceye Don"e gecti — hicbir sey
-      // cevrilmemisken kullanici ozelligin CALISTIGINI sandi.
-      if (yazilan === 0) {
-        toast({
-          title: 'Çeviri uygulanamadı',
-          description: 'Sunucudan çeviri gelmedi — hiçbir hücre değişmedi.',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      setCeviriDili('en');
-      setCeviriSurumu((n) => n + 1);
-      dilKaydet('en');
-      const eksik = Number(data?.basarisiz ?? 0) > 0;
-      toast({
-        title: eksik ? 'Çeviri KISMEN tamamlandı' : 'Çeviri tamamlandı',
-        description: eksik
-          ? `${yazilan} hücre çevrildi · ${data.basarisiz} parça başarısız, o metinler Türkçe kaldı`
-          : `${yazilan} hücre çevrildi · ${data?.onbellekten ?? 0} önbellekten, ${data?.cevrilen ?? 0} yeni`,
-        variant: eksik ? 'destructive' : undefined,
-      });
-    } catch (e: any) {
-      toast({
-        title: 'Çeviri başarısız',
-        description: e?.response?.data?.message || e?.message || 'Bilinmeyen hata',
-        variant: 'destructive',
-      });
-    } finally {
-      setCeviriYukleniyor(false);
-    }
+    setCeviriDili('en');
+    setCeviriSurumu((n) => n + 1);
+    dilKaydet('en');
+    const b = sonucBildirimi(sonuc, yazilan);
+    toast({ title: b.baslik, description: b.aciklama, variant: b.hata ? 'destructive' : undefined });
   };
 
   const birimSec = (c: Currency) => {

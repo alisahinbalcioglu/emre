@@ -58,6 +58,8 @@ export enum Yetenek {
   ABONELIK_YONET = 'abonelik.yonet',
   // Backend ikizi: KISITLI_MODDA_ACIK'e girmez (para harcayan uç).
   AI_ANALIZ = 'ai.analiz',
+  // Backend ikizi (Faz 6.8): İngilizce çeviri — o da para harcar, kısıtlı modda kapalı.
+  CEVIRI = 'ceviri',
 }
 
 /**

@@ -27,6 +27,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { InternalServerErrorException } from '@nestjs/common';
 import { AdminService } from '../src/ozellik/kutuphane/admin/admin.service';
+import { kullanimiOlc } from '../src/ozellik/giris/ai/ai-maliyet';
 
 let passed = 0;
 let failed = 0;
@@ -265,11 +266,24 @@ async function main(): Promise<void> {
     /kimlik\?: \{ userId\?: string \| null; firmaId\?: string \| null \}/.test(aiServis) &&
       /userId: params\.kimlik\?\.userId \?\? null/.test(aiServis),
   );
+  // Faz 6.2 (14.09): ceviri ucu artik `{quoteId}` alir ve kimligi `kimlikCoz`
+  // ile servise verir; servis ayni kimligi `cevir` → `logUsage`a tasir. Zincir
+  // iki halkada olculur — biri koparsa atif yine sessizce bos kalir.
   check(
     'H4 ⭐ ceviri ucu KULLANICIYI gecirıyor (zincirin en kolay koptugu yer)',
-    /@CurrentUser\(\) user/.test(aiKontrolcu) && /userId: user\?\.id/.test(aiKontrolcu),
+    /translate\(@CurrentUser\(\) user/.test(aiKontrolcu) &&
+      /teklifiCevir\(kimlikCoz\(user\)/.test(aiKontrolcu),
     'controller kimligi almazsa logUsage`a gecirecek veri OLMAZ ve atif sessizce bos kalir',
   );
+  {
+    const ceviriServis = kodu(oku('backend/src/ozellik/giris/ai/ceviri.service.ts'));
+    check(
+      'H4b ⭐ ceviri servisi kimligi cevir → logUsage zincirine tasiyor',
+      /this\.cevir\(r\.icerik\.metinler, hedefDil, k\)/.test(ceviriServis) &&
+        /logUsage\(\{\s*kimlik,/.test(ceviriServis),
+      'servis kimligi cevir`e vermezse AI kullanim kaydinda kullanici/firma bos yazilir',
+    );
+  }
   check(
     'H5 havuz PDF ayiklamasi da atifli (yoneticiye yazilir)',
     /extractGlobalMaterials\(fileBuffer, \{/.test(servis),
@@ -278,6 +292,16 @@ async function main(): Promise<void> {
     'H6 ⟨olcut⟩ atif YAZILAMAZSA cagri DUSMUYOR (kimlik istege bagli)',
     /kimlik\?: \{/.test(aiServis),
   );
+  // Fiyat DAVRANISLA olculur, tablo metniyle degil (14.09): Sonnet 5 $2/$10.
+  // 13.09 olcum turu: $3/$15 yazan eski deger paneli 1,5 kat sisiriyordu.
+  {
+    const bin = kullanimiOlc({ input_tokens: 1000, output_tokens: 1000 }, 'claude-sonnet-5', 'claude');
+    check('H7 ★ Sonnet 5 fiyati $2/$10 — 1K girdi + 1K cikti = $0,012', bin.estimatedCost === 0.012, `${bin.estimatedCost}`);
+    const onbellek = kullanimiOlc({ cache_read_input_tokens: 10000, cache_creation_input_tokens: 1000 }, 'claude-sonnet-5', 'claude');
+    check('H8 onbellek okuma 0,1x · yazma 1,25x Sonnet 5 girdi fiyatindan ($0,002 + $0,0025)', onbellek.estimatedCost === 0.0045, `${onbellek.estimatedCost}`);
+    const bilinmeyen = kullanimiOlc({ input_tokens: 1000, output_tokens: 1000 }, 'claude-yeni-model', 'claude');
+    check('H9 ⟨olcut⟩ taninmayan Claude modeli en pahali kademeden sayilir ($0,030)', bilinmeyen.estimatedCost === 0.03, `${bilinmeyen.estimatedCost}`);
+  }
 
   // ── I · SUNUCU TARAFI SUZGEC (2.1) ────────────────────────────────────
   console.log('\n── I · SUNUCU TARAFI SUZGEC ──');

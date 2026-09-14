@@ -12,6 +12,8 @@ import { AbonelikServisi } from './abonelik/abonelik.servisi';
 import { ErisimServisi } from './abonelik/erisim.servisi';
 import { SatinAlmaServisi } from './abonelik/satinalma.servisi';
 import { AbonelikController } from './abonelik/abonelik.controller';
+import { FiyatController } from './abonelik/fiyat.controller';
+import { CeviriKotaServisi } from './abonelik/ceviri-kota.servisi';
 import { MutabakatJob } from './abonelik/mutabakat.job';
 import { DunningServisi } from './dunning/dunning.servisi';
 import { FaturaServisi } from './fatura/fatura.servisi';
@@ -47,6 +49,9 @@ import { EpostaServisi } from './eposta/eposta.servisi';
     IyzicoWebhookController,
     HavaleController,
     AbonelikController,
+    // ⚠ JWT'siz (Faz 6.1): fiyat sayfası girişsiz ziyaretçiye açıktır. Yalnız
+    // OKUR, ThrottlerGuard ile IP başına sınırlı (bkz. controller notu).
+    FiyatController,
   ],
   providers: [
     {
@@ -64,6 +69,7 @@ import { EpostaServisi } from './eposta/eposta.servisi';
     AbonelikServisi,
     SatinAlmaServisi,
     ErisimServisi,
+    CeviriKotaServisi,
     MutabakatJob,
     DunningServisi,
     FaturaServisi,
@@ -94,6 +100,8 @@ import { EpostaServisi } from './eposta/eposta.servisi';
   // yeni bir modül bağı ya da dairesel bağımlılık OLUŞMUYOR.
   exports: [
     ErisimServisi,
+    // Faz 6.2: AiModule çeviri kotasını buradan ayırır/sonuçlandırır.
+    CeviriKotaServisi,
     AbonelikServisi,
     SatinAlmaServisi,
     IyzicoClient,

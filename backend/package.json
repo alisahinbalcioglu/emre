@@ -18,6 +18,8 @@
     "test:spec": "ts-node test/spec-regression-test.ts",
     "test:contract": "ts-node test/contract-test.ts",
     "test:ceviri": "ts-node test/ceviri-karar-test.ts",
+    "test:ceviri-kota": "ts-node test/ceviri-kotasi-test.ts",
+    "test:ceviri-kota-uygulama": "ts-node test/ceviri-kota-uygulama-test.ts",
     "test:cikti-dil": "ts-node test/cikti-dil-test.ts",
     "test:product-index": "ts-node test/product-index-test.ts",
     "test:index": "ts-node test/index-engine-test.ts",

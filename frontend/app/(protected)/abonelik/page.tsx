@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import api from '@/ortak/lib/api';
-import { KAPSAM_ETIKET, SEVIYE_ETIKET, vitrinFiyati, type Paket } from '@/ozellik/odeme/paket-bicim';
+import { KAPSAM_ETIKET, SEVIYE_ETIKET, kotaCumlesi, vitrinFiyati, type Paket } from '@/ozellik/odeme/paket-bicim';
 import {
   ALAN_ETIKET,
   ZORUNLU_ALANLAR,
@@ -303,6 +303,8 @@ export default function AbonelikSayfasi() {
                     : `Aylik ${p.aylikTeklifHakki} teklif`}
                 </li>
                 <li>· DWG metraj {p.dwgAktif ? 'dahil' : 'haric'}</li>
+                {/* Faz 6 (13.09): kota fiyat sayfasıyla AYNI kaynaktan (sunucu tablosu). */}
+                {p.ceviriKotasi && <li>· {kotaCumlesi(p.ceviriKotasi, p.surum)}</li>}
               </ul>
 
               <button

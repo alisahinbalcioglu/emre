@@ -11,6 +11,7 @@ import { standartCiktiUret } from './standart-cikti';
 import { buildSampleFormat, ExportOverrides, FillContext } from '../../cikti/quote-formats/format-engine';
 import { ExchangeRatesService } from '../../fiyat/exchange-rates/exchange-rates.service';
 import { CeviriService } from '../../giris/ai/ceviri.service';
+import { ceviriAnahtari } from '../../giris/ai/ceviri-kurali';
 import { yukariYuvarla } from '../../fiyat/matching/pricing';
 
 /** KDV orani — kod sabiti (ayarlanabilirlik backlog) */
@@ -86,7 +87,9 @@ export class QuotesService {
   ): Promise<{ cevrilen: number; eksik: number }> {
     if (dil !== 'en' || !Array.isArray(sheets)) return { cevrilen: 0, eksik: 0 };
 
-    const anahtar = (v: unknown) => String(v ?? '').trim().replace(/\s+/g, ' ');
+    // Faz 6.2: önbellek anahtarı TEK normalizasyondan (ceviri-kurali.ts) —
+    // çeviri ucu haritayı bununla kurar, dışa aktarım bununla uygular.
+    const anahtar = ceviriAnahtari;
 
     // 1) Aday metinleri topla — yalniz AD alani (insanin okudugu metin).
     const adaylar: string[] = [];

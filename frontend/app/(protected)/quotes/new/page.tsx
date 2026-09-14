@@ -51,7 +51,9 @@ import { DWG_SISTEM_ALANLARI, dwgTeklifSemasi } from '@/ozellik/teklif/dwg-tekli
 import { kalemUret } from '@/ozellik/teklif/teklif-kalem';
 import { restoreRematch } from '@/ozellik/teklif/restore-rematch';
 import { TASLAK_ANAHTARI, TASLAK_SURUMU } from '@/ozellik/teklif/taslak';
-import { cevrilecekMetinler, ceviriUygula, ceviriGeriAl } from '@/ozellik/teklif/ceviri';
+import { ceviriUygula, ceviriGeriAl, cevrilmisSatirVarMi } from '@/ozellik/teklif/ceviri';
+import { teklifCevirisiAl } from '@/ozellik/teklif/ceviri-akisi';
+import { bosSonucBildirimi, sonucBildirimi } from '@/ozellik/teklif/ceviri-kota';
 import { sayiAlani } from '@/ozellik/fiyat/sayi-alani';
 import { fiyatsizKalemOzeti, fiyatsizOnayMetni, uyariyaGirerMi } from '@/ozellik/teklif/fiyatsiz-kalem-uyarisi';
 // NOT: `etkinMiktar` buradan DUSTU — tek tuketicisi restore blogunun icindeki
@@ -442,10 +444,9 @@ export default function NewQuotePage() {
 
   const hasAnyLabor = capabilities.mechanical.labor || capabilities.electrical.labor;
 
-  // ── CEVIRI (13.08) ─────────────────────────────────────────────────────
-  // Akis: benzersizlestir (dokunulmazlar elenir) → backend onbellek+API →
-  // haritayi satirlara uygula. Cap/olcu/sayi ASLA gonderilmez —
-  // ozellik/teklif/ceviri.ts testle muhurlu.
+  // ── CEVIRI (13.08 · Faz 6.2 14.09) ────────────────────────────────────
+  // Akis: kayitli teklif kimligi → sunucu cevrilecekleri secer (dokunulmazlar
+  // sunucuda, `ceviri-kurali.ts`) + kotayi ayirir → haritayi satirlara uygula.
   const [ceviriDili, setCeviriDili] = useState<'tr' | 'en'>('tr');
   const [ceviriYukleniyor, setCeviriYukleniyor] = useState(false);
 
@@ -471,49 +472,42 @@ export default function NewQuotePage() {
       return;
     }
 
-    const metinler = cevrilecekMetinler(sheets as any, liveRowDataBySheet);
-    if (metinler.length === 0) {
-      toast({ title: 'Cevrilecek metin yok', description: 'Bu teklifte cevrilebilir malzeme adi bulunamadi.' });
+    // ── KAYDEDILMEMIS TEKLIF CEVRILMEZ (Faz 6.2, 14.09) ──────────────────
+    // Istemci metin listesi GONDEREMEZ: kotadan dusecek satiri sunucu kayitli
+    // tekliften kendisi sayar. Kaydi olmayan teklifte dugme kapali (bkz.
+    // render); revizyonda KAYITLI icerik cevrilir, kaydedilmemis degisiklikler
+    // ceviriye girmez — onay kartinda soylenir.
+    if (!revizyonId) return;
+    const sonuc = await teklifCevirisiAl(
+      revizyonId,
+      {
+        get: (url, ayar) => api.get(url, ayar),
+        post: (url, govde) => api.post(url, govde),
+        onay: confirm,
+        bildir: toast,
+        yukleniyor: setCeviriYukleniyor,
+      },
+      { ekNot: 'Kayıtlı içerik çevrilir; kaydetmediğiniz değişiklikler çeviriye girmez.' },
+    );
+    if (!sonuc) return;
+
+    const yazilan = ceviriUygula(sheets as any, sonuc.harita ?? {}, liveRowDataBySheet);
+
+    // ⚠ Kayitli teklif ekraninin IKIZI — ayni yalan burada da kapatildi:
+    // tek hucre bile degismediyse "tamamlandi" DENMEZ ve dil dugmesi
+    // "Turkceye Don"e GECMEZ (13.08, gecersiz anahtar canli olcumu). Kotadan
+    // satir dustuyse mesaj bunu da soyler (14.09 incelemesi O3).
+    if (yazilan === 0) {
+      const bos = bosSonucBildirimi(sonuc);
+      toast({ title: bos.baslik, description: bos.aciklama, variant: 'destructive' });
       return;
     }
 
-    setCeviriYukleniyor(true);
-    try {
-      const { data } = await api.post('/ai/translate', { metinler, hedefDil: 'en' });
-      const yazilan = ceviriUygula(sheets as any, data?.harita ?? {}, liveRowDataBySheet);
-
-      // ⚠ Kayitli teklif ekraninin IKIZI — ayni yalan burada da kapatildi:
-      // tek hucre bile degismediyse "tamamlandi" DENMEZ ve dil dugmesi
-      // "Turkceye Don"e GECMEZ (13.08, gecersiz anahtar canli olcumu).
-      if (yazilan === 0) {
-        toast({
-          title: 'Ceviri uygulanamadi',
-          description: 'Sunucudan ceviri gelmedi — hicbir hucre degismedi.',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      setLiveRowDataBySheet({ ...liveRowDataBySheet });
-      setCeviriDili('en');
-      tazele();
-      const eksik = Number(data?.basarisiz ?? 0) > 0;
-      toast({
-        title: eksik ? 'Ceviri KISMEN tamamlandi' : 'Ceviri tamamlandi',
-        description: eksik
-          ? `${yazilan} hucre cevrildi · ${data.basarisiz} parca basarisiz, o metinler Turkce kaldi`
-          : `${yazilan} hucre cevrildi · ${data?.onbellekten ?? 0} onbellekten, ${data?.cevrilen ?? 0} yeni`,
-        variant: eksik ? 'destructive' : undefined,
-      });
-    } catch (e: any) {
-      toast({
-        title: 'Ceviri basarisiz',
-        description: e?.response?.data?.message || e?.message || 'Bilinmeyen hata',
-        variant: 'destructive',
-      });
-    } finally {
-      setCeviriYukleniyor(false);
-    }
+    setLiveRowDataBySheet({ ...liveRowDataBySheet });
+    setCeviriDili('en');
+    tazele();
+    const b = sonucBildirimi(sonuc, yazilan);
+    toast({ title: b.baslik, description: b.aciklama, variant: b.hata ? 'destructive' : undefined });
   };
 
   // ── SessionStorage draft key ──
@@ -634,6 +628,11 @@ export default function NewQuotePage() {
           });
         }
         if (draft.quoteId) setRevizyonId(draft.quoteId);
+        // Ingilizce kaydedilmis teklif Ingilizce ACILIR (detay sayfasinin ikizi).
+        // Aksi halde dugme "Ingilizceye Cevir" der; basilinca sunucu Turkce
+        // asli cevirip kotadan duser ama ekrandaki Ingilizce hucrelerin hicbiri
+        // degismez (14.09 incelemesi O3).
+        if (cevrilmisSatirVarMi(draft.multiSheet.sheets)) setCeviriDili('en');
         console.log('[quotes/new] Draft restored from sessionStorage'
           + (draft.quoteId ? ` (REVIZYON: ${draft.quoteId})` : ''));
 
@@ -1494,13 +1493,21 @@ export default function NewQuotePage() {
         <div className="flex flex-col items-end gap-3">
           {/* 13.08 istegi: CEVIRI butonu para birimi seciciNIN SOLUNA (pembe cerceve) */}
           <div className="flex items-center gap-2">
+            {excelGridData && !revizyonId && ceviriDili === 'tr' && (
+              // Faz 6.2: ceviri kayitli teklifi cevirir — nedeni GORUNUR
+              // yazilir; kapali dugmenin title'i her tarayicida gosterilmiyor.
+              <span id="ceviri-kayit-notu" className="text-xs text-muted-foreground">
+                Çeviri için önce teklifi kaydedin
+              </span>
+            )}
             {excelGridData && (
               <Button
                 type="button"
                 variant="outline"
                 onClick={handleCeviri}
-                disabled={ceviriYukleniyor}
-                title="Malzeme/is adlarini Ingilizceye cevirir. Cap, olcu ve sayilara DOKUNULMAZ."
+                disabled={ceviriYukleniyor || (!revizyonId && ceviriDili === 'tr')}
+                aria-describedby={!revizyonId && ceviriDili === 'tr' ? 'ceviri-kayit-notu' : undefined}
+                title="Kayıtlı teklifteki malzeme/iş adlarını İngilizceye çevirir. Çap, ölçü ve sayılara DOKUNULMAZ."
               >
                 {ceviriYukleniyor ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

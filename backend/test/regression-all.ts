@@ -389,6 +389,11 @@ const SUITES: Suite[] = [
   { ad: 'Faz 3 e-posta altyapısı + parola akışları (A-G)', script: 'test:faz3', zincir: 'Z0' },
   { ad: 'Faz 4 firma profili + teklif satış durumu (A-H)', script: 'test:faz4', zincir: 'Z0' },
   { ad: 'Faz 5 KVKK hakları + hukuki metinler (A-G)', script: 'test:faz5', zincir: 'Z0' },
+  // Faz 6.1 (13.09): çeviri kotası TEK tablodan (seviye × kapsam) + girişsiz fiyat ucu.
+  { ad: 'Faz 6 çeviri kotası tablosu + fiyat ucu kablolaması (A-C)', script: 'test:ceviri-kota', zincir: 'Z0' },
+  // Faz 6.2 (14.09): kota çeviriye bağlı — kural sunucuda, kota AI'dan önce,
+  // tekrar koruması, başarısız sayılmaz, dönem = abonelik dönemi.
+  { ad: 'Faz 6 çeviri kotası uygulaması (K/D/T/W)', script: 'test:ceviri-kota-uygulama', zincir: 'Z0' },
   // ── 10.09.2026 — SUNUCU ÜRÜNLERİ (S-W). DB, SUNUCU ve AĞ GEREKTİRMEZ.
   //    Faz 0 sertleştirmesi sunucuda elle yazılmıştı, depoda yoktu. Kurulum
   //    listesi ↔ dizin, CR baytı, sshd/ufw sırası ve nöbetçinin saydığı

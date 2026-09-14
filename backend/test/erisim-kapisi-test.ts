@@ -247,6 +247,25 @@ function kararMatrisi() {
       Yetenek.AI_ANALIZ,
     ),
   );
+  // Faz 6.8 (14.09): ceviri de her cagride gercek para harciyor.
+  check(
+    'L2 ★KALKAN KISITLI: CEVIRI KAPALI (para harcayan uc salt-okunur modda acilmaz)',
+    !servis.yetenekKararla(
+      karar({ durum: AbonelikDurumu.KISITLI, erisimVar: true, saltOkunur: true }),
+      Yetenek.CEVIRI,
+    ),
+  );
+  check(
+    'L2 ★KALKAN SURESI DOLMUS: CEVIRI KAPALI',
+    !servis.yetenekKararla(
+      karar({ durum: AbonelikDurumu.SONA_ERDI, erisimVar: false }),
+      Yetenek.CEVIRI,
+    ),
+  );
+  check(
+    'L2 AKTIF: CEVIRI ACIK (kapi aboneligi yuruyen firmayi kesmez)',
+    servis.yetenekKararla(karar({ durum: AbonelikDurumu.AKTIF, erisimVar: true }), Yetenek.CEVIRI),
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -280,6 +299,9 @@ function kablolama() {
     ['GET /labor', LaborController, 'findAll', Yetenek.KUTUPHANE_GORUNTULE],
     ['GET /labor/:id', LaborController, 'findOne', Yetenek.KUTUPHANE_GORUNTULE],
     ['POST /ai/analyze', AiController, 'analyze', Yetenek.AI_ANALIZ],
+    // Faz 6.8 (14.09): ceviri ve onizlemesi aboneligi yuruyen firmaya acik.
+    ['POST /ai/translate', AiController, 'translate', Yetenek.CEVIRI],
+    ['GET /ai/translate/onizleme', AiController, 'translateOnizleme', Yetenek.CEVIRI],
   ];
 
   for (const [ad, sinif, metot, yetenek] of beklenen) {
@@ -357,20 +379,21 @@ function kablolama() {
     );
   }
 
-  // ── W6 ★KALKAN: ceviri uclarinin davranisi DEGISMEDI ────────────────
-  // Ceviri kotasi Faz 6.2'nin konusu (kademeli satir/dosya tavani).
-  // Buraya tek tarafli yetenek koymak o tasarimla celisirdi; bu assert
-  // kararin bilincli oldugunu kayda gecirir ve sessizce degismesini onler.
-  for (const metot of ['translate', 'translateCorrect'] as const) {
-    if (typeof (AiController.prototype as any)[metot] !== 'function') {
-      check(`W-OLCUT AiController.${metot} VAR`, false, 'metot bulunamadi');
-      continue;
-    }
-    check(
-      `W6 ★KALKAN /ai/${metot} ETKIN yetenek TASIMIYOR (kota karari Faz 6.2'de)`,
-      etkinYetenekler(AiController, metot).length === 0,
-      `etkin=${JSON.stringify(etkinYetenekler(AiController, metot))} sinif=${JSON.stringify(sinifYetenekleri(AiController))}`,
-    );
+  // ── W6 ★KALKAN: ceviri duzeltme ucu yalniz YONETICIYE acik ───────────
+  // 10.09'daki W6 "ceviri uclari yetenek TASIMIYOR" diyordu: kota Faz 6.2'nin
+  // konusuydu ve kapi bilerek bekletilmisti. 14.09'da kapi takildi (W beklenen
+  // listesinde CEVIRI). `translate/correct` ise GLOBAL Translation onbellegine
+  // `kaynak='manual'` yaziyor — her firmanin disa aktarimini etkiler ve on
+  // yuzde cagirani YOK. Giris yapmis herkese acik kalmasi onbellek zehirleme
+  // yoluydu; artik yalniz admin rolu. Abonelik kapisi bilerek YOK: yonetici
+  // aracidir, admin'in kendi aboneligine baglanmamali.
+  if (typeof (AiController.prototype as any).translateCorrect !== 'function') {
+    check('W-OLCUT AiController.translateCorrect VAR', false, 'metot bulunamadi');
+  } else {
+    const roller = Reflect.getMetadata('roles', (AiController.prototype as any).translateCorrect) ?? [];
+    const guardlar = ((Reflect.getMetadata('__guards__', (AiController.prototype as any).translateCorrect) ?? []) as any[]).map((g) => g?.name);
+    check('W6 ★KALKAN /ai/translate/correct yalniz admin rolu', JSON.stringify(roller) === '["admin"]', `roller=${JSON.stringify(roller)}`);
+    check('W6 ★KALKAN /ai/translate/correct RolesGuard TASIYOR (rol metadata\'si olu kalmaz)', guardlar.includes('RolesGuard'), `guardlar=${JSON.stringify(guardlar)}`);
   }
 }
 

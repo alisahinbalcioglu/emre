@@ -37,6 +37,18 @@
  * Mockup gerceklige karsi olculdu (7/8 birebir dogru). Tek duzeltme: paket
  * rozeti "PRO" degil "CORE" — veritabani varsayilani `core` (schema.prisma:43),
  * yeni kaydolan kullanici orada CORE gorur.
+ *
+ * ── 13.09 (Faz 6.3): IKI YANLIS CUMLE, IKI YANILTICI SUNUM DUZELTILDI ─────
+ * Olcum turu anasayfanin 13 vaadini koda karsi sinadi; dokuzu dogru, onlara
+ * dokunulmadi. Duzeltilenler:
+ * · "ucretsiz hesabinizi olusturun ve ilk kesif dosyanizi analiz etmeye
+ *   baslayin" — kayit abonelik ACMIYOR; aboneliksiz hesapta Excel yukleme
+ *   kapali (erisim.servisi.ts). Metin paket + deneme akisini soyluyor.
+ * · DWG Core'da KAPALI (basic-* dwgAktif=false) ama hero, ozellik karti ve
+ *   "4 format" seridi bunu soylemiyordu. Isciliktekiyle ayni PRO isareti kondu.
+ * · Maketin CORE rozeti yukaridaki notu CURUTTU: CORE kullanicisina DWG
+ *   yukleme kutusu gosteriyordu, oysa o kullanici DWG'ye ulasamaz. Maket artik
+ *   bir PRO kullanicisini gosteriyor — kutularin ikisi de o pakette gercek.
  */
 
 import { Altbilgi } from '@/ortak/kabuk/components/layout/Altbilgi';
@@ -45,10 +57,29 @@ import { Home as HomeIcon, FileText, Database, BookOpen } from 'lucide-react';
 import { GirisliyseYonlendir } from '@/ortak/kabuk/components/landing/GirisliyseYonlendir';
 import { NasilCalisir } from '@/ortak/kabuk/components/landing/NasilCalisir';
 
+/** Core pakette kapali ozelligin yanindaki isaret — NasilCalisir'deki
+ *  `.pro-rozet` ile ayni amber tonu, ayni dil.
+ *  ⚠ Gorsel rozet `aria-hidden`: ekran okuyucu "MetrajPro" diye BITISIK okurdu;
+ *  onun yerine gorunmez "(Pro pakette)" okunur. Bosluk da acikca verilir. */
+function ProRozeti() {
+  return (
+    <>
+      {' '}
+      <span
+        aria-hidden="true"
+        className="inline-block rounded-md bg-amber-500 px-1.5 py-0.5 align-middle text-[10px] font-extrabold uppercase leading-none tracking-wider text-white"
+      >
+        Pro
+      </span>
+      <span className="sr-only">(Pro pakette)</span>
+    </>
+  );
+}
+
 export const metadata = {
   title: 'MetaPriceX — Mekanik Tesisat Metraj ve Teklif Platformu',
   description:
-    'DWG projelerinden hat boylarını otomatik ölçün, çok sayfalı Excel metrajlarını okuyun ve kendi marka fiyat listelerinizle dakikalar içinde teklif hazırlayın.',
+    'DWG projelerinden hat boylarını otomatik ölçün (Pro), çok sayfalı Excel metrajlarını okuyun ve kendi marka fiyat listelerinizle dakikalar içinde teklif hazırlayın.',
 };
 
 const MOCKUP_NAV = [
@@ -62,7 +93,7 @@ const MOCKUP_NAV = [
 const OLCULEN = [
   { deger: '135 ms', etiket: '1.115 satırlık keşif dosyası ayrıştırma', vurgu: false },
   { deger: '0,12 sn', etiket: '100 satır eşleştirme (1.500 kalemlik kütüphane)', vurgu: true },
-  { deger: '4 format', etiket: '.xlsx · .xls · .dwg · .dxf', vurgu: false },
+  { deger: '4 format', etiket: '.xlsx · .xls · .dwg · .dxf (DWG/DXF Pro pakette)', vurgu: false },
   { deger: 'TCMB', etiket: 'Günlük USD/EUR kuru, teklife işlenir', vurgu: true },
 ];
 
@@ -91,6 +122,11 @@ export default function Home() {
             <a href="#nasil-calisir" className="transition-colors hover:text-blue-600">
               Nasıl Çalışır?
             </a>
+            {/* Faz 6.1 (13.09): fiyat sayfası girişsiz ziyaretçiye açık; bağlantısız
+                bir sayfa bulunamaz. */}
+            <Link href="/fiyatlar" className="transition-colors hover:text-blue-600">
+              Fiyatlar
+            </Link>
           </nav>
 
           <div className="flex items-center gap-1 sm:gap-4">
@@ -126,8 +162,9 @@ export default function Home() {
           </h1>
 
           <p className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-slate-600 md:text-lg">
-            DWG projelerinizdeki hat boylarını otomatik ölçün, çok sayfalı Excel metrajlarınızı
-            eksiksiz okuyun ve kendi marka fiyat listelerinizle dakikalar içinde teklif hazırlayın.
+            DWG projelerinizdeki hat boylarını otomatik ölçün
+            <ProRozeti />, çok sayfalı Excel metrajlarınızı eksiksiz okuyun ve kendi marka fiyat
+            listelerinizle dakikalar içinde teklif hazırlayın.
           </p>
 
           <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
@@ -192,14 +229,15 @@ export default function Home() {
                     </div>
                   </div>
 
-                  {/* Paket etiketi: varsayilan CORE (schema.prisma:43) — "PRO" degil */}
+                  {/* Paket etiketi PRO (13.09): maket DWG yukleme kutusu gosteriyor ve DWG
+                      yalniz Pro'da acik — CORE rozetiyle ikisi ayni ekranda yalan olurdu. */}
                   <div className="flex items-center gap-2.5 rounded-lg border border-slate-800 bg-slate-900/80 p-2">
                     <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-[10px] font-bold text-white">
                       A
                     </div>
                     <div className="overflow-hidden">
                       <p className="truncate text-[11px] font-semibold text-white">ahmet.yilmaz</p>
-                      <span className="inline-block text-[9px] font-bold text-slate-400">CORE</span>
+                      <span className="inline-block text-[9px] font-bold text-slate-400">PRO</span>
                     </div>
                   </div>
                 </div>
@@ -355,6 +393,7 @@ export default function Home() {
                 </div>
                 <h3 className="mb-2 text-xl font-bold text-slate-900">
                   DWG ve DXF Projelerinden Metraj
+                  <ProRozeti />
                 </h3>
                 <p className="max-w-xl text-xs leading-relaxed text-slate-600">
                   Çizimdeki hat boylarını koordinat ve katman bazlı otomatik ölçer. Çapları
@@ -399,7 +438,8 @@ export default function Home() {
             MetaPriceX ile Teklif Süreçlerinizi Dönüştürün
           </h2>
           <p className="mx-auto mt-2 max-w-xl text-xs text-slate-400">
-            Hemen ücretsiz hesabınızı oluşturun ve ilk keşif dosyanızı analiz etmeye başlayın.
+            Hesabınızı oluşturun, paketinizi seçin ve ücretsiz deneme süresinde ilk keşif dosyanızı
+            analiz etmeye başlayın.
           </p>
           <div className="mt-8">
             <Link

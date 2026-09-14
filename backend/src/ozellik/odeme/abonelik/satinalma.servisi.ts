@@ -14,6 +14,7 @@ import {
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { IyzicoClient } from '../iyzico/iyzico.client';
 import { AbonelikServisi } from './abonelik.servisi';
+import { ceviriKotasiCoz } from './ceviri-kotasi';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -181,6 +182,8 @@ export function eksikMusteriAlanlari(
 export class SatinAlmaServisi {
   private readonly logger = new Logger(SatinAlmaServisi.name);
   private readonly uygulamaUrl: string;
+  /** Kota tablosunda bulunamayıp uyarısı yazılmış paket kodları. */
+  private readonly uyarilanPaketler = new Set<string>();
 
   /** Bir niyeti kac kez sorarsak vazgecerz. */
   private readonly AZAMI_DENEME = 5;
@@ -217,6 +220,17 @@ export class SatinAlmaServisi {
       .filter((p) => p.surumler.length > 0)
       .map((p) => {
         const s = p.surumler[0];
+        // Faz 6 (13.09): kota TEK KAYNAKTAN (ceviri-kotasi.ts) — fiyat sayfası
+        // da abonelik sayfası da rakamı buradan okur, kendisi yazmaz.
+        const kota = ceviriKotasiCoz({ seviye: p.seviye, kapsam: p.kapsam });
+        // Paket kodu başına BİR KEZ: girişsiz fiyat ucu sık çağrılır, aynı uyarı
+        // her istekte yazılırsa günlük gürültüye boğulur ve asıl uyarı kaybolur.
+        if (!kota.eslendi && !this.uyarilanPaketler.has(p.kod)) {
+          this.uyarilanPaketler.add(p.kod);
+          this.logger.warn(
+            `Paket ${p.kod} (${p.seviye}/${p.kapsam}) ceviri kota tablosunda YOK — en dusuk kotaya dusuruldu`,
+          );
+        }
         return {
           paketId: p.id,
           kod: p.kod,
@@ -227,6 +241,7 @@ export class SatinAlmaServisi {
           kullaniciHakki: p.kullaniciHakki,
           aylikTeklifHakki: p.aylikTeklifHakki,
           dwgAktif: p.dwgAktif,
+          ceviriKotasi: { satir: kota.satir, dosya: kota.dosya },
           surum: {
             paketSurumuId: s.id,
             // Decimal → string: para JS float'ina DUSURULMEZ (P2 turu dersi).

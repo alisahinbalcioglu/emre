@@ -1,26 +1,17 @@
 /**
- * TEKLIF METNI CEVIRISI — TOPLAMA, DOKUNULMAZLAR, UYGULAMA (13.08).
+ * TEKLIF METNI CEVIRISI — EKRANDA UYGULAMA VE GERI ALMA (13.08 · 14.09).
  *
- * ── NEDEN BU MODUL SAF ──────────────────────────────────────────────────────
- * Ceviri akisinin PARA veya OLCU bozma riski tasiyan kismi burasi: hangi
- * hucrenin motora gidecegi ve hangisine ASLA dokunulmayacagi. Backend'de
- * vitest yok (yalniz ts-node script'leri), bu yuzden karar mantigi frontend'de
- * saf bir modulde durur ve birim testle muhurlenir; backend yalnizca
- * "benzersiz metinler → ceviri haritasi" isini yapar.
+ * ── KARAR BURADA DEGIL (Faz 6.2, 14.09.2026) ───────────────────────────────
+ * 13.08–14.09 arasi "hangi hucre motora gider, hangisine ASLA dokunulmaz"
+ * karari (`dokunulmazMi`, `cevrilecekMetinler`) bu modulde yasiyordu ve
+ * istemci metin listesini kendisi gonderiyordu. Cevirinin kotasi olunca bu
+ * liste KOTADAN DUSECEK SATIRI da belirler hale geldi — istemciye birakilamaz.
+ * Kural sunucuya TASINDI: `backend/src/ozellik/giris/ai/ceviri-kurali.ts`
+ * (vakalar `backend/test/ceviri-kota-uygulama-test.ts`, K bloku). Iki kopya
+ * tutulmadi: ayrisan ikiz, ekranda sayilan ile faturalanan satiri ayirirdi.
+ * K21 bu dosyada kuralin YENIDEN belirmesini kirmizi yakar.
  *
- * ── OLCEK: NEDEN BENZERSIZLESTIRME ZORUNLU ─────────────────────────────────
- * Gercek teklifler 15.000+ satir olabiliyor (canli ornek: 15.137). Satir
- * basina bir istek hem ekonomik olarak imkansiz hem de gereksiz: malzeme
- * adlari masif tekrar ediyor ("DN 20" her baslik altinda yeniden). Benzersiz
- * kume birkac yuze iner; ustelik kalici onbellekle ikinci teklifte sifira
- * yaklasir.
- *
- * ── DOKUNULMAZLAR: BU MODULUN ASIL GOREVI ──────────────────────────────────
- * Motor "yardimci olup" olcuyu bozabilir: "DN 20" → "DN 20 (nominal
- * diameter)", "6\"" → "6 inches", "Ø110" → "110mm dia". Bunlarin HEPSI
- * eslestirme anahtaridir ve bozulursa fiyat eslesmesi ve musteriye giden
- * teklif birlikte bozulur. Bu yuzden "cevrilecekler" degil, DOKUNULMAZLAR
- * acik kural olarak tanimlidir ve testle muhurlenir.
+ * Burada kalan: sunucunun dondurdugu haritayi satirlara yazmak ve geri almak.
  */
 import type { ColumnRoles, ExcelRowData } from '../tablo/excel-grid/types';
 
@@ -30,61 +21,39 @@ export type HedefDil = 'en';
 /** Kaynak metin → ceviri. Backend'den bu sekilde doner. */
 export type CeviriHaritasi = Record<string, string>;
 
-/**
- * Metinden OLCU SOZ DAGARINI soyar. Geriye anlamli harf kalmiyorsa metin
- * bir olcu/koddur, cumle degildir.
- *
- * ⚠ SINIR (`\b`) TEK BASINA YETMEZ — testle olculdu: "DN20" ve "9MM" gibi
- * BOSLUKSUZ hallerde harf ile rakam arasinda kelime siniri OLUSMAZ (`n` ve `2`
- * ikisi de kelime karakteri), bu yuzden `\bdn\b` "DN20"yi goremez ve olcu
- * ceviriye SIZAR. Desenler bu yuzden rakam-farkindali (`(?=\s*\d)` /
- * `(?<=\d)`) yazili.
- *
- * ⚠ Ø ve φ acikca listeli: `extractCapFromText` (ExcelGrid) Ø-kordur ve yalniz
- * DN/inc tanir — o kusuru buraya tasimiyoruz.
- */
-function olcuyuSoy(ham: string): string {
-  return ham
-    .replace(/\bdn\b|dn(?=\s*\d)/gi, ' ')        // "DN 20" ve "DN20"
-    .replace(/\bpn\b|pn(?=\s*\d)/gi, ' ')        // "PN 20" — basinc sinifi
-    .replace(/\bnb\b|nb(?=\s*\d)/gi, ' ')        // "NB 50"
-    .replace(/(?<=\d)\s*(?:mm|cm|mt)\b/gi, ' ')  // "9MM", "110 mm"
-    .replace(/\b(?:mm|cm|mt|m)\b/gi, ' ')        // bagimsiz birim ("m³" dahil)
-    .replace(/(?<=\d)\s*[x×]\s*(?=\d)/gi, ' ')   // "2x9" — carpim isareti
-    .replace(/[øφ"'/½¼¾⅜⅝⅞]/gi, ' ')             // cap ve kesir isaretleri
-    .replace(/[\d.,\-–—]/g, ' ');                // sayilar ve ayraclar
-}
-
-/**
- * Metin cevrilmemeli mi?
- *
- * KURAL: olcu soz dagari ve sayilar cikarildiginda geriye EN AZ IKI harf
- * kalmiyorsa metin bir olcu/kod'dur, cumle degildir.
- *
- * Ornekler (testle muhurlu):
- *   "DN 20"      → dokunulmaz (DN + sayi)
- *   "Ø110"       → dokunulmaz
- *   "6\""        → dokunulmaz
- *   "1 1/4\""    → dokunulmaz
- *   "25"         → dokunulmaz
- *   "9MM"        → dokunulmaz (sayi + birim)
- *   "PVC BORU"   → CEVRILIR
- *   "9MM ALUMINYUM FOLYO" → CEVRILIR (olcu cikinca "ALUMINYUM FOLYO" kalir)
- */
-export function dokunulmazMi(metin: unknown): boolean {
-  const ham = String(metin ?? '').trim();
-  if (!ham) return true; // bos hucre — cevrilecek bir sey yok
-  // ⚠ `\p{L}` + `u` bayragi KULLANILMAZ: frontend tsconfig hedefi onu kabul
-  // etmiyor (TS1501) ve vitest'te calisip tsc'de patlayan bir kural olurdu.
-  // Turkce harfler ACIKCA listeli — Ø/φ zaten olcuyuSoy'da soyuluyor.
-  const harfler = olcuyuSoy(ham).replace(/[^A-Za-zÇĞİÖŞÜçğıöşü]/g, '');
-  return harfler.length < 2;
-}
-
 /** Grid hucresinden ceviri anahtarina giden TEK normalizasyon.
  *  Onbellek anahtari da bu — yoksa "PVC BORU" ile "PVC BORU " ayri satir olur. */
 export function ceviriAnahtari(metin: unknown): string {
   return String(metin ?? '').trim().replace(/\s+/g, ' ');
+}
+
+/** Orijinal metnin satirda saklandigi alan (sunucuda `CEVIRI_KAYNAK_ALANI`). */
+const CEVIRI_KAYNAK_ALANI = '_ceviriKaynak';
+
+/**
+ * Satirin CEVIRI KAYNAGI: cevrilmis satirda Turkce asil, degilse ad hucresi.
+ *
+ * ⚠ SUNUCUDAKI IKIZIYLE GOVDESI BIREBIR AYNI (`ceviri-kurali.ts`, K29):
+ * sunucu haritayi bu anahtarla kurar ve satiri bu anahtarla sayar; ekran
+ * ayni anahtarla yazar. Iki taraf farkli anahtar kullanirsa (14.09 incelemesi
+ * O3/O6) ya sayilmayan satir ekranda cevrilir ya da Ingilizce kayitli teklifte
+ * kota duser ama hicbir hucre degismez.
+ */
+export function satirKaynagi(row: Record<string, unknown>, adAlan: string): unknown {
+  const kaynak = row[CEVIRI_KAYNAK_ALANI];
+  return typeof kaynak === 'string' && ceviriAnahtari(kaynak) !== '' ? kaynak : row[adAlan];
+}
+
+/**
+ * Satirlarda gecerli `_ceviriKaynak` isareti var mi — varsa ekran Ingilizce
+ * gosteriyordur (isareti yalniz `ceviriUygula` yazar, `ceviriGeriAl` siler).
+ */
+export function cevrilmisSatirVarMi(sayfalar: ReadonlyArray<{ rowData?: ExcelRowData[] } | null | undefined> | null | undefined): boolean {
+  if (!Array.isArray(sayfalar)) return false;
+  return sayfalar.some((s) => {
+    const satirlar: ExcelRowData[] = s?.rowData ?? [];
+    return satirlar.some((r) => typeof r?._ceviriKaynak === 'string' && ceviriAnahtari(r._ceviriKaynak) !== '');
+  });
 }
 
 /** Ceviriye girecek sayfa kesiti (SheetData uyumlu). */
@@ -93,38 +62,6 @@ export interface CeviriSayfasi {
   isEmpty?: boolean;
   rowData?: ExcelRowData[];
   columnRoles?: ColumnRoles;
-}
-
-/**
- * Sayfalardan CEVRILECEK BENZERSIZ metinleri toplar.
- *
- * Toplanan: yalniz `nameField` (malzeme/is adi) ve grup bandi basliklari —
- * yani insanin okudugu metin. Toplanmayan: cap kolonu (olcu), miktar, birim,
- * fiyat, marka/firma (kimlik), sistem alanlari.
- *
- * ⚠ Grup bantlari da toplanir: fotograftaki "SIHHI TESISAT ISLERI",
- * "TEMIZ SU BORULARI" gibi basliklar musteriye giden teklifte gorunur;
- * yalniz veri satirlarini cevirmek yarim is olurdu.
- */
-export function cevrilecekMetinler(
-  sayfalar: CeviriSayfasi[],
-  live?: Record<number, ExcelRowData[]>,
-): string[] {
-  const kume = new Set<string>();
-  for (const sayfa of sayfalar) {
-    if (sayfa.isEmpty) continue;
-    const roles = sayfa.columnRoles ?? {};
-    const adAlan = roles.nameField;
-    if (!adAlan) continue;
-    const rows = live?.[sayfa.index] ?? sayfa.rowData ?? [];
-    for (const row of rows) {
-      if (!row) continue;
-      const anahtar = ceviriAnahtari(row[adAlan]);
-      if (!anahtar || dokunulmazMi(anahtar)) continue;
-      kume.add(anahtar);
-    }
-  }
-  return Array.from(kume);
 }
 
 /**
@@ -151,11 +88,12 @@ export function ceviriUygula(
     const rows = live?.[sayfa.index] ?? sayfa.rowData ?? [];
     for (const row of rows) {
       if (!row) continue;
-      const anahtar = ceviriAnahtari(row[adAlan]);
-      const ceviri = harita[anahtar];
+      const anahtar = ceviriAnahtari(satirKaynagi(row, adAlan));
+      const ceviri = Object.prototype.hasOwnProperty.call(harita, anahtar) ? harita[anahtar] : undefined;
       if (!ceviri || ceviri === row[adAlan]) continue;
       // Orijinali BIR KEZ sakla — ikinci ceviride ceviriyi orijinal sanmayalim.
-      if (row._ceviriKaynak === undefined) row._ceviriKaynak = row[adAlan];
+      // Bos kaynak "orijinal yok" demektir (satirKaynagi da ada duser).
+      if (satirKaynagi(row, adAlan) === row[adAlan]) row._ceviriKaynak = row[adAlan];
       row[adAlan] = ceviri;
       yazilan++;
     }

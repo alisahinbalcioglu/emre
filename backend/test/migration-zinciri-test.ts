@@ -106,6 +106,8 @@ async function main() {
     'WebhookOlayi',
     'Fatura',
     'HavaleOdemesi',
+    // Faz 6.2 (14.09): çeviri tüketim kaydı — kota bu tablodan sayılır.
+    'CeviriTuketimi',
   ];
   const tabloSonuc = await db.query<{ table_name: string }>(
     `SELECT table_name FROM information_schema.tables WHERE table_schema='public'`,

@@ -1,22 +1,22 @@
 /**
- * TEKLIF CEVIRISI — DOKUNULMAZLAR VE TOPLAMA (13.08).
+ * TEKLIF CEVIRISI — EKRANDA UYGULAMA VE GERI ALMA (13.08 · 14.09).
  *
- * ★ BU DOSYANIN ASIL ISI: motorun olcuyu bozmasini engellemek. "DN 20" bir
- * cumle degil, ESLESTIRME ANAHTARIDIR; cevrilirse hem fiyat eslesmesi hem
- * musteriye giden teklif birlikte bozulur. Ayni gun capin sorgudan dusmesinin
- * sessiz para hatasi urettigini olctuk (query-engine sert cap filtresi) —
- * capi ceviriye vermek ayni ailenin ikinci hatasi olurdu.
+ * ⚠ DOKUNULMAZ/TOPLAMA VAKALARI TASINDI (Faz 6.2, 14.09): "DN 20" gibi olcu
+ * metinlerinin ceviriye girmemesi ve benzersizlestirme artik SUNUCUDA karar
+ * verilir — vakalarin tamami (23 dokunulmaz + cevrilir adlar + sayfa atlama)
+ * `backend/test/ceviri-kota-uygulama-test.ts` K blogunda. Burada yalniz
+ * istemcinin hala yaptigi is kilitli: haritayi yalniz AD kolonuna yazmak,
+ * orijinali saklamak, geri almak.
  *
  * ⚠ BIR ASSERT TEK KRITERE (proje kurali): her kriter kendi it() blogunda.
- * ⚠ BOS DIZI YALANCI YESIL: her toplu vakada payda acikca kilitlenir.
  */
 import { describe, it, expect } from 'vitest';
 import {
-  dokunulmazMi,
   ceviriAnahtari,
-  cevrilecekMetinler,
   ceviriUygula,
   ceviriGeriAl,
+  cevrilmisSatirVarMi,
+  satirKaynagi,
   type CeviriSayfasi,
 } from './ceviri';
 import type { ColumnRoles, ExcelRowData } from '../tablo/excel-grid/types';
@@ -38,79 +38,7 @@ function satir(ad: string, patch: Partial<ExcelRowData> = {}): ExcelRowData {
   };
 }
 
-function sayfa(adlar: string[], roller: ColumnRoles = ROLLER): CeviriSayfasi {
-  return { index: 0, isEmpty: false, rowData: adlar.map((a) => satir(a)), columnRoles: roller };
-}
-
-// ── A) DOKUNULMAZLAR — olcu/kod metinleri ceviriye GIRMEZ ───────────────────
-
-describe('dokunulmazMi — olcu ve kod metinleri', () => {
-  const DOKUNULMAZ = [
-    'DN 20', 'DN20', 'dn 150',        // nominal cap
-    'Ø110', 'Ø 110', 'φ50',            // Ø gosterimi (extractCapFromText bunu GOREMEZ)
-    '6"', '1 1/4"', '3/4"', '2½"',     // inc gosterimi
-    '25', '0.5', '1,5', '313',         // saf sayi
-    '9MM', '110 mm',                   // sayi + birim
-    'PN 20',                           // basinc sinifi — cap degil ama yine kod
-    '2x9,36 m³/h',                     // teknik spec (fotograftaki hidrofor satiri)
-    // ⚠ REDUKSIYON GOSTERIMI — Ø soyulmasinin GERCEKTEN yuk tasidigi vaka.
-    // Ø tek basina Unicode'da HARFTIR; soyulmazsa "Ø110 x Ø90" iki harf sayilir
-    // ve esigi gecip CEVIRIYE SIZAR. Tek Ø'lu ornekler bunu gosteremiyordu
-    // (mutasyon M18 sag kalmisti) — kriter bu satirlarla muhurlendi.
-    'Ø110 x Ø90', '3"x1"', 'DN80 x DN25',
-    '', '   ',                         // bos hucre
-  ];
-
-  it('olcu/kod metinlerinin HEPSI dokunulmaz (23 vaka)', () => {
-    // ⚠ payda kilidi — bos dizide .every() yalanci yesil verirdi
-    expect(DOKUNULMAZ).toHaveLength(23);
-    const sizanlar = DOKUNULMAZ.filter((m) => !dokunulmazMi(m));
-    expect(sizanlar, 'ceviriye SIZAN olcu metinleri: ' + sizanlar.join(' | ')).toEqual([]);
-  });
-
-  it('"DN 20" ceviriye girmez — eslestirme anahtaridir', () => {
-    expect(dokunulmazMi('DN 20')).toBe(true);
-  });
-
-  it('"Ø110" ceviriye girmez — Ø gosterimi de korunur', () => {
-    expect(dokunulmazMi('Ø110')).toBe(true);
-  });
-
-  it('6 inc gosterimi ceviriye girmez', () => {
-    expect(dokunulmazMi('6"')).toBe(true);
-  });
-});
-
-// ── B) CEVRILECEKLER — insanin okudugu metin ───────────────────────────────
-
-describe('dokunulmazMi — gercek metinler cevrilir', () => {
-  const CEVRILIR = [
-    'PVC BORU',
-    'TEMİZ SU HİDROFORU',
-    'SIHHI TESİSAT İŞLERİ',
-    'FİTTİNGS ORANI',
-    'Montaj bedeli',
-    'Küresel vana',
-    'Int yangın borusu',
-  ];
-
-  it('gercek malzeme/is adlarinin HEPSI cevrilir (7 vaka)', () => {
-    expect(CEVRILIR).toHaveLength(7);
-    const atlananlar = CEVRILIR.filter((m) => dokunulmazMi(m));
-    expect(atlananlar, 'yanlislikla DOKUNULMAZ sayilanlar: ' + atlananlar.join(' | ')).toEqual([]);
-  });
-
-  it('olcu ICEREN ad yine de cevrilir — olcu metnin tamami degilse', () => {
-    // "9MM ALUMİNYUM FOLYO KAUÇUK BORU İZOLASYONU": olcu cikinca anlamli ad kalir
-    expect(dokunulmazMi('9MM ALUMİNYUM FOLYO KAUÇUK BORU İZOLASYONU')).toBe(false);
-  });
-
-  it('tek harflik kalinti kod sayilir, cumle sayilmaz', () => {
-    expect(dokunulmazMi('2x9,36 m³/h')).toBe(true);
-  });
-});
-
-// ── C) ANAHTAR NORMALIZASYONU ──────────────────────────────────────────────
+// ── A) ANAHTAR NORMALIZASYONU ──────────────────────────────────────────────
 
 describe('ceviriAnahtari — onbellek anahtari tek yoldan uretilir', () => {
   it('bastaki/sondaki bosluk anahtari degistirmez', () => {
@@ -122,45 +50,7 @@ describe('ceviriAnahtari — onbellek anahtari tek yoldan uretilir', () => {
   });
 });
 
-// ── D) TOPLAMA — benzersizlestirme (olcek meselesi) ────────────────────────
-
-describe('cevrilecekMetinler — benzersizlestirme', () => {
-  it('tekrar eden adlar TEK KEZ toplanir', () => {
-    const s = sayfa(['PVC BORU', 'PVC BORU', 'PVC BORU']);
-    expect(cevrilecekMetinler([s])).toEqual(['PVC BORU']);
-  });
-
-  it('15 satirlik tekrarli liste 2 benzersiz metne iner (olcek kaniti)', () => {
-    const adlar: string[] = [];
-    for (let i = 0; i < 5; i++) adlar.push('PVC BORU', 'DN 20', 'ÇELİK BORU');
-    expect(adlar).toHaveLength(15);
-    // 'DN 20' dokunulmaz → toplanmaz; geriye 2 benzersiz ad kalir
-    expect(cevrilecekMetinler([sayfa(adlar)]).sort()).toEqual(['PVC BORU', 'ÇELİK BORU']);
-  });
-
-  it('dokunulmaz metinler HIC toplanmaz', () => {
-    const s = sayfa(['DN 20', 'Ø110', '25', '6"']);
-    expect(cevrilecekMetinler([s])).toEqual([]);
-  });
-
-  it('isEmpty sayfa atlanir', () => {
-    const s = { ...sayfa(['PVC BORU']), isEmpty: true };
-    expect(cevrilecekMetinler([s])).toEqual([]);
-  });
-
-  it('nameField rolu olmayan sayfa atlanir', () => {
-    const { nameField: _ad, ...adsiz } = ROLLER;
-    expect(cevrilecekMetinler([sayfa(['PVC BORU'], adsiz)])).toEqual([]);
-  });
-
-  it('live kaydi varsa sheet.rowData DEGIL live satirlari toplanir', () => {
-    const bayat = sayfa(['BAYAT AD']);
-    const canli = [satir('CANLI AD')];
-    expect(cevrilecekMetinler([bayat], { 0: canli })).toEqual(['CANLI AD']);
-  });
-});
-
-// ── E) UYGULAMA VE GERI ALMA ───────────────────────────────────────────────
+// ── B) UYGULAMA VE GERI ALMA ───────────────────────────────────────────────
 
 describe('ceviriUygula / ceviriGeriAl', () => {
   it('ceviri ad hucresine yazilir', () => {
@@ -215,5 +105,49 @@ describe('ceviriUygula / ceviriGeriAl', () => {
     ceviriUygula([s], { 'PVC BORU': 'PVC PIPE', '313': 'X', 'metre': 'meter' });
     expect(rows[0]['Miktar']).toBe('313');
     expect(rows[0]['Birim']).toBe('metre');
+  });
+
+  it('Ingilizce kayitli satir Turkce ASLINDAN eslenir (sunucu haritayi asil metinle kurar)', () => {
+    const rows = [satir('PVC PIPE', { _ceviriKaynak: 'PVC BORU' })];
+    const s: CeviriSayfasi = { index: 0, rowData: rows, columnRoles: ROLLER };
+    expect(ceviriUygula([s], { 'PVC BORU': 'PVC PIPING' })).toBe(1);
+    expect(rows[0]['Malzeme Cinsi']).toBe('PVC PIPING');
+    expect(rows[0]._ceviriKaynak).toBe('PVC BORU');
+  });
+
+  it('bos _ceviriKaynak ada duser — orijinal olarak ad saklanir', () => {
+    const rows = [satir('PVC BORU', { _ceviriKaynak: '  ' })];
+    const s: CeviriSayfasi = { index: 0, rowData: rows, columnRoles: ROLLER };
+    expect(ceviriUygula([s], { 'PVC BORU': 'PVC PIPE' })).toBe(1);
+    expect(rows[0]._ceviriKaynak).toBe('PVC BORU');
+  });
+
+  it('kaynagi baska metin olan satir, adi haritada olsa da YAZILMAZ (sayilmayan satir cevrilmez)', () => {
+    const rows = [satir('PVC BORU', { _ceviriKaynak: '25' })];
+    const s: CeviriSayfasi = { index: 0, rowData: rows, columnRoles: ROLLER };
+    expect(ceviriUygula([s], { 'PVC BORU': 'PVC PIPE' })).toBe(0);
+    expect(rows[0]['Malzeme Cinsi']).toBe('PVC BORU');
+  });
+
+  it('cevrilmisSatirVarMi: gecerli isaret varsa true, bos isaret ya da isaretsizse false', () => {
+    expect(cevrilmisSatirVarMi([{ rowData: [satir('PVC PIPE', { _ceviriKaynak: 'PVC BORU' })] }])).toBe(true);
+    expect(cevrilmisSatirVarMi([{ rowData: [satir('PVC BORU', { _ceviriKaynak: ' ' })] }])).toBe(false);
+    expect(cevrilmisSatirVarMi([{ rowData: [satir('PVC BORU')] }])).toBe(false);
+    expect(cevrilmisSatirVarMi(undefined)).toBe(false);
+  });
+
+  it('satirKaynagi: dolu kaynak once, bos ya da dizge olmayan kaynak ada duser', () => {
+    expect(satirKaynagi({ ad: 'PVC PIPE', _ceviriKaynak: 'PVC BORU' }, 'ad')).toBe('PVC BORU');
+    expect(satirKaynagi({ ad: 'PVC BORU', _ceviriKaynak: '' }, 'ad')).toBe('PVC BORU');
+    expect(satirKaynagi({ ad: 'PVC BORU', _ceviriKaynak: 7 }, 'ad')).toBe('PVC BORU');
+  });
+
+  it('live kaydi varsa sheet.rowData DEGIL live satirlari yazilir', () => {
+    const bayat = [satir('PVC BORU')];
+    const canli = [satir('PVC BORU')];
+    const s: CeviriSayfasi = { index: 0, rowData: bayat, columnRoles: ROLLER };
+    ceviriUygula([s], { 'PVC BORU': 'PVC PIPE' }, { 0: canli });
+    expect(canli[0]['Malzeme Cinsi']).toBe('PVC PIPE');
+    expect(bayat[0]['Malzeme Cinsi']).toBe('PVC BORU');
   });
 });

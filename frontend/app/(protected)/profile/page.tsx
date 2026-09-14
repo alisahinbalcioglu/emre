@@ -14,6 +14,8 @@ import { cn } from '@/ortak/lib/utils';
 import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
 import { abonelikOzeti } from '@/ozellik/odeme/abonelik-ozeti';
 import { toast } from '@/ortak/hooks/use-toast';
+import { kalanKotaCumlesi, type CeviriKotaOzeti } from '@/ozellik/teklif/ceviri-kota';
+import { sayiYaz } from '@/ozellik/odeme/paket-bicim';
 
 interface UserProfile {
   id: string;
@@ -65,17 +67,12 @@ const TIER_CONFIG: Record<string, { label: string; color: string; bg: string; bo
   suite: { label: 'Suite', color: 'text-purple-700', bg: 'bg-purple-50', border: 'border-purple-200', icon: Zap },
 };
 
-const CORE_LIMITS = {
-  quotes: 10,
-  materials: 500,
-  features: ['Malzeme eslestirme', 'Tek disiplin', 'Excel upload'],
-};
-
-const PRO_LIMITS = {
-  quotes: 100,
-  materials: 5000,
-  features: ['Malzeme + Iscilik eslestirme', 'PDF / DWG upload', 'AI extraction', 'MEP destegi'],
-};
+// ── SABİT LİMİTLER KALDIRILDI (Faz 6, 14.09.2026) ─────────────────────────
+// Burada `CORE_LIMITS { quotes: 10, materials: 500 }` ve `PRO_LIMITS` vardı.
+// Hiçbiri sunucuda UYGULANMIYORDU (teklif sınırsız, malzeme sınırı yok) ve
+// "AI extraction", "Tek disiplin" gibi paketlerle örtüşmeyen vaatler
+// taşıyordu. Paketin GERÇEK tek kotası çeviri kotasıdır; o da sunucudan
+// (`GET /ai/translate/kota`) okunur.
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -83,6 +80,9 @@ export default function ProfilePage() {
   const [stats, setStats] = useState<UserStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [yonetimAcik, setYonetimAcik] = useState(false);
+  const [ceviriKota, setCeviriKota] = useState<
+    { durum: 'yukleniyor' } | { durum: 'hata' } | { durum: 'hazir'; kota: CeviriKotaOzeti | null }
+  >({ durum: 'yukleniyor' });
   const { erisim, refresh } = useCapabilities();
   // Abonelik ozeti GERCEK kaynaktan (`/auth/me` → `erisim`) turetilir.
   const ozet = abonelikOzeti(erisim);
@@ -278,12 +278,15 @@ export default function ProfilePage() {
     Promise.all([
       api.get<UserProfile>('/auth/me'),
       api.get<any>('/quotes').catch(() => ({ data: [] })),
-    ]).then(([profileRes, quotesRes]) => {
+      // Kota okunamazsa sayfa yine açılır; kutu "okunamadı" der, uydurmaz.
+      api.get<CeviriKotaOzeti | null>('/ai/translate/kota').then((r) => ({ ok: true as const, data: r.data })).catch(() => ({ ok: false as const, data: null })),
+    ]).then(([profileRes, quotesRes, kotaRes]) => {
       setProfile(profileRes.data);
       setStats({
         quoteCount: Array.isArray(quotesRes.data) ? quotesRes.data.length : 0,
         libraryCount: 0,
       });
+      setCeviriKota(kotaRes.ok ? { durum: 'hazir', kota: kotaRes.data ?? null } : { durum: 'hata' });
     }).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
@@ -317,15 +320,16 @@ export default function ProfilePage() {
   const tier = profile.tier ?? 'core';
   const tierConfig = TIER_CONFIG[tier] ?? TIER_CONFIG.core;
   const TierIcon = tierConfig.icon;
-  const limits = tier === 'pro' ? PRO_LIMITS : CORE_LIMITS;
   const initial = profile.email.charAt(0).toUpperCase();
   const memberSince = new Date(profile.createdAt).toLocaleDateString('tr-TR', {
     day: 'numeric', month: 'long', year: 'numeric',
   });
 
-  // Kullanim orani (tahmini)
   const quoteUsage = stats?.quoteCount ?? 0;
-  const quotePercent = Math.min(100, Math.round((quoteUsage / limits.quotes) * 100));
+  const kota = ceviriKota.durum === 'hazir' ? ceviriKota.kota : null;
+  const kotaYuzde = kota && kota.kota.satir > 0
+    ? Math.min(100, Math.round((kota.kullanilanSatir / kota.kota.satir) * 100))
+    : 0;
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -393,23 +397,31 @@ export default function ProfilePage() {
           </div>
 
           <ul className="mb-4 space-y-2">
-            {limits.features.map((f) => (
-              <li key={f} className="flex items-center gap-2 text-sm">
+            <li className="flex items-center gap-2 text-sm">
+              <CheckCircle className="h-3.5 w-3.5 text-emerald-500" />
+              Sınırsız teklif
+            </li>
+            {kota && (
+              <li className="flex items-center gap-2 text-sm">
                 <CheckCircle className="h-3.5 w-3.5 text-emerald-500" />
-                {f}
+                Dönem başına {sayiYaz(kota.kota.satir)} satır çeviri (en fazla {sayiYaz(kota.kota.dosya)} dosya)
               </li>
-            ))}
+            )}
           </ul>
 
           {tier === 'core' && (
             <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
-              <p className="mb-2 text-xs font-medium text-blue-800">PRO'ya yukselt</p>
+              <p className="mb-2 text-xs font-medium text-blue-800">Pro pakete geçin</p>
               <p className="text-[11px] text-blue-600">
-                Iscilik eslestirme, PDF/DWG upload, MEP destegi ve daha fazlasi.
+                İşçilik fiyatlandırması ve DWG/DXF metrajı Pro pakete dâhildir.
               </p>
-              <Button size="sm" className="mt-2 h-7 bg-blue-600 text-xs hover:bg-blue-700">
+              <Button
+                size="sm"
+                className="mt-2 h-7 bg-blue-600 text-xs hover:bg-blue-700"
+                onClick={() => router.push('/abonelik')}
+              >
                 <Crown className="mr-1 h-3 w-3" />
-                Yukselt
+                Paketleri gör
               </Button>
             </div>
           )}
@@ -419,21 +431,45 @@ export default function ProfilePage() {
         <div className="rounded-xl border bg-card p-5">
           <h3 className="mb-4 text-sm font-semibold">Kullanim</h3>
 
-          {/* Teklif kullanimi */}
+          {/* Çeviri kotası — paketin tek gerçek kotası, sunucudan */}
           <div className="mb-4">
             <div className="mb-1.5 flex items-center justify-between text-xs">
-              <span className="text-muted-foreground">Teklifler (bu ay)</span>
-              <span className="font-medium">{quoteUsage} / {limits.quotes}</span>
+              <span className="text-muted-foreground">Çeviri kotası (bu dönem)</span>
+              {kota && (
+                <span className="font-medium">
+                  {sayiYaz(kota.kullanilanSatir)} / {sayiYaz(kota.kota.satir)} satır
+                </span>
+              )}
             </div>
-            <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-              <div
-                className={cn(
-                  'h-full rounded-full transition-all',
-                  quotePercent > 80 ? 'bg-amber-500' : quotePercent > 95 ? 'bg-red-500' : 'bg-blue-500',
+            {kota ? (
+              <>
+                <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className={cn(
+                      'h-full rounded-full transition-all',
+                      kotaYuzde > 95 ? 'bg-red-500' : kotaYuzde > 80 ? 'bg-amber-500' : 'bg-blue-500',
+                    )}
+                    style={{ width: `${kotaYuzde}%` }}
+                  />
+                </div>
+                <p className="mt-1.5 text-[11px] text-muted-foreground">{kalanKotaCumlesi(kota)}</p>
+                {/* Kısıtlı/askıdaki firmada kota görünür ama çeviri 403 alır —
+                    "kalan 3.000 satır" yazıp kapalı olduğunu söylememek yanıltır. */}
+                {kota.ceviriAcik === false && (
+                  <p className="mt-1 text-[11px] font-medium text-amber-700">
+                    Aboneliğiniz kısıtlı olduğu için çeviri şu an kapalı.
+                  </p>
                 )}
-                style={{ width: `${quotePercent}%` }}
-              />
-            </div>
+              </>
+            ) : (
+              <p className="text-[11px] text-muted-foreground">
+                {ceviriKota.durum === 'hata'
+                  ? 'Çeviri kotası şu an okunamadı.'
+                  : ceviriKota.durum === 'yukleniyor'
+                    ? 'Yükleniyor…'
+                    : 'Aktif aboneliğiniz olmadığı için çeviri kotası yok.'}
+              </p>
+            )}
           </div>
 
           {/* Stat items */}
@@ -445,13 +481,17 @@ export default function ProfilePage() {
               </span>
               <span className="text-sm font-semibold">{quoteUsage}</span>
             </div>
-            <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2.5">
-              <span className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Database className="h-3.5 w-3.5" />
-                Malzeme Limiti
-              </span>
-              <span className="text-sm font-semibold">{limits.materials.toLocaleString('tr-TR')}</span>
-            </div>
+            {kota && (
+              <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2.5">
+                <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Database className="h-3.5 w-3.5" />
+                  Çevrilen dosya (bu dönem)
+                </span>
+                <span className="text-sm font-semibold">
+                  {sayiYaz(kota.kullanilanDosya)} / {sayiYaz(kota.kota.dosya)}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </div>

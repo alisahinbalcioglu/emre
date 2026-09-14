@@ -40,7 +40,8 @@ type Gorsel = {
   renk: '' | 'yesil' | 'amber' | 'mor';
   dosya: string;
   alt: string;
-  /** Ucretsiz hesapta KAPALI olan ozellik — sekmede gorunur PRO rozeti cikar. */
+  /** Core pakette KAPALI olan ozellik — sekmede gorunur PRO rozeti cikar.
+   *  (13.09: "ucretsiz hesap" diye bir paket YOK — kayit abonelik acmiyor.) */
   pro?: boolean;
 };
 
@@ -135,8 +136,12 @@ const ADIMLAR: Adim[] = [
       { kalin: 'Malzeme ve işçilik', devam: 'ayrı kolonlarda ilerler, kâr marjı ayrı ayrı girilir' },
       { kalin: 'Genel toplam ve kâr', devam: 'tablonun altında canlı hesaplanır' },
     ],
-    pronot:
-      'İşçilik birim fiyatını her pakette elle girebilirsiniz; işçilik firması seçip fiyatın otomatik gelmesi Pro pakete dâhildir.',
+    // 13.09 (Faz 6.3): eski not "İşçilik birim fiyatını her pakette elle
+    // girebilirsiniz" diyordu — 03.09'dan beri YANLIŞ. İşçilik kapalıyken birim/
+    // toplam kolonları ve işçilik kârı yazılamıyor (ExcelGrid.tsx editable
+    // kapısı), yetenek yalnız Pro'da açık (capabilities.helper.ts). Not artık
+    // 1. adımın doğru cümlesiyle aynı şeyi söylüyor; sayfa kendisiyle çelişmiyor.
+    pronot: 'İşçilik birim fiyatı, işçilik firması seçimi ve işçilik kârı Pro pakete dâhildir.',
     url: 'metapricex.com/teklif',
     gorseller: [
       {
@@ -165,7 +170,7 @@ const ADIMLAR: Adim[] = [
         etiket: 'İşçilik firması ve kârı · PRO',
         renk: 'amber',
         dosya: 'a2-iscilik-dolu',
-        alt: 'İşçilik firması ve işçilik kârı kolonları (firma seçimi Pro pakete dâhildir)',
+        alt: 'İşçilik firması ve işçilik kârı kolonları (işçilik kolonları Pro pakete dâhildir)',
         pro: true,
       },
       {
@@ -232,10 +237,16 @@ const ADIMLAR: Adim[] = [
  *    "eski layer-default fallback'inin kullanici-tetikli karsiligi" diye
  *    tanimlar. Otomatik cap TAHMINI iddiasi YOK (o motor silindi, dogru).
  *  · "Kalem bazinda toplam" — cap bazinda gruplu uzunluklar (lejant/ozet).
- *  · "Dogrudan metraja aktarim" — metraj teklife aktariliyor (birim m). */
+ *  · "Dogrudan metraja aktarim" — metraj teklife aktariliyor (birim m).
+ *
+ *  13.09 (Faz 6.3): adim dogru ama PAKETI SOYLEMIYORDU. DWG Core'da KAPALI
+ *  (veritabani: basic-* dwgAktif=false; dwg-workspace sayfasi Core'a odeme
+ *  duvari gosterir). Iscilikteki desen uygulandi: adim notu + gorsel sekmelerinde
+ *  PRO rozeti. */
 const DWG_ADIM: Adim = {
   key: 'dwg',
   dwg: true,
+  pronot: 'DWG ve DXF projelerinden metraj Pro pakete dâhildir.',
   baslik: 'DWG projenizi yükleyin — hat boyları kendiliğinden ölçülsün',
   metin:
     'Çizimi olduğu gibi yükleyin. Katmanları hangi kaleme karşılık geldiğiyle bir kez eşleştirin; sistem o katmanlardaki hat boylarını ölçüp metraja dönüştürür.',
@@ -248,10 +259,10 @@ const DWG_ADIM: Adim = {
   ],
   url: 'metapricex.com/dwg',
   gorseller: [
-    { sekme: 'DWG yükle', etiket: 'Çizim yüklendi', renk: 'mor', dosya: 'd1-yukle', alt: 'DWG çizimi yüklendi, katmanlar listelendi' },
-    { sekme: 'Katman eşle', etiket: 'Katman → kalem eşleşti', renk: '', dosya: 'd2-katman-esle', alt: 'Katmanın hangi kaleme karşılık geldiği seçiliyor' },
-    { sekme: 'Ölçüm', etiket: 'Hatlar ölçülüyor', renk: 'amber', dosya: 'd3-olcum', alt: 'Hat boyları ölçülüyor' },
-    { sekme: 'Metraj çıktı', etiket: '588,9 m ölçüldü', renk: 'yesil', dosya: 'd4-metraj', alt: 'Kalem bazında gruplanmış metraj sonucu' },
+    { sekme: 'DWG yükle', etiket: 'Çizim yüklendi · PRO', renk: 'mor', dosya: 'd1-yukle', alt: 'DWG çizimi yüklendi, katmanlar listelendi (Pro pakete dâhildir)', pro: true },
+    { sekme: 'Katman eşle', etiket: 'Katman → kalem eşleşti', renk: '', dosya: 'd2-katman-esle', alt: 'Katmanın hangi kaleme karşılık geldiği seçiliyor', pro: true },
+    { sekme: 'Ölçüm', etiket: 'Hatlar ölçülüyor', renk: 'amber', dosya: 'd3-olcum', alt: 'Hat boyları ölçülüyor', pro: true },
+    { sekme: 'Metraj çıktı', etiket: '588,9 m ölçüldü', renk: 'yesil', dosya: 'd4-metraj', alt: 'Kalem bazında gruplanmış metraj sonucu', pro: true },
   ],
 };
 
@@ -436,7 +447,7 @@ export function NasilCalisir() {
                 </span>
                 <span>
                   <strong>Elimde proje var (DWG)</strong>
-                  <span>Çizimi yükleyin, hat boyları otomatik ölçülsün — metrajı sistem çıkarsın.</span>
+                  <span>Çizimi yükleyin, hat boyları otomatik ölçülsün — metrajı sistem çıkarsın. Pro pakete dâhildir.</span>
                 </span>
               </button>
 
@@ -527,7 +538,9 @@ export function NasilCalisir() {
                           key={g.dosya}
                           type="button"
                           role="tab"
-                          aria-selected={aktif[ai] === gi}
+                          // 14.09: durum `adim.key` ile tutuluyor (satır ~537); sıra
+                          // numarasıyla okumak her sekmeyi "seçili değil" gösteriyordu.
+                          aria-selected={(aktif[adim.key] ?? 0) === gi}
                           onClick={() => setAktif((o) => ({ ...o, [adim.key]: gi }))}
                         >
                           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -576,10 +589,18 @@ export function NasilCalisir() {
 
           <div className="nc-cta">
             <h3>Bir sonraki teklifinizi dakikalar içinde hazırlayın</h3>
+            {/* 13.09 (Faz 6.3): eski metin "Kurulum yok, kredi kartı yok. Ücretsiz
+                hesapta malzeme akışının tamamı çalışır" diyordu — YANLIŞ. Kayıt abonelik
+                açmıyor (auth.service.ts register), aboneliksiz hesapta yalnız paket
+                sayfası açık (erisim.servisi.ts), deneme de iyzico kart formundan
+                başlıyor (satinalma.servisi.ts baslat). Karar: ürün değişmez, metin
+                gerçeği söyler. Deneme GÜNÜ bilerek yazılmadı — sürümden okunur
+                (PaketSurumu.denemeGunu); sabit sayı fiyat değişince sessizce yalan olur. */}
             <p>
-              Kurulum yok, kredi kartı yok. Ücretsiz hesapta malzeme akışının tamamı çalışır:
-              havuzdan aktarma, iskonto, eşleştirme, kâr marjı, döviz, İngilizce çıktı ve Excel
-              indirme. İşçilik fiyatlandırması Pro pakete dâhildir.
+              Kurulum yok. Hesabınızı açıp paketinizi seçersiniz; paketler ücretsiz deneme süresiyle
+              başlar ve deneme kart bilgilerinizle açılır. Core pakette malzeme akışının tamamı
+              çalışır: havuzdan aktarma, iskonto, eşleştirme, kâr marjı, döviz, İngilizce çıktı ve
+              Excel indirme. DWG metrajı ve işçilik fiyatlandırması Pro pakete dâhildir.
             </p>
             <a href="/register">Ücretsiz Deneyin</a>
           </div>

@@ -1,0 +1,261 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  ÇEVİRİ KOTASI — paket → aylık satır / dosya tavanı (Faz 6, 13.09.2026)
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ *  TEK KAYNAK. Fiyat sayfası (`GET /fiyatlar`), abonelik sayfası
+ *  (`GET /abonelik/paketler`) ve kota uygulaması (Faz 6.2) bu tabloyu okur.
+ *  Rakam başka HİÇBİR yere yazılmaz: fiyat sayfasına sabit yazılan bir kota,
+ *  tablo değişince sessizce yalan söyler.
+ *
+ *  ── NEDEN SEVİYE × KAPSAM, NEDEN YALNIZ SEVİYE DEĞİL ──
+ *  `pro-mek`, `pro-elk` ve `pro-mep` üçü de `seviye = pro`; ayrıştıkları yer
+ *  `kapsam`. Pro MEP, Pro'nun iki katı kota alır (karar 13.09). Kotayı yalnız
+ *  `PackageLevel`'dan çözen bir uygulama Pro MEP müşterisine SESSİZCE yarım
+ *  kota verirdi — iki kat ödeyen müşteriye, şikâyet olarak duyulacak şekilde.
+ *
+ *  ── TABLO (karar 13.09, Emre) ──
+ *                 tek disiplin          MEP (iki disiplin)
+ *     core        3.000 satır / 30      6.000 satır / 60    ← yalnız miras-core
+ *     pro         4.500 satır / 60      9.000 satır / 120   ← pro-mep, miras-pro
+ *
+ *  Veritabanında 13.09'da ölçülen 7 paketin 7'si bir hücreye düşer:
+ *  basic-mek, basic-elk (core·tek) · pro-mek, pro-elk (pro·tek) ·
+ *  pro-mep (pro·mep) · miras-core (core·mep) · miras-pro (pro·mep).
+ *  Miras hücreleri de AÇIKÇA karar verildi ("kuralı aynen uygula"): miras-pro
+ *  pro-mep ile aynı yetenekleri veriyor, aynı kotayı alır.
+ *
+ *  ── EŞLENMEMİŞ BİRLEŞİM ──
+ *  Tabloda olmayan seviye ya da kapsam (ör. ileride `suite`) EN DÜŞÜK kotayı
+ *  alır, SINIRSIZI DEĞİL. `eslendi: false` döner ki çağıran bunu loglayabilsin:
+ *  yeni bir paket açıldığında tabloya eklenmeyi unutmak sessiz kalmamalı.
+ */
+
+export interface CeviriKotasi {
+  /** Abonelik dönemi başına çevrilebilecek toplam satır. */
+  readonly satir: number;
+  /** Abonelik dönemi başına çevrilebilecek dosya (çeviri işi) sayısı. */
+  readonly dosya: number;
+}
+
+export interface CozulenKota extends CeviriKotasi {
+  /** false → paket tabloda yok, en düşük kotaya düşürüldü. */
+  readonly eslendi: boolean;
+}
+
+type Hucreler = Readonly<Record<string, CeviriKotasi>>;
+
+const KOTA_TABLOSU: Readonly<Record<string, Hucreler>> = Object.freeze({
+  core: Object.freeze({
+    mechanical: Object.freeze({ satir: 3000, dosya: 30 }),
+    electrical: Object.freeze({ satir: 3000, dosya: 30 }),
+    mep: Object.freeze({ satir: 6000, dosya: 60 }),
+  }),
+  pro: Object.freeze({
+    mechanical: Object.freeze({ satir: 4500, dosya: 60 }),
+    electrical: Object.freeze({ satir: 4500, dosya: 60 }),
+    mep: Object.freeze({ satir: 9000, dosya: 120 }),
+  }),
+});
+
+/**
+ * Eşlenmemiş paketin düştüğü kota. Tablonun en küçük hücresidir; bunu
+ * `ceviri-kotasi-test` ölçer (tablo değişip bu sabit geride kalırsa kırmızı).
+ */
+export const EN_DUSUK_KOTA: CeviriKotasi = Object.freeze({ satir: 3000, dosya: 30 });
+
+function kendiAlani<T>(nesne: Readonly<Record<string, T>>, anahtar: string): T | undefined {
+  // `in`/köşeli parantez tek başına YETMEZ: "constructor", "toString" gibi
+  // anahtarlar prototipten bir değer döndürür ve eşlenmiş sanılırdı.
+  return Object.prototype.hasOwnProperty.call(nesne, anahtar) ? nesne[anahtar] : undefined;
+}
+
+export function ceviriKotasiCoz(paket: { seviye: string; kapsam: string }): CozulenKota {
+  const satirlar = kendiAlani(KOTA_TABLOSU, String(paket.seviye));
+  const hucre = satirlar ? kendiAlani(satirlar, String(paket.kapsam)) : undefined;
+  if (hucre) return { satir: hucre.satir, dosya: hucre.dosya, eslendi: true };
+  return { satir: EN_DUSUK_KOTA.satir, dosya: EN_DUSUK_KOTA.dosya, eslendi: false };
+}
+
+/** Test ve denetim için: tablonun bütün hücreleri (salt okunur kopya). */
+export function kotaHucreleri(): Array<{ seviye: string; kapsam: string } & CeviriKotasi> {
+  return Object.entries(KOTA_TABLOSU).flatMap(([seviye, satirlar]) =>
+    Object.entries(satirlar).map(([kapsam, k]) => ({ seviye, kapsam, satir: k.satir, dosya: k.dosya })),
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  KOTA KARARI — saf (Faz 6.2, 14.09.2026)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Neden reddedildi — mesaj HANGİ tavanın dolduğunu söylemek zorunda. */
+export type KotaRedSebebi = 'DOSYA_TAVANDAN_BUYUK' | 'DOSYA_TAVANI' | 'SATIR_TAVANI';
+
+export interface KotaKarari {
+  readonly izin: boolean;
+  readonly sebep: KotaRedSebebi | null;
+  readonly gerekenSatir: number;
+  /** Bu istekten ÖNCE kalan. */
+  readonly kalanSatir: number;
+  readonly kalanDosya: number;
+}
+
+/**
+ * Karar sırası ölçülen bir sorunun cevabıdır:
+ *  1. Dosya dönemlik SATIR TAVANINDAN büyükse → hiçbir dönem çevrilemez. İlk
+ *     bu sorulur: "kotanız yenilenince deneyin" demek kullanıcıyı hiç
+ *     gelmeyecek bir aya bekletir.
+ *  2. Dosya hakkı bittiyse → hangi boyda olursa olsun bu dönem çevrilemez.
+ *  3. Kalan satır yetmiyorsa → kısmen ÇEVRİLMEZ, önceden reddedilir.
+ *
+ * Çevrilecek satırı OLMAYAN istek (0 satır) kota harcamaz ve reddedilmez:
+ * çevrilecek bir şey yoktur, AI çağrısı da yapılmaz.
+ *
+ * `yeniDosya: false` → yarım kalan bir çevirinin DEVAMI: dosya hakkı zincirin
+ * ilk isteğinde zaten düştü, dosya tavanı ikinci kez sorulmaz.
+ */
+export function kotaKarari(p: {
+  kota: CeviriKotasi;
+  kullanilanSatir: number;
+  kullanilanDosya: number;
+  gerekenSatir: number;
+  yeniDosya?: boolean;
+}): KotaKarari {
+  const kalanSatir = Math.max(0, p.kota.satir - p.kullanilanSatir);
+  const kalanDosya = Math.max(0, p.kota.dosya - p.kullanilanDosya);
+  const temel = { gerekenSatir: p.gerekenSatir, kalanSatir, kalanDosya };
+  if (p.gerekenSatir <= 0) return { izin: true, sebep: null, ...temel };
+  if (p.gerekenSatir > p.kota.satir) return { izin: false, sebep: 'DOSYA_TAVANDAN_BUYUK', ...temel };
+  if (p.yeniDosya !== false && kalanDosya < 1) return { izin: false, sebep: 'DOSYA_TAVANI', ...temel };
+  if (p.gerekenSatir > kalanSatir) return { izin: false, sebep: 'SATIR_TAVANI', ...temel };
+  return { izin: true, sebep: null, ...temel };
+}
+
+export type CeviriSonucDurumu = 'BASARILI' | 'KISMI' | 'BASARISIZ';
+
+/**
+ * Çeviri SONUÇLANINCA kotadan ne düşer (Faz 6.2, 14.09 incelemesi Y1).
+ *
+ * İlk hâli "tam değilse hiçbir şey düşmez"di: harita yine istemciye dönüyordu,
+ * yani bir parçayı bilerek patlatan teklif çevrilen satırların hepsini kotasız
+ * alabiliyordu. Kural artık TESLİM EDİLENE bakar:
+ *  · tüm satırlar teslim edildi        → BASARILI
+ *  · bir kısmı                         → KISMI, yalnız teslim edilen düşer
+ *  · hiç satır teslim edilmedi (hata)  → BASARISIZ, hiçbir şey düşmez
+ * Aynı içeriğin 10 dk içindeki DEVAMINDA `oncekiTeslim` zincirde önceden
+ * düşeni taşır; yalnız YENİ teslim edilen satır düşer (aynı satır iki kez
+ * düşmez). Çevrilecek satırı olmayan istek (toplam 0) BASARILI sayılır ve
+ * hiçbir şey düşmez.
+ */
+export function sonucHesabi(p: {
+  toplamSatir: number;
+  teslimEdilen: number;
+  oncekiTeslim: number;
+}): { durum: CeviriSonucDurumu; dusulenSatir: number; toplamTeslim: number } {
+  const teslim = Math.max(0, Math.min(p.teslimEdilen, p.toplamSatir));
+  const toplamTeslim = Math.max(p.oncekiTeslim, teslim);
+  const dusulenSatir = Math.max(0, teslim - p.oncekiTeslim);
+  const durum: CeviriSonucDurumu =
+    teslim >= p.toplamSatir ? 'BASARILI' : toplamTeslim > 0 ? 'KISMI' : 'BASARISIZ';
+  return { durum, dusulenSatir, toplamTeslim };
+}
+
+/** TR binlik ayraç — `toLocaleString` sunucunun ICU verisine bağlıdır, kullanılmaz. */
+export function binlik(n: number): string {
+  return String(Math.trunc(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+
+/**
+ * Türkiye tarihi, gg.aa.yyyy. Sunucu UTC'de; Türkiye 2016'dan beri sabit
+ * UTC+3 (yaz saati yok). Yenilenme 21:30 UTC'deyse kullanıcının takviminde
+ * ertesi gündür — UTC tarihi yazmak bir gün erken söylerdi.
+ */
+export function trTarih(t: Date): string {
+  const tr = new Date(t.getTime() + 3 * 60 * 60 * 1000);
+  const gg = String(tr.getUTCDate()).padStart(2, '0');
+  const aa = String(tr.getUTCMonth() + 1).padStart(2, '0');
+  return `${gg}.${aa}.${tr.getUTCFullYear()}`;
+}
+
+/**
+ * Reddin kullanıcıya söylenecek cümlesi. Genel bir "kota yetersiz" YOKTUR —
+ * her sebep kendi rakamlarıyla konuşur.
+ */
+export function kotaRedMesaji(k: KotaKarari, kota: CeviriKotasi, yenilenme: Date): string {
+  switch (k.sebep) {
+    case 'DOSYA_TAVANDAN_BUYUK':
+      return (
+        `Bu teklif ${binlik(k.gerekenSatir)} satır çeviri gerektiriyor; paketinizin dönemlik çeviri tavanı ` +
+        `${binlik(kota.satir)} satır. Bu teklif bu pakette hiçbir dönem çevrilemez — çevirmek için daha ` +
+        `yüksek kotalı bir pakete geçmeniz gerekir.`
+      );
+    case 'DOSYA_TAVANI':
+      return (
+        `Bu dönemki ${binlik(kota.dosya)} dosyalık çeviri hakkınızın tamamını kullandınız. ` +
+        `Kotanız ${trTarih(yenilenme)} tarihinde yenilenir.`
+      );
+    case 'SATIR_TAVANI':
+      return (
+        `Bu dönem ${binlik(k.kalanSatir)} satırlık çeviri hakkınız kaldı; bu teklif ` +
+        `${binlik(k.gerekenSatir)} satır gerektiriyor. Teklif kısmen çevrilmez. ` +
+        `Kotanız ${trTarih(yenilenme)} tarihinde yenilenir.`
+      );
+    default:
+      return '';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  KOTA DÖNEMİ — abonelik dönemi, TAKVİM AYI DEĞİL (Faz 6.2)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface KotaDonemi {
+  readonly baslangic: Date;
+  /** Hariç — bir sonraki dönemin başlangıcı = yenilenme anı. */
+  readonly bitis: Date;
+}
+
+function aySonGunu(yil: number, ay: number): number {
+  return new Date(Date.UTC(yil, ay + 1, 0)).getUTCDate();
+}
+
+/** Çapaya k ay ekler; gün taşarsa ayın son gününe kırpılır (31 Oca → 28/29 Şub → 31 Mar). */
+function ayEkle(capa: Date, k: number): Date {
+  const hedefAy = capa.getUTCMonth() + k;
+  const yil = capa.getUTCFullYear() + Math.floor(hedefAy / 12);
+  const ay = ((hedefAy % 12) + 12) % 12;
+  const gun = Math.min(capa.getUTCDate(), aySonGunu(yil, ay));
+  return new Date(
+    Date.UTC(yil, ay, gun, capa.getUTCHours(), capa.getUTCMinutes(), capa.getUTCSeconds(), capa.getUTCMilliseconds()),
+  );
+}
+
+/**
+ * `simdi`'yi içeren dönem. Her dönem ÇAPADAN doğrudan hesaplanır (bir önceki
+ * dönemden değil): 31 Ocak çapası Şubat'ta 28'ine kırpılır ama Mart'ta yine
+ * 31'ine döner — zincirleme hesap kırpılmayı kalıcılaştırırdı.
+ *
+ * Periyot `PaketSurumu.periyot` × `periyotAdedi`. Tanınmayan periyot aylık
+ * sayılır (satıştaki ve miras sürümlerin hepsi MONTHLY·1 — 13.09 ölçüldü).
+ */
+export function kotaDonemi(capa: Date, periyot: string, periyotAdedi: number, simdi: Date): KotaDonemi {
+  const adet = Number.isInteger(periyotAdedi) && periyotAdedi > 0 ? periyotAdedi : 1;
+
+  if (periyot === 'DAILY' || periyot === 'WEEKLY') {
+    const adim = (periyot === 'DAILY' ? 1 : 7) * adet * 86_400_000;
+    const k = Math.max(0, Math.floor((simdi.getTime() - capa.getTime()) / adim));
+    const baslangic = new Date(capa.getTime() + k * adim);
+    return { baslangic, bitis: new Date(baslangic.getTime() + adim) };
+  }
+
+  const adimAy = (periyot === 'YEARLY' ? 12 : 1) * adet;
+  if (simdi.getTime() < capa.getTime()) return { baslangic: capa, bitis: ayEkle(capa, adimAy) };
+
+  const ayFarki =
+    (simdi.getUTCFullYear() - capa.getUTCFullYear()) * 12 + (simdi.getUTCMonth() - capa.getUTCMonth());
+  let k = Math.floor(ayFarki / adimAy);
+  // Ay farkı gün/saat hesaba katmaz: çapanın günü henüz gelmediyse bir geri çekil.
+  while (k > 0 && ayEkle(capa, k * adimAy).getTime() > simdi.getTime()) k--;
+  while (ayEkle(capa, (k + 1) * adimAy).getTime() <= simdi.getTime()) k++;
+  return { baslangic: ayEkle(capa, k * adimAy), bitis: ayEkle(capa, (k + 1) * adimAy) };
+}

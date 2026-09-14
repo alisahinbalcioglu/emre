@@ -31,6 +31,10 @@ export enum Yetenek {
   // GERÇEK para harcar. Ödemesi duran bir firmaya masraf üretmeye devam etmek,
   // kapatılmak istenen gelir hatasının ta kendisidir.
   AI_ANALIZ = 'ai.analiz',
+  // ⚠ Faz 6.8 (14.09): İngilizce çeviri. AI_ANALIZ ile aynı gerekçe —
+  // KISITLI_MODDA_ACIK'e EKLENMEZ. Kota ayrıca `CeviriKotaServisi`nde sayılır;
+  // bu yetenek yalnız "aboneliği yürüyor mu" sorusunu sorar.
+  CEVIRI = 'ceviri',
 }
 
 /**

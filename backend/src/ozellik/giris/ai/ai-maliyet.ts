@@ -48,15 +48,19 @@ interface Fiyat {
 /**
  * MODEL BAZLI LISTE FIYATLARI (USD / 1K token).
  *
- * ⚠ Sonnet 5'in 2026-08-31'e kadar suren tanitim fiyati ($2/$10) BILEREK
- * kullanilmiyor: tarihe bagli fiyat, tarih gecince sessizce yanlis olur.
- * Liste fiyati kullanmak tanitim doneminde maliyeti bir miktar YUKSEK gosterir
- * — butce izlemede guvenli yon budur.
+ * ⚠ SONNET 5 = $2/$10 (14.09.2026 duzeltmesi). Buradaki eski not $2/$10'u
+ * 2026-08-31'de bitecek bir TANITIM fiyati sayip $3/$15 yaziyordu. 13.09 olcum
+ * turu resmi fiyati kontrol etti: 1 Eylul artisi OLMADI, $2/$10 kalici. Eski
+ * deger panelde Sonnet 5 maliyetini 1,5 kat SISIRIYORDU (olculen toplam
+ * $0,3809, dogrusu $0,2539). "Guvenli yon" gerekcesi kota canliya cikinca
+ * gecersiz: maliyet takibi kotanin ekonomisini olcer, sisik rakam onu bozar.
+ * ⚠ Maliyet LOG YAZILIRKEN hesaplanir (`AiUsageLog.estimatedCost`): bu
+ * duzeltme yalniz YENI kayitlari etkiler, eski kayitlar sisik kalir.
  */
 const MODEL_FIYAT: Record<string, Fiyat> = {
   'claude-opus-5': { input: 0.005, output: 0.025 },
   'claude-opus-4-8': { input: 0.005, output: 0.025 },
-  'claude-sonnet-5': { input: 0.003, output: 0.015 },
+  'claude-sonnet-5': { input: 0.002, output: 0.01 },
   'claude-sonnet-4-6': { input: 0.003, output: 0.015 },
   'claude-haiku-4-5': { input: 0.001, output: 0.005 },
   'gemini-2.5-flash': { input: 0.0001, output: 0.0004 },

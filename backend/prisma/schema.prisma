@@ -970,6 +970,71 @@ model Translation {
   @@index([targetLang])
 }
 
+/// FAZ 6.2 — ÇEVİRİ TÜKETİM KAYDI (14.09.2026).
+///
+/// Her çeviri isteği TAM OLARAK BİR kayıt bırakır — tamamen önbellekten dönen
+/// dahil. `AiUsageLog` bu işi yapamaz (13.09 ölçümü): parça (60 metin) başına
+/// satır yazar, satır/dosya alanı yoktur ve tamamı önbellekten dönen çeviride
+/// HİÇ satır yazmaz. Kota bu tablodan sayılır.
+///
+/// ⚠ FK YOK, BİLEREK (AiUsageLog ile aynı gerekçe + bir fazlası):
+///  1. Teklif silinince kayıt KALMALI. Cascade'li bir FK ile kullanıcı çevirip
+///     teklifi silerek kotasını geri alabilirdi.
+///  2. Kullanıcı yumuşak silinse de dönem kullanımı firmada kalmalı.
+///
+/// Dönem alanları istek anındaki abonelik dönemini DENETİM İÇİN taşır; sayım
+/// `olusturuldu` aralığıyla yapılır (çapa değişse de kayıt kaybolmaz).
+///
+/// ⚠ SAYIM `dusulenSatir` ÜZERİNDENDİR, `satirSayisi` DEĞİL: kısmen tamamlanan
+/// çeviride yalnız TESLİM EDİLEN satır düşer; aynı içeriğin 10 dk içindeki
+/// devamı yalnız yeni teslim edilen satırı düşer (`toplamTeslim` zinciri) ve
+/// dosya hakkından ikinci kez yemez (`devam`).
+model CeviriTuketimi {
+  id             String              @id @default(uuid())
+  firmaId        String
+  userId         String
+  abonelikId     String
+  paketKodu      String
+  donemBaslangic DateTime
+  donemBitis     DateTime
+  quoteId        String
+  hedefDil       String              @default("en")
+  /// Teklifin çevrilecek metin içeren satır sayısı (tanım a) — istek anında.
+  satirSayisi    Int
+  /// Kotadan düşen satır. İŞLENİYOR iken ayrılan; sonuçlanınca teslim edilen
+  /// satırdan zincirde önceden düşeni çıkarılmış hâli.
+  dusulenSatir   Int                 @default(0)
+  /// Bu içerik zincirinde şimdiye kadar teslim edilen satır (devam hesabı).
+  toplamTeslim   Int                 @default(0)
+  /// true → yarım kalan bir çevirinin devamı; dosya hakkından yemez.
+  devam          Boolean             @default(false)
+  /// API'ye aday benzersiz metin sayısı (önbellek öncesi).
+  metinSayisi    Int
+  /// Çeviriyi belirleyen içeriğin sha256 özeti — tekrar koruması bununla bakar.
+  icerikOzeti    String
+  durum          CeviriTuketimDurumu @default(ISLENIYOR)
+  onbellekten    Int                 @default(0)
+  cevrilen       Int                 @default(0)
+  basarisizParca Int                 @default(0)
+  hata           String?
+  olusturuldu    DateTime            @default(now())
+  sonuclandi     DateTime?
+
+  @@index([firmaId, olusturuldu])
+  @@index([firmaId, quoteId, icerikOzeti, olusturuldu])
+}
+
+/// ISLENIYOR  — kota ayrıldı, çeviri sürüyor (kotaya SAYILIR; zaman aşımında sayılmaz)
+/// BASARILI   — tüm satırlar teslim edildi (`dusulenSatir` kotaya SAYILIR)
+/// KISMI      — bir kısmı teslim edildi (yalnız teslim edilen `dusulenSatir` SAYILIR)
+/// BASARISIZ  — hiç satır teslim edilmedi (kotaya SAYILMAZ; tekrar denenebilir)
+enum CeviriTuketimDurumu {
+  ISLENIYOR
+  BASARILI
+  KISMI
+  BASARISIZ
+}
+
 model SystemSettings {
   id        String   @id @default(uuid())
   key       String   @unique

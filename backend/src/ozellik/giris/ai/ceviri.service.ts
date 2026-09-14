@@ -1,7 +1,11 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import Anthropic from '@anthropic-ai/sdk';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
+import type { Kimlik } from '../../../altyapi/auth/kimlik';
+import { CeviriKotaServisi, type KotaOzeti } from '../../odeme/abonelik/ceviri-kota.servisi';
+import { sonucHesabi } from '../../odeme/abonelik/ceviri-kotasi';
 import { AiService } from './ai.service';
+import { ceviriAnahtari, teslimEdilenSatir } from './ceviri-kurali';
 
 /**
  * TEKNIK METIN CEVIRISI — ONBELLEK ONCE, API SONRA (13.08).
@@ -10,10 +14,10 @@ import { AiService } from './ai.service';
  *   benzersiz metinler → onbellek sorgusu → EKSIK OLANLAR icin tek/birkac
  *   API cagrisi → onbellege yaz → birlesik harita don
  *
- * Frontend zaten benzersizlestirip DOKUNULMAZLARI (cap/olcu/kod) elemis olarak
- * gonderir (ozellik/teklif/ceviri.ts, testle muhurlu). Burada ikinci bir
- * savunma yok — tek karar yeri orasi; iki yerde ayri kural iki ayri gercek
- * uretirdi.
+ * Metinleri istemci GONDERMEZ (Faz 6.2, 14.09): `teklifiCevir` kayitli
+ * teklifi okur, DOKUNULMAZLARI (cap/olcu/kod) eler ve benzersizlestirir —
+ * kural tek yerde, `ceviri-kurali.ts` (testle muhurlu). 13.08–14.09 arasi bu
+ * karar on yuzdeydi; kota satiri da ondan cikacagi icin sunucuya tasindi.
  *
  * ── NEDEN ONBELLEK ONCE ─────────────────────────────────────────────────────
  * Canli teklif 15.137 satir. Benzersizlestirme birkac yuze indiriyor; kalici
@@ -124,6 +128,24 @@ export interface CeviriSonucu {
   basarisiz: number;
 }
 
+/** Teklif çevirisinin istemciye dönen hâli (Faz 6.2). */
+export interface TeklifCeviriSonucu extends CeviriSonucu {
+  /** Teklifin çevrilecek metin içeren satır sayısı. */
+  satirSayisi: number;
+  /** Bu istekte kotadan düşen satır (tekrarda ve hatada 0; kısmide teslim edilen). */
+  dusulenSatir: number;
+  /** Haritanın karşılamadığı, Türkçe kalan satır. */
+  cevrilemeyenSatir: number;
+  /** true → aynı içerik pencere içinde zaten çevrilmişti; yeni tüketim YOK. */
+  tekrar: boolean;
+  /** true → yarım kalan çevirinin devamıydı (dosya hakkından yemedi). */
+  devam: boolean;
+  /** true → kotadan satır düştü. */
+  kotadanDustu: boolean;
+  /** İstek SONRASI kota durumu. */
+  kota: KotaOzeti;
+}
+
 /**
  * API hatasini kullanicinin YAPABILECEGI bir eyleme cevirir.
  *
@@ -182,10 +204,109 @@ export function ceviriBasarisizMi(p: {
 
 @Injectable()
 export class CeviriService {
+  private readonly logger = new Logger(CeviriService.name);
+
   constructor(
     private prisma: PrismaService,
     private ai: AiService,
+    private kota: CeviriKotaServisi,
   ) {}
+
+  /**
+   * TEKLİF ÇEVİRİSİ — istemcinin tek giriş yolu (Faz 6.2, 14.09).
+   *
+   * İstemci yalnız teklif kimliği gönderir. Çevrilecek metinler ve kotadan
+   * düşecek satır KAYITLI teklif içeriğinden, aynı kuraldan çıkar
+   * (`ceviri-kurali.ts`). Sıra değiştirilemez:
+   *   1. rezerveEt — e-posta, tekrar, kota; geçmezse AI'ya HİÇ gidilmez
+   *   2. tekrar ise önbellekten dön (yeni tüketim yok)
+   *   3. çevir
+   *   4. sonuçlandır — TESLİM EDİLEN satır düşer (tam: hepsi · kısmi: teslim
+   *      edilen · hata: hiçbiri); devamda zincirde önceden düşen düşülmez
+   */
+  async teklifiCevir(k: Kimlik, quoteId: string, hedefDil = 'en'): Promise<TeklifCeviriSonucu> {
+    const r = await this.kota.rezerveEt(k, quoteId, hedefDil);
+
+    if (r.tur === 'tekrar') {
+      const harita = await this.onbellekHaritasi(r.icerik.metinler, hedefDil);
+      return {
+        harita,
+        onbellekten: Object.keys(harita).length,
+        cevrilen: 0,
+        basarisiz: 0,
+        satirSayisi: r.icerik.satirSayisi,
+        dusulenSatir: 0,
+        cevrilemeyenSatir: r.icerik.satirSayisi - teslimEdilenSatir(r.icerik, harita),
+        tekrar: true,
+        devam: false,
+        kotadanDustu: false,
+        kota: r.ozet,
+      };
+    }
+
+    const temel = { toplamSatir: r.icerik.satirSayisi, oncekiTeslim: r.oncekiTeslim };
+    let sonuc: CeviriSonucu;
+    try {
+      sonuc = await this.cevir(r.icerik.metinler, hedefDil, k);
+    } catch (e) {
+      await this.sonuclandirSessiz(r.kayitId, {
+        ...temel,
+        teslimEdilen: 0,
+        onbellekten: 0,
+        cevrilen: 0,
+        basarisizParca: 0,
+        hata: (e as Error)?.message ?? 'bilinmeyen hata',
+      });
+      throw e;
+    }
+
+    const teslimEdilen = teslimEdilenSatir(r.icerik, sonuc.harita);
+    const h = sonucHesabi({ ...temel, teslimEdilen });
+    await this.sonuclandirSessiz(r.kayitId, {
+      ...temel,
+      teslimEdilen,
+      onbellekten: sonuc.onbellekten,
+      cevrilen: sonuc.cevrilen,
+      basarisizParca: sonuc.basarisiz,
+      hata: h.durum === 'BASARILI'
+        ? undefined
+        : `${r.icerik.satirSayisi - teslimEdilen} satir teslim edilemedi (${sonuc.basarisiz} parca basarisiz)`,
+    });
+
+    const dosya = h.dusulenSatir > 0 && !r.devam ? 1 : 0;
+    return {
+      ...sonuc,
+      satirSayisi: r.icerik.satirSayisi,
+      dusulenSatir: h.dusulenSatir,
+      cevrilemeyenSatir: r.icerik.satirSayisi - teslimEdilen,
+      tekrar: false,
+      devam: r.devam,
+      kotadanDustu: h.dusulenSatir > 0,
+      kota: {
+        ...r.ozet,
+        kullanilanSatir: r.ozet.kullanilanSatir + h.dusulenSatir,
+        kullanilanDosya: r.ozet.kullanilanDosya + dosya,
+        kalanSatir: Math.max(0, r.ozet.kalanSatir - h.dusulenSatir),
+        kalanDosya: Math.max(0, r.ozet.kalanDosya - dosya),
+      },
+    };
+  }
+
+  /**
+   * Sonuçlandırma yazılamazsa çeviri sonucu kullanıcıdan SAKLANMAZ — ama sessiz
+   * de kalmaz (hata yutma dersi). Kayıt `ISLENIYOR` kalır; zaman aşımında
+   * kotaya sayılmaz ve bir sonraki ayırmada temizlenir.
+   */
+  private async sonuclandirSessiz(
+    kayitId: string,
+    s: Parameters<CeviriKotaServisi['sonuclandir']>[1],
+  ): Promise<void> {
+    try {
+      await this.kota.sonuclandir(kayitId, s);
+    } catch (e) {
+      this.logger.error(`Ceviri tuketim kaydi sonuclandirilamadi (${kayitId}): ${(e as Error).message}`);
+    }
+  }
 
   private sistemPrompt(): string {
     const sozluk = SOZLUK.map(([tr, en]) => `${tr} = ${en}`).join('\n');
@@ -212,7 +333,7 @@ export class CeviriService {
     kimlik?: { userId?: string | null; firmaId?: string | null },
   ): Promise<CeviriSonucu> {
     const benzersiz = Array.from(
-      new Set(metinler.map((m) => String(m ?? '').trim().replace(/\s+/g, ' ')).filter(Boolean)),
+      new Set(metinler.map((m) => ceviriAnahtari(m)).filter(Boolean)),
     );
     if (benzersiz.length === 0) return { harita: {}, onbellekten: 0, cevrilen: 0, basarisiz: 0 };
 
@@ -220,7 +341,8 @@ export class CeviriService {
     const kayitlar = await this.prisma.translation.findMany({
       where: { targetLang: hedefDil, sourceText: { in: benzersiz } },
     });
-    const harita: Record<string, string> = {};
+    // Prototipsiz: "constructor" gibi bir metin önbellekte VAR sanılmasın.
+    const harita: Record<string, string> = Object.create(null);
     for (const k of kayitlar) harita[k.sourceText] = k.translatedText;
     const onbellekten = kayitlar.length;
 
@@ -277,7 +399,7 @@ export class CeviriService {
         const cozulen = JSON.parse(metin) as { ceviriler: Array<{ kaynak: string; ceviri: string }> };
 
         for (const c of cozulen.ceviriler ?? []) {
-          const kaynak = String(c.kaynak ?? '').trim().replace(/\s+/g, ' ');
+          const kaynak = ceviriAnahtari(c.kaynak);
           const ceviri = String(c.ceviri ?? '').trim();
           // ⚠ Uydurulmus anahtar YAZILMAZ: model istemedigimiz bir metni geri
           // dondurdurse onbellege girmemeli — onbellek kalicidir, kirlenirse
@@ -335,29 +457,29 @@ export class CeviriService {
    * DEGERLENDIRMEZ. Export yolu bunu kullanir.
    *
    * ⚠ NEDEN KARAR VERMEZ: dokunulmazlik kurali (cap/olcu/kod ceviriye
-   * GIRMEZ) frontend'de saf modulde durur ve testle muhurlu
-   * (`ozellik/teklif/ceviri.ts`). Ayni kurali burada ikinci kez yazmak, iki
-   * yerde ayri ayri evrilen IKI GERCEK uretirdi. Onbellek zaten o kuralin
-   * CIKTISIDIR: "DN 20" hicbir zaman gonderilmedigi icin onbellekte YOKTUR,
-   * dolayisiyla export'ta da degismez. Karar tek yerde kalir, burasi yalnizca
-   * kayitli esleseni uygular.
+   * GIRMEZ) `ceviri-kurali.ts`te durur ve testle muhurlu. Onbellek o kuralin
+   * CIKTISIDIR: "DN 20" hicbir zaman ceviriye gitmedigi icin onbellekte YOKTUR,
+   * dolayisiyla export'ta da degismez. Burasi yalnizca kayitli esleseni uygular.
+   * ⚠ KOTA TUKETMEZ (Faz 6.2 siniri): yalniz daha once cevrilip onbellege
+   * yazilmis metni uygular, AI'ya gitmez — yeni tuketim yoktur.
    */
   async onbellekHaritasi(metinler: string[], hedefDil = 'en'): Promise<Record<string, string>> {
     const benzersiz = Array.from(
-      new Set(metinler.map((m) => String(m ?? '').trim().replace(/\s+/g, ' ')).filter(Boolean)),
+      new Set(metinler.map((m) => ceviriAnahtari(m)).filter(Boolean)),
     );
     if (benzersiz.length === 0) return {};
     const kayitlar = await this.prisma.translation.findMany({
       where: { targetLang: hedefDil, sourceText: { in: benzersiz } },
     });
-    const harita: Record<string, string> = {};
+    // Prototipsiz: "constructor" gibi bir metin önbellekte VAR sanılmasın.
+    const harita: Record<string, string> = Object.create(null);
     for (const k of kayitlar) harita[k.sourceText] = k.translatedText;
     return harita;
   }
 
   /** Kullanici duzeltmesi — AI'nin uzerine yazar ve bir daha sorulmaz. */
   async duzelt(sourceText: string, translatedText: string, hedefDil = 'en'): Promise<void> {
-    const kaynak = String(sourceText ?? '').trim().replace(/\s+/g, ' ');
+    const kaynak = ceviriAnahtari(sourceText);
     const ceviri = String(translatedText ?? '').trim();
     if (!kaynak || !ceviri) throw new BadRequestException('Kaynak ve ceviri bos olamaz.');
     await this.prisma.translation.upsert({
