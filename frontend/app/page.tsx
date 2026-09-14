@@ -56,6 +56,7 @@ import Link from 'next/link';
 import { Home as HomeIcon, FileText, Database, BookOpen } from 'lucide-react';
 import { GirisliyseYonlendir } from '@/ortak/kabuk/components/landing/GirisliyseYonlendir';
 import { NasilCalisir } from '@/ortak/kabuk/components/landing/NasilCalisir';
+import { sayfaMetaverisi } from '@/ortak/seo/arama-paylasim';
 
 /** Core pakette kapali ozelligin yanindaki isaret — NasilCalisir'deki
  *  `.pro-rozet` ile ayni amber tonu, ayni dil.
@@ -76,11 +77,15 @@ function ProRozeti() {
   );
 }
 
-export const metadata = {
-  title: 'MetaPriceX — Mekanik Tesisat Metraj ve Teklif Platformu',
-  description:
+// Plan 6.5: baslik ve aciklama DEGISMEDI; paylasim karti (Open Graph + X) ayni
+// metni tasir, gorsel ve adres sayfaya ozel (ortak/seo/arama-paylasim.ts).
+export const metadata = sayfaMetaverisi({
+  baslik: 'MetaPriceX — Mekanik Tesisat Metraj ve Teklif Platformu',
+  aciklama:
     'DWG projelerinden hat boylarını otomatik ölçün (Pro), çok sayfalı Excel metrajlarını okuyun ve kendi marka fiyat listelerinizle dakikalar içinde teklif hazırlayın.',
-};
+  yol: '/',
+  gorsel: 'anasayfa',
+});
 
 const MOCKUP_NAV = [
   { etiket: 'Ana Sayfa', ikon: HomeIcon, etkin: true },

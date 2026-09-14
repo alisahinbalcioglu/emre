@@ -18,6 +18,13 @@
  * ⚠ Video `muted` OLMAK ZORUNDA — kaldirilirsa tarayici otomatik oynatmayi
  * engeller (teslim notunun uyarisi, korundu).
  *
+ * ⚠ Video `autoPlay` DEGIL, `preload="none"` (plan 6.6, 14.09): olculdu —
+ * video ilk ekranda degil (masaustu 2283 px, telefon 2925 px asagida) ama
+ * `autoPlay` yuzunden 1.017.826 bayt sayfa acilisinda TAMAMEN iniyordu.
+ * Oynatmayi zaten asagidaki gozcu baslatiyor; indirme artik video gorunur
+ * olunca basliyor. Poster de (189 KB) video ekrana yaklasinca baglanir.
+ * Bedeli: JS kapaliyken video oynamaz (bolumun sekme/yol secimi de JS ister).
+ *
  * Statikler `frontend/public/nasil-calisir/` altinda; yollar koke gore mutlak.
  */
 
@@ -25,6 +32,16 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import './nasil-calisir.css';
 
 const KOK = '/nasil-calisir';
+
+/** Ekran goruntusu piksel boyutu (olculdu: Excel yolu 15 PNG'nin 11'i 1100x575,
+ *  DWG adiminin 4'u 1100x676). `loading="lazy"` gorsele yer ayirmazsa gorsel
+ *  inerken alttaki icerik kayar; `width`/`height` oran icin yer tutar. Gercek
+ *  dosya farkli cikarsa tarayici indikten sonra dosyanin kendi oranini kullanir. */
+const EKRAN_BOYU = { excel: { en: 1100, boy: 575 }, dwg: { en: 1100, boy: 676 } } as const;
+
+/** Video ve poster piksel boyutu (olculdu: mp4 izi 1440x810, poster 1440x810). Poster
+ *  gec baglandigi icin kutunun 16:9 oranini bu oznitelikler tutar. */
+const VIDEO_BOYU = { en: 1440, boy: 810 } as const;
 
 type Ton = 'yesil' | 'mavi' | 'mor';
 
@@ -332,6 +349,7 @@ export function NasilCalisir() {
   const [yol, setYol] = useState<Yol>('dwg'); // teslimin varsayilani DWG
   const [aktif, setAktif] = useState<Record<string, number>>({});
   const [buyutulen, setBuyutulen] = useState<Gorsel | null>(null);
+  const [posterBagli, setPosterBagli] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   // Esc ile kapat + arka plan kaydirmasini kilitle. Ikisi de TEMIZLENIYOR —
@@ -350,10 +368,39 @@ export function NasilCalisir() {
     };
   }, [buyutulen]);
 
-  // Gorunur degilken videoyu duraklat (pil/CPU dostu).
+  // Poster de ilk ekranda degil ve `preload="none"` ona islemez: tarayici `poster`
+  // ozniteligini gorur gormez ceker (olculdu: 189.616 bayt acilista iniyordu).
+  // Video ekrana bir ekran boyu yaklasinca baglanir.
   useEffect(() => {
     const vid = videoRef.current;
-    if (!vid || typeof IntersectionObserver === 'undefined') return;
+    if (!vid) return;
+    if (typeof IntersectionObserver === 'undefined') {
+      setPosterBagli(true);
+      return;
+    }
+    const yaklasma = new IntersectionObserver(
+      (girisler) => {
+        if (girisler.some((g) => g.isIntersecting)) {
+          setPosterBagli(true);
+          yaklasma.disconnect();
+        }
+      },
+      { rootMargin: '100% 0px' },
+    );
+    yaklasma.observe(vid);
+    return () => yaklasma.disconnect();
+  }, []);
+
+  // Gorunur olunca oynat (preload="none" oldugu icin INDIRMEYI de bu baslatir),
+  // gorunur degilken duraklat (pil/CPU dostu).
+  useEffect(() => {
+    const vid = videoRef.current;
+    if (!vid) return;
+    if (typeof IntersectionObserver === 'undefined') {
+      // Gozcusuz tarayicida autoPlay'in yaptigini yap; yoksa video hic oynamaz.
+      vid.play().catch(() => {});
+      return;
+    }
     const gozcu = new IntersectionObserver(
       (girisler) => {
         girisler.forEach((g) => {
@@ -395,12 +442,13 @@ export function NasilCalisir() {
             </div>
             <video
               ref={videoRef}
-              poster={`${KOK}/video-poster.jpg`}
-              autoPlay
+              poster={posterBagli ? `${KOK}/video-poster.jpg` : undefined}
+              width={VIDEO_BOYU.en}
+              height={VIDEO_BOYU.boy}
               muted
               loop
               playsInline
-              preload="metadata"
+              preload="none"
               aria-label="MetaPriceX kullanım akışı tanıtım videosu"
             >
               <source src={`${KOK}/nasil-calisir.mp4`} type="video/mp4" />
@@ -523,8 +571,18 @@ export function NasilCalisir() {
                         }}
                       >
                         <span className={`shot-etiket ${secili.renk}`}>{secili.etiket}</span>
+                        {/* Ilk ekranin cok altinda: tembel yuklenir. Olculdu (canli eae583e):
+                            eager `img` icin React sunucu ciktisi 4 buyuk + 15 kucuk gorsele
+                            `<link rel="preload" as="image">` basiyor, hepsi acilista iniyordu. */}
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={`${KOK}/gorseller/web/${secili.dosya}.png`} alt={secili.alt} />
+                        <img
+                          src={`${KOK}/gorseller/web/${secili.dosya}.png`}
+                          alt={secili.alt}
+                          width={adim.dwg ? EKRAN_BOYU.dwg.en : EKRAN_BOYU.excel.en}
+                          height={adim.dwg ? EKRAN_BOYU.dwg.boy : EKRAN_BOYU.excel.boy}
+                          loading="lazy"
+                          decoding="async"
+                        />
                       </div>
                     </div>
 
@@ -543,8 +601,11 @@ export function NasilCalisir() {
                           aria-selected={(aktif[adim.key] ?? 0) === gi}
                           onClick={() => setAktif((o) => ({ ...o, [adim.key]: gi }))}
                         >
+                          {/* alt="" BILINCLI (plan 6.6): sekmenin adini hemen alttaki gorunur
+                              <em> verir; ayni ekranin buyugu secilince yukarida anlamli alt
+                              metniyle durur. Buraya metin yazmak her sekmeyi iki kez okuturdu. */}
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={`${KOK}/gorseller/kucuk/${g.dosya}.jpg`} alt="" />
+                          <img src={`${KOK}/gorseller/kucuk/${g.dosya}.jpg`} alt="" loading="lazy" decoding="async" />
                           {g.pro && <span className="pro-rozet">PRO</span>}
                           <em>{g.sekme}</em>
                         </button>
@@ -618,11 +679,12 @@ export function NasilCalisir() {
         <button type="button" className="kapat" aria-label="Kapat">
           ×
         </button>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={buyutulen ? `${KOK}/gorseller/web/${buyutulen.dosya}.png` : ''}
-          alt={buyutulen ? buyutulen.alt : ''}
-        />
+        {/* Kap HER ZAMAN render edilir (CSS sozlesmesi); GORSEL yalniz acikken. Kapaliyken
+            `src=""` + `alt=""` bos bir gorsel olarak sayfada duruyordu (plan 6.6). */}
+        {buyutulen && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={`${KOK}/gorseller/web/${buyutulen.dosya}.png`} alt={buyutulen.alt} />
+        )}
       </div>
     </>
   );

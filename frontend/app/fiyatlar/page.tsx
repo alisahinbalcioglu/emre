@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Altbilgi } from '@/ortak/kabuk/components/layout/Altbilgi';
 import { FiyatKartlari } from '@/ozellik/odeme/FiyatKartlari';
+import { sayfaMetaverisi } from '@/ortak/seo/arama-paylasim';
 
 /**
  * FİYATLAR — `/fiyatlar` (Faz 6.1, 13.09.2026). Girişsiz ziyaretçiye açık.
@@ -19,11 +20,15 @@ import { FiyatKartlari } from '@/ozellik/odeme/FiyatKartlari';
  * bu tanımla 1.766, dar tanımla 527 satır — 3,35 kat. Tanımsız rakam anlam
  * taşımaz.
  */
-export const metadata: Metadata = {
-  title: 'Fiyatlar — MetaPriceX',
-  description:
+// Plan 6.5: paylasim karti bu baslik/aciklamayi tasir; gorsel satis sayfasi
+// gorunumunde ve RAKAMSIZ (fiyat veritabanindan, gorsele gomulmez).
+export const metadata: Metadata = sayfaMetaverisi({
+  baslik: 'Fiyatlar — MetaPriceX',
+  aciklama:
     'MetaPriceX paketleri ve fiyatları. Teklif sayısı sınırsız; İngilizce çeviri paketinizin satır ve dosya kotasıyla yapılır.',
-};
+  yol: '/fiyatlar',
+  gorsel: 'fiyatlar',
+});
 
 const KOTA_KURALLARI: { vurgu?: boolean; metin: string }[] = [
   { vurgu: true, metin: 'Satır = çevrilecek metin içeren satır. Şartname ve açıklama satırları dâhildir.' },

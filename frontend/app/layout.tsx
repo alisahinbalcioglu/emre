@@ -4,6 +4,7 @@ import './globals.css';
 import { Toaster } from '@/ortak/ui/toaster';
 import { ConfirmRoot } from '@/ortak/ui/confirm-dialog';
 import { DepolamaSeridi } from '@/ortak/kabuk/components/layout/DepolamaSeridi';
+import { SITE_IKONLARI, SITE_KOKU, SITE_MANIFESTI } from '@/ortak/seo/arama-paylasim';
 
 // latin-ext ZORUNLU: Turkce'ye ozgu g s I harfleri (U+011E/011F, U+015E/015F,
 // U+0130) Google'in 'latin' alt kumesinde YOK. Eksik olunca tarayici o harfleri
@@ -13,6 +14,11 @@ import { DepolamaSeridi } from '@/ortak/kabuk/components/layout/DepolamaSeridi';
 const inter = Inter({ subsets: ['latin', 'latin-ext'] });
 
 export const metadata: Metadata = {
+  // Plan 6.5: sayfalarin paylasim gorseli/adresi bu kokle mutlaklanir (yoksa
+  // Next.js localhost basar). Favicon takimi ve manifest TUM rotalarda gecerli.
+  metadataBase: new URL(SITE_KOKU),
+  icons: SITE_IKONLARI,
+  manifest: SITE_MANIFESTI,
   title: 'MetaPriceX — Teklif ve Metraj Yönetimi',
   // NOT: eski metin 'export PDFs' vaat ediyordu; teklif PDF zinciri 27.07'de
   // (64d32fb, ARINMA Faz 2C) kaldirildi. Olmayan bir ozelligi tanitmiyoruz.

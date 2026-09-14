@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 542
-Toplam satir: 119443
+Kod dosyasi: 547
+Toplam satir: 120092
 Uc nokta: 162
 test:* scripti: 92
 
@@ -321,16 +321,18 @@ test:* scripti: 92
 | `frontend/app/admin/users/page.tsx` | 470 |
 | `frontend/app/cerez-politikasi/page.tsx` | 13 |
 | `frontend/app/dev/grid-test/page.tsx` | 227 |
-| `frontend/app/fiyatlar/page.tsx` | 120 |
+| `frontend/app/fiyatlar/page.tsx` | 125 |
 | `frontend/app/forgot-password/page.tsx` | 92 |
 | `frontend/app/gizlilik/page.tsx` | 13 |
 | `frontend/app/kullanim-kosullari/page.tsx` | 13 |
-| `frontend/app/layout.tsx` | 38 |
+| `frontend/app/layout.tsx` | 44 |
 | `frontend/app/login/page.tsx` | 114 |
 | `frontend/app/mesafeli-satis/page.tsx` | 13 |
-| `frontend/app/page.tsx` | 464 |
+| `frontend/app/page.tsx` | 469 |
 | `frontend/app/register/page.tsx` | 162 |
 | `frontend/app/reset-password/page.tsx` | 127 |
+| `frontend/app/robots.ts` | 7 |
+| `frontend/app/sitemap.ts` | 13 |
 | `frontend/app/verify-email/page.tsx` | 94 |
 | `frontend/components/dwg-diameter-engine/DiameterLegendPanel.tsx` | 151 |
 | `frontend/components/dwg-diameter-engine/index.ts` | 16 |
@@ -395,7 +397,8 @@ test:* scripti: 92
 | `frontend/ortak/kabuk/components/dashboard/dosya-turu.test.ts` | 47 |
 | `frontend/ortak/kabuk/components/dashboard/dosya-turu.ts` | 24 |
 | `frontend/ortak/kabuk/components/landing/GirisliyseYonlendir.tsx` | 31 |
-| `frontend/ortak/kabuk/components/landing/NasilCalisir.tsx` | 630 |
+| `frontend/ortak/kabuk/components/landing/NasilCalisir.tsx` | 692 |
+| `frontend/ortak/kabuk/components/landing/nasil-calisir-yukleme.test.ts` | 206 |
 | `frontend/ortak/kabuk/components/layout/Altbilgi.tsx` | 63 |
 | `frontend/ortak/kabuk/components/layout/Breadcrumb.tsx` | 73 |
 | `frontend/ortak/kabuk/components/layout/DepolamaSeridi.tsx` | 82 |
@@ -404,6 +407,8 @@ test:* scripti: 92
 | `frontend/ortak/lib/api-401-kapsami.test.ts` | 232 |
 | `frontend/ortak/lib/api.ts` | 81 |
 | `frontend/ortak/lib/utils.ts` | 16 |
+| `frontend/ortak/seo/arama-paylasim.test.ts` | 222 |
+| `frontend/ortak/seo/arama-paylasim.ts` | 123 |
 | `frontend/ortak/types/index.ts` | 64 |
 | `frontend/ortak/types/quotes.ts` | 62 |
 | `frontend/ortak/ui/badge.tsx` | 35 |
@@ -845,16 +850,18 @@ test:* scripti: 92
 | `frontend/app/admin/users/page.tsx` | `react` `next/link` `@/ortak/lib/api` `@/ortak/ui/input` `@/ortak/ui/button` `@/ortak/ui/badge` `@/ortak/ui/card` `@/ortak/hooks/use-confirm` `@/ortak/hooks/use-toast` |
 | `frontend/app/cerez-politikasi/page.tsx` | `next` `@/ozellik/hukuki/HukukiSayfa` `@/ozellik/hukuki/metinler` |
 | `frontend/app/dev/grid-test/page.tsx` | `react` `@/ozellik/tablo/excel-grid/ExcelGrid` `@/ozellik/tablo/excel-grid/types` |
-| `frontend/app/fiyatlar/page.tsx` | `next` `next/link` `@/ortak/kabuk/components/layout/Altbilgi` `@/ozellik/odeme/FiyatKartlari` |
+| `frontend/app/fiyatlar/page.tsx` | `next` `next/link` `@/ortak/kabuk/components/layout/Altbilgi` `@/ozellik/odeme/FiyatKartlari` `@/ortak/seo/arama-paylasim` |
 | `frontend/app/forgot-password/page.tsx` | `react` `@/ortak/lib/api` `@/ortak/ui/kimlik-kabugu` |
 | `frontend/app/gizlilik/page.tsx` | `next` `@/ozellik/hukuki/HukukiSayfa` `@/ozellik/hukuki/metinler` |
 | `frontend/app/kullanim-kosullari/page.tsx` | `next` `@/ozellik/hukuki/HukukiSayfa` `@/ozellik/hukuki/metinler` |
-| `frontend/app/layout.tsx` | `next` `next/font/google` `@/ortak/ui/toaster` `@/ortak/ui/confirm-dialog` `@/ortak/kabuk/components/layout/DepolamaSeridi` `./globals.css` |
+| `frontend/app/layout.tsx` | `next` `next/font/google` `@/ortak/ui/toaster` `@/ortak/ui/confirm-dialog` `@/ortak/kabuk/components/layout/DepolamaSeridi` `@/ortak/seo/arama-paylasim` `./globals.css` |
 | `frontend/app/login/page.tsx` | `react` `next/navigation` `next/link` `@/ortak/lib/api` `@/ortak/ui/parola-alani` `@/ortak/hooks/use-toast` |
 | `frontend/app/mesafeli-satis/page.tsx` | `next` `@/ozellik/hukuki/HukukiSayfa` `@/ozellik/hukuki/metinler` |
-| `frontend/app/page.tsx` | `@/ortak/kabuk/components/layout/Altbilgi` `next/link` `lucide-react` `@/ortak/kabuk/components/landing/GirisliyseYonlendir` `@/ortak/kabuk/components/landing/NasilCalisir` |
+| `frontend/app/page.tsx` | `@/ortak/kabuk/components/layout/Altbilgi` `next/link` `lucide-react` `@/ortak/kabuk/components/landing/GirisliyseYonlendir` `@/ortak/kabuk/components/landing/NasilCalisir` `@/ortak/seo/arama-paylasim` |
 | `frontend/app/register/page.tsx` | `react` `next/navigation` `next/link` `@/ortak/lib/api` `@/ortak/ui/parola-alani` `@/ortak/hooks/use-toast` |
 | `frontend/app/reset-password/page.tsx` | `react` `next/navigation` `@/ortak/lib/api` `@/ortak/ui/parola-alani` `@/ortak/ui/kimlik-kabugu` |
+| `frontend/app/robots.ts` | `@/ortak/seo/arama-paylasim` |
+| `frontend/app/sitemap.ts` | `@/ortak/seo/arama-paylasim` |
 | `frontend/app/verify-email/page.tsx` | `react` `next/link` `@/ortak/lib/api` `@/ortak/ui/kimlik-kabugu` |
 | `frontend/components/dwg-diameter-engine/DiameterLegendPanel.tsx` | `react` `lucide-react` `@/components/dwg-metraj/diameter-colors` `./types` |
 | `frontend/components/dwg-diameter-engine/types.ts` | `@/components/dwg-metraj/types` `@/components/dwg-workspace/types` `@/components/dwg-metraj/diameter-colors` `@/components/dwg-metraj/constants` |
@@ -903,6 +910,7 @@ test:* scripti: 92
 | `frontend/ortak/kabuk/components/dashboard/dosya-turu.test.ts` | `vitest` `./dosya-turu` |
 | `frontend/ortak/kabuk/components/landing/GirisliyseYonlendir.tsx` | `react` `next/navigation` |
 | `frontend/ortak/kabuk/components/landing/NasilCalisir.tsx` | `react` `./nasil-calisir.css` |
+| `frontend/ortak/kabuk/components/landing/nasil-calisir-yukleme.test.ts` | `node:fs` `node:path` `typescript` `vitest` |
 | `frontend/ortak/kabuk/components/layout/Altbilgi.tsx` | `next/link` `@/ozellik/hukuki/metinler` |
 | `frontend/ortak/kabuk/components/layout/Breadcrumb.tsx` | `next/navigation` `next/link` `lucide-react` |
 | `frontend/ortak/kabuk/components/layout/DepolamaSeridi.tsx` | `react` `next/link` |
@@ -911,6 +919,8 @@ test:* scripti: 92
 | `frontend/ortak/lib/api-401-kapsami.test.ts` | `vitest` `./api` |
 | `frontend/ortak/lib/api.ts` | `axios` |
 | `frontend/ortak/lib/utils.ts` | `clsx` `tailwind-merge` |
+| `frontend/ortak/seo/arama-paylasim.test.ts` | `node:fs` `node:path` `typescript` `vitest` |
+| `frontend/ortak/seo/arama-paylasim.ts` | `next` |
 | `frontend/ortak/types/quotes.ts` | `./index` |
 | `frontend/ortak/ui/badge.tsx` | `react` `class-variance-authority` `@/ortak/lib/utils` |
 | `frontend/ortak/ui/button.tsx` | `react` `@radix-ui/react-slot` `class-variance-authority` `@/ortak/lib/utils` |
