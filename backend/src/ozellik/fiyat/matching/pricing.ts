@@ -33,6 +33,21 @@ export function yukariYuvarla(x: number, hane = ONDALIK): number {
   return r === 0 ? 0 : r; // -0 normalize (epsilon sifiri eksiye itebilir)
 }
 
+/** TL → KURUS TAMSAYI (13.09) — yarim kurus, ekrandaki 2 haneli gosterimle
+ *  AYNI yone: carpim 15 anlamli haneye kirpilip sifirdan uzaga yuvarlanir
+ *  (10.075 → 1008; ham `Math.round(v*100)` 1007 verirdi). Cikti motoru
+ *  (standart-cikti.ts) sayfa toplamini ve para hucrelerini bununla kurar ki
+ *  Excel'deki SUM, ekrandaki sayfa toplamiyla kurusu kurusuna tutsun.
+ *  ⚠ Sinir: en fazla 15 anlamli haneyle yazilmis degerler (frontend esindeki not).
+ *
+ *  Frontend esi `frontend/ozellik/fiyat/pricing.ts` — gerekce orada; esitlik
+ *  `test:hesap` parite kapisinda olculur. */
+export function kurusTamsayi(tl: number): number {
+  if (!Number.isFinite(tl)) return 0;
+  const k = Math.round(Math.abs(Number((tl * 100).toPrecision(15))));
+  return tl < 0 && k !== 0 ? -k : k;
+}
+
 /** ASAMA A: Liste fiyatina TEK iskonto → NET (alis). Listenin biriminde.
  *  hesaplaNetFiyat(3354.64, 10) === 3019.2 ; iskonto 0 → net = liste. */
 export function hesaplaNetFiyat(listeFiyat: number, iskontoYuzde: number): number {

@@ -80,6 +80,37 @@ export function yukariYuvarla(x: number, hane = ONDALIK): number {
   return r === 0 ? 0 : r; // -0 normalize (epsilon sifiri eksiye itebilir)
 }
 
+/**
+ * TL → KURUS TAMSAYI — toplamlarin biriktirildigi TEK donusum (13.09).
+ *
+ * ⚠ NEDEN `Math.round(v * 100)` DEGIL (hesap dogrulugu turu, olculdu):
+ * dosyadan 3 ondalikli gelen toplamlarda ikili temsil yarim kurusu AŞAĞI
+ * atiyordu: 10.075 × 100 = 1007.4999999999999 → 1007; 1.015 → 101.
+ * Oysa AYNI hucre ekranda `paraBicim` ile "10,08" ve "1,02" gorunuyor
+ * (Intl kisa ondalik gosterimden yarim-yukari yuvarlar) ve musterinin
+ * Excel'i de 2 haneli bicimle ayni rakami basar. Sonuc: gorunen satirlarin
+ * toplami ile sayfa toplami kurus kayiyordu.
+ *
+ * Carpim 15 anlamli haneye kirpilip (Excel'in de hesap hassasiyeti) oyle
+ * yuvarlanir: 1007.4999999999999 → "1007.50000000000" → 1008. Yarim kurus
+ * sifirdan UZAGA (negatifte de simetrik) — `paraBicim`in halfExpand kurali.
+ * 2 ondalikli degerlerde sonuc `Math.round(v*100)` ile BIREBIR aynidir.
+ *
+ * ⚠ SINIR: "ekranla ayni kurus" en fazla 15 anlamli haneyle YAZILMIS degerler
+ * icindir (dosya/klavye girdisi hep boyledir). Yarimin hemen altina ozel
+ * kurulmus 17 haneli bir double (1.0049999999999997) 15 haneye kirpilinca
+ * yukari gider, Intl ise "1,00" basar — hesap-sinirlari.test.ts'te belgeli.
+ *
+ * Backend esi `backend/src/ozellik/fiyat/matching/pricing.ts` — cikti
+ * motoru (standart-cikti.ts) sayfa toplamini AYNI donusumle biriktirir;
+ * esitlik `test:hesap` parite kapisinda olculur.
+ */
+export function kurusTamsayi(tl: number): number {
+  if (!Number.isFinite(tl)) return 0;
+  const k = Math.round(Math.abs(Number((tl * 100).toPrecision(15))));
+  return tl < 0 && k !== 0 ? -k : k;
+}
+
 /** ASAMA A: Liste fiyatina TEK iskonto → NET (alis). Listenin biriminde.
  *  hesaplaNetFiyat(3354.64, 10) === 3019.2 ; iskonto 0 → net = liste. */
 export function hesaplaNetFiyat(listeFiyat: number, iskontoYuzde: number): number {
@@ -346,7 +377,7 @@ export function sayfaToplamlari(
   // esitligi (KE30) tutmuyordu. Para kurus-tamsayi olarak biriktirilir
   // (satir degerleri zaten 1 hane yuvarlanmis — kurus tamsayidir), boylece
   // toplama SIRADAN BAGIMSIZ ve esitlikler KESIN olur. Gate gevsetilmedi.
-  const K = (v: number) => Math.round(v * 100); // TL → kurus tamsayi
+  const K = kurusTamsayi; // TL → kurus tamsayi (yarim kurus kurali: kurusTamsayi)
   let matToplamK = 0, labToplamK = 0, matMaliyetK = 0, labMaliyetK = 0;
   const o: SayfaToplamOzeti = {
     matToplam: 0, labToplam: 0, genelToplam: 0,
@@ -607,7 +638,7 @@ export function fittingHesapla(
     laborUnitPriceField: lBirim, laborTotalField: lTop,
     quantityField: mikA, unitField: brmA } = roller;
   const oran = etkinMiktar(fit, mikA, brmA);
-  const K = (v: number) => Math.round(v * 100); // TL → kurus tamsayi
+  const K = kurusTamsayi; // TL → kurus tamsayi (yarim kurus kurali: kurusTamsayi)
 
   const kimlikle = new Map<number, Record<string, any>>();
   for (const r of satirlar) {

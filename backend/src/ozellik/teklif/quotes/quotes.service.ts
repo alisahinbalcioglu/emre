@@ -12,6 +12,7 @@ import { buildSampleFormat, ExportOverrides, FillContext } from '../../cikti/quo
 import { ExchangeRatesService } from '../../fiyat/exchange-rates/exchange-rates.service';
 import { CeviriService } from '../../giris/ai/ceviri.service';
 import { yukariYuvarla } from '../../fiyat/matching/pricing';
+import { AntetBilgi, antetKur, antetLogoNotu, ANTET_FIRMA_ALANLARI } from '../../cikti/utils/antet';
 
 /** KDV orani — kod sabiti (ayarlanabilirlik backlog) */
 const KDV_ORAN = 0.20;
@@ -556,18 +557,35 @@ export class QuotesService {
     return { wb: buildSampleFormat(), formatAdi: 'MetaPrice Varsayılan', formatKaynak: 'yerlesik', sheetRoles: null };
   }
 
-  /** T12: kur notu — ekrandaki (TCMB) kur + tarih. Cikti aninda soru YOK. */
-  private async kurNotuUret(): Promise<string> {
+  /**
+   * TEK INDIRME = TEK KUR OKUMASI (hesap dogrulugu turu, 13.09).
+   *
+   * ⚠ Eskiden `exportXlsx` kuru UC KEZ okuyordu (kur notu, dosya birimi, ozet
+   * simgesi). Cagrilar arasinda sonuc degisirse (onbellek yokken gecici
+   * kesinti, TTL siniri) dosya TL inerken ozet "$" diyordu. Kur bir kez
+   * okunur, not/birim/ozet AYNI nesneden turer. Servis hatasi indirmeyi
+   * DUSURMEZ: `null` → TL cikti, kur notu yok.
+   */
+  private async kurOku(): Promise<any | null> {
     try {
-      const r = await this.exchangeRates.getRates();
-      const tarih = r.date || new Date().toLocaleDateString('tr-TR');
-      return `Kur: 1 USD = ${r.usdTry.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL · 1 EUR = ${r.eurTry.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL (TCMB, ${tarih})`;
+      return await this.exchangeRates.getRates();
     } catch {
-      return '';
+      return null;
     }
   }
 
-  private async ctxTemelUret(quote: any, rev: number): Promise<Omit<FillContext, 'sekmeler'>> {
+  /** T12: kur notu — ekrandaki (TCMB) kur + tarih. Cikti aninda soru YOK.
+   *  ⚠ KUR YOKSA NOT YOK (13.09): servis TCMB'ye ve yedek kaynaga ulasamayinca
+   *  1:1 doner (`source: 'fallback'`); eskiden musterinin ICMAL'ine
+   *  "Kur: 1 USD = 1,00 TL (TCMB, …)" yaziliyordu. Esik `exportBirimi` ile
+   *  AYNI: 1 TL'yi gecmeyen kur alinamamis sayilir. */
+  private kurNotuUret(r: any | null): string {
+    if (!r || !(Number(r.usdTry) > 1) || !(Number(r.eurTry) > 1)) return '';
+    const tarih = r.date || new Date().toLocaleDateString('tr-TR');
+    return `Kur: 1 USD = ${r.usdTry.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL · 1 EUR = ${r.eurTry.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL (TCMB, ${tarih})`;
+  }
+
+  private ctxTemelUret(quote: any, rev: number, kurNotu: string): Omit<FillContext, 'sekmeler'> {
     return {
       teklifNo: quote.quoteNo ?? `MP-${new Date().getFullYear()}-TASLAK`,
       rev,
@@ -576,9 +594,37 @@ export class QuotesService {
       proje: quote.proje,
       hazirlayan: quote.hazirlayan,
       gecerlilik: quote.gecerlilik,
-      kurNotu: await this.kurNotuUret(),
+      kurNotu,
       kdvOran: KDV_ORAN,
     };
+  }
+
+  /**
+   * FIRMA ANTETI (plan 4.4) — iki cikti yolu da AYNI kaydi okur.
+   *
+   * Olculdu (13.09): iki yol da firma kaydini HIC okumuyordu, oysa profil
+   * sayfasi logonun ve firma bilgisinin "teklif çıktısının antedinde"
+   * kullanildigini soyluyordu (vaat var, baglanti yok).
+   *
+   * Okuma hatasi indirmeyi DUSURMEZ (KH2): antetsiz cikti uretilir ve sebep
+   * loglanir — sessiz yutma degil.
+   *
+   * `not`: yuklu logo antete GIRMEDIYSE nedeni (WEBP / okunamayan dosya) —
+   * indirme ozetine eklenir; kullanici logosunun neden gorunmedigini ogrenir.
+   */
+  private async antetGetir(k: Kimlik, dil?: string): Promise<{ antet: AntetBilgi | null; not: string | null }> {
+    try {
+      const firma = await this.prisma.firma.findUnique({ where: { id: k.firmaId }, select: ANTET_FIRMA_ALANLARI });
+      return { antet: antetKur(firma, dil), not: antetLogoNotu(firma) };
+    } catch (e) {
+      console.warn(`[Export] ⚠ firma anteti okunamadi, antetsiz uretiliyor: ${(e as Error)?.message ?? e}`);
+      return { antet: null, not: null };
+    }
+  }
+
+  /** Indirme ozetine (X-Export-Summary) ek bilgi — bos not ozeti degistirmez. */
+  private notEkle(ozet: string | undefined, not: string | null): string | undefined {
+    return not ? (ozet ? `${ozet} · ${not}` : not) : ozet;
   }
 
   private async quoteGetir(k: Kimlik, id: string) {
@@ -589,22 +635,17 @@ export class QuotesService {
 
   /** PANO 18: teklifin GORUNTULEME birimi → export cevirisi (canli TCMB;
    *  kutuphane orijinal birimleri DEGISMEZ — yalniz cikti goruntusu). */
-  private async exportBirimi(quote: any): Promise<ExportBirim | null> {
+  private exportBirimi(quote: any, r: any | null): ExportBirim | null {
     const kod = quote.displayCurrency;
     if (kod !== 'USD' && kod !== 'EUR') return null;
-    try {
-      const r: any = await this.exchangeRates.getRates();
-      const tryPer = kod === 'USD' ? r?.usdTry : r?.eurTry;
-      if (!tryPer || tryPer <= 1) return null; // kur alinamadi → guvenli TL
-      const kur = Number(tryPer).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      return {
-        kod,
-        katsayi: 1 / Number(tryPer),
-        not: `Fiyatlar ${kod} — 1 ${kod} = ₺${kur} (TCMB, ${r?.date ?? new Date().toLocaleDateString('tr-TR')})`,
-      };
-    } catch {
-      return null; // kur servisi hatasi exportu DUSUREMEZ — TL yazilir
-    }
+    const tryPer = kod === 'USD' ? r?.usdTry : r?.eurTry;
+    if (!tryPer || tryPer <= 1) return null; // kur alinamadi (ya da servis hatasi) → guvenli TL
+    const kur = Number(tryPer).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return {
+      kod,
+      katsayi: 1 / Number(tryPer),
+      not: `Fiyatlar ${kod} — 1 ${kod} = ₺${kur} (TCMB, ${r?.date ?? new Date().toLocaleDateString('tr-TR')})`,
+    };
   }
 
   /** PANO 21a/c: gorunur self-check ozeti ("N değer aktarıldı ✓ …"). */
@@ -620,7 +661,7 @@ export class QuotesService {
     return parca.join(' · ');
   }
 
-  private async ciktiKur(k: Kimlik, quote: any, rev: number, dil?: string): Promise<ExportSonucu & { formatAdi: string; formatKaynak: 'kullanici' | 'yerlesik' }> {
+  private async ciktiKur(k: Kimlik, quote: any, rev: number, dil: string | undefined, kur: any | null): Promise<ExportSonucu & { formatAdi: string; formatKaynak: 'kullanici' | 'yerlesik'; birim: ExportBirim | null; antetNotu: string | null }> {
     // Bulgu Raporu kok neden: grid'den uretim SILINDI — orijinal dosya ZORUNLU.
     if (!quote.originalFile) {
       throw new BadRequestException(
@@ -629,17 +670,23 @@ export class QuotesService {
     }
     const { wb: formatWb, formatAdi, formatKaynak, sheetRoles } = await this.resolveFormatWb(k, quote);
     const sheetsArr = Array.isArray(quote.sheets) ? (quote.sheets as any[]) : [];
+    const birim = this.exportBirimi(quote, kur); // PANO 18 (KF7: iki yol ayni)
+    // USD/EUR teklifte rakamlarin birimi ICMAL notunda da SOYLENIR — eskiden
+    // "Fiyatlar USD" notu yalniz fiyatli yolda vardi (ikiz eksigi, 13.09).
+    const kurNotu = [birim?.not, this.kurNotuUret(kur)].filter(Boolean).join(' · ');
+    const firmaAntet = await this.antetGetir(k, dil); // plan 4.4 (ikizi fiyatli yolda)
     const sonuc = await buildExportWorkbook({
       originalFile: Buffer.from(quote.originalFile),
       sheetsArr,
       formatWb,
       sheetRoles,
-      ctxTemel: await this.ctxTemelUret(quote, rev),
+      ctxTemel: this.ctxTemelUret(quote, rev, kurNotu),
       overrides: (quote.exportOverrides ?? null) as ExportOverrides | null,
-      birim: await this.exportBirimi(quote), // PANO 18 (KF7: iki yol ayni)
+      birim,
       dil, // 13.08: baslik + birim dili (ikizi fiyatli cikti yolunda)
+      antet: firmaAntet.antet,
     });
-    return { ...sonuc, formatAdi, formatKaynak };
+    return { ...sonuc, formatAdi, formatKaynak, birim, antetNotu: firmaAntet.not };
   }
 
   // ARINMA Faz 2 (A+B): exportPreview + saveOverrides SILINDI — Cikti
@@ -670,7 +717,7 @@ export class QuotesService {
     }
     const yeniRev = (quote.rev ?? 0) + 1;
 
-    const sonuc = await this.ciktiKur(k, { ...quote, quoteNo }, yeniRev, dil);
+    const sonuc = await this.ciktiKur(k, { ...quote, quoteNo }, yeniRev, dil, await this.kurOku());
     const out = await sonuc.wb.xlsx.writeBuffer();
     const buffer = Buffer.from(out);
 
@@ -698,12 +745,12 @@ export class QuotesService {
     const uyari = parcalar.length > 0 ? `${parcalar.join('; ')} — çıktıyı kontrol edin.` : undefined;
     if (uyari) console.warn(`[Export] ⚠ SELF-CHECK (teklif format): ${uyari}`);
     // PANO 21a: gorunur ozet (KF7 — iki yol ayni self-check'i tasir)
-    const ozet = this.ceviriOzetiEkle(this.exportOzeti({
+    const ozet = this.notEkle(this.ceviriOzetiEkle(this.exportOzeti({
       yazilan: sonuc.yazilanDeger ?? 0,
       beklenen: sonuc.beklenenDeger ?? 0,
       fiyatsiz: sonuc.fiyatsizSatir ?? 0,
       toplam: sonuc.sekmeler.reduce((a, b) => a + b.matDeger + b.labDeger, 0),
-    }, await this.exportBirimi(quote)), ceviriOzeti);
+    }, sonuc.birim), ceviriOzeti), sonuc.antetNotu);
     return { buffer, filename, rev: yeniRev, quoteNo, uyari, ozet };
   }
 
@@ -734,7 +781,9 @@ export class QuotesService {
     // bir gercek yasardi.
     dil = this.exportDili(quote, dil); // bayat istemci korumasi (bkz. exportDili)
     const ceviriOzeti = await this.sheetleriCevir(sheetsArr, dil);
-    const birim = await this.exportBirimi(quote); // PANO 18/EX6: ekrandaki birim
+    // PANO 18/EX6: ekrandaki birim — TL teklifte kur servisine HIC gidilmez
+    const dovizli = quote.displayCurrency === 'USD' || quote.displayCurrency === 'EUR';
+    const birim = this.exportBirimi(quote, dovizli ? await this.kurOku() : null);
     // ⚠ OLU KOD ONARIMI (08.09 olcumu): burasi `customerName` ve `projectName`
     // okuyordu — bu adlar Prisma semasinda, backend'de ve on yuzde BASKA
     // HICBIR YERDE gecmiyor (gercek alanlar `musteri` ve `proje`). `as any`
@@ -743,21 +792,24 @@ export class QuotesService {
     // Cast KALDIRILDI — bir daha olmayan bir alan okunursa derleme patlar.
     const baslikParcalari = [quote.title, quote.musteri, quote.proje]
       .map((x) => String(x ?? '').trim()).filter(Boolean);
+    const firmaAntet = await this.antetGetir(k, dil); // plan 4.4 (ikizi format yolunda)
     const sonuc = await standartCiktiUret({
       sheetsArr,
       birim,
       baslik: baslikParcalari.join(' · '),
       // Kolon basliklari + birim kisaltmalari (sabit sozluk, AI yok).
       dil,
+      antet: firmaAntet.antet,
     });
-    // EX7: görünür self-check — fiyatsız satır sayısı da bilgi olarak taşınır
-    const fiyatsiz = sheetsArr.reduce((a: number, sh: any) => a + (sh?.rowData ?? [])
-      .filter((r: any) => r?._isDataRow && !r?._ozet
-        && !(parseFloat(String(r?._matBirim ?? '')) > 0) && !(parseFloat(String(r?._labBirim ?? '')) > 0)).length, 0);
-    const ozet = this.ceviriOzetiEkle(
+    // EX7: görünür self-check — fiyatsız satır sayısı da bilgi olarak taşınır.
+    // Sayim YAZIM MOTORUNDAN gelir (rol alanlariyla): format yoluyla AYNI olcut;
+    // eskiden sabit `_matBirim` alanini okuyup eski (colN) kayitlarda fiyatli
+    // satiri da fiyatsiz sayiyordu.
+    const fiyatsiz = sonuc.fiyatsizSatir;
+    const ozet = this.notEkle(this.ceviriOzetiEkle(
       fiyatsiz > 0 ? `${sonuc.ozet} · ${fiyatsiz} satır fiyatsız (eşleşmemiş)` : sonuc.ozet,
       ceviriOzeti,
-    );
+    ), firmaAntet.not);
     const temizBaslik = String(quote.title ?? 'Teklif').replace(/[\/:*?"<>|]/g, '-').slice(0, 60);
     const filename = `${temizBaslik} - Fiyatlandırılmış Teklif.xlsx`;
     console.log(`[Export] Standart fiyatlı çıktı (${(sonuc.buffer.length / 1024).toFixed(0)} KB) — ${ozet}`);
