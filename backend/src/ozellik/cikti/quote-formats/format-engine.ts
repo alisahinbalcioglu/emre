@@ -11,6 +11,7 @@
 // mapping'i kullanir). Test: test/export-format-test.ts
 // ════════════════════════════════════════════════════════════════════
 import * as ExcelJS from 'exceljs';
+import { kurusTamsayi } from '../../fiyat/matching/pricing';
 
 /** PRD §2 tablosu — bilinen yer tutucular. Disindaki her {{ETIKET}} T3
  *  geregi "taninmayan" olarak uyarilir (ama hucreye DOKUNULMAZ). */
@@ -223,6 +224,11 @@ export interface FillContext {
 
 const trSayi = (v: number) => v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+/** Excel formul metni siniri 8192 karakter; ASAN formul iceren dosyayi Excel
+ *  HIC ACMAZ (13.09 gercek Excel'de olculdu: "Workbooks.Open ozelligi
+ *  alinamiyor"). Payli sinirin ustundeki formul yazilmaz, deger yazilir. */
+export const EXCEL_FORMUL_AZAMI = 8000;
+
 /** Sekme toplam formul parcalarini birlestir; herhangi biri null ise
  *  formul kurulamaz (null) — duz deger kullanilir. */
 function toplamFormul(sekmeler: SekmeOzet[], alan: 'matFormul' | 'labFormul'): string | null {
@@ -231,6 +237,14 @@ function toplamFormul(sekmeler: SekmeOzet[], alan: 'matFormul' | 'labFormul'): s
   if (parcalar.some((p) => !p)) return null;
   return parcalar.join('+');
 }
+
+const sinirda = (f: string | null, etiket: string): string | null => {
+  if (f && f.length > EXCEL_FORMUL_AZAMI) {
+    console.warn(`[Export] ⚠ ${etiket} formulu ${f.length} karakter — Excel siniri asiliyor, DEGER yazilacak`);
+    return null;
+  }
+  return f;
+};
 
 /**
  * Format workbook'undaki yer tutuculari ctx ile doldurur.
@@ -250,6 +264,8 @@ export function fillPlaceholders(wb: ExcelJS.Workbook, ctx: FillContext): YerTut
   // ── 1. ICMAL_SATIRLARI ──────────────────────────────────────────
   const ilkTarama = scanWorkbook(wb);
   const icmalYeri = ilkTarama.bulunan.find((b) => b.etiket === 'ICMAL_SATIRLARI');
+  // Yazilan ICMAL bolum hucrelerinin bolgesi — toplamlar bunlari toplar (adim 2)
+  let icmalBolge: { sheet: string; ilk: number; son: number; matCol: number; labCol: number } | null = null;
   if (icmalYeri) {
     const ws = wb.getWorksheet(icmalYeri.sheet)!;
     const tplCell = ws.getCell(icmalYeri.addr);
@@ -280,6 +296,7 @@ export function fillPlaceholders(wb: ExcelJS.Workbook, ctx: FillContext): YerTut
           dolan.push({ etiket: 'ICMAL_SATIRLARI', sheet: ws.name, addr: c.address });
         }
       }
+      icmalBolge = { sheet: ws.name, ilk: tplRow, son: tplRow + n - 1, matCol: baseCol + 1, labCol: baseCol + 2 };
     }
   }
 
@@ -287,10 +304,20 @@ export function fillPlaceholders(wb: ExcelJS.Workbook, ctx: FillContext): YerTut
   const tarama = scanWorkbook(wb);
   const matToplamDeger = ctx.sekmeler.reduce((a, s) => a + s.matDeger, 0);
   const labToplamDeger = ctx.sekmeler.reduce((a, s) => a + s.labDeger, 0);
-  const matF = toplamFormul(ctx.sekmeler, 'matFormul');
-  const labF = toplamFormul(ctx.sekmeler, 'labFormul');
+  // TOPLAMLAR ICMAL BOLUM HUCRELERINI TOPLAR (13.09): eskiden her toplam
+  // butun sayfa SUM'larini ART ARDA ekliyordu; ara toplam satirli gercek
+  // tekliflerde (FIRMA-C, Bursa) KDV/GENEL TOPLAM formulu 10.215+ karaktere
+  // cikip Excel'in 8192 sinirini asti ve dosya ACILMADI. Bolum hucrelerini
+  // toplamak kisa, sayfa sayisindan bagimsiz ve musterinin gordugu ICMAL
+  // satirlariyla yapisal olarak ayni rakam. ICMAL_SATIRLARI etiketi olmayan
+  // formatta eski birlestirme kalir (sinir asilirsa deger yazilir).
+  const bolgeTopla = (col: number) => (icmalBolge
+    ? `SUM('${icmalBolge.sheet.replace(/'/g, "''")}'!${KOLON_HARF(col)}${icmalBolge.ilk}:${KOLON_HARF(col)}${icmalBolge.son})`
+    : null);
+  const matF = sinirda(icmalBolge ? bolgeTopla(icmalBolge.matCol) : toplamFormul(ctx.sekmeler, 'matFormul'), 'MALZEME_TOPLAMI');
+  const labF = sinirda(icmalBolge ? bolgeTopla(icmalBolge.labCol) : toplamFormul(ctx.sekmeler, 'labFormul'), 'ISCILIK_TOPLAMI');
   const kdvVar = tarama.bulunan.some((b) => b.etiket === 'KDV');
-  const araFormul = matF && labF ? `${matF}+${labF}` : null;
+  const araFormul = sinirda(matF && labF ? `${matF}+${labF}` : null, 'ARA_TOPLAM');
   const araDeger = matToplamDeger + labToplamDeger;
   const kdvDeger = araDeger * ctx.kdvOran;
 
@@ -365,6 +392,122 @@ export function applyOverrides(wb: ExcelJS.Workbook, overrides: ExportOverrides 
         : String(v);
     }
   }
+}
+
+/** PARA tasiyan yer tutucular — sayi/formul yazilir, para bicimi alir. */
+export const SAYISAL_ETIKETLER: ReadonlySet<string> = new Set([
+  'ICMAL_SATIRLARI', 'MALZEME_TOPLAMI', 'ISCILIK_TOPLAMI', 'KDV', 'GENEL_TOPLAM',
+]);
+
+/**
+ * Doldurulan PARA formullerinin onbellek (`result`) degerini, hucrelerin SON
+ * degerlerinden yeniden hesaplar. `applyOverrides`tan SONRA cagrilir.
+ *
+ * ⚠ NEDEN (13.09 incelemesi): toplamlar ICMAL bolum hucrelerini topluyor
+ * (`SUM('İCMAL'!C3:C5)`). Kayitli eski bir override bolum hucresine yeni bir
+ * rakam yazarsa Excel yeniden hesaplayinca override'i katar, onbellek ise
+ * `sekmeler` toplamindan kalir: Korumali Gorunum bir rakam, duzenleme modu
+ * baska rakam gosterir — bu turun kapattigi kusurun ta kendisi.
+ *
+ * Yalniz bu motorun URETTIGI dilbilgisi degerlendirilir: sayi, `+`, `*`,
+ * parantez, `SUM(aralik, ...)`, hucre/aralik (sayfa adi tirnakli ya da
+ * yalin). SUM metin/bos hucreyi yok sayar (Excel gibi). Cozulemeyen formulun
+ * onbellegine DOKUNULMAZ.
+ */
+export function paraOnbellekleriniTazele(wb: ExcelJS.Workbook, dolan: YerTutucu[]): number {
+  let tazelenen = 0;
+  for (const d of dolan) {
+    if (!SAYISAL_ETIKETLER.has(d.etiket)) continue;
+    const ws = wb.getWorksheet(d.sheet);
+    const hucre = ws?.getCell(d.addr);
+    const v: any = hucre?.value;
+    if (!ws || !hucre || !v || typeof v !== 'object' || typeof v.formula !== 'string') continue;
+    const sonuc = formulHesapla(wb, ws, v.formula);
+    if (sonuc === null) continue;
+    // KURUS duzeyinde karsilastir: yeniden toplamanin float gurultusu
+    // (0,1+0,2) kurus-tam onbellegi bozmasin; yalniz GERCEK fark yazilir.
+    // `result` yoksa 0 sayilir: ExcelJS SIFIR sonucu JS degerinden dusurur ama
+    // dosyaya `<v>0</v>` yazar (13.09 olculdu) — "degisti" sayilmamali.
+    const eski = typeof v.result === 'number' ? v.result : 0;
+    if (kurusTamsayi(eski) !== kurusTamsayi(sonuc)) {
+      hucre.value = { formula: v.formula, result: sonuc } as any;
+      tazelenen++;
+    }
+  }
+  return tazelenen;
+}
+
+/** `paraOnbellekleriniTazele`in dar degerlendiricisi; cozulemezse null. */
+function formulHesapla(wb: ExcelJS.Workbook, ws: ExcelJS.Worksheet, formul: string): number | null {
+  const REF = /^(?:'((?:[^']|'')+)'!|([A-Za-z0-9_.]+)!)?\$?([A-Z]{1,3})\$?(\d+)(?::\$?([A-Z]{1,3})\$?(\d+))?/;
+  const kolonNo = (h: string) => [...h].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);
+  const sayisi = (s: ExcelJS.Worksheet, r: number, c: number): number | null => {
+    const x: any = s.getCell(r, c).value;
+    if (typeof x === 'number') return x;
+    if (x && typeof x === 'object' && typeof x.result === 'number') return x.result;
+    return null; // bos/metin/hata
+  };
+  let i = 0;
+  const bosluk = () => { while (formul[i] === ' ') i++; };
+  // aralik referansi → hucre degerleri (SUM icin) ya da tek deger
+  const referans = (): { degerler: Array<number | null> } | null => {
+    const m = REF.exec(formul.slice(i));
+    if (!m) return null;
+    i += m[0].length;
+    const adi = m[1] !== undefined ? m[1].replace(/''/g, "'") : m[2];
+    const s = adi !== undefined ? wb.getWorksheet(adi) : ws;
+    if (!s) return null;
+    const c1 = kolonNo(m[3]); const r1 = Number(m[4]);
+    const c2 = m[5] ? kolonNo(m[5]) : c1; const r2 = m[6] ? Number(m[6]) : r1;
+    if ((r2 - r1 + 1) * (c2 - c1 + 1) > 1_000_000) return null;
+    const degerler: Array<number | null> = [];
+    for (let r = Math.min(r1, r2); r <= Math.max(r1, r2); r++) {
+      for (let c = Math.min(c1, c2); c <= Math.max(c1, c2); c++) degerler.push(sayisi(s, r, c));
+    }
+    return { degerler };
+  };
+  const ifade = (): number | null => {
+    let a = terim();
+    bosluk();
+    while (a !== null && formul[i] === '+') { i++; const b = terim(); a = b === null ? null : a + b; bosluk(); }
+    return a;
+  };
+  const terim = (): number | null => {
+    let a = carpan();
+    bosluk();
+    while (a !== null && formul[i] === '*') { i++; const b = carpan(); a = b === null ? null : a * b; bosluk(); }
+    return a;
+  };
+  const carpan = (): number | null => {
+    bosluk();
+    if (formul[i] === '(') {
+      i++; const a = ifade(); bosluk();
+      if (formul[i] !== ')') return null;
+      i++; return a;
+    }
+    if (formul.startsWith('SUM(', i)) {
+      i += 4; let top = 0;
+      for (;;) {
+        bosluk();
+        const ref = REF.test(formul.slice(i)) ? referans() : null;
+        if (ref) { for (const x of ref.degerler) top += x ?? 0; } else {
+          const a = ifade(); if (a === null) return null; top += a;
+        }
+        bosluk();
+        if (formul[i] === ',') { i++; continue; }
+        if (formul[i] === ')') { i++; return top; }
+        return null;
+      }
+    }
+    const sayiEslesme = /^\d+(?:\.\d+)?/.exec(formul.slice(i));
+    if (sayiEslesme && !REF.test(formul.slice(i))) { i += sayiEslesme[0].length; return Number(sayiEslesme[0]); }
+    const ref = referans();
+    if (!ref || ref.degerler.length !== 1) return null;
+    return ref.degerler[0] ?? 0;
+  };
+  const sonuc = ifade();
+  bosluk();
+  return i === formul.length && sonuc !== null && Number.isFinite(sonuc) ? sonuc : null;
 }
 
 export function sheetToGrid(ws: ExcelJS.Worksheet, editable: boolean): GridSheet {

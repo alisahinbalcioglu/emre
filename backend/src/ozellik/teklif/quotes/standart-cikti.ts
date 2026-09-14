@@ -17,6 +17,8 @@ import * as ExcelJS from 'exceljs';
 import {
   STANDART_KOLONLAR_EN, OZET_KOLONLAR_EN, birimCevir,
 } from './cikti-dil';
+import { kurusTamsayi } from '../../fiyat/matching/pricing';
+import { AntetBilgi, antetYaz } from '../../cikti/utils/antet';
 
 /** EX1 — degismez 9 kolon, bu sirada. */
 export const STANDART_CIKTI_KOLONLARI = [
@@ -41,6 +43,8 @@ export interface StandartCiktiGirdi {
   baslik?: string;
   /** 'en' → basliklar + birimler Ingilizce (sabit sozluk, AI yok). */
   dil?: string;
+  /** Firma anteti (antet.ts antetKur) — null/yok ise antet basilmaz */
+  antet?: AntetBilgi | null;
 }
 
 export interface StandartCiktiSonuc {
@@ -51,6 +55,8 @@ export interface StandartCiktiSonuc {
   genelToplam: number;
   /** Dosyaya yazilan fiyat/tutar hucresi sayisi */
   yazilan: number;
+  /** Fiyatsiz (eslesmemis) veri satiri toplami — format yoluyla AYNI olcut */
+  fiyatsizSatir: number;
 }
 
 /** TR-bilinçli sayi parse (Bulgu B7/B8 siniri): "1.234,56" → 1234.56,
@@ -89,12 +95,24 @@ export interface StandartSayfaBilgi {
   matCol: number;
   /** İşç. Toplam kolonu (9 kolonluk semada 8) */
   labCol: number;
-  /** Ilk/son VERI satiri (1-tabanli, baslik satiri 1) */
-  ilkVeri: number;
-  sonVeri: number;
+  /**
+   * ICMAL'e KATKI VEREN satirlarin GERCEK satir numaralari (1-tabanli) —
+   * `matDeger`/`labDeger`e giren satirlarin TAMAMI ve YALNIZI.
+   *
+   * ⚠ NEDEN `ilkVeri..sonVeri` ARALIGI DEGIL (hesap dogrulugu turu, 13.09):
+   * bitisik aralik, sayfa ortasindaki ARA TOPLAM (`_ozet`) satirlarini ve
+   * musterinin kendi İcmal sayfasini da kapsiyordu. Onbellek dogru, formul
+   * YANLIS cikiyordu: FIRMA-C'de GENEL TOPLAM onbellekte 74.452.440, Excel
+   * yeniden hesaplayinca 223.357.320 (3 kat). SUM bu listeden kurulur
+   * (export-engine.ts `sekmeOzetiKur`); satir numarasi yazim ANINDA
+   * `satir.number`dan okunur, sabit bir baslik konumu VARSAYILMAZ.
+   */
+  toplamSatirlari: number[];
   matDeger: number;
   labDeger: number;
   yazilan: number;
+  /** Ne birim ne toplam fiyati olan (ozet olmayan) veri satiri — rol alanlariyla */
+  fiyatsizSatir: number;
   ozet: boolean;
 }
 
@@ -107,6 +125,9 @@ export interface SayfaYazOpsiyon {
   /** 'en' → kolon basliklari ve BIRIM kisaltmalari Ingilizce yazilir.
    *  Bu metinler SABIT oldugu icin AI'ya gitmez (bkz. `cikti-dil.ts`). */
   dil?: string;
+  /** Firma anteti — tablodan ONCE yazilir; baslik ve veri satirlari asagi kayar,
+   *  ICMAL SUM araliklari `satir.number`dan geldigi icin birlikte kayar. */
+  antet?: AntetBilgi | null;
 }
 
 /**
@@ -122,9 +143,13 @@ export function standartSayfaYaz(
 ): StandartSayfaBilgi {
   const birim = ops.birim ?? null;
   const kod = birim?.kod ?? 'TRY';
-  const cevir = (v: number) => (birim && birim.kod !== 'TRY'
-    ? Math.round(v * birim.katsayi * 100) / 100
-    : v);
+  // PARA HUCRESI KURUS-TAMDIR (13.09): hucreye yazilan deger ile sayfa toplami
+  // AYNI kurus tamsayidan dogar — Excel'in SUM'i, onbellek ve ekrandaki sayfa
+  // toplami (frontend `sayfaToplamlari`) kurusu kurusuna tutar. Eskiden TL
+  // hucre HAM yaziliyor ve ham float toplaniyordu: 3 ondalikli dosya
+  // toplamlarinda Bursa/Mekanik ekranda 89.506.650,45, ciktida ,39 idi.
+  // Gorunen rakam degismez (bicim zaten 2 hane); yalniz gizli 3. hane gider.
+  const kurus = (v: number) => kurusTamsayi(birim && birim.kod !== 'TRY' ? v * birim.katsayi : v);
   const fmt = paraBicimi(kod);
 
   // Ad cakismasi: format dosyasinda AYNI adda bir sayfa olabilir (YILDIZ'da
@@ -143,6 +168,10 @@ export function standartSayfaYaz(
   }
   const ws = wb.addWorksheet(ad0);
 
+  // ANTET (plan 4.4): tablo YAZILMADAN once. Sonradan satir eklemek YASAK —
+  // ExcelJS formul referanslarini guncellemez (bkz. antet.ts SUM GUVENLIGI).
+  antetYaz(wb, ws, ops.antet, { metinKolonu: 2, logoKolonu: 7 });
+
   const bas = ws.addRow(kolonlar(ops.dil));
   bas.font = { bold: true };
   bas.eachCell((c) => {
@@ -154,7 +183,9 @@ export function standartSayfaYaz(
     { width: 8 }, { width: 58 }, { width: 10 }, { width: 10 },
     { width: 16 }, { width: 16 }, { width: 16 }, { width: 16 }, { width: 18 },
   ];
-  ws.views = [{ state: 'frozen', ySplit: 1, xSplit: 2 }]; // GS9 ikizi
+  // GS9 ikizi: donmus bolme BASLIK satirinin altindan — antet varsa baslik 1.
+  // satirda degildir; sabit `ySplit: 1` anteti dondurup basligi kaydirirdi.
+  ws.views = [{ state: 'frozen', ySplit: bas.number, xSplit: 2 }];
 
   // ── ESKI KAYIT UYUMU (kullanici karari 30.07: "acilista donustur") ──
   // Sabit semadan ONCE kaydedilmis tekliflerde roller DOSYA kolonlarini
@@ -173,8 +204,9 @@ export function standartSayfaYaz(
     labToplam: A('laborTotalField', '_labToplam'),
   };
 
-  let matToplam = 0; let labToplam = 0; let yazilan = 0;
-  let ilkVeri = 0; let sonVeri = 0;
+  // Kurus tamsayi biriktirme — toplam SIRADAN bagimsiz (pricing.ts ADIM 7 gerekcesi)
+  let matToplamK = 0; let labToplamK = 0; let yazilan = 0; let fiyatsizSatir = 0;
+  const toplamSatirlari: number[] = [];
 
   for (const r of sh.rowData ?? []) {
     if (!r) continue;
@@ -190,11 +222,11 @@ export function standartSayfaYaz(
       continue;
     }
 
-    const matBirim = cevir(sayi(r[F.matBirim]));
-    const matTot = cevir(sayi(r[F.matToplam]));
-    const labBirim = cevir(sayi(r[F.labBirim]));
-    const labTot = cevir(sayi(r[F.labToplam]));
-    const genel = matTot + labTot;
+    const matBirimK = kurus(sayi(r[F.matBirim]));
+    const matTotK = kurus(sayi(r[F.matToplam]));
+    const labBirimK = kurus(sayi(r[F.labBirim]));
+    const labTotK = kurus(sayi(r[F.labToplam]));
+    const hucre = (k: number) => (k ? k / 100 : '');
 
     const satir = ws.addRow([
       String(r[F.no] ?? ''),
@@ -203,23 +235,29 @@ export function standartSayfaYaz(
       // Birim SABIT bir kumedir ("mt", "ad", "set") — sozlukle cevrilir,
       // AI'ya gitmez; zaten ceviri katmaninda DOKUNULMAZ sayiliyor.
       birimCevir(r[F.birim], ops.dil),
-      matBirim || '', matTot || '',
-      labBirim || '', labTot || '',
-      genel || '',
+      hucre(matBirimK), hucre(matTotK),
+      hucre(labBirimK), hucre(labTotK),
+      hucre(matTotK + labTotK),
     ]);
-    if (!ilkVeri) ilkVeri = satir.number;
-    sonVeri = satir.number;
     for (const c of [5, 6, 7, 8, 9]) {
       const h = satir.getCell(c);
       if (typeof h.value === 'number') { h.numFmt = fmt; yazilan++; }
     }
-    if (!r._ozet) { matToplam += matTot; labToplam += labTot; }
+    // Ozet (ARA TOPLAM / musterinin İcmal'i) satiri GORUNUR ama toplama ve
+    // ICMAL SUM'ina GIRMEZ (30.07 karari — cift sayim yasagi).
+    if (!r._ozet) {
+      matToplamK += matTotK; labToplamK += labTotK;
+      toplamSatirlari.push(satir.number);
+      if (!(sayi(r[F.matBirim]) > 0) && !(sayi(r[F.labBirim]) > 0) && !matTotK && !labTotK) fiyatsizSatir++;
+    }
   }
+  const matToplam = matToplamK / 100;
+  const labToplam = labToplamK / 100;
 
   if (ops.toplamSatiri !== false) {
     // EX3: sayfa alti toplam satiri — EX4 geregi DEGER yazilir, formul degil
     ws.addRow([]);
-    const tSatir = ws.addRow(['', 'SAYFA TOPLAMI', '', '', '', matToplam, '', labToplam, matToplam + labToplam]);
+    const tSatir = ws.addRow(['', 'SAYFA TOPLAMI', '', '', '', matToplam, '', labToplam, (matToplamK + labToplamK) / 100]);
     tSatir.font = { bold: true };
     for (const c of [6, 8, 9]) {
       tSatir.getCell(c).numFmt = fmt;
@@ -231,11 +269,11 @@ export function standartSayfaYaz(
     wsName: ws.name,
     matCol: 6,
     labCol: 8,
-    ilkVeri,
-    sonVeri,
+    toplamSatirlari,
     matDeger: matToplam,
     labDeger: labToplam,
     yazilan,
+    fiyatsizSatir,
     ozet: !!sh.isOzet,
   };
 }
@@ -250,21 +288,29 @@ export async function standartCiktiUret(g: StandartCiktiGirdi): Promise<Standart
   const fmt = paraBicimi(kod);
 
   let yazilan = 0;
-  let genelToplam = 0;
+  let genelToplamK = 0; let fiyatsizSatir = 0;
   const sayfaOzetleri: { ad: string; mat: number; lab: number; toplam: number; ozet: boolean }[] = [];
 
   // KF7: sayfalar TEK motorla yazilir — format yolu da ayni fonksiyonu cagirir
   for (const sh of g.sheetsArr ?? []) {
     if (!sh || sh.isEmpty) continue;
-    const b = standartSayfaYaz(wb, sh, { birim, toplamSatiri: true, dil: g.dil });
+    const b = standartSayfaYaz(wb, sh, { birim, toplamSatiri: true, dil: g.dil, antet: g.antet });
     yazilan += b.yazilan;
-    sayfaOzetleri.push({ ad: b.wsName, mat: b.matDeger, lab: b.labDeger, toplam: b.matDeger + b.labDeger, ozet: b.ozet });
-    if (!b.ozet) genelToplam += b.matDeger + b.labDeger;
+    fiyatsizSatir += b.fiyatsizSatir;
+    // Kurus tamsayi — sayfa toplamlari ile teklif geneli AYNI kuralla toplanir
+    const sayfaK = kurusTamsayi(b.matDeger) + kurusTamsayi(b.labDeger);
+    sayfaOzetleri.push({ ad: b.wsName, mat: b.matDeger, lab: b.labDeger, toplam: sayfaK / 100, ozet: b.ozet });
+    if (!b.ozet) genelToplamK += sayfaK;
   }
 
   // ── EX3/EX6: dosya sonunda GENEL TOPLAM + kur notu ─────────────────────
+  const genelToplam = genelToplamK / 100;
   const ozetWs = wb.addWorksheet('GENEL TOPLAM');
   ozetWs.columns = [{ width: 38 }, { width: 18 }, { width: 18 }, { width: 20 }];
+  // Formulsuz sayfa (EX4) — antet satir kaydirmasi toplam riski tasimaz.
+  // Logo D kolonunda: A+B (~56 karakter) uzun "Tel · E-posta" satirini
+  // tasimaz, metin C'ye tasar — logo C'de baslasaydi metnin USTUNE binerdi.
+  antetYaz(wb, ozetWs, g.antet, { metinKolonu: 1, logoKolonu: 4 });
   if (g.baslik) {
     const b = ozetWs.addRow([g.baslik]);
     b.font = { bold: true, size: 12 };
@@ -301,5 +347,5 @@ export async function standartCiktiUret(g: StandartCiktiGirdi): Promise<Standart
     `${sayfaOzetleri.filter((s) => s.ozet).length ? sayfaOzetleri.filter((s) => s.ozet).length + ' özet sayfa toplama dahil değil' : ''}`,
   ].filter(Boolean).join(' · ');
 
-  return { buffer, ozet, genelToplam, yazilan };
+  return { buffer, ozet, genelToplam, yazilan, fiyatsizSatir };
 }

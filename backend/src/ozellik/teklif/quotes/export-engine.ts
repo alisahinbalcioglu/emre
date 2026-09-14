@@ -37,8 +37,10 @@ import * as ExcelJS from 'exceljs';
 import {
   fillPlaceholders, applyOverrides, KOLON_HARF, sayfaRolleriTahminEt,
   FillContext, SekmeOzet, YerTutucu, ExportOverrides, SheetRoles,
+  EXCEL_FORMUL_AZAMI, SAYISAL_ETIKETLER, paraOnbellekleriniTazele,
 } from '../../cikti/quote-formats/format-engine';
 import { standartSayfaYaz } from './standart-cikti';
+import type { AntetBilgi } from '../../cikti/utils/antet';
 
 /** TR-bilinçli sayi parse (Bulgu B7/B8 siniri): "1.234,56" → 1234.56,
  *  "87,5" → 87.5, "313" → 313. Grid hucreleri metin tasiyabilir. */
@@ -76,7 +78,9 @@ const BIRIM_FMT: Record<ExportBirim['kod'], string> = {
 /** K-C (S3, EMO AYVAZ) + PANO 18: yazilan hucrenin sayi bicimi HEDEF
  *  birime cekilir — TL deger "USD" etiketiyle (veya tersi) basilamaz. */
 const birimBicimiDuzelt = (cell: ExcelJS.Cell, kod: ExportBirim['kod']) => {
-  const f = String(cell.numFmt ?? '');
+  // `[$-41F]` gibi YEREL AYAR kodu para simgesi degildir (icindeki `$` Excel
+  // sozdizimi) — TL hucresinin bicimini ezmemek icin karsilastirmadan cikarilir.
+  const f = String(cell.numFmt ?? '').replace(/\[\$-[0-9A-Fa-f]+\]/g, '');
   if (kod !== 'TRY') { cell.numFmt = BIRIM_FMT[kod]; return; }
   if (f && /USD|EUR|GBP|\$|€|£/i.test(f) && !/TL|₺/i.test(f)) cell.numFmt = BIRIM_FMT.TRY;
 };
@@ -157,8 +161,8 @@ export interface SekmeBilgi {
   wsName: string;
   matCol: number | null;
   labCol: number | null;
-  ilkVeri: number;
-  sonVeri: number;
+  /** ICMAL'e katki veren satirlarin GERCEK numaralari (StandartSayfaBilgi.toplamSatirlari) */
+  toplamSatirlari: number[];
   matDeger: number;
   labDeger: number;
   /** KF6 self-check: uygulamada dolu (>0) fiyat/tutar hucre sayisi */
@@ -181,12 +185,43 @@ export interface SekmeBilgi {
 // Gecmis: git log -- src/quotes/export-engine.ts
 
 
-/** SekmeBilgi + SON sayfa adi → icmal SUM formullu SekmeOzet (T5/T7). */
+/**
+ * SekmeBilgi + SON sayfa adi → icmal SUM formullu SekmeOzet (T5/T7).
+ *
+ * SUM ARALIGI VERIDEN KURULUR (hesap dogrulugu turu, 13.09): toplama giren
+ * satirlarin numaralari bitisik parcalara ayrilir —
+ * `SUM('S'!F2:F5,'S'!F7:F9)` — ARA TOPLAM (`_ozet`) satiri araya girdiginde
+ * aralik onu ATLAR. Eskiden `ilkVeri..sonVeri` tek aralikti ve ozet satirlari
+ * da topluyordu: onbellek dogru, Excel'in yeniden hesabi 3 kat (FIRMA-C).
+ * Satir numarasi yazim anindaki `satir.number`dir; antet ya da baska bir
+ * ust bilgi eklenirse numaralar kendiliginden kayar (sabit baslik konumu YOK).
+ *
+ * Katki veren satiri OLMAYAN sayfa (yalniz ozet/baslik) `0` formulu alir —
+ * `null` DEGIL: tek bir null `toplamFormul`da TUM ICMAL toplamlarini statik
+ * sayiya dusuruyordu (dosya yari canli, yari olu).
+ */
 export function sekmeOzetiKur(b: SekmeBilgi, sonAd: string): SekmeOzet {
-  const aralik = (col: number | null): string | null =>
-    col && b.ilkVeri && b.sonVeri
-      ? `SUM(${sayfaRef(sonAd)}!${KOLON_HARF(col)}${b.ilkVeri}:${KOLON_HARF(col)}${b.sonVeri})`
-      : null;
+  const parcalar: Array<[number, number]> = [];
+  for (const n of b.toplamSatirlari ?? []) {
+    const son = parcalar[parcalar.length - 1];
+    if (son && n === son[1] + 1) son[1] = n;
+    else parcalar.push([n, n]);
+  }
+  const aralik = (col: number | null): string | null => {
+    if (!col) return null;
+    if (parcalar.length === 0) return '0';
+    const h = KOLON_HARF(col);
+    const araliklar = parcalar.map(([a, z]) => `${sayfaRef(sonAd)}!${h}${a}:${h}${z}`);
+    // Excel bir fonksiyona en fazla 255 arguman kabul eder — asarsa parcali SUM'lar
+    const gruplar: string[] = [];
+    for (let i = 0; i < araliklar.length; i += 255) gruplar.push(`SUM(${araliklar.slice(i, i + 255).join(',')})`);
+    const f = gruplar.join('+');
+    if (f.length > EXCEL_FORMUL_AZAMI) {
+      console.warn(`[Export] ⚠ ${sonAd}: ICMAL formulu ${f.length} karakter — Excel siniri asiliyor, deger yazilacak`);
+      return null;
+    }
+    return f;
+  };
   return {
     name: sonAd,
     matFormul: aralik(b.matCol),
@@ -265,6 +300,10 @@ export interface ExportGirdisi {
    *  IKIZ KURALI: fiyatli cikti yolu bunu tasiyip bu yol tasimasaydi,
    *  kullanici hangi butona bastigina gore FARKLI bir dosya alirdi. */
   dil?: string;
+  /** Firma anteti (plan 4.4) — liste sayfalarinin ustune; IKIZ: fiyatli yol da
+   *  ayni `standartSayfaYaz` ile basar. Format sayfalarina (KAPAK/İCMAL)
+   *  DOKUNULMAZ (T3: yer tutucusuz hucreye yazilmaz). */
+  antet?: AntetBilgi | null;
 }
 
 export interface ExportSonucu {
@@ -316,8 +355,29 @@ export async function buildExportWorkbook(g: ExportGirdisi): Promise<ExportSonuc
   // KF7: iki export yolu da `standartSayfaYaz` motorunu kullanir; ikinci bir
   // yazim yolu YOK. Orijinal dosya artik ZORUNLU DEGIL (grid verisi yeterli).
   const bilgiler: SekmeBilgi[] = [];
-  // KF6 self-check: yazilamayan dolu deger — sessiz veri kaybi YASAK,
-  // cagiran (controller) kullaniciya gorunur uyari tasir.
+  const listeSayfalari: string[] = [];
+  const sekmeler: SekmeOzet[] = [];
+  for (const sh of g.sheetsArr ?? []) {
+    if (!sh || sh.isEmpty) continue;
+    // EX8: standart tablo DOGRUDAN format workbook'una yazilir.
+    // toplamSatiri=false — İCMAL zaten SUM ile topluyor, cift toplam olmasin.
+    const sb = standartSayfaYaz(wb, sh, { birim: g.birim as any, toplamSatiri: false, dil: g.dil, antet: g.antet });
+    listeSayfalari.push(sb.wsName);
+    const b: SekmeBilgi = {
+      wsName: sb.wsName, matCol: sb.matCol, labCol: sb.labCol,
+      toplamSatirlari: sb.toplamSatirlari,
+      matDeger: sb.matDeger, labDeger: sb.labDeger,
+      beklenen: sb.yazilan, yazilan: sb.yazilan, hataArtisi: 0,
+      fiyatsizSatir: sb.fiyatsizSatir,
+    };
+    bilgiler.push(b);
+    sekmeler.push(sekmeOzetiKur(b, sb.wsName));
+  }
+
+  // KF6 self-check — sayfa DONGUSUNDEN SONRA toplanir. ⚠ Eskiden donguden
+  // ONCE bos `bilgiler` uzerinden hesaplaniyordu: sayaclar yapisal olarak 0,
+  // kullanici her format indirmesinde "0 değer aktarıldı ✓" goruyor, fiyatsiz
+  // satir hic bildirilmiyordu (EX8 gocunde yer degistirmis; 13.09 olculdu).
   const eksikDeger = bilgiler.reduce((a, b) => a + Math.max(0, b.beklenen - b.yazilan), 0);
   if (eksikDeger > 0) {
     console.warn(`[Export] ⚠ SELF-CHECK: ${eksikDeger} dolu fiyat degeri dosyaya YAZILAMADI`);
@@ -326,26 +386,6 @@ export async function buildExportWorkbook(g: ExportGirdisi): Promise<ExportSonuc
   const fiyatsizSatir = bilgiler.reduce((a, b) => a + (b.fiyatsizSatir ?? 0), 0);
   const yazilanDeger = bilgiler.reduce((a, b) => a + b.yazilan, 0);
   const beklenenDeger = bilgiler.reduce((a, b) => a + b.beklenen, 0);
-
-  const listeSayfalari: string[] = [];
-  const sekmeler: SekmeOzet[] = [];
-  for (const sh of g.sheetsArr ?? []) {
-    if (!sh || sh.isEmpty) continue;
-    // EX8: standart tablo DOGRUDAN format workbook'una yazilir.
-    // toplamSatiri=false — İCMAL zaten SUM ile topluyor, cift toplam olmasin.
-    const sb = standartSayfaYaz(wb, sh, { birim: g.birim as any, toplamSatiri: false, dil: g.dil });
-    listeSayfalari.push(sb.wsName);
-    const b: SekmeBilgi = {
-      wsName: sb.wsName, matCol: sb.matCol, labCol: sb.labCol,
-      ilkVeri: sb.ilkVeri, sonVeri: sb.sonVeri,
-      matDeger: sb.matDeger, labDeger: sb.labDeger,
-      beklenen: sb.yazilan, yazilan: sb.yazilan, hataArtisi: 0,
-      fiyatsizSatir: (sh.rowData ?? []).filter((r: any) => r?._isDataRow && !r?._ozet
-        && !(parseFloat(String(r?._matBirim ?? '')) > 0) && !(parseFloat(String(r?._labBirim ?? '')) > 0)).length,
-    };
-    bilgiler.push(b);
-    sekmeler.push(sekmeOzetiKur(b, sb.wsName));
-  }
 
   // ── Sira: ilk liste-yuvasinin konumuna teklif sayfalari girer ──
   const hedefSira: string[] = [];
@@ -363,6 +403,29 @@ export async function buildExportWorkbook(g: ExportGirdisi): Promise<ExportSonuc
   // ── 4. Doldur + teklif katmani ──
   const dolan = fillPlaceholders(wb, { ...g.ctxTemel, sekmeler });
   applyOverrides(wb, g.overrides);
+  // Eski kayitli override bir PARA hucresine rakam yazdiysa, o hucreyi toplayan
+  // formullerin onbellegi son degerlerden yeniden kurulur (Korumali Gorunum ile
+  // duzenleme modu AYNI rakami gostersin — bkz. paraOnbellekleriniTazele).
+  if (g.overrides && Object.keys(g.overrides).length > 0) {
+    const n = paraOnbellekleriniTazele(wb, dolan);
+    if (n > 0) console.warn(`[Export] ⚠ kayitli override ${n} para formulunun onbellegini degistirdi — yeniden hesaplandi`);
+  }
+
+  // K-C ikizi (13.09): ICMAL/toplam hucrelerinin para bicimi HEDEF birime
+  // cekilir. Deger USD'ye cevrilmis ama bicim formattan geliyordu: yerlesik
+  // formatta simgesiz, TL bicimli kullanici formatinda "$132" → "132,00 ₺".
+  // Yalniz PARA etiketleri — TEKLIF_NO/REV/TARIH gibi metin alanlari bir
+  // override ile sayiya donmus olsa da para bicimi ALMAZ — ve SAYI/FORMUL
+  // tasiyan hucreler; metin icine gomulu etiket ("Toplam: 1.234,00") bicim tasimaz.
+  const kod = g.birim?.kod ?? 'TRY';
+  for (const d of dolan) {
+    if (!SAYISAL_ETIKETLER.has(d.etiket)) continue;
+    const hucre = wb.getWorksheet(d.sheet)?.getCell(d.addr);
+    const v: any = hucre?.value;
+    if (hucre && (typeof v === 'number' || (v && typeof v === 'object' && typeof v.formula === 'string'))) {
+      birimBicimiDuzelt(hucre, kod);
+    }
+  }
 
   return { wb, sekmeler, dolan, formatSayfalari, listeSayfalari, eksikDeger, hataArtisi, fiyatsizSatir, yazilanDeger, beklenenDeger };
 }

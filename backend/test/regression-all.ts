@@ -403,6 +403,11 @@ const SUITES: Suite[] = [
   //    07.09 rotasyonu CLAUDE_API_KEY'i atlamıştı ve kapsam cümlesi sabit metindi
   //    (SMTP_PASS'i anmıyordu). Rapor artık .env'den türetiliyor ve burada ölçülür.
   { ad: 'Sır döndürme: türetilmiş kapsam raporu + SMTP koruma + red kanıtı (S/K/D)', script: 'test:sir-dondur', zincir: 'Z0' },
+  // ── HESAP DOGRULUGU TURU (13.09.2026): cikti hesabinin degismezleri. DB'siz.
+  //    ICMAL formulleri HUCRELERDEN yeniden hesaplanir (onbellek = formul),
+  //    Excel formul sinirlari olculur; antetli ve antetsiz kosum ayni rakam.
+  { ad: 'İCMAL = sayfa toplamları · KDV · kur · parite (H0-H7)', script: 'test:hesap', zincir: 'Z4' },
+  { ad: 'Teklif çıktısı anteti (plan 4.4, AN0-AN6)', script: 'test:antet', zincir: 'Z4' },
   // ── 29.08.2026 — FİYAT ÇAPASI (Y/H/K). DB ve AĞ GEREKTİRMEZ.
   //    Kullanıcı kararı: müşteriye "$28/ay" gösterilir, karttan TL çekilir.
   //    İki kavram KARIŞIRSA para hatası olur:
