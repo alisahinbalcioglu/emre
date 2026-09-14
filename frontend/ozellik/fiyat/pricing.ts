@@ -21,7 +21,7 @@
 // ============================================================
 
 // NOT: goreli yol ZORUNLU — vitest.config.ts'te '@/' alias'i tanimli degil.
-import { sayiAlani } from './sayi-alani';
+import { sayiAlani, sayiOku } from './sayi-alani';
 
 // ============================================================
 // ADIM 8 (Kar Analizi onkosul turu, 06.08) — ONDALIK TEK KURAL (kalem 67)
@@ -214,13 +214,10 @@ export function etkinMiktar(
   quantityField?: string,
   unitField?: string,
 ): number {
-  const oku = (f?: string): number => {
-    if (!f) return NaN;
-    const s = String(row[f] ?? '').trim();
-    if (!/^-?[0-9.,]+$/.test(s)) return NaN;
-    const n = parseFloat(s.replace(',', '.'));
-    return isNaN(n) ? NaN : n;
-  };
+  // A2 (tur 3, olculdu): yerel `parseFloat(s.replace(',', '.'))` TR binligi
+  // KESIYORDU — "1.234,5" miktar 1,234. Hucre MAKINE sinirindadir (sistemin
+  // yazdigi / kayitli deger): tek okuyucu `sayiOku` (harf kapisi dahil).
+  const oku = (f?: string): number => (f ? sayiOku(row[f]) ?? NaN : NaN);
   const q = oku(quantityField);
   if (!isNaN(q)) return q;
   const u = oku(unitField);
@@ -252,10 +249,8 @@ export function toplamlariTamamla(
   const { materialUnitPriceField: mBirim, materialTotalField: mTop,
     laborUnitPriceField: lBirim, laborTotalField: lTop,
     grandTotalField: genel, quantityField: mikA, unitField: brmA } = roller;
-  const sayi = (v: unknown) => {
-    const n = parseFloat(String(v ?? '').replace(',', '.'));
-    return Number.isFinite(n) ? n : 0;
-  };
+  // A2 (tur 3): MAKINE okuyucusu — "35x240mm" hayaleti toplam uretmez.
+  const sayi = (v: unknown) => sayiOku(v) ?? 0;
   const bos = (v: unknown) => String(v ?? '').trim() === '';
   let dokunulan = 0;
 
@@ -337,10 +332,8 @@ export function satirTarafi(
   birimAlan: string | undefined, topAlan: string | undefined,
   karAlan: '_malzKar' | '_iscKar', netAlan: '_matNetPrice' | '_labNetPrice',
 ): { satis: number; maliyet: number; fiyatli: boolean } | null {
-  const sayi = (v: unknown) => {
-    const n = parseFloat(String(v ?? '').replace(',', '.'));
-    return Number.isFinite(n) ? n : 0;
-  };
+  // A2 (tur 3): MAKINE okuyucusu (ekran/kayit ile ayni) — "1.234,5" 1,234 degil.
+  const sayi = (v: unknown) => sayiOku(v) ?? 0;
   const bos = (v: unknown) => String(v ?? '').trim() === '';
 
   if (!birimAlan && !topAlan) return null; // sutun hic yok — sayilmaz

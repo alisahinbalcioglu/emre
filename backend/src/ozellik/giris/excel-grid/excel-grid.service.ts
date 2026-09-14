@@ -19,6 +19,8 @@ import * as XLSX from 'xlsx';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { detectSheetDiscipline } from './sheet-discipline';
 import { standartlastir } from './standart-sema';
+// A2 (tur 3): hucre TIPI metinde tasinir + insan sinirinin tek sayi kurali
+import { excelHucreMetni, insanSayiOku } from '../../kutuphane/utils/import-fidelity';
 
 // ────────────────────────────────────────────
 // Icerik-tabanli sutun tespiti sabitleri
@@ -32,6 +34,18 @@ const UNIT_VOCAB = new Set<string>([
   'metre', 'mt', 'm', 'adet', 'ad', 'takim', 'tk', 'm2', 'm3', 'kg', 'ton',
   'paket', 'pk', 'rulo', 'boy', 'litre', 'lt', 'cift', 'kutu', 'set', 'gr',
 ]);
+
+/**
+ * Hucre MIKTAR tasiyor mu? (satir tespiti + rol dogrulamasi + ilk veri satiri)
+ * A2 (tur 3, olculdu): uc yer de `parseFloat(s.replace(',', '.')) > 0` idi ve
+ * "35x240mm", "24 kW", "3x100A ATS Pano" metinlerinden sayi uyduruyordu. Tek
+ * kural insan sinirinin miktar okuyucusu: "12 m" sayi; belirsiz "1.250" hangi
+ * okumayla olursa olsun miktar TASIR (satir kaybolmaz, hucre isaretlenir).
+ */
+function miktarVarMi(ham: unknown): boolean {
+  const g = insanSayiOku(ham, 'miktar');
+  return (g.tur === 'sayi' && g.deger > 0) || (g.tur === 'belirsiz' && g.binlik > 0);
+}
 
 // ────────────────────────────────────────────
 // Types
@@ -274,7 +288,11 @@ export class ExcelGridService {
       for (let c = 0; c < colCount; c++) {
         const addr = XLSX.utils.encode_cell({ r: range.s.r + r, c: range.s.c + c });
         const cell = sheet[addr];
-        row.push(cell && cell.v !== undefined && cell.v !== null ? String(cell.v) : '');
+        // A2 (tur 3): `String(cell.v)` hucre TIPINI siliyordu — Excel SAYISI
+        // 323308.125 ile elle yazilmis METIN "323308.125" ayni diziye donuyordu.
+        // Sayi hucresi makine metni olur ("323308,125"): insan kurali onu da
+        // ayni sayi okur, metin hucresi insan sinirinda kalir.
+        row.push(excelHucreMetni(cell));
       }
       rawValues.push(row);
     }
@@ -532,8 +550,11 @@ export class ExcelGridService {
         // merge ile ad=birim ayni deger) HARIC.
         const nameVal = roleFields.nameField ? String(row[roleFields.nameField] ?? '').trim() : '';
         const unitVal = roleFields.unitField ? String(row[roleFields.unitField] ?? '').trim() : '';
-        const qtyNum = roleFields.quantityField ? parseFloat(String(row[roleFields.quantityField] ?? '').replace(',', '.')) : NaN;
-        const hasQty = !isNaN(qtyNum) && qtyNum > 0;
+        // A2 (tur 3): SAF-SAYI KAPISI — `parseFloat` "35x240mm kanal" / "24 kW"
+        // miktar hucresinden sayi uydurup satiri VERI yapiyordu. Tek kural:
+        // insan sinirinin miktar okuyucusu ("12 m" sayi; belirsiz "1.250" de
+        // miktar tasir — hangi okumayla olursa olsun > 0).
+        const hasQty = !!roleFields.quantityField && miktarVarMi(row[roleFields.quantityField]);
         // Merge ile yayilmis bolum basligi: ad hucresi gizli-merge VEYA
         // ad===birim (ayni merge kaynagi) → satir baslik, veri degil.
         const nameMerge = nameColIdx !== undefined ? mergeInfo.get(`${r}-${nameColIdx}`) : undefined;
@@ -560,8 +581,8 @@ export class ExcelGridService {
           row._isDataRow = true;
         }
       } else if (roleFields.quantityField) {
-        const qty = parseFloat(String(row[roleFields.quantityField] ?? ''));
-        if (!isNaN(qty) && qty > 0 && r > headerEndRow) {
+        // A2 ikizi (sabit sema DISI yol: admin/iscilik tam Excel) — ayni saf-sayi kapisi
+        if (miktarVarMi(row[roleFields.quantityField]) && r > headerEndRow) {
           row._isDataRow = true;
         }
       }
@@ -691,8 +712,8 @@ export class ExcelGridService {
     const hasNumericValue = (c: number): boolean => {
       const limit = Math.min(40, rawValues.length);
       for (let r = 0; r < limit; r++) {
-        const num = parseFloat(String(rawValues[r]?.[c] ?? '').replace(',', '.'));
-        if (!isNaN(num) && num > 0) return true;
+        // A2 (tur 3): saf-sayi kapisi (satir tespitiyle ayni kural, `miktarVarMi`)
+        if (miktarVarMi(rawValues[r]?.[c])) return true;
       }
       return false;
     };
@@ -836,9 +857,8 @@ export class ExcelGridService {
     if (roles.quantity !== undefined) {
       const qCol = roles.quantity;
       for (let r = 0; r < Math.min(30, rawValues.length); r++) {
-        const val = rawValues[r]?.[qCol];
-        const num = parseFloat(String(val).replace(',', '.'));
-        if (!isNaN(num) && num > 0) {
+        // A2 (tur 3): saf-sayi kapisi — "3x100A ATS Pano" ilk veri satiri sayilmaz
+        if (miktarVarMi(rawValues[r]?.[qCol])) {
           firstDataRow = r;
           break;
         }

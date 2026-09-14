@@ -9,6 +9,7 @@ import { toast } from '@/ortak/hooks/use-toast';
 import { confirm } from '@/ortak/hooks/use-confirm';
 import { ExcelGrid } from '@/ozellik/tablo/excel-grid/ExcelGrid';
 import type { ExcelGridData, ExcelRowData } from '@/ozellik/tablo/excel-grid/types';
+import { sayiOku } from '@/ozellik/fiyat/sayi-alani';
 
 // ── "Marka Ekle" / "Malzeme Ekle" bos tablosu — foto formatinin bos hali ──
 // Sabit sema (ProductIndex 11 kolonuyla birebir). İskonto %/Net Fiyat kolonlari
@@ -47,18 +48,12 @@ function trimOrU(v: unknown): string | undefined {
   const s = String(v ?? '').trim();
   return s === '' ? undefined : s;
 }
+/** Kayit okuyucusu — hucre MAKINE sinirinda (A2, tur 3): Excel'den yapistirilan
+ *  TR metni ("6.500,00") ExcelGrid blok yapistirmasinda insan kuralindan gecer;
+ *  burasi saklanan degeri okur. Eski kopya `parseFloat` hayalet metinden sayi
+ *  uyduruyordu ("35x240mm…" → 35). */
 function numOrU(v: unknown): number | undefined {
-  // Excel'den yapistirinca TR bicimi gelebilir: "6.500,00" (nokta=binlik,
-  // virgul=ondalik). Para sembolu/bosluk temizle, TR bicimini normalize et.
-  let s = String(v ?? '').replace(/[₺$€\s]/g, '').trim();
-  if (s === '') return undefined;
-  const hasComma = s.includes(',');
-  const hasDot = s.includes('.');
-  if (hasComma && hasDot) s = s.replace(/\./g, '').replace(',', '.'); // TR: nokta binlik, virgul ondalik
-  else if (hasComma) s = s.replace(',', '.'); // yalniz virgul = ondalik
-  // yalniz nokta / duz sayi: oldugu gibi (parseFloat)
-  const n = parseFloat(s);
-  return isNaN(n) ? undefined : n;
+  return sayiOku(v) ?? undefined;
 }
 
 interface Props {

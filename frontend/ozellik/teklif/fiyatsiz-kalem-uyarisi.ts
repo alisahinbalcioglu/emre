@@ -136,7 +136,7 @@ export interface FiyatsizOnayMetni {
  * "ne fazla korkutur ne az söyler" kuralı ölçülebilsin (bkz.
  * `lib/silme-onay-metni.ts` — aynı desen).
  */
-export function fiyatsizOnayMetni(o: FiyatsizOzet): FiyatsizOnayMetni {
+export function fiyatsizOnayMetni(o: FiyatsizOzet, okunamayanHucre = 0): FiyatsizOnayMetni {
   const miktar = o.birimToplamlari.map((b) => `${bicim(b.miktar)} ${b.birim}`).join(' + ');
   const ornek = o.ornekler
     .map((e) => (e.miktar > 0 ? `${e.ad} (${bicim(e.miktar)} ${e.birim})` : e.ad))
@@ -152,7 +152,43 @@ export function fiyatsizOnayMetni(o: FiyatsizOzet): FiyatsizOnayMetni {
       (miktar ? `Toplam ${miktar}. ` : '')
       + (ornek ? `${ornek}${kalan > 0 ? ` ve ${kalan} kalem daha` : ''}. ` : '')
       + 'Bu kalemlerin birim fiyatı boş — çapı okunamayan borular ve markası '
-      + 'eşleşmeyen satırlar buraya düşer. Yine de kaydedilsin mi?',
+      + 'eşleşmeyen satırlar buraya düşer. '
+      + (okunamayanHucre > 0 ? `${sayiOkunamadiCumlesi(okunamayanHucre)} ` : '')
+      + 'Yine de kaydedilsin mi?',
+    confirmText: 'Yine de kaydet',
+  };
+}
+
+// ── A2 (tur 3, 14.09): SAYI OKUNAMADI — kaydetme onayına görünür satır ────────
+// İçe aktarmada fiyat/miktar hücresindeki metin sayı değilse ("35x240mm Üç
+// bölmeli döşeme kanalı") ya da belirsizse ("1.250") hücre BOŞ gelir ve satırda
+// `_sayiUyari` durur (backend standart-sema). ÖLÇÜLDÜ (Bursa Elektrik): hayalet
+// metin fiyat sayılırken onay 51/90 fiyatsız diyordu; süzgeçle o 39 satır da
+// fiyatsız sayılır (90/90). Ama miktarı okunamayan FİYATLI satır fiyatsız
+// sayılmaz — onay o hücreleri ayrıca SÖYLER (payda: hücre, kalem değil).
+
+/** Kaydedilecek veri satırlarındaki okunamayan sayı HÜCRESİ sayısı. */
+export function sayiOkunamayanHucreSayisi(
+  satirlar: ReadonlyArray<{ _isDataRow?: boolean; _isSpareRow?: boolean; _sayiUyari?: unknown } | null | undefined>,
+): number {
+  let n = 0;
+  for (const r of satirlar) {
+    if (!r?._isDataRow || r._isSpareRow || !r._sayiUyari || typeof r._sayiUyari !== 'object') continue;
+    n += Object.keys(r._sayiUyari as object).length;
+  }
+  return n;
+}
+
+/** Onay/özet cümlesi — tek kaynak (içe aktarma toast'u da bunu kullanır). */
+export function sayiOkunamadiCumlesi(n: number): string {
+  return `${n} hücrede dosyadaki metin sayı olarak okunamadı (mor işaretli) — fiyat/miktar olarak alınmadı.`;
+}
+
+/** Fiyatsız kalem YOKKEN okunamayan hücre varsa onay kartı (kayıt bloklanmaz). */
+export function sayiOkunamadiOnayMetni(n: number): FiyatsizOnayMetni {
+  return {
+    title: `${n} hücrede sayı okunamadı`,
+    description: `${sayiOkunamadiCumlesi(n)} Hücrenin üzerine gelince dosyadaki metin görünür. Yine de kaydedilsin mi?`,
     confirmText: 'Yine de kaydet',
   };
 }

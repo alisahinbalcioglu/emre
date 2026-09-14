@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ortak/ui/select';
 import api from '@/ortak/lib/api';
 import { toast } from '@/ortak/hooks/use-toast';
+import { formSayisiOku } from '@/ozellik/fiyat/sayi-alani';
 
 interface LibraryBrand {
   brandId: string;
@@ -105,12 +106,18 @@ export default function ElectricalBrandsPage() {
   async function handleAddMaterial() {
     const trimmed = materialName.trim();
     if (!trimmed || !unit || !selectedBrandId) return;
+    // A2 (tur 3): `parseFloat` "35x240mm"i 35 yaziyordu — grid ile ayni kural + uyari
+    const fiyatG = formSayisiOku(customPrice, 'fiyat');
+    if (fiyatG.uyari) {
+      toast({ title: 'Uyarı', description: fiyatG.uyari, variant: 'destructive' });
+      return;
+    }
     setAddLoading(true);
     try {
       await api.post('/library', {
         materialName: trimmed,
         unit,
-        customPrice: customPrice ? parseFloat(customPrice) : undefined,
+        customPrice: fiyatG.deger ?? undefined,
         brandId: selectedBrandId,
       });
       toast({ title: 'Eklendi', description: `"${trimmed}" kutuphanenize eklendi.` });
@@ -142,6 +149,11 @@ export default function ElectricalBrandsPage() {
         unit: m.unit ?? 'Adet',
         unitPrice: Number(m.unitPrice ?? m.price ?? 0),
       }));
+      // A2 (tur 3): fiyati belirsiz / sayi olmayan satirlar ALINMADI — nedenini goster
+      const sayiUyarilari: string[] = Array.isArray(data?.sayiUyarilari) ? data.sayiUyarilari : [];
+      if (sayiUyarilari.length > 0) {
+        toast({ title: `${sayiUyarilari.length} satırın fiyatı okunamadı`, description: sayiUyarilari.slice(0, 2).join(' · '), variant: 'destructive' });
+      }
       if (items.length === 0) {
         toast({ title: 'Uyari', description: 'PDF\'den malzeme ayiklanamadi.' });
         return;

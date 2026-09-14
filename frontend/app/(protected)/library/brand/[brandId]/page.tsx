@@ -15,6 +15,7 @@ import { toast } from '@/ortak/hooks/use-toast';
 import { confirm } from '@/ortak/hooks/use-confirm';
 import { ExcelGrid, type ExcelGridHandle } from '@/ozellik/tablo/excel-grid/ExcelGrid';
 import type { ExcelGridData, ExcelRowData } from '@/ozellik/tablo/excel-grid/types';
+import { sayiOku } from '@/ozellik/fiyat/sayi-alani';
 
 interface BrandLibraryResponse {
   id: string;
@@ -43,15 +44,12 @@ function strOrU(v: unknown): string | undefined {
   const s = String(v ?? '').trim();
   return s === '' ? undefined : s;
 }
+/** Kayit okuyucusu — hucre MAKINE sinirinda (A2, tur 3): elle yazim ve blok
+ *  yapistirma ExcelGrid'de insan kuralindan gecip makine metnine donmustur.
+ *  Eski kopya `parseFloat` "35x240mm…" metninden 35 okuyup listPrice yaziyordu
+ *  (olculdu). Tek okuyucu: `sayiOku` ("6.500,00" eski kayit uyumu dahil). */
 function numOrU(v: unknown): number | undefined {
-  // Excel yapistirinca TR bicimi: "6.500,00" (nokta=binlik, virgul=ondalik)
-  let s = String(v ?? '').replace(/[₺$€\s]/g, '').trim();
-  if (s === '') return undefined;
-  const hasComma = s.includes(','), hasDot = s.includes('.');
-  if (hasComma && hasDot) s = s.replace(/\./g, '').replace(',', '.');
-  else if (hasComma) s = s.replace(',', '.');
-  const n = parseFloat(s);
-  return isNaN(n) ? undefined : n;
+  return sayiOku(v) ?? undefined;
 }
 
 /** Yapisal kolonlari YALNIZ yeni (kutuphane kaydi olmayan) satirlarda editable

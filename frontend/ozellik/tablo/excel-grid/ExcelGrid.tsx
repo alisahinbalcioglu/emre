@@ -33,12 +33,29 @@ import { veriSatirinaTerfiEtmeliMi } from './satir-terfi';
 // KÂR HÜCRESİ TEK SÜZGEÇTEN: `parseFloat(String(x)) || 0` kopyaları
 // kaydetme yolundaki `sayiAlani` ile AYRIŞIYORDU — "12,5" ekranda 12,
 // kayıtta 12,5 oluyordu (TR klavye). Tek fonksiyon, tek sayı.
-import { sayiAlani, sayiOku, karYuzdesiOku } from '@/ozellik/fiyat/sayi-alani';
+import { sayiAlani, sayiOku } from '@/ozellik/fiyat/sayi-alani';
+// A2 (tur 3, 14.09): BELIRSIZ SAYI SUZGECI — insan sinirinin (klavye, pano, form)
+// tek kurali. Makine okuyucusu (`sayiOku`) ile KARISTIRILMAZ: saklanan deger
+// sistemin yazdigidir, belirsizlik kurali yalniz kullanicinin YAZDIGINA uygulanir.
+import { hucreGirdisiCoz, hucreGosterimMetni, insanSayiOku, makineMetni, sayiUyarisi, type SayiAlanTuru } from '@/ozellik/fiyat/sayi-alani';
+import { yapistirmaSayiUyarilari } from './yapistir';
 import { hasSizeExpression, isSelfSufficientRow } from './build-material-context';
 import { niteliklerdenBaglam, adayEtiketleri, popupGenisligiOku, popupGenisligiYaz } from './aday-ayirt-edicilik';
 import httpApi from '@/ortak/lib/api';
 import { toast } from '@/ortak/hooks/use-toast';
 import { confirm, promptValue } from '@/ortak/hooks/use-confirm';
+
+/** A2: sayi kolonlarinin AG Grid `valueParser`i. Karar saf `hucreGirdisiCoz`da
+ *  (vitest'li); reddedilen girdide hucre ESKI degerinde kalir, uyari `bekleyen`e
+ *  yazilir ve duzenleme bitince (`onCellEditingStopped`) BIR kez gosterilir —
+ *  AG Grid ayristiriciyi bir duzenlemede birden cok kez cagirabilir. */
+function sayiHucreParser(alan: SayiAlanTuru, bekleyen: { current: string | null }) {
+  return (p: any) => {
+    const s = hucreGirdisiCoz(p.newValue, p.oldValue, alan);
+    bekleyen.current = s.uyari;
+    return s.deger;
+  };
+}
 
 /** FITTING: turetilen para hucresi — gri/italik "elle yazilmaz" sinyali.
  *  Para kolonlarinin inline `cellStyle`i (color #0f172a) CSS sinifini ezdigi
@@ -1864,6 +1881,12 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     const api = gridRef.current?.api;
     if (!api) return;
     const v = parseDiscountInput(raw);
+    // A2 (tur 3): "abc" gruba 0 YAZIYORDU, "1.250" 1,25 okunuyordu — sayi degil /
+    // belirsiz metin UYGULANMAZ, kullanici neden uygulanmadigini gorur.
+    if (v === null) {
+      toast({ title: 'İskonto uygulanmadı', description: sayiUyarisi(insanSayiOku(raw, 'iskonto'), 'iskonto') ?? 'Yüzde yazın (örn 30 ya da %30)', variant: 'destructive' });
+      return;
+    }
     const pairs: { node: any; value: number }[] = [];
     // forEachNode DARALTILMIS satirlari da kapsar — grup uyeligi _groupKey
     api.forEachNode((n) => {
@@ -1878,6 +1901,11 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     const api = gridRef.current?.api;
     if (!api || bulkDiscountInput.trim() === '') return;
     const v = parseDiscountInput(bulkDiscountInput);
+    // A2 (tur 3): "tum listeye uygula" kutusundaki metin BUTUN listeyi 0'a cekerdi
+    if (v === null) {
+      toast({ title: 'İskonto uygulanmadı', description: sayiUyarisi(insanSayiOku(bulkDiscountInput, 'iskonto'), 'iskonto') ?? 'Yüzde yazın (örn 30 ya da %30)', variant: 'destructive' });
+      return;
+    }
     const pairs: { node: any; value: number }[] = [];
     api.forEachNode((n) => { if (n.data?._isDataRow) pairs.push({ node: n, value: v }); });
     const applied = applyDiscountBulk(pairs);
@@ -2179,9 +2207,12 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         quantityField, materialUnitPriceField, laborUnitPriceField,
         materialTotalField, laborTotalField, grandUnitPriceField, grandTotalField,
       } = data.columnRoles;
-      const sayisalAlanlar = new Set(
-        [quantityField, materialUnitPriceField, laborUnitPriceField, '_malzKar', '_iscKar']
-          .filter(Boolean) as string[],
+      // A2 (tur 3): her sayisal kolonun ALAN TURU — izinli sus (₺ / % / birim)
+      // ve belirsizlik kurali elle yazmayla AYNI (`insanSayiOku`).
+      const sayisalAlanlar = new Map<string, SayiAlanTuru>(
+        ([[quantityField, 'miktar'], [materialUnitPriceField, 'fiyat'], [laborUnitPriceField, 'fiyat'],
+          ['_malzKar', 'kar'], ['_iscKar', 'kar']] as Array<[string | undefined, SayiAlanTuru]>)
+          .filter((x): x is [string, SayiAlanTuru] => !!x[0]),
       );
       // Toplam kolonlari editable olsa bile hedef DEGIL — formul alanina el
       // yazisi tutarsizlik gomer (KD11 cizgisi: toplam TEK formulden).
@@ -2199,6 +2230,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           // tarafindan bir sonraki yenilemede kapsamdan yeniden yazilir.
           editable: yapistirmaHedefiMi(def.editable) && !hesaplanan.has(c.getColId()),
           sayisal: sayisalAlanlar.has(c.getColId()),
+          alan: sayisalAlanlar.get(c.getColId()),
         };
       });
       const satirlar: PasteSatir[] = [];
@@ -2208,11 +2240,12 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       }
       const plan = planYapistir(text, kolonlar, fc.column.getColId(), satirlar);
       e.preventDefault();
+      const sayiUyarilari = yapistirmaSayiUyarilari(plan.ozet);
       if (plan.hucreler.length === 0) {
         const neden = plan.ozet.atlananKolon > 0
           ? 'Hedef kolon düzenlenemez (toplamlar formülden hesaplanır — birim fiyata yapıştırın)'
-          : plan.ozet.atlananSayiDegil > 0
-            ? 'Kopyalanan değerler sayı olarak çözülemedi'
+          : sayiUyarilari.length > 0
+            ? `Kopyalanan değerler sayı olarak çözülemedi — ${sayiUyarilari.join(' · ')}`
             : 'Yapıştırılacak değer bulunamadı';
         toast({ title: 'Yapıştırılamadı', description: neden, variant: 'destructive' });
         return;
@@ -2220,13 +2253,14 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       for (const h of plan.hucreler) {
         const n = api.getDisplayedRowAtIndex(fc.rowIndex + h.satir);
         if (!n) continue;
-        // Sayilar nokta-ondalikli string olarak gider — elle giris editorunun
-        // urettigi bicimle birebir (zincir parseFloat ile okur).
-        n.setDataValue(h.field, String(h.deger), 'edit');
+        // Sayilar MAKINE METNI olarak gider — elle giris ayristiricisinin
+        // (`hucreGirdisiCoz`) urettigi bicimle birebir ("10,075": 3 ondalik
+        // virgulle, insan kurali tekrar okursa da ayni sayi).
+        n.setDataValue(h.field, typeof h.deger === 'number' ? makineMetni(h.deger) : String(h.deger), 'edit');
       }
       const ek: string[] = [];
       if (plan.ozet.sigmayanSatir > 0) ek.push(`${plan.ozet.sigmayanSatir} satır tabloya sığmadı`);
-      if (plan.ozet.atlananSayiDegil > 0) ek.push(`${plan.ozet.atlananSayiDegil} hücre sayı değildi`);
+      ek.push(...sayiUyarilari);
       if (plan.ozet.atlananKolon > 0) ek.push(`${plan.ozet.atlananKolon} hücre düzenlenemeyen kolona denk geldi`);
       toast({
         title: `${plan.ozet.yazilacak} hücre yapıştırıldı`,
@@ -2244,18 +2278,33 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       if (values.length === 0) return;
       e.preventDefault();
       const pairs: { node: any; value: number }[] = [];
+      // A2 (tur 3, olculdu): "abc" satiri 0 yazip VAR OLAN iskontoyu eziyordu.
+      // Sayi olmayan / belirsiz satir POZISYON TUKETIR (hiza) ama yazilmaz.
+      let belirsiz = 0; let sayiDegil = 0; const ornekHamlar: string[] = [];
       let vi = 0;
       for (let i = fc.rowIndex; vi < values.length; i++) {
         const n = api.getDisplayedRowAtIndex(i);
         if (!n) break;
         if (!n.data?._isDataRow) continue; // grup bandi/baslik atla
-        pairs.push({ node: n, value: values[vi++] });
+        const s = values[vi++];
+        if (s.deger === null) {
+          if (s.girdi.tur === 'belirsiz') belirsiz++; else sayiDegil++;
+          if (ornekHamlar.length < 2) ornekHamlar.push(s.ham);
+          continue;
+        }
+        pairs.push({ node: n, value: s.deger });
       }
       const applied = applyDiscountBulk(pairs);
-      if (vi < values.length) {
+      const sayiUyarilari = yapistirmaSayiUyarilari({
+        yazilacak: pairs.length, atlananBos: 0, atlananSayiDegil: sayiDegil, atlananBelirsiz: belirsiz,
+        ornekHamlar, atlananKolon: 0, sigmayanSatir: values.length - vi,
+      });
+      if (vi < values.length || sayiUyarilari.length > 0) {
+        const ek = [...sayiUyarilari];
+        if (vi < values.length) ek.unshift(`${values.length - vi} değer tabloya sığmadı`);
         toast({
-          title: 'Satır sayısı uyuşmazlığı',
-          description: `${values.length} değerden ${applied} satıra uygulandı — ${values.length - vi} değer tabloya sığmadı`,
+          title: vi < values.length ? 'Satır sayısı uyuşmazlığı' : `${applied} iskonto değeri yapıştırıldı`,
+          description: `${values.length} değerden ${applied} satıra uygulandı — ${ek.join(' · ')}`,
           variant: 'destructive',
         });
       } else if (applied > 0) {
@@ -2316,6 +2365,18 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       }
     }
 
+    // A2 (tur 3, olculdu): bu yol hucre metnini OLDUGU GIBI yaziyordu — Liste
+    // Fiyati hucresine "35x240mm Üç bölmeli döşeme kanalı" yapisinca Net Fiyat
+    // ₺35,00, kayit listPrice 35 oluyordu. Sayisal rol kolonlari (miktar + fiyat
+    // rolleri) teklif yapistirmasiyla AYNI insan kuralindan gecer: sayi → makine
+    // metni; belirsiz / sayi degil → YAZILMAZ, ozet toast'ta sayilir.
+    const r0 = data.columnRoles ?? ({} as any);
+    const sayiKolonu = new Map<string, SayiAlanTuru>(
+      ([[r0.quantityField, 'miktar'], [r0.materialUnitPriceField, 'fiyat'], [r0.laborUnitPriceField, 'fiyat'],
+        [r0.materialTotalField, 'fiyat'], [r0.laborTotalField, 'fiyat']] as Array<[string | undefined, SayiAlanTuru]>)
+        .filter((x): x is [string, SayiAlanTuru] => !!x[0]),
+    );
+    let belirsizHucre = 0; let sayiDegilHucre = 0; const ornekHamlar: string[] = [];
     // Degerleri yaz (dogrudan mutasyon → tek refresh; cellValueChanged tetiklemez)
     let yazilan = 0;
     for (let i = 0; i < rowNodes.length && i < cells.length; i++) {
@@ -2323,10 +2384,25 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       for (let j = 0; j < cols.length; j++) {
         const field = targets[startCol + j];
         if (!field) break; // sagda hedef kolon kalmadi
-        rowNodes[i].data[field] = cols[j];
+        const alan = sayiKolonu.get(field);
+        if (alan) {
+          const g = insanSayiOku(cols[j], alan);
+          if (g.tur === 'belirsiz' || g.tur === 'sayi-degil') {
+            if (g.tur === 'belirsiz') belirsizHucre++; else sayiDegilHucre++;
+            if (ornekHamlar.length < 2) ornekHamlar.push(cols[j].trim());
+            continue;
+          }
+          rowNodes[i].data[field] = g.tur === 'sayi' ? makineMetni(g.deger) : '';
+        } else {
+          rowNodes[i].data[field] = cols[j];
+        }
         yazilan++;
       }
     }
+    const blokSayiUyarilari = yapistirmaSayiUyarilari({
+      yazilacak: yazilan, atlananBos: 0, atlananSayiDegil: sayiDegilHucre, atlananBelirsiz: belirsizHucre,
+      ornekHamlar, atlananKolon: 0, sigmayanSatir: 0,
+    });
 
     // autoAppendRow ise en altta hep-bos spare satir kalsin
     if (autoAppendRow) {
@@ -2349,7 +2425,11 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       api.forEachNode((n) => { if (n.data) all.push(n.data); });
       onRowDataChange(all);
     }
-    if (yazilan > 0) toast({ title: `${cells.length} satır yapıştırıldı`, description: 'Kaydetmeyi unutmayın' });
+    if (blokSayiUyarilari.length > 0) {
+      toast({ title: `${cells.length} satır yapıştırıldı`, description: `${blokSayiUyarilari.join(' · ')} — kaydetmeyi unutmayın`, variant: 'destructive' });
+    } else if (yazilan > 0) {
+      toast({ title: `${cells.length} satır yapıştırıldı`, description: 'Kaydetmeyi unutmayın' });
+    }
   }, [mode, applyDiscountBulk, data.columnDefs, data.columnRoles, autoAppendRow, onRowDataChange]);
 
   // Grup bandi renderer'ina library etkilesimleri context ile gider
@@ -3025,6 +3105,22 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     }
   }, [data.rowData, mode]);
 
+  // ── A2 (tur 3): ELLE YAZILAN SAYI — reddedilen girdinin uyarisi ──────────
+  // Ayristirici (`sayiHucreParser`) yazar, duzenleme bitince BIR kez gosterilir.
+  // Hucre ESKI degerinde kalir; toast olmadan kullanici yazdiginin neden
+  // "kayboldugunu" goremezdi.
+  const bekleyenSayiUyarisiRef = useRef<string | null>(null);
+  const sayiUyarisiniGoster = useCallback((e?: { newValue?: unknown }) => {
+    const u = bekleyenSayiUyarisiRef.current;
+    bekleyenSayiUyarisiRef.current = null;
+    // Esc (iptal): AG Grid durdurma olayinda `newValue` tanimsiz gelir — yazim
+    // iptal edildiyse uyari da yok (main.cjs.js `_cellEditStoppedArgs`; tarayicida
+    // gozle dogrulanmadi).
+    if (u && e?.newValue !== undefined) toast({ title: 'Değer yazılmadı', description: u, variant: 'destructive' });
+  }, []);
+  /** Yeni duzenleme onceki duzenlemeden kalan bayat uyariyi tasimaz. */
+  const sayiUyarisiniSifirla = useCallback(() => { bekleyenSayiUyarisiRef.current = null; }, []);
+
   // Column definitions: backend'den gelenleri AG-Grid ColDef'e cevir
   const columnDefs = useMemo<ColDef<ExcelRowData>[]>(() => {
     if (!data || !Array.isArray(data.columnDefs)) {
@@ -3080,6 +3176,34 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         hide: (c as any).hide === true,
       };
 
+      // ── A2 (tur 3, 14.09 — olculdu): MIKTAR + FIYAT HUCRESI INSAN SINIRI ────
+      // Bu kolonlarda ayristirici YOKTU: elle yazilan metin hucrede AYNEN
+      // duruyor, dallar onu `parseFloat` ile sayiya ceviriyordu — fiyat
+      // hucresine "24 kW" yazilinca ₺24,00 ve satir toplami 240; kutuphane
+      // Liste Fiyati "35x240mm…" → Net Fiyat ₺35,00. Artik yazilan metin once
+      // `hucreGirdisiCoz`dan gecer: sayi → makine metni; belirsiz ("1.250") /
+      // sayi degil → hucre ESKI degerinde kalir + toast. Kutuphane liste fiyati
+      // ve manuel modallar ayni rol kolonlarini kullanir (ayni yol).
+      // ⚠ Ayristirici kolonun `cellDataType` cikarimini da kapatir
+      // (`canInferCellDataType`): metin tipi eslestiricisi sayi yazimini artik
+      // reddetmez; miktar kolonunun ilk satiri sayiysa acilan "Invalid Number"
+      // bicimlendiricisi de devreden cikar.
+      const roller = data.columnRoles ?? ({} as any);
+      const sayiKolonTuru: SayiAlanTuru | null = c.field === roller.quantityField ? 'miktar'
+        : [roller.materialUnitPriceField, roller.laborUnitPriceField, roller.materialTotalField, roller.laborTotalField]
+          .includes(c.field) ? 'fiyat' : null;
+      if (sayiKolonTuru) base.valueParser = sayiHucreParser(sayiKolonTuru, bekleyenSayiUyarisiRef);
+      if (sayiKolonTuru === 'miktar') {
+        // E (kopyala gidis-donus): kopya bu bicimlendiriciden okunur. Ham "12.375"
+        // panoya gidip 12375 yapistiriliyordu; TR bicimi ("12,375") iki yonde tek anlamli.
+        base.valueFormatter = (p: any) => (p.node?.rowPinned ? String(p.value ?? '') : hucreGosterimMetni(p.value));
+        // Ice aktarmada okunamayan miktar (`_sayiUyari._miktar`) — isaret.ts sayi sinyali
+        base.cellStyle = ((p: any) => (p.node?.rowPinned || !p.data?._sayiUyari?.[c.field] ? undefined
+          : isaretStili({ dal: 'malzeme', sayiUyari: p.data._sayiUyari[c.field], sayiAlani: 'miktar' }))) as any;
+        base.tooltipValueGetter = (p: any) => (p.node?.rowPinned || !p.data?._sayiUyari?.[c.field] ? undefined
+          : isaretTooltip({ dal: 'malzeme', sayiUyari: p.data._sayiUyari[c.field], sayiAlani: 'miktar' }));
+      }
+
       // Fill handle indicator — Kar % sutunlari icin (% prefix'li gorsel)
       if (mode === 'quote' && (c.field === '_malzKar' || c.field === '_iscKar')) {
         const karField = c.field;
@@ -3094,8 +3218,13 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         // deseni zaten kullaniyor (asagida) — kar kolonlari unutulmustu.
         // K5 ikizi (14.09): "%30" elle yazilinca parseFloat NaN → kar SESSIZCE 0
         // oluyordu (fiyat maliyete iner); yapistirma ayni metni 30 okuyordu.
-        // Yuzde kurali TEK kaynaktan: sayi-alani `karYuzdesiOku`.
-        base.valueParser = (p: any) => karYuzdesiOku(p.newValue);
+        // Yuzde kurali TEK kaynaktan: sayi-alani `hucreGirdisiCoz` (A2, tur 3):
+        // "abc" artik 0 YAZILMAZ (K3 — var olan kar ezilmez, toast), "%12.125"
+        // BELIRSIZ; bos → 0 (bugunku gibi).
+        base.valueParser = sayiHucreParser('kar', bekleyenSayiUyarisiRef);
+        // E: kopya bu bicimlendiriciden okunur — 12.125 panoya "12,125" gider
+        // (renderer `params.value` cizer, gorunum DEGISMEZ).
+        base.valueFormatter = (p: any) => hucreGosterimMetni(p.value);
         base.cellRenderer = (params: ICellRendererParams) => {
           // ── KAR SATIRINDA GERCEKLESEN YUZDE (17.08 kullanici istegi) ────
           // Kullanicinin tanimi: "maliyet 100 TL (kar yuzdesi %0 iken), kar
@@ -3130,7 +3259,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           // FITTING (02.09): satirin kendi kar yuzdesi yok — kapsamin karini tasir
           if (params.data?._fitting) return null;
           const val = params.value ?? 0;
-          const hasVal = parseFloat(String(val)) > 0;
+          const hasVal = (sayiOku(val) ?? 0) > 0; // A2: makine okuyucusu (hayalet "35x240mm" dolu cip yakmaz)
           return (
             <div className="fill-handle-cell" style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {/* 18.08 HEDEF TASARIM (ikinci tur, "hucreler yine uygun degil"):
@@ -3360,7 +3489,8 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
               || alan === data.columnRoles.laborTotalField || alan === genelAlan;
             if (!karKolonu) return '';
             if (params.value === null || params.value === undefined || params.value === '') return '—';
-            const kv = parseFloat(String(params.value));
+            // A2 (tur 3): makine okuyucusu — hayalet metin ("35x240mm") kar hucresinde sayi olmaz
+            const kv = sayiOku(params.value) ?? NaN;
             if (isNaN(kv)) return '—';
             // ⚠ 17.08: "N fiyatsız" METNI HUCREDEN KALDIRILDI (kullanici
             // istegi: "sadece rakam olacak"). Kolon dar oldugu icin metin
@@ -3449,10 +3579,12 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
             ? {
               dal: 'malzeme', durum: d?._matStatus, sebep: d?._matSebep,
               adaySayisi: d?._matAdaySayisi, otoVaryant: d?._matAutoVariant, oneri: d?._matSuggestion,
+              sayiUyari: d?._sayiUyari?.[field], sayiAlani: 'fiyat', // A2: ice aktarma sayi sinyali
             }
             : {
               dal: 'iscilik', durum: d?._labStatus, sebep: d?._labSebep,
               adaySayisi: d?._labAdaySayisi,
+              sayiUyari: d?._sayiUyari?.[field], sayiAlani: 'fiyat', // A2: ikiz
             });
           base.cellStyle = ((params: any) => {
             if (params.node?.rowPinned || !params.data) return { textAlign: 'right' };
@@ -3485,9 +3617,18 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           base.cellStyle = ((params: any) => {
             if (params.node?.rowPinned) return { textAlign: 'right' };
             if (params.data?._fitting) return FITTING_TURETILMIS_STIL; // turetilmis: gri/italik
+            // A2: dosyadaki toplam metni okunamadiysa hucre bos + MOR isaret
+            const sayiU = params.data?._sayiUyari?.[field];
+            if (sayiU) return { textAlign: 'right', ...isaretStili({ dal: 'malzeme', sayiUyari: sayiU, sayiAlani: 'fiyat' }) };
             return toplamKolonu
               ? { textAlign: 'right', fontWeight: 750, color: '#0f172a' }
               : { textAlign: 'right' };
+          }) as any;
+          const kalanTooltip = base.tooltipValueGetter;
+          base.tooltipValueGetter = ((params: any) => {
+            const sayiU = params.node?.rowPinned ? null : params.data?._sayiUyari?.[field];
+            if (sayiU) return isaretTooltip({ dal: 'malzeme', sayiUyari: sayiU, sayiAlani: 'fiyat' });
+            return typeof kalanTooltip === 'function' ? (kalanTooltip as any)(params) : undefined;
           }) as any;
         }
 
@@ -3514,6 +3655,9 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
             return { textAlign: 'right' };
           }
           if (params.data?._fitting) return FITTING_TURETILMIS_STIL; // turetilmis: gri/italik
+          // A2: İcmal (ozet) sayfasinda tutar metni okunamadiysa MOR isaret
+          const sayiU = params.data?._sayiUyari?.[field];
+          if (sayiU) return { textAlign: 'right', ...isaretStili({ dal: 'malzeme', sayiUyari: sayiU, sayiAlani: 'fiyat' }) };
           // v1 spec td.genel: 800 / #0f172a, ozel zemin YOK (eski #f9fafb
           // "read-only" ipucu spec'te bulunmadigi icin kaldirildi; zebra isler)
           return { textAlign: 'right', fontWeight: 800, color: '#0f172a' };
@@ -3539,7 +3683,8 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         suppressMovable: true,
         // K5 (14.09): "%30" / " %15 " elle yazilinca 0 oluyordu (net = liste);
         // grup/tum liste/yapistirma ayni metni 30 okuyordu. Tek yol.
-        valueParser: (p: any) => iskontoHucresiOku(p.newValue),
+        // A2 (tur 3): insan siniri — "abc" 0 YAZMAZ (K3), "12.125" BELIRSIZ; toast.
+        valueParser: sayiHucreParser('iskonto', bekleyenSayiUyarisiRef),
         // S1: fill-handle-cell sarmalayici — hucrenin alt kenarindan
         // surukle-doldur baslar (kar % kolonlariyla ayni mekanizma)
         cellRenderer: (p: any) => {
@@ -3566,13 +3711,15 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         valueGetter: (p: any) => {
           if (!p.data?._isDataRow) return '';
           const row = p.data;
-          const listPrice = parseFloat(String(row[priceField ?? ''] ?? '')) || 0;
+          // A2 (tur 3, olculdu): `parseFloat` "35x240mm…" metninden 35, TR "12,5"ten
+          // 12 okuyordu. Hucre MAKINE sinirinda (ayristirici/yapistirma yazdi).
+          const listPrice = sayiOku(row[priceField ?? '']) ?? 0;
           const discount = Number(row._draftDiscount ?? 0);
           // SPEC ASAMA A: net = liste×(1-iskonto), YUKARI 1 hane
           return hesaplaNetFiyat(listPrice, discount);
         },
         valueFormatter: (p: any) => {
-          const v = parseFloat(String(p.value ?? ''));
+          const v = sayiOku(p.value) ?? NaN; // A2: getter sayisi — tek makine okuyucusu
           if (isNaN(v) || v === 0) return '';
           const formatted = paraBicim(v, conversionRate);
           // Z4: net fiyat da satirin kendi para birimiyle gosterilir
@@ -3647,6 +3794,17 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     }
     if (!row._isDataRow) return;
 
+    // ── A2 (tur 3): ice aktarma sayi isareti hucreye OKUNUR bir deger gelince
+    // kalkar (elle yazma, yapistirma, marka/firma fiyati). Bos/okunamayan yazim
+    // isareti SILMEZ — dosyadaki metnin gelmedigi bilgisi kaybolmasin.
+    const sayiIsaretAlani = e.colDef.field;
+    if (sayiIsaretAlani && row._sayiUyari?.[sayiIsaretAlani] && sayiOku(e.newValue) !== null) {
+      const kalanIsaret = { ...row._sayiUyari };
+      delete kalanIsaret[sayiIsaretAlani];
+      row._sayiUyari = Object.keys(kalanIsaret).length > 0 ? kalanIsaret : undefined;
+      e.api.refreshCells({ rowNodes: [e.node], force: true });
+    }
+
     const {
       materialUnitPriceField, materialTotalField,
       laborUnitPriceField, laborTotalField,
@@ -3666,9 +3824,21 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       floorFields && floorFields.length > 0 && quantityField &&
       e.colDef.field && floorFields.includes(e.colDef.field) && e.source === 'edit'
     ) {
+      // A2 (tur 3, olculdu): kat hucresine YAZILAN metin insan sinirindadir —
+      // eskiden "24 kW" 24, "1.250" 1,25 toplanıyordu. Belirsiz / sayi degil ESKI
+      // degerine doner (toast, 'api' kaynagi bu dali tekrar kosturmaz); gecerli
+      // yazim makine metnine cevrilir. Diger kat hucreleri SAKLI: makine okuyucusu.
+      const katGirdisi = hucreGirdisiCoz(e.newValue, e.oldValue, 'miktar');
+      if (katGirdisi.uyari) {
+        e.node.setDataValue(e.colDef.field, e.oldValue);
+        toast({ title: 'Kat miktarı yazılmadı', description: katGirdisi.uyari, variant: 'destructive' });
+        return;
+      }
+      if (katGirdisi.deger !== e.newValue) e.node.setDataValue(e.colDef.field, katGirdisi.deger);
       let sum = 0;
-      for (const f of floorFields) sum += parseFloat(String(row[f] ?? '').replace(',', '.')) || 0;
-      const yeni = sum === 0 ? '' : String(Math.round(sum * 1000) / 1000);
+      for (const f of floorFields) sum += sayiOku(row[f]) ?? 0;
+      // makine metni: 3 ondalikli toplam "10,075" yazilir (insan kurali da ayni sayi okur)
+      const yeni = sum === 0 ? '' : makineMetni(Math.round(sum * 1000) / 1000);
       if (String(row[quantityField] ?? '') !== yeni) {
         e.node.setDataValue(quantityField, yeni);
       }
@@ -3718,12 +3888,9 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       if (!grandUnitPriceField && !grandTotalField) return;
 
       // Malzeme ve iscilik final birim fiyatlari (kar + iskonto dahil — cunku hucrelerde yazili)
-      const matUnit = materialUnitPriceField
-        ? parseFloat(String(row[materialUnitPriceField] ?? '')) || 0
-        : 0;
-      const labUnit = laborUnitPriceField
-        ? parseFloat(String(row[laborUnitPriceField] ?? '')) || 0
-        : 0;
+      // A2 (tur 3): toplamlarla ayni makine okuyucusu ("12,5" → 12,5; hayalet metin → 0)
+      const matUnit = materialUnitPriceField ? (sayiOku(row[materialUnitPriceField]) ?? 0) : 0;
+      const labUnit = laborUnitPriceField ? (sayiOku(row[laborUnitPriceField]) ?? 0) : 0;
       const grandUnit = matUnit + labUnit;
 
       if (grandUnitPriceField) {
@@ -3757,7 +3924,8 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       const oncekiKar = sayiAlani(e.oldValue);
       const net = typeof row._matNetPrice === 'number' && row._matNetPrice > 0
         ? row._matNetPrice
-        : maliyetiGeriTuret(parseFloat(String(row[materialUnitPriceField] ?? '')) || 0, oncekiKar);
+        // A2 (tur 3): makine okuyucusu — `parseFloat` "35x240mm"den 35 turetiyordu
+        : maliyetiGeriTuret(sayiOku(row[materialUnitPriceField]) ?? 0, oncekiKar);
 
       if (!row._matNetPrice || row._matNetPrice === 0) {
         yazVeriHucre(e.node, '_matNetPrice', net);
@@ -3781,7 +3949,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       const oncekiKarLab = sayiAlani(e.oldValue);
       const net = typeof row._labNetPrice === 'number' && row._labNetPrice > 0
         ? row._labNetPrice
-        : maliyetiGeriTuret(parseFloat(String(row[laborUnitPriceField] ?? '')) || 0, oncekiKarLab);
+        : maliyetiGeriTuret(sayiOku(row[laborUnitPriceField]) ?? 0, oncekiKarLab); // A2: ikiz
 
       if (!row._labNetPrice || row._labNetPrice === 0) {
         yazVeriHucre(e.node, '_labNetPrice', net);
@@ -3841,7 +4009,10 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
 
     // ── Malzeme birim fiyat manuel degisti (kullanici elle yazdi) ── (fitting: hucre kilitli, yapistirma da bu daldan GECMEZ)
     if (e.colDef.field === materialUnitPriceField && e.source === 'edit' && materialTotalField && quantityField && !row._fitting) {
-      const enteredPrice = parseFloat(String(e.newValue ?? '').replace(',', '.')) || 0;
+      // A2 (tur 3): deger ayristiricidan (`hucreGirdisiCoz`) ya da yapistirmadan
+      // MAKINE METNI olarak gelir — `parseFloat(replace(',', '.'))` "1.234,5"i
+      // 1,234, "24 kW"yi 24 okuyordu. Tek makine okuyucusu; isaret korunur.
+      const enteredPrice = sayiOku(e.newValue) ?? 0;
       const kar = sayiAlani(row._malzKar);
       // Girilen deger ekran hucresinden — kar uygulanmis final kabul et
       // Net'i geriye hesapla
@@ -3871,7 +4042,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
 
     // ── Iscilik birim fiyat manuel degisti ── (fitting: ikiz kural)
     if (e.colDef.field === laborUnitPriceField && e.source === 'edit' && laborTotalField && quantityField && !row._fitting) {
-      const enteredPrice = parseFloat(String(e.newValue ?? '').replace(',', '.')) || 0;
+      const enteredPrice = sayiOku(e.newValue) ?? 0; // A2: malzeme ikiziyle ayni makine okuyucusu
       const kar = sayiAlani(row._iscKar);
       const net = kar > 0 ? enteredPrice / (1 + kar / 100) : enteredPrice;
       yazVeriHucre(e.node, '_labNetPrice', net);
@@ -4102,6 +4273,9 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           if (Object.keys(w).length) onColumnWidthsChange(w);
         }}
         onCellValueChanged={handleCellValueChanged}
+        // A2 (tur 3): reddedilen sayi girdisinin uyarisi duzenleme bitince BIR kez
+        onCellEditingStarted={sayiUyarisiniSifirla}
+        onCellEditingStopped={sayiUyarisiniGoster}
         // ── FITTING: kapsam modu acikken TIK/CIFT-TIK editor ACMAZ. Ikinci
         // Ctrl+tik AG Grid'de dblclick sayilir (shouldStartEditing modifier'a
         // BAKMAZ, olculdu: main.cjs.js:46731) ve editor acilirdi. Editoru acip

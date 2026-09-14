@@ -25,6 +25,8 @@ import { toast } from '@/ortak/hooks/use-toast';
 import { confirm } from '@/ortak/hooks/use-confirm';
 import api from '@/ortak/lib/api';
 import { hesaplaNetFiyat } from '@/ozellik/fiyat/pricing';
+// A2 (tur 3): form kutulari INSAN sinirinda — grid ile ayni sayi kurali ve uyari metni
+import { formSayisiOku } from '@/ozellik/fiyat/sayi-alani';
 
 /* -------------------------------------------------------------------------- */
 /*  Types                                                                      */
@@ -289,7 +291,16 @@ export default function LibraryPage() {
       return;
     }
 
-    const discount = discountRate ? Number(discountRate) : undefined;
+    // A2 (tur 3, olculdu): `Number("12,5")` NaN → reddediliyordu, `Number("1.250")`
+    // 1,25 kaydediliyordu. Grid ile AYNI kural: belirsiz / sayi degil → uyari, kayit yok.
+    const iskontoG = formSayisiOku(discountRate, 'iskonto');
+    const fiyatG = formSayisiOku(customPrice, 'fiyat');
+    const sayiHatasi = iskontoG.uyari ?? fiyatG.uyari;
+    if (sayiHatasi) {
+      toast({ title: 'Uyarı', description: sayiHatasi, variant: 'destructive' });
+      return;
+    }
+    const discount = iskontoG.deger ?? undefined;
     if (discount !== undefined && (discount < 0 || discount > 100)) {
       toast({ title: 'Uyarı', description: 'İskonto oranı 0-100 arasında olmalıdır.', variant: 'destructive' });
       return;
@@ -300,7 +311,7 @@ export default function LibraryPage() {
       await api.post('/library', {
         ...(mode === 'global' ? { materialId } : { materialName: materialName.trim() }),
         ...(brandId ? { brandId } : {}),
-        ...(customPrice ? { customPrice: Number(customPrice) } : {}),
+        ...(fiyatG.deger !== null ? { customPrice: fiyatG.deger } : {}),
         ...(discount !== undefined ? { discountRate: discount } : {}),
       });
       toast({ title: 'Başarılı', description: 'Malzeme kütüphaneye eklendi.' });
@@ -328,7 +339,15 @@ export default function LibraryPage() {
   async function handleEdit() {
     if (!editingItem) return;
 
-    const discount = editForm.discountRate ? Number(editForm.discountRate) : undefined;
+    // A2 (tur 3): ekleme formuyla ayni kural (belirsiz / sayi degil → uyari, kayit yok)
+    const iskontoG = formSayisiOku(editForm.discountRate, 'iskonto');
+    const fiyatG = formSayisiOku(editForm.customPrice, 'fiyat');
+    const sayiHatasi = iskontoG.uyari ?? fiyatG.uyari;
+    if (sayiHatasi) {
+      toast({ title: 'Uyarı', description: sayiHatasi, variant: 'destructive' });
+      return;
+    }
+    const discount = iskontoG.deger ?? undefined;
     if (discount !== undefined && (discount < 0 || discount > 100)) {
       toast({ title: 'Uyarı', description: 'İskonto oranı 0-100 arasında olmalıdır.', variant: 'destructive' });
       return;
@@ -338,7 +357,7 @@ export default function LibraryPage() {
       setIsSubmitting(true);
       await api.put(`/library/${editingItem.id}`, {
         ...(editForm.brandId ? { brandId: editForm.brandId } : { brandId: null }),
-        ...(editForm.customPrice ? { customPrice: Number(editForm.customPrice) } : { customPrice: null }),
+        ...(fiyatG.deger !== null ? { customPrice: fiyatG.deger } : { customPrice: null }),
         ...(discount !== undefined ? { discountRate: discount } : { discountRate: null }),
       });
       toast({ title: 'Başarılı', description: 'Malzeme güncellendi.' });
@@ -365,7 +384,13 @@ export default function LibraryPage() {
 
   async function saveInlineDiscount(item: LibraryItem) {
     setEditingDiscountId(null);
-    const newVal = editingDiscountValue.trim() === '' ? 0 : Number(editingDiscountValue);
+    // A2 (tur 3): bos → 0 (K3, bugunku gibi); belirsiz / sayi degil → uyari
+    const iskontoG = formSayisiOku(editingDiscountValue, 'iskonto');
+    if (iskontoG.uyari) {
+      toast({ title: 'Uyarı', description: iskontoG.uyari, variant: 'destructive' });
+      return;
+    }
+    const newVal = iskontoG.deger ?? 0;
     if (isNaN(newVal) || newVal < 0 || newVal > 100) {
       toast({ title: 'Uyarı', description: 'İskonto 0-100 arasında olmalı.', variant: 'destructive' });
       return;
@@ -505,7 +530,13 @@ export default function LibraryPage() {
 
   async function saveInlinePrice(item: LibraryItem) {
     setEditingPriceId(null);
-    const newVal = editingPriceValue.trim() === '' ? null : Number(editingPriceValue);
+    // A2 (tur 3): bos → null (bugunku gibi); belirsiz / sayi degil → uyari
+    const fiyatG = formSayisiOku(editingPriceValue, 'fiyat');
+    if (fiyatG.uyari) {
+      toast({ title: 'Uyari', description: fiyatG.uyari, variant: 'destructive' });
+      return;
+    }
+    const newVal = fiyatG.deger;
     if (newVal !== null && (isNaN(newVal) || newVal < 0)) {
       toast({ title: 'Uyari', description: 'Fiyat 0 veya ustu olmali.', variant: 'destructive' });
       return;
@@ -528,7 +559,13 @@ export default function LibraryPage() {
   /* ----------------------------- Bulk Discount ----------------------------- */
 
   async function handleBulkDiscount(brandId: string) {
-    const val = Number(bulkDiscountValue);
+    // A2 (tur 3): toplu iskontoda "1.250" / "abc" TUM markaya yazilmaz — uyari
+    const iskontoG = formSayisiOku(bulkDiscountValue, 'iskonto');
+    if (iskontoG.uyari) {
+      toast({ title: 'Uyari', description: iskontoG.uyari, variant: 'destructive' });
+      return;
+    }
+    const val = iskontoG.deger ?? 0;
     if (isNaN(val) || val < 0 || val > 100) {
       toast({ title: 'Uyari', description: 'Iskonto 0-100 arasinda olmali.', variant: 'destructive' });
       return;

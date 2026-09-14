@@ -82,6 +82,127 @@ export function parseTrNumber(
   return { value: isNaN(v) ? null : v, ambiguous: false };
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// A2 (tur 3, 14.09.2026) — BELIRSIZ SAYI SUZGECI: ON YUZ IKIZI
+//
+// On yuz `frontend/ozellik/fiyat/sayi-alani.ts` (`insanSayiOku`, `sayiOku`,
+// `makineMetni`) ile AYNI kural — iki uygulama `test/hesap-dogrulugu-test.ts`
+// H12 paritesiyle kilitli (ayrisirsa ayni metin ekranda ve dosyada farkli sinif).
+// Ayirici karari TEK kaynaktan: yukaridaki `parseTrNumber` (Y4).
+//
+// IKI SINIR:
+//  · INSAN (`insanSayiOku`): dosyanin METIN hucresi, istemciden gelen elle yazim.
+//    "1.250" BELIRSIZ; "35x240mm", "24 kW" SAYI DEGIL.
+//  · MAKINE (`makineSayiOku`): sistemin yazdigi metin, kayitli JSON — nokta
+//    ondalik; harf/olcu iceren metin yine null (eski kayittaki hayalet kapanir).
+//
+// OLCUM (tur3/a2): Bursa Elektrik `_matBirim` 39 hucrede urun tarifi tasiyordu —
+// `standart-sema.ts` fiyat kopyasi ayristirmadan yaziyor, ekran "550 kVA…"yi
+// ₺550,00 okuyordu; `miktarNormalize` "24 kW"yi 24, "3 adet"i 3 yapiyordu.
+// ════════════════════════════════════════════════════════════════════════════
+
+export type SayiAlanTuru = 'miktar' | 'fiyat' | 'kar' | 'iskonto';
+
+export type SayiGirdisi =
+  | { tur: 'sayi'; deger: number }
+  | { tur: 'bos' }
+  | { tur: 'belirsiz'; ham: string; binlik: number; ondalik: number }
+  | { tur: 'sayi-degil'; ham: string; sebep: 'olcu-metin' | 'doviz' };
+
+/** K1 — EMRE KARARI BEKLIYOR (on yuz ikiziyle AYNI sabit): "25430.000" tam kismi
+ *  4+ hane → varsayilan BELIRSIZ (`parseTrNumber` + admin testi F1 ile tutarli). */
+export const K1_UZUN_TAM_KISIM_BELIRSIZ = true;
+
+/** K2 — EMRE KARARI BEKLIYOR (on yuz ikiziyle AYNI liste): miktar alaninda
+ *  sayidan sonra gelebilen birim kelimeleri. Liste disi ek ("24 kW") olcu metnidir. */
+export const MIKTAR_BIRIMLERI: readonly string[] = [
+  'adet', 'ad', 'm', 'mt', 'mtr', 'metre', 'm2', 'm²', 'm3', 'm³', 'kg', 'gr', 'ton', 'lt', 'l', 'litre',
+  'set', 'takım', 'tk', 'paket', 'pk', 'boy', 'çift', 'kutu', 'rulo', 'top', 'grup',
+];
+const birimAnahtari = (b: string): string => b.toLocaleLowerCase('tr').replace(/ı/g, 'i').replace(/\.$/, '');
+const MIKTAR_BIRIM_KUMESI = new Set(MIKTAR_BIRIMLERI.map(birimAnahtari));
+
+/** Yalniz rakam, nokta, virgul ve bastaki isaret — en az bir rakam. */
+const SAF_SAYI_METNI = /^[-+]?(?=[\d.,]*\d)[\d.,]+$/;
+
+function alanSusunuAt(s: string, alan: SayiAlanTuru): string {
+  if (alan === 'kar' || alan === 'iskonto') return s.replace(/%/g, '').trim();
+  if (alan === 'fiyat') {
+    return s.replace(/₺/g, ' ').trim()
+      .replace(/^(?:tl|try)(?=[\s\d+.,-])/i, '')
+      .replace(/^(.*[\d\s.,])(?:tl|try)$/i, '$1')
+      .trim();
+  }
+  const t = s.replace(/%/g, '').trim();
+  const m = /^(.*\d)\s*([^\d\s.,+-]\S*)$/.exec(t);
+  if (m && MIKTAR_BIRIM_KUMESI.has(birimAnahtari(m[2]))) return m[1].trim();
+  return t;
+}
+
+/** INSAN SINIRI — dosyanin metin hucresi / elle yazim. `number` tipi dogrudan sayidir. */
+export function insanSayiOku(v: unknown, alan: SayiAlanTuru): SayiGirdisi {
+  if (typeof v === 'number') {
+    return Number.isFinite(v) ? { tur: 'sayi', deger: v } : { tur: 'sayi-degil', ham: String(v), sebep: 'olcu-metin' };
+  }
+  if (v === null || v === undefined) return { tur: 'bos' };
+  const ham = String(v);
+  if (ham.trim() === '') return { tur: 'bos' };
+  if (/[$€]/.test(ham)) return { tur: 'sayi-degil', ham, sebep: 'doviz' };
+  const t = alanSusunuAt(ham.trim(), alan);
+  // HARF KAPISI — ic bosluk da sayi degil ("0505 885 15 64" birlesip sayi olmaz).
+  if (!SAF_SAYI_METNI.test(t)) return { tur: 'sayi-degil', ham, sebep: 'olcu-metin' };
+  const r = parseTrNumber(t);
+  if (r.ambiguous) {
+    const tamKisim = t.split('.')[0].replace(/^[-+]/, '');
+    const ondalik = parseTrNumber(t, 'decimal').value as number;
+    if (tamKisim.length >= 4 && !K1_UZUN_TAM_KISIM_BELIRSIZ) return { tur: 'sayi', deger: ondalik };
+    return { tur: 'belirsiz', ham, binlik: parseTrNumber(t, 'thousands').value as number, ondalik };
+  }
+  return r.value === null ? { tur: 'sayi-degil', ham, sebep: 'olcu-metin' } : { tur: 'sayi', deger: r.value };
+}
+
+/** MAKINE SINIRI — sistemin yazdigi metin / kayitli JSON. Nokta ondalik; virgul eski
+ *  kayit uyumu (TR); harf/olcu/ic bosluk → null. On yuz `sayiOku` ikizi. */
+export function makineSayiOku(v: unknown): number | null {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  const s = String(v ?? '').replace(/₺/g, '').trim();
+  if (!SAF_SAYI_METNI.test(s)) return null;
+  let t = s;
+  if (s.includes(',')) {
+    if (s.indexOf(',') !== s.lastIndexOf(',')) return null;
+    t = s.replace(/\./g, '').replace(',', '.');
+  } else if (s.indexOf('.') !== s.lastIndexOf('.')) {
+    t = s.replace(/\./g, '');
+  }
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** MAKINE METNI — sistemin YAZDIGI sayi metni: `String(n)`, yalniz noktadan sonra
+ *  tam 3 hane kalan deger virgulle ("323308,125"). Bu metin sonra INSAN kuraliyla
+ *  da okunur (istemci satiri geri gonderir) — "323308.125" orada BELIRSIZ olurdu,
+ *  "323308,125" iki kuralda da ayni sayidir. On yuz `makineMetni` ikizi. */
+export function makineMetni(n: number): string {
+  const s = String(n);
+  return /^-?\d+\.\d{3}$/.test(s) ? s.replace('.', ',') : s;
+}
+
+/**
+ * EXCEL HUCRESI → METIN (`excel-grid.service.ts` ham deger matrisi). SAYI hucresi
+ * (`t === 'n'`) MAKINE METNI olur; digerleri `String(v)`.
+ *
+ * ⚠ NEDEN (tur3/a2, olculdu): eski hali `String(cell.v)` idi ve hucre tipini
+ * SILIYORDU — Excel sayisi 323308.125 ile elle "323308.125" yazilmis metin ayni
+ * diziye donuyordu. Insan kurali metne uygulaninca Bursa Mekanik'in 16 SAYI
+ * hucresi "belirsiz" sayilir, genel toplam 4.049.180,31 TL duserdi. Tip bilgisi
+ * bicimde tasinir: sayi hucresinin metni insan kuralinda da ayni sayidir.
+ */
+export function excelHucreMetni(cell: { t?: string; v?: unknown } | null | undefined): string {
+  if (!cell || cell.v === undefined || cell.v === null) return '';
+  if (cell.t === 'n' && typeof cell.v === 'number' && Number.isFinite(cell.v)) return makineMetni(cell.v);
+  return String(cell.v);
+}
+
 /** Z4 — para birimi tespiti (hucre/kolon/baslik metninden). Cevrim YAPILMAZ,
  *  yalniz etiketlenir. */
 export function detectCurrency(val: unknown): 'TRY' | 'USD' | 'EUR' | null {

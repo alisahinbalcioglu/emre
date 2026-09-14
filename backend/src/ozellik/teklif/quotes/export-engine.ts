@@ -42,21 +42,6 @@ import {
 import { standartSayfaYaz } from './standart-cikti';
 import type { AntetBilgi } from '../../cikti/utils/antet';
 
-/** TR-bilinçli sayi parse (Bulgu B7/B8 siniri): "1.234,56" → 1234.56,
- *  "87,5" → 87.5, "313" → 313. Grid hucreleri metin tasiyabilir. */
-const sayi = (v: any): number => {
-  if (v === undefined || v === null || v === '') return 0;
-  if (typeof v === 'number') return isNaN(v) ? 0 : v;
-  let s = String(v).replace(/[₺$€\s]/g, '').trim();
-  if (s === '') return 0;
-  const virgul = s.includes(',');
-  const nokta = s.includes('.');
-  if (virgul && nokta) s = s.replace(/\./g, '').replace(',', '.'); // TR: nokta binlik
-  else if (virgul) s = s.replace(',', '.');
-  const n = parseFloat(s);
-  return isNaN(n) ? 0 : n;
-};
-
 /** Formul icindeki sayfa adi: tek tirnak kacisli */
 const sayfaRef = (name: string) => `'${name.replace(/'/g, "''")}'`;
 

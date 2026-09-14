@@ -111,6 +111,11 @@ export default function MechanicalBrandsPage() {
         unit: m.unit ?? 'Adet',
         unitPrice: Number(m.unitPrice ?? m.price ?? 0),
       }));
+      // A2 (tur 3): fiyati belirsiz / sayi olmayan satirlar ALINMADI — nedenini goster
+      const sayiUyarilari: string[] = Array.isArray(data?.sayiUyarilari) ? data.sayiUyarilari : [];
+      if (sayiUyarilari.length > 0) {
+        toast({ title: `${sayiUyarilari.length} satırın fiyatı okunamadı`, description: sayiUyarilari.slice(0, 2).join(' · '), variant: 'destructive' });
+      }
       if (items.length === 0) {
         toast({ title: 'Uyari', description: 'PDF\'den malzeme ayiklanamadi.' });
         return;

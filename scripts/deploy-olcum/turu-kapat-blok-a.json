@@ -18,6 +18,12 @@
       "neden": "havuza bagli satirda ozel fiyat havuz liste fiyatindan ayrisinca hucre sari + iki fiyatli ipucu (isaret.ts, ExcelGrid parcasi)",
       "tip": "paket-metni", "yol": "/quotes/new",
       "icerir": ["havuz liste fiyatı", "geçerli fiyatı bu hücreye yazın"]
+    },
+    {
+      "ad": "A2 belirsiz sayi / sayi degil uyarisi on yuz paketinde",
+      "neden": "tek uyari cumlesi (sayi-alani sayiUyarisi): '1.250' belirsiz, '35x240mm…' sayi degil — hucre eski degerinde kalir",
+      "tip": "paket-metni", "yol": "/quotes/new",
+      "icerir": ["hücresine yalnız sayı yazılır", "Binlik için"]
     }
   ],
   "olculemeyenler": [
@@ -26,6 +32,8 @@
     { "ad": "A4a Bursa kayit toplami 295.272.922,28", "neden": "oturumla dosya yukleyip kaydetmeyi ister (yerelde: test:hesap H11)" },
     { "ad": "A4b USD/EUR ekran sayfa toplami = cikti", "neden": "oturum + dovizli teklif ekrani ister (yerelde: test:hesap H4b + lib/sayfa-toplamlari.test.ts)" },
     { "ad": "A4c K1 donmus ozel fiyat migration'i", "neden": "veritabani erisimi ister — Faz 0 oturumunun alani: migrate deploy gunlugunde 'K1 temizlik: yedeklenip temizlenen=… · ayrismis=…' NOTICE'i ve SELECT count(*) FROM \"KutuphaneOzelFiyatYedegi\" (yerelde: test:migration K bloku)" },
-    { "ad": "A4d asili kur kaynagi negatif onbellegi", "neden": "TCMB ve yedek kaynagin asili kalmasini ister; disaridan uretilemez (yerelde: test:kur L bloku)" }
+    { "ad": "A4d asili kur kaynagi negatif onbellegi", "neden": "TCMB ve yedek kaynagin asili kalmasini ister; disaridan uretilemez (yerelde: test:kur L bloku)" },
+    { "ad": "A2 hayalet sayi uretimde kac hucrede", "neden": "canli veritabani ister — salt-okuma betigi hazir (scratchpad tur3/a2/uygulama/uretim-olcum.sql, PGlite'ta dogrulandi); Faz 0 oturumu kosar (yerelde: fixture olcumu 94 isaretli hucre, yazilan hayalet fiyat 0)" },
+    { "ad": "A2 elle giris toast'u, mor isaret, yapistirma ozeti", "neden": "oturum + tarayici ister; GOZLE BAKILMADI (yerelde: sayi-kurali, sayi-yollari, isaret vitest + kaynak kapisi)" }
   ]
 }

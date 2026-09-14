@@ -54,8 +54,11 @@ import { TASLAK_ANAHTARI, TASLAK_SURUMU } from '@/ozellik/teklif/taslak';
 import { ceviriUygula, ceviriGeriAl, cevrilmisSatirVarMi } from '@/ozellik/teklif/ceviri';
 import { teklifCevirisiAl } from '@/ozellik/teklif/ceviri-akisi';
 import { bosSonucBildirimi, sonucBildirimi } from '@/ozellik/teklif/ceviri-kota';
-import { sayiAlani } from '@/ozellik/fiyat/sayi-alani';
-import { fiyatsizKalemOzeti, fiyatsizOnayMetni, uyariyaGirerMi } from '@/ozellik/teklif/fiyatsiz-kalem-uyarisi';
+import { sayiAlani, sayiOku, makineMetni } from '@/ozellik/fiyat/sayi-alani';
+import {
+  fiyatsizKalemOzeti, fiyatsizOnayMetni, uyariyaGirerMi,
+  sayiOkunamayanHucreSayisi, sayiOkunamadiCumlesi, sayiOkunamadiOnayMetni,
+} from '@/ozellik/teklif/fiyatsiz-kalem-uyarisi';
 // NOT: `etkinMiktar` buradan DUSTU — tek tuketicisi restore blogunun icindeki
 // satir ici re-matching idi, o da ozellik/teklif/restore-rematch'e tasindi.
 import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, toplamlariTamamla } from '@/ozellik/fiyat/pricing';
@@ -378,6 +381,9 @@ export default function NewQuotePage() {
           tamamlanan += toplamlariTamamla(s.rowData ?? [], (s.columnRoles ?? {}) as any);
         }
         if (tamamlanan > 0) console.log(`[KD11] ice aktarmada ${tamamlanan} eksik toplam hucresi tamamlandi`);
+        // A2 (tur 3): okunamayan sayi hucreleri (backend `_sayiUyari`) GORUNUR ozet
+        const okunamayanHucre = multi.sheets.reduce((t: number, s: any) => t + sayiOkunamayanHucreSayisi(s.rowData ?? []), 0);
+        if (okunamayanHucre > 0) toast({ title: 'Dosyada sayı okunamadı', description: sayiOkunamadiCumlesi(okunamayanHucre), variant: 'destructive' });
         setMultiSheet(multi);
         const firstNonEmpty = multi.sheets.findIndex((s: any) => !s.isEmpty);
         const activeIdx = firstNonEmpty >= 0 ? firstNonEmpty : 0;
@@ -749,6 +755,9 @@ export default function NewQuotePage() {
       tamamlanan += toplamlariTamamla(live[s.index] ?? s.rowData ?? [], (s.columnRoles ?? {}) as any);
     }
     if (tamamlanan > 0) console.log(`[G5] yuklemede ${tamamlanan} eksik toplam hucresi tamamlandi`);
+    // A2 (tur 3): "Dosya Seç" yolu da ayni ozeti gosterir (dashboard ikizi)
+    const okunamayanHucre = merged.sheets.reduce((t, s) => t + sayiOkunamayanHucreSayisi(live[s.index] ?? s.rowData ?? []), 0);
+    if (okunamayanHucre > 0) toast({ title: 'Dosyada sayı okunamadı', description: sayiOkunamadiCumlesi(okunamayanHucre), variant: 'destructive' });
     setMultiSheet(merged);
     setLiveRowDataBySheet(live);
     const firstNonEmpty = merged.sheets.findIndex((s) => !s.isEmpty);
@@ -969,8 +978,10 @@ export default function NewQuotePage() {
     const nextRows = rows.map((r: any) => {
       if (!r._isDataRow || next.length === 0) return r;
       let sum = 0;
-      for (const f of next) sum += parseFloat(String(r[f] ?? '').replace(',', '.')) || 0;
-      return { ...r, [qf]: sum === 0 ? '' : String(Math.round(sum * 1000) / 1000) };
+      // A2 (tur 3): kat hucresi SAKLI deger — makine okuyucusu (ExcelGrid kat daliyla
+      // ayni); "24 kW" 24 toplanmaz. Toplam makine metniyle ("10,075") yazilir.
+      for (const f of next) sum += sayiOku(r[f]) ?? 0;
+      return { ...r, [qf]: sum === 0 ? '' : makineMetni(Math.round(sum * 1000) / 1000) };
     });
     setLiveRowDataBySheet((prev) => ({ ...prev, [activeSheetKey]: nextRows }));
   }
@@ -1008,8 +1019,8 @@ export default function NewQuotePage() {
       delete rest[field];
       if (wasFloor && r._isDataRow && qf && nextFloors.length > 0) {
         let sum = 0;
-        for (const f of nextFloors) sum += parseFloat(String(rest[f] ?? '').replace(',', '.')) || 0;
-        rest[qf] = sum === 0 ? '' : String(Math.round(sum * 1000) / 1000);
+        for (const f of nextFloors) sum += sayiOku(rest[f]) ?? 0; // A2: ikiz (yukaridaki kat yeniden hesabi)
+        rest[qf] = sum === 0 ? '' : makineMetni(Math.round(sum * 1000) / 1000);
       }
       return rest;
     });
@@ -1393,9 +1404,13 @@ export default function NewQuotePage() {
       // ⚠ Ölçüt payload üzerinde: ekranda ne göründüğü değil, teklife NE
       // YAZILACAĞI sorulur (satır süzgeçleri çoktan uygulanmış olur).
       const fiyatsiz = fiyatsizKalemOzeti(uyariKalemleri);
-      if (fiyatsiz) {
+      // A2 (tur 3): içe aktarmada okunamayan sayı hücreleri (`_sayiUyari`) onayda
+      // GÖRÜNÜR — fiyatsız kalem yoksa da (miktarı okunamayan fiyatlı satır) sorulur.
+      const okunamayanHucre = (sheetsPayload ?? []).reduce((t: number, s: any) => t + sayiOkunamayanHucreSayisi(s.rowData ?? []), 0);
+      if (fiyatsiz || okunamayanHucre > 0) {
         // İptal → `finally` bloğu setIsSaving(false) yapar, kayıt yapılmaz.
-        if (!(await confirm(fiyatsizOnayMetni(fiyatsiz)))) return;
+        const onay = fiyatsiz ? fiyatsizOnayMetni(fiyatsiz, okunamayanHucre) : sayiOkunamadiOnayMetni(okunamayanHucre);
+        if (!(await confirm(onay))) return;
       }
 
       // REVIZYON mu YENI KAYIT mi (14.08): `revizyonId` doluysa AYNI teklif

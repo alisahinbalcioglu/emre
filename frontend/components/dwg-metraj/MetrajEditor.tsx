@@ -4,6 +4,8 @@ import React, { useState, useMemo } from 'react';
 import { Plus, Trash2, Check, AlertCircle, Download, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '@/ortak/lib/utils';
 import { toast } from '@/ortak/hooks/use-toast';
+// A2 (tur 3): miktar kutusu INSAN sinirinda (grid ile ayni kural); saklanan qty MAKINE
+import { hucreGirdisiCoz, sayiOku } from '@/ozellik/fiyat/sayi-alani';
 import type { MetrajResult } from './types';
 
 interface MetrajRow {
@@ -87,7 +89,7 @@ function groupAndSortRows(rows: MetrajRow[]): GroupedMetraj[] {
   return Array.from(groups.entries()).map(([hatTipi, groupRows]) => ({
     hatTipi,
     rows: groupRows,
-    totalLength: groupRows.reduce((sum, r) => sum + (parseFloat(r.qty) || 0), 0),
+    totalLength: groupRows.reduce((sum, r) => sum + (sayiOku(r.qty) ?? 0), 0),
   }));
 }
 
@@ -130,17 +132,32 @@ export default function MetrajEditor({ data, fileName, onApprove, hideFooterActi
     setRows((prev) => prev.map((r) => {
       if (r.id !== id) return r;
       if (!r.original) {
-        return { ...r, qty: newQty, original: { name: r.name, qty: parseFloat(r.qty) || 0 } };
+        return { ...r, qty: newQty, original: { name: r.name, qty: sayiOku(r.qty) ?? 0 } };
       }
       return { ...r, qty: newQty };
     }));
+  };
+
+  // ── A2 (tur 3): MIKTAR KUTUSU — yazim bitince (blur) grid ile AYNI kural ──
+  // Eskiden "1.250" 1,25, "3 adet" 3, "12,5" 12 okunuyordu (parseFloat). Belirsiz /
+  // sayi degil → kutu odaklanmadan onceki degerine doner + toast; gecerli yazim
+  // makine metnine cevrilir (teklife giden qty tek anlamli).
+  const qtyOncesi = React.useRef<Record<string, string>>({});
+  const handleQtyBlur = (id: string) => {
+    const r = rows.find((x) => x.id === id);
+    if (!r) return;
+    const eski = qtyOncesi.current[id] ?? r.qty;
+    const g = hucreGirdisiCoz(r.qty, eski, 'miktar');
+    if (g.uyari) toast({ title: 'Miktar yazılmadı', description: g.uyari, variant: 'destructive' });
+    const yeni = g.uyari ? eski : String(g.deger ?? '');
+    if (yeni !== r.qty) setRows((prev) => prev.map((x) => (x.id === id ? { ...x, qty: yeni } : x)));
   };
 
   const handleNameChange = (id: string, newName: string) => {
     setRows((prev) => prev.map((r) => {
       if (r.id !== id) return r;
       if (!r.original) {
-        return { ...r, name: newName, original: { name: r.name, qty: parseFloat(r.qty) || 0 } };
+        return { ...r, name: newName, original: { name: r.name, qty: sayiOku(r.qty) ?? 0 } };
       }
       return { ...r, name: newName };
     }));
@@ -148,10 +165,16 @@ export default function MetrajEditor({ data, fileName, onApprove, hideFooterActi
 
   const handleAddRow = () => {
     if (!newName.trim()) return;
+    // A2 (tur 3): yeni satir miktari da ayni insan kuralindan gecer
+    const qtyG = hucreGirdisiCoz(newQty || '1', '', 'miktar');
+    if (qtyG.uyari) {
+      toast({ title: 'Miktar yazılmadı', description: qtyG.uyari, variant: 'destructive' });
+      return;
+    }
     setRows((prev) => [...prev, {
       id: nextId(),
       name: newName.trim(),
-      qty: newQty || '1',
+      qty: String(qtyG.deger),
       unit: newUnit,
       diameter: '',
       source: 'user',
@@ -175,7 +198,7 @@ export default function MetrajEditor({ data, fileName, onApprove, hideFooterActi
         wsData.push([group.hatTipi]);
         wsData.push(['Malzeme Adi', 'Cap', 'Birim', 'Miktar']);
         for (const row of group.rows) {
-          wsData.push([row.name, row.diameter || '', row.unit, parseFloat(row.qty) || 0]);
+          wsData.push([row.name, row.diameter || '', row.unit, sayiOku(row.qty) ?? 0]); // A2: makine okuyucusu
         }
         wsData.push(['', '', 'Toplam:', Math.round(group.totalLength * 100) / 100]);
         wsData.push([]);
@@ -309,7 +332,9 @@ export default function MetrajEditor({ data, fileName, onApprove, hideFooterActi
                           <input
                             type="text"
                             value={row.qty}
+                            onFocus={() => { qtyOncesi.current[row.id] = row.qty; }}
                             onChange={(e) => handleQtyChange(row.id, e.target.value)}
+                            onBlur={() => handleQtyBlur(row.id)}
                             className="w-20 bg-transparent text-[13px] font-medium text-right outline-none border-b border-transparent hover:border-slate-200 focus:border-blue-400 py-1 tabular-nums transition-colors"
                           />
                         </td>

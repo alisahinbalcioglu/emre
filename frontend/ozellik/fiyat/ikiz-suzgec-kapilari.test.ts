@@ -85,12 +85,24 @@ describe('K2 — kutuphane fiyat suzgeci ikizi (TR para metni)', () => {
     expect(satir).toContain('parseTrNum');
   });
 
-  it('★ IKI SUZGEC DE TR binlik ayiricisini atar (davranis ayrisamaz)', () => {
-    // Kural: virgul VE nokta birlikteyse nokta binliktir, atilir.
-    for (const [ad, yol] of [['malzeme', MALZEME_SAYFA], ['iscilik', ISCILIK_SAYFA]] as const) {
+  it('★ IKI SUZGEC DE AYNI makine okuyucusuna baglidir (davranis ayrisamaz)', () => {
+    // A2 (tur 3, kural geregi degisti): eskiden iki sayfa kendi kopyasini tasiyordu
+    // (`hasComma && hasDot` + `[₺$€\s]`) ve ikisi de `parseFloat` ile hayalet
+    // metinden sayi uyduruyordu ("35x240mm…" → 35). Artik ikisi de TEK okuyucuya
+    // (`sayi-alani.ts` `sayiOku`, TR binlik kurali + harf kapisi) delege eder;
+    // kopya kalmadigi icin ayrisma imkansiz.
+    const MANUEL = 'ozellik/kutuphane/library/ManualBrandModal.tsx';
+    const FIRMA = 'ozellik/kutuphane/library/InlineFirmEntry.tsx';
+    for (const [ad, yol, govde] of [
+      ['malzeme', MALZEME_SAYFA, /function numOrU\(v: unknown\): number \| undefined \{\s*return sayiOku\(v\) \?\? undefined;\s*\}/],
+      ['iscilik', ISCILIK_SAYFA, /function parseTrNum\(v: unknown\): number \{\s*return sayiOku\(v\) \?\? 0;\s*\}/],
+      ['manuel marka', MANUEL, /function numOrU\(v: unknown\): number \| undefined \{\s*return sayiOku\(v\) \?\? undefined;\s*\}/],
+      ['firma satiri', FIRMA, /function numOrU\(v: unknown\): number \| undefined \{\s*return sayiOku\(v\) \?\? undefined;\s*\}/],
+    ] as const) {
       const src = oku(yol);
-      expect(src, `${ad} suzgecinde TR binlik kurali yok`).toMatch(/hasComma && hasDot/);
-      expect(src, `${ad} suzgecinde para sembolu siyirma yok`).toMatch(/\[₺\$€\\s\]/);
+      expect(src, `${ad}: yardimci sayiOku'ya delege etmiyor`).toMatch(govde);
+      expect(src, `${ad}: sayiOku import edilmemis`).toMatch(/import \{ sayiOku \} from '@\/ozellik\/fiyat\/sayi-alani'/);
+      expect(src, `${ad}: yerel TR kopyasi geri gelmis`).not.toMatch(/hasComma && hasDot/);
     }
   });
 });

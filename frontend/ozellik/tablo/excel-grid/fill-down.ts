@@ -28,7 +28,7 @@
 import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, etkinMiktar, kalemToplami, PARA_ONDALIK } from '../../fiyat/pricing';
 // NOT: goreli yol ZORUNLU — vitest.config.ts'te '@/' alias'i tanimli degil
 // ve bu modul vitest ile kosuyor (fill-down.test.ts).
-import { sayiAlani } from '../../fiyat/sayi-alani';
+import { sayiAlani, sayiOku } from '../../fiyat/sayi-alani';
 
 /** Eslestirme motorunun (onBrandChange/onFirmaChange) dondurdugu sonuc. */
 export interface MotorSonucu {
@@ -97,11 +97,8 @@ function genelToplamiTazele(
 ): void {
   const genelAlan = roller.grandTotalField;
   if (!genelAlan) return;
-  const oku = (alan?: string) => {
-    if (!alan) return 0;
-    const v = parseFloat(String((node.data as Record<string, unknown>)[alan] ?? '').replace(',', '.'));
-    return Number.isFinite(v) ? v : 0;
-  };
+  // A2 (tur 3): makine okuyucusu — eski `replace(',', '.')` "1.234,5"i 1,234 okuyordu
+  const oku = (alan?: string) => (alan ? (sayiOku((node.data as Record<string, unknown>)[alan]) ?? 0) : 0);
   // ⚠ İKİ TARAF DA ROLLERDEN OKUNUR — `totAlan` DAL BİLGİSİ TAŞIR, taraf değil.
   // Eski hâl `mat = oku(totAlan ?? roller.materialTotalField)` idi: işçilik
   // dalında `totAlan = laborTotalField` olduğu için mat ve lab AYNI hücreyi

@@ -2,6 +2,7 @@
  * Metraj → Excel çıktı helper'ı
  * Çoklu sheet desteği: her hat/malzeme ayrı sheet.
  */
+import { sayiOku } from '../ozellik/fiyat/sayi-alani';
 
 export interface MetrajExcelRow {
   name: string;
@@ -61,7 +62,8 @@ export async function exportMetrajToExcel(
     wsData.push(['Malzeme Adı', 'Çap', 'Birim', 'Miktar']);
 
     for (const row of sheet.rows) {
-      const qty = typeof row.qty === 'string' ? parseFloat(row.qty) || 0 : row.qty;
+      // A2 (tur 3): MAKINE okuyucusu — `parseFloat` "12,5"i 12, "3 adet"i 3 yaziyordu
+      const qty = typeof row.qty === 'string' ? sayiOku(row.qty) ?? 0 : row.qty;
       wsData.push([row.name, row.diameter || '', row.unit, qty]);
       totalItems++;
     }

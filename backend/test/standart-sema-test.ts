@@ -330,6 +330,112 @@ async function main() {
       boru ? `"${String(boru._ad).slice(0, 20)}" → miktar="${boru._miktar}" birim="${boru._birim}" (beklenen 42 / mt)` : 'satır bulunamadı');
   }
 
+  // ══ A2 (tur 3, 14.09.2026) — BELIRSIZ SAYI SUZGECI: ICE AKTARMA INSAN SINIRI ══
+  // Olculdu (tur3/a2/RAPOR.md): `standartlastir` fiyat kopyasi AYRISTIRMADAN
+  // yaziyordu (Bursa Elektrik 39 hucrede urun tarifi `_matBirim`e gidip ₺550,00
+  // okunuyordu), `miktarNormalize` "24 kW"yi 24 yapiyordu ve `String(cell.v)`
+  // hucre TIPINI siliyordu (Excel sayisi 323308.125 ile metin "323308.125" ayni).
+  // Kural: SAYI hucresi deger olarak gelir (makine metni); METIN hucresi insan
+  // kuralindan gecer — belirsiz / sayi degil hucre BOS kalir, `_sayiUyari` isaretlenir.
+  {
+    const FESAYI = require('../../frontend/ozellik/fiyat/sayi-alani');
+    const aoa = [
+      ['No', 'Malzeme Adı', 'Miktar', 'Birim', 'Malzeme Birim Fiyat'],
+      ['1', 'Boru A', 12.375, 'mt', 323308.125],
+      ['2', 'Boru B', '12 m', 'mt', 1250],
+      ['3', 'Kanal C', '3 adet', 'adet', '35x240mm Üç bölmeli döşeme kanalı'],
+      ['4', 'Vana D', 'Ø100 PVC boru', 'adet', '1.250'],
+      ['5', 'Pano E', '1.250', 'adet', '₺1.234,56'],
+      ['6', 'Kablo F', 7, 'mt', 1.125],
+    ];
+    const wbA = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wbA, XLSX.utils.aoa_to_sheet(aoa), 'A2');
+    const pA = await svc.prepare(XLSX.write(wbA, { type: 'buffer', bookType: 'xlsx' }) as Buffer, { fixedSchema: true });
+    const satir = (ad: string) => ((pA.sheets[0]?.rowData ?? []) as any[]).find((r) => r._ad === ad) ?? {};
+    const [A, B, C, D, E, F] = ['Boru A', 'Boru B', 'Kanal C', 'Vana D', 'Pano E', 'Kablo F'].map(satir);
+    check('A2-1 Excel SAYI hücresi değer olarak gelir (323308.125 → makine metni, iki kuralda da aynı sayı)',
+      A._matBirim === '323308,125' && FESAYI.sayiOku(A._matBirim) === 323308.125 && F._matBirim === '1,125'
+        && B._matBirim === '1250' && A._miktar === 12.375 && !A._sayiUyari,
+      `A=${JSON.stringify(A._matBirim)} F=${JSON.stringify(F._matBirim)} B=${JSON.stringify(B._matBirim)} miktar=${A._miktar}`);
+    check('A2-2 hayalet METİN fiyat yazılmaz: boş + _sayiUyari {ham, sayi-degil}',
+      C._matBirim === '' && C._sayiUyari?._matBirim?.tur === 'sayi-degil' && C._sayiUyari._matBirim.ham === '35x240mm Üç bölmeli döşeme kanalı',
+      `_matBirim=${JSON.stringify(C._matBirim)} işaret=${JSON.stringify(C._sayiUyari)}`);
+    check('A2-3 belirsiz METİN "1.250" fiyat yazılmaz: boş + belirsiz işareti',
+      D._matBirim === '' && D._sayiUyari?._matBirim?.tur === 'belirsiz', `_matBirim=${JSON.stringify(D._matBirim)} işaret=${JSON.stringify(D._sayiUyari)}`);
+    check('A2-4 tek anlamlı TR metin makine metnine döner ("₺1.234,56" → "1234.56")',
+      E._matBirim === '1234.56', `_matBirim=${JSON.stringify(E._matBirim)}`);
+    check('A2-5 miktar K2: "12 m" → 12, "3 adet" → 3; ölçü metni null + işaret; belirsiz null + işaret',
+      B._miktar === 12 && C._miktar === 3 && D._miktar === null && D._sayiUyari?._miktar?.tur === 'sayi-degil'
+        && E._miktar === null && E._sayiUyari?._miktar?.tur === 'belirsiz',
+      `B=${B._miktar} C=${C._miktar} D=${D._miktar}/${JSON.stringify(D._sayiUyari?._miktar)} E=${E._miktar}/${JSON.stringify(E._sayiUyari?._miktar)}`);
+    // Satir tespiti (excel-grid.service `miktarVarMi`): birimsiz satiri VERI yapan
+    // tek sey miktar — "550 kVA" olcu metni miktar DEGILDIR, "12 m" miktardir.
+    // Ayri sayfa: rol tespiti (miktar kolonu icerik orani) temiz veriyle kurulur,
+    // olculen yalniz BIRIMSIZ iki satirin sinifi.
+    const aoaSatir = [
+      ['No', 'Malzeme Adı', 'Miktar', 'Birim', 'Malzeme Birim Fiyat'],
+      ...Array.from({ length: 8 }, (_, i) => [String(i + 1), `Boru ${i + 1}`, i + 2, 'mt', 100 + i]),
+      ['9', 'Jeneratör bölümü', '550 kVA', '', ''],
+      ['10', 'Metreli kalem', '12 m', '', ''],
+    ];
+    const wbS = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wbS, XLSX.utils.aoa_to_sheet(aoaSatir), 'SATIR');
+    const pS = await svc.prepare(XLSX.write(wbS, { type: 'buffer', bookType: 'xlsx' }) as Buffer, { fixedSchema: true });
+    const satirS = (ad: string) => ((pS.sheets[0]?.rowData ?? []) as any[]).find((r) => r._ad === ad) ?? {};
+    const G = satirS('Jeneratör bölümü'); const H = satirS('Metreli kalem'); const boru = satirS('Boru 3');
+    check('A2-10 satır tespiti: birimsiz "550 kVA" satırı VERİ olmaz (eskiden parseFloat → 550 > 0); "12 m" olur',
+      boru._isDataRow === true && boru._miktar === 4 && G._isDataRow !== true && H._isDataRow === true && H._miktar === 12,
+      `Boru 3 → ${boru._isDataRow}/${boru._miktar} · 550 kVA → _isDataRow=${G._isDataRow} · 12 m → _isDataRow=${H._isDataRow}/${H._miktar}`);
+
+    // ÖZET (İcmal) sayfası tutarı: FİYAT kuralı. Ölçülen vaka FIRMA-B İCMAL M15
+    // ": +90 000 000 00 00" (telefon) eski okuyucuyla 900.000.000.000 TL tutar oluyordu.
+    const aoaOzet = [
+      ['Sıra No', 'Açıklama', 'Tutar'],
+      ['1', 'MEKANİK İŞLER', 1250000],
+      ['2', 'ELEKTRİK İŞLER', '1.250'],
+      ['', 'TEL', ': +90 000 000 00 00'],
+      ['3', 'GÖTÜRÜ İŞLER', 'GÖTÜRÜ'],
+    ];
+    const wbO = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wbO, XLSX.utils.aoa_to_sheet(aoaOzet), 'İCMAL');
+    const pO = await svc.prepare(XLSX.write(wbO, { type: 'buffer', bookType: 'xlsx' }) as Buffer, { fixedSchema: true });
+    const shO: any = pO.sheets[0];
+    const oz = (ad: string) => ((shO?.rowData ?? []) as any[]).find((r) => r._ad === ad) ?? {};
+    const [mek2, elek2, tel, goturu] = ['MEKANİK İŞLER', 'ELEKTRİK İŞLER', 'TEL', 'GÖTÜRÜ İŞLER'].map(oz);
+    check('A2-11 özet tutarı fiyat kuralıyla: sayı gelir; telefon TUTAR OLMAZ; belirsiz/metin tutar boş + işaret',
+      shO?.isOzet === true && mek2._toplam === 1250000 && !mek2._sayiUyari
+        && String(tel._toplam ?? '') === '' && tel._isDataRow !== true
+        && String(elek2._toplam ?? '') === '' && elek2._sayiUyari?._toplam?.tur === 'belirsiz'
+        && goturu._isDataRow === true && goturu._sayiUyari?._toplam?.tur === 'sayi-degil',
+      `isOzet=${shO?.isOzet} mek=${mek2._toplam} tel=${JSON.stringify(tel._toplam)}/${tel._isDataRow} elek=${JSON.stringify(elek2._toplam)}/${JSON.stringify(elek2._sayiUyari)} götürü=${goturu._isDataRow}/${JSON.stringify(goturu._sayiUyari)}`);
+
+    // ── Gercek dosya: Bursa SAHA-BIR (hayalet ailesi + makine 3-ondalik ailesi AYNI dosyada) ──
+    const bursa = await svc.prepare(fs.readFileSync(dosya('bursa saha-bir')), { fixedSchema: true });
+    const elek: any = bursa.sheets.find((s: any) => katla(s.name) === 'elektrik');
+    const mek: any = bursa.sheets.find((s: any) => katla(s.name) === 'mekanik');
+    const elekVeri = ((elek?.rowData ?? []) as any[]).filter((r) => r._isDataRow);
+    const hayaletYazilan = elekVeri.filter((r) => String(r._matBirim ?? '') !== '' && FESAYI.sayiOku(r._matBirim) === null);
+    const sahteFiyat = elekVeri.filter((r) => FESAYI.sayiOku(r._matBirim) !== null);
+    const isaretli = elekVeri.filter((r) => r._sayiUyari?._matBirim?.tur === 'sayi-degil');
+    const kanal = elekVeri.find((r) => String(r._sayiUyari?._matBirim?.ham ?? '').startsWith('35x240mm'));
+    check('A2-6 Bursa Elektrik: açıklama sütunu fiyat sanılsa da HİÇBİR satıra fiyat yazılmaz (bugün 39 hayalet)',
+      elekVeri.length === 90 && hayaletYazilan.length === 0 && sahteFiyat.length === 0,
+      `veri=${elekVeri.length} okunamayan-dolu=${hayaletYazilan.length} sayı-okunan=${sahteFiyat.length}`);
+    check('A2-7 Bursa Elektrik: 90 hücrenin 90\'ı MOR işaretli; "35x240mm…" ham metni işarette',
+      isaretli.length === 90 && !!kanal, `işaretli=${isaretli.length} kanal=${JSON.stringify(kanal?._sayiUyari)}`);
+    const mekVeri = ((mek?.rowData ?? []) as any[]).filter((r) => r._isDataRow);
+    const PARA = ['_matBirim', '_matToplam', '_labBirim', '_labToplam'];
+    const virgul3 = mekVeri.reduce((t, r) => t + PARA.filter((a) => /^-?\d+,\d{3}$/.test(String(r[a] ?? ''))).length, 0);
+    const noktali3 = mekVeri.reduce((t, r) => t + PARA.filter((a) => /^-?\d+\.\d{3}$/.test(String(r[a] ?? ''))).length, 0);
+    const mekIsaret = mekVeri.filter((r) => r._sayiUyari).length;
+    check('A2-8 Bursa Mekanik: 16 Excel SAYI hücresi (323308.125 ailesi) makine metniyle gelir, İŞARETLENMEZ',
+      virgul3 === 16 && noktali3 === 0 && mekIsaret === 0, `virgül-3=${virgul3} nokta-3=${noktali3} işaretli satır=${mekIsaret}`);
+    const FEP = require('../../frontend/ozellik/fiyat/pricing');
+    const mekToplam = FEP.sayfaToplamlari(mek?.rowData ?? [], mek?.columnRoles ?? {}).genelToplam;
+    check('A2-9 BEKÇİ: Bursa Mekanik ekran genel toplamı 110.206.207,48 (kural makineye konsaydı 106.157.027,17)',
+      FEP.kurusTamsayi(mekToplam) === 11020620748, `genel=${mekToplam}`);
+  }
+
   console.log(`\n${'='.repeat(60)}\nSTANDART SEMA: ${pass} PASS, ${fail} FAIL\n${'='.repeat(60)}`);
   process.exit(fail > 0 ? 1 : 0);
 }

@@ -256,8 +256,69 @@ num('  2.500,00 TL ', 2500);
   check('11K fiyat kolonu yoksa zorunluTamam=false', yapilandirmaSkoru(fiyatsiz).zorunluTamam === false);
 }
 
-console.log(`\n${'='.repeat(60)}`);
-console.log(`SONUC: ${passed} PASS, ${failed} FAIL`);
-console.log('='.repeat(60));
-if (failures.length > 0) { console.log('\nFAILURES:'); failures.forEach((f) => console.log('  - ' + f)); }
-process.exit(failed > 0 ? 1 : 0);
+// ── A2 (tur 3, 14.09.2026) — ESKI "Excel'den tabloya" YOLU (save-from-sheets) ──
+// Olculdu (tur3/a2/admin-legacy.out.txt): `prepare` Excel SAYI hucresini
+// `String(cell.v)` ile "1.125" yapiyordu ve bu yol onu BELIRSIZ sayip satiri
+// ATLIYORDU (tek anlamli makine degeri); METIN fiyat ("35x240mm …") ise null → 0
+// olup mevcut fiyati UYARISIZ eziyordu. Gercek zincir kosulur: sentetik xlsx →
+// GERCEK `ExcelGridService.prepare` (sabit sema YOK) → GERCEK
+// `AdminService.saveMaterialsFromSheets` (bellek ici Prisma).
+async function a2EskiIceAktarma() {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const XLSX = require('xlsx');
+  const { ExcelGridService } = require('../src/ozellik/giris/excel-grid/excel-grid.service');
+  const { AdminService } = require('../src/ozellik/kutuphane/admin/admin.service');
+  const { insanSayiOku } = require('../src/ozellik/kutuphane/utils/import-fidelity');
+  const ws = XLSX.utils.aoa_to_sheet([
+    ['Malzeme Adı', 'Miktar', 'Birim', 'Malzeme Birim Fiyat'],
+    ['Küresel vana DN50', 1, 'adet', 1.125],
+    ['PPR boru 20mm', 1, 'mt', 1250],
+    ['Kanal 35x240', 1, 'mt', '1.250'],
+    ['Kablo NYY 3x2,5', 1, 'adet', '35x240mm Üç bölmeli döşeme kanalı'],
+    ['Pano gövdesi', 1, 'adet', '2.500,00 TL'],
+  ]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Liste');
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  const sessiz = console.log; console.log = () => {};
+  let prep: any; let sonuc: any; const yazilan: Array<{ ad: string; price: number }> = [];
+  try {
+    prep = await new ExcelGridService({ brand: { findMany: async () => [] } }).prepare(buf);
+    let id = 0;
+    const prisma: any = {
+      brand: { findUnique: async () => ({ id: 'b1', name: 'Marka' }) },
+      priceList: { findFirst: async () => null, create: async ({ data }: any) => ({ id: 'pl1', ...data }) },
+      material: { findFirst: async () => null, create: async ({ data }: any) => ({ id: `m${++id}`, ...data }), update: async () => ({}) },
+      materialPrice: { findUnique: async () => null, upsert: async ({ create }: any) => { yazilan.push({ ad: create.adRaw, price: create.price }); return {}; } },
+      productIndex: { upsert: async () => ({}) },
+    };
+    const sh = prep.sheets[0];
+    sonuc = await new AdminService(prisma, {} as any, {} as any).saveMaterialsFromSheets('b1', [{ ...sh, name: 'Liste' }]);
+  } finally { console.log = sessiz; }
+  const fiyat = (ad: string) => yazilan.find((y) => y.ad === ad)?.price;
+  const sh = prep.sheets[0];
+  const hucre = (ad: string) => (sh.rowData as any[]).find((r) => r[sh.columnRoles.nameField] === ad)?.[sh.columnRoles.materialUnitPriceField];
+  check('A2-L1 prepare: Excel SAYI hücresi 1.125 makine metniyle gelir ("1,125") — insan kuralı da 1,125 okur',
+    hucre('Küresel vana DN50') === '1,125' && JSON.stringify(insanSayiOku(hucre('Küresel vana DN50'), 'fiyat')) === '{"tur":"sayi","deger":1.125}',
+    `hücre=${JSON.stringify(hucre('Küresel vana DN50'))}`);
+  check('A2-L2 ★ Excel SAYISI 1.125 artık ATLANMAZ, 1,125 yazılır (eskiden "belirsiz" diye atlanıyordu)',
+    fiyat('Küresel vana DN50') === 1.125, `yazılan=${JSON.stringify(yazilan)}`);
+  check('A2-L3 tek anlamlı fiyatlar yazılır (1250 · "2.500,00 TL")',
+    fiyat('PPR boru 20mm') === 1250 && fiyat('Pano gövdesi') === 2500, `yazılan=${JSON.stringify(yazilan)}`);
+  check('A2-L4 METİN "1.250" (belirsiz) YAZILMAZ, uyarı listesinde',
+    fiyat('Kanal 35x240') === undefined && (sonuc.warnings as string[]).some((w) => w.includes('"1.250"') && w.includes('belirsiz')),
+    `uyarılar=${JSON.stringify(sonuc.warnings)}`);
+  check('A2-L5 ★ hayalet METİN fiyat 0 YAZMAZ (mevcut fiyatı ezmez), uyarı listesinde "sayı değil"',
+    fiyat('Kablo NYY 3x2,5') === undefined && (sonuc.warnings as string[]).some((w) => w.includes('sayı değil') && w.includes('35x240mm')),
+    `uyarılar=${JSON.stringify(sonuc.warnings)}`);
+  check('A2-L6 sayaç: 2 satır atlandı, 3 satır yazıldı', sonuc.totalSkipped === 2 && yazilan.length === 3,
+    `atlanan=${sonuc.totalSkipped} yazılan=${yazilan.length}`);
+}
+
+a2EskiIceAktarma().catch((e) => { failed++; failures.push(`A2 eski içe aktarma koşamadı: ${(e as Error).message}`); }).then(() => {
+  console.log(`\n${'='.repeat(60)}`);
+  console.log(`SONUC: ${passed} PASS, ${failed} FAIL`);
+  console.log('='.repeat(60));
+  if (failures.length > 0) { console.log('\nFAILURES:'); failures.forEach((f) => console.log('  - ' + f)); }
+  process.exit(failed > 0 ? 1 : 0);
+});

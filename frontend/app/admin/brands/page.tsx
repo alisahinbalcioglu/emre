@@ -22,6 +22,7 @@ import { confirm } from '@/ortak/hooks/use-confirm';
 import { silmeOnayMetni } from '@/lib/silme-onay-metni';
 import { silmeEtkisiGetir } from '@/lib/silme-etkisi-getir';
 import { oksuzKutuphaneUyarisi } from '@/ozellik/kutuphane/oksuz-kutuphane-uyarisi';
+import { formSayisiOku } from '@/ozellik/fiyat/sayi-alani';
 import { Button } from '@/ortak/ui/button';
 import { Input } from '@/ortak/ui/input';
 import { Badge } from '@/ortak/ui/badge';
@@ -399,7 +400,14 @@ export default function AdminBrandsPage() {
   async function addMaterial() {
     if (!selectedBrand || !selectedList) return;
     const name = matName.trim();
-    const price = parseFloat(matPrice.replace(',', '.'));
+    // A2 (tur 3, olculdu): `parseFloat(replace(',', '.'))` "35x240mm"i 35,
+    // "1.234,5"i 1,234 baz fiyat yapiyordu. Grid ile ayni insan kurali + uyari.
+    const fiyatG = formSayisiOku(matPrice, 'fiyat');
+    if (fiyatG.uyari) {
+      toast({ title: 'Baz fiyat okunamadı', description: fiyatG.uyari, variant: 'destructive' });
+      return;
+    }
+    const price = fiyatG.deger ?? NaN;
     if (!name || isNaN(price) || price < 0) {
       toast({ title: 'Eksik bilgi', description: 'Malzeme adı ve geçerli baz fiyat girin.', variant: 'destructive' });
       return;

@@ -64,7 +64,7 @@ import {
   kalemToplami,
   PARA_ONDALIK,
 } from '../fiyat/pricing';
-import { sayiAlani } from '../fiyat/sayi-alani';
+import { sayiAlani, sayiOku } from '../fiyat/sayi-alani';
 
 /** Draft'taki sheet'in bu modulun ihtiyac duydugu kesiti (SheetData uyumlu). */
 export interface RematchSheet {
@@ -195,11 +195,8 @@ async function tarafEslestir(
 function genelToplamiTazele(row: ExcelRowData, roles: ColumnRoles): void {
   const genelAlan = roles.grandTotalField;
   if (!genelAlan) return;
-  const oku = (alan?: string) => {
-    if (!alan) return 0;
-    const v = parseFloat(String(row[alan] ?? '').replace(',', '.'));
-    return Number.isFinite(v) ? v : 0;
-  };
+  // A2 (tur 3): makine okuyucusu — eski `replace(',', '.')` "1.234,5"i 1,234 okuyordu
+  const oku = (alan?: string) => (alan ? (sayiOku(row[alan]) ?? 0) : 0);
   const mat = oku(roles.materialTotalField);
   const lab = oku(roles.laborTotalField);
   row[genelAlan] = kalemToplami(mat, lab).toFixed(PARA_ONDALIK);

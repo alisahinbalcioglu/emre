@@ -19,6 +19,7 @@ import api from '@/ortak/lib/api';
 import { toast } from '@/ortak/hooks/use-toast';
 import { confirm } from '@/ortak/hooks/use-confirm';
 import { cn } from '@/ortak/lib/utils';
+import { formSayisiOku } from '@/ozellik/fiyat/sayi-alani';
 
 interface LaborItem {
   id: string;
@@ -110,9 +111,15 @@ export default function LaborLibraryPage() {
       toast({ title: 'Uyarı', description: 'Ad ve fiyat zorunlu.', variant: 'destructive' });
       return;
     }
+    // A2 (tur 3): `parseFloat` "24 kW"yi 24, "12,5"i 12 yaziyordu — grid ile ayni kural
+    const fiyatG = formSayisiOku(form.unitPrice, 'fiyat');
+    if (fiyatG.uyari || fiyatG.deger === null) {
+      toast({ title: 'Uyarı', description: fiyatG.uyari ?? 'Fiyat zorunlu.', variant: 'destructive' });
+      return;
+    }
     setIsSaving(true);
     try {
-      const payload = { ...form, unitPrice: parseFloat(form.unitPrice) };
+      const payload = { ...form, unitPrice: fiyatG.deger };
       if (editingItem) {
         await api.put(`/labor/${editingItem.id}`, payload);
         toast({ title: 'Güncellendi' });

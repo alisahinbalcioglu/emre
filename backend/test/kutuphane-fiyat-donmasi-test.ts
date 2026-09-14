@@ -125,9 +125,13 @@ const yukKaynak = /const payload = dirtyExisting\.map\(\(r: any\) => \(\{[\s\S]*
 const derle = (kod: string) => ts.transpileModule(kod, {
   compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.None },
 }).outputText;
+// A2 (tur 3): sayfanin `numOrU`su ortak MAKINE okuyucusuna (`sayiOku`) devreder;
+// sayfanin import'u bu baglamda yok — GERCEK kural modulu verilir (kopya degil).
+const { sayiOku } = require('../../frontend/ozellik/fiyat/sayi-alani');
 // eslint-disable-next-line no-new-func
-const kayitYuku = new Function('dirtyExisting', 'priceField', 'unitField', 'nameField',
-  `${derle(numOrUKaynak)}\n${derle(yukKaynak)}\nreturn payload;`) as (d: any[], p: string, u: string, n: string) => any[];
+const kayitYukuHam = new Function('sayiOku', 'dirtyExisting', 'priceField', 'unitField', 'nameField',
+  `${derle(numOrUKaynak)}\n${derle(yukKaynak)}\nreturn payload;`) as (s: unknown, d: any[], p: string, u: string, n: string) => any[];
+const kayitYuku = (d: any[], p: string, u: string, n: string) => kayitYukuHam(sayiOku, d, p, u, n);
 
 const K = { userId: 'u1', firmaId: 'f1' };
 
@@ -172,8 +176,9 @@ function havuzUrunu(id: string, cap: string, fiyat: number, sira: number) {
 
   console.log('── K0) OLCUT: on yuz yuku sayfadan cikti ve fiyati HER kirli satirda gonderiyor ──');
   const yuk12 = yuk.find((p: any) => p.libraryItemId === bul('1/2"')._libraryItemId);
+  // A2: numOrU artik tek satir (`sayiOku` devri) — olcut uzunluk degil DEVIR.
   check('K0a numOrU + kayit yuku kodu page.tsx metninde BULUNDU',
-    numOrUKaynak.length > 100 && yukKaynak.length > 300, `numOrU ${numOrUKaynak.length} · yuk ${yukKaynak.length} karakter`);
+    /\bsayiOku\(/.test(numOrUKaynak) && yukKaynak.length > 300, `numOrU ${numOrUKaynak.length} karakter (sayiOku devri) · yuk ${yukKaynak.length} karakter`);
   check('K0b yalniz iskontosu degisen satirin yukunde de listPrice VAR (K1 bu yuzden gerekli)',
     yuk.length === 3 && typeof yuk12?.listPrice === 'number', JSON.stringify(yuk12));
 

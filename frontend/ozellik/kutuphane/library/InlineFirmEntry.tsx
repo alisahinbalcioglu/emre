@@ -13,6 +13,7 @@ import api from '@/ortak/lib/api';
 import { toast } from '@/ortak/hooks/use-toast';
 import { ExcelGrid } from '@/ozellik/tablo/excel-grid/ExcelGrid';
 import type { ExcelGridData, ExcelRowData } from '@/ozellik/tablo/excel-grid/types';
+import { sayiOku } from '@/ozellik/fiyat/sayi-alani';
 
 // 7-kolon sabit sema — İşçilik Kalemi (AD) · Cins · Çap · Birim · Birim Fiyat ·
 // Para · Not. İskonto%/Net Fiyat kütüphane modu kolonlarıdır (_draftDiscount /
@@ -47,15 +48,9 @@ function trimOrU(v: unknown): string | undefined {
   const s = String(v ?? '').trim();
   return s === '' ? undefined : s;
 }
+/** Kayit okuyucusu — MAKINE siniri (A2, tur 3; malzeme ikizi ManualBrandModal ile ayni). */
 function numOrU(v: unknown): number | undefined {
-  let s = String(v ?? '').replace(/[₺$€\s]/g, '').trim();
-  if (s === '') return undefined;
-  const hasComma = s.includes(',');
-  const hasDot = s.includes('.');
-  if (hasComma && hasDot) s = s.replace(/\./g, '').replace(',', '.'); // TR bicimi
-  else if (hasComma) s = s.replace(',', '.');
-  const n = parseFloat(s);
-  return isNaN(n) ? undefined : n;
+  return sayiOku(v) ?? undefined;
 }
 
 /** Bir satırın TAM işçilik adı (AD + Cins + Çap birleşik) — save-bulk item'ı

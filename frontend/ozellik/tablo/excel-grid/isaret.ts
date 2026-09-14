@@ -25,7 +25,15 @@
  * doldurma yolu onlari `if (!iscilikMi)` dalinda yazar. Ikizlik "her alan iki
  * tarafta da var" demek degil; VAR OLAN sinyalin iki tarafta da OKUNMASI
  * demektir.
+ *
+ * ── A2 (tur 3, 14.09): SAYI OKUNAMADI SINYALI ─────────────────────────────
+ * Ice aktarmada fiyat/miktar hucresindeki metin sayi degilse ("35x240mm Üç
+ * bölmeli döşeme kanalı") ya da belirsizse ("1.250") hucre BOS gelir ve satirda
+ * `_sayiUyari: {alan: {ham, tur}}` durur. Bu sinyal `_matStatus`/`_matSebep`e
+ * YAZILMAZ: eslestirme ve elle fiyat girisi o alanlari ezer/siler — kullanici
+ * dosyadaki metnin neden gelmedigini goremezdi. En ONCELIKLI sinyaldir.
  */
+import { kayitliSayiUyarisi, type SayiAlanTuru } from '../../fiyat/sayi-alani';
 
 // NOT: goreli yol ZORUNLU — vitest.config.ts'te '@/' alias'i tanimli degil.
 import { paraBicim } from '../../fiyat/pricing';
@@ -44,6 +52,10 @@ export interface IsaretGirdisi {
   otoVaryant?: unknown;
   /** Yalniz malzeme dalinda anlamli (cap-only/baslik-ipucu eslesmesi). */
   oneri?: unknown;
+  /** A2: bu hucrenin ice aktarma sayi uyarisi (`_sayiUyari[alan]` — {ham, tur}). */
+  sayiUyari?: unknown;
+  /** A2: uyari metninin alan turu (fiyat kolonlari 'fiyat', miktar 'miktar'). */
+  sayiAlani?: SayiAlanTuru;
 }
 
 /** Hucre arka plani (textAlign cagirana ait — bu modul yalniz RENGI karara baglar). */
@@ -60,6 +72,13 @@ const TURUNCU: IsaretStili = { backgroundColor: '#ffedd5', color: '#9a3412' };
 const GRI: IsaretStili = { backgroundColor: '#f1f5f9' };
 const MAVI: IsaretStili = { backgroundColor: '#e0f2fe', color: '#0c4a6e' };
 const SARI: IsaretStili = { backgroundColor: '#fef9c3', color: '#854d0e' };
+// A2: sayi okunamadi — MOR; kirmizi (eslesme yok) ve turuncudan (hata) gozle ayrisir.
+const MOR: IsaretStili = { backgroundColor: '#ede9fe', color: '#5b21b6' };
+
+/** A2: satirin bu hucresinde ice aktarma sayi uyarisi var mi? */
+function sayiUyarisiVar(g: IsaretGirdisi): boolean {
+  return !!g.sayiUyari && typeof g.sayiUyari === 'object';
+}
 
 /** Malzemeye ozgu isaretler yalniz malzeme dalinda okunur. */
 function malzemeDali(g: IsaretGirdisi): boolean {
@@ -80,9 +99,10 @@ export function secimBekliyor(durum: unknown): boolean {
 
 /**
  * Hucre arka plani. Isaret yoksa `null` (cagiran duz stili uygular).
- * SIRA ONEMLI: otomatik varyant > oneri > yok/belirsiz > urun_degil.
+ * SIRA ONEMLI: sayi okunamadi (A2) > otomatik varyant > oneri > yok/belirsiz > urun_degil.
  */
 export function isaretStili(g: IsaretGirdisi): IsaretStili | null {
+  if (sayiUyarisiVar(g)) return MOR;
   if (malzemeDali(g)) {
     if (g.otoVaryant) return MAVI;
     if (g.oneri) return SARI;
@@ -113,6 +133,10 @@ function adTuru(g: IsaretGirdisi): string {
  * kullanici "otomatik varyant calismiyor" olarak yasadi.
  */
 export function isaretTooltip(g: IsaretGirdisi): string {
+  if (sayiUyarisiVar(g)) {
+    // Tek cumle kaynagi: elle yazma toast'i ve form kutusu AYNI metni gosterir.
+    return `Dosyadan gelmedi — ${kayitliSayiUyarisi(g.sayiUyari, g.sayiAlani ?? 'fiyat') ?? 'sayı okunamadı'}`;
+  }
   if (malzemeDali(g) && g.otoVaryant) {
     return `⚡ otomatik: ${g.otoVaryant} — farklı varyant için marka menüsünü yeniden açın`;
   }

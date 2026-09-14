@@ -108,4 +108,35 @@ describe('mergeMultiSheet — Excel yeniden yukleme veri korumasi', () => {
     expect(merged.sheets.map((s) => s.name)).toEqual(['Mekanik', 'Ekstra']);
     expect(merged.sheets[1].rowData[0]._malzKar).toBe(5);
   });
+
+  // ── A2 (tur 3, olculdu — tur3/a2/hayalet-uctan.out.md YOL D) ──────────────
+  // "Dosya Seç" ile yeniden yuklemede `parseFloat(metin) !== 0` NaN !== 0 oldugu
+  // icin METIN fiyat "dolu" sayilip KORUNUYORDU: hayalet "35x240mm…" yeni
+  // dosyanin gecerli fiyatini eziyordu.
+  it('MG-A2 ★ metin fiyat "dolu" SAYILMAZ — yeni dosyanin degeri gelir; sayi fiyat korunur', () => {
+    const prev = sheet('S1', [
+      row('1', 'KANAL', '12', { 'Birim Fiyat': '35x240mm Üç bölmeli döşeme kanalı' }),
+      row('2', 'VANA', '3', { 'Birim Fiyat': '1.234,5' }),
+    ]);
+    const inc = sheet('S1', [
+      row('1', 'KANAL', '12', { 'Birim Fiyat': '420' }),
+      row('2', 'VANA', '3', { 'Birim Fiyat': '999' }),
+    ]);
+    const { merged } = mergeMultiSheet(prev, { 0: prev.sheets[0].rowData }, inc);
+    expect(merged.sheets[0].rowData[0]['Birim Fiyat'], 'hayalet metin korunmadi').toBe('420');
+    expect(merged.sheets[0].rowData[1]['Birim Fiyat'], 'gecerli TR sayi korundu').toBe('1.234,5');
+  });
+
+  it('MG-A2 ice aktarma sayi isareti YENI dosyanindir; korunan fiyatin isareti duser', () => {
+    const prev = sheet('S1', [row('1', 'KANAL', '12', {
+      'Birim Fiyat': '420', _sayiUyari: { Miktar: { ham: '1.250', tur: 'belirsiz' } },
+    })]);
+    const inc = sheet('S1', [row('1', 'KANAL', '12', {
+      'Birim Fiyat': '', _sayiUyari: { 'Birim Fiyat': { ham: '24 kW', tur: 'sayi-degil' } },
+    })]);
+    const { merged } = mergeMultiSheet(prev, { 0: prev.sheets[0].rowData }, inc);
+    const r = merged.sheets[0].rowData[0];
+    expect(r['Birim Fiyat']).toBe('420');
+    expect(r._sayiUyari, 'eski miktar isareti tasinmaz, korunan fiyatin isareti duser').toBeUndefined();
+  });
 });

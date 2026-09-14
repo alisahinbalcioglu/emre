@@ -155,6 +155,37 @@ describe('isaret — malzemeye ozgu sinyaller iscilikte okunmaz', () => {
   });
 });
 
+// ── C2) A2 (tur 3, 14.09): SAYI OKUNAMADI SINYALI ───────────────────────────
+// Ice aktarmada fiyat/miktar hucresindeki metin sayi degilse/belirsizse hucre
+// BOS gelir, satirda `_sayiUyari[alan] = {ham, tur}` durur. Sinyal `_matStatus`e
+// YAZILMAZ (eslestirme/elle giris ezer) — ayri girdi, en yuksek oncelik.
+
+describe('isaret — A2 sayi okunamadi sinyali', () => {
+  const HAYALET = { ham: '35x240mm Üç bölmeli döşeme kanalı', tur: 'sayi-degil' };
+  it('IS-A2 MOR zemin; eslesme durumlarinin (yok/oneri/otoVaryant) ONUNDE', () => {
+    const mor = isaretStili(malz({ sayiUyari: HAYALET, sayiAlani: 'fiyat' }));
+    expect(mor).toEqual({ backgroundColor: '#ede9fe', color: '#5b21b6' });
+    expect(isaretStili(malz({ sayiUyari: HAYALET, durum: 'yok', otoVaryant: 'x', oneri: true }))).toEqual(mor);
+    expect(isaretStili(isc({ sayiUyari: HAYALET, durum: 'yok' }))).toEqual(mor);
+  });
+  it('IS-A2 renk diger sinyallerle KARISMAZ (kirmizi/turuncu/gri/mavi/sari)', () => {
+    const mor = isaretStili(malz({ sayiUyari: HAYALET }))!.backgroundColor;
+    for (const d of ['yok', 'hata', 'urun_degil']) expect(isaretStili(malz({ durum: d }))!.backgroundColor, d).not.toBe(mor);
+    expect(isaretStili(malz({ otoVaryant: 'x' }))!.backgroundColor).not.toBe(mor);
+    expect(isaretStili(malz({ oneri: true }))!.backgroundColor).not.toBe(mor);
+  });
+  it('IS-A2 tooltip dosyadaki metni ve kuralin TEK cumlesini soyler (alan turuyla)', () => {
+    expect(isaretTooltip(malz({ sayiUyari: HAYALET, sayiAlani: 'fiyat' })))
+      .toBe('Dosyadan gelmedi — “35x240mm Üç bölmeli döşeme kanalı” sayı değil — Fiyat hücresine yalnız sayı yazılır.');
+    expect(isaretTooltip(malz({ sayiUyari: { ham: '1.250', tur: 'belirsiz' }, sayiAlani: 'miktar' }))).toContain('“1.250” belirsiz');
+  });
+  it('IS-A2 bos/gecersiz isaret sinyal DEGIL (satir temiz kalir)', () => {
+    expect(isaretStili(malz({ sayiUyari: undefined }))).toBeNull();
+    expect(isaretStili(malz({ sayiUyari: '' }))).toBeNull();
+    expect(isaretTooltip(malz({ sayiUyari: null }))).toBe('');
+  });
+});
+
 // ── D) GUVEN KAPISI SAYACI OLCUTU ───────────────────────────────────────────
 
 describe('secimBekliyor — sayac olcutu', () => {

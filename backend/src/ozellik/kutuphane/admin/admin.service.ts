@@ -17,6 +17,7 @@ import {
 } from '../../eslestirme/utils/build-material-context';
 import {
   parseTrNumber,
+  insanSayiOku,
   walkCategories,
   detectExtraRoles,
   detectCurrency,
@@ -1656,14 +1657,23 @@ export class AdminService {
         const adRaw = String(row[roles.nameField] ?? '').trim();
 
         // ── Y4: TR sayi ayristirma — belirsizde SESSIZ VARSAYIM YOK ──
+        // A2 (tur 3, olculdu — tur3/a2/admin-legacy.out.txt): (1) Excel SAYI
+        // hucresi 1.125 metne "1.125" donup BELIRSIZ sayiliyor, satir ATLANIYORDU
+        // — `prepare` artik sayi hucresini makine metniyle ("1,125") yazar;
+        // (2) METIN fiyat ("35x240mm …") null → 0 olup mevcut fiyati UYARISIZ
+        // ezerdi. Kural insan sinirinin tek okuyucusu: belirsiz ve sayi degil
+        // AYNI sinif — satir yazilmaz, uyari listesine girer.
         const priceRaw = row[roles.materialUnitPriceField];
-        const { value: fiyatVal, ambiguous } = parseTrNumber(priceRaw);
-        if (ambiguous) {
+        const fiyatG = insanSayiOku(priceRaw, 'fiyat');
+        if (fiyatG.tur === 'belirsiz' || fiyatG.tur === 'sayi-degil') {
           skipped++;
-          warnings.push(`"${sheet.name}" satır ${rowIdx + 1} "${adRaw.slice(0, 40)}": fiyat belirsiz ("${String(priceRaw)}") — binlik mi ondalık mı? Grid'de düzeltip yeniden kaydedin.`);
+          const neden = fiyatG.tur === 'belirsiz'
+            ? `fiyat belirsiz ("${String(priceRaw)}") — binlik mi ondalık mı?`
+            : `fiyat sayı değil ("${String(priceRaw).slice(0, 40)}")`;
+          warnings.push(`"${sheet.name}" satır ${rowIdx + 1} "${adRaw.slice(0, 40)}": ${neden} Grid'de düzeltip yeniden kaydedin.`);
           continue;
         }
-        const unitPrice = fiyatVal == null || fiyatVal < 0 ? 0 : fiyatVal;
+        const unitPrice = fiyatG.tur === 'sayi' && fiyatG.deger > 0 ? fiyatG.deger : 0;
 
         const fullName = buildMaterialContextFromRows(sheet.rowData, rowIdx, roles);
         if (!fullName || fullName.length < 2) {

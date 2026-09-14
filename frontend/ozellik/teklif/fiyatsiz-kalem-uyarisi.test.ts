@@ -15,6 +15,9 @@ import {
   fiyatsizKalemOzeti,
   fiyatsizOnayMetni,
   kalemFiyatsizMi,
+  sayiOkunamadiCumlesi,
+  sayiOkunamadiOnayMetni,
+  sayiOkunamayanHucreSayisi,
   uyariyaGirerMi,
   type UyariKalemi,
 } from './fiyatsiz-kalem-uyarisi';
@@ -211,5 +214,40 @@ describe('fiyatsizOnayMetni — cümle', () => {
       Array.from({ length: 7 }, (_, i) => kalem({ materialName: `K${i}`, quantity: 10 - i })),
     )!);
     expect(cok.description).toContain('ve 4 kalem daha');
+  });
+});
+
+// ── A2 (tur 3, 14.09): SAYI OKUNAMADI — kaydetme onayına görünür satır ────────
+describe('A2 sayı okunamadı — içe aktarma işareti kayıt onayında', () => {
+  const satir = (o: Record<string, unknown>) => ({ _isDataRow: true, ...o });
+
+  it('FK-A2 okunamayan HÜCRE sayılır (satır değil); spare/başlık satırı sayılmaz', () => {
+    const satirlar = [
+      satir({ _sayiUyari: { _matBirim: { ham: '35x240mm', tur: 'sayi-degil' }, _miktar: { ham: '1.250', tur: 'belirsiz' } } }),
+      satir({ _sayiUyari: { _labBirim: { ham: '24 kW', tur: 'sayi-degil' } } }),
+      satir({}),
+      { _isDataRow: false, _sayiUyari: { _matBirim: { ham: 'x', tur: 'sayi-degil' } } },
+      satir({ _isSpareRow: true, _sayiUyari: { _matBirim: { ham: 'x', tur: 'sayi-degil' } } }),
+      null,
+    ];
+    expect(sayiOkunamayanHucreSayisi(satirlar)).toBe(3);
+    expect(sayiOkunamayanHucreSayisi([])).toBe(0);
+  });
+
+  it('FK-A2 fiyatsız onayına "N hücrede ... okunamadı" cümlesi eklenir; 0 ise cümle DEĞİŞMEZ', () => {
+    const ozet = fiyatsizKalemOzeti([kalem({ materialName: 'Kanal' })])!;
+    const eski = fiyatsizOnayMetni(ozet);
+    const yeni = fiyatsizOnayMetni(ozet, 39);
+    expect(yeni.description).toContain('39 hücrede dosyadaki metin sayı olarak okunamadı');
+    expect(yeni.description.trim().endsWith('?')).toBe(true);
+    expect(fiyatsizOnayMetni(ozet, 0)).toEqual(eski);
+    expect(eski.description).not.toContain('okunamadı');
+  });
+
+  it('FK-A2 fiyatsız kalem YOKKEN okunamayan hücre için ayrı onay kartı (bloklamaz)', () => {
+    const m = sayiOkunamadiOnayMetni(2);
+    expect(m.title).toBe('2 hücrede sayı okunamadı');
+    expect(m.description).toContain(sayiOkunamadiCumlesi(2));
+    expect(m.confirmText).toBe('Yine de kaydet');
   });
 });

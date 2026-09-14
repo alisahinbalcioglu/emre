@@ -15,6 +15,7 @@
  * SABIT semaya donusturur. Dinamik tespit yalnizca KAYNAK secimi icin yasar:
  * "hangi dosya kolonu ad, hangisi miktar" — grid semasini artik etkilemez.
  */
+import { insanSayiOku, makineMetni, type SayiGirdisi } from '../../kutuphane/utils/import-fidelity';
 
 export interface StandartKolon {
   field: string;
@@ -89,33 +90,30 @@ const KORUNAN_ALANLAR = [
   '_matKaynak', '_labKaynak', '_matStatus', '_labStatus',
 ];
 
-/** GS12: "1.234,50" · "12 m" → 1234.5 · 12 ; cozulemezse null (sessiz sifir YOK) */
+/** GS12: "1.234,50" · "12 m" → 1234.5 · 12 ; cozulemezse null (sessiz sifir YOK).
+ *  Belirsiz ("1.250") da null — sinifi `insanSayiOku` verir, isaret `_sayiUyari`. */
 export function miktarNormalize(ham: unknown): number | null {
-  const s = String(ham ?? '').trim();
-  if (!s) return null;
-  const d = s.replace(/\s/g, '');
   // ── KD12(c) · SERBEST METINDEN SAYI TURETILMEZ (01.08.2026) ──────────────
-  // Eski kural sayiyi METNIN HERHANGI BIR YERINDEN cekiyordu. Olcum:
-  // "…SAHA-3 TEİSİSİ YANGIN TESİSATI" basligi `_toplam = -3` uretti ve o
-  // satir `_isDataRow=true` oldu. Gercek veride "TOPLAM - 3. KAT" gibi bir
-  // ozet basligi YANLIS PARA DEGERI uretir.
+  // Eski kural sayiyi METNIN HERHANGI BIR YERINDEN cekiyordu: "…SAHA-3 TEİSİSİ
+  // YANGIN TESİSATI" basligi `_toplam = -3` uretti. "SONRAKI SAYIYI ARA" da
+  // curutuldu ("C 35 Betonarme" → 5). Hucre ya sayidir ya degildir.
   //
-  // KURAL: sayidan ONCE HARF varsa hucre sayi DEGILDIR → null.
-  // Sayi "ilk konumda" sartina indirgenemez: "₺1.234", "(5)", "-3" gecerli;
-  // sinir HARFTIR, konum degil.
-  //
-  // ⚠ "SONRAKI SAYIYI ARA" YAPILMAZ (olculdu ve CURUTULDU): lookbehind ile
-  // konum atlamak "C 35 Betonarme"yi 35 yerine 5 yapiyordu — hatayi
-  // duzeltmek yerine baska bir hata uretiyordu. Hucre ya sayidir ya degildir.
-  if (/^[^\p{L}\d]*\p{L}/u.test(d)) return null;
-  const m = d.match(/-?[\d.,]+/);
-  if (!m) return null;
-  // "1.234,50" → 1234.50 · "1,5" → 1.5 · "1.5" → 1.5
-  let t = m[0];
-  if (t.includes(',') && t.includes('.')) t = t.replace(/\./g, '').replace(',', '.');
-  else if (t.includes(',')) t = t.replace(',', '.');
-  const f = parseFloat(t);
-  return isNaN(f) ? null : f;
+  // ── A2 (tur 3, 14.09 — olculdu): SINIR HARFTI, AMA YALNIZ BASTA ARANIYORDU ──
+  // "sayidan ONCE harf" kurali sayidan SONRAKI harfi kacirdi: "35x240mm" → 35,
+  // "24 kW" → 24, "2x1,5 mm²" → 2. Kural artik insan sinirinin TEK okuyucusu
+  // (`import-fidelity.ts` `insanSayiOku`, on yuz ikiziyle parite H12): harf/olcu
+  // iceren metin sayi degil; yalniz listedeki birim ("12 m", "3 adet") kabul.
+  const g = insanSayiOku(ham, 'miktar');
+  return g.tur === 'sayi' ? g.deger : null;
+}
+
+/** Okunamayan sayi hucresinin satir isareti — on yuz `isaret.ts` sayi sinyali okur.
+ *  `_matStatus`/`_matSebep` DEGIL: eslestirme ve elle fiyat girisi onlari ezer. */
+export type SayiUyarisi = { ham: string; tur: 'belirsiz' | 'sayi-degil' };
+
+/** Isaretlenecek sinif mi? (bos/sayi isaret almaz) — ham metin kirpilir. */
+function sayiUyarisiMi(g: SayiGirdisi): SayiUyarisi | null {
+  return g.tur === 'belirsiz' || g.tur === 'sayi-degil' ? { ham: g.ham.trim().slice(0, 80), tur: g.tur } : null;
 }
 
 export interface StandartlastirGirdi {
@@ -185,7 +183,9 @@ export function standartlastir(girdi: StandartlastirGirdi): StandartlastirCikti 
     for (const row of girdi.rowData ?? []) {
       for (const k of Object.keys(row)) {
         if (!/^col\d+$/.test(k) || k === kaynak.ad || k === kaynak.no) continue;
-        if (miktarNormalize(row[k]) !== null) sayac.set(k, (sayac.get(k) ?? 0) + 1);
+        // A2: tutar kolonu FIYAT kuraliyla sayilir (belirsiz de sayi GORUNUMLUDUR)
+        const g = insanSayiOku(row[k], 'fiyat');
+        if (g.tur === 'sayi' || g.tur === 'belirsiz') sayac.set(k, (sayac.get(k) ?? 0) + 1);
       }
     }
     let enCok = 0;
@@ -201,11 +201,21 @@ export function standartlastir(girdi: StandartlastirGirdi): StandartlastirCikti 
     yeni._ad = kaynak.ad ? String(eski[kaynak.ad] ?? '').trim() : '';
     yeni._birim = kaynak.birim ? String(eski[kaynak.birim] ?? '').trim() : '';
 
+    // A2 (tur 3): okunamayan sayi hucreleri — satir VERI satiri olarak kalirsa
+    // `_sayiUyari` alanina yazilir (hucre isareti + sayfa ozeti + kayit onayi).
+    const sayiUyarilari: Record<string, SayiUyarisi> = {};
+    const isaretle = (alan: string, g: SayiGirdisi) => {
+      const u = sayiUyarisiMi(g);
+      if (u) sayiUyarilari[alan] = u;
+    };
+
     const hamMiktar = kaynak.miktar ? eski[kaynak.miktar] : '';
-    const mik = miktarNormalize(hamMiktar);
+    const mikG = insanSayiOku(hamMiktar, 'miktar');
+    const mik = mikG.tur === 'sayi' ? mikG.deger : null;
     if (String(hamMiktar ?? '').trim() !== '' && mik === null) {
       miktarCozulemeyen++;
       yeni._miktarCozulemedi = String(hamMiktar).slice(0, 20); // GS12: sessiz sifir YOK
+      isaretle('_miktar', mikG);
     }
     // ⚠ BOS METIN DEGIL, NULL (31.07 canli bulgu). AG-Grid sayi tipindeki
     // kolonu soyle bicimlendiriyor:
@@ -223,10 +233,23 @@ export function standartlastir(girdi: StandartlastirGirdi): StandartlastirCikti 
     yeni._firma = eski._firma ?? null;
 
     // MF1/MF2: dosyadaki fiyatlar SABIT hucrelere
-    yeni._matBirim = kaynakMatBirim ? (eski[kaynakMatBirim] ?? '') : (eski._matBirim ?? '');
-    yeni._matToplam = kaynakMatToplam ? (eski[kaynakMatToplam] ?? '') : (eski._matToplam ?? '');
-    yeni._labBirim = kaynakLabBirim ? (eski[kaynakLabBirim] ?? '') : (eski._labBirim ?? '');
-    yeni._labToplam = kaynakLabToplam ? (eski[kaynakLabToplam] ?? '') : (eski._labToplam ?? '');
+    // ⚠ A2 (tur 3, olculdu): bu kopya AYRISTIRMADAN yaziyordu. Bursa Elektrik'te
+    // fiyat rolu aciklama sutununa baglanmis: 90 veri satirinin 39'unda urun
+    // tarifi `_matBirim`e gidiyor, ekran "550 kVA Stand-By…"yi ₺550,00, kayit
+    // 550, musterinin Excel'i 550 okuyordu; kaydetme onayi 39 satiri FIYATLI
+    // sayip sakliyordu. Hucre artik FIYAT kuraliyla okunur: sayi → makine metni,
+    // belirsiz / sayi degil → BOS + isaret (fiyat UYDURULMAZ, kullanici gorur).
+    const fiyatHucresi = (kaynakAlan: string | undefined, alan: '_matBirim' | '_matToplam' | '_labBirim' | '_labToplam') => {
+      if (!kaynakAlan) return eski[alan] ?? '';
+      const g = insanSayiOku(eski[kaynakAlan], 'fiyat');
+      if (g.tur === 'sayi') return makineMetni(g.deger);
+      isaretle(alan, g);
+      return '';
+    };
+    yeni._matBirim = fiyatHucresi(kaynakMatBirim, '_matBirim');
+    yeni._matToplam = fiyatHucresi(kaynakMatToplam, '_matToplam');
+    yeni._labBirim = fiyatHucresi(kaynakLabBirim, '_labBirim');
+    yeni._labToplam = fiyatHucresi(kaynakLabToplam, '_labToplam');
     yeni._toplam = eski._toplam ?? '';
 
     // GS2c: ozet sayfada satir tipi yeniden belirlenir — dosyada miktar/birim
@@ -235,9 +258,13 @@ export function standartlastir(girdi: StandartlastirGirdi): StandartlastirCikti 
     // Olcut: ad VAR + (sira no VAR veya tutar VAR). Kapak satirlari ("FİRMA:",
     // "İLGİLİ:", "ADRES:") ikisini de tasimadigi icin disarida kalir.
     if (isOzet) {
-      const tutar = ozetToplamKaynagi ? miktarNormalize(eski[ozetToplamKaynagi]) : null;
+      // A2 (tur 3): tutar FIYAT kuraliyla — FIRMA-B İCMAL M15 ": +90 000 000 00 00"
+      // (telefon) eski kuralla 900.000.000.000 TL tutar oluyordu (olculdu).
+      const tutarG = ozetToplamKaynagi ? insanSayiOku(eski[ozetToplamKaynagi], 'fiyat') : ({ tur: 'bos' } as SayiGirdisi);
+      const tutar = tutarG.tur === 'sayi' ? tutarG.deger : null;
       if (tutar !== null) yeni._toplam = tutar;
-      yeni._isDataRow = !!yeni._ad && (yeni._no !== '' || tutar !== null);
+      isaretle('_toplam', tutarG);
+      yeni._isDataRow = !!yeni._ad && (yeni._no !== '' || tutar !== null || tutarG.tur === 'belirsiz');
       // Kullanici karari (30.07): ozet satirlari GORUNUR ama fiyat
       // eslestirmesine ve TEKLIF GENELI toplamina GIRMEZ — aksi halde YILDIZ'da
       // 62.043.700 iki kez sayilip 124.087.400 olurdu.
@@ -267,6 +294,9 @@ export function standartlastir(girdi: StandartlastirGirdi): StandartlastirCikti 
       yeni._isDataRow = false;
       yeni._isHeaderRow = true;
     }
+
+    // A2: isaret YALNIZ veri satirinda — baslik/kapak satirinin metni uyari degil.
+    if (yeni._isDataRow && Object.keys(sayiUyarilari).length > 0) yeni._sayiUyari = sayiUyarilari;
 
     return yeni;
   });

@@ -736,6 +736,105 @@ async function run() {
       farklar.length === 0, farklar.join(' | '));
   }
 
+  // ── H12: A2 (tur 3, 14.09) — BELİRSİZ SAYI SÜZGECİ: FE ↔ BE PARİTESİ + ÇIKTI ──
+  // Kural İKİ yerde yaşar (ön yüz `sayi-alani.ts`, backend `import-fidelity.ts`):
+  // aynı metin ekranda ve dosyada FARKLI sınıf olursa "her yolda aynı sınıf"
+  // iş emri çöker. Ölçüt bağımsız: iki uygulama aynı korpusta nesne düzeyinde eşit
+  // olmalı; backend İNSAN yolları (miktar, AI PDF, override) ve Excel çıktısının
+  // MAKİNE okuyucusu da ön yüzün sınıfını vermeli.
+  {
+    const FESAYI = require('../../frontend/ozellik/fiyat/sayi-alani');
+    const BESAYI = require('../src/ozellik/kutuphane/utils/import-fidelity');
+    const { miktarNormalize } = require('../src/ozellik/giris/excel-grid/standart-sema');
+    const { AiService } = require('../src/ozellik/giris/ai/ai.service');
+    const { applyOverrides } = require('../src/ozellik/cikti/quote-formats/format-engine');
+    const KORPUS: unknown[] = [
+      '', '   ', '0', '12', '12,5', '12.5', '1.25', '1.250', '10.075', '25430.000', '.250', '-1.250', '1.234,5', '1,234.5',
+      '1,234,567', '1.234.567', '6.500,00', '₺1.250,00', '2.500,00 TL', 'TL 2.500,00', '₺1.250', '%30', '30%', '% 15', '%12,5',
+      '%12.125', '12 m', '3 adet', '12,5 mt.', '5 TAKIM', '2 LITRE', '1.250 m', '100m', '24 kW', '550 kVA', '2x1,5 mm²',
+      '35x240mm Üç bölmeli döşeme kanalı', 'Ø100 PVC boru', 'DN50', 'abc', '1 250', '0505 885 15 64', ': +90 000 000 00 00',
+      '$1.500,00', '12 €', '0x10', '1e3', 'Infinity', '-5', '+5', '323308,125', 12, 12.375, -3, NaN, null, undefined,
+    ];
+    const farklar: string[] = [];
+    for (const g of KORPUS) {
+      for (const alan of ['miktar', 'fiyat', 'kar', 'iskonto']) {
+        const fe = JSON.stringify(FESAYI.insanSayiOku(g, alan));
+        const be = JSON.stringify(BESAYI.insanSayiOku(g, alan));
+        if (fe !== be) farklar.push(`insan ${alan} ${JSON.stringify(g)}: FE=${fe} BE=${be}`);
+      }
+      if (!Object.is(FESAYI.sayiOku(g), BESAYI.makineSayiOku(g))) farklar.push(`makine ${JSON.stringify(g)}: FE=${FESAYI.sayiOku(g)} BE=${BESAYI.makineSayiOku(g)}`);
+    }
+    check('H12a FE ↔ BE parite: insanSayiOku (4 alan) ve makine okuyucusu 57 girdilik korpusta NESNE düzeyinde BİREBİR',
+      farklar.length === 0, farklar.slice(0, 4).join(' | '));
+    check('H12a K1/K2 sabitleri iki tarafta AYNI (karar tek yerden değişmez — iki yer birlikte)',
+      FESAYI.K1_UZUN_TAM_KISIM_BELIRSIZ === BESAYI.K1_UZUN_TAM_KISIM_BELIRSIZ
+        && JSON.stringify(FESAYI.MIKTAR_BIRIMLERI) === JSON.stringify(BESAYI.MIKTAR_BIRIMLERI),
+      `K1 FE=${FESAYI.K1_UZUN_TAM_KISIM_BELIRSIZ} BE=${BESAYI.K1_UZUN_TAM_KISIM_BELIRSIZ}`);
+
+    let tohum = 1409;
+    const rastgele = () => { tohum = (tohum * 1103515245 + 12345) % 2147483648; return tohum / 2147483648; };
+    const metinFark: string[] = [];
+    for (let i = 0; i < 5000 && metinFark.length < 3; i++) {
+      const hane = Math.floor(rastgele() * 5);
+      const n = Math.round(rastgele() * 10 ** Math.floor(rastgele() * 8) * 10 ** hane) / 10 ** hane;
+      const m = BESAYI.makineMetni(n);
+      const insan = BESAYI.insanSayiOku(m, 'fiyat');
+      if (m !== FESAYI.makineMetni(n)) metinFark.push(`makineMetni(${n}) FE=${FESAYI.makineMetni(n)} BE=${m}`);
+      else if (BESAYI.makineSayiOku(m) !== n || insan.tur !== 'sayi' || insan.deger !== n) metinFark.push(`gidiş-dönüş ${n} → "${m}" → ${JSON.stringify(insan)}`);
+    }
+    check('H12b makine metni 5.000 değerde FE ≡ BE ve İKİ kuralda da kendisine döner (Excel SAYI hücresi belirsiz sayılmaz)',
+      metinFark.length === 0, metinFark.join(' | '));
+
+    // Backend İNSAN yolları ön yüzün sınıfını verir
+    const yolFark: string[] = [];
+    const wbO = new ExcelJS.Workbook();
+    wbO.addWorksheet('S');
+    for (const g of KORPUS) {
+      const miktarFe = FESAYI.insanSayiOku(g, 'miktar');
+      const mik = miktarNormalize(g);
+      if (!Object.is(mik, miktarFe.tur === 'sayi' ? miktarFe.deger : null)) yolFark.push(`miktarNormalize ${JSON.stringify(g)} → ${mik}`);
+      const fiyatFe = FESAYI.insanSayiOku(g, 'fiyat');
+      const ai = AiService.prototype.cleanExtractedPrices.call(null, [{ materialName: 'Kalem', unit: 'Adet', unitPrice: g }]);
+      const aiAlir = fiyatFe.tur === 'sayi' && fiyatFe.deger > 0;
+      const aiUyarir = fiyatFe.tur === 'belirsiz' || fiyatFe.tur === 'sayi-degil';
+      if ((ai.materials.length === 1) !== aiAlir || (ai.sayiUyarilari.length === 1) !== aiUyarir) yolFark.push(`AI ${JSON.stringify(g)} alındı=${ai.materials.length} uyarı=${ai.sayiUyarilari.length}`);
+      if (typeof g === 'string' && g.trim() !== '') {
+        applyOverrides(wbO, { S: { A1: { value: g, manual: true } } });
+        const yazilan = wbO.getWorksheet('S')!.getCell('A1').value;
+        const sayiOlmali = fiyatFe.tur === 'sayi' && /^[\d.,\s+-]+$/.test(g.trim());
+        if ((typeof yazilan === 'number') !== sayiOlmali || (sayiOlmali && yazilan !== (fiyatFe as any).deger)) yolFark.push(`override ${JSON.stringify(g)} → ${JSON.stringify(yazilan)}`);
+      }
+    }
+    check('H12c backend İNSAN yolları aynı sınıf: miktarNormalize · AI PDF fiyatı (alınır/uyarılır) · override hücresi (sayı/metin)',
+      yolFark.length === 0, yolFark.slice(0, 4).join(' | '));
+
+    // Excel ÇIKTISI (makine okuyucusu) = ekran okuyucusu — hayalet çıktıda da sayı değil
+    const satirlar = [
+      ['Hayalet', '3 adet', '35x240mm Üç bölmeli döşeme kanalı'],
+      ['TR binlik', '12,5', '1.234,5'],
+      ['Virgül 3', 7, '10,075'],
+      ['Makine 3', '10.075', '323308.125'],
+      ['TL simge', 'Ø100 PVC boru', '₺1.250,00'],
+      ['Boş fiyat', '', ''],
+    ];
+    const cikti = await standartCiktiUret({ sheetsArr: [sayfa('Çıktı', satirlar.map(([ad, m, b], i) => veri(i + 1, String(ad), m as any, String(b), '')))] });
+    const cwb = await ac(cikti.buffer);
+    const ws = cwb.getWorksheet('Çıktı')!;
+    const ciktiFark: string[] = [];
+    for (const [ad, m, b] of satirlar) {
+      let row: ExcelJS.Row | null = null;
+      ws.eachRow((r) => { if (String(r.getCell(2).value ?? '') === ad) row = r; });
+      if (!row) { ciktiFark.push(`${ad}: satır yok`); continue; }
+      const miktarBek = FESAYI.sayiOku(m) ?? '';
+      const birimK = K(FESAYI.sayiOku(b) ?? 0);
+      const birimBek = birimK ? birimK / 100 : '';
+      const c = (row as ExcelJS.Row).getCell(3).value; const e = (row as ExcelJS.Row).getCell(5).value;
+      if (c !== miktarBek || e !== birimBek) ciktiFark.push(`${ad}: C=${JSON.stringify(c)} (ekran ${JSON.stringify(miktarBek)}) E=${JSON.stringify(e)} (ekran ${JSON.stringify(birimBek)})`);
+    }
+    check('H12d Excel çıktısı ekranın makine okuyucusuyla AYNI sayıyı yazar — "35x240mm…" Malz. Birim 35 DEĞİL, "3 adet" Miktar 3 DEĞİL',
+      ciktiFark.length === 0, ciktiFark.join(' | '));
+  }
+
   console.log(`\n${'─'.repeat(64)}\nHESAP DOĞRULUĞU: ${passed} PASS · ${failed} FAIL`);
   if (failures.length) { console.log('\nBAŞARISIZ:'); failures.forEach((f) => console.log(`  ✗ ${f}`)); }
   process.exit(failed > 0 ? 1 : 0);

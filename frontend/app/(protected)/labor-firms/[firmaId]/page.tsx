@@ -17,6 +17,7 @@ import { ExcelGrid, type ExcelGridHandle } from '@/ozellik/tablo/excel-grid/Exce
 import InlineFirmEntry from '@/ozellik/kutuphane/library/InlineFirmEntry';
 import type { FirmEntryHandle } from '@/ozellik/kutuphane/library/InlineFirmEntry';
 import type { ExcelGridData, ExcelRowData } from '@/ozellik/tablo/excel-grid/types';
+import { sayiOku } from '@/ozellik/fiyat/sayi-alani';
 
 interface LaborFirm {
   id: string;
@@ -182,14 +183,10 @@ export default function LaborFirmDetailPage() {
     }
   }, [gridData]);
 
+  /** Kayit okuyucusu — hucre MAKINE sinirinda (A2, tur 3; malzeme ikizi `numOrU`
+   *  ile AYNI okuyucu). Eski kopya `parseFloat` "24 kW"yi 24 yaziyordu. */
   function parseTrNum(v: unknown): number {
-    let s = String(v ?? '').replace(/[₺$€\s]/g, '').trim();
-    if (s === '') return 0;
-    const hasComma = s.includes(',');
-    const hasDot = s.includes('.');
-    if (hasComma && hasDot) s = s.replace(/\./g, '').replace(',', '.'); // TR bicimi
-    else if (hasComma) s = s.replace(',', '.');
-    return parseFloat(s) || 0;
+    return sayiOku(v) ?? 0;
   }
 
   async function handleSaveDrafts() {

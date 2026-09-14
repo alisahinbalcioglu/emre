@@ -24,25 +24,22 @@
  * sinifi). O dosya test klasorunde .mjs oldugu icin uretimden import
  * EDILMEZ; mantik burada `insanSayi` olarak yasar ve iki uygulamanin
  * AYRISAMAMASI yapistir.test.ts'teki esdegerlik koprusuyle kilitlidir.
+ *
+ * ── A2 (tur 3, 14.09 — olculdu): BELIRSIZ SAYI ──────────────────────────────
+ * `num()` "1.250"yi 1250 okur; ayni metin elle yazilinca 1,25, admin ice
+ * aktarmada BELIRSIZ idi — ayni girdi uc sinif. Pano da INSAN sinirindadir:
+ * kural artik `sayi-alani.ts` `insanSayiOku` (tek kaynak). Tek anlamli
+ * yazimlarda `num()` ile esdegerlik korunur; belirsiz yazim ("1.234") koprunun
+ * ACIK istisnasidir (yapistir.test.ts) — yazilmaz, ozet toast'ta sayilir.
  */
+import { insanSayiOku, type SayiAlanTuru } from '../../fiyat/sayi-alani';
 
-/** INSAN YAZIMI para/sayi metni → number. Sayi gibi degilse null.
- *  Kural (num() ile birebir): para sembolleri/harfler suzulur; nokta + tam
- *  3 rakam + (rakam-disi|son) = TR binlik ayirici, ATILIR; virgul ondaliktir. */
-export function insanSayi(s: unknown): number | null {
-  if (typeof s === 'number') return Number.isFinite(s) ? s : null;
-  const ham = String(s ?? '').trim();
-  if (!ham) return null;
-  // Rakam icermeyen ya da harf agirlikli metin sayi DEGILDIR — "mt", "ad",
-  // "35x240mm kanal" gibi tariflerden sayi UYDURULMAZ (numHam'in 03-bursa
-  // dersi: rakam suzen parser "35x240mm"den 35240 uretmisti).
-  if (!/\d/.test(ham) || /[a-zA-ZğüşöçıİĞÜŞÖÇ]/.test(ham.replace(/(tl|try)\b/gi, ''))) return null;
-  const m = ham
-    .replace(/[^\d,.\-]/g, '')
-    .replace(/\.(?=\d{3}(\D|$))/g, '')
-    .replace(',', '.');
-  const f = parseFloat(m);
-  return Number.isFinite(f) ? f : null;
+/** INSAN YAZIMI para/sayi metni → number. Sayi degilse ya da BELIRSIZSE null.
+ *  Alan verilmezse fiyat (₺/TL suslu Excel gorunumu). Sinifin kendisi icin
+ *  `insanSayiOku` kullanin — bu sarmalayici yalniz "yazilacak sayi" sorusudur. */
+export function insanSayi(s: unknown, alan: SayiAlanTuru = 'fiyat'): number | null {
+  const r = insanSayiOku(s, alan);
+  return r.tur === 'sayi' ? r.deger : null;
 }
 
 /** Pano metni → hucre matrisi. Excel TSV verir: satirlar \n, kolonlar \t.
@@ -64,6 +61,9 @@ export interface PasteKolon {
    *  cozulemeyen metin hucresi YAZILMAZ (fiyat alanina "mt" copu girmesin —
    *  İB3 mutasyonunda olculen bozulma sinifinin panodan tekrari olurdu). */
   sayisal: boolean;
+  /** A2: sayisal kolonun ALAN TURU — izinli sus (₺ / % / birim) ve uyari metni
+   *  buna bagli. Verilmezse 'fiyat'. */
+  alan?: SayiAlanTuru;
 }
 
 export interface PasteSatir {
@@ -83,11 +83,27 @@ export interface PastePlan {
     atlananBos: number;
     /** sayisal kolona cozulemeyen metin geldi */
     atlananSayiDegil: number;
+    /** A2: sayisal kolona BELIRSIZ sayi geldi ("1.250") — yazilmadi */
+    atlananBelirsiz: number;
+    /** A2: atlanan sayisal hucrelerin ILK IKI ham metni (toast'ta gosterilir) */
+    ornekHamlar: string[];
     /** hedef kolon editable degil / kolon araligi disi */
     atlananKolon: number;
     /** griddeki veri satirlari bitti — tasan kopya satirlari */
     sigmayanSatir: number;
   };
+}
+
+/** A2: yapistirma ozet toast'inin sayi uyarisi parcalari (bos dizi = uyari yok).
+ *  Saf: ExcelGrid bu parcalari mevcut ozet cumlesine ekler. */
+export function yapistirmaSayiUyarilari(ozet: PastePlan['ozet']): string[] {
+  const parca: string[] = [];
+  if (ozet.atlananBelirsiz > 0) parca.push(`${ozet.atlananBelirsiz} hücre belirsiz sayıydı (1.250 → 1250 mi 1,25 mi?)`);
+  if (ozet.atlananSayiDegil > 0) parca.push(`${ozet.atlananSayiDegil} hücre sayı değildi`);
+  if (parca.length > 0 && ozet.ornekHamlar.length > 0) {
+    parca.push(`yazılmadı: ${ozet.ornekHamlar.map((h) => `“${h.length > 30 ? `${h.slice(0, 29)}…` : h}”`).join(', ')}`);
+  }
+  return parca;
 }
 
 /**
@@ -103,7 +119,7 @@ export function planYapistir(
 ): PastePlan {
   const bos: PastePlan = {
     hucreler: [],
-    ozet: { yazilacak: 0, atlananBos: 0, atlananSayiDegil: 0, atlananKolon: 0, sigmayanSatir: 0 },
+    ozet: { yazilacak: 0, atlananBos: 0, atlananSayiDegil: 0, atlananBelirsiz: 0, ornekHamlar: [], atlananKolon: 0, sigmayanSatir: 0 },
   };
   const matris = panoMatrisi(metin);
   if (matris.length === 0) return bos;
@@ -121,9 +137,13 @@ export function planYapistir(
       if (ham.trim() === '') { plan.ozet.atlananBos++; continue; }
       if (!kolon || !kolon.editable) { plan.ozet.atlananKolon++; continue; }
       if (kolon.sayisal) {
-        const n = insanSayi(ham);
-        if (n === null) { plan.ozet.atlananSayiDegil++; continue; }
-        plan.hucreler.push({ satir: si, field: kolon.field, deger: n });
+        const r = insanSayiOku(ham, kolon.alan ?? 'fiyat');
+        if (r.tur !== 'sayi') {
+          if (r.tur === 'belirsiz') plan.ozet.atlananBelirsiz++; else plan.ozet.atlananSayiDegil++;
+          if (plan.ozet.ornekHamlar.length < 2) plan.ozet.ornekHamlar.push(ham.trim());
+          continue;
+        }
+        plan.hucreler.push({ satir: si, field: kolon.field, deger: r.deger });
       } else {
         plan.hucreler.push({ satir: si, field: kolon.field, deger: ham });
       }

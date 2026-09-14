@@ -12,6 +12,8 @@
 // ════════════════════════════════════════════════════════════════════
 import * as ExcelJS from 'exceljs';
 import { kurusTamsayi } from '../../fiyat/matching/pricing';
+// A2 (tur 3): kullanicinin yazdigi override metni INSAN sinirindadir — tek sayi kurali
+import { insanSayiOku } from '../../kutuphane/utils/import-fidelity';
 
 /** PRD §2 tablosu — bilinen yer tutucular. Disindaki her {{ETIKET}} T3
  *  geregi "taninmayan" olarak uyarilir (ama hucreye DOKUNULMAZ). */
@@ -384,11 +386,15 @@ export function applyOverrides(wb: ExcelJS.Workbook, overrides: ExportOverrides 
     for (const [addr, o] of Object.entries(cells ?? {})) {
       if (o === null || o === undefined) continue;
       const v = o.value;
-      const num = typeof v === 'number' ? v : parseFloat(String(v).replace(/\./g, '').replace(',', '.'));
-      // Sayiya benziyorsa sayi, degilse metin — formul yazilmaz (guvenlik)
+      // Sayiya benziyorsa sayi, degilse metin — formul yazilmaz (guvenlik).
+      // A2 (tur 3, olculdu): eski hali TUM noktalari binlik sayiyordu — "12.5"
+      // ve "1.25" 125 yaziliyordu. Insan kurali: tek anlamli sayi → sayi;
+      // BELIRSIZ ("1.250") ve olcu metni kullanicinin yazdigi METIN olarak kalir
+      // (sessiz 1250 varsayimi yok). Onizleme ucu silindi — yalniz eski kayitlar.
+      const g = typeof v === 'number' ? null : insanSayiOku(String(v).trim(), 'fiyat');
       ws.getCell(addr).value =
         typeof v === 'number' ? v
-        : String(v).trim() !== '' && !isNaN(num) && /^[\d.,\s-]+$/.test(String(v).trim()) ? num
+        : g?.tur === 'sayi' && /^[\d.,\s+-]+$/.test(String(v).trim()) ? g.deger
         : String(v);
     }
   }

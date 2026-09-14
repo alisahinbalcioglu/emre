@@ -15,6 +15,7 @@
 import { describe, it, expect } from 'vitest';
 import { aralikKur, hucreMetni, planKopyala, type KopyaKolon, type KopyaSatir } from './kopyala';
 import { planYapistir, type PasteKolon, type PasteSatir } from './yapistir';
+import { hucreGosterimMetni } from '../../fiyat/sayi-alani';
 
 // ── Kutuphane gridinin GORUNUR kolon dizilisi (library modu) ──
 // Not: '_draftNetPrice' AG Grid'de `colId` ile tanimli (field yok) — kopyalama
@@ -177,5 +178,28 @@ describe('S7 ★ GIDIS-DONUS — kutuphaneden kopyala, teklife yapistir', () => 
       { satir: 0, field: '_matBirim', deger: 53.3 },
       { satir: 1, field: '_matBirim', deger: 80.1 }, // 2 DEGIL — bos satir yok
     ]);
+  });
+});
+
+// ── E (A2, tur 3 — olculdu): MIKTAR / KAR KOPYA GIDIS-DONUSU ────────────────
+// Miktar hucresinin bicimlendiricisi YOKTU: pano ham makine metnini ("12.375")
+// aliyor, yapistirma onu 12375 okuyordu (1000 kat). Insan kurali gelince ayni
+// metin BELIRSIZ olurdu. ExcelGrid miktar/kar kolonu `hucreGosterimMetni` ile
+// bicimlenir (kaynak kapisi: sayi-yollari.test.ts SY-BAG E).
+describe('E ★ MIKTAR/KAR gidis-donus — sakli makine metni → pano → yapistirma', () => {
+  const MIKTAR: KopyaKolon[] = [{ field: '_miktar' }];
+  const HEDEF: PasteKolon[] = [{ field: '_miktar', editable: true, sayisal: true, alan: 'miktar' }];
+  it('KY-E 12.375 kopyalanip yapistirilinca 12.375 kalir (eskiden 12375)', () => {
+    const sakli: unknown[] = ['12.375', '10.075', 1250, '0.5', '1234.5', 10.075];
+    const kopya = planKopyala(aralikKur({ satir: 0, kolon: 0 }, { satir: sakli.length - 1, kolon: 0 }), MIKTAR, VERI(sakli.length), (si) => hucreGosterimMetni(sakli[si]));
+    expect(kopya.metin).toBe('12,375\n10,075\n1250\n0,5\n1234,5\n10,075');
+    const yapistir = planYapistir(kopya.metin, HEDEF, '_miktar', VERI(sakli.length));
+    expect(yapistir.hucreler.map((h) => h.deger)).toEqual([12.375, 10.075, 1250, 0.5, 1234.5, 10.075]);
+    expect(yapistir.ozet.atlananBelirsiz).toBe(0);
+  });
+  it('KY-E OLCUTUN KENDISI: ham makine metni panoya gitseydi BELIRSIZ olurdu', () => {
+    const yapistir = planYapistir('12.375', HEDEF, '_miktar', VERI(1));
+    expect(yapistir.hucreler).toEqual([]);
+    expect(yapistir.ozet.atlananBelirsiz).toBe(1);
   });
 });

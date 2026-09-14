@@ -20,6 +20,8 @@
 import type {
   MultiSheetData, SheetData, ExcelRowData, ColumnRoles, ExcelColumnDef,
 } from '@/ozellik/tablo/excel-grid/types';
+// NOT: goreli yol ZORUNLU — vitest'te '@/' alias'i yok (yalniz tip importu silinir).
+import { sayiOku } from '../fiyat/sayi-alani';
 
 /** Kullanici emegi tasiyan alanlar — merge'de HER ZAMAN eski satirdan korunur. */
 const SYSTEM_FIELDS = [
@@ -90,12 +92,20 @@ function mergeSheetRows(
       }
       // Dolu fiyat hucreleri eski satirdan korunur (dosya fiyat tasimiyor;
       // stripPrices'li prepare bos gonderir — bosla ezme!)
+      // A2 (tur 3, olculdu): "dolu" olcutu `parseFloat(metin) !== 0` idi —
+      // NaN !== 0 oldugu icin METIN fiyat ("35x240mm Üç bölmeli…") "dolu"
+      // sayilip yeni dosyanin degerine karsi KORUNUYORDU. Dolu = makine
+      // okuyucusuyla sifirdan farkli SAYI.
+      // Ice aktarma sayi isareti YENI dosyanindir; korunan fiyatin isareti duser.
+      out._sayiUyari = inc._sayiUyari ? { ...inc._sayiUyari } : undefined;
       for (const f of pFields) {
-        const prevVal = String(prev[f] ?? '').trim();
-        if (prevVal !== '' && parseFloat(prevVal.replace(',', '.')) !== 0) {
+        const prevSayi = sayiOku(prev[f]);
+        if (prevSayi !== null && prevSayi !== 0) {
           out[f] = prev[f];
+          if (out._sayiUyari) delete out._sayiUyari[f];
         }
       }
+      if (out._sayiUyari && Object.keys(out._sayiUyari).length === 0) out._sayiUyari = undefined;
       // Kullanicinin ozel sutunlarindaki degerler (incoming'de alan yok) —
       // spread sirasi geregi zaten prev'den geliyor ✓
       merged.push(out);

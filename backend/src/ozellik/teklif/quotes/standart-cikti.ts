@@ -18,6 +18,8 @@ import {
   STANDART_KOLONLAR_EN, OZET_KOLONLAR_EN, birimCevir,
 } from './cikti-dil';
 import { kurusTamsayi } from '../../fiyat/matching/pricing';
+// A2 (tur 3): kayitli grid hucresi MAKINE sinirindadir — on yuz `sayiOku` ikizi
+import { makineSayiOku } from '../../kutuphane/utils/import-fidelity';
 import { AntetBilgi, antetYaz } from '../../cikti/utils/antet';
 
 /** EX1 — degismez 9 kolon, bu sirada. */
@@ -64,19 +66,12 @@ export interface StandartCiktiSonuc {
  *  ⚠ ILK SURUM HATALIYDI: duz `.replace(',', '.')` "1.234,56"yi "1.234.56"
  *  yapip parseFloat ile **1.234**'e dusuruyordu (386.417,28 → 386.417).
  *  Eski format testleri bunu yakaladi; export-engine'deki dogru mantik
- *  buraya alindi. */
-const sayi = (v: unknown): number => {
-  if (v === undefined || v === null || v === '') return 0;
-  if (typeof v === 'number') return isFinite(v) ? v : 0;
-  let s = String(v).replace(/[₺$€\s]/g, '').trim();
-  if (s === '') return 0;
-  const virgul = s.includes(',');
-  const nokta = s.includes('.');
-  if (virgul && nokta) s = s.replace(/\./g, '').replace(',', '.'); // TR: nokta binlik
-  else if (virgul) s = s.replace(',', '.');
-  const n = parseFloat(s);
-  return isNaN(n) ? 0 : n;
-};
+ *  buraya alindi.
+ *  ⚠ A2 (tur 3, olculdu): `parseFloat` metnin basindaki rakami SAYI yapiyordu —
+ *  musterinin Excel'inde "35x240mm kanal" Malz. Birim 35, "3 adet" Miktar 3
+ *  (ekran ve kayit 0 okurken). Okuyucu artik ekranla AYNI makine kurali
+ *  (`makineSayiOku` ≡ on yuz `sayiOku`, parite H12): harf/olcu metni sayi degil. */
+const sayi = (v: unknown): number => makineSayiOku(v) ?? 0;
 
 const simge = (kod?: string) => (kod === 'USD' ? '$' : kod === 'EUR' ? '€' : '₺');
 const paraBicimi = (kod?: string) =>
@@ -256,7 +251,8 @@ export function standartSayfaYaz(
     const satir = ws.addRow([
       String(r[F.no] ?? ''),
       ad,
-      r[F.miktar] === '' || r[F.miktar] === null || r[F.miktar] === undefined ? '' : sayi(r[F.miktar]),
+      // A2: okunamayan miktar metni ("Ø100 PVC boru") BOS yazilir — 0 da uydurma sayi da degil
+      makineSayiOku(r[F.miktar]) ?? '',
       // Birim SABIT bir kumedir ("mt", "ad", "set") — sozlukle cevrilir,
       // AI'ya gitmez; zaten ceviri katmaninda DOKUNULMAZ sayiliyor.
       birimCevir(r[F.birim], ops.dil),

@@ -2,6 +2,8 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 import Anthropic from '@anthropic-ai/sdk';
 import { kullanimiOlc, type AiKullanim } from './ai-maliyet';
+// A2 (tur 3): insan sinirinin tek fiyat kurali (AI metni de insan metnidir)
+import { insanSayiOku } from '../../kutuphane/utils/import-fidelity';
 // watch-trigger: force NestJS reload
 // pdf-parse v2 has breaking API changes — use safe wrapper
 async function extractPdfText(buffer: Buffer): Promise<string> {
@@ -637,7 +639,7 @@ KURALLAR:
   async extractGlobalMaterials(
     buffer: Buffer,
     kimlik?: { userId?: string | null; firmaId?: string | null },
-  ): Promise<{ materials: ParsedGlobalMaterial[]; usedProvider: string }> {
+  ): Promise<{ materials: ParsedGlobalMaterial[]; usedProvider: string; sayiUyarilari?: string[] }> {
     if (!buffer || buffer.length === 0) {
       throw new BadRequestException('Dosya bos (0 byte). Lutfen gecerli bir PDF yukleyin.');
     }
@@ -700,11 +702,11 @@ ONEMLI: Eksik malzeme kabul edilemez. Dokumandaki malzeme sayisi ne kadarsa, o k
       try {
         console.log('[AI] Claude Vision deneniyor...');
         const { data: raw, usage } = await this.callClaudeVision(buffer, GLOBAL_PROMPT, claudeKey);
-        const cleaned = this.cleanExtractedPrices(raw);
+        const { materials: cleaned, sayiUyarilari } = this.cleanExtractedPrices(raw);
         if (cleaned.length > 0) {
           console.log(`[AI] Claude Vision basarili: ${cleaned.length} malzeme`);
           await this.logUsage({ feature: 'pdf_parse', provider: 'claude', model: 'claude-sonnet-4-6', usage, success: true, kimlik });
-          return { materials: cleaned, usedProvider: 'claude (vision)' };
+          return { materials: cleaned, usedProvider: 'claude (vision)', sayiUyarilari };
         }
         console.log('[AI] Claude Vision sonuc bos, text fallback deneniyor...');
       } catch (visionErr) {
@@ -718,11 +720,11 @@ ONEMLI: Eksik malzeme kabul edilemez. Dokumandaki malzeme sayisi ne kadarsa, o k
         console.log('[AI] Claude Text deneniyor...');
         const prompt = `${GLOBAL_PROMPT}\n\nAsagidaki metin bir PDF fiyat listesinden cikarilmistir:\n\n${textFallback.slice(0, 30000)}`;
         const { data: raw, usage } = await this.callClaude<ParsedGlobalMaterial>(prompt, claudeKey);
-        const cleaned = this.cleanExtractedPrices(raw);
+        const { materials: cleaned, sayiUyarilari } = this.cleanExtractedPrices(raw);
         if (cleaned.length > 0) {
           console.log(`[AI] Claude Text basarili: ${cleaned.length} malzeme`);
           await this.logUsage({ feature: 'pdf_parse', provider: 'claude', model: 'claude-sonnet-4-6', usage, success: true, kimlik });
-          return { materials: cleaned, usedProvider: 'claude (text)' };
+          return { materials: cleaned, usedProvider: 'claude (text)', sayiUyarilari };
         }
       } catch (textErr) {
         console.error('[AI] Claude Text hatasi:', (textErr as Error).message);
@@ -734,11 +736,11 @@ ONEMLI: Eksik malzeme kabul edilemez. Dokumandaki malzeme sayisi ne kadarsa, o k
       try {
         console.log('[AI] Gemini Vision deneniyor...');
         const { data: raw, usage } = await this.callGeminiVision(buffer, GLOBAL_PROMPT, geminiKey);
-        const cleaned = this.cleanExtractedPrices(raw);
+        const { materials: cleaned, sayiUyarilari } = this.cleanExtractedPrices(raw);
         if (cleaned.length > 0) {
           console.log(`[AI] Gemini Vision basarili: ${cleaned.length} malzeme`);
           await this.logUsage({ feature: 'pdf_parse', provider: 'gemini', model: 'gemini-2.5-flash', usage, success: true, kimlik });
-          return { materials: cleaned, usedProvider: 'gemini (vision, failover)' };
+          return { materials: cleaned, usedProvider: 'gemini (vision, failover)', sayiUyarilari };
         }
       } catch (gemErr) {
         console.error('[AI] Gemini Vision hatasi:', (gemErr as Error).message);
@@ -751,11 +753,11 @@ ONEMLI: Eksik malzeme kabul edilemez. Dokumandaki malzeme sayisi ne kadarsa, o k
         console.log('[AI] Gemini Text deneniyor...');
         const prompt = `${GLOBAL_PROMPT}\n\nMetin:\n${textFallback.slice(0, 30000)}`;
         const { data: raw, usage } = await this.callGemini<ParsedGlobalMaterial>(prompt, geminiKey);
-        const cleaned = this.cleanExtractedPrices(raw);
+        const { materials: cleaned, sayiUyarilari } = this.cleanExtractedPrices(raw);
         if (cleaned.length > 0) {
           console.log(`[AI] Gemini Text basarili: ${cleaned.length} malzeme`);
           await this.logUsage({ feature: 'pdf_parse', provider: 'gemini', model: 'gemini-2.5-flash', usage, success: true, kimlik });
-          return { materials: cleaned, usedProvider: 'gemini (text, failover)' };
+          return { materials: cleaned, usedProvider: 'gemini (text, failover)', sayiUyarilari };
         }
       } catch (gemTextErr) {
         console.error('[AI] Gemini Text hatasi:', (gemTextErr as Error).message);
@@ -838,31 +840,29 @@ ONEMLI: Eksik malzeme kabul edilemez. Dokumandaki malzeme sayisi ne kadarsa, o k
     };
   }
 
-  // Fiyat temizligi: TL, $, €, nokta/virgul ayiklama
-  private cleanExtractedPrices(materials: ParsedGlobalMaterial[]): ParsedGlobalMaterial[] {
-    return materials
+  // Fiyat temizligi — A2 (tur 3, olculdu): eski hali harfleri SUZUP sayi
+  // uyduruyordu ("24 kW" → 24, "10.075" → 10,07; "$" siliniyor, USD fiyat TL
+  // yaziliyordu). Insan sinirinin tek fiyat kurali (`insanSayiOku`): belirsiz,
+  // olcu metni ve dovizli fiyat YAZILMAZ — satir `sayiUyarilari`na girer ve
+  // on yuz onizlemede gosterir (sessiz dusurme yok).
+  private cleanExtractedPrices(materials: ParsedGlobalMaterial[]): { materials: ParsedGlobalMaterial[]; sayiUyarilari: string[] } {
+    const sayiUyarilari: string[] = [];
+    const temiz = materials
       .map((m) => {
-        let priceStr = String(m.unitPrice ?? '');
-        priceStr = priceStr.replace(/[TLtl$€₺\s]/g, '');
-        if (priceStr.includes(',') && priceStr.includes('.')) {
-          const lastComma = priceStr.lastIndexOf(',');
-          const lastDot = priceStr.lastIndexOf('.');
-          if (lastComma > lastDot) {
-            priceStr = priceStr.replace(/\./g, '').replace(',', '.');
-          } else {
-            priceStr = priceStr.replace(/,/g, '');
-          }
-        } else if (priceStr.includes(',')) {
-          priceStr = priceStr.replace(',', '.');
+        const g = insanSayiOku(m.unitPrice as unknown, 'fiyat');
+        if (!m.materialName?.trim()) return null;
+        if (g.tur === 'belirsiz' || g.tur === 'sayi-degil') {
+          sayiUyarilari.push(`"${m.materialName.trim().slice(0, 40)}": fiyat ${g.tur === 'belirsiz' ? 'belirsiz' : 'sayı değil'} ("${String(m.unitPrice).slice(0, 30)}") — satır alınmadı`);
+          return null;
         }
-        const price = parseFloat(priceStr);
-        if (!m.materialName?.trim() || isNaN(price) || price <= 0) return null;
+        if (g.tur !== 'sayi' || g.deger <= 0) return null;
         return {
           materialName: m.materialName.trim(),
           unit: m.unit?.trim() || 'Adet',
-          unitPrice: Math.round(price * 100) / 100,
+          unitPrice: Math.round(g.deger * 100) / 100,
         };
       })
       .filter((m): m is ParsedGlobalMaterial => m !== null);
+    return { materials: temiz, sayiUyarilari };
   }
 }

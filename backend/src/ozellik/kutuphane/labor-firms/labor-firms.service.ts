@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException, ConflictException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
+// A2 (tur 3): insan sinirinin tek sayi kurali (dosya metni fiyat hucresi)
+import { insanSayiOku } from '../utils/import-fidelity';
 import { buildMaterialContextFromRows, ColumnRoles, RowData } from '../../eslestirme/utils/build-material-context';
 // PRD Iscilik L2: ice aktarim AYNI indeksleyiciden gecer (tek motor/indeksleyici)
 import { MatchingService } from '../../eslestirme/matching/matching.service';
@@ -670,11 +672,17 @@ export class LaborFirmsService {
         if (!row || !row._isDataRow) continue;
 
         const unitPriceRaw = row[roles.laborUnitPriceField];
-        const parsed = typeof unitPriceRaw === 'number'
-          ? unitPriceRaw
-          : parseFloat(String(unitPriceRaw ?? '').replace(',', '.'));
+        // A2 (tur 3, olculdu): `parseFloat(replace(',', '.'))` "24 kW"yi 24,
+        // "1.234,5"i 1,234 yaziyordu. Admin ikiziyle AYNI sinif: belirsiz ve
+        // sayi degil satir YAZILMAZ, uyari listesine girer.
+        const fiyatG = insanSayiOku(unitPriceRaw, 'fiyat');
+        if (fiyatG.tur === 'belirsiz' || fiyatG.tur === 'sayi-degil') {
+          skipped++;
+          warnings.push(`"${sheet.name}" satır ${rowIdx + 1}: fiyat ${fiyatG.tur === 'belirsiz' ? 'belirsiz' : 'sayı değil'} ("${String(unitPriceRaw).slice(0, 40)}") — düzeltip yeniden kaydedin.`);
+          continue;
+        }
         // Fiyat 0 olabilir — kullanici sonra elle duzenler
-        const unitPrice = isNaN(parsed) || parsed < 0 ? 0 : parsed;
+        const unitPrice = fiyatG.tur === 'sayi' && fiyatG.deger > 0 ? fiyatG.deger : 0;
 
         const fullName = buildMaterialContextFromRows(sheet.rowData, rowIdx, roles);
         if (!fullName || fullName.length < 2) { skipped++; continue; }
