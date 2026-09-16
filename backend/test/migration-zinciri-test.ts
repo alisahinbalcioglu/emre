@@ -110,6 +110,11 @@ async function main() {
     'CeviriTuketimi',
     // Tur 3 A4c (14.09): K1 donmus ozel fiyat temizliginin yedegi (geri alma izi).
     'KutuphaneOzelFiyatYedegi',
+    // Faz 6.9 (T2): firma ceviri duzeltmesi + olay izi.
+    'CeviriDuzeltmesi',
+    'CeviriDuzeltmeOlayi',
+    // Faz 6.12a (16.09): deneme kullanim kaydi — ucretsiz deneme bir kez.
+    'DenemeKullanimi',
   ];
   const tabloSonuc = await db.query<{ table_name: string }>(
     `SELECT table_name FROM information_schema.tables WHERE table_schema='public'`,
@@ -125,6 +130,26 @@ async function main() {
   for (const t of beklenenTablolar) {
     check(`Z2 tablo olustu: ${t}`, tablolar.includes(t));
   }
+
+  // ── Z2b (Faz 6.9 T2): firma düzeltmesinin tekilliği ÖZETTE ve gerçekten UNIQUE ──
+  // Tekillik ham metinde olsaydı uzun şartname satırı btree tavanını patlatırdı;
+  // UNIQUE olmasaydı aynı firma aynı metne iki karşılık yazabilirdi (okuma
+  // hangisini seçeceğini bilemezdi). İndeks tanımı pg_indexes'ten okunur.
+  const duzeltmeIndeksleri = (await db.query<{ indexname: string; indexdef: string }>(
+    `SELECT indexname, indexdef FROM pg_indexes WHERE schemaname='public' AND tablename IN ('CeviriDuzeltmesi','CeviriDuzeltmeOlayi') ORDER BY indexname`,
+  )).rows;
+  const tekil = duzeltmeIndeksleri.find((r) => r.indexname === 'CeviriDuzeltmesi_firmaId_hedefDil_kaynakOzeti_key');
+  check(
+    'Z2b CeviriDuzeltmesi (firmaId, hedefDil, kaynakOzeti) indeksi UNIQUE ve ham kaynakMetin hiçbir indekste yok',
+    !!tekil && /CREATE UNIQUE INDEX/.test(tekil.indexdef) && /\("firmaId", "hedefDil", "kaynakOzeti"\)/.test(tekil.indexdef) &&
+      !duzeltmeIndeksleri.some((r) => r.indexdef.includes('"kaynakMetin"')),
+    JSON.stringify(duzeltmeIndeksleri.map((r) => r.indexdef)),
+  );
+  check(
+    'Z2b iki tabloda toplam 4 ikincil indeks (tekil + firma/güncellendi + olay firma/zaman + olay kullanıcı/zaman)',
+    duzeltmeIndeksleri.filter((r) => !r.indexname.endsWith('_pkey')).length === 4,
+    JSON.stringify(duzeltmeIndeksleri.map((r) => r.indexname)),
+  );
 
   // ── Z3: Firma fatura alanlari eklendi mi ──────────────────────────────
   const kolonSonuc = await db.query<{ column_name: string }>(
@@ -301,6 +326,7 @@ async function main() {
   );
 
   await k1DonmusOzelFiyat(db, klasorler);
+  await denemeHakkiDoldurmasi(db, klasorler);
 
   await db.close();
 
@@ -495,6 +521,146 @@ async function k1DonmusOzelFiyat(db: PGlite, klasorler: string[]): Promise<void>
     donen.every((id) => once.get(id)?.c !== null && Math.abs(Number(geri.get(id)?.c) - Number(once.get(id)?.c)) < 1e-9)
       && geri.get('R01-havuz-esit-donmus')?.c === 111,
     donen.map((id) => `${id}:${geri.get(id)?.c}/${once.get(id)?.c}`).join(' ') + ` R01=${geri.get('R01-havuz-esit-donmus')?.c}`);
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// D) DENEME HAKKI GERIYE DONUK DOLDURMA (Faz 6.12a, 16.09)
+//    Zincir BOS veritabaninda kostu (doldurma hicbir satira dokunmadi). Soz
+//    VERIYLE sinanir: gecmis niyetler + kapatilmis hesap + miras firma kurulur,
+//    doldurma blogu DOSYADAN okunup yeniden kosulur. Ayrica SQL normalizesi
+//    ile uygulamanin JS normalizesi (deneme-hakki.ts) AYNI ornek kumede
+//    karsilastirilir: ikisi ayrisirsa gecmis deneme kaydi calisma anindaki
+//    anahtarla ESLESMEZ ve acik gecmis musteriler icin sessizce acik kalir.
+// ═════════════════════════════════════════════════════════════════════════
+async function denemeHakkiDoldurmasi(db: PGlite, klasorler: string[]): Promise<void> {
+  const { denemeEpostaAnahtari, telefonAnahtari } = await import(
+    '../src/ozellik/odeme/abonelik/deneme-hakki'
+  );
+  console.log('\n── D · DENEME HAKKI GERIYE DONUK DOLDURMA ──');
+  const klasor = klasorler.find((k) => k.includes('deneme_hakki'));
+  check('D-OLCUT 6.12a migration zincirde', !!klasor, JSON.stringify(klasorler.slice(-2)));
+  if (!klasor) return;
+  const tamSql = fs.readFileSync(path.join(MIGRATIONS, klasor, 'migration.sql'), 'utf8');
+  const ayrac = '-- ═══ GERIYE DONUK DOLDURMA (6.12a)';
+  check('D-OLCUT doldurma blogu dosyada bulundu', tamSql.includes(ayrac));
+  const doldurma = tamSql.slice(tamSql.indexOf(ayrac));
+
+  const bos = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM "DenemeKullanimi"`);
+  check('D0 bos zincirde doldurma HATASIZ kostu ve kayit URETMEDI (sozun bos DB yolu)',
+    Number(bos.rows[0].n) === 0, `kayit=${bos.rows[0].n}`);
+
+  // Normalize ornekleri: kenar durumlar BILEREK (bos yerel kisim, '@' yok,
+  // alan gmail degil ama nokta var, harfli alan, Turkce harf, bosluk).
+  const epostaOrnekleri = [
+    'Ali.Veli+Deneme@GoogleMail.com', 'ILKER@Firma.com.TR', '  bosluk@ornek.com ',
+    '+etiket@ornek.com', 'nokta.li@firma.com', 'a+b+c@gmail.com', 'Çağrı@örnek.com',
+    'isaretyok.ornek.com', '@alanyok.com', 'sonda@', 'X.Y@GMAIL.COM', '.@gmail.com',
+  ];
+  const telefonOrnekleri = [
+    '0533 098 36 63', '12345', '+90 (533) 098-36-63', '905330983663', null, '0090 533 0983663',
+    '0533 098 36 63', '5330983663', '', '(0212) 555 44 33', 'x', '+1 415 555 0100',
+  ];
+  const ornekDegerleri = epostaOrnekleri.map((e, i) =>
+    `('dhP${i}', 'dhP${i}', ${telefonOrnekleri[i] === null ? 'NULL' : `'${telefonOrnekleri[i]}'`})`).join(',\n        ');
+  const ornekKullanicilar = epostaOrnekleri.map((e, i) =>
+    `('dhPU${i}', '${e.replace(/'/g, "''")}', 'h', 'dhP${i}')`).join(',\n        ');
+  const ornekNiyetler = epostaOrnekleri.map((_, i) =>
+    `('dhPN${i}', 't-dhPN${i}', 'dhP${i}', 'dh-s30', 'dhPU${i}', 'TAMAMLANDI', now())`).join(',\n        ');
+
+  await db.exec(`
+    INSERT INTO "Paket" ("id","kod","ad","kapsam","seviye","sira") VALUES
+      ('dh-p', 'dh-pro', 'DH Pro', 'mechanical', 'pro', 1),
+      ('dh-pm', 'miras-dh', 'DH Miras', 'mep', 'pro', 2);
+    INSERT INTO "PaketSurumu" ("id","paketId","surumNo","iyzicoPlanKodu","iyzicoUrunKodu","tutar","denemeGunu") VALUES
+      ('dh-s30', 'dh-p', 1, 'dh-plan-30', 'dh-urun', 1649.00, 30),
+      ('dh-s0', 'dh-p', 2, 'dh-plan-0', 'dh-urun', 1649.00, 0),
+      ('dh-sm', 'dh-pm', 1, 'dh-plan-m', 'dh-urun-m', 0, 0);
+    INSERT INTO "Firma" ("id","ad","telefon") VALUES
+      ('dhF1', 'DH1', '0533 098 36 63'), ('dhF2', 'DH2', NULL), ('dhF3', 'DH3', '0212 555 44 33'),
+      ('dhF4', 'DH4', NULL), ('dhF5', 'DH5', NULL), ('dhF6', 'DH6', NULL),
+      ${ornekDegerleri};
+    INSERT INTO "User" ("id","email","password","firmaId","kapatilanEposta") VALUES
+      ('dhU1', 'ALI.veli+X@googlemail.com', 'h', 'dhF1', NULL),
+      ('dhU2', 'kapali-dhU2@metapricex.invalid', 'h', 'dhF2', 'Kapali.Kisi@Ornek.COM'),
+      ('dhU3', 'bekleyen@ornek.com', 'h', 'dhF3', NULL),
+      ('dhU4', 'denemesiz@ornek.com', 'h', 'dhF4', NULL),
+      ('dhU5', 'miras@ornek.com', 'h', 'dhF5', NULL);
+    INSERT INTO "User" ("id","email","password","firmaId") VALUES
+      ${ornekKullanicilar};
+    INSERT INTO "Abonelik" ("id","firmaId","paketSurumuId","durum","erisimSonu","iyzicoMusteriKodu","guncellendi") VALUES
+      ('dhA1', 'dhF1', 'dh-s30', 'AKTIF', now() + interval '10 days', 'CUS-1', now()),
+      ('dhA5', 'dhF5', 'dh-sm', 'AKTIF', now() + interval '300 days', NULL, now()),
+      ('dhA6', 'dhF6', 'dh-s30', 'AKTIF', now() + interval '10 days', NULL, now());
+    INSERT INTO "AbonelikBaslatma" ("id","token","firmaId","paketSurumuId","olusturanId","durum","sonuclandi") VALUES
+      ('dhN1', 't-dhN1', 'dhF1', 'dh-s30', 'dhU1', 'TAMAMLANDI', now() - interval '40 days'),
+      ('dhN2', 't-dhN2', 'dhF2', 'dh-s30', 'dhU2', 'TAMAMLANDI', now() - interval '20 days'),
+      ('dhN3', 't-dhN3', 'dhF3', 'dh-s30', 'dhU3', 'BEKLIYOR', NULL),
+      ('dhN4', 't-dhN4', 'dhF4', 'dh-s0', 'dhU4', 'TAMAMLANDI', now() - interval '5 days');
+    INSERT INTO "AbonelikBaslatma" ("id","token","firmaId","paketSurumuId","olusturanId","durum","sonuclandi") VALUES
+      ${ornekNiyetler};
+  `);
+
+  await db.exec(doldurma);
+
+  const niyet = async (id: string) =>
+    (await db.query<any>(`SELECT * FROM "AbonelikBaslatma" WHERE id = $1`, [id])).rows[0];
+  const kayitlar = async () =>
+    (await db.query<any>(`SELECT * FROM "DenemeKullanimi" WHERE "firmaId" LIKE 'dhF%' ORDER BY "firmaId"`)).rows;
+
+  const n1 = await niyet('dhN1');
+  check('D1 eski TAMAMLANDI niyet: deneme gunu ve plan SURUMDEN, anahtarlar normalize',
+    n1.denemeGunu === 30 && n1.planKodu === 'dh-plan-30' && n1.epostaNormal === 'aliveli@gmail.com' &&
+      n1.telefonNormal === '5330983663' && n1.formEpostaNormal === null, JSON.stringify(n1));
+  const n2 = await niyet('dhN2');
+  check('D2 ⭐ kapatilmis hesap: anahtar ANONIM adresten DEGIL kapatilanEposta\'dan (yol C gecmisi)',
+    n2.epostaNormal === 'kapali.kisi@ornek.com', `epostaNormal=${n2.epostaNormal}`);
+  const n3 = await niyet('dhN3');
+  check('D3 BEKLIYOR niyet: karar surumden dondu (sonuclanirsa deneme kaydi yazilabilsin)',
+    n3.denemeGunu === 30 && n3.telefonNormal === '2125554433', JSON.stringify(n3));
+  const n4 = await niyet('dhN4');
+  check('D4 denemesiz surumdeki niyet: deneme gunu 0', n4.denemeGunu === 0, JSON.stringify(n4));
+
+  const k = await kayitlar();
+  const kayit = (firma: string) => k.filter((r) => r.firmaId === firma);
+  check('D5 ⭐ kayit yalniz DENEME ALMIS (TAMAMLANDI + deneme > 0) niyetlere + miras firmaya: F1, F2, F5 ve 12 ornek',
+    kayit('dhF1').length === 1 && kayit('dhF2').length === 1 && kayit('dhF3').length === 0 &&
+      kayit('dhF4').length === 0 && kayit('dhF5').length === 1 && kayit('dhF6').length === 0,
+    k.map((r) => `${r.firmaId}:${r.kaynak}`).join(' '));
+  const f1 = kayit('dhF1')[0] ?? {};
+  check('D5 F1 kaydi: geriye-donuk · niyet · kisi · normalize e-posta/telefon · iyzico musteri no',
+    f1.kaynak === 'geriye-donuk' && f1.abonelikBaslatmaId === 'dhN1' && f1.kullaniciId === 'dhU1' &&
+      f1.epostaNormal === 'aliveli@gmail.com' && f1.telefonNormal === '5330983663' && f1.iyzicoMusteriKodu === 'CUS-1',
+    JSON.stringify(f1));
+  const f5 = kayit('dhF5')[0] ?? {};
+  check('D5 ⭐ miras firma: kaynak miras, YALNIZ firma anahtari (kisi anahtari yok)',
+    f5.kaynak === 'miras' && f5.kullaniciId === null && f5.epostaNormal === null && f5.telefonNormal === null,
+    JSON.stringify(f5));
+
+  // D6 — IDEMPOTENT: ikinci kosum hicbir satiri degistirmez.
+  const oncekiDokum = JSON.stringify(await kayitlar()) + JSON.stringify(await niyet('dhN1'));
+  const oncekiSayi = (await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM "DenemeKullanimi"`)).rows[0].n;
+  await db.exec(doldurma);
+  const sonrakiSayi = (await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM "DenemeKullanimi"`)).rows[0].n;
+  check('D6 IDEMPOTENT: ikinci kosumda kayit sayisi ve icerik AYNI',
+    Number(oncekiSayi) === Number(sonrakiSayi) &&
+      JSON.stringify(await kayitlar()) + JSON.stringify(await niyet('dhN1')) === oncekiDokum,
+    `once=${oncekiSayi} sonra=${sonrakiSayi}`);
+
+  // D7 — SQL ↔ JS normalize ESITLIGI (tek kural, iki yazim).
+  const farklar: string[] = [];
+  for (let i = 0; i < epostaOrnekleri.length; i++) {
+    const r = await niyet(`dhPN${i}`);
+    const jsE = denemeEpostaAnahtari(epostaOrnekleri[i]);
+    const jsT = telefonAnahtari(telefonOrnekleri[i]);
+    if (r.epostaNormal !== jsE) farklar.push(`e-posta ${JSON.stringify(epostaOrnekleri[i])}: sql=${r.epostaNormal} js=${jsE}`);
+    if (r.telefonNormal !== jsT) farklar.push(`telefon ${JSON.stringify(telefonOrnekleri[i])}: sql=${r.telefonNormal} js=${jsT}`);
+  }
+  check('D7-OLCUT ornek kumede null DA normalize de var (bos kume yesili yok)',
+    epostaOrnekleri.some((e) => denemeEpostaAnahtari(e) === null) &&
+      epostaOrnekleri.some((e) => denemeEpostaAnahtari(e) !== null) &&
+      telefonOrnekleri.some((t) => telefonAnahtari(t) === null));
+  check(`D7 ⭐ ${epostaOrnekleri.length} e-posta + ${telefonOrnekleri.length} telefon orneginde SQL doldurmasi = JS anahtari`,
+    farklar.length === 0, farklar.join(' | '));
 }
 
 main().catch((e) => {

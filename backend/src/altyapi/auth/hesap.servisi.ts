@@ -7,6 +7,7 @@ import {
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../db/prisma.service';
 import { SatinAlmaServisi } from '../../ozellik/odeme/abonelik/satinalma.servisi';
+import { denemeEpostaAnahtari } from '../../ozellik/odeme/abonelik/deneme-hakki';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -100,7 +101,7 @@ export class HesapServisi {
       : [];
 
     const [formatlar, kutuphane, listeler, markaKutuphaneleri, iscilikFirmalari,
-      abonelikler, aiKullanimi, dwgDosyalari] = await Promise.all([
+      abonelikler, aiKullanimi, dwgDosyalari, ceviriDuzeltmeleri, ceviriDuzeltmeOlaylari] = await Promise.all([
       this.prisma.quoteFormat.findMany({
         where: { userId },
         select: { id: true, name: true, fileName: true, isDefault: true, createdAt: true, updatedAt: true },
@@ -112,6 +113,20 @@ export class HesapServisi {
       this.prisma.userSubscription.findMany({ where: { userId } }),
       this.prisma.aiUsageLog.findMany({ where: { userId } }),
       firmaId ? this.prisma.dwgDosya.findMany({ where: { firmaId } }) : Promise.resolve([]),
+      // Faz 6.9: firmanın çeviri sözlüğü + bu kullanıcının düzeltme olayları.
+      // ⚠ AÇIK select, `ortakDeger` BİLEREK YOK (Revizyon 1, R1-B1): olaydaki ortak
+      // katman karşılığı kişisel veri değildir ve başka firmaların ödediği
+      // çeviridir — veri indirmesi "ücretsiz sözlük sorgusu" yolu olmamalı.
+      firmaId
+        ? this.prisma.ceviriDuzeltmesi.findMany({
+            where: { firmaId },
+            select: { id: true, hedefDil: true, kaynakMetin: true, ceviriMetni: true, olusturuldu: true, guncellendi: true },
+          })
+        : Promise.resolve([]),
+      this.prisma.ceviriDuzeltmeOlayi.findMany({
+        where: { userId },
+        select: { id: true, tip: true, hedefDil: true, kaynakMetin: true, oncekiDeger: true, yeniDeger: true, olusturuldu: true },
+      }),
     ]);
 
     // ⚠ Ticari kayitlar (fatura/odeme) DA kullanicinin verisidir; hesap
@@ -132,6 +147,48 @@ export class HesapServisi {
           select: { id: true, durum: true, tutar: true, paraBirimi: true, olusturuldu: true },
         })
       : [];
+
+    // ── FAZ 6.12a — DENEME KULLANIM KAYDI (yeni kisisel veri tablosu) ─────
+    // Tablo hesap kapatmada SILINMEZ (amac: denemenin bir kez verilmesi), bu
+    // yuzden "hakkimda ne tutuyorsunuz" cevabinda da GORUNMEK zorunda.
+    // Kapsam KISIYE ait satirlar: bu hesabin actigi niyetler + e-posta
+    // anahtari bu adresle eslesenler (ayni adresle kapatilmis eski hesap dahil).
+    // ⚠ Telefonla ve firmayla eslesen satirlar BILEREK YOK: ortak ofis
+    // telefonu ya da ayni firmadaki baska uyenin kaydi BASKA KISININ verisidir.
+    const epostaAnahtari = denemeEpostaAnahtari(kullanici.email);
+    const denemeKullanimKayitlari = await this.prisma.denemeKullanimi.findMany({
+      where: {
+        OR: [
+          { kullaniciId: userId },
+          ...(epostaAnahtari
+            ? [{ epostaNormal: epostaAnahtari }, { formEpostaNormal: epostaAnahtari }]
+            : []),
+        ],
+      },
+      select: {
+        id: true, kaynak: true, firmaId: true, epostaNormal: true,
+        formEpostaNormal: true, telefonNormal: true, iyzicoMusteriKodu: true,
+        olusturuldu: true,
+      },
+      orderBy: { olusturuldu: 'asc' },
+    });
+
+    // ── FAZ 6.4 — MESAFELI SATIS SOZLESMESI ONAYLARI ─────────────────────
+    // Satin alma adiminda alinan onayin izi (zaman + onaylanan metin surumu)
+    // kisisel veridir ve ispat amaciyla saklanir: "hakkimda ne tutuyorsunuz"
+    // cevabinda GORUNMEK zorunda. Kapsam BU KISININ actigi niyetler
+    // (`olusturanId`) — ayni firmadaki baska uyenin onayi BASKA KISININ
+    // verisidir, firma bazli sorgu onu da dokerdi.
+    // ⚠ `token` DISARIDA: iyzico oturum anahtaridir, kisisel veri degil ve
+    // disa aktarilan dosyaya yazmak gereksiz bir sir sizintisi olurdu.
+    const sozlesmeOnaylari = await this.prisma.abonelikBaslatma.findMany({
+      where: { olusturanId: userId },
+      select: {
+        id: true, sozlesmeOnayiZamani: true, sozlesmeSurumu: true,
+        durum: true, olusturuldu: true,
+      },
+      orderBy: { olusturuldu: 'asc' },
+    });
 
     const ikiliVeriler: { tur: string; ad: string; bayt: number | null; indirmeAdresi: string }[] = [];
     for (const t of teklifler) {
@@ -166,8 +223,12 @@ export class HesapServisi {
       abonelikKayitlari: abonelikler,
       ticariAbonelikler: ticari,
       faturalar,
+      denemeKullanimKayitlari,
+      sozlesmeOnaylari,
       aiKullanimKayitlari: aiKullanimi,
       dwgDosyalari,
+      ceviriDuzeltmeleri,
+      ceviriDuzeltmeOlaylari,
       ikiliVeriler,
       notlar: [
         'Ikili (binary) dosyalar bu dosyaya GOMULMEDI: orijinal Excel dosyalari ve ' +
@@ -177,6 +238,12 @@ export class HesapServisi {
           'cevrilemez bir ozeti (bcrypt) saklanir.',
         'Fatura ve odeme kayitlari, hesabiniz kapatilsa bile vergi mevzuati geregi ' +
           'saklanir; bu nedenle ayri baslikta listelenmistir.',
+        'Ceviri duzeltme olaylarinda ortak sozlugun o anki karsiligi yer almaz: o deger ' +
+          'kisisel veriniz degildir, yalniz denetim izi olarak sistemde tutulur.',
+        'Ücretsiz deneme kullanım kayıtları ("denemeKullanimKayitlari"), ücretsiz ' +
+          'denemenin her firma ve kişi için bir kez verilebilmesi amacıyla hesabınız ' +
+          'kapatılsa bile saklanır. E-posta adresiniz ve telefonunuz bu kayıtta ' +
+          'karşılaştırma için sadeleştirilmiş biçimde durur.',
       ],
     };
   }

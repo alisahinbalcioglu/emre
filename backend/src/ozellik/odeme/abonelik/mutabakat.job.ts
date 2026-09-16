@@ -149,6 +149,21 @@ export class MutabakatJob {
         ? { erisimSonu: new Date(detay.endDate) }
         : {}),
     });
+
+    // ⚠ FAZ 6.12a (16.09) — İKİZİ UNUTMA: webhook yolu (tahsilatBasarisiz)
+    // ODEME_BEKLIYOR'a geçerken `ilkBasarisizlik` yazıyor; bu yol yazmıyordu.
+    // Dunning merdiveni YALNIZ `ilkBasarisizlik` dolu satırları tarar ve
+    // ODEME_BEKLIYOR `erisimSonu`na bakmadan TAM erişimdir — başarısızlık
+    // webhook'u kaybolup (iyzico 45 dk sonra bırakır) durumu gece mutabakatı
+    // düzeltirse satır merdivene HİÇ girmez, erişim süresiz açık kalırdı.
+    // K-P5 (DENEME → ODEME_BEKLIYOR geçerli) deneme sonu başarısızlığını da bu
+    // yola soktu; o yüzden burada kapatılıyor.
+    if (hedef === AbonelikDurumu.ODEME_BEKLIYOR && !ab.ilkBasarisizlik) {
+      await this.prisma.abonelik.update({
+        where: { id: abonelikId },
+        data: { ilkBasarisizlik: new Date(), sonDeneme: ab.sonDeneme ?? new Date() },
+      });
+    }
     return true;
   }
 }

@@ -123,6 +123,22 @@ function main(): void {
     !/verileriniz silindi|veriniz silindi/i.test(hesap));
   check('C11 veri indirme ikili dosyalari SAYIYOR (sessizce atlamiyor)',
     /ikiliVeriler/.test(hesap));
+  // Faz 6.12a (16.09): deneme kullanim kaydi hesap kapatmada SILINMEYEN yeni
+  // kisisel veri tablosu — "hakkimda ne tutuyorsunuz" cevabinda da olmali.
+  // Davranis (kisiye ait satirlar, baska kisinin satiri YOK): test:deneme-hakki H.
+  check('C12 veri indirme DENEME KULLANIM KAYDINI iceriyor',
+    /denemeKullanimi\.findMany\(/.test(hesap) && /denemeKullanimKayitlari,/.test(hesap));
+  // Faz 6.4 (16.09): satin almada alinan mesafeli satis onayinin izi (zaman +
+  // onaylanan metin surumu) kisisel veridir ve ispat icin saklanir — "hakkimda
+  // ne tutuyorsunuz" cevabinda GORUNMEK zorunda.
+  // ⚠ KAPSAM `olusturanId`: ayni firmadaki BASKA uyenin onayi baskasinin
+  // verisidir. ⚠ `token` DISARIDA: iyzico oturum anahtari, disa aktarilan
+  // dosyaya yazmak gereksiz sir sizintisi olurdu.
+  check('C13 veri indirme MESAFELI SATIS ONAYLARINI iceriyor (kisi bazli, tokensiz)',
+    /abonelikBaslatma\.findMany\(/.test(hesap) &&
+      /sozlesmeOnaylari,/.test(hesap) &&
+      /where: \{ olusturanId: userId \}/.test(hesap) &&
+      !/token: true/.test(hesap));
 
   // ── D. HUKUKI SAYFALAR ─────────────────────────────────────────────────
   console.log('\n── D · HUKUKI SAYFALAR ve ALTBILGI ──');
@@ -140,13 +156,69 @@ function main(): void {
   check('D4 metin "hesap kapatma imha DEGIL" ayrimini yapiyor',
     /imha/i.test(metinler));
   check('D5 iyzico betik enjeksiyonu ADIYLA aniliyor', /iyzico/i.test(metinler));
-  check('D6 satici bilgileri YER TUTUCU (uydurma unvan/adres YOK)',
-    /\[FİRMA UNVANI\]/.test(metinler) && /dolduruldu: false/.test(metinlerKod));
+  // ── FAZ 6.4 (16.09): SATICI KIMLIGI GIRILDI, BAYRAK TURETILDI ──────────
+  // D6 eskiden yer tutucunun VARLIGINI ve `dolduruldu: false` DUZ METNINI
+  // ariyordu. Ikisi de artik yanlis olcut: kimlik sicilden girildi ve bayrak
+  // elle yazilmiyor, SATICI alanlarindan turetiliyor.
+  //
+  // ⚠ Bu bir "kaynak metni" kapisi degil, DAVRANIS kapisi olmali —
+  // metinlerin GERCEKTEN yer tutucusuz cizildigi ve bayragin GERCEKTEN
+  // turedigi on yuzde `npx vitest run satici-metin` ile calistirilarak
+  // olculuyor. Buradaki uc assert o kapinin ikizi degil, TAMAMLAYICISIDIR:
+  // arka yuz paketinden gorunen sey yalniz kaynaktir.
+  check('D6a satici kimligi GIRILDI (kose parantezli yer tutucu kalmadi)',
+    /unvan: 'LİNTU MÜHENDİSLİK LİMİTED ŞİRKETİ'/.test(metinlerKod) &&
+      !/unvan: '\[/.test(metinlerKod) && !/adres:\s+'\[/.test(metinlerKod));
+  // Bayrak ELLE yazilamaz: `dolduruldu:` satiri bir sabit degil, cagri olmali.
+  check('D6b dolduruldu TURETILIYOR (elle true/false yazilmiyor)',
+    /dolduruldu: saticiDolduMu\(SATICI_ALANLARI\)/.test(metinlerKod) &&
+      !/dolduruldu:\s*(true|false)/.test(metinlerKod));
+  // Metinler SATICI'yi OKUYOR mu? Eskiden hicbiri okumuyordu (42 duz yer
+  // tutucu); sablon baglantisi koparilirsa bu assert kirmizi olur.
+  check('D6c dort metin SATICI sabitini OKUYOR (duz yazim degil)',
+    (metinlerKod.match(/\$\{SATICI\./g) ?? []).length >= 20);
+  // Kalan yer tutucular SADECE avukat/muhasebe kararina bagli UC baslik olmali.
+  const kalanYerTutucular = [...metinler.matchAll(/\[([A-ZÇĞİÖŞÜ][^\]\n]*)\]/g)]
+    .map((m) => m[1])
+    .filter((ad) => !/VERGİ NO$/.test(ad));
+  const IZINLI_KALAN = ['YASAL SAKLAMA SURESI', 'DENEME KAYDI SAKLAMA SÜRESİ', 'FATURA İLETİM YÖNTEMİ'];
+  check('D6d kalan yer tutucu YALNIZ acik hukuki/muhasebe kararlari',
+    kalanYerTutucular.every((ad) => IZINLI_KALAN.includes(ad)),
+    `kalan=${JSON.stringify(kalanYerTutucular)}`);
+  // Urun-metin celiskisi: metin "kapatan dugme yok" diyordu, urunde VAR.
+  check('D6e hesap kapatma celiskisi GIDERILDI (metin urunle uyumlu)',
+    !/doğrudan kapatan bir düğme uygulama içinde bulunmamaktadır/.test(metinler) &&
+      /Hesabımı kapat/.test(metinler));
+  // Iade ve mahkeme cumleleri TEK sabitten; iki metinde de ayni.
+  check('D6f iade ve yetkili mahkeme HUKUKI_KARARLAR sabitinden',
+    /iade:\s+'Kalan günler için iade yapılmaz/.test(metinlerKod) &&
+      (metinlerKod.match(/HUKUKI_KARARLAR\.iade/g) ?? []).length >= 2 &&
+      (metinlerKod.match(/HUKUKI_KARARLAR\.yetkiliMahkeme/g) ?? []).length >= 2);
+  // 6.4: mesafeli satis SOZLESMESI (on bilgilendirme formundan AYRI metin).
+  check('D6g Mesafeli Satis SOZLESMESI metni tanimli ve sayfaya bagli',
+    /export const MESAFELI_SATIS_SOZLESMESI: HukukiMetin/.test(metinlerKod) &&
+      /ekMetin=\{MESAFELI_SATIS_SOZLESMESI\}/.test(jsxKodu(oku('frontend/app/mesafeli-satis/page.tsx'))));
+  // ⚠ Sozlesme HUKUKI_SAYFALAR'a EKLENMEZ: ayri rotasi yok, eklenirse
+  // altbilgi 404 veren bir baglanti basar.
+  check('D6h sozlesme HUKUKI_SAYFALAR listesine EKLENMEDI (404 baglanti yok)',
+    !/HUKUKI_SAYFALAR[^;]*MESAFELI_SATIS_SOZLESMESI/s.test(metinlerKod));
+  // 6.4: ceviri kotasi mesafeli metinde ve RAKAMSIZ (tablo degisince yalan
+  // soylememesi icin) — kota tablosu ceviri-kotasi.ts'te durur.
+  check('D6i mesafeli metinde kota cumlesi VAR ve RAKAM YOK',
+    /çeviri kotası/.test(metinler) &&
+      !/\d[\.\d]*\s*satır/.test(metinler) && !/\d[\.\d]*\s*dosya/.test(metinler));
   // ⚠ Iki paket ayri derlenir; surumler AYRISIRSA yanlis onay kaydedilir.
   const beSurum = (oku('backend/src/altyapi/auth/hukuki-surum.ts').match(/'([\d-]+)'/) ?? [])[1];
   const feSurum = (metinler.match(/HUKUKI_METIN_SURUMU = '([\d-]+)'/) ?? [])[1];
   check('D7 metin surumu backend ve on yuzde AYNI', Boolean(beSurum) && beSurum === feSurum,
     `backend=${beSurum} onyuz=${feSurum}`);
+  // Faz 6.12a (16.09): yeni kisisel veri (deneme kaydi) aydinlatma metninde
+  // ADIYLA, AMACIYLA ve SAKLAMASIYLA; on bilgilendirme "bir kez" kuralini soyler.
+  check('D7b gizlilik: deneme kaydi veri, amac ve saklama maddelerinde; on bilgilendirme "bir kez"',
+    /"Ücretsiz deneme kaydı: ücretsiz denemeyi başlatan/.test(metinler) &&
+      /Ücretsiz denemenin her firma ve kişi için bir kez verilmesi/.test(metinler) &&
+      /"Ücretsiz deneme kaydı: hesabınız kapatılsa bile saklanır/.test(metinler) &&
+      /Ücretsiz deneme her firma ve kişi için bir kez verilir\. Daha önce deneme almış/.test(metinler));
   check('D8 taslak durumu ACIKCA isaretli (onaylanmamis metin oyle gorunmesin)',
     /HUKUKI_METIN_DURUMU[^\n]*=\s*'taslak'/.test(metinlerKod));
   const sayfaKabuk = jsxKodu(oku('frontend/ozellik/hukuki/HukukiSayfa.tsx'));

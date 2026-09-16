@@ -29,7 +29,7 @@ import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
 export default function OdemeDonusuSayfasi() {
   const { refresh } = useCapabilities();
   const [durum, setDurum] = useState<'sorgulaniyor' | 'tamam' | 'bekliyor' | 'hata'>('sorgulaniyor');
-  const [mesaj, setMesaj] = useState<string>('Odemeniz dogrulaniyor…');
+  const [mesaj, setMesaj] = useState<string>('Ödemeniz doğrulanıyor…');
   const kosuldu = useRef(false);
 
   useEffect(() => {
@@ -51,17 +51,17 @@ export default function OdemeDonusuSayfasi() {
     if (sonuc) {
       if (sonuc === 'tamam') {
         setDurum('tamam');
-        setMesaj('Aboneliginiz baslatildi. Iyi calismalar!');
+        setMesaj('Aboneliğiniz başlatıldı. İyi çalışmalar!');
         refresh();
       } else if (sonuc === 'bekliyor') {
         setDurum('bekliyor');
         setMesaj(
-          'Odemeniz henuz dogrulanmadi. Tahsilat tamamlandiysa hesabiniz ' +
-            'birkac dakika icinde otomatik olarak acilir — bu sayfayi kapatabilirsiniz.',
+          'Ödemeniz henüz doğrulanmadı. Tahsilat tamamlandıysa hesabınız ' +
+            'birkaç dakika içinde otomatik olarak açılır — bu sayfayı kapatabilirsiniz.',
         );
       } else {
         setDurum('hata');
-        setMesaj('Odeme bilgisi bulunamadi. Abonelik sayfasindan tekrar deneyin.');
+        setMesaj('Ödeme bilgisi bulunamadı. Abonelik sayfasından tekrar deneyin.');
       }
       return;
     }
@@ -73,7 +73,7 @@ export default function OdemeDonusuSayfasi() {
 
     if (!token) {
       setDurum('hata');
-      setMesaj('Odeme bilgisi bulunamadi. Abonelik sayfasindan tekrar deneyin.');
+      setMesaj('Ödeme bilgisi bulunamadı. Abonelik sayfasından tekrar deneyin.');
       return;
     }
 
@@ -82,20 +82,20 @@ export default function OdemeDonusuSayfasi() {
         const { data } = await api.post<{ durum: string }>('/abonelik/donus', { token });
         if (data?.durum === 'TAMAMLANDI') {
           setDurum('tamam');
-          setMesaj('Aboneliginiz baslatildi. Iyi calismalar!');
+          setMesaj('Aboneliğiniz başlatıldı. İyi çalışmalar!');
           await refresh();
         } else {
           setDurum('bekliyor');
           setMesaj(
-            'Odemeniz henuz dogrulanmadi. Tahsilat tamamlandiysa hesabiniz ' +
-              'birkac dakika icinde otomatik olarak acilir — bu sayfayi kapatabilirsiniz.',
+            'Ödemeniz henüz doğrulanmadı. Tahsilat tamamlandıysa hesabınız ' +
+              'birkaç dakika içinde otomatik olarak açılır — bu sayfayı kapatabilirsiniz.',
           );
         }
       } catch {
         setDurum('hata');
         setMesaj(
-          'Odeme durumu sorgulanamadi. Tahsilat gectiyse hesabiniz kisa sure ' +
-            'icinde otomatik acilir; sorun surerse bizimle iletisime gecin.',
+          'Ödeme durumu sorgulanamadı. Tahsilat geçtiyse hesabınız kısa süre ' +
+            'içinde otomatik açılır; sorun sürerse bizimle iletişime geçin.',
         );
       }
     })();
@@ -116,20 +116,20 @@ export default function OdemeDonusuSayfasi() {
         )}
         <h1 className="text-lg font-bold">
           {durum === 'tamam'
-            ? 'Odeme alindi'
+            ? 'Ödeme alındı'
             : durum === 'hata'
-              ? 'Bir sorun olustu'
-              : 'Odemeniz isleniyor'}
+              ? 'Bir sorun oluştu'
+              : 'Ödemeniz işleniyor'}
         </h1>
         <p className="mt-2 text-sm">{mesaj}</p>
       </div>
 
       <div className="mt-6 flex justify-center gap-3">
         <Link href="/dashboard" className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">
-          Panele don
+          Panele dön
         </Link>
         <Link href="/abonelik" className="rounded-lg border px-4 py-2 text-sm font-semibold">
-          Abonelik sayfasi
+          Abonelik sayfası
         </Link>
       </div>
     </div>

@@ -81,6 +81,7 @@ import { odemeYapilandirildiMi } from '../src/ozellik/odeme/yapilandirma';
 const PAKETLER = [
   {
     kod: 'basic-mek',
+    satistaMi: true,
     ad: 'Basic — Mekanik',
     aciklama: 'Mekanik disiplinde malzeme kutuphanesi ve teklif hazirlama.',
     kapsam: 'mechanical' as const,
@@ -95,6 +96,7 @@ const PAKETLER = [
   },
   {
     kod: 'pro-mek',
+    satistaMi: true,
     ad: 'Pro — Mekanik',
     aciklama: 'Mekanik: malzeme + iscilik + DWG metraj.',
     kapsam: 'mechanical' as const,
@@ -109,6 +111,10 @@ const PAKETLER = [
   },
   {
     kod: 'basic-elk',
+    // FAZ 6.4 (16.09, Emre karari): elektrik kapsamli paketler SATISTAN
+    // CEKILDI — urun elektrik disiplininde calismiyor (olcum 6.12b).
+    // Bos bir veritabanina seed atilinca yeniden satisa ACILMASIN.
+    satistaMi: false,
     ad: 'Basic — Elektrik',
     aciklama: 'Elektrik disiplininde malzeme kutuphanesi ve teklif hazirlama.',
     kapsam: 'electrical' as const,
@@ -123,6 +129,10 @@ const PAKETLER = [
   },
   {
     kod: 'pro-elk',
+    // FAZ 6.4 (16.09, Emre karari): elektrik kapsamli paketler SATISTAN
+    // CEKILDI — urun elektrik disiplininde calismiyor (olcum 6.12b).
+    // Bos bir veritabanina seed atilinca yeniden satisa ACILMASIN.
+    satistaMi: false,
     ad: 'Pro — Elektrik',
     aciklama: 'Elektrik: malzeme + iscilik + DWG metraj.',
     kapsam: 'electrical' as const,
@@ -140,6 +150,10 @@ const PAKETLER = [
     // 28 + 28 = 56 → 56 x 0.75 = 42. (Basic'ten turetilseydi 44 x 0.75 = 33
     // olurdu; 42 rakami MEP'in PRO seviyesinde oldugunu belirler.)
     kod: 'pro-mep',
+    // FAZ 6.4 (16.09, Emre karari): elektrik kapsamli paketler SATISTAN
+    // CEKILDI — urun elektrik disiplininde calismiyor (olcum 6.12b).
+    // Bos bir veritabanina seed atilinca yeniden satisa ACILMASIN.
+    satistaMi: false,
     ad: 'Pro — Mekanik + Elektrik',
     aciklama: 'Iki disiplin: malzeme + iscilik + DWG metraj. Ayri ayri almaya gore %25 avantajli.',
     kapsam: 'mep' as const,
@@ -180,7 +194,104 @@ export function tlFiyatHesapla(
   return { ham, yuvarlanmis: fiyatYuvarla(ham) };
 }
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  --denemesiz-ikiz  (FAZ 6.12a, 15.09.2026) — ⚠ HAZIRLANDI, KOSULMADI
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  Deneme hakki olmayan satin alma (daha once deneme almis firma/kisi) iyzico'ya
+ *  DENEMESIZ plan gondermek zorunda: deneme gunu iyzico'da PLANA yazilidir,
+ *  abonelik baslatma istegi deneme alani tasimaz. Her satistaki denemeli surum
+ *  icin AYNI urun altinda AYNI tutar/periyot ve `trialPeriodDays = 0` bir ikiz
+ *  plan kurulur, kodu `PaketSurumu.iyzicoDenemesizPlanKodu`na iyzico YANITINDAN
+ *  yazilir (elle kopyalama yok).
+ *
+ *  Kullanim (once SANDBOX, sonra canli; plan SILINEMEZ):
+ *      npm run seedpaketler -- --denemesiz-ikiz            (PROVA)
+ *      npm run seedpaketler -- --denemesiz-ikiz --uygula
+ *
+ *  ⚠ SIRA: ikiz kodlar DB'ye yazilmadan yeni satin alma kodu canliya cikarsa
+ *  hakki olmayan satin alma 503 ile durur (kapali hata — denemeli plana
+ *  DUSULMEZ). Once bu betik, `paket` olcumuyle kodlar dolu gorulur, SONRA kod.
+ *
+ *  ⚠ FIYAT YENIDEN HESAPLANMAZ: surumun DB'deki sozlesme tutari kullanilir.
+ *  Kur bugun degismis olsa bile ikiz AYNI fiyatta olmali — yoksa deneme hakki
+ *  olmayan musteri ayni paket icin baska fiyat oder.
+ */
+export function denemesizIkizGerekliMi(s: {
+  satistaMi: boolean;
+  denemeGunu: number;
+  iyzicoDenemesizPlanKodu: string | null;
+}): boolean {
+  return s.satistaMi && s.denemeGunu > 0 && !s.iyzicoDenemesizPlanKodu;
+}
+
+/** Ikiz planin iyzico tanimi. SAF — test/deneme-hakki-test.ts DI blogu olcer. */
+export function denemesizIkizTanimi(s: {
+  tutar: { toFixed(n: number): string } | string | number;
+  paraBirimi: string;
+  periyot: string;
+  periyotAdedi: number;
+  paket: { ad: string };
+}) {
+  const tutarMetni = typeof s.tutar === 'object' ? s.tutar.toFixed(2) : String(s.tutar);
+  return {
+    ad: `${s.paket.ad} · Aylik · Denemesiz`,
+    tutar: Number(tutarMetni),
+    paraBirimi: s.paraBirimi as 'TRY' | 'USD' | 'EUR',
+    periyot: s.periyot as 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY',
+    periyotAdedi: s.periyotAdedi,
+    // ⚠ Ikizin TEK farki budur. Surumun deneme gunu buraya YAZILMAZ.
+    denemeGunu: 0,
+  };
+}
+
+async function denemesizIkizleriKur(iyzico: IyzicoClient): Promise<void> {
+  const surumler = await prisma.paketSurumu.findMany({
+    where: { satistaMi: true },
+    include: { paket: true },
+    orderBy: [{ paket: { sira: 'asc' } }, { surumNo: 'asc' }],
+  });
+  const ozet: string[] = [];
+  for (const s of surumler) {
+    baslik(`${s.paket.kod} · surum ${s.surumNo}`);
+    if (!denemesizIkizGerekliMi(s)) {
+      const neden = s.iyzicoDenemesizPlanKodu
+        ? `ikiz ZATEN VAR → ${s.iyzicoDenemesizPlanKodu}`
+        : 'surumde deneme yok (ana plan zaten denemesiz)';
+      console.log(`  ⏭  ATLANDI — ${neden}`);
+      ozet.push(`${s.paket.kod}: atlandi (${neden})`);
+      continue;
+    }
+    const tanim = denemesizIkizTanimi(s);
+    console.log(
+      `  urun       : ${s.iyzicoUrunKodu}\n` +
+        `  ana plan   : ${s.iyzicoPlanKodu} (deneme ${s.denemeGunu} gun)\n` +
+        `  ikiz plan  : "${tanim.ad}" — ${tanim.tutar} ${tanim.paraBirimi}/${tanim.periyot}, deneme 0 gun`,
+    );
+    if (!uygula) {
+      ozet.push(`${s.paket.kod}: ikiz OLUSTURULACAK (${tanim.tutar} ${tanim.paraBirimi})`);
+      continue;
+    }
+    const plan = await iyzico.planOlustur(s.iyzicoUrunKodu, tanim);
+    await prisma.paketSurumu.update({
+      where: { id: s.id },
+      data: { iyzicoDenemesizPlanKodu: plan.referenceCode },
+    });
+    console.log(`  ✓ ikiz plan olusturuldu ve yazildi → ${plan.referenceCode}`);
+    ozet.push(`${s.paket.kod}: ikiz OLUSTURULDU (plan=${plan.referenceCode})`);
+  }
+  baslik('OZET — denemesiz ikiz planlar');
+  ozet.forEach((s) => console.log(`  ${s}`));
+  console.log(
+    uygula
+      ? '\n  Bitti. Dogrulama:  bash scripts/abonelik-olcum.sh paket\n'
+      : '\n  Bu bir PROVAYDI — hicbir sey olusturulmadi.\n' +
+          '  Gercekten kurmak icin:  npm run seedpaketler -- --denemesiz-ikiz --uygula\n',
+  );
+}
+
 const uygula = process.argv.includes('--uygula');
+const denemesizIkiz = process.argv.includes('--denemesiz-ikiz');
 const prisma = new PrismaClient();
 
 function baslik(s: string) {
@@ -203,6 +314,22 @@ async function main() {
         '  Sandbox icin IYZICO_TABAN_URL=https://sandbox-api.iyzipay.com\n',
     );
     process.exit(2); // 2 = ON KOSUL YOK (regresyon sozlesmesi)
+  }
+
+  // 6.12a: ikiz kip TCMB kuruna IHTIYAC DUYMAZ (fiyat surumden okunur) ve
+  // yeni paket KURMAZ — ayri dal, asagidaki paket dongusune girmez.
+  if (denemesizIkiz) {
+    const ikizIyzico = new IyzicoClient(config);
+    const ikizTaban = config.get('IYZICO_TABAN_URL') ?? 'https://sandbox-api.iyzipay.com';
+    console.log(`  kip        : DENEMESIZ IKIZ PLAN`);
+    console.log(`  iyzico ucu : ${ikizTaban}`);
+    console.log(
+      /sandbox/.test(String(ikizTaban))
+        ? '  ortam      : SANDBOX'
+        : '  ortam      : ⚠ CANLI — olusan planlar SILINEMEZ',
+    );
+    await denemesizIkizleriKur(ikizIyzico);
+    return;
   }
 
   // ── TCMB kuru: fiyat BURADAN turetilir, elle girilmez ────────────────
@@ -359,7 +486,10 @@ async function main() {
         periyot: p.periyot,
         periyotAdedi: 1,
         denemeGunu: p.denemeGunu,
-        satistaMi: true,
+        // ⚠ SABIT `true` DEGIL: bayrak paket tanimindan okunur. Sabit kalsaydi
+        // satistan cekilen elektrik paketleri her seed kosumunda yeniden
+        // satisa acilirdi (6.4).
+        satistaMi: p.satistaMi,
       },
     });
     console.log('  ✓ veritabani satirlari yazildi');

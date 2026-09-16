@@ -1,0 +1,67 @@
+{
+  "tur": "Faz 6.4 — satici kimligi + mesafeli satis sozlesmesi/onayi + elektrik paketlerinin satistan cekilmesi (16.09.2026)",
+  "not": "Disaridan gorulebilenler. Surum tek basina yetmez. Onay kutusu ve DTO kapisi oturum istedigi icin 'olculemeyenler'de, yerel kapilariyla. Elektrik paketlerinin listeden dusmesi BETIK KOSTUKTAN sonra ve en az 60 sn beklenerek olculur (fiyat ucu 60 sn onbellekli).",
+  "taban": "https://metapricex.com",
+  "olcumler": [
+    {
+      "ad": "backend surumu",
+      "neden": "taban kosul — tek basina YETMEZ",
+      "tip": "json", "yol": "/api/health", "alan": "build_sha", "esit": "$SHA"
+    },
+    {
+      "ad": "frontend surumu",
+      "neden": "deploy.sh frontend'i dogrulamaz (12.08 dersi); hukuki metinler ve onay kutusu on yuzde",
+      "tip": "json", "yol": "/surum.json", "alan": "build_sha", "esit": "$SHA"
+    },
+    {
+      "ad": "satici kimligi dort hukuki sayfada",
+      "neden": "42 yer tutucu tek sabite baglandi; ziyaretci artik kose parantez GORMEMELI",
+      "tip": "paket-metni", "yol": "/mesafeli-satis",
+      "icerir": ["LİNTU MÜHENDİSLİK LİMİTED ŞİRKETİ", "0609139123400001", "1061020", "info@metapricex.com"]
+    },
+    {
+      "ad": "mesafeli satis SOZLESMESI ayri bolum olarak yayinda",
+      "neden": "bugune kadar yalniz On Bilgilendirme Formu vardi; satin almada onaylatilan metnin YAYINDA olmasi sart",
+      "tip": "paket-metni", "yol": "/mesafeli-satis",
+      "icerir": ["Mesafeli Satış Sözleşmesi", "1. Taraflar", "Onay tarihi ve onaylanan metin sürümü"]
+    },
+    {
+      "ad": "iade ve yetkili mahkeme kararlari metinde",
+      "neden": "iki yerde ayni cumle tek sabitten (HUKUKI_KARARLAR); yer tutucu kalmadi",
+      "tip": "paket-metni", "yol": "/kullanim-kosullari",
+      "icerir": ["Kalan günler için iade yapılmaz", "İstanbul Anadolu Mahkemeleri ve İcra Daireleri"]
+    },
+    {
+      "ad": "hesap kapatma celiskisi giderildi",
+      "neden": "Kullanim Kosullari 10. madde 'kapatan dugme yok' diyordu; urunde VAR (profil sayfasi)",
+      "tip": "paket-metni", "yol": "/kullanim-kosullari",
+      "icermez": ["doğrudan kapatan bir düğme uygulama içinde bulunmamaktadır"]
+    },
+    {
+      "ad": "fiyat sayfasinda elektrik vaadi yok",
+      "neden": "uc elektrik paketi satistan cekildi; sayfa yalniz mekanigi anlatir",
+      "tip": "paket-metni", "yol": "/fiyatlar",
+      "icermez": ["disipline (mekanik, elektrik ya da ikisi)"]
+    },
+    {
+      "ad": "paylasim gorseli YENI adla",
+      "neden": "gorselin icerigi degisti (Core -> Basic); ayni adla degistirmek WhatsApp/Facebook onbelleginde eski karti birakirdi",
+      "tip": "paket-metni", "yol": "/fiyatlar",
+      "icerir": ["/og/fiyatlar-basic.jpg"]
+    },
+    {
+      "ad": "⚠ BETIK SONRASI — fiyat ucunde elektrik paketi YOK",
+      "neden": "paket-satis-kapat.sh --uygula kosuldUKTAN ve EN AZ 60 SANIYE beklendikten sonra olculur; erken bakilirsa onbellek eski listeyi doner",
+      "tip": "json-metni", "yol": "/api/fiyatlar",
+      "icermez": ["basic-elk", "pro-elk", "pro-mep"],
+      "icerir": ["basic-mek", "pro-mek"]
+    }
+  ],
+  "olculemeyenler": [
+    { "ad": "onaysiz baslat 400 + iyzico cagrisi 0", "neden": "oturum ve gecerli paket surumu ister; disaridan tetiklenemez — yerel kapi: npm run test:satinalma (S-ONAY1/S-ONAY2) ve DTO uzerinde @Equals(true) mutanti" },
+    { "ad": "onay zamani ve surumun niyet kaydina yazilmasi", "neden": "DB okumasi ister — yerel kapi: npm run test:satinalma (S-ONAY3)" },
+    { "ad": "on yuzde kutunun isaretsiz baslamasi ve dugmenin kapali olmasi", "neden": "korumali sayfa (giris ister) — yerel kapi: npx vitest run sozlesme-onayi" },
+    { "ad": "info@metapricex.com kutusuna posta ulasiyor mu", "neden": "posta kutusu HENUZ ACILMADI (Emre, 15.09). ⚠ BU SURUM, kutu acilip test maili ULASMADAN canliya CIKMAZ: dort hukuki sayfa ve sozlesme bu adresi basvuru adresi olarak gosteriyor." },
+    { "ad": "elektrik kapsamli mevcut abone sayisi", "neden": "canli DB — paket-satis-kapat.sh PROVA ciktisindaki O2 sorgusu soyler" }
+  ]
+}

@@ -55,14 +55,8 @@ interface UserStats {
   libraryCount: number;
 }
 
-const SCOPE_LABEL: Record<string, string> = {
-  mechanical: 'Mekanik',
-  electrical: 'Elektrik',
-  mep: 'MEP (Her Ikisi)',
-};
-
 const TIER_CONFIG: Record<string, { label: string; color: string; bg: string; border: string; icon: typeof Crown }> = {
-  core: { label: 'Core', color: 'text-slate-700', bg: 'bg-slate-50', border: 'border-slate-200', icon: Shield },
+  core: { label: 'Basic', color: 'text-slate-700', bg: 'bg-slate-50', border: 'border-slate-200', icon: Shield },
   pro: { label: 'Pro', color: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200', icon: Crown },
   suite: { label: 'Suite', color: 'text-purple-700', bg: 'bg-purple-50', border: 'border-purple-200', icon: Zap },
 };
@@ -235,7 +229,7 @@ export default function ProfilePage() {
     setParolaHata(null);
     setParolaSonuc(null);
     if (yeniParola !== yeniTekrar) {
-      setParolaHata('Yeni parolalar eslesmiyor.');
+      setParolaHata('Yeni parolalar eşleşmiyor.');
       return;
     }
     setParolaYukleniyor(true);
@@ -250,13 +244,13 @@ export default function ProfilePage() {
       // degistirdikten sonraki ILK istekte 401 alir ve /login'e atilir —
       // yani basarili bir islem, cikis yaptirilmis gibi gorunur.
       if (data?.token) localStorage.setItem('token', data.token);
-      setParolaSonuc(data?.mesaj ?? 'Parolaniz guncellendi.');
+      setParolaSonuc(data?.mesaj ?? 'Parolanız güncellendi.');
       setMevcutParola('');
       setYeniParola('');
       setYeniTekrar('');
     } catch (err: any) {
       setParolaHata(
-        err.response?.data?.message || 'Parola guncellenemedi, tekrar deneyin.',
+        err.response?.data?.message || 'Parola güncellenemedi, tekrar deneyin.',
       );
     } finally {
       setParolaYukleniyor(false);
@@ -264,13 +258,13 @@ export default function ProfilePage() {
   }
 
   async function iptalEt() {
-    if (!confirm('Aboneliginizi iptal etmek istediginize emin misiniz? Donem sonuna kadar erisiminiz surer.')) return;
+    if (!confirm('Aboneliğinizi iptal etmek istediğinize emin misiniz? Dönem sonuna kadar erişiminiz sürer.')) return;
     try {
       await api.post('/abonelik/iptal', {});
       await refresh();
       setYonetimAcik(false);
     } catch {
-      alert('Iptal islemi tamamlanamadi.');
+      alert('İptal işlemi tamamlanamadı.');
     }
   }
 
@@ -307,7 +301,7 @@ export default function ProfilePage() {
   if (!profile) {
     return (
       <div className="py-12 text-center text-sm text-muted-foreground">
-        Profil bilgileri yuklenemedi.
+        Profil bilgileri yüklenemedi.
       </div>
     );
   }
@@ -333,7 +327,7 @@ export default function ProfilePage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="mb-6 text-xl font-semibold">Hesabim</h1>
+      <h1 className="mb-6 text-xl font-semibold">Hesabım</h1>
 
       {/* Profile Card */}
       <div className="mb-6 rounded-xl border bg-card overflow-hidden">
@@ -368,7 +362,7 @@ export default function ProfilePage() {
             </span>
             <span className="flex items-center gap-1.5">
               <Calendar className="h-3.5 w-3.5" />
-              Uye: {memberSince}
+              Üye: {memberSince}
             </span>
             {profile.role === 'admin' && (
               <span className="flex items-center gap-1.5 text-violet-600">
@@ -391,7 +385,7 @@ export default function ProfilePage() {
             <div>
               <h3 className="text-sm font-semibold">{tierConfig.label} Plan</h3>
               <p className="text-xs text-muted-foreground">
-                {tier === 'pro' ? 'Profesyonel ozellikler' : 'Baslangic paketi'}
+                {tier === 'pro' ? 'Profesyonel özellikler' : 'Başlangıç paketi'}
               </p>
             </div>
           </div>
@@ -429,7 +423,7 @@ export default function ProfilePage() {
 
         {/* Kullanim */}
         <div className="rounded-xl border bg-card p-5">
-          <h3 className="mb-4 text-sm font-semibold">Kullanim</h3>
+          <h3 className="mb-4 text-sm font-semibold">Kullanım</h3>
 
           {/* Çeviri kotası — paketin tek gerçek kotası, sunucudan */}
           <div className="mb-4">
@@ -513,7 +507,7 @@ export default function ProfilePage() {
                 {ozet.baslik}
                 {ozet.durum && (
                   <span className="ml-2 rounded-md bg-muted px-2 py-0.5 text-xs font-medium">
-                    {ozet.durum}
+                    {ozet.durumEtiketi}
                   </span>
                 )}
               </p>
@@ -523,7 +517,7 @@ export default function ProfilePage() {
               </p>
             </div>
             <Button variant="outline" size="sm" onClick={() => router.push('/abonelik')}>
-              Paketleri gor
+              Paketleri gör
             </Button>
           </div>
 
@@ -538,19 +532,19 @@ export default function ProfilePage() {
                 onClick={() => setYonetimAcik((a) => !a)}
                 className="text-xs font-medium text-muted-foreground hover:text-foreground"
               >
-                Abonelik yonetimi {yonetimAcik ? '▴' : '▾'}
+                Abonelik yönetimi {yonetimAcik ? '▴' : '▾'}
               </button>
               {yonetimAcik && (
                 <div className="mt-3 space-y-2">
                   <p className="text-xs text-muted-foreground">
-                    Iptal ettiginizde donem sonuna kadar erisiminiz surer.
+                    İptal ettiğinizde dönem sonuna kadar erişiminiz sürer.
                   </p>
                   <button
                     type="button"
                     onClick={iptalEt}
                     className="text-xs font-medium text-destructive underline underline-offset-2"
                   >
-                    Aboneligi iptal et
+                    Aboneliği iptal et
                   </button>
                 </div>
               )}
@@ -561,7 +555,7 @@ export default function ProfilePage() {
 
       {/* Yetenekler */}
       <div className="mb-6 rounded-xl border bg-card overflow-hidden">
-        <div className="border-b px-5 py-3.5 text-sm font-semibold">Erisim Yetenekleri</div>
+        <div className="border-b px-5 py-3.5 text-sm font-semibold">Erişim Yetenekleri</div>
         <div className="grid grid-cols-2 divide-x">
           {/* Mekanik */}
           <div className="p-5">
@@ -572,7 +566,7 @@ export default function ProfilePage() {
             <div className="space-y-2">
               {[
                 { label: 'Malzeme', active: profile.capabilities.mechanical.material },
-                { label: 'Iscilik', active: profile.capabilities.mechanical.labor },
+                { label: 'İşçilik', active: profile.capabilities.mechanical.labor },
                 { label: 'DWG/PDF', active: profile.capabilities.mechanical.dwg },
               ].map((cap) => (
                 <div key={cap.label} className="flex items-center gap-2 text-sm">
@@ -595,7 +589,7 @@ export default function ProfilePage() {
             <div className="space-y-2">
               {[
                 { label: 'Malzeme', active: profile.capabilities.electrical.material },
-                { label: 'Iscilik', active: profile.capabilities.electrical.labor },
+                { label: 'İşçilik', active: profile.capabilities.electrical.labor },
                 { label: 'DWG/PDF', active: profile.capabilities.electrical.dwg },
               ].map((cap) => (
                 <div key={cap.label} className="flex items-center gap-2 text-sm">
@@ -856,7 +850,7 @@ export default function ProfilePage() {
         </div>
         <form onSubmit={parolaDegistir} className="space-y-4 px-5 py-4">
           <p className="text-xs text-muted-foreground">
-            Parolanizi degistirdiginizde diger cihazlardaki oturumlar kapatilir.
+            Parolanızı değiştirdiğinizde diğer cihazlardaki oturumlar kapatılır.
           </p>
 
           <div className="grid gap-4 sm:grid-cols-3">
@@ -910,7 +904,7 @@ export default function ProfilePage() {
 
           <div className="flex justify-end">
             <Button type="submit" size="sm" disabled={parolaYukleniyor}>
-              {parolaYukleniyor ? 'Kaydediliyor...' : 'Parolayi degistir'}
+              {parolaYukleniyor ? 'Kaydediliyor…' : 'Parolayı değiştir'}
             </Button>
           </div>
         </form>
@@ -995,7 +989,7 @@ export default function ProfilePage() {
       <div className="flex justify-end">
         <Button variant="outline" className="text-destructive hover:bg-destructive/10" onClick={handleLogout}>
           <LogOut className="mr-2 h-4 w-4" />
-          Cikis Yap
+          Çıkış Yap
         </Button>
       </div>
     </div>

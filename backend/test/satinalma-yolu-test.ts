@@ -43,6 +43,11 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ConfigService } from '@nestjs/config';
+import { HUKUKI_METIN_SURUMU } from '../src/altyapi/auth/hukuki-surum';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
+import { AbonelikController } from '../src/ozellik/odeme/abonelik/abonelik.controller';
+import { AbonelikBaslaDto } from '../src/ozellik/odeme/abonelik/dto/abonelik-basla.dto';
 import { BadRequestException } from '@nestjs/common';
 import {
   SatinAlmaServisi,
@@ -55,6 +60,7 @@ import {
   iyzicoDurumunuHttpyeCevir,
   kullaniciyaMesaj,
 } from '../src/ozellik/odeme/iyzico/iyzico-hata.filter';
+import { DenemeHakkiServisi } from '../src/ozellik/odeme/abonelik/deneme-hakki.servisi';
 
 let passed = 0;
 let failed = 0;
@@ -88,11 +94,21 @@ function sahtePrisma(mevcutPaketKodu: string | null, mevcutDurum = 'AKTIF') {
       findUnique: async () => ({
         id: 's1',
         iyzicoPlanKodu: 'plan-1',
+        // Faz 6.12a: miras firma (P4) deneme ALMAZ → denemesiz ikize gider.
+        // Bu kod olmasa P4 satin almasi 503 (kapali hata) ile duser.
+        iyzicoDenemesizPlanKodu: 'plan-1-denemesiz',
         satistaMi: true,
         denemeGunu: 30,
         paket: { kod: 'pro-mek', ad: 'Pro Mekanik' },
       }),
     },
+    // Faz 6.12a: deneme hakki karari (DenemeHakkiServisi) kullaniciyi ve
+    // deneme kaydini okur. Bu paketin konusu deneme DEGIL: dogrulanmis
+    // kullanici, onceki deneme YOK. Deneme yollari: test/deneme-hakki-test.ts.
+    user: {
+      findUnique: async () => ({ email: 'ayse@ornek.com', emailVerified: true }),
+    },
+    denemeKullanimi: { findFirst: async () => null },
     abonelik: {
       findUnique: async () =>
         mevcutPaketKodu === null
@@ -136,11 +152,26 @@ function servisKur(prisma: any, iyzico: any) {
     iyzico,
     {} as any,
     new ConfigService({ UYGULAMA_URL: 'https://ornek.test' }),
+    // Faz 6.12a: GERCEK karar servisi, ayni sahte Prisma uzerinde.
+    new DenemeHakkiServisi(prisma),
+    // Faz 6.4: mail yolu bu paketin konusu degil — yutuluyor.
+    { gonder: async () => undefined } as any,
   );
 }
 
-/** `baslat` cagrisinin SONUCUNU siniflandirir: hangi hata tipi dondu? */
-async function baslatSonucu(prisma: any, iyzico: any, musteri: any) {
+/**
+ * `baslat` cagrisinin SONUCUNU siniflandirir: hangi hata tipi dondu?
+ *
+ * ⚠ FAZ 6.4: `sozlesmeOnayi` VARSAYILAN true — bu paketteki diger yollarin
+ * konusu onay DEGIL. Onayin KENDISI S-ONAY bolumunde, acikca false/undefined
+ * verilerek olculuyor.
+ */
+async function baslatSonucu(
+  prisma: any,
+  iyzico: any,
+  musteri: any,
+  sozlesmeOnayi: boolean | 'gonderme' = true,
+) {
   const servis = servisKur(prisma, iyzico);
   try {
     await servis.baslat({
@@ -148,6 +179,8 @@ async function baslatSonucu(prisma: any, iyzico: any, musteri: any) {
       kullaniciId: 'u1',
       paketSurumuId: 's1',
       musteri,
+      // 'gonderme' = alan govdede HIC YOK (eski istemci yolu).
+      ...(sozlesmeOnayi === 'gonderme' ? {} : { sozlesmeOnayi }),
     });
     return { tip: 'BASARILI' as const, mesaj: '' };
   } catch (e: any) {
@@ -587,6 +620,242 @@ async function main() {
         .donusIyzicodan('t')) === 'tamam',
     );
   }
+
+  // ── S-ONAY ⭐ MESAFELI SATIS ONAYI (FAZ 6.4) ──────────────────────────
+  //
+  // Onay bir HUKUKI ISPAT unsuru: ispat yuku SATICIDA. On yuzdeki kapali
+  // dugme yalnizca tarayici kolayligidir — istegi elle atan biri onu HIC
+  // gormez. Bu yuzden kapi SUNUCUDA ve iyzico'ya GIDILMEDEN once.
+  console.log('\n── S-ONAY ⭐ mesafeli satis onayi ──');
+  {
+    const iOnaysiz = sahteIyzico();
+    const sOnaysiz = await baslatSonucu(sahtePrisma(null), iOnaysiz.istemci, TAM_MUSTERI, false);
+    check(
+      'S-ONAY1 onaysiz baslat 400 (BadRequest)',
+      sOnaysiz.tip === 'BAD_REQUEST' && /onay/i.test(sOnaysiz.mesaj),
+      `tip=${sOnaysiz.tip} mesaj=${sOnaysiz.mesaj}`,
+    );
+    // ⭐ ASIL OLCUT: reddedilen istek YAN ETKI BIRAKMAZ.
+    check(
+      'S-ONAY2 ⭐ onaysiz istekte iyzico cagrisi 0',
+      iOnaysiz.cagrilar.length === 0,
+      `cagri=${iOnaysiz.cagrilar.length}`,
+    );
+
+    const iEksik = sahteIyzico();
+    const sEksik = await baslatSonucu(sahtePrisma(null), iEksik.istemci, TAM_MUSTERI, 'gonderme');
+    check(
+      'S-ONAY2b alan HIC gonderilmezse de 400 (eski istemci sessizce gecmez)',
+      sEksik.tip === 'BAD_REQUEST' && iEksik.cagrilar.length === 0,
+      `tip=${sEksik.tip} cagri=${iEksik.cagrilar.length}`,
+    );
+
+    // BAGLANTI TESTI: onay VERILDIGINDE izi niyet kaydina gercekten yaziliyor
+    // mu? "Kapi var" demek, "kayit tutuluyor" demek degildir.
+    const yazilan: any[] = [];
+    const izPrisma = sahtePrisma(null);
+    izPrisma.abonelikBaslatma = {
+      create: async (g: any) => {
+        yazilan.push(g.data);
+        return { id: 'n1' };
+      },
+    };
+    const iOnayli = sahteIyzico();
+    const sOnayli = await baslatSonucu(izPrisma, iOnayli.istemci, TAM_MUSTERI, true);
+    check('S-ONAY3-OLCUT onayli istek BASARILI (fixture dogru dali suruyor)',
+      sOnayli.tip === 'BASARILI' && yazilan.length === 1,
+      `tip=${sOnayli.tip} kayit=${yazilan.length}`);
+    check(
+      'S-ONAY3 ⭐ onay ZAMANI niyet kaydinda (sunucu saatiyle)',
+      yazilan[0]?.sozlesmeOnayiZamani instanceof Date,
+      `deger=${String(yazilan[0]?.sozlesmeOnayiZamani)}`,
+    );
+    check(
+      'S-ONAY4 ⭐ onaylanan metin SURUMU niyet kaydinda (backend sabitinden)',
+      yazilan[0]?.sozlesmeSurumu === HUKUKI_METIN_SURUMU,
+      `deger=${yazilan[0]?.sozlesmeSurumu} beklenen=${HUKUKI_METIN_SURUMU}`,
+    );
+  }
+
+  // ── S-SATIS ⭐ SATISTAN CEKILEN PAKET (FAZ 6.4 / 6.12b) ────────────────
+  //
+  // Elektrik paketleri `PaketSurumu.satistaMi=false` ile satistan cekiliyor.
+  // Iki yuzeyi de olcuyoruz: LISTE (fiyat sayfasi) ve SATIN ALMA (baslat).
+  //
+  // ⚠ SAHTE PRISMA `where`I GERCEKTEN UYGULAR. Eski sahteler hep
+  // `satistaMi: true` donuyordu; oyle bir sahtede `where` mutanti HAYATTA
+  // KALIRDI (olcum 6.12b bunu curutucu ajanla saptadi).
+  console.log('\n── S-SATIS ⭐ satistan cekilen paket ──');
+  {
+    // Para alanlari Prisma Decimal gibi `toFixed` tasiyor (servis onu cagiriyor).
+    const SURUM_ORTAK = {
+      tutar: { toFixed: (n: number) => (1299).toFixed(n) },
+      paraBirimi: 'TRY',
+      referansTutar: { toFixed: (n: number) => (28).toFixed(n) },
+      referansParaBirimi: 'USD',
+      periyot: 'MONTHLY',
+      periyotAdedi: 1,
+      denemeGunu: 30,
+    };
+    const SURUMLER = [
+      { ...SURUM_ORTAK, id: 'sm1', paketId: 'p-mek', surumNo: 2, satistaMi: true },
+      { ...SURUM_ORTAK, id: 'sm0', paketId: 'p-mek', surumNo: 1, satistaMi: false },
+      { ...SURUM_ORTAK, id: 'se1', paketId: 'p-elk', surumNo: 1, satistaMi: false },
+    ];
+    const PAKETLER = [
+      { id: 'p-mek', kod: 'pro-mek', ad: 'Pro Mekanik', sira: 20, aktif: true, seviye: 'pro', kapsam: 'mechanical' },
+      { id: 'p-elk', kod: 'pro-elk', ad: 'Pro Elektrik', sira: 40, aktif: true, seviye: 'pro', kapsam: 'electrical' },
+    ];
+    const listePrisma = {
+      paket: {
+        findMany: async (q: any) => {
+          const istenenSatista = q?.include?.surumler?.where?.satistaMi;
+          return PAKETLER.filter((p) => (q?.where?.aktif === undefined ? true : p.aktif === q.where.aktif))
+            .sort((a, b) => a.sira - b.sira)
+            .map((p) => ({
+              ...p,
+              surumler: SURUMLER.filter(
+                (s) =>
+                  s.paketId === p.id &&
+                  (istenenSatista === undefined ? true : s.satistaMi === istenenSatista),
+              )
+                .sort((a, b) => b.surumNo - a.surumNo)
+                .slice(0, q?.include?.surumler?.take ?? SURUMLER.length),
+            }));
+        },
+      },
+    } as any;
+    const liste = await servisKur(listePrisma, sahteIyzico().istemci).satistakiPaketler();
+    const kodlar = liste.map((p: any) => p.kod);
+    // OLCUT: fixture GERCEKTEN satistaMi=false satir tasiyor mu?
+    check('S-SATIS0-OLCUT fixture satista OLMAYAN surum iceriyor',
+      SURUMLER.some((s) => !s.satistaMi), `${SURUMLER.filter((s) => !s.satistaMi).length} satir`);
+    check(
+      'S-SATIS1 ⭐ satista olmayan paket LISTEDE YOK, satistaki VAR',
+      kodlar.includes('pro-mek') && !kodlar.includes('pro-elk'),
+      `donen=[${kodlar.join(',')}]`,
+    );
+    check(
+      'S-SATIS1b listelenen surum SATISTAKI surum (eski surum degil)',
+      (liste[0] as any)?.surum?.paketSurumuId === 'sm1',
+      `donen=${(liste[0] as any)?.surum?.paketSurumuId}`,
+    );
+
+    // Ikinci yuzey: satistan cekilmis surumle satin almaya kalkisilirsa?
+    const kapaliPrisma = sahtePrisma(null);
+    kapaliPrisma.paketSurumu = {
+      findUnique: async () => ({
+        id: 'se1',
+        iyzicoPlanKodu: 'plan-elk',
+        iyzicoDenemesizPlanKodu: 'plan-elk-denemesiz',
+        satistaMi: false,
+        denemeGunu: 30,
+        paket: { kod: 'pro-elk', ad: 'Pro Elektrik', aktif: true },
+      }),
+    };
+    const iKapali = sahteIyzico();
+    const sKapali = await baslatSonucu(kapaliPrisma, iKapali.istemci, TAM_MUSTERI, true);
+    check(
+      'S-SATIS2 ⭐ satista olmayan surumle baslat 400 + iyzico cagrisi 0',
+      sKapali.tip === 'BAD_REQUEST' &&
+        /satista degil/i.test(sKapali.mesaj) &&
+        iKapali.cagrilar.length === 0,
+      `tip=${sKapali.tip} mesaj=${sKapali.mesaj} cagri=${iKapali.cagrilar.length}`,
+    );
+  }
+
+
+  // ── S-DTO ⭐ KAPI GERCEKTEN UCTA MI (baglanti testi) ──────────────────
+  //
+  // ⚠ Servis kapisi tek basina yetmez; asil kapi ucun DTO'sunda. Ve
+  // `@Body()` SATIR-ICI TIP LITERALI oldugunda ValidationPipe metatype'i
+  // `Object` gorur ve dekoratorler SESSIZCE kosmaz (02.09'da olculdu).
+  // Burada ikisi de reflector ile olculuyor: (1) ucun govde tipi GERCEKTEN
+  // DTO sinifi mi, (2) DTO false degeri REDDEDIYOR mu.
+  console.log('\n── S-DTO ⭐ onay kapisi ucta ──');
+  {
+    const tipler: any[] =
+      Reflect.getMetadata('design:paramtypes', AbonelikController.prototype, 'basla') ?? [];
+    check(
+      'S-DTO1 ⭐ /abonelik/basla govde tipi AbonelikBaslaDto (satir-ici tip DEGIL)',
+      tipler.includes(AbonelikBaslaDto),
+      `tipler=[${tipler.map((t) => t?.name).join(',')}]`,
+    );
+
+    const gecerli = plainToInstance(AbonelikBaslaDto, {
+      paketSurumuId: 's1',
+      sozlesmeOnayi: true,
+      musteri: { ad: 'A' },
+    });
+    const gecersiz = plainToInstance(AbonelikBaslaDto, {
+      paketSurumuId: 's1',
+      sozlesmeOnayi: false,
+      musteri: { ad: 'A' },
+    });
+    const eksik = plainToInstance(AbonelikBaslaDto, {
+      paketSurumuId: 's1',
+      musteri: { ad: 'A' },
+    });
+    const hGecerli = await validate(gecerli as object);
+    const hGecersiz = await validate(gecersiz as object);
+    const hEksik = await validate(eksik as object);
+    // OLCUT: dogru govde GERCEKTEN geciyor mu? Gecmiyorsa asagidaki iki
+    // assert "her sey reddediliyor" halinde de yesil kalirdi.
+    check('S-DTO2-OLCUT onayli govde DTO`dan geciyor', hGecerli.length === 0,
+      `hata=${JSON.stringify(hGecerli.map((e) => e.property))}`);
+    check(
+      'S-DTO3 ⭐ sozlesmeOnayi=false REDDEDILIYOR (@IsBoolean tek basina gecirirdi)',
+      hGecersiz.some((e) => e.property === 'sozlesmeOnayi'),
+      `hata=${JSON.stringify(hGecersiz.map((e) => e.property))}`,
+    );
+    check(
+      'S-DTO4 alan HIC yoksa da REDDEDILIYOR',
+      hEksik.some((e) => e.property === 'sozlesmeOnayi'),
+      `hata=${JSON.stringify(hEksik.map((e) => e.property))}`,
+    );
+    // `whitelist: true` acik: dekoratorsuz alan govdeden ATILIRDI. `musteri`
+    // dekorator tasimazsa her satin alma "Fatura bilgileri eksik" ile duser.
+    check(
+      'S-DTO5 ⭐ musteri alani dekorator tasiyor (whitelist onu ATMAZ)',
+      hGecerli.length === 0 && (gecerli as any).musteri?.ad === 'A',
+      `musteri=${JSON.stringify((gecerli as any).musteri)}`,
+    );
+  }
+
+  // ── S-SEED ⭐ satis bayragi TOHUMDAN kayda gidiyor mu ─────────────────
+  //
+  // Bos bir veritabanina seed atilinca elektrik paketleri YENIDEN satisa
+  // ACILMAMALI. Betik `satistaMi: true` SABITI yaziyordu.
+  console.log('\n── S-SEED ⭐ paketleri-kur satis bayragi ──');
+  {
+    const kaynak = readFileSync(
+      join(__dirname, '..', 'scripts', 'paketleri-kur.ts'),
+      'utf8',
+    );
+    const elk = ['basic-elk', 'pro-elk', 'pro-mep'];
+    const mek = ['basic-mek', 'pro-mek'];
+    /** Paket tanimindaki `satistaMi` degerini kod bloklarindan okur. */
+    function bayrak(kod: string): string | null {
+      const i = kaynak.indexOf(`kod: '${kod}',`);
+      if (i < 0) return null;
+      const m = /satistaMi:\s*(true|false)/.exec(kaynak.slice(i, i + 900));
+      return m ? m[1] : null;
+    }
+    check('S-SEED0-OLCUT bes paket de tanimda bulundu',
+      [...elk, ...mek].every((k) => bayrak(k) !== null),
+      JSON.stringify([...elk, ...mek].map((k) => `${k}=${bayrak(k)}`)));
+    check('S-SEED1 ⭐ elektrik paketleri tohumda SATISTA DEGIL',
+      elk.every((k) => bayrak(k) === 'false'),
+      JSON.stringify(elk.map((k) => `${k}=${bayrak(k)}`)));
+    check('S-SEED2 mekanik paketleri tohumda SATISTA',
+      mek.every((k) => bayrak(k) === 'true'),
+      JSON.stringify(mek.map((k) => `${k}=${bayrak(k)}`)));
+    // ⭐ BAGLANTI: bayrak tanimda dogru olsa bile kayda GITMEZSE ise yaramaz.
+    check('S-SEED3 ⭐ create bayragi PAKETTEN okuyor (sabit true DEGIL)',
+      /satistaMi: p\.satistaMi,/.test(kaynak) && !/satistaMi: true,\s*\n\s*\},\s*\n\s*\}\);/.test(kaynak),
+      'create satiri');
+  }
+
 
   son();
 }

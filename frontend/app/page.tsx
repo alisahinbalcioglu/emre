@@ -56,6 +56,7 @@ import Link from 'next/link';
 import { Home as HomeIcon, FileText, Database, BookOpen } from 'lucide-react';
 import { GirisliyseYonlendir } from '@/ortak/kabuk/components/landing/GirisliyseYonlendir';
 import { NasilCalisir } from '@/ortak/kabuk/components/landing/NasilCalisir';
+import { TelefonMenusu } from '@/ortak/kabuk/components/landing/TelefonMenusu';
 import { sayfaMetaverisi } from '@/ortak/seo/arama-paylasim';
 
 /** Core pakette kapali ozelligin yanindaki isaret — NasilCalisir'deki
@@ -110,11 +111,18 @@ export default function Home() {
       {/* NAVBAR */}
       <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/80 backdrop-blur-md">
         <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-4 sm:px-6">
-          <Link href="/" className="group flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-2xl font-black text-white shadow-lg shadow-blue-500/30 transition-transform group-hover:scale-105">
+          {/* P1-ek (15.09): 640 pikselin altında logo biraz küçülür, düğme dolgusu daralır.
+              Chromium ölçümü (derleme CSS'i): önceden 320px'te sayfa 6px yana kayıyor,
+              375px'te iki düğme ikiye kırılıyordu. Metinler aynı; 360px ve üstünde düğme
+              metni tek satır (min-[360px]:whitespace-nowrap), 320-359px'te iki satıra
+              inebilir ama taşmaz. Telefonda iki aralık dar (logo gap-1.5, düğmeler gap-0):
+              360px'te logo ile Giriş Yap arasında ~6px pay kalır; pay 0 olursa yazı tipi
+              geç yüklenirken satır taşabilir. sm ve üstü eski ölçüler. */}
+          <Link href="/" className="group flex shrink-0 items-center gap-1.5 sm:gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-xl font-black text-white shadow-lg shadow-blue-500/30 transition-transform group-hover:scale-105 sm:h-10 sm:w-10 sm:text-2xl">
               M
             </div>
-            <span className="text-2xl font-extrabold tracking-tight text-slate-900">
+            <span className="text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl">
               MetaPrice<span className="text-blue-600">X</span>
             </span>
           </Link>
@@ -134,21 +142,25 @@ export default function Home() {
             </Link>
           </nav>
 
-          <div className="flex items-center gap-1 sm:gap-4">
+          <div className="flex items-center gap-0 sm:gap-4">
             <Link
               href="/login"
-              className="px-3 py-2.5 text-sm font-bold text-slate-700 transition-colors hover:text-blue-600 sm:px-5"
+              className="px-2 py-2.5 text-sm font-bold text-slate-700 transition-colors hover:text-blue-600 min-[360px]:whitespace-nowrap sm:px-5"
             >
               Giriş Yap
             </Link>
             <Link
               href="/register"
-              className="rounded-xl bg-[#0B1528] px-3 py-2.5 text-sm font-semibold text-white shadow-md transition-all hover:bg-slate-800 active:scale-[0.98] sm:px-5"
+              className="rounded-xl bg-[#0B1528] px-2 py-2.5 text-sm font-semibold text-white shadow-md transition-all hover:bg-slate-800 active:scale-[0.98] min-[360px]:whitespace-nowrap sm:px-5"
             >
               Hemen Başla
             </Link>
           </div>
         </div>
+
+        {/* Faz 6.1 kapanış (15.09): üstteki menü telefonda gizli; Fiyatlar'a giden tek
+            yol oradaydı. Telefonda logonun altında her zaman görünen ikinci satır. */}
+        <TelefonMenusu />
       </header>
 
       {/* HERO */}
@@ -379,7 +391,9 @@ export default function Home() {
       </section>
 
       {/* OZELLIKLER */}
-      <section id="ozellikler" className="bg-slate-50 py-20">
+      {/* scroll-mt: yapışkan başlık telefonda iki satır (≈120px); çapaya dokununca bölüm
+          başlığı çubuğun altında kalmasın. */}
+      <section id="ozellikler" className="scroll-mt-32 bg-slate-50 py-20 md:scroll-mt-24">
         <div className="mx-auto max-w-7xl px-6">
           <div className="mx-auto mb-16 max-w-2xl text-center">
             <h2 className="mb-2 text-xs font-bold uppercase tracking-widest text-blue-600">

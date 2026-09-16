@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import api from '@/ortak/lib/api';
-import { KAPSAM_ETIKET, SEVIYE_ETIKET, kotaCumlesi, vitrinFiyati, type Paket } from '@/ozellik/odeme/paket-bicim';
+import { KAPSAM_ETIKET, SEVIYE_ETIKET, donemEki, kotaCumlesi, odemeDenemeNotu, vitrinFiyati, type Paket } from '@/ozellik/odeme/paket-bicim';
+import { DenemeSatiri } from '@/ozellik/odeme/DenemeSatiri';
 import {
   ALAN_ETIKET,
   ZORUNLU_ALANLAR,
@@ -12,6 +13,13 @@ import {
   type FaturaKimligi,
 } from '@/ozellik/odeme/fatura-kimligi';
 import { IyzicoFormu } from '@/ozellik/odeme/IyzicoFormu';
+import {
+  ON_BILGILENDIRME_YOLU,
+  SOZLESME_ONAYI_BASLANGIC,
+  SOZLESME_ONAY_METNI,
+  SOZLESME_YOLU,
+  sozlesmeOnayiHatasi,
+} from '@/ozellik/odeme/sozlesme-onayi';
 import {
   bicimle as telefonBicimle,
   haneleriAl as telefonHaneleri,
@@ -48,13 +56,19 @@ export default function AbonelikSayfasi() {
   const [faturaAcik, setFaturaAcik] = useState(false);
   const [fatura, setFatura] = useState<FaturaKimligi>(bosFaturaKimligi());
   const [gonderiliyor, setGonderiliyor] = useState(false);
+  // Faz 6.12a: kart "deneme var" dediği hâlde formdaki telefon/e-posta eskisiyle
+  // eşleştiyse sunucu kararı değiştirir; not kart formunun ÜSTÜNDE gösterilir.
+  const [denemeNotu, setDenemeNotu] = useState<string | null>(null);
+  // Faz 6.4: mesafeli satış onayı. ÖNCEDEN İŞARETSİZ başlar — işaretli
+  // gelen bir kutu onay sayılmaz. Sunucudaki kapı `@Equals(true)`.
+  const [sozlesmeOnayi, setSozlesmeOnayi] = useState<boolean>(SOZLESME_ONAYI_BASLANGIC);
 
   const paketleriGetir = useCallback(async () => {
     try {
       const { data } = await api.get<Paket[]>('/abonelik/paketler');
       setPaketler(Array.isArray(data) ? data : []);
     } catch {
-      setHata('Paketler yuklenemedi. Lutfen sayfayi yenileyin.');
+      setHata('Paketler yüklenemedi. Lütfen sayfayı yenileyin.');
     } finally {
       setYukleniyor(false);
     }
@@ -84,7 +98,7 @@ export default function AbonelikSayfasi() {
     if (!secilen) return;
     const eksik = eksikAlanlar(fatura);
     if (eksik.length) {
-      setHata(`Su alanlar zorunlu: ${eksik.join(', ')}`);
+      setHata(`Şu alanlar zorunlu: ${eksik.join(', ')}`);
       return;
     }
     // Bicim hatasi AYRI mesaj alir: "eksik" ile "yarim" ayni sey degil.
@@ -93,17 +107,26 @@ export default function AbonelikSayfasi() {
       setHata(telHata);
       return;
     }
+    // Düğme zaten kapalı; bu ikinci kapı "sessiz dal yok" kuralı içindir —
+    // klavyeyle ya da eski bir durumla buraya düşülürse gerekçe yazılır.
+    const onayHatasi = sozlesmeOnayiHatasi(sozlesmeOnayi);
+    if (onayHatasi) {
+      setHata(onayHatasi);
+      return;
+    }
     setHata(null);
     setGonderiliyor(true);
     try {
-      const { data } = await api.post<{ formIcerigi: string }>('/abonelik/basla', {
+      const { data } = await api.post<{ formIcerigi: string; denemeHakki?: boolean }>('/abonelik/basla', {
         paketSurumuId: secilen,
         musteri: govdeyeCevir(fatura),
+        sozlesmeOnayi,
       });
+      setDenemeNotu(odemeDenemeNotu(paketler.find((p) => p.surum.paketSurumuId === secilen)?.surum, data));
       setFormHtml(data.formIcerigi);
     } catch (e: any) {
       const m = e?.response?.data?.message ?? e?.response?.data?.mesaj;
-      setHata(typeof m === 'string' ? m : 'Odeme baslatilamadi.');
+      setHata(typeof m === 'string' ? m : 'Ödeme başlatılamadı.');
     } finally {
       setGonderiliyor(false);
     }
@@ -119,8 +142,8 @@ export default function AbonelikSayfasi() {
         <h1 className="mb-1 text-2xl font-bold">Fatura bilgileri</h1>
         <p className="mb-6 text-sm text-muted-foreground">
           {secilenPaket ? `${secilenPaket.ad} — ` : ''}
-          Faturanizin kesilebilmesi icin bu bilgiler gerekli. Kart bilgisi bir
-          sonraki adimda, dogrudan iyzico formunda alinir.
+          Faturanızın kesilebilmesi için bu bilgiler gerekli. Kart bilgisi bir
+          sonraki adımda, doğrudan iyzico formunda alınır.
         </p>
 
         {hata && (
@@ -167,7 +190,7 @@ export default function AbonelikSayfasi() {
           <div>
             <label htmlFor="fatura-postaKodu" className="mb-1 block text-xs font-medium">
               {ALAN_ETIKET.postaKodu}{' '}
-              <span className="text-muted-foreground">(istege bagli)</span>
+              <span className="text-muted-foreground">(isteğe bağlı)</span>
             </label>
             <input
               id="fatura-postaKodu"
@@ -177,6 +200,35 @@ export default function AbonelikSayfasi() {
               className="w-full rounded-lg border px-3 py-2 text-sm"
             />
           </div>
+        </div>
+
+        {/* Faz 6.4: satın almadan ÖNCE onay. İki metne de yeni sekmede
+            açılan bağlantı var; metni okumadan onaylatmak, onayı dayanaksız
+            bırakırdı. */}
+        <div className="mt-6 rounded-lg border bg-slate-50 p-3">
+          <label htmlFor="sozlesme-onayi" className="flex items-start gap-2 text-xs leading-relaxed text-slate-700">
+            <input
+              id="sozlesme-onayi"
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 shrink-0"
+              checked={sozlesmeOnayi}
+              onChange={(e) => {
+                setSozlesmeOnayi(e.target.checked);
+                setHata(null);
+              }}
+            />
+            <span>
+              <a href={ON_BILGILENDIRME_YOLU} target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-600 hover:underline">
+                Ön Bilgilendirme Formu
+              </a>
+              {"'nu ve "}
+              <a href={SOZLESME_YOLU} target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-600 hover:underline">
+                Mesafeli Satış Sözleşmesi
+              </a>
+              {"'ni okudum, onaylıyorum."}
+              <span className="sr-only">{SOZLESME_ONAY_METNI}</span>
+            </span>
+          </label>
         </div>
 
         <div className="mt-5 flex gap-3">
@@ -193,11 +245,11 @@ export default function AbonelikSayfasi() {
           </button>
           <button
             type="button"
-            disabled={gonderiliyor}
+            disabled={gonderiliyor || !sozlesmeOnayi}
             onClick={odemeyeGec}
             className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
           >
-            {gonderiliyor ? 'Hazirlaniyor…' : 'Odemeye gec'}
+            {gonderiliyor ? 'Hazırlanıyor…' : 'Ödemeye geç'}
           </button>
         </div>
       </div>
@@ -210,10 +262,15 @@ export default function AbonelikSayfasi() {
       // Odeme ekrani fatura adimindan GENIS: iyzico formu responsive kipte
       // kabin genisligini alir, dar bir modal olarak sikismaz.
       <div className="mx-auto max-w-4xl">
-        <h1 className="mb-1 text-2xl font-bold">Odeme</h1>
+        <h1 className="mb-1 text-2xl font-bold">Ödeme</h1>
         <p className="mb-6 text-sm text-muted-foreground">
-          Kart bilgileriniz dogrudan iyzico'ya iletilir, sunucularimiza kaydedilmez.
+          Kart bilgileriniz doğrudan iyzico'ya iletilir, sunucularımıza kaydedilmez.
         </p>
+        {denemeNotu && (
+          <div role="status" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            {denemeNotu}
+          </div>
+        )}
         {/*
           ⚠ `dangerouslySetInnerHTML` KULLANILAMAZ. 02.09'da olculdu: bu ekran
           bombos kaliyordu. HTML spesifikasyonu geregi `innerHTML` ile eklenen
@@ -230,8 +287,8 @@ export default function AbonelikSayfasi() {
     <div className="mx-auto max-w-5xl">
       <h1 className="mb-1 text-2xl font-bold">Abonelik</h1>
       <p className="mb-6 text-sm text-muted-foreground">
-        Paketinizi secin. Dolar tutarlari referanstir; tahsilat TL olarak,
-        KDV dahil yapilir.
+        Paketinizi seçin. Dolar tutarları referanstır; tahsilat TL olarak,
+        KDV dahil yapılır.
       </p>
 
       {/* ⚠ MEVCUT DURUM KARTI VE IPTAL DUGMESI BURADAN KALDIRILDI
@@ -250,18 +307,22 @@ export default function AbonelikSayfasi() {
       )}
 
       {yukleniyor ? (
-        <div className="py-12 text-center text-sm text-muted-foreground">Paketler yukleniyor…</div>
+        <div className="py-12 text-center text-sm text-muted-foreground">Paketler yükleniyor…</div>
       ) : paketler.length === 0 ? (
         <div className="rounded-xl border bg-muted/30 py-12 text-center text-sm text-muted-foreground">
-          Su anda satista paket bulunmuyor. Lutfen bizimle iletisime gecin.
+          Şu anda satışta paket bulunmuyor. Lütfen bizimle iletişime geçin.
         </div>
       ) : (
+        // ⚠ KART HİZASI (Faz 6.1 kapanış, 15.09): fiyat sayfasındaki kartlarla aynı
+        // kural (FiyatKartlari.tsx). Her kart 5 satıra yayılır, satırları dış ızgaradan
+        // alır: açıklaması uzun ya da hiç olmayan paket, komşusunun fiyatını ve
+        // düğmesini kaydırmaz. Açıklama yoksa satır boş kutuyla tutulur.
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {paketler.map((p) => (
-            <div key={p.paketId} className="flex flex-col rounded-xl border bg-card p-5">
+            <div key={p.paketId} className="row-span-5 grid grid-rows-subgrid gap-0 rounded-xl border bg-card p-5">
               <div className="mb-3">
                 <h2 className="text-lg font-bold">{p.ad}</h2>
-                <div className="mt-1 flex flex-wrap gap-1.5">
+                <div className="mt-1 flex flex-col items-start gap-1.5">
                   <span className="rounded-md bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
                     {KAPSAM_ETIKET[p.kapsam] ?? p.kapsam}
                   </span>
@@ -271,8 +332,10 @@ export default function AbonelikSayfasi() {
                 </div>
               </div>
 
-              {p.aciklama && (
+              {p.aciklama ? (
                 <p className="mb-3 text-sm text-muted-foreground">{p.aciklama}</p>
+              ) : (
+                <div aria-hidden="true" />
               )}
 
               <div className="mb-4">
@@ -281,28 +344,26 @@ export default function AbonelikSayfasi() {
                 <span className="text-2xl font-bold">
                   {vitrinFiyati(p.surum).ana}
                 </span>
-                <span className="text-sm text-muted-foreground"> / ay</span>
+                <span className="text-sm text-muted-foreground"> {donemEki(p.surum)}</span>
                 {vitrinFiyati(p.surum).alt && (
                   <p className="mt-1 text-xs text-muted-foreground">
                     {vitrinFiyati(p.surum).alt}
                   </p>
                 )}
-                {p.surum.denemeGunu > 0 && (
-                  <p className="mt-1 text-xs text-emerald-700">
-                    {p.surum.denemeGunu} gun ucretsiz deneme
-                  </p>
-                )}
+                {/* Faz 6.12a: deneme BİR KEZ — hakkı olmayana "daha önce kullanıldı". */}
+                <DenemeSatiri surum={p.surum} />
+
               </div>
 
               <ul className="mb-5 space-y-1.5 text-sm">
-                <li>· {p.kullaniciHakki} kullaniciya kadar</li>
+                <li>· {p.kullaniciHakki} kullanıcıya kadar</li>
                 <li>
                   ·{' '}
                   {p.aylikTeklifHakki === null
-                    ? 'Sinirsiz teklif'
-                    : `Aylik ${p.aylikTeklifHakki} teklif`}
+                    ? 'Sınırsız teklif'
+                    : `Ayda ${p.aylikTeklifHakki} teklif`}
                 </li>
-                <li>· DWG metraj {p.dwgAktif ? 'dahil' : 'haric'}</li>
+                <li>· DWG ve DXF metrajı {p.dwgAktif ? 'dâhil' : 'dâhil değil'}</li>
                 {/* Faz 6 (13.09): kota fiyat sayfasıyla AYNI kaynaktan (sunucu tablosu). */}
                 {p.ceviriKotasi && <li>· {kotaCumlesi(p.ceviriKotasi, p.surum)}</li>}
               </ul>
@@ -312,7 +373,7 @@ export default function AbonelikSayfasi() {
                 onClick={() => paketiSec(p.surum.paketSurumuId)}
                 className="mt-auto rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
               >
-                Bu paketi sec
+                Bu paketi seç
               </button>
             </div>
           ))}

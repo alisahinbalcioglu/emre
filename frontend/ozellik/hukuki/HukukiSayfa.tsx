@@ -16,7 +16,45 @@ import { HUKUKI_METIN_SURUMU, HUKUKI_METIN_DURUMU, type HukukiMetin } from './me
  * (`HUKUKI_METIN_DURUMU`); inceleme bitince o sabit `onayli` yapılır ve
  * şerit dört sayfadan birden kalkar.
  */
-export function HukukiSayfa({ metin }: { metin: HukukiMetin }) {
+/**
+ * Bir metnin başlığı + girişi + bölümleri. `ekMetin` bunu İKİNCİ KEZ çizer:
+ * aynı JSX'i sayfada kopyalamak, biri güncellenip öteki geride kalan
+ * "ikiz" hatasını üretirdi.
+ */
+function MetinGovdesi({ metin }: { metin: HukukiMetin }) {
+  return (
+    <>
+      <h1 className="text-2xl font-bold tracking-tight text-slate-900">{metin.baslik}</h1>
+      <p className="mt-2 text-sm leading-relaxed text-slate-600">{metin.girisNotu}</p>
+      <div className="mt-8 space-y-8">
+        {metin.bolumler.map((b, i) => (
+          <section key={i}>
+            <h2 className="text-base font-semibold text-slate-900">{b.baslik}</h2>
+            <div className="mt-2 space-y-3">
+              {b.paragraflar.map((p, j) => (
+                <p key={j} className="text-sm leading-relaxed text-slate-700">{p}</p>
+              ))}
+            </div>
+            {b.madde && b.madde.length > 0 && (
+              <ul className="mt-3 list-disc space-y-1.5 pl-5">
+                {b.madde.map((m, j) => (
+                  <li key={j} className="text-sm leading-relaxed text-slate-700">{m}</li>
+                ))}
+              </ul>
+            )}
+          </section>
+        ))}
+      </div>
+    </>
+  );
+}
+
+/**
+ * @param ekMetin Aynı sayfada YAYIMLANAN ikinci metin (Faz 6.4: Mesafeli
+ *   Satış Sözleşmesi, ön bilgilendirme formunun altında). Ayrı rotası yok:
+ *   satın alma onayındaki bağlantı `#sozlesme` çıpasına gelir.
+ */
+export function HukukiSayfa({ metin, ekMetin }: { metin: HukukiMetin; ekMetin?: HukukiMetin }) {
   return (
     <div className="flex min-h-screen flex-col bg-white">
       <header className="border-b">
@@ -24,9 +62,16 @@ export function HukukiSayfa({ metin }: { metin: HukukiMetin }) {
           <Link href="/" className="flex items-center gap-0.5 text-lg font-extrabold tracking-tight text-slate-900">
             MetaPrice<span className="text-blue-600">X</span>
           </Link>
-          <Link href="/login" className="text-xs font-semibold text-blue-600 hover:text-blue-700">
-            Giriş Yap
-          </Link>
+          {/* Faz 6.1 kapanış (15.09): fiyat sayfasına her genişlikte görünen yol —
+              anasayfadaki telefon menüsünün ikizi; hukuki başlıkta menü yoktu. */}
+          <div className="flex items-center gap-4">
+            <Link href="/fiyatlar" className="text-xs font-semibold text-slate-700 hover:text-blue-600">
+              Fiyatlar
+            </Link>
+            <Link href="/login" className="text-xs font-semibold text-blue-600 hover:text-blue-700">
+              Giriş Yap
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -43,31 +88,19 @@ export function HukukiSayfa({ metin }: { metin: HukukiMetin }) {
           </div>
         )}
 
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">{metin.baslik}</h1>
-        <p className="mt-2 text-sm leading-relaxed text-slate-600">{metin.girisNotu}</p>
-        <p className="mt-1 text-[11px] text-slate-400">
+        <MetinGovdesi metin={metin} />
+        <p className="mt-6 text-[11px] text-slate-400">
           Metin sürümü: {HUKUKI_METIN_SURUMU}
         </p>
 
-        <div className="mt-8 space-y-8">
-          {metin.bolumler.map((b, i) => (
-            <section key={i}>
-              <h2 className="text-base font-semibold text-slate-900">{b.baslik}</h2>
-              <div className="mt-2 space-y-3">
-                {b.paragraflar.map((p, j) => (
-                  <p key={j} className="text-sm leading-relaxed text-slate-700">{p}</p>
-                ))}
-              </div>
-              {b.madde && b.madde.length > 0 && (
-                <ul className="mt-3 list-disc space-y-1.5 pl-5">
-                  {b.madde.map((m, j) => (
-                    <li key={j} className="text-sm leading-relaxed text-slate-700">{m}</li>
-                  ))}
-                </ul>
-              )}
-            </section>
-          ))}
-        </div>
+        {ekMetin && (
+          <div id="sozlesme" className="mt-14 scroll-mt-6 border-t pt-10">
+            <MetinGovdesi metin={ekMetin} />
+            <p className="mt-6 text-[11px] text-slate-400">
+              Metin sürümü: {HUKUKI_METIN_SURUMU}
+            </p>
+          </div>
+        )}
       </main>
 
       <Altbilgi />

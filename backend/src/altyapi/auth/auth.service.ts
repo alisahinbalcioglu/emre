@@ -13,6 +13,7 @@ import { LoginDto } from './dto/login.dto';
 import { getFirmaCapabilities } from './capabilities.helper';
 import { ErisimServisi } from '../../ozellik/odeme/abonelik/erisim.servisi';
 import { EpostaDogrulamaServisi } from './eposta-dogrulama.servisi';
+import { epostaIleKullaniciBul, epostaKucult } from './eposta';
 
 @Injectable()
 export class AuthService {
@@ -24,9 +25,14 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto) {
-    const existing = await this.prisma.user.findUnique({
-      where: { email: dto.email },
-    });
+    // ── FAZ 6.12a / K-P6 (15.09): E-POSTA HARF BUYUKLUGU ─────────────────
+    // Olculen acik: kayit adresi normalize etmiyor, varlik kontrolu BIREBIR
+    // eslestiriyordu. "Ali@firma.com" kayitliyken "ali@firma.com" ile ikinci
+    // hesap + yeni firma + yeni ucretsiz deneme aciliyordu. Artik kontrol
+    // duyarsiz (mevcut karisik harfli kayitlari da yakalar) ve yeni adres
+    // kucuk harfle saklanir. Kural tek yerde: eposta.ts.
+    const email = epostaKucult(dto.email);
+    const existing = await epostaIleKullaniciBul(this.prisma, email);
     if (existing) throw new ConflictException('Email already in use');
 
     const hashed = await bcrypt.hash(dto.password, 10);
@@ -44,10 +50,10 @@ export class AuthService {
     const simdi = new Date();
     const user = await this.prisma.user.create({
       data: {
-        email: dto.email,
+        email,
         password: hashed,
         firmaRol: 'sahip',
-        firma: { create: { ad: dto.email.split('@')[0] } },
+        firma: { create: { ad: email.split('@')[0] } },
         sozlesmeOnayiAt: simdi,
         sozlesmeSurumu: HUKUKI_METIN_SURUMU,
         ticariIletiOnayiAt: dto.ticariIletiOnayi === true ? simdi : null,
@@ -65,9 +71,9 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
-    const user = await this.prisma.user.findUnique({
-      where: { email: dto.email },
-    });
+    // K-P6: buyuk/kucuk harfe duyarsiz; mevcut karisik harfli kayitlar
+    // degistirilmedi, kayittaki yazimla da baska yazimla da giris calisir.
+    const user = await epostaIleKullaniciBul(this.prisma, dto.email);
     if (!user) throw new UnauthorizedException('Invalid credentials');
 
     const valid = await bcrypt.compare(dto.password, user.password);

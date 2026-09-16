@@ -8,13 +8,23 @@
  *
  * ⚠ İstemcinin reddi bir kolaylıktır, kapı DEĞİLDİR: sunucu aynı kararı
  * çeviri isteğinde yeniden, AI çağrısından önce verir.
+ *
+ * ── BAKMAK ≠ ÇEVİRMEK (Faz 6.11, 15.09) ─────────────────────────────────────
+ * "İngilizceye Çevir" önce görüntüleme ucuna sorar: bu içeriğin çevirisi
+ * ödenmiş ve tamsa harita onaysız, kotasız ve yeteneksiz gelir (ödemesi durmuş
+ * firma da ödediğini görür, K-T8). Yoksa çeviri akışı başlar.
  */
 import {
   ceviriHataMetni,
   onizlemeCumlesi,
+  tamamlanamadiBildirimi,
   type CeviriOnizleme,
+  type GoruntulemeOdenmis,
+  type GoruntulemeYaniti,
+  type TamamlanamadiGovdesi,
   type TeklifCeviriSonucu,
 } from './ceviri-kota';
+import type { CeviriHaritasi } from './ceviri';
 
 export interface CeviriAkisiBagimliliklari {
   get: (url: string, ayar: { params: Record<string, string> }) => Promise<{ data: unknown }>;
@@ -27,6 +37,48 @@ export interface CeviriAkisiBagimliliklari {
 export interface CeviriAkisiSecenekleri {
   /** Onay kartına eklenecek not (Düzenle ekranı: kaydedilmemiş değişiklikler). */
   ekNot?: string;
+}
+
+/** Görüntüleme ucu. Hata ayrı döner: detay ekranı açılışta hatayı nota çevirir. */
+export async function teklifGorunumuAl(
+  quoteId: string,
+  d: Pick<CeviriAkisiBagimliliklari, 'get'>,
+): Promise<{ yanit: GoruntulemeYaniti } | { hata: unknown }> {
+  try {
+    const r = await d.get('/ai/translate/goruntule', { params: { quoteId } });
+    return { yanit: r.data as GoruntulemeYaniti };
+  } catch (e) {
+    return { hata: e };
+  }
+}
+
+export type IngilizceSonucu =
+  | { tur: 'goruntuleme'; harita: CeviriHaritasi; yanit: GoruntulemeOdenmis }
+  | { tur: 'ceviri'; harita: CeviriHaritasi; sonuc: TeklifCeviriSonucu };
+
+/**
+ * "İngilizceye Çevir": önce ödenmiş çeviriyi GÖSTER (yetenek/e-posta istemez);
+ * yoksa ya da eksikse çeviri akışı. Görüntüleme hata verirse (ağ, 429) çeviri
+ * akışına düşülür — sunucu aynı kanıtı yeniden sorar, ödenmiş içerik yine
+ * kotasız döner; para riski yok.
+ */
+export async function teklifIngilizcesiniAl(
+  quoteId: string,
+  d: CeviriAkisiBagimliliklari,
+  secenek: CeviriAkisiSecenekleri = {},
+): Promise<IngilizceSonucu | null> {
+  let g: { yanit: GoruntulemeYaniti } | { hata: unknown };
+  d.yukleniyor(true);
+  try {
+    g = await teklifGorunumuAl(quoteId, d);
+  } finally {
+    d.yukleniyor(false);
+  }
+  if ('yanit' in g && g.yanit?.odenmis === true && g.yanit.tamam === true) {
+    return { tur: 'goruntuleme', harita: g.yanit.harita ?? {}, yanit: g.yanit };
+  }
+  const sonuc = await teklifCevirisiAl(quoteId, d, secenek);
+  return sonuc ? { tur: 'ceviri', harita: sonuc.harita ?? {}, sonuc } : null;
 }
 
 /**
@@ -81,7 +133,7 @@ export async function teklifCevirisiAl(
     return null;
   }
 
-  // Aynı içerik az önce çevrildi: kotadan düşmez, soracak bir şey yok
+  // Bu içeriğin çevirisi ödenmiş: kotadan düşmez, soracak bir şey yok
   // (14.09 incelemesi O1 — önizleme bunu bilmeden reddediyordu).
   if (!onizleme.tekrar) {
     const aciklama = [onizlemeCumlesi(onizleme), secenek.ekNot].filter(Boolean).join(' ');
@@ -94,7 +146,15 @@ export async function teklifCevirisiAl(
     const { data } = await d.post('/ai/translate', { quoteId, hedefDil: 'en' });
     return data as TeklifCeviriSonucu;
   } catch (e) {
-    d.bildir({ title: 'Çeviri başarısız', description: ceviriHataMetni(e), variant: 'destructive' });
+    // HEPSİ YA DA HİÇBİRİ (REVİZE K-T7): sunucu eksik çeviride 422 döner,
+    // harita GELMEZ; iki ekran da hiçbir satırı değiştirmez.
+    const govde = (e as { response?: { data?: TamamlanamadiGovdesi } })?.response?.data;
+    if (govde?.kod === 'CEVIRI_TAMAMLANAMADI') {
+      const b = tamamlanamadiBildirimi(govde);
+      d.bildir({ title: b.baslik, description: b.aciklama, variant: 'destructive' });
+    } else {
+      d.bildir({ title: 'Çeviri başarısız', description: ceviriHataMetni(e), variant: 'destructive' });
+    }
     return null;
   } finally {
     d.yukleniyor(false);

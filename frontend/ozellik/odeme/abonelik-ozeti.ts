@@ -20,13 +20,17 @@
  *  Bu modul `ErisimKarari`ni (yani `/auth/me` → `erisim`) ekrana cevirir.
  */
 
+import type { AbonelikDurumu } from './erisim-durumu';
+
 export interface AbonelikOzeti {
   /** Paket kodu (orn. "pro-mek"); abonelik yoksa null. */
   paketKodu: string | null;
   /** Ekranda gosterilecek paket adi. */
   baslik: string;
-  /** Durum rozeti metni (AKTIF · DENEME · ASKIDA · ...). */
+  /** Durum KODU (AKTIF · DENEME · ASKIDA · ...) — karar icin; ekrana BASILMAZ. */
   durum: string;
+  /** Durum rozetinin ekran metni ("Aktif", "Askıda" ...); kod yoksa bos. */
+  durumEtiketi: string;
   /** Kalan gun; bilinmiyorsa null. */
   kalanGun: number | null;
   /** Ikincil satir: "23 gun kaldi" / "Abonelik yok" gibi. */
@@ -49,6 +53,28 @@ export function mirasMi(paketKodu: string | null | undefined): boolean {
 }
 
 /**
+ * Durum kodunun ekran adi (Faz 6.1 kapanis, 15.09). Hesap sayfasi rozeti
+ * kodu OLDUGU GIBI basiyordu: musteri "AKTIF", "SONA_ERDI" goruyordu.
+ * `Record<AbonelikDurumu, …>`: sunucuya yeni durum eklenip buraya eklenmezse
+ * tip denetimi kirilir. Tanimsiz bir kod gelirse kod aynen gosterilir —
+ * bos rozet "durum yok" gibi okunurdu.
+ */
+export const DURUM_ETIKET: Record<AbonelikDurumu, string> = {
+  DENEME: 'Deneme',
+  AKTIF: 'Aktif',
+  ODEME_BEKLIYOR: 'Ödeme bekliyor',
+  KISITLI: 'Kısıtlı',
+  ASKIDA: 'Askıda',
+  IPTAL: 'İptal edildi',
+  SONA_ERDI: 'Sona erdi',
+};
+
+export function durumEtiketi(durum: string): string {
+  if (!durum) return '';
+  return (DURUM_ETIKET as Record<string, string>)[durum] ?? durum;
+}
+
+/**
  * `ErisimKarari`ni hesap sayfasi ozetine cevirir. SAF fonksiyon.
  *
  * ⚠ `karar` null olabilir (yetenekler henuz gelmedi ya da saglayici yok).
@@ -67,8 +93,9 @@ export function abonelikOzeti(
       paketKodu: null,
       baslik: '—',
       durum: '',
+      durumEtiketi: '',
       kalanGun: null,
-      altMetin: 'Abonelik bilgisi yukleniyor',
+      altMetin: 'Abonelik bilgisi yükleniyor',
       iptalEdilebilir: false,
     };
   }
@@ -81,8 +108,9 @@ export function abonelikOzeti(
       paketKodu: null,
       baslik: 'Abonelik yok',
       durum,
+      durumEtiketi: durumEtiketi(durum),
       kalanGun: null,
-      altMetin: 'Devam etmek icin bir paket secin',
+      altMetin: 'Devam etmek için bir paket seçin',
       iptalEdilebilir: false,
     };
   }
@@ -92,13 +120,14 @@ export function abonelikOzeti(
   return {
     paketKodu,
     // Goc paketi musteriye teknik kodla gosterilmez.
-    baslik: mirasMi(paketKodu) ? 'Gecis paketi' : paketKodu,
+    baslik: mirasMi(paketKodu) ? 'Geçiş paketi' : paketKodu,
     durum,
+    durumEtiketi: durumEtiketi(durum),
     kalanGun,
     altMetin:
       kalanGun === null
-        ? 'Yenileme tarihi belirtilmemis'
-        : `${kalanGun} gun kaldi`,
+        ? 'Yenileme tarihi belirtilmemiş'
+        : `${kalanGun} gün kaldı`,
     // ⚠ Goc paketi de iptal EDILEBILIR sayilir: musteri isterse cikabilmeli.
     iptalEdilebilir: YASAYAN_DURUMLAR.has(durum),
   };

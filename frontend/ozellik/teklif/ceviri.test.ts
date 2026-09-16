@@ -11,12 +11,18 @@
  * ⚠ BIR ASSERT TEK KRITERE (proje kurali): her kriter kendi it() blogunda.
  */
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   ceviriAnahtari,
   ceviriUygula,
+  duzeltmeyiSatirlaraUygula,
   ceviriGeriAl,
   cevrilmisSatirVarMi,
+  ingilizceGorunum,
+  kayittaKaynakDuruyorMu,
   satirKaynagi,
+  turkceGorunum,
   type CeviriSayfasi,
 } from './ceviri';
 import type { ColumnRoles, ExcelRowData } from '../tablo/excel-grid/types';
@@ -149,5 +155,155 @@ describe('ceviriUygula / ceviriGeriAl', () => {
     ceviriUygula([s], { 'PVC BORU': 'PVC PIPE' }, { 0: canli });
     expect(canli[0]['Malzeme Cinsi']).toBe('PVC PIPE');
     expect(bayat[0]['Malzeme Cinsi']).toBe('PVC BORU');
+  });
+});
+
+// ── C) BAYAT ISARET (Faz 6.11, 15.09) ─────────────────────────────────────
+
+describe('_ceviriSonucu — isaret yalniz hucre hala ceviriyi tasiyorsa gecerli', () => {
+  it('ceviriUygula yazdigi degeri _ceviriSonucu olarak saklar', () => {
+    const rows = [satir('PVC BORU')];
+    ceviriUygula([{ index: 0, rowData: rows, columnRoles: ROLLER }], { 'PVC BORU': 'PVC PIPE' });
+    expect(rows[0]._ceviriSonucu).toBe('PVC PIPE');
+  });
+
+  it('bayat isaret (hucre ceviriden sonra elle degisti): satirKaynagi HUCREYI verir', () => {
+    expect(satirKaynagi({ 'Malzeme Cinsi': 'KELEBEK VANA', _ceviriKaynak: 'KÜRESEL VANA', _ceviriSonucu: 'BALL VALVE' }, 'Malzeme Cinsi')).toBe('KELEBEK VANA');
+  });
+
+  it('ceviriGeriAl bayat hucreyi kaynaga EZMEZ, iki isareti de siler', () => {
+    const rows = [satir('KELEBEK VANA', { _ceviriKaynak: 'KÜRESEL VANA', _ceviriSonucu: 'BALL VALVE' })];
+    expect(ceviriGeriAl([{ index: 0, rowData: rows, columnRoles: ROLLER }])).toBe(1);
+    expect(rows[0]['Malzeme Cinsi']).toBe('KELEBEK VANA');
+    expect(rows[0]._ceviriKaynak).toBeUndefined();
+    expect(rows[0]._ceviriSonucu).toBeUndefined();
+  });
+
+  it('kayittaKaynakDuruyorMu: gecerli isaretli satir false', () => {
+    expect(kayittaKaynakDuruyorMu({ ad: 'PVC PIPE', _ceviriKaynak: 'PVC BORU', _ceviriSonucu: 'PVC PIPE' }, 'ad')).toBe(false);
+  });
+
+  it('kayittaKaynakDuruyorMu: bayat isaretli satir true', () => {
+    expect(kayittaKaynakDuruyorMu({ ad: 'KELEBEK VANA', _ceviriKaynak: 'KÜRESEL VANA', _ceviriSonucu: 'BALL VALVE' }, 'ad')).toBe(true);
+  });
+
+  it('kayittaKaynakDuruyorMu: isaretsiz satir true', () => {
+    expect(kayittaKaynakDuruyorMu({ ad: 'PVC BORU' }, 'ad')).toBe(true);
+  });
+});
+
+// ── D) GORUNUM — detay ekrani kaydi DEGISTIRMEZ (Faz 6.11) ────────────────
+
+describe('ingilizceGorunum / turkceGorunum', () => {
+  const kayit = (): CeviriSayfasi[] => [{
+    index: 0,
+    columnRoles: ROLLER,
+    rowData: [
+      satir('PVC BORU'),
+      satir('STEEL PIPE', { _ceviriKaynak: 'ÇELİK BORU', _ceviriSonucu: 'STEEL PIPE' }),
+      satir('KELEBEK VANA', { _ceviriKaynak: 'KÜRESEL VANA', _ceviriSonucu: 'BALL VALVE' }),
+      satir('BAKIR BORU'),
+    ],
+  }];
+  const HARITA = { 'PVC BORU': 'PVC PIPE', 'ÇELİK BORU': 'STEEL PIPING', 'KÜRESEL VANA': 'BALL VALVE' };
+
+  it('kayit nesnelerini DEGISTIRMEZ (derin karsilastirma)', () => {
+    const s = kayit();
+    const once = JSON.stringify(s);
+    ingilizceGorunum(s, HARITA);
+    expect(JSON.stringify(s)).toBe(once);
+  });
+
+  it('yalniz kayitta kaynak duran satira yazar: Ingilizce kayitli ve bayat satir degismez, yazilan 1', () => {
+    const r = ingilizceGorunum(kayit(), HARITA);
+    const ad = r.sayfalar[0].rowData!.map((x) => x['Malzeme Cinsi']);
+    expect(ad).toEqual(['PVC PIPE', 'STEEL PIPE', 'KELEBEK VANA', 'BAKIR BORU']);
+    expect(r.yazilan).toBe(1);
+  });
+
+  it('degisen satir kopyasi isaretleri tasir (Revize Et Ingilizceyi isaretiyle tasir)', () => {
+    const r = ingilizceGorunum(kayit(), HARITA);
+    expect(r.sayfalar[0].rowData![0]._ceviriKaynak).toBe('PVC BORU');
+    expect(r.sayfalar[0].rowData![0]._ceviriSonucu).toBe('PVC PIPE');
+  });
+
+  it('turkceGorunum: gecerli isaretli satirda Turkce kaynak', () => {
+    expect(turkceGorunum(kayit())[0].rowData![1]['Malzeme Cinsi']).toBe('ÇELİK BORU');
+  });
+
+  it('turkceGorunum: bayat isaretli satirda hucre korunur', () => {
+    expect(turkceGorunum(kayit())[0].rowData![2]['Malzeme Cinsi']).toBe('KELEBEK VANA');
+  });
+
+  it('turkceGorunum: isaretler kopyadan atilir, kayit degismez', () => {
+    const s = kayit();
+    const once = JSON.stringify(s);
+    const r = turkceGorunum(s);
+    expect(r[0].rowData![1]._ceviriKaynak).toBeUndefined();
+    expect(r[0].rowData![1]._ceviriSonucu).toBeUndefined();
+    expect(JSON.stringify(s)).toBe(once);
+  });
+
+  // S10 — EKRAN = DOSYA: sunucu `disaAktarimPlani` AYNI fikstürü koşar
+  // (backend/test/ceviri-gorunum-cikti-test.ts S10). İki yüz farklı satırı
+  // değiştirirse ekranda İngilizce görünen dosyada Türkçe iner ya da tersi.
+  it('S10 ikiz fikstur: beklenen degisen satirlar ve yazilan sayisi sunucu planiyla ayni', () => {
+    const fx = JSON.parse(readFileSync(join(__dirname, '../../../test-fixtures/ceviri-gorunum-ikizi.json'), 'utf8'));
+    const r = ingilizceGorunum(fx.sayfalar as CeviriSayfasi[], fx.onbellek);
+    const degisen: Array<[number, number, string]> = [];
+    r.sayfalar.forEach((sayfa, si) => sayfa.rowData!.forEach((row, ri) => {
+      if (row !== fx.sayfalar[si].rowData[ri]) degisen.push([si, ri, row[sayfa.columnRoles!.nameField!]]);
+    }));
+    expect(degisen).toEqual(fx.beklenen.degisecek);
+    expect(r.yazilan).toBe(fx.beklenen.degisecek.length);
+  });
+});
+
+// ── FAZ 6.9: FİRMA DÜZELTMESİNİ SATIRLARA UYGULAMA (Düzenle, canlı satırlar) ──
+describe('duzeltmeyiSatirlaraUygula', () => {
+  const ROLLER = { nameField: '_ad' } as any;
+  const sayfa = (satirlar: any[]): CeviriSayfasi[] => [{ index: 0, isEmpty: false, columnRoles: ROLLER, rowData: satirlar }];
+
+  it('yalnız anahtarı EŞLEŞEN satıra yazar; Türkçe kalmış satıra işaret koyar', () => {
+    const satirlar = [{ _ad: 'KÜRESEL VANA' }, { _ad: 'PVC BORU' }];
+    const r = duzeltmeyiSatirlaraUygula(sayfa(satirlar), 'KÜRESEL VANA', 'SPHERICAL VALVE');
+    expect(r.yazilan).toBe(1);
+    expect(satirlar[0]).toMatchObject({ _ad: 'SPHERICAL VALVE', _ceviriKaynak: 'KÜRESEL VANA', _ceviriSonucu: 'SPHERICAL VALVE' });
+    expect(satirlar[1]).toEqual({ _ad: 'PVC BORU' });
+  });
+
+  it('zaten çevrilmiş satırda kaynak KORUNUR, hücre ve sonuç işareti yenilenir', () => {
+    const satirlar = [{ _ad: 'BALL VALVE', _ceviriKaynak: 'KÜRESEL VANA', _ceviriSonucu: 'BALL VALVE' }];
+    duzeltmeyiSatirlaraUygula(sayfa(satirlar), 'KÜRESEL VANA', 'SPHERICAL VALVE');
+    expect(satirlar[0]).toEqual({ _ad: 'SPHERICAL VALVE', _ceviriKaynak: 'KÜRESEL VANA', _ceviriSonucu: 'SPHERICAL VALVE' });
+  });
+
+  it('deger null → Türkçe kaynağa döner ve iki işaret de silinir', () => {
+    const satirlar = [{ _ad: 'BALL VALVE', _ceviriKaynak: 'KÜRESEL VANA', _ceviriSonucu: 'BALL VALVE' }];
+    const r = duzeltmeyiSatirlaraUygula(sayfa(satirlar), 'KÜRESEL VANA', null);
+    expect(r.yazilan).toBe(1);
+    expect(satirlar[0]).toEqual({ _ad: 'KÜRESEL VANA' });
+  });
+
+  it('BAYAT işaretli satırda (hücre elle değişmiş) kullanıcının yazdığı EZİLMEZ', () => {
+    const satirlar = [{ _ad: 'KIRMIZI VANA', _ceviriKaynak: 'KÜRESEL VANA', _ceviriSonucu: 'BALL VALVE' }];
+    const r = duzeltmeyiSatirlaraUygula(sayfa(satirlar), 'KÜRESEL VANA', 'SPHERICAL VALVE');
+    expect(r.yazilan).toBe(0);
+    expect(satirlar[0]._ad).toBe('KIRMIZI VANA');
+  });
+
+  it('uygulamadan sonra satırın ÇEVİRİ KAYNAĞI hâlâ Türkçe asıldır (içerik özeti değişmez)', () => {
+    const satirlar = [{ _ad: 'KÜRESEL VANA' }];
+    duzeltmeyiSatirlaraUygula(sayfa(satirlar), 'KÜRESEL VANA', 'SPHERICAL VALVE');
+    expect(ceviriAnahtari(satirKaynagi(satirlar[0] as any, '_ad'))).toBe('KÜRESEL VANA');
+    expect(kayittaKaynakDuruyorMu(satirlar[0] as any, '_ad')).toBe(false);
+  });
+
+  it('canlı satırlar (live) verilirse onlara yazar; boş anahtar hiçbir şey yapmaz', () => {
+    const canli = [{ _ad: 'KÜRESEL VANA' }];
+    const r = duzeltmeyiSatirlaraUygula(sayfa([{ _ad: 'BAŞKA' }]), 'KÜRESEL VANA', 'SPHERICAL VALVE', { 0: canli as any });
+    expect(r.yazilan).toBe(1);
+    expect(canli[0]._ad).toBe('SPHERICAL VALVE');
+    expect(duzeltmeyiSatirlaraUygula(sayfa([{ _ad: 'X' }]), '  ', 'Y').yazilan).toBe(0);
   });
 });

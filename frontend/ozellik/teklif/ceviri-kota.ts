@@ -26,13 +26,11 @@ export interface CeviriKotaOzeti {
 
 export interface CeviriOnizleme {
   epostaDogrulandi: boolean;
-  /** Bu istekte düşebilecek satır: devamda kalan satır, tekrarda 0. */
+  /** Bu istekte düşebilecek satır: ödenmiş içerikte 0. */
   gerekenSatir: number;
   metinSayisi: number;
-  /** Aynı içerik az önce çevrildi — kotadan düşmez. */
+  /** Bu içeriğin çevirisi ödenmiş — kotadan düşmez. */
   tekrar: boolean;
-  /** Yarım kalan çevirinin devamı — yalnız kalan satır düşer. */
-  devam: boolean;
   /** Bu içeriğin çevirisi şu an sürüyor. */
   suruyor: boolean;
   izin: boolean;
@@ -41,6 +39,10 @@ export interface CeviriOnizleme {
   kota: CeviriKotaOzeti;
 }
 
+/**
+ * Tamamlanmış çeviri (REVİZE K-T7, 15.09): harita her zaman TAMDIR — eksik
+ * kalan çeviride sunucu 422 `CEVIRI_TAMAMLANAMADI` döner, harita gelmez.
+ */
 export interface TeklifCeviriSonucu {
   harita: Record<string, string>;
   onbellekten: number;
@@ -49,13 +51,44 @@ export interface TeklifCeviriSonucu {
   satirSayisi: number;
   /** Bu istekte kotadan düşen satır. */
   dusulenSatir: number;
-  /** Haritanın karşılamadığı, Türkçe kalan satır. */
-  cevrilemeyenSatir: number;
   tekrar: boolean;
-  devam: boolean;
   kotadanDustu: boolean;
   kota: CeviriKotaOzeti;
 }
+
+/** Ödenmemiş içeriğin nedeni — sunucu `odenmisIcerikKaniti` ile birebir. */
+export type GoruntulemeNedeni = 'CEVIRI_SURUYOR' | 'ICERIK_DEGISTI' | 'CEVIRI_YOK';
+
+/** `GET /ai/translate/goruntule` — ödenmiş ve tam: harita gelir. */
+export interface GoruntulemeOdenmis {
+  odenmis: true;
+  tamam: true;
+  kaynak: 'TUKETIM' | 'GECIS';
+  harita: Record<string, string>;
+  satirSayisi: number;
+}
+
+/** Ödenmiş ama önbellekte eksik: harita GELMEZ, çeviri isteği kotasız tamamlar. */
+export interface GoruntulemeEksik {
+  odenmis: true;
+  tamam: false;
+  kaynak: 'TUKETIM' | 'GECIS';
+  satirSayisi: number;
+  cevrilemeyenSatir: number;
+}
+
+/** Ödenmemiş: yalnız neden ve sayılar (harita GELMEZ). */
+export interface GoruntulemeOdenmemis {
+  odenmis: false;
+  neden: GoruntulemeNedeni;
+  satirSayisi: number;
+  /** İngilizce dosyada değişecek satır. */
+  degisecekSatir: number;
+  /** Kayıtta Türkçe duran, karşılığı olmayan satır — İngilizce dosyayı durdurur (Emre 15.09). */
+  karsiliksizSatir: number;
+}
+
+export type GoruntulemeYaniti = GoruntulemeOdenmis | GoruntulemeEksik | GoruntulemeOdenmemis;
 
 /** ISO an → "12.10.2026" (Türkiye saati, UTC+3). `toLocaleDateString` KULLANILMAZ:
  *  sunucuyla aynı günü söylemeli, tarayıcının saat dilimine bağlı kalmamalı. */
@@ -77,10 +110,7 @@ export function kalanKotaCumlesi(k: CeviriKotaOzeti): string {
 
 /** Çevirmeden ÖNCE gösterilen onay metni: bu teklif kaç satır yer, geriye ne kalır. */
 export function onizlemeCumlesi(o: CeviriOnizleme): string {
-  const bas = o.devam
-    ? `Bu teklifin yarım kalan çevirisi tamamlanacak: ${sayiYaz(o.gerekenSatir)} satır daha yer (çevrilmiş satırlar yeniden düşmez).`
-    : `Bu teklif ${sayiYaz(o.gerekenSatir)} satır çeviri kotası yer.`;
-  return `${bas} ${kalanKotaCumlesi(o.kota)}.`;
+  return `Bu teklif ${sayiYaz(o.gerekenSatir)} satır çeviri kotası yer. ${kalanKotaCumlesi(o.kota)}.`;
 }
 
 /** Sunucu hatasından kullanıcıya gösterilecek metin. Kota/erişim reddi `mesaj`
@@ -105,20 +135,10 @@ export interface CeviriBildirimi {
 /** Çeviri sonrası bildirim: kaç hücre yazıldı, kotadan ne düştü, kalan ne. */
 export function sonucBildirimi(s: TeklifCeviriSonucu, yazilan: number): CeviriBildirimi {
   const hucre = `${sayiYaz(yazilan)} hücre çevrildi`;
-  if (s.cevrilemeyenSatir > 0) {
-    return {
-      baslik: 'Çeviri KISMEN tamamlandı',
-      aciklama:
-        `${hucre} · ${sayiYaz(s.cevrilemeyenSatir)} satır Türkçe kaldı. Kotadan yalnız çevrilen ` +
-        `${sayiYaz(s.dusulenSatir)} satır düştü; 10 dakika içinde yeniden denerseniz kalan satırlar çevrilir. ` +
-        kalanKotaCumlesi(s.kota),
-      hata: true,
-    };
-  }
   if (s.tekrar) {
     return {
       baslik: 'Çeviri tamamlandı',
-      aciklama: `${hucre} · Bu içerik az önce çevrilmişti; kotadan yeniden düşmedi. ${kalanKotaCumlesi(s.kota)}`,
+      aciklama: `${hucre} · Bu içeriğin çevirisi daha önce ödenmişti; kotadan yeniden düşmedi. ${kalanKotaCumlesi(s.kota)}`,
       hata: false,
     };
   }
@@ -126,6 +146,54 @@ export function sonucBildirimi(s: TeklifCeviriSonucu, yazilan: number): CeviriBi
     baslik: 'Çeviri tamamlandı',
     aciklama: `${hucre} · kotadan ${sayiYaz(s.dusulenSatir)} satır düştü. ${kalanKotaCumlesi(s.kota)}`,
     hata: false,
+  };
+}
+
+/**
+ * Görüntüleme (bakmak ≠ çevirmek, 15.09): ödenmiş içeriğin İngilizce görünümü
+ * açıldı — kota işlemi yok. Yalnız tam (`tamam: true`) yanıtta çağrılır.
+ */
+export function goruntulemeBildirimi(_y: GoruntulemeOdenmis, yazilan: number): CeviriBildirimi {
+  return {
+    baslik: 'İngilizce görünüm açıldı',
+    aciklama: `${sayiYaz(yazilan)} hücre İngilizce gösteriliyor · bu içeriğin çevirisi daha önce ödenmişti, kotadan düşmedi.`,
+    hata: false,
+  };
+}
+
+/** Çeviri 422 gövdesinin istemcinin okuduğu kesiti. */
+export interface TamamlanamadiGovdesi {
+  kod?: unknown;
+  cevrilemeyenSayisi?: unknown;
+  cevrilemeyenMetinSayisi?: unknown;
+  cevrilemeyenSatirlar?: unknown;
+}
+
+/** Listede gösterilen ilk metin sayısı ve metin başına karakter tavanı. */
+const LISTE_ILK = 5;
+const METIN_TAVANI = 60;
+
+/**
+ * HEPSİ YA DA HİÇBİRİ (REVİZE K-T7): çeviri tamamlanamadı. Kotadan hiçbir şey
+ * düşmedi, teklif Türkçe kaldı; çevrilemeyen ilk metinler gösterilir, tekrar
+ * deneme ücretsizdir.
+ */
+export function tamamlanamadiBildirimi(g: TamamlanamadiGovdesi | null | undefined): CeviriBildirimi {
+  const liste = Array.isArray(g?.cevrilemeyenSatirlar) ? g!.cevrilemeyenSatirlar.filter((m): m is string => typeof m === 'string') : [];
+  const satir = typeof g?.cevrilemeyenSayisi === 'number' ? g!.cevrilemeyenSayisi : liste.length;
+  const metinSayisi = typeof g?.cevrilemeyenMetinSayisi === 'number' ? g!.cevrilemeyenMetinSayisi : liste.length;
+  const ilk = liste
+    .slice(0, LISTE_ILK)
+    .map((m) => `«${m.length > METIN_TAVANI ? `${m.slice(0, METIN_TAVANI)}…` : m}»`)
+    .join(' · ');
+  const kalan = Math.max(0, metinSayisi - Math.min(liste.length, LISTE_ILK));
+  const listeMetni = ilk ? `: ${ilk}${kalan > 0 ? ` (ve ${sayiYaz(kalan)} satır daha)` : ''}` : '';
+  return {
+    baslik: 'Çeviri tamamlanamadı, tekrar deneyin',
+    aciklama:
+      `${sayiYaz(satir)} satır çevrilemedi${listeMetni}. Kotadan hiçbir şey düşmedi; teklif Türkçe kaldı. ` +
+      'Tekrar denediğinizde çevrilmiş satırlar beklemeden gelir.',
+    hata: true,
   };
 }
 

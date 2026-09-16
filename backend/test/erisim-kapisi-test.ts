@@ -42,6 +42,7 @@ import { DwgEngineController } from '../src/modules/dwg-engine/dwg-engine.contro
 import { AbonelikController } from '../src/ozellik/odeme/abonelik/abonelik.controller';
 import { LaborController } from '../src/ozellik/kutuphane/labor/labor.controller';
 import { AiController } from '../src/ozellik/giris/ai/ai.controller';
+import { CeviriDuzeltmeController } from '../src/ozellik/giris/ai/ceviri-duzeltme.controller';
 
 let passed = 0;
 let failed = 0;
@@ -302,6 +303,9 @@ function kablolama() {
     // Faz 6.8 (14.09): ceviri ve onizlemesi aboneligi yuruyen firmaya acik.
     ['POST /ai/translate', AiController, 'translate', Yetenek.CEVIRI],
     ['GET /ai/translate/onizleme', AiController, 'translateOnizleme', Yetenek.CEVIRI],
+    // Faz 6.9 (16.09): firma çeviri sözlüğüne YAZAN uçlar aboneliği yürüyen firmaya açık.
+    ['PUT /ai/translate/duzeltmeler', CeviriDuzeltmeController, 'kaydet', Yetenek.CEVIRI],
+    ['DELETE /ai/translate/duzeltmeler/:id', CeviriDuzeltmeController, 'kaldir', Yetenek.CEVIRI],
   ];
 
   for (const [ad, sinif, metot, yetenek] of beklenen) {
@@ -325,6 +329,7 @@ function kablolama() {
     ['DwgEngineController', DwgEngineController],
     ['LaborController', LaborController],
     ['AiController', AiController],
+    ['CeviriDuzeltmeController', CeviriDuzeltmeController],
   ] as Array<[string, any]>) {
     check(
       `W2 ${ad} ErisimGuard tasiyor (dekorator tek basina kapatmaz)`,
@@ -358,6 +363,30 @@ function kablolama() {
       `W4 ★KALKAN ${ad} ETKIN yetenek TASIMIYOR (kisitli modda goruntuleme acik)`,
       etkinYetenekler(QuotesController, metot).length === 0,
       `etkin=${JSON.stringify(etkinYetenekler(QuotesController, metot))} sinif=${JSON.stringify(sinifYetenekleri(QuotesController))}`,
+    );
+  }
+  // Faz 6.11 (15.09, K-T8): odemesi durmus firma DAHA ONCE ODEDIGI ceviriyi
+  // gorebilmeli — bakmak yeni ceviri degildir. "Tutarlilik" icin bu uca
+  // CEVIRI yetenegi konursa kisitli firma odedigi Ingilizceyi kaybeder.
+  if (typeof (AiController.prototype as any).translateGoruntule !== 'function') {
+    check('W-OLCUT GET /ai/translate/goruntule metodu (translateGoruntule) VAR', false, 'metot bulunamadi');
+  } else {
+    check(
+      'W4 ★KALKAN GET /ai/translate/goruntule ETKIN yetenek TASIMIYOR (odenmis ceviri kisitli modda gorunur)',
+      etkinYetenekler(AiController, 'translateGoruntule').length === 0,
+      `etkin=${JSON.stringify(etkinYetenekler(AiController, 'translateGoruntule'))} sinif=${JSON.stringify(sinifYetenekleri(AiController))}`,
+    );
+  }
+
+  // Faz 6.9 (16.09): firmanin KENDI ceviri sozlugunu okumak kisitli modda da
+  // acik — veri rehin alinmaz (yazma uclari W1'de CEVIRI ister).
+  if (typeof (CeviriDuzeltmeController.prototype as any).listele !== 'function') {
+    check('W-OLCUT GET /ai/translate/duzeltmeler metodu (listele) VAR', false, 'metot bulunamadi');
+  } else {
+    check(
+      'W4 ★KALKAN GET /ai/translate/duzeltmeler ETKIN yetenek TASIMIYOR (firmanin kendi sozlugu kisitli modda gorunur)',
+      etkinYetenekler(CeviriDuzeltmeController, 'listele').length === 0,
+      `etkin=${JSON.stringify(etkinYetenekler(CeviriDuzeltmeController, 'listele'))} sinif=${JSON.stringify(sinifYetenekleri(CeviriDuzeltmeController))}`,
     );
   }
 

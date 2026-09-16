@@ -4,6 +4,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
 import { guvenlikBasliklariniKur } from './altyapi/http/guvenlik-basliklari';
+import { govdeSinirlariniKur } from './altyapi/http/govde-siniri';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -29,6 +30,10 @@ async function bootstrap() {
   // aktarmasi ~22 MB govde uretiyor. 10mb sinirinda bunlar 413 alir ve
   // kullanici tum grid emegini kaybeder. 50mb, olculen en kotu durumun iki
   // katindan fazlasi; 500mb ise tek istekle bellegi tuketmeye izin veriyordu.
+  //
+  // Faz 6.9: cevirinin duzeltme uclari 32 KB — yol basina sinir global
+  // ayristiricilardan ONCE kurulmali, sonra kurulursa SESSIZCE etkisizdir.
+  govdeSinirlariniKur(app);
   app.use(json({ limit: '50mb' }));
   app.use(urlencoded({ extended: true, limit: '50mb' }));
 

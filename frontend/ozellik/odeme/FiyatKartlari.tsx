@@ -67,6 +67,12 @@ export function FiyatKartlari() {
         </p>
       )}
 
+      {/* ⚠ KART HİZASI (Faz 6.1 kapanış, 15.09): her kart dış ızgaranın 6 satırına
+          yayılır ve satır yüksekliklerini ondan alır (subgrid). Aynı sıradaki kartlarda
+          başlık, rozetler, fiyat, kota kutusu, liste ve düğme aynı hizada başlar; iki
+          satıra inen paket adı ya da uzun tahsilat satırı komşu kartı kaydırmaz.
+          Kota yoksa satır BOŞ KUTUYLA tutulur — koşulla düşen satır listeyi kota
+          satırına kaydırırdı. Satır eklenirse row-span de değişmeli (fiyat-sayfasi.test.ts). */}
       {durum.tur === 'hazir' && durum.paketler.length > 0 && (
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {durum.paketler.map((p) => {
@@ -75,10 +81,12 @@ export function FiyatKartlari() {
             return (
               <article
                 key={p.paketId}
-                className="flex flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+                className="row-span-6 grid grid-rows-subgrid gap-0 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
               >
                 <h2 className="text-lg font-bold text-slate-900">{p.ad}</h2>
-                <div className="mt-2 flex flex-wrap gap-1.5">
+                {/* İki etiket ALT ALTA: yan yanayken dar kartta ikincisi alta iniyor, o kartın
+                    fiyatı komşularından bir satır aşağıda başlıyordu. */}
+                <div className="mt-2 flex flex-col items-start gap-1.5">
                   <span className="rounded-md bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">
                     {KAPSAM_ETIKET[p.kapsam] ?? p.kapsam}
                   </span>
@@ -98,11 +106,13 @@ export function FiyatKartlari() {
                   )}
                 </div>
 
-                {kota && (
+                {kota ? (
                   <div className="mt-5 rounded-xl bg-slate-50 p-4">
                     <p className="text-base font-bold text-slate-900">{kota.baslik}</p>
                     <p className="text-xs text-slate-500">({kota.ikincil})</p>
                   </div>
+                ) : (
+                  <div aria-hidden="true" />
                 )}
 
                 <ul className="mt-5 space-y-1.5 text-sm text-slate-700">

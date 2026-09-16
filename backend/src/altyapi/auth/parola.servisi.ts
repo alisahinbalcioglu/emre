@@ -9,6 +9,7 @@ import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../db/prisma.service';
 import { EpostaServisi } from '../../ozellik/odeme/eposta/eposta.servisi';
 import { AuthService } from './auth.service';
+import { epostaIleKullaniciBul } from './eposta';
 import { SIFIRLAMA_OMRU_MS, tokenOzetle, tokenUret } from './token-ozet';
 import { uygulamaKokuCoz } from './uygulama-url';
 
@@ -59,13 +60,15 @@ export class ParolaServisi {
    * cevap döner.
    */
   async sifirlamaIste(epostaAdresi: string) {
-    // ⚠ Küçük harfe ÇEVRİLMEZ: kayıt akışı e-postayı olduğu gibi saklıyor ve
-    // `login` de birebir eşleştiriyor. Burada normalleştirmek, adresini büyük
-    // harfle kaydetmiş bir kullanıcının parolasını HİÇ sıfırlayamaması
-    // demekti. (Hız sınırı kovası ise küçük harfe çevrilir — orada amaç farklı:
-    // saldırganın harf büyüklüğüyle sınırı atlamasını engellemek.)
-    const adres = epostaAdresi.trim();
-    const user = await this.prisma.user.findUnique({ where: { email: adres } });
+    // ⚠ FAZ 6.12a / K-P6 (15.09): eşleşme ARTIK büyük/küçük harfe DUYARSIZ —
+    // `login` ve kayıt ile AYNI kural (eposta.ts `epostaIleKullaniciBul`).
+    // Eski not "küçük harfe ÇEVRİLMEZ, login birebir eşleştiriyor" diyordu;
+    // login duyarsız olup burası birebir kalsaydı adresi "ali@x.com" diye
+    // yazan kullanıcı giriş yapabilir ama parolasını SIFIRLAYAMAZDI. Mevcut
+    // karışık harfli kayıt DEĞİŞTİRİLMEZ; kayıttaki yazımla da bulunur.
+    // Tek sorgu, iki dalda da aynı: süre farkı numaralandırma açmaz.
+    // (Hız sınırı kovası zaten küçük harfe çevriliyordu.)
+    const user = await epostaIleKullaniciBul(this.prisma, epostaAdresi);
 
     // Token İKİ DALDA da üretilir: maliyeti sabit tutar, dallar arasında
     // ölçülebilir bir CPU farkı bırakmaz.

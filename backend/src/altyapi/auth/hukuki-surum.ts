@@ -19,4 +19,6 @@
  * Iki paket ayri derlendigi icin ortak import mumkun degil; ikisinin ayni
  * kalmasi `npm run test:faz5` kapisinda OLCULUYOR.
  */
-export const HUKUKI_METIN_SURUMU = '2026-09-09';
+// 2026-09-16 (Faz 6.12a): ücretsiz deneme bir kez + deneme kullanım kaydı
+// (gizlilik: veri, amaç, saklama; ön bilgilendirme 6. bölüm; kullanım koşulları 4).
+export const HUKUKI_METIN_SURUMU = '2026-09-16';

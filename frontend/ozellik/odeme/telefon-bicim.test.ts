@@ -90,7 +90,7 @@ describe('e164 · tamMi · telefonHatasi', () => {
   });
 
   it('5 ile baslamayan numarada uyarir', () => {
-    expect(telefonHatasi('2120983663')).toContain('5 ile baslamali');
+    expect(telefonHatasi('2120983663')).toContain('5 ile başlamalı');
   });
 
   it('tam ve gecerli numarada hata YOK', () => {

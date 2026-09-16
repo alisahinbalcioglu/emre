@@ -26,7 +26,17 @@ export interface PaketSurumu {
   periyot: string;
   periyotAdedi: number;
   denemeGunu: number;
+  /**
+   * Faz 6.12a — BU firmanın deneme hakkı. YALNIZ JWT'li `/abonelik/paketler`
+   * döndürür; girişsiz `/fiyatlar` DÖNDÜRMEZ (firma bilinmez, yanıt önbellekli).
+   * Alan yoksa (eski sunucu) kart eski satırı gösterir.
+   */
+  denemeHakki?: boolean;
+  denemeGerekcesi?: DenemeGerekcesi | null;
 }
+
+/** Sunucudaki `DenemeGerekcesi` ile aynı değerler (backend deneme-hakki.ts). */
+export type DenemeGerekcesi = 'var' | 'kullanildi' | 'eposta-dogrulanmadi';
 
 /** Faz 6 (13.09): paketin çeviri kotası — sunucudaki TEK tablodan gelir
  *  (backend ceviri-kotasi.ts, seviye × kapsam). Ön yüz rakamı YAZMAZ, okur. */
@@ -108,15 +118,90 @@ export function kotaCumlesi(kota: CeviriKotasi, surum: Pick<PaketSurumu, 'periyo
   return `${m.baslik} (${m.ikincil})`;
 }
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  DENEME SATIRI — abonelik kartı (Faz 6.12a, 16.09.2026)
+ * ═══════════════════════════════════════════════════════════════════════════
+ * Ücretsiz deneme her firma ve kişi için BİR KEZ. Hakkı olmayan satın alma
+ * engellenmez, ilk ay kart girilince alınır — kart bunu ÖNCEDEN söylemeli.
+ *
+ * ⚠ Girişsiz fiyat kartı (FiyatKartlari) bunu KULLANMAZ: orada firma yok, hak
+ * bilinemez (karar K-P7). Gün sayısı her yerde SÜRÜMDEN okunur, yazılmaz.
+ */
+export const DENEME_KULLANILDI_METNI =
+  'Deneme hakkınız daha önce kullanıldı — ilk aylık ücret kart bilgisini girdiğinizde alınır.';
+export const DENEME_EPOSTA_DOGRULA_METNI =
+  'Ücretsiz deneme için önce e-posta adresinizi doğrulayın.';
+
+export interface DenemeSatiriBilgisi {
+  /** olumlu = deneme var · bilgi = hak kullanılmış · uyari = doğrulama gerekli */
+  ton: 'olumlu' | 'bilgi' | 'uyari';
+  metin: string;
+}
+
+export function denemeSatiri(
+  s: Pick<PaketSurumu, 'denemeGunu' | 'denemeHakki' | 'denemeGerekcesi'>,
+): DenemeSatiriBilgisi | null {
+  if (!(s.denemeGunu > 0)) return null;
+  if (s.denemeGerekcesi === 'eposta-dogrulanmadi') return { ton: 'uyari', metin: DENEME_EPOSTA_DOGRULA_METNI };
+  // Tanınmayan gerekçeyle bile hak YOK dendiyse deneme vaat EDİLMEZ.
+  if (s.denemeGerekcesi === 'kullanildi' || s.denemeHakki === false) {
+    return { ton: 'bilgi', metin: DENEME_KULLANILDI_METNI };
+  }
+  return { ton: 'olumlu', metin: `${s.denemeGunu} gün ücretsiz deneme` };
+}
+
+/**
+ * Ödeme ekranı notu — `POST /abonelik/basla` yanıtından. Kart "deneme var"
+ * dediği hâlde formdaki telefon ya da e-posta eskisiyle eşleştiyse karar
+ * burada değişir; müşteri kart bilgisini girmeden ÖNCE öğrenir.
+ */
+export function odemeDenemeNotu(
+  surum: Pick<PaketSurumu, 'denemeGunu'> | undefined,
+  yanit: { denemeHakki?: boolean },
+): string | null {
+  if (!surum || !(surum.denemeGunu > 0)) return null;
+  return yanit.denemeHakki === false ? DENEME_KULLANILDI_METNI : null;
+}
+
 export const KAPSAM_ETIKET: Record<string, string> = {
   mechanical: 'Mekanik',
   electrical: 'Elektrik',
   mep: 'Mekanik + Elektrik',
 };
 
+/**
+ * Seviye KODUNUN müşteriye görünen adı — TEK KAYNAK (kart rozeti, kenar
+ * çubuğu rozeti).
+ *
+ * ⚠ 15.09 (Emre kararı): en ucuz paketin müşteriye görünen adı "Basic".
+ * `core` yalnız iç seviye kodudur (Tier / PackageLevel); ekrana kod basılmaz.
+ * Kenar çubuğu `{tier}` basıyordu → müşteri "CORE" görüyordu, hesap
+ * sayfasında "Basic Plan" yazarken.
+ */
+export const SEVIYE_AD: Record<string, string> = {
+  core: 'Basic',
+  pro: 'Pro',
+  suite: 'Suite',
+};
+
+/** Kodun ekran adı. Tanınmayan kod AYNEN gösterilir — sessizce "Basic" demez. */
+export function seviyeAdi(seviye: string): string {
+  return SEVIYE_AD[seviye] ?? seviye;
+}
+
+/**
+ * Seviye rozeti — kart başlığıyla AYNI adı söyler.
+ *
+ * ⚠ 15.09 (Faz 6.1 kapanış): rozet "Core — malzeme" diyordu, hemen üstündeki
+ * kart başlığı (veritabanındaki paket adı) "Basic — Mekanik". Canlı
+ * `GET /api/fiyatlar` (15.09) okundu: `core` seviyesindeki iki paketin adı da
+ * "Basic — …". Veritabanına dokunulmadı; ekran adı ona uyduruldu.
+ * `seviye` KODU (`core`) değişmez — yalnız ekrana giden ad.
+ */
 export const SEVIYE_ETIKET: Record<string, string> = {
-  core: 'Core — malzeme',
-  pro: 'Pro — malzeme + iscilik + DWG',
+  core: `${SEVIYE_AD.core} — malzeme`,
+  pro: `${SEVIYE_AD.pro} — malzeme + işçilik + DWG`,
 };
 
 /**

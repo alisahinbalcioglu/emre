@@ -47,6 +47,17 @@ export interface StandartCiktiGirdi {
   dil?: string;
   /** Firma anteti (antet.ts antetKur) — null/yok ise antet basilmaz */
   antet?: AntetBilgi | null;
+  /**
+   * Dosya acilinca GORUNEN sekmenin (ilk yazilan sayfa) tablo basliginin
+   * ustune yazilan not.
+   *
+   * ⚠ NEDEN YALNIZ `baslik` YETMEZ (Faz 6.10 inceleme ORTA-1, 16.09): `baslik`
+   * yalniz SON sekmeye (GENEL TOPLAM) yazilir; calisma kitabi etkin sekme
+   * ayarlamaz ve Excel dosyayi ILK sekmede acar. KVKK baglantisindan Turkceye
+   * indirgenmis dosyanin "İngilizce çevirisi yok" notu boylece kullaniciya hic
+   * gorunmuyordu (HTTP uyari basligi da ham indirmede gorunmez).
+   */
+  acilisNotu?: string;
 }
 
 export interface StandartCiktiSonuc {
@@ -155,6 +166,10 @@ export interface SayfaYazOpsiyon {
   /** Firma anteti — tablodan ONCE yazilir; baslik ve veri satirlari asagi kayar,
    *  ICMAL SUM araliklari `satir.number`dan geldigi icin birlikte kayar. */
   antet?: AntetBilgi | null;
+  /** Antetten SONRA, tablo basligindan ONCE tek satir not (formulsuz). Baslik,
+   *  veri ve `toplamSatirlari` numaralari yazim aninda `satir.number`dan
+   *  okundugu icin birlikte kayar; donmus bolme notu da ustte tutar. */
+  ustNot?: string;
 }
 
 /**
@@ -191,6 +206,13 @@ export function standartSayfaYaz(
   // ANTET (plan 4.4): tablo YAZILMADAN once. Sonradan satir eklemek YASAK —
   // ExcelJS formul referanslarini guncellemez (bkz. antet.ts SUM GUVENLIGI).
   antetYaz(wb, ws, ops.antet, { metinKolonu: 2, logoKolonu: 7 });
+  if (ops.ustNot) {
+    const notSatiri = ws.addRow(['', ops.ustNot]);
+    notSatiri.height = 30; // genis B kolonunda iki satira sarar
+    const h = notSatiri.getCell(2);
+    h.font = { bold: true, color: { argb: 'FFB45309' } };
+    h.alignment = { vertical: 'middle', wrapText: true };
+  }
 
   const bas = ws.addRow(kolonlar(ops.dil));
   bas.font = { bold: true };
@@ -315,7 +337,9 @@ export async function standartCiktiUret(g: StandartCiktiGirdi): Promise<Standart
   // KF7: sayfalar TEK motorla yazilir — format yolu da ayni fonksiyonu cagirir
   for (const sh of g.sheetsArr ?? []) {
     if (!sh || sh.isEmpty) continue;
-    const b = standartSayfaYaz(wb, sh, { birim, toplamSatiri: true, dil: g.dil, antet: g.antet, rezerveAdlar: [GENEL_TOPLAM_SAYFA_ADI] });
+    // Acilis notu YALNIZ ilk yazilan sayfaya: Excel dosyayi o sekmede acar (ORTA-1).
+    const ustNot = wb.worksheets.length === 0 ? g.acilisNotu : undefined;
+    const b = standartSayfaYaz(wb, sh, { birim, toplamSatiri: true, dil: g.dil, antet: g.antet, rezerveAdlar: [GENEL_TOPLAM_SAYFA_ADI], ustNot });
     yazilan += b.yazilan;
     fiyatsizSatir += b.fiyatsizSatir;
     // Kurus tamsayi — sayfa toplamlari ile teklif geneli AYNI kuralla toplanir

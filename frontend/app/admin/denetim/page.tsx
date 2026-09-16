@@ -61,6 +61,8 @@ const TIP_ETIKET: Record<string, string> = {
   'kullanici.silindi': 'Hesap kapatıldı',
   'abonelik.eklendi': 'Abonelik eklendi',
   'abonelik.kaldirildi': 'Abonelik kaldırıldı',
+  // Faz 6.9: ORTAK çeviri katmanına yönetici yazımı (her firmanın çıktısını etkiler).
+  'ceviri.ortak.duzeltildi': 'Ortak çeviri düzeltildi',
 };
 
 const TIP_RENK: Record<string, 'destructive' | 'info' | 'success' | 'secondary'> = {
@@ -70,6 +72,7 @@ const TIP_RENK: Record<string, 'destructive' | 'info' | 'success' | 'secondary'>
   'paket.degisti': 'info',
   'abonelik.eklendi': 'success',
   'abonelik.kaldirildi': 'secondary',
+  'ceviri.ortak.duzeltildi': 'info',
 };
 
 export default function AdminDenetimPage() {

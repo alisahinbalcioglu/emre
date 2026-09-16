@@ -4,6 +4,8 @@ import { CurrentUser } from '../../../altyapi/auth/decorators/current-user.decor
 import { kimlikCoz } from '../../../altyapi/auth/kimlik';
 import { ErisimServisi } from './erisim.servisi';
 import { SatinAlmaServisi } from './satinalma.servisi';
+import { DenemeHakkiServisi } from './deneme-hakki.servisi';
+import { AbonelikBaslaDto } from './dto/abonelik-basla.dto';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -30,12 +32,35 @@ export class AbonelikController {
   constructor(
     private readonly erisim: ErisimServisi,
     private readonly satinAlma: SatinAlmaServisi,
+    private readonly denemeHakki: DenemeHakkiServisi,
   ) {}
 
-  /** Fiyat sayfasinin kaynagi — satistaki paketler. */
+  /**
+   * Abonelik sayfasinin kaynagi — satistaki paketler + BU firmanin deneme hakki.
+   *
+   * ⚠ FAZ 6.12a: `denemeHakki` BURADA eklenir, `satistakiPaketler()` icinde
+   * DEGIL. Girissiz `/fiyatlar` ucu ayni metodu cagirip 60 sn bellekte
+   * onbellekler; firma bazli alan oraya girerse bir firmanin karari herkese
+   * sizardi (karar K-P7). Form verisi olmadigi icin karar firma + hesap
+   * e-postasiyla verilir; formdaki telefon/e-posta eslesirse `basla` yaniti
+   * kesin karari dondurur.
+   */
   @Get('paketler')
-  paketler() {
-    return this.satinAlma.satistakiPaketler();
+  async paketler(@CurrentUser() kullanici: unknown) {
+    const { firmaId, userId } = kimlikCoz(kullanici);
+    const [paketler, karar] = await Promise.all([
+      this.satinAlma.satistakiPaketler(),
+      this.denemeHakki.karar({ firmaId, kullaniciId: userId }),
+    ]);
+    return paketler.map((p) => ({
+      ...p,
+      surum: {
+        ...p.surum,
+        // Denemesiz surumde soru anlamsiz: hak da gerekce de "yok".
+        denemeHakki: p.surum.denemeGunu > 0 && karar.hak,
+        denemeGerekcesi: p.surum.denemeGunu > 0 ? karar.gerekce : null,
+      },
+    }));
   }
 
   /**
@@ -52,29 +77,16 @@ export class AbonelikController {
    * On yuz bu HTML'i kendi sayfasina gomer.
    */
   @Post('basla')
-  async basla(
-    @CurrentUser() kullanici: unknown,
-    @Body()
-    g: {
-      paketSurumuId: string;
-      musteri: {
-        ad: string;
-        soyad: string;
-        eposta: string;
-        telefon: string;
-        kimlikNo: string;
-        sehir: string;
-        adres: string;
-        postaKodu?: string;
-      };
-    },
-  ) {
+  async basla(@CurrentUser() kullanici: unknown, @Body() g: AbonelikBaslaDto) {
     const { firmaId, userId } = kimlikCoz(kullanici);
     return this.satinAlma.baslat({
       firmaId,
       kullaniciId: userId,
       paketSurumuId: g.paketSurumuId,
       musteri: g.musteri,
+      // 6.4: onay ISTEKTE gelir, zamani SUNUCUDA damgalanir — istemcinin
+      // gonderdigi saate guvenmek ispat degeri birakmazdi.
+      sozlesmeOnayi: g.sozlesmeOnayi,
     });
   }
 

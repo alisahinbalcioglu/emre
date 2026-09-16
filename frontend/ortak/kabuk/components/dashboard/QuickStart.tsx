@@ -132,7 +132,7 @@ export default function QuickStart({
               onDragLeave={() => setExcelDragOver(false)}
               onDrop={excelAcik ? handleExcelDrop : undefined}
               onClick={() => { if (excelAcik) excelInputRef.current?.click(); }}
-              title={ipucu(excelDurum, 'Excel kesif icin bir paket gerekir. Abonelik sayfasindan paket secebilirsiniz.')}
+              title={ipucu(excelDurum, 'Excel keşif için bir paket gerekir. Abonelik sayfasından paket seçebilirsiniz.')}
               aria-disabled={!excelAcik}
               className={cn(
                 'group rounded-2xl border-2 border-dashed p-8 text-center transition-all',

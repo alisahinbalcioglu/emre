@@ -101,7 +101,7 @@ function UserDropdown({ user, onLogout }: { user: StoredUser; onLogout: () => vo
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
           <div className="absolute right-0 top-full z-20 mt-1.5 w-52 overflow-hidden rounded-xl border bg-popover shadow-lg">
             <div className="border-b px-4 py-3">
-              <p className="text-xs text-muted-foreground">Giris yapildi</p>
+              <p className="text-xs text-muted-foreground">Giriş yapıldı</p>
               <p className="mt-0.5 truncate text-sm font-medium">{user.email}</p>
             </div>
             {user.role === 'admin' && (
@@ -120,7 +120,7 @@ function UserDropdown({ user, onLogout }: { user: StoredUser; onLogout: () => vo
               className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-destructive transition-colors hover:bg-destructive/10"
             >
               <LogOut className="h-4 w-4" />
-              Cikis Yap
+              Çıkış Yap
             </button>
           </div>
         </>

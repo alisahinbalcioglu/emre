@@ -1,23 +1,51 @@
-import { Injectable, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import Anthropic from '@anthropic-ai/sdk';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 import type { Kimlik } from '../../../altyapi/auth/kimlik';
-import { CeviriKotaServisi, type KotaOzeti } from '../../odeme/abonelik/ceviri-kota.servisi';
-import { sonucHesabi } from '../../odeme/abonelik/ceviri-kotasi';
+import { CeviriKotaServisi, type KotaOzeti, type OdenmemeNedeni } from '../../odeme/abonelik/ceviri-kota.servisi';
+import {
+  ceviriKapisiReddi,
+  ceviriTamamlanamadiHatasi,
+  sonucHesabi,
+} from '../../odeme/abonelik/ceviri-kotasi';
 import { AiService } from './ai.service';
-import { ceviriAnahtari, teslimEdilenSatir } from './ceviri-kurali';
+import { katmanlariBirlestir, kaynakOzeti, type KatmanliHarita } from './ceviri-katmani';
+import { duzeltmeReddi } from './ceviri-duzeltme.servisi';
+import {
+  ceviriAnahtari,
+  ceviriGuvenliMi,
+  ceviriIcerigi,
+  cevrilemeyenMetinler,
+  disaAktarimPlani,
+  kaynakMetinleriniGeriYaz,
+  planiUygula,
+  teslimEdilenSatir,
+  type CeviriIcerigi,
+} from './ceviri-kurali';
 
 /**
  * TEKNIK METIN CEVIRISI — ONBELLEK ONCE, API SONRA (13.08).
  *
  * ── AKIS ────────────────────────────────────────────────────────────────────
- *   benzersiz metinler → onbellek sorgusu → EKSIK OLANLAR icin tek/birkac
- *   API cagrisi → onbellege yaz → birlesik harita don
+ *   benzersiz metinler → katmanli harita (onbellek) → EKSIK OLANLAR icin
+ *   tek/birkac API cagrisi → onbellege yaz → birlesik harita
  *
  * Metinleri istemci GONDERMEZ (Faz 6.2, 14.09): `teklifiCevir` kayitli
  * teklifi okur, DOKUNULMAZLARI (cap/olcu/kod) eler ve benzersizlestirir —
  * kural tek yerde, `ceviri-kurali.ts` (testle muhurlu). 13.08–14.09 arasi bu
  * karar on yuzdeydi; kota satiri da ondan cikacagi icin sunucuya tasindi.
+ *
+ * ── HEPSI YA DA HICBIRI (REVIZE K-T7, Emre 15.09) ───────────────────────────
+ * Ceviri ya tamamlanir ya hic yapilmaz: tek metin bile cevrilemezse tuketim
+ * BASARISIZ, kotadan hicbir sey dusmez ve istemciye harita DONMEZ (422 +
+ * cevrilemeyenlerin listesi). Cevrilen metinler onbellege yazilir: tekrar
+ * deneme ucretsiz ve hizlidir, tamamlaninca tek seferde duser.
+ *
+ * ── BAKMAK ≠ CEVIRMEK (Faz 6.10/6.11, 15.09) ────────────────────────────────
+ * Ingilizce metin istemciye (ekran ya da dosya) yalniz ODENMIS icerik icin
+ * cikar ve her okumada TEK fonksiyondan (`katmanliHarita`) kurulur. Hicbir
+ * yol rastgele bir metnin ortak karsiligini dondurmez: aksi halde "ucretsiz
+ * sozluk sorgusu" ile teklif elle Ingilizceye cevrilip kota asilirdi.
  *
  * ── NEDEN ONBELLEK ONCE ─────────────────────────────────────────────────────
  * Canli teklif 15.137 satir. Benzersizlestirme birkac yuze indiriyor; kalici
@@ -124,27 +152,49 @@ export interface CeviriSonucu {
   harita: Record<string, string>;
   onbellekten: number;
   cevrilen: number;
-  /** API'ye gidip BASARISIZ olan parca sayisi. 0'dan buyukse ceviri EKSIKTIR. */
+  /** API'ye gidip BASARISIZ olan parca sayisi. */
   basarisiz: number;
+  /** Ilk parca hatasi — 422 aciklamasinin sebep metni icin. */
+  ilkHata: { durum?: number; mesaj: string } | null;
+  /** Guvenlik suzgecinden (K-T11) gecemeyen AI yaniti — haritaya ve onbellege GIRMEDI. */
+  guvensiz?: number;
 }
 
-/** Teklif çevirisinin istemciye dönen hâli (Faz 6.2). */
-export interface TeklifCeviriSonucu extends CeviriSonucu {
+/** Teklif çevirisinin istemciye dönen hâli — yalnız TAMAMLANMIŞ çeviride (Faz 6.2 · REVİZE K-T7). */
+export interface TeklifCeviriSonucu extends Omit<CeviriSonucu, 'ilkHata' | 'guvensiz'> {
   /** Teklifin çevrilecek metin içeren satır sayısı. */
   satirSayisi: number;
-  /** Bu istekte kotadan düşen satır (tekrarda ve hatada 0; kısmide teslim edilen). */
+  /** Bu istekte kotadan düşen satır (ödenmiş içerikte 0). */
   dusulenSatir: number;
-  /** Haritanın karşılamadığı, Türkçe kalan satır. */
-  cevrilemeyenSatir: number;
-  /** true → aynı içerik pencere içinde zaten çevrilmişti; yeni tüketim YOK. */
+  /** true → bu içeriğin çevirisi ödenmişti; yeni tüketim YOK. */
   tekrar: boolean;
-  /** true → yarım kalan çevirinin devamıydı (dosya hakkından yemedi). */
-  devam: boolean;
   /** true → kotadan satır düştü. */
   kotadanDustu: boolean;
   /** İstek SONRASI kota durumu. */
   kota: KotaOzeti;
 }
+
+/** Firma + ortak katmandan okunan çeviri haritası (tanım: `ceviri-katmani.ts`). */
+export type { KatmanliHarita };
+
+/** `GET /ai/translate/goruntule` yanıtı — harita YALNIZ ödenmiş ve tam içerikte. */
+export type GoruntulemeYaniti =
+  | { odenmis: true; tamam: true; kaynak: 'TUKETIM' | 'GECIS'; harita: Record<string, string>; satirSayisi: number }
+  | { odenmis: true; tamam: false; kaynak: 'TUKETIM' | 'GECIS'; satirSayisi: number; cevrilemeyenSatir: number }
+  | { odenmis: false; neden: OdenmemeNedeni; satirSayisi: number; degisecekSatir: number; karsiliksizSatir: number };
+
+/** Dışa aktarımın dil kararı: dosya etiketi, yazılan hücre, görünür uyarı. */
+export interface DisaAktarimCevirisi {
+  /** Dosyanın etiket dili — KAYIT yolunda Türkçeye indirgenirse 'tr'. */
+  readonly dil: 'tr' | 'en';
+  readonly cevrilen: number;
+  readonly uyari?: string;
+  /** true → kayıttan gelen İngilizce istek tam İngilizce çıkamadı, dosya tamamen Türkçe. */
+  readonly indirgendi: boolean;
+}
+
+/** KAYIT yolunda Türkçeye indirgeme uyarısı (X-Export-Warning). */
+export const KAYIT_INDIRGEME_UYARISI = 'Dosya teklifin Türkçe hâliyle indi: tamamlanmış İngilizce çevirisi yok.';
 
 /**
  * API hatasini kullanicinin YAPABILECEGI bir eyleme cevirir.
@@ -181,25 +231,11 @@ export function ceviriHataMesaji(durum: number | undefined, mesaj: string): stri
   return `Ceviri servisi yanit vermedi: ${mesaj}`;
 }
 
-/**
- * "Bu sonuc bir BASARISIZLIK mi?" — cevirinin tek kritik karari, saf halde.
- *
- * ⚠ Bu karar ayri bir fonksiyon cunku 13.08'e kadar HIC VERILMIYORDU: her
- * parca hatasi yutuluyor, uc her kosulda 200 donuyordu. Canli olcumde dort
- * parcanin dordu de 401 aldi, ekran "Ceviri tamamlandi" dedi ve tek bir hucre
- * bile degismedi. Karari koda gomulu birakmak onu tekrar olcusuz birakirdi;
- * burada durur ve testle muhurlenir (`test/ceviri-karar-test.ts`).
- *
- * KURAL: yalnizca HIC parca gecmemis VE onbellekten de hicbir sey gelmemisse
- * basarisizliktir. Onbellekten sonuc geldiyse elde gercek bir ceviri var
- * demektir — eksiklik hata degil, `basarisiz` sayisiyla BILDIRILIR.
- */
-export function ceviriBasarisizMi(p: {
-  toplamParca: number;
-  basarisizParca: number;
-  onbellekten: number;
-}): boolean {
-  return p.toplamParca > 0 && p.basarisizParca === p.toplamParca && p.onbellekten === 0;
+/** Prototipsiz kopya: "constructor" gibi bir metin haritada VAR sanılmasın. */
+function haritaKopyasi(kaynak: Readonly<Record<string, string>>): Record<string, string> {
+  const kopya: Record<string, string> = Object.create(null);
+  for (const [a, v] of Object.entries(kaynak)) kopya[a] = v;
+  return kopya;
 }
 
 @Injectable()
@@ -213,44 +249,29 @@ export class CeviriService {
   ) {}
 
   /**
-   * TEKLİF ÇEVİRİSİ — istemcinin tek giriş yolu (Faz 6.2, 14.09).
+   * TEKLİF ÇEVİRİSİ — istemcinin tek giriş yolu (Faz 6.2, 14.09 · REVİZE K-T7, 15.09).
    *
    * İstemci yalnız teklif kimliği gönderir. Çevrilecek metinler ve kotadan
    * düşecek satır KAYITLI teklif içeriğinden, aynı kuraldan çıkar
    * (`ceviri-kurali.ts`). Sıra değiştirilemez:
-   *   1. rezerveEt — e-posta, tekrar, kota; geçmezse AI'ya HİÇ gidilmez
-   *   2. tekrar ise önbellekten dön (yeni tüketim yok)
+   *   1. rezerveEt — e-posta, ödenmiş içerik, kota; geçmezse AI'ya HİÇ gidilmez
+   *   2. ödenmiş içerik → katmanlı harita; eksik anahtar kotasız tamamlanır
    *   3. çevir
-   *   4. sonuçlandır — TESLİM EDİLEN satır düşer (tam: hepsi · kısmi: teslim
-   *      edilen · hata: hiçbiri); devamda zincirde önceden düşen düşülmez
+   *   4. tek metin bile eksikse BASARISIZ + 422 (harita dönmez, hiçbir şey
+   *      düşmez); tamsa BASARILI ve satırın tamamı düşer
    */
   async teklifiCevir(k: Kimlik, quoteId: string, hedefDil = 'en'): Promise<TeklifCeviriSonucu> {
     const r = await this.kota.rezerveEt(k, quoteId, hedefDil);
 
-    if (r.tur === 'tekrar') {
-      const harita = await this.onbellekHaritasi(r.icerik.metinler, hedefDil);
-      return {
-        harita,
-        onbellekten: Object.keys(harita).length,
-        cevrilen: 0,
-        basarisiz: 0,
-        satirSayisi: r.icerik.satirSayisi,
-        dusulenSatir: 0,
-        cevrilemeyenSatir: r.icerik.satirSayisi - teslimEdilenSatir(r.icerik, harita),
-        tekrar: true,
-        devam: false,
-        kotadanDustu: false,
-        kota: r.ozet,
-      };
-    }
+    if (r.tur === 'tekrar') return this.odenmisIcerigiTamamla(k, r.icerik, hedefDil, r.ozet);
 
-    const temel = { toplamSatir: r.icerik.satirSayisi, oncekiTeslim: r.oncekiTeslim };
+    const toplamSatir = r.icerik.satirSayisi;
     let sonuc: CeviriSonucu;
     try {
       sonuc = await this.cevir(r.icerik.metinler, hedefDil, k);
     } catch (e) {
       await this.sonuclandirSessiz(r.kayitId, {
-        ...temel,
+        toplamSatir,
         teslimEdilen: 0,
         onbellekten: 0,
         cevrilen: 0,
@@ -260,27 +281,38 @@ export class CeviriService {
       throw e;
     }
 
-    const teslimEdilen = teslimEdilenSatir(r.icerik, sonuc.harita);
-    const h = sonucHesabi({ ...temel, teslimEdilen });
+    const eksik = cevrilemeyenMetinler(r.icerik.metinler, sonuc.harita);
+    if (eksik.length > 0) {
+      const teslimEdilen = teslimEdilenSatir(r.icerik, sonuc.harita);
+      await this.sonuclandirSessiz(r.kayitId, {
+        toplamSatir,
+        teslimEdilen,
+        onbellekten: sonuc.onbellekten,
+        cevrilen: sonuc.cevrilen,
+        basarisizParca: sonuc.basarisiz,
+        hata: `${eksik.length} metin cevrilemedi (${sonuc.basarisiz} parca basarisiz${sonuc.guvensiz ? `, ${sonuc.guvensiz} yanit guvenlik suzgecinden gecmedi` : ''})`,
+      });
+      throw ceviriTamamlanamadiHatasi(eksik, toplamSatir - teslimEdilen, this.sebepMetni(sonuc.ilkHata));
+    }
+
+    const h = sonucHesabi({ toplamSatir, teslimEdilen: toplamSatir });
     await this.sonuclandirSessiz(r.kayitId, {
-      ...temel,
-      teslimEdilen,
+      toplamSatir,
+      teslimEdilen: toplamSatir,
       onbellekten: sonuc.onbellekten,
       cevrilen: sonuc.cevrilen,
       basarisizParca: sonuc.basarisiz,
-      hata: h.durum === 'BASARILI'
-        ? undefined
-        : `${r.icerik.satirSayisi - teslimEdilen} satir teslim edilemedi (${sonuc.basarisiz} parca basarisiz)`,
     });
 
-    const dosya = h.dusulenSatir > 0 && !r.devam ? 1 : 0;
+    const dosya = h.dusulenSatir > 0 ? 1 : 0;
     return {
-      ...sonuc,
-      satirSayisi: r.icerik.satirSayisi,
+      harita: sonuc.harita,
+      onbellekten: sonuc.onbellekten,
+      cevrilen: sonuc.cevrilen,
+      basarisiz: sonuc.basarisiz,
+      satirSayisi: toplamSatir,
       dusulenSatir: h.dusulenSatir,
-      cevrilemeyenSatir: r.icerik.satirSayisi - teslimEdilen,
       tekrar: false,
-      devam: r.devam,
       kotadanDustu: h.dusulenSatir > 0,
       kota: {
         ...r.ozet,
@@ -290,6 +322,50 @@ export class CeviriService {
         kalanDosya: Math.max(0, r.ozet.kalanDosya - dosya),
       },
     };
+  }
+
+  /**
+   * ÖDENMİŞ İÇERİK (tekrar dalı, Revizyon 1 R1-A4). Harita katmanlı okumadan
+   * gelir. Önbellekte eksik anahtar varsa (önbellek yazımı patlamış içerik)
+   * API'ye YALNIZ o anahtarlar sorulur: AI maliyeti firmaya yazılır, KOTA ve
+   * tüketim kaydı YOK (ödenmiş içerik yeniden ücretlenmez, K-T8). Yine eksik
+   * kalırsa 422 — kısmi harita teslim edilmez (K-T7b).
+   */
+  private async odenmisIcerigiTamamla(k: Kimlik, icerik: CeviriIcerigi, hedefDil: string, ozet: KotaOzeti): Promise<TeklifCeviriSonucu> {
+    const okunan = await this.katmanliHarita(icerik.metinler, hedefDil, k.firmaId);
+    const harita = haritaKopyasi(okunan.harita);
+    const onbellekten = Object.keys(harita).length;
+    let cevrilen = 0;
+    let basarisiz = 0;
+    let ilkHata: CeviriSonucu['ilkHata'] = null;
+
+    const eksik = cevrilemeyenMetinler(icerik.metinler, harita);
+    if (eksik.length > 0) {
+      const ek = await this.cevir(eksik, hedefDil, k);
+      for (const [a, v] of Object.entries(ek.harita)) harita[a] = v;
+      cevrilen = ek.cevrilen;
+      basarisiz = ek.basarisiz;
+      ilkHata = ek.ilkHata;
+    }
+    const kalan = cevrilemeyenMetinler(icerik.metinler, harita);
+    if (kalan.length > 0) {
+      throw ceviriTamamlanamadiHatasi(kalan, icerik.satirSayisi - teslimEdilenSatir(icerik, harita), this.sebepMetni(ilkHata));
+    }
+    return {
+      harita,
+      onbellekten,
+      cevrilen,
+      basarisiz,
+      satirSayisi: icerik.satirSayisi,
+      dusulenSatir: 0,
+      tekrar: true,
+      kotadanDustu: false,
+      kota: ozet,
+    };
+  }
+
+  private sebepMetni(ilkHata: CeviriSonucu['ilkHata']): string | undefined {
+    return ilkHata ? ceviriHataMesaji(ilkHata.durum, ilkHata.mesaj) : undefined;
   }
 
   /**
@@ -326,28 +402,56 @@ export class CeviriService {
     ].join('\n');
   }
 
-  /** Metin listesini cevirir. Onbellekte olanlar icin API'ye HIC gidilmez. */
-  async cevir(
-    metinler: string[],
-    hedefDil = 'en',
-    kimlik?: { userId?: string | null; firmaId?: string | null },
-  ): Promise<CeviriSonucu> {
+  /** Anthropic istemcisi — testler bu metodu sahte istemciyle ezer (dikiş). */
+  protected anthropicIstemcisi(apiKey: string): Pick<Anthropic, 'messages'> {
+    return new Anthropic({ apiKey, maxRetries: YENIDEN_DENEME });
+  }
+
+  /**
+   * KATMANLI HARİTA — İngilizce metnin TEK okuma yolu (Faz 6.11 · 6.9). Çeviri,
+   * görüntüleme ve dışa aktarım haritayı yalnız buradan kurar; harita yalnız
+   * verilen metinlerin anahtarları için kurulur. Okuma sırası firma → ortak →
+   * API (iş emri 6.9 §3): iki sorgu paralel, birleştirme saf
+   * (`katmanlariBirlestir`) — firma düzeltmesi ortağın ÜSTÜNE biner, silmez.
+   * ⚠ `firmaId` ZORUNLU: Prisma `undefined` süzgeci sessizce düşürür (kimlik.ts
+   * dersi) — firma süzgeci düşerse A firmasının düzeltmesi B'nin teklifine girerdi.
+   */
+  async katmanliHarita(metinler: readonly string[], hedefDil: string, firmaId: string): Promise<KatmanliHarita> {
+    if (typeof firmaId !== 'string' || firmaId === '') throw new Error('katmanliHarita: firmaId zorunlu');
+    const benzersiz = Array.from(new Set(metinler.map((m) => ceviriAnahtari(m)).filter(Boolean)));
+    if (benzersiz.length === 0) return { harita: Object.create(null), katman: new Map() };
+    const [ortak, firma] = await Promise.all([
+      this.prisma.translation.findMany({
+        where: { targetLang: hedefDil, sourceText: { in: benzersiz } },
+        select: { sourceText: true, translatedText: true },
+      }),
+      this.prisma.ceviriDuzeltmesi.findMany({
+        where: { firmaId, hedefDil, kaynakOzeti: { in: benzersiz.map((m) => kaynakOzeti(m)) } },
+        select: { kaynakMetin: true, kaynakOzeti: true, ceviriMetni: true },
+      }),
+    ]);
+    return katmanlariBirlestir(benzersiz, ortak, firma);
+  }
+
+  /**
+   * Metin listesini cevirir. Katmanli haritada olanlar icin API'ye HIC gidilmez.
+   * Karar VERMEZ: eksik kalan metinleri `teklifiCevir` `cevrilemeyenMetinler`
+   * ile bulur (hepsi ya da hicbiri tek yerde).
+   */
+  async cevir(metinler: string[], hedefDil = 'en', kimlik: Kimlik): Promise<CeviriSonucu> {
     const benzersiz = Array.from(
       new Set(metinler.map((m) => ceviriAnahtari(m)).filter(Boolean)),
     );
-    if (benzersiz.length === 0) return { harita: {}, onbellekten: 0, cevrilen: 0, basarisiz: 0 };
+    if (benzersiz.length === 0) return { harita: Object.create(null), onbellekten: 0, cevrilen: 0, basarisiz: 0, ilkHata: null };
 
-    // ── 1) ONBELLEK ────────────────────────────────────────────────────────
-    const kayitlar = await this.prisma.translation.findMany({
-      where: { targetLang: hedefDil, sourceText: { in: benzersiz } },
-    });
-    // Prototipsiz: "constructor" gibi bir metin önbellekte VAR sanılmasın.
-    const harita: Record<string, string> = Object.create(null);
-    for (const k of kayitlar) harita[k.sourceText] = k.translatedText;
-    const onbellekten = kayitlar.length;
+    // ── 1) KATMANLI HARİTA (onbellek) ─────────────────────────────────────
+    const okunan = await this.katmanliHarita(benzersiz, hedefDil, kimlik.firmaId);
+    const harita = haritaKopyasi(okunan.harita);
+    const onbellekten = Object.keys(harita).length;
 
-    const eksik = benzersiz.filter((m) => harita[m] === undefined);
-    if (eksik.length === 0) return { harita, onbellekten, cevrilen: 0, basarisiz: 0 };
+    // Firma karşılığı da ortak karşılık da API'ye GİTMEZ (iki katman birden).
+    const eksik = benzersiz.filter((m) => !Object.prototype.hasOwnProperty.call(harita, m));
+    if (eksik.length === 0) return { harita, onbellekten, cevrilen: 0, basarisiz: 0, ilkHata: null, guvensiz: 0 };
 
     // ── 2) API ─────────────────────────────────────────────────────────────
     const ayarlar = await this.prisma.systemSettings.findMany({ where: { key: 'CLAUDE_API_KEY' } });
@@ -358,17 +462,17 @@ export class CeviriService {
       );
     }
 
-    const client = new Anthropic({ apiKey, maxRetries: YENIDEN_DENEME });
+    const client = this.anthropicIstemcisi(apiKey);
     let cevrilen = 0;
     // Parca sonuclari SAYILIR: "kac denendi / kaci patladi" bilinmeden
     // basarisizligi basaridan ayirmak imkansizdir.
-    let toplamParca = 0;
     let basarisizParca = 0;
+    let yazilamayan = 0;
+    let guvensiz = 0;
     let ilkHata: { durum?: number; mesaj: string } | null = null;
 
     for (let i = 0; i < eksik.length; i += PARCA) {
       const parca = eksik.slice(i, i + PARCA);
-      toplamParca++;
       try {
         const yanit = await client.messages.create({
           model: MODEL,
@@ -405,14 +509,32 @@ export class CeviriService {
           // dondurdurse onbellege girmemeli — onbellek kalicidir, kirlenirse
           // hatayi her teklife tasir.
           if (!kaynak || !ceviri || !parca.includes(kaynak)) continue;
+          // ⚠ ZEHİRLEME SÜZGECİ (K-T11 · R1-B2): kullanıcının KENDİ metniyle
+          // tetiklenen yanıt ortak önbelleğe "ilk yazan kazanır" ile yazılır ve
+          // her firmanın teklifine gider. Kaynaktaki sayı/ölçü dizileri korunmuyor
+          // ya da kaynakta olmayan bağlantı/e-posta eklenmişse: haritaya GİRMEZ,
+          // SAYILMAZ, önbelleğe YAZILMAZ → metin eksik kalır → teklif
+          // "tamamlanamadı" (422, hepsi ya da hiçbiri), kotadan bir şey düşmez.
+          if (!ceviriGuvenliMi(kaynak, ceviri)) {
+            guvensiz++;
+            continue;
+          }
           harita[kaynak] = ceviri;
           cevrilen++;
-          await this.prisma.translation.upsert({
-            where: { sourceText_targetLang: { sourceText: kaynak, targetLang: hedefDil } },
-            create: { sourceText: kaynak, targetLang: hedefDil, translatedText: ceviri, kaynak: 'ai' },
-            // Kullanici duzeltmesi (kaynak='manual') AI tarafindan EZILMEZ.
-            update: {},
-          });
+          // ⚠ ANAHTAR BAŞINA (Revizyon 1 R1-A5): tek anahtarın yazımı patlarsa
+          // (geçici DB hatası, uzun metnin indeks tavanı) parçanın kalan
+          // çevirileri kaybolmasın. Hepsi-ya-da-hiçbiri altında ortak try, tek
+          // bir kötü satırla teklifin TAMAMINI kalıcı olarak çevrilemez yapardı.
+          try {
+            await this.prisma.translation.upsert({
+              where: { sourceText_targetLang: { sourceText: kaynak, targetLang: hedefDil } },
+              create: { sourceText: kaynak, targetLang: hedefDil, translatedText: ceviri, kaynak: 'ai' },
+              // Kullanici duzeltmesi (kaynak='manual') AI tarafindan EZILMEZ.
+              update: {},
+            });
+          } catch {
+            yazilamayan++;
+          }
         }
       } catch (e) {
         basarisizParca++;
@@ -426,66 +548,119 @@ export class CeviriService {
           success: false,
           errorMessage: (e as Error).message,
         });
-        // Parca hatasi digerlerini durdurmaz; cevrilemeyenler Turkce kalir.
+        // Parca hatasi digerlerini durdurmaz; cevrilemeyenler eksik kalir.
         console.error('[Ceviri] parca hatasi:', durum ?? '-', (e as Error).message);
       }
     }
 
-    /**
-     * ⚠ HICBIR PARCA GECMEDIYSE BU BIR BASARI DEGILDIR.
-     *
-     * Eski hali her hatayi yutup `{harita:{}, cevrilen:0}` ile 200 donuyordu;
-     * frontend bunu "ceviri tamamlandi" olarak gosteriyor, dil dugmesi
-     * "Turkceye Don"e geciyor ve kullanici ozelligin CALISTIGINI saniyordu.
-     * 13.08 canli olcumu: anahtar gecersizdi, dort parca da 401 aldi, ekranda
-     * tek bir hucre bile degismedi ve hicbir uyari cikmadi.
-     *
-     * Onbellekten gelen ceviriler VARSA hata ATILMAZ: elde gercek bir sonuc
-     * var demektir; eksiklik `basarisiz` alaniyla bildirilir.
-     */
-    if (ceviriBasarisizMi({ toplamParca, basarisizParca, onbellekten })) {
-      throw new BadRequestException(
-        ceviriHataMesaji(ilkHata?.durum, ilkHata?.mesaj ?? 'bilinmeyen hata'),
-      );
-    }
+    // Metin gunluge YAZILMAZ (musteri verisi olabilir); sayi yazilir.
+    if (yazilamayan > 0) this.logger.error(`Ceviri onbellege yazilamadi: ${yazilamayan} metin`);
+    if (guvensiz > 0) this.logger.warn(`Ceviri guvenlik suzgeci ${guvensiz} yaniti reddetti (onbellege yazilmadi, teslim edilmedi)`);
 
-    return { harita, onbellekten, cevrilen, basarisiz: basarisizParca };
+    return { harita, onbellekten, cevrilen, basarisiz: basarisizParca, ilkHata, guvensiz };
   }
 
   /**
-   * YALNIZ ONBELLEK — API'ye ASLA gitmez, hicbir metni "cevrilmeli mi" diye
-   * DEGERLENDIRMEZ. Export yolu bunu kullanir.
-   *
-   * ⚠ NEDEN KARAR VERMEZ: dokunulmazlik kurali (cap/olcu/kod ceviriye
-   * GIRMEZ) `ceviri-kurali.ts`te durur ve testle muhurlu. Onbellek o kuralin
-   * CIKTISIDIR: "DN 20" hicbir zaman ceviriye gitmedigi icin onbellekte YOKTUR,
-   * dolayisiyla export'ta da degismez. Burasi yalnizca kayitli esleseni uygular.
-   * ⚠ KOTA TUKETMEZ (Faz 6.2 siniri): yalniz daha once cevrilip onbellege
-   * yazilmis metni uygular, AI'ya gitmez — yeni tuketim yoktur.
+   * GÖRÜNTÜLEME — bakmak ≠ çevirmek (Faz 6.11). Kota işlemi, kilit, tüketim
+   * kaydı, AI çağrısı ve `logUsage` YOK. Harita yalnız ödenmiş VE tam içerikte
+   * döner; ödenmemiş ya da eksik içerikte istemciye yalnız sayı çıkar (sayı
+   * dışa aktarımın `CEVIRI_GEREKLI` cevabından fazlasını söylemez). `tamam`
+   * ölçütü dosyayla ortaktır: planın karşılıksız satırı yok.
    */
-  async onbellekHaritasi(metinler: string[], hedefDil = 'en'): Promise<Record<string, string>> {
-    const benzersiz = Array.from(
-      new Set(metinler.map((m) => ceviriAnahtari(m)).filter(Boolean)),
-    );
-    if (benzersiz.length === 0) return {};
-    const kayitlar = await this.prisma.translation.findMany({
-      where: { targetLang: hedefDil, sourceText: { in: benzersiz } },
-    });
-    // Prototipsiz: "constructor" gibi bir metin önbellekte VAR sanılmasın.
-    const harita: Record<string, string> = Object.create(null);
-    for (const k of kayitlar) harita[k.sourceText] = k.translatedText;
-    return harita;
+  async teklifGorunumu(k: Kimlik, quoteId: string, hedefDil = 'en'): Promise<GoruntulemeYaniti> {
+    const { sayfalar, icerik } = await this.kota.kayitliIcerik(k, quoteId);
+    const kanit = await this.kota.odenmisIcerikKaniti(k, quoteId, hedefDil, icerik);
+    const { harita } = await this.katmanliHarita(icerik.metinler, hedefDil, k.firmaId);
+    const plan = disaAktarimPlani(sayfalar, harita);
+    if (kanit.odenmis === false) {
+      return {
+        odenmis: false,
+        neden: kanit.neden,
+        satirSayisi: icerik.satirSayisi,
+        degisecekSatir: plan.degisecek.length,
+        karsiliksizSatir: plan.karsiliksiz,
+      };
+    }
+    if (plan.karsiliksiz === 0) {
+      return { odenmis: true, tamam: true, kaynak: kanit.kaynak, harita, satirSayisi: icerik.satirSayisi };
+    }
+    return { odenmis: true, tamam: false, kaynak: kanit.kaynak, satirSayisi: icerik.satirSayisi, cevrilemeyenSatir: plan.karsiliksiz };
   }
 
-  /** Kullanici duzeltmesi — AI'nin uzerine yazar ve bir daha sorulmaz. */
-  async duzelt(sourceText: string, translatedText: string, hedefDil = 'en'): Promise<void> {
+  /**
+   * İNGİLİZCE DOSYA KARARI (Faz 6.10 · R1-B6 · Emre 15.09 "tam değilse
+   * çevirmesin"). Yalnız çözülmüş dil `en` iken çağrılır; rev/arşivden ÖNCE.
+   * `sheets` bu indirmenin kopyasıdır (kayda dönmez) ve yerinde yazılır.
+   *  · değişecek 0 ve karşılıksız 0 → İngilizce; kanıt SORULMAZ (değişen yok)
+   *  · ödenmiş ve karşılıksız 0     → plan uygulanır, İngilizce
+   *  · aksi (karşılıksız > 0 ya da ödenmemiş) tam İngilizce çıkamaz:
+   *      açık istek  → 403 `CEVIRI_GEREKLI` / 409 `CEVIRI_SURUYOR` / 409 `CEVIRI_EKSIK`
+   *      kayıttan    → dosya TAMAMEN Türkçe (işaretli hücre Türkçe kaynağına
+   *                    döner) + görünür uyarı; kota ve kapı yok (KVKK indirmesi)
+   * Başlıkları İngilizce, adları Türkçe karışık dosya hiçbir yoldan ÜRETİLMEZ.
+   */
+  async disaAktarimCevirisi(k: Kimlik, quoteId: string, sheets: unknown, dilKaynagi: 'ACIK' | 'KAYIT'): Promise<DisaAktarimCevirisi> {
+    const icerik = ceviriIcerigi(sheets);
+    const { harita } = await this.katmanliHarita(icerik.metinler, 'en', k.firmaId);
+    const plan = disaAktarimPlani(sheets, harita);
+    if (plan.degisecek.length === 0 && plan.karsiliksiz === 0) {
+      return { dil: 'en', cevrilen: 0, indirgendi: false };
+    }
+    const kanit = await this.kota.odenmisIcerikKaniti(k, quoteId, 'en', icerik);
+    if (kanit.odenmis && plan.karsiliksiz === 0) {
+      return { dil: 'en', cevrilen: planiUygula(plan), indirgendi: false };
+    }
+    if (dilKaynagi === 'KAYIT') {
+      kaynakMetinleriniGeriYaz(sheets);
+      return { dil: 'tr', cevrilen: 0, uyari: KAYIT_INDIRGEME_UYARISI, indirgendi: true };
+    }
+    throw ceviriKapisiReddi(kanit.odenmis === false ? kanit.neden : 'CEVIRI_EKSIK');
+  }
+
+  /**
+   * YÖNETİCİ DÜZELTMESİ — ORTAK katman (Faz 6.9 · K-T11). AI'nin üzerine yazar ve
+   * bir daha sorulmaz; HER firmanın okumasını etkiler. Bu yüzden: aynı güvenlik
+   * süzgeci (400), kaynak başına kilit, önceki değer ve `YoneticiOlayi`
+   * (`ceviri.ortak.duzeltildi`) AYNI transaction'da — denetim satırı yazılamazsa
+   * düzeltme de uygulanmaz (admin.service denetim notu: hata yutulmaz).
+   * Kullanıcının yazma yolu firma katmanıdır (`CeviriDuzeltmeServisi`).
+   */
+  async duzelt(
+    yonetici: { id?: string; email?: string } | null | undefined,
+    sourceText: string,
+    translatedText: string,
+    hedefDil = 'en',
+  ): Promise<void> {
     const kaynak = ceviriAnahtari(sourceText);
     const ceviri = String(translatedText ?? '').trim();
     if (!kaynak || !ceviri) throw new BadRequestException('Kaynak ve ceviri bos olamaz.');
-    await this.prisma.translation.upsert({
-      where: { sourceText_targetLang: { sourceText: kaynak, targetLang: hedefDil } },
-      create: { sourceText: kaynak, targetLang: hedefDil, translatedText: ceviri, kaynak: 'manual' },
-      update: { translatedText: ceviri, kaynak: 'manual' },
+    if (!ceviriGuvenliMi(kaynak, ceviri)) throw duzeltmeReddi('CEVIRI_GUVENSIZ');
+    const yoneticiId = yonetici?.id;
+    const yoneticiEpsta = yonetici?.email;
+    if (!yoneticiId || !yoneticiEpsta) throw new ForbiddenException('Yonetici kimligi cozulemedi; duzeltme denetim kaydi olmadan yazilmaz.');
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`ceviri-ortak:${hedefDil}:${kaynakOzeti(kaynak)}`}))::text AS kilit`;
+      const onceki = await tx.translation.findUnique({
+        where: { sourceText_targetLang: { sourceText: kaynak, targetLang: hedefDil } },
+        select: { translatedText: true },
+      });
+      await tx.translation.upsert({
+        where: { sourceText_targetLang: { sourceText: kaynak, targetLang: hedefDil } },
+        create: { sourceText: kaynak, targetLang: hedefDil, translatedText: ceviri, kaynak: 'manual' },
+        update: { translatedText: ceviri, kaynak: 'manual' },
+      });
+      await tx.yoneticiOlayi.create({
+        data: {
+          yoneticiId,
+          yoneticiEpsta,
+          hedefKullaniciId: null,
+          hedefEposta: null,
+          tip: 'ceviri.ortak.duzeltildi',
+          oncekiDeger: onceki?.translatedText ?? null,
+          yeniDeger: ceviri,
+          veri: { kaynak, hedefDil },
+        },
+      });
     });
   }
 }

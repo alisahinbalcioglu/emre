@@ -38,6 +38,6 @@ export function dwgRozetMetni(durum: DwgKapiDurumu): string | null {
 export function dwgIpucu(durum: DwgKapiDurumu): string | undefined {
   return ipucu(
     durum,
-    'DWG metraj Pro pakete dahildir. Yukseltmek icin Abonelik sayfasina gidin.',
+    'DWG metrajı Pro pakete dâhildir. Yükseltmek için Abonelik sayfasına gidin.',
   );
 }

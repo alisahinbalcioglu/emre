@@ -53,10 +53,10 @@ export default function LaborFirmsPage() {
   const GeriBaglantisi = () => <GeriButonu hedef="/library" />;
 
   const pageTitle = disciplineFilter === 'mechanical'
-    ? 'Mekanik Iscilik Firmalarim'
+    ? 'Mekanik İşçilik Firmalarım'
     : disciplineFilter === 'electrical'
-      ? 'Elektrik Iscilik Firmalarim'
-      : 'Iscilik Firmalarim';
+      ? 'Elektrik İşçilik Firmalarım'
+      : 'İşçilik Firmalarım';
 
   useEffect(() => {
     fetchFirms();
@@ -78,7 +78,7 @@ export default function LaborFirmsPage() {
       const { data } = await api.get<LaborFirm[]>('/labor-firms');
       setFirms(data);
     } catch {
-      toast({ title: 'Firmalar yuklenemedi', variant: 'destructive' });
+      toast({ title: 'Firmalar yüklenemedi', variant: 'destructive' });
     } finally {
       setLoading(false);
     }
@@ -129,10 +129,10 @@ export default function LaborFirmsPage() {
         <Card>
           <CardContent className="py-16 text-center">
             <p className="text-lg font-medium text-muted-foreground mb-2">
-              Iscilik ozelligi icin Pro paket gerekli
+              İşçilik özelliği için Pro paket gerekli
             </p>
             <p className="text-sm text-muted-foreground">
-              Iscilik fiyatlandirmasi yapabilmek icin Pro Mekanik veya Pro Elektrik paketine sahip olmaniz gerekir.
+              İşçilik fiyatlandırması yapabilmek için Pro Mekanik veya Pro Elektrik paketine sahip olmanız gerekir.
             </p>
           </CardContent>
         </Card>
@@ -148,7 +148,7 @@ export default function LaborFirmsPage() {
         <h1 className="text-2xl font-bold tracking-tight mb-4">{pageTitle}</h1>
         <Card>
           <CardContent className="py-16 text-center">
-            <p className="text-muted-foreground">Mekanik iscilik icin Pro Mekanik paketi gerekli.</p>
+            <p className="text-muted-foreground">Mekanik işçilik için Pro Mekanik paketi gerekli.</p>
           </CardContent>
         </Card>
       </div>
@@ -161,7 +161,7 @@ export default function LaborFirmsPage() {
         <h1 className="text-2xl font-bold tracking-tight mb-4">{pageTitle}</h1>
         <Card>
           <CardContent className="py-16 text-center">
-            <p className="text-muted-foreground">Elektrik iscilik icin Pro Elektrik paketi gerekli.</p>
+            <p className="text-muted-foreground">Elektrik işçilik için Pro Elektrik paketi gerekli.</p>
           </CardContent>
         </Card>
       </div>
@@ -174,7 +174,7 @@ export default function LaborFirmsPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight">{pageTitle}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Iscilik kalemleri icin firma ekleyin ve fiyat listelerini yukleyiniz.
+          İşçilik kalemleri için firma ekleyin ve fiyat listelerini yükleyiniz.
         </p>
       </div>
 

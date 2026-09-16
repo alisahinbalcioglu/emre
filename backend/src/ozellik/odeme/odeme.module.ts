@@ -11,6 +11,7 @@ import { WebhookIsleyici } from './webhook/webhook.isleyici';
 import { AbonelikServisi } from './abonelik/abonelik.servisi';
 import { ErisimServisi } from './abonelik/erisim.servisi';
 import { SatinAlmaServisi } from './abonelik/satinalma.servisi';
+import { DenemeHakkiServisi } from './abonelik/deneme-hakki.servisi';
 import { AbonelikController } from './abonelik/abonelik.controller';
 import { FiyatController } from './abonelik/fiyat.controller';
 import { CeviriKotaServisi } from './abonelik/ceviri-kota.servisi';
@@ -68,6 +69,8 @@ import { EpostaServisi } from './eposta/eposta.servisi';
     WebhookIsleyici,
     AbonelikServisi,
     SatinAlmaServisi,
+    // Faz 6.12a: deneme bir kez — satin alma ve JWT'li paket ucu kullanir.
+    DenemeHakkiServisi,
     ErisimServisi,
     CeviriKotaServisi,
     MutabakatJob,

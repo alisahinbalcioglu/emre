@@ -258,7 +258,7 @@ for (const slug of slugs.sort()) {
       let prev = -99;
       let famFirst = null;
       for (const r of rows) {
-        if (r.idx !== prev + 1) { famFirst = r; famToplam++; if (r.markaLabel && !/Marka sec/i.test(r.markaLabel)) famAtandi++; }
+        if (r.idx !== prev + 1) { famFirst = r; famToplam++; if (r.markaLabel && !/Marka se[cç]/i.test(r.markaLabel)) famAtandi++; }
         prev = r.idx;
       }
     }

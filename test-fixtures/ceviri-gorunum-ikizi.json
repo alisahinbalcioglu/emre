@@ -1,0 +1,62 @@
+{
+  "_aciklama": "Faz 6.10/6.11 (T1) ekran-dosya ikiz fikstürü. Sunucu `disaAktarimPlani` (backend/test/ceviri-gorunum-cikti-test.ts S10/X) ve ön yüz `ingilizceGorunum` (frontend/ozellik/teklif/ceviri.test.ts S10) AYNI dosyayı koşar; ikisi de `beklenen`i vermek zorunda. Satırlar: kayıtta Türkçe duran ve önbellekte karşılığı olan (PVC BORU ×2, KABLO KANALI), özdeş çeviri (GEBERIT), dokunulmaz (DN 20), Düzenle'de İngilizce kaydedilmiş geçerli işaretli satır (STEEL PIPE), çeviriden sonra elle değişmiş bayat işaretli satır (KIRMIZI VANA), karşılıksız (BAKIR BORU).",
+  "sayfalar": [
+    {
+      "index": 0,
+      "name": "Mekanik",
+      "isEmpty": false,
+      "columnRoles": {
+        "noField": "_no",
+        "nameField": "_ad",
+        "quantityField": "_miktar",
+        "unitField": "_birim",
+        "materialUnitPriceField": "_matBirim",
+        "materialTotalField": "_matToplam",
+        "laborUnitPriceField": "_labBirim",
+        "laborTotalField": "_labToplam"
+      },
+      "rowData": [
+        { "_isDataRow": true, "_no": "1", "_ad": "PVC BORU", "_miktar": 1, "_birim": "m", "_matBirim": "100", "_matToplam": "100", "_labBirim": "10", "_labToplam": "10" },
+        { "_isDataRow": true, "_no": "2", "_ad": "GEBERIT", "_miktar": 1, "_birim": "Ad.", "_matBirim": "200", "_matToplam": "200", "_labBirim": "", "_labToplam": "" },
+        { "_isDataRow": true, "_no": "3", "_ad": "DN 20", "_miktar": 1, "_birim": "Ad.", "_matBirim": "30", "_matToplam": "30", "_labBirim": "", "_labToplam": "" },
+        { "_isDataRow": true, "_no": "4", "_ad": "STEEL PIPE", "_ceviriKaynak": "ÇELİK BORU", "_ceviriSonucu": "STEEL PIPE", "_miktar": 1, "_birim": "m", "_matBirim": "400", "_matToplam": "400", "_labBirim": "", "_labToplam": "" },
+        { "_isDataRow": true, "_no": "5", "_ad": "KIRMIZI VANA", "_ceviriKaynak": "KÜRESEL VANA", "_ceviriSonucu": "BALL VALVE", "_miktar": 1, "_birim": "Ad.", "_matBirim": "50", "_matToplam": "50", "_labBirim": "", "_labToplam": "" },
+        { "_isDataRow": true, "_no": "6", "_ad": "BAKIR BORU", "_miktar": 1, "_birim": "m", "_matBirim": "60", "_matToplam": "60", "_labBirim": "", "_labToplam": "" }
+      ]
+    },
+    {
+      "index": 1,
+      "name": "Elektrik",
+      "isEmpty": false,
+      "columnRoles": {
+        "noField": "_no",
+        "nameField": "_ad",
+        "quantityField": "_miktar",
+        "unitField": "_birim",
+        "materialUnitPriceField": "_matBirim",
+        "materialTotalField": "_matToplam",
+        "laborUnitPriceField": "_labBirim",
+        "laborTotalField": "_labToplam"
+      },
+      "rowData": [
+        { "_isDataRow": true, "_no": "1", "_ad": "PVC BORU", "_miktar": 2, "_birim": "m", "_matBirim": "100", "_matToplam": "200", "_labBirim": "", "_labToplam": "" },
+        { "_isDataRow": true, "_no": "2", "_ad": "KABLO KANALI", "_miktar": 1, "_birim": "m", "_matBirim": "70", "_matToplam": "70", "_labBirim": "", "_labToplam": "" }
+      ]
+    }
+  ],
+  "onbellek": {
+    "PVC BORU": "PVC PIPE",
+    "GEBERIT": "GEBERIT",
+    "ÇELİK BORU": "STEEL PIPING",
+    "KÜRESEL VANA": "BALL VALVE",
+    "KABLO KANALI": "CABLE TRAY"
+  },
+  "beklenen": {
+    "degisecek": [
+      [0, 0, "PVC PIPE"],
+      [1, 0, "PVC PIPE"],
+      [1, 1, "CABLE TRAY"]
+    ],
+    "karsiliksiz": 2
+  }
+}

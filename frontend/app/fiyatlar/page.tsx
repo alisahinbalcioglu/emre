@@ -37,18 +37,31 @@ const KOTA_KURALLARI: { vurgu?: boolean; metin: string }[] = [
     metin:
       'Satır ve dosya tavanı birlikte işler: hangisi önce dolarsa o dönemin çeviri kotası biter.',
   },
-  { vurgu: true, metin: 'Aynı dosyayı tekrar çevirmek kotadan yeniden düşer.' },
+  // Faz 6.11 + REVİZE K-T7 (15.09): ödenmiş içerik penceresiz (bakmak ücretsiz)
+  // ve çeviri hepsi ya da hiçbiri. Sunucuda tekrar penceresi ve kısmi
+  // çeviri kalktı; eski cümleler kalırsa sayfa sessizce yalan söyler
+  // (`test:ceviri-kota-uygulama` W45, `fiyat-sayfasi.test.ts`). Rakam yok.
   {
-    // ⚠ "10 dakika" sunucudaki TEKRAR_PENCERESI_DK ile aynı olmak zorunda ve
-    // pencere çevirinin BİTİŞİNDEN ölçülür — `test:ceviri-kota-uygulama` W45.
+    vurgu: true,
     metin:
-      'Tek istisna: çeviri tamamlandıktan sonraki 10 dakika içinde aynı içerik için gelen tekrar istek (çift tıklama, bağlantı kopması) tek çeviri sayılır. İçerik değiştiyse yeni çeviridir.',
+      'Çevrilmiş ve malzeme/iş adları değişmemiş bir teklife yeniden İngilizce bakmak ya da onu İngilizce indirmek kotadan düşmez.',
   },
   {
-    // 14.09: kısmi çeviride harita kullanıcıya teslim edilir; "hiç düşmez"
-    // demek teslim edilen satırı kotasız bırakırdı (inceleme Y1).
     metin:
-      'Hata alan çeviri kotadan düşmez. Kısmen tamamlanan çeviride yalnız çevrilen satırlar düşer; 10 dakika içinde yeniden denerseniz kalan satırlar çevrilir, çevrilmiş olanlar yeniden düşmez.',
+      'Aynı dosyayı yeni bir teklif olarak yükleyip çevirmek ya da çeviriden sonra malzeme/iş adlarını değiştirmek, satır eklemek veya silmek yeni çeviridir ve kotadan yeniden düşer. Miktar, fiyat ya da satır sırası değişikliği yeni çeviri sayılmaz.',
+  },
+  {
+    metin:
+      'İngilizce dosya için teklifin güncel hâli çevrilmiş olmalıdır; Türkçe dosya her zaman kotadan düşmeden iner.',
+  },
+  {
+    vurgu: true,
+    metin:
+      'Çeviri ya tamamlanır ya hiç yapılmaz: sistem tek bir satırı bile çeviremezse kotadan hiçbir şey düşmez, teklif Türkçe kalır ve çevrilemeyen satırlar size gösterilir; tekrar denemek ücretsizdir.',
+  },
+  {
+    metin:
+      'Kotanız yetmiyorsa çeviri başlamadan reddedilir ve hangi tavanın dolduğu söylenir; kısmi çeviri yapılmaz.',
   },
   { metin: 'Kota takvim ayına göre değil, abonelik döneminize göre yenilenir.' },
   {
@@ -83,9 +96,13 @@ export default function FiyatlarSayfasi() {
         <div className="max-w-2xl">
           <h1 className="text-3xl font-black tracking-tight text-slate-900">Paketler ve fiyatlar</h1>
           <p className="mt-3 text-sm leading-relaxed text-slate-600">
-            Teklif sayısı sınırsızdır. Paketler disipline (mekanik, elektrik ya da ikisi) ve kapsama
+            {/* Faz 6.4 (16.09): elektrik paketleri satıştan çekildi — cümle artık
+                yalnız mekaniği anlatır. Mevcut elektrik aboneliklerinin kapsamı
+                değişmedi; burada satıştaki paketler anlatılır. */}
+            Teklif sayısı sınırsızdır. Paketler mekanik tesisat işleri için kapsama ve seviyeye
             göre ayrılır; İngilizce çeviri paketinizin kotasıyla yapılır. Paketinizi hesabınızı açtıktan
-            sonra seçersiniz; ücretsiz deneme kart bilgisiyle başlar.
+            sonra seçersiniz; ücretsiz deneme kart bilgisiyle başlar ve her firma ile kişi için bir
+            kez verilir.
           </p>
         </div>
 

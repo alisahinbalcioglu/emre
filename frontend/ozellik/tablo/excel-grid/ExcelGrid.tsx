@@ -207,6 +207,15 @@ interface Props {
    *  ekle/sil. Teklif duzenleme ekraninda acilir (detay sayfasi salt okunur). */
   enableStructureEdit?: boolean;
   /**
+   * CEVIRI DUZELTME KALEMI (Faz 6.9, 16.09.2026). Ad hucresinde "✎": tiklayinca
+   * firma karsiligi diyalogu acilir.
+   *
+   * ⚠ GRID CEVIRI KURALINI BILMEZ: hangi satirda gorunecegine SAYFA karar verir
+   * (`goster`) — kural sunucudan gelen anahtar kumesinde ve `satirKaynagi`de
+   * durur (K21/K-T2). Prop verilmezse hicbir sey cizilmez.
+   */
+  ceviriKalemi?: { goster: (row: ExcelRowData) => boolean; ac: (row: ExcelRowData) => void };
+  /**
    * YAPISAL DEGISIKLIK (03.09): satir ekle/sil, spare→gercek satir, fitting
    * bagi/kapsami. Gridin GUNCEL tam satir listesi verilir.
    *
@@ -768,7 +777,7 @@ function BrandDropdown(props: ICellRendererParams & {
       <CustomDropdown
         value={data._marka ?? ''}
         options={brandOptions}
-        placeholder="Marka sec..."
+        placeholder="Marka seç…"
         onChange={handleChange}
         variant="brand"
       />
@@ -990,7 +999,7 @@ function BrandDropdown(props: ICellRendererParams & {
               marginTop: 4,
             }}
           >
-            Iptal
+            İptal
           </button>
           {/* PU4c: boyutlandirma tutamaci GORUNUR olsun. Native CSS `resize`
               grip'i cizilir ama cok soluk — kullanici varligini fark etmiyor.
@@ -1109,7 +1118,7 @@ function FirmaDropdown(props: ICellRendererParams & {
   if (!laborEnabled) {
     return (
       <span
-        title="Iscilik icin Pro paket gerekli"
+        title="İşçilik için Pro paket gerekli"
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 3,
           padding: '2px 8px', borderRadius: 4,
@@ -1270,7 +1279,7 @@ function FirmaDropdown(props: ICellRendererParams & {
       <CustomDropdown
         value={data._firma ?? ''}
         options={firmaOptions}
-        placeholder="Firma sec..."
+        placeholder="Firma seç…"
         onChange={handleChange}
         variant="firma"
       />
@@ -1282,7 +1291,7 @@ function FirmaDropdown(props: ICellRendererParams & {
           boxShadow: '0 8px 24px rgba(0,0,0,0.25)', fontSize: 12,
         }}>
           <div style={{ fontWeight: 700, color: '#b45309', marginBottom: 6, fontSize: 13 }}>
-            ⚠ Iscilik Sec ({candidates.length} aday)
+            ⚠ İşçilik Seç ({candidates.length} aday)
           </div>
           {candidates.map((c, i) => (
             <button
@@ -1638,6 +1647,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
   columnWidths,
   autoAppendRow = false,
   enableStructureEdit = false,
+  ceviriKalemi,
   onStructureChange,
   onColumnsChange,
   onRowDelete,
@@ -3049,6 +3059,10 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
   fittingModunuAcRef.current = fittingModunuAc;
   const fittingBagiKaldirRef = useRef(fittingBagiKaldir);
   fittingBagiKaldirRef.current = fittingBagiKaldir;
+  // Ceviri kalemi de REF uzerinden: `columnDefs` useMemo'su prop kimligine
+  // baglanmaz (yeniden kurulum acik hucre editorunu iptal eder).
+  const ceviriKalemiRef = useRef(ceviriKalemi);
+  ceviriKalemiRef.current = ceviriKalemi;
   /** Rozet/"%" yolu yalniz DUZENLEME baglaminda. Sinyal `enableStructureEdit`:
    *  teklif duzenleme sayfasi verir, detay sayfasi (salt okunur) VERMEZ —
    *  sag tik menusuyle AYNI kapi. (`onRowDataChange` sinyal OLAMAZ: teklif
@@ -3432,6 +3446,13 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
             // sayfasinda secim yapilsa da hicbir yere kaydedilmezdi.
             const d: any = params.data;
             const birim = data.columnRoles.unitField ? d?.[data.columnRoles.unitField] : undefined;
+            // ── CEVIRI KALEMI (Faz 6.9) ─────────────────────────────────
+            // Sayfa "goster" derse ad metninin yanina ✎ konur; tiklayinca
+            // firma karsiligi diyalogu acilir (kural sayfada, gridde DEGIL).
+            const kalem = d && ceviriKalemiRef.current?.goster(d) ? (
+              <button type="button" className="ceviri-kalem" title="Çeviriyi düzelt" aria-label="Çeviriyi düzelt"
+                onClick={(ev) => { ev.stopPropagation(); ceviriKalemiRef.current?.ac(d); }}>✎</button>
+            ) : null;
             // `_isSpareRow` kosulu YOK: bos spare satir bu kosulu zaten
             // saglayamaz (birimi bos); "%" yazilan spare satir icerik kazanir
             // ve auto-append ayni turda bayragi dusurur — rozet hemen gorunsun.
@@ -3450,6 +3471,15 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
                     <button type="button" className="fitting-rozet-sil" title="Bağı kaldır" aria-label="Fitting bağını kaldır"
                       onClick={(ev) => { ev.stopPropagation(); fittingBagiKaldirRef.current(d._rowIdx); }}>✕</button>
                   ) : null}
+                  {kalem}
+                </span>
+              );
+            }
+            if (kalem) {
+              return (
+                <span className="fitting-ad">
+                  <span className="fitting-ad-metin">{metin}</span>
+                  {kalem}
                 </span>
               );
             }
@@ -3676,7 +3706,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
 
       cols.push({
         field: '_draftDiscount',
-        headerName: 'Iskonto %',
+        headerName: 'İskonto %',
         width: 100,
         editable: (p: any) => p.data?._isDataRow === true,
         pinned: 'right' as const,
@@ -3757,13 +3787,22 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           const taban = typeof oncekiStil === 'function' ? oncekiStil(params) : oncekiStil;
           return { ...(taban ?? {}), color: '#94a3b8', background: '#f8fafc' };
         };
-        c.headerTooltip = 'Iscilik fiyatlandirmasi Pro pakete dahildir.';
+        c.headerTooltip = 'İşçilik fiyatlandırması Pro pakete dâhildir.';
       }
     }
 
     return cols;
   }, [data, brands, onBrandChange, laborFirms, sheetDiscipline, laborEnabled, onFirmaChange, mode, libraryPriceField, currencySymbol, conversionRate,
       fittingDuzenlenebilir]);
+
+  // Ceviri kalemi gorunurlugu degisince ad kolonu yeniden cizilir: renderer
+  // ref okuyor, AG Grid kendiliginden tazelemez (fitting tazelemesiyle ayni desen).
+  React.useEffect(() => {
+    const api = gridRef.current?.api;
+    const alan = data.columnRoles.nameField;
+    if (!api || !alan) return;
+    api.refreshCells({ columns: [alan], force: true });
+  }, [ceviriKalemi, data.columnRoles.nameField]);
 
   // Kar % degistiginde fiyati yeniden hesapla
   // Kolonu olmayan alana yazim — writePriceToNode'daki yazVeri ile AYNI
@@ -4395,6 +4434,9 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         .fitting-rozet { flex: none; border: 1px solid #f59e0b; background: #fffbeb; color: #b45309;
           border-radius: 6px; padding: 0 7px; height: 22px; line-height: 20px; font-size: 11px; font-weight: 700; cursor: pointer; }
         .fitting-rozet:hover { background: #fef3c7; }
+        .ceviri-kalem { flex: none; border: 0; background: transparent; color: #94a3b8; font-size: 11px;
+          line-height: 1; padding: 2px 3px; cursor: pointer; border-radius: 4px; }
+        .ceviri-kalem:hover { color: #2563eb; background: #eff6ff; }
         .fitting-rozet-sil { flex: none; border: 0; background: transparent; color: #94a3b8; font-size: 11px; cursor: pointer; padding: 0 2px; }
         .fitting-rozet-sil:hover { color: #dc2626; }
         .ag-theme-alpine {

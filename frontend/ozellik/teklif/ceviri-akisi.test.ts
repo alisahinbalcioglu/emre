@@ -10,16 +10,19 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { teklifCevirisiAl, type CeviriAkisiBagimliliklari } from './ceviri-akisi';
+import { teklifCevirisiAl, teklifGorunumuAl, teklifIngilizcesiniAl, type CeviriAkisiBagimliliklari } from './ceviri-akisi';
 import {
   bosSonucBildirimi,
   ceviriHataMetni,
   kalanKotaCumlesi,
   onizlemeCumlesi,
+  goruntulemeBildirimi,
   sonucBildirimi,
+  tamamlanamadiBildirimi,
   trTarih,
   type CeviriKotaOzeti,
   type CeviriOnizleme,
+  type GoruntulemeYaniti,
   type TeklifCeviriSonucu,
 } from './ceviri-kota';
 
@@ -42,7 +45,6 @@ function onizleme(patch: Partial<CeviriOnizleme> = {}): CeviriOnizleme {
     gerekenSatir: 1240,
     metinSayisi: 310,
     tekrar: false,
-    devam: false,
     suruyor: false,
     izin: true,
     sebep: null,
@@ -60,9 +62,7 @@ function sonuc(patch: Partial<TeklifCeviriSonucu> = {}): TeklifCeviriSonucu {
     basarisiz: 0,
     satirSayisi: 1240,
     dusulenSatir: 1240,
-    cevrilemeyenSatir: 0,
     tekrar: false,
-    devam: false,
     kotadanDustu: true,
     kota: { ...KOTA, kalanSatir: 860, kalanDosya: 27 },
     ...patch,
@@ -79,6 +79,7 @@ interface Kayit {
 
 function sahte(o: {
   onizleme?: CeviriOnizleme | Error;
+  goruntule?: GoruntulemeYaniti | Error;
   onay?: boolean;
   post?: TeklifCeviriSonucu | Error;
 }): { d: CeviriAkisiBagimliliklari; k: Kayit } {
@@ -86,6 +87,10 @@ function sahte(o: {
   const d: CeviriAkisiBagimliliklari = {
     get: async (url, ayar) => {
       k.getler.push({ url, params: ayar.params });
+      if (url === '/ai/translate/goruntule') {
+        if (o.goruntule instanceof Error) throw o.goruntule;
+        return { data: o.goruntule ?? { odenmis: false, neden: 'CEVIRI_YOK', satirSayisi: 1240, degisecekSatir: 3, karsiliksizSatir: 0 } };
+      }
       if (o.onizleme instanceof Error) throw o.onizleme;
       return { data: o.onizleme ?? onizleme() };
     },
@@ -240,22 +245,53 @@ describe('ceviri-kota gösterimi', () => {
     expect(b.aciklama).toContain('kotadan yeniden düşmedi');
   });
 
-  it('kısmi: uyarı olarak gösterilir, Türkçe kalan ve yalnız çevrilen satırın düştüğü söylenir', () => {
-    const b = sonucBildirimi(sonuc({ basarisiz: 2, dusulenSatir: 900, cevrilemeyenSatir: 340 }), 3);
-    expect(b.hata).toBe(true);
-    expect(b.aciklama).toContain('340 satır Türkçe kaldı');
-    expect(b.aciklama).toContain('yalnız çevrilen 900 satır düştü');
+  // REVİZE K-T7 (15.09): kısmi ve devam dalları KALDI — sunucu eksik çeviride
+  // 422 döner, ekran tamamlanamadı bildirimini gösterir.
+  it('tekrar metni ödenmiş içeriği söyler ("az önce" değil)', () => {
+    const b = sonucBildirimi(sonuc({ tekrar: true, kotadanDustu: false }), 3);
+    expect(b.aciklama).toContain('Bu içeriğin çevirisi daha önce ödenmişti; kotadan yeniden düşmedi.');
+    expect(b.aciklama).not.toContain('az önce');
   });
 
-  it('kısmi: parça hatası olmasa da (model metni atladı) Türkçe kalan satır varsa kısmi sayılır', () => {
-    const b = sonucBildirimi(sonuc({ basarisiz: 0, dusulenSatir: 10, cevrilemeyenSatir: 5 }), 3);
-    expect(b.baslik).toBe('Çeviri KISMEN tamamlandı');
+  it('tamamlanmış sonuçta kısmi dal YOK (başarısız satır alanı taşınmaz)', () => {
+    const b = sonucBildirimi(sonuc({ basarisiz: 2 }), 3);
+    expect(b.hata).toBe(false);
+    expect(b.baslik).not.toContain('KISMEN');
+    expect(b.aciklama).not.toMatch(/dakika|Türkçe kaldı/);
   });
 
-  it('devam önizlemesi yalnız KALAN satırı yer der', () => {
-    expect(onizlemeCumlesi(onizleme({ devam: true, gerekenSatir: 340 }))).toContain(
-      'yarım kalan çevirisi tamamlanacak: 340 satır daha yer',
+  it('önizleme cümlesinde devam dalı yok', () => {
+    expect(onizlemeCumlesi(onizleme({ gerekenSatir: 340 }))).toBe(
+      'Bu teklif 340 satır çeviri kotası yer. Kalan: 2.100 satır / 28 dosya · yenilenme 12.10.2026.',
     );
+  });
+
+  it('görüntüleme bildirimi hücre sayısını ve kotadan düşmediğini söyler', () => {
+    const b = goruntulemeBildirimi({ odenmis: true, tamam: true, kaynak: 'TUKETIM', harita: {}, satirSayisi: 3 }, 12);
+    expect(b.baslik).toBe('İngilizce görünüm açıldı');
+    expect(b.aciklama).toBe('12 hücre İngilizce gösteriliyor · bu içeriğin çevirisi daha önce ödenmişti, kotadan düşmedi.');
+  });
+
+  it('tamamlanamadı bildirimi: ilk 5 metin, 60 karakter kesimi, "ve M satır daha", kotadan düşmedi', () => {
+    const uzun = 'Ş'.repeat(70);
+    const b = tamamlanamadiBildirimi({
+      kod: 'CEVIRI_TAMAMLANAMADI',
+      cevrilemeyenSayisi: 9,
+      cevrilemeyenMetinSayisi: 8,
+      cevrilemeyenSatirlar: ['A', 'B', 'C', 'D', uzun, 'ALTINCI', 'G', 'H'],
+    });
+    expect(b.baslik).toBe('Çeviri tamamlanamadı, tekrar deneyin');
+    expect(b.hata).toBe(true);
+    expect(b.aciklama).toContain(`9 satır çevrilemedi: «A» · «B» · «C» · «D» · «${'Ş'.repeat(60)}…» (ve 3 satır daha).`);
+    expect(b.aciklama).not.toContain('ALTINCI');
+    expect(b.aciklama).toContain('Kotadan hiçbir şey düşmedi; teklif Türkçe kaldı.');
+    expect(b.aciklama).toContain('Tekrar denediğinizde çevrilmiş satırlar beklemeden gelir.');
+  });
+
+  it('tamamlanamadı bildirimi: 5 ya da daha az metinde "ve … satır daha" yazılmaz', () => {
+    const b = tamamlanamadiBildirimi({ cevrilemeyenSayisi: 2, cevrilemeyenMetinSayisi: 1, cevrilemeyenSatirlar: ['ÇELİK BORU'] });
+    expect(b.aciklama).toContain('2 satır çevrilemedi: «ÇELİK BORU». Kotadan hiçbir şey düşmedi');
+    expect(b.aciklama).not.toContain('satır daha');
   });
 
   it('boş sonuç: kota düştüyse "çeviri gelmedi" DENMEZ', () => {
@@ -269,6 +305,83 @@ describe('ceviri-kota gösterimi', () => {
     const b = bosSonucBildirimi(sonuc({ kotadanDustu: false, dusulenSatir: 0 }));
     expect(b.aciklama).toContain('Sunucudan çeviri gelmedi');
     expect(b.aciklama).toContain('Kotadan düşmedi');
+  });
+});
+
+describe('teklifCevirisiAl — 422 çeviri tamamlanamadı (hepsi ya da hiçbiri)', () => {
+  it('422 CEVIRI_TAMAMLANAMADI: tamamlanamadı bildirimi (liste + kotadan düşmedi), dönüş null', async () => {
+    const { d, k } = sahte({
+      post: httpHatasi(422, {
+        mesaj: 'Çeviri tamamlanamadı, tekrar deneyin',
+        kod: 'CEVIRI_TAMAMLANAMADI',
+        cevrilemeyenSayisi: 7,
+        cevrilemeyenMetinSayisi: 6,
+        cevrilemeyenSatirlar: ['A', 'B', 'C', 'D', 'E', 'F'],
+      }),
+    });
+    const r = await teklifCevirisiAl(QUOTE, d);
+    expect(r).toBeNull();
+    expect(k.bildirimler).toHaveLength(1);
+    expect(k.bildirimler[0].title).toBe('Çeviri tamamlanamadı, tekrar deneyin');
+    expect(k.bildirimler[0].variant).toBe('destructive');
+    expect(k.bildirimler[0].description).toContain('7 satır çevrilemedi: «A» · «B» · «C» · «D» · «E» (ve 1 satır daha)');
+    expect(k.bildirimler[0].description).toContain('Kotadan hiçbir şey düşmedi');
+  });
+
+  it('başka hata kodu eski metin kuralıyla gösterilir', async () => {
+    const { d, k } = sahte({ post: httpHatasi(400, { message: 'Ceviri icin Claude API anahtari tanimli degil' }) });
+    expect(await teklifCevirisiAl(QUOTE, d)).toBeNull();
+    expect(k.bildirimler[0].title).toBe('Çeviri başarısız');
+  });
+});
+
+describe('teklifIngilizcesiniAl — önce görüntüleme (bakmak ≠ çevirmek)', () => {
+  const tam: GoruntulemeYaniti = { odenmis: true, tamam: true, kaynak: 'TUKETIM', harita: { 'PVC BORU': 'PVC PIPE' }, satirSayisi: 1 };
+
+  it('ödenmiş + tam: harita görüntülemeden gelir; önizleme ve POST GİTMEZ, onay sorulmaz', async () => {
+    const { d, k } = sahte({ goruntule: tam });
+    const r = await teklifIngilizcesiniAl(QUOTE, d);
+    expect(r?.tur).toBe('goruntuleme');
+    expect(r?.harita).toEqual({ 'PVC BORU': 'PVC PIPE' });
+    expect(k.getler.map((g) => g.url)).toEqual(['/ai/translate/goruntule']);
+    expect(k.postlar).toHaveLength(0);
+    expect(k.onaylar).toHaveLength(0);
+    expect(k.yukleniyor).toEqual([true, false]);
+  });
+
+  it('ödenmiş ama eksik: önizleme → (tekrar, onaysız) → POST; harita POST\'tan gelir', async () => {
+    const { d, k } = sahte({ goruntule: { odenmis: true, tamam: false, kaynak: 'TUKETIM', satirSayisi: 3, cevrilemeyenSatir: 1 }, onizleme: onizleme({ tekrar: true, gerekenSatir: 0 }) });
+    const r = await teklifIngilizcesiniAl(QUOTE, d);
+    expect(r?.tur).toBe('ceviri');
+    expect(k.getler.map((g) => g.url)).toEqual(['/ai/translate/goruntule', '/ai/translate/onizleme']);
+    expect(k.postlar).toHaveLength(1);
+  });
+
+  it('ödenmemiş: önizleme → onay → POST', async () => {
+    const { d, k } = sahte({});
+    const r = await teklifIngilizcesiniAl(QUOTE, d);
+    expect(r?.tur).toBe('ceviri');
+    expect(k.onaylar).toHaveLength(1);
+    expect(k.postlar).toEqual([{ url: '/ai/translate', govde: { quoteId: QUOTE, hedefDil: 'en' } }]);
+  });
+
+  it('görüntüleme hatası (429) akışa düşer, ayrıca bildirilmez', async () => {
+    const { d, k } = sahte({ goruntule: httpHatasi(429, { message: 'Too Many Requests' }) });
+    const r = await teklifIngilizcesiniAl(QUOTE, d);
+    expect(r?.tur).toBe('ceviri');
+    expect(k.postlar).toHaveLength(1);
+    expect(k.bildirimler).toHaveLength(0);
+  });
+
+  it('422 → null (hiçbir satır değişmez)', async () => {
+    const { d } = sahte({ post: httpHatasi(422, { kod: 'CEVIRI_TAMAMLANAMADI', cevrilemeyenSayisi: 1, cevrilemeyenSatirlar: ['X'] }) });
+    expect(await teklifIngilizcesiniAl(QUOTE, d)).toBeNull();
+  });
+
+  it('teklifGorunumuAl hatayı ayrı döner', async () => {
+    const { d } = sahte({ goruntule: new Error('ağ') });
+    const g = await teklifGorunumuAl(QUOTE, d);
+    expect('hata' in g).toBe(true);
   });
 });
 
@@ -296,10 +409,53 @@ describe('teklifCevirisiAl — tekrar ve süren çeviri', () => {
 describe('ekran bağlantısı', () => {
   const kok = join(__dirname, '../..');
   const oku = (yol: string) => readFileSync(join(kok, yol), 'utf8');
+  /** Yorumlar atılır: kapı yorumda geçen metinle yeşil yanmasın. */
+  const kodu = (m: string) => m.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/.*$/gm, '$1').replace(/\{\/\*[\s\S]*?\*\/\}/g, '');
   const EKRANLAR = ['app/(protected)/quotes/[id]/page.tsx', 'app/(protected)/quotes/new/page.tsx'];
 
-  it.each(EKRANLAR)('%s çeviriyi ortak akıştan ister', (yol) => {
-    expect(oku(yol)).toMatch(/teklifCevirisiAl\(/);
+  it.each(EKRANLAR)('%s "İngilizceye Çevir" önce görüntülemeden geçen ortak akışı ister', (yol) => {
+    expect(kodu(oku(yol))).toMatch(/teklifIngilizcesiniAl\(/);
+  });
+
+  const detay = () => kodu(oku('app/(protected)/quotes/[id]/page.tsx'));
+
+  it('detay açılış etkisi kaydı Türkçeye ONARMAZ (dilKaydet(\'tr\') yalnız "Türkçeye Dön"de)', () => {
+    const kod = detay();
+    const acilis = kod.slice(kod.indexOf('api.get<QuoteDetail>(`/quotes/${id}`)'), kod.indexOf('}, [id]);'));
+    expect(acilis.length).toBeGreaterThan(0);
+    expect(acilis).not.toContain("dilKaydet('tr')");
+    expect(kod.split("dilKaydet('tr')").length - 1).toBe(1);
+  });
+
+  it('detay kaydı yerinde değiştirmez: ingilizceGorunum kullanır, ceviriUygula/ceviriGeriAl kullanmaz', () => {
+    const kod = detay();
+    expect(kod).toMatch(/ingilizceGorunum\(/);
+    expect(kod).toMatch(/turkceGorunum\(/);
+    expect(kod).not.toMatch(/ceviriUygula\(|ceviriGeriAl\(/);
+  });
+
+  it('detay: çeviri ve iki çıktı düğmesi görünüm yüklenirken kapalı', () => {
+    const kapalilar = detay().match(/disabled=\{[^}]*gorunumYukleniyor[^}]*\}/g) ?? [];
+    expect(kapalilar.length).toBe(3);
+  });
+
+  it('detay: ad kolonu düzenlenemez — kilit AD kolonunun kimliğine bağlı, gizli ve görünür dalın ikisi de kilitli tanımı döndürür', () => {
+    // T1 incelemesi DÜŞÜK-3 (16.09): yalnız `editable: false` metnini arayan eski
+    // kapı, kilidi yanlış kolona (`noField`) uygulayan mutantta yeşil kalıyordu.
+    const kod = detay();
+    expect(kod).toMatch(
+      /const kilitli = c\.field === activeSheet\.columnRoles\?\.nameField \? \{ \.\.\.temel, editable: false \} : temel;\s*return hiddenFields\.has\(c\.field\) \? \{ \.\.\.kilitli, hide: true \} : kilitli;/,
+    );
+    expect(kod.split('editable: false').length - 1).toBe(1);
+  });
+
+  it('detay: Revize Et ekrandaki görünümü taşır', () => {
+    expect(detay()).toMatch(/kayittanTaslak\(\{ \.\.\.quote, sheets: gorunenSayfalar \}/);
+  });
+
+  it('detay: açılış kararı saf modülden (teklif-dil-karari)', () => {
+    expect(detay()).toMatch(/acilisKarari\(/);
+    expect(detay()).toMatch(/goruntulemeGerekirMi\(/);
   });
 
   it.each(EKRANLAR)('%s /ai/translate ucuna kendisi istek atmaz (metin listesi gönderilemez)', (yol) => {

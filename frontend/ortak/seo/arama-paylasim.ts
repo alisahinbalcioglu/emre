@@ -82,8 +82,12 @@ export const PAYLASIM_GORSELLERI = {
     alt: 'MetaPriceX teklif ekranı: metraj satırları marka fiyat listesinden fiyatlanmış; önde DWG projesinden hat boyu ölçümü (Pro paket)',
   },
   fiyatlar: {
-    yol: '/og/fiyatlar.jpg',
-    alt: 'MetaPriceX paket kartları: Core malzeme akışı, Pro işçilik ve DWG metrajı; sınırsız teklif, ücretsiz denemeyle başlar',
+    // ⚠ DOSYA ADI SÜRÜMLÜ (16.09): görselin İÇERİĞİ değişti (Core → Basic
+    // kartı). WhatsApp/Facebook önizlemeyi ADRESE göre haftalarca
+    // önbelleklediği için aynı adla değiştirmek eski kartı göstermeye devam
+    // ederdi. İçerik değişirse ad da değişir — önbellek kendiliğinden kırılır.
+    yol: '/og/fiyatlar-basic.jpg',
+    alt: 'MetaPriceX paket kartları: Basic malzeme akışı, Pro işçilik ve DWG metrajı; sınırsız teklif, ücretsiz denemeyle başlar',
   },
 } as const;
 

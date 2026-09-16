@@ -52,8 +52,11 @@ import { kalemUret } from '@/ozellik/teklif/teklif-kalem';
 import { restoreRematch } from '@/ozellik/teklif/restore-rematch';
 import { TASLAK_ANAHTARI, TASLAK_SURUMU } from '@/ozellik/teklif/taslak';
 import { ceviriUygula, ceviriGeriAl, cevrilmisSatirVarMi } from '@/ozellik/teklif/ceviri';
-import { teklifCevirisiAl } from '@/ozellik/teklif/ceviri-akisi';
-import { bosSonucBildirimi, sonucBildirimi } from '@/ozellik/teklif/ceviri-kota';
+import { ceviriAnahtari, duzeltmeyiSatirlaraUygula, satirKaynagi } from '@/ozellik/teklif/ceviri';
+import { duzeltmeHataMetni, duzeltmeKaldir, duzeltmeKaydet, duzeltmeleriGetir, type DuzeltmeGorunumu } from '@/ozellik/teklif/ceviri-duzeltme';
+import { CeviriDuzeltmeDialog, type CeviriDuzeltmeHedefi } from '@/ozellik/teklif/CeviriDuzeltmeDialog';
+import { teklifGorunumuAl, teklifIngilizcesiniAl } from '@/ozellik/teklif/ceviri-akisi';
+import { bosSonucBildirimi, goruntulemeBildirimi, sonucBildirimi } from '@/ozellik/teklif/ceviri-kota';
 import { sayiAlani, sayiOku, makineMetni } from '@/ozellik/fiyat/sayi-alani';
 import {
   fiyatsizKalemOzeti, fiyatsizOnayMetni, uyariyaGirerMi,
@@ -456,6 +459,7 @@ export default function NewQuotePage() {
   const [ceviriDili, setCeviriDili] = useState<'tr' | 'en'>('tr');
   const [ceviriYukleniyor, setCeviriYukleniyor] = useState(false);
 
+
   const handleCeviri = async () => {
     if (!multiSheet?.sheets) return;
     const sheets = multiSheet.sheets;
@@ -484,7 +488,9 @@ export default function NewQuotePage() {
     // render); revizyonda KAYITLI icerik cevrilir, kaydedilmemis degisiklikler
     // ceviriye girmez — onay kartinda soylenir.
     if (!revizyonId) return;
-    const sonuc = await teklifCevirisiAl(
+    // Faz 6.11 (15.09): once odenmis ceviri GORUNTULENIR (kotasiz, onaysiz);
+    // yoksa ya da eksikse onizleme → onay → ceviri.
+    const r = await teklifIngilizcesiniAl(
       revizyonId,
       {
         get: (url, ayar) => api.get(url, ayar),
@@ -495,24 +501,34 @@ export default function NewQuotePage() {
       },
       { ekNot: 'Kayıtlı içerik çevrilir; kaydetmediğiniz değişiklikler çeviriye girmez.' },
     );
-    if (!sonuc) return;
+    if (!r) return;
 
-    const yazilan = ceviriUygula(sheets as any, sonuc.harita ?? {}, liveRowDataBySheet);
+    // Duzenle acik eylemdir: canli satirlar YERINDE yazilir (isaretler ceviri.ts'te).
+    const yazilan = ceviriUygula(sheets as any, r.harita ?? {}, liveRowDataBySheet);
 
     // ⚠ Kayitli teklif ekraninin IKIZI — ayni yalan burada da kapatildi:
     // tek hucre bile degismediyse "tamamlandi" DENMEZ ve dil dugmesi
     // "Turkceye Don"e GECMEZ (13.08, gecersiz anahtar canli olcumu). Kotadan
     // satir dustuyse mesaj bunu da soyler (14.09 incelemesi O3).
     if (yazilan === 0) {
-      const bos = bosSonucBildirimi(sonuc);
-      toast({ title: bos.baslik, description: bos.aciklama, variant: 'destructive' });
+      if (r.tur === 'ceviri') {
+        const sonuc = r.sonuc;
+        const bos = bosSonucBildirimi(sonuc);
+        toast({ title: bos.baslik, description: bos.aciklama, variant: 'destructive' });
+      } else {
+        toast({
+          title: 'Hiçbir hücre değişmedi',
+          description: 'Ödenmiş çeviri ekrandaki satırlarla eşleşmedi: kaydetmediğiniz ad değişiklikleri çeviriye girmez. Kotadan düşmedi.',
+          variant: 'destructive',
+        });
+      }
       return;
     }
 
     setLiveRowDataBySheet({ ...liveRowDataBySheet });
     setCeviriDili('en');
     tazele();
-    const b = sonucBildirimi(sonuc, yazilan);
+    const b = r.tur === 'ceviri' ? sonucBildirimi(r.sonuc, yazilan) : goruntulemeBildirimi(r.yanit, yazilan);
     toast({ title: b.baslik, description: b.aciklama, variant: b.hata ? 'destructive' : undefined });
   };
 
@@ -544,6 +560,67 @@ export default function NewQuotePage() {
    * revize ettigini sanirken KOPYA olusturuurdu.
    */
   const [revizyonId, setRevizyonId] = useState<string | null>(null);
+
+  // ── FIRMA CEVIRI DUZELTMESI (Faz 6.9) ────────────────────────────────
+  // Anahtar kumesi KAYITLI icerikten gelir: kaydedilmemis yeni satirda kalem
+  // GORUNMEZ (K-T2 · I3). Kalem yalniz Ingilizce gorunumde cizilir.
+  const [duzeltmeGorunumu, setDuzeltmeGorunumu] = useState<DuzeltmeGorunumu | null>(null);
+  const [duzeltmeHedefi, setDuzeltmeHedefi] = useState<CeviriDuzeltmeHedefi | null>(null);
+
+  const duzeltmeleriTazele = async () => {
+    if (!revizyonId) return;
+    try {
+      setDuzeltmeGorunumu(await duzeltmeleriGetir(revizyonId, { get: (url, ayar) => api.get(url, ayar) }));
+    } catch {
+      setDuzeltmeGorunumu(null); // isaret cizilmez; duzenleme etkilenmez
+    }
+  };
+
+  /** Satirlar YERINDE degisti: grid'e YENI dizi referansi ver (handleCeviri ikizi). */
+  const gridiTazele = () => {
+    const aktif = multiSheet?.sheets?.[activeSheetIndex];
+    if (!aktif) return;
+    const satirlar = liveRowDataBySheet[aktif.index] ?? aktif.rowData ?? [];
+    setExcelGridData((onceki) => (onceki ? { ...onceki, rowData: [...satirlar] } : onceki));
+  };
+
+  const ceviriKalemi = ceviriDili === 'en' && duzeltmeGorunumu?.duzeltmeAcik
+    ? {
+        goster: (row: any) => {
+          const adAlan = (multiSheet?.sheets?.[activeSheetIndex]?.columnRoles as any)?.nameField;
+          if (!adAlan || !row?._isDataRow) return false;
+          return duzeltmeGorunumu.anahtarlar.has(ceviriAnahtari(satirKaynagi(row, adAlan)));
+        },
+        ac: (row: any) => {
+          const adAlan = (multiSheet?.sheets?.[activeSheetIndex]?.columnRoles as any)?.nameField;
+          if (!adAlan) return;
+          const kaynak = ceviriAnahtari(satirKaynagi(row, adAlan));
+          setDuzeltmeHedefi({ kaynak, gorunen: String(row[adAlan] ?? ''), mevcut: duzeltmeGorunumu.duzeltmeler.get(kaynak) ?? null });
+        },
+      }
+    : undefined;
+
+  /** Duzeltmeyi CANLI satirlara uygular; kalicilik "Teklifi Kaydet" ile (K-T1). */
+  const duzeltmeyiUygula = (kaynak: string, deger: string | null) => {
+    const sheets = multiSheet?.sheets;
+    if (!sheets) return;
+    const { yazilan } = duzeltmeyiSatirlaraUygula(sheets as any, kaynak, deger, liveRowDataBySheet);
+    if (yazilan > 0) setLiveRowDataBySheet({ ...liveRowDataBySheet });
+    gridiTazele();
+    setDuzeltmeHedefi(null);
+    toast({
+      title: 'Çeviri düzeltildi',
+      description: `${yazilan} satır güncellendi. Teklifi kaydedince kalıcı olur.`,
+    });
+  };
+
+  // Ingilizce gorunume gecince (ya da revizyon kimligi gelince) firma sozlugu okunur.
+  useEffect(() => {
+    if (ceviriDili !== 'en' || !revizyonId || duzeltmeGorunumu) return;
+    void duzeltmeleriTazele();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ceviriDili, revizyonId]);
+
 
   // Iscilik firmalarini cek (capability varsa)
   useEffect(() => {
@@ -1854,8 +1931,35 @@ export default function NewQuotePage() {
             })}
           </div>
         )}
+        <CeviriDuzeltmeDialog
+          hedef={duzeltmeHedefi}
+          onKapat={() => setDuzeltmeHedefi(null)}
+          onKaydet={async (deger) => {
+            try {
+              await duzeltmeKaydet({ quoteId: revizyonId!, kaynak: duzeltmeHedefi!.kaynak, ceviri: deger }, { put: (url, govde) => api.put(url, govde) });
+            } catch (e) {
+              throw new Error(duzeltmeHataMetni(e));
+            }
+            await duzeltmeleriTazele();
+            duzeltmeyiUygula(duzeltmeHedefi!.kaynak, deger);
+          }}
+          onKaldir={async (duzeltmeId) => {
+            try {
+              await duzeltmeKaldir(duzeltmeId, { delete: (url) => api.delete(url) });
+            } catch (e) {
+              throw new Error(duzeltmeHataMetni(e));
+            }
+            const kaynak = duzeltmeHedefi!.kaynak;
+            await duzeltmeleriTazele();
+            // Ortak karsilik YALNIZ odenmis icerikte gelir; gelmiyorsa satir Turkce asla doner.
+            const g = revizyonId ? await teklifGorunumuAl(revizyonId, { get: (url, ayar) => api.get(url, ayar) }) : { hata: true } as any;
+            const harita = 'yanit' in g && g.yanit?.odenmis === true && g.yanit.tamam === true ? (g.yanit.harita ?? {}) : {};
+            duzeltmeyiUygula(kaynak, Object.prototype.hasOwnProperty.call(harita, kaynak) ? harita[kaynak] : null);
+          }}
+        />
         <ExcelGrid
           ref={excelGridRef}
+          ceviriKalemi={ceviriKalemi}
           key={multiSheet ? `sheet-${activeSheetIndex}` : 'single'}
           // PRD v3.0 Bolum B: global oto-varyant KAPALI — dropdown tek-satir
           // (manuel), yayilim yalniz SURUKLE/CIFT-TIK ile. onAutoVariantChange

@@ -386,11 +386,18 @@ async function main() {
       path.join(__dirname, '../scripts/paketleri-kur.ts'),
       'utf8',
     );
+    // ⚠ Faz 6.12a (16.09, BİLİNÇLİ): kontrol eskiden dosyanın TAMAMINDA "30 dışında
+    // `denemeGunu: <rakam>` yok" diyordu. Betik artık denemesiz İKİZ plan tanımı da
+    // taşıyor (`denemeGunu: 0` — ikizin tek farkı, test:deneme-hakki I1). Kural
+    // PAKETLER listesi hakkındadır; ölçüm o bloğa daraltıldı.
+    const paketBlogu = seed.slice(seed.indexOf('const PAKETLER = ['), seed.indexOf('\n];', seed.indexOf('const PAKETLER = [')));
     check(
       'D6 bes paketin BESINDE de denemeGunu 30 (29.08 karari)',
-      (seed.match(/denemeGunu: 30,/g) ?? []).length === 5 &&
-        !/denemeGunu: (?!30,)\d/.test(seed),
-      `30 sayisi=${(seed.match(/denemeGunu: 30,/g) ?? []).length}`,
+      paketBlogu.length > 0 &&
+        (paketBlogu.match(/kod: '/g) ?? []).length === 5 &&
+        (paketBlogu.match(/denemeGunu: 30,/g) ?? []).length === 5 &&
+        !/denemeGunu: (?!30,)\d/.test(paketBlogu),
+      `blok=${paketBlogu.length} kod=${(paketBlogu.match(/kod: '/g) ?? []).length} 30 sayisi=${(paketBlogu.match(/denemeGunu: 30,/g) ?? []).length}`,
     );
   }
 

@@ -98,7 +98,7 @@ export function e164(ham: string): string {
 export function telefonHatasi(ham: string): string | null {
   const h = haneleriAl(ham);
   if (h.length === 0) return null;
-  if (h.length < HANE_SAYISI) return 'Telefon numarasi 10 haneli olmali';
-  if (!h.startsWith('5')) return 'Cep telefonu 5 ile baslamali';
+  if (h.length < HANE_SAYISI) return 'Telefon numarası 10 haneli olmalı';
+  if (!h.startsWith('5')) return 'Cep telefonu 5 ile başlamalı';
   return null;
 }

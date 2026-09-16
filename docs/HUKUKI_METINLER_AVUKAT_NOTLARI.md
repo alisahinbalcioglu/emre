@@ -1,5 +1,50 @@
 # Hukuki metinler — avukata sorulacaklar
 
+> ## ⚠ 16.09.2026 GÜNCELLEMESİ — bu dosyanın altındaki bazı bulgular BAYATTI
+>
+> **Satıcı kimliği GİRİLDİ (Faz 6.4).** Aşağıdaki "Doldurulması gereken alanlar"
+> listelerindeki satıcı alanlarının TAMAMI dolduruldu ve artık tek kaynaktan
+> (`frontend/ozellik/hukuki/metinler.ts` → `SATICI`) okunuyor; metinlerde düz
+> yazılmış köşeli parantez KALMADI. Girilen değerler:
+> unvan, adres, MERSİS, **ticaret sicil no**, vergi dairesi/no, e-posta, telefon.
+> KEP adresi YOK → alan `null` ve metinde satır **hiç basılmıyor**.
+>
+> **İki hukuki karar da verildi (Emre, 15.09)** ve tek sabitte
+> (`HUKUKI_KARARLAR`) duruyor:
+> - İade: "Kalan günler için iade yapılmaz; dönem sonuna kadar kullanmaya devam edersiniz."
+> - Yetkili mahkeme: "İstanbul Anadolu Mahkemeleri ve İcra Daireleri"
+>
+> **HÂLÂ AÇIK olan üç yer tutucu** (yalnız bunlar kaldı):
+> - `[YASAL SAKLAMA SURESI]` — Gizlilik, fatura/ödeme kayıtları (avukat)
+> - `[DENEME KAYDI SAKLAMA SÜRESİ]` — Gizlilik, ücretsiz deneme kaydı (avukat)
+> - `[FATURA İLETİM YÖNTEMİ]` — Ön Bilgilendirme 11. bölüm (muhasebe programı kararı)
+>
+> **Cayma hakkı bölümü** bilerek kesin hükme bağlanmadı (Ön Bilgilendirme 8,
+> Sözleşme 5) — avukat kararı bekliyor.
+>
+> **YENİ METİN: Mesafeli Satış Sözleşmesi.** Bugüne kadar yalnız Ön
+> Bilgilendirme Formu vardı. Sözleşme aynı sayfada ikinci bölüm olarak
+> yayımlandı (`/mesafeli-satis#sozlesme`) ve satın alma adımında **zorunlu onay
+> kutusuyla** onaylatılıyor; onay zamanı ve onaylanan metin sürümü kayda
+> geçiyor. Aşağıdaki "Bugün satın alma akışında onay kutusu ve onay kaydı YOK"
+> maddesi bu nedenle ARTIK GEÇERSİZ — sorulacak soru değişti: **alınan onayın
+> biçimi ve saklanan iz yeterli mi?**
+>
+> **BAYAT BULGU DÜZELTMESİ:** aşağıda iki yerde "GET /auth/hesabim/verilerim ve
+> POST /auth/hesabimi-kapat uçları kodda YOK" yazıyor. **YANLIŞ:** iki uç da
+> bugün VAR (`backend/src/altyapi/auth/auth.controller.ts`) ve ekranda Profil
+> sayfasında "Verilerimi indir (JSON)" ile "Hesabımı kapat" olarak görünüyor.
+> Kullanım Koşulları'ndaki "kapatan düğme yok" cümlesi de kaldırıldı.
+>
+> **HÂLÂ GEÇERLİ UYARI — MX / posta kutusu:** `info@metapricex.com` kutusu
+> **henüz açılmadı**. Dört hukuki sayfa ve sözleşme başvuru adresi olarak bu
+> adresi gösteriyor. **Kutu açılıp test maili ulaşmadan bu sürüm canlıya
+> ÇIKMAZ.**
+>
+> **Metin durumu hâlâ `taslak`** (`HUKUKI_METIN_DURUMU`): avukat onayı gelene
+> kadar dört sayfanın üstündeki uyarı şeridi kalkmaz.
+
+
 Metinler uygulamanin KODUNDAN olculen gercek veri akisina gore yazildi
 ve bir denetim turundan gecti. Asagidaki maddeler KOD tarafindan
 cozulemeyen, hukuki karar gerektiren noktalardir.
@@ -42,7 +87,7 @@ cozulemeyen, hukuki karar gerektiren noktalardir.
 - [YETKİLİ MAHKEME ŞEHRİ]
 
 **Hukuki karar gerektirenler:**
-- ⚠ ENVANTER DÜZELTMESİ (koddan ölçüldü, yayına almadan önce KARAR gerekir): Envanter E maddesi 'GET /auth/hesabim/verilerim' ve 'POST /auth/hesabimi-kapat' uçlarının BUGÜN çalıştığını söylüyor. ÖLÇTÜM: bu iki uç kodda YOK. Tüm worktree'de (backend+frontend, .ts/.tsx) 'hesabimi-kapat', 'verilerim', 'delete-account', 'data-export' için SIFIR eşleşme. Canlı auth controller'da (backend/src/altyapi/auth/auth.controller.ts) tam 9 rota var: register, login, me, forgot-password, reset-password, change-password, verify-email, resend-verification. Kendi verisini indirme ve kendi hesabını kapatma özelliği KULLANICIYA AÇIK DEĞİL. 'deletedAt' damgasını yazan tek yer admin tarafı (src/ozellik/kutuphane/admin/admin.service.ts:332-337). Bu yüzden 10. maddeyi 'e-posta ile talep edin' şeklinde yazdım. İki seçenek: (a) metni böyle bırakın ve talebi elle işleyin, (b) önce iki ucu yazın, sonra metni 'Hesabım ekranından kapatabilirsiniz' diye güncelleyin. Gizlilik Politikası metni de aynı düzeltmeyi almalı — orada 'JSON olarak indirebilirsiniz' yazılırsa var olmayan bir hak vaat edilmiş olur.
+- ⚠⚠ **BU MADDE BAYAT (16.09): iki uç da VAR, metin düzeltildi.** Aşağıdaki metin tarihsel kayıt olarak duruyor. — ⚠ ENVANTER DÜZELTMESİ (koddan ölçüldü, yayına almadan önce KARAR gerekir): Envanter E maddesi 'GET /auth/hesabim/verilerim' ve 'POST /auth/hesabimi-kapat' uçlarının BUGÜN çalıştığını söylüyor. ÖLÇTÜM: bu iki uç kodda YOK. Tüm worktree'de (backend+frontend, .ts/.tsx) 'hesabimi-kapat', 'verilerim', 'delete-account', 'data-export' için SIFIR eşleşme. Canlı auth controller'da (backend/src/altyapi/auth/auth.controller.ts) tam 9 rota var: register, login, me, forgot-password, reset-password, change-password, verify-email, resend-verification. Kendi verisini indirme ve kendi hesabını kapatma özelliği KULLANICIYA AÇIK DEĞİL. 'deletedAt' damgasını yazan tek yer admin tarafı (src/ozellik/kutuphane/admin/admin.service.ts:332-337). Bu yüzden 10. maddeyi 'e-posta ile talep edin' şeklinde yazdım. İki seçenek: (a) metni böyle bırakın ve talebi elle işleyin, (b) önce iki ucu yazın, sonra metni 'Hesabım ekranından kapatabilirsiniz' diye güncelleyin. Gizlilik Politikası metni de aynı düzeltmeyi almalı — orada 'JSON olarak indirebilirsiniz' yazılırsa var olmayan bir hak vaat edilmiş olur.
 - ⚠ MX KAYDI YOK: metinde hesap kapatma ve tüm bildirimler [İLETİŞİM E-POSTASI] adresine yönlendiriliyor. Alan adının MX kaydı bugün bulunmadığı için o adrese gelen postalar geri döner. Metin yayına alınmadan ÖNCE MX kaydı kurulmalı, yoksa sözleşmede söz verilen tek iletişim kanalı fiilen kapalı olur.
 - İADE POLİTİKASI belirlenmedi. 'POST /abonelik/iptal' kodda dönem sonuna kadar erişim veriyor (abonelik.controller.ts:102 yorumu), ama kısmi dönem iadesi yapılıp yapılmayacağı kodda yok. [İADE POLİTİKASI] yer tutucusu bunun için bırakıldı — mesafeli satış / abonelik mevzuatı açısından cayma hakkı ile birlikte değerlendirilmeli.
 - KDV ve fiyat gösterimi konusunda hiçbir şey yazmadım (kodda ölçülemedi). Abonelik ekranındaki fiyatların KDV dahil mi hariç mi gösterildiği netleşince 4. maddeye tek cümle eklenmeli.
@@ -61,7 +106,7 @@ cozulemeyen, hukuki karar gerektiren noktalardir.
 - Uygulamada hiç HTTP çerezi yok, yalnızca zorunlu localStorage/sessionStorage kayıtları var. Bu tabloda çerez rızası (onay bandı) yükümlülüğü doğar mı, yoksa yalnızca bilgilendirme yeterli mi?
 - Ödeme ekranında iyzico'nun kendi betiklerinin sayfada çalışması ve kendi çerezlerini koyabilmesi için ayrı bir bilgilendirme veya onay gerekiyor mu? İyzico ile veri paylaşımının hukuki dayanağı (sözleşmenin ifası) bu metinde de yazılmalı mı?
 - DWG çalışma verisi kullanıcının kendi tarayıcısında süresiz kalıyor ve sunucumuzda kopyası yok. Bu bizim açımızdan bir veri işleme sayılır mı; bu kayıtlar için saklama süresi beyan etmemiz gerekir mi?
-- ÖLÇÜM NOTU (envanterle uyuşmayan bulgu): Kullanıcının verilerini indirme (GET /auth/hesabim/verilerim) ve hesabını kapatma (POST /auth/hesabimi-kapat) uçları bu kod tabanında BULUNAMADI — backend/src/altyapi/auth/auth.controller.ts yalnız register, login, me, profil, forgot-password, reset-password, change-password, verify-email, resend-verification uçlarını taşıyor. Bu nedenle çerez metninde bu iki ekrana atıf yapılmadı. Haklarını kullanmak isteyen kullanıcı için e-posta başvurusu yeterli mi, yoksa ekranın yapılması mı gerekir?
+- ⚠⚠ **BU MADDE BAYAT (16.09): iki uç da VAR.** — ÖLÇÜM NOTU (envanterle uyuşmayan bulgu): Kullanıcının verilerini indirme (GET /auth/hesabim/verilerim) ve hesabını kapatma (POST /auth/hesabimi-kapat) uçları bu kod tabanında BULUNAMADI — backend/src/altyapi/auth/auth.controller.ts yalnız register, login, me, profil, forgot-password, reset-password, change-password, verify-email, resend-verification uçlarını taşıyor. Bu nedenle çerez metninde bu iki ekrana atıf yapılmadı. Haklarını kullanmak isteyen kullanıcı için e-posta başvurusu yeterli mi, yoksa ekranın yapılması mı gerekir?
 - İletişim adresi olarak gösterilecek e-posta bugün posta alamıyor (alan adının MX kaydı yok). Başvuru kanalı olarak çalışan bir adres (KEP veya farklı bir alan adı) gösterilmesi zorunlu mu?
 
 ## Mesafeli Satış Sözleşmesi Ön Bilgilendirme Formu (`/mesafeli-satis`)
@@ -81,8 +126,8 @@ cozulemeyen, hukuki karar gerektiren noktalardir.
 **Hukuki karar gerektirenler:**
 - Cayma hakkı: Abonelik ödeme onaylandığı anda kullanıma açılıyor. Bu, 'anında ifa edilen hizmet / gayrimaddi ürün' istisnası kapsamında mı? Ücretsiz deneme süresi varken 14 günlük süre ne zaman işlemeye başlar — deneme başlangıcı mı, ilk tahsilat mı?
 - Müşteriler mühendislik ve taahhüt firmaları; hizmet ticari/mesleki amaçla alınıyor. Bu alıcılar TKHK anlamında 'tüketici' sayılır mı? Sayılmıyorsa mesafeli satış ön bilgilendirmesi zorunlu mu, yoksa ticari hizmet sözleşmesi mi düzenlenmeli?
-- Ön bilgilendirmenin 'kalıcı veri saklayıcısı' ile iletilmesi ve satın alma öncesi ayrı bir onay kutusuyla teyit alınması zorunlu mu? Bugün satın alma akışında onay kutusu ve onay kaydı YOK — eklenmesi gerekiyorsa hangi metinle ve nereye?
-- İptal hâlinde kalan günler için kısmi iade yapılmaması hukuken savunulabilir mi? Deneme süresi bittikten hemen sonra iptal eden müşteride farklı bir sonuç doğar mı?
+- ⚠ GÜNCELLENDİ (16.09): onay kutusu ve onay kaydı EKLENDİ (zorunlu kutu, önceden işaretsiz; onay zamanı + metin sürümü `AbonelikBaslatma` satırında). Soru şuna döndü: bu iz 'kalıcı veri saklayıcısı' yükümlülüğünü karşılıyor mu, yoksa ön bilgilendirmenin müşteriye AYRICA e-postayla gönderilmesi mi gerekiyor? (Bugün satın alma sonrası e-posta ÖLÇÜLDÜ: `EpostaServisi` abonelik/ödeme bildirimi göndermiyor; yalnız dunning ve erişim uyarıları var.)
+- ⚠ KARAR VERİLDİ (Emre, 15.09): kalan günler için iade YOK, metne yazıldı. Soru: bu hukuken savunulabilir mi? Deneme süresi bittikten hemen sonra iptal eden müşteride farklı bir sonuç doğar mı?
 - Fiyat vitrinde ABD doları referansıyla gösterilip tahsilat TL yapılıyor. Döviz cinsinden fiyat gösterimine ilişkin kısıtlar (32 sayılı Karar ve ilgili tebliğler) açısından bu gösterim sakıncalı mı?
 - Aylık otomatik yenileme öncesinde müşteriye ayrıca bildirim yapma yükümlülüğü var mı? Deneme süresi sonunda ücretli aboneliğe geçişte ek bildirim gerekiyor mu?
 - Ödeme alınamadığında uygulanan kademeler (10. günde salt okunur, 30. günde askıya alma) sözleşmeye bu şekilde yazılabilir mi? Hizmet kesintisi öncesi asgari bildirim süresi gerekiyor mu?

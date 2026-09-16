@@ -175,6 +175,10 @@ async function baglanti(): Promise<void> {
     {} as any,
     {} as any,
     { get: () => undefined } as any,
+    // Faz 6.12a: DenemeHakkiServisi — satistakiPaketler() onu ÇAĞIRMAZ (K-P7).
+    {} as any,
+    // Faz 6.4: EpostaServisi — satistakiPaketler() onu da ÇAĞIRMAZ.
+    {} as any,
   );
   const uyarilar: string[] = [];
   (servis as any).logger = { warn: (m: string) => uyarilar.push(m), log: () => {}, error: () => {} };
@@ -239,11 +243,18 @@ async function baglanti(): Promise<void> {
   let cagri = 0;
   const sahteServis = { satistakiPaketler: async () => { cagri++; return isaret; } } as any;
   const fiyatUcu = new FiyatController(sahteServis);
-  check('GET /fiyatlar → satistakiPaketler() (aynı kaynak)', (await fiyatUcu.fiyatlar()) === isaret);
 
+  // ⚠ KARARSIZ TEST DÜZELTMESİ (15.09): `t0` ilk istekten SONRA okunuyordu.
+  // Uç önbelleği ilk istekteki `Date.now()` ile kurar (gecerliSon = T1 + süre);
+  // `t0 + süre - 1 < T1 + süre` yalnız T1 == t0 iken doğru. Araya giren konsol
+  // çıktısı 1 ms'yi aşınca "2 çağrı" ile düşüyordu (regresyonda + tek başına
+  // 12 koşumda 2 düşüş; ilk istekle t0 arasına 2 ms koyunca HER SEFER düştü).
+  // ms eşitliği testte KURULUR: saat ilk istekten ÖNCE dondurulur.
   const gercekSaat = Date.now;
+  const t0 = gercekSaat();
   try {
-    const t0 = gercekSaat();
+    Date.now = () => t0;
+    check('GET /fiyatlar → satistakiPaketler() (aynı kaynak)', (await fiyatUcu.fiyatlar()) === isaret);
     Date.now = () => t0 + FIYAT_ONBELLEK_MS - 1;
     await fiyatUcu.fiyatlar();
     check('önbellek süresi içinde ikinci istek veritabanına GİTMİYOR', cagri === 1, `${cagri} çağrı`);
@@ -253,9 +264,22 @@ async function baglanti(): Promise<void> {
   } finally {
     Date.now = gercekSaat;
   }
+  // Faz 6.12a (16.09, BİLİNÇLİ GÜNCELLEME): uç eskiden listeyi AYNEN döndürüyordu
+  // ve bu kontrol nesne kimliğiyle (===) yapılıyordu. Artık firma bazlı deneme
+  // hakkı sürüme EKLENİYOR (girişsiz /fiyatlar'a değil — K-P7), yani kimlik
+  // değişir. Kural aynı: aynı metot, bir kez, kaynak alanlar aynen.
+  const isaretSurumlu = [{ kod: 'isaret', surum: { denemeGunu: 30 } }];
+  let abonelikCagri = 0;
+  const abonelikUcu = new AbonelikController(
+    {} as any,
+    { satistakiPaketler: async () => { abonelikCagri++; return isaretSurumlu; } } as any,
+    { karar: async () => ({ hak: true, gerekce: 'var', anahtarlar: {} }) } as any,
+  );
+  const donen = (await abonelikUcu.paketler({ id: 'u1', firmaId: 'f1' })) as any[];
   check(
-    'GET /abonelik/paketler → satistakiPaketler() (aynı kaynak)',
-    (await new AbonelikController({} as any, sahteServis).paketler()) === isaret,
+    'GET /abonelik/paketler → satistakiPaketler() (aynı kaynak, bir kez)',
+    abonelikCagri === 1 && donen.length === 1 && donen[0].kod === 'isaret' && donen[0].surum.denemeGunu === 30,
+    JSON.stringify(donen),
   );
 }
 

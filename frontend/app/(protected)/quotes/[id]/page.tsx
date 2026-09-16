@@ -3,7 +3,7 @@
 // Cloudflare Pages icin Edge Runtime (dynamic route)
 export const runtime = 'edge';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Download, Languages, Loader2, Pencil } from 'lucide-react';
@@ -13,9 +13,12 @@ import { Card } from '@/ortak/ui/card';
 import api from '@/ortak/lib/api';
 import { toast } from '@/ortak/hooks/use-toast';
 import { cn } from '@/ortak/lib/utils';
-import { ceviriUygula, ceviriGeriAl } from '@/ozellik/teklif/ceviri';
-import { teklifCevirisiAl } from '@/ozellik/teklif/ceviri-akisi';
-import { bosSonucBildirimi, sonucBildirimi } from '@/ozellik/teklif/ceviri-kota';
+import { ceviriAnahtari, cevrilmisSatirVarMi, ingilizceGorunum, kayittaKaynakDuruyorMu, satirKaynagi, turkceGorunum, type CeviriHaritasi } from '@/ozellik/teklif/ceviri';
+import { duzeltmeHataMetni, duzeltmeKaldir, duzeltmeKaydet, duzeltmeleriGetir, type DuzeltmeGorunumu } from '@/ozellik/teklif/ceviri-duzeltme';
+import { CeviriDuzeltmeDialog, type CeviriDuzeltmeHedefi } from '@/ozellik/teklif/CeviriDuzeltmeDialog';
+import { teklifCevirisiAl, teklifGorunumuAl, teklifIngilizcesiniAl, type IngilizceSonucu } from '@/ozellik/teklif/ceviri-akisi';
+import { bosSonucBildirimi, goruntulemeBildirimi, sonucBildirimi } from '@/ozellik/teklif/ceviri-kota';
+import { acilisKarari, goruntulemeGerekirMi, type DilNotu } from '@/ozellik/teklif/teklif-dil-karari';
 import { confirm } from '@/ortak/hooks/use-confirm';
 import { TASLAK_ANAHTARI, kayittanTaslak } from '@/ozellik/teklif/taslak';
 import { teklifCiktisiniIndir, fiyatliExceliIndir } from '@/ozellik/cikti/export-download';
@@ -37,8 +40,8 @@ interface QuoteDetail {
   sheets?: any[];
   items: any[];
   displayCurrency?: string;
-  /** Teklifin KAYITLI dili — 'en' ise sayfa Ingilizce acilir ve export'a
-   *  dil gecer (para biriminin birebir ikizi). */
+  /** Teklifin KAYITLI dili — 'en' ise acilista gorunum sunucuya sorulur
+   *  (odenmis ceviri varsa Ingilizce acilir; bkz. teklif-dil-karari.ts). */
   displayLanguage?: string;
 }
 
@@ -77,23 +80,32 @@ export default function QuoteDetailPage() {
         if (data.displayCurrency === 'USD' || data.displayCurrency === 'EUR') {
           setCurrency(data.displayCurrency as Currency);
         }
-        // Teklif Ingilizce kaydedildiyse sayfa Ingilizce ACILIR: satirlar
-        // zaten cevrilmis durumda, dolayisiyla YENI BIR API CAGRISI YAPILMAZ.
-        // Bu satir olmadan export'a dil gecmiyor ve basliklar Turkce kaliyordu.
-        //
-        // ⚠ IKINCI KOSUL (`_ceviriKaynak`) TAHMIN DEGIL, KENDI ISARETIMIZ:
-        // `ceviriUygula` cevirdigi her satira orijinali `_ceviriKaynak`
-        // olarak yazar ve `ceviriGeriAl` siler. Yani satirda bu alan varsa o
-        // satir TANIM GEREGI ceviri gosteriyordur. `displayLanguage` kolonu
-        // 13.08'de geldi; ONCESINDE Ingilizce kaydedilmis teklifler kayitta
-        // 'tr' gorunur — bu kosul onlari yakalar ve kayit PATCH ile onarilir
-        // (bir sonraki acilis artik kolondan okur).
-        const ceviriliSatirVar = Array.isArray(data.sheets) && data.sheets.some(
-          (s: any) => (s?.rowData ?? []).some((r: any) => r?._ceviriKaynak !== undefined),
-        );
-        if (data.displayLanguage === 'en' || ceviriliSatirVar) {
-          setCeviriDili('en');
-          if (data.displayLanguage !== 'en') dilKaydet('en'); // kaydi onar
+        // FAZ 6.11 (15.09) — BAKMAK ≠ CEVIRMEK. Kayit Ingilizce ya da kayitta
+        // cevrilmis satir varsa gorunum SUNUCUYA sorulur: bu icerigin cevirisi
+        // odenmisse harita kotasiz ve yeteneksiz gelir (odemesi durmus firma da
+        // gorur). Karar saf modulde (`teklif-dil-karari.ts`, vitest'li).
+        // ⚠ KAYIT YERINDE DEGISMEZ ve acilista otomatik Turkceye ONARIM YOKTUR:
+        // eskiden odenmemis Ingilizce teklif sessizce Turkceye cevrilip kaydin
+        // dili 'tr' diye yaziliyordu (6.11 curutucusu). Isaret denetimi bos
+        // dizgeyi isaret saymaz (`cevrilmisSatirVarMi` — sunucuyla ayni).
+        const isaretliSatirVar = cevrilmisSatirVarMi(data.sheets);
+        if (goruntulemeGerekirMi(data.displayLanguage, isaretliSatirVar)) {
+          setGorunumYukleniyor(true);
+          teklifGorunumuAl(id, { get: (url, ayar) => api.get(url, ayar) })
+            .then((g) => {
+              const karar = acilisKarari({
+                displayLanguage: data.displayLanguage,
+                isaretliSatirVar,
+                yanit: 'yanit' in g ? g.yanit : null,
+                hata: 'hata' in g,
+              });
+              setCeviriDili(karar.dil);
+              setGorunumHaritasi(karar.harita);
+              setDilNotu(karar.not);
+              setCeviriSurumu((n) => n + 1);
+              if (karar.dilOnar) dilKaydet('en');
+            })
+            .finally(() => setGorunumYukleniyor(false));
         }
         // Ilk non-empty sheet'i aktif yap
         if (Array.isArray(data.sheets)) {
@@ -120,20 +132,44 @@ export default function QuoteDetailPage() {
       .catch(() => { /* etiket cozulemezse fiyatlar yine dogru gorunur */ });
   }, []);
 
-  // ── CEVIRI (13.08) — KAYITLI TEKLIFTE DIL SECICI ──────────────────────────
-  // Duzenle ekraniyla AYNI modul (`ozellik/teklif/ceviri.ts`): cap/olcu/sayi
-  // DOKUNULMAZ, karar mantigi orada testle muhurlu. Burada cogu zaman API'ye
-  // HIC gidilmez — `Translation` onbellegi kalici ve GLOBAL oldugu icin ayni
-  // teknik terimler ikinci teklifte onbellekten doner.
-  //
-  // ⚠ BU SAYFA SALT-OKUNUR. Ceviri yalniz EKRANDA yasar; kayda YAZILMAZ
-  // (kayitli bir teklifin `sheets` alanini guncelleyen uc yok — `PATCH
-  // :id/info` yalniz kapak alanlarini alir). Export ise SUNUCUDAN uretilir
-  // (`POST :id/export`, `GET :id/export-priced`), yani indirilen dosya
-  // TURKCE iner. Bu fark kullaniciya ACIKCA gosterilir: aksi halde ekranda
-  // Ingilizce goren kullanici musteriye Turkce dosya gonderir ve FARK ETMEZ.
+  // ── CEVIRI (13.08 · Faz 6.10/6.11 15.09) — KAYITLI TEKLIFTE DIL SECICI ─────
+  // ⚠ BU SAYFA SALT-OKUNUR ve KAYDI DEGISTIRMEZ: ekran kayittan turetilen
+  // GORUNUMU cizer (`ingilizceGorunum` / `turkceGorunum`). Harita yalniz
+  // odenmis icerik icin sunucudan gelir (`GET /ai/translate/goruntule` ya da
+  // ceviri istegi). Indirilen dosya da SUNUCUDA ayni satir kuraliyla uretilir
+  // (`disaAktarimPlani`): ekran = dosya. Ingilizce dosya ancak teklifin guncel
+  // hali tam cevrilmisse iner; degilse indirme gerekceli mesajla durur.
   const [ceviriDili, setCeviriDili] = useState<'tr' | 'en'>('tr');
   const [ceviriYukleniyor, setCeviriYukleniyor] = useState(false);
+  /** Odenmis icerigin haritasi — yalniz sunucu verdiyse (odenmis + tam). */
+  const [gorunumHaritasi, setGorunumHaritasi] = useState<CeviriHaritasi | null>(null);
+  /** Acilis karari notu (neden / eksik / yuklenemedi). */
+  const [dilNotu, setDilNotu] = useState<DilNotu | null>(null);
+  /** Acilis goruntuleme istegi suruyor: ceviri ve iki cikti dugmesi KAPALI
+   *  (yanit gelmeden basilan indirme yanlis dille giderdi). */
+  const [gorunumYukleniyor, setGorunumYukleniyor] = useState(false);
+
+  // ── FIRMA CEVIRI DUZELTMESI (Faz 6.9) ────────────────────────────────
+  // Kalem isareti YALNIZ Ingilizce gorunumde ve SUNUCUNUN verdigi anahtar
+  // kumesindeki satirlarda cizilir (K-T2): Turkce kalmis ve aynen donmus
+  // satirlar dahil, dokunulmaz (olcu/kod) satirlar haric — kural istemciye
+  // TASINMAZ, kume sunucudan gelir.
+  const [duzeltmeGorunumu, setDuzeltmeGorunumu] = useState<DuzeltmeGorunumu | null>(null);
+  const [duzeltmeHedefi, setDuzeltmeHedefi] = useState<CeviriDuzeltmeHedefi | null>(null);
+
+  const duzeltmeleriTazele = async () => {
+    try {
+      setDuzeltmeGorunumu(await duzeltmeleriGetir(id, { get: (url, ayar) => api.get(url, ayar) }));
+    } catch {
+      setDuzeltmeGorunumu(null); // isaret cizilmez; teklif gorunumu etkilenmez
+    }
+  };
+
+  useEffect(() => {
+    if (ceviriDili !== 'en' || duzeltmeGorunumu) return;
+    void duzeltmeleriTazele();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ceviriDili, id]);
 
   // ── FAZ 4.5 · TEKLİF BİLGİLERİ (kapak alanları) ──────────────────────
   // ⚠ NEDEN BURADA: bu dört alan şemada, `PATCH :id/info` ucunda ve export
@@ -179,11 +215,15 @@ export default function QuoteDetailPage() {
       });
     }
   }
-  // ExcelGrid'e `rowData={data.rowData}` AYNI dizi referansiyla gider ve
-  // `ceviriUygula` satirlari YERINDE degistirir → AG-Grid degisikligi goremez.
-  // Surum sayaci grid'i yeniden monte eder (sheet degisiminde kullanilan
-  // `key` deseninin aynisi).
+  // Gorunum degisince grid yeniden monte edilir (sheet degisiminde kullanilan
+  // `key` deseninin aynisi) — AG-Grid ayni satir nesnelerini gorup cizmeyebilir.
   const [ceviriSurumu, setCeviriSurumu] = useState(0);
+
+  /** Ekranda gorunen sayfalar — kayittan TURETILIR, kayit degismez (Faz 6.11). */
+  const gorunenSayfalar = useMemo(() => {
+    const kayit: any[] = Array.isArray(quote?.sheets) ? quote!.sheets! : [];
+    return ceviriDili === 'en' ? ingilizceGorunum(kayit, gorunumHaritasi ?? {}).sayfalar : turkceGorunum(kayit);
+  }, [quote, ceviriDili, gorunumHaritasi]);
 
   /**
    * REVIZE ET (14.08) — kayitli teklifi Duzenle ekraninda acar.
@@ -212,7 +252,8 @@ export default function QuoteDetailPage() {
   const revizeEt = () => {
     if (!quote) return;
     try {
-      sessionStorage.setItem(TASLAK_ANAHTARI, JSON.stringify(kayittanTaslak(quote, allBrands)));
+      // Ekrandaki gorunum (Ingilizce ise isaretleriyle) Duzenle'ye tasinir — acik ve kasitli.
+      sessionStorage.setItem(TASLAK_ANAHTARI, JSON.stringify(kayittanTaslak({ ...quote, sheets: gorunenSayfalar }, allBrands)));
     } catch (e) {
       // Kota asimi: SESSIZ GECMEK YASAK — kullanici Duzenle'ye gidip bos ya da
       // BAYAT bir ekran gorurdu (eski taslak ayakta kalirsa daha kotusu: baska
@@ -235,55 +276,110 @@ export default function QuoteDetailPage() {
     api.patch(`/quotes/${id}/info`, { displayLanguage: d }).catch(() => { /* goruntuleme etkilenmez */ });
   };
 
-  /** Ceviriye girecek sayfalar — bos sayfalar elenir (grid'in gordugu kume). */
-  const ceviriSayfalari = (): any[] => {
-    const hepsi = quote?.sheets;
-    return Array.isArray(hepsi) ? hepsi.filter((s: any) => !s?.isEmpty) : [];
+  // Faz 6.2: istemci METIN LISTESI gondermez. Sunucu kayitli teklifi okur,
+  // cevrilecekleri ve kotadan dusecek satiri kendisi hesaplar; once
+  // onizleme gosterilir, onaydan sonra cevrilir.
+  const cevirmeBagimliliklari = {
+    get: (url: string, ayar: { params: Record<string, string> }) => api.get(url, ayar),
+    post: (url: string, govde: Record<string, unknown>) => api.post(url, govde),
+    onay: confirm,
+    bildir: toast,
+    yukleniyor: setCeviriYukleniyor,
   };
 
-  const handleCeviri = async () => {
-    const sayfalar = ceviriSayfalari();
-    if (sayfalar.length === 0) return;
-
-    // Turkce'ye donus API'ye HIC gitmez — orijinal metin satirda saklidir.
-    if (ceviriDili === 'en') {
-      ceviriGeriAl(sayfalar);
-      setCeviriDili('tr');
-      setCeviriSurumu((n) => n + 1);
-      dilKaydet('tr');
-      return;
-    }
-
-    // Faz 6.2: istemci METIN LISTESI gondermez. Sunucu kayitli teklifi okur,
-    // cevrilecekleri ve kotadan dusecek satiri kendisi hesaplar; once
-    // onizleme gosterilir, onaydan sonra cevrilir.
-    const sonuc = await teklifCevirisiAl(id, {
-      get: (url, ayar) => api.get(url, ayar),
-      post: (url, govde) => api.post(url, govde),
-      onay: confirm,
-      bildir: toast,
-      yukleniyor: setCeviriYukleniyor,
-    });
-    if (!sonuc) return;
-
-    const yazilan = ceviriUygula(sayfalar, sonuc.harita ?? {});
+  /** Ingilizce gorunumu kayittan turetip acar — KAYIT DEGISMEZ. */
+  const ingilizceyiAc = (r: IngilizceSonucu) => {
+    const kayit: any[] = Array.isArray(quote?.sheets) ? quote!.sheets! : [];
+    const { yazilan } = ingilizceGorunum(kayit, r.harita);
 
     // ⚠ TEK HUCRE BILE DEGISMEDIYSE BU BASARI DEGILDIR. 13.08 canli olcumu:
     // API anahtari gecersizdi, sunucu bos harita dondu, ekran "Ceviri
     // tamamlandi" dedi ve dugme "Turkceye Don"e gecti — hicbir sey
     // cevrilmemisken kullanici ozelligin CALISTIGINI sandi. Kotadan satir
-    // dustuyse mesaj bunu da soyler (14.09 incelemesi O3).
-    if (yazilan === 0) {
+    // dustuyse mesaj bunu da soyler (14.09 incelemesi O3). Kayitta Ingilizce
+    // kaydedilmis satir varsa (E) gorunum yine Ingilizcedir.
+    if (r.tur === 'ceviri' && yazilan === 0 && !cevrilmisSatirVarMi(kayit)) {
+      const sonuc = r.sonuc;
       const bos = bosSonucBildirimi(sonuc);
       toast({ title: bos.baslik, description: bos.aciklama, variant: 'destructive' });
       return;
     }
 
+    setGorunumHaritasi(r.harita);
     setCeviriDili('en');
+    setDilNotu(null);
     setCeviriSurumu((n) => n + 1);
     dilKaydet('en');
-    const b = sonucBildirimi(sonuc, yazilan);
+    const b = r.tur === 'ceviri' ? sonucBildirimi(r.sonuc, yazilan) : goruntulemeBildirimi(r.yanit, yazilan);
     toast({ title: b.baslik, description: b.aciklama, variant: b.hata ? 'destructive' : undefined });
+  };
+
+  /** Kayittan gelen (gorunum kopyasi DEGIL) satirlarda anahtar → kalem kurallari. */
+  const ceviriKalemi = ceviriDili === 'en' && duzeltmeGorunumu?.duzeltmeAcik
+    ? {
+        goster: (row: any) => {
+          const adAlan = activeSheet?.columnRoles?.nameField;
+          if (!adAlan || !row?._isDataRow) return false;
+          return duzeltmeGorunumu.anahtarlar.has(ceviriAnahtari(satirKaynagi(row, adAlan)));
+        },
+        ac: (row: any) => {
+          const adAlan = activeSheet?.columnRoles?.nameField;
+          if (!adAlan) return;
+          const kaynak = ceviriAnahtari(satirKaynagi(row, adAlan));
+          setDuzeltmeHedefi({
+            kaynak,
+            gorunen: String(row[adAlan] ?? ''),
+            mevcut: duzeltmeGorunumu.duzeltmeler.get(kaynak) ?? null,
+          });
+        },
+      }
+    : undefined;
+
+  /** Kayit/kaldirma sonrasi: gorunum haritasi ve firma sozlugu yeniden okunur. */
+  const duzeltmeSonrasi = async (kaynak: string) => {
+    const g = await teklifGorunumuAl(id, { get: (url, ayar) => api.get(url, ayar) });
+    if ('yanit' in g && g.yanit?.odenmis === true && g.yanit.tamam === true) {
+      setGorunumHaritasi(g.yanit.harita ?? {});
+      setCeviriSurumu((n) => n + 1);
+    }
+    await duzeltmeleriTazele();
+    setDuzeltmeHedefi(null);
+    // Kayitta Ingilizce duran satirlar (Duzenle'de cevrilip kaydedilmis) ekranda
+    // DEGISMEZ: hicbir katman onlara kendiliginden dokunmaz (K-T1).
+    const kayit: any[] = Array.isArray(quote?.sheets) ? quote!.sheets! : [];
+    const adAlan = activeSheet?.columnRoles?.nameField;
+    const sabit = !adAlan ? 0 : kayit.reduce((n, sh: any) => n + (sh?.rowData ?? []).filter((r: any) =>
+      r && ceviriAnahtari(satirKaynagi(r, adAlan)) === kaynak && !kayittaKaynakDuruyorMu(r, adAlan)).length, 0);
+    toast({
+      title: 'Çeviri düzeltildi',
+      description: sabit > 0
+        ? `Bu teklifte ${sabit} satır İngilizce kaydedilmiş olduğu için değişmedi; Düzenle ekranında kalem işaretiyle uygulayıp kaydedin.`
+        : 'Firmanızın karşılığı bu teklifte ve İngilizce dosyada kullanılır.',
+    });
+  };
+
+  const handleCeviri = async () => {
+    if (!quote || gorunenSayfalar.every((s: any) => s?.isEmpty)) return;
+
+    // Turkce'ye donus API'ye HIC gitmez ve kaydi degistirmez — yalniz gorunum.
+    if (ceviriDili === 'en') {
+      setCeviriDili('tr');
+      setDilNotu(null);
+      setCeviriSurumu((n) => n + 1);
+      dilKaydet('tr');
+      return;
+    }
+
+    // Once odenmis ceviriyi GOSTER (yetenek/e-posta istemez); yoksa ceviri akisi.
+    const r = await teklifIngilizcesiniAl(id, cevirmeBagimliliklari);
+    if (r) ingilizceyiAc(r);
+  };
+
+  /** Not dugmesi ("Guncel hali cevir" vb.): odenmemis ya da eksik oldugu bilindigi
+   *  icin goruntuleme yeniden sorulmaz, dogrudan ceviri akisi. */
+  const notEylemi = async () => {
+    const sonuc = await teklifCevirisiAl(id, cevirmeBagimliliklari);
+    if (sonuc) ingilizceyiAc({ tur: 'ceviri', harita: sonuc.harita ?? {}, sonuc });
   };
 
   const birimSec = (c: Currency) => {
@@ -317,7 +413,7 @@ export default function QuoteDetailPage() {
     );
   }
 
-  const sheets = Array.isArray(quote.sheets) ? quote.sheets.filter((s: any) => !s.isEmpty) : [];
+  const sheets = gorunenSayfalar.filter((s: any) => !s.isEmpty);
   const activeSheet = sheets[activeSheetIndex] ?? sheets[0];
 
   // Kayitta saklanan gizli-sutun tercihi (PRD v3.0 Part A) detayda da uygulanir.
@@ -331,7 +427,10 @@ export default function QuoteDetailPage() {
         columnDefs: (activeSheet.columnDefs ?? []).map((c: any) => {
           const g = kayitliGenislikler[c.field];
           const temel = g ? { ...c, width: g } : c;
-          return hiddenFields.has(c.field) ? { ...temel, hide: true } : temel;
+          // Faz 6.11 (K-T3): detayda ad hucresi DUZENLENEMEZ — kaydedilmeyen
+          // hucre-ici duzenleme gorunumle ve kalici sozlukle karismasin.
+          const kilitli = c.field === activeSheet.columnRoles?.nameField ? { ...temel, editable: false } : temel;
+          return hiddenFields.has(c.field) ? { ...kilitli, hide: true } : kilitli;
         }),
         rowData: activeSheet.rowData ?? [],
         columnRoles: activeSheet.columnRoles ?? {},
@@ -371,10 +470,10 @@ export default function QuoteDetailPage() {
               type="button"
               variant="outline"
               onClick={handleCeviri}
-              disabled={ceviriYukleniyor}
-              title="Malzeme/iş adlarını İngilizceye çevirir. Çap, ölçü ve sayılara DOKUNULMAZ."
+              disabled={ceviriYukleniyor || gorunumYukleniyor}
+              title={gorunumYukleniyor ? 'İngilizce görünüm yükleniyor' : 'Malzeme/iş adlarını İngilizceye çevirir. Çap, ölçü ve sayılara DOKUNULMAZ.'}
             >
-              {ceviriYukleniyor ? (
+              {ceviriYukleniyor || gorunumYukleniyor ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
                 <Languages className="mr-2 h-4 w-4" />
@@ -412,11 +511,13 @@ export default function QuoteDetailPage() {
               2. Teklif Formati: kapak/icmal'li tam cikti (rev artar). */}
           <Button
             variant="outline"
-            disabled={exporting}
+            disabled={exporting || gorunumYukleniyor}
+            title={gorunumYukleniyor ? 'İngilizce görünüm yükleniyor' : undefined}
             onClick={async () => {
               setExporting(true);
-              // Ekran Ingilizce moddaysa dosya da Ingilizce iner (13.08):
-              // backend onbellekteki ceviriyi uygular, yeni AI cagrisi YOK.
+              // Ekran Ingilizce moddaysa dosya da Ingilizce istenir: sunucu
+              // odenmis ceviriyi AYNI satir kuraliyla uygular, yeni AI cagrisi YOK;
+              // tam degilse gerekceli mesajla durur (karisik dosya inmez).
               // Dil HER ZAMAN acik gecilir — ekranin anlik durumu kayittan yenidir.
               try { await fiyatliExceliIndir(id, ceviriDili); } finally { setExporting(false); }
             }}
@@ -428,7 +529,8 @@ export default function QuoteDetailPage() {
               iki cikti dugmesi ayni gorunmesin: Fiyatli Excel outline, bu solid. */}
           <Button
             className="bg-blue-600 hover:bg-blue-700"
-            disabled={exporting}
+            disabled={exporting || gorunumYukleniyor}
+            title={gorunumYukleniyor ? 'İngilizce görünüm yükleniyor' : undefined}
             onClick={async () => {
               setExporting(true);
               try { await teklifCiktisiniIndir(id, ceviriDili); } finally { setExporting(false); }
@@ -438,14 +540,30 @@ export default function QuoteDetailPage() {
             {exporting ? 'Hazırlanıyor…' : 'Teklif Formatında Aktar'}
           </Button>
         </div>
-        {/* 13.08 (kullanici istegi): ceviri artik EXPORT'A DA gecer. Backend
-            onbellekteki ceviriyi uygular; onbellekte olmayan hucre Turkce
-            kalir ve sayisi indirme ozetinde SOYLENIR — yarim Ingilizce bir
-            teklif sessizce musteriye gitmez. */}
-        {ceviriDili === 'en' && (
+        {/* Faz 6.10/6.11: Ingilizce dosya yalniz teklifin guncel hali tam
+            cevrilmisse iner. Not varken (eksik, degisti, yok, yuklenemedi) bu
+            cumle YALAN olurdu — gosterilmez; notun kendisi ne yapilacagini soyler. */}
+        {ceviriDili === 'en' && dilNotu === null && !gorunumYukleniyor && (
           <p className="text-xs text-emerald-600">
             İndirilecek dosyalar da İngilizce olur.
           </p>
+        )}
+        {dilNotu && (
+          <div
+            role="status"
+            className={cn(
+              'max-w-md rounded-md border px-3 py-2 text-xs',
+              dilNotu.tur === 'uyari' ? 'border-amber-300 bg-amber-50 text-amber-900' : 'border-blue-200 bg-blue-50 text-blue-900',
+            )}
+          >
+            <p className="font-semibold">{dilNotu.baslik}</p>
+            <p className="mt-0.5">{dilNotu.metin}</p>
+            {dilNotu.eylem === 'CEVIR' && dilNotu.dugme && (
+              <Button type="button" variant="outline" size="sm" className="mt-2 h-7 text-xs" onClick={notEylemi} disabled={ceviriYukleniyor}>
+                {dilNotu.dugme}
+              </Button>
+            )}
+          </div>
         )}
         </div>
       </div>
@@ -525,9 +643,8 @@ export default function QuoteDetailPage() {
         <>
           <Card className="overflow-hidden">
             <ExcelGrid
-              // `ceviriSurumu`: satirlar YERINDE cevrildigi icin AG-Grid ayni
-              // dizi referansini gorur ve yeniden cizmez — surum degisimi
-              // grid'i yeniden monte eder.
+              // `ceviriSurumu`: gorunum (dil/harita) degisince grid yeniden
+              // monte edilir — AG-Grid ayni satir nesnelerini gorup cizmeyebilir.
               key={`detail-sheet-${activeSheetIndex}-${ceviriSurumu}`}
               data={gridData}
               brands={allBrands}
@@ -537,6 +654,7 @@ export default function QuoteDetailPage() {
               conversionRate={conversionRate}
               onBrandChange={async () => null}
               sheetDiscipline={activeSheet?.discipline ?? adDisiplinTahmini(activeSheet?.name)}
+              ceviriKalemi={ceviriKalemi}
               laborEnabled={(() => {
                 // KH10: PRO kullanicida "Pro Gerekli" HICBIR ekranda gorunmez —
                 // entitlement Duzenle ile ayni kaynaktan (capabilities).
@@ -547,6 +665,26 @@ export default function QuoteDetailPage() {
               })()}
             />
           </Card>
+          <CeviriDuzeltmeDialog
+            hedef={duzeltmeHedefi}
+            onKapat={() => setDuzeltmeHedefi(null)}
+            onKaydet={async (deger) => {
+              try {
+                await duzeltmeKaydet({ quoteId: id, kaynak: duzeltmeHedefi!.kaynak, ceviri: deger }, { put: (url, govde) => api.put(url, govde) });
+              } catch (e) {
+                throw new Error(duzeltmeHataMetni(e));
+              }
+              await duzeltmeSonrasi(duzeltmeHedefi!.kaynak);
+            }}
+            onKaldir={async (duzeltmeId) => {
+              try {
+                await duzeltmeKaldir(duzeltmeId, { delete: (url) => api.delete(url) });
+              } catch (e) {
+                throw new Error(duzeltmeHataMetni(e));
+              }
+              await duzeltmeSonrasi(duzeltmeHedefi!.kaynak);
+            }}
+          />
           {sheets.length > 1 && (
             <SheetTabs
               sheets={sheets.map((s: any, i: number) => ({

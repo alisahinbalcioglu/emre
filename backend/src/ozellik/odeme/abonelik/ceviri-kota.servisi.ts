@@ -9,9 +9,11 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 import type { Kimlik } from '../../../altyapi/auth/kimlik';
+import { epostaDogrulandiMi } from '../../../altyapi/auth/eposta-dogrulama';
 import { ceviriIcerigi, type CeviriIcerigi } from '../../giris/ai/ceviri-kurali';
 import {
   ceviriKotasiCoz,
+  gecisAnahtari,
   kotaDonemi,
   kotaKarari,
   kotaRedMesaji,
@@ -27,7 +29,7 @@ import {
  * ═══════════════════════════════════════════════════════════════════════════
  *
  *  AKIŞ (CeviriService.teklifiCevir):
- *    rezerveEt → [tekrar ise önbellekten dön] → çevir → sonuclandir
+ *    rezerveEt → [ödenmiş içerik ise tekrar] → çevir → sonuclandir
  *
  *  ── NEDEN İSTEMCİ YALNIZ TEKLİF KİMLİĞİ GÖNDERİR ──
  *  Satır sayısı ve çevrilecek metinler KAYITLI `Quote.sheets`'ten, çeviriyle
@@ -40,29 +42,29 @@ import {
  *  istek tavanı birlikte aşamaz. Ayırma firma başına bir advisory kilit
  *  altında yapılır — kilit yalnız bu kısa işlemi kapsar, AI çağrısını değil.
  *
- *  ── TEKRAR KORUMASI (karar 13.09) ──
- *  Aynı teklifin her çevirisi kotadan düşer. Ama AYNI çeviri iki kez
- *  sayılmaz: çeviri TAMAMLANDIKTAN SONRAKİ `TEKRAR_PENCERESI_DK` içinde, aynı
- *  teklifin değişmemiş içeriği (özet) için gelen istek yeni kayıt yazmaz,
- *  önbellekten döner. Süren bir çeviri için gelen ikinci istek 409 alır.
- *  ⚠ Pencere BİTİŞTEN ölçülür (14.09 incelemesi Y2): başlangıçtan ölçülseydi
- *  8 dakika süren çeviride bağlantısı kopan kullanıcının iş bitince yaptığı
- *  yeniden deneme ikinci tam tüketim olurdu.
+ *  ── ÖDENMİŞ İÇERİK: BAKMAK ≠ ÇEVİRMEK (Faz 6.11, 15.09) ──
+ *  Aynı teklifin DEĞİŞMEMİŞ içeriği (özet v2) için tamamlanmış (`BASARILI`)
+ *  bir tüketim kaydı ya da geçiş izni varsa bu içerik ÖDENMİŞTİR: yeni istek
+ *  yeni kayıt yazmaz, kotadan düşmez — ZAMAN PENCERESİ ve DÖNEM SÜZGECİ YOK
+ *  (K-T8, K-T9). 14.09'daki 10 dakikalık pencere kalktı: ertesi gün aynı
+ *  teklife İngilizce bakmak ya da onu İngilizce indirmek yeniden ödenmez.
+ *  Kuralın TEK yeri `odenmisKayit`; zincir, görüntüleme ve dışa aktarım onu
+ *  çağırır. Süren bir çeviri için gelen ikinci istek 409 alır.
  *
- *  ── KISMİ ÇEVİRİ (14.09 incelemesi Y1/O4) ──
- *  Kotadan TESLİM EDİLEN satır düşer (`sonucHesabi`). Hiç satır teslim
- *  edilmezse (hata) hiçbir şey düşmez. Bir kısmı teslim edilirse (`KISMI`)
- *  yalnız o kısım düşer; aynı içeriğin pencere içindeki DEVAMI yalnız yeni
- *  teslim edilen satırı düşer ve dosya hakkından ikinci kez yemez. İlk hâli
- *  "tam değilse düşmez"di: harita yine istemciye döndüğü için bir parçayı
- *  bilerek patlatan teklif çevirinin çoğunu kotasız alabiliyordu.
+ *  ── HEPSİ YA DA HİÇBİRİ (REVİZE K-T7, Emre 15.09) ──
+ *  Çeviri ya tamamlanır ya hiç yapılmaz. Tek satır bile çevrilemezse kayıt
+ *  `BASARISIZ` olur, kotadan HİÇBİR ŞEY düşmez ve istemciye harita dönmez
+ *  (`sonucHesabi`). 14.09'daki KISMI kural (yalnız teslim edileni düşürüp
+ *  haritayı vermek) ve devam zinciri kalktı; eski `KISMI` kayıtlar dönem
+ *  sayımında geçmiş tüketim olarak sayılır ama ödenmiş içerik KANITI da
+ *  devam hakkı da DEĞİLDİR.
  *
  *  ── YARIM KALAN AYIRMA ──
  *  Süreç çökerse (deploy, bellek) `ISLENIYOR` kayıt kalır. Açılışta hepsi
  *  kapatılır — TEK sunucu örneği varsayımıyla (docker compose, tek backend).
  *  Asılı kalan bir süreç için ayrıca `ISLENIYOR_ZAMAN_ASIMI_DK` sonra sayımdan
- *  düşer; zaman aşımıyla kapatılan iş sonradan biterse yine SONUÇLANIR ve
- *  teslim ettiği satır düşer (uzun iş kotasız kalmaz).
+ *  düşer; zaman aşımıyla kapatılan iş sonradan tamamlanırsa yine SONUÇLANIR ve
+ *  düşer (uzun iş kotasız kalmaz).
  *
  *  ── DÖNEM ──
  *  `Abonelik`'te dönem başlangıcı tutan alan YOK (yalnız `erisimSonu`, o da
@@ -76,7 +78,6 @@ import {
  *  günlüğe yazılır. Tablo "ne tüketildi" sorusunun cevabıdır.
  */
 
-export const TEKRAR_PENCERESI_DK = 10;
 export const ISLENIYOR_ZAMAN_ASIMI_DK = 90;
 export const ZAMAN_ASIMI_NOTU = 'zaman asimi — sonuclanmadi';
 export const YENIDEN_BASLAMA_NOTU = 'sunucu yeniden basladi — yarim kaldi';
@@ -108,38 +109,36 @@ interface Baglam {
   donem: { baslangic: Date; bitis: Date };
 }
 
-/** Aynı teklifin aynı içeriği için yakın geçmiş. */
+/** Bu içeriğin ödendiğinin kanıtı: tamamlanmış tüketim kaydı ya da geçiş izni. */
+export type OdenmisKayit = { kaynak: 'TUKETIM'; kayitId: string } | { kaynak: 'GECIS'; kayitId: null };
+
+/** Aynı teklifin aynı içeriği için durum. */
 interface Zincir {
   /** Taze bir ayırma sürüyor mu. */
   readonly suren: boolean;
-  /** Pencere içinde TAMAMLANMIŞ kayıt — varsa istek tekrardır. */
-  readonly tamamlanan: { id: string } | null;
-  /** Pencere içindeki son KISMI kaydın zincir teslimi — devamda düşülmez. */
-  readonly oncekiTeslim: number;
+  /** Ödenmiş içerik — varsa istek tekrardır (penceresiz). */
+  readonly tamamlanan: OdenmisKayit | null;
 }
 
 export type Rezervasyon =
-  | { tur: 'tekrar'; kayitId: string; icerik: CeviriIcerigi; ozet: KotaOzeti }
-  | {
-      tur: 'yeni';
-      kayitId: string;
-      icerik: CeviriIcerigi;
-      ozet: KotaOzeti;
-      /** Zincirde önceden teslim edilip düşülmüş satır. */
-      oncekiTeslim: number;
-      /** true → yarım kalan çevirinin devamı. */
-      devam: boolean;
-    };
+  /** `kayitId` geçiş izninde `null` (tüketim kaydı yoktur). */
+  | { tur: 'tekrar'; kayitId: string | null; icerik: CeviriIcerigi; ozet: KotaOzeti }
+  | { tur: 'yeni'; kayitId: string; icerik: CeviriIcerigi; ozet: KotaOzeti };
+
+/** Neden ödenmiş sayılmadı — kullanıcıya YALAN söylemeyen üç durum. */
+export type OdenmemeNedeni = 'CEVIRI_SURUYOR' | 'ICERIK_DEGISTI' | 'CEVIRI_YOK';
+
+export type CeviriKaniti =
+  | { odenmis: true; kaynak: 'TUKETIM' | 'GECIS'; kayitId: string | null }
+  | { odenmis: false; neden: OdenmemeNedeni };
 
 export interface Onizleme {
   readonly epostaDogrulandi: boolean;
-  /** Bu istekte kotadan düşebilecek satır: devamda KALAN satır, tekrarda 0. */
+  /** Bu istekte kotadan düşebilecek satır: ödenmiş içerikte 0. */
   readonly gerekenSatir: number;
   readonly metinSayisi: number;
-  /** true → aynı içerik az önce çevrildi; istek kotadan düşmez. */
+  /** true → bu içeriğin çevirisi ödenmiş; istek kotadan düşmez. */
   readonly tekrar: boolean;
-  /** true → yarım kalan çevirinin devamı; yalnız kalan satır düşer. */
-  readonly devam: boolean;
   /** true → bu içeriğin çevirisi şu an sürüyor; yeni istek 409 alır. */
   readonly suruyor: boolean;
   readonly izin: boolean;
@@ -153,8 +152,6 @@ export interface SonuclandirmaGirdisi {
   toplamSatir: number;
   /** Bu istekte haritanın karşıladığı satır. */
   teslimEdilen: number;
-  /** Zincirde önceden düşülen satır (rezervasyondan). */
-  oncekiTeslim: number;
   onbellekten: number;
   cevrilen: number;
   basarisizParca: number;
@@ -187,19 +184,18 @@ export class CeviriKotaServisi implements OnApplicationBootstrap {
     }
   }
 
-  /** Firmanın kayıtlı teklifinden çeviri içeriği. Başka firmanın teklifi → 404 (varlık ifşa edilmez). */
-  private async teklifIcerigi(k: Kimlik, quoteId: string): Promise<CeviriIcerigi> {
+  /**
+   * Firmanın kayıtlı teklifi: sayfalar + çeviri içeriği (görüntüleme ikinci
+   * teklif okuması yapmasın diye sayfalar da döner). Başka firmanın teklifi →
+   * 404 (varlık ifşa edilmez).
+   */
+  async kayitliIcerik(k: Kimlik, quoteId: string): Promise<{ sayfalar: unknown; icerik: CeviriIcerigi }> {
     const teklif = await this.prisma.quote.findFirst({
       where: { id: quoteId, firmaId: k.firmaId },
       select: { sheets: true },
     });
     if (!teklif) throw new NotFoundException('Teklif bulunamadı.');
-    return ceviriIcerigi(teklif.sheets);
-  }
-
-  private async epostaDogrulandiMi(userId: string): Promise<boolean> {
-    const u = await this.prisma.user.findUnique({ where: { id: userId }, select: { emailVerified: true } });
-    return u?.emailVerified === true;
+    return { sayfalar: teklif.sheets, icerik: ceviriIcerigi(teklif.sheets) };
   }
 
   private sayimKosulu(firmaId: string, donem: { baslangic: Date; bitis: Date }, simdi: Date): Prisma.CeviriTuketimiWhereInput {
@@ -237,7 +233,7 @@ export class CeviriKotaServisi implements OnApplicationBootstrap {
 
     const kosul = this.sayimKosulu(firmaId, donem, simdi);
     const toplam = await db.ceviriTuketimi.aggregate({ where: kosul, _sum: { dusulenSatir: true } });
-    // Dosya: satır düşen ve bir zincirin DEVAMI olmayan kayıt.
+    // Dosya: satır düşen ve (15.09 öncesi) bir zincirin DEVAMI olmayan kayıt.
     const kullanilanDosya = await db.ceviriTuketimi.count({ where: { ...kosul, dusulenSatir: { gt: 0 }, devam: false } });
     const kullanilanSatir = toplam._sum.dusulenSatir ?? 0;
 
@@ -257,28 +253,108 @@ export class CeviriKotaServisi implements OnApplicationBootstrap {
     };
   }
 
-  private async zincir(db: Db, k: Kimlik, quoteId: string, hedefDil: string, icerikOzeti: string, simdi: Date): Promise<Zincir> {
-    const ayni = { firmaId: k.firmaId, quoteId, hedefDil, icerikOzeti };
-    const suren = await db.ceviriTuketimi.findFirst({
-      where: { ...ayni, durum: 'ISLENIYOR', olusturuldu: { gt: new Date(simdi.getTime() - dk(ISLENIYOR_ZAMAN_ASIMI_DK)) } },
+  /**
+   * ÖDENMİŞ İÇERİK — kanıtın TEK kuralı (Faz 6.11). Zincir, görüntüleme ve
+   * dışa aktarım yalnız bunu çağırır.
+   *  1. Aynı firma + teklif + dil, özet v2 ya da v1 (T1 öncesi kayıt), durum
+   *     `BASARILI` — pencere ve dönem süzgeci YOK. `KISMI`, `BASARISIZ`,
+   *     `ISLENIYOR` kanıt DEĞİLDİR.
+   *  2. Yoksa geçiş izni (`SystemSettings`, kota öncesi çevrilmiş teklifler):
+   *     değer içeriğin v2 özetini, firmayı ve dili taşımak ZORUNDA — içerik
+   *     değişince izin kendiliğinden düşer. İzin denetimsiz yönetici ucuyla da
+   *     yazılabildiği için izinle geçen her istek günlüğe yazılır.
+   * Eşit damgalarda sıra: son sonuçlanan → son oluşturulan → en çok teslim
+   * eden (W21j · W21k).
+   */
+  private async odenmisKayit(
+    db: Db,
+    firmaId: string,
+    quoteId: string,
+    hedefDil: string,
+    icerik: Pick<CeviriIcerigi, 'ozet' | 'eskiOzet'>,
+  ): Promise<OdenmisKayit | null> {
+    const kayit = await db.ceviriTuketimi.findFirst({
+      where: { firmaId, quoteId, hedefDil, icerikOzeti: { in: [icerik.ozet, icerik.eskiOzet] }, durum: 'BASARILI' },
+      orderBy: [{ sonuclandi: 'desc' }, { olusturuldu: 'desc' }, { toplamTeslim: 'desc' }],
       select: { id: true },
     });
-    // Zincirin son halkası. Damgalar ms çözünürlüklü ve Postgres eşitlerin
-    // sırasını garanti etmez: aynı ms'de sonuçlanan yarım (KISMI) halka
-    // seçilirse tamamlanmış çeviri devam sanılır, kalan satır bir kez daha
-    // düşer. Eşitlikte önce son OLUŞTURULAN; o da eşitse (tüm zincir tek ms'de)
-    // zincirde en çok TESLİM EDEN — toplamTeslim zincir boyunca azalmaz,
-    // BASARILI halkanınki KISMI'ninkinden büyüktür. (W21f · W21j · W21k)
-    const son = await db.ceviriTuketimi.findFirst({
-      where: { ...ayni, durum: { in: ['BASARILI', 'KISMI'] }, sonuclandi: { gt: new Date(simdi.getTime() - dk(TEKRAR_PENCERESI_DK)) } },
-      orderBy: [{ sonuclandi: 'desc' }, { olusturuldu: 'desc' }, { toplamTeslim: 'desc' }],
-      select: { id: true, durum: true, toplamTeslim: true },
+    if (kayit) return { kaynak: 'TUKETIM', kayitId: kayit.id };
+
+    const izin = await db.systemSettings.findUnique({ where: { key: gecisAnahtari(quoteId, hedefDil) } });
+    if (!izin) return null;
+    let deger: Record<string, unknown> | null = null;
+    try {
+      const cozulen: unknown = JSON.parse(izin.value);
+      deger = cozulen !== null && typeof cozulen === 'object' ? (cozulen as Record<string, unknown>) : null;
+    } catch {
+      deger = null;
+    }
+    if (!deger) {
+      this.logger.warn(`ceviri gecis izni okunamadi (bozuk deger) firma=${firmaId} teklif=${quoteId}`);
+      return null;
+    }
+    const uygun =
+      deger.surum === 1 &&
+      deger.firmaId === firmaId &&
+      deger.hedefDil === hedefDil &&
+      deger.icerikOzeti === icerik.ozet;
+    if (!uygun) {
+      this.logger.warn(`ceviri gecis izni bu icerige uymuyor firma=${firmaId} teklif=${quoteId}`);
+      return null;
+    }
+    this.logger.log(`ceviri gecis izni kullanildi firma=${firmaId} teklif=${quoteId}`);
+    return { kaynak: 'GECIS', kayitId: null };
+  }
+
+  private async surenVarMi(db: Db, k: Kimlik, quoteId: string, hedefDil: string, ozet: string, simdi: Date): Promise<boolean> {
+    const suren = await db.ceviriTuketimi.findFirst({
+      where: {
+        firmaId: k.firmaId,
+        quoteId,
+        hedefDil,
+        icerikOzeti: ozet,
+        durum: 'ISLENIYOR',
+        olusturuldu: { gt: new Date(simdi.getTime() - dk(ISLENIYOR_ZAMAN_ASIMI_DK)) },
+      },
+      select: { id: true },
     });
-    return {
-      suren: suren !== null,
-      tamamlanan: son?.durum === 'BASARILI' ? { id: son.id } : null,
-      oncekiTeslim: son?.durum === 'KISMI' ? son.toplamTeslim : 0,
-    };
+    return suren !== null;
+  }
+
+  private async zincir(db: Db, k: Kimlik, quoteId: string, hedefDil: string, icerik: CeviriIcerigi, simdi: Date): Promise<Zincir> {
+    const suren = await this.surenVarMi(db, k, quoteId, hedefDil, icerik.ozet, simdi);
+    // REVİZE K-T7: yarım (KISMI) halka araması ve devam YOK.
+    const tamamlanan = await this.odenmisKayit(db, k.firmaId, quoteId, hedefDil, icerik);
+    return { suren, tamamlanan };
+  }
+
+  /**
+   * Bu teklifin GÜNCEL içeriği için ödenmiş çeviri var mı — varsa kaynağı,
+   * yoksa nedeni. Kayıt yazmaz, kilit almaz, kotaya dokunmaz. Neden sırası:
+   * aynı özetli taze `ISLENIYOR` → `CEVIRI_SURUYOR`; aynı teklifte başka
+   * özetli `BASARILI` → `ICERIK_DEGISTI`; aksi (eski KISMI, BASARISIZ, hiç
+   * kayıt, izni yazılmamış kota öncesi teklif) → `CEVIRI_YOK` ("içerik
+   * değişti" diye yalan söylenmez).
+   */
+  async odenmisIcerikKaniti(
+    k: Kimlik,
+    quoteId: string,
+    hedefDil: string,
+    icerik: CeviriIcerigi,
+    simdi = new Date(),
+  ): Promise<CeviriKaniti> {
+    const odenmis = await this.odenmisKayit(this.prisma, k.firmaId, quoteId, hedefDil, icerik);
+    if (odenmis) return { odenmis: true, kaynak: odenmis.kaynak, kayitId: odenmis.kayitId };
+    if (await this.surenVarMi(this.prisma, k, quoteId, hedefDil, icerik.ozet, simdi)) {
+      return { odenmis: false, neden: 'CEVIRI_SURUYOR' };
+    }
+    // odenmisKayit boş döndüyse bu özet için BASARILI yoktur: bulunan kayıt
+    // başka bir içeriğe aittir.
+    const baskaIcerik = await this.prisma.ceviriTuketimi.findFirst({
+      where: { firmaId: k.firmaId, quoteId, hedefDil, durum: 'BASARILI' },
+      select: { id: true },
+    });
+    return { odenmis: false, neden: baskaIcerik ? 'ICERIK_DEGISTI' : 'CEVIRI_YOK' };
   }
 
   /** Profil ekranı: bu dönemin kotası. Aboneliği olmayan firma için null. */
@@ -293,25 +369,22 @@ export class CeviriKotaServisi implements OnApplicationBootstrap {
 
   /** Teklif ekranı, çevirmeden ÖNCE: bu dosya kaç satır yer, kalan ne, geçer mi. Kayıt yazmaz. */
   async onizleme(k: Kimlik, quoteId: string, hedefDil = 'en', simdi = new Date()): Promise<Onizleme> {
-    const icerik = await this.teklifIcerigi(k, quoteId);
+    const { icerik } = await this.kayitliIcerik(k, quoteId);
     const { ozet } = await this.baglam(this.prisma, k.firmaId, simdi);
-    const z = await this.zincir(this.prisma, k, quoteId, hedefDil, icerik.ozet, simdi);
+    const z = await this.zincir(this.prisma, k, quoteId, hedefDil, icerik, simdi);
     const tekrar = z.tamamlanan !== null;
-    const devam = !tekrar && z.oncekiTeslim > 0;
-    const gerekenSatir = tekrar ? 0 : Math.max(0, icerik.satirSayisi - z.oncekiTeslim);
+    const gerekenSatir = tekrar ? 0 : icerik.satirSayisi;
     const karar = kotaKarari({
       kota: ozet.kota,
       kullanilanSatir: ozet.kullanilanSatir,
       kullanilanDosya: ozet.kullanilanDosya,
       gerekenSatir,
-      yeniDosya: !devam,
     });
     return {
-      epostaDogrulandi: await this.epostaDogrulandiMi(k.userId),
+      epostaDogrulandi: await epostaDogrulandiMi(this.prisma, k.userId),
       gerekenSatir,
       metinSayisi: icerik.metinler.length,
       tekrar,
-      devam,
       suruyor: z.suren,
       izin: karar.izin,
       sebep: karar.sebep,
@@ -321,18 +394,18 @@ export class CeviriKotaServisi implements OnApplicationBootstrap {
   }
 
   /**
-   * AI çağrısından ÖNCE: e-posta, tekrar, kota. Geçerse `ISLENIYOR` kaydı yazar.
-   * Reddederse istisna fırlatır ve HİÇBİR şey yazmaz.
+   * AI çağrısından ÖNCE: e-posta, ödenmiş içerik, kota. Geçerse `ISLENIYOR`
+   * kaydı yazar. Reddederse istisna fırlatır ve HİÇBİR şey yazmaz.
    */
   async rezerveEt(k: Kimlik, quoteId: string, hedefDil: string, simdi = new Date()): Promise<Rezervasyon> {
-    if (!(await this.epostaDogrulandiMi(k.userId))) {
+    if (!(await epostaDogrulandiMi(this.prisma, k.userId))) {
       throw new ForbiddenException({
         mesaj: 'Çeviri için e-posta adresinizi doğrulayın',
         aciklama: 'Hesabınıza gönderilen doğrulama bağlantısına tıklayın; ardından çeviriyi tekrar başlatın.',
         kod: 'EPOSTA_DOGRULANMADI',
       });
     }
-    const icerik = await this.teklifIcerigi(k, quoteId);
+    const { icerik } = await this.kayitliIcerik(k, quoteId);
 
     return this.prisma.$transaction(async (tx) => {
       // Firma başına seri: kota okuma + ayırma arasına başka istek giremez.
@@ -349,7 +422,7 @@ export class CeviriKotaServisi implements OnApplicationBootstrap {
       });
 
       const b = await this.baglam(tx, k.firmaId, simdi);
-      const z = await this.zincir(tx, k, quoteId, hedefDil, icerik.ozet, simdi);
+      const z = await this.zincir(tx, k, quoteId, hedefDil, icerik, simdi);
 
       if (z.suren) {
         throw new ConflictException({
@@ -358,16 +431,14 @@ export class CeviriKotaServisi implements OnApplicationBootstrap {
           kod: 'CEVIRI_SURUYOR',
         });
       }
-      if (z.tamamlanan) return { tur: 'tekrar', kayitId: z.tamamlanan.id, icerik, ozet: b.ozet };
+      if (z.tamamlanan) return { tur: 'tekrar', kayitId: z.tamamlanan.kayitId, icerik, ozet: b.ozet };
 
-      const devam = z.oncekiTeslim > 0;
-      const gerekenSatir = Math.max(0, icerik.satirSayisi - z.oncekiTeslim);
+      const gerekenSatir = icerik.satirSayisi;
       const karar = kotaKarari({
         kota: b.ozet.kota,
         kullanilanSatir: b.ozet.kullanilanSatir,
         kullanilanDosya: b.ozet.kullanilanDosya,
         gerekenSatir,
-        yeniDosya: !devam,
       });
       if (!karar.izin) {
         this.logger.log(`Ceviri kotasi reddi: firma=${k.firmaId} sebep=${karar.sebep} gereken=${karar.gerekenSatir} kalanSatir=${karar.kalanSatir} kalanDosya=${karar.kalanDosya}`);
@@ -397,10 +468,10 @@ export class CeviriKotaServisi implements OnApplicationBootstrap {
           quoteId,
           hedefDil,
           satirSayisi: icerik.satirSayisi,
-          // Ayırma: sonuçlanana kadar kalan satırın tamamı sayılır.
+          // Ayırma: sonuçlanana kadar satırın tamamı sayılır.
           dusulenSatir: gerekenSatir,
-          toplamTeslim: z.oncekiTeslim,
-          devam,
+          toplamTeslim: 0,
+          devam: false,
           metinSayisi: icerik.metinler.length,
           icerikOzeti: icerik.ozet,
           durum: 'ISLENIYOR',
@@ -408,18 +479,18 @@ export class CeviriKotaServisi implements OnApplicationBootstrap {
         },
         select: { id: true },
       });
-      return { tur: 'yeni', kayitId: kayit.id, icerik, ozet: b.ozet, oncekiTeslim: z.oncekiTeslim, devam };
+      return { tur: 'yeni', kayitId: kayit.id, icerik, ozet: b.ozet };
     }, ISLEM_AYARI);
   }
 
   /**
-   * Ayırmayı kapatır: TESLİM EDİLEN satıra göre durum ve düşülen satır.
-   * Hâlâ `ISLENIYOR` olanı ya da ZAMAN AŞIMIYLA kapatılmış olanı günceller —
-   * uzun süren iş geç biterse de teslim ettiği satır düşer. Açılışta kapatılan
-   * (süreci ölmüş) kayıt sonuçlanamaz zaten.
+   * Ayırmayı kapatır: tam teslimde `BASARILI` ve satırın tamamı düşer, eksikte
+   * `BASARISIZ` ve hiçbir şey düşmez (`sonucHesabi`). Hâlâ `ISLENIYOR` olanı ya
+   * da ZAMAN AŞIMIYLA kapatılmış olanı günceller — uzun süren iş geç biterse de
+   * düşer. Açılışta kapatılan (süreci ölmüş) kayıt sonuçlanamaz zaten.
    */
   async sonuclandir(kayitId: string, s: SonuclandirmaGirdisi): Promise<{ durum: CeviriSonucDurumu; dusulenSatir: number }> {
-    const h = sonucHesabi({ toplamSatir: s.toplamSatir, teslimEdilen: s.teslimEdilen, oncekiTeslim: s.oncekiTeslim });
+    const h = sonucHesabi({ toplamSatir: s.toplamSatir, teslimEdilen: s.teslimEdilen });
     await this.prisma.ceviriTuketimi.updateMany({
       where: {
         id: kayitId,

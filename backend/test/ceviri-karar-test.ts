@@ -15,7 +15,8 @@
  *
  * ⚠ BIR ASSERT TEK KRITERE (proje kurali).
  */
-import { ceviriBasarisizMi, ceviriHataMesaji } from '../src/ozellik/giris/ai/ceviri.service';
+import { ceviriHataMesaji } from '../src/ozellik/giris/ai/ceviri.service';
+import { cevrilemeyenMetinler } from '../src/ozellik/giris/ai/ceviri-kurali';
 
 let gecen = 0;
 let kalan = 0;
@@ -31,44 +32,65 @@ function ol(baslik: string, gercek: unknown, beklenen: unknown): void {
   }
 }
 
-console.log('\n=== ceviriBasarisizMi ===');
+/** Prototipsiz harita — servisin kurduğu şekil. */
+function harita(g: Record<string, string>): Record<string, string> {
+  return Object.assign(Object.create(null), g);
+}
 
-// ⚠ ASIL VAKA — 13.08'de canlida yasanan tam durum.
+// REVİZE K-T7 (Emre 15.09): çeviri HEPSİ YA DA HİÇBİRİ. 13.08'deki
+// "hiçbir parça geçmedi mi" kararı (`ceviriBasarisizMi`) yerini tek soruya
+// bıraktı: haritada KENDİ alanı olmayan metin var mı. Varsa çeviri
+// tamamlanmamıştır — kotadan düşmez, harita istemciye DÖNMEZ (422).
+console.log('\n=== cevrilemeyenMetinler ===');
+
+// ⚠ ASIL VAKA — 13.08'de canlida yasanan tam durum: tum parcalar 401,
+// onbellek bos, servis bos harita donuyordu ve ekran "tamamlandi" diyordu.
 ol(
-  'TUM parcalar patladi ve onbellek bos → BASARISIZ',
-  ceviriBasarisizMi({ toplamParca: 4, basarisizParca: 4, onbellekten: 0 }),
-  true,
+  'BOS harita + dolu metin listesi → HEPSI cevrilemedi (sessiz basari yasagi)',
+  cevrilemeyenMetinler(['PVC BORU', 'ÇELİK BORU'], harita({})),
+  ['PVC BORU', 'ÇELİK BORU'],
+);
+
+// ⚠ 14.09'daki KISMI kuralin tersi: tek metin bile eksikse sonuc bos DEGIL.
+ol(
+  'metinlerin BIRI eksik → yalniz o metin doner (tamamlanmamis cevirinin kaniti)',
+  cevrilemeyenMetinler(['PVC BORU', 'ÇELİK BORU'], harita({ 'PVC BORU': 'PVC PIPE' })),
+  ['ÇELİK BORU'],
 );
 
 ol(
-  'tum parcalar patladi ama ONBELLEKTEN sonuc geldi → basarisiz DEGIL (elde gercek ceviri var)',
-  ceviriBasarisizMi({ toplamParca: 2, basarisizParca: 2, onbellekten: 7 }),
-  false,
+  'tum metinler haritada → eksik YOK (ceviri tamam)',
+  cevrilemeyenMetinler(['PVC BORU', 'ÇELİK BORU'], harita({ 'PVC BORU': 'PVC PIPE', 'ÇELİK BORU': 'STEEL PIPE' })),
+  [],
 );
 
-// ⚠ Bu kriter `basarisizParca === toplamParca` esitligini olcer: `>=` ya da
-// `> 0` yazilsaydi TEK parca hatasi tum cagriyi oldururdu ve gecen parcalarin
-// cevirisi kullaniciya HIC ulasmazdi.
+// ⚠ Kaynakla AYNI donen ceviri (marka/kod) basarisizlik DEGILDIR: "GEBERIT"
+// cevirisi "GEBERIT"tir. Esitligi eksik saymak markali her teklifi kalici
+// olarak cevrilemez yapardi.
 ol(
-  'parcalarin BIRI patladi, digeri gecti → basarisiz DEGIL (kismi sonuc korunur)',
-  ceviriBasarisizMi({ toplamParca: 2, basarisizParca: 1, onbellekten: 0 }),
-  false,
+  'kaynakla aynı dönen çeviri (GEBERIT → GEBERIT) eksik SAYILMAZ',
+  cevrilemeyenMetinler(['GEBERIT'], harita({ GEBERIT: 'GEBERIT' })),
+  [],
+);
+
+// ⚠ Prototip anahtari: duz nesnede "constructor" haritada VAR sanilirdi ve
+// cevrilmemis metin tamam gorunurdu.
+ol(
+  'prototip anahtarı ("constructor") haritada VAR sayılmaz',
+  cevrilemeyenMetinler(['constructor', 'toString'], {}),
+  ['constructor', 'toString'],
 );
 
 ol(
-  'hicbir parca patlamadi → basarisiz DEGIL',
-  ceviriBasarisizMi({ toplamParca: 3, basarisizParca: 0, onbellekten: 0 }),
-  false,
+  'metin listesi boş → eksik yok (çevrilecek bir şey yoktu)',
+  cevrilemeyenMetinler([], harita({})),
+  [],
 );
 
-// ⚠ `toplamParca > 0` kapisi: hepsi onbellekten karsilandiginda API'ye HIC
-// gidilmez (0 parca). `0 === 0` dogru oldugu icin bu kapi olmasa "hicbir parca
-// patlamadi" durumu BASARISIZLIK sayilirdi — yani en ucuz ve en saglikli yol
-// hata verirdi.
 ol(
-  'API`ye HIC gidilmedi (0 parca) → basarisiz DEGIL',
-  ceviriBasarisizMi({ toplamParca: 0, basarisizParca: 0, onbellekten: 0 }),
-  false,
+  'ilk görülme sırası korunur, tekrar eden ve boş metin tek/hiç sayılır',
+  cevrilemeyenMetinler(['B', ' A ', 'B', '', 'A'], harita({})),
+  ['B', 'A'],
 );
 
 console.log('\n=== ceviriHataMesaji ===');

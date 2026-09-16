@@ -64,6 +64,7 @@ const SAYFA = ayristir('app/fiyatlar/page.tsx');
 const KARTLAR = ayristir('ozellik/odeme/FiyatKartlari.tsx');
 const ANASAYFA = ayristir('app/page.tsx');
 const NASIL = ayristir('ortak/kabuk/components/landing/NasilCalisir.tsx');
+const ABONELIK = ayristir('app/(protected)/abonelik/page.tsx');
 
 describe('Ölçütün kendisi — ayrıştırıcı yorumu ekran metni saymıyor', () => {
   const ornek = ts.createSourceFile(
@@ -126,18 +127,42 @@ describe('Fiyat sayfası — rakamlar veritabanından (Faz 6.1)', () => {
     );
   });
 
-  it('tekrar çevirinin kotadan düştüğü ekranda açıkça yazılı', () => {
-    expect(ekranMetni(SAYFA)).toContain('Aynı dosyayı tekrar çevirmek kotadan yeniden düşer.');
+  // Faz 6.11 + REVİZE K-T7 (15.09): ödenmiş içeriğe bakmak/indirmek düşmez,
+  // çeviri hepsi ya da hiçbiri. Sunucuda pencere ve kısmi çeviri kalktı.
+  it('ödenmiş içeriğe yeniden bakmanın ve İngilizce indirmenin kotadan düşmediği yazılı (madde 4)', () => {
+    expect(ekranMetni(SAYFA)).toContain(
+      'Çevrilmiş ve malzeme/iş adları değişmemiş bir teklife yeniden İngilizce bakmak ya da onu İngilizce indirmek kotadan düşmez.',
+    );
   });
 
-  it('tekrar koruması SÜRESİYLE ve BİTİŞTEN ölçüldüğüyle yazılı (çelişki değil istisna)', () => {
-    expect(ekranMetni(SAYFA)).toMatch(/tamamlandıktan sonraki \d+ dakika içinde aynı içerik için gelen tekrar istek/);
-  });
-
-  it('hata alan çevirinin düşmediği, kısmide yalnız çevrilen satırın düştüğü yazılı', () => {
+  it('yeni çeviri sayılan ve sayılmayan değişiklikler yazılı (madde 5)', () => {
     const metin = ekranMetni(SAYFA);
-    expect(metin).toContain('Hata alan çeviri kotadan düşmez.');
-    expect(metin).toContain('Kısmen tamamlanan çeviride yalnız çevrilen satırlar düşer');
+    expect(metin).toContain('satır eklemek veya silmek yeni çeviridir ve kotadan yeniden düşer.');
+    expect(metin).toContain('Miktar, fiyat ya da satır sırası değişikliği yeni çeviri sayılmaz.');
+  });
+
+  it('İngilizce dosya için güncel hâlin çevrilmiş olması gerektiği yazılı (madde 6)', () => {
+    expect(ekranMetni(SAYFA)).toContain(
+      'İngilizce dosya için teklifin güncel hâli çevrilmiş olmalıdır; Türkçe dosya her zaman kotadan düşmeden iner.',
+    );
+  });
+
+  it('çevirinin hepsi ya da hiçbiri olduğu yazılı (madde 7)', () => {
+    expect(ekranMetni(SAYFA)).toContain(
+      'Çeviri ya tamamlanır ya hiç yapılmaz: sistem tek bir satırı bile çeviremezse kotadan hiçbir şey düşmez, teklif Türkçe kalır ve çevrilemeyen satırlar size gösterilir; tekrar denemek ücretsizdir.',
+    );
+  });
+
+  it('kota reddinin baştan ve tavanıyla yapıldığı yazılı (madde 8)', () => {
+    expect(ekranMetni(SAYFA)).toContain('Kotanız yetmiyorsa çeviri başlamadan reddedilir ve hangi tavanın dolduğu söylenir; kısmi çeviri yapılmaz.');
+  });
+
+  it('eski pencere ve kısmi çeviri cümleleri YOK', () => {
+    const metin = ekranMetni(SAYFA);
+    expect(metin).not.toContain('Aynı dosyayı tekrar çevirmek kotadan yeniden düşer.');
+    expect(metin).not.toContain('Tek istisna');
+    expect(metin).not.toContain('Kısmen tamamlanan');
+    expect(metin).not.toMatch(/dakika/);
   });
 
   it('kota başlığı kartta sunucudan gelen kotadan üretiliyor (kotaMetni)', () => {
@@ -209,5 +234,139 @@ describe('Anasayfa vaatleri — yanlış dördü gitti, doğru dokuzu yerinde (F
     'Kapak–icmal teklif formatı için keşfin Excel dosyasının teklifte kayıtlı olması gerekir.',
   ])('doğru vaat ekranda yerinde: %s', (metin) => {
     expect(EKRAN).toContain(metin);
+  });
+});
+
+/**
+ * KART HİZASI — yapısal kilit (Faz 6.1 kapanış, 15.09.2026).
+ *
+ * Kusur: iki rozet `flex-wrap` ile yan yanaydı; dar kartta ikincisi alta iniyor,
+ * o kartın fiyatı, kota kutusu ve listesi komşularından aşağıda başlıyordu.
+ * Çözüm iki parça, ikisi de ölçülür:
+ *   1. etiketler AYRI span, ortak kap `flex-col` (her kartta alt alta)
+ *   2. kart dış ızgaranın satırlarını paylaşır (`grid-rows-subgrid` +
+ *      `row-span-N`); N = kartın satır sayısı ve hiçbir satır koşulla DÜŞMEZ
+ *      (`{a && <x/>}` düşerse sonraki satırlar bir üst satıra kayar).
+ * ⚠ SINIR: seçilen yapıyı kilitler, pikselleri ölçmez — hiza tarayıcıda
+ * gözle doğrulanmalıdır.
+ */
+type JsxOge = ts.JsxElement | ts.JsxSelfClosingElement;
+
+function ogeler(kok: ts.Node, kosul: (o: JsxOge) => boolean): JsxOge[] {
+  const out: JsxOge[] = [];
+  const gez = (n: ts.Node): void => {
+    if ((ts.isJsxElement(n) || ts.isJsxSelfClosingElement(n)) && kosul(n)) out.push(n);
+    n.forEachChild(gez);
+  };
+  gez(kok);
+  return out;
+}
+const acilis = (o: JsxOge) => (ts.isJsxElement(o) ? o.openingElement : o);
+const etiketAdi = (o: JsxOge) => acilis(o).tagName.getText();
+const oznitelik = (o: JsxOge, ad: string) =>
+  acilis(o).attributes.properties.find((a): a is ts.JsxAttribute => ts.isJsxAttribute(a) && a.name.getText() === ad);
+function siniflar(o: JsxOge): string[] {
+  const i = oznitelik(o, 'className')?.initializer;
+  return i && ts.isStringLiteral(i) ? i.text.split(/\s+/).filter(Boolean) : [];
+}
+const parantezsiz = (e: ts.Expression): ts.Expression => (ts.isParenthesizedExpression(e) ? parantezsiz(e.expression) : e);
+const jsxMi = (e: ts.Expression) => {
+  const i = parantezsiz(e);
+  return ts.isJsxElement(i) || ts.isJsxSelfClosingElement(i) || ts.isJsxFragment(i);
+};
+/** Izgara satırı olan doğrudan çocuklar: boşluk metni ve JSX yorumu satır değildir. */
+function satirCocuklari(o: JsxOge): ts.JsxChild[] {
+  if (!ts.isJsxElement(o)) return [];
+  return o.children.filter(
+    (c) => !(ts.isJsxText(c) && c.containsOnlyTriviaWhiteSpaces) && !(ts.isJsxExpression(c) && !c.expression),
+  );
+}
+/** `{a && <x/>}` satırı koşulla düşürür; düz öğe ve iki kolu da JSX olan `?:` düşürmez. */
+function satirDusebilir(c: ts.JsxChild): boolean {
+  if (ts.isJsxElement(c) || ts.isJsxSelfClosingElement(c)) return false;
+  if (!ts.isJsxExpression(c) || !c.expression) return true;
+  const e = parantezsiz(c.expression);
+  return !(ts.isConditionalExpression(e) && jsxMi(e.whenTrue) && jsxMi(e.whenFalse));
+}
+function kartHizasi(kart: JsxOge) {
+  const s = siniflar(kart);
+  const span = s.map((t) => /^row-span-(\d+)$/.exec(t)).find(Boolean);
+  const cocuklar = satirCocuklari(kart);
+  return {
+    subgrid: s.includes('grid') && s.includes('grid-rows-subgrid'),
+    rowSpan: span ? Number(span[1]) : null,
+    satir: cocuklar.length,
+    dusebilen: cocuklar.filter(satirDusebilir).length,
+  };
+}
+/** Etiketi basan span (`{KAPSAM_ETIKET[...]}` çocuğu olan). */
+const etiketSpanlari = (sf: ts.SourceFile, sabit: string) =>
+  ogeler(
+    sf,
+    (o) =>
+      etiketAdi(o) === 'span' &&
+      ts.isJsxElement(o) &&
+      o.children.some((c) => ts.isJsxExpression(c) && !!c.expression && c.expression.getText().startsWith(`${sabit}[`)),
+  );
+const ebeveynOge = (n: ts.Node): ts.JsxElement | undefined => {
+  let p = n.parent;
+  while (p && !ts.isJsxElement(p)) p = p.parent;
+  return p;
+};
+
+const KART_BUL: [string, ts.SourceFile, (o: JsxOge) => boolean][] = [
+  ['fiyat sayfası kartı', KARTLAR, (o) => etiketAdi(o) === 'article'],
+  ['abonelik kartı', ABONELIK, (o) => oznitelik(o, 'key')?.initializer?.getText() === '{p.paketId}'],
+];
+
+describe('Kart hizası — ölçütün kendisi', () => {
+  const kart = (kod: string) =>
+    ogeler(ts.createSourceFile('o.tsx', kod, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX), (o) => etiketAdi(o) === 'article')[0];
+
+  it('koşulla düşen satırı sayar, JSX yorumunu satır saymaz', () => {
+    const k = kart('const A = () => <article className="row-span-3 grid grid-rows-subgrid"><h2 />{/* not */}{a && <p />}<a /></article>;');
+    expect(kartHizasi(k)).toEqual({ subgrid: true, rowSpan: 3, satir: 3, dusebilen: 1 });
+  });
+
+  it('iki kolu da JSX olan üçlü ifade satır düşürmez; subgrid yoksa söyler', () => {
+    const k = kart('const A = () => <article className="row-span-2 grid"><h2 />{a ? (<p />) : <div />}</article>;');
+    expect(kartHizasi(k)).toEqual({ subgrid: false, rowSpan: 2, satir: 2, dusebilen: 0 });
+  });
+});
+
+describe('Kart hizası — fiyat sayfası ve abonelik kartları (Faz 6.1 kapanış)', () => {
+  it.each(KART_BUL)('%s: satırlar dış ızgarayla ortak, row-span = satır sayısı, koşulla düşen satır yok', (_ad, sf, bul) => {
+    const kartlar = ogeler(sf, bul);
+    expect(kartlar).toHaveLength(1); // FIXTURE KANITI: doğru öğe bulundu
+    const h = kartHizasi(kartlar[0]);
+    expect(h.subgrid).toBe(true);
+    expect(h.satir).toBeGreaterThanOrEqual(5);
+    expect(h.rowSpan).toBe(h.satir);
+    expect(h.dusebilen).toBe(0);
+    const dis = ebeveynOge(kartlar[0]);
+    expect(dis && siniflar(dis)).toContain('grid'); // subgrid yalnız ızgaranın içinde çalışır
+  });
+
+  it.each([
+    ['fiyat sayfası', KARTLAR],
+    ['abonelik', ABONELIK],
+  ])('%s: iki etiket AYRI span, ortak kap flex-col (flex-wrap yok)', (_ad, sf) => {
+    const [kapsam] = etiketSpanlari(sf, 'KAPSAM_ETIKET');
+    const [seviye] = etiketSpanlari(sf, 'SEVIYE_ETIKET');
+    expect(kapsam).toBeDefined();
+    expect(seviye).toBeDefined();
+    expect(kapsam).not.toBe(seviye);
+    const kap = ebeveynOge(kapsam);
+    expect(kap).toBeDefined();
+    expect(ebeveynOge(seviye)).toBe(kap);
+    const s = siniflar(kap!);
+    expect(s).toContain('flex-col');
+    expect(s).not.toContain('flex-wrap');
+    expect(s).not.toContain('flex-row');
+  });
+
+  it('abonelik kartında dönem eki sabit "/ ay" değil, sürümden (fiyat kartıyla aynı)', () => {
+    expect(yorumsuzKod(ABONELIK)).toContain('donemEki(p.surum)');
+    expect(ekranParcalari(ABONELIK)).not.toContain('/ ay');
   });
 });

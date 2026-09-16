@@ -408,7 +408,12 @@ const SUITES: Suite[] = [
   { ad: 'Faz 6 çeviri kotası tablosu + fiyat ucu kablolaması (A-C)', script: 'test:ceviri-kota', zincir: 'Z0' },
   // Faz 6.2 (14.09): kota çeviriye bağlı — kural sunucuda, kota AI'dan önce,
   // tekrar koruması, başarısız sayılmaz, dönem = abonelik dönemi.
-  { ad: 'Faz 6 çeviri kotası uygulaması (K/D/T/W)', script: 'test:ceviri-kota-uygulama', zincir: 'Z0' },
+  { ad: 'Faz 6 çeviri kotası uygulaması (K/D/T/W/A)', script: 'test:ceviri-kota-uygulama', zincir: 'Z0' },
+  // Faz 6.10/6.11 (15.09): bakmak ≠ çevirmek (ödenmiş içerik penceresiz, görüntüleme
+  // yeteneksiz) + İngilizce dosya kapısı (karışık dilli dosya yok) + hepsi ya da hiçbiri.
+  { ad: 'Faz 6.10/6.11 ödenmiş içerik kanıtı + görüntüleme + İngilizce çıktı kapısı (O/S/P/Z/G/X/H)', script: 'test:ceviri-gorunum-cikti', zincir: 'Z0' },
+  { ad: 'Faz 6 çeviri geçiş izni betiği (C)', script: 'test:ceviri-gecis', zincir: 'Z0' },
+  { ad: 'Faz 6.9 çeviri düzeltmesi firma katmanı (L/S/U/K/E/Z/G/M)', script: 'test:ceviri-duzeltme', zincir: 'Z0' },
   // ── 10.09.2026 — SUNUCU ÜRÜNLERİ (S-W). DB, SUNUCU ve AĞ GEREKTİRMEZ.
   //    Faz 0 sertleştirmesi sunucuda elle yazılmıştı, depoda yoktu. Kurulum
   //    listesi ↔ dizin, CR baytı, sshd/ufw sırası ve nöbetçinin saydığı
@@ -463,6 +468,14 @@ const SUITES: Suite[] = [
   { ad: 'iyzico yetki başlığı: randomKey eşliği (I1-I5)', script: 'test:iyzico-basligi', zincir: 'Z0' },
   { ad: 'Abonelik ölçüm betiği: SQL geçerliliği (S1-S4b)', script: 'test:olcum-sorgu', zincir: 'Z0' },
   { ad: 'Satın alma yolu: fatura kapısı + miras muafiyeti (P1-P7)', script: 'test:satinalma', zincir: 'Z0' },
+  // ── 16.09.2026 — FAZ 6.12a DENEME BİR KEZ. DB ve AĞ GEREKTİRMEZ (bellek-Prisma,
+  //    kısıt + ILIKE joker + iç içe geçen çağrılar). Ölçülen: deneme hakkı hiçbir
+  //    kimliğe bağlı değildi; aynı firma (iptal/deneme sonu ödeme alınamadı), hesap
+  //    kapat + aynı e-posta, yeni e-posta + aynı telefon ve harf ikiziyle 30 gün
+  //    tekrar alınıyordu. Yollar A-E + form e-postası + miras + doğrulama + 503
+  //    kapalı hata + K-P5 (DENEME→ODEME_BEKLIYOR, dunning bağlantısı) + çift
+  //    abonelik koruması + K-P6 kayıt/giriş + KVKK + JWT'li paket ucu.
+  { ad: 'Deneme hakkı bir kez: yollar A-E, ikiz plan, K-P5/K-P6 (S/O/A-N/K/CF/CS/G/L/H/I)', script: 'test:deneme-hakki', zincir: 'Z0' },
 ];
 
 // ── SKIP DEFTERI (B1, para dogrulugu turu 14.09.2026) ──────────────────────

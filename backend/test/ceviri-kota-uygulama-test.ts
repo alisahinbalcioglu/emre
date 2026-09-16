@@ -39,7 +39,6 @@ import {
 import {
   CeviriKotaServisi,
   ISLENIYOR_ZAMAN_ASIMI_DK,
-  TEKRAR_PENCERESI_DK,
   YENIDEN_BASLAMA_NOTU,
   ZAMAN_ASIMI_NOTU,
 } from '../src/ozellik/odeme/abonelik/ceviri-kota.servisi';
@@ -192,6 +191,15 @@ check('K13 sayfa dizisi değilse sıfır (null/obje)', ceviriIcerigi(null).satir
   const feGovde = kaynakGovdesi(fe);
   check('K29 ★ ön yüz satirKaynagi gövdesi sunucununkiyle AYNI', beGovde.length > 0 && beGovde === feGovde, `sunucu: ${beGovde} · ön yüz: ${feGovde}`);
   check('K30 ön yüz haritayı satirKaynagi anahtarıyla uygular', /ceviriAnahtari\(satirKaynagi\(row, adAlan\)\)/.test(fe));
+  // Faz 6.11 (15.09): "kayıtta kaynak duruyor mu" ikinci ikizdir — ekran ve
+  // dosya İngilizceyi AYNI satırlara uygular (kayıtta İngilizce duran hücreye
+  // ikisi de dokunmaz). Ayrışırsa ekranda İngilizce görünen dosyada Türkçe iner.
+  const duruyorGovdesi = (kod: string) =>
+    kod.match(/export function kayittaKaynakDuruyorMu\([^)]*\)[^{]*\{([\s\S]*?)\n\}/)?.[1]?.replace(/\s+/g, ' ').trim() ?? '';
+  const beDuruyor = duruyorGovdesi(fs.readFileSync(path.join(__dirname, '../src/ozellik/giris/ai/ceviri-kurali.ts'), 'utf8'));
+  const feDuruyor = duruyorGovdesi(fe);
+  check('K31 ★ ön yüz kayittaKaynakDuruyorMu gövdesi sunucununkiyle AYNI', beDuruyor.length > 0 && beDuruyor === feDuruyor, `sunucu: ${beDuruyor} · ön yüz: ${feDuruyor}`);
+  check('K31b ön yüzde sonuç alanı sunucuyla aynı ad', /const CEVIRI_SONUC_ALANI = '_ceviriSonucu';/.test(fe), 'ön yüz sabiti yok');
 }
 
 // ── D) KARAR ────────────────────────────────────────────────────────────────
@@ -233,28 +241,23 @@ const yenilenme = new Date('2026-10-15T07:00:00Z');
 }
 check('D12 izinli kararda mesaj boş', kotaRedMesaji(kotaKarari({ kota: CORE, kullanilanSatir: 0, kullanilanDosya: 0, gerekenSatir: 5 }), CORE, yenilenme) === '');
 {
-  const devam = kotaKarari({ kota: CORE, kullanilanSatir: 100, kullanilanDosya: 30, gerekenSatir: 10, yeniDosya: false });
-  check('D13 devam isteği dosya tavanına takılmaz (dosya zincirin başında düştü)', devam.izin, JSON.stringify(devam));
-  const yeni = kotaKarari({ kota: CORE, kullanilanSatir: 100, kullanilanDosya: 30, gerekenSatir: 10, yeniDosya: true });
-  check('D14 yeni istek aynı durumda DOSYA_TAVANI alır', !yeni.izin && yeni.sebep === 'DOSYA_TAVANI');
-  const satir = kotaKarari({ kota: CORE, kullanilanSatir: 2995, kullanilanDosya: 30, gerekenSatir: 10, yeniDosya: false });
-  check('D15 devam isteği satır tavanına yine takılır', !satir.izin && satir.sebep === 'SATIR_TAVANI');
+  // REVİZE K-T7 (15.09): "devam" kalktı — her çeviri yeni dosyadır. D13 ve D15
+  // (devamın dosya tavanına takılmaması) silindi; yeni istek dosya tavanında durur.
+  const yeni = kotaKarari({ kota: CORE, kullanilanSatir: 100, kullanilanDosya: 30, gerekenSatir: 10 });
+  check('D14 yeni istek dosya hakkı bitmişken DOSYA_TAVANI alır (devam istisnası yok)', !yeni.izin && yeni.sebep === 'DOSYA_TAVANI');
 }
 {
-  const tam = sonucHesabi({ toplamSatir: 300, teslimEdilen: 300, oncekiTeslim: 0 });
+  // HEPSİ YA DA HİÇBİRİ (REVİZE K-T7): sonuç iki durumlu. D19-D20 (devam zinciri) silindi.
+  const tam = sonucHesabi({ toplamSatir: 300, teslimEdilen: 300 });
   check('D16 tam teslim → BASARILI, hepsi düşer', tam.durum === 'BASARILI' && tam.dusulenSatir === 300 && tam.toplamTeslim === 300, JSON.stringify(tam));
-  const kismi = sonucHesabi({ toplamSatir: 300, teslimEdilen: 240, oncekiTeslim: 0 });
-  check('D17 ★ kısmi teslim → KISMI, yalnız teslim edilen düşer', kismi.durum === 'KISMI' && kismi.dusulenSatir === 240, JSON.stringify(kismi));
-  const hata = sonucHesabi({ toplamSatir: 300, teslimEdilen: 0, oncekiTeslim: 0 });
+  const eksik = sonucHesabi({ toplamSatir: 300, teslimEdilen: 299 });
+  check('D17 ★ tek satır eksik → BASARISIZ, HİÇBİR ŞEY düşmez (kısmi yok)', eksik.durum === 'BASARISIZ' && eksik.dusulenSatir === 0 && eksik.toplamTeslim === 0, JSON.stringify(eksik));
+  const hata = sonucHesabi({ toplamSatir: 300, teslimEdilen: 0 });
   check('D18 ★ hiç teslim yok → BASARISIZ, hiçbir şey düşmez', hata.durum === 'BASARISIZ' && hata.dusulenSatir === 0, JSON.stringify(hata));
-  const devamTam = sonucHesabi({ toplamSatir: 300, teslimEdilen: 300, oncekiTeslim: 240 });
-  check('D19 ★ devam tamamlanınca yalnız KALAN 60 satır düşer', devamTam.durum === 'BASARILI' && devamTam.dusulenSatir === 60, JSON.stringify(devamTam));
-  const devamHata = sonucHesabi({ toplamSatir: 300, teslimEdilen: 0, oncekiTeslim: 240 });
-  check('D20 devam hata alırsa hiçbir şey düşmez, zincir teslimi korunur', devamHata.dusulenSatir === 0 && devamHata.toplamTeslim === 240 && devamHata.durum === 'KISMI', JSON.stringify(devamHata));
-  const bos = sonucHesabi({ toplamSatir: 0, teslimEdilen: 0, oncekiTeslim: 0 });
+  const bos = sonucHesabi({ toplamSatir: 0, teslimEdilen: 0 });
   check('D21 çevrilecek satırı olmayan istek BASARILI, 0 düşer', bos.durum === 'BASARILI' && bos.dusulenSatir === 0);
-  const tasma = sonucHesabi({ toplamSatir: 300, teslimEdilen: 999, oncekiTeslim: 0 });
-  check('D22 teslim toplamı aşamaz (düşen ≤ satır)', tasma.dusulenSatir === 300, JSON.stringify(tasma));
+  const tasma = sonucHesabi({ toplamSatir: 300, teslimEdilen: 999 });
+  check('D22 teslim toplamı aşamaz (düşen ≤ satır)', tasma.durum === 'BASARILI' && tasma.dusulenSatir === 300, JSON.stringify(tasma));
 }
 
 // ── T) DÖNEM ────────────────────────────────────────────────────────────────
@@ -339,13 +342,44 @@ interface Sahne {
   onbellek: Record<string, string>;
   tuketim: Satir[];
   olaylar: string[];
+  /** `CLAUDE_API_KEY` ayarı — verilmezse API'ye gidilmez (400). */
+  apiAnahtari?: string;
+  /** Bu kaynak metinlerin `translation.upsert`'ü patlar (R1-A5). */
+  patlayanUpsert?: string[];
+  /** SystemSettings anahtar → değer (geçiş izni). */
+  ayarlar?: Record<string, string>;
+  /** Faz 6.9: firma çeviri düzeltmeleri (CeviriDuzeltmesi satırları). */
+  duzeltmeler?: Satir[];
+}
+
+/**
+ * Sahte Anthropic istemcisi (`anthropicIstemcisi` dikişi). Her çağrı sıradaki
+ * yanıt üreticisine gider; istenen metinler kaydedilir.
+ */
+function sahteIstemci(ureticiler: Array<(metinler: string[]) => { ceviriler?: Array<{ kaynak: string; ceviri: string }>; hata?: { status: number; message: string } }>) {
+  const istekler: string[][] = [];
+  let sira = 0;
+  return {
+    istekler,
+    messages: {
+      create: async (govde: any) => {
+        const icerik = String(govde?.messages?.[0]?.content ?? '');
+        const metinler = icerik.split('\n').filter((l) => l.startsWith('- ')).map((l) => l.slice(2));
+        istekler.push(metinler);
+        const r = ureticiler[Math.min(sira++, ureticiler.length - 1)](metinler);
+        if (r.hata) throw Object.assign(new Error(r.hata.message), { status: r.hata.status });
+        return { content: [{ type: 'text', text: JSON.stringify({ ceviriler: r.ceviriler ?? [] }) }], usage: { input_tokens: 1, output_tokens: 1 } };
+      },
+    },
+  };
 }
 
 function sahteDb(s: Sahne): any {
   let sayac = 0;
   const tuketimSuz = (where: Record<string, any>) => s.tuketim.filter((k) => eslesir(k, where));
   const db: any = {
-    user: { findUnique: async () => ({ emailVerified: s.emailVerified }) },
+    // Tek e-posta yardımcısı (`eposta-dogrulama.ts`) aynı imzayla okur: yalnız emailVerified.
+    user: { findUnique: async ({ select }: any) => (select?.emailVerified ? { emailVerified: s.emailVerified } : { emailVerified: s.emailVerified }) },
     quote: {
       // Gerçek Prisma gibi: `where`'de olmayan alan SÜZMEZ. (İlk hali firmaId
       // eksikse "bulunamadı" diyordu — firma süzgeci silinse bile W27 yeşil
@@ -418,12 +452,35 @@ function sahteDb(s: Sahne): any {
       },
     },
     translation: {
+      // Önbellek yalnız 'en': başka hedef dil sorgusu boş döner (6.9 risk 8 — süzgeç sahtede de uygulanır).
       findMany: async ({ where }: any) =>
-        (where.sourceText.in as string[])
-          .filter((m) => s.onbellek[m] !== undefined)
-          .map((m) => ({ sourceText: m, translatedText: s.onbellek[m] })),
+        where.targetLang !== 'en'
+          ? []
+          : (where.sourceText.in as string[])
+              .filter((m) => s.onbellek[m] !== undefined)
+              .map((m) => ({ sourceText: m, translatedText: s.onbellek[m] })),
+      // Gerçek davranış: yoksa yaz, varsa DOKUNMA (`update: {}`). İstenirse patlar.
+      upsert: async ({ where, create }: any) => {
+        const kaynak = where.sourceText_targetLang.sourceText as string;
+        s.olaylar.push(`upsert:${kaynak}`);
+        if ((s.patlayanUpsert ?? []).includes(kaynak)) throw new Error('sahte DB: yazilamadi');
+        if (s.onbellek[kaynak] === undefined) s.onbellek[kaynak] = create.translatedText;
+        return {};
+      },
     },
-    systemSettings: { findMany: async () => [] },
+    // Faz 6.9: firma katmanı — where GERÇEKTEN uygulanır (firmaId süzgeci silinirse başka firmanın satırı gelir).
+    ceviriDuzeltmesi: {
+      findMany: async ({ where, select }: any) =>
+        (s.duzeltmeler ?? [])
+          .filter((k) => eslesir(k, where))
+          .map((k) => (select ? Object.fromEntries(Object.keys(select).filter((a) => select[a]).map((a) => [a, k[a]])) : { ...k })),
+    },
+    systemSettings: {
+      findMany: async ({ where }: any) =>
+        where?.key === 'CLAUDE_API_KEY' && s.apiAnahtari ? [{ key: 'CLAUDE_API_KEY', value: s.apiAnahtari }] : [],
+      findUnique: async ({ where }: any) =>
+        s.ayarlar && Object.prototype.hasOwnProperty.call(s.ayarlar, where.key) ? { key: where.key, value: s.ayarlar[where.key] } : null,
+    },
     $queryRaw: async (_parcalar: TemplateStringsArray, ...degerler: unknown[]) => {
       s.olaylar.push(`kilit:${degerler.join(',')}`);
       return [{ kilit: '' }];
@@ -464,7 +521,10 @@ function kur(ek: Partial<Sahne> = {}) {
     cevirCagrisi++;
     return asil(...a);
   };
-  return { s, kota, servis, aiKayitlari, cevirSayisi: () => cevirCagrisi };
+  const istemciBagla = (istemci: unknown) => {
+    (servis as any).anthropicIstemcisi = () => istemci;
+  };
+  return { s, kota, servis, aiKayitlari, cevirSayisi: () => cevirCagrisi, istemciBagla };
 }
 
 const K1 = { userId: 'u1', firmaId: 'f1' };
@@ -536,15 +596,18 @@ async function wBlogu(): Promise<void> {
   }
 
   {
+    // Faz 6.11 (15.09) — TERSİNE: 14.09'da 10 dakikalık pencere dışındaki aynı
+    // içerik yeniden düşüyordu. Artık ödenmiş içerik penceresizdir: ertesi gün
+    // aynı teklife İngilizce bakmak yeniden ödenmez (K-T8, K-T9).
     const t = kur({
       tuketim: [tuketimKaydi({
         icerikOzeti: OZET, satirSayisi: 3,
-        olusturuldu: new Date(Date.now() - 30 * DK),
-        sonuclandi: new Date(Date.now() - (TEKRAR_PENCERESI_DK + 1) * DK),
+        olusturuldu: new Date(Date.now() - 26 * 60 * DK),
+        sonuclandi: new Date(Date.now() - 25 * 60 * DK),
       })],
     });
     const r = await t.servis.teklifiCevir(K1, Q);
-    check('W17 pencere DIŞINDA aynı içerik → yeniden kotadan düşer', t.s.tuketim.length === 2 && r.tekrar === false, `${t.s.tuketim.length}`);
+    check('W17 ★ pencere YOK: 25 saat önce çevrilmiş aynı içerik tekrardır, yeniden kotadan DÜŞMEZ', t.s.tuketim.length === 1 && r.tekrar === true && r.dusulenSatir === 0, `${t.s.tuketim.length} · tekrar=${r.tekrar}`);
   }
 
   {
@@ -572,30 +635,11 @@ async function wBlogu(): Promise<void> {
     check('W20 ★ başarısız çeviri kotadan DÜŞMEZ', durum?.kullanilanSatir === 0 && durum?.kullanilanDosya === 0, JSON.stringify(durum));
   }
 
-  {
-    // 14.09 incelemesi Y1: bir parça patlar, 3 satırın 2'si teslim edilir.
-    const t = kur();
-    const asil = t.servis.cevir.bind(t.servis);
-    (t.servis as any).cevir = async () => ({ harita: { 'PVC BORU': 'PVC PIPE' }, onbellekten: 1, cevrilen: 0, basarisiz: 1 });
-    const r = await t.servis.teklifiCevir(K1, Q);
-    const d1 = await t.kota.durum(K1);
-    const k1 = t.s.tuketim[0];
-    check('W21 ★ kısmi çeviri KISMI kaydedilir, yalnız TESLİM EDİLEN 2 satır düşer', k1?.durum === 'KISMI' && k1?.dusulenSatir === 2 && d1?.kullanilanSatir === 2, `${k1?.durum} · ${k1?.dusulenSatir} · ${d1?.kullanilanSatir}`);
-    check('W21a kısmi sonuç kullanıcıya teslim edilmeyeni söyler (1 satır Türkçe kaldı)', r.dusulenSatir === 2 && r.cevrilemeyenSatir === 1 && r.kotadanDustu === true, JSON.stringify({ d: r.dusulenSatir, c: r.cevrilemeyenSatir }));
-    check('W21b kısmi çeviri dosya hakkından bir kez yer', d1?.kullanilanDosya === 1, `${d1?.kullanilanDosya}`);
-
-    const o = await t.kota.onizleme(K1, Q);
-    check('W21c önizleme devamı tanır: yalnız KALAN 1 satır yer', o.devam === true && o.tekrar === false && o.gerekenSatir === 1, JSON.stringify({ devam: o.devam, gereken: o.gerekenSatir }));
-
-    (t.servis as any).cevir = asil; // bu kez önbellek iki metni de karşılar
-    const r2 = await t.servis.teklifiCevir(K1, Q);
-    const d2 = await t.kota.durum(K1);
-    const k2 = t.s.tuketim[1];
-    check('W21d ★ devam tamamlanınca yalnız kalan 1 satır düşer (toplam 3, iki kez düşmez)', k2?.durum === 'BASARILI' && k2?.dusulenSatir === 1 && d2?.kullanilanSatir === 3 && r2.devam === true, `${k2?.durum} · ${k2?.dusulenSatir} · ${d2?.kullanilanSatir}`);
-    check('W21e ★ devam dosya hakkından ikinci kez yemez', d2?.kullanilanDosya === 1 && k2?.devam === true, `${d2?.kullanilanDosya}`);
-
-    await t.servis.teklifiCevir(K1, Q);
-    check('W21f tamamlandıktan sonra aynı istek tekrardır (yeni kayıt yok)', t.s.tuketim.length === 2, `${t.s.tuketim.length}`);
+  try {
+    await aBlogu();
+  } catch (e) {
+    // A-bloğunun istisnası W bloğunun geri kalanını koşturmadan bırakmasın.
+    check('A-BLOK beklenmedik hata', false, String((e as Error)?.stack ?? e).slice(0, 400));
   }
 
   {
@@ -615,7 +659,7 @@ async function wBlogu(): Promise<void> {
       ],
     });
     const o = await t.kota.onizleme(K1, Q);
-    check('W21j ★ zincirin dört damgası aynı ms\'de: son halka seçilir, istek tekrardır, satır yemez', o.tekrar === true && o.devam === false && o.gerekenSatir === 0, JSON.stringify({ tekrar: o.tekrar, devam: o.devam, gereken: o.gerekenSatir }));
+    check('W21j ★ zincirin dört damgası aynı ms\'de: son halka seçilir, istek tekrardır, satır yemez', o.tekrar === true && o.gerekenSatir === 0, JSON.stringify({ tekrar: o.tekrar, gereken: o.gerekenSatir }));
 
     // Zaman aşımına düşmüş iş geç biterse `sonuclandir` onu da kapatır; pencerede
     // iki BASARILI kayıt olur. Aynı ms'de sonuçlanmışlarsa teslimleri de eşittir —
@@ -628,32 +672,6 @@ async function wBlogu(): Promise<void> {
     });
     const r = await t2.kota.rezerveEt(K1, Q, 'en');
     check('W21k aynı ms\'de sonuçlanmış iki tamamlanmış kayıt: tekrar en son oluşturulanı gösterir', r.tur === 'tekrar' && r.kayitId === 'yeniden-deneme', r.tur === 'tekrar' ? r.kayitId : r.tur);
-  }
-
-  {
-    // 14.09 incelemesi O4: model bir metni atlar — hiçbir parça "başarısız" değil.
-    const t = kur();
-    (t.servis as any).cevir = async () => ({ harita: { 'ÇELİK BORU': 'STEEL PIPE' }, onbellekten: 0, cevrilen: 1, basarisiz: 0 });
-    const r = await t.servis.teklifiCevir(K1, Q);
-    check('W21g ★ atlanan metin: basarisiz=0 olsa da KISMI, yalnız 1 satır düşer', t.s.tuketim[0]?.durum === 'KISMI' && r.dusulenSatir === 1, `${t.s.tuketim[0]?.durum} · ${r.dusulenSatir}`);
-  }
-
-  {
-    // Dosya tavanı dolu firmada yarım kalan çevirinin devamı engellenmez.
-    const dolu = Array.from({ length: 59 }, () => tuketimKaydi({ satirSayisi: 1 }));
-    const kismi = tuketimKaydi({ icerikOzeti: OZET, durum: 'KISMI', satirSayisi: 3, dusulenSatir: 2, toplamTeslim: 2, olusturuldu: new Date(Date.now() - 3 * DK), sonuclandi: new Date(Date.now() - 2 * DK) });
-    const t = kur({ tuketim: [...dolu, kismi] });
-    const o = await t.kota.onizleme(K1, Q);
-    check('W21h devam dosya tavanına takılmaz (60/60 dosya dolu)', o.izin === true && o.devam === true && o.kota.kalanDosya === 0, JSON.stringify({ izin: o.izin, sebep: o.sebep, kalanDosya: o.kota.kalanDosya }));
-  }
-
-  {
-    // Kalan kota yalnız EKSİK satıra yetiyor: 3 satırın 2'si önceden düştü, 1 satır kaldı.
-    const kismi = tuketimKaydi({ icerikOzeti: OZET, durum: 'KISMI', satirSayisi: 3, dusulenSatir: 2, toplamTeslim: 2, olusturuldu: new Date(Date.now() - 3 * DK), sonuclandi: new Date(Date.now() - 2 * DK) });
-    const t = kur({ tuketim: [tuketimKaydi({ satirSayisi: 4497 }), kismi] });
-    const e = await hata(() => t.servis.teklifiCevir(K1, Q));
-    const d = await t.kota.durum(K1);
-    check('W21i ★ devam yalnız KALAN satırla karara girer (kalan 1 satır yeter)', e === null && d?.kullanilanSatir === 4500 && d?.kalanSatir === 0, `${e?.message ?? 'ok'} · ${d?.kullanilanSatir}`);
   }
 
   {
@@ -670,7 +688,7 @@ async function wBlogu(): Promise<void> {
     check('W24 zaman aşımına uğramış ayırma BASARISIZ yapılır ve nedeni yazılır', bayat.durum === 'BASARISIZ' && bayat.hata === ZAMAN_ASIMI_NOTU, `${bayat.durum} · ${bayat.hata}`);
 
     // 14.09 incelemesi O5: zaman aşımıyla kapatılan UZUN iş sonradan biterse kotasız kalmaz.
-    await t.kota.sonuclandir(bayat.id, { toplamSatir: 4500, teslimEdilen: 4500, oncekiTeslim: 0, onbellekten: 0, cevrilen: 10, basarisizParca: 0 });
+    await t.kota.sonuclandir(bayat.id, { toplamSatir: 4500, teslimEdilen: 4500, onbellekten: 0, cevrilen: 10, basarisizParca: 0 });
     check('W24b ★ zaman aşımına uğramış iş geç biterse sonuçlanır ve düşer', bayat.durum === 'BASARILI' && bayat.dusulenSatir === 4500, `${bayat.durum} · ${bayat.dusulenSatir}`);
   }
 
@@ -684,7 +702,7 @@ async function wBlogu(): Promise<void> {
     check('W24d açılış temizliği bitmiş kayda dokunmaz', biten.durum === 'BASARILI' && biten.dusulenSatir === 100);
     const r = await hata(() => t.servis.teklifiCevir(K1, Q));
     check('W24e açılıştan sonra aynı teklif 409 ALMAZ', r === null, String(r?.message));
-    await t.kota.sonuclandir(yarim.id, { toplamSatir: 3, teslimEdilen: 3, oncekiTeslim: 0, onbellekten: 0, cevrilen: 0, basarisizParca: 0 });
+    await t.kota.sonuclandir(yarim.id, { toplamSatir: 3, teslimEdilen: 3, onbellekten: 0, cevrilen: 0, basarisizParca: 0 });
     check('W24f süreci ölmüş kayıt sonradan sonuçlanamaz', yarim.durum === 'BASARISIZ', yarim.durum);
     const bozukDb = { ceviriTuketimi: { updateMany: async () => { throw new Error('DB yok'); } } };
     const e = await hata(() => new CeviriKotaServisi(bozukDb as any).onApplicationBootstrap());
@@ -761,7 +779,7 @@ async function wBlogu(): Promise<void> {
   {
     const t = kur();
     const o = await t.kota.onizleme(K1, Q);
-    check('W33 önizleme sunucunun saydığı satırı söyler', o.gerekenSatir === 3 && o.metinSayisi === 2 && o.izin === true && o.tekrar === false && o.devam === false);
+    check('W33 önizleme sunucunun saydığı satırı söyler (devam alanı YOK)', o.gerekenSatir === 3 && o.metinSayisi === 2 && o.izin === true && o.tekrar === false && !('devam' in o));
     check('W34 önizleme kayıt yazmaz', t.s.tuketim.length === 0);
     const dolu = kur({ tuketim: [tuketimKaydi({ satirSayisi: 4499 })] });
     const o2 = await dolu.kota.onizleme(K1, Q);
@@ -836,11 +854,150 @@ async function wBlogu(): Promise<void> {
   }
 
   {
+    // REVİZE K-T7 (15.09): fiyat sayfası sunucuyla aynı kuralı söylemeli —
+    // "hepsi ya da hiçbiri" var; 10 dakikalık pencere ve kısmi çeviri cümleleri
+    // YOK (sunucuda ikisi de kalktı; kalırsa sayfa sessizce yalan söyler).
     const yol = path.join(__dirname, '../../frontend/app/fiyatlar/page.tsx');
     const metin = fs.existsSync(yol) ? fs.readFileSync(yol, 'utf8') : '';
-    const pencere = metin.match(/tamamlandıktan sonraki (\d+) dakika içinde/)?.[1];
-    check('W45 fiyat sayfasındaki tekrar penceresi sunucuyla aynı ve BİTİŞTEN ölçüldüğünü söylüyor', Number(pencere) === TEKRAR_PENCERESI_DK, `sayfa: ${pencere} · sunucu: ${TEKRAR_PENCERESI_DK}`);
-    check('W45b fiyat sayfası kısmi çeviride yalnız çevrilen satırın düştüğünü söylüyor', /yalnız çevrilen satırlar düşer/.test(metin));
+    check('W45 ★ fiyat sayfası "hepsi ya da hiçbiri" diyor, "dakika" ve "Kısmen tamamlanan" YOK', metin.includes('Çeviri ya tamamlanır ya hiç yapılmaz') && !/dakika|Kısmen tamamlanan/.test(metin), `sayfa ${metin.length} karakter`);
+  }
+}
+
+/**
+ * A) HEPSİ YA DA HİÇBİRİ (REVİZE K-T7, Emre 15.09) — gerçek `cevir`, sahte
+ * Anthropic istemcisi. Tek metin bile çevrilemezse tüketim BASARISIZ, kotadan
+ * hiçbir şey düşmez, istemciye harita DÖNMEZ (422); çevrilen metinler önbellekte
+ * kalır ve ikinci deneme yalnız eksiği sorar.
+ */
+async function aBlogu(): Promise<void> {
+  console.log('\nA) Hepsi ya da hiçbiri — eksik çeviri düşmez, harita dönmez');
+  const API = 'test-anahtari';
+
+  {
+    const icerik = ceviriIcerigi(TEKLIF_SAYFALARI);
+    const t = kur({ onbellek: {}, apiAnahtari: API });
+    const istemci = sahteIstemci([
+      () => ({ ceviriler: [{ kaynak: 'PVC BORU', ceviri: 'PVC PIPE' }] }),
+      (m) => ({ ceviriler: m.includes('ÇELİK BORU') ? [{ kaynak: 'ÇELİK BORU', ceviri: 'STEEL PIPE' }] : [] }),
+    ]);
+    t.istemciBagla(istemci);
+    check('A0 FIXTURE KANITI: teklif 3 satır / 2 metin, önbellek boş', icerik.satirSayisi === 3 && icerik.metinler.length === 2 && Object.keys(t.s.onbellek).length === 0, `${icerik.satirSayisi}/${icerik.metinler.length}`);
+
+    const once = await t.kota.durum(K1);
+    const e = await hata(() => t.servis.teklifiCevir(K1, Q));
+    const sonra = await t.kota.durum(K1);
+    const y = yanit(e);
+    check('A1 ★ eksik çeviri: kayıt BASARISIZ, 0 düşer, dönem kullanımı ve dosya DEĞİŞMEZ',
+      t.s.tuketim.length === 1 && t.s.tuketim[0].durum === 'BASARISIZ' && t.s.tuketim[0].dusulenSatir === 0 &&
+      sonra?.kullanilanSatir === once?.kullanilanSatir && sonra?.kullanilanDosya === once?.kullanilanDosya,
+      JSON.stringify({ durum: t.s.tuketim[0]?.durum, dusulen: t.s.tuketim[0]?.dusulenSatir, once, sonra }));
+    check('A2 ★ 422 gövdesi: kod, mesaj, çevrilemeyen liste/sayı, message dolu, harita YOK',
+      y.kod === 'CEVIRI_TAMAMLANAMADI' && y.mesaj === 'Çeviri tamamlanamadı, tekrar deneyin' &&
+      JSON.stringify(y.cevrilemeyenSatirlar) === JSON.stringify(['ÇELİK BORU']) && y.cevrilemeyenSayisi === 1 &&
+      typeof y.message === 'string' && y.message.length > 0 && !('harita' in y),
+      JSON.stringify(y));
+    check('A2b açıklama kotadan düşmediğini ve teklifin Türkçe kaldığını söyler', /kotadan hiçbir şey düşmedi ve teklif Türkçe kaldı/.test(String(y.aciklama)), String(y.aciklama));
+    check('A12 durum kodu 422 (401 DEĞİL — oturum düşürülmez)', e?.getStatus?.() === 422, String(e?.getStatus?.()));
+    check('A3 çevrilen metin önbelleğe yazıldı', t.s.onbellek['PVC BORU'] === 'PVC PIPE' && t.s.onbellek['ÇELİK BORU'] === undefined, JSON.stringify(t.s.onbellek));
+
+    const r2: any = await t.servis.teklifiCevir(K1, Q).catch((e) => ({ hata: String(e), harita: {} }));
+    const d2 = await t.kota.durum(K1);
+    const basarili = t.s.tuketim.filter((k) => k.durum === 'BASARILI');
+    check('A4 ★ ikinci deneme: API\'ye YALNIZ eksik gider; tek BASARILI kayıt 3 satır düşer, dosya 1',
+      JSON.stringify(istemci.istekler[1]) === JSON.stringify(['ÇELİK BORU']) && basarili.length === 1 && basarili[0].dusulenSatir === 3 &&
+      d2?.kullanilanSatir === 3 && d2?.kullanilanDosya === 1 && r2.harita['PVC BORU'] === 'PVC PIPE' && r2.harita['ÇELİK BORU'] === 'STEEL PIPE',
+      JSON.stringify({ istekler: istemci.istekler, basarili: basarili.length, d2 }));
+
+    await hata(() => t.servis.teklifiCevir(K1, Q));
+    check('W21f tamamlandıktan sonra aynı istek tekrardır (yeni kayıt yok)', t.s.tuketim.length === 2, `${t.s.tuketim.length}`);
+  }
+
+  {
+    const sayfalar = [sayfa(['GEBERIT', 'PVC BORU'])];
+    const t = kur({ onbellek: { 'PVC BORU': 'PVC PIPE' }, apiAnahtari: API, teklifler: { [Q]: { firmaId: 'f1', sheets: sayfalar } } });
+    t.istemciBagla(sahteIstemci([() => ({ ceviriler: [{ kaynak: 'GEBERIT', ceviri: 'GEBERIT' }] })]));
+    const r: any = await t.servis.teklifiCevir(K1, Q).catch((e) => ({ hata: String(e), harita: {} }));
+    check('A5 ★ kaynakla aynı dönen çeviri (GEBERIT) eksik sayılmaz → BASARILI', t.s.tuketim[0]?.durum === 'BASARILI' && r.harita.GEBERIT === 'GEBERIT' && r.dusulenSatir === 2, `${t.s.tuketim[0]?.durum} · ${r.dusulenSatir}`);
+  }
+
+  {
+    const t = kur({ onbellek: {}, apiAnahtari: API });
+    t.istemciBagla(sahteIstemci([() => ({ hata: { status: 401, message: 'invalid x-api-key' } })]));
+    const e = await hata(() => t.servis.teklifiCevir(K1, Q));
+    const y = yanit(e);
+    check('A6 tüm parçalar 401 → 422, açıklamada API anahtarı sebebi, kayıt BASARISIZ', e?.getStatus?.() === 422 && /GECERSIZ/.test(String(y.aciklama)) && t.s.tuketim[0]?.durum === 'BASARISIZ', `${e?.getStatus?.()} · ${y.aciklama}`);
+  }
+
+  {
+    const kaynak = (yol: string) => fs.readFileSync(path.join(__dirname, yol), 'utf8');
+    const servisi = kaynak('../src/ozellik/odeme/abonelik/ceviri-kota.servisi.ts');
+    const servis = kaynak('../src/ozellik/giris/ai/ceviri.service.ts');
+    const kotasi = kaynak('../src/ozellik/odeme/abonelik/ceviri-kotasi.ts');
+    const sayimGovdesi = servisi.match(/private sayimKosulu\([\s\S]*?\n {2}\}/)?.[0] ?? '';
+    const say = (m: string) => m.split("'KISMI'").length - 1;
+    check('A7 ★ KISMI hiçbir yoldan üretilmez: dizge yalnız sayimKosulu içinde, sonuç tipi iki durumlu',
+      sayimGovdesi.length > 0 && say(servisi) === 1 && say(sayimGovdesi) === 1 && say(servis) === 0 &&
+      /export type CeviriSonucDurumu = 'BASARILI' \| 'BASARISIZ';/.test(kotasi),
+      `servisi=${say(servisi)} sayim=${say(sayimGovdesi)} servis=${say(servis)}`);
+  }
+
+  {
+    // Eski (15.09 öncesi) KISMI kayıt: aynı v2 özet, 2 dk önce, 2 satır teslim etmiş.
+    const kismi = tuketimKaydi({ icerikOzeti: OZET, durum: 'KISMI', satirSayisi: 3, dusulenSatir: 2, toplamTeslim: 2, olusturuldu: new Date(Date.now() - 3 * DK), sonuclandi: new Date(Date.now() - 2 * DK) });
+    const t = kur({ tuketim: [kismi] });
+    const o = await t.kota.onizleme(K1, Q);
+    const r: any = await t.servis.teklifiCevir(K1, Q).catch((e) => ({ hata: String(e) }));
+    const yeni = t.s.tuketim[1];
+    check('A8 ★ eski KISMI devam da kanıt da değil: önizleme 3 satır (devam alanı yok), POST tam 3 düşer',
+      o.gerekenSatir === 3 && o.tekrar === false && !('devam' in o) &&
+      r.tekrar === false && yeni?.durum === 'BASARILI' && yeni?.dusulenSatir === 3 && yeni?.devam === false,
+      JSON.stringify({ gereken: o.gerekenSatir, tekrar: o.tekrar, yeni: yeni && { d: yeni.durum, s: yeni.dusulenSatir, devam: yeni.devam } }));
+  }
+
+  {
+    const t = kur({ tuketim: [tuketimKaydi({ satirSayisi: 4499 })] });
+    const e = await hata(() => t.servis.teklifiCevir(K1, Q));
+    const y = yanit(e);
+    check('A9 kalan 1 satır: baştan 403 CEVIRI_KOTASI (hangi tavan), kayıt yok, çeviri çağrılmadı',
+      e?.getStatus?.() === 403 && y.kod === 'CEVIRI_KOTASI' && y.sebep === 'SATIR_TAVANI' && /kısmen çevrilmez/.test(String(y.mesaj)) &&
+      t.s.tuketim.length === 1 && t.cevirSayisi() === 0,
+      JSON.stringify({ durum: e?.getStatus?.(), y }));
+  }
+
+  {
+    const sayfalar = [sayfa(['KELEBEK VANA', 'ÇEK VANA', 'PİSLİK TUTUCU'])];
+    const t = kur({ onbellek: {}, apiAnahtari: API, patlayanUpsert: ['KELEBEK VANA'], teklifler: { [Q]: { firmaId: 'f1', sheets: sayfalar } } });
+    t.istemciBagla(sahteIstemci([(m) => ({ ceviriler: m.map((x) => ({ kaynak: x, ceviri: `EN ${x}` })) })]));
+    const gunluk: string[] = [];
+    (t.servis as any).logger = { error: (m: string) => gunluk.push(m), warn: () => undefined, log: () => undefined };
+    const r = await hata(async () => t.servis.teklifiCevir(K1, Q)) === null ? 'ok' : 'hata';
+    check('A10 ★ tek anahtarın önbellek yazımı patlar: çeviri yine BASARILI, aynı parçadaki SONRAKİ anahtarlar önbellekte, günlükte yalnız sayı',
+      r === 'ok' && t.s.tuketim[0]?.durum === 'BASARILI' && t.s.onbellek['ÇEK VANA'] === 'EN ÇEK VANA' && t.s.onbellek['PİSLİK TUTUCU'] === 'EN PİSLİK TUTUCU' &&
+      t.s.onbellek['KELEBEK VANA'] === undefined && gunluk.some((g) => /onbellege yazilamadi: 1 metin/.test(g)) && !gunluk.some((g) => g.includes('KELEBEK')),
+      JSON.stringify({ r, durum: t.s.tuketim[0]?.durum, onbellek: t.s.onbellek, gunluk }));
+  }
+
+  {
+    // Ödenmiş içerik (26 saat önce BASARILI) ama önbellekte bir anahtar eksik
+    // (önbellek yazımı patlamış içerik).
+    const odenmis = () => [tuketimKaydi({ icerikOzeti: OZET, satirSayisi: 3, olusturuldu: new Date(Date.now() - 26 * 60 * DK), sonuclandi: new Date(Date.now() - 26 * 60 * DK + DK) })];
+    const t = kur({ onbellek: { 'PVC BORU': 'PVC PIPE' }, apiAnahtari: API, tuketim: odenmis() });
+    const istemci = sahteIstemci([(m) => ({ ceviriler: m.includes('ÇELİK BORU') ? [{ kaynak: 'ÇELİK BORU', ceviri: 'STEEL PIPE' }] : [] })]);
+    t.istemciBagla(istemci);
+    const r: any = await t.servis.teklifiCevir(K1, Q).catch((e) => ({ hata: String(e), harita: {} }));
+    check('A11 ★ ödenmiş + önbellekte eksik: tekrar dalı YALNIZ eksiği sorar, tüketim YAZMAZ, tam harita tekrar:true',
+      JSON.stringify(istemci.istekler) === JSON.stringify([['ÇELİK BORU']]) && t.s.tuketim.length === 1 && !t.s.olaylar.includes('create') &&
+      r.tekrar === true && r.dusulenSatir === 0 && r.harita['PVC BORU'] === 'PVC PIPE' && r.harita['ÇELİK BORU'] === 'STEEL PIPE' && t.aiKayitlari.length === 1,
+      JSON.stringify({ istekler: istemci.istekler, kayit: t.s.tuketim.length, tekrar: r.tekrar, ai: t.aiKayitlari.length }));
+
+    const t2 = kur({ onbellek: { 'PVC BORU': 'PVC PIPE' }, apiAnahtari: API, tuketim: odenmis() });
+    t2.istemciBagla(sahteIstemci([() => ({ ceviriler: [] })]));
+    const e = await hata(() => t2.servis.teklifiCevir(K1, Q));
+    const y = yanit(e);
+    check('A11b ödenmiş içerikte API yine eksik bırakırsa 422 + liste, harita YOK, tüketim yok',
+      e?.getStatus?.() === 422 && y.kod === 'CEVIRI_TAMAMLANAMADI' && JSON.stringify(y.cevrilemeyenSatirlar) === JSON.stringify(['ÇELİK BORU']) &&
+      !('harita' in y) && t2.s.tuketim.length === 1,
+      JSON.stringify({ durum: e?.getStatus?.(), y }));
   }
 }
 

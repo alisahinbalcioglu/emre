@@ -1,10 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import * as ts from 'typescript';
 import {
   ASGARI_IPTAL_TIKLAMASI,
+  DURUM_ETIKET,
   IPTAL_ADIMLARI,
   abonelikOzeti,
+  durumEtiketi,
   iptalYoluYeterinceDerinMi,
   mirasMi,
 } from './abonelik-ozeti';
@@ -22,7 +25,7 @@ import {
 describe('abonelikOzeti', () => {
   it('⭐ karar YOKKEN "abonelik yok" DEMEZ (bilmiyoruz ≠ yok)', () => {
     const o = abonelikOzeti(null);
-    expect(o.altMetin).toContain('yukleniyor');
+    expect(o.altMetin).toContain('yükleniyor');
     expect(o.iptalEdilebilir).toBe(false);
   });
 
@@ -34,7 +37,7 @@ describe('abonelikOzeti', () => {
 
   it('⭐ goc paketi musteriye TEKNIK KODLA gosterilmez', () => {
     const o = abonelikOzeti({ paketKodu: 'miras-pro', durum: 'AKTIF', kalanGun: 300 });
-    expect(o.baslik).toBe('Gecis paketi');
+    expect(o.baslik).toBe('Geçiş paketi');
     expect(o.baslik).not.toContain('miras');
   });
 
@@ -50,7 +53,7 @@ describe('abonelikOzeti', () => {
 
   it('kalan gun bilinmiyorsa UYDURULMAZ', () => {
     const o = abonelikOzeti({ paketKodu: 'pro-mek', durum: 'AKTIF', kalanGun: null });
-    expect(o.altMetin).toContain('belirtilmemis');
+    expect(o.altMetin).toContain('belirtilmemiş');
     expect(o.altMetin).not.toMatch(/\d/);
   });
 
@@ -66,6 +69,30 @@ describe('abonelikOzeti', () => {
   it('goc paketi de iptal EDILEBILIR (musteri cikabilmeli)', () => {
     expect(abonelikOzeti({ paketKodu: 'miras-pro', durum: 'AKTIF', kalanGun: 300 }).iptalEdilebilir)
       .toBe(true);
+  });
+
+  it('⭐ durum rozeti KOD değil ekran adı gösterir (Faz 6.1 kapanış)', () => {
+    const o = abonelikOzeti({ paketKodu: 'pro-mek', durum: 'SONA_ERDI', kalanGun: 0 });
+    expect(o.durum).toBe('SONA_ERDI'); // karar kodu değişmedi
+    expect(o.durumEtiketi).toBe('Sona erdi');
+  });
+
+  it('yedi durumun yedisinin de Türkçe ekran adı var', () => {
+    expect(DURUM_ETIKET).toEqual({
+      DENEME: 'Deneme',
+      AKTIF: 'Aktif',
+      ODEME_BEKLIYOR: 'Ödeme bekliyor',
+      KISITLI: 'Kısıtlı',
+      ASKIDA: 'Askıda',
+      IPTAL: 'İptal edildi',
+      SONA_ERDI: 'Sona erdi',
+    });
+  });
+
+  it('tanımsız kod boş rozet olmaz, kod aynen gösterilir; kod yoksa boş', () => {
+    expect(durumEtiketi('YENI_DURUM')).toBe('YENI_DURUM');
+    expect(durumEtiketi('')).toBe('');
+    expect(abonelikOzeti(null).durumEtiketi).toBe('');
   });
 
   it('mirasMi ayrimi', () => {
@@ -86,6 +113,18 @@ describe('iptal yolunun derinligi', () => {
   });
 });
 
+/** JSX metni + dizgeler; yorumlar AST'de dugum olmadigi icin girmez. */
+function ekranMetni(kaynak: string): string {
+  const sf = ts.createSourceFile('s.tsx', kaynak, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const out: string[] = [];
+  const gez = (n: ts.Node): void => {
+    if (ts.isJsxText(n) || ts.isStringLiteral(n)) out.push(n.text.replace(/\s+/g, ' ').trim());
+    n.forEachChild(gez);
+  };
+  gez(sf);
+  return out.join(' | ');
+}
+
 describe('⭐ BAGLANTI — iptal /abonelik sayfasindan KALKTI', () => {
   const sayfa = readFileSync(
     join(__dirname, '..', '..', 'app', '(protected)', 'abonelik', 'page.tsx'),
@@ -93,12 +132,17 @@ describe('⭐ BAGLANTI — iptal /abonelik sayfasindan KALKTI', () => {
   );
 
   it('OLCUT: sayfa okundu ve hala paket seciyor', () => {
-    expect(sayfa).toContain('Bu paketi sec');
+    expect(sayfa).toContain('Bu paketi seç');
   });
 
   it('⭐ iptal DUGMESI yok', () => {
-    // Not: aciklama yorumunda kelime gecebilir; JSX metnini ariyoruz.
-    expect(sayfa).not.toContain('>Aboneligi iptal et<');
+    // ⚠ 15.09: eski assert ham metinde `>Aboneligi iptal et<` ariyordu. Gercek
+    // JSX'te metin kendi satirinda girintili durdugu icin dugme geri gelse de
+    // ESLESMEZDI (yalanci yesil). Yorum dugum degildir: ekran metni AST'den
+    // okunur, pozitif kontrol hesap sayfasindaki GERCEK dugmeyi gorur.
+    const profil = readFileSync(join(__dirname, '..', '..', 'app', '(protected)', 'profile', 'page.tsx'), 'utf8');
+    expect(ekranMetni(profil)).toMatch(/Aboneli(ğ|g)i iptal et/);
+    expect(ekranMetni(sayfa)).not.toMatch(/Aboneli(ğ|g)i iptal et/);
   });
 
   it('⭐ iptal UCU bu sayfadan cagrilmiyor', () => {
@@ -123,6 +167,11 @@ describe('⭐ BAGLANTI — hesap sayfasi GERCEK kaynagi okuyor', () => {
 
   it('OLCUT: dosya okundu', () => {
     expect(profil.length).toBeGreaterThan(0);
+  });
+
+  it('⭐ rozet ekran adını basıyor, ham durum KODUNU basmıyor', () => {
+    expect(profil).toContain('{ozet.durumEtiketi}');
+    expect(profil).not.toContain('{ozet.durum}');
   });
 
   it('⭐ abonelik ozeti `erisim`den turetiliyor (ESKI tablodan DEGIL)', () => {

@@ -1,3 +1,5 @@
+import { ConflictException, ForbiddenException, UnprocessableEntityException } from '@nestjs/common';
+
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  *  ÇEVİRİ KOTASI — paket → aylık satır / dosya tavanı (Faz 6, 13.09.2026)
@@ -111,53 +113,128 @@ export interface KotaKarari {
  * Çevrilecek satırı OLMAYAN istek (0 satır) kota harcamaz ve reddedilmez:
  * çevrilecek bir şey yoktur, AI çağrısı da yapılmaz.
  *
- * `yeniDosya: false` → yarım kalan bir çevirinin DEVAMI: dosya hakkı zincirin
- * ilk isteğinde zaten düştü, dosya tavanı ikinci kez sorulmaz.
+ * Her çeviri yeni dosyadır (REVİZE K-T7, 15.09): yarım çevirinin "devamı"
+ * kalktı, dosya tavanı her istekte sorulur.
  */
 export function kotaKarari(p: {
   kota: CeviriKotasi;
   kullanilanSatir: number;
   kullanilanDosya: number;
   gerekenSatir: number;
-  yeniDosya?: boolean;
 }): KotaKarari {
   const kalanSatir = Math.max(0, p.kota.satir - p.kullanilanSatir);
   const kalanDosya = Math.max(0, p.kota.dosya - p.kullanilanDosya);
   const temel = { gerekenSatir: p.gerekenSatir, kalanSatir, kalanDosya };
   if (p.gerekenSatir <= 0) return { izin: true, sebep: null, ...temel };
   if (p.gerekenSatir > p.kota.satir) return { izin: false, sebep: 'DOSYA_TAVANDAN_BUYUK', ...temel };
-  if (p.yeniDosya !== false && kalanDosya < 1) return { izin: false, sebep: 'DOSYA_TAVANI', ...temel };
+  if (kalanDosya < 1) return { izin: false, sebep: 'DOSYA_TAVANI', ...temel };
   if (p.gerekenSatir > kalanSatir) return { izin: false, sebep: 'SATIR_TAVANI', ...temel };
   return { izin: true, sebep: null, ...temel };
 }
 
-export type CeviriSonucDurumu = 'BASARILI' | 'KISMI' | 'BASARISIZ';
+/**
+ * Yeni kayıtta üretilen sonuç. Prisma enum'unda `KISMI` durur: 15.09'dan önce
+ * yazılmış kayıtlar için (dönem sayımı onları hâlâ sayar), bu kod onu ÜRETMEZ.
+ */
+export type CeviriSonucDurumu = 'BASARILI' | 'BASARISIZ';
 
 /**
- * Çeviri SONUÇLANINCA kotadan ne düşer (Faz 6.2, 14.09 incelemesi Y1).
- *
- * İlk hâli "tam değilse hiçbir şey düşmez"di: harita yine istemciye dönüyordu,
- * yani bir parçayı bilerek patlatan teklif çevrilen satırların hepsini kotasız
- * alabiliyordu. Kural artık TESLİM EDİLENE bakar:
- *  · tüm satırlar teslim edildi        → BASARILI
- *  · bir kısmı                         → KISMI, yalnız teslim edilen düşer
- *  · hiç satır teslim edilmedi (hata)  → BASARISIZ, hiçbir şey düşmez
- * Aynı içeriğin 10 dk içindeki DEVAMINDA `oncekiTeslim` zincirde önceden
- * düşeni taşır; yalnız YENİ teslim edilen satır düşer (aynı satır iki kez
- * düşmez). Çevrilecek satırı olmayan istek (toplam 0) BASARILI sayılır ve
- * hiçbir şey düşmez.
+ * Çeviri SONUÇLANINCA kotadan ne düşer — HEPSİ YA DA HİÇBİRİ (REVİZE K-T7,
+ * Emre 15.09: "o Excel tam çevrilemiyorsa çevirmesin").
+ *  · tüm satırlar teslim edildi → BASARILI, satırların hepsi düşer
+ *  · tek satır bile eksik       → BASARISIZ, hiçbir şey düşmez (harita da
+ *                                 istemciye DÖNMEZ — `CeviriService`)
+ * 14.09'daki KISMI kuralı (yalnız teslim edileni düşürüp haritayı vermek) ve
+ * 10 dakikalık "devam" zinciri kalktı. Çevrilecek satırı olmayan istek
+ * (toplam 0) BASARILI sayılır ve hiçbir şey düşmez.
  */
 export function sonucHesabi(p: {
   toplamSatir: number;
   teslimEdilen: number;
-  oncekiTeslim: number;
 }): { durum: CeviriSonucDurumu; dusulenSatir: number; toplamTeslim: number } {
-  const teslim = Math.max(0, Math.min(p.teslimEdilen, p.toplamSatir));
-  const toplamTeslim = Math.max(p.oncekiTeslim, teslim);
-  const dusulenSatir = Math.max(0, teslim - p.oncekiTeslim);
-  const durum: CeviriSonucDurumu =
-    teslim >= p.toplamSatir ? 'BASARILI' : toplamTeslim > 0 ? 'KISMI' : 'BASARISIZ';
-  return { durum, dusulenSatir, toplamTeslim };
+  const toplam = Math.max(0, p.toplamSatir);
+  if (p.teslimEdilen >= toplam) return { durum: 'BASARILI', dusulenSatir: toplam, toplamTeslim: toplam };
+  return { durum: 'BASARISIZ', dusulenSatir: 0, toplamTeslim: 0 };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  ÖDENMİŞ İÇERİK — geçiş izni ve İngilizce çıktı kapısı (Faz 6.10/6.11)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Kota öncesi İngilizceye çevrilmiş teklifin geçiş izni anahtarı
+ * (`SystemSettings.key`). Kanıt fonksiyonu ve geçiş betiği AYNI fonksiyonu
+ * kullanır.
+ */
+export function gecisAnahtari(quoteId: string, hedefDil: string): string {
+  return `ceviri.gecis.${hedefDil}.${quoteId}`;
+}
+
+export type CiktiKapisiNedeni = 'CEVIRI_YOK' | 'ICERIK_DEGISTI' | 'CEVIRI_SURUYOR' | 'CEVIRI_EKSIK';
+
+/**
+ * İngilizce dosya indirilemediğinde kullanıcıya giden metinler — TEK sabit.
+ * Testler buradan okur. "Tam değilse çevirmesin" ilkesi dosyaya da uygulanır
+ * (Emre 15.09): başlıkları İngilizce, adları Türkçe karışık dosya ÜRETİLMEZ.
+ */
+export const CIKTI_KAPISI_METNI: Readonly<Record<CiktiKapisiNedeni, { readonly mesaj: string; readonly aciklama: string }>> = Object.freeze({
+  CEVIRI_YOK: Object.freeze({
+    mesaj: 'Bu teklifin güncel hâli İngilizceye çevrilmemiş',
+    aciklama: 'Önce teklif ekranında İngilizceye Çevir düğmesine basın. Türkçe dosya kotadan düşmeden iner.',
+  }),
+  ICERIK_DEGISTI: Object.freeze({
+    mesaj: 'Çeviriden sonra teklif değişti',
+    aciklama: 'Malzeme/iş adları ya da satırlar çeviriden sonra değişti. İngilizce dosya için teklifi yeniden çevirin; yeni çeviri kotadan düşer.',
+  }),
+  CEVIRI_EKSIK: Object.freeze({
+    mesaj: 'Bu teklifin çevirisi eksik',
+    aciklama: 'İngilizce dosya için teklif ekranında İngilizceye Çevir düğmesine basın; kotadan düşmez.',
+  }),
+  CEVIRI_SURUYOR: Object.freeze({
+    mesaj: 'Bu teklifin çevirisi sürüyor',
+    aciklama: 'Çeviri bitince İngilizce dosyayı indirebilirsiniz; birkaç dakika sonra tekrar deneyin.',
+  }),
+});
+
+/**
+ * İngilizce çıktı reddi. 403 `CEVIRI_GEREKLI` (çeviri yok / içerik değişti),
+ * 409 `CEVIRI_SURUYOR`, 409 `CEVIRI_EKSIK` (ödenmiş ama tamamlanmamış).
+ * ⚠ 401 DEĞİL: ön yüzün 401 yakalayıcısı oturumu kapatır (§3.1).
+ * `message` eski istemciler ve indirme bildirimi için ZORUNLU.
+ */
+export function ceviriKapisiReddi(neden: CiktiKapisiNedeni): ForbiddenException | ConflictException {
+  const m = CIKTI_KAPISI_METNI[neden];
+  const govde = { message: `${m.mesaj}. ${m.aciklama}`, mesaj: m.mesaj, aciklama: m.aciklama, neden };
+  if (neden === 'CEVIRI_SURUYOR') return new ConflictException({ ...govde, kod: 'CEVIRI_SURUYOR' });
+  if (neden === 'CEVIRI_EKSIK') return new ConflictException({ ...govde, kod: 'CEVIRI_EKSIK' });
+  return new ForbiddenException({ ...govde, kod: 'CEVIRI_GEREKLI' });
+}
+
+/**
+ * Çeviri TAMAMLANAMADI (REVİZE K-T7): 422. Kotadan hiçbir şey düşmedi, teklif
+ * Türkçe kaldı, harita istemciye verilmez; çevrilemeyen metinler listelenir.
+ * `satirSayisi` çevrilemeyen metinlerin tuttuğu SATIR; liste metin listesidir
+ * (ilk 50). ⚠ 401 değil (oturum düşürülmez), 409 `CEVIRI_SURUYOR`dan ayrı.
+ */
+export function ceviriTamamlanamadiHatasi(
+  eksikAnahtarlar: readonly string[],
+  satirSayisi: number,
+  sebep?: string,
+): UnprocessableEntityException {
+  const mesaj = 'Çeviri tamamlanamadı, tekrar deneyin';
+  const aciklama =
+    `${binlik(satirSayisi)} satır çevrilemedi; kotadan hiçbir şey düşmedi ve teklif Türkçe kaldı. ` +
+    'Tekrar denediğinizde çevrilmiş satırlar beklemeden gelir.' +
+    (sebep ? ` Sebep: ${sebep}` : '');
+  return new UnprocessableEntityException({
+    message: `${mesaj}. ${aciklama}`,
+    mesaj,
+    aciklama,
+    kod: 'CEVIRI_TAMAMLANAMADI',
+    cevrilemeyenSayisi: satirSayisi,
+    cevrilemeyenMetinSayisi: eksikAnahtarlar.length,
+    cevrilemeyenSatirlar: eksikAnahtarlar.slice(0, 50),
+  });
 }
 
 /** TR binlik ayraç — `toLocaleString` sunucunun ICU verisine bağlıdır, kullanılmaz. */

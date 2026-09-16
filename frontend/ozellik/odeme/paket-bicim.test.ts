@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { donemEki, kotaCumlesi, kotaMetni, sayiYaz, tutarYaz } from './paket-bicim';
+import { SEVIYE_AD, SEVIYE_ETIKET, donemEki, kotaCumlesi, kotaMetni, sayiYaz, seviyeAdi, tutarYaz } from './paket-bicim';
 
 // Faz 6.1 (13.09): kota başlığı. Satır BAŞLIK, dosya PARANTEZ — ölçümle
 // desteklenen karar (dosya boyu 4–1.766 satır; "ayda 30 çeviri" yanıltır).
@@ -50,6 +50,64 @@ describe('kotaCumlesi — iş emrindeki üç başlık birebir', () => {
   });
   it('Pro MEP', () => {
     expect(kotaCumlesi({ satir: 9000, dosya: 120 }, AYLIK)).toBe('Ayda 9.000 satır çeviri (en fazla 120 dosya)');
+  });
+});
+
+/**
+ * Faz 6.1 kapanış (15.09): kart başlığı "Basic — Mekanik", rozet "Core —
+ * malzeme" diyordu. Başlık veritabanındaki paket adıdır; rozet ona uyar.
+ * Fikstür CANLI yanıttan kopyalandı (`GET https://metapricex.com/api/fiyatlar`,
+ * 15.09 13:49 UTC) — elle uydurulmuş ad, ölçütü dairesel yapardı.
+ */
+const CANLI_PAKETLER_15_09 = [
+  { ad: 'Basic — Mekanik', seviye: 'core' },
+  { ad: 'Pro — Mekanik', seviye: 'pro' },
+  { ad: 'Basic — Elektrik', seviye: 'core' },
+  { ad: 'Pro — Elektrik', seviye: 'pro' },
+  { ad: 'Pro — Mekanik + Elektrik', seviye: 'pro' },
+];
+
+describe('SEVIYE_ETIKET — rozet adı kart başlığıyla aynı dili konuşur', () => {
+  it('iki seviyenin ekran adı birebir (Türkçe karakterli)', () => {
+    expect(SEVIYE_ETIKET).toEqual({
+      core: 'Basic — malzeme',
+      pro: 'Pro — malzeme + işçilik + DWG',
+    });
+  });
+
+  it.each(CANLI_PAKETLER_15_09)('"$ad" kartında rozetin paket adı başlıkla aynı', ({ ad, seviye }) => {
+    const baslikAdi = ad.split(' — ')[0];
+    const rozetAdi = SEVIYE_ETIKET[seviye]?.split(' — ')[0];
+    expect(rozetAdi).toBe(baslikAdi);
+  });
+
+  it('fikstür iki seviyeyi de içeriyor (boş küme yeşil vermesin)', () => {
+    expect(new Set(CANLI_PAKETLER_15_09.map((p) => p.seviye))).toEqual(new Set(['core', 'pro']));
+  });
+});
+
+/**
+ * 15.09 (Emre kararı): müşteriye görünen en ucuz paket adı "Basic"; `core` yalnız
+ * iç seviye kodu (backend `enum Tier { core pro suite }`). Kenar çubuğu kodu
+ * basıyordu → "CORE". Kenar çubuğunun bu işlevi GERÇEKTEN kullandığı
+ * `turkce-metin.test.ts` "Paket adı" bloğunda (bağlantı).
+ */
+describe('seviyeAdi — ekrana seviye KODU değil paket ADI gider', () => {
+  it('core → Basic, pro → Pro, suite → Suite', () => {
+    expect(seviyeAdi('core')).toBe('Basic');
+    expect(seviyeAdi('pro')).toBe('Pro');
+    expect(seviyeAdi('suite')).toBe('Suite');
+  });
+
+  it('hiçbir ekran adı "Core" değil; tanınmayan kod AYNEN döner (sessizce "Basic" demez)', () => {
+    expect(Object.values(SEVIYE_AD).filter((ad) => /core/i.test(ad))).toEqual([]);
+    expect(seviyeAdi('kurumsal')).toBe('kurumsal');
+  });
+
+  it('kart rozeti aynı adı taşır — tek kaynak', () => {
+    const kodlar = Object.keys(SEVIYE_ETIKET);
+    expect(kodlar).toEqual(['core', 'pro']);
+    for (const kod of kodlar) expect(SEVIYE_ETIKET[kod].split(' — ')[0]).toBe(seviyeAdi(kod));
   });
 });
 

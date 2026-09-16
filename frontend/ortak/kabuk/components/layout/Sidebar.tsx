@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 // collapsed state layout'tan gelir
 import { cn } from '@/ortak/lib/utils';
+import { seviyeAdi } from '@/ozellik/odeme/paket-bicim';
 
 interface SidebarProps {
   user: { email: string; role: string; tier?: string } | null;
@@ -26,7 +27,7 @@ const NAV_ITEMS = [
   { href: '/quotes', label: 'Teklifler', icon: FileText },
   'divider' as const,
   { href: '/materials', label: 'Malzeme Havuzu', icon: Database },
-  { href: '/library', label: 'Kutuphanem', icon: BookOpen },
+  { href: '/library', label: 'Kütüphanem', icon: BookOpen },
   'divider' as const,
   // ADIM 2: abonelik menude DAIMA gorunur. Erisimi kapali firmanin
   // odeme yapabilecegi tek yol burasi; kosullu gizlemek askidaki
@@ -139,19 +140,22 @@ export default function Sidebar({ user, collapsed, onToggle }: SidebarProps) {
           {!collapsed && (
             <div className="min-w-0 flex-1 overflow-hidden">
               <p className="truncate text-xs font-semibold text-white">
-                {user?.email?.split('@')[0] ?? 'Kullanici'}
+                {user?.email?.split('@')[0] ?? 'Kullanıcı'}
               </p>
               {/* ⚠ TIER RENGI KORUNDU: kullanicinin tasarimi PRO ornegini
                   mavi gosteriyor ama renk burada BILGI tasiyor — core gri,
                   pro mavi, suite mor. Hepsini maviye sabitlemek paket
                   ayrimini ekrandan silerdi. */}
+              {/* ⚠ 15.09 (Emre karari): KOD degil AD basilir. `{tier}` + uppercase
+                  musteriye "CORE" gosteriyordu; paketin adi "Basic". Renk koddan,
+                  yazi adindan (paket-bicim.ts SEVIYE_AD, tek kaynak). */}
               <span
                 className={cn(
                   'inline-block text-[10px] font-bold uppercase tracking-wider',
                   tierStyle.text,
                 )}
               >
-                {tier}
+                {seviyeAdi(tier)}
               </span>
             </div>
           )}

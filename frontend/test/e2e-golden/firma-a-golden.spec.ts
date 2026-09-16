@@ -463,7 +463,8 @@ test('BÖLÜM D — ŞAHİNKUL altın senaryosu (sürükle-doldur · KG10 · KG1
     }
   }
   // Marka ETİKETİ, markalar listesi (ayrı istek) gelmeden çözülemez ve hücre
-  // "Marka sec..." placeholder'ı gösterir. 1,2 sn sonra okuyan ilk ölçüm bunu
+  // "Marka seç…" placeholder'ı gösterir (15.09'a kadar "Marka sec..."; desen ikisini de
+  // tanır — yer tutucu yazımı değişince boş hücre "atanmış" sayılmasın). 1,2 sn sonra okuyan ilk ölçüm bunu
   // "seçim kayboldu" sanıyordu — oysa `_marka` kimliği kayıtta duruyor.
   // Etiketin çözülmesini BEKLE, süresini kanıta yaz.
   const etiketBaslangic = t0();
@@ -474,7 +475,7 @@ test('BÖLÜM D — ŞAHİNKUL altın senaryosu (sürükle-doldur · KG10 · KG1
       const el = document.querySelector(`[row-index="${idx}"] [col-id="_marka"] button`);
       return el ? (el.textContent ?? '').trim() : '';
     }, kaynakIdx);
-    if (markaEtiketi && !/Marka sec/i.test(markaEtiketi)) break;
+    if (markaEtiketi && !/Marka se[cç]/i.test(markaEtiketi)) break;
     await page.waitForTimeout(500);
   }
   senaryo.markaEtiketi = { deger: markaEtiketi, sure_ms: t0() - etiketBaslangic };
@@ -494,7 +495,7 @@ test('BÖLÜM D — ŞAHİNKUL altın senaryosu (sürükle-doldur · KG10 · KG1
   expect(kaybolan.map((y) => `${y.cap}(satır${y.idx})`).join(', '),
     'C4: yeniden açılışta doldurulmuş fiyatlar kaybolmamalı').toBe('');
   expect(markaEtiketi, 'C4: yeniden açılışta marka SEÇİMİ de görünmeli (kimlik + etiket)').toMatch(/çayırova|cayirova/i);
-  const markasiz = yenidenAile.filter((y) => /Marka sec/i.test(y.marka) || !y.marka);
+  const markasiz = yenidenAile.filter((y) => /Marka se[cç]/i.test(y.marka) || !y.marka);
   expect(markasiz.map((y) => `${y.cap}(satır${y.idx})`).join(', '),
     'C4: doldurulan 6 hedefin markası da yeniden açılışta görünmeli').toBe('');
   expect(activeCurrency, 'KG13/C4: USD görünümü teklifle persist etmeli').toBe('USD');

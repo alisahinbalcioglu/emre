@@ -4,6 +4,8 @@ import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronRight } from 'lucide-react';
 
+// 15.09 (P1-ek): etiketler Türkçe karakterli. Kırıntı sayfa başlığının hemen
+// üstünde durur; "Hesabim" kırıntısının altında "Hesabım" başlığı yazıyordu.
 const LABEL_MAP: Record<string, string> = {
   dashboard: 'Ana Sayfa',
   quotes: 'Teklifler',
@@ -11,17 +13,17 @@ const LABEL_MAP: Record<string, string> = {
   materials: 'Malzeme Havuzu',
   mechanical: 'Mekanik',
   electrical: 'Elektrik',
-  library: 'Kutuphanem',
+  library: 'Kütüphanem',
   'mechanical-brands': 'Mekanik Markalar',
   'electrical-brands': 'Elektrik Markalar',
   brand: 'Marka',
-  labor: 'Iscilik',
-  'labor-firms': 'Iscilik Firmalari',
-  admin: 'Yonetim',
-  users: 'Kullanicilar',
+  labor: 'İşçilik',
+  'labor-firms': 'İşçilik Firmaları',
+  admin: 'Yönetim',
+  users: 'Kullanıcılar',
   packages: 'Paketler',
-  settings: 'AI Ayarlari',
-  profile: 'Hesabim',
+  settings: 'AI Ayarları',
+  profile: 'Hesabım',
 };
 
 export default function Breadcrumb() {
@@ -52,7 +54,7 @@ export default function Breadcrumb() {
         const href = '/' + segments.slice(0, i + 1).join('/');
         // admin/materials icin ozel label
         let label = LABEL_MAP[seg] ?? decodeURIComponent(seg);
-        if (seg === 'materials' && i > 0 && segments[i - 1] === 'admin') label = 'Malzeme Yonetimi';
+        if (seg === 'materials' && i > 0 && segments[i - 1] === 'admin') label = 'Malzeme Yönetimi';
 
         return (
           <span key={href} className="flex items-center gap-1.5">

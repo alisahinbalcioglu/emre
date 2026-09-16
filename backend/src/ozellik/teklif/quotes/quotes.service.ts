@@ -10,8 +10,8 @@ import { buildExportWorkbook, ExportSonucu, ExportBirim } from './export-engine'
 import { standartCiktiUret } from './standart-cikti';
 import { buildSampleFormat, ExportOverrides, FillContext } from '../../cikti/quote-formats/format-engine';
 import { ExchangeRatesService } from '../../fiyat/exchange-rates/exchange-rates.service';
-import { CeviriService } from '../../giris/ai/ceviri.service';
-import { ceviriAnahtari } from '../../giris/ai/ceviri-kurali';
+import { CeviriService, KAYIT_INDIRGEME_UYARISI } from '../../giris/ai/ceviri.service';
+import { kaynakMetinleriniGeriYaz } from '../../giris/ai/ceviri-kurali';
 import { yukariYuvarla, kalemToplami } from '../../fiyat/matching/pricing';
 import { AntetBilgi, antetKur, antetLogoNotu, ANTET_FIRMA_ALANLARI } from '../../cikti/utils/antet';
 
@@ -34,39 +34,19 @@ export class QuotesService {
   ) {}
 
   /**
-   * EXPORT DILI — sayfa metinlerini ONBELLEKTEKI ceviriyle degistirir (13.08).
+   * Ceviri sonucunu export ozetine ekler ("İngilizce: N hücre çevrildi").
    *
-   * ── NEDEN BURADA KARAR YOK ─────────────────────────────────────────────────
-   * Hangi hucrenin cevrilebilecegine (dokunulmazlar: cap/olcu/kod) KARAR VEREN
-   * tek yer frontend'deki saf modul. Burada yalnizca `Translation` onbelleginde
-   * KAYITLI eslesenler uygulanir; onbellek zaten o kuralin ciktisidir, yani
-   * "DN 20" hicbir zaman gonderilmedigi icin burada da degismez. Kurali ikinci
-   * kez yazmak, zamanla birbirinden ayrilan iki gercek uretirdi.
-   *
-   * ── NEDEN API'YE GITMEZ ────────────────────────────────────────────────────
-   * Export bir indirme yolu: 15.000 satirlik bir teklifte AI beklemek indirmeyi
-   * dakikalara cikarir ve kullanicinin ISTEMEDIGI bir harcama uretir. Ekranda
-   * "Ingilizceye Cevir" zaten onbellegi doldurur; export onu KULLANIR.
-   * Onbellekte olmayan metin TURKCE kalir — sessizce degil, cagiran tarafa
-   * sayisi bildirilerek.
+   * Faz 6.10 (15.09): Turkce kalan hucre sayisi artik YOK — Ingilizce dosya ya
+   * tam Ingilizce iner ya hic inmez (`CeviriService.disaAktarimCevirisi`).
    */
-  /**
-   * Ceviri sonucunu export ozetine ekler.
-   *
-   * ⚠ EKSIK SAYISI GIZLENMEZ: onbellekte bulunmayan metin dosyaya TURKCE iner.
-   * Bunu soylemeyen bir ozet, kullanicinin yarim Ingilizce bir teklifi
-   * musteriye gondermesine ve FARK ETMEMESINE yol acar.
-   */
-  private ceviriOzetiEkle(ozet: string | undefined, c: { cevrilen: number; eksik: number }): string | undefined {
-    if (c.cevrilen === 0 && c.eksik === 0) return ozet;
-    const parca = c.eksik > 0
-      ? `İngilizce: ${c.cevrilen} hücre çevrildi, ${c.eksik} hücre Türkçe kaldı (önbellekte yok)`
-      : `İngilizce: ${c.cevrilen} hücre çevrildi`;
+  private ceviriOzetiEkle(ozet: string | undefined, cevrilen: number): string | undefined {
+    if (cevrilen === 0) return ozet;
+    const parca = `İngilizce: ${cevrilen} hücre çevrildi`;
     return ozet ? `${ozet} · ${parca}` : parca;
   }
 
   /**
-   * EXPORT DILI COZUMU — parametre > kayitli alan (13.08).
+   * EXPORT DILI COZUMU — parametre > kayitli alan (13.08 · Faz 6.10 15.09).
    *
    * ⚠ NEDEN YALNIZ PARAMETREYE GUVENILMEZ: dil parametresi FRONTEND'in
    * gonderdigi bir deger ve frontend her zaman guncel degil — kullanicinin
@@ -76,57 +56,25 @@ export class QuotesService {
    * durur ve bayat istemciden ETKILENMEZ. Parametre geldiyse o kazanir
    * (ekranin ANLIK durumu kayittan yenidir — kullanici az once "Turkceye
    * Don" demis olabilir); gelmediyse kayit konusur.
+   *
+   * `kaynak` (R1-B6): ACIK = kullanici bu indirmede dili secti (Ingilizce tam
+   * degilse indirme DURUR, gerekceli mesajla); KAYIT = parametresiz yol (KVKK
+   * veri indirme baglantisi, bayat istemci) — Ingilizce tam degilse dosya
+   * TAMAMEN Turkce iner, kapi ve kota yok.
    */
-  private exportDili(quote: any, dil?: string): string | undefined {
-    if (dil) return dil;
-    return quote?.displayLanguage === 'en' ? 'en' : undefined;
+  private exportDili(quote: any, dil?: string): { dil: string | undefined; kaynak: 'ACIK' | 'KAYIT' } {
+    if (dil) return { dil, kaynak: 'ACIK' };
+    return { dil: quote?.displayLanguage === 'en' ? 'en' : undefined, kaynak: 'KAYIT' };
   }
 
-  private async sheetleriCevir(
-    sheets: any[],
-    dil: string | undefined,
-  ): Promise<{ cevrilen: number; eksik: number }> {
-    if (dil !== 'en' || !Array.isArray(sheets)) return { cevrilen: 0, eksik: 0 };
-
-    // Faz 6.2: önbellek anahtarı TEK normalizasyondan (ceviri-kurali.ts) —
-    // çeviri ucu haritayı bununla kurar, dışa aktarım bununla uygular.
-    const anahtar = ceviriAnahtari;
-
-    // 1) Aday metinleri topla — yalniz AD alani (insanin okudugu metin).
-    const adaylar: string[] = [];
-    for (const sh of sheets) {
-      const adAlan = sh?.columnRoles?.nameField;
-      if (!adAlan) continue;
-      for (const row of sh?.rowData ?? []) {
-        const a = anahtar(row?.[adAlan]);
-        if (a) adaylar.push(a);
-      }
-    }
-    if (adaylar.length === 0) return { cevrilen: 0, eksik: 0 };
-
-    // 2) Onbellekte KAYITLI olanlari al (karar yok, eslesme var).
-    const harita = await this.ceviri.onbellekHaritasi(adaylar, 'en');
-
-    // 3) Uygula. `_ceviriKaynak` YAZILMAZ: bu, DB'ye donmeyen gecici bir export
-    //    kopyasidir; kaydi kirletmemek icin yalnizca gorunen deger degisir.
-    let cevrilen = 0;
-    let eksik = 0;
-    for (const sh of sheets) {
-      const adAlan = sh?.columnRoles?.nameField;
-      if (!adAlan) continue;
-      for (const row of sh?.rowData ?? []) {
-        const a = anahtar(row?.[adAlan]);
-        if (!a) continue;
-        const ceviri = harita[a];
-        if (ceviri && ceviri !== row[adAlan]) {
-          row[adAlan] = ceviri;
-          cevrilen++;
-        } else if (!ceviri) {
-          eksik++;
-        }
-      }
-    }
-    return { cevrilen, eksik };
+  /**
+   * Turkce dosya: acik 'tr' isteginde isaretli (Duzenle'de Ingilizce
+   * kaydedilmis) hucreler Turkce kaynagina doner, bayat isaretli hucre korunur.
+   * Parametresiz yolda kayit 'tr' ise bugunku gibi dokunulmaz.
+   */
+  private turkceCikti(sheets: unknown, secim: { dil: string | undefined; kaynak: 'ACIK' | 'KAYIT' }): { dil: string | undefined; cevrilen: number; uyari?: string; indirgendi: boolean } {
+    if (secim.dil === 'tr' && secim.kaynak === 'ACIK') kaynakMetinleriniGeriYaz(sheets);
+    return { dil: secim.dil, cevrilen: 0, indirgendi: false };
   }
 
   async parseExcel(userId: string, fileBuffer: Buffer) {
@@ -702,10 +650,14 @@ export class QuotesService {
     const quote = await this.quoteGetir(k, id);
     // 13.08: parametre yoksa teklifin KAYITLI dili konusur (bayat istemci
     // korumasi — bkz. exportDili).
-    dil = this.exportDili(quote, dil);
-    // `dil=en` ise sayfa metinleri onbellekteki ceviriyle degistirilir.
-    // DB'ye YAZILMAZ — yalnizca bu indirmenin kopyasi degisir.
-    const ceviriOzeti = await this.sheetleriCevir(quote.sheets as any[], dil);
+    const secim = this.exportDili(quote, dil);
+    // Faz 6.10 (R1-B6): Ingilizce dosya kapisi quoteNo/rev/arsivden ONCE —
+    // reddedilen indirme numara yakmaz, revizyon yazmaz. Sayfalar bu
+    // indirmenin kopyasidir; DB'ye YAZILMAZ.
+    const ceviri = secim.dil === 'en'
+      ? await this.ceviri.disaAktarimCevirisi(k, id, quote.sheets, secim.kaynak)
+      : this.turkceCikti(quote.sheets, secim);
+    dil = ceviri.dil;
 
     // Teklif no ILK aktarimda atanir, sonra SABIT (T10)
     let quoteNo: string = quote.quoteNo;
@@ -745,15 +697,16 @@ export class QuotesService {
     const parcalar: string[] = [];
     if ((sonuc.eksikDeger ?? 0) > 0) parcalar.push(`${sonuc.eksikDeger} fiyat değeri dosyaya yazılamadı`);
     if ((sonuc.hataArtisi ?? 0) > 0) parcalar.push(`${sonuc.hataArtisi} hücrede formül hatası oluştu`);
-    const uyari = parcalar.length > 0 ? `${parcalar.join('; ')} — çıktıyı kontrol edin.` : undefined;
-    if (uyari) console.warn(`[Export] ⚠ SELF-CHECK (teklif format): ${uyari}`);
+    const kontrol = parcalar.length > 0 ? `${parcalar.join('; ')} — çıktıyı kontrol edin.` : undefined;
+    if (kontrol) console.warn(`[Export] ⚠ SELF-CHECK (teklif format): ${kontrol}`);
+    const uyari = [kontrol, ceviri.uyari].filter(Boolean).join('; ') || undefined;
     // PANO 21a: gorunur ozet (KF7 — iki yol ayni self-check'i tasir)
     const ozet = this.notEkle(this.ceviriOzetiEkle(this.exportOzeti({
       yazilan: sonuc.yazilanDeger ?? 0,
       beklenen: sonuc.beklenenDeger ?? 0,
       fiyatsiz: sonuc.fiyatsizSatir ?? 0,
       toplam: sonuc.sekmeler.reduce((a, b) => a + b.matDeger + b.labDeger, 0),
-    }, sonuc.birim), ceviriOzeti), sonuc.antetNotu);
+    }, sonuc.birim), ceviri.cevrilen), sonuc.antetNotu);
     return { buffer, filename, rev: yeniRev, quoteNo, uyari, ozet };
   }
 
@@ -782,8 +735,11 @@ export class QuotesService {
     // IKIZ (teklif-format yolunun aynisi): iki cikti yolundan biri Ingilizce
     // inip digeri Turkce inseydi, kullanici hangisini indirdigine gore farkli
     // bir gercek yasardi.
-    dil = this.exportDili(quote, dil); // bayat istemci korumasi (bkz. exportDili)
-    const ceviriOzeti = await this.sheetleriCevir(sheetsArr, dil);
+    const secim = this.exportDili(quote, dil); // bayat istemci korumasi (bkz. exportDili)
+    const ceviri = secim.dil === 'en'
+      ? await this.ceviri.disaAktarimCevirisi(k, id, sheetsArr, secim.kaynak)
+      : this.turkceCikti(sheetsArr, secim);
+    dil = ceviri.dil;
     // PANO 18/EX6: ekrandaki birim — TL teklifte kur servisine HIC gidilmez
     const dovizli = quote.displayCurrency === 'USD' || quote.displayCurrency === 'EUR';
     const birim = this.exportBirimi(quote, dovizli ? await this.kurOku() : null);
@@ -799,7 +755,11 @@ export class QuotesService {
     const sonuc = await standartCiktiUret({
       sheetsArr,
       birim,
-      baslik: baslikParcalari.join(' · '),
+      // KAYIT yolunda Turkceye indirgenen dosya bunu KENDI basliginda soyler:
+      // KVKK baglantisi ham indirmedir, HTTP uyari basligi kullaniciya gorunmez.
+      baslik: baslikParcalari.join(' · ') + (ceviri.indirgendi ? ' · Türkçe (İngilizce çevirisi yok)' : ''),
+      // ...ve dosya ACILINCA gorunen ilk sekmede (ORTA-1): Excel son sekmeyi acmaz.
+      acilisNotu: ceviri.indirgendi ? KAYIT_INDIRGEME_UYARISI : undefined,
       // Kolon basliklari + birim kisaltmalari (sabit sozluk, AI yok).
       dil,
       antet: firmaAntet.antet,
@@ -811,12 +771,12 @@ export class QuotesService {
     const fiyatsiz = sonuc.fiyatsizSatir;
     const ozet = this.notEkle(this.ceviriOzetiEkle(
       fiyatsiz > 0 ? `${sonuc.ozet} · ${fiyatsiz} satır fiyatsız (eşleşmemiş)` : sonuc.ozet,
-      ceviriOzeti,
+      ceviri.cevrilen,
     ), firmaAntet.not);
     const temizBaslik = String(quote.title ?? 'Teklif').replace(/[\/:*?"<>|]/g, '-').slice(0, 60);
     const filename = `${temizBaslik} - Fiyatlandırılmış Teklif.xlsx`;
     console.log(`[Export] Standart fiyatlı çıktı (${(sonuc.buffer.length / 1024).toFixed(0)} KB) — ${ozet}`);
-    return { buffer: sonuc.buffer, filename, ozet };
+    return { buffer: sonuc.buffer, filename, uyari: ceviri.uyari, ozet };
   }
 
   /** T10 arsivi: uretilmis revizyonlar. */

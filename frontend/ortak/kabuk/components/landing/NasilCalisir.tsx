@@ -419,7 +419,7 @@ export function NasilCalisir() {
 
   return (
     <>
-      <section className="nc" id="nasil-calisir">
+      <section className="nc scroll-mt-32 md:scroll-mt-24" id="nasil-calisir">
         <div className="nc-wrap">
           <div className="nc-head">
             <span className="pill">
@@ -659,7 +659,7 @@ export function NasilCalisir() {
                 (PaketSurumu.denemeGunu); sabit sayı fiyat değişince sessizce yalan olur. */}
             <p>
               Kurulum yok. Hesabınızı açıp paketinizi seçersiniz; paketler ücretsiz deneme süresiyle
-              başlar ve deneme kart bilgilerinizle açılır. Core pakette malzeme akışının tamamı
+              başlar ve deneme kart bilgilerinizle açılır. Basic pakette malzeme akışının tamamı
               çalışır: havuzdan aktarma, iskonto, eşleştirme, kâr marjı, döviz, İngilizce çıktı ve
               Excel indirme. DWG metrajı ve işçilik fiyatlandırması Pro pakete dâhildir.
             </p>

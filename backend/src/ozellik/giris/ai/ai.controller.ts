@@ -29,6 +29,11 @@ import { CeviriKotaServisi } from '../../odeme/abonelik/ceviri-kota.servisi';
  *   · IP başına dakikada 10 istek
  *   · sınıf DTO: istemci yalnız teklif kimliği gönderir
  *   · kota kontrolü AI çağrısından ÖNCE, satır sayısı SUNUCUDA
+ *
+ * ── GÖRÜNTÜLEME + HEPSİ YA DA HİÇBİRİ (Faz 6.10/6.11, 15.09.2026) ─────
+ * `translate/goruntule` ödenmiş içeriği yeteneksiz gösterir (bakmak ücretsiz);
+ * `translate` eksik kalan çeviride 422 `CEVIRI_TAMAMLANAMADI` döner, kotadan
+ * hiçbir şey düşmez ve harita istemciye verilmez.
  * `translate/correct` global önbelleği değiştirir ve ön yüzde çağıranı yok —
  * giriş yapmış herkese açık olması önbellek zehirleme yoluydu; yalnız admin.
  */
@@ -67,6 +72,21 @@ export class AiController {
     return this.ceviriService.teklifiCevir(kimlikCoz(user), body.quoteId, body.hedefDil ?? 'en');
   }
 
+  /**
+   * BAKMAK ≠ ÇEVİRMEK (Faz 6.11, 15.09): bu teklifin GÜNCEL içeriği için
+   * ödenmiş çeviri varsa haritayı döndürür; yoksa yalnız nedeni ve sayıyı.
+   * Yetenek İSTEMEZ — KALKAN (K-T8): ödemesi durmuş/kısıtlı firma daha önce
+   * ödediği çeviriyi görebilir (`GET /quotes/:id` de yetenek taşımaz). Kota,
+   * kilit, tüketim kaydı ve AI çağrısı YOK. Hız sınırı kovası uç başına:
+   * `translate`'in 10/dk'sını tüketmez.
+   */
+  @Get('translate/goruntule')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { ttl: 60_000, limit: 60 } })
+  translateGoruntule(@CurrentUser() user: unknown, @Query() sorgu: CeviriOnizlemeSorgusuDto) {
+    return this.ceviriService.teklifGorunumu(kimlikCoz(user), sorgu.quoteId);
+  }
+
   /** Çevirmeden ÖNCE: bu teklif kaç satır yer, kalan kota ne, çeviri geçer mi. */
   @Get('translate/onizleme')
   @GerekliYetenek(Yetenek.CEVIRI)
@@ -88,11 +108,16 @@ export class AiController {
     return { ...ozet, ceviriAcik: await this.erisim.yetenekAcikMi(k.firmaId, Yetenek.CEVIRI) };
   }
 
-  /** Yönetici düzeltmesi — önbelleğe 'manual' yazılır, AI ezemez. */
+  /**
+   * Yönetici düzeltmesi — ORTAK önbelleğe 'manual' yazılır, AI ezemez. Faz 6.9:
+   * güvenlik süzgeci + `YoneticiOlayi` aynı transaction'da (kimin yazdığı kalır);
+   * gövde tavanı 32 KB (govde-siniri.ts). Kullanıcının yazma yolu firma
+   * katmanıdır: `CeviriDuzeltmeController`.
+   */
   @Post('translate/correct')
   @UseGuards(RolesGuard)
   @Roles('admin')
-  translateCorrect(@Body() body: CeviriDuzeltmeDto) {
-    return this.ceviriService.duzelt(body.kaynak, body.ceviri, body.hedefDil ?? 'en');
+  translateCorrect(@CurrentUser() yonetici: { id?: string; email?: string } | undefined, @Body() body: CeviriDuzeltmeDto) {
+    return this.ceviriService.duzelt(yonetici, body.kaynak, body.ceviri, body.hedefDil ?? 'en');
   }
 }

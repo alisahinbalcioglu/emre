@@ -37,7 +37,7 @@ const DwgUploader = dynamic(
       <div className="flex h-[60vh] items-center justify-center">
         <div className="flex flex-col items-center gap-2 text-muted-foreground">
           <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-          <p className="text-sm">DWG analiz motoru yukleniyor...</p>
+          <p className="text-sm">DWG analiz motoru yükleniyor…</p>
         </div>
       </div>
     ),
@@ -89,17 +89,17 @@ export default function DwgWorkspacePage() {
         <div className="rounded-xl border bg-card">
           <div className="px-6 py-16 text-center">
             <p className="mb-2 text-lg font-medium text-muted-foreground">
-              DWG metraj icin Pro paket gerekli
+              DWG metrajı için Pro paket gerekli
             </p>
             <p className="mx-auto mb-6 max-w-md text-sm text-muted-foreground">
-              Tesisat projesinden otomatik metraj cikarma Pro pakete dahildir.
-              Mevcut paketinizde teklif olusturma ve Excel akisi acik kalir.
+              Tesisat projesinden otomatik metraj çıkarma Pro pakete dâhildir.
+              Mevcut paketinizde teklif oluşturma ve Excel akışı açık kalır.
             </p>
             <Link
               href="/abonelik"
               className="inline-flex items-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
             >
-              Paketleri gor
+              Paketleri gör
             </Link>
           </div>
         </div>

@@ -11,6 +11,7 @@ import { IyzicoClient, IyzicoAbonelikDetayi } from '../iyzico/iyzico.client';
  *  Geçerli geçişler:
  *
  *      DENEME ──ödeme başarılı──────────────► AKTIF
+ *         ├────ilk tahsilat başarısız──────► ODEME_BEKLIYOR  (Faz 6.12a)
  *         └────süre doldu──────────────────► SONA_ERDI
  *
  *      AKTIF ──tahsilat başarısız──────────► ODEME_BEKLIYOR
@@ -33,8 +34,17 @@ import { IyzicoClient, IyzicoAbonelikDetayi } from '../iyzico/iyzico.client';
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
+// ⚠ FAZ 6.12a (15.09) — DENEME → ODEME_BEKLIYOR EKSIKTI. Olculen zincir:
+// deneme sonu kart reddi → `tahsilatBasarisiz` DENEME satirinda
+// ODEME_BEKLIYOR istiyor → GecersizGecisHatasi → `ilkBasarisizlik` HIC
+// yazilmiyor, dunning ilk bildirimine ulasilmiyor, webhook olayi 5 kez dusup
+// kaliyor, gece mutabakati iyzico UNPAID'ini de "gecersiz gecis" diye
+// atliyordu. Satir DENEME kaliyor, `erisimSonu`nda SONA_ERDI oluyor ve satin
+// alma kapisi SONA_ERDI'yi gecirdigi icin firma YENI deneme aliyordu (32
+// gunluk sonsuz dongu, iptal bile gerekmeden). Denemesi biten HICBIR firmaya
+// hatirlatma ya da yeniden tahsilat denemesi gitmiyordu.
 const GECERLI_GECISLER: Record<AbonelikDurumu, AbonelikDurumu[]> = {
-  DENEME: ['AKTIF', 'SONA_ERDI', 'IPTAL'] as AbonelikDurumu[],
+  DENEME: ['AKTIF', 'ODEME_BEKLIYOR', 'SONA_ERDI', 'IPTAL'] as AbonelikDurumu[],
   AKTIF: ['ODEME_BEKLIYOR', 'IPTAL', 'SONA_ERDI'] as AbonelikDurumu[],
   ODEME_BEKLIYOR: ['AKTIF', 'KISITLI', 'IPTAL', 'SONA_ERDI'] as AbonelikDurumu[],
   KISITLI: ['AKTIF', 'ASKIDA', 'IPTAL', 'SONA_ERDI'] as AbonelikDurumu[],

@@ -20,7 +20,7 @@
  */
 
 /** ⚠ Backend `altyapi/auth/hukuki-surum.ts` ile AYNI olmak ZORUNDA. */
-export const HUKUKI_METIN_SURUMU = '2026-09-09';
+export const HUKUKI_METIN_SURUMU = '2026-09-16';
 
 /**
  * Metinler avukat incelemesinden GEÇMEDİ. `taslak` olduğu sürece her
@@ -31,23 +31,72 @@ export const HUKUKI_METIN_SURUMU = '2026-09-09';
 export const HUKUKI_METIN_DURUMU: 'taslak' | 'onayli' = 'taslak';
 
 /**
- * SATICI KİMLİĞİ — henüz doldurulmadı.
+ * SATICI KİMLİĞİ — ticaret sicilinden (16.09.2026).
  *
- * ⚠ `dolduruldu` false olduğu sürece altbilgi bu bilgileri GÖSTERMEZ.
- * "[FİRMA UNVANI]" yazan bir altbilgi, boş bırakmaktan daha kötüdür:
- * kurumsal alıcıya özensizlik olarak görünür. Değerler girildiğinde
- * `dolduruldu` true yapılır.
+ * ⚠ TEK KAYNAK. Dört metnin tamamı bu sabitten okur; hiçbir metne unvan,
+ * adres, MERSİS, vergi bilgisi ya da iletişim DÜZ YAZILMAZ. Eskiden 42 ayrı
+ * yerde köşeli parantezli yer tutucu vardı ve aynı bilgi 19 farklı yazımla
+ * geçiyordu — biri doldurulup öteki unutulduğunda metin kendi içinde
+ * çelişiyordu.
+ *
+ * ⚠ TELEFON DEĞİŞECEK (Emre, 15.09): tek sabitten okunduğu için tek satır
+ * düzenlemesi dört metni birden günceller.
  */
+const SATICI_ALANLARI = {
+  unvan: 'LİNTU MÜHENDİSLİK LİMİTED ŞİRKETİ',
+  adres:
+    'Zümrütevler Mah. Aşuroğlu Sk. Meydan Apt. No: 43 İç Kapı No: 12 Maltepe/İstanbul',
+  mersis: '0609139123400001',
+  vergiDairesi: 'Küçükyalı',
+  vergiNo: '6091391234',
+  ticaretSicilNo: '1061020',
+  eposta: 'info@metapricex.com',
+  telefon: '+90 544 885 15 64',
+  /**
+   * KEP adresi YOK/bilinmiyor. `null` = "böyle bir bilgi yok" demektir ve
+   * metinde satır HİÇ BASILMAZ — boş bir "KEP:" satırı, olmayan bir kanalı
+   * varmış gibi gösterirdi. Boş dizge KULLANILMAZ: o "dolduruldu mu"
+   * denetiminden de sessizce geçerdi.
+   */
+  kep: null as string | null,
+};
+
+/**
+ * `dolduruldu` ARTIK ELLE YAZILMAZ, TÜRETİLİR.
+ *
+ * ⚠ Bayrağı elle tutmak, yarım doldurulmuş bir kimliğin altbilgiye
+ * sızmasına izin veriyordu: bir alan "[VERGİ NO]" kalmışken bayrağı true
+ * yapmak tek satırlık bir dikkatsizlikti. Kural: alanların hiçbirinde
+ * köşeli parantezli yer tutucu yoksa kimlik doludur. `null` alanlar
+ * (ör. KEP) "bilgi yok" demektir, eksik sayılmaz — metinde de basılmazlar.
+ */
+export function saticiDolduMu(alanlar: Record<string, string | null>): boolean {
+  return Object.values(alanlar).every((d) => d === null || !d.includes('['));
+}
+
 export const SATICI = {
-  dolduruldu: false,
+  ...SATICI_ALANLARI,
   gorunenAd: 'MetaPriceX',
-  unvan: '[FİRMA UNVANI]',
-  adres: '[ADRES]',
-  mersis: '[MERSİS NO]',
-  vergiDairesi: '[VERGİ DAİRESİ]',
-  vergiNo: '[VERGİ NO]',
-  eposta: '[BAŞVURU E-POSTA ADRESİ]',
-  telefon: '[TELEFON]',
+  dolduruldu: saticiDolduMu(SATICI_ALANLARI),
+};
+
+/**
+ * HUKUKİ KARARLAR — satıcı KİMLİĞİ değil, satıcının verdiği KARARLAR.
+ *
+ * ⚠ SATICI'dan AYRI TUTULUYOR: kimlik sicilden okunur ve bugün hazırdır;
+ * bu cümleler ise ticari/hukuki karardır. Aynı nesneye konsaydı, tek bir
+ * hukuki karar beklerken satıcı kimliği de altbilgide kilitli kalırdı.
+ *
+ * ⚠ AYNI CÜMLE İKİ METİNDE: iade kuralı hem Kullanım Koşulları 10. maddede
+ * hem Ön Bilgilendirme Formu 9. bölümde geçiyor. Tek sabitten okunmazsa
+ * biri güncellenip öteki geride kalır (bu deponun tekrarlayan ikiz hatası).
+ */
+export const HUKUKI_KARARLAR = {
+  /** Emre, 15.09 — ürünün BUGÜNKÜ davranışı (kodda kısmi iade yolu yok). */
+  iade:
+    'Kalan günler için iade yapılmaz; dönem sonuna kadar kullanmaya devam edersiniz.',
+  /** Emre, 15.09. */
+  yetkiliMahkeme: 'İstanbul Anadolu Mahkemeleri ve İcra Daireleri',
 } as const;
 
 export interface HukukiBolum {
@@ -77,17 +126,19 @@ export const GIZLILIK: HukukiMetin = {
         "Metni bilerek kısa ve okunabilir tuttuk. Okunmayan uzun bir metin, kimseyi korumaz.",
       ],
       madde: [
-        "Unvan: [FIRMA UNVANI]",
-        "Adres: [ADRES]",
-        "MERSİS No: [MERSIS NO]",
-        "Vergi dairesi / numarası: [VERGI DAIRESI VE VERGI NO]",
-        "İletişim: [BASVURU E-POSTA ADRESI] · [TELEFON]",
+        `Unvan: ${SATICI.unvan}`,
+        `Adres: ${SATICI.adres}`,
+        `MERSİS No: ${SATICI.mersis}`,
+        `Ticaret sicil numarası: ${SATICI.ticaretSicilNo}`,
+        `Vergi dairesi / numarası: ${SATICI.vergiDairesi} / ${SATICI.vergiNo}`,
+        `İletişim: ${SATICI.eposta} · ${SATICI.telefon}`,
+        ...(SATICI.kep ? [`KEP adresi: ${SATICI.kep}`] : []),
       ],
     },
     {
       baslik: "Hangi verilerinizi işliyoruz?",
       paragraflar: [
-        "MetaPriceX, mekanik ve elektrik tesisat işleri için metraj ve teklif hazırlayan firmalara yöneliktir. Her kayıt kendi firmasını açar; bugün ekip daveti gibi bir akış yoktur, bir hesap bir firmaya karşılık gelir.",
+        "MetaPriceX, mekanik tesisat işleri için metraj ve teklif hazırlayan firmalara yöneliktir. Her kayıt kendi firmasını açar; bugün ekip daveti gibi bir akış yoktur, bir hesap bir firmaya karşılık gelir.",
         "Platformu kullanırken aşağıdaki veriler oluşur ve saklanır. Parolanızı düz metin olarak saklamıyoruz; yalnızca geri döndürülemeyen kriptografik özeti tutulur. Parola sıfırlama ve e-posta doğrulama bağlantılarının kendisi de veritabanında düz olarak değil, özet olarak durur.",
       ],
       madde: [
@@ -96,6 +147,7 @@ export const GIZLILIK: HukukiMetin = {
         "Teklif ve proje verisi: müşteri adı, proje adı, hazırlayan kişi, geçerlilik bilgisi, teklifin kendisi (keşif/metraj satırları ve kalem fiyatları) ve yüklediğiniz orijinal .xlsx dosyasının kendisi",
         "DWG dosyaları: yüklediğiniz çizim dosyaları ve bunların firma sahipliği",
         "Kullanım ve ödeme kayıtları: yapay zekâ kullanım kaydı (hangi kullanıcı ve firma, hangi sağlayıcı, kaç jeton, ne maliyet), abonelik, fatura ve havale ödeme kayıtları",
+        "Ücretsiz deneme kaydı: ücretsiz denemeyi başlatan firma ve kişi, hesabınızın e-posta adresi, ödeme formuna yazdığınız e-posta adresi ve telefon, ödeme kuruluşunun müşteri numarası ve kayıt tarihi. E-posta ve telefon karşılaştırma için sadeleştirilmiş biçimde tutulur (e-postada küçük harf, artı işaretinden sonraki kısım ve Gmail adreslerindeki noktalar atılarak; telefonda son 10 hane)",
         "Yönetici işlem kayıtları: bir yöneticinin hesabınız üzerinde yaptığı işlemler, yöneticinin ve hedef kullanıcının e-postasıyla birlikte kaydedilir",
       ],
     },
@@ -120,6 +172,7 @@ export const GIZLILIK: HukukiMetin = {
         "Yapay zekâ destekli ayıklama, eşleştirme ve çeviri — talep ettiğiniz hizmetin ifası; bu adımı siz başlatırsınız",
         "Abonelik, ödeme ve faturalandırma — sözleşmenin ifası ve vergi mevzuatından doğan hukuki yükümlülüğümüz",
         "Güvenlik kayıtları, hatalı giriş denemelerinin sınırlanması, kötüye kullanımın önlenmesi — meşru menfaatimiz",
+        "Ücretsiz denemenin her firma ve kişi için bir kez verilmesi, deneme hakkının tekrar tekrar alınmasının önlenmesi — meşru menfaatimiz",
         "Yönetici işlemlerinin denetim kaydına yazılması — meşru menfaatimiz ve hesap verebilirlik",
         "Açık rıza gerektiren bir işleme yapmamız gerekirse, bunu ayrıca ve açıkça sorarız",
       ],
@@ -159,13 +212,14 @@ export const GIZLILIK: HukukiMetin = {
         "DWG çizim geometrisi, işleme servisinin önbelleğinde 24 saat boyunca kalır.",
         "Fatura, ödeme ve abonelik kayıtları: vergi ve ticaret mevzuatının öngördüğü süre boyunca — [YASAL SAKLAMA SURESI].",
         "Yönetici işlem kayıtları (denetim izi): silinmez. Bu kayıtlar, bir hesap kapatılsa bile o hesap üzerinde kimin ne yaptığının izlenebilmesi için tutulur.",
+        "Ücretsiz deneme kaydı: hesabınız kapatılsa bile saklanır; ücretsiz denemenin aynı firma, e-posta adresi veya telefonla yeniden alınmasını önlemek için tutulur — [DENEME KAYDI SAKLAMA SÜRESİ].",
       ],
     },
     {
       baslik: "Hesabınızı kapattığınızda ne oluyor?",
       paragraflar: [
         "Burada dürüst olmak gerekiyor: hesap kapatma işlemi verinizi o anda imha etmez. Hesabınıza bir kapatma damgası işlenir; girişiniz kapanır, mevcut oturumunuz geçersiz olur ve platformu kullanamazsınız. Verileriniz ise veritabanında kalmaya devam eder.",
-        "Ayrıca, kapatma anından önce alınmış yedeklerde verileriniz 14 gün daha bulunur; yedekler döngüsel olarak yenilendiği için bu süre sonunda o kopyalar da devre dışı kalır. Fatura kayıtları ve yönetici denetim izi ise yukarıda anlatıldığı gibi ayrıca saklanır.",
+        "Ayrıca, kapatma anından önce alınmış yedeklerde verileriniz 14 gün daha bulunur; yedekler döngüsel olarak yenilendiği için bu süre sonunda o kopyalar da devre dışı kalır. Fatura kayıtları, yönetici denetim izi ve ücretsiz deneme kaydı ise yukarıda anlatıldığı gibi ayrıca saklanır.",
         "Verilerinizin kalıcı olarak silinmesini istiyorsanız, aşağıdaki başvuru bölümünden bunu ayrıca talep etmeniz gerekir. Talebinizi mevzuatın izin verdiği ölçüde — yani yasal saklama yükümlülüğü bulunmayan veriler bakımından — karşılarız.",
       ],
     },
@@ -204,7 +258,7 @@ export const GIZLILIK: HukukiMetin = {
     {
       baslik: "Başvuru yolu",
       paragraflar: [
-        "Haklarınızı kullanmak için talebinizi [BASVURU E-POSTA ADRESI] adresine iletebilir veya yazılı olarak [ADRES] adresine gönderebilirsiniz. Başvurunuzu, Veri Sorumlusuna Başvuru Usul ve Esasları Hakkında Tebliğ'e uygun olarak, kimliğinizi tespit etmemize yetecek bilgilerle birlikte yapmanız gerekir.",
+        `Haklarınızı kullanmak için talebinizi ${SATICI.eposta} adresine iletebilir veya yazılı olarak ${SATICI.adres} adresine gönderebilirsiniz. Başvurunuzu, Veri Sorumlusuna Başvuru Usul ve Esasları Hakkında Tebliğ'e uygun olarak, kimliğinizi tespit etmemize yetecek bilgilerle birlikte yapmanız gerekir.`,
         "Talebinizi, niteliğine göre en geç otuz gün içinde ücretsiz olarak sonuçlandırırız. İşlemin ayrıca bir maliyet gerektirmesi hâlinde Kurul'ca belirlenen tarifedeki ücret talep edilebilir.",
         "Başvurunuzun sonucundan memnun kalmazsanız veya otuz gün içinde yanıt alamazsanız, Kişisel Verileri Koruma Kurulu'na şikâyette bulunma hakkınız saklıdır.",
       ],
@@ -228,9 +282,9 @@ export const KULLANIM_KOSULLARI: HukukiMetin = {
     {
       baslik: "1. Taraflar ve bu metnin kapsamı",
       paragraflar: [
-        "Bu Kullanım Koşulları, bir tarafta MetaPriceX platformunu işleten [FİRMA UNVANI] (adres: [FİRMA ADRESİ], MERSİS: [MERSİS NO], vergi dairesi ve numarası: [VERGİ DAİRESİ] / [VERGİ NO]) ile diğer tarafta platforma hesap açan siz arasındadır. Metinde \"biz\" ve \"Platform\" işleticiyi, \"siz\" ve \"Kullanıcı\" hesabı açan kişiyi ve o hesabın bağlı olduğu firmayı ifade eder.",
+        `Bu Kullanım Koşulları, bir tarafta MetaPriceX platformunu işleten ${SATICI.unvan} (adres: ${SATICI.adres}, MERSİS: ${SATICI.mersis}, ticaret sicil no: ${SATICI.ticaretSicilNo}, vergi dairesi ve numarası: ${SATICI.vergiDairesi} / ${SATICI.vergiNo}) ile diğer tarafta platforma hesap açan siz arasındadır. Metinde "biz" ve "Platform" işleticiyi, "siz" ve "Kullanıcı" hesabı açan kişiyi ve o hesabın bağlı olduğu firmayı ifade eder.`,
         "Hesap açtığınızda bu koşulları okuduğunuzu ve kabul ettiğinizi varsayarız. Kabul etmiyorsanız hesap açmayın ve platformu kullanmayın.",
-        "Platform kurumsal kullanıma yöneliktir: mekanik ve elektrik tesisat işi yapan mühendislik ve taahhüt firmaları için tasarlanmıştır. Platformu tüketici sıfatıyla değil, ticari faaliyetiniz kapsamında kullandığınızı kabul edersiniz.",
+        "Platform kurumsal kullanıma yöneliktir: mekanik tesisat işi yapan mühendislik ve taahhüt firmaları için tasarlanmıştır. Platformu tüketici sıfatıyla değil, ticari faaliyetiniz kapsamında kullandığınızı kabul edersiniz.",
       ],
     },
     {
@@ -253,7 +307,7 @@ export const KULLANIM_KOSULLARI: HukukiMetin = {
     {
       baslik: "4. Abonelik, paketler ve ödeme",
       paragraflar: [
-        "Platform ücretlidir. Paketler hem seviyeye hem de çalıştığınız disipline göre farklılaşır (mekanik, elektrik veya her ikisi birlikte). Güncel paketler, kapsamları ve fiyatları uygulama içindeki Abonelik ekranında gösterilir; bu metin fiyat belirlemez, fiyatı Abonelik ekranındaki güncel liste belirler.",
+        "Platform ücretlidir. Paketler seviyeye göre farklılaşır. Elektrik disiplinini kapsayan paketler şu an satışta değildir; hâlihazırda elektrik kapsamlı aboneliği olan firmaların abonelik kapsamı bu nedenle değişmez. Güncel paketler, kapsamları ve fiyatları uygulama içindeki Abonelik ekranında gösterilir; bu metin fiyat belirlemez, fiyatı Abonelik ekranındaki güncel liste belirler. Ücretsiz deneme her firma ve kişi için bir kez verilir; ayrıntısı Mesafeli Satış Sözleşmesi Ön Bilgilendirme Formu'nun 6. bölümündedir.",
         "Kredi kartıyla ödeme iyzico üzerinden alınır. Kart bilgileriniz bize ulaşmaz ve bizde saklanmaz; iyzico tarafında tutulur. Kartınızı Abonelik ekranındaki kart güncelleme adımıyla değiştirebilirsiniz — doğrulama için kartınızdan 1 TL çekilip iade edilir. Banka havalesi/EFT ile ödeme de mümkündür; bu yol elle onaylandığı için erişiminiz, ödemenin tarafımızca görülmesinin ardından açılır.",
         "Ödemeniz alınamazsa hesabınız aniden kapanmaz, kademeli bir süreç işler:",
         "Ödeme tamamlandığında kapatılan yetenekler yeniden açılır. Bu kademelerde size gönderilen bilgilendirme e-postaları, hesabınızın e-posta adresine gider — bu yüzden adresinizin güncel ve erişilebilir olması önemlidir.",
@@ -318,8 +372,8 @@ export const KULLANIM_KOSULLARI: HukukiMetin = {
     {
       baslik: "10. Sözleşmenin sona ermesi",
       paragraflar: [
-        "Aboneliğinizi dilediğiniz zaman Abonelik ekranındaki iptal adımıyla sonlandırabilirsiniz. İptal ettiğinizde erişiminiz o anda kesilmez: ödemesini yaptığınız dönemin sonuna kadar devam eder ve dönem sonunda yenileme yapılmaz. Dönem ortasında yapılan iptallerde kısmi iade konusunda [İADE POLİTİKASI] uygulanır.",
-        "Hesabınızın tamamen kapatılmasını istiyorsanız [İLETİŞİM E-POSTASI] adresine, hesabınızın kayıtlı e-posta adresinden talep göndermeniz gerekir. Şu an için hesabı doğrudan kapatan bir düğme uygulama içinde bulunmamaktadır; talebiniz elle işlenir.",
+        `Aboneliğinizi dilediğiniz zaman Profil sayfanızdaki iptal adımıyla sonlandırabilirsiniz. İptal ettiğinizde erişiminiz o anda kesilmez: ödemesini yaptığınız dönemin sonuna kadar devam eder ve dönem sonunda yenileme yapılmaz. ${HUKUKI_KARARLAR.iade}`,
+        `Hesabınızın tamamen kapatılmasını istiyorsanız buna gerek yok: Profil sayfanızdaki "Hesabımı kapat" bölümünden, parolanızı girerek hesabınızı kendiniz kapatabilirsiniz. Kapatma isteğinizi ${SATICI.eposta} adresine, hesabınızın kayıtlı e-posta adresinden de iletebilirsiniz.`,
         "Hesap kapatıldığında ne olduğunu açıkça belirtmek isteriz: girişiniz kapanır ve platformu kullanamazsınız, ancak verileriniz aynı anda imha edilmez. Kapatma işlemi hesabınıza bir \"kapatıldı\" damgası düşer; kayıtlarınız yedeklerde ve saklama süreleri boyunca sistemde kalmaya devam eder. Fatura, ödeme ve yönetici işlem kayıtları ise ispat ve yasal saklama yükümlülükleri nedeniyle daha uzun süre tutulur. Verilerinizin silinmesine ilişkin haklarınız ve süreler Gizlilik Politikası'nda anlatılır.",
         "Biz de bu sözleşmeyi feshedebiliriz: bu koşulların ağır biçimde ihlali, ödemenin yapılmaması, hukuka aykırı kullanım ya da platformun güvenliğini tehdit eden davranış hâllerinde. Durumun niteliği elverdiği ölçüde önce uyarır ve düzeltmeniz için makul bir süre veririz.",
       ],
@@ -336,14 +390,14 @@ export const KULLANIM_KOSULLARI: HukukiMetin = {
       baslik: "12. Uygulanacak hukuk ve yetkili mahkeme",
       paragraflar: [
         "Bu sözleşmeye Türk hukuku uygulanır.",
-        "Bu sözleşmeden doğan uyuşmazlıklarda [YETKİLİ MAHKEME ŞEHRİ] Mahkemeleri ve İcra Daireleri yetkilidir.",
+        `Bu sözleşmeden doğan uyuşmazlıklarda ${HUKUKI_KARARLAR.yetkiliMahkeme} yetkilidir.`,
         "Taraflar arasında ayrıca imzalanmış yazılı bir çerçeve sözleşme bulunması hâlinde, o sözleşme ile bu metin arasındaki çelişkide imzalı sözleşme hükümleri öncelikli olarak uygulanır.",
       ],
     },
     {
       baslik: "13. İletişim",
       paragraflar: [
-        "Bu koşullarla ilgili sorularınız, abonelik talepleriniz ve hesap kapatma istekleriniz için: [FİRMA UNVANI], [FİRMA ADRESİ], e-posta: [İLETİŞİM E-POSTASI], telefon: [TELEFON].",
+        `Bu koşullarla ilgili sorularınız, abonelik talepleriniz ve hesap kapatma istekleriniz için: ${SATICI.unvan}, ${SATICI.adres}, e-posta: ${SATICI.eposta}, telefon: ${SATICI.telefon}.`,
         "Yazışmalarınızı hesabınızın kayıtlı e-posta adresinden göndermenizi rica ederiz; kimlik doğrulaması bu şekilde daha hızlı yapılır.",
       ],
     },
@@ -460,9 +514,9 @@ export const CEREZ_POLITIKASI: HukukiMetin = {
       baslik: "İletişim",
       paragraflar: [
         "Bu sayfadaki kayıtlarla ilgili sorularınız için bize yazabilirsiniz.",
-        "Veri sorumlusu: [FİRMA UNVANI]",
-        "Adres: [FİRMA ADRESİ]",
-        "E-posta: [İLETİŞİM E-POSTA ADRESİ]",
+        `Veri sorumlusu: ${SATICI.unvan}`,
+        `Adres: ${SATICI.adres}`,
+        `E-posta: ${SATICI.eposta}`,
       ],
     },
   ],
@@ -477,7 +531,7 @@ export const MESAFELI_SATIS: HukukiMetin = {
     {
       baslik: "1. Bu form ve taraflar",
       paragraflar: [
-        "Bu form, MetaPriceX üzerinden satın alacağınız abonelik paketi hakkında sizi satın alma öncesinde bilgilendirmek için hazırlanmıştır. Hizmeti sunan taraf aşağıda bilgileri verilen [FİRMA UNVANI]; alıcı taraf ise hesabı açan kullanıcı ve bu kullanıcının kayıt sırasında oluşturduğu firmadır.",
+        `Bu form, MetaPriceX üzerinden satın alacağınız abonelik paketi hakkında sizi satın alma öncesinde bilgilendirmek için hazırlanmıştır. Hizmeti sunan taraf aşağıda bilgileri verilen ${SATICI.unvan}; alıcı taraf ise hesabı açan kullanıcı ve bu kullanıcının kayıt sırasında oluşturduğu firmadır.`,
         "MetaPriceX'te her kayıt kendi firmasını açar; bir hesap bir firmaya bağlıdır. Paketi satın alan kullanıcı, aynı zamanda o firma adına abonelik sözleşmesini kuran kişidir.",
         "Bu formu satın almadan önce okumanızı öneririz. Sözleşmenin dili Türkçedir. Formun bir kopyasını tarayıcınızdan yazdırabilir veya kaydedebilirsiniz.",
       ],
@@ -488,20 +542,31 @@ export const MESAFELI_SATIS: HukukiMetin = {
         "Aşağıdaki bilgiler, hizmeti sunan ve faturayı düzenleyen tarafa aittir. Sorularınız, talepleriniz ve şikayetleriniz için bu adresleri kullanabilirsiniz.",
       ],
       madde: [
-        "Unvan: [FİRMA UNVANI]",
-        "Adres: [FİRMA ADRESİ]",
-        "MERSİS numarası: [MERSİS NO]",
-        "Vergi dairesi ve numarası: [VERGİ DAİRESİ] / [VERGİ NO]",
-        "Telefon: [TELEFON]",
-        "E-posta: [İLETİŞİM E-POSTASI]",
+        `Unvan: ${SATICI.unvan}`,
+        `Adres: ${SATICI.adres}`,
+        `MERSİS numarası: ${SATICI.mersis}`,
+        `Ticaret sicil numarası: ${SATICI.ticaretSicilNo}`,
+        `Vergi dairesi ve numarası: ${SATICI.vergiDairesi} / ${SATICI.vergiNo}`,
+        `Telefon: ${SATICI.telefon}`,
+        `E-posta: ${SATICI.eposta}`,
+        // KEP yoksa satır HİÇ basılmaz (boş "KEP:" olmayan bir kanalı
+        // varmış gibi gösterirdi).
+        ...(SATICI.kep ? [`KEP adresi: ${SATICI.kep}`] : []),
         "Web sitesi: metapricex.com",
       ],
     },
     {
       baslik: "3. Sözleşmenin konusu ve hizmetin nitelikleri",
       paragraflar: [
-        "MetaPriceX, mekanik ve elektrik tesisat projelerinde metraj çıkarma ve teklif hazırlama işini kolaylaştıran, internet tarayıcısı üzerinden kullanılan bir yazılım hizmetidir. Fiziksel bir ürün teslim edilmez; size bir kutu, CD veya kurulum dosyası gönderilmez. Aldığınız şey, abonelik süresince yazılımı kullanma hakkıdır.",
-        "Hangi özelliklere erişeceğiniz seçtiğiniz pakete bağlıdır. Paketler disipline (mekanik, elektrik ya da ikisi birden) ve seviyeye göre ayrılır: temel seviyede malzeme kütüphanesi ve teklif hazırlama; Pro seviyede bunlara ek olarak işçilik ve DWG üzerinden metraj çıkarma bulunur. Her paketin kapsamı, kullanıcı hakkı ve DWG'nin dahil olup olmadığı satın alma sayfasındaki paket kartında yazar.",
+        "MetaPriceX, mekanik tesisat projelerinde metraj çıkarma ve teklif hazırlama işini kolaylaştıran, internet tarayıcısı üzerinden kullanılan bir yazılım hizmetidir. Fiziksel bir ürün teslim edilmez; size bir kutu, CD veya kurulum dosyası gönderilmez. Aldığınız şey, abonelik süresince yazılımı kullanma hakkıdır.",
+        "Hangi özelliklere erişeceğiniz seçtiğiniz pakete bağlıdır. Paketler seviyeye göre ayrılır: temel seviyede malzeme kütüphanesi ve teklif hazırlama; Pro seviyede bunlara ek olarak işçilik ve DWG üzerinden metraj çıkarma bulunur. Elektrik disiplinini kapsayan paketler şu an satışta değildir; mevcut elektrik kapsamlı aboneliklerin kapsamı değişmez. Her paketin kapsamı, kullanıcı hakkı ve DWG'nin dahil olup olmadığı satın alma sayfasındaki paket kartında yazar.",
+        // ⚠ RAKAM YAZILMAZ: kota tablosu `ceviri-kotasi.ts`de durur ve
+        // değişebilir; rakamı metne yazmak, tablo değişince sözleşmeyi
+        // yalancı yapardı. Metin paket kartına ve Fiyatlar sayfasına
+        // yönlendirir. Kotanın YALNIZ çeviri ucunda uygulandığı ölçüldü
+        // (16.09): `CeviriKotaServisi` yalnız `ai.controller` ve
+        // `ceviri.service`e bağlı — teklif hazırlama etkilenmez.
+        "Paketinize dahil İngilizce çeviri özelliği, her abonelik dönemi için belirli bir satır ve dosya sınırıyla (çeviri kotası) sunulur. Paketinizin kotası paket kartında ve Fiyatlar sayfasında yazar. Kota takvim ayına göre değil abonelik döneminize göre yenilenir; dönem içinde kullanılmayan hak sonraki döneme devretmez. Kota dolduğunda ya da çevirmek istediğiniz dosya kalan kotanızdan büyük olduğunda o dönem için yeni çeviri yapılamaz; teklif hazırlama ve paketinizdeki diğer özellikler bundan etkilenmez. Aynı dosyanın yeniden çevrilmesi kotadan yeniden düşer. Kotanın nasıl sayıldığı Fiyatlar sayfasında ayrıntılı olarak anlatılır.",
         "Hizmetin kullanılabilmesi için internet bağlantısı ve güncel bir web tarayıcısı gerekir. Yazılımı geliştirmeye ve iyileştirmeye devam ederiz; bu nedenle ekranlar ve özellikler zaman içinde değişebilir. Paketinizin kapsamını daraltan esaslı bir değişiklik yapmamız gerekirse sizi önceden bilgilendiririz.",
       ],
     },
@@ -518,13 +583,15 @@ export const MESAFELI_SATIS: HukukiMetin = {
       paragraflar: [
         "Ödeme, ödeme kuruluşu iyzico üzerinden kredi veya banka kartıyla yapılır. Abonelik sayfasında \"Bu paketi seç\" düğmesine bastığınızda önce fatura bilgilerinizi girersiniz, ardından iyzico'nun kart formu sayfaya yüklenir. Bu adımda iyzico'nun kendi betikleri tarayıcınıza yüklenir; ödemenin yapılabilmesi için bu zorunludur.",
         "Kart numaranız, son kullanma tarihiniz ve güvenlik kodunuz doğrudan iyzico'ya iletilir. Bu bilgiler bize ulaşmaz ve sunucularımızda saklanmaz. iyzico'ya ödemenin gerçekleşmesi için adınız, soyadınız, e-posta adresiniz, telefonunuz, kimlik numaranız ve fatura adresiniz iletilir.",
-        "Kartınızı değiştirmeniz gerekirse, size gönderilen kart güncelleme bağlantısını kullanabilir veya [İLETİŞİM E-POSTASI] adresinden bize yazabilirsiniz. Havale/EFT ile ödeme, uygulama içinden kendi başınıza yapabileceğiniz bir yol değildir; bu şekilde ödemek isterseniz önce bizimle iletişime geçmeniz gerekir.",
+        `Kartınızı değiştirmeniz gerekirse, size gönderilen kart güncelleme bağlantısını kullanabilir veya ${SATICI.eposta} adresinden bize yazabilirsiniz. Havale/EFT ile ödeme, uygulama içinden kendi başınıza yapabileceğiniz bir yol değildir; bu şekilde ödemek isterseniz önce bizimle iletişime geçmeniz gerekir.`,
       ],
     },
     {
       baslik: "6. Ücretsiz deneme süresi",
       paragraflar: [
-        "Bir pakette ücretsiz deneme süresi varsa, bu süre paket kartında \"… gün ücretsiz deneme\" şeklinde açıkça yazar. Deneme süresi boyunca paket özelliklerini kullanırsınız ve kartınızdan tahsilat yapılmaz.",
+        "Bir pakette ücretsiz deneme süresi varsa ve deneme hakkınız bulunuyorsa, bu süre Abonelik ekranındaki paket kartında \"… gün ücretsiz deneme\" şeklinde açıkça yazar. Deneme süresi boyunca paket özelliklerini kullanırsınız ve kartınızdan tahsilat yapılmaz.",
+        "Ücretsiz deneme her firma ve kişi için bir kez verilir. Daha önce deneme almış bir firma, e-posta adresi veya telefon numarasıyla yeniden abone olunduğunda deneme uygulanmaz: paket kartında \"Deneme hakkınız daha önce kullanıldı\" yazar ve ilk aylık ücret kart bilgisini girdiğinizde alınır. Bu karşılaştırmada e-posta adresindeki büyük/küçük harf farkı, artı işaretinden sonraki kısım ve Gmail adreslerindeki noktalar dikkate alınmaz. Geçiş döneminde ücretsiz kullanım tanımlanmış hesaplara ayrıca deneme uygulanmaz.",
+        "Ücretsiz denemeyi başlatabilmek için e-posta adresinizin doğrulanmış olması gerekir; ücretli abonelikte bu koşul aranmaz.",
         "Deneme süresi dolduğunda abonelik kendiliğinden ücretli döneme geçer ve ilk tahsilat yapılır. Ücret ödemek istemiyorsanız, deneme süresi dolmadan aboneliğinizi iptal etmeniz yeterlidir (bkz. 9. bölüm); bu durumda kartınızdan çekim yapılmaz.",
         "Deneme süresini başlatabilmek için kart bilgilerinizin girilmesi gerekir; bu, sürenin sonunda hizmetin kesintisiz devam edebilmesi içindir.",
       ],
@@ -541,15 +608,15 @@ export const MESAFELI_SATIS: HukukiMetin = {
       baslik: "8. Cayma hakkı",
       paragraflar: [
         "Mesafeli sözleşmelerde tüketicinin, kural olarak on dört gün içinde gerekçe göstermeden sözleşmeden cayma hakkı vardır. Öte yandan mevzuat, elektronik ortamda anında ifa edilen hizmetler ve tüketiciye anında teslim edilen gayrimaddi (dijital) ürünler için bu hakka istisna öngörmektedir.",
-        "MetaPriceX aboneliği, ödemeniz onaylandığı anda kullanıma açıldığı için bu istisnanın kapsamına girebilir. Bu formda konuyu kesin bir hükümle bağlamıyoruz: cayma hakkının bu hizmet bakımından nasıl uygulanacağı, [FİRMA UNVANI] tarafından hukuki değerlendirme tamamlandıktan sonra bu bölüme açıkça yazılacaktır.",
-        "Uygulamada bugün için geçerli olan durum şudur: aboneliğinizi dilediğiniz an, herhangi bir gerekçe göstermeden ve ek ücret ödemeden iptal edebilirsiniz. İptalin sonuçları bir sonraki bölümde anlatılmıştır. Cayma hakkına ilişkin talebinizi her hâlde [İLETİŞİM E-POSTASI] adresine iletebilirsiniz.",
+        `MetaPriceX aboneliği, ödemeniz onaylandığı anda kullanıma açıldığı için bu istisnanın kapsamına girebilir. Bu formda konuyu kesin bir hükümle bağlamıyoruz: cayma hakkının bu hizmet bakımından nasıl uygulanacağı, ${SATICI.unvan} tarafından hukuki değerlendirme tamamlandıktan sonra bu bölüme açıkça yazılacaktır.`,
+        `Uygulamada bugün için geçerli olan durum şudur: aboneliğinizi dilediğiniz an, herhangi bir gerekçe göstermeden ve ek ücret ödemeden iptal edebilirsiniz. İptalin sonuçları bir sonraki bölümde anlatılmıştır. Cayma hakkına ilişkin talebinizi her hâlde ${SATICI.eposta} adresine iletebilirsiniz.`,
       ],
     },
     {
       baslik: "9. İptal, iade ve hesabınızın kapatılması",
       paragraflar: [
         "Aboneliğinizi kendiniz iptal edebilirsiniz: Profil sayfasını açın, Abonelik kartındaki \"Abonelik yönetimi\" başlığını genişletin ve \"Aboneliği iptal et\" düğmesine basın. Onay verdiğinizde iptal talebiniz anında işlenir; bizimle ayrıca yazışmanız gerekmez.",
-        "İptalden sonra kartınızdan yeni bir çekim yapılmaz, ancak erişiminiz hemen kapanmaz: halihazırda ödemesini yaptığınız dönemin sonuna kadar paketinizi kullanmaya devam edersiniz. Kalan günler için kendiliğinden kısmi iade yapılmaz; iade talebiniz varsa [İLETİŞİM E-POSTASI] adresine yazarak iletebilirsiniz, talebiniz [İADE POLİTİKASI] çerçevesinde değerlendirilir.",
+        `İptalden sonra kartınızdan yeni bir çekim yapılmaz, ancak erişiminiz hemen kapanmaz: ${HUKUKI_KARARLAR.iade} Sorularınız için ${SATICI.eposta} adresine yazabilirsiniz.`,
         "Aboneliği iptal etmek ile hesabı kapatmak farklı şeylerdir. Hesabınızı tamamen kapatmak isterseniz bu talebinizi bize iletebilirsiniz. Hesap kapatıldığında girişiniz kapanır; verileriniz aynı anda imha edilmez, mevzuattan doğan saklama yükümlülükleri ve yedekleme düzenimiz çerçevesinde bir süre daha sistemlerimizde kalır. Ayrıntı için Gizlilik Politikası'na bakabilirsiniz.",
       ],
     },
@@ -572,7 +639,7 @@ export const MESAFELI_SATIS: HukukiMetin = {
       paragraflar: [
         "Satın alma sırasında sizden fatura bilgilerinizi (ad-soyad veya unvan, kimlik/vergi numarası, adres, şehir, telefon) isteriz. Fatura, girdiğiniz bu bilgilere göre düzenlenir; bu nedenle bilgileri eksiksiz ve doğru girmeniz önemlidir.",
         "Tahsilat KDV dahil tutar üzerinden yapılır; faturada matrah ve KDV ayrı satırlar hâlinde gösterilir. Faturanız [FATURA İLETİM YÖNTEMİ] ile tarafınıza iletilir.",
-        "Fatura bilgilerinizde hata olduğunu fark ederseniz [İLETİŞİM E-POSTASI] adresinden bize bildirin.",
+        `Fatura bilgilerinizde hata olduğunu fark ederseniz ${SATICI.eposta} adresinden bize bildirin.`,
       ],
     },
     {
@@ -586,9 +653,92 @@ export const MESAFELI_SATIS: HukukiMetin = {
     {
       baslik: "13. Uyuşmazlık çözümü, şikayet ve iletişim",
       paragraflar: [
-        "Hizmetle ilgili her türlü soru, talep ve şikayetinizi önce doğrudan bize iletmenizi rica ederiz: [İLETİŞİM E-POSTASI] veya [TELEFON]. Sorunların büyük bölümü bu aşamada çözülür.",
+        `Hizmetle ilgili her türlü soru, talep ve şikayetinizi önce doğrudan bize iletmenizi rica ederiz: ${SATICI.eposta} veya ${SATICI.telefon}. Sorunların büyük bölümü bu aşamada çözülür.`,
         "Tüketici sıfatını taşıyan alıcılar, uyuşmazlık hâlinde parasal sınırlara göre yerleşim yerlerindeki Tüketici Hakem Heyetine veya Tüketici Mahkemesine başvurabilir. Güncel parasal sınırlar Ticaret Bakanlığı tarafından her yıl ilan edilir.",
-        "MetaPriceX ticari ve mesleki faaliyet kapsamında kullanılan bir yazılımdır. Hizmeti bu kapsamda alan firmalar tüketici mevzuatının kapsamı dışında kalabilir; bu durumda uyuşmazlıklarda genel hükümler uygulanır ve [YETKİLİ MAHKEME VE İCRA DAİRELERİ] yetkilidir.",
+        `MetaPriceX ticari ve mesleki faaliyet kapsamında kullanılan bir yazılımdır. Hizmeti bu kapsamda alan firmalar tüketici mevzuatının kapsamı dışında kalabilir; bu durumda uyuşmazlıklarda genel hükümler uygulanır ve ${HUKUKI_KARARLAR.yetkiliMahkeme} yetkilidir.`,
+      ],
+    },
+  ],
+};
+
+/**
+ * MESAFELİ SATIŞ SÖZLEŞMESİ — ön bilgilendirme formunun YANINDA, AYNI
+ * sayfada (ikinci bölüm) yayımlanır (Faz 6.4, 16.09).
+ *
+ * ⚠ YENİ HÜKÜM UYDURULMADI. Buradaki her madde, ya ürünün ÖLÇÜLEN
+ * davranışından ya da yukarıdaki ön bilgilendirme formundaki mevcut
+ * hükümden gelir; yalnızca sözleşme biçimine taşındı. İade ve yetkili
+ * mahkeme cümleleri `HUKUKI_KARARLAR`dan, taraf bilgileri `SATICI`dan
+ * okunur — ön bilgilendirme formuyla bir ARADA değişsinler diye.
+ *
+ * ⚠ AYRI ROTASI YOK ve `HUKUKI_SAYFALAR`a EKLENMEZ: listeye eklemek
+ * altbilgiye tıklanınca 404 veren bir bağlantı basardı (bu deponun kuralı:
+ * tıklanınca hiçbir şey yapmayan bağlantı olmaz). /mesafeli-satis sayfası
+ * bu metni ikinci bölüm olarak çizer.
+ */
+export const MESAFELI_SATIS_SOZLESMESI: HukukiMetin = {
+  yol: "/mesafeli-satis#sozlesme",
+  kisaAd: "Mesafeli Satış Sözleşmesi",
+  baslik: "Mesafeli Satış Sözleşmesi",
+  girisNotu:
+    "Aşağıdaki sözleşme, satın alma adımında onayladığınız metindir. Yukarıdaki Ön Bilgilendirme Formu ile birlikte okunur; ikisi arasında çelişki olması hâlinde tüketici/alıcı lehine olan hüküm uygulanır.",
+  bolumler: [
+    {
+      baslik: "1. Taraflar",
+      paragraflar: [
+        `SATICI: ${SATICI.unvan}, ${SATICI.adres}. MERSİS: ${SATICI.mersis}, ticaret sicil no: ${SATICI.ticaretSicilNo}, vergi dairesi ve numarası: ${SATICI.vergiDairesi} / ${SATICI.vergiNo}. E-posta: ${SATICI.eposta}, telefon: ${SATICI.telefon}.`,
+        "ALICI: MetaPriceX'te hesap açan kullanıcı ve bu kullanıcının kayıt sırasında oluşturduğu firma. Alıcının adı, adresi ve iletişim bilgileri, satın alma adımında girdiğiniz fatura bilgileri ile hesabınızdaki kayıtlı bilgilerdir.",
+      ],
+    },
+    {
+      baslik: "2. Sözleşmenin konusu",
+      paragraflar: [
+        "Bu sözleşmenin konusu, ALICI'nın MetaPriceX üzerinden elektronik ortamda sipariş verdiği, nitelikleri ve satış bedeli aşağıda belirtilen abonelik hizmetinin sunulmasıdır. Hizmet, internet tarayıcısı üzerinden kullanılan bir yazılıma abonelik süresince erişim hakkıdır; fiziksel bir ürün teslim edilmez.",
+        "Hizmetin kapsamı seçilen pakete bağlıdır ve satın alma sayfasındaki paket kartında yazar. Paketin kapsamı, kullanıcı hakkı, DWG metrajının dahil olup olmadığı ve İngilizce çeviri kotası, Ön Bilgilendirme Formu'nun 3. bölümünde anlatılmıştır.",
+      ],
+    },
+    {
+      baslik: "3. Bedel, ödeme ve fatura",
+      paragraflar: [
+        "Hizmetin bedeli, satın alma anında paket kartında gösterilen Türk lirası tutardır ve KDV dahildir. Vitrinde ABD doları karşılığı da gösterilebilir; sözleşmenin ve tahsilatın para birimi Türk lirasıdır.",
+        "Ödeme, ödeme kuruluşu iyzico üzerinden kredi veya banka kartıyla alınır. Kart bilgileri SATICI'ya ulaşmaz ve SATICI'da saklanmaz. Banka havalesi/EFT yolu yalnızca SATICI ile önceden iletişime geçilerek kullanılabilir.",
+        "Abonelik bedeli, aksi belirtilmedikçe her dönem başında peşin tahsil edilir. Fatura, Ön Bilgilendirme Formu'nun 11. bölümünde anlatılan usulle düzenlenir ve ALICI'ya iletilir.",
+      ],
+    },
+    {
+      baslik: "4. Süre, otomatik yenileme ve ifa",
+      paragraflar: [
+        "Abonelik, ödemenin onaylanmasıyla başlar ve paket kartında yazan dönem boyunca sürer. Dönem sonunda, ALICI iptal etmediği sürece abonelik aynı koşullarla kendiliğinden yenilenir ve kayıtlı karttan tahsilat yapılır.",
+        "Pakette ücretsiz deneme süresi varsa ve ALICI'nın deneme hakkı bulunuyorsa, deneme süresi boyunca tahsilat yapılmaz; ilk tahsilat deneme süresinin sonunda gerçekleşir. Ücretsiz deneme her firma ve kişi için bir kez verilir.",
+        "Hizmet, elektronik ortamda anında ifa edilir: ödeme onaylandığı anda paket kapsamındaki özellikler ALICI'nın hesabına açılır.",
+      ],
+    },
+    {
+      baslik: "5. Cayma hakkı",
+      paragraflar: [
+        "Cayma hakkına ilişkin açıklamalar Ön Bilgilendirme Formu'nun 8. bölümündedir. Elektronik ortamda anında ifa edilen hizmetler bakımından mevzuatta öngörülen istisna bu hizmet için geçerli olabilir; SATICI bu sözleşmede konuyu kesin bir hükümle bağlamamaktadır ve hukuki değerlendirme tamamlandığında bu bölüm açıkça yazılacaktır.",
+        `Cayma hakkına ilişkin talebinizi her hâlde ${SATICI.eposta} adresine iletebilirsiniz.`,
+      ],
+    },
+    {
+      baslik: "6. İptal ve iade",
+      paragraflar: [
+        "ALICI aboneliğini dilediği an, gerekçe göstermeden ve ek ücret ödemeden Profil sayfasından iptal edebilir. İptal, bir sonraki yenilemeyi durdurur.",
+        `İptalin sonuçları şöyledir: ${HUKUKI_KARARLAR.iade}`,
+      ],
+    },
+    {
+      baslik: "7. Kişisel veriler ve yüklenen dosyalar",
+      paragraflar: [
+        "ALICI'nın kişisel verilerinin işlenmesi Gizlilik Politikası ve KVKK Aydınlatma Metni'ne tabidir. ALICI, teklif hazırlamak için yüklediği Excel/PDF dosyalarının içeriğinin bir kısmının yapay zekâ destekli ayıklama ve çeviri adımlarında yurt dışındaki bir yapay zekâ sağlayıcısına gönderildiğini bildiğini kabul eder.",
+      ],
+    },
+    {
+      baslik: "8. Uyuşmazlık, şikayet ve yürürlük",
+      paragraflar: [
+        `Bu sözleşmeye Türk hukuku uygulanır. Uyuşmazlıklarda ${HUKUKI_KARARLAR.yetkiliMahkeme} yetkilidir. Tüketici sıfatını taşıyan alıcılar bakımından, parasal sınırlar dahilinde Tüketici Hakem Heyetleri ve Tüketici Mahkemeleri'ne başvuru hakkı saklıdır.`,
+        `Şikayetlerinizi önce doğrudan ${SATICI.eposta} adresine iletmenizi rica ederiz.`,
+        "Bu sözleşme, ALICI'nın satın alma adımında Ön Bilgilendirme Formu ile birlikte onay vermesiyle kurulur. Onay tarihi ve onaylanan metin sürümü SATICI tarafından kayıt altına alınır.",
       ],
     },
   ],

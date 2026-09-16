@@ -330,7 +330,14 @@ async function main() {
   const yazilanlar: any[] = [];
   const sahtePrisma = (kullanici: any) =>
     ({
-      user: { findUnique: async () => kullanici, update: async () => kullanici },
+      // Faz 6.12a / K-P6 (16.09, BİLİNÇLİ): sifirlamaIste artık harfe duyarsız
+      // yardımcıyla (`epostaIleKullaniciBul`, tek sorgu = findMany) arıyor. Bu blok
+      // numaralandırmayı ölçer; eşleşme kuralının kendisi test:deneme-hakki G7'de.
+      user: {
+        findUnique: async () => kullanici,
+        findMany: async () => (kullanici ? [kullanici] : []),
+        update: async () => kullanici,
+      },
       passwordResetToken: {
         updateMany: async () => ({ count: 0 }),
         create: async (a: any) => {

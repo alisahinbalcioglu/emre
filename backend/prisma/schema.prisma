@@ -955,8 +955,13 @@ model AiUsageLog {
 /// vana" her kullanicida "ball valve"dir. Global olmasi onbellek isabetini
 /// katbekat artirir.
 ///
-/// `kaynak` alani AI cevirisi ile KULLANICI DUZELTMESINI ayirir: duzeltme
+/// `kaynak` alani AI cevirisi ile YONETICI DUZELTMESINI ayirir: duzeltme
 /// yazildiginda bir daha AI'ya sorulmaz ve her teklifte gecerli olur.
+///
+/// FAZ 6.9 (T2): `kaynak='manual'` = YÖNETİCİ düzeltmesi (ORTAK katman; yazımı
+/// `YoneticiOlayi` `ceviri.ortak.duzeltildi` bırakır). Kullanıcı bu tabloya
+/// hiçbir uçtan yazamaz: firma düzeltmesi `CeviriDuzeltmesi`nde durur ve okuma
+/// anında ortağın ÜSTÜNE biner (siler değil).
 model Translation {
   id             String   @id @default(uuid())
   sourceText     String // normalize edilmis kaynak metin
@@ -985,10 +990,13 @@ model Translation {
 /// Dönem alanları istek anındaki abonelik dönemini DENETİM İÇİN taşır; sayım
 /// `olusturuldu` aralığıyla yapılır (çapa değişse de kayıt kaybolmaz).
 ///
-/// ⚠ SAYIM `dusulenSatir` ÜZERİNDENDİR, `satirSayisi` DEĞİL: kısmen tamamlanan
-/// çeviride yalnız TESLİM EDİLEN satır düşer; aynı içeriğin 10 dk içindeki
-/// devamı yalnız yeni teslim edilen satırı düşer (`toplamTeslim` zinciri) ve
-/// dosya hakkından ikinci kez yemez (`devam`).
+/// ⚠ SAYIM `dusulenSatir` ÜZERİNDENDİR, `satirSayisi` DEĞİL. 15.09'dan (REVİZE
+/// K-T7, hepsi ya da hiçbiri) itibaren çeviri ya tamamlanır (BASARILI, satırın
+/// tamamı düşer) ya hiç düşmez (BASARISIZ). 14.09-15.09 arası yazılmış KISMI ve
+/// `devam` kayıtları geçmiş tüketim olarak sayılmaya devam eder.
+///
+/// Ödenmiş içerik kanıtı (Faz 6.11): aynı firma + teklif + dil + özet için
+/// BASARILI kayıt — pencere ve dönem süzgeci yok (`ceviri-kota.servisi.ts`).
 model CeviriTuketimi {
   id             String              @id @default(uuid())
   firmaId        String
@@ -1001,16 +1009,17 @@ model CeviriTuketimi {
   hedefDil       String              @default("en")
   /// Teklifin çevrilecek metin içeren satır sayısı (tanım a) — istek anında.
   satirSayisi    Int
-  /// Kotadan düşen satır. İŞLENİYOR iken ayrılan; sonuçlanınca teslim edilen
-  /// satırdan zincirde önceden düşeni çıkarılmış hâli.
+  /// Kotadan düşen satır. İŞLENİYOR iken ayrılan; sonuçlanınca tamda satırın
+  /// tamamı, eksikte 0 (15.09 öncesi KISMI kayıtta teslim edilen).
   dusulenSatir   Int                 @default(0)
-  /// Bu içerik zincirinde şimdiye kadar teslim edilen satır (devam hesabı).
+  /// Teslim edilen satır. 15.09 öncesi kayıtlarda devam zincirinin toplamı; yeni kayıtta tamda satırın tamamı, eksikte 0.
   toplamTeslim   Int                 @default(0)
-  /// true → yarım kalan bir çevirinin devamı; dosya hakkından yemez.
+  /// true → (yalnız 15.09 öncesi kayıtlar) yarım kalan çevirinin devamı; dosya hakkından yemez. Yeni kayıtta daima false.
   devam          Boolean             @default(false)
   /// API'ye aday benzersiz metin sayısı (önbellek öncesi).
   metinSayisi    Int
-  /// Çeviriyi belirleyen içeriğin sha256 özeti — tekrar koruması bununla bakar.
+  /// Çeviriyi belirleyen içeriğin özeti. v2 = çoklu küme (`ceviri-ozet-v2:`, sıra/miktar duyarsız);
+  /// T1 (15.09) öncesi kayıtlar v1 (sıralı dizi) taşır — ödenmiş içerik kanıtı ikisini de tanır.
   icerikOzeti    String
   durum          CeviriTuketimDurumu @default(ISLENIYOR)
   onbellekten    Int                 @default(0)
@@ -1026,13 +1035,61 @@ model CeviriTuketimi {
 
 /// ISLENIYOR  — kota ayrıldı, çeviri sürüyor (kotaya SAYILIR; zaman aşımında sayılmaz)
 /// BASARILI   — tüm satırlar teslim edildi (`dusulenSatir` kotaya SAYILIR)
-/// KISMI      — bir kısmı teslim edildi (yalnız teslim edilen `dusulenSatir` SAYILIR)
+/// KISMI      — 15.09 sonrası ÜRETİLMEZ (hepsi ya da hiçbiri); eski kayıtlar için durur, sayılır ama kanıt değildir
 /// BASARISIZ  — hiç satır teslim edilmedi (kotaya SAYILMAZ; tekrar denenebilir)
 enum CeviriTuketimDurumu {
   ISLENIYOR
   BASARILI
   KISMI
   BASARISIZ
+}
+
+/// FAZ 6.9 — FİRMA ÇEVİRİ DÜZELTMESİ (insan katmanı, 16.09.2026).
+/// Okuma sırası firma → ortak (Translation) → API. Firma düzeltmesi ortağı EZER, SİLMEZ.
+/// Ortak katman (Translation) makine çevirisi + yönetici düzeltmesidir; kullanıcı yazamaz.
+/// ⚠ TEKİLLİK HAM METİNDE DEĞİL ÖZETTE: Postgres btree satır tavanı ~2,7 KB; uzun
+/// şartname satırı ham metin indeksini "index row size exceeds maximum" ile patlatır.
+/// ⚠ FK YOK, BİLEREK: CeviriTuketimi / AiUsageLog / YoneticiOlayi deseni — firma ya da
+/// kullanıcı kaydı değişse de sözlük ve iz kalır; migration-zinciri K1 bloğu etkilenmez.
+model CeviriDuzeltmesi {
+  id            String   @id @default(uuid())
+  firmaId       String
+  hedefDil      String   @default("en")
+  /// ceviriAnahtari ile normalize kaynak (eşleşme doğrulaması + gösterim)
+  kaynakMetin   String
+  /// sha256(kaynakMetin) hex — `ceviri-katmani.ts` `kaynakOzeti`
+  kaynakOzeti   String
+  ceviriMetni   String
+  olusturanId   String
+  guncelleyenId String
+  olusturuldu   DateTime @default(now())
+  guncellendi   DateTime @updatedAt
+
+  @@unique([firmaId, hedefDil, kaynakOzeti])
+  @@index([firmaId, guncellendi])
+}
+
+/// FAZ 6.9 — FİRMA ÇEVİRİ DÜZELTME OLAYI (denetim izi, K-T12).
+/// Düzeltme yazımıyla AYNI transaction'da ve firma kilidi altında yazılır: ya ikisi ya hiçbiri.
+/// `kullaniciEposta` anlık kopyadır (YoneticiOlayi deseni): hesap kapatılsa da iz okunur.
+model CeviriDuzeltmeOlayi {
+  id              String   @id @default(uuid())
+  firmaId         String
+  userId          String
+  kullaniciEposta String
+  /// 'eklendi' | 'guncellendi' | 'kaldirildi'
+  tip             String
+  duzeltmeId      String?
+  hedefDil        String
+  kaynakMetin     String
+  oncekiDeger     String?
+  yeniDeger       String?
+  /// o anda ortak katmanın karşılığı (yalnız iz; KVKK indirmesi DAHİL hiçbir yolla istemciye DÖNMEZ — Revizyon 1)
+  ortakDeger      String?
+  olusturuldu     DateTime @default(now())
+
+  @@index([firmaId, olusturuldu])
+  @@index([userId, olusturuldu])
 }
 
 /// K1 DONMUS OZEL FIYAT YEDEGI (tur 3 A4c, 14.09) — migration
@@ -1164,6 +1221,16 @@ model PaketSurumu {
   /// iyzico tarafindaki karsiliklari.
   iyzicoPlanKodu String @unique // pricingPlanReferenceCode
   iyzicoUrunKodu String // productReferenceCode
+
+  /// ── FAZ 6.12a (15.09): DENEMESIZ IKIZ PLAN ──────────────────────────────
+  /// Ayni urun, ayni fiyat/periyot, `trialPeriodDays = 0` olan ikinci iyzico
+  /// plani. Deneme gunu iyzico'da PLANA yazilir (abonelik baslatma istegi
+  /// deneme alani TASIMAZ) — deneme hakki daha once kullanilmis firmaya
+  /// "yerelde AKTIF yaz" yetmez: iyzico denemeli planla 30 gun cekmez.
+  /// ⚠ NULL iken hakki olmayan satin alma KAPALI HATA (503) verir; ASLA
+  /// denemeli plana dusulmez (satinalma.servisi.ts `planSec`). Kod
+  /// `paketleri-kur.ts --denemesiz-ikiz --uygula` ile iyzico yanitindan yazilir.
+  iyzicoDenemesizPlanKodu String? @unique
 
   /// SOZLESME TUTARI — kartlan gercekten cekilen, faturaya yazilan tutar.
   /// ⚠ KDV DAHIL brut tutardir: iyzico abonelik planinda ayri KDV satiri
@@ -1308,6 +1375,35 @@ model AbonelikBaslatma {
   /// bir KISI olusturur).
   olusturanId String
 
+  // ── FAZ 6.12a (15.09): DENEME KARARI NIYET ANINDA DONDURULUR ────────────
+  // Sonuclandirma donusten ya da 10 dakikalik kurtarma taramasindan gelir;
+  // o anda form verisi (e-posta, telefon) YOKTUR. Karar ve anahtarlar
+  // iyzico formu acilirken yazilir, sonuclandirma YALNIZ bunlari okur.
+  /// iyzico'ya giden plana gore deneme gunu. NULL = satir bu alan eklenmeden
+  /// ONCEKI kodla yazildi; o kod her zaman surumun denemeli planini
+  /// gonderiyordu, sonuclandirma `paketSurumu.denemeGunu`na duser.
+  denemeGunu       Int?
+  /// iyzico'ya gonderilen plan kodu (denemeli ya da denemesiz ikiz).
+  planKodu         String?
+  /// Deneme kaydi anahtarlari (deneme-hakki.ts ile normalize): hesap
+  /// e-postasi, iyzico formuna yazilan e-posta, form telefonu.
+  epostaNormal     String?
+  formEpostaNormal String?
+  telefonNormal    String?
+
+  // ── FAZ 6.4 (16.09): MESAFELI SATIS ONAYININ IZI ────────────────────────
+  // Satin alma adiminda "On Bilgilendirme Formu'nu ve Mesafeli Satis
+  // Sozlesmesi'ni okudum, onayliyorum" kutusu ZORUNLU. Bir onay kaydinin
+  // degeri "onayladi" bilgisinde degil, HANGI METNI ve NE ZAMAN onayladigi
+  // bilgisindedir; ikisi de niyet satirinda kalir ve abonelik acildiktan
+  // sonra da izlenebilir olur.
+  /// Onay kutusunun isaretlendigi an — SUNUCU saatiyle damgalanir.
+  /// NULL = satir bu alanlar eklenmeden ONCEKI kodla yazildi (o kod onay
+  /// KUTUSU GOSTERMIYORDU); gecmise donuk onay UYDURULMAZ.
+  sozlesmeOnayiZamani DateTime?
+  /// Onaylanan hukuki metin surumu (`altyapi/auth/hukuki-surum.ts`).
+  sozlesmeSurumu      String?
+
   durum              AbonelikBaslatmaDurumu @default(BEKLIYOR)
   /// Sonuclandiginda iyzico'nun verdigi abonelik kodu.
   iyzicoAbonelikKodu String?
@@ -1326,8 +1422,57 @@ model AbonelikBaslatma {
 enum AbonelikBaslatmaDurumu {
   BEKLIYOR // form acildi, donus gelmedi
   TAMAMLANDI // abonelik acildi
-  BASARISIZ // iyzico odemeyi reddetti
+  BASARISIZ // iyzico odemeyi reddetti ya da firmanin etkin aboneligi varken ikinci form tamamlandi (ikinci abonelik iptal edildi)
   VAZGECILDI // pencere doldu, tahsilat da gecmemis
+}
+
+/// ═══════════════════════════════════════════════════════════════════════════
+///  FAZ 6.12a (15.09) — DENEME KULLANIM KAYDI: ucretsiz deneme BIR KEZ
+/// ═══════════════════════════════════════════════════════════════════════════
+///
+/// ⚠ NEDEN AYRI TABLO: deneme karari eskiden yalniz `PaketSurumu.denemeGunu`
+/// > 0 sorusuna bakiyordu; hicbir kimlige bagli degildi. `Abonelik` satiri
+/// yeniden alimda `denemeSonu`nu EZER ve hesap kapatma e-postayi serbest
+/// birakir — "bu firma/kisi daha once deneme aldi mi" sorusunun kalici izi
+/// yoktu. Olculen tekrar yollari: ayni firma iptal/sona erdi, deneme sonu
+/// tahsilat basarisiz, hesap kapat + ayni e-posta, yeni e-posta + ayni
+/// telefon, ayni e-postanin buyuk harfli bicimi.
+///
+/// Satin almada (deneme gunu > 0 olan niyet TAMAMLANDI olurken) bir satir yazilir.
+/// Anahtarlardan HERHANGI BIRI bir satirla eslesirse deneme hakki YOKTUR;
+/// satin alma engellenmez, denemesiz ikiz plana gider.
+///
+/// ⚠ FK YOK ve CASCADE YOK (bilincli): hesap kapatma ya da ileride veri
+/// imhasi bu satiri SILMEMELI — tablonun varlik sebebi kotuye kullanimin
+/// onlenmesidir. Aydinlatma metninde amac ve saklama yaziyor; KVKK veri
+/// indirmesi bu kayitlari da dondurur (hesap.servisi.ts).
+///
+/// TC kimlik ve kart parmak izi BU TURDA YOK (karar K-P1): form sonucu kart
+/// alani tasimiyor ve denemede tahsilat olmadigi icin karar aninda kart yok.
+model DenemeKullanimi {
+  id                 String   @id @default(uuid())
+  firmaId            String
+  /// Formu acan kisi. Miras (gecis) kaydinda NULL.
+  kullaniciId        String?
+  /// Kaynak niyet. Kurtarma taramasi ayni niyeti ikinci kez sonuclandirirsa
+  /// ikinci satir YAZILMAZ (upsert anahtari).
+  abonelikBaslatmaId String?  @unique
+  /// Hesap e-postasi (kapatilmis hesapta kapatilanEposta), normalize.
+  epostaNormal       String?
+  /// iyzico formuna yazilan e-posta, normalize.
+  formEpostaNormal   String?
+  /// Telefonun son 10 hanesi.
+  telefonNormal      String?
+  iyzicoMusteriKodu  String?
+  /// deneme = satin almada verildi · geriye-donuk = migration doldurmasi ·
+  /// miras = gecis firmasinin hakki gecis doneminde kullanilmis sayildi.
+  kaynak             String
+  olusturuldu        DateTime @default(now())
+
+  @@index([firmaId])
+  @@index([epostaNormal])
+  @@index([formEpostaNormal])
+  @@index([telefonNormal])
 }
 
 enum AbonelikDurumu {
@@ -1427,7 +1572,8 @@ model YoneticiOlayi {
   hedefEposta      String?
 
   /// rol.degisti, durum.degisti, paket.degisti, kullanici.silindi,
-  /// abonelik.eklendi, abonelik.kaldirildi
+  /// abonelik.eklendi, abonelik.kaldirildi,
+  /// ceviri.ortak.duzeltildi (Faz 6.9: ORTAK çeviri katmanına yönetici yazımı)
   tip         String
   oncekiDeger String?
   yeniDeger   String?

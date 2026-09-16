@@ -53,7 +53,7 @@ export const ALAN_ETIKET: Record<ZorunluAlan | 'postaKodu', string> = {
   eposta: 'E-posta',
   telefon: 'Telefon',
   kimlikNo: 'TC Kimlik / Vergi No',
-  sehir: 'Il',
+  sehir: 'İl',
   adres: 'Fatura adresi',
   postaKodu: 'Posta kodu',
 };
