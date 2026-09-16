@@ -20,7 +20,7 @@
  */
 
 /** ⚠ Backend `altyapi/auth/hukuki-surum.ts` ile AYNI olmak ZORUNDA. */
-export const HUKUKI_METIN_SURUMU = '2026-09-16';
+export const HUKUKI_METIN_SURUMU = '2026-09-17';
 
 /**
  * Metinler avukat incelemesinden GEÇMEDİ. `taslak` olduğu sürece her
@@ -566,7 +566,7 @@ export const MESAFELI_SATIS: HukukiMetin = {
         // yönlendirir. Kotanın YALNIZ çeviri ucunda uygulandığı ölçüldü
         // (16.09): `CeviriKotaServisi` yalnız `ai.controller` ve
         // `ceviri.service`e bağlı — teklif hazırlama etkilenmez.
-        "Paketinize dahil İngilizce çeviri özelliği, her abonelik dönemi için belirli bir satır ve dosya sınırıyla (çeviri kotası) sunulur. Paketinizin kotası paket kartında ve Fiyatlar sayfasında yazar. Kota takvim ayına göre değil abonelik döneminize göre yenilenir; dönem içinde kullanılmayan hak sonraki döneme devretmez. Kota dolduğunda ya da çevrilecek yeni satır sayısı kalan kotanızdan büyük olduğunda o dönem için yeni çeviri yapılamaz; teklif hazırlama ve paketinizdeki diğer özellikler bundan etkilenmez. Kotadan yalnız daha önce hiç çevrilmemiş satırlar düşer; sistemin karşılığını zaten bildiği satırlar yeniden sayılmaz. Kotanın nasıl sayıldığı Fiyatlar sayfasında ayrıntılı olarak anlatılır.",
+        "Paketinize dahil İngilizce çeviri özelliği, her abonelik dönemi için belirli bir satır ve dosya sınırıyla (çeviri kotası) sunulur. Paketinizin kotası paket kartında ve Fiyatlar sayfasında yazar. Kota takvim ayına göre değil abonelik döneminize göre yenilenir; dönem içinde kullanılmayan hak sonraki döneme devretmez. Kota dolduğunda ya da çevrilecek yeni satır sayısı kalan kotanızdan büyük olduğunda o dönem için yeni çeviri yapılamaz; teklif hazırlama ve paketinizdeki diğer özellikler bundan etkilenmez. Kotadan yalnız daha önce hiç çevrilmemiş satırlar düşer: çeviri karşılıkları bütün kullanıcılar arasında ORTAK bir havuzda tutulur ve havuzda karşılığı bulunan satırlar — karşılığı ister sizin ister başka bir kullanıcının çevirisinden gelmiş olsun — yeniden sayılmaz. Bu havuza yalnız çevrilen metnin kendisi ve İngilizce karşılığı yazılır; fiyat, tutar, müşteri ve firma bilgileri çeviriye gönderilmez. Kendi çeviri sözlüğünüzde yaptığınız düzeltmeler yalnız sizin firmanızın tekliflerinde geçerlidir. Çeviri tamamlanamadığında size çeviri teslim edilmez; bu durumda kotadan yalnız çeviri servisine gönderilmiş ve karşılık alınmış satırlar düşer, karşılık alınamayan satırlar düşmez. Kotanın nasıl sayıldığı Fiyatlar sayfasında ayrıntılı olarak anlatılır.",
         "Hizmetin kullanılabilmesi için internet bağlantısı ve güncel bir web tarayıcısı gerekir. Yazılımı geliştirmeye ve iyileştirmeye devam ederiz; bu nedenle ekranlar ve özellikler zaman içinde değişebilir. Paketinizin kapsamını daraltan esaslı bir değişiklik yapmamız gerekirse sizi önceden bilgilendiririz.",
       ],
     },

@@ -151,12 +151,22 @@ export type CeviriSonucDurumu = 'BASARILI' | 'BASARISIZ';
  * İKİ KURAL BİRLİKTE İŞLER:
  *  · HEPSİ YA DA HİÇBİRİ (REVİZE K-T7, Emre 15.09: "o Excel tam
  *    çevrilemiyorsa çevirmesin") — tek satır bile eksikse BASARISIZ ve
- *    hiçbir şey düşmez (harita da istemciye DÖNMEZ — `CeviriService`).
- *  · PARA HARCANANA HAK DÜŞER (Emre 16.09) — tam çeviride bile kotadan
- *    yalnız API'DEN DÖNEN satırlar düşer. Ortak önbellekten ya da firma
- *    sözlüğünden karşılanan satır Claude'a hiç gitmediği için ücretlenmez.
- *    `apiSatir = 0` ise çeviri BASARILI'dır ama kotadan 0 düşer ve dosya
- *    hakkı da yenmez (sayım `dusulenSatir > 0` olan kaydı dosya sayar).
+ *    TESLİMAT sıfırdır (harita istemciye DÖNMEZ — `CeviriService`).
+ *  · PARA HARCANANA HAK DÜŞER (Emre 16.09) — kotadan yalnız API'YE GİDİP
+ *    KARŞILIK ALINAN satırlar düşer. Ortak önbellekten ya da firma
+ *    sözlüğünden karşılanan satır servise hiç gitmediği için ücretlenmez.
+ *    `apiSatir = 0` ise kotadan 0 düşer ve dosya hakkı da yenmez (sayım
+ *    `dusulenSatir > 0` olan kaydı dosya sayar).
+ *
+ * ⚠ İKİSİ ÇELİŞMEZ, AYRI SORULARDIR (Emre 16.09, ek karar): "teslim edildi
+ * mi" ile "para harcandı mı" aynı soru değildir. Çeviri tamamlanamadığında
+ * kullanıcıya HİÇBİR satır verilmez (durum BASARISIZ, `toplamTeslim` 0) ama
+ * servise gidip karşılık alınan satırların parası harcanmıştır: onlar
+ * DÜŞER. Karşılık alınamayan satır (ağ/sunucu hatası, yanıtsız parça)
+ * düşmez — `apiSatir` zaten yalnız YANIT ALINAN parçaların satırını taşır.
+ * Bu ayrım kaydı da ayrık tutar: `durum = BASARISIZ` + `dusulenSatir > 0`
+ * "teslim edilmedi ama düşüldü" demektir ve dönem SATIR sayımına girer,
+ * DOSYA sayımına girmez (`CeviriKotaServisi.sayimKosulu`).
  *
  * `apiSatir` AYIRMA sayısı değil, GERÇEKLEŞEN sayıdır: ayırma ile çağrı
  * arasında başka bir firma aynı metni çevirip önbelleğe yazmışsa kullanıcı
@@ -169,12 +179,14 @@ export type CeviriSonucDurumu = 'BASARILI' | 'BASARISIZ';
 export function sonucHesabi(p: {
   toplamSatir: number;
   teslimEdilen: number;
-  /** API'den dönen (para harcanan) satır. */
+  /** API'ye gidip KARŞILIK ALINAN (para harcanan) satır. */
   apiSatir: number;
 }): { durum: CeviriSonucDurumu; dusulenSatir: number; toplamTeslim: number } {
   const toplam = Math.max(0, p.toplamSatir);
-  if (p.teslimEdilen < toplam) return { durum: 'BASARISIZ', dusulenSatir: 0, toplamTeslim: 0 };
+  // Düşen satır teslimattan BAĞIMSIZ hesaplanır: harcanan para teslim
+  // edilmemiş olmaktan etkilenmez.
   const dusulenSatir = Math.min(toplam, Math.max(0, p.apiSatir));
+  if (p.teslimEdilen < toplam) return { durum: 'BASARISIZ', dusulenSatir, toplamTeslim: 0 };
   return { durum: 'BASARILI', dusulenSatir, toplamTeslim: toplam };
 }
 
@@ -232,19 +244,33 @@ export function ceviriKapisiReddi(neden: CiktiKapisiNedeni): ForbiddenException 
 }
 
 /**
- * Çeviri TAMAMLANAMADI (REVİZE K-T7): 422. Kotadan hiçbir şey düşmedi, teklif
- * Türkçe kaldı, harita istemciye verilmez; çevrilemeyen metinler listelenir.
- * `satirSayisi` çevrilemeyen metinlerin tuttuğu SATIR; liste metin listesidir
- * (ilk 50). ⚠ 401 değil (oturum düşürülmez), 409 `CEVIRI_SURUYOR`dan ayrı.
+ * Çeviri TAMAMLANAMADI (REVİZE K-T7): 422. Teklif Türkçe kaldı, harita
+ * istemciye verilmez; çevrilemeyen metinler listelenir. `satirSayisi`
+ * çevrilemeyen metinlerin tuttuğu SATIR; liste metin listesidir (ilk 50).
+ * ⚠ 401 değil (oturum düşürülmez), 409 `CEVIRI_SURUYOR`dan ayrı.
+ *
+ * ⚠ `dusulenSatir` (Emre 16.09, ek karar): tamamlanamayan çeviride bile
+ * servise gidip KARŞILIK ALINAN satırlar kotadan düşer — o satırların parası
+ * harcandı. Mesaj bunu SAKLAMAZ: kullanıcı kotasının neden azaldığını
+ * ekranda görmeli ("para/kota kararında sessiz dal yok"). 0 ise eski cümle
+ * (hiçbir şey düşmedi) aynen kurulur; yanıtsız kalan çağrıda durum budur.
  */
 export function ceviriTamamlanamadiHatasi(
   eksikAnahtarlar: readonly string[],
   satirSayisi: number,
+  dusulenSatir = 0,
   sebep?: string,
 ): UnprocessableEntityException {
+  const dusen = Math.max(0, Math.trunc(dusulenSatir));
   const mesaj = 'Çeviri tamamlanamadı, tekrar deneyin';
+  const kotaCumlesi =
+    dusen > 0
+      ? `çeviri servisine gönderilip karşılık alınan ${binlik(dusen)} satır kotanızdan düştü, ` +
+        'karşılık alınamayan satırlar düşmedi. Çevrilebilen satırlar havuza yazıldığı için ' +
+        'tekrar denediğinizde o satırlar yeniden düşmez.'
+      : 'kotadan hiçbir şey düşmedi.';
   const aciklama =
-    `${binlik(satirSayisi)} satır çevrilemedi; kotadan hiçbir şey düşmedi ve teklif Türkçe kaldı. ` +
+    `${binlik(satirSayisi)} satır çevrilemedi ve teklif Türkçe kaldı; ${kotaCumlesi} ` +
     'Tekrar denediğinizde çevrilmiş satırlar beklemeden gelir.' +
     (sebep ? ` Sebep: ${sebep}` : '');
   return new UnprocessableEntityException({
@@ -255,6 +281,8 @@ export function ceviriTamamlanamadiHatasi(
     cevrilemeyenSayisi: satirSayisi,
     cevrilemeyenMetinSayisi: eksikAnahtarlar.length,
     cevrilemeyenSatirlar: eksikAnahtarlar.slice(0, 50),
+    /** Teslim edilmedi ama parası harcandığı için kotadan düşen satır. */
+    dusulenSatir: dusen,
   });
 }
 

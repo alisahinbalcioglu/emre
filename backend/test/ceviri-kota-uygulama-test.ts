@@ -24,6 +24,7 @@ import {
   anahtarSatirlari,
   CEVIRI_KAYNAK_ALANI,
   ceviriAnahtari,
+  ceviriGuvenliMi,
   ceviriIcerigi,
   dokunulmazMi,
   satirKaynagi,
@@ -252,10 +253,20 @@ check('D12 izinli kararda mesaj boş', kotaRedMesaji(kotaKarari({ kota: CORE, ku
   // PARA HARCANANA HAK DÜŞER (Emre 16.09): düşen satır = API'DEN DÖNEN satır.
   const tam = sonucHesabi({ toplamSatir: 300, teslimEdilen: 300, apiSatir: 300 });
   check('D16 tam teslim, hepsi API\'den → BASARILI, hepsi düşer', tam.durum === 'BASARILI' && tam.dusulenSatir === 300 && tam.toplamTeslim === 300, JSON.stringify(tam));
+  // ── HARCANAN SATIR DÜŞER (Emre 16.09 ek kararı) ──
+  // "Teslim edildi mi" ile "para harcandı mı" AYRI sorulardır: tamamlanamayan
+  // çeviride kullanıcıya hiçbir satır verilmez (toplamTeslim 0) ama karşılık
+  // alınan satırların parası harcanmıştır ve kotadan düşer.
   const eksik = sonucHesabi({ toplamSatir: 300, teslimEdilen: 299, apiSatir: 299 });
-  check('D17 ★ tek satır eksik → BASARISIZ, HİÇBİR ŞEY düşmez (kısmi yok)', eksik.durum === 'BASARISIZ' && eksik.dusulenSatir === 0 && eksik.toplamTeslim === 0, JSON.stringify(eksik));
+  check('D17 ★ tek satır eksik → BASARISIZ, TESLİM 0 ama karşılık alınan 299 satır DÜŞER',
+    eksik.durum === 'BASARISIZ' && eksik.dusulenSatir === 299 && eksik.toplamTeslim === 0, JSON.stringify(eksik));
   const hata = sonucHesabi({ toplamSatir: 300, teslimEdilen: 0, apiSatir: 0 });
-  check('D18 ★ hiç teslim yok → BASARISIZ, hiçbir şey düşmez', hata.durum === 'BASARISIZ' && hata.dusulenSatir === 0, JSON.stringify(hata));
+  check('D18 ★ karşılık HİÇ alınamadı (ağ/sunucu hatası) → BASARISIZ, hiçbir şey düşmez', hata.durum === 'BASARISIZ' && hata.dusulenSatir === 0, JSON.stringify(hata));
+  const yarimApi = sonucHesabi({ toplamSatir: 300, teslimEdilen: 0, apiSatir: 120 });
+  check('D18b ★ hiç teslim yok ama 120 satır karşılık aldı → 120 düşer, teslim 0',
+    yarimApi.durum === 'BASARISIZ' && yarimApi.dusulenSatir === 120 && yarimApi.toplamTeslim === 0, JSON.stringify(yarimApi));
+  const basarisizTasma = sonucHesabi({ toplamSatir: 300, teslimEdilen: 10, apiSatir: 900 });
+  check('D18c başarısızda da düşen satır toplamı aşamaz (kırpılır)', basarisizTasma.dusulenSatir === 300, JSON.stringify(basarisizTasma));
   const bos = sonucHesabi({ toplamSatir: 0, teslimEdilen: 0, apiSatir: 0 });
   check('D21 çevrilecek satırı olmayan istek BASARILI, 0 düşer', bos.durum === 'BASARILI' && bos.dusulenSatir === 0);
   const tasma = sonucHesabi({ toplamSatir: 300, teslimEdilen: 999, apiSatir: 300 });
@@ -863,7 +874,11 @@ async function wBlogu(): Promise<void> {
     const t = kur({
       tuketim: [
         tuketimKaydi({ satirSayisi: 0 }), // çevrilecek satırı olmayan istek
-        tuketimKaydi({ satirSayisi: 700, durum: 'BASARISIZ' }),
+        // Yanıtsız kalan çağrı: BASARISIZ ve düşen 0 → hiçbir sayıma girmez.
+        tuketimKaydi({ satirSayisi: 700, durum: 'BASARISIZ', dusulenSatir: 0, toplamTeslim: 0 }),
+        // Karşılık alınmış ama tamamlanamamış çeviri: para harcandı → SATIR
+        // sayımına girer, DOSYA sayımına GİRMEZ (kullanıcıya dosya çıkmadı).
+        tuketimKaydi({ satirSayisi: 400, durum: 'BASARISIZ', dusulenSatir: 400, toplamTeslim: 0 }),
         tuketimKaydi({ satirSayisi: 900, olusturuldu: new Date(Date.now() - 4 * GUN) }), // önceki dönem
         tuketimKaydi({ satirSayisi: 200 }),
         tuketimKaydi({ durum: 'KISMI', satirSayisi: 300, dusulenSatir: 50, toplamTeslim: 50 }),
@@ -871,8 +886,15 @@ async function wBlogu(): Promise<void> {
       ],
     });
     const o = await t.kota.durum(K1);
-    check('W31 sayım: bu dönemin BAŞARILI + KISMI kayıtlarının DÜŞÜLEN satırı (200+50+30)', o?.kullanilanSatir === 280, `${o?.kullanilanSatir}`);
+    check('W31 sayım: BAŞARILI + KISMI + harcanmış BAŞARISIZ kayıtların DÜŞÜLEN satırı (200+50+30+400)', o?.kullanilanSatir === 680, `${o?.kullanilanSatir}`);
     check('W32 sayım: 0 satırlık istek ve DEVAM kaydı dosya sayılmaz (2 dosya)', o?.kullanilanDosya === 2, `${o?.kullanilanDosya}`);
+    // ⚠ BAĞLANTI TESTİ (mekanizma var bağlantı yok): `sonucHesabi` başarısız
+    // kayda satır yazsa bile dönem sayımı onu OKUMAZSA kural hiç işlemez.
+    // Aşağıdaki iki assert kuralın iki yüzünü AYRI ölçer.
+    check('W32b ★ harcanmış BAŞARISIZ kayıt SATIR sayımına girer (400 dönemde görünür)',
+      (o?.kullanilanSatir ?? 0) - 280 === 400, `${o?.kullanilanSatir}`);
+    check('W32c ★ harcanmış BAŞARISIZ kayıt DOSYA sayımına GİRMEZ (teslim edilmedi)',
+      o?.kullanilanDosya === 2 && (o?.kalanDosya ?? 0) === 58, `dosya=${o?.kullanilanDosya} kalan=${o?.kalanDosya}`);
   }
 
   {
@@ -986,25 +1008,36 @@ async function aBlogu(): Promise<void> {
     const e = await hata(() => t.servis.teklifiCevir(K1, Q));
     const sonra = await t.kota.durum(K1);
     const y = yanit(e);
-    check('A1 ★ eksik çeviri: kayıt BASARISIZ, 0 düşer, dönem kullanımı ve dosya DEĞİŞMEZ',
-      t.s.tuketim.length === 1 && t.s.tuketim[0].durum === 'BASARISIZ' && t.s.tuketim[0].dusulenSatir === 0 &&
-      sonra?.kullanilanSatir === once?.kullanilanSatir && sonra?.kullanilanDosya === once?.kullanilanDosya,
+    // ⚠ 16.09 ek kararı: parça YANIT DÖNDÜ (içinde 'ÇELİK BORU' çevirisi
+    // gelmedi ama çağrının parası harcandı) → 3 satırın tamamı düşer. Kayıt
+    // BASARISIZ, teslim 0: "teslim edilmedi ama düşüldü" ayrık durur. DOSYA
+    // hakkı YENMEZ — kullanıcıya dosya çıkmadı.
+    check('A1 ★ eksik çeviri: kayıt BASARISIZ + teslim 0, ama karşılık alınan 3 satır DÜŞER; DOSYA hakkı değişmez',
+      t.s.tuketim.length === 1 && t.s.tuketim[0].durum === 'BASARISIZ' && t.s.tuketim[0].dusulenSatir === 3 &&
+      t.s.tuketim[0].toplamTeslim === 0 &&
+      sonra?.kullanilanSatir === (once?.kullanilanSatir ?? 0) + 3 && sonra?.kullanilanDosya === once?.kullanilanDosya,
       JSON.stringify({ durum: t.s.tuketim[0]?.durum, dusulen: t.s.tuketim[0]?.dusulenSatir, once, sonra }));
     check('A2 ★ 422 gövdesi: kod, mesaj, çevrilemeyen liste/sayı, message dolu, harita YOK',
       y.kod === 'CEVIRI_TAMAMLANAMADI' && y.mesaj === 'Çeviri tamamlanamadı, tekrar deneyin' &&
       JSON.stringify(y.cevrilemeyenSatirlar) === JSON.stringify(['ÇELİK BORU']) && y.cevrilemeyenSayisi === 1 &&
       typeof y.message === 'string' && y.message.length > 0 && !('harita' in y),
       JSON.stringify(y));
-    check('A2b açıklama kotadan düşmediğini ve teklifin Türkçe kaldığını söyler', /kotadan hiçbir şey düşmedi ve teklif Türkçe kaldı/.test(String(y.aciklama)), String(y.aciklama));
+    check('A2b ★ açıklama DÜŞEN satırı ve karşılıksızın düşmediğini SÖYLER (sessiz dal yok), gövdede dusulenSatir var',
+      /karşılık alınan 3 satır kotanızdan düştü/.test(String(y.aciklama)) &&
+      /karşılık alınamayan satırlar düşmedi/.test(String(y.aciklama)) &&
+      /teklif Türkçe kaldı/.test(String(y.aciklama)) && y.dusulenSatir === 3,
+      String(y.aciklama));
     check('A12 durum kodu 422 (401 DEĞİL — oturum düşürülmez)', e?.getStatus?.() === 422, String(e?.getStatus?.()));
     check('A3 çevrilen metin önbelleğe yazıldı', t.s.onbellek['PVC BORU'] === 'PVC PIPE' && t.s.onbellek['ÇELİK BORU'] === undefined, JSON.stringify(t.s.onbellek));
 
     const r2: any = await t.servis.teklifiCevir(K1, Q).catch((e) => ({ hata: String(e), harita: {} }));
     const d2 = await t.kota.durum(K1);
     const basarili = t.s.tuketim.filter((k) => k.durum === 'BASARILI');
-    check('A4 ★ ikinci deneme: API\'ye YALNIZ eksik gider; düşen YALNIZ o metnin satırı (1), dosya 1',
+    // Dönem kullanımı 4 = ilk denemede harcanan 3 + ikinci denemede yeni 1.
+    // Dosya 1: yalnız TESLİM EDİLEN çeviri dosya sayar (başarısız kayıt sayılmaz).
+    check('A4 ★ ikinci deneme: API\'ye YALNIZ eksik gider; düşen YALNIZ o metnin satırı (1), dönem 3+1, dosya 1',
       JSON.stringify(istemci.istekler[1]) === JSON.stringify(['ÇELİK BORU']) && basarili.length === 1 && basarili[0].dusulenSatir === 1 &&
-      basarili[0].onbellektenSatir === 2 && d2?.kullanilanSatir === 1 && d2?.kullanilanDosya === 1 &&
+      basarili[0].onbellektenSatir === 2 && d2?.kullanilanSatir === 4 && d2?.kullanilanDosya === 1 &&
       r2.harita['PVC BORU'] === 'PVC PIPE' && r2.harita['ÇELİK BORU'] === 'STEEL PIPE',
       JSON.stringify({ istekler: istemci.istekler, basarili: basarili.length, d2 }));
     check('A4b ★ ilk denemede API\'ye gidip önbelleğe düşen satır ikinci denemede ÜCRETLENMEZ (tekrar ücretsiz)',
@@ -1014,7 +1047,7 @@ async function aBlogu(): Promise<void> {
     await hata(() => t.servis.teklifiCevir(K1, Q));
     const d3 = await t.kota.durum(K1);
     check('W21f tamamlandıktan sonra aynı istek API\'ye gitmez ve kotayı artırmaz',
-      istemci.istekler.length === 2 && d3?.kullanilanSatir === 1 && d3?.kullanilanDosya === 1, `${istemci.istekler.length} · ${JSON.stringify(d3)}`);
+      istemci.istekler.length === 2 && d3?.kullanilanSatir === 4 && d3?.kullanilanDosya === 1, `${istemci.istekler.length} · ${JSON.stringify(d3)}`);
   }
 
   {
@@ -1028,9 +1061,19 @@ async function aBlogu(): Promise<void> {
   {
     const t = kur({ onbellek: {}, apiAnahtari: API });
     t.istemciBagla(sahteIstemci([() => ({ hata: { status: 401, message: 'invalid x-api-key' } })]));
+    const once6 = await t.kota.durum(K1);
     const e = await hata(() => t.servis.teklifiCevir(K1, Q));
     const y = yanit(e);
+    const sonra6 = await t.kota.durum(K1);
     check('A6 tüm parçalar 401 → 422, açıklamada API anahtarı sebebi, kayıt BASARISIZ', e?.getStatus?.() === 422 && /GECERSIZ/.test(String(y.aciklama)) && t.s.tuketim[0]?.durum === 'BASARISIZ', `${e?.getStatus?.()} · ${y.aciklama}`);
+    // ⚠ KARŞILIK ALINAMAYAN SATIR DÜŞMEZ (Emre 16.09 ek kararı): parça hiç
+    // yanıt dönmediği için para harcanmadı. A1'in ikizi — tek fark yanıtın
+    // gelip gelmemesi; ikisi birlikte kuralın iki yüzünü mühürler.
+    check('A6b ★ yanıtsız çağrı (401): 0 düşer, dönem kullanımı DEĞİŞMEZ, açıklama "hiçbir şey düşmedi" der',
+      t.s.tuketim[0]?.dusulenSatir === 0 && y.dusulenSatir === 0 &&
+      sonra6?.kullanilanSatir === once6?.kullanilanSatir && sonra6?.kullanilanDosya === once6?.kullanilanDosya &&
+      /kotadan hiçbir şey düşmedi/.test(String(y.aciklama)),
+      JSON.stringify({ dusulen: t.s.tuketim[0]?.dusulenSatir, once6, sonra6, aciklama: y.aciklama }));
   }
 
   {
@@ -1103,10 +1146,32 @@ async function aBlogu(): Promise<void> {
     t2.istemciBagla(sahteIstemci([() => ({ ceviriler: [] })]));
     const e = await hata(() => t2.servis.teklifiCevir(K1, Q));
     const y = yanit(e);
-    check('A11b ödenmiş içerikte API yine eksik bırakırsa 422 + liste, harita YOK, kayıt BASARISIZ (0 düşer)',
+    // Yanıt GELDİ ama BOŞ döndü (`ceviriler: []`): çağrının parası harcandı →
+    // o metnin 1 satırı düşer. "Model bir şey döndürmedi" ücretsiz DEĞİLDİR.
+    check('A11b ★ ödenmiş içerikte API BOŞ yanıt dönerse 422 + liste, harita YOK, kayıt BASARISIZ ama 1 satır DÜŞER',
       e?.getStatus?.() === 422 && y.kod === 'CEVIRI_TAMAMLANAMADI' && JSON.stringify(y.cevrilemeyenSatirlar) === JSON.stringify(['ÇELİK BORU']) &&
-      !('harita' in y) && t2.s.tuketim.length === 2 && t2.s.tuketim[1]?.durum === 'BASARISIZ' && t2.s.tuketim[1]?.dusulenSatir === 0,
-      JSON.stringify({ durum: e?.getStatus?.(), y }));
+      !('harita' in y) && t2.s.tuketim.length === 2 && t2.s.tuketim[1]?.durum === 'BASARISIZ' && t2.s.tuketim[1]?.dusulenSatir === 1,
+      JSON.stringify({ durum: e?.getStatus?.(), y, dusulen: t2.s.tuketim[1]?.dusulenSatir }));
+  }
+
+  {
+    // GÜVENLİK SÜZGECİ REDDETTİ AMA PARA HARCANDI (Emre 16.09 ek kararı):
+    // yanıt geldi, K-T11 süzgeci çeviriyi reddetti (kaynakta OLMAYAN bağlantı)
+    // → metin eksik kaldı, 422, önbelleğe yazılmadı; ama çağrının parası
+    // harcandığı için o satır kotadan DÜŞER. Süzgeç ücretsiz bir geri alma
+    // DEĞİLDİR: reddedilen yanıt da fatura üretmiştir.
+    const KOTU = 'PVC PIPE www.kotu-site.com';
+    const t = kur({ onbellek: {}, apiAnahtari: API, teklifler: { [Q]: { firmaId: 'f1', sheets: [sayfa(['PVC BORU'])] } } });
+    t.istemciBagla(sahteIstemci([() => ({ ceviriler: [{ kaynak: 'PVC BORU', ceviri: KOTU }] })]));
+    check('A13 FIXTURE KANITI: süzgeç bu çeviriyi gerçekten reddediyor', ceviriGuvenliMi('PVC BORU', KOTU) === false, KOTU);
+    const e = await hata(() => t.servis.teklifiCevir(K1, Q));
+    const y = yanit(e);
+    const d = await t.kota.durum(K1);
+    check('A13b ★ güvenlik süzgecinin reddettiği satır önbelleğe girmez ama kotadan DÜŞER (1 satır), dosya yenmez',
+      e?.getStatus?.() === 422 && t.s.onbellek['PVC BORU'] === undefined &&
+      t.s.tuketim[0]?.durum === 'BASARISIZ' && t.s.tuketim[0]?.dusulenSatir === 1 &&
+      y.dusulenSatir === 1 && d?.kullanilanSatir === 1 && d?.kullanilanDosya === 0,
+      JSON.stringify({ durum: e?.getStatus?.(), dusulen: t.s.tuketim[0]?.dusulenSatir, d }));
   }
 }
 

@@ -146,8 +146,31 @@ describe('Fiyat sayfası — rakamlar veritabanından (Faz 6.1)', () => {
   it('★ kotadan yalnız daha önce çevrilmemiş satırların düştüğü yazılı', () => {
     const metin = ekranMetni(SAYFA);
     expect(metin).toContain('Kotadan yalnız daha önce hiç çevrilmemiş satırlar düşer.');
-    expect(metin).toContain('Sistemin karşılığını zaten bildiği bir malzeme/iş adı kotanızdan düşmez.');
     expect(metin).toContain('çeviriye başlamadan önce ekranda kaç satırın yeni olduğu yazar');
+  });
+
+  // ★ ORTAK HAVUZ İLAN EDİLİR (Emre 16.09, ikinci karar). "Sistemin karşılığını
+  // zaten bildiği" ifadesi havuzun firmalar arası ORTAK olduğunu söylemiyordu:
+  // kullanıcı kotasının neden düşmediğini bilmeli. Havuzun KAPSAMI ve firma
+  // sözlüğünün yalnız o firmada geçerli olduğu da aynı bölümde yazar.
+  it('★ ortak havuzun bütün kullanıcılar arasında ortak olduğu AÇIKÇA yazılı', () => {
+    const metin = ekranMetni(SAYFA);
+    expect(metin).toContain('Çeviri havuzu bütün MetaPriceX kullanıcıları arasında ortaktır');
+    expect(metin).toContain('sizin ya da başka bir kullanıcının daha önce çevirdiği bir malzeme/iş adı kotanızdan düşmez');
+    // Havuzun kapsamı: yalnız çevrilen metin — fiyat/müşteri verisi değil.
+    expect(metin).toContain('Fiyatlarınız, tutarlarınız, müşteri ve firma bilgileriniz çeviriye hiç gitmez.');
+  });
+
+  it('★ firma sözlüğündeki düzeltmenin YALNIZ o firmada geçerli olduğu yazılı', () => {
+    expect(ekranMetni(SAYFA)).toContain(
+      'bu düzeltme yalnız sizin firmanızın tekliflerinde geçerlidir, ortak havuzu ve başka firmaların çevirisini değiştirmez',
+    );
+  });
+
+  // Eski ifade: havuzun ortak olduğunu SAKLIYORDU. Geri gelirse sayfa yine
+  // eksik anlatır — yasak listesinde tutulur.
+  it('eski "sistemin karşılığını zaten bildiği" ifadesi YOK (havuz saklanmaz)', () => {
+    expect(ekranMetni(SAYFA)).not.toContain('Sistemin karşılığını zaten bildiği bir malzeme/iş adı kotanızdan düşmez.');
   });
 
   it('İngilizce dosya için güncel hâlin çevrilmiş olması gerektiği yazılı (madde 6)', () => {
@@ -158,8 +181,21 @@ describe('Fiyat sayfası — rakamlar veritabanından (Faz 6.1)', () => {
 
   it('çevirinin hepsi ya da hiçbiri olduğu yazılı (madde 7)', () => {
     expect(ekranMetni(SAYFA)).toContain(
-      'Çeviri ya tamamlanır ya hiç yapılmaz: sistem tek bir satırı bile çeviremezse kotadan hiçbir şey düşmez, teklif Türkçe kalır ve çevrilemeyen satırlar size gösterilir; tekrar denemek ücretsizdir.',
+      'Çeviri ya tamamlanır ya hiç yapılmaz: tek bir satır bile çevrilemezse size hiçbir çeviri verilmez ve teklif Türkçe kalır, çevrilemeyen satırlar gösterilir.',
     );
+  });
+
+  // ★ HARCANAN SATIR DÜŞER (Emre 16.09 ek kararı). Sunucu tamamlanamayan
+  // çeviride de karşılık alınan satırı düşürüyor; sayfanın eski "kotadan
+  // hiçbir şey düşmez" cümlesi kalsaydı sessizce yalan söylerdi.
+  it('★ tamamlanamayan çeviride karşılık alınanın düştüğü, alınamayanın düşmediği yazılı', () => {
+    const metin = ekranMetni(SAYFA);
+    expect(metin).toContain('kotadan yalnız çeviri servisine gönderilip karşılık alınan satırlar düşer');
+    expect(metin).toContain('karşılık alınamayan satırlar düşmez');
+    expect(metin).toContain('Düşen satırlar ekranda yazar');
+    // Eski cümle geri gelirse sayfa sunucuyla çelişir.
+    expect(metin).not.toContain('sistem tek bir satırı bile çeviremezse kotadan hiçbir şey düşmez');
+    expect(metin).not.toContain('tekrar denemek ücretsizdir');
   });
 
   it('kota reddinin YENİ satır üzerinden, baştan ve tavanıyla yapıldığı yazılı (madde 8)', () => {

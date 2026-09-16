@@ -184,7 +184,11 @@ export interface SonuclandirmaGirdisi {
   toplamSatir: number;
   /** Bu istekte haritanın karşıladığı satır. */
   teslimEdilen: number;
-  /** GERÇEKTEN API'den dönen satır — kotadan düşecek olan (Emre 16.09). */
+  /**
+   * API'ye gidip GERÇEKTEN KARŞILIK ALINAN satır — kotadan düşecek olan
+   * (Emre 16.09). Çeviri tamamlanamasa da düşer: parası harcanmıştır.
+   * Yanıtsız kalan (ağ/sunucu hatası) parçanın satırı buraya GİRMEZ.
+   */
   apiSatir: number;
   /** Önbellek/sözlükten karşılanan satır — kotadan düşmeyen (denetim). */
   onbellektenSatir: number;
@@ -234,13 +238,35 @@ export class CeviriKotaServisi implements OnApplicationBootstrap {
     return { sayfalar: teklif.sheets, icerik: ceviriIcerigi(teklif.sheets) };
   }
 
-  private sayimKosulu(firmaId: string, donem: { baslangic: Date; bitis: Date }, simdi: Date): Prisma.CeviriTuketimiWhereInput {
+  /**
+   * Dönem sayımı İKİ AYRI soru sorar (Emre 16.09, ek karar):
+   *  · `kapsam: 'satir'` → PARA HARCANAN satır. Tamamlanamayan çeviri de
+   *    servise gidip karşılık aldıysa (`dusulenSatir > 0`) o satırların parası
+   *    harcanmıştır; kayıt `BASARISIZ` olsa bile sayılır. Yanıtsız kalan çağrı
+   *    `dusulenSatir = 0` yazar ve süzgeçten geçmez — yani "ağ hatası kota
+   *    yemez" kuralı sorgunun KENDİSİNDE durur.
+   *  · `kapsam: 'dosya'` → TESLİM EDİLEN çeviri işi. Tamamlanamayan çeviride
+   *    kullanıcıya dosya ÇIKMADI; sağlayıcı kesintisi dönemlik dosya hakkını
+   *    yiyemez. Bu yüzden `BASARISIZ` kayıt dosya sayımına GİRMEZ.
+   *
+   * ⚠ İki sayım tek koşula indirilirse biri sessizce yanlış olur: ortak koşul
+   * ya harcanan satırı kaybeder (gelir açığı) ya da teslim edilmemiş çeviriyi
+   * dosya olarak yazar (müşteri hakkını yer).
+   */
+  private sayimKosulu(
+    firmaId: string,
+    donem: { baslangic: Date; bitis: Date },
+    simdi: Date,
+    kapsam: 'satir' | 'dosya',
+  ): Prisma.CeviriTuketimiWhereInput {
+    const taze = { durum: 'ISLENIYOR' as const, olusturuldu: { gt: new Date(simdi.getTime() - dk(ISLENIYOR_ZAMAN_ASIMI_DK)) } };
     return {
       firmaId,
       olusturuldu: { gte: donem.baslangic, lt: donem.bitis },
       OR: [
         { durum: { in: ['BASARILI', 'KISMI'] } },
-        { durum: 'ISLENIYOR', olusturuldu: { gt: new Date(simdi.getTime() - dk(ISLENIYOR_ZAMAN_ASIMI_DK)) } },
+        taze,
+        ...(kapsam === 'satir' ? [{ durum: 'BASARISIZ' as const, dusulenSatir: { gt: 0 } }] : []),
       ],
     };
   }
@@ -267,10 +293,15 @@ export class CeviriKotaServisi implements OnApplicationBootstrap {
     const kota: CeviriKotasi = { satir: cozulen.satir, dosya: cozulen.dosya };
     const donem = kotaDonemi(ab.olusturuldu, ab.paketSurumu.periyot, ab.paketSurumu.periyotAdedi, simdi);
 
-    const kosul = this.sayimKosulu(firmaId, donem, simdi);
-    const toplam = await db.ceviriTuketimi.aggregate({ where: kosul, _sum: { dusulenSatir: true } });
-    // Dosya: satır düşen ve (15.09 öncesi) bir zincirin DEVAMI olmayan kayıt.
-    const kullanilanDosya = await db.ceviriTuketimi.count({ where: { ...kosul, dusulenSatir: { gt: 0 }, devam: false } });
+    const toplam = await db.ceviriTuketimi.aggregate({
+      where: this.sayimKosulu(firmaId, donem, simdi, 'satir'),
+      _sum: { dusulenSatir: true },
+    });
+    // Dosya: satır düşen, TESLİM EDİLMİŞ ve (15.09 öncesi) bir zincirin
+    // DEVAMI olmayan kayıt — tamamlanamayan çeviri dosya hakkı yemez.
+    const kullanilanDosya = await db.ceviriTuketimi.count({
+      where: { ...this.sayimKosulu(firmaId, donem, simdi, 'dosya'), dusulenSatir: { gt: 0 }, devam: false },
+    });
     const kullanilanSatir = toplam._sum.dusulenSatir ?? 0;
 
     return {
@@ -540,8 +571,11 @@ export class CeviriKotaServisi implements OnApplicationBootstrap {
   }
 
   /**
-   * Ayırmayı kapatır: tam teslimde `BASARILI` ve GERÇEKTEN API'den dönen satır
-   * düşer, eksikte `BASARISIZ` ve hiçbir şey düşmez (`sonucHesabi`). Hâlâ
+   * Ayırmayı kapatır: tam teslimde `BASARILI`, eksikte `BASARISIZ` — ama İKİ
+   * DURUMDA DA kotadan GERÇEKTEN karşılık alınan satır düşer (`sonucHesabi`,
+   * Emre 16.09 ek kararı). `BASARISIZ` + `dusulenSatir > 0` kaydı "teslim
+   * edilmedi ama düşüldü" demektir: dönem SATIR sayımına girer, DOSYA
+   * sayımına girmez (`sayimKosulu`). Hâlâ
    * `ISLENIYOR` olanı ya da ZAMAN AŞIMIYLA kapatılmış olanı günceller — uzun
    * süren iş geç biterse de düşer. Açılışta kapatılan (süreci ölmüş) kayıt
    * sonuçlanamaz zaten.

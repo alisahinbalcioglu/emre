@@ -160,9 +160,12 @@ export interface CeviriSonucu {
   onbellekten: number;
   cevrilen: number;
   /**
-   * API'DEN dönen (para harcanan) anahtarlar. Kotadan düşen satır yalnız
-   * bunlardan sayılır (Emre 16.09) — `onbellekten`/`cevrilen` METIN sayar,
-   * kota SATIR sayar; ikisi arasindaki kopru `anahtarSatirlari`dir.
+   * API'ye GİDİP KARŞILIK ALINAN (para harcanan) anahtarlar. Kotadan düşen
+   * satır yalnız bunlardan sayılır (Emre 16.09) — `onbellekten`/`cevrilen`
+   * METIN sayar, kota SATIR sayar; ikisi arasindaki kopru `anahtarSatirlari`.
+   * ⚠ Ceviri BASARILI olan anahtarlar DEGIL, yanit donen PARCANIN butun
+   * anahtarlari: guvenlik suzgecinin reddettigi ya da modelin atladigi metin
+   * de ucretlenmistir. Yanitsiz parcanin anahtarlari buraya girmez.
    */
   apiAnahtarlari: string[];
   /** API'ye gidip BASARISIZ olan parca sayisi. */
@@ -273,8 +276,10 @@ export class CeviriService {
    *   1. rezerveEt — e-posta, süren çeviri, ÖNBELLEK BAKIŞI, kota; geçmezse
    *      AI'ya HİÇ gidilmez. Ayrılan satır = API'ye gidecek satır.
    *   2. çevir — önbellek/sözlükte olanlar API'ye GİTMEZ
-   *   3. tek metin bile eksikse BASARISIZ + 422 (harita dönmez, hiçbir şey
-   *      düşmez); tamsa BASARILI ve YALNIZ API'den dönen satır düşer
+   *   3. tek metin bile eksikse BASARISIZ + 422 (harita DÖNMEZ); tamsa
+   *      BASARILI. Kotadan HER İKİ DURUMDA da yalnız API'ye gidip KARŞILIK
+   *      ALINAN satır düşer (ek karar 16.09): teslimat ile harcanan para ayrı
+   *      sorulardır. Yanıtsız kalan çağrıda (`catch`) `apiSatir = 0`.
    *
    * ⚠ TEK DAL: 15.09'un "ödenmiş içerik" dalı (kotaya bakmadan API'ye giden
    * tamamlama yolu) kalktı. Ödenmiş içeriğin satırları zaten önbellektedir →
@@ -308,6 +313,11 @@ export class CeviriService {
     const eksik = cevrilemeyenMetinler(r.icerik.metinler, sonuc.harita);
     if (eksik.length > 0) {
       const teslimEdilen = teslimEdilenSatir(r.icerik, sonuc.harita);
+      // ⚠ TESLİMAT 0, DÜŞEN 0 DEĞİL (Emre 16.09 ek kararı): hepsi-ya-da-hiçbiri
+      // gereği kullanıcıya hiçbir satır verilmez, ama karşılık alınan satırların
+      // parası harcandı ve kotadan düşer. Sayı `sonucHesabi`den okunur — mesajda
+      // ve kayıtta AYNI kaynak olsun (ikisi ayrışırsa kullanıcı yalan görür).
+      const hb = sonucHesabi({ toplamSatir, teslimEdilen, apiSatir });
       await this.sonuclandirSessiz(r.kayitId, {
         toplamSatir,
         teslimEdilen,
@@ -316,9 +326,14 @@ export class CeviriService {
         onbellekten: sonuc.onbellekten,
         cevrilen: sonuc.cevrilen,
         basarisizParca: sonuc.basarisiz,
-        hata: `${eksik.length} metin cevrilemedi (${sonuc.basarisiz} parca basarisiz${sonuc.guvensiz ? `, ${sonuc.guvensiz} yanit guvenlik suzgecinden gecmedi` : ''})`,
+        hata: `${eksik.length} metin cevrilemedi (${sonuc.basarisiz} parca basarisiz${sonuc.guvensiz ? `, ${sonuc.guvensiz} yanit guvenlik suzgecinden gecmedi` : ''}), kotadan ${hb.dusulenSatir} satir dustu`,
       });
-      throw ceviriTamamlanamadiHatasi(eksik, toplamSatir - teslimEdilen, this.sebepMetni(sonuc.ilkHata));
+      throw ceviriTamamlanamadiHatasi(
+        eksik,
+        toplamSatir - teslimEdilen,
+        hb.dusulenSatir,
+        this.sebepMetni(sonuc.ilkHata),
+      );
     }
 
     const h = sonucHesabi({ toplamSatir, teslimEdilen: toplamSatir, apiSatir });
@@ -441,9 +456,20 @@ export class CeviriService {
     }
 
     const client = this.anthropicIstemcisi(apiKey);
-    // ⚠ KOTA BURADAN SAYILIR (Emre 16.09): yalnız API'den DÖNEN anahtarlar
-    // ücretlenir. `cevrilen` sayacı metin sayar; kota satır sayacağı için
-    // anahtarların KENDİSİ gerekir (aynı metin 40 satırda geçebilir).
+    /**
+     * ⚠ KOTA BURADAN SAYILIR (Emre 16.09): API'ye GİDİP KARŞILIK ALINAN
+     * anahtarlar ücretlenir. `cevrilen` sayacı metin sayar; kota satır
+     * sayacağı için anahtarların KENDİSİ gerekir (aynı metin 40 satırda
+     * geçebilir).
+     *
+     * ⚠ ÖLÇÜ BİRİMİ PARÇADIR, ÇEVİRİ DEĞİL (ek karar 16.09): fatura çağrı
+     * başına çıkar — bir parça yanıt döndüyse İÇİNDEKİ HER metnin parası
+     * harcanmıştır. Bu yüzden anahtarlar yanıt geldiği anda, çözümlemeden
+     * ÖNCE eklenir; modelin atladığı, güvenlik süzgecinin (K-T11) reddettiği
+     * ya da çözümleme hatasıyla kaybedilen metin de ücretlenmiş sayılır.
+     * Yanıtsız kalan parça (ağ/5xx/429 → `catch`) buraya HİÇ girmez: karşılık
+     * alınamayan satır kullanıcıdan düşmez.
+     */
     const apiAnahtarlari = new Set<string>();
     let cevrilen = 0;
     // Parca sonuclari SAYILIR: "kac denendi / kaci patladi" bilinmeden
@@ -471,6 +497,10 @@ export class CeviriService {
             },
           ],
         } as any);
+
+        // Yanıt GELDİ → bu parçanın parası harcandı (çözümleme başarılı olsa
+        // da olmasa da). Kota kaydı buradan çıkar.
+        for (const m of parca) apiAnahtarlari.add(m);
 
         await this.ai.logUsage({
           kimlik,
@@ -501,8 +531,10 @@ export class CeviriService {
             guvensiz++;
             continue;
           }
+          // ⚠ `apiAnahtarlari.add` BURADA DEĞİL: parça yanıt döndüğü anda
+          // eklendi (para çağrı başına harcanır). Burada tekrar eklemek ölü
+          // satır olurdu — `parca.includes(kaynak)` zaten üstte doğrulandı.
           harita[kaynak] = ceviri;
-          apiAnahtarlari.add(kaynak);
           cevrilen++;
           // ⚠ ANAHTAR BAŞINA (Revizyon 1 R1-A5): tek anahtarın yazımı patlarsa
           // (geçici DB hatası, uzun metnin indeks tavanı) parçanın kalan

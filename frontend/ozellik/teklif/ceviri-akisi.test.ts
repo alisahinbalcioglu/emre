@@ -299,16 +299,42 @@ describe('ceviri-kota gösterimi', () => {
     });
     expect(b.baslik).toBe('Çeviri tamamlanamadı, tekrar deneyin');
     expect(b.hata).toBe(true);
-    expect(b.aciklama).toContain(`9 satır çevrilemedi: «A» · «B» · «C» · «D» · «${'Ş'.repeat(60)}…» (ve 3 satır daha).`);
+    expect(b.aciklama).toContain(`9 satır çevrilemedi: «A» · «B» · «C» · «D» · «${'Ş'.repeat(60)}…» (ve 3 satır daha);`);
     expect(b.aciklama).not.toContain('ALTINCI');
-    expect(b.aciklama).toContain('Kotadan hiçbir şey düşmedi; teklif Türkçe kaldı.');
+    expect(b.aciklama).toContain('teklif Türkçe kaldı. Kotadan hiçbir şey düşmedi.');
     expect(b.aciklama).toContain('Tekrar denediğinizde çevrilmiş satırlar beklemeden gelir.');
   });
 
   it('tamamlanamadı bildirimi: 5 ya da daha az metinde "ve … satır daha" yazılmaz', () => {
     const b = tamamlanamadiBildirimi({ cevrilemeyenSayisi: 2, cevrilemeyenMetinSayisi: 1, cevrilemeyenSatirlar: ['ÇELİK BORU'] });
-    expect(b.aciklama).toContain('2 satır çevrilemedi: «ÇELİK BORU». Kotadan hiçbir şey düşmedi');
+    expect(b.aciklama).toContain('2 satır çevrilemedi: «ÇELİK BORU»; teklif Türkçe kaldı. Kotadan hiçbir şey düşmedi.');
     expect(b.aciklama).not.toContain('satır daha');
+  });
+
+  // ★ HARCANAN SATIR DÜŞER (Emre 16.09 ek kararı): sunucu 422 gövdesinde
+  // `dusulenSatir` gönderir. Sabit "hiçbir şey düşmedi" cümlesi bu durumda
+  // yalan olurdu — kullanıcı kotasının neden azaldığını ekranda görmeli.
+  it('★ tamamlanamadı bildirimi: düşen satır varsa SÖYLER, "hiçbir şey düşmedi" DEMEZ', () => {
+    const b = tamamlanamadiBildirimi({
+      kod: 'CEVIRI_TAMAMLANAMADI',
+      cevrilemeyenSayisi: 4,
+      cevrilemeyenMetinSayisi: 2,
+      cevrilemeyenSatirlar: ['ÇELİK BORU', 'PVC BORU'],
+      dusulenSatir: 12,
+    });
+    expect(b.aciklama).toContain('Çeviri servisine gönderilip karşılık alınan 12 satır kotanızdan düştü');
+    expect(b.aciklama).toContain('karşılık alınamayan satırlar düşmedi');
+    expect(b.aciklama).toContain('tekrar denediğinizde o satırlar yeniden düşmez');
+    expect(b.aciklama).not.toContain('Kotadan hiçbir şey düşmedi');
+  });
+
+  it('★ düşen satır 0 ya da geçersizse eski cümle kurulur (yanıtsız çağrı)', () => {
+    const sifir = tamamlanamadiBildirimi({ cevrilemeyenSayisi: 3, cevrilemeyenSatirlar: ['A'], dusulenSatir: 0 });
+    const bozuk = tamamlanamadiBildirimi({ cevrilemeyenSayisi: 3, cevrilemeyenSatirlar: ['A'], dusulenSatir: 'çok' });
+    for (const b of [sifir, bozuk]) {
+      expect(b.aciklama).toContain('Kotadan hiçbir şey düşmedi.');
+      expect(b.aciklama).not.toContain('kotanızdan düştü');
+    }
   });
 
   it('boş sonuç: kota düştüyse "çeviri gelmedi" DENMEZ', () => {
@@ -343,6 +369,26 @@ describe('teklifCevirisiAl — 422 çeviri tamamlanamadı (hepsi ya da hiçbiri)
     expect(k.bildirimler[0].variant).toBe('destructive');
     expect(k.bildirimler[0].description).toContain('7 satır çevrilemedi: «A» · «B» · «C» · «D» · «E» (ve 1 satır daha)');
     expect(k.bildirimler[0].description).toContain('Kotadan hiçbir şey düşmedi');
+  });
+
+  // ★ BAĞLANTI TESTİ: gövdedeki `dusulenSatir` gerçekten EKRANA çıkıyor mu?
+  // `tamamlanamadiBildirimi` doğru cümleyi kursa bile akış alanı gövdeden
+  // okumazsa kullanıcı düşen satırı HİÇ görmez (mekanizma var, bağlantı yok).
+  it('★ 422 gövdesindeki dusulenSatir bildirime geçer (akış alanı yutmaz)', async () => {
+    const { d, k } = sahte({
+      post: httpHatasi(422, {
+        mesaj: 'Çeviri tamamlanamadı, tekrar deneyin',
+        kod: 'CEVIRI_TAMAMLANAMADI',
+        cevrilemeyenSayisi: 2,
+        cevrilemeyenMetinSayisi: 1,
+        cevrilemeyenSatirlar: ['ÇELİK BORU'],
+        dusulenSatir: 9,
+      }),
+    });
+    const r = await teklifCevirisiAl(QUOTE, d);
+    expect(r).toBeNull();
+    expect(k.bildirimler[0].description).toContain('karşılık alınan 9 satır kotanızdan düştü');
+    expect(k.bildirimler[0].description).not.toContain('Kotadan hiçbir şey düşmedi');
   });
 
   it('başka hata kodu eski metin kuralıyla gösterilir', async () => {

@@ -183,6 +183,8 @@ export interface TamamlanamadiGovdesi {
   cevrilemeyenSayisi?: unknown;
   cevrilemeyenMetinSayisi?: unknown;
   cevrilemeyenSatirlar?: unknown;
+  /** Teslim edilmedi ama parası harcandığı için kotadan düşen satır (16.09). */
+  dusulenSatir?: unknown;
 }
 
 /** Listede gösterilen ilk metin sayısı ve metin başına karakter tavanı. */
@@ -190,13 +192,18 @@ const LISTE_ILK = 5;
 const METIN_TAVANI = 60;
 
 /**
- * HEPSİ YA DA HİÇBİRİ (REVİZE K-T7): çeviri tamamlanamadı. Kotadan hiçbir şey
- * düşmedi, teklif Türkçe kaldı; çevrilemeyen ilk metinler gösterilir, tekrar
- * deneme ücretsizdir.
+ * HEPSİ YA DA HİÇBİRİ (REVİZE K-T7): çeviri tamamlanamadı, teklif Türkçe
+ * kaldı; çevrilemeyen ilk metinler gösterilir.
+ *
+ * ⚠ KOTA CÜMLESİ SUNUCUNUN SAYISINA BAĞLIDIR (Emre 16.09 ek kararı): çeviri
+ * servisine gidip karşılık alınan satırların parası harcandığı için onlar
+ * kotadan DÜŞER. Sabit "kotadan hiçbir şey düşmedi" cümlesi bu durumda yalan
+ * olurdu; sayı 0 olduğunda (ağ/sunucu hatası) eski cümle kurulur.
  */
 export function tamamlanamadiBildirimi(g: TamamlanamadiGovdesi | null | undefined): CeviriBildirimi {
   const liste = Array.isArray(g?.cevrilemeyenSatirlar) ? g!.cevrilemeyenSatirlar.filter((m): m is string => typeof m === 'string') : [];
   const satir = typeof g?.cevrilemeyenSayisi === 'number' ? g!.cevrilemeyenSayisi : liste.length;
+  const dusen = typeof g?.dusulenSatir === 'number' && g!.dusulenSatir > 0 ? Math.trunc(g!.dusulenSatir as number) : 0;
   const metinSayisi = typeof g?.cevrilemeyenMetinSayisi === 'number' ? g!.cevrilemeyenMetinSayisi : liste.length;
   const ilk = liste
     .slice(0, LISTE_ILK)
@@ -204,10 +211,16 @@ export function tamamlanamadiBildirimi(g: TamamlanamadiGovdesi | null | undefine
     .join(' · ');
   const kalan = Math.max(0, metinSayisi - Math.min(liste.length, LISTE_ILK));
   const listeMetni = ilk ? `: ${ilk}${kalan > 0 ? ` (ve ${sayiYaz(kalan)} satır daha)` : ''}` : '';
+  const kotaCumlesi =
+    dusen > 0
+      ? `Çeviri servisine gönderilip karşılık alınan ${sayiYaz(dusen)} satır kotanızdan düştü; ` +
+        'karşılık alınamayan satırlar düşmedi. Çevrilebilen satırlar havuza yazıldığı için tekrar ' +
+        'denediğinizde o satırlar yeniden düşmez.'
+      : 'Kotadan hiçbir şey düşmedi.';
   return {
     baslik: 'Çeviri tamamlanamadı, tekrar deneyin',
     aciklama:
-      `${sayiYaz(satir)} satır çevrilemedi${listeMetni}. Kotadan hiçbir şey düşmedi; teklif Türkçe kaldı. ` +
+      `${sayiYaz(satir)} satır çevrilemedi${listeMetni}; teklif Türkçe kaldı. ${kotaCumlesi} ` +
       'Tekrar denediğinizde çevrilmiş satırlar beklemeden gelir.',
     hata: true,
   };

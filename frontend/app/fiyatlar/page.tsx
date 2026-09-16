@@ -35,10 +35,22 @@ const KOTA_KURALLARI: { vurgu?: boolean; metin: string }[] = [
   { metin: 'Yalnız çap, ölçü ya da koddan oluşan satırlar (ör. “DN 20”) çevrilmez ve sayılmaz.' },
   // PARA HARCANANA HAK DÜŞER (Emre 16.09) — 13.09'un "her çeviri tam düşer"
   // kuralının yerine geçer. Rakam YOK: sayılar paket tablosundan gelir.
+  // ⚠ ORTAK HAVUZ AÇIKÇA İLAN EDİLİR (Emre 16.09, ikinci karar): "sistemin
+  // bildiği" ifadesi havuzun firmalar arası ortak olduğunu SÖYLEMİYORDU;
+  // kullanıcı kotasının neden düşmediğini bilmeli. Havuzda yalnız malzeme/iş
+  // ADLARININ karşılığı durur — fiyat, firma ve teklif verisi DEĞİL.
   {
     vurgu: true,
     metin:
-      'Kotadan yalnız daha önce hiç çevrilmemiş satırlar düşer. Sistemin karşılığını zaten bildiği bir malzeme/iş adı kotanızdan düşmez.',
+      'Kotadan yalnız daha önce hiç çevrilmemiş satırlar düşer. Çeviri havuzu bütün MetaPriceX kullanıcıları arasında ortaktır: sizin ya da başka bir kullanıcının daha önce çevirdiği bir malzeme/iş adı kotanızdan düşmez.',
+  },
+  {
+    metin:
+      'Havuzda yalnız çevrilen metnin kendisi ile İngilizce karşılığı tutulur: ad kolonundaki malzeme, iş ve açıklama satırları. Fiyatlarınız, tutarlarınız, müşteri ve firma bilgileriniz çeviriye hiç gitmez.',
+  },
+  {
+    metin:
+      'Bir adın karşılığını kendi çeviri sözlüğünüzde düzeltebilirsiniz; bu düzeltme yalnız sizin firmanızın tekliflerinde geçerlidir, ortak havuzu ve başka firmaların çevirisini değiştirmez.',
   },
   {
     metin:
@@ -65,10 +77,18 @@ const KOTA_KURALLARI: { vurgu?: boolean; metin: string }[] = [
     metin:
       'İngilizce dosya için teklifin güncel hâli çevrilmiş olmalıdır; Türkçe dosya her zaman kotadan düşmeden iner.',
   },
+  // ⚠ 16.09 ek kararı: "tamamlanamazsa hiçbir şey düşmez" ARTIK DOĞRU DEĞİL.
+  // Çeviri servisine gidip karşılık alınan satırın parası harcanmıştır;
+  // sayfanın eski cümlesi kalsaydı sessizce yalan söylerdi (kapı:
+  // `fiyat-sayfasi.test.ts`). Yanıtsız kalan satır düşmez.
   {
     vurgu: true,
     metin:
-      'Çeviri ya tamamlanır ya hiç yapılmaz: sistem tek bir satırı bile çeviremezse kotadan hiçbir şey düşmez, teklif Türkçe kalır ve çevrilemeyen satırlar size gösterilir; tekrar denemek ücretsizdir.',
+      'Çeviri ya tamamlanır ya hiç yapılmaz: tek bir satır bile çevrilemezse size hiçbir çeviri verilmez ve teklif Türkçe kalır, çevrilemeyen satırlar gösterilir.',
+  },
+  {
+    metin:
+      'Böyle bir durumda kotadan yalnız çeviri servisine gönderilip karşılık alınan satırlar düşer; bağlantı ya da servis hatası yüzünden karşılık alınamayan satırlar düşmez. Düşen satırlar ekranda yazar ve çevrilebilenler havuza girdiği için tekrar denediğinizde yeniden düşmez.',
   },
   {
     metin:

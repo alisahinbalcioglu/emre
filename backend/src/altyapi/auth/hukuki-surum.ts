@@ -21,4 +21,4 @@
  */
 // 2026-09-16 (Faz 6.12a): ücretsiz deneme bir kez + deneme kullanım kaydı
 // (gizlilik: veri, amaç, saklama; ön bilgilendirme 6. bölüm; kullanım koşulları 4).
-export const HUKUKI_METIN_SURUMU = '2026-09-16';
+export const HUKUKI_METIN_SURUMU = '2026-09-17';

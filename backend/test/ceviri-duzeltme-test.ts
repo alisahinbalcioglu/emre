@@ -781,10 +781,14 @@ async function zBlogu(): Promise<void> {
     const t = sahne({ yanitlar: [guvensizYanit] });
     const e = await hata(() => t.ceviri.teklifiCevir(K1, Q_EK));
     const kayit = t.s.t.ceviriTuketimi[0];
-    check('Z2 ★ AI yanıtı güvensiz: haritaya girmez, ORTAK önbelleğe yazılmaz, teklif 422 "tamamlanamadı", 0 satır düşer',
+    // ⚠ 16.09 EK KARARI: süzgeç yanıtı reddeder ama YANIT GELMİŞTİR — çağrının
+    // parası harcandı, o satır kotadan DÜŞER. Süzgeç ücretsiz geri alma değil;
+    // "reddedilen yanıt bedava" olsaydı zehirleme denemesi de bedava olurdu.
+    check('Z2 ★ AI yanıtı güvensiz: haritaya girmez, ORTAK önbelleğe yazılmaz, teklif 422 "tamamlanamadı", ama 1 satır DÜŞER (para harcandı)',
       durum(e) === 422 && yanit(e).kod === 'CEVIRI_TAMAMLANAMADI' &&
       JSON.stringify(yanit(e).cevrilemeyenSatirlar) === JSON.stringify(['HAVA DAMPERİ 200X300']) &&
-      t.s.say('translation.upsert') === 0 && kayit.durum === 'BASARISIZ' && kayit.dusulenSatir === 0 &&
+      t.s.say('translation.upsert') === 0 && kayit.durum === 'BASARISIZ' && kayit.dusulenSatir === 1 &&
+      yanit(e).dusulenSatir === 1 &&
       !t.s.t.translation.some((x) => x.sourceText === 'HAVA DAMPERİ 200X300'),
       JSON.stringify({ d: durum(e), y: yanit(e), kayit: kayit && { durum: kayit.durum, dusulen: kayit.dusulenSatir } }));
   }
