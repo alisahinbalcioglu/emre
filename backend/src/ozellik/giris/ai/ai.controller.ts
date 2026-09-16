@@ -29,6 +29,8 @@ import { CeviriKotaServisi } from '../../odeme/abonelik/ceviri-kota.servisi';
  *   · IP başına dakikada 10 istek
  *   · sınıf DTO: istemci yalnız teklif kimliği gönderir
  *   · kota kontrolü AI çağrısından ÖNCE, satır sayısı SUNUCUDA
+ *   · kotadan yalnız API'ye GİDEN satır düşer (Emre 16.09): ortak önbellekten
+ *     ya da firma sözlüğünden karşılanan satır para harcatmaz, ücretlenmez
  *
  * ── GÖRÜNTÜLEME + HEPSİ YA DA HİÇBİRİ (Faz 6.10/6.11, 15.09.2026) ─────
  * `translate/goruntule` ödenmiş içeriği yeteneksiz gösterir (bakmak ücretsiz);

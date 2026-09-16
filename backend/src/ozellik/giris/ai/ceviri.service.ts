@@ -9,9 +9,10 @@ import {
   sonucHesabi,
 } from '../../odeme/abonelik/ceviri-kotasi';
 import { AiService } from './ai.service';
-import { katmanlariBirlestir, kaynakOzeti, type KatmanliHarita } from './ceviri-katmani';
+import { katmanliHaritaOku, kaynakOzeti, type KatmanliHarita } from './ceviri-katmani';
 import { duzeltmeReddi } from './ceviri-duzeltme.servisi';
 import {
+  anahtarSatirlari,
   ceviriAnahtari,
   ceviriGuvenliMi,
   ceviriIcerigi,
@@ -20,7 +21,6 @@ import {
   kaynakMetinleriniGeriYaz,
   planiUygula,
   teslimEdilenSatir,
-  type CeviriIcerigi,
 } from './ceviri-kurali';
 
 /**
@@ -40,6 +40,13 @@ import {
  * BASARISIZ, kotadan hicbir sey dusmez ve istemciye harita DONMEZ (422 +
  * cevrilemeyenlerin listesi). Cevrilen metinler onbellege yazilir: tekrar
  * deneme ucretsiz ve hizlidir, tamamlaninca tek seferde duser.
+ *
+ * ── PARA HARCANANA HAK DUSER (Emre 16.09) ───────────────────────────────────
+ * Kotadan YALNIZ API'ye gercekten giden satirlar duser. Onbellek/sozluk zaten
+ * "API'ye gitmeyen" demektir; ayni sinir artik kotanin da siniri. Ayirma bu
+ * dosyadaki okumanin AYNISIYLA (`katmanliHaritaOku`) cagridan once yapilir,
+ * sonuclandirma ise GERCEKTEN API'den donen anahtarlarla (`apiAnahtarlari`).
+ * Bu yuzden onbellege yazmak artik yalniz hizi degil FATURAYI da belirler.
  *
  * ── BAKMAK ≠ CEVIRMEK (Faz 6.10/6.11, 15.09) ────────────────────────────────
  * Ingilizce metin istemciye (ekran ya da dosya) yalniz ODENMIS icerik icin
@@ -152,6 +159,12 @@ export interface CeviriSonucu {
   harita: Record<string, string>;
   onbellekten: number;
   cevrilen: number;
+  /**
+   * API'DEN dönen (para harcanan) anahtarlar. Kotadan düşen satır yalnız
+   * bunlardan sayılır (Emre 16.09) — `onbellekten`/`cevrilen` METIN sayar,
+   * kota SATIR sayar; ikisi arasindaki kopru `anahtarSatirlari`dir.
+   */
+  apiAnahtarlari: string[];
   /** API'ye gidip BASARISIZ olan parca sayisi. */
   basarisiz: number;
   /** Ilk parca hatasi — 422 aciklamasinin sebep metni icin. */
@@ -161,12 +174,14 @@ export interface CeviriSonucu {
 }
 
 /** Teklif çevirisinin istemciye dönen hâli — yalnız TAMAMLANMIŞ çeviride (Faz 6.2 · REVİZE K-T7). */
-export interface TeklifCeviriSonucu extends Omit<CeviriSonucu, 'ilkHata' | 'guvensiz'> {
-  /** Teklifin çevrilecek metin içeren satır sayısı. */
+export interface TeklifCeviriSonucu extends Omit<CeviriSonucu, 'ilkHata' | 'guvensiz' | 'apiAnahtarlari'> {
+  /** Teklifin çevrilecek metin içeren TOPLAM satır sayısı. */
   satirSayisi: number;
-  /** Bu istekte kotadan düşen satır (ödenmiş içerikte 0). */
+  /** Bu istekte kotadan düşen satır = API'den dönen satır (Emre 16.09). */
   dusulenSatir: number;
-  /** true → bu içeriğin çevirisi ödenmişti; yeni tüketim YOK. */
+  /** Önbellek/sözlükten karşılanan, kotadan DÜŞMEYEN satır. */
+  onbellektenSatir: number;
+  /** true → API'ye hiç satır gitmedi; kotadan hiçbir şey düşmedi. */
   tekrar: boolean;
   /** true → kotadan satır düştü. */
   kotadanDustu: boolean;
@@ -249,21 +264,26 @@ export class CeviriService {
   ) {}
 
   /**
-   * TEKLİF ÇEVİRİSİ — istemcinin tek giriş yolu (Faz 6.2, 14.09 · REVİZE K-T7, 15.09).
+   * TEKLİF ÇEVİRİSİ — istemcinin tek giriş yolu (Faz 6.2, 14.09 · REVİZE K-T7,
+   * 15.09 · PARA HARCANANA HAK DÜŞER, Emre 16.09).
    *
    * İstemci yalnız teklif kimliği gönderir. Çevrilecek metinler ve kotadan
    * düşecek satır KAYITLI teklif içeriğinden, aynı kuraldan çıkar
    * (`ceviri-kurali.ts`). Sıra değiştirilemez:
-   *   1. rezerveEt — e-posta, ödenmiş içerik, kota; geçmezse AI'ya HİÇ gidilmez
-   *   2. ödenmiş içerik → katmanlı harita; eksik anahtar kotasız tamamlanır
-   *   3. çevir
-   *   4. tek metin bile eksikse BASARISIZ + 422 (harita dönmez, hiçbir şey
-   *      düşmez); tamsa BASARILI ve satırın tamamı düşer
+   *   1. rezerveEt — e-posta, süren çeviri, ÖNBELLEK BAKIŞI, kota; geçmezse
+   *      AI'ya HİÇ gidilmez. Ayrılan satır = API'ye gidecek satır.
+   *   2. çevir — önbellek/sözlükte olanlar API'ye GİTMEZ
+   *   3. tek metin bile eksikse BASARISIZ + 422 (harita dönmez, hiçbir şey
+   *      düşmez); tamsa BASARILI ve YALNIZ API'den dönen satır düşer
+   *
+   * ⚠ TEK DAL: 15.09'un "ödenmiş içerik" dalı (kotaya bakmadan API'ye giden
+   * tamamlama yolu) kalktı. Ödenmiş içeriğin satırları zaten önbellektedir →
+   * ayırma 0 çıkar, kota düşmez; önbellekten düşmüş bir satır varsa o satır
+   * gerçekten para harcatır → normal yoldan ücretlenir. Böylece kotasız API
+   * yolu kalmadı ve "tekrar" ayrı bir kod yolu olmaktan çıktı.
    */
   async teklifiCevir(k: Kimlik, quoteId: string, hedefDil = 'en'): Promise<TeklifCeviriSonucu> {
     const r = await this.kota.rezerveEt(k, quoteId, hedefDil);
-
-    if (r.tur === 'tekrar') return this.odenmisIcerigiTamamla(k, r.icerik, hedefDil, r.ozet);
 
     const toplamSatir = r.icerik.satirSayisi;
     let sonuc: CeviriSonucu;
@@ -273,6 +293,8 @@ export class CeviriService {
       await this.sonuclandirSessiz(r.kayitId, {
         toplamSatir,
         teslimEdilen: 0,
+        apiSatir: 0,
+        onbellektenSatir: 0,
         onbellekten: 0,
         cevrilen: 0,
         basarisizParca: 0,
@@ -281,12 +303,16 @@ export class CeviriService {
       throw e;
     }
 
+    // Kotanın birimi SATIR, API'nin birimi METİN: köprü burada kurulur.
+    const apiSatir = anahtarSatirlari(r.icerik, sonuc.apiAnahtarlari);
     const eksik = cevrilemeyenMetinler(r.icerik.metinler, sonuc.harita);
     if (eksik.length > 0) {
       const teslimEdilen = teslimEdilenSatir(r.icerik, sonuc.harita);
       await this.sonuclandirSessiz(r.kayitId, {
         toplamSatir,
         teslimEdilen,
+        apiSatir,
+        onbellektenSatir: Math.max(0, teslimEdilen - apiSatir),
         onbellekten: sonuc.onbellekten,
         cevrilen: sonuc.cevrilen,
         basarisizParca: sonuc.basarisiz,
@@ -295,10 +321,13 @@ export class CeviriService {
       throw ceviriTamamlanamadiHatasi(eksik, toplamSatir - teslimEdilen, this.sebepMetni(sonuc.ilkHata));
     }
 
-    const h = sonucHesabi({ toplamSatir, teslimEdilen: toplamSatir });
+    const h = sonucHesabi({ toplamSatir, teslimEdilen: toplamSatir, apiSatir });
+    const onbellektenSatir = Math.max(0, toplamSatir - h.dusulenSatir);
     await this.sonuclandirSessiz(r.kayitId, {
       toplamSatir,
       teslimEdilen: toplamSatir,
+      apiSatir,
+      onbellektenSatir,
       onbellekten: sonuc.onbellekten,
       cevrilen: sonuc.cevrilen,
       basarisizParca: sonuc.basarisiz,
@@ -312,7 +341,8 @@ export class CeviriService {
       basarisiz: sonuc.basarisiz,
       satirSayisi: toplamSatir,
       dusulenSatir: h.dusulenSatir,
-      tekrar: false,
+      onbellektenSatir,
+      tekrar: h.dusulenSatir === 0,
       kotadanDustu: h.dusulenSatir > 0,
       kota: {
         ...r.ozet,
@@ -321,46 +351,6 @@ export class CeviriService {
         kalanSatir: Math.max(0, r.ozet.kalanSatir - h.dusulenSatir),
         kalanDosya: Math.max(0, r.ozet.kalanDosya - dosya),
       },
-    };
-  }
-
-  /**
-   * ÖDENMİŞ İÇERİK (tekrar dalı, Revizyon 1 R1-A4). Harita katmanlı okumadan
-   * gelir. Önbellekte eksik anahtar varsa (önbellek yazımı patlamış içerik)
-   * API'ye YALNIZ o anahtarlar sorulur: AI maliyeti firmaya yazılır, KOTA ve
-   * tüketim kaydı YOK (ödenmiş içerik yeniden ücretlenmez, K-T8). Yine eksik
-   * kalırsa 422 — kısmi harita teslim edilmez (K-T7b).
-   */
-  private async odenmisIcerigiTamamla(k: Kimlik, icerik: CeviriIcerigi, hedefDil: string, ozet: KotaOzeti): Promise<TeklifCeviriSonucu> {
-    const okunan = await this.katmanliHarita(icerik.metinler, hedefDil, k.firmaId);
-    const harita = haritaKopyasi(okunan.harita);
-    const onbellekten = Object.keys(harita).length;
-    let cevrilen = 0;
-    let basarisiz = 0;
-    let ilkHata: CeviriSonucu['ilkHata'] = null;
-
-    const eksik = cevrilemeyenMetinler(icerik.metinler, harita);
-    if (eksik.length > 0) {
-      const ek = await this.cevir(eksik, hedefDil, k);
-      for (const [a, v] of Object.entries(ek.harita)) harita[a] = v;
-      cevrilen = ek.cevrilen;
-      basarisiz = ek.basarisiz;
-      ilkHata = ek.ilkHata;
-    }
-    const kalan = cevrilemeyenMetinler(icerik.metinler, harita);
-    if (kalan.length > 0) {
-      throw ceviriTamamlanamadiHatasi(kalan, icerik.satirSayisi - teslimEdilenSatir(icerik, harita), this.sebepMetni(ilkHata));
-    }
-    return {
-      harita,
-      onbellekten,
-      cevrilen,
-      basarisiz,
-      satirSayisi: icerik.satirSayisi,
-      dusulenSatir: 0,
-      tekrar: true,
-      kotadanDustu: false,
-      kota: ozet,
     };
   }
 
@@ -413,24 +403,12 @@ export class CeviriService {
    * verilen metinlerin anahtarları için kurulur. Okuma sırası firma → ortak →
    * API (iş emri 6.9 §3): iki sorgu paralel, birleştirme saf
    * (`katmanlariBirlestir`) — firma düzeltmesi ortağın ÜSTÜNE biner, silmez.
-   * ⚠ `firmaId` ZORUNLU: Prisma `undefined` süzgeci sessizce düşürür (kimlik.ts
-   * dersi) — firma süzgeci düşerse A firmasının düzeltmesi B'nin teklifine girerdi.
+   * Sorgular 16.09'dan beri `ceviri-katmani.ts`te (`katmanliHaritaOku`): kota
+   * da AYNI okumayı yapar, çünkü kotadan düşen satır "bu katmanlarda karşılığı
+   * OLMAYAN" satırdır. İki ayrı sorgu = kotayla çevirinin sessizce ayrışması.
    */
   async katmanliHarita(metinler: readonly string[], hedefDil: string, firmaId: string): Promise<KatmanliHarita> {
-    if (typeof firmaId !== 'string' || firmaId === '') throw new Error('katmanliHarita: firmaId zorunlu');
-    const benzersiz = Array.from(new Set(metinler.map((m) => ceviriAnahtari(m)).filter(Boolean)));
-    if (benzersiz.length === 0) return { harita: Object.create(null), katman: new Map() };
-    const [ortak, firma] = await Promise.all([
-      this.prisma.translation.findMany({
-        where: { targetLang: hedefDil, sourceText: { in: benzersiz } },
-        select: { sourceText: true, translatedText: true },
-      }),
-      this.prisma.ceviriDuzeltmesi.findMany({
-        where: { firmaId, hedefDil, kaynakOzeti: { in: benzersiz.map((m) => kaynakOzeti(m)) } },
-        select: { kaynakMetin: true, kaynakOzeti: true, ceviriMetni: true },
-      }),
-    ]);
-    return katmanlariBirlestir(benzersiz, ortak, firma);
+    return katmanliHaritaOku(this.prisma, metinler, hedefDil, firmaId);
   }
 
   /**
@@ -442,7 +420,7 @@ export class CeviriService {
     const benzersiz = Array.from(
       new Set(metinler.map((m) => ceviriAnahtari(m)).filter(Boolean)),
     );
-    if (benzersiz.length === 0) return { harita: Object.create(null), onbellekten: 0, cevrilen: 0, basarisiz: 0, ilkHata: null };
+    if (benzersiz.length === 0) return { harita: Object.create(null), onbellekten: 0, cevrilen: 0, apiAnahtarlari: [], basarisiz: 0, ilkHata: null };
 
     // ── 1) KATMANLI HARİTA (onbellek) ─────────────────────────────────────
     const okunan = await this.katmanliHarita(benzersiz, hedefDil, kimlik.firmaId);
@@ -451,7 +429,7 @@ export class CeviriService {
 
     // Firma karşılığı da ortak karşılık da API'ye GİTMEZ (iki katman birden).
     const eksik = benzersiz.filter((m) => !Object.prototype.hasOwnProperty.call(harita, m));
-    if (eksik.length === 0) return { harita, onbellekten, cevrilen: 0, basarisiz: 0, ilkHata: null, guvensiz: 0 };
+    if (eksik.length === 0) return { harita, onbellekten, cevrilen: 0, apiAnahtarlari: [], basarisiz: 0, ilkHata: null, guvensiz: 0 };
 
     // ── 2) API ─────────────────────────────────────────────────────────────
     const ayarlar = await this.prisma.systemSettings.findMany({ where: { key: 'CLAUDE_API_KEY' } });
@@ -463,6 +441,10 @@ export class CeviriService {
     }
 
     const client = this.anthropicIstemcisi(apiKey);
+    // ⚠ KOTA BURADAN SAYILIR (Emre 16.09): yalnız API'den DÖNEN anahtarlar
+    // ücretlenir. `cevrilen` sayacı metin sayar; kota satır sayacağı için
+    // anahtarların KENDİSİ gerekir (aynı metin 40 satırda geçebilir).
+    const apiAnahtarlari = new Set<string>();
     let cevrilen = 0;
     // Parca sonuclari SAYILIR: "kac denendi / kaci patladi" bilinmeden
     // basarisizligi basaridan ayirmak imkansizdir.
@@ -520,6 +502,7 @@ export class CeviriService {
             continue;
           }
           harita[kaynak] = ceviri;
+          apiAnahtarlari.add(kaynak);
           cevrilen++;
           // ⚠ ANAHTAR BAŞINA (Revizyon 1 R1-A5): tek anahtarın yazımı patlarsa
           // (geçici DB hatası, uzun metnin indeks tavanı) parçanın kalan
@@ -557,7 +540,7 @@ export class CeviriService {
     if (yazilamayan > 0) this.logger.error(`Ceviri onbellege yazilamadi: ${yazilamayan} metin`);
     if (guvensiz > 0) this.logger.warn(`Ceviri guvenlik suzgeci ${guvensiz} yaniti reddetti (onbellege yazilmadi, teslim edilmedi)`);
 
-    return { harita, onbellekten, cevrilen, basarisiz: basarisizParca, ilkHata, guvensiz };
+    return { harita, onbellekten, cevrilen, apiAnahtarlari: Array.from(apiAnahtarlari), basarisiz: basarisizParca, ilkHata, guvensiz };
   }
 
   /**

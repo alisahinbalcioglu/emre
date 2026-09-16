@@ -26,10 +26,14 @@ export interface CeviriKotaOzeti {
 
 export interface CeviriOnizleme {
   epostaDogrulandi: boolean;
-  /** Bu istekte düşebilecek satır: ödenmiş içerikte 0. */
+  /** Kotadan düşecek satır = daha önce çevrilmemiş, API'ye gidecek satır. */
   gerekenSatir: number;
+  /** Teklifin çevrilecek TOPLAM satırı. */
+  toplamSatir: number;
+  /** Daha önce çevrildiği için kotadan DÜŞMEYECEK satır. */
+  onbellektenSatir: number;
   metinSayisi: number;
-  /** Bu içeriğin çevirisi ödenmiş — kotadan düşmez. */
+  /** Bu teklifin yeni satırı yok — çeviri kotadan hiç düşmez. */
   tekrar: boolean;
   /** Bu içeriğin çevirisi şu an sürüyor. */
   suruyor: boolean;
@@ -49,8 +53,11 @@ export interface TeklifCeviriSonucu {
   cevrilen: number;
   basarisiz: number;
   satirSayisi: number;
-  /** Bu istekte kotadan düşen satır. */
+  /** Bu istekte kotadan düşen satır = API'ye giden (yeni) satır. */
   dusulenSatir: number;
+  /** Daha önce çevrildiği için kotadan düşmeyen satır. */
+  onbellektenSatir: number;
+  /** true → API'ye hiç satır gitmedi; kotadan hiçbir şey düşmedi. */
   tekrar: boolean;
   kotadanDustu: boolean;
   kota: CeviriKotaOzeti;
@@ -68,7 +75,7 @@ export interface GoruntulemeOdenmis {
   satirSayisi: number;
 }
 
-/** Ödenmiş ama önbellekte eksik: harita GELMEZ, çeviri isteği kotasız tamamlar. */
+/** Çevrilmiş ama bir satırın karşılığı düşmüş: harita GELMEZ; çeviri isteği yalnız o satırı çevirir (ve yalnız onu kotadan düşer). */
 export interface GoruntulemeEksik {
   odenmis: true;
   tamam: false;
@@ -108,9 +115,16 @@ export function kalanKotaCumlesi(k: CeviriKotaOzeti): string {
   );
 }
 
-/** Çevirmeden ÖNCE gösterilen onay metni: bu teklif kaç satır yer, geriye ne kalır. */
+/**
+ * Çevirmeden ÖNCE gösterilen onay metni. 16.09'dan (Emre) beri kotadan YALNIZ
+ * daha önce çevrilmemiş satırlar düşer, bu yüzden cümle iki sayıyı da söyler:
+ * ne kadarı yeni (ödenecek), ne kadarı hazır (ödenmeyecek). Tek sayı yazmak
+ * kullanıcıya teklifin tamamının ücretlendiğini düşündürürdü.
+ */
 export function onizlemeCumlesi(o: CeviriOnizleme): string {
-  return `Bu teklif ${sayiYaz(o.gerekenSatir)} satır çeviri kotası yer. ${kalanKotaCumlesi(o.kota)}.`;
+  const hazir = Math.max(0, o.onbellektenSatir);
+  const hazirCumlesi = hazir > 0 ? ` ${sayiYaz(hazir)} satır daha önce çevrildiği için kotadan düşmez.` : '';
+  return `Bu teklifin ${sayiYaz(o.gerekenSatir)} satırı yeni; kotadan ${sayiYaz(o.gerekenSatir)} satır düşer.${hazirCumlesi} ${kalanKotaCumlesi(o.kota)}.`;
 }
 
 /** Sunucu hatasından kullanıcıya gösterilecek metin. Kota/erişim reddi `mesaj`
@@ -138,13 +152,15 @@ export function sonucBildirimi(s: TeklifCeviriSonucu, yazilan: number): CeviriBi
   if (s.tekrar) {
     return {
       baslik: 'Çeviri tamamlandı',
-      aciklama: `${hucre} · Bu içeriğin çevirisi daha önce ödenmişti; kotadan yeniden düşmedi. ${kalanKotaCumlesi(s.kota)}`,
+      aciklama: `${hucre} · Yeni çevrilen satır olmadığı için kotadan hiçbir şey düşmedi. ${kalanKotaCumlesi(s.kota)}`,
       hata: false,
     };
   }
+  const hazir = Math.max(0, s.onbellektenSatir ?? 0);
+  const hazirCumlesi = hazir > 0 ? ` ${sayiYaz(hazir)} satır daha önce çevrildiği için düşmedi.` : '';
   return {
     baslik: 'Çeviri tamamlandı',
-    aciklama: `${hucre} · kotadan ${sayiYaz(s.dusulenSatir)} satır düştü. ${kalanKotaCumlesi(s.kota)}`,
+    aciklama: `${hucre} · kotadan ${sayiYaz(s.dusulenSatir)} satır düştü.${hazirCumlesi} ${kalanKotaCumlesi(s.kota)}`,
     hata: false,
   };
 }
@@ -156,7 +172,7 @@ export function sonucBildirimi(s: TeklifCeviriSonucu, yazilan: number): CeviriBi
 export function goruntulemeBildirimi(_y: GoruntulemeOdenmis, yazilan: number): CeviriBildirimi {
   return {
     baslik: 'İngilizce görünüm açıldı',
-    aciklama: `${sayiYaz(yazilan)} hücre İngilizce gösteriliyor · bu içeriğin çevirisi daha önce ödenmişti, kotadan düşmedi.`,
+    aciklama: `${sayiYaz(yazilan)} hücre İngilizce gösteriliyor · bu teklif daha önce çevrilmişti, kotadan düşmedi.`,
     hata: false,
   };
 }

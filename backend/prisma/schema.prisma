@@ -1009,9 +1009,13 @@ model CeviriTuketimi {
   hedefDil       String              @default("en")
   /// Teklifin çevrilecek metin içeren satır sayısı (tanım a) — istek anında.
   satirSayisi    Int
-  /// Kotadan düşen satır. İŞLENİYOR iken ayrılan; sonuçlanınca tamda satırın
-  /// tamamı, eksikte 0 (15.09 öncesi KISMI kayıtta teslim edilen).
+  /// Kotadan düşen satır = API'ye GİDEN (para harcanan) satır (Emre 16.09).
+  /// İŞLENİYOR iken ayrılan; sonuçlanınca tamda API'den dönen satır, eksikte 0.
+  /// 16.09 öncesi kayıtlarda teklifin satırının tamamı (o gün kural buydu).
   dusulenSatir   Int                 @default(0)
+  /// Ortak önbellek / firma sözlüğünden karşılanan, kotadan DÜŞMEYEN satır
+  /// (denetim: düşen ile düşmeyen ayrık dursun). 16.09 öncesi kayıtlarda 0.
+  onbellektenSatir Int               @default(0)
   /// Teslim edilen satır. 15.09 öncesi kayıtlarda devam zincirinin toplamı; yeni kayıtta tamda satırın tamamı, eksikte 0.
   toplamTeslim   Int                 @default(0)
   /// true → (yalnız 15.09 öncesi kayıtlar) yarım kalan çevirinin devamı; dosya hakkından yemez. Yeni kayıtta daima false.

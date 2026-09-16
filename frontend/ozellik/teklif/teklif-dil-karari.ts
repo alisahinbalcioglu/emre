@@ -46,7 +46,7 @@ export const YUKLENEMEDI_NOTU: DilNotu = Object.freeze({
 export const EKSIK_NOTU: DilNotu = Object.freeze({
   tur: 'bilgi',
   baslik: 'Bu teklifin çevirisi eksik',
-  metin: "İngilizce görünüm ve İngilizce dosya için İngilizceye Çevir'e basın; kotadan düşmez.",
+  metin: "İngilizce görünüm ve İngilizce dosya için İngilizceye Çevir'e basın; eksik kalan satır daha önce çevrilmişse kotadan düşmez.",
   eylem: 'CEVIR',
   dugme: 'İngilizceye çevir',
 }) as DilNotu;
@@ -55,14 +55,14 @@ export const NEDEN_NOTLARI: Readonly<Record<GoruntulemeNedeni, DilNotu>> = Objec
   ICERIK_DEGISTI: Object.freeze({
     tur: 'uyari',
     baslik: 'Çeviriden sonra teklif değişti',
-    metin: 'Malzeme/iş adları ya da satırlar çeviriden sonra değişti. İngilizce görünüm ve İngilizce dosya için yeni çeviri gerekir; yeni çeviri kotadan düşer.',
+    metin: 'Malzeme/iş adları ya da satırlar çeviriden sonra değişti. İngilizce görünüm ve İngilizce dosya için yeni çeviri gerekir; kotadan yalnız daha önce çevrilmemiş satırlar düşer.',
     eylem: 'CEVIR',
     dugme: 'Güncel hâli çevir',
   }) as DilNotu,
   CEVIRI_YOK: Object.freeze({
     tur: 'uyari',
     baslik: 'Bu teklifin güncel hâline ait çeviri bulunamadı',
-    metin: 'İngilizce görünüm ve İngilizce dosya için teklifi İngilizceye çevirin; çeviri kotadan düşer.',
+    metin: 'İngilizce görünüm ve İngilizce dosya için teklifi İngilizceye çevirin; kotadan yalnız daha önce çevrilmemiş satırlar düşer.',
     eylem: 'CEVIR',
     dugme: 'İngilizceye çevir',
   }) as DilNotu,

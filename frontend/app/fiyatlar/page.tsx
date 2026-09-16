@@ -33,6 +33,17 @@ export const metadata: Metadata = sayfaMetaverisi({
 const KOTA_KURALLARI: { vurgu?: boolean; metin: string }[] = [
   { vurgu: true, metin: 'Satır = çevrilecek metin içeren satır. Şartname ve açıklama satırları dâhildir.' },
   { metin: 'Yalnız çap, ölçü ya da koddan oluşan satırlar (ör. “DN 20”) çevrilmez ve sayılmaz.' },
+  // PARA HARCANANA HAK DÜŞER (Emre 16.09) — 13.09'un "her çeviri tam düşer"
+  // kuralının yerine geçer. Rakam YOK: sayılar paket tablosundan gelir.
+  {
+    vurgu: true,
+    metin:
+      'Kotadan yalnız daha önce hiç çevrilmemiş satırlar düşer. Sistemin karşılığını zaten bildiği bir malzeme/iş adı kotanızdan düşmez.',
+  },
+  {
+    metin:
+      'Bu yüzden ikinci ve sonraki tekliflerinizde aynı malzeme adları tekrar ettikçe kotadan düşen satır azalır; çeviriye başlamadan önce ekranda kaç satırın yeni olduğu yazar.',
+  },
   {
     metin:
       'Satır ve dosya tavanı birlikte işler: hangisi önce dolarsa o dönemin çeviri kotası biter.',
@@ -48,7 +59,7 @@ const KOTA_KURALLARI: { vurgu?: boolean; metin: string }[] = [
   },
   {
     metin:
-      'Aynı dosyayı yeni bir teklif olarak yükleyip çevirmek ya da çeviriden sonra malzeme/iş adlarını değiştirmek, satır eklemek veya silmek yeni çeviridir ve kotadan yeniden düşer. Miktar, fiyat ya da satır sırası değişikliği yeni çeviri sayılmaz.',
+      'Aynı dosyayı yeni bir teklif olarak yükleyip çevirmek ya da çeviriden sonra malzeme/iş adı değiştirmek, satır eklemek veya silmek yeni bir çeviri işidir; ama kotadan yine yalnız daha önce hiç çevrilmemiş satırlar düşer. Değişmeyen satırlar ikinci kez düşmez.',
   },
   {
     metin:
@@ -61,12 +72,12 @@ const KOTA_KURALLARI: { vurgu?: boolean; metin: string }[] = [
   },
   {
     metin:
-      'Kotanız yetmiyorsa çeviri başlamadan reddedilir ve hangi tavanın dolduğu söylenir; kısmi çeviri yapılmaz.',
+      'Kotanız teklifin YENİ satırlarına yetmiyorsa çeviri başlamadan reddedilir ve hangi tavanın dolduğu söylenir; kısmi çeviri yapılmaz.',
   },
   { metin: 'Kota takvim ayına göre değil, abonelik döneminize göre yenilenir.' },
   {
     metin:
-      'Dönemlik satır tavanınızdan büyük tek bir dosya o pakette hiçbir dönem çevrilemez; bunun için daha yüksek kotalı bir paket gerekir.',
+      'Tek bir dosyanın YENİ satırı dönemlik satır tavanınızdan büyükse o dosya bu pakette hiçbir dönem çevrilemez; bunun için daha yüksek kotalı bir paket gerekir.',
   },
 ];
 

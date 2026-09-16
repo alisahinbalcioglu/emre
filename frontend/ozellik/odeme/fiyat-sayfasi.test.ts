@@ -135,10 +135,19 @@ describe('Fiyat sayfası — rakamlar veritabanından (Faz 6.1)', () => {
     );
   });
 
-  it('yeni çeviri sayılan ve sayılmayan değişiklikler yazılı (madde 5)', () => {
+  it('yeni çeviri sayılan değişikliklerde de yalnız YENİ satırın düştüğü yazılı (madde 5)', () => {
     const metin = ekranMetni(SAYFA);
-    expect(metin).toContain('satır eklemek veya silmek yeni çeviridir ve kotadan yeniden düşer.');
-    expect(metin).toContain('Miktar, fiyat ya da satır sırası değişikliği yeni çeviri sayılmaz.');
+    expect(metin).toContain('kotadan yine yalnız daha önce hiç çevrilmemiş satırlar düşer');
+    expect(metin).toContain('Değişmeyen satırlar ikinci kez düşmez.');
+  });
+
+  // ★ PARA HARCANANA HAK DÜŞER (Emre 16.09) — 13.09'un "her çeviri tam düşer"
+  // kuralı sunucuda kalktı; sayfa kalırsa sessizce yalan söyler.
+  it('★ kotadan yalnız daha önce çevrilmemiş satırların düştüğü yazılı', () => {
+    const metin = ekranMetni(SAYFA);
+    expect(metin).toContain('Kotadan yalnız daha önce hiç çevrilmemiş satırlar düşer.');
+    expect(metin).toContain('Sistemin karşılığını zaten bildiği bir malzeme/iş adı kotanızdan düşmez.');
+    expect(metin).toContain('çeviriye başlamadan önce ekranda kaç satırın yeni olduğu yazar');
   });
 
   it('İngilizce dosya için güncel hâlin çevrilmiş olması gerektiği yazılı (madde 6)', () => {
@@ -153,13 +162,14 @@ describe('Fiyat sayfası — rakamlar veritabanından (Faz 6.1)', () => {
     );
   });
 
-  it('kota reddinin baştan ve tavanıyla yapıldığı yazılı (madde 8)', () => {
-    expect(ekranMetni(SAYFA)).toContain('Kotanız yetmiyorsa çeviri başlamadan reddedilir ve hangi tavanın dolduğu söylenir; kısmi çeviri yapılmaz.');
+  it('kota reddinin YENİ satır üzerinden, baştan ve tavanıyla yapıldığı yazılı (madde 8)', () => {
+    expect(ekranMetni(SAYFA)).toContain('Kotanız teklifin YENİ satırlarına yetmiyorsa çeviri başlamadan reddedilir ve hangi tavanın dolduğu söylenir; kısmi çeviri yapılmaz.');
   });
 
   it('eski pencere ve kısmi çeviri cümleleri YOK', () => {
     const metin = ekranMetni(SAYFA);
     expect(metin).not.toContain('Aynı dosyayı tekrar çevirmek kotadan yeniden düşer.');
+    expect(metin).not.toContain('Aynı dosyanın yeniden çevrilmesi kotadan yeniden düşer.');
     expect(metin).not.toContain('Tek istisna');
     expect(metin).not.toContain('Kısmen tamamlanan');
     expect(metin).not.toMatch(/dakika/);

@@ -367,27 +367,51 @@ async function zBlogu(): Promise<void> {
   {
     const t = sahne({ onbellek: TAM_ONBELLEK, tuketim: [tuketim({ icerikOzeti: ozet, olusturuldu: new Date(Date.now() - 3 * SAAT) })] });
     const r: any = await t.ceviri.teklifiCevir(K1, Q).catch((e) => ({ hata: String(e) }));
-    check('Z1 ★ 10 dakikadan eski BASARILI → tekrar: tüketim sayısı aynı, çeviri çağrılmaz', r.tekrar === true && t.s.t.ceviriTuketimi.length === 1 && t.s.say('ceviriTuketimi.create') === 0 && t.sayac.cevir === 0, JSON.stringify({ tekrar: r.tekrar, kayit: t.s.t.ceviriTuketimi.length, cevir: t.sayac.cevir }));
+    check('Z1 ★ eski BASARILI + tam önbellek → API çağrısı yok, kotadan 0 düşer (denetim kaydı yazılır)',
+      r.tekrar === true && r.dusulenSatir === 0 && t.aiKayitlari.length === 0 && t.s.t.ceviriTuketimi.length === 2 && t.s.t.ceviriTuketimi[1].dusulenSatir === 0,
+      JSON.stringify({ tekrar: r.tekrar, dusen: r.dusulenSatir, kayit: t.s.t.ceviriTuketimi.length, ai: t.aiKayitlari.length }));
   }
   {
     const ayarlar = { [gecisAnahtari(Q, 'en')]: JSON.stringify({ surum: 1, firmaId: 'f1', quoteId: Q, hedefDil: 'en', icerikOzeti: ozet, sinif: 'ZAYIF', kanit: 'K2', yazildi: '2026-09-15T00:00:00.000Z', betik: 'ceviri-gecis-izni' }) };
     const t = sahne({ onbellek: TAM_ONBELLEK, ayarlar });
     const r: any = await t.kota.rezerveEt(K1, Q, 'en').catch((e) => ({ hata: String(e) }));
-    check('Z3 geçiş izniyle istek → tekrar, kayitId null, tüketim yazılmaz', r.tur === 'tekrar' && r.kayitId === null && t.s.say('ceviriTuketimi.create') === 0, JSON.stringify({ tur: r.tur, kayitId: (r as any).kayitId }));
+    const kanit: any = await t.kota.odenmisIcerikKaniti(K1, Q, 'en', ceviriIcerigi(FX.sayfalar));
+    check('Z3 ★ geçiş izni ödenmiş içerik KANITIDIR ama kota kararını önbellek verir: yeni satır 0, kayıt yazılır',
+      kanit.odenmis === true && kanit.kaynak === 'GECIS' && r.gerekenSatir === 0 && r.tekrar === true && t.s.say('ceviriTuketimi.create') === 1,
+      JSON.stringify({ kanit: kanit.kaynak, gereken: r.gerekenSatir, create: t.s.say('ceviriTuketimi.create') }));
   }
   {
-    const t = sahne({ tuketim: [tuketim({ icerikOzeti: ozet, olusturuldu: new Date(Date.now() - 30 * SAAT) })] });
+    const t = sahne({ onbellek: TAM_ONBELLEK, tuketim: [tuketim({ icerikOzeti: ozet, olusturuldu: new Date(Date.now() - 30 * SAAT) })] });
     const o: any = await t.kota.onizleme(K1, Q, 'en', new Date()).catch((e) => ({ hata: String(e) }));
-    check('Z4 önizleme ertesi gün de tekrar, gerekenSatir 0', o.tekrar === true && o.gerekenSatir === 0, JSON.stringify({ tekrar: o.tekrar, gereken: o.gerekenSatir }));
+    check('Z4 önizleme ertesi gün de 0 satır (tümü önbellekte)', o.tekrar === true && o.gerekenSatir === 0 && o.onbellektenSatir === o.toplamSatir && o.toplamSatir > 0, JSON.stringify({ tekrar: o.tekrar, gereken: o.gerekenSatir, toplam: o.toplamSatir }));
+    const bos: any = await sahne({ onbellek: {}, tuketim: [tuketim({ icerikOzeti: ozet })] }).kota.onizleme(K1, Q, 'en', new Date()).catch((e) => ({ hata: String(e) }));
+    check('Z4b ★ ödenmiş kayıt VARSA bile önbellek boşsa satırlar YENİDİR (kanıt kota kararı vermez)', bos.tekrar === false && bos.gerekenSatir === o.toplamSatir, JSON.stringify({ tekrar: bos.tekrar, gereken: bos.gerekenSatir }));
   }
   {
+    // İçerik değişti ama yeni ad ORTAK ÖNBELLEKTE (başka bir firma çevirmiş):
+    // yeni bir çeviri işidir, yeni kayıt yazılır — ama API'ye para gitmediği
+    // için ne satır ne DOSYA hakkı yenir (Emre 16.09).
     const sheets = kopya(FX.sayfalar);
     const t = sahne({ sheets, onbellek: { ...TAM_ONBELLEK, 'PPR BORU': 'PPR PIPE' }, tuketim: [tuketim({ icerikOzeti: ozet, dusulenSatir: 7 })] });
     t.s.t.quote[0].sheets[0].rowData[0]._ad = 'PPR BORU';
     const once = await t.kota.durum(K1);
     const r: any = await t.ceviri.teklifiCevir(K1, Q).catch((e) => ({ hata: String(e) }));
     const sonra = await t.kota.durum(K1);
-    check('Z5 içerik değişti → yeni tüketim ve dosya hakkı', r.tekrar === false && t.s.t.ceviriTuketimi.length === 2 && (sonra?.kullanilanDosya ?? 0) === (once?.kullanilanDosya ?? 0) + 1, JSON.stringify({ tekrar: r.tekrar, once: once?.kullanilanDosya, sonra: sonra?.kullanilanDosya }));
+    check('Z5 ★ içerik değişti ama yeni ad ortak önbellekte: yeni kayıt yazılır, satır da DOSYA hakkı da yenmez',
+      t.s.t.ceviriTuketimi.length === 2 && r.dusulenSatir === 0 && t.aiKayitlari.length === 0 &&
+      (sonra?.kullanilanDosya ?? -1) === (once?.kullanilanDosya ?? -2) && (sonra?.kullanilanSatir ?? -1) === (once?.kullanilanSatir ?? -2),
+      JSON.stringify({ dusen: r.dusulenSatir, once: once?.kullanilanDosya, sonra: sonra?.kullanilanDosya }));
+
+    // Aynı senaryo ama yeni ad HİÇBİR katmanda yok ve API anahtarı tanımsız:
+    // çeviri tamamlanamaz → BASARISIZ, kotadan hiçbir şey düşmez (K-T7 sürüyor).
+    const t2 = sahne({ sheets: kopya(FX.sayfalar), onbellek: TAM_ONBELLEK, tuketim: [tuketim({ icerikOzeti: ozet, dusulenSatir: 7 })] });
+    t2.s.t.quote[0].sheets[0].rowData[0]._ad = 'PPR BORU';
+    const o2 = await t2.kota.onizleme(K1, Q, 'en', new Date());
+    await t2.ceviri.teklifiCevir(K1, Q).catch(() => undefined);
+    const yeni = t2.s.t.ceviriTuketimi[1];
+    check('Z5b ★ yeni ad hiçbir katmanda yok → önizleme o satırı YENİ sayar; çeviri patlarsa 0 düşer',
+      o2.gerekenSatir === 1 && o2.tekrar === false && yeni?.durum === 'BASARISIZ' && yeni?.dusulenSatir === 0,
+      JSON.stringify({ gereken: o2.gerekenSatir, durum: yeni?.durum, dusen: yeni?.dusulenSatir }));
   }
 }
 

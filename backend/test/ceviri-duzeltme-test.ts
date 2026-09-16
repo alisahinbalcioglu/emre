@@ -373,9 +373,10 @@ async function sBlogu(): Promise<void> {
     const sonrakiOzet = ceviriIcerigi(t.s.t.quote[0].sheets).ozet;
     const tuketimOnce = t.s.t.ceviriTuketimi.length;
     const r = await t.ceviri.teklifiCevir(K1, Q);
-    check('S8 düzeltme içerik ÖZETİNİ değiştirmez (kayıt da değişmez); tekrar dalı yeni tüketim YAZMAZ',
+    check('S8 ★ düzeltme içerik ÖZETİNİ değiştirmez; firma sözlüğü karşıladığı için kotadan 0 düşer (denetim kaydı yazılır)',
       oncekiOzet === sonrakiOzet && oncekiOzet === ozet && r.tekrar === true && r.dusulenSatir === 0 &&
-      t.s.t.ceviriTuketimi.length === tuketimOnce && r.harita['KÜRESEL VANA'] === 'GLOBE VALVE',
+      t.s.t.ceviriTuketimi.length === tuketimOnce + 1 && t.s.t.ceviriTuketimi[tuketimOnce].dusulenSatir === 0 &&
+      r.harita['KÜRESEL VANA'] === 'GLOBE VALVE',
       JSON.stringify({ oncekiOzet: oncekiOzet.slice(0, 8), sonrakiOzet: sonrakiOzet.slice(0, 8), tekrar: r.tekrar }));
   }
   {
@@ -806,9 +807,12 @@ async function zBlogu(): Promise<void> {
     const e = await hata(() => t.ceviri.teklifiCevir(K1, Q_EK));
     const r = await t.ceviri.teklifiCevir(K1, Q_EK);
     const dusen = t.s.t.ceviriTuketimi.reduce((n, k) => n + (k.durum === 'BASARILI' ? k.dusulenSatir : 0), 0);
-    check('Z5 ★ ikinci denemede model güvenli döndürünce çeviri tamamlanır ve kotadan BİR KEZ düşer',
+    // 16.09: ilk denemede GÜVENLİ dönen metin önbelleğe yazılmıştı; ikinci
+    // denemede API'ye yalnız kalan metin gider, kotadan da yalnız o satır düşer
+    // ("tekrar denemek ücretsizdir" sözü artık faturaya da yansıyor).
+    check('Z5 ★ ikinci denemede model güvenli döndürünce çeviri tamamlanır; kotadan YALNIZ API satırı düşer',
       durum(e) === 422 && r.harita['HAVA DAMPERİ 200X300'] === 'AIR DAMPER 200X300' && r.tekrar === false &&
-      r.dusulenSatir === 2 && dusen === 2 && t.s.t.ceviriTuketimi.length === 2,
+      r.dusulenSatir === 1 && r.onbellektenSatir === 1 && dusen === 1 && t.s.t.ceviriTuketimi.length === 2,
       JSON.stringify({ ilk: durum(e), dusen, kayitlar: t.s.t.ceviriTuketimi.map((k) => [k.durum, k.dusulenSatir]) }));
   }
 }

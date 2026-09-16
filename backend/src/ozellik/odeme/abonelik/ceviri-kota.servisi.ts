@@ -10,7 +10,13 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 import type { Kimlik } from '../../../altyapi/auth/kimlik';
 import { epostaDogrulandiMi } from '../../../altyapi/auth/eposta-dogrulama';
-import { ceviriIcerigi, type CeviriIcerigi } from '../../giris/ai/ceviri-kurali';
+import {
+  anahtarSatirlari,
+  ceviriIcerigi,
+  cevrilemeyenMetinler,
+  type CeviriIcerigi,
+} from '../../giris/ai/ceviri-kurali';
+import { katmanliHaritaOku } from '../../giris/ai/ceviri-katmani';
 import {
   ceviriKotasiCoz,
   gecisAnahtari,
@@ -42,14 +48,28 @@ import {
  *  istek tavanı birlikte aşamaz. Ayırma firma başına bir advisory kilit
  *  altında yapılır — kilit yalnız bu kısa işlemi kapsar, AI çağrısını değil.
  *
- *  ── ÖDENMİŞ İÇERİK: BAKMAK ≠ ÇEVİRMEK (Faz 6.11, 15.09) ──
- *  Aynı teklifin DEĞİŞMEMİŞ içeriği (özet v2) için tamamlanmış (`BASARILI`)
- *  bir tüketim kaydı ya da geçiş izni varsa bu içerik ÖDENMİŞTİR: yeni istek
- *  yeni kayıt yazmaz, kotadan düşmez — ZAMAN PENCERESİ ve DÖNEM SÜZGECİ YOK
- *  (K-T8, K-T9). 14.09'daki 10 dakikalık pencere kalktı: ertesi gün aynı
- *  teklife İngilizce bakmak ya da onu İngilizce indirmek yeniden ödenmez.
- *  Kuralın TEK yeri `odenmisKayit`; zincir, görüntüleme ve dışa aktarım onu
- *  çağırır. Süren bir çeviri için gelen ikinci istek 409 alır.
+ *  ── PARA HARCANANA HAK DÜŞER (Emre 16.09 — ESKİ KURALIN YERİNE) ──
+ *  Kotadan YALNIZ Claude'a gerçekten gönderilen satırlar düşer. Ortak
+ *  önbellekte (`Translation`) ya da firma sözlüğünde (`CeviriDuzeltmesi`)
+ *  karşılığı olan satır API'ye hiç gitmez, para harcatmaz, sayılmaz. Bir
+ *  çeviride API'ye hiç metin gitmiyorsa o çeviri kotadan da DOSYA hakkından
+ *  da hiç düşmez. Ayırma çağrıdan ÖNCE aynı önbellek bakışıyla hesaplanır
+ *  (`katmanliHaritaOku` — çevirinin okuduğu katmanların aynısı);
+ *  sonuçlandırmada GERÇEKTEN API'den dönen satır esas alınır.
+ *
+ *  13.09'un "aynı teklifin her çevirisi tam düşer" kuralı ARTIK GEÇERSİZDİR;
+ *  onun yerine koyulan 15.09 "ödenmiş içerik" dalı da (kota bakmadan API'ye
+ *  gitme yolu) KALKTI — ödenmiş bir içeriğin önbellekten düşmüş satırı
+ *  yeniden para harcatıyorsa yeniden ücretlenir, harcatmıyorsa hiç
+ *  ücretlenmez. Böylece "kotasız API" yolu kalmadı.
+ *
+ *  ── ÖDENMİŞ İÇERİK KANITI: BAKMAK ≠ ÇEVİRMEK (Faz 6.11, 15.09) ──
+ *  `odenmisKayit` ARTIK KOTA KARARI VERMEZ; yalnız "bu teklifin İngilizce
+ *  hâli daha önce üretildi mi" sorusuna cevap verir: İngilizce görüntüleme ve
+ *  İngilizce dosya kapısı bunu sorar (`odenmisIcerikKaniti`). Kanıt =
+ *  tamamlanmış (`BASARILI`) tüketim kaydı ya da geçiş izni; ZAMAN PENCERESİ
+ *  ve DÖNEM SÜZGECİ YOK (K-T8, K-T9). Süren bir çeviri için gelen ikinci
+ *  istek 409 alır.
  *
  *  ── HEPSİ YA DA HİÇBİRİ (REVİZE K-T7, Emre 15.09) ──
  *  Çeviri ya tamamlanır ya hiç yapılmaz. Tek satır bile çevrilemezse kayıt
@@ -112,18 +132,26 @@ interface Baglam {
 /** Bu içeriğin ödendiğinin kanıtı: tamamlanmış tüketim kaydı ya da geçiş izni. */
 export type OdenmisKayit = { kaynak: 'TUKETIM'; kayitId: string } | { kaynak: 'GECIS'; kayitId: null };
 
-/** Aynı teklifin aynı içeriği için durum. */
-interface Zincir {
-  /** Taze bir ayırma sürüyor mu. */
-  readonly suren: boolean;
-  /** Ödenmiş içerik — varsa istek tekrardır (penceresiz). */
-  readonly tamamlanan: OdenmisKayit | null;
+/** Ayırma. `gerekenSatir` 0 ise API'ye hiç metin gitmeyecek: kota da dosya hakkı da düşmez. */
+export interface Rezervasyon {
+  readonly kayitId: string;
+  readonly icerik: CeviriIcerigi;
+  readonly ozet: KotaOzeti;
+  /** Ayırma anında API'ye gidecek satır (önbellek/sözlük bakışından). */
+  readonly gerekenSatir: number;
+  /** true → bu istekte API'ye gidecek yeni satır yok; kotadan düşmeyecek. */
+  readonly tekrar: boolean;
 }
 
-export type Rezervasyon =
-  /** `kayitId` geçiş izninde `null` (tüketim kaydı yoktur). */
-  | { tur: 'tekrar'; kayitId: string | null; icerik: CeviriIcerigi; ozet: KotaOzeti }
-  | { tur: 'yeni'; kayitId: string; icerik: CeviriIcerigi; ozet: KotaOzeti };
+/** Önbellek/sözlük bakışının sonucu: neyin API'ye gideceği. */
+export interface YeniIcerik {
+  /** Hiçbir katmanda karşılığı olmayan metinler — API'ye bunlar gider. */
+  readonly yeniMetinler: string[];
+  /** O metinlerin tuttuğu satır: kotadan düşecek olan. */
+  readonly gerekenSatir: number;
+  /** Önbellek/sözlükten karşılanan satır — kotadan düşmez (denetim). */
+  readonly onbellektenSatir: number;
+}
 
 /** Neden ödenmiş sayılmadı — kullanıcıya YALAN söylemeyen üç durum. */
 export type OdenmemeNedeni = 'CEVIRI_SURUYOR' | 'ICERIK_DEGISTI' | 'CEVIRI_YOK';
@@ -134,10 +162,14 @@ export type CeviriKaniti =
 
 export interface Onizleme {
   readonly epostaDogrulandi: boolean;
-  /** Bu istekte kotadan düşebilecek satır: ödenmiş içerikte 0. */
+  /** Bu istekte kotadan düşecek satır = API'ye gidecek (yeni) satır. */
   readonly gerekenSatir: number;
+  /** Teklifin çevrilecek TOPLAM satırı (gerekenSatir + onbellektenSatir). */
+  readonly toplamSatir: number;
+  /** Önbellek/sözlükten karşılanacak, kotadan DÜŞMEYECEK satır. */
+  readonly onbellektenSatir: number;
   readonly metinSayisi: number;
-  /** true → bu içeriğin çevirisi ödenmiş; istek kotadan düşmez. */
+  /** true → API'ye gidecek yeni satır yok; çeviri kotadan hiç düşmez. */
   readonly tekrar: boolean;
   /** true → bu içeriğin çevirisi şu an sürüyor; yeni istek 409 alır. */
   readonly suruyor: boolean;
@@ -152,6 +184,10 @@ export interface SonuclandirmaGirdisi {
   toplamSatir: number;
   /** Bu istekte haritanın karşıladığı satır. */
   teslimEdilen: number;
+  /** GERÇEKTEN API'den dönen satır — kotadan düşecek olan (Emre 16.09). */
+  apiSatir: number;
+  /** Önbellek/sözlükten karşılanan satır — kotadan düşmeyen (denetim). */
+  onbellektenSatir: number;
   onbellekten: number;
   cevrilen: number;
   basarisizParca: number;
@@ -321,11 +357,20 @@ export class CeviriKotaServisi implements OnApplicationBootstrap {
     return suren !== null;
   }
 
-  private async zincir(db: Db, k: Kimlik, quoteId: string, hedefDil: string, icerik: CeviriIcerigi, simdi: Date): Promise<Zincir> {
-    const suren = await this.surenVarMi(db, k, quoteId, hedefDil, icerik.ozet, simdi);
-    // REVİZE K-T7: yarım (KISMI) halka araması ve devam YOK.
-    const tamamlanan = await this.odenmisKayit(db, k.firmaId, quoteId, hedefDil, icerik);
-    return { suren, tamamlanan };
+  /**
+   * ÖNBELLEK BAKIŞI — kotanın TEK sayma yolu (Emre 16.09). Çeviriyle AYNI iki
+   * katmanı AYNI fonksiyondan okur (`katmanliHaritaOku`): karşılığı olan metin
+   * API'ye gitmeyecek, para harcatmayacak, kotadan düşmeyecektir. Kayıt yazmaz.
+   *
+   * ⚠ Bu sayı bir TAHMİN değil, ayırma anındaki ölçümdür; kesin ücretlendirme
+   * sonuçlandırmada GERÇEKTEN API'den dönen satırla yapılır (arada başka bir
+   * firma aynı metni çevirip önbelleğe yazmış olabilir — kullanıcı onu ödemez).
+   */
+  private async yeniIcerik(db: Db, firmaId: string, hedefDil: string, icerik: CeviriIcerigi): Promise<YeniIcerik> {
+    const { harita } = await katmanliHaritaOku(db, icerik.metinler, hedefDil, firmaId);
+    const yeniMetinler = cevrilemeyenMetinler(icerik.metinler, harita);
+    const gerekenSatir = anahtarSatirlari(icerik, yeniMetinler);
+    return { yeniMetinler, gerekenSatir, onbellektenSatir: Math.max(0, icerik.satirSayisi - gerekenSatir) };
   }
 
   /**
@@ -367,25 +412,31 @@ export class CeviriKotaServisi implements OnApplicationBootstrap {
     }
   }
 
-  /** Teklif ekranı, çevirmeden ÖNCE: bu dosya kaç satır yer, kalan ne, geçer mi. Kayıt yazmaz. */
+  /**
+   * Teklif ekranı, çevirmeden ÖNCE: bu dosyanın kaç satırı YENİ (kotadan
+   * düşecek), kaçı önbellekten geliyor, kalan ne, geçer mi. Kayıt yazmaz.
+   * Ödenmiş içerik ayrıca sorulmaz: ödenmiş içeriğin satırları zaten
+   * önbellektedir, bakış onu kendiliğinden 0'a indirir (Emre 16.09).
+   */
   async onizleme(k: Kimlik, quoteId: string, hedefDil = 'en', simdi = new Date()): Promise<Onizleme> {
     const { icerik } = await this.kayitliIcerik(k, quoteId);
     const { ozet } = await this.baglam(this.prisma, k.firmaId, simdi);
-    const z = await this.zincir(this.prisma, k, quoteId, hedefDil, icerik, simdi);
-    const tekrar = z.tamamlanan !== null;
-    const gerekenSatir = tekrar ? 0 : icerik.satirSayisi;
+    const yeni = await this.yeniIcerik(this.prisma, k.firmaId, hedefDil, icerik);
+    const suruyor = await this.surenVarMi(this.prisma, k, quoteId, hedefDil, icerik.ozet, simdi);
     const karar = kotaKarari({
       kota: ozet.kota,
       kullanilanSatir: ozet.kullanilanSatir,
       kullanilanDosya: ozet.kullanilanDosya,
-      gerekenSatir,
+      gerekenSatir: yeni.gerekenSatir,
     });
     return {
       epostaDogrulandi: await epostaDogrulandiMi(this.prisma, k.userId),
-      gerekenSatir,
+      gerekenSatir: yeni.gerekenSatir,
+      toplamSatir: icerik.satirSayisi,
+      onbellektenSatir: yeni.onbellektenSatir,
       metinSayisi: icerik.metinler.length,
-      tekrar,
-      suruyor: z.suren,
+      tekrar: yeni.gerekenSatir === 0,
+      suruyor,
       izin: karar.izin,
       sebep: karar.sebep,
       redMesaji: karar.izin ? null : kotaRedMesaji(karar, ozet.kota, new Date(ozet.donemBitis)),
@@ -394,8 +445,13 @@ export class CeviriKotaServisi implements OnApplicationBootstrap {
   }
 
   /**
-   * AI çağrısından ÖNCE: e-posta, ödenmiş içerik, kota. Geçerse `ISLENIYOR`
-   * kaydı yazar. Reddederse istisna fırlatır ve HİÇBİR şey yazmaz.
+   * AI çağrısından ÖNCE: e-posta, süren çeviri, önbellek bakışı, kota. Geçerse
+   * `ISLENIYOR` kaydı yazar. Reddederse istisna fırlatır ve HİÇBİR şey yazmaz.
+   *
+   * Ayrılan satır = API'ye GİDECEK satır (Emre 16.09). API'ye gidecek satırı
+   * olmayan istek de kayıt yazar (`dusulenSatir: 0`): denetim satırı, süren
+   * çeviri kilidi ve ödenmiş içerik kanıtı ondan çıkar — ama kotadan da dosya
+   * hakkından da hiçbir şey yemez.
    */
   async rezerveEt(k: Kimlik, quoteId: string, hedefDil: string, simdi = new Date()): Promise<Rezervasyon> {
     if (!(await epostaDogrulandiMi(this.prisma, k.userId))) {
@@ -422,18 +478,17 @@ export class CeviriKotaServisi implements OnApplicationBootstrap {
       });
 
       const b = await this.baglam(tx, k.firmaId, simdi);
-      const z = await this.zincir(tx, k, quoteId, hedefDil, icerik, simdi);
 
-      if (z.suren) {
+      if (await this.surenVarMi(tx, k, quoteId, hedefDil, icerik.ozet, simdi)) {
         throw new ConflictException({
           mesaj: 'Bu teklifin çevirisi zaten sürüyor',
           aciklama: 'Birkaç dakika sonra sayfayı yenileyin. Aynı çeviri iki kez sayılmaz.',
           kod: 'CEVIRI_SURUYOR',
         });
       }
-      if (z.tamamlanan) return { tur: 'tekrar', kayitId: z.tamamlanan.kayitId, icerik, ozet: b.ozet };
 
-      const gerekenSatir = icerik.satirSayisi;
+      const yeni = await this.yeniIcerik(tx, k.firmaId, hedefDil, icerik);
+      const gerekenSatir = yeni.gerekenSatir;
       const karar = kotaKarari({
         kota: b.ozet.kota,
         kullanilanSatir: b.ozet.kullanilanSatir,
@@ -468,8 +523,9 @@ export class CeviriKotaServisi implements OnApplicationBootstrap {
           quoteId,
           hedefDil,
           satirSayisi: icerik.satirSayisi,
-          // Ayırma: sonuçlanana kadar satırın tamamı sayılır.
+          // Ayırma: sonuçlanana kadar API'ye gidecek satırın tamamı sayılır.
           dusulenSatir: gerekenSatir,
+          onbellektenSatir: yeni.onbellektenSatir,
           toplamTeslim: 0,
           devam: false,
           metinSayisi: icerik.metinler.length,
@@ -479,18 +535,19 @@ export class CeviriKotaServisi implements OnApplicationBootstrap {
         },
         select: { id: true },
       });
-      return { tur: 'yeni', kayitId: kayit.id, icerik, ozet: b.ozet };
+      return { kayitId: kayit.id, icerik, ozet: b.ozet, gerekenSatir, tekrar: gerekenSatir === 0 };
     }, ISLEM_AYARI);
   }
 
   /**
-   * Ayırmayı kapatır: tam teslimde `BASARILI` ve satırın tamamı düşer, eksikte
-   * `BASARISIZ` ve hiçbir şey düşmez (`sonucHesabi`). Hâlâ `ISLENIYOR` olanı ya
-   * da ZAMAN AŞIMIYLA kapatılmış olanı günceller — uzun süren iş geç biterse de
-   * düşer. Açılışta kapatılan (süreci ölmüş) kayıt sonuçlanamaz zaten.
+   * Ayırmayı kapatır: tam teslimde `BASARILI` ve GERÇEKTEN API'den dönen satır
+   * düşer, eksikte `BASARISIZ` ve hiçbir şey düşmez (`sonucHesabi`). Hâlâ
+   * `ISLENIYOR` olanı ya da ZAMAN AŞIMIYLA kapatılmış olanı günceller — uzun
+   * süren iş geç biterse de düşer. Açılışta kapatılan (süreci ölmüş) kayıt
+   * sonuçlanamaz zaten.
    */
   async sonuclandir(kayitId: string, s: SonuclandirmaGirdisi): Promise<{ durum: CeviriSonucDurumu; dusulenSatir: number }> {
-    const h = sonucHesabi({ toplamSatir: s.toplamSatir, teslimEdilen: s.teslimEdilen });
+    const h = sonucHesabi({ toplamSatir: s.toplamSatir, teslimEdilen: s.teslimEdilen, apiSatir: s.apiSatir });
     await this.prisma.ceviriTuketimi.updateMany({
       where: {
         id: kayitId,
@@ -500,6 +557,8 @@ export class CeviriKotaServisi implements OnApplicationBootstrap {
         durum: h.durum,
         dusulenSatir: h.dusulenSatir,
         toplamTeslim: h.toplamTeslim,
+        // Denetim: düşen (API) satır ile düşmeyen (önbellek) satır AYRIK durur.
+        onbellektenSatir: Math.max(0, s.onbellektenSatir),
         onbellekten: s.onbellekten,
         cevrilen: s.cevrilen,
         basarisizParca: s.basarisizParca,

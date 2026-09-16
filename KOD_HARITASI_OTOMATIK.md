@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 584
-Toplam satir: 133939
+Toplam satir: 134274
 Uc nokta: 171
 test:* scripti: 97
 
@@ -12,7 +12,7 @@ test:* scripti: 97
 
 | Dosya | Satir |
 |---|---|
-| `backend/prisma/schema.prisma` | 1672 |
+| `backend/prisma/schema.prisma` | 1676 |
 | `backend/scripts/ceviri-gecis-izni.ts` | 476 |
 | `backend/scripts/ceviri-suzgec-olcum.ts` | 96 |
 | `backend/scripts/derleme-kapisi.js` | 68 |
@@ -120,14 +120,14 @@ test:* scripti: 97
 | `backend/src/ozellik/fiyat/matching/index/outcome-mapper.ts` | 371 |
 | `backend/src/ozellik/fiyat/matching/pricing.ts` | 66 |
 | `backend/src/ozellik/giris/ai/ai-maliyet.ts` | 126 |
-| `backend/src/ozellik/giris/ai/ai.controller.ts` | 124 |
+| `backend/src/ozellik/giris/ai/ai.controller.ts` | 126 |
 | `backend/src/ozellik/giris/ai/ai.module.ts` | 19 |
 | `backend/src/ozellik/giris/ai/ai.service.ts` | 869 |
 | `backend/src/ozellik/giris/ai/ceviri-duzeltme.controller.ts` | 73 |
 | `backend/src/ozellik/giris/ai/ceviri-duzeltme.servisi.ts` | 271 |
-| `backend/src/ozellik/giris/ai/ceviri-katmani.ts` | 85 |
-| `backend/src/ozellik/giris/ai/ceviri-kurali.ts` | 379 |
-| `backend/src/ozellik/giris/ai/ceviri.service.ts` | 667 |
+| `backend/src/ozellik/giris/ai/ceviri-katmani.ts` | 124 |
+| `backend/src/ozellik/giris/ai/ceviri-kurali.ts` | 410 |
+| `backend/src/ozellik/giris/ai/ceviri.service.ts` | 650 |
 | `backend/src/ozellik/giris/ai/dto/ceviri-duzeltme.dto.ts` | 44 |
 | `backend/src/ozellik/giris/ai/dto/ceviri.dto.ts` | 44 |
 | `backend/src/ozellik/giris/excel-engine/excel-engine.controller.ts` | 21 |
@@ -172,8 +172,8 @@ test:* scripti: 97
 | `backend/src/ozellik/kutuphane/utils/import-fidelity.ts` | 468 |
 | `backend/src/ozellik/odeme/abonelik/abonelik.controller.ts` | 125 |
 | `backend/src/ozellik/odeme/abonelik/abonelik.servisi.ts` | 433 |
-| `backend/src/ozellik/odeme/abonelik/ceviri-kota.servisi.ts` | 513 |
-| `backend/src/ozellik/odeme/abonelik/ceviri-kotasi.ts` | 339 |
+| `backend/src/ozellik/odeme/abonelik/ceviri-kota.servisi.ts` | 572 |
+| `backend/src/ozellik/odeme/abonelik/ceviri-kotasi.ts` | 365 |
 | `backend/src/ozellik/odeme/abonelik/deneme-hakki.servisi.ts` | 84 |
 | `backend/src/ozellik/odeme/abonelik/deneme-hakki.ts` | 151 |
 | `backend/src/ozellik/odeme/abonelik/dto/abonelik-basla.dto.ts` | 52 |
@@ -219,11 +219,11 @@ test:* scripti: 97
 | `backend/test/b1-kutuphane-cascade-test.ts` | 185 |
 | `backend/test/build-sha-kablolama-test.ts` | 140 |
 | `backend/test/cap-cevrilemedi-test.ts` | 254 |
-| `backend/test/ceviri-duzeltme-test.ts` | 881 |
+| `backend/test/ceviri-duzeltme-test.ts` | 885 |
 | `backend/test/ceviri-gecis-test.ts` | 292 |
-| `backend/test/ceviri-gorunum-cikti-test.ts` | 741 |
+| `backend/test/ceviri-gorunum-cikti-test.ts` | 765 |
 | `backend/test/ceviri-karar-test.ts` | 188 |
-| `backend/test/ceviri-kota-uygulama-test.ts` | 1018 |
+| `backend/test/ceviri-kota-uygulama-test.ts` | 1127 |
 | `backend/test/ceviri-kotasi-test.ts` | 301 |
 | `backend/test/ceviri-sahte-db.ts` | 273 |
 | `backend/test/cikti-dil-test.ts` | 91 |
@@ -340,7 +340,7 @@ test:* scripti: 97
 | `frontend/app/admin/users/page.tsx` | 470 |
 | `frontend/app/cerez-politikasi/page.tsx` | 13 |
 | `frontend/app/dev/grid-test/page.tsx` | 227 |
-| `frontend/app/fiyatlar/page.tsx` | 142 |
+| `frontend/app/fiyatlar/page.tsx` | 153 |
 | `frontend/app/forgot-password/page.tsx` | 92 |
 | `frontend/app/gizlilik/page.tsx` | 13 |
 | `frontend/app/kullanim-kosullari/page.tsx` | 13 |
@@ -489,7 +489,7 @@ test:* scripti: 97
 | `frontend/ozellik/odeme/erisim-durumu.ts` | 115 |
 | `frontend/ozellik/odeme/fatura-kimligi.test.ts` | 134 |
 | `frontend/ozellik/odeme/fatura-kimligi.ts` | 117 |
-| `frontend/ozellik/odeme/fiyat-sayfasi.test.ts` | 373 |
+| `frontend/ozellik/odeme/fiyat-sayfasi.test.ts` | 383 |
 | `frontend/ozellik/odeme/iyzico-form.test.ts` | 263 |
 | `frontend/ozellik/odeme/iyzico-form.ts` | 138 |
 | `frontend/ozellik/odeme/ozellik-kapisi.test.ts` | 149 |
@@ -534,11 +534,11 @@ test:* scripti: 97
 | `frontend/ozellik/tablo/parse-material-text.ts` | 69 |
 | `frontend/ozellik/tablo/quotes/ColumnManagerPanel.tsx` | 146 |
 | `frontend/ozellik/teklif/CeviriDuzeltmeDialog.tsx` | 115 |
-| `frontend/ozellik/teklif/ceviri-akisi.test.ts` | 494 |
+| `frontend/ozellik/teklif/ceviri-akisi.test.ts` | 511 |
 | `frontend/ozellik/teklif/ceviri-akisi.ts` | 163 |
 | `frontend/ozellik/teklif/ceviri-duzeltme.test.ts` | 116 |
 | `frontend/ozellik/teklif/ceviri-duzeltme.ts` | 78 |
-| `frontend/ozellik/teklif/ceviri-kota.ts` | 222 |
+| `frontend/ozellik/teklif/ceviri-kota.ts` | 238 |
 | `frontend/ozellik/teklif/ceviri.test.ts` | 310 |
 | `frontend/ozellik/teklif/ceviri.ts` | 258 |
 | `frontend/ozellik/teklif/dashboard/RecentQuotes.tsx` | 118 |
@@ -700,7 +700,7 @@ test:* scripti: 97
 | `backend/src/ozellik/giris/ai/ai.service.ts` | `@nestjs/common` `../../../altyapi/db/prisma.service` `@anthropic-ai/sdk` `./ai-maliyet` `../../kutuphane/utils/import-fidelity` `xlsx` `pdf-parse` |
 | `backend/src/ozellik/giris/ai/ceviri-duzeltme.controller.ts` | `@nestjs/common` `@nestjs/throttler` `../../../altyapi/auth/guards/jwt-auth.guard` `../../../altyapi/auth/guards/kullanici-hiz-siniri.guard` `../../../altyapi/auth/decorators/current-user.decorator` `../../../altyapi/auth/kimlik` `../../odeme/abonelik/erisim.guard` `../../odeme/abonelik/erisim.servisi` `./ceviri-duzeltme.servisi` `./dto/ceviri-duzeltme.dto` |
 | `backend/src/ozellik/giris/ai/ceviri-duzeltme.servisi.ts` | `@nestjs/common` `../../../altyapi/db/prisma.service` `../../../altyapi/auth/kimlik` `../../../altyapi/auth/eposta-dogrulama` `../../odeme/abonelik/ceviri-kota.servisi` `../../odeme/abonelik/erisim.servisi` `./ceviri-kurali` `./ceviri-katmani` |
-| `backend/src/ozellik/giris/ai/ceviri-katmani.ts` | `crypto` `./ceviri-kurali` |
+| `backend/src/ozellik/giris/ai/ceviri-katmani.ts` | `crypto` `@prisma/client` `../../../altyapi/db/prisma.service` `./ceviri-kurali` |
 | `backend/src/ozellik/giris/ai/ceviri-kurali.ts` | `crypto` |
 | `backend/src/ozellik/giris/ai/ceviri.service.ts` | `@nestjs/common` `@anthropic-ai/sdk` `../../../altyapi/db/prisma.service` `../../../altyapi/auth/kimlik` `../../odeme/abonelik/ceviri-kota.servisi` `./ai.service` `./ceviri-katmani` `./ceviri-duzeltme.servisi` |
 | `backend/src/ozellik/giris/ai/dto/ceviri-duzeltme.dto.ts` | `class-validator` |
@@ -743,7 +743,7 @@ test:* scripti: 97
 | `backend/src/ozellik/kutuphane/materials/materials.service.ts` | `@nestjs/common` `../../../altyapi/db/prisma.service` `./dto/create-material.dto` `./dto/create-material-price.dto` |
 | `backend/src/ozellik/odeme/abonelik/abonelik.controller.ts` | `@nestjs/common` `../../../altyapi/auth/guards/jwt-auth.guard` `../../../altyapi/auth/decorators/current-user.decorator` `../../../altyapi/auth/kimlik` `./erisim.servisi` `./satinalma.servisi` `./deneme-hakki.servisi` `./dto/abonelik-basla.dto` |
 | `backend/src/ozellik/odeme/abonelik/abonelik.servisi.ts` | `@nestjs/common` `../../../altyapi/db/prisma.service` `@prisma/client` `../iyzico/iyzico.client` |
-| `backend/src/ozellik/odeme/abonelik/ceviri-kota.servisi.ts` | `@prisma/client` `../../../altyapi/db/prisma.service` `../../../altyapi/auth/kimlik` `../../../altyapi/auth/eposta-dogrulama` `../../giris/ai/ceviri-kurali` |
+| `backend/src/ozellik/odeme/abonelik/ceviri-kota.servisi.ts` | `@prisma/client` `../../../altyapi/db/prisma.service` `../../../altyapi/auth/kimlik` `../../../altyapi/auth/eposta-dogrulama` `../../giris/ai/ceviri-katmani` |
 | `backend/src/ozellik/odeme/abonelik/ceviri-kotasi.ts` | `@nestjs/common` |
 | `backend/src/ozellik/odeme/abonelik/deneme-hakki.servisi.ts` | `@nestjs/common` `../../../altyapi/db/prisma.service` `../../../altyapi/auth/eposta-dogrulama` |
 | `backend/src/ozellik/odeme/abonelik/deneme-hakki.ts` | `@prisma/client` `../../../altyapi/auth/eposta` |

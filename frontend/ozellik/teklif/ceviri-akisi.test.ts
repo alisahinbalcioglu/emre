@@ -43,6 +43,8 @@ function onizleme(patch: Partial<CeviriOnizleme> = {}): CeviriOnizleme {
   return {
     epostaDogrulandi: true,
     gerekenSatir: 1240,
+    toplamSatir: 1240,
+    onbellektenSatir: 0,
     metinSayisi: 310,
     tekrar: false,
     suruyor: false,
@@ -62,6 +64,7 @@ function sonuc(patch: Partial<TeklifCeviriSonucu> = {}): TeklifCeviriSonucu {
     basarisiz: 0,
     satirSayisi: 1240,
     dusulenSatir: 1240,
+    onbellektenSatir: 0,
     tekrar: false,
     kotadanDustu: true,
     kota: { ...KOTA, kalanSatir: 860, kalanDosya: 27 },
@@ -219,9 +222,17 @@ describe('ceviri-kota gösterimi', () => {
     expect(kalanKotaCumlesi(KOTA)).toBe('Kalan: 2.100 satır / 28 dosya · yenilenme 12.10.2026');
   });
 
-  it('önizleme cümlesi gereken satırı söyler', () => {
+  it('önizleme cümlesi YENİ satırı söyler (hepsi yeniyse hazır cümlesi yok)', () => {
     expect(onizlemeCumlesi(onizleme())).toBe(
-      'Bu teklif 1.240 satır çeviri kotası yer. Kalan: 2.100 satır / 28 dosya · yenilenme 12.10.2026.',
+      'Bu teklifin 1.240 satırı yeni; kotadan 1.240 satır düşer. Kalan: 2.100 satır / 28 dosya · yenilenme 12.10.2026.',
+    );
+  });
+
+  // PARA HARCANANA HAK DÜŞER (Emre 16.09): önbellekten karşılanan satır ayrıca
+  // söylenir — tek sayı yazmak teklifin tamamının ücretlendiğini düşündürürdü.
+  it('★ önizleme cümlesi önbellekten gelen satırı ayrıca söyler', () => {
+    expect(onizlemeCumlesi(onizleme({ gerekenSatir: 240, toplamSatir: 1240, onbellektenSatir: 1000 }))).toBe(
+      'Bu teklifin 240 satırı yeni; kotadan 240 satır düşer. 1.000 satır daha önce çevrildiği için kotadan düşmez. Kalan: 2.100 satır / 28 dosya · yenilenme 12.10.2026.',
     );
   });
 
@@ -240,17 +251,23 @@ describe('ceviri-kota gösterimi', () => {
     expect(b.aciklama).toContain('Kalan: 860 satır / 27 dosya');
   });
 
-  it('tekrar: kotadan yeniden düşmediği söylenir', () => {
-    const b = sonucBildirimi(sonuc({ tekrar: true, kotadanDustu: false }), 3);
-    expect(b.aciklama).toContain('kotadan yeniden düşmedi');
+  it('★ yeni satır yoksa kotadan hiçbir şey düşmediği söylenir', () => {
+    const b = sonucBildirimi(sonuc({ tekrar: true, kotadanDustu: false, dusulenSatir: 0, onbellektenSatir: 1240 }), 3);
+    expect(b.aciklama).toContain('Yeni çevrilen satır olmadığı için kotadan hiçbir şey düşmedi.');
+  });
+
+  it('★ karışık teklifte düşen ve düşmeyen satır AYRI söylenir', () => {
+    const b = sonucBildirimi(sonuc({ dusulenSatir: 240, onbellektenSatir: 1000 }), 3);
+    expect(b.aciklama).toContain('kotadan 240 satır düştü.');
+    expect(b.aciklama).toContain('1.000 satır daha önce çevrildiği için düşmedi.');
   });
 
   // REVİZE K-T7 (15.09): kısmi ve devam dalları KALDI — sunucu eksik çeviride
   // 422 döner, ekran tamamlanamadı bildirimini gösterir.
-  it('tekrar metni ödenmiş içeriği söyler ("az önce" değil)', () => {
-    const b = sonucBildirimi(sonuc({ tekrar: true, kotadanDustu: false }), 3);
-    expect(b.aciklama).toContain('Bu içeriğin çevirisi daha önce ödenmişti; kotadan yeniden düşmedi.');
+  it('tekrar metni "az önce" ya da pencere demez', () => {
+    const b = sonucBildirimi(sonuc({ tekrar: true, kotadanDustu: false, dusulenSatir: 0, onbellektenSatir: 1240 }), 3);
     expect(b.aciklama).not.toContain('az önce');
+    expect(b.aciklama).not.toMatch(/dakika/);
   });
 
   it('tamamlanmış sonuçta kısmi dal YOK (başarısız satır alanı taşınmaz)', () => {
@@ -261,15 +278,15 @@ describe('ceviri-kota gösterimi', () => {
   });
 
   it('önizleme cümlesinde devam dalı yok', () => {
-    expect(onizlemeCumlesi(onizleme({ gerekenSatir: 340 }))).toBe(
-      'Bu teklif 340 satır çeviri kotası yer. Kalan: 2.100 satır / 28 dosya · yenilenme 12.10.2026.',
+    expect(onizlemeCumlesi(onizleme({ gerekenSatir: 340, toplamSatir: 340 }))).toBe(
+      'Bu teklifin 340 satırı yeni; kotadan 340 satır düşer. Kalan: 2.100 satır / 28 dosya · yenilenme 12.10.2026.',
     );
   });
 
   it('görüntüleme bildirimi hücre sayısını ve kotadan düşmediğini söyler', () => {
     const b = goruntulemeBildirimi({ odenmis: true, tamam: true, kaynak: 'TUKETIM', harita: {}, satirSayisi: 3 }, 12);
     expect(b.baslik).toBe('İngilizce görünüm açıldı');
-    expect(b.aciklama).toBe('12 hücre İngilizce gösteriliyor · bu içeriğin çevirisi daha önce ödenmişti, kotadan düşmedi.');
+    expect(b.aciklama).toBe('12 hücre İngilizce gösteriliyor · bu teklif daha önce çevrilmişti, kotadan düşmedi.');
   });
 
   it('tamamlanamadı bildirimi: ilk 5 metin, 60 karakter kesimi, "ve M satır daha", kotadan düşmedi', () => {

@@ -110,8 +110,15 @@ export interface KotaKarari {
  *  2. Dosya hakkı bittiyse → hangi boyda olursa olsun bu dönem çevrilemez.
  *  3. Kalan satır yetmiyorsa → kısmen ÇEVRİLMEZ, önceden reddedilir.
  *
- * Çevrilecek satırı OLMAYAN istek (0 satır) kota harcamaz ve reddedilmez:
- * çevrilecek bir şey yoktur, AI çağrısı da yapılmaz.
+ * ⚠ `gerekenSatir` 16.09'dan (Emre) beri TEKLİFİN SATIRI DEĞİL, API'ye
+ * GİDECEK satırdır: ortak önbellekte ve firma sözlüğünde karşılığı olan satır
+ * para harcatmaz, sayılmaz. Yani 5.000 satırlık bir teklifin 300 satırı
+ * yeniyse tavan 300 üzerinden sorulur ve "bu teklif bu pakette hiç
+ * çevrilemez" kararı da 300 üzerinden verilir.
+ *
+ * API'ye gidecek satırı OLMAYAN istek (0 satır) kota harcamaz ve reddedilmez:
+ * ne yeni bir metin vardır ne de AI çağrısı yapılır — dosya hakkı da düşmez
+ * (`sonucHesabi` 0 düşürür, sayım `dusulenSatir > 0` olan kaydı dosya sayar).
  *
  * Her çeviri yeni dosyadır (REVİZE K-T7, 15.09): yarım çevirinin "devamı"
  * kalktı, dosya tavanı her istekte sorulur.
@@ -139,11 +146,22 @@ export function kotaKarari(p: {
 export type CeviriSonucDurumu = 'BASARILI' | 'BASARISIZ';
 
 /**
- * Çeviri SONUÇLANINCA kotadan ne düşer — HEPSİ YA DA HİÇBİRİ (REVİZE K-T7,
- * Emre 15.09: "o Excel tam çevrilemiyorsa çevirmesin").
- *  · tüm satırlar teslim edildi → BASARILI, satırların hepsi düşer
- *  · tek satır bile eksik       → BASARISIZ, hiçbir şey düşmez (harita da
- *                                 istemciye DÖNMEZ — `CeviriService`)
+ * Çeviri SONUÇLANINCA kotadan ne düşer.
+ *
+ * İKİ KURAL BİRLİKTE İŞLER:
+ *  · HEPSİ YA DA HİÇBİRİ (REVİZE K-T7, Emre 15.09: "o Excel tam
+ *    çevrilemiyorsa çevirmesin") — tek satır bile eksikse BASARISIZ ve
+ *    hiçbir şey düşmez (harita da istemciye DÖNMEZ — `CeviriService`).
+ *  · PARA HARCANANA HAK DÜŞER (Emre 16.09) — tam çeviride bile kotadan
+ *    yalnız API'DEN DÖNEN satırlar düşer. Ortak önbellekten ya da firma
+ *    sözlüğünden karşılanan satır Claude'a hiç gitmediği için ücretlenmez.
+ *    `apiSatir = 0` ise çeviri BASARILI'dır ama kotadan 0 düşer ve dosya
+ *    hakkı da yenmez (sayım `dusulenSatir > 0` olan kaydı dosya sayar).
+ *
+ * `apiSatir` AYIRMA sayısı değil, GERÇEKLEŞEN sayıdır: ayırma ile çağrı
+ * arasında başka bir firma aynı metni çevirip önbelleğe yazmışsa kullanıcı
+ * onu ödemez. Toplamı aşamaz (kırpılır): tek bir satır iki kez ücretlenmesin.
+ *
  * 14.09'daki KISMI kuralı (yalnız teslim edileni düşürüp haritayı vermek) ve
  * 10 dakikalık "devam" zinciri kalktı. Çevrilecek satırı olmayan istek
  * (toplam 0) BASARILI sayılır ve hiçbir şey düşmez.
@@ -151,10 +169,13 @@ export type CeviriSonucDurumu = 'BASARILI' | 'BASARISIZ';
 export function sonucHesabi(p: {
   toplamSatir: number;
   teslimEdilen: number;
+  /** API'den dönen (para harcanan) satır. */
+  apiSatir: number;
 }): { durum: CeviriSonucDurumu; dusulenSatir: number; toplamTeslim: number } {
   const toplam = Math.max(0, p.toplamSatir);
-  if (p.teslimEdilen >= toplam) return { durum: 'BASARILI', dusulenSatir: toplam, toplamTeslim: toplam };
-  return { durum: 'BASARISIZ', dusulenSatir: 0, toplamTeslim: 0 };
+  if (p.teslimEdilen < toplam) return { durum: 'BASARISIZ', dusulenSatir: 0, toplamTeslim: 0 };
+  const dusulenSatir = Math.min(toplam, Math.max(0, p.apiSatir));
+  return { durum: 'BASARILI', dusulenSatir, toplamTeslim: toplam };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -184,11 +205,11 @@ export const CIKTI_KAPISI_METNI: Readonly<Record<CiktiKapisiNedeni, { readonly m
   }),
   ICERIK_DEGISTI: Object.freeze({
     mesaj: 'Çeviriden sonra teklif değişti',
-    aciklama: 'Malzeme/iş adları ya da satırlar çeviriden sonra değişti. İngilizce dosya için teklifi yeniden çevirin; yeni çeviri kotadan düşer.',
+    aciklama: 'Malzeme/iş adları ya da satırlar çeviriden sonra değişti. İngilizce dosya için teklifi yeniden çevirin; kotadan yalnız daha önce çevrilmemiş satırlar düşer.',
   }),
   CEVIRI_EKSIK: Object.freeze({
     mesaj: 'Bu teklifin çevirisi eksik',
-    aciklama: 'İngilizce dosya için teklif ekranında İngilizceye Çevir düğmesine basın; kotadan düşmez.',
+    aciklama: 'İngilizce dosya için teklif ekranında İngilizceye Çevir düğmesine basın; eksik kalan satır daha önce çevrilmişse kotadan düşmez.',
   }),
   CEVIRI_SURUYOR: Object.freeze({
     mesaj: 'Bu teklifin çevirisi sürüyor',
@@ -257,14 +278,19 @@ export function trTarih(t: Date): string {
 /**
  * Reddin kullanıcıya söylenecek cümlesi. Genel bir "kota yetersiz" YOKTUR —
  * her sebep kendi rakamlarıyla konuşur.
+ *
+ * ⚠ 16.09'dan beri rakam TEKLİFİN satırı değil YENİ satırdır (önbellekte
+ * karşılığı olmayan). "Bu teklif 5.000 satır gerektiriyor" demek, 4.700
+ * satırı zaten hazırken kullanıcıyı gereksiz yere pakete yollardı; mesaj
+ * kullanıcının ödeyeceği sayıyı söyler.
  */
 export function kotaRedMesaji(k: KotaKarari, kota: CeviriKotasi, yenilenme: Date): string {
   switch (k.sebep) {
     case 'DOSYA_TAVANDAN_BUYUK':
       return (
-        `Bu teklif ${binlik(k.gerekenSatir)} satır çeviri gerektiriyor; paketinizin dönemlik çeviri tavanı ` +
-        `${binlik(kota.satir)} satır. Bu teklif bu pakette hiçbir dönem çevrilemez — çevirmek için daha ` +
-        `yüksek kotalı bir pakete geçmeniz gerekir.`
+        `Bu teklifin ${binlik(k.gerekenSatir)} satırı yeni (daha önce çevrilmemiş); paketinizin dönemlik ` +
+        `çeviri tavanı ${binlik(kota.satir)} satır. Bu teklif bu pakette hiçbir dönem çevrilemez — çevirmek ` +
+        `için daha yüksek kotalı bir pakete geçmeniz gerekir.`
       );
     case 'DOSYA_TAVANI':
       return (
@@ -273,8 +299,8 @@ export function kotaRedMesaji(k: KotaKarari, kota: CeviriKotasi, yenilenme: Date
       );
     case 'SATIR_TAVANI':
       return (
-        `Bu dönem ${binlik(k.kalanSatir)} satırlık çeviri hakkınız kaldı; bu teklif ` +
-        `${binlik(k.gerekenSatir)} satır gerektiriyor. Teklif kısmen çevrilmez. ` +
+        `Bu teklifin ${binlik(k.gerekenSatir)} satırı yeni; bu dönem kalan çeviri hakkınız ` +
+        `${binlik(k.kalanSatir)} satır. Teklif kısmen çevrilmez. ` +
         `Kotanız ${trTarih(yenilenme)} tarihinde yenilenir.`
       );
     default:

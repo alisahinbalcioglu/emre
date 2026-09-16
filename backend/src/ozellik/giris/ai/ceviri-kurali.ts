@@ -99,7 +99,11 @@ export interface CeviriSayfasi {
 export interface CeviriIcerigi {
   /** API'ye gidecek benzersiz metinler — ilk görülme sırasıyla. */
   readonly metinler: string[];
-  /** Kotadan düşecek satır sayısı: çevrilecek metin içeren satır. */
+  /**
+   * Teklifin çevrilecek metin içeren TOPLAM satır sayısı. ⚠ Kotadan düşen bu
+   * DEĞİLDİR (Emre 16.09): kotadan yalnız önbellekte/sözlükte karşılığı
+   * olmayan, yani API'ye gidecek satırlar düşer — `anahtarSatirlari`.
+   */
   readonly satirSayisi: number;
   /**
    * İçerik özeti v2 (sha256, Faz 6.11 · 15.09) — ödenmiş çevirinin KALICI
@@ -224,6 +228,33 @@ export function teslimEdilenSatir(
   let toplam = 0;
   for (const [anahtar, adet] of icerik.satirlar) {
     if (Object.prototype.hasOwnProperty.call(harita, anahtar)) toplam += adet;
+  }
+  return toplam;
+}
+
+/**
+ * Verilen anahtarların tuttuğu SATIR sayısı (Emre 16.09: "API'den para harcanan
+ * işlem için hak düşer"). Kotanın birimi SATIR, önbellek ve firma sözlüğünün
+ * birimi METİN: "API'ye gidecek satır" ancak bu eşlemeyle bulunur. Aynı metin
+ * 40 satırda geçiyorsa API'ye BİR kez sorulur ama 40 satır yenidir — kota
+ * birimi 13.09'dan beri satırdır, değişmedi; değişen HANGİ satırların
+ * sayıldığıdır (önbellekte karşılığı olan satır artık sayılmaz).
+ *
+ * ⚠ Anahtarlar `ceviriAnahtari`den geçirilir: çağıran ham metin verse de
+ * `satirlar` haritasının anahtarlarıyla aynı normalizasyonda karşılaştırılır.
+ * Yinelenen anahtar bir kez sayılır (aynı satırlar iki kez ücretlenmez).
+ */
+export function anahtarSatirlari(
+  icerik: Pick<CeviriIcerigi, 'satirlar'>,
+  anahtarlar: Iterable<unknown>,
+): number {
+  let toplam = 0;
+  const sayilan = new Set<string>();
+  for (const ham of anahtarlar) {
+    const anahtar = ceviriAnahtari(ham);
+    if (!anahtar || sayilan.has(anahtar)) continue;
+    sayilan.add(anahtar);
+    toplam += icerik.satirlar.get(anahtar) ?? 0;
   }
   return toplam;
 }

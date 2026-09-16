@@ -1,4 +1,6 @@
 import { createHash } from 'crypto';
+import type { Prisma } from '@prisma/client';
+import type { PrismaService } from '../../../altyapi/db/prisma.service';
 import { ceviriAnahtari } from './ceviri-kurali';
 
 /**
@@ -81,4 +83,41 @@ export function katmanlariBirlestir(
     katman.set(anahtar, 'FIRMA');
   }
   return { harita, katman };
+}
+
+/** Katman sorgularının koştuğu istemci: servis ya da açık transaction. */
+export type KatmanDb = PrismaService | Prisma.TransactionClient;
+
+/**
+ * İKİ KATMANIN TEK OKUMA YOLU (Emre 16.09). 16.09'a kadar sorgular yalnız
+ * `CeviriService.katmanliHarita`daydı; kota artık "API'ye kaç satır gidecek"
+ * sorusunu ÇAĞRIDAN ÖNCE sorduğu için aynı okumaya `CeviriKotaServisi` de
+ * ihtiyaç duyar. Sorguyu iki yere kopyalamak, kotanın saydığı önbellekle
+ * çevirinin kullandığı önbelleğin sessizce ayrışması demekti (kullanıcı
+ * ücretlendirilir, metin zaten önbellektedir ya da tersi) — bu yüzden tek yer.
+ *
+ * ⚠ `firmaId` ZORUNLU: Prisma `undefined` süzgeci sessizce düşürür (kimlik.ts
+ * dersi) — firma süzgeci düşerse A firmasının düzeltmesi B'nin teklifine girerdi.
+ * Harita yalnız VERİLEN anahtarlar için kurulur (bakmak ≠ çevirmek).
+ */
+export async function katmanliHaritaOku(
+  db: KatmanDb,
+  metinler: readonly string[],
+  hedefDil: string,
+  firmaId: string,
+): Promise<KatmanliHarita> {
+  if (typeof firmaId !== 'string' || firmaId === '') throw new Error('katmanliHaritaOku: firmaId zorunlu');
+  const benzersiz = Array.from(new Set(metinler.map((m) => ceviriAnahtari(m)).filter(Boolean)));
+  if (benzersiz.length === 0) return { harita: Object.create(null), katman: new Map() };
+  const [ortak, firma] = await Promise.all([
+    db.translation.findMany({
+      where: { targetLang: hedefDil, sourceText: { in: benzersiz } },
+      select: { sourceText: true, translatedText: true },
+    }),
+    db.ceviriDuzeltmesi.findMany({
+      where: { firmaId, hedefDil, kaynakOzeti: { in: benzersiz.map((m) => kaynakOzeti(m)) } },
+      select: { kaynakMetin: true, kaynakOzeti: true, ceviriMetni: true },
+    }),
+  ]);
+  return katmanlariBirlestir(benzersiz, ortak, firma);
 }
