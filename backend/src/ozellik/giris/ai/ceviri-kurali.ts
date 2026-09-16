@@ -323,6 +323,10 @@ export function kaynakMetinleriniGeriYaz(sayfalar: unknown): number {
 //   · rakam dizileri ayraç DUYARSIZ karşılaştırılır (24.000 ↔ 24,000;
 //     2,5 ↔ 2.5). Bilinçli bedel: "2,5 → 25" gibi ayraç kaybı YANLIŞ KABUL
 //     edilir (RR2) — tercih yanlış kabul yönünde.
+//   · rakam öbeklerinin GRUPLANMASI da serbesttir: kaynaktaki düzensiz boşluk
+//     ve noktalama ("1 1/ 4''", "K80,68°C") tek başına ret sebebi DEĞİLDİR.
+//     Rakam İÇERİĞİ birebir eşleşmezse (24.000 → 24.0, yeni sayı, değişen ölçü)
+//     ret AYNEN sürer.
 //   · bağlantı/e-posta yalnız KAYNAKTA OLMAYAN biçimde çeviride görünürse ret;
 //     kaynakta zaten duran "www.firma.com" serbest.
 //  Kalan açık (§7.4 İ2): sayı içermeyen kelime düzeyi zehirleme.
@@ -330,6 +334,21 @@ export function kaynakMetinleriniGeriYaz(sayfalar: unknown): number {
 /** `1 1/4"` gibi kesirler tek dizi; `.`/`,` ayraçları atılır. */
 function rakamDizileri(metin: string): string[] {
   return (metin.match(/\d+(?:[.,]\d+)*(?:\/\d+)?/g) ?? []).map((d) => d.replace(/[.,]/g, '')).sort();
+}
+
+/**
+ * GRUP SINIRINDAN ARINDIRILMIŞ rakam dizisi: yalnız rakam öbekleri kalır,
+ * ayraç/boşluk düzeni tamamen düşer. `rakamDizileri` öbek sınırını KAYNAK
+ * METNİN yazım düzenine göre çizer; kaynak düzensiz yazıldığında aynı sayılar
+ * farklı gruplanır ve doğru çeviri YANLIŞ REDDEDİLİR (16.09, canlıda 334
+ * çevirinin 4'ü):
+ *   · boşluklu kesir  `1 1/ 4''`  → `1`,`4`   ama çeviride `1/4` tek öbek
+ *   · boşluksuz virgül `K80,68°C` → `8068`    ama çeviride `80`,`68` ayrı
+ * Bu ikinci ölçüt yalnız İKİNCİ ŞANS olarak kullanılır (bkz. `ceviriGuvenliMi`):
+ * rakam İÇERİĞİ hâlâ birebir eşleşmek zorundadır, sadece gruplama serbesttir.
+ */
+function rakamObekleri(metin: string): string[] {
+  return (metin.match(/\d+/g) ?? []).sort();
 }
 
 /** Bağlantı ve e-posta biçimli parçalar (küçük harf). */
@@ -343,7 +362,12 @@ export function ceviriGuvenliMi(kaynak: unknown, ceviri: unknown): boolean {
   const k = ceviriAnahtari(kaynak);
   const c = ceviriAnahtari(ceviri);
   if (c.length > 3 * k.length + 20) return false;
-  if (rakamDizileri(k).join('|') !== rakamDizileri(c).join('|')) return false;
+  if (
+    rakamDizileri(k).join('|') !== rakamDizileri(c).join('|') &&
+    rakamObekleri(k).join('|') !== rakamObekleri(c).join('|')
+  ) {
+    return false;
+  }
   const kaynaktakiler = baglantiParcalari(k);
   for (const p of baglantiParcalari(c)) {
     const i = kaynaktakiler.indexOf(p);

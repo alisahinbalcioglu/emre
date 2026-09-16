@@ -263,6 +263,20 @@ function z1Blogu(): void {
     ['kaynakta OLAN bağlantı serbest', 'VANA www.x.com', 'VALVE www.x.com', true],
     ['kaynakta OLMAYAN e-posta', 'KÜRESEL VANA', 'BALL VALVE a@b.com', false],
     ['aşırı uzun karşılık', 'VANA', 'VALVE'.padEnd(3 * 4 + 21, ' x'), false],
+    // ── CANLI VAKALAR (16.09): 334 makine çevirisinin YANLIŞ REDDEDİLEN 4'ü.
+    //    Dördü de doğru çeviri; ret sebebi kaynak metindeki düzensiz boşluk ve
+    //    noktalamaydı (`1 1/ 4` kesri bölünüyor, `K80,68` tek sayı sanılıyor).
+    ['canlı: kesirde boşluk (1 1/ 4)', "1 1/ 4'' x 1''x 1'' İnegal Tee",
+      "1 1/4'' x 1'' x 1'' Reducing Tee", true],
+    ['canlı: kesirde boşluk (1 1/ 2)', "1 1/ 2'' x1''x 1 1/4'' İnegal Tee",
+      "1 1/2'' x 1'' x 1 1/4'' Reducing Tee", true],
+    ['canlı: boşluksuz virgül (K80,68°C) — pendent', "1/2'' ,K80,68°C,Pendent,std, Sprinkler",
+      "1/2'', K80, 68°C, Pendent, Standard, Sprinkler", true],
+    ['canlı: boşluksuz virgül (K80,68°C) — upright', "1/2'' ,K80,68°C,upright ,std,Sprinkler",
+      "1/2'', K80, 68°C, Upright, Standard, Sprinkler", true],
+    // Gruplama serbest ama rakam İÇERİĞİ değil: aşağıdakiler REDDEDİLMEYE devam eder.
+    ['gruplama serbest ama rakam kaybı YASAK', '24.000 kcal/h KAZAN', '24.0 kcal/h BOILER', false],
+    ['düzensiz kaynakta bile YENİ sayı YASAK', "1/2'' ,K80,68°C,std", "1/2'', K80, 68°C, K115, Standard", false],
   ];
   for (const [ad, kaynak, ceviri, beklenen] of vakalar) {
     check(`Z1 ${ad}: «${kaynak}» → «${ceviri.slice(0, 40)}» ${beklenen ? '✓' : '✗'}`,

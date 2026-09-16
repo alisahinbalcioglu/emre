@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 584
-Toplam satir: 133901
+Toplam satir: 133939
 Uc nokta: 171
 test:* scripti: 97
 
@@ -126,7 +126,7 @@ test:* scripti: 97
 | `backend/src/ozellik/giris/ai/ceviri-duzeltme.controller.ts` | 73 |
 | `backend/src/ozellik/giris/ai/ceviri-duzeltme.servisi.ts` | 271 |
 | `backend/src/ozellik/giris/ai/ceviri-katmani.ts` | 85 |
-| `backend/src/ozellik/giris/ai/ceviri-kurali.ts` | 355 |
+| `backend/src/ozellik/giris/ai/ceviri-kurali.ts` | 379 |
 | `backend/src/ozellik/giris/ai/ceviri.service.ts` | 667 |
 | `backend/src/ozellik/giris/ai/dto/ceviri-duzeltme.dto.ts` | 44 |
 | `backend/src/ozellik/giris/ai/dto/ceviri.dto.ts` | 44 |
@@ -219,7 +219,7 @@ test:* scripti: 97
 | `backend/test/b1-kutuphane-cascade-test.ts` | 185 |
 | `backend/test/build-sha-kablolama-test.ts` | 140 |
 | `backend/test/cap-cevrilemedi-test.ts` | 254 |
-| `backend/test/ceviri-duzeltme-test.ts` | 867 |
+| `backend/test/ceviri-duzeltme-test.ts` | 881 |
 | `backend/test/ceviri-gecis-test.ts` | 292 |
 | `backend/test/ceviri-gorunum-cikti-test.ts` | 741 |
 | `backend/test/ceviri-karar-test.ts` | 188 |
