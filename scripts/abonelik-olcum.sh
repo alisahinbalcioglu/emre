@@ -9,6 +9,7 @@
 #      bash scripts/abonelik-olcum.sh dagilim  (hangi firma HANGI pakette)
 #      bash scripts/abonelik-olcum.sh paket    (seed dogrulamasi, tam detay)
 #      bash scripts/abonelik-olcum.sh deneme   (deneme tekrari + e-posta harf ikizleri)
+#      bash scripts/abonelik-olcum.sh seviye   (2.12 paket seviyesi: kim erisim kaybeder)
 #
 #  ⚠ VARSAYILAN KIP OZET. Hetzner web konsolunda GERI KAYDIRMA YOK; uzun
 #  dokum ekrandan tasinca ustteki sayimlar KAYBOLUR (28.08'de yasandi).
@@ -51,17 +52,15 @@
 #    A3 UserSubscription satiri > 0 ise  -> bu kisiler ESKI sistemde yetki
 #                                           verilmis/parasini odemis kisilerdir.
 #                                           Yeni sistemde karsiligi YOK demektir.
-#    A4 satista 2 degilse                -> beklenmedik. 6.4'ten (16.09) beri
-#                                           SATISTA 2 paket var: basic-mek ve
-#                                           pro-mek. Uc elektrik paketi
-#                                           (basic-elk, pro-elk, pro-mep)
-#                                           SATISTAN CEKILDI — bkz.
-#                                           scripts/paket-satis-kapat.sh.
+#    A4 son UC sutun 5/5/5 degilse       -> seed eksik kosmus; satin alma
+#                                           sayfasi eksik paket gosterir.
+#                                           ⚠ 17.09 (Emre karari): 16.09'daki
+#                                           "elektrik satistan cekilsin" karari
+#                                           TERSINE dondu; bes paketin besi de
+#                                           SATISTA. scripts/paket-satis-kapat.sh
+#                                           DURUYOR ama KOSULMADI/KOSULMAYACAK.
 #                                           ⚠ paket/surum 7 cikar ve DOGRUDUR:
-#                                           5 kurulu + 2 goc paketi (miras-*).
-#                                           vitrin capasi ve deneme 30 hala
-#                                           5 satirda dolu olmali: cekilen
-#                                           paketlerin fiyati SILINMEDI.
+#                                           5 gercek + 2 goc paketi (miras-*).
 #
 #  ⚠ PAYDA ZORUNLU: "0 cikti" tek basina kanit degildir — bos kume de 0 verir.
 #  Her sayim toplamiyla birlikte doner. Toplam da 0 ise olcum YAPILMIS SAYILMAZ.
@@ -91,7 +90,7 @@ echo ""
 
 if [ "$KIP" = "paket" ]; then
   echo "=============================================================="
-  echo " A4 — SEED DOGRULAMASI (7 satir: 5 kurulu + 2 goc paketi)"
+  echo " A4 — SEED DOGRULAMASI (7 satir: 5 gercek + 2 goc paketi)"
   echo "=============================================================="
   echo ""
   echo "── paket + surum + fiyat capasi ──"
@@ -104,9 +103,8 @@ if [ "$KIP" = "paket" ]; then
   echo "    npm run seedpaketler -- --denemesiz-ikiz)"
   echo ""
   echo "=============================================================="
-  echo " OKUMA: SATISTA 2 satir olmali (basic-mek, pro-mek). Kurulu 5 satirin"
-  echo " hepsinde tl tutar/vitrin/kur dolu + deneme 30 — satistan cekilen"
-  echo " elektrik paketlerinin fiyati SILINMEDI, yalniz satisa kapatildi."
+  echo " OKUMA: SATISTAKI 5 satirda tl_tutar/vitrin/kur dolu + deneme=30"
+  echo " (17.09: uc elektrik paketi de satista kaldi — 16.09 karari geri alindi)"
   echo " + satista=t + iki kod sutunu da t ise seed TAM."
   echo " ⚠ miras-core/miras-pro satirlari FARKLI olmali: tutar 0, vitrin bos,"
   echo " deneme 0, satista=f. Onlar tahsilat degil GOC EMNIYETIDIR."
@@ -180,6 +178,49 @@ fi
 # ⚠ ALT SINIR: firma telefonu ve yetkili e-postasi GUNCEL degerdir (deneme
 # anindaki degil); gecmiste form e-postasi saklanmadi. Gercek tekrar sayisi
 # bundan BUYUK olabilir, kucuk olamaz.
+if [ "$KIP" = "seviye" ]; then
+  echo "=============================================================="
+  echo " FAZ 7 - 2.12 PAKET SEVIYESI - SALT OKUMA (degistirmez)"
+  echo "=============================================================="
+  echo ""
+  echo "── NEDEN ──"
+  echo "   2.12 ile yetki YALNIZ abonelikten gelir. Once TierGuard"
+  echo "   Math.max(User.tier, abonelik) okuyordu; User.tier alanini"
+  echo "   hicbir odeme yolu YAZMIYOR, yalniz yonetici paneli elle"
+  echo "   degistiriyordu. Yani elle verilmis bir tier, aboneligi"
+  echo "   olmayan hesabin kapisini acik tutuyordu. Bu kip, kapinin"
+  echo "   daralmasindan KIMIN etkilenecegini deploy ONCESI sayar."
+  echo ""
+  echo "── V1 YONLU AYRISMA: User.tier abonelikten YUKSEK olan hesaplar ──"
+  echo "   (tani. paketAyrismasi alani esitsizligi sayar, bu sorgu YONU)"
+  sorgu 'SELECT u.id, u.email, u.role, u.tier::text AS tier, p.seviye::text AS abonelik_seviyesi, a.durum::text AS durum FROM \"User\" u LEFT JOIN \"Abonelik\" a ON a.\"firmaId\" = u.\"firmaId\" LEFT JOIN \"PaketSurumu\" ps ON ps.id = a.\"paketSurumuId\" LEFT JOIN \"Paket\" p ON p.id = ps.\"paketId\" WHERE u.\"deletedAt\" IS NULL AND (CASE u.tier::text WHEN '"'"'core'"'"' THEN 1 WHEN '"'"'pro'"'"' THEN 2 WHEN '"'"'suite'"'"' THEN 3 ELSE 0 END) > COALESCE(CASE p.seviye::text WHEN '"'"'core'"'"' THEN 1 WHEN '"'"'pro'"'"' THEN 2 WHEN '"'"'suite'"'"' THEN 3 END, 0) ORDER BY u.role, u.email'
+  echo ""
+  echo "── V2 GERCEK ERISIM KAYBI: bugun uclari YALNIZ User.tier ile acanlar ──"
+  echo "   ⚠ DEPLOY ONCESI ZORUNLU. Bos ise kimse erisim kaybetmez."
+  echo "   Dolu ise HER SATIR icin karar verilir: firmaya uygun abonelik"
+  echo "   tanimla, ya da kaybi KABUL ET (yazili olsun)."
+  echo "   role admin satirlari kendi firmalarinda labor okuma ve ai"
+  echo "   analyze ucunu kaybeder; katalog YONETIMINI kaybetmez, cunku"
+  echo "   katalog sayfasi yonetici icin labor/yonetici-katalog ucunu"
+  echo "   cagirir (paket ve yetenek kapisi tasimaz)."
+  sorgu 'SELECT u.id, u.email, u.role, u.tier::text AS tier, COALESCE(p.seviye::text, '"'"'abonelik-yok'"'"') AS abonelik_seviyesi FROM \"User\" u LEFT JOIN \"Abonelik\" a ON a.\"firmaId\" = u.\"firmaId\" LEFT JOIN \"PaketSurumu\" ps ON ps.id = a.\"paketSurumuId\" LEFT JOIN \"Paket\" p ON p.id = ps.\"paketId\" WHERE u.\"deletedAt\" IS NULL AND u.tier::text IN ('"'"'pro'"'"', '"'"'suite'"'"') AND COALESCE(p.seviye::text, '"'"''"'"') NOT IN ('"'"'pro'"'"', '"'"'suite'"'"') ORDER BY u.role, u.email'
+  echo ""
+  echo "── V3 KOLTUK TABANI: paket kullanici haklari ──"
+  sorgu 'SELECT kod, ad, seviye::text AS seviye, \"kullaniciHakki\", aktif FROM \"Paket\" ORDER BY sira'
+  echo ""
+  echo "── V3b birden fazla ETKIN hesabi olan firmalar ──"
+  echo "   (F1b kisi siniri bunlari etkiler; F1a icin yalniz taban sayim)"
+  sorgu 'SELECT \"firmaId\", count(*) AS etkin_hesap FROM \"User\" WHERE \"deletedAt\" IS NULL AND status = '"'"'active'"'"' AND \"firmaId\" IS NOT NULL GROUP BY \"firmaId\" HAVING count(*) > 1 ORDER BY 2 DESC'
+  echo ""
+  echo "=============================================================="
+  echo " OKUMA:"
+  echo "   V2 bos           -> 2.12 kimsenin erisimini daraltmiyor."
+  echo "   V2 dolu          -> her satir icin karar. Deploy oncesi."
+  echo "   V1 dolu V2 bos   -> ayrisma var ama zarasiz (abonelik yeterli)."
+  echo "   V3b bos          -> her firma tek kisilik, koltuk konusu yok."
+  echo "=============================================================="
+  exit 0
+fi
 if [ "$KIP" = "deneme" ]; then
   echo "=============================================================="
   echo " DENEME TEKRARI — SALT OKUMA (degistirmez)"
@@ -231,10 +272,10 @@ echo "── A3 ESKI YETKI KAYNAKLARI: kim neyi kaybetti ──"
 sorgu 'SELECT '"'"'User.tier'"'"' AS kaynak, u.tier::text AS deger, count(*) AS adet FROM \"User\" u GROUP BY 2 UNION ALL SELECT '"'"'UserSubscription'"'"', s.level::text, count(*) FROM \"UserSubscription\" s WHERE s.active GROUP BY 2 ORDER BY 1, 3 DESC'
 echo ""
 
-echo "── A4 SEED: paket/surum sayilari (SATISTA olan 2 olmali) ──"
-echo "   ⚠ paket ve surum 7 cikar: 5 kurulu + 2 goc (miras-core/miras-pro)."
-echo "   Goc paketleri satisa KAPALI. 6.4 (16.09): uc elektrik paketi de"
-echo "   satistan cekildi, yani satista 2 kalir; vitrin ve deneme 5 kalir."
+echo "── A4 SEED: paket/surum sayilari (SATISTA olan 5 olmali) ──"
+echo "   ⚠ paket ve surum 7 cikar: 5 gercek + 2 goc (miras-core/miras-pro)."
+echo "   Goc paketleri satisa KAPALI; bakilacak sutunlar son UCU."
+echo "   17.09: uc elektrik paketi SATISTA KALDI (16.09 karari geri alindi)."
 sorgu 'SELECT (SELECT count(*) FROM \"Paket\") AS paket, (SELECT count(*) FROM \"PaketSurumu\") AS surum, (SELECT count(*) FROM \"PaketSurumu\" WHERE \"satistaMi\") AS satista, (SELECT count(*) FROM \"PaketSurumu\" WHERE \"referansTutar\" IS NOT NULL) AS vitrin_capasi, (SELECT count(*) FROM \"PaketSurumu\" WHERE \"denemeGunu\" = 30) AS deneme_30'
 echo ""
 
@@ -244,8 +285,9 @@ echo "   aboneliksiz_firma 0 ise   -> is yok."
 echo "   teklifi_olan 0 ise        -> yalniz bos hesaplar, aciliyet dusuk."
 echo "   teklifi_olan 0 DEGILSE    -> GERCEK MUSTERI kilitli. ACIL."
 echo "                                bash scripts/abonelik-olcum.sh kimler"
-echo "   A4 son uc sutun 2/5/5 degilse -> beklenmedik."
+echo "   A4 son uc sutun 5/5/5 degilse -> seed eksik kosmus."
 echo "                                (paket/surum 7 ise DOGRU: 5 + 2 goc)"
-echo "                                (satista 5 cikarsa paket-satis-kapat.sh"
-echo "                                 henuz kosmamis demektir)"
+echo "                                (satista 2 cikarsa paket-satis-kapat.sh"
+echo "                                 YANLISLIKLA kosmus: 17.09 karari elektrik"
+echo "                                 paketlerinin satista KALMASI yonunde)"
 echo "=============================================================="

@@ -127,10 +127,11 @@ export default function FiyatlarSayfasi() {
         <div className="max-w-2xl">
           <h1 className="text-3xl font-black tracking-tight text-slate-900">Paketler ve fiyatlar</h1>
           <p className="mt-3 text-sm leading-relaxed text-slate-600">
-            {/* Faz 6.4 (16.09): elektrik paketleri satıştan çekildi — cümle artık
-                yalnız mekaniği anlatır. Mevcut elektrik aboneliklerinin kapsamı
-                değişmedi; burada satıştaki paketler anlatılır. */}
-            Teklif sayısı sınırsızdır. Paketler mekanik tesisat işleri için kapsama ve seviyeye
+            {/* 17.09 (Emre kararı): 16.09'da elektrik paketleri satıştan çekilecek
+                diye cümle mekaniğe daraltılmıştı; karar TERSİNE döndü. Üç elektrik
+                paketi (basic-elk, pro-elk, pro-mep) satışta KALDI, bu yüzden cümle
+                yeniden disiplini anlatır — sayfa satıştaki paketleri anlatmalı. */}
+            Teklif sayısı sınırsızdır. Paketler disipline (mekanik, elektrik ya da ikisi) ve kapsama
             göre ayrılır; İngilizce çeviri paketinizin kotasıyla yapılır. Paketinizi hesabınızı açtıktan
             sonra seçersiniz; ücretsiz deneme kart bilgisiyle başlar ve her firma ile kişi için bir
             kez verilir.

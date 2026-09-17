@@ -168,17 +168,37 @@ const sahteCtx = (handler: any, cls: any, user: any): any => ({
   getClass: () => cls,
   switchToHttp: () => ({ getRequest: () => ({ user }) }),
 });
-const sahtePrisma = (tier: string): any => ({
-  user: { findUnique: async () => ({ tier }) },
+/**
+ * 17.09.2026 (Faz 7 - 2.12): seviye artik `User.tier`dan DEGIL firmanin
+ * aboneliginden okunur. Sahte Prisma da oyle kuruldu.
+ *
+ * `user.tier` KASITLI OLARAK 'pro' DOLU birakildi: guard yeniden `tier`
+ * okumaya baslarsa `seviye: 'core'` vakalari sessizce YESILE donerdi. Dolu
+ * ve YANLIS yondeki bu alan, kapinin gercekten abonelige baktiginin kanitidir.
+ *
+ * `abonelikSorgusu` sayaci FIXTURE KANITI'dir: sorgu hic atilmadiysa "gecti"
+ * sonucu seviyeyi degil bir kazayi olcuyor demektir.
+ */
+const sahtePrisma = (seviye: string | null, iz?: { abonelikSorgusu: number }): any => ({
+  user: { findUnique: async () => ({ firmaId: 'F1', tier: 'pro' }) },
+  abonelik: {
+    findUnique: async () => {
+      if (iz) iz.abonelikSorgusu++;
+      return seviye === null ? null : { paketSurumu: { paket: { seviye } } };
+    },
+  },
 });
 
-async function gecerMi(handler: any, cls: any, tier: string): Promise<{ gecti: boolean; not: string }> {
-  const guard = new TierGuard(new Reflector(), sahtePrisma(tier));
+async function gecerMi(
+  handler: any, cls: any, seviye: string | null,
+): Promise<{ gecti: boolean; not: string; abonelikSorgusu: number }> {
+  const iz = { abonelikSorgusu: 0 };
+  const guard = new TierGuard(new Reflector(), sahtePrisma(seviye, iz));
   try {
     const r = await guard.canActivate(sahteCtx(handler, cls, { id: 'u-test', sub: 'u-test' }));
-    return { gecti: r === true, not: `canActivate=${JSON.stringify(r)}` };
+    return { gecti: r === true, not: `canActivate=${JSON.stringify(r)}`, abonelikSorgusu: iz.abonelikSorgusu };
   } catch (e: any) {
-    return { gecti: false, not: `${e?.constructor?.name}: ${e?.message}` };
+    return { gecti: false, not: `${e?.constructor?.name}: ${e?.message}`, abonelikSorgusu: iz.abonelikSorgusu };
   }
 }
 
@@ -188,12 +208,23 @@ async function k2() {
   const aProto: any = AiController.prototype;
 
   // ── FIXTURE DOLU MU ───────────────────────────────────────────────────
-  check("K2-F1 KAPI: LaborController SINIFINDA @RequireTier('pro') VAR",
-    JSON.stringify(Reflect.getMetadata(TIER_KEY, LaborController)) === JSON.stringify(['pro']),
+  // 17.09.2026 (2.12): paket kapisi SINIFTAN METODA indi. Eski K2-F1 "sinifta
+  // @RequireTier('pro') VAR" diyordu; artik sinifta YOK, iki OKUMA ucunda VAR.
+  // Yazma uclari (yonetici katalogu) bilerek paketsiz: aboneligi olmayan
+  // platform yoneticisi kendi kuresel katalogunu duzenleyebilmeli.
+  check('K2-F1 KAPI: LaborController SINIFINDA @RequireTier YOK (2.12)',
+    Reflect.getMetadata(TIER_KEY, LaborController) === undefined,
     `sinif tier=${JSON.stringify(Reflect.getMetadata(TIER_KEY, LaborController) ?? null)}`);
-  const laborUclar = ['findAll', 'findOne', 'create', 'update', 'remove'];
-  check('K2-F2 KAPI: bes labor ucunun HEPSI fonksiyon (fixture dolu)',
-    laborUclar.length === 5 && laborUclar.every((u) => typeof lProto[u] === 'function'),
+  check("K2-F1b KAPI: OKUMA uclarinda metot duzeyinde @RequireTier('pro') VAR",
+    JSON.stringify(Reflect.getMetadata(TIER_KEY, lProto.findAll)) === JSON.stringify(['pro'])
+      && JSON.stringify(Reflect.getMetadata(TIER_KEY, lProto.findOne)) === JSON.stringify(['pro']),
+    `findAll=${JSON.stringify(Reflect.getMetadata(TIER_KEY, lProto.findAll) ?? null)} `
+      + `findOne=${JSON.stringify(Reflect.getMetadata(TIER_KEY, lProto.findOne) ?? null)}`);
+  const laborOkuma = ['findAll', 'findOne'];
+  const laborYazma = ['create', 'update', 'remove'];
+  const laborUclar = [...laborOkuma, ...laborYazma, 'yoneticiKatalogu'];
+  check('K2-F2 KAPI: alti labor ucunun HEPSI fonksiyon (fixture dolu)',
+    laborUclar.length === 6 && laborUclar.every((u) => typeof lProto[u] === 'function'),
     `tipler=${laborUclar.map((u) => `${u}:${typeof lProto[u]}`).join(', ')}`);
   check('K2-F3 KAPI: LaborController etkin guard listesinde TierGuard var',
     guardAdlari(lProto.remove, LaborController).includes('TierGuard'),
@@ -206,20 +237,46 @@ async function k2() {
   //  O3 → duzenek her seye RED demiyor mu (yeterli paket geciyor)
   // Ikisi de yesil olmadan K2 assertlerinin "gecti" sonucu anlamsizdir.
   const o2 = await gecerMi(aProto.analyze, AiController, 'core');
-  check('O2 OLCUT: metot-duzeyi tier ile CORE kullanici ENGELLENIYOR',
+  check('O2 OLCUT: metot-duzeyi tier ile CORE abonelik ENGELLENIYOR',
     o2.gecti === false, o2.not);
   const o3 = await gecerMi(aProto.analyze, AiController, 'pro');
-  check('O3 OLCUT: metot-duzeyi tier ile PRO kullanici GECIYOR',
+  check('O3 OLCUT: metot-duzeyi tier ile PRO abonelik GECIYOR',
     o3.gecti === true, o3.not);
+  // FIXTURE KANITI (2.12): iki vakada da abonelik GERCEKTEN sorgulandi.
+  // Sorgu atilmadan gelen sonuc seviyeyi degil bir kazayi olcerdi.
+  check('O3b FIXTURE: iki olcut vakasinda da abonelik sorgusu ATILDI',
+    o2.abonelikSorgusu === 1 && o3.abonelikSorgusu === 1,
+    `core=${o2.abonelikSorgusu} pro=${o3.abonelikSorgusu}`);
+  // `User.tier` sahte veride 'pro' DOLU; abonelik yoksa yine de RED gelmeli.
+  const o4 = await gecerMi(aProto.analyze, AiController, null);
+  check('O4 OLCUT: abonelik YOKKEN (User.tier pro olsa bile) ENGELLENIYOR',
+    o4.gecti === false, o4.not);
 
   // ── IDDIA (bugun KIRMIZI) ─────────────────────────────────────────────
   // Her uc icin AYRI assert: rapor yalniz DELETE'i sayiyordu, oysa okuma
   // uclari da acik (paket/gelir sizintisi boyutu).
-  for (const uc of laborUclar) {
+  for (const uc of laborOkuma) {
     const r = await gecerMi(lProto[uc], LaborController, 'core');
-    check(`K2-${uc} ⭐ CORE kullanici /labor ${uc} ucunda ENGELLENMELI (sinif tier'i 'pro')`,
+    check(`K2-${uc} ⭐ CORE abonelik /labor ${uc} OKUMA ucunda ENGELLENMELI`,
       r.gecti === false, r.not);
   }
+  // 17.09.2026 (2.12): yazma uclari ve yonetici katalog listesi TierGuard'dan
+  // BILEREK gecer (paket kapisi yok). Delik acilmis olmasin diye ikinci kapi
+  // AYRICA olculur: bu uclar `@Roles('admin')` tasimali. "TierGuard geciyor"
+  // tek basina yazilsaydi, birisi @Roles'u silse hicbir test kizarmazdi.
+  for (const uc of [...laborYazma, 'yoneticiKatalogu']) {
+    const r = await gecerMi(lProto[uc], LaborController, 'core');
+    check(`K2-${uc} paket kapisi YOK (yonetici isi, 2.12)`, r.gecti === true, r.not);
+    check(`K2-${uc}-rol ⭐ ikinci kapi: @Roles('admin') VAR`,
+      JSON.stringify(rolleriOku(lProto[uc], LaborController)) === JSON.stringify(['admin']),
+      `roles=${JSON.stringify(rolleriOku(lProto[uc], LaborController))}`);
+  }
+  // Express rota sirasi: `yonetici-katalog` `:id`den ONCE tanimlanmali, yoksa
+  // `:id = 'yonetici-katalog'` eslesir ve uc HIC cagrilmaz.
+  const sira = Object.getOwnPropertyNames(LaborController.prototype);
+  check('K2-sira ⭐ yoneticiKatalogu findOne`dan ONCE tanimli (Express rota sirasi)',
+    sira.indexOf('yoneticiKatalogu') >= 0 && sira.indexOf('yoneticiKatalogu') < sira.indexOf('findOne'),
+    `sira=${JSON.stringify(sira)}`);
 }
 
 // ══════════════════════════════════════════════════════════════════════════

@@ -24,6 +24,16 @@
  * anilip anilmadigini olcer. Yon TEK: kodun okudugu compose'da OLMALI.
  * Tersi serbest — compose baska servisler icin fazladan degisken tasiyabilir.
  *
+ * ── TARAMA KUMESI ────────────────────────────────────────────────────────
+ * `src/ozellik/odeme` + `src/altyapi/auth` (Faz 7 F2a, 16.09.2026).
+ * Kapi yalniz TARADIGI dizinin degiskenlerini gorur: 15.09'a kadar kume
+ * yalniz odeme'ydi ve `KIMLIK_SIFRELEME_KEY` (auth altinda okunur) bu kapiya
+ * HIC girmeyecekti — compose'a yazilmasa bile yesil kalirdi (Faz 7 curutme
+ * bulgusu). O-OLCUT-AUTH kumenin gercekten genisledigini ayrica olcer.
+ * Genisleme ANINDA kapi bir eski bosluk buldu: `JWT_EXPIRES_IN` kodda
+ * okunuyor, compose'da sabit "7d", `.env.example`'da belgesizdi (E2 kirmizi
+ * olculdu, belge satiri eklendi).
+ *
  * Cikis kodu sozlesmesi: 0 = PASS · digeri = FAIL.
  */
 import * as fs from 'node:fs';
@@ -46,6 +56,9 @@ function check(ad: string, kosul: boolean, detay = ''): void {
 
 const KOK = path.join(__dirname, '../..');
 const ODEME = path.join(__dirname, '../src/ozellik/odeme');
+const AUTH = path.join(__dirname, '../src/altyapi/auth');
+/** Taranan kaynak kokleri — basliktaki "TARAMA KUMESI" notu. */
+const TARAMA_KUMESI = [ODEME, AUTH];
 
 /** Bir dizindeki tum .ts dosyalarini toplar. */
 function tsDosyalari(dizin: string): string[] {
@@ -60,7 +73,7 @@ function tsDosyalari(dizin: string): string[] {
 
 function main() {
   // ── Kodun okudugu degiskenler ────────────────────────────────────────
-  const dosyalar = tsDosyalari(ODEME);
+  const dosyalar = TARAMA_KUMESI.flatMap((kok) => tsDosyalari(kok));
   const okunan = new Set<string>();
   for (const d of dosyalar) {
     const s = fs.readFileSync(d, 'utf8');
@@ -87,6 +100,13 @@ function main() {
     'O-OLCUT anlamli sayida degisken bulundu (>= 8)',
     okunan.size >= 8,
     `adet=${okunan.size} → ${JSON.stringify([...okunan].sort())}`,
+  );
+  // FIXTURE KANITI (Faz 7 F2a · T10): tarama kumesi auth'u GERCEKTEN kapsiyor.
+  // Kume geri daralirsa kimlik sifreleme anahtari kapidan sessizce duser.
+  check(
+    'O-OLCUT-AUTH tarama kumesi src/altyapi/auth"u kapsiyor (KIMLIK_SIFRELEME_KEY ve JWT_SECRET okundu)',
+    okunan.has('KIMLIK_SIFRELEME_KEY') && okunan.has('JWT_SECRET'),
+    `bulunan=${JSON.stringify([...okunan].sort())}`,
   );
 
   // ── docker-compose backend.environment blogu ─────────────────────────
@@ -139,6 +159,9 @@ function main() {
     /^IYZICO_SECRET_KEY=\S+/m,
     /^RESEND_API_KEY=re_\S+/m,
     /^PARASUT_(?:CLIENT_SECRET|PAROLA)=\S+/m,
+    // Faz 7: MFA/kurumsal giris sirlarini acan anahtar — depoya girerse
+    // "yalniz DB dokumu sizdi" senaryosunun korumasi da biter.
+    /^KIMLIK_SIFRELEME_KEY=\S+/m,
   ].filter((r) => r.test(ornek));
   check(
     'G1 .env.example GERCEK sir TASIMIYOR (dosya commit edilir)',

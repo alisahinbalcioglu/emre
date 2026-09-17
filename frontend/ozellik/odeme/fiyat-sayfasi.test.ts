@@ -121,6 +121,16 @@ describe('Fiyat sayfası — rakamlar veritabanından (Faz 6.1)', () => {
     expect(ekranMetni(KARTLAR)).not.toMatch(/suite/i);
   });
 
+  // 17.09 (Emre kararı): 16.09'da elektrik paketleri satıştan çekilecek diye
+  // giriş cümlesi mekaniğe daraltılmıştı; karar tersine döndü, üç elektrik
+  // paketi satın alınabiliyor. Sayfa SATILAN paketleri anlatmalı — aksi hâlde
+  // müşteri aldığı şeyi sayfada bulamaz. `ekranMetni` yorumu saymaz: cümle
+  // JSX'ten silinip yoruma taşınırsa bu kapı KIRMIZI olur.
+  it('★ paketlerin disipline göre satıldığı ekranda yazılı (elektrik dahil)', () => {
+    expect(ekranMetni(SAYFA)).toContain('Paketler disipline (mekanik, elektrik ya da ikisi) ve kapsama');
+    expect(ekranMetni(SAYFA)).not.toMatch(/elektrik[^.]*satışta değil/i);
+  });
+
   it('"satır" tanımı tek cümleyle ekranda (karar: tanım a)', () => {
     expect(ekranMetni(SAYFA)).toContain(
       'Satır = çevrilecek metin içeren satır. Şartname ve açıklama satırları dâhildir.',

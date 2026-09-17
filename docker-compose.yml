@@ -77,6 +77,14 @@ services:
       DWG_ENGINE_URL: http://dwg-engine:10000
       DWG_ENGINE_TOKEN: ${INTERNAL_API_TOKEN}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      # ── FAZ 7 · KIMLIK SIFRELEME (iki adimli giris + kurumsal giris) ────
+      # ⚠ ASAGIDAKI IKI YER KURALI BUNA DA UYGULANIR: burasi + sunucudaki `.env`.
+      # ⚠ ZORUNLU DEGIL: eksik/bozuksa uygulama ONYUKLENIR; yalniz MFA ve
+      # kurumsal giris kurulumu 503 doner, MFA'li giriste kapi KAPALI kalir
+      # (MFA atlanmaz). Okuyan tek dosya: src/altyapi/auth/kimlik-sifreleme.ts
+      # ⚠ DONDURULMEZ (scripts/sir-dondur.sh DONDURULEN listesinde bilerek
+      # YOK): degisirse DB'deki butun MFA ve istemci sirlari cozulemez.
+      KIMLIK_SIFRELEME_KEY: ${KIMLIK_SIFRELEME_KEY:-}
       # ── ADIM 2 · ODEME / ABONELIK ────────────────────────────────────
       # ⚠ HER DEGISKEN IKI YERE YAZILIR: burasi (konteynere gecirir) VE
       # sunucudaki `.env` (degeri saglar). Yalniz .env'e yazmak YETMEZ —

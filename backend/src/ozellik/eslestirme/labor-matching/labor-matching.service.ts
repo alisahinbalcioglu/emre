@@ -19,34 +19,52 @@ export class LaborMatchingService {
     private readonly matching: MatchingService,
   ) {}
 
-  private async assertOwnership(firmaId: string, userId: string) {
-    const firma = await this.prisma.laborFirm.findUnique({ where: { id: firmaId } });
+  /**
+   * ⚠ ISIM CAKISMASI — DIKKAT: `iscilikFirmaId` ISCILIK FIRMASININ
+   * (`LaborFirm`) id'sidir; KIRACI firma daima `k.firmaId`dir.
+   *
+   * ⚠ SAHIPLIK KISIDEN FIRMAYA GECTI (K1, 17.09.2026). Onceden
+   * `firma.userId !== userId` karsilastiriliyordu: kutuphane 28.08'de firmaya
+   * gectigi halde (`labor-firms.service.ts:38-42` ikizi coktan `firmaId`
+   * bakiyordu) eslestirme yolu KISIYE bakmaya devam ediyordu. Sonuc: AYNI
+   * firmanin ikinci uyesi, firmasinin isciik firmasinda eslestirme
+   * yapamiyordu (403). Bu yuzden F1b (davet) F1a'dan once canliya cikarsa
+   * ilk davet edilen uye burada duvara toslar.
+   *
+   * `null` donusu KORUNUR (mevcut sozlesme): firma bulunamazsa `bulkMatch`
+   * bos nesne, `remember` `{ ok: false }` doner — 404 degil.
+   */
+  private async assertOwnership(iscilikFirmaId: string, k: Kimlik) {
+    const firma = await this.prisma.laborFirm.findUnique({ where: { id: iscilikFirmaId } });
     if (!firma) return null;
-    if (firma.userId !== userId) {
+    if (firma.firmaId !== k.firmaId) {
       throw new ForbiddenException('Bu firmaya erisim yetkiniz yok');
     }
     return firma;
   }
 
   async bulkMatch(
-    // ⚠ `k.firmaId` KIRACI firma · `firmaId` ISCILIK firmasi.
+    // ⚠ `k.firmaId` KIRACI firma · `iscilikFirmaId` ISCILIK firmasi.
     k: Kimlik,
-    firmaId: string,
+    iscilikFirmaId: string,
     laborNames: string[],
     variantTags?: string[],
     units?: Record<string, string>,
   ): Promise<Record<string, MatchResult>> {
-    const firma = await this.assertOwnership(firmaId, k.userId);
+    const firma = await this.assertOwnership(iscilikFirmaId, k);
     if (!firma) return {};
-    return this.matching.bulkMatchLabor(k, firmaId, laborNames, variantTags, units);
+    return this.matching.bulkMatchLabor(k, iscilikFirmaId, laborNames, variantTags, units);
   }
 
-  /** Secici popup'tan kalem secildi — hafiza `iscilik|<firmaId>` kapsaminda
-   *  yazilir (malzeme imzalariyla ASLA cakismaz). */
-  async remember(userId: string, firmaId: string, laborName: string, secilenAd: string) {
-    const firma = await this.assertOwnership(firmaId, userId);
+  /** Secici popup'tan kalem secildi — hafiza `iscilik|<iscilikFirmaId>`
+   *  kapsaminda yazilir (malzeme imzalariyla ASLA cakismaz).
+   *
+   *  ⚠ Hafiza KISIYE yazilmaya devam eder (`k.userId`): ogrenme kisiseldir,
+   *  firmaya tasinmasi ayri bir istir (V2). Degisen yalniz SAHIPLIK kapisi. */
+  async remember(k: Kimlik, iscilikFirmaId: string, laborName: string, secilenAd: string) {
+    const firma = await this.assertOwnership(iscilikFirmaId, k);
     if (!firma) return { ok: false, reason: 'firma bulunamadi' };
-    return this.matching.remember(userId, `iscilik|${firmaId}`, laborName, secilenAd);
+    return this.matching.remember(k.userId, `iscilik|${iscilikFirmaId}`, laborName, secilenAd);
   }
 
   /** L2 kalicilik: kullanicinin firmalarindaki kalemleri v2 indeksleyiciyle

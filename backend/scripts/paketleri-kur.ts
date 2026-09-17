@@ -111,10 +111,11 @@ const PAKETLER = [
   },
   {
     kod: 'basic-elk',
-    // FAZ 6.4 (16.09, Emre karari): elektrik kapsamli paketler SATISTAN
-    // CEKILDI — urun elektrik disiplininde calismiyor (olcum 6.12b).
-    // Bos bir veritabanina seed atilinca yeniden satisa ACILMASIN.
-    satistaMi: false,
+    // 17.09 (Emre karari): 16.09'daki "elektrik satistan cekilsin" karari
+    // TERSINE dondu — uc elektrik paketi SATISTA KALIYOR, kapsama elektrik
+    // sonra eklenecek. Bayrak mekanizmasi DURUYOR (paket basina secilebilir),
+    // yalniz degeri bugunku gercege doner: satista 5 surum.
+    satistaMi: true,
     ad: 'Basic — Elektrik',
     aciklama: 'Elektrik disiplininde malzeme kutuphanesi ve teklif hazirlama.',
     kapsam: 'electrical' as const,
@@ -129,10 +130,8 @@ const PAKETLER = [
   },
   {
     kod: 'pro-elk',
-    // FAZ 6.4 (16.09, Emre karari): elektrik kapsamli paketler SATISTAN
-    // CEKILDI — urun elektrik disiplininde calismiyor (olcum 6.12b).
-    // Bos bir veritabanina seed atilinca yeniden satisa ACILMASIN.
-    satistaMi: false,
+    // 17.09 (Emre karari): bkz. basic-elk — elektrik satista KALIYOR.
+    satistaMi: true,
     ad: 'Pro — Elektrik',
     aciklama: 'Elektrik: malzeme + iscilik + DWG metraj.',
     kapsam: 'electrical' as const,
@@ -150,10 +149,8 @@ const PAKETLER = [
     // 28 + 28 = 56 → 56 x 0.75 = 42. (Basic'ten turetilseydi 44 x 0.75 = 33
     // olurdu; 42 rakami MEP'in PRO seviyesinde oldugunu belirler.)
     kod: 'pro-mep',
-    // FAZ 6.4 (16.09, Emre karari): elektrik kapsamli paketler SATISTAN
-    // CEKILDI — urun elektrik disiplininde calismiyor (olcum 6.12b).
-    // Bos bir veritabanina seed atilinca yeniden satisa ACILMASIN.
-    satistaMi: false,
+    // 17.09 (Emre karari): bkz. basic-elk — elektrik satista KALIYOR.
+    satistaMi: true,
     ad: 'Pro — Mekanik + Elektrik',
     aciklama: 'Iki disiplin: malzeme + iscilik + DWG metraj. Ayri ayri almaya gore %25 avantajli.',
     kapsam: 'mep' as const,
@@ -486,9 +483,10 @@ async function main() {
         periyot: p.periyot,
         periyotAdedi: 1,
         denemeGunu: p.denemeGunu,
-        // ⚠ SABIT `true` DEGIL: bayrak paket tanimindan okunur. Sabit kalsaydi
-        // satistan cekilen elektrik paketleri her seed kosumunda yeniden
-        // satisa acilirdi (6.4).
+        // ⚠ SABIT `true` DEGIL: bayrak paket tanimindan okunur. Bugun bes
+        // paketin besi de satista (17.09 karari), ama mekanizma DURUYOR:
+        // bir paket satistan cekilirse sabit `true` onu her seed kosumunda
+        // yeniden satisa acardi (6.4'te yasandi).
         satistaMi: p.satistaMi,
       },
     });

@@ -242,7 +242,14 @@ export class AdminService {
     // bir kolon gerekir ve o AYRI bir istir (bugun e-posta disi alanda arama YOK).
     const where: Record<string, unknown> = { deletedAt: null };
     if (sorgu?.rol) where.role = sorgu.rol;
-    if (sorgu?.paket) where.tier = sorgu.paket;
+    // ⚠ PAKET SUZGECI YETKILI KAYNAKTAN (2.12, 17.09.2026). Onceden
+    // `where.tier = sorgu.paket` idi: ekran "gercek paket" sutununu (c)
+    // kaynagindan gosterip SUZGECI (a) kaynagina uyguluyordu — yonetici
+    // "pro" sectiginde listede `gercekPaket: null` satirlar cikiyor,
+    // gercekten pro olan firmalar ise gorunmuyordu (sessiz yanlis liste).
+    if (sorgu?.paket) {
+      where.firma = { abonelik: { paketSurumu: { paket: { seviye: sorgu.paket } } } };
+    }
     if (sorgu?.durum) where.status = sorgu.durum;
     const aramaMetni = sorgu?.arama?.trim();
     if (aramaMetni) {
@@ -353,20 +360,23 @@ export class AdminService {
     );
   }
 
+  /**
+   * ⚠ ARTIK PAKET DEGISTIRMEZ (2.12, 17.09.2026).
+   *
+   * Uc SILINMEDI bilerek: acik kalmis eski bir panel sekmesi "Paket" dugmesine
+   * bastiginda 404 yerine NE OLDUGUNU soyleyen bir mesaj almali. Eskiden bu
+   * uc `User.tier`i elle yazan TEK yerdi ve seviye satin almayla degil elle
+   * dagitiliyordu; seviye artik yalniz abonelikten gelir (`seviye.ts`).
+   */
   async updateUserTier(
-    yonetici: { id: string; email: string },
-    id: string,
-    tier: 'core' | 'pro' | 'suite',
-  ) {
-    if (!['core', 'pro', 'suite'].includes(tier)) throw new BadRequestException('Gecersiz paket');
-    const user = await this.prisma.user.findUnique({ where: { id } });
-    if (!user || user.deletedAt) throw new NotFoundException('User not found');
-    return this.denetimliMutasyon(yonetici, 'paket.degisti', user, user.tier, tier, undefined, (tx) =>
-      tx.user.update({
-        where: { id }, data: { tier },
-        select: { id: true, email: true, role: true, tier: true, status: true },
-      }),
-    );
+    _yonetici: { id: string; email: string },
+    _id: string,
+    _tier: 'core' | 'pro' | 'suite',
+  ): Promise<never> {
+    throw new BadRequestException({
+      kod: 'PAKET_ABONELIKTEN',
+      message: 'Paket artık yalnız abonelikten gelir; havale ya da abonelik ekranını kullanın.',
+    });
   }
 
   // YUMUSAK SILME (2.3). Onceki hal `prisma.user.delete` idi ve Quote ile

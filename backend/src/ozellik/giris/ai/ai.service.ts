@@ -1,5 +1,6 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
+import { Kimlik } from '../../../altyapi/auth/kimlik';
 import Anthropic from '@anthropic-ai/sdk';
 import { kullanimiOlc, type AiKullanim } from './ai-maliyet';
 // A2 (tur 3): insan sinirinin tek fiyat kurali (AI metni de insan metnidir)
@@ -313,13 +314,19 @@ ${text.slice(0, 8000)}`,
   }
 
   // DB ile eslestirme
-  private async matchWithDatabase(userId: string, materials: ParsedMaterial[]) {
+  //
+  // ⚠ KUTUPHANE KISIDEN FIRMAYA GECTI (K3, 17.09.2026). Kutuphane 28.08'de
+  // firmaya gecti (`UserLibrary.firmaId`) ama bu sorgu `userId` ile
+  // suzmeye devam ediyordu: ayni firmanin ikinci uyesi PDF analizi
+  // yaptirdiginda firmasinin kutuphanesindeki fiyatlari HIC goremiyor,
+  // "eslesmedi" sonucu aliyordu (sessiz eksik sonuc, hata degil).
+  private async matchWithDatabase(k: Kimlik, materials: ParsedMaterial[]) {
     const [allMaterials, userLibrary, brands] = await Promise.all([
       this.prisma.material.findMany({
         include: { materialPrices: { include: { brand: true } } },
       }),
       this.prisma.userLibrary.findMany({
-        where: { userId },
+        where: { firmaId: k.firmaId },
         include: { material: true, brand: true },
       }),
       this.prisma.brand.findMany(),
@@ -530,7 +537,7 @@ ${text.slice(0, 8000)}`,
     return this.robustJsonParse<T>(rawText);
   }
 
-  async analyze(userId: string, buffer: Buffer, mimetype: string) {
+  async analyze(k: Kimlik, buffer: Buffer, mimetype: string) {
     const settings = await this.getSettings();
     const active = settings['ACTIVE_AI_PROVIDER'];
     if (!active) {
@@ -546,7 +553,7 @@ ${text.slice(0, 8000)}`,
 
     const { materials, usedProvider } = await this.analyzeWithFailover(text, settings);
 
-    const result = await this.matchWithDatabase(userId, materials);
+    const result = await this.matchWithDatabase(k, materials);
     return { ...result, usedProvider, totalFound: materials.length };
   }
 

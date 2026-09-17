@@ -21,4 +21,9 @@
  */
 // 2026-09-16 (Faz 6.12a): ücretsiz deneme bir kez + deneme kullanım kaydı
 // (gizlilik: veri, amaç, saklama; ön bilgilendirme 6. bölüm; kullanım koşulları 4).
+// 2026-09-17: (a) çeviri kotası cümleleri, (b) elektrik kapsamı GERİ ALINDI —
+// 16.09'da "elektrik paketleri satışta değildir" diye daraltılan cümleler
+// Emre'nin 17.09 kararıyla eski hâline döndü (üç elektrik paketi SATIŞTA).
+// ⚠ AYNI GÜN = AYNI SÜRÜM: sürüm bir tarihtir, 4842a89 bugün zaten 17'ye
+// çekmişti; ikinci kez artırmak sahte bir ikinci sürüm üretirdi.
 export const HUKUKI_METIN_SURUMU = '2026-09-17';

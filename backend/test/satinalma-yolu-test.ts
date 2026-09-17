@@ -824,8 +824,13 @@ async function main() {
 
   // ── S-SEED ⭐ satis bayragi TOHUMDAN kayda gidiyor mu ─────────────────
   //
-  // Bos bir veritabanina seed atilinca elektrik paketleri YENIDEN satisa
-  // ACILMAMALI. Betik `satistaMi: true` SABITI yaziyordu.
+  // Betik eskiden `satistaMi: true` SABITI yaziyordu; bayrak artik paket
+  // tanimindan okunuyor (S-SEED3 BAGLANTI kapisi bunu olcer).
+  //
+  // ⚠ 17.09 (Emre karari): 16.09'daki "elektrik satistan cekilsin" karari
+  // TERSINE dondu — bes paketin besi de SATISTA. Bu yuzden S-SEED1 artik
+  // elektrik icin `true` bekler. MEKANIZMA korundu: paket basina bayrak ve
+  // create'in bayragi tanimdan okumasi olculmeye devam ediyor.
   console.log('\n── S-SEED ⭐ paketleri-kur satis bayragi ──');
   {
     const kaynak = readFileSync(
@@ -844,8 +849,8 @@ async function main() {
     check('S-SEED0-OLCUT bes paket de tanimda bulundu',
       [...elk, ...mek].every((k) => bayrak(k) !== null),
       JSON.stringify([...elk, ...mek].map((k) => `${k}=${bayrak(k)}`)));
-    check('S-SEED1 ⭐ elektrik paketleri tohumda SATISTA DEGIL',
-      elk.every((k) => bayrak(k) === 'false'),
+    check('S-SEED1 ⭐ elektrik paketleri tohumda SATISTA (17.09 karari)',
+      elk.every((k) => bayrak(k) === 'true'),
       JSON.stringify(elk.map((k) => `${k}=${bayrak(k)}`)));
     check('S-SEED2 mekanik paketleri tohumda SATISTA',
       mek.every((k) => bayrak(k) === 'true'),

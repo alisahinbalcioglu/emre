@@ -121,10 +121,28 @@ async function main(): Promise<void> {
     currentUserSayisi >= 6,
     'rol, durum, paket, silme, abonelik ekle, abonelik kaldir',
   );
+  // Paket ucunun GOVDESI: imzadan bir sonraki `  async ` tanimina kadar.
+  // Regex yerine dilim: `[^)]*` cok satirli imzada yanlis yerde biterdi.
+  const paketUcuBasi = servis.indexOf('async updateUserTier(');
+  const paketUcuSonraki = servis.indexOf('\n  async ', paketUcuBasi + 1);
+  const paketUcuGovdesi = paketUcuBasi < 0
+    ? ''
+    : servis.slice(paketUcuBasi, paketUcuSonraki < 0 ? servis.length : paketUcuSonraki);
   const denetimCagri = (servis.match(/this\.denetimliMutasyon\(/g) ?? []).length;
+  // 17.09.2026 (2.12): paket ucu ARTIK MUTASYON DEGIL - hicbir sey yazmiyor,
+  // gerekceli 400 doner. Geriye BES denetimli mutasyon kalir (rol, durum,
+  // silme, abonelik ekle, abonelik kaldir). Beklenti 6'da birakilsaydi kapi
+  // surekli kirmizi kalirdi; 5'e dusurulurken paket ucunun YAZMADIGI ayrica
+  // olculur (B6b) - yoksa "bes" beklentisi bir unutmayi da gizlerdi.
   check(
-    `B6 alti mutasyonun hepsi denetimli sarmalayicidan geciyor (${denetimCagri}/6)`,
-    denetimCagri >= 6,
+    `B6 BES mutasyonun hepsi denetimli sarmalayicidan geciyor (${denetimCagri}/5)`,
+    denetimCagri >= 5,
+  );
+  check(
+    'B6b * paket ucu hic yazmiyor (updateUserTier`da prisma cagrisi YOK)',
+    paketUcuGovdesi.includes('PAKET_ABONELIKTEN')
+      && !/this\.prisma|denetimliMutasyon|\.update\(/.test(paketUcuGovdesi),
+    `govde=${paketUcuGovdesi.slice(0, 200)}`,
   );
   // 10.09.2026'ya kadar B7 tam tersini olcuyordu: "hatayi YUTAN catch var mi".
   // O davranis kusurun kendisiydi (tablo uretimde 0 satir, ekran "yazilir"
@@ -167,9 +185,17 @@ async function main(): Promise<void> {
     'D2 durum degeri dogrulaniyor',
     /\['active', 'banned'\]\.includes\(status\)/.test(servis),
   );
+  // 17.09.2026 (Faz 7 - 2.12) ANLAM DEGISTI. ESKI: "paket ucu gecersiz degeri
+  // reddediyor mu" (`['core','pro','suite'].includes(tier)`). YENI: uc ARTIK
+  // HIC PAKET YAZMIYOR - seviye yalniz abonelikten gelir; elle paket dagitmak
+  // seviyeyi satin almadan koparan tek yoldu. Uc silinmedi (acik kalmis eski
+  // panel sekmesi 404 yerine gerekce gorsun) ama gerekceli 400 doner. Deger
+  // dogrulamasi ARANMAZ; bulunursa eski govde geri gelmis demektir.
   check(
-    'D3 paket degeri dogrulaniyor',
-    /\['core', 'pro', 'suite'\]\.includes\(tier\)/.test(servis),
+    'D3 * paket ucu PAKET_ABONELIKTEN ile reddediyor (2.12)',
+    /kod: 'PAKET_ABONELIKTEN'/.test(servis)
+      && !/\['core', 'pro', 'suite'\]\.includes\(tier\)/.test(servis),
+    'uc hala elle paket yaziyor - seviye abonelikten kopuk kalir',
   );
 
   // ── E · ON YUZ (2.2) ──────────────────────────────────────────────────
@@ -189,9 +215,17 @@ async function main(): Promise<void> {
       /toLowerCase\(\) !== u\.email\.toLowerCase\(\)/.test(sayfa),
     'yanlis yazilirsa istek GITMEMELI',
   );
+  // 17.09.2026 (2.12): paket acilir listesi SALT-OKUNUR ROZETE dondu (uc de
+  // reddediyor). Satir ici Select sayisi 3 -> 2; rozetin GERCEKTEN orada
+  // oldugu ve eski Select'in geri gelmedigi ayrica olculur.
   check(
-    'E4 rol/paket/durum satir ici Select`e bagli',
-    (sayfa.match(/onValueChange=\{\(v\) => alanDegistir\(u, '/g) ?? []).length === 3,
+    'E4 rol/durum satir ici Select`e bagli (paket ARTIK degil)',
+    (sayfa.match(/onValueChange=\{\(v\) => alanDegistir\(u, '/g) ?? []).length === 2,
+  );
+  check(
+    'E4b * paket satir ici DEGISTIRILEMIYOR, rozet olarak gosteriliyor',
+    !/alanDegistir\(u, 'tier'/.test(sayfa) && /seviyeAdi\(u\.tier\)/.test(sayfa),
+    'acilir liste geri geldi - yonetici paket dagitmaya devam eder',
   );
   check(
     'E5 role/paket/durum SUZGECLERI var (2.1`in eksik parcasi)',
@@ -217,6 +251,7 @@ async function main(): Promise<void> {
   // ── G · GERCEK PAKET (yetkili kaynak) ─────────────────────────────────
   console.log('\n── G · GERCEK PAKET ──');
   const tierGuard = kodu(oku('backend/src/altyapi/auth/guards/tier.guard.ts'));
+  const seviyeKaynak = kodu(oku('backend/src/altyapi/auth/seviye.ts'));
   check(
     'G1 getUsers YETKILI KAYNAGI (Abonelik -> PaketSurumu -> Paket) okuyor',
     /prisma\.abonelik\.findMany/.test(servis) && /paketSurumu/.test(servis),
@@ -230,19 +265,47 @@ async function main(): Promise<void> {
     'G3 ayrisma ISARETLENIYOR (sessiz erisim kusuru gorunur olsun)',
     /paketAyrismasi/.test(servis),
   );
+  // 17.09.2026 (2.12): abonelik sorgusu `altyapi/auth/seviye.ts`e tasindi
+  // (ayni sorguyu auth.service de kullaniyor). Kapi artik IKI dosyayi birden
+  // okur: guard tek kaynagi cagiriyor mu, o kaynak abonelige mi bakiyor.
   check(
-    'G4 ⭐ TierGuard yetkili kaynagi DA okuyor',
-    /prisma\.abonelik\.findUnique/.test(tierGuard),
-    'HICBIR odeme yolu User.tier YAZMIYOR — pro alan firma /labor`da 403 alirdi',
+    'G4 * TierGuard seviyeyi YETKILI kaynaktan aliyor (firmaPaketSeviyesi)',
+    /firmaPaketSeviyesi\(this\.prisma, user\.firmaId\)/.test(tierGuard)
+      && /prisma\.abonelik\.findUnique/.test(seviyeKaynak),
+    'HICBIR odeme yolu User.tier YAZMIYOR - pro alan firma /labor`da 403 alirdi',
   );
   check(
-    'G5 YUKSEK olan kazaniyor (izin GENISLETIR, hicbir kullaniciyi daraltmaz)',
-    /Math\.max\(tierSeviye, abonelikSeviye\)/.test(tierGuard),
-    'yalniz Abonelik`e bakmak `suite` tier`li mevcut hesaplari KIRARDI',
+    'G4b * firmasiz hesapta abonelik sorgusu HIC ATILMIYOR',
+    /if \(!firmaId\) return null;/.test(seviyeKaynak),
+    'where: { firmaId: undefined } kosulu SESSIZCE duser - ilk abonelik donerdi',
+  );
+  // 17.09.2026 (Faz 7 - 2.12) G5 ve G6'NIN ANLAMI TERSINE DONDU.
+  // ESKI G5: "YUKSEK olan kazaniyor" (`Math.max(tierSeviye, abonelikSeviye)`).
+  // ESKI G6: "User.tier hala okunuyor" (`select: { tier: true, firmaId: true }`).
+  // O ikisi 07.09'da bilerek yazilmisti: pro satin alan firma `User.tier: core`
+  // kaldigi icin 403 aliyordu ve `Math.max` erisimi GENISLETIYORDU. Ama ayni
+  // kural ters yonde de aciyordu: `User.tier`i hicbir odeme yolu yazmiyor,
+  // yalniz yonetici paneli ELLE degistiriyordu - abonelik iptal edilse,
+  // dusurulse ya da hic olmasa bile elle verilmis tier kapiyi acik tutuyordu.
+  // YENI kural: seviye YALNIZ abonelikten (`altyapi/auth/seviye.ts`).
+  check(
+    'G5 * Math.max YOK - iki kaynak birlestirilmiyor (2.12)',
+    !/Math\.max\(/.test(tierGuard),
+    'iki kaynakli hal geri geldi: elle verilen User.tier yine kapi aciyor',
   );
   check(
-    'G6 ⟨olcut⟩ User.tier hala okunuyor (kaynagi silmedik, EKLEDIK)',
-    /select: \{ tier: true, firmaId: true \}/.test(tierGuard),
+    'G6 * TierGuard User.tier OKUMUYOR (yalniz firmaId)',
+    /select: \{ firmaId: true \}/.test(tierGuard) && !/tier: true/.test(tierGuard),
+    'tier yeniden okunuyor - yetki kaynagi ikiye ayrilmis demektir',
+  );
+  check(
+    'G6b * seviye tek kaynaktan turuyor (firmaPaketSeviyesi + seviyeSirasi)',
+    /firmaPaketSeviyesi\(/.test(tierGuard) && /seviyeSirasi\(/.test(tierGuard),
+  );
+  check(
+    'G6c * ret mesajinda buyuk harfli CORE/PRO YOK (musteriye gorunen ad)',
+    !/toUpperCase\(\)/.test(tierGuard) && /seviyeGorunenAd\(/.test(tierGuard),
+    'musteri "CORE" diye bir sey satin almadi - paketin adi Basic',
   );
   check(
     'G7 on yuz gercek paketi ve ayrismayi gosteriyor',
@@ -371,6 +434,11 @@ async function main(): Promise<void> {
 async function davranis(): Promise<void> {
   console.log('\n── K · DAVRANIS (denetim yazimi KASTEN bozuk) ──');
 
+  // 17.09.2026: bu blok `updateUserTier` uzerinden olcuyordu; o uc 2.12 ile
+  // ARTIK PRISMA CAGIRMIYOR (gerekceli 400 firlatir). Olculen sey ucun kendisi
+  // degil `denetimliMutasyon` sarmalayicisidir; ayni sarmalayiciyi kullanan
+  // `updateUserStatus`a gecildi ('active' secildi: 'banned' kilitlenme
+  // kontrolunu tetikler ve sahte Prisma'da olmayan sorgulari calistirirdi).
   const hedef = {
     id: 'hedef-1', email: 'hedef@ornek.test',
     role: 'user', status: 'active', tier: 'core', deletedAt: null,
@@ -423,7 +491,7 @@ async function davranis(): Promise<void> {
   {
     const { servis, iz } = kur(false);
     const sonuc = await servis
-      .updateUserTier(yonetici, hedef.id, 'pro')
+      .updateUserStatus(yonetici, hedef.id, 'active')
       .then(() => 'basarili', (e: unknown) => e);
     check('K-OLCUT1 saglam yolda islem BASARILI', sonuc === 'basarili', `sonuc=${String(sonuc)}`);
     check(
@@ -435,7 +503,7 @@ async function davranis(): Promise<void> {
 
   const { servis, iz } = kur(true);
   const hata: any = await servis
-    .updateUserTier(yonetici, hedef.id, 'pro')
+    .updateUserStatus(yonetici, hedef.id, 'active')
     .then(() => null, (e: unknown) => e);
 
   check(

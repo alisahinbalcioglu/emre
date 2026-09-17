@@ -47,12 +47,27 @@ function lp(name: string, unitPrice: number, opts?: {
 }
 
 const memStore = new Map<string, any>();
+/**
+ * 17.09.2026 (Faz 7 - K1): SAHIPLIK KISIDEN FIRMAYA GECTI.
+ *
+ * Eski fixture kiraci firmaya da 'u1' veriyordu (`{ userId: 'u1', firmaId: 'F1' }`)
+ * ve isçilik firmasinda `firmaId` HIC YOKTU. Kiraci ile kullanici ayni dizge
+ * oldugu icin `firma.userId !== k.userId` ile `firma.firmaId !== k.firmaId`
+ * AYNI sonucu veriyordu — yani cakisma testte gorunmuyordu. Artik kiraci
+ * firma 'F1', kullanici 'u1' ve isçilik firmasi `firmaId: 'F1'` tasiyor:
+ * iki eksen birbirinden AYRILDI, eski assert'lerin anlami korunur.
+ */
+const IZ = { firmaSorgusu: [] as string[] };
 function makeSvc(mainRows: any[], otherRows: any[] = [], otherFirmaName = 'B FİRMASI') {
   const memKey = (w: any) => `${w.userId_imza.userId}|${w.userId_imza.imza}`;
   const prisma: any = {
     laborFirm: {
-      findUnique: async ({ where }: any) =>
-        where.id === 'firma-A' ? { id: 'firma-A', userId: 'u1', name: 'A FİRMASI', discipline: 'mechanical' } : null,
+      findUnique: async ({ where }: any) => {
+        IZ.firmaSorgusu.push(where.id);
+        return where.id === 'firma-A'
+          ? { id: 'firma-A', userId: 'u1', firmaId: 'F1', name: 'A FİRMASI', discipline: 'mechanical' }
+          : null;
+      },
     },
     laborPrice: {
       findMany: async (args: any) => {
@@ -95,7 +110,7 @@ async function run() {
       lp('Siyah çelik boru montajı kaynaklı DN65', 110),
       lp('Küresel vana montajı DN50', 120, { unit: 'adet' }),
     ]);
-    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'firma-A', ['SİYAH ÇELİK BORU - DN50'], undefined, { 'SİYAH ÇELİK BORU - DN50': 'mt' }))['SİYAH ÇELİK BORU - DN50'];
+    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'F1' }, 'firma-A', ['SİYAH ÇELİK BORU - DN50'], undefined, { 'SİYAH ÇELİK BORU - DN50': 'mt' }))['SİYAH ÇELİK BORU - DN50'];
     check('L3 tek kalem → net fiyat OTOMATIK (montaj toleransi dahil)',
       r?.netPrice === 85 && !!r?.matchedName?.toLocaleLowerCase('tr').includes('montaj'),
       `got net=${r?.netPrice} "${r?.matchedName}" (${r?.confidence}: ${r?.reason})`);
@@ -109,7 +124,7 @@ async function run() {
       lp('Siyah çelik boru montajı kaynaklı DN50', 85),
       lp('Siyah çelik boru montajı yivli DN50', 70),
     ]);
-    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'firma-A', ['SİYAH ÇELİK BORU - DN50']))['SİYAH ÇELİK BORU - DN50'];
+    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'F1' }, 'firma-A', ['SİYAH ÇELİK BORU - DN50']))['SİYAH ÇELİK BORU - DN50'];
     check('L4 iki kalem → fiyatli secim listesi, sistem SECMEZ',
       r?.confidence === 'multi' && r?.netPrice === 0 && (r?.candidates?.length ?? 0) === 2,
       `got ${r?.confidence} net=${r?.netPrice} aday=${r?.candidates?.length}`);
@@ -117,7 +132,7 @@ async function run() {
     const kaynakli = r?.candidates?.find((c) => c.materialName.toLocaleLowerCase('tr').includes('kaynak'));
     check('L7 adayda variantTags var (surukleme tasiyabilir)',
       (kaynakli?.variantTags?.length ?? 0) > 0, JSON.stringify(kaynakli?.variantTags));
-    const r2 = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'firma-A', ['SİYAH ÇELİK BORU - DN50'], kaynakli?.variantTags))['SİYAH ÇELİK BORU - DN50'];
+    const r2 = (await svc.bulkMatch({ userId: 'u1', firmaId: 'F1' }, 'firma-A', ['SİYAH ÇELİK BORU - DN50'], kaynakli?.variantTags))['SİYAH ÇELİK BORU - DN50'];
     check('L7 varyant tasiminda kaynakli kalem OTOMATIK yazildi',
       r2?.netPrice === 85 && !!r2?.matchedName?.toLocaleLowerCase('tr').includes('kaynak'),
       `got net=${r2?.netPrice} "${r2?.matchedName}"`);
@@ -128,14 +143,14 @@ async function run() {
     const svc = makeSvc([
       lp('Siyah çelik boru montajı DN50', 300, { unit: 'adet' }),
     ]);
-    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'firma-A', ['SİYAH ÇELİK BORU - DN50'], undefined, { 'SİYAH ÇELİK BORU - DN50': 'mt' }))['SİYAH ÇELİK BORU - DN50'];
+    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'F1' }, 'firma-A', ['SİYAH ÇELİK BORU - DN50'], undefined, { 'SİYAH ÇELİK BORU - DN50': 'mt' }))['SİYAH ÇELİK BORU - DN50'];
     check('L6 birim uyumsuz (mt↔adet) → fiyat YOK, aday YOK',
       r?.netPrice === 0 && r?.confidence === 'none' && !r?.candidates?.length,
       `got net=${r?.netPrice} ${r?.confidence} "${r?.reason}"`);
     check('L6 nedeni birimi soyluyor', !!r?.reason && /birim/i.test(r.reason), `got "${r?.reason}"`);
     // Birimsiz kalem ELENMEZ (kanit yok, suclama yok)
     const svc2 = makeSvc([lp('Siyah çelik boru montajı DN50', 85, { unit: '' })]);
-    const r2 = (await svc2.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'firma-A', ['SİYAH ÇELİK BORU - DN50'], undefined, { 'SİYAH ÇELİK BORU - DN50': 'mt' }))['SİYAH ÇELİK BORU - DN50'];
+    const r2 = (await svc2.bulkMatch({ userId: 'u1', firmaId: 'F1' }, 'firma-A', ['SİYAH ÇELİK BORU - DN50'], undefined, { 'SİYAH ÇELİK BORU - DN50': 'mt' }))['SİYAH ÇELİK BORU - DN50'];
     check('L6 birimsiz kalem elenmez → fiyat yazilir', r2?.netPrice === 85, `got net=${r2?.netPrice} (${r2?.reason})`);
   }
 
@@ -145,7 +160,7 @@ async function run() {
       [lp('Küresel vana montajı DN50', 120, { unit: 'adet' })], // A'da yalniz vana
       [lp('Siyah çelik boru montajı kaynaklı DN50', 95)],        // B'de boru var
     );
-    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'firma-A', ['SİYAH ÇELİK BORU - DN50'], undefined, { 'SİYAH ÇELİK BORU - DN50': 'mt' }))['SİYAH ÇELİK BORU - DN50'];
+    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'F1' }, 'firma-A', ['SİYAH ÇELİK BORU - DN50'], undefined, { 'SİYAH ÇELİK BORU - DN50': 'mt' }))['SİYAH ÇELİK BORU - DN50'];
     check('L5 firmada yok → fiyat yazilmaz', r?.netPrice === 0, `got net=${r?.netPrice}`);
     const alt = r?.alternatives?.[0];
     check('L5 alternatif firma onerildi (fiyatiyla)',
@@ -156,7 +171,7 @@ async function run() {
   // ══ Z4 ikizi: para birimi CEVRILMEZ, teklif aninda TRY'ye cevrilir ══
   {
     const svc = makeSvc([lp('Siyah çelik boru montajı DN50', 10, { currency: 'USD' })]);
-    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'firma-A', ['SİYAH ÇELİK BORU - DN50']))['SİYAH ÇELİK BORU - DN50'];
+    const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'F1' }, 'firma-A', ['SİYAH ÇELİK BORU - DN50']))['SİYAH ÇELİK BORU - DN50'];
     check('L2 doviz kalemi teklif aninda TRY (10 USD × 40 = 400)',
       r?.netPrice === 400, `got net=${r?.netPrice}`);
   }
@@ -165,7 +180,7 @@ async function run() {
   {
     const svc = makeSvc([lp('Siyah çelik boru montajı kaynaklı DN50', 85)]);
     memStore.clear();
-    await svc.remember('u1', 'firma-A', 'SİYAH ÇELİK BORU - DN50', 'Siyah çelik boru montajı kaynaklı DN50');
+    await svc.remember({ userId: 'u1', firmaId: 'F1' }, 'firma-A', 'SİYAH ÇELİK BORU - DN50', 'Siyah çelik boru montajı kaynaklı DN50');
     const keys = Array.from(memStore.keys());
     check('HAFIZA: iscilik imzasi iscilik| onekli (malzemeyle CAKISMAZ)',
       keys.length > 0 && keys.every((k) => k.includes('iscilik|firma-A')),
@@ -183,6 +198,37 @@ async function run() {
     const d2 = matching.laborItemIndexData('---', 'mt');
     check('L2 anlamsiz ad → BEKLEYEN (belirsiz=true, eslesmeye kapali)',
       d2.belirsiz === true, JSON.stringify({ adSlug: d2.adSlug, belirsiz: d2.belirsiz }));
+  }
+
+  // ══ K1 (Faz 7, 17.09): SAHIPLIK FIRMA EKSENINDE ═════════════════════
+  // Olculen kusur: kutuphane 28.08'de firmaya gecti ama bu yol KISIYE
+  // bakmaya devam ediyordu. Sonuc: ayni firmanin ikinci uyesi kendi
+  // firmasinin isçilik kaleminde eslestirme yapamiyordu (403).
+  {
+    const svc = makeSvc([lp('Siyah çelik boru montajı kaynaklı DN50', 85)]);
+    IZ.firmaSorgusu = [];
+    // U1: AYNI firmanin BASKA kullanicisi (u2) — gecmeli.
+    const r = (await svc.bulkMatch({ userId: 'u2', firmaId: 'F1' }, 'firma-A', ['SİYAH ÇELİK BORU - DN50'], undefined, { 'SİYAH ÇELİK BORU - DN50': 'mt' }))['SİYAH ÇELİK BORU - DN50'];
+    check('U1 ⭐ ayni firmanin IKINCI uyesi (u2) eslestirebiliyor',
+      r?.netPrice === 85, `got=${JSON.stringify(r?.netPrice)}`);
+    check('U1-FIXTURE sahiplik sorgusu GERCEKTEN firma-A ile atildi',
+      IZ.firmaSorgusu.includes('firma-A'), JSON.stringify(IZ.firmaSorgusu));
+
+    // U2: BASKA firma (F2) — 403.
+    const hata = await svc
+      .bulkMatch({ userId: 'u9', firmaId: 'F2' }, 'firma-A', ['SİYAH ÇELİK BORU - DN50'])
+      .then(() => null, (e: any) => e);
+    check('U2 ⭐ BASKA firmanin kullanicisi 403 aliyor (capraz-kiraci kapisi)',
+      hata !== null && /Forbidden/i.test(hata?.constructor?.name ?? ''),
+      `hata=${hata?.constructor?.name}: ${hata?.message}`);
+
+    // U3: hafiza KISIYE yazilmaya devam ediyor (ogrenme kisisel, V2).
+    memStore.clear();
+    await svc.remember({ userId: 'u2', firmaId: 'F1' }, 'firma-A', 'SİYAH ÇELİK BORU - DN50', 'Siyah çelik boru montajı kaynaklı DN50');
+    const anahtarlar = Array.from(memStore.keys());
+    check('U3 hafiza cagiran KISININ (u2) adina yazildi, firmaya tasinmadi',
+      anahtarlar.length > 0 && anahtarlar.every((k) => k.startsWith('u2|')),
+      JSON.stringify(anahtarlar));
   }
 
   console.log(`\n${'='.repeat(60)}`);

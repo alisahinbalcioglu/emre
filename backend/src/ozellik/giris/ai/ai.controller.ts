@@ -59,7 +59,9 @@ export class AiController {
     }),
   )
   analyze(@CurrentUser() user: any, @UploadedFile() file: Express.Multer.File) {
-    return this.aiService.analyze(user.id, file.buffer, file.mimetype);
+    // ⚠ `kimlikCoz` (K3, 17.09): PDF analizi firmanin kutuphanesiyle
+    // eslestirir; firmasiz hesap 403 alir (sessiz bos sonuc yerine).
+    return this.aiService.analyze(kimlikCoz(user), file.buffer, file.mimetype);
   }
 
   /**

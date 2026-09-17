@@ -19,7 +19,15 @@
  * `npm run test:faz5` kapısında ÖLÇÜLÜYOR.
  */
 
-/** ⚠ Backend `altyapi/auth/hukuki-surum.ts` ile AYNI olmak ZORUNDA. */
+/**
+ * ⚠ Backend `altyapi/auth/hukuki-surum.ts` ile AYNI olmak ZORUNDA.
+ *
+ * 2026-09-17 kapsamı: çeviri kotası cümleleri + elektrik kapsamının GERİ
+ * ALINMASI (16.09'da daraltılan "elektrik paketleri satışta değildir"
+ * cümleleri kaldırıldı, üç elektrik paketi satışta kaldı).
+ * ⚠ AYNI GÜN = AYNI SÜRÜM: sürüm bir tarihtir; bugün zaten 17'ye çekilmişti,
+ * ikinci kez artırmak sahte bir ikinci sürüm üretirdi.
+ */
 export const HUKUKI_METIN_SURUMU = '2026-09-17';
 
 /**
@@ -138,7 +146,7 @@ export const GIZLILIK: HukukiMetin = {
     {
       baslik: "Hangi verilerinizi işliyoruz?",
       paragraflar: [
-        "MetaPriceX, mekanik tesisat işleri için metraj ve teklif hazırlayan firmalara yöneliktir. Her kayıt kendi firmasını açar; bugün ekip daveti gibi bir akış yoktur, bir hesap bir firmaya karşılık gelir.",
+        "MetaPriceX, mekanik ve elektrik tesisat işleri için metraj ve teklif hazırlayan firmalara yöneliktir. Her kayıt kendi firmasını açar; bugün ekip daveti gibi bir akış yoktur, bir hesap bir firmaya karşılık gelir.",
         "Platformu kullanırken aşağıdaki veriler oluşur ve saklanır. Parolanızı düz metin olarak saklamıyoruz; yalnızca geri döndürülemeyen kriptografik özeti tutulur. Parola sıfırlama ve e-posta doğrulama bağlantılarının kendisi de veritabanında düz olarak değil, özet olarak durur.",
       ],
       madde: [
@@ -284,7 +292,7 @@ export const KULLANIM_KOSULLARI: HukukiMetin = {
       paragraflar: [
         `Bu Kullanım Koşulları, bir tarafta MetaPriceX platformunu işleten ${SATICI.unvan} (adres: ${SATICI.adres}, MERSİS: ${SATICI.mersis}, ticaret sicil no: ${SATICI.ticaretSicilNo}, vergi dairesi ve numarası: ${SATICI.vergiDairesi} / ${SATICI.vergiNo}) ile diğer tarafta platforma hesap açan siz arasındadır. Metinde "biz" ve "Platform" işleticiyi, "siz" ve "Kullanıcı" hesabı açan kişiyi ve o hesabın bağlı olduğu firmayı ifade eder.`,
         "Hesap açtığınızda bu koşulları okuduğunuzu ve kabul ettiğinizi varsayarız. Kabul etmiyorsanız hesap açmayın ve platformu kullanmayın.",
-        "Platform kurumsal kullanıma yöneliktir: mekanik tesisat işi yapan mühendislik ve taahhüt firmaları için tasarlanmıştır. Platformu tüketici sıfatıyla değil, ticari faaliyetiniz kapsamında kullandığınızı kabul edersiniz.",
+        "Platform kurumsal kullanıma yöneliktir: mekanik ve elektrik tesisat işi yapan mühendislik ve taahhüt firmaları için tasarlanmıştır. Platformu tüketici sıfatıyla değil, ticari faaliyetiniz kapsamında kullandığınızı kabul edersiniz.",
       ],
     },
     {
@@ -307,7 +315,10 @@ export const KULLANIM_KOSULLARI: HukukiMetin = {
     {
       baslik: "4. Abonelik, paketler ve ödeme",
       paragraflar: [
-        "Platform ücretlidir. Paketler seviyeye göre farklılaşır. Elektrik disiplinini kapsayan paketler şu an satışta değildir; hâlihazırda elektrik kapsamlı aboneliği olan firmaların abonelik kapsamı bu nedenle değişmez. Güncel paketler, kapsamları ve fiyatları uygulama içindeki Abonelik ekranında gösterilir; bu metin fiyat belirlemez, fiyatı Abonelik ekranındaki güncel liste belirler. Ücretsiz deneme her firma ve kişi için bir kez verilir; ayrıntısı Mesafeli Satış Sözleşmesi Ön Bilgilendirme Formu'nun 6. bölümündedir.",
+        // ⚠ 17.09 (Emre kararı): 16.09'da bu cümle "elektrik paketleri şu an
+        // satışta değildir" diye daraltılmıştı; karar TERSİNE döndü, üç
+        // elektrik paketi satışta KALDI. Metin yeniden disiplini anlatır.
+        "Platform ücretlidir. Paketler hem seviyeye hem de çalıştığınız disipline göre farklılaşır (mekanik, elektrik veya her ikisi birlikte). Güncel paketler, kapsamları ve fiyatları uygulama içindeki Abonelik ekranında gösterilir; bu metin fiyat belirlemez, fiyatı Abonelik ekranındaki güncel liste belirler. Ücretsiz deneme her firma ve kişi için bir kez verilir; ayrıntısı Mesafeli Satış Sözleşmesi Ön Bilgilendirme Formu'nun 6. bölümündedir.",
         "Kredi kartıyla ödeme iyzico üzerinden alınır. Kart bilgileriniz bize ulaşmaz ve bizde saklanmaz; iyzico tarafında tutulur. Kartınızı Abonelik ekranındaki kart güncelleme adımıyla değiştirebilirsiniz — doğrulama için kartınızdan 1 TL çekilip iade edilir. Banka havalesi/EFT ile ödeme de mümkündür; bu yol elle onaylandığı için erişiminiz, ödemenin tarafımızca görülmesinin ardından açılır.",
         "Ödemeniz alınamazsa hesabınız aniden kapanmaz, kademeli bir süreç işler:",
         "Ödeme tamamlandığında kapatılan yetenekler yeniden açılır. Bu kademelerde size gönderilen bilgilendirme e-postaları, hesabınızın e-posta adresine gider — bu yüzden adresinizin güncel ve erişilebilir olması önemlidir.",
@@ -558,8 +569,11 @@ export const MESAFELI_SATIS: HukukiMetin = {
     {
       baslik: "3. Sözleşmenin konusu ve hizmetin nitelikleri",
       paragraflar: [
-        "MetaPriceX, mekanik tesisat projelerinde metraj çıkarma ve teklif hazırlama işini kolaylaştıran, internet tarayıcısı üzerinden kullanılan bir yazılım hizmetidir. Fiziksel bir ürün teslim edilmez; size bir kutu, CD veya kurulum dosyası gönderilmez. Aldığınız şey, abonelik süresince yazılımı kullanma hakkıdır.",
-        "Hangi özelliklere erişeceğiniz seçtiğiniz pakete bağlıdır. Paketler seviyeye göre ayrılır: temel seviyede malzeme kütüphanesi ve teklif hazırlama; Pro seviyede bunlara ek olarak işçilik ve DWG üzerinden metraj çıkarma bulunur. Elektrik disiplinini kapsayan paketler şu an satışta değildir; mevcut elektrik kapsamlı aboneliklerin kapsamı değişmez. Her paketin kapsamı, kullanıcı hakkı ve DWG'nin dahil olup olmadığı satın alma sayfasındaki paket kartında yazar.",
+        // ⚠ 17.09 (Emre kararı): 16.09'da bu iki paragraf yalnız mekaniği
+        // anlatacak biçimde daraltılmıştı; karar TERSİNE döndü, elektrik
+        // kapsamlı üç paket satışta KALDI — metin satılan ürünü anlatmalı.
+        "MetaPriceX, mekanik ve elektrik tesisat projelerinde metraj çıkarma ve teklif hazırlama işini kolaylaştıran, internet tarayıcısı üzerinden kullanılan bir yazılım hizmetidir. Fiziksel bir ürün teslim edilmez; size bir kutu, CD veya kurulum dosyası gönderilmez. Aldığınız şey, abonelik süresince yazılımı kullanma hakkıdır.",
+        "Hangi özelliklere erişeceğiniz seçtiğiniz pakete bağlıdır. Paketler disipline (mekanik, elektrik ya da ikisi birden) ve seviyeye göre ayrılır: temel seviyede malzeme kütüphanesi ve teklif hazırlama; Pro seviyede bunlara ek olarak işçilik ve DWG üzerinden metraj çıkarma bulunur. Her paketin kapsamı, kullanıcı hakkı ve DWG'nin dahil olup olmadığı satın alma sayfasındaki paket kartında yazar.",
         // ⚠ RAKAM YAZILMAZ: kota tablosu `ceviri-kotasi.ts`de durur ve
         // değişebilir; rakamı metne yazmak, tablo değişince sözleşmeyi
         // yalancı yapardı. Metin paket kartına ve Fiyatlar sayfasına

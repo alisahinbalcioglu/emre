@@ -128,12 +128,25 @@ function lp(name: string, unitPrice: number, o: Record<string, any> = {}) {
   };
 }
 
+/**
+ * 17.09.2026 (Faz 7 - K2): alternatif havuzu KISIDEN FIRMAYA gecti
+ * (`where.firma.userId` → `where.firma.firmaId`). Dallanma DEGISMEDI ve
+ * degismemeliydi: bu sahte Prisma `where.firmaId` gorunce ANA havuzu,
+ * `where.firma` gorunce ALTERNATIF havuzunu doner. Ust duzeye `firmaId`
+ * eklenseydi alternatif sorgusu ANA dala duser ve butun bu dosya yanlis
+ * sebeple yesile donerdi. `SON_ALT_WHERE` o sozlesmeyi ayrica olcer.
+ */
+const SON_ALT_WHERE: { deger: any } = { deger: null };
+
 function iscilikServis(main: any[], other: any[]): MatchingService {
   const prisma: any = {
     laborPrice: {
       findMany: async (args: any) => {
         if (args?.where?.firmaId) return main;
-        if (args?.where?.firma) return other.map((r) => ({ ...r, firma: { id: 'firma-B', name: 'B FİRMASI' } }));
+        if (args?.where?.firma) {
+          SON_ALT_WHERE.deger = args.where;
+          return other.map((r) => ({ ...r, firma: { id: 'firma-B', name: 'B FİRMASI' } }));
+        }
         return [];
       },
     },
@@ -320,6 +333,20 @@ async function run() {
     check('M4 mesru vaka KORUNDU: PP kuresel sunan KALDE hala onerilir',
       (r?.alternatives?.length ?? 0) === 1 && r?.alternatives?.[0]?.brandName === 'KALDE',
       `got ${JSON.stringify(r?.alternatives?.map((a) => a.brandName))}`);
+  }
+
+  // ══ K2 (Faz 7, 17.09): ALTERNATIF HAVUZU FIRMA EKSENINDE ═════════════
+  // FIXTURE KANITI: yukaridaki isçilik vakalari alternatif sorgusunu
+  // GERCEKTEN atti (yoksa asagidaki assert bos kume uzerinde yesil olurdu).
+  {
+    const w = SON_ALT_WHERE.deger;
+    check('K2-FIXTURE alternatif sorgusu gercekten atildi (ic ice `firma` ile)',
+      w !== null && typeof w?.firma === 'object', `where=${JSON.stringify(w)}`);
+    check('K2a ⭐ alternatif havuzu KIRACI FIRMA ile suzuluyor (userId DEGIL)',
+      w?.firma?.firmaId === 'u1' && w?.firma?.userId === undefined && w?.userId === undefined,
+      `where=${JSON.stringify(w)}`);
+    check('K2b isçilik firmasi haric tutuluyor (id: { not: firma-A })',
+      w?.firma?.id?.not === 'firma-A', `where=${JSON.stringify(w)}`);
   }
 
   console.log('\n============================================================');

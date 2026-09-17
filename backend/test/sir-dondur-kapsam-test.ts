@@ -84,6 +84,28 @@ function main(): void {
     !kod.includes('Bu betigin DOKUNMADIGI sirlar:'),
   );
 
+  // ── S6 (Faz 7 F2a · T11): KIMLIK_SIFRELEME_KEY DONDURULMEZ ─────────────
+  // Bu anahtar DB'deki MFA ve kurumsal giris sirlarini sifreler. Betik onu
+  // dondururse eski deger kaybolur: DB'deki butun sirlar cozulemez ve HERKESIN
+  // iki adimli girisi kirilir. Anahtar betigin KODUNDA hic gecmemeli (liste,
+  // sed satiri, baska bir yazim). Betik bu turda DEGISMEDI; kapi yalniz olcer.
+  const kimlikDondurulmez = (betikKodu: string): boolean => {
+    const liste = /^DONDURULEN="([^"]+)"$/m.exec(betikKodu)?.[1]?.split(/\s+/) ?? [];
+    return liste.length > 0 && !liste.includes('KIMLIK_SIFRELEME_KEY') && !betikKodu.includes('KIMLIK_SIFRELEME_KEY');
+  };
+  check(
+    'S6 KIMLIK_SIFRELEME_KEY betik kodunda YOK (dondurulurse DB`deki MFA/kurumsal giris sirlari cozulemez)',
+    kimlikDondurulmez(kod),
+    `liste=${JSON.stringify(dondurulen)}`,
+  );
+  // FIXTURE KANITI: ayni olcut, listeye anahtar yazilmis SAHTE bir kopyada
+  // gercekten kirmizi — olcut kor degil (liste ayristirilamazsa da kirmizi).
+  const sahteKod = kod.replace(/^DONDURULEN="/m, 'DONDURULEN="KIMLIK_SIFRELEME_KEY ');
+  check(
+    'S6-OLCUT olcut listeye eklenmis anahtari yakaliyor (sahte kopya kirmizi)',
+    sahteKod !== kod && !kimlikDondurulmez(sahteKod),
+  );
+
   // ── K · KANITLAR ───────────────────────────────────────────────────────
   console.log('\n── K · KANITLAR ──');
   const k2 = kod.slice(kod.indexOf('ESKI_CIKTI='), kod.indexOf('BE_JWT='));

@@ -207,6 +207,21 @@ function main(): void {
   check('D6i mesafeli metinde kota cumlesi VAR ve RAKAM YOK',
     /çeviri kotası/.test(metinler) &&
       !/\d[\.\d]*\s*satır/.test(metinler) && !/\d[\.\d]*\s*dosya/.test(metinler));
+  // 17.09 (Emre karari): 16.09'da elektrik paketleri satistan cekilecek diye
+  // metinler mekanige daraltilmisti; karar TERSINE dondu, uc elektrik paketi
+  // (basic-elk, pro-elk, pro-mep) satin alinabiliyor. Metin satilan urunle
+  // CELISMEMELI. Bu kaynak kapisi, on yuzdeki davranis kapisinin
+  // (`vitest satici-metin` T9) TAMAMLAYICISIDIR — kaynakta elektrik cumlesi
+  // silinirse burasi da kirmizi olur.
+  // ⚠ `metinlerKod` (YORUMSUZ): dosyada eski cumleyi ALINTILAYAN bir yorum
+  // var; ham kaynakta arasak olumsuz kontrol o yorumla eslesir ve kapi
+  // kendi belgesi yuzunden kirmizi olurdu.
+  check('D6j elektrik kapsami metinlerde (satistan cekme cumlesi YOK)',
+    /mekanik ve elektrik tesisat işleri/.test(metinlerKod) &&
+      /mekanik ve elektrik tesisat işi/.test(metinlerKod) &&
+      /disipline göre farklılaşır \(mekanik, elektrik veya her ikisi birlikte\)/.test(metinlerKod) &&
+      /Paketler disipline \(mekanik, elektrik ya da ikisi birden\)/.test(metinlerKod) &&
+      !/[Ee]lektrik[^.]*satışta değil/.test(metinlerKod));
   // ⚠ Iki paket ayri derlenir; surumler AYRISIRSA yanlis onay kaydedilir.
   const beSurum = (oku('backend/src/altyapi/auth/hukuki-surum.ts').match(/'([\d-]+)'/) ?? [])[1];
   const feSurum = (metinler.match(/HUKUKI_METIN_SURUMU = '([\d-]+)'/) ?? [])[1];

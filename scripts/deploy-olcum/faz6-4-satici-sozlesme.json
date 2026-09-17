@@ -1,6 +1,6 @@
 {
-  "tur": "Faz 6.4 — satici kimligi + mesafeli satis sozlesmesi/onayi + elektrik paketlerinin satistan cekilmesi (16.09.2026)",
-  "not": "Disaridan gorulebilenler. Surum tek basina yetmez. Onay kutusu ve DTO kapisi oturum istedigi icin 'olculemeyenler'de, yerel kapilariyla. Elektrik paketlerinin listeden dusmesi BETIK KOSTUKTAN sonra ve en az 60 sn beklenerek olculur (fiyat ucu 60 sn onbellekli).",
+  "tur": "Faz 6.4 — satici kimligi + mesafeli satis sozlesmesi/onayi (16.09.2026; elektrik bolumu 17.09'da GERI ALINDI)",
+  "not": "Disaridan gorulebilenler. Surum tek basina yetmez. Onay kutusu ve DTO kapisi oturum istedigi icin 'olculemeyenler'de, yerel kapilariyla. ⚠ 17.09 (Emre karari): elektrik paketleri SATISTA KALIYOR — 16.09'daki 'satistan cekme' olcumleri kaldirildi, yerlerine elektrigin GORUNDUGUNU olcen kontroller kondu. scripts/paket-satis-kapat.sh KOSULMAYACAK.",
   "taban": "https://metapricex.com",
   "olcumler": [
     {
@@ -38,10 +38,10 @@
       "icermez": ["doğrudan kapatan bir düğme uygulama içinde bulunmamaktadır"]
     },
     {
-      "ad": "fiyat sayfasinda elektrik vaadi yok",
-      "neden": "uc elektrik paketi satistan cekildi; sayfa yalniz mekanigi anlatir",
+      "ad": "fiyat sayfasi paketleri DISIPLINE gore anlatiyor",
+      "neden": "17.09 karari: uc elektrik paketi satista KALDI; sayfa satilan urunu anlatmali (16.09'daki daraltma geri alindi)",
       "tip": "paket-metni", "yol": "/fiyatlar",
-      "icermez": ["disipline (mekanik, elektrik ya da ikisi)"]
+      "icerir": ["disipline (mekanik, elektrik ya da ikisi)"]
     },
     {
       "ad": "paylasim gorseli YENI adla",
@@ -50,11 +50,10 @@
       "icerir": ["/og/fiyatlar-basic.jpg"]
     },
     {
-      "ad": "⚠ BETIK SONRASI — fiyat ucunde elektrik paketi YOK",
-      "neden": "paket-satis-kapat.sh --uygula kosuldUKTAN ve EN AZ 60 SANIYE beklendikten sonra olculur; erken bakilirsa onbellek eski listeyi doner",
+      "ad": "fiyat ucunde BES paketin besi de var (elektrik dahil)",
+      "neden": "17.09 karari: elektrik satista kaliyor. Satistan cekildigini olcen eski kontrol KALDIRILDI; yerine elektrigin GORUNDUGU olculuyor — bir sonraki ajan 'cekilmis mi' diye bakip yanlis sonuc cikarmasin",
       "tip": "json-metni", "yol": "/api/fiyatlar",
-      "icermez": ["basic-elk", "pro-elk", "pro-mep"],
-      "icerir": ["basic-mek", "pro-mek"]
+      "icerir": ["basic-mek", "pro-mek", "basic-elk", "pro-elk", "pro-mep"]
     }
   ],
   "olculemeyenler": [
@@ -62,6 +61,6 @@
     { "ad": "onay zamani ve surumun niyet kaydina yazilmasi", "neden": "DB okumasi ister — yerel kapi: npm run test:satinalma (S-ONAY3)" },
     { "ad": "on yuzde kutunun isaretsiz baslamasi ve dugmenin kapali olmasi", "neden": "korumali sayfa (giris ister) — yerel kapi: npx vitest run sozlesme-onayi" },
     { "ad": "info@metapricex.com kutusuna posta ulasiyor mu", "neden": "posta kutusu HENUZ ACILMADI (Emre, 15.09). ⚠ BU SURUM, kutu acilip test maili ULASMADAN canliya CIKMAZ: dort hukuki sayfa ve sozlesme bu adresi basvuru adresi olarak gosteriyor." },
-    { "ad": "elektrik kapsamli mevcut abone sayisi", "neden": "canli DB — paket-satis-kapat.sh PROVA ciktisindaki O2 sorgusu soyler" }
+    { "ad": "elektrik kapsamli mevcut abone sayisi", "neden": "canli DB. 17.09 karariyla bu sayi bir karar girdisi DEGIL (paketler satista kaliyor); merak edilirse bash scripts/abonelik-olcum.sh dagilim" }
   ]
 }

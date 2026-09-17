@@ -449,7 +449,21 @@ function iscilikEkrani() {
     .replace(/\r\n/g, '\n')
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^[ \t]*\/\/.*$/gm, '');
-  check('P3-OLCUT iscilik sayfasi okundu (/labor istegi var)', sayfa.includes('/labor?discipline='));
+  // 17.09.2026 (Faz 7 - 2.12 / R1-O4): liste ADRESI sayfadan cikti, kurala
+  // tasindi (`ozellik/kutuphane/iscilik-katalog-adresi.ts`) — yonetici,
+  // paket kapisi tasimayan `/labor/yonetici-katalog`u cagiriyor. Kapinin
+  // olctugu sey degismedi (sayfa GERCEKTEN liste istegi atiyor mu); yalniz
+  // iki dosyaya bakiyor. Tek dosyaya bakan eski hal, mekanizma tasininca
+  // sessizce KIRMIZI olur ve kapi kendi anlamini kaybederdi.
+  const adresKurali = fs.readFileSync(
+    path.join(__dirname, '../../frontend/ozellik/kutuphane/iscilik-katalog-adresi.ts'),
+    'utf8',
+  );
+  check(
+    'P3-OLCUT iscilik sayfasi okundu (/labor liste istegi var)',
+    sayfa.includes('iscilikKatalogAdresi(') && adresKurali.includes('/labor?'),
+    `sayfa=${sayfa.includes('iscilikKatalogAdresi(')} kural=${adresKurali.includes('/labor?')}`,
+  );
   check(
     'P3a 403 ABONELIK_KISITLI ayri ele aliniyor (genel hata toast`ina dusmuyor)',
     /status === 403 && veri\?\.kod === 'ABONELIK_KISITLI'/.test(sayfa),

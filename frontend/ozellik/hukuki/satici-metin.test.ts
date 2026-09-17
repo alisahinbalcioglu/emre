@@ -32,6 +32,7 @@ import {
  *   T6  ürün-metin çelişkisi yok (hesap kapatma)
  *   T7  Mesafeli Satış Sözleşmesi ayrı metin, sayfada, listede DEĞİL
  *   T8  kota cümlesi var ve RAKAMSIZ
+ *   T9  elektrik kapsamı: metin satılan ürünle çelişmiyor (17.09)
  */
 
 /** Bir metnin ekranda GÖRÜNEN tüm dizgeleri (HukukiSayfa'nın çizdiği sıra). */
@@ -204,5 +205,46 @@ describe('T8 — çeviri kotası cümlesi RAKAMSIZ', () => {
   it('satır/dosya rakamı YOK', () => {
     expect(mesafeli).not.toMatch(/[\d.]+\s*satır/);
     expect(mesafeli).not.toMatch(/[\d.]+\s*dosya/);
+  });
+});
+
+/**
+ * T9 — METİN SATILAN ÜRÜNÜ ANLATIR (17.09, Emre kararı)
+ *
+ * 16.09'da elektrik paketleri satıştan çekilecek diye hukuki metinler
+ * mekaniğe daraltılmış ve iki yere "elektrik paketleri şu an satışta
+ * değildir" cümlesi konmuştu. Karar TERSİNE döndü: üç elektrik paketi
+ * (basic-elk, pro-elk, pro-mep) satın alınabiliyor.
+ *
+ * Kapının ölçtüğü şey "elektrik kelimesi geçiyor mu" DEĞİL, metnin bugün
+ * satılan ürünle ÇELİŞMEMESİ: sözleşme müşteriye satamayacağımız bir şeyi
+ * vaat etmemeli, satabildiğimiz bir şeyi de yok saymamalı. Yalnız
+ * `cizilen()` ile ÇİZİLEN gövde okunur — yorumda kalan eski cümle
+ * "yerinde" sayılmaz.
+ */
+describe('T9 — elektrik kapsamı: metin satılan ürünle çelişmiyor', () => {
+  it('ÖLÇÜT: fixture gerçekten bu üç metni taşıyor', () => {
+    for (const m of [GIZLILIK, KULLANIM_KOSULLARI, MESAFELI_SATIS]) {
+      expect(cizilen(m).join('\n').length).toBeGreaterThan(500);
+    }
+  });
+
+  it('gizlilik ve kullanım koşulları iki disiplini birden anlatıyor', () => {
+    expect(cizilen(GIZLILIK).join('\n')).toContain('mekanik ve elektrik tesisat işleri');
+    expect(cizilen(KULLANIM_KOSULLARI).join('\n')).toContain('mekanik ve elektrik tesisat işi');
+  });
+
+  it('paketlerin DİSİPLİNE göre ayrıldığı iki metinde de yazılı', () => {
+    expect(cizilen(KULLANIM_KOSULLARI).join('\n')).toContain(
+      'Paketler hem seviyeye hem de çalıştığınız disipline göre farklılaşır (mekanik, elektrik veya her ikisi birlikte)',
+    );
+    expect(cizilen(MESAFELI_SATIS).join('\n')).toContain(
+      'Paketler disipline (mekanik, elektrik ya da ikisi birden) ve seviyeye göre ayrılır',
+    );
+  });
+
+  it('hiçbir metin "elektrik paketleri satışta değil" DEMİYOR', () => {
+    expect(TUM_METIN).not.toMatch(/[Ee]lektrik[^.]*satışta değil/);
+    expect(TUM_METIN).not.toMatch(/satışta değil[^.]*elektrik/i);
   });
 });

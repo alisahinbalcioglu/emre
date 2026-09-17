@@ -39,6 +39,7 @@ import {
 } from '@/ortak/ui/select';
 import { confirm, promptValue } from '@/ortak/hooks/use-confirm';
 import { toast } from '@/ortak/hooks/use-toast';
+import { seviyeAdi } from '@/ozellik/odeme/paket-bicim';
 
 interface AdminUser {
   id: string;
@@ -147,7 +148,7 @@ export default function AdminUsersPage() {
    */
   async function alanDegistir(
     u: AdminUser,
-    alan: 'role' | 'status' | 'tier',
+    alan: 'role' | 'status',
     yeni: string,
   ) {
     const eski = u[alan];
@@ -267,7 +268,7 @@ export default function AdminUsersPage() {
           <SelectTrigger className="w-[9rem] bg-white"><SelectValue placeholder="Paket" /></SelectTrigger>
           <SelectContent>
             <SelectItem value={HEPSI}>Tüm paketler</SelectItem>
-            {PAKETLER.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+            {PAKETLER.map((t) => <SelectItem key={t} value={t}>{seviyeAdi(t)}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={durumSuzgec} onValueChange={setDurumSuzgec}>
@@ -300,7 +301,7 @@ export default function AdminUsersPage() {
                 <TableRow className="bg-slate-50 hover:bg-slate-50">
                   <TableHead>E-posta</TableHead>
                   <TableHead>Rol</TableHead>
-                  <TableHead>Paket (tier)</TableHead>
+                  <TableHead>Eski tier (salt okunur)</TableHead>
                   <TableHead>Gerçek paket</TableHead>
                   <TableHead>Durum</TableHead>
                   <TableHead className="text-right">Teklif</TableHead>
@@ -347,19 +348,19 @@ export default function AdminUsersPage() {
                         </Select>
                       </TableCell>
 
+                      {/* 17.09.2026 (2.12): açılır liste SALT-OKUNUR ROZETE döndü.
+                          `User.tier` artık hiçbir kapıyı açmıyor; buradan
+                          değiştirmek kullanıcıya hiçbir şey vermez (uç da
+                          `PAKET_ABONELIKTEN` ile reddediyor). Alan yine de
+                          gösterilir: eski değer KVKK dışa aktarımında duruyor
+                          ve sağdaki "Gerçek paket" ile ayrışması tanı bilgisi. */}
                       <TableCell>
-                        <Select
-                          value={u.tier}
-                          disabled={kilitli}
-                          onValueChange={(v) => alanDegistir(u, 'tier', v)}
+                        <Badge
+                          variant={TIER_VARIANT[u.tier] ?? 'secondary'}
+                          title="Eski alan — erişim vermez. Paket abonelikten gelir."
                         >
-                          <SelectTrigger className="h-7 w-[6.5rem] text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {PAKETLER.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
+                          {seviyeAdi(u.tier)}
+                        </Badge>
                       </TableCell>
 
                       <TableCell>
@@ -389,12 +390,12 @@ export default function AdminUsersPage() {
                               <span
                                 className="text-[11px] font-medium text-amber-600"
                                 title={
-                                  'Soldaki tier alanı ile satın alınan paket ayrışıyor. ' +
-                                  'Ödeme yolu tier yazmadığı için bu normaldir; erişim ' +
-                                  'kararında YÜKSEK olan kullanılır.'
+                                  'Soldaki eski tier alanı ile satın alınan paket ayrışıyor. ' +
+                                  'Ödeme yolu tier yazmadığı için bu normaldir ve 17.09 sonrası ' +
+                                  'ERİŞİMİ ETKİLEMEZ: yetki yalnız bu satırdaki abonelikten gelir.'
                                 }
                               >
-                                ⚠ tier ile ayrışıyor
+                                ⚠ eski tier ile ayrışıyor
                               </span>
                             )}
                           </div>

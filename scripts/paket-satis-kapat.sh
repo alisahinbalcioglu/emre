@@ -2,6 +2,13 @@
 # ─────────────────────────────────────────────────────────────────────────────
 #  ELEKTRIK PAKETLERINI SATISTAN CEK  (FAZ 6.4 / 6.12b — Emre karari 15.09)
 #
+#  ⛔ 17.09 — BU BETIK KOSULMAZ. Emre karari TERSINE dondu: uc elektrik
+#  paketi SATISTA KALIYOR, kapsama elektrik sonra eklenecek. Fiyat sayfasi
+#  ve hukuki metinler 17.09'da eski (disiplinli) hallerine donduruldu.
+#  Betik ve PGlite gecerlilik testi (backend/test/abonelik-olcum-sorgu-test.ts
+#  S7) ileride gerekebilir diye SILINMEDI — ama calistirilmasi, bugun
+#  satilan bir urunu sessizce satistan cekmek olur.
+#
 #  KULLANIM (Hetzner web konsolunda):
 #      cd /opt/metaprice
 #      bash scripts/paket-satis-kapat.sh             (PROVA — hicbir sey yazmaz)

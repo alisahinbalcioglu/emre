@@ -20,6 +20,7 @@ import { toast } from '@/ortak/hooks/use-toast';
 import { confirm } from '@/ortak/hooks/use-confirm';
 import { cn } from '@/ortak/lib/utils';
 import { formSayisiOku } from '@/ozellik/fiyat/sayi-alani';
+import { iscilikKatalogAdresi } from '@/ozellik/kutuphane/iscilik-katalog-adresi';
 
 interface LaborItem {
   id: string;
@@ -54,6 +55,20 @@ export default function LaborLibraryPage() {
   // katalog dolu oldugu halde. Kisitlama BOS KATALOG gibi gosterilmez.
   const [kisitli, setKisitli] = useState<{ mesaj: string; aciklama?: string } | null>(null);
   const [activeDiscipline, setActiveDiscipline] = useState<Discipline>(urlDiscipline ?? 'mechanical');
+  // 17.09.2026 (2.12): paket seviyesi artik YALNIZ abonelikten geliyor. Bu
+  // sayfa KURESEL katalogu duzenleyen yonetici ekranidir; yazma uclari zaten
+  // yalniz `@Roles('admin')` ister. Liste `/labor` ile cekilseydi, aboneligi
+  // pro olmayan yonetici ekleyebildigi halde LISTEYI goremezdi. Yonetici
+  // listeyi paket/yetenek kapisi tasimayan `/labor/yonetici-katalog`tan ceker.
+  // ⚠ Rol yalniz HANGI UCUN cagrilacagini secer; yetki sunucuda (`Roles`).
+  const [yonetici, setYonetici] = useState(false);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('user');
+      if (stored) setYonetici(JSON.parse(stored)?.role === 'admin');
+    } catch {}
+  }, []);
 
   // URL değişince discipline'ı güncelle
   useEffect(() => {
@@ -71,7 +86,8 @@ export default function LaborLibraryPage() {
   const fetchItems = useCallback(async () => {
     setIsLoading(true);
     try {
-      const { data } = await api.get<LaborItem[]>(`/labor?discipline=${activeDiscipline}`);
+      const adres = iscilikKatalogAdresi(yonetici ? 'admin' : 'user', activeDiscipline);
+      const { data } = await api.get<LaborItem[]>(adres);
       setItems(data);
       setKisitli(null);
     } catch (e: any) {
@@ -83,7 +99,7 @@ export default function LaborLibraryPage() {
         toast({ title: 'Hata', description: 'İşçilik kalemleri yüklenemedi.', variant: 'destructive' });
       }
     } finally { setIsLoading(false); }
-  }, [activeDiscipline]);
+  }, [activeDiscipline, yonetici]);
 
   useEffect(() => { fetchItems(); }, [fetchItems]);
 

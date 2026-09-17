@@ -496,7 +496,7 @@ export class MatchingService {
           && (r.confidence === 'none' || (r.dogrulanamadi?.length ?? 0) > 0 || teshisAcik)) {
         // L5 (iscilik): "bu firmada yok" → kullanicinin DIGER firmalari taranir
         const alts = catalogOpts
-          ? await this.findLaborAlternativesV2(k.userId, catalogOpts.firmaId, line, opts)
+          ? await this.findLaborAlternativesV2(k, catalogOpts.firmaId, line, opts)
           : await this.findAlternativesV2(k, brandId, line, opts);
         if (alts.length > 0) r = { ...r, alternatives: alts };
       }
@@ -768,12 +768,23 @@ export class MatchingService {
   }
 
   /** L5: "bu firmada yok" → kalemi GERCEKTEN sunan diger firmalar.
-   *  findAlternativesV2'nin ikizi — ayni sert kurallar, firma havuzu. */
+   *  findAlternativesV2'nin ikizi — ayni sert kurallar, firma havuzu.
+   *
+   *  ⚠ HAVUZ KISIDEN FIRMAYA GECTI (K2, 17.09.2026): onceden
+   *  `firma: { userId }` ile taraniyordu, yani ayni firmanin ikinci uyesi
+   *  firmasinin DIGER iscilik firmalarini alternatif olarak HIC GORMUYORDU
+   *  (sessiz bos oneri, hata degil).
+   *
+   *  ⚠ IC ICE `firma` ANAHTARI KORUNUR: `oneri-kutusu-cekince-test.ts`
+   *  sahte Prisma'si `where.firmaId` gorunce ANA havuz, `where.firma`
+   *  gorunce ALTERNATIF dalina gider; ust duzeye `firmaId` eklemek testi
+   *  yanlis dala dusururdu. */
   private async findLaborAlternativesV2(
-    userId: string, firmaId: string, line: LineQuery, opts?: QueryOpts,
+    // ⚠ `k.firmaId` KIRACI firma · `iscilikFirmaId` ISCILIK firmasi.
+    k: Kimlik, iscilikFirmaId: string, line: LineQuery, opts?: QueryOpts,
   ): Promise<BrandAlternative[]> {
     const others = await (this.prisma as any).laborPrice.findMany({
-      where: { firma: { userId, id: { not: firmaId } } },
+      where: { firma: { firmaId: k.firmaId, id: { not: iscilikFirmaId } } },
       include: { laborItem: true, firma: { select: { id: true, name: true } } },
     });
     if (others.length === 0) return [];

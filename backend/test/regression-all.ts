@@ -476,6 +476,33 @@ const SUITES: Suite[] = [
   //    kapalı hata + K-P5 (DENEME→ODEME_BEKLIYOR, dunning bağlantısı) + çift
   //    abonelik koruması + K-P6 kayıt/giriş + KVKK + JWT'li paket ucu.
   { ad: 'Deneme hakkı bir kez: yollar A-E, ikiz plan, K-P5/K-P6 (S/O/A-N/K/CF/CS/G/L/H/I)', script: 'test:deneme-hakki', zincir: 'Z0' },
+  // ── 16.09.2026 — FAZ 7 · F2a: TOTP / KİMLİK ŞİFRELEME / MEYDAN OKUMA
+  //    ÇEKİRDEĞİ. DB, SUNUCU ve AĞ GEREKTİRMEZ → `db` bayrağı YOK. Route ve
+  //    şema YOK; canlı davranış değişmez. RFC 6238 Ek-B + RFC 4226 Ek-D
+  //    vektörleri RFC metninden; kısaltılmış GCM etiketi (4/12 bayt) reddi;
+  //    anahtar BİÇİMİ (Buffer uzunluğu tek başına kanıt değil); meydan okuma
+  //    katman 1 hem jsonwebtoken hem GERÇEK JwtStrategy üzerinden (validate'e
+  //    ulaşmıyor). Mutant tablosu F2a raporunda. KIRMIZIYA DÖNERSE REGRESYON.
+  { ad: 'Faz 7 TOTP çekirdeği: RFC 6238, kurtarma kodu, şifreleme, meydan okuma (T)', script: 'test:faz7-totp', zincir: 'Z0' },
+  // ── 16.09.2026 — FAZ 7 · F3a: OIDC DOĞRULAMA ÇEKİRDEĞİ. DB, ŞEMA, ROUTE ve
+  //    AĞ YOK: keşif/JWKS/token uçları SÜREÇ İÇİ sahte sağlayıcıyla taklit
+  //    edilir (gerçek Microsoft/Google'a istek gitmez, HTTP sunucusu açılmaz).
+  //    Ölçtüğü sessiz kırılma noktaları: jsonwebtoken `exp`i zorunlu tutmaz ve
+  //    BOŞ `nonce`/`issuer` seçeneğinde o denetimi SESSİZCE ATLAR · Google iss
+  //    iki biçimlidir (tek dizge beklemek geçerli token"ı reddeder) · misafir
+  //    (B2B) hesabı `tid` kontrolünü GEÇER · Google `hd` kontrolsüzse her
+  //    Google hesabı girer · `domainToASCII` `bad..domain`i reddetmez.
+  { ad: 'Faz 7 OIDC çekirdeği: id_token doğrulama, sağlayıcı kuralları (O)', script: 'test:faz7-oidc', zincir: 'Z0' },
+  // ── 17.09.2026 — FAZ 7 · F1a: YETKİ TAMİRLERİ (2.12 + K1–K3). DB, SUNUCU ve
+  //    AĞ GEREKTİRMEZ → `db` bayrağı YOK; şema ve migration da yok. Ölçtüğü
+  //    sessiz kusurlar: paket seviyesi `Math.max(User.tier, abonelik)` ile
+  //    okunuyordu ve `User.tier`ı hiçbir ödeme yolu YAZMIYOR — yani abonelik
+  //    iptal edilse bile elle verilmiş tier kapıyı AÇIK tutuyordu · aynı
+  //    firmanın ikinci üyesi işçilik eşleştirmede 403, alternatif havuzunda ve
+  //    PDF analizinde BOŞ sonuç alıyordu (kişi ekseni) · aboneliği pro olmayan
+  //    platform yöneticisi kendi küresel kataloğunu göremiyordu (R1-O4).
+  //    Mutant tablosu F1a raporunda. KIRMIZIYA DÖNERSE REGRESYON.
+  { ad: 'Faz 7 yetki: seviye yalnız abonelikten + kişi eksenli tamirler (Y/K)', script: 'test:faz7-yetki', zincir: 'Z0' },
 ];
 
 // ── SKIP DEFTERI (B1, para dogrulugu turu 14.09.2026) ──────────────────────

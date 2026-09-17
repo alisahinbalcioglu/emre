@@ -32,7 +32,7 @@ export class LaborMatchingController {
     @CurrentUser() user: any,
     @Body() body: { firmaId: string; laborName: string; secilenAd: string },
   ) {
-    return this.service.remember(user.id, body.firmaId, body.laborName, body.secilenAd);
+    return this.service.remember(kimlikCoz(user), body.firmaId, body.laborName, body.secilenAd);
   }
 
   /** L2 kalicilik: kullanicinin firma kalemlerini v2 ile yeniden indeksle. */

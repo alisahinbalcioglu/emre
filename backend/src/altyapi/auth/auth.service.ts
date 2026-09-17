@@ -14,6 +14,7 @@ import { getFirmaCapabilities } from './capabilities.helper';
 import { ErisimServisi } from '../../ozellik/odeme/abonelik/erisim.servisi';
 import { EpostaDogrulamaServisi } from './eposta-dogrulama.servisi';
 import { epostaIleKullaniciBul, epostaKucult } from './eposta';
+import { firmaPaketSeviyesi } from './seviye';
 
 @Injectable()
 export class AuthService {
@@ -67,7 +68,7 @@ export class AuthService {
     await this.epostaDogrulama.dogrulamaGonderSessizce(user.id, user.email);
 
     const token = this.signToken(user.id, user.email, user.role);
-    return { token, user: { id: user.id, email: user.email, role: user.role, tier: user.tier } };
+    return { token, user: { id: user.id, email: user.email, role: user.role, tier: await this.etkinSeviye(user.firmaId) } };
   }
 
   async login(dto: LoginDto) {
@@ -101,7 +102,26 @@ export class AuthService {
     }
 
     const token = this.signToken(user.id, user.email, user.role);
-    return { token, user: { id: user.id, email: user.email, role: user.role, tier: user.tier } };
+    return { token, user: { id: user.id, email: user.email, role: user.role, tier: await this.etkinSeviye(user.firmaId) } };
+  }
+
+  /**
+   * ETKIN PAKET SEVIYESI (2.12, 17.09.2026) — `login`, `register` ve `/auth/me`
+   * yanitlarindaki `tier` alani artik SAKLANAN `User.tier` degil, firmanin
+   * aboneliginden TURETILIR.
+   *
+   * ⚠ Alan ADI korunur (`tier`): on yuz bu degeri localStorage kopyasina
+   * yaziyor (`CapabilitiesContext.tsx`) ve kenar cubugu rozeti oradan okuyor.
+   * Adi degistirmek ekranda sessizce bos rozet birakirdi.
+   *
+   * ⚠ Aboneligi olmayan firma `'core'` gorur (bugunku varsayilanin aynisi) —
+   * `null` donmek on yuzde "paket yok" yerine BOZUK rozet uretirdi.
+   *
+   * ⚠ KVKK disa aktarimi bu turetmeyi KULLANMAZ: `hesap.servisi.ts` saklanan
+   * degeri aynen verir (kisi hakkinda TUTULAN veri odur).
+   */
+  private async etkinSeviye(firmaId: string | null | undefined): Promise<string> {
+    return (await firmaPaketSeviyesi(this.prisma, firmaId)) ?? 'core';
   }
 
   async me(userId: string) {
@@ -174,7 +194,8 @@ export class AuthService {
       ? { ...user.firma, logoVar: Boolean(user.firma.logoMime) }
       : null;
 
-    return { ...user, firma, capabilities, subscriptions, erisim };
+    // ⚠ `tier` SAKLANAN degeri EZER (2.12): `user` yayilimindan sonra gelir.
+    return { ...user, tier: await this.etkinSeviye(user.firmaId), firma, capabilities, subscriptions, erisim };
   }
 
   /**
