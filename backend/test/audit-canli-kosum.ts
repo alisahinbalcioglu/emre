@@ -46,7 +46,7 @@ async function main() {
     getRates: async () => ({ usdTry: 40, eurTry: 48, usdTryBuying: 40, eurTryBuying: 48, source: 'fake', date: '' }),
   } as any;
   const matching = new MatchingService(prisma as any, terminology, fakeFx);
-  const admin = new AdminService(prisma as any, undefined as any, terminology);
+  const admin = new AdminService(prisma as any, undefined as any, terminology, { iptalEt: async () => undefined } as any);
   const library = new LibraryService(prisma as any, terminology);
   const excelGrid = new ExcelGridService(prisma as any);
 

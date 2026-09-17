@@ -107,6 +107,11 @@ frontend/ozellik/teklif/ :: M · teklif ekranları.
 # Metin ayrı bir eksendir ve SÜRÜMLENİR (kullanıcının onayladığı sürüm
 # `User.sozlesmeSurumu`ya yazılır).
 frontend/ozellik/hukuki/ :: P · hukuki metinler (KVKK, kullanım, çerez, mesafeli satış).
+# YENİ ALAN (17.09.2026, Faz 7 F1b) — backend'deki `ozellik/firma/` ile aynı
+# eksenin ön yüzü. Emsal: N (ödeme) de backend+frontend çifti olarak açılmıştı.
+# Ekip artık bir ekran ailesidir (koltuk sayacı, davet formu, küçültme uyarısı)
+# ve `odeme` ile `teklif`in hiçbirine ait değildir: üyelik ayrı bir eksendir.
+frontend/ozellik/firma/ :: O · ekip ekranları (koltuk sayacı, davet, küçültme uyarısı).
 frontend/scripts/ :: Sürüm betiği — grup I.
 frontend/test/ :: E2E paketleri (e2e + e2e-golden). 6. durakta kuruldu; ikisi AYRI (RAPOR §6.8).
 frontend/next.config.js :: Next.js yapılandırması — çerçeve kökte arar.
@@ -139,6 +144,10 @@ M :: backend/src/ozellik/teklif/ | frontend/ozellik/teklif/
 # genişletilir". Ödeme yalnız backend'de değil ön yüzde de kendi alanını
 # açar (fiyat sayfası, kısıtlı mod şeridi, kart formu).
 N :: backend/src/ozellik/odeme/ | frontend/ozellik/odeme/
+# O (17.09.2026, Faz 7 F1b) — firma/üyelik ekseni. Backend tarafı ADIM 2'den
+# beri vardı ama GRUP YOLLARI'na yazılmamıştı (KURAL 2 onu denetlemiyordu);
+# ekip ekranlarıyla birlikte ilan ediliyor ki iki taraf da denetlensin.
+O :: backend/src/ozellik/firma/ | frontend/ozellik/firma/
 
 [CERCEVE BAGLI]
 # Bu önekin altındaki dosyalar HER gruba açıktır — KURAL 2 onları denetlemez.

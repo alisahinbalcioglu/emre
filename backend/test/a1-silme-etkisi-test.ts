@@ -76,7 +76,7 @@ function kutuphaneSatiri(
 
 async function main() {
   const prisma = new PrismaClient();
-  const adminSvc = new AdminService(prisma as any, null as any, null as any);
+  const adminSvc = new AdminService(prisma as any, null as any, null as any, { iptalEt: async () => undefined } as any);
   const brandsSvc = new BrandsService(prisma as any);
 
   const kullanicilar = await prisma.user.findMany({

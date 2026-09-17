@@ -44,10 +44,13 @@ enum SubscriptionScope {
 // kirilmasin; backfill sonrasi zorlamayi KOD yapar (sema degil).
 // ─────────────────────────────────────────────────────────────────────
 model Firma {
-  id        String   @id @default(uuid())
+  id        String       @id @default(uuid())
   ad        String
-  createdAt DateTime @default(now())
+  createdAt DateTime     @default(now())
   uyeler    User[]
+  /// FAZ 7 F1b — ekip davetleri. `onDelete` YAZILMAZ: firma silinmez
+  /// (yumusak silme kisiye ait), varsayilan Restrict dogru davranistir.
+  davetler  FirmaDavet[]
 
   // ── ADIM 2 (28.08): FATURA KIMLIGI ────────────────────────────────────
   // e-Arsiv/e-Fatura kesimi icin gereken alanlar. HEPSI NULLABLE: kayit
@@ -179,6 +182,11 @@ model User {
   epostaDogrulamaTokenlari EmailVerificationToken[]
 
   @@index([deletedAt])
+  /// FAZ 7 F1b — KISI SINIRI SIRASI (`uyelik-kurallari.ts` §3.12). Her
+  /// kimlikli istekte "benden once kac etkin hesap var" sayilir; sorgu
+  /// `firmaId` + `firmaRol` + `createdAt` uzerinden kosar. Indekssiz her
+  /// istekte firma basina tam tarama olurdu.
+  @@index([firmaId, firmaRol, createdAt])
 }
 
 /// ═══════════════════════════════════════════════════════════════════════════
@@ -998,40 +1006,40 @@ model Translation {
 /// Ödenmiş içerik kanıtı (Faz 6.11): aynı firma + teklif + dil + özet için
 /// BASARILI kayıt — pencere ve dönem süzgeci yok (`ceviri-kota.servisi.ts`).
 model CeviriTuketimi {
-  id             String              @id @default(uuid())
-  firmaId        String
-  userId         String
-  abonelikId     String
-  paketKodu      String
-  donemBaslangic DateTime
-  donemBitis     DateTime
-  quoteId        String
-  hedefDil       String              @default("en")
+  id               String              @id @default(uuid())
+  firmaId          String
+  userId           String
+  abonelikId       String
+  paketKodu        String
+  donemBaslangic   DateTime
+  donemBitis       DateTime
+  quoteId          String
+  hedefDil         String              @default("en")
   /// Teklifin çevrilecek metin içeren satır sayısı (tanım a) — istek anında.
-  satirSayisi    Int
+  satirSayisi      Int
   /// Kotadan düşen satır = API'ye GİDEN (para harcanan) satır (Emre 16.09).
   /// İŞLENİYOR iken ayrılan; sonuçlanınca tamda API'den dönen satır, eksikte 0.
   /// 16.09 öncesi kayıtlarda teklifin satırının tamamı (o gün kural buydu).
-  dusulenSatir   Int                 @default(0)
+  dusulenSatir     Int                 @default(0)
   /// Ortak önbellek / firma sözlüğünden karşılanan, kotadan DÜŞMEYEN satır
   /// (denetim: düşen ile düşmeyen ayrık dursun). 16.09 öncesi kayıtlarda 0.
-  onbellektenSatir Int               @default(0)
+  onbellektenSatir Int                 @default(0)
   /// Teslim edilen satır. 15.09 öncesi kayıtlarda devam zincirinin toplamı; yeni kayıtta tamda satırın tamamı, eksikte 0.
-  toplamTeslim   Int                 @default(0)
+  toplamTeslim     Int                 @default(0)
   /// true → (yalnız 15.09 öncesi kayıtlar) yarım kalan çevirinin devamı; dosya hakkından yemez. Yeni kayıtta daima false.
-  devam          Boolean             @default(false)
+  devam            Boolean             @default(false)
   /// API'ye aday benzersiz metin sayısı (önbellek öncesi).
-  metinSayisi    Int
+  metinSayisi      Int
   /// Çeviriyi belirleyen içeriğin özeti. v2 = çoklu küme (`ceviri-ozet-v2:`, sıra/miktar duyarsız);
   /// T1 (15.09) öncesi kayıtlar v1 (sıralı dizi) taşır — ödenmiş içerik kanıtı ikisini de tanır.
-  icerikOzeti    String
-  durum          CeviriTuketimDurumu @default(ISLENIYOR)
-  onbellekten    Int                 @default(0)
-  cevrilen       Int                 @default(0)
-  basarisizParca Int                 @default(0)
-  hata           String?
-  olusturuldu    DateTime            @default(now())
-  sonuclandi     DateTime?
+  icerikOzeti      String
+  durum            CeviriTuketimDurumu @default(ISLENIYOR)
+  onbellekten      Int                 @default(0)
+  cevrilen         Int                 @default(0)
+  basarisizParca   Int                 @default(0)
+  hata             String?
+  olusturuldu      DateTime            @default(now())
+  sonuclandi       DateTime?
 
   @@index([firmaId, olusturuldu])
   @@index([firmaId, quoteId, icerikOzeti, olusturuldu])
@@ -1672,4 +1680,74 @@ enum HavaleDurumu {
   ODEME_BEKLENIYOR
   ONAYLANDI // dekont dogrulandi, abonelik uzatildi
   IPTAL
+}
+
+/// ═══════════════════════════════════════════════════════════════════════════
+///  FAZ 7 F1b — EKIP DAVETI
+/// ═══════════════════════════════════════════════════════════════════════════
+/// Sekil `PasswordResetToken`dan KOPYA (`token-ozet.ts`): duz token YALNIZ
+/// e-postada gorunur, DB'de SHA-256 ozeti durur; tek kullanim; sure sinirli.
+///
+/// ⚠ ROL KOLONU YOK — davet HER ZAMAN `uye` uretir. Sahiplik katildiktan
+/// sonra "Sahip yap" ile verilir; boylece sizan bir davet baglantisi
+/// sahiplik sizintisi OLAMAZ.
+///
+/// ⚠ "Bekleyen davet" tanimi TEK yerde: `uyelik-kurallari.ts`
+/// (`kabulAt IS NULL AND iptalAt IS NULL AND sonGecerlilik > now()`).
+/// Ayni firma + ayni e-posta icin IKINCI bekleyen davet acilmaz; ikinci
+/// istek YENIDEN GONDERIMDIR. Prisma kismi tekil indeks yazamadigi icin bu
+/// kural firma kilidinin (`firmaKilitliIslem`) icinde serviste uygulanir.
+model FirmaDavet {
+  id              String    @id @default(uuid())
+  firmaId         String
+  firma           Firma     @relation(fields: [firmaId], references: [id])
+  /// Normalize: `epostaKucult` (trim + ASCII kucuk harf) — kayit/giris ile
+  /// AYNI kural (eposta.ts); ayri bir normalizasyon YAZILMAZ.
+  eposta          String
+  tokenHash       String    @unique
+  sonGecerlilik   DateTime
+  kabulAt         DateTime?
+  kabulEdenId     String?
+  iptalAt         DateTime?
+  iptalEdenId     String?
+  davetEdenId     String
+  davetEdenEposta String
+  gonderimSayisi  Int       @default(1)
+  sonGonderimAt   DateTime  @default(now())
+  olusturuldu     DateTime  @default(now())
+
+  @@index([firmaId, kabulAt, iptalAt])
+  @@index([eposta])
+  @@index([sonGecerlilik])
+}
+
+/// ═══════════════════════════════════════════════════════════════════════════
+///  FAZ 7 F1b — FIRMA DENETIM KAYDI
+/// ═══════════════════════════════════════════════════════════════════════════
+/// Firma SAHIBININ (ve sistemin) uye/guvenlik islemleri. `YoneticiOlayi`na
+/// YAZILMAZ: orada `yoneticiId` "platform yoneticisi" demektir. FK YOK —
+/// gerekce `YoneticiOlayi` ile ayni (silinen hesabin izi kaybolmasin).
+///
+/// ⚠ `veri`, `oncekiDeger`, `yeniDeger` HICBIR ZAMAN istemci sirri, sifreli
+/// deger (`v1.` onekli), TOTP sirri, kurtarma kodu ya da token tasimaz; sir
+/// degisikligi yalniz `veri: { sirDegisti: true }` olarak kaydedilir.
+///
+/// ⚠ Alan adi `aktorEposta` — `YoneticiOlayi.yoneticiEpsta` YAZIM HATASIDIR,
+/// kopyalanmaz.
+model FirmaOlayi {
+  id               String   @id @default(uuid())
+  firmaId          String
+  /// null = sistem (or. kurumsal girisle otomatik katilim)
+  aktorId          String?
+  aktorEposta      String?
+  hedefKullaniciId String?
+  hedefEposta      String?
+  tip              String
+  oncekiDeger      String?
+  yeniDeger        String?
+  veri             Json?
+  olusturuldu      DateTime @default(now())
+
+  @@index([firmaId, olusturuldu])
+  @@index([hedefKullaniciId, olusturuldu])
 }

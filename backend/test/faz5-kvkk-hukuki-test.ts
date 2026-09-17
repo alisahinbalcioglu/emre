@@ -83,6 +83,18 @@ function main(): void {
   const authSrv = kodu(oku('backend/src/altyapi/auth/auth.service.ts'));
   check('B3 register onay ZAMANINI yaziyor', /sozlesmeOnayiAt:\s*simdi/.test(authSrv));
   check('B4 register onaylanan SURUMU yaziyor', /sozlesmeSurumu:\s*HUKUKI_METIN_SURUMU/.test(authSrv));
+  // ── FAZ 7 F1b: ONAY DAMGASI KAPISI ARTIK IKI DOSYADA ────────────────────
+  // Davet kabulu de bir KAYITTIR (yeni `User` satiri acar). B3/B4 yalniz
+  // `auth.service.ts`i okusaydi, davet yolunda onay damgasi unutulsa hicbir
+  // test kizarmazdi ("envanter kacirilan yol"). F3b kurumsal katilim icin
+  // `kurumsal-giris.servisi.ts`i ekleyecek.
+  const uyelikSrv = kodu(oku('backend/src/ozellik/firma/uyelik.servisi.ts'));
+  check("B3' davet kabulu onay ZAMANINI yaziyor", /sozlesmeOnayiAt:\s*simdi/.test(uyelikSrv));
+  check("B4' davet kabulu onaylanan SURUMU yaziyor", /sozlesmeSurumu:\s*HUKUKI_METIN_SURUMU/.test(uyelikSrv));
+  const kabulDto = kodu(oku('backend/src/ozellik/firma/dto/davet-kabul.dto.ts'));
+  check("B1' davet kabulunde sozlesmeOnayi @Equals(true) ile ZORUNLU", /@Equals\(true/.test(kabulDto));
+  check("B2' davet kabulunde ticariIletiOnayi AYRI ve @IsOptional",
+    /@IsOptional\(\)[\s\S]{0,80}ticariIletiOnayi/.test(kabulDto));
   // ⚠ Varsayilan `true` OLAMAZ — gonderilmediyse izin VERILMEMISTIR.
   check('B5 ticari ileti izni yalniz ACIKCA true ise damgalanir',
     /ticariIletiOnayiAt:\s*dto\.ticariIletiOnayi === true \? simdi : null/.test(authSrv));
@@ -112,10 +124,23 @@ function main(): void {
     /role: 'admin', deletedAt: null, NOT: \{ id: userId \}/.test(hesap));
   // ⚠ Olculdu: silme ile abonelik BAGLI DEGIL — kart cekilmeye devam ederdi.
   check('C6 kapatma ABONELIGI de iptal ediyor', /satinAlma\.iptalEt\(/.test(hesap));
-  check('C7 kapatma mevcut TOKEN`i da olduruyor', /passwordChangedAt:\s*simdi/.test(hesap));
+  // ── FAZ 7 F1b: VERI DESENI TEK SAF FONKSIYONA TASINDI ──────────────────
+  // ESKI ANLAM: alanlar `hesap.servisi.ts` icinde SATIR SATIR araniyordu.
+  // YENI ANLAM: desen `uyelik-kurallari.ts` `kapatmaVerisi`ndedir ve UC
+  // tuketici (kendi kapatma, uye cikarma, yonetici silme) AYNI fonksiyonu
+  // cagirir. Kapi iki dosyayi birden okur — biri digerini kaybederse kizarir.
+  const kapatmaKural = kodu(oku('backend/src/ozellik/firma/uyelik-kurallari.ts'));
+  check('C7 kapatma mevcut TOKEN`i da olduruyor (kapatmaVerisi + cagri)',
+    /passwordChangedAt:\s*simdi/.test(kapatmaKural) && /kapatmaVerisi\(/.test(hesap));
   // ⚠ Olculdu: `email` @unique — adres serbest birakilmazsa kullanici geri donemez.
   check('C8 e-posta anonimlestirilip ORIJINALI saklaniyor',
-    /kapatilanEposta:\s*user\.email/.test(hesap) && /email:\s*`kapali-\$\{user\.id\}@/.test(hesap));
+    /kapatilanEposta:\s*user\.email/.test(kapatmaKural) &&
+      /email:\s*`kapali-\$\{user\.id\}@/.test(kapatmaKural));
+  // BAGLANTI: uc tuketicinin UCU DE ayni fonksiyonu cagirir (ikiz yok).
+  const adminSrv = kodu(oku('backend/src/ozellik/kutuphane/admin/admin.service.ts'));
+  const uyelikSrv2 = kodu(oku('backend/src/ozellik/firma/uyelik.servisi.ts'));
+  check("C8' yonetici silmesi ve uye cikarma AYNI veri desenini kullaniyor",
+    /kapatmaVerisi\(/.test(adminSrv) && /kapatmaVerisi\(/.test(uyelikSrv2));
   check('C9 admin silme servisi CAGRILMIYOR (o servis self-silmeyi YASAKLIYOR)',
     !/adminService|AdminService/.test(hesap));
   // ⚠ DURUSTLUK: "verileriniz silindi" DENMEMELI — silinmiyor.
@@ -181,7 +206,11 @@ function main(): void {
   const kalanYerTutucular = [...metinler.matchAll(/\[([A-ZÇĞİÖŞÜ][^\]\n]*)\]/g)]
     .map((m) => m[1])
     .filter((ad) => !/VERGİ NO$/.test(ad));
-  const IZINLI_KALAN = ['YASAL SAKLAMA SURESI', 'DENEME KAYDI SAKLAMA SÜRESİ', 'FATURA İLETİM YÖNTEMİ'];
+  const IZINLI_KALAN = ['YASAL SAKLAMA SURESI', 'DENEME KAYDI SAKLAMA SÜRESİ', 'FATURA İLETİM YÖNTEMİ',
+    // FAZ 7 F1b: firma islem kaydinin saklama suresi ACIK HUKUKI KARAR
+    // (yonetici denetim izi "silinmez" diyor; firma kaydi icin ayni mi?).
+    // Avukat notlarina yazildi.
+    'FIRMA ISLEM KAYDI SAKLAMA SURESI'];
   check('D6d kalan yer tutucu YALNIZ acik hukuki/muhasebe kararlari',
     kalanYerTutucular.every((ad) => IZINLI_KALAN.includes(ad)),
     `kalan=${JSON.stringify(kalanYerTutucular)}`);

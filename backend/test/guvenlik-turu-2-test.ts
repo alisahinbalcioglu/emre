@@ -115,10 +115,18 @@ async function g1_banliKullanici() {
     `uzunluk=${authKodu.length}`,
   );
 
+  // ── FAZ 7 F1b: KAPI `oturum.servisi.ts`e TASINDI ────────────────────────
+  // ESKI ANLAM: metin `auth.service.ts` icinde araniyordu.
+  // YENI ANLAM: kural `oturum.servisi.ts` `hesapKapisi`ndadir ve
+  // `auth.service.ts` onu CAGIRIR. Iki dosya birden okunur — biri digerini
+  // kaybederse kizarir. Gerekce: token veren yol sayisi artiyor (davet
+  // kabul F1b, MFA F2b, kurumsal giris F3b); her yol kendi kapisini
+  // yazarsa biri mutlaka unutur.
+  const oturumKodu = kodu(oku('altyapi/auth/oturum.servisi.ts'));
   check(
-    'G1-a GIRIS yolu banned kontrolu yapiyor',
-    /status\s*===\s*'banned'/.test(authKodu),
-    'auth.service icinde banned karsilastirmasi yok',
+    'G1-a GIRIS yolu banned kontrolu yapiyor (hesapKapisi + cagri)',
+    /status\s*===\s*'banned'/.test(oturumKodu) && /hesapKapisi\(/.test(authKodu),
+    `oturum.servisi banned=${/status\s*===\s*'banned'/.test(oturumKodu)} auth.service cagri=${/hesapKapisi\(/.test(authKodu)}`,
   );
   check(
     'G1-b MEVCUT TOKEN de reddediliyor (jwt.strategy) — 7 gunluk pencere kapali',

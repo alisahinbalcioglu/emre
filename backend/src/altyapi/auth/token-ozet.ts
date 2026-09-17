@@ -39,6 +39,16 @@ export const SIFIRLAMA_OMRU_MS = 60 * 60 * 1000;
  */
 export const DOGRULAMA_OMRU_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * FAZ 7 F1b — EKIP DAVETI baglantisinin omru: 7 gun.
+ *
+ * Sifirlamadan (1 sa) uzun, bilerek: davet edilen kisi is arkadasinin
+ * e-postasini hafta sonu acabilir ve davet YETKI VERMEZ — yalniz `uye`
+ * olarak katilim acar (rol kolonu yok, `FirmaDavet` sema notu). Yeniden
+ * gonderim eski baglantiyi oldurup sureyi bastan baslatir.
+ */
+export const DAVET_OMRU_MS = 7 * 24 * 60 * 60 * 1000;
+
 /** Üretilen token yalnız BURADA ve e-postada görünür; DB'ye özeti yazılır. */
 export function tokenUret(): { token: string; ozet: string } {
   const token = randomBytes(TOKEN_BAYT).toString('base64url');

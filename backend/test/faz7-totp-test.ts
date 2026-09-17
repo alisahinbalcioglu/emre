@@ -352,8 +352,13 @@ function t8(): void {
 // ── T9 · MEYDAN OKUMA ───────────────────────────────────────────────────────
 
 /** GERÇEK JwtStrategy: passport akışı (`authenticate`) sahte Prisma ile. */
-async function stratejiyleDene(token: string): Promise<{ sonuc: string; prismaCagrisi: number }> {
+async function stratejiyleDene(token: string): Promise<{ sonuc: string; prismaCagrisi: number; koltukCagrisi: number }> {
   const cagrilar: unknown[] = [];
+  // FAZ 7 F1b: `validate` artik KIMLIK okumasindan sonra KOLTUK sayimini da
+  // yapiyor (§3.12). Iki sayac AYRI tutuluyor: `prismaCagrisi` hâlâ yalniz
+  // kimlik okumasini sayar (T9-OLCUT'un anlami degismesin), `koltukCagrisi`
+  // yeni kapinin gercekten kostugunu olcer.
+  let koltukCagrisi = 0;
   const sahtePrisma = {
     user: {
       findUnique: async (arg: { where: { id: string } }) => {
@@ -361,8 +366,14 @@ async function stratejiyleDene(token: string): Promise<{ sonuc: string; prismaCa
         return {
           id: arg.where.id, email: 'uye@firma.test', role: 'user', status: 'active',
           deletedAt: null, passwordChangedAt: null, firmaId: 'firma-1',
+          firmaRol: 'sahip', createdAt: new Date('2026-01-01T00:00:00Z'),
         };
       },
+      // Tek kisilik firma: onunde kimse yok → hak sorgusu ATILMAZ.
+      count: async () => { koltukCagrisi++; return 0; },
+    },
+    abonelik: {
+      findUnique: async () => { throw new Error('hak sorgusu ATILMAMALIYDI (onceGelen=0)'); },
     },
   };
   const strateji = new JwtStrategy(sahtePrisma as never) as unknown as {
@@ -377,7 +388,7 @@ async function stratejiyleDene(token: string): Promise<{ sonuc: string; prismaCa
       if (bitti) return;
       bitti = true;
       clearTimeout(zamanlayici);
-      sonlandir({ sonuc, prismaCagrisi: cagrilar.length });
+      sonlandir({ sonuc, prismaCagrisi: cagrilar.length, koltukCagrisi });
     };
     const zamanlayici = setTimeout(() => bitir('zaman-asimi'), 3000);
     strateji.fail = () => bitir('fail');

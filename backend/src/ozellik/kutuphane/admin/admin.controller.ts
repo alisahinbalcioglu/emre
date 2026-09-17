@@ -12,6 +12,7 @@ import { RolesGuard } from '../../../altyapi/auth/guards/roles.guard';
 import { Roles } from '../../../altyapi/auth/decorators/roles.decorator';
 import { CurrentUser } from '../../../altyapi/auth/decorators/current-user.decorator';
 import { KullanicilarSorgusuDto } from './dto/kullanicilar-sorgusu.dto';
+import { AdminFirmaRolDto } from './dto/firma-rol.dto';
 
 /** Denetim kaydina yazilan aktor. jwt.strategy.validate()'in dondurdugu sekil. */
 interface Yonetici { id: string; email: string }
@@ -89,6 +90,18 @@ export class AdminController {
     @Body('tier') tier: 'core' | 'pro' | 'suite',
   ) {
     return this.adminService.updateUserTier(yonetici, id, tier);
+  }
+
+  // FAZ 7 F1b (§3.3): firmanin sahipsiz kalmasini cozen TEK yonetici yolu.
+  // Son sahip silinmek istendiginde `deleteUser` 400 `SON_SAHIP` doner ve
+  // yoneticinin baska birini sahip yapabilmesi gerekir.
+  @Patch('users/:id/firma-rol')
+  updateFirmaRol(
+    @CurrentUser() yonetici: Yonetici,
+    @Param('id') id: string,
+    @Body() dto: AdminFirmaRolDto,
+  ) {
+    return this.adminService.updateFirmaRol(yonetici, id, dto.firmaRol);
   }
 
   @Delete('users/:id')

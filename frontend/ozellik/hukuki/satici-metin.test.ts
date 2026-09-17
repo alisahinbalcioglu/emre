@@ -68,6 +68,12 @@ const IZINLI_KALAN = [
   'YASAL SAKLAMA SURESI',
   'DENEME KAYDI SAKLAMA SÜRESİ',
   'FATURA İLETİM YÖNTEMİ',
+  // FAZ 7 F1b (17.09): firma içi işlem kaydının (kim kimi davet etti,
+  // çıkardı, rolünü değiştirdi) saklama süresi AÇIK HUKUKİ KARARDIR.
+  // Yönetici denetim izi metinde "silinmez" diyor; firma kaydı için aynı
+  // yaklaşımın geçerli olup olmadığı avukat görüşüne bağlı
+  // (docs/HUKUKI_METINLER_AVUKAT_NOTLARI.md · "Faz 7 — ekip ve kişi sınırı").
+  'FIRMA ISLEM KAYDI SAKLAMA SURESI',
 ];
 
 describe('T-ÖLÇÜT — fixture gerçekten metin taşıyor', () => {

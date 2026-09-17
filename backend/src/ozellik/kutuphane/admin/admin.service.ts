@@ -4,6 +4,13 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import * as XLSX from 'xlsx';
+import { SatinAlmaServisi } from '../../odeme/abonelik/satinalma.servisi';
+import {
+  ayrilmaKarari,
+  etkinHesapKosulu,
+  kapatmaVerisi,
+  type FirmaRol,
+} from '../../firma/uyelik-kurallari';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { KullanicilarSorgusuDto } from './dto/kullanicilar-sorgusu.dto';
 import { AiService } from '../../giris/ai/ai.service';
@@ -107,6 +114,9 @@ export class AdminService {
     private prisma: PrismaService,
     private aiService: AiService,
     private terminology: TerminologyService,
+    // FAZ 7 F1b (E-1): yonetici silmesi hesap kapatmanin ikizi — tek
+    // kullanicili firmada abonelik de iptal edilir.
+    private satinAlma: SatinAlmaServisi,
   ) {}
 
   // ═════════ USERS ═════════
@@ -269,7 +279,9 @@ export class AdminService {
       take: adet,
       select: {
         id: true, email: true, role: true, status: true, tier: true, createdAt: true,
-        firmaId: true,
+        // FAZ 7 F1b: firma rolu AYRI eksendir (platform rolu degil) ve
+        // yonetici ekraninda degistirilebilir (§3.3 son satir).
+        firmaId: true, firmaRol: true,
         firma: { select: { id: true, ad: true } },
         _count: { select: { quotes: true, library: true } },
         subscriptions: {
@@ -384,20 +396,167 @@ export class AdminService {
   // ve kutuphanesi geri donusu olmadan gidiyordu. Artik yalniz `deletedAt`
   // damgalanir; hesap listede gorunmez, giris yapamaz ve mevcut token'i da
   // gecersizdir (auth.service.ts + jwt.strategy.ts).
+  /**
+   * FAZ 7 F1b (§3.3) — PLATFORM YONETICISI FIRMA ROLUNU DEGISTIRIR.
+   *
+   * ⚠ NEDEN VAR: son sahip silinmek istendiginde `deleteUser` 400
+   * `SON_SAHIP` doner. O kapinin bir CIKISI olmali, yoksa yonetici firmayi
+   * hic duzeltemez. Ayni kilit, ayni kural (`ayrilmaKarari`nin `SON_SAHIP`
+   * dali ile ayni sart).
+   *
+   * ⚠ IKI DENETIM SATIRI, AYNI TRANSACTION: `YoneticiOlayi` (platform) ve
+   * `FirmaOlayi` (firma). Ikisi de olmali: firma sahibi "rolumu kim
+   * degistirdi" sorusunu kendi ekip sayfasindan sorabilmeli.
+   */
+  async updateFirmaRol(
+    yonetici: { id: string; email: string },
+    id: string,
+    firmaRol: 'sahip' | 'uye',
+  ) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user || user.deletedAt) throw new NotFoundException('User not found');
+    if (!user.firmaId) {
+      throw new BadRequestException({
+        kod: 'FIRMA_YOK',
+        mesaj: 'Bu hesap bir firmaya bağlı değil.',
+      });
+    }
+    const firmaId = user.firmaId;
+    return this.denetimliMutasyon(
+      yonetici, 'firma-rol.degisti', user, user.firmaRol, firmaRol,
+      { firmaId },
+      async (tx) => {
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`firma-uyelik:${firmaId}`}))::text AS kilit`;
+        if (user.firmaRol === 'sahip' && firmaRol === 'uye') {
+          const digerEtkinSahip = await tx.user.count({
+            where: {
+              firmaId, firmaRol: 'sahip', NOT: { id }, ...etkinHesapKosulu(),
+            },
+          });
+          if (digerEtkinSahip === 0) {
+            throw new BadRequestException({
+              kod: 'SON_SAHIP',
+              mesaj:
+                'Bu kişi firmanın son sahibi. Önce bu firmada başka birini sahip yapın.',
+            });
+          }
+        }
+        await tx.firmaOlayi.create({
+          data: {
+            firmaId,
+            aktorId: yonetici.id,
+            aktorEposta: yonetici.email,
+            hedefKullaniciId: user.id,
+            hedefEposta: user.email,
+            tip: 'yonetici.sahip-atadi',
+            oncekiDeger: user.firmaRol,
+            yeniDeger: firmaRol,
+          },
+        });
+        return tx.user.update({
+          where: { id },
+          data: { firmaRol },
+          select: { id: true, email: true, firmaRol: true },
+        });
+      },
+    );
+  }
+
+  // ── FAZ 7 F1b (R1/E-1 · R1-D7): HESAP KAPATMANIN IKIZI ────────────────
+  // Emre karari: yonetim panelinden silinen hesap firmanin TEK kullanicisiysa
+  // firmanin aboneligi de iptal edilir. Onceki hal ikiz DEGILDI: yalniz
+  // `deletedAt` yaziyordu — e-posta serbest kalmiyordu (kisi baska firmaya
+  // davet edilince yaniltici `BASKA_FIRMADA_KAYITLI` alirdi), token aninda
+  // olmuyordu (`passwordChangedAt` yok) ve abonelik cekilmeye devam ediyordu.
   async deleteUser(yonetici: { id: string; email: string }, id: string) {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user || user.deletedAt) throw new NotFoundException('User not found');
+    // ⚠ Son PLATFORM yoneticisi korumasi karardan ONCE kosar (degismedi).
     await this.kilitlenmeyiOnle(yonetici, id, 'silme');
-    return this.denetimliMutasyon(
+
+    const simdi = new Date();
+    const karar = { abonelikIptal: false, sonHesap: false };
+    // ⚠ `abonelikIptal` denetim satirina YAZILIR: "bu silme firmanin
+    // aboneligini de iptal etti mi" sorusu sonradan sorulacak.
+    // ⚠ NESNE REFERANSLA gecer ve `denetimYaz` `islem`den SONRA kosar —
+    // asagida icerideki karar bu nesneye YAZILIR, bu yuzden dogru deger
+    // denetim satirina duser.
+    const denetimVeri: Record<string, unknown> = {
+      rol: user.role, paket: user.tier, durum: user.status, abonelikIptal: false,
+    };
+
+    const sonuc = await this.denetimliMutasyon(
       yonetici, 'kullanici.silindi', user, null, null,
-      { rol: user.role, paket: user.tier, durum: user.status },
-      (tx) =>
-        tx.user.update({
+      denetimVeri,
+      async (tx) => {
+        if (user.firmaId) {
+          // Firma kilidi: karar ve yazma ayni kilitte (R1-O5). `$transaction`
+          // ZATEN acik oldugu icin kilit dogrudan `tx` uzerinden alinir.
+          await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`firma-uyelik:${user.firmaId}`}))::text AS kilit`;
+          const [digerHesap, digerEtkinSahip] = await Promise.all([
+            tx.user.count({
+              where: { firmaId: user.firmaId, deletedAt: null, NOT: { id } },
+            }),
+            tx.user.count({
+              where: {
+                firmaId: user.firmaId, firmaRol: 'sahip',
+                NOT: { id }, ...etkinHesapKosulu(),
+              },
+            }),
+          ]);
+          const k = ayrilmaKarari({
+            firmaRol: user.firmaRol as FirmaRol, digerHesap, digerEtkinSahip,
+          });
+          if (!k.izin) {
+            throw new BadRequestException({
+              kod: 'SON_SAHIP',
+              mesaj:
+                'Bu kişi firmanın son sahibi ve firmada başka hesaplar var. ' +
+                'Önce bu firmada başka birini sahip yapın: Kullanıcılar → Firma rolü',
+            });
+          }
+          karar.abonelikIptal = k.abonelikIptal;
+          karar.sonHesap = k.sonHesap;
+          denetimVeri.abonelikIptal = k.abonelikIptal;
+          if (k.sonHesap) {
+            await tx.firmaDavet.updateMany({
+              where: { firmaId: user.firmaId, kabulAt: null, iptalAt: null },
+              data: { iptalAt: simdi, iptalEdenId: yonetici.id },
+            });
+          }
+          await tx.firmaOlayi.create({
+            data: {
+              firmaId: user.firmaId,
+              aktorId: yonetici.id,
+              aktorEposta: yonetici.email,
+              hedefKullaniciId: user.id,
+              hedefEposta: user.email,
+              tip: 'uye.yonetici-sildi',
+              veri: { abonelikIptal: k.abonelikIptal } as never,
+            },
+          });
+        }
+        return tx.user.update({
           where: { id },
-          data: { deletedAt: new Date() },
+          // ⚠ HESAP KAPATMAYLA BIREBIR ayni desen (tek saf fonksiyon).
+          data: kapatmaVerisi(user, simdi),
           select: { id: true, email: true, deletedAt: true },
-        }),
+        });
+      },
     );
+
+    // ⚠ COMMIT'TEN SONRA, kilit ve transaction DISINDA (dis HTTP cagrisi).
+    if (karar.abonelikIptal && user.firmaId) {
+      try {
+        await this.satinAlma.iptalEt(user.firmaId, yonetici.id, 'yonetici silme');
+      } catch (e) {
+        this.logger.error(
+          `Yonetici silmesinde abonelik iptali BASARISIZ (firma ${user.firmaId}): ` +
+            `${e instanceof Error ? e.message : String(e)} — ELLE IPTAL GEREKEBILIR.`,
+        );
+      }
+    }
+    return sonuc;
   }
 
   async getUserSubscriptions(userId: string) {

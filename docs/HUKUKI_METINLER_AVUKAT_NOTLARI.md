@@ -134,3 +134,24 @@ cozulemeyen, hukuki karar gerektiren noktalardir.
 - Fatura düzenleme ve iletme yükümlülüğü: e-arşiv fatura zorunlu mu, müşteriye hangi yolla ve hangi süre içinde iletilmeli?
 - Hesap kapatıldığında verilerin anında imha edilmemesi (yedekler ve mevzuat gereği saklama) sözleşmede nasıl ifade edilmeli — KVKK ile mesafeli satış metni arasında çelişki doğuruyor mu?
 - Yüklenen dosya içeriğinin yapay zekâ sağlayıcılarına (yurt dışına) gönderilmesi, hizmetin 'niteliği' olarak bu ön bilgilendirme formunda mı, yoksa yalnızca aydınlatma metninde mi yer almalı? Ayrıca açık rıza gerekiyor mu?
+
+---
+
+## Faz 7 — ekip ve kişi sınırı (F1b, 17.09.2026)
+
+**Metne giren yenilikler (taslak, avukat onayı bekliyor):**
+- Firma sahibi ekip arkadaşlarını e-postayla davet edebiliyor; bir kişi aynı anda yalnız bir firmanın üyesi olabiliyor (aydınlatma "kimler için" + kullanım koşulları "hesap" maddesi).
+- Yeni aydınlatma bölümü **"Ekip içinde görünürlük"**: üyenin adı, e-posta adresi ve tekliflerdeki "Hazırlayan" bilgisi diğer üyelere görünür; ekipten çıkarılan ya da hesabını kapatan kişinin teklifleri firmada kalır ve "ayrıldı" notuyla görünür.
+- Saklama süreleri: ekip daveti bağlantısı 7 gün; **firma içi işlem kaydının saklama süresi BOŞ** — `[FIRMA ISLEM KAYDI SAKLAMA SURESI]` yer tutucusu dolduruılmalı (yönetici denetim izi "silinmez" diyor; firma işlem kaydı için aynı yaklaşım mı?).
+- Kişi sınırı aşımı cümlesi (kullanım koşulları, paketler): hakkı aşan üyelerin erişimi **en son katılandan başlayarak durdurulur**, veri silinmez, durdurulan üye verilerini indirebilir ve hesabını kapatabilir.
+
+**⚠ HUKUKİ KARAR GEREKTİREN — geriye dönük hak düşürme:**
+Emre kararıyla (E-2) satıştaki paketlerin kullanıcı hakkı firma sahibi dahil **Basic 1 · Pro 2 · Pro-MEP 3** olarak yeniden tanımlandı. Bugünkü canlı değer beş pakette de **2**. Bu düşüş mevcut ödeyen Basic abonelerine **geriye dönük** uygulanırsa tek taraflı sözleşme değişikliği sayılabilir (mesafeli satış / abonelik koşulları). Sorular:
+1. Mevcut abonelere eski hak dönem sonuna kadar korunmalı mı?
+2. Korunmayacaksa asgari bildirim süresi ne olmalı?
+3. "Erişimin durdurulması" (veri silinmeden) bir hizmet kesintisi midir; ödeme kademeleri için yazılan bildirim kuralı burada da geçerli mi?
+
+Kod tarafı hazırlığı: `backend/scripts/kullanici-hakki-guncelle.ts` **varsayılan PROVA** modundadır ve hangi firmada kaç kişinin duracağını listeler; `--uygula` yalnız Emre onayından sonra koşulur. Bu turda **koşulmadı**, canlı `Paket` satırlarına dokunulmadı.
+
+**⚠ İKİNCİ NOT — KVKK dışa aktarımında firma sahibinin gördüğü deneme kayıtları:**
+§3.10 gereği firma sahibinin veri indirmesi artık firmanın `DenemeKullanimi` satırlarını da içeriyor. Bu satırlarda başka bir üyenin sadeleştirilmiş e-postası/telefonu bulunabilir. Firma sahibine verilen bu bilgi "kendi verisini öğrenme" hakkının kapsamında mı, yoksa üçüncü kişinin verisinin ifşası mı? (Faz 6.12a'da firma eksenli satırlar bilerek dışarıda bırakılmıştı; Faz 7 tasarımı sahip için içeri aldı.)

@@ -566,6 +566,10 @@ async function main() {
   // ═════════════════════════════════════════════════════════════════════
   console.log('\n── F · PAROLA DEGISINCE ESKI TOKENLAR OLUYOR MU ──');
   const { JwtStrategy } = await import('../src/altyapi/auth/strategies/jwt.strategy');
+  // FAZ 7 F1b: `validate` artik kimlik okumasindan SONRA koltuk sayimini da
+  // yapiyor (§3.12). Sahte Prisma'ya `user.count` eklendi; tek kisilik
+  // firmada (onceGelen 0) hak sorgusu ATILMAZ — `abonelik.findUnique`
+  // cagrilirsa FIRLATIR (fixture kaniti).
   const kullaniciyla = (pwChangedAt: Date | null) =>
     new (JwtStrategy as any)({
       user: {
@@ -574,10 +578,18 @@ async function main() {
           email: 'a@b.com',
           role: 'user',
           firmaId: 'f1',
+          firmaRol: 'sahip',
+          createdAt: new Date('2026-01-01T00:00:00Z'),
           status: 'active',
           deletedAt: null,
           passwordChangedAt: pwChangedAt,
         }),
+        count: async () => 0,
+      },
+      abonelik: {
+        findUnique: async () => {
+          throw new Error('hak sorgusu ATILMAMALIYDI (onceGelen=0)');
+        },
       },
     });
 

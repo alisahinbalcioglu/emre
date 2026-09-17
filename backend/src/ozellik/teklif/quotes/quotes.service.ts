@@ -3,6 +3,7 @@ import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { CreateQuoteDto } from './dto/create-quote.dto';
 import { TekliflerSorgusuDto } from './dto/teklifler-sorgusu.dto';
 import { Kimlik } from '../../../altyapi/auth/kimlik';
+import { hazirlayanGorunumu } from './hazirlayan';
 import * as XLSX from 'xlsx';
 import * as ExcelJS from 'exceljs';
 // PRD Teklif Formatim (v2.1): profesyonel cikti motoru
@@ -393,6 +394,16 @@ export class QuotesService {
           // bir hata sinifi ("ikiz kaynak") olurdu.
           items: { select: { id: true, finalPrice: true } },
           _count: { select: { items: true } },
+          // ── FAZ 7 F1b (§3.8): "HAZIRLAYAN: X (ayrildi)" ────────────────
+          // ⚠ `userId` de doner: on yuz KENDI teklifinde bu satiri
+          // gostermez (tek kisilik firmada hic gorunmesin).
+          userId: true,
+          user: {
+            select: {
+              ad: true, soyad: true, email: true,
+              kapatilanEposta: true, deletedAt: true,
+            },
+          },
         },
         orderBy: { createdAt: 'desc' },
         skip: (sayfa - 1) * adet,
@@ -400,7 +411,17 @@ export class QuotesService {
       }),
       this.prisma.quote.count({ where }),
     ]);
-    return { kayitlar, toplam };
+    // ⚠ AD CAKISMASI NOTU: `Quote.hazirlayan` semada AYRI bir metin alanidir
+    // (teklif antedine elle yazilan ad) ve bu select'te YOK. Buradaki
+    // `hazirlayan` FIRMA UYESIDIR. Iki alan ayni yanitta hicbir zaman
+    // bulunmaz; karistirmamak icin bu not birakildi.
+    return {
+      kayitlar: kayitlar.map(({ user, ...q }) => ({
+        ...q,
+        hazirlayan: hazirlayanGorunumu(user),
+      })),
+      toplam,
+    };
   }
 
   async findOne(k: Kimlik, id: string) {

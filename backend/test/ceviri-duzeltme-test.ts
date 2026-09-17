@@ -654,7 +654,21 @@ async function kBlogu(): Promise<void> {
     const gez = (d: string) => fs.readdirSync(d, { withFileTypes: true }).forEach((g) => {
       const tam = path.join(d, g.name);
       if (g.isDirectory()) gez(tam);
-      else if (g.name.endsWith('.ts') && kodu(fs.readFileSync(tam, 'utf8')).includes('emailVerified')) ozellikAltinda.push(tam);
+      else if (g.name.endsWith('.ts')) {
+        const k = kodu(fs.readFileSync(tam, 'utf8'));
+        if (!k.includes('emailVerified')) return;
+        // ── FAZ 7 F1b: YAZMA ≠ OKUMA ────────────────────────────────────
+        // Kapinin amaci `emailVerified`i OKUYUP karar veren ikiz bir kural
+        // dogmasini engellemek. Davet kabulu alani YAZAR (`emailVerified:
+        // true` — davet baglantisi kisinin gelen kutusuna gitti, adres
+        // kanitli) ve hicbir karar vermez. Bu yuzden dosya YALNIZ yazma
+        // bicimini tasiyorsa gecer; bir okuma/karsilastirma eklenirse
+        // gecis sayisi artar ve kapi KIZARIR.
+        const toplam = (k.match(/emailVerified/g) ?? []).length;
+        const yazma = (k.match(/emailVerified:\s*true/g) ?? []).length;
+        if (toplam === yazma && yazma > 0) return;
+        ozellikAltinda.push(tam);
+      }
     });
     gez(path.join(SRC, 'ozellik'));
     check('K7 `emailVerified` okuması `src/ozellik` altında YOK (tek yardımcı: altyapi/auth/eposta-dogrulama.ts)',

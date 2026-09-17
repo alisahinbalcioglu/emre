@@ -118,6 +118,7 @@
     "test:faz7-yetki": "ts-node test/faz7-yetki-test.ts",
     "test:faz7-totp": "ts-node test/faz7-totp-test.ts",
     "test:faz7-oidc": "ts-node test/faz7-oidc-test.ts",
+    "test:faz7-ekip": "ts-node test/faz7-ekip-test.ts",
     "seed:paketler": "ts-node scripts/paketleri-kur.ts",
     "seedpaketler": "ts-node scripts/paketleri-kur.ts"
   },

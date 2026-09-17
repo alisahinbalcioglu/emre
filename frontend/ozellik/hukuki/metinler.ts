@@ -146,7 +146,7 @@ export const GIZLILIK: HukukiMetin = {
     {
       baslik: "Hangi verilerinizi işliyoruz?",
       paragraflar: [
-        "MetaPriceX, mekanik ve elektrik tesisat işleri için metraj ve teklif hazırlayan firmalara yöneliktir. Her kayıt kendi firmasını açar; bugün ekip daveti gibi bir akış yoktur, bir hesap bir firmaya karşılık gelir.",
+        "MetaPriceX, mekanik ve elektrik tesisat işleri için metraj ve teklif hazırlayan firmalara yöneliktir. Her kayıt kendi firmasını açar. Firma sahibi ekip arkadaşlarını e-postayla davet edebilir; bir kişi aynı anda yalnız bir firmanın üyesi olabilir.",
         "Platformu kullanırken aşağıdaki veriler oluşur ve saklanır. Parolanızı düz metin olarak saklamıyoruz; yalnızca geri döndürülemeyen kriptografik özeti tutulur. Parola sıfırlama ve e-posta doğrulama bağlantılarının kendisi de veritabanında düz olarak değil, özet olarak durur.",
       ],
       madde: [
@@ -175,7 +175,7 @@ export const GIZLILIK: HukukiMetin = {
         "Bugün pazarlama amaçlı e-posta göndermiyoruz. Gönderdiğimiz e-postalar yalnızca parola sıfırlama, e-posta doğrulama ve ödeme/abonelik bildirimlerinden ibarettir. İleride tanıtım veya bülten göndermek istersek bunun için ayrıca açık rızanızı isteriz.",
       ],
       madde: [
-        "Hesap açma, giriş, oturum yönetimi — sözleşmenin kurulması ve ifası için zorunlu olması",
+        "Hesap açma, giriş, oturum yönetimi, ekip daveti ve üyelik yönetimi, firma içi işlem kaydı (kim kimi davet etti, çıkardı, rolünü değiştirdi) — sözleşmenin kurulması ve ifası için zorunlu olması",
         "Teklif hazırlama, DWG ve Excel dosyalarının işlenmesi, kütüphane ve fiyat listelerinin tutulması — sözleşmenin ifası için zorunlu olması",
         "Yapay zekâ destekli ayıklama, eşleştirme ve çeviri — talep ettiğiniz hizmetin ifası; bu adımı siz başlatırsınız",
         "Abonelik, ödeme ve faturalandırma — sözleşmenin ifası ve vergi mevzuatından doğan hukuki yükümlülüğümüz",
@@ -183,6 +183,17 @@ export const GIZLILIK: HukukiMetin = {
         "Ücretsiz denemenin her firma ve kişi için bir kez verilmesi, deneme hakkının tekrar tekrar alınmasının önlenmesi — meşru menfaatimiz",
         "Yönetici işlemlerinin denetim kaydına yazılması — meşru menfaatimiz ve hesap verebilirlik",
         "Açık rıza gerektiren bir işleme yapmamız gerekirse, bunu ayrıca ve açıkça sorarız",
+      ],
+    },
+    {
+      // FAZ 7 F1b (§7.1): ekip ozelligi acildi — uyenin adi ve e-postasi
+      // firmanin diger uyelerine gorunur hale geldi. Bu, aydinlatmada
+      // ACIKCA soylenmek zorunda.
+      baslik: "Ekip içinde görünürlük",
+      paragraflar: [
+        "Bir firmaya üye olduğunuzda adınız, e-posta adresiniz ve hazırladığınız tekliflerdeki \"Hazırlayan\" bilgisi firmanın diğer üyelerine görünür. Firma sahibi sizi ekibe davet ettiğinde e-posta adresiniz davet iletisini göndermek için işlenir.",
+        "Ekipten çıkarılırsanız ya da hesabınızı kapatırsanız hazırladığınız teklifler firmada kalır ve \"ayrıldı\" notuyla görünür; firmanın ticari kaydı olduğu için silinmez.",
+        "Firmanın fatura kimliğinden T.C. kimlik numarası ve yetkili kişinin e-posta adresi yalnız firma sahibine gösterilir. Teklif antedinde basılan vergi numarası, vergi dairesi, fatura adresi, fatura e-postası ve telefon firmanın ticari kimliğidir; üyelerden gizlenmez, yalnız düzenlenemez.",
       ],
     },
     {
@@ -217,6 +228,7 @@ export const GIZLILIK: HukukiMetin = {
       madde: [
         "Veritabanı yedekleri: sunucuda 14 gün tutulur. Sunucu dışındaki kopya şifrelenmiş olarak saklanır.",
         "Parola sıfırlama bağlantısı: 1 saat. E-posta doğrulama bağlantısı: 24 saat. Oturumunuz (giriş anahtarı): 7 gün.",
+        "Ekip daveti bağlantısı: 7 gün (kabul edilmeyen davet kaydı işlem kaydı olarak saklanır). Firma içi işlem kaydı — [FIRMA ISLEM KAYDI SAKLAMA SURESI].",
         "DWG çizim geometrisi, işleme servisinin önbelleğinde 24 saat boyunca kalır.",
         "Fatura, ödeme ve abonelik kayıtları: vergi ve ticaret mevzuatının öngördüğü süre boyunca — [YASAL SAKLAMA SURESI].",
         "Yönetici işlem kayıtları (denetim izi): silinmez. Bu kayıtlar, bir hesap kapatılsa bile o hesap üzerinde kimin ne yaptığının izlenebilmesi için tutulur.",
@@ -306,7 +318,7 @@ export const KULLANIM_KOSULLARI: HukukiMetin = {
     {
       baslik: "3. Hesap açma ve hesabınızın güvenliği",
       paragraflar: [
-        "Hesap, e-posta adresi ve parola ile açılır. Her yeni kayıt kendi firmasını oluşturur. Şu an için bir hesaba başka kullanıcı davet etme akışı bulunmuyor; yani pratikte bir hesap bir firma demektir. Ekip arkadaşlarınızla aynı hesabı paylaşırsanız o hesapla yapılan her işlem sizin sorumluluğunuzda olur.",
+        "Hesap, e-posta adresi ve parola ile açılır; her yeni kayıt kendi firmasını oluşturur ve kaydı açan kişi firma sahibi olur. Firma sahibi ekibe üye davet edebilir, üyeleri ekipten çıkarabilir ve başka bir üyeyi sahip yapabilir. Üyeler firmanın tekliflerini, kütüphanesini ve işçilik kayıtlarını görür ve düzenler; abonelik, ödeme ve fatura bilgilerini yalnız firma sahibi görür ve yönetir. Paketinizin kullanıcı hakkı firma sahibi dahil sayılır. Hesap paylaşmayın: her çalışan kendi hesabıyla çalışmalıdır; paylaşılan bir hesapla yapılan işlemler o hesabın sahibinin sorumluluğundadır.",
         "Parolanız sizin sorumluluğunuzdadır. Kimseyle paylaşmayın, başka servislerde kullandığınız bir parolayı burada kullanmayın. Parolanızın ele geçirildiğini düşünüyorsanız hemen değiştirin: parolanızı değiştirdiğinizde diğer cihazlardaki açık oturumlar kapatılır.",
         "Oturumunuz tarayıcınızda saklanır ve 7 gün geçerlidir. Parolanızı unutursanız giriş ekranındaki \"Parolamı unuttum\" bağlantısıyla sıfırlama isteyebilirsiniz; gönderilen bağlantı 1 saat, e-posta doğrulama bağlantısı ise 24 saat geçerlidir.",
         "Ortak veya paylaşılan bir bilgisayarda çalışıyorsanız işiniz bitince çıkış yapın. Yarım kalan teklif taslaklarınız ve DWG çalışma alanınız o tarayıcıda saklanır ve siz temizlemedikçe orada birikir.",
@@ -573,7 +585,8 @@ export const MESAFELI_SATIS: HukukiMetin = {
         // anlatacak biçimde daraltılmıştı; karar TERSİNE döndü, elektrik
         // kapsamlı üç paket satışta KALDI — metin satılan ürünü anlatmalı.
         "MetaPriceX, mekanik ve elektrik tesisat projelerinde metraj çıkarma ve teklif hazırlama işini kolaylaştıran, internet tarayıcısı üzerinden kullanılan bir yazılım hizmetidir. Fiziksel bir ürün teslim edilmez; size bir kutu, CD veya kurulum dosyası gönderilmez. Aldığınız şey, abonelik süresince yazılımı kullanma hakkıdır.",
-        "Hangi özelliklere erişeceğiniz seçtiğiniz pakete bağlıdır. Paketler disipline (mekanik, elektrik ya da ikisi birden) ve seviyeye göre ayrılır: temel seviyede malzeme kütüphanesi ve teklif hazırlama; Pro seviyede bunlara ek olarak işçilik ve DWG üzerinden metraj çıkarma bulunur. Her paketin kapsamı, kullanıcı hakkı ve DWG'nin dahil olup olmadığı satın alma sayfasındaki paket kartında yazar.",
+        "Hangi özelliklere erişeceğiniz seçtiğiniz pakete bağlıdır. Paketler disipline (mekanik, elektrik ya da ikisi birden) ve seviyeye göre ayrılır: temel seviyede malzeme kütüphanesi ve teklif hazırlama; Pro seviyede bunlara ek olarak işçilik ve DWG üzerinden metraj çıkarma bulunur. Her paketin kapsamı, firma sahibi dahil kullanıcı hakkı ve DWG'nin dahil olup olmadığı satın alma sayfasındaki paket kartında yazar.",
+        "Firmadaki kullanıcı sayısı paketinizin kullanıcı hakkını aşarsa (daha küçük pakete geçiş, yenileme ya da hak değişikliği) firma sahibi çalışmaya devam eder; hakkı aşan üyelerin erişimi en son katılandan başlayarak durdurulur. Durdurulan üyenin verileri silinmez; paket yükseltildiğinde ya da ekip düzenlendiğinde erişim kendiliğinden geri gelir. Durdurulan üye bu sürede kendi verilerini indirebilir ve hesabını kapatabilir.",
         // ⚠ RAKAM YAZILMAZ: kota tablosu `ceviri-kotasi.ts`de durur ve
         // değişebilir; rakamı metne yazmak, tablo değişince sözleşmeyi
         // yalancı yapardı. Metin paket kartına ve Fiyatlar sayfasına

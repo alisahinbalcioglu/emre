@@ -14,6 +14,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { oturumuYaz, girisSonrasiYol } from '@/ortak/lib/oturum';
 import api from '@/ortak/lib/api';
 import { ParolaAlani } from '@/ortak/ui/parola-alani';
 import { toast } from '@/ortak/hooks/use-toast';
@@ -43,9 +44,8 @@ export default function RegisterPage() {
         sozlesmeOnayi,
         ticariIletiOnayi,
       });
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user));
-      router.push('/dashboard');
+      const oturum = oturumuYaz(data);
+      router.push(girisSonrasiYol(oturum));
     } catch (err: any) {
       toast({
         variant: 'destructive',

@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../altyapi/db/prisma.service';
 import { Kimlik } from '../../altyapi/auth/kimlik';
+import { firmaRolaGoreSuz } from './firma-maskele';
 import { FirmaGuncelleDto } from './dto/firma-guncelle.dto';
 
 /**
@@ -82,16 +83,34 @@ export const LOGO_AZAMI_BAYT = 2 * 1024 * 1024;
 export class FirmaServisi {
   constructor(private prisma: PrismaService) {}
 
-  /** Firmanin kendi bilgileri. Logo ikili verisi DAHIL DEGIL. */
+  /**
+   * Firmanin kendi bilgileri. Logo ikili verisi DAHIL DEGIL.
+   *
+   * ⚠ FAZ 7 F1b (§3.6): UYEYE `tcKimlikNo` ve `yetkiliEposta` GIZLENIR.
+   * Bu metot 07.09'dan beri `sahipMi` CAGIRMIYORDU (curutucu bulgusu):
+   * firmanin tum fatura kimligi her uyeye aciktir. Antette basilan alanlar
+   * (vergi no/dairesi, fatura adresi/e-postasi, telefon) bilincli olarak
+   * ACIK KALIR — onlar firmanin ticari kimligidir, uye zaten teklif
+   * ciktisinda goruyor.
+   */
   async getir(kimlik: Kimlik) {
-    const firma = await this.prisma.firma.findUnique({
-      where: { id: kimlik.firmaId },
-      select: FIRMA_ALANLARI,
-    });
+    const [firma, ben] = await Promise.all([
+      this.prisma.firma.findUnique({
+        where: { id: kimlik.firmaId },
+        select: FIRMA_ALANLARI,
+      }),
+      this.prisma.user.findUnique({
+        where: { id: kimlik.userId },
+        select: { firmaRol: true },
+      }),
+    ]);
     if (!firma) throw new NotFoundException('Firma bulunamadi.');
     // `logoMime` doluysa logo VARDIR — on yuz `GET /firma/logo`u ancak o zaman
     // cagirir. Ikili veriyi JSON'a koymak her sayfa acilisinda base64 tasirdi.
-    return { ...firma, logoVar: Boolean(firma.logoMime) };
+    return firmaRolaGoreSuz(
+      { ...firma, logoVar: Boolean(firma.logoMime) },
+      ben?.firmaRol,
+    );
   }
 
   async guncelle(kimlik: Kimlik, dto: FirmaGuncelleDto) {

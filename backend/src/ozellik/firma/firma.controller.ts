@@ -8,6 +8,8 @@ import { memoryStorage } from 'multer';
 import { FirmaServisi, LOGO_AZAMI_BAYT } from './firma.servisi';
 import { FirmaGuncelleDto } from './dto/firma-guncelle.dto';
 import { JwtAuthGuard } from '../../altyapi/auth/guards/jwt-auth.guard';
+import { FirmaRolGuard } from '../../altyapi/auth/guards/firma-rol.guard';
+import { FirmaRolu } from '../../altyapi/auth/decorators/firma-rolu.decorator';
 import { CurrentUser } from '../../altyapi/auth/decorators/current-user.decorator';
 import { kimlikCoz } from '../../altyapi/auth/kimlik';
 
@@ -29,6 +31,10 @@ export class FirmaController {
     return this.servis.getir(kimlikCoz(user));
   }
 
+  // FAZ 7 F1b (§3.6): DUZENLEME SAHIBIN. Servisteki `sahipMi` IKINCI katman
+  // olarak KALIR (faz4 kaynak kapilari onu okuyor).
+  @UseGuards(FirmaRolGuard)
+  @FirmaRolu('sahip')
   @Patch()
   guncelle(@CurrentUser() user: any, @Body() dto: FirmaGuncelleDto) {
     return this.servis.guncelle(kimlikCoz(user), dto);
@@ -40,6 +46,8 @@ export class FirmaController {
    * bellek tuketilebilir. Depodaki iki mevcut yukleme ucu (quote-formats)
    * limitsiz — bu bir ORNEK DEGIL, kopyalanmamasi gereken bir KUSURDUR.
    */
+  @UseGuards(FirmaRolGuard)
+  @FirmaRolu('sahip')
   @Post('logo')
   @UseInterceptors(
     FileInterceptor('file', {
@@ -73,6 +81,8 @@ export class FirmaController {
     res.end(bytes);
   }
 
+  @UseGuards(FirmaRolGuard)
+  @FirmaRolu('sahip')
   @Delete('logo')
   logoSil(@CurrentUser() user: any) {
     return this.servis.logoSil(kimlikCoz(user));

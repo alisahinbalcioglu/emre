@@ -51,7 +51,7 @@ function sayfa(ad: string, satirlar: Array<{ ad: string; cins?: string; cap?: st
 async function main() {
   const prisma = new PrismaClient();
   const terminology = new TerminologyService(prisma as any);
-  const admin = new AdminService(prisma as any, undefined as any, terminology);
+  const admin = new AdminService(prisma as any, undefined as any, terminology, { iptalEt: async () => undefined } as any);
   const library = new LibraryService(prisma as any, terminology);
 
   const user = await prisma.user.findFirst({ where: { role: 'user' }, select: { id: true, firmaId: true } });

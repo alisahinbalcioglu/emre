@@ -12,6 +12,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { oturumuYaz, girisSonrasiYol } from '@/ortak/lib/oturum';
 import api from '@/ortak/lib/api';
 import { ParolaAlani } from '@/ortak/ui/parola-alani';
 import { toast } from '@/ortak/hooks/use-toast';
@@ -27,9 +28,10 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const { data } = await api.post('/auth/login', { email, password });
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user));
-      router.push('/dashboard');
+      // FAZ 7 F1b (§6.1): oturum yazimi TEK yardimcidan. Gecersiz yanitta
+      // FIRLATIR — "undefined" dizgesi token olarak yazilmaz.
+      const oturum = oturumuYaz(data);
+      router.push(girisSonrasiYol(oturum));
     } catch (err: any) {
       toast({
         variant: 'destructive',

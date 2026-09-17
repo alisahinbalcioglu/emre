@@ -44,6 +44,7 @@ import { LaborController } from '../src/ozellik/kutuphane/labor/labor.controller
 import { AiController } from '../src/ozellik/giris/ai/ai.controller';
 import { AiService } from '../src/ozellik/giris/ai/ai.service';
 import { AuthService } from '../src/altyapi/auth/auth.service';
+import { OturumServisi } from '../src/altyapi/auth/oturum.servisi';
 import { AdminService } from '../src/ozellik/kutuphane/admin/admin.service';
 import { HesapServisi } from '../src/altyapi/auth/hesap.servisi';
 import { LaborMatchingService } from '../src/ozellik/eslestirme/labor-matching/labor-matching.service';
@@ -348,10 +349,15 @@ async function yTuretilmisSeviye() {
         emailVerified: true, ad: null, soyad: null, telefon: null, firmaRol: 'sahip', firma: null,
       }),
       findMany: async () => kullanicilar ?? [],
+      // FAZ 7 F1b: `/auth/me` ve oturum yaniti artik KOLTUK durumunu da
+      // hesapliyor (§3.12). Tek kisilik firma: onunde kimse yok → hak
+      // sorgusu ATILMAZ ve bu paketin olctugu `tier` turetmesi degismez.
+      count: async () => 0,
+      findFirst: async () => ({ ad: 'Sahip', soyad: null, email: 'a@b.test' }),
     },
     abonelik: {
       findUnique: async () => (seviye === null ? null : {
-        paketSurumu: { paket: { seviye, ad: 'Paket', kod: 'k', kapsam: 'mechanical' } },
+        paketSurumu: { paket: { seviye, ad: 'Paket', kod: 'k', kapsam: 'mechanical', kullaniciHakki: 2 } },
       }),
     },
     userSubscription: { findMany: async () => [] },
@@ -360,12 +366,17 @@ async function yTuretilmisSeviye() {
   const jwtSahte = { sign: () => 'sahte-token' } as any;
   const dogrulamaSahte = { dogrulamaGonderSessizce: async () => undefined } as any;
 
-  const svcPro = new AuthService(authPrisma('pro', 'core', 'F1'), jwtSahte, erisimSahte, dogrulamaSahte);
+  const proPrisma = authPrisma('pro', 'core', 'F1');
+  // FAZ 7 F1b: `AuthService` artik `OturumServisi`ye delege ediyor (§3.11).
+  // GERCEK servis veriliyor (sahte degil): `login`/`register` yanitindaki
+  // `tier` turetmesi ve ban/silme kapisi o sinifta kosuyor.
+  const svcPro = new AuthService(proPrisma, jwtSahte, erisimSahte, dogrulamaSahte, new OturumServisi(proPrisma, jwtSahte));
   const me1: any = await svcPro.me('u1');
   check('Y9 ⭐ /auth/me: saklanan tier core, abonelik pro → yanit "pro"',
     me1?.tier === 'pro', `tier=${JSON.stringify(me1?.tier)}`);
 
-  const svcYok = new AuthService(authPrisma(null, 'pro', 'F1'), jwtSahte, erisimSahte, dogrulamaSahte);
+  const yokPrisma = authPrisma(null, 'pro', 'F1');
+  const svcYok = new AuthService(yokPrisma, jwtSahte, erisimSahte, dogrulamaSahte, new OturumServisi(yokPrisma, jwtSahte));
   const me2: any = await svcYok.me('u1');
   check('Y9a ⭐ /auth/me: abonelik yok → "core" (saklanan "pro" DEGIL)',
     me2?.tier === 'core', `tier=${JSON.stringify(me2?.tier)}`);
@@ -376,8 +387,9 @@ async function yTuretilmisSeviye() {
     id: 'u1', email: 'a@b.test', role: 'user', tier: 'suite', firmaId: 'F1',
     password: parolaOzeti, status: 'active', deletedAt: null, createdAt: new Date(),
   };
+  const girisPrisma = authPrisma('core', 'suite', 'F1', [kullanici]);
   const girisSvc = new AuthService(
-    authPrisma('core', 'suite', 'F1', [kullanici]), jwtSahte, erisimSahte, dogrulamaSahte,
+    girisPrisma, jwtSahte, erisimSahte, dogrulamaSahte, new OturumServisi(girisPrisma, jwtSahte),
   );
   const giris: any = await girisSvc.login({ email: 'a@b.test', password: 'parola123' } as any);
   check('Y9b ⭐ login yaniti: saklanan tier suite, abonelik core → "core"',
@@ -425,7 +437,9 @@ async function yYonetici() {
     $transaction: async (fn: any) => fn(prisma),
     yoneticiOlayi: { create: async () => ({}) },
   };
-  const admin = new AdminService(prisma, {} as any, {} as any);
+  // FAZ 7 F1b: dorduncu bagimlilik `SatinAlmaServisi` (E-1 — yonetici
+  // silmesi tek kullanicili firmada abonelik de iptal eder).
+  const admin = new AdminService(prisma, {} as any, {} as any, { iptalEt: async () => undefined } as any);
 
   const hata: any = await admin
     .updateUserTier({ id: 'y1', email: 'y@b.test' }, 'u1', 'pro')

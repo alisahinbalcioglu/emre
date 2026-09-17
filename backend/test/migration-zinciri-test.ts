@@ -115,6 +115,9 @@ async function main() {
     'CeviriDuzeltmeOlayi',
     // Faz 6.12a (16.09): deneme kullanim kaydi — ucretsiz deneme bir kez.
     'DenemeKullanimi',
+    // Faz 7 F1b (17.09): ekip daveti + firma denetim kaydi.
+    'FirmaDavet',
+    'FirmaOlayi',
   ];
   const tabloSonuc = await db.query<{ table_name: string }>(
     `SELECT table_name FROM information_schema.tables WHERE table_schema='public'`,

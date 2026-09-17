@@ -120,7 +120,9 @@ export function FiyatKartlari() {
                     {p.aylikTeklifHakki === null ? 'Sınırsız teklif' : `Ayda ${p.aylikTeklifHakki} teklif`}
                   </li>
                   <li>DWG ve DXF metrajı {p.dwgAktif ? 'dâhil' : 'dâhil değil'}</li>
-                  <li>{p.kullaniciHakki} kullanıcıya kadar</li>
+                  {/* FAZ 7 F1b (§6.6): "N kullanıcıya kadar" belirsizdi — sahip sayılıyor
+                      mu? Emre kararı E-2 ile hak FİRMA SAHİBİ DAHİL sayılıyor. */}
+                  <li>Firma sahibi dahil {p.kullaniciHakki} kullanıcı</li>
                 </ul>
 
                 <Link

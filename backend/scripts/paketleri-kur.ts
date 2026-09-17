@@ -86,7 +86,12 @@ const PAKETLER = [
     aciklama: 'Mekanik disiplinde malzeme kutuphanesi ve teklif hazirlama.',
     kapsam: 'mechanical' as const,
     seviye: 'core' as const,
-    kullaniciHakki: 2,
+    // ⚠ FAZ 7 F1b (Emre karari E-2, 17.09): kullanici hakki FIRMA SAHIBI
+    // DAHIL sayilir — Basic 1 · Pro 2 · Pro-MEP 3. Bu deger YALNIZ YENI
+    // KURULUMLAR icindir: betik surumlu paketi ATLADIGI icin canliyi
+    // DEGISTIRMEZ. Canli guncelleme `scripts/kullanici-hakki-guncelle.ts`
+    // ile ve Emre onayindan sonra yapilir.
+    kullaniciHakki: 1,
     aylikTeklifHakki: null as number | null,
     dwgAktif: false,
     usdTutar: 22.0,
@@ -120,7 +125,7 @@ const PAKETLER = [
     aciklama: 'Elektrik disiplininde malzeme kutuphanesi ve teklif hazirlama.',
     kapsam: 'electrical' as const,
     seviye: 'core' as const,
-    kullaniciHakki: 2,
+    kullaniciHakki: 1,
     aylikTeklifHakki: null as number | null,
     dwgAktif: false,
     usdTutar: 22.0,
@@ -155,7 +160,7 @@ const PAKETLER = [
     aciklama: 'Iki disiplin: malzeme + iscilik + DWG metraj. Ayri ayri almaya gore %25 avantajli.',
     kapsam: 'mep' as const,
     seviye: 'pro' as const,
-    kullaniciHakki: 2,
+    kullaniciHakki: 3,
     aylikTeklifHakki: null as number | null,
     dwgAktif: true,
     usdTutar: 42.0,

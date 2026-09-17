@@ -1,5 +1,7 @@
 import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../../altyapi/auth/guards/jwt-auth.guard';
+import { FirmaRolGuard } from '../../../altyapi/auth/guards/firma-rol.guard';
+import { FirmaRolu } from '../../../altyapi/auth/decorators/firma-rolu.decorator';
 import { CurrentUser } from '../../../altyapi/auth/decorators/current-user.decorator';
 import { kimlikCoz } from '../../../altyapi/auth/kimlik';
 import { ErisimServisi } from './erisim.servisi';
@@ -76,6 +78,15 @@ export class AbonelikController {
    * Kart aboneligi baslatir; iyzico'nun barindirilan form HTML'ini doner.
    * On yuz bu HTML'i kendi sayfasina gomer.
    */
+  // ── FAZ 7 F1b (§3.5): SATIN ALMA SAHIBIN ISI ─────────────────────────
+  // ⚠ `paketler` ve `durum` BILEREK KAPISIZ (salt okuma — uye de paketini
+  // gorur); `donus` da kapisiz cunku niyeti yalniz sahip acabilir (`basla`
+  // kapili), token tek basina kimliktir ve ayni is zaten guardsiz
+  // `iyzico-donus.controller.ts:71` yolundan da yapiliyor. Kapi eklemek
+  // yalniz "sahiplik devri basla↔donus arasinda olursa odeme askida"
+  // kusurunu uretirdi.
+  @UseGuards(FirmaRolGuard)
+  @FirmaRolu('sahip')
   @Post('basla')
   async basla(@CurrentUser() kullanici: unknown, @Body() g: AbonelikBaslaDto) {
     const { firmaId, userId } = kimlikCoz(kullanici);
@@ -106,6 +117,8 @@ export class AbonelikController {
   }
 
   /** Kayitli karti degistirme formu (1 TL cekilip iade edilerek dogrulanir). */
+  @UseGuards(FirmaRolGuard)
+  @FirmaRolu('sahip')
   @Post('kart-guncelle')
   async kartGuncelle(@CurrentUser() kullanici: unknown) {
     const { firmaId } = kimlikCoz(kullanici);
@@ -113,6 +126,8 @@ export class AbonelikController {
   }
 
   /** Iptal — erisim DONEM SONUNA kadar surer. */
+  @UseGuards(FirmaRolGuard)
+  @FirmaRolu('sahip')
   @Post('iptal')
   async iptal(
     @CurrentUser() kullanici: unknown,

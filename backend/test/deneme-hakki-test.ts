@@ -60,6 +60,7 @@ import { MutabakatJob } from '../src/ozellik/odeme/abonelik/mutabakat.job';
 import { WebhookIsleyici } from '../src/ozellik/odeme/webhook/webhook.isleyici';
 import { HesapServisi } from '../src/altyapi/auth/hesap.servisi';
 import { AuthService } from '../src/altyapi/auth/auth.service';
+import { OturumServisi } from '../src/altyapi/auth/oturum.servisi';
 import { ParolaServisi } from '../src/altyapi/auth/parola.servisi';
 import { AbonelikController } from '../src/ozellik/odeme/abonelik/abonelik.controller';
 import { OdemeModule } from '../src/ozellik/odeme/odeme.module';
@@ -339,14 +340,23 @@ function bellekPrisma() {
     {
       get: (_h, ad: string) => {
         if (ad === 'then') return undefined;
-        // Yalniz DIZI bicimi (parola sifirlama). Etkilesimli bicim bu yollarda
-        // beklenmiyor: gelirse gurultulu dur, sessizce "atomik" sanma.
+        // DIZI bicimi (parola sifirlama) + ETKILESIMLI bicim.
+        // ⚠ FAZ 7 F1b: `hesabiKapat` artik firma kilidinde kosuyor
+        // (`firmaKilitliIslem` → `$transaction(async tx => …)`). Etkilesimli
+        // bicim ATOMIK DEGIL taklit edilir: bu paket ayrilma yolunun
+        // atomikligini OLCMEZ (onu `test:faz7-ekip` H blogu olcer), yalniz
+        // deneme hakkinin yollarini olcer. Sessizce "atomik" sanmamak icin
+        // not burada duruyor.
         if (ad === '$transaction') {
           return async (islemler: unknown) => {
-            if (!Array.isArray(islemler)) throw new Error('bellek-Prisma: etkilesimli $transaction beklenmiyor');
-            return Promise.all(islemler);
+            if (Array.isArray(islemler)) return Promise.all(islemler);
+            if (typeof islemler === 'function') return (islemler as (tx: unknown) => unknown)(prisma);
+            throw new Error('bellek-Prisma: beklenmeyen $transaction bicimi');
           };
         }
+        // `firmaKilitliIslem` advisory lock sorgusu atiyor; bellek-Prisma'da
+        // kilit YOKTUR, sorgu yutulur (yarisi bu paket olcmez).
+        if (ad === '$queryRaw') return async () => [{ kilit: 'ok' }];
         return modelYuzu(ad);
       },
     },
@@ -423,7 +433,11 @@ function dunyaKur() {
   const mutabakat = new MutabakatJob(db.prisma, iyz.istemci, abonelik);
   const hesap = new HesapServisi(db.prisma, satinAlma);
   const dogrulamaGiden: string[] = [];
-  const auth = new AuthService(db.prisma, { sign: () => 'tkn' } as any, {} as any, { dogrulamaGonderSessizce: async (_id: string, e: string) => { dogrulamaGiden.push(e); } } as any);
+  const jwtSahte = { sign: () => 'tkn' } as any;
+  // FAZ 7 F1b: `AuthService` artik `OturumServisi`ye delege ediyor (§3.11).
+  // GERCEK servis veriliyor (sahte degil): `login`/`register` yanitindaki
+  // `tier` turetmesi ve ban/silme kapisi o sinifta kosuyor.
+  const auth = new AuthService(db.prisma, jwtSahte, {} as any, { dogrulamaGonderSessizce: async (_id: string, e: string) => { dogrulamaGiden.push(e); } } as any, new OturumServisi(db.prisma, jwtSahte));
   const controller = new AbonelikController({} as any, satinAlma, denemeHakki);
 
   const firma = (id: string, telefon: string | null = null) => db.ekle('firma', { id, ad: id, telefon });

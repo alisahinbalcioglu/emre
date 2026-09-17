@@ -6,7 +6,6 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../db/prisma.service';
-import { jwtSecret } from './jwt-secret';
 import { HUKUKI_METIN_SURUMU } from './hukuki-surum';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -15,6 +14,10 @@ import { ErisimServisi } from '../../ozellik/odeme/abonelik/erisim.servisi';
 import { EpostaDogrulamaServisi } from './eposta-dogrulama.servisi';
 import { epostaIleKullaniciBul, epostaKucult } from './eposta';
 import { firmaPaketSeviyesi } from './seviye';
+import { OturumServisi, hesapKapisi } from './oturum.servisi';
+import { tokenImzala } from './token-imza';
+import { firmaRolaGoreSuz } from '../../ozellik/firma/firma-maskele';
+import { koltukDurumuHesapla, etkinHesapKosulu, type FirmaRol } from '../../ozellik/firma/uyelik-kurallari';
 
 @Injectable()
 export class AuthService {
@@ -23,6 +26,9 @@ export class AuthService {
     private jwtService: JwtService,
     private erisim: ErisimServisi,
     private epostaDogrulama: EpostaDogrulamaServisi,
+    // FAZ 7 F1b (§3.11): token veren TEK kapi. `login`/`register` artik
+    // kendi yanitini kurmaz — ban/silme kapisi ve `authAt` tek yerde.
+    private oturum: OturumServisi,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -67,8 +73,11 @@ export class AuthService {
     // kapısıdır. Hata loglanır, kayıt tamamlanır.
     await this.epostaDogrulama.dogrulamaGonderSessizce(user.id, user.email);
 
-    const token = this.signToken(user.id, user.email, user.role);
-    return { token, user: { id: user.id, email: user.email, role: user.role, tier: await this.etkinSeviye(user.firmaId) } };
+    // FAZ 7 F1b: `authAt` = BIRINCIL kimlik dogrulama ani. Kayit parolayi
+    // kullanicinin kendisi belirledigi icin birincildir.
+    return this.oturum.oturumYaniti(user, {
+      authAt: Math.floor(Date.now() / 1000),
+    });
   }
 
   async login(dto: LoginDto) {
@@ -89,20 +98,14 @@ export class AuthService {
     // yapmaya ve calismaya devam ediyordu.
     // ⚠ Tek basina burasi YETMEZ — mevcut token'lar 7 gun daha gecerlidir.
     // Ikinci kapi jwt.strategy.validate'tedir; ikisi BIRLIKTE anlamlidir.
-    if (user.status === 'banned') {
-      throw new UnauthorizedException('Hesabiniz askiya alinmis.');
-    }
-    // YUMUSAK SILME KAPISI (2.3, 07.09). Ayni ailenin ikinci kusuru: admin
-    // panelindeki silme dugmesi `deletedAt` damgalar, ama auth katmani bu
-    // alani okumazsa "silinen" kullanici giris yapmaya DEVAM EDER ve ozellik
-    // gorunuste calisip gercekte hicbir sey yapmaz. Ban kapisiyla ayni yerde
-    // duruyor ki biri eklenip digeri unutulmasin.
-    if (user.deletedAt) {
-      throw new UnauthorizedException('Hesabiniz kapatilmis.');
-    }
+    // ⚠ FAZ 7 F1b: metinler `oturum.servisi.ts`e TASINDI (degistirilmedi).
+    // Gerekce: token veren yol sayisi artiyor (davet kabul, MFA, kurumsal
+    // giris) ve her biri bu iki kontrolu kendi yazarsa biri unutur.
+    hesapKapisi(user);
 
-    const token = this.signToken(user.id, user.email, user.role);
-    return { token, user: { id: user.id, email: user.email, role: user.role, tier: await this.etkinSeviye(user.firmaId) } };
+    return this.oturum.oturumYaniti(user, {
+      authAt: Math.floor(Date.now() / 1000),
+    });
   }
 
   /**
@@ -190,12 +193,58 @@ export class AuthService {
       : null;
 
     // `logoVar`: on yuz logoyu ancak varsa cekmeli. Ikili veri bu yanitta YOK.
+    // ⚠ FAZ 7 F1b (§3.6): UYEYE T.C. kimlik no ve yetkili e-posta GIZLENIR.
+    // Antette basilan alanlar (vergi no/dairesi, fatura adresi/e-postasi,
+    // telefon) firmanin TICARI kimligidir — uyeden gizlenmez, yalniz
+    // duzenlenemez (duzenleme sahip kapili).
     const firma = user.firma
-      ? { ...user.firma, logoVar: Boolean(user.firma.logoMime) }
+      ? firmaRolaGoreSuz(
+          { ...user.firma, logoVar: Boolean(user.firma.logoMime) },
+          user.firmaRol,
+        )
       : null;
 
+    // FAZ 7 F1b (§3.12 madde 4): durdurma ekrani bu tek uctan beslenir.
+    const koltuk = await this.koltukBilgisi(user);
+
     // ⚠ `tier` SAKLANAN degeri EZER (2.12): `user` yayilimindan sonra gelir.
-    return { ...user, tier: await this.etkinSeviye(user.firmaId), firma, capabilities, subscriptions, erisim };
+    return { ...user, tier: await this.etkinSeviye(user.firmaId), firma, koltuk, capabilities, subscriptions, erisim };
+  }
+
+  /**
+   * KOLTUK BILGISI (§3.12) — `/auth/me` yanitinin `koltuk` alani.
+   *
+   * ⚠ `durduruldu` AYNI saf fonksiyondan gelir (`koltukDurumuHesapla`);
+   * strateji de onu cagirir. Ikiz yazilsaydi biri "durduruldu" der, digeri
+   * demezdi ve kullanici 403 alip "her sey normal" yazan bir ekran gorurdu.
+   *
+   * `sahipAdi` = firmanin EN ESKI ETKIN sahibi — durdurulan uye "kime
+   * soyleyeyim" diye sormasin.
+   */
+  private async koltukBilgisi(user: {
+    id: string;
+    firmaId: string | null;
+    firmaRol: string;
+    createdAt: Date;
+  }): Promise<{ durduruldu: boolean; hak: number | null; sahipAdi: string | null }> {
+    if (!user.firmaId) return { durduruldu: false, hak: null, sahipAdi: null };
+    const { durduruldu, hak } = await koltukDurumuHesapla(this.prisma, {
+      id: user.id,
+      firmaId: user.firmaId,
+      firmaRol: user.firmaRol as FirmaRol,
+      createdAt: user.createdAt,
+    });
+    const sahip = await this.prisma.user.findFirst({
+      where: { firmaId: user.firmaId, firmaRol: 'sahip', ...etkinHesapKosulu() },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: { ad: true, soyad: true, email: true },
+    });
+    const adSoyad = [sahip?.ad, sahip?.soyad].filter(Boolean).join(' ').trim();
+    return {
+      durduruldu,
+      hak,
+      sahipAdi: sahip ? (adSoyad || sahip.email) : null,
+    };
   }
 
   /**
@@ -233,15 +282,10 @@ export class AuthService {
    * elindeki token'ı da geçersiz kılıyor. İmza kuralı (anahtar + süre) TEK
    * yerde kalsın diye kopyalanmadı, buradan paylaşılıyor.
    */
-  signToken(id: string, email: string, role: string) {
-    return this.jwtService.sign(
-      { sub: id, email, role },
-      {
-        // KL P1-a: yedek deger yok — anahtar tek kaynaktan (jwt-secret.ts).
-        // Sure kurali DEGISMEDI (JWT_EXPIRES_IN ?? 7d).
-        secret: jwtSecret(),
-        expiresIn: process.env.JWT_EXPIRES_IN || '7d',
-      },
-    );
+  signToken(id: string, email: string, role: string, authAt?: number | null) {
+    // FAZ 7 F1b: govde `token-imza.ts`e tasindi. `authAt` ISTEGE BAGLI —
+    // mevcut cagiranlar (`ParolaServisi`, testlerdeki sahteler) argumani
+    // vermez ve davranislari degismez (`null` → payload'a alan konmaz).
+    return tokenImzala(this.jwtService, id, email, role, authAt ?? null);
   }
 }

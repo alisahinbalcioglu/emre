@@ -63,7 +63,8 @@ const ONCEKI_STORAGE = Object.prototype.hasOwnProperty.call(g, 'localStorage')
   : undefined;
 
 let depo: ReturnType<typeof sahteDepo>;
-let pencere: { location: { href: string } };
+let pencere: { location: { href: string; pathname: string }; dispatchEvent?: (e: any) => boolean };
+const yayinlananOlaylar: string[] = [];
 
 // NOT: axios modulu import aninda `typeof window`u okur (hasStandardBrowserEnv).
 // Globalleri BILEREK import'tan SONRA, her testten once kuruyoruz: boylece
@@ -93,7 +94,14 @@ beforeEach(() => {
   depo = sahteDepo();
   depo.setItem('token', SEANS_JETONU);
   depo.setItem('user', SEANS_KULLANICI);
-  pencere = { location: { href: BASLANGIC_URL } };
+  // ⚠ FAZ 7 F1b: `api.ts` 403 dalinda `window.location.pathname` okuyor.
+  // ⚠ `ABONELIK_KISITLI` dali `window.dispatchEvent` cagiriyor; stub
+  // olmadan E4 hic olcmeden TypeError'la duserdi (yalanci kirmizi).
+  yayinlananOlaylar.length = 0;
+  pencere = {
+    location: { href: BASLANGIC_URL, pathname: '/login' },
+    dispatchEvent: (e: any) => { yayinlananOlaylar.push(e?.type ?? String(e)); return true; },
+  } as any;
   g.localStorage = depo;
   g.window = pencere;
 });
@@ -227,5 +235,74 @@ describe('B — korumali uctan (/auth/me) gelen 401', () => {
     await dortYuzBirAl('/auth/me');
 
     expect(pencere.location.href).toBe('/login');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// E — FAZ 7 F1b (Emre karari E-3): 403 `KOLTUK_ASILDI`
+//     Kisi sinirini asan hesap 403 alir. 401 DEGIL: oturum GECERLIDIR.
+//     Oturumu silmek kullaniciyi giris ekranina atar, o tekrar girer, ayni
+//     403'u alir — SONSUZ DONGU; durdurma ekranini hic goremezdi.
+// ---------------------------------------------------------------------------
+/** Verilen uctan 403 dondur (gövde `kod` tasir). */
+async function ucYuzUcAl(url: string, kod: string) {
+  const oncekiAdapter = api.defaults.adapter;
+  api.defaults.adapter = ((config: any) => {
+    adapterCagrilariUrl.push(String(config.url));
+    const hata: any = new Error('Request failed with status code 403');
+    hata.isAxiosError = true;
+    hata.config = config;
+    hata.response = {
+      status: 403,
+      statusText: 'Forbidden',
+      data: { kod, mesaj: 'Firmanızın paketi 2 kişilik', hak: 2 },
+      headers: {},
+      config,
+    };
+    return Promise.reject(hata);
+  }) as any;
+  try {
+    await expect(api.get(url)).rejects.toMatchObject({ response: { status: 403 } });
+  } finally {
+    api.defaults.adapter = oncekiAdapter;
+  }
+}
+
+describe('E — 403 KOLTUK_ASILDI [FAZ 7 F1b]', () => {
+  it('E0 KAPI — istek gercekten adapter e ulasti', async () => {
+    await ucYuzUcAl('/quotes', 'KOLTUK_ASILDI');
+    expect(adapterCagrilariUrl).toEqual(['/quotes']);
+  });
+
+  it('E1 — oturumu SILMEZ (401 dali degil)', async () => {
+    expect(depo.getItem('token')).toBe(SEANS_JETONU);
+    await ucYuzUcAl('/quotes', 'KOLTUK_ASILDI');
+    expect({ token: depo.getItem('token'), user: depo.getItem('user') }).toEqual({
+      token: SEANS_JETONU,
+      user: SEANS_KULLANICI,
+    });
+  });
+
+  it('E2 — /koltuk-durduruldu ya YONLENDIRIR', async () => {
+    expect(pencere.location.href).toBe(BASLANGIC_URL);
+    await ucYuzUcAl('/quotes', 'KOLTUK_ASILDI');
+    expect(pencere.location.href).toBe('/koltuk-durduruldu');
+  });
+
+  it('E3 — ZATEN o sayfadayken yonlendirme YAPMAZ (sonsuz dongu yok)', async () => {
+    (pencere as any).location.pathname = '/koltuk-durduruldu';
+    pencere.location.href = 'http://localhost:3000/koltuk-durduruldu';
+    await ucYuzUcAl('/auth/me', 'KOLTUK_ASILDI');
+    expect(pencere.location.href).toBe('http://localhost:3000/koltuk-durduruldu');
+  });
+
+  it('E4 — BASKA bir 403 (ABONELIK_KISITLI) bu dala GIRMEZ', async () => {
+    expect(pencere.location.href).toBe(BASLANGIC_URL);
+    await ucYuzUcAl('/quotes/1/export', 'ABONELIK_KISITLI');
+    expect(pencere.location.href).toBe(BASLANGIC_URL);
+    expect(depo.getItem('token')).toBe(SEANS_JETONU);
+    // FIXTURE KANITI: ABONELIK_KISITLI dali gercekten kostu (olay yayinlandi),
+    // yani yukaridaki "yonlendirmedi" sonucu "hicbir dal kosmadi"dan gelmiyor.
+    expect(yayinlananOlaylar).toContain('abonelik-kisitli');
   });
 });

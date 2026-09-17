@@ -49,6 +49,8 @@ interface AdminUser {
   tier: 'core' | 'pro' | 'suite';
   createdAt: string;
   firmaId: string | null;
+  /// FAZ 7 F1b — FIRMA ICI rol (platform `role` alanindan AYRI eksen).
+  firmaRol: 'sahip' | 'uye' | null;
   firma: { id: string; ad: string } | null;
   /// YETKILI KAYNAK (Abonelik -> PaketSurumu -> Paket). null = firma ya da
   /// abonelik yok.
@@ -148,14 +150,18 @@ export default function AdminUsersPage() {
    */
   async function alanDegistir(
     u: AdminUser,
-    alan: 'role' | 'status',
+    // FAZ 7 F1b: `firma-rol` (§3.3) — firmanin sahipsiz kalmasini cozen TEK
+    // yonetici yolu. `deleteUser` son sahipte 400 `SON_SAHIP` doner ve o
+    // kapinin bir CIKISI olmali.
+    alan: 'role' | 'status' | 'firma-rol',
     yeni: string,
   ) {
-    const eski = u[alan];
+    const eski = alan === 'firma-rol' ? u.firmaRol : u[alan];
     if (eski === yeni) return;
     setIslemdeki(u.id);
     try {
-      await api.patch(`/admin/users/${u.id}/${alan}`, { [alan]: yeni });
+      const govdeAlani = alan === 'firma-rol' ? 'firmaRol' : alan;
+      await api.patch(`/admin/users/${u.id}/${alan}`, { [govdeAlani]: yeni });
       await fetchUsers();
       toast({
         title: 'Güncellendi',
@@ -183,6 +189,10 @@ export default function AdminUsersPage() {
         `${u.email} hesabı kapatılacak: listeden kalkar, giriş yapamaz ve ` +
         `açık oturumu da geçersizleşir. ${u._count.quotes} teklifi ve ` +
         `${u._count.library} kütüphane satırı SİLİNMEZ, kayıtta kalır. ` +
+        // FAZ 7 F1b (Emre kararı E-1): hesap kapatmanın ikizi.
+        `Bu kişi firmasının tek kullanıcısıysa firmanın aboneliği de iptal edilir; ` +
+        `firmanın son sahibiyse ve firmada başka hesap varsa işlem reddedilir ` +
+        `(önce başka birini sahip yapın). ` +
         `İşlem denetim kaydına yazılır.`,
       confirmText: 'Devam et',
     });
@@ -304,6 +314,7 @@ export default function AdminUsersPage() {
                   <TableHead>Eski tier (salt okunur)</TableHead>
                   <TableHead>Gerçek paket</TableHead>
                   <TableHead>Durum</TableHead>
+                  <TableHead>Firma rolü</TableHead>
                   <TableHead className="text-right">Teklif</TableHead>
                   <TableHead className="text-right">Kütüphane</TableHead>
                   <TableHead>Abonelikler</TableHead>
@@ -376,6 +387,23 @@ export default function AdminUsersPage() {
                             {DURUMLAR.map((d) => (
                               <SelectItem key={d} value={d}>{DURUM_ETIKET[d]}</SelectItem>
                             ))}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+
+                      {/* FAZ 7 F1b: FİRMA ROLÜ (platform rolünden AYRI eksen). */}
+                      <TableCell>
+                        <Select
+                          value={u.firmaRol ?? 'sahip'}
+                          disabled={kilitli || !u.firmaId}
+                          onValueChange={(v) => alanDegistir(u, 'firma-rol', v)}
+                        >
+                          <SelectTrigger className="h-7 w-[5.5rem] text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="sahip">Sahip</SelectItem>
+                            <SelectItem value="uye">Üye</SelectItem>
                           </SelectContent>
                         </Select>
                       </TableCell>

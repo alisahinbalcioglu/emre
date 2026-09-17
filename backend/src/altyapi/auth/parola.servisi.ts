@@ -210,7 +210,17 @@ export class ParolaServisi {
     // ÖNCE imzalanmış her token'ı reddeder; kullanıcının ELİNDEKİ token da
     // budur. Yeni token dönmezsek "parolamı değiştirdim ve uygulamadan
     // atıldım" davranışı doğar. Ön yüz bunu localStorage'a yazar.
-    const token = this.auth.signToken(user.id, user.email, user.role);
+    // FAZ 7 F1b (R1-Y1): parola degistirme MEVCUT parolayi dogruladi →
+    // BIRINCIL kimlik dogrulamadir, `authAt` YENILENIR (kopyalanmaz).
+    // ⚠ Cürütücü "kopyala" oneriyordu; sapma bilincli: `authAt`i okuyan her
+    // akis yalniz PAROLASIZ hesaplarda kosar (F2b/F3b) ve parolasiz hesap
+    // parola degistiremez — etkilesim YOK.
+    const token = this.auth.signToken(
+      user.id,
+      user.email,
+      user.role,
+      Math.floor(Date.now() / 1000),
+    );
 
     return {
       token,

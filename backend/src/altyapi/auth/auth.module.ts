@@ -7,6 +7,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { ParolaServisi } from './parola.servisi';
 import { EpostaDogrulamaServisi } from './eposta-dogrulama.servisi';
 import { HesapServisi } from './hesap.servisi';
+import { OturumServisi } from './oturum.servisi';
 import { jwtSecret } from './jwt-secret';
 import { OdemeModule } from '../../ozellik/odeme/odeme.module';
 
@@ -38,8 +39,12 @@ import { OdemeModule } from '../../ozellik/odeme/odeme.module';
     // (hesap kapatilinca abonelik de iptal edilmeli); o servis zaten
     // OdemeModule tarafindan disa aciliyor.
     HesapServisi,
+    // FAZ 7 F1b — token veren TEK kapi (§3.11). F2b (MFA) ve F3b (kurumsal
+    // giris) de bunu kullanacak; her yol kendi kapisini yazarsa biri mutlaka
+    // ban ya da yumusak silme kontrolunu unutur.
+    OturumServisi,
   ],
   controllers: [AuthController],
-  exports: [AuthService],
+  exports: [AuthService, OturumServisi],
 })
 export class AuthModule {}

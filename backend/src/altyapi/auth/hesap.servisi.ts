@@ -8,6 +8,14 @@ import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../db/prisma.service';
 import { SatinAlmaServisi } from '../../ozellik/odeme/abonelik/satinalma.servisi';
 import { denemeEpostaAnahtari } from '../../ozellik/odeme/abonelik/deneme-hakki';
+import {
+  ayrilmaKarari,
+  etkinHesapKosulu,
+  firmaKilitliIslem,
+  kapatmaVerisi,
+  type FirmaRol,
+} from '../../ozellik/firma/uyelik-kurallari';
+import { firmaRolaGoreSuz } from '../../ozellik/firma/firma-maskele';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -81,13 +89,19 @@ export class HesapServisi {
     if (!kullanici) throw new UnauthorizedException();
 
     const firmaId = (kullanici.firma?.id ?? null) as string | null;
+    // ── FAZ 7 F1b (§3.10): KVKK EKSENI FIRMA ROLUNE GORE ─────────────────
+    // ⚠ Firmalar artik cok kisili. `firmaId` eksenli her sorgu, bir UYEYE
+    // firmadaki DIGER kisilerin verisini verirdi — KVKK "kendi verisini
+    // ogrenme" hakki baskasinin verisini almak DEGILDIR.
+    const sahipMi = kullanici.firmaRol === 'sahip';
 
     // ⚠ `sheets` DAHIL: teklifin kendisi kullanicinin verisidir ve
     // tasinabilirlik hakkinin ASIL konusu odur. Ham .xlsx ise ikili — asagida
     // ayrica listeleniyor.
     const teklifler = firmaId
       ? await this.prisma.quote.findMany({
-          where: { firmaId },
+          // Uye YALNIZ kendi hazirladigi teklifleri alir.
+          where: sahipMi ? { firmaId } : { firmaId, userId },
           select: {
             id: true, title: true, quoteNo: true, rev: true, durum: true,
             musteri: true, proje: true, hazirlayan: true, gecerlilik: true,
@@ -112,7 +126,11 @@ export class HesapServisi {
       this.prisma.laborFirm.findMany({ where: { userId } }),
       this.prisma.userSubscription.findMany({ where: { userId } }),
       this.prisma.aiUsageLog.findMany({ where: { userId } }),
-      firmaId ? this.prisma.dwgDosya.findMany({ where: { firmaId } }) : Promise.resolve([]),
+      firmaId
+        ? this.prisma.dwgDosya.findMany({
+            where: sahipMi ? { firmaId } : { firmaId, olusturanId: userId },
+          })
+        : Promise.resolve([]),
       // Faz 6.9: firmanın çeviri sözlüğü + bu kullanıcının düzeltme olayları.
       // ⚠ AÇIK select, `ortakDeger` BİLEREK YOK (Revizyon 1, R1-B1): olaydaki ortak
       // katman karşılığı kişisel veri değildir ve başka firmaların ödediği
@@ -132,7 +150,9 @@ export class HesapServisi {
     // ⚠ Ticari kayitlar (fatura/odeme) DA kullanicinin verisidir; hesap
     // kapatilsa bile saklanmalari gereken sinifta oldugu icin AYRI baslikta
     // ve saklama gerekcesiyle birlikte veriliyor.
-    const ticari = firmaId
+    // ⚠ TICARI KAYITLAR YALNIZ SAHIBE (§3.10): abonelik, odeme yontemi ve
+    // faturalar FIRMANIN ticari kaydidir; uyeye verilmez.
+    const ticari = firmaId && sahipMi
       ? await this.prisma.abonelik.findMany({
           where: { firmaId },
           select: {
@@ -141,7 +161,7 @@ export class HesapServisi {
           },
         })
       : [];
-    const faturalar = firmaId
+    const faturalar = firmaId && sahipMi
       ? await this.prisma.fatura.findMany({
           where: { abonelik: { firmaId } },
           select: { id: true, durum: true, tutar: true, paraBirimi: true, olusturuldu: true },
@@ -163,6 +183,14 @@ export class HesapServisi {
           ...(epostaAnahtari
             ? [{ epostaNormal: epostaAnahtari }, { formEpostaNormal: epostaAnahtari }]
             : []),
+          // ⚠ FAZ 7 F1b — TASARIMDAN BILINCLI SAPMA (celiski raporlandi).
+          // §3.10 tablosu "sahip: firmaId satirlari" diyordu. UYGULANMADI:
+          // Faz 6.12a'da bu kapsam OLCULEREK disarida birakilmisti ve
+          // gerekce hâlâ gecerli — `DenemeKullanimi` satirinda BASKA bir
+          // uyenin sadelestirilmis e-postasi/telefonu olabilir; onu firma
+          // sahibine vermek "kendi verisini ogrenme" hakki degil UCUNCU
+          // KISININ verisinin ifsasi olurdu. Mevcut kapi (`test:deneme-hakki`
+          // H2) bunu ACIKCA olcuyor. Karar Emre/avukatta (avukat notlari).
         ],
       },
       select: {
@@ -190,6 +218,25 @@ export class HesapServisi {
       orderBy: { olusturuldu: 'asc' },
     });
 
+    // ── FAZ 7 F1b (§3.10): FIRMA ISLEM KAYDI ─────────────────────────────
+    // Sahip firma genelini gorur; uye YALNIZ kendisinin aktor ya da hedef
+    // oldugu satirlari ("beni kim davet etti, kim rolumu degistirdi").
+    const firmaOlaylari = firmaId
+      ? await this.prisma.firmaOlayi.findMany({
+          where: sahipMi
+            ? { firmaId }
+            : {
+                firmaId,
+                OR: [{ aktorId: userId }, { hedefKullaniciId: userId }],
+              },
+          orderBy: { olusturuldu: 'asc' },
+          select: {
+            id: true, tip: true, aktorEposta: true, hedefEposta: true,
+            oncekiDeger: true, yeniDeger: true, veri: true, olusturuldu: true,
+          },
+        })
+      : [];
+
     const ikiliVeriler: { tur: string; ad: string; bayt: number | null; indirmeAdresi: string }[] = [];
     for (const t of teklifler) {
       if (t.originalName) {
@@ -213,7 +260,13 @@ export class HesapServisi {
         'KVKK m.11 kapsaminda, hesabinizla iliskili olarak sistemimizde tutulan ' +
         'verilerin makine-okunur disa aktarimidir.',
       olusturulma: new Date().toISOString(),
-      kullanici,
+      kullanici: {
+        ...kullanici,
+        // ⚠ FAZ 7 F1b (§3.6): uyeye T.C. kimlik no ve yetkili e-posta gizli.
+        // `tier` SAKLANAN degerdir ve BILEREK turetilmez: "hakkimda ne
+        // tutuyorsunuz" cevabinda tutulan deger yazilir (2.12 notu).
+        firma: firmaRolaGoreSuz(kullanici.firma, kullanici.firmaRol),
+      },
       teklifler,
       teklifFormatlari: formatlar,
       kutuphane,
@@ -229,6 +282,7 @@ export class HesapServisi {
       dwgDosyalari,
       ceviriDuzeltmeleri,
       ceviriDuzeltmeOlaylari,
+      firmaIslemKayitlari: firmaOlaylari,
       ikiliVeriler,
       notlar: [
         'Ikili (binary) dosyalar bu dosyaya GOMULMEDI: orijinal Excel dosyalari ve ' +
@@ -244,6 +298,14 @@ export class HesapServisi {
           'denemenin her firma ve kişi için bir kez verilebilmesi amacıyla hesabınız ' +
           'kapatılsa bile saklanır. E-posta adresiniz ve telefonunuz bu kayıtta ' +
           'karşılaştırma için sadeleştirilmiş biçimde durur.',
+        ...(sahipMi
+          ? []
+          : [
+              'Firma üyesi olarak bu dosyada yalnız sizin hazırladığınız teklifler ve ' +
+                'sizin işlemleriniz vardır; firmanın ticari kayıtları (abonelik, ödeme, ' +
+                'fatura) firma sahibinin dosyasındadır. Firmanın fatura kimliğinden ' +
+                'T.C. kimlik numarası ve yetkili e-posta adresi size gösterilmez.',
+            ]),
       ],
     };
   }
@@ -284,11 +346,96 @@ export class HesapServisi {
       }
     }
 
-    // Abonelik iptali ONCE denenir: hesap kapandiktan sonra denemek, hata
-    // durumunda kullaniciyi "hesabi kapali ama karti cekiliyor" durumunda
-    // birakirdi. Hata YUTULUR ama LOGLANIR — abonelik servisi erisilemez
-    // diye kullanicinin hesabini kapatamamasi da kabul edilemez.
-    if (user.firmaId) {
+    // ── FAZ 7 F1b (§3.8, R1/E-1 · R1-O5): AYRILMA IKIZI ──────────────────
+    // ⚠ ESKI HAL YANLISTI: abonelik HER hesap kapatmada iptal ediliyordu.
+    // Firmalar artik cok kisili: ucuncu uye hesabini kapatinca FIRMANIN
+    // aboneligi iptal olurdu (olculdu, sahte Prisma ile). Yeni kural
+    // `ayrilmaKarari` ile TEK yerde: iptal YALNIZ firmanin son hesabi
+    // ayrilirken.
+    //
+    // ⚠ SIRA DEGISTI: onceden "once iptal, sonra kapat" idi. Hata YUTULDUGU
+    // icin o sira hicbir koruma saglamiyordu — yalniz kilidi ve
+    // transaction'i bir dis HTTP cagrisi boyunca actik tutuyordu. Artik
+    // karar + yazma AYNI kilitte, iptal COMMIT'TEN SONRA.
+    const simdi = new Date();
+    const karar = user.firmaId
+      ? await firmaKilitliIslem(this.prisma, user.firmaId, async (tx) => {
+          // Kullaniciyi kilit icinde YENIDEN oku: rolu bu arada degismis
+          // olabilir (es zamanli `rolDegistir`).
+          const taze = await tx.user.findUnique({
+            where: { id: userId },
+            select: { id: true, email: true, firmaRol: true, deletedAt: true },
+          });
+          if (!taze || taze.deletedAt) throw new UnauthorizedException();
+          const [digerHesap, digerEtkinSahip] = await Promise.all([
+            // ⚠ BANLI HESAP DE SAYILIR (Emre'nin "tek kullanici" olcusu).
+            tx.user.count({
+              where: { firmaId: user.firmaId, deletedAt: null, NOT: { id: userId } },
+            }),
+            tx.user.count({
+              where: {
+                firmaId: user.firmaId, firmaRol: 'sahip',
+                NOT: { id: userId }, ...etkinHesapKosulu(),
+              },
+            }),
+          ]);
+          const k = ayrilmaKarari({
+            firmaRol: taze.firmaRol as FirmaRol,
+            digerHesap,
+            digerEtkinSahip,
+          });
+          if (!k.izin) {
+            throw new BadRequestException({
+              kod: 'SON_SAHIP',
+              mesaj:
+                'Firmanın son sahibisiniz ve ekipte başka kişiler var. ' +
+                'Önce Ekip sayfasından birini sahip yapın.',
+            });
+          }
+          await tx.user.update({
+            where: { id: userId },
+            data: kapatmaVerisi(taze, simdi),
+          });
+          if (k.sonHesap) {
+            // Kapanan firmaya katilim olmasin: bekleyen davetler AYNI
+            // transaction'da iptal edilir.
+            await tx.firmaDavet.updateMany({
+              where: { firmaId: user.firmaId, kabulAt: null, iptalAt: null },
+              data: { iptalAt: simdi, iptalEdenId: userId },
+            });
+            await tx.firmaOlayi.create({
+              data: {
+                firmaId: user.firmaId, aktorId: userId, aktorEposta: taze.email,
+                tip: 'davet.otomatik-iptal',
+              },
+            });
+          }
+          await tx.firmaOlayi.create({
+            data: {
+              firmaId: user.firmaId,
+              aktorId: userId,
+              aktorEposta: taze.email,
+              hedefKullaniciId: userId,
+              hedefEposta: taze.email,
+              tip: 'uye.ayrildi',
+              veri: { abonelikIptal: k.abonelikIptal } as never,
+            },
+          });
+          return k;
+        })
+      : await (async () => {
+          // Firmasiz hesap (eski kayit): kilit anahtari yok, abonelik de yok.
+          await this.prisma.user.update({
+            where: { id: userId },
+            data: kapatmaVerisi(user, simdi),
+          });
+          return { izin: true as const, abonelikIptal: false, sonHesap: false };
+        })();
+
+    // ⚠ COMMIT'TEN SONRA ve KILIT DISINDA: iptal bir dis HTTP cagrisidir.
+    // Hata YUTULUR ama LOGLANIR — abonelik servisi erisilemez diye
+    // kullanicinin hesabini kapatamamasi kabul edilemez.
+    if (karar.izin && karar.abonelikIptal && user.firmaId) {
       try {
         await this.satinAlma.iptalEt(user.firmaId, userId, 'hesap kapatma');
       } catch (e) {
@@ -298,23 +445,6 @@ export class HesapServisi {
         );
       }
     }
-
-    const simdi = new Date();
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        deletedAt: simdi,
-        // ⚠ Mevcut token'i da oldurur: `jwt.strategy`teki `iat` kapisi bu
-        // damgadan ONCE imzalanmis her token'i reddeder. `deletedAt` kapisi
-        // zaten var ama ikisi birlikte, kapatmayi ANINDA etkili kilar.
-        passwordChangedAt: simdi,
-        // E-posta serbest birakilir (bkz. sema notu): adres `kapatilanEposta`ya
-        // tasinir, `email` anonimlesir. `.invalid` RFC 2606 ile ayrilmis bir
-        // TLD'dir — gercek bir adrese carpma ihtimali YOKTUR.
-        kapatilanEposta: user.email,
-        email: `kapali-${user.id}@metapricex.invalid`,
-      },
-    });
 
     return {
       mesaj:

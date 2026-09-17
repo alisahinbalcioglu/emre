@@ -29,6 +29,11 @@ interface Quote {
   quoteNo?: string | null;
   musteri?: string | null;
   proje?: string | null;
+  // FAZ 7 F1b (§3.8): firmalar cok kisili — "bunu kim hazirladi".
+  // ⚠ `Quote.hazirlayan` SEMADA AYRI bir metin alanidir (antete elle yazilan
+  // ad); bu liste ucunda o alan DONMEZ, buradaki `hazirlayan` FIRMA UYESIDIR.
+  userId?: string | null;
+  hazirlayan?: { gorunenAd: string; ayrildi: boolean } | null;
 }
 
 const HEPSI = 'hepsi';
@@ -47,6 +52,18 @@ function calculateTotal(items: QuoteItem[]): number {
 export default function QuotesPage() {
   const router = useRouter();
   const [quotes, setQuotes] = useState<Quote[]>([]);
+  // FAZ 7 F1b: kendi teklifimde "Hazırlayan" satırı GÖSTERİLMEZ (tek kişilik
+  // firmada hiç görünmesin). Kimlik localStorage kopyasından okunur —
+  // `/auth/me` için ek bir istek atmaya değmez.
+  const [benimId, setBenimId] = useState<string | null>(null);
+  useEffect(() => {
+    try {
+      const ham = localStorage.getItem('user');
+      setBenimId(ham ? (JSON.parse(ham)?.id ?? null) : null);
+    } catch {
+      setBenimId(null);
+    }
+  }, []);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [durumSuzgec, setDurumSuzgec] = useState<string>(HEPSI);
@@ -234,6 +251,14 @@ export default function QuotesPage() {
                               {[quote.quoteNo, quote.musteri, quote.proje]
                                 .filter(Boolean)
                                 .join(' · ')}
+                            </div>
+                          )}
+                          {/* ⚠ YALNIZ BASKASININ teklifinde: tek kisilik
+                              firmada bu satir HIC gorunmez. */}
+                          {quote.hazirlayan && quote.userId !== benimId && (
+                            <div className="mt-0.5 text-xs font-normal text-muted-foreground">
+                              Hazırlayan: {quote.hazirlayan.gorunenAd}
+                              {quote.hazirlayan.ayrildi ? ' (ayrıldı)' : ''}
                             </div>
                           )}
                         </td>

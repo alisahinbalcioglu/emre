@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import api from '@/ortak/lib/api';
 import { KAPSAM_ETIKET, SEVIYE_ETIKET, donemEki, kotaCumlesi, odemeDenemeNotu, vitrinFiyati, type Paket } from '@/ozellik/odeme/paket-bicim';
 import { DenemeSatiri } from '@/ozellik/odeme/DenemeSatiri';
+import { kucultmeUyarisi } from '@/ozellik/firma/ekip/koltuk-metinleri';
 import {
   ALAN_ETIKET,
   ZORUNLU_ALANLAR,
@@ -63,6 +64,30 @@ export default function AbonelikSayfasi() {
   // gelen bir kutu onay sayılmaz. Sunucudaki kapı `@Equals(true)`.
   const [sozlesmeOnayi, setSozlesmeOnayi] = useState<boolean>(SOZLESME_ONAYI_BASLANGIC);
 
+  // ── FAZ 7 F1b (§6.6): SAHIP KAPISI + KUCULTME UYARISI ─────────────────
+  // ⚠ FAIL-CLOSED: `firmaRol` bilinmeden dugme CIZILMEZ. Sunucu zaten
+  // reddeder (`FirmaRolGuard`), bu yalnizca uyeyi dolduramayacagi bir
+  // odeme formuyla ugrastirmamak icin.
+  const [firmaRol, setFirmaRol] = useState<string | null>(null);
+  const [aktifKullanici, setAktifKullanici] = useState<number | null>(null);
+  const [kucultmeSorusu, setKucultmeSorusu] = useState<{ id: string; metin: string } | null>(null);
+
+  const kimligiGetir = useCallback(async () => {
+    try {
+      const { data } = await api.get('/auth/me');
+      setFirmaRol(data?.firmaRol ?? null);
+    } catch {
+      setFirmaRol(null);
+    }
+    try {
+      const { data } = await api.get('/firma/uyeler');
+      setAktifKullanici(typeof data?.koltuk?.aktif === 'number' ? data.koltuk.aktif : null);
+    } catch {
+      // Ekip bilgisi alinamazsa uyari gosterilmez; satin alma ENGELLENMEZ.
+      setAktifKullanici(null);
+    }
+  }, []);
+
   const paketleriGetir = useCallback(async () => {
     try {
       const { data } = await api.get<Paket[]>('/abonelik/paketler');
@@ -76,7 +101,8 @@ export default function AbonelikSayfasi() {
 
   useEffect(() => {
     paketleriGetir();
-  }, [paketleriGetir]);
+    void kimligiGetir();
+  }, [paketleriGetir, kimligiGetir]);
 
   /**
    * Paket secildi — ONCE fatura kimligi toplanir, SONRA kart formu acilir.
@@ -356,7 +382,7 @@ export default function AbonelikSayfasi() {
               </div>
 
               <ul className="mb-5 space-y-1.5 text-sm">
-                <li>· {p.kullaniciHakki} kullanıcıya kadar</li>
+                <li>· Firma sahibi dahil {p.kullaniciHakki} kullanıcı</li>
                 <li>
                   ·{' '}
                   {p.aylikTeklifHakki === null
@@ -368,15 +394,64 @@ export default function AbonelikSayfasi() {
                 {p.ceviriKotasi && <li>· {kotaCumlesi(p.ceviriKotasi, p.surum)}</li>}
               </ul>
 
-              <button
-                type="button"
-                onClick={() => paketiSec(p.surum.paketSurumuId)}
-                className="mt-auto rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
-              >
-                Bu paketi seç
-              </button>
+              {firmaRol === 'sahip' ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    // ⚠ Kucultme UYARIDIR, ret DEGIL (R1-Y4): Emre kucultmeyi
+                    // serbest birakip fazla uyeyi durdurmayi secti. Sunucu
+                    // satin almayi REDDETMEZ.
+                    const uyari =
+                      aktifKullanici === null
+                        ? null
+                        : kucultmeUyarisi(aktifKullanici, p.kullaniciHakki);
+                    if (uyari) {
+                      setKucultmeSorusu({ id: p.surum.paketSurumuId, metin: uyari });
+                      return;
+                    }
+                    paketiSec(p.surum.paketSurumuId);
+                  }}
+                  className="mt-auto rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                >
+                  Bu paketi seç
+                </button>
+              ) : (
+                <p className="mt-auto rounded-lg border border-border px-4 py-2 text-center text-sm text-muted-foreground">
+                  Aboneliği firma sahibi yönetir.
+                </p>
+              )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* ── KÜÇÜLTME ONAYI (§6.6 · Emre kararı E-3) ─────────────────────── */}
+      {kucultmeSorusu && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-md rounded-lg border border-border bg-background p-5">
+            <h3 className="text-sm font-semibold">Ekibiniz bu pakete sığmıyor</h3>
+            <p className="mt-2 text-sm text-muted-foreground">{kucultmeSorusu.metin}</p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setKucultmeSorusu(null)}
+                className="rounded border border-border px-3 py-1.5 text-sm"
+              >
+                Vazgeç
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const id = kucultmeSorusu.id;
+                  setKucultmeSorusu(null);
+                  paketiSec(id);
+                }}
+                className="rounded bg-primary px-3 py-1.5 text-sm text-primary-foreground"
+              >
+                Anladım, devam et
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

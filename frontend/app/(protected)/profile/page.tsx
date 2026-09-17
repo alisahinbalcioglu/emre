@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/ortak/ui/button';
 import { ParolaAlani } from '@/ortak/ui/parola-alani';
+import { gecerliTokenMi } from '@/ortak/lib/oturum';
 import api from '@/ortak/lib/api';
 import { cn } from '@/ortak/lib/utils';
 import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
@@ -243,7 +244,10 @@ export default function ProfilePage() {
       // kapisina takilir. Bu satir olmadan kullanici parolasini
       // degistirdikten sonraki ILK istekte 401 alir ve /login'e atilir —
       // yani basarili bir islem, cikis yaptirilmis gibi gorunur.
-      if (data?.token) localStorage.setItem('token', data.token);
+      // ⚠ FAZ 7 F1b (§6.1): yazim TEK yardimciyla. Parola degistirme yaniti
+      // `user` tasimadigi icin yalniz TOKEN tazelenir — `oturumuYaz` iki
+      // anahtari birden yazar ve `user`i null'a cevirirdi.
+      if (gecerliTokenMi(data?.token)) localStorage.setItem('token', data.token);
       setParolaSonuc(data?.mesaj ?? 'Parolanız güncellendi.');
       setMevcutParola('');
       setYeniParola('');
@@ -310,7 +314,11 @@ export default function ProfilePage() {
   // Backend firma duzenlemeyi `sahip` ile kapiyor; ayni kural burada da
   // gosteriliyor. Amac guvenlik DEGIL (sunucu zaten reddeder), kullaniciyi
   // dolduramayacagi bir formla bosuna ugrastirmamak.
-  const sahipMi = (profile.firmaRol ?? 'sahip') === 'sahip';
+  // ⚠ FAZ 7 F1b: ESKI HAL `(profile.firmaRol ?? 'sahip')` FAIL-OPEN idi —
+  // alan yanittan dusunce HERKES sahip sayiliyordu. Cok kisili firmada bu,
+  // uyeye firma duzenleme formunu ACARDI (sunucu reddeder ama kullanici
+  // dolduramayacagi bir formla ugrasirdi). Artik fail-closed.
+  const sahipMi = profile.firmaRol === 'sahip';
   const tier = profile.tier ?? 'core';
   const tierConfig = TIER_CONFIG[tier] ?? TIER_CONFIG.core;
   const TierIcon = tierConfig.icon;
@@ -665,7 +673,8 @@ export default function ProfilePage() {
           Firma Bilgileri
           {!sahipMi && (
             <span className="ml-2 text-[11px] font-normal text-muted-foreground">
-              (yalnızca firma sahibi düzenleyebilir)
+              (yalnızca firma sahibi düzenleyebilir · T.C. kimlik no ve yetkili
+              e-postası yalnız firma sahibine görünür)
             </span>
           )}
         </div>

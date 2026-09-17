@@ -15,6 +15,7 @@ import { HesapServisi } from './hesap.servisi';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { EpostaHizSiniriGuard } from './guards/eposta-hiz-siniri.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
+import { KoltukDisiIzinli } from './decorators/koltuk-disi-izinli.decorator';
 
 @Controller('auth')
 @UseGuards(ThrottlerGuard)
@@ -44,6 +45,8 @@ export class AuthController {
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
+  // FAZ 7 F1b (§3.12): durdurma ekrani kendi verisini bu uctan alir.
+  @KoltukDisiIzinli()
   me(@CurrentUser() user: any) {
     return this.authService.me(user.id);
   }
@@ -99,6 +102,8 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @HttpCode(200)
   @Post('change-password')
+  // FAZ 7 F1b: durdurulmus kisi hesabini guvene alabilmeli.
+  @KoltukDisiIzinli()
   changePassword(
     @CurrentUser() user: { id: string },
     @Body() dto: ParolaDegistirDto,
@@ -122,6 +127,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @HttpCode(200)
   @Post('resend-verification')
+  @KoltukDisiIzinli()
   resendVerification(@CurrentUser() user: { id: string }) {
     return this.epostaDogrulama.yenidenGonder(user.id);
   }
@@ -135,6 +141,9 @@ export class AuthController {
   // KENDI verisini indiremiyordu. Bir KVKK hakki odeme durumuna bagimli
   // olamaz. Mevcut export uclarini kopyalayarak buraya dekorator eklemeyin.
   @UseGuards(JwtAuthGuard)
+  // ⚠ FAZ 7 F1b: KVKK haklari odeme ya da KOLTUK durumuna BAGLANAMAZ —
+  // durdurulmus uye verilerini indirebilmeli ve hesabini kapatabilmeli.
+  @KoltukDisiIzinli()
   @Get('hesabim/verilerim')
   verilerim(@CurrentUser() user: { id: string }) {
     return this.hesap.verileriDisaAktar(user.id);
@@ -146,6 +155,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @HttpCode(200)
   @Post('hesabimi-kapat')
+  @KoltukDisiIzinli()
   hesabimiKapat(
     @CurrentUser() user: { id: string },
     @Body() dto: HesapKapatDto,

@@ -172,7 +172,7 @@ const fakeTerminology = { learnFamilyAliases: async () => {} } as any;
 async function main() {
   const prisma = fakePrisma() as any;
   const brandsSvc = new BrandsService(prisma);
-  const adminSvc = new AdminService(prisma, {} as any, fakeTerminology);
+  const adminSvc = new AdminService(prisma, {} as any, fakeTerminology, { iptalEt: async () => undefined } as any);
   const librarySvc = new LibraryService(prisma, fakeTerminology);
 
   // ══ G — FIXTURE/OLCUT KAPILARI (bos kume yalanci yesil yasagi) ═══════════

@@ -503,6 +503,16 @@ const SUITES: Suite[] = [
   //    platform yöneticisi kendi küresel kataloğunu göremiyordu (R1-O4).
   //    Mutant tablosu F1a raporunda. KIRMIZIYA DÖNERSE REGRESYON.
   { ad: 'Faz 7 yetki: seviye yalnız abonelikten + kişi eksenli tamirler (Y/K)', script: 'test:faz7-yetki', zincir: 'Z0' },
+  // ── 17.09.2026 — FAZ 7 F1b: EKİP (davet · koltuk · kişi sınırı · ikizler).
+  //    DB/AĞ GEREKTİRMEZ: bellek içi sahte Prisma `where`i GERÇEKTEN uygular
+  //    (OR/NOT/lt/gt/in + ilişki süzgeci), `$transaction` firlatan işlemi geri
+  //    alır ve `$queryRaw` sırası kaydedilir (kilit sayımdan önce mi?).
+  //    Ölçtüğü: oturum kapısı + `authAt` · firma rolü guard'ı ve UÇ TABLOSU ·
+  //    koltuk kapısı + kişi sınırının her istekte uygulanması (403
+  //    `KOLTUK_ASILDI`, izin listesi) · davetin yedi geçersizlik dalı · ayrılma
+  //    ikizi (hesap kapatma = üye çıkarma = yönetici silme) · üyeye maskeleme
+  //    ve KVKK ekseni · "Hazırlayan: X (ayrıldı)" · kullanıcı hakkı betiği.
+  { ad: 'Faz 7 ekip: davet, koltuk, kişi sınırı, ayrılma ikizi (O/R/S/D/H/M/Q/P/X)', script: 'test:faz7-ekip', zincir: 'Z0' },
 ];
 
 // ── SKIP DEFTERI (B1, para dogrulugu turu 14.09.2026) ──────────────────────

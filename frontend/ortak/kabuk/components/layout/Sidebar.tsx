@@ -8,6 +8,7 @@ import {
   Database,
   BookOpen,
   CreditCard,
+  Users,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
@@ -28,6 +29,10 @@ const NAV_ITEMS = [
   'divider' as const,
   { href: '/materials', label: 'Malzeme Havuzu', icon: Database },
   { href: '/library', label: 'Kütüphanem', icon: BookOpen },
+  // FAZ 7 F1b: ekip sayfasi HERKESE gorunur. Uye listeyi salt okunur gorur;
+  // dugmeler sunucunun verdigi role gore cizilir. Kosullu gizlemek, tek
+  // kisilik firmadaki sahibin ekip ozelligini hic kesfetmemesine yol acardi.
+  { href: '/firma/ekip', label: 'Ekip', icon: Users },
   'divider' as const,
   // ADIM 2: abonelik menude DAIMA gorunur. Erisimi kapali firmanin
   // odeme yapabilecegi tek yol burasi; kosullu gizlemek askidaki

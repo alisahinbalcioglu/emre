@@ -73,6 +73,30 @@ api.interceptors.response.use(
       );
     }
 
+    // ── FAZ 7 F1b (§6.10 · Emre karari E-3): KISI SINIRI ASILDI ────────
+    // Sunucu 403 `KOLTUK_ASILDI` doner. 401 DEGIL ve oyle ele ALINMAZ:
+    // oturum GECERLIDIR (kisi kimligini kanitladi), yalniz firmasinin paketi
+    // ona yetmiyor. Oturumu silmek kullaniciyi giris ekranina atar, o da
+    // tekrar girer ve ayni 403'u alir — sonsuz dongu; durdurma ekranini hic
+    // goremezdi.
+    //
+    // ⚠ `ABONELIK_KISITLI` dalindan FARKLI: orada olay yayinlanir ve
+    // kullanici sayfada kalir (odeme yapmasi gereken anda urunun disina
+    // atilmaz). Burada kullanicinin yapabilecegi TEK sey durdurma ekranidir.
+    if (
+      err.response?.status === 403 &&
+      err.response?.data?.kod === 'KOLTUK_ASILDI' &&
+      typeof window !== 'undefined'
+    ) {
+      console.warn('[api] 403 KOLTUK_ASILDI — uc:', err.config?.url, err.response?.data);
+      // ⚠ Zaten o sayfadaysak YONLENDIRME YOK: sayfanin kendi `/auth/me`
+      // cagrisi izinli oldugu icin buraya dusmez, ama baska bir istek
+      // dusserse sonsuz yeniden yukleme olurdu.
+      if (window.location.pathname !== '/koltuk-durduruldu') {
+        window.location.href = '/koltuk-durduruldu';
+      }
+    }
+
     return Promise.reject(err);
   },
 );

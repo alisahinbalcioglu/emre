@@ -3,6 +3,10 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PrismaService } from '../../db/prisma.service';
 import { jwtSecret } from '../jwt-secret';
+import {
+  koltukDurumuHesapla,
+  type FirmaRol,
+} from '../../../ozellik/firma/uyelik-kurallari';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -48,6 +52,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     email: string;
     role: string;
     iat?: number;
+    authAt?: number;
   }) {
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
@@ -83,10 +88,46 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         );
       }
     }
-    // ADIM 1 (firma): kimligin DAR BOGAZI burasi — 55 tuketici bu sekli okur.
-    // firmaId EKLENIR (var olan alanlar aynen kalir, hicbir tuketici kirilmaz):
-    // teklif/kutuphane suzgecleri artik kisiyi degil FIRMAYI temel alacak.
-    // Sorgu zaten kullaniciyi cekiyordu — ek maliyet YOK.
-    return { id: user.id, email: user.email, role: user.role, firmaId: user.firmaId };
+    // ── FAZ 7 F1b: KISI SINIRI HER ISTEKTE (§3.12, Emre karari E-3) ──────
+    // Paket kuculdugunde ya da hak dusuruldugunde kimse SILINMEZ; hakki asan
+    // hesaplar DURDURULUR. Karar TURETILIR (saklanmaz): hak degisikligi
+    // betik, webhook, havale ve yonetici gibi cok kaynaktan gelir ve
+    // saklanan bir bayrak o kaynaklardan birinde bayatlardi.
+    //
+    // ⚠ KARAR BURADA VERILMEZ, yalniz HESAPLANIR. 403'u `JwtAuthGuard`
+    // atar: izin listesini (`@KoltukDisiIzinli`) okumak icin `Reflector` ve
+    // `ExecutionContext` gerekir, strateji ikisini de gormez.
+    //
+    // ⚠ MALIYET: `onceGelen === 0` ise hak sorgusu ATILMAZ — tek kisilik
+    // firmada istek basina ek maliyet TEK `count`. Indeks migration'da
+    // (`User(firmaId, firmaRol, createdAt)`).
+    let koltukDurduruldu = false;
+    let koltukHakki: number | null = null;
+    if (user.firmaId) {
+      const durum = await koltukDurumuHesapla(this.prisma, {
+        id: user.id,
+        firmaId: user.firmaId,
+        firmaRol: user.firmaRol as FirmaRol,
+        createdAt: user.createdAt,
+      });
+      koltukDurduruldu = durum.durduruldu;
+      koltukHakki = durum.hak;
+    }
+    // ADIM 1 (firma): kimligin DAR BOGAZI burasi — bu sekli okuyan tuketici
+    // SAYISI OLCULMEDI; sekil yalniz EKLEMELI degisir, hicbir tuketici
+    // kirilmaz. firmaId SUZGEC, userId YAZAR (kimlik.ts).
+    // `firmaRol` (F1b): FirmaRolGuard'in birinci katmani. Sorgu zaten tam
+    // satiri cekiyordu — ek maliyet YOK. Rol degisikligi token yenilemeden
+    // SONRAKI istekte etkilidir (guard bu degeri okur, servis ayrica DB'den).
+    return {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      firmaId: user.firmaId,
+      firmaRol: user.firmaRol,
+      authAt: typeof payload.authAt === 'number' ? payload.authAt : null,
+      koltukDurduruldu,
+      koltukHakki,
+    };
   }
 }

@@ -71,9 +71,30 @@ async function main(): Promise<void> {
     !/prisma\.user\.delete\(/.test(servis),
     'Quote ve UserLibrary onDelete:Cascade — sert silme tum teklifleri goturur',
   );
+  // ── FAZ 7 F1b (R1/E-1 · R1-D7): VERI DESENI TEK SAF FONKSIYONDA ────────
+  // ESKI ANLAM: `deletedAt: new Date()` satiri `admin.service.ts` icinde
+  // araniyordu ve TEK alan olcuyordu.
+  // YENI ANLAM: yonetici silmesi hesap kapatmanin IKIZIDIR — desen
+  // `uyelik-kurallari.ts` `kapatmaVerisi`ndedir (deletedAt +
+  // passwordChangedAt + kapatilanEposta + anonim e-posta) ve servis onu
+  // CAGIRIR. Eski hâl ikiz DEGILDI: e-posta serbest kalmiyordu ve mevcut
+  // token 7 gun daha calisiyordu.
+  const kapatmaKural = kodu(oku('backend/src/ozellik/firma/uyelik-kurallari.ts'));
   check(
-    'A4 deleteUser deletedAt damgaliyor',
-    /deletedAt:\s*new Date\(\)/.test(servis),
+    'A4 deleteUser kapatma veri desenini uyguluyor (kapatmaVerisi cagrisi)',
+    /kapatmaVerisi\(/.test(servis) && /deletedAt:\s*simdi/.test(kapatmaKural),
+  );
+  check(
+    'A4b ⭐ yonetici silmesi hesap kapatmanin IKIZI (token olur + e-posta serbest kalir)',
+    /passwordChangedAt:\s*simdi/.test(kapatmaKural) &&
+      /kapatilanEposta:\s*user\.email/.test(kapatmaKural) &&
+      /email:\s*`kapali-\$\{user\.id\}@/.test(kapatmaKural),
+    'ikiz degilse: silinen kisi 7 gun daha calisir ve adresi kilitli kalir',
+  );
+  check(
+    'A4c ⭐ tek kullanicili firmada ABONELIK de iptal ediliyor (E-1)',
+    /satinAlma\.iptalEt\(\s*user\.firmaId,\s*yonetici\.id,\s*'yonetici silme'\s*\)/.test(servis),
+    'atlanirsa: firma kapanir ama kart cekilmeye devam eder',
   );
   check(
     'A5 getUsers silinmisleri gizliyor',
@@ -84,9 +105,12 @@ async function main(): Promise<void> {
     'silinmisler gizlenmezse yumusak silme EKRANDA gorunmez',
   );
   // ⭐ EN KRITIK: bu iki assert olmadan ozellik ekranda calisir, gercekte hayir.
+  // FAZ 7 F1b: kapi `oturum.servisi.ts` `hesapKapisi`na tasindi; iki dosya
+  // birden okunur (biri digerini kaybederse kizarir).
+  const oturumServis = kodu(oku('backend/src/altyapi/auth/oturum.servisi.ts'));
   check(
-    'A6 ⭐ silinen hesap GIRIS YAPAMAZ (auth.service login kapisi)',
-    /user\.deletedAt/.test(authServis),
+    'A6 ⭐ silinen hesap GIRIS YAPAMAZ (hesapKapisi + auth.service cagrisi)',
+    /user\.deletedAt/.test(oturumServis) && /hesapKapisi\(/.test(authServis),
     'atlanirsa: silme dugmesi calisir gorunur, kullanici girmeye devam eder',
   );
   check(
@@ -96,7 +120,7 @@ async function main(): Promise<void> {
   );
   check(
     'A8 ⟨olcut⟩ ban kapisi da hala yerinde (probe yeni kapiyi eskisiyle karistirmiyor)',
-    /status === 'banned'/.test(authServis) && /status === 'banned'/.test(jwt),
+    /status === 'banned'/.test(oturumServis) && /status === 'banned'/.test(jwt),
   );
 
   // ── B · DENETIM KAYDI (2.5) ───────────────────────────────────────────
@@ -218,9 +242,19 @@ async function main(): Promise<void> {
   // 17.09.2026 (2.12): paket acilir listesi SALT-OKUNUR ROZETE dondu (uc de
   // reddediyor). Satir ici Select sayisi 3 -> 2; rozetin GERCEKTEN orada
   // oldugu ve eski Select'in geri gelmedigi ayrica olculur.
+  // 17.09.2026 (Faz 7 F1b): UCUNCU Select geri geldi ama BASKA bir eksende —
+  // `firma-rol`. Gerekce: `deleteUser` son sahipte 400 `SON_SAHIP` doner ve o
+  // kapinin bir CIKISI olmali (yonetici baskasini sahip yapabilmeli).
+  // Beklenti SAYIYLA degil ADLA kilitlendi: sayi tek basina "hangi uc alan"
+  // sorusunu cevaplamiyordu ve `tier` geri gelse de 3 olurdu.
+  const satirIciAlanlar = (sayfa.match(/alanDegistir\(u, '([a-z-]+)'/g) ?? [])
+    .map((m) => m.replace(/.*'([a-z-]+)'.*/, '$1'))
+    .filter((a, i, h) => h.indexOf(a) === i)
+    .sort();
   check(
-    'E4 rol/durum satir ici Select`e bagli (paket ARTIK degil)',
-    (sayfa.match(/onValueChange=\{\(v\) => alanDegistir\(u, '/g) ?? []).length === 2,
+    'E4 satir ici Select`ler TAM OLARAK rol + durum + firma-rol (paket YOK)',
+    JSON.stringify(satirIciAlanlar) === JSON.stringify(['firma-rol', 'role', 'status']),
+    JSON.stringify(satirIciAlanlar),
   );
   check(
     'E4b * paket satir ici DEGISTIRILEMIYOR, rozet olarak gosteriliyor',
@@ -477,7 +511,8 @@ async function davranis(): Promise<void> {
         }
       },
     };
-    const servis = new AdminService(prisma as any, {} as any, {} as any);
+    // FAZ 7 F1b: dorduncu bagimlilik `SatinAlmaServisi` (E-1).
+    const servis = new AdminService(prisma as any, {} as any, {} as any, { iptalEt: async () => undefined } as any);
     (servis as any).logger = {
       error: (m: unknown) => iz.loglar.push(String(m)),
       warn: () => undefined,
