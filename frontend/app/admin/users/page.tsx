@@ -24,7 +24,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
-  Loader2, Search, Users as UsersIcon, RefreshCw, AlertCircle, Trash2, ScrollText,
+  Loader2, Search, Users as UsersIcon, RefreshCw, AlertCircle, Trash2, ScrollText, ShieldOff,
 } from 'lucide-react';
 import api from '@/ortak/lib/api';
 import { Input } from '@/ortak/ui/input';
@@ -182,6 +182,40 @@ export default function AdminUsersPage() {
    * Yumuşak silme. İKİ aşamalı onay: önce ne olacağı anlatılır, sonra
    * kullanıcının e-postası ELLE yazdırılır. Yanlış yazılırsa istek GİTMEZ.
    */
+  /**
+   * FAZ 7 F2b (§6.9) — İKİ ADIMLI GİRİŞİ SIFIRLA.
+   *
+   * Telefonunu VE kurtarma kodlarını kaybeden kullanıcıyı hesabına döndürür.
+   * ⚠ Parolaya DOKUNMAZ; yalnız ikinci adım kalkar ve açık oturumlar kapanır.
+   * ⚠ Yönetici KENDİ hesabını buradan sıfırlayamaz (sunucu 400 döner) —
+   * çalınmış bir yönetici oturumu zorunluluğu tek tıkla boşa çıkarmasın.
+   */
+  async function mfaSifirla(u: AdminUser) {
+    const onay = await confirm({
+      title: 'İki adımlı girişi sıfırla',
+      description:
+        `${u.email} hesabındaki iki adımlı giriş kaldırılacak ve kurtarma ` +
+        `kodları silinecek. Kişi yalnız parolasıyla girebilir hale gelir ve ` +
+        `açık oturumları kapanır. Parolası DEĞİŞMEZ. İşlem denetim kaydına yazılır.`,
+      confirmText: 'Sıfırla',
+    });
+    if (!onay) return;
+    setIslemdeki(u.id);
+    try {
+      await api.post(`/admin/users/${u.id}/mfa-sifirla`);
+      await fetchUsers();
+      toast({ title: 'Sıfırlandı', description: `${u.email} · iki adımlı giriş kapatıldı` });
+    } catch (e: any) {
+      toast({
+        title: 'Sıfırlanamadı',
+        description: e?.response?.data?.mesaj ?? e?.response?.data?.message ?? 'Bilinmeyen hata',
+        variant: 'destructive',
+      });
+    } finally {
+      setIslemdeki(null);
+    }
+  }
+
   async function kullaniciSil(u: AdminUser) {
     const onay = await confirm({
       title: 'Hesabı kapat',
@@ -469,6 +503,16 @@ export default function AdminUsersPage() {
                           <Link href={`/admin/denetim?hedef=${u.id}`} title="Bu hesabın işlem geçmişi">
                             <ScrollText className="h-3.5 w-3.5 text-slate-500" />
                           </Link>
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={kilitli || kendisi}
+                          onClick={() => mfaSifirla(u)}
+                          title={kendisi ? 'Kendi iki adımlı girişinizi buradan sıfırlayamazsınız' : 'İki adımlı girişi sıfırla'}
+                          className="h-7 px-2 text-amber-600 hover:bg-amber-50 hover:text-amber-700"
+                        >
+                          <ShieldOff className="h-3.5 w-3.5" />
                         </Button>
                         <Button
                           variant="ghost"

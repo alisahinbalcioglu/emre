@@ -355,6 +355,11 @@ async function yTuretilmisSeviye() {
       count: async () => 0,
       findFirst: async () => ({ ad: 'Sahip', soyad: null, email: 'a@b.test' }),
     },
+    // FAZ 7 F2b: `girisKarari` iki adimli giris zorunlulugu icin firmayi
+    // okur; `/auth/me` de `mfa` alanini doldurur. Ikisi de bu paketin
+    // olctugu `tier` turetmesini DEGISTIRMEZ (zorunluluk kapali).
+    firma: { findUnique: async () => ({ mfaZorunlu: false }) },
+    mfaKurtarmaKodu: { count: async () => 0 },
     abonelik: {
       findUnique: async () => (seviye === null ? null : {
         paketSurumu: { paket: { seviye, ad: 'Paket', kod: 'k', kapsam: 'mechanical', kullaniciHakki: 2 } },
@@ -439,7 +444,7 @@ async function yYonetici() {
   };
   // FAZ 7 F1b: dorduncu bagimlilik `SatinAlmaServisi` (E-1 — yonetici
   // silmesi tek kullanicili firmada abonelik de iptal eder).
-  const admin = new AdminService(prisma, {} as any, {} as any, { iptalEt: async () => undefined } as any);
+  const admin = new AdminService(prisma, {} as any, {} as any, { iptalEt: async () => undefined } as any, { gonder: async () => undefined } as any);
 
   const hata: any = await admin
     .updateUserTier({ id: 'y1', email: 'y@b.test' }, 'u1', 'pro')

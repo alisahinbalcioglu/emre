@@ -7,6 +7,12 @@ import {
   koltukDurumuHesapla,
   type FirmaRol,
 } from '../../ozellik/firma/uyelik-kurallari';
+import {
+  girisKarariSaf,
+  type GirisYolu,
+  type MfaZorunlulukNedeni,
+} from './mfa/mfa-karari';
+import { meydanOkumaImzala } from './mfa/meydan-okuma';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -76,7 +82,30 @@ export type OturumKullanicisi = {
   firmaId?: string | null;
   firmaRol?: FirmaRol | string | null;
   createdAt?: Date | null;
+  /** FAZ 7 F2b — `girisKarari` okur; `oturumYaniti` kullanmaz. */
+  mfaAcikAt?: Date | null;
+  mfaKaynagi?: string | null;
+  status?: string | null;
+  deletedAt?: Date | null;
 };
+
+/**
+ * FAZ 7 F2b — `girisKarari`nin UC cevabindan biri (§4.4).
+ *
+ * ⚠ MFA dallarinda `token` ANAHTARI YOKTUR. Bugunku `login/page.tsx:30`
+ * `setItem('token', data.token)` yaziyordu; token alani `undefined` olsa
+ * tarayiciya `"undefined"` DIZGESI yazilir ve sonraki her istek
+ * `Bearer undefined` ile 401 alirdi. Sekil TIPTE de ayri tutuluyor ki
+ * ileride biri yanlislikla token eklemesin.
+ */
+export type GirisKarariYaniti =
+  | Awaited<ReturnType<OturumServisi['oturumYaniti']>>
+  | { mfaGerekli: true; meydanOkuma: string; yontemler: ['kod', 'kurtarma'] }
+  | {
+      mfaKurulumGerekli: true;
+      meydanOkuma: string;
+      neden: MfaZorunlulukNedeni | null;
+    };
 
 @Injectable()
 export class OturumServisi {
@@ -129,6 +158,57 @@ export class OturumServisi {
         koltukDurduruldu,
       },
     };
+  }
+
+  /**
+   * GIRIS KARARI (F2b, §4.6) — TOKEN VEREN HER YOLUN TEK KAPISI.
+   *
+   * ⚠ R1-O1: `login`, `register` ve `davet-kabul` artik DOGRUDAN
+   * `oturumYaniti` CAGIRMAZ. Gerekce olculdu: davet kabulu kendi yanitini
+   * kurdugu surece firma zorunlulugu o yolda SESSIZCE atlaniyordu — yeni
+   * uye MFA'siz giriyordu. Kapi tek olunca yeni bir giris yolu eklemek
+   * kurali unutmayi imkansiz kilar.
+   *
+   * ⚠ Firma YALNIZ gerektiginde okunur (`mfaZorunlu`): MFA'si acik olan
+   * kullanicida karar firmadan bagimsizdir, ek sorgu atilmaz.
+   */
+  async girisKarari(
+    user: OturumKullanicisi,
+    yol: GirisYolu,
+  ): Promise<GirisKarariYaniti> {
+    hesapKapisi(user);
+    // MFA zaten acikken zorunluluk kararsizdir → firma sorgusu GEREKSIZ.
+    const firma =
+      !user.mfaAcikAt && user.firmaId
+        ? await this.prisma.firma.findUnique({
+            where: { id: user.firmaId },
+            select: { mfaZorunlu: true },
+          })
+        : null;
+    const { tip, neden } = girisKarariSaf({ user, firma, yol });
+    if (tip === 'mfa') {
+      return {
+        mfaGerekli: true,
+        meydanOkuma: meydanOkumaImzala({
+          userId: user.id,
+          amac: 'mfa-dogrula',
+          yol,
+        }),
+        yontemler: ['kod', 'kurtarma'],
+      };
+    }
+    if (tip === 'mfa-kurulum') {
+      return {
+        mfaKurulumGerekli: true,
+        meydanOkuma: meydanOkumaImzala({
+          userId: user.id,
+          amac: 'mfa-kurulum',
+          yol,
+        }),
+        neden,
+      };
+    }
+    return this.oturumYaniti(user, { authAt: Math.floor(Date.now() / 1000) });
   }
 
   /** Firmasiz ya da eksik alanli kullanicida sorgu ATILMAZ (fail-open: calisir). */

@@ -30,6 +30,8 @@ type Uye = {
   durum: string;
   katildi: string;
   durduruldu: boolean;
+  /** FAZ 7 F2b: uyenin iki adimli girisi acik mi (sunucu hesaplar). */
+  mfaAcik?: boolean;
 };
 
 type Davet = {
@@ -46,11 +48,19 @@ type EkipYaniti = {
   davet: { acik: boolean; nedenKodu: string | null };
 };
 
+/** FAZ 7 F2b: sahip anahtari icin gereken iki bilgi `/auth/me`den gelir. */
+type GuvenlikDurumu = {
+  mfaZorunlu: boolean;
+  /** Sahibin KENDI MFA'si kapaliysa anahtar PASIF (sunucu da reddeder). */
+  sahipMfaAcik: boolean;
+};
+
 const gorunenAd = (u: Uye) =>
   [u.ad, u.soyad].filter(Boolean).join(' ').trim() || u.eposta;
 
 export default function EkipSayfasi() {
   const [veri, setVeri] = useState<EkipYaniti | null>(null);
+  const [guvenlik, setGuvenlik] = useState<GuvenlikDurumu | null>(null);
   const [firmaRol, setFirmaRol] = useState<string | null>(null);
   const [yukleniyor, setYukleniyor] = useState(true);
   const [hata, setHata] = useState<string | null>(null);
@@ -69,6 +79,11 @@ export default function EkipSayfasi() {
       ]);
       setVeri(ekip.data);
       setFirmaRol(me.data?.firmaRol ?? null);
+      // FAZ 7 F2b: anahtarin durumu ve sahibin kendi MFA'si AYNI yanittan.
+      setGuvenlik({
+        mfaZorunlu: me.data?.firma?.mfaZorunlu === true,
+        sahipMfaAcik: me.data?.mfa?.acik === true,
+      });
       setHata(null);
     } catch (e) {
       setHata(kimlikHataMetni(e, 'Ekip bilgisi alınamadı.'));
@@ -82,6 +97,22 @@ export default function EkipSayfasi() {
   }, [yukle]);
 
   const sahipMi = firmaRol === 'sahip';
+
+  /**
+   * FAZ 7 F2b — firma geneli zorunluluk anahtari.
+   *
+   * ⚠ KARAR SUNUCUDA: sahibin kendi MFA'si kapaliysa `ONCE_KENDINIZ_ACIN`
+   * doner. On yuzdeki `disabled` yalniz KOLAYLIK; kurali burada YENIDEN
+   * HESAPLAMAYIZ (`erisim-durumu.ts` ikizi bu depoda olculmus hata sinifi).
+   */
+  function guvenligiDegistir(yeni: boolean) {
+    void calistir(
+      () => api.patch('/firma/guvenlik', { mfaZorunlu: yeni }),
+      yeni
+        ? 'Firmanızda iki adımlı giriş zorunlu kılındı.'
+        : 'Firma geneli zorunluluk kaldırıldı.',
+    );
+  }
 
   async function calistir(fn: () => Promise<unknown>, basariMetni: string) {
     setIslemde(true);
@@ -126,6 +157,34 @@ export default function EkipSayfasi() {
 
       {hata && <p className="rounded bg-red-950/50 px-3 py-2 text-sm text-red-300">{hata}</p>}
       {bilgi && <p className="rounded bg-emerald-950/50 px-3 py-2 text-sm text-emerald-300">{bilgi}</p>}
+
+      {/* ── FAZ 7 F2b · FIRMA GENELI IKI ADIMLI GIRIS (yalnız sahip) ── */}
+      {sahipMi && guvenlik && (
+        <section className="rounded border border-slate-800 p-4">
+          <h2 className="text-sm font-semibold text-slate-200">
+            Firmamdaki herkes iki adımlı giriş kullansın
+          </h2>
+          <p className="mt-1 text-xs text-slate-400">
+            Açtığınızda parolayla giren her üye bir sonraki girişinde iki adımlı
+            girişi kurmak zorunda kalır ve açık oturumları kapanır. Şirket
+            hesabıyla (kurumsal giriş) girenlere uygulanmaz.
+          </p>
+          {!guvenlik.sahipMfaAcik && (
+            <p className="mt-2 text-xs text-amber-300">
+              Önce kendi hesabınızda iki adımlı girişi açın (Profil → İki adımlı giriş).
+            </p>
+          )}
+          <label className="mt-3 flex items-center gap-2 text-sm text-slate-200">
+            <input
+              type="checkbox"
+              checked={guvenlik.mfaZorunlu}
+              disabled={!guvenlik.sahipMfaAcik && !guvenlik.mfaZorunlu}
+              onChange={(e) => guvenligiDegistir(e.target.checked)}
+            />
+            <span>Zorunlu kıl</span>
+          </label>
+        </section>
+      )}
 
       {/* ── DAVET FORMU (yalnız sahip) ───────────────────────────────── */}
       {sahipMi && (
@@ -174,6 +233,9 @@ export default function EkipSayfasi() {
               <th className="px-4 py-2">Rol</th>
               <th className="px-4 py-2">Katıldı</th>
               <th className="px-4 py-2">Durum</th>
+              {/* FAZ 7 F2b (§6.5): sahip, ekibinin kimlerinin korumali
+                  olduğunu görebilmeli — zorunlu kılmadan ÖNCE ölçüm. */}
+              <th className="px-4 py-2">İki adımlı giriş</th>
               {sahipMi && <th className="px-4 py-2 text-right">İşlem</th>}
             </tr>
           </thead>
@@ -199,6 +261,13 @@ export default function EkipSayfasi() {
                     <span className="text-xs text-red-400">Askıda</span>
                   ) : (
                     <span className="text-xs text-emerald-400">Etkin</span>
+                  )}
+                </td>
+                <td className="px-4 py-2">
+                  {u.mfaAcik ? (
+                    <span className="text-xs text-emerald-400">Açık</span>
+                  ) : (
+                    <span className="text-xs text-slate-500">Kapalı</span>
                   )}
                 </td>
                 {sahipMi && (

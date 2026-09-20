@@ -198,6 +198,62 @@ export class FirmaServisi {
     return { tamam: true };
   }
 
+  /**
+   * FAZ 7 F2b — "FIRMAMDA HERKES IKI ADIMLI GIRIS KULLANSIN" (§4.6).
+   *
+   * ⚠ SAHIP ONCE KENDISI ACAR (`ONCE_KENDINIZ_ACIN`): anahtari acip kendi
+   * hesabini disarida birakan sahip, ertesi gun ekibinden "neden ben de
+   * yapiyorum" sorusunu alir; daha kotusu, zorunlulugu kaldiracak tek kisi
+   * olarak kendi hesabi en zayif halka kalirdi.
+   *
+   * ⚠ ACARKEN AYNI TRANSACTION'DA DAMGA: MFA'si olmayan ETKIN uyelerin
+   * `passwordChangedAt`i simdiye cekilir; ellerindeki token'lar oler ve
+   * bir sonraki girislerinde kurulum sihirbazina duserler. Damga olmazsa
+   * zorunluluk 7 gun boyunca (token omru) KAGIT UZERINDE kalirdi.
+   *
+   * ⚠ KAPATIRKEN DAMGA YOK: kimsenin oturumunu bosuna dusurmeyiz;
+   * `zorunlu-firma` kaynakli uyeler MFA'yi KORUR, artik kapatabilirler.
+   */
+  async guvenlikGuncelle(kimlik: Kimlik, mfaZorunlu: boolean) {
+    await this.sahipMi(kimlik);
+    const sahip = await this.prisma.user.findUnique({
+      where: { id: kimlik.userId },
+      select: { id: true, email: true, mfaAcikAt: true },
+    });
+    if (mfaZorunlu && !sahip?.mfaAcikAt) {
+      throw new BadRequestException({
+        kod: 'ONCE_KENDINIZ_ACIN',
+        mesaj:
+          'Firmanız için zorunlu kılmadan önce kendi hesabınızda iki adımlı ' +
+          'girişi açmanız gerekiyor.',
+      });
+    }
+    const simdi = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      await tx.firma.update({
+        where: { id: kimlik.firmaId },
+        data: { mfaZorunlu },
+      });
+      if (mfaZorunlu) {
+        await tx.user.updateMany({
+          where: { firmaId: kimlik.firmaId, deletedAt: null, mfaAcikAt: null },
+          data: { passwordChangedAt: simdi },
+        });
+      }
+      await tx.firmaOlayi.create({
+        data: {
+          firmaId: kimlik.firmaId,
+          aktorId: sahip?.id ?? kimlik.userId,
+          aktorEposta: sahip?.email ?? null,
+          tip: 'guvenlik.mfa-zorunlu',
+          oncekiDeger: String(!mfaZorunlu),
+          yeniDeger: String(mfaZorunlu),
+        },
+      });
+    });
+    return { mfaZorunlu };
+  }
+
   /** ⚠ `firmaRol`un TUM DEPODAKI ILK OKUYUCUSU (bkz. sinif notu). */
   private async sahipMi(kimlik: Kimlik) {
     const u = await this.prisma.user.findUnique({

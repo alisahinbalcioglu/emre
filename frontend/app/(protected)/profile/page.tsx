@@ -10,6 +10,7 @@ import {
 import { Button } from '@/ortak/ui/button';
 import { ParolaAlani } from '@/ortak/ui/parola-alani';
 import { gecerliTokenMi } from '@/ortak/lib/oturum';
+import { IkiAdimliGirisKarti } from '@/ozellik/kimlik/IkiAdimliGirisKarti';
 import api from '@/ortak/lib/api';
 import { cn } from '@/ortak/lib/utils';
 import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
@@ -37,7 +38,19 @@ interface UserProfile {
     vergiNo: string | null; vergiDairesi: string | null; tcKimlikNo: string | null;
     faturaAdresi: string | null; il: string | null; ilce: string | null;
     telefon: string | null; logoMime: string | null; logoVar?: boolean;
+    // FAZ 7 F2b: firma geneli iki adimli giris zorunlulugu (sahip anahtari).
+    mfaZorunlu?: boolean;
   } | null;
+  // FAZ 7 F2b (§4.4): guvenlik karti bu alandan beslenir. Sir ve kod
+  // ozetleri BU YANITTA YOKTUR — yalniz durum ve SAYI.
+  mfa?: {
+    acik: boolean;
+    acikAt: string | null;
+    kaynak: string | null;
+    kalanKurtarmaKodu: number;
+    zorunlu: boolean;
+    zorunlulukNedeni: 'yonetici' | 'firma' | null;
+  };
   capabilities: {
     mechanical: { material: boolean; labor: boolean; dwg: boolean };
     electrical: { material: boolean; labor: boolean; dwg: boolean };
@@ -850,6 +863,23 @@ export default function ProfilePage() {
           </Button>
         </form>
       </div>
+
+      {/* ── FAZ 7 F2b · IKI ADIMLI GIRIS ──────────────────────────────── */}
+      {profile.mfa && (
+        <IkiAdimliGirisKarti
+          mfa={profile.mfa}
+          onTokenTazele={(token) => {
+            // ⚠ Ayni gerekce parola kartindaki satirla BIREBIR AYNI: MFA
+            // acma/kapatma `passwordChangedAt` damgalar ve elimizdeki ESKI
+            // token o anda gecersizlesir. Yanit `user` TASIMADIGI icin
+            // `oturumuYaz` degil, yalniz TOKEN tazelenir.
+            if (gecerliTokenMi(token)) localStorage.setItem('token', token);
+          }}
+          onYenile={() => {
+            api.get<UserProfile>('/auth/me').then(({ data }) => setProfile(data)).catch(() => {});
+          }}
+        />
+      )}
 
       {/* ── GUVENLIK · PAROLA (Faz 3.5) ───────────────────────────────── */}
       <div className="mb-6 rounded-xl border bg-card overflow-hidden">

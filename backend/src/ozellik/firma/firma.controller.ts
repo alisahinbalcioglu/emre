@@ -7,6 +7,7 @@ import { Response } from 'express';
 import { memoryStorage } from 'multer';
 import { FirmaServisi, LOGO_AZAMI_BAYT } from './firma.servisi';
 import { FirmaGuncelleDto } from './dto/firma-guncelle.dto';
+import { FirmaGuvenlikDto } from './dto/firma-guvenlik.dto';
 import { JwtAuthGuard } from '../../altyapi/auth/guards/jwt-auth.guard';
 import { FirmaRolGuard } from '../../altyapi/auth/guards/firma-rol.guard';
 import { FirmaRolu } from '../../altyapi/auth/decorators/firma-rolu.decorator';
@@ -38,6 +39,21 @@ export class FirmaController {
   @Patch()
   guncelle(@CurrentUser() user: any, @Body() dto: FirmaGuncelleDto) {
     return this.servis.guncelle(kimlikCoz(user), dto);
+  }
+
+  /**
+   * FAZ 7 F2b (§4.6) — firma geneli iki adimli giris zorunlulugu.
+   *
+   * ⚠ AYRI UC, `PATCH /firma` DEGIL: fatura kimligi ile guvenlik ayari ayni
+   * govdede tasinsaydi, adres duzeltmek icin atilan bir PATCH yanlislikla
+   * zorunlulugu kapatabilirdi (PATCH semantigi "govdede olmayana dokunma"
+   * der ama tek harflik bir hata bunu bozar).
+   */
+  @UseGuards(FirmaRolGuard)
+  @FirmaRolu('sahip')
+  @Patch('guvenlik')
+  guvenlik(@CurrentUser() user: any, @Body() dto: FirmaGuvenlikDto) {
+    return this.servis.guvenlikGuncelle(kimlikCoz(user), dto.mfaZorunlu);
   }
 
   /**

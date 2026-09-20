@@ -36,7 +36,7 @@ const check = (ad: string, kosul: boolean, kanit?: string) => {
 
 async function main() {
   const prisma = new PrismaClient();
-  const admin = new AdminService(prisma as any, undefined as any, new TerminologyService(prisma as any), { iptalEt: async () => undefined } as any);
+  const admin = new AdminService(prisma as any, undefined as any, new TerminologyService(prisma as any), { iptalEt: async () => undefined } as any, { gonder: async () => undefined } as any);
 
   const user = await prisma.user.findFirst({ where: { role: 'user' }, select: { id: true } });
   if (!user) { console.log('ON KOSUL YOK — test kullanicisi yok'); process.exit(2); }

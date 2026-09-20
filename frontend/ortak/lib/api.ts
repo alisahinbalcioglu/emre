@@ -18,7 +18,25 @@ api.interceptors.request.use((config) => {
  * DIKKAT: /auth/me KORUMALI bir uctur — listede YOKTUR; oradan gelen 401 gercekten
  * oturum dusmesidir ve sessizlestirilmemelidir.
  */
-const KIMLIK_UCLARI = ['/auth/login', '/auth/register'];
+/**
+ * ⚠ FAZ 7 F2b: giris artik IKI ADIMLI olabilir ve ikinci adim GUARDSIZDIR.
+ * O uclardan gelen 401 "meydan okumanin suresi doldu" demektir; kullanici
+ * ZATEN giris ekranindadir ve sayfa kendisi 1. adima doner. Listede
+ * OLMASAYDI yakalayici tam sayfa `/login` yonlendirmesi yapar, kullanici
+ * hata mesajini GOREMEZDI (bu dosyanin en basindaki kusurun aynisi).
+ *
+ * ⚠ `/auth/mfa/kapat` ve diger OTURUMLU MFA uclari listede YOKTUR ve
+ * olmamalidir: onlar yanlis kod/parolada 400 doner (401 degil), yani
+ * yakalayici zaten dokunmaz; listeye eklenseydi o uclardaki GERCEK oturum
+ * dusmesi sessizlesirdi.
+ */
+const KIMLIK_UCLARI = [
+  '/auth/login',
+  '/auth/register',
+  '/auth/mfa/dogrula',
+  '/auth/mfa/zorunlu-kurulum/baslat',
+  '/auth/mfa/zorunlu-kurulum/onayla',
+];
 
 /**
  * err.config?.url hem '/auth/login' hem tam URL ('http://host/api/auth/login') olarak

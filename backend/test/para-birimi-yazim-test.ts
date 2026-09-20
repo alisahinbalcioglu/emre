@@ -139,7 +139,7 @@ function adminSahte() {
     terminologyAlias: { findMany: async () => [], upsert: async () => ({}), createMany: async () => ({}) },
     $transaction: async (x: any) => (Array.isArray(x) ? Promise.all(x) : x(p)),
   };
-  return { s, svc: new AdminService(p, {} as any, new Proxy({}, { get: () => async () => ({}) }) as any, { iptalEt: async () => undefined } as any) };
+  return { s, svc: new AdminService(p, {} as any, new Proxy({}, { get: () => async () => ({}) }) as any, { iptalEt: async () => undefined } as any, { gonder: async () => undefined } as any) };
 }
 
 function excel(sayfa: string, aoa: unknown[][]): Buffer {

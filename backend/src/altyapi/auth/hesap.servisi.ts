@@ -76,6 +76,12 @@ export class HesapServisi {
         createdAt: true, emailVerified: true, passwordChangedAt: true,
         deletedAt: true, sozlesmeOnayiAt: true, sozlesmeSurumu: true,
         ticariIletiOnayiAt: true,
+        // FAZ 7 F2b (§3.10): iki adimli girisin VARLIGI kisisel veridir.
+        // ⚠ `mfaSirriSifreli` ve kurtarma kodu OZETLERI BURADA YOK ve
+        // OLMAMALI: disa aktarim dosyasi kullanicinin bilgisayarinda,
+        // e-postasinda, bulutunda dolasir — sirri oraya yazmak, sifreleyerek
+        // kazandigimiz her seyi geri verirdi.
+        mfaAcikAt: true, mfaKaynagi: true,
         firma: {
           select: {
             id: true, ad: true, unvan: true, yetkiliEposta: true,
@@ -237,6 +243,16 @@ export class HesapServisi {
         })
       : [];
 
+    // FAZ 7 F2b: kurtarma kodlarinin SAYISI verilir, OZETLERI ASLA.
+    // ⚠ MFA kapaliyken sorgu ATILMAZ: kod uretilmemis bir hesapta sonuc
+    // zaten 0'dir ve dosya cikaran her kullaniciya bir sorgu daha bindirmek
+    // gereksiz (`/auth/me`deki `mfaBilgisi` ile AYNI kural).
+    const kalanKurtarmaKodu = kullanici.mfaAcikAt
+      ? await this.prisma.mfaKurtarmaKodu.count({
+          where: { userId, kullanildiAt: null },
+        })
+      : 0;
+
     const ikiliVeriler: { tur: string; ad: string; bayt: number | null; indirmeAdresi: string }[] = [];
     for (const t of teklifler) {
       if (t.originalName) {
@@ -266,6 +282,12 @@ export class HesapServisi {
         // `tier` SAKLANAN degerdir ve BILEREK turetilmez: "hakkimda ne
         // tutuyorsunuz" cevabinda tutulan deger yazilir (2.12 notu).
         firma: firmaRolaGoreSuz(kullanici.firma, kullanici.firmaRol),
+        // FAZ 7 F2b: SAYI, ozet DEGIL.
+        mfa: {
+          acikAt: kullanici.mfaAcikAt,
+          kaynak: kullanici.mfaKaynagi,
+          kalanKurtarmaKodu: kalanKurtarmaKodu,
+        },
       },
       teklifler,
       teklifFormatlari: formatlar,
@@ -290,6 +312,13 @@ export class HesapServisi {
           'indirme adresi "ikiliVeriler" listesinde yer aliyor.',
         'Parolaniz burada YOKTUR ve hicbir yerde duz metin tutulmaz; yalnizca geri ' +
           'cevrilemez bir ozeti (bcrypt) saklanir.',
+        '"passwordChangedAt" alani yalnizca parola degisimini DEGIL, oturumlarinizin ' +
+          'guvenlik nedeniyle kapatildigi son ani gosterir (parola degisimi, iki adimli ' +
+          'giris ayari, hesap islemleri).',
+        'Iki adimli giris aciksa dogrulama uygulamanizla paylasilan gizli anahtar ' +
+          'sunucumuzda sifrelenmis olarak saklanir ve bu dosyaya KONMAZ; kurtarma ' +
+          'kodlarinizin yalniz geri cevrilemez ozeti tutulur, burada yalnizca kac ' +
+          'kodunuzun kullanilmamis oldugu yazar.',
         'Fatura ve odeme kayitlari, hesabiniz kapatilsa bile vergi mevzuati geregi ' +
           'saklanir; bu nedenle ayri baslikta listelenmistir.',
         'Ceviri duzeltme olaylarinda ortak sozlugun o anki karsiligi yer almaz: o deger ' +

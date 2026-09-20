@@ -112,6 +112,13 @@ frontend/ozellik/hukuki/ :: P · hukuki metinler (KVKK, kullanım, çerez, mesaf
 # Ekip artık bir ekran ailesidir (koltuk sayacı, davet formu, küçültme uyarısı)
 # ve `odeme` ile `teklif`in hiçbirine ait değildir: üyelik ayrı bir eksendir.
 frontend/ozellik/firma/ :: O · ekip ekranları (koltuk sayacı, davet, küçültme uyarısı).
+# YENİ ALAN (20.09.2026, Faz 7 F2b) — giriş artık TEK ADIM değil bir AKIŞ:
+# parola → 6 haneli kod → (zorunluysa) kurulum sihirbazı → kurtarma kodları.
+# Üç sayfa (giriş, kayıt, davet kabul) aynı ikinci adımı paylaşır. `ortak/`
+# altına konsaydı "her yerden kullanılan yardımcı" gibi görünürdü; oysa bu
+# tek bir alanın ekran ailesidir. Oturum YAZIMI burada DEĞİL, `ortak/lib/
+# oturum.ts`te kalır (kaynak kapısı: token yalnız iki dosyada yazılabilir).
+frontend/ozellik/kimlik/ :: Q · iki adımlı giriş ekranları (kod adımı, kurulum sihirbazı, kurtarma kodları, profil kartı).
 frontend/scripts/ :: Sürüm betiği — grup I.
 frontend/test/ :: E2E paketleri (e2e + e2e-golden). 6. durakta kuruldu; ikisi AYRI (RAPOR §6.8).
 frontend/next.config.js :: Next.js yapılandırması — çerçeve kökte arar.
@@ -148,6 +155,10 @@ N :: backend/src/ozellik/odeme/ | frontend/ozellik/odeme/
 # beri vardı ama GRUP YOLLARI'na yazılmamıştı (KURAL 2 onu denetlemiyordu);
 # ekip ekranlarıyla birlikte ilan ediliyor ki iki taraf da denetlensin.
 O :: backend/src/ozellik/firma/ | frontend/ozellik/firma/
+# Q (20.09.2026, Faz 7 F2b) — kimlik/iki adımlı giriş ekseni. Yalnız ön yüz:
+# backend karşılığı `backend/src/altyapi/auth/mfa/` ve o L grubuna aittir
+# (kimlik ALTYAPIDIR, bir ürün özelliği değil).
+Q :: frontend/ozellik/kimlik/
 
 [CERCEVE BAGLI]
 # Bu önekin altındaki dosyalar HER gruba açıktır — KURAL 2 onları denetlemez.

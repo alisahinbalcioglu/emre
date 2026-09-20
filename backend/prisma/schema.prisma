@@ -52,6 +52,12 @@ model Firma {
   /// (yumusak silme kisiye ait), varsayilan Restrict dogru davranistir.
   davetler  FirmaDavet[]
 
+  /// FAZ 7 F2b — firma sahibinin "firmamda herkes iki adimli giris
+  /// kullansin" anahtari (§2.4). ⚠ YALNIZ PAROLAYLA girenlere uygulanir:
+  /// sirket hesabiyla (kurumsal giris) gelen kisiye kod SORULMAZ — o kimlik
+  /// dogrulamasi sirketin kendi saglayicisinda yapilmistir (§4.6, R1/E-4).
+  mfaZorunlu Boolean @default(false)
+
   // ── ADIM 2 (28.08): FATURA KIMLIGI ────────────────────────────────────
   // e-Arsiv/e-Fatura kesimi icin gereken alanlar. HEPSI NULLABLE: kayit
   // akisi bunlari sormaz (surtunme yaratmaz), fatura kesimi sirasinda
@@ -171,6 +177,35 @@ model User {
   /// null'a ceviren TEK BIR SATIR yok). Adres burada saklandigi icin
   /// denetim/ispat izi de kaybolmaz.
   kapatilanEposta          String?
+
+  /// ── FAZ 7 F2b — IKI ADIMLI GIRIS (TOTP, §2.4) ────────────────────────
+  /// TOTP sirri. AES-256-GCM, `kimlik-sifreleme.ts` bicimi
+  /// `v1.<iv>.<tag>.<sifreli>` (base64url), ek dogrulama verisi (AAD)
+  /// `mfa:<userId>`. ⚠ Duz sir HICBIR yerde saklanmaz ve kurulum yanitindan
+  /// sonra HICBIR ucta bir daha donmez.
+  mfaSirriSifreli          String?
+  /// Dolu = iki adimli giris ACIK (tarih = acildigi an). TEK dogru kaynak:
+  /// ayri bir `mfaAcik` boolean'i tutulsaydi ikisi gunun birinde ayrisirdi.
+  mfaAcikAt                DateTime?
+  /// R1 (Emre E-4): 'kisisel' (kisi kendi acti ya da "sirket girisinde de
+  /// sor" dedi) · 'zorunlu-firma' · 'zorunlu-yonetici'. `mfaAcikAt` ile
+  /// BIRLIKTE yazilir, kapatilinca null. Kurumsal giriste YALNIZ 'kisisel'
+  /// kod sorar (§4.6) — sirket kendi kimlik saglayicisindan sorumludur.
+  mfaKaynagi               String?
+  /// Son KABUL EDILEN 30 sn'lik adim (floor(unix/30)). Ayni ya da onceki
+  /// adimin kodu REDDEDILIR (tekrar saldirisi). Int32 yil ~3000'e yeter.
+  mfaSonAdim               Int?
+  /// Kurulum baslatildi, henuz kodla onaylanmadi (15 dk gecerli). Onaya
+  /// kadar `mfaSirriSifreli`ye DOKUNULMAZ: yarim kurulum acik bir hesabin
+  /// sirrini bozamaz.
+  mfaBekleyenSirSifreli    String?
+  mfaBekleyenAt            DateTime?
+  /// Art arda yanlis kod sayaci; dogru kodda 0. 20'de kilit. IP'den
+  /// BAGIMSIZ (kisi kovasi) — IP degistiren saldirgana karsi asil kapi.
+  mfaHataSayaci            Int       @default(0)
+  mfaKilitliAt             DateTime?
+  mfaKurtarmaKodlari       MfaKurtarmaKodu[]
+
   library                  UserLibrary[]
   brandLibraries           UserBrandLibrary[]
   libraryLists             LibraryList[]
@@ -237,6 +272,30 @@ model EmailVerificationToken {
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+/// ═══════════════════════════════════════════════════════════════════════════
+///  FAZ 7 F2b — IKI ADIMLI GIRIS KURTARMA KODU (§2.4)
+/// ═══════════════════════════════════════════════════════════════════════════
+///
+/// Telefon kaybolunca hesaba girmenin TEK kullanici tarafli yolu. 10 kod
+/// uretilir, her biri TEK kullanimliktir (`kullanildiAt` damgalanir).
+model MfaKurtarmaKodu {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// ⚠ bcrypt(10) — SHA-256 DEGIL. `token-ozet.ts`in "256 bit rastgele →
+  /// hizli ozet yeter" gerekcesi BURADA GECERSIZ: kurtarma kodu 10 karakter
+  /// Crockford base32 (~50 bit) ve 2^50 SHA-256 sizan bir dokumden kaba
+  /// kuvvetle cozulebilir. bcrypt kaba kuvveti pratikte olanaksiz kilar.
+  kodOzeti     String
+  kullanildiAt DateTime?
+  olusturuldu  DateTime  @default(now())
+
+  /// `onDelete: Cascade` bilincli: kullanici SERT silinmez (src'de
+  /// `user.delete` yok), token tablolariyla ayni sozlesme.
+  @@index([userId, kullanildiAt])
 }
 
 // ESLESME HAFIZASI (PRD Adim 8) — belirsiz satirda kullanicinin sectigi urunu

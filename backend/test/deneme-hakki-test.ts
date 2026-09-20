@@ -65,6 +65,25 @@ import { ParolaServisi } from '../src/altyapi/auth/parola.servisi';
 import { AbonelikController } from '../src/ozellik/odeme/abonelik/abonelik.controller';
 import { OdemeModule } from '../src/ozellik/odeme/odeme.module';
 
+/**
+ * FAZ 7 F2b — `login`/`register` artik DALLANIR (MFA acik/zorunluysa yanitta
+ * `token` ANAHTARI YOKTUR). Bu paketteki hicbir fixture'da iki adimli giris
+ * acik ya da zorunlu DEGILDIR; yanit her zaman OTURUM dalidir.
+ *
+ * ⚠ `as any` YERINE bu yardimci: MFA dali gelirse test GURULTULU duser,
+ * `undefined.user` okuyup anlamsiz bir hata vermez.
+ */
+function oturumDali(y: unknown): {
+  token: string;
+  user: { id: string; email: string; role: string; tier: string; koltukDurduruldu: boolean };
+} {
+  if (!y || typeof y !== 'object' || !('token' in (y as Record<string, unknown>))) {
+    throw new Error(`Oturum yaniti beklendi, MFA dali geldi: ${JSON.stringify(y)}`);
+  }
+  return y as never;
+}
+
+
 let passed = 0;
 let failed = 0;
 const failures: string[] = [];
@@ -633,7 +652,7 @@ async function yollar(): Promise<void> {
     check('C-OLCUT hesap kapandi: e-posta serbest, orijinali kapatilanEposta\'da, abonelik iyzico\'da iptal',
       eski.email === 'kapali-UC1@metapricex.invalid' && eski.kapatilanEposta === 'Can.Demir@Ornek.com' && d.iyz.iptalEdilen.includes('sub-c1'),
       `email=${eski.email}`);
-    const kayit = await d.auth.register({ email: 'can.demir@ornek.com', password: 'yeni-parola', sozlesmeOnayi: true } as any);
+    const kayit = oturumDali(await d.auth.register({ email: 'can.demir@ornek.com', password: 'yeni-parola', sozlesmeOnayi: true } as any));
     const yeni = d.db.tablo('user').find((u) => u.id === kayit.user.id)!;
     check('C-OLCUT ayni e-postayla YENI hesap + YENI firma acildi', !!yeni.firmaId && yeni.firmaId !== 'FC', `firma=${yeni.firmaId}`);
     yeni.emailVerified = true; // dogrulama baglantisina tikladi
@@ -894,26 +913,26 @@ async function digerBloklar(): Promise<void> {
     const kayitRed2 = await hataTuru(() => d.auth.register({ email: 'mixed.case@ornek.com', password: 'x123456', sozlesmeOnayi: true } as any));
     check('G1 ⭐ ayni adresin baska harf bicimiyle ikinci hesap ACILAMAZ (409) — kucultulmus yazimi birebir OLMAYAN kayit dahil',
       kayitRed.tur === 'ConflictException' && kayitRed2.tur === 'ConflictException', `${kayitRed.tur} / ${kayitRed2.tur}`);
-    const yeni = await d.auth.register({ email: 'Yeni.Kisi@Ornek.com', password: 'x123456', sozlesmeOnayi: true } as any);
+    const yeni = oturumDali(await d.auth.register({ email: 'Yeni.Kisi@Ornek.com', password: 'x123456', sozlesmeOnayi: true } as any));
     const yeniSatir = d.db.tablo('user').find((u) => u.id === yeni.user.id)!;
     const yeniFirma = d.db.tablo('firma').find((f) => f.id === yeniSatir.firmaId);
     check('G2 ⭐ yeni kayit KUCUK harfle saklanir (firma adi ve dogrulama e-postasi da)',
       yeniSatir.email === 'yeni.kisi@ornek.com' && yeniFirma?.ad === 'yeni.kisi' && d.dogrulamaGiden[0] === 'yeni.kisi@ornek.com',
       `email=${yeniSatir.email} firma=${yeniFirma?.ad}`);
-    const giris = await d.auth.login({ email: 'YENI.KISI@ORNEK.COM', password: 'x123456' });
+    const giris = oturumDali(await d.auth.login({ email: 'YENI.KISI@ORNEK.COM', password: 'x123456' }));
     check('G3 ⭐ giris harfe DUYARSIZ', giris.user.id === yeni.user.id);
-    const g4 = await d.auth.login({ email: 'Ayse.Kaya@Firma.com', password: 'p-eski' });
-    const g5 = await d.auth.login({ email: 'ayse.kaya@firma.com', password: 'p-ikiz' });
+    const g4 = oturumDali(await d.auth.login({ email: 'Ayse.Kaya@Firma.com', password: 'p-eski' }));
+    const g5 = oturumDali(await d.auth.login({ email: 'ayse.kaya@firma.com', password: 'p-ikiz' }));
     check('G4 mevcut karisik harfli kayit DEGISMEDI; ikizler BIREBIR yazimla kendi hesaplarina girer',
       g4.user.id === 'UG1' && g5.user.id === 'UG2' && d.db.tablo('user').find((u) => u.id === 'UG1')!.email === 'Ayse.Kaya@Firma.com');
-    const g6 = await d.auth.login({ email: 'AYSE.KAYA@FIRMA.COM', password: 'p-eski' });
-    const g7 = await d.auth.login({ email: 'mixed.CASE@ornek.COM', password: 'p-mix' });
+    const g6 = oturumDali(await d.auth.login({ email: 'AYSE.KAYA@FIRMA.COM', password: 'p-eski' }));
+    const g7 = oturumDali(await d.auth.login({ email: 'mixed.CASE@ornek.COM', password: 'p-mix' }));
     check('G5 ucuncu yazim → EN ESKI ikiz; tek kayitta her yazim', g6.user.id === 'UG1' && g7.user.id === 'UG3');
     d.firma('FG4');
     d.kullanici('UG4S', 'Silinen@Ornek.com', 'FG4', { password: bcrypt.hashSync('p-sil', 4), createdAt: new Date(Date.now() - 9 * GUN), deletedAt: new Date() });
     d.kullanici('UG4A', 'silinen@ornek.com', 'FG4', { password: bcrypt.hashSync('p-etkin', 4), createdAt: new Date(Date.now() - GUN) });
     const g8 = await hataTuru(async () => {
-      const r = await d.auth.login({ email: 'SILINEN@ORNEK.COM', password: 'p-etkin' });
+      const r = oturumDali(await d.auth.login({ email: 'SILINEN@ORNEK.COM', password: 'p-etkin' }));
       if (r.user.id !== 'UG4A') throw new Error(`giris ${r.user.id} hesabina gitti`);
     });
     check('G5b ikizlerden biri silinmisse ucuncu yazim ETKIN hesaba gider (silinmis eski ikiz once gelmez)', g8.tur === 'YOK', `${g8.tur} ${g8.mesaj}`);

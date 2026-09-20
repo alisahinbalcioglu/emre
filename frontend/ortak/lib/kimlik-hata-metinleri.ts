@@ -36,6 +36,34 @@ export const KIMLIK_HATA_METINLERI: Record<string, string> = {
     'Firmanızın paketi bu kadar kişiye yetmiyor; yöneticiniz paketi yükseltmeli ya da ekibi düzenlemeli.',
   ABONELIK_KISITLI:
     'Aboneliğiniz kısıtlı olduğu için bu işlem yapılamıyor.',
+
+  // ── FAZ 7 F2b · İKİ ADIMLI GİRİŞ ──────────────────────────────────────
+  MFA_KOD_HATALI:
+    'Kod hatalı ya da az önce kullanıldı. Uygulamadaki bir sonraki kodu bekleyin.',
+  MFA_KILITLI:
+    'Çok fazla hatalı deneme yapıldı; doğrulama adımı kilitlendi. "Parolamı unuttum" ile açabilir ya da yöneticinize başvurabilirsiniz.',
+  MFA_ZATEN_ACIK: 'Bu hesapta iki adımlı giriş zaten açık.',
+  MFA_ZORUNLU:
+    'Rolünüz ya da firmanızın ayarı gereği iki adımlı giriş kapatılamıyor.',
+  MFA_ZORUNLU_DEGIL:
+    'Bu hesapta iki adımlı giriş artık zorunlu değil. Lütfen yeniden giriş yapın.',
+  MFA_KAPALI: 'Bu hesapta iki adımlı giriş açık değil.',
+  MFA_DOGRULAMA_YOK: 'Doğrulama kodunu ya da bir kurtarma kodunu girin.',
+  MFA_KURULUM_GEREKLI:
+    'Yönetici hesaplarında iki adımlı giriş zorunlu. Lütfen yeniden giriş yapın.',
+  KURULUM_SURESI_DOLDU:
+    'Kurulum süresi doldu (15 dakika). Lütfen yeniden başlatın.',
+  PAROLA_HATALI: 'Parolanız hatalı.',
+  YENIDEN_GIRIS_GEREKLI:
+    'Bu işlem için son 10 dakika içinde giriş yapmış olmanız gerekiyor. Çıkış yapıp yeniden girin.',
+  ONCE_KENDINIZ_ACIN:
+    'Firmanız için zorunlu kılmadan önce kendi hesabınızda iki adımlı girişi açın.',
+  MEYDAN_OKUMA_GECERSIZ:
+    'Doğrulama süresi doldu. Lütfen yeniden giriş yapın.',
+  KIMLIK_SIFRELEME_YOK:
+    'Sunucu yapılandırması eksik; iki adımlı giriş şu an kullanılamıyor. Kurtarma kodunuzla girebilirsiniz.',
+  KENDI_MFA_SIFIRLANAMAZ:
+    'Kendi iki adımlı girişinizi panelden sıfırlayamazsınız.',
 };
 
 /** Sunucu yanıtından kullanıcıya gösterilecek metni çözer. */

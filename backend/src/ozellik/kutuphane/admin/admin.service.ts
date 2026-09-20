@@ -12,6 +12,12 @@ import {
   type FirmaRol,
 } from '../../firma/uyelik-kurallari';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
+// FAZ 7 F2b: MFA sifirlamasinin ortak temizleme verisi ve bilgi e-postasi.
+// ⚠ SAF modulden alinir (`mfa-karari.ts`), servisten DEGIL: yonetici paneli
+// butun MFA servisini (ve bagimliliklarini) yuklemek zorunda kalmasin.
+import { mfaTemizlemeVerisi } from '../../../altyapi/auth/mfa/mfa-karari';
+import { mfaSifirlandiEpostasi } from '../../../altyapi/auth/mfa/mfa-epostalari';
+import { EpostaServisi } from '../../odeme/eposta/eposta.servisi';
 import { KullanicilarSorgusuDto } from './dto/kullanicilar-sorgusu.dto';
 import { AiService } from '../../giris/ai/ai.service';
 // Saglik kontrolu, CEVIRININ GERCEKTEN kullandigi modeli sinar (asagida).
@@ -117,7 +123,70 @@ export class AdminService {
     // FAZ 7 F1b (E-1): yonetici silmesi hesap kapatmanin ikizi — tek
     // kullanicili firmada abonelik de iptal edilir.
     private satinAlma: SatinAlmaServisi,
+    // FAZ 7 F2b: iki adimli giris sifirlamasinin bilgi e-postasi.
+    private eposta: EpostaServisi,
   ) {}
+
+  /**
+   * FAZ 7 F2b — IKI ADIMLI GIRISI SIFIRLA (§4.4).
+   *
+   * Telefonunu VE kurtarma kodlarini kaybeden kullaniciyi hesabina dondurur.
+   *
+   * ⚠ ALANLAR + KODLAR + DAMGA AYNI TRANSACTION'DA: birinin yazilip
+   * digerinin dusmesi "MFA kapali ama eski kurtarma kodlari gecerli" gibi
+   * yarim bir duruma yol acardi. Denetim satiri da ayni transaction'da
+   * (`denetimliMutasyon`) — kim, kimi, ne zaman sifirladi sorusu sonradan
+   * sorulacak.
+   *
+   * ⚠ KENDINI SIFIRLAYAMAZ: yonetici hesabinda MFA zorunlu (§4.6). Kendi
+   * MFA'sini panelden sifirlayabilseydi, calinmis bir yonetici oturumu
+   * zorunlulugu tek tikla bosa cikarirdi. `kilitlenmeyiOnle` ailesinin
+   * MFA karsiligi.
+   */
+  async mfaSifirla(yonetici: { id: string; email: string }, id: string) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user || user.deletedAt) throw new NotFoundException('User not found');
+    if (yonetici.id === id) {
+      throw new BadRequestException({
+        kod: 'KENDI_MFA_SIFIRLANAMAZ',
+        mesaj:
+          'Kendi iki adımlı girişinizi panelden sıfırlayamazsınız. ' +
+          'Başka bir yönetici sıfırlamalı ya da sunucu betiği kullanılmalı.',
+      });
+    }
+    if (!user.mfaAcikAt) {
+      throw new BadRequestException({
+        kod: 'MFA_KAPALI',
+        mesaj: 'Bu hesapta iki adımlı giriş zaten açık değil.',
+      });
+    }
+    const sonuc = await this.denetimliMutasyon(
+      yonetici, 'mfa.sifirlandi', user, 'acik', 'kapali', undefined,
+      async (tx) => {
+        await tx.mfaKurtarmaKodu.deleteMany({ where: { userId: id } });
+        return tx.user.update({
+          where: { id },
+          data: mfaTemizlemeVerisi(new Date()),
+          select: { id: true, email: true, mfaAcikAt: true },
+        });
+      },
+    );
+    // BEST-EFFORT: gonderilemezse islem geri ALINMAZ (bilgi e-postasi).
+    // ⚠ MESAJ BUYUK HARFLE BASLAMAZ: `sunucu-urunleri-test.ts:197` (W1) bu
+    // dosyadaki ILK `this.logger.error(\`BUYUK-ETIKET ` desenini nobetcinin
+    // saydigi etiketle karsilastiriyor. Buyuk harfli bir on ek, gercek
+    // etiketi (`DENETIM-YAZILAMADI`) golgeler ve alarm kapisini SESSIZCE
+    // curutur (olculdu: kapi bu satir yuzunden kirmiziya dondu).
+    try {
+      await this.eposta.gonder(mfaSifirlandiEpostasi(user.email));
+    } catch (e) {
+      this.logger.error(
+        `mfa sifirlama bilgi e-postasi gonderilemedi hedef=${id}: ` +
+          `${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+    return sonuc;
+  }
 
   // ═════════ USERS ═════════
 

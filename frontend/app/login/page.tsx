@@ -12,7 +12,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { oturumuYaz, girisSonrasiYol } from '@/ortak/lib/oturum';
+import { oturumuYaz, girisSonrasiYol, girisDaliCoz, type GirisDali } from '@/ortak/lib/oturum';
+import { GirisDaliEkrani } from '@/ozellik/kimlik/GirisDaliEkrani';
 import api from '@/ortak/lib/api';
 import { ParolaAlani } from '@/ortak/ui/parola-alani';
 import { toast } from '@/ortak/hooks/use-toast';
@@ -22,12 +23,24 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  // FAZ 7 F2b: giris IKI ADIMLI olabilir. `dal` doluysa ekran ikinci adimi
+  // cizer; `null` ise bugunku parola formu.
+  const [dal, setDal] = useState<GirisDali | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     try {
       const { data } = await api.post('/auth/login', { email, password });
+      // ⚠ FAZ 7 F2b: DAL KARARI `oturumuYaz`DAN ONCE. MFA yanitinda `token`
+      // ANAHTARI YOKTUR; dogrudan `oturumuYaz`a vermek kullaniciya
+      // "Sunucudan gecerli bir oturum anahtari gelmedi" gibi YANILTICI bir
+      // hata gosterirdi (dogru davranis: kod ekranini cizmek).
+      const karar = girisDaliCoz(data);
+      if (karar.tip !== 'oturum') {
+        setDal(karar);
+        return;
+      }
       // FAZ 7 F1b (§6.1): oturum yazimi TEK yardimcidan. Gecersiz yanitta
       // FIRLATIR — "undefined" dizgesi token olarak yazilmaz.
       const oturum = oturumuYaz(data);
@@ -57,6 +70,20 @@ export default function LoginPage() {
       </div>
 
       <div className="w-full max-w-sm rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
+        {dal ? (
+          <GirisDaliEkrani
+            dal={dal}
+            onOturum={(data) => {
+              const oturum = oturumuYaz(data);
+              router.push(girisSonrasiYol(oturum));
+            }}
+            onSuresiDoldu={(mesaj) => {
+              setDal(null);
+              toast({ variant: 'destructive', title: 'Doğrulama', description: mesaj });
+            }}
+            onGeri={() => setDal(null)}
+          />
+        ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label htmlFor="email" className="mb-1.5 block text-xs font-semibold text-slate-700">
@@ -102,6 +129,7 @@ export default function LoginPage() {
             {loading ? 'Giriş yapılıyor…' : 'Giriş Yap'}
           </button>
         </form>
+        )}
 
         <div className="mt-6 text-center text-xs text-slate-500">
           Hesabınız yok mu?{' '}

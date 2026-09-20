@@ -14,7 +14,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { oturumuYaz, girisSonrasiYol } from '@/ortak/lib/oturum';
+import { oturumuYaz, girisSonrasiYol, girisDaliCoz, type GirisDali } from '@/ortak/lib/oturum';
+import { GirisDaliEkrani } from '@/ozellik/kimlik/GirisDaliEkrani';
 import api from '@/ortak/lib/api';
 import { ParolaAlani } from '@/ortak/ui/parola-alani';
 import { toast } from '@/ortak/hooks/use-toast';
@@ -30,6 +31,8 @@ export default function RegisterPage() {
   // ileti kutusu ÖNCEDEN İŞARETSİZ başlar — `useState(false)`.
   const [sozlesmeOnayi, setSozlesmeOnayi] = useState(false);
   const [ticariIletiOnayi, setTicariIletiOnayi] = useState(false);
+  // FAZ 7 F2b (R1-O1): yeni kayit da zorunlu kurulum dalina dusebilir.
+  const [dal, setDal] = useState<GirisDali | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -44,6 +47,12 @@ export default function RegisterPage() {
         sozlesmeOnayi,
         ticariIletiOnayi,
       });
+      // FAZ 7 F2b: yanit MFA dali olabilir — `oturumuYaz`DAN ONCE bakilir.
+      const karar = girisDaliCoz(data);
+      if (karar.tip !== 'oturum') {
+        setDal(karar);
+        return;
+      }
       const oturum = oturumuYaz(data);
       router.push(girisSonrasiYol(oturum));
     } catch (err: any) {
@@ -71,6 +80,20 @@ export default function RegisterPage() {
       </div>
 
       <div className="w-full max-w-sm rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
+        {dal ? (
+          <GirisDaliEkrani
+            dal={dal}
+            onOturum={(data) => {
+              const oturum = oturumuYaz(data);
+              router.push(girisSonrasiYol(oturum));
+            }}
+            onSuresiDoldu={(mesaj) => {
+              setDal(null);
+              toast({ variant: 'destructive', title: 'Doğrulama', description: mesaj });
+            }}
+            onGeri={() => setDal(null)}
+          />
+        ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label htmlFor="email" className="mb-1.5 block text-xs font-semibold text-slate-700">
@@ -148,6 +171,7 @@ export default function RegisterPage() {
             {loading ? 'Hesap oluşturuluyor…' : 'Hesap Oluştur'}
           </button>
         </form>
+        )}
 
         <div className="mt-6 text-center text-xs text-slate-500">
           Zaten hesabınız var mı?{' '}

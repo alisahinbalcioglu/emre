@@ -26,4 +26,9 @@
 // Emre'nin 17.09 kararıyla eski hâline döndü (üç elektrik paketi SATIŞTA).
 // ⚠ AYNI GÜN = AYNI SÜRÜM: sürüm bir tarihtir, 4842a89 bugün zaten 17'ye
 // çekmişti; ikinci kez artırmak sahte bir ikinci sürüm üretirdi.
-export const HUKUKI_METIN_SURUMU = '2026-09-17';
+// 2026-09-20 (Faz 7 F2b): iki adimli giris (TOTP). Aydinlatmaya islenen veri
+// (sifreli gizli anahtar, kurtarma kodu ozetleri, hatali deneme sayaci),
+// saklama suresi (15 dk bekleyen kurulum) ve kullanim kosullari md.3
+// (hesap guvenligi) eklendi. ANLAM degisti → surum artti.
+// ⚠ ON YUZ KOPYASIYLA AYNI OLMAK ZORUNDA (`test:faz5` D7 olcer).
+export const HUKUKI_METIN_SURUMU = '2026-09-20';

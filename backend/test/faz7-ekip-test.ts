@@ -1134,7 +1134,7 @@ function adminKur(prisma: any) {
       iptaller.push({ firmaId, aktor, neden, sira: prisma._iz.cagrilar.length });
     },
   } as any;
-  const servis = new AdminService(prisma, {} as any, {} as any, satinAlma);
+  const servis = new AdminService(prisma, {} as any, {} as any, satinAlma, { gonder: async () => undefined } as any);
   (servis as any).logger = { error: (m: unknown) => loglar.push(String(m)), warn: () => undefined, log: () => undefined };
   return { servis, iptaller, loglar };
 }

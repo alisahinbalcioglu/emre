@@ -165,6 +165,16 @@ export class ParolaServisi {
           // boyunca oturumu sürdürürdü. Parolayı sıfırlamanın amacı tam olarak
           // bunu kesmektir.
           passwordChangedAt: simdi,
+          // ── FAZ 7 F2b (§4.4): KILIDI AÇAN İKİ YOLDAN BİRİ ───────────────
+          // 20 hatalı koddan sonra doğrulama adımı kilitlenir. Kullanıcının
+          // kendi başına açabileceği tek yol budur (diğeri yöneticidir):
+          // e-posta kutusuna erişimini kanıtlamış olur.
+          // ⚠ İKİ ADIMLI GİRİŞ **AÇIK KALIR**: `mfaAcikAt`/`mfaSirriSifreli`
+          // BURADA TEMİZLENMEZ. Temizlenseydi, parola sıfırlama bağlantısını
+          // ele geçiren biri ikinci adımı da kaldırmış olurdu — iki adımlı
+          // girişin varlık sebebi tam olarak bunu engellemektir.
+          mfaHataSayaci: 0,
+          mfaKilitliAt: null,
         },
       }),
       // Kullanılan token ve varsa kardeşleri kapanır (tek kullanımlık).

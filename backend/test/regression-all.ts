@@ -513,6 +513,18 @@ const SUITES: Suite[] = [
   //    ikizi (hesap kapatma = üye çıkarma = yönetici silme) · üyeye maskeleme
   //    ve KVKK ekseni · "Hazırlayan: X (ayrıldı)" · kullanıcı hakkı betiği.
   { ad: 'Faz 7 ekip: davet, koltuk, kişi sınırı, ayrılma ikizi (O/R/S/D/H/M/Q/P/X)', script: 'test:faz7-ekip', zincir: 'Z0' },
+  // ── 20.09.2026 — FAZ 7 · F2b: İKİ ADIMLI GİRİŞ BAĞLAMA. DB ve AĞ YOK:
+  //    bellek içi sahte Prisma `where`i GERÇEKTEN uygular, `$transaction`
+  //    fırlatanı geri alır. Ölçtüğü sessiz kırılma noktaları: meydan okuma
+  //    token"ı oturum SAYILMAZ (gerçek `JwtStrategy` ile passport üzerinden
+  //    ölçülür — iki katman AYRI AYRI) · MFA dalında yanıtta `token` anahtarı
+  //    YOK · davet kabulünde firma zorunluluğu · MFA"sı AÇIK hesabın sırrı
+  //    parolayla değiştirilemez (amaç + `mfaAcikAt: null` koşullu yazımı) ·
+  //    çalınmış token tek başına MFA kuramaz ve `authAt` tazeleyemez ·
+  //    paralel yanlış kod kilit sınırını aşamaz (rezervasyon) · yanlış
+  //    kod/parola 400"dür, kullanıcıyı oturumdan ATMAZ.
+  //    Mutant tablosu F2b raporunda (29 mutant). KIRMIZIYA DÖNERSE REGRESYON.
+  { ad: 'Faz 7 iki adımlı giriş: giriş dalı, strateji reddi, zorunluluk (M)', script: 'test:faz7-mfa', zincir: 'Z0' },
 ];
 
 // ── SKIP DEFTERI (B1, para dogrulugu turu 14.09.2026) ──────────────────────

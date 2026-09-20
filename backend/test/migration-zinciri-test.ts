@@ -118,6 +118,8 @@ async function main() {
     // Faz 7 F1b (17.09): ekip daveti + firma denetim kaydi.
     'FirmaDavet',
     'FirmaOlayi',
+    // Faz 7 F2b (20.09): iki adimli giris kurtarma kodlari.
+    'MfaKurtarmaKodu',
   ];
   const tabloSonuc = await db.query<{ table_name: string }>(
     `SELECT table_name FROM information_schema.tables WHERE table_schema='public'`,
@@ -173,6 +175,47 @@ async function main() {
   ]) {
     check(`Z3 Firma.${k} kolonu var`, firmaKolonlari.includes(k));
   }
+
+  // ── Z3b (Faz 7 F2b): iki adimli giris kolonlari ────────────────────────
+  // ⚠ Kolonlarin HEPSI nullable ya da varsayilanli: migration hicbir mevcut
+  // hesabin girisini degistirmez (backfill YOK). `mfaZorunlu` varsayilani
+  // `false` — deploy aninda hicbir firmada zorunluluk ACILMAZ.
+  const userKolonlari = (
+    await db.query<{ column_name: string; is_nullable: string; column_default: string | null }>(
+      `SELECT column_name, is_nullable, column_default FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='User'`,
+    )
+  ).rows;
+  const userKolonAdlari = userKolonlari.map((r) => r.column_name);
+  for (const k of [
+    'mfaSirriSifreli',
+    'mfaAcikAt',
+    'mfaKaynagi',
+    'mfaSonAdim',
+    'mfaBekleyenSirSifreli',
+    'mfaBekleyenAt',
+    'mfaHataSayaci',
+    'mfaKilitliAt',
+  ]) {
+    check(`Z3b User.${k} kolonu var`, userKolonAdlari.includes(k));
+  }
+  const mfaSayac = userKolonlari.find((r) => r.column_name === 'mfaHataSayaci');
+  check(
+    'Z3b User.mfaHataSayaci NOT NULL DEFAULT 0 (mevcut satirlar bos kalmaz)',
+    mfaSayac?.is_nullable === 'NO' && String(mfaSayac?.column_default ?? '').startsWith('0'),
+    JSON.stringify(mfaSayac),
+  );
+  const firmaMfa = (
+    await db.query<{ column_name: string; is_nullable: string; column_default: string | null }>(
+      `SELECT column_name, is_nullable, column_default FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='Firma' AND column_name='mfaZorunlu'`,
+    )
+  ).rows[0];
+  check(
+    'Z3b Firma.mfaZorunlu var ve varsayilani false (deploy kimseyi zorlamaz)',
+    !!firmaMfa && firmaMfa.is_nullable === 'NO' && /false/i.test(String(firmaMfa.column_default)),
+    JSON.stringify(firmaMfa),
+  );
 
   // ═══════════════════════════════════════════════════════════════════════
   //  B* — BACKFILL SOZU: "hicbir mevcut kullanicinin erisimi kesilmez"

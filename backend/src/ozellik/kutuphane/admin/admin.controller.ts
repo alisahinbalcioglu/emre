@@ -104,6 +104,14 @@ export class AdminController {
     return this.adminService.updateFirmaRol(yonetici, id, dto.firmaRol);
   }
 
+  // FAZ 7 F2b (§4.4): telefonunu ve kurtarma kodlarini kaybeden kullaniciyi
+  // hesabina dondurmenin TEK panel yolu. Yonetici kendi MFA'sini buradan
+  // sifirlayamaz — `kilitlenmeyiOnle` deseninin MFA karsiligi serviste.
+  @Post('users/:id/mfa-sifirla')
+  mfaSifirla(@CurrentUser() yonetici: Yonetici, @Param('id') id: string) {
+    return this.adminService.mfaSifirla(yonetici, id);
+  }
+
   @Delete('users/:id')
   deleteUser(@CurrentUser() yonetici: Yonetici, @Param('id') id: string) {
     return this.adminService.deleteUser(yonetici, id);

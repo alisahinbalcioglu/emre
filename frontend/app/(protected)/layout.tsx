@@ -16,6 +16,7 @@ import { AbonelikSeridi } from '@/ozellik/odeme/AbonelikSeridi';
 import { EpostaDogrulamaSeridi } from '@/ortak/kabuk/components/layout/EpostaDogrulamaSeridi';
 import Sidebar from '@/ortak/kabuk/components/layout/Sidebar';
 import Breadcrumb from '@/ortak/kabuk/components/layout/Breadcrumb';
+import { gecerliTokenMi } from '@/ortak/lib/oturum';
 
 /* ------------------------------------------------------------------ */
 /*  Currency Widget                                                    */
@@ -143,7 +144,17 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
     const token = localStorage.getItem('token');
     const storedUser = localStorage.getItem('user');
 
-    if (!token || !storedUser) {
+    // ⚠ FAZ 7 F2b SERTLESTIRME: VARLIK yetmez, BICIM de sinanir.
+    // Olculmus senaryo: eski bir on yuz paketi acik kalan sekmede
+    // `setItem('token', data.token)` yaziyordu; iki adimli giris yanitinda
+    // `token` alani YOK oldugu icin depoya **"undefined" DIZGESI** duserdi.
+    // O dizge burada "token VAR" sayilir, her istek `Bearer undefined`
+    // gonderir, 401 alir ve kullanici `/login`e sicrar — guvenlik acigi
+    // degil ama teshisi imkansiz bir kafa karisikligi. `gecerliTokenMi`
+    // yazma tarafiyla AYNI kurali okur (tek kaynak).
+    if (!gecerliTokenMi(token) || !storedUser) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
       router.replace('/login');
       return;
     }

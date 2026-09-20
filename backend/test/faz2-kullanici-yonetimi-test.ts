@@ -512,7 +512,7 @@ async function davranis(): Promise<void> {
       },
     };
     // FAZ 7 F1b: dorduncu bagimlilik `SatinAlmaServisi` (E-1).
-    const servis = new AdminService(prisma as any, {} as any, {} as any, { iptalEt: async () => undefined } as any);
+    const servis = new AdminService(prisma as any, {} as any, {} as any, { iptalEt: async () => undefined } as any, { gonder: async () => undefined } as any);
     (servis as any).logger = {
       error: (m: unknown) => iz.loglar.push(String(m)),
       warn: () => undefined,

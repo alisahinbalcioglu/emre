@@ -239,6 +239,86 @@ describe('B — korumali uctan (/auth/me) gelen 401', () => {
 });
 
 // ---------------------------------------------------------------------------
+// D — FAZ 7 F2b: GIRISIN IKINCI ADIMI (guardsiz MFA uclari)  [KILIT L1]
+//
+// NEDEN AYRI BLOK: iki adimli girisin ikinci adimi HENUZ OTURUM DEGILDIR;
+// kimligi meydan okuma token'i tasir. Oradan gelen 401 "meydan okumanin
+// suresi doldu" demektir ve sayfa KENDISI 1. adima doner + NEDENINI soyler.
+// `KIMLIK_UCLARI`'nda olmasalardi yakalayici tam sayfa `/login`
+// yonlendirmesi yapardi ve kullanici hicbir mesaj GOREMEZDI — bu dosyanin
+// en basindaki kusurun birebir aynisi.
+//
+// D1/D2 A1/A2'nin IKIZIDIR. Kural 4 geregi "silinmedi" ve "yonlendirilmedi"
+// AYRI assert'lerdir.
+// ---------------------------------------------------------------------------
+const MFA_UCLARI = [
+  '/auth/mfa/dogrula',
+  '/auth/mfa/zorunlu-kurulum/baslat',
+  '/auth/mfa/zorunlu-kurulum/onayla',
+];
+
+describe.each(MFA_UCLARI)('D — %s den gelen 401 [KILIT L1]', (uc) => {
+  it('D0 KAPI — istek gercekten o adrese gitti', async () => {
+    await dortYuzBirAl(uc);
+    expect(adapterCagrilariUrl).toEqual([uc]);
+  });
+
+  it('D1 — oturumu SILMEMELI', async () => {
+    expect(depo.getItem('token')).toBe(SEANS_JETONU);
+    expect(depo.getItem('user')).toBe(SEANS_KULLANICI);
+
+    await dortYuzBirAl(uc);
+
+    expect({ token: depo.getItem('token'), user: depo.getItem('user') }).toEqual({
+      token: SEANS_JETONU,
+      user: SEANS_KULLANICI,
+    });
+  });
+
+  it('D2 — YONLENDIRME YAPMAMALI (sayfa kendi 1. adimina doner)', async () => {
+    expect(pencere.location.href).toBe(BASLANGIC_URL);
+
+    await dortYuzBirAl(uc);
+
+    expect(pencere.location.href).toBe(BASLANGIC_URL);
+  });
+
+  it('D3 — TAM URL ile gelse de muaf', async () => {
+    expect(pencere.location.href).toBe(BASLANGIC_URL);
+
+    await dortYuzBirAl(`http://localhost:3001/api${uc}`);
+
+    expect(pencere.location.href).toBe(BASLANGIC_URL);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// D4 — NEGATIF KRITER: OTURUMLU MFA UCLARI LISTEDE **YOK**
+//
+// `/auth/mfa/kapat` ve kardesleri yanlis parola/kodda **400** doner (backend
+// `test:faz7-mfa` M11/M15b/M16 bunu olcer), yani yakalayici onlara zaten
+// dokunmaz. Muafiyet listesine eklenselerdi o uclardaki GERCEK oturum
+// dusmesi (token suresi dolmus) SESSIZLESIRDI.
+// ---------------------------------------------------------------------------
+describe('D4 — oturumlu MFA uclari muaf DEGIL', () => {
+  it('/auth/mfa/kapat 401 alirsa oturum DUSER ve /login e gidilir', async () => {
+    expect(depo.getItem('token')).toBe(SEANS_JETONU);
+
+    await dortYuzBirAl('/auth/mfa/kapat');
+
+    expect({ token: depo.getItem('token'), href: pencere.location.href }).toEqual({
+      token: null,
+      href: '/login',
+    });
+  });
+
+  it('/auth/mfa/kurulum/baslat da muaf DEGIL', async () => {
+    await dortYuzBirAl('/auth/mfa/kurulum/baslat');
+    expect(pencere.location.href).toBe('/login');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // E — FAZ 7 F1b (Emre karari E-3): 403 `KOLTUK_ASILDI`
 //     Kisi sinirini asan hesap 403 alir. 401 DEGIL: oturum GECERLIDIR.
 //     Oturumu silmek kullaniciyi giris ekranina atar, o tekrar girer, ayni

@@ -3,7 +3,8 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/ortak/lib/api';
-import { oturumuYaz, girisSonrasiYol } from '@/ortak/lib/oturum';
+import { oturumuYaz, girisSonrasiYol, girisDaliCoz, type GirisDali } from '@/ortak/lib/oturum';
+import { GirisDaliEkrani } from '@/ozellik/kimlik/GirisDaliEkrani';
 import { kimlikHataMetni } from '@/ortak/lib/kimlik-hata-metinleri';
 import { ParolaAlani } from '@/ortak/ui/parola-alani';
 
@@ -37,6 +38,8 @@ function DavetKabulIcerik() {
   const [sozlesmeOnayi, setSozlesmeOnayi] = useState(false);
   const [ticariIletiOnayi, setTicariIletiOnayi] = useState(false);
   const [gonderiliyor, setGonderiliyor] = useState(false);
+  // FAZ 7 F2b: firma zorunlulugu davet kabulunde de gecerli (R1-O1).
+  const [dal, setDal] = useState<GirisDali | null>(null);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -78,6 +81,13 @@ function DavetKabulIcerik() {
         sozlesmeOnayi,
         ticariIletiOnayi,
       });
+      // FAZ 7 F2b (R1-O1): firma iki adimli girisi ZORUNLU kildiysa yeni uye
+      // token yerine kurulum meydan okumasi alir ve sihirbaza duser.
+      const karar = girisDaliCoz(data);
+      if (karar.tip !== 'oturum') {
+        setDal(karar);
+        return;
+      }
       const oturum = oturumuYaz(data);
       router.push(girisSonrasiYol(oturum));
     } catch (err) {
@@ -97,7 +107,21 @@ function DavetKabulIcerik() {
         <p className="mt-4 rounded bg-red-950/50 px-3 py-2 text-sm text-red-300">{hata}</p>
       )}
 
-      {durum === 'hazir' && bilgi && (
+      {dal && (
+        <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/60 p-5">
+          <GirisDaliEkrani
+            dal={dal}
+            onOturum={(data) => {
+              const oturum = oturumuYaz(data);
+              router.push(girisSonrasiYol(oturum));
+            }}
+            onSuresiDoldu={(mesaj) => { setDal(null); setHata(mesaj); }}
+            onGeri={() => setDal(null)}
+          />
+        </div>
+      )}
+
+      {!dal && durum === 'hazir' && bilgi && (
         <>
           <p className="mt-2 text-sm text-slate-400">
             <span className="text-slate-200">{bilgi.davetEdenEposta}</span>, sizi{' '}

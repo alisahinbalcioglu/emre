@@ -53,7 +53,27 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     role: string;
     iat?: number;
     authAt?: number;
+    aud?: unknown;
+    amac?: unknown;
   }) {
+    // ── FAZ 7 F2b (§4.5 KATMAN 2): MEYDAN OKUMA OTURUM DEGILDIR ──────────
+    // Iki adimli girisin ara token'i (`amac: 'mfa-dogrula' | 'mfa-kurulum'`,
+    // `aud: 'metaprice:mfa'`) AYRI bir anahtarla imzalanir; katman 1 onu
+    // zaten IMZA asamasinda reddeder ve bu satira HIC gelinmez.
+    //
+    // Bu satir KATMAN 2'dir: biri gunun birinde meydan okumayi yanlislikla
+    // ANA anahtarla imzalarsa yine de oturum sayilmasin. Bir katman ucuz,
+    // hesabin tamami pahali.
+    //
+    // ⚠ MEVCUT TOKEN'LAR ETKILENMEZ: bugunku erisim token'inda `aud` da
+    // `amac` da YOK (`token-imza.ts` yalniz sub/email/role/authAt basar;
+    // E2E'nin elle bastigi token de `aud`suz). `authAt` REDDEDILMEZ — o
+    // bizim alanimiz.
+    //
+    // ⚠ ILK SATIR olmasi bilincli: DB'ye gitmeden once reddeder.
+    if (payload.amac !== undefined || payload.aud !== undefined) {
+      throw new UnauthorizedException();
+    }
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
     });
@@ -87,6 +107,30 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
           'Parolaniz degistirildi. Lutfen tekrar giris yapin.',
         );
       }
+    }
+    // ── FAZ 7 F2b: YONETICIDE IKI ADIMLI GIRIS ZORUNLU (§4.6) ────────────
+    // Emre'nin karari: platform yoneticisi (role === 'admin') iki adimli
+    // giris KURMADAN panele giremez.
+    //
+    // ⚠ NEDEN GIRIS YOLU YETMEZ: deploy aninda yoneticinin elinde 7 gunluk
+    // gecerli bir token vardir ve giris ekranina HIC ugramadan calismaya
+    // devam ederdi. Bu satir o token'i bir sonraki istekte 401'e dusurur;
+    // on yuz `/login`e atar, parola dogrulanir ve zorunlu kurulum sihirbazi
+    // acilir (`girisKarari` → `mfa-kurulum`).
+    //
+    // ⚠ FIRMA ZORUNLULUGU BURAYA KONMAZ (§4.6 gerekce): kurumsal girisle
+    // alinmis MESRU token'i reddederdi (o yolda kod sorulmuyor) ve token'a
+    // "giris yolu" yazmak yeni bir iddia yuzeyi acardi.
+    //
+    // ⚠ SIRA: ban/silme/parola kapilarindan SONRA, koltuk hesabindan ONCE.
+    // Banli yoneticiye once "askiya alindi" denmeli; koltuk sorgusu ise
+    // zaten reddedilecek bir istek icin bosuna kosmamali.
+    if (user.role === 'admin' && !user.mfaAcikAt) {
+      throw new UnauthorizedException({
+        kod: 'MFA_KURULUM_GEREKLI',
+        message:
+          'Yönetici hesaplarında iki adımlı giriş zorunlu. Lütfen yeniden giriş yapın.',
+      });
     }
     // ── FAZ 7 F1b: KISI SINIRI HER ISTEKTE (§3.12, Emre karari E-3) ──────
     // Paket kuculdugunde ya da hak dusuruldugunde kimse SILINMEZ; hakki asan

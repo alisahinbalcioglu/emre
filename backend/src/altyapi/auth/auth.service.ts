@@ -15,6 +15,7 @@ import { EpostaDogrulamaServisi } from './eposta-dogrulama.servisi';
 import { epostaIleKullaniciBul, epostaKucult } from './eposta';
 import { firmaPaketSeviyesi } from './seviye';
 import { OturumServisi, hesapKapisi } from './oturum.servisi';
+import { mfaZorunluMu, type MfaZorunlulukNedeni } from './mfa/mfa-karari';
 import { tokenImzala } from './token-imza';
 import { firmaRolaGoreSuz } from '../../ozellik/firma/firma-maskele';
 import { koltukDurumuHesapla, etkinHesapKosulu, type FirmaRol } from '../../ozellik/firma/uyelik-kurallari';
@@ -75,9 +76,10 @@ export class AuthService {
 
     // FAZ 7 F1b: `authAt` = BIRINCIL kimlik dogrulama ani. Kayit parolayi
     // kullanicinin kendisi belirledigi icin birincildir.
-    return this.oturum.oturumYaniti(user, {
-      authAt: Math.floor(Date.now() / 1000),
-    });
+    // FAZ 7 F2b (R1-O1): karar `girisKarari`da — yeni kayit da yonetici
+    // olabilir (yonetici rolu sonradan verilse bile bir sonraki girisinde
+    // kurulum sihirbazina duser) ve firma zorunlulugu burada da gecerlidir.
+    return this.oturum.girisKarari(user, 'parola');
   }
 
   async login(dto: LoginDto) {
@@ -101,11 +103,15 @@ export class AuthService {
     // ⚠ FAZ 7 F1b: metinler `oturum.servisi.ts`e TASINDI (degistirilmedi).
     // Gerekce: token veren yol sayisi artiyor (davet kabul, MFA, kurumsal
     // giris) ve her biri bu iki kontrolu kendi yazarsa biri unutur.
+    // ⚠ FAZ 7 F2b: `girisKarari` de ayni kapiyi cagirir; buradaki cagri
+    // KALDIRILMADI cunku kaynak kapilari (`faz2-kullanici-yonetimi-test.ts`,
+    // `guvenlik-turu-2-test.ts`) bu dosyada `hesapKapisi(` ARIYOR ve iki kez
+    // cagrilmasinin bedeli sifir (saf, yan etkisiz).
     hesapKapisi(user);
 
-    return this.oturum.oturumYaniti(user, {
-      authAt: Math.floor(Date.now() / 1000),
-    });
+    // FAZ 7 F2b (R1-O1): parola dogruysa is BITMEDI. Iki adimli giris acik
+    // ya da zorunluysa yanit TOKEN DEGIL MEYDAN OKUMADIR (§4.4).
+    return this.oturum.girisKarari(user, 'parola');
   }
 
   /**
@@ -146,6 +152,12 @@ export class AuthService {
         soyad: true,
         telefon: true,
         firmaRol: true,
+        // FAZ 7 F2b (§4.4): Guvenlik karti bu tek uctan beslenir.
+        // ⚠ `mfaSirriSifreli` BURADA YOK ve OLMAMALI: sir hicbir yanitta
+        // donmez (kurulum baslatma yanitindaki `otpauthUri` disinda, o da
+        // bir kez). `select` yazmak kadar NE YAZMAMAK da kurali tasir.
+        mfaAcikAt: true,
+        mfaKaynagi: true,
         // FAZ 4.1 — FİRMA. ⚠ Ölçüldü: ön yüz bugüne kadar firma bilgisini HİÇ
         // göremiyordu; `/auth/me` yalnız `firmaId` dönüyordu ve `/abonelik/durum`
         // firma KİMLİĞİ taşımıyordu. Yani profil sayfası firmanın adını bile
@@ -159,6 +171,8 @@ export class AuthService {
           select: {
             id: true,
             ad: true,
+            // FAZ 7 F2b: zorunluluk rozeti ve sahip anahtarinin durumu.
+            mfaZorunlu: true,
             unvan: true,
             yetkiliEposta: true,
             faturaEposta: true,
@@ -207,8 +221,52 @@ export class AuthService {
     // FAZ 7 F1b (§3.12 madde 4): durdurma ekrani bu tek uctan beslenir.
     const koltuk = await this.koltukBilgisi(user);
 
+    // FAZ 7 F2b (§4.4): Guvenlik karti. ⚠ SIR ve KOD OZETLERI YOK — yalniz
+    // "acik mi", "ne zaman acildi", "kac kurtarma kodu KALDI" ve zorunluluk.
+    const mfa = await this.mfaBilgisi(user);
+
+    // ⚠ `mfaAcikAt`/`mfaKaynagi` ham alanlar olarak da yayilirdi: `mfa`
+    // nesnesi tek dogru okuma noktasi olsun diye YAYILIMDAN CIKARILIR.
+    const { mfaAcikAt: _ham1, mfaKaynagi: _ham2, ...kisi } = user;
+
     // ⚠ `tier` SAKLANAN degeri EZER (2.12): `user` yayilimindan sonra gelir.
-    return { ...user, tier: await this.etkinSeviye(user.firmaId), firma, koltuk, capabilities, subscriptions, erisim };
+    return { ...kisi, tier: await this.etkinSeviye(user.firmaId), firma, koltuk, mfa, capabilities, subscriptions, erisim };
+  }
+
+  /**
+   * MFA BILGISI (§4.4) — `/auth/me` yanitinin `mfa` alani.
+   *
+   * `zorunlu`/`zorunlulukNedeni` `mfa-karari.ts`teki AYNI saf yuklemden
+   * gelir; ikiz yazilsaydi kart "kapatabilirsiniz" der, uc 400 dondururdu.
+   */
+  private async mfaBilgisi(user: {
+    id: string;
+    role: string;
+    mfaAcikAt: Date | null;
+    mfaKaynagi: string | null;
+    firma: { mfaZorunlu: boolean } | null;
+  }): Promise<{
+    acik: boolean;
+    acikAt: Date | null;
+    kaynak: string | null;
+    kalanKurtarmaKodu: number;
+    zorunlu: boolean;
+    zorunlulukNedeni: MfaZorunlulukNedeni | null;
+  }> {
+    const { zorunlu, neden } = mfaZorunluMu(user, user.firma);
+    const kalanKurtarmaKodu = user.mfaAcikAt
+      ? await this.prisma.mfaKurtarmaKodu.count({
+          where: { userId: user.id, kullanildiAt: null },
+        })
+      : 0;
+    return {
+      acik: !!user.mfaAcikAt,
+      acikAt: user.mfaAcikAt,
+      kaynak: user.mfaKaynagi,
+      kalanKurtarmaKodu,
+      zorunlu,
+      zorunlulukNedeni: neden,
+    };
   }
 
   /**

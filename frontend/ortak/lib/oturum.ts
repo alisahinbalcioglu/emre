@@ -53,3 +53,38 @@ export function oturumuYaz(data: unknown): OturumYaniti {
 export function girisSonrasiYol(data: OturumYaniti): string {
   return data.user?.koltukDurduruldu === true ? '/koltuk-durduruldu' : '/dashboard';
 }
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  FAZ 7 F2b — GIRIS DALI (SAF)
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ *  `login`, `register` ve `davet-kabul` yanitlari artik UC BICIMDEN biri
+ *  olabilir. Dal karari UC EKRANDA da ayni olmali; her sayfa kendi
+ *  `if (data.mfaGerekli)`ini yazarsa biri gunun birinde ayrisir.
+ *
+ *  ⚠ BU FONKSIYON `oturumuYaz`DAN ONCE CAGRILIR. `oturumuYaz` gecersiz
+ *  token'da FIRLATIR; MFA dalinda `token` ANAHTARI HIC YOKTUR ve dogrudan
+ *  ona vermek kullaniciya "Sunucudan gecerli bir oturum anahtari gelmedi"
+ *  gibi yaniltici bir hata gosterirdi.
+ */
+export type GirisDali =
+  | { tip: 'oturum' }
+  | { tip: 'kod'; meydanOkuma: string }
+  | { tip: 'kurulum'; meydanOkuma: string; neden: 'yonetici' | 'firma' | null };
+
+export function girisDaliCoz(data: unknown): GirisDali {
+  const y = (data ?? {}) as Record<string, unknown>;
+  const meydanOkuma = typeof y.meydanOkuma === 'string' ? y.meydanOkuma : '';
+  if (y.mfaGerekli === true && meydanOkuma !== '') {
+    return { tip: 'kod', meydanOkuma };
+  }
+  if (y.mfaKurulumGerekli === true && meydanOkuma !== '') {
+    const neden = y.neden === 'yonetici' || y.neden === 'firma' ? y.neden : null;
+    return { tip: 'kurulum', meydanOkuma, neden };
+  }
+  // ⚠ VARSAYILAN `oturum`: bayrak VAR ama meydan okuma YOKSA da buraya
+  // duseriz ve `oturumuYaz` gurultuyle firlatir. Sessizce "kod ekrani"
+  // gostermek, kullaniciyi asla ilerleyemeyecegi bir ekranda birakirdi.
+  return { tip: 'oturum' };
+}

@@ -85,6 +85,10 @@ export class UyelikServisi {
         select: {
           id: true, email: true, ad: true, soyad: true, firmaRol: true,
           status: true, createdAt: true,
+          // FAZ 7 F2b (§6.5): ekip listesinde "iki adimli giris" sutunu.
+          // ⚠ YALNIZ DURUM: sir, kaynak ve kurtarma kodu sayisi BASKASININ
+          // hesabina ait ayrintidir — sahip bile gormez.
+          mfaAcikAt: true,
         },
       }),
       this.prisma.firmaDavet.findMany({
@@ -129,6 +133,7 @@ export class UyelikServisi {
         durum: u.status,
         katildi: u.createdAt,
         durduruldu,
+        mfaAcik: !!u.mfaAcikAt,
       };
     });
 
@@ -362,6 +367,10 @@ export class UyelikServisi {
         select: {
           id: true, email: true, role: true, firmaId: true,
           firmaRol: true, createdAt: true,
+          // FAZ 7 F2b: `girisKarari` bu iki alani okur. Yeni hesapta ikisi
+          // de bos — ama SEKIL eksik olursa karar "MFA kapali" yerine
+          // "alan yok" gorur ve ileride kurumsal yol dali sessizce sasardi.
+          mfaAcikAt: true, mfaKaynagi: true,
         },
       });
       await tx.firmaDavet.update({
@@ -378,11 +387,12 @@ export class UyelikServisi {
       return kullanici;
     });
 
-    // F2b bunu `girisKarari(yeni, 'parola')`ya cevirecek (firma MFA
-    // zorunlulugu davet kabulunde de uygulanmali, R1-O1).
-    return this.oturum.oturumYaniti(yeni, {
-      authAt: Math.floor(Date.now() / 1000),
-    });
+    // FAZ 7 F2b (R1-O1): firma MFA zorunlulugu DAVET KABULUNDE DE gecerli.
+    // ⚠ Kullanici transaction ICINDE olusturuldu ve commit EDILDI; karar
+    // ondan SONRA verilir. Boylece yeni uye, firma zorunluysa token yerine
+    // kurulum meydan okumasi alir ve sihirbaza duser — yanitta `token`
+    // ANAHTARI HIC YOKTUR.
+    return this.oturum.girisKarari(yeni, 'parola');
   }
 
   // ═══════════════════════════════════════════════════════════════════════

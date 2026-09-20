@@ -28,7 +28,10 @@
  * ⚠ AYNI GÜN = AYNI SÜRÜM: sürüm bir tarihtir; bugün zaten 17'ye çekilmişti,
  * ikinci kez artırmak sahte bir ikinci sürüm üretirdi.
  */
-export const HUKUKI_METIN_SURUMU = '2026-09-17';
+// 2026-09-20 (Faz 7 F2b): iki adımlı giriş (TOTP) — aydınlatmada işlenen veri
+// (şifreli gizli anahtar, kurtarma kodu özetleri, hatalı deneme sayacı),
+// kullanım koşullarında hesap güvenliği maddesi. ANLAM değişti → sürüm arttı.
+export const HUKUKI_METIN_SURUMU = '2026-09-20';
 
 /**
  * Metinler avukat incelemesinden GEÇMEDİ. `taslak` olduğu sürece her
@@ -151,6 +154,7 @@ export const GIZLILIK: HukukiMetin = {
       ],
       madde: [
         "Hesap bilgileri: e-posta, parola özeti, ad, soyad, telefon, rol, paket, kayıt tarihi, e-posta doğrulama durumu, parola değişim ve hesap kapatma damgaları, onay damgaları",
+        "İki adımlı giriş (açıksa): doğrulama uygulamanızla paylaşılan gizli anahtar sunucumuzda şifrelenmiş olarak saklanır; kurtarma kodlarınızın yalnızca geri çevrilemez özeti tutulur; art arda hatalı kod denemelerinin sayısı güvenlik amacıyla işlenir. Gizli anahtarınız ve kurtarma kodlarınızın özetleri, veri indirme dosyanıza KONMAZ.",
         "Firma ve fatura bilgileri: firma adı, resmî unvan, yetkili ve fatura e-postası, vergi numarası, vergi dairesi, şahıs şirketiyseniz T.C. kimlik numarası, fatura adresi, il, ilçe, telefon, firma logosu",
         "Teklif ve proje verisi: müşteri adı, proje adı, hazırlayan kişi, geçerlilik bilgisi, teklifin kendisi (keşif/metraj satırları ve kalem fiyatları) ve yüklediğiniz orijinal .xlsx dosyasının kendisi",
         "DWG dosyaları: yüklediğiniz çizim dosyaları ve bunların firma sahipliği",
@@ -228,6 +232,7 @@ export const GIZLILIK: HukukiMetin = {
       madde: [
         "Veritabanı yedekleri: sunucuda 14 gün tutulur. Sunucu dışındaki kopya şifrelenmiş olarak saklanır.",
         "Parola sıfırlama bağlantısı: 1 saat. E-posta doğrulama bağlantısı: 24 saat. Oturumunuz (giriş anahtarı): 7 gün.",
+        "İki adımlı giriş kurulumu tamamlanmazsa hazırlanan gizli anahtar 15 dakika sonra geçersiz olur. Kurtarma kodları, siz yenileyene ya da iki adımlı girişi kapatana kadar saklanır; kapatıldığında silinir.",
         "Ekip daveti bağlantısı: 7 gün (kabul edilmeyen davet kaydı işlem kaydı olarak saklanır). Firma içi işlem kaydı — [FIRMA ISLEM KAYDI SAKLAMA SURESI].",
         "DWG çizim geometrisi, işleme servisinin önbelleğinde 24 saat boyunca kalır.",
         "Fatura, ödeme ve abonelik kayıtları: vergi ve ticaret mevzuatının öngördüğü süre boyunca — [YASAL SAKLAMA SURESI].",
@@ -270,7 +275,7 @@ export const GIZLILIK: HukukiMetin = {
     {
       baslik: "Verilerin güvenliği",
       paragraflar: [
-        "Parolanız geri döndürülemeyen bir özet fonksiyonuyla saklanır; parola sıfırlama ve e-posta doğrulama bağlantıları da veritabanında düz metin olarak değil özet olarak tutulur. Platformla tarayıcınız arasındaki trafik şifrelidir. Sunucuya parola ile giriş kapalıdır, yalnızca anahtarla erişim mümkündür ve sunucu dışına çıkan yedek kopyalar şifrelenir.",
+        "Hesabınızda iki adımlı girişi açabilirsiniz: girişte parolanızın yanında telefonunuzdaki doğrulama uygulamasının ürettiği 6 haneli kod istenir. Parolanız geri döndürülemeyen bir özet fonksiyonuyla saklanır; parola sıfırlama ve e-posta doğrulama bağlantıları da veritabanında düz metin olarak değil özet olarak tutulur. Platformla tarayıcınız arasındaki trafik şifrelidir. Sunucuya parola ile giriş kapalıdır, yalnızca anahtarla erişim mümkündür ve sunucu dışına çıkan yedek kopyalar şifrelenir.",
         "Hiçbir sistem için \"tamamen güvenlidir\" veya \"hiçbir risk yoktur\" demiyoruz; böyle bir vaatte bulunmak dürüst olmazdı. Yaptığımız, bilinen saldırı yollarını kapatmak ve olay çıktığında bunu görebilecek kayıtları tutmaktır.",
         "Verilerinizin hukuka aykırı olarak başkalarının eline geçtiğini tespit edersek, KVKK'nın 12. maddesi uyarınca Kişisel Verileri Koruma Kurulu'na ve etkilenen kullanıcılara en kısa sürede bildirimde bulunuruz.",
       ],
@@ -321,6 +326,7 @@ export const KULLANIM_KOSULLARI: HukukiMetin = {
         "Hesap, e-posta adresi ve parola ile açılır; her yeni kayıt kendi firmasını oluşturur ve kaydı açan kişi firma sahibi olur. Firma sahibi ekibe üye davet edebilir, üyeleri ekipten çıkarabilir ve başka bir üyeyi sahip yapabilir. Üyeler firmanın tekliflerini, kütüphanesini ve işçilik kayıtlarını görür ve düzenler; abonelik, ödeme ve fatura bilgilerini yalnız firma sahibi görür ve yönetir. Paketinizin kullanıcı hakkı firma sahibi dahil sayılır. Hesap paylaşmayın: her çalışan kendi hesabıyla çalışmalıdır; paylaşılan bir hesapla yapılan işlemler o hesabın sahibinin sorumluluğundadır.",
         "Parolanız sizin sorumluluğunuzdadır. Kimseyle paylaşmayın, başka servislerde kullandığınız bir parolayı burada kullanmayın. Parolanızın ele geçirildiğini düşünüyorsanız hemen değiştirin: parolanızı değiştirdiğinizde diğer cihazlardaki açık oturumlar kapatılır.",
         "Oturumunuz tarayıcınızda saklanır ve 7 gün geçerlidir. Parolanızı unutursanız giriş ekranındaki \"Parolamı unuttum\" bağlantısıyla sıfırlama isteyebilirsiniz; gönderilen bağlantı 1 saat, e-posta doğrulama bağlantısı ise 24 saat geçerlidir.",
+        "Hesabınızda iki adımlı girişi açabilirsiniz: girişte parolanızın yanında telefonunuzdaki doğrulama uygulamasının ürettiği 6 haneli kod istenir. Kurtarma kodlarınızı güvenli bir yerde saklamak sizin sorumluluğunuzdadır; telefonunuzu ve kurtarma kodlarınızı birlikte kaybederseniz hesabınıza yalnızca yönetici sıfırlamasıyla dönebilirsiniz. Yönetici hesaplarında iki adımlı giriş zorunludur; firma sahibi kendi firması için zorunlu kılabilir. İki adımlı girişi açtığınızda, kapattığınızda ya da sıfırlandığında diğer cihazlardaki oturumlar kapatılır.",
         "Ortak veya paylaşılan bir bilgisayarda çalışıyorsanız işiniz bitince çıkış yapın. Yarım kalan teklif taslaklarınız ve DWG çalışma alanınız o tarayıcıda saklanır ve siz temizlemedikçe orada birikir.",
       ],
     },

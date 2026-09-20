@@ -8,6 +8,8 @@ import { ParolaServisi } from './parola.servisi';
 import { EpostaDogrulamaServisi } from './eposta-dogrulama.servisi';
 import { HesapServisi } from './hesap.servisi';
 import { OturumServisi } from './oturum.servisi';
+import { MfaServisi } from './mfa/mfa.servisi';
+import { MfaController } from './mfa/mfa.controller';
 import { jwtSecret } from './jwt-secret';
 import { OdemeModule } from '../../ozellik/odeme/odeme.module';
 
@@ -43,8 +45,11 @@ import { OdemeModule } from '../../ozellik/odeme/odeme.module';
     // giris) de bunu kullanacak; her yol kendi kapisini yazarsa biri mutlaka
     // ban ya da yumusak silme kontrolunu unutur.
     OturumServisi,
+    // FAZ 7 F2b — iki adimli giris (§4.4). `EpostaServisi`yi OdemeModule
+    // disa aciyor; ikinci bir gonderici YOK.
+    MfaServisi,
   ],
-  controllers: [AuthController],
-  exports: [AuthService, OturumServisi],
+  controllers: [AuthController, MfaController],
+  exports: [AuthService, OturumServisi, MfaServisi],
 })
 export class AuthModule {}
