@@ -294,6 +294,166 @@ function main(): void {
     'olculdu 09.09: 88 kayit / 12.76 GB, hepsi 72 saatten genc',
   );
 
+  // ── F12-F16 (21.09.2026) · DEPLOY ONCESI DOKUMLERDE 30 GUN SAKLAMA ────
+  // K5: butun yedekler en fazla 30 gun. OLCULDU 21.09 canlida: deploy oncesi
+  // dokumler HIC silinmiyordu — 104 dosya, en eskisi 4 Agustos, 1,1 GB, 47`si
+  // 30 gunden eski. Gizlilik metni "silinen veriler yedeklerden en gec 30 gun
+  // icinde cikar" diyor; suresiz saklanan bir dokum o cumleyi YALAN yapar.
+  // ⚠ Desenler CRLF`e dayanikli olmali: `oku` ham okur, calisma agacinda
+  // satirlar \r\n ile biter ama CI`da \n. `^...$` capasi kullanmayin.
+  const budamaIdx = deploy.indexOf('-name "deploy-oncesi-*.sql.gz" ! -name');
+  check(
+    'F12-OLCUT deploy yedegi budama satiri bulundu',
+    budamaIdx !== -1,
+    'bulunamazsa asagidaki F13-F16 hicbir sey olcmez (bos dilim yalanci yesil verir)',
+  );
+  check(
+    'F13 deploy oncesi dokumler 30 gun saklaniyor',
+    /YEDEK_SAKLAMA_GUN=30/.test(deploy) && /-mtime "\+\$SAKLAMA"/.test(deploy),
+    'esik DEGISKENDEN okunmali; sabit yazilirsa iki yer sessizce ayrisir',
+  );
+  const backupKodu = kabukKodu(oku('scripts/backup.sh'));
+  // ⚠ CAPA SART. Ilk surum `/SAKLAMA_GUN=30/` ariyordu; 21.09'da ayni dosyaya
+  // `DIGER_SAKLAMA_GUN=30` eklenince desen ONU yakaladi ve F14 YANLIS KIRMIZI
+  // verdi — oysa 14 hic degismemisti. Desen KODDA benzersiz olmali: `[^A-Z_]`
+  // on eki `DIGER_` gibi onekleri ayirir. CRLF icin `$` capasi KULLANILMAZ.
+  check(
+    'F14 backup.sh gunluk dokum saklamasi 14 gun — DEGISMEDI',
+    /(^|[^A-Z_])SAKLAMA_GUN=14\b/m.test(backupKodu) &&
+      !/(^|[^A-Z_])SAKLAMA_GUN=(?!14\b)\d/m.test(backupKodu) &&
+      backupKodu.includes(
+        "find /backups -name 'metaprice-*.sql.gz' -mtime \"+$SAKLAMA_GUN\" -delete",
+      ),
+    'deploy yedeginin 30 gunu gunluk dokumun 14 gununu DEGISTIRMEZ — ayri karar',
+  );
+  // KONUMSAL. Salt varlik arayan bir assert, budama pg_dump`tan ONCEYE
+  // tasinsa da yesil kalirdi. Tam olarak bu mutasyon kosuldu (21.09): budama
+  // `umask 077` altina tasinip BASARISIZ bir dump kosturuldu — 104 dosyanin
+  // 47`si silindi, yani yedeksiz kalinabiliyordu. Bu assert onu kirmizi yapar.
+  check(
+    'F15 budama YALNIZ dogrulanmis dump`tan SONRA (dump dusen gunde silme YOK)',
+    deploy.indexOf('mv "$GECICI" "/backups/$ADI"') !== -1 &&
+      deploy.indexOf('mv "$GECICI" "/backups/$ADI"') < budamaIdx &&
+      deploy.indexOf('YEDEK DOGRULANDI') < budamaIdx,
+    'backup.sh:6-15 ayni kusuru anlatiyor: silme `if` blogunun disindaydi ve basarisiz gunlerde de kosuyordu',
+  );
+  check(
+    'F16 budama yalniz deploy-oncesi ailesini seciyor, YENI yedegi disarida birakiyor',
+    /! -name "\$ADI"/.test(deploy) &&
+      !/find \/backups -name "metaprice-/.test(deploy),
+    'metaprice-* backup.sh`in isi; bu betik ona DOKUNMAMALI',
+  );
+
+  // ── F17 (21.09.2026) · BU TURDA GERCEKTEN YASANDI ─────────────────────
+  // Dump yuku TEK TIRNAKLI bir kabuk dizgisi. Icine Turkce kesme isareti
+  // (deploy + kesme + un gibi) yazilinca dizgi ERKEN kapandi ve BUTUN betik
+  // sozdizimi hatasi verdi. `bash -n` yakaladi, kapilar yakalamadi.
+  // ⚠ HAM metin kullanilir, `kabukKodu` DEGIL: yuk icindeki `#` satirlari
+  // kabuk icin YORUM DEGIL duz metindir — soyulursa kesme isareti gizlenir.
+  // ⚠ sunucu-urunleri kapisindaki Y2 assert`i bunu YAKALAMAZ: yalniz
+  // pg_dump`tan ONCEKI metne bakar (`metin.slice(0, m.index)`) ve yorumlari
+  // soyar. OLCULDU 21.09: kesme isareti yuke geri konuldu, Y2 YESIL kaldi.
+  const ACICI = 'backup sh -c ' + String.fromCharCode(39);
+  const deployHam = oku('scripts/deploy.sh').replace(/\r\n/g, '\n');
+  const yukBas = deployHam.indexOf(ACICI);
+  const yukSon = deployHam.indexOf('\n' + String.fromCharCode(39) + ' 2>&1', yukBas);
+  const yuk =
+    yukBas !== -1 && yukSon > yukBas
+      ? deployHam.slice(yukBas + ACICI.length, yukSon)
+      : '';
+  check(
+    'F17-OLCUT dump yuku dilimi bulundu',
+    yuk.includes('pg_dump') && yuk.includes('BUDAMA'),
+    `dilim uzunlugu=${yuk.length} (0 ise F17 hicbir sey olcmez)`,
+  );
+  check(
+    'F17 TEK TIRNAKLI dump yukunde kesme isareti YOK (yoksa yuk erken kapanir, betik olur)',
+    !yuk.includes(String.fromCharCode(39)),
+    'olculdu 21.09: budama yorumlarindaki iki Turkce kesme isareti betigi kirdi',
+  );
+
+  // ── F18-F20 (21.09.2026) · BACKUP.SH GUNLUK DONGUSU — DIGER UC AILE ────
+  // OLCULDU 21.09: /backups altinda DORT dokum ailesi var, yalniz `metaprice-*`
+  // suruluyordu. K5 "butun yedekler en fazla 30 gun" diyor ve gizlilik metnine
+  // "silinen veriler yedeklerden en gec 30 gun icinde cikar" cumlesi giriyor;
+  // suresiz saklanan bir aile o cumleyi YANLIS BEYAN yapar.
+  // deploy.sh kendi ailesini buduyor AMA yalniz deploy aninda — deploy
+  // yapilmayan donemde taahhut GUNLUK donguden gelmek zorunda.
+  check(
+    'F18 backup.sh gunluk dongusu diger UC aileyi 30 gun tutuyor (K5)',
+    /DIGER_SAKLAMA_GUN=30/.test(backupKodu) &&
+      /-name 'geri-yukleme-oncesi-\*\.sql\.gz'/.test(backupKodu) &&
+      /-name 'bekci-\*\.sql\.gz'/.test(backupKodu) &&
+      /-name 'deploy-oncesi-\*\.sql\.gz'/.test(backupKodu) &&
+      /-mtime "\+\$DIGER_SAKLAMA_GUN"/.test(backupKodu),
+    'biri eksikse o aile SURESIZ birikir ve gizlilik cumlesi yalan olur',
+  );
+  const tazeIdx = backupKodu.indexOf('TAZE_YEDEK=');
+  const silmeIdx = backupKodu.indexOf('-mtime "+$DIGER_SAKLAMA_GUN"');
+  check(
+    'F19-OLCUT can simidi kapisi ve 30 gun silmesi bulundu',
+    tazeIdx !== -1 && silmeIdx !== -1,
+    `taze=${tazeIdx} silme=${silmeIdx} (biri -1 ise F19/F20 hicbir sey olcmez)`,
+  );
+  // KONUMSAL. `geri-yukleme-oncesi-*` bir geri yuklemenin TEK donusudur;
+  // elde guncel dogrulanmis yedek yokken silinmesi kabul edilemez.
+  check(
+    'F19 30 gun silmesi TAZE metaprice yedegi kapisinin ARKASINDA',
+    tazeIdx !== -1 &&
+      silmeIdx > tazeIdx &&
+      /if \[ "\$TAZE_YEDEK" -lt 1 \]/.test(backupKodu),
+    'olculdu 21.09: kapi devre disi birakilinca taze yedek SIFIRKEN can simidi dahil 6 dosya silindi',
+  );
+  const digerBas = backupKodu.indexOf('SILINEN_DIGER=');
+  const digerDilim =
+    digerBas !== -1 && silmeIdx > digerBas ? backupKodu.slice(digerBas, silmeIdx) : '';
+  check(
+    'F20-OLCUT 30 gun silme dilimi bulundu',
+    digerDilim.includes('geri-yukleme-oncesi'),
+    `dilim uzunlugu=${digerDilim.length}`,
+  );
+  check(
+    'F20 30 gun silmesi metaprice-* ailesine DOKUNMUYOR (o aile 14 gunde kaliyor)',
+    digerDilim.length > 0 && !digerDilim.includes('metaprice-'),
+    '30 gun blogu metaprice-*yi kapsarsa gunluk yedek 14 yerine 30 gun yasar — K5 ayri karar',
+  );
+
+  // ── F21-F23 (21.09.2026) · YEDEK SERVISI TAZELIGI — KOSULLU YENIDEN YARATMA
+  // backup.sh konteynere TEK DOSYA olarak bagli (docker-compose.yml:216).
+  // Iki kat bayatlik: Docker tek-dosya mount'u INODE'a baglar VE entrypoint
+  // sonsuz while dongusunde oldugu icin kabuk dosyayi yeniden okumaz. Yani
+  // yeniden yaratmadan backup.sh degisikligi ASLA yururluge girmez ve deploy
+  // yine "DOGRULANDI" der — SESSIZ basarisizlik. K5 saklama kurali artik o
+  // dosyada oldugu icin bu, gizlilik metnindeki 30 gun sozunu yanlis beyana
+  // cevirebilir.
+  // ⚠ Ama KOSULSUZ yeniden yaratmak da yanlis: kap yeniden dogunca 24 saatlik
+  // dump dongusu bastan baslar, art arda deploy'lar gunluk yedegi erteler.
+  // Bu yuzden assert'ler "yeniden yaratiyor" degil, "YALNIZ DEGISINCE
+  // yeniden yaratiyor" olcer.
+  const tazelikKiyas = deploy.indexOf('[ "$YEDEK_HOST_MD5" = "$YEDEK_KAP_MD5" ]');
+  const tazelikYarat = deploy.indexOf('--force-recreate backup');
+  check(
+    'F21-OLCUT yedek tazeligi blogu bulundu (kiyas + yeniden yaratma)',
+    tazelikKiyas !== -1 && tazelikYarat !== -1,
+    `kiyas=${tazelikKiyas} yarat=${tazelikYarat} (biri -1 ise F22/F23 hicbir sey olcmez)`,
+  );
+  check(
+    'F21 tazelik KONTEYNERIN GORDUGU dosyadan olculuyor (saklanan hash YOK)',
+    deploy.includes('docker compose exec -T backup md5sum /backup.sh') &&
+      deploy.includes('md5sum scripts/backup.sh'),
+    'saklanan bir hash yanlis yerde dururken her yeniden yaratmada DEGISTI sanilir ve dongu tekrar sifirlanir',
+  );
+  check(
+    'F22 yeniden yaratma KIYASIN ARKASINDA — her deployda DEGIL, yalniz backup.sh degisince',
+    tazelikKiyas !== -1 && tazelikYarat > tazelikKiyas,
+    'kosulsuz yeniden yaratma 24 saatlik dump dongusunu her deployda sifirlar',
+  );
+  check(
+    'F23 yeniden yaratma SONRASI mount tazeligi tekrar OLCULUYOR (iddia degil)',
+    /YENI_YEDEK_MD5/.test(deploy) &&
+      deploy.indexOf('YENI_YEDEK_MD5') > tazelikYarat,
+    'olculdu 07.09: caddy reload cikis kodu 0 dondu ve ESKI yapilandirmayi yukledi',
+  );
   // ── G. ON YUZ ─────────────────────────────────────────────────────────
   console.log('\n── G · ON YUZ ──');
   const kokLayout = kodu(oku('frontend/app/layout.tsx'));

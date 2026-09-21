@@ -2,6 +2,7 @@ import { ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common
 import { Reflector } from '@nestjs/core';
 import { AuthGuard } from '@nestjs/passport';
 import { KOLTUK_DISI_IZINLI } from '../decorators/koltuk-disi-izinli.decorator';
+import { KAPALI_HESAP_IZINLI } from '../decorators/kapali-hesap-izinli.decorator';
 
 /**
  * ⚠ `AuthGuard('jwt')` DEPODA YALNIZ BURADA cagrilir (kaynak kapisi
@@ -41,6 +42,41 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
   ): TUser {
     if (err || !user) {
       return super.handleRequest(err, user, info, context, status);
+    }
+    // ── PLAN 5.8 §4.5: KAPALI HESAP KAPISI ───────────────────────────────
+    //
+    // ⚠ NEDEN BURADA, `ErisimGuard`DA DEGIL (olculdu 21.09): `ErisimGuard`
+    // yalniz `@GerekliYetenek` TASIYAN uclarda karar verir ve metadata yoksa
+    // `true` doner (erisim.guard.ts:63). Sayim: `library.controller.ts` 0,
+    // `brands` 0, `materials` 0, `labor-firms` 0 dekorator; `quotes`ta
+    // `GET /`, `GET /:id`, `DELETE /:id` kapisiz. Yani §4.5'in istedigi
+    // "teklif, kutuphane, cikti, ceviri uclarinin HEPSI 403" o kapiyla
+    // saglanamazdi — kapali hesap 30 gun boyunca butun kutuphaneyi ve
+    // tekliflerini okumaya devam ederdi.
+    //
+    // ⚠ KOLTUK KAPISINDAN ONCE: kapali hesap AYNI ZAMANDA koltuk asimi
+    // durumunda olabilir. Koltuk once kossaydi kisi `/koltuk-durduruldu`
+    // ekranina duser, "yoneticiniz paketi yukseltmeli" okur ve hesabinin
+    // kapali oldugunu HIC ogrenemezdi.
+    //
+    // ⚠ 403, 401 DEGIL — koltuk kapisiyla ayni gerekce: oturum GECERLIDIR
+    // (kisi kimligini kanitladi). 401 donmek `ortak/lib/api.ts`
+    // yakalayicisina token'i sildirir ve kisi geri donus ekranini hic
+    // goremeden sonsuz giris dongusune girerdi.
+    if (user.hesapKapali === true) {
+      const kapaliIzinli = this.reflector.getAllAndOverride<boolean>(
+        KAPALI_HESAP_IZINLI,
+        [context.getHandler(), context.getClass()],
+      );
+      if (!kapaliIzinli) {
+        throw new ForbiddenException({
+          kod: 'HESAP_KAPALI',
+          // Metin `kapali-hesap.ts`ten gelir: ekran ve 403 AYNI cumleyi tasir.
+          mesaj: user.kapatmaMetni,
+          tip: user.kapatmaTipi,
+          imhaTarihi: user.imhaTarihi,
+        });
+      }
     }
     if (user.koltukDurduruldu === true) {
       const izinli = this.reflector.getAllAndOverride<boolean>(

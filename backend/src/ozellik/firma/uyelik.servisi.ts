@@ -366,6 +366,24 @@ export class UyelikServisi {
             'önce mevcut hesabınızı kapatmanız ya da o firmadan ayrılmanız gerekir.',
         });
       }
+      // ── K1 (plan 5.8 §3.1) IKIZI: KAPALI AMA ADRESI DURAN HESAP ───────
+      // ⚠ 21.09'dan once bu dal MUMKUN DEGILDI: kapatma e-postayi
+      // `kapali-<id>@…` yapiyordu, yani kapali bir satir gercek bir adresle
+      // HIC bulunamazdi. K1 ile adres 30 gun hesapta kaliyor; bu kontrol
+      // olmasaydi asagidaki `tx.user.create` `User.email` @unique kisitina
+      // carpar ve kullanici ham 500 gorurdu. Kayit yolunun (§4.3) IKIZI.
+      if (mevcut?.deletedAt) {
+        const geriAcilabilir = (mevcut as { kapatmaNedeni?: string | null }).kapatmaNedeni === 'kendi';
+        throw new BadRequestException({
+          kod: 'KAPALI_HESAP_VAR',
+          mesaj: geriAcilabilir
+            ? 'Bu adresle kapatılmış bir hesabınız var. Giriş yapıp hesabınızı geri ' +
+              'açabilir ya da saklama süresi dolduktan sonra bu adresle ekibe ' +
+              'katılabilirsiniz.'
+            : 'Bu adresle kapatılmış bir hesap var. Saklama süresi dolana kadar bu ' +
+              'adresle yeni bir ekibe katılamazsınız.',
+        });
+      }
 
       // Koltuk YENIDEN sinanir: paket arada kuculmus ya da baska biri
       // katilmis olabilir. Kabul edilen davetin kendisi sayimdan DUSER
@@ -518,7 +536,10 @@ export class UyelikServisi {
       const simdi = new Date();
       await tx.user.update({
         where: { id: hedef.id },
-        data: kapatmaVerisi(hedef, simdi),
+        // ⚠ K1 ISTISNASI (plan 5.8 §3.2): `ekiptenCikarildi` TEK yol ki
+        // e-posta HEMEN serbest kalsin — ayrilmayi bu kisi SECMEDI, baska
+        // bir firmaya katilabilmeli. Diger uc yolda adres 30 gun durur.
+        data: kapatmaVerisi(hedef, simdi, 'ekiptenCikarildi'),
       });
       // FAZ 7 F3b: cikarilan uye sirket hesabiyla geri giremez.
       await disKimlikleriSil(tx, hedef.id);
@@ -539,7 +560,9 @@ export class UyelikServisi {
         paragraflar: [
           'Firma sahibi sizi MetaPriceX ekibinden çıkardı ve hesabınıza erişim kapatıldı.',
           'Hazırladığınız teklifler firmanın kaydı olduğu için firmada kalır.',
+          // ⚠ K1 ISTISNASI: bu yolda adres HEMEN serbest — vaat gercek.
           'Aynı e-posta adresiyle yeni bir hesap açabilir ya da başka bir firmanın davetini kabul edebilirsiniz.',
+          'Adınız, telefonunuz ve e-posta adresiniz gibi kişisel bilgileriniz 30 gün içinde kayıtlarımızdan silinir.',
         ],
       })
       .catch((e) =>

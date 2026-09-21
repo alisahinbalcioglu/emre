@@ -14,6 +14,7 @@ import { SIFIRLAMA_OMRU_MS, tokenOzetle, tokenUret } from './token-ozet';
 import { uygulamaKokuCoz } from './uygulama-url';
 import { kurumsalZorunluMu } from './kurumsal/kurumsal-zorunluluk';
 import { PAROLA_HATALI_YANIT } from './parola-kurali';
+import { geriDonusPenceresinde } from './kapali-hesap';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -85,8 +86,18 @@ export class ParolaServisi {
     const kurumsalZorunlu = user
       ? await kurumsalZorunluMu(this.prisma, user)
       : false;
+    // ── PLAN 5.8 §4.2 (K1): KAPALI HESABIN PAROLASI SIFIRLANABILIR ───────
+    // ⚠ Emre'nin karari: "parolasini unuttuysa 'Parolami unuttum' ile
+    // e-postadan yeniler". Eskiden `!user.deletedAt` kosulu bu hesabi
+    // TAMAMEN eliyordu: 30 gun giris hakki verilen musteri parolasini
+    // hatirlamiyorsa geri DONEMEZDI — vaat edilen yolun yarisi kapaliydi.
+    // Kosul artik "giris yapabiliyor mu" ile AYNI yuklem: ayrisamazlar.
+    // ⚠ Pencere DISINDAKI kapali hesaba (ya da `yonetici`/`ekiptenCikarildi`
+    // ile kapananlara) e-posta YINE GITMEZ — zaten giremezler; baglanti
+    // gondermek calismayan bir yola sokardi.
+    const girisAcik = !!user && (!user.deletedAt || geriDonusPenceresinde(user));
     const gonderilebilir =
-      !!user && !user.deletedAt && user.status !== 'banned' && !kurumsalZorunlu;
+      !!user && girisAcik && user.status !== 'banned' && !kurumsalZorunlu;
 
     if (user && gonderilebilir) {
       await this.prisma.$transaction([
@@ -159,7 +170,12 @@ export class ParolaServisi {
       );
     }
 
-    if (kayit.user.deletedAt || kayit.user.status === 'banned') {
+    // ⚠ PLAN 5.8 §4.2 — IKIZ KAPI: `sifirlamaIste` ile AYNI yuklem. Biri
+    // gevsetilip digeri birakilsaydi musteri e-postayi alir, baglantiya
+    // tiklar ve "Bu hesap kullanilamiyor" duvarina toslardi.
+    const kapaliVeGirisYok =
+      !!kayit.user.deletedAt && !geriDonusPenceresinde(kayit.user);
+    if (kapaliVeGirisYok || kayit.user.status === 'banned') {
       throw new UnauthorizedException('Bu hesap kullanılamıyor.');
     }
 
@@ -177,6 +193,13 @@ export class ParolaServisi {
     const ozetlenmis = await bcrypt.hash(yeniParola, 10);
     const simdi = new Date();
 
+    // ⚠⚠ PLAN 5.8 §4.2: PAROLA YENILEMEK HESABI GERI ACMAZ.
+    // Asagidaki `data` blogunda `deletedAt`, `imhaTarihi` ve `kapatmaNedeni`
+    // YOKTUR ve OLMAMALIDIR. Geri acmanin TEK yolu paket satin almaktir
+    // (K1); parola sifirlama yalnizca GIRISE izin verir. Burada temizlense
+    // hesap odeme yapmadan geri acilir ve imha sayaci sessizce SIFIRLANIRDI
+    // — kapatmak, sayaci durdurmanin yolu haline gelirdi.
+    // Kilit: `geri-donus-test.ts` P4 (mutasyonla sinandi).
     await this.prisma.$transaction([
       this.prisma.user.update({
         where: { id: kayit.userId },

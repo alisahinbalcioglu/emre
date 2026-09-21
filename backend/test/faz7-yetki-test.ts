@@ -47,6 +47,10 @@ import { AuthService } from '../src/altyapi/auth/auth.service';
 import { OturumServisi } from '../src/altyapi/auth/oturum.servisi';
 import { AdminService } from '../src/ozellik/kutuphane/admin/admin.service';
 import { HesapServisi } from '../src/altyapi/auth/hesap.servisi';
+/** PLAN 5.8 §3.4: `HesapServisi` artik kapatma bildirimi de gonderiyor.
+ *  Bu paketlerin konusu e-posta DEGIL — sessiz, yutmayan bir gonderici
+ *  yeterli. Icerik `test:faz7-ekip` H/K bolumlerinde olculuyor. */
+const EPOSTA_SAHTE = { gonder: async () => undefined } as any;
 import { LaborMatchingService } from '../src/ozellik/eslestirme/labor-matching/labor-matching.service';
 import { LaborMatchingController } from '../src/ozellik/eslestirme/labor-matching/labor-matching.controller';
 import { MatchingService } from '../src/ozellik/eslestirme/matching/matching.service';
@@ -429,7 +433,7 @@ async function yTuretilmisSeviye() {
       };
     },
   });
-  const hesap = new HesapServisi(kvkkPrisma, {} as any);
+  const hesap = new HesapServisi(kvkkPrisma, {} as any, EPOSTA_SAHTE);
   const disa: any = await hesap.verileriDisaAktar('u1');
   check('Y10 ⭐ KVKK disa aktarimi SAKLANAN tier`i veriyor (suite), turetilmis DEGIL',
     disa?.kullanici?.tier === 'suite', `tier=${JSON.stringify(disa?.kullanici?.tier)}`);

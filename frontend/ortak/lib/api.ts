@@ -158,6 +158,12 @@ function kimlikUcuMu(url?: string): boolean {
   return KIMLIK_UCLARI.some((uc) => yol.endsWith(uc) || yol === uc.slice(1));
 }
 
+/**
+ * PLAN 5.8 §4.4 — kapali hesabin KALMASINA izin verilen yollar.
+ * `/hesap-kapali` (ekranin kendisi) ve `/abonelik…` (geri donmenin TEK yolu).
+ */
+const KAPALI_HESABIN_KALABILECEGI_YOL = /^\/(hesap-kapali|abonelik)(\/|$)/;
+
 api.interceptors.response.use(
   (res) => res,
   (err) => {
@@ -219,6 +225,35 @@ api.interceptors.response.use(
       // dusserse sonsuz yeniden yukleme olurdu.
       if (window.location.pathname !== '/koltuk-durduruldu') {
         window.location.href = '/koltuk-durduruldu';
+      }
+    }
+
+    // ── PLAN 5.8 §4.4: HESAP (ya da FIRMA) KAPALI ──────────────────────
+    // Sunucu 403 `HESAP_KAPALI` doner (`jwt-auth.guard.ts`). `KOLTUK_ASILDI`
+    // ile AYNI gerekce: oturum GECERLIDIR, 401 gibi ele alinip token
+    // silinseydi kullanici giris ekranina atilir, tekrar girer, ayni 403'u
+    // alirdi — geri donus ekranini (ve "Verilerimi indir" dugmesini) HIC
+    // goremezdi.
+    //
+    // ⚠ `ABONELIK_KISITLI` dalindan farki: orada kullanici sayfada KALIR.
+    // Burada kapali hesabin yapabilecegi TEK sey bu ekrandir.
+    if (
+      err.response?.status === 403 &&
+      err.response?.data?.kod === 'HESAP_KAPALI' &&
+      typeof window !== 'undefined'
+    ) {
+      console.warn('[api] 403 HESAP_KAPALI — uc:', err.config?.url, err.response?.data);
+      // ⚠ Zaten o sayfadaysak YONLENDIRME YOK: sonsuz yeniden yukleme olurdu.
+      // ⚠ ODEME SAYFASINDA DA YONLENDIRME YOK — olculdu: `/abonelik`
+      // yuklenirken `/firma/uyeler` cagriliyor (abonelik/page.tsx:102) ve o
+      // uc kapali hesaba 403 doner. Yonlendirme yapilsaydi kullanici geri
+      // donus ekranindaki "Paket sec"e basar, `/abonelik`e gider, o istek
+      // 403 alir ve ANINDA geri firlatilirdi: odeme sayfasi HIC acilmazdi.
+      // Sayfanin kendi `catch`i o veriyi zaten istege bagli kullaniyor.
+      // Gerekce `ABONELIK_KISITLI` daliyla ayni: kullaniciyi odeme yapmasi
+      // gereken anda urunun disina atmayiz.
+      if (!KAPALI_HESABIN_KALABILECEGI_YOL.test(window.location.pathname)) {
+        window.location.href = '/hesap-kapali';
       }
     }
 

@@ -461,7 +461,11 @@ function dunyaKur() {
   const dunning = { ilkBildirim: async (id: string, siparis: string) => { dunningCagrilari.push({ id, siparis }); }, tahsilatToparlandi: async () => undefined } as any;
   const webhook = new WebhookIsleyici(db.prisma, abonelik, {} as any, dunning);
   const mutabakat = new MutabakatJob(db.prisma, iyz.istemci, abonelik);
-  const hesap = new HesapServisi(db.prisma, satinAlma);
+  // PLAN 5.8 §3.4: kapatma bildirimi eklendi — gonderilenler kaydedilir.
+  const kapatmaEpostalari: { kime: string; konu: string }[] = [];
+  const hesap = new HesapServisi(db.prisma, satinAlma, {
+    gonder: async (t: any) => { kapatmaEpostalari.push({ kime: t.kime, konu: t.konu }); },
+  } as any);
   const dogrulamaGiden: string[] = [];
   const jwtSahte = { sign: () => 'tkn' } as any;
   // FAZ 7 F1b: `AuthService` artik `OturumServisi`ye delege ediyor (§3.11).
@@ -652,6 +656,14 @@ async function yollar(): Promise<void> {
   }
 
   // ── C · hesap kapat → ayni e-postayla yeni kayit ───────────────────────
+  // ⚠ 21.09 (plan 5.8 · K1) BU BLOGUN ON KOSULU DEGISTI. Eskiden kapatma
+  // e-postayi ANINDA `kapali-<id>@…` yapiyordu ve ayni adresle HEMEN yeni
+  // hesap acilabiliyordu. Artik adres 30 gun HESAPTA KALIR ve kayit
+  // `HESAP_KAPALI_GERI_DONUS` ile REDDEDILIR (musterinin en kolay dusecegi
+  // tuzak buydu). Adres ancak 30 gun sonra, gunluk imha isi satiri
+  // anonimlestirince serbest kalir.
+  // Blogun OLCTUGU sey DEGISMEDI: `DenemeKullanimi`nin e-posta anahtari
+  // hesap kapatmada SILINMEZ, bu yuzden ayni kisi denemeyi IKINCI KEZ alamaz.
   console.log('\n── C · hesap kapat → ayni e-postayla yeni kayit ──');
   {
     const d = dunyaKur();
@@ -660,12 +672,29 @@ async function yollar(): Promise<void> {
     await d.satinAl({ firmaId: 'FC', kullaniciId: 'UC1', eposta: 'Can.Demir@Ornek.com', telefon: '0532 111 22 33', kod: 'sub-c1' });
     await d.hesap.hesabiKapat('UC1', 'parola-123');
     const eski = d.db.tablo('user').find((u) => u.id === 'UC1')!;
-    check('C-OLCUT hesap kapandi: e-posta serbest, orijinali kapatilanEposta\'da, abonelik iyzico\'da iptal',
-      eski.email === 'kapali-UC1@metapricex.invalid' && eski.kapatilanEposta === 'Can.Demir@Ornek.com' && d.iyz.iptalEdilen.includes('sub-c1'),
-      `email=${eski.email}`);
+    check('C-OLCUT hesap kapandi: e-posta HESAPTA KALDI (K1), orijinali kapatilanEpostada, abonelik iyzicoda iptal',
+      eski.email === 'Can.Demir@Ornek.com' && eski.kapatilanEposta === 'Can.Demir@Ornek.com' &&
+        eski.kapatmaNedeni === 'kendi' && eski.imhaTarihi instanceof Date &&
+        d.iyz.iptalEdilen.includes('sub-c1'),
+      `email=${eski.email} neden=${eski.kapatmaNedeni}`);
+    const erken = await (async () => {
+      try {
+        await d.auth.register({ email: 'can.demir@ornek.com', password: 'yeni-parola', sozlesmeOnayi: true } as any);
+        return null;
+      } catch (e: any) { return e; }
+    })();
+    check('C-OLCUT ⭐ 30 gun dolmadan ayni adresle KAYIT ACILMAZ (K1 tuzagi)',
+      (erken?.response ?? erken?.getResponse?.())?.kod === 'HESAP_KAPALI_GERI_DONUS',
+      JSON.stringify(erken?.response ?? String(erken)));
+    // ── IMHA SIMULASYONU (C gorevinin gunluk isi) ────────────────────────
+    // 30 gun doldu ve imha satiri anonimlestirdi. BURADA IKINCI BIR KURAL
+    // YAZILMIYOR: yalniz fixture o gune tasiniyor ki asil olcum (deneme
+    // anahtari) kosabilsin. Imhanin KENDISI C gorevinin paketinde olculur.
+    eski.email = 'kapali-UC1@metapricex.invalid';
+    eski.imhaTarihi = null;
     const kayit = oturumDali(await d.auth.register({ email: 'can.demir@ornek.com', password: 'yeni-parola', sozlesmeOnayi: true } as any));
     const yeni = d.db.tablo('user').find((u) => u.id === kayit.user.id)!;
-    check('C-OLCUT ayni e-postayla YENI hesap + YENI firma acildi', !!yeni.firmaId && yeni.firmaId !== 'FC', `firma=${yeni.firmaId}`);
+    check('C-OLCUT imhadan SONRA ayni e-postayla YENI hesap + YENI firma acildi', !!yeni.firmaId && yeni.firmaId !== 'FC', `firma=${yeni.firmaId}`);
     yeni.emailVerified = true; // dogrulama baglantisina tikladi
     const ikinci = await d.satinAl({ firmaId: yeni.firmaId, kullaniciId: yeni.id, eposta: 'fatura@yenifirma.com', telefon: '0542 999 88 77', kod: 'sub-c2' });
     check('C1 ⭐ yeni firma DENEMESIZ plana gitti (kapatilan hesabin e-postasi deneme kaydinda)',

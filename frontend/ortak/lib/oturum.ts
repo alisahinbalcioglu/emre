@@ -22,7 +22,15 @@ const JWT_BICIMI = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
 
 export type OturumYaniti = {
   token: string;
-  user: { id: string; email: string; role: string; tier?: string; koltukDurduruldu?: boolean };
+  user: {
+    id: string;
+    email: string;
+    role: string;
+    tier?: string;
+    koltukDurduruldu?: boolean;
+    /** PLAN 5.8 §4 — hesap (ya da firma) kapali: geri donus ekranina gidilir. */
+    hesapKapali?: boolean;
+  };
 };
 
 export function gecerliTokenMi(token: unknown): token is string {
@@ -49,8 +57,15 @@ export function oturumuYaz(data: unknown): OturumYaniti {
 /**
  * Giristen sonra gidilecek adres. Kisi siniri asildiysa kullanici panoya
  * DEGIL durdurma ekranina gider — panoya gitse her istegi 403 alirdi.
+ *
+ * ⚠ PLAN 5.8 §4.4: KAPALI HESAP KOLTUKTAN ONCE gelir. Sunucudaki sira da
+ * aynidir (`jwt-auth.guard.ts`: once `HESAP_KAPALI`, sonra `KOLTUK_ASILDI`);
+ * iki taraf ters siralansaydi kullanici `/koltuk-durduruldu` ekranina dusup
+ * "yoneticiniz paketi yukseltmeli" okur ve hesabinin KAPALI oldugunu hic
+ * ogrenemezdi.
  */
 export function girisSonrasiYol(data: OturumYaniti): string {
+  if (data.user?.hesapKapali === true) return '/hesap-kapali';
   return data.user?.koltukDurduruldu === true ? '/koltuk-durduruldu' : '/dashboard';
 }
 

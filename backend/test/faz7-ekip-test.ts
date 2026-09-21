@@ -33,7 +33,10 @@ import {
   bekleyenDavetKosulu,
   etkinHesapKosulu,
   firmaKilitliIslem,
+  imhaTarihiHesapla,
   kapatmaVerisi,
+  topluKapatmaVerisi,
+  KAPATMA_SAKLAMA_GUN,
   koltukDurumuHesapla,
   koltukKarari,
   koltukSirasiKarari,
@@ -364,6 +367,10 @@ function kullanici(ek: Satir): Satir {
     firmaId: 'F1', firmaRol: 'uye', createdAt: t2, ad: null, soyad: null,
     kapatilanEposta: null, emailVerified: true, sozlesmeOnayiAt: null,
     sozlesmeSurumu: null, ticariIletiOnayiAt: null,
+    // PLAN 5.8 — SEKIL EKSIK OLMASIN: alanlar fixture'da yoksa "yazilmadi"
+    // ile "hic yoktu" ayirt edilemez ve `undefined` her assert'i sessizce
+    // gecerdi (hafiza dersi: fixture dogru dali surmeli).
+    imhaTarihi: null, kapatmaNedeni: null,
     ...ek,
   };
 }
@@ -868,7 +875,13 @@ async function bolumS(): Promise<void> {
     sinifIzinSonuc === durdurulan, JSON.stringify(hataGovdesi(sinifIzinSonuc)));
 
   // S12 — izin tablosu
-  const IZINLI_UCLAR = ['me', 'verilerim', 'hesabimiKapat', 'changePassword', 'resendVerification'];
+  // ⚠ 21.09 (plan 5.8 §3.3.1): `kapatmaOnizlemesi` EKLENDI ve bu
+  // `hesabimiKapat`in IKIZIDIR — durdurulmus uye hesabini KAPATABILIYORSA
+  // kapatmadan once ne olacagini da GORMEK zorundadir. Ikisinden birine
+  // izin verip digerine vermemek, ekranda "firmanız kapanır" uyarisini
+  // yalniz bazi kullanicilardan gizlerdi.
+  const IZINLI_UCLAR = ['me', 'verilerim', 'hesabimiKapat', 'kapatmaOnizlemesi',
+    'changePassword', 'resendVerification'];
   const authMetotlari = metotlar(AuthController);
   const izinliBulunan = authMetotlari.filter(
     (m) => metadataOku(KOLTUK_DISI_IZINLI, (AuthController.prototype as any)[m], AuthController) === true,
@@ -1136,14 +1149,25 @@ async function bolumD(): Promise<void> {
 function hesapKur(prisma: any) {
   const iptaller: any[] = [];
   const loglar: string[] = [];
+  // PLAN 5.8 §3.4 — kapatma bildirimleri. Gonderilenler KAYDEDILIR:
+  // "e-posta gitti mi, KIME ve hangi TARIHLE" ayri ayri olculebilsin.
+  const epostalar: { kime: string; konu: string; govde: string }[] = [];
+  const eposta = {
+    gonder: async (t: any) => {
+      epostalar.push({
+        kime: t.kime, konu: t.konu,
+        govde: [t.baslik, ...(t.paragraflar ?? []), t.altNot ?? ''].join(' '),
+      });
+    },
+  } as any;
   const satinAlma = {
     iptalEt: async (firmaId: string, aktor: string, neden: string) => {
       iptaller.push({ firmaId, aktor, neden, sira: prisma._iz.cagrilar.length });
     },
   } as any;
-  const servis = new HesapServisi(prisma, satinAlma);
+  const servis = new HesapServisi(prisma, satinAlma, eposta);
   (servis as any).logger = { error: (m: unknown) => loglar.push(String(m)), warn: () => undefined, log: () => undefined };
-  return { servis, iptaller, loglar, satinAlma };
+  return { servis, iptaller, loglar, satinAlma, epostalar };
 }
 
 function adminKur(prisma: any) {
@@ -1183,14 +1207,28 @@ async function bolumH(): Promise<void> {
   check('H1 `FirmaOlayi uye.ayrildi` yazildi',
     pH1._veri.firmaOlayi.some((o: Satir) => o.tip === 'uye.ayrildi'),
     JSON.stringify(pH1._veri.firmaOlayi.map((o: Satir) => o.tip)));
-  check('H1 kapatma veri deseni uygulandi (deletedAt + passwordChangedAt + anonim e-posta)',
+  check('H1 kapatma veri deseni uygulandi (deletedAt + passwordChangedAt + E-POSTA DURUYOR)',
     (() => { const u = pH1._veri.user.find((x: Satir) => x.id === 'B');
       // ⚠ "dolu mu" YETMEZ: BAYAT bir damga (epoch) da doludur ama token'i
       // OLDURMEZ. Damga kapatma anina esit olmali (mutant M21).
       return !!u?.deletedAt && u?.passwordChangedAt?.getTime() === u?.deletedAt?.getTime() &&
-        u.email === 'kapali-B@metapricex.invalid' &&
+        // PLAN 5.8 K1 (21.09): adres ARTIK ANONIMLESMIYOR — 30 gun boyunca
+        // ayni adresle girip geri donulebilmeli. Eski hâl `kapali-B@…` idi.
+        u.email === 'b@firma.test' &&
         u.kapatilanEposta === 'b@firma.test'; })(),
     JSON.stringify(pH1._veri.user.find((x: Satir) => x.id === 'B')));
+  check('H1 `kapatmaNedeni = kendi` ve `imhaTarihi = kapatma + 30 gun`',
+    (() => { const u = pH1._veri.user.find((x: Satir) => x.id === 'B');
+      return u?.kapatmaNedeni === 'kendi' &&
+        u?.imhaTarihi?.getTime() === u?.deletedAt?.getTime() + 30 * 86400000; })(),
+    JSON.stringify(pH1._veri.user.find((x: Satir) => x.id === 'B')));
+  check('H1 kapatma e-postasi GERCEK TARIHLE gitti ("30 gun sonra" DEGIL)',
+    (() => { const u = pH1._veri.user.find((x: Satir) => x.id === 'B');
+      const gg = new Date(u!.imhaTarihi.getTime() + 3 * 3600000);
+      const bek = `${String(gg.getUTCDate()).padStart(2, '0')}.${String(gg.getUTCMonth() + 1).padStart(2, '0')}.${gg.getUTCFullYear()}`;
+      const e = h1.epostalar.find((x) => x.kime === 'b@firma.test');
+      return !!e && e.govde.includes(bek) && !/30 gün sonra/.test(e.govde); })(),
+    JSON.stringify(h1.epostalar));
 
   // H2 — son sahip + baska hesap var → SON_SAHIP, yazma yok
   const pH2 = kapatmaPrisma([
@@ -1199,10 +1237,13 @@ async function bolumH(): Promise<void> {
   ]);
   const h2 = hesapKur(pH2);
   const r2 = await dene(() => h2.servis.hesabiKapat('A', 'parola1234'));
-  check('H2 son sahip + baska hesap → 400 SON_SAHIP',
-    hataKodu(r2.hata) === 'SON_SAHIP', JSON.stringify(hataGovdesi(r2.hata)));
-  check('H2 `user.update` YAPILMADI',
-    pH2._veri.user.find((x: Satir) => x.id === 'A')?.deletedAt == null);
+  // ⚠ 21.09 (K2) DAVRANIS DEGISTI: son sahip ARTIK kapatabilir. Eski assert
+  // `SON_SAHIP` bekliyordu; o kapi yalniz YONETICI SILMESI ve UYE CIKARMA
+  // yollarinda duruyor (H5c ve K bolumu olcer).
+  check('H2 son sahip KENDI kapatabilir (K2) → hata YOK, firma kapanir',
+    !r2.hata, JSON.stringify(hataGovdesi(r2.hata)));
+  check('H2 `user.update` YAPILDI (A kapandi)',
+    pH2._veri.user.find((x: Satir) => x.id === 'A')?.deletedAt != null);
 
   // H3 — firmanin TEK hesabi → iptal var ve COMMIT'TEN SONRA
   const pH3 = kapatmaPrisma(
@@ -1252,8 +1293,14 @@ async function bolumH(): Promise<void> {
   ]);
   const h4b = hesapKur(pH4b);
   const r4b = await dene(() => h4b.servis.hesabiKapat('A', 'parola1234'));
-  check('H4b tek diger hesap BANLI → SON_SAHIP (banli hesap "hesap" sayilir)',
-    hataKodu(r4b.hata) === 'SON_SAHIP', JSON.stringify(hataGovdesi(r4b.hata)));
+  // ⚠ 21.09 (K2): artik SON_SAHIP DEGIL — firma kapanir. Ama olcut AYNI
+  // kaliyor: BANLI hesap "hesap" sayilir, yani firma "tek kullanicili"
+  // degildir ve banli kisi de `firmaKapandi` ile durdurulur.
+  check('H4b tek diger hesap BANLI → firma kapanir, BANLI hesap da durdurulur',
+    !r4b.hata &&
+      pH4b._veri.user.find((x: Satir) => x.id === 'X')?.kapatmaNedeni === 'firmaKapandi' &&
+      pH4b._veri.user.find((x: Satir) => x.id === 'X')?.status === 'banned',
+    JSON.stringify([hataGovdesi(r4b.hata), pH4b._veri.user.find((x: Satir) => x.id === 'X')]));
 
   // H5 — YONETICI SILMESI, tek hesapli firma
   const pH5 = kapatmaPrisma([{ id: 'A', email: 'a@firma.test', firmaRol: 'sahip', createdAt: t1 }]);
@@ -1266,10 +1313,15 @@ async function bolumH(): Promise<void> {
     !r5.hata && a5.iptaller.length === 1 && a5.iptaller[0].neden === 'yonetici silme',
     JSON.stringify([hataGovdesi(r5.hata), a5.iptaller]));
   check('H5 iptal COMMIT`TEN SONRA', a5.iptaller[0]?.sira > yonetSonYazma);
-  check('H5 veri deseni HESAP KAPATMAYLA BIREBIR',
+  check('H5 veri deseni HESAP KAPATMAYLA BIREBIR (nedeni `yonetici`, e-posta DURUR)',
     u5.deletedAt != null && u5.passwordChangedAt?.getTime() === u5.deletedAt?.getTime() &&
-      u5.kapatilanEposta === 'a@firma.test' && u5.email === 'kapali-A@metapricex.invalid',
+      u5.kapatilanEposta === 'a@firma.test' && u5.email === 'a@firma.test' &&
+      u5.kapatmaNedeni === 'yonetici' &&
+      u5.imhaTarihi?.getTime() === u5.deletedAt?.getTime() + 30 * 86400000,
     JSON.stringify(u5));
+  check('H5 firmanin son hesabi gitti → `Firma.imhaTarihi` de doldu (§5.2)',
+    pH5._veri.firma[0]?.imhaTarihi?.getTime() === u5.imhaTarihi?.getTime(),
+    JSON.stringify(pH5._veri.firma[0]));
   check('H5 YoneticiOlayi `veri.abonelikIptal === true`',
     pH5._veri.yoneticiOlayi.some((o: Satir) => o.tip === 'kullanici.silindi' && o.veri?.abonelikIptal === true),
     JSON.stringify(pH5._veri.yoneticiOlayi));
@@ -1309,10 +1361,14 @@ async function bolumH(): Promise<void> {
   const { servis: s6 } = uyelikKur(pH6);
   const r6 = await dene(() => s6.uyeCikar(K('A'), 'C', 'C@FIRMA.test'));
   const uC = pH6._veri.user.find((x: Satir) => x.id === 'C');
-  check('H6 uye cikarildi: kapatma veri deseni uygulandi',
+  check('H6 uye cikarildi: kapatma veri deseni + K1 ISTISNASI (adres HEMEN serbest)',
     !r6.hata && uC?.deletedAt != null &&
       uC?.passwordChangedAt?.getTime() === uC?.deletedAt?.getTime() &&
-      uC?.email === 'kapali-C@metapricex.invalid' && uC?.kapatilanEposta === 'c@firma.test',
+      // ⚠ DORT YOLDAN YALNIZ BU: ayrilmayi kisi secmedi, baska bir firmaya
+      // katilabilmeli (K1 istisnasi). Diger uc yolda adres 30 gun durur.
+      uC?.email === 'kapali-C@metapricex.invalid' && uC?.kapatilanEposta === 'c@firma.test' &&
+      uC?.kapatmaNedeni === 'ekiptenCikarildi' &&
+      uC?.imhaTarihi?.getTime() === uC?.deletedAt?.getTime() + 30 * 86400000,
     JSON.stringify([hataGovdesi(r6.hata), uC]));
   // ⚠ FAZ 7 F3b: `kullaniciDisKimlik.deleteMany` BEKLENEN bir silmedir
   // (§5.11 — cikarilan uye sirket hesabiyla geri giremesin). Kural hâlâ
@@ -1510,7 +1566,7 @@ async function bolumM(): Promise<void> {
     firmaDavet: [],
   });
   const pUye = kvkkPrisma('uye');
-  const hUye = new HesapServisi(pUye, { iptalEt: async () => undefined } as any);
+  const hUye = new HesapServisi(pUye, { iptalEt: async () => undefined } as any, { gonder: async () => undefined } as any);
   const disaUye: any = await hUye.verileriDisaAktar('B');
   const tekliflerWhere = pUye._iz.cagrilar.find((c: any) => c.tablo === 'quote' && c.islem === 'findMany')?.arg?.where;
   check('M4 UYE teklif süzgeci `{ firmaId, userId }`',
@@ -1527,7 +1583,7 @@ async function bolumM(): Promise<void> {
     JSON.stringify(disaUye.firmaIslemKayitlari.map((o: any) => o.tip)));
 
   const pSahip = kvkkPrisma('sahip');
-  const hSahip = new HesapServisi(pSahip, { iptalEt: async () => undefined } as any);
+  const hSahip = new HesapServisi(pSahip, { iptalEt: async () => undefined } as any, { gonder: async () => undefined } as any);
   const disaSahip: any = await hSahip.verileriDisaAktar('B');
   const tekliflerWhereS = pSahip._iz.cagrilar.find((c: any) => c.tablo === 'quote' && c.islem === 'findMany')?.arg?.where;
   check('M4-OLCUT SAHIP teklif süzgeci yalniz `{ firmaId }` (fixture kaniti)',
@@ -1543,6 +1599,200 @@ async function bolumM(): Promise<void> {
 // ═══════════════════════════════════════════════════════════════════════════
 //  Q · HAZIRLAYAN  ·  P · KULLANICI HAKKI BETIGI
 // ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
+//  K · KAPATMA NEDENI ve FIRMA KAPANISI (plan 5.8 · 21.09.2026)
+//  Kabul olcutu 5 (son sahip kapatinca uyeler durur / odeme geri getirir /
+//  `ekiptenCikarildi` GELMEZ) ve olcut 6 (cikarilan uyenin adresi HEMEN
+//  serbest, baska firmaya davet edilebiliyor).
+// ═══════════════════════════════════════════════════════════════════════════
+async function bolumK(): Promise<void> {
+  console.log('\n── K · KAPATMA NEDENI ve FIRMA KAPANISI ──');
+
+  // Firma F1: A(sahip) · B(uye) · C(uye) · hak 3 · bir de bekleyen davet.
+  // Ikinci firma F2: Z(sahip), hak 3 — cikarilan uyeyi davet edecek.
+  const p = sahtePrisma({
+    user: [
+      kullanici({ id: 'A', email: 'a@firma.test', firmaRol: 'sahip', createdAt: t1, password: PAROLA_OZETI }),
+      kullanici({ id: 'B', email: 'b@firma.test', createdAt: t2, password: PAROLA_OZETI }),
+      kullanici({ id: 'C', email: 'c@firma.test', createdAt: t3, password: PAROLA_OZETI }),
+      kullanici({ id: 'Z', email: 'z@ikinci.test', firmaId: 'F2', firmaRol: 'sahip', createdAt: t1, password: PAROLA_OZETI }),
+    ],
+    firma: [{ id: 'F1', ad: 'Acme', imhaTarihi: null }, { id: 'F2', ad: 'Ikinci', imhaTarihi: null }],
+    firmaDavet: [], firmaOlayi: [], quote: [], yoneticiOlayi: [],
+    abonelik: [
+      { id: 'ab1', firmaId: 'F1', paketSurumu: { paket: { kullaniciHakki: 3, kod: 'pro-mep' } } },
+      { id: 'ab2', firmaId: 'F2', paketSurumu: { paket: { kullaniciHakki: 3, kod: 'pro-mep' } } },
+    ],
+  });
+  const { servis: uyelik } = uyelikKur(p);
+  const hesap = hesapKur(p);
+
+  // ── 1) Sahip C'yi ekipten CIKARIR → K1 istisnasi ────────────────────────
+  const rC = await dene(() => uyelik.uyeCikar(K('A'), 'C', 'c@firma.test'));
+  const uC = () => p._veri.user.find((x: Satir) => x.id === 'C');
+  check('K1 ⭐ ekipten cikarilanin ADRESI HEMEN SERBEST (K1 istisnasi)',
+    !rC.hata && uC()?.email === 'kapali-C@metapricex.invalid' &&
+      uC()?.kapatilanEposta === 'c@firma.test' &&
+      uC()?.kapatmaNedeni === 'ekiptenCikarildi',
+    JSON.stringify([hataGovdesi(rC.hata), uC()]));
+
+  // ── 2) Son sahip A KAPATIR → K2: firma kapanir, B durur ─────────────────
+  // ⚠ Bekleyen davet KAPANIS ANINDA acik olsun ki iptali olculebilsin.
+  davetEkle(p, { id: 'dK', firmaId: 'F1', eposta: 'sonradan@firma.test' });
+  const rA = await dene(() => hesap.servis.hesabiKapat('A', 'parola1234'));
+  const uA = p._veri.user.find((x: Satir) => x.id === 'A');
+  const uB = p._veri.user.find((x: Satir) => x.id === 'B');
+  const f1 = p._veri.firma.find((x: Satir) => x.id === 'F1');
+  check('K2 ⭐ SON SAHIP KAPATABILIR (eski hâl 400 SON_SAHIP veriyordu)',
+    !rA.hata && uA?.deletedAt != null && uA?.kapatmaNedeni === 'kendi',
+    JSON.stringify([hataGovdesi(rA.hata), uA]));
+  check('K2 ⭐ uye B `firmaKapandi` ile DURDU (silinmedi: satir ve teklifleri duruyor)',
+    uB?.deletedAt != null && uB?.kapatmaNedeni === 'firmaKapandi' &&
+      uB?.passwordChangedAt?.getTime() === uB?.deletedAt?.getTime(),
+    JSON.stringify(uB));
+  check('K2 uyenin E-POSTASI DEGISMEDI (sahip geri acinca ayni adresle girecek)',
+    uB?.email === 'b@firma.test' && uB?.kapatilanEposta === null,
+    JSON.stringify([uB?.email, uB?.kapatilanEposta]));
+  check('K2 ⭐ SAHIP, UYE ve FIRMA ayni `imhaTarihi`ni tasiyor (§3.2)',
+    uA?.imhaTarihi instanceof Date &&
+      uA?.imhaTarihi?.getTime() === uB?.imhaTarihi?.getTime() &&
+      uA?.imhaTarihi?.getTime() === f1?.imhaTarihi?.getTime() &&
+      uA?.imhaTarihi?.getTime() === uA?.deletedAt?.getTime() + 30 * 86400000,
+    JSON.stringify({ A: uA?.imhaTarihi, B: uB?.imhaTarihi, F1: f1?.imhaTarihi }));
+  check('K2 ⭐ ZATEN KAPALI olan C EZILMEDI (nedeni ve tarihi korundu)',
+    uC()?.kapatmaNedeni === 'ekiptenCikarildi' &&
+      uC()?.email === 'kapali-C@metapricex.invalid',
+    JSON.stringify(uC()));
+  // ⚠ Firma kapaninca abonelik de IPTAL: kimse kullanamayacak bir firmanin
+  // karti cekilmeye devam edemez. Eski kural yalniz "firmanin son hesabi"
+  // dalinda iptal ediyordu; uyeleri olan bir firma kapandiginda ETMIYORDU.
+  check('K2 ⭐ uyeli firma kapaninca ABONELIK de iptal edildi',
+    hesap.iptaller.length === 1 && hesap.iptaller[0].neden === 'hesap kapatma' &&
+      hesap.iptaller[0].firmaId === 'F1',
+    JSON.stringify(hesap.iptaller));
+  check('K2 bekleyen davet AYNI transaction`da iptal edildi',
+    p._veri.firmaDavet.find((d: Satir) => d.id === 'dK')?.iptalAt != null &&
+      p._veri.firmaOlayi.some((o: Satir) => o.tip === 'davet.otomatik-iptal'),
+    JSON.stringify(p._veri.firmaDavet.find((d: Satir) => d.id === 'dK')));
+  check('K2 `uye.firma-kapandi` olayi SAYIYLA yazildi (icerik degil)',
+    p._veri.firmaOlayi.some((o: Satir) => o.tip === 'uye.firma-kapandi' && o.veri?.durdurulan === 1),
+    JSON.stringify(p._veri.firmaOlayi.map((o: Satir) => [o.tip, o.veri])));
+  check('K2 ⭐ uyeye AYRI ve KISA e-posta gitti, GERCEK TARIHLE',
+    (() => {
+      const gg = new Date(uB!.imhaTarihi.getTime() + 3 * 3600000);
+      const bek = `${String(gg.getUTCDate()).padStart(2, '0')}.${String(gg.getUTCMonth() + 1).padStart(2, '0')}.${gg.getUTCFullYear()}`;
+      const e = hesap.epostalar.find((x) => x.kime === 'b@firma.test');
+      const s = hesap.epostalar.find((x) => x.kime === 'a@firma.test');
+      return !!e && !!s && e.konu !== s.konu &&
+        /[Ff]irman/.test(e.govde) && e.govde.includes(bek) &&
+        // Uyeye "paket secin" DENMEZ: karar sahibindir, uye odeme yapamaz.
+        !/paket seçerek hesabınızı/.test(e.govde);
+    })(),
+    JSON.stringify(hesap.epostalar.map((e) => [e.kime, e.konu])));
+  check('K2 ⭐ CIKARILAN UYEYE firma kapanis e-postasi GITMEDI (o ekipte degil)',
+    !hesap.epostalar.some((e) => /kapali-C@/.test(e.kime) || e.kime === 'c@firma.test'),
+    JSON.stringify(hesap.epostalar.map((e) => e.kime)));
+
+  // ── 3) ODEME GERI ACINCA KIM DONER (olcut 5'in son ayagi) ───────────────
+  // ⚠ IKINCI BIR KURAL YAZILMAZ: geri acmanin kapali listesi D gorevinin
+  // dosyasindadir (`abonelik.servisi.ts`). Burada O LISTE okunur ve kapanis
+  // fixture'ina UYGULANIR — ikiz bir "kim doner" tablosu tutulsaydi ikisi
+  // ayri zamanlarda degisirdi.
+  const { GERI_ACILAN_KAPATMA_NEDENLERI } =
+    require('../src/ozellik/odeme/abonelik/abonelik.servisi');
+  const donenler = p._veri.user
+    .filter((u: Satir) => u.firmaId === 'F1' && u.deletedAt &&
+      GERI_ACILAN_KAPATMA_NEDENLERI.includes(u.kapatmaNedeni))
+    .map((u: Satir) => u.id).sort();
+  check('K3-FIXTURE geri acma listesi GERCEKTEN okundu (bos dizi yalanci yesil vermesin)',
+    Array.isArray(GERI_ACILAN_KAPATMA_NEDENLERI) && GERI_ACILAN_KAPATMA_NEDENLERI.length === 2,
+    JSON.stringify(GERI_ACILAN_KAPATMA_NEDENLERI));
+  check('K3 ⭐ odeme sonrasi DONENLER: A (kendi) + B (firmaKapandi)',
+    JSON.stringify(donenler) === JSON.stringify(['A', 'B']), JSON.stringify(donenler));
+  check('K3 ⭐ `ekiptenCikarildi` olan C GERI GELMEZ',
+    !donenler.includes('C') && !GERI_ACILAN_KAPATMA_NEDENLERI.includes('ekiptenCikarildi'),
+    JSON.stringify([donenler, GERI_ACILAN_KAPATMA_NEDENLERI]));
+
+  // ── 4) OLCUT 6: cikarilan uye BASKA FIRMAYA katilabiliyor ───────────────
+  const dZ = davetEkle(p, { id: 'dZ', firmaId: 'F2', eposta: 'c@firma.test',
+    davetEdenId: 'Z', davetEdenEposta: 'z@ikinci.test' });
+  const rKabul = await dene(() => uyelik.davetKabul({
+    token: dZ.token, parola: 'parola1234', sozlesmeOnayi: true,
+  } as any));
+  const yeniC = p._veri.user.find((u: Satir) => u.email === 'c@firma.test' && u.firmaId === 'F2');
+  check('K4 ⭐ ekipten cikarilan kisi BASKA FIRMANIN davetini kabul edebildi',
+    !rKabul.hata && !!yeniC && yeniC.firmaRol === 'uye',
+    JSON.stringify([hataGovdesi(rKabul.hata), yeniC?.id]));
+  check('K4 eski satir DOKUNULMADAN duruyor (teklifleri F1`de kalir)',
+    uC()?.id === 'C' && uC()?.firmaId === 'F1' && yeniC?.id !== 'C',
+    JSON.stringify([uC()?.firmaId, yeniC?.id]));
+
+  // ── 5) K1`IN IKIZI: adresi DURAN kapali hesap davete katilamaz ──────────
+  // ⚠ Bu kapi olmasaydi `user.create` `User.email` @unique kisitina carpar
+  // ve musteri ham 500 gorurdu (kayit yolunun ikizi, §4.3).
+  const dB = davetEkle(p, { id: 'dB', firmaId: 'F2', eposta: 'b@firma.test',
+    davetEdenId: 'Z', davetEdenEposta: 'z@ikinci.test' });
+  const rB = await dene(() => uyelik.davetKabul({
+    token: dB.token, parola: 'parola1234', sozlesmeOnayi: true,
+  } as any));
+  check('K5 ⭐ adresi DURAN kapali hesap → 400 KAPALI_HESAP_VAR (ham 500 DEGIL)',
+    hataKodu(rB.hata) === 'KAPALI_HESAP_VAR' && hataDurumu(rB.hata) === 400,
+    JSON.stringify([hataDurumu(rB.hata), hataGovdesi(rB.hata)]));
+  check('K5 ikinci bir B hesabi ACILMADI',
+    p._veri.user.filter((u: Satir) => u.email === 'b@firma.test').length === 1,
+    JSON.stringify(p._veri.user.filter((u: Satir) => u.email === 'b@firma.test').map((u: Satir) => u.id)));
+
+  // ── 6) KAPATMA ONIZLEMESI — onay metninin TEK kaynagi (§3.3.1) ──────────
+  const p2 = sahtePrisma({
+    user: [
+      kullanici({ id: 'S', email: 's@uc.test', firmaId: 'F3', firmaRol: 'sahip', createdAt: t1, password: PAROLA_OZETI }),
+      kullanici({ id: 'U1', email: 'u1@uc.test', firmaId: 'F3', createdAt: t2, password: PAROLA_OZETI }),
+      kullanici({ id: 'U2', email: 'u2@uc.test', firmaId: 'F3', createdAt: t3, password: PAROLA_OZETI }),
+      kullanici({ id: 'Y', email: 'y@dort.test', firmaId: 'F4', firmaRol: 'sahip', createdAt: t1, password: PAROLA_OZETI }),
+      kullanici({ id: 'Y2', email: 'y2@dort.test', firmaId: 'F4', firmaRol: 'sahip', createdAt: t2, password: PAROLA_OZETI }),
+    ],
+    firma: [{ id: 'F3', ad: 'Uc' }, { id: 'F4', ad: 'Dort' }],
+    firmaDavet: [], firmaOlayi: [], abonelik: [], quote: [], yoneticiOlayi: [],
+  });
+  const h2 = hesapKur(p2);
+  const onS = await h2.servis.kapatmaOnizlemesi('S');
+  check('K6 ⭐ son sahip onizlemesi: `firmaKapaniyor: true` + `digerHesap: 2`',
+    onS.firmaVar === true && onS.karar.izin === true &&
+      (onS.karar as any).firmaKapaniyor === true && onS.digerHesap === 2,
+    JSON.stringify(onS));
+  const onY = await h2.servis.kapatmaOnizlemesi('Y');
+  check('K6 baska etkin sahip varken firma DEVAM eder (`firmaKapaniyor: false`)',
+    onY.karar.izin === true && (onY.karar as any).firmaKapaniyor === false,
+    JSON.stringify(onY));
+  const onU = await h2.servis.kapatmaOnizlemesi('U1');
+  check('K6 uye onizlemesi: firma DEVAM',
+    onU.karar.izin === true && (onU.karar as any).firmaKapaniyor === false,
+    JSON.stringify(onU));
+  check('K6 onizleme HICBIR SEY YAZMADI (salt okunur uc)',
+    !p2._iz.cagrilar.some((c: any) => /create|update|delete/i.test(c.islem)),
+    JSON.stringify(p2._iz.cagrilar.map((c: any) => c.islem)));
+  check('K6 onizleme `saklamaGun` tasiyor (on yuzdeki 30 ikizi buna baglanacak)',
+    onS.saklamaGun === KAPATMA_SAKLAMA_GUN, String(onS.saklamaGun));
+
+  // ── 7) KAYNAK KAPILARI — kural TEK yerde kalsin ─────────────────────────
+  const hesapKodu = kodu(oku('backend/src/altyapi/auth/hesap.servisi.ts'));
+  const adminKodu = kodu(oku('backend/src/ozellik/kutuphane/admin/admin.service.ts'));
+  const uyelikKodu = kodu(oku('backend/src/ozellik/firma/uyelik.servisi.ts'));
+  check('K7 ⭐ `firmayiKapatabilir` YALNIZ kendi kapatma yolunda',
+    /firmayiKapatabilir:\s*true/.test(hesapKodu) &&
+      !/firmayiKapatabilir/.test(adminKodu) && !/firmayiKapatabilir/.test(uyelikKodu),
+    'yonetici silmesi ya da uye cikarma firmayi kapatabilir hâle gelmis');
+  check('K7 dort kapatma yolunun DORDU de `kapatmaVerisi(..., neden)` cagiriyor',
+    (hesapKodu.match(/kapatmaVerisi\([^)]*'kendi'\)/g) ?? []).length === 2 &&
+      /kapatmaVerisi\([^)]*'ekiptenCikarildi'\)/.test(uyelikKodu) &&
+      /kapatmaVerisi\([^)]*'yonetici'\)/.test(adminKodu),
+    'bir yol nedensiz kapatiyorsa imha ve geri donus o hesapta sessizce sasar');
+  check('K7 uye durdurma TEK yazma (`topluKapatmaVerisi` + tek `updateMany`)',
+    /topluKapatmaVerisi\(simdi, 'firmaKapandi'\)/.test(hesapKodu) &&
+      (hesapKodu.match(/user\.updateMany/g) ?? []).length === 1,
+    'ikinci bir durdurma mekanizmasi yazilmis');
+}
+
 function bolumQP(): void {
   console.log('\n── Q · HAZIRLAYAN ──');
   const ayrilan = hazirlayanGorunumu({
@@ -1626,20 +1876,50 @@ function bolumQP(): void {
   const bk = bekleyenDavetKosulu(t2);
   check('Z `bekleyenDavetKosulu` = { kabulAt:null, iptalAt:null, sonGecerlilik:{gt} }',
     bk.kabulAt === null && bk.iptalAt === null && bk.sonGecerlilik.gt === t2);
-  check('Z `ayrilmaKarari` tek hesap → iptal + sonHesap',
+  check('Z `ayrilmaKarari` tek hesap → firma kapanir',
     JSON.stringify(ayrilmaKarari({ firmaRol: 'uye', digerHesap: 0, digerEtkinSahip: 0 })) ===
-      JSON.stringify({ izin: true, abonelikIptal: true, sonHesap: true }));
-  check('Z `ayrilmaKarari` uye + baska hesap → iptal YOK',
+      JSON.stringify({ izin: true, firmaKapaniyor: true }));
+  check('Z `ayrilmaKarari` uye + baska hesap → firma DEVAM',
     JSON.stringify(ayrilmaKarari({ firmaRol: 'uye', digerHesap: 2, digerEtkinSahip: 1 })) ===
-      JSON.stringify({ izin: true, abonelikIptal: false, sonHesap: false }));
-  check('Z `ayrilmaKarari` son sahip → SON_SAHIP',
+      JSON.stringify({ izin: true, firmaKapaniyor: false }));
+  check('Z `ayrilmaKarari` son sahip + YETKISIZ YOL → SON_SAHIP',
     (ayrilmaKarari({ firmaRol: 'sahip', digerHesap: 1, digerEtkinSahip: 0 }) as any).kod === 'SON_SAHIP');
-  const kv = kapatmaVerisi({ id: 'X', email: 'x@firma.test' }, t2);
-  check('Z `kapatmaVerisi` dort alan (damga kapatma anina ESIT)',
+  check('Z ⭐ `ayrilmaKarari` son sahip + `firmayiKapatabilir` → firma KAPANIR (K2)',
+    JSON.stringify(ayrilmaKarari({
+      firmaRol: 'sahip', digerHesap: 1, digerEtkinSahip: 0, firmayiKapatabilir: true,
+    })) === JSON.stringify({ izin: true, firmaKapaniyor: true }));
+  check('Z ⭐ `firmayiKapatabilir` BASKA SAHIP VARKEN firmayi kapatmaz',
+    JSON.stringify(ayrilmaKarari({
+      firmaRol: 'sahip', digerHesap: 2, digerEtkinSahip: 1, firmayiKapatabilir: true,
+    })) === JSON.stringify({ izin: true, firmaKapaniyor: false }));
+  const kv = kapatmaVerisi({ id: 'X', email: 'x@firma.test' }, t2, 'kendi');
+  check('Z `kapatmaVerisi(kendi)` bes alan, E-POSTA ANAHTARI HIC YOK (K1)',
     kv.deletedAt === t2 && kv.passwordChangedAt === t2 &&
       kv.passwordChangedAt.getTime() === kv.deletedAt.getTime() &&
-      kv.kapatilanEposta === 'x@firma.test' && kv.email === 'kapali-X@metapricex.invalid',
-    JSON.stringify(kv));
+      kv.kapatilanEposta === 'x@firma.test' && kv.kapatmaNedeni === 'kendi' &&
+      // ⚠ `=== undefined` YETMEZ: anahtarin VARLIGI olculur. `email: undefined`
+      // yazilmis olsaydi Prisma alani "degistirme" sayardi ama sozlesme
+      // yanlis olurdu; burada anahtar HIC OLMAMALI.
+      !('email' in kv) &&
+      kv.imhaTarihi.getTime() === t2.getTime() + 30 * 86400000,
+    JSON.stringify([kv, Object.keys(kv)]));
+  for (const n of ['yonetici', 'firmaKapandi'] as const) {
+    const k = kapatmaVerisi({ id: 'X', email: 'x@firma.test' }, t2, n);
+    check(`Z \`kapatmaVerisi(${n})\` de e-postayi DEGISTIRMEZ`, !('email' in k), JSON.stringify(Object.keys(k)));
+  }
+  const kvC = kapatmaVerisi({ id: 'X', email: 'x@firma.test' }, t2, 'ekiptenCikarildi');
+  check('Z ⭐ `kapatmaVerisi(ekiptenCikarildi)` TEK istisna: adres anonimlesir',
+    kvC.email === 'kapali-X@metapricex.invalid' && kvC.kapatmaNedeni === 'ekiptenCikarildi',
+    JSON.stringify(kvC));
+  const tkv = topluKapatmaVerisi(t2, 'firmaKapandi');
+  check('Z `topluKapatmaVerisi` KISIYE BAGLI alan TASIMAZ (updateMany guvenli)',
+    !('email' in tkv) && !('kapatilanEposta' in tkv) &&
+      JSON.stringify(Object.keys(tkv).sort()) ===
+        JSON.stringify(['deletedAt', 'imhaTarihi', 'kapatmaNedeni', 'passwordChangedAt']),
+    JSON.stringify(Object.keys(tkv)));
+  check('Z `imhaTarihiHesapla` = KAPATMA_SAKLAMA_GUN gun sonrasi (ciplak 30 YOK)',
+    imhaTarihiHesapla(t2).getTime() === t2.getTime() + KAPATMA_SAKLAMA_GUN * 86400000 &&
+      KAPATMA_SAKLAMA_GUN === 30);
   const sahipKosul = oncekilerKosulu({ firmaRol: 'sahip', createdAt: t2, id: 'A' });
   check('Z `oncekilerKosulu(sahip)` YALNIZ sahip dallari (2 dal)',
     sahipKosul.length === 2 && sahipKosul.every((d: any) => d.firmaRol === 'sahip'),
@@ -1687,6 +1967,7 @@ async function main() {
   await bolumS();
   await bolumD();
   await bolumH();
+  await bolumK();
   await bolumM();
   bolumQP();
   bolumX();

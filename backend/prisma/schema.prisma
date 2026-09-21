@@ -43,14 +43,32 @@ enum SubscriptionScope {
 // GECIS DONEMI: iliskili tablolardaki firmaId'ler NULLABLE — mevcut veri
 // kirilmasin; backfill sonrasi zorlamayi KOD yapar (sema degil).
 // ─────────────────────────────────────────────────────────────────────
+/// PLAN 5.8 — hesabin hangi yoldan kapandigi. Dort yolun dordunde de imha
+/// sayaci baslar (K3); ayrim e-posta davranisi ve geri donus icindir.
+enum KapatmaNedeni {
+  /// Kullanici kendi kapatti. E-posta 30 gun hesapta; GIRIS ACIK (geri donus).
+  kendi
+  /// Yonetici sildi. E-posta 30 gun hesapta; giris kapali.
+  yonetici
+  /// Firma sahibi ekipten cikardi. E-posta HEMEN serbest (K1 istisnasi).
+  ekiptenCikarildi
+  /// Son sahip kapattigi icin firma kapandi. Uye durdurulur; sahip geri
+  /// acarsa kendiliginden geri gelir.
+  firmaKapandi
+}
+
 model Firma {
-  id        String       @id @default(uuid())
-  ad        String
-  createdAt DateTime     @default(now())
-  uyeler    User[]
+  id         String       @id @default(uuid())
+  ad         String
+  createdAt  DateTime     @default(now())
+  /// PLAN 5.8 — firma imhasi ani (son sahip kapatinca dolar). Firmaya bagli
+  /// icerik bu tarihten sonra silinir; SATIR ve KIMLIK kalir (fatura zinciri
+  /// `Restrict` ile kilitli ve K4 sayesinde faturalar kendi kopyasini tasir).
+  imhaTarihi DateTime?
+  uyeler     User[]
   /// FAZ 7 F1b — ekip davetleri. `onDelete` YAZILMAZ: firma silinmez
   /// (yumusak silme kisiye ait), varsayilan Restrict dogru davranistir.
-  davetler  FirmaDavet[]
+  davetler   FirmaDavet[]
 
   /// FAZ 7 F2b — firma sahibinin "firmamda herkes iki adimli giris
   /// kullansin" anahtari (§2.4). ⚠ YALNIZ PAROLAYLA girenlere uygulanir:
@@ -180,6 +198,20 @@ model User {
   /// null'a ceviren TEK BIR SATIR yok). Adres burada saklandigi icin
   /// denetim/ispat izi de kaybolmaz.
   kapatilanEposta String?
+
+  /// ── PLAN 5.8 — VERI IMHASI (21.09.2026) ──────────────────────────────
+  /// IMHA ANI. `deletedAt + 30 gun`. Gunluk imha isi YALNIZ bu alana bakar,
+  /// `deletedAt`e DEGIL. Neden ayri alan: bu turdan ONCE kapatilmis hesaplara
+  /// "verileriniz kalir" denmisti; onlarin `imhaTarihi` bos oldugu icin
+  /// hicbiri sessizce silinmez (olculdu 21.09: canlida 0 kapali hesap).
+  imhaTarihi DateTime?
+
+  /// HANGI YOLDAN KAPANDI. Dort kapatma yolu bugun AYNI `kapatmaVerisi()`ni
+  /// yaziyordu ve ayirt edilemiyordu (olcum O1). K1 istisnasi buna bagli:
+  /// yalnizca `ekiptenCikarildi` olanin e-postasi HEMEN serbest kalir —
+  /// ayrilmayi o secmedi, baska bir firmaya katilabilmeli. Digerlerinde
+  /// e-posta 30 gun hesapta durur ki musteri ayni adresle geri donebilsin.
+  kapatmaNedeni KapatmaNedeni?
 
   /// ── FAZ 7 F2b — IKI ADIMLI GIRIS (TOTP, §2.4) ────────────────────────
   /// TOTP sirri. AES-256-GCM, `kimlik-sifreleme.ts` bicimi
@@ -1690,6 +1722,26 @@ model Fatura {
   saglayiciId String?
   faturaNo    String?
   faturaUrl   String?
+
+  /// ── K4 (21.09.2026) — FATURA KENDI KOPYASINI TASIR ────────────────────
+  /// VUK md. 230 faturada musterinin adi/unvani, adresi, vergi dairesi ve
+  /// numarasini sart kosuyor. Bu alanlar ONCEDEN `Firma` satirindan CANLI
+  /// okunuyordu; iki kusur vardi:
+  ///   1. Veri imhasi firma satirini bosaltinca saklanan faturalar eksik
+  ///      kalirdi (yasal saklama bozulur).
+  ///   2. IMHADAN BAGIMSIZ DA YANLIS: musteri adresini degistirince GECEN
+  ///      YILIN faturasi da yeni adresi gosteriyordu. Fatura, kesildigi ANIN
+  ///      bilgisini tasimak zorundadir.
+  /// Faturayi okuyan her yer BU alanlari okur, `Firma` satirini DEGIL.
+  /// ⚠ Geriye doldurma YOK: olculdu (21.09) canlida 0 fatura kaydi var;
+  /// gecmisi bugunku firma bilgisiyle doldurmak zaten yanlis veri uretirdi.
+  musteriUnvan        String?
+  musteriVergiDairesi String?
+  musteriVergiNo      String?
+  musteriTcKimlikNo   String?
+  musteriAdres        String?
+  musteriIl           String?
+  musteriIlce         String?
 
   denemeSayisi Int       @default(0)
   sonDeneme    DateTime?

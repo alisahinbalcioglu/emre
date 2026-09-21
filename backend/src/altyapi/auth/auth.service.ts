@@ -16,6 +16,11 @@ import { EpostaDogrulamaServisi } from './eposta-dogrulama.servisi';
 import { epostaIleKullaniciBul, epostaKucult } from './eposta';
 import { firmaPaketSeviyesi } from './seviye';
 import { OturumServisi, hesapKapisi } from './oturum.servisi';
+import {
+  geriDonusPenceresinde,
+  kapaliHesapDurumu,
+  kayitKapaliHesapMesaji,
+} from './kapali-hesap';
 import { mfaZorunluMu, type MfaZorunlulukNedeni } from './mfa/mfa-karari';
 import { tokenImzala } from './token-imza';
 import { firmaRolaGoreSuz } from '../../ozellik/firma/firma-maskele';
@@ -47,6 +52,29 @@ export class AuthService {
     // kucuk harfle saklanir. Kural tek yerde: eposta.ts.
     const email = epostaKucult(dto.email);
     const existing = await epostaIleKullaniciBul(this.prisma, email);
+    // ── PLAN 5.8 §4.3: KAPALI AMA SURESI DOLMAMIS ADRESLE KAYIT ──────────
+    // ⚠ "Geri donmek isteyen musterinin en kolay dusecegi tuzak bu."
+    // K1 ile kapanan hesabin adresi 30 gun hesapta KALIYOR; dolayisiyla bu
+    // satir artik ONU da buluyor ve eskiden `Email already in use` derdi.
+    // Musteri bunu "adresimi baskasi almis" diye okur, BASKA bir adresle
+    // YENI ve BOS bir hesap acar — 30 gunluk verisi bir tik otede dururken.
+    // Yeni hesap ACILMAZ; ne yapmasi gerektigini soyleyen bir kod doner.
+    // ⚠ Numaralandirma sizintisi ACMAZ: kayitli adres zaten bugun de
+    // `Email already in use` ile dogrulaniyordu; yalniz METIN degisiyor.
+    if (existing && geriDonusPenceresinde(existing)) {
+      // ⚠ CUMLE NEDENE GORE degisir: `firmaKapandi` uyesi giris yapabilir ama
+      // hesabini GERI ACAMAZ (firmayi sahibi acar). Tek cumle kullansaydik
+      // ona yapamayacagi bir sey vaat ederdik.
+      const mesaj = kayitKapaliHesapMesaji(existing);
+      throw new ConflictException({
+        kod: 'HESAP_KAPALI_GERI_DONUS',
+        mesaj,
+        // `message` de yaziliyor: on yuzun genel hata yakalayicisi
+        // (`register/page.tsx`) bu alani okuyor; yalniz `mesaj` yazsaydik
+        // eski surum bir tarayici sekmesinde bos bildirim gosterirdi.
+        message: mesaj,
+      });
+    }
     if (existing) throw new ConflictException('Email already in use');
 
     // ── FAZ 7 F3b (V7, §5.10): ALAN ADI EKSENI ───────────────────────────
@@ -189,6 +217,15 @@ export class AuthService {
         mfaKaynagi: true,
         // FAZ 7 F3b (§6.7): Profil'deki "Sirket hesabi" karti buradan beslenir.
         parolaTanimli: true,
+        // ── PLAN 5.8 §4.4: GERI DONUS EKRANININ TEK BESLEME NOKTASI ──────
+        // ⚠ Uc alan da GEREKLI: `deletedAt` "kapali mi", `kapatmaNedeni`
+        // "hangi yoldan" (yalniz `kendi` giris yapabilir), `imhaTarihi`
+        // ekranda basilan TARIH. Biri eksik olsaydi ekran "Hesabiniz
+        // kapatildi" der ama HANGI TARIHTE silinecegini soyleyemezdi —
+        // Emre'nin karari tarihin GUN olarak yazilmasi.
+        deletedAt: true,
+        kapatmaNedeni: true,
+        imhaTarihi: true,
         // FAZ 4.1 — FİRMA. ⚠ Ölçüldü: ön yüz bugüne kadar firma bilgisini HİÇ
         // göremiyordu; `/auth/me` yalnız `firmaId` dönüyordu ve `/abonelik/durum`
         // firma KİMLİĞİ taşımıyordu. Yani profil sayfası firmanın adını bile
@@ -215,6 +252,9 @@ export class AuthService {
             ilce: true,
             telefon: true,
             logoMime: true,
+            // PLAN 5.8 §3.3 (K2): firmasi kapanan UYENIN kendi `deletedAt`i
+            // BOS olabilir — kapanmayi yalnizca bu alan soyler.
+            imhaTarihi: true,
           },
         },
       },
@@ -233,9 +273,23 @@ export class AuthService {
     // (login yaniti bunlari TASIMAZ — olculdu: auth.service.ts:55 yalniz
     // {id,email,role,tier} doner). Serit, kilitli butonlar ve "kalan gun"
     // sayaci bu tek yanittan beslenir.
-    const erisim = user.firmaId
-      ? await this.erisim.karar(user.firmaId)
-      : null;
+    // ── PLAN 5.8 §4.5: KAPALIYSA KARAR FIRMADAN DEGIL HESAPTAN GELIR ────
+    // ⚠ OLCULDU: hesap kapatilinca abonelik IPTAL edilir ve `erisim.karar`
+    // `IPTAL` dalinda odenmis donem bitene kadar `erisimVar: true` doner.
+    // Firmaya sormak, kapali hesaba "her sey normal" yazan bir serit
+    // gosterirdi — oysa `JwtAuthGuard` ayni anda her ucu 403'luyor. Iki
+    // taraf AYNI `kapaliHesapDurumu` yuklemini okur; ikiz kural yok.
+    const kapali = kapaliHesapDurumu({
+      deletedAt: user.deletedAt,
+      kapatmaNedeni: user.kapatmaNedeni,
+      imhaTarihi: user.imhaTarihi,
+      firmaImhaTarihi: user.firma?.imhaTarihi ?? null,
+    });
+    const erisim = kapali.kapali
+      ? this.erisim.kapaliKarar(kapali)
+      : user.firmaId
+        ? await this.erisim.karar(user.firmaId)
+        : null;
 
     // `logoVar`: on yuz logoyu ancak varsa cekmeli. Ikili veri bu yanitta YOK.
     // ⚠ FAZ 7 F1b (§3.6): UYEYE T.C. kimlik no ve yetkili e-posta GIZLENIR.
@@ -269,7 +323,10 @@ export class AuthService {
     const { mfaAcikAt: _ham1, mfaKaynagi: _ham2, parolaTanimli: _ham3, ...kisi } = user;
 
     // ⚠ `tier` SAKLANAN degeri EZER (2.12): `user` yayilimindan sonra gelir.
-    return { ...kisi, tier: await this.etkinSeviye(user.firmaId), firma, koltuk, mfa, kurumsal, capabilities, subscriptions, erisim };
+    // PLAN 5.8 §4.4: `kapali` AYRI bir alan olarak doner. Ham `deletedAt`
+    // yayilimda zaten var ama ekran KARARI okumali, ham alani degil —
+    // "kapali mi" sorusunu ikinci kez ON YUZDE hesaplamak ikiz kuraldir.
+    return { ...kisi, tier: await this.etkinSeviye(user.firmaId), firma, koltuk, mfa, kurumsal, capabilities, subscriptions, erisim, kapali };
   }
 
   /**

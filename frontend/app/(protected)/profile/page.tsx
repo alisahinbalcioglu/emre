@@ -12,6 +12,14 @@ import { ParolaAlani } from '@/ortak/ui/parola-alani';
 import { gecerliTokenMi } from '@/ortak/lib/oturum';
 import { IkiAdimliGirisKarti } from '@/ozellik/kimlik/IkiAdimliGirisKarti';
 import { SirketHesabiKarti, type KurumsalBilgi } from '@/ozellik/kimlik/SirketHesabiKarti';
+// Veri imhası turu §8.1: "Hesabımı kapat" metni ARTIK DURUMA GÖRE değişiyor.
+// ⚠ Karar burada HESAPLANMAZ — sunucunun `ayrilmaKarari` çıktısı olduğu gibi
+// gelir, bu fonksiyon yalnız hangi cümlenin çizileceğini seçer.
+import {
+  hesapKapatmaMetni,
+  type KapatmaOnizlemesi,
+} from '@/ozellik/kimlik/kapatma-metinleri';
+import { kapatmaOnizlemesiGetir } from '@/ozellik/kimlik/kapatma-onizleme-getir';
 import api from '@/ortak/lib/api';
 import { cn } from '@/ortak/lib/utils';
 import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
@@ -210,6 +218,10 @@ export default function ProfilePage() {
   const [kapatmaParola, setKapatmaParola] = useState('');
   const [kapatiliyor, setKapatiliyor] = useState(false);
   const [kapatmaHata, setKapatmaHata] = useState<string | null>(null);
+  // Veri imhası turu §8.1/§3.3.1 — kapatmanın BAŞKALARINI etkileyip
+  // etkilemediğini kullanıcı ONAYDAN ÖNCE görmeli. `null` = ölçülemedi;
+  // metin o zaman düz hâline düşer, sayı uydurmaz.
+  const [kapatmaOnizleme, setKapatmaOnizleme] = useState<KapatmaOnizlemesi | null>(null);
 
   async function verileriIndir() {
     setVeriIndiriliyor(true);
@@ -316,13 +328,19 @@ export default function ProfilePage() {
       api.get<any>('/quotes').catch(() => ({ data: [] })),
       // Kota okunamazsa sayfa yine açılır; kutu "okunamadı" der, uydurmaz.
       api.get<CeviriKotaOzeti | null>('/ai/translate/kota').then((r) => ({ ok: true as const, data: r.data })).catch(() => ({ ok: false as const, data: null })),
-    ]).then(([profileRes, quotesRes, kotaRes]) => {
+      // Kapatma ön izlemesi: hata KENDİ İÇİNDE yutulur (uç henüz yok — bkz.
+      // `kapatma-onizleme-getir.ts`), bu yüzden `Promise.all`ı düşürmez.
+      // Açılışta çekilir ki uyarı, kullanıcı onay formunu açmadan ÖNCE
+      // görünür olsun.
+      kapatmaOnizlemesiGetir(),
+    ]).then(([profileRes, quotesRes, kotaRes, onizleme]) => {
       setProfile(profileRes.data);
       setStats({
         quoteCount: Array.isArray(quotesRes.data) ? quotesRes.data.length : 0,
         libraryCount: 0,
       });
       setCeviriKota(kotaRes.ok ? { durum: 'hazir', kota: kotaRes.data ?? null } : { durum: 'hata' });
+      setKapatmaOnizleme(onizleme);
     }).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
@@ -357,6 +375,12 @@ export default function ProfilePage() {
   // uyeye firma duzenleme formunu ACARDI (sunucu reddeder ama kullanici
   // dolduramayacagi bir formla ugrasirdi). Artik fail-closed.
   const sahipMi = profile.firmaRol === 'sahip';
+  // Veri imhası turu §8.1 — kapatma metni TEK saf fonksiyondan.
+  // ⚠ `sahipMi` ile KARIŞTIRMAYIN: "firma sahibi miyim" ekranın form
+  // kapısıdır; "firmam kapanıyor mu" ise sunucunun `ayrilmaKarari` kararıdır
+  // ve firmada BAŞKA ETKİN SAHİP olup olmadığına bakar. İkisini aynı
+  // saymak, iki sahipli firmada ikinci sahibe "firmanız kapanır" derdi.
+  const kapatmaMetni = hesapKapatmaMetni(kapatmaOnizleme);
   const tier = profile.tier ?? 'core';
   const tierConfig = TIER_CONFIG[tier] ?? TIER_CONFIG.core;
   const TierIcon = tierConfig.icon;
@@ -1036,14 +1060,31 @@ export default function ProfilePage() {
 
           <div className="border-t pt-4">
             <p className="text-xs font-semibold text-destructive">Hesabımı kapat</p>
-            {/* ⚠ DÜRÜSTLÜK: "verileriniz silinir" DEMİYORUZ, çünkü silinmiyor.
-                Kapatma erişimi keser; veri imhası ayrı bir taleptir. */}
+            {/* ⚠ METİN ARTIK TEK SAF FONKSİYONDAN (veri imhası turu §8.1).
+                ESKİ HÂL ÜÇ YANLIŞ İDDİA TAŞIYORDU: "sistemde kalmaya devam
+                eder" (artık 30 gün sonra imha ediliyor), "ayrıca iletmeniz
+                gerekir" (imha kendiliğinden işliyor) ve "aynı e-posta
+                adresiyle yeniden kayıt olabilirsiniz" (30 gün boyunca yeni
+                kayıt AÇILMIYOR; hesap geri açılıyor — §4.3).
+                Cümleyi buraya GERİ YAZMAYIN: `kapatma-metinleri.ts`. */}
             <p className="mt-0.5 text-[11px] text-muted-foreground">
-              Hesabınız kapatılır, oturumunuz sonlandırılır ve varsa aboneliğiniz iptal
-              edilir. Teklifleriniz ve kütüphaneniz sistemde kalmaya devam eder;
-              tamamen imha edilmesini istiyorsanız bunu ayrıca iletmeniz gerekir.
-              Aynı e-posta adresiyle yeniden kayıt olabilirsiniz.
+              {kapatmaMetni.govde}
             </p>
+            {/* Duruma özel ek cümle. `null` gelince kutu HİÇ çizilmez — boş
+                çerçeve bırakmaz (`kisi-metinleri.ts` `altSatir` deseni). */}
+            {kapatmaMetni.ek && (
+              <p
+                role={kapatmaMetni.ekTuru === 'uyari' ? 'alert' : undefined}
+                className={cn(
+                  'mt-2 rounded-lg border p-2.5 text-[11px]',
+                  kapatmaMetni.ekTuru === 'uyari'
+                    ? 'border-destructive/40 bg-destructive/5 text-destructive'
+                    : 'border-slate-200 bg-slate-50 text-slate-700',
+                )}
+              >
+                {kapatmaMetni.ek}
+              </p>
+            )}
             {!kapatmaAcik ? (
               <Button type="button" variant="outline"
                 className="mt-2 text-destructive"
@@ -1052,8 +1093,15 @@ export default function ProfilePage() {
               </Button>
             ) : (
               <form onSubmit={hesabimiKapat} className="mt-3 space-y-3 rounded-lg border border-destructive/40 bg-destructive/5 p-3">
+                {/* ⚠ BURADAKİ ESKİ CÜMLE ("geri alma yolu" olmadığını
+                    söyleyen uyarı) K1 kararıyla YANLIŞ OLDU: 30 gün içinde
+                    giriş yapıp paket seçerek hesap geri açılıyor. Hemen
+                    üstündeki metin bunu söylerken burada tersini yazmak
+                    müşteriyi caydırırdı — iki cümle aynı ekranda çelişemez.
+                    Cümlenin kendisi testte yasaklı; yorumda da yazmayın. */}
                 <p className="text-[11px] text-muted-foreground">
-                  Bu işlemin geri alma yolu yoktur. Onaylamak için parolanızı girin.
+                  Hesabınız hemen kapatılır ve oturumunuz sonlandırılır.
+                  Onaylamak için parolanızı girin.
                 </p>
                 <input
                   type="password"

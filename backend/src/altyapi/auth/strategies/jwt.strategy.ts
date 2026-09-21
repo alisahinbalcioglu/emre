@@ -7,6 +7,11 @@ import {
   koltukDurumuHesapla,
   type FirmaRol,
 } from '../../../ozellik/firma/uyelik-kurallari';
+import {
+  geriDonusPenceresinde,
+  kapaliHesapDurumu,
+  kapaliHesapMetni,
+} from '../kapali-hesap';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -74,8 +79,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (payload.amac !== undefined || payload.aud !== undefined) {
       throw new UnauthorizedException();
     }
+    // ⚠ PLAN 5.8 §4: `include` EKLENDI, `select` DEGIL. Sekil AYNEN korunur
+    // (asagidaki her `user.<alan>` okumasi calismaya devam eder) ve firma
+    // satirindan YALNIZ `imhaTarihi` gelir — tek sorguda JOIN, ek gidis
+    // donus YOK. Ayri bir `firma.findUnique` yazilsaydi HER istege bir
+    // sorgu daha binerdi.
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
+      include: { firma: { select: { imhaTarihi: true } } },
     });
     if (!user) throw new UnauthorizedException();
     // ── G1 (28.08): BANLI HESABIN MEVCUT TOKEN'I DA GECERSIZ ─────────────
@@ -88,7 +99,18 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     }
     // YUMUSAK SILME (2.3): ban ile ayni gerekce — token omru 7 gun oldugu icin
     // yalniz girise kapi koymak silinen hesabi bir hafta daha calistirirdi.
-    if (user.deletedAt) {
+    //
+    // ── PLAN 5.8 §4.1 (K1): GERI DONUS PENCERESI ─────────────────────────
+    // ⚠ Bu kapiyi da gevsetmek ZORUNLU: `hesapKapisi` tek basina
+    // gevsetilseydi musteri giris yapar, ELINDEKI TAZE token'la attigi ILK
+    // istekte (o istek `/auth/me`dir) 401 alir, `ortak/lib/api.ts`
+    // yakalayicisi token'i silip `/login`e atardi — sonsuz dongu. Iki kapi
+    // AYNI saf yuklemi okur (`kapali-hesap.ts`), ikiz kural yok.
+    //
+    // ⚠ 401 KAPISI ACILDI, YETKI ACILMADI: pencerede olan hesap yalnizca
+    // KIMLIKLI sayilir. "Ne yapabilir" sorusunu hemen asagidaki
+    // `hesapKapali` bayragi ve `JwtAuthGuard` yanitlar (403 `HESAP_KAPALI`).
+    if (user.deletedAt && !geriDonusPenceresinde(user)) {
       throw new UnauthorizedException('Hesabiniz kapatilmis.');
     }
     // ── FAZ 3.5: PAROLA DEĞİŞİNCE ESKİ TOKEN'LAR ÖLÜR ────────────────────
@@ -145,9 +167,30 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // ⚠ MALIYET: `onceGelen === 0` ise hak sorgusu ATILMAZ — tek kisilik
     // firmada istek basina ek maliyet TEK `count`. Indeks migration'da
     // (`User(firmaId, firmaRol, createdAt)`).
+    // ── PLAN 5.8 §4.5: KAPALI HESAP / KAPALI FIRMA ───────────────────────
+    // ⚠ KARAR BURADA VERILMEZ, yalniz HESAPLANIR — koltuk kapisiyla AYNI
+    // gerekce: 403'u `JwtAuthGuard` atar cunku izin listesini (`@KapaliHesapIzinli`)
+    // okumak `Reflector` ister, strateji onu gormez.
+    //
+    // ⚠ FIRMA EKSENI YETMEZ, KULLANICI EKSENI SART (olculdu): hesap
+    // kapatilinca abonelik iptal edilir ve `erisim.servisi.ts` `IPTAL`
+    // dalinda odenmis donem bitene kadar `erisimVar: true` doner — yani
+    // firma ekseni kapali hesabi HIC durdurmaz. `Firma.imhaTarihi` ise
+    // K2'nin ayagi: firmasi kapanan uye kendi `deletedAt`i BOS olsa da
+    // durur.
+    const kapali = kapaliHesapDurumu({
+      deletedAt: user.deletedAt,
+      kapatmaNedeni: user.kapatmaNedeni,
+      imhaTarihi: user.imhaTarihi,
+      firmaImhaTarihi: user.firma?.imhaTarihi ?? null,
+    });
+
+    // ⚠ Kapali hesapta koltuk sorgusu ATILMAZ: `JwtAuthGuard` kapali kapisini
+    // ONCE calistirir, yani sonuc HICBIR ZAMAN okunmazdi. Ayrica durdurulmus
+    // kapali bir hesabi `/koltuk-durduruldu`ya gondermek yanlis ekran olurdu.
     let koltukDurduruldu = false;
     let koltukHakki: number | null = null;
-    if (user.firmaId) {
+    if (!kapali.kapali && user.firmaId) {
       const durum = await koltukDurumuHesapla(this.prisma, {
         id: user.id,
         firmaId: user.firmaId,
@@ -172,6 +215,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       authAt: typeof payload.authAt === 'number' ? payload.authAt : null,
       koltukDurduruldu,
       koltukHakki,
+      // PLAN 5.8 §4.5 — `JwtAuthGuard` bunlari okur. `kapatmaMetni` ekranda
+      // ve 403 govdesinde AYNI cumle olsun diye burada uretilir.
+      hesapKapali: kapali.kapali,
+      kapatmaTipi: kapali.tip,
+      imhaTarihi: kapali.imhaTarihi,
+      kapatmaMetni: kapali.kapali ? kapaliHesapMetni(kapali) : null,
     };
   }
 }

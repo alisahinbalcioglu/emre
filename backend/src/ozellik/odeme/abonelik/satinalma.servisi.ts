@@ -842,6 +842,31 @@ export class SatinAlmaServisi {
       denemeGunu,
     });
 
+    // ── §4.6 (plan 5.8): ODEME GECTI → KAPALI HESAP GERI ACILIR ──────────
+    // Kapatilan hesabin 30 gun icinde geri donmesinin TEK yolu budur: giris
+    // yapar, "Paket sec" der, odeme gecer ve `deletedAt`/`imhaTarihi`/
+    // `kapatmaNedeni` temizlenir. Son sahip kapattigi icin durdurulmus
+    // (`firmaKapandi`) uyeler KENDILIGINDEN doner; `ekiptenCikarildi` olanlar
+    // DONMEZ. Karar TEK YERDE: `AbonelikServisi.firmayiGeriAc`.
+    //
+    // ⚠ SIRA: aboneligin acilmasindan SONRA. Tersi olsaydi abonelik acilirken
+    // bir hata olsa hesap ODEMESIZ acilmis olurdu.
+    // ⚠ HATA TAHSILATI DUSURMEZ: parasi alinmis musterinin niyeti BEKLIYOR
+    // kalirsa kurtarma taramasi yeniden sonuclandirir ve geri acma idempotent
+    // oldugu icin ikinci kez zarar vermez. Ama SESSIZ degil — gunluge yazilir.
+    await this.abonelik
+      .firmayiGeriAc(niyet.firmaId, {
+        aktor: 'sistem',
+        aciklama: `Paket satin alindi (iyzico ${sonuc.referenceCode})`,
+        abonelikId: abonelik.id,
+      })
+      .catch((e) =>
+        this.logger.error(
+          `Hesap geri acilamadi (firma=${niyet.firmaId} niyet=${niyet.id}): ` +
+            `${e instanceof Error ? e.message : String(e)}`,
+        ),
+      );
+
     // ── 6.12a: DENEME KULLANIM KAYDI ─────────────────────────────────────
     // TAMAMLANDI damgasindan ONCE: surec ikisinin arasinda olurse niyet
     // BEKLIYOR kalir, kurtarma taramasi yeniden sonuclandirir ve upsert

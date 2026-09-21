@@ -84,12 +84,24 @@ async function main(): Promise<void> {
     'A4 deleteUser kapatma veri desenini uyguluyor (kapatmaVerisi cagrisi)',
     /kapatmaVerisi\(/.test(servis) && /deletedAt:\s*simdi/.test(kapatmaKural),
   );
+  // ⚠ 21.09 (plan 5.8 · K1) ANLAM DEGISTI: e-posta ARTIK HER kapatmada
+  // anonimlesmiyor. Yonetici silmesinde adres 30 gun HESAPTA KALIR (musteri
+  // geri donebilsin); anonimlestirme YALNIZ `ekiptenCikarildi` dalinda.
+  // Kapi bu yuzden iki sey birden olcer: yonetici yolunun NEDENI dogru mu,
+  // ve anonimlestirme o dala BAGLI mi.
   check(
-    'A4b ⭐ yonetici silmesi hesap kapatmanin IKIZI (token olur + e-posta serbest kalir)',
+    'A4b ⭐ yonetici silmesi hesap kapatmanin IKIZI (token olur + neden `yonetici`)',
     /passwordChangedAt:\s*simdi/.test(kapatmaKural) &&
       /kapatilanEposta:\s*user\.email/.test(kapatmaKural) &&
-      /email:\s*`kapali-\$\{user\.id\}@/.test(kapatmaKural),
-    'ikiz degilse: silinen kisi 7 gun daha calisir ve adresi kilitli kalir',
+      /kapatmaVerisi\(user, simdi, 'yonetici'\)/.test(servis),
+    'ikiz degilse: silinen kisi 7 gun daha calisir ve imha sayaci hic baslamaz',
+  );
+  check(
+    'A4b-2 ⭐ adres anonimlestirmesi YALNIZ `ekiptenCikarildi` daline bagli (K1)',
+    /neden === 'ekiptenCikarildi'[\s\S]{0,140}kapali-\$\{user\.id\}@/.test(kapatmaKural) &&
+      // Kosulsuz bir `email:` satiri KALMAMALI — kalirsa geri donus yolu kapanir.
+      !/^\s*email:\s*`kapali-/m.test(kapatmaKural),
+    'kosulsuz anonimlestirme geri donen musteriyi kendi adresinden kilitler',
   );
   check(
     'A4c ⭐ tek kullanicili firmada ABONELIK de iptal ediliyor (E-1)',

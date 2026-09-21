@@ -51,6 +51,10 @@ import { tokenOzetle } from '../src/altyapi/auth/token-ozet';
 import { OturumServisi } from '../src/altyapi/auth/oturum.servisi';
 import { AuthService } from '../src/altyapi/auth/auth.service';
 import { HesapServisi } from '../src/altyapi/auth/hesap.servisi';
+/** PLAN 5.8 §3.4: `HesapServisi` artik kapatma bildirimi de gonderiyor.
+ *  Bu paketlerin konusu e-posta DEGIL — sessiz, yutmayan bir gonderici
+ *  yeterli. Icerik `test:faz7-ekip` H/K bolumlerinde olculuyor. */
+const EPOSTA_SAHTE = { gonder: async () => undefined } as any;
 import { JwtStrategy } from '../src/altyapi/auth/strategies/jwt.strategy';
 import { UyelikServisi } from '../src/ozellik/firma/uyelik.servisi';
 import { FirmaServisi } from '../src/ozellik/firma/firma.servisi';
@@ -1352,7 +1356,7 @@ async function bolumYanitlar() {
         { id: 'K2', userId: 'U1', kodOzeti: 'GIZLI-OZET-2', kullanildiAt: null },
       ],
     });
-    const hesap = new HesapServisi(p, { iptalEt: async () => undefined } as any);
+    const hesap = new HesapServisi(p, { iptalEt: async () => undefined } as any, EPOSTA_SAHTE);
     const disa: any = await hesap.verileriDisaAktar('U1');
     check('M24 ⭐ `kullanici.mfa` = { acikAt, kaynak, kalanKurtarmaKodu: 2 }',
       disa.kullanici?.mfa?.kaynak === 'kisisel' && disa.kullanici?.mfa?.kalanKurtarmaKodu === 2 &&

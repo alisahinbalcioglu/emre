@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../../altyapi/auth/guards/jwt-auth.guard';
+import { KapaliHesapIzinli } from '../../../altyapi/auth/decorators/kapali-hesap-izinli.decorator';
 import { FirmaRolGuard } from '../../../altyapi/auth/guards/firma-rol.guard';
 import { FirmaRolu } from '../../../altyapi/auth/decorators/firma-rolu.decorator';
 import { CurrentUser } from '../../../altyapi/auth/decorators/current-user.decorator';
@@ -26,10 +27,17 @@ import { AbonelikBaslaDto } from './dto/abonelik-basla.dto';
  *  koyulursa musteri ODEYEMEZ ve askidan CIKAMAZ: kilitlenme.
  *
  *  Bu yuzden asagida ErisimGuard YOKTUR ve bu bir GOZDEN KACMA DEGILDIR.
+ *
+ *  ── PLAN 5.8 §4 (K1): KAPATILMIS HESAP DA ODEYEBILMELI ──────────────────
+ *  Ayni kilitlenme, 30 gunluk geri donus penceresindeki hesap icin de
+ *  gecerli: geri acmanin TEK yolu paket satin almaktir. `@KapaliHesapIzinli`
+ *  SINIF duzeyinde durur — `JwtAuthGuard` metot + SINIF okur; yeni bir uc
+ *  eklendiginde dekoratoru koymayi unutmak, musteriyi odeyemez birakirdi.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 @Controller('abonelik')
 @UseGuards(JwtAuthGuard)
+@KapaliHesapIzinli()
 export class AbonelikController {
   constructor(
     private readonly erisim: ErisimServisi,

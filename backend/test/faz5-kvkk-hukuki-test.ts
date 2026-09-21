@@ -144,10 +144,22 @@ function main(): void {
   const kapatmaKural = kodu(oku('backend/src/ozellik/firma/uyelik-kurallari.ts'));
   check('C7 kapatma mevcut TOKEN`i da olduruyor (kapatmaVerisi + cagri)',
     /passwordChangedAt:\s*simdi/.test(kapatmaKural) && /kapatmaVerisi\(/.test(hesap));
-  // ⚠ Olculdu: `email` @unique — adres serbest birakilmazsa kullanici geri donemez.
-  check('C8 e-posta anonimlestirilip ORIJINALI saklaniyor',
-    /kapatilanEposta:\s*user\.email/.test(kapatmaKural) &&
-      /email:\s*`kapali-\$\{user\.id\}@/.test(kapatmaKural));
+  // ⚠ 21.09 (plan 5.8 · K1) TERSINE DONDU: `email` @unique oldugu icin adres
+  // ESKIDEN serbest birakiliyordu. Artik geri donus yolu bunun tam tersini
+  // istiyor — musteri 30 gun boyunca AYNI adres ve parolayla girip paket
+  // secerek hesabini geri acabilmeli; adres anonimlesirse ne giris ne de
+  // "Parolamı unuttum" onu bulabilir. Anonimlestirme TEK dalda kaldi:
+  // `ekiptenCikarildi` (ayrilmayi kisi secmedi, baska firmaya katilabilmeli).
+  check('C8 kapatma anindaki adres `kapatilanEposta`ya kopyalaniyor (ispat izi)',
+    /kapatilanEposta:\s*user\.email/.test(kapatmaKural));
+  check('C8b ⭐ e-posta YALNIZ `ekiptenCikarildi` yolunda anonimlesiyor (K1)',
+    /neden === 'ekiptenCikarildi'[\s\S]{0,140}kapali-\$\{user\.id\}@/.test(kapatmaKural) &&
+      !/^\s*email:\s*`kapali-/m.test(kapatmaKural),
+    'kosulsuz anonimlestirme 30 gunluk geri donus vaadini calismaz yapar');
+  check('C8c ⭐ imha sayaci kapatmada BASLIYOR (`imhaTarihi`, `deletedAt` DEGIL)',
+    /imhaTarihi:\s*imhaTarihiHesapla\(simdi\)/.test(kapatmaKural) &&
+      /kapatmaNedeni:\s*neden/.test(kapatmaKural),
+    'sayac baslamazsa hesap "kapali" kalir ama verisi HIC silinmez');
   // BAGLANTI: uc tuketicinin UCU DE ayni fonksiyonu cagirir (ikiz yok).
   const adminSrv = kodu(oku('backend/src/ozellik/kutuphane/admin/admin.service.ts'));
   const uyelikSrv2 = kodu(oku('backend/src/ozellik/firma/uyelik.servisi.ts'));
@@ -337,8 +349,41 @@ function main(): void {
   // ⚠ OLCUT DUZELTMESI: assert HAM metinde ariyordu ve yasakladigi cumleyi
   // kendi JSX YORUMUNDA buluyordu — kapi kendi belgesini olcuyordu.
   // Bu depoda ayni tuzagin ALTINCI ornegi; yorumlar SOYULARAK aranir.
-  check('G4 ekran "silinir" DEMIYOR — yorum DEGIL kod (imha vaat edilmiyor)',
-    !/verileriniz silinir|tamamen silinir/i.test(profil));
+  //
+  // ── ⚠ OLCUT TERSINE DONDU (veri imhasi turu · plan 5.8 · 21.09.2026) ────
+  // ESKI KAPI: `G4 ekran "silinir" DEMIYOR (imha vaat edilmiyor)` —
+  //   !/verileriniz silinir|tamamen silinir/i.test(profil)
+  // Yazildigi gun DOGRUYDU: hesap kapatma yalniz bir "kapatildi" damgasi
+  // atiyordu, veri duruyordu ve ekranin imha VAAT ETMEMESI gerekiyordu.
+  //
+  // Emre karari K1/K3 ile gercek DEGISTI: veri kapatmadan 30 gun sonra
+  // gunluk imha isiyle GERCEKTEN siliniyor. Vaat artik VAR ve dogru.
+  // ⚠ CURUME BOYLE BASLADI: eski kapi yeni metinle de PASS veriyordu, cunku
+  // yeni cumle "kalici olarak silinir" diyor ve yasakli iki desenin
+  // ("verileriniz silinir", "tamamen silinir") ikisine de UYMUYOR. Yani kapi
+  // yesil kaliyor ama olctugunu SANDIGI seyi olcmuyordu; yorumu da gercegin
+  // tersini soyluyordu. Bu depoda kayitli hata sinifi: anlamini yitirmis
+  // yesil kapi, kirmiziyi anlamsizlastiran testten daha sinsidir.
+  // Kapi artik "vaat YOK" degil, "VAAT METINLE TUTARLI" olcer.
+  //
+  // ⚠ METIN EKRANDA DEGIL, SAF FONKSIYONDA: cumle
+  // `frontend/ozellik/kimlik/kapatma-metinleri.ts`ten gelir; ekran yalniz
+  // `kapatmaMetni.govde` basar (olculdu: yorumlar soyulunca `profile/page.tsx`
+  // icinde "30 gun"/"kalici olarak silinir" SIFIR kez geciyor). Yalniz ekrana
+  // bakan bir kapi metni HIC goremez ve bos yere yesil yanardi — bu yuzden
+  // kapi IKI dosyaya birden bakar.
+  // ⚠ Sayi ciplak degil: govde `${gun}` ile kurulur, gun sunucudan gelir
+  // (`saklamaGun`); `SAKLAMA_GUN` yalniz uc susarsa devreye giren yedektir.
+  const kapatmaMetni = kodu(oku('frontend/ozellik/kimlik/kapatma-metinleri.ts'));
+  check('G4 kapatma metni SAKLAMA SURESI + KALICI SILME vaat ediyor',
+    /SAKLAMA_GUN = 30/.test(kapatmaMetni)
+      && /\$\{gun\} gün saklıyoruz/.test(kapatmaMetni)
+      && /kalıcı olarak silinir/.test(kapatmaMetni));
+  check('G5 ESKI "ayrica iletmeniz gerekir" vaadi NE METINDE NE EKRANDA kaldi',
+    !/ayrıca iletmeniz gerekir|sistemde kalmaya devam eder/.test(kapatmaMetni)
+      && !/ayrıca iletmeniz gerekir|sistemde kalmaya devam eder/.test(profil));
+  check('G6 ekran metni SAF FONKSIYONDAN okuyor (ikiz cumle yok)',
+    /hesapKapatmaMetni\(/.test(profil) && /kapatmaMetni\.govde/.test(profil));
 
   // ── SONUC ──────────────────────────────────────────────────────────────
   console.log('\n' + '='.repeat(64));

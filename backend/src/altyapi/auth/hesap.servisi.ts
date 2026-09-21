@@ -13,10 +13,19 @@ import {
   etkinHesapKosulu,
   firmaKilitliIslem,
   disKimlikleriSil,
+  imhaTarihiHesapla,
   kapatmaVerisi,
+  topluKapatmaVerisi,
+  KAPATMA_SAKLAMA_GUN,
   type FirmaRol,
 } from '../../ozellik/firma/uyelik-kurallari';
 import { firmaRolaGoreSuz } from '../../ozellik/firma/firma-maskele';
+import { EpostaServisi } from '../../ozellik/odeme/eposta/eposta.servisi';
+import { trTarih } from '../../ozellik/odeme/abonelik/ceviri-kotasi';
+import {
+  kendiKapatmaEpostasi,
+  firmaKapandiEpostasi,
+} from './kapatma-epostalari';
 import { yakinZamandaGirisMi } from './oturum.servisi';
 import { PAROLA_HATALI_YANIT } from './parola-kurali';
 
@@ -34,11 +43,20 @@ import { PAROLA_HATALI_YANIT } from './parola-kurali';
  *
  *  ⚠⚠ IKI ISI AYIRIYORUZ (planin birlestirdigi yer):
  *    · HESAP KAPATMA  → `deletedAt` damgalanir. Giris kapanir, mevcut token
- *      gecersizlesir. VERI SILINMEZ.
- *    · VERI IMHASI    → gercek silme/anonimlestirme. BU TURDA YAPILMADI ve
- *      urun de kullaniciya "verileriniz silindi" DEMEZ. `deletedAt`
- *      damgalayip "sildik" demek KVKK'da silme degil, olsa olsa "islemeyi
+ *      gecersizlesir. VERI O ANDA SILINMEZ.
+ *    · VERI IMHASI    → gercek silme/anonimlestirme. Plan 5.8'den beri VAR
+ *      ama BU DOSYADA DEGIL: kapatma yalnizca `imhaTarihi` (kapatma ani +
+ *      30 gun) damgalar; silmeyi gunluk imha isi yapar. Urun kullaniciya
+ *      "verileriniz silindi" DEMEZ — o gun gelmedi. `deletedAt` damgalayip
+ *      "sildik" demek KVKK'da silme degil, olsa olsa "islemeyi
  *      kisitlama"dir; ikisini ayni kelimeyle anlatmak yanlis beyandir.
+ *
+ *  ⚠⚠ E-POSTA ARTIK ANONIMLESMIYOR (K1, 21.09): musteri 30 gun boyunca AYNI
+ *  adres ve parolayla girip paket secerek geri donebilmeli. Tek istisna
+ *  `ekiptenCikarildi` — gerekce `uyelik-kurallari.ts` `kapatmaVerisi`nde.
+ *  Bunun BILINEN sonucu: kapali bir adresle YENI hesap acilamaz ve o adres
+ *  baska bir firmanin davetini kabul edemez (30 gun). Ikisi de ACIK mesajla
+ *  reddedilir — sessiz `@unique` cakismasi DEGIL.
  *
  *  ⚠ ODEME KAPISI YOK — bu SINIFIN VARLIK SEBEBI:
  *  Mevcut disa aktarim uclarinin hepsi `@GerekliYetenek(CIKTI_INDIR)`
@@ -57,6 +75,9 @@ export class HesapServisi {
   constructor(
     private prisma: PrismaService,
     private satinAlma: SatinAlmaServisi,
+    // §3.4 — kapatma bildirimi. `OdemeModule` zaten disa aciyor; ikinci bir
+    // gonderici YOK (`eposta.servisi.ts` basligindaki kural).
+    private eposta: EpostaServisi,
   ) {}
 
   /**
@@ -439,6 +460,14 @@ export class HesapServisi {
     // transaction'i bir dis HTTP cagrisi boyunca actik tutuyordu. Artik
     // karar + yazma AYNI kilitte, iptal COMMIT'TEN SONRA.
     const simdi = new Date();
+    // TEK `simdi`, TEK `imhaTarihi`: sahip ve uyeler AYNI tarihte imha
+    // olur (§3.2). Ayri `new Date()` cagrilari milisaniye farkiyla iki
+    // farkli imha gunu uretebilirdi.
+    const imha = imhaTarihiHesapla(simdi);
+    let kapatilanAdres = user.email;
+    // Firma kapanisinda durdurulan uyeler — e-posta COMMIT'TEN SONRA gider.
+    let durdurulanUyeler: { id: string; email: string }[] = [];
+
     const karar = user.firmaId
       ? await firmaKilitliIslem(this.prisma, user.firmaId, async (tx) => {
           // Kullaniciyi kilit icinde YENIDEN oku: rolu bu arada degismis
@@ -448,6 +477,7 @@ export class HesapServisi {
             select: { id: true, email: true, firmaRol: true, deletedAt: true },
           });
           if (!taze || taze.deletedAt) throw new UnauthorizedException();
+          kapatilanAdres = taze.email;
           const [digerHesap, digerEtkinSahip] = await Promise.all([
             // ⚠ BANLI HESAP DE SAYILIR (Emre'nin "tek kullanici" olcusu).
             tx.user.count({
@@ -464,8 +494,16 @@ export class HesapServisi {
             firmaRol: taze.firmaRol as FirmaRol,
             digerHesap,
             digerEtkinSahip,
+            // ⚠ K2 — YALNIZ BU YOL firmayi kapatabilir. Yonetici silmesi ve
+            // uye cikarma `firmayiKapatabilir` GECIRMEZ ve SON_SAHIP almaya
+            // devam eder: panelde yanlis satira basmak bir firmayi
+            // kapatamamali.
+            firmayiKapatabilir: true,
           });
           if (!k.izin) {
+            // ⚠ K2 SONRASI ULASILMAZ ama DURUYOR: `firmayiKapatabilir`
+            // satiri bir gun silinirse (ya da kural degisirse) akis sessizce
+            // devam edip firmayi sahipsiz birakmasin.
             throw new BadRequestException({
               kod: 'SON_SAHIP',
               mesaj:
@@ -475,11 +513,51 @@ export class HesapServisi {
           }
           await tx.user.update({
             where: { id: userId },
-            data: kapatmaVerisi(taze, simdi),
+            data: kapatmaVerisi(taze, simdi, 'kendi'),
           });
           // FAZ 7 F3b: kapatilan hesap sirket hesabiyla GERI ACILMAZ.
           await disKimlikleriSil(tx, userId);
-          if (k.sonHesap) {
+
+          if (k.firmaKapaniyor) {
+            // ── K2: FIRMA KAPANIYOR ─────────────────────────────────────
+            // Geride kalan hesaplar (varsa) `firmaKapandi` ile durur.
+            // ⚠ Once OKU sonra YAZ: e-posta gonderebilmek icin adresler
+            // lazim ve `updateMany` guncelledigi satirlari DONDURMEZ.
+            // ⚠ `deletedAt: null` KOSULU SART — zaten kapali bir uyenin
+            // (`ekiptenCikarildi`) nedeni ve imha tarihi EZILMEMELI; aksi
+            // halde odeme yapilinca o kisi de ekibe geri donerdi (§3.3.5).
+            const kalanKosul = {
+              firmaId: user.firmaId, deletedAt: null, NOT: { id: userId },
+            };
+            durdurulanUyeler = await tx.user.findMany({
+              where: kalanKosul,
+              select: { id: true, email: true },
+            });
+            if (durdurulanUyeler.length > 0) {
+              await tx.user.updateMany({
+                where: kalanKosul,
+                // ⚠ `kapatmaVerisi` DEGIL `topluKapatmaVerisi`: kisiye bagli
+                // alan (`kapatilanEposta`, anonim `email`) toplu yazmada
+                // yazilamaz — zaten GEREKMEZ de, cunku `firmaKapandi`
+                // yolunda e-posta hic degismiyor, satirin kendisi adresi
+                // tasimaya devam ediyor.
+                data: topluKapatmaVerisi(simdi, 'firmaKapandi'),
+              });
+              await tx.firmaOlayi.create({
+                data: {
+                  firmaId: user.firmaId, aktorId: userId,
+                  aktorEposta: taze.email, tip: 'uye.firma-kapandi',
+                  veri: { durdurulan: durdurulanUyeler.length } as never,
+                },
+              });
+            }
+            // ⚠ UYELERIN DIS KIMLIKLERI SILINMEZ (bilerek): sahip 30 gun
+            // icinde geri acarsa uye sirket hesabiyla girmeye devam
+            // edebilmeli. Giris zaten `deletedAt` ile kapali.
+            await tx.firma.update({
+              where: { id: user.firmaId },
+              data: { imhaTarihi: imha },
+            });
             // Kapanan firmaya katilim olmasin: bekleyen davetler AYNI
             // transaction'da iptal edilir.
             await tx.firmaDavet.updateMany({
@@ -501,7 +579,12 @@ export class HesapServisi {
               hedefKullaniciId: userId,
               hedefEposta: taze.email,
               tip: 'uye.ayrildi',
-              veri: { abonelikIptal: k.abonelikIptal } as never,
+              veri: {
+                abonelikIptal: k.firmaKapaniyor,
+                firmaKapandi: k.firmaKapaniyor,
+                durdurulanUye: durdurulanUyeler.length,
+                imhaTarihi: imha.toISOString(),
+              } as never,
             },
           });
           return k;
@@ -510,16 +593,16 @@ export class HesapServisi {
           // Firmasiz hesap (eski kayit): kilit anahtari yok, abonelik de yok.
           await this.prisma.user.update({
             where: { id: userId },
-            data: kapatmaVerisi(user, simdi),
+            data: kapatmaVerisi(user, simdi, 'kendi'),
           });
           await disKimlikleriSil(this.prisma, userId);
-          return { izin: true as const, abonelikIptal: false, sonHesap: false };
+          return { izin: true as const, firmaKapaniyor: false };
         })();
 
     // ⚠ COMMIT'TEN SONRA ve KILIT DISINDA: iptal bir dis HTTP cagrisidir.
     // Hata YUTULUR ama LOGLANIR — abonelik servisi erisilemez diye
     // kullanicinin hesabini kapatamamasi kabul edilemez.
-    if (karar.izin && karar.abonelikIptal && user.firmaId) {
+    if (karar.izin && karar.firmaKapaniyor && user.firmaId) {
       try {
         await this.satinAlma.iptalEt(user.firmaId, userId, 'hesap kapatma');
       } catch (e) {
@@ -530,14 +613,116 @@ export class HesapServisi {
       }
     }
 
+    // ── §3.4 KAPATMA E-POSTALARI — COMMIT'TEN SONRA, best-effort ────────
+    // `gonder` (`gonderKritik` DEGIL): SMTP erisilemez diye kapatma geri
+    // alinamaz. Hata YUTULMAZ, LOGLANIR (hafiza dersi: hata mesajini yutma).
+    await this.kapatmaEpostasiGonder(
+      kendiKapatmaEpostasi(kapatilanAdres, imha), kapatilanAdres,
+    );
+    for (const uye of durdurulanUyeler) {
+      await this.kapatmaEpostasiGonder(
+        firmaKapandiEpostasi(uye.email, imha), uye.email,
+      );
+    }
+
+    const gun = trTarih(imha);
     return {
       mesaj:
-        'Hesabiniz kapatildi. Oturumunuz sonlandirildi ve varsa aboneliginiz iptal edildi. ' +
-        'Ayni e-posta adresiyle yeniden kayit olabilirsiniz.',
-      // ⚠ DURUSTLUK: "verileriniz silindi" DEMIYORUZ, cunku silinmedi.
+        'Hesabınız kapatıldı. Oturumunuz sonlandırıldı ve varsa aboneliğiniz iptal edildi.',
+      // ⚠ DURUSTLUK: "verileriniz silindi" DEMIYORUZ, cunku silinmedi —
+      // 30 gun boyunca duruyor ve geri donus yolu ACIK (K1).
       veriNotu:
-        'Teklifleriniz ve kutuphaneniz sistemde kalmaya devam eder; erisim kapatilmistir. ' +
-        'Verilerinizin tamamen imhasini istiyorsaniz bu talebi ayrica iletmeniz gerekir.',
+        `Geri dönebilmeniz için verilerinizi ${gun} tarihine kadar saklıyoruz: bu sürede ` +
+        'aynı e-posta ve parolanızla giriş yapıp bir paket seçerek hesabınızı kaldığınız ' +
+        'yerden açabilirsiniz. Bu tarihten sonra teklifleriniz, kütüphaneniz ve ' +
+        'yüklediğiniz belgeler kalıcı olarak silinir. Fatura ve ödeme kayıtları yasal ' +
+        'süre boyunca saklanır.',
+      imhaTarihi: imha.toISOString(),
+      // Ön yüz "ekibiniz de durduruldu" cümlesini BU SAYIDAN cizer.
+      durdurulanUye: durdurulanUyeler.length,
     };
+  }
+
+  /**
+   * KAPATMA ONIZLEMESI (§3.3.1 · §8.1) — profil ekranindaki onay metni.
+   *
+   * ⚠ NEDEN SUNUCUDAN: "son sahip miyim, firmam kapanacak mi" sorusunun
+   * cevabi `ayrilmaKarari`dadir. On yuz ayni hesabi kendi basina yapsaydi
+   * (uye say, sahip say, karsilastir) IKIZ bir kural olurdu ve gun gelir
+   * ekran "firmanız kapanır" demeden firma kapanirdi (§3.3 "Tek kaynak").
+   *
+   * ⚠ KARAR NESNESI OLDUGU GIBI DONER, ozetlenmez: on yuz `karar.izin` ve
+   * `karar.firmaKapaniyor` dallarini kendi metnine esler. Burada
+   * `firmaKapanir: boolean` gibi bir OZET dondurmek, sunucunun uc dalini
+   * ikiye indirip "firmanin son hesabi" ile "firma kapaniyor, N kisi
+   * duruyor" hâllerini ayirt edilemez yapardi.
+   *
+   * ⚠ HICBIR SEY YAZMAZ. Sayim kilitsiz okunur: onay metni TAHMINDIR,
+   * karar kapatma aninda kilit icinde YENIDEN verilir — onizleme bayatlasa
+   * bile yanlis bir kapatma olmaz.
+   */
+  async kapatmaOnizlemesi(userId: string): Promise<{
+    firmaVar: boolean;
+    karar: ReturnType<typeof ayrilmaKarari>;
+    digerHesap: number;
+    saklamaGun: number;
+  }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, firmaId: true, firmaRol: true, deletedAt: true },
+    });
+    if (!user || user.deletedAt) throw new UnauthorizedException();
+    if (!user.firmaId) {
+      // Firmasiz (eski) kayit: `hesabiKapat` de bu dalda `ayrilmaKarari`yi
+      // HIC cagirmaz. `firmaVar: false` on yuze "firma cumlelerinin
+      // HICBIRINI yazma" der; karar alani yalniz sekil butunlugu icin dolu.
+      return {
+        firmaVar: false,
+        karar: { izin: true, firmaKapaniyor: false },
+        digerHesap: 0,
+        saklamaGun: KAPATMA_SAKLAMA_GUN,
+      };
+    }
+    const [digerHesap, digerEtkinSahip] = await Promise.all([
+      this.prisma.user.count({
+        where: { firmaId: user.firmaId, deletedAt: null, NOT: { id: userId } },
+      }),
+      this.prisma.user.count({
+        where: {
+          firmaId: user.firmaId, firmaRol: 'sahip',
+          NOT: { id: userId }, ...etkinHesapKosulu(),
+        },
+      }),
+    ]);
+    return {
+      firmaVar: true,
+      // ⚠ `firmayiKapatabilir: true` — ONIZLEME, KAPATMANIN AYNI YOLUDUR.
+      // Gecirilmezse onizleme `SON_SAHIP` (izin:false) der, kapatma ise
+      // basarili olur: ekran "yapamazsiniz" derken islem calisir.
+      karar: ayrilmaKarari({
+        firmaRol: user.firmaRol as FirmaRol,
+        digerHesap,
+        digerEtkinSahip,
+        firmayiKapatabilir: true,
+      }),
+      digerHesap,
+      // On yuzdeki `SAKLAMA_GUN` ikizinin baglanacagi tek kaynak.
+      saklamaGun: KAPATMA_SAKLAMA_GUN,
+    };
+  }
+
+  /** Kapatma bildirimleri TEK yerden gider; hata yutulmaz, loglanir. */
+  private async kapatmaEpostasiGonder(
+    talep: Parameters<EpostaServisi['gonder']>[0],
+    kime: string,
+  ): Promise<void> {
+    try {
+      await this.eposta.gonder(talep);
+    } catch (e) {
+      this.logger.error(
+        `Kapatma bildirimi GONDERILEMEDI (${kime}): ` +
+          `${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
   }
 }

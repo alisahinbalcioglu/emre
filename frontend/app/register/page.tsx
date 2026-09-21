@@ -34,10 +34,17 @@ export default function RegisterPage() {
   const [ticariIletiOnayi, setTicariIletiOnayi] = useState(false);
   // FAZ 7 F2b (R1-O1): yeni kayit da zorunlu kurulum dalina dusebilir.
   const [dal, setDal] = useState<GirisDali | null>(null);
+  // ── PLAN 5.8 §4.3: KAPATILMIS AMA SURESI DOLMAMIS ADRES ──────────────
+  // ⚠ TOAST YETMEZ, SATIR ICI UYARI SART: toast birkac saniyede kaybolur
+  // ve kullaniciya YAPILACAK BIR SEY vermez. Bu, "geri donmek isteyen
+  // musterinin en kolay dusecegi tuzak" (brief §4.3): dogru davranis onu
+  // GIRIS ekranina goturmektir, o yuzden mesajin yaninda baglanti durur.
+  const [kapaliHesapUyarisi, setKapaliHesapUyarisi] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
+    setKapaliHesapUyarisi(null);
     try {
       // Onaylar SUNUCUYA gönderilir ve orada ZAMAN DAMGASI olarak kaydedilir.
       // ⚠ Buradaki `required` yalnızca tarayıcı kolaylığıdır; isteği elle atan
@@ -57,6 +64,17 @@ export default function RegisterPage() {
       const oturum = oturumuYaz(data);
       router.push(girisSonrasiYol(oturum));
     } catch (err: any) {
+      // PLAN 5.8 §4.3: sunucu YENI HESAP ACMADI ve nedenini kodla soyluyor.
+      // ⚠ Metin SUNUCUDAN alinir (`kapali-hesap.ts` KAYIT_KAPALI_HESAP_MESAJI):
+      // burada ikinci kez yazilsaydi iki cumle gunun birinde ayrisirdi.
+      if (err.response?.data?.kod === 'HESAP_KAPALI_GERI_DONUS') {
+        setKapaliHesapUyarisi(
+          err.response?.data?.mesaj ||
+            err.response?.data?.message ||
+            'Bu adresle kapatılmış bir hesabınız var.',
+        );
+        return;
+      }
       toast({
         variant: 'destructive',
         title: 'Kayıt başarısız',
@@ -96,6 +114,20 @@ export default function RegisterPage() {
           />
         ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* PLAN 5.8 §4.3 — kapatilmis ama suresi dolmamis adres. Toast
+              DEGIL satir ici: kullanicinin yapmasi gereken sey burada,
+              tiklanabilir halde duruyor. */}
+          {kapaliHesapUyarisi && (
+            <div
+              role="alert"
+              className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-[11px] leading-relaxed text-amber-900"
+            >
+              {kapaliHesapUyarisi}{' '}
+              <Link href="/login" className="font-bold underline">
+                Giriş yapın
+              </Link>
+            </div>
+          )}
           <div>
             <label htmlFor="email" className="mb-1.5 block text-xs font-semibold text-slate-700">
               E-posta Adresi

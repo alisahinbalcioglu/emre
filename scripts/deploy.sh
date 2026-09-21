@@ -68,9 +68,30 @@ echo "── 2/6 bu deploy'un surumu: $BEKLENEN ──"
 # kurmak ya da parolayi konsola yazmak GEREKMEZ.
 #
 # AD: `deploy-oncesi-<sha>-<damga>.sql.gz`. BILEREK `metaprice-*` DEGIL —
-# gunluk temizlik deseni (backup.sh) `metaprice-*.sql.gz` arar; deploy
-# yedekleri o desene girmedigi icin 14 gun kuralina TAKILMAZ, kendiliginden
-# silinmez. Bunun bedeli: birikirler. Elle budama komutu GERI_YUKLEME.md'de.
+# gunluk temizlik deseni (backup.sh) `metaprice-*.sql.gz` arar; bu dosyalar o
+# desene GIRMEZ, yani backup.sh'in 14 gun kurali bunlara UYGULANMAZ. Bu kisim
+# hala BILEREK boyle: 14 gun once yapilan bir deploy'u geri almak icin o
+# deploy'un KENDI yedegi gerekir, gunluk dokum yetmez.
+#
+# ── 21.09.2026: 30 GUN SAKLAMA EKLENDI (K5) ────────────────────────────────
+# Oncesinde bu dosyalar HIC silinmiyordu. OLCULDU (21.09, canli sunucuda):
+# 104 dosya, en eskisi 4 Agustos, 47'si 30 gunden eski, toplam 1,1 GB.
+# Iki ayri sorun, ikincisi agir:
+#   (a) DISK — deploy basina bir dosya, ustu acik birikim.
+#   (b) TAAHHUT — gizlilik metni "silinen veriler yedeklerden en gec 30 gun
+#       icinde cikar" diyor. SURESIZ saklanan bir yedek bu cumleyi YALAN
+#       yapar: hesabini kapatmis bir musterinin verisi 4 Agustos dokumunde
+#       oldugu gibi duruyor ve hicbir imha isi oraya ulasamaz.
+# Artik asagidaki temizlik her DOGRULANMIS deploy yedeginden sonra kosar.
+#
+# ⚠ TEMIZLIK backup.sh'in SOZLESMESINI birebir tasir: silme YALNIZ yeni yedek
+# DOGRULANDIKTAN ve adi kesinlestikten SONRA kosar. Bu burada bir gelenek
+# degil, YAPISAL bir garanti: temizlik satirlari asagidaki uc `exit 1`
+# dalinin ALTINDA, `mv` ile adin kesinlesmesinden SONRA duruyor. Dump
+# basarisizsa o dallardan donulur ve hicbir sey silinmez.
+# Gerekcesi backup.sh:6-15'te yazili — orada tam tersi olculdu: silme `if`
+# blogunun disindaydi, basarisiz gunlerde de kosuyordu, yani "ust uste 14 gun
+# basarisiz dump = elde HIC yedek yok, hem de kimse fark etmeden".
 #
 # ⚠ YEDEK BASARISIZSA DEPLOY DURUR. `|| true` ile ciktiyi yakalayip MARKER
 # ariyoruz; boylece hem hata metni gorunur hem de ERR trap'e dusup "beklenmedik
@@ -82,8 +103,16 @@ echo "── 3/6 deploy oncesi DB yedegi ──"
 # (0600 olanlar o gun elle chmod edilmisti — kalici degildi). umask yukun ILK
 # ifadesi: gzip yonlendirmesi ayni kabukta, mv modu korur. chmod yerine umask,
 # cunku chmod dosyanin 0644 dogup sonra duzeltildigi bir pencere birakir.
+# SAKLAMA (21.09.2026, K5): deploy yedekleri 30 gun. backup.sh'in 14 gunu
+# DEGISMEZ — o gunluk dokumler icin ayri bir karar.
+# `-mtime +30` = yasi 30 TAM GUNDEN buyuk olan, yani pratikte 31. gunde
+# silinir (find gun sayisini asagi yuvarlar). Sinirin bu yonde olmasi bilerek:
+# erken silmektense bir gun fazla saklamak.
+# GERI_YUKLEME.md'deki elle budama komutu da ayni `-mtime +30` esigini
+# kullaniyor — otomatik ve elle yol AYNI dosyalari secer.
+YEDEK_SAKLAMA_GUN=30
 YEDEK_ADI="deploy-oncesi-$BEKLENEN-$(date +%Y%m%d-%H%M%S).sql.gz"
-YEDEK_CIKTI="$(docker compose exec -T -e ADI="$YEDEK_ADI" backup sh -c '
+YEDEK_CIKTI="$(docker compose exec -T -e ADI="$YEDEK_ADI" -e SAKLAMA="$YEDEK_SAKLAMA_GUN" backup sh -c '
   umask 077
   GECICI="/backups/$ADI.yaziliyor"
   rm -f /tmp/deploy-dump-kodu
@@ -96,6 +125,23 @@ YEDEK_CIKTI="$(docker compose exec -T -e ADI="$YEDEK_ADI" backup sh -c '
     echo "YEDEK HATASI — dump SONU isareti yok (yarim dump)"; rm -f "$GECICI"; exit 1; fi
   mv "$GECICI" "/backups/$ADI"
   echo "YEDEK DOGRULANDI /backups/$ADI $(wc -c < "/backups/$ADI") bayt"
+  # ── ESKI DEPLOY YEDEKLERINI BUDA (backup.sh:74-76 deseni) ───────────────
+  # ⚠ BU BLOK TEK TIRNAKLI BIR DIZGININ ICINDE. Buraya kesme isareti (tek
+  # tirnak) YAZMA: dizgiyi kapatir ve butun betik SOZDIZIMI HATASI verir.
+  # OLCULDU 21.09.2026 — iki Turkce ek (kesmeli yazim) betigi kirdi, `bash -n`
+  # yakaladi. Blokta bugune kadar hic yorum olmamasinin sebebi de budur.
+  #
+  # Buraya YALNIZ dogrulanmis ve adi kesinlesmis YENI bir yedek varken gelinir.
+  # `! -name "$ADI"` az once yazilan yedegi her kosulda disarida birakir:
+  # sunucu saati ileri kayarsa bile bu kosumun can simidi silinemez.
+  # `deploy-oncesi-*.sql.gz` deseni `.yaziliyor` ile BITEN yarim dosyalari
+  # KAPSAMAZ (find -name adin TAMAMINI esler) — onlar ikinci satirda, +1 gun.
+  # stderr BILEREK yutulmuyor: disaridaki `2>&1` yakalar ve ciktiya basar.
+  # Budama basarisizligi deploy adimini DUSURMEZ — disk temizligi teslimatin
+  # onkosulu degildir (ayni gerekce 6/6 adimindaki cache budamasinda da var).
+  SILINEN="$(find /backups -name "deploy-oncesi-*.sql.gz" ! -name "$ADI" -mtime "+$SAKLAMA" -print -delete | wc -l | tr -d " ")"
+  find /backups -name "deploy-oncesi-*.sql.gz.yaziliyor" -mtime +1 -delete
+  echo "BUDAMA tamam — $SAKLAMA gunden eski deploy yedegi silindi: $SILINEN dosya"
 ' 2>&1 || true)"
 printf '%s\n' "$YEDEK_CIKTI" | sed 's/^/   /'
 if ! printf '%s' "$YEDEK_CIKTI" | grep -q 'YEDEK DOGRULANDI'; then
@@ -178,6 +224,61 @@ else
     echo "   caddy tazelendi ve dogrulandi (${YENI_MD5:0:8})"
   else
     docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile </dev/null >/dev/null 2>&1       && echo "   caddy yapilandirmasi yeniden yuklendi (mount zaten taze)"       || { echo "❌ caddy reload BASARISIZ — eski yapilandirma calismaya devam ediyor"; exit 1; }
+  fi
+fi
+
+# ── YEDEK SERVISI TAZELIGI (21.09.2026, K5) ─────────────────────────────────
+# `backup.sh` konteynere TEK DOSYA olarak bagli:
+#   docker-compose.yml:216  ./scripts/backup.sh:/backup.sh:ro
+# Caddyfile ile AYNI tuzak, ustelik IKI KAT:
+#   (1) Docker tek-dosya mount'unu INODE'a baglar. `git pull` dosyayi yeni bir
+#       inode ile yazinca konteyner ESKI dosyayi gormeye devam eder.
+#   (2) Entrypoint `sh /backup.sh` ve betik sonsuz `while` dongusunde. Kabuk
+#       bilesik komutu bir kez ayristirir, dosyayi YENIDEN OKUMAZ.
+# Yani konteyner yeniden olusturulmadan `backup.sh` degisikligi ASLA yururluge
+# girmez — ve deploy yine "DOGRULANDI" der. SESSIZ basarisizlik.
+#
+# NEDEN ONEMLI: K5 kurali (butun yedekler en fazla 30 gun) artik `backup.sh`in
+# gunluk dongusunde. Gizlilik metni "silinen veriler yedeklerden en gec 30 gun
+# icinde cikar" diyecek. Kural konteynerde kosmazsa o cumle YANLIS BEYAN olur
+# ve kimse fark etmez. Yasal bir sozu insanin hatirlamasina birakmiyoruz.
+#
+# ⚠ HER DEPLOY'DA yeniden olusturmak YANLIS: kap yeniden dogunca 24 saatlik
+# dump dongusu BASTAN baslar, yani art arda deploy'lar gunluk yedegi surekli
+# erteler. Bu yuzden YALNIZ dosya degistiginde.
+#
+# ⚠ SAKLANAN HASH YOK — bilerek. Bir yere hash yazsaydik "nerede duracak"
+# sorusu cikardi ve yanlis yerde (kabin icinde) dururken her yeniden
+# olusturmada "degisti" sanip donguyu tekrar sifirlardik. Bunun yerine
+# KONTEYNERIN GERCEKTEN GORDUGU dosya olculuyor: durum nerede saklanacak
+# sorusu ortadan kalkiyor, olcum kendi kendini duzeltiyor (kap elle
+# yenilenmisse de dogru cevap verir). Ayni desen Caddyfile icin yukarida var.
+if ! docker compose ps --status running --services 2>/dev/null | grep -qx backup; then
+  echo "   backup servisi calismiyor — yedek betigi tazeligi OLCULEMEDI"
+  echo "   (3/6 yedegi bu servisten alindi; buraya gelindiyse servis vardi)"
+else
+  YEDEK_HOST_MD5="$(md5sum scripts/backup.sh | cut -d" " -f1)"
+  # `|| true` SART: betik `set -euo pipefail` ile kosuyor. `exec` duserse
+  # pipefail bos ciktiyi HATA'ya cevirir ve deploy ERR trap'ine dusup
+  # "beklenmedik hata (kod 3)" der — oysa bu olculebilir bir durumdur.
+  YEDEK_KAP_MD5="$(docker compose exec -T backup md5sum /backup.sh </dev/null 2>/dev/null | cut -d" " -f1 || true)"
+  if [ "$YEDEK_HOST_MD5" = "$YEDEK_KAP_MD5" ]; then
+    echo "   yedek betigi DEGISMEDI (${YEDEK_HOST_MD5:0:8}) — konteyner dokunulmadi, dump dongusu sifirlanmadi"
+  else
+    echo "   backup.sh DEGISTI (host ${YEDEK_HOST_MD5:0:8} != kap ${YEDEK_KAP_MD5:0:8})"
+    echo "   yedek konteyneri yeniden olusturuluyor — mount inode'a bagli, reload diye bir sey YOK"
+    docker compose up -d --force-recreate backup </dev/null >/dev/null 2>&1 \
+      || { echo "❌ backup konteyneri yeniden olusturulamadi"; exit 1; }
+    sleep 3
+    # Tazelik SONRADAN tekrar OLCULUR — "yeniden olusturdum" bir iddiadir,
+    # kanit degil. md5sum kalici olarak calismiyorsa burada GORUNUR sekilde
+    # durur; sessizce her deploy'da yeniden olusturmaya DONMEZ.
+    YENI_YEDEK_MD5="$(docker compose exec -T backup md5sum /backup.sh </dev/null 2>/dev/null | cut -d" " -f1 || true)"
+    if [ "$YENI_YEDEK_MD5" != "$YEDEK_HOST_MD5" ]; then
+      echo "❌ backup mount HALA bayat (kap ${YENI_YEDEK_MD5:0:8}) — elle mudahale gerekir"
+      exit 1
+    fi
+    echo "   yedek betigi tazelendi ve DOGRULANDI (${YENI_YEDEK_MD5:0:8}) — saklama kurali artik yururlukte"
   fi
 fi
 

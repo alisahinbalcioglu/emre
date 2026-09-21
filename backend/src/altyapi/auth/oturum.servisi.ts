@@ -13,6 +13,11 @@ import {
   type MfaZorunlulukNedeni,
 } from './mfa/mfa-karari';
 import { meydanOkumaImzala } from './mfa/meydan-okuma';
+import {
+  geriDonusPenceresinde,
+  kapaliHesapDurumu,
+  type KapaliHesapGirdisi,
+} from './kapali-hesap';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -30,26 +35,43 @@ import { meydanOkumaImzala } from './mfa/meydan-okuma';
  */
 
 /** `hesapKapisi`nin okudugu en dar kullanici sekli. */
-export type KapiKullanicisi = {
+export type KapiKullanicisi = KapaliHesapGirdisi & {
   status?: string | null;
   deletedAt?: Date | null;
 };
 
 /**
- * HESAP KAPISI — banli ya da kapatilmis hesap oturum ALAMAZ.
+ * HESAP KAPISI — banli hesap oturum ALAMAZ; kapatilmis hesap YALNIZ geri
+ * donus penceresindeyse alabilir.
  *
  * ⚠ METINLER `auth.service.ts:85-95`ten BIREBIR tasindi (degistirilmedi):
  * `faz2-kullanici-yonetimi-test.ts` ve `guvenlik-turu-2-test.ts` kaynak
  * kapilari bu metni ariyor.
  *
+ * ── PLAN 5.8 §4.1 (K1): 30 GUNLUK GERI DONUS ─────────────────────────────
+ * Eskiden `deletedAt` dolu olan HER hesap reddediliyordu. K1 ile musteri,
+ * kendi kapattigi hesabina 30 gun boyunca AYNI adres ve parolayla girip
+ * paket satin alarak geri donebiliyor. Kosul `kapali-hesap.ts`te TEK yerde:
+ * neden `kendi` OLACAK ve `imhaTarihi` HENUZ GECMEMIS olacak.
+ *
+ * ⚠ GEVSEME YALNIZ GIRISTEDIR, ERISIMDE DEGIL. Giren hesap "askida" kipine
+ * duser (`erisim.servisi.ts` `kapaliKarar`) ve `JwtAuthGuard` teklif /
+ * kutuphane / cikti / ceviri dahil her ucu 403 `HESAP_KAPALI` ile kapatir.
+ * Girise izin vermek, veriyi acmak DEGIL; odeme sayfasina ve KVKK veri
+ * indirmesine ulasmayi acmaktir.
+ *
+ * ⚠ BAN KONTROLU ONCE: banli VE kapali bir hesap "askiya alinmis" gormeli.
+ * Sirayi degistirmek, banli birine geri donus ekrani gosterirdi.
+ *
  * ⚠ TEK BASINA YETMEZ: mevcut token'lar 7 gun daha gecerlidir. Ikinci kapi
- * `strategies/jwt.strategy.ts`tedir; ikisi BIRLIKTE anlamlidir.
+ * `strategies/jwt.strategy.ts`tedir; ikisi BIRLIKTE anlamlidir ve ikisi de
+ * AYNI `geriDonusPenceresinde` yuklemini okur (ikiz kural yok).
  */
-export function hesapKapisi(user: KapiKullanicisi): void {
+export function hesapKapisi(user: KapiKullanicisi, simdi = new Date()): void {
   if (user.status === 'banned') {
     throw new UnauthorizedException('Hesabiniz askiya alinmis.');
   }
-  if (user.deletedAt) {
+  if (user.deletedAt && !geriDonusPenceresinde(user, simdi)) {
     throw new UnauthorizedException('Hesabiniz kapatilmis.');
   }
 }
@@ -87,6 +109,9 @@ export type OturumKullanicisi = {
   mfaKaynagi?: string | null;
   status?: string | null;
   deletedAt?: Date | null;
+  /** PLAN 5.8 §4 — geri donus penceresi ve kapali hesap ekrani icin. */
+  kapatmaNedeni?: string | null;
+  imhaTarihi?: Date | null;
 };
 
 /**
@@ -125,6 +150,10 @@ export class OturumServisi {
    * `JwtStrategy` HIC KOSMAZ (token daha yeni basildi). On yuz girişten
    * hemen sonra `/koltuk-durduruldu`ya gidebilmeli. Hesap AYNI saf
    * fonksiyondan gelir (`koltukDurumuHesapla`) — ikiz kural yok.
+   *
+   * ⚠ PLAN 5.8 §4.4: `hesapKapali` de AYNI gerekceyle burada hesaplanir.
+   * Kapali hesap giristen sonra panoya DEGIL `/hesap-kapali` ekranina
+   * gitmeli — panoya gitse her istegi 403 alirdi (koltuk deseninin aynisi).
    */
   async oturumYaniti(
     user: OturumKullanicisi,
@@ -137,6 +166,7 @@ export class OturumServisi {
       role: string;
       tier: string;
       koltukDurduruldu: boolean;
+      hesapKapali: boolean;
     };
   }> {
     const token = tokenImzala(
@@ -148,6 +178,7 @@ export class OturumServisi {
     );
     const tier = (await firmaPaketSeviyesi(this.prisma, user.firmaId)) ?? 'core';
     const koltukDurduruldu = await this.koltukDurduruldu(user);
+    const hesapKapali = await this.hesapKapaliMi(user);
     return {
       token,
       user: {
@@ -156,8 +187,35 @@ export class OturumServisi {
         role: user.role,
         tier,
         koltukDurduruldu,
+        hesapKapali,
       },
     };
+  }
+
+  /**
+   * PLAN 5.8 §4 — "bu oturum kapali bir hesabin mi?"
+   *
+   * IKI kapanma da sayilir (`kapaliHesapDurumu`): kisi kendi kapatti ya da
+   * FIRMASI kapandi (K2). Ikincisi icin firma satirina bakmak SART: uyenin
+   * kendi `deletedAt`i bos olabilir ve o hesap bugun sorunsuz giris yapardi.
+   *
+   * ⚠ Firma sorgusu YALNIZ gerektiginde atilir: hesabin kendisi kapaliysa
+   * karar zaten kesindir, firmasiz hesapta da sorulacak bir sey yoktur.
+   * Giris/kayit basina EN FAZLA bir ek `findUnique` — istek basina degil.
+   */
+  private async hesapKapaliMi(user: OturumKullanicisi): Promise<boolean> {
+    if (user.deletedAt) return true;
+    if (!user.firmaId) return false;
+    const firma = await this.prisma.firma.findUnique({
+      where: { id: user.firmaId },
+      select: { imhaTarihi: true },
+    });
+    return kapaliHesapDurumu({
+      deletedAt: user.deletedAt ?? null,
+      kapatmaNedeni: user.kapatmaNedeni ?? null,
+      imhaTarihi: user.imhaTarihi ?? null,
+      firmaImhaTarihi: firma?.imhaTarihi ?? null,
+    }).kapali;
   }
 
   /**

@@ -222,25 +222,72 @@ function main(): void {
   // Bu blok tek betige bakmaz: scripts/ altindaki HER pg_dump cagrisi, AYNI
   // calisma baglaminda (sh -c yuku ya da betigin kendisi) ondan once umask 077
   // tasimali. Yeni bir dump noktasi eklendiginde kendiliginden olculur.
+  //
+  // ── 21.09.2026 · Y2 ONARILDI — KAPI OLCTUGUNU SANDIGI SEYI OLCMUYORDU ──
+  // Y2 "tek tirnakli dump yuklerinde kesme isareti yok" diyordu. Iki ayri
+  // sebepten YALANCI YESIL veriyordu ve ikisi de olculdu (21.09):
+  //   (a) Yalniz `pg_dump` ONCESINE bakiyordu (`metin.slice(0, m.index)`).
+  //       Yukun pg_dump SONRASINDAKI yarisi hic olculmuyordu.
+  //   (b) Girdiyi `kabukKodu` ile soyuyordu. Bu DOGRU gorunuyor ama degil:
+  //       tek tirnakli yukun icindeki `#` satirini DIS kabuk yorum SAYMAZ,
+  //       duz metin olarak okur — ve oradaki bir kesme isareti dizgiyi
+  //       ERKEN KAPATIR, butun betik sozdizimi hatasi verir.
+  // KANIT: deploy.sh yukundeki budama yorumlarina Turkce kesme isareti
+  // konuldu; `bash -n` KIRILDI, guvenlik-paket1 F17 KIRMIZI oldu, Y2 YESIL
+  // kaldi. Artik olcum HAM metin uzerinde ve yukun TAMAMI icin yapiliyor.
+  //
+  // Y1 (umask) BILEREK soyulmus metni kullanmaya devam ediyor: yuku IC kabuk
+  // calistirir ve IC kabuk icin `#` gercekten yorumdur.
   console.log('\n── Y · DUMP IZINLERI (tum pg_dump cagrilari) ──');
   const betikler = dosyalar(path.join(KOK, 'scripts')).filter((p) => p.endsWith('.sh'));
-  const dumpNoktalari: Array<{ dosya: string; satir: number; umaskVar: boolean; tirnakTemiz: boolean }> = [];
+  // Kapanis tirnagindan SONRA gelmesi kabul edilen karakterler: hepsi kabuk
+  // siniri. Turkce ek kesmesi (deploy + kesme + un) HARF birakir ve elenir.
+  const SINIR_SONRASI = [' ', '\t', '\n', ')', '"', ';', '|', '&', ''];
+  const dumpNoktalari: Array<{
+    dosya: string;
+    satir: number;
+    umaskVar: boolean;
+    tekTirnakli: boolean;
+    tirnakTemiz: boolean;
+    tanik: string;
+  }> = [];
   for (const p of betikler) {
-    const metin = kabukKodu(fs.readFileSync(p, 'utf8').replace(/\r\n/g, '\n'));
+    // HAM metin: yorum soyulmaz. `pg_dump -h db` bugun hicbir yorumda GECMIYOR
+    // (olculdu 21.09, 5 cagrinin 5'i kod). Yorumda gecmeye baslarsa bu blok
+    // onu da bir dump noktasi sayar ve GORUNUR sekilde kirmizi verir.
+    const ham = fs.readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
     const re = /pg_dump -h db/g;
     let m: RegExpExecArray | null;
-    while ((m = re.exec(metin))) {
-      const once = metin.slice(0, m.index);
+    while ((m = re.exec(ham))) {
+      const once = ham.slice(0, m.index);
       const acici = Math.max(once.lastIndexOf("sh -c '"), once.lastIndexOf('sh -c "'));
-      const baglam = acici !== -1 ? once.slice(acici) : once;
-      // Tek tirnakli yukte kesme isareti yuku ERKEN kapatir (deploy'u kirar).
       const tekTirnakli = acici !== -1 && once.slice(acici, acici + 7) === "sh -c '";
+      const baglam = acici !== -1 ? once.slice(acici) : once;
+      let tirnakTemiz = true;
+      let tanik = '';
+      if (tekTirnakli) {
+        const yukBas = acici + "sh -c '".length;
+        // Kabugun GERCEKTEN gordugu yuk: acici -> bir sonraki tek tirnak.
+        // Tek tirnakli dizgide kacis YOKTUR; ilk tirnak dizgiyi kapatir.
+        const kapanis = ham.indexOf("'", yukBas);
+        const sonraki = kapanis === -1 ? '' : ham.charAt(kapanis + 1);
+        const pgUlasti = kapanis === -1 || kapanis > m.index;
+        const sinirTemiz = kapanis !== -1 && SINIR_SONRASI.includes(sonraki);
+        tirnakTemiz = pgUlasti && sinirTemiz;
+        if (!tirnakTemiz && kapanis !== -1) {
+          const satirBas = ham.lastIndexOf('\n', kapanis) + 1;
+          tanik = ham.slice(satirBas, kapanis + 8).trim();
+        }
+      }
       dumpNoktalari.push({
         dosya: path.relative(KOK, p).split(path.sep).join('/'),
         satir: once.split('\n').length,
         // Oncesinde tirnak da olabilir: `sh -c "umask 077; ...` (bekci tek satir yuk).
-        umaskVar: /(^|[\s;("'])umask 077\b/.test(baglam),
-        tirnakTemiz: !tekTirnakli || !baglam.slice(7).includes("'"),
+        // IC kabuk icin `#` yorumdur -> baglam burada SOYULARAK olculur.
+        umaskVar: /(^|[\s;("'])umask 077\b/.test(kabukKodu(baglam)),
+        tekTirnakli,
+        tirnakTemiz,
+        tanik,
       });
     }
   }
@@ -248,6 +295,14 @@ function main(): void {
     'Y-OLCUT tarama calisti (en az 5 pg_dump noktasi: backup, deploy, sir-dondur, geri-yukle, bekci)',
     dumpNoktalari.length >= 5,
     `bulunan=${JSON.stringify(dumpNoktalari.map((d) => `${d.dosya}:${d.satir}`))}`,
+  );
+  // FIXTURE KANITI: Y2 yalniz TEK TIRNAKLI yukleri olcer. Hepsi cift tirnakli
+  // olsaydi Y2 hicbir sey olcmeden yesil kalirdi. Bugun uc tane var:
+  // deploy.sh, geri-yukle.sh, sir-dondur.sh (olculdu 21.09).
+  check(
+    'Y-OLCUT2 en az uc TEK TIRNAKLI dump yuku olculuyor (yoksa Y2 bos kume uzerinde yesil verir)',
+    dumpNoktalari.filter((d) => d.tekTirnakli).length >= 3,
+    `tek tirnakli=${JSON.stringify(dumpNoktalari.filter((d) => d.tekTirnakli).map((d) => `${d.dosya}:${d.satir}`))}`,
   );
   const umasksiz = dumpNoktalari.filter((d) => !d.umaskVar);
   check(
@@ -257,9 +312,9 @@ function main(): void {
   );
   const tirnakKirik = dumpNoktalari.filter((d) => !d.tirnakTemiz);
   check(
-    'Y2 tek tirnakli dump yuklerinde kesme isareti yok (yuk erken kapanmaz)',
+    'Y2 tek tirnakli dump yukunun TAMAMI kabuga gidiyor (kesme isareti yuku erken kapatmiyor)',
     tirnakKirik.length === 0,
-    `kirik=${JSON.stringify(tirnakKirik.map((d) => `${d.dosya}:${d.satir}`))}`,
+    `kirik=${JSON.stringify(tirnakKirik.map((d) => `${d.dosya}:${d.satir} → ${d.tanik}`))}`,
   );
 
   console.log(`\n${'='.repeat(64)}\nSUNUCU URUNLERI: ${passed} PASS, ${failed} FAIL\n${'='.repeat(64)}`);

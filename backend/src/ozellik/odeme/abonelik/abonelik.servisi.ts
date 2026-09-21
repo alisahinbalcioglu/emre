@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
-import { AbonelikDurumu, Prisma } from '@prisma/client';
+import { AbonelikDurumu, KapatmaNedeni, Prisma } from '@prisma/client';
 import { IyzicoClient, IyzicoAbonelikDetayi } from '../iyzico/iyzico.client';
 
 /**
@@ -83,6 +83,69 @@ export function iyzicoDurumunuYorumla(
   }
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   §4.6 — ODEME BASARILI OLUNCA HESAP GERI ACILIR (plan 5.8, K1/K2)
+   ═══════════════════════════════════════════════════════════════════════════
+
+   Kapatilan hesabin 30 gun icinde geri donmesinin TEK yolu paket satin
+   almaktir. Odeme gecince kapatma izleri silinir:
+
+     `User.deletedAt` · `User.imhaTarihi` · `User.kapatmaNedeni` · `Firma.imhaTarihi`
+
+   ── KIM GERI GELIR: KAPALI LISTE ───────────────────────────────────────────
+   Yalnizca asagidaki iki neden. Liste ACIK degil (`!== 'ekiptenCikarildi'`
+   gibi bir NEGATIF suzgec YAZILMAZ): semaya yarin yeni bir kapatma nedeni
+   eklenirse negatif suzgec onu SESSIZCE geri acardi.
+
+     · `kendi`        → geri donen musterinin KENDISI. Giris acik, odeyen o.
+     · `firmaKapandi` → son sahip kapattigi icin durdurulan uye (brief §3.3.5:
+                        "sahip geri acinca uyeler KENDILIGINDEN geri gelir").
+
+   GELMEYENLER ve NEDENI:
+     · `ekiptenCikarildi` — brief §3.3.5 ACIKCA "gelmez" diyor. Sahip onu
+       ekipten cikardi; ayrica K1 istisnasi geregi e-postasi HEMEN serbest
+       birakildi, baska bir firmaya katilmis olabilir. Geri acmak onu iki
+       firmada birden gosterirdi. ⚠ `kapatmaVerisi` bugun `firmaId`yi
+       TEMIZLEMIYOR (olculdu: uyelik-kurallari.ts:166-180), yani satir hala
+       bu firmada gorunuyor — koruma YALNIZ bu kapali listedir.
+     · `yonetici` — yonetici mudahalesi bir cezadir; parayla geri alinmaz.
+     · `kapatmaNedeni = null` — bu turdan ONCE kapanmis hesap (olculdu 21.09:
+       canlida 0 kapali hesap). Hangi yoldan kapandigi BILINMEDIGI icin
+       tahmin yurutulmez.
+
+   ── DOKUNULMAYANLAR (bilincli) ─────────────────────────────────────────────
+   · `passwordChangedAt` — kapatma bunu `simdi` yapip elindeki token'i oldurur
+     (jwt.strategy `iat` kapisi). GERI ALINMAZ: tarihi geri cekmek kapatmadan
+     ONCE uretilmis token'lari YENIDEN GECERLI kilardi.
+   · `email` / `kapatilanEposta` — K1 geregi kapatma artik `kendi`,
+     `yonetici` ve `firmaKapandi` yollarinda e-postayi YERINDE birakiyor
+     (A'nin isi), yani geri acmada yapilacak bir sey yok. Ayrica `email`
+     @unique: adres bu arada baskasina gitmisse geri yazma TAHSILAT
+     ALINDIKTAN SONRA transaction'i patlatirdi.
+   · `status` (`active`/`banned`) — yonetici yasagi, kapatmayla ilgisiz.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/** Odeme ile geri acilan kapatma nedenleri — KAPALI liste, bkz. ustteki not. */
+export const GERI_ACILAN_KAPATMA_NEDENLERI: KapatmaNedeni[] = [
+  KapatmaNedeni.kendi,
+  KapatmaNedeni.firmaKapandi,
+];
+
+/** Geri acma sonucu — olay kaydina ve gunluge SAYI olarak yazilir. */
+export interface GeriAcmaSonucu {
+  /** `Firma.imhaTarihi` temizlendi mi (firma gercekten kapaliydi). */
+  firmaAcildi: boolean;
+  /** `deletedAt`/`imhaTarihi`/`kapatmaNedeni` temizlenen kullanici sayisi. */
+  acilanKullanici: number;
+  /** Kapali listede OLMADIGI icin kapali birakilan kullanici sayisi. */
+  atlananKullanici: number;
+}
+
+/** Hicbir sey degismedi mi? (idempotent cagrilarda olay yazilmasin). */
+export function geriAcmaBosMu(s: GeriAcmaSonucu): boolean {
+  return !s.firmaAcildi && s.acilanKullanici === 0;
+}
+
 @Injectable()
 export class AbonelikServisi {
   private readonly logger = new Logger(AbonelikServisi.name);
@@ -157,6 +220,110 @@ export class AbonelikServisi {
         (p.aciklama ? ` (${p.aciklama})` : ''),
     );
     return guncel;
+  }
+
+  /**
+   * §4.6 — ODEME BASARILI: firmayi ve uyelerini geri acar.
+   *
+   * TEK KAYNAK. Uc odeme yolu da buraya gelir; ikinci bir "geri acma"
+   * yazilmaz (bu depoda ikiz kural olculmus bir hata sinifi):
+   *   1. KART      — satinalma.servisi: abonelik acildiktan hemen sonra
+   *   2. HAVALE    — `erisimiUzat` (havale.servisi.odemeyiOnayla → buradan)
+   *   3. YENILEME  — `tahsilatBasarili` (webhook): kapaliyken cekim gectiyse
+   *                  musteri PARA ODEMISTIR, erisim acilmak ZORUNDADIR.
+   *
+   * IDEMPOTENT: acik hesapta hicbir satira dokunmaz, olay da yazmaz
+   * (`updateMany` + `where` suzgeci sifir satir gunceller). Ayni odeme
+   * yolunun iki kez tetiklenmesi (donus POST'u + kurtarma taramasi) gurultu
+   * uretmez.
+   *
+   * ⚠ HATA YUTULMAZ ama TAHSILATI DA DUSURMEZ: cagiran taraf `catch` ile
+   * gunluge yazip devam eder — parasi alinmis musterinin aboneligi yarim
+   * birakilamaz. Yarim kalirsa musteri girise kadar gelir ve ayni odeme
+   * yolunun ikinci tetiklemesi ya da yonetici mudahalesi tamamlar.
+   */
+  async firmayiGeriAc(
+    firmaId: string,
+    p: {
+      aktor: string;
+      aciklama: string;
+      /** Verilirse `AbonelikOlayi`na SAYI ozeti yazilir (icerik DEGIL). */
+      abonelikId?: string;
+      tx?: Prisma.TransactionClient;
+    },
+  ): Promise<GeriAcmaSonucu> {
+    const calistir = async (
+      db: Prisma.TransactionClient | PrismaService,
+    ): Promise<GeriAcmaSonucu> => {
+      const firma = await db.firma.updateMany({
+        where: { id: firmaId, imhaTarihi: { not: null } },
+        data: { imhaTarihi: null },
+      });
+
+      const acilan = await db.user.updateMany({
+        where: {
+          firmaId,
+          deletedAt: { not: null },
+          kapatmaNedeni: { in: GERI_ACILAN_KAPATMA_NEDENLERI },
+        },
+        data: { deletedAt: null, imhaTarihi: null, kapatmaNedeni: null },
+      });
+
+      // Kapali kalanlar: `ekiptenCikarildi` · `yonetici` · nedeni bilinmeyen.
+      // ⚠ `kapatmaNedeni: null` AYRI dal olarak yazildi: SQL'de
+      // `NOT (x IN (...))` NULL icin UNKNOWN doner ve satir DUSER — bu turdan
+      // once kapanmis hesaplar (nedeni bos) sayimdan sessizce kaybolurdu.
+      // Sayi yalnizca tanidir ama YANLIS tani, taninin olmamasindan kotudur.
+      const atlanan = await db.user.count({
+        where: {
+          firmaId,
+          deletedAt: { not: null },
+          OR: [
+            { kapatmaNedeni: null },
+            { NOT: { kapatmaNedeni: { in: GERI_ACILAN_KAPATMA_NEDENLERI } } },
+          ],
+        },
+      });
+
+      return {
+        firmaAcildi: firma.count > 0,
+        acilanKullanici: acilan.count,
+        atlananKullanici: atlanan,
+      };
+    };
+
+    // Cagiran transaction verdiyse ONUN icinde kal (havale yolu: erisim
+    // uzatma ile geri acma ayni islemde olmali). Vermediyse kendi
+    // transaction'imizi acariz — yarim geri acma birakmayalim.
+    const sonuc = p.tx
+      ? await calistir(p.tx)
+      : await this.prisma.$transaction((tx) => calistir(tx));
+
+    if (geriAcmaBosMu(sonuc)) return sonuc;
+
+    this.logger.log(
+      `Hesap geri acildi: firma=${firmaId} firmaAcildi=${sonuc.firmaAcildi} ` +
+        `acilanKullanici=${sonuc.acilanKullanici} atlanan=${sonuc.atlananKullanici} (${p.aciklama})`,
+    );
+
+    if (p.abonelikId) {
+      const db = (p.tx ?? this.prisma) as PrismaService;
+      await db.abonelikOlayi.create({
+        data: {
+          abonelikId: p.abonelikId,
+          tip: 'hesap.geri.acildi',
+          aciklama: p.aciklama,
+          // ⚠ ICERIK DEGIL SAYI: kimin geri geldigi kisisel veridir.
+          veri: {
+            firmaAcildi: sonuc.firmaAcildi,
+            acilanKullanici: sonuc.acilanKullanici,
+            atlananKullanici: sonuc.atlananKullanici,
+          },
+          aktor: p.aktor,
+        },
+      });
+    }
+    return sonuc;
   }
 
   /** Yalnızca günlüğe yazar, durum değiştirmez. */
@@ -339,6 +506,20 @@ export class AbonelikServisi {
       },
     });
 
+    // §4.6 — kapali hesapta cekim GECTIYSE musteri PARA ODEMISTIR; erisim
+    // acilir. Normalde kapatma aboneligi iptal eder, yani bu dal bostur
+    // (idempotent: acik hesapta sifir satir gunceller, olay da yazmaz).
+    // Hata TAHSILATI DUSURMEZ — webhook "islendi" damgasi yemeli.
+    await this.firmayiGeriAc(ab.firmaId, {
+      aktor: 'webhook',
+      aciklama: `Tahsilat basarili (siparis ${siparisKodu}) — hesap geri acildi`,
+      abonelikId: ab.id,
+    }).catch((e) =>
+      this.logger.error(
+        `Hesap geri acilamadi (abonelik=${ab.id}): ${e instanceof Error ? e.message : String(e)}`,
+      ),
+    );
+
     return { abonelik: ab, siparis, donemSonu };
   }
 
@@ -419,6 +600,18 @@ export class AbonelikServisi {
     const baslangic = ab.erisimSonu > simdi ? ab.erisimSonu : simdi;
     const yeniSon = new Date(baslangic);
     yeniSon.setMonth(yeniSon.getMonth() + ayAdedi);
+
+    // §4.6 — HAVALE yolu buradan gecer (havale.servisi:odemeyiOnayla) ve
+    // kendi transaction'ini verir: erisim uzatma ile geri acma AYNI islemde
+    // olmali, yoksa "erisimi var ama girisi kapali" yarim hali olusur.
+    // ⚠ HATA YUTULMAZ: burada `catch` YOK — havalenin transaction'i geri
+    // alinmali, aksi halde onay "yarim" kalirdi.
+    await this.firmayiGeriAc(ab.firmaId, {
+      aktor: p.aktor,
+      aciklama: `${p.aciklama} — hesap geri acildi`,
+      abonelikId,
+      tx: p.tx,
+    });
 
     return this.durumDegistir(abonelikId, AbonelikDurumu.AKTIF, {
       erisimSonu: yeniSon,

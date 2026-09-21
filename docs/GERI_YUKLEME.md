@@ -22,10 +22,11 @@ Bu belge, MetaPrice veritabanının bir yedekten nasıl geri yükleneceğini anl
 | Yedekler nerede? | Sunucuda `/opt/metaprice/backups/` |
 | Biçim | Düz SQL dump, gzip'li — `pg_dump` + `gzip` |
 | Günlük yedek | `metaprice-YYYYAAGG-SSDDSS.sql.gz` — `backup` servisi 24 saatte bir alır, **14 gün** saklar |
-| Deploy yedeği | `deploy-oncesi-<sürüm>-<damga>.sql.gz` — her `deploy.sh` başında alınır, **kendiliğinden silinmez** |
-| Can simidi | `geri-yukleme-oncesi-<damga>.sql.gz` — her geri yüklemeden hemen önce alınır |
+| Deploy yedeği | `deploy-oncesi-<sürüm>-<damga>.sql.gz` — her `deploy.sh` başında alınır, **30 gün** saklanır |
+| Can simidi | `geri-yukleme-oncesi-<damga>.sql.gz` — her geri yüklemeden hemen önce alınır, **30 gün** saklanır |
+| Bekçi yedeği | `bekci-<damga>.sql.gz` — günlük yedek bayatlarsa nöbetçi kendi alır, **30 gün** saklanır |
 | Geri yükleme | `bash scripts/geri-yukle.sh DOSYA-ADI` |
-| Sunucu dışında kopya var mı? | **HAYIR.** Bkz. § "Bilinen boşluklar" |
+| Sunucu dışında kopya var mı? | **Otomatik olarak HAYIR.** Elle alınan `age` ile şifreli kopyalar için bkz. § 1b ve § "Bilinen boşluklar" |
 
 ---
 
@@ -200,9 +201,25 @@ ve logda `tamam` satırı. `HATA` satırı görüyorsanız o gün yedek **alınm
 > siliyordu. Yani eski `metaprice-...` dosyalarından bazıları **yarım** olabilir.
 > `geri-yukle.sh` bunu yakalar ve reddeder — ama o dosyaya güvenmeyin.
 
-### Deploy yedeklerini budamak (elle)
+### Yedeklerin budanması
 
-`deploy-oncesi-...` dosyaları kendiliğinden silinmez, birikirler. Önce **ne
+**21.09.2026 (K5) — artık kendiliğinden budanıyor.** Bütün yedekler en fazla
+**30 gün** saklanır; günlük yedekler (`metaprice-...`) **14 gün** (değişmedi).
+
+| Aile | Saklama | Kim siler |
+|---|---|---|
+| `metaprice-...` | 14 gün | `scripts/backup.sh` günlük döngü |
+| `deploy-oncesi-...` | 30 gün | `backup.sh` günlük **ve** `deploy.sh` her başarılı deploy yedeğinden sonra |
+| `geri-yukleme-oncesi-...` | 30 gün | `backup.sh` günlük döngü |
+| `bekci-...` | 30 gün | `backup.sh` günlük döngü |
+
+İki emniyet var, ikisi de aynı desenden geliyor: **silme yalnız doğrulanmış
+yeni bir yedek oluştuktan sonra koşar.** Ayrıca 30 gün kuralı, son 2 günde
+doğrulanmış bir `metaprice-...` yedeği **yoksa hiç çalışmaz** — can simidi
+dosyalarını elde güncel yedek olmadan silmemek için. O durumda log şunu yazar:
+`[backup] 30 GUN KURALI ATLANDI`.
+
+Aradaki bir anda **elle** budamak isterseniz önce **ne
 silineceğini görün**:
 
 ```
@@ -221,7 +238,8 @@ find backups -name 'deploy-oncesi-*.sql.gz' -mtime +30 -delete
 
 | Boşluk | Sonucu | Durum |
 |---|---|---|
-| **Sunucu dışında kopya yok** | Sunucu diski ölürse yedekler de ölür. Yedekler korunan verinin yanında duruyor. | Kullanıcı şimdilik istemedi (04.08) |
+| **Sunucu dışında OTOMATİK kopya yok** | Sunucu diski ölürse yedekler de ölür. Elle alınan şifreli kopyalar var (§ 1b, 07.09) ama bir betiğe bağlı değil, düzenli olduğu ölçülmedi. | Açık |
+| **Sunucu dışı kopyalarda 30 gün kuralı ELLE** | 21.09 (K5): sunucudaki dört yedek ailesi en fazla 30 gün saklanıyor. `MetaPriceYedek` klasöründeki şifreli kopyalar bu kuralın DIŞINDA — orayı budayan bir betik depoda yok. Gizlilik metnindeki "yedeklerden en geç 30 gün içinde çıkar" cümlesi o klasör için elle sağlanmalı. | Açık — Emre |
 | Sunucuda prova desteği yok | Prosedür sunucuda uçtan uca hiç koşmadı | § 3'te yazılı |
 | Yedek şifrelenmiyor | `backups/` klasörünü okuyabilen herkes tüm müşteri verisini okur | Açık |
 | Geri yükleme süresi ölçülmedi | Felaket anında "ne kadar sürer" sorusunun cevabı yok | Açık |

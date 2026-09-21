@@ -11,7 +11,8 @@
  *
  *  ⚠ SAF OLANLAR (DB YOK): `etkinHesapKosulu`, `bekleyenDavetKosulu`,
  *  `koltukKarari`, `koltukSirasiKarari`, `oncekilerKosulu`, `ayrilmaKarari`,
- *  `kapatmaVerisi`. Hepsi testte DB'siz olculur.
+ *  `kapatmaVerisi`, `topluKapatmaVerisi`, `imhaTarihiHesapla`.
+ *  Hepsi testte DB'siz olculur.
  *  ⚠ DB ISTEYENLER: `firmaKilitliIslem` (advisory lock) ve
  *  `koltukDurumuHesapla` (sayim + hak sorgusu) — ikisi de sahte Prisma ile
  *  olculur.
@@ -119,66 +120,162 @@ export function oncekilerKosulu(user: {
 }
 
 export type AyrilmaKarari =
-  | { izin: true; abonelikIptal: boolean; sonHesap: boolean }
+  | { izin: true; firmaKapaniyor: boolean }
   | { izin: false; kod: 'SON_SAHIP' };
 
 /**
  * AYRILMA KARARI — hesap kapatma · uye cikarma · yonetici silme IKIZI
- * (§3.8, Emre karari E-1).
+ * (§3.8, Emre karari E-1 · 21.09 plan 5.8 K2).
  *
  * `digerHesap`      = ayni firmada `deletedAt IS NULL` BASKA hesap sayisi.
  *                     ⚠ BANLI HESAP DE SAYILIR — Emre'nin "firmanin tek
  *                     kullanicisi" olcusu budur; banli bir uyesi olan firma
  *                     "tek kullanicili" degildir, aboneligi iptal edilmez.
  * `digerEtkinSahip` = bunlardan `firmaRol: 'sahip'` VE `status: 'active'`.
+ * `firmayiKapatabilir` = bu YOL firmayi kapatma yetkisi tasiyor mu. YALNIZ
+ *                     kisinin KENDI kapatmasi tasir (K2). Yonetici silmesi ve
+ *                     uye cikarma tasimaz: yonetici panelinden bir satira
+ *                     yanlis basmak butun bir firmayi kapatamamali — o yolun
+ *                     cikisi `updateFirmaRol` ile baska birini sahip yapmak.
  *
- * ⚠ ABONELIK IPTALI YALNIZ firmanin SON hesabi ayrilirken. Bugunku kod
- * (07.09) her hesap kapatmada iptal ediyordu: ucuncu uye hesabini kapatinca
- * FIRMANIN aboneligi iptal oluyordu (olculdu, sahte Prisma ile).
+ * ── TEK CIKTI: `firmaKapaniyor` ──────────────────────────────────────────
+ * Onceki surumde IKI bayrak vardi (`abonelikIptal`, `sonHesap`) ve ikisi de
+ * HER ZAMAN ayni degeri tasiyordu; ucuncu bir bayrak eklemek (K2 ile gelen
+ * "uyeleri durdur") ucuzunun ayri zamanlarda degismesi riskini getirirdi —
+ * bu depoda olculmus hata sinifi. Artik TEK soru var: "bu ayrilmadan sonra
+ * firmada CALISAN kimse kaliyor mu?" Cevap hayirsa:
+ *   · abonelik iptal edilir (kart cekilmeye devam etmesin)
+ *   · bekleyen davetler iptal edilir (kapanan firmaya katilim olmasin)
+ *   · `Firma.imhaTarihi` yazilir (30 gun sonra firma verisi imha edilir)
+ *   · geride kalan hesaplar `firmaKapandi` ile kapatilir (varsa)
+ * Son madde `digerHesap === 0` dalinda HICBIR SATIRA dokunmaz (toplu yazma
+ * dogal olarak 0 satir gunceller) — bu yuzden ayri bir bayrak gerekmiyor.
+ *
+ * ⚠ ABONELIK IPTALI HER KAPATMADA DEGIL. Bugunku kod (07.09 oncesi) her
+ * hesap kapatmada iptal ediyordu: ucuncu uye hesabini kapatinca FIRMANIN
+ * aboneligi iptal oluyordu (olculdu, sahte Prisma ile).
  */
 export function ayrilmaKarari(g: {
   firmaRol: FirmaRol;
   digerHesap: number;
   digerEtkinSahip: number;
+  firmayiKapatabilir?: boolean;
 }): AyrilmaKarari {
   if (g.digerHesap === 0) {
-    return { izin: true, abonelikIptal: true, sonHesap: true };
+    return { izin: true, firmaKapaniyor: true };
   }
   if (g.firmaRol === 'sahip' && g.digerEtkinSahip === 0) {
+    // K2 (21.09): son sahip ARTIK kapatabilir — firma kapanir ve uyeler
+    // durur. Yalniz kendi kapatma yolunda; diger yollar hâlâ SON_SAHIP.
+    if (g.firmayiKapatabilir) return { izin: true, firmaKapaniyor: true };
     return { izin: false, kod: 'SON_SAHIP' };
   }
-  return { izin: true, abonelikIptal: false, sonHesap: false };
+  return { izin: true, firmaKapaniyor: false };
 }
 
 /**
- * KAPATMA VERI DESENI — ucu de (kendi kapatma, uye cikarma, yonetici silme)
- * BIREBIR ayni satirlari yazar (R1-D7).
+ * HESAP KAPATMA NEDENI — semadaki `KapatmaNedeni` enum'unun dizge karsiligi.
+ * Dort kapatma yolu (Ö1) bugune kadar ayirt edilemiyordu; K1 istisnasi buna
+ * bagli.
+ */
+export type KapatmaNedeni = 'kendi' | 'yonetici' | 'ekiptenCikarildi' | 'firmaKapandi';
+
+/**
+ * GERI DONUS SURESI (K1) — kapatilan hesabin verisi kac gun saklanir.
+ * TEK KAYNAK: e-posta metni, profil metni ve gizlilik metni bu sayiyi
+ * gosterir; imha isi (`imhaTarihi`) bu sayidan turer.
+ */
+export const KAPATMA_SAKLAMA_GUN = 30;
+
+/** Kapatma aninin uzerine saklama suresini ekler. Saf, DB yok. */
+export function imhaTarihiHesapla(simdi: Date): Date {
+  return new Date(simdi.getTime() + KAPATMA_SAKLAMA_GUN * 24 * 60 * 60 * 1000);
+}
+
+/**
+ * KAPATMANIN KISIYE BAGLI OLMAYAN ALANLARI — cok hesabi AYNI ANDA kapatan
+ * yol (firma kapanisinda uyeler) bunu `updateMany` ile yazar.
  *
  * · `deletedAt`         → giris ve token kapisi
  * · `passwordChangedAt` → elindeki token ANINDA olur (jwt.strategy `iat`)
- * · `kapatilanEposta`   → denetim/ispat izi kaybolmasin
- * · `email` anonimlesir → adres SERBEST kalir; kisi baska bir firmaya davet
- *                         edilebilir ya da kendi firmasini acabilir.
- *                         `.invalid` RFC 2606 ile ayrilmis TLD'dir.
+ * · `imhaTarihi`        → imha isinin BAKTIGI TEK ALAN (`deletedAt` DEGIL).
+ *                         Ayni `simdi` ile cagrilan her hesap AYNI tarihi
+ *                         alir — firma kapanisinda sahip ve uyeler tek
+ *                         tarihte imha olur (§3.2).
+ * · `kapatmaNedeni`     → K1 istisnasinin ve geri acmanin dayanagi.
+ */
+export function topluKapatmaVerisi(
+  simdi: Date,
+  neden: KapatmaNedeni,
+): {
+  deletedAt: Date;
+  passwordChangedAt: Date;
+  imhaTarihi: Date;
+  kapatmaNedeni: KapatmaNedeni;
+} {
+  return {
+    deletedAt: simdi,
+    passwordChangedAt: simdi,
+    imhaTarihi: imhaTarihiHesapla(simdi),
+    kapatmaNedeni: neden,
+  };
+}
+
+/**
+ * TEK HESABIN KAPATMA VERI DESENI — dort yol da (kendi kapatma ×2, uye
+ * cikarma, yonetici silme) BIREBIR ayni satirlari yazar (R1-D7).
+ *
+ * Ortak alanlar `topluKapatmaVerisi`den GELIR — iki fonksiyon arasinda
+ * ikizlenme olamaz. Buraya yalniz KISIYE BAGLI iki alan eklenir:
+ *
+ * · `kapatilanEposta` → kapatma anindaki adres; denetim/ispat izi.
+ * · `email`           → YALNIZ `ekiptenCikarildi` yolunda anonimlesir.
+ *
+ * ── E-POSTA NEDEN ARTIK ANONIMLESMIYOR (K1, 21.09) ───────────────────────
+ * Eski hâl adresi HER kapatmada `kapali-<id>@metapricex.invalid` yapiyordu.
+ * K1 ile musteri 30 gun boyunca AYNI e-posta ve parolayla girip paket
+ * secerek geri donebiliyor; adres anonimlesirse ne giris ne de "Parolamı
+ * unuttum" onu bulabilir — geri donus yolu kapanirdi.
+ *
+ * ── K1 ISTISNASI: `ekiptenCikarildi` ─────────────────────────────────────
+ * Firma sahibinin ekipten cikardigi kisi AYRILMAYI SECMEDI. Adresi 30 gun
+ * kilitli kalsaydi baska bir firmanin davetini kabul edemezdi (`User.email`
+ * @unique). Onun adresi bugunku gibi HEMEN serbest kalir.
  *
  * ⚠ TEKLIFLER SILINMEZ (sert silme yasak; `Quote.onDelete: Cascade`).
  */
 export function kapatmaVerisi(
   user: { id: string; email: string },
   simdi: Date,
+  neden: KapatmaNedeni,
 ): {
   deletedAt: Date;
   passwordChangedAt: Date;
+  imhaTarihi: Date;
+  kapatmaNedeni: KapatmaNedeni;
   kapatilanEposta: string;
-  email: string;
+  email?: string;
 } {
   return {
-    deletedAt: simdi,
-    passwordChangedAt: simdi,
+    ...topluKapatmaVerisi(simdi, neden),
     kapatilanEposta: user.email,
-    email: `kapali-${user.id}@metapricex.invalid`,
+    // `.invalid` RFC 2606 ile ayrilmis TLD'dir.
+    ...(neden === 'ekiptenCikarildi'
+      ? { email: `kapali-${user.id}@metapricex.invalid` }
+      : {}),
   };
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ *  GERI ACMA BURADA DEGIL — `abonelik.servisi.ts` `firmayiGeriAc` (§4.6)
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  Odeme sonrasi geri acmanin kosulu (`GERI_ACILAN_KAPATMA_NEDENLERI` =
+ *  `kendi` + `firmaKapandi`) ve yazdigi veri O DOSYADADIR. Burada ikinci bir
+ *  "hangi hesaplar doner" kurali TUTULMAZ: ikisi ayri zamanlarda degisir ve
+ *  gun gelir `ekiptenCikarildi` bir kisi sessizce ekibe geri duserdi.
+ *  Kapatma tarafi (bu dosya) hangi NEDENI yazdigini belirler; geri acma
+ *  tarafi o nedenleri okur. Sozlesme `KapatmaNedeni` tipidir.
+ * ═══════════════════════════════════════════════════════════════════════════ */
 
 /** `disKimlikleriSil`in ihtiyac duydugu en dar Prisma yuzeyi. */
 export type DisKimlikPrisma = {

@@ -98,6 +98,30 @@ describe('girisSonrasiYol — kişi sınırı aşılmışsa panoya GİTMEZ', () 
 });
 
 // ---------------------------------------------------------------------------
+// PLAN 5.8 §4.4 — KAPALI HESAP, KOLTUKTAN ÖNCE
+// ---------------------------------------------------------------------------
+describe('girisSonrasiYol — kapalı hesap geri dönüş ekranına gider', () => {
+  it('hesapKapali: true → /hesap-kapali', () => {
+    expect(girisSonrasiYol({ token: GECERLI, user: { id: 'u', email: 'e', role: 'user', hesapKapali: true } }))
+      .toBe('/hesap-kapali');
+  });
+  // ⚠ SIRA ÖLÇÜLÜYOR: sunucu da aynı sırayla karar verir
+  // (`jwt-auth.guard.ts` önce HESAP_KAPALI, sonra KOLTUK_ASILDI). Ters
+  // sıralansaydı kullanıcı "yöneticiniz paketi yükseltmeli" ekranına düşer
+  // ve hesabının KAPALI olduğunu hiç öğrenemezdi.
+  it('ikisi birden → /hesap-kapali (koltuk değil)', () => {
+    expect(girisSonrasiYol({
+      token: GECERLI,
+      user: { id: 'u', email: 'e', role: 'user', hesapKapali: true, koltukDurduruldu: true },
+    })).toBe('/hesap-kapali');
+  });
+  it('hesapKapali: false → bugünkü davranış değişmedi', () => {
+    expect(girisSonrasiYol({ token: GECERLI, user: { id: 'u', email: 'e', role: 'user', hesapKapali: false } }))
+      .toBe('/dashboard');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // KAYNAK KAPISI — `localStorage.setItem('token'` YALNIZ bu dosyada
 // ---------------------------------------------------------------------------
 describe('kaynak kapısı — token yazımı tek yerde', () => {

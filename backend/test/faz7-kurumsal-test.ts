@@ -50,6 +50,10 @@ import { base32Coz, base32Kodla, hotp, totpAdim, totpSiriUret } from '../src/alt
 import { OturumServisi } from '../src/altyapi/auth/oturum.servisi';
 import { AuthService } from '../src/altyapi/auth/auth.service';
 import { HesapServisi } from '../src/altyapi/auth/hesap.servisi';
+/** PLAN 5.8 §3.4: `HesapServisi` artik kapatma bildirimi de gonderiyor.
+ *  Bu paketlerin konusu e-posta DEGIL — sessiz, yutmayan bir gonderici
+ *  yeterli. Icerik `test:faz7-ekip` H/K bolumlerinde olculuyor. */
+const EPOSTA_SAHTE = { gonder: async () => undefined } as any;
 import { ParolaServisi } from '../src/altyapi/auth/parola.servisi';
 import { MfaServisi } from '../src/altyapi/auth/mfa/mfa.servisi';
 import { UyelikServisi } from '../src/ozellik/firma/uyelik.servisi';
@@ -1365,7 +1369,7 @@ async function bolumParolasiz() {
 
   // K18 — authAt 11 dk once
   const p1 = kapatmaDunyasi();
-  const h1 = new HesapServisi(p1, { iptalEt: async () => undefined } as any);
+  const h1 = new HesapServisi(p1, { iptalEt: async () => undefined } as any, EPOSTA_SAHTE);
   const r1 = await dene(() => h1.hesabiKapat('U1', '', SN(Date.now() - 11 * 60 * 1000)));
   check('K18 ⭐ parolasiz + `authAt` 11 dk once → 400 YENIDEN_GIRIS_GEREKLI (mutant #17)',
     hataKodu(r1.hata) === 'YENIDEN_GIRIS_GEREKLI' && hataDurumu(r1.hata) === 400,
@@ -1374,7 +1378,7 @@ async function bolumParolasiz() {
 
   // K18 — authAt 5 dk once → kapanir + dis kimlik silinir
   const p2 = kapatmaDunyasi();
-  const h2 = new HesapServisi(p2, { iptalEt: async () => undefined } as any);
+  const h2 = new HesapServisi(p2, { iptalEt: async () => undefined } as any, EPOSTA_SAHTE);
   const r2 = await dene(() => h2.hesabiKapat('U1', '', SN(Date.now() - 5 * 60 * 1000)));
   check('K18 ⭐ parolasiz + `authAt` 5 dk once → hesap KAPANDI',
     r2.hata === undefined && p2._veri.user[0].deletedAt instanceof Date,
@@ -1384,7 +1388,7 @@ async function bolumParolasiz() {
 
   // K18 — PAROLALI hesapta bcrypt dali AYNEN (faz5 C4)
   const p3 = db({ user: [kullanici({ firmaRol: 'sahip' })], firma: [firma()], kullaniciDisKimlik: [] });
-  const h3 = new HesapServisi(p3, { iptalEt: async () => undefined } as any);
+  const h3 = new HesapServisi(p3, { iptalEt: async () => undefined } as any, EPOSTA_SAHTE);
   const r3y = await dene(() => h3.hesabiKapat('U1', 'yanlis-parola', null));
   // ⚠ 21.09 (Gorunur kusurlar turu, t.16): BEKLENEN 401'DEN 400'E CEKILDI.
   // Bu assert'in AMACI "bcrypt dali kosuyor mu" idi, "401 dogru kod mu" DEGIL —
@@ -1435,7 +1439,7 @@ async function bolumParolasiz() {
   check('K18c ⭐ `mfa/kurulum/onayla` token"i TAZE `iat` ama ESKI `authAt` tasir (R1-Y1, mutant #32)',
     yuk5.authAt === eskiAuthAt && yuk5.iat >= simdiSn - 5,
     JSON.stringify({ authAt: yuk5.authAt, iat: yuk5.iat, simdi: simdiSn }));
-  const h5 = new HesapServisi(p5, { iptalEt: async () => undefined } as any);
+  const h5 = new HesapServisi(p5, { iptalEt: async () => undefined } as any, EPOSTA_SAHTE);
   const r5 = await dene(() => h5.hesabiKapat('U1', '', yuk5.authAt));
   check('K18c ⭐ o token`la `hesabimi-kapat` → 400 YENIDEN_GIRIS_GEREKLI',
     hataKodu(r5.hata) === 'YENIDEN_GIRIS_GEREKLI', JSON.stringify(hataGovdesi(r5.hata)));
@@ -1850,7 +1854,7 @@ async function bolumKapilar() {
     firma: [firma()],
     kullaniciDisKimlik: [disKimlik()],
   });
-  const hesap3 = new HesapServisi(p3, { iptalEt: async () => undefined } as any);
+  const hesap3 = new HesapServisi(p3, { iptalEt: async () => undefined } as any, EPOSTA_SAHTE);
   const disa: any = await hesap3.verileriDisaAktar('U1');
   check('K26 ⭐ KVKK ciktisinda `kurumsalKimlikler` var ve `subject` DAHIL',
     Array.isArray(disa?.kurumsalKimlikler) && disa.kurumsalKimlikler.length === 1 &&

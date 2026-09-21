@@ -124,6 +124,14 @@ frontend/ozellik/firma/ :: O · ekip ekranları (koltuk sayacı, davet, küçül
 # tek bir alanın ekran ailesidir. Oturum YAZIMI burada DEĞİL, `ortak/lib/
 # oturum.ts`te kalır (kaynak kapısı: token yalnız iki dosyada yazılabilir).
 frontend/ozellik/kimlik/ :: Q · iki adımlı giriş ekranları (kod adımı, kurulum sihirbazı, kurtarma kodları, profil kartı).
+# YENİ ALAN (21.09.2026, plan 5.8) — veri imhası. Kendi kökünde çünkü ÖLÇÜLEN
+# tuzak buydu: silme, kullanıcı ya da ödeme kodunun içine dağılırsa hangi
+# tablonun silindiği tek yerden görülemez. Liste TEK dosyada ve elle yazılır.
+backend/src/ozellik/imha/ :: R · veri imhası (silme listesi, günlük iş).
+# YENİ ALAN (21.09.2026, plan 1.17/t.21) — kurumsal tanıtım sayfaları.
+# Hukuki metinlerden AYRI: bunlar avukat onayına bağlı değil, satıcı
+# kimliğini `SATICI` sabitinden okuyan sıradan tanıtım sayfaları.
+frontend/ozellik/kurumsal/ :: S · kurumsal sayfalar (iletişim, hakkımızda).
 frontend/scripts/ :: Sürüm betiği — grup I.
 frontend/test/ :: E2E paketleri (e2e + e2e-golden). 6. durakta kuruldu; ikisi AYRI (RAPOR §6.8).
 frontend/next.config.js :: Next.js yapılandırması — çerçeve kökte arar.
@@ -164,6 +172,8 @@ O :: backend/src/ozellik/firma/ | frontend/ozellik/firma/
 # backend karşılığı `backend/src/altyapi/auth/mfa/` ve o L grubuna aittir
 # (kimlik ALTYAPIDIR, bir ürün özelliği değil).
 Q :: frontend/ozellik/kimlik/
+R :: backend/src/ozellik/imha/
+S :: frontend/ozellik/kurumsal/
 
 [CERCEVE BAGLI]
 # Bu önekin altındaki dosyalar HER gruba açıktır — KURAL 2 onları denetlemez.

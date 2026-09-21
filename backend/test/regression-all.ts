@@ -468,6 +468,18 @@ const SUITES: Suite[] = [
   { ad: 'iyzico yetki başlığı: randomKey eşliği (I1-I5)', script: 'test:iyzico-basligi', zincir: 'Z0' },
   { ad: 'Abonelik ölçüm betiği: SQL geçerliliği (S1-S4b)', script: 'test:olcum-sorgu', zincir: 'Z0' },
   { ad: 'Satın alma yolu: fatura kapısı + miras muafiyeti (P1-P7)', script: 'test:satinalma', zincir: 'Z0' },
+  // ── 21.09.2026 — PLAN 5.8 VERİ İMHASI, ÖDEME AYAĞI. DB/AĞ GEREKTİRMEZ.
+  //    K4: fatura müşteri kimliğini `Firma` satırından CANLI okuyordu; fatura
+  //    tahsilat anında yazılıp kesim @Cron ile SONRA koştuğu için müşteri
+  //    adresini değiştirince GEÇEN YILIN faturası da yeni adresi gösteriyordu
+  //    (VUK md. 230 ihlali) ve imha firma satırını boşaltınca saklanan
+  //    faturalar eksik kalıyordu. Artık kimlik tahsilat anında donuyor.
+  //    §4.6: ödeme geçince `deletedAt`/`imhaTarihi`/`kapatmaNedeni` temizlenir;
+  //    `firmaKapandi` üyeler döner, `ekiptenCikarildi` DÖNMEZ (kapalı liste).
+  //    MUTASYONLA ÖLÇÜLDÜ (4 mutasyon): dondurma kaldırılınca D4/D5/D6 kırmızı;
+  //    kesimde canlı okuma D5 kırmızı; listeye `ekiptenCikarildi` eklenince
+  //    D9/D11 kırmızı; kart yolundaki çağrı kesilince D14 kırmızı.
+  { ad: 'Ödeme/imha: fatura kendi kopyası (K4) + ödeme sonrası geri açma (D1-D16)', script: 'test:odeme-imha', zincir: 'Z0' },
   // ── 16.09.2026 — FAZ 6.12a DENEME BİR KEZ. DB ve AĞ GEREKTİRMEZ (bellek-Prisma,
   //    kısıt + ILIKE joker + iç içe geçen çağrılar). Ölçülen: deneme hakkı hiçbir
   //    kimliğe bağlı değildi; aynı firma (iptal/deneme sonu ödeme alınamadı), hesap
@@ -569,6 +581,29 @@ const SUITES: Suite[] = [
   //    `ThrottlerException` beklenir. Bu blok kırmızıya dönerse parola
   //    deneme sınırı düşmüş demektir. DB GEREKTİRMEZ.
   { ad: 'Parola kapısı: uzunluk tek kaynak + yanlış parola oturumdan atmaz (t.15/t.16)', script: 'test:parola-kapisi', zincir: 'Z0' },
+  // 21.09.2026 — plan 5.8 VERI IMHASI. Geri alinamaz silme: kapsayicilik
+  // (semadaki her tablo bir kararda), yalniz `imhaTarihi`, iki firmali
+  // izolasyon, tek transaction, §5.5 korumalari, §5.4 capraz bag kapisi.
+  { ad: 'Veri imhası: kapsayıcılık · izolasyon · atomiklik · §5.5 korumaları (K/D/E/I/S/H/N/P/A/C/U/G/J)', script: 'test:imha', zincir: 'Z0' },
+  // ── 21.09.2026 — PLAN 5.8 §4: 30 GUN ICINDE GERI DONUS (K1).
+  //    DB/AG GEREKTIRMEZ. Olctugu: hesap kapatma artik GIRISI kapatmiyor —
+  //    yalniz `kendi` ile kapanan ve `imhaTarihi` gecmemis hesap girebiliyor
+  //    (diger uc neden kapali). Gevseyen UC kapinin (hesapKapisi ·
+  //    jwt.strategy · parola sifirlama) VERIYI acmadigi UCTAN UCA olculur:
+  //    teklif/kutuphane/cikti/ceviri uclarinin GERCEK metadata'siyla 403
+  //    `HESAP_KAPALI`, buna karsilik KVKK veri indirmesi ve odeme uclari
+  //    ACIK. Ayrica: parola yenilemek hesabi GERI ACMIYOR · kapali adresle
+  //    kayit yeni hesap ACMIYOR · iki adimli giris kapali hesapta da kod
+  //    ISTIYOR · firmasi kapanan uye duruyor ama verisini indirebiliyor.
+  //    10 mutant tablosu B raporunda. KIRMIZIYA DONERSE REGRESYON.
+  { ad: 'Geri dönüş: 30 gün penceresi, kapalı hesap 403 kapısı, KVKK indirme (S/G/M/P/K/E/F)', script: 'test:geri-donus', zincir: 'Z0' },
+  // t.21 (21.09, kurumsal sayfalar turu): `paket-aciklama-duzelt.ts` CANLI
+  // veritabanındaki beş paket açıklamasını değiştiriyor ve hiçbir kapısı
+  // YOKTU — dosyadaki yorum aylardır var olmayan bir test dosyasını adıyla
+  // anıyordu. T bloğu asıl ikizi ölçer: betiğin yazacağı metin ile
+  // `paketleri-kur.ts` tohumundaki metin ayrışırsa taze kurulum ile canlı
+  // satır farklı şey söyler. DB GEREKTİRMEZ.
+  { ad: 'Paket açıklaması düzeltme: liste + tohum ikizi + tam eşleşme (P/T/D)', script: 'test:paket-aciklama', zincir: 'Z0' },
 ];
 
 // ── SKIP DEFTERI (B1, para dogrulugu turu 14.09.2026) ──────────────────────

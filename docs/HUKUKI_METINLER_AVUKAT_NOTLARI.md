@@ -178,3 +178,52 @@ Açık bağlama ve sınama bağlaması, kurumsal hesabın kanıtlı e-postasın�
 
 **⚠ ÜÇÜNCÜ NOT — kilitlenme ve alan adı kurtarması:**
 Firma sahibi süresi dolan bir istemci anahtarıyla kurumsal girişi zorunlu kılarsa firmadaki herkes dışarıda kalabilir. Kurtarma yolları: (1) platform yöneticisinin `zorunlu-kapat` ucu; (2) anahtarın bitişine 14 gün kala sahibe e-posta uyarısı. Ayrıca doğrulanmış alan adı tüm sistemde tekildir; yanlış firmada doğrulanmışsa gerçek sahibi kendi alan adını doğrulayamaz — bu durum yalnız platform yöneticisinin `DELETE /admin/alan-adlari/:alanAdi` ucuyla çözülür. Her iki müdahale de hem yönetici hem firma denetim kaydına yazılır. Bu müdahalelerin sözleşmesel dayanağının (destek/yönetim yetkisi) kullanım koşullarında ayrıca yazılması gerekip gerekmediği avukat görüşüne bağlıdır.
+
+## Veri imhası — hesap kapatma, 30 gün ve yedekler (plan 5.8, 21.09.2026)
+
+> **⚠ BU MADDE, 52. satırdaki ESKİ SORUYU CEVAPLIYOR.** Gizlilik bölümünde
+> *"Hesap kapatmada kullanılan damgalama yöntemi (veri anında imha edilmiyor)
+> silme talebi karşısında yeterli mi? Metinde imha için taahhüt edilecek azami
+> bir süre yazılmalı mı?"* diye sorulmuştu. Emre kararıyla (K1/K3, 21.09) artık
+> **azami süre vardır: 30 gün.** Süre dolunca imha kendiliğinden çalışır;
+> "ayrıca talep etme" adımı kaldırıldı. Avukattan istenen, bu sürenin
+> onayıdır.
+
+**Metne giren yenilikler (taslak, avukat onayı bekliyor):**
+- **Hesap kapatmada 30 gün saklama.** Kapatma anında kullanıcı kaydına bir *imha tarihi* yazılır (kapatma + 30 gün) ve imha kararı **yalnız bu tarihten** okunur. Bu süre içinde kişi aynı e-posta ve parolasıyla giriş yapıp bir paket seçerek hesabını kaldığı yerden açabilir; 30 günün sonunda teklifleri, kütüphanesi ve yüklediği belgeler kalıcı olarak silinir. Kapatma e-postası süreyi **gün olarak** ("30 gün sonra" değil, takvim tarihi) yazar.
+- **Firma kapanınca üyeler (K2).** Firmanın son sahibi hesabını kapatırsa firma da kapanır ve üyelerin erişimi durur; **verileri silinmez**, hepsinin imha tarihi aynıdır. Sahip 30 gün içinde paket alıp geri açarsa ekip kendiliğinden geri gelir. Durdurulan üyenin **veri indirme hakkı açık kalır**.
+- **Yedeklerden çıkma süresi (K5).** Gizlilik metninin saklama bölümüne tek cümle giriyor: *"silinen veriler yedeklerden en geç 30 gün içinde çıkar."* Ölçülen durum: planlı dökümler 14 gün saklanıyor, dağıtım öncesi dökümler bugüne kadar **hiç silinmiyordu** ve bu turda 30 güne bağlandı. Yani 30 gün, yedek ortamdaki **tavan** süredir.
+- **Deneme hakkı kaydı hesap kapatmada da SİLİNMİYOR** ve metne adıyla istisna olarak giriyor (aşağıda ayrı not).
+
+**Ekranda değişen metin (Profil → "Hesabımı kapat"):**
+Eski cümle (*"Teklifleriniz ve kütüphaneniz sistemde kalmaya devam eder; tamamen imha edilmesini istiyorsanız bunu ayrıca iletmeniz gerekir. Aynı e-posta adresiyle yeniden kayıt olabilirsiniz."*) **kaldırıldı** — üç iddiası da yanlış olmuştu. Yeni metin:
+
+> Hesabınız kapatılır, oturumunuz sonlandırılır ve varsa aboneliğiniz iptal edilir. Geri dönebilmeniz için verilerinizi 30 gün saklıyoruz: bu sürede aynı e-posta ve parolanızla giriş yapıp bir paket seçerek hesabınızı kaldığınız yerden açabilirsiniz. 30 günün sonunda teklifleriniz, kütüphaneniz ve yüklediğiniz belgeler kalıcı olarak silinir. Fatura ve ödeme kayıtları yasal süre boyunca saklanır.
+
+Kapatan kişi firmanın son sahibiyse ve firmada başka kişiler varsa **ek bir uyarı** çıkar (*"Firmanızda N üye var. Hesabınızı kapatırsanız firmanız kapanır ve onların da erişimi durur…"*); firmada başka sahip varsa *"Hazırladığınız teklifler firmanızda kalır; kişisel bilgileriniz 30 gün sonra silinir."* yazar.
+
+**⚠ HUKUKİ KARAR GEREKTİREN — 30 gün "gecikmeksizin silme" ile bağdaşıyor mu:**
+Hesabını kapatan kişi bir silme iradesi göstermiş sayılabilir; buna rağmen veri 30 gün daha tutuluyor. Sorular:
+1. Bu 30 gün KVKK m.7 ve Silme/Yok Etme Yönetmeliği karşısında savunulabilir mi; dayanak **meşru menfaat** (kazara kapatmadan dönüş, abonelik sürekliliği) mi, yoksa kapatma ekranındaki açık bilgilendirme ve kişinin bunu görerek onaylaması mı sayılmalı?
+2. İlgili kişi **"30 günü beklemeyin, şimdi silin"** derse ne yapılacak? Bugün böyle bir yol **bilerek yok** (Emre kararı K3: yönetici panelinde "beklemeden sil" düğmesi yapılmayacak). Talebin elle karşılanması gerekiyorsa metne bir başvuru cümlesi eklenmeli mi?
+3. Sürenin başlangıcı **kapatma anıdır**; başvuru tarihinden itibaren 30 günlük KVKK **cevap** süresiyle karışma riski var mı? Metinde ikisinin ayrı olduğu açıkça yazılmalı mı?
+4. Firma sahibinin kapatması üyelerin verisini de 30 gün bekletiyor. Üyenin kendi verisi bakımından bu süreyi **kendi iradesiyle kısaltma** hakkı olmalı mı? (Bugün durdurulan üye hesabını ayrıca kapatabiliyor ve verisini indirebiliyor.)
+
+**⚠ İKİNCİ NOT — yedek ortam taahhüdü yeterli mi:**
+Metne giren cümle yalnız **süre** veriyor ("en geç 30 gün içinde çıkar"). Yönetmelik yedek ortamdaki veri için ayrı yükümlülük öngörüyor. Soru: cümleye, **yedekten geri yükleme yapılması hâlinde silinmiş verilerin yeniden silineceği** taahhüdü de eklenmeli mi? Bugün böyle bir otomatik yeniden-silme adımı **yok**; geri yükleme elle yapılan, ender bir olaydır.
+
+**⚠ ÜÇÜNCÜ NOT — deneme hakkı kaydı hesap kapatmada ve imhada SİLİNMİYOR (bilinçli):**
+`DenemeKullanimi` tablosu, ücretsiz denemenin ikinci kez alınmasını önlemek için tutuluyor. Şemanın kendi cümlesi: *"hesap kapatma ya da ileride veri imhası bu satırı SİLMEMELİ"*; tabloda bilerek yabancı anahtar ve zincirleme silme **yok**, bu yüzden kullanıcı silinse de satır ayakta kalır. İmha işinin "silinmez" listesinde adıyla duruyor.
+
+Satırın **imhadan sonra da** taşıdığı kişisel veri:
+- hesap e-postası (normalleştirilmiş) ve iyzico formuna yazılan e-posta (normalleştirilmiş),
+- **telefonun son 10 hanesi**,
+- iyzico müşteri kodu, firma kimliği ve kaydın oluşma zamanı.
+
+Sorular:
+1. Hesap kapandıktan ve diğer veriler imha edildikten sonra bu **e-posta ve telefonun** saklanmaya devam etmesinin hukuki dayanağı nedir — dolandırıcılığın/kötüye kullanımın önlenmesinde **meşru menfaat** yeterli mi, yoksa ayrı bir açık rıza mı gerekir?
+2. **Azami saklama süresi ne olmalı?** Gizlilik metnindeki `[DENEME KAYDI SAKLAMA SÜRESİ]` yer tutucusu **hâlâ boş** ve bu tur onu doldurmadı. Süresiz saklama savunulabilir mi?
+3. İlgili kişi **"bu kaydı da silin"** derse verilecek cevap ne olmalı? Silinirse kişi hesabını kapatıp aynı adresle yeniden kaydolarak yeni bir ücretsiz deneme alır — yani talebin reddi bir **hak kaybı** değil, ürünün kötüye kullanım korumasıdır. Bu reddin metinde önceden ve açıkça yazılması gerekiyor mu?
+4. Telefonun **son 10 hanesinin** ve e-postanın tutulması yerine geri döndürülemez bir **özet (hash)** yeterli olur muydu? (Teknik olarak mümkün; bugün düz tutuluyor çünkü KVKK veri indirmesi bu kayıtları kişiye **okunur** biçimde döndürüyor.)
+
+**Ayrıca silinmeyenler (metinde sayılıyor):** fatura, ödeme ve abonelik kayıtları (yasal saklama) ile yönetici işlem kayıtları (denetim izi). Bunların süresi hâlâ `[YASAL SAKLAMA SURESI]` yer tutucusuna bağlı ve bu turda **doldurulmadı**.

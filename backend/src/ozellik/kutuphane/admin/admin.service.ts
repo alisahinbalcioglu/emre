@@ -9,6 +9,7 @@ import {
   ayrilmaKarari,
   etkinHesapKosulu,
   disKimlikleriSil,
+  imhaTarihiHesapla,
   kapatmaVerisi,
   type FirmaRol,
 } from '../../firma/uyelik-kurallari';
@@ -545,7 +546,7 @@ export class AdminService {
     await this.kilitlenmeyiOnle(yonetici, id, 'silme');
 
     const simdi = new Date();
-    const karar = { abonelikIptal: false, sonHesap: false };
+    const karar = { firmaKapaniyor: false };
     // ⚠ `abonelikIptal` denetim satirina YAZILIR: "bu silme firmanin
     // aboneligini de iptal etti mi" sorusu sonradan sorulacak.
     // ⚠ NESNE REFERANSLA gecer ve `denetimYaz` `islem`den SONRA kosar —
@@ -576,6 +577,10 @@ export class AdminService {
           ]);
           const k = ayrilmaKarari({
             firmaRol: user.firmaRol as FirmaRol, digerHesap, digerEtkinSahip,
+            // ⚠ `firmayiKapatabilir` GECIRILMEZ (K2, 21.09): son sahip
+            // KENDI kapatirsa firma kapanir, ama YONETICININ panelde bir
+            // satira basmasi butun bir firmayi kapatamamali. Bu yolun cikisi
+            // `updateFirmaRol` ile baska birini sahip yapmaktir.
           });
           if (!k.izin) {
             throw new BadRequestException({
@@ -585,13 +590,18 @@ export class AdminService {
                 'Önce bu firmada başka birini sahip yapın: Kullanıcılar → Firma rolü',
             });
           }
-          karar.abonelikIptal = k.abonelikIptal;
-          karar.sonHesap = k.sonHesap;
-          denetimVeri.abonelikIptal = k.abonelikIptal;
-          if (k.sonHesap) {
+          karar.firmaKapaniyor = k.firmaKapaniyor;
+          denetimVeri.abonelikIptal = k.firmaKapaniyor;
+          if (k.firmaKapaniyor) {
             await tx.firmaDavet.updateMany({
               where: { firmaId: user.firmaId, kabulAt: null, iptalAt: null },
               data: { iptalAt: simdi, iptalEdenId: yonetici.id },
+            });
+            // Plan 5.8 §5.2: firmanin son hesabi da gittiyse firma verisi
+            // 30 gun sonra imha edilir. Sahibin kendi kapatmasiyla AYNI alan.
+            await tx.firma.update({
+              where: { id: user.firmaId },
+              data: { imhaTarihi: imhaTarihiHesapla(simdi) },
             });
           }
           await tx.firmaOlayi.create({
@@ -602,7 +612,7 @@ export class AdminService {
               hedefKullaniciId: user.id,
               hedefEposta: user.email,
               tip: 'uye.yonetici-sildi',
-              veri: { abonelikIptal: k.abonelikIptal } as never,
+              veri: { abonelikIptal: k.firmaKapaniyor } as never,
             },
           });
         }
@@ -611,14 +621,16 @@ export class AdminService {
         return tx.user.update({
           where: { id },
           // ⚠ HESAP KAPATMAYLA BIREBIR ayni desen (tek saf fonksiyon).
-          data: kapatmaVerisi(user, simdi),
+          // ⚠ `yonetici` nedeni: e-posta 30 gun hesapta KALIR (K1) ama giris
+          // ACILMAZ — kullanici kendi istemedi, yonetici kapatti.
+          data: kapatmaVerisi(user, simdi, 'yonetici'),
           select: { id: true, email: true, deletedAt: true },
         });
       },
     );
 
     // ⚠ COMMIT'TEN SONRA, kilit ve transaction DISINDA (dis HTTP cagrisi).
-    if (karar.abonelikIptal && user.firmaId) {
+    if (karar.firmaKapaniyor && user.firmaId) {
       try {
         await this.satinAlma.iptalEt(user.firmaId, yonetici.id, 'yonetici silme');
       } catch (e) {

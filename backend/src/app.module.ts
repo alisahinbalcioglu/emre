@@ -22,6 +22,7 @@ import { QuoteFormatsModule } from './ozellik/cikti/quote-formats/quote-formats.
 import { OdemeModule } from './ozellik/odeme/odeme.module';
 import { FirmaModule } from './ozellik/firma/firma.module';
 import { PanelModule } from './ozellik/panel/panel.module';
+import { ImhaModule } from './ozellik/imha/imha.module';
 
 @Module({
   imports: [
@@ -62,6 +63,8 @@ import { PanelModule } from './ozellik/panel/panel.module';
     OdemeModule,
     FirmaModule,
     PanelModule,
+    // Plan 5.8 — gunluk veri imhasi isi. Baglanmazsa @Cron HIC kosmaz.
+    ImhaModule,
   ],
   controllers: [HealthController],
 })

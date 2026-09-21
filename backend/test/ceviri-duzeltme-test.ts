@@ -44,6 +44,10 @@ import { ErisimServisi, Yetenek, type ErisimKarari } from '../src/ozellik/odeme/
 import { KullaniciHizSiniriGuard } from '../src/altyapi/auth/guards/kullanici-hiz-siniri.guard';
 import { govdeSinirlariniKur } from '../src/altyapi/http/govde-siniri';
 import { HesapServisi } from '../src/altyapi/auth/hesap.servisi';
+/** PLAN 5.8 §3.4: `HesapServisi` artik kapatma bildirimi de gonderiyor.
+ *  Bu paketlerin konusu e-posta DEGIL — sessiz, yutmayan bir gonderici
+ *  yeterli. Icerik `test:faz7-ekip` H/K bolumlerinde olculuyor. */
+const EPOSTA_SAHTE = { gonder: async () => undefined } as any;
 import { QuotesService } from '../src/ozellik/teklif/quotes/quotes.service';
 import { suzgecOlc } from '../scripts/ceviri-suzgec-olcum';
 import { sahteDb, type Kayit } from './ceviri-sahte-db';
@@ -518,7 +522,7 @@ async function uBlogu(): Promise<void> {
     // KVKK indirmesi bu turun tablolarının dışında da okur: tanımadığı tablo BOŞ döner.
     const bosTablo = { findMany: async () => [], findUnique: async () => null, findFirst: async () => null, count: async () => 0 };
     const genisDb = new Proxy(t.s.db, { get: (hedef: any, ad: string) => (ad in hedef ? hedef[ad] : bosTablo) });
-    const hesap = new HesapServisi(genisDb as any, {} as any);
+    const hesap = new HesapServisi(genisDb as any, {} as any, EPOSTA_SAHTE);
     const veri: any = await hesap.verileriDisaAktar('u1');
     const metin = JSON.stringify(veri);
     check('U8 KVKK veri indirmesi İKİ BAŞLIĞI taşır (firma sözlüğü + kullanıcının düzeltme olayları)',

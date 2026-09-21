@@ -53,8 +53,9 @@ if [ "${1:-}" = "liste" ] || [ -z "${1:-}" ]; then
   ls -lht backups/ 2>/dev/null | grep -E '\.sql\.gz$' || echo "   (backups/ klasorunde yedek YOK — bu basli basina bir sorundur)"
   echo ""
   echo "   metaprice-*      : gunluk otomatik yedek (scripts/backup.sh, 14 gun saklanir)"
-  echo "   deploy-oncesi-*  : her deploy'un basinda alinan yedek (kendiliginden silinmez)"
-  echo "   geri-yukleme-oncesi-* : bir onceki geri yuklemenin can simidi"
+  echo "   deploy-oncesi-*  : her deploy basinda alinan yedek (30 gun saklanir)"
+  echo "   geri-yukleme-oncesi-* : bir onceki geri yuklemenin can simidi (30 gun saklanir)"
+  echo "   bekci-*          : gunluk yedek bayatlayinca nobetcinin aldigi yedek (30 gun saklanir)"
   echo ""
   echo "   Geri yuklemek icin: bash scripts/geri-yukle.sh DOSYA-ADI"
   exit 2

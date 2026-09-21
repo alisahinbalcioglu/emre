@@ -172,7 +172,21 @@ describe('durdurma ekranı — yalnız izinli uçlar', () => {
     const cagrilar = (sayfa.match(/api\.(?:get|post|patch|delete)\('[^']+'/g) ?? [])
       .map((m) => m.replace(/^api\.\w+\('/, '').replace(/'$/, ''));
     expect(cagrilar).toEqual(['/auth/me']);
-    expect(sayfa).toContain('/api/auth/hesabim/verilerim');
+  });
+
+  // ── 21.09.2026 · Plan 5.8 §4.5 — ÖLÇÜM: BU DÜĞME ÇALIŞMIYORDU ──────────
+  // Bu blok eskiden `expect(sayfa).toContain('/api/auth/hesabim/verilerim')`
+  // diyordu — yani KIRIK davranışı kilitliyordu. Düz `<a href="/api/…">` iki
+  // bağımsız sebeple hiçbir zaman çalışmadı: (1) `next.config.js`te `/api`
+  // için rewrite YOK, adres Next sunucusuna gider; (2) düz bağlantı
+  // `Authorization: Bearer …` taşımaz, token `localStorage`tadır. Uçtaki KVKK
+  // muafiyeti doğru kurulmuşken (`@KoltukDisiIzinli`, ödeme kapısı yok)
+  // durdurulmuş kişi verisini yine de indiremiyordu.
+  it('"Verilerimi indir" düz bağlantı DEĞİL — ortak yardımcıdan gider', () => {
+    expect(sayfa).toContain("from '@/ozellik/kimlik/verileri-indir'");
+    expect(sayfa).toContain('verileriIndir(');
+    // Düz bağlantı deseni GERİ GELEMEZ.
+    expect(sayfa).not.toMatch(/href=["']\/api\//);
   });
 
   it('"verileriniz silinmedi" güvencesi var', () => {

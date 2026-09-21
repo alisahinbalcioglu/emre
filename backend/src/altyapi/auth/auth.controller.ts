@@ -16,6 +16,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { EpostaHizSiniriGuard } from './guards/eposta-hiz-siniri.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { KoltukDisiIzinli } from './decorators/koltuk-disi-izinli.decorator';
+import { KapaliHesapIzinli } from './decorators/kapali-hesap-izinli.decorator';
 
 @Controller('auth')
 @UseGuards(ThrottlerGuard)
@@ -47,6 +48,9 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   // FAZ 7 F1b (§3.12): durdurma ekrani kendi verisini bu uctan alir.
   @KoltukDisiIzinli()
+  // PLAN 5.8 §4.4: geri donus ekrani da ayni gerekceyle buradan beslenir —
+  // izinli olmasaydi ekran kendi 403'unu yakalayip sonsuz donguye girerdi.
+  @KapaliHesapIzinli()
   me(@CurrentUser() user: any) {
     return this.authService.me(user.id);
   }
@@ -144,9 +148,29 @@ export class AuthController {
   // ⚠ FAZ 7 F1b: KVKK haklari odeme ya da KOLTUK durumuna BAGLANAMAZ —
   // durdurulmus uye verilerini indirebilmeli ve hesabini kapatabilmeli.
   @KoltukDisiIzinli()
+  // ⚠ PLAN 5.8 §4.5: hesap KAPALIYKEN de acik. Ayni cumlenin devami —
+  // bir KVKK hakki odeme durumuna baglanamaz ve "hesabin kapali olmasi" da
+  // bir odeme durumudur. 30 gunluk pencerenin anlami tam olarak budur:
+  // musteri ya geri doner ya verisini alir.
+  @KapaliHesapIzinli()
   @Get('hesabim/verilerim')
   verilerim(@CurrentUser() user: { id: string }) {
     return this.hesap.verileriDisaAktar(user.id);
+  }
+
+  // PLAN 5.8 §3.3.1 — KAPATMA ONAYININ METNI SUNUCUDAN GELIR.
+  // Profil ekrani "firmanızda N üye var, hesabınızı kapatırsanız firmanız
+  // kapanır" cumlesini bu uctan cizer. Ayni hesabi on yuzde yapmak
+  // `ayrilmaKarari`nin IKIZI olurdu; kural TEK yerde kalsin (§3.3).
+  // ⚠ YOL ON YUZUN BEKLEDIGI YOLDUR (`frontend/ozellik/kimlik/
+  // kapatma-onizleme-getir.ts`): "/auth/hesabimi-kapat/onizleme".
+  // ⚠ HICBIR SEY YAZMAZ; `@KapaliHesapIzinli` YOK — kapali hesabin
+  // kapatacak bir seyi yoktur.
+  @UseGuards(JwtAuthGuard)
+  @KoltukDisiIzinli()
+  @Get('hesabimi-kapat/onizleme')
+  kapatmaOnizlemesi(@CurrentUser() user: { id: string }) {
+    return this.hesap.kapatmaOnizlemesi(user.id);
   }
 
   // Hesap kapatma DAR sinirli: geri alma yolu YOK, deneme-yanilma yuzeyi

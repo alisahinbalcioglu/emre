@@ -2,7 +2,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { FaturaDurumu, Prisma } from '@prisma/client';
-import { MuhasebeAdaptoru, MUHASEBE_ADAPTORU } from './muhasebe.adaptor';
+import {
+  FaturaMusterisi,
+  MuhasebeAdaptoru,
+  MUHASEBE_ADAPTORU,
+} from './muhasebe.adaptor';
 import { Inject } from '@nestjs/common';
 import { EpostaServisi } from '../eposta/eposta.servisi';
 
@@ -32,6 +36,123 @@ import { EpostaServisi } from '../eposta/eposta.servisi';
 
 const AZAMI_DENEME = 5;
 const GERI_CEKILME_DK = [1, 5, 25, 120, 600];
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   K4 (21.09.2026) — FATURA KENDI KOPYASINI TASIR
+   ═══════════════════════════════════════════════════════════════════════════
+
+   OLCULEN KUSUR (bu dosya, eski satir 126-143):
+   `tekFatura` musteri kimligini `prisma.firma.findUniqueOrThrow` ile O AN
+   okuyordu. Fatura ise `kuyrugaAl`da, TAHSILAT aninda yaziliyor ve kesim
+   @Cron ile SONRA kosuyor — hata olursa 5 kez, 10 SAATE kadar geri cekilerek
+   (`GERI_CEKILME_DK`), `yenidenDene` ile aylar sonra da. Iki sonuc:
+
+     1. IMHADAN BAGIMSIZ DA YANLIS: musteri adresini degistirirse GECEN YILIN
+        faturasi da yeni adresi gosteriyordu. VUK md. 230 faturada musterinin
+        adi/unvani, ADRESI, vergi dairesi ve numarasini sart kosar — fatura
+        KESILDIGI ANIN bilgisini tasimak zorundadir.
+     2. Plan 5.8 veri imhasi firma satirini BOSALTINCA saklanan faturalar
+        eksik kalirdi (yasal saklama bozulur).
+
+   COZUM: kimlik TAHSILAT ANINDA `Fatura` satirina KOPYALANIR; kesim yalnizca
+   bu kopyayi okur. `Firma`ya giden CANLI okuma YOLU KALMADI — kopya yoksa
+   fatura kesilmez, ELLE_MUDAHALE merdivenine duser ve yonetime mail gider.
+   Sessiz yanlis fatura, gurultulu basarisizliktan KOTUDUR.
+
+   ⚠ GERIYE DOLDURMA YOK (brief §6): olculdu 21.09, canlida 0 fatura kaydi
+   var; gecmisi bugunku firma bilgisiyle doldurmak zaten yanlis veri uretirdi.
+
+   ⚠ E-POSTA BILEREK KOPYALANMIYOR: VUK md. 230 sayimi icinde DEGIL — fatura
+   ICERIGI degil TESLIM adresidir, ve musterinin GUNCEL adresine gitmelidir.
+   Firma satiri bosaltildiktan sonra kesilmemis bir fatura kalirsa adres de
+   kalmaz; o hal SESSIZCE gecilmez, asagidaki `FaturaKopyasiEksikHatasi` ile
+   elle mudahaleye duser (rapora yazildi: `Fatura.musteriEposta` alani
+   eklenirse bu bosluk tamamen kapanir).
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/** `Fatura` satirindaki donmus musteri kimligi (VUK md. 230 sayimi). */
+export interface FaturaMusteriKopyasi {
+  musteriUnvan: string | null;
+  musteriVergiDairesi: string | null;
+  musteriVergiNo: string | null;
+  musteriTcKimlikNo: string | null;
+  musteriAdres: string | null;
+  musteriIl: string | null;
+  musteriIlce: string | null;
+}
+
+/** Kopya cikarilirken `Firma` satirindan okunan EN DAR yuzey. */
+export interface FirmaFaturaKimligi {
+  ad: string | null;
+  unvan: string | null;
+  vergiNo: string | null;
+  vergiDairesi: string | null;
+  tcKimlikNo: string | null;
+  faturaAdresi: string | null;
+  il: string | null;
+  ilce: string | null;
+}
+
+/** Bos/bosluk-only degeri `null`a cevirir — imha bosalttiginda `''` kalmasin. */
+function doluYaDaNull(d: string | null | undefined): string | null {
+  const t = d?.trim();
+  return t ? t : null;
+}
+
+/**
+ * SAF — tahsilat anindaki firma satirindan fatura kopyasini cikarir.
+ *
+ * `unvan ?? ad` ayrimi semadaki kurala uyar: `ad` kayit akisinda uretilen
+ * GORUNEN ad, `unvan` faturaya yazilacak resmi unvandir.
+ */
+export function faturaMusteriKopyasiCikar(
+  firma: FirmaFaturaKimligi | null | undefined,
+): FaturaMusteriKopyasi {
+  return {
+    musteriUnvan: doluYaDaNull(firma?.unvan) ?? doluYaDaNull(firma?.ad),
+    musteriVergiDairesi: doluYaDaNull(firma?.vergiDairesi),
+    musteriVergiNo: doluYaDaNull(firma?.vergiNo),
+    musteriTcKimlikNo: doluYaDaNull(firma?.tcKimlikNo),
+    musteriAdres: doluYaDaNull(firma?.faturaAdresi),
+    musteriIl: doluYaDaNull(firma?.il),
+    musteriIlce: doluYaDaNull(firma?.ilce),
+  };
+}
+
+/** Kopya ya da teslim adresi yoksa: fatura KESILMEZ, elle mudahaleye duser. */
+export class FaturaKopyasiEksikHatasi extends Error {
+  constructor(eksik: string) {
+    super(
+      `Fatura kendi musteri kopyasini tasimiyor (eksik: ${eksik}). ` +
+        'K4 oncesi kayit ya da firma satiri bosaltilmis olabilir; fatura ELLE kesilmeli.',
+    );
+    this.name = 'FaturaKopyasiEksikHatasi';
+  }
+}
+
+/**
+ * SAF — saklanan kopyadan muhasebe adaptorunun musteri govdesini uretir.
+ * `Firma` satirina BAKMAZ: bu fonksiyonun firma parametresi YOKTUR.
+ */
+export function kopyadanMusteri(
+  f: FaturaMusteriKopyasi,
+  teslimEpostasi: string | null | undefined,
+): FaturaMusterisi {
+  const unvan = doluYaDaNull(f.musteriUnvan);
+  if (!unvan) throw new FaturaKopyasiEksikHatasi('unvan');
+  const eposta = doluYaDaNull(teslimEpostasi);
+  if (!eposta) throw new FaturaKopyasiEksikHatasi('teslim e-postasi');
+  return {
+    unvan,
+    vergiNo: doluYaDaNull(f.musteriVergiNo) ?? undefined,
+    vergiDairesi: doluYaDaNull(f.musteriVergiDairesi) ?? undefined,
+    tcKimlikNo: doluYaDaNull(f.musteriTcKimlikNo) ?? undefined,
+    eposta,
+    adres: doluYaDaNull(f.musteriAdres) ?? undefined,
+    il: doluYaDaNull(f.musteriIl) ?? undefined,
+    ilce: doluYaDaNull(f.musteriIlce) ?? undefined,
+  };
+}
 
 export interface FaturaTalebi {
   abonelikId: string;
@@ -66,12 +187,18 @@ export class FaturaServisi {
     const matrah = Math.round((t.tutar / carpan) * 100) / 100;
     const kdv = Math.round((t.tutar - matrah) * 100) / 100;
 
+    // ── K4: MUSTERI KIMLIGI TAM BURADA DONAR ─────────────────────────────
+    // Bu metot TAHSILAT anindan cagrilir (webhook.isleyici:basariliTahsilat).
+    // Kesim sonra kosar; arada adres degisirse fatura ESKI adresi tasimalidir.
+    const kopya = await this.musteriKopyasiniCikar(t.abonelikId);
+
     try {
       await this.prisma.fatura.create({
         data: {
           abonelikId: t.abonelikId,
           tahsilatKodu: t.tahsilatKodu,
           durum: FaturaDurumu.BEKLIYOR,
+          ...kopya,
           tutar: new Prisma.Decimal(matrah),
           kdvOrani: this.kdvOrani,
           kdvTutari: new Prisma.Decimal(kdv),
@@ -90,6 +217,43 @@ export class FaturaServisi {
       }
       throw e;
     }
+  }
+
+  /**
+   * K4 — tahsilat anindaki firma satirindan musteri kopyasini okur.
+   *
+   * ⚠ HATA FIRLATMAZ: fatura kesimi tahsilat akisini ASLA bloklamaz (dosya
+   * basindaki tasarim notu). Firma okunamazsa kopya bos yazilir ve kesim
+   * asamasinda `FaturaKopyasiEksikHatasi` ile GURULTULU sekilde duser —
+   * sessizce yanlis kimlikle fatura kesmekten iyidir.
+   */
+  private async musteriKopyasiniCikar(
+    abonelikId: string,
+  ): Promise<FaturaMusteriKopyasi> {
+    const ab = await this.prisma.abonelik.findUnique({
+      where: { id: abonelikId },
+      select: {
+        firma: {
+          select: {
+            ad: true,
+            unvan: true,
+            vergiNo: true,
+            vergiDairesi: true,
+            tcKimlikNo: true,
+            faturaAdresi: true,
+            il: true,
+            ilce: true,
+          },
+        },
+      },
+    });
+    if (!ab?.firma) {
+      this.logger.error(
+        `Fatura musteri kopyasi CIKARILAMADI: abonelik=${abonelikId} firma satiri okunamadi. ` +
+          'Fatura yine de kuyruga alinir ama kesilemez — elle mudahale gerekecek.',
+      );
+    }
+    return faturaMusteriKopyasiCikar(ab?.firma);
   }
 
   @Cron(CronExpression.EVERY_MINUTE)
@@ -123,24 +287,26 @@ export class FaturaServisi {
     });
     if (f.durum === FaturaDurumu.KESILDI) return;
 
-    const firma = await this.prisma.firma.findUniqueOrThrow({
+    // ── K4: KIMLIK FATURANIN KENDI KOPYASINDAN ───────────────────────────
+    // Firma satirindan YALNIZ teslim e-postasi okunur (VUK sayimi disinda,
+    // musterinin GUNCEL adresine gitmeli). Unvan/vergi/adres/il/ilce ARTIK
+    // BURADAN OKUNMAZ — `findUniqueOrThrow` da bilerek `findUnique` oldu:
+    // imha firma satirini bosaltmis olsa bile saklanan fatura okunabilmeli.
+    const firma = await this.prisma.firma.findUnique({
       where: { id: f.abonelik.firmaId },
+      select: { ad: true, faturaEposta: true, yetkiliEposta: true },
     });
+    const faturaAdi = f.musteriUnvan ?? firma?.ad ?? f.abonelik.firmaId;
 
     try {
+      const musteri = kopyadanMusteri(
+        f,
+        firma?.faturaEposta ?? firma?.yetkiliEposta,
+      );
       const sonuc = await this.muhasebe.faturaKes({
         // Muhasebe tarafındaki tekilleştirme — çift gönderime karşı
         harciAnahtar: f.tahsilatKodu,
-        musteri: {
-          unvan: firma.unvan ?? firma.ad,
-          vergiNo: firma.vergiNo ?? undefined,
-          vergiDairesi: firma.vergiDairesi ?? undefined,
-          tcKimlikNo: firma.tcKimlikNo ?? undefined,
-          eposta: firma.faturaEposta ?? firma.yetkiliEposta,
-          adres: firma.faturaAdresi ?? undefined,
-          il: firma.il ?? undefined,
-          ilce: firma.ilce ?? undefined,
-        },
+        musteri,
         kalemler: [
           {
             ad: `${f.abonelik.paketSurumu.paket.ad} — Yazılım Kullanım Bedeli`,
@@ -189,7 +355,7 @@ export class FaturaServisi {
         this.logger.error(
           `Fatura ${faturaId} elle müdahale gerektiriyor: ${mesaj}`,
         );
-        await this.yonetimeHaberVer(faturaId, firma.ad, mesaj);
+        await this.yonetimeHaberVer(faturaId, faturaAdi, mesaj);
       } else {
         this.logger.warn(
           `Fatura ${faturaId} başarısız (${yeniDeneme}/${AZAMI_DENEME}), ` +

@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { AbonelikDurumu } from '@prisma/client';
+import {
+  kapaliHesapMetni,
+  type KapaliHesapDurumu,
+} from '../../../altyapi/auth/kapali-hesap';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -257,6 +261,62 @@ export class ErisimServisi {
           },
         };
     }
+  }
+
+  /**
+   * ═══════════════════════════════════════════════════════════════════════
+   *  PLAN 5.8 §4.5 — KAPATILMIS HESAP: MEVCUT "ASKIDA" KIPI
+   * ═══════════════════════════════════════════════════════════════════════
+   *
+   *  Emre'nin talimati acikti: "mevcut **askıda** kipini kullanın. Yeni bir
+   *  kip icat etmeyin." Burada YENI BIR KIP YOK — donen karar
+   *  `AbonelikDurumu.ASKIDA` dalinin (yukarida, 212-226) sekliyle BIREBIR
+   *  ayni: `erisimVar: false`, `saltOkunur: false`. `yetenekKararla` o iki
+   *  degeri okuyup `ASKIDA_ACIK` kumesine duser ve yalnizca
+   *  `ABONELIK_YONET` gecer ("Askidayken yalnizca odeme sayfasi").
+   *  Degisen TEK sey UYARI METNIDIR: musteri "odemeniz alinamadi" degil
+   *  "hesabiniz kapatildi, verileriniz su tarihte silinecek" gormeli.
+   *
+   *  ⚠ NEDEN FIRMA EKSENI (`karar`) KULLANILAMAZ — OLCULDU: hesap
+   *  kapatildiginda abonelik IPTAL edilir (`hesap.servisi.ts`,
+   *  `ayrilmaKarari.abonelikIptal`) ve `IPTAL` dali odenmis donem bitene
+   *  kadar `erisimVar: !suresiDoldu` = **true** doner. Yani firmaya sormak,
+   *  kapali hesaba 30 gun boyunca TAM ERISIM verirdi.
+   *
+   *  ⚠ ABONELIK SATIRI HIC OKUNMAZ (sorgu YOK): karar hesabin kapali
+   *  olmasindan gelir, aboneligin durumu bu karari degistiremez.
+   *  `paketKodu`/`kullaniciHakki`/`dwgAktif` bu yuzden bos/sifirdir — ekran
+   *  zaten paket rozeti degil, geri donus ekrani cizer.
+   */
+  kapaliKarar(durum: KapaliHesapDurumu, simdi = new Date()): ErisimKarari {
+    return {
+      erisimVar: false,
+      saltOkunur: false,
+      durum: AbonelikDurumu.ASKIDA,
+      // Imha tarihi bilinmiyorsa `null` — ekran tarihsiz cumleyi yazar.
+      // ⚠ `Math.max(0, …)`: tarih gecmisse "-3 gun kaldi" yazdirmayiz.
+      kalanGun: durum.imhaTarihi
+        ? Math.max(0, this.gunFarki(durum.imhaTarihi, simdi))
+        : null,
+      uyari: {
+        seviye: 'kritik',
+        baslik: kapaliHesapMetni(durum),
+        metin:
+          durum.tip === 'firma'
+            ? 'Verilerinizi bu süre içinde indirebilirsiniz.'
+            : 'Hesabınızı geri açmak için bir paket seçin; verileriniz ' +
+              'olduğu gibi geri gelir.',
+        // ⚠ Firmasi kapanan UYE paket secemez (K2: firmayi SAHIBI geri
+        // acar). Ona "Paket sec" dugmesi gostermek calismayan bir soz olurdu.
+        eylem:
+          durum.tip === 'firma'
+            ? undefined
+            : { etiket: 'Paket seç', yol: '/abonelik' },
+      },
+      paketKodu: '',
+      kullaniciHakki: 0,
+      dwgAktif: false,
+    };
   }
 
   /** Tek bir yeteneğin şu an açık olup olmadığını söyler. */
