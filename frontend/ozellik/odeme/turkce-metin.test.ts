@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import * as ts from 'typescript';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { ALAN_ETIKET } from './fatura-kimligi';
 import { telefonHatasi } from './telefon-bicim';
 import { dwgIpucu } from './dwg-kapisi';
@@ -397,6 +397,15 @@ function hamSeviyeBasimlari(sf: ts.SourceFile): string[] {
 
 describe('Paket adı: müşteriye görünen hiçbir yerde "Core" yok (iç kod değişmedi)', () => {
   const dosyalar = kaynakDosyalari();
+
+  // ⚠ TUM ON YUZUN TS AYRISTIRMASI TEK YERDE, ACIK SURE BUTCESIYLE: kapi
+  // komutuyla (`npx vitest run`) bu is 5,8–6,4 sn olculdu (21.09, Windows) ve
+  // varsayilan 5 sn test siniri "TAMAMINDA" testini 7/7 kosumda zaman asimiyla
+  // kirmizi yapiyordu. Testler `agaclar` onbellegini okur; sira degisse de
+  // (`-t` ile tek test) ayristirma hicbir testin 5 sn'sine dusmez.
+  beforeAll(() => {
+    for (const y of dosyalar) dosya(y);
+  }, 60_000);
 
   it('ölçütün kendisi: yazılı "Core" ve ham kod basımı yakalanır; kod karşılaştırması, anahtar, varsayılan ve öznitelik yakalanmaz', () => {
     const sf = ayristir(
