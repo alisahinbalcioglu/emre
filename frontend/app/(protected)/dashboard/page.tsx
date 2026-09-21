@@ -12,16 +12,27 @@ import QuickStart from '@/ortak/kabuk/components/dashboard/QuickStart';
 import RecentQuotes from '@/ozellik/teklif/dashboard/RecentQuotes';
 import QuickAccess from '@/ortak/kabuk/components/dashboard/QuickAccess';
 
-interface DashStats {
-  userCount: number;
-  brandCount: number;
-  materialCount: number;
-  quoteCount: number;
+/**
+ * PANO OZETI — `GET /panel/ozet` (t.3, 21.09.2026).
+ *
+ * Eskiden `GET /admin/stats` okunuyordu ve iki kusur EKRANDA gorunuyordu:
+ *  (a) uc `@Roles('admin')` korumaliydi → musteri oturumunda `stats` null
+ *      kaliyor, dort kutu HIC cizilmiyordu;
+ *  (b) admin oturumunda gelen sayilar SISTEMIN TAMAMININ sayilariydi
+ *      (10 teklif / 21.723 malzeme), oysa hesabin kendi sayilari 4 / 1'di.
+ * Yeni uc kullanici kapsamlidir ve her sayisi ilgili LISTE SAYFASIYLA ayni
+ * sorgudan gelir (Teklifler, Kutuphanem, Ekip).
+ */
+interface PanoOzeti {
+  teklifSayisi: number;
+  malzemeSayisi: number;
+  markaSayisi: number;
+  kullaniciSayisi: number;
 }
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [stats, setStats] = useState<DashStats | null>(null);
+  const [ozet, setOzet] = useState<PanoOzeti | null>(null);
   const [userName, setUserName] = useState('');
   useCapabilities();
 
@@ -46,14 +57,16 @@ export default function DashboardPage() {
       if (stored) {
         const parsed = JSON.parse(stored);
         setUserName(parsed.email?.split('@')[0] ?? '');
-        // KH3 (SORUN 14): /admin/stats yalniz ADMIN oturumunda cagrilir —
-        // normal kullanicida 403 + console kirliligi olusuyordu (veri zaten
-        // gosterilemiyordu).
-        if (parsed.role === 'admin') {
-          api.get<DashStats>('/admin/stats').then(({ data }) => setStats(data)).catch(() => {});
-        }
       }
     } catch {}
+    // t.3 (21.09): ROLE BAKILMAZ. Eski kod `parsed.role === 'admin'` kapisinin
+    // ARKASINDAYDI ve okudugu uc de yoneticiye kilitliydi; sonuc olarak dort
+    // kutu musteri panosunda HIC cizilmiyordu. Yeni uc her oturumda cagrilir
+    // ve yalnizca cagiranin kendi firmasinin sayilarini doner.
+    // ⚠ `catch`in SESSIZ olmasi burada bilerek: istek duserse `ozet` null
+    // kalir ve dort kutu sayi yerine "—" gosterir — yani ariza EKRANDA
+    // GORUNUR, yutulmus olmaz. Toast atmak her yenilemede gurultu yaratirdi.
+    api.get<PanoOzeti>('/panel/ozet').then(({ data }) => setOzet(data)).catch(() => {});
   }, []);
 
   /* ── Excel Upload Handler ── */
@@ -103,12 +116,12 @@ export default function DashboardPage() {
       }));
 
       const sayfaSayisi = (gridRes.data?.sheets ?? []).filter((s: any) => !s.isEmpty).length;
-      toast({ title: 'Analiz tamamlandi', description: `${sayfaSayisi} sayfa yuklendi.` });
+      toast({ title: 'Analiz tamamlandı', description: `${sayfaSayisi} sayfa yüklendi.` });
       router.push('/quotes/new?from=dashboard');
     } catch (e: any) {
       toast({
         title: 'Hata',
-        description: e?.response?.data?.message ?? 'Excel dosyasi analiz edilirken hata olustu.',
+        description: e?.response?.data?.message ?? 'Excel dosyası analiz edilirken hata oluştu.',
         variant: 'destructive',
       });
     } finally {
@@ -139,11 +152,14 @@ export default function DashboardPage() {
     router.push('/quotes/new?mode=dwg');
   }, [router]);
 
+  // ⚠ `?? 0` YOK. Ozet gelmeden ya da istek basarisiz olursa sayi YERINE "—"
+  // yazilir: "0 teklif" gercek bir olcum gibi okunur ve YALANDIR. Bu depoda
+  // olculmus bir hata sinifi (`x || 0` sayi suzgeci degildir / olcumu uydurma).
   const STAT_ITEMS = [
-    { label: 'Teklifler', value: stats?.quoteCount ?? 0, icon: FileText, bg: 'bg-violet-50', color: 'text-violet-600' },
-    { label: 'Malzemeler', value: stats?.materialCount ?? 0, icon: Database, bg: 'bg-blue-50', color: 'text-blue-600' },
-    { label: 'Markalar', value: stats?.brandCount ?? 0, icon: Tag, bg: 'bg-emerald-50', color: 'text-emerald-600' },
-    { label: 'Kullanicilar', value: stats?.userCount ?? 0, icon: Users, bg: 'bg-amber-50', color: 'text-amber-600' },
+    { label: 'Teklifler', value: ozet?.teklifSayisi, icon: FileText, bg: 'bg-violet-50', color: 'text-violet-600' },
+    { label: 'Malzemeler', value: ozet?.malzemeSayisi, icon: Database, bg: 'bg-blue-50', color: 'text-blue-600' },
+    { label: 'Markalar', value: ozet?.markaSayisi, icon: Tag, bg: 'bg-emerald-50', color: 'text-emerald-600' },
+    { label: 'Kullanıcılar', value: ozet?.kullaniciSayisi, icon: Users, bg: 'bg-amber-50', color: 'text-amber-600' },
   ];
 
   return (
@@ -156,25 +172,27 @@ export default function DashboardPage() {
         <p className="mt-1 text-xs text-slate-500">MetaPriceX kontrol merkeziniz</p>
       </div>
 
-      {/* Stat Cards */}
-      {stats && (
-        <div className="mb-7 grid grid-cols-2 gap-4 lg:grid-cols-4">
-          {STAT_ITEMS.map((s) => {
-            const Icon = s.icon;
-            return (
-              <div key={s.label} className="flex items-start gap-3.5 rounded-xl border bg-card px-5 py-4">
-                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${s.bg}`}>
-                  <Icon className={`h-[18px] w-[18px] ${s.color}`} />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold tabular-nums">{s.value.toLocaleString('tr-TR')}</p>
-                  <p className="text-xs text-muted-foreground">{s.label}</p>
-                </div>
+      {/* Stat Cards — KOSULSUZ cizilir (t.3). Eski `{stats && (...)}` kapisi,
+          ucun yoneticiye kilitli olmasiyla birlesince kutulari musteri
+          panosundan TAMAMEN kaldiriyordu. */}
+      <div className="mb-7 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        {STAT_ITEMS.map((s) => {
+          const Icon = s.icon;
+          return (
+            <div key={s.label} className="flex items-start gap-3.5 rounded-xl border bg-card px-5 py-4">
+              <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${s.bg}`}>
+                <Icon className={`h-[18px] w-[18px] ${s.color}`} />
               </div>
-            );
-          })}
-        </div>
-      )}
+              <div>
+                <p className="text-2xl font-bold tabular-nums">
+                  {s.value === undefined ? '—' : s.value.toLocaleString('tr-TR')}
+                </p>
+                <p className="text-xs text-muted-foreground">{s.label}</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
 
       {/* Two-Column: Quick Start + Recent Quotes */}
       <div className="mb-7 grid grid-cols-1 gap-6 lg:grid-cols-5">

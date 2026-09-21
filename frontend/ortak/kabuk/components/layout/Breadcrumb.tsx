@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronRight } from 'lucide-react';
+import { useKirintiEtiketleri } from './kirinti-etiketi';
 
 // 15.09 (P1-ek): etiketler Türkçe karakterli. Kırıntı sayfa başlığının hemen
 // üstünde durur; "Hesabim" kırıntısının altında "Hesabım" başlığı yazıyordu.
@@ -28,6 +29,11 @@ const LABEL_MAP: Record<string, string> = {
 
 export default function Breadcrumb() {
   const pathname = usePathname();
+  // t.8 (21.09): kimlik tasiyan adres parcasi (UUID) ham basiliyordu —
+  // "Teklifler › 84597204-70f0-…". O kimligin adini yalniz kaydi CEKEN sayfa
+  // bilir; defterden okunur (bkz. kirinti-etiketi.ts). Kayit yoksa davranis
+  // AYNEN eskisi gibi kalir.
+  const etiketler = useKirintiEtiketleri();
 
   const segments = pathname
     .replace(/^\/(protected\/)?/, '/')
@@ -53,7 +59,7 @@ export default function Breadcrumb() {
         const isLast = i === segments.length - 1;
         const href = '/' + segments.slice(0, i + 1).join('/');
         // admin/materials icin ozel label
-        let label = LABEL_MAP[seg] ?? decodeURIComponent(seg);
+        let label = etiketler[seg] ?? LABEL_MAP[seg] ?? decodeURIComponent(seg);
         if (seg === 'materials' && i > 0 && segments[i - 1] === 'admin') label = 'Malzeme Yönetimi';
 
         return (

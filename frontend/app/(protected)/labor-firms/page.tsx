@@ -183,11 +183,11 @@ export default function LaborFirmsPage() {
         <CardContent className="p-4">
           <div className="flex flex-wrap items-end gap-2">
             <div className="flex-1 min-w-[200px]">
-              <label className="block text-xs text-muted-foreground mb-1">Firma Adi</label>
+              <label className="block text-xs text-muted-foreground mb-1">Firma Adı</label>
               <Input
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                placeholder="orn. Ahmet Tesisat"
+                placeholder="örn. Ahmet Tesisat"
                 onKeyDown={(e) => e.key === 'Enter' && createFirm()}
               />
             </div>
@@ -216,7 +216,7 @@ export default function LaborFirmsPage() {
       {visibleFirms.length === 0 ? (
         <Card>
           <CardContent className="py-16 text-center">
-            <p className="text-muted-foreground">Henuz firma yok. Yukaridan ilk firmanizi ekleyin.</p>
+            <p className="text-muted-foreground">Henüz firma yok. Yukarıdan ilk firmanızı ekleyin.</p>
           </CardContent>
         </Card>
       ) : (

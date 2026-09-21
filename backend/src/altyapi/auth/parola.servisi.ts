@@ -13,6 +13,7 @@ import { epostaIleKullaniciBul } from './eposta';
 import { SIFIRLAMA_OMRU_MS, tokenOzetle, tokenUret } from './token-ozet';
 import { uygulamaKokuCoz } from './uygulama-url';
 import { kurumsalZorunluMu } from './kurumsal/kurumsal-zorunluluk';
+import { PAROLA_HATALI_YANIT } from './parola-kurali';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -235,8 +236,15 @@ export class ParolaServisi {
     }
 
     const dogru = await bcrypt.compare(mevcutParola, user.password);
+    // ⚠ 400 — 401 DEGIL (Gorunur kusurlar turu, t.16). Bu uc KORUMALIDIR:
+    // buraya ulasan istegin token'i ZATEN gecerli. 401 donuldugu surece
+    // `frontend/ortak/lib/api.ts` yakalayicisi token'i silip kullaniciyi
+    // `/login`e atiyordu — yanlis parola yazan kisi "parolami degistir"
+    // ekranindan sessizce DISARI dusuyordu. Gerekce ve desen:
+    // `parola-kurali.ts` PAROLA_HATALI_YANIT. Hemen yukaridaki PAROLA_YOK
+    // dali ayni kararı F3b'de zaten vermisti; bu dal atlanmisti.
     if (!dogru) {
-      throw new UnauthorizedException('Mevcut parolanız hatalı.');
+      throw new BadRequestException(PAROLA_HATALI_YANIT);
     }
     if (mevcutParola === yeniParola) {
       throw new BadRequestException(

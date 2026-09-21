@@ -56,6 +56,11 @@ backend/src/ozellik/eslestirme/ :: C · malzeme adını kütüphaneyle eşleme.
 backend/src/ozellik/fiyat/ :: D · birim fiyat, iskonto, para birimi.
 backend/src/ozellik/giris/ :: A · dosya yükleme ve okuma.
 backend/src/ozellik/kutuphane/ :: G · kütüphane ve yönetim.
+# YENİ ALAN (21.09.2026, Görünür kusurlar turu t.3) — ana sayfanın dört sayacı.
+# Kendi köküne alındı çünkü ÖLÇÜLEN kusur tam da karışmaktı: sayaçlar yönetici
+# panosunun ucundan (`admin/stats`) besleniyordu; müşteri ekranı yönetici koduyla
+# aynı yerde durursa aynı kaza tekrar eder. Uç kullanıcı kapsamlıdır, rol kapısı yok.
+backend/src/ozellik/panel/ :: G · ana sayfa özeti (kullanıcı kapsamlı sayaçlar).
 # YENİ ALAN (28.08.2026, ADIM 2) — bilinçli açılış, gerekçesi bu satırdır.
 # Abonelik/ödeme mevcut alanların HİÇBİRİNE ait değil: A-G üretim hattının
 # (dosya→eşleştirme→fiyat→çıktı) adımları, M teklifin yaşam döngüsü, L ise
@@ -139,7 +144,7 @@ C :: backend/src/ozellik/eslestirme/
 D :: backend/src/ozellik/fiyat/ | frontend/ozellik/fiyat/
 E :: (bos)
 F :: backend/src/ozellik/cikti/ | frontend/ozellik/cikti/
-G :: backend/src/ozellik/kutuphane/ | frontend/ozellik/kutuphane/
+G :: backend/src/ozellik/kutuphane/ | backend/src/ozellik/panel/ | frontend/ozellik/kutuphane/
 H :: backend/test/ | frontend/test/ | backend/src/modules/dwg-engine/python/tests/ | *.test.ts | *.test.tsx | *.spec.ts | frontend/playwright.config.ts | frontend/playwright.golden.config.ts | frontend/vitest.config.ts
 I :: backend/scripts/ | frontend/scripts/ | *.sh | backend/src/health.controller.ts | backend/src/surum.ts | frontend/next.config.js | frontend/postcss.config.js | frontend/tailwind.config.ts
 J :: backend/src/modules/dwg-engine/ | frontend/components/dwg-diameter-engine/ | frontend/components/dwg-metraj/ | frontend/components/dwg-tagging/ | frontend/components/dwg-viewer/ | frontend/components/dwg-workspace/

@@ -19,6 +19,11 @@ import { abonelikOzeti } from '@/ozellik/odeme/abonelik-ozeti';
 import { toast } from '@/ortak/hooks/use-toast';
 import { kalanKotaCumlesi, type CeviriKotaOzeti } from '@/ozellik/teklif/ceviri-kota';
 import { sayiYaz } from '@/ozellik/odeme/paket-bicim';
+// ⚠ ÇIPLAK SAYI YAZMAYIN: parola uzunluğu TEK sabitten okunur. 21.09'dan önce
+// bu sayı ön yüzde dört ayrı yerde elle yazılıydı ve biri (kayıt ekranı) YANLIŞTI
+// — kullanıcı 6 karakterle hesap açıp ertesi gün parolasını değiştiremiyordu.
+// Sunucu kopyası: `backend/src/altyapi/auth/parola-kurali.ts` (kapı: test:parola-kapisi).
+import { PAROLA_MIN } from '@/ortak/lib/parola-kurali';
 
 interface UserProfile {
   id: string;
@@ -96,8 +101,24 @@ export default function ProfilePage() {
     { durum: 'yukleniyor' } | { durum: 'hata' } | { durum: 'hazir'; kota: CeviriKotaOzeti | null }
   >({ durum: 'yukleniyor' });
   const { erisim, refresh } = useCapabilities();
+  /**
+   * ── YENİLENME GÜNÜ TEK KAYNAKTAN (21.09.2026) ────────────────────────
+   * Bu sayfa aynı anda iki şey söylüyordu: kullanım kutusu "yenilenme
+   * 01.10.2026", abonelik kutusu "Yenileme tarihi belirtilmemiş".
+   *
+   * ÖLÇÜLDÜ: iki ayrı dönem YOK. Kota dönemi `Abonelik.olusturuldu` çapası +
+   * paketin periyodudur (`backend/.../ceviri-kotasi.ts` `kotaDonemi`; dosya
+   * başlığı: "KOTA DÖNEMİ — abonelik dönemi, TAKVİM AYI DEĞİL"), yani ikisi
+   * AYNI dönemdir. Abonelik kutusunun okuduğu `erisim.kalanGun` ise yenileme
+   * DEĞİL, deneme/tolerans geri sayımıdır ve AKTIF abonelikte sunucu onu
+   * bilerek `null` döndürür — cümle o yüzden hep "belirtilmemiş" diyordu.
+   *
+   * Artık gün TEK yerden okunur ve iki kutu AYNI biçimleyiciden geçer.
+   */
+  const donemBitisi =
+    ceviriKota.durum === 'hazir' ? (ceviriKota.kota?.donemBitis ?? null) : null;
   // Abonelik ozeti GERCEK kaynaktan (`/auth/me` → `erisim`) turetilir.
-  const ozet = abonelikOzeti(erisim);
+  const ozet = abonelikOzeti(erisim, donemBitisi);
 
   // ── FAZ 4.1/4.3 · KİŞİ ve FİRMA BİLGİLERİ ────────────────────────────
   // Ölçüldü: şemadaki `vergiNo`, `vergiDairesi`, `tcKimlikNo`, `ilce`,
@@ -453,7 +474,11 @@ export default function ProfilePage() {
           {/* Çeviri kotası — paketin tek gerçek kotası, sunucudan */}
           <div className="mb-4">
             <div className="mb-1.5 flex items-center justify-between text-xs">
-              <span className="text-muted-foreground">Çeviri kotası (bu dönem)</span>
+              {/* "bu dönem" belirsizdi: takvim ayı sanılıyordu. Dönem, abonelik
+                  dönemidir (sözleşme §"Kota takvim ayına göre değil abonelik
+                  döneminize göre yenilenir") ve abonelik kutusundaki yenilenme
+                  günüyle AYNI dönemdir. */}
+              <span className="text-muted-foreground">Çeviri kotası (bu abonelik dönemi)</span>
               {kota && (
                 <span className="font-medium">
                   {sayiYaz(kota.kullanilanSatir)} / {sayiYaz(kota.kota.satir)} satır
@@ -549,8 +574,28 @@ export default function ProfilePage() {
           {/* ── IPTAL: EN AZ UC TIKLAMA DERINLIKTE ──────────────────────
               03.09 kullanici karari: "Aboneligi iptal et secenegi minimum
               3 tiklama ile gorulebilsin — musterinin gozune sokmayalim."
-              1) hesap sayfasi  2) bu bolumu ac  3) bagi tikla  4) onayla */}
-          {ozet.iptalEdilebilir && (
+              1) hesap sayfasi  2) bu bolumu ac  3) bagi tikla  4) onayla
+
+              ⚠ 21.09'DA OLCULDU — SAHIP KAPISI EKLENDI: bu bolum role
+              BAKMIYORDU, oysa `POST /abonelik/iptal` sunucuda
+              `@FirmaRolu('sahip')` ile kapali (`abonelik.controller.ts`).
+              Uye bagi goruyor, basiyor ve "Iptal islemi tamamlanamadi"
+              aliyordu — tiklanabilir ama CALISMAYAN bir bag. Sozlesme de
+              boyle diyor: "abonelik, odeme ve fatura bilgilerini YALNIZ
+              firma sahibi gorur ve yonetir" (`hukuki/metinler.ts`).
+
+              ⚠ UYEYE BOLUM TAMAMEN GIZLENMEZ: gizleseydik uye "iptal
+              edemiyorum, nereden edilir?" sorusuyla destege yazardi. Tek
+              satir bilgi kalir, DUGME kalmaz — basamayacagi seye bakmaz
+              ama ne yapmasi gerektigini bilir. Derinlik kurali sahip icin
+              aynen duruyor (dort adim). */}
+          {ozet.iptalEdilebilir && !sahipMi && (
+            <p className="mt-4 border-t pt-3 text-xs text-muted-foreground">
+              Aboneliği yalnız firma sahibi iptal edebilir. İptal talebinizi
+              firma sahibinize iletin.
+            </p>
+          )}
+          {ozet.iptalEdilebilir && sahipMi && (
             <div className="mt-4 border-t pt-3">
               <button
                 type="button"
@@ -927,7 +972,7 @@ export default function ProfilePage() {
                 value={yeniParola}
                 onChange={setYeniParola}
                 autoComplete="new-password"
-                minLength={8}
+                minLength={PAROLA_MIN}
               />
             </div>
             <div>
@@ -939,7 +984,7 @@ export default function ProfilePage() {
                 value={yeniTekrar}
                 onChange={setYeniTekrar}
                 autoComplete="new-password"
-                minLength={8}
+                minLength={PAROLA_MIN}
               />
             </div>
           </div>

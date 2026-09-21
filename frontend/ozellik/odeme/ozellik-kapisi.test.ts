@@ -142,7 +142,20 @@ describe('⭐ BAGLANTI — iscilik kolonlari ExcelGrid.te kapali mi', () => {
   it('⭐ laborEnabled kolon useMemo BAGIMLILIGINDA (yetenek gelince yenilensin)', () => {
     // Yoksa yetenekler async gelince kolonlar ESKI haliyle kalir ve kapi
     // hic devreye girmez.
-    const dep = g.indexOf('}, [data, brands, onBrandChange, laborFirms, sheetDiscipline, laborEnabled');
-    expect(dep).toBeGreaterThan(-1);
+    //
+    // ⚠ 21.09 (t.14): olcut BAGIMLILIK DIZISININ TAM METNIYDI
+    // ('}, [data, brands, onBrandChange, …') ve performans turunda ilk
+    // bagimlilik `data` yerine `data.columnDefs, data.columnRoles` olunca
+    // kapi kirmiziya dondu — oysa `laborEnabled` yerinde duruyordu. Kapi
+    // SUSTURULMADI, olcut DARALTILDI: artik dizinin TAM METNI degil, o
+    // dizide `laborEnabled`in bulunup bulunmadigi olculur. Boylece kapi
+    // kendi sordugu soruya bakar ve alakasiz bir duzenlemeyle yanlis kirmizi
+    // uretmez.
+    const bas = g.indexOf('const columnDefs = useMemo<ColDef<ExcelRowData>[]>');
+    expect(bas, 'columnDefs useMemo bulunamadi').toBeGreaterThan(-1);
+    const dizi = g.slice(bas).match(/\n\s*\}, \[([\s\S]{0,400}?)\]\);/)?.[1] ?? '';
+    expect(dizi, 'bagimlilik dizisi bulunamadi').not.toBe('');
+    const uyeler = dizi.split(',').map((s) => s.trim());
+    expect(uyeler).toContain('laborEnabled');
   });
 });

@@ -121,10 +121,14 @@
     "test:faz7-ekip": "ts-node test/faz7-ekip-test.ts",
     "test:faz7-mfa": "ts-node test/faz7-mfa-test.ts",
     "test:faz7-kurumsal": "ts-node test/faz7-kurumsal-test.ts",
+    "test:parola-kapisi": "ts-node test/parola-kapisi-test.ts",
+    "test:panel-ozet": "ts-node test/panel-ozet-test.ts",
     "mfa:sifirla": "ts-node scripts/mfa-sifirla.ts",
     "mfasifirla": "ts-node scripts/mfa-sifirla.ts",
     "seed:paketler": "ts-node scripts/paketleri-kur.ts",
-    "seedpaketler": "ts-node scripts/paketleri-kur.ts"
+    "seedpaketler": "ts-node scripts/paketleri-kur.ts",
+    "duzelt:paket-aciklama": "ts-node scripts/paket-aciklama-duzelt.ts",
+    "duzeltpaketaciklama": "ts-node scripts/paket-aciklama-duzelt.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

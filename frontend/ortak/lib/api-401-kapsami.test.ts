@@ -70,7 +70,11 @@ const yayinlananOlaylar: string[] = [];
 // Globalleri BILEREK import'tan SONRA, her testten once kuruyoruz: boylece
 // axios node yolunda kalir, api.ts'in interceptor'i ise cagri aninda window'u gorur.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-import api from './api';
+import api, {
+  zamanAsimiSec,
+  VARSAYILAN_ZAMAN_ASIMI_MS,
+  AGIR_ZAMAN_ASIMI_MS,
+} from './api';
 
 /** Verilen uca 401 dondur; istegin gercekten adapter'a ulastigini da kaydet. */
 const adapterCagrilariUrl: string[] = [];
@@ -434,5 +438,238 @@ describe('F4 — OTURUMLU kurumsal uclar listede DEGIL [FAZ 7 F3b]', () => {
     // dusmesi sessizlesir, kullanici "hicbir sey olmuyor" ekraninda kalirdi.
     expect(pencere.location.href).toBe('/login');
     expect(depo.getItem('token')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// G — PAROLA DEGISTIRME ve HESAP KAPATMA  [GORUNUR KUSURLAR TURU t.16]
+//
+// KUSUR (21.09'a kadar): `/auth/change-password` ve `/auth/hesabimi-kapat`
+// uclarinda MEVCUT PAROLA yanlis girilince sunucu **401** donuyordu
+// (parola.servisi.ts:239 · hesap.servisi.ts:404). Ikisi de bu listede DEGIL
+// — dogrusu da bu — ve yakalayici o 401'i "oturum bitti" sayip token'i
+// silip `/login`e atiyordu. Kullanici parolasini yanlis yazdigi icin
+// uygulamadan ATILIYOR, nedenini de goremiyordu.
+//
+// ⚠ YANLIS COZUM: bu iki ucu `KIMLIK_UCLARI`'na eklemek. Ikisi de KORUMALI
+// uctur (JwtAuthGuard); oradan gelen 401 GERCEKTEN oturum dusmesidir.
+// Muaf tutulsalardi suresi dolmus token sessizlesir, kullanici "hicbir sey
+// olmuyor" ekraninda kalirdi — D4/F4 bloklarindaki ayni negatif kriter.
+//
+// DOGRU COZUM (Faz 7 deseni, ucuncu desen icat edilmedi): sunucu oturumlu
+// ucta yanlis parolayi **400 + kod PAROLA_HATALI** ile doner. Backend kapisi
+// `npm run test:parola-kapisi` (A blogu) bunu olcer — bu dosya yalniz
+// "400 cikis yaptirmaz, 401 YAPTIRIR" ayrimini kilitler. Iki kapi birlikte
+// zinciri tamamlar; biri tek basina "mekanizma var, baglanti yok"tur.
+// ---------------------------------------------------------------------------
+/** Verilen uctan `kod` tasiyan 400 dondur (sunucunun yeni yaniti). */
+async function dortYuzAl(url: string, kod: string) {
+  const oncekiAdapter = api.defaults.adapter;
+  api.defaults.adapter = ((config: any) => {
+    adapterCagrilariUrl.push(String(config.url));
+    const hata: any = new Error('Request failed with status code 400');
+    hata.isAxiosError = true;
+    hata.config = config;
+    hata.response = {
+      status: 400,
+      statusText: 'Bad Request',
+      data: { kod, message: 'Parolanız hatalı.' },
+      headers: {},
+      config,
+    };
+    return Promise.reject(hata);
+  }) as any;
+  try {
+    await expect(api.post(url, {})).rejects.toMatchObject({ response: { status: 400 } });
+  } finally {
+    api.defaults.adapter = oncekiAdapter;
+  }
+}
+
+const PAROLALI_OTURUM_UCLARI = ['/auth/change-password', '/auth/hesabimi-kapat'];
+
+describe.each(PAROLALI_OTURUM_UCLARI)('G — %s yanlis parola [t.16]', (uc) => {
+  it('G0 KAPI — istek gercekten o adrese gitti (bos kosum degil)', async () => {
+    await dortYuzAl(uc, 'PAROLA_HATALI');
+    expect(adapterCagrilariUrl).toEqual([uc]);
+  });
+
+  it('G1 — 400 PAROLA_HATALI oturumu SILMEZ', async () => {
+    // On kosul: silinecek bir oturum gercekten var.
+    expect(depo.getItem('token')).toBe(SEANS_JETONU);
+    expect(depo.getItem('user')).toBe(SEANS_KULLANICI);
+
+    await dortYuzAl(uc, 'PAROLA_HATALI');
+
+    expect({ token: depo.getItem('token'), user: depo.getItem('user') }).toEqual({
+      token: SEANS_JETONU,
+      user: SEANS_KULLANICI,
+    });
+  });
+
+  it('G2 — 400 PAROLA_HATALI YONLENDIRME yapmaz (ekran kendi mesajini gosterir)', async () => {
+    expect(pencere.location.href).toBe(BASLANGIC_URL);
+
+    await dortYuzAl(uc, 'PAROLA_HATALI');
+
+    expect(pencere.location.href).toBe(BASLANGIC_URL);
+  });
+
+  it('G3 ⟨NEGATIF⟩ — AYNI uctan gelen 401 HALA cikis yaptirir (liste gevsetilmedi)', async () => {
+    // ⚠ Bu assert, "duzeltelim" diye ucu KIMLIK_UCLARI'na ekleyen bir
+    // degisikligi yakalar: o zaman gercek oturum dusmesi sessizlesirdi.
+    expect(depo.getItem('token')).toBe(SEANS_JETONU);
+
+    await dortYuzBirAl(uc);
+
+    expect({ token: depo.getItem('token'), href: pencere.location.href }).toEqual({
+      token: null,
+      href: '/login',
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// H — ZAMAN ASIMI  [GORUNUR KUSURLAR TURU, G6 olcumu]
+//
+// KUSUR: axios ornegi `timeout` TASIMIYORDU; axios varsayilani 0 = SONSUZ.
+// Asilan istek hic dusmedigi icin `catch`/`finally` HIC kosmuyor, ekrandaki
+// `animate-spin` sonsuza kadar donuyordu.
+//
+// ⚠ BU BLOK 401 BLOKLARININ IKINCI YUZUDUR: yakalayici "hangi hata cikis
+// yaptirir" karari verirken AG HATASINI / ZAMAN ASIMINI gercek oturum
+// bitisinden ayirmak zorunda. Zaman asimi hatasinin `response`u YOKTUR;
+// H3 bunun bir varsayim degil OLCUM oldugunu gosterir.
+// ---------------------------------------------------------------------------
+describe('H — zaman asimi secimi (saf karar)', () => {
+  it('H1 — siradan JSON istegi VARSAYILAN sureyi alir (sonsuz DEGIL)', () => {
+    expect(zamanAsimiSec({ url: '/quotes' })).toBe(VARSAYILAN_ZAMAN_ASIMI_MS);
+    // ⚠ Olcut: varsayilan gercekten SONLU. 0 olsaydi kusur duruyordu.
+    expect(VARSAYILAN_ZAMAN_ASIMI_MS).toBeGreaterThan(0);
+  });
+
+  it('H2 — dosya yukleyen istek (multipart) AGIR sureyi alir', () => {
+    expect(
+      zamanAsimiSec({ url: '/excel-grid/prepare', headers: { 'Content-Type': 'multipart/form-data' } }),
+    ).toBe(AGIR_ZAMAN_ASIMI_MS);
+    // Yol listesinde OLMAYAN bir yukleme de agir sayilmali (liste bakimsiz
+    // kalsa bile yeni yukleme ekrani 30 sn'de kesilmesin).
+    expect(
+      zamanAsimiSec({ url: '/firma/logo', headers: { 'Content-Type': 'multipart/form-data' } }),
+    ).toBe(AGIR_ZAMAN_ASIMI_MS);
+  });
+
+  it('H2b — AI / cikti uclari govdesiz de olsa AGIR sureyi alir', () => {
+    // `/ai/translate` bir LLM cagrisi (max_tokens 16000); `/export` Excel uretir.
+    expect(zamanAsimiSec({ url: '/ai/translate' })).toBe(AGIR_ZAMAN_ASIMI_MS);
+    expect(zamanAsimiSec({ url: '/quotes/42/export' })).toBe(AGIR_ZAMAN_ASIMI_MS);
+    // ⚠ OLCUT: karar her seye "agir" demiyor.
+    expect(zamanAsimiSec({ url: '/auth/me' })).toBe(VARSAYILAN_ZAMAN_ASIMI_MS);
+  });
+
+  it('H2c — CAGIRANIN kendi suresi korunur (DwgUploader 120000/15000)', () => {
+    expect(zamanAsimiSec({ url: '/dwg/parse', timeout: 120_000 })).toBe(120_000);
+    expect(zamanAsimiSec({ url: '/quotes', timeout: 15_000 })).toBe(15_000);
+  });
+
+  it('H2d — AGIR sure, sunucunun (Caddy 600s) tavanini ASMAZ', () => {
+    // Istemci sunucudan UZUN beklerse hata "zaman asimi" degil "baglanti
+    // koptu" olarak gorunur; siralama korunmali.
+    expect(AGIR_ZAMAN_ASIMI_MS).toBeLessThan(600_000);
+    expect(AGIR_ZAMAN_ASIMI_MS).toBeGreaterThan(VARSAYILAN_ZAMAN_ASIMI_MS);
+  });
+
+  it('H3 ⭐ istek GERCEKTEN timeout ile gonderiliyor (kablolama, karar degil)', async () => {
+    // ⚠ "mekanizma var, baglanti yok" tuzagi: H1/H2 saf karari olcer ama
+    // `zamanAsimiSec` request interceptor'a BAGLANMAMIS olsaydi hepsi YESIL
+    // kalirdi. Burada giden istegin config'i okunur.
+    const gorulenTimeout: Array<number | undefined> = [];
+    const onceki = api.defaults.adapter;
+    api.defaults.adapter = ((config: any) => {
+      gorulenTimeout.push(config.timeout);
+      return Promise.resolve({ data: {}, status: 200, statusText: 'OK', headers: {}, config });
+    }) as any;
+    try {
+      await api.get('/quotes');
+      await api.post('/excel-grid/prepare', new FormData(), {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+    } finally {
+      api.defaults.adapter = onceki;
+    }
+    expect(gorulenTimeout).toEqual([VARSAYILAN_ZAMAN_ASIMI_MS, AGIR_ZAMAN_ASIMI_MS]);
+  });
+});
+
+describe('H4 — zaman asimi OTURUMU DUSURMEZ', () => {
+  /** axios'un zaman asimi hatasi: `response` YOK, `code: ECONNABORTED`. */
+  async function zamanAsimiAl(url: string) {
+    const onceki = api.defaults.adapter;
+    api.defaults.adapter = ((config: any) => {
+      adapterCagrilariUrl.push(String(config.url));
+      const hata: any = new Error(`timeout of ${config.timeout}ms exceeded`);
+      hata.isAxiosError = true;
+      hata.code = 'ECONNABORTED';
+      hata.config = config;
+      hata.response = undefined;
+      return Promise.reject(hata);
+    }) as any;
+    try {
+      await expect(api.get(url)).rejects.toMatchObject({ code: 'ECONNABORTED' });
+    } finally {
+      api.defaults.adapter = onceki;
+    }
+  }
+
+  it('H4a KAPI — istek gercekten adapter e ulasti (bos kosum degil)', async () => {
+    await zamanAsimiAl('/quotes');
+    expect(adapterCagrilariUrl).toEqual(['/quotes']);
+  });
+
+  it('H4b ⭐ zaman asimi oturumu SILMEZ (401 dali `response`suz hatada kosmaz)', async () => {
+    expect(depo.getItem('token')).toBe(SEANS_JETONU);
+
+    await zamanAsimiAl('/quotes');
+
+    expect({ token: depo.getItem('token'), user: depo.getItem('user') }).toEqual({
+      token: SEANS_JETONU,
+      user: SEANS_KULLANICI,
+    });
+  });
+
+  it('H4c ⭐ zaman asimi /login e YONLENDIRMEZ (kullanici sayfasinda kalir)', async () => {
+    expect(pencere.location.href).toBe(BASLANGIC_URL);
+
+    await zamanAsimiAl('/quotes');
+
+    expect(pencere.location.href).toBe(BASLANGIC_URL);
+  });
+
+  it('H4d — hata CAGIRANA ulasiyor (spinner`i kapatacak catch/finally kossun)', async () => {
+    // ⚠ ASIL KUSUR BUYDU: istek hic dusmedigi icin `finally` HIC kosmuyordu.
+    // Yakalayici hatayi yutmus olsaydi (`return` / sessiz resolve) spinner
+    // yine sonsuz donerdi; bu assert reddin cagirana vardigini olcer.
+    const onceki = api.defaults.adapter;
+    api.defaults.adapter = ((config: any) => {
+      const hata: any = new Error('timeout of 30000ms exceeded');
+      hata.isAxiosError = true;
+      hata.code = 'ECONNABORTED';
+      hata.config = config;
+      return Promise.reject(hata);
+    }) as any;
+    let finallyKostu = false;
+    let yakalandi = false;
+    try {
+      try {
+        await api.get('/quotes');
+      } catch {
+        yakalandi = true;
+      } finally {
+        finallyKostu = true;
+      }
+    } finally {
+      api.defaults.adapter = onceki;
+    }
+    expect({ yakalandi, finallyKostu }).toEqual({ yakalandi: true, finallyKostu: true });
   });
 });

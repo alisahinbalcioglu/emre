@@ -21,6 +21,11 @@
  */
 
 import type { AbonelikDurumu } from './erisim-durumu';
+// ⚠ AYNI BİÇİMLEYİCİ, BİLEREK: kullanım kutusundaki "yenilenme 01.10.2026"
+// cümlesi de `trTarih`ten çıkar (`kalanKotaCumlesi`). İkinci bir tarih
+// biçimleyicisi yazmak, aynı ISO değerinden iki FARKLI gün yazabilirdi —
+// `trTarih` UTC+3'e sabitlenmiştir, `toLocaleDateString` tarayıcıya bağlıdır.
+import { trTarih } from '../teklif/ceviri-kota';
 
 export interface AbonelikOzeti {
   /** Paket kodu (orn. "pro-mek"); abonelik yoksa null. */
@@ -33,8 +38,18 @@ export interface AbonelikOzeti {
   durumEtiketi: string;
   /** Kalan gun; bilinmiyorsa null. */
   kalanGun: number | null;
-  /** Ikincil satir: "23 gun kaldi" / "Abonelik yok" gibi. */
+  /** Ikincil satir: "23 gun kaldi" / "Yenilenme 01.10.2026" / "Abonelik yok". */
   altMetin: string;
+  /**
+   * Dönemin yenilenme günü ("01.10.2026"); bilinmiyorsa null.
+   *
+   * ⚠ KAYNAK `GET /ai/translate/kota` → `donemBitis` (21.09'da ölçüldü):
+   * o dönem TAKVİM AYI DEĞİL, aynı `Abonelik` satırının dönemidir — çapa
+   * `Abonelik.olusturuldu`, adım `PaketSurumu.periyot × periyotAdedi`
+   * (`backend/.../ceviri-kotasi.ts` `kotaDonemi`). Yani kota dönemi ile
+   * abonelik dönemi AYNI dönemdir; ekran ikisini TEK kaynaktan okur.
+   */
+  yenilenmeGunu: string | null;
   /** Iptal edilebilir mi? Yalniz YASAYAN abonelikte anlamli. */
   iptalEdilebilir: boolean;
 }
@@ -80,6 +95,18 @@ export function durumEtiketi(durum: string): string {
  * ⚠ `karar` null olabilir (yetenekler henuz gelmedi ya da saglayici yok).
  * O durumda "abonelik yok" DEMEYIZ — bilmiyoruz demektir; yanlis bilgi
  * vermektense bos birakiriz.
+ *
+ * ── İKİ PANELİN ÇELİŞKİSİ (21.09.2026'da ölçüldü) ──────────────────────
+ * Hesap sayfasında kullanım kutusu "yenilenme 01.10.2026" derken abonelik
+ * kutusu "Yenileme tarihi belirtilmemiş" diyordu. Sebep metin değil KAYNAK:
+ * `kalanGun`, `ErisimKarari`da DENEME / tolerans / iptal sonrası için tutulan
+ * bir GERİ SAYIMDIR ve AKTIF abonelikte sunucu onu BİLEREK `null` döndürür
+ * (`backend/.../erisim.servisi.ts`, `case AKTIF`). Yani ödeyen müşteri o
+ * cümleyi HER ZAMAN görüyordu; "belirtilmemiş" doğru değildi — yenilenme
+ * günü biliniyordu, yalnız bu alanda değildi.
+ *
+ * Çözüm: yenilenme günü kullanım kutusuyla AYNI kaynaktan okunur
+ * (`donemBitisISO`). `kalanGun` yalnız kendi anlamıyla kullanılır.
  */
 export function abonelikOzeti(
   karar: {
@@ -87,7 +114,15 @@ export function abonelikOzeti(
     durum?: string | null;
     kalanGun?: number | null;
   } | null | undefined,
+  /**
+   * Dönem bitişi (ISO) — `GET /ai/translate/kota` → `donemBitis`. Verilmezse
+   * davranış eskisiyle BİREBİR aynıdır (geriye dönük uyumlu).
+   */
+  donemBitisISO?: string | null,
 ): AbonelikOzeti {
+  // Geçersiz/boş ISO uydurulmuş tarih üretmesin: `trTarih` boş dize döner.
+  const yenilenmeGunu = (donemBitisISO ? trTarih(donemBitisISO) : '') || null;
+
   if (!karar) {
     return {
       paketKodu: null,
@@ -97,6 +132,7 @@ export function abonelikOzeti(
       kalanGun: null,
       altMetin: 'Abonelik bilgisi yükleniyor',
       iptalEdilebilir: false,
+      yenilenmeGunu: null,
     };
   }
 
@@ -112,6 +148,8 @@ export function abonelikOzeti(
       kalanGun: null,
       altMetin: 'Devam etmek için bir paket seçin',
       iptalEdilebilir: false,
+      // Paket yokken "yenilenme" diye bir gün yoktur.
+      yenilenmeGunu: null,
     };
   }
 
@@ -124,10 +162,20 @@ export function abonelikOzeti(
     durum,
     durumEtiketi: durumEtiketi(durum),
     kalanGun,
+    yenilenmeGunu,
+    /**
+     * ⚠ SIRA ÖNEMLİ: `kalanGun` doluysa o SUNUCUNUN söylediği geri sayımdır
+     * (deneme bitişi / tolerans / iptalden sonra kalan erişim) ve dönem
+     * bitişinden FARKLI bir gün olabilir — ikisini birlikte yazmak ekranda
+     * yeni bir çelişki üretirdi. Yenilenme günü yalnız geri sayım YOKKEN
+     * (yani normal yürüyen abonelikte) yazılır.
+     */
     altMetin:
-      kalanGun === null
-        ? 'Yenileme tarihi belirtilmemiş'
-        : `${kalanGun} gün kaldı`,
+      kalanGun !== null
+        ? `${kalanGun} gün kaldı`
+        : yenilenmeGunu
+          ? `Yenilenme ${yenilenmeGunu}`
+          : 'Yenileme tarihi belirtilmemiş',
     // ⚠ Goc paketi de iptal EDILEBILIR sayilir: musteri isterse cikabilmeli.
     iptalEdilebilir: YASAYAN_DURUMLAR.has(durum),
   };

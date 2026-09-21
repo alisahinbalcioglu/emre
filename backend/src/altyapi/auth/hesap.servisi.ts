@@ -18,6 +18,7 @@ import {
 } from '../../ozellik/firma/uyelik-kurallari';
 import { firmaRolaGoreSuz } from '../../ozellik/firma/firma-maskele';
 import { yakinZamandaGirisMi } from './oturum.servisi';
+import { PAROLA_HATALI_YANIT } from './parola-kurali';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -401,7 +402,17 @@ export class HesapServisi {
       }
     } else {
       const dogru = await bcrypt.compare(parola, user.password);
-      if (!dogru) throw new UnauthorizedException('Parolaniz hatali.');
+      // ⚠ 400 — 401 DEGIL (Gorunur kusurlar turu, t.16). Uc KORUMALI; token
+      // gecerli, yalniz GOVDEDEKI parola yanlis. 401 donuldugu surece
+      // `frontend/ortak/lib/api.ts` yakalayicisi token'i silip kullaniciyi
+      // `/login`e atiyordu: hesabini kapatmak isteyen kisi parolayi yanlis
+      // yazinca "hesabim kapandi mi, atildim mi?" belirsizligiyle disari
+      // dusuyordu. Hemen yukaridaki YENIDEN_GIRIS_GEREKLI dali F3b'de ayni
+      // karari zaten vermisti. Gerekce: `parola-kurali.ts` PAROLA_HATALI_YANIT.
+      // ⚠ Hiz siniri BU KARARDAN BAGIMSIZ ve DURUYOR: auth.controller.ts:154
+      // `@Throttle({ ttl: 900_000, limit: 5 })` guard katmanindadir, yanit
+      // kodunu okumaz (parola-kapisi-test.ts C blogu olcer).
+      if (!dogru) throw new BadRequestException(PAROLA_HATALI_YANIT);
     }
 
     if (user.role === 'admin') {

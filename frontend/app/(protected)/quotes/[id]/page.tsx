@@ -31,11 +31,15 @@ import { adDisiplinTahmini } from '@/ozellik/tablo/disiplin';
 import type { Currency, LaborFirm } from '@/ortak/types/quotes';
 import type { Brand } from '@/ortak/types';
 import { TEKLIF_DURUMLARI, teklifDurumGorunumu } from '@/ozellik/teklif/durum';
+import { useKirintiEtiketi } from '@/ortak/kabuk/components/layout/kirinti-etiketi';
 
 interface QuoteDetail {
   id: string;
   title: string;
   createdAt: string;
+  /** Teklif numarasi (MP-YYYY-NNN). ILK Excel aktariminda atanir, sonra sabit
+   *  (backend `quotes.service.ts` exportXlsx) — hic aktarilmamis teklifte null. */
+  quoteNo?: string | null;
   user: { email: string };
   sheets?: any[];
   items: any[];
@@ -44,6 +48,17 @@ interface QuoteDetail {
    *  (odenmis ceviri varsa Ingilizce acilir; bkz. teklif-dil-karari.ts). */
   displayLanguage?: string;
 }
+
+/**
+ * SALT-OKUNUR MARKA GERI CAGIRIMI — modul duzeyinde SABIT.
+ *
+ * ⚠ t.14 (21.09, performans): burada satir ici `async () => null` vardi ve
+ * ExcelGrid'in 658 satirlik `columnDefs` memo'sunun bagimliligidir. Her
+ * render'da yeni bir fonksiyon kimligi uretildigi icin memo hicbir zaman
+ * tutmuyordu. Bu sayfa zaten salt-okunur (gercek duzenleme Duzenle ekraninda),
+ * yani geri cagirimin KAPANISA ihtiyaci yok — modul duzeyine cikarilabilir.
+ */
+const SALT_OKUNUR_MARKA = async (): Promise<null> => null;
 
 export default function QuoteDetailPage() {
   const params = useParams<{ id: string }>();
@@ -113,7 +128,7 @@ export default function QuoteDetailPage() {
           if (firstNonEmpty >= 0) setActiveSheetIndex(firstNonEmpty);
         }
       })
-      .catch(() => setError('Teklif yuklenirken hata olustu.'))
+      .catch(() => setError('Teklif yüklenirken hata oluştu.'))
       .finally(() => setIsLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
@@ -225,13 +240,55 @@ export default function QuoteDetailPage() {
     return ceviriDili === 'en' ? ingilizceGorunum(kayit, gorunumHaritasi ?? {}).sayfalar : turkceGorunum(kayit);
   }, [quote, ceviriDili, gorunumHaritasi]);
 
+  // ── t.8 (21.09): KIRINTI YOLUNDA HAM UUID YOK ─────────────────────────────
+  // "Teklifler › 84597204-70f0-…" yerine teklif numarasi; numara YOKSA teklif
+  // basligi. Numara ancak ILK Excel aktariminda atandigi icin (backend
+  // exportXlsx) hic aktarilmamis tekliflerde bos olur — geriye donuk numara
+  // VERILMEZ, gosterim basliga duser. Adres cubugundaki kimlik DEGISMEZ.
+  useKirintiEtiketi(id, quote ? (quote.quoteNo?.trim() || quote.title) : null);
+
+  // ── t.14 (21.09, performans) — IZGARA GIRDISI RENDER GOVDESINDE KURULMAZ ──
+  // Olculdu: `sheets`, `hiddenFields` ve `gridData` render govdesinde (eski
+  // :416-439) kuruluyordu, yani HER render yeni nesne. `gridData` ExcelGrid'in
+  // 658 satirlik `columnDefs` memo'sunun bagimliligi oldugu icin o memo her
+  // render'da bastan kosuyor ve AG Grid tum kolonlari yeniden uyguluyordu
+  // (kolon genisligi, hucre stilleri, cizerler). Nesneler artik girdileri
+  // degismedikce AYNI kimlikte kalir.
+  const sheets = useMemo(
+    () => gorunenSayfalar.filter((s: any) => !s.isEmpty),
+    [gorunenSayfalar],
+  );
+  const activeSheet = sheets[activeSheetIndex] ?? sheets[0];
+
+  const gridData: ExcelGridData | null = useMemo(() => {
+    if (!activeSheet) return null;
+    // Kayitta saklanan gizli-sutun tercihi (PRD v3.0 Part A) detayda da uygulanir.
+    const hiddenFields = new Set<string>(activeSheet.columnConfig?.hidden ?? []);
+    // GS8: kullanicinin kaydettigi kolon genislikleri detayda da uygulanir
+    const kayitliGenislikler: Record<string, number> = activeSheet.columnConfig?.widths ?? {};
+    return {
+      columnDefs: (activeSheet.columnDefs ?? []).map((c: any) => {
+        const g = kayitliGenislikler[c.field];
+        const temel = g ? { ...c, width: g } : c;
+        // Faz 6.11 (K-T3): detayda ad hucresi DUZENLENEMEZ — kaydedilmeyen
+        // hucre-ici duzenleme gorunumle ve kalici sozlukle karismasin.
+        const kilitli = c.field === activeSheet.columnRoles?.nameField ? { ...temel, editable: false } : temel;
+        return hiddenFields.has(c.field) ? { ...kilitli, hide: true } : kilitli;
+      }),
+      rowData: activeSheet.rowData ?? [],
+      columnRoles: activeSheet.columnRoles ?? {},
+      brands: allBrands,
+      headerEndRow: activeSheet.headerEndRow ?? 0,
+    };
+  }, [activeSheet, allBrands]);
+
   /**
    * REVIZE ET (14.08) — kayitli teklifi Duzenle ekraninda acar.
    *
    * ── NEDEN BU YOL ────────────────────────────────────────────────────────────
    * Kullanici bildirimi: "teklifi revize etmek istiyorum ancak bu kisimda
    * herhangi bir islem yapilamiyor (fiyat eslestirme vs)". Olculdu ve dogruydu:
-   * bu sayfa SALT-OKUNUR (`onBrandChange={async () => null}`) ama marka
+   * bu sayfa SALT-OKUNUR (marka geri cagirimi hicbir sey yapmaz) ama marka
    * secicileri GORUNUR ve tiklanabilir duruyordu — ustelik ust bantta "N satir
    * secim bekliyor" yaziyordu. Yani ekran kullaniciyi islem yapmaya CAGIRIYOR,
    * arkasinda hicbir sey yoktu. Duzenle ekrani da kayitli bir teklifi ID ile
@@ -314,26 +371,34 @@ export default function QuoteDetailPage() {
     toast({ title: b.baslik, description: b.aciklama, variant: b.hata ? 'destructive' : undefined });
   };
 
-  /** Kayittan gelen (gorunum kopyasi DEGIL) satirlarda anahtar → kalem kurallari. */
-  const ceviriKalemi = ceviriDili === 'en' && duzeltmeGorunumu?.duzeltmeAcik
-    ? {
-        goster: (row: any) => {
-          const adAlan = activeSheet?.columnRoles?.nameField;
-          if (!adAlan || !row?._isDataRow) return false;
-          return duzeltmeGorunumu.anahtarlar.has(ceviriAnahtari(satirKaynagi(row, adAlan)));
-        },
-        ac: (row: any) => {
-          const adAlan = activeSheet?.columnRoles?.nameField;
-          if (!adAlan) return;
-          const kaynak = ceviriAnahtari(satirKaynagi(row, adAlan));
-          setDuzeltmeHedefi({
-            kaynak,
-            gorunen: String(row[adAlan] ?? ''),
-            mevcut: duzeltmeGorunumu.duzeltmeler.get(kaynak) ?? null,
-          });
-        },
-      }
-    : undefined;
+  /** Kayittan gelen (gorunum kopyasi DEGIL) satirlarda anahtar → kalem kurallari.
+   *
+   *  ⚠ t.14 (21.09, performans): bu nesne render govdesinde kuruluyordu, yani
+   *  HER render yeni kimlik. ExcelGrid onu bir etkinin bagimliligi olarak
+   *  okuyor ve `refreshCells({ force: true })` ile AD KOLONUNU zorla yeniden
+   *  ciziyordu — kalem gorunurlugu hic degismemis olsa bile. Girdileri
+   *  degismedikce kimlik artik sabit. */
+  const ceviriKalemi = useMemo(() => (
+    ceviriDili === 'en' && duzeltmeGorunumu?.duzeltmeAcik
+      ? {
+          goster: (row: any) => {
+            const adAlan = activeSheet?.columnRoles?.nameField;
+            if (!adAlan || !row?._isDataRow) return false;
+            return duzeltmeGorunumu.anahtarlar.has(ceviriAnahtari(satirKaynagi(row, adAlan)));
+          },
+          ac: (row: any) => {
+            const adAlan = activeSheet?.columnRoles?.nameField;
+            if (!adAlan) return;
+            const kaynak = ceviriAnahtari(satirKaynagi(row, adAlan));
+            setDuzeltmeHedefi({
+              kaynak,
+              gorunen: String(row[adAlan] ?? ''),
+              mevcut: duzeltmeGorunumu.duzeltmeler.get(kaynak) ?? null,
+            });
+          },
+        }
+      : undefined
+  ), [ceviriDili, duzeltmeGorunumu, activeSheet]);
 
   /** Kayit/kaldirma sonrasi: gorunum haritasi ve firma sozlugu yeniden okunur. */
   const duzeltmeSonrasi = async (kaynak: string) => {
@@ -407,37 +472,11 @@ export default function QuoteDetailPage() {
       <div>
         <GeriButonu hedef="/quotes" />
         <div className="rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
-          {error ?? 'Teklif bulunamadi.'}
+          {error ?? 'Teklif bulunamadı.'}
         </div>
       </div>
     );
   }
-
-  const sheets = gorunenSayfalar.filter((s: any) => !s.isEmpty);
-  const activeSheet = sheets[activeSheetIndex] ?? sheets[0];
-
-  // Kayitta saklanan gizli-sutun tercihi (PRD v3.0 Part A) detayda da uygulanir.
-  const hiddenFields = new Set<string>(activeSheet?.columnConfig?.hidden ?? []);
-  // GS8: kullanicinin kaydettigi kolon genislikleri detayda da uygulanir
-  const kayitliGenislikler: Record<string, number> = activeSheet?.columnConfig?.widths ?? {};
-
-  // Aktif sheet icin ExcelGridData olustur
-  const gridData: ExcelGridData | null = activeSheet
-    ? {
-        columnDefs: (activeSheet.columnDefs ?? []).map((c: any) => {
-          const g = kayitliGenislikler[c.field];
-          const temel = g ? { ...c, width: g } : c;
-          // Faz 6.11 (K-T3): detayda ad hucresi DUZENLENEMEZ — kaydedilmeyen
-          // hucre-ici duzenleme gorunumle ve kalici sozlukle karismasin.
-          const kilitli = c.field === activeSheet.columnRoles?.nameField ? { ...temel, editable: false } : temel;
-          return hiddenFields.has(c.field) ? { ...kilitli, hide: true } : kilitli;
-        }),
-        rowData: activeSheet.rowData ?? [],
-        columnRoles: activeSheet.columnRoles ?? {},
-        brands: allBrands,
-        headerEndRow: activeSheet.headerEndRow ?? 0,
-      }
-    : null;
 
   return (
     <div>
@@ -446,7 +485,20 @@ export default function QuoteDetailPage() {
         <div>
           <GeriButonu hedef="/quotes" />
           <h1 className="text-2xl font-bold tracking-tight">{quote.title}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{new Date(quote.createdAt).toLocaleDateString('tr-TR')}</p>
+          <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
+            {/* t.8: numara VARSA gorunur. Yoksa yer tutucu basilmaz — "numara
+                bekliyor" gibi bir soz vermeyiz; numara ilk Excel aktariminda
+                dogar (backend exportXlsx) ve bu ekran onu uretmez. */}
+            {quote.quoteNo ? (
+              <span
+                className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-xs font-semibold tracking-tight text-foreground"
+                title="Teklif numarası — ilk Excel aktarımında verilir, sonra değişmez."
+              >
+                {quote.quoteNo}
+              </span>
+            ) : null}
+            <span>{new Date(quote.createdAt).toLocaleDateString('tr-TR')}</span>
+          </p>
         </div>
         <div className="flex flex-col items-end gap-2">
         <div className="flex items-center gap-2">
@@ -652,7 +704,7 @@ export default function QuoteDetailPage() {
               // KUR-01 ikizi: simge GOSTERIM biriminden — kur yuklenmeden TL rakam "$" ile basilmaz
               currencySymbol={paraSimgesi(gosterimCurrency)}
               conversionRate={conversionRate}
-              onBrandChange={async () => null}
+              onBrandChange={SALT_OKUNUR_MARKA}
               sheetDiscipline={activeSheet?.discipline ?? adDisiplinTahmini(activeSheet?.name)}
               ceviriKalemi={ceviriKalemi}
               laborEnabled={(() => {
@@ -699,7 +751,7 @@ export default function QuoteDetailPage() {
         </>
       ) : (
         <div className="rounded-md border border-muted p-8 text-center text-sm text-muted-foreground">
-          Bu teklifte goruntulecek veri bulunamadi.
+          Bu teklifte görüntülenecek veri bulunamadı.
         </div>
       )}
     </div>

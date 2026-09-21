@@ -14,6 +14,7 @@ import { useRouter } from 'next/navigation';
 import api from '@/ortak/lib/api';
 import { ParolaAlani } from '@/ortak/ui/parola-alani';
 import { KimlikKabugu, KimlikDugmesi } from '@/ortak/ui/kimlik-kabugu';
+import { PAROLA_MIN } from '@/ortak/lib/parola-kurali';
 
 export default function ResetPasswordPage() {
   const router = useRouter();
@@ -84,7 +85,7 @@ export default function ResetPasswordPage() {
   return (
     <KimlikKabugu
       baslik="Yeni parolanızı belirleyin"
-      aciklama="En az 8 karakter olmalı. Kaydettiğinizde diğer cihazlardaki oturumlar kapanır."
+      aciklama={`En az ${PAROLA_MIN} karakter olmalı. Kaydettiğinizde diğer cihazlardaki oturumlar kapanır.`}
       altBaglanti={{ metin: 'Vazgeçtiniz mi?', baglantiMetni: 'Giriş yapın', href: '/login' }}
     >
       <form onSubmit={gonder} className="space-y-4">
@@ -97,7 +98,7 @@ export default function ResetPasswordPage() {
             value={parola}
             onChange={setParola}
             autoComplete="new-password"
-            minLength={8}
+            minLength={PAROLA_MIN}
           />
         </div>
         <div>
@@ -109,7 +110,7 @@ export default function ResetPasswordPage() {
             value={tekrar}
             onChange={setTekrar}
             autoComplete="new-password"
-            minLength={8}
+            minLength={PAROLA_MIN}
           />
         </div>
 

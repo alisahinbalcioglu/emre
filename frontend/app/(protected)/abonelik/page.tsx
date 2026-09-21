@@ -5,6 +5,10 @@ import api from '@/ortak/lib/api';
 import { KAPSAM_ETIKET, SEVIYE_ETIKET, donemEki, kotaCumlesi, odemeDenemeNotu, vitrinFiyati, type Paket } from '@/ozellik/odeme/paket-bicim';
 import { DenemeSatiri } from '@/ozellik/odeme/DenemeSatiri';
 import { kucultmeUyarisi } from '@/ozellik/firma/ekip/koltuk-metinleri';
+// ⚠ Paket adı/durum rozeti hesap sayfasıyla AYNI saf modülden: "miras-pro"
+// müşteriye teknik kodla gösterilmez, durum kodu ekran adına çevrilir. İkinci
+// bir çeviri yazmak iki ekranda iki farklı isim üretirdi.
+import { abonelikOzeti } from '@/ozellik/odeme/abonelik-ozeti';
 import {
   ALAN_ETIKET,
   ZORUNLU_ALANLAR,
@@ -71,13 +75,28 @@ export default function AbonelikSayfasi() {
   const [firmaRol, setFirmaRol] = useState<string | null>(null);
   const [aktifKullanici, setAktifKullanici] = useState<number | null>(null);
   const [kucultmeSorusu, setKucultmeSorusu] = useState<{ id: string; metin: string } | null>(null);
+  /**
+   * ── MEVCUT PAKET (21.09.2026) ─────────────────────────────────────────
+   * Ölçüldü: beş kartın beşinde de "Bu paketi seç" vardı; kullanıcı ZATEN
+   * kullandığı pakete basabiliyordu ve ekranda hangisinde olduğunu söyleyen
+   * hiçbir işaret yoktu. Bilgi ZATEN elde: aşağıdaki `/auth/me` çağrısı
+   * `erisim`i de taşıyor (`ErisimKarari.paketKodu`) — YENİ İSTEK YOK.
+   */
+  const [erisim, setErisim] = useState<{
+    paketKodu?: string | null;
+    durum?: string | null;
+    kalanGun?: number | null;
+  } | null>(null);
 
   const kimligiGetir = useCallback(async () => {
     try {
       const { data } = await api.get('/auth/me');
       setFirmaRol(data?.firmaRol ?? null);
+      setErisim(data?.erisim ?? null);
     } catch {
       setFirmaRol(null);
+      // Bilinmiyor = "paketiniz yok" DEĞİL: hiçbir kart işaretlenmez.
+      setErisim(null);
     }
     try {
       const { data } = await api.get('/firma/uyeler');
@@ -309,6 +328,12 @@ export default function AbonelikSayfasi() {
     );
   }
 
+  // Paket adı ve durum rozeti hesap sayfasıyla AYNI saf modülden gelir.
+  const ozet = abonelikOzeti(erisim);
+  // `erisim` gelmeden HİÇBİR kart işaretlenmez (yanlış kartı "mevcut" demek,
+  // müşteriyi yanlış pakete yükseltmeye iterdi).
+  const mevcutPaketKodu = ozet.paketKodu;
+
   return (
     <div className="mx-auto max-w-5xl">
       <h1 className="mb-1 text-2xl font-bold">Abonelik</h1>
@@ -316,6 +341,35 @@ export default function AbonelikSayfasi() {
         Paketinizi seçin. Dolar tutarları referanstır; tahsilat TL olarak,
         KDV dahil yapılır.
       </p>
+
+      {/* ── ŞU ANKİ ABONELİK: bilgi satırı ──────────────────────────────
+          ⚠ 03.09 kullanıcı kararı KORUNUYOR: iptal DÜĞMESİ buraya GERİ
+          KONMADI ("müşterinin gözüne sokmayalım, iptal en az üç tıklama
+          derinlikte olsun"). Burada yalnız iptalin NEREDE olduğu söyleniyor
+          ve bu, Ön Bilgilendirme Formu §9 ile Mesafeli Satış Sözleşmesi §6'nın
+          tarif ettiği yolun BİREBİR aynısıdır (Profil → Abonelik kartı →
+          "Abonelik yönetimi"). Bağı izleyen kullanıcı için derinlik azalmaz:
+          sayfayı aç → bölümü aç → bağa bas → onayla. */}
+      {mevcutPaketKodu && (
+        <div className="mb-6 rounded-xl border bg-muted/30 px-4 py-3 text-sm">
+          <p className="font-medium">
+            Şu anki paketiniz: {ozet.baslik}
+            {ozet.durumEtiketi && (
+              <span className="ml-2 rounded-md bg-background px-2 py-0.5 text-xs font-medium">
+                {ozet.durumEtiketi}
+              </span>
+            )}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Dönem kullanımınız ve yenilenme gününüz{' '}
+            <a href="/profile" className="font-medium text-blue-600 hover:underline">
+              Hesabım
+            </a>{' '}
+            sayfasındadır. Aboneliğinizi sonlandırmak isterseniz: Hesabım →
+            Abonelik → &quot;Abonelik yönetimi&quot;.
+          </p>
+        </div>
+      )}
 
       {/* ⚠ MEVCUT DURUM KARTI VE IPTAL DUGMESI BURADAN KALDIRILDI
           (03.09 kullanici karari): "Aboneligi iptal et dugmesini buradan
@@ -344,11 +398,31 @@ export default function AbonelikSayfasi() {
         // alır: açıklaması uzun ya da hiç olmayan paket, komşusunun fiyatını ve
         // düğmesini kaydırmaz. Açıklama yoksa satır boş kutuyla tutulur.
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {paketler.map((p) => (
-            <div key={p.paketId} className="row-span-5 grid grid-rows-subgrid gap-0 rounded-xl border bg-card p-5">
+          {paketler.map((p) => {
+            // ⚠ Kod eşitliği, ad değil: aynı adı taşıyan iki sürüm olabilir.
+            // `mevcutPaketKodu` null iken (bilgi gelmedi / abonelik yok)
+            // HİÇBİR kart işaretlenmez.
+            const mevcutMu = !!mevcutPaketKodu && p.kod === mevcutPaketKodu;
+            // ⚠ `className` DÜZ DİZGE KALMALI: Faz 6.1 kart hizası kapısı
+            // (`fiyat-sayfasi.test.ts` → `siniflar`) sınıfları AST'den okur ve
+            // şablon dizgesini okuyamaz — ilk yazımda şablon dizge kullanıldı,
+            // kapı KIRMIZI verdi (ızgara "yok" sanıldı). Vurgu bu yüzden
+            // `data-mevcut` değişkeniyle yapılıyor.
+            return (
+            <div
+              key={p.paketId}
+              data-mevcut={mevcutMu ? 'true' : undefined}
+              aria-current={mevcutMu ? 'true' : undefined}
+              className="row-span-5 grid grid-rows-subgrid gap-0 rounded-xl border bg-card p-5 data-[mevcut=true]:border-primary data-[mevcut=true]:ring-1 data-[mevcut=true]:ring-primary"
+            >
               <div className="mb-3">
                 <h2 className="text-lg font-bold">{p.ad}</h2>
                 <div className="mt-1 flex flex-col items-start gap-1.5">
+                  {mevcutMu && (
+                    <span className="rounded-md bg-primary px-2 py-0.5 text-xs font-semibold text-primary-foreground">
+                      Mevcut paketiniz
+                    </span>
+                  )}
                   <span className="rounded-md bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
                     {KAPSAM_ETIKET[p.kapsam] ?? p.kapsam}
                   </span>
@@ -394,10 +468,21 @@ export default function AbonelikSayfasi() {
                 {p.ceviriKotasi && <li>· {kotaCumlesi(p.ceviriKotasi, p.surum)}</li>}
               </ul>
 
+              {/* ⚠ MEVCUT PAKET KAPISI ÜÇLÜ İFADENİN İÇİNE KONDU, DIŞINA DEĞİL:
+                  Faz 6.1 kart hizası kapısı (`fiyat-sayfasi.test.ts`) kartın
+                  doğrudan çocuklarında "koşulla düşebilen satır" aramıyor
+                  olsa da, iki kolu da JSX OLMAYAN bir üçlü ifadeyi satır
+                  düşürüyor sayıyor. İlk yazımda dışarı sarılmıştı, kapı
+                  kırmızı verdi. Karar aynı, yeri farklı. */}
               {firmaRol === 'sahip' ? (
                 <button
                   type="button"
+                  // Zaten kullanılan pakete basılamaz: düğme EYLEM ÜRETMEZ.
+                  disabled={mevcutMu}
                   onClick={() => {
+                    // İkinci kapı ("sessiz dal yok"): klavye ya da eski bir
+                    // durumla buraya düşülürse de satın alma başlamaz.
+                    if (mevcutMu) return;
                     // ⚠ Kucultme UYARIDIR, ret DEGIL (R1-Y4): Emre kucultmeyi
                     // serbest birakip fazla uyeyi durdurmayi secti. Sunucu
                     // satin almayi REDDETMEZ.
@@ -411,17 +496,18 @@ export default function AbonelikSayfasi() {
                     }
                     paketiSec(p.surum.paketSurumuId);
                   }}
-                  className="mt-auto rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                  className="mt-auto rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Bu paketi seç
+                  {mevcutMu ? 'Mevcut paketiniz' : 'Bu paketi seç'}
                 </button>
               ) : (
                 <p className="mt-auto rounded-lg border border-border px-4 py-2 text-center text-sm text-muted-foreground">
-                  Aboneliği firma sahibi yönetir.
+                  {mevcutMu ? 'Mevcut paketiniz' : 'Aboneliği firma sahibi yönetir.'}
                 </p>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

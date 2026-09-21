@@ -493,11 +493,11 @@ export default function LibraryPage() {
           discountRate: state.sourceValue,
         });
         toast({
-          title: 'Iskonto kopyalandi',
-          description: `%${state.sourceValue} iskonto ${targetIds.length} malzemeye uygulandi.`,
+          title: 'İskonto kopyalandı',
+          description: `%${state.sourceValue} iskonto ${targetIds.length} malzemeye uygulandı.`,
         });
       } catch {
-        toast({ title: 'Hata', description: 'Toplu iskonto kopyalanamadi.', variant: 'destructive' });
+        toast({ title: 'Hata', description: 'Toplu iskonto kopyalanamadı.', variant: 'destructive' });
         await fetchAll(); // rollback
       }
     }
@@ -533,12 +533,12 @@ export default function LibraryPage() {
     // A2 (tur 3): bos → null (bugunku gibi); belirsiz / sayi degil → uyari
     const fiyatG = formSayisiOku(editingPriceValue, 'fiyat');
     if (fiyatG.uyari) {
-      toast({ title: 'Uyari', description: fiyatG.uyari, variant: 'destructive' });
+      toast({ title: 'Uyarı', description: fiyatG.uyari, variant: 'destructive' });
       return;
     }
     const newVal = fiyatG.deger;
     if (newVal !== null && (isNaN(newVal) || newVal < 0)) {
-      toast({ title: 'Uyari', description: 'Fiyat 0 veya ustu olmali.', variant: 'destructive' });
+      toast({ title: 'Uyarı', description: 'Fiyat 0 veya üstü olmalı.', variant: 'destructive' });
       return;
     }
     const oldVal = item.customPrice ?? item.listPrice ?? null;
@@ -562,24 +562,24 @@ export default function LibraryPage() {
     // A2 (tur 3): toplu iskontoda "1.250" / "abc" TUM markaya yazilmaz — uyari
     const iskontoG = formSayisiOku(bulkDiscountValue, 'iskonto');
     if (iskontoG.uyari) {
-      toast({ title: 'Uyari', description: iskontoG.uyari, variant: 'destructive' });
+      toast({ title: 'Uyarı', description: iskontoG.uyari, variant: 'destructive' });
       return;
     }
     const val = iskontoG.deger ?? 0;
     if (isNaN(val) || val < 0 || val > 100) {
-      toast({ title: 'Uyari', description: 'Iskonto 0-100 arasinda olmali.', variant: 'destructive' });
+      toast({ title: 'Uyarı', description: 'İskonto 0-100 arasında olmalı.', variant: 'destructive' });
       return;
     }
     try {
       const { data: res } = await api.post('/library/bulk-discount', { brandId, discountRate: val });
-      toast({ title: 'Basarili', description: `${res.updated} malzemeye %${val} iskonto uygulandi.` });
+      toast({ title: 'Başarılı', description: `${res.updated} malzemeye %${val} iskonto uygulandı.` });
       setLibrary((prev) =>
         prev.map((li) => (li.brandId === brandId ? { ...li, discountRate: val } : li)),
       );
       setBulkDiscountBrandId(null);
       setBulkDiscountValue('');
     } catch {
-      toast({ title: 'Hata', description: 'Toplu iskonto uygulanamadi.', variant: 'destructive' });
+      toast({ title: 'Hata', description: 'Toplu iskonto uygulanamadı.', variant: 'destructive' });
     }
   }
 
@@ -621,13 +621,13 @@ export default function LibraryPage() {
         </Link>
         <Link href="/labor-firms?discipline=mechanical" className="flex flex-col items-center gap-3 rounded-xl border-2 border-muted p-6 text-sm font-medium transition-all hover:border-blue-500 hover:bg-blue-50 hover:shadow-md">
           <Wrench className="h-8 w-8 text-blue-500" />
-          <span className="text-base font-semibold">Mekanik Iscilik</span>
+          <span className="text-base font-semibold">Mekanik İşçilik</span>
           <span className="text-xs text-muted-foreground">Firmalar, fiyat listeleri</span>
         </Link>
         <Link href="/quote-formats" className="flex flex-col items-center gap-3 rounded-xl border-2 border-muted p-6 text-sm font-medium transition-all hover:border-emerald-500 hover:bg-emerald-50 hover:shadow-md">
           <FileText className="h-8 w-8 text-emerald-600" />
           <span className="text-base font-semibold">Teklif Formatlarım</span>
-          <span className="text-xs text-muted-foreground">Kapak + icmal sablonlari</span>
+          <span className="text-xs text-muted-foreground">Kapak + icmal şablonları</span>
         </Link>
       </div>
     </div>

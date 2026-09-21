@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import api from '@/ortak/lib/api';
 import { kimlikHataMetni } from '@/ortak/lib/kimlik-hata-metinleri';
 import { koltukSayaciMetni } from '@/ozellik/firma/ekip/koltuk-metinleri';
+import { uyeSatirMetni } from '@/ozellik/firma/ekip/kisi-metinleri';
 
 /**
  * FAZ 7 F1b — EKIP SAYFASI (§6.5).
@@ -55,8 +56,11 @@ type GuvenlikDurumu = {
   sahipMfaAcik: boolean;
 };
 
-const gorunenAd = (u: Uye) =>
-  [u.ad, u.soyad].filter(Boolean).join(' ').trim() || u.eposta;
+/**
+ * ⚠ ESKI HAL `gorunenAd` ad boşken E-POSTAYA DÜŞÜYORDU ve kişi hücresi
+ * e-postayı ayrıca ikinci kez basıyordu → "a@b.coma@b.com" (21.09 ölçüldü).
+ * Karar artık `kisi-metinleri.ts`te; burada YENİDEN HESAPLANMAZ.
+ */
 
 export default function EkipSayfasi() {
   const [veri, setVeri] = useState<EkipYaniti | null>(null);
@@ -257,11 +261,17 @@ export default function EkipSayfasi() {
             </tr>
           </thead>
           <tbody>
-            {veri.uyeler.map((u) => (
+            {veri.uyeler.map((u) => {
+              const kisi = uyeSatirMetni(u);
+              return (
               <tr key={u.id} className="border-b border-slate-900">
                 <td className="px-4 py-2 text-slate-200">
-                  {gorunenAd(u)}
-                  <span className="ml-2 text-xs text-slate-500">{u.eposta}</span>
+                  {kisi.baslik}
+                  {/* Alt satır YALNIZ farklıysa çizilir: aynı değeri ikinci kez
+                      yazmak, adı olmayan üyede e-postayı iki kez gösteriyordu. */}
+                  {kisi.altSatir && (
+                    <span className="ml-2 text-xs text-slate-500">{kisi.altSatir}</span>
+                  )}
                 </td>
                 <td className="px-4 py-2 text-slate-300">
                   {u.firmaRol === 'sahip' ? 'Sahip' : 'Üye'}
@@ -319,7 +329,8 @@ export default function EkipSayfasi() {
                   </td>
                 )}
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </section>
@@ -387,7 +398,7 @@ export default function EkipSayfasi() {
           <div className="w-full max-w-md rounded border border-slate-700 bg-slate-900 p-5">
             <h3 className="text-sm font-semibold text-slate-100">Üyeyi ekipten çıkar</h3>
             <p className="mt-2 text-sm text-slate-400">
-              {gorunenAd(cikarilan)} ekipten çıkarılacak ve hesabına erişim kapanacak.
+              {uyeSatirMetni(cikarilan).baslik} ekipten çıkarılacak ve hesabına erişim kapanacak.
               Hazırladığı teklifler firmada kalır ve &quot;ayrıldı&quot; notuyla görünür.
             </p>
             <p className="mt-3 text-xs text-slate-400">

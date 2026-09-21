@@ -21,7 +21,7 @@
 // ============================================================
 
 // NOT: goreli yol ZORUNLU — vitest.config.ts'te '@/' alias'i tanimli degil.
-import { sayiAlani, sayiOku } from './sayi-alani';
+import { sayiAlani, sayiOku, trSayi } from './sayi-alani';
 
 // ============================================================
 // ADIM 8 (Kar Analizi onkosul turu, 06.08) — ONDALIK TEK KURAL (kalem 67)
@@ -198,10 +198,9 @@ export const PARA_ONDALIK = 2;
  * testin kendi yuvarlama modelini kurmasini onlemek: tek uygulama, tek yer.
  */
 export function paraBicim(vTRY: number, conversionRate: number, hane: number = PARA_ONDALIK): string {
-  return (vTRY * conversionRate).toLocaleString('tr-TR', {
-    minimumFractionDigits: hane,
-    maximumFractionDigits: hane,
-  });
+  // TR sayi dili TEK yerde (`sayi-alani.trSayi`): binlik nokta + ondalik virgul.
+  // t.5 (21.09) kusuru, miktar ve paranin AYRI bicimlendiricilerde durmasiydi.
+  return trSayi(vTRY * conversionRate, hane, hane);
 }
 
 /** UY2 (EMO AYVAZ 27.07): ETKIN MIKTAR — MİKTAR/BİRİM basliklari TERS

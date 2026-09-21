@@ -55,6 +55,20 @@ const KARAKTERSIZ = [
   // P1-ek (15.09): teklif tablosu ve kabuk
   'Sec', 'Iskonto', 'Giris', 'yapildi', 'Firmalari', 'Yonetim', 'Yonetimi', 'Kullanicilar', 'Kullanici',
   'Ayarlari', 'Kutuphanem', 'markalari',
+  // G3-ek (21.09, "Görünür kusurlar turu"): kütüphane/malzeme havuzu ekranları +
+  // dashboard/QuickStart.tsx ("Hizli Baslat" ana sayfa kutusu, brief t.6'da adıyla
+  // istenen düzeltme — G1/G4/G5 bitirdikten sonra çakışma kalmadığı için eklendi).
+  // ⚠ "disiplin" BİLEREK EKLENMEDİ: doğru yazılmış bir kelime (hukuki metinde ve
+  // /fiyatlar'da "disipline" olarak geçerli kullanımı var — yanlış kırmızı üretirdi).
+  // G3-ek3 (21.09): `labor-firms/page.tsx`'teki "Firma Adi"/"Henuz firma yok..." önce
+  // "dokunma" denip sonra ölçüm düzeltilip DÜZELTİLDİ (bkz. EKRANLAR/içerik kilidi) —
+  // "Henuz"/"Adi" artık güvenle eklenebiliyor.
+  'sablonlari', 'Kaldir', 'Belirtilmemis', 'eklenmemis', 'avantajli', 'Ayri', 'Tum', 'Kutuphaneme',
+  'kopyalandi', 'uygulandi', 'kopyalanamadi', 'Uyari', 'ustu', 'arasinda', 'Basarili', 'uygulanamadi',
+  'Markasiz', 'buyuk', 'ayiklanamadi', 'basarisiz', 'aktarildi', 'Aktarildi', 'Kutuphanenizdeki', 'Yukle',
+  'Aramanizla', 'eslesen', 'Ayiklanan', 'Dosyasi', 'ayiklandi', 'Ayiklaniyor', 'Ayikla', 'Orn', 'orn', 'Henuz',
+  'Adi', 'Yukaridan', 'firmanizi',
+  'kaldirildi', 'basariyla', 'Hizli', 'Baslat', 'Gecersiz', 'yukleyin', 'dosyasi',
 ];
 const KARA_LISTE = new RegExp(`(?<![\\p{L}\\p{N}])(?:${KARAKTERSIZ.join('|')})(?![\\p{L}\\p{N}])`, 'u');
 
@@ -150,6 +164,15 @@ describe('Ölçütün kendisi — tarayıcı metni koddan ayırıyor, kara liste
       'Iscilik fiyatlandirmasi Pro pakete dahildir.', 'Marka sec...', 'Firma sec...', '⚠ Iscilik Sec (', 'Iskonto %',
       'Iptal', 'Cikis Yap', 'Giris yapildi', 'Iscilik Firmalari', 'Kullanicilar', 'AI Ayarlari', 'Malzeme Yonetimi',
       'Kutuphanem', 'Kullanici', 'Malzeme markalari ve iscilik kalemleri',
+      // G3-ek (21.09): kütüphane / malzeme havuzu ekranları
+      'Kutuphaneme Aktar', 'Kaldir', 'Kapak + icmal sablonlari', 'Henuz mekanik marka eklenmemis.',
+      'Iskonto kopyalandi', 'Toplu iskonto kopyalanamadi.', 'Uyari', 'Fiyat 0 veya ustu olmali.', 'Basarili',
+      'Markasiz', 'PDF ayiklama basarisiz oldu.', 'Kutuphanenizdeki mekanik malzeme markalari', 'PDF Yukle',
+      'Aramanizla eslesen marka bulunamadi.', 'Ayiklanan Malzemeler', 'PDF Dosyasi (max 10MB)', 'Ayikla',
+      // G3-ek2 (21.09): dashboard/QuickStart.tsx ("Hizli Baslat" kutusu)
+      'Hizli Baslat', 'Gecersiz dosya', 'Excel (.xlsx/.xls) dosyasi yukleyin.', 'DWG veya DXF dosyasi yukleyin.',
+      // G3-ek3 (21.09): labor-firms/page.tsx (önce "dokunma" dendi, ölçüm düzeltilip düzeltildi)
+      'Firma Adi', 'orn. Ahmet Tesisat', 'Henuz firma yok. Yukaridan ilk firmanizi ekleyin.',
     ]) {
       expect(KARA_LISTE.test(eski), eski).toBe(true);
     }
@@ -161,6 +184,18 @@ describe('Ölçütün kendisi — tarayıcı metni koddan ayırıyor, kara liste
       'Pro pakete dahildir', 'diğer cihazlardaki oturumlar', 'section', 'donemEki',
       'İşçilik fiyatlandırması Pro pakete dâhildir.', 'Marka seç…', '⚠ İşçilik Seç (', 'İskonto %', 'Çıkış Yap',
       'Giriş yapıldı', 'Kütüphanem', 'Kullanıcılar', 'AI Ayarları', 'Malzeme Yönetimi', 'Malzeme markaları ve işçilik kalemleri',
+      // G3-ek (21.09): duzeltilen dogru bicimler yanlis yakalanmamali
+      'Kütüphaneme Aktar', 'Kaldır', 'Kapak + icmal şablonları', 'Henüz mekanik marka eklenmemiş.',
+      'İskonto kopyalandı', 'Toplu iskonto kopyalanamadı.', 'Uyarı', 'Fiyat 0 veya üstü olmalı.', 'Başarılı',
+      'Markasız', 'PDF ayıklama başarısız oldu.', 'Kütüphanenizdeki mekanik malzeme markaları', 'PDF Yükle',
+      'Aramanızla eşleşen marka bulunamadı.', 'Ayıklanan Malzemeler', 'PDF Dosyası (max 10MB)', 'Ayıkla',
+      // G3-ek2 (21.09): dashboard/QuickStart.tsx doğru biçimleri
+      'Hızlı Başlat', 'Geçersiz dosya', 'Excel (.xlsx/.xls) dosyası yükleyin.', 'DWG veya DXF dosyası yükleyin.',
+      // G3-ek3 (21.09): labor-firms/page.tsx doğru biçimleri
+      'Firma Adı', 'örn. Ahmet Tesisat', 'Henüz firma yok. Yukarıdan ilk firmanızı ekleyin.',
+      // "disiplin" kelimesi kendisi DOGRU Turkce (ozel karakter gerekmez) — kara listeye
+      // EKLENMEDI (bkz. KARAKTERSIZ yorumu); burada gecerliligini kanitlar.
+      'Paketler disipline göre farklılaşır',
     ]) {
       expect(KARA_LISTE.test(dogru), dogru).toBe(false);
     }
@@ -196,6 +231,15 @@ const EKRANLAR = [
   'ortak/kabuk/components/layout/Breadcrumb.tsx',
   'app/(protected)/layout.tsx', // üst menü: Giriş yapıldı / Çıkış Yap
   'ortak/kabuk/components/layout/Sidebar.tsx',
+  // G3-ek (21.09, "Görünür kusurlar turu" t.6): kütüphane / malzeme havuzu ekranları.
+  // NOT: `app/(protected)/materials/page.tsx` (yalnız /materials/mechanical'a
+  // yönlendirir) ve `library/electrical-brands/page.tsx` (elektrik — kapsam dışı,
+  // KURALLAR.md §"Elektrik") BİLEREK EKLENMEDİ.
+  'app/(protected)/library/page.tsx',
+  'app/(protected)/materials/mechanical/page.tsx',
+  'app/(protected)/library/mechanical-brands/page.tsx', // sahipsizdi, bu turda G3'e eklendi
+  'ortak/kabuk/components/dashboard/QuickAccess.tsx', // sahipsizdi, bu turda G3'e eklendi
+  'app/(protected)/dashboard/page.tsx', // G1'in dosyası — G1 21.09'da düzeltti (bkz. Kullanicilar→Kullanıcılar)
 ];
 
 describe('Ödeme / abonelik / paket ekranları, teklif tablosu ve kabukta karaktersiz Türkçe yok', () => {
@@ -258,6 +302,52 @@ describe('Düzeltilen metinler yerinde (içerik kilidi)', () => {
     // ikizler: aynı ekrandaki sayfa başlıkları
     expect(metinler('app/(protected)/profile/page.tsx')).toEqual(expect.arrayContaining(['Hesabım', 'Çıkış Yap']));
     expect(metinler('app/(protected)/library/page.tsx')).toEqual(expect.arrayContaining(['Kütüphanem', 'Malzeme markaları ve işçilik kalemleri']));
+  });
+
+  // G3-ek (21.09): kütüphane / malzeme havuzu ekranları — düzeltilen metinler yerinde
+  it('kütüphanem: mekanik işçilik kartı ve teklif format şablonları etiketi', () => {
+    expect(metinler('app/(protected)/library/page.tsx')).toEqual(
+      expect.arrayContaining(['Mekanik İşçilik', 'Kapak + icmal şablonları']),
+    );
+  });
+
+  it('malzeme havuzu (mekanik): kaldır / kütüphaneme aktar / boş liste metni', () => {
+    expect(metinler('app/(protected)/materials/mechanical/page.tsx')).toEqual(
+      expect.arrayContaining(['Kaldır', 'Kütüphaneme Aktar', 'Henüz mekanik marka eklenmemiş.']),
+    );
+  });
+
+  it('kütüphanem → mekanik markalar: PDF yükle akışı ve boş arama metni', () => {
+    expect(metinler('app/(protected)/library/mechanical-brands/page.tsx')).toEqual(
+      expect.arrayContaining(['PDF Yükle', 'Ayıklanan Malzemeler', 'Aramanızla eşleşen marka bulunamadı.']),
+    );
+  });
+
+  it('anasayfa hızlı erişim kartı: kütüphanem açıklaması', () => {
+    expect(metinler('ortak/kabuk/components/dashboard/QuickAccess.tsx')).toEqual(
+      expect.arrayContaining(['Kütüphanem', 'Markalar, iskontolar, işçilik']),
+    );
+  });
+
+  // G3-ek2 (21.09): dashboard/QuickStart.tsx — "Hızlı Başlat" kutusu (brief t.6, Ana sayfa)
+  it('anasayfa hızlı başlat kutusu: başlık ve dosya uyarı metinleri', () => {
+    expect(metinler('ortak/kabuk/components/dashboard/QuickStart.tsx')).toEqual(
+      expect.arrayContaining([
+        'Hızlı Başlat',
+        'Geçersiz dosya',
+        'Excel (.xlsx/.xls) dosyası yükleyin.',
+        'DWG veya DXF dosyası yükleyin.',
+      ]),
+    );
+  });
+
+  // G3-ek3 (21.09): labor-firms/page.tsx — önce "dokunma" dendi, ölçüm düzeltilip
+  // t.6 kapsamına girdiği netleşince düzeltildi (para birimi yazma yolu — ht.9 —
+  // ayrı, [firmaId]/page.tsx'te ve KAPSAM DIŞI kaldı, buraya dokunulmadı).
+  it('işçilik firmaları: firma adı etiketi ve boş liste metni', () => {
+    expect(metinler('app/(protected)/labor-firms/page.tsx')).toEqual(
+      expect.arrayContaining(['Firma Adı', 'Henüz firma yok. Yukarıdan ilk firmanızı ekleyin.']),
+    );
   });
 });
 

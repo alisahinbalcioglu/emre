@@ -542,6 +542,33 @@ const SUITES: Suite[] = [
   //    yeniden basımı onu tazelemez) · backend HİÇBİR YERDE çerez yazmaz.
   //    Mutant tablosu F3b raporunda (38 mutant). KIRMIZIYA DÖNERSE REGRESYON.
   { ad: 'Faz 7 kurumsal giriş: akış, eşleme, katılım, zorunluluk (K)', script: 'test:faz7-kurumsal', zincir: 'Z0' },
+  // ── t.3 (21.09.2026): ANA SAYFADAKİ DÖRT SAYAÇ. Pano bu sayıları
+  //    `GET /admin/stats` ucundan okuyordu; uç `@Roles('admin')` korumalı
+  //    olduğu için müşteride dört kutu HİÇ ÇİZİLMİYOR, admin'de ise SİSTEMİN
+  //    TAMAMININ sayıları (10 teklif / 21.723 malzeme / 4 kullanıcı) kendi
+  //    sayısı sanılıyordu. Yeni `GET /panel/ozet` kullanıcı kapsamlıdır.
+  //    Asıl kilit TUTARLILIK: özetin her sayısı, o listeyi üreten GERÇEK
+  //    servisin (QuotesService · LibraryService · UyelikServisi) aynı sahte
+  //    DB'de döndürdüğü adede EŞİT — iki ekranın farklı sayması bu turun
+  //    düzelttiği kusurun ta kendisiydi. DB GEREKTİRMEZ (sahte Prisma
+  //    `where`i gerçekten uygular), bu yüzden BEKLENEN_SKIP listesinde YOK.
+  { ad: 'Pano özeti: kullanıcı kapsamı + sayaç-liste tutarlılığı (t.3)', script: 'test:panel-ozet', zincir: 'Z0' },
+  // ── t.15 + t.16 (21.09.2026): PAROLA KAPISI. İki görünür kusur, tek kök:
+  //    "aynı kural iki yerde yazılıydı, biri güncellenip diğeri geride kaldı".
+  //    t.15 — `RegisterDto` çıplak `@MinLength(6)` taşıyordu, parola
+  //    değiştirme/sıfırlama/davet ise `parola-kurali.ts`ten 8 okuyordu; kayıt
+  //    ekranı da ayrıca "En az 6 karakter." yazıyordu. Kullanıcı 6 karakterle
+  //    hesap açıyor, ertesi gün aynı parolayı DEĞİŞTİREMİYORDU.
+  //    t.16 — yanlış MEVCUT parola sunucudan 401 dönüyordu; `api.ts`
+  //    yakalayıcısı korumalı uçtan gelen 401'i (doğru olarak) "oturum bitti"
+  //    sayıp token'ı siliyor, yani parolasını yanlış yazan kullanıcı parola
+  //    değiştirme ve hesap kapatma ekranından DIŞARI ATILIYORDU. Düzeltme
+  //    Faz 7 deseniyle sunucuda: 400 + `kod: PAROLA_HATALI`.
+  //    ⚠ C bloğu GÜVENLİK SINIRI: 401→400 geçişi kaba kuvvete kapı açmadı —
+  //    GERÇEK `ThrottlerGuard` gerçek depoyla koşturulur ve 6. denemede
+  //    `ThrottlerException` beklenir. Bu blok kırmızıya dönerse parola
+  //    deneme sınırı düşmüş demektir. DB GEREKTİRMEZ.
+  { ad: 'Parola kapısı: uzunluk tek kaynak + yanlış parola oturumdan atmaz (t.15/t.16)', script: 'test:parola-kapisi', zincir: 'Z0' },
 ];
 
 // ── SKIP DEFTERI (B1, para dogrulugu turu 14.09.2026) ──────────────────────

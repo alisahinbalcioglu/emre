@@ -8,14 +8,13 @@ import { oturumuYaz, girisSonrasiYol, girisDaliCoz, type GirisDali } from '@/ort
 import { GirisDaliEkrani } from '@/ozellik/kimlik/GirisDaliEkrani';
 import { kimlikHataMetni } from '@/ortak/lib/kimlik-hata-metinleri';
 import { ParolaAlani } from '@/ortak/ui/parola-alani';
-
 /**
- * ⚠ Sunucu kurali `backend/src/altyapi/auth/parola-kurali.ts` `PAROLA_MIN`
- * = 8. Burada 8 yaziliyor; kullaniciyi sunucunun reddedecegi bir parolayla
- * ugrastirmamak icin. (Not: `register/page.tsx:100` hâlâ 6 yaziyor —
- * sunucuyla uyumsuz, F1b kapsamı disinda birakildi.)
+ * ⚠ ELLE YAZILAN 8 KALDIRILDI (Gorunur kusurlar turu, 21.09). Bu dosyanin
+ * eski yorumu kusuru ZATEN tespit etmisti: "register/page.tsx hâlâ 6 yaziyor
+ * — sunucuyla uyumsuz". Artik uc ekran da AYNI sabiti okuyor ve sabitin
+ * sunucudakiyle esitligini `npm run test:parola-kapisi` kapisi olcuyor.
  */
-const PAROLA_MIN = 8;
+import { PAROLA_MIN } from '@/ortak/lib/parola-kurali';
 
 /**
  * FAZ 7 F1b — DAVET KABUL (§6.4). HERKESE AÇIK sayfa (giriş yapmamış kişi).

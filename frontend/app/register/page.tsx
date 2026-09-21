@@ -18,6 +18,7 @@ import { oturumuYaz, girisSonrasiYol, girisDaliCoz, type GirisDali } from '@/ort
 import { GirisDaliEkrani } from '@/ozellik/kimlik/GirisDaliEkrani';
 import api from '@/ortak/lib/api';
 import { ParolaAlani } from '@/ortak/ui/parola-alani';
+import { PAROLA_IPUCU, PAROLA_MIN } from '@/ortak/lib/parola-kurali';
 import { toast } from '@/ortak/hooks/use-toast';
 
 export default function RegisterPage() {
@@ -115,14 +116,17 @@ export default function RegisterPage() {
             <label htmlFor="password" className="mb-1.5 block text-xs font-semibold text-slate-700">
               Parola
             </label>
+            {/* ⚠ SAYIYI BURAYA ELLE YAZMAYIN. "En az 6 karakter." yaziyordu ve
+                sunucunun geri kalani 8 istiyordu; kural `@/ortak/lib/parola-kurali`
+                dosyasinda, sunucudaki `parola-kurali.ts` ile kapiyla esleniyor. */}
             <ParolaAlani
               id="password"
               value={password}
               onChange={setPassword}
               autoComplete="new-password"
-              minLength={6}
+              minLength={PAROLA_MIN}
             />
-            <p className="mt-1.5 text-[11px] text-slate-500">En az 6 karakter.</p>
+            <p className="mt-1.5 text-[11px] text-slate-500">{PAROLA_IPUCU}</p>
           </div>
 
           {/* ── FAZ 5.3 · ONAYLAR ──────────────────────────────────────

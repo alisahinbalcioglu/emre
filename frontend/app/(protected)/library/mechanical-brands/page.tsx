@@ -68,7 +68,7 @@ export default function MechanicalBrandsPage() {
         const disc = item.brand?.discipline;
         if (disc !== 'mechanical') continue;
         const bid = item.brandId ?? '_none';
-        const bname = item.brand?.name ?? 'Markasiz';
+        const bname = item.brand?.name ?? 'Markasız';
         if (!map.has(bid)) map.set(bid, { brandId: bid, brandName: bname, itemCount: 0 });
         map.get(bid)!.itemCount++;
       }
@@ -96,7 +96,7 @@ export default function MechanicalBrandsPage() {
   async function handlePdfExtract() {
     if (!pdfFile || !pdfBrandId) return;
     if (pdfFile.size > 10 * 1024 * 1024) {
-      toast({ title: 'Hata', description: 'Dosya boyutu 10MB\'dan buyuk olamaz.', variant: 'destructive' });
+      toast({ title: 'Hata', description: 'Dosya boyutu 10MB\'dan büyük olamaz.', variant: 'destructive' });
       return;
     }
     setPdfLoading(true);
@@ -117,13 +117,13 @@ export default function MechanicalBrandsPage() {
         toast({ title: `${sayiUyarilari.length} satırın fiyatı okunamadı`, description: sayiUyarilari.slice(0, 2).join(' · '), variant: 'destructive' });
       }
       if (items.length === 0) {
-        toast({ title: 'Uyari', description: 'PDF\'den malzeme ayiklanamadi.' });
+        toast({ title: 'Uyarı', description: 'PDF\'den malzeme ayıklanamadı.' });
         return;
       }
       setExtractedItems(items);
       setPdfStep('preview');
     } catch {
-      toast({ title: 'Hata', description: 'PDF ayiklama basarisiz oldu.', variant: 'destructive' });
+      toast({ title: 'Hata', description: 'PDF ayıklama başarısız oldu.', variant: 'destructive' });
     } finally {
       setPdfLoading(false);
     }
@@ -147,7 +147,7 @@ export default function MechanicalBrandsPage() {
       const lists = brandData.priceLists;
       if (lists && lists.length > 0) {
         const res = await api.post('/library/import-price-list', { brandId: pdfBrandId, priceListId: lists[0].id });
-        toast({ title: 'Basarili', description: `${res.data.imported} malzeme kutuphanenize aktarildi.` });
+        toast({ title: 'Başarılı', description: `${res.data.imported} malzeme kütüphanenize aktarıldı.` });
       } else {
         toast({ title: 'Kaydedildi', description: 'Malzemeler havuza eklendi.' });
       }
@@ -155,7 +155,7 @@ export default function MechanicalBrandsPage() {
       resetPdfDialog();
       fetchBrands();
     } catch {
-      toast({ title: 'Hata', description: 'Kaydetme basarisiz oldu.', variant: 'destructive' });
+      toast({ title: 'Hata', description: 'Kaydetme başarısız oldu.', variant: 'destructive' });
     } finally {
       setSaveLoading(false);
     }
@@ -169,7 +169,7 @@ export default function MechanicalBrandsPage() {
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <Package className="h-6 w-6" />Mekanik Markalar
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">Kutuphanenizdeki mekanik malzeme markalari</p>
+          <p className="mt-1 text-sm text-muted-foreground">Kütüphanenizdeki mekanik malzeme markaları</p>
         </div>
         <div className="flex items-center gap-2">
           <Button onClick={() => setManualOpen(true)}>
@@ -177,7 +177,7 @@ export default function MechanicalBrandsPage() {
           </Button>
           {isAdmin && (
             <Button variant="outline" onClick={() => setPdfOpen(true)}>
-              <Upload className="mr-2 h-4 w-4" />PDF Yukle (Admin)
+              <Upload className="mr-2 h-4 w-4" />PDF Yükle (Admin)
             </Button>
           )}
         </div>
@@ -201,7 +201,7 @@ export default function MechanicalBrandsPage() {
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed py-20">
           <Package className="mb-4 h-12 w-12 text-muted-foreground/50" />
           <p className="text-sm text-muted-foreground">
-            {searchQuery ? 'Aramanizla eslesen marka bulunamadi.' : 'Henuz mekanik marka eklenmemis.'}
+            {searchQuery ? 'Aramanızla eşleşen marka bulunamadı.' : 'Henüz mekanik marka eklenmemiş.'}
           </p>
           {!searchQuery && (
             <Link href="/materials" className="mt-4 text-sm text-primary underline">Malzeme Havuzundan Aktar</Link>
@@ -240,7 +240,7 @@ export default function MechanicalBrandsPage() {
       <Dialog open={pdfOpen} onOpenChange={(open) => { setPdfOpen(open); if (!open) resetPdfDialog(); }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{pdfStep === 'upload' ? 'PDF Yukle' : 'Ayiklanan Malzemeler'}</DialogTitle>
+            <DialogTitle>{pdfStep === 'upload' ? 'PDF Yükle' : 'Ayıklanan Malzemeler'}</DialogTitle>
           </DialogHeader>
 
           {pdfStep === 'upload' ? (
@@ -249,7 +249,7 @@ export default function MechanicalBrandsPage() {
                 <Label>Marka</Label>
                 <Select value={pdfBrandId} onValueChange={setPdfBrandId}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Marka secin" />
+                    <SelectValue placeholder="Marka seçin" />
                   </SelectTrigger>
                   <SelectContent>
                     {poolBrands.map((pb) => (
@@ -259,7 +259,7 @@ export default function MechanicalBrandsPage() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>PDF Dosyasi (max 10MB)</Label>
+                <Label>PDF Dosyası (max 10MB)</Label>
                 <Input
                   type="file"
                   accept=".pdf"
@@ -269,11 +269,11 @@ export default function MechanicalBrandsPage() {
             </div>
           ) : (
             <div className="max-h-96 overflow-auto py-4">
-              <p className="mb-3 text-sm text-muted-foreground">{extractedItems.length} malzeme ayiklandi.</p>
+              <p className="mb-3 text-sm text-muted-foreground">{extractedItems.length} malzeme ayıklandı.</p>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-left">
-                    <th className="pb-2 font-medium">Malzeme Adi</th>
+                    <th className="pb-2 font-medium">Malzeme Adı</th>
                     <th className="pb-2 font-medium">Birim</th>
                     <th className="pb-2 text-right font-medium">Birim Fiyat</th>
                   </tr>
@@ -294,9 +294,9 @@ export default function MechanicalBrandsPage() {
           <DialogFooter>
             {pdfStep === 'upload' ? (
               <>
-                <Button variant="outline" onClick={() => { setPdfOpen(false); resetPdfDialog(); }}>Iptal</Button>
+                <Button variant="outline" onClick={() => { setPdfOpen(false); resetPdfDialog(); }}>İptal</Button>
                 <Button onClick={handlePdfExtract} disabled={pdfLoading || !pdfFile || !pdfBrandId}>
-                  {pdfLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Ayiklaniyor...</> : 'Ayikla'}
+                  {pdfLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Ayıklanıyor...</> : 'Ayıkla'}
                 </Button>
               </>
             ) : (

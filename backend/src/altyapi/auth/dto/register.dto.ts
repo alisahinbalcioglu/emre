@@ -1,11 +1,18 @@
 import { IsEmail, IsString, MinLength, IsBoolean, IsOptional, Equals } from 'class-validator';
+import { PAROLA_MESAJI, PAROLA_MIN } from '../parola-kurali';
 
 export class RegisterDto {
   @IsEmail()
   email: string;
 
-  @IsString()
-  @MinLength(6)
+  /**
+   * ⚠ CIPLAK SAYI YAZMAYIN. Burada `@MinLength(6)` yaziyordu; parola
+   * degistirme/sifirlama/davet ise `parola-kurali.ts`ten 8 okuyordu. Ayni
+   * urunde iki politika vardi ve kayit ekrani da ayrica "En az 6 karakter."
+   * diye ucuncu bir yerde tekrar ediyordu. Kural TEK yerde.
+   */
+  @IsString({ message: PAROLA_MESAJI })
+  @MinLength(PAROLA_MIN, { message: PAROLA_MESAJI })
   password: string;
 
   // ── FAZ 5.3 · ONAY KUTULARI ─────────────────────────────────────────────

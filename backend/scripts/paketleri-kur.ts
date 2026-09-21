@@ -83,7 +83,7 @@ const PAKETLER = [
     kod: 'basic-mek',
     satistaMi: true,
     ad: 'Basic — Mekanik',
-    aciklama: 'Mekanik disiplinde malzeme kutuphanesi ve teklif hazirlama.',
+    aciklama: 'Mekanik disiplinde malzeme kütüphanesi ve teklif hazırlama.',
     kapsam: 'mechanical' as const,
     seviye: 'core' as const,
     // ⚠ FAZ 7 F1b (Emre karari E-2, 17.09): kullanici hakki FIRMA SAHIBI
@@ -103,7 +103,7 @@ const PAKETLER = [
     kod: 'pro-mek',
     satistaMi: true,
     ad: 'Pro — Mekanik',
-    aciklama: 'Mekanik: malzeme + iscilik + DWG metraj.',
+    aciklama: 'Mekanik: malzeme + işçilik + DWG metraj.',
     kapsam: 'mechanical' as const,
     seviye: 'pro' as const,
     kullaniciHakki: 2,
@@ -157,7 +157,7 @@ const PAKETLER = [
     // 17.09 (Emre karari): bkz. basic-elk — elektrik satista KALIYOR.
     satistaMi: true,
     ad: 'Pro — Mekanik + Elektrik',
-    aciklama: 'Iki disiplin: malzeme + iscilik + DWG metraj. Ayri ayri almaya gore %25 avantajli.',
+    aciklama: 'İki disiplin: malzeme + işçilik + DWG metraj. Ayrı ayrı almaya göre %25 avantajlı.',
     kapsam: 'mep' as const,
     seviye: 'pro' as const,
     kullaniciHakki: 3,

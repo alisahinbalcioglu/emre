@@ -73,7 +73,7 @@ export default function QuickStart({
     const tur = dosyaTuruSec(file.name);
     if (tur === 'excel') onExcelFile(file);
     else if (tur === 'dwg') onDwgFile(file);
-    else toast({ title: 'Gecersiz dosya', description: gecersizMesaji, variant: 'destructive' });
+    else toast({ title: 'Geçersiz dosya', description: gecersizMesaji, variant: 'destructive' });
   }, [onExcelFile, onDwgFile]);
 
   // ── Excel Drop ──
@@ -83,7 +83,7 @@ export default function QuickStart({
     setExcelDragOver(false);
     const file = e.dataTransfer.files?.[0];
     if (!file) return;
-    dosyayiYonlendir(file, "Excel (.xlsx/.xls) dosyasi yukleyin.");
+    dosyayiYonlendir(file, "Excel (.xlsx/.xls) dosyası yükleyin.");
   }, [dosyayiYonlendir]);
 
   // ── DWG Drop ──
@@ -93,26 +93,26 @@ export default function QuickStart({
     setDwgDragOver(false);
     const file = e.dataTransfer.files?.[0];
     if (!file) return;
-    dosyayiYonlendir(file, "DWG veya DXF dosyasi yukleyin.");
+    dosyayiYonlendir(file, "DWG veya DXF dosyası yükleyin.");
   }, [dosyayiYonlendir]);
 
   const handleExcelInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     // K6: SECICI yolunda da uzanti denetlenir — accept bir ipucudur, garanti degil.
-    if (file) dosyayiYonlendir(file, "Excel (.xlsx/.xls) dosyasi yukleyin.");
+    if (file) dosyayiYonlendir(file, "Excel (.xlsx/.xls) dosyası yükleyin.");
     e.target.value = '';
   };
 
   const handleDwgInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     // K6: SECICI yolunda da uzanti denetlenir (birim yine sorulmaz).
-    if (file) dosyayiYonlendir(file, "DWG veya DXF dosyasi yukleyin.");
+    if (file) dosyayiYonlendir(file, "DWG veya DXF dosyası yükleyin.");
     e.target.value = '';
   };
 
   return (
     <div className="rounded-xl border bg-card">
-      <div className="border-b px-5 py-3.5 text-sm font-semibold">Hizli Baslat</div>
+      <div className="border-b px-5 py-3.5 text-sm font-semibold">Hızlı Başlat</div>
       <div className="p-5">
         {/* Loading durumu */}
         {(excelUploading || dwgUploading) ? (

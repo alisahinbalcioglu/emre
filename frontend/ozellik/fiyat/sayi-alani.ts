@@ -273,19 +273,64 @@ export function makineMetni(n: number): string {
 }
 
 /**
- * GÖRÜNEN/KOPYALANAN METİN — miktar ve kâr hücresinin `valueFormatter`ı.
- * Saklı makine değeri TR ondalığıyla, BİNLİK GRUPLAMASIZ gösterilir:
+ * PANOYA GİDEN METİN — kâr hücresinin `valueFormatter`ı ve MİKTAR hücresinin
+ * KOPYALAMA okuyucusu. Saklı makine değeri TR ondalığıyla, BİNLİK GRUPLAMASIZ:
  * "12.375" → "12,375", 1250 → "1250". Sayı değilse (fitting "%35", eski metin)
  * olduğu gibi.
  *
  * NEDEN (E, tur3/a2 — ölçüldü): kopya AG Grid'in biçimlendiricisinden okunur ve
  * miktar hücresinin biçimlendiricisi YOKTU — pano ham "12.375" alıyor, yapıştırma
  * onu 12375 okuyordu (1000 kat). İnsan kuralı gelince aynı metin BELİRSİZ olurdu.
- * Gruplama da yasak: "1.250" kopyası yine belirsiz olurdu.
+ * Gruplama da yasak: "1.250" kopyası yine belirsiz olurdu (kural 7).
+ *
+ * ⚠ 21.09 (t.5) — GÖSTERİM BU FONKSİYONDAN AYRILDI. Miktar hücresi ekranda
+ * artık `miktarGosterimMetni` ile (binlik ayraçlı) çizilir; pano ise BU metni
+ * alır. İkisini tek fonksiyonda tutmak, "ekranda okunaklı" ile "yapıştırınca
+ * tek anlamlı" şartlarını birbirine kilitliyordu — biri kazanınca diğeri
+ * kaybediyordu. Ayrım ExcelGrid'de TEK yerde yapılır (`kopyalaSecim` miktar
+ * kolonunda biçimlendiriciyi ATLAR), o yüzden ikisi ayrışamaz.
  */
 export function hucreGosterimMetni(v: unknown): string {
   const n = sayiOku(v);
   return n === null ? String(v ?? '') : String(n).replace('.', ',');
+}
+
+/**
+ * TR SAYI DİLİ — TEK BİÇİMLENDİRİCİ: binlik NOKTA, ondalık VİRGÜL.
+ *
+ * ⚠ Para (`pricing.paraBicim`) ve miktar (`miktarGosterimMetni`) bu fonksiyonu
+ * çağırır; ızgarada "iki ayrı sayı dili" (t.5: Miktar `220227,39` ayraçsız ·
+ * Para `₺9.568.938,40` ayraçlı) ancak böyle bir daha doğamaz. Tek fark hane
+ * sayısıdır: para SABİT iki kuruş hanesi ister, miktar yazıldığı kadar.
+ *
+ * `maximumFractionDigits` en çok 20 olabilir (ECMA-402); miktarda yuvarlama
+ * OLMAMALI — `toLocaleString`in varsayılanı 3 hanede keser ve 3.123,6449
+ * sessizce 3.123,645 görünürdü.
+ */
+export function trSayi(n: number, enAzHane = 0, enCokHane = 20): string {
+  return n.toLocaleString('tr-TR', {
+    minimumFractionDigits: enAzHane,
+    maximumFractionDigits: enCokHane,
+  });
+}
+
+/**
+ * GÖRÜNEN MİKTAR — miktar hücresinin `valueFormatter`ı (t.5, 21.09.2026).
+ *
+ * KUSUR: aynı satırda Miktar `220227,39` (ayraçsız) ve Para `₺9.568.938,40`
+ * (ayraçlı) yazıyordu — iki sütun iki ayrı sayı dili konuşuyordu ve altı
+ * haneden sonra miktar gözle okunamıyordu.
+ *
+ * ⚠ GİRDİ DEĞİL GÖSTERİM: kullanıcı hücreye yazarken ayraç DAYATILMAZ.
+ * "13713,01" da "13.713,01" da kabul edilir; okuma kuralı `insanSayiOku`
+ * (A2, tur 3) ve bu tur ona DOKUNMADI.
+ *
+ * Sayı olmayan hücre (fitting oranı "%35", eski serbest metin) aynen geçer —
+ * `hucreGosterimMetni` ile aynı sözleşme.
+ */
+export function miktarGosterimMetni(v: unknown): string {
+  const n = sayiOku(v);
+  return n === null ? String(v ?? '') : trSayi(n);
 }
 
 /** AG Grid `valueParser` çekirdeğinin sonucu. */

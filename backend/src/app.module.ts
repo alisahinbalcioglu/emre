@@ -21,6 +21,7 @@ import { ExchangeRatesModule } from './ozellik/fiyat/exchange-rates/exchange-rat
 import { QuoteFormatsModule } from './ozellik/cikti/quote-formats/quote-formats.module';
 import { OdemeModule } from './ozellik/odeme/odeme.module';
 import { FirmaModule } from './ozellik/firma/firma.module';
+import { PanelModule } from './ozellik/panel/panel.module';
 
 @Module({
   imports: [
@@ -60,6 +61,7 @@ import { FirmaModule } from './ozellik/firma/firma.module';
     QuoteFormatsModule,
     OdemeModule,
     FirmaModule,
+    PanelModule,
   ],
   controllers: [HealthController],
 })

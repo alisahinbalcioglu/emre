@@ -15,8 +15,8 @@ const ITEMS = [
   {
     href: '/library',
     icon: BookOpen,
-    title: 'Kutuphanem',
-    desc: 'Markalar, iskontolar, iscilik',
+    title: 'Kütüphanem',
+    desc: 'Markalar, iskontolar, işçilik',
     iconBg: 'bg-emerald-50',
     iconColor: 'text-emerald-600',
   },

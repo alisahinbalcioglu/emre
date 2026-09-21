@@ -214,13 +214,13 @@ export default function NewQuotePage() {
           if (layer.segments && layer.segments.length > 0) {
             for (const seg of layer.segments) {
               const hatSistem = seg.layer || layer.hat_tipi || layer.layer || '';
-              const malzemeCap = seg.diameter || 'Belirtilmemis';
+              const malzemeCap = seg.diameter || 'Belirtilmemiş';
               add(hatSistem, malzemeCap, 'm', seg.length || 0);
             }
           } else {
             // Segment'siz layer (nadir) — sistem adi bilinir, kalem metni yok
             const hatSistem = layer.hat_tipi || layer.layer || '';
-            add(hatSistem, 'Belirtilmemis', 'm', layer.length || 0);
+            add(hatSistem, 'Belirtilmemiş', 'm', layer.length || 0);
           }
         }
         // ── EXCEL-VARI YAPI (spreadsheet UX) ──
@@ -309,7 +309,7 @@ export default function NewQuotePage() {
         setLiveRowDataBySheet({ 0: rows });
         setTitle(fileName.replace(/\.[^.]+$/, '') + ' — DWG Metraj');
         const itemCount = rows.filter((r) => r._isDataRow && !r._isSpareRow).length;
-        toast({ title: 'Metraj onaylandi', description: `${itemCount} kalem fiyatlandirmaya aktarildi` });
+        toast({ title: 'Metraj onaylandı', description: `${itemCount} kalem fiyatlandırmaya aktarıldı` });
         // REVIZYON TURU BEDELI (sessiz kayip yasak): ikinci kez fiyatlandirmaya
         // gelindiyse tablo TAZE metrajdan sifirdan kurulur — onceki turda
         // secilen marka/kar/fiyatlar TASINMAZ. Kullanici bunu ekranda gorsun.
@@ -325,8 +325,8 @@ export default function NewQuotePage() {
         // kullanici BILMELI — yoksa "onayladim ama tablo bos" tuzagi dogar.
         console.error('DWG metraj parse failed:', e);
         toast({
-          title: 'Metraj yuklenemedi',
-          description: 'Onaylanan DWG metraji tabloya aktarilamadi. Cizime donup metraji yeniden onaylayin.',
+          title: 'Metraj yüklenemedi',
+          description: 'Onaylanan DWG metrajı tabloya aktarılamadı. Çizime dönüp metrajı yeniden onaylayın.',
           variant: 'destructive',
         });
       }
@@ -632,8 +632,8 @@ export default function NewQuotePage() {
     }).catch((e: any) => {
       const kod = e?.response?.status;
       toast({
-        title: 'Iscilik firmalari yuklenemedi',
-        description: `Firma listesi alinamadi${kod ? ` (HTTP ${kod})` : ''} — liste bos gorunuyor ama BOS OLDUGU ICIN DEGIL. Sayfayi yenileyin.`,
+        title: 'İşçilik firmaları yüklenemedi',
+        description: `Firma listesi alınamadı${kod ? ` (HTTP ${kod})` : ''} — liste boş görünüyor ama BOŞ OLDUĞU İÇİN DEĞİL. Sayfayı yenileyin.`,
         variant: 'destructive',
       });
     });
@@ -655,8 +655,8 @@ export default function NewQuotePage() {
       .catch((e: any) => {
         const kod = e?.response?.status;
         toast({
-          title: 'Marka listesi yuklenemedi',
-          description: `Kutuphane markalari alinamadi${kod ? ` (HTTP ${kod})` : ''} — liste bos gorunuyor ama BOS OLDUGU ICIN DEGIL. Sayfayi yenileyin.`,
+          title: 'Marka listesi yüklenemedi',
+          description: `Kütüphane markaları alınamadı${kod ? ` (HTTP ${kod})` : ''} — liste boş görünüyor ama BOŞ OLDUĞU İÇİN DEĞİL. Sayfayı yenileyin.`,
           variant: 'destructive',
         });
       });
@@ -1183,7 +1183,7 @@ export default function NewQuotePage() {
       const uniqueNames = Array.from(new Set(allNames));
       console.log(`[SemanticCache] MISS: ${brandId}, AI eslestirme icin ${uniqueNames.length} malzeme gonderiliyor...`);
 
-      toast({ title: 'Eslestirme yapiliyor...', description: `${uniqueNames.length} malzeme araniyor.` });
+      toast({ title: 'Eşleştirme yapılıyor…', description: `${uniqueNames.length} malzeme aranıyor.` });
 
       try {
         const { data } = await api.post('/matching/bulk-match', {
@@ -1207,8 +1207,8 @@ export default function NewQuotePage() {
         const kod = e?.response?.status;
         console.error('[SemanticCache] Error:', e);
         toast({
-          title: 'Fiyatlar alinamadi',
-          description: `${uniqueNames.length} malzeme sorgulanamadi${kod ? ` (HTTP ${kod})` : ''} — satirlar fiyatsiz kaldi, "eslesme yok" DEGIL. Tekrar deneyin.`,
+          title: 'Fiyatlar alınamadı',
+          description: `${uniqueNames.length} malzeme sorgulanamadı${kod ? ` (HTTP ${kod})` : ''} — satırlar fiyatsız kaldı, "eşleşme yok" DEĞİL. Tekrar deneyin.`,
           variant: 'destructive',
         });
         return {};
@@ -1273,8 +1273,8 @@ export default function NewQuotePage() {
           : result.matchedName?.slice(0, 60);
         toast({ title: `${icon} ${priceDisplay}`, description: desc });
       } else {
-        const reason = result?.reason ?? 'Fiyat listesinde karsiligi bulunamadi.';
-        toast({ title: 'Eslesmedi', description: `"${materialName.slice(0, 40)}" — ${reason}` });
+        const reason = result?.reason ?? 'Fiyat listesinde karşılığı bulunamadı.';
+        toast({ title: 'Eşleşmedi', description: `"${materialName.slice(0, 40)}" — ${reason}` });
       }
     } catch (e: any) {
       // SESSIZ BOS YASAK (06.08 dersi, a75e41b'nin devami): kullanici tikladi,
@@ -1282,7 +1282,7 @@ export default function NewQuotePage() {
       console.error('[SemanticMatch] Error:', e);
       const kod = e?.response?.status;
       toast({
-        title: 'Eslestirme sorgusu basarisiz',
+        title: 'Eşleştirme sorgusu başarısız',
         description: `"${materialName.slice(0, 40)}" sorgulanamadi${kod ? ` (HTTP ${kod})` : ''} — "eslesme yok" DEGIL. Tekrar deneyin.`,
         variant: 'destructive',
       });
@@ -1345,7 +1345,7 @@ export default function NewQuotePage() {
     if (!multiSheet && !excelGridData) {
       toast({
         title: 'Kaydedilecek tablo yok',
-        description: 'Ekranda bir tablo gorunmuyor — dosyayi yeniden yukleyin.',
+        description: 'Ekranda bir tablo görünmüyor — dosyayı yeniden yükleyin.',
         variant: 'destructive',
       });
       return;
@@ -1532,7 +1532,7 @@ export default function NewQuotePage() {
         title: revizyonId ? 'Teklif güncellendi' : 'Teklif kaydedildi',
         description: revizyonId
           ? `"${finalTitle}" revize edildi — yeni kopya oluşturulmadı.`
-          : `"${finalTitle}" basariyla olusturuldu.`,
+          : `"${finalTitle}" başarıyla oluşturuldu.`,
       });
       router.push('/quotes');
     } catch (e: any) {
@@ -1587,7 +1587,7 @@ export default function NewQuotePage() {
             <ArrowLeft className="mr-1 h-4 w-4" />
             {cameFromDwg ? 'Çizime / Projeye Dön' : 'Geri'}
           </Button>
-          <h1 className="text-2xl font-bold tracking-tight">Teklif Duzenle</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Teklif Düzenle</h1>
           {usedProvider && (
             <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-300">
               &#10003; {usedProvider} ile analiz edildi
@@ -1680,7 +1680,7 @@ export default function NewQuotePage() {
           <CardContent className="py-6">
             <div className="mb-4">
               <h3 className="text-sm font-semibold">DWG Metraj — {dwgFileName}</h3>
-              <p className="text-xs text-muted-foreground">Kontrol edin, duzeltmeleri yapin, onaylayin.</p>
+              <p className="text-xs text-muted-foreground">Kontrol edin, düzeltmeleri yapın, onaylayın.</p>
             </div>
             <MetrajEditor
               data={dwgMetraj}
@@ -1739,8 +1739,8 @@ export default function NewQuotePage() {
             <div className="flex flex-col items-center justify-center gap-4">
               <Upload className="h-10 w-10 text-muted-foreground" />
               <div className="text-center">
-                <p className="font-medium">Excel dosyasi yukleyin</p>
-                <p className="text-sm text-muted-foreground">Fiyatlandirilacak kesif dosyanizi secin (.xlsx, .xls)</p>
+                <p className="font-medium">Excel dosyası yükleyin</p>
+                <p className="text-sm text-muted-foreground">Fiyatlandırılacak keşif dosyanızı seçin (.xlsx, .xls)</p>
               </div>
               <label htmlFor="quote-excel-upload" className="cursor-pointer rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
                 Dosya Sec
@@ -1781,10 +1781,10 @@ export default function NewQuotePage() {
                         }
                         // setExcelGridData'yi applyIncomingMultiSheet zaten yapti;
                         // merge toast'i da orada (once yukleme varsa) gosterilir.
-                        toast({ title: 'Analiz tamamlandi', description: `${multi.sheets.filter((s) => !s.isEmpty).length} sayfa yuklendi` });
+                        toast({ title: 'Analiz tamamlandı', description: `${multi.sheets.filter((s) => !s.isEmpty).length} sayfa yüklendi` });
                       }
                     } catch (err: any) {
-                      toast({ title: 'Hata', description: err?.response?.data?.message ?? 'Dosya yuklenemedi', variant: 'destructive' });
+                      toast({ title: 'Hata', description: err?.response?.data?.message ?? 'Dosya yüklenemedi', variant: 'destructive' });
                     } finally {
                       setIsUploading(false);
                     }
@@ -2079,7 +2079,7 @@ export default function NewQuotePage() {
               const match = result[laborName];
               const silent = opts?.silent === true; // fill sirasinda toast yok
               if (!match) {
-                if (!silent) toast({ title: 'Iscilik eslesmedi', description: `"${laborName.slice(0, 40)}"` });
+                if (!silent) toast({ title: 'İşçilik eşleşmedi', description: `"${laborName.slice(0, 40)}"` });
                 return null;
               }
               // L4: secim popup'i ExcelGrid'de acilir — eylemsiz toast YOK (B3)
@@ -2096,14 +2096,14 @@ export default function NewQuotePage() {
                   title: match.autoVariant
                     ? `⚡ Otomatik işçilik: ${displayPrice(netPrice)} — ${laborName.slice(0, 40)}`
                     : `🔧 ${displayPrice(netPrice)} (iscilik)`,
-                  description: `Eslesti: ${match.matchedName?.slice(0, 80) ?? 'Bilinmeyen'}`,
+                  description: `Eşleşti: ${match.matchedName?.slice(0, 80) ?? 'Bilinmeyen'}`,
                 });
                 return { netPrice, matchedName: match.matchedName, reason: match.reason, confidence: match.confidence, autoVariant: match.autoVariant, hafizaOtoyaz: match.hafizaOtoyaz, variantTags: match.variantTags, kaynakKur: (match as any).kaynakKur };
               }
               // Eslesme bulundu ama fiyat 0 — kullaniciya uyari
               if (match.confidence === 'high' && match.matchedName) {
                 if (!silent) toast({
-                  title: `⚠ Iscilik fiyati 0`,
+                  title: `⚠ İşçilik fiyatı 0`,
                   description: `"${match.matchedName.slice(0, 60)}" eslesti ama firma listesinde bu kalemin fiyati girilmemis. Kutuphaneye gidip iskonto/fiyat ekleyin.`,
                   variant: 'destructive',
                 });
@@ -2125,7 +2125,7 @@ export default function NewQuotePage() {
                 if (!silent) toast({ title: 'Kur alınamadı — işçilik fiyatı yazılmadı', description: match.reason, variant: 'destructive' });
                 return { netPrice: 0, kurAlinamadi: true, reason: match.reason };
               }
-              if (!silent) toast({ title: 'Iscilik eslesmedi', description: match.reason ?? `"${laborName.slice(0, 40)}"` });
+              if (!silent) toast({ title: 'İşçilik eşleşmedi', description: match.reason ?? `"${laborName.slice(0, 40)}"` });
               // K3-FE (27.08): SEBEP DUSURULMEZ. Eskiden null donuluyordu ve
               // motorun ozenli gerekce cumlesi (E4/E6: "Bu üründe … yok · en
               // yakın: … · çevrim: …") SURUKLEME yolunda kullaniciya HIC
@@ -2142,8 +2142,8 @@ export default function NewQuotePage() {
               console.error('[FirmaDropdown] error:', e);
               const kod = e?.response?.status;
               toast({
-                title: 'Iscilik sorgusu basarisiz',
-                description: `"${laborName.slice(0, 40)}" sorgulanamadi${kod ? ` (HTTP ${kod})` : ''} — "eslesmedi" DEGIL. Tekrar deneyin.`,
+                title: 'İşçilik sorgusu başarısız',
+                description: `"${laborName.slice(0, 40)}" sorgulanamadı${kod ? ` (HTTP ${kod})` : ''} — "eşleşmedi" DEĞİL. Tekrar deneyin.`,
                 variant: 'destructive',
               });
               return null;
@@ -2175,7 +2175,7 @@ export default function NewQuotePage() {
               const match = result[materialName];
               const silent = opts?.silent === true; // grup ici toplu uygulamada toast yok
               if (!match) {
-                if (!silent) toast({ title: 'Eslesmedi', description: `"${materialName.slice(0, 40)}"` });
+                if (!silent) toast({ title: 'Eşleşmedi', description: `"${materialName.slice(0, 40)}"` });
                 return null;
               }
 
@@ -2202,7 +2202,7 @@ export default function NewQuotePage() {
                   title: match.autoVariant
                     ? `⚡ Otomatik varyant: ${displayPrice(netPrice)} — ${materialName.slice(0, 40)}`
                     : `🟢 ${displayPrice(netPrice)} — ${materialName.slice(0, 50)}`,
-                  description: `Eslesti: ${match.matchedName?.slice(0, 80) ?? 'Bilinmeyen'}${rozet}`,
+                  description: `Eşleşti: ${match.matchedName?.slice(0, 80) ?? 'Bilinmeyen'}${rozet}`,
                 });
                 // hafizaOtoyaz (I6 rozeti): fiyat GECMIS SECIMDEN atandi — grid
                 // hucrede "Geçmiş seçiminizden atandı" rozeti gosterir.
@@ -2212,7 +2212,7 @@ export default function NewQuotePage() {
               // Eslesme bulundu ama fiyat 0 — kullaniciya uyari
               if (match.confidence === 'high' && match.matchedName) {
                 if (!silent) toast({
-                  title: `⚠ Malzeme fiyati 0`,
+                  title: `⚠ Malzeme fiyatı 0`,
                   description: `"${match.matchedName.slice(0, 60)}" eslesti ama kutuphanede fiyat girilmemis. Kutuphaneye gidip fiyat ekleyin.`,
                   variant: 'destructive',
                 });
@@ -2237,7 +2237,7 @@ export default function NewQuotePage() {
                 return { netPrice: 0, kurAlinamadi: true, reason: match.reason };
               }
               // Eslesme yok
-              if (!silent) toast({ title: 'Eslesmedi', description: match.reason ?? `"${materialName.slice(0, 40)}"` });
+              if (!silent) toast({ title: 'Eşleşmedi', description: match.reason ?? `"${materialName.slice(0, 40)}"` });
               // K3-FE (27.08): SEBEP DUSURULMEZ — iscilik ikiziyle ayni gerekce.
               return { netPrice: 0, reason: match.reason };
             } catch (e: any) {
@@ -2250,8 +2250,8 @@ export default function NewQuotePage() {
               console.error('[ExcelGrid] brand change error:', e);
               const kod = e?.response?.status;
               toast({
-                title: 'Marka sorgusu basarisiz',
-                description: `"${materialName.slice(0, 40)}" sorgulanamadi${kod ? ` (HTTP ${kod})` : ''} — "eslesmedi" DEGIL. Tekrar deneyin.`,
+                title: 'Marka sorgusu başarısız',
+                description: `"${materialName.slice(0, 40)}" sorgulanamadı${kod ? ` (HTTP ${kod})` : ''} — "eşleşmedi" DEĞİL. Tekrar deneyin.`,
                 variant: 'destructive',
               });
               return null;

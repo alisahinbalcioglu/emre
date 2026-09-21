@@ -298,9 +298,16 @@ describe('A2 bağlantı: üretim dalları ortak kuralı ÇAĞIRIYOR (kaynak öl�
     expect(grid).toMatch(/maliyetiGeriTuret\(sayiOku\(row\[laborUnitPriceField\]\) \?\? 0, oncekiKarLab\)/);
   });
 
-  it('SY-BAG E: miktar ve kâr kopyası TR biçimli (hucreGosterimMetni)', () => {
-    expect(grid).toMatch(/base\.valueFormatter = \(p: any\) => \(p\.node\?\.rowPinned \? String\(p\.value \?\? ''\) : hucreGosterimMetni\(p\.value\)\)/);
+  it('SY-BAG E: kâr kopyası TR biçimli; miktar EKRANDA ayraçlı, PANODA gruplamasız', () => {
+    // 21.09 (t.5): miktar hücresinin GÖRÜNEN metni artık binlik ayraçlı
+    // (`miktarGosterimMetni`). E dersi (pano gidiş-dönüşü) KALDIRILMADI, YERİ
+    // DEĞİŞTİ: kopyalama bu kolonda biçimlendiriciyi ATLAR ve gruplamasız
+    // makine metnini okur — aksi hâlde "1.250" yapıştırmada BELİRSİZ olurdu.
+    expect(grid).toMatch(/base\.valueFormatter = \(p: any\) => \(p\.node\?\.rowPinned \? String\(p\.value \?\? ''\) : miktarGosterimMetni\(p\.value\)\)/);
     expect(grid).toMatch(/base\.valueFormatter = \(p: any\) => hucreGosterimMetni\(p\.value\)/);
+    // BAĞLANTI: pano okuyucusu miktar kolonunu tanır ve makine metnini alır.
+    expect(grid).toMatch(/if \(field && field === quantityFieldRef\.current\) \{\s*return hucreGosterimMetni\(api\.getCellValue\(\{ rowNode: n, colKey: field \}\) \?\? ''\);/);
+    expect(grid).toMatch(/quantityFieldRef\.current = data\?\.columnRoles\?\.quantityField;/);
   });
 
   it('SY-BAG içe aktarma işareti: fiyat, toplam ve miktar kolonları _sayiUyari okur', () => {

@@ -72,12 +72,12 @@ export default function MechanicalPoolPage() {
       toast({
         title: 'Silindi',
         description: data?.deletedLibraryRows
-          ? `"${brand.name}" kaldirildi — ${data.deletedLibraryRows} kullanıcı kütüphane kaydı da temizlendi.`
-          : `"${brand.name}" basariyla kaldirildi.`,
+          ? `"${brand.name}" kaldırıldı — ${data.deletedLibraryRows} kullanıcı kütüphane kaydı da temizlendi.`
+          : `"${brand.name}" başarıyla kaldırıldı.`,
       });
       fetchBrands();
     } catch (e) {
-      toast({ title: 'Hata', description: hataMetni(e, 'Marka silinirken hata olustu.'), variant: 'destructive' });
+      toast({ title: 'Hata', description: hataMetni(e, 'Marka silinirken hata oluştu.'), variant: 'destructive' });
     }
   }
 
@@ -89,7 +89,7 @@ export default function MechanicalPoolPage() {
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <FolderOpen className="h-6 w-6" />Mekanik Havuz
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">Mekanik tesisat malzeme markalari ve fiyat listeleri</p>
+          <p className="mt-1 text-sm text-muted-foreground">Mekanik tesisat malzeme markaları ve fiyat listeleri</p>
         </div>
         {isAdmin && (
           <Button onClick={() => setAddOpen(true)}><Plus className="mr-2 h-4 w-4" />Marka Ekle</Button>
@@ -107,7 +107,7 @@ export default function MechanicalPoolPage() {
       ) : brands.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed py-20">
           <FolderOpen className="mb-4 h-12 w-12 text-muted-foreground/50" />
-          <p className="text-sm text-muted-foreground">Henuz mekanik marka eklenmemis.</p>
+          <p className="text-sm text-muted-foreground">Henüz mekanik marka eklenmemiş.</p>
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
@@ -127,7 +127,7 @@ export default function MechanicalPoolPage() {
                     {isAdmin && (
                       <Button variant="ghost" size="sm" className="h-7 w-full text-[11px] text-destructive hover:bg-destructive/10"
                         onClick={(e) => { e.preventDefault(); handleDeleteBrand(b); }}>
-                        <Trash2 className="mr-1 h-3 w-3" />Kaldir
+                        <Trash2 className="mr-1 h-3 w-3" />Kaldır
                       </Button>
                     )}
                     <Button variant="ghost" size="sm" className="h-7 w-full text-[11px] text-primary hover:bg-primary/10"
@@ -136,12 +136,12 @@ export default function MechanicalPoolPage() {
                         try {
                           const { data } = await api.get(`/brands/${b.id}/price-lists`);
                           const lists = data.priceLists;
-                          if (!lists || lists.length === 0) { toast({ title: 'Liste yok', description: 'Bu markada fiyat listesi bulunamadi.' }); return; }
+                          if (!lists || lists.length === 0) { toast({ title: 'Liste yok', description: 'Bu markada fiyat listesi bulunamadı.' }); return; }
                           const res = await api.post('/library/import-price-list', { brandId: b.id, priceListId: lists[0].id });
-                          toast({ title: 'Aktarildi', description: `${res.data.imported} malzeme kutuphanenize eklendi.` });
+                          toast({ title: 'Aktarıldı', description: `${res.data.imported} malzeme kütüphanenize eklendi.` });
                         } catch { toast({ title: 'Hata', variant: 'destructive' }); }
                       }}>
-                      <BookmarkPlus className="mr-1 h-3 w-3" />Kutuphaneme Aktar
+                      <BookmarkPlus className="mr-1 h-3 w-3" />Kütüphaneme Aktar
                     </Button>
                   </div>
                 </CardContent>
@@ -156,11 +156,11 @@ export default function MechanicalPoolPage() {
         <DialogContent>
           <DialogHeader><DialogTitle>Mekanik Marka Ekle</DialogTitle></DialogHeader>
           <div className="space-y-4 py-4">
-            <Label>Marka Adi</Label>
-            <Input value={newBrandName} onChange={(e) => setNewBrandName(e.target.value)} placeholder="Orn: ECA, Pekintesisat..." onKeyDown={(e) => { if (e.key === 'Enter') handleAddBrand(); }} autoFocus />
+            <Label>Marka Adı</Label>
+            <Input value={newBrandName} onChange={(e) => setNewBrandName(e.target.value)} placeholder="Örn: ECA, Pekintesisat..." onKeyDown={(e) => { if (e.key === 'Enter') handleAddBrand(); }} autoFocus />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAddOpen(false)}>Iptal</Button>
+            <Button variant="outline" onClick={() => setAddOpen(false)}>İptal</Button>
             <Button onClick={handleAddBrand} disabled={addLoading || !newBrandName.trim()}>{addLoading ? 'Ekleniyor...' : 'Ekle'}</Button>
           </DialogFooter>
         </DialogContent>

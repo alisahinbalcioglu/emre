@@ -37,7 +37,8 @@ import { sayiAlani, sayiOku } from '@/ozellik/fiyat/sayi-alani';
 // A2 (tur 3, 14.09): BELIRSIZ SAYI SUZGECI — insan sinirinin (klavye, pano, form)
 // tek kurali. Makine okuyucusu (`sayiOku`) ile KARISTIRILMAZ: saklanan deger
 // sistemin yazdigidir, belirsizlik kurali yalniz kullanicinin YAZDIGINA uygulanir.
-import { hucreGirdisiCoz, hucreGosterimMetni, insanSayiOku, makineMetni, sayiUyarisi, type SayiAlanTuru } from '@/ozellik/fiyat/sayi-alani';
+import { hucreGirdisiCoz, hucreGosterimMetni, insanSayiOku, makineMetni, miktarGosterimMetni, sayiUyarisi, type SayiAlanTuru } from '@/ozellik/fiyat/sayi-alani';
+import { sutunGenisligi } from '@/ozellik/fiyat/para-sutun-genisligi';
 import { yapistirmaSayiUyarilari } from './yapistir';
 import { hasSizeExpression, isSelfSufficientRow } from './build-material-context';
 import { niteliklerdenBaglam, adayEtiketleri, popupGenisligiOku, popupGenisligiYaz } from './aday-ayirt-edicilik';
@@ -1688,6 +1689,11 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
   const secimAnchorRef = useRef<Nokta | null>(null);   // sabit uc
   const secimUcRef = useRef<Nokta | null>(null);       // hareketli uc
   const secimRef = useRef<Aralik | null>(null);
+  // t.5 (21.09): pano okuyucusu MIKTAR kolonunu tanimali (bicimlendiriciyi
+  // atlar). Ref ile tutulur ki `kopyalaSecim` geri cagirimi `data` degisiminde
+  // yeniden kurulmasin — o geri cagirim klavye kapisinin bagimliligindadir.
+  const quantityFieldRef = useRef<string | undefined>(undefined);
+  quantityFieldRef.current = data?.columnRoles?.quantityField;
   // Kolon ID kumesi: `cellClassRules` her hucre icin kosar — orada kolon
   // dizisini her seferinde taramak 983×N tarama demekti.
   const secimKolonIdRef = useRef<Set<string>>(new Set());
@@ -1980,6 +1986,15 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       (si, field) => {
         const n = api.getDisplayedRowAtIndex(si);
         if (!n) return '';
+        // t.5 (21.09): MIKTAR hucresi ekranda artik BINLIK AYRACLI cizilir
+        // (`miktarGosterimMetni`) — ama o metin PANOYA GIDEMEZ: "1.250"
+        // yapistirmada BELIRSIZdir (sayi-alani kural 7) ve kullanici 1250 mi
+        // 1,25 mi yazdigini bir daha secmek zorunda kalirdi. Kopya bu tek
+        // kolonda bicimlendiriciyi atlayip gruplamasiz makine metnini alir:
+        // ekran okunakli, pano tek anlamli. Ayrim BURADA, tek yerde durur.
+        if (field && field === quantityFieldRef.current) {
+          return hucreGosterimMetni(api.getCellValue({ rowNode: n, colKey: field }) ?? '');
+        }
         return api.getCellValue({ rowNode: n, colKey: field, useFormatter: true }) ?? '';
       },
     );
@@ -3168,7 +3183,18 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       const base: ColDef<ExcelRowData> = {
         field: c.field,
         headerName: c.headerName,
-        width: columnWidths?.[c.field] ?? c.width ?? 120,
+        // t.4 (21.09, 1920 px'te gercek izgarada olculdu): IKI kirpilma vardi.
+        //  (a) PARA hucresi — sema genisligi SABIT 120 px, icerik teklif
+        //      buyudukce 9 haneye cikiyor; 120 px'in metne kalan yeri 90 px
+        //      (dolgu 14+14 + kenarlik 1+1) ve ₺9.568.938,40 oraya sigmiyordu.
+        //  (b) BASLIK — `Malz. Kar %` 90 px sutunda 5 px kirpiliyordu (ic kutu
+        //      60, icerik 65). `Isc. Kar %` ayni genislikte sigiyor, cunku
+        //      "Isc." kisa; yani kusur tek sutunda GORUNEN ama GENEL bir
+        //      eksiklikti — sutun kendi BASLIGINA hic bakmiyordu.
+        // Iki taban da olculmus glif ilerlemelerinden turetilir; gerekce ve
+        // olcum `para-sutun-genisligi.ts`. Kullanicinin DAHA GENIS yaptigi
+        // sutun aynen korunur (Math.max).
+        width: sutunGenisligi(columnWidths?.[c.field] ?? c.width, c.headerName, paraAlanlari.has(c.field)),
         // ⚠ ISCILIK BIRIM/TOPLAM: iscilik kapaliyken DUZENLENEMEZ.
         // 03.09'da olculdu: firma secici kilitliydi ama BIRIM FIYAT hucresi
         // elle yazilabiliyordu (`:3343` elle girisi toplama ceviriyor) —
@@ -3210,7 +3236,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       if (sayiKolonTuru === 'miktar') {
         // E (kopyala gidis-donus): kopya bu bicimlendiriciden okunur. Ham "12.375"
         // panoya gidip 12375 yapistiriliyordu; TR bicimi ("12,375") iki yonde tek anlamli.
-        base.valueFormatter = (p: any) => (p.node?.rowPinned ? String(p.value ?? '') : hucreGosterimMetni(p.value));
+        base.valueFormatter = (p: any) => (p.node?.rowPinned ? String(p.value ?? '') : miktarGosterimMetni(p.value));
         // Ice aktarmada okunamayan miktar (`_sayiUyari._miktar`) — isaret.ts sayi sinyali
         base.cellStyle = ((p: any) => (p.node?.rowPinned || !p.data?._sayiUyari?.[c.field] ? undefined
           : isaretStili({ dal: 'malzeme', sayiUyari: p.data._sayiUyari[c.field], sayiAlani: 'miktar' }))) as any;
@@ -3792,7 +3818,17 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     }
 
     return cols;
-  }, [data, brands, onBrandChange, laborFirms, sheetDiscipline, laborEnabled, onFirmaChange, mode, libraryPriceField, currencySymbol, conversionRate,
+    // t.14 (21.09, performans): bagimlilik `data` NESNESI degil, bu memo'nun
+    // GERCEKTEN okudugu iki alan. Olculdu: memo govdesinde `data.` ile baslayan
+    // tek erisimler `data.columnDefs` (4) ve `data.columnRoles` (49); geri
+    // kalanlar `params.data` (satir verisi). `data` bagimliyken cagiran sayfa
+    // her render'da yeni bir nesne uretiyordu (`quotes/[id]/page.tsx` gridData
+    // render govdesinde kuruluyordu) ve 658 satirlik bu memo bastan kosuyor,
+    // AG Grid tum kolonlari yeniden uyguluyordu.
+    // ⚠ `data?.` — govdedeki `if (!data || ...)` kapisi `data`nin eksik
+    // gelebilecegini soyluyor; kelepcesiz `data.columnDefs` o durumda
+    // BAGIMLILIK DIZISINDE patlardi (govde hic kosmadan).
+  }, [data?.columnDefs, data?.columnRoles, brands, onBrandChange, laborFirms, sheetDiscipline, laborEnabled, onFirmaChange, mode, libraryPriceField, currencySymbol, conversionRate,
       fittingDuzenlenebilir]);
 
   // Ceviri kalemi gorunurlugu degisince ad kolonu yeniden cizilir: renderer

@@ -1262,7 +1262,16 @@ async function bolumZorunluluk() {
     dogrulanmisAlanAdi: [alanAdi()],
     passwordResetToken: [{
       id: 'pr1', userId: 'U1', tokenHash: createHash('sha256').update('sifirlama-token').digest('hex'),
-      expiresAt: new Date(T0MS + 3_600_000), usedAt: null, user: kul6,
+      // ⚠ SAAT BOMBASI ONARILDI (21.09, Gorunur kusurlar turu · G5 yan bulgu).
+      // Eskiden `new Date(T0MS + 3_600_000)` idi; `T0` SABIT bir an
+      // (2026-09-21T10:00Z) ama `sifirla()` suresi dolmayi GERCEK saatle
+      // olcuyor (parola.servisi.ts: `expiresAt.getTime() <= Date.now()`).
+      // Yani bu satir 21.09 saat 11:00 UTC'den itibaren KALICI kirmiziydi:
+      // token suresi dolmus sayilip akis `KURUMSAL_GIRIS_ZORUNLU` kapisina
+      // HIC ULASMIYORDU — kapi olcmeden "gecer" degil, olcmeden DUSERDI.
+      // Sabit ana degil GERCEK ana gore uretilir; K16 neyi olcuyorsa onu
+      // olcmeye devam eder (T0'a bagli diger fixture'lar degismedi).
+      expiresAt: new Date(Date.now() + 3_600_000), usedAt: null, user: kul6,
     }],
   });
   const parola6 = new ParolaServisi(p6, epostaSahteBasit().servis, { signToken: () => 'tkn' } as any, configSahte);
@@ -1377,8 +1386,19 @@ async function bolumParolasiz() {
   const p3 = db({ user: [kullanici({ firmaRol: 'sahip' })], firma: [firma()], kullaniciDisKimlik: [] });
   const h3 = new HesapServisi(p3, { iptalEt: async () => undefined } as any);
   const r3y = await dene(() => h3.hesabiKapat('U1', 'yanlis-parola', null));
-  check('K18 parolali hesapta YANLIS parola → 401 (bcrypt dali degismedi)',
-    hataDurumu(r3y.hata) === 401, JSON.stringify(hataGovdesi(r3y.hata)));
+  // ⚠ 21.09 (Gorunur kusurlar turu, t.16): BEKLENEN 401'DEN 400'E CEKILDI.
+  // Bu assert'in AMACI "bcrypt dali kosuyor mu" idi, "401 dogru kod mu" DEGIL —
+  // ve 401 YANLISTI: `frontend/ortak/lib/api.ts` yakalayicisi korumali bir
+  // uctan gelen 401'i "oturum bitti" sayip token'i siliyor, yani parolasini
+  // yanlis yazan kullanici hesap kapatma ekranindan DISARI atiliyordu.
+  // Artik F3b'nin ust satirdaki YENIDEN_GIRIS_GEREKLI dali ile AYNI sekil:
+  // 400 + `kod`. Olcut korundu: dal hala KESIYOR (hesap kapanmiyor) ve
+  // asagidaki "DOGRU parola → kapandi" assert'i bcrypt dalinin kostugunu
+  // kanitliyor. Ayrinti + kaba kuvvet siniri: `npm run test:parola-kapisi`.
+  check('K18 parolali hesapta YANLIS parola → 400 PAROLA_HATALI (bcrypt dali kesiyor)',
+    hataDurumu(r3y.hata) === 400 && hataKodu(r3y.hata) === 'PAROLA_HATALI'
+      && !(p3._veri.user[0].deletedAt instanceof Date),
+    JSON.stringify(hataGovdesi(r3y.hata)));
   const r3d = await dene(() => h3.hesabiKapat('U1', 'dogru-parola', null));
   check('K18 parolali hesapta DOGRU parola → kapandi (`authAt` ARANMAZ)',
     r3d.hata === undefined && p3._veri.user[0].deletedAt instanceof Date,
