@@ -232,12 +232,22 @@ const EKRANLAR = [
   'app/(protected)/layout.tsx', // üst menü: Giriş yapıldı / Çıkış Yap
   'ortak/kabuk/components/layout/Sidebar.tsx',
   // G3-ek (21.09, "Görünür kusurlar turu" t.6): kütüphane / malzeme havuzu ekranları.
-  // NOT: `app/(protected)/materials/page.tsx` (yalnız /materials/mechanical'a
-  // yönlendirir) ve `library/electrical-brands/page.tsx` (elektrik — kapsam dışı,
-  // KURALLAR.md §"Elektrik") BİLEREK EKLENMEDİ.
+  // NOT: `app/(protected)/materials/page.tsx` yalnız /materials/mechanical'a
+  // yönlendirir (ekran metni yok), o yüzden listede değil.
   'app/(protected)/library/page.tsx',
   'app/(protected)/materials/mechanical/page.tsx',
   'app/(protected)/library/mechanical-brands/page.tsx', // sahipsizdi, bu turda G3'e eklendi
+  // K-ek (21.09, kurumsal sayfalar turu t.21): ELEKTRİK İKİZLERİ.
+  // ⚠ Bunlar G3'te "elektrik kapsam dışı" denip BİLEREK atlanmıştı ve o turun
+  // en değerli bulgusu buydu: kapı vardı, bu iki ekran listede DEĞİLDİ — yani
+  // mekanik ikizi düzelirken elektrik ikizi sessizce bozuk kalıyordu
+  // ("Henuz elektrik markasi eklenmemis."). Kapsam dışı olan elektrik
+  // İÇERİĞİdir; yazım düzeltmesi içerik değildir (aynı ayrım
+  // `scripts/paket-aciklama-duzelt.ts` başında da yapıldı).
+  // ⚠ Dosyanın TAMAMI tarandığı için iki ekranın TÜM metinleri mekanik
+  // ikizleriyle aynı yazıma çekildi — yarım düzeltilmiş dosya kırmızı verir.
+  'app/(protected)/materials/electrical/page.tsx',
+  'app/(protected)/library/electrical-brands/page.tsx',
   'ortak/kabuk/components/dashboard/QuickAccess.tsx', // sahipsizdi, bu turda G3'e eklendi
   'app/(protected)/dashboard/page.tsx', // G1'in dosyası — G1 21.09'da düzeltti (bkz. Kullanicilar→Kullanıcılar)
 ];
@@ -348,6 +358,45 @@ describe('Düzeltilen metinler yerinde (içerik kilidi)', () => {
     expect(metinler('app/(protected)/labor-firms/page.tsx')).toEqual(
       expect.arrayContaining(['Firma Adı', 'Henüz firma yok. Yukarıdan ilk firmanızı ekleyin.']),
     );
+  });
+
+  // K-ek (21.09, t.21): ELEKTRİK İKİZLERİ — iş emrinin adıyla istediği metin
+  // ("Henüz elektrik markası eklenmemiş.") ve ikizin aynı yazımda olduğu.
+  it('elektrik havuzu: boş liste metni + mekanik ikiziyle aynı yazım', () => {
+    const elk = metinler('app/(protected)/materials/electrical/page.tsx');
+    expect(elk).toEqual(
+      expect.arrayContaining([
+        'Henüz elektrik markası eklenmemiş.',
+        'Kaldır',
+        'Kütüphaneme Aktar',
+        'Elektrik tesisat malzeme markaları ve fiyat listeleri',
+      ]),
+    );
+    // İKİZ: iki havuz ekranı ortak düğmeleri AYNI yazımda basmalı — biri
+    // düzeltilip öteki geride kalırsa bu assert kırmızı olur.
+    const mek = metinler('app/(protected)/materials/mechanical/page.tsx');
+    for (const ortak of ['Kaldır', 'Kütüphaneme Aktar', 'Marka Adı', 'İptal']) {
+      expect(mek, `mekanik: ${ortak}`).toContain(ortak);
+      expect(elk, `elektrik: ${ortak}`).toContain(ortak);
+    }
+  });
+
+  it('kütüphanem → elektrik markalar: PDF yükle akışı ve boş arama metni', () => {
+    const elk = metinler('app/(protected)/library/electrical-brands/page.tsx');
+    expect(elk).toEqual(
+      expect.arrayContaining([
+        'Henüz elektrik markası eklenmemiş.',
+        'PDF Yükle (Admin)',
+        'Ayıklanan Malzemeler',
+        'Aramanızla eşleşen marka bulunamadı.',
+        'Kütüphanenizdeki elektrik malzeme markaları',
+      ]),
+    );
+    const mek = metinler('app/(protected)/library/mechanical-brands/page.tsx');
+    for (const ortak of ['Ayıklanan Malzemeler', 'Aramanızla eşleşen marka bulunamadı.', 'Malzeme Adı', 'İptal']) {
+      expect(mek, `mekanik: ${ortak}`).toContain(ortak);
+      expect(elk, `elektrik: ${ortak}`).toContain(ortak);
+    }
   });
 });
 

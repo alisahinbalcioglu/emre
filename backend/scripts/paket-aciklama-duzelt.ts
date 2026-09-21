@@ -40,7 +40,15 @@ import { PrismaClient } from '@prisma/client';
 
 export type Duzeltme = { kod: string; eski: string; yeni: string };
 
-/** SAF — yalniz mekanik + MEP; elektrik paketleri KAPSAM DISI (bkz. dosya basi). */
+/**
+ * SAF — BES paket: mekanik (`basic-mek`, `pro-mek`), elektrik (`basic-elk`,
+ * `pro-elk`) ve MEP (`pro-mep`).
+ * ⚠ ESKI NOT DUSTU (21.09, kurumsal sayfalar turu): burada "elektrik paketleri
+ * KAPSAM DISI" yaziyordu. Dosya basindaki KAPSAM bolumu 6f2cd1f ile
+ * guncellenmisti ama BU satir geride kaldi — liste elektrigi zaten iceriyor.
+ * Kendi listesiyle celisen bir yorum, okuyani listeye bakmadan yanlis
+ * sonuca goturur; `paket-aciklama-duzelt-test.ts` artik bes kodu da olcuyor.
+ */
 export const ACIKLAMA_DUZELTMELERI: Duzeltme[] = [
   {
     kod: 'basic-mek',
@@ -83,7 +91,11 @@ export type Plan = {
 
 /**
  * SAF — hangi satir degisecek? Tam string eslesmesi yoksa DOKUNULMAZ.
- * test/paket-aciklama-duzelt-test.ts DI blogu olcer.
+ * `test/paket-aciklama-duzelt-test.ts` P blogu olcer.
+ *
+ * ⚠ 21.09: bu satir "DI blogu olcer" diyordu ama ADI GECEN TEST DOSYASI HIC
+ * YAZILMAMISTI (olculdu: dosya yoktu). Yorum, var olmayan bir kapiyi varmis
+ * gibi gosteriyordu — kurumsal sayfalar turunda kapi GERCEKTEN yazildi.
  */
 export function planUret(paketler: PaketSatiri[]): Plan {
   const paketMap = new Map(paketler.map((p) => [p.kod, p]));

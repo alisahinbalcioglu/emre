@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { HUKUKI_SAYFALAR, SATICI } from '@/ozellik/hukuki/metinler';
+import { KURUMSAL_SAYFALAR } from '@/ozellik/kurumsal/sayfalar';
 
 /**
  * ALTBİLGİ — hukuki sayfalara ve satıcı kimliğine giden TEK bileşen (FAZ 5.2/5.7).
@@ -17,9 +18,20 @@ import { HUKUKI_SAYFALAR, SATICI } from '@/ozellik/hukuki/metinler';
  * tıklanınca hiçbir şey yapmayan bağlantı, var olmayan bir şey vaat eder.
  * Bu yüzden liste `HUKUKI_SAYFALAR` sabitinden türetiliyor — sayfa
  * silinirse bağlantı da düşer, elle senkron tutulmaz.
+ *
+ * ⚠ KURUMSAL SAYFALAR AYRI LİSTEDEN (21.09, t.21): `/hakkimizda` ve
+ * `/iletisim` hukuki metin DEĞİL, bu yüzden `HUKUKI_SAYFALAR`a karıştırılmadı
+ * — o liste taslak şeridine, metin sürümüne ve "liste dört metindir"
+ * ölçütüne bağlı. Aynı kural ikisi için de geçerli: bağlantılar
+ * `KURUMSAL_SAYFALAR`dan TÜRER, elle yazılmış `<Link>` yok.
+ * iyzico'nun "ana sayfadan doğrudan erişilebilen İletişim" şartı buradan
+ * karşılanıyor: altbilgi ÜÇ düzende birden, ana sayfa dahil görünür.
  */
 export function Altbilgi({ koyu = false }: { koyu?: boolean }) {
   const yil = 2026;
+  const baglantiSinifi = koyu
+    ? 'hover:text-slate-300 transition-colors'
+    : 'hover:text-foreground transition-colors';
   return (
     <footer
       className={
@@ -30,16 +42,17 @@ export function Altbilgi({ koyu = false }: { koyu?: boolean }) {
     >
       <div className="mx-auto flex max-w-7xl flex-col gap-3 px-6 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+          {/* İKİ AYRI `.map()`, TEK ŞERİT: listeleri birleştirmek `HUKUKI_SAYFALAR`
+              adını bu dosyadan silerdi ve `faz5-kvkk-hukuki-test.ts` D10 kapısı
+              ("bağlantılar LİSTEDEN türüyor") kaynağı orada arıyor. Ölçtüğü
+              davranış zaten aynı — iki liste de elle senkron tutulmuyor. */}
+          {KURUMSAL_SAYFALAR.map((s) => (
+            <Link key={s.yol} href={s.yol} className={baglantiSinifi}>
+              {s.kisaAd}
+            </Link>
+          ))}
           {HUKUKI_SAYFALAR.map((s) => (
-            <Link
-              key={s.yol}
-              href={s.yol}
-              className={
-                koyu
-                  ? 'hover:text-slate-300 transition-colors'
-                  : 'hover:text-foreground transition-colors'
-              }
-            >
+            <Link key={s.yol} href={s.yol} className={baglantiSinifi}>
               {s.kisaAd}
             </Link>
           ))}
@@ -53,6 +66,11 @@ export function Altbilgi({ koyu = false }: { koyu?: boolean }) {
             <p className="text-[11px] opacity-80">
               {SATICI.unvan} · {SATICI.adres}
               {SATICI.mersis ? ` · MERSİS: ${SATICI.mersis}` : ''}
+              {/* Meslek odası — iyzico'nun İletişim başlığında saydığı
+                  bilgilerden biri. Altbilgi dar olduğu için TAM künye burada
+                  DEĞİL, /iletisim sayfasındadır; buradaki satır künyenin
+                  kısasıdır ve sarmalanarak sığar. */}
+              {SATICI.meslekOdasi ? ` · ${SATICI.meslekOdasi}` : ''}
             </p>
           )}
         </div>

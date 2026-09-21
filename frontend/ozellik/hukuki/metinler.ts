@@ -61,8 +61,27 @@ const SATICI_ALANLARI = {
   vergiDairesi: 'Küçükyalı',
   vergiNo: '6091391234',
   ticaretSicilNo: '1061020',
+  /**
+   * MESLEK ODASI (Emre teyidi, 21.09.2026) — iyzico "Başvuru Koşulları"
+   * sayfasının İletişim başlığında saydığı bilgilerden biri.
+   * ⚠ İKİNCİ BİR SİCİL ALANI AÇILMAZ: odaya kayıt numarası zaten
+   * `ticaretSicilNo`dur (1061020). İki alan olsaydı biri güncellenip öteki
+   * geride kalırdı — bu dosyanın var olma sebebi tam olarak o hata.
+   */
+  meslekOdasi: 'İstanbul Ticaret Odası',
   eposta: 'info@metapricex.com',
-  telefon: '+90 544 885 15 64',
+  /**
+   * TELEFON — `kep` ile AYNI DESEN, aynı sebeple (Emre kararı, 21.09.2026):
+   * eldeki numara kişisel bir hattır ve yayınlanması sakıncalı. Bir iş hattı
+   * alındığında BURAYA tek satır yazmak yeter; beş metin ve İletişim sayfası
+   * birlikte döner (ters mutasyonla ölçüldü).
+   *
+   * ⚠ `null` = "böyle bir bilgi yok": telefonla ilgili parça HİÇ BASILMAZ.
+   * Boş dizge KULLANILMAZ — `saticiDolduMu` denetiminden sessizce geçer ve
+   * metinde "telefon: ." gibi bir cümle artığı bırakırdı. Basan yerlerin
+   * tamamı `telefonEki()` üzerinden geçer (ayıraç değerle birlikte gider).
+   */
+  telefon: null as string | null,
   /**
    * KEP adresi YOK/bilinmiyor. `null` = "böyle bir bilgi yok" demektir ve
    * metinde satır HİÇ BASILMAZ — boş bir "KEP:" satırı, olmayan bir kanalı
@@ -90,6 +109,24 @@ export const SATICI = {
   gorunenAd: 'MetaPriceX',
   dolduruldu: saticiDolduMu(SATICI_ALANLARI),
 };
+
+/**
+ * TELEFON EKİ — cümle içine gömülü telefonun TEK yazım noktası (21.09.2026).
+ *
+ * ⚠ AYIRAÇ DEĞERLE BİRLİKTE GİDER. Çağıran taraf `…e-posta: ${eposta}, telefon: `
+ * yazıp sonuna değeri eklerse, `null` dalında ekranda "telefon: ." kalır —
+ * olmayan bir kanalı varmış gibi göstermekten daha kötüsü, bozuk bir cümle.
+ * Bu yüzden ayıracı da bu fonksiyon basar: telefon yoksa ek TAMAMEN boştur.
+ *
+ * MADDE (liste) satırlarında bu KULLANILMAZ; orada KEP'in kendi deseni geçerli:
+ * `...(SATICI.telefon ? [\`Telefon: …\`] : [])` — satır hiç basılmaz.
+ *
+ * ⚠ Bu yalnız GÖSTERİMİ değiştirir. Hukuki metinlerin hiçbir hükmü,
+ * `HUKUKI_METIN_SURUMU` ve `HUKUKI_METIN_DURUMU` bu değişiklikten etkilenmez.
+ */
+export function telefonEki(ayirac: string): string {
+  return SATICI.telefon ? `${ayirac}${SATICI.telefon}` : '';
+}
 
 /**
  * HUKUKİ KARARLAR — satıcı KİMLİĞİ değil, satıcının verdiği KARARLAR.
@@ -142,7 +179,7 @@ export const GIZLILIK: HukukiMetin = {
         `MERSİS No: ${SATICI.mersis}`,
         `Ticaret sicil numarası: ${SATICI.ticaretSicilNo}`,
         `Vergi dairesi / numarası: ${SATICI.vergiDairesi} / ${SATICI.vergiNo}`,
-        `İletişim: ${SATICI.eposta} · ${SATICI.telefon}`,
+        `İletişim: ${SATICI.eposta}${telefonEki(' · ')}`,
         ...(SATICI.kep ? [`KEP adresi: ${SATICI.kep}`] : []),
       ],
     },
@@ -232,7 +269,16 @@ export const GIZLILIK: HukukiMetin = {
         "Hesabınız açık olduğu sürece hesabınıza, firmanıza ve tekliflerinize ait veriler saklanır. Bunun dışındaki süreler aşağıdadır.",
       ],
       madde: [
-        "Veritabanı yedekleri: sunucuda 14 gün tutulur. Sunucu dışındaki kopya şifrelenmiş olarak saklanır.",
+        // ⚠ 21.09.2026 (K5) — VERİ İMHASI TURUYLA BİRLİKTE. Ölçüldü: `/backups`
+        // altında DÖRT yedek ailesi var (`scripts/backup.sh:33-36`) —
+        // `metaprice-*` günlük 14 gün (`backup.sh:28`), `deploy-oncesi-*`,
+        // `geri-yukleme-oncesi-*` ve `bekci-*` ise 30 gün (`deploy.sh:113`
+        // `YEDEK_SAKLAMA_GUN=30` + günlük döngü).
+        // ⚠ SAYIM DEĞİL "EN FAZLA" YAZILDI: iş emrinin cümlesi iki aileyi
+        // adıyla sayıyordu, ölçüm DÖRT buldu. Aile adıyla sayılan bir cümle,
+        // dördüncü aile eklendiğinde sessizce eksik kalırdı; asıl taahhüt son
+        // cümledir ve HEPSİNİ kapsar.
+        "Veritabanı yedekleri: düzenli yedekler sunucuda 14 gün; sürüm yükleme ve geri yükleme öncesinde alınanlar dâhil diğer tüm yedekler en fazla 30 gün tutulur. Sunucu dışındaki kopya şifrelenmiş olarak saklanır. Silinen veriler yedeklerden en geç 30 gün içinde çıkar.",
         "Parola sıfırlama bağlantısı: 1 saat. E-posta doğrulama bağlantısı: 24 saat. Oturumunuz (giriş anahtarı): 7 gün.",
         "İki adımlı giriş kurulumu tamamlanmazsa hazırlanan gizli anahtar 15 dakika sonra geçersiz olur. Kurtarma kodları, siz yenileyene ya da iki adımlı girişi kapatana kadar saklanır; kapatıldığında silinir.",
         "Ekip daveti bağlantısı: 7 gün (kabul edilmeyen davet kaydı işlem kaydı olarak saklanır). Firma içi işlem kaydı — [FIRMA ISLEM KAYDI SAKLAMA SURESI].",
@@ -240,7 +286,17 @@ export const GIZLILIK: HukukiMetin = {
         "DWG çizim geometrisi, işleme servisinin önbelleğinde 24 saat boyunca kalır.",
         "Fatura, ödeme ve abonelik kayıtları: vergi ve ticaret mevzuatının öngördüğü süre boyunca — [YASAL SAKLAMA SURESI].",
         "Yönetici işlem kayıtları (denetim izi): silinmez. Bu kayıtlar, bir hesap kapatılsa bile o hesap üzerinde kimin ne yaptığının izlenebilmesi için tutulur.",
-        "Ücretsiz deneme kaydı: hesabınız kapatılsa bile saklanır; ücretsiz denemenin aynı firma, e-posta adresi veya telefonla yeniden alınmasını önlemek için tutulur — [DENEME KAYDI SAKLAMA SÜRESİ].",
+        // ⚠ 30 GÜNÜN İSTİSNASI, ADIYLA SÖYLENİYOR (21.09): hesap kapatıldıktan
+        // 30 gün sonra veriler imha edilir AMA bu kayıt KALIR. Ölçüldü —
+        // `backend/src/ozellik/imha/imha-listesi.ts:457` `DenemeKullanimi`
+        // SILINMEZLER'de: "hesap kapatma ya da ileride veri imhası bu satırı
+        // SİLMEMELİ; silinirse kapatıp aynı adresle kaydolan YENİ deneme alır."
+        // ⚠ İLK CÜMLE PARÇASI AYNEN KORUNDU: `test:faz5` D-kapısı
+        // (`faz5-kvkk-hukuki-test.ts:288`) bu ön eki birebir arıyor.
+        // ⚠ YER TUTUCU BİLEREK DURUYOR: süre AÇIK BİR HUKUKİ KARARDIR ve
+        // 30 günlük imha takvimine bağlı DEĞİLDİR (kayıt o takvimin istisnası).
+        // `satici-metin.test.ts` IZINLI_KALAN listesinde gerekçesiyle kayıtlı.
+        "Ücretsiz deneme kaydı: hesabınız kapatılsa bile saklanır — kapatmadan 30 gün sonra yapılan kalıcı silme bu kaydı kapsamaz. Ücretsiz denemenin aynı firma, e-posta adresi veya telefon numarasıyla yeniden alınmasını önlemek için tutulur; kayıtta e-posta adresiniz ve telefon numaranız karşılaştırmaya elverecek sadeleştirilmiş biçimde kalır — [DENEME KAYDI SAKLAMA SÜRESİ].",
       ],
     },
     {
@@ -407,7 +463,21 @@ export const KULLANIM_KOSULLARI: HukukiMetin = {
       paragraflar: [
         `Aboneliğinizi dilediğiniz zaman Profil sayfanızdaki iptal adımıyla sonlandırabilirsiniz. İptal ettiğinizde erişiminiz o anda kesilmez: ödemesini yaptığınız dönemin sonuna kadar devam eder ve dönem sonunda yenileme yapılmaz. ${HUKUKI_KARARLAR.iade}`,
         `Hesabınızın tamamen kapatılmasını istiyorsanız buna gerek yok: Profil sayfanızdaki "Hesabımı kapat" bölümünden, parolanızı girerek hesabınızı kendiniz kapatabilirsiniz. Kapatma isteğinizi ${SATICI.eposta} adresine, hesabınızın kayıtlı e-posta adresinden de iletebilirsiniz.`,
-        "Hesap kapatıldığında ne olduğunu açıkça belirtmek isteriz: girişiniz kapanır ve platformu kullanamazsınız, ancak verileriniz aynı anda imha edilmez. Kapatma işlemi hesabınıza bir \"kapatıldı\" damgası düşer; kayıtlarınız yedeklerde ve saklama süreleri boyunca sistemde kalmaya devam eder. Fatura, ödeme ve yönetici işlem kayıtları ise ispat ve yasal saklama yükümlülükleri nedeniyle daha uzun süre tutulur. Verilerinizin silinmesine ilişkin haklarınız ve süreler Gizlilik Politikası'nda anlatılır.",
+        // ⚠ 21.09.2026 (K1) — "SÜRESİZ KALIR" İZLENİMİ KALDIRILDI. Veri imhası
+        // turu kapatmayı "30 gün sakla, sonra kalıcı sil" hâline getirdi
+        // (`imha.job.ts:15-16`: `deletedAt` = kapalı, `imhaTarihi` = kapatma+30g).
+        //
+        // ⚠ GERİ AÇMA KOŞULSUZ DEĞİL — ÖLÇÜLDÜ, İŞ EMRİNİN CÜMLESİ DÜZELTİLDİ.
+        // İş emri "bu süre içinde giriş yapıp bir paket seçerek hesabınızı geri
+        // açabilirsiniz" diyordu; koşulsuz yazılsaydı DÖRT kapatma nedeninin
+        // İKİSİNDE yalan olurdu. `abonelik.servisi.ts:129`
+        // `GERI_ACILAN_KAPATMA_NEDENLERI` KAPALI bir listedir: yalnız `kendi`
+        // ve `firmaKapandi`. `ekiptenCikarildi` ve `yonetici` ödeme yapsa bile
+        // geri AÇILMAZ (`abonelik.servisi.ts:263-269` sorgusu onları eşlemez) —
+        // bu bilerek böyle: çıkarılan üyenin e-postası hemen serbest bırakılıyor
+        // ve başka bir firmaya katılmış olabilir. Sözleşme, ürünün yapmadığı
+        // bir şeyi vaat edemez.
+        "Hesap kapatıldığında ne olduğunu açıkça belirtmek isteriz: girişiniz kapanır ve platformu kullanamazsınız, ancak verileriniz aynı anda imha edilmez. Kapatma işlemi hesabınıza bir \"kapatıldı\" damgası düşer; kayıtlarınız yedeklerde ve saklama süreleri boyunca sistemde kalmaya devam eder. Hesabınız kapatıldıktan 30 gün sonra teklifleriniz, kütüphaneniz ve yüklediğiniz belgeler kalıcı olarak silinir. Hesabınızı kendiniz kapattıysanız ya da firmanız kapatıldığı için hesabınız kapandıysa, bu 30 gün içinde giriş yapıp bir paket seçerek hesabınızı geri açabilirsiniz; ekipten çıkarılma ya da yönetici kararıyla kapatılan hesaplar bu yolla geri açılmaz. Fatura, ödeme ve yönetici işlem kayıtları ise ispat ve yasal saklama yükümlülükleri nedeniyle daha uzun süre tutulur. Verilerinizin silinmesine ilişkin haklarınız ve süreler Gizlilik Politikası'nda anlatılır.",
         "Biz de bu sözleşmeyi feshedebiliriz: bu koşulların ağır biçimde ihlali, ödemenin yapılmaması, hukuka aykırı kullanım ya da platformun güvenliğini tehdit eden davranış hâllerinde. Durumun niteliği elverdiği ölçüde önce uyarır ve düzeltmeniz için makul bir süre veririz.",
       ],
     },
@@ -430,7 +500,7 @@ export const KULLANIM_KOSULLARI: HukukiMetin = {
     {
       baslik: "13. İletişim",
       paragraflar: [
-        `Bu koşullarla ilgili sorularınız, abonelik talepleriniz ve hesap kapatma istekleriniz için: ${SATICI.unvan}, ${SATICI.adres}, e-posta: ${SATICI.eposta}, telefon: ${SATICI.telefon}.`,
+        `Bu koşullarla ilgili sorularınız, abonelik talepleriniz ve hesap kapatma istekleriniz için: ${SATICI.unvan}, ${SATICI.adres}, e-posta: ${SATICI.eposta}${telefonEki(', telefon: ')}.`,
         "Yazışmalarınızı hesabınızın kayıtlı e-posta adresinden göndermenizi rica ederiz; kimlik doğrulaması bu şekilde daha hızlı yapılır.",
       ],
     },
@@ -581,10 +651,10 @@ export const MESAFELI_SATIS: HukukiMetin = {
         `MERSİS numarası: ${SATICI.mersis}`,
         `Ticaret sicil numarası: ${SATICI.ticaretSicilNo}`,
         `Vergi dairesi ve numarası: ${SATICI.vergiDairesi} / ${SATICI.vergiNo}`,
-        `Telefon: ${SATICI.telefon}`,
+        // Telefon ve KEP yoksa satır HİÇ basılmaz (boş "Telefon:" / "KEP:"
+        // olmayan bir kanalı varmış gibi gösterirdi).
+        ...(SATICI.telefon ? [`Telefon: ${SATICI.telefon}`] : []),
         `E-posta: ${SATICI.eposta}`,
-        // KEP yoksa satır HİÇ basılmaz (boş "KEP:" olmayan bir kanalı
-        // varmış gibi gösterirdi).
         ...(SATICI.kep ? [`KEP adresi: ${SATICI.kep}`] : []),
         "Web sitesi: metapricex.com",
       ],
@@ -655,7 +725,18 @@ export const MESAFELI_SATIS: HukukiMetin = {
       paragraflar: [
         "Aboneliğinizi kendiniz iptal edebilirsiniz: Profil sayfasını açın, Abonelik kartındaki \"Abonelik yönetimi\" başlığını genişletin ve \"Aboneliği iptal et\" düğmesine basın. Onay verdiğinizde iptal talebiniz anında işlenir; bizimle ayrıca yazışmanız gerekmez.",
         `İptalden sonra kartınızdan yeni bir çekim yapılmaz, ancak erişiminiz hemen kapanmaz: ${HUKUKI_KARARLAR.iade} Sorularınız için ${SATICI.eposta} adresine yazabilirsiniz.`,
-        "Aboneliği iptal etmek ile hesabı kapatmak farklı şeylerdir. Hesabınızı tamamen kapatmak isterseniz bu talebinizi bize iletebilirsiniz. Hesap kapatıldığında girişiniz kapanır; verileriniz aynı anda imha edilmez, mevzuattan doğan saklama yükümlülükleri ve yedekleme düzenimiz çerçevesinde bir süre daha sistemlerimizde kalır. Ayrıntı için Gizlilik Politikası'na bakabilirsiniz.",
+        // ⚠ 21.09.2026 (K1) — İKİ YANLIŞ BEYAN DÜZELTİLDİ:
+        //   1. "bu talebinizi bize iletebilirsiniz" ÜRÜNLE ÇELİŞİYORDU: kapatma
+        //      ekranda kendi kendine yapılıyor (`profile/page.tsx:1062,1121`
+        //      "Hesabımı kapat"). Kullanım Koşulları 9. madde bunu ZATEN doğru
+        //      anlatıyordu — iki metin birbiriyle çelişiyordu (ikiz hatası).
+        //   2. "bir süre daha sistemlerimizde kalır" SÜRESİZ izlenimi veriyordu;
+        //      artık süre bellidir (kapatma + 30 gün, `imha.job.ts:16`).
+        // ⚠ FATURA İSTİSNASI KALDI: `imha-listesi.ts:427-455` SILINMEZLER —
+        // `Fatura`, `HavaleOdemesi`, `Abonelik`, `AbonelikOlayi`,
+        // `AbonelikBaslatma` yasal saklama gereği DURUR. "30 gün sonra her şey
+        // silinir" demek bu yüzden YANLIŞ olurdu.
+        "Aboneliği iptal etmek ile hesabı kapatmak farklı şeylerdir. Hesabınızı Hesabım sayfasındaki \"Hesabımı kapat\" adımıyla kendiniz kapatabilirsiniz. Hesap kapatıldığında girişiniz kapanır; verileriniz 30 gün saklanır, sonra kalıcı olarak silinir. Fatura ve ödeme kayıtları, mevzuattan doğan saklama yükümlülükleri nedeniyle bu sürenin ötesinde tutulmaya devam eder. Ayrıntı için Gizlilik Politikası'na bakabilirsiniz.",
       ],
     },
     {
@@ -691,7 +772,7 @@ export const MESAFELI_SATIS: HukukiMetin = {
     {
       baslik: "13. Uyuşmazlık çözümü, şikayet ve iletişim",
       paragraflar: [
-        `Hizmetle ilgili her türlü soru, talep ve şikayetinizi önce doğrudan bize iletmenizi rica ederiz: ${SATICI.eposta} veya ${SATICI.telefon}. Sorunların büyük bölümü bu aşamada çözülür.`,
+        `Hizmetle ilgili her türlü soru, talep ve şikayetinizi önce doğrudan bize iletmenizi rica ederiz: ${SATICI.eposta}${telefonEki(' veya ')}. Sorunların büyük bölümü bu aşamada çözülür.`,
         "Tüketici sıfatını taşıyan alıcılar, uyuşmazlık hâlinde parasal sınırlara göre yerleşim yerlerindeki Tüketici Hakem Heyetine veya Tüketici Mahkemesine başvurabilir. Güncel parasal sınırlar Ticaret Bakanlığı tarafından her yıl ilan edilir.",
         `MetaPriceX ticari ve mesleki faaliyet kapsamında kullanılan bir yazılımdır. Hizmeti bu kapsamda alan firmalar tüketici mevzuatının kapsamı dışında kalabilir; bu durumda uyuşmazlıklarda genel hükümler uygulanır ve ${HUKUKI_KARARLAR.yetkiliMahkeme} yetkilidir.`,
       ],
@@ -724,7 +805,7 @@ export const MESAFELI_SATIS_SOZLESMESI: HukukiMetin = {
     {
       baslik: "1. Taraflar",
       paragraflar: [
-        `SATICI: ${SATICI.unvan}, ${SATICI.adres}. MERSİS: ${SATICI.mersis}, ticaret sicil no: ${SATICI.ticaretSicilNo}, vergi dairesi ve numarası: ${SATICI.vergiDairesi} / ${SATICI.vergiNo}. E-posta: ${SATICI.eposta}, telefon: ${SATICI.telefon}.`,
+        `SATICI: ${SATICI.unvan}, ${SATICI.adres}. MERSİS: ${SATICI.mersis}, ticaret sicil no: ${SATICI.ticaretSicilNo}, vergi dairesi ve numarası: ${SATICI.vergiDairesi} / ${SATICI.vergiNo}. E-posta: ${SATICI.eposta}${telefonEki(', telefon: ')}.`,
         "ALICI: MetaPriceX'te hesap açan kullanıcı ve bu kullanıcının kayıt sırasında oluşturduğu firma. Alıcının adı, adresi ve iletişim bilgileri, satın alma adımında girdiğiniz fatura bilgileri ile hesabınızdaki kayıtlı bilgilerdir.",
       ],
     },

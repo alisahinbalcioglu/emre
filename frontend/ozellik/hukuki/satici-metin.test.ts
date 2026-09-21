@@ -11,6 +11,7 @@ import {
   HUKUKI_KARARLAR,
   SATICI,
   saticiDolduMu,
+  telefonEki,
   type HukukiMetin,
 } from './metinler';
 
@@ -100,6 +101,12 @@ describe('T1/T2 — satıcı kimliği metinlerde GERÇEKTEN dolu', () => {
   });
 
   it('sicil bilgileri metinlerde ADIYLA geçiyor (bağlantı koparsa kırmızı)', () => {
+    // ⚠ `telefon` BU LİSTEDEN ÇIKTI (21.09): artık `null` olabilen bir alan
+    // ve bugün `null` — "metinde adıyla geçmeli" ölçütü ona UYGULANAMAZ.
+    // Yerine T4b geldi: `null` iken HİÇ geçmiyor, değer verilince geçiyor.
+    // `meslekOdasi` de burada DEĞİL: hukuki metinlere eklenmedi (metin
+    // gövdesine dokunmama kuralı), yalnız /iletisim ve altbilgide basılıyor —
+    // ölçümü `ozellik/kurumsal/kurumsal-sayfalar.test.ts`te.
     for (const deger of [
       SATICI.unvan,
       SATICI.adres,
@@ -108,7 +115,6 @@ describe('T1/T2 — satıcı kimliği metinlerde GERÇEKTEN dolu', () => {
       SATICI.vergiNo,
       SATICI.vergiDairesi,
       SATICI.eposta,
-      SATICI.telefon,
     ]) {
       expect(TUM_METIN).toContain(deger);
     }
@@ -142,6 +148,63 @@ describe('T4 — KEP yokken satır HİÇ basılmıyor', () => {
     expect(SATICI.kep).toBeNull();
     expect(TUM_METIN).not.toMatch(/KEP adresi:\s*(\n|$)/);
     expect(TUM_METIN).not.toContain('KEP');
+  });
+});
+
+/**
+ * T4b — TELEFON `null` OLABİLİR, KEP'İN DESENİ (Emre kararı, 21.09.2026)
+ *
+ * Eldeki numara kişisel bir hat; yayınlanması sakıncalı. `null` = "böyle bir
+ * bilgi yok": telefonla ilgili parça HİÇ basılmaz.
+ *
+ * ⚠ ASIL RİSK CÜMLE ARTIĞI, EKSİK SATIR DEĞİL. Telefon beş ayrı yerde
+ * geçiyordu ve dördü CÜMLE İÇİNDEydi ("…e-posta: X, telefon: Y."). Değeri
+ * boşaltmak "telefon: ." ya da "… veya ." bırakırdı — olmayan bir kanalı
+ * varmış gibi göstermekten daha kötüsü, bozuk bir hukuki cümle.
+ * ⚠ İŞ EMRİ ÜÇ YER SAYMIŞTI, ÖLÇÜM BEŞ BULDU (Ön Bilgilendirme 13. bölüm ve
+ * Mesafeli Satış Sözleşmesi 1. madde listede yoktu).
+ */
+describe('T4b — telefon null iken hiç basılmıyor, cümle artığı YOK', () => {
+  it('bugün null ve hiçbir metinde geçmiyor', () => {
+    expect(SATICI.telefon).toBeNull();
+    expect(TUM_METIN).not.toMatch(/[Tt]elefon:/);
+  });
+
+  it('CÜMLE ARTIĞI YOK: boş ayıraç, sarkan "veya", çift nokta yok', () => {
+    for (const artik of [
+      /,\s*\./, // "e-posta: X, ."
+      /·\s*(\n|$)/, // "İletişim: X · "
+      /\bveya\s*\./, // "X veya ."
+      /:\s*null/i,
+      /undefined/,
+    ]) {
+      expect(TUM_METIN, String(artik)).not.toMatch(artik);
+    }
+  });
+
+  // ⭐ TERS MUTASYON: `null` dalı telefonu KALICI olarak silmiyor, yalnız
+  // gizliyor. Bir iş hattı girildiğinde beş yer birden geri gelmeli.
+  it('değer verilince ek geri gelir ve ayıraç değerle birlikte gider', () => {
+    expect(telefonEki(', telefon: ')).toBe(''); // bugün null
+    const gercek = SATICI.telefon;
+    try {
+      (SATICI as { telefon: string | null }).telefon = '+90 212 000 00 00';
+      expect(telefonEki(', telefon: ')).toBe(', telefon: +90 212 000 00 00');
+      expect(telefonEki(' · ')).toBe(' · +90 212 000 00 00');
+    } finally {
+      (SATICI as { telefon: string | null }).telefon = gercek;
+    }
+    expect(SATICI.telefon).toBeNull();
+    expect(telefonEki(' veya ')).toBe('');
+  });
+
+  // Madde (liste) satırı KEP'in kendi desenini kullanıyor: hiç basılmıyor.
+  it('Ön Bilgilendirme satıcı künyesinde boş "Telefon:" maddesi yok', () => {
+    const kunye = MESAFELI_SATIS.bolumler.find((b) => b.baslik.includes('Satıcı'));
+    expect(kunye?.madde, 'ÖLÇÜT: künye bölümü bulundu').toBeTruthy();
+    expect(kunye?.madde?.some((m) => m.startsWith('Telefon'))).toBe(false);
+    // ÖLÇÜT: künye gerçekten dolu — boş dizi her assert'i yeşil yapardı.
+    expect(kunye?.madde?.some((m) => m.startsWith('E-posta'))).toBe(true);
   });
 });
 
@@ -228,6 +291,79 @@ describe('T8 — çeviri kotası cümlesi RAKAMSIZ', () => {
  * `cizilen()` ile ÇİZİLEN gövde okunur — yorumda kalan eski cümle
  * "yerinde" sayılmaz.
  */
+/**
+ * T10 — HESAP KAPATMA / VERİ İMHASI: METİN ÜRÜNLE ÇELİŞMİYOR (21.09.2026)
+ *
+ * Veri imhası turu kapatmayı "30 gün sakla, sonra kalıcı sil" hâline getirdi.
+ * Bugünkü metinlerde bunun TERSİNİ söyleyen cümleler vardı; düzeltilmeseydi
+ * canlıda YANLIŞ BEYAN olurdu. Kapı, ürünün ÖLÇÜLEN davranışını kilitler:
+ *   · kapatma + 30 gün = imha            → `imha.job.ts:15-16`
+ *   · geri açma KAPALI liste             → `abonelik.servisi.ts:129`
+ *     (`kendi`, `firmaKapandi`; `ekiptenCikarildi`/`yonetici` GELMEZ)
+ *   · deneme kaydı imhadan MUAF          → `imha-listesi.ts:457`
+ *   · fatura/ödeme kayıtları MUAF        → `imha-listesi.ts:427-455`
+ *   · yedek: günlük 14 gün, diğerleri 30 → `backup.sh:28` + `deploy.sh:113`
+ *   · kapatma EKRANDA, talep yoluyla değil → `profile/page.tsx:1062,1121`
+ */
+describe('T10 — hesap kapatma ve 30 günlük imha: metin ürünle çelişmiyor', () => {
+  const gizlilik = cizilen(GIZLILIK).join('\n');
+  const kosullar = cizilen(KULLANIM_KOSULLARI).join('\n');
+  const mesafeli = cizilen(MESAFELI_SATIS).join('\n');
+
+  it('ÖLÇÜT: üç metin de gerçekten çiziliyor', () => {
+    for (const g of [gizlilik, kosullar, mesafeli]) expect(g.length).toBeGreaterThan(500);
+  });
+
+  it('yedek saklama: 14 gün / en fazla 30 gün + "yedeklerden çıkar" taahhüdü', () => {
+    expect(gizlilik).toContain('düzenli yedekler sunucuda 14 gün');
+    expect(gizlilik).toContain('en fazla 30 gün tutulur');
+    expect(gizlilik).toContain('Silinen veriler yedeklerden en geç 30 gün içinde çıkar.');
+    // ⚠ AİLE ADIYLA SAYILMAZ: ölçüm DÖRT yedek ailesi buldu, iş emri İKİ
+    // sayıyordu. Sayan bir cümle dördüncü aile eklenince sessizce eksik kalır.
+    expect(gizlilik).not.toMatch(/yedekleri: sunucuda 14 gün tutulur\./);
+  });
+
+  it('deneme kaydı 30 günlük imhanın İSTİSNASI olduğunu SÖYLÜYOR', () => {
+    expect(gizlilik).toContain('kapatmadan 30 gün sonra yapılan kalıcı silme bu kaydı kapsamaz');
+    // Tutulan alanlar adıyla yazılı olmalı — "bir şeyler saklıyoruz" yetmez.
+    expect(gizlilik).toContain('e-posta adresiniz ve telefon numaranız');
+  });
+
+  it('kullanım koşulları: 30 gün sonra kalıcı silme SÖYLENİYOR', () => {
+    expect(kosullar).toContain('30 gün sonra teklifleriniz, kütüphaneniz ve yüklediğiniz belgeler kalıcı olarak silinir');
+  });
+
+  // ⭐ EN ÖNEMLİ ASSERT: geri açma vaadi KOŞULSUZ OLMAMALI. Ürün dört kapatma
+  // nedeninin yalnız İKİSİNDE geri açıyor; koşulsuz bir cümle sözleşmede
+  // yapılmayan bir şeyi vaat ederdi.
+  it('geri açma vaadi KOŞULLU — ekipten çıkarma / yönetici hariç tutulmuş', () => {
+    expect(kosullar).toContain('Hesabınızı kendiniz kapattıysanız ya da firmanız kapatıldığı için hesabınız kapandıysa');
+    expect(kosullar).toContain('ekipten çıkarılma ya da yönetici kararıyla kapatılan hesaplar bu yolla geri açılmaz');
+    // Koşulsuz biçim GERİ GELMESİN: "…silinir; bu süre içinde giriş yapıp…"
+    expect(TUM_METIN).not.toMatch(/silinir;\s*bu süre içinde giriş yapıp/);
+  });
+
+  it('ön bilgilendirme: kapatma EKRANDA yapılır, "talebinizi bize iletin" DEĞİL', () => {
+    expect(mesafeli).toContain('Hesabım sayfasındaki "Hesabımı kapat" adımıyla kendiniz kapatabilirsiniz');
+    expect(mesafeli).toContain('verileriniz 30 gün saklanır, sonra kalıcı olarak silinir');
+    expect(TUM_METIN).not.toContain('Hesabınızı tamamen kapatmak isterseniz bu talebinizi bize iletebilirsiniz');
+  });
+
+  it('fatura/ödeme istisnası KORUNDU (30 gün "her şey silinir" demiyor)', () => {
+    expect(mesafeli).toContain('Fatura ve ödeme kayıtları');
+    expect(kosullar).toContain('Fatura, ödeme ve yönetici işlem kayıtları');
+  });
+
+  it('hiçbir metin "süresiz saklanır" izlenimi bırakmıyor', () => {
+    for (const yanlis of [
+      'bir süre daha sistemlerimizde kalır',
+      'süresiz olarak saklanır',
+    ]) {
+      expect(TUM_METIN, yanlis).not.toContain(yanlis);
+    }
+  });
+});
+
 describe('T9 — elektrik kapsamı: metin satılan ürünle çelişmiyor', () => {
   it('ÖLÇÜT: fixture gerçekten bu üç metni taşıyor', () => {
     for (const m of [GIZLILIK, KULLANIM_KOSULLARI, MESAFELI_SATIS]) {
