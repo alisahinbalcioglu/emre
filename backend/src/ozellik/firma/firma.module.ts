@@ -4,6 +4,8 @@ import { FirmaController } from './firma.controller';
 import { UyelikServisi } from './uyelik.servisi';
 import { UyelikController } from './uyelik.controller';
 import { DavetKabulController } from './davet-kabul.controller';
+import { KurumsalGirisAyarServisi } from './kurumsal-giris-ayar.servisi';
+import { FirmaKurumsalGirisController } from './firma-kurumsal-giris.controller';
 import { OdemeModule } from '../odeme/odeme.module';
 import { AuthModule } from '../../altyapi/auth/auth.module';
 
@@ -24,8 +26,13 @@ import { AuthModule } from '../../altyapi/auth/auth.module';
  */
 @Module({
   imports: [OdemeModule, AuthModule],
-  providers: [FirmaServisi, UyelikServisi],
-  controllers: [FirmaController, UyelikController, DavetKabulController],
+  providers: [FirmaServisi, UyelikServisi, KurumsalGirisAyarServisi],
+  controllers: [
+    FirmaController,
+    UyelikController,
+    DavetKabulController,
+    FirmaKurumsalGirisController,
+  ],
   exports: [FirmaServisi, UyelikServisi],
 })
 export class FirmaModule {}

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   ConflictException,
   UnauthorizedException,
@@ -19,6 +20,11 @@ import { mfaZorunluMu, type MfaZorunlulukNedeni } from './mfa/mfa-karari';
 import { tokenImzala } from './token-imza';
 import { firmaRolaGoreSuz } from '../../ozellik/firma/firma-maskele';
 import { koltukDurumuHesapla, etkinHesapKosulu, type FirmaRol } from '../../ozellik/firma/uyelik-kurallari';
+import {
+  alanAdiZorunluMu,
+  kurumsalZorunluMu,
+  KURUMSAL_GIRIS_ZORUNLU_GOVDE,
+} from './kurumsal/kurumsal-zorunluluk';
 
 @Injectable()
 export class AuthService {
@@ -42,6 +48,16 @@ export class AuthService {
     const email = epostaKucult(dto.email);
     const existing = await epostaIleKullaniciBul(this.prisma, email);
     if (existing) throw new ConflictException('Email already in use');
+
+    // ── FAZ 7 F3b (V7, §5.10): ALAN ADI EKSENI ───────────────────────────
+    // ⚠ KISI degil ALAN ADI sorulur: kullanici henuz YOK, `firmaId`si de
+    // yok. Kisi eksenli yuklem burada "firma esitligi" kosulunda SESSIZCE
+    // dogru sayilir ve zorunlulugu atlardi — yani zorunlu bir alan adinda
+    // AYRI bir firma acan, parolali GOLGE hesap yolu acik kalirdi.
+    // Kesif ucu bu bilgiyi zaten herkese soyluyor: yeni sizinti YOK.
+    if (await alanAdiZorunluMu(this.prisma, email)) {
+      throw new BadRequestException(KURUMSAL_GIRIS_ZORUNLU_GOVDE);
+    }
 
     const hashed = await bcrypt.hash(dto.password, 10);
     // ADIM 1 (firma): hesap artik KISI degil FIRMA. Her yeni kayit KENDI
@@ -109,6 +125,19 @@ export class AuthService {
     // cagrilmasinin bedeli sifir (saf, yan etkisiz).
     hesapKapisi(user);
 
+    // ── FAZ 7 F3b (V7, §5.10): KURUMSAL GIRIS ZORUNLU MU ─────────────────
+    // ⚠ SIRA (mutant #12): bu kontrol PAROLA DOGRULANDIKTAN SONRA kosar.
+    // Once kosaydi, yanlis parolayla gelen biri de 400
+    // `KURUMSAL_GIRIS_ZORUNLU` alirdi ve bu, "bu adres su firmanin uyesi"
+    // bilgisini PAROLASIZ dogrulayan bir numaralandirma oracle'i olurdu.
+    // Sonra kosunca normal girisin zaten verdigi "parola dogru mu"
+    // bilgisinden fazlasi sizmaz ve TOKEN VERILMEZ.
+    // ⚠ Yonetici MUAF: platform yoneticisi kurumsal girisi kullanamaz
+    // (§5.9); zorunluluk ona uygulansa hicbir yoldan giremezdi.
+    if (await kurumsalZorunluMu(this.prisma, user)) {
+      throw new BadRequestException(KURUMSAL_GIRIS_ZORUNLU_GOVDE);
+    }
+
     // FAZ 7 F2b (R1-O1): parola dogruysa is BITMEDI. Iki adimli giris acik
     // ya da zorunluysa yanit TOKEN DEGIL MEYDAN OKUMADIR (§4.4).
     return this.oturum.girisKarari(user, 'parola');
@@ -158,6 +187,8 @@ export class AuthService {
         // bir kez). `select` yazmak kadar NE YAZMAMAK da kurali tasir.
         mfaAcikAt: true,
         mfaKaynagi: true,
+        // FAZ 7 F3b (§6.7): Profil'deki "Sirket hesabi" karti buradan beslenir.
+        parolaTanimli: true,
         // FAZ 4.1 — FİRMA. ⚠ Ölçüldü: ön yüz bugüne kadar firma bilgisini HİÇ
         // göremiyordu; `/auth/me` yalnız `firmaId` dönüyordu ve `/abonelik/durum`
         // firma KİMLİĞİ taşımıyordu. Yani profil sayfası firmanın adını bile
@@ -227,10 +258,55 @@ export class AuthService {
 
     // ⚠ `mfaAcikAt`/`mfaKaynagi` ham alanlar olarak da yayilirdi: `mfa`
     // nesnesi tek dogru okuma noktasi olsun diye YAYILIMDAN CIKARILIR.
-    const { mfaAcikAt: _ham1, mfaKaynagi: _ham2, ...kisi } = user;
+    // FAZ 7 F3b (§6.7): sirket hesabi karti — BAGLI MI, hangi saglayici,
+    // parolasi var mi. ⚠ `subject`/`issuer` YOK: kart onlari gostermiyor ve
+    // her sayfa acilisinda tasinan bir yanitta tekil kimlik tasimak gereksiz.
+    const kurumsal = await this.kurumsalBilgisi(user.id, user.firmaId);
+
+    // ⚠ `mfaAcikAt`/`mfaKaynagi` ham alanlar olarak da yayilirdi: `mfa`
+    // nesnesi tek dogru okuma noktasi olsun diye YAYILIMDAN CIKARILIR.
+    // `parolaTanimli` de ayni gerekceyle `kurumsal` icine tasinir.
+    const { mfaAcikAt: _ham1, mfaKaynagi: _ham2, parolaTanimli: _ham3, ...kisi } = user;
 
     // ⚠ `tier` SAKLANAN degeri EZER (2.12): `user` yayilimindan sonra gelir.
-    return { ...kisi, tier: await this.etkinSeviye(user.firmaId), firma, koltuk, mfa, capabilities, subscriptions, erisim };
+    return { ...kisi, tier: await this.etkinSeviye(user.firmaId), firma, koltuk, mfa, kurumsal, capabilities, subscriptions, erisim };
+  }
+
+  /**
+   * FAZ 7 F3b — `/auth/me` yanitinin `kurumsal` alani (§6.7 / §9 madde 9).
+   *
+   * `saglayiciTipi` FIRMANIN saglayicisindan gelir (bagli olmasa da kart
+   * "Sirket hesabimi bagla" dugmesini ancak DOGRULANDI/ETKIN bir saglayici
+   * varsa cizebilir).
+   */
+  private async kurumsalBilgisi(
+    userId: string,
+    firmaId: string | null,
+  ): Promise<{
+    bagli: boolean;
+    saglayiciTipi: string | null;
+    saglayiciDurumu: string | null;
+    parolaTanimli: boolean;
+  }> {
+    const [baglanti, saglayici, user] = await Promise.all([
+      this.prisma.kullaniciDisKimlik.findFirst({ where: { userId } }),
+      firmaId
+        ? this.prisma.firmaKimlikSaglayici.findUnique({
+            where: { firmaId },
+            select: { tip: true, durum: true },
+          })
+        : Promise.resolve(null),
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { parolaTanimli: true },
+      }),
+    ]);
+    return {
+      bagli: !!baglanti,
+      saglayiciTipi: saglayici?.tip ?? null,
+      saglayiciDurumu: saglayici?.durum ?? null,
+      parolaTanimli: user?.parolaTanimli !== false,
+    };
   }
 
   /**

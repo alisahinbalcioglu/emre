@@ -120,6 +120,7 @@
     "test:faz7-oidc": "ts-node test/faz7-oidc-test.ts",
     "test:faz7-ekip": "ts-node test/faz7-ekip-test.ts",
     "test:faz7-mfa": "ts-node test/faz7-mfa-test.ts",
+    "test:faz7-kurumsal": "ts-node test/faz7-kurumsal-test.ts",
     "mfa:sifirla": "ts-node scripts/mfa-sifirla.ts",
     "mfasifirla": "ts-node scripts/mfa-sifirla.ts",
     "seed:paketler": "ts-node scripts/paketleri-kur.ts",

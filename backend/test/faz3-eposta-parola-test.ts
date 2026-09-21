@@ -346,6 +346,9 @@ async function main() {
         },
         findUnique: async () => null,
       },
+      // FAZ 7 F3b (V7, §5.10): `sifirlamaIste` artik "bu hesap kurumsal
+      // girise ZORUNLU mu" diye soruyor (zorunluysa e-posta GITMEZ).
+      dogrulanmisAlanAdi: { findUnique: async () => null },
       $transaction: async (islemler: any[]) => Promise.all(islemler),
     }) as any;
 
@@ -445,6 +448,8 @@ async function main() {
           update: async () => ({}),
           updateMany: async () => ({ count: 1 }),
         },
+        // FAZ 7 F3b (V7): `sifirla` da zorunlulugu sorar.
+        dogrulanmisAlanAdi: { findUnique: async () => null },
         $transaction: async (islemler: any[]) => Promise.all(islemler),
       } as any,
       sahteEposta,

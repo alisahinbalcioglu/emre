@@ -12,10 +12,12 @@ import {
   ayrilmaKarari,
   etkinHesapKosulu,
   firmaKilitliIslem,
+  disKimlikleriSil,
   kapatmaVerisi,
   type FirmaRol,
 } from '../../ozellik/firma/uyelik-kurallari';
 import { firmaRolaGoreSuz } from '../../ozellik/firma/firma-maskele';
+import { yakinZamandaGirisMi } from './oturum.servisi';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -82,6 +84,8 @@ export class HesapServisi {
         // e-postasinda, bulutunda dolasir — sirri oraya yazmak, sifreleyerek
         // kazandigimiz her seyi geri verirdi.
         mfaAcikAt: true, mfaKaynagi: true,
+        // FAZ 7 F3b (§3.10): parolasiz hesap OLGUSU da kisisel veridir.
+        parolaTanimli: true,
         firma: {
           select: {
             id: true, ad: true, unvan: true, yetkiliEposta: true,
@@ -253,6 +257,22 @@ export class HesapServisi {
         })
       : 0;
 
+    // ── FAZ 7 F3b (§3.10): DIS KIMLIK KAYITLARI ─────────────────────────
+    // ⚠ `subject` DAHIL: kisiyi sirketin kimlik saglayicisinda TEKIL olarak
+    // tanimlayan degerdir, yani kisisel veridir ve "hakkimda ne tutuyorsunuz"
+    // cevabinda yer almasi gerekir.
+    // ⚠ SAGLAYICI SIRRI (istemci anahtari) BURADA YOK: o firmanin sirridir,
+    // kisinin verisi degil — disa aktarim dosyasina yazmak onu her uyenin
+    // indirebilecegi bir yere koyardi.
+    const disKimlikler = await this.prisma.kullaniciDisKimlik.findMany({
+      where: { userId },
+      select: {
+        issuer: true, subject: true, entraKiraciId: true, epostaAnlik: true,
+        baglamaYolu: true, olusturuldu: true, sonGirisAt: true,
+        saglayici: { select: { tip: true } },
+      },
+    });
+
     const ikiliVeriler: { tur: string; ad: string; bayt: number | null; indirmeAdresi: string }[] = [];
     for (const t of teklifler) {
       if (t.originalName) {
@@ -289,6 +309,8 @@ export class HesapServisi {
           kalanKurtarmaKodu: kalanKurtarmaKodu,
         },
       },
+      // FAZ 7 F3b: sirket hesabi baglantilari.
+      kurumsalKimlikler: disKimlikler,
       teklifler,
       teklifFormatlari: formatlar,
       kutuphane,
@@ -356,12 +378,31 @@ export class HesapServisi {
    * `User.email` DEGIL, yani kullanici "hesabimi kapattim" dedikten sonra
    * baska bir adresten odeme uyarisi almaya devam ederdi.
    */
-  async hesabiKapat(userId: string, parola: string) {
+  async hesabiKapat(userId: string, parola: string, authAt: number | null = null) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user || user.deletedAt) throw new UnauthorizedException();
 
-    const dogru = await bcrypt.compare(parola, user.password);
-    if (!dogru) throw new UnauthorizedException('Parolaniz hatali.');
+    // ── FAZ 7 F3b (§5.11): PAROLASIZ HESAP ───────────────────────────────
+    // Kurumsal girisle acilmis hesabin parolasi YOKTUR (`password` kimsenin
+    // bilmedigi rastgele bir ozettir). Yerine "son 10 dakikada BIRINCIL
+    // kimlik dogrulamasi yapildi" kaniti aranir.
+    // ⚠ Kanit `authAt`tir, `iat` DEGIL (R1-Y1): MFA kurulum/kapatma taze
+    // `iat`li token basar ama `authAt`i KOPYALAR. `iat` okunsaydi calinmis
+    // bir token MFA uclarindan gecirilerek "tazelenir" ve hesabi kapatirdi
+    // (K18c).
+    if ((user as unknown as { parolaTanimli?: boolean }).parolaTanimli === false) {
+      if (!yakinZamandaGirisMi(authAt, Math.floor(Date.now() / 1000))) {
+        throw new BadRequestException({
+          kod: 'YENIDEN_GIRIS_GEREKLI',
+          mesaj:
+            'Güvenlik için çıkış yapıp şirket hesabınızla yeniden girin, ' +
+            'sonra 10 dakika içinde tekrar deneyin.',
+        });
+      }
+    } else {
+      const dogru = await bcrypt.compare(parola, user.password);
+      if (!dogru) throw new UnauthorizedException('Parolaniz hatali.');
+    }
 
     if (user.role === 'admin') {
       const kalanAdmin = await this.prisma.user.count({
@@ -425,6 +466,8 @@ export class HesapServisi {
             where: { id: userId },
             data: kapatmaVerisi(taze, simdi),
           });
+          // FAZ 7 F3b: kapatilan hesap sirket hesabiyla GERI ACILMAZ.
+          await disKimlikleriSil(tx, userId);
           if (k.sonHesap) {
             // Kapanan firmaya katilim olmasin: bekleyen davetler AYNI
             // transaction'da iptal edilir.
@@ -458,6 +501,7 @@ export class HesapServisi {
             where: { id: userId },
             data: kapatmaVerisi(user, simdi),
           });
+          await disKimlikleriSil(this.prisma, userId);
           return { izin: true as const, abonelikIptal: false, sonHesap: false };
         })();
 

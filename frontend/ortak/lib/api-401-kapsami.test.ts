@@ -386,3 +386,53 @@ describe('E — 403 KOLTUK_ASILDI [FAZ 7 F1b]', () => {
     expect(yayinlananOlaylar).toContain('abonelik-kisitli');
   });
 });
+
+// ---------------------------------------------------------------------------
+// F — KURUMSAL GIRIS UCLARI (/auth/sso/degis, /auth/sso/katil)  [FAZ 7 F3b]
+//
+// NEDEN AYRI BLOK: bu iki uc GUARDSIZDIR ve 401 "60 saniyelik kod tukendi ya
+// da sekme sirri uymadi" demektir — OTURUM DUSMESI DEGIL. Listeden biri
+// silinse A/C bloklari YINE YESIL kalir; bu blok o yarisi kilitler.
+// C blogu deseninin (C0 olcut · C1 silmez · C2 yonlendirmez · C3 tam URL)
+// birebir ikizidir.
+// ---------------------------------------------------------------------------
+for (const uc of ['/auth/sso/degis', '/auth/sso/katil']) {
+  describe(`F — ${uc} den gelen 401 [FAZ 7 F3b]`, () => {
+    it('F0 KAPI — istek gercekten o adrese gitti', async () => {
+      await dortYuzBirAl(uc);
+      expect(adapterCagrilariUrl).toEqual([uc]);
+    });
+
+    it('F1 — oturumu SILMEMELI', async () => {
+      expect(depo.getItem('token')).toBe(SEANS_JETONU);
+      await dortYuzBirAl(uc);
+      expect({ token: depo.getItem('token'), user: depo.getItem('user') }).toEqual({
+        token: SEANS_JETONU,
+        user: SEANS_KULLANICI,
+      });
+    });
+
+    it('F2 — YONLENDIRME YAPMAMALI (/sso/tamam kendi mesajini gostersin)', async () => {
+      expect(pencere.location.href).toBe(BASLANGIC_URL);
+      await dortYuzBirAl(uc);
+      expect(pencere.location.href).toBe(BASLANGIC_URL);
+    });
+
+    it('F3 — TAM URL ile gelse de muaf', async () => {
+      expect(pencere.location.href).toBe(BASLANGIC_URL);
+      await dortYuzBirAl(`http://localhost:3001/api${uc}`);
+      expect(pencere.location.href).toBe(BASLANGIC_URL);
+    });
+  });
+}
+
+describe('F4 — OTURUMLU kurumsal uclar listede DEGIL [FAZ 7 F3b]', () => {
+  it('F4 — /auth/sso/niyet ten gelen 401 GERCEK oturum dusmesidir', async () => {
+    expect(pencere.location.href).toBe(BASLANGIC_URL);
+    await dortYuzBirAl('/auth/sso/niyet');
+    // ⚠ NEGATIF KRITER: bu uc muaf OLMAMALI. Muaf olsaydi gercek bir oturum
+    // dusmesi sessizlesir, kullanici "hicbir sey olmuyor" ekraninda kalirdi.
+    expect(pencere.location.href).toBe('/login');
+    expect(depo.getItem('token')).toBeNull();
+  });
+});

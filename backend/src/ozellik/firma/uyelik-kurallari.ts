@@ -180,6 +180,26 @@ export function kapatmaVerisi(
   };
 }
 
+/** `disKimlikleriSil`in ihtiyac duydugu en dar Prisma yuzeyi. */
+export type DisKimlikPrisma = {
+  kullaniciDisKimlik: { deleteMany(args: any): Promise<{ count: number }> };
+};
+
+/**
+ * KAPATMA AKISININ DIS KIMLIK AYAGI (FAZ 7 F3b, §5.11) — TEK FONKSIYON.
+ *
+ * UC TUKETICI: hesap kapatma, uye cikarma, yonetici silme. Ucu de AYNI
+ * transaction icinde cagirir; ayri ayri yazilsaydi biri gunun birinde
+ * unutulur ve KAPATILMIS bir hesap sirket hesabiyla GERI ACILIRDI (dis
+ * kimlik satiri `(issuer, subject)` eslemesini surdururdu).
+ *
+ * ⚠ `kapatilanEposta` uzerinden ASLA esleme yapilmaz: kisi ayni kurumsal
+ * kimlikle YENI bir hesap olarak katilabilir — eski hesabina donemez.
+ */
+export async function disKimlikleriSil(tx: DisKimlikPrisma, userId: string): Promise<void> {
+  await tx.kullaniciDisKimlik.deleteMany({ where: { userId } });
+}
+
 /** `firmaKilitliIslem`in ihtiyac duydugu en dar Prisma yuzeyi. */
 export type KilitliPrisma = {
   $transaction<T>(fn: (tx: any) => Promise<T>): Promise<T>;

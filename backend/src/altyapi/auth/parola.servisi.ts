@@ -12,6 +12,7 @@ import { AuthService } from './auth.service';
 import { epostaIleKullaniciBul } from './eposta';
 import { SIFIRLAMA_OMRU_MS, tokenOzetle, tokenUret } from './token-ozet';
 import { uygulamaKokuCoz } from './uygulama-url';
+import { kurumsalZorunluMu } from './kurumsal/kurumsal-zorunluluk';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -74,8 +75,17 @@ export class ParolaServisi {
     // ölçülebilir bir CPU farkı bırakmaz.
     const { token, ozet } = tokenUret();
 
+    // ── FAZ 7 F3b (V7, §5.10): KURUMSAL GIRIS ZORUNLUYSA E-POSTA GITMEZ ──
+    // ⚠ Cevap YINE TEKDUZEDIR (`TEKDUZE_CEVAP`): "bu adres kurumsal giris
+    // kullaniyor" demek, hangi sirketin hangi adresi kullandigini dogrulayan
+    // bir numaralandirma oracle'i olurdu. Yalniz e-posta GONDERILMEZ —
+    // zorunlu hesabin parolasi zaten bir giris yolu degildir ve gonderilen
+    // baglanti kullaniciyi calismayan bir yola sokardi.
+    const kurumsalZorunlu = user
+      ? await kurumsalZorunluMu(this.prisma, user)
+      : false;
     const gonderilebilir =
-      !!user && !user.deletedAt && user.status !== 'banned';
+      !!user && !user.deletedAt && user.status !== 'banned' && !kurumsalZorunlu;
 
     if (user && gonderilebilir) {
       await this.prisma.$transaction([
@@ -152,6 +162,17 @@ export class ParolaServisi {
       throw new UnauthorizedException('Bu hesap kullanılamıyor.');
     }
 
+    // FAZ 7 F3b (V7 ikizi): zorunluluk sifirlamadan SONRA acilmis olabilir —
+    // elde kalan eski bir baglanti parolali yolu geri acmamali.
+    if (await kurumsalZorunluMu(this.prisma, kayit.user)) {
+      throw new BadRequestException({
+        kod: 'KURUMSAL_GIRIS_ZORUNLU',
+        mesaj:
+          'Bu hesap şirket hesabıyla kullanılıyor; parola belirlenemez. ' +
+          'Giriş ekranında "Şirket hesabımla giriş yap" düğmesini kullanın.',
+      });
+    }
+
     const ozetlenmis = await bcrypt.hash(yeniParola, 10);
     const simdi = new Date();
 
@@ -165,6 +186,11 @@ export class ParolaServisi {
           // boyunca oturumu sürdürürdü. Parolayı sıfırlamanın amacı tam olarak
           // bunu kesmektir.
           passwordChangedAt: simdi,
+          // ── FAZ 7 F3b (§2.6): ARTIK PAROLASI VAR ────────────────────────
+          // Kurumsal girisle acilmis hesap (`parolaTanimli: false`) ancak
+          // buradan parola kazanir; boylece "Sirket hesabi kaldirilirsa ne
+          // olacak" sorusunun cevabi olur.
+          parolaTanimli: true,
           // ── FAZ 7 F2b (§4.4): KILIDI AÇAN İKİ YOLDAN BİRİ ───────────────
           // 20 hatalı koddan sonra doğrulama adımı kilitlenir. Kullanıcının
           // kendi başına açabileceği tek yol budur (diğeri yöneticidir):
@@ -195,6 +221,18 @@ export class ParolaServisi {
   async degistir(userId: string, mevcutParola: string, yeniParola: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new UnauthorizedException();
+
+    // FAZ 7 F3b (§5.11): PAROLASIZ HESAP — 400, 401 DEGIL. 401 donseydi
+    // `api.ts` yakalayicisi kullaniciyi oturumdan ATAR ve kisi "neden
+    // atildim" bilmezdi; bu bir kimlik hatasi degil, ozellik yokluğudur.
+    if ((user as unknown as { parolaTanimli?: boolean }).parolaTanimli === false) {
+      throw new BadRequestException({
+        kod: 'PAROLA_YOK',
+        mesaj:
+          'Hesabınızın parolası yok; şirket hesabıyla açıldı. Firmanız izin ' +
+          'veriyorsa "Parolamı unuttum" ile bir parola belirleyebilirsiniz.',
+      });
+    }
 
     const dogru = await bcrypt.compare(mevcutParola, user.password);
     if (!dogru) {

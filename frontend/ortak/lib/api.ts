@@ -30,12 +30,25 @@ api.interceptors.request.use((config) => {
  * yakalayici zaten dokunmaz; listeye eklenseydi o uclardaki GERCEK oturum
  * dusmesi sessizlesirdi.
  */
+/**
+ * ⚠ FAZ 7 F3b: sirket girisinin ikinci adimi da GUARDSIZDIR. `/auth/sso/degis`
+ * ve `/auth/sso/katil` 401 dondugunde anlam "60 saniyelik kod tukendi ya da
+ * sekme sirri uymadi"dir — OTURUM DUSMESI DEGIL. Listede olmasaydi yakalayici
+ * tam sayfa `/login` yonlendirmesi yapar, kullanici `/sso/tamam` sayfasindaki
+ * "yeniden deneyin" metnini GOREMEZDI.
+ *
+ * ⚠ `/auth/sso/niyet` ve `DELETE /auth/sso/baglanti` listede YOKTUR ve
+ * olmamalidir: onlar OTURUMLU uclardir ve yanlis parolada 400 doner; listeye
+ * eklenseydi oradaki GERCEK oturum dusmesi sessizlesirdi.
+ */
 const KIMLIK_UCLARI = [
   '/auth/login',
   '/auth/register',
   '/auth/mfa/dogrula',
   '/auth/mfa/zorunlu-kurulum/baslat',
   '/auth/mfa/zorunlu-kurulum/onayla',
+  '/auth/sso/degis',
+  '/auth/sso/katil',
 ];
 
 /**

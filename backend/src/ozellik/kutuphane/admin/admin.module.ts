@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AdminController } from './admin.controller';
+import { AdminKurumsalGirisController } from './admin-kurumsal-giris.controller';
 import { AdminService } from './admin.service';
 import { PrismaModule } from '../../../altyapi/db/prisma.module';
 import { AiModule } from '../../giris/ai/ai.module';
@@ -14,7 +15,7 @@ import { OdemeModule } from '../../odeme/odeme.module';
 
 @Module({
   imports: [PrismaModule, AiModule, ExcelGridModule, MatchingModule, OdemeModule],
-  controllers: [AdminController],
+  controllers: [AdminController, AdminKurumsalGirisController],
   providers: [AdminService],
 })
 export class AdminModule {}

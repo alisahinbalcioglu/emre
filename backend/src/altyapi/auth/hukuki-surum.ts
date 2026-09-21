@@ -31,4 +31,4 @@
 // saklama suresi (15 dk bekleyen kurulum) ve kullanim kosullari md.3
 // (hesap guvenligi) eklendi. ANLAM degisti → surum artti.
 // ⚠ ON YUZ KOPYASIYLA AYNI OLMAK ZORUNDA (`test:faz5` D7 olcer).
-export const HUKUKI_METIN_SURUMU = '2026-09-20';
+export const HUKUKI_METIN_SURUMU = '2026-09-21';

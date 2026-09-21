@@ -339,6 +339,17 @@ function bellekPrisma() {
         hedefler.forEach((s) => veriUygula(model, s, arg.data));
         return { count: hedefler.length };
       },
+      // FAZ 7 F3b (§5.11): ayrilma akisi (hesap kapatma / uye cikarma /
+      // yonetici silme) artik `kullaniciDisKimlik.deleteMany` de cagiriyor —
+      // kapatilan hesap sirket hesabiyla GERI ACILMASIN diye.
+      deleteMany: async (arg: any = {}) => {
+        await bekle();
+        const kalan = tablo(model).filter((r) => !whereUygula(r, arg.where));
+        const n = tablo(model).length - kalan.length;
+        tablo(model).length = 0;
+        tablo(model).push(...kalan);
+        return { count: n };
+      },
       upsert: async (arg: any) => {
         await bekle();
         const s = tablo(model).find((r) => whereUygula(r, arg.where));

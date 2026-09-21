@@ -91,6 +91,18 @@ function main(): void {
   const uyelikSrv = kodu(oku('backend/src/ozellik/firma/uyelik.servisi.ts'));
   check("B3' davet kabulu onay ZAMANINI yaziyor", /sozlesmeOnayiAt:\s*simdi/.test(uyelikSrv));
   check("B4' davet kabulu onaylanan SURUMU yaziyor", /sozlesmeSurumu:\s*HUKUKI_METIN_SURUMU/.test(uyelikSrv));
+  // FAZ 7 F3b: kurumsal katilim UCUNCU kayit yoludur (`sso/katil` yeni bir
+  // `User` satiri acar). Kapi burada da sorulur; DTO'su `SsoKatilDto`.
+  const kurumsalSrv = kodu(oku('backend/src/altyapi/auth/kurumsal/kurumsal-giris.servisi.ts'));
+  check("B3'' kurumsal katilim onay ZAMANINI yaziyor", /sozlesmeOnayiAt:\s*simdi/.test(kurumsalSrv));
+  check("B4'' kurumsal katilim onaylanan SURUMU yaziyor", /sozlesmeSurumu:\s*HUKUKI_METIN_SURUMU/.test(kurumsalSrv));
+  const ssoDto = kodu(oku('backend/src/altyapi/auth/kurumsal/dto/kurumsal.dto.ts'));
+  check("B1'' kurumsal katilimda sozlesmeOnayi @Equals(true) ile ZORUNLU", /@Equals\(true/.test(ssoDto));
+  check("B2'' kurumsal katilimda ticariIletiOnayi AYRI ve @IsOptional",
+    /@IsOptional\(\)[\s\S]{0,80}ticariIletiOnayi/.test(ssoDto));
+  check("B5'' kurumsal katilimda ticari ileti izni yalniz ACIKCA true ise damgalanir",
+    /ticariIletiOnayiAt:\s*dto\.ticariIletiOnayi === true \? simdi : null/.test(kurumsalSrv));
+
   const kabulDto = kodu(oku('backend/src/ozellik/firma/dto/davet-kabul.dto.ts'));
   check("B1' davet kabulunde sozlesmeOnayi @Equals(true) ile ZORUNLU", /@Equals\(true/.test(kabulDto));
   check("B2' davet kabulunde ticariIletiOnayi AYRI ve @IsOptional",

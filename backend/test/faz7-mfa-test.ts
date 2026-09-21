@@ -272,7 +272,7 @@ function sahtePrisma(veri: Record<string, Satir[]>) {
       if (Array.isArray(fn)) return Promise.all(fn);
       const yedek = JSON.parse(JSON.stringify(veri));
       try {
-        return await fn(p);
+        return await fn(vekil);
       } catch (e) {
         for (const [ad, satirlar] of Object.entries(veri)) {
           satirlar.length = 0;
@@ -283,8 +283,26 @@ function sahtePrisma(veri: Record<string, Satir[]>) {
     },
   };
   for (const [ad, satirlar] of Object.entries(veri)) p[ad] = tabloYap(ad, satirlar, iz);
-  return p;
+  // ⚠ FAZ 7 F3b — BILINMEYEN TABLO BOS DONER, `undefined` DEGIL.
+  // Gerekce: `login`, `/auth/me`, ayrilma akisi ve parola sifirlama artik
+  // F3b tablolarini da okuyor (`dogrulanmisAlanAdi`, `kullaniciDisKimlik`,
+  // `firmaKimlikSaglayici`). Her fixture'a elle eklemek testi konusundan
+  // uzaklastirirdi. Bos tablo "veri yok" demektir ve sessiz bir yalan
+  // uretmez — sorgu YINE KAYDEDILIR, izden okunabilir.
+  // ⚠ VEKIL `$transaction`a da verilir: `tx` ham nesne olsaydi islem
+  // ICINDE bilinmeyen tablo yine `undefined` donerdi.
+  const vekil: any = new Proxy(p, {
+    get(hedef: any, anahtar: string | symbol) {
+      if (typeof anahtar !== 'string' || anahtar in hedef) return hedef[anahtar as any];
+      if (anahtar.startsWith('$') || anahtar.startsWith('_')) return undefined;
+      veri[anahtar] = [];
+      hedef[anahtar] = tabloYap(anahtar, veri[anahtar], iz);
+      return hedef[anahtar];
+    },
+  });
+  return vekil;
 }
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  ORTAK FIXTURE
@@ -1419,8 +1437,12 @@ function bolumKapilar() {
     const k = kodu(kaynak);
     const bas = k.indexOf(ad);
     if (bas < 0) return '';
-    // Fonksiyon govdesini kaba kuvvetle al: sonraki 3000 karakter yeter.
-    return k.slice(bas, bas + 3000);
+    // Fonksiyon govdesini kaba kuvvetle al.
+    // ⚠ PENCERE 4500: F3b `login`/`register`/`davetKabul` govdelerine V7
+    // (zorunlu kurumsal giris) kontrolunu ve gerekcesini ekledi; 3000 karakter
+    // `girisKarari(` satirini PENCERENIN DISINDA birakiyordu ve kapi
+    // YANLIS-NEGATIF veriyordu (kod dogruyken kirmizi).
+    return k.slice(bas, bas + 4500);
   };
   const authSrc = oku('backend/src/altyapi/auth/auth.service.ts');
   const uyelikSrc = oku('backend/src/ozellik/firma/uyelik.servisi.ts');

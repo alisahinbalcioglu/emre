@@ -155,3 +155,26 @@ Kod tarafı hazırlığı: `backend/scripts/kullanici-hakki-guncelle.ts` **varsa
 
 **⚠ İKİNCİ NOT — KVKK dışa aktarımında firma sahibinin gördüğü deneme kayıtları:**
 §3.10 gereği firma sahibinin veri indirmesi artık firmanın `DenemeKullanimi` satırlarını da içeriyor. Bu satırlarda başka bir üyenin sadeleştirilmiş e-postası/telefonu bulunabilir. Firma sahibine verilen bu bilgi "kendi verisini öğrenme" hakkının kapsamında mı, yoksa üçüncü kişinin verisinin ifşası mı? (Faz 6.12a'da firma eksenli satırlar bilerek dışarıda bırakılmıştı; Faz 7 tasarımı sahip için içeri aldı.)
+
+## Faz 7 — kurumsal giriş (F3b, 21.09.2026)
+
+**Metne giren yenilikler (taslak, avukat onayı bekliyor):**
+- Aydınlatma / işlenen veriler: **"Kurumsal giriş"** maddesi — firmanın kimlik hizmetinden (Microsoft Entra ID ya da Google Workspace) ad, soyad, e-posta, kurumsal hesap kimliği ve (Microsoft'ta) kuruluş kimliği alınır; parola hiçbir zaman görülmez. Firma zorunlu kılarsa parolayla giriş yapılamaz. İlk girişte boş kullanıcı hakkı varsa kişi ekibe üye olarak katılır ve bu sırada kullanım koşullarını onaylar.
+- Aydınlatma / alıcılar: Microsoft ve Google **alıcı listesine EKLENMEDİ**; bunun yerine yönü açıkça yazan ayrı bir cümle eklendi ("veri akışı kimlik hizmetinden bize doğrudur; o hizmete sizin hakkınızda veri göndermeyiz — yalnız firmanızın alan adını yönlendirme ipucu olarak iletiriz").
+- Aydınlatma / saklama: **"Kurumsal giriş işlem kaydı: en fazla 24 saat."** (`SsoAkisi` satırı; doğrulanmış kimlik özeti giriş biter bitmez null'lanır, satır 24 saatte silinir — saatlik iş.)
+- Çerez/depolama politikası, sessionStorage listesi: **`mpx_sso_bag`** maddesi.
+- Kullanım koşulları / hesap: kurumsal giriş, zorunlu kılma, otomatik katılım ve kapatma sonrası parola belirleme bağlantısı cümlesi.
+- **Çerez beyanı cümlelerine DOKUNULMADI** ve dokunulmamalıdır: tasarım bilerek çerezsizdir (tarayıcı bağı bir `sessionStorage` sırrının SHA-256 özetidir; sunucu hiçbir yerde `Set-Cookie` yazmaz — `test:faz7-kurumsal` K28 bunu kaynak kapısı olarak tutuyor).
+
+**⚠ HUKUKİ KARAR GEREKTİREN — yurt dışına aktarım ve sıfat:**
+Kurumsal girişte Microsoft/Google, **müşteri firmanın kendi seçtiği ve yönettiği** kimlik sağlayıcısıdır. Akış tarayıcı yönlendirmesiyle oluşur ve bizden o hizmete kişisel veri gitmez (yalnız alan adı ipucu). Sorular:
+1. Bu akış KVKK m.9 anlamında **yurt dışına aktarım** sayılır mı? Sayılırsa aktaran kimdir (biz mi, müşteri firma mı)?
+2. Bu ilişkide bizim sıfatımız **veri sorumlusu** mu, **veri işleyen** mi? Müşteri firma kendi çalışanının verisi bakımından ayrı bir veri sorumlusu mudur?
+3. Alıcı listesine eklememe tercihi (yalnız yön cümlesi) yeterli midir, yoksa Microsoft/Google alıcı olarak da sayılmalı mı?
+Bu sorular yanıtlanmadan metinler `dolduruldu`/onaylı yapılmamalıdır (`HUKUKI_METIN_DURUMU = 'taslak'` korunuyor).
+
+**⚠ İKİNCİ NOT — kişisel adresle kayıtlı üye bağlanamaz (bilinçli sınır):**
+Açık bağlama ve sınama bağlaması, kurumsal hesabın kanıtlı e-postasının hesabın e-postasına **eşit olmasını** şart koşuyor (R1-O3: eşitlik olmadan çalınmış bir oturum anahtarı + firmanın dizinindeki herhangi ikinci bir kimlik = kalıcı, iki adımlı girişsiz arka kapı). Sonuç: e-postası şirket alan adında olmayan (örn. kişisel adresle kayıt olmuş) bir üye şirket hesabına bağlanamaz. O kişi için yol, sahibin onu ekipten çıkarması ve kişinin şirket hesabıyla yeniden katılmasıdır (verisi firmada kalır). Bu, ürün kararıdır; müşteriye duyurulacak metin gerekiyorsa avukat görüşü alınmalı.
+
+**⚠ ÜÇÜNCÜ NOT — kilitlenme ve alan adı kurtarması:**
+Firma sahibi süresi dolan bir istemci anahtarıyla kurumsal girişi zorunlu kılarsa firmadaki herkes dışarıda kalabilir. Kurtarma yolları: (1) platform yöneticisinin `zorunlu-kapat` ucu; (2) anahtarın bitişine 14 gün kala sahibe e-posta uyarısı. Ayrıca doğrulanmış alan adı tüm sistemde tekildir; yanlış firmada doğrulanmışsa gerçek sahibi kendi alan adını doğrulayamaz — bu durum yalnız platform yöneticisinin `DELETE /admin/alan-adlari/:alanAdi` ucuyla çözülür. Her iki müdahale de hem yönetici hem firma denetim kaydına yazılır. Bu müdahalelerin sözleşmesel dayanağının (destek/yönetim yetkisi) kullanım koşullarında ayrıca yazılması gerekip gerekmediği avukat görüşüne bağlıdır.

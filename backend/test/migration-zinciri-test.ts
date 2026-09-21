@@ -120,6 +120,11 @@ async function main() {
     'FirmaOlayi',
     // Faz 7 F2b (20.09): iki adimli giris kurtarma kodlari.
     'MfaKurtarmaKodu',
+    // Faz 7 F3b (21.09): kurumsal giris (OIDC).
+    'FirmaKimlikSaglayici',
+    'DogrulanmisAlanAdi',
+    'KullaniciDisKimlik',
+    'SsoAkisi',
   ];
   const tabloSonuc = await db.query<{ table_name: string }>(
     `SELECT table_name FROM information_schema.tables WHERE table_schema='public'`,
@@ -215,6 +220,37 @@ async function main() {
     'Z3b Firma.mfaZorunlu var ve varsayilani false (deploy kimseyi zorlamaz)',
     !!firmaMfa && firmaMfa.is_nullable === 'NO' && /false/i.test(String(firmaMfa.column_default)),
     JSON.stringify(firmaMfa),
+  );
+
+  // ── Z3c (Faz 7 F3b): kurumsal giris enum'lari ve parolasiz hesap ───────
+  // ⚠ Ayni migration'da enum OLUSTURUP KULLANMAK guvenlidir (`CREATE TYPE`
+  // transaction'lidir); kisit yalniz `ALTER TYPE … ADD VALUE`'dadir. Bu
+  // kontrol enum'larin gercekten olustugunu ve degerlerinin TAM oldugunu
+  // olcer — eksik bir deger, kodda gecerli bir durumu DB'de imkansiz yapardi.
+  const enumDegerleri = async (tip: string) =>
+    (
+      await db.query<{ enumlabel: string }>(
+        `SELECT e.enumlabel FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
+          WHERE t.typname = $1 ORDER BY e.enumsortorder`,
+        [tip],
+      )
+    ).rows.map((r) => r.enumlabel);
+  check(
+    'Z3c KimlikSaglayiciTipi enum"u entra+google',
+    (await enumDegerleri('KimlikSaglayiciTipi')).join(',') === 'entra,google',
+    JSON.stringify(await enumDegerleri('KimlikSaglayiciTipi')),
+  );
+  check(
+    'Z3c KimlikSaglayiciDurumu enum"u TASLAK→DOGRULANDI→ETKIN→KAPALI',
+    (await enumDegerleri('KimlikSaglayiciDurumu')).join(',') === 'TASLAK,DOGRULANDI,ETKIN,KAPALI',
+    JSON.stringify(await enumDegerleri('KimlikSaglayiciDurumu')),
+  );
+  const parolaTanimli = userKolonlari.find((r) => r.column_name === 'parolaTanimli');
+  check(
+    'Z3c User.parolaTanimli NOT NULL DEFAULT true (mevcut hesaplarin parolasi VAR)',
+    !!parolaTanimli && parolaTanimli.is_nullable === 'NO' &&
+      /true/i.test(String(parolaTanimli.column_default)),
+    JSON.stringify(parolaTanimli),
   );
 
   // ═══════════════════════════════════════════════════════════════════════

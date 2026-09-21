@@ -157,9 +157,10 @@ export class AuthController {
   @Post('hesabimi-kapat')
   @KoltukDisiIzinli()
   hesabimiKapat(
-    @CurrentUser() user: { id: string },
+    // FAZ 7 F3b (§5.11): parolasiz hesapta parola yerine `authAt` kaniti.
+    @CurrentUser() user: { id: string; authAt: number | null },
     @Body() dto: HesapKapatDto,
   ) {
-    return this.hesap.hesabiKapat(user.id, dto.parola);
+    return this.hesap.hesabiKapat(user.id, dto.parola ?? '', user.authAt);
   }
 }

@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/ortak/lib/api';
+import { kurumsalGirisiBaslat } from '@/ozellik/kimlik/kurumsal-baslat';
 import { oturumuYaz, girisSonrasiYol, girisDaliCoz, type GirisDali } from '@/ortak/lib/oturum';
 import { GirisDaliEkrani } from '@/ozellik/kimlik/GirisDaliEkrani';
 import { kimlikHataMetni } from '@/ortak/lib/kimlik-hata-metinleri';
@@ -29,8 +30,22 @@ function DavetKabulIcerik() {
   const router = useRouter();
   const tokenRef = useRef<string | null>(null);
   const [bilgi, setBilgi] = useState<
-    { firmaAd: string; davetEdenEposta: string; eposta: string } | null
+    {
+      firmaAd: string;
+      davetEdenEposta: string;
+      eposta: string;
+      // FAZ 7 F3b (§6.4): davetin firmasinda sirket girisi varsa "Sirket
+      // hesabimla katil" cizilir; ZORUNLUYSA parola formu HIC cizilmez —
+      // sunucu o yolu zaten 400 ile reddediyor (V7 ikizi).
+      kurumsalGiris?: {
+        var: boolean;
+        zorunlu: boolean;
+        tip: string | null;
+        saglayiciId: string | null;
+      };
+    } | null
   >(null);
+  const [kurumsalYukleniyor, setKurumsalYukleniyor] = useState(false);
   const [durum, setDurum] = useState<'yukleniyor' | 'hazir' | 'gecersiz'>('yukleniyor');
   const [hata, setHata] = useState<string | null>(null);
   const [parola, setParola] = useState('');
@@ -40,6 +55,18 @@ function DavetKabulIcerik() {
   const [gonderiliyor, setGonderiliyor] = useState(false);
   // FAZ 7 F2b: firma zorunlulugu davet kabulunde de gecerli (R1-O1).
   const [dal, setDal] = useState<GirisDali | null>(null);
+
+  async function sirketHesabiylaKatil() {
+    const saglayiciId = bilgi?.kurumsalGiris?.saglayiciId;
+    if (!saglayiciId) return;
+    setKurumsalYukleniyor(true);
+    try {
+      await kurumsalGirisiBaslat({ tip: 'giris', saglayiciId });
+    } catch (e) {
+      setKurumsalYukleniyor(false);
+      setHata(kimlikHataMetni(e, 'Şirket girişi başlatılamadı.'));
+    }
+  }
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -127,6 +154,22 @@ function DavetKabulIcerik() {
             <span className="text-slate-200">{bilgi.davetEdenEposta}</span>, sizi{' '}
             <span className="text-slate-200">{bilgi.firmaAd}</span> ekibine davet etti.
           </p>
+          {bilgi?.kurumsalGiris?.var && (
+            <button
+              type="button"
+              onClick={sirketHesabiylaKatil}
+              disabled={kurumsalYukleniyor}
+              className="mt-5 w-full rounded border border-slate-600 px-4 py-2.5 text-sm font-semibold text-slate-100 disabled:opacity-60"
+            >
+              {kurumsalYukleniyor ? 'Yönlendiriliyor…' : 'Şirket hesabımla katıl'}
+            </button>
+          )}
+          {bilgi?.kurumsalGiris?.zorunlu && (
+            <p className="mt-3 text-xs text-slate-300">
+              Firmanız kurumsal giriş kullanıyor; parola belirleyerek katılamazsınız.
+            </p>
+          )}
+          {!bilgi?.kurumsalGiris?.zorunlu && (
           <form onSubmit={gonder} className="mt-5 space-y-4">
             <div>
               <label className="block text-xs text-slate-400">E-posta</label>
@@ -198,6 +241,7 @@ function DavetKabulIcerik() {
               Ekibe katıl
             </button>
           </form>
+          )}
         </>
       )}
     </div>

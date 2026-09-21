@@ -16,6 +16,11 @@ import { epostaKucult, epostaIleKullaniciBul } from '../../altyapi/auth/eposta';
 import { tokenUret, tokenOzetle, DAVET_OMRU_MS } from '../../altyapi/auth/token-ozet';
 import { uygulamaKokuCoz } from '../../altyapi/auth/uygulama-url';
 import { HUKUKI_METIN_SURUMU } from '../../altyapi/auth/hukuki-surum';
+import {
+  alanAdiKurumsalGiris,
+  alanAdiZorunluMu,
+  KURUMSAL_GIRIS_ZORUNLU_GOVDE,
+} from '../../altyapi/auth/kurumsal/kurumsal-zorunluluk';
 import type { Kimlik } from '../../altyapi/auth/kimlik';
 import { DavetKabulDto } from './dto/davet-kabul.dto';
 import {
@@ -23,6 +28,7 @@ import {
   bekleyenDavetKosulu,
   etkinHesapKosulu,
   firmaKilitliIslem,
+  disKimlikleriSil,
   kapatmaVerisi,
   koltukKarari,
   koltukSirasiKarari,
@@ -176,14 +182,28 @@ export class UyelikServisi {
       where: { id: davet.firmaId },
       select: { ad: true },
     });
+    const kurumsalAday = await alanAdiKurumsalGiris(this.prisma, davet.eposta);
+    // ⚠ Yalniz DAVETIN FIRMASININ saglayicisi gosterilir: baska bir firmanin
+    // alan adiyla davet edilen kisiye o firmanin dugmesini cizmek, davete
+    // alakasiz bir kimlik saglayicisi baglardi.
+    const kurumsal =
+      kurumsalAday &&
+      (await this.prisma.dogrulanmisAlanAdi.count({
+        where: { saglayiciId: kurumsalAday.saglayiciId, firmaId: davet.firmaId },
+      })) > 0
+        ? kurumsalAday
+        : null;
     return {
       firmaAd: firma?.ad ?? '',
       davetEdenEposta: davet.davetEdenEposta,
       eposta: davet.eposta,
       sonGecerlilik: davet.sonGecerlilik,
-      // F3b bu alani dolduracak (kurumsal giris zorunluysa parola formu
-      // hic cizilmez). F1b'de her zaman kapali.
-      kurumsalGiris: { var: false, zorunlu: false, tip: null as string | null },
+      // FAZ 7 F3b: davet ekrani "Sirket hesabimla katil" dugmesini buradan
+      // cizer; `zorunlu` ise parola formu HIC cizilmez (§6.4).
+      // ⚠ Alan adi ekseni: davet edilen kisinin hesabi HENUZ YOK.
+      kurumsalGiris: kurumsal
+        ? { var: true, zorunlu: kurumsal.zorunlu, tip: kurumsal.tip, saglayiciId: kurumsal.saglayiciId }
+        : { var: false, zorunlu: false, tip: null as string | null, saglayiciId: null as string | null },
     };
   }
 
@@ -316,6 +336,15 @@ export class UyelikServisi {
       // kilitten once yapildi cunku hangi firmanin kilidi alinacagi ancak
       // davetten ogrenilir.
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`firma-uyelik:${davet.firmaId}`}))::text AS kilit`;
+
+      // ── FAZ 7 F3b (V7 ikizi, §5.10): PAROLA YOLU KAPALI ─────────────
+      // Davetin firmasinda kurumsal giris zorunlu ve davet edilen adresin
+      // alan adi dogrulanmissa, bu kisi parolali hesap ACAMAZ — ekranda
+      // "Sirket hesabimla katil" gosterilir. Olmasaydi davet baglantisi,
+      // zorunlulugun disinda kalan bir PAROLALI hesap acma yolu olurdu.
+      if (await alanAdiZorunluMu(tx, davet.eposta)) {
+        throw new BadRequestException(KURUMSAL_GIRIS_ZORUNLU_GOVDE);
+      }
 
       // ⚠ BUYUK/KUCUK HARFE DUYARSIZ (K-P6): `epostaIleKullaniciBul` ile
       // AYNI kural. Birebir eslesme yazilsaydi "Ali@x.com" ile kayitli kisi
@@ -491,6 +520,8 @@ export class UyelikServisi {
         where: { id: hedef.id },
         data: kapatmaVerisi(hedef, simdi),
       });
+      // FAZ 7 F3b: cikarilan uye sirket hesabiyla geri giremez.
+      await disKimlikleriSil(tx, hedef.id);
       await this.olayYaz(tx, k.firmaId, aktor, 'uye.cikarildi', {
         hedefId: hedef.id,
         hedefEposta: hedef.email,

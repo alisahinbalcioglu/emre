@@ -225,6 +225,23 @@ export default function EkipSayfasi() {
       )}
 
       {/* ── ÜYE LİSTESİ ───────────────────────────────────────────────── */}
+      {/* FAZ 7 F3b: kurumsal giris ayarina giris — YALNIZ SAHIP gorur. */}
+      {sahipMi && (
+        <section className="rounded border border-slate-800 p-4">
+          <h2 className="text-sm font-semibold text-slate-100">Kurumsal giriş</h2>
+          <p className="mt-1 text-xs text-slate-400">
+            Ekibiniz Microsoft ya da Google şirket hesabıyla giriş yapsın; isterseniz
+            parolayla girişi tamamen kapatın.
+          </p>
+          <a
+            href="/firma/ekip/kurumsal-giris"
+            className="mt-2 inline-block text-xs font-semibold text-blue-400 underline"
+          >
+            Kurumsal giriş ayarları
+          </a>
+        </section>
+      )}
+
       <section className="rounded border border-slate-800">
         <table className="w-full text-sm">
           <thead className="border-b border-slate-800 text-left text-slate-400">

@@ -9,7 +9,7 @@
  * vaat etmesi olurdu. Artik ikisi de var — soz tutuluyor.
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { oturumuYaz, girisSonrasiYol, girisDaliCoz, type GirisDali } from '@/ortak/lib/oturum';
@@ -17,6 +17,13 @@ import { GirisDaliEkrani } from '@/ozellik/kimlik/GirisDaliEkrani';
 import api from '@/ortak/lib/api';
 import { ParolaAlani } from '@/ortak/ui/parola-alani';
 import { toast } from '@/ortak/hooks/use-toast';
+import {
+  kurumsalGirisiBaslat,
+  kurumsalKesfet,
+  SAGLAYICI_ADI,
+  type KurumsalKesif,
+} from '@/ozellik/kimlik/kurumsal-baslat';
+import { kimlikHataMetni } from '@/ortak/lib/kimlik-hata-metinleri';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -26,6 +33,67 @@ export default function LoginPage() {
   // FAZ 7 F2b: giris IKI ADIMLI olabilir. `dal` doluysa ekran ikinci adimi
   // cizer; `null` ise bugunku parola formu.
   const [dal, setDal] = useState<GirisDali | null>(null);
+  // ── FAZ 7 F3b (§6.2 adim 4): SIRKET GIRISI KESFI ─────────────────────
+  // ⚠ Hicbir firma ayar yapmadiysa kesif HER ZAMAN `null` doner ve ekran
+  // bugunkuyle BIREBIR kalir ("kimseye gorunmez").
+  const [kesif, setKesif] = useState<KurumsalKesif>(null);
+  const [kurumsalYukleniyor, setKurumsalYukleniyor] = useState(false);
+  // Alan adi basina bellek onbellegi: her tusa basista istek atilmasin.
+  const kesifOnbellegi = useRef<Map<string, KurumsalKesif>>(new Map());
+
+  // URL'deki `kurumsal_hata=<KOD>` → Turkce bildirim, sonra parametre silinir.
+  useEffect(() => {
+    const adres = new URL(window.location.href);
+    const kod = adres.searchParams.get('kurumsal_hata');
+    if (!kod) return;
+    window.history.replaceState(null, '', '/login');
+    toast({
+      variant: 'destructive',
+      title: 'Şirket girişi',
+      description: kimlikHataMetni({ response: { data: { kod } } }, 'Şirket girişi tamamlanamadı.'),
+    });
+  }, []);
+
+  // E-posta gecerli bicime gelince 400 ms bekleyip kesfet.
+  useEffect(() => {
+    const alan = email.split('@')[1]?.trim().toLowerCase();
+    if (!alan || !alan.includes('.')) {
+      setKesif(null);
+      return;
+    }
+    const onbellek = kesifOnbellegi.current.get(alan);
+    if (onbellek !== undefined) {
+      setKesif(onbellek);
+      return;
+    }
+    const zaman = setTimeout(async () => {
+      try {
+        const sonuc = await kurumsalKesfet(email);
+        kesifOnbellegi.current.set(alan, sonuc);
+        setKesif(sonuc);
+      } catch {
+        // Kesif BASARISIZ olursa ekran bugunku haliyle calismaya DEVAM eder:
+        // parola yolu asla kesif yuzunden kapanmaz.
+        setKesif(null);
+      }
+    }, 400);
+    return () => clearTimeout(zaman);
+  }, [email]);
+
+  async function sirketHesabiylaGir() {
+    if (!kesif?.saglayiciId) return;
+    setKurumsalYukleniyor(true);
+    try {
+      await kurumsalGirisiBaslat({ tip: 'giris', saglayiciId: kesif.saglayiciId });
+    } catch (err) {
+      setKurumsalYukleniyor(false);
+      toast({
+        variant: 'destructive',
+        title: 'Şirket girişi',
+        description: kimlikHataMetni(err, 'Şirket girişi başlatılamadı.'),
+      });
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -46,6 +114,18 @@ export default function LoginPage() {
       const oturum = oturumuYaz(data);
       router.push(girisSonrasiYol(oturum));
     } catch (err: any) {
+      // FAZ 7 F3b (V7): parola DOGRU ama firma kurumsal girisi zorunlu kildi.
+      // ⚠ Sunucu bu karari PAROLA DOGRULANDIKTAN SONRA veriyor (§5.10):
+      // yanlis parolayla gelen biri bu dali GORMEZ.
+      if (err.response?.data?.kod === 'KURUMSAL_GIRIS_ZORUNLU') {
+        setPassword('');
+        toast({
+          variant: 'destructive',
+          title: 'Şirket girişi gerekli',
+          description: kimlikHataMetni(err),
+        });
+        return;
+      }
       toast({
         variant: 'destructive',
         title: 'Giriş başarısız',
@@ -101,6 +181,10 @@ export default function LoginPage() {
             />
           </div>
 
+          {/* ⚠ FAZ 7 F3b: firma kurumsal girisi ZORUNLU kildiysa parola
+              alani ve "Parolami unuttum" CIZILMEZ — o yollar sunucuda da
+              kapalidir (V7); ekranda birakmak calismayan bir soz olurdu. */}
+          {!kesif?.zorunlu && (
           <div>
             <div className="mb-1.5 flex items-baseline justify-between">
               <label htmlFor="password" className="block text-xs font-semibold text-slate-700">
@@ -120,7 +204,16 @@ export default function LoginPage() {
               autoComplete="current-password"
             />
           </div>
+          )}
 
+          {kesif?.zorunlu && (
+            <p className="rounded-xl bg-blue-50 p-3 text-[11px] leading-relaxed text-blue-900">
+              Şirketiniz kurumsal giriş kullanıyor. Aşağıdaki düğmeyle şirket
+              hesabınızla giriş yapın.
+            </p>
+          )}
+
+          {!kesif?.zorunlu && (
           <button
             type="submit"
             disabled={loading}
@@ -128,7 +221,21 @@ export default function LoginPage() {
           >
             {loading ? 'Giriş yapılıyor…' : 'Giriş Yap'}
           </button>
+          )}
         </form>
+        )}
+
+        {!dal && kesif?.saglayiciId && (
+          <button
+            type="button"
+            onClick={sirketHesabiylaGir}
+            disabled={kurumsalYukleniyor}
+            className="mt-3 w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 transition-all hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {kurumsalYukleniyor
+              ? 'Yönlendiriliyor…'
+              : 'Şirket hesabımla giriş yap (' + (SAGLAYICI_ADI[kesif.tip] ?? 'Şirket') + ')'}
+          </button>
         )}
 
         <div className="mt-6 text-center text-xs text-slate-500">

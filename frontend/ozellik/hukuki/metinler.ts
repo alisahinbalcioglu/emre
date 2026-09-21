@@ -31,7 +31,7 @@
 // 2026-09-20 (Faz 7 F2b): iki adımlı giriş (TOTP) — aydınlatmada işlenen veri
 // (şifreli gizli anahtar, kurtarma kodu özetleri, hatalı deneme sayacı),
 // kullanım koşullarında hesap güvenliği maddesi. ANLAM değişti → sürüm arttı.
-export const HUKUKI_METIN_SURUMU = '2026-09-20';
+export const HUKUKI_METIN_SURUMU = '2026-09-21';
 
 /**
  * Metinler avukat incelemesinden GEÇMEDİ. `taslak` olduğu sürece her
@@ -161,6 +161,7 @@ export const GIZLILIK: HukukiMetin = {
         "Kullanım ve ödeme kayıtları: yapay zekâ kullanım kaydı (hangi kullanıcı ve firma, hangi sağlayıcı, kaç jeton, ne maliyet), abonelik, fatura ve havale ödeme kayıtları",
         "Ücretsiz deneme kaydı: ücretsiz denemeyi başlatan firma ve kişi, hesabınızın e-posta adresi, ödeme formuna yazdığınız e-posta adresi ve telefon, ödeme kuruluşunun müşteri numarası ve kayıt tarihi. E-posta ve telefon karşılaştırma için sadeleştirilmiş biçimde tutulur (e-postada küçük harf, artı işaretinden sonraki kısım ve Gmail adreslerindeki noktalar atılarak; telefonda son 10 hane)",
         "Yönetici işlem kayıtları: bir yöneticinin hesabınız üzerinde yaptığı işlemler, yöneticinin ve hedef kullanıcının e-postasıyla birlikte kaydedilir",
+        "Kurumsal giriş. Firmanız \"Şirket hesabıyla giriş\" özelliğini açarsa ve siz bu yolla girerseniz kimliğiniz firmanızın kullandığı kimlik hizmeti (Microsoft Entra ID ya da Google Workspace) tarafından doğrulanır. Bu hizmetten adınızı, soyadınızı, e-posta adresinizi, kurumsal hesap kimliğinizi ve (Microsoft için) kuruluş kimliğini alırız; parolanızı hiçbir zaman görmeyiz. Firmanız kurumsal girişi zorunlu kılarsa parolayla giriş yapamazsınız. Şirket hesabınızla ilk kez girdiğinizde ve firmanızda boş kullanıcı hakkı varsa firmanın ekibine üye olarak katılırsınız; bu sırada kullanım koşullarını onaylamanız istenir.",
       ],
     },
     {
@@ -213,6 +214,7 @@ export const GIZLILIK: HukukiMetin = {
         "Brevo — e-posta gönderimi, Fransa/Avrupa Birliği. Alıcı e-posta adresiniz ve gönderilen iletinin içeriği aktarılır.",
         "Hetzner Online GmbH — sunucu barındırma, Almanya. Veritabanı ve dosyaların tamamı burada tutulur.",
         "TCMB ve open.er-api.com — döviz kuru bilgisi alınır. Bu servislere hiçbir kişisel veri gönderilmez.",
+        "Kurumsal girişte veri akışı firmanızın seçtiği kimlik hizmetinden (Microsoft Entra ID ya da Google Workspace) bize doğrudur; bu hizmete sizin hakkınızda veri göndermeyiz — yalnız firmanızın alan adını yönlendirme ipucu olarak iletiriz. Bu hizmeti firmanız seçer ve yönetir.",
       ],
     },
     {
@@ -234,6 +236,7 @@ export const GIZLILIK: HukukiMetin = {
         "Parola sıfırlama bağlantısı: 1 saat. E-posta doğrulama bağlantısı: 24 saat. Oturumunuz (giriş anahtarı): 7 gün.",
         "İki adımlı giriş kurulumu tamamlanmazsa hazırlanan gizli anahtar 15 dakika sonra geçersiz olur. Kurtarma kodları, siz yenileyene ya da iki adımlı girişi kapatana kadar saklanır; kapatıldığında silinir.",
         "Ekip daveti bağlantısı: 7 gün (kabul edilmeyen davet kaydı işlem kaydı olarak saklanır). Firma içi işlem kaydı — [FIRMA ISLEM KAYDI SAKLAMA SURESI].",
+        "Kurumsal giriş işlem kaydı: en fazla 24 saat. Şirket hesabıyla giriş başlattığınızda oluşan geçici akış kaydı (kimlik hizmetinden dönen doğrulanmış özet dahil) giriş tamamlanır tamamlanmaz temizlenir ve kayıt en geç 24 saat içinde silinir.",
         "DWG çizim geometrisi, işleme servisinin önbelleğinde 24 saat boyunca kalır.",
         "Fatura, ödeme ve abonelik kayıtları: vergi ve ticaret mevzuatının öngördüğü süre boyunca — [YASAL SAKLAMA SURESI].",
         "Yönetici işlem kayıtları (denetim izi): silinmez. Bu kayıtlar, bir hesap kapatılsa bile o hesap üzerinde kimin ne yaptığının izlenebilmesi için tutulur.",
@@ -275,6 +278,7 @@ export const GIZLILIK: HukukiMetin = {
     {
       baslik: "Verilerin güvenliği",
       paragraflar: [
+        "Firmanız kurumsal giriş (şirket hesabıyla giriş) kullanabilir. Bu durumda giriş ekranında \"Şirket hesabımla giriş yap\" düğmesi çıkar; firma sahibi parolayla girişi tamamen kapatabilir ve o zaman yalnız şirket hesabınızla girebilirsiniz. Şirket hesabınızla ilk kez girdiğinizde firmanızda boş kullanıcı hakkı varsa ekibe üye olarak katılırsınız. Firmanız kurumsal girişi kapatırsa, parolası olmayan hesaplara parola belirleme bağlantısı gönderilir.",
         "Hesabınızda iki adımlı girişi açabilirsiniz: girişte parolanızın yanında telefonunuzdaki doğrulama uygulamasının ürettiği 6 haneli kod istenir. Parolanız geri döndürülemeyen bir özet fonksiyonuyla saklanır; parola sıfırlama ve e-posta doğrulama bağlantıları da veritabanında düz metin olarak değil özet olarak tutulur. Platformla tarayıcınız arasındaki trafik şifrelidir. Sunucuya parola ile giriş kapalıdır, yalnızca anahtarla erişim mümkündür ve sunucu dışına çıkan yedek kopyalar şifrelenir.",
         "Hiçbir sistem için \"tamamen güvenlidir\" veya \"hiçbir risk yoktur\" demiyoruz; böyle bir vaatte bulunmak dürüst olmazdı. Yaptığımız, bilinen saldırı yollarını kapatmak ve olay çıktığında bunu görebilecek kayıtları tutmaktır.",
         "Verilerinizin hukuka aykırı olarak başkalarının eline geçtiğini tespit edersek, KVKK'nın 12. maddesi uyarınca Kişisel Verileri Koruma Kurulu'na ve etkilenen kullanıcılara en kısa sürede bildirimde bulunuruz.",
@@ -484,6 +488,7 @@ export const CEREZ_POLITIKASI: HukukiMetin = {
         "metaprice_upload_result — Yüklediğiniz Excel dosyasının işlenmiş sonucu; panodan teklif ekranına taşınırken kullanılır.",
         "metaprice_dwg_metraj — DWG çalışma alanından teklife aktardığınız metraj satırları.",
         "metaprice_quote_from_dwg — Teklif ekranına DWG üzerinden gelindiğini belirten tek karakterlik bir işaret.",
+        "mpx_sso_bag — Şirket hesabıyla giriş başlattığınızda, dönüşün aynı sekmeden geldiğini doğrulamak için tutulan rastgele bir değerdir. Kişisel veri içermez; giriş tamamlanınca ya da en geç 10 dakika içinde anlamını yitirir ve silinir.",
       ],
     },
     {

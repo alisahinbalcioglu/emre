@@ -366,6 +366,12 @@ async function yTuretilmisSeviye() {
       }),
     },
     userSubscription: { findMany: async () => [] },
+    // FAZ 7 F3b: `/auth/me` "Sirket hesabi" kartini, `login` ise zorunlu
+    // kurumsal girisi (V7) okuyor. Ikisi de bu paketin olctugu `tier`
+    // turetmesini DEGISTIRMEZ (firmada saglayici yok).
+    kullaniciDisKimlik: { findFirst: async () => null, findMany: async () => [] },
+    firmaKimlikSaglayici: { findUnique: async () => null },
+    dogrulanmisAlanAdi: { findUnique: async () => null, findMany: async () => [], count: async () => 0 },
   });
   const erisimSahte = { karar: async () => ({ kisitli: false }) } as any;
   const jwtSahte = { sign: () => 'sahte-token' } as any;
@@ -415,7 +421,12 @@ async function yTuretilmisSeviye() {
   const kvkkPrisma: any = new Proxy({}, {
     get: (_t, model: string) => {
       if (model === 'user') return { findUnique: async () => kvkkKullanici };
-      return { findMany: async () => [], findUnique: async () => null };
+      // FAZ 7 F3b: disa aktarim `kullaniciDisKimlik.findMany` de okuyor.
+      return {
+        findMany: async () => [], findUnique: async () => null,
+        findFirst: async () => null, count: async () => 0,
+        deleteMany: async () => ({ count: 0 }),
+      };
     },
   });
   const hesap = new HesapServisi(kvkkPrisma, {} as any);

@@ -95,6 +95,8 @@ export default function AdminUsersPage() {
   const [durumSuzgec, setDurumSuzgec] = useState<string>(HEPSI);
   /** Kaydediliyor olan satır — aynı anda iki istek gitmesin. */
   const [islemdeki, setIslemdeki] = useState<string | null>(null);
+  // FAZ 7 F3b: yönetici alan adı kaldırma girdisi (native diyalog YOK).
+  const [alanAdiGirdisi, setAlanAdiGirdisi] = useState('');
   /** Oturumu açık yöneticinin kendi id'si; kendi satırını kilitlemek için. */
   const [kendiId, setKendiId] = useState<string | null>(null);
   /** Sunucunun bildirdiği TOPLAM kayıt — `users.length` yalnız sayfayı sayar. */
@@ -216,6 +218,76 @@ export default function AdminUsersPage() {
     }
   }
 
+  /**
+   * FAZ 7 F3b — KİLİTLENME KURTARMASI 1 (§5.10).
+   * Firma sahibi süresi dolmuş bir istemci anahtarıyla kurumsal girişi zorunlu
+   * kılarsa firmadaki HERKES dışarıda kalır; parolayla giriş de kapalıdır.
+   * Tek çıkış yolu budur.
+   */
+  async function kurumsalZorunluKapat(u: AdminUser) {
+    if (!u.firmaId) return;
+    const onay = await confirm({
+      title: 'Kurumsal girişi zorunluluktan çıkar',
+      description:
+        `${u.email} kullanıcısının firmasında "yalnızca şirket hesabıyla giriş" ` +
+        `zorunluluğu kaldırılacak. Şirket girişi ETKİN kalır; üyeler parolalarıyla ` +
+        `(ya da "Parolamı unuttum" ile) girebilir hale gelir. İşlem denetim kaydına yazılır.`,
+      confirmText: 'Zorunluluğu kaldır',
+    });
+    if (!onay) return;
+    setIslemdeki(u.id);
+    try {
+      await api.post(`/admin/firmalar/${u.firmaId}/kurumsal-giris/zorunlu-kapat`);
+      toast({ title: 'Kaldırıldı', description: 'Kurumsal giriş zorunluluğu kapatıldı.' });
+    } catch (e: any) {
+      toast({
+        title: 'Kaldırılamadı',
+        description: e?.response?.data?.mesaj ?? e?.response?.data?.message ?? 'Bilinmeyen hata',
+        variant: 'destructive',
+      });
+    } finally {
+      setIslemdeki(null);
+    }
+  }
+
+  /**
+   * FAZ 7 F3b — KİLİTLENME KURTARMASI 2 (R1-D6).
+   * Doğrulanmış alan adı TÜM SİSTEMDE tekildir: yanlış firmada doğrulanmışsa
+   * gerçek sahibi kendi alan adını ASLA doğrulayamaz.
+   */
+  async function alanAdiKaldir() {
+    // ⚠ `window.prompt` KULLANILMAZ: bu depoda native diyalog kapısı var
+    // (`grup-iskonto-girisi.test.ts` KRİTER 8) — native diyalog tarayıcıya
+    // göre engellenebilir ve ekranın diliyle/temasıyla uyuşmaz.
+    const alanAdi = alanAdiGirdisi.trim();
+    if (!alanAdi) return;
+    const onay = await confirm({
+      title: 'Doğrulanmış alan adını kaldır',
+      description:
+        `"${alanAdi}" alan adının doğrulaması silinecek. Sağlayıcıda başka doğrulanmış ` +
+        `alan kalmazsa şirket girişi TASLAK durumuna döner ve zorunluluk kalkar. ` +
+        `İşlem hem yönetici hem firma denetim kaydına yazılır.`,
+      confirmText: 'Kaldır',
+    });
+    if (!onay) return;
+    try {
+      const { data } = await api.delete(`/admin/alan-adlari/${encodeURIComponent(alanAdi)}`, {
+        data: { onay: 'SİL' },
+      });
+      setAlanAdiGirdisi('');
+      toast({
+        title: 'Kaldırıldı',
+        description: `${alanAdi} · kalan doğrulanmış alan: ${data?.kalanDogrulanmisAlan ?? 0}`,
+      });
+    } catch (e: any) {
+      toast({
+        title: 'Kaldırılamadı',
+        description: e?.response?.data?.mesaj ?? e?.response?.data?.message ?? 'Bilinmeyen hata',
+        variant: 'destructive',
+      });
+    }
+  }
+
   async function kullaniciSil(u: AdminUser) {
     const onay = await confirm({
       title: 'Hesabı kapat',
@@ -283,6 +355,23 @@ export default function AdminUsersPage() {
             {users.length !== toplam ? ` · ${users.length} gösteriliyor` : ''}
             {' · rol, paket ve abonelik yönetimi'}
           </p>
+          {/* FAZ 7 F3b (R1-D6): yanlış firmada doğrulanmış alan adını kaldır. */}
+          <div className="mt-2 flex items-center gap-2">
+            <input
+              value={alanAdiGirdisi}
+              onChange={(e) => setAlanAdiGirdisi(e.target.value)}
+              placeholder="alan-adi.com"
+              className="w-44 rounded border border-slate-300 px-2 py-1 text-xs"
+            />
+            <button
+              type="button"
+              onClick={alanAdiKaldir}
+              disabled={!alanAdiGirdisi.trim()}
+              className="text-xs font-semibold text-sky-700 underline disabled:opacity-50"
+            >
+              Doğrulanmış alan adı kaldır
+            </button>
+          </div>
         </div>
         <Button variant="outline" size="sm" onClick={fetchUsers} disabled={loading}>
           <RefreshCw className={loading ? 'mr-1.5 h-3.5 w-3.5 animate-spin' : 'mr-1.5 h-3.5 w-3.5'} />
@@ -513,6 +602,16 @@ export default function AdminUsersPage() {
                           className="h-7 px-2 text-amber-600 hover:bg-amber-50 hover:text-amber-700"
                         >
                           <ShieldOff className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={kilitli || !u.firmaId}
+                          onClick={() => kurumsalZorunluKapat(u)}
+                          title="Kurumsal girişi zorunluluktan çıkar (kilitlenme kurtarması)"
+                          className="h-7 px-2 text-sky-600 hover:bg-sky-50 hover:text-sky-700"
+                        >
+                          KG
                         </Button>
                         <Button
                           variant="ghost"

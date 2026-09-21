@@ -11,6 +11,7 @@ import { Button } from '@/ortak/ui/button';
 import { ParolaAlani } from '@/ortak/ui/parola-alani';
 import { gecerliTokenMi } from '@/ortak/lib/oturum';
 import { IkiAdimliGirisKarti } from '@/ozellik/kimlik/IkiAdimliGirisKarti';
+import { SirketHesabiKarti, type KurumsalBilgi } from '@/ozellik/kimlik/SirketHesabiKarti';
 import api from '@/ortak/lib/api';
 import { cn } from '@/ortak/lib/utils';
 import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
@@ -51,6 +52,9 @@ interface UserProfile {
     zorunlu: boolean;
     zorunlulukNedeni: 'yonetici' | 'firma' | null;
   };
+  // FAZ 7 F3b (§6.7): sirket hesabi karti. `parolaTanimli: false` olan hesap
+  // KURUMSAL GIRISLE ACILDI — parola formu yerine aciklama cizilir.
+  kurumsal?: KurumsalBilgi;
   capabilities: {
     mechanical: { material: boolean; labor: boolean; dwg: boolean };
     electrical: { material: boolean; labor: boolean; dwg: boolean };
@@ -875,6 +879,16 @@ export default function ProfilePage() {
             // `oturumuYaz` degil, yalniz TOKEN tazelenir.
             if (gecerliTokenMi(token)) localStorage.setItem('token', token);
           }}
+          onYenile={() => {
+            api.get<UserProfile>('/auth/me').then(({ data }) => setProfile(data)).catch(() => {});
+          }}
+        />
+      )}
+
+      {/* ── FAZ 7 F3b · SIRKET HESABI ─────────────────────────────────── */}
+      {profile.kurumsal && (
+        <SirketHesabiKarti
+          kurumsal={profile.kurumsal}
           onYenile={() => {
             api.get<UserProfile>('/auth/me').then(({ data }) => setProfile(data)).catch(() => {});
           }}

@@ -8,6 +8,7 @@ import { SatinAlmaServisi } from '../../odeme/abonelik/satinalma.servisi';
 import {
   ayrilmaKarari,
   etkinHesapKosulu,
+  disKimlikleriSil,
   kapatmaVerisi,
   type FirmaRol,
 } from '../../firma/uyelik-kurallari';
@@ -605,6 +606,8 @@ export class AdminService {
             },
           });
         }
+        // FAZ 7 F3b: silinen hesap sirket hesabiyla geri acilmaz (ikiz).
+        await disKimlikleriSil(tx, id);
         return tx.user.update({
           where: { id },
           // ⚠ HESAP KAPATMAYLA BIREBIR ayni desen (tek saf fonksiyon).

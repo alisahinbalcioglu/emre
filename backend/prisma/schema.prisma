@@ -58,6 +58,9 @@ model Firma {
   /// dogrulamasi sirketin kendi saglayicisinda yapilmistir (§4.6, R1/E-4).
   mfaZorunlu Boolean @default(false)
 
+  /// FAZ 7 F3b — firmanin kurumsal kimlik saglayicisi (firma basina TEK).
+  kimlikSaglayici FirmaKimlikSaglayici?
+
   // ── ADIM 2 (28.08): FATURA KIMLIGI ────────────────────────────────────
   // e-Arsiv/e-Fatura kesimi icin gereken alanlar. HEPSI NULLABLE: kayit
   // akisi bunlari sormaz (surtunme yaratmaz), fatura kesimi sirasinda
@@ -176,35 +179,43 @@ model User {
   /// ve bunu ne kendisi ne yonetici geri alabilir (olculdu: `deletedAt`i
   /// null'a ceviren TEK BIR SATIR yok). Adres burada saklandigi icin
   /// denetim/ispat izi de kaybolmaz.
-  kapatilanEposta          String?
+  kapatilanEposta String?
 
   /// ── FAZ 7 F2b — IKI ADIMLI GIRIS (TOTP, §2.4) ────────────────────────
   /// TOTP sirri. AES-256-GCM, `kimlik-sifreleme.ts` bicimi
   /// `v1.<iv>.<tag>.<sifreli>` (base64url), ek dogrulama verisi (AAD)
   /// `mfa:<userId>`. ⚠ Duz sir HICBIR yerde saklanmaz ve kurulum yanitindan
   /// sonra HICBIR ucta bir daha donmez.
-  mfaSirriSifreli          String?
+  mfaSirriSifreli       String?
   /// Dolu = iki adimli giris ACIK (tarih = acildigi an). TEK dogru kaynak:
   /// ayri bir `mfaAcik` boolean'i tutulsaydi ikisi gunun birinde ayrisirdi.
-  mfaAcikAt                DateTime?
+  mfaAcikAt             DateTime?
   /// R1 (Emre E-4): 'kisisel' (kisi kendi acti ya da "sirket girisinde de
   /// sor" dedi) · 'zorunlu-firma' · 'zorunlu-yonetici'. `mfaAcikAt` ile
   /// BIRLIKTE yazilir, kapatilinca null. Kurumsal giriste YALNIZ 'kisisel'
   /// kod sorar (§4.6) — sirket kendi kimlik saglayicisindan sorumludur.
-  mfaKaynagi               String?
+  mfaKaynagi            String?
   /// Son KABUL EDILEN 30 sn'lik adim (floor(unix/30)). Ayni ya da onceki
   /// adimin kodu REDDEDILIR (tekrar saldirisi). Int32 yil ~3000'e yeter.
-  mfaSonAdim               Int?
+  mfaSonAdim            Int?
   /// Kurulum baslatildi, henuz kodla onaylanmadi (15 dk gecerli). Onaya
   /// kadar `mfaSirriSifreli`ye DOKUNULMAZ: yarim kurulum acik bir hesabin
   /// sirrini bozamaz.
-  mfaBekleyenSirSifreli    String?
-  mfaBekleyenAt            DateTime?
+  mfaBekleyenSirSifreli String?
+  mfaBekleyenAt         DateTime?
   /// Art arda yanlis kod sayaci; dogru kodda 0. 20'de kilit. IP'den
   /// BAGIMSIZ (kisi kovasi) — IP degistiren saldirgana karsi asil kapi.
-  mfaHataSayaci            Int       @default(0)
-  mfaKilitliAt             DateTime?
-  mfaKurtarmaKodlari       MfaKurtarmaKodu[]
+  mfaHataSayaci         Int               @default(0)
+  mfaKilitliAt          DateTime?
+  mfaKurtarmaKodlari    MfaKurtarmaKodu[]
+
+  /// FAZ 7 F3b — false: hesap KURUMSAL GIRISLE acildi, bilinen parolasi yok
+  /// (`password` kullanilamaz rastgele ozet tasir — nullable YAPILMADI, yoksa
+  /// `bcrypt.compare(x, null)` 500 uretirdi, §2.6). Parola sifirlama basarili
+  /// olunca true olur. Uc kapiyi besler: giris yalniz kurumsal · hesap kapatma
+  /// parola yerine `authAt` kaniti · parola degistirme 400 `PAROLA_YOK`.
+  parolaTanimli Boolean              @default(true)
+  disKimlikler  KullaniciDisKimlik[]
 
   library                  UserLibrary[]
   brandLibraries           UserBrandLibrary[]
@@ -1809,4 +1820,140 @@ model FirmaOlayi {
 
   @@index([firmaId, olusturuldu])
   @@index([hedefKullaniciId, olusturuldu])
+}
+
+/// ═══════════════════════════════════════════════════════════════════════════
+///  FAZ 7 F3b — KURUMSAL GIRIS (OIDC)
+/// ═══════════════════════════════════════════════════════════════════════════
+
+enum KimlikSaglayiciTipi {
+  entra
+  google
+}
+
+enum KimlikSaglayiciDurumu {
+  /// Kaydedildi, baglanti sinanmadi.
+  TASLAK
+  /// Sahip kendi kurumsal hesabiyla sinadi, en az bir alan adi KANITLANDI.
+  DOGRULANDI
+  /// Giris ekraninda gorunur.
+  ETKIN
+  /// Sahip kapatti (ayar durur, kimseye gorunmez).
+  KAPALI
+}
+
+/// FIRMA BASINA TEK kurumsal kimlik saglayicisi (`firmaId @unique`).
+model FirmaKimlikSaglayici {
+  id                        String                @id @default(uuid())
+  firmaId                   String                @unique
+  firma                     Firma                 @relation(fields: [firmaId], references: [id])
+  tip                       KimlikSaglayiciTipi
+  /// tip=entra: kiraci GUID'i (kucuk harf). 'common'/'organizations'/'consumers'
+  /// ve kisisel hesap kiracisi 9188040d-6c67-4c5b-b112-36a304b66dad REDDEDILIR.
+  entraKiraciId             String?
+  /// Kayit aninda KODDA turetilir, formdan ALINMAZ.
+  /// ⚠ R1-D5: YALNIZ gosterim/denetim. id_token dogrulamasinda beklenen iss
+  /// HER ZAMAN `beklenenIssuer(tip, entraKiraciId)`'den gelir (Google icin iki
+  /// degerli dizi) — bu kolon o cagriya ASLA gecirilmez.
+  issuer                    String
+  clientId                  String
+  /// AES-256-GCM, AAD `idp:<id>`. Yanitlarda ASLA donmez (yalniz `sirVar: true`).
+  istemciSirriSifreli       String
+  /// Entra'da sahibin girdigi bitis tarihi (14 gun kala uyari).
+  istemciSirriSonGecerlilik DateTime?
+  /// Sahibin yazdigi alan adlari — KANIT DEGIL. Kanitlanan `DogrulanmisAlanAdi`.
+  beyanAlanAdlari           String[]
+  durum                     KimlikSaglayiciDurumu @default(TASLAK)
+  /// V8: hesabi olmayan calisan ilk giriste (bos koltuk varsa) uye olur.
+  jitKatilim                Boolean               @default(true)
+  /// V7: parolayla giris kapali (izinli alan adindaki uyeler icin).
+  zorunlu                   Boolean               @default(false)
+  sonSinamaAt               DateTime?
+  sonHataKodu               String?
+  /// Istemci sirri bitis uyarisi gunde en fazla bir kez gider.
+  sonSirUyarisiAt           DateTime?
+  olusturuldu               DateTime              @default(now())
+  guncellendi               DateTime              @updatedAt
+  dogrulanmisAlanAdlari     DogrulanmisAlanAdi[]
+  disKimlikler              KullaniciDisKimlik[]
+}
+
+/// Bir alan adi TUM SISTEMDE en fazla bir firmada dogrulanmis olabilir: `@id`
+/// tekildir. Beyan (TASLAK) tekil DEGIL — bir saldirgan baskasinin alan adini
+/// "once yazarak" gercek firmayi engelleyemesin. Satir YALNIZ sinama girisi
+/// kanit verdiginde yazilir.
+model DogrulanmisAlanAdi {
+  alanAdi      String               @id
+  saglayiciId  String
+  saglayici    FirmaKimlikSaglayici @relation(fields: [saglayiciId], references: [id], onDelete: Cascade)
+  firmaId      String
+  dogrulayanId String
+  dogrulandiAt DateTime             @default(now())
+
+  @@index([firmaId])
+}
+
+/// "Kullanici gocu"nun TAMAMI: dis kimlik → mevcut `User.id` eslemesi.
+model KullaniciDisKimlik {
+  id            String                @id @default(uuid())
+  userId        String
+  user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  saglayiciId   String?
+  saglayici     FirmaKimlikSaglayici? @relation(fields: [saglayiciId], references: [id], onDelete: SetNull)
+  /// Dogrulanmis `iss` (entra: kiraciya ozel) — esleme anahtarinin yarisi.
+  issuer        String
+  /// entra: `oid` (kiraci `issuer` icinde ve `tid` ayrica dogrulanir) · google: `sub`.
+  subject       String
+  entraKiraciId String?
+  /// Baglandigi andaki e-posta — YALNIZ denetim. Yetki/esleme kararinda OKUNMAZ.
+  epostaAnlik   String?
+  /// 'acik-baglama' | 'eposta-eslesme' | 'otomatik-katilim' | 'sinama'
+  baglamaYolu   String
+  olusturuldu   DateTime              @default(now())
+  sonGirisAt    DateTime?
+
+  @@unique([issuer, subject])
+  @@unique([userId, issuer])
+  @@index([saglayiciId])
+}
+
+/// SSO akis durumu — DB'de (deploy'da kopmaz; tek kopyada da cok kopyada da
+/// TEK KULLANIM). ⚠ CEREZ YOK: hukuki metinler "platform hicbir yerde cerez
+/// yazmiyor" diyor (`metinler.ts`, faz5 E3 kapisi) — bag `sessionStorage`
+/// sekme sirrinin OZETIDIR.
+model SsoAkisi {
+  id                 String    @id @default(uuid())
+  /// sha256(state). state duz metin yalniz IdP URL'inde gezer.
+  durumOzeti         String    @unique
+  /// sha256(sekmenin `sessionStorage` sirri) — akisi BASLATAN sekmeye baglar.
+  tarayiciBagiOzeti  String
+  /// FK YOK: akis 10 dk yasar; saglayici silinirse donus "SAGLAYICI_YOK" der.
+  saglayiciId        String
+  /// 'giris' | 'sinama' | 'bagla'
+  amac               String
+  /// amac sinama/bagla: akisi baslatan OTURUM sahibi (Bearer ile baslatilir).
+  baslatanUserId     String?
+  nonce              String
+  /// PKCE code_verifier — duz; omru 10 dk ve tek basina ise yaramaz.
+  pkceDogrulayici    String
+  olusturuldu        DateTime  @default(now())
+  sonGecerlilik      DateTime
+  /// Donus islendi = state TUKENDI (ikinci donus reddedilir).
+  donusAt            DateTime?
+  /// Donuste DOGRULANMIS id_token'dan cikarilan ozet (yan etki YOK; kararlar
+  /// `degis` aninda verilir). Kisisel veri: akis bitince null'lanir; satir
+  /// 24 sa sonra silinir.
+  dogrulanmisKimlik  Json?
+  /// Donus sonucu: 60 sn tek kullanimlik degis kodu.
+  sonucKoduOzeti     String?   @unique
+  sonucSonGecerlilik DateTime?
+  sonucKullanildiAt  DateTime?
+  /// Donus asamasinda olusan hata (IdP reddi, imza, kiraci, misafir…) — KOD yalniz.
+  hataKodu           String?
+  /// Otomatik katilim onayi bileti (10 dk, tek kullanim).
+  biletOzeti         String?   @unique
+  biletSonGecerlilik DateTime?
+  biletKullanildiAt  DateTime?
+
+  @@index([sonGecerlilik])
 }

@@ -525,6 +525,23 @@ const SUITES: Suite[] = [
   //    kod/parola 400"dür, kullanıcıyı oturumdan ATMAZ.
   //    Mutant tablosu F2b raporunda (29 mutant). KIRMIZIYA DÖNERSE REGRESYON.
   { ad: 'Faz 7 iki adımlı giriş: giriş dalı, strateji reddi, zorunluluk (M)', script: 'test:faz7-mfa', zincir: 'Z0' },
+  // ── 21.09.2026 — FAZ 7 · F3b: KURUMSAL GİRİŞ BAĞLAMA (OIDC). DB, SUNUCU ve
+  //    AĞ YOK: keşif/JWKS/token uçları SÜREÇ İÇİ sahte sağlayıcıyla taklit
+  //    edilir (gerçek Microsoft/Google'a istek gitmez, HTTP sunucusu açılmaz).
+  //    Ölçtüğü sessiz kırılma noktaları: IdP dönüşü ÇEREZ taşıyamaz, bu yüzden
+  //    `donus` YAN ETKİSİZDİR ve bütün kararlar sekme sırrı doğrulandıktan
+  //    sonra `degis`te verilir · kodun tüketimi sır kontrolünden ÖNCEDİR
+  //    (sızan kod ikinci deneme yapamaz) · sağlayıcı/alan adı/kullanıcı
+  //    `degis` ve `katil` anında YENİDEN okunur (arada kaldırılmış alan adı,
+  //    banlanmış hesap, kapatılmış katılım) · misafir (B2B) hesap `tid`
+  //    kontrolünü GEÇER, tek kapı `idp !== iss` · beklenen `iss` HER ZAMAN
+  //    koddan gelir (DB kolonu okunmaz) · otomatik katılım ASLA firma açmaz,
+  //    ASLA sahip yapmaz, `firmaId`yi gövdeden OKUMAZ · zorunlu kurumsal
+  //    giriş beş ikiz yolda uygulanır ve sırası parola doğrulamasından
+  //    SONRADIR · parolasız hesapta yakın zaman kanıtı `authAt`tır (MFA
+  //    yeniden basımı onu tazelemez) · backend HİÇBİR YERDE çerez yazmaz.
+  //    Mutant tablosu F3b raporunda (38 mutant). KIRMIZIYA DÖNERSE REGRESYON.
+  { ad: 'Faz 7 kurumsal giriş: akış, eşleme, katılım, zorunluluk (K)', script: 'test:faz7-kurumsal', zincir: 'Z0' },
 ];
 
 // ── SKIP DEFTERI (B1, para dogrulugu turu 14.09.2026) ──────────────────────

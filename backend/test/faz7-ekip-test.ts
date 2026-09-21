@@ -303,7 +303,7 @@ function sahtePrisma(veri: Record<string, Satir[]>) {
       // ANLIK GORUNTU: firlatan islem GERI ALINIR (atomiklik olculebilsin).
       const yedek = JSON.parse(JSON.stringify(veri, (_k, v) => v));
       try {
-        return await fn(p);
+        return await fn(vekil);
       } catch (e) {
         for (const [ad, satirlar] of Object.entries(veri)) {
           satirlar.length = 0;
@@ -317,8 +317,26 @@ function sahtePrisma(veri: Record<string, Satir[]>) {
     tablolar[ad] = tabloYap(ad, satirlar, iz);
     p[ad] = tablolar[ad];
   }
-  return p;
+  // ⚠ FAZ 7 F3b — BILINMEYEN TABLO BOS DONER, `undefined` DEGIL.
+  // Gerekce: `login`, `/auth/me`, ayrilma akisi ve parola sifirlama artik
+  // F3b tablolarini da okuyor (`dogrulanmisAlanAdi`, `kullaniciDisKimlik`,
+  // `firmaKimlikSaglayici`). Her fixture'a elle eklemek testi konusundan
+  // uzaklastirirdi. Bos tablo "veri yok" demektir ve sessiz bir yalan
+  // uretmez — sorgu YINE KAYDEDILIR, izden okunabilir.
+  // ⚠ VEKIL `$transaction`a da verilir: `tx` ham nesne olsaydi islem
+  // ICINDE bilinmeyen tablo yine `undefined` donerdi.
+  const vekil: any = new Proxy(p, {
+    get(hedef: any, anahtar: string | symbol) {
+      if (typeof anahtar !== 'string' || anahtar in hedef) return hedef[anahtar as any];
+      if (anahtar.startsWith('$') || anahtar.startsWith('_')) return undefined;
+      veri[anahtar] = [];
+      hedef[anahtar] = tabloYap(anahtar, veri[anahtar], iz);
+      return hedef[anahtar];
+    },
+  });
+  return vekil;
 }
+
 
 /** JSON turu kaybeden tarihleri geri getirir (anlik goruntu geri alma). */
 function canlandir(s: Satir): Satir {
@@ -626,6 +644,8 @@ function bolumR(): void {
     'backend/src/ozellik/firma/uyelik.controller.ts',
     'backend/src/ozellik/firma/firma.controller.ts',
     'backend/src/ozellik/odeme/abonelik/abonelik.controller.ts',
+    // FAZ 7 F3b: kurumsal giris ayari YALNIZ firma sahibinin (§5.5).
+    'backend/src/ozellik/firma/firma-kurumsal-giris.controller.ts',
   ];
   const bulunan: string[] = [];
   const gez = (d: string) => fs.readdirSync(d, { withFileTypes: true }).forEach((g) => {
@@ -1294,9 +1314,16 @@ async function bolumH(): Promise<void> {
       uC?.passwordChangedAt?.getTime() === uC?.deletedAt?.getTime() &&
       uC?.email === 'kapali-C@metapricex.invalid' && uC?.kapatilanEposta === 'c@firma.test',
     JSON.stringify([hataGovdesi(r6.hata), uC]));
+  // ⚠ FAZ 7 F3b: `kullaniciDisKimlik.deleteMany` BEKLENEN bir silmedir
+  // (§5.11 — cikarilan uye sirket hesabiyla geri giremesin). Kural hâlâ
+  // "KISI ve TEKLIF satiri SERT SILINMEZ": kapsam o iki tabloyla yazildi ki
+  // yeni bir yan tablonun silinmesi kapiyi anlamsiz kirmasin.
+  const sertSilme = (c: any) => /delete/i.test(c.islem) && /^(user|quote)/i.test(c.tablo);
   check('H6 `user.delete` / `quote.delete*` CAGRILMADI (teklifler firmada kalir)',
-    !pH6._iz.cagrilar.some((c: any) => /delete/i.test(c.islem)),
-    JSON.stringify(pH6._iz.cagrilar.filter((c: any) => /delete/i.test(c.islem))));
+    !pH6._iz.cagrilar.some(sertSilme),
+    JSON.stringify(pH6._iz.cagrilar.filter(sertSilme)));
+  check('H6-OLCUT ⭐ dis kimlik silme CAGRILDI (F3b ikizi; kapi "hic silme yok" demiyor)',
+    pH6._iz.cagrilar.some((c: any) => c.tablo === 'kullaniciDisKimlik' && c.islem === 'deleteMany'));
   check('H6 `FirmaOlayi uye.cikarildi` yazildi',
     pH6._veri.firmaOlayi.some((o: Satir) => o.tip === 'uye.cikarildi'));
   const r6b = await dene(() => s6.uyeCikar(K('A'), 'A', 'a@firma.test'));
