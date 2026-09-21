@@ -296,7 +296,20 @@ function main(): void {
   const altbilgi = jsxKodu(oku('frontend/ortak/kabuk/components/layout/Altbilgi.tsx'));
   check('D10 altbilgi baglantilari LISTEDEN turuyor (elle senkron degil)',
     /HUKUKI_SAYFALAR\.map/.test(altbilgi));
-  check('D11 satici bilgisi doldurulmadikca GOSTERILMIYOR', /SATICI\.dolduruldu &&/.test(altbilgi));
+  // ── D11 · KURAL AYNI, YERI DEGISTI (21.09) ──────────────────────────────
+  // Eski olcut ALTBILGIYI okuyordu, cunku kunye oradaydi. Emre canliya bakip
+  // kunyeyi alt bilgiden kaldirtti (fazla agir duruyor, ticari sitelerde
+  // boyle gorunmez) ve kunye yalniz `/iletisim` sayfasinda kaldi.
+  // ⚠ Olcutu SILMEDIK, TASIDIK: silseydik "yarim kunye gosterilmez" kurali
+  // sessizce kaybolurdu. Bugun gorunmezdi cunku `SATICI` dolu — ama yarin
+  // yeni bir alan eklendiginde "[FIRMA UNVANI]" dogrudan musteriye cikardi.
+  // Ayrica alt bilgide kunyenin GERI GELMEDIGI de olculur: iki iddia birlikte
+  // kurali tam kapsar (dogru yerde var, yanlis yerde yok).
+  const iletisimSayfasi = jsxKodu(oku('frontend/app/iletisim/page.tsx'));
+  check('D11 satici bilgisi doldurulmadikca GOSTERILMIYOR (/iletisim)',
+    /SATICI\.dolduruldu &&/.test(iletisimSayfasi));
+  check('D11b kunye alt bilgiye GERI DONMEDI (unvan/adres/MERSIS basilmiyor)',
+    !/SATICI\.(unvan|adres|mersis|meslekOdasi)/.test(altbilgi));
   // ⭐ UC DUZEN — rapor ucuncusunu (admin) atlamisti.
   for (const [ad, yol] of [
     ['kok', 'frontend/app/page.tsx'],

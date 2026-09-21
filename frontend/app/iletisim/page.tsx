@@ -59,19 +59,31 @@ export default function Sayfa() {
         ))}
       </dl>
 
-      <section className="mt-10 border-t pt-8">
-        <h2 className="text-base font-semibold text-slate-900">Şirket bilgileri</h2>
-        <dl className="mt-3 space-y-3">
-          {KUNYE.map((s) => (
-            <div key={s.etiket} className="flex flex-col gap-0.5 sm:flex-row sm:gap-3">
-              <dt className="text-sm font-semibold text-slate-900 sm:w-48 sm:shrink-0">
-                {s.etiket}
-              </dt>
-              <dd className="text-sm leading-relaxed text-slate-700">{s.deger}</dd>
-            </div>
-          ))}
-        </dl>
-      </section>
+      {/* ⚠ YARIM KÜNYE GÖSTERİLMEZ — koruma alt bilgiden BURAYA TAŞINDI (21.09).
+          Künye eskiden alt bilgideydi ve orada `SATICI.dolduruldu &&` ile
+          korunuyordu: alanlar köşeli parantezli yer tutucu olduğu sürece
+          hiç basılmazdı, çünkü "[FİRMA UNVANI]" yazan bir künye boş
+          bırakmaktan daha kötüdür. Künye 21.09'da Emre kararıyla alt
+          bilgiden kaldırılıp yalnız bu sayfaya alındı; koruma da onunla
+          birlikte gelmeliydi. Gelmeseydi kural sessizce kaybolurdu —
+          bugün görünmezdi çünkü `SATICI` dolu, ama yarın yeni bir alan
+          eklendiğinde yer tutucu doğrudan müşteriye çıkardı.
+          Kapı: `faz5-kvkk-hukuki-test.ts` D11. */}
+      {SATICI.dolduruldu && (
+        <section className="mt-10 border-t pt-8">
+          <h2 className="text-base font-semibold text-slate-900">Şirket bilgileri</h2>
+          <dl className="mt-3 space-y-3">
+            {KUNYE.map((s) => (
+              <div key={s.etiket} className="flex flex-col gap-0.5 sm:flex-row sm:gap-3">
+                <dt className="text-sm font-semibold text-slate-900 sm:w-48 sm:shrink-0">
+                  {s.etiket}
+                </dt>
+                <dd className="text-sm leading-relaxed text-slate-700">{s.deger}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      )}
 
       {/* ⚠ BAŞVURU YOLU BURADA TEKRARLANMAZ: Gizlilik metni (KVKK haklarınız
           bölümü) başvurunun nasıl yapılacağını, hangi tebliğe göre ve hangi

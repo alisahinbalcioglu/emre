@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 692
-Toplam satir: 167456
+Toplam satir: 167490
 Uc nokta: 213
 test:* scripti: 109
 
@@ -297,7 +297,7 @@ test:* scripti: 109
 | `backend/test/faz2-kullanici-yonetimi-test.ts` | 602 |
 | `backend/test/faz3-eposta-parola-test.ts` | 876 |
 | `backend/test/faz4-firma-teklif-test.ts` | 263 |
-| `backend/test/faz5-kvkk-hukuki-test.ts` | 400 |
+| `backend/test/faz5-kvkk-hukuki-test.ts` | 413 |
 | `backend/test/faz7-ekip-test.ts` | 1988 |
 | `backend/test/faz7-kurumsal-test.ts` | 1934 |
 | `backend/test/faz7-mfa-test.ts` | 1532 |
@@ -415,7 +415,7 @@ test:* scripti: 109
 | `frontend/app/gizlilik/page.tsx` | 13 |
 | `frontend/app/hakkimizda/page.tsx` | 47 |
 | `frontend/app/hesap-kapali/page.tsx` | 192 |
-| `frontend/app/iletisim/page.tsx` | 94 |
+| `frontend/app/iletisim/page.tsx` | 106 |
 | `frontend/app/kullanim-kosullari/page.tsx` | 13 |
 | `frontend/app/layout.tsx` | 44 |
 | `frontend/app/login/page.tsx` | 251 |
@@ -494,7 +494,7 @@ test:* scripti: 109
 | `frontend/ortak/kabuk/components/landing/TelefonMenusu.tsx` | 36 |
 | `frontend/ortak/kabuk/components/landing/nasil-calisir-yukleme.test.ts` | 206 |
 | `frontend/ortak/kabuk/components/landing/telefon-menusu.test.ts` | 232 |
-| `frontend/ortak/kabuk/components/layout/Altbilgi.tsx` | 81 |
+| `frontend/ortak/kabuk/components/layout/Altbilgi.tsx` | 77 |
 | `frontend/ortak/kabuk/components/layout/Breadcrumb.tsx` | 81 |
 | `frontend/ortak/kabuk/components/layout/DepolamaSeridi.tsx` | 82 |
 | `frontend/ortak/kabuk/components/layout/EpostaDogrulamaSeridi.tsx` | 83 |
@@ -568,7 +568,7 @@ test:* scripti: 109
 | `frontend/ozellik/kimlik/verileri-indir.test.ts` | 137 |
 | `frontend/ozellik/kimlik/verileri-indir.ts` | 99 |
 | `frontend/ozellik/kurumsal/KurumsalSayfa.tsx` | 60 |
-| `frontend/ozellik/kurumsal/kurumsal-sayfalar.test.ts` | 283 |
+| `frontend/ozellik/kurumsal/kurumsal-sayfalar.test.ts` | 296 |
 | `frontend/ozellik/kurumsal/sayfalar.ts` | 112 |
 | `frontend/ozellik/kutuphane/admin-stats.ts` | 202 |
 | `frontend/ozellik/kutuphane/admin/AdminSidebar.tsx` | 118 |
