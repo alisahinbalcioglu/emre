@@ -15,9 +15,17 @@
  *  `/fiyatlar` sayfalarinda gosterilir (`abonelik.servisi.ts` → `p.aciklama`).
  *
  *  ── KAPSAM ────────────────────────────────────────────────────────────
- *  Yalniz MEKANIK ve MEP (iki disiplin) paket aciklamalari. Elektrik
- *  paketleri (`basic-elk`, `pro-elk`) KAPSAM DISI — "Gorunur kusurlar turu"
- *  KURALLAR.md'de elektrik metinleri hicbir ajanin dokunmadigi liste.
+ *  BES paket aciklamasi: mekanik (`basic-mek`, `pro-mek`), MEP (`pro-mep`) ve
+ *  21.09 eki olarak ELEKTRIK (`basic-elk`, `pro-elk`).
+ *  ⚠ Elektrik baslangicta KAPSAM DISIYDI (turun KURALLAR.md'si elektrige
+ *  dokunmayi yasakliyordu). Karar deploy sonrasi OLCUMLE degisti: elektrik
+ *  paketleri 17.09 karariyla SATISTA ve `aciklama` alanini basan tek yer
+ *  girisli `/abonelik` sayfasi — yani elektrik paketi secmeye giden musteri
+ *  bozuk Turkce goruyordu. Kapsam disi olan ELEKTRIK VERISI ve ekranlaridir,
+ *  satistaki bir paketin musteriye gorunen metni degil.
+ *  ⚠ `/fiyatlar` sayfasi bu alani BASMAZ (olculdu): oradaki "Basic — malzeme"
+ *  satirlari on yuzun kendi SEVIYE_ETIKET/KAPSAM_ETIKET eslemelerinden gelir.
+ *  Tek tuketici: `frontend/app/(protected)/abonelik/page.tsx`.
  *
  *  ── GUVENLIK: TAM ESLESME SART, KOR USTUNE YAZMA YOK ─────────────────────
  *  Bir kod yalniz mevcut `aciklama` BUGUNKU (ASCII) metinle BIREBIR
@@ -43,6 +51,20 @@ export const ACIKLAMA_DUZELTMELERI: Duzeltme[] = [
     kod: 'pro-mek',
     eski: 'Mekanik: malzeme + iscilik + DWG metraj.',
     yeni: 'Mekanik: malzeme + işçilik + DWG metraj.',
+  },
+  // 21.09 EK (Emre karari, deploy sonrasi olcum): elektrik paketleri SATISTA
+  // (17.09 karari) ve `aciklama` alanini basan TEK yer girisli `/abonelik`
+  // sayfasi. Yani elektrik paketi secmeye giden musteri bozuk Turkce goruyordu.
+  // Turun ilk kapsami elektrigi disarida birakmisti; karar bu iki satiri ekledi.
+  {
+    kod: 'basic-elk',
+    eski: 'Elektrik disiplininde malzeme kutuphanesi ve teklif hazirlama.',
+    yeni: 'Elektrik disiplininde malzeme kütüphanesi ve teklif hazırlama.',
+  },
+  {
+    kod: 'pro-elk',
+    eski: 'Elektrik: malzeme + iscilik + DWG metraj.',
+    yeni: 'Elektrik: malzeme + işçilik + DWG metraj.',
   },
   {
     kod: 'pro-mep',

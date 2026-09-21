@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 670
-Toplam satir: 159078
+Toplam satir: 159100
 Uc nokta: 210
 test:* scripti: 105
 
@@ -19,7 +19,7 @@ test:* scripti: 105
 | `backend/scripts/kisisel-liste-backfill.js` | 107 |
 | `backend/scripts/kullanici-hakki-guncelle.ts` | 195 |
 | `backend/scripts/mfa-sifirla.ts` | 145 |
-| `backend/scripts/paket-aciklama-duzelt.ts` | 138 |
+| `backend/scripts/paket-aciklama-duzelt.ts` | 160 |
 | `backend/scripts/paketleri-kur.ts` | 534 |
 | `backend/scripts/surum-yaz.js` | 47 |
 | `backend/src/altyapi/auth/auth.controller.ts` | 167 |

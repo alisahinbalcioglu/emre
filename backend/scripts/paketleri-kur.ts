@@ -122,7 +122,7 @@ const PAKETLER = [
     // yalniz degeri bugunku gercege doner: satista 5 surum.
     satistaMi: true,
     ad: 'Basic — Elektrik',
-    aciklama: 'Elektrik disiplininde malzeme kutuphanesi ve teklif hazirlama.',
+    aciklama: 'Elektrik disiplininde malzeme kütüphanesi ve teklif hazırlama.',
     kapsam: 'electrical' as const,
     seviye: 'core' as const,
     kullaniciHakki: 1,
@@ -138,7 +138,7 @@ const PAKETLER = [
     // 17.09 (Emre karari): bkz. basic-elk — elektrik satista KALIYOR.
     satistaMi: true,
     ad: 'Pro — Elektrik',
-    aciklama: 'Elektrik: malzeme + iscilik + DWG metraj.',
+    aciklama: 'Elektrik: malzeme + işçilik + DWG metraj.',
     kapsam: 'electrical' as const,
     seviye: 'pro' as const,
     kullaniciHakki: 2,
