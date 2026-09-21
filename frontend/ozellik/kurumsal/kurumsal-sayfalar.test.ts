@@ -248,13 +248,26 @@ describe('A — altbilgi: bağlantılar LİSTEDEN, meslek odası basılıyor', (
     }
   });
 
-  it('kimlik satırında meslek odası SABİTTEN basılıyor', () => {
-    expect(altbilgi).toContain('SATICI.meslekOdasi');
-    expect(altbilgi).not.toContain(SATICI.meslekOdasi);
+  // ── KÜNYE ALT BİLGİDE DEĞİL (Emre kararı, 21.09) ────────────────────────
+  // Eski iki ölçüt burada künyenin BASILDIĞINI doğruluyordu. Canlıda gözle
+  // bakılınca satır fazla ağır durdu ve karar tersine döndü: künye yalnız
+  // `/iletisim` sayfasında. Ölçütü silmek yerine TERSİNE çevirdik — silseydik
+  // künye bir gün sessizce geri gelebilirdi ve kimse fark etmezdi.
+  it('künye alt bilgide BASILMIYOR — unvan, adres, MERSİS, oda, vergi', () => {
+    for (const alan of ['unvan', 'adres', 'mersis', 'meslekOdasi', 'vergiNo', 'ticaretSicilNo']) {
+      expect(altbilgi, alan).not.toContain(`SATICI.${alan}`);
+    }
+    // Düz yazılmış hâli de olmamalı (sabitten okunmadan elle yazılan künye).
+    expect(altbilgi).not.toContain(SATICI.mersis ?? 'MERSİS');
+    expect(altbilgi).not.toContain('MERSİS');
   });
 
-  it('kimlik yarım doldurulmuşken hiç gösterilmiyor (mevcut kural korundu)', () => {
-    expect(altbilgi).toContain('SATICI.dolduruldu &&');
+  // Künye kaldırıldı ama BİLGİ kaybolmadı: iyzico'nun şartı "ana sayfadan
+  // doğrudan erişilebilen bir İletişim başlığı". O bağlantı buradan türüyor
+  // ve `/iletisim` altı alanın altısını da basıyor (yukarıdaki bloklar).
+  it('İletişim bağlantısı alt bilgide DURUYOR (iyzico erişim şartı)', () => {
+    expect(altbilgi).toContain('KURUMSAL_SAYFALAR.map');
+    expect(KURUMSAL_SAYFALAR.some((s) => s.yol === '/iletisim')).toBe(true);
   });
 });
 

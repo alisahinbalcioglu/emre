@@ -58,21 +58,17 @@ export function Altbilgi({ koyu = false }: { koyu?: boolean }) {
           ))}
         </div>
         <div className="flex flex-col gap-0.5 sm:items-end">
+          {/* ── KÜNYE BURADA DEĞİL, /iletisim SAYFASINDA (Emre kararı, 21.09) ──
+              Alt bilgide unvan + tam adres + MERSİS + meslek odası tek satırda
+              basılıyordu; canlıda gözle bakılınca fazla ağır durduğu görüldü ve
+              ticari sitelerin alışkanlığına da aykırı. Bilgi KAYBOLMUYOR:
+              `KURUMSAL_SAYFALAR`den türeyen "İletişim" bağlantısı bu alt
+              bilgide duruyor ve o sayfa altı alanın altısını da `SATICI`
+              sabitinden basıyor (kapısı: `kurumsal-sayfalar.test.ts`).
+              ⚠ iyzico'nun şartı "ana sayfadan DOĞRUDAN ERİŞİLEBİLEN bir
+              İletişim başlığı" — satırın kendisi değil, erişilebilirliği.
+              O yüzden bağlantı kaldırılamaz; künye satırı kaldırılabilir. */}
           <p>© {yil} {SATICI.gorunenAd}. Tüm hakları saklıdır.</p>
-          {/* ⚠ Satıcı kimliği HENÜZ DOLDURULMADI: `SATICI` sabitindeki alanlar
-              köşeli parantezli yer tutucu olduğu sürece BURADA GÖSTERİLMEZ —
-              "[FİRMA UNVANI]" yazan bir altbilgi, boş bırakmaktan daha kötüdür. */}
-          {SATICI.dolduruldu && (
-            <p className="text-[11px] opacity-80">
-              {SATICI.unvan} · {SATICI.adres}
-              {SATICI.mersis ? ` · MERSİS: ${SATICI.mersis}` : ''}
-              {/* Meslek odası — iyzico'nun İletişim başlığında saydığı
-                  bilgilerden biri. Altbilgi dar olduğu için TAM künye burada
-                  DEĞİL, /iletisim sayfasındadır; buradaki satır künyenin
-                  kısasıdır ve sarmalanarak sığar. */}
-              {SATICI.meslekOdasi ? ` · ${SATICI.meslekOdasi}` : ''}
-            </p>
-          )}
         </div>
       </div>
     </footer>
