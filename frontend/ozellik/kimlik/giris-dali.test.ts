@@ -23,6 +23,8 @@ const oku = (p: string) => fs.readFileSync(path.join(KOK, p), 'utf8');
 /** Yorumlari atar: kapi YORUMDA degil KODDA eslessin. */
 const kodu = (s: string) =>
   s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+/** JSX metni satir kirilimi + girintiyi TEK bosluga indirir; kapi da oyle olcer. */
+const duz = (s: string) => s.replace(/\s+/g, ' ');
 
 const SAYFALAR = [
   'app/login/page.tsx',
@@ -151,6 +153,33 @@ describe('iki adimli giris bilesenleri', () => {
     expect(s).toMatch(/status\s*===\s*401/);
     expect(s).toContain('onSuresiDoldu(');
     expect(oku('ozellik/kimlik/MfaKodAdimi.tsx')).toContain('Süre doldu');
+  });
+
+  it('⭐ kurulum sihirbazinin 401 metinleri kayit SILDIRMEZ', () => {
+    // Onay sunucuda basarili olup yanit yolda kaybolursa tekrar deneme 401
+    // alir ve yeniden giris KOD adimina duser: "kaydi silin" demek tek
+    // gecerli anahtari sildirip hesabi kilitlerdi (21.09 inceleme bulgusu).
+    const s = kodu(oku('ozellik/kimlik/ZorunluKurulumSihirbazi.tsx'));
+    const mesajlar = Array.from(s.matchAll(/onSuresiDoldu\(([\s\S]*?)\);/g)).map((m) => m[1]);
+    expect(mesajlar).toHaveLength(2);
+    for (const m of mesajlar) expect(m).not.toMatch(/sil/i);
+  });
+
+  it('⭐ "eski kaydi sil" uyarisi TAZE anahtarin yaninda duruyor', () => {
+    expect(duz(kodu(oku('ozellik/kimlik/KurulumAnahtari.tsx')))).toContain('kaydı varsa silin');
+  });
+
+  it('⭐ sihirbazdaki "N dakika" backend meydan okuma omruyle AYNI', () => {
+    // Omur degisip metin kalirsa kullanici yanlis sureye gore davranir.
+    const sn = Number(
+      fs
+        .readFileSync(path.join(KOK, '../backend/src/altyapi/auth/mfa/meydan-okuma.ts'), 'utf8')
+        .match(/MEYDAN_OKUMA_OMRU_SN = (\d+);/)?.[1],
+    );
+    expect(sn).toBeGreaterThan(0);
+    expect(duz(kodu(oku('ozellik/kimlik/ZorunluKurulumSihirbazi.tsx')))).toContain(
+      `Bu ekran ${sn / 60} dakika`,
+    );
   });
 
   it('⭐ kurtarma kodlari ekrani ONAY KUTUSU olmadan GECILEMEZ', () => {

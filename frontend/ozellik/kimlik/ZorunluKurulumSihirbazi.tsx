@@ -78,6 +78,11 @@ export function ZorunluKurulumSihirbazi({
       setAdim('kodlar');
     } catch (err: any) {
       if (err?.response?.status === 401) {
+        // ⚠ Burada "uygulamadaki kaydi silin" DENMEZ: onay sunucuda basarili
+        // olup yanit yolda kaybolduysa tekrar deneme de 401 alir
+        // (`passwordChangedAt`), yeniden giris KOD adimina duser ve silinen
+        // kayit tek gecerli anahtardi. "Eski kaydi sil" uyarisi yalniz yeni
+        // anahtar GORUNURKEN verilir (`KurulumAnahtari`).
         onSuresiDoldu('Süre doldu, lütfen yeniden giriş yapın.');
         return;
       }
@@ -105,7 +110,12 @@ export function ZorunluKurulumSihirbazi({
           {neden === 'yonetici'
             ? 'Yönetici hesaplarında iki adımlı giriş zorunludur.'
             : 'Firmanızda iki adımlı giriş zorunlu kılınmış.'}{' '}
-          Bir kez kurduktan sonra her girişte telefonunuzdaki 6 haneli kod istenecek.
+          Kod size <strong>SMS ya da e-postayla gönderilmez</strong>; telefonunuzdaki
+          doğrulama uygulaması üretir. Bir kez kurduktan sonra her girişte o
+          uygulamadaki 6 haneli kod istenecek.{' '}
+          {/* Sure = MEYDAN_OKUMA_OMRU_SN (backend); esitligi giris-dali.test.ts olcer. */}
+          Bu ekran 5 dakika geçerlidir; süre dolarsa yeniden giriş yapıp yeni
+          anahtarla devam edin.
         </p>
       </div>
 
