@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 670
-Toplam satir: 159100
+Toplam satir: 159194
 Uc nokta: 210
 test:* scripti: 105
 
@@ -541,11 +541,11 @@ test:* scripti: 105
 | `frontend/ozellik/kimlik/GirisDaliEkrani.tsx` | 53 |
 | `frontend/ozellik/kimlik/IkiAdimliGirisKarti.tsx` | 328 |
 | `frontend/ozellik/kimlik/KurtarmaKodlariEkrani.tsx` | 105 |
-| `frontend/ozellik/kimlik/KurulumAnahtari.tsx` | 53 |
+| `frontend/ozellik/kimlik/KurulumAnahtari.tsx` | 99 |
 | `frontend/ozellik/kimlik/MfaKodAdimi.tsx` | 132 |
 | `frontend/ozellik/kimlik/SirketHesabiKarti.tsx` | 154 |
-| `frontend/ozellik/kimlik/ZorunluKurulumSihirbazi.tsx` | 156 |
-| `frontend/ozellik/kimlik/giris-dali.test.ts` | 239 |
+| `frontend/ozellik/kimlik/ZorunluKurulumSihirbazi.tsx` | 166 |
+| `frontend/ozellik/kimlik/giris-dali.test.ts` | 268 |
 | `frontend/ozellik/kimlik/kurumsal-baslat.ts` | 114 |
 | `frontend/ozellik/kimlik/kurumsal-giris.test.ts` | 336 |
 | `frontend/ozellik/kutuphane/admin-stats.ts` | 202 |
@@ -585,7 +585,7 @@ test:* scripti: 105
 | `frontend/ozellik/odeme/sozlesme-onayi.ts` | 31 |
 | `frontend/ozellik/odeme/telefon-bicim.test.ts` | 150 |
 | `frontend/ozellik/odeme/telefon-bicim.ts` | 105 |
-| `frontend/ozellik/odeme/turkce-metin.test.ts` | 474 |
+| `frontend/ozellik/odeme/turkce-metin.test.ts` | 483 |
 | `frontend/ozellik/tablo/disiplin.ts` | 13 |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 252 |
 | `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 4536 |
