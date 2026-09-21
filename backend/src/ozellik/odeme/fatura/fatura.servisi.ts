@@ -142,11 +142,50 @@ export function kopyadanMusteri(
   if (!unvan) throw new FaturaKopyasiEksikHatasi('unvan');
   const eposta = doluYaDaNull(teslimEpostasi);
   if (!eposta) throw new FaturaKopyasiEksikHatasi('teslim e-postasi');
+
+  const vergiNo = doluYaDaNull(f.musteriVergiNo);
+  const tcKimlikNo = doluYaDaNull(f.musteriTcKimlikNo);
+  const vergiDairesi = doluYaDaNull(f.musteriVergiDairesi);
+
+  // ── T47 (22.09.2026): VERGI KIMLIGI OLMADAN FATURA KESILMEZ ────────────
+  //
+  // OLCULEN KUSUR (bu fonksiyon, eski hali): uc vergi alani da `?? undefined`
+  // ile SESSIZCE geciyordu. Ucu birden bos oldugunda muhasebe saglayicisina
+  // `tax_number: undefined, tax_office: undefined` gidiyor ve fatura
+  // KESILIYORDU. VUK md. 230 faturada musterinin vergi dairesi ve hesap
+  // numarasini (gercek kisi icin T.C. kimlik numarasini) SART KOSAR — yani
+  // uretilen belge hukuken gecersizdi ve kimse fark etmiyordu.
+  //
+  // Ustteki iki kapi (unvan / teslim e-postasi) bu hali YAKALAYAMAZ, cunku
+  // ikisi de pratikte hic bos kalmaz: `faturaMusteriKopyasiCikar` `unvan ?? ad`
+  // yapar ve `Firma.ad` NOT NULL'dur; `yetkiliEposta` ise her satin almada
+  // yazilir. Yani K4'un "gurultulu basarisizlik" merdiveni KURULU ama bu
+  // kusur ona HIC ulasmiyordu.
+  //
+  // ⚠ TAHSILATI BLOKLAMAZ — dosya basindaki tasarim notu gecerli. Buradan
+  // firlayan hata KESIM asamasindadir: fatura HATA'ya duser, 5 kez geri
+  // cekilerek denenir, tukenince ELLE_MUDAHALE olur ve yonetime mail gider.
+  // Musterinin aboneligi calismaya devam eder. Asil kapi ONCEDEDIR: satin
+  // alma formu artik sirket adina alandan vergi dairesini de ister ve
+  // `satinalma.servisi.ts` kimlik numarasini `Firma`ya YAZAR — yani saglikli
+  // yolda buraya eksik kopya GELMEZ. Bu kapi o yolun DISINDAN gelenler icin:
+  // K4 oncesi kayitlar, elle acilmis firmalar, havale yolu, imha edilmis satir.
+  //
+  // ⚠ SAHIS/TUZEL AYRIMI BURADA DA GECERLI:
+  //   · TCKN varsa yeter — gercek kisiye e-Arsiv'de vergi dairesi istenmez.
+  //   · VKN varsa vergi dairesi de ZORUNLU (VUK md. 230).
+  if (!vergiNo && !tcKimlikNo) {
+    throw new FaturaKopyasiEksikHatasi('vergi kimligi (VKN ya da T.C. kimlik no)');
+  }
+  if (vergiNo && !tcKimlikNo && !vergiDairesi) {
+    throw new FaturaKopyasiEksikHatasi('vergi dairesi (VKN ile birlikte zorunlu)');
+  }
+
   return {
     unvan,
-    vergiNo: doluYaDaNull(f.musteriVergiNo) ?? undefined,
-    vergiDairesi: doluYaDaNull(f.musteriVergiDairesi) ?? undefined,
-    tcKimlikNo: doluYaDaNull(f.musteriTcKimlikNo) ?? undefined,
+    vergiNo: vergiNo ?? undefined,
+    vergiDairesi: vergiDairesi ?? undefined,
+    tcKimlikNo: tcKimlikNo ?? undefined,
     eposta,
     adres: doluYaDaNull(f.musteriAdres) ?? undefined,
     il: doluYaDaNull(f.musteriIl) ?? undefined,

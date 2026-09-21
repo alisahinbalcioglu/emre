@@ -468,6 +468,15 @@ const SUITES: Suite[] = [
   { ad: 'iyzico yetki başlığı: randomKey eşliği (I1-I5)', script: 'test:iyzico-basligi', zincir: 'Z0' },
   { ad: 'Abonelik ölçüm betiği: SQL geçerliliği (S1-S4b)', script: 'test:olcum-sorgu', zincir: 'Z0' },
   { ad: 'Satın alma yolu: fatura kapısı + miras muafiyeti (P1-P7)', script: 'test:satinalma', zincir: 'Z0' },
+  // T47 (22.09.2026): "fatura bilgisi eksik firma gercek bir fatura kesme
+  // noktasina gelince ne oluyor?" Olculdu — UC kusur ust usteydi: (1) satin
+  // almadaki kapi FATURA kapisi degil IYZICO kapisiydi (kodun kendi yorumu
+  // boyle diyor); (2) `kimlikNo` toplanip iyzico'ya gonderiliyor ama `Firma`ya
+  // HIC yazilmiyordu — `Firma.telefon` kusurunun (FAZ 4.1) birebir ikizi;
+  // (3) `kopyadanMusteri` vergi kimligi uclusunu `?? undefined` ile sessizce
+  // geciyordu, yani muhasebeye `tax_number: undefined` gidip fatura KESILIYORDU
+  // (VUK md. 230 ihlali, sessiz). Sahis/limited ayrimi tum depoda YOKTU.
+  { ad: 'Fatura kimliği kapısı: şahıs/limited + eksik kimlikle fatura kesilmez (T1-T11)', script: 'test:fatura-kimligi', zincir: 'Z0' },
   // ── 21.09.2026 — PLAN 5.8 VERİ İMHASI, ÖDEME AYAĞI. DB/AĞ GEREKTİRMEZ.
   //    K4: fatura müşteri kimliğini `Firma` satırından CANLI okuyordu; fatura
   //    tahsilat anında yazılıp kesim @Cron ile SONRA koştuğu için müşteri
@@ -515,6 +524,18 @@ const SUITES: Suite[] = [
   //    platform yöneticisi kendi küresel kataloğunu göremiyordu (R1-O4).
   //    Mutant tablosu F1a raporunda. KIRMIZIYA DÖNERSE REGRESYON.
   { ad: 'Faz 7 yetki: seviye yalnız abonelikten + kişi eksenli tamirler (Y/K)', script: 'test:faz7-yetki', zincir: 'Z0' },
+  // ── 22.09.2026 — 2.13: ABONELİK SAĞLIĞI TEK KAYNAKTAN. DB/AĞ GEREKTİRMEZ.
+  //    Ölçülen kusur: `TierGuard`ın okuduğu seviye (`seviye.ts`) ve `/auth/me`
+  //    yetenekleri (`capabilities.helper.ts`) aboneliğin `durum`/`erisimSonu`
+  //    alanlarını HİÇ ÇEKMİYORDU — iptal edilmiş ya da süresi dolmuş abonelik
+  //    paket seviyesi vermeye devam ediyordu. Uç düzeyinde somut açık YOKTU
+  //    (3 `@RequireTier` ucunun 3'ü de yetenek taşıyor, `ErisimGuard` 403
+  //    veriyordu); kapatılan şey kapının KENDİSİNİN fail-open olmasıydı.
+  //    Paket bu yüzden `TierGuard`ı TEK BAŞINA koşturur. İki kritik nöbet:
+  //    (I2/Y2) ödenmiş dönemi süren İPTAL abonelik KESİLMEZ — `durum='AKTIF'`
+  //    diye daraltan mutant kırmızı olur; (T) 7 durum × 2 tarih bileşiminde
+  //    saf çekirdek ile `ErisimServisi.karar` KARŞILAŞTIRILIR (ikiz kural kapısı).
+  { ad: 'Abonelik sağlığı tek kaynaktan: seviye + yetenek süzgeci (S/T/I/Y)', script: 'test:abonelik-erisim', zincir: 'Z0' },
   // ── 17.09.2026 — FAZ 7 F1b: EKİP (davet · koltuk · kişi sınırı · ikizler).
   //    DB/AĞ GEREKTİRMEZ: bellek içi sahte Prisma `where`i GERÇEKTEN uygular
   //    (OR/NOT/lt/gt/in + ilişki süzgeci), `$transaction` firlatan işlemi geri

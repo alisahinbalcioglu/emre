@@ -284,6 +284,107 @@ export function eksikMusteriAlanlari(
   });
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   T47 (22.09.2026) — SAHIS mi TUZEL mi · FATURA KIMLIGI SATIN ALMADA TOPLANIR
+   ═══════════════════════════════════════════════════════════════════════════
+
+   OLCULEN KUSUR (bu dosya, eski satir 530-560):
+   Musteri odeme formunda kimlik numarasini ZATEN giriyordu (`kimlikNo`,
+   `ZORUNLU_MUSTERI_ALANLARI` icinde) ve iyzico'ya `identityNumber` olarak
+   gonderiliyordu — ama `prisma.firma.update` yalnizca unvan / yetkiliEposta /
+   faturaAdresi / il / telefon yaziyordu. `tcKimlikNo`, `vergiNo` ve
+   `vergiDairesi` HICBIR odeme yolundan yazilmiyordu; tum depoda o uc alani
+   yazan TEK yer profil formuydu (`firma.servisi.guncelle`).
+
+   Sonuc zinciri: K4 fatura kopyasi (`faturaMusteriKopyasiCikar`) bos vergi
+   kimligi kopyaliyor -> `kopyadanMusteri` o ucluyu `?? undefined` ile geciyor
+   -> muhasebe saglayicisina `tax_number: undefined` gidiyor -> fatura VERGI
+   KIMLIGI OLMADAN kesiliyor. VUK md. 230 musterinin vergi dairesi ve hesap
+   numarasini (ya da gercek kisi icin TCKN'yi) SART KOSAR.
+
+   ⚠ Bu, 08.09'da olculen `Firma.telefon` kusurunun BIREBIR IKIZIDIR: ayni
+   `update`, ayni alan listesi. Telefon duzeltildi, kimlik numarasi gozden
+   kacti — "ikizi unutma" dersinin uc ay sonraki tekrari.
+
+   COZUM (satin almayi KAPATMADAN):
+     1. Kimlik numarasi HANE SAYISINA gore dogru kolona yazilir
+        (11 -> tcKimlikNo, degilse -> vergiNo). `??` semantigi korunur:
+        yoneticinin/profilin girdigi deger EZILMEZ.
+     2. Sahis olmayan (TCKN olmayan) musteriden VERGI DAIRESI de ISTENIR —
+        odeme formunda, KART GIRILMEDEN ONCE. Kapi odemeyi engellemez, eksigi
+        ONCEDEN toplatir: musterinin parasi cekildikten sonra "fatura
+        kesilemiyor" demek en kotu haldir.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/** Musterinin girdigi numaranin hangi BELGE oldugu. */
+export type KimlikTuru = 'tckn' | 'vkn' | 'bilinmiyor';
+
+/**
+ * SAF — hane sayisindan belge turunu soyler. On yuz ikizi:
+ * `frontend/ozellik/odeme/fatura-kimligi.ts` → `kimlikTuru`.
+ *
+ * ⚠ SAGLAMA HANESI DOGRULAMASI BILEREK YOK. Amac numaranin gecerli olup
+ * olmadigini bilmek degil, HANGI BELGEYI istemek gerektigini bilmek: 11 hane
+ * gercek kisi (e-Arsiv, vergi dairesi gerekmez), 10 hane tuzel kisi (VKN +
+ * vergi dairesi). Gecerlilik kararini iyzico ve muhasebe saglayicisi verir;
+ * burada kati bir dogrulama, gecerli musteriyi odeyemez hale getirirdi.
+ */
+export function kimlikTuru(kimlikNo: string | null | undefined): KimlikTuru {
+  const haneler = (kimlikNo ?? '').replace(/\D/g, '');
+  if (haneler.length === 11) return 'tckn';
+  if (haneler.length === 10) return 'vkn';
+  return 'bilinmiyor';
+}
+
+/**
+ * SAF — bu satin almada vergi dairesi SORULMALI mi?
+ *
+ * ⚠ `!== 'tckn'`, `=== 'vkn'` DEGIL. Hane sayisi ne 10 ne 11 ise elimizde
+ * gecerli bir SAHIS kimligi YOKTUR; fatura ancak vergi dairesi + numara ile
+ * kesilebilir. `=== 'vkn'` yazmak yarim numarayi kapidan gecirir ve eksik
+ * bilgi ancak kesim aninda — musterinin parasi cekildikten SONRA — cikardi.
+ */
+export function vergiDairesiGerekli(
+  musteri: { kimlikNo?: string | null } | null | undefined,
+): boolean {
+  const ham = (musteri?.kimlikNo ?? '').trim();
+  if (!ham) return false;
+  return kimlikTuru(ham) !== 'tckn';
+}
+
+/** Kapiya takilan musteriye gosterilen metin — on yuz `message`i aynen basar. */
+export const VERGI_DAIRESI_GEREKLI_MESAJI =
+  'Sirket adina fatura icin vergi dairesi gerekli. Fatura formundaki "Vergi ' +
+  'dairesi" alanini doldurun; sahis olarak aliyorsaniz kimlik alanina 11 ' +
+  'haneli T.C. kimlik numaranizi girin.';
+
+/**
+ * SAF — odeme formundaki kimlik bilgisini `Firma` KOLONLARINA esler.
+ *
+ * `undefined` donen alan "DOKUNMA" demektir (Prisma `update` sozlesmesi):
+ * cagiran taraf `mevcut ?? bundan gelen` yazar, boylece profilden ya da
+ * yoneticiden gelen deger ASLA ezilmez.
+ */
+export function faturaKimligiAlanlari(musteri: {
+  kimlikNo?: string | null;
+  vergiDairesi?: string | null;
+}): { tcKimlikNo?: string; vergiNo?: string; vergiDairesi?: string } {
+  const ham = (musteri.kimlikNo ?? '').trim();
+  const vd = (musteri.vergiDairesi ?? '').trim();
+  const cikti: { tcKimlikNo?: string; vergiNo?: string; vergiDairesi?: string } = {};
+  if (ham) {
+    // ⚠ 'bilinmiyor' da `vergiNo`ya yazilir, `tcKimlikNo`ya DEGIL: `tcKimlikNo`
+    // uyeden GIZLENEN kisisel veri kolonudur (`firma-maskele.ts`) ve teklif
+    // antedinde BASILMAZ. Turu bilinmeyen bir numarayi oraya yazmak, kisisel
+    // veri olmayan bir degeri kisisel veri muamelesine sokar; tersi ise
+    // gercek bir TCKN'yi antette basardi — bu yon yanlisin ucuz olani.
+    if (kimlikTuru(ham) === 'tckn') cikti.tcKimlikNo = ham;
+    else cikti.vergiNo = ham;
+  }
+  if (vd) cikti.vergiDairesi = vd;
+  return cikti;
+}
+
 @Injectable()
 export class SatinAlmaServisi {
   private readonly logger = new Logger(SatinAlmaServisi.name);
@@ -417,6 +518,14 @@ export class SatinAlmaServisi {
       sehir: string;
       adres: string;
       postaKodu?: string;
+      /**
+       * T47: KOSULLU ZORUNLU — `vergiDairesiGerekli` dogruysa dolu olmali.
+       * `ZORUNLU_MUSTERI_ALANLARI` icinde DEGIL: o liste iyzico'nun
+       * sozlesmesidir ve on yuz ikiziyle BIREBIR esit kalmak zorundadir
+       * (`satinalma-yolu-test.ts` P7). Vergi dairesi iyzico'ya HIC gitmez;
+       * yalniz `Firma`ya yazilir ve oradan fatura kopyasina gecer.
+       */
+      vergiDairesi?: string;
     };
     /**
      * FAZ 6.4 (16.09): on bilgilendirme formu + mesafeli satis sozlesmesi
@@ -458,6 +567,26 @@ export class SatinAlmaServisi {
         `Fatura bilgileri eksik: ${eksik.join(', ')}. ` +
           'Odeme sayfasindaki fatura formunu doldurun.',
       );
+    }
+
+    // ── T47: SAHIS mi TUZEL mi — VERGI DAIRESI KAPISI ────────────────────
+    // ⚠ BU KAPI ODEMEYI ENGELLEMEZ, EKSIGI ONCEDEN TOPLATIR. Fark onemli:
+    // kart bilgisi HENUZ girilmedi, iyzico'ya HIC istek gitmedi, hicbir yan
+    // etki yazilmadi. Musteri alani doldurup ayni dugmeye basiyor.
+    //
+    // Olculdu (22.09): vergi dairesi hicbir odeme yolunda SORULMUYORDU ve
+    // `Firma.vergiDairesi`yi yazan tek yol profil formuydu. Sirket adina alan
+    // musterinin faturasi vergi dairesiz kesiliyordu — VUK md. 230 sart kosar.
+    //
+    // ⚠ On yuzde ikizi var (`fatura-kimligi.ts` → `eksikAlanlar`), ama kapi
+    // BURADA da duruyor: `@Body()` bu uctan bir SATIR-ICI TIP LITERALI olarak
+    // gecer (`abonelik-basla.dto.ts` `musteri: @IsObject()`), yani icerigi
+    // ValidationPipe dogrulamaz. Istegi elle atan biri on yuzu HIC gormez.
+    if (vergiDairesiGerekli(p.musteri) && !(p.musteri.vergiDairesi ?? '').trim()) {
+      throw new BadRequestException({
+        kod: 'VERGI_DAIRESI_GEREKLI',
+        message: VERGI_DAIRESI_GEREKLI_MESAJI,
+      });
     }
 
     // Zaten SAGLIKLI bir aboneligi olan firma yeniden satin alamaz —
@@ -531,8 +660,14 @@ export class SatinAlmaServisi {
         // FAZ 4.1: yeni alan — asagidaki `??` icin mevcut deger okunmali,
         // yoksa her satin alma kullanicinin profilden girdigi telefonu EZERDI.
         telefon: true,
+        // T47: ayni `??` gerekcesi — bu uc alan da okunmadan yazilirsa
+        // profilden/yoneticiden gelen vergi kimligi her satin almada EZILIR.
+        tcKimlikNo: true, vergiNo: true, vergiDairesi: true,
       },
     });
+    // T47: odeme formundaki kimlik numarasini DOGRU KOLONA esler. Bu cagri
+    // olmadan `kimlikNo` yalniz iyzico'ya gidiyor ve DB'ye HIC yazilmiyordu.
+    const kimlik = faturaKimligiAlanlari(p.musteri);
     await this.prisma.firma.update({
       where: { id: p.firmaId },
       data: {
@@ -558,6 +693,20 @@ export class SatinAlmaServisi {
         // "+905330983663" gosterirdi ve ayni kolonda iki bicim olusurdu
         // (odemeden gelen normalize, formdan gelen ham).
         telefon: firma?.telefon ?? p.musteri.telefon,
+        // ── T47 (22.09 olcumu): VERGI KIMLIGI ARTIK ATILMIYOR ────────────
+        // `kimlikNo` `ZORUNLU_MUSTERI_ALANLARI` icinde, yani HER satin almada
+        // musteriden isteniyor ve iyzico'ya `identityNumber` olarak
+        // gonderiliyordu — ama DB'ye hic yazilmadan atiliyordu. `Firma`daki
+        // uc kolonu (tcKimlikNo/vergiNo/vergiDairesi) yazan TEK yol profil
+        // formuydu; kimse oraya girmezse her fatura vergi kimligi OLMADAN
+        // kesiliyordu. Telefon kusurunun (FAZ 4.1) birebir ikizi.
+        //
+        // ⚠ `undefined` = "DOKUNMA" (Prisma sozlesmesi). `firma?.X ?? kimlik.X`
+        // ikisi de bossa `undefined` kalir; `null` YAZILMAZ — bos bir odeme
+        // formu alani kayitli vergi numarasini SILMEMELI.
+        tcKimlikNo: firma?.tcKimlikNo ?? kimlik.tcKimlikNo,
+        vergiNo: firma?.vergiNo ?? kimlik.vergiNo,
+        vergiDairesi: firma?.vergiDairesi ?? kimlik.vergiDairesi,
       },
     });
 

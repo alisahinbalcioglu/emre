@@ -12,11 +12,25 @@
  * aktarimi saklanan degeri aynen verir, `hesap.servisi.ts`) ama YETKI KAYNAGI
  * olmaktan cikar.
  *
- * ⚠ `durum` ve `erisimSonu` BURADA BILEREK SUZULMEZ. SEVIYE ("hangi paket?")
- * ile SAGLIK ("aboneligi yuruyor mu?") ayri eksenlerdir: saglik `ErisimGuard`
- * ve `capabilities.helper.ts` isidir, ikisi de bilerek suzgecsizdir. Ikisini
- * burada birlestirmek o iki tuketiciyle celisirdi.
+ * ── 2.13 (22.09.2026): SEVIYE ARTIK ERISIM KARARINDAN SUZULUR ───────────
+ * ESKI HAL ve NEDEN CURUDU: burada "seviye ile saglik ayri eksenlerdir,
+ * sagligi `ErisimGuard` olcer" yaziyordu. O savunma ancak `@RequireTier`
+ * tasiyan HER ucun ayni zamanda `@GerekliYetenek` tasimasi kosuluyla
+ * gecerliydi ve bu kosulu HICBIR KAPI korumuyordu: yarin paket kapisi
+ * konan, yetenek dekoratoru unutulan bir uc, aboneligi SONA ERMIS firmaya
+ * acik olurdu — cunku `TierGuard`in okudugu seviye hala 'pro' donerdi.
+ * (Olculdu 22.09: bugun 200 ucun 3'u `@RequireTier` tasiyor ve ucu de
+ * `@GerekliYetenek` tasiyor, yani BUGUN somut acik yok; kapatilan sey
+ * KAPININ KENDISININ fail-open olmasiydi.)
+ *
+ * ⚠ OLCUT HAM `durum` DEGIL, ERISIM KARARIDIR (`abonelik-erisim.ts`).
+ * `durum = 'AKTIF'` diye daraltmak iptal eden musteriyi odedigi donemin
+ * ortasinda keserdi; `IPTAL` dali odenmis donem bitene kadar erisim verir.
+ * Ayni cekirdegi `ErisimServisi.karar` ve `capabilities.helper.ts` de okur —
+ * ikiz kural YOK.
  */
+
+import { abonelikErisimi } from './abonelik-erisim';
 
 /**
  * Seviye siralamasi: Core < Pro < Suite.
@@ -56,7 +70,7 @@ export function seviyeGorunenAd(seviye: string | null | undefined): string {
   return SEVIYE_GORUNEN_AD[seviye] ?? seviye;
 }
 
-/** `firmaPaketSeviyesi`nin ihtiyac duydugu en dar Prisma yuzeyi. Testler
+/** `firmaPaketDurumu`nun ihtiyac duydugu en dar Prisma yuzeyi. Testler
  *  gercek `PrismaService` kurmadan sahte bir nesne verebilsin diye yapisal. */
 export type SeviyePrisma = {
   abonelik: {
@@ -64,22 +78,76 @@ export type SeviyePrisma = {
   };
 };
 
+export interface PaketDurumu {
+  /**
+   * KAPILARIN OKUYACAGI SEVIYE. Erisim yoksa `null` — yani hicbir kapi
+   * acilmaz (fail-closed). Tek hesaplandigi yer burasi.
+   */
+  etkinSeviye: string | null;
+  /**
+   * SATIN ALINAN seviye, erisimden BAGIMSIZ. YALNIZ MESAJ/GOSTERIM icindir:
+   * "Pro paketiniz sona erdi" diyebilmek icin paketin Pro oldugunu bilmek
+   * gerekir. ⚠ KAPI KARARINDA KULLANMAYIN.
+   */
+  paketSeviyesi: string | null;
+  /** `abonelik-erisim.ts` cekirdeginin karari. */
+  erisimVar: boolean;
+}
+
 /**
- * Firmanin abonelik paket seviyesi. Abonelik ya da firma yoksa `null`.
+ * Firmanin paket seviyesi + abonelik sagligi. Abonelik ya da firma yoksa
+ * hepsi bos/kapali.
  *
  * ⚠ `firmaId` YOKSA SORGU ATILMAZ. `where: { firmaId: undefined }` Prisma'da
  * kosulu SESSIZCE DUSURUR ve ILK aboneligi dondururdu — firmasiz bir hesap
  * baskasinin paketiyle kapidan gecerdi. Ayni gerekce `kimlik.ts` ve
- * `capabilities.helper.ts:98-101`te de yazili.
+ * `capabilities.helper.ts`te de yazili.
+ */
+export async function firmaPaketDurumu(
+  prisma: SeviyePrisma,
+  firmaId: string | null | undefined,
+  simdi: Date = new Date(),
+): Promise<PaketDurumu> {
+  if (!firmaId) return { etkinSeviye: null, paketSeviyesi: null, erisimVar: false };
+
+  const ab = (await prisma.abonelik.findUnique({
+    where: { firmaId },
+    select: {
+      // ⚠ 2.13: `durum` + `erisimSonu` ARTIK CEKILIYOR. Cekilmedigi surece
+      // seviye, iptal/sona erme bilgisinden habersiz donuyordu.
+      durum: true,
+      erisimSonu: true,
+      paketSurumu: { select: { paket: { select: { seviye: true } } } },
+    },
+  })) as {
+    durum?: string | null;
+    erisimSonu?: Date | null;
+    paketSurumu?: { paket?: { seviye?: string | null } | null } | null;
+  } | null;
+
+  const paketSeviyesi = ab?.paketSurumu?.paket?.seviye ?? null;
+
+  // ⚠ `erisimSonu` eksikse BURADA karar verilmez — cekirdege verilir ve o
+  // "suresi dolmus" sayar (fail-closed). Ikinci bir kural yazmamak icin.
+  const { erisimVar } = abonelikErisimi(
+    ab?.durum ? { durum: ab.durum, erisimSonu: ab.erisimSonu ?? null } : null,
+    simdi,
+  );
+
+  return { etkinSeviye: erisimVar ? paketSeviyesi : null, paketSeviyesi, erisimVar };
+}
+
+/**
+ * Firmanin ETKIN paket seviyesi — aboneligi yurumeyen firmada `null`.
+ *
+ * Cagiranlar korunsun diye duran ince sarmal. Varsayilan olarak ETKIN
+ * degeri doner: bir kapi yanlislikla bunu cagirsa bile FAIL-CLOSED olur.
+ * Mesaj uretmek icin ham seviye gerekiyorsa {@link firmaPaketDurumu}.
  */
 export async function firmaPaketSeviyesi(
   prisma: SeviyePrisma,
   firmaId: string | null | undefined,
+  simdi: Date = new Date(),
 ): Promise<string | null> {
-  if (!firmaId) return null;
-  const ab = (await prisma.abonelik.findUnique({
-    where: { firmaId },
-    select: { paketSurumu: { select: { paket: { select: { seviye: true } } } } },
-  })) as { paketSurumu?: { paket?: { seviye?: string | null } | null } | null } | null;
-  return ab?.paketSurumu?.paket?.seviye ?? null;
+  return (await firmaPaketDurumu(prisma, firmaId, simdi)).etkinSeviye;
 }

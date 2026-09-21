@@ -179,12 +179,28 @@ const sahteCtx = (handler: any, cls: any, user: any): any => ({
  * `abonelikSorgusu` sayaci FIXTURE KANITI'dir: sorgu hic atilmadiysa "gecti"
  * sonucu seviyeyi degil bir kazayi olcuyor demektir.
  */
-const sahtePrisma = (seviye: string | null, iz?: { abonelikSorgusu: number }): any => ({
+const sahtePrisma = (
+  seviye: string | null,
+  iz?: { abonelikSorgusu: number },
+  // 21.09.2026 (2.13): abonelik DURUMU da okunuyor. Varsayilan gecerli bir
+  // satir; O3c gecersiz olani sinamak icin bunu degistirir.
+  durum: string = 'AKTIF',
+  erisimSonu: Date | null = new Date(Date.now() + 30 * 86400_000),
+): any => ({
   user: { findUnique: async () => ({ firmaId: 'F1', tier: 'pro' }) },
   abonelik: {
     findUnique: async () => {
       if (iz) iz.abonelikSorgusu++;
-      return seviye === null ? null : { paketSurumu: { paket: { seviye } } };
+      // ⚠ 21.09.2026 (2.13) — FIXTURE GERCEK SATIRI SURMELI.
+      // Eskiden yalniz `{ paketSurumu: { paket: { seviye } } }` donuyordu.
+      // `firmaPaketSeviyesi` artik abonelik DURUMUNU da okuyor (iptal ya da
+      // suresi dolmus abonelik seviye VERMEZ), dolayisiyla durumsuz bir satir
+      // fail-closed ile reddediliyordu ve O3 kirmizi yaniyordu — urun kusuru
+      // DEGIL, fixture eksikligi. Eksik alanli fixture, kapinin gercek dalini
+      // hic surmez: bu depoda kayitli bir hata sinifi.
+      return seviye === null
+        ? null
+        : { durum, erisimSonu, paketSurumu: { paket: { seviye } } };
     },
   },
 });
@@ -242,6 +258,27 @@ async function k2() {
   const o3 = await gecerMi(aProto.analyze, AiController, 'pro');
   check('O3 OLCUT: metot-duzeyi tier ile PRO abonelik GECIYOR',
     o3.gecti === true, o3.not);
+  // ── O3c (2.13, 21.09.2026) ────────────────────────────────────────────
+  // Fixture'a `durum`/`erisimSonu` eklendi; bu assert onun DEGERININ gercekten
+  // okundugunu kanitlar. Yoksa alanlari eklemek O3'u yesile dondurur ama
+  // kimse yeni kuralin isledigini olcmemis olur — "eksik fixture"i "sessiz
+  // fixture" ile degistirmis oluruz.
+  // ⚠ Bu, kapinin YONUNU de kilitler: PRO seviye TEK BASINA yetmez, abonelik
+  // AYRICA gecerli olmali. Cekirdek gevsetilirse burasi kirmizi yanar.
+  const o3c = await (async () => {
+    const iz = { abonelikSorgusu: 0 };
+    const gecmis = new Date(Date.now() - 86400_000);
+    const guard = new TierGuard(new Reflector(), sahtePrisma('pro', iz, 'SONA_ERDI', gecmis));
+    try {
+      const r = await guard.canActivate(sahteCtx(aProto.analyze, AiController, { id: 'u-test', sub: 'u-test' }));
+      return { gecti: r === true, not: `canActivate=${JSON.stringify(r)}` };
+    } catch (e: any) {
+      return { gecti: false, not: `${e?.constructor?.name}: ${e?.message}` };
+    }
+  })();
+  check('O3c OLCUT: SURESI DOLMUS PRO abonelik ENGELLENIYOR (2.13)',
+    o3c.gecti === false, o3c.not);
+
   // FIXTURE KANITI (2.12): iki vakada da abonelik GERCEKTEN sorgulandi.
   // Sorgu atilmadan gelen sonuc seviyeyi degil bir kazayi olcerdi.
   check('O3b FIXTURE: iki olcut vakasinda da abonelik sorgusu ATILDI',

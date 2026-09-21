@@ -314,15 +314,31 @@ async function main(): Promise<void> {
   // 17.09.2026 (2.12): abonelik sorgusu `altyapi/auth/seviye.ts`e tasindi
   // (ayni sorguyu auth.service de kullaniyor). Kapi artik IKI dosyayi birden
   // okur: guard tek kaynagi cagiriyor mu, o kaynak abonelige mi bakiyor.
+  // 21.09.2026 (2.13): fonksiyon adi `firmaPaketSeviyesi` -> `firmaPaketDurumu`
+  // oldu (artik yalniz seviyeyi degil erisim durumunu da doner). KURAL AYNI:
+  // guard TEK kaynagi cagirir, o kaynak abonelige bakar. Desen ADA degil
+  // KURALA baglandi ki bir sonraki yeniden adlandirma kapiyi kirmasin.
   check(
-    'G4 * TierGuard seviyeyi YETKILI kaynaktan aliyor (firmaPaketSeviyesi)',
-    /firmaPaketSeviyesi\(this\.prisma, user\.firmaId\)/.test(tierGuard)
+    'G4 * TierGuard seviyeyi YETKILI kaynaktan aliyor (tek cagri, abonelikten)',
+    /firmaPaket(Seviyesi|Durumu)\(this\.prisma, user\.firmaId\)/.test(tierGuard)
       && /prisma\.abonelik\.findUnique/.test(seviyeKaynak),
     'HICBIR odeme yolu User.tier YAZMIYOR - pro alan firma /labor`da 403 alirdi',
   );
+  // ⭐ 2.13: KARAR erisime bagli seviyeden verilmeli. Ham `paketSeviyesi`
+  // karsilastirmaya girerse iptal edilmis abonelik yine kapiyi acar.
+  // ⚠ ILK YAZIMIM YANLISTI ve olcum duzeltti: `!/\.paketSeviyesi/` diye genel
+  // bir yasak koymustum, oysa guard onu MESAJDA kullaniyor ("Pro aboneliginiz
+  // su anda etkin degil") — musteriye HANGI paketin etkisiz oldugunu soylemek
+  // dogru davranis. Yasaklanacak sey alanin varligi degil, KARARA girmesi.
+  check(
+    'G4c * seviye KARSILASTIRMASI `etkinSeviye` ile yapiliyor — 2.13',
+    /seviyeSirasi\(paket\.etkinSeviye\)/.test(tierGuard)
+      && !/seviyeSirasi\(paket\.paketSeviyesi\)/.test(tierGuard),
+    'iptal edilmis abonelik yine kapidan gecer',
+  );
   check(
     'G4b * firmasiz hesapta abonelik sorgusu HIC ATILMIYOR',
-    /if \(!firmaId\) return null;/.test(seviyeKaynak),
+    /if \(!firmaId\) return/.test(seviyeKaynak),
     'where: { firmaId: undefined } kosulu SESSIZCE duser - ilk abonelik donerdi',
   );
   // 17.09.2026 (Faz 7 - 2.12) G5 ve G6'NIN ANLAMI TERSINE DONDU.
@@ -345,8 +361,8 @@ async function main(): Promise<void> {
     'tier yeniden okunuyor - yetki kaynagi ikiye ayrilmis demektir',
   );
   check(
-    'G6b * seviye tek kaynaktan turuyor (firmaPaketSeviyesi + seviyeSirasi)',
-    /firmaPaketSeviyesi\(/.test(tierGuard) && /seviyeSirasi\(/.test(tierGuard),
+    'G6b * seviye tek kaynaktan turuyor (firmaPaket* + seviyeSirasi)',
+    /firmaPaket(Seviyesi|Durumu)\(/.test(tierGuard) && /seviyeSirasi\(/.test(tierGuard),
   );
   check(
     'G6c * ret mesajinda buyuk harfli CORE/PRO YOK (musteriye gorunen ad)',

@@ -97,7 +97,7 @@ type SeviyeIz = { abonelikSorgusu: number; abonelikWhere: any[] };
  */
 function seviyePrisma(
   seviye: string | null,
-  o: { tier?: string; firmaId?: string | null; iz?: SeviyeIz } = {},
+  o: { tier?: string; firmaId?: string | null; iz?: SeviyeIz; durum?: string; erisimSonu?: Date } = {},
 ): any {
   const firmaId = o.firmaId === undefined ? 'F1' : o.firmaId;
   return {
@@ -105,7 +105,16 @@ function seviyePrisma(
     abonelik: {
       findUnique: async (args: any) => {
         if (o.iz) { o.iz.abonelikSorgusu++; o.iz.abonelikWhere.push(args?.where); }
-        return seviye === null ? null : { paketSurumu: { paket: { seviye } } };
+        // ⚠ 2.13: `durum` + `erisimSonu` ARTIK ZORUNLU. Seviye erisim
+        // kararindan suzuluyor; bu fixture SAGLIKLI aboneligi temsil eder
+        // (yururlukteki AKTIF). Saglik dallari `test:abonelik-erisim`te.
+        return seviye === null
+          ? null
+          : {
+              durum: o.durum ?? 'AKTIF',
+              erisimSonu: o.erisimSonu ?? new Date(Date.now() + 30 * 86_400_000),
+              paketSurumu: { paket: { seviye } },
+            };
       },
     },
   };
@@ -119,7 +128,7 @@ const sahteCtx = (handler: any, cls: any, user: any): any => ({
 
 async function guardKosu(
   handler: any, cls: any, seviye: string | null,
-  o: { tier?: string; firmaId?: string | null; rol?: string } = {},
+  o: { tier?: string; firmaId?: string | null; rol?: string; durum?: string; erisimSonu?: Date } = {},
 ): Promise<{ gecti: boolean; mesaj: string; iz: SeviyeIz }> {
   const iz: SeviyeIz = { abonelikSorgusu: 0, abonelikWhere: [] };
   const guard = new TierGuard(new Reflector(), seviyePrisma(seviye, { ...o, iz }));
@@ -365,7 +374,11 @@ async function yTuretilmisSeviye() {
     firma: { findUnique: async () => ({ mfaZorunlu: false }) },
     mfaKurtarmaKodu: { count: async () => 0 },
     abonelik: {
+      // ⚠ 2.13: saglikli (AKTIF, suresi gelmemis) abonelik. Bu paket `tier`
+      // TURETMESINI olcuyor; saglik dallari `test:abonelik-erisim`te.
       findUnique: async () => (seviye === null ? null : {
+        durum: 'AKTIF',
+        erisimSonu: new Date(Date.now() + 30 * 86_400_000),
         paketSurumu: { paket: { seviye, ad: 'Paket', kod: 'k', kapsam: 'mechanical', kullaniciHakki: 2 } },
       }),
     },
@@ -604,7 +617,11 @@ async function kFirmaEkseni() {
   check('K-S1 firmaPaketSeviyesi(null) → null ve SORGU YOK',
     bos === null && s1Iz.cagri === 0, `sonuc=${bos} cagri=${s1Iz.cagri}`);
   const dolu = await firmaPaketSeviyesi(
-    { abonelik: { findUnique: async () => ({ paketSurumu: { paket: { seviye: 'pro' } } }) } } as any,
+    { abonelik: { findUnique: async () => ({
+      durum: 'AKTIF',
+      erisimSonu: new Date(Date.now() + 30 * 86_400_000),
+      paketSurumu: { paket: { seviye: 'pro' } },
+    }) } } as any,
     'F1',
   );
   check('K-S1b firmaPaketSeviyesi("F1") → abonelik seviyesi', dolu === 'pro', String(dolu));

@@ -1,7 +1,7 @@
 import { Injectable, CanActivate, ExecutionContext, ForbiddenException, SetMetadata } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PrismaService } from '../../db/prisma.service';
-import { firmaPaketSeviyesi, seviyeGorunenAd, seviyeSirasi } from '../seviye';
+import { firmaPaketDurumu, seviyeGorunenAd, seviyeSirasi } from '../seviye';
 
 export const TIER_KEY = 'requiredTier';
 export const RequireTier = (...tiers: string[]) => SetMetadata(TIER_KEY, tiers);
@@ -45,23 +45,42 @@ export class TierGuard implements CanActivate {
     // abonelik (`seviye.ts`); `User.tier` kolonu duruyor ama YETKI
     // VERMIYOR ve yonetici ucu artik onu degistirmiyor (`PAKET_ABONELIKTEN`).
     //
-    // ⚠ `durum` ve `erisimSonu` BURADA BİLEREK SÜZÜLMEZ (10.09.2026 gerekçesi
-    // AYNEN GEÇERLİ, `Math.max` gitse de): SEVİYE ile SAĞLIK ayrı eksenlerdir.
-    // "Hangi paket?" burada, "aboneliği yürüyor mu?" `ErisimGuard`ta ölçülür;
-    // `capabilities.helper.ts` de bilerek süzgeçsizdir. İkisini burada
-    // birleştirmek o iki tüketiciyle çelişir ve ödemesi gecikmiş bir firmaya
-    // "Mevcut paketiniz yok" dedirtirdi (doğru mesaj ErisimGuard'ınkidir).
-    const paketSeviyesi = await firmaPaketSeviyesi(this.prisma, user.firmaId);
+    // ── 2.13 (22.09.2026): SAĞLIK ARTIK BURADA DA SÜZÜLÜYOR ───────────────
+    // ESKİ HAL: "`durum` ve `erisimSonu` burada BİLEREK süzülmez; sağlığı
+    // `ErisimGuard` ölçer." O savunma yalnızca `@RequireTier` taşıyan HER ucun
+    // aynı zamanda `@GerekliYetenek` taşıması hâlinde geçerliydi ve bunu
+    // hiçbir kapı korumuyordu. Ölçüldü (22.09): bugün 3 `@RequireTier` ucunun
+    // 3'ü de `@GerekliYetenek` taşıyor — yani BUGÜN somut açık yoktu; kapatılan
+    // şey bu kapının kendisinin FAIL-OPEN olmasıydı. Yarın yetenek dekoratörü
+    // unutulursa aboneliği sona ermiş firma buradan geçerdi.
+    //
+    // ⚠ ÖLÇÜT HAM `durum` DEĞİL, ERİŞİM KARARI (`abonelik-erisim.ts`):
+    // ödenmiş dönemi süren `IPTAL` aboneliği seviyesini KORUR, kesilmez.
+    const paket = await firmaPaketDurumu(this.prisma, user.firmaId);
 
-    const userLevel = seviyeSirasi(paketSeviyesi);
+    // Erişimi olmayan firmaya paket seviyesi VERİLMEZ (fail-closed).
+    const userLevel = seviyeSirasi(paket.etkinSeviye);
     const minRequired = Math.min(...requiredTiers.map((t) => seviyeSirasi(t) || 999));
 
     if (userLevel < minRequired) {
       // ⚠ Musteriye gorunen ad (R1/E-5): mesajda buyuk harfli `CORE`/`PRO`
       // YOK — musteri "CORE" diye bir sey satin almadi, "Basic" satin aldi.
       const gereken = seviyeGorunenAd(requiredTiers[0]) || 'Pro';
-      const mevcut = paketSeviyesi
-        ? `Mevcut paketiniz: ${seviyeGorunenAd(paketSeviyesi)}`
+
+      // ⚠ PAKETİ VAR AMA ERİŞİMİ YOKSA MESAJ SEVİYE DEĞİL SAĞLIK MESAJIDIR.
+      // "Mevcut paketiniz yok" demek yanlış olurdu: müşteri Pro satın almıştı,
+      // aboneliği sona erdi. Zengin metin (hangi durum, ne yapmalı) hâlâ
+      // `ErisimGuard`ın işidir — burada YENİ BİR KURAL yok, `paket.erisimVar`
+      // aynı saf çekirdekten geliyor; bu yalnızca doğru cümleyi seçiyor.
+      if (paket.erisimVar === false && paket.paketSeviyesi) {
+        throw new ForbiddenException(
+          `${seviyeGorunenAd(paket.paketSeviyesi)} aboneliğiniz şu anda etkin değil. ` +
+            'Devam etmek için aboneliğinizi yenileyin.',
+        );
+      }
+
+      const mevcut = paket.etkinSeviye
+        ? `Mevcut paketiniz: ${seviyeGorunenAd(paket.etkinSeviye)}`
         : 'Mevcut paketiniz yok';
       throw new ForbiddenException(`Bu özellik ${gereken} paketi gerektirir. ${mevcut}`);
     }

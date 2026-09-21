@@ -8,6 +8,8 @@ import {
   eksikAlanlar,
   gonderilebilir,
   govdeyeCevir,
+  kimlikTuru,
+  vergiDairesiGerekli,
   type FaturaKimligi,
 } from './fatura-kimligi';
 
@@ -129,5 +131,116 @@ describe('⭐ SAYFA GOVDESI — /abonelik/basla cagrisi', () => {
     // Ham state gonderilirse kirpilmamis degerler ve bos `postaKodu`
     // iyzico'ya gider; bu, hatayi kullanicinin duzeltemeyecegi yere tasir.
     expect(sayfa).toContain('govdeyeCevir(fatura)');
+  });
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   T47 (22.09.2026) — SAHIS mi TUZEL mi · KOSULLU VERGI DAIRESI
+   ═══════════════════════════════════════════════════════════════════════
+
+   ⚠ NEDEN DAVRANIS TESTI: sunucu tarafindaki ikiz paket
+   (`backend/test/fatura-kimligi-kapisi-test.ts`) bu dosyanin KAYNAGINI
+   okuyup desen ariyor. Mutasyon turunda M11 (`if (vd)` → `if (false)`)
+   SAGKALDI: atama satiri yerinde duruyordu, sadece hic kosmuyordu. Kaynak
+   kapisi kosulu olcmuyorsa yesildir ama kanit degildir — asil kanit burada,
+   fonksiyonun KENDISI cagrilarak alinir.
+   ═══════════════════════════════════════════════════════════════════════ */
+describe('T47 · kimlikTuru (SAF)', () => {
+  it('11 hane sahis (TCKN), 10 hane tuzel (VKN)', () => {
+    expect(kimlikTuru('12345678901')).toBe('tckn');
+    expect(kimlikTuru('1234567890')).toBe('vkn');
+  });
+
+  it('bicim atilir — "123 456 789 01" da TCKN', () => {
+    expect(kimlikTuru('123 456 789 01')).toBe('tckn');
+    expect(kimlikTuru('123-456-7890')).toBe('vkn');
+  });
+
+  it('diger uzunluklar ve bos deger bilinmiyor', () => {
+    expect(kimlikTuru('123456789')).toBe('bilinmiyor');
+    expect(kimlikTuru('123456789012')).toBe('bilinmiyor');
+    expect(kimlikTuru('')).toBe('bilinmiyor');
+    expect(kimlikTuru(null)).toBe('bilinmiyor');
+  });
+
+  it('⭐ sunucudaki ikizle AYNI esikler (11/10) — kaynak karsilastirmasi', () => {
+    const sunucu = readFileSync(
+      join(process.cwd(), '..', 'backend', 'src', 'ozellik', 'odeme', 'abonelik', 'satinalma.servisi.ts'),
+      'utf-8',
+    );
+    expect(sunucu).toContain("if (haneler.length === 11) return 'tckn';");
+    expect(sunucu).toContain("if (haneler.length === 10) return 'vkn';");
+  });
+});
+
+describe('T47 · vergiDairesiGerekli (SAF)', () => {
+  it('⭐ SAHIS (TCKN) icin SORULMAZ — surtunme eklemiyoruz', () => {
+    expect(vergiDairesiGerekli({ kimlikNo: '12345678901' })).toBe(false);
+  });
+
+  it('⭐ LIMITED (VKN) icin SORULUR — VUK md. 230', () => {
+    expect(vergiDairesiGerekli({ kimlikNo: '1234567890' })).toBe(true);
+  });
+
+  it('⭐ turu bilinmeyen numara da ISTER (gecerli SAHIS kimligi yok)', () => {
+    expect(vergiDairesiGerekli({ kimlikNo: '12345' })).toBe(true);
+  });
+
+  it('kimlik no HIC girilmemisse FALSE (o hal zorunlu-alan kapisinin isi)', () => {
+    expect(vergiDairesiGerekli({ kimlikNo: '' })).toBe(false);
+    expect(vergiDairesiGerekli(undefined)).toBe(false);
+  });
+});
+
+describe('T47 · eksikAlanlar kosullu vergi dairesi', () => {
+  const LIMITED: FaturaKimligi = { ...TAM, kimlikNo: '1234567890' };
+
+  it('⭐ LIMITED + vergi dairesi BOS → eksik listede "Vergi dairesi" var', () => {
+    expect(eksikAlanlar(LIMITED)).toContain(ALAN_ETIKET.vergiDairesi);
+    expect(gonderilebilir(LIMITED)).toBe(false);
+  });
+
+  it('⭐ LIMITED + vergi dairesi DOLU → gonderilebilir', () => {
+    const dolu = { ...LIMITED, vergiDairesi: 'Kucukyali' };
+    expect(eksikAlanlar(dolu)).toEqual([]);
+    expect(gonderilebilir(dolu)).toBe(true);
+  });
+
+  it('⭐ SAHIS vergi dairesi OLMADAN gonderilebilir (yol kapanmiyor)', () => {
+    expect(eksikAlanlar(TAM)).toEqual([]);
+    expect(gonderilebilir(TAM)).toBe(true);
+  });
+
+  it('bosluk-only vergi dairesi EKSIK sayilir', () => {
+    expect(eksikAlanlar({ ...LIMITED, vergiDairesi: '   ' })).toContain(
+      ALAN_ETIKET.vergiDairesi,
+    );
+  });
+
+  it('⭐ P7 sozlesmesi bozulmadi: `ZORUNLU_ALANLAR` hala 7 iyzico alani', () => {
+    expect(ZORUNLU_ALANLAR).toHaveLength(7);
+    expect(ZORUNLU_ALANLAR as readonly string[]).not.toContain('vergiDairesi');
+  });
+});
+
+describe('T47 · govdeyeCevir vergi dairesini TASIR', () => {
+  it('⭐⭐ dolu vergi dairesi govdede — yoksa sunucu HIC gormez', () => {
+    const govde = govdeyeCevir({ ...TAM, kimlikNo: '1234567890', vergiDairesi: 'Kucukyali' });
+    expect(govde.vergiDairesi).toBe('Kucukyali');
+  });
+
+  it('kirpilir', () => {
+    const govde = govdeyeCevir({ ...TAM, kimlikNo: '1234567890', vergiDairesi: '  Kucukyali  ' });
+    expect(govde.vergiDairesi).toBe('Kucukyali');
+  });
+
+  it('⭐ bos/bosluk-only GONDERILMEZ (`postaKodu` ile ayni kural) — bos dize ' +
+    'sunucuda "verildi ama bos" gorunup kayitli dairesi ezerdi', () => {
+    expect('vergiDairesi' in govdeyeCevir({ ...TAM, vergiDairesi: '' })).toBe(false);
+    expect('vergiDairesi' in govdeyeCevir({ ...TAM, vergiDairesi: '   ' })).toBe(false);
+  });
+
+  it('⭐ SAHIS govdesinde alan HIC yok', () => {
+    expect('vergiDairesi' in govdeyeCevir(TAM)).toBe(false);
   });
 });

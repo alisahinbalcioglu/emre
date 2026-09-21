@@ -47,5 +47,19 @@ export class AbonelikBaslaDto {
     sehir: string;
     adres: string;
     postaKodu?: string;
+    /**
+     * T47 (22.09): sirket adina fatura icin ZORUNLU (kimlik no 11 haneli TCKN
+     * degilse). `ZORUNLU_MUSTERI_ALANLARI`na EKLENMEDI — o liste iyzico'nun
+     * sozlesmesidir ve `satinalma-yolu-test.ts` P7 onu on yuzdeki ikiziyle
+     * esitlik olarak olcer; vergi dairesi iyzico'ya HIC gitmez.
+     *
+     * ⚠ Burada `@ValidateNested` YOK (bugunku desen): `musteri` govdesi
+     * `@IsObject()` ile BUTUN olarak gecer, alan kurallarini `baslat` icindeki
+     * kapilar koyar (`eksikMusteriAlanlari`, `vergiDairesiGerekli`) — cunku
+     * mesajlari MUSTERI gorur ve hangi alanin neden istendigini anlatmalari
+     * gerekir. Nested dogrulama eklenecekse `@Type()` ile birlikte eklenmeli,
+     * yoksa `whitelist: true` alanlari SESSIZCE atar.
+     */
+    vergiDairesi?: string;
   };
 }

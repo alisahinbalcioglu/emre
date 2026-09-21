@@ -467,7 +467,7 @@ async function bolumO(): Promise<void> {
     const p = sahtePrisma({
       user: [kullanici({ id: 'A', email: 'a@firma.test', password: ozet, firmaRol: 'sahip', createdAt: t1, status: durum })],
       firma: [{ id: 'F1', ad: 'Acme' }],
-      abonelik: [{ id: 'ab1', firmaId: 'F1', paketSurumu: { paket: { seviye: 'pro', kullaniciHakki: 3 } } }],
+      abonelik: [{ id: 'ab1', firmaId: 'F1', durum: 'AKTIF', erisimSonu: new Date(Date.now() + 30 * 86_400_000), paketSurumu: { paket: { seviye: 'pro', kullaniciHakki: 3 } } }],
       userSubscription: [], firmaDavet: [], firmaOlayi: [],
     });
     return new AuthService(p, jwtSahte, { karar: async () => ({}) } as any,
@@ -1524,7 +1524,7 @@ async function bolumM(): Promise<void> {
       kullanici({ id: 'B', email: 'b@firma.test', firmaRol: 'uye', createdAt: t2, firma: FIRMA_ORNEK }),
     ],
     firma: [FIRMA_ORNEK], firmaDavet: [], firmaOlayi: [],
-    abonelik: [{ id: 'ab1', firmaId: 'F1', paketSurumu: { paket: { seviye: 'pro', kullaniciHakki: 5 } } }],
+    abonelik: [{ id: 'ab1', firmaId: 'F1', durum: 'AKTIF', erisimSonu: new Date(Date.now() + 30 * 86_400_000), paketSurumu: { paket: { seviye: 'pro', kullaniciHakki: 5 } } }],
     userSubscription: [],
   });
   const authMe = new AuthService(pMe, jwtSahte, { karar: async () => ({}) } as any,

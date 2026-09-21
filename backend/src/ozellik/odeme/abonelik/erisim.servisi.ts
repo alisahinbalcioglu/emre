@@ -5,6 +5,7 @@ import {
   kapaliHesapMetni,
   type KapaliHesapDurumu,
 } from '../../../altyapi/auth/kapali-hesap';
+import { abonelikErisimi } from '../../../altyapi/auth/abonelik-erisim';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -125,13 +126,19 @@ export class ErisimServisi {
 
     const suresiDoldu = ab.erisimSonu.getTime() <= simdi.getTime();
 
+    // ── ERISIM/SALT-OKUNUR KARARI SAF CEKIRDEKTEN (2.13) ─────────────────
+    // ⚠ Bu iki alan artik BURADA HESAPLANMAZ. Ayni yuklemi `TierGuard` ve
+    // `/auth/me` yetenekleri de okuyor; tek kaynak `abonelik-erisim.ts`.
+    // Asagidaki dallar yalnizca MESAJ ve `kalanGun` uretir.
+    const e = abonelikErisimi({ durum: ab.durum, erisimSonu: ab.erisimSonu }, simdi);
+
     switch (ab.durum) {
       case AbonelikDurumu.DENEME: {
         if (suresiDoldu) {
           return {
             ...temel,
-            erisimVar: false,
-            saltOkunur: false,
+            erisimVar: e.erisimVar,
+            saltOkunur: e.saltOkunur,
             kalanGun: 0,
             uyari: {
               seviye: 'kritik',
@@ -146,8 +153,8 @@ export class ErisimServisi {
         const kalan = this.gunFarki(ab.erisimSonu, simdi);
         return {
           ...temel,
-          erisimVar: true,
-          saltOkunur: false,
+          erisimVar: e.erisimVar,
+          saltOkunur: e.saltOkunur,
           kalanGun: kalan,
           uyari:
             kalan <= 5
@@ -164,8 +171,8 @@ export class ErisimServisi {
       case AbonelikDurumu.AKTIF:
         return {
           ...temel,
-          erisimVar: !suresiDoldu,
-          saltOkunur: false,
+          erisimVar: e.erisimVar,
+          saltOkunur: e.saltOkunur,
           kalanGun: null,
           uyari: suresiDoldu
             ? {
@@ -182,8 +189,8 @@ export class ErisimServisi {
         // Tolerans süresi: erişim tam açık ama uyarı görünür.
         return {
           ...temel,
-          erisimVar: true,
-          saltOkunur: false,
+          erisimVar: e.erisimVar,
+          saltOkunur: e.saltOkunur,
           kalanGun: ab.kisitlandi ? null : this.gunFarki(ab.erisimSonu, simdi),
           uyari: {
             seviye: 'uyari',
@@ -199,8 +206,8 @@ export class ErisimServisi {
       case AbonelikDurumu.KISITLI:
         return {
           ...temel,
-          erisimVar: true,
-          saltOkunur: true,
+          erisimVar: e.erisimVar,
+          saltOkunur: e.saltOkunur,
           kalanGun: null,
           uyari: {
             seviye: 'kritik',
@@ -216,8 +223,8 @@ export class ErisimServisi {
       case AbonelikDurumu.ASKIDA:
         return {
           ...temel,
-          erisimVar: false,
-          saltOkunur: false,
+          erisimVar: e.erisimVar,
+          saltOkunur: e.saltOkunur,
           kalanGun: null,
           uyari: {
             seviye: 'kritik',
@@ -234,8 +241,8 @@ export class ErisimServisi {
         const kalan = this.gunFarki(ab.erisimSonu, simdi);
         return {
           ...temel,
-          erisimVar: !suresiDoldu,
-          saltOkunur: false,
+          erisimVar: e.erisimVar,
+          saltOkunur: e.saltOkunur,
           kalanGun: Math.max(0, kalan),
           uyari: {
             seviye: 'bilgi',
@@ -250,8 +257,8 @@ export class ErisimServisi {
       default:
         return {
           ...temel,
-          erisimVar: false,
-          saltOkunur: false,
+          erisimVar: e.erisimVar,
+          saltOkunur: e.saltOkunur,
           kalanGun: null,
           uyari: {
             seviye: 'kritik',

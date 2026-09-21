@@ -1,4 +1,5 @@
 import { PrismaService } from '../db/prisma.service';
+import { abonelikErisimi } from './abonelik-erisim';
 
 export interface DisciplineCapability {
   material: boolean;
@@ -46,17 +47,34 @@ export function emptyCapabilities(): UserCapabilities {
  *  (dashboard, labor-firms, quotes/new, quotes/[id], profile) hicbir
  *  degisiklik gerektirmez.
  *
- *  ── YETENEK ≠ ERISIM (ikisi DIK, biri digerini kapsamaz) ───────────────
- *  Bu dosya "NE SATIN ALINDI" sorusunu cevaplar (disiplin + seviye).
- *  "SU AN KULLANILABILIR MI" sorusu AYRIDIR ve `ErisimServisi`e aittir
- *  (odeme gecikti mi, askida mi, deneme bitti mi).
+ *  ── 2.13 (22.09.2026): YETENEK ARTIK ERISIM KARARINDAN SUZULUR ─────────
+ *  ESKI HAL: "yetenek DURUMDAN bagimsiz doner; kapatmayi ErisimServisi
+ *  yapar." Gerekce soyleydi: "odemesi geciken firmanin yetenekleri
+ *  sifirlansaydi on yuz 'Pro paketiniz askida' diyemezdi, cunku paketin Pro
+ *  oldugunu artik bilemezdi."
  *
- *  Ikisini birlestirmek CAZIP ama YANLIS olurdu: odemesi geciken bir
- *  firmanin yetenekleri SIFIRLANSAYDI, on yuz "Pro paketiniz askida"
- *  diyemezdi — cunku paketin Pro oldugunu artik bilemezdi. Kullanici
- *  "hangi paketteydim" sorusunun cevabini odeme sorununu cozmek icin
- *  gorebilmeli. Bu yuzden yetenek DURUMDAN bagimsiz doner; kapatmayi
- *  ErisimServisi yapar.
+ *  ⚠ O GEREKCENIN IKI AYAGI DA OLCULDU, IKISI DE CURUK:
+ *
+ *  1) "On yuz paketi bilemezdi" ARTIK DOGRU DEGIL. ADIM 2'den beri
+ *     `/auth/me` ayni yanitta `erisim`i de doneriyor (auth.service.ts:329)
+ *     ve `ErisimKarari` `paketKodu` + `durum` + `uyari` tasiyor — durumdan
+ *     BAGIMSIZ olarak (erisim.servisi.ts `temel` nesnesi). Ustelik `tier`
+ *     alani da ayni yanitta. "Hangi paketteydim" sorusu bu dosyadan DEGIL,
+ *     oradan cevaplaniyor; `CapabilitiesContext` ikisini birden tutuyor.
+ *
+ *  2) KORKULAN SENARYO ZATEN ETKILENMIYOR. "Odemesi geciken" firma
+ *     `ODEME_BEKLIYOR` (tolerans) ya da `KISITLI` (salt-okunur) durumundadir
+ *     ve `abonelikErisimi` IKISINE DE `erisimVar: true` verir → yetenekler
+ *     SIFIRLANMAZ. Sifirlanan tek kume gercekten erisimi OLMAYANLAR:
+ *     `ASKIDA`, `SONA_ERDI`, suresi dolmus `DENEME`, suresi dolmus `IPTAL`.
+ *
+ *  Yeni kural: yetenek = SATIN ALINAN (disiplin+seviye) ∧ ERISIM VAR.
+ *  Olcut ham `durum` DEGIL, `abonelik-erisim.ts` karari — ayni cekirdegi
+ *  `ErisimServisi.karar` ve `seviye.ts` de okur, ikiz kural YOK.
+ *
+ *  ⚠ `saltOkunur` BURADA UYGULANMAZ: salt-okunur firma yeteneklerini
+ *  KORUR (kutuphanesini gorur), yazmayi `ErisimGuard` kapatir. Ikisi ayri
+ *  sorudur ve `KISITLI_MODDA_ACIK` kumesi o ayrimin tek yeridir.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
@@ -90,10 +108,11 @@ export function paketiYetenegeCevir(p: {
   return caps;
 }
 
-/** Firmanin aboneliginden yetenek matrisini turetir. */
+/** Firmanin aboneliginden ETKIN yetenek matrisini turetir (erisim suzgecli). */
 export async function getFirmaCapabilities(
   prisma: PrismaService,
   firmaId: string | null | undefined,
+  simdi: Date = new Date(),
 ): Promise<UserCapabilities> {
   // ⚠ firmaId yoksa SORGU ATILMAZ. Prisma'da `where: { firmaId: undefined }`
   // kosulu SESSIZCE DUSER ve findFirst rastgele bir firmanin aboneligini
@@ -105,6 +124,13 @@ export async function getFirmaCapabilities(
     include: { paketSurumu: { include: { paket: true } } },
   });
   if (!ab) return emptyCapabilities();
+
+  // ── 2.13: ERISIM YOKSA YETENEK DE YOK ────────────────────────────────
+  // Olcut ham `durum` DEGIL, saf cekirdegin karari: odenmis donemi suren
+  // IPTAL aboneligi `erisimVar: true` alir ve yeteneklerini KORUR.
+  if (!abonelikErisimi({ durum: ab.durum, erisimSonu: ab.erisimSonu }, simdi).erisimVar) {
+    return emptyCapabilities();
+  }
 
   return paketiYetenegeCevir({
     kapsam: ab.paketSurumu.paket.kapsam,
@@ -120,10 +146,11 @@ export async function getFirmaCapabilities(
 export async function getUserCapabilities(
   prisma: PrismaService,
   userId: string,
+  simdi: Date = new Date(),
 ): Promise<UserCapabilities> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { firmaId: true },
   });
-  return getFirmaCapabilities(prisma, user?.firmaId);
+  return getFirmaCapabilities(prisma, user?.firmaId, simdi);
 }

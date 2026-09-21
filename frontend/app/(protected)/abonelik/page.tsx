@@ -15,6 +15,7 @@ import {
   bosFaturaKimligi,
   eksikAlanlar,
   govdeyeCevir,
+  vergiDairesiGerekli,
   type FaturaKimligi,
 } from '@/ozellik/odeme/fatura-kimligi';
 import { IyzicoFormu } from '@/ozellik/odeme/IyzicoFormu';
@@ -232,6 +233,34 @@ export default function AbonelikSayfasi() {
               />
             </div>
           ))}
+          {/* ── T47 (22.09): KOŞULLU ALAN — ŞAHIS mi TÜZEL mi ─────────────
+              Ölçüldü: vergi dairesi hiçbir ödeme yolunda sorulmuyordu ve
+              `Firma.vergiDairesi`yi yazan tek yol profil formuydu. Sonuç,
+              şirket adına alan müşterinin faturası vergi dairesiz kesiliyordu
+              (VUK md. 230 şart koşar). Alan yalnız kimlik no 11 haneli TCKN
+              DEĞİLSE çizilir: şahıs müşteriye fazladan bir kutu göstermek
+              satın almaya sürtünme ekler, karşılığında hiçbir şey kazandırmaz.
+              Kapı `eksikAlanlar` içinde; buradaki `disabled` yalnız kolaylık. */}
+          {vergiDairesiGerekli(fatura) && (
+            <div>
+              <label htmlFor="fatura-vergiDairesi" className="mb-1 block text-xs font-medium">
+                {ALAN_ETIKET.vergiDairesi} <span className="text-red-600">*</span>
+              </label>
+              <input
+                id="fatura-vergiDairesi"
+                type="text"
+                value={fatura.vergiDairesi ?? ''}
+                onChange={(e) => setFatura({ ...fatura, vergiDairesi: e.target.value })}
+                placeholder="örn. Küçükyalı"
+                className="w-full rounded-lg border px-3 py-2 text-sm"
+              />
+              <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+                10 haneli vergi numarası girdiniz: fatura şirket adına kesilecek.
+                Şahıs olarak almak istiyorsanız 11 haneli T.C. kimlik numaranızı yazın.
+              </p>
+            </div>
+          )}
+
           <div>
             <label htmlFor="fatura-postaKodu" className="mb-1 block text-xs font-medium">
               {ALAN_ETIKET.postaKodu}{' '}
