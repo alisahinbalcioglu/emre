@@ -16,6 +16,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { oturumuYaz, girisSonrasiYol, girisDaliCoz, type GirisDali } from '@/ortak/lib/oturum';
 import { GirisDaliEkrani } from '@/ozellik/kimlik/GirisDaliEkrani';
+import { DogrulamaBekleniyorEkrani } from '@/ozellik/kimlik/DogrulamaBekleniyorEkrani';
 import api from '@/ortak/lib/api';
 import { ParolaAlani } from '@/ortak/ui/parola-alani';
 import { PAROLA_IPUCU, PAROLA_MIN } from '@/ortak/lib/parola-kurali';
@@ -40,6 +41,16 @@ export default function RegisterPage() {
   // musterinin en kolay dusecegi tuzak" (brief §4.3): dogru davranis onu
   // GIRIS ekranina goturmektir, o yuzden mesajin yaninda baglanti durur.
   const [kapaliHesapUyarisi, setKapaliHesapUyarisi] = useState<string | null>(null);
+  // ── 22.09.2026 (Emre karari "secenek A"): KAYIT SONRASI DOGRULAMA EKRANI ──
+  // Eskiden kayit bitince DOGRUDAN uygulamaya dusuluyordu; kullaniciya ne
+  // gonderildigi, NEREYE gonderildigi ve bulunamazsa ne yapilacagi hic
+  // soylenmiyordu. 22.09'da gercek bir vaka yasandi: posta gitti, Brevo kabul
+  // etti, ama Google Workspace kutusunda SPAM'e dustu ve kullanici tikandi.
+  // ⚠ Oturum YINE DE yazilir ve yol acik kalir — bu ekran bir KAPI DEGIL,
+  //   bir DURAKTIR. Gerekcesi `DogrulamaBekleniyorEkrani` basliginda.
+  const [dogrulamaBekleniyor, setDogrulamaBekleniyor] = useState<
+    { eposta: string; devam: () => void } | null
+  >(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -62,7 +73,13 @@ export default function RegisterPage() {
         return;
       }
       const oturum = oturumuYaz(data);
-      router.push(girisSonrasiYol(oturum));
+      // ⚠ YONLENDIRME ERTELENIR, IPTAL EDILMEZ: oturum yazildi, kullanici
+      //   "Simdilik atla" dediginde AYNI yola gider. Yolu burada hesaplayip
+      //   kapatmaya gerek yok — `girisSonrasiYol` tek kaynak olarak kalir.
+      setDogrulamaBekleniyor({
+        eposta: email,
+        devam: () => router.push(girisSonrasiYol(oturum)),
+      });
     } catch (err: any) {
       // PLAN 5.8 §4.3: sunucu YENI HESAP ACMADI ve nedenini kodla soyluyor.
       // ⚠ Metin SUNUCUDAN alinir (`kapali-hesap.ts` KAYIT_KAPALI_HESAP_MESAJI):
@@ -99,7 +116,12 @@ export default function RegisterPage() {
       </div>
 
       <div className="w-full max-w-sm rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
-        {dal ? (
+        {dogrulamaBekleniyor ? (
+          <DogrulamaBekleniyorEkrani
+            eposta={dogrulamaBekleniyor.eposta}
+            onDevam={dogrulamaBekleniyor.devam}
+          />
+        ) : dal ? (
           <GirisDaliEkrani
             dal={dal}
             onOturum={(data) => {

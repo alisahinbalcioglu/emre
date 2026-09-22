@@ -53,13 +53,32 @@ curl -s "https://api.github.com/repos/alisahinbalcioglu/emre/actions/runs?head_s
 
 ### Deploy
 
+**1.** Kendi terminalinizden bağlanın. ⚠ **`-i` ŞART** — sunucu varsayılan
+anahtarı kabul etmiyor, anahtarsız `ssh` `Permission denied (publickey)` verir:
+
+```powershell
+ssh -i "$env:USERPROFILE\.ssh\metaprice_ed25519" root@167.233.225.241
+```
+
+**2.** Bağlandıktan sonra — artık **sunucunun bash kabuğundasınız**:
+
 ```bash
-ssh root@167.233.225.241
 cd /opt/metaprice && nohup bash scripts/deploy.sh > /tmp/deploy.log 2>&1 &
+```
+
+**3.** İzleyin:
+
+```bash
 tail -f /tmp/deploy.log
 ```
 
 **`nohup` şart.** SSH koparsa deploy yarıda ölür; bu daha önce yaşandı.
+
+> **⚠ 2. VE 3. ADIMI POWERSHELL'DE KOŞTURMAYIN.** Windows PowerShell `&&`
+> ayıracını ve sondaki `&` karakterini **desteklemiyor**; komut yerel kabukta
+> `ParserError` ile düşer ve sunucuda hiçbir şey başlamaz. 22.09'da tam olarak
+> bu yaşandı: `ssh` anahtarsız olduğu için bağlanamadı, ikinci komut yerelde
+> koştu ve iki ayrı hata verdi. Önce SSH ile **sunucuya girin**, sonra yazın.
 
 > **⚠ HETZNER WEB KONSOLUNDA KOMUT YAZMAYIN.** TR klavyede konsol `>`, `&`,
 > `|`, `$`, `_` karakterlerini **yazamıyor**. 22.09'da yukarıdaki komut
