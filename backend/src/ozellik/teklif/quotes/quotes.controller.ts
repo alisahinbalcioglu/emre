@@ -84,6 +84,7 @@ export class QuotesController {
 
   /** Teklif bilgileri (kapak alanlari) + format secimi */
   @Patch(':id/info')
+  @GerekliYetenek(Yetenek.TEKLIF_DUZENLE)
   updateInfo(
     @CurrentUser() user: any,
     @Param('id') id: string,

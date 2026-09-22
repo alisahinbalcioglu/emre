@@ -21,6 +21,7 @@ export class QuoteFormatsController {
   /** Format yukle → tarama sonucu (T3 onizlemesi) doner. */
   @Post()
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
   upload(
     @CurrentUser() user: any,
     @UploadedFile() file: Express.Multer.File,
@@ -30,6 +31,7 @@ export class QuoteFormatsController {
   }
 
   @Get()
+  @GerekliYetenek(Yetenek.KUTUPHANE_GORUNTULE)
   list(@CurrentUser() user: any) {
     return this.service.list(kimlikCoz(user));
   }
@@ -70,6 +72,7 @@ export class QuoteFormatsController {
   /** Dosya guncelle (T11: eski uretilmis ciktilar etkilenmez). */
   @Post(':id/file')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
   replaceFile(
     @CurrentUser() user: any,
     @Param('id') id: string,
@@ -79,6 +82,7 @@ export class QuoteFormatsController {
   }
 
   @Patch(':id')
+  @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
   update(
     @CurrentUser() user: any,
     @Param('id') id: string,
@@ -88,6 +92,7 @@ export class QuoteFormatsController {
   }
 
   @Delete(':id')
+  @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
   remove(@CurrentUser() user: any, @Param('id') id: string) {
     return this.service.remove(kimlikCoz(user), id);
   }

@@ -442,9 +442,17 @@ async function bolumGiris() {
   // M4 — normal kullanici.
   const p4 = db({ user: [kullanici({})], firma: [firma()] });
   const y4: any = await authKur(p4).login({ email: 'u1@firma.test', password: 'dogru-parola' } as any);
+  // 21.09.2026 (2.15): `typeof y4.user.tier === 'string'` kosulu DUSTU.
+  // Bu assert'in NIYETI giris yanitinin SEKLI ({ token, user }) — seviyenin
+  // tipi degil; o kosul yan urundu. Abonelik yokken seviye artik `null`
+  // donuyor (uydurma "core" yerine), dolayisiyla tip kosulu yanlis yere
+  // takiliyordu. Sekil kilidi korunuyor, ustune `tier` ANAHTARININ hala
+  // yanitta oldugu ayrica olculuyor: alan sessizce kaybolursa on yuz
+  // `undefined` gorup eski localStorage kopyasini kullanmaya devam ederdi.
   check('M4 normal kullanici → { token, user } (bugunku sekil KORUNDU)',
-    typeof y4.token === 'string' && y4.user?.id === 'U1' && typeof y4.user?.tier === 'string',
-    JSON.stringify(Object.keys(y4)));
+    typeof y4.token === 'string' && y4.user?.id === 'U1'
+      && 'tier' in (y4.user ?? {}) && (y4.user.tier === null || typeof y4.user.tier === 'string'),
+    JSON.stringify({ anahtarlar: Object.keys(y4), tier: y4.user?.tier }));
 
   // M3c — kayit normal.
   const p5 = db();

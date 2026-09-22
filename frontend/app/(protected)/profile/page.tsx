@@ -26,7 +26,7 @@ import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
 import { abonelikOzeti } from '@/ozellik/odeme/abonelik-ozeti';
 import { toast } from '@/ortak/hooks/use-toast';
 import { kalanKotaCumlesi, type CeviriKotaOzeti } from '@/ozellik/teklif/ceviri-kota';
-import { sayiYaz } from '@/ozellik/odeme/paket-bicim';
+import { paketRozeti, sayiYaz } from '@/ozellik/odeme/paket-bicim';
 // ⚠ ÇIPLAK SAYI YAZMAYIN: parola uzunluğu TEK sabitten okunur. 21.09'dan önce
 // bu sayı ön yüzde dört ayrı yerde elle yazılıydı ve biri (kayıt ekranı) YANLIŞTI
 // — kullanıcı 6 karakterle hesap açıp ertesi gün parolasını değiştiremiyordu.
@@ -37,7 +37,8 @@ interface UserProfile {
   id: string;
   email: string;
   role: string;
-  tier: string;
+  /** ⚠ 2.15: etkin paket yoksa sunucu `null` doner — `?? 'core'` YEDEKLENMEZ. */
+  tier: string | null;
   createdAt: string;
   // FAZ 4.1 — `/auth/me` artik KISI ve FIRMA alanlarini da tasiyor.
   // ⚠ Once bunlarin HICBIRI donmuyordu: sayfa firmanin ADINI bile
@@ -381,9 +382,25 @@ export default function ProfilePage() {
   // ve firmada BAŞKA ETKİN SAHİP olup olmadığına bakar. İkisini aynı
   // saymak, iki sahipli firmada ikinci sahibe "firmanız kapanır" derdi.
   const kapatmaMetni = hesapKapatmaMetni(kapatmaOnizleme);
-  const tier = profile.tier ?? 'core';
-  const tierConfig = TIER_CONFIG[tier] ?? TIER_CONFIG.core;
+  /**
+   * ── 2.15: PAKET ADI UYDURULMAZ ────────────────────────────────────────
+   * ESKI HAL `profile.tier ?? 'core'` idi. 2.13'ten sonra abonelik
+   * yurumuyorsa sunucu `null` doner ve bu yedek, ayni sayfada ACIK bir
+   * CELISKI uretiyordu: burasi "Basic Plan" derken asagidaki abonelik
+   * kutusu (`ozet`, ayni /auth/me yanitinin `erisim` alani) "Abonelik yok"
+   * diyordu. Musteri sahip OLMADIGI bir paketi gormemeli.
+   *
+   * ⚠ `tierConfig` YALNIZ IKON/RENK icin yedeklenir; `label` alani seviye
+   * yokken KULLANILMAZ (ad `paketRozeti`den gelir). Ikinci sozluk yok.
+   */
+  const tier = profile.tier ?? null;
+  const tierConfig = (tier ? TIER_CONFIG[tier] : undefined) ?? TIER_CONFIG.core;
   const TierIcon = tierConfig.icon;
+  const paketAdi = paketRozeti(tier);
+  // "Basic Plan" / "Pro Plan" — ama paket YOKKEN "Paket yok Plan" olmaz.
+  const paketRozetMetni = tier ? `${paketAdi} Plan` : paketAdi;
+  const paketliMi = tier !== null;
+  const ustPaketteMi = tier === 'pro' || tier === 'suite';
   const initial = profile.email.charAt(0).toUpperCase();
   const memberSince = new Date(profile.createdAt).toLocaleDateString('tr-TR', {
     day: 'numeric', month: 'long', year: 'numeric',
@@ -421,7 +438,7 @@ export default function ProfilePage() {
               tierConfig.bg, tierConfig.color, `border ${tierConfig.border}`,
             )}>
               <TierIcon className="h-3.5 w-3.5" />
-              {tierConfig.label} Plan
+              {paketRozetMetni}
             </span>
           </div>
 
@@ -453,31 +470,55 @@ export default function ProfilePage() {
               <TierIcon className={cn('h-5 w-5', tierConfig.color)} />
             </div>
             <div>
-              <h3 className="text-sm font-semibold">{tierConfig.label} Plan</h3>
+              <h3 className="text-sm font-semibold">{paketRozetMetni}</h3>
+              {/* ⚠ 2.15: paket yokken "Başlangıç paketi" YAZILAMAZ — o cümle
+                  Basic'i tarif ediyor. Sebep AYNI yanıtın `erisim` alanından
+                  (`ozet.durumEtiketi`: "Sona erdi"/"Askıda") okunur; ikinci
+                  bir durum sözlüğü açılmaz. */}
               <p className="text-xs text-muted-foreground">
-                {tier === 'pro' ? 'Profesyonel özellikler' : 'Başlangıç paketi'}
+                {ustPaketteMi
+                  ? 'Profesyonel özellikler'
+                  : paketliMi
+                    ? 'Başlangıç paketi'
+                    : ozet.durumEtiketi
+                      ? `Aboneliğiniz: ${ozet.durumEtiketi}`
+                      : 'Etkin aboneliğiniz yok'}
               </p>
             </div>
           </div>
 
-          <ul className="mb-4 space-y-2">
-            <li className="flex items-center gap-2 text-sm">
-              <CheckCircle className="h-3.5 w-3.5 text-emerald-500" />
-              Sınırsız teklif
-            </li>
-            {kota && (
+          {/* ⚠ 2.15: HAK LİSTESİ PAKETE BAĞLANDI. Paket yokken bu liste yeşil
+              tikle "Sınırsız teklif" diyordu — kartın başlığı "Paket yok"
+              derken. Sahip olunmayan paketin ADINI basmayıp HAKLARINI
+              basmak aynı yalanın devamı olurdu. */}
+          {paketliMi && (
+            <ul className="mb-4 space-y-2">
               <li className="flex items-center gap-2 text-sm">
                 <CheckCircle className="h-3.5 w-3.5 text-emerald-500" />
-                Dönem başına {sayiYaz(kota.kota.satir)} satır çeviri (en fazla {sayiYaz(kota.kota.dosya)} dosya)
+                Sınırsız teklif
               </li>
-            )}
-          </ul>
+              {kota && (
+                <li className="flex items-center gap-2 text-sm">
+                  <CheckCircle className="h-3.5 w-3.5 text-emerald-500" />
+                  Dönem başına {sayiYaz(kota.kota.satir)} satır çeviri (en fazla {sayiYaz(kota.kota.dosya)} dosya)
+                </li>
+              )}
+            </ul>
+          )}
 
-          {tier === 'core' && (
+          {/* ⚠ 2.15: KOŞUL `tier === 'core'` İDİ ve paket YOKKEN çağrı düğmesi
+              KAYBOLUYORDU — tam da en çok gereken müşteride. Ölçüt "ne
+              yapması gerektiğini anlasın": paketsiz müşteri de /abonelik'e
+              gidebilmeli. Üst pakettekiler (pro/suite) görmez. */}
+          {!ustPaketteMi && (
             <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
-              <p className="mb-2 text-xs font-medium text-blue-800">Pro pakete geçin</p>
+              <p className="mb-2 text-xs font-medium text-blue-800">
+                {paketliMi ? 'Pro pakete geçin' : 'Devam etmek için bir paket seçin'}
+              </p>
               <p className="text-[11px] text-blue-600">
-                İşçilik fiyatlandırması ve DWG/DXF metrajı Pro pakete dâhildir.
+                {paketliMi
+                  ? 'İşçilik fiyatlandırması ve DWG/DXF metrajı Pro pakete dâhildir.'
+                  : 'Etkin bir paketiniz yok. Ürünü kullanmaya devam etmek için bir paket seçin.'}
               </p>
               <Button
                 size="sm"

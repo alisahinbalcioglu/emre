@@ -9,9 +9,11 @@ import { RolesGuard } from '../../../altyapi/auth/guards/roles.guard';
 import { Roles } from '../../../altyapi/auth/decorators/roles.decorator';
 import { CurrentUser } from '../../../altyapi/auth/decorators/current-user.decorator';
 import { kimlikCoz } from '../../../altyapi/auth/kimlik';
+import { ErisimGuard, GerekliYetenek } from '../../odeme/abonelik/erisim.guard';
+import { Yetenek } from '../../odeme/abonelik/erisim.servisi';
 
 @Controller('brands')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, ErisimGuard)
 export class BrandsController {
   constructor(private brandsService: BrandsService) {}
 
@@ -21,6 +23,7 @@ export class BrandsController {
   findAll(@Query('discipline') discipline?: string) { return this.brandsService.findAll(discipline); }
 
   @Get('search')
+  @GerekliYetenek(Yetenek.KUTUPHANE_GORUNTULE)
   searchMaterials(@Query('q') q: string) { return this.brandsService.searchMaterials(q); }
 
   // Fiyat listesi malzemeleri (literal "price-lists" MUST be before :id).
@@ -32,6 +35,7 @@ export class BrandsController {
 
   // Parameterized routes AFTER literals
   @Get(':id')
+  @GerekliYetenek(Yetenek.KUTUPHANE_GORUNTULE)
   findOne(@Param('id') id: string) { return this.brandsService.findOne(id); }
 
   @Get(':id/price-lists')

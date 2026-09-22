@@ -180,14 +180,23 @@ export class AuthService {
    * yaziyor (`CapabilitiesContext.tsx`) ve kenar cubugu rozeti oradan okuyor.
    * Adi degistirmek ekranda sessizce bos rozet birakirdi.
    *
-   * ⚠ Aboneligi olmayan firma `'core'` gorur (bugunku varsayilanin aynisi) —
-   * `null` donmek on yuzde "paket yok" yerine BOZUK rozet uretirdi.
+   * ⚠ 2.15 (22.09.2026): ESKI HAL `?? 'core'` idi ve gerekcesi "null donmek
+   * on yuzde BOZUK rozet uretirdi" diye yaziliydi. O gerekce CURUDU: 2.13'ten
+   * sonra `etkinSeviye` abonelik yurumuyorsa `null` doner ve yedek, urunun
+   * musteriye SAHIP OLMADIGI paketi soylemesi demekti (suresi dolmus PRO →
+   * "Basic" rozeti). Bos hal artik ekranda karsilaniyor
+   * (`paket-bicim.ts` `paketRozeti`), yedekle GIZLENMIYOR.
+   *
+   * ⚠ BURASI `oturum.servisi.ts`teki AYNI YEDEGIN IKIZIDIR ve ikisi de
+   * AYNI localStorage alanini besler: giris yaniti yazar, `/auth/me` TAZELER
+   * (`CapabilitiesContext`). Birini duzeltip otekini birakmak olculdu —
+   * etkisiz kalirdi, cunku /auth/me kopyayi geri EZIYOR.
    *
    * ⚠ KVKK disa aktarimi bu turetmeyi KULLANMAZ: `hesap.servisi.ts` saklanan
    * degeri aynen verir (kisi hakkinda TUTULAN veri odur).
    */
-  private async etkinSeviye(firmaId: string | null | undefined): Promise<string> {
-    return (await firmaPaketSeviyesi(this.prisma, firmaId)) ?? 'core';
+  private async etkinSeviye(firmaId: string | null | undefined): Promise<string | null> {
+    return firmaPaketSeviyesi(this.prisma, firmaId);
   }
 
   async me(userId: string) {

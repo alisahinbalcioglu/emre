@@ -5,15 +5,20 @@ import { CurrentUser } from '../../../altyapi/auth/decorators/current-user.decor
 import { RolesGuard } from '../../../altyapi/auth/guards/roles.guard';
 import { Roles } from '../../../altyapi/auth/decorators/roles.decorator';
 import { kimlikCoz } from '../../../altyapi/auth/kimlik';
+import { ErisimGuard, GerekliYetenek } from '../../odeme/abonelik/erisim.guard';
+import { Yetenek } from '../../odeme/abonelik/erisim.servisi';
+import { TierGuard, RequireTier } from '../../../altyapi/auth/guards/tier.guard';
 
 @Controller('labor-matching')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, TierGuard, ErisimGuard)
 export class LaborMatchingController {
   constructor(private service: LaborMatchingService) {}
 
   /** PRD Iscilik: malzeme bulk-match ile AYNI sozlesme (variantTags = grup/
    *  surukleme varyant tasimasi, units = satir birimleri → L6 sert filtre). */
   @Post('bulk-match')
+  @RequireTier('pro')
+  @GerekliYetenek(Yetenek.TEKLIF_DUZENLE)
   bulkMatch(
     @CurrentUser() user: any,
     @Body() body: {
@@ -28,6 +33,8 @@ export class LaborMatchingController {
 
   /** Secici popup'tan kalem secildi — iscilik hafizasina yaz (L4 ogrenme). */
   @Post('remember')
+  @RequireTier('pro')
+  @GerekliYetenek(Yetenek.TEKLIF_DUZENLE)
   remember(
     @CurrentUser() user: any,
     @Body() body: { firmaId: string; laborName: string; secilenAd: string },
@@ -37,6 +44,8 @@ export class LaborMatchingController {
 
   /** L2 kalicilik: kullanicinin firma kalemlerini v2 ile yeniden indeksle. */
   @Post('reindex')
+  @RequireTier('pro')
+  @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
   reindex(@CurrentUser() user: any) {
     return this.service.reindex(kimlikCoz(user));
   }

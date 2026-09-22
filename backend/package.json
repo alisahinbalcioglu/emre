@@ -129,6 +129,8 @@
     "test:imha": "ts-node test/imha-test.ts",
     "test:geri-donus": "ts-node test/geri-donus-test.ts",
     "test:paket-aciklama": "ts-node test/paket-aciklama-duzelt-test.ts",
+    "test:uc-kapisi": "ts-node test/uc-kapisi.ts",
+    "test:uc-kapisi-davranis": "ts-node test/uc-kapisi-davranis-test.ts",
     "mfa:sifirla": "ts-node scripts/mfa-sifirla.ts",
     "mfasifirla": "ts-node scripts/mfa-sifirla.ts",
     "seed:paketler": "ts-node scripts/paketleri-kur.ts",

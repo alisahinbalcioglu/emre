@@ -13,13 +13,16 @@ import { AddLibraryRowsDto } from './dto/add-library-rows.dto';
 import { JwtAuthGuard } from '../../../altyapi/auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../../altyapi/auth/decorators/current-user.decorator';
 import { kimlikCoz } from '../../../altyapi/auth/kimlik';
+import { ErisimGuard, GerekliYetenek } from '../../odeme/abonelik/erisim.guard';
+import { Yetenek } from '../../odeme/abonelik/erisim.servisi';
 
 @Controller('library')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, ErisimGuard)
 export class LibraryController {
   constructor(private libraryService: LibraryService) {}
 
   @Get()
+  @GerekliYetenek(Yetenek.KUTUPHANE_GORUNTULE)
   findAll(@CurrentUser() user: any) {
     return this.libraryService.findAll(kimlikCoz(user));
   }
@@ -28,11 +31,13 @@ export class LibraryController {
    *  beslenir — kullanicinin kutuphanesine AKTARDIGI markalar. Global havuz
    *  (GET /brands) teklif akisinda kullanilmaz. */
   @Get('brands')
+  @GerekliYetenek(Yetenek.KUTUPHANE_GORUNTULE)
   findLibraryBrands(@CurrentUser() user: any) {
     return this.libraryService.findLibraryBrands(kimlikCoz(user));
   }
 
   @Post()
+  @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
   create(@CurrentUser() user: any, @Body() dto: CreateLibraryItemDto) {
     return this.libraryService.create(kimlikCoz(user), dto);
   }
@@ -40,11 +45,13 @@ export class LibraryController {
   /** "Marka Ekle" — kullanici bos tabloyu doldurup yeni marka olusturur.
    *  Satirlar indekslenip dogrudan kullanicinin kutuphanesine yazilir. */
   @Post('manual-brand')
+  @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
   createManualBrand(@CurrentUser() user: any, @Body() dto: CreateManualBrandDto) {
     return this.libraryService.createManualBrand(kimlikCoz(user), dto);
   }
 
   @Put(':id')
+  @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
   update(
     @CurrentUser() user: any,
     @Param('id') id: string,
@@ -54,16 +61,19 @@ export class LibraryController {
   }
 
   @Post('bulk-discount')
+  @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
   bulkUpdateDiscount(@CurrentUser() user: any, @Body() dto: BulkDiscountDto) {
     return this.libraryService.bulkUpdateDiscount(kimlikCoz(user), dto);
   }
 
   @Post('bulk-update-items')
+  @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
   bulkUpdateItems(@CurrentUser() user: any, @Body() dto: BulkUpdateItemsDto) {
     return this.libraryService.bulkUpdateItems(kimlikCoz(user), dto);
   }
 
   @Post('import-price-list')
+  @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
   importPriceList(@CurrentUser() user: any, @Body() dto: ImportPriceListDto) {
     return this.libraryService.importPriceList(kimlikCoz(user), dto);
   }
@@ -73,6 +83,7 @@ export class LibraryController {
   /** listId verilirse yalniz o sekmenin satirlari (bos liste = satirsiz sheet,
    *  TAM kolon seti); verilmezse markanin tum satirlari (geriye uyum). */
   @Get('brand/:brandId/sheets')
+  @GerekliYetenek(Yetenek.KUTUPHANE_GORUNTULE)
   getBrandSheets(
     @CurrentUser() user: any,
     @Param('brandId') brandId: string,
@@ -84,6 +95,7 @@ export class LibraryController {
   // ── Kutuphane fiyat listeleri (sekmeler — iscilik "ilave sayfa" ikizi) ──
 
   @Get('brand/:brandId/lists')
+  @GerekliYetenek(Yetenek.KUTUPHANE_GORUNTULE)
   getBrandLists(@CurrentUser() user: any, @Param('brandId') brandId: string) {
     return this.libraryService.getBrandLists(kimlikCoz(user), brandId);
   }
@@ -91,6 +103,7 @@ export class LibraryController {
   /** Mevcut markaya satir ekle — listId 'new' ise yeni sekme olusturur.
    *  ISCILIK DERSI: gecerli satir yoksa liste OLUSMAZ (400). */
   @Post('brand/:brandId/rows')
+  @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
   addRowsToBrandList(
     @CurrentUser() user: any,
     @Param('brandId') brandId: string,
@@ -100,6 +113,7 @@ export class LibraryController {
   }
 
   @Delete('brand/:brandId/lists/:listId')
+  @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
   deleteBrandList(
     @CurrentUser() user: any,
     @Param('brandId') brandId: string,
@@ -109,6 +123,7 @@ export class LibraryController {
   }
 
   @Post('brand/:brandId/save-sheets')
+  @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
   saveBrandSheets(
     @CurrentUser() user: any,
     @Param('brandId') brandId: string,
@@ -126,11 +141,13 @@ export class LibraryController {
   }
 
   @Delete('brand/:brandId')
+  @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
   removeBrandFromLibrary(@CurrentUser() user: any, @Param('brandId') brandId: string) {
     return this.libraryService.removeBrandFromLibrary(kimlikCoz(user), brandId);
   }
 
   @Delete(':id')
+  @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
   remove(@CurrentUser() user: any, @Param('id') id: string) {
     return this.libraryService.remove(kimlikCoz(user), id);
   }

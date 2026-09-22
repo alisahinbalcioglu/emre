@@ -58,9 +58,23 @@ export default function LaborFirmsPage() {
       ? 'Elektrik İşçilik Firmalarım'
       : 'İşçilik Firmalarım';
 
+  /**
+   * ⚠ T2.14 (22.09.2026): LISTE ARTIK KOSULLU CEKILIYOR.
+   * `/labor-firms` uclarina `@RequireTier('pro')` konuldu (iscilik = Pro
+   * paketin ozelligi). Once bu `useEffect` KOSULSUZDU: Basic kullanici sayfayi
+   * acinca istek yine de gidiyor, 403 donuyor ve "Firmalar yuklenemedi"
+   * kirmizi toast'i asagidaki "Pro paket gerekli" kartindan ONCE beliriyordu —
+   * yani dogru ekranin ustune YANLIS bir hata mesaji biniyordu.
+   * Yetenek yuklenene kadar beklenir; iscilik hakki yoksa istek HIC atilmaz.
+   */
   useEffect(() => {
+    if (capLoading) return;
+    if (!hasAnyLabor) {
+      setLoading(false);
+      return;
+    }
     fetchFirms();
-  }, []);
+  }, [capLoading, hasAnyLabor]);
 
   // Capability'ye gore default discipline (URL filter varsa onu kullan)
   useEffect(() => {

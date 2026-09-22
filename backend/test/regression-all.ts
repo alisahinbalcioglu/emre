@@ -218,6 +218,26 @@ const SUITES: Suite[] = [
   //    o kapiyi kurar: package.json'daki her `test:*` ya burada olacak ya da
   //    manifest-kapisi.ts'teki GEREKCELI istisna listesinde.
   { ad: 'Manifest kapısı (PK1)', script: 'test:manifest', zincir: 'Z0' },
+  // ── T2.14 (22.09.2026): UÇ KAPISI. PK1'in uçlar için ikizidir.
+  //    Kok neden AYNI: "unutmayi engelleyen kapi yok". Ayni kor noktaya iki
+  //    kez carpildi — (1) veri imhasi turunda §4.5'in 403 kapisi
+  //    `@GerekliYetenek` ile kurulamadi (library/brands/materials/labor-firms
+  //    denetleyicilerinde SIFIR dekorator vardi, `erisim.guard.ts` metadata
+  //    yoksa `true` doner) ve kapi `JwtAuthGuard`a konarak DOLANILDI;
+  //    (2) 2.13 kapatilirken olculdu: 200 ucun 178'i hicbir ucretli kapi
+  //    tasimiyordu. Kapi eklemek tek basina cozum degil — yarin eklenen uc
+  //    yine kapisiz dogar. Artik her uc ya kapili ya GEREKCELI muaf.
+  //    Ikinci suite METADATA degil DAVRANIS olcer: gercek TierGuard +
+  //    gercek ErisimGuard + gercek ErisimServisi ile 76 ucun 76'si
+  //    aboneliksiz firmada 403, gecerli Pro abonelikte gecer; 23 paket
+  //    kapili ucun 23'u Basic aboneligi reddeder; 19 KVKK/odeme/kimlik ucu
+  //    ABONELIKSIZ firmada da ACIK kalir (en kritik regresyon riski).
+  //    MUTASYONLA OLCULDU (4/4 oldu): listelenmemis sahte uc → kapi kirmizi ·
+  //    KVKK ucuna yetenek konunca kirmizi · ErisimGuard sinif guard'indan
+  //    cikinca "OLU DEKORATOR" kirmizi · library findAll'dan dekorator
+  //    kalkinca hem kapi hem davranis kirmizi. KIRMIZIYA DONERSE REGRESYONDUR.
+  { ad: 'Uç kapısı: kapısız uç yasak (T2.14)', script: 'test:uc-kapisi', zincir: 'Z0' },
+  { ad: 'Uç kapısı davranışı: 403/200 + ödemesiz kilidi (T2.14)', script: 'test:uc-kapisi-davranis', zincir: 'Z0' },
   { ad: 'build_sha kablolaması (PK2)', script: 'test:build-sha', zincir: 'Z0' },
   { ad: 'Sessiz indeks geri-düşüşü yasak (PK9)', script: 'test:pk9', zincir: 'Z2' },
   { ad: 'Para birimi çıktıya geçer (18a-18c)', script: 'test:18', zincir: 'Z4' },

@@ -190,6 +190,7 @@ export class DwgEngineController {
    * Frontend setInterval ile poll eder, "ready" olunca devam.
    */
   @Get('status/:fileId')
+  @GerekliYetenek(Yetenek.DWG_YUKLE)
   async getUploadStatus(
     @CurrentUser() kullanici: unknown,
     @Param('fileId') fileId: string,
@@ -202,6 +203,7 @@ export class DwgEngineController {
    * Cache'teki DXF'ten koordinatlari dondur — SVG viewer (dwg-viewer) icin.
    */
   @Get('geometry/:fileId')
+  @GerekliYetenek(Yetenek.DWG_YUKLE)
   async getGeometry(
     @CurrentUser() kullanici: unknown,
     @Param('fileId') fileId: string,

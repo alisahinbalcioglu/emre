@@ -191,6 +191,33 @@ export function seviyeAdi(seviye: string): string {
 }
 
 /**
+ * ETKİN paket YOKKEN ekrana basılan metin — TEK yer (2.15, 22.09.2026).
+ *
+ * ⚠ "Abonelik yok" DEĞİL: `abonelik-ozeti.ts` o cümleyi abonelik KAYDI
+ * bulunmayan hâl için kullanıyor. Burada kayıt VAR olabilir (süresi dolmuş
+ * Pro) — yanlış olan, o kaydın şu an bir paket AÇMIYOR oluşu. "Paket yok"
+ * iki dalda da doğrudur.
+ */
+export const PAKET_YOK_METNI = 'Paket yok';
+
+/**
+ * ROZET METNİ — seviye yoksa paket adı UYDURMAZ (2.15).
+ *
+ * ── ÖLÇÜLEN KUSUR (2.13 kapatılırken) ─────────────────────────────────
+ * `etkinSeviye` 2.13'ten sonra abonelik yürümüyorsa `null` dönüyor; sunucu
+ * ve ekranlar bunu `?? 'core'` ile yedekliyordu. Sonuç: süresi dolmuş bir
+ * PRO müşteri kenar çubuğunda **"Basic"** rozeti görüyordu — sahip olmadığı
+ * bir paket. Yanlış yönde bir yalan değil (yetki vermiyor) ama yine de yalan.
+ *
+ * ⚠ İKİNCİ SÖZLÜK DEĞİL: ad hâlâ {@link seviyeAdi} → {@link SEVIYE_AD}'den
+ * gelir. Bu fonksiyon yalnız BOŞ hâlin kapısıdır. Ekranlar `?? 'core'`
+ * yerine bunu çağırır; karar tek yerde kalır.
+ */
+export function paketRozeti(seviye: string | null | undefined): string {
+  return seviye ? seviyeAdi(seviye) : PAKET_YOK_METNI;
+}
+
+/**
  * Seviye rozeti — kart başlığıyla AYNI adı söyler.
  *
  * ⚠ 15.09 (Faz 6.1 kapanış): rozet "Core — malzeme" diyordu, hemen üstündeki

@@ -8,18 +8,22 @@ import { CreateMaterialPriceDto } from './dto/create-material-price.dto';
 import { JwtAuthGuard } from '../../../altyapi/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../altyapi/auth/guards/roles.guard';
 import { Roles } from '../../../altyapi/auth/decorators/roles.decorator';
+import { ErisimGuard, GerekliYetenek } from '../../odeme/abonelik/erisim.guard';
+import { Yetenek } from '../../odeme/abonelik/erisim.servisi';
 
 @Controller('materials')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, ErisimGuard)
 export class MaterialsController {
   constructor(private materialsService: MaterialsService) {}
 
   @Get()
+  @GerekliYetenek(Yetenek.KUTUPHANE_GORUNTULE)
   findAll() {
     return this.materialsService.findAll();
   }
 
   @Get(':id')
+  @GerekliYetenek(Yetenek.KUTUPHANE_GORUNTULE)
   findOne(@Param('id') id: string) {
     return this.materialsService.findOne(id);
   }

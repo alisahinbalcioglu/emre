@@ -85,13 +85,22 @@ export function CapabilitiesProvider({ children }: { children: ReactNode }) {
       // localStorage'daki donmus kopyadan okuyor (login aninda yazilir).
       // Bu satir olmadan kullanici odeme yapip da cikis/giris yapmadan
       // eski paketini gormeye devam ederdi.
-      if (data?.tier) {
+      //
+      // ⚠ 2.15: KAPI ARTIK `null`I DA GECIRIYOR. Eski hal `if (data?.tier)`
+      // idi; sunucu 2.13'ten sonra etkin paket yokken `tier: null` donuyor ve
+      // `null` FALSY oldugu icin kopya HIC guncellenmiyordu — aboneligi sona
+      // ermis musterinin localStorage'indaki `'pro'` sonsuza kadar kalir,
+      // kenar cubugu Pro rozetini gostermeye devam ederdi. Yani sunucu
+      // duzeltilse bile ekran eski yalani tasirdi (mekanizma var, baglanti
+      // yok). Olcut "deger dolu mu" DEGIL, "sunucu bu alani soyledi mi".
+      if (data && typeof data === 'object' && 'tier' in data) {
         try {
+          const yeniTier = (data as { tier?: string | null }).tier ?? null;
           const ham = localStorage.getItem('user');
           if (ham) {
             const u = JSON.parse(ham);
-            if (u?.tier !== data.tier) {
-              localStorage.setItem('user', JSON.stringify({ ...u, tier: data.tier }));
+            if ((u?.tier ?? null) !== yeniTier) {
+              localStorage.setItem('user', JSON.stringify({ ...u, tier: yeniTier }));
             }
           }
         } catch {

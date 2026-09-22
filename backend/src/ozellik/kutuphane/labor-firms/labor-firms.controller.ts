@@ -9,9 +9,12 @@ import { JwtAuthGuard } from '../../../altyapi/auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../../altyapi/auth/decorators/current-user.decorator';
 import { ExcelGridService } from '../../giris/excel-grid/excel-grid.service';
 import { kimlikCoz } from '../../../altyapi/auth/kimlik';
+import { ErisimGuard, GerekliYetenek } from '../../odeme/abonelik/erisim.guard';
+import { Yetenek } from '../../odeme/abonelik/erisim.servisi';
+import { TierGuard, RequireTier } from '../../../altyapi/auth/guards/tier.guard';
 
 @Controller('labor-firms')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, TierGuard, ErisimGuard)
 export class LaborFirmsController {
   constructor(
     private service: LaborFirmsService,
@@ -21,22 +24,30 @@ export class LaborFirmsController {
   // ── Kullanicinin firmalari ──
 
   @Get()
+  @RequireTier('pro')
+  @GerekliYetenek(Yetenek.KUTUPHANE_GORUNTULE)
   findAll(@CurrentUser() user: any, @Query('discipline') discipline?: string) {
     return this.service.findAll(kimlikCoz(user), discipline);
   }
 
   // Literal route MUST be before :id catch-all
   @Get('price-lists/:listId/items')
+  @RequireTier('pro')
+  @GerekliYetenek(Yetenek.KUTUPHANE_GORUNTULE)
   getPriceListItems(@CurrentUser() user: any, @Param('listId') listId: string) {
     return this.service.getPriceListItems(kimlikCoz(user), listId);
   }
 
   @Get(':id')
+  @RequireTier('pro')
+  @GerekliYetenek(Yetenek.KUTUPHANE_GORUNTULE)
   findOne(@CurrentUser() user: any, @Param('id') id: string) {
     return this.service.findOne(kimlikCoz(user), id);
   }
 
   @Get(':id/price-lists')
+  @RequireTier('pro')
+  @GerekliYetenek(Yetenek.KUTUPHANE_GORUNTULE)
   getFirmaPriceLists(@CurrentUser() user: any, @Param('id') id: string) {
     return this.service.getFirmaPriceLists(kimlikCoz(user), id);
   }
@@ -44,16 +55,22 @@ export class LaborFirmsController {
   // ── CRUD ──
 
   @Post()
+  @RequireTier('pro')
+  @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
   create(@CurrentUser() user: any, @Body() dto: CreateLaborFirmDto) {
     return this.service.create(kimlikCoz(user), dto);
   }
 
   @Put(':id')
+  @RequireTier('pro')
+  @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
   update(@CurrentUser() user: any, @Param('id') id: string, @Body() dto: Partial<CreateLaborFirmDto>) {
     return this.service.update(kimlikCoz(user), id, dto);
   }
 
   @Delete(':id')
+  @RequireTier('pro')
+  @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
   remove(@CurrentUser() user: any, @Param('id') id: string) {
     return this.service.remove(kimlikCoz(user), id);
   }
@@ -61,11 +78,15 @@ export class LaborFirmsController {
   // ── Price list & bulk save ──
 
   @Post(':id/price-lists')
+  @RequireTier('pro')
+  @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
   createPriceList(@CurrentUser() user: any, @Param('id') id: string, @Body('name') name: string) {
     return this.service.createPriceList(kimlikCoz(user), id, name);
   }
 
   @Delete('price-lists/:listId')
+  @RequireTier('pro')
+  @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
   deletePriceList(@CurrentUser() user: any, @Param('listId') listId: string) {
     return this.service.deletePriceList(kimlikCoz(user), listId);
   }
@@ -73,6 +94,8 @@ export class LaborFirmsController {
   // ── Tekil kalem (LaborPrice) update + delete ──
 
   @Put('price-items/:id')
+  @RequireTier('pro')
+  @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
   updatePriceItem(
     @CurrentUser() user: any,
     @Param('id') id: string,
@@ -82,6 +105,8 @@ export class LaborFirmsController {
   }
 
   @Post('price-items/bulk-update')
+  @RequireTier('pro')
+  @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
   bulkUpdatePriceItems(
     @CurrentUser() user: any,
     @Body() body: { items: Array<{ id: string; unitPrice?: number; discountRate?: number; unit?: string; laborItemName?: string }> },
@@ -91,6 +116,8 @@ export class LaborFirmsController {
   }
 
   @Delete('price-items/:id')
+  @RequireTier('pro')
+  @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
   deletePriceItem(@CurrentUser() user: any, @Param('id') id: string) {
     return this.service.deletePriceItem(kimlikCoz(user), id);
   }
@@ -98,11 +125,15 @@ export class LaborFirmsController {
   // ── ExcelGrid sheets endpoints ──
 
   @Get('price-lists/:listId/sheets')
+  @RequireTier('pro')
+  @GerekliYetenek(Yetenek.KUTUPHANE_GORUNTULE)
   getPriceListSheets(@CurrentUser() user: any, @Param('listId') listId: string) {
     return this.service.getPriceListSheets(kimlikCoz(user), listId);
   }
 
   @Post('price-lists/:listId/save-sheets')
+  @RequireTier('pro')
+  @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
   savePriceListSheets(
     @CurrentUser() user: any,
     @Param('listId') listId: string,
@@ -122,6 +153,8 @@ export class LaborFirmsController {
   }
 
   @Post(':id/save-bulk')
+  @RequireTier('pro')
+  @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
   saveBulkPrices(
     @CurrentUser() user: any,
     @Param('id') firmaId: string,
@@ -144,6 +177,8 @@ export class LaborFirmsController {
   // DB'ye YAZMAZ, sadece parse edip frontend'e gonderir
   @Post(':id/parse-full-excel')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } }))
+  @RequireTier('pro')
+  @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
   async parseFullExcel(
     @CurrentUser() user: any,
     @Param('id') firmaId: string,
@@ -157,6 +192,8 @@ export class LaborFirmsController {
 
   // Multi-sheet sheets array'ini kaydet — her sheet ayri LaborPriceList olur
   @Post(':id/save-from-sheets')
+  @RequireTier('pro')
+  @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
   saveFromSheets(
     @CurrentUser() user: any,
     @Param('id') firmaId: string,

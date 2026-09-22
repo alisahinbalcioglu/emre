@@ -5,9 +5,11 @@ import { Roles } from '../../../altyapi/auth/decorators/roles.decorator';
 import { MatchingService } from './matching.service';
 import { TerminologyService } from './terminology.service';
 import { kimlikCoz } from '../../../altyapi/auth/kimlik';
+import { ErisimGuard, GerekliYetenek } from '../../odeme/abonelik/erisim.guard';
+import { Yetenek } from '../../odeme/abonelik/erisim.servisi';
 
 @Controller('matching')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, ErisimGuard)
 export class MatchingController {
   constructor(
     private readonly service: MatchingService,
@@ -19,6 +21,7 @@ export class MatchingController {
    *  units (E2): satir birimleri (ad→birim) — aile cozumunde sinyal
    *  (metre→boru, adet→ekipman); opsiyonel, eski istemciler etkilenmez. */
   @Post('bulk-match')
+  @GerekliYetenek(Yetenek.TEKLIF_DUZENLE)
   async bulkMatch(
     @Body() body: { brandId: string; materialNames: string[]; variantTags?: string[]; units?: Record<string, string> },
     @Req() req: any,
@@ -30,6 +33,7 @@ export class MatchingController {
   /** OGRENME (PRD Adim 8): secici popup'tan secim yapilinca hafizaya yaz.
    *  Ayni imza ikinci gelisinde secici atlanir, 'oneri' otomatik dolar. */
   @Post('remember')
+  @GerekliYetenek(Yetenek.TEKLIF_DUZENLE)
   async remember(
     @Body() body: { brandId: string; materialName: string; secilenAd: string },
     @Req() req: any,
@@ -51,6 +55,7 @@ export class MatchingController {
 
   /** Sozluk listesi: seed + kullanicinin kendi alias'lari */
   @Get('aliases')
+  @GerekliYetenek(Yetenek.KUTUPHANE_GORUNTULE)
   async listAliases(@Req() req: any) {
     const userId: string = req.user?.id ?? req.user?.sub;
     return this.terminology.listAliases(userId);
@@ -59,6 +64,7 @@ export class MatchingController {
   /** S4: kullanici alias'i kaydet (popup seciminden ogrenme veya elle).
    *  Ayni alias tekrar gelirse GUNCELLENIR (S5: tekil cozumleme). */
   @Post('aliases')
+  @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
   async saveAlias(
     @Body() body: { alias: string; canonical?: string; kinds?: string[]; impliedType?: string | null; sizeClass?: string | null },
     @Req() req: any,
@@ -69,6 +75,7 @@ export class MatchingController {
 
   /** Alias sil (kullanici kaydi) / pasife al (seed — silinemez, S3) */
   @Delete('aliases/:id')
+  @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
   async deleteAlias(@Param('id') id: string, @Req() req: any) {
     const userId: string = req.user?.id ?? req.user?.sub;
     return this.terminology.deactivateAlias(userId, id);

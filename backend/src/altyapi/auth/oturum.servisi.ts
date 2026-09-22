@@ -164,7 +164,7 @@ export class OturumServisi {
       id: string;
       email: string;
       role: string;
-      tier: string;
+      tier: string | null;
       koltukDurduruldu: boolean;
       hesapKapali: boolean;
     };
@@ -176,7 +176,11 @@ export class OturumServisi {
       user.role,
       secenek.authAt,
     );
-    const tier = (await firmaPaketSeviyesi(this.prisma, user.firmaId)) ?? 'core';
+    // ⚠ 2.15: `?? 'core'` YEDEGI KALDIRILDI. 2.13'ten sonra `etkinSeviye`
+    // abonelik yurumuyorsa `null` doner; yedek, suresi dolmus bir PRO
+    // musteriye kenar cubugunda "Basic" rozeti gosteriyordu — sahip
+    // OLMADIGI bir paket. Bos hali ekran karsilar (`paketRozeti`).
+    const tier = await firmaPaketSeviyesi(this.prisma, user.firmaId);
     const koltukDurduruldu = await this.koltukDurduruldu(user);
     const hesapKapali = await this.hesapKapaliMi(user);
     return {

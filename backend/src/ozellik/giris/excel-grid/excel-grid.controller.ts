@@ -3,14 +3,17 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { JwtAuthGuard } from '../../../altyapi/auth/guards/jwt-auth.guard';
 import { ExcelGridService } from './excel-grid.service';
+import { ErisimGuard, GerekliYetenek } from '../../odeme/abonelik/erisim.guard';
+import { Yetenek } from '../../odeme/abonelik/erisim.servisi';
 
 @Controller('excel-grid')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, ErisimGuard)
 export class ExcelGridController {
   constructor(private readonly service: ExcelGridService) {}
 
   @Post('prepare')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } }))
+  @GerekliYetenek(Yetenek.EXCEL_YUKLE)
   async prepare(@UploadedFile() file: Express.Multer.File) {
     // SABIT SEMA (2026-07-08 kullanici karari): Excel'in KENDI fiyat/tutar
     // sutunlari ATILIR, yerine sabit sistem sutunlari (Malz/Isc Birim+Toplam+

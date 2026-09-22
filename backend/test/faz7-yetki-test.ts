@@ -53,6 +53,7 @@ import { HesapServisi } from '../src/altyapi/auth/hesap.servisi';
 const EPOSTA_SAHTE = { gonder: async () => undefined } as any;
 import { LaborMatchingService } from '../src/ozellik/eslestirme/labor-matching/labor-matching.service';
 import { LaborMatchingController } from '../src/ozellik/eslestirme/labor-matching/labor-matching.controller';
+import { LaborFirmsController } from '../src/ozellik/kutuphane/labor-firms/labor-firms.controller';
 import { MatchingService } from '../src/ozellik/eslestirme/matching/matching.service';
 
 // JWT imzasi yalniz `login` yolunda gerekir; `jwt-secret.ts` yedek deger
@@ -322,6 +323,16 @@ function yErisimEsligi() {
   const beklenen = [
     'ozellik/giris/ai/ai.controller.ts',
     'ozellik/kutuphane/labor/labor.controller.ts',
+    // ── T2.14 (22.09.2026): ISCILIK PAKET KAPISI IKI DOSYA DAHA KAZANDI.
+    //    Bu satirlar "listeyi yesile boyamak" icin degil, ISCILIK = PRO
+    //    urun kuralinin kod tarafina gecmesi icin eklendi: `/labor` (kuresel
+    //    katalog) Pro kapiliyken kullanicinin KENDI iscilik firmalari
+    //    (`/labor-firms`, 17 uc) ve iscilik eslestirme motoru
+    //    (`/labor-matching`, 3 musteri ucu) kapisizdi — Basic abonelikle
+    //    iscilik fiyati uretilebiliyordu. Paket tanimi: `scripts/paketleri-kur.ts:76`
+    //    "core (malzeme) | pro (malzeme + iscilik + dwg)".
+    'ozellik/eslestirme/labor-matching/labor-matching.controller.ts',
+    'ozellik/kutuphane/labor-firms/labor-firms.controller.ts',
   ];
   check('Y8-FIXTURE @RequireTier kullanan dosya listesi testin listesiyle AYNI',
     JSON.stringify([...bulunan].sort()) === JSON.stringify([...beklenen].sort()),
@@ -330,6 +341,10 @@ function yErisimEsligi() {
   const kontrolculer: Array<[string, any]> = [
     ['LaborController', LaborController],
     ['AiController', AiController],
+    // T2.14: fixture listesine eklenen iki dosya BURAYA DA girmeli — yoksa
+    // Y8-FIXTURE yesil olur ama Y8'in kendisi o uclara HIC bakmaz.
+    ['LaborFirmsController', LaborFirmsController],
+    ['LaborMatchingController', LaborMatchingController],
   ];
   let paketliUc = 0;
   for (const [ad, cls] of kontrolculer) {
@@ -406,8 +421,14 @@ async function yTuretilmisSeviye() {
   const yokPrisma = authPrisma(null, 'pro', 'F1');
   const svcYok = new AuthService(yokPrisma, jwtSahte, erisimSahte, dogrulamaSahte, new OturumServisi(yokPrisma, jwtSahte));
   const me2: any = await svcYok.me('u1');
-  check('Y9a ⭐ /auth/me: abonelik yok → "core" (saklanan "pro" DEGIL)',
-    me2?.tier === 'core', `tier=${JSON.stringify(me2?.tier)}`);
+  // 21.09.2026 (2.15): BEKLENEN DEGER 'core' -> null. Kuralin NIYETI ayni
+  // ("saklanan `pro` DONDURULMEZ") ama artik daha siki saglaniyor.
+  // 'core' de UYDURMA bir degerdi: abonelik yokken musteriye "Basic" demek,
+  // ona SAHIP OLMADIGI bir paketi varmis gibi soylemekti — kenar cubugu
+  // rozeti suresi dolmus PRO musteriye "Basic" gosteriyordu. Artik seviye
+  // yoksa `null`, ekran da ad UYDURMUYOR (`paket-rozeti.test.ts`).
+  check('Y9a ⭐ /auth/me: abonelik yok → null (ne saklanan "pro" ne uydurma "core")',
+    me2?.tier === null, `tier=${JSON.stringify(me2?.tier)}`);
 
   // login yolu ayni kurali yasiyor mu (ikinci giris noktasi).
   const parolaOzeti = bcrypt.hashSync('parola123', 4);

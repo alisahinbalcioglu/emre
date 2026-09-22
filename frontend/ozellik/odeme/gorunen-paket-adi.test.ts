@@ -41,9 +41,16 @@ describe('görünen paket adı — tek sözlük', () => {
   });
 
   it('⭐ kenar çubuğu rozeti ham kodu basmıyor, sözlükten okuyor', () => {
-    expect(sidebar).toContain('seviyeAdi(tier)');
+    // ⚠ 2.15: çağrı `seviyeAdi(tier)` DEĞİL `paketRozeti(tier)`. Seviye
+    // `null` olabildiği için (abonelik yürümüyor) ad, boş hâli karşılayan
+    // kapıdan okunur; o kapı adı yine SEVIYE_AD'den alır — ikinci sözlük
+    // YOK (devretme kanıtı: `paket-rozeti.test.ts`).
+    expect(sidebar).toContain('paketRozeti(tier)');
     // Eski hâl: `{tier}` + `uppercase` → müşteriye "CORE".
     expect(sidebar).not.toContain('>{tier}<');
+    // ⚠ 2.15 yedeğinin (`?? 'core'`) kapısı BURADA DEĞİL: ölçüm yorumları
+    // süzmeyi gerektiriyor ve iki yerde kapı açmak ikiz kural olurdu.
+    // Tek yer: `paket-rozeti.test.ts` → "BAĞLANTI" bloğu.
   });
 
   it('⭐ profil kartında "Core" etiketi YOK', () => {

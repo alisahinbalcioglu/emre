@@ -488,22 +488,27 @@ describe('Paket adı: müşteriye görünen hiçbir yerde "Core" yok (iç kod de
     expect(hamSeviyeBasimlari(dosya('app/admin/users/page.tsx')).length).toBeGreaterThan(0);
   });
 
-  it('kenar çubuğu rozeti ADI seviyeAdi() ile basıyor (bağlantı)', () => {
+  // ⚠ 2.15: ÇAĞRI `seviyeAdi` DEĞİL `paketRozeti`. Gerekçe: seviye `null`
+  // olabiliyor (2.13 — abonelik yürümüyorsa etkin seviye yok) ve `seviyeAdi`
+  // `string` istiyor; aradaki `?? 'core'` yedeği müşteriye SAHİP OLMADIĞI
+  // paketi ("Basic") gösteriyordu. `paketRozeti` boş hâlin kapısıdır ve adı
+  // yine SEVIYE_AD'den okur — bu testin ölçtüğü şey (tek sözlük) DEĞİŞMEDİ.
+  it('kenar çubuğu rozeti ADI paketRozeti() ile basıyor (bağlantı)', () => {
     const sf = dosya('ortak/kabuk/components/layout/Sidebar.tsx');
     expect(
       sf.statements.some(
-        (s) => ts.isImportDeclaration(s) && /ozellik\/odeme\/paket-bicim['"]$/.test(s.moduleSpecifier.getText()) && /\bseviyeAdi\b/.test(s.importClause?.getText() ?? ''),
+        (s) => ts.isImportDeclaration(s) && /ozellik\/odeme\/paket-bicim['"]$/.test(s.moduleSpecifier.getText()) && /\bpaketRozeti\b/.test(s.importClause?.getText() ?? ''),
       ),
     ).toBe(true);
     const cagrilar: string[] = [];
     const gez = (n: ts.Node): void => {
-      if (ts.isJsxExpression(n) && ts.isJsxElement(n.parent) && n.expression && ts.isCallExpression(n.expression) && n.expression.expression.getText() === 'seviyeAdi') {
+      if (ts.isJsxExpression(n) && ts.isJsxElement(n.parent) && n.expression && ts.isCallExpression(n.expression) && n.expression.expression.getText() === 'paketRozeti') {
         cagrilar.push(n.getText());
       }
       n.forEachChild(gez);
     };
     gez(sf);
-    expect(cagrilar).toEqual(['{seviyeAdi(tier)}']);
+    expect(cagrilar).toEqual(['{paketRozeti(tier)}']);
   });
 
   it('hesap sayfasının paket etiketleri tek kaynakla (SEVIYE_AD) aynı', () => {

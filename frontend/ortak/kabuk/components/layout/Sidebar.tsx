@@ -14,10 +14,10 @@ import {
 } from 'lucide-react';
 // collapsed state layout'tan gelir
 import { cn } from '@/ortak/lib/utils';
-import { seviyeAdi } from '@/ozellik/odeme/paket-bicim';
+import { paketRozeti } from '@/ozellik/odeme/paket-bicim';
 
 interface SidebarProps {
-  user: { email: string; role: string; tier?: string } | null;
+  user: { email: string; role: string; tier?: string | null } | null;
   collapsed: boolean;
   onToggle: () => void;
 }
@@ -46,11 +46,24 @@ const TIER_COLORS: Record<string, { bg: string; text: string }> = {
   suite: { bg: 'bg-purple-900/60', text: 'text-purple-400' },
 };
 
+/**
+ * ETKIN PAKET YOKKEN rozet rengi (2.15). `TIER_COLORS` icine `yok: {...}`
+ * diye KOYULMADI: o harita seviye KODLARIYLA anahtarli ve 'yok' bir seviye
+ * kodu degil — koymak, seviye sanilan sahte bir kod uretirdi.
+ *
+ * Renk bilerek amber: gri (core) "en ucuz paketteyim" demek, amber "bir
+ * seyin ilgilenmesi gerekiyor" demek. Rozet zaten /profile'a link.
+ */
+const PAKET_YOK_RENGI = { bg: 'bg-amber-900/50', text: 'text-amber-400' };
+
 export default function Sidebar({ user, collapsed, onToggle }: SidebarProps) {
   const pathname = usePathname();
 
-  const tier = user?.tier ?? 'core';
-  const tierStyle = TIER_COLORS[tier] ?? TIER_COLORS.core;
+  // ⚠ 2.15: `?? 'core'` KALDIRILDI. Sunucu etkin paket yokken `tier: null`
+  // doner (2.13) ve yedek, musteriye SAHIP OLMADIGI paketi ("Basic")
+  // rozet olarak gosteriyordu. Bos hali `paketRozeti` karsilar.
+  const tier = user?.tier ?? null;
+  const tierStyle = tier ? (TIER_COLORS[tier] ?? TIER_COLORS.core) : PAKET_YOK_RENGI;
   const initial = user?.email?.charAt(0).toUpperCase() ?? 'U';
 
   const items = NAV_ITEMS;
@@ -153,14 +166,17 @@ export default function Sidebar({ user, collapsed, onToggle }: SidebarProps) {
                   ayrimini ekrandan silerdi. */}
               {/* ⚠ 15.09 (Emre karari): KOD degil AD basilir. `{tier}` + uppercase
                   musteriye "CORE" gosteriyordu; paketin adi "Basic". Renk koddan,
-                  yazi adindan (paket-bicim.ts SEVIYE_AD, tek kaynak). */}
+                  yazi adindan (paket-bicim.ts SEVIYE_AD, tek kaynak).
+                  ⚠ 2.15: ad `paketRozeti` uzerinden okunur — seviye `null` iken
+                  `seviyeAdi` cagrilamaz ve YEDEKLENEMEZ; uydurma ad yerine
+                  "Paket yok". Sozluk yine SEVIYE_AD, ikinci esleme YOK. */}
               <span
                 className={cn(
                   'inline-block text-[10px] font-bold uppercase tracking-wider',
                   tierStyle.text,
                 )}
               >
-                {seviyeAdi(tier)}
+                {paketRozeti(tier)}
               </span>
             </div>
           )}
