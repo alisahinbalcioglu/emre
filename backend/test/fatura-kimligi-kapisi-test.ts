@@ -64,6 +64,7 @@ import {
   vergiDairesiGerekli,
 } from '../src/ozellik/odeme/abonelik/satinalma.servisi';
 import { DenemeHakkiServisi } from '../src/ozellik/odeme/abonelik/deneme-hakki.servisi';
+import { ParasutAdaptoru } from '../src/ozellik/odeme/fatura/muhasebe.adaptor';
 import {
   FaturaKopyasiEksikHatasi,
   FaturaServisi,
@@ -748,6 +749,135 @@ async function main() {
     'T11.2 ⭐ veri indirme firmanin vergi alanlarini HALA okuyor (kapi kisitlamadi)',
     hesapKaynak.includes('vergiNo: true') && hesapKaynak.includes('vergiDairesi: true'),
   );
+
+
+  // ── T12 ⭐ MUHASEBE ADAPTORU MUSTERIYI KIMLIKLE BULUR (plan 4.9) ──────
+  //
+  // ESKI KUSUR: `filter[name]=<unvan>` ile aranip `data[0]` aliniyordu.
+  // Unvan Turkiye'de TEKIL DEGIL — ayni ada sahip iki ayri musteri Parasut'te
+  // TEK kayitta birlesir, birinin faturasi otekinin hesabina yazilirdi.
+  // Hesaplanan kimlik anahtari YALNIZ hata metninde geciyordu: "mekanizma var,
+  // baglanti yok" hata sinifinin tam ornegi.
+  //
+  // ⚠ Bu bolum KAYNAK degil DAVRANIS olcer: `fetch` sarilir ve GIDEN
+  //   isteklerin adresleri okunur (bkz. feedback_giden_istegi_olc).
+  console.log('\n── T12 ⭐ muhasebe adaptoru: musteri kimlikle bulunur ──');
+  {
+    const sahteConfig = {
+      getOrThrow: (k: string) => `sahte-${k}`,
+      get: (k: string) => `sahte-${k}`,
+    } as any;
+
+    type Cagri = { url: string; yontem: string; govde?: any };
+
+    /** `contacts` aramasina kac kayit donecegini ve HTTP durumunu ayarlar. */
+    function sahteFetchKur(aramaSonucu: { durum?: number; kayitlar?: Array<{ id: string }> }) {
+      const cagrilar: Cagri[] = [];
+      const orijinal = globalThis.fetch;
+      globalThis.fetch = (async (url: any, init?: any) => {
+        const u = String(url);
+        const yontem = init?.method ?? 'GET';
+        cagrilar.push({ url: u, yontem, govde: init?.body ? JSON.parse(init.body) : undefined });
+        const yanit = (durum: number, govde: any) => ({
+          ok: durum >= 200 && durum < 300,
+          status: durum,
+          json: async () => govde,
+          text: async () => JSON.stringify(govde),
+        });
+        if (u.includes('/oauth/token')) {
+          return yanit(200, { access_token: 'jeton', expires_in: 3600 });
+        }
+        if (u.includes('/contacts?')) {
+          return yanit(aramaSonucu.durum ?? 200, { data: aramaSonucu.kayitlar ?? [] });
+        }
+        if (u.endsWith('/contacts') && yontem === 'POST') {
+          return yanit(201, { data: { id: 'YENI-KAYIT' } });
+        }
+        if (u.includes('/sales_invoices')) {
+          return yanit(201, { data: { id: 'FTR-1', attributes: { invoice_no: 'A-1' } } });
+        }
+        return yanit(404, {});
+      }) as any;
+      return { cagrilar, geriAl: () => { globalThis.fetch = orijinal; } };
+    }
+
+    const KALEM = [{ ad: 'Pro', miktar: 1, birim: 'adet', birimFiyat: 100, kdvOrani: 20 }];
+    async function kes(musteri: any, aramaSonucu: any) {
+      const s = sahteFetchKur(aramaSonucu);
+      try {
+        const a = new ParasutAdaptoru(sahteConfig);
+        const sonuc = await a.faturaKes({
+          harciAnahtar: 'h1',
+          duzenlemeTarihi: new Date('2026-09-22T00:00:00Z'),
+          paraBirimi: 'TRY',
+          musteri,
+          kalemler: KALEM,
+        } as any);
+        return { sonuc, cagrilar: s.cagrilar };
+      } finally {
+        s.geriAl();
+      }
+    }
+    const adres = (c: Cagri[]) => c.map((x) => x.url).join(' | ');
+    const yeniKayitAcildiMi = (c: Cagri[]) =>
+      c.some((x) => x.yontem === 'POST' && x.url.endsWith('/contacts'));
+    const faturaMusterisi = (c: Cagri[]) =>
+      c.find((x) => x.url.includes('/sales_invoices'))?.govde?.data?.relationships?.contact?.data?.id;
+
+    const LIMITED = { unvan: 'Yilmaz Insaat', vergiNo: '1111111111', eposta: 'a@x.test' };
+    const SAHIS = { unvan: 'Ali Yilmaz', tcKimlikNo: '22222222222', eposta: 'b@x.test' };
+    const KIMLIKSIZ = { unvan: 'Kimliksiz Ltd', eposta: 'c@x.test' };
+
+    // ÖLÇÜTÜ ÖNCE DOĞRULA: sahte fetch gerçekten devrede mi? Devrede değilse
+    // aşağıdaki "filter[name] yok" assert'i TESADÜFEN yeşil olurdu.
+    const o1 = await kes(LIMITED, { kayitlar: [] });
+    check('T12.0 olcut: sahte fetch calisti (jeton + arama + kayit + fatura)',
+      o1.cagrilar.length >= 4, `cagri=${o1.cagrilar.length}`);
+
+    check('T12.1 ⭐ ADA GORE ARAMA YOK (filter[name] hic gecmiyor)',
+      !adres(o1.cagrilar).includes('filter[name]'), adres(o1.cagrilar).slice(0, 200));
+    check('T12.2 ⭐ vergi numarasiyla araniyor',
+      adres(o1.cagrilar).includes('filter[tax_number]=1111111111'),
+      adres(o1.cagrilar).slice(0, 200));
+
+    // TEK eslesme → o kayit kullanilir, YENI kayit acilmaz.
+    const o2 = await kes(LIMITED, { kayitlar: [{ id: 'VAR-1' }] });
+    check('T12.3 tek eslesme → mevcut kayit kullanilir, yeni kayit ACILMAZ',
+      !yeniKayitAcildiMi(o2.cagrilar));
+    check('T12.3b fatura O musteriye baglandi',
+      faturaMusterisi(o2.cagrilar) === 'VAR-1', String(faturaMusterisi(o2.cagrilar)));
+
+    // IKI eslesme → kimlik BELIRSIZ. Tahmin etmek yerine yeni kayit.
+    const o3 = await kes(LIMITED, { kayitlar: [{ id: 'A' }, { id: 'B' }] });
+    check('T12.4 ⭐ iki eslesme = kimlik belirsiz → data[0] ALINMAZ, yeni kayit acilir',
+      yeniKayitAcildiMi(o3.cagrilar) && faturaMusterisi(o3.cagrilar) === 'YENI-KAYIT');
+
+    // Sahis sirketi: vergi no yok, T.C. kimlik no var.
+    const o4 = await kes(SAHIS, { kayitlar: [] });
+    check('T12.5 sahis sirketinde T.C. kimlik no ile araniyor',
+      adres(o4.cagrilar).includes('filter[tax_number]=22222222222'));
+
+    // Hicbir kimlik yok → e-posta son care.
+    const o5 = await kes(KIMLIKSIZ, { kayitlar: [] });
+    check('T12.6 kimlik yoksa e-posta ile araniyor (ada gore DEGIL)',
+      adres(o5.cagrilar).includes('filter[email]=c%40x.test'));
+
+    // Arama HTTP hatasi → tahsilat DURMAZ, yeni kayit acilir.
+    const o6 = await kes(LIMITED, { durum: 500 });
+    check('T12.7 arama HTTP hatasi faturayi DUSURMEZ (yeni kayit acilir)',
+      yeniKayitAcildiMi(o6.cagrilar) && o6.sonuc.saglayiciId === 'FTR-1');
+
+    // ⭐⭐ ASIL KUSURUN OLCUMU: AYNI UNVAN, FARKLI VERGI NO.
+    // Eski kodda ikisi de ayni `filter[name]` sorgusuna duser ve BIRLESIRDI.
+    const A = { unvan: 'Yilmaz Insaat', vergiNo: '1111111111', eposta: 'a@x.test' };
+    const B = { unvan: 'Yilmaz Insaat', vergiNo: '9999999999', eposta: 'b@x.test' };
+    const sA = adres((await kes(A, { kayitlar: [] })).cagrilar);
+    const sB = adres((await kes(B, { kayitlar: [] })).cagrilar);
+    check('T12.8 ⭐⭐ AYNI UNVAN farkli vergi no → FARKLI sorgu (birlesme yok)',
+      sA.includes('filter[tax_number]=1111111111') &&
+        sB.includes('filter[tax_number]=9999999999') &&
+        !sA.includes('9999999999') && !sB.includes('1111111111'));
+  }
 
   // ── SONUC ───────────────────────────────────────────────────────────
   console.log('\n================================================================');

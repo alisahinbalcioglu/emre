@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 700
-Toplam satir: 171283
+Toplam satir: 171552
 Uc nokta: 215
 test:* scripti: 113
 
@@ -238,7 +238,7 @@ test:* scripti: 113
 | `backend/src/ozellik/odeme/dunning/dunning.servisi.ts` | 314 |
 | `backend/src/ozellik/odeme/eposta/eposta.servisi.ts` | 294 |
 | `backend/src/ozellik/odeme/fatura/fatura.servisi.ts` | 446 |
-| `backend/src/ozellik/odeme/fatura/muhasebe.adaptor.ts` | 241 |
+| `backend/src/ozellik/odeme/fatura/muhasebe.adaptor.ts` | 304 |
 | `backend/src/ozellik/odeme/havale/havale.controller.ts` | 96 |
 | `backend/src/ozellik/odeme/havale/havale.servisi.ts` | 274 |
 | `backend/src/ozellik/odeme/iyzico/imza.ts` | 206 |
@@ -296,7 +296,7 @@ test:* scripti: 113
 | `backend/test/export-format-test.ts` | 427 |
 | `backend/test/export-live-sim-test.ts` | 417 |
 | `backend/test/fallback-ad-kilidi-test.ts` | 185 |
-| `backend/test/fatura-kimligi-kapisi-test.ts` | 766 |
+| `backend/test/fatura-kimligi-kapisi-test.ts` | 896 |
 | `backend/test/faz0-gs7-probe.ts` | 74 |
 | `backend/test/faz2-kullanici-yonetimi-test.ts` | 618 |
 | `backend/test/faz3-eposta-parola-test.ts` | 876 |
@@ -346,7 +346,7 @@ test:* scripti: 113
 | `backend/test/manifest-kapisi.ts` | 79 |
 | `backend/test/matching-regression.ts` | 281 |
 | `backend/test/matching-unit-test.ts` | 713 |
-| `backend/test/migration-zinciri-test.ts` | 752 |
+| `backend/test/migration-zinciri-test.ts` | 753 |
 | `backend/test/odeme-imha-test.ts` | 850 |
 | `backend/test/odeme-onyukleme-test.ts` | 419 |
 | `backend/test/olcu-anahtari-cakismasi-test.ts` | 449 |
@@ -364,7 +364,7 @@ test:* scripti: 113
 | `backend/test/pk3-repo-kapsama-test.ts` | 79 |
 | `backend/test/pk9-sessiz-indeks-test.ts` | 97 |
 | `backend/test/product-index-test.ts` | 479 |
-| `backend/test/regression-all.ts` | 722 |
+| `backend/test/regression-all.ts` | 723 |
 | `backend/test/s45-malzeme-aile-test.ts` | 440 |
 | `backend/test/s45-olcum.ts` | 188 |
 | `backend/test/satinalma-yolu-test.ts` | 882 |
@@ -514,8 +514,8 @@ test:* scripti: 113
 | `frontend/ortak/lib/oturum.ts` | 106 |
 | `frontend/ortak/lib/parola-kurali.ts` | 23 |
 | `frontend/ortak/lib/utils.ts` | 16 |
-| `frontend/ortak/seo/arama-paylasim.test.ts` | 222 |
-| `frontend/ortak/seo/arama-paylasim.ts` | 127 |
+| `frontend/ortak/seo/arama-paylasim.test.ts` | 238 |
+| `frontend/ortak/seo/arama-paylasim.ts` | 138 |
 | `frontend/ortak/types/index.ts` | 64 |
 | `frontend/ortak/types/quotes.ts` | 62 |
 | `frontend/ortak/ui/badge.tsx` | 35 |
@@ -557,8 +557,8 @@ test:* scripti: 113
 | `frontend/ozellik/fiyat/use-currency.ts` | 87 |
 | `frontend/ozellik/giris/kaynak-kolon.ts` | 34 |
 | `frontend/ozellik/hukuki/HukukiSayfa.tsx` | 110 |
-| `frontend/ozellik/hukuki/metinler.ts` | 952 |
-| `frontend/ozellik/hukuki/satici-metin.test.ts` | 414 |
+| `frontend/ozellik/hukuki/metinler.ts` | 966 |
+| `frontend/ozellik/hukuki/satici-metin.test.ts` | 447 |
 | `frontend/ozellik/kimlik/GirisDaliEkrani.tsx` | 53 |
 | `frontend/ozellik/kimlik/IkiAdimliGirisKarti.tsx` | 328 |
 | `frontend/ozellik/kimlik/KurtarmaKodlariEkrani.tsx` | 105 |
@@ -970,7 +970,7 @@ test:* scripti: 113
 | `backend/test/export-format-test.ts` | `exceljs` `../src/ozellik/teklif/quotes/export-engine` `../src/ozellik/cikti/quote-formats/format-engine` |
 | `backend/test/export-live-sim-test.ts` | `exceljs` `../src/ozellik/teklif/quotes/quotes.service` |
 | `backend/test/fallback-ad-kilidi-test.ts` | `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` |
-| `backend/test/fatura-kimligi-kapisi-test.ts` | `node:fs` `node:path` `@nestjs/common` `@nestjs/config` `../src/ozellik/odeme/abonelik/deneme-hakki.servisi` |
+| `backend/test/fatura-kimligi-kapisi-test.ts` | `node:fs` `node:path` `@nestjs/common` `@nestjs/config` `../src/ozellik/odeme/abonelik/deneme-hakki.servisi` `../src/ozellik/odeme/fatura/muhasebe.adaptor` |
 | `backend/test/faz0-gs7-probe.ts` | `fs` `path` `../src/ozellik/giris/excel-grid/excel-grid.service` |
 | `backend/test/faz2-kullanici-yonetimi-test.ts` | `node:fs` `node:path` `@nestjs/common` `../src/ozellik/kutuphane/admin/admin.service` `../src/ozellik/giris/ai/ai-maliyet` `reflect-metadata` |
 | `backend/test/faz3-eposta-parola-test.ts` | `node:fs` `node:path` `@nestjs/config` `../src/altyapi/auth/uygulama-url` `reflect-metadata` |
@@ -1203,7 +1203,8 @@ test:* scripti: 113
 | `frontend/ozellik/fiyat/sayi-yollari.test.ts` | `vitest` `fs` `path` `./pricing` `../tablo/excel-grid/discount-utils` `../tablo/excel-grid/yapistir` |
 | `frontend/ozellik/fiyat/use-currency.ts` | `react` `@/ortak/lib/api` `@/ortak/types/quotes` `./para-gosterim` |
 | `frontend/ozellik/hukuki/HukukiSayfa.tsx` | `next/link` `@/ortak/kabuk/components/layout/Altbilgi` `./metinler` |
-| `frontend/ozellik/hukuki/satici-metin.test.ts` | `vitest` `node:fs` `node:path` |
+| `frontend/ozellik/hukuki/metinler.ts` | `../kimlik/kapatma-metinleri` |
+| `frontend/ozellik/hukuki/satici-metin.test.ts` | `vitest` `../kimlik/kapatma-metinleri` `node:fs` `node:path` |
 | `frontend/ozellik/kimlik/GirisDaliEkrani.tsx` | `@/ortak/lib/oturum` `./MfaKodAdimi` `./ZorunluKurulumSihirbazi` |
 | `frontend/ozellik/kimlik/IkiAdimliGirisKarti.tsx` | `react` `lucide-react` `@/ortak/lib/api` `@/ortak/lib/kimlik-hata-metinleri` `./KurulumAnahtari` `./KurtarmaKodlariEkrani` |
 | `frontend/ozellik/kimlik/KurtarmaKodlariEkrani.tsx` | `react` |

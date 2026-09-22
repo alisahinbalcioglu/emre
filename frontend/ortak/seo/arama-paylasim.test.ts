@@ -87,10 +87,26 @@ describe('robots.txt — indeksleme açık, korumalı yol ADIYLA anılmıyor', (
   });
 });
 
-describe('sitemap.xml — yalnız herkese açık altı sayfa, lastmod derlemeden', () => {
-  it('liste iş emrindeki altı sayfa, fazlası eksiği yok', () => {
+describe('sitemap.xml — yalnız herkese açık sekiz sayfa, lastmod derlemeden', () => {
+  // ⚠ LİSTE BURADA İKİNCİ KEZ, BİLEREK YAZILI. Kaynaktan türetilseydi
+  // (`HERKESE_ACIK_SAYFALAR` ile karşılaştırmak) assert kendi kendini doğrular
+  // ve yanlışlıkla eklenen bir yol sessizce geçerdi — site haritasına korumalı
+  // bir sayfa sızması tam da bu yolla olur. Bu yüzden her ekleme İKİ dosyada
+  // birden yapılır; ikincisi kasıtlılık beyanıdır.
+  // 22.09.2026 (plan i.4): `/iletisim` ve `/hakkimizda` eklendi — 21.09'da
+  // canlıya çıkmış, alt bilgiden erişiliyordu ama haritada yoktu.
+  it('liste iş emrindeki sekiz sayfa, fazlası eksiği yok', () => {
     expect([...HERKESE_ACIK_SAYFALAR].sort()).toEqual(
-      ['/', '/fiyatlar', '/gizlilik', '/kullanim-kosullari', '/cerez-politikasi', '/mesafeli-satis'].sort(),
+      [
+        '/',
+        '/fiyatlar',
+        '/gizlilik',
+        '/kullanim-kosullari',
+        '/cerez-politikasi',
+        '/mesafeli-satis',
+        '/iletisim',
+        '/hakkimizda',
+      ].sort(),
     );
     expect(siteHaritasi(new Date()).map((g) => g.url)).toEqual(HERKESE_ACIK_SAYFALAR.map((y) => `${SITE_KOKU}${y}`));
   });

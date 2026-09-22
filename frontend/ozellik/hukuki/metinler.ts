@@ -19,6 +19,20 @@
  * `npm run test:faz5` kapısında ÖLÇÜLÜYOR.
  */
 
+// ⚠ HESAP KAPATMA SAKLAMA SÜRESİ TEK KAYNAKTAN (plan i.5, 22.09.2026).
+// Bu metinlerde "30 gün" DÖRT ayrı yerde DÜZ YAZILIYDI ve koda bağlı değildi;
+// `KAPATMA_SAKLAMA_GUN` değişseydi sözleşme sessizce yalan söylerdi.
+// Zincir: `uyelik-kurallari.ts` `KAPATMA_SAKLAMA_GUN` (sunucu — TEK KAYNAK)
+//      → `kapatma-metinleri.ts` `SAKLAMA_GUN` (ön yüz ikizi; eşitliği
+//        `kapatma-metinleri.test.ts` ölçer, ikisi ayrı pakette derlendiği için
+//        ortak import mümkün değil)
+//      → buraya.
+// ⚠ `satici-metin.test.ts` ÇİZİLEN metinde "30 gün"ü BİREBİR arar ve bu
+//   BİLEREK böyledir: sayı değişirse o kapı KIRMIZI yanar. Saklama süresi
+//   yalnız bir ayar değil, sözleşme hükmüdür — sessizce değişmemeli,
+//   değiştirilecekse hukuki metin de gözden geçirilmeli.
+import { SAKLAMA_GUN } from '../kimlik/kapatma-metinleri';
+
 /**
  * ⚠ Backend `altyapi/auth/hukuki-surum.ts` ile AYNI olmak ZORUNDA.
  *
@@ -362,7 +376,7 @@ export const GIZLILIK: HukukiMetin = {
         // ekseni eklendi (`backend/src/ozellik/imha/saklama-sureleri.ts` +
         // `ImhaServisi.eskiDenemeKayitlariniSil`, günlük işe bağlı), sonra
         // cümle yazıldı. `test:faz5` D12 ikisinin aynı yılı söylediğini ölçer.
-        "Ücretsiz deneme kaydı: hesabınız kapatılsa bile saklanır — kapatmadan 30 gün sonra yapılan kalıcı silme bu kaydı kapsamaz. Ücretsiz denemenin aynı firma, e-posta adresi veya telefon numarasıyla yeniden alınmasını önlemek için tutulur; kayıtta e-posta adresiniz ve telefon numaranız karşılaştırmaya elverecek sadeleştirilmiş biçimde kalır — " +
+        "Ücretsiz deneme kaydı: hesabınız kapatılsa bile saklanır — kapatmadan " + SAKLAMA_GUN + " gün sonra yapılan kalıcı silme bu kaydı kapsamaz. Ücretsiz denemenin aynı firma, e-posta adresi veya telefon numarasıyla yeniden alınmasını önlemek için tutulur; kayıtta e-posta adresiniz ve telefon numaranız karşılaştırmaya elverecek sadeleştirilmiş biçimde kalır — " +
           HUKUKI_KARARLAR.denemeKaydiSaklama +
           ". Bu sürenin sonunda kayıt silinir; kaydın yaşı hesabınızın açık ya da kapalı olmasından bağımsızdır.",
       ],
@@ -545,7 +559,7 @@ export const KULLANIM_KOSULLARI: HukukiMetin = {
         // bu bilerek böyle: çıkarılan üyenin e-postası hemen serbest bırakılıyor
         // ve başka bir firmaya katılmış olabilir. Sözleşme, ürünün yapmadığı
         // bir şeyi vaat edemez.
-        "Hesap kapatıldığında ne olduğunu açıkça belirtmek isteriz: girişiniz kapanır ve platformu kullanamazsınız, ancak verileriniz aynı anda imha edilmez. Kapatma işlemi hesabınıza bir \"kapatıldı\" damgası düşer; kayıtlarınız yedeklerde ve saklama süreleri boyunca sistemde kalmaya devam eder. Hesabınız kapatıldıktan 30 gün sonra teklifleriniz, kütüphaneniz ve yüklediğiniz belgeler kalıcı olarak silinir. Hesabınızı kendiniz kapattıysanız ya da firmanız kapatıldığı için hesabınız kapandıysa, bu 30 gün içinde giriş yapıp bir paket seçerek hesabınızı geri açabilirsiniz; ekipten çıkarılma ya da yönetici kararıyla kapatılan hesaplar bu yolla geri açılmaz. Fatura, ödeme ve yönetici işlem kayıtları ise ispat ve yasal saklama yükümlülükleri nedeniyle daha uzun süre tutulur. Verilerinizin silinmesine ilişkin haklarınız ve süreler Gizlilik Politikası'nda anlatılır.",
+        "Hesap kapatıldığında ne olduğunu açıkça belirtmek isteriz: girişiniz kapanır ve platformu kullanamazsınız, ancak verileriniz aynı anda imha edilmez. Kapatma işlemi hesabınıza bir \"kapatıldı\" damgası düşer; kayıtlarınız yedeklerde ve saklama süreleri boyunca sistemde kalmaya devam eder. Hesabınız kapatıldıktan " + SAKLAMA_GUN + " gün sonra teklifleriniz, kütüphaneniz ve yüklediğiniz belgeler kalıcı olarak silinir. Hesabınızı kendiniz kapattıysanız ya da firmanız kapatıldığı için hesabınız kapandıysa, bu " + SAKLAMA_GUN + " gün içinde giriş yapıp bir paket seçerek hesabınızı geri açabilirsiniz; ekipten çıkarılma ya da yönetici kararıyla kapatılan hesaplar bu yolla geri açılmaz. Fatura, ödeme ve yönetici işlem kayıtları ise ispat ve yasal saklama yükümlülükleri nedeniyle daha uzun süre tutulur. Verilerinizin silinmesine ilişkin haklarınız ve süreler Gizlilik Politikası'nda anlatılır.",
         "Biz de bu sözleşmeyi feshedebiliriz: bu koşulların ağır biçimde ihlali, ödemenin yapılmaması, hukuka aykırı kullanım ya da platformun güvenliğini tehdit eden davranış hâllerinde. Durumun niteliği elverdiği ölçüde önce uyarır ve düzeltmeniz için makul bir süre veririz.",
       ],
     },
@@ -804,7 +818,7 @@ export const MESAFELI_SATIS: HukukiMetin = {
         // `Fatura`, `HavaleOdemesi`, `Abonelik`, `AbonelikOlayi`,
         // `AbonelikBaslatma` yasal saklama gereği DURUR. "30 gün sonra her şey
         // silinir" demek bu yüzden YANLIŞ olurdu.
-        "Aboneliği iptal etmek ile hesabı kapatmak farklı şeylerdir. Hesabınızı Hesabım sayfasındaki \"Hesabımı kapat\" adımıyla kendiniz kapatabilirsiniz. Hesap kapatıldığında girişiniz kapanır; verileriniz 30 gün saklanır, sonra kalıcı olarak silinir. Fatura ve ödeme kayıtları, mevzuattan doğan saklama yükümlülükleri nedeniyle bu sürenin ötesinde tutulmaya devam eder. Ayrıntı için Gizlilik Politikası'na bakabilirsiniz.",
+        "Aboneliği iptal etmek ile hesabı kapatmak farklı şeylerdir. Hesabınızı Hesabım sayfasındaki \"Hesabımı kapat\" adımıyla kendiniz kapatabilirsiniz. Hesap kapatıldığında girişiniz kapanır; verileriniz " + SAKLAMA_GUN + " gün saklanır, sonra kalıcı olarak silinir. Fatura ve ödeme kayıtları, mevzuattan doğan saklama yükümlülükleri nedeniyle bu sürenin ötesinde tutulmaya devam eder. Ayrıntı için Gizlilik Politikası'na bakabilirsiniz.",
       ],
     },
     {

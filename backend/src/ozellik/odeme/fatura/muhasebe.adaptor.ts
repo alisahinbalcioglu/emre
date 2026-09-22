@@ -166,20 +166,39 @@ export class ParasutAdaptoru implements MuhasebeAdaptoru {
     };
   }
 
+  /**
+   * ⚠⚠ ADA GÖRE ARAMA YASAK (plan 4.9, 22.09.2026).
+   *
+   * Eski hâli `filter[name]=<unvan>` ile arayıp `data[0]`ı alıyordu ve
+   * hesaplanan kimlik anahtarı YALNIZ hata metninde geçiyordu. Sonucu:
+   * "Yılmaz İnşaat" adlı İKİ AYRI müşteri Paraşüt'te TEK kayıtta birleşir ve
+   * birinin faturası ötekinin hesabına yazılırdı. Unvan Türkiye'de tekil
+   * değildir; tekil olan vergi numarası ya da T.C. kimlik numarasıdır.
+   *
+   * ⚠ HATALI EŞLEŞME > YİNELENEN KAYIT. Kimlik numarasıyla bulunamazsa YENİ
+   * kayıt açılır. Bu, daha önce adla açılmış eski bir kaydın ikizini üretebilir
+   * — muhasebede birleştirilmesi kolay, düzeltilebilir bir hatadır. Yanlış
+   * muhataba kesilmiş fatura ise geri alınamaz: müşteri başkasının vergi
+   * bilgisini görür ve iki taraf da yanlış beyan etmiş olur.
+   *
+   * ⚠ Bu dosyanın başındaki "DOĞRULANMAMIŞ" damgası GEÇERLİ: `filter[tax_number]`
+   * alan adı Paraşüt dokümanından teyit edilmedi. Teyit edilene kadar davranış
+   * yine de güvenli tarafta: alan yanlışsa arama boş döner ve yeni kayıt açılır.
+   */
   private async musteriBulYaDaOlustur(
     taban: string,
     jeton: string,
     m: FaturaMusterisi,
   ): Promise<string> {
-    const anahtar = m.vergiNo ?? m.tcKimlikNo ?? m.eposta;
-    const ara = await fetch(
-      `${taban}/contacts?filter[name]=${encodeURIComponent(m.unvan)}`,
-      { headers: { Authorization: `Bearer ${jeton}` } },
-    );
-    if (ara.ok) {
-      const j = (await ara.json()) as { data?: Array<{ id: string }> };
-      if (j.data?.length) return j.data[0].id;
-    }
+    // Kurumsal müşteride vergi no, şahıs şirketinde T.C. kimlik no tekildir.
+    // İkisi de yoksa e-posta son çaredir — o da yoksa kimlik yok demektir.
+    const kimlik = m.vergiNo ?? m.tcKimlikNo ?? null;
+    const anahtar = kimlik ?? m.eposta;
+
+    const bulunan = kimlik
+      ? await this.contactAra(taban, jeton, 'tax_number', kimlik)
+      : await this.contactAra(taban, jeton, 'email', m.eposta);
+    if (bulunan) return bulunan;
 
     const olustur = await fetch(`${taban}/contacts`, {
       method: 'POST',
@@ -210,6 +229,50 @@ export class ParasutAdaptoru implements MuhasebeAdaptoru {
     }
     const j = (await olustur.json()) as { data: { id: string } };
     return j.data.id;
+  }
+
+  /**
+   * Tek bir alana göre müşteri arar. Eşleşme SAYISI önemli:
+   *
+   * ⚠ BİRDEN FAZLA EŞLEŞME = KİMLİK BELİRSİZ, `null` döner. `data[0]`ı almak
+   *   eski kusurun ta kendisiydi. Vergi numarası tekil olmalı; iki kayıt
+   *   dönüyorsa Paraşüt tarafında zaten yinelenmiş bir kayıt var demektir ve
+   *   hangisinin doğru olduğunu BİLMİYORUZ. Böyle bir durumda tahmin etmek
+   *   yerine yeni kayıt açmak, yanlış hesaba fatura yazmaktan iyidir.
+   *
+   * ⚠ Ağ/HTTP hatası da `null` döner — "bulunamadı" ile aynı dal. Hata
+   *   fırlatmak tahsilatı durdururdu; sessizce YANLIŞ kayıt seçmek ise çok
+   *   daha kötü olurdu. Üçüncü yol (yeni kayıt) ikisinin de dışında kalır.
+   */
+  private async contactAra(
+    taban: string,
+    jeton: string,
+    alan: 'tax_number' | 'email',
+    deger: string,
+  ): Promise<string | null> {
+    if (!deger) return null;
+    try {
+      const cevap = await fetch(
+        `${taban}/contacts?filter[${alan}]=${encodeURIComponent(deger)}`,
+        { headers: { Authorization: `Bearer ${jeton}` } },
+      );
+      if (!cevap.ok) return null;
+      const j = (await cevap.json()) as { data?: Array<{ id: string }> };
+      const kayitlar = j.data ?? [];
+      if (kayitlar.length !== 1) {
+        if (kayitlar.length > 1) {
+          this.logger.warn(
+            `Paraşüt'te ${alan} için ${kayitlar.length} kayıt döndü — ` +
+              'kimlik belirsiz, yeni kayıt açılacak.',
+          );
+        }
+        return null;
+      }
+      return kayitlar[0].id;
+    } catch (e) {
+      this.logger.warn(`Paraşüt müşteri araması başarısız (${alan}): ${e}`);
+      return null;
+    }
   }
 }
 

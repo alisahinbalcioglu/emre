@@ -334,7 +334,8 @@ const SUITES: Suite[] = [
   //    SUNUCU GEREKTİRMEZ: PGlite (WASM PG16) süreç içinde ayağa kalkar →
   //    `db` bayrağı YOK, PG_REGRESSION istemez, her koşumda çalışır.
   //    NEDEN: üretimde şema `prisma migrate deploy` ile uygulanır
-  //    (Dockerfile:55, render.yaml:64) — bozuk migration konteyneri
+  //    (Dockerfile:55; eskiden render.yaml:64 — o dosya 22.09'da silindi,
+  //    kurulum artik docker compose: bkz. docs/DEPLOYMENT.md) — bozuk migration konteyneri
   //    AÇILMAZ hâle getirir. Bu depoda zincirin gerçekle ayrışma GEÇMİŞİ
   //    var: `f2a0b7a` "8 tablo db push'la açılmıştı" diyor; temiz bir DB'de
   //    `migrate deploy` patlıyordu ve kusur aylarca görünmedi çünkü kimse

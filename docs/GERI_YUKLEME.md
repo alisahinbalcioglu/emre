@@ -144,41 +144,128 @@ Tarayıcıdan girin ve şunları açın:
 
 ## 3. PROVA — canlıya dokunmadan (bunu bir kez yapın)
 
-> ### ⚠ SUNUCUDA PROVA BUGÜN YAPILAMIYOR — dürüst boşluk
+> ### ✅ SUNUCUDA PROVA YAPILDI — 22.09.2026
 >
-> `geri-yukle.sh` yedeği **her zaman canlı veritabanının üstüne** yükler; hedef
-> veritabanını seçme desteği **yoktur**. Yani sunucuda "canlıya dokunmadan bir
-> kez deneme" bugün mümkün değil. Bunu mümkün kılmak ayrı bir iştir ve
-> **yapılmadı** — bu belge onu varmış gibi göstermez.
+> **Prosedür sunucuda, gerçek yedekle, canlıya dokunmadan koştu ve geçti.**
+> Aşağıdaki tablo o koşumun kendi çıktısıdır.
 >
-> Bugün elinizdeki güvence şudur: prosedür 04.08'de geliştirme makinesinde
-> gerçek veriyle uçtan uca koşturuldu (aşağıdaki tablo), ve betiğin **her ret
-> yolu** ayrı ayrı ateşlendi. Prosedürün kendisi yazıldığı gibi çalışıyor.
+> ### ⚠ AMA `geri-yukle.sh` HÂLÂ HEDEF VERİTABANI SEÇEMİYOR
 >
-> Sunucuda ilk gerçek geri yükleme, her hâlükârda **can simidi** ile korunur:
-> betik geri yüklemeden hemen önce mevcut durumun doğrulanmış bir yedeğini alır,
-> alamazsa hiç başlamaz.
+> Bu ayrım önemli ve bu belge onu gizlemez. `geri-yukle.sh` hedefini `.env`
+> içindeki `POSTGRES_DB`'den okur (satır 41) ve yedeği **her zaman canlı
+> veritabanının üstüne** yükler. Yani provada betiğin kendisi değil,
+> **betiğin kalbi olan yükleme borusu** ayrı bir veritabanına koşturuldu:
+>
+> ```
+> gzip -dc <yedek> | psql -U <kullanici> -d <PROVA_VT> -v ON_ERROR_STOP=1
+> ```
+>
+> Provası YAPILMAYAN kısım: `geri-yukle.sh`'in onay soruları, can simidi
+> yedeği ve ret yolları — bunlar 04.08'de sahte `docker` ile ayrı ayrı
+> ateşlenmişti, gerçek konteynerle uçtan uca koşmadı. Sunucuda ilk gerçek
+> geri yükleme her hâlükârda can simidiyle korunur: betik geri yüklemeden
+> hemen önce mevcut durumun doğrulanmış bir yedeğini alır, alamazsa hiç
+> başlamaz.
 
-### 04.08.2026'da yapılan prova (kanıt)
+### 22.09.2026 sunucu provası (kanıt)
 
-Geliştirme makinesinde, gerçek veriyle, **gerçekten koşturuldu**:
+Yedek: `backups/metaprice-20260921-195424.sql.gz` (9.775.648 bayt,
+21.09.2026 19:54:25 UTC). Hedef: geçici `metaprice_prova_*` veritabanı.
+
+**Önce üç güvenlik kontrolü** — dökümün canlı veritabanına atlayıp atlamadığı
+ölçüldü, varsayılmadı:
+
+| Kontrol | Sonuç |
+|---|---|
+| `gzip -t` bütünlük | GEÇTİ |
+| Dökümde `\connect` / `\c` satırı | **YOK** |
+| Dökümde `CREATE DATABASE` / `DROP DATABASE` | **YOK** |
+| `backup.sh` `pg_dump` çağrısında `--create` | **YOK** (`backup.sh:57`) |
+
+Bu dördü birlikte şu anlama gelir: döküm hangi veritabanına verilirse oraya
+yazar, kendi başına canlıya **atlayamaz**. Üçü de doğrulanmadan prova
+başlatılmadı — çünkü `\connect metaprice` taşıyan bir döküm, "ayrı
+veritabanına yüklüyorum" derken canlıyı ezerdi.
+
+**Prova sonucu:**
+
+| Adım | Sonuç |
+|---|---|
+| Ayrı veritabanı oluştur | OK |
+| `gzip -dc … \| psql -v ON_ERROR_STOP=1` | çıkış kodu **0** |
+| Log'da `ERROR`/`FATAL` satırı | **0** |
+| **Yükleme süresi** | **3,83 sn** |
+| Tablo sayısı (canlı → kopya) | **50 → 50** |
+| 50 tablonun satır sayıları | **49'u birebir aynı** |
+| Kopya kaldırıldı | OK (kalan prova vt: 0) |
+| Prova sonrası canlı `/api/health` | `status: ok`, `73a8ef4707c7` |
+
+**Tek fark ve NEDEN doğru olduğu:** `PasswordResetToken` canlıda 4, kopyada 3
+satır. Fark, 22.09 10:44'te oluşturulmuş bir sıfırlama jetonu; döküm ise
+21.09 19:54'ten. Yani kopya, dökümün alındığı **anın** sadık bir fotoğrafı —
+eksik değil, **daha eski**. Bu fark aslında en değerli bulgu: karşılaştırma
+gerçekten çalışıyor. Her tablo tesadüfen eşleşseydi, ölçüm aletinin kendisinden
+şüphelenmek gerekirdi.
+
+**Canlı veriye tek yazma yapılmadı:** canlı veritabanına yalnız `SELECT
+count(*)` sorguları gitti; yazma, şema değişikliği ve `geri-yukle.sh` çağrısı
+YOK. Oluşturulan geçici veritabanı prova bitince düşürüldü.
+
+### Provayı kendiniz tekrarlamak
+
+Sunucuda, sırayla (hepsi canlıya dokunmaz):
+
+```bash
+cd /opt/metaprice
+KUL=$(grep -E '^POSTGRES_USER=' .env | cut -d= -f2- | tr -d '\r"')
+SON=$(ls -t backups/metaprice-*.sql.gz | head -1)
+PROVA=metaprice_prova_$(date +%H%M%S)
+
+# 1) Döküm canlıya atlıyor mu? Üçü de BOŞ dönmeli.
+gzip -dc "$SON" | grep -nE '^\\connect|^\\c ' | head
+gzip -dc "$SON" | grep -niE '^(CREATE|DROP) DATABASE' | head
+
+# 2) Ayrı veritabanı + yükleme
+docker compose exec -T db psql -U "$KUL" -d postgres -v ON_ERROR_STOP=1 \
+  -c "CREATE DATABASE \"$PROVA\";" </dev/null
+time gzip -dc "$SON" | docker compose exec -T db psql -U "$KUL" -d "$PROVA" \
+  -v ON_ERROR_STOP=1 -q
+
+# 3) Tablo sayısı karşılaştır
+docker compose exec -T db psql -U "$KUL" -d metaprice -tAc \
+  "SELECT count(*) FROM information_schema.tables WHERE table_schema='public';" </dev/null
+docker compose exec -T db psql -U "$KUL" -d "$PROVA" -tAc \
+  "SELECT count(*) FROM information_schema.tables WHERE table_schema='public';" </dev/null
+
+# 4) TEMİZLE — bu adım atlanırsa kopya diskte kalır
+docker compose exec -T db psql -U "$KUL" -d postgres \
+  -c "DROP DATABASE \"$PROVA\";" </dev/null
+```
+
+> **⚠ PÜRÜZ — `docker compose exec -T` STDIN'İ YUTAR.** Yukarıdaki komutların
+> dökümü boruya veren biri DIŞINDA hepsinde `</dev/null` var ve bu şart. Bir
+> betiğin içinde `</dev/null` olmadan çağrılırsa, o `exec` betiğin geri kalan
+> satırlarını girdi sanıp tüketir ve **betiğin gerisi sessizce hiç koşmaz.**
+> Bu depoda ölçülmüş bir tuzaktır.
+
+### 04.08.2026'da yapılan prova (geçmiş kayıt)
+
+Sunucu provasından önce, geliştirme makinesinde gerçek veriyle koşturulmuştu:
 
 | Adım | Sonuç |
 |---|---|
 | `pg_dump` + `gzip` ile yedek | 1.059.037 bayt |
 | `gzip -t` bütünlük | GEÇTİ |
-| Dump SONU işareti (`PostgreSQL database dump complete`) | VAR |
+| Dump SONU işareti | VAR |
 | Boş hedef veritabanı oluştur | OK |
-| `gzip -dc ... \| psql -v ON_ERROR_STOP=1` | çıkış kodu **0** — tek hata yok |
-| Satır sayıları (UserLibrary / User / Brand) | **1760 / 3 / 57 → 1760 / 3 / 57** (birebir) |
+| `gzip -dc … \| psql -v ON_ERROR_STOP=1` | çıkış kodu **0** — tek hata yok |
+| Satır sayıları (UserLibrary / User / Brand) | **1760 / 3 / 57 → 1760 / 3 / 57** |
 | KALEM 59 ölçüsü kopyada | **117 öksüz / 59 iskontolu** — kaynakla aynı |
 | Kopya kaldırıldı | OK |
 
-**Neyin provası YAPILMADI:** aynı akışın `docker compose` üzerinden, sunucuda
-koşması. Geliştirme makinesinde docker yok. `geri-yukle.sh`'in karar akışı
-(9 ayrı yol: bozuk yedek, yarım dump, onay verilmemesi, can simidi alınamaması,
-yükleme hatası, başarılı yol …) sahte `docker` ile ayrı ayrı ateşlendi; ama
-gerçek konteynerle uçtan uca **koşmadı.**
+O gün eksik kalan şey — "aynı akışın sunucuda, gerçek konteynerle koşması" —
+22.09 provasıyla kapandı (yükleme borusu için). `geri-yukle.sh`'in karar akışı
+(9 ayrı ret yolu) hâlâ yalnız sahte `docker` ile sınanmış durumda.
 
 ---
 
@@ -240,9 +327,9 @@ find backups -name 'deploy-oncesi-*.sql.gz' -mtime +30 -delete
 |---|---|---|
 | **Sunucu dışında OTOMATİK kopya yok** | Sunucu diski ölürse yedekler de ölür. Elle alınan şifreli kopyalar var (§ 1b, 07.09) ama bir betiğe bağlı değil, düzenli olduğu ölçülmedi. | Açık |
 | **Sunucu dışı kopyalarda 30 gün kuralı ELLE** | 21.09 (K5): sunucudaki dört yedek ailesi en fazla 30 gün saklanıyor. `MetaPriceYedek` klasöründeki şifreli kopyalar bu kuralın DIŞINDA — orayı budayan bir betik depoda yok. Gizlilik metnindeki "yedeklerden en geç 30 gün içinde çıkar" cümlesi o klasör için elle sağlanmalı. | Açık — Emre |
-| Sunucuda prova desteği yok | Prosedür sunucuda uçtan uca hiç koşmadı | § 3'te yazılı |
+| `geri-yukle.sh` hedef veritabanı seçemiyor | Betiğin KENDİSİ sunucuda prova edilemiyor; hedefini `.env`'den okur ve hep canlının üstüne yükler. 22.09'da **yükleme borusu** ayrı bir veritabanına koşturuldu ve geçti (§ 3), ama betiğin onay/ret yolları gerçek konteynerle hiç koşmadı. | Kısmen kapandı — § 3 |
 | Yedek şifrelenmiyor | `backups/` klasörünü okuyabilen herkes tüm müşteri verisini okur | Açık |
-| Geri yükleme süresi ölçülmedi | Felaket anında "ne kadar sürer" sorusunun cevabı yok | Açık |
+| Tam geri dönüş süresi ölçülmedi | 22.09 provası YÜKLEME adımını ölçtü: **3,83 sn** (9,8 MB döküm, 50 tablo). Felaket anındaki toplam süre bundan uzun — yedeği bulma, çözme, onay, can simidi yedeği ve servis yeniden başlatma dahil değil. | Kısmen ölçüldü — § 3 |
 
 ---
 

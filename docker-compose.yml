@@ -7,7 +7,10 @@
 #    backend    → NestJS   (ic port 3001, /api)
 #    dwg-engine → Python   (ic port 10000, sadece ic ag)
 #    db         → Postgres 16 (kalici volume)
-#    backup     → gunluk pg_dump (14 gun saklar)
+#    backup     → gunluk pg_dump. SAKLAMA TEK SAYI DEGIL: bu konteynerin
+#                 kendi dongusu `metaprice-*` dosyalarini 14 gun tutar
+#                 (`scripts/backup.sh:28`), ama /backups altinda DORT aile
+#                 var ve digerleri 30 gun yasar — asagidaki `backup` blogu.
 #
 #  Kurulum:  cp .env.example .env  → degerleri doldur → docker compose up -d --build
 # ═════════════════════════════════════════════════════════════════
@@ -200,7 +203,20 @@ services:
       - caddy_config:/config
 
   # Gunluk otomatik yedek — host crontab GEREKMEZ (paste sorununu by-pass eder).
-  # ./backups klasorune metaprice-YYYYMMDD-HHMMSS.sql.gz yazar, 14 gunden eskiyi siler.
+  # ./backups klasorune metaprice-YYYYMMDD-HHMMSS.sql.gz yazar.
+  #
+  # ⚠ BU YORUM 22.09.2026'da DUZELTILDI (plan i.5a). Eskiden "14 gunden
+  #   eskiyi siler" diyordu ve BU KONTEYNER icin dogruydu — ama /backups
+  #   altinda DORT yedek ailesi var ve budama kurallari FARKLI:
+  #
+  #     metaprice-*              14 gun  ← bu konteynerin dongusu (backup.sh:28)
+  #     deploy-oncesi-*          30 gun  ← deploy.sh:113 YEDEK_SAKLAMA_GUN
+  #     geri-yukleme-oncesi-*    30 gun  ← ayni
+  #     bekci-*                  30 gun  ← ayni
+  #
+  #   Eksik yorum tehlikeliydi: Gizlilik Politikasi musteriye "silinen
+  #   veriler yedeklerden en gec 30 gun icinde cikar" diye SOZ VERIYOR.
+  #   Buraya bakip "14 gun" sanan biri o sozu yanlis dogrular.
   backup:
     image: postgres:16
     restart: unless-stopped

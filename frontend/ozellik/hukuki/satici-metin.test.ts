@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { SAKLAMA_GUN } from '../kimlik/kapatma-metinleri';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -342,6 +343,38 @@ describe('T10 — hesap kapatma ve 30 günlük imha: metin ürünle çelişmiyor
     // ⚠ AİLE ADIYLA SAYILMAZ: ölçüm DÖRT yedek ailesi buldu, iş emri İKİ
     // sayıyordu. Sayan bir cümle dördüncü aile eklenince sessizce eksik kalır.
     expect(gizlilik).not.toMatch(/yedekleri: sunucuda 14 gün tutulur\./);
+  });
+
+  // ── plan i.5b (22.09.2026) — SAKLAMA GÜNÜ TEK KAYNAKTAN ─────────────────
+  // Hesap kapatma saklama süresi metinde DÖRT yerde düz yazılıydı. Artık
+  // `kapatma-metinleri.ts` `SAKLAMA_GUN`den geliyor, o da sunucudaki
+  // `KAPATMA_SAKLAMA_GUN` ile kapılı (`kapatma-metinleri.test.ts`).
+  //
+  // ⚠ ÜSTTEKİ VE ALTTAKİ ASSERT'LER "30"U BİREBİR ARAMAYA DEVAM EDİYOR ve bu
+  //   BİLEREK böyle: sabit değişirse o kapılar KIRMIZI yanar ve hukuki metin
+  //   gözden geçirilmeden geçemez. Buradaki iki assert ise BAĞLANTIYI ölçer —
+  //   ikisi olmadan biri sabiti yeniden düz yazıya çevirip kapıyı yine yeşil
+  //   bırakabilirdi ("mekanizma var, bağlantı yok").
+  describe('i.5b — kapatma saklama günü sabitten geliyor', () => {
+    // vitest `frontend/` icinden kosar (vitest.config kok dizini).
+    const kaynak = readFileSync(join(process.cwd(), 'ozellik/hukuki/metinler.ts'), 'utf8');
+
+    it('metinler.ts SAKLAMA_GUN`ü İÇE AKTARIYOR', () => {
+      expect(kaynak).toMatch(/import\s*\{\s*SAKLAMA_GUN\s*\}\s*from\s*'\.\.\/kimlik\/kapatma-metinleri'/);
+    });
+
+    it('kapatma cümleleri sabiti KULLANIYOR (düz yazı değil)', () => {
+      // Dört kullanım: deneme kaydı istisnası · kalıcı silme · geri açma
+      // penceresi · ön bilgilendirme.
+      const kullanim = (kaynak.match(/\+ SAKLAMA_GUN \+/g) ?? []).length;
+      expect(kullanim).toBe(4);
+    });
+
+    it('çizilen metin sabitin DEĞERİNİ basıyor', () => {
+      expect(gizlilik).toContain(`kapatmadan ${SAKLAMA_GUN} gün sonra`);
+      expect(kosullar).toContain(`kapatıldıktan ${SAKLAMA_GUN} gün sonra`);
+      expect(mesafeli).toContain(`verileriniz ${SAKLAMA_GUN} gün saklanır`);
+    });
   });
 
   it('deneme kaydı 30 günlük imhanın İSTİSNASI olduğunu SÖYLÜYOR', () => {

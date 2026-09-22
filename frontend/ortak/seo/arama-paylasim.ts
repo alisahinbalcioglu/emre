@@ -29,6 +29,13 @@ export const HERKESE_ACIK_SAYFALAR = [
   '/kullanim-kosullari',
   '/cerez-politikasi',
   '/mesafeli-satis',
+  // 22.09.2026 (plan i.4) — iki kurumsal sayfa 21.09'da canlıya çıktı ve alt
+  // bilgiden erişiliyordu ama site haritasında YOKTU. Arama motorları bağlantıdan
+  // bulur, yani indeksleme sorunu değildi; asıl gerekçe iyzico: başvuru
+  // koşulları "ana sayfadan doğrudan erişilebilen İletişim" istiyor ve bir
+  // inceleyici site haritasına bakarsa eksik görünürdü (plan 1.17).
+  '/iletisim',
+  '/hakkimizda',
 ] as const;
 
 export function robotsKurallari(): MetadataRoute.Robots {
@@ -40,7 +47,11 @@ export function robotsKurallari(): MetadataRoute.Robots {
 
 /**
  * `lastmod` ELLE YAZILMAZ — çağıran derleme anını verir (`app/sitemap.ts`).
- * Hukuki sayfalar bugün TASLAK şeridiyle yayında; onay gelip şerit kalktığında
+ * ⚠ AŞAĞIDAKİ ÖRNEK 22.09.2026'da GERÇEKLEŞTİ ve yaklaşımı doğruladı: avukat
+ * onayı gelince taslak şeridi dört sayfadan birden kalktı. O bir deploy'du,
+ * `lastmod` kendiliğinden ilerledi; metin sürümü ayrı bir eksen olduğu için
+ * elle bir tarih yazılsaydı bugün yanlış olurdu. Özgün not korunuyor:
+ * Hukuki sayfalar (o gün) TASLAK şeridiyle yayındaydı; onay gelip şerit kalkınca
  * metin sürümü değişmeyebilir ama sayfa değişir. O değişiklik bir deploy'dur,
  * tarih kendiliğinden ilerler.
  */

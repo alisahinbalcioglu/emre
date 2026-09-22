@@ -9,7 +9,7 @@ AI destekli mekanik/elektrik tesisat teklif platformu. DWG/DXF planlarindan otom
 | Frontend | Next.js 14 (App Router) + Tailwind + shadcn/ui + ag-grid + PixiJS | [`frontend/`](frontend/) |
 | Backend API | NestJS 10 + Prisma + PostgreSQL + JWT | [`backend/`](backend/) |
 | DWG Engine | FastAPI + ezdxf + Anthropic Claude (cap atama) | [`backend/src/modules/dwg-engine/python/`](backend/src/modules/dwg-engine/python/) |
-| Deploy | Render (API + Postgres + Python) + Netlify (frontend) | [`render.yaml`](render.yaml), [`netlify.toml`](netlify.toml) |
+| Deploy | Hetzner VPS + Docker Compose + Caddy (otomatik HTTPS) | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md), [`docker-compose.yml`](docker-compose.yml) |
 
 ## Yerel Kurulum
 
@@ -46,10 +46,21 @@ npm run dev                     # http://localhost:3000
 
 ## Deploy
 
-- **Render Blueprint**: dashboard'da `New + > Blueprint > bu repo` -> `render.yaml` 3 servisi (Postgres + NestJS API + Python engine) tek tikta kurar. `ANTHROPIC_API_KEY` ve `CORS_ORIGINS` dashboard'dan elle set edilir.
-- **Netlify**: dashboard'da `New site > Import from Git > bu repo`, base directory `frontend`. `NEXT_PUBLIC_API_URL` Netlify env'ine eklenir (Render API URL + `/api`).
-- Branch: `main`. Auto-deploy push'ta tetiklenir.
-- Health check: `GET /api/health` -> `{ status: "ok" }`.
+> **22.09.2026'da DUZELTILDI.** Burasi Render + Netlify anlatiyordu; proje o
+> kurulumda **calismiyor** ve uzun suredir calismiyor. Ayrintili rehber:
+> [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+
+- **Nerede**: Hetzner Cloud VPS, `/opt/metaprice`, `docker compose` ile **alti**
+  konteyner (caddy · frontend · backend · dwg-engine · db · backup). Disa acik
+  tek servis Caddy'dir; backend, motor ve veritabani dis agdan erisilemez.
+- **Nasil**: `ssh root@<sunucu>` → `cd /opt/metaprice && nohup bash scripts/deploy.sh > /tmp/deploy.log 2>&1 &`
+  `nohup` **sart** — SSH koparsa deploy yarida olur.
+- **Dal**: `master`. Deploy OTOMATIK DEGIL, elle baslatilir.
+- ⚠ **CI yesil olmadan deploy yok**: o commit'in GitHub Actions `regression-gate`
+  kosumu `success` olmali (`CLAUDE.md`).
+- Deploy kendini dogrular: **6/6 adim** ve son satirda `DEPLOY DOGRULANDI` ile
+  iki servisin kendi `build_sha` cevabi.
+- Saglik: `GET /api/health` -> `{ status: "ok", build_sha: "..." }`.
 
 ## Komutlar
 

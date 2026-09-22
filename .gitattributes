@@ -1,3 +1,19 @@
+# ── SATIR SONU DUZENI (plan s.4, 22.09.2026) ───────────────────────────────
+# Depo ZATEN temiz: `git ls-files --eol` olcumu 811 metin dosyasinin 811'ini
+# `i/lf` gosteriyor, CRLF ile SAKLANAN tek dosya yok. Eksik olan sey kuralin
+# KENDISIYDI — temizlik her katkicinin `core.autocrlf` ayarina bagliydi ve
+# calisma agacinda iki dosya KARISIK satir sonu tasiyor hale gelmisti
+# (`backend/src/ozellik/giris/ai/ceviri-katmani.ts`,
+#  `frontend/ozellik/odeme/fatura-kimligi.test.ts`). Karisik dosya, diff'te
+# degismemis satirlari degismis gosterir; incelemeyi korlestirir.
+#
+# `text=auto` = metni Git kendi tanir (ikili dosyalara DOKUNMAZ; olcumdeki 61
+# `i/-text` dosya bu yuzden etkilenmez). `eol=lf` = calisma agacina da LF yazilir.
+# ⚠ DEPO ICERIGI DEGISMEZ: index zaten LF; bu satir yalniz dosyalarin diske
+# nasil yazildigini sabitler. `git add --renormalize .` ile OLCULDU, icerik
+# farki 0 cikti.
+* text=auto eol=lf
+
 # Sunucuya birebir kurulan dosyalar (scripts/sunucu/kur.sh). CRLF ile giden bir
 # betik "bad interpreter" ile olur, systemd birimi de bozulur. Bugun depo LF
 # ama bu katkicinin core.autocrlf ayarina bagliydi; burada kilitlenir.

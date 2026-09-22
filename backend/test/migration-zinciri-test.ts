@@ -6,7 +6,8 @@
  *
  * ── BU DOSYA NEDEN VAR ──────────────────────────────────────────────────
  * Uretimde sema `prisma migrate deploy` ile uygulanir (backend/Dockerfile:55
- * ve render.yaml:64 — `npx prisma migrate deploy && node dist/main`). Yani
+ * ve eskiden render.yaml:64 — `npx prisma migrate deploy && node dist/main`;
+ * o dosya 22.09'da silindi, komut Dockerfile'da duruyor). Yani
  * BOZUK BIR MIGRATION KONTEYNERI ACILMAZ HALE GETIRIR: API baslamaz,
  * deploy.sh saglik dogrulamasindan `build_sha` alamaz ve deploy geri doner.
  *
