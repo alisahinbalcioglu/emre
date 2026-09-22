@@ -287,9 +287,23 @@ function main(): void {
       /Ücretsiz denemenin her firma ve kişi için bir kez verilmesi/.test(metinler) &&
       /"Ücretsiz deneme kaydı: hesabınız kapatılsa bile saklanır/.test(metinler) &&
       /Ücretsiz deneme her firma ve kişi için bir kez verilir\. Daha önce deneme almış/.test(metinler));
-  check('D8 taslak durumu ACIKCA isaretli (onaylanmamis metin oyle gorunmesin)',
-    /HUKUKI_METIN_DURUMU[^\n]*=\s*'taslak'/.test(metinlerKod));
+  // ── D8 · OLCUT DEGISTI, KURAL AYNI (22.09) ──────────────────────────────
+  // Eski olcut `'taslak'` ARIYORDU. Emre "avukat onay verdi" dedi ve durum
+  // `'onayli'` yapildi; eski olcut oldugu gibi birakilsa kapi kirmizi olurdu
+  // ve dogru tepki onu SUSTURMAK olurdu — bu depoda "kapi curumesi" diye
+  // alti cizilen hata. Kural degismedi: METNIN INCELEME DURUMU EKRANDA
+  // DURUSTCE GORUNMELI. Olcut o kurala gore yeniden yazildi.
+  check('D8 metin durumu "onayli" (avukat onayi 22.09 — Emre)',
+    /HUKUKI_METIN_DURUMU[^\n]*=\s*'onayli'/.test(metinlerKod));
+  // ⚠ D8b: TUR BIRLIGI KORUNUYOR. Sabit `'taslak' | 'onayli'` olarak
+  // yazilmazsa TypeScript degeri `'onayli'` sabitine daraltir ve kabuktaki
+  // `=== 'taslak'` karsilastirmasi DERLENMEZ; o zaman serit mekanizmasini
+  // silmek zorunda kalirdik. Yani bu tek satir, geri donus yolunu acik tutar.
+  check('D8b durum sabiti IKI degeri de tasiyor (serit geri getirilebilir)',
+    /HUKUKI_METIN_DURUMU:\s*'taslak'\s*\|\s*'onayli'/.test(metinlerKod));
   const sayfaKabuk = jsxKodu(oku('frontend/ozellik/hukuki/HukukiSayfa.tsx'));
+  // D9 DEGISMEDI: serit MEKANIZMASI duruyor mu? Bugun cizilmiyor (durum
+  // 'onayli'), ama metin yeniden incelemeye girerse tek satirla geri gelir.
   check('D9 taslak seridi kabukta (dort sayfada birden)',
     /HUKUKI_METIN_DURUMU === 'taslak'/.test(sayfaKabuk));
 
@@ -318,6 +332,65 @@ function main(): void {
   ] as const) {
     check(`D12 altbilgi ${ad} duzenine mount EDILDI`, /<Altbilgi/.test(jsxKodu(oku(yol))));
   }
+
+  // ══ D13 · METNIN SOYLEDIGI SURE = KODUN YAPTIGI IS (22.09) ═════════════
+  //
+  // 22.09'a kadar metinde DORT yer tutucu vardi ve musteriye "[YASAL SAKLAMA
+  // SURESI]" diye GORUNUYORDU (canlida /gizlilik ve /mesafeli-satis'ta
+  // olculdu). Emre dordunu de karara bagladi.
+  //
+  // ⚠ BU KAPININ VAR OLMA SEBEBI: yer tutucuya bir sure yazmak KOLAY, o
+  //   sureyi DOGRU yapmak ayri bir is. "Deneme kaydi 2 yil" cumlesi
+  //   yazildigi anda YALANDI — kod o satiri HIC silmiyordu, semanin kendi
+  //   yorumu "silmemeli" diyordu. Once yas ekseni eklendi, sonra cumle
+  //   yazildi. Kapi ikisinin birlikte kalmasini saglar: sayiyi metinde
+  //   degistirip kodda birakmak (ya da tersi) KIRMIZI olur.
+  const saklama = kodu(oku('backend/src/ozellik/imha/saklama-sureleri.ts'));
+  const imhaSrv = kodu(oku('backend/src/ozellik/imha/imha.servisi.ts'));
+  const imhaJob = kodu(oku('backend/src/ozellik/imha/imha.job.ts'));
+  const imhaListesi = kodu(oku('backend/src/ozellik/imha/imha-listesi.ts'));
+
+  const beYil = (saklama.match(/DENEME_KAYDI_SAKLAMA_YIL\s*=\s*(\d+)/) ?? [])[1];
+  const feYil = (metinlerKod.match(/denemeKaydiSaklama:\s*'(\d+) yıl'/) ?? [])[1];
+  check('D13 deneme kaydi saklama suresi KODDA ve METINDE ayni',
+    Boolean(beYil) && beYil === feYil, `kod=${beYil} metin=${feYil}`);
+  // Sabit var ama cumle duz yazi olsaydi, sabiti degistirmek metni
+  // degistirmezdi — bu deponun tekrarlayan "mekanizma var, baglanti yok"u.
+  check('D13b cumle SABITTEN okuyor (duz yazi degil)',
+    /HUKUKI_KARARLAR\.denemeKaydiSaklama/.test(metinlerKod));
+  // ASIL IDDIA: kod bu kaydi gercekten siliyor mu? Suzgec TARIHE bagli olmali;
+  // suzgecsiz bir `deleteMany` tum tabloyu gotururdu (§5 kirmizi cizgi 3).
+  check('D13c kod bu kaydi GERCEKTEN siliyor (yas ekseni, tarih suzgecli)',
+    /denemeKullanimi\.deleteMany/.test(imhaSrv) &&
+      /olusturuldu:\s*\{\s*lt:\s*esik\s*\}/.test(imhaSrv));
+  check('D13d gunluk is yas eksenini CAGIRIYOR (yoksa hic kosmaz)',
+    /eskiDenemeKayitlariniSil\(/.test(imhaJob));
+  // IKINCI EKSEN KORUNUYOR MU? Kaydi `SILINMEZLER`den cikarmak "2 yil"
+  // cumlesini yine dogru yapardi ama BASKA bir kurali kirardi: hesabini
+  // kapatan kisi ertesi ay ayni adresle ikinci bir ucretsiz deneme alirdi.
+  const silinmezler = imhaListesi.slice(imhaListesi.indexOf('SILINMEZLER'));
+  check('D13e firma ekseninde HALA korunuyor (kapatip yeni deneme alinamaz)',
+    /model: 'DenemeKullanimi'/.test(silinmezler));
+  for (const [ad, anahtar] of [
+    ['yasal saklama', 'yasalSaklama'],
+    ['firma islem kaydi', 'firmaIslemKaydiSaklama'],
+    ['fatura iletimi', 'faturaIletim'],
+  ] as const) {
+    check(`D13f ${ad} karari SABITTE ve cumleye BAGLI`,
+      new RegExp(`${anahtar}:\\s*'`).test(metinlerKod) &&
+        new RegExp(`HUKUKI_KARARLAR\\.${anahtar}`).test(metinlerKod));
+  }
+  check('D13g dort yer tutucunun hicbiri metinlerde KALMADI',
+    !/\[YASAL SAKLAMA SURESI\]/.test(metinlerKod) &&
+      !/\[DENEME KAYDI SAKLAMA SÜRESİ\]/.test(metinlerKod) &&
+      !/\[FATURA İLETİM YÖNTEMİ\]/.test(metinlerKod) &&
+      !/\[FIRMA ISLEM KAYDI SAKLAMA SURESI\]/.test(metinlerKod));
+  // "Hesabiniz acik oldugu surece" ancak imha o kaydi SILIYORSA dogrudur.
+  // `FirmaOlayi` SILINECEKLER'de olmazsa cumle yalan olur.
+  const silinecekler = imhaListesi.slice(
+    imhaListesi.indexOf('SILINECEKLER'), imhaListesi.indexOf('SILINMEZLER'));
+  check('D13h firma islem kaydi imhada GERCEKTEN siliniyor (FirmaOlayi)',
+    /model: 'FirmaOlayi'/.test(silinecekler));
 
   // ── E. DEPOLAMA SERIDI ─────────────────────────────────────────────────
   console.log('\n── E · DEPOLAMA BILGILENDIRMESI ──');

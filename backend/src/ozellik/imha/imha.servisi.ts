@@ -8,6 +8,7 @@ import {
   SilmeKurali,
   imhaEpostasi,
 } from './imha-listesi';
+import { DENEME_KAYDI_SAKLAMA_GUN, yasEsigi } from './saklama-sureleri';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -456,6 +457,47 @@ export class ImhaServisi {
         data: { ...anonim, email: imhaEpostasi(id) },
       });
       n++;
+    }
+    return n;
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  §5.5 — YAS EKSENI: SURESI DOLMUS DENEME KAYITLARI
+  // ═════════════════════════════════════════════════════════════════════════
+  /**
+   * 2 yildan eski `DenemeKullanimi` satirlarini siler (Emre karari,
+   * 22.09.2026 — Gizlilik Politikasi'ndaki sure bu yolla DOGRU olur).
+   *
+   * ⚠ FIRMA IMHASINDAN BAGIMSIZ, BILEREK. Bu kayit `SILINMEZLER` icinde
+   *   kalir: hesabini kapatan biri ertesi ay ayni adresle kaydolup ikinci
+   *   bir ucretsiz deneme ALAMAZ. Buradaki olcut hesabin durumu degil,
+   *   KAYDIN YASI. Iki eksenin gerekcesi `saklama-sureleri.ts` basinda.
+   *
+   * ⚠ NEDEN `deleteMany` BURADA SERBEST: dosyanin 3. kirmizi cizgisi
+   *   "kapsam suzgecsiz `deleteMany` yasak" diyor. Suzgec BURADA DA VAR —
+   *   kimlik degil, TARIH. Tehlike ayni: suzgec dusurse tum tablo gider.
+   *   Bu yuzden esik `yasEsigi()` ile uretiliyor; o fonksiyon gecersiz
+   *   tarihte sessizce gecmek yerine PATLAR.
+   *
+   * ⚠ TRANSACTION YOK, BILEREK: tek tablo, tek ifade. Yarim kalma hali
+   *   tanimsiz — ya silinir ya silinmez. Firma imhasindaki "yarisi silinmis
+   *   firma" riski burada yok.
+   */
+  async eskiDenemeKayitlariniSil(
+    simdi: Date,
+    gun: number = DENEME_KAYDI_SAKLAMA_GUN,
+  ): Promise<number> {
+    const esik = yasEsigi(simdi, gun);
+    const db = this.prisma as any;
+    const sonuc = await db.denemeKullanimi.deleteMany({
+      where: { olusturuldu: { lt: esik } },
+    });
+    const n: number = sonuc?.count ?? 0;
+    if (n > 0) {
+      this.logger.log(
+        `Suresi dolmus deneme kaydi silindi: ${n} satir ` +
+          `(${gun} gunden eski, esik ${esik.toISOString()}).`,
+      );
     }
     return n;
   }

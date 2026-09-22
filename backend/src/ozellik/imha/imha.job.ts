@@ -127,6 +127,22 @@ export class ImhaJob {
         `Imha kosumu ${this.AZAMI_KAYIT} kayit sinirina dayandi — kalanlar ertesi gece.`,
       );
     }
+
+    // ── 3) YAS EKSENI: SURESI DOLMUS DENEME KAYITLARI ────────────────────
+    // ⚠ 1 ve 2'DEN BAGIMSIZ, BILEREK. Ustteki iki adim `imhaTarihi`e, yani
+    //   HESABIN durumuna bakar. Bu adim kaydin KENDI yasina bakar ve acik
+    //   hesaplarin kayitlarini da kapsar — Gizlilik Politikasi'ndaki "2 yil"
+    //   cumlesi ancak boyle dogru olur. Gerekce: `saklama-sureleri.ts`.
+    // ⚠ `AZAMI_KAYIT` UYGULANMIYOR: tek tabloda tek `deleteMany`; parcalamak
+    //   kilit suresini kisaltmaz, yalnizca ayni isi N gece yayardi.
+    try {
+      await this.imha.eskiDenemeKayitlariniSil(simdi);
+    } catch (e) {
+      // Bu adimin dusmesi 1 ve 2'yi GECERSIZ KILMAZ; onlar zaten islendi.
+      // Sessiz yutma yok: yarin gece tekrar denenir, kayit log'da durur.
+      this.logger.error(`Suresi dolmus deneme kaydi temizligi basarisiz: ${e}`);
+    }
+
     return sonuclar;
   }
 }

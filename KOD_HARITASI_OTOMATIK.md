@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 699
-Toplam satir: 170867
+Kod dosyasi: 700
+Toplam satir: 171283
 Uc nokta: 215
 test:* scripti: 113
 
@@ -50,7 +50,7 @@ test:* scripti: 113
 | `backend/src/altyapi/auth/guards/roles.guard.ts` | 20 |
 | `backend/src/altyapi/auth/guards/tier.guard.ts` | 91 |
 | `backend/src/altyapi/auth/hesap.servisi.ts` | 729 |
-| `backend/src/altyapi/auth/hukuki-surum.ts` | 35 |
+| `backend/src/altyapi/auth/hukuki-surum.ts` | 39 |
 | `backend/src/altyapi/auth/jwt-secret.ts` | 37 |
 | `backend/src/altyapi/auth/kapali-hesap.ts` | 233 |
 | `backend/src/altyapi/auth/kapatma-epostalari.ts` | 72 |
@@ -182,10 +182,11 @@ test:* scripti: 113
 | `backend/src/ozellik/giris/excel-grid/excel-grid.service.ts` | 1120 |
 | `backend/src/ozellik/giris/excel-grid/sheet-discipline.ts` | 61 |
 | `backend/src/ozellik/giris/excel-grid/standart-sema.ts` | 361 |
-| `backend/src/ozellik/imha/imha-listesi.ts` | 623 |
-| `backend/src/ozellik/imha/imha.job.ts` | 133 |
+| `backend/src/ozellik/imha/imha-listesi.ts` | 626 |
+| `backend/src/ozellik/imha/imha.job.ts` | 149 |
 | `backend/src/ozellik/imha/imha.module.ts` | 25 |
-| `backend/src/ozellik/imha/imha.servisi.ts` | 463 |
+| `backend/src/ozellik/imha/imha.servisi.ts` | 505 |
+| `backend/src/ozellik/imha/saklama-sureleri.ts` | 75 |
 | `backend/src/ozellik/kutuphane/admin/admin-kurumsal-giris.controller.ts` | 136 |
 | `backend/src/ozellik/kutuphane/admin/admin.controller.ts` | 288 |
 | `backend/src/ozellik/kutuphane/admin/admin.module.ts` | 22 |
@@ -300,7 +301,7 @@ test:* scripti: 113
 | `backend/test/faz2-kullanici-yonetimi-test.ts` | 618 |
 | `backend/test/faz3-eposta-parola-test.ts` | 876 |
 | `backend/test/faz4-firma-teklif-test.ts` | 263 |
-| `backend/test/faz5-kvkk-hukuki-test.ts` | 413 |
+| `backend/test/faz5-kvkk-hukuki-test.ts` | 486 |
 | `backend/test/faz7-ekip-test.ts` | 1988 |
 | `backend/test/faz7-kurumsal-test.ts` | 1934 |
 | `backend/test/faz7-mfa-test.ts` | 1540 |
@@ -321,7 +322,7 @@ test:* scripti: 113
 | `backend/test/guvenlik-uclari-test.ts` | 459 |
 | `backend/test/hesap-dogrulugu-test.ts` | 844 |
 | `backend/test/iliskisel-alan-suzgeci-test.ts` | 171 |
-| `backend/test/imha-test.ts` | 1057 |
+| `backend/test/imha-test.ts` | 1165 |
 | `backend/test/imza-ekseni-test.ts` | 325 |
 | `backend/test/index-engine-test.ts` | 1774 |
 | `backend/test/iscilik-satir-silme-test.ts` | 127 |
@@ -556,8 +557,8 @@ test:* scripti: 113
 | `frontend/ozellik/fiyat/use-currency.ts` | 87 |
 | `frontend/ozellik/giris/kaynak-kolon.ts` | 34 |
 | `frontend/ozellik/hukuki/HukukiSayfa.tsx` | 110 |
-| `frontend/ozellik/hukuki/metinler.ts` | 878 |
-| `frontend/ozellik/hukuki/satici-metin.test.ts` | 393 |
+| `frontend/ozellik/hukuki/metinler.ts` | 952 |
+| `frontend/ozellik/hukuki/satici-metin.test.ts` | 414 |
 | `frontend/ozellik/kimlik/GirisDaliEkrani.tsx` | 53 |
 | `frontend/ozellik/kimlik/IkiAdimliGirisKarti.tsx` | 328 |
 | `frontend/ozellik/kimlik/KurtarmaKodlariEkrani.tsx` | 105 |
@@ -866,7 +867,7 @@ test:* scripti: 113
 | `backend/src/ozellik/giris/excel-grid/standart-sema.ts` | `../../kutuphane/utils/import-fidelity` |
 | `backend/src/ozellik/imha/imha.job.ts` | `@nestjs/common` `@nestjs/schedule` `../../altyapi/db/prisma.service` `./imha.servisi` |
 | `backend/src/ozellik/imha/imha.module.ts` | `@nestjs/common` `./imha.servisi` `./imha.job` |
-| `backend/src/ozellik/imha/imha.servisi.ts` | `@nestjs/common` `../../altyapi/db/prisma.service` |
+| `backend/src/ozellik/imha/imha.servisi.ts` | `@nestjs/common` `../../altyapi/db/prisma.service` `./saklama-sureleri` |
 | `backend/src/ozellik/kutuphane/admin/admin-kurumsal-giris.controller.ts` | `../../../altyapi/db/prisma.service` `../../../altyapi/auth/guards/jwt-auth.guard` `../../../altyapi/auth/guards/roles.guard` `../../../altyapi/auth/decorators/roles.decorator` `../../../altyapi/auth/decorators/current-user.decorator` `../../../altyapi/auth/kurumsal/saglayici-kurallari` `../../../altyapi/auth/kurumsal/dto/kurumsal.dto` |
 | `backend/src/ozellik/kutuphane/admin/admin.controller.ts` | `express` `@nestjs/platform-express` `multer` `./admin.service` `../../giris/excel-grid/excel-grid.service` `../../../altyapi/auth/guards/jwt-auth.guard` `../../../altyapi/auth/guards/roles.guard` `../../../altyapi/auth/decorators/roles.decorator` `../../../altyapi/auth/decorators/current-user.decorator` `./dto/kullanicilar-sorgusu.dto` `./dto/firma-rol.dto` |
 | `backend/src/ozellik/kutuphane/admin/admin.module.ts` | `@nestjs/common` `./admin.controller` `./admin-kurumsal-giris.controller` `./admin.service` `../../../altyapi/db/prisma.module` `../../giris/ai/ai.module` `../../giris/excel-grid/excel-grid.module` `../../eslestirme/matching/matching.module` `../../odeme/odeme.module` |

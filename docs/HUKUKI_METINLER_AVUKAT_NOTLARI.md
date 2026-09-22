@@ -1,5 +1,46 @@
 # Hukuki metinler — avukata sorulacaklar
 
+> ## ✅ 22.09.2026 — METİNLER ONAYLANDI, DÖRT YER TUTUCU KAPANDI
+>
+> **`HUKUKI_METIN_DURUMU` = `'onayli'`** (Emre: "avukat onay verdi").
+> Dört hukuki sayfanın üstündeki taslak şeridi KALKTI. Metin sürümü
+> `2026-09-22` (ön yüz ve arka yüz ikizi birlikte artırıldı).
+>
+> **Açık kalan dört yer tutucunun DÖRDÜ DE dolduruldu** (Emre kararları) ve
+> `HUKUKI_KARARLAR` sabitine taşındı — metne düz yazılmadı:
+>
+> | Yer tutucu | Karar |
+> |---|---|
+> | `[YASAL SAKLAMA SURESI]` | **10 yıl** |
+> | `[FIRMA ISLEM KAYDI SAKLAMA SURESI]` | **hesabınız açık olduğu sürece** |
+> | `[DENEME KAYDI SAKLAMA SÜRESİ]` | **2 yıl** |
+> | `[FATURA İLETİM YÖNTEMİ]` | **e-posta ile** |
+>
+> Aşağıdaki bölümlerde bu dördü için geçen "hâlâ boş / doldurulmadı"
+> ifadeleri BAYATTIR.
+>
+> **⚠⚠ "2 yıl" YAZMADAN ÖNCE KOD DÜZELTİLDİ.** 21.09'da ürün bu kaydı
+> (`DenemeKullanimi`) **hiç silmiyordu**; şemanın kendi yorumu "bu satırı
+> silmemeli" diyordu. Yer tutucuya "2 yıl" yazmak müşteriye tutulmayan bir
+> söz vermek olurdu. Önce **yaş ekseni** eklendi
+> (`backend/src/ozellik/imha/saklama-sureleri.ts` +
+> `ImhaServisi.eskiDenemeKayitlariniSil`, günlük 04:15 işine bağlı), sonra
+> cümle yazıldı. Kayıt firma ekseninde HÂLÂ korunuyor (hesabını kapatan kişi
+> ikinci bir ücretsiz deneme alamaz); silinen şey **2 yaşını dolduran** kayıt.
+> `test:faz5` D13 metin ile kodun aynı yılı söylediğini ölçer.
+>
+> **⚠ AVUKATA HATIRLATILACAK — onay, aşağıdaki ÜÇ SSO SORUSUNDAN ÖNCE
+> geldi.** Bu dosyanın "Kurumsal giriş" bölümü, KVKK m.9 (yurt dışına
+> aktarım), sıfat (veri sorumlusu / veri işleyen) ve alıcı listesi
+> sorularının yanıtlanmadan metinlerin onaylı yapılmamasını yazıyordu.
+> Emre'nin 22.09 beyanı genel bir onaydır; bu üç soru **ayrıca teyit
+> edilmeli**. Yanıt metni değiştirirse sürüm artar ve gerekirse şerit
+> `HUKUKI_METIN_DURUMU = 'taslak'` ile geri getirilir (mekanizma duruyor,
+> `test:faz5` D8b/D9 ölçüyor).
+>
+> **Posta kutusu:** `info@metapricex.com` çalışıyor — Emre teyidi (21.09,
+> "mail geliyor"). Aşağıdaki "kutu henüz açılmadı" uyarısı BAYATTIR.
+
 > ## ⚠ 16.09.2026 GÜNCELLEMESİ — bu dosyanın altındaki bazı bulgular BAYATTI
 >
 > **Satıcı kimliği GİRİLDİ (Faz 6.4).** Aşağıdaki "Doldurulması gereken alanlar"
@@ -14,7 +55,7 @@
 > - İade: "Kalan günler için iade yapılmaz; dönem sonuna kadar kullanmaya devam edersiniz."
 > - Yetkili mahkeme: "İstanbul Anadolu Mahkemeleri ve İcra Daireleri"
 >
-> **HÂLÂ AÇIK olan üç yer tutucu** (yalnız bunlar kaldı):
+> **~~HÂLÂ AÇIK olan üç yer tutucu~~ — ÜÇÜ DE 22.09'DA KAPANDI** (yukarıdaki bloğa bak):
 > - `[YASAL SAKLAMA SURESI]` — Gizlilik, fatura/ödeme kayıtları (avukat)
 > - `[DENEME KAYDI SAKLAMA SÜRESİ]` — Gizlilik, ücretsiz deneme kaydı (avukat)
 > - `[FATURA İLETİM YÖNTEMİ]` — Ön Bilgilendirme 11. bölüm (muhasebe programı kararı)
@@ -36,13 +77,13 @@
 > sayfasında "Verilerimi indir (JSON)" ile "Hesabımı kapat" olarak görünüyor.
 > Kullanım Koşulları'ndaki "kapatan düğme yok" cümlesi de kaldırıldı.
 >
-> **HÂLÂ GEÇERLİ UYARI — MX / posta kutusu:** `info@metapricex.com` kutusu
-> **henüz açılmadı**. Dört hukuki sayfa ve sözleşme başvuru adresi olarak bu
+> **~~HÂLÂ GEÇERLİ UYARI~~ — BAYAT (22.09): posta kutusu ÇALIŞIYOR.**
+> ~~`info@metapricex.com` kutusu **henüz açılmadı**.~~ Dört hukuki sayfa ve sözleşme başvuru adresi olarak bu
 > adresi gösteriyor. **Kutu açılıp test maili ulaşmadan bu sürüm canlıya
 > ÇIKMAZ.**
 >
-> **Metin durumu hâlâ `taslak`** (`HUKUKI_METIN_DURUMU`): avukat onayı gelene
-> kadar dört sayfanın üstündeki uyarı şeridi kalkmaz.
+> **~~Metin durumu hâlâ `taslak`~~ — BAYAT (22.09): durum `onayli`,**
+> şerit dört sayfadan da kalktı.
 
 
 Metinler uygulamanin KODUNDAN olculen gercek veri akisina gore yazildi
@@ -58,7 +99,7 @@ cozulemeyen, hukuki karar gerektiren noktalardir.
 - [VERGI DAIRESI VE VERGI NO]
 - [BASVURU E-POSTA ADRESI]
 - [TELEFON]
-- [YASAL SAKLAMA SURESI]
+- ~~[YASAL SAKLAMA SURESI]~~ → **KAPANDI 22.09: 10 yıl** (Emre kararı).
 
 **Hukuki karar gerektirenler:**
 - Yurt dışına aktarım (Anthropic/ABD, Brevo/Fransa, Hetzner/Almanya) KVKK m.9 kapsamında neye dayandırılacak: açık rıza mı, standart sözleşme + Kurul bildirimi mi, taahhütname mi? Metinde bugün yalnızca aktarımın varlığı bildiriliyor, hukuki ayak belirtilmiyor.
@@ -119,7 +160,10 @@ cozulemeyen, hukuki karar gerektiren noktalardir.
 - [VERGİ NO]
 - [TELEFON]
 - [İLETİŞİM E-POSTASI] — ⚠ yayına almadan önce alan adına MX kaydı eklenmeli; bugün metapricex.com'a gelen e-postalar geri döner, yani yazılan adres cevap alınabilir bir adres değil
-- [FATURA İLETİM YÖNTEMİ] — e-arşiv/e-fatura mı, e-posta eki mi; hangisi kullanılacaksa yazılmalı
+- ~~[FATURA İLETİM YÖNTEMİ]~~ → **KAPANDI 22.09: e-posta ile** (Emre kararı).
+  ⚠ Metne yalnız "e-posta ile tarafınıza iletilir" yazıldı; "kaç gün içinde",
+  "hangi adrese" gibi ayrıntılar ürün davranışıyla ölçülmeden YAZILMADI —
+  hukuki metne doğrulanmamış bir söz koymak, yer tutucu bırakmaktan kötüdür.
 - [İADE POLİTİKASI] — iade talebinin hangi koşullarda karşılanacağı; ayrı bir sayfa yapılacaksa bağlantısı verilmeli
 - [YETKİLİ MAHKEME VE İCRA DAİRELERİ] — tüketici sayılmayan firma müşteriler için yetki şartı
 
@@ -142,7 +186,12 @@ cozulemeyen, hukuki karar gerektiren noktalardir.
 **Metne giren yenilikler (taslak, avukat onayı bekliyor):**
 - Firma sahibi ekip arkadaşlarını e-postayla davet edebiliyor; bir kişi aynı anda yalnız bir firmanın üyesi olabiliyor (aydınlatma "kimler için" + kullanım koşulları "hesap" maddesi).
 - Yeni aydınlatma bölümü **"Ekip içinde görünürlük"**: üyenin adı, e-posta adresi ve tekliflerdeki "Hazırlayan" bilgisi diğer üyelere görünür; ekipten çıkarılan ya da hesabını kapatan kişinin teklifleri firmada kalır ve "ayrıldı" notuyla görünür.
-- Saklama süreleri: ekip daveti bağlantısı 7 gün; **firma içi işlem kaydının saklama süresi BOŞ** — `[FIRMA ISLEM KAYDI SAKLAMA SURESI]` yer tutucusu dolduruılmalı (yönetici denetim izi "silinmez" diyor; firma işlem kaydı için aynı yaklaşım mı?).
+- Saklama süreleri: ekip daveti bağlantısı 7 gün; firma içi işlem kaydı →
+  **KAPANDI 22.09: "hesabınız açık olduğu sürece"** (Emre kararı). Yönetici
+  denetim izinden AYRILDI: o "silinmez", bu hesaba bağlı. Ölçüldü —
+  `FirmaOlayi` imha listesinde `SILINECEKLER` içinde (`imha-listesi.ts:376`,
+  firma ekseni), yani hesap imha edilince kayıt gerçekten gidiyor; cümle
+  kodla uyumlu (`test:faz5` D13h ölçer).
 - Kişi sınırı aşımı cümlesi (kullanım koşulları, paketler): hakkı aşan üyelerin erişimi **en son katılandan başlayarak durdurulur**, veri silinmez, durdurulan üye verilerini indirebilir ve hesabını kapatabilir.
 
 **⚠ HUKUKİ KARAR GEREKTİREN — geriye dönük hak düşürme:**
@@ -222,8 +271,16 @@ Satırın **imhadan sonra da** taşıdığı kişisel veri:
 
 Sorular:
 1. Hesap kapandıktan ve diğer veriler imha edildikten sonra bu **e-posta ve telefonun** saklanmaya devam etmesinin hukuki dayanağı nedir — dolandırıcılığın/kötüye kullanımın önlenmesinde **meşru menfaat** yeterli mi, yoksa ayrı bir açık rıza mı gerekir?
-2. **Azami saklama süresi ne olmalı?** Gizlilik metnindeki `[DENEME KAYDI SAKLAMA SÜRESİ]` yer tutucusu **hâlâ boş** ve bu tur onu doldurmadı. Süresiz saklama savunulabilir mi?
+2. ~~**Azami saklama süresi ne olmalı?**~~ → **KAPANDI 22.09: 2 yıl** (Emre
+   kararı). Süresiz saklama seçilmedi. ⚠ Karar yalnız metne yazılmadı, KOD
+   da değiştirildi: yaş ekseni eklenmeden önce bu kayıt hiç silinmiyordu
+   (bkz. dosyanın başındaki 22.09 bloğu). 2 yıl dolunca kayıt gider ve o
+   noktada deneme hakkı yeniden doğar — bu, kabul edilen sonuçtur.
 3. İlgili kişi **"bu kaydı da silin"** derse verilecek cevap ne olmalı? Silinirse kişi hesabını kapatıp aynı adresle yeniden kaydolarak yeni bir ücretsiz deneme alır — yani talebin reddi bir **hak kaybı** değil, ürünün kötüye kullanım korumasıdır. Bu reddin metinde önceden ve açıkça yazılması gerekiyor mu?
 4. Telefonun **son 10 hanesinin** ve e-postanın tutulması yerine geri döndürülemez bir **özet (hash)** yeterli olur muydu? (Teknik olarak mümkün; bugün düz tutuluyor çünkü KVKK veri indirmesi bu kayıtları kişiye **okunur** biçimde döndürüyor.)
 
-**Ayrıca silinmeyenler (metinde sayılıyor):** fatura, ödeme ve abonelik kayıtları (yasal saklama) ile yönetici işlem kayıtları (denetim izi). Bunların süresi hâlâ `[YASAL SAKLAMA SURESI]` yer tutucusuna bağlı ve bu turda **doldurulmadı**.
+**Ayrıca silinmeyenler (metinde sayılıyor):** fatura, ödeme ve abonelik
+kayıtları (yasal saklama) ile yönetici işlem kayıtları (denetim izi).
+Fatura/ödeme/abonelik süresi **KAPANDI 22.09: 10 yıl**. Yönetici denetim izi
+metinde "silinmez" diyor ve bu bilerek süresizdir — kendi kanıtını silen bir
+imha denetlenemez (`imha-listesi.ts` `YoneticiOlayi` gerekçesi).

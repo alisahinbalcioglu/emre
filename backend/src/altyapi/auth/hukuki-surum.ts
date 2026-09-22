@@ -31,4 +31,8 @@
 // saklama suresi (15 dk bekleyen kurulum) ve kullanim kosullari md.3
 // (hesap guvenligi) eklendi. ANLAM degisti → surum artti.
 // ⚠ ON YUZ KOPYASIYLA AYNI OLMAK ZORUNDA (`test:faz5` D7 olcer).
-export const HUKUKI_METIN_SURUMU = '2026-09-21';
+// 2026-09-22: dort acik hukuki karar kapandi (saklama sureleri + fatura
+// iletimi). Metinlerdeki kose parantezli yer tutucular somut degerlerle
+// doldu ve `HUKUKI_METIN_DURUMU` 'onayli' yapildi. ANLAM degisti -> surum
+// artti. ⚠ ON YUZ KOPYASIYLA AYNI OLMAK ZORUNDA (`test:faz5` D7 olcer).
+export const HUKUKI_METIN_SURUMU = '2026-09-22';

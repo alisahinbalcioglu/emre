@@ -31,15 +31,27 @@
 // 2026-09-20 (Faz 7 F2b): iki adımlı giriş (TOTP) — aydınlatmada işlenen veri
 // (şifreli gizli anahtar, kurtarma kodu özetleri, hatalı deneme sayacı),
 // kullanım koşullarında hesap güvenliği maddesi. ANLAM değişti → sürüm arttı.
-export const HUKUKI_METIN_SURUMU = '2026-09-21';
+// 2026-09-22: DORT ACIK KARAR KAPANDI — saklama sureleri (yasal 10 yil,
+// firma islem kaydi hesap acik oldugu surece, deneme kaydi 2 yil) ve fatura
+// iletim yontemi (e-posta). Yer tutucular musteriye GORUNUYORDU; artik
+// somut sureler yaziyor. ANLAM degisti -> surum artti.
+export const HUKUKI_METIN_SURUMU = '2026-09-22';
 
 /**
- * Metinler avukat incelemesinden GEÇMEDİ. `taslak` olduğu sürece her
- * hukuki sayfanın üstünde uyarı şeridi görünür. İnceleme bitince bu
- * sabit 'onayli' yapılır ve şerit DÖRT sayfadan birden kalkar —
- * sayfaları tek tek düzenlemek gerekmez.
+ * Metinlerin avukat inceleme durumu. `taslak` olduğu sürece her hukuki
+ * sayfanın üstünde uyarı şeridi görünür; `onayli` yapıldığında şerit DÖRT
+ * sayfadan birden kalkar — sayfaları tek tek düzenlemek gerekmez.
+ *
+ * ⚠ 22.09.2026 — `taslak` → `onayli`. Emre: "avukat onay verdi". Onayla
+ * birlikte metinlerde açık bırakılmış DÖRT karar da kapandı (saklama
+ * süreleri ve fatura iletimi — bkz. `HUKUKI_KARARLAR`); artık müşteriye
+ * köşeli parantezli yer tutucu görünmüyor.
+ *
+ * ⚠ ŞERİT MEKANİZMASI SİLİNMEDİ, yalnız kapandı. Metin ileride esaslı
+ * biçimde değişir ve yeniden inceleme beklerse bu sabit `taslak` yapılır,
+ * şerit geri gelir. `test:faz5` D9 kabuğun hâlâ bu sabite baktığını ölçer.
  */
-export const HUKUKI_METIN_DURUMU: 'taslak' | 'onayli' = 'taslak';
+export const HUKUKI_METIN_DURUMU: 'taslak' | 'onayli' = 'onayli';
 
 /**
  * SATICI KİMLİĞİ — ticaret sicilinden (16.09.2026).
@@ -145,6 +157,47 @@ export const HUKUKI_KARARLAR = {
     'Kalan günler için iade yapılmaz; dönem sonuna kadar kullanmaya devam edersiniz.',
   /** Emre, 15.09. */
   yetkiliMahkeme: 'İstanbul Anadolu Mahkemeleri ve İcra Daireleri',
+
+  // ── 22.09.2026 — DÖRT AÇIK KARAR KAPANDI ────────────────────────────────
+  // Bu dördü 15.09'dan beri metinde KÖŞELİ PARANTEZLİ yer tutucuydu ve
+  // müşteriye öyle görünüyordu (`/gizlilik` ve `/mesafeli-satis` sayfalarında
+  // canlıda ölçüldü). `satici-metin.test.ts` IZINLI_KALAN listesinde
+  // gerekçeleriyle kayıtlıydılar; Emre'nin kararlarıyla liste BOŞALDI.
+  //
+  // ⚠ DÜZ YAZI DEĞİL SABİT: dördü de birden fazla cümlede geçebilir ve
+  // bu deponun tekrarlayan "ikiz" hatası tam olarak budur — biri
+  // güncellenir, öteki geride kalır. Tek kaynaktan okunuyorlar.
+
+  /**
+   * Emre, 22.09.2026. Vergi Usul Kanunu ve TTK'nın öngördüğü genel süre.
+   * ⚠ Bu bir TAAHHÜT değil ÜST SINIR: "mevzuatın öngördüğü süre" cümlesinin
+   * somut karşılığı olarak yazılıyor, tek başına bir söz vermiyor.
+   */
+  yasalSaklama: '10 yıl',
+
+  /**
+   * Emre, 22.09.2026 — firma içi işlem kaydı (kim kimi davet etti, çıkardı,
+   * rolünü değiştirdi). Yönetici denetim izinden AYRI: o "silinmez" diyor,
+   * bu hesaba bağlı. Hesap imha edildiğinde bu kayıt da gider — yani
+   * `imha-listesi.ts` bu satırı SİLİYOR olmalı; ikisi uyumsuzsa metin yalan.
+   */
+  firmaIslemKaydiSaklama: 'hesabınız açık olduğu sürece',
+
+  /**
+   * Emre, 22.09.2026.
+   * ⚠⚠ BU CÜMLE KODA BAĞLI. Arka yüzdeki ikizi
+   * `backend/src/ozellik/imha/saklama-sureleri.ts` → `DENEME_KAYDI_SAKLAMA_YIL`.
+   * `test:faz5` D12 kapısı ikisinin AYNI yılı söylediğini ölçer. Sayıyı
+   * burada değiştirip orada bırakmak, müşteriye tutulmayan bir söz verir —
+   * 21.09'da tam olarak bu durumdaydık (kod bu kaydı hiç silmiyordu).
+   */
+  denemeKaydiSaklama: '2 yıl',
+
+  /**
+   * Emre, 22.09.2026. Bugünkü gerçek: fatura e-posta ile iletiliyor, basılı
+   * gönderim yok. Ürün davranışı değişirse bu cümle de değişmeli.
+   */
+  faturaIletim: 'e-posta ile',
 } as const;
 
 export interface HukukiBolum {
@@ -281,10 +334,18 @@ export const GIZLILIK: HukukiMetin = {
         "Veritabanı yedekleri: düzenli yedekler sunucuda 14 gün; sürüm yükleme ve geri yükleme öncesinde alınanlar dâhil diğer tüm yedekler en fazla 30 gün tutulur. Sunucu dışındaki kopya şifrelenmiş olarak saklanır. Silinen veriler yedeklerden en geç 30 gün içinde çıkar.",
         "Parola sıfırlama bağlantısı: 1 saat. E-posta doğrulama bağlantısı: 24 saat. Oturumunuz (giriş anahtarı): 7 gün.",
         "İki adımlı giriş kurulumu tamamlanmazsa hazırlanan gizli anahtar 15 dakika sonra geçersiz olur. Kurtarma kodları, siz yenileyene ya da iki adımlı girişi kapatana kadar saklanır; kapatıldığında silinir.",
-        "Ekip daveti bağlantısı: 7 gün (kabul edilmeyen davet kaydı işlem kaydı olarak saklanır). Firma içi işlem kaydı — [FIRMA ISLEM KAYDI SAKLAMA SURESI].",
+        // 22.09: yer tutucu DOLDURULDU. Ölçüldü — `FirmaOlayi` imha listesinde
+        // `SILINECEKLER` içinde (`imha-listesi.ts:376`, firma ekseni), yani
+        // hesap imha edildiğinde bu kayıt GERÇEKTEN gidiyor. Yönetici denetim
+        // izinden farkı bu: o "silinmez" diyor, bu hesaba bağlı.
+        "Ekip daveti bağlantısı: 7 gün (kabul edilmeyen davet kaydı işlem kaydı olarak saklanır). Firma içi işlem kaydı — " +
+          HUKUKI_KARARLAR.firmaIslemKaydiSaklama +
+          " saklanır; hesabınız imha edildiğinde bu kayıt da silinir.",
         "Kurumsal giriş işlem kaydı: en fazla 24 saat. Şirket hesabıyla giriş başlattığınızda oluşan geçici akış kaydı (kimlik hizmetinden dönen doğrulanmış özet dahil) giriş tamamlanır tamamlanmaz temizlenir ve kayıt en geç 24 saat içinde silinir.",
         "DWG çizim geometrisi, işleme servisinin önbelleğinde 24 saat boyunca kalır.",
-        "Fatura, ödeme ve abonelik kayıtları: vergi ve ticaret mevzuatının öngördüğü süre boyunca — [YASAL SAKLAMA SURESI].",
+        "Fatura, ödeme ve abonelik kayıtları: vergi ve ticaret mevzuatının öngördüğü süre boyunca — " +
+          HUKUKI_KARARLAR.yasalSaklama +
+          ".",
         "Yönetici işlem kayıtları (denetim izi): silinmez. Bu kayıtlar, bir hesap kapatılsa bile o hesap üzerinde kimin ne yaptığının izlenebilmesi için tutulur.",
         // ⚠ 30 GÜNÜN İSTİSNASI, ADIYLA SÖYLENİYOR (21.09): hesap kapatıldıktan
         // 30 gün sonra veriler imha edilir AMA bu kayıt KALIR. Ölçüldü —
@@ -292,11 +353,18 @@ export const GIZLILIK: HukukiMetin = {
         // SILINMEZLER'de: "hesap kapatma ya da ileride veri imhası bu satırı
         // SİLMEMELİ; silinirse kapatıp aynı adresle kaydolan YENİ deneme alır."
         // ⚠ İLK CÜMLE PARÇASI AYNEN KORUNDU: `test:faz5` D-kapısı
-        // (`faz5-kvkk-hukuki-test.ts:288`) bu ön eki birebir arıyor.
-        // ⚠ YER TUTUCU BİLEREK DURUYOR: süre AÇIK BİR HUKUKİ KARARDIR ve
-        // 30 günlük imha takvimine bağlı DEĞİLDİR (kayıt o takvimin istisnası).
-        // `satici-metin.test.ts` IZINLI_KALAN listesinde gerekçesiyle kayıtlı.
-        "Ücretsiz deneme kaydı: hesabınız kapatılsa bile saklanır — kapatmadan 30 gün sonra yapılan kalıcı silme bu kaydı kapsamaz. Ücretsiz denemenin aynı firma, e-posta adresi veya telefon numarasıyla yeniden alınmasını önlemek için tutulur; kayıtta e-posta adresiniz ve telefon numaranız karşılaştırmaya elverecek sadeleştirilmiş biçimde kalır — [DENEME KAYDI SAKLAMA SÜRESİ].",
+        // (`faz5-kvkk-hukuki-test.ts:288`) bu ön eki birebir arıyor. Bu yüzden
+        // şablon dizgesi (backtick) DEĞİL, çift tırnak + birleştirme: kapı
+        // `"Ücretsiz` ön ekini tırnak karakteriyle birlikte arıyor.
+        // ── 22.09: YER TUTUCU DOLDURULDU, AMA ÖNCE KOD DÜZELTİLDİ ──────────
+        // Bu yer tutucuya "2 yıl" yazmak 21.09'da YALAN olurdu: kod bu satırı
+        // HİÇ silmiyordu, şema yorumu bile "silmemeli" diyordu. Önce yaş
+        // ekseni eklendi (`backend/src/ozellik/imha/saklama-sureleri.ts` +
+        // `ImhaServisi.eskiDenemeKayitlariniSil`, günlük işe bağlı), sonra
+        // cümle yazıldı. `test:faz5` D12 ikisinin aynı yılı söylediğini ölçer.
+        "Ücretsiz deneme kaydı: hesabınız kapatılsa bile saklanır — kapatmadan 30 gün sonra yapılan kalıcı silme bu kaydı kapsamaz. Ücretsiz denemenin aynı firma, e-posta adresi veya telefon numarasıyla yeniden alınmasını önlemek için tutulur; kayıtta e-posta adresiniz ve telefon numaranız karşılaştırmaya elverecek sadeleştirilmiş biçimde kalır — " +
+          HUKUKI_KARARLAR.denemeKaydiSaklama +
+          ". Bu sürenin sonunda kayıt silinir; kaydın yaşı hesabınızın açık ya da kapalı olmasından bağımsızdır.",
       ],
     },
     {
@@ -757,7 +825,13 @@ export const MESAFELI_SATIS: HukukiMetin = {
       baslik: "11. Fatura",
       paragraflar: [
         "Satın alma sırasında sizden fatura bilgilerinizi (ad-soyad veya unvan, kimlik/vergi numarası, adres, şehir, telefon) isteriz. Fatura, girdiğiniz bu bilgilere göre düzenlenir; bu nedenle bilgileri eksiksiz ve doğru girmeniz önemlidir.",
-        "Tahsilat KDV dahil tutar üzerinden yapılır; faturada matrah ve KDV ayrı satırlar hâlinde gösterilir. Faturanız [FATURA İLETİM YÖNTEMİ] ile tarafınıza iletilir.",
+        // 22.09: yer tutucu DOLDURULDU (Emre kararı). ⚠ CÜMLE BİLEREK KISA:
+        // "hangi adrese", "kaç gün içinde" gibi ayrıntılar ürün davranışıyla
+        // doğrulanmadan yazılamaz — hukuki metne ölçülmemiş bir söz koymak,
+        // yer tutucu bırakmaktan daha kötüdür.
+        "Tahsilat KDV dahil tutar üzerinden yapılır; faturada matrah ve KDV ayrı satırlar hâlinde gösterilir. Faturanız " +
+          HUKUKI_KARARLAR.faturaIletim +
+          " tarafınıza iletilir.",
         `Fatura bilgilerinizde hata olduğunu fark ederseniz ${SATICI.eposta} adresinden bize bildirin.`,
       ],
     },

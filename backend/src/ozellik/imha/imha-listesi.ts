@@ -458,7 +458,10 @@ export const SILINMEZLER: readonly KorumaKurali[] = [
     neden:
       '⛔ §5.5 DENEME HAKKI IZI. Semanin kendi cumlesi: "hesap kapatma ya da ' +
       'ileride veri imhasi bu satiri SILMEMELI". Silinirse kapatip ayni ' +
-      'adresle kaydolan YENI deneme alir.',
+      'adresle kaydolan YENI deneme alir. ⚠ "SONSUZA DEK" DEMEK DEGIL: bu ' +
+      'liste FIRMA/UYE eksenidir. Ayri bir YAS ekseni 2 yildan eski ' +
+      'satirlari siler (`saklama-sureleri.ts` · `ImhaServisi.' +
+      'eskiDenemeKayitlariniSil`); Gizlilik Politikasi"ndaki sure odur.',
     kisiselVeriTasir: true,
   },
   {

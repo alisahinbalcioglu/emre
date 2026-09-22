@@ -64,18 +64,20 @@ function yerTutucular(s: string): string[] {
  * Avukat / muhasebe kararı beklediği için BİLEREK açık bırakılanlar.
  * ⚠ Bu listeye yeni madde eklemek, "doldurulmadı"yı gizlemenin kolay yolu —
  * her ekleme raporda gerekçesiyle anılır.
+ *
+ * ── 22.09.2026: LİSTE BOŞALDI ─────────────────────────────────────────────
+ * Dört madde de Emre'nin kararlarıyla kapandı ve `HUKUKI_KARARLAR` içine
+ * taşındı: yasal saklama 10 yıl · firma işlem kaydı hesap açık olduğu sürece ·
+ * deneme kaydı 2 yıl · fatura e-posta ile. Bunlar 15.09'dan beri MÜŞTERİYE
+ * "[YASAL SAKLAMA SURESI]" gibi görünüyordu (canlıda `/gizlilik` ve
+ * `/mesafeli-satis` sayfalarında ölçüldü).
+ *
+ * ⚠ LİSTE SİLİNMEDİ, BOŞALDI. Mekanizma duruyor: yarın yeni bir karar
+ * beklenirse yer tutucu buraya gerekçesiyle yazılır. Listeyi büsbütün
+ * kaldırmak, bir dahaki sefere yer tutucunun sessizce müşteriye çıkmasına
+ * izin verirdi.
  */
-const IZINLI_KALAN = [
-  'YASAL SAKLAMA SURESI',
-  'DENEME KAYDI SAKLAMA SÜRESİ',
-  'FATURA İLETİM YÖNTEMİ',
-  // FAZ 7 F1b (17.09): firma içi işlem kaydının (kim kimi davet etti,
-  // çıkardı, rolünü değiştirdi) saklama süresi AÇIK HUKUKİ KARARDIR.
-  // Yönetici denetim izi metinde "silinmez" diyor; firma kaydı için aynı
-  // yaklaşımın geçerli olup olmadığı avukat görüşüne bağlı
-  // (docs/HUKUKI_METINLER_AVUKAT_NOTLARI.md · "Faz 7 — ekip ve kişi sınırı").
-  'FIRMA ISLEM KAYDI SAKLAMA SURESI',
-];
+const IZINLI_KALAN: string[] = [];
 
 describe('T-ÖLÇÜT — fixture gerçekten metin taşıyor', () => {
   // Boş küme her assert'i tesadüfen yeşil yapardı (bkz. bos_dizi_yalanci_yesil).
@@ -83,6 +85,25 @@ describe('T-ÖLÇÜT — fixture gerçekten metin taşıyor', () => {
     expect(HEPSI).toHaveLength(5);
     for (const m of HEPSI) expect(cizilen(m).length).toBeGreaterThan(8);
     expect(TUM_METIN.length).toBeGreaterThan(20000);
+  });
+
+  // ⚠⚠ OLUMLU KONTROL — 22.09'DA ZORUNLU HALE GELDİ.
+  // `IZINLI_KALAN` boşaldığı için aşağıdaki T1/T2 testlerinin ikisi de artık
+  // "boş dizi bekliyorum" diyor. `yerTutucular` bir gün sessizce bozulup HER
+  // ZAMAN boş dönse (regex kırılır, Türkçe büyük harf sınıfı daralır, `exec`
+  // döngüsü şaşar) iki test de YEŞİL kalırdı — ve gerçek bir yer tutucu
+  // doğrudan müşteriye çıkardı. Bu depoda ölçülmüş hata sınıfı:
+  // "boş dizide `.every()` yalancı yeşil".
+  it('yer tutucu dedektörü ÇALIŞIYOR (bulması gerekeni buluyor)', () => {
+    expect(yerTutucular('bir [YASAL SAKLAMA SURESI] iki')).toEqual([
+      'YASAL SAKLAMA SURESI',
+    ]);
+    expect(yerTutucular('[DENEME KAYDI SAKLAMA SÜRESİ] ve [FATURA İLETİM YÖNTEMİ]')).toEqual([
+      'DENEME KAYDI SAKLAMA SÜRESİ',
+      'FATURA İLETİM YÖNTEMİ',
+    ]);
+    // Küçük harfle başlayan köşeli parantez yer tutucu DEĞİLDİR (ör. dipnot).
+    expect(yerTutucular('kaynak [bkz. 3]')).toEqual([]);
   });
 });
 

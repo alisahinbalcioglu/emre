@@ -43,6 +43,10 @@ import {
   ImhaServisi,
 } from '../src/ozellik/imha/imha.servisi';
 import { ImhaJob } from '../src/ozellik/imha/imha.job';
+import {
+  DENEME_KAYDI_SAKLAMA_GUN,
+  DENEME_KAYDI_SAKLAMA_YIL,
+} from '../src/ozellik/imha/saklama-sureleri';
 
 let passed = 0;
 let failed = 0;
@@ -986,6 +990,109 @@ async function bolumG(): Promise<void> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+//  Y — YAS EKSENI: SURESI DOLMUS DENEME KAYITLARI (22.09.2026)
+// ═══════════════════════════════════════════════════════════════════════════
+/**
+ * NEDEN VAR: Gizlilik Politikasi "ucretsiz deneme kaydi ... 2 yil" diyor.
+ * 21.09'da o cumlede yer tutucu vardi ve kod bu satiri HIC silmiyordu; ayni
+ * gun semaya "bu satiri SILMEMELI" yazilmisti. Yer tutucuya "2 yil" yazmak
+ * tek basina metni DOGRU yapmazdi, YALAN yapardi. Once davranis eklendi.
+ *
+ * ⚠ IKI EKSEN AYNI ANDA DOGRU OLMALI:
+ *   · FIRMA ekseni — hesap kapaninca bu satir KALIR (I-bolumu olcuyor:
+ *     `varMi(veri, 'denemeKullanimi', 'id', 'dkuA')`). Kapatip ayni adresle
+ *     kaydolan kisi ikinci deneme ALAMAZ.
+ *   · YAS ekseni — satir 2 yasina gelince GIDER (bu bolum).
+ * Birini otekinin yerine gecirmek iki ayri kurali kirar.
+ */
+async function bolumY(): Promise<void> {
+  const gunOnce = (n: number) => new Date(SIMDI.getTime() - n * 24 * 60 * 60 * 1000);
+  const YIL2 = DENEME_KAYDI_SAKLAMA_GUN; // 730
+
+  // ── OLCUTU ONCE DOGRULA: fixture gercekten iki YASTA kayit tasiyor mu? ──
+  // Hepsi "yeni" olsaydi Y1 tesaduefen yesil olurdu (bos kume tuzagi).
+  const kayitlar = (): Satir[] => [
+    { id: 'eski', firmaId: 'A', olusturuldu: gunOnce(YIL2 + 1) },
+    { id: 'tam-sinirda', firmaId: 'B', olusturuldu: gunOnce(YIL2 - 1) },
+    { id: 'dun', firmaId: 'C', olusturuldu: gunOnce(1) },
+  ];
+  check('Y0 olcut: fixture hem eski hem yeni kayit tasiyor',
+    kayitlar().length === 3 &&
+      kayitlar()[0].olusturuldu < gunOnce(YIL2) &&
+      kayitlar()[2].olusturuldu > gunOnce(YIL2));
+
+  // ── Y1/Y2 · SINIR DAVRANISI ────────────────────────────────────────────
+  const veri: Record<string, Satir[]> = { denemeKullanimi: kayitlar() };
+  const p = sahtePrisma(veri);
+  const silinen = await servisYap(p).eskiDenemeKayitlariniSil(SIMDI);
+  check('Y1 2 yildan ESKI kayit SILINDI',
+    !varMi(veri, 'denemeKullanimi', 'id', 'eski'), `silinen=${silinen}`);
+  check('Y2 2 yili DOLDURMAMIS kayitlar DURUYOR (sinir dogru tarafta)',
+    varMi(veri, 'denemeKullanimi', 'id', 'tam-sinirda') &&
+      varMi(veri, 'denemeKullanimi', 'id', 'dun'), `silinen=${silinen}`);
+  check('Y3 donen sayi gercek silinen satir sayisi', silinen === 1, `silinen=${silinen}`);
+  // ⚠ Suzgec dusseydi UCU DE giderdi ve Y1 YINE yesil olurdu. Asil tehlike bu.
+  check('Y4 SUZGECSIZ deleteMany cagrilmadi (tum tabloyu goturmedi)',
+    !(p._iz.ham as string[]).some((h) => h.startsWith('SUZGECSIZ-DELETEMANY')),
+    (p._iz.ham as string[]).filter((h) => h.startsWith('SUZGECSIZ')).join(','));
+
+  // ── Y5 · OLCUT HESABIN DURUMU DEGIL, KAYDIN YASI ───────────────────────
+  // Hesabi ACIK, kaydi eski: yine silinmeli. `deletedAt`/`imhaTarihi`e bakan
+  // bir uygulama bu satiri atlardi ve metin yine yalan olurdu.
+  const veri5: Record<string, Satir[]> = {
+    denemeKullanimi: [{ id: 'acik-hesap-eski', firmaId: 'Z', olusturuldu: gunOnce(YIL2 + 400) }],
+  };
+  const p5 = sahtePrisma(veri5);
+  await servisYap(p5).eskiDenemeKayitlariniSil(SIMDI);
+  check('Y5 hesap ACIK olsa da yasi dolmus kayit silindi (olcut yas)',
+    !varMi(veri5, 'denemeKullanimi', 'id', 'acik-hesap-eski'));
+
+  // ── Y6 · GECERSIZ TARIH GURULTULU DUSER, SESSIZCE "HEPSI" DEMEZ ────────
+  // `new Date(NaN)` ile esik hesaplanirsa Prisma suzgeci dusurebilir ve
+  // `deleteMany` TUM TABLOYU siler. Bu deponun olculmus hata sinifi.
+  const veri6: Record<string, Satir[]> = { denemeKullanimi: kayitlar() };
+  const p6 = sahtePrisma(veri6);
+  let firladi6 = false;
+  let mesaj6 = '';
+  try {
+    await servisYap(p6).eskiDenemeKayitlariniSil(new Date('gecersiz'));
+  } catch (e: any) {
+    firladi6 = true;
+    mesaj6 = String(e?.message ?? e);
+  }
+  check('Y6 gecersiz "simdi" FIRLATIR', firladi6, mesaj6);
+  check('Y6a gecersiz tarihte HICBIR satir silinmedi',
+    (veri6['denemeKullanimi'] ?? []).length === 3,
+    `kalan=${(veri6['denemeKullanimi'] ?? []).length}`);
+  check('Y6b gecersiz tarihte deleteMany HIC cagrilmadi',
+    !(p6._iz.cagrilar as any[]).some((c: any) => c.islem === 'deleteMany'));
+
+  // ── Y7 · BAGLANTI: gunluk is bunu GERCEKTEN cagiriyor mu? ──────────────
+  // "Mekanizma var, baglanti yok" bu depoda alti kez yasandi. Kaynak kapisi
+  // (D13d) cagriyi METINDE arar; bu assert DAVRANISI olcer.
+  const veri7 = fixture();
+  veri7['denemeKullanimi'] = kayitlar();
+  const p7 = sahtePrisma(veri7);
+  await new ImhaJob(p7 as any, servisYap(p7)).kosumYap(SIMDI);
+  check('Y7 GUNLUK IS yas eksenini kosturuyor (eski kayit gitti)',
+    !varMi(veri7, 'denemeKullanimi', 'id', 'eski'));
+  check('Y7a gunluk is yeni kayitlara dokunmadi',
+    varMi(veri7, 'denemeKullanimi', 'id', 'dun'));
+
+  // ── Y8 · IKI EKSEN CELISMIYOR ──────────────────────────────────────────
+  // Firma imhasi kosarken YENI bir deneme kaydi silinmemeli (I-bolumunun
+  // iddiasi) — ama burada ayni kosumda ikisi birlikte olculuyor.
+  check('Y8 firma imhasi YENI deneme kaydini silmedi (ikinci deneme engeli duruyor)',
+    varMi(veri7, 'denemeKullanimi', 'id', 'dun') &&
+      varMi(veri7, 'denemeKullanimi', 'id', 'tam-sinirda'));
+
+  // ── Y9 · SURE METINLE AYNI KAYNAKTAN ───────────────────────────────────
+  check('Y9 saklama suresi 2 yil (730 gun) olarak tanimli',
+    DENEME_KAYDI_SAKLAMA_YIL === 2 && DENEME_KAYDI_SAKLAMA_GUN === 730,
+    `yil=${DENEME_KAYDI_SAKLAMA_YIL} gun=${DENEME_KAYDI_SAKLAMA_GUN}`);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 //  J — BAGLANTI: "mekanizma var, baglanti yok" hatasinin kapisi
 // ═══════════════════════════════════════════════════════════════════════════
 function bolumJ(): void {
@@ -1038,6 +1145,7 @@ async function main(): Promise<void> {
   await bolum('C', bolumC);
   await bolum('U', bolumU);
   await bolum('G', bolumG);
+  await bolum('Y', bolumY);
   await bolum('J', bolumJ);
 
   console.log(`\n${'='.repeat(68)}`);
