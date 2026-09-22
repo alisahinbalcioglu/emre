@@ -4,6 +4,7 @@
 export const runtime = 'edge';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Loader2, Save, Trash2 } from 'lucide-react';
@@ -70,6 +71,12 @@ function makeBlankLibRow(cols: any[], idx: number, spare = false): ExcelRowData 
 }
 
 export default function LibraryBrandDetailPage() {
+  // SALT-OKUNUR MOD — kapatilmis hesap (22.09.2026, Emre karari):
+  // kutuphane "gorunsun ama orada da islem yapamasin". Gercek kapi arka
+  // yuzde (`KUTUPHANE_DUZENLE` kapali hesaba KAPALI); burasi yalnizca
+  // kullaniciya 403 yedirmemek icin yazma girislerini cizmez.
+  const { kapali: kapaliDurum } = useCapabilities();
+  const saltOkunur = kapaliDurum?.kapali === true;
   const params = useParams<{ brandId: string }>();
   const router = useRouter();
   const brandId = params.brandId;
@@ -436,7 +443,7 @@ export default function LibraryBrandDetailPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          {pendingCount > 0 && (
+          {pendingCount > 0 && !saltOkunur && (
             <Button size="sm" onClick={handleSave} disabled={saving}>
               {saving ? (
                 <><Loader2 className="mr-1 h-4 w-4 animate-spin" />Kaydediliyor...</>
@@ -445,9 +452,11 @@ export default function LibraryBrandDetailPage() {
               )}
             </Button>
           )}
+          {!saltOkunur && (
           <Button size="sm" variant="outline" onClick={handleRemoveBrand}>
             <Trash2 className="mr-1 h-3.5 w-3.5" />Markayi Kaldir
           </Button>
+          )}
         </div>
       </div>
 
@@ -469,6 +478,7 @@ export default function LibraryBrandDetailPage() {
               {l.name} <span className="opacity-70">({l._count.items})</span>
             </button>
           ))}
+          {!saltOkunur && (
           <button
             type="button"
             onClick={enterNewListMode}
@@ -481,7 +491,8 @@ export default function LibraryBrandDetailPage() {
           >
             + Yeni Liste
           </button>
-          {!newListMode && activeListId && (
+          )}
+          {!newListMode && activeListId && !saltOkunur && (
             <Button
               size="sm"
               variant="ghost"

@@ -10,44 +10,43 @@
  *  ── NEDEN SAYFA KALDIRILDI ──────────────────────────────────────────────
  *  Emre'nin cümlesi: "ikinci bir arayüze hiç gerek yok — 30 gün boyunca mail
  *  ve şifre kayıtlı kalır, girmek istediğinde sisteme giriş yapar ve istediği
- *  paketi seçer." Doğruydu: kapalı hesabın geri dönmesinin TEK yolu paket
- *  almak, ve o sayfanın yaptığı tek iş "Paket seç" düğmesi göstermekti —
- *  yani kullanıcıyı gideceği yere bir tık uzaktan gösteren fazladan bir adım.
+ *  paketi seçer." O sayfanın yaptığı tek iş "Paket seç" düğmesi göstermekti.
  *
- *  ── AMA SAYFAYLA BİRLİKTE KAYBOLMAMASI GEREKEN İKİ ŞEY VARDI ────────────
- *  1) KAPATMA CÜMLESİ ve İMHA TARİHİ. "Verileriniz 22.10.2026 tarihinde
- *     silinecek" bir söz ve hukuki metinlerde de yazılı; kullanıcı bunu
- *     görmeden 30 günlük pencereyi bilemez.
- *  2) VERİ İNDİRME. KVKK m.11 hakkı. Uç kapalı hesaba AÇIK
- *     (`auth.controller.ts` `@KapaliHesapIzinli`) ama ÖLÇÜLDÜ: kapalı hesap
- *     yalnız `/abonelik` yolunda kalabiliyor, `/profile` ve
- *     `/koltuk-durduruldu` ona kapalı. Yani düğme buradan kalkarsa hak
- *     "mekanizma var, bağlantı yok" hâline düşerdi — bu deponun tekrarlayan
- *     hata sınıfı, üstelik yasal bir hakta.
+ *  ── KAPALI HESAP NE YAPABİLİR (Emre, 22.09 akşamı, canlı ekrana bakarak) ─
+ *  "kaydedilmiş tekliflerini görebilecek, indirebilecek, girebilecek ancak
+ *  işlem yapamayacak." Kütüphane için de aynısı: "görünsün ama orada da
+ *  işlem yapamasın."
  *
- *  ── ÜÇÜNCÜ AYRIM: FİRMASI KAPANAN ÜYE PAKET SEÇEMEZ ────────────────────
- *  `tip === 'firma'` ise firmayı SAHİBİ geri açar (K2). O kişiye paket
- *  kartları göstermek yapamayacağı bir şeyi vaat etmek olurdu; şerit bunu
- *  ADIYLA söyler, abonelik sayfası da kartları gizler.
+ *  ⚠ İLK YAZIMDA BU YANLIŞ UYGULANDI ve canlıda görüldü: kenar çubuğu tek
+ *    maddeye indirilmiş, kişi kaydedilmiş tekliflerine ULAŞAMIYORDU. Emre'nin
+ *    düzeltmesi: "kullanıcı neden sayfaya girip göremiyor — sadece
+ *    KULLANAMAYACAK dedik." Erişim üç yerde birden açıldı: arka yüzde
+ *    `@KapaliHesapIzinli` okuma uçları, `api.ts` yönlendirme süzgeci ve
+ *    `erisim-durumu.ts` durdurma listesi.
+ *
+ *  ── BU ŞERİT TEK ŞERİTTİR ───────────────────────────────────────────────
+ *  ⚠ CANLIDA GÖRÜLDÜ: `AbonelikSeridi` ile ALT ALTA iki kırmızı şerit
+ *    çiziliyordu ve ikisi de AYNI sunucu cümlesini yazıyordu. Çözüm
+ *    `AbonelikSeridi`nin kendi başlığındaki kuralın aynısı: "karar
+ *    KOPYALANMAZ" — kapalı hesapta o şerit susar, bu şerit onun `eylem`
+ *    düğmesini de taşır.
  *
  *  ⚠ VERİ `/auth/me`DEN TEK KEZ GELİR — bu bileşen KENDİ İSTEĞİNİ ATMAZ.
- *    İlk yazımda burada bir `useEffect` + `api.get('/auth/me')` vardı;
- *    ölçüldü: `CapabilitiesProvider` zaten aynı ucu çağırıyor, yani her
- *    kabuk açılışında İKİ istek gidiyor ve iki ayrı gerçek kaynağı
- *    oluşuyordu. Deponun kuralı sağlayıcının kendi başlığında yazılı:
- *    "/auth/me ön yüzün TEK besleme noktasıdır" — `emailVerified` de aynı
- *    gerekçeyle oradan okunuyor.
+ *    İlk yazımda burada `useEffect` + `api.get('/auth/me')` vardı; ölçüldü:
+ *    `CapabilitiesProvider` zaten aynı ucu çağırıyor. Sağlayıcının kuralı:
+ *    "/auth/me ön yüzün TEK besleme noktasıdır."
  *
- *  ⚠ Şerit `emailVerified` şeridiyle AYNI desende: durum `null` iken
- *    HİÇBİR ŞEY çizilmez (null = "henüz yüklenmedi" ya da "kapalı değil"),
- *    yoksa her sayfa açılışında bir an yanıp sönerdi.
+ *  ⚠ Durum `null` iken HİÇBİR ŞEY çizilmez (null = "henüz yüklenmedi" ya da
+ *    "kapalı değil"), yoksa her sayfa açılışında bir an yanıp sönerdi.
  */
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { AlertTriangle } from 'lucide-react';
 import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
 import { verileriIndir } from '@/ozellik/kimlik/verileri-indir';
 import { toast } from '@/ortak/hooks/use-toast';
+import { imhaTarihiAyricaYazilsinMi } from './kapali-durum';
 
 export function KapaliHesapSeridi() {
   const { kapali: durum, loading } = useCapabilities();
@@ -74,6 +73,7 @@ export function KapaliHesapSeridi() {
   const tarih = durum.imhaTarihi
     ? new Date(durum.imhaTarihi).toLocaleDateString('tr-TR')
     : null;
+  const tarihiYaz = imhaTarihiAyricaYazilsinMi(durum, tarih);
 
   return (
     <div
@@ -84,29 +84,41 @@ export function KapaliHesapSeridi() {
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
         <span className="min-w-0">
           <span className="font-semibold">{durum.baslik}</span>{' '}
-          {tarih && (
+          {tarihiYaz && (
             <span className="opacity-90">
-              Verileriniz <span className="font-semibold">{tarih}</span> tarihinde silinecek.
+              Verileriniz <span className="font-semibold">{tarih}</span> tarihinde silinecek.{' '}
             </span>
-          )}{' '}
+          )}
           <span className="opacity-90">
             {firmaKapandi
-              ? 'Firmanızı yalnızca sahibi geri açabilir.'
-              : 'Bir paket seçerek hesabınızı geri açabilirsiniz; verileriniz olduğu gibi geri gelir.'}
+              ? 'Kayıtlı teklifleri görüntüleyip indirebilirsiniz; üzerinde değişiklik yapılamaz. Firmanızı yalnızca sahibi geri açabilir.'
+              : 'Kayıtlı tekliflerinizi görüntüleyip indirebilirsiniz; üzerinde değişiklik yapmak veya yeni teklif oluşturmak için bir paket seçin.'}
           </span>
         </span>
       </div>
 
-      {/* KVKK m.11 — ödemesiz ve hesap kapalıyken de açık. Kapalı hesabın
-          bu hakka ulaşabildiği TEK yer burası. */}
-      <button
-        type="button"
-        onClick={() => void indir()}
-        disabled={indiriliyor}
-        className="shrink-0 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-800 transition hover:bg-red-100 disabled:opacity-60"
-      >
-        {indiriliyor ? 'Hazırlanıyor…' : 'Verilerimi indir'}
-      </button>
+      <div className="flex shrink-0 items-center gap-2">
+        {/* KVKK m.11 — ödemesiz ve hesap kapalıyken de açık. */}
+        <button
+          type="button"
+          onClick={() => void indir()}
+          disabled={indiriliyor}
+          className="rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-800 transition hover:bg-red-100 disabled:opacity-60"
+        >
+          {indiriliyor ? 'Hazırlanıyor…' : 'Verilerimi indir'}
+        </button>
+
+        {/* `AbonelikSeridi` kapalı hesapta susuyor; onun eylem düğmesi
+            KAYBOLMASIN diye buraya taşındı. */}
+        {durum.eylem && !firmaKapandi && (
+          <Link
+            href={durum.eylem.yol}
+            className="rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-800 transition hover:bg-red-100"
+          >
+            {durum.eylem.etiket}
+          </Link>
+        )}
+      </div>
     </div>
   );
 }

@@ -61,6 +61,12 @@ interface QuoteDetail {
 const SALT_OKUNUR_MARKA = async (): Promise<null> => null;
 
 export default function QuoteDetailPage() {
+  // SALT-OKUNUR MOD — kapatilmis hesap (22.09.2026, Emre karari):
+  // "gorebilecek, indirebilecek, girebilecek ancak islem yapamayacak".
+  // ⚠ Bu sayfanin secicileri ZATEN salt-okunur (asagidaki REVIZE ET notu);
+  //   yazan yuzey uc tanedir: kapak alanlari (PATCH), Revize Et (Duzenle
+  //   ekranina gecer) ve Ceviri (para harcar, arka yuzde de kapali).
+
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const id = params.id;
@@ -86,7 +92,8 @@ export default function QuoteDetailPage() {
   // (kutuphane fiyatlari orijinal biriminde kalir), canli TCMB kuru.
   const { currency, gosterimCurrency, setCurrency, exchangeRates, ratesLoaded, conversionRate } = useCurrency();
   // KH10: Pro entitlement DUZENLE ekraniyla AYNI kaynaktan (/auth/me)
-  const { capabilities } = useCapabilities();
+  const { capabilities, kapali: kapaliDurum } = useCapabilities();
+  const saltOkunur = kapaliDurum?.kapali === true;
 
   useEffect(() => {
     api.get<QuoteDetail>(`/quotes/${id}`)
@@ -504,7 +511,7 @@ export default function QuoteDetailPage() {
         <div className="flex items-center gap-2">
           {/* REVIZE ET (14.08) — kayitli teklifi Duzenle ekraninda acar.
               Bu sayfanin secicileri SALT-OKUNUR; gercek duzenleme orada. */}
-          {sheets.length > 0 && (
+          {sheets.length > 0 && !saltOkunur && (
             <Button
               type="button"
               variant="outline"
@@ -517,7 +524,7 @@ export default function QuoteDetailPage() {
           )}
           {/* 13.08 istegi: CEVIRI butonu para birimi seciciNIN SOLUNDA —
               Duzenle ekranindaki yerin birebir ayni'si. */}
-          {sheets.length > 0 && (
+          {sheets.length > 0 && !saltOkunur && (
             <Button
               type="button"
               variant="outline"
@@ -633,6 +640,7 @@ export default function QuoteDetailPage() {
               value={kapak.musteri}
               onChange={(e) => setKapak((o) => ({ ...o, musteri: e.target.value }))}
               onBlur={() => kapakKaydet({ musteri: kapak.musteri })}
+              readOnly={saltOkunur}
               placeholder="Müşteri (kapak için)"
               className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
             />
@@ -643,6 +651,7 @@ export default function QuoteDetailPage() {
               value={kapak.proje}
               onChange={(e) => setKapak((o) => ({ ...o, proje: e.target.value }))}
               onBlur={() => kapakKaydet({ proje: kapak.proje })}
+              readOnly={saltOkunur}
               placeholder="Proje"
               className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
             />
@@ -653,6 +662,7 @@ export default function QuoteDetailPage() {
               value={kapak.hazirlayan}
               onChange={(e) => setKapak((o) => ({ ...o, hazirlayan: e.target.value }))}
               onBlur={() => kapakKaydet({ hazirlayan: kapak.hazirlayan })}
+              readOnly={saltOkunur}
               placeholder="Hazırlayan"
               className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
             />
@@ -663,6 +673,7 @@ export default function QuoteDetailPage() {
               value={kapak.gecerlilik}
               onChange={(e) => setKapak((o) => ({ ...o, gecerlilik: e.target.value }))}
               onBlur={() => kapakKaydet({ gecerlilik: kapak.gecerlilik })}
+              readOnly={saltOkunur}
               placeholder="Örn. 30 gün"
               className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
             />

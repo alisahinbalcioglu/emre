@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Package, Plus, Search, Upload, Loader2 } from 'lucide-react';
@@ -38,6 +39,12 @@ function getRole(): string | null {
 }
 
 export default function MechanicalBrandsPage() {
+  // SALT-OKUNUR MOD — kapatilmis hesap (22.09.2026, Emre karari):
+  // kutuphane "gorunsun ama orada da islem yapamasin". Gercek kapi arka
+  // yuzde (`KUTUPHANE_DUZENLE` kapali hesaba KAPALI); burasi yalnizca
+  // kullaniciya 403 yedirmemek icin yazma girislerini cizmez.
+  const { kapali: kapaliDurum } = useCapabilities();
+  const saltOkunur = kapaliDurum?.kapali === true;
   const router = useRouter();
   const [brands, setBrands] = useState<LibraryBrand[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -172,10 +179,12 @@ export default function MechanicalBrandsPage() {
           <p className="mt-1 text-sm text-muted-foreground">Kütüphanenizdeki mekanik malzeme markaları</p>
         </div>
         <div className="flex items-center gap-2">
+          {!saltOkunur && (
           <Button onClick={() => setManualOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />Marka Ekle
           </Button>
-          {isAdmin && (
+          )}
+          {isAdmin && !saltOkunur && (
             <Button variant="outline" onClick={() => setPdfOpen(true)}>
               <Upload className="mr-2 h-4 w-4" />PDF Yükle (Admin)
             </Button>

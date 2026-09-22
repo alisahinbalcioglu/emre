@@ -38,7 +38,7 @@ import { icerikDurdurulsunMu, type ErisimUyarisi } from './erisim-durumu';
  * ═══════════════════════════════════════════════════════════════════════════
  */
 export function ErisimKapisi({ children }: { children: ReactNode }) {
-  const { erisim, loading } = useCapabilities();
+  const { erisim, kapali, loading } = useCapabilities();
   const yol = usePathname() ?? '';
 
   if (loading) {
@@ -49,7 +49,12 @@ export function ErisimKapisi({ children }: { children: ReactNode }) {
     );
   }
 
-  if (!icerikDurdurulsunMu(erisim, yol)) return <>{children}</>;
+  // ⚠ UCUNCU ARGUMAN SART: kapatilmis hesabin `erisimVar`i FALSE'tur
+  //   (kapatma aboneligi iptal eder). Gecilmezse `/quotes` ve `/library`
+  //   icerigi "paket secin" ekraniyla degistirilir ve Emre'nin
+  //   "gorebilecek, girebilecek" karari on yuzde sessizce olur.
+  if (!icerikDurdurulsunMu(erisim, yol, kapali?.kapali === true))
+    return <>{children}</>;
 
   return <ErisimDurduruldu uyari={erisim?.uyari ?? null} />;
 }

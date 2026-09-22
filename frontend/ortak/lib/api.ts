@@ -159,14 +159,30 @@ function kimlikUcuMu(url?: string): boolean {
 }
 
 /**
- * PLAN 5.8 §4.4 — kapali hesabin KALMASINA izin verilen yollar.
- * Yalniz `/abonelik…` — geri donmenin TEK yolu paket almaktir.
- * ⚠ 22.09.2026: `/hesap-kapali` LISTEDEN CIKTI cunku o sayfa SILINDI
- *   (Emre karari: ayri arayuz yok, giris → paket sec). Listede birakilsaydi
- *   kapali hesap var olmayan bir yolda "kalabilir" sayilir ve bos sayfada
- *   takilirdi.
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  KAPALI HESABIN KALABILECEGI YOLLAR (PLAN 5.8 §4.4 · 22.09.2026 genisletildi)
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ *  ⚠ BU LISTE DAR OLURSA OZELLIK CALISMAZ — olculdu ve YASANDI. Liste bir
+ *  gun yalniz `/abonelik` idi; Emre'nin "kaydedilmis tekliflerini
+ *  gorebilecek, girebilecek" karari uygulanirken bu satir GOZDEN KACSAYDI
+ *  ozellik SESSIZCE olurdu: kullanici teklifi acar, sayfadaki HERHANGI bir
+ *  istek 403 `HESAP_KAPALI` alir almaz asagidaki yakalayici onu `/abonelik`e
+ *  FIRLATIRDI. Yani arka yuzde izin verilmis olmasi yetmez; on yuzdeki bu
+ *  suzgec de ayni yollari tanimak zorunda.
+ *
+ *  Listedeki yollar arka yuzdeki `@KapaliHesapIzinli` uclariyla IKIZDIR:
+ *   · `/quotes`        → teklif listesi + teklif ekrani + cikti indirme
+ *   · `/library`       → kutuphane (yalniz goruntuleme)
+ *   · `/quote-formats` → antetler (yalniz goruntuleme/onizleme)
+ *   · `/abonelik`      → geri donusun TEK yolu
+ *
+ *  ⚠ `/hesap-kapali` LISTEDE YOK cunku o sayfa SILINDI (Emre: ayri arayuz
+ *    yok, giris → paket sec). Birakilsaydi kapali hesap var olmayan bir
+ *    yolda "kalabilir" sayilir ve bos sayfada takilirdi.
  */
-const KAPALI_HESABIN_KALABILECEGI_YOL = /^\/(abonelik)(\/|$)/;
+const KAPALI_HESABIN_KALABILECEGI_YOL =
+  /^\/(abonelik|quotes|library|quote-formats)(\/|$)/;
 
 api.interceptors.response.use(
   (res) => res,

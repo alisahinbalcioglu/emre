@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
 import Link from 'next/link';
 import { Zap, Plus, Search, Upload, Loader2 } from 'lucide-react';
 import { Card, CardContent } from '@/ortak/ui/card';
@@ -37,6 +38,12 @@ function getRole(): string | null {
 }
 
 export default function ElectricalBrandsPage() {
+  // SALT-OKUNUR MOD — kapatilmis hesap (22.09.2026, Emre karari):
+  // kutuphane "gorunsun ama orada da islem yapamasin". Gercek kapi arka
+  // yuzde (`KUTUPHANE_DUZENLE` kapali hesaba KAPALI); burasi yalnizca
+  // kullaniciya 403 yedirmemek icin yazma girislerini cizmez.
+  const { kapali: kapaliDurum } = useCapabilities();
+  const saltOkunur = kapaliDurum?.kapali === true;
   const [brands, setBrands] = useState<LibraryBrand[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -210,10 +217,12 @@ export default function ElectricalBrandsPage() {
           <p className="mt-1 text-sm text-muted-foreground">Kütüphanenizdeki elektrik malzeme markaları</p>
         </div>
         <div className="flex items-center gap-2">
+          {!saltOkunur && (
           <Button variant="outline" onClick={() => setAddOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />Malzeme Ekle
           </Button>
-          {isAdmin && (
+          )}
+          {isAdmin && !saltOkunur && (
             <Button className="bg-amber-600 hover:bg-amber-700" onClick={() => setPdfOpen(true)}>
               <Upload className="mr-2 h-4 w-4" />PDF Yükle (Admin)
             </Button>

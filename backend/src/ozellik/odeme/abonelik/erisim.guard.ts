@@ -7,7 +7,12 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { kimlikCoz } from '../../../altyapi/auth/kimlik';
-import { ErisimKarari, ErisimServisi, Yetenek } from './erisim.servisi';
+import {
+  ErisimKarari,
+  ErisimServisi,
+  KAPALI_HESAPTA_ACIK,
+  Yetenek,
+} from './erisim.servisi';
 
 export const YETENEK_KEY = 'gerekenYetenek';
 
@@ -65,12 +70,32 @@ export class ErisimGuard implements CanActivate {
     const istek = context.switchToHttp().getRequest();
     const { firmaId } = kimlikCoz(istek.user);
 
+    /**
+     * ── KAPATILMIS HESAP: UCUNCU EKSEN (22.09.2026, Emre karari) ──────────
+     * Emre: "kaydedilmis tekliflerini gorebilecek, indirebilecek,
+     * girebilecek ancak islem yapamayacak."
+     *
+     * ⚠ BU KAPI KAPATMAYI BILMEZ, cunku `karar()` FIRMA eksenlidir: hesabini
+     * kapatan kisinin aboneligi iptal olur, `erisimVar: false` doner ve
+     * `ASKIDA_ACIK` yalniz `ABONELIK_YONET` birakir. Yani okuma yetenekleri
+     * burada duserdi ve "gorebilecek/indirebilecek" HIC calismazdi — kisi
+     * `/quotes`i acar, liste 403 alirdi.
+     *
+     * ⚠ TEK BASINA KAPI ACMAZ: `JwtAuthGuard` kapali hesabi zaten durduruyor
+     * ve ancak `@KapaliHesapIzinli` tasiyan uclari geciriyor. Buradaki izin
+     * o listeden GECMIS bir istege uygulanir. Iki kapi da acik olmadan cagri
+     * gerceklesmez; biri unutulursa uc KAPALI kalir (guvenli yon).
+     */
+    const kapaliHesap = istek.user?.hesapKapali === true;
+
     const karar: ErisimKarari = await this.erisim.karar(firmaId);
 
     // Karari istege iliştir: controller tekrar sorgu atmadan okuyabilsin.
     istek.erisimKarari = karar;
 
     for (const y of gerekenler) {
+      // Kapatilmis hesabin OKUMA yetenekleri (yukaridaki gerekce).
+      if (kapaliHesap && KAPALI_HESAPTA_ACIK.has(y)) continue;
       if (!this.erisim.yetenekKararla(karar, y)) {
         throw new ForbiddenException({
           mesaj: karar.uyari?.baslik ?? 'Erisiminiz kisitli',

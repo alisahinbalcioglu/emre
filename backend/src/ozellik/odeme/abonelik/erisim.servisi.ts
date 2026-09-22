@@ -59,6 +59,43 @@ const KISITLI_MODDA_ACIK: ReadonlySet<Yetenek> = new Set([
 /** Askıdayken yalnızca ödeme sayfası. */
 const ASKIDA_ACIK: ReadonlySet<Yetenek> = new Set([Yetenek.ABONELIK_YONET]);
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  KAPATILMIŞ HESAPTA AÇIK KALANLAR (22.09.2026 — Emre kararı)
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ *  Emre'nin cümlesi: **"kaydedilmiş tekliflerini görebilecek, indirebilecek,
+ *  girebilecek ancak işlem yapamayacak."** Kütüphane için de aynısı:
+ *  "görünsün ama orada da işlem yapamasın."
+ *
+ *  ⚠ NEDEN AYRI BİR KÜME — `KISITLI_MODDA_ACIK` YETMEZ. İkisi farklı iki
+ *  durum ve farklı iki amaç güder:
+ *   · KISITLI (ödemesi geciken firma) → amaç BASKI. `CIKTI_INDIR` bilerek
+ *     KAPALI: "asıl değer orada" (yukarıdaki gerekçe). Müşteri hâlâ
+ *     müşteridir, ödemeye ikna edilmeye çalışılır.
+ *   · KAPALI (hesabını kendi kapatmış) → amaç BASKI DEĞİL. Kişi zaten
+ *     ayrılmaya karar verdi; 30 günlük pencerede yapabileceği tek şey
+ *     emeğini yanına almak. O çıktıyı vermemek baskı değil, veriyi rehin
+ *     almaktır — üstelik KVKK indirmesi zaten aynı veriyi veriyor, yani
+ *     kapatmak korumaz, sadece zorlaştırır.
+ *
+ *  ⚠ `CIKTI_INDIR` taşıyan UÇLARIN HEPSİ OKUMA — ölçüldü (22.09):
+ *  `quotes` üçü (export, export-priced, exports/:rev) ve `quote-formats`
+ *  üçü (sample, preview, preview-pdf). Hiçbiri teklifi DEĞİŞTİRMEZ.
+ *
+ *  ⚠ YAZMA YETENEKLERİ BURAYA ASLA EKLENMEZ: `TEKLIF_OLUSTUR`,
+ *  `TEKLIF_DUZENLE`, `KUTUPHANE_DUZENLE`, `EXCEL_YUKLE`, `DWG_YUKLE`,
+ *  `AI_ANALIZ`, `CEVIRI`. "İşlem yapamayacak" cümlesinin karşılığı budur.
+ *  Ayrıca bu küme TEK BAŞINA kapı değildir: uç ayrıca `@KapaliHesapIzinli`
+ *  taşımalı (`JwtAuthGuard`). İki kapı da geçilmeden çağrı olmaz.
+ */
+export const KAPALI_HESAPTA_ACIK: ReadonlySet<Yetenek> = new Set([
+  Yetenek.TEKLIF_GORUNTULE,
+  Yetenek.KUTUPHANE_GORUNTULE,
+  Yetenek.CIKTI_INDIR,
+  Yetenek.ABONELIK_YONET,
+]);
+
 export interface ErisimKarari {
   erisimVar: boolean;
   saltOkunur: boolean;

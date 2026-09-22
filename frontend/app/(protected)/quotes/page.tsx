@@ -12,6 +12,7 @@ import { toast } from '@/ortak/hooks/use-toast';
 import { confirm } from '@/ortak/hooks/use-confirm';
 import { Badge } from '@/ortak/ui/badge';
 import { TEKLIF_DURUMLARI, teklifDurumGorunumu } from '@/ozellik/teklif/durum';
+import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
 
 interface QuoteItem {
   id: string;
@@ -51,6 +52,16 @@ function calculateTotal(items: QuoteItem[]): number {
 
 export default function QuotesPage() {
   const router = useRouter();
+  /**
+   * SALT-OKUNUR MOD — kapatılmış hesap (22.09.2026, Emre kararı).
+   * "kaydedilmiş tekliflerini görebilecek, indirebilecek, girebilecek ancak
+   * işlem yapamayacak."
+   * ⚠ Bu satır KAPI DEĞİL, yalnız ekranı dürüst tutar: gerçek kapı sunucuda
+   *   (`@KapaliHesapIzinli` yalnız OKUYAN uçlarda). Düğmeyi gizlemek
+   *   kapatmak değildir; ama açık bırakmak da kullanıcıya 403 yedirmektir.
+   */
+  const { kapali } = useCapabilities();
+  const saltOkunur = kapali?.kapali === true;
   const [quotes, setQuotes] = useState<Quote[]>([]);
   // FAZ 7 F1b: kendi teklifimde "Hazırlayan" satırı GÖSTERİLMEZ (tek kişilik
   // firmada hiç görünmesin). Kimlik localStorage kopyasından okunur —
@@ -286,6 +297,10 @@ export default function QuotesPage() {
                               <Eye className="mr-1 h-3.5 w-3.5" />
                               Detay
                             </Button>
+                            {/* 22.09: kapali hesap "islem yapamaz" — silme
+                                arka yuzde de kapali (`@Delete` izin TASIMAZ),
+                                dugmeyi birakmak 403 uretirdi. */}
+                            {!saltOkunur && (
                             <Button
                               variant="outline"
                               size="sm"
@@ -295,6 +310,7 @@ export default function QuotesPage() {
                               <Trash2 className="mr-1 h-3.5 w-3.5" />
                               Sil
                             </Button>
+                            )}
                           </div>
                         </td>
                       </tr>

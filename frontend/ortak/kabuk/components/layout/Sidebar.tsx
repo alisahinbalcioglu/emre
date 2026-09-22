@@ -68,20 +68,35 @@ export default function Sidebar({ user, collapsed, onToggle }: SidebarProps) {
   const tierStyle = tier ? (TIER_COLORS[tier] ?? TIER_COLORS.core) : PAKET_YOK_RENGI;
   const initial = user?.email?.charAt(0).toUpperCase() ?? 'U';
 
-  // ── 22.09.2026: KAPALI HESAPTA KIRIK BAGLANTI GOSTERILMEZ ────────────
+  // ── 22.09.2026: KAPALI HESAPTA MENU — CALISANLAR KALIR ────────────────
   // Silinen `/hesap-kapali` sayfasi BILEREK `(protected)` kabugunun
   // disindaydi; kendi basliginda gerekcesi yaziliydi: "o kabuk kenar
   // cubugu, ekmek kirintisi ve pano baglantilari cizer — HEPSI kapali
-  // hesapta 403 doner."
-  // Emre 22.09'da ayri ekrani kaldirtti ve kapali hesap artik `/abonelik`e,
-  // yani kabugun ICINE dusuyor. O gerekce ortadan kalkmadi, YER DEGISTIRDI:
-  // cozum kabugu geri getirmek degil, calismayan baglantilari GIZLEMEK.
-  // Kapali hesabin yapabilecegi tek sey paket almaktir; menude de tek o
-  // durur. Profil/cikis alttaki kullanici blogunda kalir.
-  // ⚠ AYRAC ('divider') da elenir: tek bir ogenin ustunde/altinda cizgi
-  //   birakmak menuyu bozuk gosterirdi.
+  // hesapta 403 doner." Emre ayri ekrani kaldirtti ve kapali hesap artik
+  // kabugun ICINE dusuyor; gerekce ortadan kalkmadi, YER DEGISTIRDI.
+  //
+  // ⚠⚠ ILK YAZIMDA MENU YALNIZ `/abonelik` BIRAKILDI VE BU YANLISTI.
+  //   Emre'nin duzeltmesi (22.09, canli ekrana bakarak): "kullanici neden
+  //   sayfaya girip goremiyor — sadece KULLANAMAYACAK dedik." Karar:
+  //   "kaydedilmis tekliflerini gorebilecek, indirebilecek, girebilecek
+  //   ancak islem yapamayacak"; kutuphane de "gorunsun ama orada da islem
+  //   yapamasin". Menuyu tek maddeye indirmek, kisinin 30 gun icinde
+  //   emegini yanina almasinin YOLUNU KAPATIYORDU.
+  //
+  // ⚠ OLCUT "calisiyor mu", "yazabiliyor mu" DEGIL: burada duran her yol
+  //   arka yuzde `@KapaliHesapIzinli` tasiyan OKUMA uclariyla ikizdir
+  //   (`api.ts` KAPALI_HESABIN_KALABILECEGI_YOL ve `erisim-durumu.ts`
+  //   KAPALI_HESABIN_OKUYABILECEGI_YOL ile birlikte UC yerde ayni liste).
+  //   Birine yol eklenip otekilere eklenmezse kullanici menude gordugu
+  //   sayfada 403 yer ya da `/abonelik`e firlatilir.
+  //
+  // ⚠ AYRAC ('divider') da elenir: elenen ogelerin arasinda kalan cizgi
+  //   menuyu bozuk gosterirdi.
+  const KAPALI_HESAPTA_GORUNEN = ['/quotes', '/library', '/abonelik'];
   const items = user?.hesapKapali === true
-    ? NAV_ITEMS.filter((i) => typeof i !== 'string' && i.href === '/abonelik')
+    ? NAV_ITEMS.filter(
+        (i) => typeof i !== 'string' && KAPALI_HESAPTA_GORUNEN.includes(i.href),
+      )
     : NAV_ITEMS;
 
   function isActive(href: string) {

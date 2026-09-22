@@ -12,6 +12,7 @@ import { CurrentUser } from '../../../altyapi/auth/decorators/current-user.decor
 import { kimlikCoz } from '../../../altyapi/auth/kimlik';
 import { ErisimGuard, GerekliYetenek } from '../../odeme/abonelik/erisim.guard';
 import { Yetenek } from '../../odeme/abonelik/erisim.servisi';
+import { KapaliHesapIzinli } from '../../../altyapi/auth/decorators/kapali-hesap-izinli.decorator';
 
 @Controller('quote-formats')
 @UseGuards(JwtAuthGuard, ErisimGuard)
@@ -32,6 +33,7 @@ export class QuoteFormatsController {
 
   @Get()
   @GerekliYetenek(Yetenek.KUTUPHANE_GORUNTULE)
+  @KapaliHesapIzinli() // kapali hesap: antet listesi (salt okuma)
   list(@CurrentUser() user: any) {
     return this.service.list(kimlikCoz(user));
   }
@@ -39,6 +41,7 @@ export class QuoteFormatsController {
   /** Ornek format indir (yer tutuculu sade KAPAK+ICMAL). */
   @Get('sample')
   @GerekliYetenek(Yetenek.CIKTI_INDIR)
+  @KapaliHesapIzinli() // kapali hesap: ornek cikti (salt okuma)
   async sample(@Res() res: Response) {
     const { buffer, filename } = await this.service.sample();
     res.set({
@@ -51,6 +54,7 @@ export class QuoteFormatsController {
 
   @Get(':id/preview')
   @GerekliYetenek(Yetenek.CIKTI_INDIR)
+  @KapaliHesapIzinli() // kapali hesap: antet onizleme (salt okuma)
   preview(@CurrentUser() user: any, @Param('id') id: string) {
     return this.service.preview(kimlikCoz(user), id);
   }
@@ -59,6 +63,7 @@ export class QuoteFormatsController {
    *  FE hucre tablosu geri dususu. inline gosterim icin attachment DEGIL. */
   @Get(':id/preview-pdf')
   @GerekliYetenek(Yetenek.CIKTI_INDIR)
+  @KapaliHesapIzinli() // kapali hesap: antet onizleme (pdf) (salt okuma)
   async previewPdf(@CurrentUser() user: any, @Param('id') id: string, @Res() res: Response) {
     const pdf = await this.service.previewPdf(kimlikCoz(user), id);
     if (!pdf) {

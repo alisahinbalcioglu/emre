@@ -449,23 +449,57 @@ async function main() {
       }
     };
 
-    const kapatilmasiGerekenler: Array<[string, any, any]> = [
+    /* ═══════════════════════════════════════════════════════════════════
+     *  22.09.2026 — KARAR DEGISTI: SINIR OLCULUYOR, TOPTAN YASAK DEGIL
+     * ═══════════════════════════════════════════════════════════════════
+     *  Bu blok eskiden "9 ucun HEPSI 403" diyordu. Emre canli ekrana bakip
+     *  duzeltti: "kullanici neden sayfaya girip goremiyor — sadece
+     *  KULLANAMAYACAK dedik." Yeni kural:
+     *
+     *    "kaydedilmis tekliflerini gorebilecek, indirebilecek, girebilecek
+     *     ancak islem yapamayacak."   (kutuphane icin de ayni)
+     *
+     *  ⚠ ASSERT ZAYIFLATILMADI, IKIYE BOLUNDU. Eski hali yalniz "hepsi
+     *  kapali" diyebiliyordu; yenisi SINIRI olcuyor — okuma ucu acilmis mi
+     *  VE yazma ucu hala kapali mi. Ikisi ayri ayri kirmizi yanar. Yazma
+     *  listesine `PUT` ve `DELETE` de EKLENDI: izni denetleyici SINIFINA
+     *  koymak (ki `@Delete(':id')`in ikinci kapisi yok) kapali hesaba
+     *  teklif SILDIRIRDI — o tuzak artik burada da olculuyor.
+     */
+    const ACIK_KALMALI: Array<[string, any, any]> = [
       ['teklif listesi  GET /quotes', QuotesController, QuotesController.prototype.findAll],
       ['teklif detay    GET /quotes/:id', QuotesController, QuotesController.prototype.findOne],
-      ['teklif olustur  POST /quotes', QuotesController, QuotesController.prototype.create],
+      ['cikti indir     POST /quotes/:id/export', QuotesController, (QuotesController.prototype as any).exportXlsx],
       ['kutuphane       GET /library', LibraryController, LibraryController.prototype.findAll],
       ['kutuphane marka GET /library/brands', LibraryController, LibraryController.prototype.findLibraryBrands],
       ['cikti formati   GET /quote-formats', QuoteFormatsController, QuoteFormatsController.prototype.list],
       ['cikti ornek     GET /quote-formats/sample', QuoteFormatsController, (QuoteFormatsController.prototype as any).sample],
+    ];
+    const KAPALI_KALMALI: Array<[string, any, any]> = [
+      ['teklif olustur  POST /quotes', QuotesController, QuotesController.prototype.create],
+      ['teklif kaydet   PUT /quotes/:id', QuotesController, QuotesController.prototype.update],
+      ['teklif sil      DELETE /quotes/:id', QuotesController, QuotesController.prototype.remove],
+      ['kapak yaz       PATCH /quotes/:id/info', QuotesController, QuotesController.prototype.updateInfo],
+      ['kutuphane yaz   POST /library', LibraryController, (LibraryController.prototype as any).create],
       ['ceviri          POST /ai/translate', AiController, (AiController.prototype as any).translate],
       ['AI analiz       POST /ai/analyze', AiController, (AiController.prototype as any).analyze],
     ];
-    const sonuclar = kapatilmasiGerekenler.map(([ad, s, m]) => [ad, kapiSonucu(s, m)] as const);
-    const hepsi403 = sonuclar.every(([, g]) => g?.kod === 'HESAP_KAPALI');
-    check(`E3 ⭐⭐ ${sonuclar.length} UCUN HEPSI 403 HESAP_KAPALI (teklif · kutuphane · cikti · ceviri)`,
-      hepsi403, sonuclar.filter(([, g]) => g?.kod !== 'HESAP_KAPALI').map(([a]) => a).join(' | '));
+
+    const acikSonuc = ACIK_KALMALI.map(([ad, s, m]) => [ad, kapiSonucu(s, m)] as const);
+    check(`E3a ⭐⭐ ${acikSonuc.length} OKUMA ucu KAPALI HESABA ACIK (gorebilecek · girebilecek · indirebilecek)`,
+      acikSonuc.every(([, g]) => g === null),
+      acikSonuc.filter(([, g]) => g !== null).map(([a]) => a).join(' | '));
+
+    const kapaliSonuc = KAPALI_KALMALI.map(([ad, s, m]) => [ad, kapiSonucu(s, m)] as const);
+    check(`E3b ⭐⭐ ${kapaliSonuc.length} YAZMA ucunun HEPSI 403 HESAP_KAPALI ("islem yapamayacak")`,
+      kapaliSonuc.every(([, g]) => g?.kod === 'HESAP_KAPALI'),
+      kapaliSonuc.filter(([, g]) => g?.kod !== 'HESAP_KAPALI').map(([a]) => a).join(' | '));
+
+    // ⚠ GOVDE ARTIK BIR *YAZMA* UCUNDAN OKUNUYOR: okuma uclari 403 DONMUYOR,
+    //   eski satir `sonuclar[0]`i (teklif listesi) kullaniyordu ve o artik
+    //   `null` doner — assert sessizce anlamsizlasirdi.
     check('E4 403 govdesi ekranin yazacagi cumleyi ve imha tarihini tasiyor',
-      sonuclar[0][1]?.mesaj === kimlik.kapatmaMetni && !!sonuclar[0][1]?.imhaTarihi);
+      kapaliSonuc[0][1]?.mesaj === kimlik.kapatmaMetni && !!kapaliSonuc[0][1]?.imhaTarihi);
 
     // ⚠ PARA/KVKK KAPISI: bu ucun 403 DONMEMESI sart.
     const kvkk = kapiSonucu(AuthController, AuthController.prototype.verilerim);
@@ -546,9 +580,14 @@ async function main() {
     };
     check('F3 ⭐⭐ VERI INDIRME HAKKI ACIK KALDI (KVKK — firma kapansa da)',
       kapiSonucu(AuthController, AuthController.prototype.verilerim) === null);
-    check('F4 teklif ve kutuphane KAPALI',
-      kapiSonucu(QuotesController, QuotesController.prototype.findAll)?.kod === 'HESAP_KAPALI' &&
-        kapiSonucu(LibraryController, LibraryController.prototype.findAll)?.kod === 'HESAP_KAPALI');
+    // 22.09: firmasi kapatilan UYE icin de ayni sinir — okur, yazamaz.
+    // (Emre: kutuphane "gorunsun ama orada da islem yapamasin".)
+    check('F4a ⭐ teklif ve kutuphane OKUMA ACIK (uye de emegini gorebilmeli)',
+      kapiSonucu(QuotesController, QuotesController.prototype.findAll) === null &&
+        kapiSonucu(LibraryController, LibraryController.prototype.findAll) === null);
+    check('F4b ⭐⭐ ama YAZMA kapali (olusturma · silme)',
+      kapiSonucu(QuotesController, QuotesController.prototype.create)?.kod === 'HESAP_KAPALI' &&
+        kapiSonucu(QuotesController, QuotesController.prototype.remove)?.kod === 'HESAP_KAPALI');
 
     const erisim = new ErisimServisi({} as any);
     const karar = erisim.kapaliKarar({ kapali: true, tip: 'firma', imhaTarihi: ILERDE }, SIMDI);
@@ -612,18 +651,27 @@ async function fkBlogu() {
     try { guard.handleRequest(null, kimlik, null, baglam(sinif, metot)); return null; }
     catch (err: any) { return hataGovdesi(err); }
   };
-  const urunUclari: Array<[string, any, any]> = [
+  // 22.09 — SINIR OLCULUYOR (bkz. E3a/E3b gerekcesi): okuma acik, yazma kapali.
+  const okumaUclari: Array<[string, any, any]> = [
     ['teklif GET /quotes', QuotesController, QuotesController.prototype.findAll],
     ['teklif GET /quotes/:id', QuotesController, QuotesController.prototype.findOne],
     ['kutuphane GET /library', LibraryController, LibraryController.prototype.findAll],
     ['cikti GET /quote-formats', QuoteFormatsController, QuoteFormatsController.prototype.list],
     ['cikti GET /quote-formats/sample', QuoteFormatsController, (QuoteFormatsController.prototype as any).sample],
+  ];
+  const yazmaUclari: Array<[string, any, any]> = [
+    ['teklif POST /quotes', QuotesController, QuotesController.prototype.create],
+    ['teklif DELETE /quotes/:id', QuotesController, QuotesController.prototype.remove],
     ['ceviri POST /ai/translate', AiController, (AiController.prototype as any).translate],
   ];
-  const sonuc = urunUclari.map(([ad, s2, m]) => [ad, kapi(s2, m)] as const);
-  check(`FK5 ⭐⭐ ${sonuc.length} urun ucunun HEPSI 403 HESAP_KAPALI`,
-    sonuc.every(([, g]) => g?.kod === 'HESAP_KAPALI'),
-    sonuc.filter(([, g]) => g?.kod !== 'HESAP_KAPALI').map(([a]) => a).join(' | '));
+  const okumaSonuc = okumaUclari.map(([ad, s2, m]) => [ad, kapi(s2, m)] as const);
+  check(`FK5a ⭐⭐ ${okumaSonuc.length} OKUMA ucu acik (gorebilecek · girebilecek)`,
+    okumaSonuc.every(([, g]) => g === null),
+    okumaSonuc.filter(([, g]) => g !== null).map(([a]) => a).join(' | '));
+  const yazmaSonuc = yazmaUclari.map(([ad, s2, m]) => [ad, kapi(s2, m)] as const);
+  check(`FK5b ⭐⭐ ${yazmaSonuc.length} YAZMA ucunun HEPSI 403 HESAP_KAPALI`,
+    yazmaSonuc.every(([, g]) => g?.kod === 'HESAP_KAPALI'),
+    yazmaSonuc.filter(([, g]) => g?.kod !== 'HESAP_KAPALI').map(([a]) => a).join(' | '));
   check('FK6 ⭐⭐ "Verilerimi indir" ODEMESIZ ACIK (KVKK — bu kararin TEK sebebi)',
     kapi(AuthController, AuthController.prototype.verilerim) === null);
   check('FK7 GET /auth/me acik (ekranin tek beslemesi)',

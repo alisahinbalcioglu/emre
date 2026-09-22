@@ -121,6 +121,28 @@ export function seritGosterilsinMi(karar: ErisimKarari | null): boolean {
 const DURDURULMAYAN_YOL = /^\/(abonelik|profile|koltuk-durduruldu)(\/|$)/;
 
 /**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  KAPATILMIS HESABIN SALT-OKUNUR YOLLARI (22.09.2026 — Emre kararı)
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ *  Emre: "kaydedilmiş tekliflerini görebilecek, indirebilecek, girebilecek
+ *  ancak işlem yapamayacak." Kütüphane için de aynısı.
+ *
+ *  ⚠ NEDEN AYRI BİR LİSTE — `DURDURULMAYAN_YOL` yetmez. O liste ÖDEMESİ
+ *  olmayan HERKES için geçerli; oraya `/quotes` eklemek, hiç paket almamış
+ *  bir hesabın da teklif ekranını açabilmesi demek olurdu. Kapatılmış hesap
+ *  farklı: o kişi bu veriyi ZATEN üretmiş ve 30 günlük pencerede yalnız
+ *  emeğini yanına alıyor.
+ *
+ *  ⚠ BU BİR KAPI DEĞİL. Gerçek kapı sunucudadır (`@KapaliHesapIzinli` +
+ *  `KAPALI_HESAPTA_ACIK`). Buradaki liste yalnız "içeriği durdurma" kararı
+ *  verir; listeye fazladan bir yol yazmak veri açmaz, yalnız kullanıcıya
+ *  boş/403 bir sayfa gösterir.
+ */
+const KAPALI_HESABIN_OKUYABILECEGI_YOL =
+  /^\/(quotes|library|quote-formats)(\/|$)/;
+
+/**
  * Sayfa icerigi yerine "erisiminiz kapali" ekrani mi cizilmeli?
  *
  *  ── NEDEN SAYFA SAYFA DEGIL, KABUKTA ────────────────────────────────────
@@ -143,9 +165,15 @@ const DURDURULMAYAN_YOL = /^\/(abonelik|profile|koltuk-durduruldu)(\/|$)/;
 export function icerikDurdurulsunMu(
   karar: ErisimKarari | null,
   yol: string,
+  hesapKapali = false,
 ): boolean {
   if (!karar) return false;
   if (karar.erisimVar) return false;
+  // 22.09: kapatilmis hesap tekliflerini/kutuphanesini OKUYABILIR. Bu dal
+  // olmasaydi `erisimVar: false` (kapatma aboneligi iptal eder) yuzunden
+  // `/quotes` icerigi "paket secin" ekraniyla degistirilir, Emre'nin
+  // "gorebilecek, girebilecek" karari on yuzde SESSIZCE olurdu.
+  if (hesapKapali && KAPALI_HESABIN_OKUYABILECEGI_YOL.test(yol)) return false;
   return !DURDURULMAYAN_YOL.test(yol);
 }
 

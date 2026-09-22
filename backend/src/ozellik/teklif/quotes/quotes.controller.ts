@@ -15,7 +15,21 @@ import { kimlikCoz } from '../../../altyapi/auth/kimlik';
 import { memoryStorage } from 'multer';
 import { ErisimGuard, GerekliYetenek } from '../../odeme/abonelik/erisim.guard';
 import { Yetenek } from '../../odeme/abonelik/erisim.servisi';
+import { KapaliHesapIzinli } from '../../../altyapi/auth/decorators/kapali-hesap-izinli.decorator';
 
+/**
+ * ⚠⚠ `@KapaliHesapIzinli` SINIF DUZEYINE KONMAZ — UC UC verilir (22.09.2026).
+ *
+ * Emre'nin karari: kapatilmis hesap "kaydedilmis tekliflerini gorebilecek,
+ * indirebilecek, girebilecek ancak islem yapamayacak." Izni sinifa koymak
+ * bu cumleyi BOZARDI, cunku bu denetleyicideki `@Delete(':id')` ucunun
+ * IKINCI KAPISI YOK (`@GerekliYetenek` tasimiyor, yani `ErisimGuard` onu
+ * sessizce geciriyor — olculdu). Sinif duzeyinde tek satirlik bir izin,
+ * kapali hesaba TEKLIF SILDIRIRDI.
+ *
+ * Kural: izin yalniz OKUYAN uca yazilir. Yeni bir uc eklendiginde izin
+ * YAZILMAZSA uc kapali kalir — unutmanin yonu guvenli taraftir.
+ */
 @Controller('quotes')
 @UseGuards(JwtAuthGuard, ErisimGuard)
 export class QuotesController {
@@ -66,6 +80,7 @@ export class QuotesController {
    * `X-Toplam-Kayit` (admin.controller.ts:53-59 ile birebir ayni desen).
    */
   @Get()
+  @KapaliHesapIzinli() // "gorebilecek" — kaydedilmis teklif listesi
   async findAll(
     @CurrentUser() user: any,
     @Query() sorgu: TekliflerSorgusuDto,
@@ -112,6 +127,13 @@ export class QuotesController {
   /** .xlsx uret (rev artar, arsivlenir — T10) ve indir */
   @Post(':id/export')
   @GerekliYetenek(Yetenek.CIKTI_INDIR)
+  // ⚠ "indirebilecek" — ama bu uc `rev` ARTIRIR ve arsive satir yazar, yani
+  //   tam anlamiyla salt-okunur DEGIL. Yine de aciktir: teklifin KENDISI
+  //   degismez (kalem, fiyat, baslik aynen kalir), degisen yalniz "kacinci
+  //   kez cikti alindi" sayacidir. Kapatsaydik musteri emegini YANINA
+  //   ALAMAZDI — ki ayni veriyi KVKK indirmesi zaten veriyor; kapatmak
+  //   korumaz, yalnizca zorlastirirdi. Ekranda bu buton duruyor.
+  @KapaliHesapIzinli()
   async exportXlsx(
     @CurrentUser() user: any,
     @Param('id') id: string,
@@ -139,6 +161,7 @@ export class QuotesController {
    *  (kullanici karari 24.07: cikti ikiye ayrildi). */
   @Get(':id/export-priced')
   @GerekliYetenek(Yetenek.CIKTI_INDIR)
+  @KapaliHesapIzinli() // "indirebilecek" — rev ARTMAZ, saf okuma
   async exportPriced(
     @CurrentUser() user: any,
     @Param('id') id: string,
@@ -166,12 +189,14 @@ export class QuotesController {
 
   /** T10 arsivi */
   @Get(':id/exports')
+  @KapaliHesapIzinli() // "gorebilecek" — alinmis ciktilarin arsiv listesi
   listExports(@CurrentUser() user: any, @Param('id') id: string) {
     return this.quotesService.listExports(kimlikCoz(user), id);
   }
 
   @Get(':id/exports/:rev')
   @GerekliYetenek(Yetenek.CIKTI_INDIR)
+  @KapaliHesapIzinli() // "indirebilecek" — arsivden eski surum, saf okuma
   async downloadExport(
     @CurrentUser() user: any,
     @Param('id') id: string,
@@ -190,6 +215,7 @@ export class QuotesController {
   // ── Parameterized routes AFTER literals ──
 
   @Get(':id')
+  @KapaliHesapIzinli() // "girebilecek" — teklif ekranini acar
   findOne(@CurrentUser() user: any, @Param('id') id: string) {
     return this.quotesService.findOne(kimlikCoz(user), id);
   }

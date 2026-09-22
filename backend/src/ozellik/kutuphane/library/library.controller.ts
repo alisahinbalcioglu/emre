@@ -15,6 +15,7 @@ import { CurrentUser } from '../../../altyapi/auth/decorators/current-user.decor
 import { kimlikCoz } from '../../../altyapi/auth/kimlik';
 import { ErisimGuard, GerekliYetenek } from '../../odeme/abonelik/erisim.guard';
 import { Yetenek } from '../../odeme/abonelik/erisim.servisi';
+import { KapaliHesapIzinli } from '../../../altyapi/auth/decorators/kapali-hesap-izinli.decorator';
 
 @Controller('library')
 @UseGuards(JwtAuthGuard, ErisimGuard)
@@ -23,6 +24,7 @@ export class LibraryController {
 
   @Get()
   @GerekliYetenek(Yetenek.KUTUPHANE_GORUNTULE)
+  @KapaliHesapIzinli() // kapali hesap: kutuphane listesi (salt okuma)
   findAll(@CurrentUser() user: any) {
     return this.libraryService.findAll(kimlikCoz(user));
   }
@@ -32,6 +34,7 @@ export class LibraryController {
    *  (GET /brands) teklif akisinda kullanilmaz. */
   @Get('brands')
   @GerekliYetenek(Yetenek.KUTUPHANE_GORUNTULE)
+  @KapaliHesapIzinli() // kapali hesap: marka listesi (salt okuma)
   findLibraryBrands(@CurrentUser() user: any) {
     return this.libraryService.findLibraryBrands(kimlikCoz(user));
   }
@@ -84,6 +87,7 @@ export class LibraryController {
    *  TAM kolon seti); verilmezse markanin tum satirlari (geriye uyum). */
   @Get('brand/:brandId/sheets')
   @GerekliYetenek(Yetenek.KUTUPHANE_GORUNTULE)
+  @KapaliHesapIzinli() // kapali hesap: marka sayfalari (salt okuma)
   getBrandSheets(
     @CurrentUser() user: any,
     @Param('brandId') brandId: string,
@@ -96,6 +100,7 @@ export class LibraryController {
 
   @Get('brand/:brandId/lists')
   @GerekliYetenek(Yetenek.KUTUPHANE_GORUNTULE)
+  @KapaliHesapIzinli() // kapali hesap: marka listeleri (salt okuma)
   getBrandLists(@CurrentUser() user: any, @Param('brandId') brandId: string) {
     return this.libraryService.getBrandLists(kimlikCoz(user), brandId);
   }

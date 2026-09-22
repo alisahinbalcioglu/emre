@@ -23,10 +23,21 @@ import { icerikDurdurulsunMu, seritGosterilsinMi, seritSinifi } from './erisim-d
  * ═══════════════════════════════════════════════════════════════════════════
  */
 export function AbonelikSeridi() {
-  const { erisim } = useCapabilities();
+  const { erisim, kapali } = useCapabilities();
   const yol = usePathname() ?? '';
 
   if (!seritGosterilsinMi(erisim)) return null;
+
+  // 22.09.2026 — KAPALI HESAPTA BU SERIT SUSAR.
+  // ⚠ CANLIDA GORULDU (Emre'nin ekran goruntusu): kapali hesapta ALT ALTA
+  //   iki kirmizi serit ciziliyordu ve ikisi de AYNI `uyari` nesnesini
+  //   yaziyordu — ust uste "Hesabiniz kapatildi. Verileriniz 22.10.2026
+  //   tarihinde silinecek." Asagidaki `icerikDurdurulsunMu` dali icin
+  //   yazilan gerekcenin ta kendisi: karar KOPYALANMAZ.
+  //   `KapaliHesapSeridi` ayni basligi/metni ZATEN cizer, ustelik KVKK
+  //   indirme dugmesini de tasir; bu seridin `eylem` dugmesi de oraya
+  //   TASINDI, yani susmakla hicbir sey kaybolmuyor.
+  if (kapali?.kapali === true) return null;
 
   // 22.09.2026 — `ErisimKapisi` sayfa icerigini durdurdugunda serit
   // CIZILMEZ. Gerekce gorsel: durdurma ekrani AYNI uyari nesnesini (ayni

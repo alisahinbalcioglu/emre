@@ -11,6 +11,7 @@ import { CurrentUser } from '../../../altyapi/auth/decorators/current-user.decor
 import { kimlikCoz } from '../../../altyapi/auth/kimlik';
 import { ErisimGuard, GerekliYetenek } from '../../odeme/abonelik/erisim.guard';
 import { Yetenek } from '../../odeme/abonelik/erisim.servisi';
+import { KapaliHesapIzinli } from '../../../altyapi/auth/decorators/kapali-hesap-izinli.decorator';
 
 @Controller('brands')
 @UseGuards(JwtAuthGuard, ErisimGuard)
@@ -24,6 +25,7 @@ export class BrandsController {
 
   @Get('search')
   @GerekliYetenek(Yetenek.KUTUPHANE_GORUNTULE)
+  @KapaliHesapIzinli() // kapali hesap: marka arama (salt okuma)
   searchMaterials(@Query('q') q: string) { return this.brandsService.searchMaterials(q); }
 
   // Fiyat listesi malzemeleri (literal "price-lists" MUST be before :id).
@@ -36,6 +38,7 @@ export class BrandsController {
   // Parameterized routes AFTER literals
   @Get(':id')
   @GerekliYetenek(Yetenek.KUTUPHANE_GORUNTULE)
+  @KapaliHesapIzinli() // kapali hesap: marka detayi (salt okuma)
   findOne(@Param('id') id: string) { return this.brandsService.findOne(id); }
 
   @Get(':id/price-lists')
