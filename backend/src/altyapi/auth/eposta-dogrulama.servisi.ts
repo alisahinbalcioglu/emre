@@ -70,7 +70,18 @@ export class EpostaDogrulamaServisi {
         'Doğrulamadan da uygulamayı kullanabilirsiniz; doğrulama, önemli bildirimlerin size ulaşabildiğinden emin olmamızı sağlar.',
       ],
       dugme: { etiket: 'E-postamı doğrula', url },
+      // ⚠ İKİ SATIRLI ALT NOT, 22.09.2026 — GERÇEK BİR VAKADAN.
+      //   Emre yeni bir hesap açtı; bu posta GİTTİ ve Brevo tarafından kabul
+      //   edildi (sunucu günlüğünde hata yok) ama Google Workspace kutusunda
+      //   SPAM klasörüne düştü. Postanın KENDİSİ spam'e düştüğünde bu cümle
+      //   de görünmez — o yüzden asıl çözüm kayıt ekranındaki uyarıdır
+      //   (`DogrulamaBekleniyorEkrani`). Buradaki cümle İKİNCİ savunmadır:
+      //   kullanıcı postayı spam'de BULUP açtığında ne yapacağını söyler.
+      //   "Spam değil" işareti sonraki bildirimlerin gelen kutusuna
+      //   düşmesini sağlar — parola sıfırlama ve fatura bildirimi dahil.
       altNot:
+        'Bu ileti Spam / Gereksiz klasörüne düştüyse "Spam değil" olarak ' +
+        'işaretleyin; sonraki bildirimlerimiz gelen kutunuza ulaşsın. ' +
         'Bağlantı çalışmıyorsa tarayıcınızın adres çubuğuna kopyalayın: ' + url,
     });
   }
