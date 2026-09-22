@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
-import { seritGosterilsinMi, seritSinifi } from './erisim-durumu';
+import { icerikDurdurulsunMu, seritGosterilsinMi, seritSinifi } from './erisim-durumu';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -23,8 +24,17 @@ import { seritGosterilsinMi, seritSinifi } from './erisim-durumu';
  */
 export function AbonelikSeridi() {
   const { erisim } = useCapabilities();
+  const yol = usePathname() ?? '';
 
   if (!seritGosterilsinMi(erisim)) return null;
+
+  // 22.09.2026 — `ErisimKapisi` sayfa icerigini durdurdugunda serit
+  // CIZILMEZ. Gerekce gorsel: durdurma ekrani AYNI uyari nesnesini (ayni
+  // baslik, ayni metin, ayni eylem dugmesi) zaten tam ekran gosteriyor;
+  // ikisi birlikte "Aboneliginiz bulunmuyor · Paketleri gor" cumlesini
+  // ust uste iki kez yazardi. Karar KOPYALANMAZ, ayni saf fonksiyondan
+  // okunur — iki yer ayrisirsa ya cift uyari ya da hic uyari olurdu.
+  if (icerikDurdurulsunMu(erisim, yol)) return null;
   const uyari = erisim!.uyari!;
 
   return (

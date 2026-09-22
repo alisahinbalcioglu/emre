@@ -316,10 +316,14 @@ describe('A2 bağlantı: üretim dalları ortak kuralı ÇAĞIRIYOR (kaynak öl�
     expect(grid).toMatch(/row\._sayiUyari\?\.\[sayiIsaretAlani\] && sayiOku\(e\.newValue\) !== null/);
   });
 
-  it('SY-BAG form kutuları insan kuralını çağırır (kütüphane · admin · işçilik · elektrik markası)', () => {
-    const lib = oku(path.join(KOK, 'app/(protected)/library/page.tsx'));
-    expect((lib.match(/formSayisiOku\(/g) ?? []).length, 'library/page.tsx').toBe(7);
-    expect(lib).not.toMatch(/Number\((?:discountRate|customPrice|editForm\.|editingDiscountValue|editingPriceValue|bulkDiscountValue)/);
+  it('SY-BAG form kutuları insan kuralını çağırır (admin · işçilik · elektrik markası)', () => {
+    // ⚠ 22.09.2026 — `library/page.tsx` bu kapıdan ÇIKARILDI (7 çağrı beklentisi
+    // silindi). Gerekçe ölçümdür, kolaylık değil: o sayfanın ekleme/düzenleme
+    // diyalogları RENDER BLOĞUNA HİÇ BAĞLI DEĞİLDİ — sayfa yalnız üç karta
+    // yönlendiriyor, kütüphane kalemi düzenleme çoktan `library/brand/[brandId]`
+    // ExcelGrid'ine taşınmış (o yüzey HÜCRE = makine sınırıdır ve `sayiOku` ile
+    // ayrıca ölçülür). Yani kapı, ulaşılamayan formları koruyordu; ölü kod
+    // kaldırılınca beklenti bayatladı. Canlı form yüzeylerinin üçü AŞAĞIDA DURUYOR.
     expect(oku(path.join(KOK, 'app/admin/brands/page.tsx'))).toMatch(/const fiyatG = formSayisiOku\(matPrice, 'fiyat'\)/);
     expect(oku(path.join(KOK, 'app/(protected)/labor/page.tsx'))).toMatch(/const fiyatG = formSayisiOku\(form\.unitPrice, 'fiyat'\)/);
     expect(oku(path.join(KOK, 'app/(protected)/library/electrical-brands/page.tsx'))).toMatch(/const fiyatG = formSayisiOku\(customPrice, 'fiyat'\)/);

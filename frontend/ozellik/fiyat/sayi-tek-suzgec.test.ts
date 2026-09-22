@@ -65,7 +65,10 @@ const ISTISNALAR: Array<{ dosya: string; parca: string; gerekce: string }> = [
   // `sayiOku`ya devredildi (recalcGrand birim + toplam, KAR bicimlendiricisi,
   // fill-down ve restore-rematch Genel Toplam tazelemesi) — istisnalari silindi.
   // ── Para/miktar DEĞİL ya da API sayısı
-  { dosya: 'app/(protected)/library/page.tsx', parca: 'const num = parseFloat(d);', gerekce: 'çap SIRALAMA anahtarı (DIAMETER_ORDER dışı), para/miktar değil' },
+  // 22.09.2026 — `library/page.tsx` istisnası SİLİNDİ: sayfa artık veri
+  // göstermiyor, üç karta yönlendiriyor. Çap sıralama anahtarı da dahil tüm
+  // okuyucular ölü koddu (render bloğuna bağlı değildi) ve kaldırıldı.
+  // ⚠ Sayfa KAPSAM listesinde KALIYOR: yeniden ham okuyucu eklenirse kapı yansın.
   { dosya: 'app/(protected)/library/electrical-brands/page.tsx', parca: 'unitPrice: Number(m.unitPrice ?? m.price ?? 0),', gerekce: 'API JSON sayısı — AI fiyatı backend `insanSayiOku`dan geçti' },
   { dosya: 'ozellik/fiyat/pricing.ts', parca: 'const k = Number(oncekiKar);', gerekce: 'maliyetiGeriTuret argümanı — çağıranlar `sayiAlani` ile okur' },
 ];

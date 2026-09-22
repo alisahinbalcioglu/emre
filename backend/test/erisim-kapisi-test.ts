@@ -544,10 +544,136 @@ function onYuzEsligi() {
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  Q — KABUK DURDURMA KAPISI (22.09.2026)
+// ═══════════════════════════════════════════════════════════════════════════
+/**
+ * OLCULEN KUSUR: paketi olmayan (`erisimVar: false`) hesapta sunucu DOGRU
+ * davraniyordu (403 `ABONELIK_KISITLI`), ama 19 korumali sayfanin 18'i bu
+ * yaniti GENEL hata sanip kirmizi "Veriler yuklenirken bir hata olustu"
+ * bildirimi basiyordu — kullanici sayfalar arasi gezerken urunun bozuk
+ * oldugunu saniyordu. Cozum sayfa sayfa DEGIL kabukta: `ErisimKapisi`.
+ *
+ * ⚠ BU BLOK "DOSYA VAR MI" DEMEZ, UCUNU DE AYRI AYRI OLCER: (1) karar saf
+ * fonksiyonda DOGRU mu, (2) kabuga GERCEKTEN bagli mi, (3) karar gelmeden
+ * cocuklar cizilmiyor mu. Ucuncusu olmadan digerleri yesil olup kusur
+ * AYNEN durabilir: `/auth/me` beklenmezse alt sayfalar ayni commit'te
+ * mount olup isteklerini atar, 403'ler yola cikar, kirmizi bildirim yine
+ * gorunur ("mekanizma var, baglanti yok" deseni).
+ */
+function kabukDurdurmaKapisi() {
+  console.log('\n── Q · KABUK DURDURMA KAPISI (paketsiz hesap) ──');
+  const fs = require('node:fs') as typeof import('node:fs');
+  const path = require('node:path') as typeof import('node:path');
+  const kok = path.join(__dirname, '../..');
+
+  // ── Q1 · KARAR (saf fonksiyon, DOM yok) ────────────────────────────────
+  const FE = require('../../frontend/ozellik/odeme/erisim-durumu');
+  const durdur = FE.icerikDurdurulsunMu as (
+    k: { erisimVar: boolean; saltOkunur: boolean } | null,
+    yol: string,
+  ) => boolean;
+
+  check(
+    'Q-OLCUT icerikDurdurulsunMu disa aktarilmis',
+    typeof durdur === 'function',
+    `tip=${typeof durdur}`,
+  );
+  if (typeof durdur !== 'function') return;
+
+  const kapali = { erisimVar: false, saltOkunur: false };
+  const kisitliMod = { erisimVar: true, saltOkunur: true };
+
+  check('Q1a paketsiz hesap /library icerigini GORMEZ', durdur(kapali, '/library') === true);
+  check('Q1b paketsiz hesap /dashboard icerigini GORMEZ', durdur(kapali, '/dashboard') === true);
+  // KILITLENME YASAGI — L1 blogunun yol karsiligi.
+  check('Q1c ★KILITLENME /abonelik HER ZAMAN acik (yoksa odeyemez, cikamaz)', durdur(kapali, '/abonelik') === false);
+  check('Q1d ★KILITLENME /abonelik/kart acik (kart guncelleme yolu)', durdur(kapali, '/abonelik/kart') === false);
+  // KVKK haklari odeme durumuna BAGLANAMAZ (koltuk-durduruldu ile ayni gerekce).
+  check('Q1e ★KVKK /profile acik (verilerimi indir · hesabimi kapat)', durdur(kapali, '/profile') === false);
+  // Salt-okunur firma veriyi GORMEYE devam eder — urunun acik sozu.
+  check('Q1f salt-okunur (KISITLI) firma DURDURULMAZ', durdur(kisitliMod, '/library') === false);
+  check('Q1g karar YUKLENMEDIYSE (null) durdurulmaz', durdur(null, '/library') === false);
+  // Yol on-eki ESITLIK olmali: '/abonelikler' ayri bir sayfadir, muaf degil.
+  check('Q1h muafiyet yol ON-EKI ile eslesir, dizge icerigiyle degil', durdur(kapali, '/aboneliksiz-bir-sayfa') === true);
+
+  // ── Q2 · KABLOLAMA (kabukta gercekten duruyor mu) ──────────────────────
+  const duzen = fs
+    .readFileSync(path.join(kok, 'frontend/app/(protected)/layout.tsx'), 'utf8')
+    .replace(/\r\n/g, '\n')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^[ \t]*\/\/.*$/gm, '');
+
+  check(
+    'Q2a ★KABLO kabuk ErisimKapisi`ni ice aktariyor',
+    /import\s*\{\s*ErisimKapisi\s*\}/.test(duzen),
+  );
+  check(
+    'Q2b ★KABLO children ErisimKapisi ICINDE ciziliyor (olu import degil)',
+    /<ErisimKapisi>\s*\{children\}\s*<\/ErisimKapisi>/.test(duzen),
+    'kapi ice aktarilip JSX`e konmazsa hicbir sey degismez',
+  );
+
+  // ── Q3 · BEKLEME (karar gelmeden cocuk cizilmiyor) ─────────────────────
+  const kapi = fs
+    .readFileSync(path.join(kok, 'frontend/ozellik/odeme/ErisimKapisi.tsx'), 'utf8')
+    .replace(/\r\n/g, '\n')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^[ \t]*\/\/.*$/gm, '');
+
+  const beklemeIdx = kapi.indexOf('if (loading)');
+  const cocukIdx = kapi.indexOf('{children}');
+  check(
+    'Q3a ★ZAMANLAMA karar yuklenirken cocuklar CIZILMEZ (403 yola cikmasin)',
+    beklemeIdx !== -1 && cocukIdx !== -1 && beklemeIdx < cocukIdx,
+    `loading=${beklemeIdx} children=${cocukIdx} — bekleme yoksa istekler karardan ONCE gider`,
+  );
+  check(
+    'Q3b kapi karari saf fonksiyondan okur (metin/kural kopyalamaz)',
+    /icerikDurdurulsunMu\(/.test(kapi),
+  );
+  check(
+    'Q3c ★CIKMAZ SOKAK YASAK durdurma ekrani /abonelik`e yol verir',
+    /['"]\/abonelik['"]/.test(kapi),
+    'sunucu `uyari` gondermese bile odeme sayfasina gidilebilmeli',
+  );
+
+  // ── Q3d · CIFT UYARI YOK ───────────────────────────────────────────────
+  // Durdurma ekrani `uyari` nesnesinin AYNISINI (baslik + metin + eylem)
+  // tam ekran gosterir; serit de cizilirse ayni cumle ust uste iki kez
+  // yazilir. Serit karari KOPYALAMAZ, ayni saf fonksiyondan okur.
+  const serit = fs
+    .readFileSync(path.join(kok, 'frontend/ozellik/odeme/AbonelikSeridi.tsx'), 'utf8')
+    .replace(/\r\n/g, '\n')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^[ \t]*\/\/.*$/gm, '');
+  check(
+    'Q3d icerik durdurulmusken serit CIZILMEZ (cift uyari yok)',
+    /if \(icerikDurdurulsunMu\([^)]*\)\) return null;/.test(serit),
+  );
+
+  // ── Q4 · OLU CEKIM GERI GELMESIN ───────────────────────────────────────
+  // Kutuphanem sayfasi veri GOSTERMEZ, uc karta yonlendirir. Mount'ta veri
+  // cekmesi hem paketli musteride 3 bosuna istek hem paketsizde kirmizi
+  // hata uretiyordu (kullanicinin bildirdigi goruntu).
+  const kutuphane = fs
+    .readFileSync(path.join(kok, 'frontend/app/(protected)/library/page.tsx'), 'utf8')
+    .replace(/\r\n/g, '\n')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^[ \t]*\/\/.*$/gm, '');
+
+  check(
+    'Q4 Kutuphanem sayfasi (yalniz yonlendirme) veri CEKMIYOR',
+    !/api\.(get|post|put|delete)\(/.test(kutuphane),
+    'render bloguna baglanmayan cekim = bosuna istek + paketsizde kirmizi hata',
+  );
+}
+
 kararMatrisi();
 kablolama();
 onYuzEsligi();
 iscilikEkrani();
+kabukDurdurmaKapisi();
 
 console.log(
   `\n${'='.repeat(64)}\nERISIM KAPISI: ${passed} PASS, ${failed} FAIL\n${'='.repeat(64)}`,

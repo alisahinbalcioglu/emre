@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { CapabilitiesProvider } from '@/ortak/contexts/CapabilitiesContext';
 import { AbonelikSeridi } from '@/ozellik/odeme/AbonelikSeridi';
+import { ErisimKapisi } from '@/ozellik/odeme/ErisimKapisi';
 import { EpostaDogrulamaSeridi } from '@/ortak/kabuk/components/layout/EpostaDogrulamaSeridi';
 import { KapaliHesapSeridi } from '@/ortak/kabuk/components/layout/KapaliHesapSeridi';
 import Sidebar from '@/ortak/kabuk/components/layout/Sidebar';
@@ -229,7 +230,13 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
 
           {/* Page content */}
           <main className="flex-1 px-8 py-8">
-            {children}
+            {/* 22.09.2026 — ERISIM KAPISI. Serit ile AYNI gerekce: erisimi
+                tamamen kapali (paketsiz / suresi dolmus / askida) bir hesap
+                sayfa icerigini HIC gormemeli. Sayfa sayfa ele almak
+                OLCULDU ve tutmadi: 19 korumali sayfanin 18'i sunucunun 403
+                `ABONELIK_KISITLI` yanitini genel hata sanip kirmizi
+                "Veriler yuklenirken bir hata olustu" basiyordu. */}
+            <ErisimKapisi>{children}</ErisimKapisi>
           </main>
 
           {/* FAZ 5.2 — altbilgi KABUKTA. Sayfa sayfa eklemek, eklenmeyi

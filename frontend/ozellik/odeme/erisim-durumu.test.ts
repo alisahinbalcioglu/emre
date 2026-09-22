@@ -4,6 +4,7 @@ import {
   yetenekAcikMi,
   seritGosterilsinMi,
   seritSinifi,
+  icerikDurdurulsunMu,
   type ErisimKarari,
 } from './erisim-durumu';
 import { tutarYaz, vitrinFiyati } from './paket-bicim';
@@ -178,5 +179,52 @@ describe('paket — vitrin fiyati (dolar capa, TL sozlesme)', () => {
     const v = vitrinFiyati(temelSurum);
     expect(v.alt).not.toBeNull();
     expect(v.alt).toContain('1.649');
+  });
+});
+
+/**
+ * 22.09.2026 — KABUK DURDURMA KARARI.
+ *
+ * OLCULEN KUSUR: paketsiz hesapta sunucu dogru davraniyordu (403
+ * `ABONELIK_KISITLI`), ama 19 korumali sayfanin 18'i bunu GENEL hata sanip
+ * kirmizi "Veriler yuklenirken bir hata olustu" basiyordu. Karar artik
+ * kabukta tek yerde veriliyor (`ErisimKapisi`); bu blok o kararin KENDISINI
+ * olcer — kablolamasini `backend/test/erisim-kapisi-test.ts` Q2/Q3 olcer.
+ */
+describe('erisim — kabuk durdurma karari', () => {
+  const kapali = karar({ erisimVar: false, saltOkunur: false, durum: 'SONA_ERDI' });
+
+  it('paketsiz hesap sayfa icerigini GORMEZ', () => {
+    expect(icerikDurdurulsunMu(kapali, '/library')).toBe(true);
+    expect(icerikDurdurulsunMu(kapali, '/quotes/abc')).toBe(true);
+  });
+
+  it('★ KILITLENME YASAGI: /abonelik her zaman acik', () => {
+    // Kapanirsa kullanici odeyemez ve kapali durumdan CIKAMAZ — duzeltmenin
+    // tek yolu elle DB mudahalesi olurdu.
+    expect(icerikDurdurulsunMu(kapali, '/abonelik')).toBe(false);
+    expect(icerikDurdurulsunMu(kapali, '/abonelik/kart')).toBe(false);
+  });
+
+  it('★ KVKK haklari odeme durumuna BAGLANMAZ: /profile acik', () => {
+    expect(icerikDurdurulsunMu(kapali, '/profile')).toBe(false);
+  });
+
+  it('★ salt-okunur (KISITLI) firma DURDURULMAZ — veriyi gormeye devam eder', () => {
+    const k = karar({ durum: 'KISITLI', erisimVar: true, saltOkunur: true });
+    expect(icerikDurdurulsunMu(k, '/library')).toBe(false);
+    expect(icerikDurdurulsunMu(k, '/quotes')).toBe(false);
+  });
+
+  it('karar HENUZ YUKLENMEDIYSE (null) durdurmaz', () => {
+    // Her sayfa acilisinda bir anlik "erisiminiz yok" yanip sonmesi olurdu;
+    // ayrica firmasiz hesapta karar kalici olarak null'dir.
+    expect(icerikDurdurulsunMu(null, '/library')).toBe(false);
+  });
+
+  it('muafiyet YOL ON-EKI ile eslesir, dizge icerigiyle degil', () => {
+    // '/abonelik' muaf diye '/aboneliksiz-...' muaf sayilmamali.
+    expect(icerikDurdurulsunMu(kapali, '/aboneliksiz-bir-sayfa')).toBe(true);
+    expect(icerikDurdurulsunMu(kapali, '/dashboard/abonelik')).toBe(true);
   });
 });
