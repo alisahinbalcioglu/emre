@@ -65,7 +65,14 @@ export function oturumuYaz(data: unknown): OturumYaniti {
  * ogrenemezdi.
  */
 export function girisSonrasiYol(data: OturumYaniti): string {
-  if (data.user?.hesapKapali === true) return '/hesap-kapali';
+  // ── 22.09.2026 (Emre karari): AYRI GERI DONUS EKRANI KALDIRILDI ──────
+  // Eskiden `/hesap-kapali` diye TEK amacli bir sayfa vardi. Emre'nin
+  // gerekcesi: "ikinci bir arayuze hic gerek yok — 30 gun boyunca mail ve
+  // sifre kayitli kalir, girmek isteyen giris yapar ve paket secer."
+  // Kapali hesabin geri donmesinin TEK yolu zaten paket almak; onu ayri bir
+  // ekrandan bir dugmeyle gostermek araya gereksiz bir adim koyuyordu.
+  // Kapatma cumlesi ve imha tarihi kaybolmadi — `KapaliHesapSeridi`ne tasindi.
+  if (data.user?.hesapKapali === true) return '/abonelik';
   return data.user?.koltukDurduruldu === true ? '/koltuk-durduruldu' : '/dashboard';
 }
 

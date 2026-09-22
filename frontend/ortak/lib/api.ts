@@ -160,9 +160,13 @@ function kimlikUcuMu(url?: string): boolean {
 
 /**
  * PLAN 5.8 §4.4 — kapali hesabin KALMASINA izin verilen yollar.
- * `/hesap-kapali` (ekranin kendisi) ve `/abonelik…` (geri donmenin TEK yolu).
+ * Yalniz `/abonelik…` — geri donmenin TEK yolu paket almaktir.
+ * ⚠ 22.09.2026: `/hesap-kapali` LISTEDEN CIKTI cunku o sayfa SILINDI
+ *   (Emre karari: ayri arayuz yok, giris → paket sec). Listede birakilsaydi
+ *   kapali hesap var olmayan bir yolda "kalabilir" sayilir ve bos sayfada
+ *   takilirdi.
  */
-const KAPALI_HESABIN_KALABILECEGI_YOL = /^\/(hesap-kapali|abonelik)(\/|$)/;
+const KAPALI_HESABIN_KALABILECEGI_YOL = /^\/(abonelik)(\/|$)/;
 
 api.interceptors.response.use(
   (res) => res,
@@ -253,7 +257,8 @@ api.interceptors.response.use(
       // Gerekce `ABONELIK_KISITLI` daliyla ayni: kullaniciyi odeme yapmasi
       // gereken anda urunun disina atmayiz.
       if (!KAPALI_HESABIN_KALABILECEGI_YOL.test(window.location.pathname)) {
-        window.location.href = '/hesap-kapali';
+        // 22.09.2026: hedef `/hesap-kapali` DEGIL `/abonelik` — o sayfa silindi.
+        window.location.href = '/abonelik';
       }
     }
 

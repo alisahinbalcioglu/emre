@@ -17,7 +17,9 @@ import { cn } from '@/ortak/lib/utils';
 import { paketRozeti } from '@/ozellik/odeme/paket-bicim';
 
 interface SidebarProps {
-  user: { email: string; role: string; tier?: string | null } | null;
+  // ⚠ `hesapKapali` 22.09'da EKLENDI: kapali hesapta calismayan menu
+  //   baglantilari gizleniyor (asagidaki `items` suzgeci).
+  user: { email: string; role: string; tier?: string | null; hesapKapali?: boolean } | null;
   collapsed: boolean;
   onToggle: () => void;
 }
@@ -66,7 +68,21 @@ export default function Sidebar({ user, collapsed, onToggle }: SidebarProps) {
   const tierStyle = tier ? (TIER_COLORS[tier] ?? TIER_COLORS.core) : PAKET_YOK_RENGI;
   const initial = user?.email?.charAt(0).toUpperCase() ?? 'U';
 
-  const items = NAV_ITEMS;
+  // ── 22.09.2026: KAPALI HESAPTA KIRIK BAGLANTI GOSTERILMEZ ────────────
+  // Silinen `/hesap-kapali` sayfasi BILEREK `(protected)` kabugunun
+  // disindaydi; kendi basliginda gerekcesi yaziliydi: "o kabuk kenar
+  // cubugu, ekmek kirintisi ve pano baglantilari cizer — HEPSI kapali
+  // hesapta 403 doner."
+  // Emre 22.09'da ayri ekrani kaldirtti ve kapali hesap artik `/abonelik`e,
+  // yani kabugun ICINE dusuyor. O gerekce ortadan kalkmadi, YER DEGISTIRDI:
+  // cozum kabugu geri getirmek degil, calismayan baglantilari GIZLEMEK.
+  // Kapali hesabin yapabilecegi tek sey paket almaktir; menude de tek o
+  // durur. Profil/cikis alttaki kullanici blogunda kalir.
+  // ⚠ AYRAC ('divider') da elenir: tek bir ogenin ustunde/altinda cizgi
+  //   birakmak menuyu bozuk gosterirdi.
+  const items = user?.hesapKapali === true
+    ? NAV_ITEMS.filter((i) => typeof i !== 'string' && i.href === '/abonelik')
+    : NAV_ITEMS;
 
   function isActive(href: string) {
     if (href === '/dashboard') return pathname === '/dashboard';

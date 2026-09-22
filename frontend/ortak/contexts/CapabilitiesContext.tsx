@@ -3,6 +3,10 @@
 import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
 import api from '@/ortak/lib/api';
 import type { ErisimKarari } from '@/ozellik/odeme/erisim-durumu';
+import {
+  kapaliDurumCoz,
+  type KapaliDurum,
+} from '@/ortak/kabuk/components/layout/kapali-durum';
 
 export interface DisciplineCapability {
   material: boolean;
@@ -40,6 +44,16 @@ interface CapabilitiesContextValue {
    * besleme noktasidir). null = henuz yuklenmedi.
    */
   emailVerified: boolean | null;
+  /**
+   * 22.09.2026 — HESAP KAPALI MI (kapatma cümlesi + imha tarihi + tip).
+   * `emailVerified` ile BİREBİR AYNI gerekçe: AYNI `/auth/me` yanıtından
+   * gelir, AYRI istek ATILMAZ. `KapaliHesapSeridi` önce kendi isteğini
+   * atıyordu; bu sağlayıcı zaten aynı ucu çağırdığı için her kabuk
+   * mount'unda İKİ `/auth/me` gidiyordu ve iki ayrı gerçek kaynağı
+   * oluşuyordu — biri günün birinde ötekinden sapardı.
+   * null = henüz yüklenmedi VEYA hesap kapalı değil.
+   */
+  kapali: KapaliDurum | null;
   loading: boolean;
   refresh: () => Promise<void>;
   // Helper'lar
@@ -56,6 +70,7 @@ export function CapabilitiesProvider({ children }: { children: ReactNode }) {
   const [capabilities, setCapabilities] = useState<UserCapabilities>(EMPTY_CAPABILITIES);
   const [erisim, setErisim] = useState<ErisimKarari | null>(null);
   const [emailVerified, setEmailVerified] = useState<boolean | null>(null);
+  const [kapali, setKapali] = useState<KapaliDurum | null>(null);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
@@ -65,6 +80,7 @@ export function CapabilitiesProvider({ children }: { children: ReactNode }) {
       setCapabilities(EMPTY_CAPABILITIES);
       setErisim(null);
       setEmailVerified(null);
+      setKapali(null);
       setLoading(false);
       return;
     }
@@ -80,6 +96,10 @@ export function CapabilitiesProvider({ children }: { children: ReactNode }) {
       // TASIMAZ: auth.service login yalniz {id,email,role,tier} doner).
       setErisim(data?.erisim ?? null);
       setEmailVerified(typeof data?.emailVerified === 'boolean' ? data.emailVerified : null);
+      // 22.09: kapali hesap durumu da AYNI yanittan — `KapaliHesapSeridi`
+      // artik kendi istegini atmaz. Cozucu ayri ve import'suz bir dosyada
+      // (`kapali-durum.ts`) cunku vitest bu depoda `@/…` cozmuyor.
+      setKapali(kapaliDurumCoz(data));
 
       // Satin alma sonrasi PAKET TAZELENMESI: Sidebar paketi
       // localStorage'daki donmus kopyadan okuyor (login aninda yazilir).
@@ -111,6 +131,7 @@ export function CapabilitiesProvider({ children }: { children: ReactNode }) {
       setCapabilities(EMPTY_CAPABILITIES);
       setErisim(null);
       setEmailVerified(null);
+      setKapali(null);
     } finally {
       setLoading(false);
     }
@@ -128,7 +149,7 @@ export function CapabilitiesProvider({ children }: { children: ReactNode }) {
 
   return (
     <CapabilitiesContext.Provider
-      value={{ capabilities, erisim, emailVerified, loading, refresh, hasAnyMaterial, hasAnyLabor, hasAnyDwg, hasDiscipline, hasLaborFor }}
+      value={{ capabilities, erisim, emailVerified, kapali, loading, refresh, hasAnyMaterial, hasAnyLabor, hasAnyDwg, hasDiscipline, hasLaborFor }}
     >
       {children}
     </CapabilitiesContext.Provider>
@@ -143,6 +164,10 @@ export function useCapabilities(): CapabilitiesContextValue {
       capabilities: EMPTY_CAPABILITIES,
       erisim: null,
       emailVerified: null,
+      // ⚠ `null` = "kapali degil" DEGIL, "bilmiyoruz". Saglayicisiz bir
+      //   agacta serit CIZILMEZ; kapali hesabi yanlislikla ACIK gostermek
+      //   yerine hic sey gostermemek dogru yon — gercek kapi sunucuda.
+      kapali: null,
       loading: false,
       refresh: async () => {},
       hasAnyMaterial: () => false,

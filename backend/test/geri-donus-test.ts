@@ -590,7 +590,11 @@ async function fkBlogu() {
   const jwt = { sign: () => 'a.b.c' } as any;
   const oturum = new OturumServisi(db.prisma, jwt);
   const y: any = await oturum.girisKarari(db.users[0] as any, 'parola');
-  check('FK2 giris yaniti token + `hesapKapali: true` (on yuz /hesap-kapali`ya gider)',
+  // 22.09.2026: hedef `/hesap-kapali` DEGIL `/abonelik` — o sayfa SILINDI
+  // (Emre: "ikinci bir arayuze hic gerek yok"). Iddia degismedi, ETIKETI
+  // bayatlamisti: olu bir sayfaya isaret eden etiket, okuyani yanlis yere
+  // bakmaya gonderir. On yuz tarafinin kapisi `kapali-hesap-akisi.test.ts`.
+  check('FK2 giris yaniti token + `hesapKapali: true` (on yuz `/abonelik`e gider)',
     typeof y?.token === 'string' && y?.user?.hesapKapali === true, JSON.stringify(y?.user));
 
   // 2) TOKEN KAPISI + EKRAN

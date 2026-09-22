@@ -525,10 +525,22 @@ async function uBlogu(): Promise<void> {
     const hesap = new HesapServisi(genisDb as any, {} as any, EPOSTA_SAHTE);
     const veri: any = await hesap.verileriDisaAktar('u1');
     const metin = JSON.stringify(veri);
-    check('U8 KVKK veri indirmesi İKİ BAŞLIĞI taşır (firma sözlüğü + kullanıcının düzeltme olayları)',
-      Array.isArray(veri.ceviriDuzeltmeleri) && veri.ceviriDuzeltmeleri.length === 1 && veri.ceviriDuzeltmeleri[0].kaynakMetin === 'KÜRESEL VANA' &&
+    // ── 22.09.2026 DARALTMA (Emre kararı, "B seçeneği") ──────────────────
+    // Bu assert ESKİDEN sözlüğün dosyada OLDUĞUNU ölçüyordu. Karar değişti:
+    // "kütüphaneden veri indiremez… o zamana kadar hazırlamış olduğu
+    // teklifleri indirebilir sadece." FİRMA SÖZLÜĞÜ ürün içeriğidir — belirli
+    // bir kişi hakkında veri değil — ve KVKK m.11 kişisel veri dışa
+    // aktarımına girmez; kullanıcının KENDİ düzeltme OLAYLARI ise kişiseldir
+    // ve KALIR. Ölçüt zayıflatılmadı, TERSİNE çevrildi: anahtarın YOKLUĞU ve
+    // sözlük satırının metninin dosyanın HİÇBİR yerinden sızmadığı ölçülüyor.
+    // ⚠ FİXTURE DOĞRU DALI SÜRÜYOR: sahneye bir sözlük satırı (`d-f1`,
+    //   `kaynakMetin: 'KÜRESEL VANA'`) KONDU — kod hâlâ dışa aktarsaydı o
+    //   metin `metin` içinde görünürdü. Olayın `kaynakMetin`i AYRI ('ESKİ
+    //   TERİM'), yani assert olayı yanlışlıkla yakalamaz.
+    check('U8 ★ KVKK indirmesi yalnız KULLANICININ düzeltme OLAYLARINI taşır — firma SÖZLÜĞÜ daraltmayla ÇIKTI',
+      !('ceviriDuzeltmeleri' in veri) && !metin.includes('KÜRESEL VANA') &&
       Array.isArray(veri.ceviriDuzeltmeOlaylari) && veri.ceviriDuzeltmeOlaylari.length === 1 && veri.ceviriDuzeltmeOlaylari[0].tip === 'eklendi',
-      JSON.stringify({ d: veri.ceviriDuzeltmeleri, o: veri.ceviriDuzeltmeOlaylari }).slice(0, 300));
+      JSON.stringify({ sozlukAnahtari: 'ceviriDuzeltmeleri' in veri, o: veri.ceviriDuzeltmeOlaylari }).slice(0, 300));
     check('S10b ★ KVKK indirmesinde ORTAK katman değeri YOK (`ortakDeger` alanı yok, metin geçmiyor)',
       !('ortakDeger' in (veri.ceviriDuzeltmeOlaylari[0] ?? {})) && !metin.includes('BALL VALVE'),
       JSON.stringify(veri.ceviriDuzeltmeOlaylari));

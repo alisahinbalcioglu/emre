@@ -89,13 +89,29 @@ export default function AbonelikSayfasi() {
     kalanGun?: number | null;
   } | null>(null);
 
+  /**
+   * Firmasi KAPATILMIS uye mi? (kendi hesabini kapatan DEGIL.)
+   * ⚠ `false` baslangici bilincli: bilgi gelmeden kartlari gizlemek,
+   *   normal kullaniciya bir an bos sayfa gosterirdi.
+   */
+  const [firmaKapandi, setFirmaKapandi] = useState(false);
+
   const kimligiGetir = useCallback(async () => {
     try {
       const { data } = await api.get('/auth/me');
       setFirmaRol(data?.firmaRol ?? null);
       setErisim(data?.erisim ?? null);
+      // ── 22.09.2026: FIRMASI KAPATILAN UYE PAKET SECEMEZ ──────────────
+      // Silinen `/hesap-kapali` ekraninda ayni kural vardi ve orada
+      // gerekcesiyle yaziliydi: "Paket sec YALNIZ kendi hesabini kapatana
+      // gosterilir. Firmasi kapanan UYE paket secemez (K2: firmayi SAHIBI
+      // geri acar) — dugme calismayan bir soz olurdu."
+      // Ekran kaldirilinca kural da kaybolacakti; buraya TASINDI.
+      // ⚠ YENI ISTEK YOK: bilgi ayni `/auth/me` yanitinda.
+      setFirmaKapandi(data?.kapali?.kapali === true && data?.kapali?.tip === 'firma');
     } catch {
       setFirmaRol(null);
+      setFirmaKapandi(false);
       // Bilinmiyor = "paketiniz yok" DEĞİL: hiçbir kart işaretlenmez.
       setErisim(null);
     }
@@ -426,6 +442,20 @@ export default function AbonelikSayfasi() {
         // kural (FiyatKartlari.tsx). Her kart 5 satıra yayılır, satırları dış ızgaradan
         // alır: açıklaması uzun ya da hiç olmayan paket, komşusunun fiyatını ve
         // düğmesini kaydırmaz. Açıklama yoksa satır boş kutuyla tutulur.
+        firmaKapandi ? (
+          /* ⚠ ALAMAYACAGI SEY GOSTERILMEZ. Firmayi yalnizca SAHIBI geri
+             acabilir; uyeye kart gostermek, basildiginda 403 alacak bir
+             dugme sunmak olurdu. Ust seritteki cumle de ayni seyi soyluyor
+             (`KapaliHesapSeridi`), ikisi celismez. */
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-6 text-sm text-slate-700">
+            <p className="font-semibold text-slate-900">Paket seçimi size kapalı.</p>
+            <p className="mt-1.5 leading-relaxed">
+              Hesabınız, firmanız kapatıldığı için kapandı. Firmayı yalnızca sahibi
+              geri açabilir; o paket seçtiğinde ekip ve verileriniz olduğu gibi geri gelir.
+              Bu süre içinde verilerinizi yukarıdaki bağlantıdan indirebilirsiniz.
+            </p>
+          </div>
+        ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {paketler.map((p) => {
             // ⚠ Kod eşitliği, ad değil: aynı adı taşıyan iki sürüm olabilir.
@@ -538,6 +568,7 @@ export default function AbonelikSayfasi() {
             );
           })}
         </div>
+        )
       )}
 
       {/* ── KÜÇÜLTME ONAYI (§6.6 · Emre kararı E-3) ─────────────────────── */}

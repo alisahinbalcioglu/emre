@@ -146,38 +146,39 @@ export class HesapServisi {
         })
       : [];
 
-    const [formatlar, kutuphane, listeler, markaKutuphaneleri, iscilikFirmalari,
-      abonelikler, aiKullanimi, dwgDosyalari, ceviriDuzeltmeleri, ceviriDuzeltmeOlaylari] = await Promise.all([
-      this.prisma.quoteFormat.findMany({
-        where: { userId },
-        select: { id: true, name: true, fileName: true, isDefault: true, createdAt: true, updatedAt: true },
-      }),
-      this.prisma.userLibrary.findMany({ where: { userId } }),
-      this.prisma.libraryList.findMany({ where: { userId } }),
-      this.prisma.userBrandLibrary.findMany({ where: { userId } }),
-      this.prisma.laborFirm.findMany({ where: { userId } }),
-      this.prisma.userSubscription.findMany({ where: { userId } }),
-      this.prisma.aiUsageLog.findMany({ where: { userId } }),
-      firmaId
-        ? this.prisma.dwgDosya.findMany({
-            where: sahipMi ? { firmaId } : { firmaId, olusturanId: userId },
-          })
-        : Promise.resolve([]),
-      // Faz 6.9: firmanın çeviri sözlüğü + bu kullanıcının düzeltme olayları.
-      // ⚠ AÇIK select, `ortakDeger` BİLEREK YOK (Revizyon 1, R1-B1): olaydaki ortak
-      // katman karşılığı kişisel veri değildir ve başka firmaların ödediği
-      // çeviridir — veri indirmesi "ücretsiz sözlük sorgusu" yolu olmamalı.
-      firmaId
-        ? this.prisma.ceviriDuzeltmesi.findMany({
-            where: { firmaId },
-            select: { id: true, hedefDil: true, kaynakMetin: true, ceviriMetni: true, olusturuldu: true, guncellendi: true },
-          })
-        : Promise.resolve([]),
-      this.prisma.ceviriDuzeltmeOlayi.findMany({
-        where: { userId },
-        select: { id: true, tip: true, hedefDil: true, kaynakMetin: true, oncekiDeger: true, yeniDeger: true, olusturuldu: true },
-      }),
-    ]);
+    // ── 22.09.2026 (Emre kararı) — DIŞA AKTARIM DARALTILDI ───────────────
+    // KURAL: dosya "kişi hakkında tutulan veri" + "kişinin hazırladığı
+    // teklifler"dir. ÜRÜN İÇERİĞİ dışa aktarılmaz.
+    //
+    // ÇIKARILAN ALTI BAŞLIK ve neden çıkarılabildikleri:
+    //   kutuphane · kutuphaneListeleri · markaKutuphaneleri ·
+    //   iscilikFirmalari · teklifFormatlari · ceviriDuzeltmeleri
+    // Hepsi MALZEME ADI, FİYAT, ŞABLON ve SÖZLÜK — yani ticari/iş verisi.
+    // KVKK m.11 "kişisel veri" hakkıdır; bir fiyat listesi belirli bir kişi
+    // hakkında veri DEĞİLDİR. Bu yüzden çıkarılmaları hakkı daraltmaz.
+    //
+    // ⚠ TEKLİFLER ÇIKARILMADI ve çıkarılamaz: teklif satırlarında müşteri
+    // adı ve proje bilgisi var (üçüncü kişilerin kişisel verisi dahil) ve
+    // taşınabilirlik hakkının asıl konusu odur. Kapalı hesabın 30 günlük
+    // penceresinin anlamı da budur: ya geri döner ya tekliflerini alır.
+    //
+    // ⚠ `ceviriDuzeltmeOlaylari` KALDI ama `ceviriDuzeltmeleri` ÇIKTI —
+    // ikisi aynı şey değil: ilki KİŞİNİN yaptığı düzeltme işlemlerinin
+    // kaydı (kişi hakkında veri), ikincisi FİRMANIN sözlüğü (ürün içeriği).
+    const [abonelikler, aiKullanimi, dwgDosyalari, ceviriDuzeltmeOlaylari] =
+      await Promise.all([
+        this.prisma.userSubscription.findMany({ where: { userId } }),
+        this.prisma.aiUsageLog.findMany({ where: { userId } }),
+        firmaId
+          ? this.prisma.dwgDosya.findMany({
+              where: sahipMi ? { firmaId } : { firmaId, olusturanId: userId },
+            })
+          : Promise.resolve([]),
+        this.prisma.ceviriDuzeltmeOlayi.findMany({
+          where: { userId },
+          select: { id: true, tip: true, hedefDil: true, kaynakMetin: true, oncekiDeger: true, yeniDeger: true, olusturuldu: true },
+        }),
+      ]);
 
     // ⚠ Ticari kayitlar (fatura/odeme) DA kullanicinin verisidir; hesap
     // kapatilsa bile saklanmalari gereken sinifta oldugu icin AYRI baslikta
@@ -334,11 +335,6 @@ export class HesapServisi {
       // FAZ 7 F3b: sirket hesabi baglantilari.
       kurumsalKimlikler: disKimlikler,
       teklifler,
-      teklifFormatlari: formatlar,
-      kutuphane,
-      kutuphaneListeleri: listeler,
-      markaKutuphaneleri,
-      iscilikFirmalari,
       abonelikKayitlari: abonelikler,
       ticariAbonelikler: ticari,
       faturalar,
@@ -346,7 +342,6 @@ export class HesapServisi {
       sozlesmeOnaylari,
       aiKullanimKayitlari: aiKullanimi,
       dwgDosyalari,
-      ceviriDuzeltmeleri,
       ceviriDuzeltmeOlaylari,
       firmaIslemKayitlari: firmaOlaylari,
       ikiliVeriler,
@@ -367,6 +362,14 @@ export class HesapServisi {
           'saklanir; bu nedenle ayri baslikta listelenmistir.',
         'Ceviri duzeltme olaylarinda ortak sozlugun o anki karsiligi yer almaz: o deger ' +
           'kisisel veriniz degildir, yalniz denetim izi olarak sistemde tutulur.',
+        // 22.09.2026 — DARALTMA MUSTERIYE ACIKCA SOYLENIYOR. Bir seyi
+        // sessizce cikarmak, hic cikarmamaktan kotudur: dosyayi acan kisi
+        // kutuphanesini arar, bulamaz ve neyin eksik oldugunu bilemez.
+        'Malzeme kutuphaneniz, kutuphane listeleriniz, marka kutuphaneleriniz, iscilik ' +
+          'firmalariniz, teklif formatlariniz (antetler) ve firmanizin ceviri sozlugu bu ' +
+          'dosyada YER ALMAZ. Bunlar belirli bir kisi hakkinda veri degil, uygulamadaki ' +
+          'calisma icerigidir; KVKK m.11 kapsamindaki kisisel veri disa aktarimina girmez. ' +
+          'Hazirladiginiz TEKLIFLER satir satir bu dosyadadir.',
         'Ücretsiz deneme kullanım kayıtları ("denemeKullanimKayitlari"), ücretsiz ' +
           'denemenin her firma ve kişi için bir kez verilebilmesi amacıyla hesabınız ' +
           'kapatılsa bile saklanır. E-posta adresiniz ve telefonunuz bu kayıtta ' +

@@ -14,6 +14,7 @@ import {
 import { CapabilitiesProvider } from '@/ortak/contexts/CapabilitiesContext';
 import { AbonelikSeridi } from '@/ozellik/odeme/AbonelikSeridi';
 import { EpostaDogrulamaSeridi } from '@/ortak/kabuk/components/layout/EpostaDogrulamaSeridi';
+import { KapaliHesapSeridi } from '@/ortak/kabuk/components/layout/KapaliHesapSeridi';
 import Sidebar from '@/ortak/kabuk/components/layout/Sidebar';
 import Breadcrumb from '@/ortak/kabuk/components/layout/Breadcrumb';
 import { gecerliTokenMi } from '@/ortak/lib/oturum';
@@ -80,6 +81,11 @@ interface StoredUser {
   email: string;
   role: string;
   tier?: string;
+  // ⚠ 22.09.2026: kapali hesap artik `(protected)` kabugunun ICINE dusuyor
+  //   (ayri `/hesap-kapali` ekrani SILINDI). Kenar cubugu bu bayraga bakip
+  //   calismayan baglantilari gizliyor — yoksa kullanici Teklifler'e tiklar
+  //   ve 403 alirdi. Deger giriste `oturumuYaz` ile localStorage'a yazilir.
+  hesapKapali?: boolean;
 }
 
 function UserDropdown({ user, onLogout }: { user: StoredUser; onLogout: () => void }) {
@@ -208,6 +214,13 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
               kullanici HANGI sayfada olursa olsun gormeli; sayfa sayfa
               eklemek, eklenmeyi unutulan yerde kullaniciyi habersiz
               birakir ve dunning merdiveni sessizce ilerler. */}
+          {/* ⚠ 22.09.2026 — SILINEN `/hesap-kapali` EKRANININ YERI.
+              EN USTTE ve bilerek: kapali hesap en agir durumdur; abonelik
+              uyarisinin altinda kalsaydi kullanici once "denemeniz bitiyor"
+              okur, hesabinin KAPALI oldugunu ve imha tarihini alt satirda
+              gorurdu. Kapali degilse hicbir sey cizmez. */}
+          <KapaliHesapSeridi />
+
           <AbonelikSeridi />
 
           {/* FAZ 3.4 — e-posta dogrulama uyarisi. Ayni gerekce: kabukta durur,
