@@ -101,6 +101,54 @@ export function seritGosterilsinMi(karar: ErisimKarari | null): boolean {
   return !!karar?.uyari;
 }
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  ERISIM TAMAMEN KAPALIYKEN ACIK KALAN YOLLAR
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ *  ⚠ KILITLENME YASAGI (`yetenekAcikMi`daki ABONELIK_YONET kuralinin yol
+ *  karsiligi): `/abonelik` kapanirsa kullanici odeyemez ve kapali durumdan
+ *  CIKAMAZ. `/profile` kapanirsa KVKK haklari (verilerimi indir, hesabimi
+ *  kapat) odeme durumuna baglanmis olurdu — `koltuk-durduruldu/page.tsx`
+ *  ayni gerekceyle o iki ucu `@KoltukDisiIzinli` yapiyor; odeme kapisinda
+ *  da ayni sey gecerli.
+ *
+ *  ⚠ LISTE "CALISAN SAYFALAR" DEGIL, "CIKIS YOLLARI"dir. Yeni bir sayfa
+ *  eklendiginde listeye yazilmayi UNUTMAK, o sayfada kirmizi hata degil
+ *  "paket secin" ekrani gosterir — gurultusuz ve guvenli yon. Ters yon
+ *  (varsayilan olarak acmak) unutuldugunda bu turun kusurunu geri getirir.
+ */
+const DURDURULMAYAN_YOL = /^\/(abonelik|profile|koltuk-durduruldu)(\/|$)/;
+
+/**
+ * Sayfa icerigi yerine "erisiminiz kapali" ekrani mi cizilmeli?
+ *
+ *  ── NEDEN SAYFA SAYFA DEGIL, KABUKTA ────────────────────────────────────
+ *  OLCULDU (22.09.2026): 19 korumali sayfanin 18'i sunucunun 403
+ *  `ABONELIK_KISITLI` yanitini GENEL hata sanip "Veriler yuklenirken bir
+ *  hata olustu" kirmizi bildirimi basiyordu. Yalniz `/labor` ayirt ediyordu.
+ *  Sayfa sayfa duzeltmek, eklenmeyi unutulan her yeni sayfada ayni kusuru
+ *  geri getirir — `AbonelikSeridi`nin kabukta durma gerekcesiyle AYNI.
+ *
+ *  ⚠ `erisimVar` TRUE iken DURDURMAZ — `saltOkunur` (KISITLI) DAHIL.
+ *  Kisitli firma tekliflerini ve kutuphanesini GOREBILIR; yalniz yazma
+ *  uclari 403 doner. Onu da durdurmak, urunun "verinizi rehin almiyoruz"
+ *  sozunu bozardi (`erisim.servisi.ts` KISITLI_MODDA_ACIK gerekcesi).
+ *
+ *  ⚠ `karar === null` DURDURMAZ: karar ya HENUZ YUKLENMEDI ya da hesap
+ *  firmasiz. Ikisinde de kilitlemek, gercek kapi olmayan bir yerde
+ *  (on yuz) kullaniciyi bilgisizce disari atmak olurdu. Gercek kapi
+ *  sunucudadir (`ErisimGuard`).
+ */
+export function icerikDurdurulsunMu(
+  karar: ErisimKarari | null,
+  yol: string,
+): boolean {
+  if (!karar) return false;
+  if (karar.erisimVar) return false;
+  return !DURDURULMAYAN_YOL.test(yol);
+}
+
 /** Serit rengi/vurgusu — seviyeden turetilir. */
 export function seritSinifi(seviye: ErisimUyarisi['seviye']): string {
   switch (seviye) {
