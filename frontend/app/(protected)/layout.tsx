@@ -14,6 +14,7 @@ import {
 import { CapabilitiesProvider } from '@/ortak/contexts/CapabilitiesContext';
 import { AbonelikSeridi } from '@/ozellik/odeme/AbonelikSeridi';
 import { ErisimKapisi } from '@/ozellik/odeme/ErisimKapisi';
+import { VitrinSaglayici } from '@/ozellik/odeme/VitrinSaglayici';
 import { UyeIzniKapisi } from '@/ozellik/firma/ekip/UyeIzniKapisi';
 import { EpostaDogrulamaSeridi } from '@/ortak/kabuk/components/layout/EpostaDogrulamaSeridi';
 import { KapaliHesapSeridi } from '@/ortak/kabuk/components/layout/KapaliHesapSeridi';
@@ -194,6 +195,11 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
 
   return (
     <CapabilitiesProvider>
+      {/* 23.09.2026 — VİTRİN (paketsiz yeni hesap): kararı `/auth/me`den
+          okur, deneme satırını ve "Paketinizi seçin" penceresini TEK yerde
+          tutar. Şerit, kabuk kapısı ve iş düğmeleri buradan okur; bu yüzden
+          sağlayıcının İÇİNDE, `CapabilitiesProvider`ın ALTINDA durur. */}
+      <VitrinSaglayici>
       <div className="flex min-h-screen bg-background">
         {/* Sidebar */}
         <Sidebar user={user} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed((v) => !v)} />
@@ -255,6 +261,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
           <Altbilgi />
         </div>
       </div>
+      </VitrinSaglayici>
     </CapabilitiesProvider>
   );
 }

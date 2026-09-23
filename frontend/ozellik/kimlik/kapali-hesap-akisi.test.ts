@@ -489,7 +489,12 @@ describe('K7 — salt-okunur mod: görür, girer, indirir; işlem YAPAMAZ', () =
       });
     }
     // ⚠ PAYDA: kümenin boş olması da bu testi yeşil yapardı.
-    expect(toplam, 'hiç izin bulunamadı — ölçüt boş küme üzerinde koşmuş').toBe(16);
+    // 23.09.2026 (vitrin, güvenlik incelemesi HIGH-1): 16 → 15. `GET
+    // /brands/search`in izni KALDIRILDI — havuz FİYATLARINI döndürüyordu ve
+    // kapatılmış hesap (hiç paket almamış biri dahil) onunla bütün havuzu
+    // çekebiliyordu. Havuz kapalı hesabın kendi verisi değil; ön yüz o ucu
+    // hiç çağırmıyor. Sunucu kapısı: `backend/test/vitrin-test.ts` U2.
+    expect(toplam, 'hiç izin bulunamadı — ölçüt boş küme üzerinde koşmuş').toBe(15);
   });
 
   it('⭐ silme düğmesi kapalı hesapta ÇİZİLMİYOR (403 yedirilmiyor)', () => {

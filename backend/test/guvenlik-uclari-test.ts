@@ -367,7 +367,9 @@ async function k4() {
     const { cagrilar, yakala } = casusServis();
     if (hangi === 'brand') {
       const svc: any = { remove: yakala('remove') };
-      const c = new BrandsController(svc);
+      // 2. bagimlilik (ErisimServisi, 23.09 vitrin — havuz fiyati karari) bu
+      // uc (remove) icin kullanilmaz — bos sahte yeter (AdminController ikizi).
+      const c = new BrandsController(svc, {} as any);
       await (c as any).remove('marka-1', onaylandi);
     } else {
       const svc: any = { deletePriceList: yakala('deletePriceList') };

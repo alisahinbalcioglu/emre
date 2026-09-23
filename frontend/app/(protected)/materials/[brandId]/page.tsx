@@ -6,7 +6,7 @@ export const runtime = 'edge';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { Loader2, Package, Search, FileText, Trash2, ChevronDown, BookmarkPlus, Upload, X, Save } from 'lucide-react';
+import { Loader2, Package, Search, FileText, Trash2, ChevronDown, BookmarkPlus, Upload, X, Save, Lock } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/ortak/ui/card';
 import { GeriButonu } from '@/ortak/ui/geri-butonu';
 import { Button } from '@/ortak/ui/button';
@@ -18,6 +18,8 @@ import { silmeOnayMetni } from '@/lib/silme-onay-metni';
 import { silmeEtkisiGetir } from '@/lib/silme-etkisi-getir';
 import { cn } from '@/ortak/lib/utils';
 import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
+import { useVitrin } from '@/ozellik/odeme/VitrinSaglayici';
+import { HAVUZ_FIYAT_KILIDI_METNI, HAVUZ_FIYAT_NOTU } from '@/ozellik/odeme/vitrin-metinleri';
 import { ExcelGrid } from '@/ozellik/tablo/excel-grid/ExcelGrid';
 import { SheetTabs } from '@/ozellik/tablo/excel-grid/SheetTabs';
 import type { MultiSheetData, ExcelRowData } from '@/ozellik/tablo/excel-grid/types';
@@ -27,7 +29,10 @@ import type { MultiSheetData, ExcelRowData } from '@/ozellik/tablo/excel-grid/ty
 interface PriceListSummary { id: string; name: string; createdAt: string; _count: { items: number } }
 interface BrandDetail { brand: { id: string; name: string }; priceLists: PriceListSummary[] }
 interface MaterialRow {
-  id: string; materialName: string; unit: string; price: number;
+  // 23.09.2026 (vitrin): paketi yürümeyen firmada havuz fiyatı SUNUCUDA
+  // gizlenir → `null` gelir (bkz. yanıttaki `fiyatGizli`). `number` sanıp
+  // biçimlemek hücreyi çökertirdi (`null.toLocaleString`).
+  id: string; materialName: string; unit: string; price: number | null;
   // Z4: fiyatin orijinal para birimi — havuz kendi birimiyle listeler
   currency?: 'TRY' | 'USD' | 'EUR';
   // Kaynak sadakati (Duzeltme Talebi Y1/Y2/Y5) — eski kayitlarda null
@@ -37,7 +42,11 @@ interface MaterialRow {
   baglanti?: string | null; boy?: number | null;
   urunKodu?: string | null; not?: string | null;
 }
-interface PriceListDetail { priceList: { id: string; name: string }; brand: { name: string }; materials: MaterialRow[]; totalCount: number }
+interface PriceListDetail {
+  priceList: { id: string; name: string }; brand: { name: string }; materials: MaterialRow[]; totalCount: number;
+  /** 23.09.2026 (vitrin): sunucu havuz fiyatını gizlediyse `true`. Eski sunucu alanı göndermez. */
+  fiyatGizli?: boolean;
+}
 
 function getRole(): string | null {
   try { return JSON.parse(localStorage.getItem('user') || '{}').role ?? null; } catch { return null; }
@@ -170,6 +179,9 @@ export default function BrandDetailPage() {
   // 23.09.2026: "Kütüphaneme Aktar" KUTUPHANEYE yazar — izni kapali alt
   // kullanicida dugme cizilmez (uc zaten 403 `UYE_IZNI_YOK`).
   const { izinVar } = useCapabilities();
+  // 23.09.2026 — VİTRİN: paketsiz yeni hesap havuzu GEZER (fiyatsız);
+  // aktarım istek atmadan paket penceresini açar.
+  const { vitrin, pencereAc } = useVitrin();
 
   const [data, setData] = useState<BrandDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -177,6 +189,8 @@ export default function BrandDetailPage() {
   // Expanded list
   const [expandedListId, setExpandedListId] = useState<string | null>(null);
   const [listMaterials, setListMaterials] = useState<MaterialRow[]>([]);
+  // Sunucu bu listenin havuz fiyatını gizledi mi (vitrin / paketi yürümeyen firma)?
+  const [fiyatGizli, setFiyatGizli] = useState(false);
   const [listLoading, setListLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [importingListId, setImportingListId] = useState<string | null>(null);
@@ -203,6 +217,7 @@ export default function BrandDetailPage() {
         try {
           const { data: listRes } = await api.get<PriceListDetail>(`/brands/price-lists/${onlyList.id}/materials`);
           setListMaterials(listRes.materials);
+          setFiyatGizli(listRes.fiyatGizli === true);
         } catch {
           setListMaterials([]);
         } finally {
@@ -217,6 +232,7 @@ export default function BrandDetailPage() {
         try {
           const { data: listRes } = await api.get<PriceListDetail>(`/brands/price-lists/${firstList.id}/materials`);
           setListMaterials(listRes.materials);
+          setFiyatGizli(listRes.fiyatGizli === true);
         } catch {
           setListMaterials([]);
         } finally {
@@ -236,6 +252,7 @@ export default function BrandDetailPage() {
     try {
       const { data: res } = await api.get<PriceListDetail>(`/brands/price-lists/${listId}/materials`);
       setListMaterials(res.materials);
+      setFiyatGizli(res.fiyatGizli === true);
     } catch {
       toast({ title: 'Hata', description: 'Liste yüklenemedi.', variant: 'destructive' });
       setListMaterials([]);
@@ -243,6 +260,8 @@ export default function BrandDetailPage() {
   }
 
   async function handleImportToLibrary(listId: string, listName: string) {
+    // VİTRİN: onay penceresi de istek de YOK — önce paket seçilmeli.
+    if (vitrin) { pencereAc('kutuphane'); return; }
     if (!(await confirm({ title: 'Kütüphaneye aktar', description: `"${listName}" listesindeki tüm malzemeler kütüphanenize aktarılsın mı?`, confirmText: 'Aktar' }))) return;
     setImportingListId(listId);
     try {
@@ -497,6 +516,16 @@ export default function BrandDetailPage() {
                           <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                           <Input placeholder="Listede ara..." value={search} onChange={(e) => setSearch(e.target.value)} className="h-8 pl-8 text-xs" />
                         </div>
+                        {/* 23.09.2026 (vitrin): fiyat sunucuda gizlendiyse NEDENİ tek satırda. */}
+                        {fiyatGizli && (
+                          <p className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                            <Lock className="h-3 w-3" aria-hidden="true" />
+                            {HAVUZ_FIYAT_NOTU}
+                            <Link href="/abonelik" className="font-medium text-primary underline underline-offset-2">
+                              Paketleri gör
+                            </Link>
+                          </p>
+                        )}
                       </div>
 
                       {filtered.length === 0 ? (
@@ -549,7 +578,18 @@ export default function BrandDetailPage() {
                                           {hasCap && <td className="px-4 py-2 text-muted-foreground">{m.cap ?? ''}</td>}
                                           {hasBoy && <td className="px-4 py-2 text-muted-foreground">{m.boy ?? ''}</td>}
                                           <td className="px-4 py-2 text-muted-foreground">{m.unit}</td>
-                                          <td className="px-4 py-2 text-right font-medium">{currencySym(m.currency)}{fmtPrice(m.price)}</td>
+                                          <td className="px-4 py-2 text-right font-medium">
+                                            {m.price == null ? (
+                                              fiyatGizli ? (
+                                                <span className="inline-flex items-center gap-1 text-xs font-normal text-muted-foreground">
+                                                  <Lock className="h-3 w-3" aria-hidden="true" />
+                                                  {HAVUZ_FIYAT_KILIDI_METNI}
+                                                </span>
+                                              ) : '—'
+                                            ) : (
+                                              <>{currencySym(m.currency)}{fmtPrice(m.price)}</>
+                                            )}
+                                          </td>
                                           {hasKod && <td className="px-4 py-2 text-muted-foreground">{m.urunKodu ?? ''}</td>}
                                           {/* Not uzun olabilir — kirpilir, tam metin title'da */}
                                           {hasNot && <td className="max-w-[11rem] truncate px-4 py-2 text-muted-foreground" title={m.not ?? ''}>{m.not ?? ''}</td>}
