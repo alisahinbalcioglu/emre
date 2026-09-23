@@ -98,6 +98,21 @@ export function basHarfler(
 }
 
 /**
+ * 23.09.2026 — Firmanın yöneticileri, listedeki sırayla (birden çok olabilir).
+ * Üyenin gördüğü iki ekranın yönetici SEÇİMİ burada: Hesabım › Ekip erişimim
+ * hepsini çizer, `yoneticiEpostasi` (kapalı bölüm sayfası, kilitli kart) ilkini
+ * alır. İki ekran süzgeci ayrı yazıyordu; biri değişseydi üye iki ekranda iki
+ * farklı "yönetici" görürdü. (Ekip sayfasının satır başına "bu satır yönetici
+ * mi" sınamaları — `UyeListesi`, `UyeIzinPaneli` — bu seçimin kapsamı dışında.)
+ * Liste gelmediyse boş dizi.
+ */
+export function firmaYoneticileri<T extends { firmaRol: string }>(
+  uyeler: readonly T[] | null | undefined,
+): T[] {
+  return (uyeler ?? []).filter((u) => u.firmaRol === 'sahip');
+}
+
+/**
  * 23.09.2026 — Üyenin "Firma yöneticin" adresi: listedeki İLK yönetici.
  * Sunucu listeyi önce yöneticiler olacak şekilde dizer; yine de sıraya
  * GÜVENİLMEZ, rol açıkça aranır (ilk satır her zaman yönetici olmayabilir).
@@ -106,7 +121,7 @@ export function basHarfler(
 export function yoneticiEpostasi(
   uyeler: readonly { eposta: string; firmaRol: string }[] | null | undefined,
 ): string | null {
-  return uyeler?.find((u) => u.firmaRol === 'sahip')?.eposta ?? null;
+  return firmaYoneticileri(uyeler)[0]?.eposta ?? null;
 }
 
 /**

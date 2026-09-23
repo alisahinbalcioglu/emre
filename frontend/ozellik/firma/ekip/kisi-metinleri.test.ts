@@ -9,7 +9,7 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { basHarfler, uyeSatirMetni, yoneticiEpostasi } from './kisi-metinleri';
+import { basHarfler, firmaYoneticileri, uyeSatirMetni, yoneticiEpostasi } from './kisi-metinleri';
 
 const KOK = path.join(__dirname, '../../..');
 const oku = (p: string) => fs.readFileSync(path.join(KOK, p), 'utf8');
@@ -118,6 +118,33 @@ describe('yoneticiEpostasi — üyenin "Firma yöneticin" adresi', () => {
     const kanca = kodu(oku('ozellik/firma/ekip/useFirmaYoneticisi.ts'));
     expect(kanca).toContain('setEposta(yoneticiEpostasi(data?.uyeler));');
     expect(kanca).not.toContain("firmaRol === 'sahip'");
+  });
+});
+
+describe('firmaYoneticileri — yönetici kuralı TEK yerde', () => {
+  const UYELER = [
+    { id: '1', eposta: 'uye@x.com', firmaRol: 'uye' },
+    { id: '2', eposta: 'y1@x.com', firmaRol: 'sahip' },
+    { id: '3', eposta: 'y2@x.com', firmaRol: 'sahip' },
+  ];
+
+  it('bütün yöneticiler, listedeki sırayla (birden çok yönetici olabilir)', () => {
+    expect(firmaYoneticileri(UYELER).map((u) => u.id)).toEqual(['2', '3']);
+  });
+
+  it('yönetici yoksa ya da liste gelmediyse boş dizi', () => {
+    expect(firmaYoneticileri([{ firmaRol: 'uye' }])).toEqual([]);
+    expect(firmaYoneticileri(undefined)).toEqual([]);
+    expect(firmaYoneticileri(null)).toEqual([]);
+  });
+
+  it('FAIL-CLOSED: bilinmeyen / boş rol yönetici SAYILMAZ (yalnız tam `sahip`)', () => {
+    expect(firmaYoneticileri([{ firmaRol: '' }, { firmaRol: 'SAHIP' }, { firmaRol: 'yonetici' }])).toEqual([]);
+  });
+
+  it('⭐ `yoneticiEpostasi` bu kuralın İLKİ: iki ekran aynı kişiyi gösterir', () => {
+    expect(yoneticiEpostasi(UYELER)).toBe(firmaYoneticileri(UYELER)[0].eposta);
+    expect(kodu(oku('ozellik/firma/ekip/kisi-metinleri.ts'))).toContain('return firmaYoneticileri(uyeler)[0]?.eposta ?? null;');
   });
 });
 

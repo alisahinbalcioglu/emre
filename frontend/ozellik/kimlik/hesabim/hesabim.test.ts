@@ -22,6 +22,17 @@ import {
   silinecekKimlikUyarisi,
   type HesapSekmesi,
 } from './hesabim';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import {
+  IZIN_SIRASI,
+  IZIN_TANIMLARI,
+  izinSatirlari,
+  type IzinSatiri,
+  type IzinTanimi,
+} from '../../firma/ekip/izin-metinleri';
+import { IZIN_ROZETI_ACIK, IZIN_ROZETI_KAPALI } from '../../firma/ekip/ekip-parcalari';
+import { IzinDurumListesi } from './IzinDurumListesi';
 
 const KOK = path.join(__dirname, '../../..');
 const oku = (p: string) => fs.readFileSync(path.join(KOK, p), 'utf8');
@@ -391,5 +402,158 @@ describe('⭐ BAĞLANTI — Veriler sekmesi metni ürünle çelişmiyor', () => 
   it('üyenin dosyasında ticari kayıt yok — ekran da öyle söylüyor', () => {
     expect(disaAktarim).toContain('firmanın ticari kayıtları (abonelik, ödeme, ');
     expect(veriler).toContain('Firmanın abonelik ve fatura kayıtları firma sahibinin dosyasındadır.');
+  });
+});
+
+describe('⭐ BAĞLANTI — Ekip erişimim sekmesi: dört izin satırı', () => {
+  const sekme = kodu(oku(`${H}/EkipErisimiSekmesi.tsx`));
+
+  it('⭐ izinler SAĞLAYICIDAN (aynı `/auth/me` yanıtı) — ayrı istek yok', () => {
+    expect(sekme).toContain("import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';");
+    expect(sekme).toContain('const { izinler } = useCapabilities();');
+    expect(sekme).not.toMatch(/['"`]\/auth\/me['"`]/);
+  });
+
+  it('⭐ TEK karar: `izinSatirlari` BİR kez, sağlayıcının listesi AYNEN verilerek', () => {
+    expect(sekme).toContain("import { izinSatirlari } from '@/ozellik/firma/ekip/izin-metinleri';");
+    // Sözlükten ikinci bir içe aktarma (ör. `IZIN_TANIMLARI`) yok: satırlar elle kurulamaz.
+    expect(sekme.split("from '@/ozellik/firma/ekip/izin-metinleri'").length - 1).toBe(1);
+    // `izinSatirlari(izinler ?? [])` ya da ikinci bir çağrı eski sunucuda
+    // "dördü kapalı" diye YANLIŞ bir beyan çizerdi (kod incelemesi ölçtü).
+    expect(sekme.split('izinSatirlari(').length - 1).toBe(1);
+    expect(sekme).toContain('const satirlar = izinSatirlari(izinler);');
+  });
+
+  it('⭐ satırları sekme ÇİZMEZ: liste bileşeni BİR kez, aynı kararla', () => {
+    expect(sekme).toContain("import { IzinDurumListesi } from './IzinDurumListesi';");
+    // Takma adlı ikinci bir içe aktarma (`as L`) sayımı atlatamasın.
+    expect(sekme.split("from './IzinDurumListesi'").length - 1).toBe(1);
+    expect(sekme.split('<IzinDurumListesi').length - 1).toBe(1);
+    expect(sekme).toContain('<IzinDurumListesi satirlar={satirlar} etiketId="erisim-aciklama" />');
+    // Sekmedeki tek döngü yönetici kutusu: satır çizen ikinci bir `.map(` yok.
+    expect(sekme.split('.map(').length - 1).toBe(1);
+    expect(sekme).toContain('yonetici.yoneticiler.map(');
+    expect(sekme).not.toMatch(/'Açık'|'Kapalı'/);
+  });
+
+  it('⭐ İKİNCİ SÖZLÜK YOK: izin metni, anahtarı ve simgesi sekmede elle yazılmamış', () => {
+    for (const t of IZIN_TANIMLARI) {
+      for (const m of [t.baslik, t.aciklama, t.kapaliAciklamasi]) {
+        if (m) expect(sekme, `${t.anahtar}: ${m}`).not.toContain(m);
+      }
+    }
+    // Elle kurulan (ya da yeniden yazılan) her sözlük izin adını anmak zorunda.
+    expect(sekme).not.toMatch(/\b(excel|dwg|firmaTeklifleri|kutuphane)\b/i);
+    expect(sekme).not.toMatch(/\b(FileSpreadsheet|Ruler|Banknote|BookOpen|IZIN_SIMGELERI)\b/);
+  });
+
+  it('⭐ giriş cümlesi AYNI karardan: liste varsa yeni, null ise ESKİ; liste onu adıyla anar', () => {
+    expect(sekme).toMatch(
+      /\{satirlar\s*\?\s*'Hangi bölümleri görebileceğinizi firma yöneticiniz belirler\.'\s*:\s*'Firma bilgilerini, aboneliği ve faturayı firma yöneticiniz yönetir\.'\s*\}/,
+    );
+    expect(sekme).toContain('<p id="erisim-aciklama"');
+  });
+
+  it('yönetici kuralı TEK yerden: kapalı bölüm sayfasıyla aynı `firmaYoneticileri`', () => {
+    expect(sekme).toContain("import { firmaYoneticileri } from '@/ozellik/firma/ekip/kisi-metinleri';");
+    expect(sekme).toContain('firmaYoneticileri(data?.uyeler)');
+    expect(sekme).not.toContain("firmaRol === 'sahip'");
+  });
+});
+
+describe('⭐ ÇİZİM — IzinDurumListesi gerçekten çizilir, GÖRÜNEN metni ölçülür', () => {
+  const liste = kodu(oku(`${H}/IzinDurumListesi.tsx`));
+  const ciz = (satirlar: readonly IzinSatiri[] | null) =>
+    renderToStaticMarkup(createElement(IzinDurumListesi, { satirlar, etiketId: 'x-aciklama' }));
+  /** Görünen metin: etiketler atılır, boşluk tekilleşir. */
+  const metin = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  /** Satır başına bir parça (ilk parça `<ul …>` açılışıdır, atılır). */
+  const satirlar = (html: string) => html.split('<li').slice(1).map((p) => `<li${p}`);
+  /** Bir satırın BEKLENEN görünen metni: sözlükteki başlık + o durumdaki açıklama + rozet. */
+  const beklenen = (t: IzinTanimi, acik: boolean) =>
+    `${t.baslik} ${acik ? t.aciklama : (t.kapaliAciklamasi ?? t.aciklama)} ${acik ? 'Açık' : 'Kapalı'}`;
+  const EMOJI = new RegExp('\\p{Extended_Pictographic}', 'u');
+
+  it('⭐ null (sunucu söylemedi) → HİÇBİR ŞEY çizilmez', () => {
+    expect(ciz(izinSatirlari(null))).toBe('');
+  });
+
+  it('⭐ her satırın görünen metni TAM OLARAK sözlük + rozet — fazladan tek sözcük yok', () => {
+    const html = ciz(izinSatirlari(['excel', 'kutuphane']));
+    const acik = [true, false, false, true];
+    const li = satirlar(html);
+    expect(li.length).toBe(IZIN_TANIMLARI.length);
+    IZIN_TANIMLARI.forEach((t, i) => expect(metin(li[i]), t.anahtar).toBe(beklenen(t, acik[i])));
+    // Listenin tamamı yalnız bu satırlardan oluşur (satır dışı başlık/not yok).
+    expect(metin(html)).toBe(IZIN_TANIMLARI.map((t, i) => beklenen(t, acik[i])).join(' '));
+    // Görünmeyen metin de yok: erişilebilir ad giriş cümlesinden gelir.
+    expect(html).not.toMatch(/\s(aria-label|title)=/);
+  });
+
+  it('⭐ "Son teklifler" kapalıyken üye YALNIZ KENDİ tekliflerini gördüğünü okur (Emre 23.09)', () => {
+    const m = metin(ciz(izinSatirlari([])));
+    expect(m).toContain('Son teklifler ve tutarları Yalnız kendi hazırladığı teklifleri görebilir Kapalı');
+    expect(m).not.toContain('Firmanın teklif listesini');
+  });
+
+  it('boş liste = dördü KAPALI; hepsi açık = dördü AÇIK', () => {
+    const kapali = metin(ciz(izinSatirlari([])));
+    const acik = metin(ciz(izinSatirlari([...IZIN_SIRASI])));
+    expect(kapali.split('Kapalı').length - 1).toBe(4);
+    expect(kapali).not.toContain('Açık');
+    expect(acik.split('Açık').length - 1).toBe(4);
+    expect(acik).not.toContain('Kapalı');
+  });
+
+  it('rozet: açık = yeşil + tik, kapalı = gri + kilit', () => {
+    const li = satirlar(ciz(izinSatirlari(['excel'])));
+    expect(li[0]).toContain(IZIN_ROZETI_ACIK);
+    expect(li[0]).toContain('lucide-check');
+    expect(li[0]).not.toContain('lucide-lock');
+    expect(li[1]).toContain(IZIN_ROZETI_KAPALI);
+    expect(li[1]).toContain('lucide-lock');
+    expect(li[1]).not.toContain('lucide-check');
+  });
+
+  it('simgeler lucide, tasarımdaki sırayla; emoji yok', () => {
+    const li = satirlar(ciz(izinSatirlari([])));
+    ['lucide-file-spreadsheet', 'lucide-ruler', 'lucide-banknote', 'lucide-book-open'].forEach((s, i) => {
+      expect(li[i], s).toContain(s);
+    });
+    expect(EMOJI.test(ciz(izinSatirlari([...IZIN_SIRASI])))).toBe(false);
+  });
+
+  it('liste erişilebilir adını kartın giriş cümlesinden alır', () => {
+    expect(ciz(izinSatirlari([]))).toMatch(/^<ul[^>]*\saria-labelledby="x-aciklama"/);
+  });
+
+  it('⭐ İKİNCİ SÖZLÜK YOK (kaynak): liste metni yalnız satırdan okur, izin adı anmaz', () => {
+    // Aynı metni elle yazan bir sözlük BUGÜN aynı çıktıyı verir; çizim testi
+    // onu göremez, sözlük değişince geride kalır. Kaynak bunu ayrıca ölçer.
+    expect(liste).toContain('{s.baslik}');
+    expect(liste).toContain('{s.aciklama}');
+    expect(liste).toContain('const Simge = IZIN_SIMGELERI[s.anahtar];');
+    expect(liste).not.toMatch(/\b(excel|dwg|firmaTeklifleri|kutuphane)\b/i);
+    for (const t of IZIN_TANIMLARI) {
+      for (const m of [t.baslik, t.aciklama, t.kapaliAciklamasi]) {
+        if (m) expect(liste, `${t.anahtar}: ${m}`).not.toContain(m);
+      }
+    }
+    // Yalnız göreli import: vitest `@/` çözmüyor, yoksa bu çizim testi kurulamazdı.
+    expect(liste).not.toContain("from '@/");
+  });
+
+  it('rozet renkleri TEK yerde: Ekip etiketi ve bu liste aynı sabitleri okur', () => {
+    const parcalar = kodu(oku('ozellik/firma/ekip/ekip-parcalari.tsx'));
+    expect(parcalar).toContain('acik ? IZIN_ROZETI_ACIK : IZIN_ROZETI_KAPALI');
+    expect(liste).toContain('s.acik ? IZIN_ROZETI_ACIK : IZIN_ROZETI_KAPALI');
+    // Renk KÜMESİ yalnız sabitin tanımında geçer (tek tek renkler başka rozetlerde
+    // de kullanılıyor: `#f0fdf4` / `#166534` "Aktif" rozetinde); liste renk yazmaz.
+    for (const kume of [IZIN_ROZETI_ACIK, IZIN_ROZETI_KAPALI]) {
+      expect(parcalar.split(kume).length - 1, kume).toBe(1);
+    }
+    for (const renk of ['#bbf7d0', '#f0fdf4', '#166534', '#e5e7eb', '#f8fafc', '#64748b']) {
+      expect(liste, renk).not.toContain(renk);
+    }
   });
 });

@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 738
-Toplam satir: 179285
+Kod dosyasi: 739
+Toplam satir: 179666
 Uc nokta: 228
 test:* scripti: 115
 
@@ -552,13 +552,13 @@ test:* scripti: 115
 | `frontend/ozellik/firma/ekip/davet-kurallari.ts` | 54 |
 | `frontend/ozellik/firma/ekip/ekip-bilesenleri.test.ts` | 411 |
 | `frontend/ozellik/firma/ekip/ekip-ekranlari.test.ts` | 253 |
-| `frontend/ozellik/firma/ekip/ekip-parcalari.tsx` | 151 |
+| `frontend/ozellik/firma/ekip/ekip-parcalari.tsx` | 157 |
 | `frontend/ozellik/firma/ekip/ekip-tipleri.ts` | 50 |
-| `frontend/ozellik/firma/ekip/izin-metinleri.test.ts` | 305 |
-| `frontend/ozellik/firma/ekip/izin-metinleri.ts` | 143 |
+| `frontend/ozellik/firma/ekip/izin-metinleri.test.ts` | 354 |
+| `frontend/ozellik/firma/ekip/izin-metinleri.ts` | 183 |
 | `frontend/ozellik/firma/ekip/izin-simgeleri.ts` | 17 |
-| `frontend/ozellik/firma/ekip/kisi-metinleri.test.ts` | 159 |
-| `frontend/ozellik/firma/ekip/kisi-metinleri.ts` | 120 |
+| `frontend/ozellik/firma/ekip/kisi-metinleri.test.ts` | 186 |
+| `frontend/ozellik/firma/ekip/kisi-metinleri.ts` | 135 |
 | `frontend/ozellik/firma/ekip/koltuk-metinleri.ts` | 70 |
 | `frontend/ozellik/firma/ekip/useFirmaYoneticisi.ts` | 47 |
 | `frontend/ozellik/firma/ekip/uye-izni-kapisi.ts` | 40 |
@@ -593,13 +593,14 @@ test:* scripti: 115
 | `frontend/ozellik/kimlik/dogrulama-bekleniyor.test.ts` | 178 |
 | `frontend/ozellik/kimlik/giris-dali.test.ts` | 290 |
 | `frontend/ozellik/kimlik/hesabim/AbonelikSekmesi.tsx` | 300 |
-| `frontend/ozellik/kimlik/hesabim/EkipErisimiSekmesi.tsx` | 91 |
+| `frontend/ozellik/kimlik/hesabim/EkipErisimiSekmesi.tsx` | 109 |
 | `frontend/ozellik/kimlik/hesabim/FirmaSekmesi.tsx` | 367 |
 | `frontend/ozellik/kimlik/hesabim/GuvenlikSekmesi.tsx` | 157 |
+| `frontend/ozellik/kimlik/hesabim/IzinDurumListesi.tsx` | 62 |
 | `frontend/ozellik/kimlik/hesabim/ProfilSekmesi.tsx` | 103 |
 | `frontend/ozellik/kimlik/hesabim/VerilerSekmesi.tsx` | 155 |
 | `frontend/ozellik/kimlik/hesabim/hesabim-ui.tsx` | 171 |
-| `frontend/ozellik/kimlik/hesabim/hesabim.test.ts` | 396 |
+| `frontend/ozellik/kimlik/hesabim/hesabim.test.ts` | 560 |
 | `frontend/ozellik/kimlik/hesabim/hesabim.ts` | 177 |
 | `frontend/ozellik/kimlik/hesabim/hesap-tipleri.ts` | 64 |
 | `frontend/ozellik/kimlik/kapali-hesap-akisi.test.ts` | 616 |
@@ -1272,13 +1273,14 @@ test:* scripti: 115
 | `frontend/ozellik/kimlik/dogrulama-bekleniyor.test.ts` | `vitest` `node:fs` `node:path` |
 | `frontend/ozellik/kimlik/giris-dali.test.ts` | `vitest` `fs` `path` `../../ortak/lib/oturum` `./KurulumAnahtari` |
 | `frontend/ozellik/kimlik/hesabim/AbonelikSekmesi.tsx` | `next/link` `lucide-react` `@/ortak/lib/api` `@/ortak/lib/utils` `@/ortak/hooks/use-toast` `@/ortak/contexts/CapabilitiesContext` `@/ozellik/odeme/abonelik-ozeti` `@/ozellik/odeme/paket-bicim` `./hesap-tipleri` `./hesabim-ui` |
-| `frontend/ozellik/kimlik/hesabim/EkipErisimiSekmesi.tsx` | `react` `lucide-react` `@/ortak/lib/api` `./hesabim` `./hesabim-ui` |
+| `frontend/ozellik/kimlik/hesabim/EkipErisimiSekmesi.tsx` | `react` `lucide-react` `@/ortak/lib/api` `@/ortak/contexts/CapabilitiesContext` `@/ozellik/firma/ekip/izin-metinleri` `@/ozellik/firma/ekip/kisi-metinleri` `./hesabim` `./hesabim-ui` `./IzinDurumListesi` |
 | `frontend/ozellik/kimlik/hesabim/FirmaSekmesi.tsx` | `react` `lucide-react` `@/ortak/lib/api` `@/ortak/lib/utils` `./hesap-tipleri` |
 | `frontend/ozellik/kimlik/hesabim/GuvenlikSekmesi.tsx` | `react` `lucide-react` `@/ortak/lib/api` `@/ortak/ui/parola-alani` `@/ortak/lib/parola-kurali` `../IkiAdimliGirisKarti` `../SirketHesabiKarti` `./hesap-tipleri` |
+| `frontend/ozellik/kimlik/hesabim/IzinDurumListesi.tsx` | `lucide-react` `../../firma/ekip/izin-metinleri` `../../firma/ekip/izin-simgeleri` `../../firma/ekip/ekip-parcalari` |
 | `frontend/ozellik/kimlik/hesabim/ProfilSekmesi.tsx` | `react` `@/ortak/lib/api` `./hesap-tipleri` |
 | `frontend/ozellik/kimlik/hesabim/VerilerSekmesi.tsx` | `react` `next/navigation` `lucide-react` `@/ortak/lib/api` `@/ortak/lib/utils` `@/ortak/hooks/use-toast` `../verileri-indir` `../kapatma-metinleri` `./hesabim-ui` |
 | `frontend/ozellik/kimlik/hesabim/hesabim-ui.tsx` | `react` `@/ortak/lib/utils` `@/ortak/lib/kimlik-hata-metinleri` |
-| `frontend/ozellik/kimlik/hesabim/hesabim.test.ts` | `vitest` `node:fs` `node:path` |
+| `frontend/ozellik/kimlik/hesabim/hesabim.test.ts` | `vitest` `node:fs` `node:path` `react` `react-dom/server` `../../firma/ekip/ekip-parcalari` `./IzinDurumListesi` |
 | `frontend/ozellik/kimlik/hesabim/hesap-tipleri.ts` | `../IkiAdimliGirisKarti` `../SirketHesabiKarti` `../../teklif/ceviri-kota` |
 | `frontend/ozellik/kimlik/kapali-hesap-akisi.test.ts` | `vitest` `node:fs` `node:path` `../../ortak/lib/oturum` `../../ozellik/odeme/erisim-durumu` `./hesabim/hesabim` |
 | `frontend/ozellik/kimlik/kapatma-metinleri.test.ts` | `vitest` `node:fs` `node:path` |

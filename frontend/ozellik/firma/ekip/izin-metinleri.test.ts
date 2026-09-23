@@ -22,6 +22,7 @@ import {
   VARSAYILAN_DAVET_IZINLERI,
   izinDegistir,
   izinlerAyniMi,
+  izinSatirlari,
   izinSirala,
   izinTanimi,
   uyeIzniReddiMi,
@@ -122,6 +123,54 @@ describe('izin sözlüğü (saf)', () => {
       'mailto:emre.basarann1@gmail.com?subject=K%C3%BCt%C3%BCphanem%20eri%C5%9Fimi',
     );
     expect(yoneticiyeYazBaglantisi('a@b.co')).toBe('mailto:a@b.co');
+  });
+});
+
+describe('izinSatirlari — Hesabım › Ekip erişimim (saf)', () => {
+  it('⭐ sunucu listeyi SÖYLEMEDİYSE satır YOK — "Açık"/"Kapalı" uydurulmaz', () => {
+    expect(izinSatirlari(null)).toBeNull();
+    expect(izinSatirlari(undefined)).toBeNull();
+  });
+
+  it('⭐ boş liste bilinen bir durumdur: dört satır, dördü de KAPALI (null ile karışmaz)', () => {
+    const s = izinSatirlari([]);
+    expect(s?.length).toBe(4);
+    expect(s?.map((x) => x.acik)).toEqual([false, false, false, false]);
+  });
+
+  it('dört satır kanonik sırayla; açık/kapalı ETKİN listeden', () => {
+    const s = izinSatirlari(['kutuphane', 'excel']);
+    expect(s?.map((x) => x.anahtar)).toEqual([...IZIN_SIRASI]);
+    expect(s?.map((x) => x.acik)).toEqual([true, false, false, true]);
+  });
+
+  it('metin SÖZLÜKTEN: açıkken `aciklama`, kapalıyken `kapaliAciklamasi ?? aciklama`', () => {
+    const acik = izinSatirlari([...IZIN_SIRASI]) ?? [];
+    const kapali = izinSatirlari([]) ?? [];
+    expect(acik.length).toBe(IZIN_TANIMLARI.length);
+    expect(kapali.length).toBe(IZIN_TANIMLARI.length);
+    IZIN_TANIMLARI.forEach((t, i) => {
+      expect(acik[i].baslik, t.anahtar).toBe(t.baslik);
+      expect(kapali[i].baslik, t.anahtar).toBe(t.baslik);
+      expect(acik[i].aciklama, t.anahtar).toBe(t.aciklama);
+      expect(kapali[i].aciklama, t.anahtar).toBe(t.kapaliAciklamasi ?? t.aciklama);
+    });
+  });
+
+  it('⭐ "Son teklifler" kapalı = YALNIZ KENDİ teklifleri (Emre 23.09); açıkken firmanın listesi', () => {
+    const satir = (izinler: UyeIzni[]) => izinSatirlari(izinler)?.find((x) => x.anahtar === 'firmaTeklifleri');
+    expect(satir([])?.aciklama).toBe('Yalnız kendi hazırladığı teklifleri görebilir');
+    expect(satir(['firmaTeklifleri'])?.aciklama).toBe('Firmanın teklif listesini ve tutarları görebilir');
+  });
+
+  it('kapalı metni YALNIZ "Son teklifler"de: öteki üç izin kapalıyken elde kalan bir şey yok', () => {
+    expect(IZIN_TANIMLARI.filter((t) => t.kapaliAciklamasi).map((t) => t.anahtar)).toEqual(['firmaTeklifleri']);
+  });
+
+  it('girdi DEĞİŞMEZ', () => {
+    const girdi: UyeIzni[] = ['dwg'];
+    izinSatirlari(girdi);
+    expect(girdi).toEqual(['dwg']);
   });
 });
 
