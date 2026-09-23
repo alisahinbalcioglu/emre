@@ -90,16 +90,32 @@ export function girisSonrasiYol(data: OturumYaniti): string {
  *  ona vermek kullaniciya "Sunucudan gecerli bir oturum anahtari gelmedi"
  *  gibi yaniltici bir hata gosterirdi.
  */
+/**
+ * Kodun NEREDEN geldigi (23.09.2026, Emre karari — yonetici girisi).
+ * `uygulama` = telefondaki dogrulama uygulamasi (TOTP) · `eposta` = kutuya
+ * gonderilen 6 haneli kod.
+ */
+export type MfaYontemi = 'uygulama' | 'eposta';
+
 export type GirisDali =
   | { tip: 'oturum' }
-  | { tip: 'kod'; meydanOkuma: string }
+  | { tip: 'kod'; meydanOkuma: string; yontem: MfaYontemi }
   | { tip: 'kurulum'; meydanOkuma: string; neden: 'yonetici' | 'firma' | null };
 
 export function girisDaliCoz(data: unknown): GirisDali {
   const y = (data ?? {}) as Record<string, unknown>;
   const meydanOkuma = typeof y.meydanOkuma === 'string' ? y.meydanOkuma : '';
   if (y.mfaGerekli === true && meydanOkuma !== '') {
-    return { tip: 'kod', meydanOkuma };
+    /**
+     * ⚠ YONTEM SUNUCUNUN `yontemler` DEMETINDEN OKUNUR, burada TAHMIN
+     * EDILMEZ. Ekran "kullanici yonetici mi" diye kendi kararini verseydi,
+     * kural iki yerde tutulur ve biri gunun birinde otekinden sapardi —
+     * sonuc: kisi e-posta kodu beklerken uygulama ekrani gorur.
+     * Demet tanimsizsa `uygulama` varsayilir: eski davranis korunur.
+     */
+    const yontemler = Array.isArray(y.yontemler) ? y.yontemler : [];
+    const yontem: MfaYontemi = yontemler.includes('eposta') ? 'eposta' : 'uygulama';
+    return { tip: 'kod', meydanOkuma, yontem };
   }
   if (y.mfaKurulumGerekli === true && meydanOkuma !== '') {
     const neden = y.neden === 'yonetici' || y.neden === 'firma' ? y.neden : null;

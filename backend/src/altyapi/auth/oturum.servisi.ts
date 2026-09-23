@@ -126,6 +126,14 @@ export type OturumKullanicisi = {
 export type GirisKarariYaniti =
   | Awaited<ReturnType<OturumServisi['oturumYaniti']>>
   | { mfaGerekli: true; meydanOkuma: string; yontemler: ['kod', 'kurtarma'] }
+  /**
+   * 23.09.2026 — YONETICI E-POSTA KODU (Emre karari).
+   * ⚠ `yontemler` AYRI bir demet: `['kod','kurtarma']`a `'eposta'` eklemek,
+   *   e-posta yontemindeki kullaniciya OLMAYAN kurtarma kodu adimini teklif
+   *   etmek olurdu. On yuz bu demete bakarak hangi ekrani cizecegine karar
+   *   verir; iki yontem tek listede karisirsa ekran yanlis seceneği gosterir.
+   */
+  | { mfaGerekli: true; meydanOkuma: string; yontemler: ['eposta'] }
   | {
       mfaKurulumGerekli: true;
       meydanOkuma: string;
@@ -257,6 +265,32 @@ export class OturumServisi {
           yol,
         }),
         yontemler: ['kod', 'kurtarma'],
+      };
+    }
+    /**
+     * ── 23.09.2026 — YONETICI: KOD E-POSTAYA (Emre karari) ──────────────
+     * Meydan okumanin AMACI `mfa-dogrula`dir (kurulum YOK): e-posta
+     * yonteminde kurulacak bir sey yoktur, kod dogrudan uretilip postalanir.
+     *
+     * ⚠ KOD BURADA GONDERILMEZ. Bu servis OTURUM KAPISIDIR; posta gondermek
+     * icin `MfaServisi`ye bagimli olsaydi dairesel bagimlilik olusurdu
+     * (`MfaServisi` zaten `OturumServisi`yi aktariyor). On yuz meydan
+     * okumayi alir almaz `POST /auth/mfa/eposta/gonder`i cagirir; ayni uc
+     * "yeniden gonder" dugmesinin de ucudur, yani kisit TEK yerde.
+     *
+     * ⚠ BU BIR "mekanizma var, baglanti yok" RISKIDIR: on yuz o cagriyi
+     * yapmazsa kod HIC gitmez ve ekran sessizce bekler. Kapi bu baglantiyi
+     * ayrica olcer (`yonetici-eposta-kodu.test.ts`).
+     */
+    if (tip === 'mfa-eposta') {
+      return {
+        mfaGerekli: true,
+        meydanOkuma: meydanOkumaImzala({
+          userId: user.id,
+          amac: 'mfa-dogrula',
+          yol,
+        }),
+        yontemler: ['eposta'],
       };
     }
     if (tip === 'mfa-kurulum') {

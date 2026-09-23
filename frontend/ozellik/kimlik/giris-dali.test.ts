@@ -48,9 +48,14 @@ describe('girisDaliCoz — giris yanitinin dallanmasi', () => {
     expect(girisDaliCoz({ token: 'a.b.c', user: { id: 'u' } })).toEqual({ tip: 'oturum' });
   });
 
-  it('⭐ `mfaGerekli` → kod adimi (meydan okuma tasinir)', () => {
+  it('⭐ `mfaGerekli` → kod adimi (meydan okuma + YONTEM tasinir)', () => {
+    // ⚠ 23.09.2026: donus sekline `yontem` EKLENDI (Emre karari — yonetici
+    //   girisinde kod e-postadan gelir). Bu assert eski sekli muhurluyordu
+    //   ve dogru sekilde KIRMIZI yandi; sozlesme degisti, assert de degisti.
+    //   `uygulama` burada VARSAYILAN degil, sunucunun soyledigi demetten
+    //   TURETILEN degerdir — e-posta dali `yonetici-eposta-kodu.test.ts`te.
     expect(girisDaliCoz({ mfaGerekli: true, meydanOkuma: 'jwt', yontemler: ['kod', 'kurtarma'] }))
-      .toEqual({ tip: 'kod', meydanOkuma: 'jwt' });
+      .toEqual({ tip: 'kod', meydanOkuma: 'jwt', yontem: 'uygulama' });
   });
 
   it('⭐ `mfaKurulumGerekli` → kurulum sihirbazi (neden tasinir)', () => {

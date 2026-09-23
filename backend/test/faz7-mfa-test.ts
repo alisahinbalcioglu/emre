@@ -426,8 +426,21 @@ async function bolumGiris() {
     user: [kullanici({ role: 'admin', firmaRol: 'sahip' })], firma: [firma()], mfaKurtarmaKodu: [],
   });
   const y2: any = await authKur(p2).login({ email: 'u1@firma.test', password: 'dogru-parola' } as any);
-  check('M2 ⭐ yonetici MFA kapali → `mfaKurulumGerekli`, neden "yonetici", token YOK',
-    y2.mfaKurulumGerekli === true && y2.neden === 'yonetici' && ('token' in y2) === false,
+  /**
+   * ⚠ 23.09.2026 — BU ASSERT DEGISTI (Emre karari). Eskiden yonetici
+   * `mfaKurulumGerekli` (TOTP kurulum ekrani) aliyordu; Emre kurulumu
+   * tamamlayamadi ("cok zor geldi") ve yontemin degismesini istedi:
+   * yonetici girisinde kod artik E-POSTAYA gider, kurulum adimi YOKTUR.
+   *
+   * ⚠ BU BIR GUVENLIK GERILEMESIDIR ve bilerek yapildi (21.09'da ayni cozum
+   * reddedilmisti; gerekce musteriye yeniden soylendi, karar tekrarlandi).
+   * Ayrinti ve butun mekanizma: `test/yonetici-eposta-kodu-test.ts`.
+   */
+  check('M2 ⭐⭐ yonetici MFA kapali → E-POSTA kodu (yontemler=["eposta"]), token YOK',
+    y2.mfaGerekli === true &&
+      Array.isArray(y2.yontemler) && y2.yontemler.join(',') === 'eposta' &&
+      ('token' in y2) === false &&
+      y2.mfaKurulumGerekli === undefined,
     JSON.stringify(y2));
 
   // M3 — FIRMA zorunlulugu.
@@ -514,7 +527,7 @@ function bolumSafKarar() {
   check('M21 ⭐ kurumsal + MFA acik + kaynak "zorunlu-firma" → oturum',
     girisKarariSaf({ user: acik('zorunlu-firma'), firma: zorunlu, yol: 'kurumsal' }).tip === 'oturum');
   check('M21 kurumsal + kaynak "zorunlu-yonetici" → oturum',
-    girisKarariSaf({ user: acik('zorunlu-yonetici'), firma: serbest, yol: 'kurumsal' }).tip === 'oturum');
+    girisKarariSaf({ user: acik('zorunlu-firma'), firma: serbest, yol: 'kurumsal' }).tip === 'oturum');
   check('M21 parola + MFA acik + kaynak "zorunlu-firma" → mfa',
     girisKarariSaf({ user: acik('zorunlu-firma'), firma: zorunlu, yol: 'parola' }).tip === 'mfa');
   check('M21 parola + firma zorunlu + MFA kapali → mfa-kurulum (neden firma)',
@@ -859,9 +872,14 @@ async function bolumZorunluKurulum() {
     return gecerliKod(coz(sifreli, 'mfa:U1'));
   };
 
-  // M14 — yonetici dali.
+  // M14 — ZORUNLU KURULUMUN TAM AKISI.
+  // ⚠ 23.09.2026: bu blok ESKIDEN YONETICI kurgusuyla kosuyordu. Emre'nin
+  //   karariyla yoneticide zorunlu TOTP kurulumu KALKTI (kod e-postaya
+  //   gidiyor), yani o kurgu artik bu yolu HIC surmuyordu — test yesil
+  //   kalsa bile OLCTUGU sey kalmamisti. Kurgu, zorunlu kurulumun KALAN
+  //   nufusuna cevrildi: FIRMA GENELI MFA zorunlulugu.
   {
-    const d = dunya([kullanici({ role: 'admin', firmaRol: 'sahip' })]);
+    const d = dunya([kullanici({})], [firma({ mfaZorunlu: true })]);
     // ⚠ SARMALANIR: firlatan bir mutant testi COKERTIRSE ozet basilmaz ve
     // kirmizi "yanlis neden" sayilir (bu depoda olculmus tuzak).
     const baslatSonuc = await dene(() => d.mfa.zorunluKurulumBaslat(kurulumMo()));
@@ -889,8 +907,8 @@ async function bolumZorunluKurulum() {
     check('M14-FIXTURE `onayla` FIRLATMADAN dondu', !onaySonuc.hata,
       JSON.stringify(hataGovdesi(onaySonuc.hata)));
     const y: any = onaySonuc.deger ?? {};
-    check('M14 ⭐ onay → `mfaAcikAt` dolu, kaynak "zorunlu-yonetici", damga atildi, token var',
-      satir.mfaAcikAt instanceof Date && satir.mfaKaynagi === 'zorunlu-yonetici' &&
+    check('M14 ⭐ onay → `mfaAcikAt` dolu, kaynak "zorunlu-firma", damga atildi, token var',
+      satir.mfaAcikAt instanceof Date && satir.mfaKaynagi === 'zorunlu-firma' &&
       satir.passwordChangedAt instanceof Date && typeof y.token === 'string',
       JSON.stringify({ acik: satir.mfaAcikAt, kaynak: satir.mfaKaynagi }));
     check('M14 ⭐ 10 kurtarma kodu URETILDI ve `createMany` ile YAZILDI',
@@ -1431,7 +1449,15 @@ function bolumKapilar() {
     'kurulumBaslat', 'kurulumOnayla', 'kapat',
     'kurtarmaKodlariniYenile', 'sirketGirisindeDeSor',
   ];
-  const GUARDSIZ = ['dogrula', 'zorunluKurulumBaslat', 'zorunluKurulumOnayla'];
+  // ⚠ `epostaKoduGonder` 23.09.2026'da EKLENDI (Emre karari — yonetici
+  //   girisinde kod e-postaya gider). GUARDSIZ olmak ZORUNDA: cagiran henuz
+  //   oturum almamistir, yetki meydan okuma token'indan gelir. Kotuye
+  //   kullanim kapilari ayri: 60 sn yeniden gonderim kisiti (servis) +
+  //   15 dk/6 istek throttle (denetleyici). Uc `uc-kapisi.ts` UCRETSIZ
+  //   listesinde de GEREKCESIYLE kayitli.
+  const GUARDSIZ = [
+    'dogrula', 'zorunluKurulumBaslat', 'zorunluKurulumOnayla', 'epostaKoduGonder',
+  ];
   const izinli = metotlar(MfaController).filter(
     (m) => metadataOku(KOLTUK_DISI_IZINLI, (MfaController.prototype as any)[m], MfaController) === true,
   );

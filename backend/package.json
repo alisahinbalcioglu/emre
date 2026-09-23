@@ -136,7 +136,8 @@
     "seed:paketler": "ts-node scripts/paketleri-kur.ts",
     "seedpaketler": "ts-node scripts/paketleri-kur.ts",
     "duzelt:paket-aciklama": "ts-node scripts/paket-aciklama-duzelt.ts",
-    "duzeltpaketaciklama": "ts-node scripts/paket-aciklama-duzelt.ts"
+    "duzeltpaketaciklama": "ts-node scripts/paket-aciklama-duzelt.ts",
+    "test:eposta-kodu": "ts-node test/yonetici-eposta-kodu-test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

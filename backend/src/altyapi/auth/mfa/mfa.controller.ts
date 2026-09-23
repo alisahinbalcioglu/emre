@@ -40,6 +40,23 @@ export class MfaController {
 
   // ── GUARDSIZ: GIRIS AKISININ IKINCI ADIMI ────────────────────────────
 
+  /**
+   * YONETICI GIRIS KODU — GONDER / YENIDEN GONDER (23.09.2026, Emre karari).
+   *
+   * ⚠ TEK UC: ilk gonderim ile "yeniden gonder" AYNI uctur; 60 sn kisiti
+   *   servistedir, yani iki yerde ayrisamaz.
+   * ⚠ GUARDSIZ (giris akisinin ikinci adimi) — yetki meydan okuma
+   *   token'indan gelir, oturumdan DEGIL.
+   * ⚠ Throttle `dogrula`dan DAHA DAR: bu uc posta gonderir, yani maliyeti
+   *   ve kotusu (kisinin kutusunu doldurmak) vardir.
+   */
+  @Throttle({ default: { ttl: 900_000, limit: 6 } })
+  @Post('eposta/gonder')
+  @HttpCode(200)
+  epostaKoduGonder(@Body() dto: MfaMeydanOkumaDto) {
+    return this.mfa.epostaKoduGonder(dto.meydanOkuma);
+  }
+
   @Throttle({ default: { ttl: 900_000, limit: 10 } })
   @Post('dogrula')
   @HttpCode(200)

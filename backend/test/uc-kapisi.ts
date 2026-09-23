@@ -106,6 +106,15 @@ const UCRETSIZ: Record<string, Muafiyet> = {
   'POST /auth/sso/katil': ['KIMLIK', 'Kurumsal alan adıyla firmaya katılma — giriş akışı.'],
   'DELETE /auth/sso/baglanti': ['KIMLIK', 'Kendi kurumsal bağlantısını kaldırma; kapatılırsa kullanıcı giriş yolunu kaybeder.'],
   'POST /auth/mfa/dogrula': ['KIMLIK', 'İki adımlı girişin ikinci adımı — girişin kendisi.'],
+  // 23.09.2026 (Emre kararı): yönetici girişinde kod e-postaya gider. Uç
+  // GUARDSIZ olmak ZORUNDA — çağıran henüz oturum almamıştır; yetki meydan
+  // okuma token'ından gelir (`mfa-dogrula`), oturumdan değil. Kötüye
+  // kullanıma karşı iki kapı var: 60 sn yeniden gönderim kısıtı (servis) ve
+  // 15 dk/6 istek throttle (denetleyici).
+  'POST /auth/mfa/eposta/gonder': [
+    'KIMLIK',
+    'Yönetici giriş kodunu e-postaya gönderir — girişin ikinci adımı, oturum ÖNCESİ.',
+  ],
   'POST /auth/mfa/zorunlu-kurulum/baslat': ['KIMLIK', 'Firma MFA zorunlu kıldıysa giriş bu adımdan geçer.'],
   'POST /auth/mfa/zorunlu-kurulum/onayla': ['KIMLIK', 'Zorunlu MFA kurulumunun onayı — girişin kendisi.'],
   'POST /auth/mfa/kurulum/baslat': ['KIMLIK', 'Güvenlik ayarı; ödemeye bağlanamaz.'],

@@ -32,6 +32,13 @@ export function GirisDaliEkrani({
     return (
       <MfaKodAdimi
         meydanOkuma={dal.meydanOkuma}
+        /* ⚠⚠ BU SATIR OLMAZSA OZELLIK SESSIZCE OLUR (23.09, Emre karari).
+           `yontem` propunun varsayilani `uygulama`dir; gecirilmezse
+           yonetici e-posta kodu beklerken "Dogrulama uygulamanizdaki
+           kodu girin" yazan bir ekran gorur ve kod HIC gonderilmez —
+           kodu isteyen cagri o bilesenin `eposta` dalindadir.
+           Deponun tekrarlayan hata sinifi: "mekanizma var, baglanti yok". */
+        yontem={dal.yontem}
         onOturum={onOturum}
         onSuresiDoldu={onSuresiDoldu}
         onGeri={onGeri}

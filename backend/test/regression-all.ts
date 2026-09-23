@@ -646,6 +646,17 @@ const SUITES: Suite[] = [
   // `paketleri-kur.ts` tohumundaki metin ayrışırsa taze kurulum ile canlı
   // satır farklı şey söyler. DB GEREKTİRMEZ.
   { ad: 'Paket açıklaması düzeltme: liste + tohum ikizi + tam eşleşme (P/T/D)', script: 'test:paket-aciklama', zincir: 'Z0' },
+  // 23.09 (Emre kararı): yönetici girişinde kod artık DOĞRULAMA UYGULAMASINDAN
+  // değil E-POSTADAN geliyor. Emre TOTP kurulumunu tamamlayamadı ve yönetici
+  // hesabında iki adımlı giriş ZORUNLU olduğu için ürüne hiç giremiyordu.
+  // ⚠ BU BİR GÜVENLİK GERİLEMESİDİR ve bilerek yapıldı (21.09'da aynı çözüm
+  //   reddedilmişti; gerekçe müşteriye yeniden söylendi, karar tekrarlandı).
+  //   Kapı kararı yargılamaz, DOĞRU UYGULANDIĞINI ölçer: yönetici e-postaya
+  //   gider, BAŞKASI GİTMEZ (sıradan kullanıcı ve firma zorunluluğu TOTP'de
+  //   kalır), kod tek kullanımlık ve süreli, posta gönderilemezse kod
+  //   YAZILMAZ, kod ne yanıtta ne konu satırında ne de düz olarak DB'de.
+  //   DB/AĞ/SMTP GEREKTİRMEZ.
+  { ad: 'Yönetici e-posta kodu: üretim · süre · dallanma · bağlantı · gizlilik (K/S/D/B/G)', script: 'test:eposta-kodu', zincir: 'Z0' },
 ];
 
 // ── SKIP DEFTERI (B1, para dogrulugu turu 14.09.2026) ──────────────────────

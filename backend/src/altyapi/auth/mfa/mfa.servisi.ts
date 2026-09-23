@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   Logger,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
@@ -29,10 +30,19 @@ import {
   kurtarmaKodlariUret,
 } from './kurtarma-kodu';
 import {
+  EPOSTA_KODU_GECERLILIK_SN,
+  epostaKoduOzetle,
+  epostaKoduSuresiDoldu,
+  epostaKoduTutuyorMu,
+  epostaKoduUret,
+  yenidenGonderilebilirMi,
+} from './eposta-kodu';
+import {
   mfaAcildiEpostasi,
   mfaBesHataliEpostasi,
   mfaKapatildiEpostasi,
   mfaKilitlendiEpostasi,
+  mfaGirisKoduEpostasi,
   mfaKurtarmaKoduKullanildiEpostasi,
 } from './mfa-epostalari';
 
@@ -140,6 +150,10 @@ type KullaniciSatiri = {
   mfaBekleyenAt: Date | null;
   mfaHataSayaci: number;
   mfaKilitliAt: Date | null;
+  // 23.09 — yonetici girisinde e-posta kodu (Emre karari)
+  mfaEpostaKoduOzeti: string | null;
+  mfaEpostaKoduAt: Date | null;
+  mfaEpostaSonGonderim: Date | null;
 };
 
 @Injectable()
@@ -163,11 +177,93 @@ export class MfaServisi {
    * banlanmis, hesabini kapatmis ya da parolasini degistirmis olabilir.
    * Ayni kapilar (strateji kurali) BURADA DA kosar.
    */
+  /**
+   * ═════════════════════════════════════════════════════════════════════
+   *  `POST /auth/mfa/eposta/gonder` — YONETICI GIRIS KODU (23.09.2026)
+   * ═════════════════════════════════════════════════════════════════════
+   *
+   *  Emre karari: yonetici girisinde kod telefondaki uygulamadan degil
+   *  e-posta kutusundan gelir. Kurulum adimi YOKTUR.
+   *
+   *  ⚠ AYNI UC "YENIDEN GONDER" UCUDUR. Ayri bir uc acilsaydi kisit iki
+   *  yerde tutulurdu ve biri gunun birinde otekinden saparadi.
+   *
+   *  ⚠ GONDERIM SONUCU OKUNUR. `mfa-epostalari.ts` basligindaki "hicbiri
+   *  akisi bloklamaz" kurali BU POSTAYA UYMAZ: gitmezse yonetici GIREMEZ.
+   *  Bu yuzden `gonder` basarisizsa 503 firlatilir ve ekran "gonderilemedi,
+   *  tekrar deneyin" der — sessizce beklemez.
+   *
+   *  ⚠ KOD, POSTA GIDERSE yazilir. Once yazip sonra gondermeyi denersek,
+   *  gonderim basarisiz oldugunda kullanicinin elinde OLMAYAN bir kod
+   *  veritabaninda gecerli durur ve onceki (eline ulasmis) kodu gecersiz
+   *  kilmis oluruz — kisi calisan kodunu kaybeder.
+   */
+  async epostaKoduGonder(meydanOkuma: string) {
+    const { user } = await this.meydanOkumayiCoz(meydanOkuma, 'mfa-dogrula');
+    const simdi = new Date();
+
+    const kisit = yenidenGonderilebilirMi(user.mfaEpostaSonGonderim, simdi);
+    if (!kisit.olur) {
+      throw new BadRequestException({
+        kod: 'MFA_EPOSTA_COK_SIK',
+        message: `Yeni kod istemek için ${kisit.kalanSn} saniye bekleyin.`,
+        kalanSn: kisit.kalanSn,
+      });
+    }
+
+    const kod = epostaKoduUret();
+    /**
+     * ⚠ `gonderKritik`, `gonder` DEGIL. Fark olculdu: `gonder` SMTP
+     * yapilandirilmamissa yalnizca uyari loglar ve SESSIZCE doner — bu
+     * akista o davranis, kullanicinin hic gelmeyecek bir kodu sonsuza kadar
+     * beklemesi demek olurdu. `gonderKritik` hata FIRLATIR.
+     */
+    try {
+      await this.eposta.gonderKritik(
+        mfaGirisKoduEpostasi(user.email, kod, Math.round(EPOSTA_KODU_GECERLILIK_SN / 60)),
+      );
+    } catch (e) {
+      this.logger.error(`[MFA] giris kodu POSTALANAMADI: ${user.id}`, e as Error);
+      throw new ServiceUnavailableException({
+        kod: 'MFA_EPOSTA_GONDERILEMEDI',
+        message:
+          'Doğrulama kodu gönderilemedi. Birazdan tekrar deneyin; sorun sürerse destek ekibine yazın.',
+      });
+    }
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        mfaEpostaKoduOzeti: epostaKoduOzetle(kod, user.id),
+        mfaEpostaKoduAt: simdi,
+        mfaEpostaSonGonderim: simdi,
+      },
+    });
+    // ⚠ KOD YANITTA DONMEZ. Doner olsaydi posta kutusuna erisimi olmayan
+    //   biri de girebilirdi, yani ikinci adim hic olmazdi.
+    return { gonderildi: true, gecerlilikSn: EPOSTA_KODU_GECERLILIK_SN };
+  }
+
   async dogrula(
     meydanOkuma: string,
     girdi: { kod?: string; kurtarmaKodu?: string },
   ) {
     const { user } = await this.meydanOkumayiCoz(meydanOkuma, 'mfa-dogrula');
+
+    /**
+     * ── 23.09 — YONETICI E-POSTA KODU DALI ────────────────────────────
+     * ⚠ `mfaAcikAt` DENETIMINDEN ONCE: yoneticide TOTP kurulumu YOKTUR,
+     *   yani `mfaAcikAt` bostur. Asagidaki denetim once kosaydi yonetici
+     *   dogru kodu girse bile "sureniz doldu" yerdi — ozelligin tamami
+     *   sessizce olurdu.
+     */
+    if (this.epostaYontemiMi(user)) {
+      await this.epostaKodunuDogrula(user, girdi);
+      return this.oturum.oturumYaniti(user, {
+        authAt: Math.floor(Date.now() / 1000),
+      });
+    }
+
     // Giris ile dogrulama arasinda MFA kapatildiysa ortada dogrulanacak bir
     // sey yoktur: kullaniciyi 1. adima gonderiyoruz (sayac HARCANMAZ).
     if (!user.mfaAcikAt) {
@@ -457,6 +553,68 @@ export class MfaServisi {
       });
     });
     return duzler;
+  }
+
+  /**
+   * Bu kullanici E-POSTA yontemini mi kullaniyor? (23.09, Emre karari)
+   *
+   * ⚠ TEK KAYNAK: kural `girisKarariSaf`taki dalla AYNI olmali — biri
+   * "yoneticiye e-posta kodu sor" derken oteki TOTP beklerse kullanici
+   * dogru kodu girip reddedilir. Ikisi de `role === 'admin'`e bakar ve bu
+   * eslik kapida olculur.
+   */
+  private epostaYontemiMi(user: KullaniciSatiri): boolean {
+    return user.role === 'admin';
+  }
+
+  /**
+   * E-posta kodunu dogrular. Kilit/sayac MEKANIZMASI TOTP ile AYNIDIR
+   * (`rezerveEt` / `hataSonrasi`) — ikinci bir kova yazilsaydi saldirgan
+   * kovalardan birini tuketip otekinden devam ederdi.
+   */
+  private async epostaKodunuDogrula(
+    user: KullaniciSatiri,
+    girdi: { kod?: string; kurtarmaKodu?: string },
+  ): Promise<void> {
+    const kod = typeof girdi.kod === 'string' ? girdi.kod.trim() : '';
+    if (kod === '') throw new BadRequestException(DOGRULAMA_YOK);
+    // ⚠ REZERVASYON ONCE (TOTP yolundaki R1-O2 ile ayni gerekce): sinirsiz
+    //   deneme olmasin. Kilitliyse burada `MFA_KILITLI` firlar.
+    await this.rezerveEt(user);
+
+    const simdi = new Date();
+    if (epostaKoduSuresiDoldu(user.mfaEpostaKoduAt, simdi)) {
+      await this.hataSonrasi(user);
+      throw new BadRequestException({
+        kod: 'MFA_EPOSTA_SURE_DOLDU',
+        message: 'Kodun süresi doldu. "Kodu yeniden gönder" ile yeni bir kod isteyin.',
+      });
+    }
+    if (!epostaKoduTutuyorMu(kod, user.id, user.mfaEpostaKoduOzeti)) {
+      await this.hataSonrasi(user);
+      throw new BadRequestException({
+        kod: 'MFA_KOD_HATALI',
+        message: 'Kod hatalı. E-postanıza gelen son kodu girin.',
+      });
+    }
+
+    /**
+     * ⚠ TEK KULLANIMLIK — YARISA DAYANIKLI. `updateMany` + ozetin HALA ayni
+     * olmasi kosulu: duz `update` olsaydi, ayni kodla gelen iki es zamanli
+     * istegin IKISI de kabul edilirdi. Kosul tutmazsa kod baska bir istek
+     * tarafindan ZATEN harcanmistir.
+     */
+    const tuketim = await this.prisma.user.updateMany({
+      where: { id: user.id, mfaEpostaKoduOzeti: user.mfaEpostaKoduOzeti },
+      data: { mfaEpostaKoduOzeti: null, mfaEpostaKoduAt: null, mfaHataSayaci: 0 },
+    });
+    if (tuketim.count === 0) {
+      await this.hataSonrasi(user);
+      throw new BadRequestException({
+        kod: 'MFA_KOD_HATALI',
+        message: 'Kod hatalı ya da az önce kullanıldı. Yeni bir kod isteyin.',
+      });
+    }
   }
 
   /**

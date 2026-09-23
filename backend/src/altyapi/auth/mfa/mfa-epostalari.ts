@@ -21,6 +21,40 @@ const DESTEK_CUMLESI =
   'Bu işlemi siz yapmadıysanız hemen destek ekibimize yazın; yönetici iki ' +
   'adımlı girişi sıfırlayıp hesabınızı size geri verebilir.';
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  YONETICI GIRIS KODU (23.09.2026, Emre karari)
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ *  ⚠ BU POSTA "BILGILENDIRME" DEGIL, AKISIN KENDISIDIR. Yukaridaki bloguN
+ *  "hicbiri bir akisi BLOKLAMAZ" kurali BUNA UYMAZ: bu posta gitmezse
+ *  yonetici GIREMEZ. Cagiran taraf `gonder`in sonucunu OKUMAK ve
+ *  gonderilemediyse kullaniciya soylemek zorundadir.
+ *
+ *  ⚠ DESTEK CUMLESI YOK, cunku bu posta bir islemi haber vermiyor; kodun
+ *  kendisini tasiyor. Yerine "siz istemediyseniz" uyarisi konuldu: kod
+ *  isteyen kisi kullanici degilse, parolasi baskasinin elinde demektir.
+ *
+ *  ⚠ KOD KONUYA YAZILMAZ. Konu satiri bildirim onizlemelerinde kilitli
+ *  ekranda gorunur; kodu oraya koymak, telefonu eline alan herkese vermek
+ *  olurdu.
+ */
+export function mfaGirisKoduEpostasi(kime: string, kod: string, dakika: number): EpostaTalebi {
+  return {
+    kime,
+    konu: 'Giriş doğrulama kodunuz',
+    baslik: 'Giriş doğrulama kodunuz',
+    paragraflar: [
+      `Kodunuz: <strong style="font-size:22px;letter-spacing:3px">${kod}</strong>`,
+      `Kod ${dakika} dakika geçerlidir ve yalnızca bir kez kullanılabilir.`,
+      'Bu kodu kimseyle paylaşmayın. MetaPriceX çalışanları sizden bu kodu ' +
+        'asla istemez.',
+      'Giriş yapmayı siz denemediyseniz parolanız başkasının elinde olabilir: ' +
+        'hemen parolanızı değiştirin.',
+    ],
+  };
+}
+
 export function mfaAcildiEpostasi(kime: string): EpostaTalebi {
   return {
     kime,

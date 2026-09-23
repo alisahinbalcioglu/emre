@@ -39,7 +39,12 @@ export type MfaFirmasi = {
 export type GirisYolu = 'parola' | 'kurumsal';
 
 /** `girisKarariSaf`in uc cevabindan biri. */
-export type GirisKarariTipi = 'oturum' | 'mfa' | 'mfa-kurulum';
+/**
+ * `mfa-eposta` 23.09.2026'da EKLENDI (yonetici girisi — Emre karari):
+ * kod telefondaki uygulamadan DEGIL, kisinin e-posta kutusundan gelir.
+ * Kurulum adimi YOKTUR; giris denemesinde kod uretilir ve postalanir.
+ */
+export type GirisKarariTipi = 'oturum' | 'mfa' | 'mfa-kurulum' | 'mfa-eposta';
 
 /**
  * ZORUNLU MU — tek yuklem (§4.6).
@@ -83,8 +88,33 @@ export function girisKarariSaf(g: {
     if (acik && g.user.mfaKaynagi === 'kisisel') return { tip: 'mfa', neden: null };
     return { tip: 'oturum', neden: null };
   }
-  if (acik) return { tip: 'mfa', neden: null };
+
+  /**
+   * ── 23.09.2026 — YONETICI: KOD E-POSTAYA GELIR (Emre karari) ─────────
+   * Emre: "bu yontemle giris yapamiyorum ve cok zor geldi. admin giris icin
+   * mail adresine dogrulama maili gelsin her seferinde bu sekilde giris
+   * yapalim."
+   *
+   * ⚠ DAL `acik` DENETIMINDEN ONCE: yonetici TOTP kursa bile artik e-posta
+   * kodu sorulur. Kural "yoneticide tek yontem" olsun diye boyle — iki
+   * yontem yan yana dursaydi, kisi hangisinin sorulacagini kestiremezdi ve
+   * bu turun sikayeti tam olarak o belirsizlikti.
+   *
+   * ⚠ KURUMSAL DALIN ALTINDA: sirket kimlik saglayicisiyla girene ayrica
+   * kod SORULMAZ (§4.6, Emre 15.09 karari) — o kural degismedi.
+   *
+   * ⚠ 21.09'da e-posta OTP REDDEDILMISTI ve gerekcesi sudur: parola
+   * sifirlama ayni kutudan yapiliyor, MFA'yi temizlemiyor
+   * (`parola.servisi.ts`), yani posta kutusunu ele geciren kisi yonetici
+   * hesabini TAMAMEN alir. Gerekce 23.09'da Emre'ye yeniden soylendi ve
+   * karar tekrarlandi. SECIM MUSTERIYE AITTIR; buraya bir daha "e-posta
+   * OTP onerme" diye not DUSULMEZ, cunku artik onerilmis degil, SECILMIS
+   * bir mekanizmadir.
+   */
   const { zorunlu, neden } = mfaZorunluMu(g.user, g.firma);
+  if (neden === 'yonetici') return { tip: 'mfa-eposta', neden };
+
+  if (acik) return { tip: 'mfa', neden: null };
   if (zorunlu) return { tip: 'mfa-kurulum', neden };
   return { tip: 'oturum', neden: null };
 }

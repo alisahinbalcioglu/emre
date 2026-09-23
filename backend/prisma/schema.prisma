@@ -241,6 +241,26 @@ model User {
   mfaKilitliAt          DateTime?
   mfaKurtarmaKodlari    MfaKurtarmaKodu[]
 
+  /// ── 23.09.2026 — YONETICI GIRISINDE E-POSTA KODU (Emre karari) ───────
+  /// Emre TOTP kurulumunu tamamlayamadi ("bu yontemle giris yapamiyorum ve
+  /// cok zor geldi") ve yontemin degismesini istedi. 21.09'da e-posta OTP
+  /// bir kez REDDEDILMISTI; karar BILEREK geri alindi ve gerekcesi kendisine
+  /// yeniden soylendi: parola sifirlama da ayni kutudan yapiliyor ve MFA'yi
+  /// temizlemiyor, yani yonetici hesabinin guvenligi artik POSTA KUTUSUNUN
+  /// guvenligi kadardir. Karar musteriye aittir.
+  ///
+  /// ⚠ KOD DUZ SAKLANMAZ: `scrypt` ozeti (parola alanlariyla ayni disiplin).
+  /// Veritabanini okuyan biri gecerli kodu OKUYAMAZ.
+  mfaEpostaKoduOzeti    String?
+  /// Kodun uretildigi an. Gecerlilik 10 dk (`EPOSTA_KODU_GECERLILIK_SN`).
+  /// ⚠ AYRI ALAN: `mfaBekleyenAt` TOTP kurulumunun damgasidir; ikisini tek
+  /// alanda tutmak, bir yolun otekinin suresini sifirlamasi demekti.
+  mfaEpostaKoduAt       DateTime?
+  /// Son gonderim ani — yeniden gonderme kisiti (60 sn) buradan olculur.
+  /// `mfaEpostaKoduAt` ile AYNI DEGIL: yeniden gonderim YENI kod uretir,
+  /// ama kisit gonderime bakar, koda degil.
+  mfaEpostaSonGonderim  DateTime?
+
   /// FAZ 7 F3b — false: hesap KURUMSAL GIRISLE acildi, bilinen parolasi yok
   /// (`password` kullanilamaz rastgele ozet tasir — nullable YAPILMADI, yoksa
   /// `bcrypt.compare(x, null)` 500 uretirdi, §2.6). Parola sifirlama basarili
