@@ -121,6 +121,16 @@ YEDEK_CIKTI="$(docker compose exec -T -e ADI="$YEDEK_ADI" -e SAKLAMA="$YEDEK_SAK
   rm -f /tmp/deploy-dump-kodu
   if [ "$KOD" -ne 0 ]; then echo "YEDEK HATASI — pg_dump cikis kodu $KOD"; rm -f "$GECICI"; exit 1; fi
   if ! gzip -t "$GECICI" 2>/dev/null; then echo "YEDEK HATASI — gzip butunluk kontrolu kaldi"; rm -f "$GECICI"; exit 1; fi
+  # UYARI (23.09.2026): buradaki boruyu "ciktiyi once degiskene al" deyimine
+  #   cevirmek DENENDI ve YEDEK DOGRULAMASINI BOZDU. O deyim printf ile tek
+  #   tirnak kullanir; bu blok TEK TIRNAKLI bir dizginin icinde oldugu icin
+  #   dizgi ERKEN KAPANDI ve bu satirdan sonrasi (mv + YEDEK DOGRULANDI +
+  #   budama) dizginin DISINDA kaldi. Olculdu: blok 1.5 kB yerine 672 bayta
+  #   dustu. UYARI: bash -n bunu YAKALAMAZ — sonuc hala gecerli sozdizimidir,
+  #   yalnizca BASKA bir programdir. Kanit yontemi: sh -c blogunu ayikla ve
+  #   icinde YEDEK DOGRULANDI ibaresini ARA.
+  #   Zaten gereksizdi: pipefail tuzagi DIS betige ozgudur (satir 26); bu blok
+  #   sh -c ile kosuyor ve set -euo pipefail TASIMIYOR.
   if ! gzip -dc "$GECICI" 2>/dev/null | tail -20 | grep -q "PostgreSQL database dump complete"; then
     echo "YEDEK HATASI — dump SONU isareti yok (yarim dump)"; rm -f "$GECICI"; exit 1; fi
   mv "$GECICI" "/backups/$ADI"
@@ -193,7 +203,11 @@ docker compose up -d backend frontend dwg-engine
 #
 # Bu yuzden once md5 KARSILASTIRILIR: ayrisma varsa reload YETMEZ, konteyner
 # yeniden olusturulmalidir (mount o zaman guncel inode'a baglanir).
-if ! docker compose ps --status running --services 2>/dev/null | grep -qx caddy; then
+# ⚠ Cikti ONCE degiskene alinir: `set -euo pipefail` + `grep -q`nun erken
+#   cikisi, besleyen komuta SIGPIPE attirip boru hattini HATALI gosterir
+#   (23.09'da Caddyfile dogrulamasinda yasandi, deploy 5/6'da durdu).
+CALISAN_SERVISLER="$(docker compose ps --status running --services 2>/dev/null || true)"
+if ! printf '%s' "$CALISAN_SERVISLER" | grep -qx caddy; then
   echo "   caddy servisi calismiyor — yapilandirma yenilemesi atlandi"
 else
   # Dogrulama HOST dosyasi uzerinden, TAZE bir mount ile yapilir. Konteynerin
@@ -204,9 +218,31 @@ else
   # dogrulama GECERLI bir dosyayi GECERSIZ ilan eder. 07.09.2026'da tam olarak
   # bu yasandi: deploy kod=3 ile durdu, oysa Caddyfile dogruydu. Dogrulama
   # ortami gercek calisma ortamiyla AYNI degilse dogrulama degil, gurultudur.
-  if ! docker run --rm --env-file .env -v "$PWD/Caddyfile:/tmp/C:ro" caddy:2         caddy validate --config /tmp/C --adapter caddyfile </dev/null 2>&1 | grep -q "Valid configuration"; then
+  # ⚠⚠ CIKTI ONCE DEGISKENE ALINIR, `grep -q`ya BORULANMAZ (23.09.2026).
+  #
+  # OLCULDU — 23.09 deploy'u 5/6'da "Caddyfile GECERSIZ" diyerek durdu, oysa
+  # Caddy'nin KENDI ciktisi "Valid configuration" yaziyordu. Sebep:
+  #   · betik `set -euo pipefail` ile kosuyor (satir 26);
+  #   · `grep -q` eslesmeyi bulunca HEMEN cikar ve boruyu kapatir;
+  #   · `docker run` SIGPIPE alip 141 ile oler;
+  #   · `pipefail` o kodu BORU HATTININ kodu yapar → `!` kosulu DOGRU olur.
+  # Yani GECERLI bir dosya GECERSIZ ilan edilir. Kanit (bash):
+  #   set -euo pipefail; (uzun_cikti; echo M) | grep -q ilk_satir  → 141
+  # Ayni desen `pipefail` olmadan 0 doner — kusur deseni, Caddyfile DEGIL.
+  #
+  # ⚠ BU SESSIZ BIR KUSURDU: betik 5/6'da durdugu icin 6/6 CANLI DOGRULAMA
+  #   hic kosmuyor, yani "deploy dogrulandi" satiri basilmiyor ve kimse
+  #   surumun gercekten yayina girdigini OLCMUYOR. Konteynerler zaten
+  #   yenilenmis oluyor; kaybolan sey KANIT.
+  #
+  # ⚠ Ayni deyim `YEDEK_CIKTI`da (satir ~147) ZATEN kullaniliyordu; burada
+  #   kullanilmamasi bir tutarsizlikti. Yan fayda: docker IKI KEZ degil BIR
+  #   KEZ kosuyor (eski hal teshis icin ayni dogrulamayi tekrar yapiyordu).
+  CADDY_CIKTI="$(docker run --rm --env-file .env -v "$PWD/Caddyfile:/tmp/C:ro" caddy:2 \
+    caddy validate --config /tmp/C --adapter caddyfile </dev/null 2>&1 || true)"
+  if ! printf '%s' "$CADDY_CIKTI" | grep -q "Valid configuration"; then
     echo "❌ Caddyfile GECERSIZ — hicbir sey yapilmadi, eski yapilandirma korundu."
-    docker run --rm --env-file .env -v "$PWD/Caddyfile:/tmp/C:ro" caddy:2       caddy validate --config /tmp/C --adapter caddyfile </dev/null 2>&1 | tail -5
+    printf '%s\n' "$CADDY_CIKTI" | tail -5
     exit 1
   fi
 
@@ -253,7 +289,9 @@ fi
 # KONTEYNERIN GERCEKTEN GORDUGU dosya olculuyor: durum nerede saklanacak
 # sorusu ortadan kalkiyor, olcum kendi kendini duzeltiyor (kap elle
 # yenilenmisse de dogru cevap verir). Ayni desen Caddyfile icin yukarida var.
-if ! docker compose ps --status running --services 2>/dev/null | grep -qx backup; then
+# (Ayni gerekce: cikti once degiskene alinir — pipefail + `grep -q` tuzagi.)
+CALISAN_SERVISLER2="$(docker compose ps --status running --services 2>/dev/null || true)"
+if ! printf '%s' "$CALISAN_SERVISLER2" | grep -qx backup; then
   echo "   backup servisi calismiyor — yedek betigi tazeligi OLCULEMEDI"
   echo "   (3/6 yedegi bu servisten alindi; buraya gelindiyse servis vardi)"
 else

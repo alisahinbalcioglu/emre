@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 708
-Toplam satir: 173656
+Toplam satir: 173694
 Uc nokta: 227
 test:* scripti: 114
 
@@ -703,7 +703,7 @@ test:* scripti: 114
 | `scripts/abonelik-olcum.sh` | 294 |
 | `scripts/backup.sh` | 125 |
 | `scripts/deploy-olcum.cjs` | 162 |
-| `scripts/deploy.sh` | 377 |
+| `scripts/deploy.sh` | 415 |
 | `scripts/firma-olcum.sh` | 162 |
 | `scripts/fk-dogrula.sh` | 94 |
 | `scripts/geri-yukle.sh` | 182 |
