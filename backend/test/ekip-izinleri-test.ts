@@ -372,8 +372,12 @@ function bolumB(): void {
   // baglidir: havuz listesi acik kalmali, sinif dekoratoru konamaz.
   const brandsKodu = kodu(oku('backend/src/ozellik/kutuphane/brands/brands.controller.ts'));
   const brandsServis = kodu(oku('backend/src/ozellik/kutuphane/brands/brands.service.ts'));
+  // 23.09.2026 (vitrin): cagri DORDUNCU argumani (havuz fiyati karari) aldi.
+  // Desen onu da SABITLER: ucuncu yer yine tam olarak Kutuphanem izni olmali —
+  // argumanlar yer degistirirse (izin yerine fiyat karari) kisisel liste
+  // izinsiz uyeye acilirdi.
   check('B2b kisisel fiyat listesi: uc izni servise GECIRIR, servis kisisel listede izin ISTER',
-    /getPriceListMaterials\(\s*listId,\s*kimlikCoz\(user\)\.firmaId,\s*izinVarMi\(user, 'kutuphane'\),?\s*\)/.test(brandsKodu) &&
+    /getPriceListMaterials\(\s*listId,\s*kimlikCoz\(user\)\.firmaId,\s*izinVarMi\(user, 'kutuphane'\),\s*await this\.erisim\.havuzFiyatiGorunurMu\(kimlikCoz\(user\)\.firmaId, user\?\.role\),?\s*\)/.test(brandsKodu) &&
       /if \(pl\.ownerUserId && !kutuphaneIzni\)/.test(brandsServis));
 
   // Kaynak kurali: `@UyeIzniGerekli(` kullanan HER dosya ErisimGuard'i guard listesinde tasir.

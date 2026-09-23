@@ -7,6 +7,8 @@ import { cn } from '@/ortak/lib/utils';
 import { toast } from '@/ortak/hooks/use-toast';
 import { dosyaTuruSec } from './dosya-turu';
 import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
+import { useVitrin } from '@/ozellik/odeme/VitrinSaglayici';
+import type { VitrinIslemi } from '@/ozellik/odeme/vitrin-metinleri';
 import { KilitliOzellikKarti } from '@/ozellik/firma/ekip/KilitliOzellikKarti';
 import { useFirmaYoneticisi } from '@/ozellik/firma/ekip/useFirmaYoneticisi';
 import {
@@ -73,6 +75,15 @@ export default function QuickStart({
   const dwgDurum = dwgKapisi({ loading: yeteneklerYukleniyor, dwgVar: hasAnyDwg() && !hesapKapali && !dwgUyeKapali });
   const dwgAcik = dwgTiklanabilir(dwgDurum);
   const dwgRozet = dwgRozetMetni(dwgDurum);
+  // ⚠ 23.09.2026 — VİTRİN (paketsiz YENİ hesap). Emre: "ana sayfa her şey
+  //   açılsın, kullanıcının önüne gelsin"; karar "yalnızca gezsin". Kutular
+  //   AÇIK görünür (sönük değil, "Pro paket gerekli" rozeti yok) ama dosya
+  //   İŞLENMEZ: tıklama da bırakma da paket penceresini açar. Dosya seçtirip,
+  //   yükleyip SONRA 403 göstermek kullanıcıyı boşuna bekletirdi.
+  //   Aşağıdaki gerçek kutular BİLEREK DOKUNULMADAN duruyor — onların kapısı
+  //   (`excelAcik`/`dwgAcik`) vitrinde zaten KAPALI (yetenek yok), yani
+  //   vitrin dalı atlansa bile dosya işlenmez.
+  const { vitrin, pencereAc } = useVitrin();
 
   // BIRIM DIALOG'U KALDIRILDI: cizim birimi artik backend'de OTOMATIK tespit
   // ediliyor (python/unit_detect.py — antet pafta olcusu + "ÖLÇEK 1/N" kesisimi).
@@ -145,6 +156,8 @@ export default function QuickStart({
             {/* Excel Upload Zone — izni kapali uyede KILITLI KART (23.09). */}
             {excelUyeKapali ? (
               <KilitliOzellikKarti baslik="Excel Keşif" izin="excel" yonetici={yonetici} />
+            ) : vitrin ? (
+              <VitrinYuklemeKutusu tur="excel" onAc={pencereAc} />
             ) : (
             <div
               onDragOver={(e) => { if (!excelAcik) return; e.preventDefault(); e.stopPropagation(); setExcelDragOver(true); }}
@@ -203,6 +216,8 @@ export default function QuickStart({
                 23.09: izni kapali uyede KILITLI KART. */}
             {dwgUyeKapali ? (
               <KilitliOzellikKarti baslik="DWG Proje" izin="dwg" yonetici={yonetici} />
+            ) : vitrin ? (
+              <VitrinYuklemeKutusu tur="dwg" onAc={pencereAc} />
             ) : (
             <div
               onDragOver={(e) => { if (!dwgAcik) return; e.preventDefault(); e.stopPropagation(); setDwgDragOver(true); }}
@@ -259,6 +274,111 @@ export default function QuickStart({
         )}
       </div>
 
+    </div>
+  );
+}
+
+/**
+ * 23.09.2026 — VİTRİN YÜKLEME KUTUSU (paketsiz yeni hesap).
+ *
+ * Gerçek kutunun AÇIK görünümünü taşır ama dosya almaz: tıklama, klavye ve
+ * dosya bırakma paket penceresini açar. Dosya seçici HİÇ açılmaz (`<input>`
+ * yok) — seçilen dosya zaten işlenemezdi.
+ *
+ * ⚠ SÜRÜKLE-BIRAK `preventDefault` ŞART: bırakma hedefi kabul etmezse
+ *   tarayıcı dosyayı SEKMEDE AÇAR (varsayılan davranış) ve kullanıcı
+ *   uygulamadan düşer.
+ */
+interface VitrinKutuTanimi {
+  baslik: string;
+  aciklama: string;
+  uzantilar: readonly string[];
+  rozet: string | null;
+  cerceve: string;
+  ustunde: string;
+  simge: string;
+  etiket: string;
+  rozetSinifi: string;
+  Simge: typeof FileText;
+}
+
+const VITRIN_KUTU: Record<'excel' | 'dwg', VitrinKutuTanimi> = {
+  excel: {
+    baslik: 'Excel Keşif',
+    aciklama: 'Metraj dosyanızı sürükleyin',
+    uzantilar: ['.xlsx', '.xls'],
+    rozet: null,
+    cerceve: 'border-emerald-300 bg-emerald-50/30 hover:bg-emerald-50/60',
+    ustunde: 'scale-[1.01] border-emerald-500 bg-emerald-50',
+    simge: 'bg-emerald-100 text-emerald-600',
+    etiket: 'bg-emerald-100 text-emerald-700',
+    rozetSinifi: '',
+    Simge: FileSpreadsheet,
+  },
+  dwg: {
+    baslik: 'DWG Proje',
+    aciklama: 'Tesisat projesini sürükleyin',
+    uzantilar: ['.dwg', '.dxf'],
+    // DWG Pro'ya dahil; rozet gerçek kutunun AÇIK halindekiyle aynı ("PRO").
+    rozet: 'PRO',
+    cerceve: 'border-blue-200 bg-blue-50/30 hover:bg-blue-50/60',
+    ustunde: 'scale-[1.01] border-blue-500 bg-blue-50',
+    simge: 'bg-blue-100 text-blue-600',
+    etiket: 'bg-blue-100 text-blue-700',
+    rozetSinifi: 'bg-blue-600/10 text-blue-600',
+    Simge: FileText,
+  },
+};
+
+function VitrinYuklemeKutusu({
+  tur,
+  onAc,
+}: {
+  tur: 'excel' | 'dwg';
+  onAc: (islem: VitrinIslemi) => void;
+}) {
+  const [ustunde, setUstunde] = useState(false);
+  const k = VITRIN_KUTU[tur];
+  const Simge = k.Simge;
+  const ac = () => onAc(tur);
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      data-vitrin-kutusu={tur}
+      onClick={ac}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          ac();
+        }
+      }}
+      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setUstunde(true); }}
+      onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setUstunde(true); }}
+      onDragLeave={() => setUstunde(false)}
+      onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setUstunde(false); ac(); }}
+      title="Başlamak için bir paket seçin"
+      className={cn(
+        'group cursor-pointer rounded-2xl border-2 border-dashed p-8 text-center transition-all',
+        ustunde ? k.ustunde : k.cerceve,
+      )}
+    >
+      <div className={cn('mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl transition-transform group-hover:scale-110', k.simge)}>
+        <Simge className="h-6 w-6" />
+      </div>
+      <h3 className="text-sm font-bold text-slate-900">{k.baslik}</h3>
+      <p className="mt-1 text-xs text-slate-500">{k.aciklama}</p>
+      <div className="mt-3 flex items-center justify-center gap-2">
+        {k.uzantilar.map((u) => (
+          <span key={u} className={cn('rounded px-2 py-0.5 font-mono text-[10px] font-medium', k.etiket)}>{u}</span>
+        ))}
+      </div>
+      {k.rozet && (
+        <span className={cn('mt-2 inline-block rounded px-2 py-0.5 text-[9px] font-semibold', k.rozetSinifi)}>
+          {k.rozet}
+        </span>
+      )}
     </div>
   );
 }

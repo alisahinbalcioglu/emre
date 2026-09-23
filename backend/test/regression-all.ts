@@ -658,6 +658,14 @@ const SUITES: Suite[] = [
   //   YAZILMAZ, kod ne yanıtta ne konu satırında ne de düz olarak DB'de.
   //   DB/AĞ/SMTP GEREKTİRMEZ.
   { ad: 'Yönetici e-posta kodu: üretim · süre · dallanma · bağlantı · gizlilik (K/S/D/B/G)', script: 'test:eposta-kodu', zincir: 'Z0' },
+  // 23.09 (Emre kararı): paketsiz YENİ hesap duvar görmez, uygulamayı GEZER
+  // ("yalnızca gezsin"); Malzeme Havuzu'nda "fiyatlar paketle açılsın".
+  // ⚠ En kritik kalkan V5: vitrin sunucuda HİÇBİR yetenek açmaz — "gezsin"
+  //   cümlesi "kullansın"a kayarsa (bir yetenek kümeye sızarsa) kırmızı.
+  //   H6 ★BAĞLANTI: gerçek uç → gerçek erişim kararı → fiyat gizleme zinciri;
+  //   kişisel liste (firmanın KENDİ verisi) hiçbir durumda gizlenmez (H5).
+  //   DB GEREKTİRMEZ.
+  { ad: 'Vitrin: paketsiz yeni hesap gezer, iş ve havuz fiyatı kapalı (V/G/S/H/U)', script: 'test:vitrin', zincir: 'Z0' },
 ];
 
 // ── SKIP DEFTERI (B1, para dogrulugu turu 14.09.2026) ──────────────────────

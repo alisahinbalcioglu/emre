@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
 import { icerikDurdurulsunMu, seritGosterilsinMi, seritSinifi } from './erisim-durumu';
+import { useVitrin } from './VitrinSaglayici';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -24,6 +25,11 @@ import { icerikDurdurulsunMu, seritGosterilsinMi, seritSinifi } from './erisim-d
  */
 export function AbonelikSeridi() {
   const { erisim, kapali } = useCapabilities();
+  // 23.09.2026 — VİTRİN: başlık ve düğme sunucudan ("Paketinizi seçin" ·
+  // "Paket seç"); METİN yerine deneme satırı ("30 gün ücretsiz, ilk ödeme
+  // 30. günün sonunda") geçer. Satır firma+kişi kararından (`/abonelik/
+  // paketler`) kurulur; gelmediyse sunucunun metni kalır — rakam UYDURULMAZ.
+  const { vitrin, deneme } = useVitrin();
   const yol = usePathname() ?? '';
 
   if (!seritGosterilsinMi(erisim)) return null;
@@ -55,7 +61,7 @@ export function AbonelikSeridi() {
     >
       <div className="flex min-w-0 items-baseline gap-2">
         <span className="font-semibold">{uyari.baslik}</span>
-        <span className="opacity-90">{uyari.metin}</span>
+        <span className="opacity-90">{vitrin && deneme ? deneme.metin : uyari.metin}</span>
       </div>
 
       {uyari.eylem && (
