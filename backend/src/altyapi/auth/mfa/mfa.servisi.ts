@@ -261,6 +261,10 @@ export class MfaServisi {
       await this.epostaKodunuDogrula(user, girdi);
       return this.oturum.oturumYaniti(user, {
         authAt: Math.floor(Date.now() / 1000),
+        // ⚠ SART: yoneticide `mfaAcikAt` HIC dolmaz; strateji ikinci
+        //   adimi YALNIZ bu iddiadan anlar. Unutulursa kullanici kodu
+        //   dogru girer, token alir ve ILK istekte 401 yer.
+        ikinciAdim: true,
       });
     }
 
@@ -276,6 +280,7 @@ export class MfaServisi {
     return this.oturum.oturumYaniti(user, {
       // ⚠ YENI `authAt`: ikinci adim da BIRINCIL kimlik dogrulamasidir.
       authAt: Math.floor(Date.now() / 1000),
+      ikinciAdim: true,
     });
   }
 

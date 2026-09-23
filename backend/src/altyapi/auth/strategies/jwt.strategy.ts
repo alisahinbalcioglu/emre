@@ -58,6 +58,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     role: string;
     iat?: number;
     authAt?: number;
+    /**
+     * 23.09.2026 — "bu token IKINCI ADIM GECILEREK alindi" (`mfa/dogrula`).
+     * Yoneticide `mfaAcikAt` bos oldugu icin (e-posta yolunda TOTP kurulumu
+     * yok) zorunluluk denetimi bunu okur. Eski token'larda YOKTUR.
+     */
+    mfa?: unknown;
     aud?: unknown;
     amac?: unknown;
   }) {
@@ -147,7 +153,30 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // ⚠ SIRA: ban/silme/parola kapilarindan SONRA, koltuk hesabindan ONCE.
     // Banli yoneticiye once "askiya alindi" denmeli; koltuk sorgusu ise
     // zaten reddedilecek bir istek icin bosuna kosmamali.
-    if (user.role === 'admin' && !user.mfaAcikAt) {
+    /**
+     * ── 23.09.2026: DAYANAK `mfaAcikAt`TAN IKINCI ADIM KANITINA TASINDI ──
+     *
+     * ⚠⚠ CANLIDA YASANDI. Emre karariyla yonetici girisinde kod artik
+     * e-postadan geliyor ve o yolda TOTP KURULUMU YOK, yani `mfaAcikAt` HIC
+     * dolmuyor. Bu satir yalniz `mfaAcikAt`a bakiyordu; sonuc: yonetici kodu
+     * DOGRU giriyor, token aliniyor, ILK istekte 401 `MFA_KURULUM_GEREKLI`
+     * yiyor ve giris ekranina geri atiliyordu — yani yonetici girisi
+     * TAMAMEN KAPANMISTI.
+     *
+     * ⚠ KURAL UC YERDE YASIYOR ve UCU DE AYNI SEYI SOYLEMELI:
+     *   · `girisKarariSaf`  → yoneticiyi `mfa-eposta` dalina yollar
+     *   · `MfaServisi.epostaYontemiMi` → dogrulamayi e-posta koduna baglar
+     *   · BURASI            → jetonu ikinci adim kanitiyla kabul eder
+     * Ilk ikisini degistirip bu ucuncuyu unutmak, tam da bu deponun
+     * tekrarlayan "ikizi unutma" hatasiydi.
+     *
+     * ⚠ KORUMA KALKMADI. Amac "deploy aninda elde duran 7 gunluk token bir
+     * sonraki istekte dussun" idi; eski token'lar `mfa` iddiasini TASIMAZ,
+     * yani aynen duserler ve yonetici yeniden giris yapar. Degisen tek sey
+     * kanitin NEREDEN okundugu.
+     */
+    const ikinciAdimKaniti = payload.mfa === true;
+    if (user.role === 'admin' && !user.mfaAcikAt && !ikinciAdimKaniti) {
       throw new UnauthorizedException({
         kod: 'MFA_KURULUM_GEREKLI',
         message:

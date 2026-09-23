@@ -165,7 +165,7 @@ export class OturumServisi {
    */
   async oturumYaniti(
     user: OturumKullanicisi,
-    secenek: { authAt: number | null },
+    secenek: { authAt: number | null; ikinciAdim?: boolean },
   ): Promise<{
     token: string;
     user: {
@@ -183,6 +183,9 @@ export class OturumServisi {
       user.email,
       user.role,
       secenek.authAt,
+      // 23.09: ikinci adim kaniti token'a YAZILIR — `jwt.strategy`
+      // yoneticiyi bununla suzuyor (e-posta yolunda `mfaAcikAt` bostur).
+      secenek.ikinciAdim === true,
     );
     // ⚠ 2.15: `?? 'core'` YEDEGI KALDIRILDI. 2.13'ten sonra `etkinSeviye`
     // abonelik yurumuyorsa `null` doner; yedek, suresi dolmus bir PRO

@@ -23,19 +23,28 @@
  *  Alti haneli bir kodda bu teorik gorunse de kural tek yerde tutulur.
  */
 import { randomInt, scryptSync, timingSafeEqual } from 'node:crypto';
+import { MEYDAN_OKUMA_OMRU_SN } from './meydan-okuma';
 
 /** Kod uzunlugu — alti hane, kullanicinin ezberleyip yazabilecegi kadar. */
 export const EPOSTA_KODU_HANE = 6;
 
 /**
- * Gecerlilik 10 dakika.
+ * Gecerlilik = MEYDAN OKUMANIN OMRU (300 sn).
  *
- * ⚠ TOTP KURULUM EKRANI 5 DAKIKAYDI ve bu turda tam oradan sikayet geldi.
- * E-posta kodunda teslimat gecikmesi de var (kuyruk, spam suzgeci); 5 dakika
- * kodu okumadan once oldururdu. 10 dakika, "posta gec geldi" ile "calinan
- * kod uzun sure gecerli kalmasin" arasindaki denge.
+ * ⚠⚠ ONCE 10 DAKIKA YAZILMISTI VE BU YANLISTI. Kodu tasiyan sey meydan
+ * okuma token'idir (`meydan-okuma.ts`, 300 sn); kod ondan UZUN yasarsa
+ * fazladan gecen sure KULLANILAMAZ — kullanici gecerli bir kod girer ve
+ * 401 alip GIRIS EKRANINA ATILIR. Iki sure ayri yazildigi surece "kodum
+ * gecerli ama giremiyorum" durumu kacinilmazdir.
+ *
+ * Bu yuzden sabit TUREITILIR, kopyalanmaz: `meydan-okuma.ts` degerini
+ * degistiren kisi burayi guncellemeyi unutamaz.
+ *
+ * ⚠ E-postada teslimat gecikmesi var (kuyruk, spam suzgeci) ve 5 dakika
+ * dardir. Cozum sureyi UZATMAK DEGIL: sure dolarsa kullanici parolayla
+ * yeniden girer ve YENI kod gelir — bu bir kilitlenme degil, bir adim.
  */
-export const EPOSTA_KODU_GECERLILIK_SN = 10 * 60;
+export const EPOSTA_KODU_GECERLILIK_SN = MEYDAN_OKUMA_OMRU_SN;
 
 /**
  * Yeniden gonderme kisiti 60 saniye.

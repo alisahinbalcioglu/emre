@@ -34,9 +34,28 @@ export function tokenImzala(
   email: string,
   role: string,
   authAt: number | null,
+  /**
+   * ── `mfa` IDDIASI (23.09.2026) ─────────────────────────────────────────
+   * "Bu token IKINCI ADIM GECILEREK alindi." YALNIZ `mfa/dogrula` true
+   * gecer; varsayilan `false` oldugu icin diger cagiranlar DEGISMEDI.
+   *
+   * ⚠ NEDEN GEREKTI: yonetici girisinde kod artik e-postadan geliyor ve o
+   * yolda TOTP kurulumu YOK, yani `mfaAcikAt` HIC dolmuyor. `jwt.strategy`
+   * ise yoneticiyi `mfaAcikAt` ile suzuyordu; sonuc: kod dogru girilip
+   * token aliniyor, ILK istekte 401 `MFA_KURULUM_GEREKLI` yeniyor ve
+   * kullanici giris ekranina geri atiliyordu. CANLIDA YASANDI.
+   *
+   * ⚠ ESKI TOKEN'LAR BU IDDIAYI TASIMAZ ve tasimamalidir: stratejideki
+   * kuralin asil amaci "deploy aninda elde duran 7 gunluk token bir sonraki
+   * istekte dussun" idi. Iddia yoksa yonetici yeniden giris yapar — koruma
+   * AYNEN durur, yalnizca dayanagi `mfaAcikAt`tan IKINCI ADIM KANITINA
+   * tasindi.
+   */
+  ikinciAdim = false,
 ): string {
   const payload: Record<string, unknown> = { sub: id, email, role };
   if (authAt !== null) payload.authAt = Math.floor(authAt);
+  if (ikinciAdim) payload.mfa = true;
   return jwtService.sign(payload, {
     // KL P1-a: yedek deger yok — anahtar tek kaynaktan (jwt-secret.ts).
     // Sure kurali DEGISMEDI (JWT_EXPIRES_IN ?? 7d).

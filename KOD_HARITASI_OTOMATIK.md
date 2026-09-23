@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 708
-Toplam satir: 173694
+Toplam satir: 173818
 Uc nokta: 227
 test:* scripti: 114
 
@@ -65,20 +65,20 @@ test:* scripti: 114
 | `backend/src/altyapi/auth/kurumsal/pkce.ts` | 36 |
 | `backend/src/altyapi/auth/kurumsal/saglayici-kurallari.ts` | 258 |
 | `backend/src/altyapi/auth/mfa/dto/mfa.dto.ts` | 88 |
-| `backend/src/altyapi/auth/mfa/eposta-kodu.ts` | 126 |
+| `backend/src/altyapi/auth/mfa/eposta-kodu.ts` | 135 |
 | `backend/src/altyapi/auth/mfa/kurtarma-kodu.ts` | 67 |
 | `backend/src/altyapi/auth/mfa/meydan-okuma.ts` | 107 |
 | `backend/src/altyapi/auth/mfa/mfa-epostalari.ts` | 145 |
 | `backend/src/altyapi/auth/mfa/mfa-karari.ts` | 182 |
 | `backend/src/altyapi/auth/mfa/mfa.controller.ts` | 137 |
-| `backend/src/altyapi/auth/mfa/mfa.servisi.ts` | 821 |
+| `backend/src/altyapi/auth/mfa/mfa.servisi.ts` | 826 |
 | `backend/src/altyapi/auth/mfa/totp.ts` | 177 |
-| `backend/src/altyapi/auth/oturum.servisi.ts` | 322 |
+| `backend/src/altyapi/auth/oturum.servisi.ts` | 325 |
 | `backend/src/altyapi/auth/parola-kurali.ts` | 57 |
 | `backend/src/altyapi/auth/parola.servisi.ts` | 311 |
 | `backend/src/altyapi/auth/seviye.ts` | 154 |
-| `backend/src/altyapi/auth/strategies/jwt.strategy.ts` | 227 |
-| `backend/src/altyapi/auth/token-imza.ts` | 47 |
+| `backend/src/altyapi/auth/strategies/jwt.strategy.ts` | 256 |
+| `backend/src/altyapi/auth/token-imza.ts` | 66 |
 | `backend/src/altyapi/auth/token-ozet.ts` | 61 |
 | `backend/src/altyapi/auth/uygulama-url.ts` | 43 |
 | `backend/src/altyapi/db/prisma.module.ts` | 10 |
@@ -383,7 +383,7 @@ test:* scripti: 114
 | `backend/test/varyant-surukleme-test.ts` | 189 |
 | `backend/test/yardimci/sahte-oidc-saglayici.ts` | 244 |
 | `backend/test/yardimci/uc-envanteri.ts` | 162 |
-| `backend/test/yonetici-eposta-kodu-test.ts` | 275 |
+| `backend/test/yonetici-eposta-kodu-test.ts` | 334 |
 | `backend/test/yuzey-genisletme-test.ts` | 193 |
 | `frontend/app/(protected)/abonelik/donus/page.tsx` | 138 |
 | `frontend/app/(protected)/abonelik/page.tsx` | 606 |
@@ -770,7 +770,7 @@ test:* scripti: 114
 | `backend/src/altyapi/auth/kurumsal/oidc-istemci.ts` | `@nestjs/common` `node:crypto` `jsonwebtoken` |
 | `backend/src/altyapi/auth/kurumsal/pkce.ts` | `node:crypto` |
 | `backend/src/altyapi/auth/kurumsal/saglayici-kurallari.ts` | `node:url` |
-| `backend/src/altyapi/auth/mfa/eposta-kodu.ts` | `node:crypto` |
+| `backend/src/altyapi/auth/mfa/eposta-kodu.ts` | `node:crypto` `./meydan-okuma` |
 | `backend/src/altyapi/auth/mfa/kurtarma-kodu.ts` | `node:crypto` `bcrypt` |
 | `backend/src/altyapi/auth/mfa/meydan-okuma.ts` | `@nestjs/common` `node:crypto` `jsonwebtoken` `../jwt-secret` |
 | `backend/src/altyapi/auth/mfa/mfa-epostalari.ts` | `../../../ozellik/odeme/eposta/eposta.servisi` |
@@ -1064,7 +1064,7 @@ test:* scripti: 114
 | `backend/test/varyant-surukleme-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/query-engine` `../src/ozellik/fiyat/matching/index/outcome-mapper` `../src/ozellik/eslestirme/matching/index/types` |
 | `backend/test/yardimci/sahte-oidc-saglayici.ts` | `node:crypto` `jsonwebtoken` `../../src/altyapi/auth/kurumsal/oidc-istemci` |
 | `backend/test/yardimci/uc-envanteri.ts` | `typescript` `fs` `path` |
-| `backend/test/yonetici-eposta-kodu-test.ts` | `node:fs` `node:path` `../src/altyapi/auth/mfa/mfa-karari` `../src/altyapi/auth/mfa/mfa-epostalari` |
+| `backend/test/yonetici-eposta-kodu-test.ts` | `node:fs` `node:path` `../src/altyapi/auth/mfa/meydan-okuma` `../src/altyapi/auth/mfa/mfa-karari` `../src/altyapi/auth/mfa/mfa-epostalari` |
 | `backend/test/yuzey-genisletme-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/query-engine` `../src/ozellik/fiyat/matching/index/outcome-mapper` `../src/ozellik/eslestirme/matching/index/types` |
 | `frontend/app/(protected)/abonelik/donus/page.tsx` | `react` `next/link` `@/ortak/lib/api` `@/ortak/contexts/CapabilitiesContext` |
 | `frontend/app/(protected)/abonelik/page.tsx` | `react` `@/ortak/lib/api` `@/ozellik/odeme/paket-bicim` `@/ozellik/odeme/DenemeSatiri` `@/ozellik/firma/ekip/koltuk-metinleri` `@/ozellik/odeme/abonelik-ozeti` `@/ozellik/odeme/IyzicoFormu` |

@@ -39,6 +39,7 @@ import {
   epostaKoduUret,
   yenidenGonderilebilirMi,
 } from '../src/altyapi/auth/mfa/eposta-kodu';
+import { MEYDAN_OKUMA_OMRU_SN } from '../src/altyapi/auth/mfa/meydan-okuma';
 import { girisKarariSaf } from '../src/altyapi/auth/mfa/mfa-karari';
 import { mfaGirisKoduEpostasi } from '../src/altyapi/auth/mfa/mfa-epostalari';
 
@@ -202,6 +203,64 @@ function main(): void {
   check(
     'B3b ⭐⭐ IKIZ: `epostaYontemiMi` de `role === admin` diyor (dallanmayla AYNI)',
     /private epostaYontemiMi\([^)]*\)[^{]*\{\s*return user\.role === 'admin';/.test(servis),
+  );
+
+  /* ═══════════════════════════════════════════════════════════════════════
+   *  B9-B12 — UCUNCU YER: HER ISTEKTE KOSAN KURAL
+   * ═══════════════════════════════════════════════════════════════════════
+   *  ⚠⚠ CANLIDA YASANDI (23.09): kural UC yerde yasiyor ve ilk ikisi
+   *  degistirilip UCUNCUSU unutuldu. `jwt.strategy` yoneticiyi hala
+   *  `mfaAcikAt` ile suzuyordu; e-posta yolunda o alan HIC dolmadigi icin
+   *  yonetici kodu DOGRU girip token aliyor, ILK istekte 401 yiyor ve giris
+   *  ekranina geri atiliyordu — yani yonetici girisi TAMAMEN KAPANMISTI.
+   *  Bu blok o ucuncu yeri ve onu besleyen zinciri olcer.
+   */
+  const strateji = kodu(oku('backend/src/altyapi/auth/strategies/jwt.strategy.ts'));
+  const imza = kodu(oku('backend/src/altyapi/auth/token-imza.ts'));
+  const oturumSrv2 = kodu(oku('backend/src/altyapi/auth/oturum.servisi.ts'));
+
+  check(
+    'B9 ⭐⭐ strateji yoneticiyi IKINCI ADIM KANITIYLA da kabul ediyor',
+    /payload\.mfa === true/.test(strateji) &&
+      /role === 'admin' && !user\.mfaAcikAt && !ikinciAdimKaniti/.test(strateji),
+  );
+  check(
+    'B10 ⭐ kaniti token BASIYOR (`mfa: true` iddiasi)',
+    /if \(ikinciAdim\) payload\.mfa = true;/.test(imza),
+  );
+  /**
+   * ⚠ SAYIM + KOMSULUK — mutasyonla bulundu (23.09). Assert once yalniz
+   * `/ikinciAdim: true,/` ariyordu; ibare IKI dalda birden gectigi icin
+   * (e-posta ve TOTP) e-posta dalindan SILEN mutant, assert otekini gorup
+   * yesil kaldi. Ayni sinif bu turda ucuncu kez: "komsu eslesme".
+   */
+  const epostaDaliBasi = servis.indexOf('await this.epostaKodunuDogrula(user, girdi);');
+  check(
+    'B11 ⭐⭐ ZINCIR TAM: `mfa/dogrula` E-POSTA DALI kaniti geciriyor',
+    epostaDaliBasi > -1 &&
+      servis.slice(epostaDaliBasi, epostaDaliBasi + 260).includes('ikinciAdim: true') &&
+      /secenek\.ikinciAdim === true,/.test(oturumSrv2),
+    `dalBasi=${epostaDaliBasi}`,
+  );
+  check(
+    'B11b ⭐ TOTP dali da kaniti geciriyor (iki dal da: toplam 2)',
+    (servis.match(/ikinciAdim: true/g) ?? []).length === 2,
+    String((servis.match(/ikinciAdim: true/g) ?? []).length),
+  );
+  check(
+    'B12 ⭐ ESKI TOKEN KORUMASI DURUYOR: kanit VARSAYILAN olarak basilmaz',
+    /ikinciAdim = false,/.test(imza),
+  );
+  check(
+    'B13 ⭐⭐ kod omru MEYDAN OKUMADAN uzun DEGIL (uzun olsa 401 yenirdi)',
+    EPOSTA_KODU_GECERLILIK_SN <= MEYDAN_OKUMA_OMRU_SN,
+    `kod=${EPOSTA_KODU_GECERLILIK_SN} meydanOkuma=${MEYDAN_OKUMA_OMRU_SN}`,
+  );
+  check(
+    'B14 ⭐ kod omru TURETILIYOR, kopyalanmiyor (ikisi ayrisamaz)',
+    /EPOSTA_KODU_GECERLILIK_SN = MEYDAN_OKUMA_OMRU_SN/.test(
+      kodu(oku('backend/src/altyapi/auth/mfa/eposta-kodu.ts')),
+    ),
   );
   check(
     'B4 ⭐⭐ dogrulama E-POSTA DALINI `mfaAcikAt` denetiminden ONCE yapiyor',
