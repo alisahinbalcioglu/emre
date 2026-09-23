@@ -45,7 +45,21 @@ export interface EpostaTalebi {
   kime: string;
   konu: string;
   baslik: string;
+  /**
+   * DUZ METIN. Her paragraf `kacir()` ile kaçışlanır — HTML YAZILMAZ.
+   * ⚠ 23.09.2026 CANLIDA GORULDU: giriş kodu paragrafa
+   * `<strong style="font-size:22px">…</strong>` olarak gömülmüştü; kaçışlama
+   * doğru çalıştığı için müşteri etiketi OLDUĞU GİBİ okudu (Emre'nin telefonu).
+   * Vurgu gereken içerik için şablona ALAN eklenir (bkz. `kod`), veriye
+   * işaretleme karıştırılmaz.
+   */
   paragraflar: string[];
+  /**
+   * Tek kullanımlık kod. Şablon onu başlığın hemen altında, ortalı, büyük ve
+   * renkli bir blokta çizer; düz metin gövdede kendi satırında durur.
+   * Değer yine `kacir()`dan geçer — işaretlemeyi ŞABLON üretir, veri değil.
+   */
+  kod?: string;
   dugme?: { etiket: string; url: string };
   altNot?: string;
 }
@@ -218,7 +232,9 @@ export class EpostaServisi {
   }
 
   private duzMetin(t: EpostaTalebi): string {
-    const parcalar = [t.baslik, '', ...t.paragraflar];
+    // Kod, HTML gövdedeki yerinin ikizi: başlığın hemen altında, tek başına
+    // bir satırda — düz metin okuyan kullanıcı onu aramak zorunda kalmasın.
+    const parcalar = [t.baslik, '', ...(t.kod ? [t.kod, ''] : []), ...t.paragraflar];
     if (t.dugme) parcalar.push('', `${t.dugme.etiket}: ${t.dugme.url}`);
     if (t.altNot) parcalar.push('', t.altNot);
     parcalar.push(
@@ -236,6 +252,35 @@ export class EpostaServisi {
           `<p style="margin:0 0 14px;font-size:15px;line-height:1.65;color:#334155">${this.kacir(x)}</p>`,
       )
       .join('');
+
+    // ── KOD BLOGU (23.09.2026, Emre: "mailin ortasinda buyuk ve renkli") ──
+    // Baslik altinda, ortali; bosluklu tek aralikli rakam okumayi ve elle
+    // yazmayi kolaylastirir. `padding-left` = `letter-spacing`: son rakamin
+    // sagindaki harf araligi blogu sola kaydirmasin, gercekten ortada dursun.
+    const kod = t.kod
+      ? `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:4px 0 24px">
+           <tr><td align="center" style="padding:22px 12px;border-radius:12px;background:#eff6ff;
+                                        border:1px solid #bfdbfe">
+             <span style="display:inline-block;padding-left:10px;font-family:'SF Mono',Menlo,Consolas,
+                          'Courier New',monospace;font-size:36px;line-height:1.2;font-weight:800;
+                          letter-spacing:10px;color:#2563eb">${this.kacir(t.kod)}</span>
+           </td></tr>
+         </table>`
+      : '';
+
+    // ── ONIZLEME METNI (yalniz kodlu postada) ──────────────────────────────
+    // ⚠ Posta istemcileri bildirimde govdenin ILK metnini gosterir. Kod
+    // basligin hemen altina tasininca rakamlar KILITLI EKRAN bildirimine
+    // duserdi — `mfaGirisKoduEpostasi`nin kodu konu satirindan uzak tutma
+    // gerekcesinin (telefonu eline alan herkes gorur) ta kendisi. Gizli
+    // metin onizlemeyi doldurur; dolgu (`&zwnj;&nbsp;`) istemcinin arkadan
+    // govde metni eklemesini engeller.
+    const onizleme = t.kod
+      ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all">` +
+        `Tek kullanımlık kodunuz bu iletide. Kimseyle paylaşmayın.` +
+        '&zwnj;&nbsp;'.repeat(90) +
+        `</div>`
+      : '';
 
     const dugme = t.dugme
       ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:26px 0">
@@ -259,7 +304,7 @@ export class EpostaServisi {
 <meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#f1f5f9;
              font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif">
-  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#f1f5f9">
+  ${onizleme}<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#f1f5f9">
     <tr><td align="center" style="padding:32px 16px">
       <table role="presentation" cellpadding="0" cellspacing="0" width="100%"
              style="max-width:560px;background:#ffffff;border-radius:14px;
@@ -270,7 +315,7 @@ export class EpostaServisi {
         <tr><td style="padding:30px">
           <h1 style="margin:0 0 16px;font-size:21px;line-height:1.3;font-weight:800;color:#0f172a">
             ${this.kacir(t.baslik)}</h1>
-          ${p}${dugme}${alt}
+          ${kod}${p}${dugme}${alt}
         </td></tr>
         <tr><td style="padding:18px 30px;background:#f8fafc;border-top:1px solid #e2e8f0">
           <p style="margin:0;font-size:12.5px;line-height:1.6;color:#94a3b8">
