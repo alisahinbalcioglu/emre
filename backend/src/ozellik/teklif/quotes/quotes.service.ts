@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { CreateQuoteDto } from './dto/create-quote.dto';
 import { TekliflerSorgusuDto } from './dto/teklifler-sorgusu.dto';
-import { Kimlik } from '../../../altyapi/auth/kimlik';
+import { Kimlik, TeklifKimligi, teklifKosulu } from '../../../altyapi/auth/kimlik';
 import { hazirlayanGorunumu } from './hazirlayan';
 import * as XLSX from 'xlsx';
 import * as ExcelJS from 'exceljs';
@@ -104,7 +104,7 @@ export class QuotesService {
    * ayrilir ve biri duzeltilirken oteki unutulur. Bu yuzden ayrim TEK NOKTADA:
    * hazirlik ortak, son adim (INSERT mi UPDATE mi) parametreye bakar.
    */
-  async create(k: Kimlik, dto: CreateQuoteDto, guncelleId?: string) {
+  async create(k: TeklifKimligi, dto: CreateQuoteDto, guncelleId?: string) {
     // ── ILISKISEL ALAN SUZGECI ──────────────────────────────────────────────
     // brandId/laborFirmaId istemciden SERBEST STRING olarak geliyor; dogrudan
     // Prisma'ya vermek silinmis/olmayan ID'de P2003 (foreign key) -> 500 uretir.
@@ -259,7 +259,7 @@ export class QuotesService {
 
   /** Teklif INSERT'i — create() iki kez cagirabilsin diye ayrildi (TOCTOU geri dususu). */
   private async quoteYaz(
-    k: Kimlik,
+    k: TeklifKimligi,
     dto: CreateQuoteDto,
     items: any[],
     originalFile?: Buffer,
@@ -310,14 +310,16 @@ export class QuotesService {
    * TRANSACTION icinde: silme gecip yazma patlarsa teklif KALEMSIZ kalirdi.
    */
   private async quoteGuncelle(
-    k: Kimlik,
+    k: TeklifKimligi,
     id: string,
     dto: CreateQuoteDto,
     items: any[],
     originalFile?: Buffer,
   ) {
     // Sahiplik SART — baska FIRMANIN teklifi guncellenemez (izolasyon).
-    const mevcut = await this.prisma.quote.findFirst({ where: { id, firmaId: k.firmaId } });
+    // 23.09: `teklifKosulu` — "Son teklifler" izni kapali uye YALNIZ kendi
+    // teklifini revize edebilir (kapsam firma suzgecini daraltir, genisletmez).
+    const mevcut = await this.prisma.quote.findFirst({ where: teklifKosulu(k, { id }) });
     if (!mevcut) throw new NotFoundException('Quote not found');
 
     return this.prisma.$transaction(async (tx) => {
@@ -359,8 +361,10 @@ export class QuotesService {
    *
    * ⚠ DONUS SEKLI DIZI KALIR (bkz. controller notu). Toplam sayi ayri baslikta.
    */
-  async findAll(k: Kimlik, sorgu: TekliflerSorgusuDto = {}) {
-    const where: any = { firmaId: k.firmaId };
+  async findAll(k: TeklifKimligi, sorgu: TekliflerSorgusuDto = {}) {
+    // 23.09: kapsam TEK yerden (`teklifKosulu`) — liste, pano karti ve sayac
+    // ayni kumeyi gorur. "Son teklifler" izni kapali uye yalniz kendininkini.
+    const where: any = teklifKosulu(k);
     if (sorgu.durum) where.durum = sorgu.durum;
     const arama = sorgu.arama?.trim();
     if (arama) {
@@ -424,9 +428,9 @@ export class QuotesService {
     };
   }
 
-  async findOne(k: Kimlik, id: string) {
+  async findOne(k: TeklifKimligi, id: string) {
     const quote = await this.prisma.quote.findFirst({
-      where: { id, firmaId: k.firmaId },
+      where: teklifKosulu(k, { id }),
       include: {
         items: { include: { brand: true, laborFirma: true } },
         user: { select: { email: true } },
@@ -436,8 +440,8 @@ export class QuotesService {
     return quote;
   }
 
-  async remove(k: Kimlik, id: string) {
-    const quote = await this.prisma.quote.findFirst({ where: { id, firmaId: k.firmaId } });
+  async remove(k: TeklifKimligi, id: string) {
+    const quote = await this.prisma.quote.findFirst({ where: teklifKosulu(k, { id }) });
     if (!quote) throw new NotFoundException('Quote not found');
     return this.prisma.quote.delete({ where: { id } });
   }
@@ -449,12 +453,12 @@ export class QuotesService {
   // ═══════════════════════════════════════════════════════════════════
 
   /** Teklif bilgileri (kapak alanlari) + format secimi. */
-  async updateInfo(k: Kimlik, id: string, dto: {
+  async updateInfo(k: TeklifKimligi, id: string, dto: {
     musteri?: string; proje?: string; hazirlayan?: string; gecerlilik?: string; formatId?: string | null;
     displayCurrency?: string; displayRate?: number | null; displayRateDate?: string | null;
     displayLanguage?: string; durum?: string;
   }) {
-    const quote = await this.prisma.quote.findFirst({ where: { id, firmaId: k.firmaId } });
+    const quote = await this.prisma.quote.findFirst({ where: teklifKosulu(k, { id }) });
     if (!quote) throw new NotFoundException('Quote not found');
     if (dto.formatId) {
       const f = await (this.prisma as any).quoteFormat.findFirst({ where: { id: dto.formatId, firmaId: k.firmaId } });
@@ -599,8 +603,9 @@ export class QuotesService {
     return not ? (ozet ? `${ozet} · ${not}` : not) : ozet;
   }
 
-  private async quoteGetir(k: Kimlik, id: string) {
-    const quote = await this.prisma.quote.findFirst({ where: { id, firmaId: k.firmaId } });
+  /** Cikti ve arsiv yollarinin TEK teklif okumasi (kapsam `teklifKosulu`). */
+  private async quoteGetir(k: TeklifKimligi, id: string) {
+    const quote = await this.prisma.quote.findFirst({ where: teklifKosulu(k, { id }) });
     if (!quote) throw new NotFoundException('Quote not found');
     return quote as any;
   }
@@ -667,7 +672,7 @@ export class QuotesService {
   // eski kayitli override'lar ciktiKur uzerinden islenmeye devam eder.
 
   /** .xlsx uret + REV artir + arsivle (T10). */
-  async exportXlsx(k: Kimlik, id: string, dil?: string): Promise<{ buffer: Buffer; filename: string; rev: number; quoteNo: string; uyari?: string; ozet?: string }> {
+  async exportXlsx(k: TeklifKimligi, id: string, dil?: string): Promise<{ buffer: Buffer; filename: string; rev: number; quoteNo: string; uyari?: string; ozet?: string }> {
     const quote = await this.quoteGetir(k, id);
     // 13.08: parametre yoksa teklifin KAYITLI dili konusur (bayat istemci
     // korumasi — bkz. exportDili).
@@ -747,7 +752,7 @@ export class QuotesService {
    * kapsamında SİLİNDİ (369 satır); iki export yolu da `standartSayfaYaz`
    * motorunu kullanıyor (KF7).
    */
-  async exportPricedXlsx(k: Kimlik, id: string, dil?: string): Promise<{ buffer: Buffer; filename: string; uyari?: string; ozet?: string }> {
+  async exportPricedXlsx(k: TeklifKimligi, id: string, dil?: string): Promise<{ buffer: Buffer; filename: string; uyari?: string; ozet?: string }> {
     const quote = await this.quoteGetir(k, id);
     const sheetsArr = Array.isArray(quote.sheets) ? (quote.sheets as any[]) : [];
     if (sheetsArr.length === 0) {
@@ -801,7 +806,7 @@ export class QuotesService {
   }
 
   /** T10 arsivi: uretilmis revizyonlar. */
-  async listExports(k: Kimlik, id: string) {
+  async listExports(k: TeklifKimligi, id: string) {
     await this.quoteGetir(k, id);
     return (this.prisma as any).quoteExport.findMany({
       where: { quoteId: id },
@@ -810,7 +815,7 @@ export class QuotesService {
     });
   }
 
-  async downloadExport(k: Kimlik, id: string, rev: number): Promise<{ buffer: Buffer; filename: string }> {
+  async downloadExport(k: TeklifKimligi, id: string, rev: number): Promise<{ buffer: Buffer; filename: string }> {
     await this.quoteGetir(k, id);
     const e = await (this.prisma as any).quoteExport.findFirst({ where: { quoteId: id, rev } });
     if (!e) throw new NotFoundException('Revizyon bulunamadi');

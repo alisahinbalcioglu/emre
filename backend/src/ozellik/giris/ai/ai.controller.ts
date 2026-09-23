@@ -10,10 +10,11 @@ import { TierGuard, RequireTier } from '../../../altyapi/auth/guards/tier.guard'
 import { RolesGuard } from '../../../altyapi/auth/guards/roles.guard';
 import { Roles } from '../../../altyapi/auth/decorators/roles.decorator';
 import { CurrentUser } from '../../../altyapi/auth/decorators/current-user.decorator';
-import { kimlikCoz } from '../../../altyapi/auth/kimlik';
+import { kimlikCoz, teklifKimligiCoz } from '../../../altyapi/auth/kimlik';
 import { ErisimGuard, GerekliYetenek } from '../../odeme/abonelik/erisim.guard';
 import { ErisimServisi, Yetenek } from '../../odeme/abonelik/erisim.servisi';
 import { CeviriKotaServisi } from '../../odeme/abonelik/ceviri-kota.servisi';
+import { UyeIzniGerekli } from '../../../altyapi/auth/decorators/uye-izni.decorator';
 
 /**
  * ── ERİŞİM SAĞLIĞI (10.09.2026) ────────────────────────────────────────
@@ -52,6 +53,11 @@ export class AiController {
   @Post('analyze')
   @RequireTier('pro') // PDF analiz → minimum Pro paketi
   @GerekliYetenek(Yetenek.AI_ANALIZ) // + aboneliği yürüyor mu?
+  // ⚠ 23.09.2026 (guvenlik incelemesi): yanit firmanin KUTUPHANESINDEN iskonto
+  //   ve ozel fiyat tasir (`ai.service.ts` `matchWithDatabase`). Izin olmasa
+  //   Kutuphanem'i kapali uye, havuzdan aldigi adlari bir PDF'e yazip firmanin
+  //   fiyatlarini okuyabilirdi.
+  @UyeIzniGerekli('kutuphane')
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
@@ -73,7 +79,8 @@ export class AiController {
   @UseGuards(ThrottlerGuard)
   @Throttle({ default: { ttl: 60_000, limit: 10 } })
   translate(@CurrentUser() user: unknown, @Body() body: CeviriIstegiDto) {
-    return this.ceviriService.teklifiCevir(kimlikCoz(user), body.quoteId, body.hedefDil ?? 'en');
+    // 23.09: teklif OKUYAN uc → `teklifKimligiCoz` (Son teklifler izni kapsami).
+    return this.ceviriService.teklifiCevir(teklifKimligiCoz(user), body.quoteId, body.hedefDil ?? 'en');
   }
 
   /**
@@ -88,14 +95,14 @@ export class AiController {
   @UseGuards(ThrottlerGuard)
   @Throttle({ default: { ttl: 60_000, limit: 60 } })
   translateGoruntule(@CurrentUser() user: unknown, @Query() sorgu: CeviriOnizlemeSorgusuDto) {
-    return this.ceviriService.teklifGorunumu(kimlikCoz(user), sorgu.quoteId);
+    return this.ceviriService.teklifGorunumu(teklifKimligiCoz(user), sorgu.quoteId);
   }
 
   /** Çevirmeden ÖNCE: bu teklif kaç satır yer, kalan kota ne, çeviri geçer mi. */
   @Get('translate/onizleme')
   @GerekliYetenek(Yetenek.CEVIRI)
   translateOnizleme(@CurrentUser() user: unknown, @Query() sorgu: CeviriOnizlemeSorgusuDto) {
-    return this.kota.onizleme(kimlikCoz(user), sorgu.quoteId);
+    return this.kota.onizleme(teklifKimligiCoz(user), sorgu.quoteId);
   }
 
   /**

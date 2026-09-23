@@ -122,6 +122,7 @@
     "test:faz7-totp": "ts-node test/faz7-totp-test.ts",
     "test:faz7-oidc": "ts-node test/faz7-oidc-test.ts",
     "test:faz7-ekip": "ts-node test/faz7-ekip-test.ts",
+    "test:ekip-izinleri": "ts-node test/ekip-izinleri-test.ts",
     "test:faz7-mfa": "ts-node test/faz7-mfa-test.ts",
     "test:faz7-kurumsal": "ts-node test/faz7-kurumsal-test.ts",
     "test:parola-kapisi": "ts-node test/parola-kapisi-test.ts",

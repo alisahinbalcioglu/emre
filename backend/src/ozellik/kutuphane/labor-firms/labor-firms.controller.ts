@@ -12,9 +12,16 @@ import { kimlikCoz } from '../../../altyapi/auth/kimlik';
 import { ErisimGuard, GerekliYetenek } from '../../odeme/abonelik/erisim.guard';
 import { Yetenek } from '../../odeme/abonelik/erisim.servisi';
 import { TierGuard, RequireTier } from '../../../altyapi/auth/guards/tier.guard';
+import { UyeIzniGerekli } from '../../../altyapi/auth/decorators/uye-izni.decorator';
 
+/**
+ * 23.09.2026 — iscilik firmalari ve fiyat listeleri Kutuphanem'in IKIZIDIR
+ * (Kutuphanem sayfasinin "Mekanik Iscilik" karti buraya acilir): izin SINIF
+ * duzeyinde, kapiyi `ErisimGuard` uygular.
+ */
 @Controller('labor-firms')
 @UseGuards(JwtAuthGuard, TierGuard, ErisimGuard)
+@UyeIzniGerekli('kutuphane')
 export class LaborFirmsController {
   constructor(
     private service: LaborFirmsService,

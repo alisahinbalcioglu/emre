@@ -222,25 +222,40 @@ async function main() {
 
   // ══ C — /brands/price-lists/:id/materials: sahiplik korumasi ═════════════
   let cHata: any = null;
-  try { await brandsSvc.getPriceListMaterials('pl-kirke', F2); } catch (e) { cHata = e; }
+  // 23.09: ucuncu arguman Kutuphanem izni (ZORUNLU). C1-C4 FIRMA izolasyonunu
+  // olcer → izin ACIK; izin ekseni C5-C6'da AYRICA olculur.
+  try { await brandsSvc.getPriceListMaterials('pl-kirke', F2, true); } catch (e) { cHata = e; }
   check('C1 ⭐ yabanci FIRMA kisisel listeyi OKUYAMAZ (NotFound)',
     cHata instanceof NotFoundException,
     cHata ? `firlatilan: ${cHata?.constructor?.name}` : 'HATA YOK — icerik acildi (sizinti)');
 
-  const sahipSonuc = await brandsSvc.getPriceListMaterials('pl-kirke', F1);
+  const sahipSonuc = await brandsSvc.getPriceListMaterials('pl-kirke', F1, true);
   check('C2 KALKAN: SAHIP FIRMA kendi kisisel listesini okuyabilir',
     sahipSonuc.totalCount === 1 && sahipSonuc.materials[0].materialName === 'Ozel Vana',
     `totalCount=${sahipSonuc.totalCount}`);
 
-  const havuzSonuc = await brandsSvc.getPriceListMaterials('pl-havuz', F2);
+  const havuzSonuc = await brandsSvc.getPriceListMaterials('pl-havuz', F2, true);
   check('C3 KALKAN: havuz listesi herkese acik kalir',
     havuzSonuc.totalCount === 1, `totalCount=${havuzSonuc.totalCount}`);
 
   let c4Hata: any = null;
-  try { await brandsSvc.getPriceListMaterials('pl-kirke', undefined); } catch (e) { c4Hata = e; }
+  try { await brandsSvc.getPriceListMaterials('pl-kirke', undefined, true); } catch (e) { c4Hata = e; }
   check('C4 kimliksiz cagri sahip SAYILMAZ (NotFound)',
     c4Hata instanceof NotFoundException,
     c4Hata ? `firlatilan: ${c4Hata?.constructor?.name}` : 'HATA YOK');
+
+  // ── 23.09.2026 (Ekip & Izinler, guvenlik incelemesi MEDIUM) ──────────────
+  // Kisisel liste firmanin Kutuphanem verisidir: AYNI firmanin izni kapali
+  // uyesi, onceden bildigi liste kimligiyle fiyatlari OKUYAMAZ. Havuz listesi
+  // izne BAGLI DEGIL (Malzeme Havuzu herkese acik).
+  let c5Hata: any = null;
+  try { await brandsSvc.getPriceListMaterials('pl-kirke', F1, false); } catch (e) { c5Hata = e; }
+  check('C5 ⭐ AYNI firma ama Kutuphanem izni KAPALI → 403 UYE_IZNI_YOK (fiyat donmez)',
+    c5Hata?.getStatus?.() === 403 && c5Hata?.getResponse?.()?.kod === 'UYE_IZNI_YOK',
+    c5Hata ? `${c5Hata?.constructor?.name} ${JSON.stringify(c5Hata?.getResponse?.())}` : 'HATA YOK — fiyatlar acildi');
+  const havuzIzinsiz = await brandsSvc.getPriceListMaterials('pl-havuz', F1, false);
+  check('C6 KALKAN: izinsiz uye HAVUZ listesini okumaya devam eder',
+    havuzIzinsiz.totalCount === 1, `totalCount=${havuzIzinsiz.totalCount}`);
 
   // ══ D — /admin/brands/:id/materials: panel yalniz havuzu gorur ═══════════
   kayit.plFindManyWhere.length = 0;

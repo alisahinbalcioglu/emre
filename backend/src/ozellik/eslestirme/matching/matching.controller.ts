@@ -7,6 +7,7 @@ import { TerminologyService } from './terminology.service';
 import { kimlikCoz } from '../../../altyapi/auth/kimlik';
 import { ErisimGuard, GerekliYetenek } from '../../odeme/abonelik/erisim.guard';
 import { Yetenek } from '../../odeme/abonelik/erisim.servisi';
+import { UyeIzniGerekli } from '../../../altyapi/auth/decorators/uye-izni.decorator';
 
 @Controller('matching')
 @UseGuards(JwtAuthGuard, ErisimGuard)
@@ -22,6 +23,8 @@ export class MatchingController {
    *  (metre→boru, adet→ekipman); opsiyonel, eski istemciler etkilenmez. */
   @Post('bulk-match')
   @GerekliYetenek(Yetenek.TEKLIF_DUZENLE)
+  // 23.09: fiyat KUTUPHANEDEN gelir — Kutuphanem izni olmayan uye fiyat cekemez.
+  @UyeIzniGerekli('kutuphane')
   async bulkMatch(
     @Body() body: { brandId: string; materialNames: string[]; variantTags?: string[]; units?: Record<string, string> },
     @Req() req: any,
@@ -34,6 +37,7 @@ export class MatchingController {
    *  Ayni imza ikinci gelisinde secici atlanir, 'oneri' otomatik dolar. */
   @Post('remember')
   @GerekliYetenek(Yetenek.TEKLIF_DUZENLE)
+  @UyeIzniGerekli('kutuphane')
   async remember(
     @Body() body: { brandId: string; materialName: string; secilenAd: string },
     @Req() req: any,
@@ -56,6 +60,7 @@ export class MatchingController {
   /** Sozluk listesi: seed + kullanicinin kendi alias'lari */
   @Get('aliases')
   @GerekliYetenek(Yetenek.KUTUPHANE_GORUNTULE)
+  @UyeIzniGerekli('kutuphane')
   async listAliases(@Req() req: any) {
     const userId: string = req.user?.id ?? req.user?.sub;
     return this.terminology.listAliases(userId);
@@ -65,6 +70,7 @@ export class MatchingController {
    *  Ayni alias tekrar gelirse GUNCELLENIR (S5: tekil cozumleme). */
   @Post('aliases')
   @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
+  @UyeIzniGerekli('kutuphane')
   async saveAlias(
     @Body() body: { alias: string; canonical?: string; kinds?: string[]; impliedType?: string | null; sizeClass?: string | null },
     @Req() req: any,
@@ -76,6 +82,7 @@ export class MatchingController {
   /** Alias sil (kullanici kaydi) / pasife al (seed — silinemez, S3) */
   @Delete('aliases/:id')
   @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
+  @UyeIzniGerekli('kutuphane')
   async deleteAlias(@Param('id') id: string, @Req() req: any) {
     const userId: string = req.user?.id ?? req.user?.sub;
     return this.terminology.deactivateAlias(userId, id);

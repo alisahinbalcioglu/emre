@@ -23,7 +23,7 @@
 import 'reflect-metadata';
 import { PrismaClient } from '@prisma/client';
 import { QuotesService } from '../src/ozellik/teklif/quotes/quotes.service';
-import { kimlikCoz } from '../src/altyapi/auth/kimlik';
+import { kimlikCoz, teklifKimligiCoz } from '../src/altyapi/auth/kimlik';
 import { QuoteFormatsService } from '../src/ozellik/cikti/quote-formats/quote-formats.service';
 import { LibraryService } from '../src/ozellik/kutuphane/library/library.service';
 import { MatchingService } from '../src/ozellik/eslestirme/matching/matching.service';
@@ -71,9 +71,16 @@ async function main() {
     const u3 = await prisma.user.create({ data: { email: `${damga}-u3@t.com`, password: 'x', firmaId: f2.id, firmaRol: 'sahip' } as any });
     temizlik.user.push(u1.id, u2.id, u3.id);
 
-    const K1 = kimlikCoz({ id: u1.id, firmaId: f1.id });   // F1 sahibi
-    const K2 = kimlikCoz({ id: u2.id, firmaId: f1.id });   // F1 uyesi (DAVET EDILEN)
-    const K3 = kimlikCoz({ id: u3.id, firmaId: f2.id });   // BASKA firma
+    // 23.09.2026: teklif uclari `teklifKimligiCoz` ile cozulur (JwtStrategy
+    // `firmaRol` + `izinler` tasir). K2 migration VARSAYILANIYLA (dort izin)
+    // katilmis uyedir — bu paketin I1/I2e olcumleri o hali olcer; izni
+    // DARALTILMIS uye asagida I6'da AYRICA olculur.
+    const K1 = teklifKimligiCoz({ id: u1.id, firmaId: f1.id, firmaRol: 'sahip' });   // F1 sahibi
+    const K2 = teklifKimligiCoz({                                                     // F1 uyesi (DAVET EDILEN)
+      id: u2.id, firmaId: f1.id, firmaRol: 'uye',
+      izinler: ['excel', 'dwg', 'firmaTeklifleri', 'kutuphane'],
+    });
+    const K3 = teklifKimligiCoz({ id: u3.id, firmaId: f2.id, firmaRol: 'sahip' });   // BASKA firma
 
     // ── U1 bir teklif kaydeder ─────────────────────────────────────────
     const teklif: any = await svc.create(K1, { title: `${damga}-teklif`, items: [kalem()] } as any);
@@ -122,6 +129,36 @@ async function main() {
     const baslikRevize = await prisma.quote.findUnique({ where: { id: teklif.id }, select: { title: true } });
     sina('I2e ⭐', 'ayni firmanin uyesi teklifi REVIZE edebilir',
       baslikRevize?.title === `${damga}-revize`, `baslik=${baslikRevize?.title}`);
+
+    // ── I6: "SON TEKLIFLER" IZNI KAPALI UYE (23.09.2026, Emre karari) ───
+    // Ayni kisi (u2), izni daraltilmis haliyle: firmanin teklifi GORUNMEZ,
+    // ACILMAZ, REVIZE/SILME yapilamaz; KENDI teklifi aynen calisir ve sahip
+    // onu gorur. Gercek DB'de, gercek servisle.
+    const K2k = teklifKimligiCoz({
+      id: u2.id, firmaId: f1.id, firmaRol: 'uye', izinler: ['excel', 'dwg', 'kutuphane'],
+    });
+    const { kayitlar: listeK2k } = await svc.findAll(K2k);
+    sina('I6a ⭐', 'izni kapali uye firmanin teklifini LISTEDE gormez',
+      !listeK2k.some((q: any) => q.id === teklif.id), `liste=${listeK2k.length}`);
+    let k2kActi = true;
+    try { await svc.findOne(K2k, teklif.id); } catch { k2kActi = false; }
+    sina('I6b ⭐', 'izni kapali uye firmanin teklifini ACAMAZ (404)', !k2kActi, `acti=${k2kActi}`);
+    let k2kRevize = true;
+    try { await svc.create(K2k, { title: 'izinsiz revize', items: [kalem()] } as any, teklif.id); }
+    catch { k2kRevize = false; }
+    let k2kSildi = true;
+    try { await svc.remove(K2k, teklif.id); } catch { k2kSildi = false; }
+    const k2kSonra = await prisma.quote.findUnique({ where: { id: teklif.id }, select: { title: true } });
+    sina('I6c ⭐', 'izni kapali uye firmanin teklifini REVIZE ve SILME yapamaz',
+      !k2kRevize && !k2kSildi && k2kSonra?.title === `${damga}-revize`,
+      `revize=${k2kRevize} sildi=${k2kSildi} baslik=${k2kSonra?.title}`);
+    const kendi: any = await svc.create(K2k, { title: `${damga}-uye-kendi`, items: [kalem()] } as any);
+    temizlik.quote.push(kendi.id);
+    const { kayitlar: listeK2kSonra } = await svc.findAll(K2k);
+    const { kayitlar: listeSahip } = await svc.findAll(K1);
+    sina('I6d ⭐', 'izni kapali uye KENDI teklifini gorur; sahip de onu gorur',
+      listeK2kSonra.some((q: any) => q.id === kendi.id) && listeSahip.some((q: any) => q.id === kendi.id),
+      `uye=${listeK2kSonra.length} sahip=${listeSahip.length}`);
 
     // ── I3/I4: FIRMASIZ kimlik gecemez ─────────────────────────────────
     let firmasizGecti = true;

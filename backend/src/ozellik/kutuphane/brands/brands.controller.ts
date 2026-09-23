@@ -9,6 +9,7 @@ import { RolesGuard } from '../../../altyapi/auth/guards/roles.guard';
 import { Roles } from '../../../altyapi/auth/decorators/roles.decorator';
 import { CurrentUser } from '../../../altyapi/auth/decorators/current-user.decorator';
 import { kimlikCoz } from '../../../altyapi/auth/kimlik';
+import { izinVarMi } from '../../firma/uye-izinleri';
 import { ErisimGuard, GerekliYetenek } from '../../odeme/abonelik/erisim.guard';
 import { Yetenek } from '../../odeme/abonelik/erisim.servisi';
 import { KapaliHesapIzinli } from '../../../altyapi/auth/decorators/kapali-hesap-izinli.decorator';
@@ -32,7 +33,14 @@ export class BrandsController {
   // Kimlik servise iner: KISISEL listeyi yalniz SAHIP FIRMA okur (ADIM 1).
   @Get('price-lists/:listId/materials')
   getPriceListMaterials(@CurrentUser() user: any, @Param('listId') listId: string) {
-    return this.brandsService.getPriceListMaterials(listId, kimlikCoz(user).firmaId);
+    // 23.09.2026: KISISEL liste firmanin Kutuphanem verisidir — izin karari
+    // servise iner (havuz listesi izne BAGLI DEGIL; uc bu yuzden sinif
+    // duzeyinde `@UyeIzniGerekli` tasiyamaz).
+    return this.brandsService.getPriceListMaterials(
+      listId,
+      kimlikCoz(user).firmaId,
+      izinVarMi(user, 'kutuphane'),
+    );
   }
 
   // Parameterized routes AFTER literals

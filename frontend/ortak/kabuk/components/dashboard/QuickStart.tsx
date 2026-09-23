@@ -7,6 +7,8 @@ import { cn } from '@/ortak/lib/utils';
 import { toast } from '@/ortak/hooks/use-toast';
 import { dosyaTuruSec } from './dosya-turu';
 import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
+import { KilitliOzellikKarti } from '@/ozellik/firma/ekip/KilitliOzellikKarti';
+import { useFirmaYoneticisi } from '@/ozellik/firma/ekip/useFirmaYoneticisi';
 import {
   dwgKapisi,
   dwgTiklanabilir,
@@ -44,7 +46,7 @@ export default function QuickStart({
 
   // DWG: Pro'da aktif, Core'da sonuk. `useCapabilities` provider yoksa
   // savunmaci sekilde "yetenek yok" doner — yani varsayilan SONUKTUR.
-  const { loading: yeteneklerYukleniyor, hasAnyDwg, hasAnyMaterial, kapali } = useCapabilities();
+  const { loading: yeteneklerYukleniyor, hasAnyDwg, hasAnyMaterial, kapali, izinVar, firmaRol } = useCapabilities();
   // EXCEL: 03.09 kullanici karari — "Excel de DWG gibi kapali olmali,
   // kullanicinin sectigi disipline gore aktif olacak." Kutu TEK oldugu ve
   // disiplin ancak dosya okununca belli oldugu icin kutu duzeyindeki dogru
@@ -56,10 +58,19 @@ export default function QuickStart({
   //   olarak da kapanirdi; ACIKCA yaziliyor cunku "yan etkiyle kapali"
   //   bir kapi, yan etki degisince sessizce acilir.
   const hesapKapali = kapali?.kapali === true;
-  const excelDurum = kapiDurumu({ loading: yeteneklerYukleniyor, izinVar: hasAnyMaterial() && !hesapKapali });
+  // ⚠ 23.09.2026 — ALT KULLANICI IZNI (Ekip & Izinler). Yonetici bu modulu
+  //   kapattiysa yukleme kutusu yerine KILITLI KART cizilir (ikinci tasarim:
+  //   "Yöneticin bu özelliği senin için kapattı." + "Yöneticine yaz");
+  //   "Paket seç"/"Pro pakete yükselt" YAZILMAZ — alt kullanici paket alamaz.
+  //   Sunucu zaten 403 `UYE_IZNI_YOK` donuyor (`ErisimGuard`).
+  const excelUyeKapali = !yeteneklerYukleniyor && !izinVar('excel');
+  const dwgUyeKapali = !yeteneklerYukleniyor && !izinVar('dwg');
+  // Yonetici adresi yalniz kilitli kart cizilecekse istenir (fazladan istek yok).
+  const yonetici = useFirmaYoneticisi(firmaRol === 'uye' && (excelUyeKapali || dwgUyeKapali));
+  const excelDurum = kapiDurumu({ loading: yeteneklerYukleniyor, izinVar: hasAnyMaterial() && !hesapKapali && !excelUyeKapali });
   const excelAcik = tiklanabilir(excelDurum);
   const excelRozet = rozetMetni(excelDurum);
-  const dwgDurum = dwgKapisi({ loading: yeteneklerYukleniyor, dwgVar: hasAnyDwg() && !hesapKapali });
+  const dwgDurum = dwgKapisi({ loading: yeteneklerYukleniyor, dwgVar: hasAnyDwg() && !hesapKapali && !dwgUyeKapali });
   const dwgAcik = dwgTiklanabilir(dwgDurum);
   const dwgRozet = dwgRozetMetni(dwgDurum);
 
@@ -131,7 +142,10 @@ export default function QuickStart({
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-4">
-            {/* Excel Upload Zone */}
+            {/* Excel Upload Zone — izni kapali uyede KILITLI KART (23.09). */}
+            {excelUyeKapali ? (
+              <KilitliOzellikKarti baslik="Excel Keşif" izin="excel" yonetici={yonetici} />
+            ) : (
             <div
               onDragOver={(e) => { if (!excelAcik) return; e.preventDefault(); e.stopPropagation(); setExcelDragOver(true); }}
               onDragEnter={(e) => { if (!excelAcik) return; e.preventDefault(); e.stopPropagation(); setExcelDragOver(true); }}
@@ -179,12 +193,17 @@ export default function QuickStart({
               )}
               <input ref={excelInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleExcelInput} disabled={!excelAcik} />
             </div>
+            )}
 
             {/* DWG Upload Zone
                 ⚠ Core pakette SONUK. Sunucu bu ucu zaten 403 ile kapatiyor
                 (`@GerekliYetenek(DWG_YUKLE)`); onceden on yuz bunu HIC
                 okumuyordu, kutu acik gorunuyor ve dosya surukleyen kullanici
-                sessizce 403 yiyordu. Bkz. `ozellik/odeme/dwg-kapisi.ts`. */}
+                sessizce 403 yiyordu. Bkz. `ozellik/odeme/dwg-kapisi.ts`.
+                23.09: izni kapali uyede KILITLI KART. */}
+            {dwgUyeKapali ? (
+              <KilitliOzellikKarti baslik="DWG Proje" izin="dwg" yonetici={yonetici} />
+            ) : (
             <div
               onDragOver={(e) => { if (!dwgAcik) return; e.preventDefault(); e.stopPropagation(); setDwgDragOver(true); }}
               onDragEnter={(e) => { if (!dwgAcik) return; e.preventDefault(); e.stopPropagation(); setDwgDragOver(true); }}
@@ -235,6 +254,7 @@ export default function QuickStart({
               )}
               <input ref={dwgInputRef} type="file" accept=".dwg,.dxf" className="hidden" onChange={handleDwgInput} disabled={!dwgAcik} />
             </div>
+            )}
           </div>
         )}
       </div>

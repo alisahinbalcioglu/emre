@@ -391,13 +391,17 @@ async function main(): Promise<void> {
     /kimlik\?: \{ userId\?: string \| null; firmaId\?: string \| null \}/.test(aiServis) &&
       /userId: params\.kimlik\?\.userId \?\? null/.test(aiServis),
   );
-  // Faz 6.2 (14.09): ceviri ucu artik `{quoteId}` alir ve kimligi `kimlikCoz`
-  // ile servise verir; servis ayni kimligi `cevir` → `logUsage`a tasir. Zincir
-  // iki halkada olculur — biri koparsa atif yine sessizce bos kalir.
+  // Faz 6.2 (14.09): ceviri ucu artik `{quoteId}` alir ve kimligi servise
+  // verir; servis ayni kimligi `cevir` → `logUsage`a tasir. Zincir iki halkada
+  // olculur — biri koparsa atif yine sessizce bos kalir.
+  // 23.09.2026 (Ekip & Izinler): kimlik `teklifKimligiCoz`dan gelir — o da
+  // ONCE `kimlikCoz(user)`u yayar (userId + firmaId aynen tasinir), ustune
+  // teklif kapsamini ekler. `ekip-izinleri-test.ts` S10 bunu ayrica olcer.
   check(
     'H4 ⭐ ceviri ucu KULLANICIYI gecirıyor (zincirin en kolay koptugu yer)',
     /translate\(@CurrentUser\(\) user/.test(aiKontrolcu) &&
-      /teklifiCevir\(kimlikCoz\(user\)/.test(aiKontrolcu),
+      /teklifiCevir\(teklifKimligiCoz\(user\)/.test(aiKontrolcu) &&
+      /teklifKimligiCoz[\s\S]{0,200}\.\.\.kimlikCoz\(user\)/.test(oku('backend/src/altyapi/auth/kimlik.ts')),
     'controller kimligi almazsa logUsage`a gecirecek veri OLMAZ ve atif sessizce bos kalir',
   );
   {

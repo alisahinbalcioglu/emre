@@ -76,7 +76,7 @@ function servis(sheets: any[], firma: any, ek: { firmaHatasi?: boolean; formatBy
   const fx: any = { getRates: async () => ({ usdTry: 47.35, eurTry: 54.1, source: 'tcmb', date: '12.09.2026' }) };
   return { svc: new QuotesService(prisma, fx, { onbellekHaritasi: async () => ({}) } as any), kayit };
 }
-const KIM: any = { userId: 'u1', firmaId: 'f-antet' };
+const KIM: any = { userId: 'u1', firmaId: 'f-antet', teklifKapsami: 'firma' };
 
 async function ac(buf: Buffer | ArrayBuffer): Promise<ExcelJS.Workbook> {
   const wb = new ExcelJS.Workbook();

@@ -7,6 +7,7 @@ import {
   kapaliDurumCoz,
   type KapaliDurum,
 } from '@/ortak/kabuk/components/layout/kapali-durum';
+import { izinSirala, type UyeIzni } from '@/ozellik/firma/ekip/izin-metinleri';
 
 export interface DisciplineCapability {
   material: boolean;
@@ -54,6 +55,26 @@ interface CapabilitiesContextValue {
    * null = henüz yüklenmedi VEYA hesap kapalı değil.
    */
   kapali: KapaliDurum | null;
+  /**
+   * 23.09.2026 — ALT KULLANICI IZINLERI (Ekip & Izinler). AYNI `/auth/me`
+   * yanitindan (sunucu ETKIN listeyi doner: sahip → dordu). Ayri istek YOK.
+   * `null` = sunucu SOYLEMEDI (yukleniyor / eski sunucu / istek dustu).
+   */
+  izinler: UyeIzni[] | null;
+  /**
+   * Menu ve yukleme alanlari icin KOLAYLIK sorusu — KAPI DEGIL (kapi
+   * sunucuda, `ErisimGuard`). ⚠ `null` → `true`: sunucu bilgi vermediginde
+   * ekrani bosaltmayiz; uc zaten reddeder. Tersi (null → false) eski bir
+   * sunucuyla ya da tek bir dusen istekte SAHIBIN menusunu bosaltirdi.
+   */
+  izinVar: (izin: UyeIzni) => boolean;
+  /**
+   * 23.09.2026 (ikinci tasarim) — FIRMA ROLU, AYNI `/auth/me` yanitindan.
+   * Menu "Ekip" ve "Abonelik"i YALNIZ `'uye'` iken gizler: `null`
+   * (bilinmiyor) sahip sayilmaz ama menu de BOSALTILMAZ — sahibin tek
+   * odeme yolu (`/abonelik`) bir dusen istekle kaybolmasin.
+   */
+  firmaRol: 'sahip' | 'uye' | null;
   loading: boolean;
   refresh: () => Promise<void>;
   // Helper'lar
@@ -71,6 +92,8 @@ export function CapabilitiesProvider({ children }: { children: ReactNode }) {
   const [erisim, setErisim] = useState<ErisimKarari | null>(null);
   const [emailVerified, setEmailVerified] = useState<boolean | null>(null);
   const [kapali, setKapali] = useState<KapaliDurum | null>(null);
+  const [izinler, setIzinler] = useState<UyeIzni[] | null>(null);
+  const [firmaRol, setFirmaRol] = useState<'sahip' | 'uye' | null>(null);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
@@ -81,6 +104,8 @@ export function CapabilitiesProvider({ children }: { children: ReactNode }) {
       setErisim(null);
       setEmailVerified(null);
       setKapali(null);
+      setIzinler(null);
+      setFirmaRol(null);
       setLoading(false);
       return;
     }
@@ -100,6 +125,12 @@ export function CapabilitiesProvider({ children }: { children: ReactNode }) {
       // artik kendi istegini atmaz. Cozucu ayri ve import'suz bir dosyada
       // (`kapali-durum.ts`) cunku vitest bu depoda `@/…` cozmuyor.
       setKapali(kapaliDurumCoz(data));
+      // 23.09: izinler de AYNI yanittan. Alan YOKSA (eski sunucu) `null` —
+      // "hic izni yok" (`[]`) ile karistirilmaz.
+      setIzinler(Array.isArray(data?.izinler) ? izinSirala(data.izinler) : null);
+      // 23.09 (ikinci tasarim): firma rolu de AYNI yanittan; yalniz iki
+      // bilinen deger kabul edilir, gerisi `null` (bilinmiyor).
+      setFirmaRol(data?.firmaRol === 'sahip' || data?.firmaRol === 'uye' ? data.firmaRol : null);
 
       // Satin alma sonrasi PAKET TAZELENMESI: Sidebar paketi
       // localStorage'daki donmus kopyadan okuyor (login aninda yazilir).
@@ -132,6 +163,8 @@ export function CapabilitiesProvider({ children }: { children: ReactNode }) {
       setErisim(null);
       setEmailVerified(null);
       setKapali(null);
+      setIzinler(null);
+      setFirmaRol(null);
     } finally {
       setLoading(false);
     }
@@ -146,10 +179,11 @@ export function CapabilitiesProvider({ children }: { children: ReactNode }) {
   const hasAnyDwg = () => capabilities.mechanical.dwg || capabilities.electrical.dwg;
   const hasDiscipline = (d: 'mechanical' | 'electrical') => capabilities[d].material;
   const hasLaborFor = (d: 'mechanical' | 'electrical') => capabilities[d].labor;
+  const izinVar = (izin: UyeIzni) => (izinler === null ? true : izinler.includes(izin));
 
   return (
     <CapabilitiesContext.Provider
-      value={{ capabilities, erisim, emailVerified, kapali, loading, refresh, hasAnyMaterial, hasAnyLabor, hasAnyDwg, hasDiscipline, hasLaborFor }}
+      value={{ capabilities, erisim, emailVerified, kapali, izinler, izinVar, firmaRol, loading, refresh, hasAnyMaterial, hasAnyLabor, hasAnyDwg, hasDiscipline, hasLaborFor }}
     >
       {children}
     </CapabilitiesContext.Provider>
@@ -168,6 +202,10 @@ export function useCapabilities(): CapabilitiesContextValue {
       //   agacta serit CIZILMEZ; kapali hesabi yanlislikla ACIK gostermek
       //   yerine hic sey gostermemek dogru yon — gercek kapi sunucuda.
       kapali: null,
+      // Saglayicisiz agac: bilgi yok → ekran bosaltilmaz (gercek kapi sunucuda).
+      izinler: null,
+      izinVar: () => true,
+      firmaRol: null,
       loading: false,
       refresh: async () => {},
       hasAnyMaterial: () => false,

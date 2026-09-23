@@ -167,6 +167,9 @@ const UCRETSIZ: Record<string, Muafiyet> = {
   'GET /firma/uyeler': ['FIRMA_YONETIMI', 'Koltuk sayısını görmeden koltuk azaltılamaz; azaltamayan firma paket düşüremez.'],
   'DELETE /firma/davetler/:id': ['FIRMA_YONETIMI', 'Bekleyen daveti iptal = koltuk boşaltma. Davet GÖNDERME ucu KULLANICI_DAVET ile kapılı.'],
   'PATCH /firma/uyeler/:id/rol': ['FIRMA_YONETIMI', 'Sahiplik devri; kapatılırsa ayrılan sahibin firması yönetilemez hâle gelir.'],
+  // 23.09.2026 (Ekip & İzinler): izin DARALTMAK bir güvenlik eylemidir —
+  // ayrılacak bir çalışanın fiyat listesine erişimini kapatmak ödemeye bağlanamaz.
+  'PATCH /firma/uyeler/:id/izinler': ['FIRMA_YONETIMI', 'Alt kullanıcının modül izinleri; ödemesi geciken firma da üyesinin erişimini daraltabilmeli (güvenlik eylemi).'],
   'DELETE /firma/uyeler/:id': ['FIRMA_YONETIMI', 'Üye çıkarma = koltuk azaltma; ödeme düşürmenin ön koşulu.'],
   'GET /firma/kurumsal-giris': ['FIRMA_YONETIMI', 'Kurumsal giriş ayarının durumu; giriş yolunun yapılandırması.'],
   'PUT /firma/kurumsal-giris': ['FIRMA_YONETIMI', 'Kurumsal giriş yapılandırması — bozulursa firmanın TAMAMI giriş yapamaz.'],

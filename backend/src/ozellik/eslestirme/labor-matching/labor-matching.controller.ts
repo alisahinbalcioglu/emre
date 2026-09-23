@@ -7,6 +7,7 @@ import { Roles } from '../../../altyapi/auth/decorators/roles.decorator';
 import { kimlikCoz } from '../../../altyapi/auth/kimlik';
 import { ErisimGuard, GerekliYetenek } from '../../odeme/abonelik/erisim.guard';
 import { Yetenek } from '../../odeme/abonelik/erisim.servisi';
+import { UyeIzniGerekli } from '../../../altyapi/auth/decorators/uye-izni.decorator';
 import { TierGuard, RequireTier } from '../../../altyapi/auth/guards/tier.guard';
 
 @Controller('labor-matching')
@@ -19,6 +20,8 @@ export class LaborMatchingController {
   @Post('bulk-match')
   @RequireTier('pro')
   @GerekliYetenek(Yetenek.TEKLIF_DUZENLE)
+  // 23.09: iscilik fiyati KUTUPHANEDEN (iscilik firmalari) gelir.
+  @UyeIzniGerekli('kutuphane')
   bulkMatch(
     @CurrentUser() user: any,
     @Body() body: {
@@ -35,6 +38,7 @@ export class LaborMatchingController {
   @Post('remember')
   @RequireTier('pro')
   @GerekliYetenek(Yetenek.TEKLIF_DUZENLE)
+  @UyeIzniGerekli('kutuphane')
   remember(
     @CurrentUser() user: any,
     @Body() body: { firmaId: string; laborName: string; secilenAd: string },
@@ -46,6 +50,7 @@ export class LaborMatchingController {
   @Post('reindex')
   @RequireTier('pro')
   @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
+  @UyeIzniGerekli('kutuphane')
   reindex(@CurrentUser() user: any) {
     return this.service.reindex(kimlikCoz(user));
   }

@@ -78,7 +78,8 @@ const SAAT = 60 * DK;
 const GUN = 24 * SAAT;
 const Q = '8a2f4a4e-2b7c-4a55-9d0e-0f6f3c1b2a10';
 const Q_BASKA = '5d1c7e2a-0b3f-4c8d-9e6a-7f2b1c0d9e8f';
-const K1 = { userId: 'u1', firmaId: 'f1' };
+// 23.09: teklif kapsami ACIK — bu paket izin DEGIL ceviri olcer.
+const K1 = { userId: 'u1', firmaId: 'f1', teklifKapsami: 'firma' as const };
 
 /**
  * Ekran-dosya ikiz fikstürü (ön yüz `ceviri.test.ts` S10 AYNI dosyayı koşar).
@@ -443,7 +444,9 @@ async function gBlogu(): Promise<void> {
     const guardlar: unknown[] = Reflect.getMetadata(GUARDS_METADATA, tr) ?? [];
     const alinan: unknown[][] = [];
     const ctrl = new AiController({} as any, { teklifGorunumu: async (...a: unknown[]) => { alinan.push(a); return {}; } } as any, {} as any, {} as any);
-    await ctrl.translateGoruntule({ id: 'u1', firmaId: 'f1' }, Object.assign(Object.create(null), { quoteId: Q, fazla: 'x' }));
+    // 23.09: oturum FIRMA SAHIBI → kapsam 'firma' (K1 ile birebir). Uc `kimlikCoz`a
+    // donerse servise giden kimlikte `teklifKapsami` OLMAZ ve bu assert kirmiziya doner.
+    await ctrl.translateGoruntule({ id: 'u1', firmaId: 'f1', firmaRol: 'sahip' }, Object.assign(Object.create(null), { quoteId: Q, fazla: 'x' }));
     check('G5 ★ controller: yetenek metadata\'sı YOK, ThrottlerGuard var, 60/60000, servise yalnız kimlik + teklif',
       Reflect.getMetadata(YETENEK_KEY, tr) === undefined && guardlar.includes(ThrottlerGuard) &&
       Reflect.getMetadata('THROTTLER:LIMITdefault', tr) === 60 && Reflect.getMetadata('THROTTLER:TTLdefault', tr) === 60_000 &&

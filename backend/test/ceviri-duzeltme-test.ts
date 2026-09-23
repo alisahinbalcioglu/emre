@@ -85,9 +85,10 @@ const GUN = 24 * SAAT;
 const Q = '7f3a1c2e-0b4d-4a11-9c8e-1d2f3a4b5c60'; // f1
 const Q2 = '7f3a1c2e-0b4d-4a11-9c8e-1d2f3a4b5c61'; // f2 (aynı içerik)
 const Q_EK = '7f3a1c2e-0b4d-4a11-9c8e-1d2f3a4b5c62'; // f1, iki katmanda da olmayan terimli
-const K1 = { userId: 'u1', firmaId: 'f1' };
-const KF2 = { userId: 'u2', firmaId: 'f2' };
-const KDOG = { userId: 'u3', firmaId: 'f1' }; // e-posta doğrulanmamış
+// 23.09: teklif kapsami ACIK — bu paket izin DEGIL ceviri olcer (firma sahibi).
+const K1 = { userId: 'u1', firmaId: 'f1', teklifKapsami: 'firma' as const };
+const KF2 = { userId: 'u2', firmaId: 'f2', teklifKapsami: 'firma' as const };
+const KDOG = { userId: 'u3', firmaId: 'f1', teklifKapsami: 'firma' as const }; // e-posta doğrulanmamış
 const EPOSTA1 = 'uye@firma-a.com';
 const EPOSTA2 = 'uye@firma-b.com';
 
@@ -705,7 +706,8 @@ async function kBlogu(): Promise<void> {
     const meta = { type: 'body' as const, metatype: CeviriFirmaDuzeltmeDto, data: '' };
     const temiz: any = await pipe.transform({ quoteId: Q, kaynak: 'KÜRESEL VANA', ceviri: 'BALL VALVE', firmaId: 'f2', ekstra: 1 }, meta);
     const t = sahne();
-    await new CeviriDuzeltmeController(t.duzeltme).kaydet({ id: 'u1', email: EPOSTA1, firmaId: 'f1' }, { ...temiz, firmaId: 'f2' } as any);
+    // 23.09: oturum FIRMA SAHIBI (teklif kapsami 'firma'); K9 kapsami degil govde suzgecini olcer.
+    await new CeviriDuzeltmeController(t.duzeltme).kaydet({ id: 'u1', email: EPOSTA1, firmaId: 'f1', firmaRol: 'sahip' }, { ...temiz, firmaId: 'f2' } as any);
     check('K9 gövdeye eklenen `firmaId` YOK SAYILIR: ValidationPipe atar, servis oturumun firmasını yazar',
       !('firmaId' in temiz) && !('ekstra' in temiz) && t.s.t.ceviriDuzeltmesi[0]?.firmaId === 'f1' &&
       t.s.t.ceviriDuzeltmeOlayi[0]?.firmaId === 'f1',

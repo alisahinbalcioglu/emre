@@ -17,6 +17,7 @@ import { confirm } from '@/ortak/hooks/use-confirm';
 import { silmeOnayMetni } from '@/lib/silme-onay-metni';
 import { silmeEtkisiGetir } from '@/lib/silme-etkisi-getir';
 import { cn } from '@/ortak/lib/utils';
+import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
 import { ExcelGrid } from '@/ozellik/tablo/excel-grid/ExcelGrid';
 import { SheetTabs } from '@/ozellik/tablo/excel-grid/SheetTabs';
 import type { MultiSheetData, ExcelRowData } from '@/ozellik/tablo/excel-grid/types';
@@ -166,6 +167,9 @@ export default function BrandDetailPage() {
   const params = useParams<{ brandId: string }>();
   const brandId = params.brandId;
   const isAdmin = getRole() === 'admin';
+  // 23.09.2026: "Kütüphaneme Aktar" KUTUPHANEYE yazar — izni kapali alt
+  // kullanicida dugme cizilmez (uc zaten 403 `UYE_IZNI_YOK`).
+  const { izinVar } = useCapabilities();
 
   const [data, setData] = useState<BrandDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -456,6 +460,7 @@ export default function BrandDetailPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  {izinVar('kutuphane') && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -467,6 +472,7 @@ export default function BrandDetailPage() {
                       ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       : <><BookmarkPlus className="mr-1 h-3.5 w-3.5" />Kütüphaneme Aktar</>}
                   </Button>
+                  )}
                   {isAdmin && (
                     <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-destructive hover:bg-destructive/10"
                       onClick={(e) => { e.stopPropagation(); handleDeleteList(pl.id, pl.name); }}

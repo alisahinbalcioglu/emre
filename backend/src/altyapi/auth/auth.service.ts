@@ -25,6 +25,7 @@ import { mfaZorunluMu, type MfaZorunlulukNedeni } from './mfa/mfa-karari';
 import { tokenImzala } from './token-imza';
 import { firmaRolaGoreSuz } from '../../ozellik/firma/firma-maskele';
 import { koltukDurumuHesapla, etkinHesapKosulu, type FirmaRol } from '../../ozellik/firma/uyelik-kurallari';
+import { etkinIzinler } from '../../ozellik/firma/uye-izinleri';
 import {
   alanAdiZorunluMu,
   kurumsalZorunluMu,
@@ -218,6 +219,10 @@ export class AuthService {
         soyad: true,
         telefon: true,
         firmaRol: true,
+        // 23.09.2026 — Ekip & Izinler: kenar cubugu, pano yukleme alanlari
+        // ve izin kapisi ekrani bu tek yanittan beslenir. Asagida ETKIN
+        // listeye cevrilir (sahip → dordu); HAM liste disari cikmaz.
+        izinler: true,
         // FAZ 7 F2b (§4.4): Guvenlik karti bu tek uctan beslenir.
         // ⚠ `mfaSirriSifreli` BURADA YOK ve OLMAMALI: sir hicbir yanitta
         // donmez (kurulum baslatma yanitindaki `otpauthUri` disinda, o da
@@ -335,7 +340,12 @@ export class AuthService {
     // PLAN 5.8 §4.4: `kapali` AYRI bir alan olarak doner. Ham `deletedAt`
     // yayilimda zaten var ama ekran KARARI okumali, ham alani degil —
     // "kapali mi" sorusunu ikinci kez ON YUZDE hesaplamak ikiz kuraldir.
-    return { ...kisi, tier: await this.etkinSeviye(user.firmaId), firma, koltuk, mfa, kurumsal, capabilities, subscriptions, erisim, kapali };
+    // ⚠ 23.09 `izinler` YAYILIMDAN SONRA gelir ve HAM listeyi EZER: sahipte
+    // saklanan liste anlamsizdir (her zaman tam yetkili), ekran ham listeyi
+    // okursa ikinci sahibe "kapali" moduller cizerdi. Karar `uye-izinleri.ts`.
+    const izinler = etkinIzinler({ firmaRol: user.firmaRol, izinler: user.izinler });
+
+    return { ...kisi, tier: await this.etkinSeviye(user.firmaId), firma, koltuk, mfa, kurumsal, capabilities, subscriptions, erisim, kapali, izinler };
   }
 
   /**

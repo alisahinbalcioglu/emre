@@ -28,6 +28,9 @@ export const FIRMA_OLAY_TIPLERI = [
   /// Platform yoneticisi sildi (E-1). Ayrica `YoneticiOlayi`na da yazilir.
   'uye.yonetici-sildi',
   'rol.degisti',
+  /// 23.09.2026 — sahip alt kullanicinin modul izinlerini degistirdi.
+  /// `oncekiDeger`/`yeniDeger` kanonik sirada "excel,dwg" metni.
+  'uye.izinleri',
   /// Platform yoneticisi firma rolunu degistirdi (§3.3 son satir).
   'yonetici.sahip-atadi',
   // ── F2b: iki adimli giris ──────────────────────────────────────────────

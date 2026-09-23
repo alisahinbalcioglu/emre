@@ -25,7 +25,18 @@ const LABEL_MAP: Record<string, string> = {
   packages: 'Paketler',
   settings: 'AI Ayarları',
   profile: 'Hesabım',
+  // 23.09.2026: ekip ekrani "Ana Sayfa › firma › ekip" diye HAM basiliyordu.
+  // Ikinci tasarim: sayfa basligi ve menu "Ekip".
+  ekip: 'Ekip',
+  'kurumsal-giris': 'Kurumsal Giriş',
 };
+
+/**
+ * Kendi SAYFASI olmayan ara parca — kirintida cizilmez. `/firma` bir sayfa
+ * degil (`app/(protected)/firma/` yalniz `ekip/` tasir); baglanti olarak
+ * cizilseydi tiklayan 404 alirdi.
+ */
+const SAYFASIZ_PARCA = new Set(['firma']);
 
 export default function Breadcrumb() {
   const pathname = usePathname();
@@ -56,6 +67,7 @@ export default function Breadcrumb() {
       {segments.map((seg, i) => {
         // dashboard zaten root'ta gosterildi
         if (seg === 'dashboard') return null;
+        if (SAYFASIZ_PARCA.has(seg)) return null;
         const isLast = i === segments.length - 1;
         const href = '/' + segments.slice(0, i + 1).join('/');
         // admin/materials icin ozel label

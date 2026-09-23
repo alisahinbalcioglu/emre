@@ -43,6 +43,7 @@ import {
   oncekilerKosulu,
 } from '../src/ozellik/firma/uyelik-kurallari';
 import { firmaRolaGoreSuz } from '../src/ozellik/firma/firma-maskele';
+import { FIRMA_OLAY_TIPLERI } from '../src/ozellik/firma/firma-olay-tipleri';
 import { hazirlayanGorunumu } from '../src/ozellik/teklif/quotes/hazirlayan';
 import {
   hesapKapisi,
@@ -594,6 +595,10 @@ function bolumR(): void {
     davetYenidenGonder: { firmaRol: ['sahip'], yetenek: [Yetenek.KULLANICI_DAVET] },
     davetIptal: { firmaRol: ['sahip'], yetenek: null },
     rolDegistir: { firmaRol: ['sahip'], yetenek: null },
+    // 23.09.2026 (Ekip & Izinler): izin daraltmak guvenlik eylemi — yetenek
+    // YOK (odemesi geciken firma da daraltabilmeli). Davranisi
+    // `ekip-izinleri-test.ts` olcer; burada yalniz metadata sozlesmesi.
+    izinleriDegistir: { firmaRol: ['sahip'], yetenek: null },
     uyeCikar: { firmaRol: ['sahip'], yetenek: null },
   };
   const gercekMetotlar = metotlar(UyelikController).sort();
@@ -1961,6 +1966,200 @@ function bolumX(): void {
       !/model FirmaDavet[\s\S]*?firmaRol[\s\S]*?\n\}/.test(sema));
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  I · ALT KULLANICI IZINLERI — SERVIS AKISI (23.09.2026, Ekip & Izinler)
+//
+//  Davet → kabul → liste → duzenleme → /auth/me → strateji. GERCEK
+//  `UyelikServisi` + bu dosyanin sahte Prisma'si. Saf kurallar, kapi
+//  davranisi ve teklif kapsami `ekip-izinleri-test.ts`te.
+// ═══════════════════════════════════════════════════════════════════════════
+const DORT_IZIN = ['excel', 'dwg', 'firmaTeklifleri', 'kutuphane'];
+const js = (v: unknown) => JSON.stringify(v);
+
+async function bolumI(): Promise<void> {
+  console.log('\n── I · ALT KULLANICI IZINLERI (servis akisi) ──');
+
+  // I1 — davet SECILEN izinleri kanonik sirada tasir; olay da yazar
+  const p1 = ucKisi(5);
+  await uyelikKur(p1).servis.davetOlustur(K('A'), 'yeni@firma.test', ['kutuphane', 'excel']);
+  const d1 = p1._veri.firmaDavet[0];
+  check('I1 davet SECILEN izinleri kanonik sirada saklar (["excel","kutuphane"])',
+    js(d1?.izinler) === js(['excel', 'kutuphane']), js(d1?.izinler));
+  const o1 = p1._veri.firmaOlayi.find((o: Satir) => o.tip === 'davet.olusturuldu');
+  check('I1 denetim olayi izinleri yazar (yeniDeger "excel,kutuphane")',
+    o1?.yeniDeger === 'excel,kutuphane', js(o1));
+
+  // I2 — izin GONDERMEYEN istemci (bayat sekme) → dort izin (ozellik oncesi davranis)
+  const p2 = ucKisi(5);
+  await uyelikKur(p2).servis.davetOlustur(K('A'), 'eski@firma.test');
+  check('I2 izin GONDERILMEYEN davet → dort izin (bugunku davranis korunur)',
+    js(p2._veri.firmaDavet[0]?.izinler) === js(DORT_IZIN), js(p2._veri.firmaDavet[0]?.izinler));
+
+  // I2b — bos liste GECERLI: "hicbir modul acik degil"
+  const p2b = ucKisi(5);
+  await uyelikKur(p2b).servis.davetOlustur(K('A'), 'bos@firma.test', []);
+  check('I2b bos izin listesi GECERLI ve BOS saklanir (varsayilana DUSMEZ)',
+    js(p2b._veri.firmaDavet[0]?.izinler) === '[]', js(p2b._veri.firmaDavet[0]?.izinler));
+
+  // I3 — bilinmeyen izin → 400; satir ve e-posta URETILMEZ
+  const p3 = ucKisi(5);
+  const u3 = uyelikKur(p3);
+  const r3 = await dene(() => u3.servis.davetOlustur(K('A'), 'kotu@firma.test', ['excel', 'yonetici']));
+  check('I3 bilinmeyen izin → 400 IZIN_GECERSIZ',
+    hataDurumu(r3.hata) === 400 && hataKodu(r3.hata) === 'IZIN_GECERSIZ', js(hataGovdesi(r3.hata)));
+  check('I3 reddedilen davet satir ve e-posta URETMEZ',
+    p3._veri.firmaDavet.length === 0 && u3.eposta.giden.length === 0,
+    `davet=${p3._veri.firmaDavet.length} eposta=${u3.eposta.giden.length}`);
+
+  // I4 — ayni adrese yeniden davet: TEK bekleyen davet, YENI secimi tasir
+  // ⚠ FIXTURE: bekleyen davet `davetEkle` ile kurulur. Ilk yazimda ilk davet
+  //   `davetOlustur` ile aciliyordu; sahte Prisma DB varsayilanlarini
+  //   (`kabulAt: null`) YAZMADIGI icin satir "bekleyen" sayilmadi, yeniden
+  //   gonderim dali HIC kosmadi ve ikinci bir davet acildi (olculdu).
+  const p4 = ucKisi(5);
+  const u4 = uyelikKur(p4);
+  davetEkle(p4, { eposta: 'tekrar@firma.test', izinler: [...DORT_IZIN] });
+  await u4.servis.davetOlustur(K('A'), 'tekrar@firma.test', ['dwg']);
+  check('I4-FIXTURE KANITI: yeniden gonderim DALI kostu (gonderimSayisi 1 → 2)',
+    p4._veri.firmaDavet[0]?.gonderimSayisi === 2, js(p4._veri.firmaDavet[0]));
+  check('I4 ayni adrese yeniden davet: TEK bekleyen davet, izinler GUNCELLENDI (["dwg"])',
+    p4._veri.firmaDavet.length === 1 && js(p4._veri.firmaDavet[0].izinler) === '["dwg"]',
+    js(p4._veri.firmaDavet.map((d: Satir) => d.izinler)));
+  const o4 = p4._veri.firmaOlayi.find((o: Satir) => o.tip === 'davet.yeniden-gonderildi');
+  check('I4 yeniden davet olayi YENI izinleri yazar ("dwg")', o4?.yeniDeger === 'dwg', js(o4));
+  // I4b — izin GONDERMEYEN istek (bayat sekme) ayni adrese yeniden davet:
+  // kayitli secim KORUNUR, dorde GENISLEMEZ (guvenlik incelemesi, LOW).
+  const p4b = ucKisi(5);
+  davetEkle(p4b, { eposta: 'bayat@firma.test', izinler: ['dwg'] });
+  await uyelikKur(p4b).servis.davetOlustur(K('A'), 'bayat@firma.test');
+  check('I4b bayat sekmeden yeniden davet kayitli secimi KORUR (["dwg"], dordu DEGIL)',
+    p4b._veri.firmaDavet[0]?.gonderimSayisi === 2 && js(p4b._veri.firmaDavet[0]?.izinler) === '["dwg"]',
+    js(p4b._veri.firmaDavet[0]));
+  // I5 — "Yeniden gonder" dugmesi izin GONDERMEZ → secim aynen kalir
+  await u4.servis.davetYenidenGonder(K('A'), p4._veri.firmaDavet[0].id);
+  check('I5 "Yeniden gonder" izinleri KORUR (["dwg"])',
+    js(p4._veri.firmaDavet[0].izinler) === '["dwg"]', js(p4._veri.firmaDavet[0].izinler));
+
+  // I6 — kabul: yeni hesap DAVETIN izinlerini tasir (sema varsayilanini DEGIL)
+  const p6 = ucKisi(5);
+  const { token: t6 } = davetEkle(p6, { izinler: ['excel'] });
+  const r6 = await dene(() => uyelikKur(p6).servis.davetKabul(
+    { token: t6, parola: 'parola1234', sozlesmeOnayi: true } as any));
+  const yeni6 = p6._veri.user.find((x: Satir) => x.email === 'yeni@firma.test');
+  check('I6 davet kabulu: yeni hesap DAVETTEKI izinleri tasir (["excel"])',
+    !r6.hata && js(yeni6?.izinler) === '["excel"]', js(yeni6?.izinler ?? hataGovdesi(r6.hata)));
+  // I6b — davet satirinda liste bozuk/eksik → FAIL-CLOSED (hic modul), dordu DEGIL
+  const p6b = ucKisi(5);
+  const { token: t6b } = davetEkle(p6b, { izinler: null });
+  await dene(() => uyelikKur(p6b).servis.davetKabul(
+    { token: t6b, parola: 'parola1234', sozlesmeOnayi: true } as any));
+  const yeni6b = p6b._veri.user.find((x: Satir) => x.email === 'yeni@firma.test');
+  check('I6b davette liste YOKSA yeni hesap BOS liste alir (fail-closed)',
+    js(yeni6b?.izinler) === '[]', js(yeni6b?.izinler));
+
+  // I7 — liste (sahip gozu): her satirin ETKIN izni; sahibin saklanani OKUNMAZ
+  const p7 = ucKisi(5);
+  const kisi7 = (id: string) => p7._veri.user.find((x: Satir) => x.id === id);
+  kisi7('A').izinler = [];
+  kisi7('B').izinler = ['kutuphane', 'excel'];
+  kisi7('C').izinler = ['firmaTeklifleri'];
+  davetEkle(p7, { izinler: ['kutuphane', 'dwg'] });
+  const l7: any = await uyelikKur(p7).servis.uyeleriGetir(K('A'));
+  const satir7 = (id: string) => l7.uyeler.find((u: any) => u.id === id);
+  check('I7 sahip satiri DORT izin (saklanan BOS liste okunmadi)',
+    js(satir7('A')?.izinler) === js(DORT_IZIN), js(satir7('A')?.izinler));
+  check('I7 uye B kanonik sirada ["excel","kutuphane"]',
+    js(satir7('B')?.izinler) === '["excel","kutuphane"]', js(satir7('B')?.izinler));
+  check('I7 bekleyen davet izinleri kanonik ["dwg","kutuphane"]',
+    js(l7.bekleyenDavetler[0]?.izinler) === '["dwg","kutuphane"]', js(l7.bekleyenDavetler[0]));
+
+  // I8 — liste (uye gozu): yalniz KENDI satirinin izni; digerleri null
+  const l8: any = await uyelikKur(p7).servis.uyeleriGetir(K('B'));
+  const satir8 = (id: string) => l8.uyeler.find((u: any) => u.id === id);
+  check('I8 uye KENDI izinlerini gorur (["excel","kutuphane"])',
+    js(satir8('B')?.izinler) === '["excel","kutuphane"]', js(satir8('B')?.izinler));
+  check('I8 uye BASKA UYENIN izinlerini GORMEZ (null)',
+    satir8('C')?.izinler === null, js({ C: satir8('C')?.izinler }));
+  check('I8b ana kullanici satiri uyeye de DORT izin (her zaman tam yetkili; "—" sir olmayani gizlerdi)',
+    js(satir8('A')?.izinler) === js(DORT_IZIN), js({ A: satir8('A')?.izinler }));
+
+  // I9 — duzenleme: kanonik yazilir + olay; ayni kume tekrar → olay YOK
+  const p9 = ucKisi(5);
+  const u9 = uyelikKur(p9);
+  const kisi9 = (id: string) => p9._veri.user.find((x: Satir) => x.id === id);
+  kisi9('B').izinler = [...DORT_IZIN];
+  const r9: any = await u9.servis.izinleriDegistir(K('A'), 'B', ['kutuphane', 'excel']);
+  check('I9 izinler kanonik sirada YAZILDI ve yanit ayni',
+    js(kisi9('B').izinler) === '["excel","kutuphane"]' && js(r9?.izinler) === '["excel","kutuphane"]',
+    js({ db: kisi9('B').izinler, yanit: r9 }));
+  const olaylar9 = () => p9._veri.firmaOlayi.filter((o: Satir) => o.tip === 'uye.izinleri');
+  const o9 = olaylar9()[0];
+  check('I9 denetim: hedef B · onceki dort izin · yeni "excel,kutuphane" · aktor A',
+    olaylar9().length === 1 && o9?.hedefKullaniciId === 'B' && o9?.aktorId === 'A' &&
+      o9?.oncekiDeger === DORT_IZIN.join(',') && o9?.yeniDeger === 'excel,kutuphane',
+    js(o9));
+  await u9.servis.izinleriDegistir(K('A'), 'B', ['excel', 'kutuphane']);
+  check('I9b AYNI kume tekrar kaydedilince YENI olay yazilmaz', olaylar9().length === 1,
+    `olay=${olaylar9().length}`);
+  check('I9c karar FIRMA KILIDI icinde (firma-uyelik:F1)',
+    p9._iz.ham.some((m: string) => m.includes('firma-uyelik:F1')), js(p9._iz.ham));
+
+  // I10 — sahibin izni DEGISMEZ (her zaman tam yetkili)
+  kisi9('A').izinler = [...DORT_IZIN];
+  const r10 = await dene(() => u9.servis.izinleriDegistir(K('A'), 'A', []));
+  check('I10 hedef SAHIP → 400 SAHIP_TAM_YETKILI ve YAZMA YOK',
+    hataDurumu(r10.hata) === 400 && hataKodu(r10.hata) === 'SAHIP_TAM_YETKILI' &&
+      js(kisi9('A').izinler) === js(DORT_IZIN),
+    js({ hata: hataGovdesi(r10.hata), A: kisi9('A').izinler }));
+
+  // I11 — uye BASKASININ iznini degistiremez (ikinci katman: `sahipOku`)
+  const r11 = await dene(() => u9.servis.izinleriDegistir(K('C'), 'B', DORT_IZIN));
+  check('I11 uye cagirir → 403 FIRMA_SAHIBI_GEREKLI ve B DEGISMEDI',
+    hataDurumu(r11.hata) === 403 && hataKodu(r11.hata) === 'FIRMA_SAHIBI_GEREKLI' &&
+      js(kisi9('B').izinler) === '["excel","kutuphane"]',
+    js({ hata: hataGovdesi(r11.hata), B: kisi9('B').izinler }));
+
+  // I12 — BASKA firmanin kullanicisi → 404, dokunulmaz
+  p9._veri.user.push(kullanici({ id: 'Z', email: 'z@baska.test', firmaId: 'F2', izinler: ['dwg'] }));
+  const r12 = await dene(() => u9.servis.izinleriDegistir(K('A'), 'Z', []));
+  check('I12 baska firmanin kullanicisi → 404 UYE_YOK ve DOKUNULMADI',
+    hataDurumu(r12.hata) === 404 && hataKodu(r12.hata) === 'UYE_YOK' &&
+      js(p9._veri.user.find((x: Satir) => x.id === 'Z').izinler) === '["dwg"]',
+    js(hataGovdesi(r12.hata)));
+
+  // I13 — gecersiz govde (DTO'yu atlayan yol) → 400
+  const r13 = await dene(() => u9.servis.izinleriDegistir(K('A'), 'B', 'excel' as any));
+  const r13b = await dene(() => u9.servis.izinleriDegistir(K('A'), 'B', ['excel', 'hepsi']));
+  check('I13 dizi olmayan / bilinmeyen izin → 400 IZIN_GECERSIZ (ikinci katman)',
+    hataKodu(r13.hata) === 'IZIN_GECERSIZ' && hataKodu(r13b.hata) === 'IZIN_GECERSIZ' &&
+      js(kisi9('B').izinler) === '["excel","kutuphane"]',
+    js({ a: hataGovdesi(r13.hata), b: hataGovdesi(r13b.hata) }));
+
+  // I14 — /auth/me ETKIN izinleri doner (sahip dordu · uye kendi listesi)
+  const pMe = ucKisi(5);
+  pMe._veri.user.find((x: Satir) => x.id === 'A').izinler = [];
+  pMe._veri.user.find((x: Satir) => x.id === 'B').izinler = ['dwg'];
+  (pMe as any).userSubscription = { findMany: async () => [] };
+  const authMe = new AuthService(pMe, jwtSahte, { karar: async () => ({}) } as any,
+    { dogrulamaGonderSessizce: async () => undefined } as any, new OturumServisi(pMe, jwtSahte));
+  const meA: any = await authMe.me('A');
+  const meB: any = await authMe.me('B');
+  check('I14 /auth/me SAHIP → dort izin (saklanan bos liste EZILDI)',
+    js(meA?.izinler) === js(DORT_IZIN), js(meA?.izinler));
+  check('I14 /auth/me UYE → yalniz ["dwg"]', js(meB?.izinler) === '["dwg"]', js(meB?.izinler));
+
+  // I15 — JwtStrategy HAM listeyi + rolu tasir (kapi ve kapsam bunu okur)
+  const pJ = ucKisi(5);
+  pJ._veri.user.find((x: Satir) => x.id === 'B').izinler = ['excel'];
+  const sJ: any = await new JwtStrategy(pJ).validate({ sub: 'B', email: 'b@firma.test', role: 'user' } as any);
+  check('I15 JwtStrategy.validate `izinler` + `firmaRol` doner (kapinin girdisi)',
+    js(sJ?.izinler) === '["excel"]' && sJ?.firmaRol === 'uye', js({ izinler: sJ?.izinler, rol: sJ?.firmaRol }));
+
+  // I16 — olay tipi sozlukte (serbest metin degil)
+  check('I16 FIRMA_OLAY_TIPLERI "uye.izinleri" iceriyor',
+    (FIRMA_OLAY_TIPLERI as readonly string[]).includes('uye.izinleri'));
+}
+
 async function main() {
   await bolumO();
   bolumR();
@@ -1971,6 +2170,7 @@ async function main() {
   await bolumM();
   bolumQP();
   bolumX();
+  await bolumI();
   console.log(`\n${'='.repeat(64)}`);
   console.log(`FAZ 7 EKIP (F1b): ${passed} PASS, ${failed} FAIL`);
   console.log('='.repeat(64));

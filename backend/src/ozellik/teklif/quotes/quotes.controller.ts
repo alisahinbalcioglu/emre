@@ -11,7 +11,7 @@ import { CreateQuoteDto } from './dto/create-quote.dto';
 import { TekliflerSorgusuDto } from './dto/teklifler-sorgusu.dto';
 import { JwtAuthGuard } from '../../../altyapi/auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../../altyapi/auth/decorators/current-user.decorator';
-import { kimlikCoz } from '../../../altyapi/auth/kimlik';
+import { kimlikCoz, teklifKimligiCoz } from '../../../altyapi/auth/kimlik';
 import { memoryStorage } from 'multer';
 import { ErisimGuard, GerekliYetenek } from '../../odeme/abonelik/erisim.guard';
 import { Yetenek } from '../../odeme/abonelik/erisim.servisi';
@@ -30,6 +30,12 @@ import { KapaliHesapIzinli } from '../../../altyapi/auth/decorators/kapali-hesap
  * Kural: izin yalniz OKUYAN uca yazilir. Yeni bir uc eklendiginde izin
  * YAZILMAZSA uc kapali kalir — unutmanin yonu guvenli taraftir.
  */
+/*
+ * 23.09.2026 — TEKLIF KAPSAMI: teklif okuyan/yazan her uc `teklifKimligiCoz`
+ * kullanir (`kimlikCoz` DEGIL). "Son teklifler & tutar" izni kapali alt
+ * kullanici yalniz KENDI hazirladigi teklifleri gorur; servis metotlari
+ * `TeklifKimligi` ister, duz kimlik gecen cagri DERLENMEZ.
+ */
 @Controller('quotes')
 @UseGuards(JwtAuthGuard, ErisimGuard)
 export class QuotesController {
@@ -47,7 +53,7 @@ export class QuotesController {
   @Post()
   @GerekliYetenek(Yetenek.TEKLIF_OLUSTUR)
   create(@CurrentUser() user: any, @Body() dto: CreateQuoteDto) {
-    return this.quotesService.create(kimlikCoz(user), dto);
+    return this.quotesService.create(teklifKimligiCoz(user), dto);
   }
 
   /**
@@ -65,7 +71,7 @@ export class QuotesController {
   @Put(':id')
   @GerekliYetenek(Yetenek.TEKLIF_DUZENLE)
   update(@CurrentUser() user: any, @Param('id') id: string, @Body() dto: CreateQuoteDto) {
-    return this.quotesService.create(kimlikCoz(user), dto, id);
+    return this.quotesService.create(teklifKimligiCoz(user), dto, id);
   }
 
   /**
@@ -86,7 +92,7 @@ export class QuotesController {
     @Query() sorgu: TekliflerSorgusuDto,
     @Res({ passthrough: true }) yanit: Response,
   ) {
-    const { kayitlar, toplam } = await this.quotesService.findAll(kimlikCoz(user), sorgu);
+    const { kayitlar, toplam } = await this.quotesService.findAll(teklifKimligiCoz(user), sorgu);
     yanit.setHeader('X-Toplam-Kayit', String(toplam));
     return kayitlar;
   }
@@ -109,7 +115,7 @@ export class QuotesController {
       displayLanguage?: string;
     },
   ) {
-    return this.quotesService.updateInfo(kimlikCoz(user), id, body ?? {});
+    return this.quotesService.updateInfo(teklifKimligiCoz(user), id, body ?? {});
   }
 
   // ARINMA Faz 2 (A+B): export-preview + export-overrides rotalari SILINDI
@@ -143,7 +149,7 @@ export class QuotesController {
     @Body() body?: { dil?: string },
   ) {
     try {
-      const { buffer, filename, uyari, ozet } = await this.quotesService.exportXlsx(kimlikCoz(user), id, body?.dil);
+      const { buffer, filename, uyari, ozet } = await this.quotesService.exportXlsx(teklifKimligiCoz(user), id, body?.dil);
       res.set({
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'Content-Disposition': `attachment; filename="${encodeURIComponent(filename)}"`,
@@ -169,7 +175,7 @@ export class QuotesController {
     @Query('dil') dil?: string,
   ) {
     try {
-      const { buffer, filename, uyari, ozet } = await this.quotesService.exportPricedXlsx(kimlikCoz(user), id, dil);
+      const { buffer, filename, uyari, ozet } = await this.quotesService.exportPricedXlsx(teklifKimligiCoz(user), id, dil);
       res.set({
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'Content-Disposition': `attachment; filename="${encodeURIComponent(filename)}"`,
@@ -191,7 +197,7 @@ export class QuotesController {
   @Get(':id/exports')
   @KapaliHesapIzinli() // "gorebilecek" — alinmis ciktilarin arsiv listesi
   listExports(@CurrentUser() user: any, @Param('id') id: string) {
-    return this.quotesService.listExports(kimlikCoz(user), id);
+    return this.quotesService.listExports(teklifKimligiCoz(user), id);
   }
 
   @Get(':id/exports/:rev')
@@ -203,7 +209,7 @@ export class QuotesController {
     @Param('rev') rev: string,
     @Res() res: Response,
   ) {
-    const { buffer, filename } = await this.quotesService.downloadExport(kimlikCoz(user), id, parseInt(rev, 10) || 0);
+    const { buffer, filename } = await this.quotesService.downloadExport(teklifKimligiCoz(user), id, parseInt(rev, 10) || 0);
     res.set({
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'Content-Disposition': `attachment; filename="${encodeURIComponent(filename)}"`,
@@ -217,12 +223,12 @@ export class QuotesController {
   @Get(':id')
   @KapaliHesapIzinli() // "girebilecek" — teklif ekranini acar
   findOne(@CurrentUser() user: any, @Param('id') id: string) {
-    return this.quotesService.findOne(kimlikCoz(user), id);
+    return this.quotesService.findOne(teklifKimligiCoz(user), id);
   }
 
   @Delete(':id')
   @HttpCode(204)
   remove(@CurrentUser() user: any, @Param('id') id: string) {
-    return this.quotesService.remove(kimlikCoz(user), id);
+    return this.quotesService.remove(teklifKimligiCoz(user), id);
   }
 }

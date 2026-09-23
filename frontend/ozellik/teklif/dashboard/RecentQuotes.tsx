@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { FileText } from 'lucide-react';
 import api from '@/ortak/lib/api';
+import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
 
 /**
  * ⚠ 09.09 — IKI OLU KUSUR ONARILDI (olcumle bulundu):
@@ -32,6 +33,10 @@ interface QuoteSummary {
 export default function RecentQuotes() {
   const [quotes, setQuotes] = useState<QuoteSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  // 23.09.2026: "Son teklifler & tutar" izni kapali alt kullaniciya sunucu
+  // YALNIZ kendi tekliflerini doner; alt baslik bunu soyler.
+  const { izinVar } = useCapabilities();
+  const yalnizKendi = !izinVar('firmaTeklifleri');
 
   useEffect(() => {
     api
@@ -62,7 +67,7 @@ export default function RecentQuotes() {
     <div className="flex flex-col rounded-xl border bg-card">
       <div className="flex items-center justify-between border-b px-5 py-3.5">
         <span className="text-sm font-semibold">Son Teklifler</span>
-        <span className="text-[11px] text-muted-foreground">son 3</span>
+        <span className="text-[11px] text-muted-foreground">{yalnizKendi ? 'son 3 · yalnız sizin' : 'son 3'}</span>
       </div>
 
       <div className="flex-1 px-5 py-2">

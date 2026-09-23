@@ -35,6 +35,13 @@ import {
   oncekilerKosulu,
   type FirmaRol,
 } from './uyelik-kurallari';
+import {
+  etkinIzinler,
+  izinleriSuz,
+  izinMetni,
+  TUM_IZINLER,
+  type UyeIzni,
+} from './uye-izinleri';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -95,6 +102,8 @@ export class UyelikServisi {
           // ⚠ YALNIZ DURUM: sir, kaynak ve kurtarma kodu sayisi BASKASININ
           // hesabina ait ayrintidir — sahip bile gormez.
           mfaAcikAt: true,
+          // 23.09.2026 — Ekip & Izinler tablosunun sutunlari.
+          izinler: true,
         },
       }),
       this.prisma.firmaDavet.findMany({
@@ -103,6 +112,8 @@ export class UyelikServisi {
         select: {
           id: true, eposta: true, sonGecerlilik: true, gonderimSayisi: true,
           sonGonderimAt: true, davetEdenEposta: true,
+          // 23.09.2026 — bekleyen davet satiri da izinlerini gosterir.
+          izinler: true,
         },
       }),
       this.hakOku(this.prisma, k.firmaId),
@@ -123,6 +134,7 @@ export class UyelikServisi {
       return f !== 0 ? f : a.id.localeCompare(b.id);
     });
     const sirasi = new Map(sirali.map((u, i) => [u.id, i]));
+    const sahipMi = ben?.firmaRol === 'sahip';
 
     const uyeler = hepsi.map((u) => {
       const onceGelen = sirasi.get(u.id);
@@ -140,10 +152,19 @@ export class UyelikServisi {
         katildi: u.createdAt,
         durduruldu,
         mfaAcik: !!u.mfaAcikAt,
+        // 23.09.2026 — ETKIN izinler (sahip → dordu; `uye-izinleri.ts`).
+        // ⚠ Uye yalniz KENDI satirinin izinlerini gorur: kimin hangi modulu
+        //   actigi firmanin yonetim bilgisidir, ekip arkadasina acik degil.
+        //   `null` = "sana gosterilmiyor" (bos dizi "hicbir izni yok" demek).
+        //   ISTISNA ana kullanici satiri: sahip HER ZAMAN tam yetkilidir (rozeti
+        //   bunu zaten soyler); "—" cizmek sir olmayan bir seyi gizlerdi.
+        izinler:
+          sahipMi || u.id === k.userId || u.firmaRol === 'sahip'
+            ? etkinIzinler({ firmaRol: u.firmaRol, izinler: u.izinler })
+            : null,
       };
     });
 
-    const sahipMi = ben?.firmaRol === 'sahip';
     const aktif = etkin.length;
     const karar = koltukKarari({
       etkinHesap: aktif,
@@ -160,7 +181,10 @@ export class UyelikServisi {
       uyeler,
       // ⚠ Uye bekleyen davetleri GORMEZ: davet edilen kisinin e-posta adresi
       // firmanin ticari kaydi degil, ucuncu kisinin verisidir.
-      bekleyenDavetler: sahipMi ? bekleyenDavetler : [],
+      // 23.09: izinler kanonik siraya cekilir (ekran sutunlari sabit sirada).
+      bekleyenDavetler: sahipMi
+        ? bekleyenDavetler.map((d) => ({ ...d, izinler: izinleriSuz(d.izinler) ?? [] }))
+        : [],
       // ⚠ Karar SUNUCUDA verilir; on yuz yeniden hesaplamaz (`erisim-durumu.ts`
       // ikizi bu depoda olculmus bir hata sinifi).
       davet: sahipMi
@@ -211,9 +235,17 @@ export class UyelikServisi {
   //  DAVET
   // ═══════════════════════════════════════════════════════════════════════
 
-  async davetOlustur(k: Kimlik, hamEposta: string) {
+  /**
+   * 23.09.2026: `hamIzinler` — sahibin davet formunda sectigi moduller.
+   * Gonderilmezse (`undefined`) `TUM_IZINLER`: izin ozelliginden once her
+   * uye her seyi goruyordu; bayat bir sekmeden gelen davet bugunku gibi
+   * davranmali. Gecersizse (bilinmeyen deger) 400 — DTO'nun IKINCI katmani.
+   */
+  async davetOlustur(k: Kimlik, hamEposta: string, hamIzinler?: unknown) {
     const eposta = epostaKucult(hamEposta);
     const simdi = new Date();
+    const izinler = hamIzinler === undefined ? [...TUM_IZINLER] : izinleriSuz(hamIzinler);
+    if (!izinler) throw new BadRequestException(IZIN_GECERSIZ);
 
     const sonuc = await firmaKilitliIslem(this.prisma, k.firmaId, async (tx) => {
       const aktor = await this.sahipOku(tx, k);
@@ -239,7 +271,15 @@ export class UyelikServisi {
         where: { firmaId: k.firmaId, eposta, ...bekleyenDavetKosulu(simdi) },
         select: { id: true },
       });
-      if (mevcut) return this.davetGonderimi(tx, k, mevcut.id, aktor, simdi);
+      // 23.09: ayni adrese yeniden davet = sahip izinleri DEGISTIRMIS olabilir;
+      // bekleyen davet YENI secimi tasir (kabulde hesaba o kopyalanir).
+      // ⚠ Izin GONDERMEYEN istek (bayat sekme) kayitli secimi KORUR — dorde
+      //   genisletmez (guvenlik incelemesi, LOW).
+      if (mevcut) {
+        return this.davetGonderimi(
+          tx, k, mevcut.id, aktor, simdi, hamIzinler === undefined ? undefined : izinler,
+        );
+      }
 
       await this.koltukKapisi(tx, k.firmaId, simdi, null);
 
@@ -253,11 +293,14 @@ export class UyelikServisi {
           sonGecerlilik: new Date(simdi.getTime() + DAVET_OMRU_MS),
           davetEdenId: k.userId,
           davetEdenEposta: aktor.email,
+          izinler,
         },
         select: { id: true, eposta: true, sonGecerlilik: true },
       });
       await this.olayYaz(tx, k.firmaId, aktor, 'davet.olusturuldu', {
         hedefEposta: eposta,
+        // 23.09: hangi modullerle davet edildigi denetimde okunabilsin.
+        yeniDeger: izinMetni(izinler),
       });
       await this.davetPostala(tx, davet.eposta, aktor.email, token, k.firmaId);
       return davet;
@@ -321,6 +364,8 @@ export class UyelikServisi {
         select: {
           id: true, firmaId: true, eposta: true, kabulAt: true,
           iptalAt: true, sonGecerlilik: true,
+          // 23.09: sahibin davette sectigi izinler yeni hesaba tasinir.
+          izinler: true,
         },
       });
       if (
@@ -404,6 +449,10 @@ export class UyelikServisi {
           password: await bcrypt.hash(dto.parola, 10),
           firmaId: davet.firmaId,
           firmaRol: 'uye',
+          // ⚠ 23.09 — IZINLER DAVETTEN. Satir silinirse sema varsayilani
+          //   (DORT izin) yazilir ve sahibin davette kapattigi modul sessizce
+          //   ACILIRDI. Bozuk/bos deger → `[]` (fail-closed: hic modul yok).
+          izinler: izinleriSuz(davet.izinler) ?? [],
           role: 'user',
           // Davet baglantisi kisinin gelen kutusuna gitti: adres kanitli.
           emailVerified: true,
@@ -481,6 +530,47 @@ export class UyelikServisi {
         yeniDeger: yeniRol,
       });
       return { firmaRol: yeniRol };
+    });
+  }
+
+  /**
+   * 23.09.2026 — ALT KULLANICI IZINLERI (Ekip & Izinler).
+   *
+   * ⚠ SAHIBIN IZNI DEGISMEZ (`SAHIP_TAM_YETKILI`): sahip icin liste zaten
+   *   okunmaz; yazmaya izin vermek ekranda "kapali" gorunen ama calisan bir
+   *   modul uretirdi. Sahibi daraltmanin yolu once "alt kullanici yap"tir.
+   * ⚠ KILIT ICINDE: es zamanli bir "ana kullanici yap" ile yarismasin —
+   *   rol ve izin ayni satirda, karar ayni kilitte.
+   * ⚠ DEGISIKLIK YOKSA OLAY YAZILMAZ: ayni kumeyi tekrar kaydetmek denetim
+   *   kaydini "degisti" satirlariyla doldurmasin.
+   */
+  async izinleriDegistir(k: Kimlik, hedefId: string, hamIzinler: unknown) {
+    const izinler = izinleriSuz(hamIzinler);
+    if (!izinler) throw new BadRequestException(IZIN_GECERSIZ);
+
+    return firmaKilitliIslem(this.prisma, k.firmaId, async (tx) => {
+      const aktor = await this.sahipOku(tx, k);
+      const hedef = await tx.user.findFirst({
+        where: { id: hedefId, firmaId: k.firmaId, deletedAt: null },
+        select: { id: true, email: true, firmaRol: true, izinler: true },
+      });
+      if (!hedef) throw new NotFoundException(UYE_YOK);
+      if (hedef.firmaRol === 'sahip') throw new BadRequestException(SAHIP_TAM_YETKILI);
+
+      const onceki = izinleriSuz(hedef.izinler) ?? [];
+      if (izinMetni(onceki) === izinMetni(izinler)) return { izinler };
+
+      await tx.user.update({
+        where: { id: hedef.id },
+        data: { izinler },
+      });
+      await this.olayYaz(tx, k.firmaId, aktor, 'uye.izinleri', {
+        hedefId: hedef.id,
+        hedefEposta: hedef.email,
+        oncekiDeger: izinMetni(onceki),
+        yeniDeger: izinMetni(izinler),
+      });
+      return { izinler };
     });
   }
 
@@ -670,13 +760,20 @@ export class UyelikServisi {
     }
   }
 
-  /** Yeniden gonderim: yeni token, eski baglanti olur, sure bastan. */
+  /**
+   * Yeniden gonderim: yeni token, eski baglanti olur, sure bastan.
+   *
+   * 23.09: `izinler` YALNIZ davet formundan (ayni adrese yeniden davet)
+   * gelir ve bekleyen davetin secimini gunceller. "Yeniden gonder" dugmesi
+   * izin GONDERMEZ → mevcut secim aynen kalir.
+   */
   private async davetGonderimi(
     tx: any,
     k: Kimlik,
     davetId: string,
     aktor: { id: string; email: string },
     simdi: Date,
+    izinler?: UyeIzni[],
   ) {
     const davet = await tx.firmaDavet.findFirst({
       where: { id: davetId, firmaId: k.firmaId },
@@ -703,11 +800,13 @@ export class UyelikServisi {
         sonGecerlilik: new Date(simdi.getTime() + DAVET_OMRU_MS),
         sonGonderimAt: simdi,
         gonderimSayisi: { increment: 1 },
+        ...(izinler ? { izinler } : {}),
       },
       select: { id: true, eposta: true, sonGecerlilik: true },
     });
     await this.olayYaz(tx, k.firmaId, aktor, 'davet.yeniden-gonderildi', {
       hedefEposta: davet.eposta,
+      ...(izinler ? { yeniDeger: izinMetni(izinler) } : {}),
     });
     await this.davetPostala(tx, guncel.eposta, aktor.email, token, k.firmaId);
     return guncel;
@@ -832,6 +931,18 @@ const DAVET_GECERSIZ = {
 };
 
 const UYE_YOK = { kod: 'UYE_YOK', mesaj: 'Üye bulunamadı.' };
+
+const IZIN_GECERSIZ = {
+  kod: 'IZIN_GECERSIZ',
+  mesaj: 'İzin listesi geçersiz. Sayfayı yenileyip tekrar deneyin.',
+};
+
+const SAHIP_TAM_YETKILI = {
+  kod: 'SAHIP_TAM_YETKILI',
+  mesaj:
+    'Ana kullanıcı her zaman tam yetkilidir. İzinlerini daraltmak için önce ' +
+    'onu alt kullanıcı yapın.',
+};
 
 const SON_SAHIP = {
   kod: 'SON_SAHIP',

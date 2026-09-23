@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
+import { uyeIzniYokGovdesi } from '../../firma/uye-izinleri';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { CreateBrandDto } from './dto/create-brand.dto';
 import { SilmeEtkisi, EKONOMI_TASIYAN } from '../silme-etkisi';
@@ -53,7 +54,18 @@ export class BrandsService {
   // Manuel satirlarin fiyatlari kullanicinin ticari verisidir; liste id'si
   // bilinse dahi baskasina (admin dahil) ACILMAZ — NotFound doner ki ucun
   // varligi bile sizmasin (requesterUserId JWT'den gelir, bkz. controller).
-  async getPriceListMaterials(priceListId: string, requesterFirmaId?: string) {
+  /**
+   * ⚠ 23.09.2026 (guvenlik incelemesi): `kutuphaneIzni` ZORUNLU parametre —
+   * kisisel liste firmanin Kutuphanem verisidir; izni kapatilan uye (or.
+   * ayrilacak calisan) onceden bildigi liste kimligiyle fiyatlari okumaya
+   * devam edemesin. Opsiyonel olsaydi unutulan bir cagiran izni sessizce
+   * atlardi; derleyici her cagirana karar verdirir.
+   */
+  async getPriceListMaterials(
+    priceListId: string,
+    requesterFirmaId: string | undefined,
+    kutuphaneIzni: boolean,
+  ) {
     const pl = await this.prisma.priceList.findUnique({
       where: { id: priceListId },
       include: { brand: true },
@@ -64,6 +76,11 @@ export class BrandsService {
     // acmaya degil — sessiz capraz-tenant sizinti yerine 404.
     if (pl.ownerUserId && (pl as any).ownerFirmaId !== requesterFirmaId) {
       throw new NotFoundException('Liste bulunamadi');
+    }
+    // Ayni firma ama Kutuphanem izni kapali: 403 `UYE_IZNI_YOK` (liste
+    // kimligini zaten biliyor; varlik sizintisi yok, neden acikca soylenir).
+    if (pl.ownerUserId && !kutuphaneIzni) {
+      throw new ForbiddenException(uyeIzniYokGovdesi('kutuphane'));
     }
 
     // ── KAYNAK SADAKATI (kullanici istegi 16.07): liste indekslenmisse havuz

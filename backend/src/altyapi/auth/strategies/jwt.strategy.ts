@@ -241,6 +241,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       role: user.role,
       firmaId: user.firmaId,
       firmaRol: user.firmaRol,
+      // 23.09.2026 — UYE IZINLERI (Ekip & Izinler). `ErisimGuard` (modul
+      // kapisi) ve `teklifKimligiCoz` (teklif kapsami) bunu okur. HAM liste
+      // doner; sahibin her zaman tam yetkili olmasi `uye-izinleri.ts`
+      // `izinVarMi`de uygulanir, burada yeniden yorumlanmaz. Sorgu zaten tam
+      // satiri cekiyordu — ek maliyet YOK, ve sahip izni kapattigi an bir
+      // sonraki istek durur (token yenilemesi beklenmez).
+      izinler: user.izinler,
       authAt: typeof payload.authAt === 'number' ? payload.authAt : null,
       koltukDurduruldu,
       koltukHakki,

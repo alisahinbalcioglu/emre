@@ -73,3 +73,47 @@ export function uyeSatirMetni(u: {
     ? { baslik: ad, altSatir: eposta }
     : { baslik: eposta, altSatir: null };
 }
+
+/**
+ * 23.09.2026 — AVATAR BAŞ HARFLERİ (Ekip & İzinler tasarımı: "MM", "AT").
+ *
+ * Ad varsa ad + soyadın ilk harfleri; yoksa e-postanın `@` öncesi `.`, `_`,
+ * `-`, `+` ile bölünür ("mehmet.muhendis" → "MM"). Yönetici avatarı tasarımda
+ * TEK harftir ("E") — kenar çubuğundaki kendi avatarınla aynı; `enFazla = 1`.
+ *
+ * ⚠ Büyütme `tr-TR` ile: "ilker" → "İ". Karşılaştırma değil gösterim olduğu
+ * için burada Türkçe kural doğrudur (yukarıdaki ASCII notu KARŞILAŞTIRMA içindir).
+ * Harf yoksa (ör. "123@x.com" değil, boş girdi) "?" döner — boş daire çizilmez.
+ */
+export function basHarfler(
+  u: { ad?: string | null; soyad?: string | null; eposta?: string | null },
+  enFazla = 2,
+): string {
+  const ad = tamAd(u.ad, u.soyad);
+  const parcalar = ad !== ''
+    ? ad.split(/\s+/)
+    : (u.eposta ?? '').trim().split('@')[0].split(/[._\-+]+/);
+  const harfler = parcalar.map((p) => p.charAt(0)).filter(harfVeyaRakamMi);
+  return harfler.slice(0, enFazla).join('').toLocaleUpperCase('tr-TR') || '?';
+}
+
+/**
+ * 23.09.2026 — Üyenin "Firma yöneticin" adresi: listedeki İLK yönetici.
+ * Sunucu listeyi önce yöneticiler olacak şekilde dizer; yine de sıraya
+ * GÜVENİLMEZ, rol açıkça aranır (ilk satır her zaman yönetici olmayabilir).
+ * Yönetici yoksa ya da liste gelmediyse `null`.
+ */
+export function yoneticiEpostasi(
+  uyeler: readonly { eposta: string; firmaRol: string }[] | null | undefined,
+): string | null {
+  return uyeler?.find((u) => u.firmaRol === 'sahip')?.eposta ?? null;
+}
+
+/**
+ * Harf ya da rakam mı? ⚠ `/\p{L}/u` KULLANILMADI: tsconfig hedefi ES5 ve `u`
+ * bayrağı derlenmiyor (TS1501). Büyük/küçük hâli farklı olan karakter
+ * harftir (Latin + Türkçe: ç ğ ı İ ö ş ü); sembol ve boşluk elenir.
+ */
+function harfVeyaRakamMi(h: string): boolean {
+  return /[0-9]/.test(h) || h.toLocaleLowerCase('tr-TR') !== h.toLocaleUpperCase('tr-TR');
+}

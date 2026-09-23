@@ -608,9 +608,12 @@ function kabukDurdurmaKapisi() {
     'Q2a ★KABLO kabuk ErisimKapisi`ni ice aktariyor',
     /import\s*\{\s*ErisimKapisi\s*\}/.test(duzen),
   );
+  // 23.09.2026 (Ekip & Izinler): `children` artik `UyeIzniKapisi` ile SARILI
+  // olarak ErisimKapisi'nin ICINDE. Izin verilen TEK ara sarmalayici odur;
+  // baska bir sey araya girerse ya da cocuk kapinin DISINA cikarsa kirmizi.
   check(
     'Q2b ★KABLO children ErisimKapisi ICINDE ciziliyor (olu import degil)',
-    /<ErisimKapisi>\s*\{children\}\s*<\/ErisimKapisi>/.test(duzen),
+    /<ErisimKapisi>\s*(?:<UyeIzniKapisi>\s*)?\{children\}\s*(?:<\/UyeIzniKapisi>\s*)?<\/ErisimKapisi>/.test(duzen),
     'kapi ice aktarilip JSX`e konmazsa hicbir sey degismez',
   );
 
