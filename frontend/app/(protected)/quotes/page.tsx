@@ -58,8 +58,12 @@ export default function QuotesPage() {
    *   (`@KapaliHesapIzinli` yalnız OKUYAN uçlarda). Düğmeyi gizlemek
    *   kapatmak değildir; ama açık bırakmak da kullanıcıya 403 yedirmektir.
    */
-  const { kapali } = useCapabilities();
+  const { kapali, izinVar } = useCapabilities();
   const saltOkunur = kapali?.kapali === true;
+  // 23.09.2026 — "Son teklifler & tutar" izni kapali alt kullanici: sunucu
+  // listeyi YALNIZ kendi tekliflerine daraltir (`teklifKosulu`). Not, neden
+  // az teklif gordugunu soyler; kapi degildir.
+  const yalnizKendi = !izinVar('firmaTeklifleri');
   const [quotes, setQuotes] = useState<Quote[]>([]);
   // FAZ 7 F1b: kendi teklifimde "Hazırlayan" satırı GÖSTERİLMEZ (tek kişilik
   // firmada hiç görünmesin). Kimlik localStorage kopyasından okunur —
@@ -144,12 +148,21 @@ export default function QuotesPage() {
       {/* GERI (14.08 kullanici istegi) — kutuphane/iscilik sayfalariyla ayni desen */}
       <GeriButonu hedef="/dashboard" />
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold tracking-tight">
-          Teklifler
-          {toplam > 0 && (
-            <span className="ml-2 text-sm font-normal text-muted-foreground">({toplam})</span>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">
+            Teklifler
+            {toplam > 0 && (
+              <span className="ml-2 text-sm font-normal text-muted-foreground">({toplam})</span>
+            )}
+          </h1>
+          {/* Not başlığın DIŞINDA: içinde olsaydı ekran okuyucu başlığı
+              "TekliflerYalnız kendi…" diye okurdu (önizlemede ölçüldü). */}
+          {yalnizKendi && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Yalnız kendi hazırladığınız teklifler gösteriliyor.
+            </p>
           )}
-        </h1>
+        </div>
         {/* Arama SUNUCUYA gider (liste büyüdüğünde istemcide filtrelemek
             tüm kayıtları indirmek demektir).
             ⚠ 23.09.2026 — DURUM SÜZGECİ KALDIRILDI (Emre kararı, canlı ekrana

@@ -146,7 +146,7 @@ function servis(sheets: any[], ek: { displayCurrency?: string; fx?: any; firma?:
   };
   return new QuotesService(prisma, ek.fx ?? fxSabit(), { onbellekHaritasi: async () => ({}) } as any);
 }
-const KIM: any = { userId: 'u1', firmaId: 'f1' };
+const KIM: any = { userId: 'u1', firmaId: 'f1', teklifKapsami: 'firma' };
 
 async function ac(buf: Buffer | ArrayBuffer): Promise<ExcelJS.Workbook> {
   const wb = new ExcelJS.Workbook();

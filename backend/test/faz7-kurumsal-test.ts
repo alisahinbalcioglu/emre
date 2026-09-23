@@ -964,6 +964,12 @@ async function bolumKatilim() {
     JSON.stringify({ a: yeni?.sozlesmeOnayiAt, s: yeni?.sozlesmeSurumu }));
   check('K11 ⭐ `firma.create` CAGRILMADI (katilan kisi YENI FIRMA ACMAZ)',
     !cagrildi(d4.p, 'firma', 'create'));
+  // 23.09.2026 (Ekip & Izinler): davetsiz otomatik katilim izinleri ACIKCA
+  // yazar (dordu — ozellik oncesi davranis). Sahte DB sema varsayilanini
+  // uygulamadigi icin alan yazilmasa burada `undefined` gorunur.
+  check('K11 ⭐ davetsiz otomatik katilim: izinler ACIKCA dordu',
+    JSON.stringify(yeni?.izinler) === JSON.stringify(['excel', 'dwg', 'firmaTeklifleri', 'kutuphane']),
+    JSON.stringify(yeni?.izinler));
   check('K11 dis kimlik `otomatik-katilim` ile yazildi',
     d4.p._veri.kullaniciDisKimlik.some((x: Satir) => x.baglamaYolu === 'otomatik-katilim'));
   check('K11 FirmaOlayi `uye.katildi` + `veri.yol = kurumsal-giris`',
@@ -977,12 +983,19 @@ async function bolumKatilim() {
     `kilit=${kilitSira} sayim=${sayimSira} ham=${String(d4.p._iz.ham[0]).slice(0, 60)}`);
 
   // K11 — davet varsa kabul damgasi
-  const d5 = dunya({ kullanicilar: sahipFarkli(), davetler: [bekleyenDavet()] });
+  // 23.09: davet sahibin sectigi DAR bir izin kumesi tasir (yalniz Excel).
+  const d5 = dunya({ kullanicilar: sahipFarkli(), davetler: [bekleyenDavet({ izinler: ['excel'] })] });
   const t5 = await tamAkis(d5);
   await d5.servis.katil({ bilet: String(t5.sonuc?.bilet), tarayiciSirri: SIR } as any);
   check('K11 bekleyen davet `kabulAt` damgalandi',
     d5.p._veri.firmaDavet[0].kabulAt instanceof Date &&
     typeof d5.p._veri.firmaDavet[0].kabulEdenId === 'string');
+  // ⭐ 23.09.2026 (guvenlik incelemesi, HIGH): kurumsal giris ZORUNLU firmada
+  // davet YALNIZ bu yoldan kabul edilebilir; izinler tasinmasaydi sahibin
+  // "yalniz Excel" secimi dort izne GENISLERDI (`davetKabul` ikizi).
+  const yeni5 = d5.p._veri.user.find((u: Satir) => u.email === 'ali@firma.com.tr');
+  check('K11 ⭐ davetle kurumsal katilim: yeni hesap DAVETIN izinlerini tasir (["excel"])',
+    JSON.stringify(yeni5?.izinler) === '["excel"]', JSON.stringify(yeni5?.izinler));
 
   // K11 — koltuk dolu
   const d6 = dunya({

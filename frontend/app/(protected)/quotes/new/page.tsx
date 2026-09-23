@@ -15,6 +15,7 @@ import {
   Trash2,
   Package,
   Languages,
+  Lock,
 } from 'lucide-react';
 import { Button } from '@/ortak/ui/button';
 import { adDisiplinTahmini } from '@/ozellik/tablo/disiplin';
@@ -448,7 +449,12 @@ export default function NewQuotePage() {
   const [sheetDisciplines, setSheetDisciplines] = useState<Record<number, 'mechanical' | 'electrical' | null>>({});
   // Iscilik firmalari + secilen firma (sheet bazli)
   const [laborFirms, setLaborFirms] = useState<LaborFirm[]>([]);
-  const { capabilities } = useCapabilities();
+  const { capabilities, izinVar } = useCapabilities();
+  // 23.09.2026 — ALT KULLANICI IZINLERI. Sunucu kapiyi uygular (403
+  // `UYE_IZNI_YOK`); burada yalniz istek ATILMAZ ve kirmizi "yuklenemedi"
+  // bildirimi yerine NEDEN soylenir. `izinVar` bilgi yokken `true` doner.
+  const kutuphaneIzni = izinVar('kutuphane');
+  const excelIzni = izinVar('excel');
   const excelGridRef = useRef<ExcelGridHandle>(null);
 
   const hasAnyLabor = capabilities.mechanical.labor || capabilities.electrical.labor;
@@ -624,7 +630,7 @@ export default function NewQuotePage() {
 
   // Iscilik firmalarini cek (capability varsa)
   useEffect(() => {
-    if (!hasAnyLabor) return;
+    if (!hasAnyLabor || !kutuphaneIzni) return;
     api.get<LaborFirm[]>('/labor-firms').then(({ data }) => {
       setLaborFirms(data);
     // SESSIZ BOS YASAK: marka listesiyle ayni gerekce — firma dropdown'i bos
@@ -637,7 +643,7 @@ export default function NewQuotePage() {
         variant: 'destructive',
       });
     });
-  }, [hasAnyLabor]);
+  }, [hasAnyLabor, kutuphaneIzni]);
   const [title, setTitle] = useState('');
   const [rows, setRows] = useState<EditableRow[]>([]);
   const [allBrands, setAllBrands] = useState<Brand[]>([]);
@@ -647,6 +653,9 @@ export default function NewQuotePage() {
   // kutuphanesindeki markalardan beslenir. Akis: Havuz'da begen → "Kutuphaneme
   // Aktar" → fiyat/iskontoyu ozgurce duzenle → teklif SADECE bu veriyi okur.
   useEffect(() => {
+    // 23.09: Kutuphanem izni kapali alt kullanici icin istek ATILMAZ (403
+    // olurdu); asagidaki bilgi seridi nedeni soyler — "sessiz bos" degil.
+    if (!kutuphaneIzni) return;
     api.get<Brand[]>('/library/brands')
       .then(({ data }) => setAllBrands(data ?? []))
       // SESSIZ BOS YASAK: bu istek dusetse marka dropdown'i BOS kalir ve
@@ -660,7 +669,7 @@ export default function NewQuotePage() {
           variant: 'destructive',
         });
       });
-  }, []);
+  }, [kutuphaneIzni]);
   const [usedProvider, setUsedProvider] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isMatching, setIsMatching] = useState(false);
@@ -1570,6 +1579,14 @@ export default function NewQuotePage() {
 
   return (
     <div>
+      {/* 23.09.2026 — Kutuphanem izni kapali alt kullanici: marka/iscilik
+          listesi cekilmedi; bos acilir menunun NEDENI burada yazar. */}
+      {!kutuphaneIzni && (
+        <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          Kütüphanem iznin kapalı: bu teklifte marka ve işçilik fiyatı eşleştiremezsin.
+          Metrajı hazırlayıp kaydedebilirsin; fiyatlandırmayı yöneticin yapar.
+        </div>
+      )}
       {/* Header */}
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
@@ -1742,6 +1759,15 @@ export default function NewQuotePage() {
                 <p className="font-medium">Excel dosyası yükleyin</p>
                 <p className="text-sm text-muted-foreground">Fiyatlandırılacak keşif dosyanızı seçin (.xlsx, .xls)</p>
               </div>
+              {/* 23.09: Excel kesif izni kapali alt kullanici — yukleme
+                  sunucuda 403; dugme yerine neden yazilir (ikinci tasarimin
+                  kilitli giris noktasi metni). */}
+              {!excelIzni ? (
+                <p className="inline-flex items-center gap-2 rounded-lg border border-dashed border-[#cbd5e1] bg-[#f8fafc] px-3 py-2 text-sm text-gray-600">
+                  <Lock className="h-4 w-4 shrink-0 text-[#475569]" aria-hidden="true" />
+                  Yöneticin bu özelliği senin için kapattı.
+                </p>
+              ) : (
               <label htmlFor="quote-excel-upload" className="cursor-pointer rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
                 Dosya Sec
                 <input
@@ -1791,6 +1817,7 @@ export default function NewQuotePage() {
                   }}
                 />
               </label>
+              )}
               {isUploading && <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
             </div>
           </CardContent>

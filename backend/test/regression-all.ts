@@ -566,7 +566,8 @@ const SUITES: Suite[] = [
   //    `KOLTUK_ASILDI`, izin listesi) · davetin yedi geçersizlik dalı · ayrılma
   //    ikizi (hesap kapatma = üye çıkarma = yönetici silme) · üyeye maskeleme
   //    ve KVKK ekseni · "Hazırlayan: X (ayrıldı)" · kullanıcı hakkı betiği.
-  { ad: 'Faz 7 ekip: davet, koltuk, kişi sınırı, ayrılma ikizi (O/R/S/D/H/M/Q/P/X)', script: 'test:faz7-ekip', zincir: 'Z0' },
+  { ad: 'Faz 7 ekip: davet, koltuk, kişi sınırı, ayrılma ikizi (O/R/S/D/H/M/Q/P/X/I)', script: 'test:faz7-ekip', zincir: 'Z0' },
+  { ad: 'Ekip & İzinler: alt kullanıcı modül izinleri + teklif kapsamı (S/E/K/B/T/U)', script: 'test:ekip-izinleri', zincir: 'Z0' },
   // ── 20.09.2026 — FAZ 7 · F2b: İKİ ADIMLI GİRİŞ BAĞLAMA. DB ve AĞ YOK:
   //    bellek içi sahte Prisma `where`i GERÇEKTEN uygular, `$transaction`
   //    fırlatanı geri alır. Ölçtüğü sessiz kırılma noktaları: meydan okuma

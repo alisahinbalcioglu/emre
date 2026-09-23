@@ -2,7 +2,7 @@ import { Controller, Get, UseGuards } from '@nestjs/common';
 import { PanelServisi } from './panel.servisi';
 import { JwtAuthGuard } from '../../altyapi/auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../altyapi/auth/decorators/current-user.decorator';
-import { kimlikCoz } from '../../altyapi/auth/kimlik';
+import { teklifKimligiCoz } from '../../altyapi/auth/kimlik';
 import { KapaliHesapIzinli } from '../../altyapi/auth/decorators/kapali-hesap-izinli.decorator';
 
 /**
@@ -29,6 +29,7 @@ export class PanelController {
   // olmasaydi pano bos kalir, menudeki Ana Sayfa kirik gorunurdu.
   @KapaliHesapIzinli()
   ozet(@CurrentUser() user: any) {
-    return this.panel.ozet(kimlikCoz(user));
+    // 23.09: teklif sayaci teklif KAPSAMIYLA sayilir → `teklifKimligiCoz`.
+    return this.panel.ozet(teklifKimligiCoz(user));
   }
 }

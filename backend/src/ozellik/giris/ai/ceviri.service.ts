@@ -1,7 +1,7 @@
 import { Injectable, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import Anthropic from '@anthropic-ai/sdk';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
-import type { Kimlik } from '../../../altyapi/auth/kimlik';
+import type { Kimlik, TeklifKimligi } from '../../../altyapi/auth/kimlik';
 import { CeviriKotaServisi, type KotaOzeti, type OdenmemeNedeni } from '../../odeme/abonelik/ceviri-kota.servisi';
 import {
   ceviriKapisiReddi,
@@ -287,7 +287,7 @@ export class CeviriService {
    * gerçekten para harcatır → normal yoldan ücretlenir. Böylece kotasız API
    * yolu kalmadı ve "tekrar" ayrı bir kod yolu olmaktan çıktı.
    */
-  async teklifiCevir(k: Kimlik, quoteId: string, hedefDil = 'en'): Promise<TeklifCeviriSonucu> {
+  async teklifiCevir(k: TeklifKimligi, quoteId: string, hedefDil = 'en'): Promise<TeklifCeviriSonucu> {
     const r = await this.kota.rezerveEt(k, quoteId, hedefDil);
 
     const toplamSatir = r.icerik.satirSayisi;
@@ -582,7 +582,7 @@ export class CeviriService {
    * dışa aktarımın `CEVIRI_GEREKLI` cevabından fazlasını söylemez). `tamam`
    * ölçütü dosyayla ortaktır: planın karşılıksız satırı yok.
    */
-  async teklifGorunumu(k: Kimlik, quoteId: string, hedefDil = 'en'): Promise<GoruntulemeYaniti> {
+  async teklifGorunumu(k: TeklifKimligi, quoteId: string, hedefDil = 'en'): Promise<GoruntulemeYaniti> {
     const { sayfalar, icerik } = await this.kota.kayitliIcerik(k, quoteId);
     const kanit = await this.kota.odenmisIcerikKaniti(k, quoteId, hedefDil, icerik);
     const { harita } = await this.katmanliHarita(icerik.metinler, hedefDil, k.firmaId);

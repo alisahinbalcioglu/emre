@@ -9,7 +9,7 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { uyeSatirMetni } from './kisi-metinleri';
+import { basHarfler, uyeSatirMetni, yoneticiEpostasi } from './kisi-metinleri';
 
 const KOK = path.join(__dirname, '../../..');
 const oku = (p: string) => fs.readFileSync(path.join(KOK, p), 'utf8');
@@ -83,26 +83,76 @@ describe('uyeSatirMetni — dört hâl', () => {
   });
 });
 
-describe('⭐ BAĞLANTI — ekip tablosu bu kararı kullanıyor', () => {
-  const sayfa = kodu(oku('app/(protected)/firma/ekip/page.tsx'));
+describe('basHarfler — avatar (tasarım: "MM", "AT"; yönetici tek harf "E")', () => {
+  it('e-postanın @ öncesi noktadan bölünür', () => {
+    expect(basHarfler({ eposta: 'mehmet.muhendis@firma.com' })).toBe('MM');
+    expect(basHarfler({ eposta: 'selin.satinalma@firma.com' })).toBe('SS');
+    expect(basHarfler({ eposta: 'ayse.teknik@firma.com' })).toBe('AT');
+  });
+  it('yönetici avatarı TEK harf (kenar çubuğundaki kendi avatarınla aynı)', () => {
+    expect(basHarfler({ eposta: 'emre.basarann1@gmail.com' }, 1)).toBe('E');
+  });
+  it('ad varsa ad + soyad; boşluk-yalnızca ad sayılmaz', () => {
+    expect(basHarfler({ ad: 'Emre', soyad: 'Başaran', eposta: EPOSTA })).toBe('EB');
+    expect(basHarfler({ ad: '  ', soyad: null, eposta: 'ali_veli@x.com' })).toBe('AV');
+  });
+  it('büyütme Türkçe: "ilker" → "İ"; sembol atlanır; girdi yoksa "?"', () => {
+    expect(basHarfler({ eposta: 'ilker.ozturk@x.com' })).toBe('İO');
+    expect(basHarfler({ eposta: '_.ceren@x.com' })).toBe('C');
+    expect(basHarfler({ eposta: null })).toBe('?');
+  });
+});
 
-  it('ÖLÇÜT: dosya okundu ve hâlâ üye tablosunu çiziyor', () => {
-    expect(sayfa).toContain('veri.uyeler.map');
+describe('yoneticiEpostasi — üyenin "Firma yöneticin" adresi', () => {
+  it('rol AÇIKÇA aranır: ilk satır yönetici olmasa da yönetici bulunur', () => {
+    expect(yoneticiEpostasi([
+      { eposta: 'uye@x.com', firmaRol: 'uye' },
+      { eposta: 'yonetici@x.com', firmaRol: 'sahip' },
+    ])).toBe('yonetici@x.com');
+  });
+  it('yönetici yoksa ya da liste gelmediyse null (boş mailto çizilmez)', () => {
+    expect(yoneticiEpostasi([{ eposta: 'uye@x.com', firmaRol: 'uye' }])).toBeNull();
+    expect(yoneticiEpostasi(undefined)).toBeNull();
+  });
+  it('kanca bu kararı kullanıyor (ikinci bir seçim yazılmadı)', () => {
+    const kanca = kodu(oku('ozellik/firma/ekip/useFirmaYoneticisi.ts'));
+    expect(kanca).toContain('setEposta(yoneticiEpostasi(data?.uyeler));');
+    expect(kanca).not.toContain("firmaRol === 'sahip'");
+  });
+});
+
+describe('⭐ BAĞLANTI — üye listesi bu kararı kullanıyor', () => {
+  // 23.09.2026 ikinci tasarım: izin sütunlu tablo (`EkipTablosu.tsx`) etiketli
+  // üye listesine dönüştü (`UyeListesi.tsx`, git mv). Öncül "tablo" çürüdü;
+  // ölçüt kararın YENİ yerini okur ve sayfanın listeyi çizdiğini AYRICA ölçer.
+  const sayfa = kodu(oku('app/(protected)/firma/ekip/page.tsx'));
+  const tablo = kodu(oku('ozellik/firma/ekip/UyeListesi.tsx'));
+
+  it('ÖLÇÜT: sayfa listeyi çiziyor, liste üyeleri dönüyor', () => {
+    expect(sayfa).toContain('<UyeListesi');
+    expect(sayfa).toContain('uyeler={veri.uyeler}');
+    expect(tablo).toContain('uyeler.map(');
   });
 
   it('saf fonksiyon içe aktarılıp çağrılıyor', () => {
-    expect(sayfa).toContain("from '@/ozellik/firma/ekip/kisi-metinleri'");
-    expect(sayfa).toContain('uyeSatirMetni(');
+    expect(tablo).toContain("from './kisi-metinleri'");
+    expect(tablo).toContain('uyeSatirMetni(');
   });
 
   it('⭐ ESKİ İKİZ KARAR (`gorunenAd`) KALMADI', () => {
-    expect(sayfa).not.toContain('gorunenAd');
-    expect(sayfa).not.toContain("join(' ').trim() || u.eposta");
+    for (const kod of [sayfa, tablo]) {
+      expect(kod).not.toContain('gorunenAd');
+      expect(kod).not.toContain("join(' ').trim() || u.eposta");
+    }
   });
 
   it('⭐ e-posta hücrede KOŞULSUZ basılmıyor (kusurun kendisi)', () => {
     // Eski hâl: `{gorunenAd(u)}<span …>{u.eposta}</span>` — span koşulsuzdu.
-    expect(sayfa).not.toMatch(/>\{u\.eposta\}</);
-    expect(sayfa).toContain('kisi.altSatir &&');
+    expect(tablo).not.toMatch(/>\{u\.eposta\}</);
+    expect(tablo).toContain('kisi.altSatir &&');
+  });
+
+  it('avatar harfleri aynı saf karardan (yönetici tek harf)', () => {
+    expect(tablo).toContain('basHarfler(u, yonetici ? 1 : 2)');
   });
 });

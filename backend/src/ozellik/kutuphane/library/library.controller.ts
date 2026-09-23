@@ -16,9 +16,18 @@ import { kimlikCoz } from '../../../altyapi/auth/kimlik';
 import { ErisimGuard, GerekliYetenek } from '../../odeme/abonelik/erisim.guard';
 import { Yetenek } from '../../odeme/abonelik/erisim.servisi';
 import { KapaliHesapIzinli } from '../../../altyapi/auth/decorators/kapali-hesap-izinli.decorator';
+import { UyeIzniGerekli } from '../../../altyapi/auth/decorators/uye-izni.decorator';
 
+/**
+ * 23.09.2026 — `@UyeIzniGerekli('kutuphane')` SINIF DUZEYINDE: bu
+ * denetleyicinin HER ucu firmanin kendi fiyat kutuphanesidir (marka, birim
+ * fiyat, iskonto, liste). Kapali hesap izni (`@KapaliHesapIzinli`) gibi uc uc
+ * verilmesi gerekmez — burada okuma da yazma da AYNI izne baglidir. Kapiyi
+ * `ErisimGuard` uygular (sinifin guard listesinde).
+ */
 @Controller('library')
 @UseGuards(JwtAuthGuard, ErisimGuard)
+@UyeIzniGerekli('kutuphane')
 export class LibraryController {
   constructor(private libraryService: LibraryService) {}
 

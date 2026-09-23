@@ -134,6 +134,17 @@ enum FirmaRol {
   uye
 }
 
+/// 23.09.2026 — ALT KULLANICI IZINLERI ("Ekip & Izinler"). Kural tek yerde:
+/// `backend/src/ozellik/firma/uye-izinleri.ts`. `sahip` icin liste OKUNMAZ
+/// (her zaman tam yetkili). `firmaTeklifleri` kapaliysa kisi YALNIZ kendi
+/// hazirladigi teklifleri gorur (Emre karari).
+enum UyeIzni {
+  excel
+  dwg
+  firmaTeklifleri
+  kutuphane
+}
+
 model User {
   id                String     @id @default(uuid())
   email             String     @unique
@@ -145,6 +156,11 @@ model User {
   firmaId           String?
   firma             Firma?     @relation(fields: [firmaId], references: [id])
   firmaRol          FirmaRol   @default(sahip)
+  /// 23.09.2026 — alt kullanicinin ACIK modulleri (izin listesi, "allow-list").
+  /// Varsayilan DORDU: ozellik gelmeden once her uye her seyi goruyordu;
+  /// mevcut satirlar migration'da bu varsayilanla dolar, kimsenin erisimi
+  /// kesilmez. Davetle katilan uye davetteki secimi tasir.
+  izinler           UyeIzni[]  @default([excel, dwg, firmaTeklifleri, kutuphane])
   createdAt         DateTime   @default(now())
   /// YUMUSAK SILME. Dolu ise hesap silinmis sayilir: listede gorunmez, GIRIS
   /// YAPAMAZ ve mevcut token'i da gecersizdir (auth.service + jwt.strategy).
@@ -1854,6 +1870,9 @@ model FirmaDavet {
   iptalEdenId     String?
   davetEdenId     String
   davetEdenEposta String
+  /// 23.09.2026 — sahibin davet aninda sectigi izinler. Kabulde yeni hesaba
+  /// AYNEN kopyalanir (`uyelik.servisi.ts` `davetKabul`).
+  izinler         UyeIzni[] @default([excel, dwg, firmaTeklifleri, kutuphane])
   gonderimSayisi  Int       @default(1)
   sonGonderimAt   DateTime  @default(now())
   olusturuldu     DateTime  @default(now())

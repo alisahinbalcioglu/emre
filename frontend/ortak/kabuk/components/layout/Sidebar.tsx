@@ -11,10 +11,13 @@ import {
   Users,
   ChevronLeft,
   ChevronRight,
+  Lock,
 } from 'lucide-react';
 // collapsed state layout'tan gelir
 import { cn } from '@/ortak/lib/utils';
 import { paketRozeti } from '@/ozellik/odeme/paket-bicim';
+import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
+import { yolunIzni } from '@/ozellik/firma/ekip/uye-izni-kapisi';
 
 interface SidebarProps {
   // ⚠ `hesapKapali` 22.09'da EKLENDI: kapali hesapta calismayan menu
@@ -31,9 +34,10 @@ const NAV_ITEMS = [
   'divider' as const,
   { href: '/materials', label: 'Malzeme Havuzu', icon: Database },
   { href: '/library', label: 'Kütüphanem', icon: BookOpen },
-  // FAZ 7 F1b: ekip sayfasi HERKESE gorunur. Uye listeyi salt okunur gorur;
-  // dugmeler sunucunun verdigi role gore cizilir. Kosullu gizlemek, tek
-  // kisilik firmadaki sahibin ekip ozelligini hic kesfetmemesine yol acardi.
+  // FAZ 7 F1b: ekip sayfasi SAHIBE her zaman gorunur — kosullu gizlemek,
+  // tek kisilik firmadaki sahibin ekip ozelligini hic kesfetmemesine yol
+  // acardi. 23.09.2026 ikinci tasarim: etiket "Ekip"; BILINEN UYEDE gizli
+  // (asagidaki `YALNIZ_YONETICIYE`).
   { href: '/firma/ekip', label: 'Ekip', icon: Users },
   'divider' as const,
   // ADIM 2: abonelik menude DAIMA gorunur. Erisimi kapali firmanin
@@ -93,11 +97,32 @@ export default function Sidebar({ user, collapsed, onToggle }: SidebarProps) {
   // ⚠ AYRAC ('divider') da elenir: elenen ogelerin arasinda kalan cizgi
   //   menuyu bozuk gosterirdi.
   const KAPALI_HESAPTA_GORUNEN = ['/dashboard', '/quotes', '/library', '/abonelik'];
-  const items = user?.hesapKapali === true
+  const hesabaGore = user?.hesapKapali === true
     ? NAV_ITEMS.filter(
         (i) => typeof i !== 'string' && KAPALI_HESAPTA_GORUNEN.includes(i.href),
       )
     : NAV_ITEMS;
+  // ── 23.09.2026 (ikinci tasarim): ALT KULLANICI MENUSU ──────────────────
+  // · "Ekip ve Abonelik alt kullanicida hic gorunmez." YALNIZ `firmaRol ===
+  //   'uye'` iken: `null` (bilinmiyor) sahip sayilmaz ama menu de
+  //   bosaltilmaz — sahibin tek odeme yolu (`/abonelik`, "kilitlenme
+  //   yasagi") bir dusen istekle kaybolmasin. Uye zaten odeme yapamaz.
+  // · "Kapali bolum menude kilit ikonuyla durur." Madde GIZLENMEZ; tiklaninca
+  //   kabuktaki `UyeIzniKapisi` "<Bölüm>'e erişimin yok" sayfasini cizer,
+  //   uc zaten 403 doner. Yol → izin eslemesi TEK yerde (`uye-izni-kapisi.ts`).
+  // ⚠ `izinVar` bilgi yokken `true` doner (saglayici notu): sunucu
+  //   soylemeden sahibin menusu kilitlenmez.
+  const { izinVar, firmaRol } = useCapabilities();
+  const YALNIZ_YONETICIYE = ['/firma/ekip', '/abonelik'];
+  const items = ayraclariToparla(
+    firmaRol === 'uye'
+      ? hesabaGore.filter((i) => typeof i === 'string' || !YALNIZ_YONETICIYE.includes(i.href))
+      : hesabaGore,
+  );
+  const kilitliMi = (href: string) => {
+    const izin = yolunIzni(href);
+    return izin !== null && !izinVar(izin);
+  };
 
   function isActive(href: string) {
     if (href === '/dashboard') return pathname === '/dashboard';
@@ -133,6 +158,7 @@ export default function Sidebar({ user, collapsed, onToggle }: SidebarProps) {
           }
           const Icon = item.icon;
           const active = isActive(item.href);
+          const kilitli = kilitliMi(item.href);
           const section = 'section' in item ? (item as any).section : null;
           return (
             <div key={item.href}>
@@ -143,17 +169,22 @@ export default function Sidebar({ user, collapsed, onToggle }: SidebarProps) {
               )}
             <Link
               href={item.href}
-              title={collapsed ? item.label : undefined}
+              title={collapsed ? (kilitli ? `${item.label} (kapalı)` : item.label) : undefined}
               className={cn(
                 'mb-1 flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm transition-all',
                 active
                   ? 'border-l-4 border-blue-500 bg-blue-600/20 pl-[10px] font-semibold text-blue-400'
-                  : 'font-medium text-slate-400 hover:bg-slate-800/50 hover:text-slate-200',
+                  : kilitli
+                    ? 'font-medium text-slate-500 hover:bg-slate-800/50 hover:text-slate-400'
+                    : 'font-medium text-slate-400 hover:bg-slate-800/50 hover:text-slate-200',
                 collapsed && 'justify-center px-0',
               )}
             >
               <Icon className="h-[18px] w-[18px] shrink-0" />
-              {!collapsed && <span>{item.label}</span>}
+              {!collapsed && <span className="flex-1">{item.label}</span>}
+              {!collapsed && kilitli && (
+                <Lock className="h-3.5 w-3.5 shrink-0" aria-label="Kapalı bölüm" role="img" />
+              )}
             </Link>
             </div>
           );
@@ -201,18 +232,40 @@ export default function Sidebar({ user, collapsed, onToggle }: SidebarProps) {
                   ⚠ 2.15: ad `paketRozeti` uzerinden okunur — seviye `null` iken
                   `seviyeAdi` cagrilamaz ve YEDEKLENEMEZ; uydurma ad yerine
                   "Paket yok". Sozluk yine SEVIYE_AD, ikinci esleme YOK. */}
-              <span
-                className={cn(
-                  'inline-block text-[10px] font-bold uppercase tracking-wider',
-                  tierStyle.text,
-                )}
-              >
-                {paketRozeti(tier)}
-              </span>
+              {/* 23.09.2026 ikinci tasarim: uyede paket rozeti yerine "Ekip
+                  üyesi" — paketi uye secmez/odemez, gordugu rol bilgisidir. */}
+              {firmaRol === 'uye' ? (
+                <span className="inline-block text-[11px] font-semibold text-slate-400">Ekip üyesi</span>
+              ) : (
+                <span
+                  className={cn(
+                    'inline-block text-[10px] font-bold uppercase tracking-wider',
+                    tierStyle.text,
+                  )}
+                >
+                  {paketRozeti(tier)}
+                </span>
+              )}
             </div>
           )}
         </div>
       </Link>
     </aside>
   );
+}
+
+/**
+ * Suzgecten sonra AYRAC TOPARLAMA: bastaki/sondaki ve art arda gelen
+ * ayraclar atilir. Uyede "Ekip" ile "Abonelik" dusunce son ayrac menunun
+ * dibinde tek basina kaliyordu (kapali hesap suzgeci ayni gerekceyle
+ * ayraclari zaten eliyor).
+ */
+function ayraclariToparla<T>(ogeler: readonly (T | 'divider')[]): (T | 'divider')[] {
+  const sonuc: (T | 'divider')[] = [];
+  for (const o of ogeler) {
+    if (o === 'divider' && (sonuc.length === 0 || sonuc[sonuc.length - 1] === 'divider')) continue;
+    sonuc.push(o);
+  }
+  while (sonuc[sonuc.length - 1] === 'divider') sonuc.pop();
+  return sonuc;
 }

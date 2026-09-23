@@ -14,6 +14,7 @@ import {
 import { CapabilitiesProvider } from '@/ortak/contexts/CapabilitiesContext';
 import { AbonelikSeridi } from '@/ozellik/odeme/AbonelikSeridi';
 import { ErisimKapisi } from '@/ozellik/odeme/ErisimKapisi';
+import { UyeIzniKapisi } from '@/ozellik/firma/ekip/UyeIzniKapisi';
 import { EpostaDogrulamaSeridi } from '@/ortak/kabuk/components/layout/EpostaDogrulamaSeridi';
 import { KapaliHesapSeridi } from '@/ortak/kabuk/components/layout/KapaliHesapSeridi';
 import Sidebar from '@/ortak/kabuk/components/layout/Sidebar';
@@ -198,7 +199,11 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
         <Sidebar user={user} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed((v) => !v)} />
 
         {/* Main content area — padding sidebar genisligine gore */}
-        <div className="flex flex-1 flex-col transition-all duration-200" style={{ paddingLeft: sidebarCollapsed ? 64 : 240 }}>
+        {/* 23.09.2026: `min-w-0` — esnek ogenin varsayilani `min-width:auto`
+            icerigin asgari genisligini (or. genis bir tablo) TUM sayfaya
+            tasiyordu; `overflow-x-auto` kaplar hic kaydirmiyor, belge yatayda
+            tasiyordu (Ekip tablosu 768/1366 px genislikte olculdu). */}
+        <div className="flex min-w-0 flex-1 flex-col transition-all duration-200" style={{ paddingLeft: sidebarCollapsed ? 64 : 240 }}>
           {/* Top Header — compact */}
           <header className="sticky top-0 z-30 flex h-[52px] items-center justify-between border-b bg-background/95 px-8 backdrop-blur">
             <Breadcrumb />
@@ -236,7 +241,13 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
                 OLCULDU ve tutmadi: 19 korumali sayfanin 18'i sunucunun 403
                 `ABONELIK_KISITLI` yanitini genel hata sanip kirmizi
                 "Veriler yuklenirken bir hata olustu" basiyordu. */}
-            <ErisimKapisi>{children}</ErisimKapisi>
+            {/* 23.09.2026 — UYE IZNI KAPISI, ErisimKapisi'nin ICINDE: izin
+                listesi `/auth/me`den gelir ve o kapi yanit gelene kadar
+                cocuklari cizmez. Izni kapali alt kullanici kutuphane/DWG
+                sayfasina girerse icerik yerine "izniniz yok" ekrani. */}
+            <ErisimKapisi>
+              <UyeIzniKapisi>{children}</UyeIzniKapisi>
+            </ErisimKapisi>
           </main>
 
           {/* FAZ 5.2 — altbilgi KABUKTA. Sayfa sayfa eklemek, eklenmeyi

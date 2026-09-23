@@ -11,6 +11,7 @@ import { Label } from '@/ortak/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ortak/ui/dialog';
 import api from '@/ortak/lib/api';
 import { toast } from '@/ortak/hooks/use-toast';
+import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
 import { confirm } from '@/ortak/hooks/use-confirm';
 import { silmeOnayMetni } from '@/lib/silme-onay-metni';
 import { silmeEtkisiGetir } from '@/lib/silme-etkisi-getir';
@@ -27,6 +28,7 @@ export default function MechanicalPoolPage() {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const isAdmin = getRole() === 'admin';
+  const { izinVar } = useCapabilities();
 
   const [addOpen, setAddOpen] = useState(false);
   const [newBrandName, setNewBrandName] = useState('');
@@ -130,6 +132,9 @@ export default function MechanicalPoolPage() {
                         <Trash2 className="mr-1 h-3 w-3" />Kaldır
                       </Button>
                     )}
+                    {/* 23.09.2026: aktarim KUTUPHANEYE yazar — Kutuphanem izni kapali alt
+                        kullanicida dugme cizilmez (uc 403 `UYE_IZNI_YOK`). */}
+                    {izinVar('kutuphane') && (
                     <Button variant="ghost" size="sm" className="h-7 w-full text-[11px] text-primary hover:bg-primary/10"
                       onClick={async (e) => {
                         e.preventDefault();
@@ -143,6 +148,7 @@ export default function MechanicalPoolPage() {
                       }}>
                       <BookmarkPlus className="mr-1 h-3 w-3" />Kütüphaneme Aktar
                     </Button>
+                    )}
                   </div>
                 </CardContent>
               </Card>

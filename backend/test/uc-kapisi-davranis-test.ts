@@ -109,11 +109,17 @@ const CORE_AKTIF: AbonelikSatiri = {
   paketSurumu: { paket: { kod: 'basic-mek', seviye: 'core', kullaniciHakki: 1, dwgAktif: false } },
 };
 
+// ⚠ 23.09.2026 (Ekip & Izinler): `ErisimGuard` artik DORDUNCU ekseni de
+// (uye izni) uygular ve rolu bilinmeyen kimligi FAIL-CLOSED reddeder.
+// Bu paket ABONELIK davranisini olcer; kimlik bu yuzden FIRMA SAHIBIDIR
+// (her zaman tam yetkili) — izin ekseni `ekip-izinleri-test.ts`te ayrica
+// olculur. `firmaRol` eklenmeseydi 49 "gecer" beklentisi izin kapisina
+// takiliyordu (olculdu), yani bu paket abonelik yerine izni olcerdi.
 const sahteCtx = (handler: any, cls: any): any => ({
   getHandler: () => handler,
   getClass: () => cls,
   switchToHttp: () => ({
-    getRequest: () => ({ user: { id: 'u-test', sub: 'u-test', firmaId: 'F-TEST' } }),
+    getRequest: () => ({ user: { id: 'u-test', sub: 'u-test', firmaId: 'F-TEST', firmaRol: 'sahip' } }),
   }),
 });
 

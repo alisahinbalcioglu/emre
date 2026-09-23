@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { Database, BookOpen } from 'lucide-react';
+import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
 
 const ITEMS = [
   {
@@ -23,9 +24,13 @@ const ITEMS = [
 ];
 
 export default function QuickAccess() {
+  // 23.09.2026 (Ekip & Izinler): Kutuphanem izni kapali alt kullanicida kart
+  // menuyle AYNI kurala uyar — gizlenir (yol yine de kabukta "izniniz yok" der).
+  const { izinVar } = useCapabilities();
+  const ogeler = izinVar('kutuphane') ? ITEMS : ITEMS.filter((i) => i.href !== '/library');
   return (
     <div className="grid grid-cols-2 gap-4">
-      {ITEMS.map((item) => {
+      {ogeler.map((item) => {
         const Icon = item.icon;
         return (
           <Link

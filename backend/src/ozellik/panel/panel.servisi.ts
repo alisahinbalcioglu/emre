@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../altyapi/db/prisma.service';
-import type { Kimlik } from '../../altyapi/auth/kimlik';
+import { teklifKosulu, type TeklifKimligi } from '../../altyapi/auth/kimlik';
 import { etkinHesapKosulu } from '../firma/uyelik-kurallari';
 
 /**
@@ -22,7 +22,8 @@ import { etkinHesapKosulu } from '../firma/uyelik-kurallari';
  * Bu ucun tek isi, kullanicinin BASKA SAYFALARDA gordugu listelerin adedini
  * vermektir. Bu yuzden her sayi, o listeyi ureten sorgunun AYNI kapsamini
  * kullanir — ikiz kural yazilmaz:
- *   teklifSayisi   → `quotes.service.ts:363` `where: { firmaId }` (Teklifler)
+ *   teklifSayisi   → `quotes.service.ts` `findAll` → `teklifKosulu(k)` (Teklifler;
+ *                    23.09: "Son teklifler" izni kapali uyede YALNIZ kendi teklifleri)
  *   malzemeSayisi  → `library.service.ts:37`  `where: { firmaId }` (Kutuphanem)
  *   markaSayisi    → `library.service.ts:55`  ayni sorgu + `distinct: brandId`
  *   kullaniciSayisi→ `uyelik-kurallari.ts:31` `etkinHesapKosulu()` (Ekip)
@@ -44,7 +45,7 @@ import { etkinHesapKosulu } from '../firma/uyelik-kurallari';
 export class PanelServisi {
   constructor(private prisma: PrismaService) {}
 
-  async ozet(k: Kimlik): Promise<{
+  async ozet(k: TeklifKimligi): Promise<{
     teklifSayisi: number;
     malzemeSayisi: number;
     markaSayisi: number;
@@ -54,7 +55,9 @@ export class PanelServisi {
 
     const [teklifSayisi, malzemeSayisi, markaSatirlari, kullaniciSayisi] =
       await Promise.all([
-        this.prisma.quote.count({ where: kapsam }),
+        // 23.09: teklif sayisi LISTEYLE ayni kosuldan (`teklifKosulu`) —
+        // izni kapali uye panoda firmanin teklif adedini de gormez.
+        this.prisma.quote.count({ where: teklifKosulu(k) }),
         this.prisma.userLibrary.count({ where: kapsam }),
         // Marka adedi `findLibraryBrands` ile AYNI sorgudur (distinct brandId).
         // `groupBy` daha kisa olurdu ama o zaman Kutuphanem'deki marka listesi

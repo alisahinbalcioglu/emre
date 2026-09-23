@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
-import type { Kimlik } from '../../../altyapi/auth/kimlik';
+import { teklifKosulu, type Kimlik, type TeklifKimligi } from '../../../altyapi/auth/kimlik';
 import { epostaDogrulandiMi } from '../../../altyapi/auth/eposta-dogrulama';
 import {
   anahtarSatirlari,
@@ -228,10 +228,14 @@ export class CeviriKotaServisi implements OnApplicationBootstrap {
    * Firmanın kayıtlı teklifi: sayfalar + çeviri içeriği (görüntüleme ikinci
    * teklif okuması yapmasın diye sayfalar da döner). Başka firmanın teklifi →
    * 404 (varlık ifşa edilmez).
+   *
+   * 23.09.2026: kapsam `teklifKosulu` — "Son teklifler" izni kapalı üye
+   * başkasının teklifini ÇEVİREMEZ, önizleyemez, düzeltme sözlüğüne kaynak
+   * yapamaz (çeviri teklifin TÜM metnini döndürür; kapsam dışı okuma olurdu).
    */
-  async kayitliIcerik(k: Kimlik, quoteId: string): Promise<{ sayfalar: unknown; icerik: CeviriIcerigi }> {
+  async kayitliIcerik(k: TeklifKimligi, quoteId: string): Promise<{ sayfalar: unknown; icerik: CeviriIcerigi }> {
     const teklif = await this.prisma.quote.findFirst({
-      where: { id: quoteId, firmaId: k.firmaId },
+      where: teklifKosulu(k, { id: quoteId }),
       select: { sheets: true },
     });
     if (!teklif) throw new NotFoundException('Teklif bulunamadı.');
@@ -449,7 +453,7 @@ export class CeviriKotaServisi implements OnApplicationBootstrap {
    * Ödenmiş içerik ayrıca sorulmaz: ödenmiş içeriğin satırları zaten
    * önbellektedir, bakış onu kendiliğinden 0'a indirir (Emre 16.09).
    */
-  async onizleme(k: Kimlik, quoteId: string, hedefDil = 'en', simdi = new Date()): Promise<Onizleme> {
+  async onizleme(k: TeklifKimligi, quoteId: string, hedefDil = 'en', simdi = new Date()): Promise<Onizleme> {
     const { icerik } = await this.kayitliIcerik(k, quoteId);
     const { ozet } = await this.baglam(this.prisma, k.firmaId, simdi);
     const yeni = await this.yeniIcerik(this.prisma, k.firmaId, hedefDil, icerik);
@@ -484,7 +488,7 @@ export class CeviriKotaServisi implements OnApplicationBootstrap {
    * çeviri kilidi ve ödenmiş içerik kanıtı ondan çıkar — ama kotadan da dosya
    * hakkından da hiçbir şey yemez.
    */
-  async rezerveEt(k: Kimlik, quoteId: string, hedefDil: string, simdi = new Date()): Promise<Rezervasyon> {
+  async rezerveEt(k: TeklifKimligi, quoteId: string, hedefDil: string, simdi = new Date()): Promise<Rezervasyon> {
     if (!(await epostaDogrulandiMi(this.prisma, k.userId))) {
       throw new ForbiddenException({
         mesaj: 'Çeviri için e-posta adresinizi doğrulayın',

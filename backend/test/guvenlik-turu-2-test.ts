@@ -288,9 +288,14 @@ function g4_g5_kimlik() {
   );
 
   // ★KALKAN: kardes uclar bozulmadi
+  // 23.09.2026 (Ekip & Izinler): POST /quotes kimligi `teklifKimligiCoz`dan
+  // alir; o ONCE `kimlikCoz(user)`u yayar — firmasiz hesap yine GURULTULU
+  // durur (kalkanin korudugu sey). Iki halka birlikte olculur.
   check(
-    'G4-★KALKAN POST /quotes hala kimlikCoz kullaniyor',
-    /create\(kimlikCoz\(user\)/.test(quotesKodu),
+    'G4-★KALKAN POST /quotes hala kimlikCoz kullaniyor (teklifKimligiCoz → kimlikCoz)',
+    /create\(teklifKimligiCoz\(user\)/.test(quotesKodu) &&
+      /teklifKimligiCoz[\s\S]{0,200}\.\.\.kimlikCoz\(user\)/.test(
+        fs.readFileSync(path.join(__dirname, '../src/altyapi/auth/kimlik.ts'), 'utf8')),
   );
 }
 

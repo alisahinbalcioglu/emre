@@ -1,6 +1,6 @@
 import { HttpException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
-import type { Kimlik } from '../../../altyapi/auth/kimlik';
+import type { Kimlik, TeklifKimligi } from '../../../altyapi/auth/kimlik';
 import { epostaDogrulandiMi } from '../../../altyapi/auth/eposta-dogrulama';
 import { CeviriKotaServisi } from '../../odeme/abonelik/ceviri-kota.servisi';
 import { ErisimServisi, Yetenek } from '../../odeme/abonelik/erisim.servisi';
@@ -142,7 +142,7 @@ export class CeviriDuzeltmeServisi {
     return new Date();
   }
 
-  async listele(k: Kimlik, quoteId: string, hedefDil = 'en'): Promise<DuzeltmeListesi> {
+  async listele(k: TeklifKimligi, quoteId: string, hedefDil = 'en'): Promise<DuzeltmeListesi> {
     const { icerik } = await this.kota.kayitliIcerik(k, quoteId);
     const anahtarlar = icerik.metinler;
     let duzeltmeler: DuzeltmeListesi['duzeltmeler'] = [];
@@ -160,7 +160,7 @@ export class CeviriDuzeltmeServisi {
   }
 
   async kaydet(
-    k: Kimlik,
+    k: TeklifKimligi,
     eposta: string,
     g: { quoteId: string; kaynak: string; ceviri: string; hedefDil?: string },
   ): Promise<DuzeltmeKaydi> {

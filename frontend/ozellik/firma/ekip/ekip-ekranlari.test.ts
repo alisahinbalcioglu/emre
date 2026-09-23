@@ -63,9 +63,21 @@ describe('ekip sayfası — sahiplik kararı FAIL-CLOSED ve sunucudan', () => {
   });
 
   it('davet/çıkar/rol düğmeleri `sahipMi` koşuluna bağlı', () => {
-    // Üç düğme de sahip bloğunun içinde: koşul silinirse üye de görür.
-    expect(sayfa).toMatch(/sahipMi && \(/);
-    expect((sayfa.match(/sahipMi/g) ?? []).length).toBeGreaterThanOrEqual(3);
+    // Davet düğmesi, kullanıcı hakkı kartı, güvenlik kartı, davet penceresi
+    // ve izin paneli sahip koşulunun içinde: koşul silinirse üye de görür.
+    expect(sayfa).toMatch(/\{sahipMi && \(/);
+    expect(sayfa).toContain('{sahipMi && davetAcik && (');
+    expect(sayfa).toContain('{sahipMi && panel && (');
+    expect((sayfa.match(/sahipMi/g) ?? []).length).toBeGreaterThanOrEqual(5);
+    // 23.09.2026 ikinci tasarım: satır düğmeleri `UyeListesi.tsx`te ("İzinleri
+    // düzenle", "Yeniden gönder", "Yönet") — AYNI koşula bağlı ve değer
+    // sayfadan geçer (listede yeniden hesaplanmaz).
+    const liste = kodu(oku('ozellik/firma/ekip/UyeListesi.tsx'));
+    expect(sayfa).toContain('sahipMi={sahipMi}');
+    expect(liste).toMatch(/\) : sahipMi \? \(\s*<IkincilDugme/);
+    expect(liste).toMatch(/sahipMi \? \(\s*<>\s*<button/);
+    expect(liste).toMatch(/\{sahipMi && !ben && \(/);
+    expect(liste).not.toContain("firmaRol ?? 'sahip'");
   });
 
   it('davet kapalı nedeni SUNUCUDAN gelir (ön yüz koltuk hesaplamaz)', () => {
@@ -74,8 +86,15 @@ describe('ekip sayfası — sahiplik kararı FAIL-CLOSED ve sunucudan', () => {
   });
 
   it('`durduruldu` rozeti sunucunun hesapladığı değerden çizilir', () => {
-    expect(sayfa).toContain('u.durduruldu');
-    expect(sayfa).toContain('Durduruldu (paket sınırı)');
+    // 23.09.2026 ikinci tasarım: satırlar `UyeListesi.tsx`te, rozet kararı
+    // `ekip-parcalari.tsx` `uyeDurumu`nda. Öncül "tablo" çürüdü; kural aynı:
+    // durum SUNUCUNUN `durduruldu` alanından, ön yüzde koltuk hesabı yok.
+    const liste = kodu(oku('ozellik/firma/ekip/UyeListesi.tsx'));
+    const parcalar = kodu(oku('ozellik/firma/ekip/ekip-parcalari.tsx'));
+    expect(sayfa).toContain('<UyeListesi');
+    expect(liste).toContain('const durum = uyeDurumu(u);');
+    expect(parcalar).toContain('if (u.durduruldu) return');
+    expect(parcalar).toContain('Durduruldu (paket sınırı)');
   });
 
   it('PAKET_EKIP_YOK metni Basic → Pro yönlendirmesi yapar', () => {

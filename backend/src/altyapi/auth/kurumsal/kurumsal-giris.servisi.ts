@@ -23,6 +23,7 @@ import {
   firmaKilitliIslem,
   koltukKarari,
 } from '../../../ozellik/firma/uyelik-kurallari';
+import { izinleriSuz, TUM_IZINLER } from '../../../ozellik/firma/uye-izinleri';
 import {
   alanAdiNormalize,
   beklenenIssuer,
@@ -827,6 +828,15 @@ export class KurumsalGirisServisi {
           parolaTanimli: false,
           firmaId: saglayici.firmaId,
           firmaRol: 'uye',
+          // ⚠ 23.09.2026 — IZINLER (Ekip & Izinler), `davetKabul` IKIZI.
+          //   Bekleyen davet varsa sahibin davette sectigi izinler TASINIR.
+          //   Bu satir yokken sema varsayilani (DORT izin) yaziliyordu: kurumsal
+          //   giris ZORUNLU firmalarda davet YALNIZ bu yoldan kabul edilebildigi
+          //   icin sahibin secimi HER SEFERINDE kayboluyordu (guvenlik
+          //   incelemesi buldu). Davetsiz otomatik katilim (JIT) → dordu,
+          //   ACIKCA: ozellikten onceki davranis; sahip sonra daraltir.
+          //   Bozuk davet listesi → `[]` (fail-closed).
+          izinler: davet ? (izinleriSuz(davet.izinler) ?? []) : [...TUM_IZINLER],
           role: 'user',
           // Kimlik saglayicisi e-postayi KANITLADI (xms_edov / email_verified).
           emailVerified: true,

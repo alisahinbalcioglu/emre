@@ -23,6 +23,33 @@ export function koltukSayaciMetni(k: {
 }
 
 /**
+ * 23.09.2026 — "Kullanıcı hakkı" kartı (Ekip & İzinler, ikinci tasarım).
+ *
+ * `deger` = "4 / 5": KULLANILAN (aktif + bekleyen davet) / hak. Tasarım:
+ * "Bekleyen davetler de hakkı kullanır" — sunucu `koltukKarari` da onları
+ * sayar; kart saymasaydı "3/5" görünen firmada davet "koltuk dolu" diye
+ * reddedilebilirdi. `oran` çubuğun doluluğu (0–100; abonelik yoksa `null`
+ * → çubuk çizilmez). Davet penceresinin alt şeridi AYNI `deger`i basar.
+ */
+export function koltukKarti(k: {
+  aktif: number;
+  bekleyen: number;
+  hak: number | null;
+}): { deger: string; aciklama: string; oran: number | null } {
+  const kullanilan = k.aktif + k.bekleyen;
+  const oran =
+    k.hak === null || k.hak <= 0 ? null : Math.min(100, Math.round((kullanilan / k.hak) * 100));
+  return {
+    deger: `${kullanilan} / ${k.hak === null ? '—' : k.hak}`,
+    aciklama:
+      k.hak === null
+        ? 'Etkin bir paketin yok; kullanıcı hakkı paketle gelir.'
+        : `Planında sen dahil ${k.hak} kullanıcı var. Bekleyen davetler de hakkından düşer.`,
+    oran,
+  };
+}
+
+/**
  * KÜÇÜLTME UYARISI (§6.6, Emre kararı E-3).
  *
  * Sahip daha küçük bir paket seçtiğinde, kaç kişinin duracağını ONAYDAN ÖNCE

@@ -574,7 +574,8 @@ function kur(ek: Partial<Sahne> = {}) {
   return { s, kota, servis, aiKayitlari, cevirSayisi: () => cevirCagrisi, istemciBagla };
 }
 
-const K1 = { userId: 'u1', firmaId: 'f1' };
+// 23.09: teklif kapsami ACIK — bu paket izin DEGIL kota olcer.
+const K1 = { userId: 'u1', firmaId: 'f1', teklifKapsami: 'firma' as const };
 const OZET = ceviriIcerigi(TEKLIF_SAYFALARI).ozet;
 
 /** Hazır tüketim kaydı. Verilmezse: düşülen = satır, bitmiş kayıt oluşturmadan 1 dk sonra sonuçlanmış. */
@@ -949,7 +950,8 @@ async function wBlogu(): Promise<void> {
     const alinan: unknown[][] = [];
     const ctrl = new AiController({} as any, { teklifiCevir: async (...a: unknown[]) => { alinan.push(a); return {}; } } as any, {} as any, {} as any);
     const govde = Object.assign(new CeviriIstegiDto(), { quoteId: Q, satirSayisi: 1 });
-    await ctrl.translate({ id: 'u1', firmaId: 'f1' }, govde);
+    // 23.09: oturum FIRMA SAHIBI → kapsam 'firma' (K1 ile birebir; `kimlikCoz`a donus kirmizi).
+    await ctrl.translate({ id: 'u1', firmaId: 'f1', firmaRol: 'sahip' }, govde);
     check('W42 ★ controller servise yalnız kimlik + teklif + dil geçirir', JSON.stringify(alinan) === JSON.stringify([[K1, Q, 'en']]), JSON.stringify(alinan));
     const tr = AiController.prototype.translate;
     const guardlar: unknown[] = Reflect.getMetadata(GUARDS_METADATA, tr) ?? [];

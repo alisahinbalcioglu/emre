@@ -3,7 +3,7 @@ import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../../../altyapi/auth/guards/jwt-auth.guard';
 import { KullaniciHizSiniriGuard } from '../../../altyapi/auth/guards/kullanici-hiz-siniri.guard';
 import { CurrentUser } from '../../../altyapi/auth/decorators/current-user.decorator';
-import { kimlikCoz } from '../../../altyapi/auth/kimlik';
+import { kimlikCoz, teklifKimligiCoz } from '../../../altyapi/auth/kimlik';
 import { ErisimGuard, GerekliYetenek } from '../../odeme/abonelik/erisim.guard';
 import { Yetenek } from '../../odeme/abonelik/erisim.servisi';
 import { CeviriDuzeltmeServisi } from './ceviri-duzeltme.servisi';
@@ -39,7 +39,8 @@ export class CeviriDuzeltmeController {
   @UseGuards(ThrottlerGuard)
   @Throttle({ default: { ttl: 60_000, limit: 60 } })
   listele(@CurrentUser() user: unknown, @Query() sorgu: CeviriDuzeltmeSorgusuDto) {
-    return this.duzeltme.listele(kimlikCoz(user), sorgu.quoteId, sorgu.hedefDil ?? 'en');
+    // 23.09: teklif OKUYAN uc → `teklifKimligiCoz` (Son teklifler izni kapsami).
+    return this.duzeltme.listele(teklifKimligiCoz(user), sorgu.quoteId, sorgu.hedefDil ?? 'en');
   }
 
   @Put()
@@ -48,7 +49,7 @@ export class CeviriDuzeltmeController {
   @Throttle({ default: { ttl: 60_000, limit: 30 } })
   @HttpCode(200)
   kaydet(@CurrentUser() user: unknown, @Body() govde: CeviriFirmaDuzeltmeDto) {
-    return this.duzeltme.kaydet(kimlikCoz(user), oturumEpostasi(user), {
+    return this.duzeltme.kaydet(teklifKimligiCoz(user), oturumEpostasi(user), {
       quoteId: govde.quoteId,
       kaynak: govde.kaynak,
       ceviri: govde.ceviri,

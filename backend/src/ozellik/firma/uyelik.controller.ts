@@ -20,6 +20,7 @@ import { UyelikServisi } from './uyelik.servisi';
 import { DavetOlusturDto } from './dto/davet-olustur.dto';
 import { RolDegistirDto } from './dto/rol-degistir.dto';
 import { UyeCikarDto } from './dto/uye-cikar.dto';
+import { UyeIzinleriDto } from './dto/uye-izinleri.dto';
 
 /**
  * FAZ 7 F1b — EKIP UCLARI (§3.3).
@@ -49,7 +50,7 @@ export class UyelikController {
   @GerekliYetenek(Yetenek.KULLANICI_DAVET)
   @Throttle({ default: { ttl: 900_000, limit: 10 } })
   davetOlustur(@CurrentUser() user: unknown, @Body() dto: DavetOlusturDto) {
-    return this.uyelik.davetOlustur(kimlikCoz(user), dto.eposta);
+    return this.uyelik.davetOlustur(kimlikCoz(user), dto.eposta, dto.izinler);
   }
 
   @Post('davetler/:id/yeniden-gonder')
@@ -75,6 +76,24 @@ export class UyelikController {
     @Body() dto: RolDegistirDto,
   ) {
     return this.uyelik.rolDegistir(kimlikCoz(user), id, dto.firmaRol);
+  }
+
+  /**
+   * 23.09.2026 — ALT KULLANICI IZINLERI (Ekip & Izinler).
+   *
+   * ⚠ Yetenek YOK (rol degistirme ile ayni gerekce): odemesi geciken firma
+   * da uyesinin erisimini DARALTABILMELI — izin kapatmak bir guvenlik
+   * eylemidir (ayrilacak bir calisanin fiyat listesini kapatmak), satilan
+   * bir ozellik degil. Ikinci sahip katmani serviste (`sahipOku`).
+   */
+  @Patch('uyeler/:id/izinler')
+  @FirmaRolu('sahip')
+  izinleriDegistir(
+    @CurrentUser() user: unknown,
+    @Param('id') id: string,
+    @Body() dto: UyeIzinleriDto,
+  ) {
+    return this.uyelik.izinleriDegistir(kimlikCoz(user), id, dto.izinler);
   }
 
   @Delete('uyeler/:id')
