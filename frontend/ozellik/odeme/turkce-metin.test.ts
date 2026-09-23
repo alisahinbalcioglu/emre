@@ -228,6 +228,8 @@ const EKRANLAR = [
   'app/fiyatlar/page.tsx',
   'ozellik/odeme/FiyatKartlari.tsx',
   'ozellik/odeme/paket-bicim.ts',
+  // 23.09 — paket değişimi: onay penceresi ve bekleyen değişim cümleleri.
+  'ozellik/odeme/paket-degisimi.ts',
   'ozellik/odeme/abonelik-ozeti.ts',
   'ozellik/odeme/fatura-kimligi.ts',
   'ozellik/odeme/telefon-bicim.ts',

@@ -16,6 +16,9 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
+// Yalniz TIP (calisma aninda silinir): bekleyen paket degisiminin bicimi.
+import type { PaketGecisi } from './paket-degisimi';
+
 export type AbonelikDurumu =
   | 'DENEME'
   | 'AKTIF'
@@ -42,6 +45,11 @@ export interface ErisimKarari {
   paketKodu: string;
   kullaniciHakki: number;
   dwgAktif: boolean;
+  /**
+   * 23.09 — bu dönem yapılmış paket değişimi (sunucu `ErisimKarari.paketGecisi`).
+   * Eski sunucu alanı göndermeyebilir; ekran `null` gibi davranır.
+   */
+  paketGecisi?: PaketGecisi | null;
 }
 
 /** Urun icindeki yetenekler — backend'deki `Yetenek` enum'unun aynisi. */

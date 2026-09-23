@@ -247,6 +247,159 @@ export function denemesizIkizTanimi(s: {
   };
 }
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  --tek-urun  (23.09.2026, paket degisimi) — ⚠ HAZIRLANDI, KOSULMADI
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  iyzico'nun RESMI kisiti (dokuman, 23.09): abonelik paket degisimi
+ *  ("upgrade") yalniz AYNI URUNE ait planlar arasinda yapilabilir. Bu betik
+ *  bugune kadar HER PAKETE AYRI URUN aciyordu (`MetaPriceX ${p.ad}`) — o
+ *  yapida Basic→Pro gecisi iyzico'da IMKANSIZ, uygulama `URUN_FARKLI` der.
+ *
+ *  Bu kip satistaki her surum icin TEK URUN altinda:
+ *    · ana plani (ayni tutar, periyot, deneme gunu) ve
+ *    · denemesiz ikizini (deneme gunu 0 — degisim ve deneme hakki olmayan
+ *      satin alma bunu kullanir)
+ *  kurar, YENI bir surum satiri yazar (surumNo+1, kodlar iyzico YANITINDAN)
+ *  ve eski surumu satistan ceker (`satistaMi=false`). Eski surumdeki mevcut
+ *  aboneler ETKILENMEZ (eski plandan cekilmeye devam eder) — ama paket
+ *  degistiremez; onlar icin yol yonetici panelidir.
+ *
+ *  ⚠ FIYAT YENIDEN HESAPLANMAZ (ikiz kipiyle ayni kural): tutar, vitrin
+ *  capasi ve kur izi eski surumden AYNEN kopyalanir. Bu bir YAPI gocudur,
+ *  fiyat degisikligi degil.
+ *
+ *  ⚠ BUNDAN SONRA HER PLAN BU URUNE: fiyat degisikligiyle acilacak yeni
+ *  surumler de ayni urun altinda olmali, yoksa eski surumdeki musteri yeni
+ *  surume gecemez. Yeni paket kuran ana dal da bu urunu kullanir.
+ *
+ *  Kullanim (once SANDBOX, sonra canli; plan SILINEMEZ):
+ *      npm run seedpaketler -- --tek-urun            (PROVA)
+ *      npm run seedpaketler -- --tek-urun --uygula
+ */
+export const TEK_URUN_ADI = 'MetaPriceX Abonelik';
+
+/** SAF — bu surum tek urune TASINMALI mi? */
+export function tekUruneTasinmaliMi(
+  s: { satistaMi: boolean; iyzicoUrunKodu: string },
+  tekUrunKodu: string | null,
+): boolean {
+  return s.satistaMi && s.iyzicoUrunKodu !== tekUrunKodu;
+}
+
+/** SAF — tek urun altindaki ana plan + ikizin iyzico tanimlari. */
+export function tekUrunPlanTanimlari(s: {
+  tutar: { toFixed(n: number): string } | string | number;
+  paraBirimi: string;
+  periyot: string;
+  periyotAdedi: number;
+  denemeGunu: number;
+  paket: { ad: string };
+}) {
+  const ikiz = denemesizIkizTanimi(s);
+  const ana = { ...ikiz, ad: `${s.paket.ad} · Aylik`, denemeGunu: s.denemeGunu };
+  // Surumde deneme yoksa ana plan ZATEN denemesiz: ikinci plan kurulmaz.
+  return { ana, ikiz: s.denemeGunu > 0 ? ikiz : null };
+}
+
+async function tekUruneTasi(iyzico: IyzicoClient): Promise<void> {
+  let urunler: Array<{ referenceCode: string; name: string }> = [];
+  try {
+    urunler = await iyzico.urunleriListele();
+  } catch (e) {
+    console.error(`\n✗ iyzico'ya baglanilamadi: ${e instanceof Error ? e.message : e}\n`);
+    process.exit(1);
+  }
+  let tekUrunKodu: string | null = urunler.find((u) => u.name === TEK_URUN_ADI)?.referenceCode ?? null;
+  console.log(
+    tekUrunKodu
+      ? `  tek urun   : ZATEN VAR → ${tekUrunKodu}`
+      : `  tek urun   : OLUSTURULACAK — "${TEK_URUN_ADI}"`,
+  );
+
+  const surumler = await prisma.paketSurumu.findMany({
+    where: { satistaMi: true },
+    include: { paket: true },
+    orderBy: [{ paket: { sira: 'asc' } }, { surumNo: 'asc' }],
+  });
+  const ozet: string[] = [];
+
+  for (const s of surumler) {
+    baslik(`${s.paket.kod} · surum ${s.surumNo}`);
+    if (!tekUruneTasinmaliMi(s, tekUrunKodu)) {
+      console.log('  ⏭  ATLANDI — zaten tek urun altinda');
+      ozet.push(`${s.paket.kod}: atlandi (tek urunde)`);
+      continue;
+    }
+    const { ana, ikiz } = tekUrunPlanTanimlari(s);
+    const sonNo = await prisma.paketSurumu.aggregate({
+      where: { paketId: s.paketId },
+      _max: { surumNo: true },
+    });
+    const yeniNo = (sonNo._max.surumNo ?? s.surumNo) + 1;
+    console.log(
+      `  eski urun  : ${s.iyzicoUrunKodu}\n` +
+        `  ana plan   : "${ana.ad}" — ${ana.tutar} ${ana.paraBirimi}/${ana.periyot}, deneme ${ana.denemeGunu} gun\n` +
+        (ikiz ? `  ikiz plan  : "${ikiz.ad}" — deneme 0 gun\n` : '  ikiz plan  : (gerekmez — surumde deneme yok)\n') +
+        `  yeni surum : ${yeniNo} (eski surum ${s.surumNo} satistan cekilecek)`,
+    );
+    if (!uygula) {
+      ozet.push(`${s.paket.kod}: TASINACAK → surum ${yeniNo} (${ana.tutar} ${ana.paraBirimi})`);
+      continue;
+    }
+
+    if (!tekUrunKodu) {
+      const urun = await iyzico.urunOlustur({
+        ad: TEK_URUN_ADI,
+        aciklama: 'MetaPriceX paketleri — paket degisimi icin tum planlar tek urunde.',
+      });
+      tekUrunKodu = urun.referenceCode;
+      console.log(`  ✓ tek urun olusturuldu → ${tekUrunKodu}`);
+    }
+    const anaPlan = await iyzico.planOlustur(tekUrunKodu, ana);
+    console.log(`  ✓ ana plan → ${anaPlan.referenceCode}`);
+    const ikizPlan = ikiz ? await iyzico.planOlustur(tekUrunKodu, ikiz) : null;
+    if (ikizPlan) console.log(`  ✓ ikiz plan → ${ikizPlan.referenceCode}`);
+
+    // ⚠ TEK ISLEM: yeni surum yazilmadan eski satistan CEKILMEZ — yoksa
+    // paket bir an satissiz kalir ve fiyat sayfasi onu gostermez.
+    await prisma.$transaction([
+      prisma.paketSurumu.create({
+        data: {
+          paketId: s.paketId,
+          surumNo: yeniNo,
+          iyzicoPlanKodu: anaPlan.referenceCode,
+          iyzicoDenemesizPlanKodu: ikizPlan?.referenceCode ?? null,
+          iyzicoUrunKodu: tekUrunKodu,
+          // FIYAT AYNEN — yapi gocu, fiyat degisikligi degil.
+          tutar: s.tutar,
+          paraBirimi: s.paraBirimi,
+          referansTutar: s.referansTutar,
+          referansParaBirimi: s.referansParaBirimi,
+          kurDegeri: s.kurDegeri,
+          kurTarihi: s.kurTarihi,
+          periyot: s.periyot,
+          periyotAdedi: s.periyotAdedi,
+          denemeGunu: s.denemeGunu,
+          satistaMi: true,
+        },
+      }),
+      prisma.paketSurumu.update({ where: { id: s.id }, data: { satistaMi: false } }),
+    ]);
+    console.log(`  ✓ surum ${yeniNo} yazildi, surum ${s.surumNo} satistan cekildi`);
+    ozet.push(`${s.paket.kod}: TASINDI → surum ${yeniNo} (urun ${tekUrunKodu})`);
+  }
+
+  baslik('OZET — tek urun gocu');
+  ozet.forEach((x) => console.log(`  ${x}`));
+  console.log(
+    uygula
+      ? '\n  Bitti. Dogrulama:  bash scripts/abonelik-olcum.sh paket\n'
+      : '\n  Bu bir PROVAYDI — hicbir sey olusturulmadi.\n' +
+          '  Gercekten kurmak icin:  npm run seedpaketler -- --tek-urun --uygula\n',
+  );
+}
+
 async function denemesizIkizleriKur(iyzico: IyzicoClient): Promise<void> {
   const surumler = await prisma.paketSurumu.findMany({
     where: { satistaMi: true },
@@ -294,6 +447,7 @@ async function denemesizIkizleriKur(iyzico: IyzicoClient): Promise<void> {
 
 const uygula = process.argv.includes('--uygula');
 const denemesizIkiz = process.argv.includes('--denemesiz-ikiz');
+const tekUrun = process.argv.includes('--tek-urun');
 const prisma = new PrismaClient();
 
 function baslik(s: string) {
@@ -331,6 +485,21 @@ async function main() {
         : '  ortam      : ⚠ CANLI — olusan planlar SILINEMEZ',
     );
     await denemesizIkizleriKur(ikizIyzico);
+    return;
+  }
+
+  // 23.09: tek urun gocu da TCMB kuruna ihtiyac duymaz (fiyat surumden).
+  if (tekUrun) {
+    const tuIyzico = new IyzicoClient(config);
+    const tuTaban = config.get('IYZICO_TABAN_URL') ?? 'https://sandbox-api.iyzipay.com';
+    console.log(`  kip        : TEK URUN GOCU (paket degisimi icin)`);
+    console.log(`  iyzico ucu : ${tuTaban}`);
+    console.log(
+      /sandbox/.test(String(tuTaban))
+        ? '  ortam      : SANDBOX'
+        : '  ortam      : ⚠ CANLI — olusan planlar SILINEMEZ',
+    );
+    await tekUruneTasi(tuIyzico);
     return;
   }
 
@@ -407,7 +576,11 @@ async function main() {
     }
 
     // ── iyzico urunu ───────────────────────────────────────────────────
-    const urunAdi = `MetaPriceX ${p.ad}`;
+    // ⚠ 23.09: TUM paketler TEK urun altinda (`TEK_URUN_ADI`). Eskiden her
+    // pakete ayri urun aciliyordu (`MetaPriceX ${p.ad}`) ve iyzico paket
+    // degisimini yalniz AYNI urunun planlari arasinda yapar — o yapida
+    // musteri paket degistiremezdi. Bkz. `--tek-urun` kipi.
+    const urunAdi = TEK_URUN_ADI;
     let urunKodu = mevcutUrunler.find((u) => u.name === urunAdi)?.referenceCode;
 
     if (urunKodu) {
@@ -418,9 +591,12 @@ async function main() {
     } else {
       const urun = await iyzico.urunOlustur({
         ad: urunAdi,
-        aciklama: p.aciklama,
+        aciklama: 'MetaPriceX paketleri — paket degisimi icin tum planlar tek urunde.',
       });
       urunKodu = urun.referenceCode;
+      // ⚠ Liste donguden ONCE cekildi: yeni urun eklenmezse sonraki paket
+      // ayni adla IKINCI urunu yaratmaya calisir (ad tekil → iyzico hatasi).
+      mevcutUrunler.push({ referenceCode: urun.referenceCode, name: urunAdi });
       console.log(`  ✓ urun olusturuldu → ${urunKodu}`);
     }
 

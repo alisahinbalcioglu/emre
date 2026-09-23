@@ -274,6 +274,9 @@ async function baglanti(): Promise<void> {
     {} as any,
     { satistakiPaketler: async () => { abonelikCagri++; return isaretSurumlu; } } as any,
     { karar: async () => ({ hak: true, gerekce: 'var', anahtarlar: {} }) } as any,
+    // 23.09: paket değişimi yolu (kart düğmesi) — bu kapının konusu değil;
+    // boş harita → her kart "satin-al" (değişimin kendi kapısı: test:paket-degisimi).
+    { yollar: async () => new Map() } as any,
   );
   const donen = (await abonelikUcu.paketler({ id: 'u1', firmaId: 'f1' })) as any[];
   check(

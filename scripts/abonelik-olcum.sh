@@ -102,6 +102,13 @@ if [ "$KIP" = "paket" ]; then
   echo "    f ise deneme hakki olmayan satin alma 503 ile durur. Ikiz kurulumu:"
   echo "    npm run seedpaketler -- --denemesiz-ikiz)"
   echo ""
+  echo "── 23.09 PAKET DEGISIMI: satistaki surumler kac iyzico URUNUNDE? ──"
+  sorgu 'SELECT count(DISTINCT s.\"iyzicoUrunKodu\") AS satistaki_urun, count(*) AS satistaki_surum FROM \"PaketSurumu\" s WHERE s.\"satistaMi\"'
+  echo "   (satistaki_urun 1 OLMALI. iyzico paket degisimini yalniz AYNI urunun"
+  echo "    planlari arasinda yapar; 1'den buyukse musteri paket DEGISTIREMEZ ve"
+  echo "    ekranda 'eski paket yapisi' mesaji gorur. Goc:"
+  echo "    npm run seedpaketler -- --tek-urun  (once PROVA, sonra --uygula))"
+  echo ""
   echo "=============================================================="
   echo " OKUMA: SATISTAKI 5 satirda tl_tutar/vitrin/kur dolu + deneme=30"
   echo " (17.09: uc elektrik paketi de satista kaldi — 16.09 karari geri alindi)"

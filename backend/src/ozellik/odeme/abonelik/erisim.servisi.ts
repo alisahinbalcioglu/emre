@@ -112,6 +112,14 @@ export interface ErisimKarari {
   paketKodu: string;
   kullaniciHakki: number;
   dwgAktif: boolean;
+  /**
+   * 23.09 — BU DONEM icin yapilmis paket degisimi (gecis tarihi GELECEKTE).
+   *   `planliPaket` dolu → dusurme/yatay: `tarih`te o pakete gecilecek.
+   *   `planliPaket` null → yukseltme: ozellikler acildi, yeni ucret `tarih`ten.
+   * Gecis gerceklesince (ya da degisim yoksa) `null`. ⚠ Istege bagli yalniz
+   * eski test fikstorleri derlensin diye; `karar`/`kapaliKarar` HER dalda yazar.
+   */
+  paketGecisi?: { tarih: string; planliPaket: { kod: string; ad: string } | null } | null;
 }
 
 @Injectable()
@@ -150,6 +158,7 @@ export class ErisimServisi {
         paketKodu: '',
         kullaniciHakki: 0,
         dwgAktif: false,
+        paketGecisi: null,
       };
     }
 
@@ -159,6 +168,8 @@ export class ErisimServisi {
       paketKodu: paket.kod,
       kullaniciHakki: paket.kullaniciHakki,
       dwgAktif: paket.dwgAktif,
+      // Asagidaki HER dal `...temel` yayar — alan tek yerde hesaplanir.
+      paketGecisi: await this.paketGecisiOzeti(ab, simdi),
     };
 
     const suresiDoldu = ab.erisimSonu.getTime() <= simdi.getTime();
@@ -360,7 +371,29 @@ export class ErisimServisi {
       paketKodu: '',
       kullaniciHakki: 0,
       dwgAktif: false,
+      paketGecisi: null,
     };
+  }
+
+  /**
+   * 23.09 — bekleyen paket degisiminin ekran ozeti.
+   *
+   * ⚠ EK SORGU YALNIZ DUSURME BEKLERKEN: `karar` her kapili istekte kosar
+   * (ErisimGuard). Planli paket nadirdir; onu her istekte `include` etmek
+   * tum firmalara iki sorgu eklerdi. Tarih gecmisse / yoksa sorgu YOK.
+   */
+  private async paketGecisiOzeti(
+    ab: { paketGecisTarihi: Date | null; planliPaketSurumuId: string | null },
+    simdi: Date,
+  ): Promise<ErisimKarari['paketGecisi']> {
+    if (!ab.paketGecisTarihi || ab.paketGecisTarihi.getTime() <= simdi.getTime()) return null;
+    const tarih = ab.paketGecisTarihi.toISOString();
+    if (!ab.planliPaketSurumuId) return { tarih, planliPaket: null };
+    const s = await this.prisma.paketSurumu.findUnique({
+      where: { id: ab.planliPaketSurumuId },
+      select: { paket: { select: { kod: true, ad: true } } },
+    });
+    return { tarih, planliPaket: s ? { kod: s.paket.kod, ad: s.paket.ad } : null };
   }
 
   /** Tek bir yeteneğin şu an açık olup olmadığını söyler. */
