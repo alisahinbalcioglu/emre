@@ -322,7 +322,11 @@ export default function EkipSayfasi() {
               </p>
               {!guvenlik.sahipMfaAcik && (
                 <p className="mt-1.5 text-xs font-medium text-amber-700">
-                  Önce kendi hesabında iki adımlı girişi aç (Hesabım → İki adımlı giriş).
+                  Önce kendi hesabında iki adımlı girişi aç:{' '}
+                  <Link href="/profile?sekme=guvenlik" className="underline underline-offset-2">
+                    Hesabım → Güvenlik
+                  </Link>
+                  .
                 </p>
               )}
               {mfasizlar.length > 0 && (
