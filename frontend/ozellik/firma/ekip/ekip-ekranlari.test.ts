@@ -10,6 +10,8 @@ import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { koltukSayaciMetni, kucultmeUyarisi } from './koltuk-metinleri';
+// Hesabım sekme kararı (23.09) — import'suz saf dosya.
+import { hesapSekmeleri } from '../../kimlik/hesabim/hesabim';
 
 const KOK = path.join(__dirname, '../../..');
 const oku = (p: string) => fs.readFileSync(path.join(KOK, p), 'utf8');
@@ -109,10 +111,15 @@ describe('profil — fail-open düzeltmesi', () => {
     expect(profil).toContain("profile.firmaRol === 'sahip'");
   });
 
-  it('üyeye GİZLİ İKİ ALAN notu var (boş kutu "firma girmemiş" sanılmasın)', () => {
-    expect(oku('app/(protected)/profile/page.tsx')).toContain(
-      'T.C. kimlik no ve yetkili',
-    );
+  it('üye gizli iki alanı BOŞ KUTU olarak görmez ("firma girmemiş" sanılmasın)', () => {
+    // ⚠ 23.09.2026 (Hesabım tasarımı): eski önlem bir NOTTU — üye firma
+    // formunu görüyor, T.C. kimlik no ve yetkili e-posta kutuları ona boş
+    // geliyordu (`firma-maskele.ts`), not da "bunlar size gizli" diyordu.
+    // Artık üye Firma sekmesini HİÇ görmez; boş kutu yok, not gereksiz.
+    expect(hesapSekmeleri(false)).not.toContain('firma');
+    const profil = kodu(oku('app/(protected)/profile/page.tsx'));
+    expect(profil).toContain('const sekmeler = hesapSekmeleri(sahipMi);');
+    expect(profil).toMatch(/\bfirma: \(\) => \(?\s*<FirmaSekmesi\b/);
   });
 });
 

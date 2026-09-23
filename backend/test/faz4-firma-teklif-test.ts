@@ -29,6 +29,9 @@
 import 'reflect-metadata';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { plainToInstance } from 'class-transformer';
+import { validateSync } from 'class-validator';
+import { FirmaGuncelleDto } from '../src/ozellik/firma/dto/firma-guncelle.dto';
 
 let passed = 0;
 let failed = 0;
@@ -151,6 +154,20 @@ function main(): void {
     !/logoBytes:\s*true/.test(fServis.slice(fServis.indexOf('FIRMA_ALANLARI'), fServis.indexOf('} as const'))));
   check('C12 DTO gercek bir SINIF (satir-ici literal ValidationPipe`i atlar)',
     /export class FirmaGuncelleDto/.test(kodu(oku('backend/src/ozellik/firma/dto/firma-guncelle.dto.ts'))));
+  // ── C13 (23.09.2026): BOS E-POSTA SOZLESMESI — GERCEK DOGRULAMAYLA ──────
+  // Hesabim › Firma › "Fatura bilgileri" bos fatura e-postasini `null` yollar.
+  // OLCULDU: DTO bos dizeyi REDDEDIYOR (`@IsEmail`), `null`i atliyor
+  // (`@IsOptional`). On yuz 23.09'a kadar '' yolluyordu ve fatura e-postasi
+  // girilmemis firma kartini HIC kaydedemiyordu. Kural degisirse (ör. '' de
+  // kabul edilir ya da null reddedilirse) bu kapi haber verir.
+  const dogrula = (g: object) =>
+    validateSync(plainToInstance(FirmaGuncelleDto, g), { whitelist: true }).length;
+  check('C13 bos fatura e-postasi: "" REDDEDILIR, null GECER (on yuz null yollar)',
+    dogrula({ faturaEposta: '' }) > 0 && dogrula({ faturaEposta: null }) === 0
+      && dogrula({ faturaEposta: 'muhasebe@firma.com' }) === 0);
+  check('C14 (olcut) on yuz bos e-postayi GERCEKTEN null yolluyor',
+    /faturaEposta: faturaEposta\.trim\(\) \|\| null,/.test(
+      jsxKodu(oku('frontend/ozellik/kimlik/hesabim/FirmaSekmesi.tsx'))));
 
   // ── D. AUTH /me + profil ───────────────────────────────────────────────
   console.log('\n── D · /auth/me FIRMA TASIYOR ──');
@@ -265,14 +282,30 @@ function main(): void {
     jsxKodu(detay).includes('Müşteri (kapak için)'));
   check('H10 detayda durum secici var', /TEKLIF_DURUMLARI/.test(jsxKodu(detay)));
   check('H11 kapak kaydetme PATCH :id/info kullaniyor', /\/info`/.test(jsxKodu(detay)));
+  // ⚠ 23.09.2026: Hesabim sekmelere bolundu — kisi formu Profil, firma ve
+  // fatura formu Firma sekmesinde. Olculen kural ayni; olculen dosya yeni yer.
   const profil = oku('frontend/app/(protected)/profile/page.tsx');
   const profilKod = jsxKodu(profil);
-  check('H12 profil KISI formu var', /kisiKaydet/.test(profilKod) && /auth\/profil/.test(profilKod));
-  check('H13 profil FIRMA formu var', /firmaKaydet/.test(profilKod) && /'\/firma'/.test(profilKod));
-  check('H14 profil logo yukleme/silme var', /logoYukle/.test(profilKod) && /logoSil/.test(profilKod));
+  const kisiKod = jsxKodu(oku('frontend/ozellik/kimlik/hesabim/ProfilSekmesi.tsx'));
+  const firmaKod = jsxKodu(oku('frontend/ozellik/kimlik/hesabim/FirmaSekmesi.tsx'));
+  const sekmeKarari = jsxKodu(oku('frontend/ozellik/kimlik/hesabim/hesabim.ts'));
+  check('H12 profil KISI formu var', /kisiKaydet/.test(kisiKod) && /auth\/profil/.test(kisiKod)
+    && /\bprofil: \(\) => \(?\s*<ProfilSekmesi\b/.test(profilKod));
+  check('H13 profil FIRMA formu var', /firmaKaydet/.test(firmaKod) && /'\/firma'/.test(firmaKod)
+    && /\bfirma: \(\) => \(?\s*<FirmaSekmesi\b/.test(profilKod));
+  check('H14 profil logo yukleme/silme var', /logoYukle/.test(firmaKod) && /logoSil/.test(firmaKod));
+  // Onbellek kirici artik ONIZLEMEYI yeniden ceker (oturumlu istek, nesne
+  // adresi) — `<img src="/api/firma/logo">` Authorization tasimadigi icin
+  // HIC gorunmuyordu.
   check('H15 logo onbellek kirici surum parametresi var (yoksa yeni logo eski gorunur)',
-    /logoSurum/.test(profilKod));
-  check('H16 firma formu sahip DISI kullaniciya kapali', /sahipMi/.test(profilKod));
+    /logoSurum/.test(firmaKod) && /\[logoVar, surum\]/.test(firmaKod));
+  // Firma sekmesi yalniz SAHIBIN sekme listesinde; liste FAIL-CLOSED sahiplikten.
+  check('H16 firma formu sahip DISI kullaniciya kapali',
+    /const sahipMi = profile\.firmaRol === 'sahip';/.test(profilKod)
+      && /hesapSekmeleri\(sahipMi\)/.test(profilKod)
+      && /SAHIP_SEKMELERI[^\n]*'firma'/.test(sekmeKarari)
+      && /UYE_SEKMELERI[^\n]*\]/.test(sekmeKarari)
+      && !/UYE_SEKMELERI[^\n]*'firma'/.test(sekmeKarari));
 
   // ── SONUC ──────────────────────────────────────────────────────────────
   console.log('\n' + '='.repeat(64));

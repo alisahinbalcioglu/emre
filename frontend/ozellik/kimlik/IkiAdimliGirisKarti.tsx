@@ -17,13 +17,18 @@
  *  ⚠ TOKEN YAZIMI: `mfa/kurulum/onayla` ve `mfa/kapat` TAZE token doner
  *  (damga yuzunden). Yazimi cagiran sayfa yapar (`onTokenTazele`) — kaynak
  *  kapisi geregi `localStorage.setItem('token'` bu dosyada GECMEZ.
+ *
+ *  23.09.2026 — Hesabim tasarimi: kart basligi durum rozeti ("Açık"/"Kapalı")
+ *  ve sagda "Aç" dugmesiyle tek satir; kurulum adimlari basligin ALTINDA acilir.
  */
 import { useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
 import api from '@/ortak/lib/api';
+import { cn } from '@/ortak/lib/utils';
 import { kimlikHataMetni } from '@/ortak/lib/kimlik-hata-metinleri';
 import { KurulumAnahtari } from './KurulumAnahtari';
 import { KurtarmaKodlariEkrani } from './KurtarmaKodlariEkrani';
+import { ANA_DUGME, GIRDI, IKINCIL_DUGME, TEHLIKE_DUGME } from './hesabim/hesabim-ui';
 
 export type MfaDurumu = {
   acik: boolean;
@@ -57,6 +62,17 @@ export function IkiAdimliGirisKarti({
   const [hata, setHata] = useState('');
   const [bilgi, setBilgi] = useState('');
   const [mesgul, setMesgul] = useState(false);
+
+  /**
+   * ── 23.09.2026: YONETICIDE KOD E-POSTAYA GELIR ──────────────────────────
+   * `girisKarariSaf` yoneticiyi parola girisinde `acik` denetiminden ONCE
+   * `mfa-eposta` dalina alir: telefon uygulamasi (TOTP) HIC sorulmaz
+   * (`backend/.../mfa/mfa-karari.ts`). Kart eskisi gibi "Kapalı · Aç" deseydi
+   * yonetici her giriste kod aldigi halde korumasiz oldugunu sanir, "Aç"a
+   * basip hic kullanilmayacak bir uygulama kurardi.
+   */
+  const epostaKodu = mfa.zorunlulukNedeni === 'yonetici';
+  const acikGorunur = epostaKodu || adim === 'acik' || adim === 'kodlar';
 
   function temizle() {
     setHata('');
@@ -92,6 +108,10 @@ export function IkiAdimliGirisKarti({
       setKodlar(Array.isArray(data?.kurtarmaKodlari) ? data.kurtarmaKodlari : []);
       setKod('');
       setAdim('kodlar');
+      // 23.09: profil HEMEN tazelenir ("Tamam"ı beklemez). Beklenseydi kişi
+      // kodlar ekrandayken sayfayı yenilediğinde kart "Kapalı · Aç" der, "Aç"
+      // `MFA_ZATEN_ACIK` hatası verirdi (kod incelemesi ölçtü).
+      onYenile();
     });
 
   const kapat = () =>
@@ -115,6 +135,7 @@ export function IkiAdimliGirisKarti({
       setKodlar(Array.isArray(data?.kurtarmaKodlari) ? data.kurtarmaKodlari : []);
       setKod('');
       setAdim('kodlar');
+      onYenile(); // kalan kurtarma kodu sayısı hemen doğru olsun
     });
 
   const sirketGirisindeDeSor = () =>
@@ -127,7 +148,7 @@ export function IkiAdimliGirisKarti({
 
   const kodKutusu = (id: string, deger: string, yaz: (v: string) => void, etiket: string) => (
     <div>
-      <label htmlFor={id} className="mb-1.5 block text-xs font-semibold text-slate-700">
+      <label htmlFor={id} className="mb-1.5 block text-[13px] font-semibold text-gray-900">
         {etiket}
       </label>
       <input
@@ -139,189 +160,167 @@ export function IkiAdimliGirisKarti({
         placeholder="123456"
         value={deger}
         onChange={(e) => yaz(e.target.value)}
-        className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm tracking-widest text-slate-800 focus:border-blue-600 focus:bg-white focus:outline-none"
+        className={cn(GIRDI, 'max-w-xs tracking-widest')}
       />
     </div>
   );
 
+  const aciklama = epostaKodu
+    ? 'Yönetici hesabında her girişte e-posta adresinize 6 haneli bir kod gönderilir; telefon uygulaması kullanılmaz. Bu ayar değiştirilemez.'
+    : adim === 'acik'
+      ? `Girişte telefonunuzdaki doğrulama uygulamasının ürettiği kod istenir${
+          mfa.acikAt ? ` · açılış ${new Date(mfa.acikAt).toLocaleDateString('tr-TR')}` : ''
+        } · ${mfa.kalanKurtarmaKodu} kurtarma kodu kaldı.`
+      : `Açtığınızda girişte parolanızın yanında telefonunuzdaki doğrulama uygulamasının ürettiği 6 haneli kod istenir.${
+          mfa.zorunlu ? ' Firmanızda zorunlu kılınmıştır.' : ''
+        }`;
+
   return (
-    <div className="mb-6 rounded-xl border bg-card overflow-hidden">
-      <div className="flex items-center gap-2 border-b px-5 py-3.5 text-sm font-semibold">
-        <ShieldCheck className="h-4 w-4 text-muted-foreground" />
-        İki adımlı giriş
+    <section aria-labelledby="iki-adim-baslik" className="rounded-xl border border-gray-200 bg-white p-6">
+      <div className="flex flex-wrap items-start gap-3.5">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-slate-100 text-slate-700">
+          <ShieldCheck className="h-5 w-5" strokeWidth={1.75} aria-hidden />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h2 id="iki-adim-baslik" className="text-base font-semibold text-gray-900">
+              İki adımlı giriş
+            </h2>
+            <span
+              className={cn(
+                'inline-flex h-[22px] items-center rounded-full px-2 text-xs font-semibold',
+                acikGorunur ? 'bg-green-50 text-green-800' : 'bg-gray-100 text-gray-700',
+              )}
+            >
+              {acikGorunur ? 'Açık' : 'Kapalı'}
+            </span>
+          </div>
+          <p className="mt-1.5 text-[13px] leading-relaxed text-gray-500">{aciklama}</p>
+        </div>
+        {!epostaKodu && adim === 'kapali' && (
+          <button
+            type="button"
+            onClick={() => { temizle(); setAdim('parola'); }}
+            className={ANA_DUGME}
+          >
+            Aç
+          </button>
+        )}
       </div>
 
-      <div className="space-y-4 px-5 py-4">
-        {adim === 'kapali' && (
-          <>
-            <p className="text-xs text-muted-foreground">
-              Açtığınızda girişte parolanızın yanında telefonunuzdaki doğrulama
-              uygulamasının ürettiği 6 haneli kod istenir.
-              {mfa.zorunlu && (
-                <>
-                  {' '}
-                  <strong>
-                    {mfa.zorunlulukNedeni === 'yonetici'
-                      ? 'Yönetici hesaplarında zorunludur.'
-                      : 'Firmanızda zorunlu kılınmıştır.'}
-                  </strong>
-                </>
-              )}
-            </p>
-            <button
-              type="button"
-              onClick={() => { temizle(); setAdim('parola'); }}
-              className="rounded-lg bg-[#0B1528] px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800"
-            >
-              Aç
-            </button>
-          </>
-        )}
-
-        {adim === 'parola' && (
-          <>
-            <p className="text-xs text-muted-foreground">
-              Güvenlik için parolanızı yeniden girin.
-            </p>
-            <div>
-              <label htmlFor="mfaParola" className="mb-1.5 block text-xs font-semibold text-slate-700">
-                Parolanız
-              </label>
-              <input
-                id="mfaParola"
-                type="password"
-                autoComplete="current-password"
-                value={parola}
-                onChange={(e) => setParola(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-blue-600 focus:bg-white focus:outline-none"
-              />
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                disabled={mesgul}
-                onClick={baslat}
-                className="rounded-lg bg-[#0B1528] px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
-              >
-                Devam
-              </button>
-              <button
-                type="button"
-                onClick={() => { temizle(); setAdim('kapali'); }}
-                className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700"
-              >
-                Vazgeç
-              </button>
-            </div>
-          </>
-        )}
-
-        {adim === 'anahtar' && kurulum && (
-          <>
-            <KurulumAnahtari otpauthUri={kurulum.otpauthUri} elleAnahtar={kurulum.elleAnahtar} />
-            {kodKutusu('mfaKurulumKod', kod, setKod, 'Uygulamadaki 6 haneli kod')}
-            <button
-              type="button"
-              disabled={mesgul}
-              onClick={onayla}
-              className="rounded-lg bg-[#0B1528] px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
-            >
-              Kurulumu tamamla
-            </button>
-          </>
-        )}
-
-        {adim === 'kodlar' && (
-          <KurtarmaKodlariEkrani
-            kodlar={kodlar}
-            devamEtiketi="Tamam"
-            onDevam={() => { setAdim('acik'); onYenile(); }}
-          />
-        )}
-
-        {adim === 'acik' && (
-          <>
-            <p className="text-xs text-muted-foreground">
-              <strong>Açık</strong>
-              {mfa.acikAt ? ` · ${new Date(mfa.acikAt).toLocaleDateString('tr-TR')}` : ''}
-              {` · ${mfa.kalanKurtarmaKodu} kurtarma kodu kaldı`}
-            </p>
-
-            {mfa.kaynak !== 'kisisel' && sirketGirisiVar && (
-              <div className="space-y-2 rounded-lg border border-slate-200 p-3">
-                <p className="text-xs text-muted-foreground">
-                  Şirket hesabıyla girişte kod sorulmaz. Yine de sorulmasını
-                  isterseniz aşağıdaki kodu girin.
-                </p>
-                {kodKutusu('mfaSirketKod', kod, setKod, 'Doğrulama kodu')}
-                <button
-                  type="button"
-                  disabled={mesgul}
-                  onClick={sirketGirisindeDeSor}
-                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-60"
-                >
-                  Şirket girişinde de sor
-                </button>
-              </div>
-            )}
-
-            <div className="space-y-2 rounded-lg border border-slate-200 p-3">
-              {kodKutusu('mfaYenileKod', kod, setKod, 'Kurtarma kodlarını yenilemek için doğrulama kodu')}
-              <button
-                type="button"
-                disabled={mesgul}
-                onClick={kodlariYenile}
-                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-60"
-              >
-                Kurtarma kodlarını yenile
-              </button>
-            </div>
-
-            {mfa.zorunlu ? (
-              <p className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
-                {mfa.zorunlulukNedeni === 'yonetici'
-                  ? 'Yönetici hesaplarında iki adımlı giriş zorunludur; kapatılamaz.'
-                  : 'Firmanızda iki adımlı giriş zorunlu kılınmış; kapatmak için firma sahibinizle görüşün.'}
-              </p>
-            ) : (
-              <div className="space-y-2 rounded-lg border border-slate-200 p-3">
-                <p className="text-xs text-muted-foreground">
-                  Kapatmak için parolanızı ya da bir doğrulama kodunu girin.
-                  Kapattığınızda diğer cihazlardaki oturumlar kapanır.
-                </p>
+      {!epostaKodu && adim !== 'kapali' && (
+        <div className="mt-5 space-y-4 border-t border-[#eef0f3] pt-5">
+          {adim === 'parola' && (
+            <>
+              <div>
+                <label htmlFor="mfaParola" className="mb-1.5 block text-[13px] font-semibold text-gray-900">
+                  Güvenlik için parolanızı yeniden girin
+                </label>
                 <input
+                  id="mfaParola"
                   type="password"
                   autoComplete="current-password"
-                  placeholder="Parolanız"
                   value={parola}
                   onChange={(e) => setParola(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-blue-600 focus:bg-white focus:outline-none"
+                  className={cn(GIRDI, 'max-w-sm')}
                 />
-                {kodKutusu('mfaKapatKod', kapatmaKodu, setKapatmaKodu, 'ya da doğrulama kodu')}
+              </div>
+              <div className="flex gap-2">
+                <button type="button" disabled={mesgul} onClick={baslat} className={ANA_DUGME}>
+                  Devam
+                </button>
                 <button
                   type="button"
-                  disabled={mesgul}
-                  onClick={kapat}
-                  className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60"
+                  onClick={() => { temizle(); setAdim('kapali'); }}
+                  className={IKINCIL_DUGME}
                 >
-                  İki adımlı girişi kapat
+                  Vazgeç
                 </button>
               </div>
-            )}
-          </>
-        )}
+            </>
+          )}
 
-        {hata && (
-          <p className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700">
-            {hata}
-          </p>
-        )}
-        {bilgi && (
-          <p className="rounded-lg border border-emerald-200 bg-emerald-50 p-2.5 text-xs text-emerald-800">
-            {bilgi}
-          </p>
-        )}
-      </div>
-    </div>
+          {adim === 'anahtar' && kurulum && (
+            <>
+              <KurulumAnahtari otpauthUri={kurulum.otpauthUri} elleAnahtar={kurulum.elleAnahtar} />
+              {kodKutusu('mfaKurulumKod', kod, setKod, 'Uygulamadaki 6 haneli kod')}
+              <button type="button" disabled={mesgul} onClick={onayla} className={ANA_DUGME}>
+                Kurulumu tamamla
+              </button>
+            </>
+          )}
+
+          {adim === 'kodlar' && (
+            <KurtarmaKodlariEkrani
+              kodlar={kodlar}
+              devamEtiketi="Tamam"
+              onDevam={() => { setAdim('acik'); onYenile(); }}
+            />
+          )}
+
+          {adim === 'acik' && (
+            <>
+              {mfa.kaynak !== 'kisisel' && sirketGirisiVar && (
+                <div className="space-y-3 rounded-[10px] border border-[#eef0f3] p-4">
+                  <p className="text-[13px] text-gray-500">
+                    Şirket hesabıyla girişte kod sorulmaz. Yine de sorulmasını
+                    isterseniz aşağıdaki kodu girin.
+                  </p>
+                  {kodKutusu('mfaSirketKod', kod, setKod, 'Doğrulama kodu')}
+                  <button type="button" disabled={mesgul} onClick={sirketGirisindeDeSor} className={IKINCIL_DUGME}>
+                    Şirket girişinde de sor
+                  </button>
+                </div>
+              )}
+
+              <div className="space-y-3 rounded-[10px] border border-[#eef0f3] p-4">
+                {kodKutusu('mfaYenileKod', kod, setKod, 'Kurtarma kodlarını yenilemek için doğrulama kodu')}
+                <button type="button" disabled={mesgul} onClick={kodlariYenile} className={IKINCIL_DUGME}>
+                  Kurtarma kodlarını yenile
+                </button>
+              </div>
+
+              {mfa.zorunlu ? (
+                <p className="rounded-[10px] border border-amber-200 bg-amber-50 p-3 text-[13px] text-amber-800">
+                  Firmanızda iki adımlı giriş zorunlu kılınmış; kapatılamaz. Kaldırılması
+                  için firma sahibinizle görüşün.
+                </p>
+              ) : (
+                <div className="space-y-3 rounded-[10px] border border-[#eef0f3] p-4">
+                  <p className="text-[13px] text-gray-500">
+                    Kapatmak için parolanızı ya da bir doğrulama kodunu girin.
+                    Kapattığınızda diğer cihazlardaki oturumlar kapanır.
+                  </p>
+                  <input
+                    type="password"
+                    autoComplete="current-password"
+                    placeholder="Parolanız"
+                    aria-label="Parolanız"
+                    value={parola}
+                    onChange={(e) => setParola(e.target.value)}
+                    className={cn(GIRDI, 'max-w-sm')}
+                  />
+                  {kodKutusu('mfaKapatKod', kapatmaKodu, setKapatmaKodu, 'ya da doğrulama kodu')}
+                  <button type="button" disabled={mesgul} onClick={kapat} className={TEHLIKE_DUGME}>
+                    İki adımlı girişi kapat
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {hata && (
+        <p role="alert" className="mt-4 rounded-[10px] border border-red-200 bg-red-50 p-3 text-[13px] text-red-700">
+          {hata}
+        </p>
+      )}
+      {bilgi && (
+        <p role="status" className="mt-4 rounded-[10px] border border-emerald-200 bg-emerald-50 p-3 text-[13px] text-emerald-800">
+          {bilgi}
+        </p>
+      )}
+    </section>
   );
 }

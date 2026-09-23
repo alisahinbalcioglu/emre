@@ -427,8 +427,18 @@ function main(): void {
 
   // ── G. PROFIL EKRANI ───────────────────────────────────────────────────
   console.log('\n── G · PROFILDE KVKK HAKLARI ──');
-  const profil = jsxKodu(oku('frontend/app/(protected)/profile/page.tsx'));
-  check('G1 veri indirme dugmesi var', /verileriIndir/.test(profil) && /hesabim\/verilerim/.test(profil));
+  // ⚠ 23.09.2026: Hesabim sekmelere bolundu; iki hak Veriler sekmesinde ve
+  // sekme HER IKI rolde de gorunur. `profil` artik o sekmenin kodudur; sayfa
+  // sekmeyi cizdigi olculur (hak yer degistirdi, buharlasmadi).
+  const sayfa = jsxKodu(oku('frontend/app/(protected)/profile/page.tsx'));
+  const profil = jsxKodu(oku('frontend/ozellik/kimlik/hesabim/VerilerSekmesi.tsx'));
+  const indirici = kodu(oku('frontend/ozellik/kimlik/verileri-indir.ts'));
+  check('G0 Hesabim Veriler sekmesini ciziyor (sahip VE uye listesinde)',
+    /\bveriler: \(\) => \(?\s*<VerilerSekmesi\b/.test(sayfa)
+      && /SAHIP_SEKMELERI[^\n]*'veriler'/.test(kodu(oku('frontend/ozellik/kimlik/hesabim/hesabim.ts')))
+      && /UYE_SEKMELERI[^\n]*'veriler'/.test(kodu(oku('frontend/ozellik/kimlik/hesabim/hesabim.ts'))));
+  check('G1 veri indirme dugmesi var',
+    /await verileriIndir\(\)/.test(profil) && /VERILERIM_UCU = '\/auth\/hesabim\/verilerim'/.test(indirici));
   check('G2 hesap kapatma parola ISTIYOR', /hesabimi-kapat/.test(profil) && /kapatmaParola/.test(profil));
   check('G3 kapatma sonrasi yerel oturum TEMIZLENIYOR',
     /removeItem\('token'\)[\s\S]{0,120}removeItem\('user'\)/.test(profil));
@@ -460,16 +470,23 @@ function main(): void {
   // kapi IKI dosyaya birden bakar.
   // ⚠ Sayi ciplak degil: govde `${gun}` ile kurulur, gun sunucudan gelir
   // (`saklamaGun`); `SAKLAMA_GUN` yalniz uc susarsa devreye giren yedektir.
+  // ⚠ 23.09.2026: metin paragraftan MADDELERE bolundu (Hesabim tasarimi).
+  // "verilerinizi 30 gun sakliyoruz" cumlesi kalkti; ayni vaat iki maddede:
+  // "30 gun icinde ... devam edebilirsiniz" + "30 gunun sonunda ... kalici
+  // olarak silinir". Olculen VAAT ayni, olculen DESEN yeni cumle.
   const kapatmaMetni = kodu(oku('frontend/ozellik/kimlik/kapatma-metinleri.ts'));
   check('G4 kapatma metni SAKLAMA SURESI + KALICI SILME vaat ediyor',
     /SAKLAMA_GUN = 30/.test(kapatmaMetni)
-      && /\$\{gun\} gün saklıyoruz/.test(kapatmaMetni)
+      && /\$\{gun\} gün içinde aynı e-posta ve parolayla/.test(kapatmaMetni)
+      && /\$\{gun\} günün sonunda teklifleriniz/.test(kapatmaMetni)
       && /kalıcı olarak silinir/.test(kapatmaMetni));
   check('G5 ESKI "ayrica iletmeniz gerekir" vaadi NE METINDE NE EKRANDA kaldi',
     !/ayrıca iletmeniz gerekir|sistemde kalmaya devam eder/.test(kapatmaMetni)
-      && !/ayrıca iletmeniz gerekir|sistemde kalmaya devam eder/.test(profil));
+      && !/ayrıca iletmeniz gerekir|sistemde kalmaya devam eder/.test(profil)
+      && !/ayrıca iletmeniz gerekir|sistemde kalmaya devam eder/.test(sayfa));
   check('G6 ekran metni SAF FONKSIYONDAN okuyor (ikiz cumle yok)',
-    /hesapKapatmaMetni\(/.test(profil) && /kapatmaMetni\.govde/.test(profil));
+    /hesapKapatmaMaddeleri\(kapatmaOnizleme\)/.test(profil) && /maddeler\.map\(/.test(profil)
+      && !/kalıcı olarak silinir/.test(profil));
 
   // ── SONUC ──────────────────────────────────────────────────────────────
   console.log('\n' + '='.repeat(64));

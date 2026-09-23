@@ -116,7 +116,7 @@ describe('B · kaynak kapısı', () => {
     expect(suclular).toEqual([]);
   });
 
-  it('⭐ KVKK indirme ucu YALNIZ iki yerde çağrılıyor (yardımcı + profil)', () => {
+  it('⭐ KVKK indirme ucu YALNIZ yardımcıda çağrılıyor (profil de yardımcıyı kullanır)', () => {
     const cagiranlar: string[] = [];
     for (const kok of ['app', 'ozellik', 'ortak']) {
       for (const dosya of dosyalar(path.join(KOK, kok))) {
@@ -125,12 +125,21 @@ describe('B · kaynak kapısı', () => {
         if (kod.includes('hesabim/verilerim')) cagiranlar.push(path.relative(KOK, dosya).replace(/\\/g, '/'));
       }
     }
-    // ⚠ İki ekran (koltuk durdurma · hesap kapalı) KENDİ isteğini YAZMAZ;
-    // `verileri-indir.ts`i çağırır. Profil ekranı ayrı bir akış (oturum açık,
-    // kendi indirme kartı) ve zaten `api.get` kullanıyor — doğru.
-    expect(cagiranlar.sort()).toEqual([
-      'app/(protected)/profile/page.tsx',
-      'ozellik/kimlik/verileri-indir.ts',
-    ]);
+    // ⚠ Ekranlar KENDİ isteğini YAZMAZ; `verileri-indir.ts`i çağırır.
+    // 23.09.2026: Hesabım da (Veriler sekmesi) yardımcıya geçti. Önceden kendi
+    // `api.get` kopyasını taşıyor ve bağlantıyı belgeye EKLEMEDEN tıklıyordu;
+    // yardımcı ekleyip çıkarır ve nesne adresini serbest bırakır.
+    expect(cagiranlar.sort()).toEqual(['ozellik/kimlik/verileri-indir.ts']);
+  });
+
+  it('⭐ Hesabım › Veriler sekmesi indirmeyi YARDIMCIDAN yapıyor', () => {
+    const kod = fs
+      .readFileSync(path.join(KOK, 'ozellik/kimlik/hesabim/VerilerSekmesi.tsx'), 'utf-8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '');
+    expect(kod).toContain("import { verileriIndir } from '../verileri-indir';");
+    expect(kod).toContain('await verileriIndir()');
+    // Başarısızlık SESSİZ değil: `false` dönünce kullanıcıya söylenir.
+    expect(kod).toMatch(/if \(!tamam\) \{\s*toast\(/);
   });
 });

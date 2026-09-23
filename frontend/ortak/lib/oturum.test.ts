@@ -147,10 +147,12 @@ describe('kaynak kapısı — token yazımı tek yerde', () => {
   }
 
   /**
-   * ⚠ İKİ DOSYA, GEREKÇELİ: `profile/page.tsx:246` parola değiştirme
-   * yanıtındaki TAZE token'ı yazar — o yanıt `user` TAŞIMAZ, `oturumuYaz`
-   * iki anahtarı birden yazıp `user`i null'a çevirirdi. Orada da biçim
-   * doğrulaması `gecerliTokenMi` ile YAPILIR (aynı kural, tek kaynak).
+   * ⚠ İKİ DOSYA, GEREKÇELİ: `profile/page.tsx` → `tokenTazele` parola
+   * değiştirme ve iki adımlı giriş yanıtındaki TAZE token'ı yazar — o yanıt
+   * `user` TAŞIMAZ, `oturumuYaz` iki anahtarı birden yazıp `user`i null'a
+   * çevirirdi. Orada da biçim doğrulaması `gecerliTokenMi` ile YAPILIR (aynı
+   * kural, tek kaynak). 23.09: formlar Hesabım sekmelerine taşındı ama yazım
+   * SAYFADA kaldı; sekmeler token'ı `onTokenTazele` ile sayfaya verir.
    * Listeye ÜÇÜNCÜ bir dosya eklemek bilinçli bir karar olmalıdır.
    */
   it("`localStorage.setItem('token'` yalnız iki gerekçeli yerde (e2e ve testler HARİÇ)", () => {

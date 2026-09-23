@@ -9,8 +9,12 @@ import {
   abonelikOzeti,
   durumEtiketi,
   iptalYoluYeterinceDerinMi,
+  katalogPaketAdi,
   mirasMi,
+  paketGorunenAdi,
 } from './abonelik-ozeti';
+// Hesabım sekmeleri (23.09) — import'suz saf dosya, vitest doğrudan okur.
+import { VARSAYILAN_SEKME, hesapSekmeleri } from '../kimlik/hesabim/hesabim';
 // ⚠ Kullanım kutusunun GERÇEK cümlesi — iki kutunun aynı günü yazdığını
 // varsaymak yerine ÖLÇMEK için birebir aynı fonksiyon çağrılır.
 import { kalanKotaCumlesi, type CeviriKotaOzeti } from '../teklif/ceviri-kota';
@@ -118,6 +122,101 @@ describe('abonelikOzeti', () => {
 });
 
 /**
+ * ⭐ PAKETİN GERÇEK ADI — KATALOGDAN (23.09.2026, Hesabım tasarımı)
+ *
+ * Başlık, kod katalogda aranmadan KODUN KENDİSİYDİ: satın alınmış paket
+ * müşteriye "pro-mek" diye görünüyordu (Hesabım'da ve `/abonelik`teki "Şu
+ * anki paketiniz" satırında). Tasarım adı kimlik satırına da taşıdı.
+ */
+describe('⭐ katalog adı — satın alınan paket kodla gösterilmez', () => {
+  const KATALOG = [
+    { kod: 'core-mek', ad: 'Basic — Mekanik' },
+    { kod: 'pro-mek', ad: 'Pro — Mekanik' },
+  ];
+
+  it('kod katalogdaysa ADI döner', () => {
+    expect(katalogPaketAdi('pro-mek', KATALOG)).toBe('Pro — Mekanik');
+  });
+
+  it('katalogda yoksa / katalog yoksa / kod yoksa null (ad UYDURULMAZ)', () => {
+    expect(katalogPaketAdi('miras-pro', KATALOG)).toBeNull();
+    expect(katalogPaketAdi('pro-mek', null)).toBeNull();
+    expect(katalogPaketAdi(null, KATALOG)).toBeNull();
+    expect(katalogPaketAdi('', KATALOG)).toBeNull();
+    expect(katalogPaketAdi('x', [{ kod: 'x', ad: '   ' }])).toBeNull();
+  });
+
+  it('⭐ özet başlığı katalog adını kullanır', () => {
+    const o = abonelikOzeti({ paketKodu: 'pro-mek', durum: 'AKTIF', kalanGun: null }, null, 'Pro — Mekanik');
+    expect(o.baslik).toBe('Pro — Mekanik');
+    expect(o.paketKodu).toBe('pro-mek'); // eşleştirme HAM kodla sürer
+  });
+
+  it('katalog adı yoksa eski davranış BİREBİR: göç paketi "Geçiş paketi", öbürü kod', () => {
+    expect(abonelikOzeti({ paketKodu: 'miras-pro', durum: 'AKTIF', kalanGun: null }, null, null).baslik)
+      .toBe('Geçiş paketi');
+    expect(abonelikOzeti({ paketKodu: 'pro-mek', durum: 'AKTIF', kalanGun: null }, null, '  ').baslik)
+      .toBe('pro-mek');
+  });
+
+  it('paket yokken katalog adı başlığı DEĞİŞTİRMEZ (paket adı uydurulmaz)', () => {
+    expect(abonelikOzeti({ paketKodu: null, durum: 'SONA_ERDI', kalanGun: null }, null, 'Pro — Mekanik').baslik)
+      .toBe('Abonelik yok');
+  });
+
+  /**
+   * ⭐ HAM KOD HİÇBİR DURUMDA (23.09 kod incelemesi): yalnız katalog adına
+   * bakılsaydı katalog okunamayınca ya da paket satıştan kalkınca rozet yine
+   * "pro-mek" derdi — eski ekran o durumda en azından "Pro Plan" diyordu.
+   */
+  describe('paketGorunenAdi — katalog → seviye adı → (göçte) null', () => {
+    it('katalogda varsa katalog adı kazanır', () => {
+      expect(paketGorunenAdi('pro-mek', KATALOG, 'Pro')).toBe('Pro — Mekanik');
+    });
+
+    it('⭐ katalog OKUNAMADIYSA seviye adına düşer (kod basılmaz)', () => {
+      expect(paketGorunenAdi('pro-mek', null, 'Pro')).toBe('Pro');
+    });
+
+    it('⭐ paket satıştan KALKTIYSA (katalogda yok) seviye adına düşer', () => {
+      expect(paketGorunenAdi('pro-eski', KATALOG, 'Pro')).toBe('Pro');
+    });
+
+    it('göç paketinde null → özet onu "Geçiş paketi" diye adlandırır (seviye adı DEĞİL)', () => {
+      expect(paketGorunenAdi('miras-pro', KATALOG, 'Pro')).toBeNull();
+      const o = abonelikOzeti(
+        { paketKodu: 'miras-pro', durum: 'AKTIF', kalanGun: null },
+        null,
+        paketGorunenAdi('miras-pro', KATALOG, 'Pro'),
+      );
+      expect(o.baslik).toBe('Geçiş paketi');
+    });
+
+    it('⭐ UÇTAN UCA: hiçbir yedekte başlık ham kod DEĞİL', () => {
+      for (const katalog of [KATALOG, null, []]) {
+        const o = abonelikOzeti(
+          { paketKodu: 'pro-mek', durum: 'AKTIF', kalanGun: null },
+          null,
+          paketGorunenAdi('pro-mek', katalog, 'Pro'),
+        );
+        expect(o.baslik).not.toBe('pro-mek');
+      }
+    });
+  });
+
+  it('⭐ BAĞLANTI: iki ekran da adı KATALOGDAN verir', () => {
+    const profil = readFileSync(join(__dirname, '..', '..', 'app', '(protected)', 'profile', 'page.tsx'), 'utf8');
+    const abonelik = readFileSync(join(__dirname, '..', '..', 'app', '(protected)', 'abonelik', 'page.tsx'), 'utf8');
+    // Hesabım: katalog + SEVİYE yedeği (rozet ile paket kartı aynı adı basar).
+    expect(profil).toContain('paketGorunenAdi(erisim?.paketKodu, katalog, tier ? paketRozeti(tier) : null)');
+    expect(profil).toContain("api.get<{ kod: string; ad: string }[]>('/abonelik/paketler')");
+    // `/abonelik` katalog listesinin KENDİSİNİ çizer; AYNI kural, AYNI yedek.
+    expect(abonelik).toContain('paketGorunenAdi(erisim?.paketKodu, paketler, seviye ? paketRozeti(seviye) : null)');
+    expect(abonelik).toContain("setSeviye(typeof data?.tier === 'string' ? data.tier : null);");
+  });
+});
+
+/**
  * ⭐ İKİ PANELİN ÇELİŞKİSİ (21.09.2026 — t.10)
  *
  * Hesap sayfasında kullanım kutusu "yenilenme 01.10.2026" derken abonelik
@@ -139,7 +238,8 @@ describe('⭐ yenilenme günü — kullanım kutusuyla TEK kaynak', () => {
 
   it('⭐ AKTIF + kalanGun null → artık "belirtilmemiş" DEMİYOR, günü yazıyor', () => {
     const o = abonelikOzeti({ paketKodu: 'pro-mek', durum: 'AKTIF', kalanGun: null }, ISO);
-    expect(o.altMetin).toBe('Yenilenme 01.10.2026');
+    // 23.09: iki nokta tasarımdan ("Yenilenme: 01.10.2026").
+    expect(o.altMetin).toBe('Yenilenme: 01.10.2026');
     expect(o.altMetin).not.toContain('belirtilmemiş');
   });
 
@@ -189,21 +289,36 @@ describe('⭐ BAĞLANTI — hesap sayfası dönemi kotadan okuyor', () => {
     join(__dirname, '..', '..', 'app', '(protected)', 'profile', 'page.tsx'),
     'utf8',
   );
+  // 23.09.2026: kullanım kartı Hesabım › Abonelik sekmesine taşındı.
+  const abonelikSekmesi = readFileSync(
+    join(__dirname, '..', 'kimlik', 'hesabim', 'AbonelikSekmesi.tsx'),
+    'utf8',
+  );
 
-  it('ÖLÇÜT: dosya okundu ve kullanım kutusu hâlâ kota cümlesini basıyor', () => {
-    expect(profil).toContain('kalanKotaCumlesi(kota)');
+  it('ÖLÇÜT: dosyalar okundu ve kullanım kartı yenilenme gününü ÖZETTEN basıyor', () => {
+    // Eskiden kanıt `kalanKotaCumlesi(kota)` idi; tasarımdaki kart günü tek
+    // cümleyle söylüyor ve gün paket kartıyla AYNI alandan (`ozet.yenilenmeGunu`).
+    expect(abonelikSekmesi).toContain('Kotalar {ozet.yenilenmeGunu} tarihinde yenilenir.');
+    expect(abonelikSekmesi).toContain('{paketliMi ? ozet.altMetin :');
   });
 
   it('⭐ dönem bitişi kota yanıtından türetilip özete VERİLİYOR', () => {
     expect(profil).toContain('ceviriKota.kota?.donemBitis');
-    expect(profil).toContain('abonelikOzeti(erisim, donemBitisi)');
+    // Çağrı çok satırlı yazılabilir; kapı boşluğa değil ARGÜMAN SIRASINA bakar.
+    expect(profil).toMatch(/abonelikOzeti\(\s*erisim,\s*donemBitisi[,)]/);
+    // Özet sekmeye GEÇİYOR (sekme ikinci bir özet kurmuyor).
+    expect(profil).toContain('ozet={ozet}');
+    expect(abonelikSekmesi).not.toContain('abonelikOzeti(');
   });
 
-  it('⭐ sayfa tarihi KENDİ biçimlemiyor (ikiz biçimleyici yok)', () => {
+  it('⭐ ekran tarihi KENDİ biçimlemiyor (ikiz biçimleyici yok)', () => {
     // İkinci bir `trTarih`/`toLocaleDateString` çağrısı, aynı ISO'dan farklı
     // gün yazabilirdi. Tarih biçimi TEK yerde: `ceviri-kota.ts` → `trTarih`.
-    expect(profil).not.toContain('trTarih(');
-    expect(profil).not.toContain('donemBitis)');
+    for (const kaynak of [profil, abonelikSekmesi]) {
+      expect(kaynak).not.toContain('trTarih(');
+      expect(kaynak).not.toContain('donemBitis)');
+    }
+    expect(abonelikSekmesi).not.toContain('toLocaleDateString');
   });
 });
 
@@ -230,6 +345,36 @@ function ekranMetni(kaynak: string): string {
   return out.join(' | ');
 }
 
+/**
+ * `<button>` / `<Button>` ogelerinin ICINDEKI metin (JSX metni + dizgeler),
+ * dugme basina bir kayit. Bir ifadenin DUGME mi yoksa yol tarifi mi oldugunu
+ * ayirmak icin (23.09).
+ */
+function dugmeMetinleri(kaynak: string): string[] {
+  const sf = ts.createSourceFile('s.tsx', kaynak, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const out: string[] = [];
+  // ⚠ Yalnız ÇOCUKLAR okunur: öznitelik dizgeleri (`type="button"`,
+  // `className`) düğmenin METNİ değildir ve ölçütü kirletirdi.
+  const metni = (n: ts.JsxElement): string => {
+    const parca: string[] = [];
+    const gez = (m: ts.Node): void => {
+      if (ts.isJsxAttributes(m)) return;
+      if (ts.isJsxText(m) || ts.isStringLiteral(m)) parca.push(m.text.replace(/\s+/g, ' ').trim());
+      m.forEachChild(gez);
+    };
+    n.children.forEach(gez);
+    return parca.filter(Boolean).join(' ');
+  };
+  const gez = (n: ts.Node): void => {
+    if (ts.isJsxElement(n) && /^(button|Button)$/.test(n.openingElement.tagName.getText())) {
+      out.push(metni(n));
+    }
+    n.forEachChild(gez);
+  };
+  gez(sf);
+  return out;
+}
+
 describe('⭐ BAGLANTI — iptal /abonelik sayfasindan KALKTI', () => {
   const sayfa = readFileSync(
     join(__dirname, '..', '..', 'app', '(protected)', 'abonelik', 'page.tsx'),
@@ -245,9 +390,14 @@ describe('⭐ BAGLANTI — iptal /abonelik sayfasindan KALKTI', () => {
     // JSX'te metin kendi satirinda girintili durdugu icin dugme geri gelse de
     // ESLESMEZDI (yalanci yesil). Yorum dugum degildir: ekran metni AST'den
     // okunur, pozitif kontrol hesap sayfasindaki GERCEK dugmeyi gorur.
-    const profil = readFileSync(join(__dirname, '..', '..', 'app', '(protected)', 'profile', 'page.tsx'), 'utf8');
-    expect(ekranMetni(profil)).toMatch(/Aboneli(ğ|g)i iptal et/);
-    expect(ekranMetni(sayfa)).not.toMatch(/Aboneli(ğ|g)i iptal et/);
+    // ⚠ 23.09: olcut METINDEN DUGMEYE daraldi. Bu sayfa artik iptalin NEREDE
+    // oldugunu adiyla soyluyor ("Hesabım → Abonelik sekmesi → “Aboneliği iptal
+    // et”"); aranan sey o ifade degil, o ifadeyi TASIYAN DUGME. Olcut dugme
+    // metnini okur — metin eslesmesi yol tarifini de dugme sanardi.
+    const abonelikSekmesi = readFileSync(join(__dirname, '..', 'kimlik', 'hesabim', 'AbonelikSekmesi.tsx'), 'utf8');
+    expect(dugmeMetinleri(abonelikSekmesi).join(' | ')).toMatch(/Aboneli(ğ|g)i iptal et/);
+    expect(dugmeMetinleri(sayfa).length, 'OLCUT: sayfada dugme bulunamadi').toBeGreaterThan(0);
+    expect(dugmeMetinleri(sayfa).join(' | ')).not.toMatch(/iptal et/i);
   });
 
   it('⭐ iptal UCU bu sayfadan cagrilmiyor', () => {
@@ -289,7 +439,9 @@ describe('⭐ /abonelik — mevcut paket işareti', () => {
 
   it('⭐ mevcut paket SUNUCUDAN okunur, ön yüzde yeniden hesaplanmaz', () => {
     expect(sayfa).toContain('data?.erisim');
-    expect(sayfa).toContain('abonelikOzeti(erisim)');
+    // ⚠ 23.09: üçüncü argüman (katalog adı) eklendi; kapı İLK argümana bakar
+    // (çağrı çok satırlı yazılabilir — boşluk serbest).
+    expect(sayfa).toMatch(/abonelikOzeti\(\s*erisim[,)]/);
     expect(sayfa).toContain('p.kod === mevcutPaketKodu');
   });
 
@@ -336,20 +488,44 @@ describe('⭐ iptal yolu — sözleşme metniyle tutarlılık', () => {
     join(__dirname, '..', '..', 'app', '(protected)', 'profile', 'page.tsx'),
     'utf8',
   );
+  // 23.09.2026: Hesabım sekmelere bölündü; iptal düğmesi Abonelik sekmesinde.
+  const abonelikSekmesi = readFileSync(
+    join(__dirname, '..', 'kimlik', 'hesabim', 'AbonelikSekmesi.tsx'),
+    'utf8',
+  );
+  const sekmeler = readFileSync(join(__dirname, '..', 'kimlik', 'hesabim', 'hesabim.ts'), 'utf8');
 
-  it('ÖLÇÜT: sözleşme iptali Profil sayfası + "Abonelik yönetimi" diye tarif ediyor', () => {
-    expect(hukuki).toContain('Profil sayfasını açın, Abonelik kartındaki');
-    expect(hukuki).toContain('Abonelik yönetimi');
+  it('ÖLÇÜT: sözleşme iptali Hesabım › Abonelik sekmesi › düğme diye tarif ediyor', () => {
+    expect(hukuki).toContain(
+      'Hesabım sayfasını açın, Abonelik sekmesine geçin ve \\"Aboneliği iptal et\\" düğmesine basın.',
+    );
+    // Eski tarif (artık ekranda OLMAYAN açılır bölüm) KALMADI. Yorumlar
+    // soyulur: değişikliği ANLATAN not metnin parçası değildir.
+    const metin = hukuki.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+    expect(metin).not.toContain('Abonelik kartındaki');
+    expect(metin).not.toContain('Abonelik yönetimi');
   });
 
-  it('⭐ tarif edilen adım GERÇEKTEN var (hesap sayfasında)', () => {
-    expect(ekranMetni(profil)).toContain('Abonelik yönetimi');
-    expect(profil).toContain("api.post('/abonelik/iptal'");
+  it('⭐ tarif edilen adımlar GERÇEKTEN var (hesap sayfasında)', () => {
+    // 1) "Abonelik" adında bir sekme var ve sayfa onu çiziyor.
+    expect(sekmeler).toContain("abonelik: 'Abonelik',");
+    expect(profil).toMatch(/\babonelik: \(\) => \(?\s*<AbonelikSekmesi\b/);
+    // 2) O sekmede "Aboneliği iptal et" DÜĞMESİ ve gerçek uç çağrısı var.
+    expect(dugmeMetinleri(abonelikSekmesi)).toContain('Aboneliği iptal et');
+    expect(abonelikSekmesi).toContain("api.post('/abonelik/iptal'");
   });
 
   it('⭐ /abonelik ekranı AYNI yolu gösteriyor (düğme değil, yol)', () => {
-    expect(ekranMetni(sayfa)).toContain('Abonelik yönetimi');
+    // JSX metni `&quot;` varlığını çözülmemiş taşır; ölçüt ikisini de kabul eder.
+    expect(ekranMetni(sayfa)).toMatch(/Abonelik sekmesi → (&quot;|")Aboneliği iptal et(&quot;|")\./);
+    // ⚠ Bağ Hesabım'ın KAPISINA gider, Abonelik sekmesine DEĞİL: sekmeyi
+    // doğrudan açan bağ iptali bir tık öne çekerdi (03.09 derinlik kararı —
+    // "iptal en az üç tıklama"). Yol yazıyla tarif edilir, kısaltılmaz.
     expect(sayfa).toContain('href="/profile"');
+    // Yorum soyulur (`ekranMetni` = JSX metni + dizgeler): kararı ANLATAN
+    // not "`?sekme=abonelik` DEĞİL" diye geçer ve ölçütü kirletirdi.
+    expect(ekranMetni(sayfa)).not.toContain('sekme=abonelik');
+    expect(ekranMetni(sayfa)).not.toContain('Abonelik yönetimi');
   });
 });
 
@@ -358,13 +534,19 @@ describe('⭐ BAGLANTI — hesap sayfasi GERCEK kaynagi okuyor', () => {
     join(__dirname, '..', '..', 'app', '(protected)', 'profile', 'page.tsx'),
     'utf8',
   );
+  // 23.09.2026: abonelik kartları Hesabım › Abonelik sekmesine taşındı. Kapılar
+  // aynı kuralı ölçer; ölçülen dosya kartın YENİ yeridir.
+  const sekme = readFileSync(join(__dirname, '..', 'kimlik', 'hesabim', 'AbonelikSekmesi.tsx'), 'utf8');
+  const ekipErisimi = readFileSync(join(__dirname, '..', 'kimlik', 'hesabim', 'EkipErisimiSekmesi.tsx'), 'utf8');
 
-  it('OLCUT: dosya okundu', () => {
+  it('OLCUT: dosyalar okundu', () => {
     expect(profil.length).toBeGreaterThan(0);
+    expect(sekme).toContain('export function AbonelikSekmesi');
   });
 
   it('⭐ rozet ekran adını basıyor, ham durum KODUNU basmıyor', () => {
-    expect(profil).toContain('{ozet.durumEtiketi}');
+    expect(sekme).toContain('{ozet.durumEtiketi}');
+    expect(sekme).not.toContain('{ozet.durum}');
     expect(profil).not.toContain('{ozet.durum}');
   });
 
@@ -372,45 +554,55 @@ describe('⭐ BAGLANTI — hesap sayfasi GERCEK kaynagi okuyor', () => {
     // ⚠ 21.09: ikinci argüman (dönem bitişi) eklendi; kapı İLK argümana bakar.
     // Birebir `abonelikOzeti(erisim)` araması, doğru kaynak korunduğu hâlde
     // yalancı kırmızı verirdi.
-    expect(profil).toMatch(/abonelikOzeti\(erisim[,)]/);
+    // 23.09: çağrı çok satırlı yazıldı; kapı boşluğa takılmaz.
+    expect(profil).toMatch(/abonelikOzeti\(\s*erisim[,)]/);
     expect(profil).not.toContain('profile.subscriptions');
+    expect(sekme).not.toContain('profile.subscriptions');
   });
 
   it('⭐ ESKI `subscriptions` listesi artik ABONELIK olarak gosterilmiyor', () => {
-    expect(profil).not.toContain('Aktif Abonelikler');
-    expect(profil).not.toContain('profile.subscriptions.map');
+    for (const kaynak of [profil, sekme]) {
+      expect(kaynak).not.toContain('Aktif Abonelikler');
+      expect(kaynak).not.toContain('profile.subscriptions.map');
+    }
   });
 
-  it('⭐ iptal bagi ACILIR bolumun ICINDE (dogrudan gorunmuyor)', () => {
-    // ⚠ Kelime aramak YETMEZ: ayni ifade bu bolumun ACIKLAMA yorumunda da
-    // geciyor ve o yorum acilir bloktan ONCE. Gercek DUGMEYE bag: `onClick`
-    // yalnizca calisan elemanda bulunur.
-    const yonetim = profil.indexOf('yonetimAcik &&');
-    const iptal = profil.indexOf('onClick={iptalEt}');
-    expect(yonetim).toBeGreaterThan(-1);
-    expect(iptal).toBeGreaterThan(yonetim);
+  it('⭐ iptal düğmesi Abonelik SEKMESİNDE — Hesabım açılınca doğrudan görünmüyor', () => {
+    // 03.09 kararı "en az üç tıklama". Eskiden ikinci adım "Abonelik yönetimi ▾"
+    // açılır bölümüydü; 23.09'dan beri ABONELİK SEKMESİ. Ölçülen:
+    //   · Hesabım varsayılan olarak Profil sekmesinde açılır,
+    //   · Abonelik kartı yalnız PANEL haritasının `abonelik` girdisidir (sekme
+    //     açılmadan çizilmez — `hesabim.test.ts` BAĞLANTI bloğu ölçer),
+    //   · çalışan düğme (`onClick={iptalEt}`) sayfada DEĞİL sekmededir.
+    expect(VARSAYILAN_SEKME).toBe('profil');
+    expect(profil).toMatch(/\babonelik: \(\) => \(?\s*<AbonelikSekmesi\b/);
+    expect(profil).not.toContain('onClick={iptalEt}');
+    expect(sekme).toContain('onClick={iptalEt}');
+    // İlan edilen yol ekranla aynı adı taşıyor.
+    expect(IPTAL_ADIMLARI[1]).toBe('abonelik-sekmesi');
   });
 
-  it('⭐ yonetim bolumu YALNIZ iptal edilebilir abonelikte cikar', () => {
-    // Yoksa sona ermis/askidaki abonelikte de "Abonelik yonetimi" gorunur
-    // ve tiklayan kullanici bos bir bolum bulur.
+  it('⭐ iptal satırı YALNIZ iptal edilebilir abonelikte çıkar', () => {
+    // Yoksa sona ermiş/askıdaki abonelikte de iptal satırı görünür ve
+    // tıklayan kullanıcı çalışmayan bir düğme bulur.
     // ⚠ 21.09: kosula `sahipMi` eklendi; kapi IKI kosulu da olcer.
-    expect(profil).toContain('{ozet.iptalEdilebilir && sahipMi && (');
+    const sahipDali = sekme.indexOf('{ozet.iptalEdilebilir && sahipMi && (');
+    expect(sahipDali).toBeGreaterThan(-1);
+    expect(sekme.indexOf('onClick={iptalEt}')).toBeGreaterThan(sahipDali);
   });
 
-  it('⭐ iptal DÜĞMESİ yalnız SAHİPTE; üye düğmesiz tek satır bilgi görür', () => {
+  it('⭐ iptal DÜĞMESİ yalnız SAHİPTE; üye ne yapacağını bilir', () => {
     // ÖLÇÜLDÜ: sunucu `POST /abonelik/iptal`i `@FirmaRolu('sahip')` ile
-    // kapatıyor (abonelik.controller.ts). Bölüm role bakmadığı için üye
-    // bağı görüyor, basıyor ve "İptal işlemi tamamlanamadı" alıyordu —
-    // tıklanabilir ama ÇALIŞMAYAN bağ.
-    const uyeDali = profil.indexOf('{ozet.iptalEdilebilir && !sahipMi && (');
-    const sahipDali = profil.indexOf('{ozet.iptalEdilebilir && sahipMi && (');
-    expect(uyeDali).toBeGreaterThan(-1);
-    expect(sahipDali).toBeGreaterThan(uyeDali);
-    // Düğme SAHİP dalının içinde: üye dalında `onClick` YOK.
-    expect(profil.indexOf('onClick={iptalEt}')).toBeGreaterThan(sahipDali);
-    // Üye boş bakmasın: ne yapması gerektiğini söyleyen TEK satır kalır.
-    expect(ekranMetni(profil)).toContain('Aboneliği yalnız firma sahibi iptal edebilir');
+    // kapatıyor (abonelik.controller.ts). 21.09'a kadar üye bağı görüyor,
+    // basıyor ve "İptal işlemi tamamlanamadı" alıyordu — ÇALIŞMAYAN bağ.
+    // 23.09: üye Abonelik sekmesini HİÇ görmez (sekme kararı tek yerde).
+    expect(hesapSekmeleri(false)).not.toContain('abonelik');
+    expect(hesapSekmeleri(true)).toContain('abonelik');
+    // Sekme başka yerde kullanılırsa diye bileşen de sahipliğe bakıyor ve
+    // değer sayfadan geçiyor (yeniden hesaplanmıyor).
+    expect(profil).toContain('sahipMi={sahipMi}');
+    // Üye boş bakmasın: ne yapması gerektiğini Ekip erişimim sekmesi söyler.
+    expect(ekranMetni(ekipErisimi)).toContain('Firma bilgilerini, aboneliği ve faturayı firma yöneticiniz yönetir.');
   });
 
   it('⭐ sahiplik kararı FAIL-CLOSED kaynaktan (üyeye düğme açılmasın)', () => {
@@ -425,10 +617,11 @@ describe('⭐ BAGLANTI — hesap sayfasi GERCEK kaynagi okuyor', () => {
   });
 
   it('⭐ iptal ONAY ister (dorduncu emniyet)', () => {
-    expect(profil).toContain('confirm(');
+    expect(sekme).toContain('confirm(');
   });
 
   it('paket sayfasina yol var (iptal degil, YUKSELTME gorunur olsun)', () => {
-    expect(profil).toContain("router.push('/abonelik')");
+    expect(sekme).toContain('href="/abonelik"');
+    expect(sekme).toContain('Paketleri gör');
   });
 });

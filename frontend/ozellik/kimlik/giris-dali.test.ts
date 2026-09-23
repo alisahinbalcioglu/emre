@@ -218,6 +218,23 @@ describe('iki adimli giris bilesenleri', () => {
     expect(kodu(ham)).toContain('mfa.zorunlu ?');
     expect(ham).toContain('kapatılamaz');
   });
+
+  it('⭐ YONETICIDE kart e-posta kodunu soyler, TOTP kurdurmaz (23.09)', () => {
+    // Sunucu yoneticiyi `acik` denetiminden ONCE `mfa-eposta` dalina aliyor;
+    // kart "Kapalı · Aç" deseydi yonetici hic kullanilmayacak bir uygulama
+    // kururdu. Iki halka: sunucudaki sira + karttaki dal.
+    const karar = kodu(oku('../backend/src/altyapi/auth/mfa/mfa-karari.ts'));
+    const epostaDali = karar.indexOf("if (neden === 'yonetici') return { tip: 'mfa-eposta', neden };");
+    expect(epostaDali, 'sunucuda yonetici dali yok').toBeGreaterThan(-1);
+    expect(karar.indexOf("if (acik) return { tip: 'mfa', neden: null };")).toBeGreaterThan(epostaDali);
+
+    const kart = kodu(oku('ozellik/kimlik/IkiAdimliGirisKarti.tsx'));
+    expect(kart).toContain("const epostaKodu = mfa.zorunlulukNedeni === 'yonetici';");
+    // "Aç" düğmesi ve kurulum adımları yöneticide ÇİZİLMEZ.
+    expect(kart).toContain("{!epostaKodu && adim === 'kapali' && (");
+    expect(kart).toContain("{!epostaKodu && adim !== 'kapali' && (");
+    expect(kart).toContain('const acikGorunur = epostaKodu ||');
+  });
 });
 
 // ---------------------------------------------------------------------------

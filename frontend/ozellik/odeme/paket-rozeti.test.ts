@@ -179,26 +179,45 @@ describe('BAĞLANTI — `?? \'core\'` yedeği beş yerin hiçbirinde geri gelmed
   });
 });
 
+/**
+ * ⚠ 23.09.2026 — Hesabım sekmelere bölündü: paket kartı Abonelik sekmesinde
+ * (`AbonelikSekmesi.tsx`). Karar (`paketliMi`, `ustPaketteMi`) sayfada
+ * hesaplanır ve sekmeye GEÇER; kapılar kartı YENİ yerinde ölçer ve aradaki
+ * bağlantıyı da ölçer — biri koparsa kart eski kararla çizilirdi.
+ */
 describe('BAĞLANTI — müşteri ne yapması gerektiğini anlıyor', () => {
+  const sekme = oku('ozellik/kimlik/hesabim/AbonelikSekmesi.tsx');
+  const sekmeKod = kodu(sekme);
+
+  it('ÖLÇÜT: karar sayfadan sekmeye geçiyor (sekme ikinci kez hesaplamıyor)', () => {
+    expect(profil).toContain('paketliMi={paketliMi}');
+    expect(profil).toContain('ustPaketteMi={ustPaketteMi}');
+    expect(sekmeKod).not.toContain('profile.tier');
+  });
+
   it('⭐ paket YOKKEN paket seçme çağrısı KAYBOLMUYOR', () => {
     // Eski koşul `tier === 'core'` idi: seviye null olunca düğme yok olurdu —
     // tam da ona en çok ihtiyacı olan müşteride.
     expect(KOD.profil).not.toContain("{tier === 'core' && (");
-    expect(profil).toContain('{!ustPaketteMi && (');
-    expect(profil).toContain('Devam etmek için bir paket seçin');
+    expect(sekmeKod).not.toContain("tier === 'core'");
+    expect(sekme).toContain('{!ustPaketteMi && (');
+    expect(sekme).toContain('Devam etmek için bir paket seçin');
   });
 
   it('⭐ paket YOKKEN hak listesi (yeşil tik) gösterilmiyor', () => {
     // "Paket yok" başlığının altında "✓ Sınırsız teklif" yazmak, adı
     // basmayıp HAKLARI basmak olurdu — aynı yalanın devamı.
-    expect(KOD.profil).toContain('{paketliMi && (');
-    expect(KOD.profil).toContain('Sınırsız teklif');
+    const kosul = sekmeKod.indexOf('{paketliMi && (');
+    expect(kosul).toBeGreaterThan(-1);
+    expect(sekmeKod.indexOf('Sınırsız teklif')).toBeGreaterThan(kosul);
   });
 
-  it('paket yokken "Başlangıç paketi" (= Basic tarifi) yazılmıyor', () => {
+  it('paket yokken paket TARİFİ yazılmıyor', () => {
     expect(profil).toContain('const paketliMi =');
-    // Üç yollu: üst paket / paketli / paketsiz. İkisi olsaydı paketsiz hâl
-    // "Başlangıç paketi" dalına düşerdi.
-    expect(profil).toContain('Etkin aboneliğiniz yok');
+    // Eski üç yollu alt satır ("Profesyonel özellikler" / "Başlangıç paketi" /
+    // paketsiz) kalktı; tasarımda alt satır yenilenme günü. Paketsiz hâl
+    // tarif değil DURUM yazar.
+    expect(sekme).toContain("{paketliMi ? ozet.altMetin : 'Etkin aboneliğiniz yok'}");
+    expect(sekme).not.toContain('Başlangıç paketi');
   });
 });

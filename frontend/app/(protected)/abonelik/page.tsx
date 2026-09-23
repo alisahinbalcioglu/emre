@@ -2,13 +2,13 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import api from '@/ortak/lib/api';
-import { KAPSAM_ETIKET, SEVIYE_ETIKET, donemEki, kotaCumlesi, odemeDenemeNotu, vitrinFiyati, type Paket } from '@/ozellik/odeme/paket-bicim';
+import { KAPSAM_ETIKET, SEVIYE_ETIKET, donemEki, kotaCumlesi, odemeDenemeNotu, paketRozeti, vitrinFiyati, type Paket } from '@/ozellik/odeme/paket-bicim';
 import { DenemeSatiri } from '@/ozellik/odeme/DenemeSatiri';
 import { kucultmeUyarisi } from '@/ozellik/firma/ekip/koltuk-metinleri';
 // ⚠ Paket adı/durum rozeti hesap sayfasıyla AYNI saf modülden: "miras-pro"
 // müşteriye teknik kodla gösterilmez, durum kodu ekran adına çevrilir. İkinci
 // bir çeviri yazmak iki ekranda iki farklı isim üretirdi.
-import { abonelikOzeti } from '@/ozellik/odeme/abonelik-ozeti';
+import { abonelikOzeti, paketGorunenAdi } from '@/ozellik/odeme/abonelik-ozeti';
 import {
   ALAN_ETIKET,
   ZORUNLU_ALANLAR,
@@ -88,6 +88,10 @@ export default function AbonelikSayfasi() {
     durum?: string | null;
     kalanGun?: number | null;
   } | null>(null);
+  // Paket SEVİYESİ (`/auth/me` → `tier`, aynı yanıt): paket katalogda yoksa
+  // (satıştan kalktıysa) "Şu anki paketiniz" satırı ham kod yerine seviye
+  // adını basar — Hesabım rozetiyle aynı kural (`paketGorunenAdi`).
+  const [seviye, setSeviye] = useState<string | null>(null);
 
   /**
    * Firmasi KAPATILMIS uye mi? (kendi hesabini kapatan DEGIL.)
@@ -101,6 +105,7 @@ export default function AbonelikSayfasi() {
       const { data } = await api.get('/auth/me');
       setFirmaRol(data?.firmaRol ?? null);
       setErisim(data?.erisim ?? null);
+      setSeviye(typeof data?.tier === 'string' ? data.tier : null);
       // ── 22.09.2026: FIRMASI KAPATILAN UYE PAKET SECEMEZ ──────────────
       // Silinen `/hesap-kapali` ekraninda ayni kural vardi ve orada
       // gerekcesiyle yaziliydi: "Paket sec YALNIZ kendi hesabini kapatana
@@ -114,6 +119,7 @@ export default function AbonelikSayfasi() {
       setFirmaKapandi(false);
       // Bilinmiyor = "paketiniz yok" DEĞİL: hiçbir kart işaretlenmez.
       setErisim(null);
+      setSeviye(null);
     }
     try {
       const { data } = await api.get('/firma/uyeler');
@@ -374,7 +380,12 @@ export default function AbonelikSayfasi() {
   }
 
   // Paket adı ve durum rozeti hesap sayfasıyla AYNI saf modülden gelir.
-  const ozet = abonelikOzeti(erisim);
+  // 23.09: ad KATALOGDAN — "Şu anki paketiniz: pro-mek" yazıyordu.
+  const ozet = abonelikOzeti(
+    erisim,
+    null,
+    paketGorunenAdi(erisim?.paketKodu, paketler, seviye ? paketRozeti(seviye) : null),
+  );
   // `erisim` gelmeden HİÇBİR kart işaretlenmez (yanlış kartı "mevcut" demek,
   // müşteriyi yanlış pakete yükseltmeye iterdi).
   const mevcutPaketKodu = ozet.paketKodu;
@@ -391,10 +402,13 @@ export default function AbonelikSayfasi() {
           ⚠ 03.09 kullanıcı kararı KORUNUYOR: iptal DÜĞMESİ buraya GERİ
           KONMADI ("müşterinin gözüne sokmayalım, iptal en az üç tıklama
           derinlikte olsun"). Burada yalnız iptalin NEREDE olduğu söyleniyor
-          ve bu, Ön Bilgilendirme Formu §9 ile Mesafeli Satış Sözleşmesi §6'nın
-          tarif ettiği yolun BİREBİR aynısıdır (Profil → Abonelik kartı →
-          "Abonelik yönetimi"). Bağı izleyen kullanıcı için derinlik azalmaz:
-          sayfayı aç → bölümü aç → bağa bas → onayla. */}
+          ve bu, Ön Bilgilendirme Formu §9'un adım adım tarif ettiği yolun
+          BİREBİR aynısıdır (23.09 Hesabım tasarımı: Hesabım → Abonelik
+          sekmesi → "Aboneliği iptal et"). Bağı izleyen kullanıcı için derinlik
+          azalmaz: sayfayı aç → sekmeyi aç → düğmeye bas → onayla.
+          ⚠ Bağ BİLEREK `/profile` (Profil sekmesi), `?sekme=abonelik` DEĞİL:
+          doğrudan sekmeyi açan bağ iptali bir tık öne çekerdi (kod incelemesi
+          ölçtü) — 03.09 derinlik kararına aykırı. */}
       {mevcutPaketKodu && (
         <div className="mb-6 rounded-xl border bg-muted/30 px-4 py-3 text-sm">
           <p className="font-medium">
@@ -410,8 +424,8 @@ export default function AbonelikSayfasi() {
             <a href="/profile" className="font-medium text-blue-600 hover:underline">
               Hesabım
             </a>{' '}
-            sayfasındadır. Aboneliğinizi sonlandırmak isterseniz: Hesabım →
-            Abonelik → &quot;Abonelik yönetimi&quot;.
+            sayfasının Abonelik sekmesindedir. Aboneliğinizi sonlandırmak isterseniz: Hesabım →
+            Abonelik sekmesi → &quot;Aboneliği iptal et&quot;.
           </p>
         </div>
       )}

@@ -367,9 +367,13 @@ async function bolumB(): Promise<void> {
   // ⚠ 21.09 EKLENDI: `profile/page.tsx` once DISARIDAYDI (o an baska bir
   //   ajanin dosyasiydi) ve iki `minLength={8}` tasiyordu. Dosya devredilince
   //   sabite baglandi; disarida birakmak kapiyi kendi kusuruna kor birakirdi.
+  // ⚠ 23.09.2026: Hesabim sekmelere bolundu; parola formu artik Guvenlik
+  //   sekmesinde. Sayfanin kendisi parola alani TASIMIYOR — listede kalsaydi
+  //   B9 bos dosyada yesil yanar, formun kendisi disarida kalirdi (21.09'daki
+  //   kusurun aynisi).
   const parolaEkranlari = [
     'frontend/app/register/page.tsx',
-    'frontend/app/(protected)/profile/page.tsx',
+    'frontend/ozellik/kimlik/hesabim/GuvenlikSekmesi.tsx',
     'frontend/app/reset-password/page.tsx',
     'frontend/app/davet-kabul/page.tsx',
   ];
