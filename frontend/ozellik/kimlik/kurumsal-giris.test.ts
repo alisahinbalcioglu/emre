@@ -170,7 +170,7 @@ describe('F2 — /sso/tamam kaynak kapilari', () => {
     expect(kaynak).toMatch(/hesapBaglandi === false/);
     expect(kaynak).toMatch(/firma\/ekip\/kurumsal-giris\?sonuc=sinandi/);
     const metinler = kodu(oku('ozellik/firma/kurumsal-giris/kurumsal-giris-metinleri.ts'));
-    expect(metinler).toContain('hesabınız bu şirket hesabına bağlanmadı');
+    expect(metinler).toContain('hesabın bu şirket hesabına bağlanmadı');
   });
 
   it('F2h sayfa `noindex` ve `no-referrer` tasir', () => {
@@ -287,6 +287,9 @@ describe('F5 — SEO ve hukuki kapilar', () => {
 });
 
 describe('F6 — ayar sayfasi kaynak kapilari', () => {
+  // 23.09.2026: sayfa Ekip sayfasinin ikinci tasarimiyla yeniden yazildi
+  // (uc adim, anahtarlar, bildirimler). Olculen KURALLAR ayni; oncullerin
+  // cumledeki bicimi degisti (`disabled` → `pasif`, "siz" → "sen").
   const kaynak = kodu(oku('app/(protected)/firma/ekip/kurumsal-giris/page.tsx'));
 
   it('F6a ⭐ istemci anahtari ONCEDEN DOLDURULMAZ (sunucu zaten dondurmuyor)', () => {
@@ -294,30 +297,119 @@ describe('F6 — ayar sayfasi kaynak kapilari', () => {
     // diye bir okuma OLMAMALI (yanit boyle bir alan tasimiyor).
     expect(kaynak).not.toMatch(/saglayici\.istemciSirri[^S]/);
     expect(kaynak).toMatch(/placeholder=\{s\?\.sirVar \?/);
+    expect(kaynak).toMatch(/value=\{istemciSirri\}/);
+  });
+
+  it('F6a2 ⭐ tarayici anahtar alanina KAYITLI PAROLAYI yazamaz (23.09 canli ekranda goruldu)', () => {
+    // Duz `type="password"` sayfayi giris formu sandiriyor ve istemci kimligine
+    // e-postayi, anahtara MetaPriceX parolasini dolduruyordu.
+    const anahtar = kaynak.slice(kaynak.indexOf('id="istemci-anahtari"'), kaynak.indexOf('value={istemciSirri}'));
+    expect(anahtar).toContain('type="password"');
+    expect(anahtar).toContain('autoComplete="new-password"');
+    expect(anahtar).toContain('{...YONETICI_YOK}');
+    const kimlik = kaynak.slice(kaynak.indexOf('id="istemci-kimligi"'), kaynak.indexOf('value={clientId}'));
+    expect(kimlik).toContain('autoComplete="off"');
+    expect(kimlik).toContain('{...YONETICI_YOK}');
+    expect(kaynak).toContain("const YONETICI_YOK = { 'data-1p-ignore': true, 'data-lpignore': 'true'");
+    // Sinama parolasi KENDI formunda ve gercek parola alanidir.
+    expect(kaynak).toMatch(/<form onSubmit=\{sina\}>/);
+    expect(kaynak).toContain('autoComplete="current-password"');
   });
 
   it('F6b sinama PAROLA ister (R1-O3)', () => {
     expect(kaynak).toMatch(/amac: 'sinama', parola: sinamaParolasi/);
+    expect(kaynak).toMatch(/disabled=\{islemde \|\| sinamaParolasi === ''\}/);
   });
 
-  it('F6c ⭐ sahibin hesabi bagli degilse "zorunlu" anahtari PASIF + gerekce', () => {
-    expect(kaynak).toMatch(/disabled=\{s\.durum === 'TASLAK' \|\| \(!s\.zorunlu && !baglıMi\)\}/);
-    expect(kaynak).toContain('aksi hâlde siz de giriş yapamazsınız');
+  it('F6c ⭐ yoneticinin hesabi bagli degilse "parolayla girisi kapat" PASIF + gerekce', () => {
+    expect(kaynak).toMatch(/pasif=\{islemde \|\| !etkin \|\| \(!s\.zorunlu && !bagliMi\)\}/);
+    expect(kaynak).toContain('aksi hâlde sen de giriş yapamazsın');
+    // 23.09: Hesabim sekmeli — "Sirket hesabi" karti GUVENLIK sekmesinde; uyari oraya BAGLANIR.
+    expect(kaynak).toContain('href={HESABIM_GUVENLIK_ADRESI}');
+    const metinler = oku('ozellik/firma/kurumsal-giris/kurumsal-giris-metinleri.ts');
+    expect(metinler).toContain("export const HESABIM_GUVENLIK_ADRESI = '/profile?sekme=guvenlik';");
+    expect(metinler).toContain('Hesabım → Güvenlik → Şirket hesabı');
+  });
+
+  it('F6c2 ⭐ acma TEK anahtarda; alt anahtarlar yalniz ACIK ayarda (eski sayfa kendiliginden acardi)', () => {
+    // Ana anahtar sunucunun DOGRULANMADI kuraliyla ayni kosulda pasif.
+    expect(kaynak).toMatch(/pasif=\{islemde \|\| \(!etkin && !acilabilir\)\}/);
+    expect(kaynak).toContain('const acilabilir = acilabilirMi(s);');
+    // Katilim anahtari acik olmayan ayarda cagri URETMEZ.
+    expect(kaynak).toMatch(/etiket="Yeni çalışanlar kendiliğinden katılsın"\s*pasif=\{islemde \|\| !etkin\}/);
+  });
+
+  it('F6c3 ⭐ kapatma ve zorunlu kilma ONCE SORULUR (kapatma parolasiz uyelere e-posta gonderir)', () => {
+    const kapat = kaynak.slice(kaynak.indexOf('async function girisiDegistir'), kaynak.indexOf('async function zorunluDegistir'));
+    expect(kapat.indexOf('await confirm(')).toBeGreaterThan(-1);
+    expect(kapat.indexOf('await confirm(')).toBeLessThan(kapat.indexOf("api.post('/firma/kurumsal-giris/kapat')"));
+    expect(kapat).toContain('if (!onay) return;');
+    const zorunlu = kaynak.slice(kaynak.indexOf('async function zorunluDegistir'), kaynak.indexOf('function sil()'));
+    expect(zorunlu).toMatch(/if \(yeni\) \{\s*const onay = await confirm\(/);
   });
 
   it('F6d silme "SİL" yazdirir', () => {
-    expect(kaynak).toMatch(/disabled=\{silOnayi !== 'SİL'\}/);
+    expect(kaynak).toMatch(/disabled=\{islemde \|\| silOnayi !== 'SİL'\}/);
+    expect(kaynak).toContain("{ data: { onay: silOnayi } }");
   });
 
   it('F6e uye bu adrese gelirse acik metin gorur (403 dali)', () => {
-    expect(kaynak).toContain('Bu sayfayı yalnız firma sahibi görebilir');
+    expect(kaynak).toContain('Bu sayfayı yalnız firma yöneticisi görebilir');
+    expect(kaynak).toMatch(/e\?\.response\?\.status === 403\) setYetkisiz\(true\)/);
   });
 
-  it('F6f Entra kurulum yardimi `xms_edov` ADIMINI icerir (yoksa sinama coker)', () => {
-    const metinler = oku('ozellik/firma/kurumsal-giris/kurumsal-giris-metinleri.ts');
-    expect(metinler).toContain('xms_edov');
-    expect(metinler).toContain('Yönetici onayı ver');
-    expect(metinler).toContain('"Dahili" seçin');
+  it('F6f Entra kurulum yardimi `xms_edov` ADIMINI icerir (yoksa sinama coker)', async () => {
+    // ⚠ 23.09 MUTASYONLA ONARILDI: bu kapi eskiden dosyanin HAM metnini
+    // okuyordu; `xms_edov` dosya basindaki YORUMDA da gectigi icin adim
+    // silinse bile yesil kaliyordu (K16 yasadi). Artik ekranda cizilen DIZI.
+    const m = await import('../firma/kurumsal-giris/kurumsal-giris-metinleri');
+    const entra = m.ENTRA_ADIMLARI.join('\n');
+    expect(entra).toContain('"email" ve "xms_edov" isteğe bağlı taleplerini EKLE');
+    expect(entra).toContain('Yönetici onayı ver');
+    expect(m.GOOGLE_ADIMLARI.join('\n')).toContain('"Dahili" seç');
+  });
+
+  it('F6g sonuc bildirim ile; eski koyu tema siniflari KALMADI', () => {
+    expect(kaynak).toContain("import { toast } from '@/ortak/hooks/use-toast';");
+    expect(kaynak).not.toMatch(/\balert\(|window\.confirm\(/);
+    for (const d of [
+      'app/(protected)/firma/ekip/kurumsal-giris/page.tsx',
+      'ozellik/firma/kurumsal-giris/kurumsal-giris-parcalari.tsx',
+    ]) {
+      const k = kodu(oku(d));
+      expect(k, d).not.toMatch(/text-slate-(?:100|200|300)\b/);
+      expect(k, d).not.toMatch(/bg-slate-9(?:00|50)(?![/\d])/);
+      expect(k, d).not.toMatch(/-950\//);
+    }
+  });
+});
+
+describe('F8 — ayar sayfasi saf kararlari (kurulum ilerlemesi)', () => {
+  it('F8a uc adim: kaydet → sina → ac; sunucu durumundan', async () => {
+    const m = await import('../firma/kurumsal-giris/kurumsal-giris-metinleri');
+    expect(m.kurulumIlerlemesi(null).map((a) => a.tamam)).toEqual([false, false, false]);
+    expect(m.kurulumIlerlemesi({ durum: 'TASLAK', dogrulanmisAlanAdlari: [] }).map((a) => a.tamam)).toEqual([true, false, false]);
+    expect(m.kurulumIlerlemesi({ durum: 'DOGRULANDI', dogrulanmisAlanAdlari: [{}] }).map((a) => a.tamam)).toEqual([true, true, false]);
+    expect(m.kurulumIlerlemesi({ durum: 'ETKIN', dogrulanmisAlanAdlari: [{}] }).map((a) => a.tamam)).toEqual([true, true, true]);
+    // Kapatilan ayar yeniden ACILABILIR (alan adlari durur), ama "Ac" adimi tamam degildir.
+    expect(m.kurulumIlerlemesi({ durum: 'KAPALI', dogrulanmisAlanAdlari: [{}] }).map((a) => a.tamam)).toEqual([true, true, false]);
+  });
+
+  it('F8b ⭐ acilabilirMi sunucunun DOGRULANMADI kuraliyla ayni: TASLAK ya da dogrulanmis alan adi YOK → hayir', async () => {
+    const m = await import('../firma/kurumsal-giris/kurumsal-giris-metinleri');
+    expect(m.acilabilirMi(null)).toBe(false);
+    expect(m.acilabilirMi({ durum: 'TASLAK', dogrulanmisAlanAdlari: [{}] })).toBe(false);
+    expect(m.acilabilirMi({ durum: 'DOGRULANDI', dogrulanmisAlanAdlari: [] })).toBe(false);
+    expect(m.acilabilirMi({ durum: 'KAPALI', dogrulanmisAlanAdlari: [{}] })).toBe(true);
+  });
+
+  it('F8c anahtar suresi 14 gunden az kaldiysa uyari; alan adlari virgulle ayrilir', async () => {
+    const m = await import('../firma/kurumsal-giris/kurumsal-giris-metinleri');
+    const simdi = Date.parse('2026-09-23T00:00:00Z');
+    expect(m.sirBitisYakinMi('2026-10-01T00:00:00Z', simdi)).toBe(true);
+    expect(m.sirBitisYakinMi('2026-12-01T00:00:00Z', simdi)).toBe(false);
+    expect(m.sirBitisYakinMi(null, simdi)).toBe(false);
+    expect(m.alanAdlariniAyir(' firma.com.tr, ,firma.com ')).toEqual(['firma.com.tr', 'firma.com']);
   });
 });
 
