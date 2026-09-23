@@ -40,32 +40,13 @@
  *    "kapalı değil"), yoksa her sayfa açılışında bir an yanıp sönerdi.
  */
 
-import { useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle } from 'lucide-react';
 import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
-import { verileriIndir } from '@/ozellik/kimlik/verileri-indir';
-import { toast } from '@/ortak/hooks/use-toast';
 import { imhaTarihiAyricaYazilsinMi } from './kapali-durum';
 
 export function KapaliHesapSeridi() {
   const { kapali: durum, loading } = useCapabilities();
-  const [indiriliyor, setIndiriliyor] = useState(false);
-
-  async function indir() {
-    setIndiriliyor(true);
-    try {
-      if (!(await verileriIndir())) {
-        toast({
-          variant: 'destructive',
-          title: 'Veriler indirilemedi',
-          description: 'Lütfen birazdan tekrar deneyin.',
-        });
-      }
-    } finally {
-      setIndiriliyor(false);
-    }
-  }
 
   if (loading || !durum) return null;
 
@@ -98,15 +79,15 @@ export function KapaliHesapSeridi() {
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
-        {/* KVKK m.11 — ödemesiz ve hesap kapalıyken de açık. */}
-        <button
-          type="button"
-          onClick={() => void indir()}
-          disabled={indiriliyor}
-          className="rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-800 transition hover:bg-red-100 disabled:opacity-60"
-        >
-          {indiriliyor ? 'Hazırlanıyor…' : 'Verilerimi indir'}
-        </button>
+        {/* ⚠⚠ "VERİLERİMİ İNDİR" DÜĞMESİ 23.09'DA BURADAN KALDIRILDI (Emre).
+            KVKK m.11 hakkı KAYBOLMADI, YER DEĞİŞTİRDİ: `/profile` →
+            "Hesap ayarları ve verilerim" sayfasındaki indirme düğmesi.
+            ⚠ BU İKİSİ AYRILMAZ. Düğmeyi buradan kaldırmak, `/profile` kapalı
+            hesaba AÇIK olmadıkça yasal bir hakkı ERİŞİLMEZ yapardı — düğme
+            kalktığı gün `api.ts` hâlâ kapalı hesabı `/profile`den atıyor
+            olsaydı hak "mekanizma var, bağlantı yok" hâline düşerdi. O yüzden
+            `/profile` AYNI commit'te `KAPALI_HESABIN_KALABILECEGI_YOL`a
+            eklendi ve kapı bu zinciri uçtan uca ölçüyor (K3). */}
 
         {/* `AbonelikSeridi` kapalı hesapta susuyor; onun eylem düğmesi
             KAYBOLMASIN diye buraya taşındı. */}

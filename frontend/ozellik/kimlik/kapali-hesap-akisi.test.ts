@@ -119,11 +119,47 @@ describe('K2/K3 — kapatma bilgisi ve KVKK hakkı ŞERİTTE', () => {
     expect(SERIT).toContain('tarihinde silinecek');
   });
 
-  it('⭐ veri indirme şeritte ve TEK yardımcıdan (düz `<a href>` değil)', () => {
-    const kod = kodu(SERIT);
-    expect(kod).toMatch(/import \{ verileriIndir \}/);
-    expect(kod).toMatch(/verileriIndir\(\)/);
-    expect(kod, 'düz bağlantı Authorization taşımaz').not.toMatch(/href=["'`]\/api\//);
+  /**
+   * ═══════════════════════════════════════════════════════════════════════
+   *  K3 — KVKK m.11 HAKKI ERİŞİLEBİLİR (23.09'da YERİ DEĞİŞTİ)
+   * ═══════════════════════════════════════════════════════════════════════
+   *  22.09'da düğme ŞERİTTEYDİ ve bunun gerekçesi şuydu: kapalı hesap yalnız
+   *  `/abonelik` yolunda kalabiliyordu, yani şeritten kalkarsa hak
+   *  ERİŞİLMEZ olurdu.
+   *
+   *  ⚠ O ÖNERME 23.09'DA ÇÜRÜDÜ ve Emre düğmeyi kaldırttı. Hak kaybolmadı,
+   *  `/profile` → "Hesap ayarları ve verilerim" sayfasına taşındı. Ama bu
+   *  ancak `/profile` kapalı hesaba AÇIKSA doğrudur — açık değilse kullanıcı
+   *  sol alttaki kullanıcı bloğundan tıklar ve `/abonelik`e fırlatılır
+   *  (Emre canlıda tam bunu gördü: "paket sayfası geliyor").
+   *
+   *  Bu yüzden assert ARTIK ZİNCİRİ ölçüyor: düğme şeritte DEĞİL · `/profile`
+   *  yolu açık · o sayfada indirme GERÇEKTEN var · ve uç kapalı hesaba açık.
+   *  Halkalardan biri kopunca kapı kırmızı yanar.
+   */
+  it('⭐⭐ KVKK indirme hakkı ERİŞİLEBİLİR — zincirin dört halkası', () => {
+    // 1) Düğme şeritten KALKTI (Emre 23.09).
+    const serit = kodu(SERIT);
+    expect(serit, 'indirme düğmesi hâlâ şeritte').not.toMatch(/verileriIndir/);
+    expect(serit, 'düz bağlantı Authorization taşımaz').not.toMatch(/href=["'`]\/api\//);
+
+    // 2) `/profile` kapalı hesabın KALABİLECEĞİ yollarda — yoksa ilk 403'te
+    //    kullanıcı oradan atılır ve hakka ULAŞAMAZ.
+    const m = kodu(API).match(/KAPALI_HESABIN_KALABILECEGI_YOL\s*=\s*\n?\s*(\/\^[^;]+)/);
+    expect(m, 'süzgeç bulunamadı').not.toBeNull();
+    expect(m![1], '/profile kapalı hesaba kapalı — KVKK hakkı erişilmez olur')
+      .toContain('profile');
+
+    // 3) O sayfada indirme GERÇEKTEN var (hak bir yere taşındı, buharlaşmadı).
+    const profil = kodu(oku('app/(protected)/profile/page.tsx'));
+    expect(profil, 'profil sayfasında indirme yok').toContain("api.get('/auth/hesabim/verilerim'");
+
+    // 4) Uç kapalı hesaba açık (ödemeye de bağlanamaz).
+    const authCtrl = kodu(oku('../backend/src/altyapi/auth/auth.controller.ts'));
+    const i = authCtrl.indexOf('verilerim');
+    expect(i, 'uç bulunamadı').toBeGreaterThan(-1);
+    expect(authCtrl.slice(Math.max(0, i - 400), i), 'KVKK ucu kapalı hesaba kapalı')
+      .toContain('@KapaliHesapIzinli()');
   });
 
   it('⭐⭐ şerit KENDİ `/auth/me` isteğini ATMAZ — veri bağlamdan gelir', () => {

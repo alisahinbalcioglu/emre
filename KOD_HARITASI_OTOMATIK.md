@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 705
-Toplam satir: 172669
+Toplam satir: 172692
 Uc nokta: 226
 test:* scripti: 113
 
@@ -504,12 +504,12 @@ test:* scripti: 113
 | `frontend/ortak/kabuk/components/layout/Breadcrumb.tsx` | 81 |
 | `frontend/ortak/kabuk/components/layout/DepolamaSeridi.tsx` | 82 |
 | `frontend/ortak/kabuk/components/layout/EpostaDogrulamaSeridi.tsx` | 83 |
-| `frontend/ortak/kabuk/components/layout/KapaliHesapSeridi.tsx` | 125 |
+| `frontend/ortak/kabuk/components/layout/KapaliHesapSeridi.tsx` | 106 |
 | `frontend/ortak/kabuk/components/layout/Sidebar.tsx` | 219 |
 | `frontend/ortak/kabuk/components/layout/kapali-durum.ts` | 80 |
 | `frontend/ortak/kabuk/components/layout/kirinti-etiketi.ts` | 84 |
 | `frontend/ortak/lib/api-401-kapsami.test.ts` | 676 |
-| `frontend/ortak/lib/api.ts` | 287 |
+| `frontend/ortak/lib/api.ts` | 293 |
 | `frontend/ortak/lib/kimlik-hata-metinleri.ts` | 149 |
 | `frontend/ortak/lib/oturum.test.ts` | 170 |
 | `frontend/ortak/lib/oturum.ts` | 113 |
@@ -570,7 +570,7 @@ test:* scripti: 113
 | `frontend/ozellik/kimlik/ZorunluKurulumSihirbazi.tsx` | 166 |
 | `frontend/ozellik/kimlik/dogrulama-bekleniyor.test.ts` | 178 |
 | `frontend/ozellik/kimlik/giris-dali.test.ts` | 268 |
-| `frontend/ozellik/kimlik/kapali-hesap-akisi.test.ts` | 566 |
+| `frontend/ozellik/kimlik/kapali-hesap-akisi.test.ts` | 602 |
 | `frontend/ozellik/kimlik/kapatma-metinleri.test.ts` | 300 |
 | `frontend/ozellik/kimlik/kapatma-metinleri.ts` | 190 |
 | `frontend/ozellik/kimlik/kapatma-onizleme-getir.ts` | 47 |
@@ -1165,7 +1165,7 @@ test:* scripti: 113
 | `frontend/ortak/kabuk/components/layout/Breadcrumb.tsx` | `next/navigation` `next/link` `lucide-react` `./kirinti-etiketi` |
 | `frontend/ortak/kabuk/components/layout/DepolamaSeridi.tsx` | `react` `next/link` |
 | `frontend/ortak/kabuk/components/layout/EpostaDogrulamaSeridi.tsx` | `react` `lucide-react` `@/ortak/lib/api` `@/ortak/contexts/CapabilitiesContext` |
-| `frontend/ortak/kabuk/components/layout/KapaliHesapSeridi.tsx` | `react` `next/link` `lucide-react` `@/ortak/contexts/CapabilitiesContext` `@/ozellik/kimlik/verileri-indir` `@/ortak/hooks/use-toast` `./kapali-durum` |
+| `frontend/ortak/kabuk/components/layout/KapaliHesapSeridi.tsx` | `next/link` `lucide-react` `@/ortak/contexts/CapabilitiesContext` `./kapali-durum` |
 | `frontend/ortak/kabuk/components/layout/Sidebar.tsx` | `next/navigation` `next/link` `@/ortak/lib/utils` `@/ozellik/odeme/paket-bicim` |
 | `frontend/ortak/kabuk/components/layout/kirinti-etiketi.ts` | `react` |
 | `frontend/ortak/lib/api-401-kapsami.test.ts` | `vitest` |
