@@ -54,6 +54,17 @@ describe('abonelikOzeti', () => {
     expect(o.iptalEdilebilir).toBe(false);
   });
 
+  it('⭐ 23.09 VİTRİN: paketi HİÇ olmamış yeni hesaba "Sona erdi" rozeti YAZILMAZ', () => {
+    // Sunucu "abonelik satırı yok" dalında durumu teknik olarak SONA_ERDI taşır.
+    const yeni = abonelikOzeti({ paketKodu: '', durum: 'SONA_ERDI', kalanGun: null, vitrin: true });
+    expect(yeni.baslik).toBe('Abonelik yok');
+    expect(yeni.durumEtiketi).toBe('');
+    // Süresi BİTMİŞ abone (vitrin değil) nedeni rozette okumaya devam eder.
+    const biten = abonelikOzeti({ paketKodu: '', durum: 'SONA_ERDI', kalanGun: null });
+    expect(biten.durumEtiketi).toBe('Sona erdi');
+    expect(abonelikOzeti({ paketKodu: '', durum: 'SONA_ERDI', kalanGun: null, vitrin: false }).durumEtiketi).toBe('Sona erdi');
+  });
+
   it('⭐ goc paketi musteriye TEKNIK KODLA gosterilmez', () => {
     const o = abonelikOzeti({ paketKodu: 'miras-pro', durum: 'AKTIF', kalanGun: 300 });
     expect(o.baslik).toBe('Geçiş paketi');

@@ -4,7 +4,8 @@ import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
-import { icerikDurdurulsunMu, type ErisimUyarisi } from './erisim-durumu';
+import { icerikDurdurulsunMu, vitrinKartiGosterilsinMi, type ErisimUyarisi } from './erisim-durumu';
+import { VitrinBolumKarti } from './VitrinBolumKarti';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -48,6 +49,14 @@ export function ErisimKapisi({ children }: { children: ReactNode }) {
       </div>
     );
   }
+
+  // 23.09.2026 — VİTRİN (paketsiz YENİ hesap): duvar YOK. Gezilebilir yolda
+  // sayfa açılır (aşağıdaki `icerikDurdurulsunMu` vitrinde `false` döner);
+  // gezilemeyen yolda "bu bölüm paket seçince açılır" kartı. Kart `children`
+  // YERİNE çizilir → sayfa mount olmaz, yetenekli uca istek yola çıkmaz.
+  // ⚠ SIRA: bu dal `icerikDurdurulsunMu`dan ÖNCE — yoksa gezilemeyen yol
+  //   da "durdurma yok" deyip sayfayı açar ve 403'ler geri gelirdi.
+  if (vitrinKartiGosterilsinMi(erisim, yol)) return <VitrinBolumKarti yol={yol} />;
 
   // ⚠ UCUNCU ARGUMAN SART: kapatilmis hesabin `erisimVar`i FALSE'tur
   //   (kapatma aboneligi iptal eder). Gecilmezse `/quotes` ve `/library`

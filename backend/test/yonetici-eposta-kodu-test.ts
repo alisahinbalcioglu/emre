@@ -42,6 +42,8 @@ import {
 import { MEYDAN_OKUMA_OMRU_SN } from '../src/altyapi/auth/mfa/meydan-okuma';
 import { girisKarariSaf } from '../src/altyapi/auth/mfa/mfa-karari';
 import { mfaGirisKoduEpostasi } from '../src/altyapi/auth/mfa/mfa-epostalari';
+import { EpostaServisi } from '../src/ozellik/odeme/eposta/eposta.servisi';
+import { ConfigService } from '@nestjs/config';
 
 let passed = 0;
 let failed = 0;
@@ -302,8 +304,37 @@ function main(): void {
   const posta = mfaGirisKoduEpostasi('a@b.test', '424242', 10);
   check('G1 ⭐⭐ kod KONU satirinda YOK (kilitli ekran bildiriminde gorunur)',
     !posta.konu.includes('424242'), posta.konu);
-  check('G2 kod govdede VAR (yoksa posta ise yaramaz)',
-    posta.paragraflar.some((p) => p.includes('424242')));
+  // ⚠ 23.09.2026 — G2 ESKIDEN `posta.paragraflar`a bakiyordu: VERI yapisini
+  // olcuyordu, musterinin GORDUGUNU degil. Kod paragrafa `<strong …>` olarak
+  // gomuluydu; sablon paragrafi (dogru bicimde) kacisladigi icin postada
+  // etiket OLDUGU GIBI yazdi — ve G2 YESILDI, cunku "424242" dizgesi veride
+  // gercekten vardi. Asagidakiler ISLENMIS postayi olcer (`icerikUret`, SMTP'siz).
+  const islenmis = new EpostaServisi(new ConfigService({})).icerikUret(posta);
+  const kodBlogu = islenmis.html.indexOf('>424242<');
+  check('G2a ⭐⭐ kod HTML govdede TEK BASINA bir ogede (etiket icinde metin degil)',
+    kodBlogu !== -1, 'aranan: ">424242<"');
+  check('G2b ⭐⭐ postada KACISLANMIS ETIKET YOK (musteri "<strong style=…" okumasin)',
+    !/&lt;\/?(strong|b|span|em)\b/.test(islenmis.html),
+    (islenmis.html.match(/&lt;[^&]{0,40}/) ?? [''])[0]);
+  check('G2c ⭐ kod DUZ METIN govdede de VAR (ikiz: HTML okumayan istemci)',
+    islenmis.metin.split('\n').includes('424242'),
+    'kod kendi satirinda olmali');
+  check('G2d duz metin govdede HTML etiketi YOK',
+    !/<\/?[a-z]+[\s>]/i.test(islenmis.metin));
+  check('G2e kod BUYUK ve ORTALI (Emre: "mailin ortasinda buyuk ve renkli")',
+    /<td align="center"[^>]*>\s*<span[^>]*font-size:36px/.test(islenmis.html));
+  // G1'in gerekcesi (kilitli ekran) govdenin ONIZLEMESI icin de gecerli:
+  // onizleme metni kodun ONUNDE durmali ve kodu ICERMEMELI.
+  const onizlemeBas = islenmis.html.indexOf('display:none;max-height:0');
+  const onizlemeSon = islenmis.html.indexOf('</div>', onizlemeBas);
+  check('G2f ⭐ onizleme metni kodun ONUNDE (bildirim govdenin ilk metnini gosterir)',
+    onizlemeBas !== -1 && onizlemeBas < kodBlogu, `onizleme=${onizlemeBas} kod=${kodBlogu}`);
+  check('G2g ⭐ onizleme metni KODU ICERMIYOR (kilitli ekranda gorunmesin)',
+    onizlemeBas !== -1 && !islenmis.html.slice(onizlemeBas, onizlemeSon).includes('424242'));
+  // FIXTURE KANITI: kodsuz posta onizleme metni ALMAZ — dal gercekten `kod`a bagli.
+  const kodsuz = new EpostaServisi(new ConfigService({})).icerikUret({ ...posta, kod: undefined });
+  check('G2h kodsuz postada onizleme metni YOK (dal `kod` alanina bagli)',
+    !kodsuz.html.includes('display:none;max-height:0'));
   check(
     'G3 ⭐ yanit kodu DONMUYOR (donseydi kutuya erisimi olmayan da girerdi)',
     !/return \{ gonderildi: true[^}]*kod/.test(servis),
@@ -317,6 +348,48 @@ function main(): void {
     'G5 ⭐ semada alan adi "Ozeti" (duz kod saklandigi izlenimi vermesin)',
     /mfaEpostaKoduOzeti\s+String\?/.test(oku('backend/prisma/schema.prisma')),
   );
+
+  // ── H · GENEL: POSTA VERISINDE HTML YOK (23.09.2026) ─────────────────────
+  // Paragraflar, `altNot` ve `baslik` sablonda KACISLANIR. Veriye HTML yazan
+  // her sablon, musteriye etiketi CIPLAK gosterir. Bu hata bir kez yasandi ve
+  // G2 onu GOREMEDI (veriyi olcuyordu); asagidaki tarama ayni sinifi TUM
+  // posta ureten dosyalarda yakalar. `eposta.servisi.ts` HARIC: isaretlemenin
+  // SAHIBI odur, HTML'i orada yazilir.
+  console.log('\n── H · genel: posta verisi duz metin ──');
+  const HTML_ETIKETI =
+    /<\/?(strong|b|i|em|u|span|div|p|a|br|table|tr|td|h[1-6]|ul|ol|li|img|font|small|code)\b[^>]*>/;
+  // FIXTURE KANITI: dedektor bilinen-kotu ornegi GORUYOR (kor olcut yesil verirdi).
+  check('H-OLCUT dedektor canli kusurun AYNISINI yakaliyor',
+    HTML_ETIKETI.test('`Kodunuz: <strong style="font-size:22px">${kod}</strong>`'));
+  check('H-OLCUT dedektor TS generic`i etiket SANMIYOR (Array<string>, Promise<void>)',
+    !HTML_ETIKETI.test('Array<string>') && !HTML_ETIKETI.test('Promise<void>'));
+
+  const fsTara = require('node:fs') as typeof import('node:fs');
+  const tsDosyalari = (kok: string): string[] =>
+    fsTara.readdirSync(kok, { withFileTypes: true }).flatMap((g) =>
+      g.isDirectory() ? tsDosyalari(join(kok, g.name))
+        : g.name.endsWith('.ts') ? [join(kok, g.name)] : []);
+  const postaUretenler = tsDosyalari(join(__dirname, '../src')).filter(
+    (f) => !f.replace(/\\/g, '/').endsWith('ozellik/odeme/eposta/eposta.servisi.ts') &&
+      /\bparagraflar\s*:/.test(fsTara.readFileSync(f, 'utf8')),
+  );
+  check('H-OLCUT posta ureten dosyalar bulundu (tarama bos kume uzerinde yesil vermesin)',
+    postaUretenler.length >= 4, `bulunan=${postaUretenler.length}`);
+
+  const ihlaller: string[] = [];
+  for (const f of postaUretenler) {
+    const satirlar = fsTara
+      .readFileSync(f, 'utf8')
+      .replace(/\r\n/g, '\n')
+      .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ''))
+      .split('\n');
+    satirlar.forEach((s, i) => {
+      if (/^\s*\/\//.test(s)) return;
+      if (HTML_ETIKETI.test(s)) ihlaller.push(`${f.split(/[\\/]src[\\/]/)[1]}:${i + 1}`);
+    });
+  }
+  check('H1 ⭐⭐ HICBIR posta sablonu veriye HTML etiketi yazmiyor',
+    ihlaller.length === 0, ihlaller.join(' · '));
 
   console.log(
     `\n================================================================\n` +

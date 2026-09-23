@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import api from '@/ortak/lib/api';
 import { toast } from '@/ortak/hooks/use-toast';
 import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
+import { useVitrin } from '@/ozellik/odeme/VitrinSaglayici';
 import { confirm } from '@/ortak/hooks/use-confirm';
 import { silmeOnayMetni } from '@/lib/silme-onay-metni';
 import { silmeEtkisiGetir } from '@/lib/silme-etkisi-getir';
@@ -29,6 +30,9 @@ export default function MechanicalPoolPage() {
   const [isLoading, setIsLoading] = useState(true);
   const isAdmin = getRole() === 'admin';
   const { izinVar } = useCapabilities();
+  // 23.09.2026 — VİTRİN: paketsiz yeni hesap havuzu GEZER; aktarım (iş)
+  // istek atmadan paket penceresini açar (uç zaten 403 döner).
+  const { vitrin, pencereAc } = useVitrin();
 
   const [addOpen, setAddOpen] = useState(false);
   const [newBrandName, setNewBrandName] = useState('');
@@ -138,6 +142,7 @@ export default function MechanicalPoolPage() {
                     <Button variant="ghost" size="sm" className="h-7 w-full text-[11px] text-primary hover:bg-primary/10"
                       onClick={async (e) => {
                         e.preventDefault();
+                        if (vitrin) { pencereAc('kutuphane'); return; }
                         try {
                           const { data } = await api.get(`/brands/${b.id}/price-lists`);
                           const lists = data.priceLists;

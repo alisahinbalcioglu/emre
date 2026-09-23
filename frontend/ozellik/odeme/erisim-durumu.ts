@@ -39,6 +39,13 @@ export interface ErisimUyarisi {
 export interface ErisimKarari {
   erisimVar: boolean;
   saltOkunur: boolean;
+  /**
+   * 23.09.2026 — VİTRİN: aboneliği HİÇ olmamış (yeni) firma. Sunucu yalnız
+   * "abonelik satırı yok" dalında yazar (`erisim.servisi.ts`); erişim yine
+   * KAPALIDIR, bayrak yalnız "duvar çizme, gezdir" der. Alan yoksa vitrin
+   * DEĞİLDİR (eski sunucu → eski duvar; güvenli yön).
+   */
+  vitrin?: boolean;
   durum: AbonelikDurumu;
   uyari: ErisimUyarisi | null;
   kalanGun: number | null;
@@ -151,6 +158,63 @@ const KAPALI_HESABIN_OKUYABILECEGI_YOL =
   /^\/(dashboard|quotes|library|quote-formats)(\/|$)/;
 
 /**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  VİTRİN — PAKETSİZ YENİ HESABIN GEZEBİLDİĞİ YOLLAR (23.09.2026 — Emre)
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ *  Emre: "ana sayfa her şey açılsın, kullanıcının önüne gelsin; kullanıcı
+ *  paket seçsin (kart bilgisini girip), ödeme 30 günün sonunda çekilsin."
+ *  Karar: "yalnızca gezsin" — bir işe başlamak için paket seçer.
+ *
+ *  ⚠ LİSTE ÖLÇÜYLE SEÇİLDİ: buradaki her sayfa YÜKLENİRKEN yalnız yetenek
+ *    TAŞIMAYAN uçlara gider — pano `GET /panel/ozet` + `GET /quotes`, teklif
+ *    listesi `GET /quotes`, Malzeme Havuzu `GET /brands*`, Ekip
+ *    `GET /firma/uyeler`; Kütüphanem ana sayfası hiç istek atmaz. Vitrin
+ *    sunucuda HİÇBİR yetenek açmaz; yüklenirken yetenekli uca giden bir
+ *    sayfayı buraya eklemek o sayfada 403 kırmızı bildirimini geri getirir
+ *    (22.09'da kabuğa taşınan kusur).
+ *
+ *  ⚠ `/quotes`, `/library`, `/firma/ekip` TAM EŞLEŞİR: `/quotes/new` teklif
+ *    HAZIRLAR (iş) ve `/library/...` alt sayfaları yetenekli uçlardan
+ *    yüklenir. Kurumsal giriş ayarı (`/firma/ekip/kurumsal-giris`) yeteneksiz
+ *    uçtan yüklenir ama bir AYAR/İŞ sayfasıdır; vitrinde kart görmesi ÜRÜN
+ *    tercihidir (inceleme S1, 24.09 — önceki gerekçe yanlıştı). `/materials`,
+ *    `/abonelik`, `/profile`, `/koltuk-durduruldu` alt yollarıyla açıktır.
+ *
+ *  ⚠ LİSTEDE OLMAYAN HER YOL (bilinmeyen yeni sayfa DAHİL) içerik yerine
+ *    "bu bölüm paket seçince açılır" kartını görür — güvenli yön. Tersi
+ *    (varsayılan açık) unutulan her yeni sayfada kırmızı hata üretirdi.
+ */
+const VITRINDE_GEZILEBILIR_TAM_YOL = /^\/(dashboard|quotes|library|firma\/ekip)$/;
+const VITRINDE_GEZILEBILIR_ONEK_YOL = /^\/(materials|abonelik|profile|koltuk-durduruldu)(\/|$)/;
+
+/**
+ * Paketsiz YENİ hesap (vitrin) mı? İş başlatan düğmeler bunu okuyup işlem
+ * yerine paket penceresini açar.
+ *
+ * ⚠ `erisimVar` AYRICA sınanır: bayrak açık bir kararda gelirse (sunucu bunu
+ * yapmaz) vitrin SAYILMAZ — aksi halde ödemiş müşterinin düğmeleri pencereye
+ * dönerdi. Yanlış yön "vitrin değil"dir.
+ */
+export function vitrinMi(karar: ErisimKarari | null | undefined): boolean {
+  return karar?.vitrin === true && karar.erisimVar !== true;
+}
+
+/** Vitrinde bu yolun sayfası gezilebilir mi? (liste yukarıda, gerekçesiyle) */
+export function vitrindeGezilebilirMi(yol: string): boolean {
+  return VITRINDE_GEZILEBILIR_TAM_YOL.test(yol) || VITRINDE_GEZILEBILIR_ONEK_YOL.test(yol);
+}
+
+/**
+ * Sayfa içeriği yerine "paket seçince açılır" kartı mı çizilmeli?
+ * Yalnız vitrinde ve gezilemeyen yolda `true`. Kart çizilince sayfa HİÇ mount
+ * olmaz → yüklenirken yetenekli uca gidecek istekler YOLA ÇIKMAZ.
+ */
+export function vitrinKartiGosterilsinMi(karar: ErisimKarari | null, yol: string): boolean {
+  return vitrinMi(karar) && !vitrindeGezilebilirMi(yol);
+}
+
+/**
  * Sayfa icerigi yerine "erisiminiz kapali" ekrani mi cizilmeli?
  *
  *  ── NEDEN SAYFA SAYFA DEGIL, KABUKTA ────────────────────────────────────
@@ -177,6 +241,13 @@ export function icerikDurdurulsunMu(
 ): boolean {
   if (!karar) return false;
   if (karar.erisimVar) return false;
+  // 23.09.2026 — VİTRİN DUVAR GÖRMEZ (Emre: "ana sayfa her şey açılsın,
+  // kullanıcının önüne gelsin"). Gezilemeyen bölümde içerik yine değişir
+  // ama DUVARLA değil "paket seçince açılır" kartıyla — o karar AYRI
+  // (`vitrinKartiGosterilsinMi`), çünkü kart duvar değildir: şerit de durur.
+  // ⚠ Bu satır `false` döndüğü için `AbonelikSeridi` vitrinde HER sayfada
+  //   çizilir (şeridin "içerik durdurulduysa sus" kuralı buradan okur).
+  if (vitrinMi(karar)) return false;
   // 22.09: kapatilmis hesap tekliflerini/kutuphanesini OKUYABILIR. Bu dal
   // olmasaydi `erisimVar: false` (kapatma aboneligi iptal eder) yuzunden
   // `/quotes` icerigi "paket secin" ekraniyla degistirilir, Emre'nin

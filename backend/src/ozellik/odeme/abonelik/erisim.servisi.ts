@@ -99,6 +99,26 @@ export const KAPALI_HESAPTA_ACIK: ReadonlySet<Yetenek> = new Set([
 export interface ErisimKarari {
   erisimVar: boolean;
   saltOkunur: boolean;
+  /**
+   * VİTRİN (23.09.2026 — Emre kararı): aboneliği HİÇ OLMAMIŞ firma, yani
+   * yeni açılmış hesap. Emre'nin cümlesi: "ana sayfa her şey açılsın,
+   * kullanıcının önüne gelsin; kullanıcı paket seçsin (kart bilgisini
+   * girip), ödeme 30 günün sonunda çekilsin." Karar: "yalnızca gezsin".
+   *
+   * ⚠ BU BAYRAK SUNUCUDA HİÇBİR YETENEK AÇMAZ. `erisimVar` FALSE kalır ve
+   *   `yetenekKararla` vitrini ASKIDA_ACIK kümesine düşürür (yalnız
+   *   `ABONELIK_YONET`). Gezilen sayfalar zaten yeteneksiz uçlardan
+   *   beslenir (teklif listesi, pano sayaçları, havuz markaları, ekip
+   *   listesi); bayrak yalnız ön yüze "duvar çizme, uygulamayı gezdir" der.
+   *
+   * ⚠ Alan YOKSA (`undefined`) vitrin DEĞİLDİR — fail-closed: eski ya da
+   *   dalı unutan bir karar duvarı geri getirir, erişim açmaz.
+   *
+   * ⚠ Süresi biten / askıya alınan / kapatılan hesap vitrin DEĞİLDİR
+   *   (Emre: "süresi biten eski aboneler bu işin dışında"). Bayrak yalnız
+   *   `karar()`ın ABONELİK SATIRI YOK dalında yazılır.
+   */
+  vitrin?: boolean;
   durum: AbonelikDurumu;
   /** Kullanıcıya gösterilecek uyarı — null ise uyarı yok. */
   uyari: {
@@ -122,9 +142,55 @@ export interface ErisimKarari {
   paketGecisi?: { tarih: string; planliPaket: { kod: string; ad: string } | null } | null;
 }
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  HAVUZ FİYATI KİME GÖRÜNÜR (23.09.2026 — Emre kararı)
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ *  Emre: paketsiz kullanıcı Malzeme Havuzu'nda "markalar ve ürünler
+ *  görünsün, FİYATLAR PAKETLE AÇILSIN" — kataloğun genişliği görünür ama
+ *  asıl değer olan fiyat bedava verilmez.
+ *
+ *  KURAL: fiyat, erişimi YÜRÜYEN firmaya görünür (`erisimVar`). Bu, satın
+ *  alınan paketin kendisidir: DENEME, AKTİF, tolerans (ODEME_BEKLIYOR),
+ *  salt-okunur (KISITLI — ödemesi geciken müşteri, kataloğu görmeye devam
+ *  eder) ve ödenmiş dönemi süren İPTAL. Vitrin, askı ve süresi dolmuş satır
+ *  GÖRMEZ. (Kapatılmış hesap bu uca hiç ULAŞAMAZ: uç `@KapaliHesapIzinli`
+ *  taşımaz, `JwtAuthGuard` 403 `HESAP_KAPALI` döner.)
+ *
+ *  ⚠ YÖNETİCİ HER ZAMAN görür: havuzu o yükler ve denetler; kendi
+ *    firmasının paketi olmasa da listeyi doğrulayabilmeli.
+ *
+ *  ⚠ YALNIZ HAVUZ listesine uygulanır. Firmanın KENDİ listesi (Kütüphanem,
+ *    `ownerUserId` dolu) firmanın ticari verisidir ve hiçbir durumda
+ *    gizlenmez — "verinizi rehin almıyoruz". Ayrım `brands.service.ts`
+ *    `getPriceListMaterials`te.
+ *
+ *  ⚠ NEDEN GEREKLİ (ölçüldü, 23.09): `GET /brands/price-lists/:id/materials`
+ *    `@GerekliYetenek` TAŞIMIYOR — `ErisimGuard` yeteneksiz ucu geçirir.
+ *    Yani paketsiz hesap havuz fiyatlarını API'den BUGÜN de alabiliyordu;
+ *    ekranı yalnız kabuktaki duvar gizliyordu. Vitrin duvarı kaldırınca
+ *    kural sunucuda uygulanmak ZORUNDA.
+ */
+export function havuzFiyatiGorunurMu(
+  karar: Pick<ErisimKarari, 'erisimVar'> | null | undefined,
+  rol?: string | null,
+): boolean {
+  if (rol === 'admin') return true;
+  return karar?.erisimVar === true;
+}
+
 @Injectable()
 export class ErisimServisi {
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Bu firmanın kullanıcısı HAVUZ fiyatını görür mü? Kural saf
+   * `havuzFiyatiGorunurMu`da; burası yalnız kararı getirir.
+   */
+  async havuzFiyatiGorunurMu(firmaId: string, rol?: string | null): Promise<boolean> {
+    return havuzFiyatiGorunurMu(await this.karar(firmaId), rol);
+  }
 
   private gunFarki(hedef: Date, simdi: Date): number {
     return Math.ceil((hedef.getTime() - simdi.getTime()) / 86_400_000);
@@ -144,15 +210,26 @@ export class ErisimServisi {
     });
 
     if (!ab) {
+      // ── VİTRİN (23.09.2026) ─────────────────────────────────────────────
+      // Abonelik satırı HİÇ YOK = hiç paket seçmemiş (yeni) firma. Satır
+      // yalnız satın alma ve havale yollarında açılır; süresi biten satır
+      // SİLİNMEZ, `SONA_ERDI` olarak durur — yani bu dal eski aboneyi
+      // KAPSAMAZ. Erişim yine KAPALI (`erisimVar: false`); `vitrin` yalnız
+      // ön yüze "duvar çizme, gezdir" der. Uyarı KIRMIZI değil BİLGİ: yeni
+      // kullanıcı bir şey kaybetmedi, henüz başlamadı. Deneme satırı
+      // ("30 gün ücretsiz…") burada YAZILMAZ: deneme hakkı kişiye bağlıdır
+      // (firma + e-posta + doğrulama), bu karar firma ekseninde verilir —
+      // ön yüz satırı `/abonelik/paketler`in firma+kişi kararından kurar.
       return {
         erisimVar: false,
         saltOkunur: false,
+        vitrin: true,
         durum: AbonelikDurumu.SONA_ERDI,
         uyari: {
-          seviye: 'kritik',
-          baslik: 'Aboneliğiniz bulunmuyor',
-          metin: 'Devam etmek için bir paket seçin.',
-          eylem: { etiket: 'Paketleri gör', yol: '/abonelik' },
+          seviye: 'bilgi',
+          baslik: 'Paketinizi seçin',
+          metin: 'Uygulamayı gezebilirsiniz; teklif hazırlamak için bir paket seçin.',
+          eylem: { etiket: 'Paket seç', yol: '/abonelik' },
         },
         kalanGun: null,
         paketKodu: '',

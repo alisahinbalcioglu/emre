@@ -262,6 +262,16 @@ const EKRANLAR = [
   'app/(protected)/library/electrical-brands/page.tsx',
   'ortak/kabuk/components/dashboard/QuickAccess.tsx', // sahipsizdi, bu turda G3'e eklendi
   'app/(protected)/dashboard/page.tsx', // G1'in dosyası — G1 21.09'da düzeltti (bkz. Kullanicilar→Kullanıcılar)
+  // 23.09.2026 — VİTRİN (paketsiz yeni hesap): şerit/pencere metinleri, bölüm
+  // kartı ve deneme satırı. Yeni hesabın İLK gördüğü ekranlar; inceleme (S3,
+  // 24.09) listede olmadıklarını yakaladı — bugünkü metin doğru, yarın
+  // yazılacak karaktersiz cümle kaçardı.
+  'ozellik/odeme/vitrin-metinleri.ts',
+  'ozellik/odeme/VitrinSaglayici.tsx',
+  'ozellik/odeme/VitrinBolumKarti.tsx',
+  // Vitrin önizlemesinde görüldü (24.09): Ana Sayfa'nın "Son Teklifler" kutusu
+  // yeni hesabın ilk ekranında "Henuz teklif olusturulmadi" yazıyordu.
+  'ozellik/teklif/dashboard/RecentQuotes.tsx',
 ];
 
 describe('Ödeme / abonelik / paket ekranları, teklif tablosu ve kabukta karaktersiz Türkçe yok', () => {

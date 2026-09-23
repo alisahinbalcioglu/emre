@@ -669,6 +669,14 @@ const SUITES: Suite[] = [
   // hiçbir şeyi geri almaz, iptal/yeniden abonelik planı siler. DB/AĞ/iyzico
   // GEREKTİRMEZ.
   { ad: 'Paket değişimi: hak · yol · tarih · servis · planlı geçiş · webhook · temizlik · bağlantı (H/Y/T/S/G/E/W/R/B)', script: 'test:paket-degisimi', zincir: 'Z0' },
+  // 23.09 (Emre kararı): paketsiz YENİ hesap duvar görmez, uygulamayı GEZER
+  // ("yalnızca gezsin"); Malzeme Havuzu'nda "fiyatlar paketle açılsın".
+  // ⚠ En kritik kalkan V5: vitrin sunucuda HİÇBİR yetenek açmaz — "gezsin"
+  //   cümlesi "kullansın"a kayarsa (bir yetenek kümeye sızarsa) kırmızı.
+  //   H6 ★BAĞLANTI: gerçek uç → gerçek erişim kararı → fiyat gizleme zinciri;
+  //   kişisel liste (firmanın KENDİ verisi) hiçbir durumda gizlenmez (H5).
+  //   DB GEREKTİRMEZ.
+  { ad: 'Vitrin: paketsiz yeni hesap gezer, iş ve havuz fiyatı kapalı (V/G/S/H/U)', script: 'test:vitrin', zincir: 'Z0' },
 ];
 
 // ── SKIP DEFTERI (B1, para dogrulugu turu 14.09.2026) ──────────────────────

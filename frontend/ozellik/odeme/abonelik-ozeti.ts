@@ -151,6 +151,8 @@ export function abonelikOzeti(
     paketKodu?: string | null;
     durum?: string | null;
     kalanGun?: number | null;
+    /** 23.09.2026 — paketi HİÇ olmamış (yeni) firma; bkz. `erisim-durumu.ts`. */
+    vitrin?: boolean | null;
   } | null | undefined,
   /**
    * Dönem bitişi (ISO) — `GET /ai/translate/kota` → `donemBitis`. Verilmezse
@@ -187,7 +189,12 @@ export function abonelikOzeti(
       paketKodu: null,
       baslik: 'Abonelik yok',
       durum,
-      durumEtiketi: durumEtiketi(durum),
+      // ⚠ 23.09.2026 — VİTRİN: sunucu "abonelik satırı yok" dalında durumu
+      //   teknik olarak `SONA_ERDI` taşır; rozet onu "Sona erdi" diye yazıp
+      //   paketi HİÇ olmamış yeni kullanıcıya bitmiş bir aboneliği varmış gibi
+      //   söylüyordu. Vitrinde rozet YOK; neden cümlesi zaten "Etkin
+      //   aboneliğiniz yok". Süresi biten abone (vitrin değil) rozeti görür.
+      durumEtiketi: karar.vitrin === true ? '' : durumEtiketi(durum),
       kalanGun: null,
       altMetin: 'Devam etmek için bir paket seçin',
       iptalEdilebilir: false,

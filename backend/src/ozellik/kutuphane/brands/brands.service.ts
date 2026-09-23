@@ -60,11 +60,19 @@ export class BrandsService {
    * ayrilacak calisan) onceden bildigi liste kimligiyle fiyatlari okumaya
    * devam edemesin. Opsiyonel olsaydi unutulan bir cagiran izni sessizce
    * atlardi; derleyici her cagirana karar verdirir.
+   *
+   * ⚠ 23.09.2026 (vitrin) — `havuzFiyatiGorunur` de AYNI gerekceyle ZORUNLU.
+   * Paketi yurumeyen firma havuz listesini GORUR ama FIYATSIZ (Emre: "fiyatlar
+   * paketle acilsin"). Kural `erisim.servisi.ts` `havuzFiyatiGorunurMu`da;
+   * burasi yalniz uygular. Opsiyonel olsaydi unutan bir cagiran fiyati
+   * sessizce ACIK birakirdi — bu ucun kendi kapisi yok (`@GerekliYetenek`
+   * tasimaz), gizlemenin tek yeri burasi.
    */
   async getPriceListMaterials(
     priceListId: string,
     requesterFirmaId: string | undefined,
     kutuphaneIzni: boolean,
+    havuzFiyatiGorunur: boolean,
   ) {
     const pl = await this.prisma.priceList.findUnique({
       where: { id: priceListId },
@@ -82,6 +90,13 @@ export class BrandsService {
     if (pl.ownerUserId && !kutuphaneIzni) {
       throw new ForbiddenException(uyeIzniYokGovdesi('kutuphane'));
     }
+
+    // ── HAVUZ FIYATI (23.09.2026 — vitrin) ───────────────────────────────
+    // YALNIZ havuz listesi (`ownerUserId` bos) gizlenir. Kisisel liste
+    // firmanin kendi ticari verisidir; yukaridaki iki kapidan gecen istek
+    // onu HER DURUMDA fiyatiyla alir. `fiyatGizli` yanita da yazilir: on yuz
+    // bos hucrede "0" ya da "—" degil "paket seçince açılır" gostersin.
+    const fiyatGizli = !pl.ownerUserId && !havuzFiyatiGorunur;
 
     // ── KAYNAK SADAKATI (kullanici istegi 16.07): liste indekslenmisse havuz
     // gorunumu ProductIndex'ten beslenir — kullanicinin Excel'indeki 11 kolon
@@ -101,7 +116,7 @@ export class BrandsService {
           id: p.id,
           materialName: p.ad, // GERCEK Ad kolonu — birlesik ad degil
           unit: p.birim || 'Adet',
-          price: p.price,
+          price: fiyatGizli ? null : p.price,
           currency: p.currency ?? 'TRY',
           kategori: p.kategori ?? null,
           cins: p.cins ?? null,
@@ -113,6 +128,7 @@ export class BrandsService {
           sortOrder: p.sortOrder ?? 0,
         })),
         totalCount: idx.length,
+        fiyatGizli,
       };
     }
 
@@ -129,11 +145,14 @@ export class BrandsService {
         id: p.id,
         materialName: p.material.name,
         unit: p.material.unit || 'Adet',
-        price: p.price,
+        // ⚠ IKIZ DAL (indekssiz eski liste): gizleme yukaridaki indeks
+        // dalinin AYNISI — biri unutulursa eski listeler fiyati sizdirirdi.
+        price: fiyatGizli ? null : p.price,
         // Z4: havuz fiyati KENDI para birimiyle listeler ($15,00 · ₺637,00)
         currency: (p as any).currency ?? 'TRY',
       })),
       totalCount: items.length,
+      fiyatGizli,
     };
   }
 
