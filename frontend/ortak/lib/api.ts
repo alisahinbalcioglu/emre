@@ -172,6 +172,7 @@ function kimlikUcuMu(url?: string): boolean {
  *  suzgec de ayni yollari tanimak zorunda.
  *
  *  Listedeki yollar arka yuzdeki `@KapaliHesapIzinli` uclariyla IKIZDIR:
+ *   · `/dashboard`     → pano (sayilar + son teklifler; yukleme alanlari KAPALI)
  *   · `/quotes`        → teklif listesi + teklif ekrani + cikti indirme
  *   · `/library`       → kutuphane (yalniz goruntuleme)
  *   · `/quote-formats` → antetler (yalniz goruntuleme/onizleme)
@@ -182,7 +183,7 @@ function kimlikUcuMu(url?: string): boolean {
  *    yolda "kalabilir" sayilir ve bos sayfada takilirdi.
  */
 const KAPALI_HESABIN_KALABILECEGI_YOL =
-  /^\/(abonelik|quotes|library|quote-formats)(\/|$)/;
+  /^\/(abonelik|dashboard|quotes|library|quote-formats)(\/|$)/;
 
 api.interceptors.response.use(
   (res) => res,

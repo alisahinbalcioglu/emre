@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 705
-Toplam satir: 172615
+Toplam satir: 172669
 Uc nokta: 226
 test:* scripti: 113
 
@@ -248,7 +248,7 @@ test:* scripti: 113
 | `backend/src/ozellik/odeme/webhook/webhook.controller.ts` | 160 |
 | `backend/src/ozellik/odeme/webhook/webhook.isleyici.ts` | 132 |
 | `backend/src/ozellik/odeme/yapilandirma.ts` | 78 |
-| `backend/src/ozellik/panel/panel.controller.ts` | 29 |
+| `backend/src/ozellik/panel/panel.controller.ts` | 35 |
 | `backend/src/ozellik/panel/panel.module.ts` | 11 |
 | `backend/src/ozellik/panel/panel.servisi.ts` | 80 |
 | `backend/src/ozellik/teklif/quotes/cikti-dil.ts` | 96 |
@@ -300,7 +300,7 @@ test:* scripti: 113
 | `backend/test/faz0-gs7-probe.ts` | 74 |
 | `backend/test/faz2-kullanici-yonetimi-test.ts` | 618 |
 | `backend/test/faz3-eposta-parola-test.ts` | 876 |
-| `backend/test/faz4-firma-teklif-test.ts` | 263 |
+| `backend/test/faz4-firma-teklif-test.ts` | 289 |
 | `backend/test/faz5-kvkk-hukuki-test.ts` | 486 |
 | `backend/test/faz7-ekip-test.ts` | 1988 |
 | `backend/test/faz7-kurumsal-test.ts` | 1934 |
@@ -407,7 +407,7 @@ test:* scripti: 113
 | `frontend/app/(protected)/quotes/[id]/page.tsx` | 771 |
 | `frontend/app/(protected)/quotes/new/error.tsx` | 13 |
 | `frontend/app/(protected)/quotes/new/page.tsx` | 2303 |
-| `frontend/app/(protected)/quotes/page.tsx` | 328 |
+| `frontend/app/(protected)/quotes/page.tsx` | 317 |
 | `frontend/app/admin/brands/page.tsx` | 903 |
 | `frontend/app/admin/denetim/page.tsx` | 275 |
 | `frontend/app/admin/layout.tsx` | 94 |
@@ -492,7 +492,7 @@ test:* scripti: 113
 | `frontend/ortak/hooks/use-confirm.ts` | 158 |
 | `frontend/ortak/hooks/use-toast.ts` | 119 |
 | `frontend/ortak/kabuk/components/dashboard/QuickAccess.tsx` | 49 |
-| `frontend/ortak/kabuk/components/dashboard/QuickStart.tsx` | 239 |
+| `frontend/ortak/kabuk/components/dashboard/QuickStart.tsx` | 245 |
 | `frontend/ortak/kabuk/components/dashboard/dosya-turu.test.ts` | 47 |
 | `frontend/ortak/kabuk/components/dashboard/dosya-turu.ts` | 24 |
 | `frontend/ortak/kabuk/components/landing/GirisliyseYonlendir.tsx` | 31 |
@@ -509,7 +509,7 @@ test:* scripti: 113
 | `frontend/ortak/kabuk/components/layout/kapali-durum.ts` | 80 |
 | `frontend/ortak/kabuk/components/layout/kirinti-etiketi.ts` | 84 |
 | `frontend/ortak/lib/api-401-kapsami.test.ts` | 676 |
-| `frontend/ortak/lib/api.ts` | 286 |
+| `frontend/ortak/lib/api.ts` | 287 |
 | `frontend/ortak/lib/kimlik-hata-metinleri.ts` | 149 |
 | `frontend/ortak/lib/oturum.test.ts` | 170 |
 | `frontend/ortak/lib/oturum.ts` | 113 |
@@ -570,7 +570,7 @@ test:* scripti: 113
 | `frontend/ozellik/kimlik/ZorunluKurulumSihirbazi.tsx` | 166 |
 | `frontend/ozellik/kimlik/dogrulama-bekleniyor.test.ts` | 178 |
 | `frontend/ozellik/kimlik/giris-dali.test.ts` | 268 |
-| `frontend/ozellik/kimlik/kapali-hesap-akisi.test.ts` | 540 |
+| `frontend/ozellik/kimlik/kapali-hesap-akisi.test.ts` | 566 |
 | `frontend/ozellik/kimlik/kapatma-metinleri.test.ts` | 300 |
 | `frontend/ozellik/kimlik/kapatma-metinleri.ts` | 190 |
 | `frontend/ozellik/kimlik/kapatma-onizleme-getir.ts` | 47 |
@@ -930,7 +930,7 @@ test:* scripti: 113
 | `backend/src/ozellik/odeme/webhook/webhook.controller.ts` | `@nestjs/config` `../../../altyapi/db/prisma.service` `./webhook.isleyici` `../yapilandirma` |
 | `backend/src/ozellik/odeme/webhook/webhook.isleyici.ts` | `@nestjs/common` `@nestjs/schedule` `../../../altyapi/db/prisma.service` `../abonelik/abonelik.servisi` `../fatura/fatura.servisi` `../dunning/dunning.servisi` |
 | `backend/src/ozellik/odeme/yapilandirma.ts` | `@nestjs/common` `@nestjs/config` |
-| `backend/src/ozellik/panel/panel.controller.ts` | `@nestjs/common` `./panel.servisi` `../../altyapi/auth/guards/jwt-auth.guard` `../../altyapi/auth/decorators/current-user.decorator` `../../altyapi/auth/kimlik` |
+| `backend/src/ozellik/panel/panel.controller.ts` | `@nestjs/common` `./panel.servisi` `../../altyapi/auth/guards/jwt-auth.guard` `../../altyapi/auth/decorators/current-user.decorator` `../../altyapi/auth/kimlik` `../../altyapi/auth/decorators/kapali-hesap-izinli.decorator` |
 | `backend/src/ozellik/panel/panel.module.ts` | `@nestjs/common` `./panel.servisi` `./panel.controller` |
 | `backend/src/ozellik/panel/panel.servisi.ts` | `@nestjs/common` `../../altyapi/db/prisma.service` `../../altyapi/auth/kimlik` `../firma/uyelik-kurallari` |
 | `backend/src/ozellik/teklif/quotes/dto/create-quote.dto.ts` | `class-validator` `class-transformer` |

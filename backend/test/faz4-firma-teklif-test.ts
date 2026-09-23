@@ -220,7 +220,33 @@ function main(): void {
   const liste = jsxKodu(oku('frontend/app/(protected)/quotes/page.tsx'));
   check('H2 liste durum modulunu KULLANIYOR (kendi etiketini uydurmuyor)',
     /teklifDurumGorunumu/.test(liste) && /from '@\/ozellik\/teklif\/durum'/.test(liste));
-  check('H3 suzgec SUNUCUYA gidiyor', /params\.durum\s*=/.test(liste) && /params\.arama\s*=/.test(liste));
+  /**
+   * ── 23.09.2026 — H3 IKIYE BOLUNDU (Emre: "bunu kaldir hemen") ──────────
+   * Eski hali `params.durum` VE `params.arama` gonderildigini birlikte
+   * olcuyordu. Emre teklif listesindeki DURUM ACILIR MENUSUNU kaldirtti:
+   * isletim sisteminin kendi menusunu ciziyor, uygulamanin geri kalanina
+   * benzemiyordu.
+   *
+   * ⚠ ASSERT SILINMEDI, KORUDUGU ILKE AYRISTIRILDI. Ilke suydu: "suzme
+   * SUNUCUDA yapilir; istemcide filtrelemek tum kayitlari indirmek demektir."
+   * O ilke ARAMA icin aynen gecerli. Kaldirilan sey ilke degil, bir GIRIS.
+   *
+   * ⚠ SUNUCU TARAFI DOKUNULMADI: `TekliflerSorgusuDto` `durum` parametresini
+   * HALA destekliyor (H3c). Yani bu bir ozellik silme degil, on yuzden bir
+   * kontrolu kaldirma; durum bilgisi listede ROZET olarak gorunmeye devam
+   * ediyor (H2).
+   */
+  check('H3a arama SUNUCUYA gidiyor (istemcide suzme yok)',
+    /params\.arama\s*=/.test(liste) && /api\.get<Quote\[\]>\('\/quotes',\s*\{\s*params\s*\}\)/.test(liste));
+  check('H3b ⭐ durum ACILIR MENUSU on yuzde YOK (Emre 23.09) — sessizce geri gelmesin',
+    !/<select/.test(liste) && !/TEKLIF_DURUMLARI\.map/.test(liste),
+    liste.match(/<select[\s\S]{0,80}/)?.[0] ?? '');
+  // ⚠ ALAN BILDIRIMINE BAGLI, duz `/durum/` DEGIL: mutasyonla olculdu —
+  //   `durum` → `durumX` mutanti duz aramayla HAYATTA KALIYORDU (yeni ad
+  //   eskisini icinde tasiyor). Olcut satir basindaki ALAN ADINI ariyor.
+  check('H3c ama SUNUCU `durum` suzgecini HALA destekliyor (ozellik silinmedi)',
+    /^\s*durum\?:\s*'HAZIRLANIYOR'/m.test(
+      kodu(oku('backend/src/ozellik/teklif/quotes/dto/teklifler-sorgusu.dto.ts'))));
   check('H4 X-Toplam-Kayit okunuyor', /x-toplam-kayit/.test(liste));
   check('H5 bos-durum metni SUZGEC ile HIC TEKLIF YOK durumunu AYIRIYOR',
     /Bu süzgece uyan teklif yok/.test(oku('frontend/app/(protected)/quotes/page.tsx')));

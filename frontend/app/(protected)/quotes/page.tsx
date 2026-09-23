@@ -11,7 +11,7 @@ import api from '@/ortak/lib/api';
 import { toast } from '@/ortak/hooks/use-toast';
 import { confirm } from '@/ortak/hooks/use-confirm';
 import { Badge } from '@/ortak/ui/badge';
-import { TEKLIF_DURUMLARI, teklifDurumGorunumu } from '@/ozellik/teklif/durum';
+import { teklifDurumGorunumu } from '@/ozellik/teklif/durum';
 import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
 
 interface QuoteItem {
@@ -36,8 +36,6 @@ interface Quote {
   userId?: string | null;
   hazirlayan?: { gorunenAd: string; ayrildi: boolean } | null;
 }
-
-const HEPSI = 'hepsi';
 
 function formatCurrencyTR(value: number): string {
   return value.toLocaleString('tr-TR', {
@@ -77,7 +75,6 @@ export default function QuotesPage() {
   }, []);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [durumSuzgec, setDurumSuzgec] = useState<string>(HEPSI);
   const [arama, setArama] = useState('');
   const [toplam, setToplam] = useState(0);
 
@@ -88,7 +85,6 @@ export default function QuotesPage() {
   async function fetchQuotes() {
     try {
       const params: Record<string, string> = {};
-      if (durumSuzgec !== HEPSI) params.durum = durumSuzgec;
       if (arama.trim()) params.arama = arama.trim();
       const yanit = await api.get<Quote[]>('/quotes', { params });
       setQuotes(yanit.data);
@@ -106,7 +102,7 @@ export default function QuotesPage() {
     const t = setTimeout(fetchQuotes, arama ? 300 : 0);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [durumSuzgec, arama]);
+  }, [arama]);
 
   async function handleDelete(id: string, title: string) {
     if (!(await confirm(`"${title}" teklifi silinsin mi?`))) return;
@@ -154,8 +150,14 @@ export default function QuotesPage() {
             <span className="ml-2 text-sm font-normal text-muted-foreground">({toplam})</span>
           )}
         </h1>
-        {/* FAZ 4.6 — satış takibi süzgeci. Sunucu tarafı: liste büyüdüğünde
-            istemcide filtrelemek tüm kayıtları indirmek demektir. */}
+        {/* Arama SUNUCUYA gider (liste büyüdüğünde istemcide filtrelemek
+            tüm kayıtları indirmek demektir).
+            ⚠ 23.09.2026 — DURUM SÜZGECİ KALDIRILDI (Emre kararı, canlı ekrana
+            bakarak). Yerli `<select>` işletim sisteminin kendi menüsünü
+            çiziyordu ve uygulamanın geri kalanına benzemiyordu. Sunucu tarafı
+            `durum` parametresini HÂLÂ destekliyor (`TekliflerSorgusuDto`);
+            kaldırılan yalnız ön yüzdeki giriştir. Durum bilgisi listede rozet
+            olarak GÖRÜNMEYE devam eder. */}
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -167,19 +169,6 @@ export default function QuotesPage() {
               className="h-9 w-64 rounded-md border border-input bg-background pl-8 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
-          <select
-            value={durumSuzgec}
-            onChange={(e) => setDurumSuzgec(e.target.value)}
-            aria-label="Duruma göre süz"
-            className="h-9 rounded-md border border-input bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-          >
-            <option value={HEPSI}>Tüm durumlar</option>
-            {TEKLIF_DURUMLARI.map((d) => (
-              <option key={d} value={d}>
-                {teklifDurumGorunumu(d).etiket}
-              </option>
-            ))}
-          </select>
         </div>
       </div>
 
@@ -189,7 +178,7 @@ export default function QuotesPage() {
             <FileText className="mb-4 h-12 w-12 text-muted-foreground" />
             {/* ⚠ SÜZGEÇ AÇIKKEN "hiç teklif yok" DEMEK YANLIŞ olur:
                 kullanıcı teklifleri silinmiş sanır. İki durum ayrılır. */}
-            {durumSuzgec !== HEPSI || arama.trim() ? (
+            {arama.trim() ? (
               <>
                 <p className="mb-2 text-lg font-medium text-muted-foreground">
                   Bu süzgece uyan teklif yok.

@@ -92,7 +92,7 @@ export default function Sidebar({ user, collapsed, onToggle }: SidebarProps) {
   //
   // ⚠ AYRAC ('divider') da elenir: elenen ogelerin arasinda kalan cizgi
   //   menuyu bozuk gosterirdi.
-  const KAPALI_HESAPTA_GORUNEN = ['/quotes', '/library', '/abonelik'];
+  const KAPALI_HESAPTA_GORUNEN = ['/dashboard', '/quotes', '/library', '/abonelik'];
   const items = user?.hesapKapali === true
     ? NAV_ITEMS.filter(
         (i) => typeof i !== 'string' && KAPALI_HESAPTA_GORUNEN.includes(i.href),

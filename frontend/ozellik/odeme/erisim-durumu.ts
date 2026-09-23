@@ -140,7 +140,7 @@ const DURDURULMAYAN_YOL = /^\/(abonelik|profile|koltuk-durduruldu)(\/|$)/;
  *  boş/403 bir sayfa gösterir.
  */
 const KAPALI_HESABIN_OKUYABILECEGI_YOL =
-  /^\/(quotes|library|quote-formats)(\/|$)/;
+  /^\/(dashboard|quotes|library|quote-formats)(\/|$)/;
 
 /**
  * Sayfa icerigi yerine "erisiminiz kapali" ekrani mi cizilmeli?

@@ -3,6 +3,7 @@ import { PanelServisi } from './panel.servisi';
 import { JwtAuthGuard } from '../../altyapi/auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../altyapi/auth/decorators/current-user.decorator';
 import { kimlikCoz } from '../../altyapi/auth/kimlik';
+import { KapaliHesapIzinli } from '../../altyapi/auth/decorators/kapali-hesap-izinli.decorator';
 
 /**
  * PANO UCLARI — oturum sahibinin KENDI sayilari (t.3, 21.09.2026).
@@ -22,6 +23,11 @@ export class PanelController {
   constructor(private readonly panel: PanelServisi) {}
 
   @Get('ozet')
+  // 23.09.2026 (Emre): kapali hesap ANA SAYFAYI da gorebilir. Uc SAYI
+  // doner (teklif/malzeme/marka/kisi adedi) ve hepsi kullanicinin zaten
+  // gorebildigi listelerin adedidir — yeni bir veri ACMAZ. Izin
+  // olmasaydi pano bos kalir, menudeki Ana Sayfa kirik gorunurdu.
+  @KapaliHesapIzinli()
   ozet(@CurrentUser() user: any) {
     return this.panel.ozet(kimlikCoz(user));
   }

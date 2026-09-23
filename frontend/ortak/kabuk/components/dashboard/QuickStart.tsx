@@ -44,16 +44,22 @@ export default function QuickStart({
 
   // DWG: Pro'da aktif, Core'da sonuk. `useCapabilities` provider yoksa
   // savunmaci sekilde "yetenek yok" doner — yani varsayilan SONUKTUR.
-  const { loading: yeteneklerYukleniyor, hasAnyDwg, hasAnyMaterial } = useCapabilities();
+  const { loading: yeteneklerYukleniyor, hasAnyDwg, hasAnyMaterial, kapali } = useCapabilities();
   // EXCEL: 03.09 kullanici karari — "Excel de DWG gibi kapali olmali,
   // kullanicinin sectigi disipline gore aktif olacak." Kutu TEK oldugu ve
   // disiplin ancak dosya okununca belli oldugu icin kutu duzeyindeki dogru
   // kosul "HERHANGI bir disiplinde malzeme yetenegi"dir; disiplin bazli
   // ayrim izgarada zaten yapiliyor.
-  const excelDurum = kapiDurumu({ loading: yeteneklerYukleniyor, izinVar: hasAnyMaterial() });
+  // ⚠ 23.09.2026 — KAPALI HESAPTA YUKLEME YOK (Emre: "teklif hazirlama
+  //   dwg — kaydedilen teklifler revizyonu calismayacak"). Kapatilmis
+  //   hesabin yetenekleri zaten bos donuyor, yani bu alanlar SANSA BAGLI
+  //   olarak da kapanirdi; ACIKCA yaziliyor cunku "yan etkiyle kapali"
+  //   bir kapi, yan etki degisince sessizce acilir.
+  const hesapKapali = kapali?.kapali === true;
+  const excelDurum = kapiDurumu({ loading: yeteneklerYukleniyor, izinVar: hasAnyMaterial() && !hesapKapali });
   const excelAcik = tiklanabilir(excelDurum);
   const excelRozet = rozetMetni(excelDurum);
-  const dwgDurum = dwgKapisi({ loading: yeteneklerYukleniyor, dwgVar: hasAnyDwg() });
+  const dwgDurum = dwgKapisi({ loading: yeteneklerYukleniyor, dwgVar: hasAnyDwg() && !hesapKapali });
   const dwgAcik = dwgTiklanabilir(dwgDurum);
   const dwgRozet = dwgRozetMetni(dwgDurum);
 

@@ -202,7 +202,7 @@ describe('K4 — firması kapatılan ÜYE paket seçemez', () => {
  *  Biri eksik kalırsa kusur SESSİZDİR: menüde görünen sayfa ya 403 yer ya da
  *  açılır açılmaz `/abonelik`e fırlar. Bu blok üçünü karşılaştırır.
  */
-const KAPALI_YOLLAR = ['quotes', 'library', 'abonelik'];
+const KAPALI_YOLLAR = ['dashboard', 'quotes', 'library', 'abonelik'];
 
 describe('K5 — kapalı hesapta menü: ÇALIŞAN yollar kalır', () => {
   it('kenar çubuğu bayrağa bakıyor', () => {
@@ -213,13 +213,34 @@ describe('K5 — kapalı hesapta menü: ÇALIŞAN yollar kalır', () => {
     const kod = kodu(SIDEBAR);
     const m = kod.match(/KAPALI_HESAPTA_GORUNEN\s*=\s*\[([^\]]*)\]/);
     expect(m, 'liste bulunamadı').not.toBeNull();
-    for (const yol of ['/quotes', '/library', '/abonelik']) {
+    // ⚠ `/dashboard` 23.09'da EKLENDİ (Emre: "ana sayfa yok şuan bununun da
+    //   olması gerekiyor"). Pano SAYI gösterir ve son teklifleri listeler —
+    //   ikisi de kullanıcının zaten görebildiği veri; yükleme alanları ayrıca
+    //   kapatıldı ("teklif hazırlama dwg … çalışmayacak").
+    for (const yol of ['/dashboard', '/quotes', '/library', '/abonelik']) {
       expect(m![1], `${yol} menüden düşmüş`).toContain(`'${yol}'`);
     }
-    // İşe yaramayanlar girmemeli: panoyu/ekibi açmak 403 üretirdi.
-    for (const yol of ['/dashboard', '/materials', '/firma/ekip']) {
+    // İşe yaramayanlar girmemeli: bunları açmak 403 üretirdi.
+    for (const yol of ['/materials', '/firma/ekip']) {
       expect(m![1], `${yol} kapalı hesapta çalışmaz`).not.toContain(`'${yol}'`);
     }
+  });
+
+  it('⭐ pano ucu kapalı hesaba AÇIK, yükleme alanları KAPALI', () => {
+    // Menüde Ana Sayfa varsa `GET /panel/ozet` de açık olmalı; yoksa sayfa
+    // boş kalır ve menüdeki bağlantı kırık görünür.
+    const panel = kodu(oku('../backend/src/ozellik/panel/panel.controller.ts'));
+    expect(panel, 'pano özeti kapalı hesaba kapalı').toContain('@KapaliHesapIzinli()');
+
+    // "teklif hazirlama dwg … calismayacak" — Excel ve DWG yükleme alanları
+    // yetenek bayrağının YANINDA ayrıca kapatılır. Yan etkiye (yetenekler
+    // zaten boş döner) bırakılsaydı, yan etki değişince sessizce açılırdı.
+    const qs = kodu(oku('ortak/kabuk/components/dashboard/QuickStart.tsx'));
+    expect(qs).toMatch(/const hesapKapali = kapali\?\.kapali === true;/);
+    expect(qs, 'Excel yükleme kapalı hesapta açık kalmış')
+      .toContain('hasAnyMaterial() && !hesapKapali');
+    expect(qs, 'DWG yükleme kapalı hesapta açık kalmış')
+      .toContain('hasAnyDwg() && !hesapKapali');
   });
 
   it('⭐⭐ ÜÇ dosyadaki yol listesi AYNI (biri unutulursa kusur sessiz)', () => {
@@ -259,8 +280,13 @@ describe('K5 — kapalı hesapta menü: ÇALIŞAN yollar kalır', () => {
     // Kapalı DEĞİLSE (yalnız paketsiz) aynı yol DURDURULUR — izin kapatmaya
     // özeldir, paketsiz herkese açılmaz.
     expect(icerikDurdurulsunMu(kapaliKarar, '/quotes/abc', false)).toBe(true);
+    expect(icerikDurdurulsunMu(kapaliKarar, '/dashboard', true)).toBe(false);
     // Kapalı olsa bile izin listesi DIŞI durdurulur.
-    expect(icerikDurdurulsunMu(kapaliKarar, '/dashboard', true)).toBe(true);
+    // ⚠ Bu satır 23.09'da `/dashboard`ken `/materials`a çevrildi: pano izin
+    //   listesine girdi ve assert kendi örneğini kaybetti. Örnek seçerken
+    //   listenin DIŞINDA kaldığı kesin olan bir yol kullanılır.
+    expect(icerikDurdurulsunMu(kapaliKarar, '/materials', true)).toBe(true);
+    expect(icerikDurdurulsunMu(kapaliKarar, '/firma/ekip', true)).toBe(true);
   });
 
   it('ayraçlar da eleniyor (tek öğenin üstünde çizgi kalmasın)', () => {
