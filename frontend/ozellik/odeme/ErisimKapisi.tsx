@@ -87,8 +87,11 @@ function ErisimDurduruldu({ uyari }: { uyari: ErisimUyarisi | null }) {
         {eylem.etiket}
       </Link>
       {/* ⚠ KVKK haklari odeme durumuna BAGLANAMAZ: bu iki yol
-          `DURDURULMAYAN_YOL` listesindedir, yani buradan gidilebilir. */}
-      <Link href="/profile" className="text-xs text-muted-foreground underline">
+          `DURDURULMAYAN_YOL` listesindedir, yani buradan gidilebilir.
+          23.09.2026: Hesabım sekmelere bölündü; bağlantı doğrudan "Veriler"
+          sekmesini (indir + hesabımı kapat) açar — Profil sekmesine düşen
+          kişi indirme düğmesini aramak zorunda kalmasın. */}
+      <Link href="/profile?sekme=veriler" className="text-xs text-muted-foreground underline">
         Hesap ayarları ve verilerim
       </Link>
     </div>

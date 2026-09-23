@@ -83,53 +83,50 @@ export type KapatmaOnizlemesi = {
   saklamaGun?: number;
 };
 
-/** Ekranın çizeceği metin. */
-export type KapatmaMetni = {
-  /** §8.1 gövdesi. HER ZAMAN doludur ve HER durumda aynıdır. */
-  govde: string;
-  /**
-   * Duruma özel ek cümle; yoksa `null`. Ekran `null` gelince kutuyu
-   * ÇİZMEZ (boş çerçeve bırakmaz) — `kisi-metinleri.ts` `altSatir` deseni.
-   */
-  ek: string | null;
-  /**
-   * `ek`in tonu: `uyari` = BAŞKALARININ erişimi duruyor (kırmızı kutu),
-   * `bilgi` = yalnız kendi verisi (sakin kutu). `ek` yoksa `null`.
-   *
-   * ⚠ Rengi ekran SEÇMEZ, burada karara bağlanır: iki kutunun rengi iki
-   * ayrı yerde seçilseydi biri gün gelir "uyarı"yı sakin renkte çizerdi.
-   */
-  ekTuru: 'uyari' | 'bilgi' | null;
-};
+/** Maddenin tonu: `uyari` = BAŞKALARININ erişimi de duruyor; öbürleri düz. */
+export type KapatmaMaddesi = { metin: string; ton: 'duz' | 'uyari' };
 
 /**
- * §8.1 GÖVDESİ — Emre'nin verdiği metin, birebir.
+ * ── 23.09.2026 — HESABIM TASARIMI: METİN MADDE MADDE ──────────────────────
+ * §8.1 metni (21.09) tek paragraftı ve duruma özel cümle ALTINDA ayrı bir
+ * kutuda duruyordu. Emre'nin Hesabım tasarımı kapatmanın sonuçlarını madde
+ * madde yazıyor ve "alt kullanıcıların erişimi de kapanır" maddesini ekliyor.
  *
- * Dört şey söyler ve dördü de ölçülmüş gerçektir:
- *   · kapatma erişimi keser ve aboneliği iptal eder  (bugünkü davranış)
- *   · 30 gün geri dönüş: aynı e-posta + parola + paket   (K1)
- *   · 30 günün sonunda içerik KALICI olarak silinir      (K3, günlük imha işi)
- *   · fatura/ödeme kayıtları saklanır                    (§5.5, yasal saklama)
+ * ⚠ YENİ İDDİA YOK — §8.1'in dört olgusu aynen duruyor, yalnız biçim değişti:
+ *   · kapatma oturumu keser, varsa aboneliği iptal eder   (bugünkü davranış)
+ *   · 30 gün geri dönüş: aynı e-posta + parola + paket    (K1)
+ *   · 30 günün sonunda içerik KALICI olarak silinir       (K3, günlük imha işi)
+ *   · fatura/ödeme kayıtları saklanır                     (§5.5, yasal saklama)
+ *
+ * ⚠ "ALT KULLANICILARIN ERİŞİMİ KAPANIR" HER HESAPTA DOĞRU DEĞİL: yalnız firma
+ * GERÇEKTEN kapanıyorsa ve geride insan varsa yazılır — kararı sunucu verir
+ * (`ayrilmaKarari`). İkinci sahibi olan firmada bu cümle yalan olurdu.
+ *
+ * ⚠ FİRMA DEVAM EDİYORSA İKİ MADDE DEĞİŞİR, ikisi de ÖLÇÜLDÜ:
+ *   · abonelik iptali YALNIZ `firmaKapaniyor` dalında çalışır
+ *     (`hesap.servisi.ts`: `if (karar.izin && karar.firmaKapaniyor …)
+ *     iptalEt`) — ikinci sahibe "aboneliğiniz iptal edilir" demek yanlıştı;
+ *   · imha bu kişide yalnız KİŞİSEL bilgileri anonimler (§5.3), teklifler
+ *     firmada kalır — "teklifleriniz silinir" maddesi o kişi için yanlıştı.
+ *     21.09 metninde bu iki çelişki gövde + altındaki "bilgi" kutusuyla yan
+ *     yana duruyordu; maddeler hâlinde ikisini birden yazmak onu göze sokardı.
  */
-function govdeMetni(gun: number): string {
+function kesintiMaddesi(): string {
+  return 'Oturumunuz sonlanır, varsa aboneliğiniz iptal edilir.';
+}
+
+function geriDonusMaddesi(gun: number): string {
   return (
-    'Hesabınız kapatılır, oturumunuz sonlandırılır ve varsa aboneliğiniz iptal ' +
-    `edilir. Geri dönebilmeniz için verilerinizi ${gun} gün saklıyoruz: bu sürede ` +
-    'aynı e-posta ve parolanızla giriş yapıp bir paket seçerek hesabınızı kaldığınız ' +
-    `yerden açabilirsiniz. ${gun} günün sonunda teklifleriniz, kütüphaneniz ve ` +
-    'yüklediğiniz belgeler kalıcı olarak silinir. Fatura ve ödeme kayıtları yasal ' +
-    'süre boyunca saklanır.'
+    `${gun} gün içinde aynı e-posta ve parolayla giriş yapıp bir paket seçerek ` +
+    'kaldığınız yerden devam edebilirsiniz.'
   );
 }
 
-/**
- * FİRMA DEVAM EDİYOR (§8.1 son cümle) — kapatan kişi ya üye, ya da firmada
- * başka etkin sahip var. İmha bu kişide yalnız KİŞİSEL bilgileri anonimler
- * (§5.3); teklifler firmada kalır, "Hazırlayan" bağlantısı kırılmaz.
- */
-function ekFirmaDevam(gun: number): string {
-  return `Hazırladığınız teklifler firmanızda kalır; kişisel bilgileriniz ${gun} gün sonra silinir.`;
+function imhaMaddesi(gun: number): string {
+  return `${gun} günün sonunda teklifleriniz, kütüphaneniz ve yüklediğiniz belgeler kalıcı olarak silinir.`;
 }
+
+const FATURA_MADDESI = 'Fatura ve ödeme kayıtları yasal süre boyunca saklanır.';
 
 /**
  * FİRMA KAPANIYOR ve GERİDE İNSAN VAR (§3.3.1) — bu kapatma BAŞKALARININ
@@ -137,53 +134,74 @@ function ekFirmaDevam(gun: number): string {
  * bilgilendirilmiş onaydır (`silme-onay-metni.ts` `bilgilendirilmisOnay`
  * aynı gerekçe).
  */
-function ekFirmaKapanir(digerHesap: number, gun: number): string {
+function ekipMaddesi(digerHesap: number): string {
   return (
-    `Firmanızda ${digerHesap} üye var. Hesabınızı kapatırsanız firmanız kapanır ve ` +
-    `onların da erişimi durur. ${gun} gün içinde paket seçerek geri açarsanız ` +
-    'ekibiniz de geri gelir.'
+    `Firmanız kapanır; ekibinizdeki ${digerHesap} kişinin erişimi de kapanır. ` +
+    'Geri dönerseniz ekibiniz de geri gelir.'
   );
+}
+
+/**
+ * FİRMA DEVAM EDİYOR — kapatan kişi ya üye, ya da firmada başka etkin sahip
+ * var. İmha bu kişide yalnız KİŞİSEL bilgileri anonimler (§5.3); teklifler
+ * firmada kalır, "Hazırlayan" bağlantısı kırılmaz.
+ */
+function firmadaKalirMaddesi(gun: number): string {
+  return `Hazırladığınız teklifler firmanızda kalır; kişisel bilgileriniz ${gun} gün sonra silinir.`;
 }
 
 /** Sunucunun günü kullanılabilir mi — değilse yerel yedek. */
 function gunSec(onizleme: KapatmaOnizlemesi | null): number {
   const g = onizleme?.saklamaGun;
-  // "verilerinizi 0 gün saklıyoruz" ya da "1.5 gün" yazmaktansa yedeğe düş.
+  // "0 gün içinde" ya da "1.5 günün sonunda" yazmaktansa yedeğe düş.
   return typeof g === 'number' && Number.isInteger(g) && g > 0 ? g : SAKLAMA_GUN;
 }
 
+const duz = (metin: string): KapatmaMaddesi => ({ metin, ton: 'duz' });
+
 /**
- * HESAP KAPATMA METNİ.
+ * HESAP KAPATMA MADDELERİ — "Hesabınızı kapattığınızda:" başlığının altı.
  *
  * @param onizleme `GET /auth/hesabimi-kapat/onizleme` yanıtı. `null` → uç
- *   cevap vermedi: yalnız gövde yazılır. Sayı UYDURULMAZ, duruma özel cümle
- *   de UYDURULMAZ — gövde her durumda doğrudur.
+ *   cevap vermedi: yalnız her durumda doğru olan dört madde yazılır. Sayı
+ *   UYDURULMAZ, duruma özel madde de UYDURULMAZ.
  *
  * Üç hâl, üçü de sunucunun kararından:
- *   · `firmaKapaniyor` + `digerHesap > 0` → firma kapanıyor, N üye duruyor (uyarı)
+ *   · `firmaKapaniyor` + `digerHesap > 0`  → + ekip maddesi (uyarı)
  *   · `firmaKapaniyor` + `digerHesap === 0` → firmanın son hesabı; geride kimse
- *      yok, gövde zaten her şeyi söylüyor (ek YOK)
- *   · `firmaKapaniyor === false` → firma devam ediyor (bilgi)
+ *      yok, dört madde her şeyi söylüyor
+ *   · `firmaKapaniyor === false`            → firma devam ediyor: abonelik
+ *      sürer, teklifler firmada kalır
  */
-export function hesapKapatmaMetni(onizleme: KapatmaOnizlemesi | null): KapatmaMetni {
+export function hesapKapatmaMaddeleri(onizleme: KapatmaOnizlemesi | null): KapatmaMaddesi[] {
   const gun = gunSec(onizleme);
-  const duz: KapatmaMetni = { govde: govdeMetni(gun), ek: null, ekTuru: null };
-  if (!onizleme || !onizleme.firmaVar) return duz;
+  const temel = [
+    duz(kesintiMaddesi()),
+    duz(geriDonusMaddesi(gun)),
+    duz(imhaMaddesi(gun)),
+    duz(FATURA_MADDESI),
+  ];
+  if (!onizleme || !onizleme.firmaVar) return temel;
 
   const { karar, digerHesap } = onizleme;
 
   // ⚠ ULAŞILMAZ AMA DURUYOR: ön izleme ucu bugün `firmayiKapatabilir: true`
   // geçtiği için `izin:false` dönmüyor. Dönerse sunucu kapatmayı REDDEDİYOR
   // demektir; o hâlde "firmanız kapanır" da "teklifleriniz kalır" da yanlış
-  // olurdu. Sessizce bir dala düşmek yerine düz metne düşülür.
-  if (karar.izin === false) return duz;
+  // olurdu. Sessizce bir dala düşmek yerine temel maddelere düşülür.
+  if (karar.izin === false) return temel;
 
   if (karar.firmaKapaniyor) {
-    // Firmanın son hesabı: geride kalan kimse yok, ek cümle yanıltıcı olurdu.
-    // (Bozuk/eksi sayı da bu dala düşer: "Firmanızda 0 üye var" YAZILMAZ.)
-    if (!Number.isInteger(digerHesap) || digerHesap <= 0) return duz;
-    return { govde: duz.govde, ek: ekFirmaKapanir(digerHesap, gun), ekTuru: 'uyari' };
+    // Firmanın son hesabı: geride kalan kimse yok, ekip maddesi yanıltıcı olurdu.
+    // (Bozuk/eksi sayı da bu dala düşer: "0 kişinin erişimi" YAZILMAZ.)
+    if (!Number.isInteger(digerHesap) || digerHesap <= 0) return temel;
+    return [temel[0], { metin: ekipMaddesi(digerHesap), ton: 'uyari' }, ...temel.slice(1)];
   }
 
-  return { govde: duz.govde, ek: ekFirmaDevam(gun), ekTuru: 'bilgi' };
+  return [
+    duz('Oturumunuz sonlanır; firmanızın aboneliği sürer.'),
+    duz(geriDonusMaddesi(gun)),
+    duz(firmadaKalirMaddesi(gun)),
+    duz(FATURA_MADDESI),
+  ];
 }

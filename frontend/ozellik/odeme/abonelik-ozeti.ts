@@ -38,7 +38,7 @@ export interface AbonelikOzeti {
   durumEtiketi: string;
   /** Kalan gun; bilinmiyorsa null. */
   kalanGun: number | null;
-  /** Ikincil satir: "23 gun kaldi" / "Yenilenme 01.10.2026" / "Abonelik yok". */
+  /** Ikincil satir: "23 gun kaldi" / "Yenilenme: 01.10.2026" / "Abonelik yok". */
   altMetin: string;
   /**
    * Dönemin yenilenme günü ("01.10.2026"); bilinmiyorsa null.
@@ -65,6 +65,44 @@ const MIRAS_ONEKI = 'miras-';
 
 export function mirasMi(paketKodu: string | null | undefined): boolean {
   return !!paketKodu && paketKodu.startsWith(MIRAS_ONEKI);
+}
+
+/**
+ * Paket kodunun KATALOGDAKİ adı (`GET /abonelik/paketler` → `ad`); kod
+ * katalogda yoksa `null` (göç paketi, satıştan kalkmış paket).
+ *
+ * ⚠ 23.09.2026 — NEDEN VAR: başlık kod katalogda değilse KODUN KENDİSİYDİ.
+ * Göç paketi "Geçiş paketi" yazıyordu ama satın alınmış bir paket müşteriye
+ * "pro-mek" diye görünüyordu — hem Hesabım'da hem `/abonelik`teki "Şu anki
+ * paketiniz" satırında. Hesabım tasarımı paket adını kimlik satırına da
+ * taşıyınca kod her sayfada en görünür yere çıkacaktı. Ad sunucunun
+ * kataloğundan okunur; burada ikinci bir ad sözlüğü AÇILMAZ.
+ */
+export function katalogPaketAdi(
+  paketKodu: string | null | undefined,
+  katalog: readonly { kod: string; ad: string }[] | null | undefined,
+): string | null {
+  if (!paketKodu || !katalog) return null;
+  const ad = katalog.find((p) => p.kod === paketKodu)?.ad?.trim();
+  return ad || null;
+}
+
+/**
+ * Ekrana giden paket ADI (Hesabım kimlik rozeti + paket kartı başlığı):
+ * katalog adı → (göç paketi değilse) seviye adı → `null`.
+ *
+ * ⚠ HAM KOD ASLA (23.09 kod incelemesi): yalnız katalog adına bakılsaydı,
+ * katalog okunamayınca ya da paket satıştan kalkınca başlık yine "pro-mek"
+ * olurdu — eski rozet o durumda en azından "Pro Plan" diyordu. Seviye adı
+ * ("Pro", çağıran `paketRozeti`nden verir) o hâlde doğru ve yeterlidir.
+ * Göç paketinde `null` döner: `abonelikOzeti` onu "Geçiş paketi" diye adlandırır.
+ */
+export function paketGorunenAdi(
+  paketKodu: string | null | undefined,
+  katalog: readonly { kod: string; ad: string }[] | null | undefined,
+  seviyeAdi: string | null,
+): string | null {
+  return katalogPaketAdi(paketKodu, katalog) ?? (mirasMi(paketKodu) ? null : seviyeAdi);
 }
 
 /**
@@ -119,6 +157,11 @@ export function abonelikOzeti(
    * davranış eskisiyle BİREBİR aynıdır (geriye dönük uyumlu).
    */
   donemBitisISO?: string | null,
+  /**
+   * Paketin katalogdaki adı (`katalogPaketAdi`). Verilmezse başlık eskisi
+   * gibi göç paketinde "Geçiş paketi", öbürlerinde paket kodudur.
+   */
+  paketAdi?: string | null,
 ): AbonelikOzeti {
   // Geçersiz/boş ISO uydurulmuş tarih üretmesin: `trTarih` boş dize döner.
   const yenilenmeGunu = (donemBitisISO ? trTarih(donemBitisISO) : '') || null;
@@ -157,8 +200,8 @@ export function abonelikOzeti(
 
   return {
     paketKodu,
-    // Goc paketi musteriye teknik kodla gosterilmez.
-    baslik: mirasMi(paketKodu) ? 'Geçiş paketi' : paketKodu,
+    // Katalog adı varsa o; goc paketi musteriye teknik kodla gosterilmez.
+    baslik: paketAdi?.trim() || (mirasMi(paketKodu) ? 'Geçiş paketi' : paketKodu),
     durum,
     durumEtiketi: durumEtiketi(durum),
     kalanGun,
@@ -174,7 +217,7 @@ export function abonelikOzeti(
       kalanGun !== null
         ? `${kalanGun} gün kaldı`
         : yenilenmeGunu
-          ? `Yenilenme ${yenilenmeGunu}`
+          ? `Yenilenme: ${yenilenmeGunu}`
           : 'Yenileme tarihi belirtilmemiş',
     // ⚠ Goc paketi de iptal EDILEBILIR sayilir: musteri isterse cikabilmeli.
     iptalEdilebilir: YASAYAN_DURUMLAR.has(durum),
@@ -192,14 +235,18 @@ export function abonelikOzeti(
  * olcum degildir.
  *
  *   1. Hesabim sayfasini ac
- *   2. "Abonelik yonetimi" bolumunu ac
- *   3. "Aboneligi iptal et" bagini tikla
+ *   2. "Abonelik" sekmesini ac
+ *   3. "Aboneligi iptal et" dugmesine bas
  *   4. Onay kutusunda dogrula   ← dorduncu emniyet
+ *
+ * ⚠ 23.09.2026 (Hesabim tasarimi): ikinci adim eskiden "Abonelik yonetimi ▾"
+ * acilir bolumuydu; sayfa sekmelere bolununce yerini ABONELIK SEKMESI aldi.
+ * Derinlik DEGISMEDI: dugme yine ancak ikinci tiklamadan sonra gorunur.
  */
 export const IPTAL_ADIMLARI = [
   'hesap-sayfasi',
-  'abonelik-yonetimi-ac',
-  'iptal-bagini-tikla',
+  'abonelik-sekmesi',
+  'iptal-dugmesine-bas',
   'onayla',
 ] as const;
 

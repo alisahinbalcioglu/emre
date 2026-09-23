@@ -211,7 +211,17 @@ describe('Ölçütün kendisi — tarayıcı metni koddan ayırıyor, kara liste
 const EKRANLAR = [
   'app/(protected)/abonelik/page.tsx', // paket seçimi, fatura formu, ödeme
   'app/(protected)/abonelik/donus/page.tsx', // ödeme dönüşü — satın almanın son adımı
-  'app/(protected)/profile/page.tsx', // hesap: abonelik bölümü, iptal
+  'app/(protected)/profile/page.tsx', // hesap: kimlik satırı, sekmeler
+  // 23.09.2026 — Hesabım sekmelere bölündü; kartların metni artık bu
+  // dosyalarda. Eklenmeselerdi sayfanın TAMAMI yine taranıyor sanılırdı.
+  'ozellik/kimlik/hesabim/hesabim.ts', // sekme adları, fatura kimliği uyarısı
+  'ozellik/kimlik/hesabim/ProfilSekmesi.tsx',
+  'ozellik/kimlik/hesabim/FirmaSekmesi.tsx',
+  'ozellik/kimlik/hesabim/AbonelikSekmesi.tsx', // abonelik bölümü, iptal
+  'ozellik/kimlik/hesabim/GuvenlikSekmesi.tsx',
+  'ozellik/kimlik/hesabim/VerilerSekmesi.tsx',
+  'ozellik/kimlik/hesabim/EkipErisimiSekmesi.tsx',
+  'ozellik/kimlik/kapatma-metinleri.ts', // "Hesabımı kapat" maddeleri
   'app/(protected)/dwg-workspace/page.tsx', // DWG için Pro kapısı
   'app/(protected)/labor-firms/page.tsx', // işçilik için Pro kapısı
   'ortak/kabuk/components/dashboard/QuickStart.tsx', // Excel/DWG kutusu ipucu
@@ -287,12 +297,17 @@ describe('Düzeltilen metinler yerinde (içerik kilidi)', () => {
     }
   });
 
-  it('hesap sayfası: abonelik bölümü ve paket adı "Basic"', () => {
-    const m = metinler('app/(protected)/profile/page.tsx');
-    for (const t of ['Aboneliği iptal et', 'Abonelik yönetimi', 'Paketleri gör', 'İşçilik', 'Basic', 'Başlangıç paketi']) {
+  it('hesap sayfası: abonelik bölümü (Abonelik sekmesi) ve "Core" yok', () => {
+    // 23.09.2026: kart Abonelik sekmesine taşındı. "Abonelik yönetimi" (açılır
+    // bölüm) ve "Başlangıç paketi" (eski alt satır) tasarımla KALKTI; "Basic"
+    // artık ekranda elle yazılmıyor, `paketRozeti` → `SEVIYE_AD`den geliyor
+    // (ikinci sözlük yok — aşağıdaki "Core" bloğu ölçer).
+    const m = metinler('ozellik/kimlik/hesabim/AbonelikSekmesi.tsx');
+    for (const t of ['Aboneliği iptal et', 'Paketleri gör', 'İşçilik', 'Paket kapsamı', 'Bu dönemki kullanım', 'Tüm zamanlar']) {
       expect(m, t).toContain(t);
     }
     expect(m).not.toContain('Core');
+    expect(metinler('app/(protected)/profile/page.tsx')).not.toContain('Core');
   });
 
   it('teklif tablosu (ExcelGrid): Pro kapısının iki ipucu, seçim kutuları, iskonto başlığı', () => {
@@ -309,8 +324,11 @@ describe('Düzeltilen metinler yerinde (içerik kilidi)', () => {
     }
     expect(metinler('app/(protected)/layout.tsx')).toEqual(expect.arrayContaining(['Giriş yapıldı', 'Çıkış Yap']));
     expect(metinler('ortak/kabuk/components/layout/Sidebar.tsx')).toEqual(expect.arrayContaining(['Kütüphanem', 'Kullanıcı']));
-    // ikizler: aynı ekrandaki sayfa başlıkları
-    expect(metinler('app/(protected)/profile/page.tsx')).toEqual(expect.arrayContaining(['Hesabım', 'Çıkış Yap']));
+    // ikizler: aynı ekrandaki sayfa başlıkları. 23.09: "Çıkış Yap" Hesabım'ın
+    // Güvenlik sekmesine taşındı — üst menüyle AYNI yazım korunuyor (hukuki
+    // metin de düğmeyi bu adla anıyor: `"Çıkış Yap" (… Hesabım sayfası)`).
+    expect(metinler('app/(protected)/profile/page.tsx')).toEqual(expect.arrayContaining(['Hesabım']));
+    expect(metinler('ozellik/kimlik/hesabim/GuvenlikSekmesi.tsx')).toEqual(expect.arrayContaining(['Çıkış Yap']));
     expect(metinler('app/(protected)/library/page.tsx')).toEqual(expect.arrayContaining(['Kütüphanem', 'Malzeme markaları ve işçilik kalemleri']));
   });
 
@@ -511,22 +529,39 @@ describe('Paket adı: müşteriye görünen hiçbir yerde "Core" yok (iç kod de
     expect(cagrilar).toEqual(['{paketRozeti(tier)}']);
   });
 
-  it('hesap sayfasının paket etiketleri tek kaynakla (SEVIYE_AD) aynı', () => {
-    let etiketler: Record<string, string> | undefined;
-    const gez = (n: ts.Node): void => {
-      if (ts.isVariableDeclaration(n) && n.name.getText() === 'TIER_CONFIG' && n.initializer && ts.isObjectLiteralExpression(n.initializer)) {
-        const bulunan: Record<string, string> = {};
-        for (const p of n.initializer.properties) {
-          if (!ts.isPropertyAssignment(p) || !ts.isObjectLiteralExpression(p.initializer)) continue;
-          const label = p.initializer.properties.find((q): q is ts.PropertyAssignment => ts.isPropertyAssignment(q) && q.name.getText() === 'label');
-          if (label && ts.isStringLiteral(label.initializer)) bulunan[p.name.getText()] = label.initializer.text;
+  it('hesap sayfasında İKİNCİ paket adı sözlüğü yok — ad tek kaynaktan (SEVIYE_AD)', () => {
+    // ⚠ 23.09.2026: eski kapı `TIER_CONFIG` etiketlerinin SEVIYE_AD ile AYNI
+    // olduğunu ölçüyordu. Hesabım tasarımında seviye başına renk/ikon kalktı
+    // ve `TIER_CONFIG` SİLİNDİ; kural aynı kalır ama ölçülen şey değişir:
+    // hesap ekranının hiçbir dosyasında seviye KODUNU (`core`/`pro`/`suite`)
+    // anahtar yapan bir nesne yok, rozet adı `paketRozeti(...)`den geliyor.
+    const kodlar = new Set(Object.keys(SEVIYE_AD));
+    const dosyalar = [
+      'app/(protected)/profile/page.tsx',
+      'ozellik/kimlik/hesabim/AbonelikSekmesi.tsx',
+      'ozellik/kimlik/hesabim/hesabim.ts',
+    ];
+    for (const yol of dosyalar) {
+      const sozlukler: string[] = [];
+      const gez = (n: ts.Node): void => {
+        if (ts.isObjectLiteralExpression(n)) {
+          const anahtarlar = n.properties.map((p) => p.name?.getText().replace(/['"]/g, ''));
+          if (anahtarlar.filter((a) => a && kodlar.has(a)).length >= 2) sozlukler.push(n.getText().slice(0, 60));
         }
-        etiketler = bulunan;
-      }
+        n.forEachChild(gez);
+      };
+      gez(dosya(yol));
+      expect(sozlukler, yol).toEqual([]);
+    }
+    // Rozet adı TEK kapıdan (boş hâl dahil) ve ÇAĞRILIYOR.
+    const sayfaCagrilari: string[] = [];
+    const gez = (n: ts.Node): void => {
+      if (ts.isCallExpression(n) && n.expression.getText() === 'paketRozeti') sayfaCagrilari.push(n.getText());
       n.forEachChild(gez);
     };
     gez(dosya('app/(protected)/profile/page.tsx'));
-    expect(etiketler).toEqual(SEVIYE_AD);
+    expect(sayfaCagrilari.length).toBeGreaterThan(0);
+    expect(sayfaCagrilari.every((c) => c === 'paketRozeti(tier)')).toBe(true);
   });
 
   it('düzeltilen yerler: anasayfa "Basic pakette", /fiyatlar paylaşım görseli alt metni "Basic"', () => {

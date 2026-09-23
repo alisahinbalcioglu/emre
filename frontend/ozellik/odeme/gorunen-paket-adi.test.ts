@@ -55,7 +55,12 @@ describe('görünen paket adı — tek sözlük', () => {
 
   it('⭐ profil kartında "Core" etiketi YOK', () => {
     expect(profil).not.toContain("label: 'Core'");
-    expect(profil).toContain("core: { label: 'Basic'");
+    // ⚠ 23.09.2026 (Hesabım tasarımı): seviye başına renk/ikon taşıyan
+    // `TIER_CONFIG` KALKTI — rozet tek görünümde ve adı paketin GERÇEK adı.
+    // Kural aynı: ekranda İKİNCİ bir ad sözlüğü yok, boş hâl `paketRozeti`den.
+    expect(profil).not.toContain('TIER_CONFIG');
+    expect(profil).not.toMatch(/core:\s*\{\s*label:/);
+    expect(profil).toContain('paketRozeti(tier)');
   });
 
   it('⭐ yönetici kullanıcılar ekranı aynı sözlüğü kullanıyor', () => {

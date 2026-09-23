@@ -408,7 +408,7 @@ export const GIZLILIK: HukukiMetin = {
     {
       baslik: "Bu hakları üründe nasıl kullanırsınız?",
       paragraflar: [
-        "Giriş yaptıktan sonra Profil sayfasından parolanızı değiştirebilirsiniz. Parolanızı değiştirdiğinizde, o ana kadar açık olan diğer oturumlarınız güvenlik gereği geçersiz hale gelir.",
+        "Giriş yaptıktan sonra Hesabım sayfasından parolanızı değiştirebilirsiniz. Parolanızı değiştirdiğinizde, o ana kadar açık olan diğer oturumlarınız güvenlik gereği geçersiz hale gelir.",
         "Hesabınızdaki verilerin tamamını makine tarafından okunabilir bir JSON dosyası olarak indirebilir ve hesabınızı kapatabilirsiniz. Hesap kapatma işleminde, işlemi gerçekten sizin yaptığınızdan emin olmak için parolanızı yeniden girmeniz istenir. Hesap kapatmanın veriyi anında imha etmediğini yukarıda anlattık.",
         "Aradığınız işlemi ekranda bulamıyorsanız veya listedeki diğer haklarınızı kullanmak istiyorsanız, aşağıdaki başvuru yolunu kullanın; aynı işlemi sizin adınıza biz yaparız.",
       ],
@@ -543,8 +543,8 @@ export const KULLANIM_KOSULLARI: HukukiMetin = {
     {
       baslik: "10. Sözleşmenin sona ermesi",
       paragraflar: [
-        `Aboneliğinizi dilediğiniz zaman Profil sayfanızdaki iptal adımıyla sonlandırabilirsiniz. İptal ettiğinizde erişiminiz o anda kesilmez: ödemesini yaptığınız dönemin sonuna kadar devam eder ve dönem sonunda yenileme yapılmaz. ${HUKUKI_KARARLAR.iade}`,
-        `Hesabınızın tamamen kapatılmasını istiyorsanız buna gerek yok: Profil sayfanızdaki "Hesabımı kapat" bölümünden, parolanızı girerek hesabınızı kendiniz kapatabilirsiniz. Kapatma isteğinizi ${SATICI.eposta} adresine, hesabınızın kayıtlı e-posta adresinden de iletebilirsiniz.`,
+        `Aboneliğinizi dilediğiniz zaman Hesabım sayfanızdaki iptal adımıyla sonlandırabilirsiniz. İptal ettiğinizde erişiminiz o anda kesilmez: ödemesini yaptığınız dönemin sonuna kadar devam eder ve dönem sonunda yenileme yapılmaz. ${HUKUKI_KARARLAR.iade}`,
+        `Hesabınızın tamamen kapatılmasını istiyorsanız buna gerek yok: Hesabım sayfanızdaki "Hesabımı kapat" bölümünden, parolanızı girerek hesabınızı kendiniz kapatabilirsiniz. Kapatma isteğinizi ${SATICI.eposta} adresine, hesabınızın kayıtlı e-posta adresinden de iletebilirsiniz.`,
         // ⚠ 21.09.2026 (K1) — "SÜRESİZ KALIR" İZLENİMİ KALDIRILDI. Veri imhası
         // turu kapatmayı "30 gün sakla, sonra kalıcı sil" hâline getirdi
         // (`imha.job.ts:15-16`: `deletedAt` = kapalı, `imhaTarihi` = kapatma+30g).
@@ -682,7 +682,7 @@ export const CEREZ_POLITIKASI: HukukiMetin = {
         "Bu kayıtlar sizin cihazınızda olduğu için kontrolü de sizdedir. Aşağıdaki yolların tamamı bugün çalışır durumdadır.",
       ],
       madde: [
-        "\"Çıkış Yap\" (sağ üstteki menü veya Profil sayfası) — oturum jetonunuzu ve kullanıcı özetinizi siler.",
+        "\"Çıkış Yap\" (sağ üstteki menü veya Hesabım sayfası) — oturum jetonunuzu ve kullanıcı özetinizi siler.",
         "\"Bu dosyayı sıfırla\" (DWG çalışma ekranı) — yalnız o çizime ait etiketleri, hesapları ve onayları siler. Geri alınamaz, bu yüzden onay sorulur.",
         "Tarayıcı ayarları > site verilerini temizle — bu siteye ait tüm localStorage ve sessionStorage kayıtlarını siler.",
         "Gizli/özel pencerede çalışmak — pencereyi kapattığınızda tüm kayıtlar silinir.",
@@ -791,7 +791,7 @@ export const MESAFELI_SATIS: HukukiMetin = {
       paragraflar: [
         "Abonelik aylıktır ve belirli bir taahhüt süresi yoktur. Ödemeniz onaylandığı anda paket kapsamındaki özellikler hesabınıza açılır; yani hizmet, sözleşmenin kurulmasının hemen ardından ifa edilmeye başlar.",
         "Abonelik, siz iptal etmediğiniz sürece her ay aynı dönemde kendiliğinden yenilenir ve tutar kayıtlı kartınızdan otomatik olarak tahsil edilir. Yenileme için ayrıca onay vermeniz gerekmez; istemediğiniz noktada iptal etmeniz yeterlidir.",
-        "Aboneliğinizin güncel durumunu ve erişiminizin hangi tarihe kadar geçerli olduğunu Profil sayfanızdaki Abonelik bölümünden görebilirsiniz.",
+        "Aboneliğinizin güncel durumunu ve erişiminizin hangi tarihe kadar geçerli olduğunu Hesabım sayfanızdaki Abonelik bölümünden görebilirsiniz.",
       ],
     },
     {
@@ -805,11 +805,21 @@ export const MESAFELI_SATIS: HukukiMetin = {
     {
       baslik: "9. İptal, iade ve hesabınızın kapatılması",
       paragraflar: [
-        "Aboneliğinizi kendiniz iptal edebilirsiniz: Profil sayfasını açın, Abonelik kartındaki \"Abonelik yönetimi\" başlığını genişletin ve \"Aboneliği iptal et\" düğmesine basın. Onay verdiğinizde iptal talebiniz anında işlenir; bizimle ayrıca yazışmanız gerekmez.",
+        // ⚠ 23.09.2026 — YOL TARİFİ GÜNCELLENDİ, HÜKÜM DEĞİŞMEDİ: Hesabım
+        // sayfası sekmelere bölündü; "Abonelik yönetimi" açılır bölümü kalktı,
+        // iptal düğmesi Abonelik sekmesinde. Eski tarif ekranda OLMAYAN bir
+        // adımı anlatacaktı. Hak (kendi kendine, anında, yazışmasız iptal)
+        // aynı olduğu için `HUKUKI_METIN_SURUMU` ARTIRILMADI — backend
+        // `hukuki-surum.ts` kuralı: yalnız ANLAMI değiştiren düzenleme artırır.
+        // Aynı tur, aynı gerekçe: dört metinde "Profil sayfası" → "Hesabım
+        // sayfası" (6 yer). Sayfanın adı hep "Hesabım"dı; sekmelerle birlikte
+        // "Profil" bir SEKMENİN adı oldu ve parola, iptal, kapatma, çıkış o
+        // sekmede değil — eski ad kişiyi yanlış sekmeye gönderirdi.
+        "Aboneliğinizi kendiniz iptal edebilirsiniz: Hesabım sayfasını açın, Abonelik sekmesine geçin ve \"Aboneliği iptal et\" düğmesine basın. Onay verdiğinizde iptal talebiniz anında işlenir; bizimle ayrıca yazışmanız gerekmez.",
         `İptalden sonra kartınızdan yeni bir çekim yapılmaz, ancak erişiminiz hemen kapanmaz: ${HUKUKI_KARARLAR.iade} Sorularınız için ${SATICI.eposta} adresine yazabilirsiniz.`,
         // ⚠ 21.09.2026 (K1) — İKİ YANLIŞ BEYAN DÜZELTİLDİ:
         //   1. "bu talebinizi bize iletebilirsiniz" ÜRÜNLE ÇELİŞİYORDU: kapatma
-        //      ekranda kendi kendine yapılıyor (`profile/page.tsx:1062,1121`
+        //      ekranda kendi kendine yapılıyor (Hesabım › Veriler sekmesi, `VerilerSekmesi.tsx`
         //      "Hesabımı kapat"). Kullanım Koşulları 9. madde bunu ZATEN doğru
         //      anlatıyordu — iki metin birbiriyle çelişiyordu (ikiz hatası).
         //   2. "bir süre daha sistemlerimizde kalır" SÜRESİZ izlenimi veriyordu;
@@ -930,7 +940,7 @@ export const MESAFELI_SATIS_SOZLESMESI: HukukiMetin = {
     {
       baslik: "6. İptal ve iade",
       paragraflar: [
-        "ALICI aboneliğini dilediği an, gerekçe göstermeden ve ek ücret ödemeden Profil sayfasından iptal edebilir. İptal, bir sonraki yenilemeyi durdurur.",
+        "ALICI aboneliğini dilediği an, gerekçe göstermeden ve ek ücret ödemeden Hesabım sayfasından iptal edebilir. İptal, bir sonraki yenilemeyi durdurur.",
         `İptalin sonuçları şöyledir: ${HUKUKI_KARARLAR.iade}`,
       ],
     },

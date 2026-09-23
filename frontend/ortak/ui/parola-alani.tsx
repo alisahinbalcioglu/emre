@@ -21,7 +21,16 @@ type Props = {
   autoComplete: 'current-password' | 'new-password';
   placeholder?: string;
   minLength?: number;
+  /**
+   * Girdinin sınıfları (Hesabım kartları, 23.09). Verilmezse giriş/kayıt
+   * ekranının görünümü kullanılır. Göz düğmesi ve `type="button"` kuralı
+   * AYNI kalır — ikinci bir parola alanı yazılmasın diye yalnız görünüm açıldı.
+   */
+  girdiSinifi?: string;
 };
+
+const GIRIS_EKRANI_GIRDISI =
+  'w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-3.5 pr-11 text-sm text-slate-800 transition-all focus:border-blue-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600/20';
 
 export function ParolaAlani({
   id,
@@ -30,6 +39,7 @@ export function ParolaAlani({
   autoComplete,
   placeholder = '••••••••••••',
   minLength,
+  girdiSinifi = GIRIS_EKRANI_GIRDISI,
 }: Props) {
   const [gorunur, setGorunur] = useState(false);
 
@@ -44,7 +54,7 @@ export function ParolaAlani({
         onChange={(e) => onChange(e.target.value)}
         minLength={minLength}
         required
-        className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-3.5 pr-11 text-sm text-slate-800 transition-all focus:border-blue-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600/20"
+        className={girdiSinifi}
       />
       <button
         type="button"

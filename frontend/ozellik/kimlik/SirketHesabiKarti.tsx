@@ -19,8 +19,10 @@
 
 import { useState } from 'react';
 import api from '@/ortak/lib/api';
+import { cn } from '@/ortak/lib/utils';
 import { kimlikHataMetni } from '@/ortak/lib/kimlik-hata-metinleri';
 import { kurumsalGirisiBaslat, SAGLAYICI_ADI } from '@/ozellik/kimlik/kurumsal-baslat';
+import { GIRDI, IKINCIL_DUGME } from './hesabim/hesabim-ui';
 
 export type KurumsalBilgi = {
   bagli: boolean;
@@ -80,74 +82,67 @@ export function SirketHesabiKarti({
   // ("kimseye görünmez" kuralı profilde de geçerli).
   if (!kurumsal.bagli && !saglayiciHazir) return null;
 
+  // 23.09.2026 — Hesabım tasarımı: Güvenlik sekmesindeki öbür kartlarla aynı
+  // kart (beyaz, 12 px köşe, gri kenarlık); metinler ve akış DEĞİŞMEDİ.
+  const parolaKutusu = (
+    <input
+      type="password"
+      value={parola}
+      onChange={(e) => setParola(e.target.value)}
+      placeholder="Parolanız"
+      aria-label="Parolanız"
+      className={cn(GIRDI, 'mt-3 max-w-sm')}
+    />
+  );
+
   return (
-    <div className="mb-6 rounded-xl border bg-card p-4">
-      <h3 className="mb-2 text-sm font-semibold">Şirket hesabı</h3>
+    <section aria-labelledby="sirket-hesabi-baslik" className="rounded-xl border border-gray-200 bg-white p-6">
+      <h2 id="sirket-hesabi-baslik" className="text-base font-semibold text-gray-900">Şirket hesabı</h2>
 
       {kurumsal.bagli ? (
         <>
-          <p className="mb-2 text-xs text-muted-foreground">
+          <p className="mt-1.5 text-[13px] text-gray-500">
             Hesabınız {SAGLAYICI_ADI[kurumsal.saglayiciTipi ?? ''] ?? 'şirket'} hesabınıza bağlı.
             Giriş ekranında &quot;Şirket hesabımla giriş yap&quot; ile girebilirsiniz.
           </p>
           {kurumsal.parolaTanimli ? (
-            <input
-              type="password"
-              value={parola}
-              onChange={(e) => setParola(e.target.value)}
-              placeholder="Parolanız"
-              className="mb-2 block w-full rounded border px-2 py-1 text-sm"
-            />
+            parolaKutusu
           ) : (
-            <p className="mb-2 text-xs text-muted-foreground">
+            <p className="mt-2 text-[13px] text-gray-500">
               Bağlantıyı kaldırmak için son 10 dakika içinde şirket hesabınızla giriş yapmış
               olmanız gerekir.
             </p>
           )}
-          <button
-            type="button"
-            onClick={kaldir}
-            disabled={calisiyor}
-            className="rounded border px-3 py-1.5 text-sm disabled:opacity-60"
-          >
-            Bağlantıyı kaldır
-          </button>
+          <div className="mt-4">
+            <button type="button" onClick={kaldir} disabled={calisiyor} className={IKINCIL_DUGME}>
+              Bağlantıyı kaldır
+            </button>
+          </div>
         </>
       ) : (
         <>
-          <p className="mb-2 text-xs text-muted-foreground">
+          <p className="mt-1.5 text-[13px] text-gray-500">
             Şirket hesabınızı bağlarsanız parolanızı yazmadan girebilirsiniz.
             Şirket hesabınızın e-posta adresi bu hesabın adresiyle aynı olmalıdır.
           </p>
-          {kurumsal.parolaTanimli && (
-            <input
-              type="password"
-              value={parola}
-              onChange={(e) => setParola(e.target.value)}
-              placeholder="Parolanız"
-              className="mb-2 block w-full rounded border px-2 py-1 text-sm"
-            />
-          )}
-          <button
-            type="button"
-            onClick={bagla}
-            disabled={calisiyor}
-            className="rounded border px-3 py-1.5 text-sm disabled:opacity-60"
-          >
-            Şirket hesabımı bağla
-          </button>
+          {kurumsal.parolaTanimli && parolaKutusu}
+          <div className="mt-4">
+            <button type="button" onClick={bagla} disabled={calisiyor} className={IKINCIL_DUGME}>
+              Şirket hesabımı bağla
+            </button>
+          </div>
         </>
       )}
 
       {!kurumsal.parolaTanimli && (
-        <p className="mt-3 rounded bg-muted p-2 text-xs text-muted-foreground">
+        <p className="mt-4 rounded-[10px] bg-gray-100 p-3 text-[13px] text-gray-600">
           Hesabınız şirket hesabıyla açıldı; parolası yok. Parola belirlemek için giriş
           ekranındaki &quot;Parolamı unuttum&quot; adımını kullanabilirsiniz (firmanız kurumsal
           girişi zorunlu kılmadıysa).
         </p>
       )}
-      {bilgi && <p className="mt-2 text-xs text-emerald-600">{bilgi}</p>}
-      {hata && <p className="mt-2 text-xs text-red-600">{hata}</p>}
-    </div>
+      {bilgi && <p role="status" className="mt-3 text-[13px] text-emerald-700">{bilgi}</p>}
+      {hata && <p role="alert" className="mt-3 text-[13px] text-red-600">{hata}</p>}
+    </section>
   );
 }

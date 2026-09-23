@@ -16,6 +16,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import { webcrypto } from 'node:crypto';
+// Hesabım sekme kararı (import'suz saf dosya) — F2i için.
+import { hesapSekmeleri } from './hesabim/hesabim';
 
 const KOK = path.join(__dirname, '../..');
 const oku = (p: string) => fs.readFileSync(path.join(KOK, p), 'utf8');
@@ -171,6 +173,16 @@ describe('F2 — /sso/tamam kaynak kapilari', () => {
     expect(kaynak).toMatch(/firma\/ekip\/kurumsal-giris\?sonuc=sinandi/);
     const metinler = kodu(oku('ozellik/firma/kurumsal-giris/kurumsal-giris-metinleri.ts'));
     expect(metinler).toContain('hesabınız bu şirket hesabına bağlanmadı');
+  });
+
+  it('F2i ⭐ `baglandi` Hesabim GUVENLIK sekmesine doner (Sirket hesabi karti orada)', () => {
+    // 23.09.2026: Hesabim sekmelere bolundu. `/profile`a donen kisi varsayilan
+    // Profil sekmesine duser ve baglantinin kuruldugunu GOREMEZDI.
+    expect(kaynak).toContain("router.push('/profile?sekme=guvenlik&kurumsal=baglandi')");
+    // Sekme HER IKI rolde var (yoksa `sekmeCoz` Profil'e dusururdu) ve kart orada.
+    expect(hesapSekmeleri(true)).toContain('guvenlik');
+    expect(hesapSekmeleri(false)).toContain('guvenlik');
+    expect(kodu(oku('ozellik/kimlik/hesabim/GuvenlikSekmesi.tsx'))).toContain('<SirketHesabiKarti');
   });
 
   it('F2h sayfa `noindex` ve `no-referrer` tasir', () => {

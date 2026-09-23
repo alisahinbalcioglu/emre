@@ -1,9 +1,9 @@
 /**
  * HESAP KAPATMA METNİ — saf karar + EKRANA BAĞLANTI + SUNUCU SÖZLEŞMESİ.
- * (veri imhası turu §8.1 · 21.09.2026)
+ * (veri imhası turu §8.1 · 21.09.2026; madde madde biçim · 23.09.2026)
  *
  * ⚠ ÜÇ AYAK, ÜÇÜ DE GEREKLİ:
- *   1. Fonksiyon doğru metni seçiyor mu
+ *   1. Fonksiyon doğru maddeleri seçiyor mu
  *   2. EKRAN bu fonksiyonu gerçekten kullanıyor ve eski cümle KALMADI mı
  *      (hafıza dersi "Mekanizma var, bağlantı yok" — bu depoda TEK oturumda
  *      6 kez: fonksiyon doğru, çağıran yok)
@@ -13,12 +13,18 @@
  * sanılmıştı; A görevi `ayrilmaKarari`yi `firmaKapaniyor` olarak değiştirdi
  * ve ön yüz sessizce YANLIŞ dala düşecekti (son sahip "firmanız devam
  * ediyor" metnini görecekti). Sözleşme kapısı bunu kırmızıya çevirir.
+ *
+ * ⚠ 23.09.2026 — Hesabım tasarımı §8.1 paragrafını MADDELERE böldü ve
+ * "alt kullanıcıların erişimi de kapanır" maddesini ekledi. Öncül "gövde her
+ * durumda AYNI" çürüdü: firma devam ederken iki madde (abonelik iptali,
+ * tekliflerin silinmesi) o kişi için YANLIŞTI ve ölçüldü (`hesap.servisi.ts`).
+ * Kapılar amaçlarıyla korunuyor; sayılar ve kararlar yine sunucudan.
  */
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
-  hesapKapatmaMetni,
+  hesapKapatmaMaddeleri,
   SAKLAMA_GUN,
   type KapatmaOnizlemesi,
 } from './kapatma-metinleri';
@@ -58,136 +64,129 @@ const SON_SAHIP: KapatmaOnizlemesi = {
 };
 
 const HEPSI = [null, FIRMA_DEVAM, TEK_HESAP, SON_SAHIP];
+const metinler = (g: KapatmaOnizlemesi | null) => hesapKapatmaMaddeleri(g).map((m) => m.metin);
 
-describe('hesapKapatmaMetni — gövde HER durumda aynı ve TAM', () => {
-  const GOVDE =
-    'Hesabınız kapatılır, oturumunuz sonlandırılır ve varsa aboneliğiniz iptal ' +
-    'edilir. Geri dönebilmeniz için verilerinizi 30 gün saklıyoruz: bu sürede ' +
-    'aynı e-posta ve parolanızla giriş yapıp bir paket seçerek hesabınızı kaldığınız ' +
-    'yerden açabilirsiniz. 30 günün sonunda teklifleriniz, kütüphaneniz ve ' +
-    'yüklediğiniz belgeler kalıcı olarak silinir. Fatura ve ödeme kayıtları yasal ' +
-    'süre boyunca saklanır.';
+/** Firmanın kaderinden bağımsız DÖRT temel madde — Emre'nin tasarımı, birebir. */
+const TEMEL = [
+  'Oturumunuz sonlanır, varsa aboneliğiniz iptal edilir.',
+  '30 gün içinde aynı e-posta ve parolayla giriş yapıp bir paket seçerek kaldığınız yerden devam edebilirsiniz.',
+  '30 günün sonunda teklifleriniz, kütüphaneniz ve yüklediğiniz belgeler kalıcı olarak silinir.',
+  'Fatura ve ödeme kayıtları yasal süre boyunca saklanır.',
+];
 
-  it('⭐ Emre metni BİREBİR (§8.1) — Türkçe karakterler dahil', () => {
+describe('hesapKapatmaMaddeleri — her durumda doğru olan dört madde', () => {
+  it('⭐ ön izleme YOKKEN (uç 404/500) tasarımdaki dört madde BİREBİR — Türkçe karakterler dahil', () => {
     // ⚠ Tam eşitlik BİLEREK: bu aynı zamanda Türkçe karakter kapısıdır.
-    // "kapatilir/edilir/gunun" gibi karaktersiz bir yazım testi düşürür
-    // (`turkce-metin.test.ts` bu yeni dosyayı henüz taramıyor — K'nın dosyası).
-    expect(hesapKapatmaMetni(null).govde).toBe(GOVDE);
+    expect(metinler(null)).toEqual(TEMEL);
+    expect(hesapKapatmaMaddeleri(null).every((m) => m.ton === 'duz')).toBe(true);
   });
 
-  it('gövde dört durumda da AYNI (duruma göre değişen yalnız EK cümle)', () => {
-    for (const g of HEPSI) expect(hesapKapatmaMetni(g).govde).toBe(GOVDE);
+  it('firmanın son hesabı (geride kimse yok) → yalnız dört temel madde', () => {
+    expect(metinler(TEK_HESAP)).toEqual(TEMEL);
   });
 
-  it('⭐ ESKİ ÜÇ YANLIŞ İDDİA hiçbir metinde YOK', () => {
-    const hepsi = HEPSI.map((g) => {
-      const m = hesapKapatmaMetni(g);
-      return `${m.govde} ${m.ek ?? ''}`;
-    }).join(' ');
+  it('⭐ ESKİ ÜÇ YANLIŞ İDDİA hiçbir maddede YOK', () => {
+    const hepsi = HEPSI.map((g) => metinler(g).join(' ')).join(' ');
     expect(hepsi).not.toContain('ayrıca iletmeniz gerekir');
     expect(hepsi).not.toContain('sistemde kalmaya devam eder');
     expect(hepsi).not.toContain('yeniden kayıt olabilirsiniz');
   });
 
-  it('gövde dört şeyi de söylüyor: kesinti · 30 gün geri dönüş · imha · fatura', () => {
-    const g = hesapKapatmaMetni(null).govde;
-    expect(g).toContain('aboneliğiniz iptal');
-    expect(g).toContain(`${G} gün saklıyoruz`);
-    expect(g).toContain('bir paket seçerek');
-    expect(g).toContain('kalıcı olarak silinir');
-    expect(g).toContain('Fatura ve ödeme kayıtları yasal');
+  it('dört olgu da söyleniyor: kesinti · 30 gün geri dönüş · imha · fatura', () => {
+    const m = metinler(null).join(' ');
+    expect(m).toContain('aboneliğiniz iptal');
+    expect(m).toContain(`${G} gün içinde`);
+    expect(m).toContain('bir paket seçerek');
+    expect(m).toContain('kalıcı olarak silinir');
+    expect(m).toContain('Fatura ve ödeme kayıtları yasal');
+  });
+
+  it('geri dönüş ve fatura maddesi DÖRT durumda da var', () => {
+    for (const g of HEPSI) {
+      const m = metinler(g);
+      expect(m, JSON.stringify(g)).toContain(TEMEL[1]);
+      expect(m, JSON.stringify(g)).toContain(TEMEL[3]);
+    }
   });
 });
 
-describe('hesapKapatmaMetni — duruma özel EK cümle', () => {
-  it('⭐ FİRMA KAPANIYOR + geride üye VAR → UYARI, sayı SUNUCUDAN (§3.3.1)', () => {
-    const m = hesapKapatmaMetni(SON_SAHIP);
-    expect(m.ekTuru).toBe('uyari');
-    expect(m.ek).toBe(
-      'Firmanızda 3 üye var. Hesabınızı kapatırsanız firmanız kapanır ve ' +
-        'onların da erişimi durur. 30 gün içinde paket seçerek geri açarsanız ' +
-        'ekibiniz de geri gelir.',
-    );
+describe('hesapKapatmaMaddeleri — duruma özel maddeler (karar SUNUCUDAN)', () => {
+  it('⭐ FİRMA KAPANIYOR + geride insan VAR → ekip maddesi UYARI, sayı SUNUCUDAN (§3.3.1)', () => {
+    const m = hesapKapatmaMaddeleri(SON_SAHIP);
+    expect(m[1]).toEqual({
+      metin: 'Firmanız kapanır; ekibinizdeki 3 kişinin erişimi de kapanır. Geri dönerseniz ekibiniz de geri gelir.',
+      ton: 'uyari',
+    });
+    // Temel dört madde yerinde; ekip maddesi kesinti maddesinin HEMEN ardında.
+    expect(m.map((x) => x.metin)).toEqual([TEMEL[0], m[1].metin, ...TEMEL.slice(1)]);
+    expect(m.filter((x) => x.ton === 'uyari')).toHaveLength(1);
   });
 
   it('sayı SABİT DEĞİL — sunucunun `digerHesap` değeri yazılır', () => {
-    expect(hesapKapatmaMetni({ ...SON_SAHIP, digerHesap: 1 }).ek).toContain('Firmanızda 1 üye var.');
-    expect(hesapKapatmaMetni({ ...SON_SAHIP, digerHesap: 17 }).ek).toContain('Firmanızda 17 üye var.');
+    expect(metinler({ ...SON_SAHIP, digerHesap: 1 }).join(' ')).toContain('ekibinizdeki 1 kişinin');
+    expect(metinler({ ...SON_SAHIP, digerHesap: 17 }).join(' ')).toContain('ekibinizdeki 17 kişinin');
   });
 
-  it('⭐ FİRMA DEVAM EDİYOR → teklifler firmada kalır (bilgi)', () => {
-    const m = hesapKapatmaMetni(FIRMA_DEVAM);
-    expect(m.ekTuru).toBe('bilgi');
-    expect(m.ek).toBe(
+  it('⭐ FİRMA DEVAM EDİYOR → abonelik SÜRER, teklifler firmada KALIR', () => {
+    const m = metinler(FIRMA_DEVAM);
+    expect(m).toEqual([
+      'Oturumunuz sonlanır; firmanızın aboneliği sürer.',
+      TEMEL[1],
       'Hazırladığınız teklifler firmanızda kalır; kişisel bilgileriniz 30 gün sonra silinir.',
-    );
+      TEMEL[3],
+    ]);
+    // ⚠ Bu kişi için YANLIŞ olan iki iddia YOK (ölçüm aşağıdaki SÖZLEŞME bloğunda).
+    expect(m.join(' ')).not.toContain('aboneliğiniz iptal');
+    expect(m.join(' ')).not.toContain('teklifleriniz, kütüphaneniz');
+    expect(hesapKapatmaMaddeleri(FIRMA_DEVAM).every((x) => x.ton === 'duz')).toBe(true);
   });
 
-  it('⭐ FİRMANIN SON HESABI → ek cümle YOK (geride kalan kimse yok)', () => {
-    const m = hesapKapatmaMetni(TEK_HESAP);
-    expect(m.ek).toBeNull();
-    expect(m.ekTuru).toBeNull();
-  });
-
-  it('⭐ ÖN İZLEME YOK (uç 404/500) → düz metin, sayı UYDURULMAZ', () => {
-    const m = hesapKapatmaMetni(null);
-    expect(m.ek).toBeNull();
-    expect(m.ekTuru).toBeNull();
-  });
-
-  it('FİRMASIZ hesap → firma cümlesi YAZILMAZ', () => {
+  it('FİRMASIZ hesap → firma maddesi YAZILMAZ', () => {
     // ⚠ Sunucu firmasız dalda `ayrilmaKarari`yi çağırmadan
     // `{izin:true, firmaKapaniyor:false}` döndürüyor — "firma devam ediyor"
     // dalıyla AYNI görünür. `firmaVar` olmasaydı firmasız kullanıcıya
     // "teklifleriniz firmanızda kalır" derdik.
-    const m = hesapKapatmaMetni({
-      firmaVar: false,
-      karar: { izin: true, firmaKapaniyor: false },
-      digerHesap: 0,
-      saklamaGun: G,
-    });
-    expect(m.ek).toBeNull();
+    expect(
+      metinler({ firmaVar: false, karar: { izin: true, firmaKapaniyor: false }, digerHesap: 0, saklamaGun: G }),
+    ).toEqual(TEMEL);
   });
 
-  it('BOZUK SAYI: firma kapanıyor ama digerHesap 0/eksi/kesirli → "0 üye var" YAZILMAZ', () => {
+  it('BOZUK SAYI: firma kapanıyor ama digerHesap 0/eksi/kesirli → "0 kişinin erişimi" YAZILMAZ', () => {
     for (const n of [0, -1, 1.5, NaN]) {
-      expect(hesapKapatmaMetni({ ...SON_SAHIP, digerHesap: n }).ek, String(n)).toBeNull();
+      expect(metinler({ ...SON_SAHIP, digerHesap: n }), String(n)).toEqual(TEMEL);
     }
   });
 
-  it('`izin:false` (sunucu reddediyor) → hiçbir firma cümlesi yazılmaz', () => {
-    const m = hesapKapatmaMetni({
-      firmaVar: true,
-      karar: { izin: false, kod: 'SON_SAHIP' },
-      digerHesap: 3,
-      saklamaGun: G,
-    });
-    expect(m.ek).toBeNull();
+  it('`izin:false` (sunucu reddediyor) → hiçbir firma maddesi yazılmaz', () => {
+    expect(
+      metinler({ firmaVar: true, karar: { izin: false, kod: 'SON_SAHIP' }, digerHesap: 3, saklamaGun: G }),
+    ).toEqual(TEMEL);
   });
 
   it('üç hâl ÜÇ AYRI sonuç üretir (hiçbir dal ötekine çökmüyor)', () => {
-    const s = [SON_SAHIP, FIRMA_DEVAM, TEK_HESAP].map((g) => JSON.stringify(hesapKapatmaMetni(g)));
+    const s = [SON_SAHIP, FIRMA_DEVAM, TEK_HESAP].map((g) => JSON.stringify(hesapKapatmaMaddeleri(g)));
     expect(new Set(s).size).toBe(3);
   });
 });
 
 describe('saklama günü — TEK KAYNAK sunucu, yerel sabit YEDEK', () => {
-  it('⭐ sunucunun günü METNE GİRİYOR (yerel sabit ezilir)', () => {
-    const m = hesapKapatmaMetni({ ...FIRMA_DEVAM, saklamaGun: 45 });
-    expect(m.govde).toContain('verilerinizi 45 gün saklıyoruz');
-    expect(m.govde).toContain('45 günün sonunda');
-    expect(m.ek).toContain('kişisel bilgileriniz 45 gün sonra silinir');
-    expect(m.govde).not.toContain('30 gün');
+  it('⭐ sunucunun günü MADDELERE GİRİYOR (yerel sabit ezilir)', () => {
+    const hepsi = [...metinler({ ...SON_SAHIP, saklamaGun: 45 }), ...metinler({ ...FIRMA_DEVAM, saklamaGun: 45 })].join(' ');
+    expect(hepsi).toContain('45 gün içinde');
+    expect(hepsi).toContain('45 günün sonunda');
+    expect(hepsi).toContain('kişisel bilgileriniz 45 gün sonra silinir');
+    expect(hepsi).not.toContain('30 gün');
   });
 
   it('sunucu günü göndermezse / bozuksa YEDEK kullanılır', () => {
     for (const g of [undefined, 0, -3, 2.5, NaN]) {
-      const m = hesapKapatmaMetni({ ...FIRMA_DEVAM, saklamaGun: g as number | undefined });
-      expect(m.govde, String(g)).toContain(`${SAKLAMA_GUN} gün saklıyoruz`);
+      const m = metinler({ ...TEK_HESAP, saklamaGun: g as number | undefined }).join(' ');
+      expect(m, String(g)).toContain(`${SAKLAMA_GUN} gün içinde`);
+      expect(m, String(g)).toContain(`${SAKLAMA_GUN} günün sonunda`);
     }
   });
 
-  it('30 sayısı metin gövdelerinde ELLE yazılı DEĞİL', () => {
+  it('30 sayısı metinlerde ELLE yazılı DEĞİL', () => {
     const kaynak = kodu(oku('ozellik/kimlik/kapatma-metinleri.ts'));
     expect(kaynak).not.toMatch(/'[^']*\b30 gün/);
     expect(kaynak).not.toMatch(/`[^`]*\b30 gün/);
@@ -237,58 +236,84 @@ describe('⭐ SÖZLEŞME — sunucu hâlâ bu şekli gönderiyor', () => {
     expect(servis).toContain('firmayiKapatabilir: true');
     expect((servis.match(/firmayiKapatabilir: true/g) ?? []).length).toBeGreaterThanOrEqual(2);
   });
+
+  it('⭐ ABONELİK İPTALİ YALNIZ FİRMA KAPANIRKEN — "firma devam ediyor" maddesinin dayanağı', () => {
+    // Firma devam ederken ekran "aboneliğiniz iptal edilir" DEMİYOR; bunun
+    // doğru olması, sunucunun iptali bu koşula bağlamasına dayanır.
+    expect(kodu(servis)).toMatch(/if \(karar\.izin && karar\.firmaKapaniyor && user\.firmaId\) \{\s*try \{\s*await this\.satinAlma\.iptalEt\(/);
+  });
 });
 
-describe('⭐ BAĞLANTI — profil ekranı bu kararı kullanıyor', () => {
-  const ham = oku('app/(protected)/profile/page.tsx');
-  const sayfa = kodu(ham);
+describe('⭐ BAĞLANTI — Hesabım › Veriler sekmesi bu kararı kullanıyor', () => {
+  const SAYFA = 'app/(protected)/profile/page.tsx';
+  const VERILER = 'ozellik/kimlik/hesabim/VerilerSekmesi.tsx';
+  const GUVENLIK = 'ozellik/kimlik/hesabim/GuvenlikSekmesi.tsx';
+  const hamSayfa = oku(SAYFA);
+  const hamVeriler = oku(VERILER);
+  const sayfa = kodu(hamSayfa);
+  const veriler = kodu(hamVeriler);
 
-  it('ÖLÇÜT: dosya okundu ve hâlâ hesap kapatma bölümünü çiziyor', () => {
-    expect(sayfa).toContain('/auth/hesabimi-kapat');
-    expect(sayfa).toContain('kapatmaParola');
+  it('ÖLÇÜT: dosyalar okundu ve Veriler sekmesi hâlâ hesap kapatmayı çiziyor', () => {
+    expect(veriler).toContain("api.post('/auth/hesabimi-kapat'");
+    expect(veriler).toContain('kapatmaParola');
+    // Sayfa sekmeyi PANEL haritasından çizer (sekme ↔ kart birebir); haritanın
+    // YALNIZ rol listesinden çizildiği `hesabim.test.ts` BAĞLANTI bloğunda.
+    expect(sayfa).toMatch(/\bveriler: \(\) => \(?\s*<VerilerSekmesi\b/);
   });
 
   it('saf fonksiyon içe aktarılıp çağrılıyor', () => {
-    expect(sayfa).toContain("from '@/ozellik/kimlik/kapatma-metinleri'");
-    expect(sayfa).toContain('hesapKapatmaMetni(');
+    expect(veriler).toContain("from '../kapatma-metinleri'");
+    expect(veriler).toContain('hesapKapatmaMaddeleri(kapatmaOnizleme)');
   });
 
-  it('⭐ ESKİ CÜMLE KALMADI — yorumda da, kodda da', () => {
+  it('⭐ ön izleme SAYFADAN geliyor ve Veriler sekmesine GEÇİYOR', () => {
+    expect(sayfa).toContain('kapatmaOnizlemesiGetir(');
+    expect(sayfa).toContain('kapatmaOnizleme={kapatmaOnizleme}');
+  });
+
+  it('⭐ ESKİ CÜMLE KALMADI — yorumda da, kodda da (iki dosyada)', () => {
     // ⚠ HAM metinde aranıyor: bu cümle bir daha "açıklama yorumu" olarak
     // bile geri gelmemeli; geri gelirse birisi onu kopyalayıp JSX'e taşır.
-    // (Bu depoda `faz5` G4 kapısı tam tersi tuzağa düşmüştü: yasakladığı
-    // cümleyi kendi yorumunda bulup yanlış kırmızı veriyordu.)
-    expect(ham).not.toContain('ayrıca iletmeniz gerekir');
-    expect(ham).not.toContain('sistemde kalmaya devam eder');
-    expect(ham).not.toContain('Aynı e-posta adresiyle yeniden kayıt olabilirsiniz');
-    expect(ham).not.toContain('Bu işlemin geri alma yolu yoktur');
+    for (const [ad, ham] of [[SAYFA, hamSayfa], [VERILER, hamVeriler]] as const) {
+      expect(ham, ad).not.toContain('ayrıca iletmeniz gerekir');
+      expect(ham, ad).not.toContain('sistemde kalmaya devam eder');
+      expect(ham, ad).not.toContain('Aynı e-posta adresiyle yeniden kayıt olabilirsiniz');
+      expect(ham, ad).not.toContain('Bu işlemin geri alma yolu yoktur');
+    }
   });
 
   it('⭐ METİN JSX İÇİNE GÖMÜLÜ DEĞİL — fonksiyondan geliyor', () => {
-    expect(sayfa).toContain('{kapatmaMetni.govde}');
-    expect(sayfa).toContain('{kapatmaMetni.ek}');
-    // Gövdenin ayırt edici parçası sayfada ELLE yazılı olmamalı (ikiz metin).
-    expect(sayfa).not.toContain('Geri dönebilmeniz için verilerinizi');
+    expect(veriler).toContain('maddeler.map((m) =>');
+    expect(veriler).toContain('{m.metin}');
+    // Maddelerin ayırt edici parçaları ekranda ELLE yazılı olmamalı (ikiz metin).
+    for (const kod of [sayfa, veriler]) {
+      expect(kod).not.toContain('kalıcı olarak silinir');
+      expect(kod).not.toContain('gün içinde aynı e-posta');
+    }
   });
 
-  it('⭐ ek cümle KOŞULLU çiziliyor (boş kutu bırakılmıyor)', () => {
-    expect(sayfa).toContain('kapatmaMetni.ek &&');
+  it('⭐ uyarı tonu fonksiyondan (renk ekranda KARAR VERMEZ)', () => {
+    expect(veriler).toContain("m.ton === 'uyari'");
   });
 
   it('⭐ İKİNCİ "son sahip mi" HESABI YOK — karar sunucudan', () => {
     // Ön yüzde üye/sahip sayan bir hesap belirirse ikiz kural doğar.
-    expect(sayfa).not.toMatch(/digerEtkinSahip/);
-    expect(sayfa).not.toMatch(/uyeler\.filter/);
-    expect(sayfa).toContain('kapatmaOnizlemesiGetir(');
+    for (const kod of [sayfa, veriler]) {
+      expect(kod).not.toMatch(/digerEtkinSahip/);
+      expect(kod).not.toMatch(/uyeler\.filter/);
+    }
   });
 
-  it('⭐ FAZ 7 İKİ ADIMLI GİRİŞ KARTI BOZULMADI (aynı dosyada)', () => {
-    expect(sayfa).toContain("from '@/ozellik/kimlik/IkiAdimliGirisKarti'");
-    expect(sayfa).toContain('<IkiAdimliGirisKarti');
-    expect(sayfa).toContain('profile.mfa &&');
-    expect(sayfa).toContain('onTokenTazele');
+  it('⭐ FAZ 7 İKİ ADIMLI GİRİŞ KARTI BOZULMADI (Güvenlik sekmesinde)', () => {
+    const guvenlik = kodu(oku(GUVENLIK));
+    expect(guvenlik).toContain("from '../IkiAdimliGirisKarti'");
+    expect(guvenlik).toContain('<IkiAdimliGirisKarti');
+    expect(guvenlik).toContain('profile.mfa &&');
+    expect(guvenlik).toContain('onTokenTazele={onTokenTazele}');
     // Şirket hesabı kartı da aynı bölgede — o da yerinde.
-    expect(sayfa).toContain('<SirketHesabiKarti');
+    expect(guvenlik).toContain('<SirketHesabiKarti');
+    // Sayfa, token yazan fonksiyonu Güvenlik sekmesine GEÇİRİYOR.
+    expect(sayfa).toContain('onTokenTazele={tokenTazele}');
   });
 
   it('ön izleme hatası sayfayı DÜŞÜRMÜYOR (sarmal kendi içinde yutuyor)', () => {

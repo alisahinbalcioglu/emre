@@ -38,6 +38,8 @@ import {
   imhaTarihiAyricaYazilsinMi,
 } from '../../ortak/kabuk/components/layout/kapali-durum';
 import { icerikDurdurulsunMu } from '../../ozellik/odeme/erisim-durumu';
+// Hesabım sekme kararı (23.09) — import'suz saf dosya.
+import { hesapSekmeleri } from './hesabim/hesabim';
 
 const oku = (p: string) => readFileSync(join(process.cwd(), p), 'utf8');
 const kodu = (s: string) =>
@@ -151,8 +153,20 @@ describe('K2/K3 — kapatma bilgisi ve KVKK hakkı ŞERİTTE', () => {
       .toContain('profile');
 
     // 3) O sayfada indirme GERÇEKTEN var (hak bir yere taşındı, buharlaşmadı).
+    //    ⚠ 23.09.2026: Hesabım sekmelere bölündü; indirme Veriler sekmesinde
+    //    ve `verileri-indir.ts` yardımcısından. Halka ÜÇ parçaya ayrıldı —
+    //    sayfa sekmeyi çiziyor · sekme HER İKİ rolde de görünüyor · sekme
+    //    yardımcıyı çağırıyor · yardımcı ucu çağırıyor. Biri koparsa hak kaybolur.
     const profil = kodu(oku('app/(protected)/profile/page.tsx'));
-    expect(profil, 'profil sayfasında indirme yok').toContain("api.get('/auth/hesabim/verilerim'");
+    expect(profil, 'profil sayfası Veriler sekmesini çizmiyor')
+      .toMatch(/\bveriler: \(\) => \(?\s*<VerilerSekmesi\b/);
+    expect(hesapSekmeleri(true), 'sahipte Veriler sekmesi yok').toContain('veriler');
+    expect(hesapSekmeleri(false), 'üyede Veriler sekmesi yok').toContain('veriler');
+    const veriler = kodu(oku('ozellik/kimlik/hesabim/VerilerSekmesi.tsx'));
+    expect(veriler, 'Veriler sekmesinde indirme yok').toContain('await verileriIndir()');
+    const yardimci = kodu(oku('ozellik/kimlik/verileri-indir.ts'));
+    expect(yardimci, 'yardımcı KVKK ucunu çağırmıyor').toContain("VERILERIM_UCU = '/auth/hesabim/verilerim'");
+    expect(yardimci).toContain('api.get(VERILERIM_UCU)');
 
     // 4) Uç kapalı hesaba açık (ödemeye de bağlanamaz).
     const authCtrl = kodu(oku('../backend/src/altyapi/auth/auth.controller.ts'));

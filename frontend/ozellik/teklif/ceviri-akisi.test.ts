@@ -542,8 +542,14 @@ describe('ekran bağlantısı', () => {
   });
 
   it('profil sayfası kısıtlı firmada çevirinin kapalı olduğunu söyler', () => {
+    // 23.09.2026: kullanım kartı Hesabım › Abonelik sekmesine taşındı; kota
+    // sayfadan sekmeye GEÇER (sekme ikinci istek atmaz).
     const profil = oku('app/(protected)/profile/page.tsx');
-    expect(profil).toMatch(/kota\.ceviriAcik === false/);
+    const sekme = oku('ozellik/kimlik/hesabim/AbonelikSekmesi.tsx');
+    expect(sekme).toMatch(/kota\.ceviriAcik === false/);
+    expect(sekme).toContain('Aboneliğiniz kısıtlı olduğu için çeviri şu an kapalı.');
+    expect(profil).toContain('ceviriKota={ceviriKota}');
+    expect(sekme).not.toMatch(/['"`]\/ai\/translate\/kota['"`]/);
   });
 
   it.each(EKRANLAR)('%s hiç hücre değişmeyen sonucu ortak bildirimle söyler', (yol) => {

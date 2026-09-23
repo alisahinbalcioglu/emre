@@ -325,7 +325,7 @@ describe('T8 — çeviri kotası cümlesi RAKAMSIZ', () => {
  *   · deneme kaydı imhadan MUAF          → `imha-listesi.ts:457`
  *   · fatura/ödeme kayıtları MUAF        → `imha-listesi.ts:427-455`
  *   · yedek: günlük 14 gün, diğerleri 30 → `backup.sh:28` + `deploy.sh:113`
- *   · kapatma EKRANDA, talep yoluyla değil → `profile/page.tsx:1062,1121`
+ *   · kapatma EKRANDA, talep yoluyla değil → `hesabim/VerilerSekmesi.tsx` (Hesabım › Veriler)
  */
 describe('T10 — hesap kapatma ve 30 günlük imha: metin ürünle çelişmiyor', () => {
   const gizlilik = cizilen(GIZLILIK).join('\n');

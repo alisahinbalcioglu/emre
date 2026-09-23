@@ -88,7 +88,9 @@ export default function SsoTamamPage() {
           return;
         }
         if (data?.tip === 'baglandi') {
-          router.push('/profile?kurumsal=baglandi');
+          // 23.09: Şirket hesabı kartı Hesabım'ın GÜVENLİK sekmesinde; varsayılan
+          // Profil sekmesine düşen kişi bağlantının kurulduğunu göremezdi.
+          router.push('/profile?sekme=guvenlik&kurumsal=baglandi');
           return;
         }
         setDurum('hata');

@@ -769,14 +769,21 @@ async function main() {
   ]) {
     check(`G11 sayfa mevcut: ${path.basename(path.dirname(s))}`, fs.existsSync(path.join(KOK, s)));
   }
+  // ⚠ 23.09.2026: Hesabim sekmelere bolundu; parola formu Guvenlik
+  // sekmesinde. Token yazimi SAYFADA kaldi (kaynak kapisi: yalniz iki
+  // gerekceli dosya) — bu yuzden G13 ZINCIRI olcer: form taze token'i
+  // `onTokenTazele`ye verir, sayfa o fonksiyonu gecirir ve yazar.
   const profil = kodu(oku('frontend/app/(protected)/profile/page.tsx'));
+  const guvenlik = kodu(oku('frontend/ozellik/kimlik/hesabim/GuvenlikSekmesi.tsx'));
   check(
-    'G12 profil sayfasi change-password ucunu CAGIRIYOR (KODDA)',
-    profil.includes('/auth/change-password'),
+    'G12 Hesabim > Guvenlik change-password ucunu CAGIRIYOR (KODDA)',
+    guvenlik.includes("api.post('/auth/change-password'"),
   );
   check(
     'G13 parola degisiminde ON YUZ TAZE TOKENI SAKLIYOR (yoksa kullanici atilir)',
-    /localStorage\.setItem\('token'/.test(profil),
+    /api\.post\('\/auth\/change-password'[\s\S]{0,400}onTokenTazele\(data\?\.token\)/.test(guvenlik)
+      && profil.includes('onTokenTazele={tokenTazele}')
+      && /const tokenTazele = useCallback\(\(token: unknown\) => \{\s*if \(gecerliTokenMi\(token\)\) localStorage\.setItem\('token', token\);/.test(profil),
   );
 
   // ═════════════════════════════════════════════════════════════════════════
