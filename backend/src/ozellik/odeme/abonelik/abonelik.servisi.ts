@@ -66,6 +66,10 @@ export function iyzicoDurumunuYorumla(
 ): AbonelikDurumu | null {
   switch (iyzico) {
     case 'ACTIVE':
+      // ⚠ ACTIVE tahsilat KANITI DEĞİL: iyzico'da TRIAL durumu yok, deneme
+      // içindeki abonelik de ACTIVE görünür (resmî doküman; denemeli abonelik
+      // sandbox'ta ölçülmedi). DENEME satırı için mutabakatın bu değeri nasıl
+      // sınırladığı: mutabakat.job.ts → `denemeSuruyorMu`.
       return AbonelikDurumu.AKTIF;
     case 'CANCELED':
       return AbonelikDurumu.IPTAL;

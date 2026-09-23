@@ -518,6 +518,18 @@ const SUITES: Suite[] = [
   //    kapalı hata + K-P5 (DENEME→ODEME_BEKLIYOR, dunning bağlantısı) + çift
   //    abonelik koruması + K-P6 kayıt/giriş + KVKK + JWT'li paket ucu.
   { ad: 'Deneme hakkı bir kez: yollar A-E, ikiz plan, K-P5/K-P6 (S/O/A-N/K/CF/CS/G/L/H/I)', script: 'test:deneme-hakki', zincir: 'Z0' },
+  // ── 23.09.2026 — GECE MUTABAKATI DENEMEYİ AKTİF'E ÇEKMİYOR. DB/AĞ GEREKTİRMEZ.
+  //    iyzico'da TRIAL durumu yok: deneme içindeki abonelik ACTIVE görünür
+  //    (resmî doküman, Abonelik İşlemleri). Mutabakat ACTIVE'i AKTIF okuyup
+  //    DENEME satırını İLK GECE AKTIF'e çekiyordu → "Deneme sürenizin bitmesine
+  //    X gün kaldı" uyarısı hiç çıkmıyordu (müşteri ilk çekimden önce
+  //    uyarılmıyordu), rozet "Aktif" diyordu, satır DENEME yaşam döngüsünden
+  //    çıkıyordu. Kapı GERÇEK iş + GERÇEK durum makinesi + GERÇEK erişim
+  //    kararıyla ölçer: deneme sürerken ACTIVE → DENEME kalır; UNPAID/CANCELED
+  //    yine işlenir; deneme bitince ACTIVE → AKTIF (eski davranış, yalnız durum);
+  //    tahsilat webhook'u DENEME'yi yine AKTIF'e çeker; cron giriş noktası kuralı
+  //    hatasız uygular ve özet satırında korunan satırı sayar.
+  { ad: 'Mutabakat denemeyi AKTİF yapmaz: saf kural · tek satır · uyarı · webhook · gece · kapatma (S/M/E/W/G/K)', script: 'test:mutabakat-deneme', zincir: 'Z0' },
   // ── 16.09.2026 — FAZ 7 · F2a: TOTP / KİMLİK ŞİFRELEME / MEYDAN OKUMA
   //    ÇEKİRDEĞİ. DB, SUNUCU ve AĞ GEREKTİRMEZ → `db` bayrağı YOK. Route ve
   //    şema YOK; canlı davranış değişmez. RFC 6238 Ek-B + RFC 4226 Ek-D
