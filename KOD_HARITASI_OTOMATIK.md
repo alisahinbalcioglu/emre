@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 740
-Toplam satir: 180168
+Toplam satir: 180293
 Uc nokta: 228
 test:* scripti: 115
 
@@ -69,7 +69,7 @@ test:* scripti: 115
 | `backend/src/altyapi/auth/mfa/eposta-kodu.ts` | 135 |
 | `backend/src/altyapi/auth/mfa/kurtarma-kodu.ts` | 67 |
 | `backend/src/altyapi/auth/mfa/meydan-okuma.ts` | 107 |
-| `backend/src/altyapi/auth/mfa/mfa-epostalari.ts` | 145 |
+| `backend/src/altyapi/auth/mfa/mfa-epostalari.ts` | 152 |
 | `backend/src/altyapi/auth/mfa/mfa-karari.ts` | 182 |
 | `backend/src/altyapi/auth/mfa/mfa.controller.ts` | 137 |
 | `backend/src/altyapi/auth/mfa/mfa.servisi.ts` | 826 |
@@ -240,7 +240,7 @@ test:* scripti: 115
 | `backend/src/ozellik/odeme/abonelik/satinalma.servisi.ts` | 1351 |
 | `backend/src/ozellik/odeme/dunning/dunning.metinleri.ts` | 165 |
 | `backend/src/ozellik/odeme/dunning/dunning.servisi.ts` | 314 |
-| `backend/src/ozellik/odeme/eposta/eposta.servisi.ts` | 294 |
+| `backend/src/ozellik/odeme/eposta/eposta.servisi.ts` | 339 |
 | `backend/src/ozellik/odeme/fatura/fatura.servisi.ts` | 446 |
 | `backend/src/ozellik/odeme/fatura/muhasebe.adaptor.ts` | 304 |
 | `backend/src/ozellik/odeme/havale/havale.controller.ts` | 96 |
@@ -387,7 +387,7 @@ test:* scripti: 115
 | `backend/test/varyant-surukleme-test.ts` | 189 |
 | `backend/test/yardimci/sahte-oidc-saglayici.ts` | 244 |
 | `backend/test/yardimci/uc-envanteri.ts` | 162 |
-| `backend/test/yonetici-eposta-kodu-test.ts` | 334 |
+| `backend/test/yonetici-eposta-kodu-test.ts` | 407 |
 | `backend/test/yuzey-genisletme-test.ts` | 193 |
 | `frontend/app/(protected)/abonelik/donus/page.tsx` | 138 |
 | `frontend/app/(protected)/abonelik/page.tsx` | 620 |
@@ -1099,7 +1099,7 @@ test:* scripti: 115
 | `backend/test/varyant-surukleme-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/query-engine` `../src/ozellik/fiyat/matching/index/outcome-mapper` `../src/ozellik/eslestirme/matching/index/types` |
 | `backend/test/yardimci/sahte-oidc-saglayici.ts` | `node:crypto` `jsonwebtoken` `../../src/altyapi/auth/kurumsal/oidc-istemci` |
 | `backend/test/yardimci/uc-envanteri.ts` | `typescript` `fs` `path` |
-| `backend/test/yonetici-eposta-kodu-test.ts` | `node:fs` `node:path` `../src/altyapi/auth/mfa/meydan-okuma` `../src/altyapi/auth/mfa/mfa-karari` `../src/altyapi/auth/mfa/mfa-epostalari` |
+| `backend/test/yonetici-eposta-kodu-test.ts` | `node:fs` `node:path` `../src/altyapi/auth/mfa/meydan-okuma` `../src/altyapi/auth/mfa/mfa-karari` `../src/altyapi/auth/mfa/mfa-epostalari` `../src/ozellik/odeme/eposta/eposta.servisi` `@nestjs/config` |
 | `backend/test/yuzey-genisletme-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/query-engine` `../src/ozellik/fiyat/matching/index/outcome-mapper` `../src/ozellik/eslestirme/matching/index/types` |
 | `frontend/app/(protected)/abonelik/donus/page.tsx` | `react` `next/link` `@/ortak/lib/api` `@/ortak/contexts/CapabilitiesContext` |
 | `frontend/app/(protected)/abonelik/page.tsx` | `react` `@/ortak/lib/api` `@/ozellik/odeme/paket-bicim` `@/ozellik/odeme/DenemeSatiri` `@/ozellik/firma/ekip/koltuk-metinleri` `@/ozellik/odeme/abonelik-ozeti` `@/ozellik/odeme/IyzicoFormu` |
