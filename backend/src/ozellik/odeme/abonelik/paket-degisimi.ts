@@ -1,6 +1,7 @@
 import { AbonelikDurumu, OdemeYontemi } from '@prisma/client';
 import { mirasPaketiMi } from './deneme-hakki';
 import { binlik, ceviriKotasiCoz, trTarih } from './ceviri-kotasi';
+import { iyzicoTarihi } from '../iyzico/iyzico-tarihi';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -50,26 +51,75 @@ import { binlik, ceviriKotasiCoz, trTarih } from './ceviri-kotasi';
 // abonelik.servisi → (bu dosya) → satinalma.servisi → abonelik.servisi
 // dongusu Nest sinifini yukleme aninda `undefined` birakabilirdi.
 
+/** Geri donen musteri durumlari: bu satir yeni satin almayi KENDILIGINDEN engellemez. */
+function geriDonenMusteriDurumuMu(durum: AbonelikDurumu | string): boolean {
+  return durum === AbonelikDurumu.SONA_ERDI || durum === AbonelikDurumu.ASKIDA;
+}
+
 /**
- * Bu abonelik satiri YENI bir kart aboneligini engeller mi? SAF — tek kural,
- * iki kapi: `baslat` (form acilmadan) ve `niyetiSonuclandir` (ikinci form
- * tamamlandiginda, bkz. `ikinciAbonelikMi`).
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  iyzico'DAKI KART ABONELIGI HALA ACIK MI? (24.09.2026 — cift cekim korumasi)
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ *  Yerel satir SONA_ERDI/ASKIDA olabilir ama iyzico'daki abonelik hala
+ *  ACTIVE olabilir: deneme sonrasi cekimin webhook'u kaybolur ve gece
+ *  mutabakati kaniti 2 gunluk tamponda bulamazsa saatlik is satiri kapatir
+ *  (bkz. mutabakat.job.ts → KAYIP TAHSILAT, kural 5). O firmanin yeniden
+ *  satin almasi AYNI satira yeni kodu yazar (`aboneligiAcVeyaGuncelle`); eski
+ *  iyzico aboneligi sahipsiz kalir, webhook'lari "bilinmeyen abonelik kodu"
+ *  diye yutulur ve kart HER AY cekilmeye devam eder — CIFT CEKIM
+ *  (`ikinciAbonelikMi` basligindaki olculmus zincirin AYNISI). Emre karari
+ *  (24.09, "kural kalsin, koruma ekle"): iyzico'su acik satir yeniden satin
+ *  almayi ENGELLER; gece mutabakati bu satiri taramaya devam eder ve kaniti
+ *  bulunca tahsilat yolunu yeniden oynatir.
+ *
+ *  Bilgi kaynagi `iyzicoDurum`: iyzico'nun son GORULEN durumu (gece
+ *  mutabakati, tahsilat webhook'u, satin alma ve `iptalEt` yazar). Bayat
+ *  kalabilir; gece mutabakati iyzico'da ACTIVE gorunen SONA_ERDI satirini da
+ *  tarar ve durumu tazeler — iyzico kodu DONDUREBILDIGI surece yanlis engel en
+ *  gec bir gece surer. ⚠ iyzico kodu HIC donduremezse (or. sandbox → canli
+ *  anahtar gecisinde eski kodlar) engel KENDILIGINDEN KALKMAZ: gecis adimi bu
+ *  satirlarin `iyzicoDurum`unu temizlemeli. SAF.
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+export function iyzicoAboneligiAcikMi(ab: { iyzicoDurum: string | null } | null): boolean {
+  return !!ab && ab.iyzicoDurum === 'ACTIVE';
+}
+
+/** Hem satin alma hem degisim kapisinin musteriye gosterdigi AYNI metin. */
+export const KART_ABONELIGI_ACIK_MESAJI =
+  "Önceki kart aboneliğiniz iyzico'da hâlâ açık görünüyor; son ödemeniz doğrulanıyor. " +
+  'Yeni bir abonelik başlatmak kartınızdan iki kez çekim yapılmasına yol açabilir. ' +
+  'Sorun sürerse bizimle iletişime geçin.';
+
+/** Yeni kart aboneligini neden engelliyor? `null` = engel yok. */
+export type YeniAbonelikEngeli = 'ABONELIK_ZATEN_VAR' | 'KART_ABONELIGI_ACIK';
+
+/**
+ * Bu abonelik satiri YENI bir kart aboneligini engelliyor mu, NEDEN? SAF —
+ * tek kural, uc kapi: `baslat` (form acilmadan), `niyetiSonuclandir` (ikinci
+ * form tamamlandiginda, bkz. `ikinciAbonelikMi`) ve `paketDegisimYolu`.
  *
  * Engellemeyenler: satir yok · miras (goc emniyeti, tahsilat degil) ·
- * SONA_ERDI · ASKIDA (geri donen musteri).
+ * SONA_ERDI · ASKIDA (geri donen musteri) — ⚠ 24.09: iyzico'daki kart
+ * aboneligi hala ACIK degilse (`KART_ABONELIGI_ACIK`, bkz.
+ * `iyzicoAboneligiAcikMi`).
  */
-export function yeniAbonelikEngelliMi(
+export function yeniAbonelikEngeli(
   mevcut: {
     durum: AbonelikDurumu | string;
+    iyzicoDurum: string | null;
     paketSurumu: { paket: { kod: string } };
   } | null,
-): boolean {
-  return (
-    !!mevcut &&
-    !mirasPaketiMi(mevcut.paketSurumu.paket.kod) &&
-    mevcut.durum !== AbonelikDurumu.SONA_ERDI &&
-    mevcut.durum !== AbonelikDurumu.ASKIDA
-  );
+): YeniAbonelikEngeli | null {
+  if (!mevcut || mirasPaketiMi(mevcut.paketSurumu.paket.kod)) return null;
+  if (!geriDonenMusteriDurumuMu(mevcut.durum)) return 'ABONELIK_ZATEN_VAR';
+  return iyzicoAboneligiAcikMi(mevcut) ? 'KART_ABONELIGI_ACIK' : null;
+}
+
+/** `yeniAbonelikEngeli`nin evet/hayir yuzu — kapilarin ortak sorusu. SAF. */
+export function yeniAbonelikEngelliMi(mevcut: Parameters<typeof yeniAbonelikEngeli>[0]): boolean {
+  return yeniAbonelikEngeli(mevcut) !== null;
 }
 
 // ── HAK KARSILASTIRMASI ──────────────────────────────────────────────────
@@ -154,7 +204,8 @@ export type PaketDegisimRedKodu =
   | 'SURESI_DOLDU'
   | 'DEGISIM_BEKLIYOR'
   | 'PERIYOT_FARKLI'
-  | 'URUN_FARKLI';
+  | 'URUN_FARKLI'
+  | 'KART_ABONELIGI_ACIK';
 
 export type DegisimZamanlamasi = 'hemen' | 'donem-sonu';
 
@@ -179,6 +230,8 @@ export interface DegisimAboneligi {
   durum: AbonelikDurumu | string;
   odemeYontemi: OdemeYontemi | string;
   iyzicoAbonelikKodu: string | null;
+  /** iyzico'nun son gorulen durumu — satin alma kapisi okur (24.09). */
+  iyzicoDurum: string | null;
   erisimSonu: Date;
   denemeSonu: Date | null;
   paketGecisTarihi: Date | null;
@@ -240,8 +293,15 @@ export function paketDegisimYolu(
   yeni: DegisimSurumu,
   simdi: Date,
 ): PaketDegisimYolu {
-  if (!yeniAbonelikEngelliMi(ab)) return { yol: 'satin-al' };
-  // `yeniAbonelikEngelliMi` true ise satir VAR.
+  const engel = yeniAbonelikEngeli(ab);
+  if (!engel) return { yol: 'satin-al' };
+  // ⚠ 24.09 — iyzico'su hala ACIK geri donen musteri satiri: satin alma
+  // kapali (cift cekim), degisim de yok (satir AKTIF degil). Musteri
+  // "neden" sorusunun cevabini gorur, genel "odeme sorunu" metnini degil.
+  if (engel === 'KART_ABONELIGI_ACIK') {
+    return yok('KART_ABONELIGI_ACIK', KART_ABONELIGI_ACIK_MESAJI);
+  }
+  // Engel var ise satir VAR.
   const a = ab as DegisimAboneligi;
 
   if (a.paketSurumu.paket.kod === yeni.paket.kod) {
@@ -311,19 +371,12 @@ export function paketDegisimYolu(
 // ── IYZICO YANITI ────────────────────────────────────────────────────────
 
 /**
- * iyzico tarih alani → Date. Yanit bicimi OLCULDU: `startDate: 1789893431301`
- * (ms SAYISI, 20.08 sandbox). Dokuman ISO dize de gosterebildigi icin ikisi
- * de kabul edilir; cozulemeyen deger `null` (UYDURULMAZ).
+ * iyzico tarih alani → Date. ⚠ 24.09 — TEK KAYNAK `iyzico/iyzico-tarihi.ts`e
+ * tasindi (gece mutabakati da ayni alani okuyor; ikiz kural yasagi) ve
+ * buradan yeniden disa acilir. Oradaki surum gecersiz buyuk sayiyi da `null`a
+ * cevirir (buradaki kopya `new Date(1e20)`i oldugu gibi donduruyordu).
  */
-export function iyzicoTarihi(ham: unknown): Date | null {
-  if (typeof ham === 'number' && Number.isFinite(ham) && ham > 0) return new Date(ham);
-  if (typeof ham === 'string' && ham.trim()) {
-    const sayi = Number(ham);
-    const t = Number.isFinite(sayi) && /^\d+$/.test(ham.trim()) ? new Date(sayi) : new Date(ham);
-    return Number.isNaN(t.getTime()) ? null : t;
-  }
-  return null;
-}
+export { iyzicoTarihi };
 
 /**
  * Kaydedilecek gecis ani: iyzico'nun bildirdigi yeni plan baslangici; yoksa

@@ -221,8 +221,18 @@ function yBlogu(): void {
   const miras = abonelik('basic-mek');
   miras.paketSurumu = { ...miras.paketSurumu, paket: { ...miras.paketSurumu.paket, kod: 'miras-pro' } };
   check('Y2 miras → satin-al (goc emniyeti tahsilat degil)', yol(miras, surum('pro-mek')).yol === 'satin-al');
-  check('Y3 SONA_ERDI → satin-al', yol(abonelik('basic-mek', { durum: 'SONA_ERDI' }), surum('pro-mek')).yol === 'satin-al');
-  check('Y4 ASKIDA → satin-al', yol(abonelik('basic-mek', { durum: 'ASKIDA' }), surum('pro-mek')).yol === 'satin-al');
+  // ⚠ 24.09 — geri donen musteri YALNIZ iyzico'daki kart aboneligi kapaliysa
+  // satin alir (cift cekim korumasi, `iyzicoAboneligiAcikMi`). Fikstur
+  // varsayilani `iyzicoDurum: 'ACTIVE'`; sona ermis/askidaki satirin gercekci
+  // iyzico durumu CANCELED/EXPIRED/UNPAID'dir.
+  check('Y3 SONA_ERDI (iyzico CANCELED) → satin-al',
+    yol(abonelik('basic-mek', { durum: 'SONA_ERDI', iyzicoDurum: 'CANCELED' }), surum('pro-mek')).yol === 'satin-al');
+  check('Y4 ASKIDA (iyzico UNPAID) → satin-al',
+    yol(abonelik('basic-mek', { durum: 'ASKIDA', iyzicoDurum: 'UNPAID' }), surum('pro-mek')).yol === 'satin-al');
+  check('Y3b ⭐ SONA_ERDI ama iyzico hala ACTIVE → KART_ABONELIGI_ACIK (yeni abonelik eskisini sahipsiz birakirdi)',
+    kodu_(yol(abonelik('basic-mek', { durum: 'SONA_ERDI', iyzicoDurum: 'ACTIVE' }), surum('pro-mek'))) === 'KART_ABONELIGI_ACIK');
+  check('Y4b ⭐ ASKIDA ama iyzico hala ACTIVE → KART_ABONELIGI_ACIK',
+    kodu_(yol(abonelik('basic-mek', { durum: 'ASKIDA', iyzicoDurum: 'ACTIVE' }), surum('pro-mek'))) === 'KART_ABONELIGI_ACIK');
 
   check('Y5 ayni paket → AYNI_PAKET', kodu_(yol(abonelik('pro-mek'), surum('pro-mek'))) === 'AYNI_PAKET');
   check('Y6 satista olmayan surum → SATISTA_DEGIL', kodu_(yol(abonelik('basic-mek'), surum('pro-mek', { satistaMi: false }))) === 'SATISTA_DEGIL');
@@ -271,18 +281,27 @@ function yBlogu(): void {
   const durumlar = Object.values(AbonelikDurumu);
   let karsilastirilan = 0;
   let celiski = 0;
+  // ⚠ 24.09: iyzico durumu da eksen — geri donen musteride kapi ona bakar.
+  // Yalniz fikstur varsayilani (ACTIVE) donulseydi SONA_ERDI/ASKIDA'nin ACIK
+  // tarafi hic karsilastirilmazdi.
+  const iyzicoDurumlari = ['ACTIVE', 'CANCELED', null];
+  let acikKapi = 0;
   for (const d of durumlar) {
     for (const mirasMi of [false, true]) {
-      const ab = abonelik('basic-mek', { durum: d });
-      if (mirasMi) ab.paketSurumu = { ...ab.paketSurumu, paket: { ...ab.paketSurumu.paket, kod: 'miras-core' } };
-      karsilastirilan++;
-      if ((yol(ab, surum('pro-mek')).yol === 'satin-al') !== !satinAlmaKapisi(ab)) celiski++;
+      for (const iyzicoDurum of iyzicoDurumlari) {
+        const ab = abonelik('basic-mek', { durum: d, iyzicoDurum });
+        if (mirasMi) ab.paketSurumu = { ...ab.paketSurumu, paket: { ...ab.paketSurumu.paket, kod: 'miras-core' } };
+        karsilastirilan++;
+        if (!satinAlmaKapisi(ab)) acikKapi++;
+        if ((yol(ab, surum('pro-mek')).yol === 'satin-al') !== !satinAlmaKapisi(ab)) celiski++;
+      }
     }
   }
   check(
-    `Y21 ⭐ ${karsilastirilan} durum×miras: "satin-al" ⟺ satin alma kapisi acik (celiski 0)`,
-    karsilastirilan === durumlar.length * 2 && karsilastirilan >= 14 && celiski === 0,
-    `celiski=${celiski}`,
+    `Y21 ⭐ ${karsilastirilan} durum×miras×iyzico: "satin-al" ⟺ satin alma kapisi acik (celiski 0, acik kapi ${acikKapi})`,
+    karsilastirilan === durumlar.length * 2 * iyzicoDurumlari.length && karsilastirilan >= 42 && celiski === 0 &&
+      acikKapi === durumlar.length * iyzicoDurumlari.length + 2 * 2,
+    `celiski=${celiski} acikKapi=${acikKapi}`,
   );
   check(
     'Y22 satinalma.servisi AYNI fonksiyonu disa aciyor (kopya degil, kimlik esit)',
@@ -650,6 +669,32 @@ async function sBlogu(): Promise<void> {
       'S15 ⭐ ag hatasi + kayitli uc hala CANLI → iyzico\'ya SORULDU, "degismedi" KESIN (502), satir ayni',
       iyz.sayi('abonelikGetir') === 1 && r?.govde?.kod === 'SAGLAYICI_DEGISIM_HATASI' && JSON.stringify(db.satir()) === once,
       `getir=${iyz.sayi('abonelikGetir')} r=${JSON.stringify(r)}`,
+    );
+  }
+  {
+    // S15b · ZAMAN ASIMI (24.09): istegimiz kesildi ama iyzico yukseltmeyi
+    // HALA isliyor olabilir — hemen ardindan sorulan soruda kayitli ucun canli
+    // gorunmesi KESIN degil. "Degismedi" (502) denirse musteri yanlis
+    // bilgilenir; "dogrulanamadi" (503) denir. Ag hatasi S15'te 502'de KALIR.
+    const zamanAsimi = new IyzicoHatasi(undefined, 'iyzico yanıt vermedi (zaman aşımı, 20 sn)', undefined, true);
+    const iyz = sahteIyzico({
+      degisimHatasi: zamanAsimi,
+      detaylar: { 'uc-0': { referenceCode: 'uc-0', subscriptionStatus: 'ACTIVE' } },
+    });
+    const db = sahteDb({ abonelikler: [abonelik('basic-mek')], surumler: TUM_SURUMLER() });
+    const once = JSON.stringify(db.satir());
+    const r = await reddeder(() => kur(db, iyz).pd.degistir(DEGISTIR('pro-mek')));
+    check('S15b-OLCUT zaman asimi hatasi KODSUZ ve isaretli', zamanAsimi.kod === undefined && zamanAsimi.zamanAsimi === true);
+    check(
+      'S15b ⭐ zaman asimi + kayitli uc hala CANLI → "degismedi" DENMEZ: 503 DEGISIM_DOGRULANAMADI, satir ayni',
+      iyz.sayi('abonelikGetir') === 1 && r?.durum === 503 && r?.govde?.kod === 'DEGISIM_DOGRULANAMADI' && JSON.stringify(db.satir()) === once,
+      `getir=${iyz.sayi('abonelikGetir')} r=${JSON.stringify(r)}`,
+    );
+    const olay = db.olaylar.find((o: Satir) => o.tip === 'paket.degisim.belirsiz');
+    check(
+      'S15c belirsiz olay kaydi: iyzicoKodu null, neden zaman asimi',
+      !!olay && olay.veri?.iyzicoKodu === null && /zaman asimi/.test(olay.veri?.neden ?? ''),
+      JSON.stringify(olay?.veri),
     );
   }
   {

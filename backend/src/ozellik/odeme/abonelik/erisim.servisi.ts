@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
-import { AbonelikDurumu } from '@prisma/client';
+import { AbonelikDurumu, OdemeYontemi } from '@prisma/client';
 import {
   kapaliHesapMetni,
   type KapaliHesapDurumu,
 } from '../../../altyapi/auth/kapali-hesap';
 import { abonelikErisimi } from '../../../altyapi/auth/abonelik-erisim';
+import { kisitlamayaKalanGun } from '../dunning/kisit-gunu';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -127,7 +128,11 @@ export interface ErisimKarari {
     metin: string;
     eylem?: { etiket: string; yol: string };
   } | null;
-  /** Deneme ya da tolerans süresinin bitmesine kaç gün kaldı. */
+  /**
+   * Deneme ya da tolerans süresinin bitmesine kaç gün kaldı. DENEME'de ilk
+   * çekim gününe (`denemeSonu`) sayar — erişim sonuna (+2 gün tampon) DEĞİL;
+   * `denemeSonu` boşsa erişim sonuna.
+   */
   kalanGun: number | null;
   paketKodu: string;
   kullaniciHakki: number;
@@ -275,21 +280,38 @@ export class ErisimServisi {
             },
           };
         }
-        const kalan = this.gunFarki(ab.erisimSonu, simdi);
+        // ── GERI SAYIM ILK CEKIM GUNUNE (24.09.2026, Emre karari) ───────────
+        // ⚠ `erisimSonu` 2 gunluk webhook tamponu TASIR (`TAMPON_GUN`); iyzico
+        // ilk cekimi `denemeSonu`nda yapar. Geri sayim `erisimSonu`na sayiyordu:
+        // cekime 2 gun varken "4 gun kaldi" diyor, cekim gectikten sonra da 2
+        // gun "N gun kaldi" demeye devam ediyordu — musteriyi ilk cekimden
+        // ONCE uyarmak icin var olan uyari (`donemTarihleriHesapla` yorumu bu
+        // yalani adiyla yasakliyor). Yalniz MESAJ ve `kalanGun` degisir: erisim
+        // karari yukarida `erisimSonu` ile verilir (tampon ODEYEN musteriyi gec
+        // gelen webhook'ta kapida birakmasin). `denemeSonu` bossa eski davranis.
+        const kalan = Math.max(0, this.gunFarki(ab.denemeSonu ?? ab.erisimSonu, simdi));
         return {
           ...temel,
           erisimVar: e.erisimVar,
           saltOkunur: e.saltOkunur,
           kalanGun: kalan,
           uyari:
-            kalan <= 5
+            // Cekim gunu gecti, tampon suruyor: tahsilat webhook'u henuz
+            // gelmedi. "Paket sec" YOK — musterinin paketi zaten var.
+            kalan === 0
               ? {
-                  seviye: kalan <= 2 ? 'uyari' : 'bilgi',
-                  baslik: `Deneme sürenizin bitmesine ${kalan} gün kaldı`,
-                  metin: 'Kesintisiz devam etmek için paketinizi seçebilirsiniz.',
-                  eylem: { etiket: 'Paket seç', yol: '/abonelik' },
+                  seviye: 'bilgi',
+                  baslik: 'Deneme süreniz sona erdi',
+                  metin: 'İlk ödemeniz işleniyor; hesabınızı kullanmaya devam edebilirsiniz.',
                 }
-              : null,
+              : kalan <= 5
+                ? {
+                    seviye: kalan <= 2 ? 'uyari' : 'bilgi',
+                    baslik: `Deneme sürenizin bitmesine ${kalan} gün kaldı`,
+                    metin: 'Kesintisiz devam etmek için paketinizi seçebilirsiniz.',
+                    eylem: { etiket: 'Paket seç', yol: '/abonelik' },
+                  }
+                : null,
         };
       }
 
@@ -312,11 +334,24 @@ export class ErisimServisi {
 
       case AbonelikDurumu.ODEME_BEKLIYOR: {
         // Tolerans süresi: erişim tam açık ama uyarı görünür.
+        // ── GERİ SAYIM KISITLAMA GÜNÜNE (24.09.2026, Emre kararı) ───────────
+        // ⚠ `erisimSonu`na SAYILMAZ: o ödenmiş dönemin sonudur ve tahsilat
+        // başarısız olunca ZATEN geçmiştir (yenilemede `endPeriod` = çekim
+        // anı). Ölçüldü: Hesabım "−1, −3, −9 gün kaldı" yazarken dunning
+        // e-postası aynı gün kısıtlamaya kalan günü sayıyordu. Sayı artık
+        // e-postayla AYNI fonksiyondan (`kisit-gunu.ts`). Merdivenin HİÇ
+        // taramadığı satırda kısıt planlanmamıştır → sayı YOK: KART dışı
+        // (24.09'a dek eski kart aboneliğinin başarısız çekimi havaleye geçmiş
+        // satırı da ODEME_BEKLIYOR yapıyordu — o veri durabilir; sayaç 0'da
+        // donardı) ve `ilkBasarisizlik` boş (yardımcı null döner).
         return {
           ...temel,
           erisimVar: e.erisimVar,
           saltOkunur: e.saltOkunur,
-          kalanGun: ab.kisitlandi ? null : this.gunFarki(ab.erisimSonu, simdi),
+          kalanGun:
+            ab.kisitlandi || ab.odemeYontemi !== OdemeYontemi.KART
+              ? null
+              : kisitlamayaKalanGun(ab.ilkBasarisizlik, simdi.getTime()),
           uyari: {
             seviye: 'uyari',
             baslik: 'Ödemeniz alınamadı',
