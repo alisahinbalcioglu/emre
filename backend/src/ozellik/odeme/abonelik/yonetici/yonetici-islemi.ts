@@ -49,6 +49,12 @@ import {
 
 export type YoneticiIslemTuru = 'oneri' | 'dogrudan-dusur' | 'sureli-paket' | 'yok';
 
+/**
+ * Yonetici islemlerinin IC gerekcesi alt siniri — DTO'larla ayni, ama
+ * servisler KIRPILMIS metinde olcer ("a    " bes karakter sayilmasin).
+ */
+export const GEREKCE_EN_AZ = 5;
+
 /** Kararin okudugu surum yuzeyi: A1'inki + fiyat. */
 export interface YoneticiSurumu extends DegisimSurumu {
   /** Prisma `Decimal` (ya da metni). Float'a DUSURULMEZ — kurusla karsilastirilir. */

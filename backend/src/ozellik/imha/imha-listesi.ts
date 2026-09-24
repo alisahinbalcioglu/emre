@@ -373,6 +373,17 @@ export const SILINECEKLER: readonly SilmeKurali[] = [
       'bittikten sonra kabul edilebilir bir davet kalmamali.',
   },
   {
+    model: 'PaketDegisimOnerisi',
+    erisimci: 'paketDegisimOnerisi',
+    kolon: 'firmaId',
+    eksen: 'firma',
+    neden:
+      'A2 Blok 2 yonetici onerileri: `musteriNotu` (serbest metin) + ' +
+      '`olusturanEposta` tasir; firma bitince kabul edilebilir oneri kalmamali ' +
+      '(FirmaDavet ile ayni gerekce). Izi SILINMEZ: `YoneticiOlayi` ' +
+      '(paket.oneri.*) ve kabulde `AbonelikOlayi.veri.oneriId` (§5.5).',
+  },
+  {
     model: 'FirmaOlayi',
     erisimci: 'firmaOlayi',
     kolon: 'firmaId',

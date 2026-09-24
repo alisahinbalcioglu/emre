@@ -23,11 +23,8 @@ import {
   type SonucBaglami,
   type SurumSatiri,
 } from '../paket-degisimi.servisi';
-import { durdurulacakUye, yoneticiIslemi } from './yonetici-islemi';
-import { yoneticiDusurmeEpostasi } from './yonetici-paket-epostalari';
-
-/** DTO ile ayni alt sinir — ama KIRPILMIS metinde olculur. */
-const GEREKCE_EN_AZ = 5;
+import { GEREKCE_EN_AZ, durdurulacakUye, yoneticiIslemi } from './yonetici-islemi';
+import { gunlukIcinMaskele, yoneticiDusurmeEpostasi } from './yonetici-paket-epostalari';
 
 @Injectable()
 export class YoneticiDusurmeServisi {
@@ -338,7 +335,7 @@ export class YoneticiDusurmeServisi {
         // Adres gunluge YAZILMAZ (kisisel veri); firma ve sira yeter.
         this.logger.error(
           `Yonetici dusurmesi maili GONDERILEMEDI: firma ${b.firmaId} alici ${gonderilen + 1}/${adresler.length}: ` +
-            `${e instanceof Error ? e.message : String(e)}`,
+            gunlukIcinMaskele(e instanceof Error ? e.message : String(e)),
         );
       }
     }

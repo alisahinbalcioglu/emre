@@ -15,6 +15,7 @@
  * ve sunucudan (`GET /ai/translate/kota`) okunur. Tarihi bu dosya BİÇİMLEMEZ:
  * yenilenme günü `ozet.yenilenmeGunu`dur (tek biçimleyici `trTarih`).
  */
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { CalendarDays, CheckCircle2, Crown, Lock, Wrench, Zap } from 'lucide-react';
 import api from '@/ortak/lib/api';
@@ -22,8 +23,9 @@ import { cn } from '@/ortak/lib/utils';
 import { toast } from '@/ortak/hooks/use-toast';
 import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
 import type { AbonelikOzeti } from '@/ozellik/odeme/abonelik-ozeti';
-import { sayiYaz } from '@/ozellik/odeme/paket-bicim';
+import { sayiYaz, type Paket } from '@/ozellik/odeme/paket-bicim';
 import { bekleyenDegisimCumlesi } from '@/ozellik/odeme/paket-degisimi';
+import { bekleyenOneriSatiri } from '@/ozellik/odeme/paket-onerisi';
 import type { HesapProfili, KotaDurumu } from './hesap-tipleri';
 import { IKINCIL_DUGME, SatirKarti, TEHLIKE_DUGME } from './hesabim-ui';
 
@@ -57,6 +59,21 @@ export function AbonelikSekmesi({
   const { refresh, erisim } = useCapabilities();
   const kota = ceviriKota.durum === 'hazir' ? ceviriKota.kota : null;
   const ton = DURUM_TONU[ozet.durum] ?? NOTR_TON;
+  // A2 Blok 2 — bekleyen yönetici önerisi. Kaynak abonelik şeridiyle AYNI
+  // (`/abonelik/paketler` → `Paket.oneri`); hata satırı çizmez, sekmeyi bozmaz.
+  const [oneri, setOneri] = useState<ReturnType<typeof bekleyenOneriSatiri>>(null);
+  useEffect(() => {
+    let bitti = false;
+    api
+      .get<Paket[]>('/abonelik/paketler')
+      .then(({ data }) => {
+        if (!bitti) setOneri(Array.isArray(data) ? bekleyenOneriSatiri(data) : null);
+      })
+      .catch(() => undefined);
+    return () => {
+      bitti = true;
+    };
+  }, []);
 
   async function iptalEt() {
     if (!confirm('Aboneliğinizi iptal etmek istediğinize emin misiniz? Dönem sonuna kadar erişiminiz sürer.')) return;
@@ -100,6 +117,14 @@ export function AbonelikSekmesi({
             {paketliMi && bekleyenDegisimCumlesi(erisim?.paketGecisi) && (
               <p className="mt-1 text-[13px] font-medium text-blue-700">
                 {bekleyenDegisimCumlesi(erisim?.paketGecisi)}
+              </p>
+            )}
+            {oneri && (
+              <p className="mt-1 text-[13px] font-medium text-blue-700">
+                MetaPriceX ekibi size {oneri.ad} paketini önerdi (son gün {oneri.sonGun}).{' '}
+                <Link href={oneri.baglanti} className="underline hover:no-underline">
+                  Öneriyi incele
+                </Link>
               </p>
             )}
           </div>

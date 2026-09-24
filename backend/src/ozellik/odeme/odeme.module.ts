@@ -17,6 +17,7 @@ import { AbonelikController } from './abonelik/abonelik.controller';
 import { YoneticiAbonelikController } from './abonelik/yonetici/yonetici-abonelik.controller';
 import { YoneticiAbonelikServisi } from './abonelik/yonetici/yonetici-abonelik.servisi';
 import { YoneticiDusurmeServisi } from './abonelik/yonetici/yonetici-dusurme.servisi';
+import { PaketOnerisiServisi } from './abonelik/yonetici/paket-onerisi.servisi';
 import { FiyatController } from './abonelik/fiyat.controller';
 import { CeviriKotaServisi } from './abonelik/ceviri-kota.servisi';
 import { MutabakatJob } from './abonelik/mutabakat.job';
@@ -83,6 +84,7 @@ import { EpostaServisi } from './eposta/eposta.servisi';
     // 24.09 (A2): yonetici paneli — ayni cekirdegi (islemciyleDegistir) kullanir.
     YoneticiAbonelikServisi,
     YoneticiDusurmeServisi,
+    PaketOnerisiServisi,
     ErisimServisi,
     CeviriKotaServisi,
     MutabakatJob,

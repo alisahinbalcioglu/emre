@@ -2,6 +2,8 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../../altyapi/db/prisma.service';
 import { etkinHesapKosulu } from '../../../firma/uyelik-kurallari';
 import { beklenenGecisTarihi, type HakKaybi } from '../paket-degisimi';
+import { ONERI_DURUM_METNI, oneriDurumu, type OneriEtkinDurumu } from './paket-onerisi';
+import { oneriGecmisiOku } from './paket-onerisi.servisi';
 import { durdurulacakUye, yoneticiIslemi, type YoneticiIslemTuru } from './yonetici-islemi';
 
 /** `GET /yonetim/abonelik/:firmaId` yaniti — yonetici "Paket islemleri" penceresi. */
@@ -39,6 +41,23 @@ export interface YoneticiPaneli {
     kazanclar: HakKaybi[];
     durdurulacakUye: number;
   }>;
+  /**
+   * Firmanin SON onerisi (A2 Blok 2), durumu ne olursa olsun. `durum`
+   * HESAPLANMIS etkin durumdur (`oneriDurumu`): satir BEKLIYOR olsa da suresi
+   * dolmus ya da abonelik degismisse "bekliyor" DEGILDIR.
+   */
+  oneri: null | {
+    id: string;
+    hedef: { kod: string; ad: string };
+    durum: OneriEtkinDurumu;
+    durumMetni: string;
+    sonGecerlilik: string;
+    olusturuldu: string;
+    olusturanEposta: string;
+    gerekce: string;
+    musteriNotu: string | null;
+    sonuclandi: string | null;
+  };
 }
 
 /**
@@ -57,7 +76,7 @@ export class YoneticiAbonelikServisi {
     });
     if (!firma) throw new NotFoundException('Firma bulunamadı.');
 
-    const [ab, surumler, aktifUye, sahipler] = await Promise.all([
+    const [ab, surumler, aktifUye, sahipler, sonOneri] = await Promise.all([
       this.prisma.abonelik.findUnique({
         where: { firmaId },
         include: {
@@ -76,8 +95,16 @@ export class YoneticiAbonelikServisi {
         select: { email: true },
         orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       }),
+      this.prisma.paketDegisimOnerisi.findFirst({
+        where: { firmaId },
+        orderBy: [{ olusturuldu: 'desc' }, { id: 'desc' }],
+        include: { hedefPaketSurumu: { include: { paket: true } } },
+      }),
     ]);
     const firmaKapali = firma.imhaTarihi !== null;
+    const oneriEtkin = sonOneri
+      ? oneriDurumu(sonOneri, ab, simdi, await oneriGecmisiOku(this.prisma, sonOneri, ab?.id ?? null))
+      : null;
 
     return {
       firma: { id: firma.id, ad: firma.ad, kapali: firmaKapali },
@@ -118,6 +145,21 @@ export class YoneticiAbonelikServisi {
           durdurulacakUye: durdurulacakUye(aktifUye, s.paket.kullaniciHakki),
         };
       }),
+      oneri:
+        sonOneri && oneriEtkin
+          ? {
+              id: sonOneri.id,
+              hedef: { kod: sonOneri.hedefPaketSurumu.paket.kod, ad: sonOneri.hedefPaketSurumu.paket.ad },
+              durum: oneriEtkin,
+              durumMetni: ONERI_DURUM_METNI[oneriEtkin],
+              sonGecerlilik: sonOneri.sonGecerlilik.toISOString(),
+              olusturuldu: sonOneri.olusturuldu.toISOString(),
+              olusturanEposta: sonOneri.olusturanEposta,
+              gerekce: sonOneri.gerekce,
+              musteriNotu: sonOneri.musteriNotu,
+              sonuclandi: sonOneri.sonuclandi?.toISOString() ?? null,
+            }
+          : null,
     };
   }
 }

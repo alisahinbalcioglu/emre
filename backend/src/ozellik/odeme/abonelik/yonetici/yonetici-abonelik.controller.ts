@@ -7,7 +7,9 @@ import { Roles } from '../../../../altyapi/auth/decorators/roles.decorator';
 import { CurrentUser } from '../../../../altyapi/auth/decorators/current-user.decorator';
 import { YoneticiAbonelikServisi } from './yonetici-abonelik.servisi';
 import { YoneticiDusurmeServisi } from './yonetici-dusurme.servisi';
+import { PaketOnerisiServisi } from './paket-onerisi.servisi';
 import { YoneticiDusurDto } from './dto/yonetici-dusur.dto';
+import { YoneticiOneriDto } from './dto/yonetici-oneri.dto';
 
 interface Yonetici {
   id: string;
@@ -38,6 +40,7 @@ export class YoneticiAbonelikController {
   constructor(
     private readonly panelServisi: YoneticiAbonelikServisi,
     private readonly dusurme: YoneticiDusurmeServisi,
+    private readonly oneri: PaketOnerisiServisi,
   ) {}
 
   /** Firmanin aboneligi + her satistaki paket icin yapilabilecek islem. */
@@ -65,5 +68,39 @@ export class YoneticiAbonelikController {
       gerekce: g.gerekce,
       musteriNotu: g.musteriNotu ?? null,
     });
+  }
+
+  /**
+   * Musteri onayli ONERI (A2 Blok 2) — yukseltme, yatay gecis, fiyati artan
+   * degisim, denemedeki firma. Paket DEGISMEZ; firma sahiplerine onay
+   * baglantisi gider. Firma basina tek bekleyen oneri (ikincisi 409).
+   */
+  @Post(':firmaId/oneri')
+  @UseGuards(KullaniciHizSiniriGuard)
+  @Throttle({ default: { ttl: 900_000, limit: 20 } })
+  oneriGonder(
+    @CurrentUser() yonetici: Yonetici,
+    @Param('firmaId', new ParseUUIDPipe()) firmaId: string,
+    @Body() g: YoneticiOneriDto,
+  ) {
+    return this.oneri.olustur({
+      firmaId,
+      paketSurumuId: g.paketSurumuId,
+      yonetici: { id: yonetici.id, email: yonetici.email },
+      gerekce: g.gerekce,
+      musteriNotu: g.musteriNotu ?? null,
+    });
+  }
+
+  /** Bekleyen oneriyi geri cek — musterinin baglantisi artik bir sey yapmaz. */
+  @Post(':firmaId/oneri/:oneriId/geri-cek')
+  @UseGuards(KullaniciHizSiniriGuard)
+  @Throttle({ default: { ttl: 900_000, limit: 20 } })
+  oneriGeriCek(
+    @CurrentUser() yonetici: Yonetici,
+    @Param('firmaId', new ParseUUIDPipe()) firmaId: string,
+    @Param('oneriId', new ParseUUIDPipe()) oneriId: string,
+  ) {
+    return this.oneri.geriCek({ firmaId, oneriId, yonetici: { id: yonetici.id, email: yonetici.email } });
   }
 }

@@ -9,11 +9,12 @@ import {
   gerekceGecerliMi,
   hakListesi,
   islemDugmesi,
+  oneriOzeti,
   type YoneticiSecenegi,
 } from './yonetici-paket';
 
 /**
- * Yönetici "Paket işlemleri" penceresi (24.09.2026, A2 · Blok 1).
+ * Yönetici "Paket işlemleri" penceresi (24.09.2026, A2 · Blok 1 + Blok 2 öneri).
  *
  * Karar SUNUCUDA (`backend/.../yonetici/yonetici-islemi.ts`); burada ölçülen:
  * (1) ön yüz yardımcılarının metin ve düğme kuralları, (2) sunucu ↔ ön yüz
@@ -61,15 +62,45 @@ const secenek = (o: Partial<YoneticiSecenegi> = {}): YoneticiSecenegi => ({
 });
 
 describe('yardımcılar', () => {
-  it('düğme: yalnız doğrudan düşürme AÇIK; öneri ve süreli paket görünür ama kapalı (nedenli); "yok" düğmesiz', () => {
+  it('düğme: düşürme ve öneri AÇIK (Blok 2); süreli paket görünür ama kapalı (nedenli); "yok" düğmesiz', () => {
     expect(islemDugmesi('dogrudan-dusur')).toEqual({ etiket: 'Dönem sonunda düşür', etkin: true, ipucu: null });
-    const oneri = islemDugmesi('oneri');
-    expect(oneri?.etkin).toBe(false);
-    expect(oneri?.ipucu).toMatch(/sonraki adımda/);
+    expect(islemDugmesi('oneri')).toEqual({ etiket: 'Öneri gönder', etkin: true, ipucu: null });
     const sureli = islemDugmesi('sureli-paket');
     expect(sureli?.etkin).toBe(false);
     expect(sureli?.ipucu).toMatch(/sonraki adımda/);
     expect(islemDugmesi('yok')).toBeNull();
+  });
+
+  it('düğme: BEKLEYEN öneri varken "Öneri gönder" kapalı ve nedeni yazılı (sunucu zaten 409 verir); düşürme etkilenmez', () => {
+    const oneri = islemDugmesi('oneri', true);
+    expect(oneri?.etkin).toBe(false);
+    expect(oneri?.ipucu).toMatch(/Bekleyen bir öneri var/);
+    expect(islemDugmesi('dogrudan-dusur', true)?.etkin).toBe(true);
+  });
+
+  it('öneri özeti: paket DEĞİŞMEZ; kayıp yoksa (yükseltme) özellikler HEMEN, kazançlar yazılı', () => {
+    const s = oneriOzeti({
+      mevcutPaketAdi: 'Basic — Mekanik',
+      secenek: secenek({ islem: 'oneri', kayiplar: [], kazanclar: ['seviye', 'dwg'], durdurulacakUye: 0 }),
+      beklenenGecis: '2026-10-14T09:00:00.000Z',
+    });
+    expect(s[0]).toBe('Basic — Mekanik → Pro — Mekanik');
+    expect(s.join(' | ')).toMatch(/Paket şimdi DEĞİŞMEZ/);
+    expect(s.join(' | ')).toMatch(/özellikler hemen açılır/);
+    expect(s.join(' | ')).toMatch(/eklenen ya da artan hakları: Pro seviyesi özellikleri, DWG metraj/);
+    expect(s.join(' | ')).not.toMatch(/azalan ya da kalkan/);
+  });
+
+  it('öneri özeti: kayıp varsa (yatay / fiyatı artan) geçiş DÖNEM SONUNDA; kayıp ve duracak üye yazılı', () => {
+    const s = oneriOzeti({
+      mevcutPaketAdi: 'Pro — Mekanik',
+      secenek: secenek({ islem: 'oneri', kayiplar: ['kapsam'], kazanclar: ['kapsam'], durdurulacakUye: 1 }),
+      beklenenGecis: '2026-10-14T09:00:00.000Z',
+    }).join(' | ');
+    expect(s).toMatch(/geçiş dönem sonunda/);
+    expect(s).not.toMatch(/hemen açılır/);
+    expect(s).toMatch(/azalan ya da kalkan hakları/);
+    expect(s).toMatch(/1 ekip üyesinin erişimi durur/);
   });
 
   it('gerekçe: boşluk sayılmaz, en az 5 ve en çok 500 karakter', () => {
@@ -153,6 +184,30 @@ describe('sunucu ↔ ön yüz eşliği', () => {
     const dto = kodu(oku('../backend/src/ozellik/odeme/abonelik/yonetici/dto/yonetici-dusur.dto.ts'));
     expect(dto).toContain(`@MinLength(${GEREKCE_EN_AZ}`);
     expect(dto).toContain(`@MaxLength(${METIN_EN_COK}`);
+    const oneriDto = kodu(oku('../backend/src/ozellik/odeme/abonelik/yonetici/dto/yonetici-oneri.dto.ts'));
+    expect(oneriDto).toContain(`@MinLength(${GEREKCE_EN_AZ}`);
+    expect(oneriDto).toContain(`@MaxLength(${METIN_EN_COK}`);
+  });
+
+  it('öneri alanları sunucunun panel yanıtıyla aynı adlarda (A2 Blok 2)', () => {
+    const sunucu = oku('../backend/src/ozellik/odeme/abonelik/yonetici/yonetici-abonelik.servisi.ts');
+    const onyuz = oku('ozellik/odeme/yonetici/yonetici-paket.ts');
+    const sunucuOneri = alanlar(sunucu, 'oneri: null | ');
+    expect(sunucuOneri.length).toBeGreaterThanOrEqual(10); // boş küme eşit sayılmasın
+    expect(alanlar(onyuz, 'export interface YoneticiOnerisi')).toEqual(sunucuOneri);
+  });
+
+  it('öneri durum listesi sunucunun etkin durum listesiyle BİREBİR (yeni durum eklenirse ekran bilmez)', () => {
+    const tur = (kaynak: string, bas: string) => {
+      const govde = kaynak.slice(kaynak.indexOf(bas), kaynak.indexOf(';', kaynak.indexOf(bas)));
+      const adlar: string[] = [];
+      const desen = /'([a-z-]+)'/g;
+      for (let m = desen.exec(govde); m; m = desen.exec(govde)) adlar.push(m[1]);
+      return adlar.sort();
+    };
+    const sunucu = tur(oku('../backend/src/ozellik/odeme/abonelik/yonetici/paket-onerisi.ts'), 'export type OneriEtkinDurumu =');
+    expect(sunucu.length).toBe(8); // FIXTURE KANITI (25.09: + satistan-kalkti)
+    expect(tur(oku('ozellik/odeme/yonetici/yonetici-paket.ts'), 'export type OneriDurumu =')).toEqual(sunucu);
   });
 });
 
@@ -214,8 +269,29 @@ describe('bağlantı (kaynak kapısı)', () => {
       'paket.dusurme.basarisiz',
       'paket.dusurme.belirsiz',
       'paket.dusurme.yarim',
+      'paket.oneri.gonderildi',
+      'paket.oneri.geri-cekildi',
     ]) {
       expect(denetim).toContain(`'${tip}':`);
     }
+  });
+
+  it('öneri: pencere öneri ucuna (paket + kırpılmış gerekçe) ve geri çekme ucuna bağlı', () => {
+    expect(pencere).toMatch(/api\.post\(`\/yonetim\/abonelik\/\$\{firma\.id\}\/oneri`, \{\s*paketSurumuId: hedef\.paketSurumuId,\s*gerekce: gerekce\.trim\(\)/);
+    expect(pencere).toMatch(/api\.post\(`\/yonetim\/abonelik\/\$\{firma\.id\}\/oneri\/\$\{oneriId\}\/geri-cek`\)/);
+  });
+
+  it('öneri: onay adımı seçeneğin `islem`ine göre öneri özetini ve "Öneriyi gönder"i çizer; bekleyen öneri düğmeyi kapatır', () => {
+    expect(pencere).toMatch(/\(secili\.islem === 'oneri' \? oneriOzeti : dusurmeOzeti\)\(/);
+    expect(pencere).toMatch(/secili\.islem === 'oneri' \? \([\s\S]*?onClick=\{\(\) => void oneriGonder\(\)\}/);
+    expect(pencere).toMatch(/islemDugmesi\(s\.islem, bekleyenOneri !== null\)/);
+    expect(pencere).toMatch(/const bekleyenOneri = panel\?\.oneri\?\.durum === 'bekliyor' \? panel\.oneri : null;/);
+  });
+
+  it('öneri: e-posta gitmediyse söylenir; işlem sonrası panel TAZE okunur', () => {
+    const gonder = pencere.slice(pencere.indexOf('async function oneriGonder'), pencere.indexOf('async function oneriGeriCek'));
+    expect(gonder).toMatch(/epostaGonderildi/);
+    expect(gonder).toMatch(/GÖNDERİLEMEDİ/);
+    expect(gonder).toMatch(/finally \{[\s\S]*?await yukle\(\);/);
   });
 });

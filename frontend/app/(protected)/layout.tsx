@@ -20,7 +20,7 @@ import { EpostaDogrulamaSeridi } from '@/ortak/kabuk/components/layout/EpostaDog
 import { KapaliHesapSeridi } from '@/ortak/kabuk/components/layout/KapaliHesapSeridi';
 import Sidebar from '@/ortak/kabuk/components/layout/Sidebar';
 import Breadcrumb from '@/ortak/kabuk/components/layout/Breadcrumb';
-import { gecerliTokenMi } from '@/ortak/lib/oturum';
+import { gecerliTokenMi, girisDonusunuSakla } from '@/ortak/lib/oturum';
 
 /* ------------------------------------------------------------------ */
 /*  Currency Widget                                                    */
@@ -164,6 +164,9 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
     if (!gecerliTokenMi(token) || !storedUser) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
+      // A2 Blok 2: oneri baglantisi (`/abonelik?oneri=`) girisle kaybolmasin;
+      // yalniz izin listesindeki yol saklanir (`oturum.ts`).
+      girisDonusunuSakla(window.location.pathname + window.location.search);
       router.replace('/login');
       return;
     }
@@ -174,6 +177,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
     } catch {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
+      girisDonusunuSakla(window.location.pathname + window.location.search);
       router.replace('/login');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
