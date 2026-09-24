@@ -175,9 +175,10 @@ export class DunningServisi {
             aciklama: `Basamak ${basamakNo} — sipariş ${sonSiparis}`,
             aktor: 'dunning',
           });
-          // Sonucu webhook getirecek. Başarılıysa tahsilatToparlandi()
-          // çalışıp sayaçları sıfırlayacak. Burada bekleyip bildirim
-          // göndermiyoruz — 24 saat sonraki tarama devam ettirir.
+          // Sonucu webhook getirecek. Başarılıysa `tahsilatBasarili`
+          // sayaçları sıfırlar, `tahsilatToparlandi` "ödemeniz alındı"
+          // e-postasını gönderir. Burada bekleyip bildirim göndermiyoruz —
+          // 24 saat sonraki tarama devam ettirir.
           await this.prisma.abonelik.update({
             where: { id: abonelikId },
             data: { denemeSayisi: basamakNo, sonDeneme: new Date() },
@@ -215,11 +216,20 @@ export class DunningServisi {
   }
 
   // ── Tahsilat toparlandığında ────────────────────────────────────────────
-  async tahsilatToparlandi(abonelikId: string): Promise<void> {
-    const b = await this.baglam(abonelikId);
-    if (!b) return;
+  /**
+   * "Ödemeniz alındı" — yalnız başarısız tahsilat döngüsünden ÇIKAN aboneliğe.
+   *
+   * ⚠ 24.09 — DÖNGÜ BİLGİSİ ÇAĞIRANDAN GELİR, satırdan OKUNMAZ. Tek çağıran
+   * `WebhookIsleyici.basariliTahsilat`; ondan önce koşan
+   * `AbonelikServisi.tahsilatBasarili` dunning sayaçlarını SIFIRLAR. Eski hâl
+   * satırı burada yeniden okuyup "ilkBasarisizlik boş, denemeSayisi 0"
+   * görüyordu: e-posta HİÇBİR müşteriye gitmiyordu. `dunningdenCikti`
+   * sıfırlamanın KENDİSİNDEN gelir (koşullu yazma) — kural orada, tek yerde.
+   * Posta hatası FIRLATIR; çağıran yutar ve günlüğe yazar.
+   */
+  async tahsilatToparlandi(abonelikId: string, dunningdenCikti: boolean): Promise<void> {
     // Zaten sorunsuzsa "geri hoş geldiniz" göndermeyelim
-    if (!b.abonelik.ilkBasarisizlik && b.abonelik.denemeSayisi === 0) return;
+    if (!dunningdenCikti) return;
     await this.gonder(abonelikId, 'toparlandi');
   }
 

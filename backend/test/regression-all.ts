@@ -521,6 +521,17 @@ const SUITES: Suite[] = [
   //    kesimde canlı okuma D5 kırmızı; listeye `ekiptenCikarildi` eklenince
   //    D9/D11 kırmızı; kart yolundaki çağrı kesilince D14 kırmızı.
   { ad: 'Ödeme/imha: fatura kendi kopyası (K4) + ödeme sonrası geri açma (D1-D16)', script: 'test:odeme-imha', zincir: 'Z0' },
+  // ── 24.09.2026 — "ÖDEMENİZ ALINDI" E-POSTASI HİÇ GİTMİYORDU. DB/AĞ/SMTP
+  //    GEREKTİRMEZ. `tahsilatBasarili` dunning sayaçlarını sıfırladıktan SONRA
+  //    `tahsilatToparlandi` satırı yeniden okuyup her müşteriyi "zaten sorunsuz"
+  //    görüyordu (ölçüldü: günlükte hata yok). Döngüden çıkış artık KOŞULLU
+  //    sıfırlamanın kendisinden okunur ve işleyici üzerinden taşınır — tek yol,
+  //    tek kural; işleyici olayın kaynağına (iyzico / mutabakat oynatması)
+  //    bakmaz. GERÇEK işleyici + abonelik + fatura + dunning: toparlanan
+  //    müşteriye TAM BİR e-posta (aynı olay iki süreçte AYNI ANDA işlense de),
+  //    hiç dunning'e girmemişe SIFIR; posta hatası tahsilat olayını düşürmez.
+  //    Eski hâl 17 kırmızı; inceleme öncesi "anlık görüntü" sürümü E1 kırmızı.
+  { ad: 'Dunning "ödemeniz alındı": çıkış koşullu sıfırlamadan, tam bir kez, posta hatası tahsilatı düşürmez (Ö/T/K/N/Y/E/M/H)', script: 'test:dunning-toparlandi', zincir: 'Z0' },
   // ── 16.09.2026 — FAZ 6.12a DENEME BİR KEZ. DB ve AĞ GEREKTİRMEZ (bellek-Prisma,
   //    kısıt + ILIKE joker + iç içe geçen çağrılar). Ölçülen: deneme hakkı hiçbir
   //    kimliğe bağlı değildi; aynı firma (iptal/deneme sonu ödeme alınamadı), hesap

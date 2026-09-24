@@ -786,6 +786,10 @@ async function main() {
         erisimSonu: new Date('2026-01-01'),
       }),
       update: async (a: any) => ({ id: 'ab-1', ...a.data }),
+      // 24.09: `tahsilatBasarili` dunning döngüsünü KOŞULLU sıfırlar (satır
+      // sayısı = "ödemeniz alındı" kararı, `test:dunning-toparlandi`). Bu
+      // kapının konusu değil: döngüde olmayan satır gibi davranır.
+      updateMany: async () => ({ count: 0 }),
     },
     firma: {
       updateMany: async (a: any) => {
