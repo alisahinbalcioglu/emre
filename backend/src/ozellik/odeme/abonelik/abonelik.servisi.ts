@@ -1,9 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
-import { AbonelikDurumu, KapatmaNedeni, Prisma } from '@prisma/client';
-import { IyzicoClient, IyzicoAbonelikDetayi } from '../iyzico/iyzico.client';
+import { AbonelikDurumu, KapatmaNedeni, OdemeYontemi, Prisma } from '@prisma/client';
+import {
+  IyzicoClient,
+  IyzicoAbonelikDetayi,
+  IyzicoHatasi,
+  IyzicoSiparis,
+} from '../iyzico/iyzico.client';
+import { EpostaServisi } from '../eposta/eposta.servisi';
+import { tarihYaz, tutarYaz } from '../dunning/dunning.metinleri';
 // Saf modul (Prisma/Nest bilmez) — dongusel import YOK.
 import { iyzicoTarihi } from './paket-degisimi';
+import { KartKapatmaSonucu, kapatmaCumlesi, kartAboneligiKapaliMi } from './kart-kapatma';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -155,6 +163,12 @@ export class AbonelikServisi {
   constructor(
     private readonly prisma: PrismaService,
     private readonly iyzico: IyzicoClient,
+    // 24.09 — YALNIZ yonetici bildirimi (havale ↔ kart cakismasi, asagida).
+    // ⚠ `@Optional()` BILEREK YOK: Nest bu parametreyi ZORUNLU cozer, modulden
+    // duserse onyukleme GURULTUYLE patlar (bildirim sessizce kaybolmaz). TS'de
+    // istege bagli olmasi yalniz servisi 2 argumanla kuran eski test
+    // fikstorleri derlensin diye; o fikstorler bu yolu kosmaz.
+    private readonly eposta?: EpostaServisi,
   ) {}
 
   gecisGecerliMi(onceki: AbonelikDurumu, yeni: AbonelikDurumu): boolean {
@@ -176,6 +190,15 @@ export class AbonelikServisi {
       erisimSonu?: Date;
       /** Dunning sayaçlarını sıfırla (başarılı tahsilatta). */
       sayaclariSifirla?: boolean;
+      /**
+       * 24.09 — İYİMSER EŞZAMANLILIK: yazma ANINDA satırın hâlâ tutması
+       * gereken koşul. Tutmazsa Prisma P2025 fırlatır, hiçbir şey yazılmaz
+       * ve çağıran yeniden dener. Webhook yolları `odemeYontemi: KART` verir:
+       * satırı okuyup iyzico'yu beklerken yönetici havaleyi onaylarsa eski
+       * okumayla havale yılını `endPeriod`a kısaltmak / ODEME_BEKLIYOR yazmak
+       * yerine olay yeniden denenir ve havale dalına düşer (inceleme ORTA-2).
+       */
+      kosul?: Omit<Prisma.AbonelikWhereInput, 'id' | 'firmaId' | 'iyzicoAbonelikKodu'>;
       tx?: Prisma.TransactionClient;
     } = {},
   ) {
@@ -190,7 +213,7 @@ export class AbonelikServisi {
     }
 
     const guncel = await db.abonelik.update({
-      where: { id: abonelikId },
+      where: { ...(p.kosul ?? {}), id: abonelikId },
       data: {
         durum: yeniDurum,
         ...(p.erisimSonu ? { erisimSonu: p.erisimSonu } : {}),
@@ -513,6 +536,21 @@ export class AbonelikServisi {
       );
     }
 
+    // ⚠ 24.09 — HAVALEYLE ODENMIS SATIR (Emre karari: "ikisi birden, onay
+    // beklemez"). Bu, eski KART aboneliginin cekimidir: musteri o donemi
+    // havaleyle ODEDI. Asagidaki olagan yol erisimSonu'nu iyzico'nun
+    // `endPeriod`una yazip havale donemini KISALTIYOR (olculdu: 334 gun),
+    // faturayi kesiyor ve cekimi gelir sayiyordu. Havale satirinda durum,
+    // erisim ve fatura DEGISMEZ; cekim "cift tahsilat — iade" olarak
+    // kaydedilir, yoneticiye yazilir, kart aboneligi yeniden kapatilir.
+    // `null` → isleyici fatura KESMEZ, "toparlandi" GONDERMEZ.
+    // Kanit kurali (ustte) BURADA DA gecerli: uydurma webhook yoneticiye
+    // "iade et" dedirtemez.
+    if (ab.odemeYontemi === OdemeYontemi.HAVALE) {
+      await this.havaleSatirindaKartTahsilati(ab, { abonelikKodu, siparisKodu, siparis });
+      return null;
+    }
+
     const donemSonu = siparis.endPeriod
       ? new Date(siparis.endPeriod)
       : this.donemSonuHesapla(ab.erisimSonu, ab.paketSurumu.periyot, ab.paketSurumu.periyotAdedi);
@@ -535,6 +573,7 @@ export class AbonelikServisi {
       guncelUcMu || donemSonu > ab.erisimSonu ? donemSonu : ab.erisimSonu;
 
     await this.durumDegistir(ab.id, AbonelikDurumu.AKTIF, {
+      kosul: { odemeYontemi: OdemeYontemi.KART }, // 24.09 yarış: arada havale onaylandıysa P2025 → yeniden dene
       aciklama: `Tahsilat başarılı (sipariş ${siparisKodu})`,
       aktor: 'webhook',
       erisimSonu: yeniErisimSonu,
@@ -859,6 +898,29 @@ export class AbonelikServisi {
       return null;
     }
 
+    // ⚠ 24.09 — HAVALEYLE ODENMIS SATIR (Emre karari; ikizi `tahsilatBasarili`).
+    // Eski kart aboneliginin reddi havaleyle odenmis donemi ilgilendirmez.
+    // Yazilmasaydi: ODEME_BEKLIYOR + "Odemeniz alinamadi" seridi ve e-postasi;
+    // merdiven ve mutabakat KART disini taramadigi icin satir orada KALIR ve
+    // ODEME_BEKLIYOR `erisimSonu`na bakmadigindan havale donemi bitince de
+    // erisim SURESIZ acik kalirdi (olculdu). `null` → isleyici dunning ilk
+    // bildirimini GONDERMEZ. Kart aboneligi onayda kapatildi; kapatilamadiysa
+    // yonetici o anda uyarildi (`havaleIcinKartAboneliginiKapat`).
+    if (ab.odemeYontemi === OdemeYontemi.HAVALE) {
+      await this.olayYaz(ab.id, 'tahsilat.havale.yok.sayildi', {
+        aciklama:
+          `Havaleyle ödenen abonelikte eski kart aboneliğinin çekimi başarısız ` +
+          `(sipariş ${siparisKodu}) — durum ve erişim DEĞİŞMEDİ`,
+        veri: { abonelikKodu, siparisKodu },
+        aktor: 'webhook',
+      });
+      this.logger.warn(
+        `Havale satirinda kart cekimi basarisiz: abonelik=${ab.id} kod=${abonelikKodu} ` +
+          `siparis=${siparisKodu} — yok sayildi`,
+      );
+      return null;
+    }
+
     // ⚠ 23.09 (inceleme bulgusu 7) — IKIZ YOL: vadesi gelen planli dusurme
     // basarili yolda oldugu gibi ONCE uygulanir. Basarisiz yenileme cekimi
     // DUSURULMUS paketin fiyatiydi; 10 dk taramasini beklemek ilk dunning
@@ -873,6 +935,9 @@ export class AbonelikServisi {
     // yalnızca ilk başarısızlık zamanını işaretliyoruz.
     if (ab.durum === AbonelikDurumu.AKTIF || ab.durum === AbonelikDurumu.DENEME) {
       await this.durumDegistir(ab.id, AbonelikDurumu.ODEME_BEKLIYOR, {
+        // 24.09 yarış: arada havale onaylandıysa P2025 → olay yeniden denenir
+        // ve havale dalına düşer (ikizi `tahsilatBasarili`).
+        kosul: { odemeYontemi: OdemeYontemi.KART },
         aciklama: `Tahsilat başarısız (sipariş ${siparisKodu})`,
         aktor: 'webhook',
         veri: { siparisKodu },
@@ -885,14 +950,23 @@ export class AbonelikServisi {
       });
     }
 
-    await this.prisma.abonelik.update({
-      where: { id: ab.id },
+    // ⚠ 24.09 — KOŞULLU: satır okunduktan sonra havaleye geçtiyse (0 satır)
+    // dunning izi YAZILMAZ ve olay yeniden denenir. Yazılsaydı işleyici
+    // havaleyle ödemiş müşteriye "ödemeniz alınamadı" gönderirdi (onay
+    // sayaçları sıfırladığı için ilk bildirim kapısı açık).
+    const isaret = await this.prisma.abonelik.updateMany({
+      where: { id: ab.id, odemeYontemi: OdemeYontemi.KART },
       data: {
         ilkBasarisizlik: ab.ilkBasarisizlik ?? new Date(),
         // Dunning zamanlayıcısının bu kaydı hemen görmesi için
         sonDeneme: ab.sonDeneme ?? new Date(),
       },
     });
+    if (isaret.count === 0) {
+      throw new Error(
+        `Abonelik ${ab.id} okunduktan sonra havaleye geçti (sipariş ${siparisKodu}) — olay yeniden denenecek`,
+      );
+    }
 
     return ab;
   }
@@ -956,5 +1030,283 @@ export class AbonelikServisi {
       veri: { ayAdedi, oncekiErisimSonu: ab.erisimSonu.toISOString() },
       tx: p.tx,
     });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  //  HAVALE ↔ KART ABONELIGI (24.09.2026 — Emre karari: "ikisi birden, onay
+  //  beklemez")
+  // ═══════════════════════════════════════════════════════════════════════
+  //  OLCULEN KUSUR (`backend/test/havale-iyzico-cakismasi-test.ts`): kartli
+  //  musteri havaleyle odeyince onay yalniz `odemeYontemi: 'HAVALE'` yaziyor,
+  //  iyzico aboneligi ACIK kaliyordu. Donem sonunda iyzico karttan da cekiyor
+  //  (cift tahsilat + ikinci fatura) ve webhook havale donemini `endPeriod`a
+  //  kisaltiyordu (334 gun); kart reddinde musteri "Odemeniz alinamadi"
+  //  goruyor, satir ODEME_BEKLIYOR'da takilip havale donemi bitince bile
+  //  erisim acik kaliyordu.
+  //
+  //  UC PARCA, TEK KARAR:
+  //    1. Onayda kart aboneligi iyzico'da KAPATILIR (`havaleIcinKartAboneliginiKapat`,
+  //       cagiran `HavaleServisi.odemeyiOnayla` — islem BITTIKTEN sonra).
+  //       iyzico kapatamazsa onay YINE gecer: olay + yonetici e-postasi.
+  //       UNPAID aboneligin iptali iyzico dokumaninda TARIF EDILMIYOR; karti
+  //       reddedilip havaleye gecen musteri tam da bu yoldan gelir — onayi
+  //       iyzico'ya baglamak onu kilitlerdi.
+  //    2. Havale satirina sonradan gelen RET webhook'u yok sayilir (olay).
+  //    3. Havale satirina gelen BASARILI cekim = cift tahsilat: erisim ve
+  //       fatura DEGISMEZ; olay + yonetici e-postasi ("iade edin"), kart
+  //       aboneligi yeniden kapatilir.
+  //  ⚠ `iyzicoAbonelikKodu` SILINMEZ: gec gelen webhook bu satira baglansin ve
+  //  (2)/(3)'e dussun. Silinseydi "bilinmeyen kod" diye yutulur, cift
+  //  tahsilat HIC gorulmezdi.
+
+  /**
+   * iyzico'da kart aboneligini IPTAL EDER. Kayitli uc 201403 ("iptal
+   * edilemez") donerse zincirin CANLI ucu aranir: yaniti kaybolan bir paket
+   * degisimi yeni uc uretmis olabilir — o iptal edilir. Uc zaten
+   * CANCELED/EXPIRED ise `zaten-kapali`. Baska her durumda asil hata AYNEN
+   * firlatilir (sessiz basari yok).
+   *
+   * ⚠ IKIZ: `SatinAlmaServisi.iptalEt` ayni 201403 kuralini satir icinde
+   * tasiyor (bilinen kapaliyi ATLAMA kurali artik ORTAK: `kart-kapatma.ts`
+   * → `kartAboneligiKapaliMi`). Birlesmesi bekleyen bir is (24.09) `iptalEt`in
+   * iptal blogunu degistirdigi icin orasi simdi tasinmadi (cakisma); o is
+   * birlestikten sonra `iptalEt` bu yardimciyi cagirmali.
+   */
+  async iyzicoAboneliginiIptalEt(ab: {
+    iyzicoAbonelikKodu: string;
+    iyzicoKokKodu: string | null;
+    iyzicoMusteriKodu: string | null;
+  }): Promise<{ sonuc: 'iptal-edildi' | 'zaten-kapali'; kod: string; iyzicoDurum: string }> {
+    try {
+      await this.iyzico.abonelikIptal(ab.iyzicoAbonelikKodu);
+      return { sonuc: 'iptal-edildi', kod: ab.iyzicoAbonelikKodu, iyzicoDurum: 'CANCELED' };
+    } catch (e) {
+      if (!(e instanceof IyzicoHatasi) || e.kod !== '201403') throw e;
+      const canli = await this.canliUcuBul(ab).catch(() => null);
+      if (!canli) throw e;
+      if (canli.subscriptionStatus === 'CANCELED' || canli.subscriptionStatus === 'EXPIRED') {
+        return { sonuc: 'zaten-kapali', kod: canli.referenceCode, iyzicoDurum: canli.subscriptionStatus };
+      }
+      if (canli.referenceCode === ab.iyzicoAbonelikKodu) throw e;
+      try {
+        await this.iyzico.abonelikIptal(canli.referenceCode);
+      } catch (e2) {
+        // Mesaj CANLI kodu taşır: yönetici panelde eski (UPGRADED, terminal)
+        // kodu arayıp açık olan çocuğu bulamazdı (inceleme bulgusu 6).
+        throw new Error(
+          `canlı uç ${canli.referenceCode} iptal edilemedi: ${e2 instanceof Error ? e2.message : String(e2)}`,
+        );
+      }
+      return { sonuc: 'iptal-edildi', kod: canli.referenceCode, iyzicoDurum: 'CANCELED' };
+    }
+  }
+
+  /**
+   * Havaleye gecen satirin kart aboneligini iyzico'da kapatir (parca 1).
+   * iyzico hatasini ASLA FIRLATMAZ — onay iyzico'yu beklemez: sonucu dondurur;
+   * basarisizlikta olay + gunluk + (istenirse) yonetici e-postasi. Bildigimiz
+   * kadariyla kapali abonelikte iyzico'ya HIC gidilmez (`kartAboneligiKapaliMi`);
+   * kapatilamamissa sonraki onay ya da cift tahsilat webhook'u YENIDEN dener.
+   */
+  async havaleIcinKartAboneliginiKapat(
+    abonelikId: string,
+    p: { aktor: string; neden: string; yoneticiyeYaz?: boolean },
+  ): Promise<KartKapatmaSonucu> {
+    const ab = await this.prisma.abonelik.findUnique({
+      where: { id: abonelikId },
+      select: {
+        id: true,
+        firmaId: true,
+        iyzicoAbonelikKodu: true,
+        iyzicoKokKodu: true,
+        iyzicoMusteriKodu: true,
+        iyzicoDurum: true,
+        iptalTalebi: true,
+      },
+    });
+    if (!ab?.iyzicoAbonelikKodu) return { sonuc: 'kod-yok' };
+    if (kartAboneligiKapaliMi(ab)) return { sonuc: 'zaten-kapali', kod: ab.iyzicoAbonelikKodu };
+
+    let r: Awaited<ReturnType<AbonelikServisi['iyzicoAboneliginiIptalEt']>>;
+    try {
+      r = await this.iyzicoAboneliginiIptalEt({
+        iyzicoAbonelikKodu: ab.iyzicoAbonelikKodu,
+        iyzicoKokKodu: ab.iyzicoKokKodu,
+        iyzicoMusteriKodu: ab.iyzicoMusteriKodu,
+      });
+    } catch (e) {
+      const mesaj = e instanceof Error ? e.message : String(e);
+      this.logger.error(
+        `KART ABONELIGI IPTAL EDILEMEDI: abonelik=${ab.id} kod=${ab.iyzicoAbonelikKodu} ` +
+          `(${p.neden}): ${mesaj}`,
+      );
+      await this.olayYaz(ab.id, 'iyzico.abonelik.iptal.basarisiz', {
+        aciklama: `Kart aboneliği iyzico'da iptal EDİLEMEDİ — ${p.neden}`,
+        veri: { kod: ab.iyzicoAbonelikKodu, hata: mesaj.slice(0, 500), neden: p.neden },
+        aktor: p.aktor,
+      }).catch((e2) =>
+        this.logger.error(
+          `Iptal hatasi olaya yazilamadi (abonelik=${ab.id}): ${e2 instanceof Error ? e2.message : String(e2)}`,
+        ),
+      );
+      if (p.yoneticiyeYaz !== false) {
+        await this.yoneticiyeYaz(ab.firmaId, {
+          konu: 'Kart aboneliği iptal edilemedi',
+          baslik: "Havale onaylandı ama iyzico'daki kart aboneliği kapatılamadı",
+          paragraflar: [
+            `iyzico aboneliği: ${ab.iyzicoAbonelikKodu}`,
+            `İşlem: ${p.neden}`,
+            `iyzico yanıtı: ${mesaj}`,
+            'Havale onayı geri alınmadı; müşterinin erişimi uzatıldı.',
+            "Kart aboneliği iyzico'da açık kalabilir ve bir sonraki dönemde karttan da " +
+              'çekim yapılabilir. iyzico panelinden elle iptal edin.',
+          ],
+        });
+      }
+      return { sonuc: 'basarisiz', kod: ab.iyzicoAbonelikKodu, hata: mesaj };
+    }
+
+    await this.prisma.abonelik.update({
+      where: { id: ab.id },
+      data: {
+        iyzicoDurum: r.iyzicoDurum,
+        iyzicoSonKontrol: new Date(),
+        // Kayitli uc bayatti (201403) ve canli uc kapatildi: satir o uca
+        // baglanir, kok korunur (ikizi `iptalEt`).
+        ...(r.kod !== ab.iyzicoAbonelikKodu
+          ? { iyzicoAbonelikKodu: r.kod, iyzicoKokKodu: ab.iyzicoKokKodu ?? ab.iyzicoAbonelikKodu }
+          : {}),
+      },
+    });
+    await this.olayYaz(ab.id, 'iyzico.abonelik.iptal', {
+      aciklama:
+        r.sonuc === 'iptal-edildi'
+          ? `Kart aboneliği iyzico'da iptal edildi — ${p.neden}`
+          : `Kart aboneliği iyzico'da zaten kapalıydı (${r.iyzicoDurum}) — ${p.neden}`,
+      veri: { kod: r.kod, sonuc: r.sonuc, neden: p.neden },
+      aktor: p.aktor,
+    });
+    return { sonuc: r.sonuc, kod: r.kod };
+  }
+
+  /**
+   * Havale satirina gelen BASARILI kart cekimi = cift tahsilat (parca 3).
+   * Kanit: siparis iyzico'da SUCCESS. Degilse FIRLATIR → olay yeniden denenir:
+   * odendigi dogrulanmadan yoneticiye "iade et" yazilmaz, cekim de kacirilmaz.
+   * SIPARIS BASINA BIR KEZ: ayni siparis yeni bir olayla (yeni tekil anahtar —
+   * or. mutabakatin kayip tahsilat oynatmasi) ya da DB hatasindan sonraki
+   * yeniden denemeyle tekrar gelirse ikinci olay/e-posta YAZILMAZ.
+   */
+  private async havaleSatirindaKartTahsilati(
+    ab: { id: string; firmaId: string; erisimSonu: Date; paketSurumu: { paraBirimi: string } },
+    p: { abonelikKodu: string; siparisKodu: string; siparis: IyzicoSiparis },
+  ): Promise<void> {
+    if (p.siparis.orderStatus !== 'SUCCESS') {
+      throw new Error(
+        `Havale satirinda kart cekimi dogrulanamadi: siparis ${p.siparisKodu} iyzico'da ` +
+          `${p.siparis.orderStatus} — olay yeniden denenecek`,
+      );
+    }
+    const oncekiler = await this.prisma.abonelikOlayi.findMany({
+      where: { abonelikId: ab.id, tip: 'tahsilat.cift' },
+      select: { veri: true },
+    });
+    if (oncekiler.some((o) => (o.veri as { siparisKodu?: unknown } | null)?.siparisKodu === p.siparisKodu)) {
+      this.logger.warn(
+        `Cift tahsilat zaten kayitli: abonelik=${ab.id} siparis=${p.siparisKodu} — ikinci uyari yazilmadi`,
+      );
+      return;
+    }
+    const tutar = p.siparis.paidPrice ?? p.siparis.price;
+    const tutarMetni =
+      typeof tutar === 'number' ? tutarYaz(tutar, ab.paketSurumu.paraBirimi) : 'bilinmiyor';
+    // Tarih TEK çözücüden: iyzico dönem sınırını ms SAYISI (ya da rakam
+    // dizesi) yollayabilir; `new Date('1789…')` Invalid Date yazardı.
+    const baslangic = iyzicoTarihi(p.siparis.startPeriod);
+    const bitis = iyzicoTarihi(p.siparis.endPeriod);
+    const donem = baslangic && bitis ? `${tarihYaz(baslangic)} – ${tarihYaz(bitis)}` : 'bilinmiyor';
+    this.logger.error(
+      `CIFT TAHSILAT: havaleyle odenen abonelik=${ab.id} kart aboneligi=${p.abonelikKodu} ` +
+        `siparis=${p.siparisKodu} tutar=${tutar} — erisim/fatura DEGISMEDI, iade gerekiyor`,
+    );
+    await this.olayYaz(ab.id, 'tahsilat.cift', {
+      aciklama:
+        `Havaleyle ödenen abonelikte eski kart aboneliğinden çekim yapıldı ` +
+        `(sipariş ${p.siparisKodu}, ${tutarMetni}) — erişim DEĞİŞMEDİ, fatura KESİLMEDİ; iade gerekiyor`,
+      veri: {
+        abonelikKodu: p.abonelikKodu,
+        siparisKodu: p.siparisKodu,
+        tutar: tutar ?? null,
+        startPeriod: p.siparis.startPeriod ?? null,
+        endPeriod: p.siparis.endPeriod ?? null,
+      },
+      aktor: 'webhook',
+    });
+    // Cekim yapildiysa abonelik iyzico'da ACIKTIR: sonraki donem de
+    // cekilmesin. Sonuc AYNI e-postada soylenir (ikinci e-posta yok).
+    const kapatma = await this.havaleIcinKartAboneliginiKapat(ab.id, {
+      aktor: 'webhook',
+      neden: `Çift tahsilat — sipariş ${p.siparisKodu}`,
+      yoneticiyeYaz: false,
+    });
+    await this.yoneticiyeYaz(ab.firmaId, {
+      konu: 'Çift tahsilat — iade gerekiyor',
+      baslik: 'Havaleyle ödeyen müşteriden karttan da çekim yapıldı',
+      paragraflar: [
+        `iyzico aboneliği: ${p.abonelikKodu} · sipariş: ${p.siparisKodu}`,
+        `Çekilen tutar: ${tutarMetni} · kart çekiminin dönemi: ${donem}`,
+        `Havaleyle ödenmiş erişim: ${tarihYaz(ab.erisimSonu)} tarihine kadar. Erişim DEĞİŞMEDİ, ` +
+          'bu çekim için fatura KESİLMEDİ.',
+        // ⚠ Kart dönemi havale döneminden ÖNCEYSE (eski bir borcun geç
+        // tahsilatı) çekim meşrudur: kararı dönemleri gören yönetici verir
+        // (inceleme bulgusu 4 — satırda havale başlangıcı tutulmuyor).
+        'Yapılacak: dönemler çakışıyorsa bu çekimi iyzico panelinden iade edin; kart dönemi ' +
+          'havaleyle ödenen dönemden ÖNCEYSE (eski bir borcun geç tahsilatı) iade yerine faturalayın.',
+        kapatmaCumlesi(kapatma),
+      ],
+    });
+  }
+
+  /**
+   * Yoneticiye e-posta — `YONETIM_EPOSTA`, fatura servisinin elle mudahale
+   * uyarisiyla AYNI adres. ASLA firlatmaz. Adres, gonderici ya da SMTP yoksa
+   * uyari SESSIZCE kaybolmaz: icerik HATA seviyesinde gunluge yazilir (olay
+   * kaydi cagiranda zaten dusuldu). ⚠ SMTP'siz `gonder` yalniz UYARI basip
+   * doner — o yol burada yakalanir (inceleme bulgusu 8).
+   */
+  private async yoneticiyeYaz(
+    firmaId: string,
+    t: { konu: string; baslik: string; paragraflar: string[] },
+  ): Promise<void> {
+    const firma = await this.prisma.firma
+      .findUnique({ where: { id: firmaId }, select: { ad: true } })
+      .catch(() => null);
+    const ad = firma?.ad ?? firmaId;
+    const kime = process.env.YONETIM_EPOSTA?.trim();
+    const engel = !kime
+      ? 'YONETIM_EPOSTA tanimli degil'
+      : !this.eposta
+        ? 'e-posta servisi yok'
+        : !this.eposta.yapilandirildiMi()
+          ? 'SMTP yapilandirilmamis'
+          : null;
+    if (engel) {
+      this.logger.error(
+        `YONETICI BILDIRIMI GONDERILEMEDI (${engel}): [${ad}] ${t.konu} — ${t.paragraflar.join(' | ')}`,
+      );
+      return;
+    }
+    await this.eposta
+      .gonder({
+        kime,
+        konu: `[MetaPriceX] ${t.konu} — ${ad}`,
+        baslik: t.baslik,
+        paragraflar: [`Firma: ${ad}`, ...t.paragraflar],
+      })
+      .catch((e) =>
+        this.logger.error(
+          `Yonetici bildirimi gonderilemedi (${t.konu}, ${ad}): ${e instanceof Error ? e.message : String(e)}`,
+        ),
+      );
   }
 }

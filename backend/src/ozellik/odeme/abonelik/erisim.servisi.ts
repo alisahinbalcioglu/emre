@@ -320,9 +320,9 @@ export class ErisimServisi {
         // e-postası aynı gün kısıtlamaya kalan günü sayıyordu. Sayı artık
         // e-postayla AYNI fonksiyondan (`kisit-gunu.ts`). Merdivenin HİÇ
         // taramadığı satırda kısıt planlanmamıştır → sayı YOK: KART dışı
-        // (havaleye geçen satırın iyzico kodu durur, eski aboneliğin başarısız
-        // çekim webhook'u onu ODEME_BEKLIYOR yapabilir; sayaç 0'da donardı) ve
-        // `ilkBasarisizlik` boş (yardımcı null döner).
+        // (24.09'a dek eski kart aboneliğinin başarısız çekimi havaleye geçmiş
+        // satırı da ODEME_BEKLIYOR yapıyordu — o veri durabilir; sayaç 0'da
+        // donardı) ve `ilkBasarisizlik` boş (yardımcı null döner).
         return {
           ...temel,
           erisimVar: e.erisimVar,

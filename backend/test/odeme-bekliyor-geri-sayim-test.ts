@@ -31,8 +31,8 @@
  *   L  GERÇEK dunning merdiveni (günlük koşum, iki saat kayması): ekran > 0
  *      iken kısıtlamaz, 0 gördüğü ilk koşumda kısıtlar; 7. gün e-postası = ekran
  *   N  `ilkBasarisizlik` yazılmadan önceki GERÇEK ara an ve `kisitlandi` → null
- *   H  havaleye geçmiş satır (iyzico kodu durur): eski aboneliğin başarısız
- *      çekimi → ODEME_BEKLIYOR; merdiven KART dışını taramaz → sayı YOK
+ *   H  havaleye geçmiş ODEME_BEKLIYOR satırı (`d792251` öncesinden kalan veri):
+ *      merdiven KART dışını taramaz → sayı YOK, 0'da donmaz
  *   K  `DUNNING_KISIT_GUNU=14`: ekran, e-posta ve merdiven birlikte 14'e sayar
  *   A  erişim kararı ve şerit değişmedi: servis ≡ saf çekirdek, metin birebir
  *
@@ -191,18 +191,30 @@ function bellekPrisma() {
       await Promise.resolve();
       const s = tablo(model).find((r) => whereUygula(r, arg.where));
       if (!s) throw Object.assign(new Error(`${model} guncellenecek satir yok`), { code: 'P2025' });
-      for (const [k, v] of Object.entries(arg.data)) {
-        if (v !== null && typeof v === 'object' && !(v instanceof GercekDate)) {
-          throw new Error(`bellek-Prisma: desteklenmeyen guncelleme ${k}=${JSON.stringify(v)}`);
-        }
-        // `undefined` = "dokunma" (Prisma sözleşmesi).
-        if (v !== undefined) s[k] = v;
-      }
-      // Şemada `guncellendi @updatedAt`: her yazımda o anın saati.
-      if (model === 'abonelik') s.guncellendi = new Date();
+      yaz(model, s, arg.data);
       return yansit(model, s, arg);
     },
+    // Koşullu yazım (`tahsilatBasarisiz`: yalnız hâlâ KART ise): eşleşmezse
+    // 0 satır, hata YOK — Prisma sözleşmesi.
+    updateMany: async (arg: any) => {
+      await Promise.resolve();
+      const satirlar = tablo(model).filter((r) => whereUygula(r, arg.where));
+      for (const s of satirlar) yaz(model, s, arg.data);
+      return { count: satirlar.length };
+    },
   });
+
+  function yaz(model: string, s: Satir, data: Satir): void {
+    for (const [k, v] of Object.entries(data)) {
+      if (v !== null && typeof v === 'object' && !(v instanceof GercekDate)) {
+        throw new Error(`bellek-Prisma: desteklenmeyen guncelleme ${k}=${JSON.stringify(v)}`);
+      }
+      // `undefined` = "dokunma" (Prisma sözleşmesi).
+      if (v !== undefined) s[k] = v;
+    }
+    // Şemada `guncellendi @updatedAt`: her yazımda o anın saati.
+    if (model === 'abonelik') s.guncellendi = new Date();
+  }
 
   const prisma: any = new Proxy(
     {},
@@ -564,22 +576,27 @@ async function nBlogu(): Promise<void> {
 //  H — HAVALEYE GEÇMİŞ SATIR: merdiven taramaz → sayı YOK
 // ═════════════════════════════════════════════════════════════════════════
 /**
- * Kartı reddedilen müşteri havaleyle öder: onay yalnız `odemeYontemi:
- * 'HAVALE'` yazar, iyzico kodu satırda KALIR (`havale.servisi.ts`). Eski
- * aboneliğin başarısız çekim webhook'u gelirse `tahsilatBasarisiz` satırı
- * ödeme yöntemine bakmadan ODEME_BEKLIYOR yapar; merdiven yalnız KART
- * satırlarını tarar, kısıt HİÇ gelmez. Sayı verilseydi 10'dan 0'a inip orada
- * donardı.
+ * HAVALE + ODEME_BEKLIYOR satırı. 24.09'a dek havale onayı iyzico kart
+ * aboneliğini kapatmıyordu ve eski aboneliğin başarısız çekim webhook'u
+ * satırı ödeme yöntemine bakmadan ODEME_BEKLIYOR yapıyordu. `d792251`den beri
+ * onay kart aboneliğini kapatır, webhook da HAVALE satırını yok sayar — yani
+ * bu satır yalnız o tarihten ÖNCE yazılmış veride durur; burada doğrudan
+ * kurulur. Merdiven yalnız KART satırlarını tarar, kısıt HİÇ gelmez: sayı
+ * verilseydi 10'dan 0'a inip orada donardı.
  */
 async function hBlogu(): Promise<void> {
-  console.log('\n── H · havaleye geçmiş satır: kısıt yok → sayı yok ──');
+  console.log('\n── H · havaleye geçmiş (eski) satır: kısıt yok → sayı yok ──');
   const d = dunyaKur();
-  d.satir('F-H', { durum: 'AKTIF', odemeYontemi: 'HAVALE', erisimSonu: new Date(Date.now() + 300 * GUN) });
-  await d.abonelik.tahsilatBasarisiz('sub-F-H', 'siparis-H');
+  const ilkBasarisizlik = new Date(Date.now() - 2 * SAAT);
+  d.satir('F-H', {
+    durum: 'ODEME_BEKLIYOR', odemeYontemi: 'HAVALE', erisimSonu: new Date(Date.now() + 300 * GUN),
+    ilkBasarisizlik, sonDeneme: ilkBasarisizlik,
+  });
   const ab = d.oku('F-H');
-  check('H-FIXTURE gerçek webhook yolu HAVALE satırını ODEME_BEKLIYOR yaptı, ilkBasarisizlik yazıldı',
-    ab.durum === 'ODEME_BEKLIYOR' && ab.odemeYontemi === 'HAVALE' && ab.ilkBasarisizlik instanceof GercekDate,
-    `durum=${ab.durum} yontem=${ab.odemeYontemi} ilk=${ab.ilkBasarisizlik}`);
+  check('H-FIXTURE eski veri satırı: ODEME_BEKLIYOR + HAVALE + ilkBasarisizlik dolu, kısıt yok',
+    ab.durum === 'ODEME_BEKLIYOR' && ab.odemeYontemi === 'HAVALE' && ab.ilkBasarisizlik instanceof GercekDate &&
+      ab.kisitlandi === null,
+    `durum=${ab.durum} yontem=${ab.odemeYontemi} ilk=${ab.ilkBasarisizlik} kisit=${ab.kisitlandi}`);
 
   const kosumlar: Array<{ gun: number; ekran: number | null; durum: string }> = [];
   for (let gun = 0; gun <= 12; gun++) {

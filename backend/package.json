@@ -105,6 +105,7 @@
     "test:iliskisel-alan": "ts-node test/iliskisel-alan-suzgeci-test.ts",
     "test:kisisel-liste": "ts-node test/kisisel-liste-izolasyon-test.ts",
     "test:odeme": "ts-node test/odeme-onyukleme-test.ts",
+    "test:havale-iyzico": "ts-node test/havale-iyzico-cakismasi-test.ts",
     "test:migration": "ts-node test/migration-zinciri-test.ts",
     "test:erisim": "ts-node test/erisim-kapisi-test.ts",
     "test:odeme-bekliyor-geri-sayim": "ts-node test/odeme-bekliyor-geri-sayim-test.ts",

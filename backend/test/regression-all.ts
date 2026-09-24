@@ -509,6 +509,17 @@ const SUITES: Suite[] = [
   // geciyordu, yani muhasebeye `tax_number: undefined` gidip fatura KESILIYORDU
   // (VUK md. 230 ihlali, sessiz). Sahis/limited ayrimi tum depoda YOKTU.
   { ad: 'Fatura kimliği kapısı: şahıs/limited + eksik kimlikle fatura kesilmez (T1-T11)', script: 'test:fatura-kimligi', zincir: 'Z0' },
+  // ── 24.09.2026 — HAVALE ↔ AÇIK iyzico KART ABONELİĞİ (Emre kararı: "ikisi
+  //    birden, onay beklemez"). Kartlı müşteri havaleyle ödeyince onay yalnız
+  //    `odemeYontemi` yazıyor, iyzico aboneliği açık kalıyordu. ÖLÇÜLDÜ: kart
+  //    reddi → ODEME_BEKLIYOR + "Ödemeniz alınamadı" ve havale dönemi bitince de
+  //    süresiz erişim; kart çalışırsa ÇİFT TAHSİLAT + ikinci fatura + havale
+  //    dönemi 334 gün kısalıyordu. Artık onayın sonunda kart aboneliği iyzico'da
+  //    kapatılır (düşerse onay yine geçer, yöneticiye yazılır); havale satırına
+  //    gelen ret yok sayılır, başarılı çekim erişim/faturayı değiştirmez ve
+  //    "iade" uyarısı üretir; havaleden sonra müşteri iptali çalışır. Y bloğu
+  //    geç/yarış webhook'unu ölçer (A/B/D onu KOŞMAZ). DB/AĞ/iyzico GEREKTİRMEZ.
+  { ad: 'Havale ↔ iyzico kart aboneliği: onayda iptal · ret/çift tahsilat · yarış · müşteri iptali · bağlantı (F/İ/A/B/D/Y/M/K/N)', script: 'test:havale-iyzico', zincir: 'Z0' },
   // ── 21.09.2026 — PLAN 5.8 VERİ İMHASI, ÖDEME AYAĞI. DB/AĞ GEREKTİRMEZ.
   //    K4: fatura müşteri kimliğini `Firma` satırından CANLI okuyordu; fatura
   //    tahsilat anında yazılıp kesim @Cron ile SONRA koştuğu için müşteri
