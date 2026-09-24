@@ -67,7 +67,7 @@ export interface IyzicoAbonelikDetayi {
 /**
  * `upgrade` yanıtı (dokuman + 20.08 sandbox ölçümü). ⚠ `startDate` ölçümde
  * ms SAYISI geldi (`1789893431301`); doküman dize de gösterebilir — okuyan
- * taraf ikisini de çözer (`paket-degisimi.ts` → `iyzicoTarihi`).
+ * taraf ikisini de çözer (`iyzico-tarihi.ts` → `iyzicoTarihi`).
  */
 export interface IyzicoPaketDegisimYaniti {
   referenceCode?: string;

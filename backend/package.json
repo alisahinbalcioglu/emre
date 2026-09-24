@@ -118,6 +118,7 @@
     "test:fatura-kimligi": "ts-node test/fatura-kimligi-kapisi-test.ts",
     "test:deneme-hakki": "ts-node test/deneme-hakki-test.ts",
     "test:mutabakat-deneme": "ts-node test/mutabakat-deneme-test.ts",
+    "test:mutabakat-kayip-tahsilat": "ts-node test/mutabakat-kayip-tahsilat-test.ts",
     "test:abonelik-erisim": "ts-node test/abonelik-erisim-test.ts",
     "test:faz7-yetki": "ts-node test/faz7-yetki-test.ts",
     "test:faz7-totp": "ts-node test/faz7-totp-test.ts",

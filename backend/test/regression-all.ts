@@ -526,10 +526,27 @@ const SUITES: Suite[] = [
   //    uyarılmıyordu), rozet "Aktif" diyordu, satır DENEME yaşam döngüsünden
   //    çıkıyordu. Kapı GERÇEK iş + GERÇEK durum makinesi + GERÇEK erişim
   //    kararıyla ölçer: deneme sürerken ACTIVE → DENEME kalır; UNPAID/CANCELED
-  //    yine işlenir; deneme bitince ACTIVE → AKTIF (eski davranış, yalnız durum);
-  //    tahsilat webhook'u DENEME'yi yine AKTIF'e çeker; cron giriş noktası kuralı
-  //    hatasız uygular ve özet satırında korunan satırı sayar.
+  //    yine işlenir; deneme bitince de çıplak ACTIVE terfi ettirmez (24.09,
+  //    kanıtsız terfi yok); tahsilat webhook'u DENEME'yi yine AKTIF'e çeker;
+  //    cron giriş noktası kuralı hatasız uygular ve özet satırında korunan
+  //    satırı sayar.
   { ad: 'Mutabakat denemeyi AKTİF yapmaz: saf kural · tek satır · uyarı · webhook · gece · kapatma (S/M/E/W/G/K)', script: 'test:mutabakat-deneme', zincir: 'Z0' },
+  // ── 24.09.2026 — GECE MUTABAKATI KAYIP TAHSİLAT WEBHOOK'UNU KURTARIR.
+  //    DB/AĞ GEREKTİRMEZ. Ödenmiş dönemi `erisimSonu`na yazan ve faturayı
+  //    kuyruğa alan TEK yol başarılı tahsilat webhook'uydu; iyzico onu ~45 dk
+  //    sonra bırakır. Webhook'u kaybolan ödeyen müşteri "dönem doğrulanıyor"
+  //    ekranında erişimsiz kalıyor, fatura kesilmiyordu; ödeme bekleyen
+  //    müşteriyi mutabakat çıplak ACTIVE ile AKTIF'e çekip KİLİTLİYORDU (eski
+  //    hâl 10 kırmızı). Kural: iyzico ACTIVE + ödenmiş sipariş (SUCCESS +
+  //    SUCCESS deneme) dönem sonu `erisimSonu`ndan sonra → `WebhookOlayi`
+  //    (kaynak mutabakat) → webhook işleyicisi AYNI yolu koşar; kanıtsız
+  //    ACTIVE (IPTAL dışında) terfi ettirmez. KORUMA (Emre 24.09): iyzico'da
+  //    hâlâ ACTIVE görünen SONA_ERDI satırı taranır, aynı satırda yeniden
+  //    satın alma kapalı (çift çekim), `iptalEt` iyzico durumunu tazeler.
+  //    GERÇEK iş + işleyici + fatura + dunning + satın alma + erişim kararı;
+  //    tekillik (P2002), ikinci gece, geç gelen gerçek webhook, ölü oynatmanın
+  //    yeniden kurulması, çoklu kayıp sipariş, özet satırı, uçtan uca zincir.
+  { ad: 'Mutabakat kayıp tahsilatı yeniden oynatır: saf kural · tarih · webhook ölçütü · kayıplar · negatifler · tekrar · gece · koruma · zincir (S/T/Ö/A/D/B/W/N/İ/G/K/Z)', script: 'test:mutabakat-kayip-tahsilat', zincir: 'Z0' },
   // ── 16.09.2026 — FAZ 7 · F2a: TOTP / KİMLİK ŞİFRELEME / MEYDAN OKUMA
   //    ÇEKİRDEĞİ. DB, SUNUCU ve AĞ GEREKTİRMEZ → `db` bayrağı YOK. Route ve
   //    şema YOK; canlı davranış değişmez. RFC 6238 Ek-B + RFC 4226 Ek-D
