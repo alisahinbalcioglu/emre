@@ -355,10 +355,6 @@ export class AdminService {
         firmaId: true, firmaRol: true,
         firma: { select: { id: true, ad: true } },
         _count: { select: { quotes: true, library: true } },
-        subscriptions: {
-          select: { id: true, level: true, scope: true, active: true, endsAt: true },
-          where: { active: true },
-        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -458,7 +454,7 @@ export class AdminService {
   ): Promise<never> {
     throw new BadRequestException({
       kod: 'PAKET_ABONELIKTEN',
-      message: 'Paket artık yalnız abonelikten gelir; havale ya da abonelik ekranını kullanın.',
+      message: 'Paket artık yalnız abonelikten gelir; yönetim panelinde "Paket işlemleri"ni kullanın.',
     });
   }
 
@@ -643,59 +639,10 @@ export class AdminService {
     return sonuc;
   }
 
-  async getUserSubscriptions(userId: string) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new NotFoundException('User not found');
-    return this.prisma.userSubscription.findMany({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
-    });
-  }
-
-  async addUserSubscription(
-    yonetici: { id: string; email: string },
-    userId: string,
-    level: 'core' | 'pro',
-    scope: 'mechanical' | 'electrical' | 'mep',
-    endsAt?: string,
-  ) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new NotFoundException('User not found');
-    if (!['core', 'pro'].includes(level)) throw new BadRequestException('Gecersiz level');
-    if (!['mechanical', 'electrical', 'mep'].includes(scope)) throw new BadRequestException('Gecersiz scope');
-
-    return this.denetimliMutasyon(
-      yonetici, 'abonelik.eklendi', user, null, level + '/' + scope,
-      { endsAt: endsAt ?? null },
-      (tx) =>
-        tx.userSubscription.upsert({
-          where: { userId_level_scope: { userId, level, scope } },
-          create: {
-            userId, level, scope,
-            endsAt: endsAt ? new Date(endsAt) : null,
-            active: true,
-          },
-          update: {
-            active: true,
-            endsAt: endsAt ? new Date(endsAt) : null,
-          },
-        }),
-    );
-  }
-
-  async removeUserSubscription(
-    yonetici: { id: string; email: string },
-    userId: string,
-    subId: string,
-  ) {
-    const sub = await this.prisma.userSubscription.findUnique({ where: { id: subId } });
-    if (!sub || sub.userId !== userId) throw new NotFoundException('Subscription not found');
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    return this.denetimliMutasyon(
-      yonetici, 'abonelik.kaldirildi', user, sub.level + '/' + sub.scope, null, undefined,
-      (tx) => tx.userSubscription.delete({ where: { id: subId } }),
-    );
-  }
+  // 24.09.2026 (A2): eski kisi-basi `UserSubscription` yazan uc metot
+  // (getUserSubscriptions / addUserSubscription / removeUserSubscription)
+  // KALDIRILDI — erisim vermiyorlardi, arayuzden hic cagrilmadilar. Paket
+  // islemleri `ozellik/odeme/abonelik/yonetici/` altinda (tek yol: A1 cekirdegi).
 
   // ═════════ STATS ═════════
 
