@@ -28,8 +28,8 @@ export const STANDART_KOLONLAR_EN = [
   'Labour Unit Price', 'Labour Total', 'Grand Total',
 ];
 
-/** Ozet sayfasi basliklari. */
-export const OZET_KOLONLAR_EN = ['Sheet', 'Material Total', 'Labour Total', 'Grand Total'];
+/** Ozet sayfasi basliklari — Turkcesi 'Sayfa · Malzeme · İşçilik · Genel Toplam' (23.09 tasarimi). */
+export const OZET_KOLONLAR_EN = ['Sheet', 'Material', 'Labour', 'Grand Total'];
 
 /** Ozet sayfasindaki diger sabit metinler. */
 export const CIKTI_METINLERI_EN: Record<string, string> = {
@@ -40,6 +40,11 @@ export const CIKTI_METINLERI_EN: Record<string, string> = {
   'TOPLAM': 'TOTAL',
   'Özet': 'Summary',
   'ÖZET': 'SUMMARY',
+  // 23.09 tasarimi: baslik blogu + toplam satirlari (eskiden Ingilizce ciktida da Turkce kaliyordu)
+  'Tarih': 'Date',
+  'Fiyatlandırılmış teklif · Özet': 'Priced quote · Summary',
+  'SAYFA TOPLAMI': 'PAGE TOTAL',
+  'TEKLİF GENEL TOPLAMI': 'QUOTE GRAND TOTAL',
 };
 
 /**

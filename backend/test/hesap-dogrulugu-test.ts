@@ -154,14 +154,35 @@ async function ac(buf: Buffer | ArrayBuffer): Promise<ExcelJS.Workbook> {
   return wb;
 }
 
-/** Fiyatli ciktida bir sayfanin "SAYFA TOPLAMI" satiri (F, H, I kurus). */
+/** Fiyatli ciktida bir sayfanin "SAYFA TOPLAMI" satiri (F, H, I kurus).
+ *  23.09: hucreler FORMUL — deger onbellekten DEGIL, formulun hucrelerden
+ *  bagimsiz yeniden hesabindan okunur (onbellegin kendisi formulDenetimi'nde). */
 function sayfaToplamSatiri(ws: ExcelJS.Worksheet): { mat: number; lab: number; genel: number } | null {
   let bulunan: { mat: number; lab: number; genel: number } | null = null;
   ws.eachRow({ includeEmpty: false }, (row) => {
     if (String(row.getCell(2).value ?? '') !== 'SAYFA TOPLAMI') return;
-    const n = (c: number) => { const v = row.getCell(c).value; return typeof v === 'number' ? K(v) : 0; };
+    const n = (c: number) => { const d = gercek(ws.workbook, ws.name, row.getCell(c).address); return d.e !== undefined ? NaN : K(d.v as number); };
     bulunan = { mat: n(6), lab: n(8), genel: n(9) };
   });
+  return bulunan;
+}
+
+/** 23.09 tarif §4: kalemsiz sayfa METIN yazilir — SAYFA TOPLAMI yok ve hicbir
+ *  sayi/formul yok. Oyleyse katkisi 0'dir; sayi tasiyan "metin" sayfasi null. */
+function metinSayfasiToplami(ws: ExcelJS.Worksheet): { mat: number; lab: number; genel: number } | null {
+  let sayi = 0;
+  ws.eachRow({ includeEmpty: false }, (row) => row.eachCell({ includeEmpty: false }, (c) => {
+    const v: any = c.value;
+    if (typeof v === 'number' || (v && typeof v === 'object' && typeof v.formula === 'string')) sayi++;
+  }));
+  return sayi === 0 && ws.columnCount <= 3 ? { mat: 0, lab: 0, genel: 0 } : null;
+}
+
+/** B kolonunda metni tam eslesen ilk satir (sabit satir numarasi VARSAYILMAZ). */
+function satirBul(ws: ExcelJS.Worksheet, metin: string): ExcelJS.Row {
+  let bulunan: ExcelJS.Row | null = null;
+  ws.eachRow({ includeEmpty: false }, (row) => { if (!bulunan && String(row.getCell(2).value ?? '').trim() === metin) bulunan = row; });
+  if (!bulunan) throw new Error(`${ws.name}: "${metin}" satiri yok`);
   return bulunan;
 }
 
@@ -196,13 +217,14 @@ async function icmalDegismezi(ad: string, sheets: any[], firma: any = null) {
   const priced = await servis(sheets, { firma }).exportPricedXlsx(KIM, 'q1');
   const pwb = await ac(priced.buffer);
   const listeSayfalari = pwb.worksheets.filter((w) => w.name !== 'GENEL TOPLAM');
-  const sayfaToplamlari = listeSayfalari.map((w) => ({ ad: w.name, t: sayfaToplamSatiri(w) }));
+  // 23.09: kalemsiz sayfa METIN (SAYFA TOPLAMI yok) — katkisi 0; ekran da 0 demeli (H2)
+  const sayfaToplamlari = listeSayfalari.map((w) => ({ ad: w.name, t: sayfaToplamSatiri(w) ?? metinSayfasiToplami(w) }));
   const gt = pwb.getWorksheet('GENEL TOPLAM');
   let teklifGenel: number | null = null;
   gt?.eachRow({ includeEmpty: false }, (row) => {
-    if (String(row.getCell(1).value ?? '') === 'TEKLİF GENEL TOPLAMI' && typeof row.getCell(4).value === 'number') {
-      teklifGenel = K(row.getCell(4).value as number);
-    }
+    if (String(row.getCell(1).value ?? '') !== 'TEKLİF GENEL TOPLAMI') return;
+    const d = gercek(pwb, 'GENEL TOPLAM', row.getCell(4).address); // formul — hucrelerden yeniden hesap
+    if (d.e === undefined) teklifGenel = K(d.v as number);
   });
   const sayfalarGenelK = sayfaToplamlari.reduce((a, s) => a + (s.t?.genel ?? 0), 0);
   check(`İCMAL toplamı = sayfa toplamlarının toplamı [fiyatlı · ${ad}]`,
@@ -214,6 +236,9 @@ async function icmalDegismezi(ad: string, sheets: any[], firma: any = null) {
   }).filter(Boolean);
   check(`H2 ekran sayfa toplamı = çıktı SAYFA TOPLAMI, kuruşu kuruşuna [fiyatlı · ${ad}]`, ekranFarki.length === 0,
     ekranFarki.slice(0, 3).join(' | '));
+  const pfd = formulDenetimi(pwb);
+  check(`H1 fiyatlı: her formülün önbelleği = hücrelerden yeniden hesabı, hatasız [${ad}]`,
+    pfd.sayi > 0 && pfd.sorun.length === 0, `formül=${pfd.sayi} sorun=${pfd.sorun.length}: ${pfd.sorun.slice(0, 2).join(' | ')}`);
 
   // ── FORMAT YOLU (POST :id/export → buildExportWorkbook, yerlesik ornek format) ──
   const sonuc = await buildExportWorkbook({
@@ -283,6 +308,36 @@ async function run() {
       `sorun=${formulDenetimi(wb).sorun.length}`);
   }
 
+  // ── H0b (23.09): yeni tasarimin formul dilbilgisi — IF, "", ROUND/ROUNDUP, COUNT ──
+  // Kalem satiri `IF(E7="","",ROUND(C7*E7,2))`, uygulama yuvarlamasi ROUNDUP(…,1),
+  // Genel Toplam `IF(COUNT(F7,H7)=0,"",SUM(F7,H7))`. Excel ROUND/ROUNDUP'i 15
+  // anlamli haneden yapar: 3 × 1,1 = 3,3000000000000003 → ROUNDUP 3,3 (3,4 DEGIL).
+  {
+    const wb = new ExcelJS.Workbook();
+    const s = wb.addWorksheet('K');
+    s.getCell('C1').value = 3; s.getCell('E1').value = 1.1;
+    s.getCell('C2').value = 1; s.getCell('E2').value = 2.675;
+    s.getCell('C3').value = 2; // E3 BOS → fiyatsiz kalem
+    const f = (x: string) => formulDegerlendir(wb, 'K', x);
+    s.getCell('F1').value = { formula: 'IF(E1="","",ROUNDUP(C1*E1,1))', result: 3.3 } as any;
+    s.getCell('F3').value = { formula: 'IF(E3="","",ROUND(C3*E3,2))', result: '' } as any;
+    s.getCell('H3').value = { formula: 'IF(G3="","",ROUND(C3*G3,2))', result: '' } as any;
+    const a = f('IF(E1="","",ROUNDUP(C1*E1,1))');
+    const b = f('IF(E2="","",ROUND(C2*E2,2))');
+    const c = f('IF(E3="","",ROUND(C3*E3,2))');
+    const d = f('IF(COUNT(F3,H3)=0,"",SUM(F3,H3))');
+    const e = f('COUNT(F1,F3,E3)');
+    const g = f('ROUNDUP(-1.25,1)');
+    const h = f('SUM(F1,F3)');
+    check('H0b değerlendirici: IF · "" · ROUNDUP 15 hane (3×1,1 → 3,3) · ROUND(2,675) = 2,68 · COUNT/SUM metni saymaz · negatif ROUNDUP sıfırdan uzağa',
+      a.v === 3.3 && b.v === 2.68 && c.m === '' && d.m === '' && e.v === 1 && g.v === -1.3 && h.v === 3.3 && formulDenetimi(wb).sorun.length === 0,
+      JSON.stringify({ a, b, c, d, e, g, h, sorun: formulDenetimi(wb).sorun }));
+    s.getCell('F1').value = { formula: 'IF(E1="","",ROUNDUP(C1*E1,1))', result: '' } as any; // sayi sonuca METIN onbellek
+    s.getCell('F3').value = { formula: 'IF(E3="","",ROUND(C3*E3,2))', result: 0 } as any; // metin sonuca SAYI onbellek
+    check('H0b denetim: sayı sonuçlu formülün "" önbelleği ve "" sonuçlu formülün 0 önbelleği ayrı ayrı yakalanır',
+      formulDenetimi(wb).sorun.length === 2, formulDenetimi(wb).sorun.join(' | '));
+  }
+
   // ── H1/H2: sentetik + gercek dosyalar ────────────────────────────────
   // Her teklif IKI KEZ: antetsiz ve tam antetli (logolu). Antet satirlari tabloyu
   // asagi kaydirir; degismez ikisinde de AYNI rakamla tutmak zorunda (Gorev 2).
@@ -346,7 +401,7 @@ async function run() {
       const rr = await servis(sentetikTeklif(), { displayCurrency: 'USD', fx }).exportPricedXlsx(KIM, 'q1');
       const w = await ac(rr.buffer);
       const s = sayfaToplamSatiri(w.getWorksheet('Mekanik')!);
-      const fmt = String(w.getWorksheet('Mekanik')!.getRow(3).getCell(6).numFmt ?? '');
+      const fmt = String(satirBul(w.getWorksheet('Mekanik')!, 'Boru 1"').getCell(6).numFmt ?? '');
       check(`H4 USD teklif + ${ad}: dosya 1:1 "$" BASMAZ, TL değer ve ₺ biçimiyle iner`,
         s?.mat === ekranToplami(sentetikTeklif()[0]).mat && !/\$/.test(fmt) && /₺/.test(fmt),
         `sayfa=${s?.mat} numFmt=${fmt}`);
@@ -387,7 +442,7 @@ async function run() {
       : { usdTry: 1, eurTry: 1, source: 'fallback', date: '' }) };
     const or = await servis(sentetikTeklif(), { displayCurrency: 'USD', fx: oynak }).exportXlsx(KIM, 'q1');
     const ow = await ac(or.buffer);
-    const listeUsd = /\$/.test(String(ow.getWorksheet('Mekanik')!.getRow(3).getCell(6).numFmt ?? ''));
+    const listeUsd = /\$/.test(String(satirBul(ow.getWorksheet('Mekanik')!, 'Boru 1"').getCell(6).numFmt ?? ''));
     const ozetUsd = /toplam \$/.test(or.ozet ?? '');
     check('H4 tek indirme TEK kur okur: dosyanın birimi ile özetin simgesi ayrışmaz', listeUsd === ozetUsd && cagri === 1,
       `liste$=${listeUsd} ozet="${or.ozet}" getRates çağrısı=${cagri}`);
@@ -422,9 +477,10 @@ async function run() {
         const wb = await ac(r.buffer);
         for (const sh of sheets.filter((s: any) => !s.isEmpty)) {
           const ws = wb.worksheets.find((w) => w.name === sh.name);
-          const st = ws ? sayfaToplamSatiri(ws) : null;
+          const kalemSt = ws ? sayfaToplamSatiri(ws) : null;
+          const st = kalemSt ?? (ws ? metinSayfasiToplami(ws) : null);
           if (!st) { farklar.push(`${ad}/${sh.name}: çıktıda sayfa toplamı yok`); continue; }
-          sayfaSayisi++;
+          if (kalemSt) sayfaSayisi++;
           const e = FE.sayfaToplamlari(sh.rowData ?? [], sh.columnRoles ?? {}, oranlar[kod]);
           if (K(e.matToplam) !== st.mat || K(e.labToplam) !== st.lab) farklar.push(`${ad}/${sh.name}: ekran ${K(e.matToplam)}/${K(e.labToplam)} çıktı ${st.mat}/${st.lab}`);
           const tlOzet = FE.sayfaToplamlari(sh.rowData ?? [], sh.columnRoles ?? {});
@@ -518,7 +574,11 @@ async function run() {
     let paraHucresi = 0;
     for (const ad of s.listeSayfalari) {
       s.wb.getWorksheet(ad)!.eachRow({ includeEmpty: false }, (row) => {
-        for (const c of [5, 6, 7, 8, 9]) if (typeof row.getCell(c).value === 'number') paraHucresi++;
+        for (const c of [5, 6, 7, 8, 9]) {
+          const v: any = row.getCell(c).value;
+          const n = typeof v === 'number' ? v : v && typeof v === 'object' && typeof v.result === 'number' ? v.result : 0;
+          if (n !== 0) paraHucresi++; // 23.09: tutar hucreleri FORMUL — sonucu sayi olan da para hucresidir
+        }
       });
     }
     // fiyatsiz: _matBirim/_labBirim ikisi de bos olan (ozet olmayan) veri satiri → Mekanik #3
@@ -687,7 +747,11 @@ async function run() {
       fwb = await ac(r.buffer);
     } catch (e: any) { fiyatliHata = e?.message ?? String(e); }
     let genel: number | null = null;
-    fwb?.getWorksheet('GENEL TOPLAM')?.eachRow((row) => { if (row.getCell(1).value === 'TEKLİF GENEL TOPLAMI') genel = K(Number(row.getCell(4).value)); });
+    fwb?.getWorksheet('GENEL TOPLAM')?.eachRow((row) => {
+      if (row.getCell(1).value !== 'TEKLİF GENEL TOPLAMI') return;
+      const d = gercek(fwb!, 'GENEL TOPLAM', row.getCell(4).address);
+      genel = d.e === undefined ? K(d.v as number) : null;
+    });
     check('H10 I9: "Genel Toplam" adlı teklif sayfası fiyatlı çıktıyı düşürmez; özet sayfa adını KORUR ve toplam doğru',
       !fiyatliHata && genel === K(275) && fwb!.worksheets.some((w) => w.name === 'Genel Toplam (2)'),
       `hata="${fiyatliHata}" genel=${genel} sayfalar=${fwb?.worksheets.map((w) => w.name).join(' | ')}`);
@@ -825,10 +889,15 @@ async function run() {
       let row: ExcelJS.Row | null = null;
       ws.eachRow((r) => { if (String(r.getCell(2).value ?? '') === ad) row = r; });
       if (!row) { ciktiFark.push(`${ad}: satır yok`); continue; }
-      const miktarBek = FESAYI.sayiOku(m) ?? '';
-      const birimK = K(FESAYI.sayiOku(b) ?? 0);
-      const birimBek = birimK ? birimK / 100 : '';
-      const c = (row as ExcelJS.Row).getCell(3).value; const e = (row as ExcelJS.Row).getCell(5).value;
+      const miktarBek = FESAYI.sayiOku(m) ?? null;
+      // 23.09: birim fiyat hucresi TAM hassasiyet (13,4725 × 100 = 1.347,25 satiri formulle
+      // tutsun diye — standart-cikti.ts kenarYaz); gorunen 2 hane degismez. Bos → null.
+      const birimSayi = FESAYI.sayiOku(b) ?? 0;
+      const birimBek = birimSayi !== 0 ? birimSayi : null;
+      // Olcut SAYI: miktari/fiyati olmayan satir tarif geregi METIN satiri olur (not: B–I
+      // birlesik, C/E birlesik metni okur) — orada hic sayi olmamali, ekran da sayi okumuyor.
+      const sayiMi = (v: unknown) => (typeof v === 'number' ? v : null);
+      const c = sayiMi((row as ExcelJS.Row).getCell(3).value); const e = sayiMi((row as ExcelJS.Row).getCell(5).value);
       if (c !== miktarBek || e !== birimBek) ciktiFark.push(`${ad}: C=${JSON.stringify(c)} (ekran ${JSON.stringify(miktarBek)}) E=${JSON.stringify(e)} (ekran ${JSON.stringify(birimBek)})`);
     }
     check('H12d Excel çıktısı ekranın makine okuyucusuyla AYNI sayıyı yazar — "35x240mm…" Malz. Birim 35 DEĞİL, "3 adet" Miktar 3 DEĞİL',
