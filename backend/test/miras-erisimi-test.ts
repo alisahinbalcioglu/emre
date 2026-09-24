@@ -210,6 +210,10 @@ function dunya(p: { abonelik?: Satir | null; niyetler?: Satir[]; tamamlandiHatas
     detaylar[kod].orders.push({
       referenceCode: ref,
       orderStatus: 'SUCCESS',
+      // Odenmis siparis KANITIYLA tasinir (20.08 tutanagi: basarili odeme
+      // denemesi) — webhook dogrulama turu (fa6b234) odenmemis siparisi
+      // reddeder; paket-degisimi `siparis()` yardimcisiyla ayni bicim.
+      paymentAttempts: [{ paymentStatus: 'SUCCESS' }],
       startPeriod: new Date(bitis.getTime() - 30 * GUN).toISOString(),
       endPeriod: bitis.toISOString(),
       paidPrice: 1649,

@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 764
-Toplam satir: 195685
+Toplam satir: 195689
 Uc nokta: 232
 test:* scripti: 125
 
@@ -364,7 +364,7 @@ test:* scripti: 125
 | `backend/test/matching-regression.ts` | 281 |
 | `backend/test/matching-unit-test.ts` | 713 |
 | `backend/test/migration-zinciri-test.ts` | 753 |
-| `backend/test/miras-erisimi-test.ts` | 643 |
+| `backend/test/miras-erisimi-test.ts` | 647 |
 | `backend/test/mutabakat-deneme-test.ts` | 655 |
 | `backend/test/mutabakat-kayip-tahsilat-test.ts` | 1380 |
 | `backend/test/odeme-bekliyor-geri-sayim-test.ts` | 721 |
