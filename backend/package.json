@@ -117,6 +117,7 @@
     "test:satinalma": "ts-node test/satinalma-yolu-test.ts",
     "test:deneme-geri-sayim": "ts-node test/deneme-geri-sayim-test.ts",
     "test:odeme-imha": "ts-node test/odeme-imha-test.ts",
+    "test:dunning-toparlandi": "ts-node test/dunning-toparlandi-test.ts",
     "test:fatura-kimligi": "ts-node test/fatura-kimligi-kapisi-test.ts",
     "test:deneme-hakki": "ts-node test/deneme-hakki-test.ts",
     "test:mutabakat-deneme": "ts-node test/mutabakat-deneme-test.ts",

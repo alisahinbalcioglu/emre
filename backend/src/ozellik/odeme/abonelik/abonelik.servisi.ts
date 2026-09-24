@@ -577,6 +577,30 @@ export class AbonelikServisi {
     const yeniErisimSonu =
       guncelUcMu || donemSonu > ab.erisimSonu ? donemSonu : ab.erisimSonu;
 
+    // ⚠ 24.09 — DUNNING DONGUSUNDEN CIKIS SIFIRLAMANIN KENDISINDEN OKUNUR.
+    // Asagidaki `sayaclariSifirla` ilkBasarisizlik/denemeSayisi/sonDeneme/
+    // kisitlandi'yi siler; "odemeniz alindi" e-postasinin karari (Dunning-
+    // Servisi.tahsilatToparlandi) satiri SONRA okuyordu ve her musteriyi
+    // "zaten sorunsuz" goruyordu: e-posta HIC gitmiyordu (olculdu, gunlukte
+    // hata yok). Kural degismedi — dongude = ilkBasarisizlik dolu YA DA
+    // denemeSayisi ≠ 0 — ve TEK yerde: bu KOSULLU yazmanin `where`i.
+    // Guncellenen satir sayisi "bu cagri donguyu kapatti mi"nin cevabidir:
+    // ayni olayi ayni anda isleyen iki surec (kuyrugaAl + dakikalik tarama)
+    // ikisi birden "evet" alamaz — e-posta TAM BIR kez gider. Olayin kaynagi
+    // (iyzico ya da mutabakat oynatmasi) fark etmez: isleyici ona bakmaz.
+    // Asagidaki durum gecisiyle AYNI yaris korumasi (`kosul`): arada havale
+    // onaylandiysa satira dokunulmaz, gecis P2025 ile duser, olay havale
+    // dalina yeniden gelir.
+    const donguKapandi = await this.prisma.abonelik.updateMany({
+      where: {
+        id: ab.id,
+        odemeYontemi: OdemeYontemi.KART,
+        OR: [{ ilkBasarisizlik: { not: null } }, { denemeSayisi: { not: 0 } }],
+      },
+      data: { ilkBasarisizlik: null, denemeSayisi: 0 },
+    });
+    const dunningdenCikti = donguKapandi.count > 0;
+
     await this.durumDegistir(ab.id, AbonelikDurumu.AKTIF, {
       kosul: { odemeYontemi: OdemeYontemi.KART }, // 24.09 yarış: arada havale onaylandıysa P2025 → yeniden dene
       aciklama: `Tahsilat başarılı (sipariş ${siparisKodu})`,
@@ -643,7 +667,7 @@ export class AbonelikServisi {
       where: { id: ab.id },
       include: { paketSurumu: true },
     });
-    return { abonelik: guncel ?? ab, siparis, donemSonu };
+    return { abonelik: guncel ?? ab, siparis, donemSonu, dunningdenCikti };
   }
 
   /**
