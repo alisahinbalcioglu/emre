@@ -3,12 +3,15 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { FaturaDurumu, Prisma } from '@prisma/client';
 import {
+  FaturaKesSonucu,
   FaturaMusterisi,
   MuhasebeAdaptoru,
   MUHASEBE_ADAPTORU,
 } from './muhasebe.adaptor';
 import { Inject } from '@nestjs/common';
 import { EpostaServisi } from '../eposta/eposta.servisi';
+import { yonetimeYaz } from '../eposta/yonetim-bildirimi';
+import { tutarYaz } from '../dunning/dunning.metinleri';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -35,7 +38,16 @@ import { EpostaServisi } from '../eposta/eposta.servisi';
  */
 
 const AZAMI_DENEME = 5;
+/**
+ * 24.09.2026 — ELLE (NES) kesimde deneme bütçesi ~7 gün. Talep yöneticiye
+ * ulaşmazsa (SMTP/kota kesintisi) 5 deneme ≈ 12,5 saatte tükeniyordu ve
+ * vazgeçme uyarısı da AYNI posta yolundan gidiyordu (inceleme M1). VUK md.
+ * 231/5 süresi 7 gün: 1+5+25+120 dk + 16 × 600 dk ≈ 6,8 gün.
+ */
+const ELLE_AZAMI_DENEME = 20;
 const GERI_CEKILME_DK = [1, 5, 25, 120, 600];
+/** Kira: işlenen satırı başka tur/süreç almasın (bkz. `tekFatura`). */
+const KIRA_DK = 15;
 
 /* ═══════════════════════════════════════════════════════════════════════════
    K4 (21.09.2026) — FATURA KENDI KOPYASINI TASIR
@@ -208,6 +220,12 @@ export interface FaturaTalebi {
 export class FaturaServisi {
   private readonly logger = new Logger(FaturaServisi.name);
   private readonly kdvOrani = Number(process.env.KDV_ORANI ?? 20);
+  private calisiyor = false;
+
+  /** Adaptöre göre deneme bütçesi — elle (NES) kesimde ~7 gün. */
+  private get azamiDeneme(): number {
+    return this.muhasebe.ad === 'elle' ? ELLE_AZAMI_DENEME : AZAMI_DENEME;
+  }
 
   constructor(
     private readonly prisma: PrismaService,
@@ -297,21 +315,31 @@ export class FaturaServisi {
 
   @Cron(CronExpression.EVERY_MINUTE)
   async kuyrugaBak(): Promise<void> {
-    const simdi = new Date();
-    const bekleyenler = await this.prisma.fatura.findMany({
-      where: {
-        durum: { in: [FaturaDurumu.BEKLIYOR, FaturaDurumu.HATA] },
-        denemeSayisi: { lt: AZAMI_DENEME },
-        sonDeneme: { lte: simdi },
-      },
-      orderBy: { olusturuldu: 'asc' },
-      take: 20,
-    });
+    // 24.09 — turlar ÖRTÜŞMESİN (webhook.isleyici ile aynı kilit): cron 3.2
+    // bir sonraki turu öncekinin bitmesini beklemeden başlatır; asılı SMTP ya
+    // da muhasebe turu 60 sn'nin ötesine taşırsa aynı satırlar iki kez
+    // işlenirdi (inceleme H1). Süreçler arası koruma `tekFatura`daki kira.
+    if (this.calisiyor) return;
+    this.calisiyor = true;
+    try {
+      const simdi = new Date();
+      const bekleyenler = await this.prisma.fatura.findMany({
+        where: {
+          durum: { in: [FaturaDurumu.BEKLIYOR, FaturaDurumu.HATA] },
+          denemeSayisi: { lt: this.azamiDeneme },
+          sonDeneme: { lte: simdi },
+        },
+        orderBy: { olusturuldu: 'asc' },
+        take: 20,
+      });
 
-    for (const f of bekleyenler) {
-      await this.tekFatura(f.id).catch((e) =>
-        this.logger.error(`Fatura ${f.id}: ${e}`),
-      );
+      for (const f of bekleyenler) {
+        await this.tekFatura(f.id).catch((e) =>
+          this.logger.error(`Fatura ${f.id}: ${e}`),
+        );
+      }
+    } finally {
+      this.calisiyor = false;
     }
   }
 
@@ -326,6 +354,27 @@ export class FaturaServisi {
     });
     if (f.durum === FaturaDurumu.KESILDI) return;
 
+    // ── 24.09 — KİRA: satır işlenmeden ÖNCE koşullu yazmayla alınır ────────
+    // `kuyrugaBak`taki kilit yalnız BU süreçteki turları sıraya koyar; ikinci
+    // bir süreç ya da elle `yenidenDene` aynı satırı aynı anda işleyebilir.
+    // Elle (NES) kesimde ikinci işlem ikinci "fatura kesilecek" e-postasıdır =
+    // ÇİFT FATURA riski (inceleme H1: iki eşzamanlı `tekFatura` iki e-posta
+    // gönderdi). Yalnız vadesi gelmiş BEKLIYOR/HATA satırı alınır ve
+    // `sonDeneme` KIRA_DK ileri atılır; kaybeden 0 satır görür, dokunmaz.
+    // Süreç işlemin ortasında ölürse kira dolunca satır yeniden alınır.
+    const kira = await this.prisma.fatura.updateMany({
+      where: {
+        id: faturaId,
+        durum: { in: [FaturaDurumu.BEKLIYOR, FaturaDurumu.HATA] },
+        sonDeneme: { lte: new Date() },
+      },
+      data: { sonDeneme: new Date(Date.now() + KIRA_DK * 60_000) },
+    });
+    if (kira.count !== 1) {
+      this.logger.debug(`Fatura ${faturaId} başka bir işlemde ya da vadesi gelmemiş — atlandı`);
+      return;
+    }
+
     // ── K4: KIMLIK FATURANIN KENDI KOPYASINDAN ───────────────────────────
     // Firma satirindan YALNIZ teslim e-postasi okunur (VUK sayimi disinda,
     // musterinin GUNCEL adresine gitmeli). Unvan/vergi/adres/il/ilce ARTIK
@@ -337,12 +386,15 @@ export class FaturaServisi {
     });
     const faturaAdi = f.musteriUnvan ?? firma?.ad ?? f.abonelik.firmaId;
 
+    // Sağlayıcı işi YAPTI mı (fatura kesildi / NES talebi e-postalandı)?
+    // Doluysa sonraki hata yalnız KAYDIN hatasıdır — bkz. catch.
+    let sonuc: FaturaKesSonucu | null = null;
     try {
       const musteri = kopyadanMusteri(
         f,
         firma?.faturaEposta ?? firma?.yetkiliEposta,
       );
-      const sonuc = await this.muhasebe.faturaKes({
+      sonuc = await this.muhasebe.faturaKes({
         // Muhasebe tarafındaki tekilleştirme — çift gönderime karşı
         harciAnahtar: f.tahsilatKodu,
         musteri,
@@ -358,25 +410,41 @@ export class FaturaServisi {
         ],
         paraBirimi: f.paraBirimi,
         duzenlemeTarihi: new Date(),
-      });
-
-      await this.prisma.fatura.update({
-        where: { id: faturaId },
-        data: {
-          durum: FaturaDurumu.KESILDI,
-          saglayici: this.muhasebe.ad,
-          saglayiciId: sonuc.saglayiciId,
-          faturaNo: sonuc.faturaNo,
-          faturaUrl: sonuc.faturaUrl,
-          kesildi: new Date(),
-          hata: null,
+        // Satırın KENDİ tutarları + ödeme anı (elle/NES kesim yöneticiye
+        // yazar). Ödeme anı = dönem başı ile kuyruğa alınmanın ERKENİ:
+        // geç işlenen webhook son günü ertelemesin (VUK 231/5, 7 gün).
+        tahsilat: {
+          matrah: Number(f.tutar),
+          kdv: Number(f.kdvTutari),
+          toplam: Number(f.toplamTutar),
+          tarih: f.olusturuldu && f.olusturuldu < f.donemBasi ? f.olusturuldu : f.donemBasi,
         },
       });
+
+      await this.kesildiYaz(faturaId, sonuc);
       this.logger.log(`Fatura kesildi: ${sonuc.faturaNo ?? sonuc.saglayiciId}`);
     } catch (e: unknown) {
       const mesaj = e instanceof Error ? e.message : String(e);
+      if (sonuc) {
+        // 24.09 (inceleme H1'in ikinci yolu): sağlayıcıda iş YAPILDI, yalnız
+        // satır yazılamadı. HATA'ya çekmek yeniden denemede İKİNCİ faturayı /
+        // e-postayı üretirdi. Kayıt bir kez daha denenir; o da düşerse satır
+        // kirada kalır ve KIRA_DK sonra yeniden işlenebilir — günlüğe ÇİFT
+        // GÖNDERİM uyarısı yazılır.
+        const tamamlanan = sonuc;
+        await this.kesildiYaz(faturaId, tamamlanan).then(
+          () => this.logger.warn(`Fatura ${faturaId} kaydı ikinci denemede yazıldı (ilk hata: ${mesaj})`),
+          (e2: unknown) =>
+            this.logger.error(
+              `Fatura ${faturaId} (${f.tahsilatKodu}) sağlayıcıda TAMAMLANDI ama satır yazılamadı: ${mesaj} / ` +
+                `${e2 instanceof Error ? e2.message : String(e2)}. Kira ${KIRA_DK} dk sonra dolunca YENİDEN ` +
+                `İŞLENEBİLİR — çift gönderime dikkat (${tamamlanan.faturaNo ?? tamamlanan.saglayiciId}).`,
+            ),
+        );
+        return;
+      }
       const yeniDeneme = f.denemeSayisi + 1;
-      const tukendi = yeniDeneme >= AZAMI_DENEME;
+      const tukendi = yeniDeneme >= this.azamiDeneme;
       const bekleme =
         GERI_CEKILME_DK[Math.min(yeniDeneme, GERI_CEKILME_DK.length - 1)];
 
@@ -394,40 +462,57 @@ export class FaturaServisi {
         this.logger.error(
           `Fatura ${faturaId} elle müdahale gerektiriyor: ${mesaj}`,
         );
-        await this.yonetimeHaberVer(faturaId, faturaAdi, mesaj);
+        await this.yonetimeHaberVer(f, faturaAdi, mesaj);
       } else {
         this.logger.warn(
-          `Fatura ${faturaId} başarısız (${yeniDeneme}/${AZAMI_DENEME}), ` +
+          `Fatura ${faturaId} başarısız (${yeniDeneme}/${this.azamiDeneme}), ` +
             `${bekleme} dk sonra tekrar: ${mesaj}`,
         );
       }
     }
   }
 
+  private async kesildiYaz(faturaId: string, sonuc: FaturaKesSonucu): Promise<void> {
+    await this.prisma.fatura.update({
+      where: { id: faturaId },
+      data: {
+        durum: FaturaDurumu.KESILDI,
+        saglayici: this.muhasebe.ad,
+        saglayiciId: sonuc.saglayiciId,
+        faturaNo: sonuc.faturaNo,
+        faturaUrl: sonuc.faturaUrl,
+        kesildi: new Date(),
+        hata: null,
+      },
+    });
+  }
+
+  /**
+   * 24.09.2026 — adres ORTAK yardımcıdan (`YONETIM_EPOSTA`, boşsa etkin
+   * yönetici hesapları). Eskiden adres yokken SESSİZCE dönüyordu (canlıda
+   * değişken boş: bu uyarı hiç gitmedi, günlüğe de düşmedi) ve düğmesi var
+   * olmayan `/yonetim/faturalar/<id>` sayfasına gidiyordu (panel `/admin`,
+   * fatura ekranı yok). Gönderilemezse içerik HATA günlüğüne yazılır.
+   */
   private async yonetimeHaberVer(
-    faturaId: string,
+    f: { id: string; tahsilatKodu: string; toplamTutar: Prisma.Decimal; paraBirimi: string },
     firmaAdi: string,
     hata: string,
   ): Promise<void> {
-    const adres = process.env.YONETIM_EPOSTA;
-    if (!adres) return;
-    await this.eposta
-      .gonder({
-        kime: adres,
+    await yonetimeYaz(
+      { prisma: this.prisma, eposta: this.eposta, logger: this.logger },
+      {
         konu: `[MetaPriceX] Fatura kesilemedi — ${firmaAdi}`,
         baslik: 'Otomatik fatura kesimi başarısız',
         paragraflar: [
           `Firma: ${firmaAdi}`,
-          `Fatura kaydı: ${faturaId}`,
+          `Fatura kaydı: ${f.id}`,
+          `Tahsilat: ${f.tahsilatKodu} — ${tutarYaz(Number(f.toplamTutar), f.paraBirimi)}`,
           `Son hata: ${hata}`,
           'Otomatik denemeler tükendi. Faturanın elle kesilmesi gerekiyor.',
         ],
-        dugme: {
-          etiket: 'Yönetim panelinde aç',
-          url: `${process.env.UYGULAMA_URL}/yonetim/faturalar/${faturaId}`,
-        },
-      })
-      .catch(() => undefined);
+      },
+    );
   }
 
   /** Yönetim panelinden elle tekrar tetikleme. */

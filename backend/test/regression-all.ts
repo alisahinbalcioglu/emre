@@ -533,6 +533,16 @@ const SUITES: Suite[] = [
   //    "iade" uyarısı üretir; havaleden sonra müşteri iptali çalışır. Y bloğu
   //    geç/yarış webhook'unu ölçer (A/B/D onu KOŞMAZ). DB/AĞ/iyzico GEREKTİRMEZ.
   { ad: 'Havale ↔ iyzico kart aboneliği: onayda iptal · ret/çift tahsilat · yarış · müşteri iptali · bağlantı (F/İ/A/B/D/Y/M/K/N)', script: 'test:havale-iyzico', zincir: 'Z0' },
+  // ── 24.09.2026 — YÖNETİM E-POSTALARI (Emre: "faturalar ve uyarılar vs. e
+  //    posta olarak gitmeli"). Yönetici uyarıları yalnız YONETIM_EPOSTA'ya
+  //    gidiyordu ve canlıda değişken BOŞ: çift tahsilat / iptal düşmesi /
+  //    kesilemeyen fatura kimseye ulaşmıyordu, fatura uyarısı günlüğe bile
+  //    düşmüyordu. Canlı muhasebe `sahte` her tahsilatı TEST numarasıyla
+  //    KESILDI işaretleyip kimseye söylemiyordu (faturalar NES'te elle).
+  //    Artık adres boşsa etkin yönetici hesabına gider ve `elle` adaptörü
+  //    her tahsilatta NES kesim talebini (VUK 231/5 son günüyle) e-postalar.
+  //    DB/AĞ/SMTP GEREKTİRMEZ.
+  { ad: 'Yönetim e-postaları: adres çözümü · uyarı · NES fatura kesim talebi · bağlantı (A/B/C/K/D/E/F)', script: 'test:yonetim-epostalari', zincir: 'Z0' },
   // ── 21.09.2026 — PLAN 5.8 VERİ İMHASI, ÖDEME AYAĞI. DB/AĞ GEREKTİRMEZ.
   //    K4: fatura müşteri kimliğini `Firma` satırından CANLI okuyordu; fatura
   //    tahsilat anında yazılıp kesim @Cron ile SONRA koştuğu için müşteri
@@ -593,6 +603,21 @@ const SUITES: Suite[] = [
   //    tekillik (P2002), ikinci gece, geç gelen gerçek webhook, ölü oynatmanın
   //    yeniden kurulması, çoklu kayıp sipariş, özet satırı, uçtan uca zincir.
   { ad: 'Mutabakat kayıp tahsilatı yeniden oynatır: saf kural · tarih · webhook ölçütü · kayıplar · negatifler · tekrar · gece · koruma · zincir (S/T/Ö/A/D/B/W/N/İ/G/K/Z)', script: 'test:mutabakat-kayip-tahsilat', zincir: 'Z0' },
+  // ── 24.09.2026 — WEBHOOK GÖVDESİ TAHSİLAT KANITI DEĞİL. DB/AĞ GEREKTİRMEZ.
+  //    Uç açık, imza varsayılan olarak zorunlu değil. Eski hâl (30 kırmızı):
+  //    `tahsilatBasarili` siparişin VARLIĞINA bakıyordu — iyzico'nun önceden
+  //    açtığı WAITING siparişi anan sahte başarı erişimi bir dönem uzatıyor,
+  //    dunning'i sıfırlıyor (KISITLI → AKTIF), faturayı kuyruğa alıyordu;
+  //    `tahsilatBasarisiz` iyzico'ya hiç sormuyordu — ödeyen müşteri
+  //    ODEME_BEKLIYOR + dunning e-postası, zincirde 30. gün ASKIDA (gece
+  //    mutabakatı artık geri almıyor); `/abonelik/donus` iyzico abonelik kodunu
+  //    döndürüyordu; tarihler `new Date(...)` (rakam-dizesi Invalid Date).
+  //    Kural TEK yerde (`iyzico/tahsilat-kaniti.ts`, mutabakatla AYNI
+  //    `odenmisSiparisMi`); GERÇEK denetleyici + işleyici + servisler + gece
+  //    işi + dunning merdiveni + satın alma dönüşü; gerçek ödeme kaybolmaz
+  //    (yeniden deneme + ölü olayı gece oynatır), gerçek ret yine dunning'i
+  //    başlatır, eskimiş ret ödenmiş siparişi geri almaz.
+  { ad: 'Webhook tahsilat doğrulaması: saf kural · ölçüt · sahte başarı · sahte ret · dönüş yanıtı · tarih (S/Ö/B/F/D/T)', script: 'test:webhook-tahsilat-dogrulama', zincir: 'Z0' },
   // ── 16.09.2026 — FAZ 7 · F2a: TOTP / KİMLİK ŞİFRELEME / MEYDAN OKUMA
   //    ÇEKİRDEĞİ. DB, SUNUCU ve AĞ GEREKTİRMEZ → `db` bayrağı YOK. Route ve
   //    şema YOK; canlı davranış değişmez. RFC 6238 Ek-B + RFC 4226 Ek-D
@@ -755,6 +780,17 @@ const SUITES: Suite[] = [
   // hiçbir şeyi geri almaz, iptal/yeniden abonelik planı siler. DB/AĞ/iyzico
   // GEREKTİRMEZ.
   { ad: 'Paket değişimi: hak · yol · tarih · servis · planlı geçiş · webhook · temizlik · bağlantı (H/Y/T/S/G/E/W/R/B)', script: 'test:paket-degisimi', zincir: 'Z0' },
+  // 24.09: MİRAS ERİŞİMİ İLK KART TAHSİLATINDA SİLİNİYORDU. Satın alma 02.09'dan
+  // beri göç satırının 365 gününü `max(mevcut, yeni)` ile koruyor; yorumu
+  // "webhook yolu da koruyor" diyordu — YANLIŞTI: `tahsilatBasarili` güncel uçtan
+  // gelen siparişte `erisimSonu`nu `endPeriod`a yazıyordu (satın almanın 31+2
+  // günlük köprüsünü düzeltmek için). Miras firma deneme almaz, ilk tahsilat
+  // dakikalar sonra gelir → ~332 gün siliniyordu. Birim testler iki ucu AYRI
+  // ölçüyordu (P8 / W8), BAĞLANTIYI değil. Kural: satın alma köprüyü
+  // `kopruErisimSonu`na yazar; webhook yalnız `erisimSonu` hâlâ o değerse
+  // kısaltır. Kapı gerçek `donusIyzicodan` → gerçek `tahsilatBasarili` koşar.
+  // DB/AĞ/iyzico GEREKTİRMEZ.
+  { ad: 'Miras erişimi: köprü yazımı · yeniden sonuçlandırma · miras uçtan uca · köprü düzeltmesi · sonradan verilen erişim · olay izi · bağlantı (K/Y/M/D/V/O/B)', script: 'test:miras-erisimi', zincir: 'Z0' },
   // 23.09 (Emre kararı): paketsiz YENİ hesap duvar görmez, uygulamayı GEZER
   // ("yalnızca gezsin"); Malzeme Havuzu'nda "fiyatlar paketle açılsın".
   // ⚠ En kritik kalkan V5: vitrin sunucuda HİÇBİR yetenek açmaz — "gezsin"

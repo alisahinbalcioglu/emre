@@ -308,11 +308,17 @@ type Dunya = ReturnType<typeof dunyaKur>;
  */
 async function odemeBekleyenler(d: Dunya): Promise<Record<'Y' | 'D' | 'M', Satir>> {
   const simdi = Date.now();
+  // ⚠ 24.09 (webhook tahsilat doğrulaması): ret artık iyzico'dan DOĞRULANIR
+  // (`tahsilatBasarisizligiKarari`, `test:webhook-tahsilat-dogrulama` F) —
+  // kanıtsız gövde durumu değiştirmez. Reddedilen çekimin iyzico karşılığı
+  // abonelik UNPAID; Y ve D webhook yolundan geçer, M zaten UNPAID.
   d.satir('F-Y', { durum: 'AKTIF', erisimSonu: new Date(simdi - 5 * DAKIKA) });
+  d.iyzicoDurumu['sub-F-Y'] = 'UNPAID';
   await d.abonelik.tahsilatBasarisiz('sub-F-Y', 'siparis-Y');
 
   const deneme = donemTarihleriHesapla(new Date(simdi - 30 * GUN - 5 * DAKIKA), 30);
   d.satir('F-D', { durum: 'DENEME', erisimSonu: deneme.erisimSonu, denemeSonu: deneme.denemeSonu });
+  d.iyzicoDurumu['sub-F-D'] = 'UNPAID';
   await d.abonelik.tahsilatBasarisiz('sub-F-D', 'siparis-D');
 
   const m = d.satir('F-M', { durum: 'AKTIF', erisimSonu: new Date(simdi - 5 * DAKIKA) });
@@ -540,6 +546,7 @@ async function nBlogu(): Promise<void> {
   console.log('\n── N · ilkBasarisizlik yok / kisitlandi dolu → sayı yok ──');
   const d = dunyaKur();
   d.satir('F-N', { durum: 'AKTIF', erisimSonu: new Date(Date.now() - 5 * DAKIKA) });
+  d.iyzicoDurumu['sub-F-N'] = 'UNPAID'; // ret iyzico'dan doğrulanır (bkz. `odemeBekleyenler`)
   // `tahsilatBasarisiz` durumu ÖNCE yazar, `ilkBasarisizlik`i SONRA (ayrı
   // sorgu). Arada gelen istek bu satırı görür — an yakalanır, uydurulmaz.
   const gercek = d.abonelik.durumDegistir.bind(d.abonelik);

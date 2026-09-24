@@ -18,12 +18,13 @@
  *  yapan bir kopya taşıyordu; kopya kaldırıldı, o dosya bunu yeniden dışa
  *  verir (`abonelik.servisi.ts` oradan okur). Kopyanın sayı dalı
  *  `new Date(1e20)` gibi geçersiz bir Date'i olduğu gibi döndürüyordu.
- *  ⚠ Tahsilat yolu (`tahsilatBasarili` → `new Date(siparis.endPeriod)`,
- *  `webhook.isleyici` → `new Date(startPeriod)`) HENÜZ buradan okumuyor:
- *  bugün sayı geldiği için doğru; rakam-dizesinde olay işlenemez (sessiz
- *  değil) — mutabakat.job.ts → KAYIP TAHSİLAT, bilinen sınırlar.
+ *  ✓ 24.09: tahsilat yolu da buradan okur — `tahsilatBasarili` (`endPeriod`),
+ *  `webhook.isleyici` (fatura `startPeriod`), `webhook.controller`
+ *  (`iyziEventTime`), mutabakatın İPTAL dalı (`endDate`). Önceden
+ *  `new Date(...)` idi: rakam-dizesinde Invalid Date.
  *
- *  Kapılar: `test:mutabakat-kayip-tahsilat` (T), `test:paket-degisimi` (T).
+ *  Kapılar: `test:mutabakat-kayip-tahsilat` (T), `test:paket-degisimi` (T),
+ *  `test:webhook-tahsilat-dogrulama` (T — yolların bağlantısı).
  * ═══════════════════════════════════════════════════════════════════════════
  */
 export function iyzicoTarihi(ham: unknown): Date | null {

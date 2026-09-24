@@ -106,6 +106,7 @@
     "test:kisisel-liste": "ts-node test/kisisel-liste-izolasyon-test.ts",
     "test:odeme": "ts-node test/odeme-onyukleme-test.ts",
     "test:havale-iyzico": "ts-node test/havale-iyzico-cakismasi-test.ts",
+    "test:yonetim-epostalari": "ts-node test/yonetim-epostalari-test.ts",
     "test:migration": "ts-node test/migration-zinciri-test.ts",
     "test:erisim": "ts-node test/erisim-kapisi-test.ts",
     "test:odeme-bekliyor-geri-sayim": "ts-node test/odeme-bekliyor-geri-sayim-test.ts",
@@ -124,6 +125,7 @@
     "test:deneme-hakki": "ts-node test/deneme-hakki-test.ts",
     "test:mutabakat-deneme": "ts-node test/mutabakat-deneme-test.ts",
     "test:mutabakat-kayip-tahsilat": "ts-node test/mutabakat-kayip-tahsilat-test.ts",
+    "test:webhook-tahsilat-dogrulama": "ts-node test/webhook-tahsilat-dogrulama-test.ts",
     "test:abonelik-erisim": "ts-node test/abonelik-erisim-test.ts",
     "test:faz7-yetki": "ts-node test/faz7-yetki-test.ts",
     "test:faz7-totp": "ts-node test/faz7-totp-test.ts",
@@ -147,6 +149,7 @@
     "duzeltpaketaciklama": "ts-node scripts/paket-aciklama-duzelt.ts",
     "test:eposta-kodu": "ts-node test/yonetici-eposta-kodu-test.ts",
     "test:paket-degisimi": "ts-node test/paket-degisimi-test.ts",
+    "test:miras-erisimi": "ts-node test/miras-erisimi-test.ts",
     "test:vitrin": "ts-node test/vitrin-test.ts",
     "test:yonetici-paket": "ts-node test/yonetici-paket-test.ts"
   },

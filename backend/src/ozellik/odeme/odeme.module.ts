@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import { IyzicoHataSuzgeci } from './iyzico/iyzico-hata.filter';
 import { IyzicoDonusController } from './abonelik/iyzico-donus.controller';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 
 import { IyzicoClient } from './iyzico/iyzico.client';
@@ -23,7 +23,8 @@ import { MutabakatJob } from './abonelik/mutabakat.job';
 import { DunningServisi } from './dunning/dunning.servisi';
 import { FaturaServisi } from './fatura/fatura.servisi';
 import {
-  MUHASEBE_ADAPTORU,
+  ElleMuhasebeAdaptoru,
+  MUHASEBE_ADAPTORU_SAGLAYICISI,
   ParasutAdaptoru,
   SahteMuhasebeAdaptoru,
 } from './fatura/muhasebe.adaptor';
@@ -91,18 +92,12 @@ import { EpostaServisi } from './eposta/eposta.servisi';
     EpostaServisi,
     ParasutAdaptoru,
     SahteMuhasebeAdaptoru,
-    {
-      // Geliştirmede sahte adaptör, üretimde Paraşüt.
-      // MUHASEBE_SAGLAYICI=parasut olmadıkça hiçbir yere fatura gitmez.
-      provide: MUHASEBE_ADAPTORU,
-      inject: [ConfigService, ParasutAdaptoru, SahteMuhasebeAdaptoru],
-      useFactory: (
-        config: ConfigService,
-        parasut: ParasutAdaptoru,
-        sahte: SahteMuhasebeAdaptoru,
-      ) =>
-        config.get('MUHASEBE_SAGLAYICI') === 'parasut' ? parasut : sahte,
-    },
+    ElleMuhasebeAdaptoru,
+    // MUHASEBE_SAGLAYICI: "elle" (canlı varsayılanı, compose) → yöneticiye
+    // NES kesim talebi e-postası · "parasut" → Paraşüt · boş/"sahte" → sahte
+    // (geliştirme/test; yalnız günlüğe yazar). Seçim ve kapısı:
+    // `muhasebe.adaptor.ts` → MUHASEBE_ADAPTORU_SAGLAYICISI.
+    MUHASEBE_ADAPTORU_SAGLAYICISI,
   ],
   // ErisimServisi'ni dışa açıyoruz: teklif/metraj modülleriniz
   // yetenek kontrolü için bunu kullanacak.

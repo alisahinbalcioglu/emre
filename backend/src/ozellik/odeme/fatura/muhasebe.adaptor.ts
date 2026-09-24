@@ -1,5 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { FactoryProvider, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { PrismaService } from '../../../altyapi/db/prisma.service';
+import { EpostaServisi } from '../eposta/eposta.servisi';
+import { yonetimeYazKritik } from '../eposta/yonetim-bildirimi';
+import { faturaKesimTalebiEpostasi, havaleKimligi } from './fatura-kesim-epostasi';
 
 export const MUHASEBE_ADAPTORU = Symbol('MUHASEBE_ADAPTORU');
 
@@ -47,6 +51,13 @@ export interface FaturaKesTalebi {
   kalemler: FaturaKalemi[];
   paraBirimi: string;
   duzenlemeTarihi: Date;
+  /**
+   * 24.09.2026 — `Fatura` satırının KENDİ tutarları ve ödeme anı. Elle (NES)
+   * kesim bunları yöneticiye yazar; kalemlerden yeniden hesaplamak KDV dahil
+   * tutardan ayrıştırılan matrah + KDV'yi 1 kuruş kaydırabilir (999,99 →
+   * 833,33 + 166,66). Otomatik sağlayıcılar kalemleri kullanır.
+   */
+  tahsilat?: { matrah: number; kdv: number; toplam: number; tarih: Date };
 }
 
 export interface FaturaKesSonucu {
@@ -301,3 +312,113 @@ export class SahteMuhasebeAdaptoru implements MuhasebeAdaptoru {
     };
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   ELLE (NES) — 24.09.2026: fatura NES'te yönetici tarafından kesilir
+   ─────────────────────────────────────────────────────────────────────────
+   Emre: "muhasebe için NES uygulamasını kullanacağız şimdilik" ve
+   "faturalar ve uyarılar vs. e posta olarak gitmeli". Kodda NES entegrasyonu
+   YOK; canlı `sahte` her tahsilatın satırını `TEST000001` numarasıyla KESILDI
+   işaretliyor ve KİMSEYE bir şey söylemiyordu: fatura kesilmesi gereken ödeme
+   yalnız iyzico/banka ekranından fark edilebiliyordu.
+
+   Bu adaptör faturayı KESMEZ: yöneticiye (bkz. `yonetim-bildirimi.ts`) NES'te
+   kesilecek faturanın tüm bilgisini ve VUK 231/5 son gününü e-postalar
+   (metin: `fatura-kesim-epostasi.ts`). Gönderim KRİTİKTİR — gitmezse FIRLATIR,
+   satır HATA'ya düşer ve kuyruk geri çekilerek yeniden dener; 5 denemede
+   ELLE_MUDAHALE olur. Sessizce KESILDI olmaz.
+
+   ⚠ SATIR ANLAMI: KESILDI + `saglayici='elle'` + `faturaNo` BOŞ = "kesim
+   talebi yöneticiye e-postayla İLETİLDİ". Resmî numara NES'tedir; sistemde
+   tutulmaz (girilecek bir ekran yok).
+   ───────────────────────────────────────────────────────────────────────── */
+@Injectable()
+export class ElleMuhasebeAdaptoru implements MuhasebeAdaptoru {
+  readonly ad = 'elle';
+  private readonly logger = new Logger(ElleMuhasebeAdaptoru.name);
+
+  constructor(
+    private readonly config: ConfigService,
+    private readonly prisma: PrismaService,
+    private readonly eposta: EpostaServisi,
+  ) {}
+
+  async faturaKes(talep: FaturaKesTalebi): Promise<FaturaKesSonucu> {
+    const havaleId = havaleKimligi(talep.harciAnahtar);
+    // Numara okunamazsa talep YİNE gider (uyarı satırı eksik kalır) — asıl iş
+    // faturanın kesilmesidir, havale kaydı yalnız çift fatura uyarısı içindir.
+    const havale = havaleId
+      ? await this.prisma.havaleOdemesi
+          .findUnique({ where: { id: havaleId }, select: { teklifNo: true, faturaNo: true } })
+          .catch((e: unknown) => {
+            this.logger.warn(`Havale kaydi okunamadi (${havaleId}): ${e instanceof Error ? e.message : e}`);
+            return null;
+          })
+      : null;
+    const posta = faturaKesimTalebiEpostasi(talep, {
+      iyzicoTestOrtami: iyzicoTestOrtamiMi(this.config.get<string>('IYZICO_TABAN_URL')),
+      havale,
+    });
+    await yonetimeYazKritik({ prisma: this.prisma, eposta: this.eposta, logger: this.logger }, posta);
+    this.logger.log(`Fatura kesim talebi yoneticiye e-postalandi (NES'te elle kesilecek): ${talep.harciAnahtar}`);
+    return { saglayiciId: `elle:${talep.harciAnahtar}` };
+  }
+}
+
+/**
+ * Gerçek para YALNIZ canlı iyzico ucunda: `https://api.iyzipay.com`. Sandbox,
+ * boş (istemcinin varsayılanı sandbox) ya da tanınmayan her taban TEST sayılır —
+ * gerçek bir ödemeyi "test" diye işaretlemek fatura kaçırır ama yönetici yine
+ * de görür; test ödemesini gerçek saymak olmayan satışa fatura kestirir.
+ */
+export function iyzicoTestOrtamiMi(tabanUrl: string | null | undefined): boolean {
+  const taban = (tabanUrl ?? '').trim().replace(/\/+$/, '').toLowerCase();
+  return taban !== 'https://api.iyzipay.com';
+}
+
+/** Tanınan `MUHASEBE_SAGLAYICI` değerleri ("nes" = "elle"). */
+export const BILINEN_MUHASEBE_SAGLAYICILARI = ['parasut', 'elle', 'nes', 'sahte'] as const;
+
+/**
+ * `MUHASEBE_SAGLAYICI` → adaptör. "parasut" → Paraşüt (DOĞRULANMADI) ·
+ * boş ya da "sahte" → sahte (geliştirme/test; canlı compose varsayılanı
+ * `${MUHASEBE_SAGLAYICI:-elle}` boşu da elle yapar) · "elle", "nes" ve
+ * TANINMAYAN her değer → elle: yazım hatası sessizce sahteye düşüp TEST
+ * numarası üretmesin, yönetici talebi yine alsın (inceleme L2).
+ */
+export function muhasebeAdaptoruSec<T>(
+  deger: string | null | undefined,
+  a: { parasut: T; sahte: T; elle: T },
+): T {
+  const secim = (deger ?? '').trim().toLowerCase();
+  if (secim === 'parasut') return a.parasut;
+  if (secim === '' || secim === 'sahte') return a.sahte;
+  return a.elle;
+}
+
+/**
+ * `OdemeModule`ün kullandığı sağlayıcı NESNESİNİN KENDİSİ — kapı
+ * (`test:yonetim-epostalari` F2) bu nesneyi Nest'e kurdurup ölçer; modülde
+ * satır-içi bir kopya olsaydı kapı kopyayı ölçerdi.
+ */
+export const MUHASEBE_ADAPTORU_SAGLAYICISI: FactoryProvider<MuhasebeAdaptoru> = {
+  provide: MUHASEBE_ADAPTORU,
+  inject: [ConfigService, ParasutAdaptoru, SahteMuhasebeAdaptoru, ElleMuhasebeAdaptoru],
+  useFactory: (
+    config: ConfigService,
+    parasut: ParasutAdaptoru,
+    sahte: SahteMuhasebeAdaptoru,
+    elle: ElleMuhasebeAdaptoru,
+  ): MuhasebeAdaptoru => {
+    const deger = config.get<string>('MUHASEBE_SAGLAYICI');
+    const secilen = muhasebeAdaptoruSec<MuhasebeAdaptoru>(deger, { parasut, sahte, elle });
+    // Açılışta TEK satır: canlıda hangi yolun seçildiği günlükten okunabilsin.
+    const logger = new Logger('MuhasebeAdaptoru');
+    const temiz = (deger ?? '').trim().toLowerCase();
+    if (temiz && !(BILINEN_MUHASEBE_SAGLAYICILARI as readonly string[]).includes(temiz)) {
+      logger.warn(`MUHASEBE_SAGLAYICI="${deger}" tanınmıyor — elle (NES) kesim seçildi`);
+    }
+    logger.log(`Muhasebe adaptörü: ${secilen.ad} (MUHASEBE_SAGLAYICI="${deger ?? ''}")`);
+    return secilen;
+  },
+};
