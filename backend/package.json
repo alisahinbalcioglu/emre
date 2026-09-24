@@ -114,6 +114,7 @@
     "test:iyzico-basligi": "ts-node test/iyzico-imza-basligi-test.ts",
     "test:olcum-sorgu": "ts-node test/abonelik-olcum-sorgu-test.ts",
     "test:satinalma": "ts-node test/satinalma-yolu-test.ts",
+    "test:deneme-geri-sayim": "ts-node test/deneme-geri-sayim-test.ts",
     "test:odeme-imha": "ts-node test/odeme-imha-test.ts",
     "test:fatura-kimligi": "ts-node test/fatura-kimligi-kapisi-test.ts",
     "test:deneme-hakki": "ts-node test/deneme-hakki-test.ts",

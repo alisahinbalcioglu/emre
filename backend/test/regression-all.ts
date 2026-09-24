@@ -586,6 +586,17 @@ const SUITES: Suite[] = [
   //    diye daraltan mutant kırmızı olur; (T) 7 durum × 2 tarih bileşiminde
   //    saf çekirdek ile `ErisimServisi.karar` KARŞILAŞTIRILIR (ikiz kural kapısı).
   { ad: 'Abonelik sağlığı tek kaynaktan: seviye + yetenek süzgeci (S/T/I/Y)', script: 'test:abonelik-erisim', zincir: 'Z0' },
+  // ── 24.09.2026 — DENEME GERİ SAYIMI İLK ÇEKİM GÜNÜNE. DB/AĞ GEREKTİRMEZ.
+  //    Ölçülen kusur: şerit ("Deneme sürenizin bitmesine N gün kaldı") ve
+  //    Hesabım'daki `kalanGun` `erisimSonu`na sayıyordu — o tarih 2 günlük
+  //    webhook tamponu taşır, iyzico ise `denemeSonu`nda çeker. Çekime 1,5 gün
+  //    varken "4 gün kaldı", çekimden SONRA 2 gün daha "N gün kaldı" deniyordu.
+  //    Emre kararı: geri sayım `denemeSonu`na; tamponda "Deneme süreniz sona
+  //    erdi · İlk ödemeniz işleniyor" (düğmesiz); "doldu" ve ERİŞİM KARARI
+  //    değişmez (E bloğu 801 saatte servisi saf çekirdekle karşılaştırır);
+  //    `denemeSonu` boşsa eski davranış. B bloğu satın almanın gerçek yazma
+  //    yolundan (ilk alım + geri dönen müşteri) karara BAĞLANTIYI ölçer.
+  { ad: 'Deneme geri sayımı ilk çekim gününe: çizelge · tampon · doldu · boş tarih · erişim · bağlantı (F/G/T/D/N/E/B)', script: 'test:deneme-geri-sayim', zincir: 'Z0' },
   // ── 17.09.2026 — FAZ 7 F1b: EKİP (davet · koltuk · kişi sınırı · ikizler).
   //    DB/AĞ GEREKTİRMEZ: bellek içi sahte Prisma `where`i GERÇEKTEN uygular
   //    (OR/NOT/lt/gt/in + ilişki süzgeci), `$transaction` firlatan işlemi geri
