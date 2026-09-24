@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 785
-Toplam satir: 204752
+Kod dosyasi: 784
+Toplam satir: 204512
 Uc nokta: 237
 test:* scripti: 128
 
@@ -477,12 +477,11 @@ test:* scripti: 128
 | `frontend/components/dwg-diameter-engine/types.ts` | 79 |
 | `frontend/components/dwg-diameter-engine/useLayerCalc.ts` | 152 |
 | `frontend/components/dwg-diameter-engine/useOriginalColorState.ts` | 36 |
-| `frontend/components/dwg-metraj/DiameterEditPopup.tsx` | 121 |
 | `frontend/components/dwg-metraj/DwgUploader.tsx` | 643 |
 | `frontend/components/dwg-metraj/MetrajEditor.tsx` | 484 |
 | `frontend/components/dwg-metraj/constants.ts` | 28 |
 | `frontend/components/dwg-metraj/diameter-colors.ts` | 169 |
-| `frontend/components/dwg-metraj/index.ts` | 12 |
+| `frontend/components/dwg-metraj/index.ts` | 11 |
 | `frontend/components/dwg-metraj/types.ts` | 59 |
 | `frontend/components/dwg-metraj/unit-detection.test.ts` | 118 |
 | `frontend/components/dwg-metraj/unit-detection.ts` | 79 |
@@ -496,7 +495,7 @@ test:* scripti: 128
 | `frontend/components/dwg-viewer/segment-length.ts` | 48 |
 | `frontend/components/dwg-viewer/types.ts` | 76 |
 | `frontend/components/dwg-viewer/useViewport.ts` | 233 |
-| `frontend/components/dwg-workspace/DwgProjectWorkspace.tsx` | 1076 |
+| `frontend/components/dwg-workspace/DwgProjectWorkspace.tsx` | 1038 |
 | `frontend/components/dwg-workspace/LayerInfoSidebar.tsx` | 213 |
 | `frontend/components/dwg-workspace/LayerVisibilityPanel.tsx` | 229 |
 | `frontend/components/dwg-workspace/MetrajSummaryPanel.tsx` | 153 |
@@ -506,7 +505,7 @@ test:* scripti: 128
 | `frontend/components/dwg-workspace/sprinkler-bayatlik.test.ts` | 64 |
 | `frontend/components/dwg-workspace/sprinkler-bayatlik.ts` | 51 |
 | `frontend/components/dwg-workspace/types.ts` | 71 |
-| `frontend/components/dwg-workspace/useWorkspaceState.ts` | 437 |
+| `frontend/components/dwg-workspace/useWorkspaceState.ts` | 357 |
 | `frontend/lib/gs6b-golge-kurali.test.ts` | 60 |
 | `frontend/lib/indeks-sagligi.test.ts` | 75 |
 | `frontend/lib/indeks-sagligi.ts` | 64 |
@@ -1228,7 +1227,6 @@ test:* scripti: 128
 | `frontend/components/dwg-diameter-engine/types.ts` | `@/components/dwg-metraj/types` `@/components/dwg-workspace/types` `@/components/dwg-metraj/diameter-colors` `@/components/dwg-metraj/constants` |
 | `frontend/components/dwg-diameter-engine/useLayerCalc.ts` | `react` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/components/dwg-metraj` `@/components/dwg-workspace/types` `./types` |
 | `frontend/components/dwg-diameter-engine/useOriginalColorState.ts` | `react` |
-| `frontend/components/dwg-metraj/DiameterEditPopup.tsx` | `react` `lucide-react` `./types` `./diameter-colors` |
 | `frontend/components/dwg-metraj/DwgUploader.tsx` | `react` `lucide-react` `@/ortak/lib/utils` `@/ortak/hooks/use-toast` `@/ortak/lib/api` `./types` `./unit-detection` `@/components/dwg-workspace` |
 | `frontend/components/dwg-metraj/MetrajEditor.tsx` | `react` `lucide-react` `@/ortak/lib/utils` `@/ortak/hooks/use-toast` `@/ozellik/fiyat/sayi-alani` `./types` |
 | `frontend/components/dwg-metraj/diameter-colors.ts` | `./constants` |

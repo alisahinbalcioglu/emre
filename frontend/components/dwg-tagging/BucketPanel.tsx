@@ -135,7 +135,7 @@ export default function BucketPanel({ unassignedCount, onApplyToUnassigned }: Bu
         <p className="mt-2 text-[11px] text-slate-400">
           {buckets.length === 0
             ? 'Önce bir çap kalemi ekle (örn. Ø50). Sonra kalemi seçip borulara tıkla.'
-            : 'Kalem seç → çizimde boruya tıkla. Kalem seçili değilken tıklama popup açar.'}
+            : 'Kalem seç → çizimde boruya tıkla, çap atansın.'}
         </p>
       )}
     </div>
