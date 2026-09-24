@@ -187,12 +187,17 @@ const logoKimlikleri = new WeakMap<ExcelJS.Workbook, Map<AntetLogo, number>>();
  *
  * @param metinKolonu  metin satirlarinin yazildigi kolon (1-tabanli)
  * @param logoKolonu   logonun sol ust kosesinin kolonu (1-tabanli)
+ * @param logoSagKenarPx verilirse logo, `logoKolonu`nun sol kenarindan bu kadar
+ *   piksel otedeki cizgiye SAGDAN yaslanir (metin sayfasi: tek genis B
+ *   kolonu, logo B+C'nin sag ucunda). ExcelJS'in kesirli kolon kestirimi
+ *   genislik birimini yanlis cevirir (anchor.js `width * 10000` EMU) — ofset
+ *   dogrudan EMU verilir.
  */
 export function antetYaz(
   wb: ExcelJS.Workbook,
   ws: ExcelJS.Worksheet,
   antet: AntetBilgi | null | undefined,
-  konum: { metinKolonu: number; logoKolonu: number },
+  konum: { metinKolonu: number; logoKolonu: number; logoSagKenarPx?: number },
 ): number {
   if (!antet) return 0;
   const satirSayisi = Math.max(antet.satirlar.length, antet.logo ? LOGO_ASGARI_SATIR : 0);
@@ -205,7 +210,10 @@ export function antetYaz(
     const c = row.getCell(konum.metinKolonu);
     c.value = metin;
     const unvanSatiri = i === 0 && antet.unvanVar;
-    c.font = unvanSatiri ? { bold: true, size: 13 } : { size: 9, color: { argb: 'FF475569' } };
+    // Arial: ciktinin geri kalaniyla ayni yazi (23.09 tasarimi)
+    c.font = unvanSatiri
+      ? { name: 'Arial', bold: true, size: 13, color: { argb: 'FF0F1A31' } }
+      : { name: 'Arial', size: 9, color: { argb: 'FF475569' } };
     c.alignment = { vertical: 'middle' };
   }
   const bosluk = ws.addRow([]); // antet ile tablo arasi
@@ -221,9 +229,14 @@ export function antetYaz(
     }
     const kutuYukseklik = Math.round((satirSayisi * SATIR_YUKSEKLIGI_PT * 96) / 72) - 4;
     const olcek = Math.min(kutuYukseklik / antet.logo.yukseklik, LOGO_AZAMI_GENISLIK_PX / antet.logo.genislik, 1);
+    const genislik = Math.max(1, Math.round(antet.logo.genislik * olcek));
+    const EMU_PIKSEL = 9525;
+    const tl = konum.logoSagKenarPx === undefined
+      ? { col: konum.logoKolonu - 1, row: ilkSatir - 1 }
+      : { nativeCol: konum.logoKolonu - 1, nativeColOff: Math.max(0, konum.logoSagKenarPx - genislik) * EMU_PIKSEL, nativeRow: ilkSatir - 1, nativeRowOff: 0 };
     ws.addImage(kimlik, {
-      tl: { col: konum.logoKolonu - 1, row: ilkSatir - 1 } as any,
-      ext: { width: Math.max(1, Math.round(antet.logo.genislik * olcek)), height: Math.max(1, Math.round(antet.logo.yukseklik * olcek)) },
+      tl: tl as any,
+      ext: { width: genislik, height: Math.max(1, Math.round(antet.logo.yukseklik * olcek)) },
       editAs: 'oneCell',
     } as any);
   }

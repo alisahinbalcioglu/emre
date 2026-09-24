@@ -5,7 +5,12 @@ import { AbonelikServisi } from '../abonelik/abonelik.servisi';
 import { FaturaServisi } from '../fatura/fatura.servisi';
 import { DunningServisi } from '../dunning/dunning.servisi';
 
-const AZAMI_DENEME = 5;
+/**
+ * Olay basina deneme siniri. Asan olay "olu"dur: tarama onu bir daha almaz.
+ * Gece mutabakati kendi yeniden oynattigi olu olayi bu sinira bakarak
+ * yeniden kurar (mutabakat.job.ts → KAYIP TAHSILAT, kural 4).
+ */
+export const AZAMI_DENEME = 5;
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -118,8 +123,22 @@ export class WebhookIsleyici {
       donemSonu: sonuc.donemSonu,
     });
 
-    // Dunning'den çıktıysa "geri hoş geldiniz" bildirimi
-    await this.dunning.tahsilatToparlandi(sonuc.abonelik.id);
+    // Dunning'den çıktıysa "geri hoş geldiniz" bildirimi. ⚠ Karar
+    // `tahsilatBasarili`nin sayaçları SIFIRLARKEN verdiği cevaptan gelir
+    // (`dunningdenCikti`); satır bundan sonra okunursa döngü izi silinmiş olur.
+    // ⚠ KRİTİK DEĞİL (satın alma / havale / paket değişimi postasıyla aynı
+    // kural): posta sunucusu düştü diye doğrulanmış tahsilat olayı
+    // düşürülmez — yeniden deneme e-postayı zaten gönderemezdi (döngü izi
+    // silindi), yalnız tahsilat yolunu boşuna yeniden koştururdu. Ama SESSİZ
+    // değil: hata günlüğe yazılır.
+    await this.dunning
+      .tahsilatToparlandi(sonuc.abonelik.id, sonuc.dunningdenCikti)
+      .catch((e) =>
+        this.logger.error(
+          `"Ödemeniz alındı" e-postası gönderilemedi (abonelik=${sonuc.abonelik.id}): ` +
+            `${e instanceof Error ? e.message : String(e)}`,
+        ),
+      );
   }
 
   private async basarisizTahsilat(abonelikKodu: string, siparisKodu: string) {

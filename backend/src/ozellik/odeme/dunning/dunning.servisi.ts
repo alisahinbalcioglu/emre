@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { AbonelikDurumu } from '@prisma/client';
-import { IyzicoClient } from '../iyzico/iyzico.client';
+import { IyzicoClient, IyzicoHatasi } from '../iyzico/iyzico.client';
 import { AbonelikServisi } from '../abonelik/abonelik.servisi';
 import { EpostaServisi } from '../eposta/eposta.servisi';
 import {
@@ -11,6 +11,7 @@ import {
   tarihYaz,
   tutarYaz,
 } from './dunning.metinleri';
+import { dunningKisitGunu, kisitlamayaKalanGun } from './kisit-gunu';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -169,23 +170,57 @@ export class DunningServisi {
     if (basamak.tekrarDene && ab.iyzicoAbonelikKodu) {
       const sonSiparis = await this.sonBasarisizSiparis(ab.iyzicoAbonelikKodu);
       if (sonSiparis) {
+        // ⚠ `try` YALNIZ iyzico cagrisini sarar (24.09): basarili denemeden
+        // sonra olay/DB yazmasi duserse bu RED DEGILDIR. Eskiden catch'e
+        // dusuyor ve odeme alinmisken "tekrar denedik, yine alinamadi"
+        // e-postasi gidiyordu.
+        let basarili = false;
+        let hata: unknown;
         try {
           await this.iyzico.tahsilatiTekrarla(sonSiparis);
+          basarili = true;
+        } catch (e) {
+          hata = e;
+        }
+        if (basarili) {
           await this.abonelik.olayYaz(abonelikId, 'dunning.tekrar.denendi', {
             aciklama: `Basamak ${basamakNo} — sipariş ${sonSiparis}`,
             aktor: 'dunning',
           });
-          // Sonucu webhook getirecek. Başarılıysa tahsilatToparlandi()
-          // çalışıp sayaçları sıfırlayacak. Burada bekleyip bildirim
-          // göndermiyoruz — 24 saat sonraki tarama devam ettirir.
+          // Sonucu webhook getirecek. Başarılıysa `tahsilatBasarili`
+          // sayaçları sıfırlar, `tahsilatToparlandi` "ödemeniz alındı"
+          // e-postasını gönderir. Burada bekleyip bildirim göndermiyoruz —
+          // 24 saat sonraki tarama devam ettirir.
           await this.prisma.abonelik.update({
             where: { id: abonelikId },
             data: { denemeSayisi: basamakNo, sonDeneme: new Date() },
           });
           return;
-        } catch (e) {
-          this.logger.warn(`Yeniden deneme reddedildi (${abonelikId}): ${e}`);
         }
+        // ⚠ ZAMAN ASIMI RED DEGILDIR (24.09): iyzico yeniden denemeyi yapmis
+        // olabilir, yalniz yaniti gelmedi. Basamak BIR KEZ ertelenir: bildirim
+        // gitmez, basamak islenmis sayilmaz, yarinki tarama taze bilgiyle
+        // bakar (basarili cekim o arada webhook/mutabakatla aboneligi
+        // listeden cikarir). Ayni basamakta IKINCI zaman asiminda bildirim
+        // GIDER: sinirsiz erteleme her gun yeni bir deneme ve hic gitmeyen on
+        // uyarilar demekti — musteri uyarisiz kisitlanirdi.
+        const zamanAsimi = hata instanceof IyzicoHatasi && hata.zamanAsimi;
+        if (zamanAsimi && !(await this.basamakErtelendiMi(abonelikId, ab.ilkBasarisizlik!, basamak.gun))) {
+          const mesaj = (hata as Error).message;
+          this.logger.warn(
+            `Yeniden deneme SONUCU BILINMIYOR (${abonelikId}): ${mesaj} — bildirim bir gun ertelendi`,
+          );
+          await this.abonelik.olayYaz(abonelikId, 'dunning.tekrar.belirsiz', {
+            aciklama: `Basamak ${basamakNo} — sipariş ${sonSiparis}: ${mesaj}`,
+            aktor: 'dunning',
+          });
+          return;
+        }
+        this.logger.warn(
+          zamanAsimi
+            ? `Yeniden deneme yine YANITSIZ (${abonelikId}): erteleme hakki kullanildi, bildirim gidiyor`
+            : `Yeniden deneme reddedildi (${abonelikId}): ${hata}`,
+        );
       }
     }
 
@@ -215,11 +250,20 @@ export class DunningServisi {
   }
 
   // ── Tahsilat toparlandığında ────────────────────────────────────────────
-  async tahsilatToparlandi(abonelikId: string): Promise<void> {
-    const b = await this.baglam(abonelikId);
-    if (!b) return;
+  /**
+   * "Ödemeniz alındı" — yalnız başarısız tahsilat döngüsünden ÇIKAN aboneliğe.
+   *
+   * ⚠ 24.09 — DÖNGÜ BİLGİSİ ÇAĞIRANDAN GELİR, satırdan OKUNMAZ. Tek çağıran
+   * `WebhookIsleyici.basariliTahsilat`; ondan önce koşan
+   * `AbonelikServisi.tahsilatBasarili` dunning sayaçlarını SIFIRLAR. Eski hâl
+   * satırı burada yeniden okuyup "ilkBasarisizlik boş, denemeSayisi 0"
+   * görüyordu: e-posta HİÇBİR müşteriye gitmiyordu. `dunningdenCikti`
+   * sıfırlamanın KENDİSİNDEN gelir (koşullu yazma) — kural orada, tek yerde.
+   * Posta hatası FIRLATIR; çağıran yutar ve günlüğe yazar.
+   */
+  async tahsilatToparlandi(abonelikId: string, dunningdenCikti: boolean): Promise<void> {
     // Zaten sorunsuzsa "geri hoş geldiniz" göndermeyelim
-    if (!b.abonelik.ilkBasarisizlik && b.abonelik.denemeSayisi === 0) return;
+    if (!dunningdenCikti) return;
     await this.gonder(abonelikId, 'toparlandi');
   }
 
@@ -255,6 +299,24 @@ export class DunningServisi {
     return olay?.siparisKodu ?? null;
   }
 
+  /**
+   * Bu basamak bir zaman asimi yuzunden ZATEN ertelendi mi? Basamak basi =
+   * ilk basarisizlik + basamak gunu; o andan sonra yazilmis
+   * `dunning.tekrar.belirsiz` olayi varsa erteleme hakki kullanilmistir.
+   * (Onceki basamagin ertelemesi bu basamagin hakkini YEMEZ.)
+   */
+  private async basamakErtelendiMi(
+    abonelikId: string,
+    ilkBasarisizlik: Date,
+    gun: number,
+  ): Promise<boolean> {
+    const basamakBasi = new Date(ilkBasarisizlik.getTime() + gun * 86_400_000);
+    const adet = await this.prisma.abonelikOlayi.count({
+      where: { abonelikId, tip: 'dunning.tekrar.belirsiz', olusturuldu: { gte: basamakBasi } },
+    });
+    return adet > 0;
+  }
+
   private async gonder(
     abonelikId: string,
     anahtar: keyof typeof DUNNING_METINLERI,
@@ -273,9 +335,7 @@ export class DunningServisi {
       kartUrl = `${this.uygulamaUrl}/abonelik/kart?a=${ab.id}`;
     }
 
-    const kisitGunu = Number(
-      process.env.DUNNING_KISIT_GUNU ?? 10,
-    );
+    const kisitGunu = dunningKisitGunu();
     const askiGunu = Number(process.env.DUNNING_ASKI_GUNU ?? 30);
     const temel = ab.ilkBasarisizlik ?? new Date();
     const kisitTarihi = new Date(temel);
@@ -283,13 +343,12 @@ export class DunningServisi {
     const askiTarihi = new Date(temel);
     askiTarihi.setDate(askiTarihi.getDate() + askiGunu);
 
-    const gecenGun = Math.floor((Date.now() - temel.getTime()) / 86_400_000);
-
     const metin = DUNNING_METINLERI[anahtar]({
       firmaAdi: firma.ad,
       paketAdi: ab.paketSurumu.paket.ad,
       tutar: tutarYaz(Number(ab.paketSurumu.tutar), ab.paketSurumu.paraBirimi),
-      kalanGun: Math.max(0, kisitGunu - gecenGun),
+      // Ekran (Hesabım "N gün kaldı") AYNI sayıyı buradan okur — `kisit-gunu.ts`.
+      kalanGun: kisitlamayaKalanGun(temel, Date.now(), kisitGunu),
       kisitTarihi: tarihYaz(
         anahtar === 'sonUyari' ? askiTarihi : kisitTarihi,
       ),

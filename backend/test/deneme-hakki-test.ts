@@ -634,7 +634,16 @@ async function yollar(): Promise<void> {
     // Dunning merdiveni (10. gun KISITLI, 30. gun ASKIDA) gercek durum makinesiyle.
     await d.abonelik.durumDegistir(ab.id, 'KISITLI' as any, { aktor: 'dunning' });
     await d.abonelik.durumDegistir(ab.id, 'ASKIDA' as any, { aktor: 'dunning' });
-    check('B-OLCUT merdiven sonu ASKIDA', ab.durum === 'ASKIDA', `durum=${ab.durum}`);
+    // ⚠ 24.09 — merdiven boyunca GERCEK gece mutabakati iyzico'nun UNPAID'ini
+    // `iyzicoDurum`a yazar (ASKIDA'yi geri cekmez). Yeniden satin alma kapisi
+    // bu alani okur: iyzico'su hala ACTIVE olan satir cift cekim olmasin diye
+    // ENGELLENIR (paket-degisimi.ts → `iyzicoAboneligiAcikMi`,
+    // `test:mutabakat-kayip-tahsilat` K). Satin almadan kalan 'ACTIVE' burada
+    // gercekci degildi: cekim reddedildi, iyzico UNPAID der.
+    d.iyz.detaylar.set('sub-b1', { subscriptionStatus: 'UNPAID' });
+    await (d.mutabakat as any).tekAbonelikMutabakati(ab.id, 'sub-b1');
+    check('B-OLCUT merdiven sonu ASKIDA, gece mutabakati iyzico UNPAID yazdi', ab.durum === 'ASKIDA' && ab.iyzicoDurum === 'UNPAID',
+      `durum=${ab.durum} iyzicoDurum=${ab.iyzicoDurum}`);
     const ikinci = await d.satinAl({ firmaId: 'FB', kullaniciId: 'UB2', eposta: 'muhasebe@baska-b.com', telefon: '0544 888 88 88', kod: 'sub-b2' });
     check('B1 ⭐ ASKIDA firma yeniden alimda ENGELLENMEDI, DENEMESIZ plana gitti',
       ikinci.planKodu === 'plan-30-denemesiz' && ikinci.donus.durum === 'TAMAMLANDI', `plan=${ikinci.planKodu}`);

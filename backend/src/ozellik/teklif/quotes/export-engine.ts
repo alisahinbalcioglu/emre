@@ -289,6 +289,10 @@ export interface ExportGirdisi {
    *  ayni `standartSayfaYaz` ile basar. Format sayfalarina (KAPAK/İCMAL)
    *  DOKUNULMAZ (T3: yer tutucusuz hucreye yazilmaz). */
   antet?: AntetBilgi | null;
+  /** 23.09 tasarimi: liste sayfalarinin baslik blogu + alt bilgisi (teklif adi). IKIZ: fiyatli yolla ayni metin. */
+  baslik?: string;
+  /** Baslik blogundaki "Tarih:" (verilmezse bugun). */
+  tarih?: Date;
 }
 
 export interface ExportSonucu {
@@ -309,6 +313,8 @@ export interface ExportSonucu {
   /** PANO 21a: gorunur ozet icin sayac toplamlari */
   yazilanDeger: number;
   beklenenDeger: number;
+  /** 23.09: dosyadaki toplami miktar × birim fiyatla tutmayan, Excel'de yeniden hesaplanan satir */
+  yenidenHesaplanan: number;
 }
 
 /**
@@ -342,12 +348,14 @@ export async function buildExportWorkbook(g: ExportGirdisi): Promise<ExportSonuc
   const bilgiler: SekmeBilgi[] = [];
   const listeSayfalari: string[] = [];
   const sekmeler: SekmeOzet[] = [];
+  let yenidenHesaplanan = 0;
   for (const sh of g.sheetsArr ?? []) {
     if (!sh || sh.isEmpty) continue;
     // EX8: standart tablo DOGRUDAN format workbook'una yazilir.
     // toplamSatiri=false — İCMAL zaten SUM ile topluyor, cift toplam olmasin.
-    const sb = standartSayfaYaz(wb, sh, { birim: g.birim as any, toplamSatiri: false, dil: g.dil, antet: g.antet });
+    const sb = standartSayfaYaz(wb, sh, { birim: g.birim as any, toplamSatiri: false, dil: g.dil, antet: g.antet, baslik: g.baslik, tarih: g.tarih });
     listeSayfalari.push(sb.wsName);
+    yenidenHesaplanan += sb.yenidenHesaplanan;
     const b: SekmeBilgi = {
       wsName: sb.wsName, matCol: sb.matCol, labCol: sb.labCol,
       toplamSatirlari: sb.toplamSatirlari,
@@ -412,5 +420,5 @@ export async function buildExportWorkbook(g: ExportGirdisi): Promise<ExportSonuc
     }
   }
 
-  return { wb, sekmeler, dolan, formatSayfalari, listeSayfalari, eksikDeger, hataArtisi, fiyatsizSatir, yazilanDeger, beklenenDeger };
+  return { wb, sekmeler, dolan, formatSayfalari, listeSayfalari, eksikDeger, hataArtisi, fiyatsizSatir, yazilanDeger, beklenenDeger, yenidenHesaplanan };
 }

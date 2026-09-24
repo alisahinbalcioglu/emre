@@ -270,13 +270,28 @@ function kBlogu(): void {
   );
 
   // ── Kart satiri: A1 reddi yoneticiye UCUNCU SAHIS diliyle ─────────────
-  const sonaErmis = karar('pro-mek', 'basic-mek', { durum: AbonelikDurumu.SONA_ERDI, erisimSonu: gunSonra(-3) });
+  const sonaErmis = karar('pro-mek', 'basic-mek', {
+    durum: AbonelikDurumu.SONA_ERDI,
+    erisimSonu: gunSonra(-3),
+    iyzicoDurum: 'CANCELED',
+  });
   check(
     'K10 ⭐ kart satiri SONA_ERDI → sureli-paket DEGIL ("yok": musteri kendi satin alir)',
     sonaErmis.tur === 'yok' && /satın alabilir/.test(sonaErmis.aciklama),
     JSON.stringify(sonaErmis),
   );
-  const askida = karar('pro-mek', 'basic-mek', { durum: AbonelikDurumu.ASKIDA });
+  // master f369d54: iyzico'su hala ACIK geri donen musteri satiri → A1 `KART_ABONELIGI_ACIK`.
+  const acikKart = karar('pro-mek', 'basic-mek', {
+    durum: AbonelikDurumu.SONA_ERDI,
+    erisimSonu: gunSonra(-3),
+    iyzicoDurum: 'ACTIVE',
+  });
+  check(
+    'K10b ⭐ SONA_ERDI ama iyzico\'da ACIK → yok + yonetici metni ("hâlâ açık"; `undefined` DEGIL)',
+    acikKart.tur === 'yok' && /hâlâ açık/.test(acikKart.aciklama ?? ''),
+    JSON.stringify(acikKart),
+  );
+  const askida = karar('pro-mek', 'basic-mek', { durum: AbonelikDurumu.ASKIDA, iyzicoDurum: 'UNPAID' });
   check('K11 kart satiri ASKIDA → yok (once odeme)', askida.tur === 'yok' && /askıda/.test(askida.aciklama), JSON.stringify(askida));
   const eskiUrun = karar('pro-mek', 'basic-mek', { surum: surum('pro-mek', { iyzicoUrunKodu: 'urun-eski' }) });
   check(

@@ -23,9 +23,20 @@ import { tarihYaz, tutarYaz } from '../dunning/dunning.metinleri';
  *                                                            │
  *                                          abonelik N ay uzatılır
  *
- *  iyzico bu akışa hiç karışmaz. Abonelik kaydının `odemeYontemi` alanı
- *  HAVALE olur, `iyzicoAbonelikKodu` null kalır, dunning zamanlayıcısı
- *  bu kayıtları atlar (sorgusunda odemeYontemi:'KART' filtresi var).
+ *  Abonelik kaydının `odemeYontemi` alanı HAVALE olur; dunning zamanlayıcısı
+ *  ve gece mutabakatı bu kayıtları atlar (sorgularında odemeYontemi:'KART'
+ *  filtresi var). Havale yolunun KENDİ açtığı satırda `iyzicoAbonelikKodu`
+ *  null'dır ve iyzico akışa hiç karışmaz.
+ *
+ *  ⚠ KARTTAN HAVALEYE GEÇEN MÜŞTERİ (24.09.2026 — Emre kararı): satırda
+ *  kart aboneliğinin kodu VARDIR ve iyzico'da abonelik açıktı. Eskiden onay
+ *  yalnız ödeme yöntemini değiştiriyordu: iyzico dönem sonunda karttan da
+ *  çekiyor (çift tahsilat, havale dönemi `endPeriod`a kısalıyordu) ya da
+ *  reddi "Ödemeniz alınamadı" diye müşteriye yansıtıyordu. Artık onaydan
+ *  sonra kart aboneliği iyzico'da KAPATILIR; kapatılamazsa onay YİNE geçer,
+ *  yöneticiye yazılır. Geç gelen webhook'lar satırı değiştirmez. Kural:
+ *  `AbonelikServisi` → "HAVALE ↔ KART ABONELİĞİ"; kapısı
+ *  `backend/test/havale-iyzico-cakismasi-test.ts`.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 @Injectable()
@@ -174,6 +185,31 @@ export class HavaleServisi {
     }
 
     await this.musteriyeHaberVer(mevcut.abonelikId, sonuc.abonelik.erisimSonu);
+
+    // ⚠ 24.09 — KARTTAN HAVALEYE GEÇİŞ (Emre kararı: "ikisi birden, onay
+    // beklemez"): eski kart aboneliği iyzico'da KAPATILIR; kapatılmasaydı
+    // iyzico dönem sonunda karttan da çekerdi. Onay iyzico'yu BEKLEMEZ:
+    // iptal düşerse olay + yönetici e-postası, onay geri alınmaz (UNPAID
+    // aboneliğin iptali iyzico dokümanında tarif edilmiyor; kartı reddedilip
+    // havaleye geçen müşteri tam da bu yoldan gelir).
+    // SIRA: EN SONDA — işlem, fatura kuyruğu ve müşteri e-postası iyzico'nun
+    // yavaşlığından etkilenmesin; süreç burada ölürse onay ve fatura
+    // tamamdır, iptal ise sonraki onayda ya da geç gelen kart webhook'unda
+    // (havale dalı) yeniden denenir. ⚠ Aynı anda gelen İKİ onay isteğini bu
+    // sıra ENGELLEMEZ (durum işlem dışında okunuyor) — ayrı iş.
+    // Kodu olmayan (havalenin kendi açtığı) ya da zaten kapalı abonelikte
+    // iyzico'ya gidilmez.
+    await this.abonelik
+      .havaleIcinKartAboneliginiKapat(mevcut.abonelikId, {
+        aktor: p.onaylayanId,
+        neden: `Havale onayı — ${mevcut.teklifNo ?? p.havaleId}`,
+      })
+      .catch((e) =>
+        this.logger.error(
+          `Kart aboneliği kapatılamadı (abonelik=${mevcut.abonelikId}): ` +
+            `${e instanceof Error ? e.message : String(e)}`,
+        ),
+      );
     return sonuc;
   }
 

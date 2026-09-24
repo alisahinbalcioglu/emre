@@ -114,6 +114,18 @@ function redAciklamasi(kod: PaketDegisimRedKodu, ab: YoneticiAboneligi, simdi: D
         'Abonelik eski paket yapısında (farklı iyzico ürünü); iyzico üzerinden değiştirilemez. ' +
         'Müşteri aboneliğini iptal edip dönem sonunda yeni paketi satın alabilir.'
       );
+    case 'KART_ABONELIGI_ACIK':
+      return (
+        "Önceki kart aboneliği iyzico'da hâlâ açık görünüyor (son ödeme doğrulanıyor); " +
+        'iki kez çekim riski yüzünden paket işlemi yapılmaz.'
+      );
+    default: {
+      // ⚠ KAPSAYICILIK: yeni bir red kodu eklenirse burasi DERLENMEZ. Backend
+      // `strict` degil — eksik dal sessizce `undefined` donerdi (24.09'da
+      // `KART_ABONELIGI_ACIK` master'dan tam boyle geldi, tsc yesildi).
+      const hic: never = kod;
+      return `Paket işlemi yapılamaz (${String(hic)}).`;
+    }
   }
 }
 

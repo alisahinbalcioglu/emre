@@ -1316,7 +1316,19 @@ async function bolumZorunluluk() {
     firma: [firma()],
     firmaKimlikSaglayici: [saglayici({ durum: 'ETKIN', zorunlu: true })],
     dogrulanmisAlanAdi: [alanAdi()],
-    firmaDavet: [bekleyenDavet({ eposta: 'yeni@firma.com.tr', tokenHash: createHash('sha256').update('davet-token').digest('hex') })],
+    firmaDavet: [bekleyenDavet({
+      eposta: 'yeni@firma.com.tr', tokenHash: createHash('sha256').update('davet-token').digest('hex'),
+      // ⚠ SAAT BOMBASI ONARILDI (24.09, kayip tahsilat turu · son regresyonun yan bulgusu).
+      // `bekleyenDavet` varsayilani `T0 + 3 gun` = 2026-09-24T10:00Z; `davetKabul`
+      // ve `davetBilgi` sureyi GERCEK saatle olcuyor (uyelik.servisi.ts `davetiCoz`:
+      // `sonGecerlilik.getTime() <= Date.now()`). O andan beri akis
+      // `KURUMSAL_GIRIS_ZORUNLU` kapisina HIC ULASMADAN `DAVET_GECERSIZ` donuyor,
+      // `davetBilgi` firlatip paketin KALANINI cokertiyordu. Ikizi `sifirla`
+      // fixture'i 21.09'da ayni gerekceyle onarildi (yukarida). Yalniz bu satir
+      // gercek ana gore uretilir; `bekleyenDavet`i sabit saatli servislerle
+      // kullanan K10-K12 degismedi.
+      sonGecerlilik: new Date(Date.now() + 3 * 24 * 3600_000),
+    })],
     abonelik: [{ id: 'ab1', firmaId: 'F1', paketSurumu: { paket: { seviye: 'pro', kullaniciHakki: 3 } } }],
   });
   const uyelik8 = new UyelikServisi(p8, epostaSahteBasit().servis, new OturumServisi(p8, jwtSahte), configSahte);
