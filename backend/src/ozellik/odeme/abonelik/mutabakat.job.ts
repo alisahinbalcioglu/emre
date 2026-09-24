@@ -24,9 +24,75 @@ import { AbonelikServisi, iyzicoDurumunuYorumla } from './abonelik.servisi';
  *  Çalıştırmazsanız, iptal eden müşteri süresiz erişmeye devam eder.
  * ═══════════════════════════════════════════════════════════════════════════
  */
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  DENEME SÜRERKEN iyzico'nun ACTIVE'i "ÖDENDİ" DEMEK DEĞİLDİR (23.09.2026)
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ *  iyzico'da TRIAL diye bir abonelik durumu YOK. Abonelik detayındaki
+ *  `subscriptionStatus` altı değerden biridir (ACTIVE · PENDING · UNPAID ·
+ *  UPGRADED · CANCELED · EXPIRED); deneme bilgisi AYRI alanlarda taşınır
+ *  (`trialDays` · `trialStartDate` · `trialEndDate`). Resmî doküman
+ *  (docs.iyzico.com › Abonelik İşlemleri, 23.09'da okundu): abonelik her
+ *  zaman ACTIVE ya da PENDING başlar; "durum ACTIVE ancak ödeme planında bir
+ *  deneme süresi belirtilmişse" iyzico yalnız kartı doğrular (1 TL çekip iade
+ *  eder), tahsilat yapmaz.
+ *
+ *  Aboneliği `subscriptionInitialStatus: 'ACTIVE'` ile başlatıyoruz
+ *  (`iyzico.client.ts` → `abonelikBaslat`), yani deneme boyunca iyzico ACTIVE
+ *  der. Kendi sandbox tutanağımız (20.08) ACTIVE'in ödeme kanıtı olmadığını
+ *  gösteriyor: abonelik DETAYI — bu işin sorduğu uç — tek siparişi WAITING ve
+ *  ödeme denemesi YOKKEN ACTIVE döndü (docs/adim0-tutanak/adim0-ek-cikti.json,
+ *  "TEST 2-dogrulama"); NEXT_PERIOD yükseltme YANITI da henüz başlamamış
+ *  (startDate ileride) aboneliği ACTIVE gösterdi (adim0-cikti.json, "S2a").
+ *  ⚠ Denemeli abonelik sandbox'ta ÖLÇÜLMEDİ (tutanaktaki planların hepsi
+ *  `trialDays: 0`); deneme için dayanak dokümandır.
+ *
+ *  ESKİ HAL: `iyzicoDurumunuYorumla` ACTIVE'i AKTIF okuyor, DENEME → AKTIF de
+ *  geçerli bir geçiş olduğu için deneme İLK GECE AKTIF'e çekiliyordu:
+ *   · "Deneme sürenizin bitmesine X gün kaldı" uyarısı (`ErisimServisi.karar`,
+ *     DENEME dalı) hiç görünmüyordu — müşteri ilk çekimden önce uyarılmıyordu;
+ *   · Hesabım rozeti "Deneme" yerine "Aktif" diyordu;
+ *   · satır DENEME yaşam döngüsünden çıkıyordu: saatlik `suresiDolanlariKapat`
+ *     yalnız DENEME/IPTAL kapatır — deneme sonunda iyzico'ya ulaşılamazsa
+ *     satır SONA_ERDI yerine süresi geçmiş AKTIF olarak kalırdı.
+ *
+ *  KURAL: `denemeSonu` gelmemiş DENEME satırı ACTIVE ile AKTIF'e ÇEKİLMEZ.
+ *  DENEME → AKTIF'in kanıtı TAHSİLATTIR — başarılı tahsilat webhook'u
+ *  (`AbonelikServisi.tahsilatBasarili`, sipariş iyzico'nun listesinde
+ *  doğrulanarak) satırı AKTIF'e çeker. Kapsam BİLEREK dar:
+ *   · Yalnız ACTIVE → AKTIF bastırılır. UNPAID/CANCELED/EXPIRED deneme içinde
+ *     de işlenir (iptal ve ödeme sorunu denemede de gerçektir).
+ *   · Deneme BİTTİKTEN sonra eski davranış sürer: tahsilat webhook'u
+ *     kaybolduysa (iyzico ~45 dk sonra bırakır) satırı AKTIF'e çeken tek yol
+ *     yine bu iştir. ⚠ Yalnız DURUMU çeker: `erisimSonu`nu uzatmaz, faturayı
+ *     kuyruğa almaz (ikisi de yalnız webhook yolunda) — bilinen açık, ayrı iş.
+ *   · `denemeSonu` boş DENEME satırı eski davranışta kalır. Bugün kart
+ *     aboneliğinde DENEME'yi yalnız satın alma açar ve `denemeSonu`nu her
+ *     zaman yazar (`satinalma.servisi.ts` → `donemTarihleriHesapla`).
+ *
+ *  SAF — DB'siz ölçülür: `test:mutabakat-deneme`.
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+export function denemeSuruyorMu(
+  ab: { durum: AbonelikDurumu | string; denemeSonu: Date | null | undefined },
+  simdi: Date,
+): boolean {
+  if (ab.durum !== AbonelikDurumu.DENEME) return false;
+  const son = ab.denemeSonu?.getTime?.();
+  // Eksik/bozuk tarih "deneme sürüyor" SAYILMAZ: kural yalnız bitişi BİLİNEN
+  // denemeyi korur (bkz. kapsam).
+  if (typeof son !== 'number' || Number.isNaN(son)) return false;
+  return son > simdi.getTime();
+}
+
 @Injectable()
 export class MutabakatJob {
   private readonly logger = new Logger(MutabakatJob.name);
+
+  /** Son gece koşumunda deneme sürdüğü için AKTIF'e ÇEKİLMEYEN satır sayısı. */
+  private denemedeKorunan = 0;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -57,6 +123,7 @@ export class MutabakatJob {
 
     this.logger.log(`Mutabakat başlıyor: ${abonelikler.length} abonelik`);
     let degisen = 0;
+    this.denemedeKorunan = 0;
 
     for (const ab of abonelikler) {
       try {
@@ -72,7 +139,11 @@ export class MutabakatJob {
       await new Promise((r) => setTimeout(r, 120));
     }
 
-    this.logger.log(`Mutabakat bitti. Değişen: ${degisen}`);
+    // İkinci sayı deploy sonrası ölçümdür: süren deneme sayısı burada görünür
+    // (bkz. `denemeSuruyorMu`). Sıfırsa ve deneme varsa kural bağlı değildir.
+    this.logger.log(
+      `Mutabakat bitti. Değişen: ${degisen} · deneme sürdüğü için AKTIF'e çekilmeyen: ${this.denemedeKorunan}`,
+    );
   }
 
   /**
@@ -123,6 +194,14 @@ export class MutabakatJob {
 
     const hedef = iyzicoDurumunuYorumla(detay.subscriptionStatus);
     if (!hedef || hedef === ab.durum) return false;
+
+    // Deneme sürüyor: iyzico'nun ACTIVE'i tahsilat kanıtı DEĞİL (bkz.
+    // `denemeSuruyorMu`). DENEME → AKTIF'i yalnız başarılı tahsilat
+    // webhook'u yapar. `iyzicoSonKontrol` yukarıda yine yazıldı — iz kalır.
+    if (hedef === AbonelikDurumu.AKTIF && denemeSuruyorMu(ab, new Date())) {
+      this.denemedeKorunan++;
+      return false;
+    }
 
     // Kendi dunning basamaklarımızı iyzico'nun UNPAID'i ezmesin:
     // biz zaten KISITLI/ASKIDA'ya indirdiysek geri çıkarmayız.
