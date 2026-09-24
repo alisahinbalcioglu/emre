@@ -494,9 +494,12 @@ const SUITES: Suite[] = [
   //    başlığa 300 sn, gövdeye ayrıca 300 sn bekler. iyzico takılınca ödeme,
   //    iptal, kart güncelleme ve paket değişimi dakikalarca asılı kalıyor,
   //    paket değişiminin firma sırası aynı firmanın sonraki isteklerini de
-  //    bekletiyordu. ⚠ ANLAM: zaman aşımı RED DEĞİLDİR — hata KODSUZ olmalı ki
-  //    paket değişimi onu belirsiz sayıp iyzico'ya sorsun (Z6, gerçek servis).
-  { ad: 'iyzico zaman aşımı: sinyal · kesim · kodsuz hata · belirsiz dal · firma sırası (Z1-Z6)', script: 'test:iyzico-zaman-asimi', zincir: 'Z0' },
+  //    bekletiyordu. ⚠ ANLAM: zaman aşımı RED DEĞİLDİR — hata KODSUZ ve
+  //    `zamanAsimi` İŞARETLİ: paket değişimi onu belirsiz sayıp iyzico'ya sorar
+  //    ve kayıtlı uç canlı görünse de "değişmedi" DEMEZ (Z6); dunning "ödemeniz
+  //    alınamadı" bildirimini basamak başına BİR KEZ erteler (Z7). Z6/Z7
+  //    GERÇEK servislerle koşar.
+  { ad: 'iyzico zaman aşımı: sinyal · kesim · işaretli kodsuz hata · belirsiz dal · firma sırası · dunning (Z1-Z7)', script: 'test:iyzico-zaman-asimi', zincir: 'Z0' },
   { ad: 'Abonelik ölçüm betiği: SQL geçerliliği (S1-S4b)', script: 'test:olcum-sorgu', zincir: 'Z0' },
   { ad: 'Satın alma yolu: fatura kapısı + miras muafiyeti (P1-P7)', script: 'test:satinalma', zincir: 'Z0' },
   // T47 (22.09.2026): "fatura bilgisi eksik firma gercek bir fatura kesme

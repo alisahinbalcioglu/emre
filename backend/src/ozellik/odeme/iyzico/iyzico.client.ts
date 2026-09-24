@@ -95,6 +95,12 @@ export class IyzicoHatasi extends Error {
     readonly kod: string | undefined,
     mesaj: string,
     readonly httpDurum?: number,
+    /**
+     * Istek `IYZICO_ZAMAN_ASIMI_MS` icinde yanitlanmadi: RED DEGIL, SONUC
+     * BILINMIYOR (iyzico islemi yapmis olabilir). `kod` bu durumda undefined.
+     * Degistiren cagrilar (paket degisimi, dunning) bunu redden AYIRIR.
+     */
+    readonly zamanAsimi = false,
   ) {
     super(mesaj);
     this.name = 'IyzicoHatasi';
@@ -123,7 +129,10 @@ export class IyzicoHatasi extends Error {
  * yalniz yaniti gelmedi. Bu yuzden hata KODSUZDUR (`kod` undefined) — kod
  * UYDURULMAZ. Paket degisimi kodsuz hatayi BELIRSIZ sayip iyzico'ya sorar
  * (`AbonelikServisi.canliUcuBul`); kod uydurulsaydi "kesin red" sanilir ve
- * musteriye "Paketiniz degismedi" denirdi.
+ * musteriye "Paketiniz degismedi" denirdi. `zamanAsimi` isareti bunu redden
+ * ayirir: paket degisimi zaman asiminda kayitli ucu hala canli gorse de
+ * "degismedi" DEMEZ (yukseltme hala isleniyor olabilir); dunning "odemeniz
+ * alinamadi" bildirimini BIR KEZ erteler.
  */
 export const IYZICO_ZAMAN_ASIMI_MS = 20_000;
 
@@ -259,7 +268,7 @@ export class IyzicoClient {
   private zamanAsimi(metot: string, yol: string, asama: 'yanit' | 'govde'): IyzicoHatasi {
     const sn = IYZICO_ZAMAN_ASIMI_MS / 1000;
     this.logger.warn(`iyzico ${asama} ${sn} sn icinde gelmedi, istek kesildi: ${metot} ${yol}`);
-    return new IyzicoHatasi(undefined, `iyzico yanıt vermedi (zaman aşımı, ${sn} sn)`);
+    return new IyzicoHatasi(undefined, `iyzico yanıt vermedi (zaman aşımı, ${sn} sn)`, undefined, true);
   }
 
   // ── Ürün ve ödeme planı (kurulum) ───────────────────────────────────────

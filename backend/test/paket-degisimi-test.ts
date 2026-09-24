@@ -653,6 +653,32 @@ async function sBlogu(): Promise<void> {
     );
   }
   {
+    // S15b · ZAMAN ASIMI (24.09): istegimiz kesildi ama iyzico yukseltmeyi
+    // HALA isliyor olabilir — hemen ardindan sorulan soruda kayitli ucun canli
+    // gorunmesi KESIN degil. "Degismedi" (502) denirse musteri yanlis
+    // bilgilenir; "dogrulanamadi" (503) denir. Ag hatasi S15'te 502'de KALIR.
+    const zamanAsimi = new IyzicoHatasi(undefined, 'iyzico yanıt vermedi (zaman aşımı, 20 sn)', undefined, true);
+    const iyz = sahteIyzico({
+      degisimHatasi: zamanAsimi,
+      detaylar: { 'uc-0': { referenceCode: 'uc-0', subscriptionStatus: 'ACTIVE' } },
+    });
+    const db = sahteDb({ abonelikler: [abonelik('basic-mek')], surumler: TUM_SURUMLER() });
+    const once = JSON.stringify(db.satir());
+    const r = await reddeder(() => kur(db, iyz).pd.degistir(DEGISTIR('pro-mek')));
+    check('S15b-OLCUT zaman asimi hatasi KODSUZ ve isaretli', zamanAsimi.kod === undefined && zamanAsimi.zamanAsimi === true);
+    check(
+      'S15b ⭐ zaman asimi + kayitli uc hala CANLI → "degismedi" DENMEZ: 503 DEGISIM_DOGRULANAMADI, satir ayni',
+      iyz.sayi('abonelikGetir') === 1 && r?.durum === 503 && r?.govde?.kod === 'DEGISIM_DOGRULANAMADI' && JSON.stringify(db.satir()) === once,
+      `getir=${iyz.sayi('abonelikGetir')} r=${JSON.stringify(r)}`,
+    );
+    const olay = db.olaylar.find((o: Satir) => o.tip === 'paket.degisim.belirsiz');
+    check(
+      'S15c belirsiz olay kaydi: iyzicoKodu null, neden zaman asimi',
+      !!olay && olay.veri?.iyzicoKodu === null && /zaman asimi/.test(olay.veri?.neden ?? ''),
+      JSON.stringify(olay?.veri),
+    );
+  }
+  {
     const iyz = sahteIyzico({
       degisimHatasi: agHatasi(),
       detaylar: { 'uc-0': { referenceCode: 'uc-0', subscriptionStatus: 'UPGRADED' } },

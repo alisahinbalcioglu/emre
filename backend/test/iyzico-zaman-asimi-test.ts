@@ -16,23 +16,28 @@
  * degisiminin FIRMA SIRASI yuzunden ayni firmanin sonraki istekleri de.
  *
  * ⚠ ANLAM: zaman asimi RED DEGILDIR (iyzico islemi yapmis olabilir). Hata
- * KODSUZ olmali ki paket degisimi onu BELIRSIZ sayip iyzico'ya sorsun. Z6 bunu
- * GERCEK istemci + GERCEK `PaketDegisimiServisi` ile olcer (sahte olan yalniz
- * Prisma ve iyzico'nun kendisi).
+ * KODSUZ ve `zamanAsimi` ISARETLI olmali ki degistiren cagiranlar onu redden
+ * ayirsin. Z6/Z7 bunu GERCEK istemci + GERCEK servisle (`PaketDegisimiServisi`,
+ * `DunningServisi`) olcer; sahte olan yalniz Prisma, e-posta ve iyzico'nun kendisi.
  *
  * ── OLCULEN ────────────────────────────────────────────────────────────
  *   Z1 giden istekte `signal` var (GET + POST); o sinyal zaman asimi sinyali,
  *      her istegin KENDI sinyali
  *   Z2 sure ADLANDIRILMIS sabitten; sabit on yuzun siradan istek sinirinin
  *      (dosyadan okunur) en az 5 sn altinda ve 10 sn'den kisa degil
- *   Z3 ⭐ baslik gelmezse istek KESILIR: kodsuz IyzicoHatasi, Turkce mesaj,
- *      sunucu baglantinin kapandigini gorur; suzgec 502 + uydurma kodsuz mesaj
+ *   Z3 ⭐ baslik gelmezse istek KESILIR: kodsuz + isaretli IyzicoHatasi, Turkce
+ *      mesaj, takilan uc gunlukte; sunucu baglantinin kapandigini gorur; suzgec
+ *      502 + uydurma kodsuz mesaj
  *   Z4 govde yarida kalirsa da kesilir ("cozumlenemedi" DEGIL)
  *   Z5 normal yanit etkilenmez, sure sonradan dolunca yan etki yok; ag hatasi
- *      "zaman asimi" diye ETIKETLENMEZ (o davranis degismedi)
+ *      "zaman asimi" diye ETIKETLENMEZ; gercek iyzico reddi ISARETSIZ kalir
  *   Z6 ⭐ BAGLANTI: paket degisiminde zaman asimi BELIRSIZ dala girer (iyzico'ya
- *      sorulur, olayda iyzicoKodu null) ve firma sirasi COZULUR — ayni firmanin
- *      bekleyen istegi islenir
+ *      sorulur); kayitli uc hala canli gorunse de "degismedi" DENMEZ (503
+ *      dogrulanamadi); firma sirasi COZULUR — bekleyen istek islenir
+ *   Z7 ⭐ BAGLANTI: dunning yeniden denemesi zaman asimina ugrarsa "odemeniz
+ *      alinamadi" bildirimi GITMEZ, basamak islenmis SAYILMAZ — basamak basina
+ *      BIR KEZ: ikinci zaman asiminda bildirim gider. Gercek red ve basarili
+ *      yanit eskisi gibi; basarili denemeden sonraki DB hatasi red SAYILMAZ
  *
  * Cikis kodu sozlesmesi: 0 = PASS · digeri = FAIL.
  * ⚠ `process.exit` YOK: Windows'ta acik fetch soketiyle `process.exit(1)`
@@ -58,8 +63,18 @@ import {
 } from '../src/ozellik/odeme/iyzico/iyzico-hata.filter';
 import { AbonelikServisi } from '../src/ozellik/odeme/abonelik/abonelik.servisi';
 import { PaketDegisimiServisi } from '../src/ozellik/odeme/abonelik/paket-degisimi.servisi';
+import { DunningServisi } from '../src/ozellik/odeme/dunning/dunning.servisi';
 
-Logger.overrideLogger(false);
+// Nest gunlugu YAKALANIR (ekrana basilmaz): Z3 istemcinin uyari satirini olcer,
+// kirmizi kosumda son satirlar teshis icin basilir.
+const gunluk: string[] = [];
+Logger.overrideLogger({
+  log: () => undefined,
+  error: (m: unknown) => void gunluk.push(`ERROR ${String(m)}`),
+  warn: (m: unknown) => void gunluk.push(`WARN ${String(m)}`),
+  debug: () => undefined,
+  verbose: () => undefined,
+});
 
 let passed = 0;
 let failed = 0;
@@ -177,6 +192,7 @@ async function sureli<T>(
 // ═══════════════════════════════════════════════════════════════════════════
 type Davranis =
   | { tur: 'cevapla'; veri?: unknown }
+  | { tur: 'reddet'; kod: string; mesaj: string } // iyzico ACIK red (status: failure)
   | { tur: 'takil' } // hic cevap yok
   | { tur: 'govde-yarim' } // 200 + basliklar gelir, govde yarida kalir
   | { tur: 'kopar' }; // baglanti hemen kesilir (ag hatasi)
@@ -206,6 +222,10 @@ async function sahteIyzico(yonlendir: (metot: string, yol: string) => Davranis) 
       return;
     }
     res.writeHead(200, { 'Content-Type': 'application/json' });
+    if (d.tur === 'reddet') {
+      res.end(JSON.stringify({ status: 'failure', errorCode: d.kod, errorMessage: d.mesaj }));
+      return;
+    }
     if (d.tur === 'govde-yarim') {
       res.write('{"status":');
       return;
@@ -237,7 +257,7 @@ function istemci(taban: string): IyzicoClient {
 
 const ozet = (h: any) =>
   h instanceof IyzicoHatasi
-    ? `IyzicoHatasi kod=${h.kod} httpDurum=${h.httpDurum} mesaj="${h.message}"`
+    ? `IyzicoHatasi kod=${h.kod} httpDurum=${h.httpDurum} zamanAsimi=${h.zamanAsimi} mesaj="${h.message}"`
     : `${h?.constructor?.name ?? typeof h} ${h?.message ?? String(h)}`;
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -304,6 +324,7 @@ async function z12(): Promise<void> {
 async function z3(): Promise<void> {
   console.log('\n── Z3 · iyzico hic cevap vermezse istek KESILIR ──');
   kayitlariSifirla();
+  const gunlukBasi = gunluk.length;
   const iyz = await sahteIyzico(() => ({ tur: 'takil' }));
   try {
     const r = await sureli(() => istemci(iyz.taban).paketDegistir('uc-0', { yeniPlanKodu: 'plan-x' }));
@@ -317,6 +338,11 @@ async function z3(): Promise<void> {
     check('Z3b hata IyzicoHatasi', h instanceof IyzicoHatasi, ozet(h));
     check('Z3c ⭐ kod UNDEFINED — iyzico kod soylemedi, uydurulmaz', h instanceof IyzicoHatasi && h.kod === undefined, ozet(h));
     check('Z3d httpDurum yok (yanit gelmedi)', h instanceof IyzicoHatasi && h.httpDurum === undefined, ozet(h));
+    check(
+      'Z3i ⭐ zamanAsimi ISARETLI (paket degisimi / dunning bunu redden ayirir)',
+      h instanceof IyzicoHatasi && h.zamanAsimi === true,
+      ozet(h),
+    );
     check('Z3e mesaj Turkce: "iyzico yanıt vermedi (zaman aşımı, …"', /^iyzico yanıt vermedi \(zaman aşımı, /.test(h?.message ?? ''), ozet(h));
     check('Z3f kesim ZAMAN ASIMINDA oldu (anlik baska hata degil)', r.ms >= KISA_MS * 0.8 && r.ms < BEKCI_MS, `ms=${r.ms}`);
     const kesildi = await bekle(() => iyz.gelen[0]?.kesildi === true);
@@ -325,6 +351,14 @@ async function z3(): Promise<void> {
       'Z3h suzgec: 502 (kullanici duzeltemez) + mesajda uydurma "iyzico kodu" yok',
       iyzicoDurumunuHttpyeCevir(h?.httpDurum) === 502 && !!h?.message && kullaniciyaMesaj(h) === h.message,
       `durum=${iyzicoDurumunuHttpyeCevir(h?.httpDurum)} mesaj="${h ? kullaniciyaMesaj(h) : '-'}"`,
+    );
+    // Hata mesaji musteriye gider, iyzico ucu gitmez: hangi ucun takildigi
+    // YALNIZ bu gunluk satirinda (istemci yorumu boyle diyor — olculur).
+    const uyarilar = gunluk.slice(gunlukBasi).filter((s) => s.startsWith('WARN iyzico '));
+    check(
+      'Z3j takilan iyzico ucu gunlukte: yontem + yol',
+      uyarilar.some((s) => s.includes('istek kesildi: POST /v2/subscription/subscriptions/uc-0/upgrade')),
+      uyarilar.join(' | ') || '(uyari yok)',
     );
   } finally {
     await iyz.kapat();
@@ -348,6 +382,7 @@ async function z4(): Promise<void> {
     check('Z4a ⭐ govde takilinca da istek KESILDI', r.durum === 'hata', `durum=${r.durum} ms=${r.ms}`);
     const h = r.hata;
     check('Z4b kodsuz IyzicoHatasi', h instanceof IyzicoHatasi && h.kod === undefined, ozet(h));
+    check('Z4f govde asamasinda da zamanAsimi ISARETLI', h instanceof IyzicoHatasi && h.zamanAsimi === true, ozet(h));
     check(
       'Z4c mesaj ZAMAN ASIMI der, "çözümlenemedi" DEMEZ (bozuk JSON sanilmaz)',
       /zaman aşımı/.test(h?.message ?? '') && !/çözümlenemedi/.test(h?.message ?? ''),
@@ -366,11 +401,11 @@ async function z4(): Promise<void> {
 async function z5(): Promise<void> {
   console.log('\n── Z5 · normal yanit ve ag hatasi davranisi degismedi ──');
   kayitlariSifirla();
-  const iyz = await sahteIyzico((_metot, yol) =>
-    yol.endsWith('/kopar')
-      ? { tur: 'kopar' }
-      : { tur: 'cevapla', veri: { referenceCode: 'uc-0', subscriptionStatus: 'ACTIVE' } },
-  );
+  const iyz = await sahteIyzico((_metot, yol) => {
+    if (yol.endsWith('/kopar')) return { tur: 'kopar' };
+    if (yol.endsWith('/reddet')) return { tur: 'reddet', kod: '201406', mesaj: 'Abonelik farklı ödeme sıklığına sahip ödeme plana yükseltilemez.' };
+    return { tur: 'cevapla', veri: { referenceCode: 'uc-0', subscriptionStatus: 'ACTIVE' } };
+  });
   const beklenmeyen: unknown[] = [];
   const dinle = (e: unknown) => beklenmeyen.push(e);
   process.on('unhandledRejection', dinle);
@@ -403,6 +438,15 @@ async function z5(): Promise<void> {
       'Z5c ag hatasi "zaman aşımı" diye ETIKETLENMEDI (hata aynen atildi)',
       k.durum === 'hata' && !(k.hata instanceof IyzicoHatasi) && !/zaman aşımı/.test(k.hata?.message ?? ''),
       ozet(k.hata),
+    );
+
+    // Gercek iyzico reddi (status: failure + kod): isaret TASIMAZ — yoksa
+    // paket degisimi / dunning kesin reddi "sonuc bilinmiyor" sanardi.
+    const red = await sureli(() => istemci(iyz.taban).abonelikGetir('reddet'));
+    check(
+      'Z5d gercek iyzico reddi: kodlu IyzicoHatasi, zamanAsimi ISARETSIZ',
+      red.durum === 'hata' && red.hata instanceof IyzicoHatasi && red.hata.kod === '201406' && red.hata.zamanAsimi === false,
+      ozet(red.hata),
     );
   } finally {
     process.off('unhandledRejection', dinle);
@@ -519,7 +563,9 @@ async function z6(): Promise<void> {
             },
           };
     }
-    // Dogrulama: kayitli uc iyzico'da hala CANLI → degisim OLMADI (kesin).
+    // Dogrulama: kayitli uc iyzico'da hala CANLI GORUNUYOR. Ag hatasinda bu
+    // "degismedi" (kesin) olurdu; zaman asiminda DEGIL — yukseltme hala
+    // isleniyor olabilir (soru kesilen istegin hemen ardindan soruluyor).
     if (istek === DOGRULA) {
       return {
         tur: 'cevapla',
@@ -561,14 +607,17 @@ async function z6(): Promise<void> {
       `sira=${JSON.stringify(sira)}`,
     );
     check(
-      'Z6c dogrulama "degismedi" dedi → 502 SAGLAYICI_DEGISIM_HATASI',
-      r1Durum === 502 && r1Govde?.kod === 'SAGLAYICI_DEGISIM_HATASI',
+      'Z6c ⭐ kayitli uc canli GORUNSE de "degismedi" DENMEDI (zaman asimi): 503 DEGISIM_DOGRULANAMADI',
+      r1Durum === 503 && r1Govde?.kod === 'DEGISIM_DOGRULANAMADI',
       `durum=${r1Durum} govde=${JSON.stringify(r1Govde)}`,
     );
-    const olay = db.olaylar.find((o: any) => o.tip === 'paket.degisim.basarisiz');
+    const olay = db.olaylar.find((o: any) => o.tip === 'paket.degisim.belirsiz');
     check(
-      'Z6d olay kaydinda iyzicoKodu NULL (uydurma kod yok) ve mesaj zaman asimi',
-      !!olay && olay.veri?.iyzicoKodu === null && /zaman aşımı/.test(olay.veri?.iyzicoMesaji ?? ''),
+      'Z6d belirsiz olay kaydi: iyzicoKodu NULL (uydurma kod yok), mesaj ve neden zaman asimi',
+      !!olay &&
+        olay.veri?.iyzicoKodu === null &&
+        /zaman aşımı/.test(olay.veri?.iyzicoMesaji ?? '') &&
+        /zaman asimi/.test(olay.veri?.neden ?? ''),
       JSON.stringify(olay?.veri),
     );
     // Sira OLCUTU: ikinci istek birinci SONUCLANMADAN yola cikmadi. Yoksa Z6f
@@ -593,6 +642,192 @@ async function z6(): Promise<void> {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  Z7 · BAGLANTI: DUNNING YENIDEN DENEMESI (gercek istemci + gercek servis)
+// ═══════════════════════════════════════════════════════════════════════════
+const YENIDEN_DENE = 'POST /v2/subscription/operation/retry';
+
+interface DunningSecenek {
+  /** Kac gunluk tarama art arda kosulsun (ayni DB, ayni servis). */
+  tarama?: number;
+  /** Bu tipte olay yazilirken sahte DB hata firlatir. */
+  olayHatasi?: string;
+  /** Taramadan ONCE var olan olaylar (onceki basamaklardan). */
+  onOlaylar?: Record<string, any>[];
+}
+
+/** Tek abonelikli sahte Prisma: varsayilan merdivenin 3. gun basamagi. */
+function dunningDb(secenek: DunningSecenek = {}) {
+  const satir: Record<string, any> = {
+    id: 'ab1',
+    firmaId: 'f1',
+    durum: AbonelikDurumu.ODEME_BEKLIYOR,
+    odemeYontemi: 'KART',
+    // 3,5 gun once: 3. gun basamagi = yeniden dene, olmazsa 'ikinci' bildirimi.
+    ilkBasarisizlik: new Date(Date.now() - 3.5 * GUN),
+    denemeSayisi: 1, // ilk bildirim gitmis
+    sonDeneme: null,
+    iyzicoAbonelikKodu: 'uc-0',
+    paketSurumu: { tutar: 1299, paraBirimi: 'TRY', paket: { ad: 'Paket basic-mek' } },
+  };
+  const olaylar: Record<string, any>[] = [...(secenek.onOlaylar ?? [])];
+  const guncellemeler: Record<string, any>[] = [];
+  const db: any = {
+    satir,
+    olaylar,
+    guncellemeler,
+    abonelik: {
+      findMany: async () => [{ id: satir.id }],
+      findUnique: async ({ where }: any) => (where.id === satir.id ? { ...satir } : null),
+      update: async ({ where, data }: any) => {
+        if (where.id !== satir.id) throw new Error('update: satir yok');
+        guncellemeler.push(data);
+        Object.assign(satir, data);
+        return { ...satir };
+      },
+    },
+    firma: { findUnique: async () => ({ ad: 'Firma A', faturaEposta: 'fatura@firma.test', yetkiliEposta: null }) },
+    // Basarisizlik webhook'unun siparis kodu: yeniden denenecek siparis.
+    webhookOlayi: { findFirst: async () => ({ siparisKodu: 'sip-1' }) },
+    abonelikOlayi: {
+      create: async ({ data }: any) => {
+        if (data.tip === secenek.olayHatasi) throw new Error(`sahte DB: ${data.tip} yazilamadi`);
+        const kayit = { olusturuldu: new Date(), ...data }; // Prisma varsayilani now()
+        olaylar.push(kayit);
+        return kayit;
+      },
+      // `where` GERCEKTEN uygulanir: abonelik + tip + olusturuldu >= gte.
+      count: async ({ where }: any) =>
+        olaylar.filter(
+          (o) =>
+            o.abonelikId === where.abonelikId &&
+            o.tip === where.tip &&
+            (!where.olusturuldu?.gte || o.olusturuldu.getTime() >= where.olusturuldu.gte.getTime()),
+        ).length,
+    },
+  };
+  return db;
+}
+
+/** Gunluk taramayi GERCEK servisle kosar; iyzico'nun yeniden deneme ucu `davranis`i uygular. */
+async function dunningKos(davranis: Davranis, secenek: DunningSecenek = {}) {
+  const iyz = await sahteIyzico((metot, yol) => (`${metot} ${yol}` === YENIDEN_DENE ? davranis : { tur: 'kopar' }));
+  try {
+    const db = dunningDb(secenek);
+    const postalar: any[] = [];
+    const c = istemci(iyz.taban);
+    const dunning = new DunningServisi(
+      db,
+      c,
+      new AbonelikServisi(db, c),
+      { gonder: async (m: any) => void postalar.push(m) } as any,
+      { get: () => undefined } as any,
+    );
+    const taramalar: { posta: number; denemeSayisi: number }[] = [];
+    let r: Awaited<ReturnType<typeof sureli>> = { durum: 'asili', ms: 0, bitti: 0 };
+    for (let i = 0; i < (secenek.tarama ?? 1); i++) {
+      r = await sureli(() => dunning.merdiveniYurut());
+      taramalar.push({ posta: postalar.length, denemeSayisi: db.satir.denemeSayisi });
+    }
+    return { db, postalar, gelen: iyz.gelen.map((g) => `${g.metot} ${g.yol}`), r, taramalar };
+  } finally {
+    await iyz.kapat();
+  }
+}
+
+async function z7(): Promise<void> {
+  console.log('\n── Z7 · BAGLANTI: dunning yeniden denemesi zaman asiminda bildirim GONDERMEZ ──');
+  kayitlariSifirla();
+
+  // Zaman asimi: iyzico yeniden denemeyi yapmis OLABILIR — sonuc webhook'la gelir.
+  const za = await dunningKos({ tur: 'takil' });
+  check(
+    'Z7-OLCUT fikstur 3. gun basamagini surdu: yeniden deneme istegi iyzico\'ya gitti, tarama bitti',
+    za.gelen.length === 1 && za.gelen[0] === YENIDEN_DENE && za.r.durum === 'deger',
+    `gelen=${JSON.stringify(za.gelen)} durum=${za.r.durum}`,
+  );
+  check('Z7a ⭐ zaman asiminda "odemeniz alinamadi" bildirimi GITMEDI', za.postalar.length === 0, `posta=${za.postalar.length}`);
+  check(
+    'Z7b ⭐ basamak islenmis SAYILMADI (yarinki tarama taze bilgiyle yeniden degerlendirir)',
+    za.db.satir.denemeSayisi === 1 && za.db.guncellemeler.length === 0,
+    `denemeSayisi=${za.db.satir.denemeSayisi} guncelleme=${JSON.stringify(za.db.guncellemeler)}`,
+  );
+  const iz = za.db.olaylar.find((o: any) => o.tip === 'dunning.tekrar.belirsiz');
+  check(
+    'Z7c iz olay kaydinda: dunning.tekrar.belirsiz + zaman asimi',
+    !!iz && /zaman aşımı/.test(iz.aciklama ?? ''),
+    JSON.stringify(za.db.olaylar.map((o: any) => o.tip)),
+  );
+
+  // KONTROL — gercek red: eski davranis (bildirim gider, basamak islenir).
+  const red = await dunningKos({ tur: 'reddet', kod: 'RED-TEST', mesaj: 'Kart reddedildi' });
+  check(
+    'Z7d gercek red: "ikinci" bildirimi GITTI ve basamak islendi (eski davranis korundu)',
+    red.postalar.length === 1 &&
+      red.db.satir.denemeSayisi === 2 &&
+      red.db.olaylar.some((o: any) => o.tip === 'dunning.eposta.ikinci'),
+    `posta=${red.postalar.length} denemeSayisi=${red.db.satir.denemeSayisi} olaylar=${JSON.stringify(red.db.olaylar.map((o: any) => o.tip))}`,
+  );
+
+  // KONTROL — basarili yanit: sonuc webhook'la gelir; bildirim yok, basamak islenir.
+  const tamam = await dunningKos({ tur: 'cevapla', veri: {} });
+  check(
+    'Z7e basarili yanit: bildirim YOK, basamak islendi, "dunning.tekrar.denendi" (eski davranis)',
+    tamam.postalar.length === 0 &&
+      tamam.db.satir.denemeSayisi === 2 &&
+      tamam.db.olaylar.some((o: any) => o.tip === 'dunning.tekrar.denendi'),
+    `posta=${tamam.postalar.length} denemeSayisi=${tamam.db.satir.denemeSayisi}`,
+  );
+
+  // Ayni basamakta IKINCI zaman asimi: erteleme hakki kullanildi → bildirim
+  // gider. Sinirsiz erteleme her gun yeni bir deneme ve hic gitmeyen on
+  // uyarilar demekti (inceleme 24.09).
+  const iki = await dunningKos({ tur: 'takil' }, { tarama: 2 });
+  check(
+    'Z7f-OLCUT iki tarama da yeniden denedi; ilk taramada bildirim gitmedi',
+    iki.gelen.filter((g) => g === YENIDEN_DENE).length === 2 && iki.taramalar[0]?.posta === 0,
+    `gelen=${JSON.stringify(iki.gelen)} taramalar=${JSON.stringify(iki.taramalar)}`,
+  );
+  check(
+    'Z7f ⭐ ayni basamakta IKINCI zaman asimi: bildirim GITTI, basamak islendi (sinirsiz erteleme yok)',
+    iki.postalar.length === 1 &&
+      iki.db.satir.denemeSayisi === 2 &&
+      iki.db.olaylar.filter((o: any) => o.tip === 'dunning.tekrar.belirsiz').length === 1,
+    `posta=${iki.postalar.length} denemeSayisi=${iki.db.satir.denemeSayisi} olaylar=${JSON.stringify(iki.db.olaylar.map((o: any) => o.tip))}`,
+  );
+
+  // Onceki basamaktaki erteleme (bu dongude, basamak basindan ONCE) bu
+  // basamagin hakkini YEMEZ: ilk zaman asimi yine ertelenir.
+  const onceki = await dunningKos(
+    { tur: 'takil' },
+    {
+      onOlaylar: [
+        { abonelikId: 'ab1', tip: 'dunning.tekrar.belirsiz', aciklama: 'onceki basamak', olusturuldu: new Date(Date.now() - 3 * GUN) },
+      ],
+    },
+  );
+  check(
+    'Z7h onceki basamagin ertelemesi bu basamagin hakkini yemedi (ilk zaman asimi yine ertelendi)',
+    onceki.gelen.length === 1 && onceki.postalar.length === 0 && onceki.db.satir.denemeSayisi === 1,
+    `gelen=${onceki.gelen.length} posta=${onceki.postalar.length} denemeSayisi=${onceki.db.satir.denemeSayisi}`,
+  );
+
+  // `try` yalniz iyzico cagrisini sarar: BASARILI denemeden sonra DB yazmasi
+  // duserse bu red degildir — "tekrar denedik, yine alinamadi" GITMEMELI.
+  const gunlukBasi = gunluk.length;
+  const dbHata = await dunningKos({ tur: 'cevapla', veri: {} }, { olayHatasi: 'dunning.tekrar.denendi' });
+  check(
+    'Z7g-OLCUT yeniden deneme iyzico\'da basarili, ardindan olay yazmasi DUSTU',
+    dbHata.gelen.length === 1 && gunluk.slice(gunlukBasi).some((s) => s.includes('dunning.tekrar.denendi yazilamadi')),
+    gunluk.slice(gunlukBasi).join(' | ').slice(0, 300) || '(gunluk bos)',
+  );
+  check(
+    'Z7g basarili denemeden sonraki DB hatasi "yine alinamadi" e-postasina DONMEDI',
+    dbHata.postalar.length === 0,
+    `posta=${dbHata.postalar.length}`,
+  );
+}
+
 /** Bir blokta cokme sonrakileri GIZLEMESIN: hata o blogun kirmizisi olur, kosu surer. */
 async function blok(ad: string, fn: () => Promise<void>): Promise<void> {
   try {
@@ -610,6 +845,7 @@ async function main(): Promise<void> {
     await blok('Z4', z4);
     await blok('Z5', z5);
     await blok('Z6', z6);
+    await blok('Z7', z7);
   } finally {
     aracilariSok();
   }
@@ -618,6 +854,9 @@ async function main(): Promise<void> {
   console.log(`\n${'═'.repeat(64)}\n  IYZICO ZAMAN ASIMI: ${passed} PASS, ${failed} FAIL\n${'═'.repeat(64)}`);
   if (failed > 0) {
     failures.forEach((f) => console.log(`  ✗ ${f}`));
+    // Servisler hatayi yakalayip gunluge yazar: teshis icin son satirlar.
+    console.log('\n  Son gunluk satirlari:');
+    gunluk.slice(-15).forEach((s) => console.log(`    ${s.slice(0, 240)}`));
     process.exitCode = 1;
   }
 }
