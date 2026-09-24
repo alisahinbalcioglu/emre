@@ -672,6 +672,32 @@ async function sBlogu(): Promise<void> {
     );
   }
   {
+    // S15b · ZAMAN ASIMI (24.09): istegimiz kesildi ama iyzico yukseltmeyi
+    // HALA isliyor olabilir — hemen ardindan sorulan soruda kayitli ucun canli
+    // gorunmesi KESIN degil. "Degismedi" (502) denirse musteri yanlis
+    // bilgilenir; "dogrulanamadi" (503) denir. Ag hatasi S15'te 502'de KALIR.
+    const zamanAsimi = new IyzicoHatasi(undefined, 'iyzico yanıt vermedi (zaman aşımı, 20 sn)', undefined, true);
+    const iyz = sahteIyzico({
+      degisimHatasi: zamanAsimi,
+      detaylar: { 'uc-0': { referenceCode: 'uc-0', subscriptionStatus: 'ACTIVE' } },
+    });
+    const db = sahteDb({ abonelikler: [abonelik('basic-mek')], surumler: TUM_SURUMLER() });
+    const once = JSON.stringify(db.satir());
+    const r = await reddeder(() => kur(db, iyz).pd.degistir(DEGISTIR('pro-mek')));
+    check('S15b-OLCUT zaman asimi hatasi KODSUZ ve isaretli', zamanAsimi.kod === undefined && zamanAsimi.zamanAsimi === true);
+    check(
+      'S15b ⭐ zaman asimi + kayitli uc hala CANLI → "degismedi" DENMEZ: 503 DEGISIM_DOGRULANAMADI, satir ayni',
+      iyz.sayi('abonelikGetir') === 1 && r?.durum === 503 && r?.govde?.kod === 'DEGISIM_DOGRULANAMADI' && JSON.stringify(db.satir()) === once,
+      `getir=${iyz.sayi('abonelikGetir')} r=${JSON.stringify(r)}`,
+    );
+    const olay = db.olaylar.find((o: Satir) => o.tip === 'paket.degisim.belirsiz');
+    check(
+      'S15c belirsiz olay kaydi: iyzicoKodu null, neden zaman asimi',
+      !!olay && olay.veri?.iyzicoKodu === null && /zaman asimi/.test(olay.veri?.neden ?? ''),
+      JSON.stringify(olay?.veri),
+    );
+  }
+  {
     const iyz = sahteIyzico({
       degisimHatasi: agHatasi(),
       detaylar: { 'uc-0': { referenceCode: 'uc-0', subscriptionStatus: 'UPGRADED' } },
@@ -1137,11 +1163,26 @@ async function wBlogu(): Promise<void> {
   // W8 · GUNCEL uctan gelen siparis olagan kurali korur (inceleme bulgusu 3):
   // satin almadaki gecici tampon (31+2 gun) ilk tahsilatta iyzico'nun donem
   // sonuna DUZELIR. "Asla kisaltma" kurali yalniz ESKI halkaya aittir.
+  // ⚠ 24.09: fikstur satin almanin YAZDIGI hali tasir — kopru (`kopruErisimSonu`)
+  // `erisimSonu` ile ayni. Kisaltma artik bu kaniti ister; W8b karsi tarafi,
+  // `test:miras-erisimi` satin alma → webhook BAGLANTISINI olcer.
   {
-    const db = sahteDb({ abonelikler: [abonelik('pro-mek', { iyzicoAbonelikKodu: 'uc-1', erisimSonu: gunSonra(33) })], surumler: TUM_SURUMLER() });
+    const db = sahteDb({ abonelikler: [abonelik('pro-mek', { iyzicoAbonelikKodu: 'uc-1', erisimSonu: gunSonra(33), kopruErisimSonu: gunSonra(33) })], surumler: TUM_SURUMLER() });
     const iyz = sahteIyzico({ detaylar: { 'uc-1': { referenceCode: 'uc-1', pricingPlanReferenceCode: 'plan-pro-mek-denemesiz', subscriptionStatus: 'ACTIVE', orders: [siparis('sip-ilk', gunSonra(30))] } } });
     await kur(db, iyz).ab.tahsilatBasarili('uc-1', 'sip-ilk');
     check('W8 ⭐ guncel uc: erisim iyzico donem sonuna DUZELDI (33 → 30 gun; tampon kaldirildi)', db.satir().erisimSonu.getTime() === gunSonra(30).getTime(), db.satir().erisimSonu.toISOString());
+    check('W8a kopru ilk tahsilatla KAPANDI (ikinci siparis kisaltamaz)', db.satir().kopruErisimSonu === null, String(db.satir().kopruErisimSonu));
+  }
+
+  // W8b · ayni guncel uc siparisi, ama `erisimSonu` KOPRU DEGIL (miras gocunun
+  // 365 gunu satin almada korundu, kopru NULL): donem sonu erisimi KISALTMAZ.
+  {
+    const db = sahteDb({ abonelikler: [abonelik('pro-mek', { iyzicoAbonelikKodu: 'uc-1', erisimSonu: gunSonra(340), kopruErisimSonu: null })], surumler: TUM_SURUMLER() });
+    const iyz = sahteIyzico({ detaylar: { 'uc-1': { referenceCode: 'uc-1', pricingPlanReferenceCode: 'plan-pro-mek-denemesiz', subscriptionStatus: 'ACTIVE', orders: [siparis('sip-ilk', gunSonra(30))] } } });
+    await kur(db, iyz).ab.tahsilatBasarili('uc-1', 'sip-ilk');
+    check('W8b ⭐ guncel uc, kopru YOK: verilmis 340 gun KISALMADI (miras erisimi)', db.satir().erisimSonu.getTime() === gunSonra(340).getTime(), db.satir().erisimSonu.toISOString());
+    // "Degismedi" webhook hic kosmasa da gecer: siparisin ISLENDIGI ayrica olculur.
+    check('W8b-KANIT webhook siparisi isledi (durum olayi, aktor webhook)', db.olaylar.some((o: Satir) => o.tip === 'durum.degisti' && o.aktor === 'webhook' && o.veri?.siparisKodu === 'sip-ilk'));
   }
 
   // W9 · ⭐ YARIS (inceleme bulgusu 6): webhook satiri okuduktan SONRA musteri

@@ -597,15 +597,28 @@ export class AbonelikServisi {
     // soylemez: iyzico durumu ve odenen plan ESKI aboneligindir.
     const guncelUcMu = abonelikKodu === ab.iyzicoAbonelikKodu;
 
-    // ⚠ 23.09 — ESKI HALKA ERISIMI KISALTAMAZ. Eski halkanin gec gelen
-    // siparisi DAHA ERKEN bir donem sonu tasir; onu kosulsuz yazmak odenmis
-    // sureyi geri alirdi. GUNCEL uctan gelen siparis ise olagan kurali KORUR
-    // (erisim = iyzico'nun `endPeriod`u): satin almadaki gecici tamponu
-    // (31+2 gun) ilk tahsilatta duzelten sey budur. Ilk yazim "asla kisaltma"
-    // kuralini HER siparise yaymisti ve o duzeltmeyi sessizce kaldiriyordu
-    // (inceleme bulgusu 3) — kural yalniz ESKI HALKAYA aittir.
+    // ⚠ 24.09 — ERISIM YALNIZ SATIN ALMANIN KOPRUSUNDEN KISALIR.
+    // Varsayilan: yalniz UZAT (donem sonu ileriyse yaz, degilse dokunma).
+    // Tek istisna: satin alma `erisimSonu`na tamponlu bir KOPRU tarih yazdi
+    // (`kopruErisimSonu`, satinalma.servisi `aboneligiAcVeyaGuncelle`) ve o
+    // tarih HALA yerinde — iyzico'nun gercek donem sonu onu duzeltir, gerekirse
+    // kisaltir (31+2 gun → donem sonu; 23.09 inceleme bulgusu 3). Kopru baska
+    // bir yazmayla (havale, yonetici, mutabakat) degistiyse esitlik bozulur:
+    // kanit yoksa kisaltma yok.
+    //
+    // NEDEN: 23.09 kurali guncel uctan gelen HER sipariste `erisimSonu`nu
+    // `endPeriod`a yaziyordu. Miras (goc) firma kartla odeyince satin alma 365
+    // gunu korudu (02.09 karari, `max(mevcut, yeni)`) ama ilk tahsilat —
+    // miras firmaya deneme verilmez, tahsilat satin almadan dakikalar sonra
+    // gelir — onu ~30 gune indirip ~332 gunu siliyordu: odemek, odememekten
+    // kotuydu. ESKI HALKA kurali (23.09) aynen durur: eski halkanin gec gelen
+    // siparisi DAHA ERKEN bir donem sonu tasir ve koprusu olsa bile kisaltmaz.
+    const kopruDuzeltilir =
+      guncelUcMu &&
+      !!ab.kopruErisimSonu &&
+      ab.erisimSonu.getTime() === ab.kopruErisimSonu.getTime();
     const yeniErisimSonu =
-      guncelUcMu || donemSonu > ab.erisimSonu ? donemSonu : ab.erisimSonu;
+      kopruDuzeltilir || donemSonu > ab.erisimSonu ? donemSonu : ab.erisimSonu;
 
     // ⚠ 24.09 — DUNNING DONGUSUNDEN CIKIS SIFIRLAMANIN KENDISINDEN OKUNUR.
     // Asagidaki `sayaclariSifirla` ilkBasarisizlik/denemeSayisi/sonDeneme/
@@ -637,13 +650,23 @@ export class AbonelikServisi {
       aktor: 'webhook',
       erisimSonu: yeniErisimSonu,
       sayaclariSifirla: true,
-      veri: { siparisKodu, iyzicoDurum: detay.subscriptionStatus, guncelUcMu },
+      veri: {
+        siparisKodu,
+        iyzicoDurum: detay.subscriptionStatus,
+        guncelUcMu,
+        // 24.09: erisimin bu tahsilatta nasil degistigi olaydan okunabilsin.
+        oncekiErisimSonu: ab.erisimSonu.toISOString(),
+        kopruDuzeltildi: kopruDuzeltilir,
+      },
     });
 
     await this.prisma.abonelik.update({
       where: { id: ab.id },
       data: {
-        ...(guncelUcMu ? { iyzicoDurum: detay.subscriptionStatus } : {}),
+        // Guncel ucun basarili tahsilati = iyzico gercek donemi bildirdi;
+        // kopru kapanir (duzeltildi ya da uzatildi). Eski halka kopruye
+        // DOKUNMAZ: kopru guncel ucun ilk tahsilatini bekler.
+        ...(guncelUcMu ? { iyzicoDurum: detay.subscriptionStatus, kopruErisimSonu: null } : {}),
         iyzicoSonKontrol: new Date(),
       },
     });

@@ -86,7 +86,9 @@ export interface DegisimSonucu {
  *  Ag hatasi / yaniti okunamayan cagri ve 201402 "kesin red" SAYILMAZ:
  *  iyzico degisimi yapmis olabilir. `canliUcuBul` ile SORULUR; degisim
  *  bulunursa yerele alinir, bulunamazsa musteriye "dogrulanamadi" denir —
- *  "degismedi" DEGIL.
+ *  "degismedi" DEGIL. ZAMAN ASIMINDA (24.09) kayitli ucun hala canli
+ *  gorunmesi de kesin sayilmaz: istegimiz kesildi ama iyzico yukseltmeyi
+ *  hala isliyor olabilir → yine "dogrulanamadi".
  * ═══════════════════════════════════════════════════════════════════════════
  */
 @Injectable()
@@ -240,6 +242,7 @@ export class PaketDegisimiServisi {
       });
     } catch (e) {
       const iyzicoKodu = e instanceof IyzicoHatasi ? e.kod ?? null : null;
+      const zamanAsimi = e instanceof IyzicoHatasi && e.zamanAsimi;
       const mesaj = e instanceof Error ? e.message : String(e);
       // ── SONUC BELIRSIZ MI? (inceleme bulgusu 1) ───────────────────────
       // Acik bir iyzico hata kodu = KESIN RED (201402 HARIC). Ag/ayristirma
@@ -250,7 +253,7 @@ export class PaketDegisimiServisi {
       // cekilir. Once iyzico'ya SORULUR (`canliUcuBul`).
       const belirsiz = !iyzicoKodu || iyzicoKodu === KAYITLI_UC_BAYAT;
       const dogrulama = belirsiz
-        ? await this.sonucuDogrula(mevcut, eskiKod)
+        ? await this.sonucuDogrula(mevcut, eskiKod, zamanAsimi)
         : ({ durum: 'degismedi' } as const);
 
       if (dogrulama.durum === 'degismedi') {
@@ -469,14 +472,20 @@ export class PaketDegisimiServisi {
   }
 
   /**
-   * Belirsiz sonuc (ag hatasi / 201402) sonrasi iyzico'ya SORAR.
+   * Belirsiz sonuc (ag hatasi / zaman asimi / 201402) sonrasi iyzico'ya SORAR.
    *   degismedi — kayitli uc hala canli: degisim OLMADI (kesin)
    *   degisti   — kayitli uc UPGRADED, canli cocuk bulundu
    *   belirsiz  — sorulamadi ya da cocuk bulunamadi (tahmin YOK)
+   *
+   * ⚠ ZAMAN ASIMINDA "kayitli uc hala canli" KESIN DEGILDIR (24.09): soru,
+   * kesilen istegin hemen ardindan sorulur; iyzico yukseltmeyi hala isliyor
+   * olabilir. "Degismedi" denirse musteri yanlis bilgilenir, iyzico donem
+   * sonunda yeni plani ceker. Bu yuzden sonuc `belirsiz` → "dogrulanamadi".
    */
   private async sonucuDogrula(
     mevcut: { iyzicoAbonelikKodu: string | null; iyzicoKokKodu: string | null; iyzicoMusteriKodu: string | null },
     eskiKod: string,
+    zamanAsimi: boolean,
   ): Promise<
     | { durum: 'degismedi' }
     | { durum: 'degisti'; uc: IyzicoAbonelikDetayi }
@@ -485,7 +494,11 @@ export class PaketDegisimiServisi {
     try {
       const canli = await this.abonelik.canliUcuBul(mevcut);
       if (!canli) return { durum: 'belirsiz', neden: 'canli uc bulunamadi' };
-      if (canli.referenceCode === eskiKod) return { durum: 'degismedi' };
+      if (canli.referenceCode === eskiKod) {
+        return zamanAsimi
+          ? { durum: 'belirsiz', neden: 'zaman asimi: kayitli uc hala canli, iyzico istegi hala isliyor olabilir' }
+          : { durum: 'degismedi' };
+      }
       return { durum: 'degisti', uc: canli };
     } catch (e) {
       return { durum: 'belirsiz', neden: `iyzico'ya sorulamadi: ${e instanceof Error ? e.message : String(e)}` };

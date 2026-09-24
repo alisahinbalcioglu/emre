@@ -1177,7 +1177,9 @@ export class SatinAlmaServisi {
     // Donem tarihleri SAF fonksiyondan gelir (donemTarihleriHesapla) —
     // boylece tampon ve deneme bitisi DB'siz, davranis duzeyinde
     // olculebilir. Kesin donem sonu ilk basarili tahsilat webhook'unda
-    // iyzico'dan gelip `erisimSonu`nu EZER; burasi kopru degerdir.
+    // iyzico'dan gelir; burasi KOPRU degerdir. Webhook onu yalniz
+    // `kopruErisimSonu` ile isaretlendiyse ve hala yerindeyse duzeltir
+    // (asagidaki not + abonelik.servisi `tahsilatBasarili`).
     const { erisimSonu, denemeSonu } = donemTarihleriHesapla(
       simdi,
       p.denemeGunu,
@@ -1198,6 +1200,8 @@ export class SatinAlmaServisi {
           durum,
           erisimSonu,
           denemeSonu,
+          // Ilk abonelik: korunacak erisim YOK, `erisimSonu` saf koprudur.
+          kopruErisimSonu: erisimSonu,
           odemeYontemi: OdemeYontemi.KART,
           iyzicoAbonelikKodu: p.iyzicoAbonelikKodu,
           // ILK abonelikte kod KENDISI kokUdur. Plan degisiminde
@@ -1226,11 +1230,41 @@ export class SatinAlmaServisi {
     // Suresi gecmis satirda `mevcut.erisimSonu` gecmistedir, yeni tarih
     // kazanir — geri donen musteri yolu AYNEN calisir.
     //
-    // Ikizi `abonelik.servisi.ts:erisimiUzat` (satir 379) ZATEN boyleydi:
-    //     const baslangic = ab.erisimSonu > simdi ? ab.erisimSonu : simdi;
-    // Yani webhook yolu koruyor, yalniz BURASI kisaltiyordu.
-    const korunanErisimSonu =
-      mevcut.erisimSonu > erisimSonu ? mevcut.erisimSonu : erisimSonu;
+    // ⚠ 24.09 — BU KURAL TEK BASINA YETMIYORDU. Buradaki eski not "ikizi
+    // `erisimiUzat` zaten boyle, yani webhook yolu koruyor" diyordu: YANLISTI.
+    // `erisimiUzat` yalniz HAVALE yoludur. KART tahsilat webhook'u
+    // (`AbonelikServisi.tahsilatBasarili`) guncel uctan gelen sipariste
+    // `erisimSonu`nu iyzico'nun `endPeriod`una yaziyordu (bu dosyanin kopru
+    // tamponunu duzeltmek icin) ve burada korunan 365 gun ILK TAHSILATTA
+    // yine siliniyordu — miras firma deneme almaz (deneme-hakki.servisi),
+    // o tahsilat satin almadan dakikalar sonra gelir.
+    //
+    // Koruma artik iki uctaki TEK alana baglidir: `kopruErisimSonu` yalniz
+    // buranin KOPRU degerini tasir, webhook YALNIZ `erisimSonu` hala o
+    // degerse kisaltir. Kopru yalniz erisimi BITMIS (ya da hic olmayan)
+    // satirda yazilir; erisimi SUREN satirda NULL — korunan tarih kopru
+    // degildir, webhook onu yalniz uzatabilir. Bedeli (bilincli): suren
+    // erisim kopruden KISAYSA (ornegin 5 gun kalmis) musteri kopruyu tasir —
+    // en fazla kopru ile iyzico donemi farki kadar (31+2 gun − bir ay; takvim
+    // ayiysa Subat'ta 5 gun) fazla erisim. Tersi, verilmis erisimi kesmek
+    // olurdu. ⚠ NULL da ACIKCA yazilir: onceki satin almadan kalan bayat
+    // kopru, bugunku korunan tarihi "kopru" gosteremez.
+    //
+    // ⚠ AYNI ABONELIGIN YENIDEN SONUCLANDIRILMASI (kurtarma taramasi / ikinci
+    // donus POST'u: ilk cagri satiri yazdi, niyet TAMAMLANDI damgasi yemeden
+    // hata verdi). Satirdaki erisim ve kopru BU satin almanin ilk cagrisinin
+    // — ya da onu duzelten webhook'un — degeridir, "suren erisim" DEGIL: oldugu
+    // gibi kalir. Aksi halde ikinci cagri kendi koprusunu NULL'lar ya da
+    // webhook'un duzelttigi donem sonunu yeni bir kopruyle ezerdi (24.09
+    // inceleme bulgusu). Yeni satin alma HER ZAMAN yeni iyzico kodu tasir.
+    const ayniAbonelik = mevcut.iyzicoAbonelikKodu === p.iyzicoAbonelikKodu;
+    const korunanErisimSonu = ayniAbonelik
+      ? mevcut.erisimSonu
+      : mevcut.erisimSonu > erisimSonu ? mevcut.erisimSonu : erisimSonu;
+    const erisimSuruyordu = mevcut.erisimSonu.getTime() > simdi.getTime();
+    const kopruErisimSonu = ayniAbonelik
+      ? mevcut.kopruErisimSonu
+      : erisimSuruyordu ? null : erisimSonu;
 
     const guncel = await this.prisma.abonelik.update({
       where: { id: mevcut.id },
@@ -1238,6 +1272,7 @@ export class SatinAlmaServisi {
         paketSurumuId: p.paketSurumuId,
         durum,
         erisimSonu: korunanErisimSonu,
+        kopruErisimSonu,
         denemeSonu,
         odemeYontemi: OdemeYontemi.KART,
         iyzicoAbonelikKodu: p.iyzicoAbonelikKodu,
@@ -1271,6 +1306,14 @@ export class SatinAlmaServisi {
         oncekiDurum: mevcut.durum,
         yeniDurum: durum,
         aciklama: 'Kart ile yeniden abone olundu',
+        // 24.09: korunan erisim olay kaydindan OKUNABILSIN. Bu alanlar
+        // olmadan "odeme erisimi kisaltti mi" sorusu canlida ancak goc aninin
+        // 365 gun sonrasi hesaplanarak olculebildi (yalniz miras icin).
+        veri: {
+          oncekiErisimSonu: mevcut.erisimSonu.toISOString(),
+          erisimSonu: korunanErisimSonu.toISOString(),
+          kopruErisimSonu: kopruErisimSonu?.toISOString() ?? null,
+        },
         aktor: 'sistem',
       },
     });
