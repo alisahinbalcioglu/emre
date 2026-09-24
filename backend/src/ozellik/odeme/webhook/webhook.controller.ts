@@ -16,6 +16,7 @@ import {
 } from '../iyzico/imza';
 import { WebhookIsleyici } from './webhook.isleyici';
 import { odemeAyari } from '../yapilandirma';
+import { iyzicoTarihi } from '../iyzico/iyzico-tarihi';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -137,10 +138,11 @@ export class IyzicoWebhookController {
           siparisKodu: govde.orderReferenceCode,
           musteriKodu: govde.customerReferenceCode,
           iyzicoRefKodu: govde.iyziReferenceCode,
-          // iyziEventTime MİLİSANİYE cinsinden (13 hane)
-          olayZamani: govde.iyziEventTime
-            ? new Date(govde.iyziEventTime)
-            : undefined,
+          // iyziEventTime MİLİSANİYE cinsinden (13 hane). TEK çözücüden
+          // (24.09): gövde imzasız da gelebilir; rakam-dizesi ya da bozuk
+          // değer Invalid Date olarak yazılmaya çalışılmasın — çözülemezse
+          // alan boş kalır, olay YİNE kaydedilir.
+          olayZamani: iyzicoTarihi(govde.iyziEventTime) ?? undefined,
         },
       });
     } catch (e: unknown) {

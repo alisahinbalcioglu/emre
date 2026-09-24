@@ -789,6 +789,10 @@ async function main() {
         erisimSonu: new Date('2026-01-01'),
       }),
       update: async (a: any) => ({ id: 'ab-1', ...a.data }),
+      // 24.09: `tahsilatBasarili` dunning döngüsünü KOŞULLU sıfırlar (satır
+      // sayısı = "ödemeniz alındı" kararı, `test:dunning-toparlandi`). Bu
+      // kapının konusu değil: döngüde olmayan satır gibi davranır.
+      updateMany: async () => ({ count: 0 }),
     },
     firma: {
       updateMany: async (a: any) => {
@@ -812,12 +816,17 @@ async function main() {
     $transaction: async (fn: any) => fn(wPrismaYuzey),
   } as any;
   const wPrismaYuzey = wPrisma;
+  // ⚠ 24.09: tahsilat yolu siparişin ÖDENDİĞİNİ ister (`odenmisSiparisMi`,
+  // `test:webhook-tahsilat-dogrulama`) — 20.08 tutanağındaki biçim:
+  // `orderStatus: 'SUCCESS'` + başarılı ödeme denemesi.
   const wIyzico = {
     abonelikGetir: async () => ({
       subscriptionStatus: 'ACTIVE',
       orders: [
         {
           referenceCode: 'ord-16',
+          orderStatus: 'SUCCESS',
+          paymentAttempts: [{ paymentStatus: 'SUCCESS' }],
           endPeriod: '2026-11-01T00:00:00Z',
           startPeriod: '2026-10-01T00:00:00Z',
         },

@@ -362,6 +362,17 @@ const SUITES: Suite[] = [
   //    MUTASYONLA ÖLÇÜLDÜ (2/2 öldü): kısıtlı moda CIKTI_INDIR eklenince K2
   //    kırmızı; export ucundan dekoratör kaldırılınca W1 kırmızı.
   { ad: 'Erişim kapısı: karar matrisi + uç kablolaması (K/L/W)', script: 'test:erisim', zincir: 'Z0' },
+  // ── 24.09.2026 — ÖDEME BEKLİYOR GERİ SAYIMI KISITLAMA GÜNÜNE. DB/AĞ GEREKTİRMEZ.
+  //    Ölçülen kusur: ODEME_BEKLIYOR dalı `kalanGun`u `erisimSonu`na sayıyordu
+  //    — tahsilat başarısızken o tarih ZATEN geçmiştir (yenilemede `endPeriod`
+  //    = çekim anı). Hesabım "−1, −3, −9 gün kaldı" yazarken dunning e-postası
+  //    aynı gün kısıtlamaya kalan günü sayıyordu. Emre kararı: ekran e-postanın
+  //    sayısını gösterir (`kisit-gunu.ts`, tek fonksiyon). Satırlar GERÇEK
+  //    yazma yollarından (webhook + mutabakat UNPAID); L bloğu GERÇEK dunning
+  //    merdivenini günlük koşturur: ekran > 0 iken kısıtlanmaz, 0'ı gören ilk
+  //    koşum kısıtlar. Kısıt planlanmamış satırda (tarih yok, havaleye geçmiş)
+  //    sayı yok. Erişim kararı ve şerit DEĞİŞMEZ (A bloğu).
+  { ad: 'Ödeme bekliyor geri sayımı kısıtlama gününe: yeniden üretim · çizelge · e-posta · merdiven · boş tarih · havale · ayar · erişim (F/R/G/E/L/N/H/K/A)', script: 'test:odeme-bekliyor-geri-sayim', zincir: 'Z0' },
   // ── 28.08.2026 — GÜVENLİK TURU 2 (G1-G6). DB GEREKTİRMEZ.
   //    ADIM 2 denetimi sırasında ödeme DIŞINDA bulunan altı kusur; hepsi kod
   //    OKUNARAK doğrulandı (grep sonucuna güvenilmedi), sonra düzeltildi.
@@ -487,6 +498,19 @@ const SUITES: Suite[] = [
   //    I4 rastgelenin sabitlenmediğini ölçer (tekrar saldırısı).
   //    MUTASYONLA ÖLÇÜLDÜ: eski kusur geri konunca I1, I4-b ve I5 kırmızı.
   { ad: 'iyzico yetki başlığı: randomKey eşliği (I1-I5)', script: 'test:iyzico-basligi', zincir: 'Z0' },
+  // ── 24.09.2026 — iyzico ZAMAN AŞIMI (Z1-Z6). AĞ GEREKTİRMEZ: süreç içi yerel
+  //    HTTP sunucusu (127.0.0.1) iyzico gibi takılır; istek GERÇEK fetch ile
+  //    gider, `AbortSignal.timeout` sarılıp süre 300 ms'ye kısaltılır.
+  //    KUSUR: `IyzicoClient.istek` içindeki `fetch` sinyal taşımıyordu; undici
+  //    başlığa 300 sn, gövdeye ayrıca 300 sn bekler. iyzico takılınca ödeme,
+  //    iptal, kart güncelleme ve paket değişimi dakikalarca asılı kalıyor,
+  //    paket değişiminin firma sırası aynı firmanın sonraki isteklerini de
+  //    bekletiyordu. ⚠ ANLAM: zaman aşımı RED DEĞİLDİR — hata KODSUZ ve
+  //    `zamanAsimi` İŞARETLİ: paket değişimi onu belirsiz sayıp iyzico'ya sorar
+  //    ve kayıtlı uç canlı görünse de "değişmedi" DEMEZ (Z6); dunning "ödemeniz
+  //    alınamadı" bildirimini basamak başına BİR KEZ erteler (Z7). Z6/Z7
+  //    GERÇEK servislerle koşar.
+  { ad: 'iyzico zaman aşımı: sinyal · kesim · işaretli kodsuz hata · belirsiz dal · firma sırası · dunning (Z1-Z7)', script: 'test:iyzico-zaman-asimi', zincir: 'Z0' },
   { ad: 'Abonelik ölçüm betiği: SQL geçerliliği (S1-S4b)', script: 'test:olcum-sorgu', zincir: 'Z0' },
   { ad: 'Satın alma yolu: fatura kapısı + miras muafiyeti (P1-P7)', script: 'test:satinalma', zincir: 'Z0' },
   // T47 (22.09.2026): "fatura bilgisi eksik firma gercek bir fatura kesme
@@ -531,6 +555,17 @@ const SUITES: Suite[] = [
   //    kesimde canlı okuma D5 kırmızı; listeye `ekiptenCikarildi` eklenince
   //    D9/D11 kırmızı; kart yolundaki çağrı kesilince D14 kırmızı.
   { ad: 'Ödeme/imha: fatura kendi kopyası (K4) + ödeme sonrası geri açma (D1-D16)', script: 'test:odeme-imha', zincir: 'Z0' },
+  // ── 24.09.2026 — "ÖDEMENİZ ALINDI" E-POSTASI HİÇ GİTMİYORDU. DB/AĞ/SMTP
+  //    GEREKTİRMEZ. `tahsilatBasarili` dunning sayaçlarını sıfırladıktan SONRA
+  //    `tahsilatToparlandi` satırı yeniden okuyup her müşteriyi "zaten sorunsuz"
+  //    görüyordu (ölçüldü: günlükte hata yok). Döngüden çıkış artık KOŞULLU
+  //    sıfırlamanın kendisinden okunur ve işleyici üzerinden taşınır — tek yol,
+  //    tek kural; işleyici olayın kaynağına (iyzico / mutabakat oynatması)
+  //    bakmaz. GERÇEK işleyici + abonelik + fatura + dunning: toparlanan
+  //    müşteriye TAM BİR e-posta (aynı olay iki süreçte AYNI ANDA işlense de),
+  //    hiç dunning'e girmemişe SIFIR; posta hatası tahsilat olayını düşürmez.
+  //    Eski hâl 17 kırmızı; inceleme öncesi "anlık görüntü" sürümü E1 kırmızı.
+  { ad: 'Dunning "ödemeniz alındı": çıkış koşullu sıfırlamadan, tam bir kez, posta hatası tahsilatı düşürmez (Ö/T/K/N/Y/E/M/H)', script: 'test:dunning-toparlandi', zincir: 'Z0' },
   // ── 16.09.2026 — FAZ 6.12a DENEME BİR KEZ. DB ve AĞ GEREKTİRMEZ (bellek-Prisma,
   //    kısıt + ILIKE joker + iç içe geçen çağrılar). Ölçülen: deneme hakkı hiçbir
   //    kimliğe bağlı değildi; aynı firma (iptal/deneme sonu ödeme alınamadı), hesap
@@ -539,6 +574,50 @@ const SUITES: Suite[] = [
   //    kapalı hata + K-P5 (DENEME→ODEME_BEKLIYOR, dunning bağlantısı) + çift
   //    abonelik koruması + K-P6 kayıt/giriş + KVKK + JWT'li paket ucu.
   { ad: 'Deneme hakkı bir kez: yollar A-E, ikiz plan, K-P5/K-P6 (S/O/A-N/K/CF/CS/G/L/H/I)', script: 'test:deneme-hakki', zincir: 'Z0' },
+  // ── 23.09.2026 — GECE MUTABAKATI DENEMEYİ AKTİF'E ÇEKMİYOR. DB/AĞ GEREKTİRMEZ.
+  //    iyzico'da TRIAL durumu yok: deneme içindeki abonelik ACTIVE görünür
+  //    (resmî doküman, Abonelik İşlemleri). Mutabakat ACTIVE'i AKTIF okuyup
+  //    DENEME satırını İLK GECE AKTIF'e çekiyordu → "Deneme sürenizin bitmesine
+  //    X gün kaldı" uyarısı hiç çıkmıyordu (müşteri ilk çekimden önce
+  //    uyarılmıyordu), rozet "Aktif" diyordu, satır DENEME yaşam döngüsünden
+  //    çıkıyordu. Kapı GERÇEK iş + GERÇEK durum makinesi + GERÇEK erişim
+  //    kararıyla ölçer: deneme sürerken ACTIVE → DENEME kalır; UNPAID/CANCELED
+  //    yine işlenir; deneme bitince de çıplak ACTIVE terfi ettirmez (24.09,
+  //    kanıtsız terfi yok); tahsilat webhook'u DENEME'yi yine AKTIF'e çeker;
+  //    cron giriş noktası kuralı hatasız uygular ve özet satırında korunan
+  //    satırı sayar.
+  { ad: 'Mutabakat denemeyi AKTİF yapmaz: saf kural · tek satır · uyarı · webhook · gece · kapatma (S/M/E/W/G/K)', script: 'test:mutabakat-deneme', zincir: 'Z0' },
+  // ── 24.09.2026 — GECE MUTABAKATI KAYIP TAHSİLAT WEBHOOK'UNU KURTARIR.
+  //    DB/AĞ GEREKTİRMEZ. Ödenmiş dönemi `erisimSonu`na yazan ve faturayı
+  //    kuyruğa alan TEK yol başarılı tahsilat webhook'uydu; iyzico onu ~45 dk
+  //    sonra bırakır. Webhook'u kaybolan ödeyen müşteri "dönem doğrulanıyor"
+  //    ekranında erişimsiz kalıyor, fatura kesilmiyordu; ödeme bekleyen
+  //    müşteriyi mutabakat çıplak ACTIVE ile AKTIF'e çekip KİLİTLİYORDU (eski
+  //    hâl 10 kırmızı). Kural: iyzico ACTIVE + ödenmiş sipariş (SUCCESS +
+  //    SUCCESS deneme) dönem sonu `erisimSonu`ndan sonra → `WebhookOlayi`
+  //    (kaynak mutabakat) → webhook işleyicisi AYNI yolu koşar; kanıtsız
+  //    ACTIVE (IPTAL dışında) terfi ettirmez. KORUMA (Emre 24.09): iyzico'da
+  //    hâlâ ACTIVE görünen SONA_ERDI satırı taranır, aynı satırda yeniden
+  //    satın alma kapalı (çift çekim), `iptalEt` iyzico durumunu tazeler.
+  //    GERÇEK iş + işleyici + fatura + dunning + satın alma + erişim kararı;
+  //    tekillik (P2002), ikinci gece, geç gelen gerçek webhook, ölü oynatmanın
+  //    yeniden kurulması, çoklu kayıp sipariş, özet satırı, uçtan uca zincir.
+  { ad: 'Mutabakat kayıp tahsilatı yeniden oynatır: saf kural · tarih · webhook ölçütü · kayıplar · negatifler · tekrar · gece · koruma · zincir (S/T/Ö/A/D/B/W/N/İ/G/K/Z)', script: 'test:mutabakat-kayip-tahsilat', zincir: 'Z0' },
+  // ── 24.09.2026 — WEBHOOK GÖVDESİ TAHSİLAT KANITI DEĞİL. DB/AĞ GEREKTİRMEZ.
+  //    Uç açık, imza varsayılan olarak zorunlu değil. Eski hâl (30 kırmızı):
+  //    `tahsilatBasarili` siparişin VARLIĞINA bakıyordu — iyzico'nun önceden
+  //    açtığı WAITING siparişi anan sahte başarı erişimi bir dönem uzatıyor,
+  //    dunning'i sıfırlıyor (KISITLI → AKTIF), faturayı kuyruğa alıyordu;
+  //    `tahsilatBasarisiz` iyzico'ya hiç sormuyordu — ödeyen müşteri
+  //    ODEME_BEKLIYOR + dunning e-postası, zincirde 30. gün ASKIDA (gece
+  //    mutabakatı artık geri almıyor); `/abonelik/donus` iyzico abonelik kodunu
+  //    döndürüyordu; tarihler `new Date(...)` (rakam-dizesi Invalid Date).
+  //    Kural TEK yerde (`iyzico/tahsilat-kaniti.ts`, mutabakatla AYNI
+  //    `odenmisSiparisMi`); GERÇEK denetleyici + işleyici + servisler + gece
+  //    işi + dunning merdiveni + satın alma dönüşü; gerçek ödeme kaybolmaz
+  //    (yeniden deneme + ölü olayı gece oynatır), gerçek ret yine dunning'i
+  //    başlatır, eskimiş ret ödenmiş siparişi geri almaz.
+  { ad: 'Webhook tahsilat doğrulaması: saf kural · ölçüt · sahte başarı · sahte ret · dönüş yanıtı · tarih (S/Ö/B/F/D/T)', script: 'test:webhook-tahsilat-dogrulama', zincir: 'Z0' },
   // ── 16.09.2026 — FAZ 7 · F2a: TOTP / KİMLİK ŞİFRELEME / MEYDAN OKUMA
   //    ÇEKİRDEĞİ. DB, SUNUCU ve AĞ GEREKTİRMEZ → `db` bayrağı YOK. Route ve
   //    şema YOK; canlı davranış değişmez. RFC 6238 Ek-B + RFC 4226 Ek-D
@@ -578,6 +657,17 @@ const SUITES: Suite[] = [
   //    diye daraltan mutant kırmızı olur; (T) 7 durum × 2 tarih bileşiminde
   //    saf çekirdek ile `ErisimServisi.karar` KARŞILAŞTIRILIR (ikiz kural kapısı).
   { ad: 'Abonelik sağlığı tek kaynaktan: seviye + yetenek süzgeci (S/T/I/Y)', script: 'test:abonelik-erisim', zincir: 'Z0' },
+  // ── 24.09.2026 — DENEME GERİ SAYIMI İLK ÇEKİM GÜNÜNE. DB/AĞ GEREKTİRMEZ.
+  //    Ölçülen kusur: şerit ("Deneme sürenizin bitmesine N gün kaldı") ve
+  //    Hesabım'daki `kalanGun` `erisimSonu`na sayıyordu — o tarih 2 günlük
+  //    webhook tamponu taşır, iyzico ise `denemeSonu`nda çeker. Çekime 1,5 gün
+  //    varken "4 gün kaldı", çekimden SONRA 2 gün daha "N gün kaldı" deniyordu.
+  //    Emre kararı: geri sayım `denemeSonu`na; tamponda "Deneme süreniz sona
+  //    erdi · İlk ödemeniz işleniyor" (düğmesiz); "doldu" ve ERİŞİM KARARI
+  //    değişmez (E bloğu 801 saatte servisi saf çekirdekle karşılaştırır);
+  //    `denemeSonu` boşsa eski davranış. B bloğu satın almanın gerçek yazma
+  //    yolundan (ilk alım + geri dönen müşteri) karara BAĞLANTIYI ölçer.
+  { ad: 'Deneme geri sayımı ilk çekim gününe: çizelge · tampon · doldu · boş tarih · erişim · bağlantı (F/G/T/D/N/E/B)', script: 'test:deneme-geri-sayim', zincir: 'Z0' },
   // ── 17.09.2026 — FAZ 7 F1b: EKİP (davet · koltuk · kişi sınırı · ikizler).
   //    DB/AĞ GEREKTİRMEZ: bellek içi sahte Prisma `where`i GERÇEKTEN uygular
   //    (OR/NOT/lt/gt/in + ilişki süzgeci), `$transaction` firlatan işlemi geri
@@ -690,6 +780,17 @@ const SUITES: Suite[] = [
   // hiçbir şeyi geri almaz, iptal/yeniden abonelik planı siler. DB/AĞ/iyzico
   // GEREKTİRMEZ.
   { ad: 'Paket değişimi: hak · yol · tarih · servis · planlı geçiş · webhook · temizlik · bağlantı (H/Y/T/S/G/E/W/R/B)', script: 'test:paket-degisimi', zincir: 'Z0' },
+  // 24.09: MİRAS ERİŞİMİ İLK KART TAHSİLATINDA SİLİNİYORDU. Satın alma 02.09'dan
+  // beri göç satırının 365 gününü `max(mevcut, yeni)` ile koruyor; yorumu
+  // "webhook yolu da koruyor" diyordu — YANLIŞTI: `tahsilatBasarili` güncel uçtan
+  // gelen siparişte `erisimSonu`nu `endPeriod`a yazıyordu (satın almanın 31+2
+  // günlük köprüsünü düzeltmek için). Miras firma deneme almaz, ilk tahsilat
+  // dakikalar sonra gelir → ~332 gün siliniyordu. Birim testler iki ucu AYRI
+  // ölçüyordu (P8 / W8), BAĞLANTIYI değil. Kural: satın alma köprüyü
+  // `kopruErisimSonu`na yazar; webhook yalnız `erisimSonu` hâlâ o değerse
+  // kısaltır. Kapı gerçek `donusIyzicodan` → gerçek `tahsilatBasarili` koşar.
+  // DB/AĞ/iyzico GEREKTİRMEZ.
+  { ad: 'Miras erişimi: köprü yazımı · yeniden sonuçlandırma · miras uçtan uca · köprü düzeltmesi · sonradan verilen erişim · olay izi · bağlantı (K/Y/M/D/V/O/B)', script: 'test:miras-erisimi', zincir: 'Z0' },
   // 23.09 (Emre kararı): paketsiz YENİ hesap duvar görmez, uygulamayı GEZER
   // ("yalnızca gezsin"); Malzeme Havuzu'nda "fiyatlar paketle açılsın".
   // ⚠ En kritik kalkan V5: vitrin sunucuda HİÇBİR yetenek açmaz — "gezsin"

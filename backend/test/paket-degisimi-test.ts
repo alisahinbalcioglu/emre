@@ -221,8 +221,18 @@ function yBlogu(): void {
   const miras = abonelik('basic-mek');
   miras.paketSurumu = { ...miras.paketSurumu, paket: { ...miras.paketSurumu.paket, kod: 'miras-pro' } };
   check('Y2 miras → satin-al (goc emniyeti tahsilat degil)', yol(miras, surum('pro-mek')).yol === 'satin-al');
-  check('Y3 SONA_ERDI → satin-al', yol(abonelik('basic-mek', { durum: 'SONA_ERDI' }), surum('pro-mek')).yol === 'satin-al');
-  check('Y4 ASKIDA → satin-al', yol(abonelik('basic-mek', { durum: 'ASKIDA' }), surum('pro-mek')).yol === 'satin-al');
+  // ⚠ 24.09 — geri donen musteri YALNIZ iyzico'daki kart aboneligi kapaliysa
+  // satin alir (cift cekim korumasi, `iyzicoAboneligiAcikMi`). Fikstur
+  // varsayilani `iyzicoDurum: 'ACTIVE'`; sona ermis/askidaki satirin gercekci
+  // iyzico durumu CANCELED/EXPIRED/UNPAID'dir.
+  check('Y3 SONA_ERDI (iyzico CANCELED) → satin-al',
+    yol(abonelik('basic-mek', { durum: 'SONA_ERDI', iyzicoDurum: 'CANCELED' }), surum('pro-mek')).yol === 'satin-al');
+  check('Y4 ASKIDA (iyzico UNPAID) → satin-al',
+    yol(abonelik('basic-mek', { durum: 'ASKIDA', iyzicoDurum: 'UNPAID' }), surum('pro-mek')).yol === 'satin-al');
+  check('Y3b ⭐ SONA_ERDI ama iyzico hala ACTIVE → KART_ABONELIGI_ACIK (yeni abonelik eskisini sahipsiz birakirdi)',
+    kodu_(yol(abonelik('basic-mek', { durum: 'SONA_ERDI', iyzicoDurum: 'ACTIVE' }), surum('pro-mek'))) === 'KART_ABONELIGI_ACIK');
+  check('Y4b ⭐ ASKIDA ama iyzico hala ACTIVE → KART_ABONELIGI_ACIK',
+    kodu_(yol(abonelik('basic-mek', { durum: 'ASKIDA', iyzicoDurum: 'ACTIVE' }), surum('pro-mek'))) === 'KART_ABONELIGI_ACIK');
 
   check('Y5 ayni paket → AYNI_PAKET', kodu_(yol(abonelik('pro-mek'), surum('pro-mek'))) === 'AYNI_PAKET');
   check('Y6 satista olmayan surum → SATISTA_DEGIL', kodu_(yol(abonelik('basic-mek'), surum('pro-mek', { satistaMi: false }))) === 'SATISTA_DEGIL');
@@ -271,18 +281,27 @@ function yBlogu(): void {
   const durumlar = Object.values(AbonelikDurumu);
   let karsilastirilan = 0;
   let celiski = 0;
+  // ⚠ 24.09: iyzico durumu da eksen — geri donen musteride kapi ona bakar.
+  // Yalniz fikstur varsayilani (ACTIVE) donulseydi SONA_ERDI/ASKIDA'nin ACIK
+  // tarafi hic karsilastirilmazdi.
+  const iyzicoDurumlari = ['ACTIVE', 'CANCELED', null];
+  let acikKapi = 0;
   for (const d of durumlar) {
     for (const mirasMi of [false, true]) {
-      const ab = abonelik('basic-mek', { durum: d });
-      if (mirasMi) ab.paketSurumu = { ...ab.paketSurumu, paket: { ...ab.paketSurumu.paket, kod: 'miras-core' } };
-      karsilastirilan++;
-      if ((yol(ab, surum('pro-mek')).yol === 'satin-al') !== !satinAlmaKapisi(ab)) celiski++;
+      for (const iyzicoDurum of iyzicoDurumlari) {
+        const ab = abonelik('basic-mek', { durum: d, iyzicoDurum });
+        if (mirasMi) ab.paketSurumu = { ...ab.paketSurumu, paket: { ...ab.paketSurumu.paket, kod: 'miras-core' } };
+        karsilastirilan++;
+        if (!satinAlmaKapisi(ab)) acikKapi++;
+        if ((yol(ab, surum('pro-mek')).yol === 'satin-al') !== !satinAlmaKapisi(ab)) celiski++;
+      }
     }
   }
   check(
-    `Y21 ⭐ ${karsilastirilan} durum×miras: "satin-al" ⟺ satin alma kapisi acik (celiski 0)`,
-    karsilastirilan === durumlar.length * 2 && karsilastirilan >= 14 && celiski === 0,
-    `celiski=${celiski}`,
+    `Y21 ⭐ ${karsilastirilan} durum×miras×iyzico: "satin-al" ⟺ satin alma kapisi acik (celiski 0, acik kapi ${acikKapi})`,
+    karsilastirilan === durumlar.length * 2 * iyzicoDurumlari.length && karsilastirilan >= 42 && celiski === 0 &&
+      acikKapi === durumlar.length * iyzicoDurumlari.length + 2 * 2,
+    `celiski=${celiski} acikKapi=${acikKapi}`,
   );
   check(
     'Y22 satinalma.servisi AYNI fonksiyonu disa aciyor (kopya degil, kimlik esit)',
@@ -650,6 +669,32 @@ async function sBlogu(): Promise<void> {
       'S15 ⭐ ag hatasi + kayitli uc hala CANLI → iyzico\'ya SORULDU, "degismedi" KESIN (502), satir ayni',
       iyz.sayi('abonelikGetir') === 1 && r?.govde?.kod === 'SAGLAYICI_DEGISIM_HATASI' && JSON.stringify(db.satir()) === once,
       `getir=${iyz.sayi('abonelikGetir')} r=${JSON.stringify(r)}`,
+    );
+  }
+  {
+    // S15b · ZAMAN ASIMI (24.09): istegimiz kesildi ama iyzico yukseltmeyi
+    // HALA isliyor olabilir — hemen ardindan sorulan soruda kayitli ucun canli
+    // gorunmesi KESIN degil. "Degismedi" (502) denirse musteri yanlis
+    // bilgilenir; "dogrulanamadi" (503) denir. Ag hatasi S15'te 502'de KALIR.
+    const zamanAsimi = new IyzicoHatasi(undefined, 'iyzico yanıt vermedi (zaman aşımı, 20 sn)', undefined, true);
+    const iyz = sahteIyzico({
+      degisimHatasi: zamanAsimi,
+      detaylar: { 'uc-0': { referenceCode: 'uc-0', subscriptionStatus: 'ACTIVE' } },
+    });
+    const db = sahteDb({ abonelikler: [abonelik('basic-mek')], surumler: TUM_SURUMLER() });
+    const once = JSON.stringify(db.satir());
+    const r = await reddeder(() => kur(db, iyz).pd.degistir(DEGISTIR('pro-mek')));
+    check('S15b-OLCUT zaman asimi hatasi KODSUZ ve isaretli', zamanAsimi.kod === undefined && zamanAsimi.zamanAsimi === true);
+    check(
+      'S15b ⭐ zaman asimi + kayitli uc hala CANLI → "degismedi" DENMEZ: 503 DEGISIM_DOGRULANAMADI, satir ayni',
+      iyz.sayi('abonelikGetir') === 1 && r?.durum === 503 && r?.govde?.kod === 'DEGISIM_DOGRULANAMADI' && JSON.stringify(db.satir()) === once,
+      `getir=${iyz.sayi('abonelikGetir')} r=${JSON.stringify(r)}`,
+    );
+    const olay = db.olaylar.find((o: Satir) => o.tip === 'paket.degisim.belirsiz');
+    check(
+      'S15c belirsiz olay kaydi: iyzicoKodu null, neden zaman asimi',
+      !!olay && olay.veri?.iyzicoKodu === null && /zaman asimi/.test(olay.veri?.neden ?? ''),
+      JSON.stringify(olay?.veri),
     );
   }
   {
@@ -1024,7 +1069,9 @@ async function eBlogu(): Promise<void> {
 // ═══════════════════════════════════════════════════════════════════════════
 async function wBlogu(): Promise<void> {
   console.log('\n── W · webhook: odenen plana hizalama, eski halka, zincir ──');
-  const siparis = (ref: string, bitis: Date) => ({ referenceCode: ref, orderStatus: 'SUCCESS', endPeriod: bitis.toISOString(), startPeriod: SIMDI.toISOString(), paidPrice: 1299 });
+  // ⚠ 24.09: odenmis siparis KANITIYLA tasinir (20.08 tutanagi: basarili odeme
+  // denemesi) — webhook odenmemis siparisi reddeder (`test:webhook-tahsilat-dogrulama`).
+  const siparis = (ref: string, bitis: Date) => ({ referenceCode: ref, orderStatus: 'SUCCESS', paymentAttempts: [{ paymentStatus: 'SUCCESS' }], endPeriod: bitis.toISOString(), startPeriod: SIMDI.toISOString(), paidPrice: 1299 });
 
   // W1 · yenileme: iyzico PLANLI paketi cekti (saat farki: vade bizde 1 dk ileride).
   {
@@ -1116,11 +1163,26 @@ async function wBlogu(): Promise<void> {
   // W8 · GUNCEL uctan gelen siparis olagan kurali korur (inceleme bulgusu 3):
   // satin almadaki gecici tampon (31+2 gun) ilk tahsilatta iyzico'nun donem
   // sonuna DUZELIR. "Asla kisaltma" kurali yalniz ESKI halkaya aittir.
+  // ⚠ 24.09: fikstur satin almanin YAZDIGI hali tasir — kopru (`kopruErisimSonu`)
+  // `erisimSonu` ile ayni. Kisaltma artik bu kaniti ister; W8b karsi tarafi,
+  // `test:miras-erisimi` satin alma → webhook BAGLANTISINI olcer.
   {
-    const db = sahteDb({ abonelikler: [abonelik('pro-mek', { iyzicoAbonelikKodu: 'uc-1', erisimSonu: gunSonra(33) })], surumler: TUM_SURUMLER() });
+    const db = sahteDb({ abonelikler: [abonelik('pro-mek', { iyzicoAbonelikKodu: 'uc-1', erisimSonu: gunSonra(33), kopruErisimSonu: gunSonra(33) })], surumler: TUM_SURUMLER() });
     const iyz = sahteIyzico({ detaylar: { 'uc-1': { referenceCode: 'uc-1', pricingPlanReferenceCode: 'plan-pro-mek-denemesiz', subscriptionStatus: 'ACTIVE', orders: [siparis('sip-ilk', gunSonra(30))] } } });
     await kur(db, iyz).ab.tahsilatBasarili('uc-1', 'sip-ilk');
     check('W8 ⭐ guncel uc: erisim iyzico donem sonuna DUZELDI (33 → 30 gun; tampon kaldirildi)', db.satir().erisimSonu.getTime() === gunSonra(30).getTime(), db.satir().erisimSonu.toISOString());
+    check('W8a kopru ilk tahsilatla KAPANDI (ikinci siparis kisaltamaz)', db.satir().kopruErisimSonu === null, String(db.satir().kopruErisimSonu));
+  }
+
+  // W8b · ayni guncel uc siparisi, ama `erisimSonu` KOPRU DEGIL (miras gocunun
+  // 365 gunu satin almada korundu, kopru NULL): donem sonu erisimi KISALTMAZ.
+  {
+    const db = sahteDb({ abonelikler: [abonelik('pro-mek', { iyzicoAbonelikKodu: 'uc-1', erisimSonu: gunSonra(340), kopruErisimSonu: null })], surumler: TUM_SURUMLER() });
+    const iyz = sahteIyzico({ detaylar: { 'uc-1': { referenceCode: 'uc-1', pricingPlanReferenceCode: 'plan-pro-mek-denemesiz', subscriptionStatus: 'ACTIVE', orders: [siparis('sip-ilk', gunSonra(30))] } } });
+    await kur(db, iyz).ab.tahsilatBasarili('uc-1', 'sip-ilk');
+    check('W8b ⭐ guncel uc, kopru YOK: verilmis 340 gun KISALMADI (miras erisimi)', db.satir().erisimSonu.getTime() === gunSonra(340).getTime(), db.satir().erisimSonu.toISOString());
+    // "Degismedi" webhook hic kosmasa da gecer: siparisin ISLENDIGI ayrica olculur.
+    check('W8b-KANIT webhook siparisi isledi (durum olayi, aktor webhook)', db.olaylar.some((o: Satir) => o.tip === 'durum.degisti' && o.aktor === 'webhook' && o.veri?.siparisKodu === 'sip-ilk'));
   }
 
   // W9 · ⭐ YARIS (inceleme bulgusu 6): webhook satiri okuduktan SONRA musteri
@@ -1171,7 +1233,11 @@ async function wBlogu(): Promise<void> {
       abonelikler: [abonelik('pro-mek', { iyzicoAbonelikKodu: 'uc-1', planliPaketSurumuId: 's-basic-mek', paketGecisTarihi: new Date(Date.now() - 60_000) })],
       surumler: TUM_SURUMLER(),
     });
-    await kur(db, sahteIyzico()).ab.tahsilatBasarisiz('uc-1', 'sip-f');
+    // ⚠ 24.09: ret iyzico'dan DOGRULANIR (`tahsilatBasarisizligiKarari`,
+    // `test:webhook-tahsilat-dogrulama` F) — gercek reddin karsiligi: abonelik
+    // UNPAID, sipariste reddedilmis deneme.
+    const iyz = sahteIyzico({ detaylar: { 'uc-1': { referenceCode: 'uc-1', pricingPlanReferenceCode: 'plan-basic-mek-denemesiz', subscriptionStatus: 'UNPAID', orders: [{ referenceCode: 'sip-f', orderStatus: 'FAILED', paymentAttempts: [{ paymentStatus: 'FAILURE' }] }] } } });
+    await kur(db, iyz).ab.tahsilatBasarisiz('uc-1', 'sip-f');
     check(
       'W10 ⭐ basarisiz yenilemede planli dusurme UYGULANDI (dunning dusurulmus paketi gorur), durum ODEME_BEKLIYOR',
       db.satir().paketSurumuId === 's-basic-mek' && db.satir().durum === 'ODEME_BEKLIYOR',

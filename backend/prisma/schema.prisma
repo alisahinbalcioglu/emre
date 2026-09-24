@@ -1484,6 +1484,17 @@ model Abonelik {
   erisimSonu DateTime
   denemeSonu DateTime?
 
+  /// SATIN ALMANIN KOPRU TARIHI (24.09.2026). Kart satin almasi `erisimSonu`nu
+  /// iyzico'nun gercek donem sonunu bilmeden TAMPONLU bir kopru degerle yazar
+  /// (`donemTarihleriHesapla`: deneme ya da 31 gun + 2 gun tampon); o deger
+  /// burada da tutulur. Ilk basarili tahsilat webhook'u kopruyu iyzico'nun
+  /// `endPeriod`una DUZELTIR, gerekirse KISALTIR — ama YALNIZ `erisimSonu` HALA
+  /// bu degere esitse. Baska her durumda (miras gocunun 365 gunu, havale,
+  /// yonetici, onceki donem) webhook `erisimSonu`nu yalniz UZATIR: kisaltma
+  /// pozitif kanit ister. NULL = duzeltilecek kopru yok (satin almada erisim
+  /// zaten suruyordu ya da kopru ilk tahsilatla kapandi).
+  kopruErisimSonu DateTime?
+
   /// iyzico bagi — HAVALE ile odeyen firmalarda null kalir.
   /// ⚠ BU KOD DEGISKENDIR: paket degisiminde (upgrade/downgrade) iyzico
   /// YENI bir subscriptionReferenceCode uretir, eskisi UPGRADED olur ve
