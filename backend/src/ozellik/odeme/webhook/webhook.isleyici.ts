@@ -5,7 +5,12 @@ import { AbonelikServisi } from '../abonelik/abonelik.servisi';
 import { FaturaServisi } from '../fatura/fatura.servisi';
 import { DunningServisi } from '../dunning/dunning.servisi';
 
-const AZAMI_DENEME = 5;
+/**
+ * Olay basina deneme siniri. Asan olay "olu"dur: tarama onu bir daha almaz.
+ * Gece mutabakati kendi yeniden oynattigi olu olayi bu sinira bakarak
+ * yeniden kurar (mutabakat.job.ts → KAYIP TAHSILAT, kural 4).
+ */
+export const AZAMI_DENEME = 5;
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
