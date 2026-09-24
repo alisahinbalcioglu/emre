@@ -34,6 +34,11 @@ export interface IzinTanimi {
   erisimYokBasligi: string;
   /** Kapali bolum sayfasinin aciklamasi. */
   erisimYokAciklamasi: string;
+  /**
+   * Izin KAPALIYKEN satirin alt satiri (Hesabım › Ekip erişimim); yoksa
+   * `aciklama` yazilir. Kapali izinde kisinin ELINDE KALANI soyler.
+   */
+  kapaliAciklamasi?: string;
 }
 
 const KAPALI_TUTTU = 'Firma yöneticin bu bölümü senin için kapalı tuttu.';
@@ -74,6 +79,9 @@ export const IZIN_TANIMLARI: readonly IzinTanimi[] = [
     fiyatBilgisi: true,
     erisimYokBasligi: 'Firmanın tekliflerine erişimin yok',
     erisimYokAciklamasi: `Kendi hazırladığın teklifleri görebilirsin. ${KAPALI_TUTTU}`,
+    // Emre 23.09 (Hesabım): satirlarin 3. sahis diliyle. Yalniz "Firmanın
+    // teklif listesi" + "Kapalı" yazsaydi uye listenin TAMAMEN kapandigini sanirdi.
+    kapaliAciklamasi: 'Yalnız kendi hazırladığı teklifleri görebilir',
   },
   {
     anahtar: 'kutuphane',
@@ -92,6 +100,38 @@ export const IZIN_SIRASI: readonly UyeIzni[] = IZIN_TANIMLARI.map((t) => t.anaht
 /** Anahtardan tanim (bilinmeyen anahtar → `undefined`). */
 export function izinTanimi(izin: UyeIzni): IzinTanimi | undefined {
   return IZIN_TANIMLARI.find((t) => t.anahtar === izin);
+}
+
+/** Kisinin kendi izin satiri (Hesabım › Ekip erişimim). */
+export interface IzinSatiri {
+  anahtar: UyeIzni;
+  baslik: string;
+  /** Alt satir: izin KAPALIYSA `kapaliAciklamasi` (varsa), degilse `aciklama`. */
+  aciklama: string;
+  acik: boolean;
+}
+
+/**
+ * 23.09.2026 — Hesabım › Ekip erişimim: kisinin ETKIN izin listesinden dort
+ * satir, kanonik sirayla. Metin bu sozlukten; ekran yeniden yazmaz.
+ *
+ * ⚠ `null` → `null` (satir YOK): sunucu listeyi SOYLEMEDIYSE (eski sunucu,
+ * dusen istek) ekran "Açık"/"Kapalı" diye bir BEYAN cizmez. `izinVar` burada
+ * BILEREK tersini yapar (null → true): menu bir kolaylik, bu satirlar bir
+ * beyan — bilinmeyen durumu "Açık" diye yazmak da "Kapalı" diye yazmak da yalan.
+ * Bos dizi (`[]`) ise bilinen bir durumdur: dordu de kapali.
+ */
+export function izinSatirlari(izinler: readonly UyeIzni[] | null | undefined): IzinSatiri[] | null {
+  if (!izinler) return null;
+  return IZIN_TANIMLARI.map((t) => {
+    const acik = izinler.includes(t.anahtar);
+    return {
+      anahtar: t.anahtar,
+      baslik: t.baslik,
+      aciklama: acik ? t.aciklama : (t.kapaliAciklamasi ?? t.aciklama),
+      acik,
+    };
+  });
 }
 
 /**

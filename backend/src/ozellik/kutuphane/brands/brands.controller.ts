@@ -11,35 +11,49 @@ import { CurrentUser } from '../../../altyapi/auth/decorators/current-user.decor
 import { kimlikCoz } from '../../../altyapi/auth/kimlik';
 import { izinVarMi } from '../../firma/uye-izinleri';
 import { ErisimGuard, GerekliYetenek } from '../../odeme/abonelik/erisim.guard';
-import { Yetenek } from '../../odeme/abonelik/erisim.servisi';
+import { ErisimServisi, Yetenek } from '../../odeme/abonelik/erisim.servisi';
 import { KapaliHesapIzinli } from '../../../altyapi/auth/decorators/kapali-hesap-izinli.decorator';
 
 @Controller('brands')
 @UseGuards(JwtAuthGuard, ErisimGuard)
 export class BrandsController {
-  constructor(private brandsService: BrandsService) {}
+  constructor(
+    private brandsService: BrandsService,
+    // 23.09.2026 (vitrin): havuz FIYATI yalniz erisimi yuruyen firmaya.
+    private erisim: ErisimServisi,
+  ) {}
 
   // ── IMPORTANT: Literal/specific routes MUST come BEFORE :id catch-all ──
 
   @Get()
   findAll(@Query('discipline') discipline?: string) { return this.brandsService.findAll(discipline); }
 
+  // ⚠ 23.09.2026 (vitrin, guvenlik incelemesi HIGH-1): `@KapaliHesapIzinli`
+  // KALDIRILDI. Bu uc HAVUZ fiyatlarini (sorgu basina 100 satir) dondurur ve
+  // kapali hesapta `ErisimGuard` `KAPALI_HESAPTA_ACIK` kumesiyle yetenek
+  // sorusunu ATLIYORDU — hic paket almamis biri kayit → hesabimi kapat →
+  // yeniden giris ile butun havuz fiyatlarini cekebiliyordu (Emre: "fiyatlar
+  // paketle acilsin"). Havuz kapali hesabin KENDI verisi degil; on yuz bu
+  // ucu HIC cagirmiyor (olculdu). Kapi: `vitrin-test.ts` U2.
   @Get('search')
   @GerekliYetenek(Yetenek.KUTUPHANE_GORUNTULE)
-  @KapaliHesapIzinli() // kapali hesap: marka arama (salt okuma)
   searchMaterials(@Query('q') q: string) { return this.brandsService.searchMaterials(q); }
 
   // Fiyat listesi malzemeleri (literal "price-lists" MUST be before :id).
   // Kimlik servise iner: KISISEL listeyi yalniz SAHIP FIRMA okur (ADIM 1).
   @Get('price-lists/:listId/materials')
-  getPriceListMaterials(@CurrentUser() user: any, @Param('listId') listId: string) {
+  async getPriceListMaterials(@CurrentUser() user: any, @Param('listId') listId: string) {
     // 23.09.2026: KISISEL liste firmanin Kutuphanem verisidir — izin karari
     // servise iner (havuz listesi izne BAGLI DEGIL; uc bu yuzden sinif
     // duzeyinde `@UyeIzniGerekli` tasiyamaz).
+    // 23.09.2026 (vitrin): bu uc `@GerekliYetenek` TASIMAZ — paketsiz hesap
+    // Malzeme Havuzu'nu gezebilsin diye BILEREK. Bu yuzden FIYAT karari da
+    // burada sorulur: paketi yurumeyen firma havuz listesini fiyatsiz alir.
     return this.brandsService.getPriceListMaterials(
       listId,
       kimlikCoz(user).firmaId,
       izinVarMi(user, 'kutuphane'),
+      await this.erisim.havuzFiyatiGorunurMu(kimlikCoz(user).firmaId, user?.role),
     );
   }
 

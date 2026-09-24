@@ -1,6 +1,8 @@
 /**
  * Paket gorunum bicimleri — saf, React'siz (DOM'suz test edilebilir).
  */
+// Yalniz TIP: calisma aninda dongu yok (paket-degisimi.ts buradan `tutarYaz` alir).
+import type { DegisimOzeti } from './paket-degisimi';
 
 export interface PaketSurumu {
   paketSurumuId: string;
@@ -58,6 +60,12 @@ export interface Paket {
   /** Eski sunucu sürümü alanı döndürmeyebilir — ekran o durumda satırı çizmez. */
   ceviriKotasi?: CeviriKotasi;
   surum: PaketSurumu;
+  /**
+   * 23.09 — BU firmanın bu pakete NASIL geçeceği (satın al / geç / geçilemez).
+   * YALNIZ JWT'li `/abonelik/paketler` döndürür (deneme hakkıyla aynı sebep);
+   * yoksa kart eski davranışla "Bu paketi seç" der.
+   */
+  degisim?: DegisimOzeti;
 }
 
 /** Rakam dizgesine TR binlik ayracı: "12345" → "12.345". Tek yer — `tutarYaz`

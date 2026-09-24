@@ -658,6 +658,25 @@ const SUITES: Suite[] = [
   //   YAZILMAZ, kod ne yanıtta ne konu satırında ne de düz olarak DB'de.
   //   DB/AĞ/SMTP GEREKTİRMEZ.
   { ad: 'Yönetici e-posta kodu: üretim · süre · dallanma · bağlantı · gizlilik (K/S/D/B/G)', script: 'test:eposta-kodu', zincir: 'Z0' },
+  // 23.09 (Emre kararı, yönetici paneli turu A1): PAKET DEĞİŞİMİ. `paketDegistir`
+  // tanımlıydı ama hiçbir yerden çağrılmıyordu — aktif abonelikli firma daha
+  // pahalı pakete bile geçemiyordu (gelir açığı). Yükseltme özellikleri HEMEN
+  // açar, ücret dönem sonunda; düşürme ikisini de dönem sonuna bırakır; iyzico'ya
+  // HER ZAMAN NEXT_PERIOD (NOW kıst hesap yapmaz, 20.08 ölçümü). Kapı ölçer: yön
+  // HAKLA belirlenir (5×5 gerçek katalog), satın alma kapısıyla TEK kural, önce
+  // iyzico sonra biz, dönem başına tek değişim (eşzamanlı istek dahil), planlı
+  // geçişin tek kaynağı ve yarışı, ödenen plana hizalama, geç gelen ESKİ halka
+  // hiçbir şeyi geri almaz, iptal/yeniden abonelik planı siler. DB/AĞ/iyzico
+  // GEREKTİRMEZ.
+  { ad: 'Paket değişimi: hak · yol · tarih · servis · planlı geçiş · webhook · temizlik · bağlantı (H/Y/T/S/G/E/W/R/B)', script: 'test:paket-degisimi', zincir: 'Z0' },
+  // 23.09 (Emre kararı): paketsiz YENİ hesap duvar görmez, uygulamayı GEZER
+  // ("yalnızca gezsin"); Malzeme Havuzu'nda "fiyatlar paketle açılsın".
+  // ⚠ En kritik kalkan V5: vitrin sunucuda HİÇBİR yetenek açmaz — "gezsin"
+  //   cümlesi "kullansın"a kayarsa (bir yetenek kümeye sızarsa) kırmızı.
+  //   H6 ★BAĞLANTI: gerçek uç → gerçek erişim kararı → fiyat gizleme zinciri;
+  //   kişisel liste (firmanın KENDİ verisi) hiçbir durumda gizlenmez (H5).
+  //   DB GEREKTİRMEZ.
+  { ad: 'Vitrin: paketsiz yeni hesap gezer, iş ve havuz fiyatı kapalı (V/G/S/H/U)', script: 'test:vitrin', zincir: 'Z0' },
 ];
 
 // ── SKIP DEFTERI (B1, para dogrulugu turu 14.09.2026) ──────────────────────

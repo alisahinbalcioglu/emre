@@ -1419,7 +1419,9 @@ model PaketSurumu {
   /// Yeni satisa kapaliysa false; MEVCUT ABONELER ETKILENMEZ.
   satistaMi   Boolean            @default(true)
   olusturuldu DateTime           @default(now())
-  abonelikler Abonelik[]
+  abonelikler Abonelik[]         @relation("AbonelikPaketi")
+  /// Bu surume DONEM SONUNDA gecmek uzere planlanmis abonelikler (23.09).
+  planliAbonelikler Abonelik[]   @relation("AbonelikPlanliPaketi")
   baslatmalar AbonelikBaslatma[]
 
   @@unique([paketId, surumNo])
@@ -1435,8 +1437,43 @@ model Abonelik {
   id            String      @id @default(uuid())
   firmaId       String      @unique
   firma         Firma       @relation(fields: [firmaId], references: [id])
+  /// ETKIN paket — erisim, yetenek, koltuk ve kota kararlarinin TAMAMI bunu
+  /// okur (16 dosya, 23.09 olcumu). Planli bir dusurme BU ALANI dondurmaz;
+  /// gecis aninda bu alan YAZILIR (bkz. `planliPaketSurumuId`).
   paketSurumuId String
-  paketSurumu   PaketSurumu @relation(fields: [paketSurumuId], references: [id])
+  paketSurumu   PaketSurumu @relation("AbonelikPaketi", fields: [paketSurumuId], references: [id])
+
+  // ── PAKET DEGISIMI (23.09.2026 — Emre karari) ─────────────────────────
+  // Yukseltme: ozellikler HEMEN (`paketSurumuId` yazilir), ucret DONEM
+  // SONUNDA. Dusurme ve yatay gecis: ozellik de ucret de DONEM SONUNDA.
+  // iyzico'ya her iki yonde de `NEXT_PERIOD` gider — `NOW` kist hesap
+  // yapmaz, cakisan sureyi IKI KEZ cektirir (docs/RAPOR_ADIM0, 20.08).
+  //
+  // ⚠ NEDEN "HER OKUYUCUDA ETKIN PAKETI HESAPLA" DEGIL: `paketSurumu`nu
+  // okuyan 16 dosya var. Planli paketi okuma aninda turetmek, 16 yerin
+  // hepsine ayni kurali yazmak demekti — birini unutmak (bu deponun olculmus
+  // "ikizi unutma" hatasi) ayni firmaya iki ekranda iki paket gosterirdi.
+  // Gecis TEK YERDE yazilir: `AbonelikServisi.planliGecisiUygula`; iki
+  // tetigi var (yenileme webhook'u + 10 dakikalik tarama).
+
+  /// Donem sonunda gecilecek paket (dusurme / yatay). NULL = planli yok.
+  planliPaketSurumuId String?
+  planliPaketSurumu   PaketSurumu? @relation("AbonelikPlanliPaketi", fields: [planliPaketSurumuId], references: [id])
+  /// iyzico'daki yeni planin BASLADIGI an (yeni ucretin ilk cekimi). DOLU
+  /// oldugu surece degisim KILITLIDIR — tarih gecse bile: kilit ancak yeni
+  /// ucun ILK BASARILI TAHSILATI gorulunce kalkar (webhook), ya da 3 gunluk
+  /// emniyet suresi dolunca. Gerekce: iyzico'nun bekleyen (henuz baslamamis)
+  /// uca ikinci yukseltme davranisi OLCULMEDI — iki plan ayni anda baslarsa
+  /// cift cekim olur. Tarih "gecti" diye kilidi bizim saatimizle acmak,
+  /// iyzico'nun cekim partisi gec kosarsa o yolu acardi (inceleme bulgusu 4).
+  paketGecisTarihi    DateTime?
+  /// HEMEN uygulanan yukseltmede, yeni ucretin ilk cekimine kadar ODENMIS
+  /// olan paket. Bu surede iptal gelirse etkin paket BUNA doner: yukseltip
+  /// hemen iptal eden firma, hic odemedigi ust paketi donem sonuna kadar
+  /// kullanamaz — aksi tekrarlanabilir bir istismardi (her ay Basic al,
+  /// MEP'e gec, iptal et). FK yok: kisa omurlu isaretci, deger her zaman
+  /// `paketSurumuId`den kopyalanir.
+  odenenPaketSurumuId String?
 
   durum AbonelikDurumu @default(DENEME)
 
@@ -1493,6 +1530,8 @@ model Abonelik {
   @@index([durum, sonDeneme]) // dunning taramasi bu indeksi kullanir
   // Zincir kokuyle arama: webhook YENI kodla geldiginde bu indeks kullanilir.
   @@index([iyzicoKokKodu])
+  // Planli gecis taramasi (10 dk) — yalniz dolu satirlar ilgilenir.
+  @@index([paketGecisTarihi])
 }
 
 /// Satin alma NIYETI — barindirilan iyzico formu acildiginda yazilir.

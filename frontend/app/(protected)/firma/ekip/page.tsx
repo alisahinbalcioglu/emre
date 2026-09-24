@@ -15,6 +15,7 @@ import { UyeListesi } from '@/ozellik/firma/ekip/UyeListesi';
 import { DavetPenceresi } from '@/ozellik/firma/ekip/DavetPenceresi';
 import { UyeIzinPaneli } from '@/ozellik/firma/ekip/UyeIzinPaneli';
 import { Anahtar } from '@/ozellik/firma/ekip/ekip-parcalari';
+import { useVitrin } from '@/ozellik/odeme/VitrinSaglayici';
 
 /**
  * EKİP SAYFASI — FAZ 7 F1b (§6.5) · 23.09.2026 ikinci tasarım (ekran 1–3).
@@ -60,6 +61,11 @@ export default function EkipSayfasi() {
   const [davetAcik, setDavetAcik] = useState(false);
   const [panel, setPanel] = useState<PanelHedefi | null>(null);
   const [islemde, setIslemde] = useState(false);
+  // 23.09.2026 — VİTRİN (paketsiz yeni hesap): sayfa gezilir, "Üye davet et"
+  // paket penceresini açar. Sunucunun neden kodu bu firmada `PAKET_EKIP_YOK`
+  // ("Basic paketinde ekip yok…") — paketi HİÇ olmayana yanlış cümle; vitrinde
+  // çizilmez. Gerçek kapı sunucuda (`KULLANICI_DAVET` vitrinde kapalı).
+  const { vitrin, pencereAc } = useVitrin();
 
   const yukle = useCallback(async () => {
     setYukleniyor(true);
@@ -238,7 +244,17 @@ export default function EkipSayfasi() {
               : 'Erişimini firma yöneticin belirler.'}
           </p>
         </div>
-        {sahipMi && (
+        {sahipMi && vitrin && (
+          <button
+            type="button"
+            onClick={() => pencereAc('ekip')}
+            className="inline-flex h-10 items-center gap-2 self-start rounded-lg bg-[#0f172a] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#1e293b] sm:self-auto"
+          >
+            <UserPlus className="h-4 w-4" aria-hidden="true" />
+            Üye davet et
+          </button>
+        )}
+        {sahipMi && !vitrin && (
           /* ⚠ Pasiflik SUNUCU kararından (`veri.davet.acik`): hak dolu,
              paket ekip içermiyor ya da abonelik kısıtlı. Nedeni kartta yazar. */
           <button
@@ -275,7 +291,7 @@ export default function EkipSayfasi() {
             )}
             <div className="mt-2.5 text-xs text-gray-500">{kart.aciklama}</div>
             {/* ⚠ Metin SUNUCUNUN neden kodundan gelir; ön yüz karar vermez. */}
-            {!veri.davet.acik && davetKapaliMetni && (
+            {!vitrin && !veri.davet.acik && davetKapaliMetni && (
               <div className="mt-1.5 text-xs font-medium text-red-600">{davetKapaliMetni}</div>
             )}
             {uyari && <div className="mt-1.5 text-xs font-medium text-amber-700">{uyari}</div>}

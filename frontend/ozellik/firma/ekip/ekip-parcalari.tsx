@@ -80,6 +80,14 @@ export function SenRozeti() {
   );
 }
 
+/**
+ * Açık / kapalı izin rozetinin renkleri. Ekip'teki üye etiketi ve Hesabım ›
+ * Ekip erişimim (`IzinDurumListesi`) AYNI sabitten okur: biri değişip öteki
+ * geride kalmasın.
+ */
+export const IZIN_ROZETI_ACIK = 'border-[#bbf7d0] bg-[#f0fdf4] text-[#166534]';
+export const IZIN_ROZETI_KAPALI = 'border-[#e5e7eb] bg-[#f8fafc] text-[#64748b]';
+
 /** Üye satırındaki izin etiketi: açık = yeşil tik, kapalı = gri kilit. */
 export function IzinEtiketi({ tanim, acik }: { tanim: IzinTanimi; acik: boolean }) {
   return (
@@ -88,9 +96,7 @@ export function IzinEtiketi({ tanim, acik }: { tanim: IzinTanimi; acik: boolean 
       // sayfanın başka bir yerine göre yerleşip yatay taşma üretebilir
       // (23.09 önizlemede tabloda ölçüldü).
       className={`relative inline-flex h-6 items-center gap-[5px] whitespace-nowrap rounded-full border px-[9px] text-xs font-medium ${
-        acik
-          ? 'border-[#bbf7d0] bg-[#f0fdf4] text-[#166534]'
-          : 'border-[#e5e7eb] bg-[#f8fafc] text-[#64748b]'
+        acik ? IZIN_ROZETI_ACIK : IZIN_ROZETI_KAPALI
       }`}
     >
       {acik ? (

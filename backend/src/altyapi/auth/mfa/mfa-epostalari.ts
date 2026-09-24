@@ -37,15 +37,22 @@ const DESTEK_CUMLESI =
  *
  *  ⚠ KOD KONUYA YAZILMAZ. Konu satiri bildirim onizlemelerinde kilitli
  *  ekranda gorunur; kodu oraya koymak, telefonu eline alan herkese vermek
- *  olurdu.
+ *  olurdu. Ayni gerekceyle govdenin onizlemesi de kodu gostermez: `kod`
+ *  alani sablona gizli bir onizleme metni ekletir (`eposta.servisi.ts`).
+ *
+ *  ⚠ 23.09.2026 ONARIMI — KOD `kod` ALANINDA, PARAGRAFTA DEGIL. Eski hal
+ *  kodu paragrafa `<strong style=…>` olarak gomuyordu. Paragraflar DUZ
+ *  METINDIR ve kacislanir; musteri postada etiketi OLDUGU GIBI okudu
+ *  (canli, Emre'nin telefonu). Gercek posta bu ture kadar hic
+ *  gonderilmemisti — testte SMTP sahteydi, yani kimse gormemisti.
  */
 export function mfaGirisKoduEpostasi(kime: string, kod: string, dakika: number): EpostaTalebi {
   return {
     kime,
     konu: 'Giriş doğrulama kodunuz',
     baslik: 'Giriş doğrulama kodunuz',
+    kod,
     paragraflar: [
-      `Kodunuz: <strong style="font-size:22px;letter-spacing:3px">${kod}</strong>`,
       `Kod ${dakika} dakika geçerlidir ve yalnızca bir kez kullanılabilir.`,
       'Bu kodu kimseyle paylaşmayın. MetaPriceX çalışanları sizden bu kodu ' +
         'asla istemez.',

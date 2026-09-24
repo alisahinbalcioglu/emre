@@ -584,8 +584,11 @@ function kabukDurdurmaKapisi() {
   const kapali = { erisimVar: false, saltOkunur: false };
   const kisitliMod = { erisimVar: true, saltOkunur: true };
 
-  check('Q1a paketsiz hesap /library icerigini GORMEZ', durdur(kapali, '/library') === true);
-  check('Q1b paketsiz hesap /dashboard icerigini GORMEZ', durdur(kapali, '/dashboard') === true);
+  // 23.09.2026 (vitrin): `kapali` fikstüründe `vitrin` alanı YOK → bu satırlar
+  // artık "vitrin OLMAYAN kapalı hesap" (süresi biten / askıdaki abone) ölçer.
+  // Hiç paket almamış YENİ hesap duvar görmez; o dal `vitrin-test.ts` S bloğunda.
+  check('Q1a vitrin OLMAYAN kapalı hesap (süresi biten abone) /library icerigini GORMEZ', durdur(kapali, '/library') === true);
+  check('Q1b vitrin OLMAYAN kapalı hesap (süresi biten abone) /dashboard icerigini GORMEZ', durdur(kapali, '/dashboard') === true);
   // KILITLENME YASAGI — L1 blogunun yol karsiligi.
   check('Q1c ★KILITLENME /abonelik HER ZAMAN acik (yoksa odeyemez, cikamaz)', durdur(kapali, '/abonelik') === false);
   check('Q1d ★KILITLENME /abonelik/kart acik (kart guncelleme yolu)', durdur(kapali, '/abonelik/kart') === false);
