@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 755
-Toplam satir: 188970
+Toplam satir: 188982
 Uc nokta: 232
 test:* scripti: 118
 
@@ -314,7 +314,7 @@ test:* scripti: 118
 | `backend/test/faz4-firma-teklif-test.ts` | 322 |
 | `backend/test/faz5-kvkk-hukuki-test.ts` | 503 |
 | `backend/test/faz7-ekip-test.ts` | 2188 |
-| `backend/test/faz7-kurumsal-test.ts` | 1947 |
+| `backend/test/faz7-kurumsal-test.ts` | 1959 |
 | `backend/test/faz7-mfa-test.ts` | 1566 |
 | `backend/test/faz7-oidc-test.ts` | 653 |
 | `backend/test/faz7-totp-test.ts` | 501 |
