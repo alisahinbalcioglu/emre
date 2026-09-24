@@ -8,6 +8,7 @@ import {
   IyzicoSiparis,
 } from '../iyzico/iyzico.client';
 import { EpostaServisi } from '../eposta/eposta.servisi';
+import { yonetimeYaz } from '../eposta/yonetim-bildirimi';
 import { tarihYaz, tutarYaz } from '../dunning/dunning.metinleri';
 // Saf modul (Prisma/Nest bilmez) — dongusel import YOK.
 import { iyzicoTarihi } from './paket-degisimi';
@@ -1268,11 +1269,11 @@ export class AbonelikServisi {
   }
 
   /**
-   * Yoneticiye e-posta — `YONETIM_EPOSTA`, fatura servisinin elle mudahale
-   * uyarisiyla AYNI adres. ASLA firlatmaz. Adres, gonderici ya da SMTP yoksa
-   * uyari SESSIZCE kaybolmaz: icerik HATA seviyesinde gunluge yazilir (olay
-   * kaydi cagiranda zaten dusuldu). ⚠ SMTP'siz `gonder` yalniz UYARI basip
-   * doner — o yol burada yakalanir (inceleme bulgusu 8).
+   * Yoneticiye e-posta — fatura servisinin elle mudahale uyarisiyla AYNI
+   * adres cozumu (`yonetim-bildirimi.ts`). ASLA firlatmaz. Adres, gonderici ya
+   * da SMTP yoksa uyari SESSIZCE kaybolmaz: icerik HATA seviyesinde gunluge
+   * yazilir (olay kaydi cagiranda zaten dusuldu). ⚠ SMTP'siz `gonder` yalniz
+   * UYARI basip doner — o yol yardimcida yakalanir (inceleme bulgusu 8).
    */
   private async yoneticiyeYaz(
     firmaId: string,
@@ -1282,31 +1283,17 @@ export class AbonelikServisi {
       .findUnique({ where: { id: firmaId }, select: { ad: true } })
       .catch(() => null);
     const ad = firma?.ad ?? firmaId;
-    const kime = process.env.YONETIM_EPOSTA?.trim();
-    const engel = !kime
-      ? 'YONETIM_EPOSTA tanimli degil'
-      : !this.eposta
-        ? 'e-posta servisi yok'
-        : !this.eposta.yapilandirildiMi()
-          ? 'SMTP yapilandirilmamis'
-          : null;
-    if (engel) {
-      this.logger.error(
-        `YONETICI BILDIRIMI GONDERILEMEDI (${engel}): [${ad}] ${t.konu} — ${t.paragraflar.join(' | ')}`,
-      );
-      return;
-    }
-    await this.eposta
-      .gonder({
-        kime,
+    // 24.09 (Emre: "uyarılar e-posta olarak gitmeli"): adres ORTAK yardımcıdan —
+    // `YONETIM_EPOSTA`, boşsa etkin yönetici hesaplarının giriş e-postası.
+    // Canlıda değişken boştu: bu uyarılar yalnız günlüğe düşüyordu.
+    // Gönderilemezse içerik yine HATA günlüğüne yazılır (bkz. yonetim-bildirimi.ts).
+    await yonetimeYaz(
+      { prisma: this.prisma, eposta: this.eposta, logger: this.logger },
+      {
         konu: `[MetaPriceX] ${t.konu} — ${ad}`,
         baslik: t.baslik,
         paragraflar: [`Firma: ${ad}`, ...t.paragraflar],
-      })
-      .catch((e) =>
-        this.logger.error(
-          `Yonetici bildirimi gonderilemedi (${t.konu}, ${ad}): ${e instanceof Error ? e.message : String(e)}`,
-        ),
-      );
+      },
+    );
   }
 }

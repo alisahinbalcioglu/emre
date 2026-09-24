@@ -129,8 +129,12 @@ services:
       # FAZ 3 (08.09): tasiyici SMTP oldu, `RESEND_API_KEY` KALDIRILDI (kodda
       # okuyan kalmadi). Gonderimi acan degiskenler asagidaki SMTP blogunda.
       EPOSTA_GONDEREN: ${EPOSTA_GONDEREN:-}
-      # Muhasebe: "parasut" YAZMADIKCA hicbir yere fatura gitmez (sahte adaptor).
-      MUHASEBE_SAGLAYICI: ${MUHASEBE_SAGLAYICI:-sahte}
+      # Muhasebe (24.09): fatura NES'te ELLE kesilir. "elle" = her tahsilatta
+      # yoneticiye (YONETIM_EPOSTA, bossa etkin yonetici hesaplari) kesilecek
+      # faturanin bilgisi + VUK 231/5 son gunu e-postalanir. "sahte" yalniz
+      # gunluge yazar ve satiri TEST numarasiyla KESILDI isaretler (gelistirme).
+      # "parasut" DOGRULANMADI — NES kullanilirken acmak CIFT FATURA keser.
+      MUHASEBE_SAGLAYICI: ${MUHASEBE_SAGLAYICI:-elle}
       PARASUT_FIRMA_ID: ${PARASUT_FIRMA_ID:-}
       PARASUT_CLIENT_ID: ${PARASUT_CLIENT_ID:-}
       PARASUT_CLIENT_SECRET: ${PARASUT_CLIENT_SECRET:-}

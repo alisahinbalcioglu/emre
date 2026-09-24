@@ -509,6 +509,16 @@ const SUITES: Suite[] = [
   //    "iade" uyarısı üretir; havaleden sonra müşteri iptali çalışır. Y bloğu
   //    geç/yarış webhook'unu ölçer (A/B/D onu KOŞMAZ). DB/AĞ/iyzico GEREKTİRMEZ.
   { ad: 'Havale ↔ iyzico kart aboneliği: onayda iptal · ret/çift tahsilat · yarış · müşteri iptali · bağlantı (F/İ/A/B/D/Y/M/K/N)', script: 'test:havale-iyzico', zincir: 'Z0' },
+  // ── 24.09.2026 — YÖNETİM E-POSTALARI (Emre: "faturalar ve uyarılar vs. e
+  //    posta olarak gitmeli"). Yönetici uyarıları yalnız YONETIM_EPOSTA'ya
+  //    gidiyordu ve canlıda değişken BOŞ: çift tahsilat / iptal düşmesi /
+  //    kesilemeyen fatura kimseye ulaşmıyordu, fatura uyarısı günlüğe bile
+  //    düşmüyordu. Canlı muhasebe `sahte` her tahsilatı TEST numarasıyla
+  //    KESILDI işaretleyip kimseye söylemiyordu (faturalar NES'te elle).
+  //    Artık adres boşsa etkin yönetici hesabına gider ve `elle` adaptörü
+  //    her tahsilatta NES kesim talebini (VUK 231/5 son günüyle) e-postalar.
+  //    DB/AĞ/SMTP GEREKTİRMEZ.
+  { ad: 'Yönetim e-postaları: adres çözümü · uyarı · NES fatura kesim talebi · bağlantı (A/B/C/K/D/E/F)', script: 'test:yonetim-epostalari', zincir: 'Z0' },
   // ── 21.09.2026 — PLAN 5.8 VERİ İMHASI, ÖDEME AYAĞI. DB/AĞ GEREKTİRMEZ.
   //    K4: fatura müşteri kimliğini `Firma` satırından CANLI okuyordu; fatura
   //    tahsilat anında yazılıp kesim @Cron ile SONRA koştuğu için müşteri

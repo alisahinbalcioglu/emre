@@ -841,6 +841,33 @@ async function iBlogu(): Promise<void> {
     }
   }
   {
+    // 24.09 (Emre: "uyarılar e-posta olarak gitmeli"): YONETIM_EPOSTA canlıda
+    // BOŞ. Etkin yönetici hesabı varsa uyarı onun giriş e-postasına gider;
+    // engellenmiş yönetici ve sıradan kullanıcı alıcı DEĞİLDİR. Kural ve
+    // ayrıntılı kapısı: yonetim-bildirimi.ts · `test:yonetim-epostalari`.
+    const eski = process.env.YONETIM_EPOSTA;
+    delete process.env.YONETIM_EPOSTA;
+    try {
+      const d = dunyaKur();
+      d.db.ekle('user', { email: 'kurucu@ornek.test', role: 'admin', status: 'active', deletedAt: null, emailVerified: true, createdAt: new GercekDate(1) });
+      d.db.ekle('user', { email: 'engelli@ornek.test', role: 'admin', status: 'banned', deletedAt: null, emailVerified: true, createdAt: new GercekDate(2) });
+      d.db.ekle('user', { email: 'musteri@ornek.test', role: 'user', status: 'active', deletedAt: null, emailVerified: true, createdAt: new GercekDate(3) });
+      const T0 = GercekDate.now();
+      d.kartliSatir('I3Y', { durum: 'AKTIF', erisimSonu: new GercekDate(T0 + 12 * GUN) });
+      d.iyz.iptaliBoz('sub-I3Y', new IyzicoHatasi('100001', 'Sistem hatası', 500));
+      const g0 = gunluk.length;
+      const sonuc = await onayla(d, 'I3Y', T0);
+      const uyari = d.epostalar.filter((e) => /iptal edilemedi/i.test(e.konu));
+      check('İ3h ⭐ YONETIM_EPOSTA boş + etkin yönetici hesabı → uyarı YÖNETİCİ HESABINA gider (engellenen/müşteri alıcı değil)',
+        sonuc.hata === null && uyari.length === 1 && uyari[0].kime === 'kurucu@ornek.test' &&
+          uyari[0].paragraflar.some((x) => /sub-I3Y/.test(x)) &&
+          !hatalarSonra(g0).some((m) => /YONETICI BILDIRIMI GONDERILEMEDI/.test(m)),
+        `hata=${sonuc.hata} alici=${uyari.map((e) => e.kime).join(',')} iz=${hatalarSonra(g0).join(' · ')}`);
+    } finally {
+      process.env.YONETIM_EPOSTA = eski;
+    }
+  }
+  {
     // Kayıtlı uç iyzico'da UPGRADED (yanıtı kaybolan paket değişimi) → 201403.
     const d = dunyaKur();
     const T0 = GercekDate.now();
