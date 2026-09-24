@@ -12,6 +12,7 @@ import { AbonelikServisi } from './abonelik/abonelik.servisi';
 import { ErisimServisi } from './abonelik/erisim.servisi';
 import { SatinAlmaServisi } from './abonelik/satinalma.servisi';
 import { DenemeHakkiServisi } from './abonelik/deneme-hakki.servisi';
+import { PaketDegisimiServisi } from './abonelik/paket-degisimi.servisi';
 import { AbonelikController } from './abonelik/abonelik.controller';
 import { FiyatController } from './abonelik/fiyat.controller';
 import { CeviriKotaServisi } from './abonelik/ceviri-kota.servisi';
@@ -71,6 +72,8 @@ import { EpostaServisi } from './eposta/eposta.servisi';
     SatinAlmaServisi,
     // Faz 6.12a: deneme bir kez — satin alma ve JWT'li paket ucu kullanir.
     DenemeHakkiServisi,
+    // 23.09: paket degisimi + 10 dk'lik planli gecis taramasi (@Cron).
+    PaketDegisimiServisi,
     ErisimServisi,
     CeviriKotaServisi,
     MutabakatJob,
@@ -107,6 +110,9 @@ import { EpostaServisi } from './eposta/eposta.servisi';
     CeviriKotaServisi,
     AbonelikServisi,
     SatinAlmaServisi,
+    // 23.09: yonetici paneli (A2) musteriyle AYNI degisim yolunu kullanir —
+    // ikinci bir "paket degistir" yazilmaz (Emre karari: tek yol).
+    PaketDegisimiServisi,
     IyzicoClient,
     EpostaServisi,
   ],

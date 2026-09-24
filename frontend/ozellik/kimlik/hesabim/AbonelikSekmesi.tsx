@@ -23,6 +23,7 @@ import { toast } from '@/ortak/hooks/use-toast';
 import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
 import type { AbonelikOzeti } from '@/ozellik/odeme/abonelik-ozeti';
 import { sayiYaz } from '@/ozellik/odeme/paket-bicim';
+import { bekleyenDegisimCumlesi } from '@/ozellik/odeme/paket-degisimi';
 import type { HesapProfili, KotaDurumu } from './hesap-tipleri';
 import { IKINCIL_DUGME, SatirKarti, TEHLIKE_DUGME } from './hesabim-ui';
 
@@ -53,7 +54,7 @@ export function AbonelikSekmesi({
   ceviriKota: KotaDurumu;
   teklifSayisi: number | null;
 }) {
-  const { refresh } = useCapabilities();
+  const { refresh, erisim } = useCapabilities();
   const kota = ceviriKota.durum === 'hazir' ? ceviriKota.kota : null;
   const ton = DURUM_TONU[ozet.durum] ?? NOTR_TON;
 
@@ -92,6 +93,15 @@ export function AbonelikSekmesi({
               {paketliMi && <CalendarDays className="h-3.5 w-3.5 shrink-0" aria-hidden />}
               {paketliMi ? ozet.altMetin : 'Etkin aboneliğiniz yok'}
             </p>
+            {/* 23.09 — BEKLEYEN PAKET DEĞİŞİMİ. Müşteri aboneliğini bu sekmede
+                yönetiyor; düşürme planladıysa "hangi tarihte hangi pakete"
+                burada da görünmeli, yalnız /abonelik'te değil. Kaynak aynı:
+                `ErisimKarari.paketGecisi` (`/auth/me`), cümle aynı modülden. */}
+            {paketliMi && bekleyenDegisimCumlesi(erisim?.paketGecisi) && (
+              <p className="mt-1 text-[13px] font-medium text-blue-700">
+                {bekleyenDegisimCumlesi(erisim?.paketGecisi)}
+              </p>
+            )}
           </div>
           <Link href="/abonelik" className={IKINCIL_DUGME}>
             Paketleri gör

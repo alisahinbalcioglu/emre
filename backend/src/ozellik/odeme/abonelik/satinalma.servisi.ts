@@ -14,11 +14,12 @@ import {
   OdemeYontemi,
 } from '@prisma/client';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
-import { IyzicoClient } from '../iyzico/iyzico.client';
+import { IyzicoClient, IyzicoHatasi } from '../iyzico/iyzico.client';
 import { AbonelikServisi } from './abonelik.servisi';
 import { ceviriKotasiCoz } from './ceviri-kotasi';
-import { DenemeKarari, mirasPaketiMi } from './deneme-hakki';
+import { DenemeKarari } from './deneme-hakki';
 import { DenemeHakkiServisi } from './deneme-hakki.servisi';
+import { yeniAbonelikEngelliMi } from './paket-degisimi';
 import { EpostaServisi } from '../eposta/eposta.servisi';
 import { HUKUKI_METIN_SURUMU } from '../../../altyapi/auth/hukuki-surum';
 
@@ -106,27 +107,10 @@ export function donemTarihleriHesapla(
   return { erisimSonu, denemeSonu };
 }
 
-/**
- * Bu abonelik satiri YENI bir kart aboneligini engeller mi? SAF — tek kural,
- * iki kapi: `baslat` (form acilmadan) ve `niyetiSonuclandir` (ikinci form
- * tamamlandiginda, bkz. `ikinciAbonelikMi`).
- *
- * Engellemeyenler: satir yok · miras (goc emniyeti, tahsilat degil) ·
- * SONA_ERDI · ASKIDA (geri donen musteri).
- */
-export function yeniAbonelikEngelliMi(
-  mevcut: {
-    durum: AbonelikDurumu | string;
-    paketSurumu: { paket: { kod: string } };
-  } | null,
-): boolean {
-  return (
-    !!mevcut &&
-    !mirasPaketiMi(mevcut.paketSurumu.paket.kod) &&
-    mevcut.durum !== AbonelikDurumu.SONA_ERDI &&
-    mevcut.durum !== AbonelikDurumu.ASKIDA
-  );
-}
+// `yeniAbonelikEngelliMi` paket-degisimi.ts'e TASINDI (23.09): satin alma
+// kapisi ile paket degisim kapisi AYNI kurali okumak zorunda. Mevcut import
+// yollari bozulmasin diye buradan da disa acilir.
+export { yeniAbonelikEngelliMi };
 
 /**
  * ⚠ CIFT ABONELIK (olcum 15.09, curutucu bulgusu): ayni firma iki odeme formu
@@ -590,16 +574,15 @@ export class SatinAlmaServisi {
     }
 
     // Zaten SAGLIKLI bir aboneligi olan firma yeniden satin alamaz —
-    // paket degisimi ayri bir yoldur (paketDegistir). Bu kapi olmazsa ayni
-    // firmaya iyzico'da IKI abonelik acilir ve iki kez tahsilat yapilir.
+    // paket degisimi ayri bir yoldur (`PaketDegisimiServisi.degistir`, 23.09).
+    // Bu kapi olmazsa ayni firmaya iyzico'da IKI abonelik acilir ve iki kez
+    // tahsilat yapilir.
     //
     // ⚠ MIRAS SATIRI MUAF. ADIM 2 gocu (migration 20260828100000, satir
     // 361-383) HER mevcut firmaya `miras-core`/`miras-pro` paketiyle
     // `AKTIF` + 365 gunluk bir satir yazdi — bu bir TAHSILATI temsil etmez,
     // goc emniyetidir (tutar 0, `satistaMi=false`). Muafiyet olmadan bu
-    // satir kapiya takilir ve MEVCUT MUSTERILERIN HICBIRI odeme yapamaz;
-    // hata mesajinin isaret ettigi "yukseltme yolu" da yok (`paketDegistir`
-    // iyzico istemcisinde tanimli ama hicbir yerden cagrilmiyor).
+    // satir kapiya takilir ve MEVCUT MUSTERILERIN HICBIRI odeme yapamaz.
     //
     // Ikinci abonelik riski YOK: `Abonelik.firmaId` @unique, ve
     // `aboneligiAcVeyaGuncelle` mevcut satiri UPDATE eder — miras satiri
@@ -609,10 +592,15 @@ export class SatinAlmaServisi {
       include: { paketSurumu: { include: { paket: true } } },
     });
     if (yeniAbonelikEngelliMi(mevcut)) {
-      throw new BadRequestException(
-        'Firmanizin zaten etkin bir aboneligi var. Paket degistirmek icin ' +
-          'abonelik sayfasindaki yukseltme yolunu kullanin.',
-      );
+      // ⚠ 23.09'a kadar bu mesaj OLMAYAN bir yolu gosteriyordu ("yukseltme
+      // yolu"). Yol artik var: abonelik sayfasindaki kartin "Bu pakete gec"
+      // dugmesi (`POST /abonelik/degistir`).
+      throw new BadRequestException({
+        kod: 'ABONELIK_ZATEN_VAR',
+        message:
+          'Firmanızın zaten etkin bir aboneliği var. Paketinizi değiştirmek için ' +
+          'abonelik sayfasında istediğiniz paketin "Bu pakete geç" düğmesini kullanın.',
+      });
     }
 
     // ── DENEME HAKKI → PLAN (FAZ 6.12a) ──────────────────────────────────
@@ -1241,6 +1229,13 @@ export class SatinAlmaServisi {
         kisitlandi: null,
         iptalTalebi: null,
         iptalNedeni: null,
+        // ⚠ 23.09 — ESKI ABONELIGIN PLANLI GECISI YENISINE TASINMAZ. Yeni
+        // satin alma `paketSurumuId`yi yaziyor; eski bir dusurme plani
+        // kalsaydi 10 dakikalik tarama onu YENI aboneligin ustune uygular ve
+        // musterinin az once satin aldigi paketi sessizce degistirirdi.
+        planliPaketSurumuId: null,
+        paketGecisTarihi: null,
+        odenenPaketSurumuId: null,
       },
     });
 
@@ -1285,9 +1280,29 @@ export class SatinAlmaServisi {
   async iptalEt(firmaId: string, kullaniciId: string, neden?: string) {
     const ab = await this.prisma.abonelik.findUnique({ where: { firmaId } });
     if (!ab) throw new NotFoundException('Abonelik bulunamadi');
+    const simdi = new Date();
 
+    let iptalEdilenUc = ab.iyzicoAbonelikKodu;
     if (ab.iyzicoAbonelikKodu) {
-      await this.iyzico.abonelikIptal(ab.iyzicoAbonelikKodu);
+      try {
+        await this.iyzico.abonelikIptal(ab.iyzicoAbonelikKodu);
+      } catch (e) {
+        // ⚠ 23.09 (inceleme bulgusu 1) — 201403 "iptal edilemez": kayitli uc
+        // iyzico'da UPGRADED olabilir (yaniti kaybolan bir paket degisimi yeni
+        // bir uc uretti, yerele yazilamadi). IPTAL BIR TUKETICI HAKKIDIR ve
+        // bizim kaydimizin bayatligina takilamaz: canli uc bulunur, O iptal
+        // edilir ve kaydedilir. Canli uc bulunamazsa asil hata AYNEN atilir
+        // (sessiz basari yok).
+        if (!(e instanceof IyzicoHatasi) || e.kod !== '201403') throw e;
+        const canli = await this.abonelik.canliUcuBul(ab).catch(() => null);
+        if (!canli || canli.referenceCode === ab.iyzicoAbonelikKodu) throw e;
+        await this.iyzico.abonelikIptal(canli.referenceCode);
+        iptalEdilenUc = canli.referenceCode;
+        this.logger.warn(
+          `Iptal: kayitli uc ${ab.iyzicoAbonelikKodu} bayatti (201403); canli uc ` +
+            `${canli.referenceCode} bulundu ve iptal edildi (firma ${firmaId})`,
+        );
+      }
     }
 
     await this.abonelik.durumDegistir(ab.id, AbonelikDurumu.IPTAL, {
@@ -1295,10 +1310,60 @@ export class SatinAlmaServisi {
       aktor: kullaniciId,
     });
 
+    // ⚠ 23.09 (inceleme bulgusu 2) — YUKSELTME + IPTAL ISTISMARI. Yukseltme
+    // ozellikleri HEMEN verir, yeni ucret DONEM SONUNDA baslar; iptal o yeni
+    // ucreti HIC baslatmaz. Etkin paket ust pakette kalsaydi firma odemedigi
+    // paketi donem sonuna kadar kullanirdi — ve her ay "Basic al → MEP'e gec
+    // → iptal et" ile SUREKLI. Iptal odenmis donemin sonuna kadar erisimi
+    // korur: ODENMIS paketle. Yeni ucret basladiktan sonra (tarih gectiyse)
+    // ust paket zaten odenmistir, geri alinmaz.
+    const yukseltmeGeriAlinir =
+      !!ab.odenenPaketSurumuId &&
+      !!ab.paketGecisTarihi &&
+      ab.paketGecisTarihi.getTime() > simdi.getTime() &&
+      ab.odenenPaketSurumuId !== ab.paketSurumuId;
+
     await this.prisma.abonelik.update({
       where: { id: ab.id },
-      data: { iptalTalebi: new Date(), iptalNedeni: neden ?? null },
+      data: {
+        iptalTalebi: simdi,
+        iptalNedeni: neden ?? null,
+        ...(iptalEdilenUc && iptalEdilenUc !== ab.iyzicoAbonelikKodu
+          ? {
+              iyzicoAbonelikKodu: iptalEdilenUc,
+              iyzicoKokKodu: ab.iyzicoKokKodu ?? ab.iyzicoAbonelikKodu,
+            }
+          : {}),
+        ...(yukseltmeGeriAlinir ? { paketSurumuId: ab.odenenPaketSurumuId! } : {}),
+        // ⚠ 23.09 — IPTAL PLANLI GECISI DE BITIRIR. iyzico'da bekleyen uc
+        // (yeni plan) yukarida iptal edildi; yerelde dusurme plani kalsaydi
+        // tarama donem sonunda iptal edilmis bir aboneligin paketini
+        // degistirir ve olay kaydina "paket degisti" yazardi.
+        planliPaketSurumuId: null,
+        paketGecisTarihi: null,
+        odenenPaketSurumuId: null,
+      },
     });
+
+    if (yukseltmeGeriAlinir) {
+      await this.prisma.abonelikOlayi.create({
+        data: {
+          abonelikId: ab.id,
+          tip: 'paket.geri.alindi',
+          oncekiDurum: AbonelikDurumu.IPTAL,
+          yeniDurum: AbonelikDurumu.IPTAL,
+          aciklama:
+            'Yükseltmenin yeni ücreti başlamadan abonelik iptal edildi; etkin paket, ' +
+            'dönemi ödenmiş pakete döndü.',
+          veri: {
+            yukseltilenPaketSurumuId: ab.paketSurumuId,
+            odenenPaketSurumuId: ab.odenenPaketSurumuId,
+            gecisTarihi: ab.paketGecisTarihi!.toISOString(),
+          },
+          aktor: kullaniciId,
+        },
+      });
+    }
 
     return { durum: AbonelikDurumu.IPTAL, erisimSonu: ab.erisimSonu };
   }

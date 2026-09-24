@@ -448,26 +448,45 @@ describe('⭐ /abonelik — mevcut paket işareti', () => {
     expect(o.paketKodu).toBe('miras-pro');
   });
 
+  // ⚠ 23.09 (paket değişimi): "mevcut mu" kararı `paket-degisimi.ts` →
+  // `mevcutPaketMi`e TAŞINDI ve SUNUCU KAYNAKLI oldu (`degisim.kod ===
+  // 'AYNI_PAKET'`). Eski eşitlik kuralı yalnız sunucu `degisim` göndermezse
+  // (eski sunucu) geçerli. Aşağıdaki kapılar AYNI kuralları yeni yerlerinde
+  // ölçer; biri gevşetilmedi. Neden taşındı: eski kural SÜRESİ BİTMİŞ
+  // aboneliğin paketini de kilitliyordu (`ErisimKarari.paketKodu` SONA_ERDI'de
+  // de doludur) — müşteri eski paketini yeniden satın alamıyordu.
+  const degisimModulu = readFileSync(join(__dirname, 'paket-degisimi.ts'), 'utf8');
+
   it('⭐ mevcut paket SUNUCUDAN okunur, ön yüzde yeniden hesaplanmaz', () => {
     expect(sayfa).toContain('data?.erisim');
     // ⚠ 23.09: üçüncü argüman (katalog adı) eklendi; kapı İLK argümana bakar
     // (çağrı çok satırlı yazılabilir — boşluk serbest).
     expect(sayfa).toMatch(/abonelikOzeti\(\s*erisim[,)]/);
-    expect(sayfa).toContain('p.kod === mevcutPaketKodu');
+    expect(sayfa).toContain('const mevcutMu = mevcutPaketMi(p, mevcutPaketKodu);');
+    // Sunucu söylüyorsa sunucu; eşitlik yalnız geriye dönük yedek.
+    expect(degisimModulu).toContain("if (p.degisim) return p.degisim.yol === 'yok' && p.degisim.kod === 'AYNI_PAKET';");
+    expect(degisimModulu).toContain('p.kod === mevcutPaketKodu');
   });
 
   it('⭐ bilgi gelmeden HİÇBİR kart işaretlenmez (yanlış kart = yanlış yükseltme)', () => {
-    expect(sayfa).toContain('!!mevcutPaketKodu &&');
+    // Yedek dal (sunucu `degisim` göndermedi) bilgi yokken işaretlemez; sunucu
+    // dalı yalnız `AYNI_PAKET` der — o da firmanın aboneliğinden hesaplanan
+    // BİLGİNİN KENDİSİDİR.
+    expect(degisimModulu).toContain('return !!mevcutPaketKodu && p.kod === mevcutPaketKodu;');
   });
 
   it('⭐ mevcut paketin düğmesi EYLEM ÜRETMEZ (disabled + ikinci kapı)', () => {
-    expect(sayfa).toContain('disabled={mevcutMu}');
-    // Düğme kapalıyken de satın alma başlamasın (klavye/eski durum).
-    expect(sayfa).toMatch(/onClick=\{\(\) => \{[\s\S]{0,300}if \(mevcutMu\) return;/);
+    expect(sayfa).toContain("disabled={eylem.tur === 'mevcut' || eylem.tur === 'kapali'}");
+    // Düğme kapalıyken de hiçbir işlem başlamasın (klavye/eski durum).
+    expect(sayfa).toMatch(/onClick=\{\(\) => \{[\s\S]{0,300}if \(eylem\.tur === 'mevcut' \|\| eylem\.tur === 'kapali'\) return;/);
+    // Mevcut paket → 'mevcut' eylemi (rol ne olursa olsun): kural modülde.
+    expect(degisimModulu).toContain("if (g.mevcutMu) return { tur: 'mevcut' };");
   });
 
   it('⭐ düğme metni pakete göre değişiyor, "seç" demiyor', () => {
-    expect(sayfa).toContain("{mevcutMu ? 'Mevcut paketiniz' : 'Bu paketi seç'}");
+    expect(sayfa).toMatch(
+      /\{eylem\.tur === 'mevcut'\s*\?\s*'Mevcut paketiniz'\s*:\s*eylem\.tur === 'satin-al'\s*\?\s*'Bu paketi seç'\s*:\s*'Bu pakete geç'\}/,
+    );
   });
 
   it('kart rozeti + düğme metni "Mevcut paketiniz" diyor', () => {

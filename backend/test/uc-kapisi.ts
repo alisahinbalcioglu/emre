@@ -129,6 +129,10 @@ const UCRETSIZ: Record<string, Muafiyet> = {
   'GET /abonelik/paketler': ['ODEME', 'Paket listesi görülmeden paket seçilemez.'],
   'GET /abonelik/durum': ['ODEME', 'Firmanın kendi abonelik durumu; kapatmak "neden kısıtlıyım" sorusunu cevapsız bırakır.'],
   'POST /abonelik/basla': ['ODEME', 'Satın almanın kendisi. Kapatılırsa askıdaki firma askıdan ÇIKAMAZ.'],
+  // 23.09 — paket değişimi. Yetenek kapısı konmaz: yalnız AKTIF/DENEME firma
+  // değiştirir ve bu kural `paketDegisimYolu`nda; kapıya bağlamak ödemesi
+  // geciken firmaya "önce ödeyin" yerine "erişiminiz yok" dedirtirdi.
+  'POST /abonelik/degistir': ['ODEME', 'Paket yükseltme/düşürme — sözleşme bedelini değiştiren ödeme işlemi; kural karar fonksiyonunda.'],
   'POST /abonelik/donus': ['ODEME', 'iyzico 3-D dönüşü; ödeme burada sonuçlanır.'],
   'POST /abonelik/kart-guncelle': ['ODEME', 'Kartı geçersizleşen firma kartını değiştiremezse hiç ödeyemez.'],
   'POST /abonelik/iptal': ['ODEME', 'İptal hakkı ödeme durumuna bağlanamaz (tüketici hakkı).'],
