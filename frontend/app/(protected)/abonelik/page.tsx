@@ -2,7 +2,17 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import api from '@/ortak/lib/api';
+import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
 import { KAPSAM_ETIKET, SEVIYE_ETIKET, donemEki, kotaCumlesi, odemeDenemeNotu, paketRozeti, vitrinFiyati, type Paket } from '@/ozellik/odeme/paket-bicim';
+// 23.09 — paket değişimi: kartın yolu (satın al / geç / geçilemez) SUNUCUDAN
+// (`degisim` alanı); bu modül yalnız ekrana çevirir.
+import {
+  bekleyenDegisimCumlesi,
+  degisimOnayMetni,
+  kartEylemi,
+  mevcutPaketMi,
+  type PaketGecisi,
+} from '@/ozellik/odeme/paket-degisimi';
 import { DenemeSatiri } from '@/ozellik/odeme/DenemeSatiri';
 import { kucultmeUyarisi } from '@/ozellik/firma/ekip/koltuk-metinleri';
 // ⚠ Paket adı/durum rozeti hesap sayfasıyla AYNI saf modülden: "miras-pro"
@@ -51,9 +61,10 @@ import {
  * ═══════════════════════════════════════════════════════════════════════════
  */
 export default function AbonelikSayfasi() {
-  // ⚠ `erisim`/`refresh` ARTIK KULLANILMIYOR: durum karti ve iptal
-  // dugmesi hesap sayfasina tasindi (03.09). Kancayi bos cagirmak yerine
-  // import da kaldirildi — olu baglanti birakmayalim.
+  // ⚠ 23.09: `refresh` YENIDEN kullaniliyor — yukseltme ozellikleri HEMEN
+  // acar; kenar cubugu ve kapilar yeni paketi sayfa yenilenmeden gormeli.
+  // (03.09'da durum karti ve iptal hesap sayfasina tasinmisti; o karar AYNEN.)
+  const { refresh: yetenekleriYenile } = useCapabilities();
   const [paketler, setPaketler] = useState<Paket[]>([]);
   const [yukleniyor, setYukleniyor] = useState(true);
   const [hata, setHata] = useState<string | null>(null);
@@ -87,7 +98,19 @@ export default function AbonelikSayfasi() {
     paketKodu?: string | null;
     durum?: string | null;
     kalanGun?: number | null;
+    /** 23.09 — bu dönem yapılmış paket değişimi (sunucu `ErisimKarari`). */
+    paketGecisi?: PaketGecisi | null;
   } | null>(null);
+
+  // ── 23.09: PAKET DEĞİŞİMİ ONAY PENCERESİ ──────────────────────────────
+  // Sözleşme onayı BURADA DA zorunlu ve ÖNCEDEN İŞARETSİZ başlar: değişim
+  // sözleşme bedelini (yeni paketin fiyatını) değiştirir; satın almadaki
+  // onay yeni tutarı kapsamaz. Sunucu `@Equals(true)` ile ikinci kez bakar.
+  const [degisimHedefi, setDegisimHedefi] = useState<Paket | null>(null);
+  const [degisimOnayi, setDegisimOnayi] = useState<boolean>(SOZLESME_ONAYI_BASLANGIC);
+  const [degisimGonderiliyor, setDegisimGonderiliyor] = useState(false);
+  const [degisimHatasi, setDegisimHatasi] = useState<string | null>(null);
+  const [degisimSonucu, setDegisimSonucu] = useState<string | null>(null);
   // Paket SEVİYESİ (`/auth/me` → `tier`, aynı yanıt): paket katalogda yoksa
   // (satıştan kalktıysa) "Şu anki paketiniz" satırı ham kod yerine seviye
   // adını basar — Hesabım rozetiyle aynı kural (`paketGorunenAdi`).
@@ -197,6 +220,50 @@ export default function AbonelikSayfasi() {
       setHata(typeof m === 'string' ? m : 'Ödeme başlatılamadı.');
     } finally {
       setGonderiliyor(false);
+    }
+  }
+
+  /**
+   * 23.09 — PAKET DEĞİŞİMİ. Kart bilgisi ve fatura formu İSTENMEZ: abonelik
+   * zaten kayıtlı karttan yürüyor, iyzico yalnız planı değiştirir. Zamanlama
+   * (hemen / dönem sonu) sunucunun kararıdır; ekran onu ÖNCEDEN gösterir.
+   */
+  async function paketeGec() {
+    if (!degisimHedefi) return;
+    const onayHatasi = sozlesmeOnayiHatasi(degisimOnayi);
+    if (onayHatasi) {
+      setDegisimHatasi(onayHatasi);
+      return;
+    }
+    setDegisimHatasi(null);
+    setDegisimGonderiliyor(true);
+    try {
+      const { data } = await api.post<{ mesaj?: string }>('/abonelik/degistir', {
+        paketSurumuId: degisimHedefi.surum.paketSurumuId,
+        sozlesmeOnayi: degisimOnayi,
+      });
+      setDegisimSonucu(typeof data?.mesaj === 'string' ? data.mesaj : 'Paket değişikliğiniz alındı.');
+      setDegisimHedefi(null);
+      setDegisimOnayi(SOZLESME_ONAYI_BASLANGIC);
+      // Yükseltme özellikleri HEMEN açar: kartlar, "şu anki paketiniz" satırı
+      // ve kenar çubuğu yeni hâli sayfa yenilenmeden göstermeli.
+      await Promise.all([paketleriGetir(), kimligiGetir(), yetenekleriYenile()]);
+    } catch (e: any) {
+      const m = e?.response?.data?.message ?? e?.response?.data?.mesaj;
+      // ⚠ Sunucudan metin gelmediyse (bağlantı koptu, zaman aşımı) sonucu
+      // BİLMİYORUZ: değişiklik sunucuda gerçekleşmiş olabilir. "Paketiniz
+      // değişmedi" demek o durumda yalan olurdu (inceleme bulgusu 1). Kesin
+      // red metnini SUNUCU verir; burada yalnız "doğrulanamadı" denir.
+      setDegisimHatasi(
+        typeof m === 'string'
+          ? m
+          : 'İşlemin sonucu doğrulanamadı. Sayfayı yenileyip paketinizi kontrol edin; değişmemişse yeniden deneyebilirsiniz.',
+      );
+      // Sonuç sunucuda gerçekleşmiş olabilir: kartlar ve "şu anki paketiniz"
+      // satırı gerçek hâli göstersin.
+      void Promise.all([paketleriGetir(), kimligiGetir(), yetenekleriYenile()]).catch(() => undefined);
+    } finally {
+      setDegisimGonderiliyor(false);
     }
   }
 
@@ -419,6 +486,14 @@ export default function AbonelikSayfasi() {
               </span>
             )}
           </p>
+          {/* 23.09 — BEKLEYEN DEĞİŞİM: düşürme planlandıysa hangi tarihte
+              hangi pakete geçileceği; yükseltmeden sonra yeni ücretin
+              başladığı gün. Kaynak `ErisimKarari.paketGecisi` (sunucu). */}
+          {bekleyenDegisimCumlesi(erisim?.paketGecisi) && (
+            <p className="mt-1 text-xs font-medium text-blue-700">
+              {bekleyenDegisimCumlesi(erisim?.paketGecisi)}
+            </p>
+          )}
           <p className="mt-1 text-xs text-muted-foreground">
             Dönem kullanımınız ve yenilenme gününüz{' '}
             <a href="/profile" className="font-medium text-blue-600 hover:underline">
@@ -427,6 +502,12 @@ export default function AbonelikSayfasi() {
             sayfasının Abonelik sekmesindedir. Aboneliğinizi sonlandırmak isterseniz: Hesabım →
             Abonelik sekmesi → &quot;Aboneliği iptal et&quot;.
           </p>
+        </div>
+      )}
+
+      {degisimSonucu && (
+        <div role="status" className="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-900">
+          {degisimSonucu}
         </div>
       )}
 
@@ -474,8 +555,11 @@ export default function AbonelikSayfasi() {
           {paketler.map((p) => {
             // ⚠ Kod eşitliği, ad değil: aynı adı taşıyan iki sürüm olabilir.
             // `mevcutPaketKodu` null iken (bilgi gelmedi / abonelik yok)
-            // HİÇBİR kart işaretlenmez.
-            const mevcutMu = !!mevcutPaketKodu && p.kod === mevcutPaketKodu;
+            // HİÇBİR kart işaretlenmez. 23.09: sunucu `degisim` gönderiyorsa
+            // "mevcut" kararı ONUN (`AYNI_PAKET`) — süresi biten aboneliğin
+            // eski paketi artık kilitli değil, yeniden satın alınabilir.
+            const mevcutMu = mevcutPaketMi(p, mevcutPaketKodu);
+            const eylem = kartEylemi(p, { mevcutMu, sahipMi: firmaRol === 'sahip' });
             // ⚠ `className` DÜZ DİZGE KALMALI: Faz 6.1 kart hizası kapısı
             // (`fiyat-sayfasi.test.ts` → `siniflar`) sınıfları AST'den okur ve
             // şablon dizgesini okuyamaz — ilk yazımda şablon dizge kullanıldı,
@@ -548,31 +632,57 @@ export default function AbonelikSayfasi() {
                   düşürüyor sayıyor. İlk yazımda dışarı sarılmıştı, kapı
                   kırmızı verdi. Karar aynı, yeri farklı. */}
               {firmaRol === 'sahip' ? (
-                <button
-                  type="button"
-                  // Zaten kullanılan pakete basılamaz: düğme EYLEM ÜRETMEZ.
-                  disabled={mevcutMu}
-                  onClick={() => {
-                    // İkinci kapı ("sessiz dal yok"): klavye ya da eski bir
-                    // durumla buraya düşülürse de satın alma başlamaz.
-                    if (mevcutMu) return;
-                    // ⚠ Kucultme UYARIDIR, ret DEGIL (R1-Y4): Emre kucultmeyi
-                    // serbest birakip fazla uyeyi durdurmayi secti. Sunucu
-                    // satin almayi REDDETMEZ.
-                    const uyari =
-                      aktifKullanici === null
-                        ? null
-                        : kucultmeUyarisi(aktifKullanici, p.kullaniciHakki);
-                    if (uyari) {
-                      setKucultmeSorusu({ id: p.surum.paketSurumuId, metin: uyari });
-                      return;
-                    }
-                    paketiSec(p.surum.paketSurumuId);
-                  }}
-                  className="mt-auto rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {mevcutMu ? 'Mevcut paketiniz' : 'Bu paketi seç'}
-                </button>
+                // ⚠ `mt-auto` YOK (24.09 önizlemede görüldü): kapalı kartta
+                // düğmenin altına gerekçe metni geliyor ve satır uzuyor; kap
+                // `mt-auto` taşısaydı gerekçesiz kartın düğmesi satırın DİBİNE
+                // itilir, komşu düğmelerle aynı hizada durmazdı.
+                <div>
+                  <button
+                    type="button"
+                    // Zaten kullanılan pakete ve sunucunun "geçilemez" dediği
+                    // pakete basılamaz: düğme EYLEM ÜRETMEZ.
+                    disabled={eylem.tur === 'mevcut' || eylem.tur === 'kapali'}
+                    onClick={() => {
+                      // İkinci kapı ("sessiz dal yok"): klavye ya da eski bir
+                      // durumla buraya düşülürse de hiçbir işlem başlamaz.
+                      if (eylem.tur === 'mevcut' || eylem.tur === 'kapali') return;
+                      // 23.09 — ABONELİĞİ OLAN FİRMA: fatura formu ve kart
+                      // İSTENMEZ, onay penceresi açılır (küçültme uyarısı da
+                      // pencerenin İÇİNDE, aynı sözleşme onayıyla birlikte).
+                      if (eylem.tur === 'degistir') {
+                        setDegisimSonucu(null);
+                        setDegisimHatasi(null);
+                        setDegisimOnayi(SOZLESME_ONAYI_BASLANGIC);
+                        setDegisimHedefi(p);
+                        return;
+                      }
+                      // ⚠ Kucultme UYARIDIR, ret DEGIL (R1-Y4): Emre kucultmeyi
+                      // serbest birakip fazla uyeyi durdurmayi secti. Sunucu
+                      // satin almayi REDDETMEZ.
+                      const uyari =
+                        aktifKullanici === null
+                          ? null
+                          : kucultmeUyarisi(aktifKullanici, p.kullaniciHakki);
+                      if (uyari) {
+                        setKucultmeSorusu({ id: p.surum.paketSurumuId, metin: uyari });
+                        return;
+                      }
+                      paketiSec(p.surum.paketSurumuId);
+                    }}
+                    className="w-full rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {eylem.tur === 'mevcut'
+                      ? 'Mevcut paketiniz'
+                      : eylem.tur === 'satin-al'
+                        ? 'Bu paketi seç'
+                        : 'Bu pakete geç'}
+                  </button>
+                  {/* Sunucu neden geçilemeyeceğini söylüyorsa SÖYLENİR —
+                      kapalı düğme tek başına "neden?" sorusunu cevapsız bırakır. */}
+                  {eylem.tur === 'kapali' && (
+                    <p className="mt-2 text-xs leading-snug text-muted-foreground">{eylem.mesaj}</p>
+                  )}
+                </div>
               ) : (
                 <p className="mt-auto rounded-lg border border-border px-4 py-2 text-center text-sm text-muted-foreground">
                   {mevcutMu ? 'Mevcut paketiniz' : 'Aboneliği firma sahibi yönetir.'}
@@ -583,6 +693,84 @@ export default function AbonelikSayfasi() {
           })}
         </div>
         )
+      )}
+
+      {/* ── 23.09: PAKET DEĞİŞİMİ ONAYI ────────────────────────────────────
+          Müşteri NE ZAMAN, NE KADAR ödeyeceğini ve (düşürmede) ekibinden
+          kimin durdurulacağını onaydan ÖNCE görür. Zamanlama cümlesi
+          sunucunun kararından (`degisim.zamanlama`) üretilir. */}
+      {degisimHedefi?.degisim?.yol === 'degistir' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="degisim-baslik" className="w-full max-w-lg rounded-lg border border-border bg-background p-5">
+            <h3 id="degisim-baslik" className="text-base font-semibold">
+              {degisimHedefi.ad} paketine geçiş
+            </h3>
+            <p className="mt-1 text-xs text-muted-foreground">Şu anki paketiniz: {ozet.baslik}</p>
+            <p className="mt-3 text-sm leading-relaxed">
+              {degisimOnayMetni({
+                zamanlama: degisimHedefi.degisim.zamanlama,
+                yeniPaketAdi: degisimHedefi.ad,
+                yeniTutar: degisimHedefi.surum.tutar,
+                paraBirimi: degisimHedefi.surum.paraBirimi,
+                beklenenTarih: degisimHedefi.degisim.beklenenTarih,
+              })}
+            </p>
+            {aktifKullanici !== null && kucultmeUyarisi(aktifKullanici, degisimHedefi.kullaniciHakki) && (
+              <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
+                {kucultmeUyarisi(aktifKullanici, degisimHedefi.kullaniciHakki)}
+              </p>
+            )}
+            <div className="mt-4 rounded-lg border bg-slate-50 p-3">
+              <label htmlFor="degisim-sozlesme-onayi" className="flex items-start gap-2 text-xs leading-relaxed text-slate-700">
+                <input
+                  id="degisim-sozlesme-onayi"
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 shrink-0"
+                  checked={degisimOnayi}
+                  onChange={(e) => {
+                    setDegisimOnayi(e.target.checked);
+                    setDegisimHatasi(null);
+                  }}
+                />
+                <span>
+                  <a href={ON_BILGILENDIRME_YOLU} target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-600 hover:underline">
+                    Ön Bilgilendirme Formu
+                  </a>
+                  {"'nu ve "}
+                  <a href={SOZLESME_YOLU} target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-600 hover:underline">
+                    Mesafeli Satış Sözleşmesi
+                  </a>
+                  {"'ni yeni paket ve ücretiyle okudum, onaylıyorum."}
+                </span>
+              </label>
+            </div>
+            {degisimHatasi && (
+              <div role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                {degisimHatasi}
+              </div>
+            )}
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setDegisimHedefi(null);
+                  setDegisimHatasi(null);
+                }}
+                className="rounded border border-border px-3 py-1.5 text-sm"
+              >
+                Vazgeç
+              </button>
+              <button
+                type="button"
+                disabled={degisimGonderiliyor || !degisimOnayi}
+                onClick={paketeGec}
+                className="rounded bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+              >
+                {degisimGonderiliyor ? 'Değiştiriliyor…' : 'Onayla ve geç'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── KÜÇÜLTME ONAYI (§6.6 · Emre kararı E-3) ─────────────────────── */}

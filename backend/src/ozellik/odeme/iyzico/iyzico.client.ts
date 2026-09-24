@@ -64,6 +64,23 @@ export interface IyzicoAbonelikDetayi {
   orders?: IyzicoSiparis[];
 }
 
+/**
+ * `upgrade` yanıtı (dokuman + 20.08 sandbox ölçümü). ⚠ `startDate` ölçümde
+ * ms SAYISI geldi (`1789893431301`); doküman dize de gösterebilir — okuyan
+ * taraf ikisini de çözer (`paket-degisimi.ts` → `iyzicoTarihi`).
+ */
+export interface IyzicoPaketDegisimYaniti {
+  referenceCode?: string;
+  parentReferenceCode?: string;
+  pricingPlanReferenceCode?: string;
+  customerReferenceCode?: string;
+  subscriptionStatus?: IyzicoAbonelikDurumu;
+  trialDays?: number;
+  createdDate?: number | string;
+  startDate?: number | string;
+  endDate?: number | string;
+}
+
 interface IyzicoYanit<T> {
   status: 'success' | 'failure';
   errorCode?: string;
@@ -278,6 +295,43 @@ export class IyzicoClient {
     );
   }
 
+  // ── Abonelik arama (23.09) ──────────────────────────────────────────────
+  /**
+   * `GET /v2/subscription/subscriptions` — resmî dokümanda filtre adları
+   * `parent` (üst referans kodu) ve `customerReferenceCode`.
+   *
+   * TEK amacı: yerel kaydımızdaki uç UPGRADED ise (yanıtı kaybolan bir paket
+   * değişimi) zincirin CANLI ucunu bulmak (`AbonelikServisi.canliUcuBul`).
+   *
+   * ⚠⚠ SONUÇ ÇAĞIRANDA SÜZÜLÜR, BURADA DEĞİL — ve bu ZORUNLUDUR: iyzico
+   * tanımadığı alanı REDDETMEZ, sessizce yutar (20.08 ölçümü, rapor S1a).
+   * Filtre adı yanlışsa ya da uç onu yok sayarsa yanıt TÜM üye işyeri
+   * aboneliklerini döndürür; "UPGRADED olmayan ilk kayıt" demek BAŞKA BİR
+   * MÜŞTERİNİN aboneliğini bizimki sanmak olurdu. Çağıran her kaydın
+   * `parentReferenceCode`unu kendi zincirimizle karşılaştırır.
+   * ⚠ İmzaya giren yol sorgu dizesi İÇERMEZ (`istek` bunu zaten ayırıyor).
+   */
+  async abonelikAra(f: {
+    parent?: string;
+    customerReferenceCode?: string;
+    page?: number;
+    count?: number;
+  }): Promise<IyzicoAbonelikDetayi[]> {
+    const q = new URLSearchParams();
+    if (f.parent) q.set('parent', f.parent);
+    if (f.customerReferenceCode) q.set('customerReferenceCode', f.customerReferenceCode);
+    q.set('page', String(f.page ?? 1));
+    q.set('count', String(f.count ?? 50));
+    const yanit = await this.istek<{ items?: IyzicoAbonelikDetayi[] } | IyzicoAbonelikDetayi[]>(
+      'GET',
+      `/v2/subscription/subscriptions?${q.toString()}`,
+    );
+    // Yanit sekli surumler arasinda degisebiliyor: dizi ya da {items:[…]}
+    // (`urunleriListele` ile ayni ihtiyat).
+    if (Array.isArray(yanit)) return yanit;
+    return yanit?.items ?? [];
+  }
+
   // ── Başarısız tahsilatı yeniden dene ────────────────────────────────────
   /**
    * `siparisKodu` = başarısızlık webhook'undaki `orderReferenceCode`.
@@ -313,9 +367,20 @@ export class IyzicoClient {
   // ── Paket değişimi ──────────────────────────────────────────────────────
   /**
    * iyzico buna "upgrade" diyor ama düşüş (downgrade) için de aynı uç kullanılır.
+   * TEK çağıran: `PaketDegisimiServisi.degistir` (23.09) — daha önce hiçbir
+   * yerden çağrılmıyordu.
    *
    * `resetRecurrenceCount` alanı resmî SDK'nın beyaz listesinde YOK; SDK ile
    * gönderirseniz sessizce düşer. REST'e doğrudan gittiğimiz için burada çalışır.
+   *
+   * ⚠ RESMİ KISIT (dokuman, 23.09): yeni plan AYNI ÜRÜNE ait olmalı ve ödeme
+   * aralığı (paymentInterval + paymentIntervalCount) aynı olmalı. Çağıran
+   * taraf bunu `paketDegisimYolu` ile ÖNCEDEN reddeder (URUN_FARKLI /
+   * PERIYOT_FARKLI) — iyzico'nun hata metni müşteriye gösterilmez.
+   *
+   * ⚠ YANIT YENİ BİR ABONELİKTİR: `referenceCode` YENİ uçtur, eskisi UPGRADED
+   * olur ve terminaldir (20.08 ölçümü). Alanlar isteğe bağlı tiplenir: çağıran
+   * her birini ÇALIŞMA ANINDA doğrular.
    */
   async paketDegistir(
     abonelikKodu: string,
@@ -325,7 +390,7 @@ export class IyzicoClient {
       denemeUygula?: boolean;
       tekrarSayisiniSifirla?: boolean;
     },
-  ): Promise<unknown> {
+  ): Promise<IyzicoPaketDegisimYaniti> {
     return this.istek(
       'POST',
       `/v2/subscription/subscriptions/${abonelikKodu}/upgrade`,

@@ -1,14 +1,21 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, SetMetadata, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../../altyapi/auth/guards/jwt-auth.guard';
-import { KapaliHesapIzinli } from '../../../altyapi/auth/decorators/kapali-hesap-izinli.decorator';
+import {
+  KAPALI_HESAP_IZINLI,
+  KapaliHesapIzinli,
+} from '../../../altyapi/auth/decorators/kapali-hesap-izinli.decorator';
+import { Throttle } from '@nestjs/throttler';
 import { FirmaRolGuard } from '../../../altyapi/auth/guards/firma-rol.guard';
+import { KullaniciHizSiniriGuard } from '../../../altyapi/auth/guards/kullanici-hiz-siniri.guard';
 import { FirmaRolu } from '../../../altyapi/auth/decorators/firma-rolu.decorator';
 import { CurrentUser } from '../../../altyapi/auth/decorators/current-user.decorator';
 import { kimlikCoz } from '../../../altyapi/auth/kimlik';
 import { ErisimServisi } from './erisim.servisi';
 import { SatinAlmaServisi } from './satinalma.servisi';
 import { DenemeHakkiServisi } from './deneme-hakki.servisi';
+import { PaketDegisimiServisi } from './paket-degisimi.servisi';
 import { AbonelikBaslaDto } from './dto/abonelik-basla.dto';
+import { AbonelikDegistirDto } from './dto/abonelik-degistir.dto';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -43,6 +50,7 @@ export class AbonelikController {
     private readonly erisim: ErisimServisi,
     private readonly satinAlma: SatinAlmaServisi,
     private readonly denemeHakki: DenemeHakkiServisi,
+    private readonly paketDegisimi: PaketDegisimiServisi,
   ) {}
 
   /**
@@ -62,6 +70,15 @@ export class AbonelikController {
       this.satinAlma.satistakiPaketler(),
       this.denemeHakki.karar({ firmaId, kullaniciId: userId }),
     ]);
+    // ⚠ 23.09 — KARTIN DUGMESI SUNUCUDAN: "satin al / bu pakete gec / gecilemez
+    // (neden)". `degistir` ucuyla AYNI saf karar (`paketDegisimYolu`) — ekran
+    // "gec" deyip sunucu reddedemez. Firma bazli oldugu icin BURADA eklenir,
+    // `satistakiPaketler()` icinde DEGIL (deneme hakkiyla ayni gerekce: girissiz
+    // `/fiyatlar` o metodu 60 sn onbellekler).
+    const yollar = await this.paketDegisimi.yollar(
+      firmaId,
+      paketler.map((p) => p.surum.paketSurumuId),
+    );
     return paketler.map((p) => ({
       ...p,
       surum: {
@@ -70,6 +87,7 @@ export class AbonelikController {
         denemeHakki: p.surum.denemeGunu > 0 && karar.hak,
         denemeGerekcesi: p.surum.denemeGunu > 0 ? karar.gerekce : null,
       },
+      degisim: yollar.get(p.surum.paketSurumuId) ?? { yol: 'satin-al' as const },
     }));
   }
 
@@ -105,6 +123,42 @@ export class AbonelikController {
       musteri: g.musteri,
       // 6.4: onay ISTEKTE gelir, zamani SUNUCUDA damgalanir — istemcinin
       // gonderdigi saate guvenmek ispat degeri birakmazdi.
+      sozlesmeOnayi: g.sozlesmeOnayi,
+    });
+  }
+
+  /**
+   * PAKET DEGISIMI (23.09.2026) — kart aboneligi olan firmanin baska pakete
+   * gecisi. Yukseltme ozellikleri HEMEN acar, ucret donem sonunda; dusurme ve
+   * yatay gecis donem sonunda (bkz. `paket-degisimi.ts`).
+   *
+   * ⚠ SAHIP KAPISI `basla` ile ayni gerekce: sozlesme bedelini degistiren is.
+   * ⚠ ErisimGuard YOK (sinif basligi): yalniz AKTIF/DENEME firma degistirir,
+   * o kural `paketDegisimYolu`ndadir — kapiya baglamak odemesi geciken
+   * firmanin mesajini "erisiminiz yok" yapardi, "once odeyin" degil.
+   * ⚠ KAPALI HESAP BU UCTA YOK (sinif duzeyindeki izin METOTTA ezilir —
+   * `JwtAuthGuard` `getAllAndOverride` ile once metodu okur). Emre: kapali
+   * hesap "islem yapamayacak"; geri donusun yolu SATIN ALMADIR, paket
+   * degistirmek degil. Olagan yolda abonelik zaten IPTAL'dir (hesap kapatma
+   * iptal eder) ve karar reddederdi; bu satir iptalin iyzico'da DUSTUGU
+   * ("ELLE IPTAL GEREKEBILIR") nadir hali de kapatir.
+   */
+  @UseGuards(FirmaRolGuard)
+  @FirmaRolu('sahip')
+  @SetMetadata(KAPALI_HESAP_IZINLI, false)
+  // ⚠ HIZ SINIRI (kullanici basina 15 dk'da 5): her cagri iyzico'ya gider ve
+  // basarisiz deneme olay kaydi yazar. Donem basina TEK degisim kurali zaten
+  // ikinci BASARILI cagriyi durdurur; sinir basarisiz denemelerin sagini keser.
+  // Oturum sahibi kovasi (IP degil): ayni ofis NAT'i ekibi birbirine takmaz.
+  @UseGuards(KullaniciHizSiniriGuard)
+  @Throttle({ default: { ttl: 900_000, limit: 5 } })
+  @Post('degistir')
+  async degistir(@CurrentUser() kullanici: unknown, @Body() g: AbonelikDegistirDto) {
+    const { firmaId, userId } = kimlikCoz(kullanici);
+    return this.paketDegisimi.degistir({
+      firmaId,
+      kullaniciId: userId,
+      paketSurumuId: g.paketSurumuId,
       sozlesmeOnayi: g.sozlesmeOnayi,
     });
   }
