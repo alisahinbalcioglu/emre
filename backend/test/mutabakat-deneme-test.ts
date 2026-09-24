@@ -20,12 +20,16 @@
  * `trialDays`/`trialStartDate`/`trialEndDate`; dokümana göre epoch ms —
  * denemeli bir yanıt hiç GÖZLENMEDİ). Deneme içindeki `startDate` ve
  * `orders` değerleri ÖLÇÜLMEDİ; kural onları okumaz, fixture da uydurmaz.
- * Sipariş yalnız W bloğunda, çekimin KANITI olarak vardır.
+ * Sipariş yalnız W bloğunda, webhook yolunun doğruladığı sipariş olarak
+ * vardır; ödeme denemesi taşımadığı için gece mutabakatının kanıt kuralına
+ * (`odenmisSiparisMi`) göre KANIT DEĞİLDİR — bkz. test:mutabakat-kayip-tahsilat.
  *
  * ── BLOKLAR ───────────────────────────────────────────────────────────────
  *   S  saf kural `denemeSuruyorMu`: sınır anı, boş/bozuk tarih, yalnız DENEME
  *   M  tek satır mutabakatı (GERÇEK iş): deneme sürerken ACTIVE → DENEME
- *      kalır; UNPAID/CANCELED yine işlenir; deneme bitince ACTIVE → AKTIF
+ *      kalır; UNPAID/CANCELED yine işlenir. 24.09: deneme bittikten sonra
+ *      da çıplak ACTIVE AKTIF'e çekmez (kanıtsız terfi yok) — ödenmiş sipariş
+ *      tahsilat yolundan yeniden oynatılır: `test:mutabakat-kayip-tahsilat`
  *   E  sonuç: müşteri ilk çekimden önce UYARILIR (GERÇEK ErisimServisi.karar)
  *   W  tahsilat webhook'u DENEME'yi yine AKTIF'e çeker (tek kanıt yolu)
  *   G  gece taraması (cron giriş noktası): kuralı HATASIZ uygular, özet
@@ -425,7 +429,11 @@ async function mBlogu(): Promise<void> {
       degisti === true && ab.durum === 'IPTAL', `degisti=${degisti} durum=${ab.durum}`);
   }
 
-  console.log('\n── M · deneme BİTTİKTEN sonra eski davranış ──');
+  // 24.09 — Emre kararı "kanıtsız terfi yok": deneme BİTTİKTEN sonra da
+  // çıplak ACTIVE AKTIF'e çekmez. Eski hâl (yalnız DURUM terfisi) `erisimSonu`nu
+  // uzatmıyor, faturayı kuyruğa almıyordu; ödenmiş ilk çekim artık tahsilat
+  // yolundan yeniden oynatılır (`test:mutabakat-kayip-tahsilat` D/W/G).
+  console.log('\n── M · deneme BİTTİKTEN sonra: çıplak ACTIVE terfi ettirmez ──');
   {
     const d = dunyaKur();
     const simdi = Date.now();
@@ -435,16 +443,15 @@ async function mBlogu(): Promise<void> {
     check('M7-FIXTURE denemeSonu GEÇMİŞTE, erisimSonu hâlâ İLERİDE (2 gün tampon)',
       ab.denemeSonu.getTime() < simdi && ab.erisimSonu.getTime() > simdi);
     const degisti = await d.tekSatir(ab.id, 'sub-m7');
-    check('M7 ⭐ deneme bittikten sonra ACTIVE → AKTIF (eski davranış korunur; yalnız DURUM — erisimSonu uzamaz, ayrı iş)',
-      degisti === true && ab.durum === 'AKTIF', `degisti=${degisti} durum=${ab.durum}`);
-    const olay = d.durumOlaylari(ab.id)[0];
-    check('M8 olay: DENEME → AKTIF, aktör mutabakat',
-      d.durumOlaylari(ab.id).length === 1 && olay?.oncekiDurum === 'DENEME' &&
-        olay?.yeniDurum === 'AKTIF' && olay?.aktor === 'mutabakat',
-      JSON.stringify(olay));
+    check('M7 ⭐ deneme bittikten sonra ÇIPLAK ACTIVE (sipariş yok) → DENEME kalır (kanıtsız terfi yok)',
+      degisti === false && ab.durum === 'DENEME', `degisti=${degisti} durum=${ab.durum}`);
+    const sayac = (d.mutabakat as any).denemedeKorunan;
+    check('M8 durum olayı YAZILMADI; deneme sayacı ARTMADI — satırı deneme kuralı değil kanıtsız-terfi kuralı tuttu',
+      d.durumOlaylari(ab.id).length === 0 && sayac === 0 && (d.mutabakat as any).kanitsizAktif === 1,
+      `olay=${JSON.stringify(d.durumOlaylari(ab.id))} deneme=${sayac}`);
   }
 
-  console.log('\n── M · kapsam: kural yalnız DENEME satırını korur ──');
+  console.log('\n── M · kapsam: deneme kuralı yalnız DENEME satırını sayar ──');
   {
     const d = dunyaKur();
     const baslangic = new Date(Date.now() - 2 * GUN);
@@ -454,8 +461,10 @@ async function mBlogu(): Promise<void> {
     });
     d.iyz.detaylar.set('sub-m9', iyzicoDetayi('sub-m9', 'ACTIVE', { baslangic, gun: 30 }));
     const degisti = await d.tekSatir(ab.id, 'sub-m9');
-    check('M9 ODEME_BEKLIYOR (denemeSonu ileride) + ACTIVE → AKTIF — kural DENEME dışını bastırmaz',
-      degisti === true && ab.durum === 'AKTIF', `degisti=${degisti} durum=${ab.durum}`);
+    check('M9 ODEME_BEKLIYOR (denemeSonu ileride) + çıplak ACTIVE → ODEME_BEKLIYOR kalır; deneme sayacı ARTMAZ (kural DENEME dışına uygulanmaz)',
+      degisti === false && ab.durum === 'ODEME_BEKLIYOR' && (d.mutabakat as any).denemedeKorunan === 0 &&
+        (d.mutabakat as any).kanitsizAktif === 1,
+      `degisti=${degisti} durum=${ab.durum} deneme=${(d.mutabakat as any).denemedeKorunan}`);
   }
 }
 
@@ -502,6 +511,10 @@ async function wBlogu(): Promise<void> {
   const ab = d.denemeSatiri('F-W', 'sub-w', baslangic);
   const donemBasi = Date.now() - 60_000;
   const donemSonu = donemBasi + 30 * GUN;
+  // ⚠ 24.09: sipariş BİLEREK `paymentAttempts` taşımıyor — bu blok yalnız
+  // WEBHOOK yolunu ölçer. Ödeme denemesi olsaydı gece mutabakatı onu kanıt
+  // sayıp tahsilatı yeniden oynatırdı (satır W0'da yine DENEME kalır, olay
+  // kuyruğa girerdi); o yol `test:mutabakat-kayip-tahsilat` W/D'de ölçülür.
   d.iyz.detaylar.set('sub-w', iyzicoDetayi('sub-w', 'ACTIVE', { baslangic, gun: 30 }, [
     { referenceCode: 'ord-w1', orderStatus: 'SUCCESS', startPeriod: donemBasi, endPeriod: donemSonu, price: 1649 },
   ]));
@@ -557,8 +570,11 @@ async function gBlogu(): Promise<void> {
   const gBasi = Date.now();
   const g = await gunluguTopla(() => d.mutabakat.geceMutabakati());
   check('G1 ⭐ süren deneme gece taramasından DENEME çıktı', suren.durum === 'DENEME', `durum=${suren.durum}`);
-  check('G2 ⭐ biten deneme AYNI taramada AKTIF oldu (kural yalnız süreni korur)', biten.durum === 'AKTIF',
-    `durum=${biten.durum}`);
+  // 24.09: biten denemenin iyzico detayında ödenmiş sipariş YOK (fixture
+  // uydurmaz) → kanıtsız terfi yok, DENEME kalır. Hangi kuralın tuttuğunu G6
+  // SAYAR: deneme kuralı yalnız süreni (1), kanıtsız kuralı biteni (1).
+  check('G2 ⭐ biten deneme (ödenmiş sipariş yok) AYNI taramada AKTIF\'e ÇEKİLMEDİ — kanıtsız terfi yok',
+    biten.durum === 'DENEME', `durum=${biten.durum}`);
   const sorulan = [...d.iyz.sorulan].sort().join(',');
   check('G3 BAĞLANTI: üç kart aboneliği iyzico\'ya soruldu, havale sorulmadı', sorulan === 'sub-g1,sub-g2,sub-g3',
     `sorulan=${sorulan}`);
@@ -570,14 +586,16 @@ async function gBlogu(): Promise<void> {
     g.hatalar.length === 0 && g.uyarilar.length === 0 && islenmeyen.length === 0,
     `hatalar=${JSON.stringify(g.hatalar)} uyarilar=${JSON.stringify(g.uyarilar)} islenmeyen=${islenmeyen.map((r) => r.firmaId)}`);
   const ozet = g.kayitlar.find((m) => m.startsWith('Mutabakat bitti')) ?? '';
-  check('G6 özet satırı (deploy sonrası ölçüm): "Değişen: 1 · deneme sürdüğü için AKTIF\'e çekilmeyen: 1"',
-    ozet.includes('Değişen: 1') && ozet.includes('deneme sürdüğü için AKTIF\'e çekilmeyen: 1'), `ozet="${ozet}"`);
+  check('G6 özet satırı (deploy sonrası ölçüm): "Değişen: 0 · deneme sürdüğü için AKTIF\'e çekilmeyen: 1 · … kanıtsız …: 1"',
+    ozet.includes('Değişen: 0') && ozet.includes('deneme sürdüğü için AKTIF\'e çekilmeyen: 1') &&
+      ozet.includes('kanıtsız ACTIVE ile AKTIF\'e çekilmeyen: 1'), `ozet="${ozet}"`);
 
   // İkinci gece AYNI iş örneğiyle: sayaç sıfırlanmazsa birikir ve ölçüm yalan söyler.
   const g2 = await gunluguTopla(() => d.mutabakat.geceMutabakati());
   const ozet2 = g2.kayitlar.find((m) => m.startsWith('Mutabakat bitti')) ?? '';
-  check('G7 ikinci gece: "Değişen: 0 · … çekilmeyen: 1" (sayaç her gece sıfırlanır, süren deneme hâlâ DENEME)',
-    ozet2.includes('Değişen: 0') && ozet2.includes('deneme sürdüğü için AKTIF\'e çekilmeyen: 1') && suren.durum === 'DENEME',
+  check('G7 ikinci gece: "Değişen: 0 · … çekilmeyen: 1 · … kanıtsız …: 1" (sayaçlar her gece sıfırlanır, süren deneme hâlâ DENEME)',
+    ozet2.includes('Değişen: 0') && ozet2.includes('deneme sürdüğü için AKTIF\'e çekilmeyen: 1') &&
+      ozet2.includes('kanıtsız ACTIVE ile AKTIF\'e çekilmeyen: 1') && suren.durum === 'DENEME',
     `ozet="${ozet2}" durum=${suren.durum}`);
 }
 
@@ -594,8 +612,11 @@ async function kBlogu(): Promise<void> {
   check('K0 deneme sürerken mutabakattan sonra satır DENEME', ab.durum === 'DENEME', `durum=${ab.durum}`);
 
   // Zaman atlaması: deneme ve 2 günlük tampon bitti; tampondaki gecelerde
-  // iyzico'ya ULAŞILAMADI (sahte iyzico bu kod için hata fırlatır). Normal
-  // yolda denemeSonu'ndan sonraki ilk gece ACTIVE satırı AKTIF yapardı (M7).
+  // iyzico'ya ULAŞILAMADI (sahte iyzico bu kod için hata fırlatır). ⚠ 24.09:
+  // artık tek yol bu değil — iyzico'ya ulaşılsa da ödenmiş sipariş görünmezse
+  // çıplak ACTIVE terfi ettirmez (M7) ve satır yine buraya düşer. SONA_ERDI +
+  // iyzico ACTIVE satırın taranması ve yeniden alım kapısı:
+  // `test:mutabakat-kayip-tahsilat` K/Z.
   ab.denemeSonu = new Date(Date.now() - 3 * GUN);
   ab.erisimSonu = new Date(Date.now() - 1 * GUN);
   d.iyz.detaylar.delete('sub-k');

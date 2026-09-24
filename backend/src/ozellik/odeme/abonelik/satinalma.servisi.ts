@@ -20,7 +20,11 @@ import { kartAboneligiKapaliMi } from './kart-kapatma';
 import { ceviriKotasiCoz } from './ceviri-kotasi';
 import { DenemeKarari } from './deneme-hakki';
 import { DenemeHakkiServisi } from './deneme-hakki.servisi';
-import { yeniAbonelikEngelliMi } from './paket-degisimi';
+import {
+  KART_ABONELIGI_ACIK_MESAJI,
+  yeniAbonelikEngeli,
+  yeniAbonelikEngelliMi,
+} from './paket-degisimi';
 import { EpostaServisi } from '../eposta/eposta.servisi';
 import { HUKUKI_METIN_SURUMU } from '../../../altyapi/auth/hukuki-surum';
 
@@ -592,7 +596,18 @@ export class SatinAlmaServisi {
       where: { firmaId: p.firmaId },
       include: { paketSurumu: { include: { paket: true } } },
     });
-    if (yeniAbonelikEngelliMi(mevcut)) {
+    const engel = yeniAbonelikEngeli(mevcut);
+    if (engel === 'KART_ABONELIGI_ACIK') {
+      // ⚠ 24.09 — CIFT CEKIM KORUMASI: satir SONA_ERDI/ASKIDA ama iyzico'daki
+      // kart aboneligi hala ACIK (bkz. paket-degisimi.ts →
+      // `iyzicoAboneligiAcikMi`). Yeni abonelik eskisini sahipsiz birakir,
+      // iyzico ikisinden de ceker. Form ACILMADAN reddedilir.
+      throw new BadRequestException({
+        kod: 'KART_ABONELIGI_ACIK',
+        message: KART_ABONELIGI_ACIK_MESAJI,
+      });
+    }
+    if (engel) {
       // ⚠ 23.09'a kadar bu mesaj OLMAYAN bir yolu gosteriyordu ("yukseltme
       // yolu"). Yol artik var: abonelik sayfasindaki kartin "Bu pakete gec"
       // dugmesi (`POST /abonelik/degistir`).
@@ -1309,6 +1324,18 @@ export class SatinAlmaServisi {
             `${canli.referenceCode} bulundu ve iptal edildi (firma ${firmaId})`,
         );
       }
+      // ⚠ 24.09 — iyzico'da iptal BASARILI oldu (basarisiz olsaydi yukarida
+      // atilirdi): bildigimiz durum artik CANCELED ve HEMEN yazilir — asagidaki
+      // `durumDegistir` bu satirda patlasa bile (SONA_ERDI/ASKIDA → IPTAL
+      // gecersiz; hesap kapatma ve yonetici silme bu satirlara da gelir).
+      // Yazilmasaydi alan gece mutabakatina kadar bayat 'ACTIVE' kalir ve satin
+      // alma kapisi geri donen musteriyi YANLISLIKLA reddederdi
+      // (`iyzicoAboneligiAcikMi`) — hesap kapatip 30 gun icinde geri donmenin
+      // TEK yolu satin almadir.
+      await this.prisma.abonelik.update({
+        where: { id: ab.id },
+        data: { iyzicoDurum: 'CANCELED' },
+      });
     }
 
     await this.abonelik.durumDegistir(ab.id, AbonelikDurumu.IPTAL, {

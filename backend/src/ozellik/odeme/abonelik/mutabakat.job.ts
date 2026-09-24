@@ -1,8 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
-import { AbonelikDurumu } from '@prisma/client';
-import { IyzicoClient } from '../iyzico/iyzico.client';
+import { AbonelikDurumu, Prisma } from '@prisma/client';
+import { IyzicoAbonelikDetayi, IyzicoClient } from '../iyzico/iyzico.client';
+import type { AbonelikWebhookGovdesi } from '../iyzico/imza';
+import { iyzicoTarihi } from '../iyzico/iyzico-tarihi';
+import { AZAMI_DENEME as WEBHOOK_AZAMI_DENEME } from '../webhook/webhook.isleyici';
 import { AbonelikServisi, iyzicoDurumunuYorumla } from './abonelik.servisi';
 
 /**
@@ -64,13 +67,14 @@ import { AbonelikServisi, iyzicoDurumunuYorumla } from './abonelik.servisi';
  *  doğrulanarak) satırı AKTIF'e çeker. Kapsam BİLEREK dar:
  *   · Yalnız ACTIVE → AKTIF bastırılır. UNPAID/CANCELED/EXPIRED deneme içinde
  *     de işlenir (iptal ve ödeme sorunu denemede de gerçektir).
- *   · Deneme BİTTİKTEN sonra eski davranış sürer: tahsilat webhook'u
- *     kaybolduysa (iyzico ~45 dk sonra bırakır) satırı AKTIF'e çeken tek yol
- *     yine bu iştir. ⚠ Yalnız DURUMU çeker: `erisimSonu`nu uzatmaz, faturayı
- *     kuyruğa almaz (ikisi de yalnız webhook yolunda) — bilinen açık, ayrı iş.
- *   · `denemeSonu` boş DENEME satırı eski davranışta kalır. Bugün kart
- *     aboneliğinde DENEME'yi yalnız satın alma açar ve `denemeSonu`nu her
- *     zaman yazar (`satinalma.servisi.ts` → `donemTarihleriHesapla`).
+ *   · Deneme BİTTİKTEN sonra da çıplak ACTIVE AKTIF'e çekmez (24.09, aşağıdaki
+ *     KAYIP TAHSİLAT notu, kural 5). İlk çekimin webhook'u kaybolduysa bu iş
+ *     çekimi iyzico'nun sipariş listesinde bulur ve tahsilat yolunu yeniden
+ *     oynatır — `erisimSonu` ve fatura o yoldan yazılır.
+ *   · `denemeSonu` boş DENEME satırını bu kural korumaz (sayacında görünmez);
+ *     çıplak ACTIVE onu da AKTIF'e çekmez (kural 5). Bugün kart aboneliğinde
+ *     DENEME'yi yalnız satın alma açar ve `denemeSonu`nu her zaman yazar
+ *     (`satinalma.servisi.ts` → `donemTarihleriHesapla`).
  *
  *  SAF — DB'siz ölçülür: `test:mutabakat-deneme`.
  * ═══════════════════════════════════════════════════════════════════════════
@@ -87,12 +91,182 @@ export function denemeSuruyorMu(
   return son > simdi.getTime();
 }
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  KAYIP TAHSİLAT WEBHOOK'U — MUTABAKAT YENİDEN OYNATIR (24.09.2026)
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ *  ÖLÇÜLEN KUSUR (`test:mutabakat-kayip-tahsilat`, eski hâl 10 kırmızı):
+ *  ödenmiş dönemi `erisimSonu`na yazan, faturayı kuyruğa alan ve dunning
+ *  sayaçlarını sıfırlayan TEK yol başarılı tahsilat webhook'udur
+ *  (`WebhookIsleyici` → `AbonelikServisi.tahsilatBasarili` +
+ *  `FaturaServisi.kuyrugaAl` + `DunningServisi.tahsilatToparlandi`). iyzico
+ *  webhook'u ~3 denemede (~45 dk) bırakır; işleyici yalnız ALDIĞIMIZ olayı
+ *  yeniden dener. Bu iş ise `erisimSonu`na yalnız İPTAL dalında dokunuyordu.
+ *  Webhook'u kaybolan (kesinti, deploy) ödeyen müşteri:
+ *   · AKTIF: `erisimSonu`nu geçip "Abonelik döneminiz doğrulanıyor"
+ *     ekranında erişimsiz kalıyordu; fatura HİÇ kuyruğa girmiyordu;
+ *   · deneme sonrası: satır yalnız DURUM olarak AKTIF oluyordu, tampon
+ *     bitince erişim kapanıyordu; fatura yoktu;
+ *   · ODEME_BEKLIYOR (tolerans, TAM erişim): çıplak ACTIVE satırı AKTIF'e
+ *     çekiyordu; `erisimSonu` geride kaldığı için ÖDEYEN MÜŞTERİYİ bu iş
+ *     KİLİTLİYORDU.
+ *
+ *  KURAL (Emre kararı 24.09 — "yeniden oynat + kanıtsız terfi yok"):
+ *   1. KANIT iyzico'nun KENDİ sipariş listesidir, webhook gövdesi değil (bkz.
+ *      `tahsilatBasarili` güvenlik notu): `orderStatus: 'SUCCESS'` VE en az bir
+ *      SUCCESS ödeme denemesi olan sipariş ödenmiştir (`odenmisSiparisMi`).
+ *      Yalnız iyzico ACTIVE derken aranır.
+ *   2. Ödenmiş siparişin dönem sonu `erisimSonu`ndan SONRAYSA tahsilat
+ *      kaybolmuştur: bu iş `WebhookOlayi`na `kaynak: 'mutabakat'` satırı yazar,
+ *      webhook işleyicisi dakikalık taramasında AYNI yolu koşar. İkinci bir
+ *      "tahsilatı uygula" kuralı YAZILMADI — bu deponun ölçülmüş hata sınıfı
+ *      (ikiz kural). Fatura tekilliği `Fatura.tahsilatKodu`, yeniden deneme
+ *      işleyicinin (5 kez), iz `WebhookOlayi` satırının kendisidir. ⚠ Oynatılan
+ *      olay İMZASIZDIR (`imzaGecerli` varsayılanı false): işleyici bir gün
+ *      imzaya göre süzülürse bu yol SESSİZCE durur — süzgeç `kaynak`a da bakmalı.
+ *   3. `erisimSonu` ASLA kısalmaz: tetik yalnız `>`; eşit ya da eski sipariş
+ *      oynatılmaz. Birden fazla sipariş uzatıyorsa (iş bir dönem boyu
+ *      koşmadıysa) yalnız EN YENİSİ oynatılır — eskisini sonra işlemek
+ *      erişimi geri çekerdi; eskilerin faturası için UYARI yazılır.
+ *   4. Aynı sipariş için TEK olay yazılır (`tekilAnahtar` =
+ *      `mutabakat:subscription.order.success:<sipariş>`). Oynatılan olay
+ *      işlenemediyse (5 deneme, ~5 dk) sonraki gece YENİDEN KURULUR (deneme
+ *      sayacı sıfırlanır) ve UYARI düşer: gece koşumu işleyicinin geri
+ *      çekilmesidir — 03:30'daki kısa bir iyzico kesintisi ödemeyi kalıcı
+ *      olarak kaybettiremez. İşlenmiş ama erişim yine kısaysa yalnız UYARI.
+ *   5. KANITSIZ TERFİ YOK: çıplak ACTIVE (erişimi uzatan ödenmiş sipariş yok)
+ *      DENEME, ODEME_BEKLIYOR, KISITLI ve ASKIDA satırını AKTIF'e ÇEKMEZ —
+ *      ACTIVE "iptal/durdurulmuş değil" demektir, "ödendi" değil (bkz. deneme
+ *      notu). Tek istisna IPTAL → AKTIF: müşteri vazgeçti; yeni ödeme yok,
+ *      ödenmiş dönem zaten `erisimSonu`nda.
+ *   6. KORUMA (Emre kararı 24.09, "kural kalsın, koruma ekle"): kural 5
+ *      yüzünden deneme sonrası satır kanıt 2 günlük tamponda bulunamazsa
+ *      saatlik işte SONA_ERDI olur. iyzico'da hâlâ ACTIVE görünen SONA_ERDI
+ *      satırı da gece TARANIR — yalnız kaybolmuş tahsilatı oynatmak için
+ *      (durumu başka türlü değişmez, kanıt yoksa UYARI). Aynı satırda
+ *      yeniden satın alma KAPALIDIR (paket-degisimi.ts →
+ *      `iyzicoAboneligiAcikMi`): yeni abonelik eskisini sahipsiz bırakır,
+ *      iyzico ikisinden de çeker.
+ *
+ *  BİLİNEN SINIRLAR (ölçüldü/okundu, bu işte DEĞİŞTİRİLMEDİ):
+ *   · Yalnız ACTIVE'de aranır: bir yenilemenin webhook'u kaybolup SONRAKİ
+ *     yenileme reddedildiyse (UNPAID) eski siparişin faturası kuyruğa girmez.
+ *     `tahsilatBasarili` her zaman AKTIF'e çeker; UNPAID satırı AKTIF yapmak
+ *     dunning'i silerdi.
+ *   · Erişim siparişin dönem sonundan zaten İLERİDEYSE tetik yok: denemesiz
+ *     satın almanın ilk siparişi (satın alma `erisimSonu`nu 31+2 gün köprüyle
+ *     yazar) ve erişimi SÜREN satırdaki satın almanın siparişleri (satın alma
+ *     `erisimSonu`nu KORUR — miras firmada erişim bitene dek, canlıda ~1 yıl,
+ *     HER sipariş). Webhook'u kaybolan böyle bir siparişin faturası kuyruğa
+ *     girmez ve UYARI da düşmez (erişim etkilenmez; kural 3'ün "elle fatura"
+ *     uyarısı yalnız erişimi uzatan siparişleri sayar) — faturası olmayan
+ *     ödenmiş siparişi saymak ayrı iş.
+ *   · Kilitli müşteri iptal ederse: yenilemesi ödenmiş ama webhook'u kaybolmuş
+ *     müşteri "doğrulanıyor" ekranında iptal ederse satır IPTAL, sonra
+ *     SONA_ERDI olur; iyzico CANCELED der — o dönem ne verilir ne faturalanır.
+ *   · Tahsilat yolu kanıtı yalnız VARLIKLA ister: `tahsilatBasarili` siparişi
+ *     iyzico'nun listesinde arar, SUCCESS olduğuna bakmaz (webhook'un kendi
+ *     açığı; oynatma zaten yalnız ödenmiş siparişi yazar) — ayrı iş.
+ *   · Tarihler tahsilat yolunda `new Date(...)` ile okunur
+ *     (`tahsilatBasarili` → `endPeriod`, `webhook.isleyici` → `startPeriod`,
+ *     bu işin İPTAL dalı → `endDate`): bugün sayı geldiği için doğru;
+ *     rakam-dizesinde olay işlenemez (sessiz değil) — `iyzicoTarihi`ne
+ *     geçmeleri ayrı iş. İPTAL dalındaki `endDate`in anlamı (dönem sonu mu,
+ *     iptal anı mı) ÖLÇÜLMEDİ.
+ *   · iyzico kodu HİÇ döndüremezse (ör. sandbox → canlı anahtar geçişinde eski
+ *     kodlar) SONA_ERDI + 'ACTIVE' satır her gece hata yazar ve yeniden alım
+ *     kapısı kapalı kalır — geçiş adımı `iyzicoDurum`u temizlemeli.
+ *   · Havale onayı kart aboneliğine bakmaz: iyzico'su açık bir firmaya havale
+ *     satılırsa kart da çekilmeye devam eder (bu işten ÖNCE de vardı) — ayrı iş.
+ *   · iyzico'nun DOĞRULAMADIĞI başarısızlık olayı (ör. imzasız sahte webhook)
+ *     ödemesi tam müşteriyi ODEME_BEKLIYOR'a atar; eskiden bu iş çıplak
+ *     ACTIVE ile ertesi gece geri alıyordu, kural 5 artık almıyor (Emre
+ *     24.09 kabul etti) — `tahsilatBasarisiz`in iyzico'dan doğrulaması ayrı iş.
+ *   · (KAPANDI 24.09, `995736a`) "Toparlandı" e-postası hiç gitmiyordu:
+ *     dunning düzeltmesi dunning'den çıkışı sıfırlamanın kendisinden bildirir
+ *     (`dunningdenCikti`). İşleyici olay kaynağına göre dallanmadığı için
+ *     oynatılan tahsilat da aynı yolu kullanır (okundu; bu işin testinde
+ *     ayrıca ölçülmedi).
+ *
+ *  SAF parçalar DB'siz ölçülür: `test:mutabakat-kayip-tahsilat`.
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+
+/** iyzico'nun sipariş listesindeki, erişimi uzatan ödenmiş sipariş. */
+export interface OdenmisSiparis {
+  siparisKodu: string;
+  donemSonu: Date;
+  /** iyzico'nun döndürdüğü ham sipariş — olay kaydında KANIT olarak saklanır. */
+  ham: Record<string, unknown>;
+}
+
+/** Oynatılan olayın kaynağı — `WebhookOlayi.kaynak` ve tekil anahtar öneki. */
+export const MUTABAKAT_KAYNAGI = 'mutabakat';
+
+/** Yeniden oynatılan olay tipi — webhook işleyicisinin başarılı tahsilat dalı. */
+const BASARILI_TAHSILAT: AbonelikWebhookGovdesi['iyziEventType'] = 'subscription.order.success';
+
+/**
+ * ⚠ Deneme alanının ADI: 20.08 tutanağı `paymentStatus` gösteriyor, istemci
+ * tipi (`IyzicoOdemeDenemesi`) `paymentAttemptStatus` diyor. İkisi de okunur —
+ * ikisi de iyzico'nun kendi verisidir; yalnız birini okumak, adı yanlışsa her
+ * ödemeyi "kanıtsız" sayardı.
+ */
+function basariliOdemeDenemesiMi(d: unknown): boolean {
+  if (!d || typeof d !== 'object') return false;
+  const x = d as Record<string, unknown>;
+  return x.paymentStatus === 'SUCCESS' || x.paymentAttemptStatus === 'SUCCESS';
+}
+
+/** Ödendi mi? `orderStatus: 'SUCCESS'` VE en az bir SUCCESS ödeme denemesi (kural 1). SAF. */
+export function odenmisSiparisMi(s: unknown): boolean {
+  if (!s || typeof s !== 'object') return false;
+  const o = s as Record<string, unknown>;
+  if (o.orderStatus !== 'SUCCESS') return false;
+  return Array.isArray(o.paymentAttempts) && o.paymentAttempts.some(basariliOdemeDenemesiMi);
+}
+
+/**
+ * `erisimSonu`nu UZATAN ödenmiş siparişler, dönem sonuna göre ESKİDEN YENİYE
+ * (kural 1-3). Boş dizi = kayıp tahsilat yok. SAF.
+ *
+ * Dönem sonu `iyzicoTarihi` ile okunur (sayı · rakam-dizesi · ISO). Bozuk
+ * `erisimSonu` (şemada NOT NULL) ile hiçbir sipariş uzatmaz sayılır: `x > NaN`
+ * yanlıştır — tahmin yürütülmez.
+ */
+export function erisimiUzatanOdemeler(
+  siparisler: unknown,
+  erisimSonu: Date | null | undefined,
+): OdenmisSiparis[] {
+  if (!Array.isArray(siparisler)) return [];
+  const sinir = erisimSonu instanceof Date ? erisimSonu.getTime() : NaN;
+  const sonuc: OdenmisSiparis[] = [];
+  for (const s of siparisler) {
+    if (!odenmisSiparisMi(s)) continue;
+    const o = s as Record<string, unknown>;
+    // Kod OLDUĞU GİBİ taşınır (kırpılmaz): `tahsilatBasarili` siparişi
+    // iyzico'nun listesinde birebir eşleşmeyle yeniden arar.
+    const kod = typeof o.referenceCode === 'string' ? o.referenceCode : '';
+    const donemSonu = iyzicoTarihi(o.endPeriod);
+    if (!kod || !donemSonu || !(donemSonu.getTime() > sinir)) continue;
+    sonuc.push({ siparisKodu: kod, donemSonu, ham: o });
+  }
+  return sonuc.sort((a, b) => a.donemSonu.getTime() - b.donemSonu.getTime());
+}
+
 @Injectable()
 export class MutabakatJob {
   private readonly logger = new Logger(MutabakatJob.name);
 
   /** Son gece koşumunda deneme sürdüğü için AKTIF'e ÇEKİLMEYEN satır sayısı. */
   private denemedeKorunan = 0;
+
+  /** Son gece koşumunda kaybolmuş tahsilatı YENİDEN OYNATILAN abonelik sayısı. */
+  private yenidenOynatilan = 0;
+
+  /** Son gece koşumunda çıplak ACTIVE ile AKTIF'e ÇEKİLMEYEN satır sayısı (kural 5). */
+  private kanitsizAktif = 0;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -107,16 +281,24 @@ export class MutabakatJob {
       where: {
         odemeYontemi: 'KART',
         iyzicoAbonelikKodu: { not: null },
-        durum: {
-          in: [
-            AbonelikDurumu.DENEME,
-            AbonelikDurumu.AKTIF,
-            AbonelikDurumu.ODEME_BEKLIYOR,
-            AbonelikDurumu.KISITLI,
-            AbonelikDurumu.ASKIDA,
-            AbonelikDurumu.IPTAL,
-          ],
-        },
+        OR: [
+          {
+            durum: {
+              in: [
+                AbonelikDurumu.DENEME,
+                AbonelikDurumu.AKTIF,
+                AbonelikDurumu.ODEME_BEKLIYOR,
+                AbonelikDurumu.KISITLI,
+                AbonelikDurumu.ASKIDA,
+                AbonelikDurumu.IPTAL,
+              ],
+            },
+          },
+          // KORUMA (24.09, kural 6): iyzico'da hâlâ ACTIVE görünen SONA_ERDI
+          // satırı — kaybolmuş tahsilat buradan oynatılır. iyzico başka bir
+          // şey derse `iyzicoDurum` tazelenir ve satır taramadan çıkar.
+          { durum: AbonelikDurumu.SONA_ERDI, iyzicoDurum: 'ACTIVE' },
+        ],
       },
       select: { id: true, iyzicoAbonelikKodu: true, durum: true },
     });
@@ -124,6 +306,8 @@ export class MutabakatJob {
     this.logger.log(`Mutabakat başlıyor: ${abonelikler.length} abonelik`);
     let degisen = 0;
     this.denemedeKorunan = 0;
+    this.yenidenOynatilan = 0;
+    this.kanitsizAktif = 0;
 
     for (const ab of abonelikler) {
       try {
@@ -141,8 +325,13 @@ export class MutabakatJob {
 
     // İkinci sayı deploy sonrası ölçümdür: süren deneme sayısı burada görünür
     // (bkz. `denemeSuruyorMu`). Sıfırsa ve deneme varsa kural bağlı değildir.
+    // Üçüncü: kaybolmuş tahsilat webhook'u — sıfırdan büyükse webhook ucu
+    // olay KAÇIRIYOR (ya da işleyemiyor) demektir. Dördüncü: kanıtsız ACTIVE (kural 5) — deneme
+    // sonrası çekim bekleyen satırlar burada görünür.
     this.logger.log(
-      `Mutabakat bitti. Değişen: ${degisen} · deneme sürdüğü için AKTIF'e çekilmeyen: ${this.denemedeKorunan}`,
+      `Mutabakat bitti. Değişen: ${degisen} · deneme sürdüğü için AKTIF'e çekilmeyen: ${this.denemedeKorunan}` +
+        ` · kayıp tahsilat yeniden oynatılan: ${this.yenidenOynatilan}` +
+        ` · kanıtsız ACTIVE ile AKTIF'e çekilmeyen: ${this.kanitsizAktif}`,
     );
   }
 
@@ -192,6 +381,34 @@ export class MutabakatJob {
       },
     });
 
+    // KAYIP TAHSİLAT (24.09, dosya başı kural 1-4). Durum denetimlerinden
+    // ÖNCE: AKTIF satırda aşağıdaki `hedef === ab.durum` erken dönüşü kaybolan
+    // dönemi hiç görmüyordu. Deneme kuralından da önce: ödenmiş sipariş
+    // tahsilatın KENDİSİDİR. Satırı bu iş değiştirmez (`false`) — tahsilat
+    // yolu değiştirir.
+    if (detay.subscriptionStatus === 'ACTIVE') {
+      const odemeler = erisimiUzatanOdemeler(detay.orders, ab.erisimSonu);
+      if (odemeler.length > 0) {
+        await this.tahsilatiYenidenOynat(abonelikId, abonelikKodu, detay, odemeler);
+        return false;
+      }
+    }
+
+    // KORUMA (24.09, kural 6): SONA_ERDI satır YALNIZ kaybolmuş tahsilatı
+    // oynatmak için taranır; durumu burada başka türlü DEĞİŞMEZ (iyzico'nun
+    // CANCELED/EXPIRED'ı yukarıda `iyzicoDurum`a yazıldı → satır taramadan
+    // çıkar). Hâlâ ACTIVE ve kanıt yoksa her gece UYARI: iyzico çekmeye devam
+    // ediyor olabilir, yeniden satın alma bu satırda kapalı.
+    if (ab.durum === AbonelikDurumu.SONA_ERDI) {
+      if (detay.subscriptionStatus === 'ACTIVE') {
+        this.logger.warn(
+          `SONA_ERDI satır iyzico'da hâlâ ACTIVE, ödenmiş yeni sipariş yok: abonelik ${abonelikId} ` +
+            `(${abonelikKodu}) — yeniden satın alma kapalı; müşteriyle görüşün ya da iyzico'da iptal edin.`,
+        );
+      }
+      return false;
+    }
+
     const hedef = iyzicoDurumunuYorumla(detay.subscriptionStatus);
     if (!hedef || hedef === ab.durum) return false;
 
@@ -200,6 +417,15 @@ export class MutabakatJob {
     // webhook'u yapar. `iyzicoSonKontrol` yukarıda yine yazıldı — iz kalır.
     if (hedef === AbonelikDurumu.AKTIF && denemeSuruyorMu(ab, new Date())) {
       this.denemedeKorunan++;
+      return false;
+    }
+
+    // KANITSIZ TERFİ YOK (24.09, kural 5): buraya ACTIVE ile ve erişimi
+    // uzatan ödenmiş sipariş OLMADAN gelindi. Tolerans/kısıt satırını AKTIF'e
+    // çekmek geride kalmış `erisimSonu` yüzünden erişimi KAPATIRDI. Tek
+    // istisna IPTAL → AKTIF (vazgeçme; ödenmiş dönem zaten `erisimSonu`nda).
+    if (hedef === AbonelikDurumu.AKTIF && ab.durum !== AbonelikDurumu.IPTAL) {
+      this.kanitsizAktif++;
       return false;
     }
 
@@ -244,5 +470,78 @@ export class MutabakatJob {
       });
     }
     return true;
+  }
+
+  /**
+   * Kaybolmuş tahsilatı webhook işleyicisinin kuyruğuna yazar (kural 2-4).
+   * İşleyici dakikalık taramasında `tahsilatBasarili` + fatura + dunning
+   * yolunu koşar; bu metot erişime ve faturaya DOKUNMAZ. `tahsilatBasarili`
+   * siparişi iyzico'nun listesinde YENİDEN arar (yalnız varlığını — bkz.
+   * bilinen sınırlar; SUCCESS kanıtını burada `odenmisSiparisMi` verdi).
+   */
+  private async tahsilatiYenidenOynat(
+    abonelikId: string,
+    abonelikKodu: string,
+    detay: IyzicoAbonelikDetayi,
+    odemeler: OdenmisSiparis[],
+  ): Promise<void> {
+    const enYeni = odemeler[odemeler.length - 1];
+    if (odemeler.length > 1) {
+      this.logger.warn(
+        `Kayıp tahsilat: abonelik ${abonelikId} için ${odemeler.length} ödenmiş sipariş erişimi uzatıyor; ` +
+          `yalnız en yenisi (${enYeni.siparisKodu}) yeniden oynatılıyor. Faturası kuyruğa GİRMEYECEK ` +
+          `siparişler: ${odemeler.slice(0, -1).map((o) => o.siparisKodu).join(', ')} — elle fatura gerekir.`,
+      );
+    }
+    const tekilAnahtar = `${MUTABAKAT_KAYNAGI}:${BASARILI_TAHSILAT}:${enYeni.siparisKodu}`;
+    try {
+      await this.prisma.webhookOlayi.create({
+        data: {
+          tekilAnahtar,
+          kaynak: MUTABAKAT_KAYNAGI,
+          olayTipi: BASARILI_TAHSILAT,
+          // iyzico bu gövdeyi GÖNDERMEDİ: webhook alanları + kanıt (iyzico'nun
+          // kendi sipariş kaydı). İmza yok → `imzaGecerli` varsayılanı (false).
+          hamGovde: {
+            kaynak: MUTABAKAT_KAYNAGI,
+            iyziEventType: BASARILI_TAHSILAT,
+            subscriptionReferenceCode: abonelikKodu,
+            orderReferenceCode: enYeni.siparisKodu,
+            customerReferenceCode: detay.customerReferenceCode ?? null,
+            kanit: enYeni.ham,
+          } as Prisma.InputJsonObject,
+          abonelikKodu,
+          siparisKodu: enYeni.siparisKodu,
+          musteriKodu: detay.customerReferenceCode ?? null,
+        },
+      });
+    } catch (e) {
+      // P2002 = bu sipariş DAHA ÖNCE oynatıldı (kural 4) ve erişim hâlâ
+      // uzamadı. İkinci olay YAZILMAZ; olay ÖLÜYSE (işleyici 5 denemede
+      // bıraktı) yeniden KURULUR — gece koşumu işleyicinin geri çekilmesidir.
+      if ((e as { code?: string })?.code === 'P2002') {
+        const olu = { tekilAnahtar, islendi: false, denemeSayisi: { gte: WEBHOOK_AZAMI_DENEME } };
+        // Son hata sıfırlanmadan ÖNCE okunur ve uyarıya yazılır: her gece
+        // yeniden kurulan olayın neden öldüğü kaybolmasın.
+        const onceki = await this.prisma.webhookOlayi.findFirst({ where: olu, select: { hata: true } });
+        const kurulan = onceki
+          ? await this.prisma.webhookOlayi.updateMany({ where: olu, data: { denemeSayisi: 0, hata: null } })
+          : { count: 0 };
+        this.logger.warn(
+          kurulan.count > 0
+            ? `Kayıp tahsilat olayı işlenemeden ölmüştü, YENİDEN KURULDU: abonelik ${abonelikId} ` +
+                `sipariş ${enYeni.siparisKodu} — son hata: ${onceki?.hata ?? '(boş)'}`
+            : `Kayıp tahsilat daha önce yeniden oynatıldı ama erişim hâlâ uzamadı: abonelik ${abonelikId} ` +
+                `sipariş ${enYeni.siparisKodu} — WebhookOlayi kaydına (kaynak ${MUTABAKAT_KAYNAGI}) elle bakın.`,
+        );
+        return;
+      }
+      throw e;
+    }
+    this.yenidenOynatilan++;
+    this.logger.warn(
+      `Kayıp tahsilat yeniden oynatıldı: abonelik ${abonelikId} sipariş ${enYeni.siparisKodu} ` +
+        `(dönem sonu ${enYeni.donemSonu.toISOString()}) — webhook bu siparişi getirmedi ya da işlenemedi.`,
+    );
   }
 }

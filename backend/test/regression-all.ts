@@ -498,6 +498,19 @@ const SUITES: Suite[] = [
   //    I4 rastgelenin sabitlenmediğini ölçer (tekrar saldırısı).
   //    MUTASYONLA ÖLÇÜLDÜ: eski kusur geri konunca I1, I4-b ve I5 kırmızı.
   { ad: 'iyzico yetki başlığı: randomKey eşliği (I1-I5)', script: 'test:iyzico-basligi', zincir: 'Z0' },
+  // ── 24.09.2026 — iyzico ZAMAN AŞIMI (Z1-Z6). AĞ GEREKTİRMEZ: süreç içi yerel
+  //    HTTP sunucusu (127.0.0.1) iyzico gibi takılır; istek GERÇEK fetch ile
+  //    gider, `AbortSignal.timeout` sarılıp süre 300 ms'ye kısaltılır.
+  //    KUSUR: `IyzicoClient.istek` içindeki `fetch` sinyal taşımıyordu; undici
+  //    başlığa 300 sn, gövdeye ayrıca 300 sn bekler. iyzico takılınca ödeme,
+  //    iptal, kart güncelleme ve paket değişimi dakikalarca asılı kalıyor,
+  //    paket değişiminin firma sırası aynı firmanın sonraki isteklerini de
+  //    bekletiyordu. ⚠ ANLAM: zaman aşımı RED DEĞİLDİR — hata KODSUZ ve
+  //    `zamanAsimi` İŞARETLİ: paket değişimi onu belirsiz sayıp iyzico'ya sorar
+  //    ve kayıtlı uç canlı görünse de "değişmedi" DEMEZ (Z6); dunning "ödemeniz
+  //    alınamadı" bildirimini basamak başına BİR KEZ erteler (Z7). Z6/Z7
+  //    GERÇEK servislerle koşar.
+  { ad: 'iyzico zaman aşımı: sinyal · kesim · işaretli kodsuz hata · belirsiz dal · firma sırası · dunning (Z1-Z7)', script: 'test:iyzico-zaman-asimi', zincir: 'Z0' },
   { ad: 'Abonelik ölçüm betiği: SQL geçerliliği (S1-S4b)', script: 'test:olcum-sorgu', zincir: 'Z0' },
   { ad: 'Satın alma yolu: fatura kapısı + miras muafiyeti (P1-P7)', script: 'test:satinalma', zincir: 'Z0' },
   // T47 (22.09.2026): "fatura bilgisi eksik firma gercek bir fatura kesme
@@ -559,10 +572,27 @@ const SUITES: Suite[] = [
   //    uyarılmıyordu), rozet "Aktif" diyordu, satır DENEME yaşam döngüsünden
   //    çıkıyordu. Kapı GERÇEK iş + GERÇEK durum makinesi + GERÇEK erişim
   //    kararıyla ölçer: deneme sürerken ACTIVE → DENEME kalır; UNPAID/CANCELED
-  //    yine işlenir; deneme bitince ACTIVE → AKTIF (eski davranış, yalnız durum);
-  //    tahsilat webhook'u DENEME'yi yine AKTIF'e çeker; cron giriş noktası kuralı
-  //    hatasız uygular ve özet satırında korunan satırı sayar.
+  //    yine işlenir; deneme bitince de çıplak ACTIVE terfi ettirmez (24.09,
+  //    kanıtsız terfi yok); tahsilat webhook'u DENEME'yi yine AKTIF'e çeker;
+  //    cron giriş noktası kuralı hatasız uygular ve özet satırında korunan
+  //    satırı sayar.
   { ad: 'Mutabakat denemeyi AKTİF yapmaz: saf kural · tek satır · uyarı · webhook · gece · kapatma (S/M/E/W/G/K)', script: 'test:mutabakat-deneme', zincir: 'Z0' },
+  // ── 24.09.2026 — GECE MUTABAKATI KAYIP TAHSİLAT WEBHOOK'UNU KURTARIR.
+  //    DB/AĞ GEREKTİRMEZ. Ödenmiş dönemi `erisimSonu`na yazan ve faturayı
+  //    kuyruğa alan TEK yol başarılı tahsilat webhook'uydu; iyzico onu ~45 dk
+  //    sonra bırakır. Webhook'u kaybolan ödeyen müşteri "dönem doğrulanıyor"
+  //    ekranında erişimsiz kalıyor, fatura kesilmiyordu; ödeme bekleyen
+  //    müşteriyi mutabakat çıplak ACTIVE ile AKTIF'e çekip KİLİTLİYORDU (eski
+  //    hâl 10 kırmızı). Kural: iyzico ACTIVE + ödenmiş sipariş (SUCCESS +
+  //    SUCCESS deneme) dönem sonu `erisimSonu`ndan sonra → `WebhookOlayi`
+  //    (kaynak mutabakat) → webhook işleyicisi AYNI yolu koşar; kanıtsız
+  //    ACTIVE (IPTAL dışında) terfi ettirmez. KORUMA (Emre 24.09): iyzico'da
+  //    hâlâ ACTIVE görünen SONA_ERDI satırı taranır, aynı satırda yeniden
+  //    satın alma kapalı (çift çekim), `iptalEt` iyzico durumunu tazeler.
+  //    GERÇEK iş + işleyici + fatura + dunning + satın alma + erişim kararı;
+  //    tekillik (P2002), ikinci gece, geç gelen gerçek webhook, ölü oynatmanın
+  //    yeniden kurulması, çoklu kayıp sipariş, özet satırı, uçtan uca zincir.
+  { ad: 'Mutabakat kayıp tahsilatı yeniden oynatır: saf kural · tarih · webhook ölçütü · kayıplar · negatifler · tekrar · gece · koruma · zincir (S/T/Ö/A/D/B/W/N/İ/G/K/Z)', script: 'test:mutabakat-kayip-tahsilat', zincir: 'Z0' },
   // ── 16.09.2026 — FAZ 7 · F2a: TOTP / KİMLİK ŞİFRELEME / MEYDAN OKUMA
   //    ÇEKİRDEĞİ. DB, SUNUCU ve AĞ GEREKTİRMEZ → `db` bayrağı YOK. Route ve
   //    şema YOK; canlı davranış değişmez. RFC 6238 Ek-B + RFC 4226 Ek-D
