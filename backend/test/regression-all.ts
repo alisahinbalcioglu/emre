@@ -532,6 +532,17 @@ const SUITES: Suite[] = [
   //    kesimde canlı okuma D5 kırmızı; listeye `ekiptenCikarildi` eklenince
   //    D9/D11 kırmızı; kart yolundaki çağrı kesilince D14 kırmızı.
   { ad: 'Ödeme/imha: fatura kendi kopyası (K4) + ödeme sonrası geri açma (D1-D16)', script: 'test:odeme-imha', zincir: 'Z0' },
+  // ── 24.09.2026 — "ÖDEMENİZ ALINDI" E-POSTASI HİÇ GİTMİYORDU. DB/AĞ/SMTP
+  //    GEREKTİRMEZ. `tahsilatBasarili` dunning sayaçlarını sıfırladıktan SONRA
+  //    `tahsilatToparlandi` satırı yeniden okuyup her müşteriyi "zaten sorunsuz"
+  //    görüyordu (ölçüldü: günlükte hata yok). Döngüden çıkış artık KOŞULLU
+  //    sıfırlamanın kendisinden okunur ve işleyici üzerinden taşınır — tek yol,
+  //    tek kural; işleyici olayın kaynağına (iyzico / mutabakat oynatması)
+  //    bakmaz. GERÇEK işleyici + abonelik + fatura + dunning: toparlanan
+  //    müşteriye TAM BİR e-posta (aynı olay iki süreçte AYNI ANDA işlense de),
+  //    hiç dunning'e girmemişe SIFIR; posta hatası tahsilat olayını düşürmez.
+  //    Eski hâl 17 kırmızı; inceleme öncesi "anlık görüntü" sürümü E1 kırmızı.
+  { ad: 'Dunning "ödemeniz alındı": çıkış koşullu sıfırlamadan, tam bir kez, posta hatası tahsilatı düşürmez (Ö/T/K/N/Y/E/M/H)', script: 'test:dunning-toparlandi', zincir: 'Z0' },
   // ── 16.09.2026 — FAZ 6.12a DENEME BİR KEZ. DB ve AĞ GEREKTİRMEZ (bellek-Prisma,
   //    kısıt + ILIKE joker + iç içe geçen çağrılar). Ölçülen: deneme hakkı hiçbir
   //    kimliğe bağlı değildi; aynı firma (iptal/deneme sonu ödeme alınamadı), hesap
@@ -540,6 +551,18 @@ const SUITES: Suite[] = [
   //    kapalı hata + K-P5 (DENEME→ODEME_BEKLIYOR, dunning bağlantısı) + çift
   //    abonelik koruması + K-P6 kayıt/giriş + KVKK + JWT'li paket ucu.
   { ad: 'Deneme hakkı bir kez: yollar A-E, ikiz plan, K-P5/K-P6 (S/O/A-N/K/CF/CS/G/L/H/I)', script: 'test:deneme-hakki', zincir: 'Z0' },
+  // ── 23.09.2026 — GECE MUTABAKATI DENEMEYİ AKTİF'E ÇEKMİYOR. DB/AĞ GEREKTİRMEZ.
+  //    iyzico'da TRIAL durumu yok: deneme içindeki abonelik ACTIVE görünür
+  //    (resmî doküman, Abonelik İşlemleri). Mutabakat ACTIVE'i AKTIF okuyup
+  //    DENEME satırını İLK GECE AKTIF'e çekiyordu → "Deneme sürenizin bitmesine
+  //    X gün kaldı" uyarısı hiç çıkmıyordu (müşteri ilk çekimden önce
+  //    uyarılmıyordu), rozet "Aktif" diyordu, satır DENEME yaşam döngüsünden
+  //    çıkıyordu. Kapı GERÇEK iş + GERÇEK durum makinesi + GERÇEK erişim
+  //    kararıyla ölçer: deneme sürerken ACTIVE → DENEME kalır; UNPAID/CANCELED
+  //    yine işlenir; deneme bitince ACTIVE → AKTIF (eski davranış, yalnız durum);
+  //    tahsilat webhook'u DENEME'yi yine AKTIF'e çeker; cron giriş noktası kuralı
+  //    hatasız uygular ve özet satırında korunan satırı sayar.
+  { ad: 'Mutabakat denemeyi AKTİF yapmaz: saf kural · tek satır · uyarı · webhook · gece · kapatma (S/M/E/W/G/K)', script: 'test:mutabakat-deneme', zincir: 'Z0' },
   // ── 16.09.2026 — FAZ 7 · F2a: TOTP / KİMLİK ŞİFRELEME / MEYDAN OKUMA
   //    ÇEKİRDEĞİ. DB, SUNUCU ve AĞ GEREKTİRMEZ → `db` bayrağı YOK. Route ve
   //    şema YOK; canlı davranış değişmez. RFC 6238 Ek-B + RFC 4226 Ek-D
@@ -579,6 +602,17 @@ const SUITES: Suite[] = [
   //    diye daraltan mutant kırmızı olur; (T) 7 durum × 2 tarih bileşiminde
   //    saf çekirdek ile `ErisimServisi.karar` KARŞILAŞTIRILIR (ikiz kural kapısı).
   { ad: 'Abonelik sağlığı tek kaynaktan: seviye + yetenek süzgeci (S/T/I/Y)', script: 'test:abonelik-erisim', zincir: 'Z0' },
+  // ── 24.09.2026 — DENEME GERİ SAYIMI İLK ÇEKİM GÜNÜNE. DB/AĞ GEREKTİRMEZ.
+  //    Ölçülen kusur: şerit ("Deneme sürenizin bitmesine N gün kaldı") ve
+  //    Hesabım'daki `kalanGun` `erisimSonu`na sayıyordu — o tarih 2 günlük
+  //    webhook tamponu taşır, iyzico ise `denemeSonu`nda çeker. Çekime 1,5 gün
+  //    varken "4 gün kaldı", çekimden SONRA 2 gün daha "N gün kaldı" deniyordu.
+  //    Emre kararı: geri sayım `denemeSonu`na; tamponda "Deneme süreniz sona
+  //    erdi · İlk ödemeniz işleniyor" (düğmesiz); "doldu" ve ERİŞİM KARARI
+  //    değişmez (E bloğu 801 saatte servisi saf çekirdekle karşılaştırır);
+  //    `denemeSonu` boşsa eski davranış. B bloğu satın almanın gerçek yazma
+  //    yolundan (ilk alım + geri dönen müşteri) karara BAĞLANTIYI ölçer.
+  { ad: 'Deneme geri sayımı ilk çekim gününe: çizelge · tampon · doldu · boş tarih · erişim · bağlantı (F/G/T/D/N/E/B)', script: 'test:deneme-geri-sayim', zincir: 'Z0' },
   // ── 17.09.2026 — FAZ 7 F1b: EKİP (davet · koltuk · kişi sınırı · ikizler).
   //    DB/AĞ GEREKTİRMEZ: bellek içi sahte Prisma `where`i GERÇEKTEN uygular
   //    (OR/NOT/lt/gt/in + ilişki süzgeci), `$transaction` firlatan işlemi geri
