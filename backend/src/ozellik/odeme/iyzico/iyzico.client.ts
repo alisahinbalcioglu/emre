@@ -101,6 +101,32 @@ export class IyzicoHatasi extends Error {
   }
 }
 
+/**
+ * Bir iyzico isteginin TUM omru (baslik + govde) icin ust sinir.
+ *
+ * ⚠ NEDEN VAR (24.09): `istek` icindeki `fetch` sinyal TASIMIYORDU. Node'un
+ * fetch'i (undici) varsayilan olarak basliga 300 sn, govdeye AYRICA 300 sn
+ * bekler; iyzico takilinca odeme, iptal, kart guncelleme ve paket degisimi
+ * istekleri dakikalarca asili kaliyordu. Paket degisimi FIRMA BASINA SIRA
+ * kullandigi icin ayni firmanin sonraki istekleri de onu bekliyordu.
+ *
+ * NEDEN 20 SN: on yuzun siradan istek siniri 30 sn (`frontend/ortak/lib/
+ * api.ts` → VARSAYILAN_ZAMAN_ASIMI_MS). Tek iyzico cagrisi ondan ONCE bitmeli
+ * ya da kesilmeli ki musteri tarayicinin genel zaman asimini degil bizim 502
+ * mesajimizi gorsun; aradaki pay veritabani isine kalir. `test:iyzico-zaman-
+ * asimi` sabiti on yuz dosyasindaki sinirla karsilastirir.
+ * ⚠ Sinir CAGRI basinadir: paket degisiminde iyzico tamamen takilirsa
+ * yukseltme + dogrulama sorgusu ~40 sn surer. Tarayici 30 sn'de birakir;
+ * sonuc yine olay kaydina ve gunluge yazilir, firma sirasi o sure kilitli kalir.
+ *
+ * ⚠⚠ ZAMAN ASIMI RED DEGILDIR: istek iyzico'ya ulasip ISLENMIS olabilir,
+ * yalniz yaniti gelmedi. Bu yuzden hata KODSUZDUR (`kod` undefined) — kod
+ * UYDURULMAZ. Paket degisimi kodsuz hatayi BELIRSIZ sayip iyzico'ya sorar
+ * (`AbonelikServisi.canliUcuBul`); kod uydurulsaydi "kesin red" sanilir ve
+ * musteriye "Paketiniz degismedi" denirdi.
+ */
+export const IYZICO_ZAMAN_ASIMI_MS = 20_000;
+
 @Injectable()
 export class IyzicoClient {
   private readonly logger = new Logger(IyzicoClient.name);
@@ -175,20 +201,38 @@ export class IyzicoClient {
     // `urunleriListele` oldugu icin dogrudan carptik.
     const imzaYolu = yol.split('?')[0];
 
-    const cevap = await fetch(url, {
-      method: metot,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: this.yetkiBasligi(imzaYolu, govde, rastgele),
-        'x-iyzi-rnd': rastgele,
-      },
-      body: govde ? JSON.stringify(govde) : undefined,
-    });
+    // Baslik ve govde AYNI sinyale bagli: undici govde akisini da bu sinyalle
+    // keser (24.09 olcumu: baslik gelip govde takilinca `cevap.json()` ayni
+    // TimeoutError ile dustu). Sinyal YALNIZ zaman asiminda duser; hata
+    // aninda dusmus olmasi zaman asimini ag hatasindan ayirir.
+    const sinyal = AbortSignal.timeout(IYZICO_ZAMAN_ASIMI_MS);
+
+    let cevap: Response;
+    try {
+      cevap = await fetch(url, {
+        method: metot,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: this.yetkiBasligi(imzaYolu, govde, rastgele),
+          'x-iyzi-rnd': rastgele,
+        },
+        body: govde ? JSON.stringify(govde) : undefined,
+        signal: sinyal,
+      });
+    } catch (e) {
+      // Ag hatasi (baglanti koptu, DNS) AYNEN atilir; yalniz zaman asimi
+      // kodsuz IyzicoHatasi'na cevrilir.
+      if (sinyal.aborted) throw this.zamanAsimi(metot, imzaYolu, 'yanit');
+      throw e;
+    }
 
     let json: IyzicoYanit<T>;
     try {
       json = (await cevap.json()) as IyzicoYanit<T>;
     } catch {
+      // Govde yarida kaldiysa bu da zaman asimidir. "Cozumlenemedi" demek
+      // teshisi bozuk JSON'a yollardi.
+      if (sinyal.aborted) throw this.zamanAsimi(metot, imzaYolu, 'govde');
       throw new IyzicoHatasi(
         undefined,
         `iyzico yanıtı çözümlenemedi (HTTP ${cevap.status})`,
@@ -204,6 +248,18 @@ export class IyzicoClient {
       );
     }
     return (json.data ?? (json as unknown)) as T;
+  }
+
+  /**
+   * ⚠ `kod` BILEREK undefined: iyzico bir kod SOYLEMEDI (bkz.
+   * IYZICO_ZAMAN_ASIMI_MS). `httpDurum` de verilmez: govde yarida kalsa bile
+   * durum kodu musterinin duzeltebilecegi bir sey soylemez — suzgec 502 verir.
+   * Hangi iyzico ucunun takildigi yalniz bu gunluk satirinda gorunur.
+   */
+  private zamanAsimi(metot: string, yol: string, asama: 'yanit' | 'govde'): IyzicoHatasi {
+    const sn = IYZICO_ZAMAN_ASIMI_MS / 1000;
+    this.logger.warn(`iyzico ${asama} ${sn} sn icinde gelmedi, istek kesildi: ${metot} ${yol}`);
+    return new IyzicoHatasi(undefined, `iyzico yanıt vermedi (zaman aşımı, ${sn} sn)`);
   }
 
   // ── Ürün ve ödeme planı (kurulum) ───────────────────────────────────────

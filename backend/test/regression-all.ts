@@ -487,6 +487,16 @@ const SUITES: Suite[] = [
   //    I4 rastgelenin sabitlenmediğini ölçer (tekrar saldırısı).
   //    MUTASYONLA ÖLÇÜLDÜ: eski kusur geri konunca I1, I4-b ve I5 kırmızı.
   { ad: 'iyzico yetki başlığı: randomKey eşliği (I1-I5)', script: 'test:iyzico-basligi', zincir: 'Z0' },
+  // ── 24.09.2026 — iyzico ZAMAN AŞIMI (Z1-Z6). AĞ GEREKTİRMEZ: süreç içi yerel
+  //    HTTP sunucusu (127.0.0.1) iyzico gibi takılır; istek GERÇEK fetch ile
+  //    gider, `AbortSignal.timeout` sarılıp süre 300 ms'ye kısaltılır.
+  //    KUSUR: `IyzicoClient.istek` içindeki `fetch` sinyal taşımıyordu; undici
+  //    başlığa 300 sn, gövdeye ayrıca 300 sn bekler. iyzico takılınca ödeme,
+  //    iptal, kart güncelleme ve paket değişimi dakikalarca asılı kalıyor,
+  //    paket değişiminin firma sırası aynı firmanın sonraki isteklerini de
+  //    bekletiyordu. ⚠ ANLAM: zaman aşımı RED DEĞİLDİR — hata KODSUZ olmalı ki
+  //    paket değişimi onu belirsiz sayıp iyzico'ya sorsun (Z6, gerçek servis).
+  { ad: 'iyzico zaman aşımı: sinyal · kesim · kodsuz hata · belirsiz dal · firma sırası (Z1-Z6)', script: 'test:iyzico-zaman-asimi', zincir: 'Z0' },
   { ad: 'Abonelik ölçüm betiği: SQL geçerliliği (S1-S4b)', script: 'test:olcum-sorgu', zincir: 'Z0' },
   { ad: 'Satın alma yolu: fatura kapısı + miras muafiyeti (P1-P7)', script: 'test:satinalma', zincir: 'Z0' },
   // T47 (22.09.2026): "fatura bilgisi eksik firma gercek bir fatura kesme
