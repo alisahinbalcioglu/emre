@@ -6,7 +6,7 @@
  * Üç tıklanır alan (her biri bağımsız):
  *  - 👁️ Göz ikonu       → görünürlük (hidden = canvas'tan tamamen kaldır)
  *  - 💡 Işık ikonu      → odak (dimmed = %25 opacity gri, tıklanamaz)
- *  - Sağ alan (ad)       → seç + çap girme popup'ını aç
+ *  - Sağ alan (ad)       → layer'ı seç (çap, sağ paneldeki Çap Kalemleri'nden atanır)
  *
  * Kural: Hidden layer hiç çizilmez. Dimmed layer çizilir ama referans amaçlıdır,
  * hover/click yutmaz. Hidden ile Dimmed bağımsız — biri true diğeri false olabilir.
@@ -36,7 +36,7 @@ interface LayerVisibilityPanelProps {
   onToggleSprinkler?: (layer: string) => void;
   onShowAll: () => void;
   onShowAllDimmed: () => void;
-  /** Layer adına tıklanırsa: seç + çap popup'ını aç. clientX/Y popup pozisyonu için. */
+  /** Layer adına tıklanırsa: seç. clientX/Y tıklama konumu (workspace kullanmıyor). */
   onLayerSelect?: (layer: string, screenX: number, screenY: number) => void;
 }
 
@@ -92,7 +92,7 @@ export default function LayerVisibilityPanel({
         <div>
           <div className="border-b bg-slate-50/50 px-3 py-1.5">
             <p className="text-[10px] text-slate-500">
-              <span className="font-mono">👁️</span> Göz: gizle/göster · <span className="font-mono">💡</span> Işık: solgunlaş/parlat · <span className="font-mono">💧</span> Sprinkler işaretle · <span className="font-mono">Ad</span>: seç + çap gir
+              <span className="font-mono">👁️</span> Göz: gizle/göster · <span className="font-mono">💡</span> Işık: solgunlaş/parlat · <span className="font-mono">💧</span> Sprinkler işaretle · <span className="font-mono">Ad</span>: seç
             </p>
           </div>
 
@@ -186,7 +186,7 @@ export default function LayerVisibilityPanel({
                       </button>
                     )}
 
-                    {/* Sağ: layer adı + rozet — seç + popup aç */}
+                    {/* Sağ: layer adı + rozet — tıkla = layer'ı seç */}
                     <button
                       type="button"
                       onClick={(e) => onLayerSelect?.(layer, e.clientX, e.clientY)}
@@ -194,7 +194,7 @@ export default function LayerVisibilityPanel({
                         'flex flex-1 items-center gap-2 px-1 py-2 text-left text-xs min-w-0',
                         'cursor-pointer',
                       )}
-                      title="Tikla → cap gir"
+                      title="Tıkla → layer'ı seç"
                     >
                       {isCalculated && (
                         <CheckCircle2 className="h-3 w-3 shrink-0 text-emerald-500" />

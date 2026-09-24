@@ -732,9 +732,8 @@ Karıştırılmasın diye ayrı duruyor.
 | `frontend/components/dwg-diameter-engine/useOriginalColorState.ts` | Cap-bazli dinamik renkler ile orijinal layer renkleri arasindaki render bayragini yonetir |
 | `frontend/components/dwg-metraj/constants.ts` | Atanmamis cap sentinel'lerini merkezi tanimlar ve display label'a cevirir |
 | `frontend/components/dwg-metraj/diameter-colors.ts` | Cap string'ini nominal mm'e cevirip 12'lik palete renk atar; cap metnini kanonik forma indirger |
-| `frontend/components/dwg-metraj/DiameterEditPopup.tsx` | Boru segmentine tiklaninca acilan popup ile standart/ozel cap secimi ve kanonik kaydetme |
 | `frontend/components/dwg-metraj/DwgUploader.tsx` | DWG/DXF yukleme, async upload + status polling, session restore ve birim secimiyle workspace acar |
-| `frontend/components/dwg-metraj/index.ts` | Modulun disa acilan yuzeyini toplar (uploader, editor, popup, tipler, renk yardimcilari) |
+| `frontend/components/dwg-metraj/index.ts` | Modulun disa acilan yuzeyini toplar (uploader, editor, tipler, renk yardimcilari) |
 | `frontend/components/dwg-metraj/MetrajEditor.tsx` | Cikarilan metraji hat tipine gore gruplu duzenlenebilir tabloda sunar; Excel indirme ve onaylama |
 | `frontend/components/dwg-metraj/types.ts` | Boru segmenti, çap, layer agregesi ve metraj sonucu veri tipleri |
 | `frontend/components/dwg-metraj/unit-detection.ts` | Kullanicinin sectigi cizim birimini deterministik olarak metreye cevirir; tahmin yapmaz |
@@ -750,11 +749,11 @@ Karıştırılmasın diye ayrı duruyor.
 | `frontend/components/dwg-workspace/DwgProjectWorkspace.tsx` | Layer seçip tıkla-etiketle çap atayan, onayı geri alınabilir revizyon akışını ve metraj onayını yöneten ekran |
 | `frontend/components/dwg-workspace/index.ts` | Modulun disa acilan yuzeyini toplar (workspace bileseni, tipler, state hook re-export) |
 | `frontend/components/dwg-workspace/LayerInfoSidebar.tsx` | Secili boru layer'i icin segmentlere ayirma (/parse) ve hesaplamayi tamamlama aksiyonlarini sunar |
-| `frontend/components/dwg-workspace/LayerVisibilityPanel.tsx` | Layer listesinde gorunurluk/soluklastirma/sprinkler isaretleme ve secim+cap popup tetikleme |
+| `frontend/components/dwg-workspace/LayerVisibilityPanel.tsx` | Layer listesinde gorunurluk/soluklastirma/sprinkler isaretleme ve layer secimi |
 | `frontend/components/dwg-workspace/MetrajSummaryPanel.tsx` | Hesaplanmis layer metrajlarini cap dagilimiyla listeleyen, her karti tek tek onaylatan/onayini kaldiran panel |
 | `frontend/components/dwg-workspace/types.ts` | DWG calisma alaninin tip sozlesmeleri: layer konfig, hesap sonucu ve genel state |
 | `frontend/components/dwg-workspace/onay-revizyon.ts` | DWG onay↔revizyon kararlarinin TEK kaynagi (saf, DOM'suz): kart dugmesi onayli iken "onayi kaldir" olur · sag panel hesaplama yokken ASLA aksiyonsuz kalmaz (onaylinin cikisi revizyondur) · layer secimi iki niyet tasir — kullanici tiklamasi TOGGLE, revizyon girisi ODAKLA (secim kapanmaz) · cap renkli gorunurluk = hesaplandi && !onayli. Dordu de uretimde bu modulden okunur (MetrajSummaryPanel · LayerInfoSidebar · useWorkspaceState · DwgProjectWorkspace), kopya karar YOK |
-| `frontend/components/dwg-workspace/useWorkspaceState.ts` | Layer secim/odaklama, onay/onay-kaldirma ve cap atama+1-hop komsu yayilimini localStorage'a (icerik-hash anahtarli) kalici tutar |
+| `frontend/components/dwg-workspace/useWorkspaceState.ts` | Layer secim/odaklama, onay/onay-kaldirma ve tek segment cap atamasini (komsu yayilimi yok) localStorage'a (icerik-hash anahtarli) kalici tutar |
 | `frontend/lib/metraj-excel.ts` | DWG metraj sonuclarini coklu-sheet XLSX dosyasina yazip indirtir; sheet adi sanitize/benzersizlestirme yapar |
 | `backend/src/modules/dwg-engine/python/unit_detect.py` | Cizimin gercek birimini BAGIMSIZ BEYANLARIN KESISIMIYLE tespit eder (antet kagit olcusu · yazi yukseklikleri · sprinkler araligi). `$INSUNITS` header'i YALAN soyleyebiliyor — PANOVA'da "mm" diyordu, gercek desimetreydi (127,6 m yerine 1.286,70 m) |
 | `frontend/components/dwg-workspace/sprinkler-bayatlik.ts` | Hesap yapildiktan SONRA sprinkler isaretlenirse sonucun bayat kaldigina karar veren saf fonksiyon (`sprinklerLayersUsed` anligiyla karsilastirir); ekran turuncu bant + tek tik yeniden hesap sunar |

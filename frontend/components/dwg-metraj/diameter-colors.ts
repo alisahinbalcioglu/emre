@@ -122,7 +122,7 @@ export function buildDiameterPalette(diameters: string[]): Array<{ diameter: str
 /**
  * Cap text'ini canonical form'a getir. Backend'deki `_canonicalize_cap` ile
  * AYNI kurallari uygular — frontend'de manuel kullanici input'larini
- * (DiameterEditPopup, default diameter input) ayni string'e indirir ki
+ * (Cap Kalemleri girisi — `useTaggingStore.addBucket`) ayni string'e indirir ki
  * legend'da '1¼"' ve '1 1/4"' tek satira birlessin.
  *
  * Idempotent: tekrar uygulanabilir, ayni sonucu doner.

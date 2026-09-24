@@ -21,7 +21,7 @@ import { toast } from '@/ortak/hooks/use-toast';
 import { confirm } from '@/ortak/hooks/use-confirm';
 import api from '@/ortak/lib/api';
 import { DxfCanvasViewer } from '@/components/dwg-viewer';
-import { DiameterEditPopup, type EdgeSegment } from '@/components/dwg-metraj';
+import type { EdgeSegment } from '@/components/dwg-metraj';
 import type { MetrajResult } from '@/components/dwg-metraj/types';
 import LayerInfoSidebar from './LayerInfoSidebar';
 import LayerVisibilityPanel from './LayerVisibilityPanel';
@@ -71,7 +71,6 @@ export default function DwgProjectWorkspace({
     focusLayer,
     addCalculatedLayer, approveLayer, unapproveLayer, removeCalculatedLayer,
     updateEdgeSegmentDiameter,
-    applyDiameterWithPropagation,
     removeSprinklerLayer, toggleSprinklerLayer,
     toggleLayerVisibility, showAllLayers,
     toggleLayerDimmed, showAllDimmed,
@@ -226,10 +225,9 @@ export default function DwgProjectWorkspace({
     },
   });
 
-  const [editingSegment, setEditingSegment] = useState<EdgeSegment | null>(null);
-
   // ── TIKLA-ETIKETLE (bucket) ─────────────────────────────────────────────
-  // Aktif kalem varken cizimde boruya tik = capi dogrudan ata (popup yok).
+  // Aktif kalem varken cizimde boruya tik = capi dogrudan ata. Cap atamanin
+  // TEK yolu sag paneldeki Cap Kalemleri'dir (kalem yokken tik: onSegmentClick).
   // tagFlash: SEGMENT IZOLASYONU teyidi — tiklanan run ~900ms kalem rengiyle
   // parlar, uc noktalari (T-noktalari arasi sinirlar) vurgulanir.
   const activeBucket = useActiveBucket();
@@ -394,7 +392,7 @@ export default function DwgProjectWorkspace({
   // form alanlari silindi — cap bilgisi Cap Kalemleri modulunden geliyor.
 
   // ─── Global Esc: en ust katmandan baslayip tek tek geri al ─────────
-  // Priority: acik popup'lar > duzenlenen ogeler > secim/mod. Her Esc tek
+  // Priority: bekleyen silme > silgi modu > cap odagi > secim/mod. Her Esc tek
   // katman geri gider — kullanici uretici akisi kaybetmez.
   // Input'a focus iken Esc form temizleme yapsin (preventDefault yok).
   useEffect(() => {
@@ -403,7 +401,6 @@ export default function DwgProjectWorkspace({
       const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase();
       if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
 
-      if (editingSegment) { setEditingSegment(null); return; }
       // Pending erase silgi modundan ONCE — Esc bir kademe geri gider:
       // pending varsa once pending iptal, sonraki Esc silgi modunu kapatir.
       if (pendingErase) { handleCancelPendingErase(); return; }
@@ -436,7 +433,7 @@ export default function DwgProjectWorkspace({
       window.removeEventListener('keydown', onUndoKey);
       window.removeEventListener('keydown', onEnterKey);
     };
-  }, [editingSegment, state.selectedLayer, hideMode, eraseMode, eraseHistory.length, pendingErase, activeDiameter, selectLayer, handleUndoErase, handleConfirmErase, handleCancelPendingErase, handleClearActiveDiameter]);
+  }, [state.selectedLayer, hideMode, eraseMode, eraseHistory.length, pendingErase, activeDiameter, selectLayer, handleUndoErase, handleConfirmErase, handleCancelPendingErase, handleClearActiveDiameter]);
 
   // Pending erase Set'leri — viewer turuncu highlight icin (immutable Set)
   const pendingLineKeysSet = useMemo(
@@ -825,22 +822,22 @@ export default function DwgProjectWorkspace({
               // TIKLA-ETIKETLE (UX #2 toggle mantigi):
               //  - Ayni cap zaten atanmissa  → SIL (capsiz/neon'a don) = geri alma
               //  - Farkli veya bos ise       → aktif kalemin capini yaz = uzerine yazma
-              // Kalem yokken: eski davranis (DiameterEditPopup).
-              if (activeBucket) {
-                const current = (seg.diameter || '').trim();
-                const sameAsBucket =
-                  !isUnassignedDiameter(current) &&
-                  canonicalizeDiameter(current) === activeBucket.diameter;
-                if (sameAsBucket) {
-                  updateEdgeSegmentDiameter(seg.layer, seg.segment_id, '');
-                  // Geri alma teyidi: NEON flash (capsiz durumunun rengi)
-                  setTagFlash({ segmentId: seg.segment_id, color: '#39ff14', at: Date.now() });
-                } else {
-                  updateEdgeSegmentDiameter(seg.layer, seg.segment_id, activeBucket.diameter);
-                  setTagFlash({ segmentId: seg.segment_id, color: activeBucket.color, at: Date.now() });
-                }
+              // Kalem yokken cap DEGISMEZ: viewer segmenti secip bilgi kutusunu
+              // (layer, uzunluk, cap) sabitler — tiklama yutulmaz. Eskiden burada
+              // cap popup'i aciliyordu; kullanici istegiyle kaldirildi (25.09),
+              // cap secimi zaten sag paneldeki Cap Kalemleri'nden yapiliyor.
+              if (!activeBucket) return;
+              const current = (seg.diameter || '').trim();
+              const sameAsBucket =
+                !isUnassignedDiameter(current) &&
+                canonicalizeDiameter(current) === activeBucket.diameter;
+              if (sameAsBucket) {
+                updateEdgeSegmentDiameter(seg.layer, seg.segment_id, '');
+                // Geri alma teyidi: NEON flash (capsiz durumunun rengi)
+                setTagFlash({ segmentId: seg.segment_id, color: '#39ff14', at: Date.now() });
               } else {
-                setEditingSegment(seg);
+                updateEdgeSegmentDiameter(seg.layer, seg.segment_id, activeBucket.diameter);
+                setTagFlash({ segmentId: seg.segment_id, color: activeBucket.color, at: Date.now() });
               }
             }}
             onClearSelection={() => {
@@ -888,7 +885,7 @@ export default function DwgProjectWorkspace({
             <p className="text-[11px] text-slate-600">
               <strong>1. Hesapla:</strong> Layer seç + &quot;Hesapla&quot; → borular çıkar (hepsi <span className="font-semibold text-lime-600">neon = çapsız</span>).
               <strong className="ml-2">2. Etiketle:</strong> Çap Kalemi seç → çizimde boruya tıkla, çap atanır.
-              <strong className="ml-2">Kalem yokken:</strong> tıklama çap popup&apos;ı açar.
+              <strong className="ml-2">Kalem yokken:</strong> tıklama yalnız segment bilgisini gösterir.
             </p>
           </div>
         </div>
@@ -1035,41 +1032,6 @@ export default function DwgProjectWorkspace({
           />
         </div>
       </div>
-
-      {/* Cap duzenleme popup (hesaplanmis segment) */}
-      {editingSegment && (
-        <DiameterEditPopup
-          segment={editingSegment}
-          onCancel={() => setEditingSegment(null)}
-          onSave={(segmentId, newDiameter) => {
-            // PRD §3: manuel cap ataminda AYNI LAYER'da endpoint paylasan
-            // null komsulara da otomatik dagit (1-HOP). Hedef segmentin hangi
-            // layer'a ait oldugunu bulup, sadece o layer'da propagation yap.
-            let totalPropagated = 0;
-            let hitLayer: string | null = null;
-            for (const layer of Object.keys(state.calculatedLayers)) {
-              const { target, propagated } = applyDiameterWithPropagation(layer, segmentId, newDiameter);
-              if (target) {
-                hitLayer = layer;
-                totalPropagated = propagated;
-                break;  // segment_id global unique; tek layer'da olur
-              }
-            }
-            setEditingSegment(null);
-            const desc = totalPropagated > 0
-              ? `Segment #${segmentId}: ${newDiameter} · ${totalPropagated} komşuya yayıldı`
-              : `Segment #${segmentId}: ${newDiameter}`;
-            toast({ title: 'Çap güncellendi', description: desc });
-            // Defensive: hicbir layer'da bulunamadiysa eski davranisi koru
-            if (!hitLayer) {
-              for (const layer of Object.keys(state.calculatedLayers)) {
-                updateEdgeSegmentDiameter(layer, segmentId, newDiameter);
-              }
-            }
-          }}
-        />
-      )}
-
     </div>
   );
 }
