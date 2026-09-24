@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 760
-Toplam satir: 193092
+Toplam satir: 193094
 Uc nokta: 232
 test:* scripti: 122
 
@@ -238,7 +238,7 @@ test:* scripti: 122
 | `backend/src/ozellik/odeme/abonelik/fiyat.controller.ts` | 53 |
 | `backend/src/ozellik/odeme/abonelik/iyzico-donus.controller.ts` | 80 |
 | `backend/src/ozellik/odeme/abonelik/kart-kapatma.ts` | 64 |
-| `backend/src/ozellik/odeme/abonelik/mutabakat.job.ts` | 546 |
+| `backend/src/ozellik/odeme/abonelik/mutabakat.job.ts` | 548 |
 | `backend/src/ozellik/odeme/abonelik/paket-degisimi.servisi.ts` | 599 |
 | `backend/src/ozellik/odeme/abonelik/paket-degisimi.ts` | 417 |
 | `backend/src/ozellik/odeme/abonelik/satinalma.servisi.ts` | 1449 |

@@ -183,9 +183,11 @@ export function denemeSuruyorMu(
  *     ödemesi tam müşteriyi ODEME_BEKLIYOR'a atar; eskiden bu iş çıplak
  *     ACTIVE ile ertesi gece geri alıyordu, kural 5 artık almıyor (Emre
  *     24.09 kabul etti) — `tahsilatBasarisiz`in iyzico'dan doğrulaması ayrı iş.
- *   · "Toparlandı" e-postası webhook yolunda da GİTMİYOR (ölçüldü 24.09:
- *     `tahsilatBasarili` sayaçları sıfırladıktan SONRA `tahsilatToparlandi`
- *     onları okuyor) — ayrı iş.
+ *   · (KAPANDI 24.09, `995736a`) "Toparlandı" e-postası hiç gitmiyordu:
+ *     dunning düzeltmesi dunning'den çıkışı sıfırlamanın kendisinden bildirir
+ *     (`dunningdenCikti`). İşleyici olay kaynağına göre dallanmadığı için
+ *     oynatılan tahsilat da aynı yolu kullanır (okundu; bu işin testinde
+ *     ayrıca ölçülmedi).
  *
  *  SAF parçalar DB'siz ölçülür: `test:mutabakat-kayip-tahsilat`.
  * ═══════════════════════════════════════════════════════════════════════════
