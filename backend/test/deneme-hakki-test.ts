@@ -616,6 +616,14 @@ async function yollar(): Promise<void> {
     d.kullanici('UB1', 'bora@firmab.com', 'FB');
     d.kullanici('UB2', 'muhasebe@baska-b.com', 'FB', { firmaRol: 'uye' });
     await d.satinAl({ firmaId: 'FB', kullaniciId: 'UB1', eposta: 'bora@firmab.com', telefon: '0533 222 22 22', kod: 'sub-b1' });
+    // ⚠ 24.09 — ret iyzico'dan DOGRULANIR (`tahsilatBasarisiz` →
+    // `tahsilatBasarisizligiKarari`, `test:webhook-tahsilat-dogrulama` F).
+    // Deneme sonu cekimi reddedilince iyzico'nun karsiligi: abonelik UNPAID,
+    // sipariste reddedilmis deneme.
+    d.iyz.detaylar.set('sub-b1', {
+      subscriptionStatus: 'UNPAID',
+      orders: [{ referenceCode: 'ord-b1', orderStatus: 'FAILED', paymentAttempts: [{ paymentStatus: 'FAILURE' }] }],
+    });
     const olay = d.db.ekle('webhookOlayi', {
       tekilAnahtar: 'w-b1', olayTipi: 'subscription.order.failure', hamGovde: {}, abonelikKodu: 'sub-b1', siparisKodu: 'ord-b1',
     });

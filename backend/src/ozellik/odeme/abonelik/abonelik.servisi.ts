@@ -4,6 +4,11 @@ import { AbonelikDurumu, KapatmaNedeni, Prisma } from '@prisma/client';
 import { IyzicoClient, IyzicoAbonelikDetayi } from '../iyzico/iyzico.client';
 // Saf modul (Prisma/Nest bilmez) — dongusel import YOK.
 import { iyzicoTarihi } from './paket-degisimi';
+import {
+  odenmisSiparisMi,
+  siparisiBul,
+  tahsilatBasarisizligiKarari,
+} from '../iyzico/tahsilat-kaniti';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -487,7 +492,7 @@ export class AbonelikServisi {
     }
 
     const detay = await this.iyzico.abonelikGetir(abonelikKodu);
-    const siparis = detay.orders?.find((o) => o.referenceCode === siparisKodu);
+    const siparis = siparisiBul(detay.orders, siparisKodu);
 
     // GUVENLIK: WEBHOOK GOVDESI TAHSILAT KANITI DEGILDIR.
     //
@@ -518,9 +523,34 @@ export class AbonelikServisi {
       );
     }
 
-    const donemSonu = siparis.endPeriod
-      ? new Date(siparis.endPeriod)
-      : this.donemSonuHesapla(ab.erisimSonu, ab.paketSurumu.periyot, ab.paketSurumu.periyotAdedi);
+    // ⚠ 24.09 — LISTEDE OLMAK ODENMIS OLMAK DEGILDIR. Varlik denetimi
+    // yetmiyordu: iyzico sonraki donemin siparisini ONCEDEN acar (20.08
+    // tutanagi: ACTIVE abonelikte WAITING, odeme denemesi YOK). O siparisi
+    // anan sahte govde erisimi bir donem uzatiyor, dunning sayaclarini
+    // sifirliyor (KISITLI → AKTIF) ve tahsil edilmemis paraya fatura
+    // aciyordu. Kanit gece mutabakatinin kaniti ile AYNI kuraldir
+    // (`odenmisSiparisMi`, tek kaynak — ikiz yazilmadi). Hata firlatilir:
+    // olay "islendi" damgasi yemez, isleyici yeniden dener (liste gecikmisse
+    // tutar); 5 denemede olurse gercek odemeyi gece mutabakati iyzico'nun
+    // listesinden bulup YENIDEN OYNATIR (mutabakat.job.ts → KAYIP TAHSILAT).
+    // Yani siki kanit gercek odemeyi KAYBETTIRMEZ; bedeli, liste gecikirse
+    // erisimin en gec ertesi gece uzamasidir. Kapi: `test:webhook-tahsilat-dogrulama` B.
+    if (!odenmisSiparisMi(siparis)) {
+      this.logger.error(
+        `Tahsilat kanıtı YOK: abonelik=${abonelikKodu} sipariş=${siparisKodu} listede ama ÖDENMEMİŞ ` +
+          `(orderStatus=${siparis.orderStatus}, başarılı ödeme denemesi yok). Erişim UZATILMADI; olay yeniden denenecek.`,
+      );
+      throw new Error(
+        `iyzico siparişi doğrulanamadı: ${siparisKodu} ödenmemiş (orderStatus ${siparis.orderStatus}; abonelik ${abonelikKodu})`,
+      );
+    }
+
+    // Tarih TEK cozucuden (24.09): iyzico ms SAYI yolluyor ama tip `string`
+    // diyor; rakam-dizesi `new Date` ile Invalid Date olurdu. Cozulemeyen
+    // deger EKSIK sayilir (eski davranisin eksik dali).
+    const donemSonu =
+      iyzicoTarihi(siparis.endPeriod) ??
+      this.donemSonuHesapla(ab.erisimSonu, ab.paketSurumu.periyot, ab.paketSurumu.periyotAdedi);
 
     // ⚠ 23.09 — GUNCEL UC MU, ESKI HALKA MI? Paket degisiminden sonra
     // zincirde eski halkalar olur; onlarin bir siparisi icin GEC gelen
@@ -864,6 +894,46 @@ export class AbonelikServisi {
       return null;
     }
 
+    // ⚠ 24.09 — GUVENLIK: WEBHOOK GOVDESI BASARISIZLIK KANITI DA DEGILDIR.
+    // Eski hal iyzico'ya HIC sormuyordu: abonelik kodunu anan her govde (uc
+    // acik, imza zorunlu degil) odeyen musteriyi ODEME_BEKLIYOR'a atip
+    // dunning e-postasi gonderiyordu. Gece mutabakati bunu artik geri
+    // ALMIYOR (kanitsiz terfi yok, Emre 24.09) → 10. gun KISITLI, 30. gun
+    // ASKIDA. Karar iyzico'nun KENDI kaydindan (`tahsilatBasarisizligiKarari`,
+    // iyzico/tahsilat-kaniti.ts — sira ve gerekceler orada):
+    //  · ODENMIS  — anilan siparis odenmis (eskimis ya da sahte bildirim):
+    //               durum DEGISMEZ, iz olayi yazilir, dunning bildirimi
+    //               GITMEZ (`null` → isleyici `ilkBildirim` cagirmaz); olay
+    //               islendi sayilir — yeniden denemenin anlami yok.
+    //  · KANITSIZ — hata firlatilir: olay "islendi" damgasi yemez, isleyici
+    //               yeniden dener (iyzico henuz guncellememis olabilir). Ret
+    //               gercekse iyzico UNPAID der; gece mutabakatinin UNPAID dali
+    //               da ODEME_BEKLIYOR + `ilkBasarisizlik` yazar (ikiz yol).
+    // Planli gecis de kanittan SONRA: sahte govde hicbir yazmayi tetiklemez.
+    // Kapi: `test:webhook-tahsilat-dogrulama` F.
+    const detay = await this.iyzico.abonelikGetir(abonelikKodu);
+    const kanit = tahsilatBasarisizligiKarari(detay, siparisKodu);
+    if (kanit.karar === 'ODENMIS') {
+      this.logger.warn(
+        `Başarısız tahsilat bildirimi YOK SAYILDI: abonelik=${abonelikKodu} sipariş=${siparisKodu} — ${kanit.gerekce}`,
+      );
+      await this.olayYaz(ab.id, 'tahsilat.basarisiz.yok.sayildi', {
+        aciklama: `Sipariş ${siparisKodu} iyzico'da ödenmiş — başarısızlık bildirimi uygulanmadı`,
+        veri: { siparisKodu, kanit: kanit.gerekce, iyzicoDurum: detay.subscriptionStatus },
+        aktor: 'webhook',
+      });
+      return null;
+    }
+    if (kanit.karar === 'KANITSIZ') {
+      this.logger.error(
+        `Başarısızlık kanıtı YOK: abonelik=${abonelikKodu} sipariş=${siparisKodu} — ${kanit.gerekce}. ` +
+          `Durum DEĞİŞTİRİLMEDİ; olay yeniden denenecek.`,
+      );
+      throw new Error(
+        `iyzico başarısızlığı doğrulanamadı: ${siparisKodu} (abonelik ${abonelikKodu}; ${kanit.gerekce})`,
+      );
+    }
+
     // ⚠ 23.09 (inceleme bulgusu 7) — IKIZ YOL: vadesi gelen planli dusurme
     // basarili yolda oldugu gibi ONCE uygulanir. Basarisiz yenileme cekimi
     // DUSURULMUS paketin fiyatiydi; 10 dk taramasini beklemek ilk dunning
@@ -880,12 +950,12 @@ export class AbonelikServisi {
       await this.durumDegistir(ab.id, AbonelikDurumu.ODEME_BEKLIYOR, {
         aciklama: `Tahsilat başarısız (sipariş ${siparisKodu})`,
         aktor: 'webhook',
-        veri: { siparisKodu },
+        veri: { siparisKodu, kanit: kanit.gerekce },
       });
     } else {
       await this.olayYaz(ab.id, 'tahsilat.basarisiz', {
         aciklama: `Sipariş ${siparisKodu}`,
-        veri: { siparisKodu },
+        veri: { siparisKodu, kanit: kanit.gerekce },
         aktor: 'webhook',
       });
     }

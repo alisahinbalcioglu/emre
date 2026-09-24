@@ -4,6 +4,7 @@ import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { AbonelikServisi } from '../abonelik/abonelik.servisi';
 import { FaturaServisi } from '../fatura/fatura.servisi';
 import { DunningServisi } from '../dunning/dunning.servisi';
+import { iyzicoTarihi } from '../iyzico/iyzico-tarihi';
 
 /**
  * Olay basina deneme siniri. Asan olay "olu"dur: tarama onu bir daha almaz.
@@ -117,9 +118,9 @@ export class WebhookIsleyici {
       tahsilatKodu: siparisKodu,
       tutar: sonuc.siparis?.paidPrice ?? Number(sonuc.abonelik.paketSurumu.tutar),
       paraBirimi: sonuc.abonelik.paketSurumu.paraBirimi,
-      donemBasi: sonuc.siparis?.startPeriod
-        ? new Date(sonuc.siparis.startPeriod)
-        : new Date(),
+      // Tarih TEK cozucuden (24.09): rakam-dizesi `new Date` ile Invalid Date
+      // olup faturayi yazdirmiyordu. Cozulemezse eksik gibi: tahsilat ani.
+      donemBasi: iyzicoTarihi(sonuc.siparis?.startPeriod) ?? new Date(),
       donemSonu: sonuc.donemSonu,
     });
 

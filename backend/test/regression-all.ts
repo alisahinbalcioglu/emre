@@ -547,6 +547,21 @@ const SUITES: Suite[] = [
   //    tekillik (P2002), ikinci gece, geç gelen gerçek webhook, ölü oynatmanın
   //    yeniden kurulması, çoklu kayıp sipariş, özet satırı, uçtan uca zincir.
   { ad: 'Mutabakat kayıp tahsilatı yeniden oynatır: saf kural · tarih · webhook ölçütü · kayıplar · negatifler · tekrar · gece · koruma · zincir (S/T/Ö/A/D/B/W/N/İ/G/K/Z)', script: 'test:mutabakat-kayip-tahsilat', zincir: 'Z0' },
+  // ── 24.09.2026 — WEBHOOK GÖVDESİ TAHSİLAT KANITI DEĞİL. DB/AĞ GEREKTİRMEZ.
+  //    Uç açık, imza varsayılan olarak zorunlu değil. Eski hâl (30 kırmızı):
+  //    `tahsilatBasarili` siparişin VARLIĞINA bakıyordu — iyzico'nun önceden
+  //    açtığı WAITING siparişi anan sahte başarı erişimi bir dönem uzatıyor,
+  //    dunning'i sıfırlıyor (KISITLI → AKTIF), faturayı kuyruğa alıyordu;
+  //    `tahsilatBasarisiz` iyzico'ya hiç sormuyordu — ödeyen müşteri
+  //    ODEME_BEKLIYOR + dunning e-postası, zincirde 30. gün ASKIDA (gece
+  //    mutabakatı artık geri almıyor); `/abonelik/donus` iyzico abonelik kodunu
+  //    döndürüyordu; tarihler `new Date(...)` (rakam-dizesi Invalid Date).
+  //    Kural TEK yerde (`iyzico/tahsilat-kaniti.ts`, mutabakatla AYNI
+  //    `odenmisSiparisMi`); GERÇEK denetleyici + işleyici + servisler + gece
+  //    işi + dunning merdiveni + satın alma dönüşü; gerçek ödeme kaybolmaz
+  //    (yeniden deneme + ölü olayı gece oynatır), gerçek ret yine dunning'i
+  //    başlatır, eskimiş ret ödenmiş siparişi geri almaz.
+  { ad: 'Webhook tahsilat doğrulaması: saf kural · ölçüt · sahte başarı · sahte ret · dönüş yanıtı · tarih (S/Ö/B/F/D/T)', script: 'test:webhook-tahsilat-dogrulama', zincir: 'Z0' },
   // ── 16.09.2026 — FAZ 7 · F2a: TOTP / KİMLİK ŞİFRELEME / MEYDAN OKUMA
   //    ÇEKİRDEĞİ. DB, SUNUCU ve AĞ GEREKTİRMEZ → `db` bayrağı YOK. Route ve
   //    şema YOK; canlı davranış değişmez. RFC 6238 Ek-B + RFC 4226 Ek-D

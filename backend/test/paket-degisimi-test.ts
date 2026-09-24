@@ -1043,7 +1043,9 @@ async function eBlogu(): Promise<void> {
 // ═══════════════════════════════════════════════════════════════════════════
 async function wBlogu(): Promise<void> {
   console.log('\n── W · webhook: odenen plana hizalama, eski halka, zincir ──');
-  const siparis = (ref: string, bitis: Date) => ({ referenceCode: ref, orderStatus: 'SUCCESS', endPeriod: bitis.toISOString(), startPeriod: SIMDI.toISOString(), paidPrice: 1299 });
+  // ⚠ 24.09: odenmis siparis KANITIYLA tasinir (20.08 tutanagi: basarili odeme
+  // denemesi) — webhook odenmemis siparisi reddeder (`test:webhook-tahsilat-dogrulama`).
+  const siparis = (ref: string, bitis: Date) => ({ referenceCode: ref, orderStatus: 'SUCCESS', paymentAttempts: [{ paymentStatus: 'SUCCESS' }], endPeriod: bitis.toISOString(), startPeriod: SIMDI.toISOString(), paidPrice: 1299 });
 
   // W1 · yenileme: iyzico PLANLI paketi cekti (saat farki: vade bizde 1 dk ileride).
   {
@@ -1190,7 +1192,11 @@ async function wBlogu(): Promise<void> {
       abonelikler: [abonelik('pro-mek', { iyzicoAbonelikKodu: 'uc-1', planliPaketSurumuId: 's-basic-mek', paketGecisTarihi: new Date(Date.now() - 60_000) })],
       surumler: TUM_SURUMLER(),
     });
-    await kur(db, sahteIyzico()).ab.tahsilatBasarisiz('uc-1', 'sip-f');
+    // ⚠ 24.09: ret iyzico'dan DOGRULANIR (`tahsilatBasarisizligiKarari`,
+    // `test:webhook-tahsilat-dogrulama` F) — gercek reddin karsiligi: abonelik
+    // UNPAID, sipariste reddedilmis deneme.
+    const iyz = sahteIyzico({ detaylar: { 'uc-1': { referenceCode: 'uc-1', pricingPlanReferenceCode: 'plan-basic-mek-denemesiz', subscriptionStatus: 'UNPAID', orders: [{ referenceCode: 'sip-f', orderStatus: 'FAILED', paymentAttempts: [{ paymentStatus: 'FAILURE' }] }] } } });
+    await kur(db, iyz).ab.tahsilatBasarisiz('uc-1', 'sip-f');
     check(
       'W10 ⭐ basarisiz yenilemede planli dusurme UYGULANDI (dunning dusurulmus paketi gorur), durum ODEME_BEKLIYOR',
       db.satir().paketSurumuId === 's-basic-mek' && db.satir().durum === 'ODEME_BEKLIYOR',

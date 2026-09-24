@@ -803,8 +803,16 @@ export class SatinAlmaServisi {
    *
    * @param firmaId Cagiran oturumun firmasi — niyetle ESLESMELI. Eslesmezse
    *   baskasinin token'iyla kendine abonelik acma yolu kapanir.
+   *
+   * ⚠ 24.09 — YANIT YALNIZ `durum` TASIR (guvenlik incelemesi). Eskiden iyzico
+   * abonelik kodunu (`abonelikKodu`) ve ic kimligi de donduruyordu; on yuz
+   * yalniz `durum` okur (`app/(protected)/abonelik/donus/page.tsx`). Kod,
+   * webhook ucuna sahte tahsilat govdesi kurmanin on kosuludur (uc acik, imza
+   * zorunlu degil). Ic cagiranlar (`donusIyzicodan`, kurtarma taramasi)
+   * `niyetiSonuclandir`in tam sonucunu okumaya devam eder.
+   * Kapi: `test:webhook-tahsilat-dogrulama` D.
    */
-  async donus(token: string, firmaId: string) {
+  async donus(token: string, firmaId: string): Promise<{ durum: AbonelikBaslatmaDurumu }> {
     const niyet = await this.prisma.abonelikBaslatma.findUnique({
       where: { token },
     });
@@ -814,10 +822,11 @@ export class SatinAlmaServisi {
       throw new NotFoundException('Satin alma kaydi bulunamadi');
     }
     if (niyet.durum === AbonelikBaslatmaDurumu.TAMAMLANDI) {
-      return { durum: niyet.durum, abonelikKodu: niyet.iyzicoAbonelikKodu };
+      return { durum: niyet.durum };
     }
 
-    return this.niyetiSonuclandir(niyet.id, niyet.firmaId);
+    const sonuc = await this.niyetiSonuclandir(niyet.id, niyet.firmaId);
+    return { durum: sonuc.durum };
   }
 
   /**

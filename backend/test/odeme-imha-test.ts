@@ -809,12 +809,17 @@ async function main() {
     $transaction: async (fn: any) => fn(wPrismaYuzey),
   } as any;
   const wPrismaYuzey = wPrisma;
+  // ⚠ 24.09: tahsilat yolu siparişin ÖDENDİĞİNİ ister (`odenmisSiparisMi`,
+  // `test:webhook-tahsilat-dogrulama`) — 20.08 tutanağındaki biçim:
+  // `orderStatus: 'SUCCESS'` + başarılı ödeme denemesi.
   const wIyzico = {
     abonelikGetir: async () => ({
       subscriptionStatus: 'ACTIVE',
       orders: [
         {
           referenceCode: 'ord-16',
+          orderStatus: 'SUCCESS',
+          paymentAttempts: [{ paymentStatus: 'SUCCESS' }],
           endPeriod: '2026-11-01T00:00:00Z',
           startPeriod: '2026-10-01T00:00:00Z',
         },
