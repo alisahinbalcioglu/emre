@@ -1,0 +1,25 @@
+-- MIRAS ERISIMI ILK KART TAHSILATINDA KESILMESIN (24.09.2026)
+--
+-- Satin alma (`aboneligiAcVeyaGuncelle`) 02.09'dan beri "erisim asla
+-- kisaltilmaz" kuraliyla miras (goc) satirinin 365 gununu `max(mevcut, yeni)`
+-- olarak KORUR. Ama kart tahsilat webhook'u (`tahsilatBasarili`) guncel uctan
+-- gelen sipariste `erisimSonu`nu iyzico'nun `endPeriod`una yaziyordu — satin
+-- almanin gecici tamponunu (31+2 gun) duzeltmek icin. Miras firma deneme
+-- almaz, ilk tahsilat satin almadan dakikalar sonra gelir: korunan ~332 gun
+-- ILK TAHSILATTA siliniyordu.
+--
+-- Tek alan: `kopruErisimSonu` — satin almanin yazdigi kopru (tamponlu) tarih.
+-- Webhook `erisimSonu`nu YALNIZ hala bu degerse kisaltir; baska her durumda
+-- yalniz uzatir.
+--
+-- YALNIZ EKLER: DROP / DELETE / UPDATE YOK. Alan NULL baslar; NULL = "kisaltma
+-- yok, yalniz uzat". Geriye donuk doldurma YOK (bilincli): canli olcum
+-- (24.09, salt okuma) — 3 goc satirinin 3'u hala mirasta, islenmis kart
+-- tahsilat webhook'u 0. Deploy aninda ilk tahsilati bekleyen denemesiz bir
+-- satin alma varsa kopru duzeltilmez: musteri en fazla kopru ile iyzico
+-- donemi farki kadar (31+2 gun − bir ay; en cok 5 gun) fazla erisir; tahmine
+-- dayali doldurma verilmis erisimi kesebilirdi.
+-- SQL `prisma migrate diff` (eski sema → yeni sema) ciktisiyla AYNI.
+
+-- AlterTable
+ALTER TABLE "Abonelik" ADD COLUMN     "kopruErisimSonu" TIMESTAMP(3);

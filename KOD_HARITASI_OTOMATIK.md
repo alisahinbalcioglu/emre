@@ -3,16 +3,16 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 751
-Toplam satir: 185521
+Kod dosyasi: 752
+Toplam satir: 186267
 Uc nokta: 232
-test:* scripti: 117
+test:* scripti: 118
 
 ## 1 · Dosyalar ve satir sayilari
 
 | Dosya | Satir |
 |---|---|
-| `backend/prisma/schema.prisma` | 2090 |
+| `backend/prisma/schema.prisma` | 2101 |
 | `backend/scripts/ceviri-gecis-izni.ts` | 476 |
 | `backend/scripts/ceviri-suzgec-olcum.ts` | 96 |
 | `backend/scripts/derleme-kapisi.js` | 68 |
@@ -226,7 +226,7 @@ test:* scripti: 117
 | `backend/src/ozellik/kutuphane/silme-etkisi.ts` | 74 |
 | `backend/src/ozellik/kutuphane/utils/import-fidelity.ts` | 468 |
 | `backend/src/ozellik/odeme/abonelik/abonelik.controller.ts` | 202 |
-| `backend/src/ozellik/odeme/abonelik/abonelik.servisi.ts` | 961 |
+| `backend/src/ozellik/odeme/abonelik/abonelik.servisi.ts` | 984 |
 | `backend/src/ozellik/odeme/abonelik/ceviri-kota.servisi.ts` | 610 |
 | `backend/src/ozellik/odeme/abonelik/ceviri-kotasi.ts` | 393 |
 | `backend/src/ozellik/odeme/abonelik/deneme-hakki.servisi.ts` | 84 |
@@ -240,7 +240,7 @@ test:* scripti: 117
 | `backend/src/ozellik/odeme/abonelik/mutabakat.job.ts` | 170 |
 | `backend/src/ozellik/odeme/abonelik/paket-degisimi.servisi.ts` | 599 |
 | `backend/src/ozellik/odeme/abonelik/paket-degisimi.ts` | 364 |
-| `backend/src/ozellik/odeme/abonelik/satinalma.servisi.ts` | 1416 |
+| `backend/src/ozellik/odeme/abonelik/satinalma.servisi.ts` | 1459 |
 | `backend/src/ozellik/odeme/dunning/dunning.metinleri.ts` | 165 |
 | `backend/src/ozellik/odeme/dunning/dunning.servisi.ts` | 314 |
 | `backend/src/ozellik/odeme/eposta/eposta.servisi.ts` | 339 |
@@ -355,6 +355,7 @@ test:* scripti: 117
 | `backend/test/matching-regression.ts` | 281 |
 | `backend/test/matching-unit-test.ts` | 713 |
 | `backend/test/migration-zinciri-test.ts` | 753 |
+| `backend/test/miras-erisimi-test.ts` | 643 |
 | `backend/test/odeme-imha-test.ts` | 850 |
 | `backend/test/odeme-onyukleme-test.ts` | 419 |
 | `backend/test/olcu-anahtari-cakismasi-test.ts` | 449 |
@@ -363,7 +364,7 @@ test:* scripti: 117
 | `backend/test/ortam-degiskenleri-test.ts` | 254 |
 | `backend/test/p2-2-sheets-indeks-test.ts` | 169 |
 | `backend/test/paket-aciklama-duzelt-test.ts` | 183 |
-| `backend/test/paket-degisimi-test.ts` | 1361 |
+| `backend/test/paket-degisimi-test.ts` | 1376 |
 | `backend/test/panel-ozet-test.ts` | 507 |
 | `backend/test/pano18-para-birimi-test.ts` | 172 |
 | `backend/test/para-birimi-yazim-test.ts` | 355 |
@@ -373,7 +374,7 @@ test:* scripti: 117
 | `backend/test/pk3-repo-kapsama-test.ts` | 79 |
 | `backend/test/pk9-sessiz-indeks-test.ts` | 97 |
 | `backend/test/product-index-test.ts` | 479 |
-| `backend/test/regression-all.ts` | 754 |
+| `backend/test/regression-all.ts` | 765 |
 | `backend/test/s45-malzeme-aile-test.ts` | 440 |
 | `backend/test/s45-olcum.ts` | 188 |
 | `backend/test/satinalma-yolu-test.ts` | 882 |
@@ -1079,6 +1080,7 @@ test:* scripti: 117
 | `backend/test/matching-regression.ts` | `@prisma/client` `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `../src/ozellik/eslestirme/matching/tag-generator` `../src/ozellik/eslestirme/matching/normalizer` |
 | `backend/test/matching-unit-test.ts` | `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` |
 | `backend/test/migration-zinciri-test.ts` | `@electric-sql/pglite` `node:fs` `node:path` `../src/ozellik/kutuphane/library/library-sheet-builder` |
+| `backend/test/miras-erisimi-test.ts` | `node:fs` `node:path` `@nestjs/common` `@prisma/client` `../src/ozellik/odeme/abonelik/satinalma.servisi` `../src/ozellik/odeme/abonelik/abonelik.servisi` |
 | `backend/test/odeme-imha-test.ts` | `node:fs` `node:path` `@nestjs/config` `@prisma/client` `../src/ozellik/odeme/abonelik/satinalma.servisi` `../src/ozellik/odeme/abonelik/deneme-hakki.servisi` |
 | `backend/test/odeme-onyukleme-test.ts` | `reflect-metadata` |
 | `backend/test/olcu-anahtari-cakismasi-test.ts` | `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `../src/ozellik/eslestirme/matching/tag-generator` `../src/ozellik/eslestirme/matching/normalizer` `../src/ozellik/eslestirme/matching/conversion` |
@@ -1772,6 +1774,7 @@ test:* scripti: 117
 | `backend/package.json` | `test:uc-kapisi-davranis` | `ts-node test/uc-kapisi-davranis-test.ts` |
 | `backend/package.json` | `test:eposta-kodu` | `ts-node test/yonetici-eposta-kodu-test.ts` |
 | `backend/package.json` | `test:paket-degisimi` | `ts-node test/paket-degisimi-test.ts` |
+| `backend/package.json` | `test:miras-erisimi` | `ts-node test/miras-erisimi-test.ts` |
 | `backend/package.json` | `test:vitrin` | `ts-node test/vitrin-test.ts` |
 | `frontend/package.json` | `test:e2e` | `playwright test` |
 | `frontend/package.json` | `test:e2e-golden` | `node test/e2e-golden/run.mjs` |

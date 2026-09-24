@@ -669,6 +669,17 @@ const SUITES: Suite[] = [
   // hiçbir şeyi geri almaz, iptal/yeniden abonelik planı siler. DB/AĞ/iyzico
   // GEREKTİRMEZ.
   { ad: 'Paket değişimi: hak · yol · tarih · servis · planlı geçiş · webhook · temizlik · bağlantı (H/Y/T/S/G/E/W/R/B)', script: 'test:paket-degisimi', zincir: 'Z0' },
+  // 24.09: MİRAS ERİŞİMİ İLK KART TAHSİLATINDA SİLİNİYORDU. Satın alma 02.09'dan
+  // beri göç satırının 365 gününü `max(mevcut, yeni)` ile koruyor; yorumu
+  // "webhook yolu da koruyor" diyordu — YANLIŞTI: `tahsilatBasarili` güncel uçtan
+  // gelen siparişte `erisimSonu`nu `endPeriod`a yazıyordu (satın almanın 31+2
+  // günlük köprüsünü düzeltmek için). Miras firma deneme almaz, ilk tahsilat
+  // dakikalar sonra gelir → ~332 gün siliniyordu. Birim testler iki ucu AYRI
+  // ölçüyordu (P8 / W8), BAĞLANTIYI değil. Kural: satın alma köprüyü
+  // `kopruErisimSonu`na yazar; webhook yalnız `erisimSonu` hâlâ o değerse
+  // kısaltır. Kapı gerçek `donusIyzicodan` → gerçek `tahsilatBasarili` koşar.
+  // DB/AĞ/iyzico GEREKTİRMEZ.
+  { ad: 'Miras erişimi: köprü yazımı · yeniden sonuçlandırma · miras uçtan uca · köprü düzeltmesi · sonradan verilen erişim · olay izi · bağlantı (K/Y/M/D/V/O/B)', script: 'test:miras-erisimi', zincir: 'Z0' },
   // 23.09 (Emre kararı): paketsiz YENİ hesap duvar görmez, uygulamayı GEZER
   // ("yalnızca gezsin"); Malzeme Havuzu'nda "fiyatlar paketle açılsın".
   // ⚠ En kritik kalkan V5: vitrin sunucuda HİÇBİR yetenek açmaz — "gezsin"
