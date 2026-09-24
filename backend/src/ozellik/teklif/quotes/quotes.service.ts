@@ -627,7 +627,7 @@ export class QuotesService {
 
   /** PANO 21a/c: gorunur self-check ozeti ("N değer aktarıldı ✓ …"). */
   private exportOzeti(
-    t: { yazilan: number; beklenen: number; fiyatsiz: number; toplam: number },
+    t: { yazilan: number; beklenen: number; fiyatsiz: number; toplam: number; yeniden?: number },
     birim: ExportBirim | null,
   ): string {
     const simge = birim?.kod === 'USD' ? '$' : birim?.kod === 'EUR' ? '€' : '₺';
@@ -635,7 +635,21 @@ export class QuotesService {
       // P2-1b: 2 hane — ekran (PARA_ONDALIK) ve Excel numFmt ile ayni.
       `toplam ${simge}${t.toplam.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`];
     if (t.fiyatsiz > 0) parca.push(`${t.fiyatsiz} satır fiyatsız (eşleşmemiş)`);
+    // IKIZ (fiyatli yol standartCiktiUret ozetinde ayni cumleyi soyler — 23.09 "Excel yeniden hesaplasın")
+    if (t.yeniden) parca.push(`${t.yeniden} satırda dosyadaki toplam miktar × birim fiyatla tutmuyordu, Excel yeniden hesapladı`);
     return parca.join(' · ');
+  }
+
+  /**
+   * Cikti basligi — iki yolda da her liste sayfasinin 1. satiri ve alt bilgisi
+   * (23.09 tasarimi). IKIZ: iki buton ayni teklif adini basar.
+   * ⚠ OLU KOD ONARIMI (08.09 olcumu): eskiden `customerName`/`projectName`
+   * okunuyordu — semada YOK (gercek alanlar `musteri`, `proje`); `as any` cast'i
+   * tsc'yi susturdugu icin baslik daima yalniz `title`di. Cast yok: olmayan bir
+   * alan okunursa derleme patlar.
+   */
+  private ciktiBasligi(quote: { title?: string | null; musteri?: string | null; proje?: string | null }): string {
+    return [quote.title, quote.musteri, quote.proje].map((x) => String(x ?? '').trim()).filter(Boolean).join(' · ');
   }
 
   private async ciktiKur(k: Kimlik, quote: any, rev: number, dil: string | undefined, kur: any | null): Promise<ExportSonucu & { formatAdi: string; formatKaynak: 'kullanici' | 'yerlesik'; birim: ExportBirim | null; antetNotu: string | null }> {
@@ -662,6 +676,7 @@ export class QuotesService {
       birim,
       dil, // 13.08: baslik + birim dili (ikizi fiyatli cikti yolunda)
       antet: firmaAntet.antet,
+      baslik: this.ciktiBasligi(quote), // 23.09: liste sayfasi baslik blogu (ikizi fiyatli yolda)
     });
     return { ...sonuc, formatAdi, formatKaynak, birim, antetNotu: firmaAntet.not };
   }
@@ -732,6 +747,7 @@ export class QuotesService {
       beklenen: sonuc.beklenenDeger ?? 0,
       fiyatsiz: sonuc.fiyatsizSatir ?? 0,
       toplam: sonuc.sekmeler.reduce((a, b) => a + b.matDeger + b.labDeger, 0),
+      yeniden: sonuc.yenidenHesaplanan ?? 0,
     }, sonuc.birim), ceviri.cevrilen), sonuc.antetNotu);
     return { buffer, filename, rev: yeniRev, quoteNo, uyari, ozet };
   }
@@ -769,21 +785,13 @@ export class QuotesService {
     // PANO 18/EX6: ekrandaki birim — TL teklifte kur servisine HIC gidilmez
     const dovizli = quote.displayCurrency === 'USD' || quote.displayCurrency === 'EUR';
     const birim = this.exportBirimi(quote, dovizli ? await this.kurOku() : null);
-    // ⚠ OLU KOD ONARIMI (08.09 olcumu): burasi `customerName` ve `projectName`
-    // okuyordu — bu adlar Prisma semasinda, backend'de ve on yuzde BASKA
-    // HICBIR YERDE gecmiyor (gercek alanlar `musteri` ve `proje`). `as any`
-    // cast'i tsc'yi susturdugu icin kimse gormedi ve sonuc su oldu: bu basliga
-    // musteri/proje adi HIC girmiyordu, baslik daima yalniz `title`di.
-    // Cast KALDIRILDI — bir daha olmayan bir alan okunursa derleme patlar.
-    const baslikParcalari = [quote.title, quote.musteri, quote.proje]
-      .map((x) => String(x ?? '').trim()).filter(Boolean);
     const firmaAntet = await this.antetGetir(k, dil); // plan 4.4 (ikizi format yolunda)
     const sonuc = await standartCiktiUret({
       sheetsArr,
       birim,
       // KAYIT yolunda Turkceye indirgenen dosya bunu KENDI basliginda soyler:
       // KVKK baglantisi ham indirmedir, HTTP uyari basligi kullaniciya gorunmez.
-      baslik: baslikParcalari.join(' · ') + (ceviri.indirgendi ? ' · Türkçe (İngilizce çevirisi yok)' : ''),
+      baslik: this.ciktiBasligi(quote) + (ceviri.indirgendi ? ' · Türkçe (İngilizce çevirisi yok)' : ''),
       // ...ve dosya ACILINCA gorunen ilk sekmede (ORTA-1): Excel son sekmeyi acmaz.
       acilisNotu: ceviri.indirgendi ? KAYIT_INDIRGEME_UYARISI : undefined,
       // Kolon basliklari + birim kisaltmalari (sabit sozluk, AI yok).

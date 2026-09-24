@@ -16,6 +16,7 @@ import {
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { IyzicoClient, IyzicoHatasi } from '../iyzico/iyzico.client';
 import { AbonelikServisi } from './abonelik.servisi';
+import { kartAboneligiKapaliMi } from './kart-kapatma';
 import { ceviriKotasiCoz } from './ceviri-kotasi';
 import { DenemeKarari } from './deneme-hakki';
 import { DenemeHakkiServisi } from './deneme-hakki.servisi';
@@ -1307,7 +1308,12 @@ export class SatinAlmaServisi {
     const simdi = new Date();
 
     let iptalEdilenUc = ab.iyzicoAbonelikKodu;
-    if (ab.iyzicoAbonelikKodu) {
+    // ⚠ 24.09 — BİLİNEN KAPALI kart aboneliğine iyzico'ya GİDİLMEZ
+    // (`kartAboneligiKapaliMi`, havale onayının iptaliyle TEK kural). Havaleye
+    // geçen müşterinin kart aboneliği onayda kapatılır ve kodu satırda kalır;
+    // ikinci iptal iyzico'da hata döner, bu yol FIRLATIP müşteri iptalini,
+    // hesap kapatmayı ve yönetici silmeyi düşürüyordu (inceleme YÜKSEK-1).
+    if (ab.iyzicoAbonelikKodu && !kartAboneligiKapaliMi(ab)) {
       try {
         await this.iyzico.abonelikIptal(ab.iyzicoAbonelikKodu);
       } catch (e) {
