@@ -23,6 +23,14 @@ AI destekli mekanik/elektrik tesisat teklif platformu. NestJS backend + Next.js 
 - Caplar (1/2, 3/4, 1, 1 1/4...) teknik sirada dizilir (`DIAMETER_ORDER`).
 - Gruplar arasi 32px bosluk olur.
 
+### Fiyatlandırılmış Teklif Excel Çıktısı (23.09.2026)
+- Tasarım Emre'nin referans dosyasıdır (`MetaPriceX-Teklif-Excel-Yeni-Tasarim-Ornek.xlsx`); kural yeri `backend/src/ozellik/teklif/quotes/`: `standart-cikti.ts` (yazıcı), `cikti-satirlari.ts` (satır planı, saf), `cikti-stil.ts` (görünüm/baskı). İki çıktı yolu (fiyatlı + teklif formatı) AYNI `standartSayfaYaz`'ı kullanır (KF7).
+- İlk sekme GENEL TOPLAM (yalnız kalem sayfaları, SAYFA TOPLAMI hücresine tırnaklı adla formül). Kalemsiz sayfa DÜZ METİN (fiyat sütunu ve 0 TL toplam yok). Her sayfada 3 satırlık başlık bloğu; tablo başlığı antetsiz düzende 4., veri 5. satır — antet varsa kayar, hiçbir aralık sabit yazılmaz.
+- Kalem = veri satırı + (sayısal miktar YA DA para). Tarifte "yalnız miktar" yazsa da götürü tutarlı satır kalemdir (aksi hâlde parası düşer).
+- Tutar hücresi FORMÜL (`IF(E="","",ROUND(C*E,2))`), ama yalnız ekranın rakamını birebir üretiyorsa: uygulamanın yuvarladığı satır `ROUNDUP(…,1)` (yalnız TL, pozitif), boş toplam ekranın tamamlama kuralı (ceil1), dövizde TL'de yuvarlanmış satır / fitting / götürü → DEĞER. Birim fiyat hücresi TAM hassasiyet.
+- KARAR (Emre, 23.09 "Excel yeniden hesaplasın"): dosyanın kendi toplamı miktar × birimle TL'de tutmuyorsa Excel çarpımı gösterir, ekran dosyanın rakamını; bu satırlar indirme özetinde SAYILIR. Kayıtlı "0" toplam boş DEĞİLDİR.
+- ExcelJS tuzakları (ölçüldü): `cell.value` okuyucusu formül önbelleğindeki 0 ve "" değerini düşürür (model tutar) — önbellek denetimi `cell.model.result`tan okunur. Baskı alanı/tekrar satırı adında sayfa adındaki `'` kaçışlanmaz → o sayfalarda yazılmaz. Kesirli sütunla görsel çapası birim hatalı → piksel ofseti EMU ile verilir.
+
 ### DWG — Sprinkler Sembolu ve Bolme (02.09.2026)
 - Sprinkler sembolu HERHANGI geometri olabilir: INSERT blok, CIRCLE, LINE capraz, ELLIPSE, HATCH, kapali polyline. Motor sembolu varlik TIPINE gore ELEMEZ — 💧 isaretli katmandaki tum cizim varliklari bbox kesisimiyle kumelenir, kume = 1 sprinkler (`pipe_segments._sprinkler_symbols_from_layers`). Gercek dosyada 743 sembol = 2 LINE + 2 ELLIPSE + 1 HATCH idi, blok/daire YOKTU.
 - "T noktalarinda bol" sprinkler'da yalniz katman 💧 ile ISARETLIYSE boler. Isaretsizse motor aday katmanlari OLCER (`sprinkler_candidates`: boru ustundeki sembol sayisi) ve on yuz tostla soyler; karar kullanicinin, otomatik bolme YOK.

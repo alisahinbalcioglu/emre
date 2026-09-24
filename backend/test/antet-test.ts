@@ -100,22 +100,40 @@ function tumMetin(wb: ExcelJS.Workbook): string[] {
   })));
   return m;
 }
-/** "No | Malzeme Adı" baslik satirinin numarasi (standart tablo). */
+/** "No | Malzeme Adı" baslik satirinin numarasi (standart tablo). 23.09: antetsiz
+ *  duzende 4 (ustunde 3 satirlik baslik blogu: teklif adi · sayfa adi+tarih · cizgi). */
 function baslikSatiri(ws: ExcelJS.Worksheet): number {
   for (let r = 1; r <= Math.min(ws.rowCount, 20); r++) {
     if (ws.getRow(r).getCell(1).value === 'No' && ws.getRow(r).getCell(2).value === 'Malzeme Adı') return r;
   }
   return -1;
 }
+/** Govdenin basladigi satir: kalem sayfasinda tablo basligi; METIN sayfasinda
+ *  (tablo basligi yok) "Tarih:" satirindan 2 sonrasi — baslik slotu (tarif §4). */
+function govdeBasi(ws: ExcelJS.Worksheet): number {
+  const bas = baslikSatiri(ws);
+  if (bas > 0) return bas;
+  for (let r = 1; r <= Math.min(ws.rowCount, 20); r++) {
+    if (/^Tarih: /.test(String(ws.getRow(r).getCell(3).value ?? ''))) return r + 2;
+  }
+  return -1;
+}
+/** Formuldeki hucre adreslerini govde basina GORE yazar (C7 → C@3): antet satirlari
+ *  tabloyu kaydirir, goreli formul metni de kayar — kayma DISINDA fark olmamali. */
+const goreliFormul = (f: string, bas: number) => f.replace(/\b([A-Z]{1,3})(\d+)\b/g, (_, k: string, r: string) => `${k}@${Number(r) - bas}`);
 const gorselSayisi = (ws?: ExcelJS.Worksheet) => (ws?.getImages?.() ?? []).length;
 
-/** Fiyatli ciktida TEKLİF GENEL TOPLAMI ve her SAYFA TOPLAMI (kurus). */
+/** Fiyatli ciktida TEKLİF GENEL TOPLAMI ve her SAYFA TOPLAMI (kurus).
+ *  23.09: hucreler FORMUL — `Number(formul)` NaN → `|| 0` iki kosumda da 0 verip
+ *  karsilastirmayi BOS YERE yesil yapardi (olculdu). Deger formulun hucrelerden
+ *  bagimsiz yeniden hesabidir; hata → NaN (esitlik kirilir). */
 function fiyatliToplamlar(wb: ExcelJS.Workbook) {
   const sayfalar: Record<string, number[]> = {};
   let genel: number | null = null;
+  const deger = (ws: ExcelJS.Worksheet, adres: string) => { const d = gercek(wb, ws.name, adres); return d.e !== undefined ? NaN : K(d.v as number); };
   wb.eachSheet((ws) => ws.eachRow({ includeEmpty: false }, (row) => {
-    if (row.getCell(2).value === 'SAYFA TOPLAMI') sayfalar[ws.name] = [6, 8, 9].map((c) => K(Number(row.getCell(c).value) || 0));
-    if (row.getCell(1).value === 'TEKLİF GENEL TOPLAMI') genel = K(Number(row.getCell(4).value) || 0);
+    if (row.getCell(2).value === 'SAYFA TOPLAMI') sayfalar[ws.name] = [6, 8, 9].map((c) => deger(ws, row.getCell(c).address));
+    if (row.getCell(1).value === 'TEKLİF GENEL TOPLAMI') genel = deger(ws, row.getCell(4).address);
   }));
   return { sayfalar, genel };
 }
@@ -132,12 +150,14 @@ function icmalGercek(wb: ExcelJS.Workbook): Record<string, number | string> {
   }));
   return o;
 }
-/** Liste sayfasinin tablo govdesi (baslik dahil) — antet satirlarindan bagimsiz. */
+/** Liste sayfasinin tablo govdesi (baslik dahil) — antet satirlarindan bagimsiz;
+ *  formul adresleri govde basina GORE (kayma disinda fark olmamali). */
 function tabloGovdesi(ws: ExcelJS.Worksheet): string[] {
-  const bas = baslikSatiri(ws); const g: string[] = [];
+  const bas = govdeBasi(ws); const g: string[] = [];
+  if (bas < 1) return ['GOVDE-YOK'];
   for (let r = bas; r <= ws.rowCount; r++) {
     const v = ws.getRow(r).values as any[];
-    g.push(JSON.stringify((v ?? []).slice(1).map((x) => (x && typeof x === 'object' ? x.formula ?? x : x))));
+    g.push(JSON.stringify((v ?? []).slice(1).map((x) => (x && typeof x === 'object' && typeof x.formula === 'string' ? goreliFormul(x.formula, bas) : x))));
   }
   return g;
 }
@@ -218,15 +238,21 @@ async function run() {
     check(`AN1 antetten ÖNCE ve SONRA İCMAL formüllerinin gerçek değeri birebir aynı [${ad}]`, icmalAyni,
       `önce=${JSON.stringify(icO).slice(0, 160)} sonra=${JSON.stringify(icS).slice(0, 160)}`);
     check(`AN1 antetten ÖNCE ve SONRA fiyatlı TEKLİF GENEL TOPLAMI ve her SAYFA TOPLAMI aynı [${ad}]`,
-      fO.genel !== null && fO.genel === fS.genel && JSON.stringify(fO.sayfalar) === JSON.stringify(fS.sayfalar),
-      `genel ${fO.genel} / ${fS.genel}`);
+      fO.genel !== null && fO.genel > 0 && fO.genel === fS.genel && Object.keys(fO.sayfalar).length > 0
+        && JSON.stringify(fO.sayfalar) === JSON.stringify(fS.sayfalar),
+      `genel ${fO.genel} / ${fS.genel} sayfa=${Object.keys(fO.sayfalar).length}`);
+    const pfd = formulDenetimi(sonra.pw);
+    check(`AN1 antetli fiyatlı çıktıda her formülün önbelleği = gerçek değeri [${ad}]`, pfd.sayi > 0 && pfd.sorun.length === 0,
+      pfd.sorun.slice(0, 2).join(' | '));
     const fd = formulDenetimi(sonra.fw);
     check(`AN1 antetli format çıktısında her formülün önbelleği = gerçek değeri [${ad}]`, fd.sayi > 0 && fd.sorun.length === 0,
       fd.sorun.slice(0, 2).join(' | '));
     const listeAdlari = once.pw.worksheets.map((w) => w.name).filter((n) => n !== 'GENEL TOPLAM');
     const govdeAyni = listeAdlari.every((n) => JSON.stringify(tabloGovdesi(once.pw.getWorksheet(n)!))
       === JSON.stringify(tabloGovdesi(sonra.pw.getWorksheet(n)!)));
-    check(`AN1 tablo gövdesi (başlık + veri) antetten sonra aynen korunur, yalnız aşağı kayar [${ad}]`, govdeAyni);
+    check(`AN1 tablo gövdesi (başlık + veri) antetten sonra aynen korunur, yalnız aşağı kayar [${ad}]`,
+      govdeAyni && listeAdlari.every((n) => govdeBasi(sonra.pw.getWorksheet(n)!) > govdeBasi(once.pw.getWorksheet(n)!)),
+      listeAdlari.map((n) => `${n}:${govdeBasi(once.pw.getWorksheet(n)!)}→${govdeBasi(sonra.pw.getWorksheet(n)!)}`).join(' '));
   }
 
   // ── AN2: tam antet cikti yerlesimi ────────────────────────────────────
@@ -234,9 +260,11 @@ async function run() {
     const { pw, fw, kayit } = await ikiYol(sentetik(), TAM_FIRMA);
     const mek = pw.getWorksheet('Mekanik')!;
     const bas = baslikSatiri(mek);
-    check('AN2 fiyatlı liste sayfası: 1-4. satır antet, 5. boşluk, başlık 6. satırda',
+    check('AN2 fiyatlı liste sayfası: 1-4. satır antet, 5. boşluk, 6-8 başlık bloğu (teklif adı · sayfa + tarih · çizgi), tablo başlığı 9. satırda',
       mek.getRow(1).getCell(2).value === TAM_FIRMA.unvan && String(mek.getRow(4).getCell(2).value).startsWith('Vergi Dairesi')
-        && !mek.getRow(5).getCell(2).value && bas === 6, `başlık=${bas}`);
+        && !mek.getRow(5).getCell(2).value && String(mek.getRow(6).getCell(1).value).startsWith('Antet Turu')
+        && mek.getRow(7).getCell(1).value === 'Mekanik' && /^Tarih: /.test(String(mek.getRow(7).getCell(9).value)) && bas === 9,
+      `başlık=${bas} A6=${mek.getRow(6).getCell(1).value} A7=${mek.getRow(7).getCell(1).value}`);
     const gorunum: any = (mek.views ?? [])[0];
     check('AN2 donmuş bölme BAŞLIĞIN altından (ySplit = başlık satırı, antet donmaz yanlış satır değil)',
       gorunum?.state === 'frozen' && gorunum?.ySplit === bas, JSON.stringify(gorunum));
@@ -245,15 +273,23 @@ async function run() {
     check('AN2 logo her liste sayfasında ve GENEL TOPLAM\'da BİR kez; dosya yeniden açılınca korunur',
       gorselSayisi(mek) === 1 && gorselSayisi(pw.getWorksheet('Elektrik')) === 1 && gorselSayisi(gt) === 1,
       `mek=${gorselSayisi(mek)} elk=${gorselSayisi(pw.getWorksheet('Elektrik'))} gt=${gorselSayisi(gt)}`);
-    // GENEL TOPLAM'da A+B ~56 karakter; en uzun antet satiri (Tel · E-posta) C'ye
-    // tasar. Logo C'de baslarsa metnin USTUNE biner (13.09 incelemesi) → D.
+    // GENEL TOPLAM'da (23.09: A 44 + B 20) uzun antet satiri (Tel · E-posta) C'ye
+    // tasabilir; logo C'nin SOLUNDA baslarsa metnin USTUNE biner (13.09 incelemesi),
+    // D'den baslarsa 22 genislikli D'yi asip baski alaninin disina cikar. Logo C+D'nin
+    // SAG kenarina yaslanir: C'nin solunda >= 60 px bos kalir, sag kenar D'yi asmaz.
     const gtLogo: any = (gt.getImages?.() ?? [])[0];
-    const gtLogoKolon = gtLogo?.range?.tl?.nativeCol ?? gtLogo?.range?.tl?.col;
-    check('AN2 GENEL TOPLAM logosu D kolonunda başlar (uzun antet satırının üstüne binmez)', gtLogoKolon === 3,
-      `kolon=${gtLogoKolon}`);
+    const tl = gtLogo?.range?.tl ?? {};
+    const px = (w: number) => Math.floor(w * 7 + 5);
+    const solPx = (tl.nativeColOff ?? 0) / 9525;
+    const genislik = Number(gtLogo?.range?.ext?.width ?? 0);
+    check("AN2 GENEL TOPLAM logosu C+D'nin sağ kenarına yaslı (uzun antet satırının üstüne binmez, baskı alanını aşmaz)",
+      tl.nativeCol === 2 && solPx >= 60 && genislik > 0 && solPx + genislik <= px(20) + px(22),
+      `kolon=${tl.nativeCol} sol=${solPx.toFixed(0)}px genişlik=${genislik}`);
     const fMek = fw.getWorksheet('Mekanik')!;
-    check('AN2 format yolu liste sayfaları da antetli (tek motor)', fMek.getRow(1).getCell(2).value === TAM_FIRMA.unvan
-      && baslikSatiri(fMek) === 6 && gorselSayisi(fMek) === 1);
+    check('AN2 format yolu liste sayfaları da antetli + aynı başlık bloğu (tek motor): teklif adı · müşteri · proje',
+      fMek.getRow(1).getCell(2).value === TAM_FIRMA.unvan && baslikSatiri(fMek) === 9 && gorselSayisi(fMek) === 1
+        && fMek.getRow(6).getCell(1).value === 'Antet Turu · Müşteri A.Ş. · Proje' && fMek.getRow(6).getCell(1).value === mek.getRow(6).getCell(1).value,
+      `başlık=${baslikSatiri(fMek)} A6=${fMek.getRow(6).getCell(1).value}`);
     const formatMetni = tumMetin(fw).filter((m) => /^(KAPAK|İCMAL)!/.test(m));
     check('AN2 format sayfalarına (KAPAK / İCMAL) antet YAZILMAZ, görsel eklenmez (T3)',
       !formatMetni.some((m) => m.includes(TAM_FIRMA.unvan)) && gorselSayisi(fw.getWorksheet('KAPAK')) === 0
@@ -269,16 +305,16 @@ async function run() {
     const yasak = /\[[^\]]*(UNVAN|ÜNVAN|FİRMA|FIRMA|ADRES)[^\]]*\]|\bnull\b|\bundefined\b|\{\{|(Tel|E-posta|Vergi Dairesi|Vergi No):\s*($|·)/i;
     const bos = await ikiYol(sentetik(), { unvan: null, faturaAdresi: '', il: null, ilce: null, telefon: null, faturaEposta: null, vergiDairesi: null, vergiNo: null, logoBytes: null, logoMime: null });
     const artik = [...tumMetin(bos.pw), ...tumMetin(bos.fw)].filter((m) => yasak.test(m));
-    check('AN3 firma kaydı var ama alanlar boş → antet YOK: başlık 1. satırda, görsel yok, artık metin yok',
-      baslikSatiri(bos.pw.getWorksheet('Mekanik')!) === 1 && baslikSatiri(bos.fw.getWorksheet('Mekanik')!) === 1
+    check('AN3 firma kaydı var ama alanlar boş → antet YOK: tablo başlığı 4. satırda (başlık bloğunun altı), görsel yok, artık metin yok',
+      baslikSatiri(bos.pw.getWorksheet('Mekanik')!) === 4 && baslikSatiri(bos.fw.getWorksheet('Mekanik')!) === 4
         && gorselSayisi(bos.pw.getWorksheet('Mekanik')) === 0 && artik.length === 0
         && bos.pw.getWorksheet('GENEL TOPLAM')!.getRow(1).getCell(1).value !== null,
       artik.slice(0, 3).join(' | '));
     const yalnizUnvan = await ikiYol(sentetik(), { unvan: 'Yalnız Unvan A.Ş.' });
     const mek = yalnizUnvan.pw.getWorksheet('Mekanik')!;
     const artik2 = [...tumMetin(yalnizUnvan.pw), ...tumMetin(yalnizUnvan.fw)].filter((m) => yasak.test(m));
-    check('AN3 yalnız unvan → tek antet satırı + boşluk; "Tel:" / "Vergi" / boş etiket basılmaz',
-      mek.getRow(1).getCell(2).value === 'Yalnız Unvan A.Ş.' && baslikSatiri(mek) === 3 && artik2.length === 0
+    check('AN3 yalnız unvan → tek antet satırı + boşluk (+ 3 satırlık başlık bloğu); "Tel:" / "Vergi" / boş etiket basılmaz',
+      mek.getRow(1).getCell(2).value === 'Yalnız Unvan A.Ş.' && baslikSatiri(mek) === 6 && artik2.length === 0
         && !tumMetin(yalnizUnvan.pw).some((m) => /Tel:|Vergi|E-posta/.test(m)), `başlık=${baslikSatiri(mek)} ${artik2.join(' | ')}`);
     const tehlikeli = await ikiYol(sentetik(), { unvan: null, ad: 'acme', yetkiliEposta: 'giris@acme.com', tcKimlikNo: '11111111111', telefon: '0212 000 00 00' });
     const sizinti = [...tumMetin(tehlikeli.pw), ...tumMetin(tehlikeli.fw)].filter((m) => /acme|giris@|11111111111/.test(m));
@@ -314,7 +350,7 @@ async function run() {
     let sonuc: any = null;
     try { sonuc = await ikiYol(sentetik(), TAM_FIRMA, { firmaHatasi: true }); } catch (e: any) { hata = e?.message ?? String(e); }
     check('AN5 firma okuması hata verirse iki çıktı da ANTETSİZ iner (500 yok, KH2)',
-      !hata && !!sonuc && baslikSatiri(sonuc.pw.getWorksheet('Mekanik')) === 1 && baslikSatiri(sonuc.fw.getWorksheet('Mekanik')) === 1, hata);
+      !hata && !!sonuc && baslikSatiri(sonuc.pw.getWorksheet('Mekanik')) === 4 && baslikSatiri(sonuc.fw.getWorksheet('Mekanik')) === 4, hata);
   }
 
   // ── AN6: kullanici formati kendi logosunu tasiyorsa ───────────────────

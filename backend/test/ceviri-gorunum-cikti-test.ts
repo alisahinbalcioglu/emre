@@ -186,7 +186,9 @@ async function metinler(buf: Buffer | ArrayBuffer): Promise<string[]> {
 }
 const icerir = (l: string[], parca: string) => l.some((x) => x.includes(parca));
 
-/** Sekme sekme yerleşim: Excel'in açtığı sekme, başlık satırı, donmuş bölme, sayısal hücreler. */
+/** Sekme sekme yerleşim: Excel'in açtığı sekme, başlık satırı, donmuş bölme, sayısal hücreler.
+ *  23.09 tasarımı: tablo başlığı kalem sayfasında "Malzeme Adı" (B), GENEL TOPLAM'da
+ *  "Sayfa" (A); tutarlar FORMÜL — sayısal içerik = değer ya da formül önbelleği. */
 async function sekmeler(buf: Buffer | ArrayBuffer): Promise<{
   etkinSekme: number;
   liste: { ad: string; baslikNo: number; ySplit: number | undefined; ustMetinler: string[]; sayilar: number[]; tumMetinler: string[] }[];
@@ -199,9 +201,11 @@ async function sekmeler(buf: Buffer | ArrayBuffer): Promise<{
     const tumMetinler: string[] = [];
     const sayilar: number[] = [];
     ws.eachRow({ includeEmpty: false }, (row) => {
-      if (!baslikNo && String(row.getCell(2).value ?? '') === 'Malzeme Adı') baslikNo = row.number;
+      if (!baslikNo && (String(row.getCell(2).value ?? '') === 'Malzeme Adı' || String(row.getCell(1).value ?? '') === 'Sayfa')) baslikNo = row.number;
       row.eachCell({ includeEmpty: false }, (c) => {
-        if (typeof c.value === 'number') sayilar.push(c.value);
+        const v: any = c.value;
+        if (typeof v === 'number') sayilar.push(v);
+        else if (v && typeof v === 'object' && typeof v.formula === 'string') { if (typeof v.result === 'number') sayilar.push(v.result); }
         else if (typeof c.value === 'string') {
           tumMetinler.push(c.value);
           if (!baslikNo) ustMetinler.push(c.value);
@@ -544,16 +548,19 @@ async function xBlogu(): Promise<void> {
     const acikTr = await sekmeler((await fiyatli(sahne(), 'tr')).r.buffer);
     const [ilk, ikinci] = indirgenmis.liste;
     const [ilkTr] = acikTr.liste;
-    check('X3b FIXTURE KANITI: iki teklif sekmesi + GENEL TOPLAM; Excel\'in açtığı sekme 0 (etkin sekme ayarı yok)',
-      indirgenmis.liste.length === 3 && ilk?.ad === 'Mekanik' && ikinci?.ad === 'Elektrik' && indirgenmis.liste[2]?.ad === 'GENEL TOPLAM' && indirgenmis.etkinSekme === 0,
+    // 23.09 tasarımı: İLK sekme GENEL TOPLAM (Excel dosyayı onda açar) — not onun
+    // tablo başlığının ÜSTÜNDE. Kısa özet sayfasında donmuş bölme yok (referans dosya).
+    const ucuncu = indirgenmis.liste[2];
+    check('X3b FIXTURE KANITI: GENEL TOPLAM + iki teklif sekmesi; Excel\'in açtığı sekme 0 (etkin sekme ayarı yok)',
+      indirgenmis.liste.length === 3 && ilk?.ad === 'GENEL TOPLAM' && ikinci?.ad === 'Mekanik' && ucuncu?.ad === 'Elektrik' && indirgenmis.etkinSekme === 0,
       JSON.stringify({ sekmeler: indirgenmis.liste.map((s) => s.ad), etkin: indirgenmis.etkinSekme }));
-    check('X3b ★ indirgeme notu dosya AÇILINCA görünen ilk sekmede, tablo başlığının ÜSTÜNDE (donmuş bölmede); ikinci sekmede YOK',
-      !!ilk && ilk.ustMetinler.includes(KAYIT_INDIRGEME_UYARISI) && ilk.ySplit === ilk.baslikNo && ilk.baslikNo > 1 &&
-      !!ikinci && !ikinci.tumMetinler.includes(KAYIT_INDIRGEME_UYARISI),
-      JSON.stringify({ ilk: ilk && { ust: ilk.ustMetinler, baslik: ilk.baslikNo, ySplit: ilk.ySplit }, ikinciNotlu: ikinci?.tumMetinler.includes(KAYIT_INDIRGEME_UYARISI) }));
+    check('X3b ★ indirgeme notu dosya AÇILINCA görünen ilk sekmede (GENEL TOPLAM), tablo başlığının ÜSTÜNDE; teklif sekmelerinde YOK',
+      !!ilk && ilk.ustMetinler.includes(KAYIT_INDIRGEME_UYARISI) && ilk.baslikNo > 1 &&
+      !!ikinci && !ikinci.tumMetinler.includes(KAYIT_INDIRGEME_UYARISI) && !!ucuncu && !ucuncu.tumMetinler.includes(KAYIT_INDIRGEME_UYARISI),
+      JSON.stringify({ ilk: ilk && { ust: ilk.ustMetinler, baslik: ilk.baslikNo }, ikinciNotlu: ikinci?.tumMetinler.includes(KAYIT_INDIRGEME_UYARISI) }));
     check('X3b not TOPLAMLARI KAYDIRMAZ: her sekmenin sayısal hücreleri (sayfa toplamı ve GENEL TOPLAM dahil) notsuz Türkçe dosyayla birebir; notsuz dosyada not YOK',
       !!ilkTr && JSON.stringify(indirgenmis.liste.map((s) => s.sayilar)) === JSON.stringify(acikTr.liste.map((s) => s.sayilar)) &&
-      indirgenmis.liste[0].sayilar.length > 0 && ilkTr.baslikNo === ilk.baslikNo - 1 &&
+      indirgenmis.liste.every((s) => s.sayilar.length > 0) && ilkTr.baslikNo === ilk.baslikNo - 1 &&
       !acikTr.liste.some((s) => s.tumMetinler.includes(KAYIT_INDIRGEME_UYARISI)),
       JSON.stringify({ indirgenmis: indirgenmis.liste.map((s) => s.sayilar.length), acikTr: acikTr.liste.map((s) => s.sayilar.length), baslik: [ilk?.baslikNo, ilkTr?.baslikNo] }));
   }

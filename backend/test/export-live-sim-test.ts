@@ -195,25 +195,28 @@ async function run() {
   // EX8 (kullanici karari 30.07): liste sayfasi artik MUSTERI KOPYASI DEGIL,
   // 9 kolonluk STANDART tablodur. Format dosyasinin kendisi (kapak/İCMAL)
   // aynen korunur — asagidaki SIM-11/12/13 onu sinar.
+  // 23.09 tasarimi: ustte 3 satirlik baslik blogu (teklif adi · sayfa adi + tarih ·
+  // cizgi) — tablo basligi 4. satirda, veri 5. satirdan (iki cikti yolu ayni motor).
   {
     const basliklar: string[] = [];
-    mek.getRow(1).eachCell({ includeEmpty: false }, (c) => basliklar.push(String(c.value ?? '')));
-    check('SIM-7 EX8: liste sayfası 9 kolonluk standart tablo',
+    mek.getRow(4).eachCell({ includeEmpty: false }, (c) => basliklar.push(String(c.value ?? '')));
+    check('SIM-7 EX8: liste sayfası 9 kolonluk standart tablo (4. satır)',
       basliklar.length === 9 && basliklar[0] === 'No' && basliklar[1] === 'Malzeme Adı'
       && basliklar[4] === 'Malz. Birim Fiyat' && basliklar[8] === 'Genel Toplam',
       `[${basliklar.join(' | ')}]`);
   }
-  // Standart tabloda veri 2. satirdan baslar (dosyanin kendi baslik satiri
+  // Standart tabloda veri 5. satirdan baslar (dosyanin kendi baslik satiri
   // KOPYALANMAZ — ustte zaten standart baslik var).
   check('SIM-8 fiyatlar DOLU ve SAYISAL (malz 10 · işç 2,5)',
-    mek.getCell(2, 5).value === 10 && mek.getCell(2, 7).value === 2.5,
-    `E2=${JSON.stringify(mek.getCell(2, 5).value)} G2=${JSON.stringify(mek.getCell(2, 7).value)}`);
-  // EX4: sistem formul ICAT ETMEZ — hesaplanmis DEGER yazar
-  const tut: any = mek.getCell(2, 6).value;
-  check('SIM-9 EX4: tutar hesaplanmış DEĞER (1000), sistem formülü yok',
-    tut === 1000, JSON.stringify(tut));
+    mek.getCell(5, 5).value === 10 && mek.getCell(5, 7).value === 2.5,
+    `E5=${JSON.stringify(mek.getCell(5, 5).value)} G5=${JSON.stringify(mek.getCell(5, 7).value)}`);
+  // EX4b (23.09 — EX4 "formul icat etmez" tarifle KALDIRILDI): tutar FORMUL
+  // (F = C × E) ve onbellegi 1000 — Korumali Gorunum ile duzenleme modu ayni.
+  const tut: any = mek.getCell(5, 6).value;
+  check('SIM-9 EX4b: tutar formülü F5 = C5 × E5, önbelleği 1000',
+    tut?.formula === 'IF(E5="","",ROUND(C5*E5,2))' && tut?.result === 1000, JSON.stringify(tut));
   check('SIM-10 fiyatsiz hucre BOS (0 yazilmadi)',
-    !mek.getCell(3, 7).value, JSON.stringify(mek.getCell(3, 7).value));
+    !mek.getCell(6, 7).value, JSON.stringify(mek.getCell(6, 7).value));
 
   // Icmal: sekme satirlari + formul + kur notu
   const icm = out.getWorksheet('İCMAL')!;
@@ -223,7 +226,7 @@ async function run() {
     icmalB3 === 'mekanik G BLOK' && icmalB4 === 'elektrik', `B3=${icmalB3} B4=${icmalB4}`);
   const c3: any = icm.getCell('C3').value;
   check('SIM-12 icmal SUM formulu liste sayfasina bakar + sonucu dogru',
-    typeof c3 === 'object' && /SUM\('mekanik G BLOK'!F2:F3\)/.test(c3?.formula ?? '') && c3?.result === 1100,
+    typeof c3 === 'object' && /SUM\('mekanik G BLOK'!F5:F6\)/.test(c3?.formula ?? '') && c3?.result === 1100,
     JSON.stringify(c3));
   // Icmal 2 satir eklenince alttaki etiketler 1 satir KAYAR (dogru davranis
   // — G2 kaniti): E6→E7 genel toplam, B8→B9 kur notu.
@@ -260,23 +263,24 @@ async function run() {
     const op = new ExcelJS.Workbook();
     await op.xlsx.load(rp.buffer as any);
     // EX1 (kullanici karari 30.07): fiyatli cikti artik MUSTERININ SABLONU
-    // DEGIL, 9 kolonluk STANDART dosyadir. Sayfalar: teklifin sayfalari +
-    // dosya sonunda "GENEL TOPLAM" ozeti (EX3). Format kapagi/icmali YOK.
-    check('SIM-17 fiyatlı çıktı: teklif sayfaları + GENEL TOPLAM özeti (format kapağı YOK)',
-      JSON.stringify(op.worksheets.map((w) => w.name)) === JSON.stringify(['mekanik G BLOK', 'elektrik', 'GENEL TOPLAM']),
+    // DEGIL, 9 kolonluk STANDART dosyadir. 23.09 tasarimi: ILK sekme "GENEL
+    // TOPLAM" ozeti, ardindan teklifin sayfalari. Format kapagi/icmali YOK.
+    check('SIM-17 fiyatlı çıktı: GENEL TOPLAM özeti ilk sekme + teklif sayfaları (format kapağı YOK)',
+      JSON.stringify(op.worksheets.map((w) => w.name)) === JSON.stringify(['GENEL TOPLAM', 'mekanik G BLOK', 'elektrik']),
       op.worksheets.map((w) => w.name).join('|'));
     const mekP = op.getWorksheet('mekanik G BLOK')!;
     // EX1: kolon sirasi sabit — 5=Malz. Birim Fiyat, 6=Malz. Toplam.
-    // EX4: sistem formul ICAT ETMEZ, hesaplanmis DEGER yazar.
+    // EX4b (23.09): birim fiyat DEGER, tutar FORMUL (F = C × E) + dogru onbellek.
     {
       const basliklar: string[] = [];
-      mekP.getRow(1).eachCell({ includeEmpty: false }, (c) => basliklar.push(String(c.value ?? '')));
-      const ilkVeri = mekP.getRow(2);
-      check('SIM-17 standart 9 kolon + fiyat DEĞER olarak yazıldı (formül icat yok)',
+      mekP.getRow(4).eachCell({ includeEmpty: false }, (c) => basliklar.push(String(c.value ?? '')));
+      const ilkVeri = mekP.getRow(5);
+      const f: any = ilkVeri.getCell(6).value;
+      check('SIM-17 standart 9 kolon (4. satır) + birim fiyat DEĞER, tutar FORMÜL (F5 = C5 × E5) önbelleği doğru',
         basliklar[4] === 'Malz. Birim Fiyat' && basliklar[5] === 'Malz. Toplam'
         && typeof ilkVeri.getCell(5).value === 'number'
-        && typeof ilkVeri.getCell(6).value !== 'object',
-        `başlık5="${basliklar[4]}" E2=${JSON.stringify(ilkVeri.getCell(5).value)} F2=${JSON.stringify(ilkVeri.getCell(6).value)}`);
+        && f?.formula === 'IF(E5="","",ROUND(C5*E5,2))' && f?.result === Number(ilkVeri.getCell(3).value) * Number(ilkVeri.getCell(5).value),
+        `başlık5="${basliklar[4]}" E5=${JSON.stringify(ilkVeri.getCell(5).value)} F5=${JSON.stringify(f)}`);
     }
     // EX1b: kar/marka/firma SIZINTI kontrolu (ic bilgi musteriye gitmez)
     {
@@ -325,7 +329,7 @@ async function run() {
       && !!o.getWorksheet('mekanik G BLOK') && !!o.getWorksheet('elektrik'),
       o.worksheets.map((w) => w.name).join('|'));
     check('G1 fiyatlar yine SAYISAL dolu',
-      o.getWorksheet('mekanik G BLOK')?.getCell(2, 5).value === 10, '');
+      o.getWorksheet('mekanik G BLOK')?.getCell(5, 5).value === 10, JSON.stringify(o.getWorksheet('mekanik G BLOK')?.getCell(5, 5).value));
   }
 
   // ── G2: FARKLI konum/duzen — icmal etiketi D7'de, kucuk-harf adlar ──
