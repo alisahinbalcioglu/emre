@@ -63,6 +63,13 @@ const TIP_ETIKET: Record<string, string> = {
   'abonelik.kaldirildi': 'Abonelik kaldırıldı',
   // Faz 6.9: ORTAK çeviri katmanına yönetici yazımı (her firmanın çıktısını etkiler).
   'ceviri.ortak.duzeltildi': 'Ortak çeviri düzeltildi',
+  // 24.09 (A2): yönetici düşürmesi — niyet (iyzico'dan ÖNCE), sonuç, kurtarma.
+  'paket.dusurme.istendi': 'Paket düşürme istendi',
+  'paket.dusuruldu': 'Paket düşürüldü (dönem sonu)',
+  'paket.dusurme.uygulanmadi': 'Düşürme uygulanmadı (önceki değişim bulundu)',
+  'paket.dusurme.basarisiz': 'Düşürme başarısız (iyzico kabul etmedi)',
+  'paket.dusurme.belirsiz': 'Düşürme sonucu doğrulanamadı',
+  'paket.dusurme.yarim': 'Düşürme yarım kaldı',
 };
 
 const TIP_RENK: Record<string, 'destructive' | 'info' | 'success' | 'secondary'> = {
@@ -73,6 +80,12 @@ const TIP_RENK: Record<string, 'destructive' | 'info' | 'success' | 'secondary'>
   'abonelik.eklendi': 'success',
   'abonelik.kaldirildi': 'secondary',
   'ceviri.ortak.duzeltildi': 'info',
+  'paket.dusurme.istendi': 'secondary',
+  'paket.dusuruldu': 'info',
+  'paket.dusurme.uygulanmadi': 'destructive',
+  'paket.dusurme.basarisiz': 'destructive',
+  'paket.dusurme.belirsiz': 'destructive',
+  'paket.dusurme.yarim': 'destructive',
 };
 
 export default function AdminDenetimPage() {

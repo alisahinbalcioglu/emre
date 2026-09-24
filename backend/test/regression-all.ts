@@ -677,6 +677,14 @@ const SUITES: Suite[] = [
   //   kişisel liste (firmanın KENDİ verisi) hiçbir durumda gizlenmez (H5).
   //   DB GEREKTİRMEZ.
   { ad: 'Vitrin: paketsiz yeni hesap gezer, iş ve havuz fiyatı kapalı (V/G/S/H/U)', script: 'test:vitrin', zincir: 'Z0' },
+  // 24.09 (Emre kararı, yönetici paneli turu A2): yönetici hiçbir yoldan
+  // firmanın paketini değiştiremiyordu; "abonelik ekle" uçları erişim vermeyen
+  // eski tabloya yazıyordu (canlıda 0 kullanım). Kapı ölçer: doğrudan düşürme
+  // yalnız "kayıp var, kazanç yok, fiyat artmaz, AKTIF" (5×5 gerçek katalog),
+  // A1 çekirdeğinden geçer (tek yol), niyet denetimi iyzico'dan ÖNCE, sonuç
+  // denetimi AYNI işlemde (geri alma gerçek), kurtarmada "ekip düşürdü"
+  // e-postası YOK, eski uçlar kaldırıldı. DB/AĞ/iyzico GEREKTİRMEZ.
+  { ad: 'Yönetici paket işlemleri: karar · düşürme · panel · bağlantı (K/D/P/B)', script: 'test:yonetici-paket', zincir: 'Z0' },
 ];
 
 // ── SKIP DEFTERI (B1, para dogrulugu turu 14.09.2026) ──────────────────────

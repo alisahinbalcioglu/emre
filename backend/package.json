@@ -140,7 +140,8 @@
     "duzeltpaketaciklama": "ts-node scripts/paket-aciklama-duzelt.ts",
     "test:eposta-kodu": "ts-node test/yonetici-eposta-kodu-test.ts",
     "test:paket-degisimi": "ts-node test/paket-degisimi-test.ts",
-    "test:vitrin": "ts-node test/vitrin-test.ts"
+    "test:vitrin": "ts-node test/vitrin-test.ts",
+    "test:yonetici-paket": "ts-node test/yonetici-paket-test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

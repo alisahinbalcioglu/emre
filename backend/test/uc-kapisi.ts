@@ -224,9 +224,8 @@ const UCRETSIZ: Record<string, Muafiyet> = {
   'POST /admin/users/:id/mfa-sifirla': ['YONETICI', 'Destek: MFA kilidini açma.'],
   'DELETE /admin/users/:id': ['YONETICI', 'Kullanıcı silme (yumuşak).'],
   'GET /admin/denetim': ['YONETICI', 'Denetim kaydı okuma.'],
-  'GET /admin/users/:id/subscriptions': ['YONETICI', 'Abonelik geçmişi.'],
-  'POST /admin/users/:id/subscriptions': ['YONETICI', 'Elle abonelik tanımlama (havale/destek).'],
-  'DELETE /admin/users/:userId/subscriptions/:subId': ['YONETICI', 'Elle abonelik kaldırma.'],
+  // 24.09 (A2): eski kişi-başı `users/:id/subscriptions` uçları KALDIRILDI
+  // (erişim vermiyorlardı, canlıda 0 kullanım); yerine `yonetim/abonelik`.
   'GET /admin/settings': ['YONETICI', 'Platform ayarları.'],
   'PATCH /admin/settings': ['YONETICI', 'Platform ayarlarını değiştirme.'],
   'POST /admin/reindex-products': ['YONETICI', 'Küresel indeks yeniden üretimi.'],
@@ -248,6 +247,8 @@ const UCRETSIZ: Record<string, Muafiyet> = {
   'POST /yonetim/havale/:id/fatura': ['YONETICI', 'Havale faturası kesme.'],
   'POST /yonetim/havale/:id/onayla': ['YONETICI', 'Havale onayı (abonelik açılır).'],
   'POST /yonetim/havale/:id/iptal': ['YONETICI', 'Havale başvurusu iptali.'],
+  'GET /yonetim/abonelik/:firmaId': ['YONETICI', 'Paket işlemleri paneli (A2).'],
+  'POST /yonetim/abonelik/:firmaId/dusur': ['YONETICI', 'Yönetici düşürmesi — müşteri onayısız, dönem sonu (A2).'],
 };
 
 // ═══════════════════════════════════════════════════════════════════════════

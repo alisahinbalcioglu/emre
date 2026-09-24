@@ -19,6 +19,11 @@
  *
  * KENDİNİ KİLİTLEME KORUMASI iki katmanlıdır: burada düğme kapatılır (niyet
  * belli olsun), backend'de de reddedilir (asıl kapı orası — bu dosya atlanabilir).
+ *
+ * ── 24.09.2026 · A2 — PAKET İŞLEMLERİ ─────────────────────────────────────
+ * "Gerçek paket" hücresindeki "Paket işlemleri" firmanın aboneliğini açar
+ * (`YoneticiPaketPenceresi`, `yonetim/abonelik` uçları). Eski "Abonelikler"
+ * sütunu KALDIRILDI: erişim vermeyen eski kişi-başı tabloyu gösteriyordu.
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -40,6 +45,7 @@ import {
 import { confirm, promptValue } from '@/ortak/hooks/use-confirm';
 import { toast } from '@/ortak/hooks/use-toast';
 import { seviyeAdi } from '@/ozellik/odeme/paket-bicim';
+import YoneticiPaketPenceresi from '@/ozellik/odeme/yonetici/YoneticiPaketPenceresi';
 
 interface AdminUser {
   id: string;
@@ -65,17 +71,9 @@ interface AdminUser {
   /// `User.tier` ile yetkili kaynak AYRISIYOR MU.
   paketAyrismasi: boolean;
   _count: { quotes: number; library: number };
-  subscriptions: Array<{
-    id: string;
-    level: 'core' | 'pro';
-    scope: 'mechanical' | 'electrical' | 'mep';
-    active: boolean;
-    endsAt: string | null;
-  }>;
 }
 
 const TIER_VARIANT = { core: 'secondary', pro: 'info', suite: 'purple' } as const;
-const SCOPE_LABEL = { mechanical: 'Mek', electrical: 'Elk', mep: 'MEP' } as const;
 
 const ROLLER = ['admin', 'user'] as const;
 const PAKETLER = ['core', 'pro', 'suite'] as const;
@@ -97,6 +95,8 @@ export default function AdminUsersPage() {
   const [islemdeki, setIslemdeki] = useState<string | null>(null);
   // FAZ 7 F3b: yönetici alan adı kaldırma girdisi (native diyalog YOK).
   const [alanAdiGirdisi, setAlanAdiGirdisi] = useState('');
+  /** A2: "Paket işlemleri" penceresi açık olan firma (null = kapalı). */
+  const [paketFirmasi, setPaketFirmasi] = useState<{ id: string; ad: string } | null>(null);
   /** Oturumu açık yöneticinin kendi id'si; kendi satırını kilitlemek için. */
   const [kendiId, setKendiId] = useState<string | null>(null);
   /** Sunucunun bildirdiği TOPLAM kayıt — `users.length` yalnız sayfayı sayar. */
@@ -435,12 +435,14 @@ export default function AdminUsersPage() {
                   <TableHead>E-posta</TableHead>
                   <TableHead>Rol</TableHead>
                   <TableHead>Eski tier (salt okunur)</TableHead>
-                  <TableHead>Gerçek paket</TableHead>
+                  {/* 24.09: başlık sırası HÜCRE sırasına eşitlendi — "Gerçek paket"
+                      başlığı durum seçicisinin, "Firma rolü" paket rozetinin
+                      üstünde duruyordu (sütunlar kaymıştı). */}
                   <TableHead>Durum</TableHead>
                   <TableHead>Firma rolü</TableHead>
+                  <TableHead>Gerçek paket</TableHead>
                   <TableHead className="text-right">Teklif</TableHead>
                   <TableHead className="text-right">Kütüphane</TableHead>
-                  <TableHead>Abonelikler</TableHead>
                   <TableHead>Kayıt</TableHead>
                   <TableHead className="text-right">İşlem</TableHead>
                 </TableRow>
@@ -562,24 +564,19 @@ export default function AdminUsersPage() {
                             {u.firmaId ? 'abonelik yok' : 'firma yok'}
                           </span>
                         )}
+                        {u.firma && (
+                          <button
+                            type="button"
+                            className="mt-1 block text-[11px] font-medium text-sky-700 hover:underline"
+                            onClick={() => setPaketFirmasi({ id: u.firma!.id, ad: u.firma!.ad })}
+                          >
+                            Paket işlemleri
+                          </button>
+                        )}
                       </TableCell>
 
                       <TableCell className="text-right tabular-nums">{u._count.quotes}</TableCell>
                       <TableCell className="text-right tabular-nums">{u._count.library}</TableCell>
-
-                      <TableCell>
-                        {u.subscriptions.length === 0 ? (
-                          <span className="text-xs text-slate-400">—</span>
-                        ) : (
-                          <div className="flex flex-wrap gap-1">
-                            {u.subscriptions.map((s) => (
-                              <Badge key={s.id} variant="info">
-                                {s.level}·{SCOPE_LABEL[s.scope] ?? s.scope}
-                              </Badge>
-                            ))}
-                          </div>
-                        )}
-                      </TableCell>
 
                       <TableCell className="whitespace-nowrap text-xs text-slate-500">
                         {new Date(u.createdAt).toLocaleDateString('tr-TR')}
@@ -636,6 +633,14 @@ export default function AdminUsersPage() {
           )}
         </CardContent>
       </Card>
+
+      {paketFirmasi && (
+        <YoneticiPaketPenceresi
+          firma={paketFirmasi}
+          onKapat={() => setPaketFirmasi(null)}
+          onDegisti={() => void fetchUsers()}
+        />
+      )}
     </div>
   );
 }

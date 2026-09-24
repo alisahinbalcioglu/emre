@@ -155,7 +155,8 @@ async function main(): Promise<void> {
   check(
     `B5 ALTI mutasyon ucunun tamami aktor aliyor (${currentUserSayisi}/6)`,
     currentUserSayisi >= 6,
-    'rol, durum, paket, silme, abonelik ekle, abonelik kaldir',
+    // 24.09 (A2): "abonelik ekle/kaldir" uclari KALDIRILDI (erisim vermiyorlardi).
+    'rol, durum, paket, firma rolu, MFA sifirlama, silme',
   );
   // Paket ucunun GOVDESI: imzadan bir sonraki `  async ` tanimina kadar.
   // Regex yerine dilim: `[^)]*` cok satirli imzada yanlis yerde biterdi.
@@ -166,10 +167,12 @@ async function main(): Promise<void> {
     : servis.slice(paketUcuBasi, paketUcuSonraki < 0 ? servis.length : paketUcuSonraki);
   const denetimCagri = (servis.match(/this\.denetimliMutasyon\(/g) ?? []).length;
   // 17.09.2026 (2.12): paket ucu ARTIK MUTASYON DEGIL - hicbir sey yazmiyor,
-  // gerekceli 400 doner. Geriye BES denetimli mutasyon kalir (rol, durum,
-  // silme, abonelik ekle, abonelik kaldir). Beklenti 6'da birakilsaydi kapi
-  // surekli kirmizi kalirdi; 5'e dusurulurken paket ucunun YAZMADIGI ayrica
-  // olculur (B6b) - yoksa "bes" beklentisi bir unutmayi da gizlerdi.
+  // gerekceli 400 doner. Beklenti 6'da birakilsaydi kapi surekli kirmizi
+  // kalirdi; 5'e dusurulurken paket ucunun YAZMADIGI ayrica olculur (B6b) -
+  // yoksa "bes" beklentisi bir unutmayi da gizlerdi.
+  // 24.09.2026 (A2): "abonelik ekle/kaldir" (eski kisi-basi tablo) KALDIRILDI;
+  // yerlerine F1b/F2b'nin firma rolu ve MFA sifirlama mutasyonlari zaten
+  // vardi. Bugunku BES: rol, durum, firma rolu, MFA sifirlama, silme.
   check(
     `B6 BES mutasyonun hepsi denetimli sarmalayicidan geciyor (${denetimCagri}/5)`,
     denetimCagri >= 5,

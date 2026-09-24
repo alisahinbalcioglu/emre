@@ -14,6 +14,9 @@ import { SatinAlmaServisi } from './abonelik/satinalma.servisi';
 import { DenemeHakkiServisi } from './abonelik/deneme-hakki.servisi';
 import { PaketDegisimiServisi } from './abonelik/paket-degisimi.servisi';
 import { AbonelikController } from './abonelik/abonelik.controller';
+import { YoneticiAbonelikController } from './abonelik/yonetici/yonetici-abonelik.controller';
+import { YoneticiAbonelikServisi } from './abonelik/yonetici/yonetici-abonelik.servisi';
+import { YoneticiDusurmeServisi } from './abonelik/yonetici/yonetici-dusurme.servisi';
 import { FiyatController } from './abonelik/fiyat.controller';
 import { CeviriKotaServisi } from './abonelik/ceviri-kota.servisi';
 import { MutabakatJob } from './abonelik/mutabakat.job';
@@ -51,6 +54,8 @@ import { EpostaServisi } from './eposta/eposta.servisi';
     IyzicoWebhookController,
     HavaleController,
     AbonelikController,
+    // 24.09 (A2): yonetici paket islemleri — sinif duzeyinde @Roles('admin').
+    YoneticiAbonelikController,
     // ⚠ JWT'siz (Faz 6.1): fiyat sayfası girişsiz ziyaretçiye açıktır. Yalnız
     // OKUR, ThrottlerGuard ile IP başına sınırlı (bkz. controller notu).
     FiyatController,
@@ -74,6 +79,9 @@ import { EpostaServisi } from './eposta/eposta.servisi';
     DenemeHakkiServisi,
     // 23.09: paket degisimi + 10 dk'lik planli gecis taramasi (@Cron).
     PaketDegisimiServisi,
+    // 24.09 (A2): yonetici paneli — ayni cekirdegi (islemciyleDegistir) kullanir.
+    YoneticiAbonelikServisi,
+    YoneticiDusurmeServisi,
     ErisimServisi,
     CeviriKotaServisi,
     MutabakatJob,
