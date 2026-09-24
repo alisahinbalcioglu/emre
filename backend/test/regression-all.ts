@@ -362,6 +362,17 @@ const SUITES: Suite[] = [
   //    MUTASYONLA ÖLÇÜLDÜ (2/2 öldü): kısıtlı moda CIKTI_INDIR eklenince K2
   //    kırmızı; export ucundan dekoratör kaldırılınca W1 kırmızı.
   { ad: 'Erişim kapısı: karar matrisi + uç kablolaması (K/L/W)', script: 'test:erisim', zincir: 'Z0' },
+  // ── 24.09.2026 — ÖDEME BEKLİYOR GERİ SAYIMI KISITLAMA GÜNÜNE. DB/AĞ GEREKTİRMEZ.
+  //    Ölçülen kusur: ODEME_BEKLIYOR dalı `kalanGun`u `erisimSonu`na sayıyordu
+  //    — tahsilat başarısızken o tarih ZATEN geçmiştir (yenilemede `endPeriod`
+  //    = çekim anı). Hesabım "−1, −3, −9 gün kaldı" yazarken dunning e-postası
+  //    aynı gün kısıtlamaya kalan günü sayıyordu. Emre kararı: ekran e-postanın
+  //    sayısını gösterir (`kisit-gunu.ts`, tek fonksiyon). Satırlar GERÇEK
+  //    yazma yollarından (webhook + mutabakat UNPAID); L bloğu GERÇEK dunning
+  //    merdivenini günlük koşturur: ekran > 0 iken kısıtlanmaz, 0'ı gören ilk
+  //    koşum kısıtlar. Kısıt planlanmamış satırda (tarih yok, havaleye geçmiş)
+  //    sayı yok. Erişim kararı ve şerit DEĞİŞMEZ (A bloğu).
+  { ad: 'Ödeme bekliyor geri sayımı kısıtlama gününe: yeniden üretim · çizelge · e-posta · merdiven · boş tarih · havale · ayar · erişim (F/R/G/E/L/N/H/K/A)', script: 'test:odeme-bekliyor-geri-sayim', zincir: 'Z0' },
   // ── 28.08.2026 — GÜVENLİK TURU 2 (G1-G6). DB GEREKTİRMEZ.
   //    ADIM 2 denetimi sırasında ödeme DIŞINDA bulunan altı kusur; hepsi kod
   //    OKUNARAK doğrulandı (grep sonucuna güvenilmedi), sonra düzeltildi.
