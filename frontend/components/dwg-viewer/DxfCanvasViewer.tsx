@@ -7,37 +7,82 @@
  *   - HTML <canvas> + 2d context
  *   - useViewport pan/zoom state (native wheel listener)
  *   - Y-flip transform: canvas Y-asagi, DWG Y-yukari → ctx.scale(zoom, -zoom)
- *   - Adaptive grid (log10 step) + viewport culling + selection glow
+ *   - Adaptive grid (log10 step) + viewport culling
  *   - Per-layer batched stroke (single beginPath + multi moveTo/lineTo + stroke)
  *   - rbush spatial index: 26K+ cizgide hover/click O(log N)
- *   - Hover overlay: cursor pointer + glow
- *   - Per-line selection + tooltip (layer + uzunluk)
+ *   - Hover overlay + bilgi kutusu (layer / parca / cap)
+ *
+ * 25.09 DWG tasarimi — viewer YALNIZ ciziyor ve tiklamayi bildiriyor:
+ *   - Arac cubugu (Katmanlar, yakinlastir, cap silgisi, geri al/yinele),
+ *     ipucu hapi, lejant ve bildirim CALISMA ALANINDA, bu bilesenin
+ *     KARDESI olarak durur. Eskiden cubuk isaretci kabinin icindeydi ve
+ *     cubuga tiklama bir de tuval tiklamasi uretiyordu (layer secimini
+ *     dusurebiliyordu). Yakinlastirma kontrolleri `ref` ile verilir.
+ *   - Gorsel silgi (sekil gizleme) KALDIRILDI: metraja hic girmiyordu
+ *     (yorum "excluded_lines gonderilir" diyordu, gonderilmiyordu) — silinen
+ *     boru ekrandan kalkip metrajda sayilmaya devam ediyordu.
  *
  * Layer durumlari (her biri bagimsiz):
- *   - hidden:  hic cizilmez, hit-test'te atlanır
- *   - dimmed:  %25 opacity gri, hit-test'te atlanır (referans)
- *   - normal:  ACI renkli, etkilesime acik
+ *   - hidden:     hic cizilmez, hit-test'te atlanir
+ *   - dimmed:     gri + %45, hit-test'te atlanir (referans; Katmanlar paneli)
+ *   - soluklasan: kendi renginde %22, TIKLANABILIR (secim varken diger boru
+ *                 layer'lari — "digerleri soluklasir")
+ *   - ham:        hesaplanmis ama onayli ve secili degil → parcalar ACI renginde
+ *   - normal:     ACI renkli, etkilesime acik
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import RBush from 'rbush';
-import { Loader2, AlertCircle, ZoomIn, ZoomOut, Maximize2, Eraser, Undo2, RotateCcw, Check, X } from 'lucide-react';
+import { Loader2, AlertCircle } from 'lucide-react';
 import api from '@/ortak/lib/api';
 import type { GeometryResult } from './types';
 import type { EdgeSegment } from '@/components/dwg-metraj/types';
-import { diameterToColor } from '@/components/dwg-metraj/diameter-colors';
-import { isUnassignedDiameter, UNASSIGNED_LABEL } from '@/components/dwg-metraj/constants';
+import { CAPSIZ_RENGI, diameterToColor } from '@/components/dwg-metraj/diameter-colors';
+import { isUnassignedDiameter } from '@/components/dwg-metraj/constants';
 import { resolveHoverLength } from './segment-length';
-import { canliCapliVarlik, sabitSecimGecersiz } from './canli-cap';
+import { canliCapliVarlik, canliSegmentiBul, sabitSecimGecersiz } from './canli-cap';
 import { useViewport } from './useViewport';
 import { aciToColor } from './aci-colors';
 
+/** Cizimden cikan katman ozeti — calisma alani (baslik sayaclari, Katmanlar
+ *  paneli, "Adina gore boru olabilecekler") bunu okur. */
+export interface GeometriBilgisi {
+  katmanlar: { ad: string; renk: string; cizgi: number }[];
+  /** Toplam LINE sayisi. */
+  cizgi: number;
+  /** Toplam INSERT (blok) sayisi. */
+  blok: number;
+}
+
+/** Calisma alaninin arac cubugu bu kontrolleri `ref` ile cagirir. */
+export interface CizimKontrolleri {
+  zoomIn: () => void;
+  zoomOut: () => void;
+  fitView: () => void;
+}
+
+/** Parca kimligi: `segment_id` her ayirmada 1'den baslar, yani layer'lar
+ *  arasinda TEKRAR EDER — arama her zaman layer + id ile yapilir. */
+export interface ParcaKimligi {
+  layer: string;
+  segmentId: number;
+}
+
 interface DxfCanvasViewerProps {
   fileId: string | null;
-  selectedLayers?: string[];
-  edgeSegments?: EdgeSegment[];
+  /** Hesaplanmis TUM layer'larin parcalari (onayli olanlar dahil — mekansal
+   *  indeks secim degistikce yeniden kurulmasin diye uyelik sabit tutulur;
+   *  onayli ve secili olmayanlar `hamCizilenLayerlar` ile ACI renginde cizilir). */
   calculatedEdgesByLayer?: Record<string, EdgeSegment[]>;
-  /** Layer adi -> T-junction noktalari ([x,y] listesi). Canvas2D'de marker olarak cizilir. */
+  /** Layer adi -> T-junction noktalari ([x,y] listesi). Beyaz halka olarak cizilir. */
   calculatedJunctionsByLayer?: Record<string, [number, number][]>;
   selectedLayer?: string | null;
   onSegmentClick?: (segment: EdgeSegment) => void;
@@ -45,78 +90,59 @@ interface DxfCanvasViewerProps {
   onInsertClick?: (insert: { layer: string; insertIndex: number; insertName: string; position: [number, number] }) => void;
   onCircleClick?: (circle: { layer: string; circleIndex: number; center: [number, number]; radius: number }) => void;
   sprinklerLayers?: Set<string>;
-  highlightLayer?: string;
   className?: string;
+  /** Hicbir seye isabet etmeyen tik. */
   onClearSelection?: () => void;
-  onLayersAvailable?: (layers: string[]) => void;
+  /** Cizim yuklenince bir kez: katmanlar, sayaclar. */
+  onGeometriBilgisi?: (bilgi: GeometriBilgisi) => void;
   hiddenLayers?: Set<string>;
   dimmedLayers?: Set<string>;
-  /** Birim donusturucu (DWG birimi → metre). mm=0.001, cm=0.01, m=1.0. Tooltip uzunluk hesabi icin. */
+  /** Birim donusturucu (DWG birimi → metre). Bilgi kutusu uzunluk hesabi icin. */
   scale?: number;
-  // ── SILGI MODU (AutoCAD-style erase) ──────────────────────────────
-  /** Silgi modu aktif mi? Toolbar button toggle. */
-  eraseMode?: boolean;
-  onToggleEraseMode?: () => void;
-  /** Hidden LINE key set — "x1,y1,x2,y2" (round 1dp). Render skip eder. */
-  hiddenLineKeys?: Set<string>;
-  /** Hidden INSERT index set. Render skip eder. */
-  hiddenInsertKeys?: Set<number>;
-  /** Hidden TEXT index set (geometry.texts array index). Render skip eder. */
-  hiddenTextKeys?: Set<number>;
   /** Hesaplanmis edge segment'leri cap-bazli renklerle (true, default) ya da
    *  layer orijinal ACI rengiyle (false) ciz. PRD §5: save sonrasi false. */
   useDiameterColors?: boolean;
-  /** Silgi mod aktif iken tik veya marquee → bu callback'le hidden'a ekleme yapilir.
-   *  textIndices: geometry.texts[] array index'leri. */
-  onEraseEntities?: (lineKeys: string[], insertIndices: number[], textIndices: number[]) => void;
-  /** Undo button — son silmeyi geri al. */
-  onUndoErase?: () => void;
-  canUndoErase?: boolean;
-  /** "Tumunu Geri Getir" — tum hidden'lari temizle. */
-  onRestoreAllErased?: () => void;
-  // ── PENDING ERASE (AutoCAD-style sec-onayla-sil) ──────────────────
-  /** Tikla/marquee ile secilmis ama henuz silinmemis LINE'lar. Turuncu highlight. */
-  pendingLineKeys?: Set<string>;
-  /** Pending INSERT index seti. Turuncu highlight. */
-  pendingInsertKeys?: Set<number>;
-  /** Pending TEXT index seti. Turuncu highlight. */
-  pendingTextKeys?: Set<number>;
-  /** Enter / "Sil" butonu → pending'i hidden'a aktar. */
-  onConfirmPendingErase?: () => void;
-  /** Esc / "Iptal" butonu → pending'i temizle. */
-  onCancelPendingErase?: () => void;
-  // ── CAP RENKLERI LISTE NAVIGATION (focus segment) ─────────────────
-  /** Legend'dan cap satirina tiklandiginda secilen segment'in id'si.
-   *  Set ise: viewport o segmente zoom yapilir + uzerine kalin halo cizilir. */
-  focusedSegmentId?: number | null;
-  /** Halo rengi (cap rengi). null ise sari/vurgu rengi kullanir. */
+  /** Parcalari cap rengi yerine ACI renginde cizilecek layer'lar (onayli ve
+   *  secili olmayan — "bu layer bitti" kurali, onay-revizyon.ts). */
+  hamCizilenLayerlar?: Set<string>;
+  /** Secim varken diger boru layer'lari: kendi renginde %22 (tiklanabilir). */
+  soluklasanLayerlar?: Set<string>;
+  /** "Çapsızları göster": secili layer'in CAPLI parcalari solar. */
+  capsizOdak?: boolean;
+  /** Adim 2: yalniz bu layer'in parcalari (ve yazilar) fareye yanit verir —
+   *  cap atarken yanlislikla baska layer secilmesin. */
+  kilitliLayer?: string | null;
+  /** Bilgi kutusunun dili: Adim 1 "Layer: … / Seçmek için tıklayın",
+   *  Adim 2 "Ø110 PVC BORU / Parça: 16,0 m · a-yağmur". */
+  etkilesimModu?: 'layer-sec' | 'cap-ata';
+  // ── CAP SATIRINDAN GEZINME (focus segment) ─────────────────────────
+  /** Set ise: viewport o parcaya zoom yapilir + uzerine kalin hale cizilir. */
+  focusedSegment?: ParcaKimligi | null;
+  /** Hale rengi (cap rengi). null ise sari/vurgu rengi kullanir. */
   focusedHaloColor?: string | null;
-  /** Ayni segment'e art arda tiklayinca zoom + flash tekrari icin token.
-   *  Parent her tiklamada increment eder; bu sayede ayni segmentId'de bile
-   *  effect yeniden tetiklenir. */
+  /** Ayni parcaya art arda tiklayinca zoom + hale tekrari icin token. */
   focusVersion?: number;
   // ── MANUEL ETIKETLEME (tikla-etiketle) ────────────────────────────
-  /** Aktif cap kaleminin rengi. Set ise edge hover vurgusu bu renge boyanir —
-   *  kullanici tiklamadan ONCE hangi rengin atanacagini gorur (izolasyon
-   *  onizleme: run'in uc noktalari da ayni renkte isaretlenir). */
+  /** Aktif cap kaleminin (ya da silginin) rengi. Set ise parca hover vurgusu
+   *  bu renge boyanir — kullanici tiklamadan ONCE ne olacagini gorur. */
   activeTagColor?: string | null;
-  /** SEGMENT IZOLASYONU teyidi: tiklanan run ~900ms kalem rengiyle parlar,
-   *  uc noktalari (T-noktalari arasi sinir) vurgulanir. */
-  flashSegment?: { segmentId: number; color: string; at: number } | null;
+  /** SEGMENT IZOLASYONU teyidi: tiklanan parca ~900ms kalem rengiyle parlar. */
+  flashSegment?: (ParcaKimligi & { color: string; at: number }) | null;
 }
 
 const COLOR_BG = '#0b1220';
 const COLOR_PASSIVE = '#94a3b8';
-const COLOR_SELECTED = '#60a5fa';
 const COLOR_TEXT = '#fbbf24';
 const COLOR_SPRINKLER = '#22d3ee';
 const COLOR_DIMMED = '#475569';            // slate-600
 const COLOR_HOVER = '#fde68a';             // amber-200 glow
 const COLOR_LINE_SELECTED = '#3b82f6';     // brand blue
-/** EKSIK PARCA TESPITI: capsiz segment NEON — koyu zeminde bagirir,
- *  rapor oncesi gozden kacan boru kalmaz (diameter-colors ile senkron). */
-const COLOR_UNASSIGNED_NEON = '#39ff14';
+const COLOR_T_HALKA = '#e2e8f0';
 const DIMMED_ALPHA = 0.45;
+/** "Digerleri soluklasir" (tasarim: 0.22). */
+const SOLUK_ALPHA = 0.22;
+/** "Çapsızları göster" acikken capli parcalarin opakligi. */
+const CAPSIZ_ODAK_ALPHA = 0.2;
 const HOVER_TOL_PX = 6;
 
 /** TAM TIKLANABILIRLIK: line/edge'e ek olarak INSERT (blok),
@@ -165,9 +191,41 @@ interface HoveredEntity {
   height?: number;
 }
 
-export default function DxfCanvasViewer({
+/** Parca dizisinin GEOMETRIK parmak izi (sira dahil). Cap degisimi bunu
+ *  DEGISTIRMEZ (indeks ayakta kalir); yeniden ayirma — ayni sayida, ayni
+ *  numarali parca donse bile — koordinat ya da layer farkiyla degistirir.
+ *  Eskiden yalniz id listesiydi: numaralar her ayirmada 1'den basladigi icin
+ *  birim degisince ayni sayida gelen parcalar BAYAT indeksle kaliyordu. */
+function geometriParmakIzi(segs: EdgeSegment[] | null): string {
+  if (!segs) return 'none';
+  let h = 2166136261;
+  const karistir = (n: number) => {
+    h ^= Math.round(n * 1000) | 0;
+    h = Math.imul(h, 16777619);
+  };
+  const layerOzeti = new Map<string, number>();
+  for (const s of segs) {
+    let lh = layerOzeti.get(s.layer);
+    if (lh === undefined) {
+      lh = 0;
+      for (let i = 0; i < s.layer.length; i++) lh = Math.imul(lh ^ s.layer.charCodeAt(i), 16777619);
+      layerOzeti.set(s.layer, lh);
+    }
+    karistir(lh);
+    karistir(s.segment_id);
+    karistir(s.coords[0]);
+    karistir(s.coords[1]);
+    karistir(s.coords[2]);
+    karistir(s.coords[3]);
+  }
+  return `${segs.length}:${h >>> 0}`;
+}
+
+const ayniParca = (s: EdgeSegment, k: ParcaKimligi | null | undefined) =>
+  !!k && s.layer === k.layer && s.segment_id === k.segmentId;
+
+const DxfCanvasViewer = forwardRef<CizimKontrolleri, DxfCanvasViewerProps>(function DxfCanvasViewer({
   fileId,
-  edgeSegments,
   calculatedEdgesByLayer,
   calculatedJunctionsByLayer,
   selectedLayer,
@@ -176,34 +234,24 @@ export default function DxfCanvasViewer({
   onInsertClick,
   onCircleClick,
   sprinklerLayers,
-  highlightLayer,
   className = '',
   onClearSelection,
-  onLayersAvailable,
+  onGeometriBilgisi,
   hiddenLayers,
   dimmedLayers,
   scale = 0.001,
-  eraseMode = false,
-  onToggleEraseMode,
-  hiddenLineKeys,
-  hiddenInsertKeys,
-  onEraseEntities,
-  onUndoErase,
-  canUndoErase = false,
-  onRestoreAllErased,
-  hiddenTextKeys,
-  pendingLineKeys,
-  pendingInsertKeys,
-  pendingTextKeys,
-  onConfirmPendingErase,
-  onCancelPendingErase,
   useDiameterColors = true,
-  focusedSegmentId = null,
+  hamCizilenLayerlar,
+  soluklasanLayerlar,
+  capsizOdak = false,
+  kilitliLayer = null,
+  etkilesimModu = 'layer-sec',
+  focusedSegment: odakKimligi = null,
   focusedHaloColor = null,
   focusVersion = 0,
   activeTagColor = null,
   flashSegment = null,
-}: DxfCanvasViewerProps) {
+}, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
@@ -225,81 +273,21 @@ export default function DxfCanvasViewer({
     return () => clearTimeout(t);
   }, [flashSegment]);
 
-  // ── SILGI MODU state ──────────────────────────────────────────
-  /** Marquee selection box (screen coords). Drag sirasinda guncellenir. */
-  const [marquee, setMarquee] = useState<{ sx1: number; sy1: number; sx2: number; sy2: number } | null>(null);
-
-  /** LINE coords → kararli string key. 1dp precision (0.1mm). Render skip + erase eslesme icin. */
-  const computeLineKey = useCallback((coords: [number, number, number, number]): string => {
-    const [x1, y1, x2, y2] = coords;
-    return `${x1.toFixed(1)},${y1.toFixed(1)},${x2.toFixed(1)},${y2.toFixed(1)}`;
-  }, []);
-
-  const isLineHidden = useCallback(
-    (coords: [number, number, number, number]): boolean => {
-      if (!hiddenLineKeys || hiddenLineKeys.size === 0) return false;
-      return hiddenLineKeys.has(computeLineKey(coords));
-    },
-    [hiddenLineKeys, computeLineKey],
-  );
-
-  const isInsertHidden = useCallback(
-    (insertIndex: number): boolean => {
-      if (!hiddenInsertKeys || hiddenInsertKeys.size === 0) return false;
-      return hiddenInsertKeys.has(insertIndex);
-    },
-    [hiddenInsertKeys],
-  );
-
-  const isLinePending = useCallback(
-    (coords: [number, number, number, number]): boolean => {
-      if (!pendingLineKeys || pendingLineKeys.size === 0) return false;
-      return pendingLineKeys.has(computeLineKey(coords));
-    },
-    [pendingLineKeys, computeLineKey],
-  );
-
-  const isInsertPending = useCallback(
-    (insertIndex: number): boolean => {
-      if (!pendingInsertKeys || pendingInsertKeys.size === 0) return false;
-      return pendingInsertKeys.has(insertIndex);
-    },
-    [pendingInsertKeys],
-  );
-
-  const isTextHidden = useCallback(
-    (textIndex: number): boolean => {
-      if (!hiddenTextKeys || hiddenTextKeys.size === 0) return false;
-      return hiddenTextKeys.has(textIndex);
-    },
-    [hiddenTextKeys],
-  );
-
-  const isTextPending = useCallback(
-    (textIndex: number): boolean => {
-      if (!pendingTextKeys || pendingTextKeys.size === 0) return false;
-      return pendingTextKeys.has(textIndex);
-    },
-    [pendingTextKeys],
-  );
-
-  const pendingCount = (pendingLineKeys?.size ?? 0) + (pendingInsertKeys?.size ?? 0) + (pendingTextKeys?.size ?? 0);
-
-  // Hesaplanmis tum edge segment'leri tek bir array'e flatten et.
-  // edgeSegments prop'u verilirse onu, yoksa calculatedEdgesByLayer'daki tum
-  // layer'larin segment'lerini birlestir. Boylece render path + spatial index
-  // + bounds tek bir kaynak kullanir.
+  // Hesaplanmis tum edge segment'leri tek bir array'e flatten et — render
+  // path + spatial index + odak aramasi tek bir kaynak kullanir.
   const allEdgeSegments = useMemo<EdgeSegment[] | null>(() => {
-    if (edgeSegments && edgeSegments.length > 0) return edgeSegments;
     if (calculatedEdgesByLayer) {
       const flat = Object.values(calculatedEdgesByLayer).flat();
       if (flat.length > 0) return flat;
     }
     return null;
-  }, [edgeSegments, calculatedEdgesByLayer]);
+  }, [calculatedEdgesByLayer]);
 
-  // Bounds (DWG world)
+  // Bounds (DWG world). "Tümünü sığdır" TUM cizime sigdirir — eskiden once
+  // parcalar geliyordu ve bir layer ayrildiktan sonra "sigdir" yalniz
+  // borulara yakinlasiyordu.
   const bounds = useMemo<[number, number, number, number]>(() => {
+    if (geometry?.bounds) return geometry.bounds;
     if (allEdgeSegments && allEdgeSegments.length > 0) {
       let mnx = Infinity, mny = Infinity, mxx = -Infinity, mxy = -Infinity;
       for (const es of allEdgeSegments) {
@@ -311,30 +299,37 @@ export default function DxfCanvasViewer({
       }
       return [mnx, mny, mxx, mxy];
     }
-    if (geometry?.bounds) return geometry.bounds;
     return [0, 0, 100, 100];
   }, [geometry, allEdgeSegments]);
 
   const { viewport, fitView, zoomToBounds, zoomIn, zoomOut, wasDragged, isDragging, pointerHandlers } = useViewport({
     bounds,
     containerRef,
-    autoFit: !!geometry || !!allEdgeSegments,
+    // Ilk sigdirma cizim gelince: kayitli parcalar cizimden once gelse bile
+    // kamera once borulara kilitlenmesin.
+    autoFit: !!geometry,
     // KAMERA KILIDI: dosya basina TEK otomatik fit. Onay/hesaplama/etiketleme
     // bounds'u degistirse bile kamera kullanicinin biraktigi yerde kalir.
     fitKey: fileId,
   });
 
-  // ─── Focus segment: cap-renkleri legend'dan tiklanan segment'e zoom + halo ─
-  // Halo'yu kisa bir pulse animasyonu icin RAF tabanli alpha state'i tutuyoruz.
-  // focusVersion her tiklamada increment olur → ayni segment'e bile zoom+flash tetikler.
-  const focusedSegment = useMemo<EdgeSegment | null>(() => {
-    if (focusedSegmentId == null || !allEdgeSegments) return null;
-    return allEdgeSegments.find((s) => s.segment_id === focusedSegmentId) ?? null;
-  }, [focusedSegmentId, allEdgeSegments]);
+  useImperativeHandle(ref, () => ({ zoomIn, zoomOut, fitView }), [zoomIn, zoomOut, fitView]);
 
+  // ─── Odak parcasi: cap satirindan gezinme — zoom + hale ─────────────
+  const focusedSegment = useMemo<EdgeSegment | null>(() => {
+    if (!odakKimligi || !allEdgeSegments) return null;
+    return allEdgeSegments.find((s) => ayniParca(s, odakKimligi)) ?? null;
+  }, [odakKimligi, allEdgeSegments]);
+
+  // Kamera YALNIZ yeni bir gezinme istegiyle (focusVersion) oynar. 25.09
+  // inceleme: etki parca nesnesine bagliydi; etiketleme / geri al odakli
+  // parcanin nesnesini degistirince kamera kullanicinin calistigi yerden
+  // kaciyordu.
+  const sonOdakSurumuRef = useRef(focusVersion);
   useEffect(() => {
     if (!focusedSegment) return;
-    // Segment'in dunya bounds'u (polyline varsa tum vertex'ler, yoksa coords)
+    if (sonOdakSurumuRef.current === focusVersion) return;
+    sonOdakSurumuRef.current = focusVersion;
     let mnx = Infinity, mny = Infinity, mxx = -Infinity, mxy = -Infinity;
     const pts: Array<[number, number]> =
       focusedSegment.polyline && focusedSegment.polyline.length >= 2
@@ -349,21 +344,25 @@ export default function DxfCanvasViewer({
       if (px > mxx) mxx = px;
       if (py > mxy) mxy = py;
     }
-    // Segment'in etrafina padding ekle ki cevre context gozuksun.
-    // Kullanici talimati: 2. fotograftaki gibi yakin zoom — segment + cap text'leri
-    // net okunabilir olmali, uzak alan degil. Min padding 150mm (15cm) yeterli;
-    // 500mm cok uzak goruntu veriyor (kucuk Ø20 segment'inde ekran 1m+ alani gosteriyor).
+    // Parcanin etrafina pay: cevre baglami gorunsun ama parca ve cap
+    // yazilari okunacak kadar yakin kalinsin. Alt sinir GERCEK olcude 15 cm
+    // (eskiden sabit 150 birimdi: mm cizimde 15 cm, metre cizimde 150 m).
     const w = mxx - mnx;
     const h = mxy - mny;
-    const padX = Math.max(w * 0.3, 150);
-    const padY = Math.max(h * 0.3, 150);
-    // Fill oranini %85 -> %95: ekran neredeyse tam kapla, kenar bosluklarini azalt
+    const enAzPay = 0.15 / (scale > 0 ? scale : 0.001);
+    const padX = Math.max(w * 0.3, enAzPay);
+    const padY = Math.max(h * 0.3, enAzPay);
     zoomToBounds([mnx - padX, mny - padY, mxx + padX, mxy + padY], 0.95);
-  }, [focusedSegment, focusVersion, zoomToBounds]);
+    // focusVersion: ayni parcaya tekrar tiklamada da zoom + hale yeniden tetiklenir
+  }, [focusedSegment, focusVersion, zoomToBounds, scale]);
 
-  // ─── Geometry fetch + retry (Render free tier cold-start) ─────────
+  // ─── Geometry fetch + retry (cold-start) ─────────────────────────────
+  // ⚠ Bagimlilik YALNIZ fileId: bilgi geri cagrisi ref'ten okunur. Kararsiz
+  // bir geri cagri bagimliliga girseydi 700K cizgilik cizim DONGUYE girerdi.
+  const bilgiRef = useRef(onGeometriBilgisi);
+  bilgiRef.current = onGeometriBilgisi;
   useEffect(() => {
-    if (!fileId || edgeSegments) {
+    if (!fileId) {
       setGeometry(null);
       return;
     }
@@ -377,10 +376,7 @@ export default function DxfCanvasViewer({
       // 5xx cold-start / overload — retry mantikli
       if (status === 503 || status === 502 || status === 504 || status === 500) return true;
       if (status === 429) return true;
-      // 422: 'file_id bilinmiyor (cache TTL gecmis olabilir)' — Cloud Run revision
-      // switch'i veya 15dk TTL sonrasi. file_id bir daha asla geri gelmeyecek,
-      // retry anlamsiz. Hemen hata goster, kullanici resetlesin.
-      // 404: file_id tamamen bilinmiyor — ayni
+      // 422/404: file_id bir daha asla geri gelmeyecek (cache TTL / deploy).
       if (status === 422 || status === 404) return false;
       const code = e?.code;
       if (code === 'ECONNABORTED' || code === 'ERR_NETWORK') return true;
@@ -397,8 +393,6 @@ export default function DxfCanvasViewer({
           if (cancelled) return;
           setGeometry(res.data);
           setLoading(false);
-          const layerNames = Object.keys(res.data.layer_colors ?? {});
-          if (layerNames.length > 0) onLayersAvailable?.(layerNames);
           return;
         } catch (e: any) {
           lastErr = e;
@@ -412,20 +406,35 @@ export default function DxfCanvasViewer({
         const status = lastErr?.response?.status;
         let msg: string;
         if (status === 422 || status === 404) {
-          // Cache TTL gecti / deploy oldu — DWG'yi yeniden yuklemek gerekli.
-          // Kullaniciya net aksiyon: "Yeni DWG Yukle" butonu zaten ust toolbar'da.
-          msg = 'Oturum sona erdi (sunucu file_id\'yi unutmus). Lutfen "Yeni DWG Yukle" butonuna basip dosyayi tekrar yukleyin.';
+          msg = 'Oturum sona erdi (sunucu dosyayı unutmuş). “Yeni DWG” ile dosyayı yeniden yükleyin — etiketleriniz geri gelir.';
         } else if (status) {
-          msg = `${status}: Servis cevap vermedi (Render free tier cold-start). Sayfayi yenile.`;
+          msg = `${status}: Çizim servisi yanıt vermedi. Sayfayı yenileyin.`;
         } else {
-          msg = lastErr?.message ?? 'Geometri alinamadi';
+          msg = lastErr?.message ?? 'Çizim alınamadı';
         }
         setError(msg);
         setLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [fileId, edgeSegments, onLayersAvailable]);
+  }, [fileId]);
+
+  // Cizim bilgisi — katmanlar (renk + cizgi sayisi), sayaclar. (Aktarim payi
+  // cizim kosegeninden DEGIL, layer'in kendi geometrisinden — etiket-aktarimi.)
+  useEffect(() => {
+    if (!geometry) return;
+    const cizgi = new Map<string, number>();
+    for (const ln of geometry.lines) cizgi.set(ln.layer, (cizgi.get(ln.layer) ?? 0) + 1);
+    const renkler = geometry.layer_colors ?? {};
+    const adlar = Object.keys(renkler);
+    // layer_colors'ta olmayan ama cizgisi olan katman da listelensin
+    cizgi.forEach((_n, ad) => { if (!(ad in renkler)) adlar.push(ad); });
+    bilgiRef.current?.({
+      katmanlar: adlar.map((ad) => ({ ad, renk: aciToColor(renkler[ad] ?? 7), cizgi: cizgi.get(ad) ?? 0 })),
+      cizgi: geometry.lines.length,
+      blok: geometry.inserts?.length ?? 0,
+    });
+  }, [geometry]);
 
   // ─── Canvas init + DPR ─────────────────────────────────────────────
   // resizeTick: boyut degisince render effect'i tetikler + sahne cache'ini
@@ -462,51 +471,41 @@ export default function DxfCanvasViewer({
   // Statik sahne (706K cizgi + arc + circle + text + edge'ler) offscreen
   // canvas'ta tutulur. Hover/flash/secim/halo gibi OVERLAY degisimlerinde
   // sahne YENIDEN CIZILMEZ — tek drawImage (blit) + birkac vurgu cizgisi.
-  // Sahne yalniz asagidaki "sceneDeps" parmak izi degisince yeniden cizilir
-  // (pan/zoom, layer gorunurlugu, cap renkleri, silgi...).
   const sceneCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const sceneKeyRef = useRef<unknown[] | null>(null);
 
-  // ─── Spatial index (rbush) ────────────────────────────────────────
-  // 700K+ cizgide hover/click O(log N). Build O(N) — SADECE GEOMETRI
-  // degisince yeniden kurulur.
-  //
-  // MEMORY LEAK FIX (OOM): eski kod calculatedEdgesByLayer/allEdgeSegments
-  // IDENTITY'sine bagliydi — her cap etiketleme tiklamasi yeni state objesi
-  // uretir, 700K+ SpatialEntry'lik agac SIFIRDAN allocate edilirdi (yuzlerce
-  // MB cop/tiklama → GC yetisemez → Chrome "Out of Memory"). Cozum:
-  //  1. Rebuild anahtari GEOMETRIK parmak izi (segment_id listesi + layer
-  //     seti) — cap degisimi id'leri DEGISTIRMEZ, agac ayakta kalir.
-  //  2. diameter/is_inherited index'te SAKLANMAZ — hover aninda guncel
-  //     allEdgeSegments'ten okunur (stale veri riski yok).
-  //  3. Silgi (hiddenLineKeys) kontrolu de sorgu anina tasindi — silme de
-  //     rebuild tetiklemez.
-  //
-  // KRITIK (davranis korunur): hesaplanmis layer'larin RAW LINE'lari index'e
-  // EKLENMEZ — aksi halde click hit-test uzun raw LWPOLYLINE'a duser.
-  const skipRawLayersKey = useMemo(
-    () => (calculatedEdgesByLayer ? JSON.stringify(Object.keys(calculatedEdgesByLayer).sort()) : '[]'),
+  // ─── Mekansal indeks (rbush) — IKI AGAC ────────────────────────────
+  // 700K+ cizgide hover/click O(log N).
+  //  - HAM agac: cizim varliklari (cizgi, blok, daire, yazi). YALNIZ cizim
+  //    degisince kurulur. Hesaplanmis layer'larin ham cizgileri agacta KALIR,
+  //    sorguda elenir (`hesaplananlar`): bir layer'i ayirmak, ayirmayi geri
+  //    almak ya da yeniden ayirmak 700K'lik agaci yeniden KURMAZ. 25.09
+  //    inceleme: tek agacta bu islemlerin her biri tum cizimi yeniden
+  //    indeksliyordu (tepe bellek gecici olarak iki katina cikiyordu).
+  //  - PARCA agaci: hesaplanmis parcalar; parca GEOMETRISI degisince kurulur.
+  //    Anahtar geometrik parmak izi — cap degisimi agaci kurmaz.
+  //  diameter index'te SAKLANMAZ — hover aninda guncel diziden okunur.
+  // KRITIK: hesaplanmis layer'in ham cizgisi SECILEMEZ — aksi halde tik uzun
+  // ham LWPOLYLINE'a duserdi (sorgudaki eleme bunu korur).
+  const hesaplananlarKey = useMemo(
+    () => (calculatedEdgesByLayer ? Object.keys(calculatedEdgesByLayer).sort().join('\u0000') : ''),
     [calculatedEdgesByLayer],
   );
-  const edgeGeomKey = useMemo(() => {
-    if (!allEdgeSegments) return 'none';
-    let k = String(allEdgeSegments.length);
-    for (const s of allEdgeSegments) k += ',' + s.segment_id;
-    return k;
-  }, [allEdgeSegments]);
+  const hesaplananlar = useMemo(
+    () => new Set<string>(hesaplananlarKey ? hesaplananlarKey.split('\u0000') : []),
+    [hesaplananlarKey],
+  );
+  const edgeGeomKey = useMemo(() => geometriParmakIzi(allEdgeSegments), [allEdgeSegments]);
   // Guncel segment dizisine parmak-izi degismeden erisim (memo'yu tetiklemez;
   // ayni parmak izinde diziler geometrik olarak esdegerdir).
   const allEdgeSegmentsRef = useRef(allEdgeSegments);
   allEdgeSegmentsRef.current = allEdgeSegments;
 
-  const spatialIndex = useMemo<RBush<SpatialEntry>>(() => {
+  const hamIndeks = useMemo<RBush<SpatialEntry>>(() => {
     const tree = new RBush<SpatialEntry>();
     const items: SpatialEntry[] = [];
-    const skipRawLayers = new Set<string>(JSON.parse(skipRawLayersKey));
     if (geometry) {
       geometry.lines.forEach((ln, i) => {
-        // Hesaplanmis layer ise raw LINE'lari atla (edge_segments'i kullaniliyor)
-        if (skipRawLayers.has(ln.layer)) return;
         const [x1, y1, x2, y2] = ln.coords;
         items.push({
           minX: Math.min(x1, x2), maxX: Math.max(x1, x2),
@@ -514,10 +513,6 @@ export default function DxfCanvasViewer({
           type: 'line', layer: ln.layer, index: i, coords: ln.coords,
         });
       });
-
-      // ── TAM TIKLANABILIRLIK: insert/circle/text de selectable entity ──
-      // Metraj icin cizimdeki HER SEY tek tek secilebilir olmali.
-      // Hidden/dimmed/silgi filtreleri SORGU aninda uygulanir (index stabil).
       geometry.inserts.forEach((ins) => {
         const [px, py] = ins.position;
         items.push({
@@ -541,8 +536,8 @@ export default function DxfCanvasViewer({
       geometry.texts.forEach((t, ti) => {
         if (!t.text) return;
         const [tx, ty] = t.position;
-        // Monospace yaklasik bbox (rotation yoksayilir) — silgi hit-test'iyle
-        // ayni kabul. Gorunmez ama AKTIF carpisma kutusu (collision hitbox).
+        // Monospace yaklasik bbox (rotation yoksayilir) — gorunmez ama AKTIF
+        // carpisma kutusu (collision hitbox).
         const th = Math.max(t.height, 1);
         const tw = t.text.length * th * 0.6;
         items.push({
@@ -553,6 +548,13 @@ export default function DxfCanvasViewer({
         });
       });
     }
+    tree.load(items);
+    return tree;
+  }, [geometry]);
+
+  const parcaIndeks = useMemo<RBush<SpatialEntry>>(() => {
+    const tree = new RBush<SpatialEntry>();
+    const items: SpatialEntry[] = [];
     const segs = allEdgeSegmentsRef.current;
     if (segs) {
       segs.forEach((seg, i) => {
@@ -586,7 +588,7 @@ export default function DxfCanvasViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- allEdgeSegments bilerek
     // parmak izi (edgeGeomKey) uzerinden takip edilir; identity degisimi rebuild
     // TETIKLEMEMELI (OOM fix). Detay: yukaridaki blok yorumu.
-  }, [geometry, edgeGeomKey, skipRawLayersKey]);
+  }, [edgeGeomKey]);
 
   // Hidden/dimmed layer degisince hover/selected gecersiz olabilir, temizle
   useEffect(() => {
@@ -598,11 +600,24 @@ export default function DxfCanvasViewer({
     }
   }, [hiddenLayers, dimmedLayers, hovered, selectedLine]);
 
-  // Sabit secimin segmenti diziden dustuyse (layer onaylandi / yeniden
-  // hesaplandi) secim gecersiz — kutu tiklama anindaki bayat capa donmesin.
+  // Sabit secimin segmenti diziden dustuyse (layer kaldirildi / yeniden
+  // ayrildi) secim gecersiz — kutu tiklama anindaki bayat capa donmesin.
   useEffect(() => {
     if (sabitSecimGecersiz(selectedLine, allEdgeSegments)) setSelectedLine(null);
   }, [selectedLine, allEdgeSegments]);
+
+  // Kilit degisince (Adim 1 ↔ 2) eski layer'in sabit kutusu/hover'i kalmasin.
+  // Ham cizgi ('line') kilitli adimda hic secilemez: layer parcalara
+  // ayrilinca ham cizgileri secilmez, onlara ait sabit vurgu kalmasin.
+  // Kilit KALKINCA (Değiştir, ayrilmamis layer'a gecis, geri al) Adim 2'nin
+  // parca secimi de bayattir (25.09 inceleme: kalin mavi kaliyor, kutu
+  // imleci baska layer'larin ustunde izliyordu).
+  useEffect(() => {
+    const gecersiz = (v: HoveredEntity | null) =>
+      !!v && v.type !== 'text' && (!kilitliLayer || v.type === 'line' || v.layer !== kilitliLayer);
+    setHovered((h) => (gecersiz(h) ? null : h));
+    setSelectedLine((s) => (gecersiz(s) ? null : s));
+  }, [kilitliLayer]);
 
   // ─── Render — sahne cache (statik katman) + overlay, RAF ile ─────
   useEffect(() => {
@@ -612,10 +627,6 @@ export default function DxfCanvasViewer({
       rafId = requestAnimationFrame(render);
     };
 
-    // ── SAHNE (statik katman) — yalniz sceneDeps degisince cizilir ──
-    // Icerik: grid + raw line/arc/circle/text + blok + edge segment'ler +
-    // T-junction marker'lari. Hover/flash/secim/halo BURADA DEGIL (overlay).
-    // 706K cizgide her hover'da bu fonksiyonun kosmasi OOM/kasma sebebiydi.
     const drawScene = (ctx: CanvasRenderingContext2D, w: number, h: number) => {
       ctx.fillStyle = COLOR_BG;
       ctx.fillRect(0, 0, w, h);
@@ -661,19 +672,17 @@ export default function DxfCanvasViewer({
       const strokeWidth = 1 / viewport.zoom;
       ctx.lineWidth = strokeWidth;
       ctx.lineCap = 'round';
+      const layerColors = geometry?.layer_colors || {};
 
-      if (geometry && !edgeSegments) {
-        const layerColors = geometry.layer_colors || {};
+      if (geometry) {
         const skipLayers = calculatedEdgesByLayer ? new Set(Object.keys(calculatedEdgesByLayer)) : null;
 
-        // Layer bazinda 3 grup: normal, dimmed (skip render path is hidden)
         const normalByLayer = new Map<string, Array<[number, number, number, number]>>();
         const dimmedByLayer = new Map<string, Array<[number, number, number, number]>>();
 
         for (const ln of geometry.lines) {
           if (hiddenLayers?.has(ln.layer)) continue;
           if (skipLayers?.has(ln.layer)) continue;
-          if (isLineHidden(ln.coords)) continue;  // SILGI: silinen LINE'i cizme
           const [x1, y1, x2, y2] = ln.coords;
           if (!lineInView(x1, y1, x2, y2)) continue;
           const bucket = dimmedLayers?.has(ln.layer) ? dimmedByLayer : normalByLayer;
@@ -702,43 +711,36 @@ export default function DxfCanvasViewer({
         }
 
         // ─── Normal layers (ACI renkli) ───────────────────────────
+        // Secili (henuz ayrilmamis) layer KENDI renginde, altinda genis yari
+        // saydam bir hare ile cizilir (tasarim). Hare `shadowBlur` DEGIL:
+        // golge her pan karesinde tum layer icin yeniden hesaplaniyordu.
         normalByLayer.forEach((coordsList, layer) => {
           const isSelected = selectedLayer === layer;
-          const isHighlighted = highlightLayer === layer;
-          let color: string;
-          let alpha = 1;
-          let lw = strokeWidth;
-
-          if (isSelected) {
-            color = COLOR_SELECTED;
-            lw = strokeWidth * 2.5;
-          } else if (highlightLayer && !isHighlighted) {
-            color = COLOR_PASSIVE;
-            alpha = 0.3;
-          } else {
-            const aci = layerColors[layer] ?? 7;
-            color = aciToColor(aci);
-          }
-
+          const color = aciToColor(layerColors[layer] ?? 7);
+          const cizgiYolu = () => {
+            ctx.beginPath();
+            for (const [x1, y1, x2, y2] of coordsList) {
+              ctx.moveTo(x1, y1);
+              ctx.lineTo(x2, y2);
+            }
+          };
           ctx.strokeStyle = color;
-          ctx.globalAlpha = alpha;
-          ctx.lineWidth = lw;
           if (isSelected) {
-            ctx.shadowColor = 'rgba(96, 165, 250, 0.5)';
-            ctx.shadowBlur = 8;
+            ctx.globalAlpha = 0.28;
+            ctx.lineWidth = strokeWidth * 12;
+            cizgiYolu();
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+            ctx.lineWidth = strokeWidth * 3;
+          } else {
+            ctx.globalAlpha = soluklasanLayerlar?.has(layer) ? SOLUK_ALPHA : 1;
+            ctx.lineWidth = strokeWidth;
           }
-          ctx.beginPath();
-          for (const [x1, y1, x2, y2] of coordsList) {
-            ctx.moveTo(x1, y1);
-            ctx.lineTo(x2, y2);
-          }
+          cizgiYolu();
           ctx.stroke();
-          if (isSelected) {
-            ctx.shadowBlur = 0;
-            ctx.shadowColor = 'transparent';
-          }
         });
         ctx.globalAlpha = 1;
+        ctx.lineWidth = strokeWidth;
 
         // ─── Arcs (normal + dimmed iki pass) ──────────────────────
         if (geometry.arcs.length > 0) {
@@ -796,10 +798,8 @@ export default function DxfCanvasViewer({
             ctx.stroke();
           };
 
-          // Normal pass'lar
           drawCircles(true, false, COLOR_SPRINKLER, strokeWidth * 1.6, 1);
           drawCircles(false, false, COLOR_PASSIVE, strokeWidth * 0.8, 1);
-          // Dimmed pass'lar (sprinkler ya da normal fark etmez, hepsi gri+%25)
           if (dimmedLayers && dimmedLayers.size > 0) {
             drawCircles(true, true, COLOR_DIMMED, strokeWidth * 0.8, DIMMED_ALPHA);
             drawCircles(false, true, COLOR_DIMMED, strokeWidth * 0.8, DIMMED_ALPHA);
@@ -807,34 +807,15 @@ export default function DxfCanvasViewer({
           ctx.globalAlpha = 1;
         }
 
-        // ─── Texts (dimmed = gri + %25 alpha, fillText per-text) ──
-        // SILGI: hiddenText skip; pendingText turuncu arka plan + outline.
+        // ─── Texts (dimmed = gri + %45 alpha, fillText per-text) ──
         if (viewport.zoom >= 0.3 && geometry.texts.length > 0) {
           ctx.textBaseline = 'alphabetic';
           for (let ti = 0; ti < geometry.texts.length; ti++) {
             const t = geometry.texts[ti];
             if (hiddenLayers?.has(t.layer)) continue;
             if (!t.text) continue;
-            if (isTextHidden(ti)) continue;  // SILGI: silinmis text'i cizme
             if (!inView(t.position[0], t.position[1])) continue;
             const isDim = !!dimmedLayers?.has(t.layer);
-            const isPending = isTextPending(ti);
-            // Pending text: arka plana turuncu yari-saydam rect (text'i de
-            // turuncu glow ile cevreler)
-            if (isPending) {
-              const tw = t.text.length * Math.max(t.height, 1) * 0.6;
-              const th = Math.max(t.height, 1);
-              const pad = 1 / viewport.zoom;
-              ctx.save();
-              ctx.fillStyle = 'rgba(251, 146, 60, 0.30)';   // orange-400 @ 30%
-              ctx.strokeStyle = '#fb923c';
-              ctx.lineWidth = 1.5 / viewport.zoom;
-              ctx.shadowColor = 'rgba(251, 146, 60, 0.7)';
-              ctx.shadowBlur = 8;
-              ctx.fillRect(t.position[0] - pad, t.position[1] - pad, tw + 2 * pad, th + 2 * pad);
-              ctx.strokeRect(t.position[0] - pad, t.position[1] - pad, tw + 2 * pad, th + 2 * pad);
-              ctx.restore();
-            }
             ctx.fillStyle = isDim ? COLOR_DIMMED : COLOR_TEXT;
             ctx.globalAlpha = isDim ? DIMMED_ALPHA : 1;
             ctx.save();
@@ -849,7 +830,7 @@ export default function DxfCanvasViewer({
         }
       }
 
-      // ─── Calculated edges (hidden = atla, dimmed = ayri gri pass) ─
+      // ─── Hesaplanmis parcalar ─────────────────────────────────────
       if (allEdgeSegments && allEdgeSegments.length > 0) {
         const drawSegPath = (seg: EdgeSegment) => {
           if (seg.polyline && seg.polyline.length >= 2) {
@@ -863,8 +844,9 @@ export default function DxfCanvasViewer({
           }
         };
 
-        // Normal pass: layer-bazli filtrele, cap-bazli renkli grupla
-        const byDiameter = new Map<string, EdgeSegment[]>();
+        // Gruplar: renk × opaklik × capsiz (kesikli). Tek beginPath/stroke.
+        interface Grup { renk: string; alpha: number; capsiz: boolean; segs: EdgeSegment[] }
+        const gruplar = new Map<string, Grup>();
         const dimmedSegs: EdgeSegment[] = [];
         for (const seg of allEdgeSegments) {
           if (hiddenLayers?.has(seg.layer)) continue;
@@ -872,100 +854,81 @@ export default function DxfCanvasViewer({
             dimmedSegs.push(seg);
             continue;
           }
-          // Atanmis ve atanmamis ayri grupla — atanmamis sentinel'leri tek
-          // anahtara toplanir (backend "" veya "Belirtilmemis" gonderse de
-          // legend ile birebir ortusur).
-          const key = isUnassignedDiameter(seg.diameter) ? UNASSIGNED_LABEL : seg.diameter;
-          let arr = byDiameter.get(key);
-          if (!arr) { arr = []; byDiameter.set(key, arr); }
-          arr.push(seg);
+          const ham = !useDiameterColors || !!hamCizilenLayerlar?.has(seg.layer);
+          const capsiz = !ham && isUnassignedDiameter(seg.diameter);
+          const renk = ham
+            ? aciToColor(layerColors[seg.layer] ?? 7)
+            : capsiz ? CAPSIZ_RENGI : diameterToColor(seg.diameter);
+          let alpha = soluklasanLayerlar?.has(seg.layer) ? SOLUK_ALPHA : 1;
+          if (capsizOdak && !ham && !capsiz && seg.layer === selectedLayer) alpha = CAPSIZ_ODAK_ALPHA;
+          const anahtar = `${renk}|${alpha}|${capsiz ? 1 : 0}`;
+          let g = gruplar.get(anahtar);
+          if (!g) {
+            g = { renk, alpha, capsiz, segs: [] };
+            gruplar.set(anahtar, g);
+          }
+          g.segs.push(seg);
         }
 
-        ctx.lineWidth = strokeWidth * 1.8;
-        ctx.globalAlpha = 1;
-        if (useDiameterColors) {
-          // PRD §3: cap-bazli dinamik renklendirme (legend ile esles)
-          // EKSIK PARCA TESPITI (operasyon madde 1): capsiz borular NEON +
-          // glow + kesikli — rapor oncesi gozden kacan parca aninda gorunur.
-          byDiameter.forEach((segs, diameter) => {
-            const isUnassigned = diameter === UNASSIGNED_LABEL;
-            if (isUnassigned) {
-              ctx.save();
-              ctx.strokeStyle = COLOR_UNASSIGNED_NEON;
-              ctx.lineWidth = strokeWidth * 2.6;
-              ctx.shadowColor = 'rgba(57, 255, 20, 0.85)';
-              ctx.shadowBlur = 12;
-              ctx.setLineDash([8, 4]);
-              ctx.beginPath();
-              for (const seg of segs) drawSegPath(seg);
-              ctx.stroke();
-              ctx.restore();
-              ctx.lineWidth = strokeWidth * 1.8;  // save/restore lineWidth'i geri alir ama emin ol
-            } else {
-              ctx.strokeStyle = diameterToColor(diameter);
-              ctx.setLineDash([]);
-              ctx.beginPath();
-              for (const seg of segs) drawSegPath(seg);
-              ctx.stroke();
-            }
-          });
-          ctx.setLineDash([]);  // sonraki pass'lere taşmasın
-        } else {
-          // PRD §5: save sonrasi cap renkleri kaldirilir, layer orijinal ACI
-          // rengine donulur. Tum diameter group'larini layer'a yeniden grupla.
-          const byLayer = new Map<string, EdgeSegment[]>();
-          byDiameter.forEach((segs) => {
-            for (const seg of segs) {
-              let arr = byLayer.get(seg.layer);
-              if (!arr) { arr = []; byLayer.set(seg.layer, arr); }
-              arr.push(seg);
-            }
-          });
-          const layerColorsMap = geometry?.layer_colors || {};
-          byLayer.forEach((segs, layer) => {
-            const aci = layerColorsMap[layer] ?? 7;
-            ctx.strokeStyle = aciToColor(aci);
+        gruplar.forEach((g) => {
+          ctx.globalAlpha = g.alpha;
+          ctx.strokeStyle = g.renk;
+          if (g.capsiz) {
+            // EKSIK PARCA TESPITI: capsiz parca turuncu + genis yari saydam
+            // hare + KESIKLI. Kesik deseni EKRAN pikseliyle (zoom'a bolunur):
+            // cizim biriminde verilseydi uzak zoom'da milyonlarca kesik olurdu.
+            ctx.lineWidth = strokeWidth * 7;
+            ctx.globalAlpha = g.alpha * 0.22;
+            ctx.setLineDash([]);
             ctx.beginPath();
-            for (const seg of segs) drawSegPath(seg);
+            for (const seg of g.segs) drawSegPath(seg);
             ctx.stroke();
-          });
-        }
+            ctx.globalAlpha = g.alpha;
+            ctx.lineWidth = strokeWidth * 2.6;
+            ctx.setLineDash([8 / viewport.zoom, 5 / viewport.zoom]);
+          } else {
+            ctx.lineWidth = strokeWidth * 2.2;
+            ctx.setLineDash([]);
+          }
+          ctx.beginPath();
+          for (const seg of g.segs) drawSegPath(seg);
+          ctx.stroke();
+        });
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 1;
 
-        // Dimmed pass: hepsi gri + %25
+        // Dimmed pass: hepsi gri
         if (dimmedSegs.length > 0) {
           ctx.globalAlpha = DIMMED_ALPHA;
           ctx.strokeStyle = COLOR_DIMMED;
+          ctx.lineWidth = strokeWidth;
           ctx.beginPath();
           for (const seg of dimmedSegs) drawSegPath(seg);
           ctx.stroke();
           ctx.globalAlpha = 1;
         }
-
-        // FOCUS HALO overlay'e tasindi (sahne cache'i halo yuzunden
-        // gecersiz olmasin — legend tiklamasi sahneyi yeniden cizmez).
       }
 
-      // ─── T-junction noktalari (gorsel ayraq) ──────────────────────
-      // 866 segment hepsi tek path'te ve ayni renkte cizildigi icin gorsel
-      // olarak tek parca gibi gozukur. Junction'larda kucuk yari-seffaf nokta
-      // koy → kullanici hangi noktada segment'in degistigini anlar.
-      // (Hover'da daha belirgin mavi marker zaten cizilir.)
+      // ─── T noktalari: beyaz halka (tasarim) ──────────────────────
       if (calculatedJunctionsByLayer) {
-        const allJunctions: [number, number][] = [];
+        const r = 4.5 / viewport.zoom;
+        ctx.lineWidth = 1.6 / viewport.zoom;
+        ctx.strokeStyle = COLOR_T_HALKA;
+        ctx.fillStyle = COLOR_BG;
+        ctx.beginPath();
+        let halkaVar = false;
         for (const [layer, pts] of Object.entries(calculatedJunctionsByLayer)) {
           if (hiddenLayers?.has(layer) || dimmedLayers?.has(layer)) continue;
-          allJunctions.push(...pts);
-        }
-        if (allJunctions.length > 0) {
-          const r = 2.5 / viewport.zoom;
-          ctx.globalAlpha = 0.55;
-          ctx.fillStyle = '#94a3b8';  // slate-400, dikkat dagitmaz
-          for (const [jx, jy] of allJunctions) {
-            ctx.beginPath();
+          for (const [jx, jy] of pts) {
+            if (!inView(jx, jy)) continue;
+            ctx.moveTo(jx + r, jy);
             ctx.arc(jx, jy, r, 0, Math.PI * 2);
-            ctx.fill();
+            halkaVar = true;
           }
-          ctx.globalAlpha = 1;
+        }
+        if (halkaVar) {
+          ctx.fill();
+          ctx.stroke();
         }
       }
 
@@ -982,13 +945,14 @@ export default function DxfCanvasViewer({
       const h = canvas.height / dpr;
 
       // ── 1) SAHNE CACHE — parmak izi degismediyse 706K cizgi CIZILMEZ ──
-      // Hover/flash/secim degisimlerinde bu dizi AYNI kalir → sadece blit.
+      // ⚠ drawScene'in okudugu HER prop burada olmali; eksik prop sahneyi
+      // bayat birakir.
       const sceneDeps: unknown[] = [
         geometry, allEdgeSegments, viewport.panX, viewport.panY, viewport.zoom,
-        selectedLayer, highlightLayer, hiddenLayers, dimmedLayers,
+        selectedLayer, hiddenLayers, dimmedLayers,
         sprinklerLayers, calculatedJunctionsByLayer,
-        hiddenLineKeys, hiddenInsertKeys, hiddenTextKeys, pendingTextKeys,
-        useDiameterColors, calculatedEdgesByLayer, canvas.width, canvas.height,
+        useDiameterColors, calculatedEdgesByLayer, hamCizilenLayerlar,
+        soluklasanLayerlar, capsizOdak, canvas.width, canvas.height,
       ];
       let scene = sceneCanvasRef.current;
       const prevKey = sceneKeyRef.current;
@@ -1017,16 +981,13 @@ export default function DxfCanvasViewer({
       ctx.drawImage(scene as HTMLCanvasElement, 0, 0);
       ctx.restore();
 
-      // ── 3) OVERLAY — hover/flash/pending/secim/halo (az obje, ucuz) ──
+      // ── 3) OVERLAY — hover/flash/secim/halo (az obje, ucuz) ──
       ctx.save();
       ctx.translate(viewport.panX, viewport.panY);
       ctx.scale(viewport.zoom, -viewport.zoom);
       const strokeWidth = 1 / viewport.zoom;
       ctx.lineCap = 'round';
 
-      // ─── Entity vurgusu (hover + selected ortak) ─────────────────
-      // Tip bazli: line/edge=cizgi izi, insert=nokta halkasi, circle=cember,
-      // text=hitbox cercevesi. TAM TIKLANABILIRLIK gorsel geri bildirimi.
       const drawEntityHighlight = (ent: HoveredEntity, color: string, lwMul: number, glow: string, blur: number) => {
         ctx.strokeStyle = color;
         ctx.lineWidth = strokeWidth * lwMul;
@@ -1046,7 +1007,6 @@ export default function DxfCanvasViewer({
           ctx.arc(ent.center[0], ent.center[1], ent.radius ?? 1, 0, Math.PI * 2);
           ctx.stroke();
         } else if (ent.type === 'text') {
-          // coords = bbox [minX, minY, maxX, maxY] konvansiyonu
           const pad = 1.5 / viewport.zoom;
           ctx.strokeRect(
             ent.coords[0] - pad, ent.coords[1] - pad,
@@ -1070,9 +1030,9 @@ export default function DxfCanvasViewer({
         ctx.shadowColor = 'transparent';
       };
 
-      // ─── HOVER overlay (amber glow + 2x stroke) ───────────────────
-      // TIKLA-ETIKETLE onizleme: aktif kalem varken edge hover'i kalem
-      // rengine boyanir — kullanici tiklamadan once atanacak rengi gorur.
+      // ─── HOVER overlay ───────────────────────────────────────────
+      // TIKLA-ETIKETLE onizleme: aktif kalem (ya da silgi) varken parca
+      // hover'i o renge boyanir — kullanici tiklamadan once sonucu gorur.
       if (hovered) {
         const isTagHover = hovered.type === 'edge' && !!activeTagColor;
         drawEntityHighlight(
@@ -1083,8 +1043,7 @@ export default function DxfCanvasViewer({
           isTagHover ? 14 : 10,
         );
 
-        // Edge segment ise — segment'in iki ucunda mavi nokta marker'i
-        // (kullanici T noktasinda nerede ayrildigini gorsun)
+        // Parca uclarinda nokta: kullanici T noktasinda nerede ayrildigini gorur.
         if (hovered.type === 'edge') {
           const markerR = 4 / viewport.zoom;
           const borderW = 1.5 / viewport.zoom;
@@ -1097,7 +1056,6 @@ export default function DxfCanvasViewer({
             ctx.beginPath();
             ctx.arc(ex, ey, markerR + borderW, 0, Math.PI * 2);
             ctx.fill();
-            // Kalem aktifse marker da kalem renginde — izolasyon onizleme
             ctx.fillStyle = activeTagColor ?? '#3b82f6';
             ctx.beginPath();
             ctx.arc(ex, ey, markerR, 0, Math.PI * 2);
@@ -1106,19 +1064,33 @@ export default function DxfCanvasViewer({
         }
       }
 
+      // ─── SABIT SECIM — flastan ONCE cizilir (teyit flasi ustte kalir) ──
+      // Parca: notr beyaz hale + parcanin KENDI (canli) cap rengi. 25.09
+      // inceleme: marka mavisi paletin ≤80 mm kovasiyla ayniydi ve flasin
+      // ustune ciziliyordu — atanan cap rengi gorunmuyordu.
+      if (selectedLine) {
+        if (selectedLine.type === 'edge') {
+          // Kimlikle (indeks kayabilir — onay/ayirma diziyi degistirir).
+          const canli = canliSegmentiBul(selectedLine, allEdgeSegments);
+          const kendiRengi = canli && !isUnassignedDiameter(canli.diameter) ? diameterToColor(canli.diameter) : CAPSIZ_RENGI;
+          ctx.globalAlpha = 0.5;
+          drawEntityHighlight(selectedLine, '#ffffff', 6, 'rgba(255, 255, 255, 0.6)', 10);
+          ctx.globalAlpha = 1;
+          drawEntityHighlight(selectedLine, kendiRengi, 2.2, 'transparent', 0);
+        } else {
+          drawEntityHighlight(selectedLine, COLOR_LINE_SELECTED, 3, 'rgba(59, 130, 246, 0.8)', 14);
+        }
+      }
+
       // ─── TAG FLASH — SEGMENT IZOLASYONU teyidi (operasyon madde 2) ──
-      // Tiklanan run ~900ms kalem rengiyle parlar; uc noktalar (T-noktalari
-      // arasi sinirlar) beyaz halkali marker'la vurgulanir. Kullanici neyi
-      // etiketledigini net gorur.
       if (flashSegment && allEdgeSegments && Date.now() - flashSegment.at < 900) {
-        const fs = allEdgeSegments.find((s) => s.segment_id === flashSegment.segmentId);
+        const fs = allEdgeSegments.find((s) => ayniParca(s, flashSegment));
         if (fs) {
           ctx.save();
           ctx.lineCap = 'round';
           ctx.lineJoin = 'round';
           ctx.shadowColor = flashSegment.color;
           ctx.shadowBlur = 20;
-          // Dis beyaz kusak (yari seffaf) + ic kalem rengi
           ctx.globalAlpha = 0.5;
           ctx.strokeStyle = '#ffffff';
           ctx.lineWidth = strokeWidth * 5.5;
@@ -1135,7 +1107,6 @@ export default function DxfCanvasViewer({
           ctx.strokeStyle = flashSegment.color;
           ctx.lineWidth = strokeWidth * 2.8;
           ctx.stroke();
-          // Uc nokta marker'lari
           const fEnds: [number, number][] = fs.polyline && fs.polyline.length >= 2
             ? [fs.polyline[0] as [number, number], fs.polyline[fs.polyline.length - 1] as [number, number]]
             : [[fs.coords[0], fs.coords[1]], [fs.coords[2], fs.coords[3]]];
@@ -1154,75 +1125,10 @@ export default function DxfCanvasViewer({
         }
       }
 
-      // ─── PENDING ERASE highlight (turuncu, kalin) ──────────────────
-      // Sec-onayla-sil flow: kullanici tıkladi/marquee yapti ama Enter'a
-      // basmadi. Onaylanana dek hidden DEGIL — turuncu vurgu ile gosterilir.
-      if (pendingLineKeys && pendingLineKeys.size > 0 && geometry) {
-        ctx.save();
-        ctx.strokeStyle = '#fb923c';  // orange-400 — silgi rose'undan ayri
-        ctx.lineWidth = strokeWidth * 2.8;
-        ctx.shadowColor = 'rgba(251, 146, 60, 0.7)';
-        ctx.shadowBlur = 10;
-        ctx.beginPath();
-        // Raw LINE'lar
-        for (const ln of geometry.lines) {
-          if (hiddenLayers?.has(ln.layer)) continue;
-          if (isLineHidden(ln.coords)) continue;
-          if (!isLinePending(ln.coords)) continue;
-          ctx.moveTo(ln.coords[0], ln.coords[1]);
-          ctx.lineTo(ln.coords[2], ln.coords[3]);
-        }
-        // Hesaplanmis edge segment'leri (allEdgeSegments — ayni computeLineKey)
-        if (allEdgeSegments) {
-          for (const seg of allEdgeSegments) {
-            if (hiddenLayers?.has(seg.layer)) continue;
-            if (isLineHidden(seg.coords)) continue;
-            if (!isLinePending(seg.coords)) continue;
-            if (seg.polyline && seg.polyline.length >= 2) {
-              ctx.moveTo(seg.polyline[0][0], seg.polyline[0][1]);
-              for (let i = 1; i < seg.polyline.length; i++) {
-                ctx.lineTo(seg.polyline[i][0], seg.polyline[i][1]);
-              }
-            } else {
-              ctx.moveTo(seg.coords[0], seg.coords[1]);
-              ctx.lineTo(seg.coords[2], seg.coords[3]);
-            }
-          }
-        }
-        ctx.stroke();
-        ctx.restore();
-      }
-      if (pendingInsertKeys && pendingInsertKeys.size > 0 && geometry) {
-        ctx.save();
-        ctx.fillStyle = '#fb923c';
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = strokeWidth * 0.8;
-        ctx.shadowColor = 'rgba(251, 146, 60, 0.8)';
-        ctx.shadowBlur = 10;
-        const r = 5 / viewport.zoom;
-        for (const ins of geometry.inserts) {
-          if (hiddenLayers?.has(ins.layer)) continue;
-          if (isInsertHidden(ins.insert_index)) continue;
-          if (!isInsertPending(ins.insert_index)) continue;
-          ctx.beginPath();
-          ctx.arc(ins.position[0], ins.position[1], r, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-        }
-        ctx.restore();
-      }
-
-      // ─── SELECTED overlay (brand blue + 2.5x stroke + bigger glow) ──
-      if (selectedLine) {
-        drawEntityHighlight(selectedLine, COLOR_LINE_SELECTED, 3, 'rgba(59, 130, 246, 0.8)', 14);
-      }
-
-      // ─── FOCUS HALO — legend'dan tiklanan segment (overlay katmani) ──
-      // Sahne cache'inden bagimsiz: legend tiklamasi 706K'lik sahneyi
-      // yeniden CIZDIRMEZ, sadece blit + bu halo.
+      // ─── FOCUS HALO — cap satirindan gezinme (overlay katmani) ──
       if (focusedSegment) {
         const fs = focusedSegment;
-        const haloColor = focusedHaloColor || '#fde047'; // amber-300 fallback
+        const haloColor = focusedHaloColor || '#fde047';
         const haloPath = () => {
           ctx.beginPath();
           if (fs.polyline && fs.polyline.length >= 2) {
@@ -1241,7 +1147,6 @@ export default function DxfCanvasViewer({
         ctx.strokeStyle = haloColor;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
-        // Iki kademe: dis daha kalin + yari-seffaf, ic dolgun cap rengi
         ctx.globalAlpha = 0.55;
         ctx.lineWidth = strokeWidth * 6;
         haloPath();
@@ -1258,43 +1163,46 @@ export default function DxfCanvasViewer({
 
     schedule();
     return () => cancelAnimationFrame(rafId);
-  }, [geometry, allEdgeSegments, calculatedJunctionsByLayer, calculatedEdgesByLayer, viewport, selectedLayer, highlightLayer, hiddenLayers, dimmedLayers, sprinklerLayers, hovered, selectedLine, pendingLineKeys, pendingInsertKeys, pendingTextKeys, hiddenTextKeys, isLinePending, isInsertPending, isLineHidden, isInsertHidden, isTextHidden, isTextPending, useDiameterColors, focusedSegment, focusedHaloColor, activeTagColor, flashSegment, flashTick, resizeTick]);
+  }, [geometry, allEdgeSegments, calculatedJunctionsByLayer, calculatedEdgesByLayer, viewport, selectedLayer, hiddenLayers, dimmedLayers, sprinklerLayers, hovered, selectedLine, useDiameterColors, hamCizilenLayerlar, soluklasanLayerlar, capsizOdak, focusedSegment, focusedHaloColor, activeTagColor, flashSegment, flashTick, resizeTick]);
 
   // ─── Hover detection (rbush ile O(log N)) ────────────────────────
   const computeHovered = useCallback(
     (worldX: number, worldY: number): HoveredEntity | null => {
       const tol = HOVER_TOL_PX / viewport.zoom;
-      const candidates = spatialIndex.search({
+      const kutu = {
         minX: worldX - tol, minY: worldY - tol,
         maxX: worldX + tol, maxY: worldY + tol,
-      });
-      // SECIM ONCELIGI: nokta entity (insert) > cember > yazi > boru.
-      // Tek tiklamayla yazi ile hemen yanindaki boru/cember birbirinden
-      // ayirt edilir: once daha spesifik (kucuk hedefli) tip kazanir,
-      // ayni tip icinde en yakin mesafe kazanir.
-      const PRIORITY: Record<EntityKind, number> = { insert: 0, circle: 1, text: 2, edge: 3, line: 4 };
+      };
+      const candidates = hamIndeks.search(kutu).concat(parcaIndeks.search(kutu));
+      // SECIM ONCELIGI — Adim 1: nokta entity (insert) > cember > yazi > boru.
+      // Adim 2 (cap-ata): PARCA once; yazi ve blok yalniz toleransta parca
+      // yoksa (25.09 inceleme: borunun yanindaki "Ø110" etiketi tiklamayi
+      // yutuyor, cap atanmiyordu).
+      const PRIORITY: Record<EntityKind, number> = etkilesimModu === 'cap-ata'
+        ? { edge: 0, insert: 1, circle: 2, text: 3, line: 4 }
+        : { insert: 0, circle: 1, text: 2, edge: 3, line: 4 };
       let best: SpatialEntry | null = null;
       let bestPrio = Infinity;
       let bestDist = Infinity;
       for (const c of candidates) {
         if (hiddenLayers?.has(c.layer)) continue;
         if (dimmedLayers?.has(c.layer)) continue;
-        // SILGI filtreleri sorgu aninda (index rebuild gerektirmez)
-        if (c.type === 'line' && isLineHidden(c.coords)) continue;
-        if (c.type === 'insert' && isInsertHidden(c.index)) continue;
-        if (c.type === 'text' && isTextHidden(c.index)) continue;
+        // Hesaplanmis layer'in HAM cizgisi secilmez — parcalari secilir.
+        if (c.type === 'line' && hesaplananlar.has(c.layer)) continue;
+        // ADIM 2 KILIDI: cap atarken yalniz secili layer'in parcalari (ve
+        // okunmak icin yazilar) yanit verir; baska layer secilemez.
+        if (kilitliLayer && c.type !== 'text' && c.layer !== kilitliLayer) continue;
 
         let d: number;
         if (c.type === 'insert') {
           d = Math.hypot(worldX - c.coords[0], worldY - c.coords[1]);
-          if (d > tol + 2) continue; // eski click kabulu ile ayni
+          if (d > tol + 2) continue;
         } else if (c.type === 'circle') {
           const dc = Math.hypot(worldX - c.center![0], worldY - c.center![1]);
           d = Math.abs(dc - (c.radius ?? 0));
-          if (d > tol && dc > (c.radius ?? 0)) continue; // cember cizgisi veya ici
-          if (dc <= (c.radius ?? 0)) d = Math.min(d, tol * 0.5); // ic tiklama kabul
+          if (d > tol && dc > (c.radius ?? 0)) continue;
+          if (dc <= (c.radius ?? 0)) d = Math.min(d, tol * 0.5);
         } else if (c.type === 'text') {
-          // Hitbox: bbox + tol pad — icindeyse d=0 (metin kucuk hedef, tam kabul)
           if (
             worldX < c.minX - tol || worldX > c.maxX + tol ||
             worldY < c.minY - tol || worldY > c.maxY + tol
@@ -1344,16 +1252,10 @@ export default function DxfCanvasViewer({
         height: best.height,
       };
     },
-    [spatialIndex, viewport.zoom, hiddenLayers, dimmedLayers, scale, isLineHidden, isInsertHidden, isTextHidden, allEdgeSegments],
+    [hamIndeks, parcaIndeks, hesaplananlar, etkilesimModu, viewport.zoom, hiddenLayers, dimmedLayers, kilitliLayer, scale, allEdgeSegments],
   );
 
-  // ─── Mouse pozisyonu → world coord + hover ──────────────────────
-  // EVENT THROTTLING (OOM/CPU fix): pointermove yuksek Hz'li fare/monitorde
-  // saniyede 120-250 kez tetiklenir. Her event'te 2 setState + rbush sorgusu
-  // React agacini bogup GC baskisi yaratiyordu. Cozum: son event ref'te
-  // birikir, frame basina EN FAZLA 1 hover/cursor hesabi yapilir (RAF).
-  // Pan (drag) gercek zamanli kalir — pointerHandlers.onPointerMove throttle
-  // DISINDA senkron cagrilir.
+  // ─── Mouse pozisyonu → world coord + hover (RAF ile kare basina 1) ────
   const moveRafRef = useRef(0);
   const lastMoveRef = useRef<{ clientX: number; clientY: number } | null>(null);
   useEffect(() => () => cancelAnimationFrame(moveRafRef.current), []);
@@ -1376,11 +1278,8 @@ export default function DxfCanvasViewer({
         setCursorWorld({ x: worldX, y: worldY });
         setCursorScreen({ x: mx, y: my });
 
-        // Hover detection — pan/drag esnasinda ATLA (kamera zaten hareketli,
-        // hover hesabi + glow cizimi bos yere frame yer)
         if (isDragging()) return;
         const newHover = computeHovered(worldX, worldY);
-        // Ayni entity ise state IDENTITY korunur — re-render/redraw tetiklenmez
         setHovered((prev) => {
           if (newHover?.type === prev?.type && newHover?.index === prev?.index && newHover?.layer === prev?.layer) {
             return prev;
@@ -1404,59 +1303,13 @@ export default function DxfCanvasViewer({
       const my = e.clientY - rect.top;
       const worldX = (mx - viewport.panX) / viewport.zoom;
       const worldY = (viewport.panY - my) / viewport.zoom;
-      const tol = HOVER_TOL_PX / viewport.zoom;
 
-      // ── SILGI MODU: tek tık = entity sil (boru/insert/text) ──────
-      if (eraseMode && onEraseEntities) {
-        // INSERT (sembol noktasi) once
-        for (const ins of geometry.inserts) {
-          if (hiddenLayers?.has(ins.layer)) continue;
-          if (isInsertHidden(ins.insert_index)) continue;
-          const dx = worldX - ins.position[0];
-          const dy = worldY - ins.position[1];
-          if (Math.hypot(dx, dy) <= tol + 2) {
-            onEraseEntities([], [ins.insert_index], []);
-            return;
-          }
-        }
-        // TEXT hit-test — monospace yaklasik bbox (rotation goz ardi).
-        // height * 0.6 yaklasik karakter genisligi, padding tol kadar.
-        for (let ti = 0; ti < geometry.texts.length; ti++) {
-          const t = geometry.texts[ti];
-          if (!t.text) continue;
-          if (hiddenLayers?.has(t.layer)) continue;
-          if (isTextHidden(ti)) continue;
-          const tw = t.text.length * Math.max(t.height, 1) * 0.6;
-          const th = Math.max(t.height, 1);
-          const pad = tol;
-          if (worldX >= t.position[0] - pad && worldX <= t.position[0] + tw + pad &&
-              worldY >= t.position[1] - pad && worldY <= t.position[1] + th + pad) {
-            onEraseEntities([], [], [ti]);
-            return;
-          }
-        }
-        // LINE (boru hatti) — spatial index ile en yakini
-        const target = computeHovered(worldX, worldY);
-        if (target && target.type === 'line') {
-          onEraseEntities([computeLineKey(target.coords)], [], []);
-          return;
-        }
-        // EDGE segment (hesaplanmis layer'da) — siliniyorsa LINE key olarak gonder
-        if (target && target.type === 'edge') {
-          onEraseEntities([computeLineKey(target.coords)], [], []);
-          return;
-        }
-        // Bos alana tik → bir sey olmaz (marquee zaten pointer handler'la)
-        return;
-      }
-
-      // ── TAM TIKLANABILIRLIK: tum tipler tek spatial sorgudan ──
-      // Secim onceligi computeHovered icinde: insert > circle > text > edge > line.
-      // Hidden/dimmed/silgi filtreleri de orada — tek dogruluk kaynagi.
+      // TAM TIKLANABILIRLIK: tum tipler tek spatial sorgudan (oncelik, gizli/
+      // soluk/kilit suzgecleri computeHovered icinde — tek dogruluk kaynagi).
       const target = computeHovered(worldX, worldY);
       if (target) {
         if (target.type === 'insert') {
-          setSelectedLine(null); // sembol tiklamasi layer secer — tooltip cakismasin
+          setSelectedLine(null);
           onInsertClick?.({
             layer: target.layer,
             insertIndex: target.index,
@@ -1476,11 +1329,17 @@ export default function DxfCanvasViewer({
           return;
         }
         if (target.type === 'text') {
-          // Yazi secimi: pinned tooltip icerik gosterir (Esc ile kalkar)
+          // Yazi secimi: sabit bilgi kutusu icerigi gosterir (Esc ile kalkar)
           setSelectedLine(target);
           return;
         }
-        setSelectedLine(target);
+        // Adim 1'de tiklama LAYER SECER — kutuyu sabitlemek "Seçmek için
+        // tıklayın" yazisini secimden sonra da ekranda birakiyordu. Kutu
+        // yalniz Adim 2'de, kalem/silgi KAPALIYKEN (parca bilgisi okunurken)
+        // sabitlenir. 25.09 inceleme: kalemle art arda atarken her tik kutuyu
+        // bir onceki parcaya sabitliyor, imlecin altindaki parcayi degil onu
+        // anlatiyordu; mavi secim vurgusu da atanan cap rengini ortuyordu.
+        setSelectedLine(etkilesimModu === 'cap-ata' && !activeTagColor ? target : null);
         if (target.type === 'line') {
           onLineClick?.({ layer: target.layer, index: target.index, shiftKey: e.shiftKey, screenX: e.clientX, screenY: e.clientY });
         } else if (target.type === 'edge' && allEdgeSegments) {
@@ -1489,204 +1348,26 @@ export default function DxfCanvasViewer({
         return;
       }
 
-      // Hicbir sey tutmadi → clear selection
+      // Hicbir sey tutmadi → sabit kutuyu kaldir
       setSelectedLine(null);
       onClearSelection?.();
     },
-    [geometry, allEdgeSegments, viewport, wasDragged, computeHovered, hiddenLayers, dimmedLayers, onLineClick, onCircleClick, onInsertClick, onSegmentClick, onClearSelection, eraseMode, onEraseEntities, isInsertHidden, isTextHidden, computeLineKey],
+    [geometry, allEdgeSegments, viewport, wasDragged, computeHovered, etkilesimModu, activeTagColor, onLineClick, onCircleClick, onInsertClick, onSegmentClick, onClearSelection],
   );
 
-  // ── SILGI MODU — marquee selection pointer handler'lari ──────────
-  // ERASE mode'da pan disabled, drag = marquee box. Click (small move) = single
-  // entity erase (handleClick yapar).
-  const handleErasePointerDown = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      if (!eraseMode || e.button !== 0) {
-        // Normal: pan handler
-        pointerHandlers.onPointerDown(e);
-        return;
-      }
-      // BUG FIX: Toolbar button'lari container'in cocugu. setPointerCapture
-      // butonlara giden click event'ini calar (Sil/Iptal cevap vermiyordu).
-      // event.target button/svg/icon ise marquee BASLATMA, browser'in normal
-      // button click flow'una birak.
-      const target = e.target as HTMLElement | null;
-      if (target && target.closest('button, [role="button"]')) {
-        return;
-      }
-      const rect = containerRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const sx = e.clientX - rect.left;
-      const sy = e.clientY - rect.top;
-      setMarquee({ sx1: sx, sy1: sy, sx2: sx, sy2: sy });
-      try {
-        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-      } catch {}
-    },
-    [eraseMode, pointerHandlers],
-  );
-
-  const handleErasePointerMove = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      // Normal hover/cursor logic her zaman calissin
-      handlePointerMove(e);
-      if (eraseMode && marquee) {
-        const rect = containerRef.current?.getBoundingClientRect();
-        if (!rect) return;
-        setMarquee({
-          ...marquee,
-          sx2: e.clientX - rect.left,
-          sy2: e.clientY - rect.top,
-        });
-      }
-    },
-    [eraseMode, marquee, handlePointerMove],
-  );
-
-  const handleErasePointerUp = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      if (!eraseMode) {
-        pointerHandlers.onPointerUp(e);
-        handleClick(e);
-        return;
-      }
-      // ERASE mode — marquee var mi?
-      if (!marquee) {
-        // Marquee baslamadi (mouse up sirasinda kayboldu) — tek tik handler
-        handleClick(e);
-        return;
-      }
-      const dx = Math.abs(marquee.sx2 - marquee.sx1);
-      const dy = Math.abs(marquee.sy2 - marquee.sy1);
-      try {
-        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-      } catch {}
-      if (dx <= 4 && dy <= 4) {
-        // Cok kucuk hareket = tek tik
-        setMarquee(null);
-        handleClick(e);
-        return;
-      }
-      // MARQUEE FINAL — AutoCAD davranisi:
-      //   sol→sag surukleme (sx2 > sx1): WINDOW — sadece TAMAMEN icerideki secilir (mavi)
-      //   sag→sol surukleme (sx2 < sx1): CROSSING — kesisen de secilir (yesil)
-      const isWindow = marquee.sx2 > marquee.sx1;
-      const minSx = Math.min(marquee.sx1, marquee.sx2);
-      const maxSx = Math.max(marquee.sx1, marquee.sx2);
-      const minSy = Math.min(marquee.sy1, marquee.sy2);
-      const maxSy = Math.max(marquee.sy1, marquee.sy2);
-      // Screen → world (Y ters!)
-      const minWx = (minSx - viewport.panX) / viewport.zoom;
-      const maxWx = (maxSx - viewport.panX) / viewport.zoom;
-      const minWy = (viewport.panY - maxSy) / viewport.zoom;
-      const maxWy = (viewport.panY - minSy) / viewport.zoom;
-
-      // LINE/segment secim testi — yon-bazli (window vs crossing).
-      // Window: bbox kutuda TAMAMEN icerde (her iki uc + bbox icerde).
-      // Crossing: bbox overlap (kesisme yeterli) — eski davranis.
-      const lineInBox = (x1: number, y1: number, x2: number, y2: number): boolean => {
-        const lnMnx = Math.min(x1, x2);
-        const lnMxx = Math.max(x1, x2);
-        const lnMny = Math.min(y1, y2);
-        const lnMxy = Math.max(y1, y2);
-        if (isWindow) {
-          // TAMAMEN icerde
-          return lnMnx >= minWx && lnMxx <= maxWx && lnMny >= minWy && lnMxy <= maxWy;
-        }
-        // Crossing: bbox overlap
-        return lnMxx >= minWx && lnMnx <= maxWx && lnMxy >= minWy && lnMny <= maxWy;
-      };
-
-      const lineKeys: string[] = [];
-      const insertIndices: number[] = [];
-      const textIndices: number[] = [];
-
-      if (geometry) {
-        for (const ln of geometry.lines) {
-          if (hiddenLayers?.has(ln.layer)) continue;
-          if (isLineHidden(ln.coords)) continue;
-          const [x1, y1, x2, y2] = ln.coords;
-          if (lineInBox(x1, y1, x2, y2)) {
-            lineKeys.push(computeLineKey(ln.coords));
-          }
-        }
-        // INSERT: nokta entity — window/crossing fark etmez (point ya icerde ya degil)
-        for (const ins of geometry.inserts) {
-          if (hiddenLayers?.has(ins.layer)) continue;
-          if (isInsertHidden(ins.insert_index)) continue;
-          const [px, py] = ins.position;
-          if (px >= minWx && px <= maxWx && py >= minWy && py <= maxWy) {
-            insertIndices.push(ins.insert_index);
-          }
-        }
-        // TEXT bbox — line ile ayni yon-bazli testi kullan
-        for (let ti = 0; ti < geometry.texts.length; ti++) {
-          const t = geometry.texts[ti];
-          if (!t.text) continue;
-          if (hiddenLayers?.has(t.layer)) continue;
-          if (isTextHidden(ti)) continue;
-          const tw = t.text.length * Math.max(t.height, 1) * 0.6;
-          const th = Math.max(t.height, 1);
-          if (lineInBox(t.position[0], t.position[1], t.position[0] + tw, t.position[1] + th)) {
-            textIndices.push(ti);
-          }
-        }
-      }
-      // Edge segments (hesaplanmis layer'lar) — ayni yon-bazli test
-      if (allEdgeSegments) {
-        for (const seg of allEdgeSegments) {
-          if (isLineHidden(seg.coords)) continue;
-          // Polyline varsa: tum vertex'lerin bbox'ini kullan
-          if (seg.polyline && seg.polyline.length >= 2) {
-            let pMnx = Infinity, pMxx = -Infinity, pMny = Infinity, pMxy = -Infinity;
-            for (const [px, py] of seg.polyline) {
-              if (px < pMnx) pMnx = px;
-              if (px > pMxx) pMxx = px;
-              if (py < pMny) pMny = py;
-              if (py > pMxy) pMxy = py;
-            }
-            if (lineInBox(pMnx, pMny, pMxx, pMxy)) {
-              lineKeys.push(computeLineKey(seg.coords));
-            }
-          } else {
-            const [x1, y1, x2, y2] = seg.coords;
-            if (lineInBox(x1, y1, x2, y2)) {
-              lineKeys.push(computeLineKey(seg.coords));
-            }
-          }
-        }
-      }
-
-      if (lineKeys.length > 0 || insertIndices.length > 0 || textIndices.length > 0) {
-        onEraseEntities?.(lineKeys, insertIndices, textIndices);
-      }
-      setMarquee(null);
-    },
-    [
-      eraseMode, marquee, pointerHandlers, viewport, geometry, allEdgeSegments,
-      hiddenLayers, isLineHidden, isInsertHidden, isTextHidden, computeLineKey, onEraseEntities, handleClick,
-    ],
-  );
-
-  // Esc → clear selection
+  // Esc → sabit kutu ve hover temizlenir
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setSelectedLine(null);
         setHovered(null);
-        setMarquee(null);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const usingEdges = !!edgeSegments && edgeSegments.length > 0;
-  const lineCount = usingEdges ? edgeSegments!.length : (geometry?.lines.length ?? 0);
-  const insertCount = geometry?.inserts?.length ?? 0;
-  const layerCount = geometry?.layer_colors ? Object.keys(geometry.layer_colors).length : 0;
-
-  const cursorClass = eraseMode ? 'cursor-cell' : (hovered ? 'cursor-pointer' : 'cursor-crosshair');
+  const cursorClass = hovered ? 'cursor-pointer' : 'cursor-crosshair';
 
   // Bilgi kutusu varligi: selectedLine/hovered tiklama anindaki fotograftir,
   // tiklama capi o fotograftan SONRA yazar/siler — cap/miras canli okunur.
@@ -1695,212 +1376,82 @@ export default function DxfCanvasViewer({
     return ent ? canliCapliVarlik(ent, allEdgeSegments) : null;
   }, [selectedLine, hovered, allEdgeSegments]);
 
+  const tooltipLayerRengi = tooltipEntity
+    ? aciToColor(geometry?.layer_colors?.[tooltipEntity.layer] ?? 7)
+    : '#94a3b8';
+
   return (
-    <div className={`flex flex-col rounded-xl border border-slate-700 overflow-hidden bg-slate-950 ${className}`}>
-      <div
-        ref={containerRef}
-        className={`relative flex-1 overflow-hidden ${cursorClass}`}
-        style={{ touchAction: 'none', backgroundColor: COLOR_BG }}
-        onPointerDown={handleErasePointerDown}
-        onPointerMove={handleErasePointerMove}
-        onPointerUp={handleErasePointerUp}
-        onPointerCancel={pointerHandlers.onPointerCancel}
-        onPointerLeave={() => {
-          setCursorWorld(null);
-          setCursorScreen(null);
-          setHovered(null);
-        }}
-      >
-        <canvas ref={canvasRef} className="block h-full w-full" />
+    <div
+      ref={containerRef}
+      className={`relative h-full w-full overflow-hidden ${cursorClass} ${className}`}
+      style={{ touchAction: 'none', backgroundColor: COLOR_BG }}
+      onPointerDown={pointerHandlers.onPointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={(e) => {
+        pointerHandlers.onPointerUp(e);
+        handleClick(e);
+      }}
+      onPointerCancel={pointerHandlers.onPointerCancel}
+      onPointerLeave={() => {
+        setCursorWorld(null);
+        setCursorScreen(null);
+        setHovered(null);
+      }}
+    >
+      <canvas ref={canvasRef} className="block h-full w-full" />
 
-        {/* MARQUEE SELECTION BOX — AutoCAD davranisi:
-            sol→sag (sx2 > sx1) = WINDOW (mavi, solid border, sadece TAMAMEN icerde)
-            sag→sol (sx2 < sx1) = CROSSING (yesil, dashed border, kesisen de secilir) */}
-        {marquee && (
-          <div
-            className={
-              'pointer-events-none absolute z-20 border-2 ' +
-              (marquee.sx2 > marquee.sx1
-                ? 'border-blue-400 bg-blue-500/15'
-                : 'border-emerald-400 bg-emerald-500/15 [border-style:dashed]')
-            }
-            style={{
-              left: Math.min(marquee.sx1, marquee.sx2),
-              top: Math.min(marquee.sy1, marquee.sy2),
-              width: Math.abs(marquee.sx2 - marquee.sx1),
-              height: Math.abs(marquee.sy2 - marquee.sy1),
-            }}
-          />
-        )}
+      {/* Bilgi kutusu — hover ya da sabit (tiklanmis) */}
+      {tooltipEntity && cursorScreen && (
+        <Tooltip
+          entity={tooltipEntity}
+          screenX={cursorScreen.x}
+          screenY={cursorScreen.y}
+          pinned={!!selectedLine}
+          mod={etkilesimModu}
+          seciliLayer={selectedLayer ?? null}
+          layerRengi={tooltipLayerRengi}
+          genislik={containerRef.current?.clientWidth ?? 0}
+        />
+      )}
 
-        {/* SILGI MODU AKTIF badge */}
-        {eraseMode && (
-          <div className="pointer-events-none absolute right-2 top-2 z-20 flex items-center gap-1.5 rounded-md bg-rose-600 px-2.5 py-1 text-[11px] font-semibold text-white shadow-lg">
-            <Eraser className="h-3 w-3" />
-            SILGI AKTIF · Esc ile cik
-          </div>
-        )}
-
-        {/* PENDING ERASE toolbar — secildi ama silinmedi, onay/iptal.
-            stopPropagation: silgi modu pointerDown viewer container'a capture
-            yapiyor; double-safety olarak toolbar level'da event'i durdur. */}
-        {pendingCount > 0 && (
-          <div
-            onPointerDown={(e) => e.stopPropagation()}
-            onPointerUp={(e) => e.stopPropagation()}
-            onClick={(e) => e.stopPropagation()}
-            className={
-              'absolute right-2 z-20 flex items-center gap-2 rounded-md border border-orange-400/60 bg-slate-900/95 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-lg backdrop-blur-sm ' +
-              (eraseMode ? 'top-10' : 'top-2')
-            }
-          >
-            <span className="flex items-center gap-1 text-orange-300">
-              <span className="inline-block h-2.5 w-2.5 rounded-full bg-orange-400 shadow-[0_0_6px_rgba(251,146,60,0.8)]" />
-              {pendingCount} oge secildi
-            </span>
-            {onConfirmPendingErase && (
-              <button
-                type="button"
-                onClick={onConfirmPendingErase}
-                className="flex items-center gap-1 rounded bg-rose-600 px-2 py-0.5 text-white hover:bg-rose-700"
-                title="Secimi sil (Enter)"
-              >
-                <Check className="h-3 w-3" />
-                Sil (Enter)
-              </button>
-            )}
-            {onCancelPendingErase && (
-              <button
-                type="button"
-                onClick={onCancelPendingErase}
-                className="flex items-center gap-1 rounded bg-slate-700 px-2 py-0.5 text-slate-200 hover:bg-slate-600"
-                title="Secimi iptal et (Esc)"
-              >
-                <X className="h-3 w-3" />
-                Iptal (Esc)
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* Toolbar */}
-        <div className="absolute left-2 top-2 z-10 flex gap-1 rounded-md bg-slate-900/90 backdrop-blur-sm border border-slate-700 p-1">
-          <button type="button" onClick={zoomIn} className="rounded p-1.5 text-slate-300 hover:bg-slate-700" title="Yakinlas">
-            <ZoomIn className="h-3.5 w-3.5" />
-          </button>
-          <button type="button" onClick={zoomOut} className="rounded p-1.5 text-slate-300 hover:bg-slate-700" title="Uzaklas">
-            <ZoomOut className="h-3.5 w-3.5" />
-          </button>
-          <button type="button" onClick={fitView} className="rounded p-1.5 text-slate-300 hover:bg-slate-700" title="Cerceveye sigdir (F)">
-            <Maximize2 className="h-3.5 w-3.5" />
-          </button>
-          {/* SILGI MODU butonu */}
-          {onToggleEraseMode && (
-            <button
-              type="button"
-              onClick={onToggleEraseMode}
-              className={
-                'rounded p-1.5 transition-colors ' +
-                (eraseMode
-                  ? 'bg-rose-600 text-white hover:bg-rose-700'
-                  : 'text-slate-300 hover:bg-slate-700')
-              }
-              title={eraseMode ? 'Silgi modu AKTIF — tek tik veya kare ile sil. Esc ile cik.' : 'Silgi modu (sil)'}
-            >
-              <Eraser className="h-3.5 w-3.5" />
-            </button>
-          )}
-          {/* UNDO — son silmeyi geri al */}
-          {onUndoErase && (
-            <button
-              type="button"
-              onClick={onUndoErase}
-              disabled={!canUndoErase}
-              className={
-                'rounded p-1.5 transition-colors ' +
-                (canUndoErase ? 'text-slate-300 hover:bg-slate-700' : 'text-slate-600 cursor-not-allowed')
-              }
-              title="Son silmeyi geri al (Ctrl+Z)"
-            >
-              <Undo2 className="h-3.5 w-3.5" />
-            </button>
-          )}
-          {/* TUMUNU GERI GETIR */}
-          {onRestoreAllErased && canUndoErase && (
-            <button
-              type="button"
-              onClick={onRestoreAllErased}
-              className="rounded p-1.5 text-slate-300 hover:bg-slate-700"
-              title="Tum silinen objeleri geri getir"
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
-
-        {/* Tooltip — hover ya da selected uzerinde */}
-        {tooltipEntity && cursorScreen && (
-          <Tooltip
-            entity={tooltipEntity}
-            screenX={cursorScreen.x}
-            screenY={cursorScreen.y}
-            pinned={!!selectedLine}
-          />
-        )}
-
-        {/* States */}
-        {!fileId && (
-          <div className="absolute inset-0 flex items-center justify-center bg-slate-900/90 text-sm text-slate-300">
-            Cizim icin once DWG yukleyin
-          </div>
-        )}
-        {fileId && loading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-slate-900/90">
-            <div className="flex flex-col items-center gap-2">
-              <Loader2 className="h-6 w-6 animate-spin text-blue-400" />
-              <p className="text-xs text-slate-300">Cizim hazirlaniyor...</p>
-              <p className="text-[10px] text-slate-500">Render free tier cold-start: ~80sn'ye kadar surebilir</p>
-            </div>
-          </div>
-        )}
-        {fileId && !loading && error && (
-          <div className="absolute inset-0 flex items-center justify-center bg-slate-900/90 p-4">
-            <div className="flex items-start gap-2 max-w-md">
-              <AlertCircle className="h-4 w-4 shrink-0 text-red-400 mt-0.5" />
-              <div>
-                <p className="text-sm font-medium text-red-300">Cizim yuklenemedi</p>
-                <p className="text-xs text-slate-300 mt-1">{error}</p>
-              </div>
-            </div>
-          </div>
-        )}
+      {/* Koordinat + yakinlik (sol alt) */}
+      <div className="pointer-events-none absolute bottom-3 left-4 font-mono text-[11px] tabular-nums text-slate-400">
+        {cursorWorld
+          ? `X ${tr2(cursorWorld.x)} · Y ${tr2(cursorWorld.y)} · `
+          : ''}
+        %{(viewport.zoom * 100).toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
       </div>
 
-      {/* Status bar */}
-      <div className="flex items-center justify-between border-t border-slate-700 bg-slate-900/95 px-3 py-1.5 text-[11px] text-slate-400">
-        <div className="flex items-center gap-3">
-          {cursorWorld ? (
-            <span className="font-mono tabular-nums">
-              X: {cursorWorld.x.toFixed(2)} · Y: {cursorWorld.y.toFixed(2)}
-            </span>
-          ) : (
-            <span>koordinat yok</span>
-          )}
+      {/* Durumlar */}
+      {!fileId && (
+        <div className="absolute inset-0 flex items-center justify-center bg-slate-900/90 text-sm text-slate-300">
+          Çizim için önce DWG yükleyin
         </div>
-        <div className="flex items-center gap-3">
-          <span className="tabular-nums">Zoom: {(viewport.zoom * 100).toFixed(1)}%</span>
-          <span>·</span>
-          <span className="tabular-nums">{lineCount} cizgi</span>
-          <span>·</span>
-          <span className="tabular-nums">{insertCount} blok</span>
-          <span>·</span>
-          <span className="tabular-nums">{layerCount} layer</span>
-          <span className="ml-2 rounded bg-emerald-900/50 px-1.5 py-0.5 text-[10px] text-emerald-400">Canvas2D</span>
+      )}
+      {fileId && loading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-slate-900/90">
+          <div className="flex flex-col items-center gap-2">
+            <Loader2 className="h-6 w-6 animate-spin text-blue-400" aria-hidden="true" />
+            <p className="text-xs text-slate-300">Çizim hazırlanıyor…</p>
+          </div>
         </div>
-      </div>
+      )}
+      {fileId && !loading && error && (
+        <div className="absolute inset-0 flex items-center justify-center bg-slate-900/90 p-4">
+          <div className="flex max-w-md items-start gap-2">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" aria-hidden="true" />
+            <div>
+              <p className="text-sm font-medium text-red-300">Çizim yüklenemedi</p>
+              <p className="mt-1 text-xs text-slate-300">{error}</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
-}
+});
+
+export default DxfCanvasViewer;
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -1918,85 +1469,76 @@ function pointToSegmentDistance(
   return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
 }
 
-// computeEntityLength + resolveHoverLength artik ./segment-length modulunde
-// (izole test edilebilir, Auto-mode scale=0 bug fix orada).
+// computeEntityLength + resolveHoverLength ./segment-length modulunde.
 
-// ─── Tooltip subcomponent ───────────────────────────────────────────
+// ─── Bilgi kutusu ────────────────────────────────────────────────────
 
 interface TooltipProps {
   entity: HoveredEntity;
   screenX: number;
   screenY: number;
-  /** Selected ise (tıklanmıs), hover ise false. Pinned tooltip biraz daha belirgin. */
+  /** Tiklanmis (sabit) ise true. */
   pinned: boolean;
+  mod: 'layer-sec' | 'cap-ata';
+  /** Zaten secili layer "Seçmek için tıklayın" demesin. */
+  seciliLayer: string | null;
+  /** Layer'in cizim rengi (Adim 1 kutusundaki kare). */
+  layerRengi: string;
+  /** Kap genisligi — kutu sag kenardan tasarsa imlecin soluna gecer. */
+  genislik: number;
 }
 
-function Tooltip({ entity, screenX, screenY, pinned }: TooltipProps) {
-  // Farenin sag-altinda (+14, +14) — PRD'ye uygun. Ekran kenarina tasarsa ayarla.
-  const offsetX = 14;
-  const offsetY = 14;
+const tr1 = (n: number) => n.toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+/** Koordinat: Turkce binlik + iki ondalik ("152.340,25") — yanindaki yakinlik
+ *  yuzdesiyle ayni bicim (25.09 inceleme: nokta/virgul karisikti). */
+const tr2 = (n: number) => n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+function Tooltip({ entity, screenX, screenY, pinned, mod, seciliLayer, layerRengi, genislik }: TooltipProps) {
+  const KUTU = 240;
+  const solda = genislik > 0 && screenX + 18 + KUTU > genislik;
+  const stil: React.CSSProperties = solda
+    ? { right: `${genislik - screenX + 18}px`, top: `${screenY - 24}px`, maxWidth: `${KUTU}px` }
+    : { left: `${screenX + 18}px`, top: `${screenY - 24}px`, maxWidth: `${KUTU}px` };
+
+  let isaret: React.ReactNode;
+  let baslik: string;
+  let alt: string;
+  if (entity.type === 'text') {
+    isaret = <span className="h-2.5 w-2.5 shrink-0 rounded-sm bg-[#fbbf24]" />;
+    baslik = `“${entity.text ?? ''}”`;
+    alt = `Yazı · ${entity.layer}`;
+  } else if (mod === 'cap-ata' && entity.type === 'edge') {
+    const capli = !isUnassignedDiameter(entity.diameter);
+    isaret = (
+      <span
+        className="h-2.5 w-2.5 shrink-0 rounded-full"
+        style={{ backgroundColor: capli ? diameterToColor(entity.diameter as string) : CAPSIZ_RENGI }}
+      />
+    );
+    baslik = capli ? (entity.diameter as string) : 'Çapsız parça';
+    alt = `Parça: ${tr1(entity.length ?? 0)} m · ${entity.layer}`;
+  } else {
+    isaret = <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: layerRengi }} />;
+    baslik = `Layer: ${entity.layer}`;
+    const eylem = entity.layer === seciliLayer ? 'seçili layer' : 'seçmek için tıklayın';
+    alt = entity.type === 'insert' && entity.insertName
+      ? `Blok: ${entity.insertName} · ${eylem}`
+      : eylem.charAt(0).toLocaleUpperCase('tr-TR') + eylem.slice(1);
+  }
+
   return (
     <div
-      className={`pointer-events-none absolute z-20 rounded-lg border px-3 py-1.5 shadow-xl backdrop-blur-sm transition-opacity ${
-        pinned
-          ? 'border-blue-400 bg-blue-900/95 text-white'
-          : 'border-amber-400/60 bg-slate-900/95 text-amber-100'
-      }`}
-      style={{
-        left: `${screenX + offsetX}px`,
-        top: `${screenY + offsetY}px`,
-        maxWidth: '320px',
-      }}
+      className={`pointer-events-none absolute z-20 rounded-lg border bg-[#0f172a] px-3 py-2 shadow-xl ${pinned ? 'border-[#cbd5e1]' : 'border-[#334155]'}`}
+      style={stil}
     >
-      <div className="text-[10px] uppercase tracking-wider opacity-70">
-        {entity.type === 'edge' ? 'Segment'
-          : entity.type === 'insert' ? 'Blok'
-          : entity.type === 'circle' ? 'Sembol (Çember)'
-          : entity.type === 'text' ? 'Yazı'
-          : 'Boru'}
+      <div className="flex items-center gap-2">
+        {isaret}
+        <span className="truncate text-xs font-semibold text-white">{baslik}</span>
       </div>
-      <div className="mt-0.5 text-sm font-semibold truncate" title={entity.layer}>
-        {entity.layer}
-      </div>
-      {entity.type === 'text' && entity.text && (
-        <div className="mt-1 font-mono text-sm font-bold break-words">
-          &quot;{entity.text}&quot;
-        </div>
-      )}
-      {entity.type === 'insert' && entity.insertName && (
-        <div className="mt-1 flex items-baseline gap-1">
-          <span className="text-xs opacity-70">Blok:</span>
-          <span className="font-mono text-sm font-bold truncate">{entity.insertName}</span>
-        </div>
-      )}
-      {!isUnassignedDiameter(entity.diameter) && (
-        <div className="mt-1 flex items-baseline gap-1">
-          <span className="text-xs opacity-70">Cap:</span>
-          <span className="font-mono text-sm font-bold tabular-nums">
-            {entity.diameter}
-          </span>
-          {entity.isInherited && (
-            <span
-              className="ml-1 text-[10px] opacity-75 italic"
-              title="Cap, komsu segmentten graph BFS ile miras alindi"
-            >
-              ↳ miras
-            </span>
-          )}
-        </div>
-      )}
-      {entity.length != null && (
-        <div className="mt-1 flex items-baseline gap-1">
-          <span className="text-xs opacity-70">Uzunluk:</span>
-          <span className="font-mono text-sm font-bold tabular-nums">
-            {entity.length.toFixed(2)}
-          </span>
-          <span className="text-xs opacity-70">m</span>
-        </div>
-      )}
-      {pinned && (
-        <div className="mt-1 text-[10px] opacity-60">Esc ile kaldir</div>
-      )}
+      <div className="mt-0.5 truncate text-[11px] text-[#94a3b8]">{alt}</div>
+      {/* Sabit kutu hover kutusundan AYIRT edilir (25.09 inceleme: ikisi ayni
+          gorunuyordu, kullanici imlecin altindaki parcayi okudugunu saniyordu). */}
+      {pinned && <div className="mt-1 text-[10px] font-semibold text-[#cbd5e1]">Sabitlendi · Esc ile kaldırın</div>}
     </div>
   );
 }

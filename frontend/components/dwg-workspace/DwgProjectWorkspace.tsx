@@ -1,43 +1,68 @@
 'use client';
 
 /**
- * DWG Project Workspace — tek ekran MANUEL ETIKETLEME metraj akisi.
- * Sol: buyuk Canvas2D cizim | Sag: Cap Kalemleri + lejant + layer + ozet.
+ * DWG Analiz calisma alani — 25.09 tasarimi.
  *
- * Kullanici:
- *  - Layer secer → "Layer'i Segmentlerine Ayir" → borular capsiz (NEON) cikar
- *  - Cap Kalemi secer → boruya tiklar → cap atanir (ayni capa tekrar tik = geri al)
- *  - "Hesaplamayi Tamamla" → layer onaylanir, kalem/secim resetlenir
- *  - Birden fazla layer ekleye ekleye finale gider
+ *   Baslik : dosya + sayaclar · Birim · Yeni DWG · Fiyatlandırmaya geç
+ *   Sol    : Canvas2D cizim + arac cubugu (Katmanlar, yakinlastir, cap
+ *            silgisi, geri al / yinele) + ipucu hapi + Katmanlar paneli
+ *   Sag    : 3 adimli yol haritasi — 1 Boru layer'ını seçin · 2 Çap atayın ·
+ *            3 Metrajı onaylayın (sabit altbilgi)
  *
- * NOT: "Ekipman isaretleme" akisi 10.08'de KALDIRILDI (kullanici karari).
- * Sembol (INSERT/CIRCLE) tiklamasi artik boru tiklamasiyla ayni isi yapar:
- * layer secer / gizleme modunda gizler.
+ * Cizim motoru, T'de bolme, iki bolme yontemi, cap etiketleme ve layer
+ * islemleri AYNEN kalir; degisen yerlesim, yonlendirme ve metinler.
+ *
+ * GERI ALMA: layer secimi, parcalara ayirma, ayirmayi kaldirma, cap atama,
+ * silgiyle cap kaldirma, toplu cap, onay ve onayi geri alma TEK TEK geri
+ * alinir (calisma-kaydi.ts). Gorunum (gizle / soluklastir / 💧) gecmise
+ * yazilmaz. Parcalara ayirma surerken gecmis KILITLIDIR: motor sonucu geri
+ * alinmis bir durumun ustune dusmesin.
  */
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { AlertCircle } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from '@/ortak/hooks/use-toast';
 import { confirm } from '@/ortak/hooks/use-confirm';
-import api from '@/ortak/lib/api';
 import { DxfCanvasViewer } from '@/components/dwg-viewer';
-import type { EdgeSegment } from '@/components/dwg-metraj';
-import type { MetrajResult } from '@/components/dwg-metraj/types';
-import LayerInfoSidebar from './LayerInfoSidebar';
-import LayerVisibilityPanel from './LayerVisibilityPanel';
-import MetrajSummaryPanel from './MetrajSummaryPanel';
+import type { CizimKontrolleri, GeometriBilgisi, ParcaKimligi } from '@/components/dwg-viewer';
+import type { EdgeSegment, MetrajResult } from '@/components/dwg-metraj/types';
+import { useLayerCalc, useOriginalColorState } from '@/components/dwg-diameter-engine';
+import type { LayerCalcResult } from '@/components/dwg-diameter-engine';
+import { useActiveBucket, useTaggingStore } from '@/components/dwg-tagging';
+import { CAPSIZ_RENGI, canonicalizeDiameter, diameterToColor } from '@/components/dwg-metraj/diameter-colors';
+import { isUnassignedDiameter } from '@/components/dwg-metraj/constants';
 import { useWorkspaceState } from './useWorkspaceState';
 import { capRenkliGorunur, onaySirasi } from './onay-revizyon';
-import { sprinklerIsaretiBayat } from './sprinkler-bayatlik';
-import type { CalculatedLayer } from './types';
 import {
-  useLayerCalc,
-  useOriginalColorState,
-  DiameterLegendPanel,
-} from '@/components/dwg-diameter-engine';
-import { BucketPanel, useActiveBucket, useTaggingStore } from '@/components/dwg-tagging';
-import { diameterToColor, canonicalizeDiameter } from '@/components/dwg-metraj/diameter-colors';
-import { isUnassignedDiameter } from '@/components/dwg-metraj/constants';
+  adimDurumu,
+  fiyatlandirmaDurumu,
+  fiyatlandirmaEngeli,
+  ipucu as ipucuHesapla,
+  kisayolEylemi,
+  onayEngeli,
+  onayKutusuAcikMi,
+  yaziAlaniMi,
+} from './adim-durumu';
+import { ayniOlcek, birimBayatMi, yerelOlceklenebilir } from './birim-bayatlik';
+import { boruAdayiMi, boruAdaylari } from './boru-adaylari';
+import {
+  capAra,
+  capGruplari,
+  capIlerlemesi,
+  capSatirlari,
+  gezinmeKonumu,
+  sonrakiParca,
+  type CapSatiri,
+} from './cap-gruplari';
+import { capsizParcalar } from './belge-islemleri';
+import { birimKisa, guvenilirMi } from './birimler';
+import CalismaBasligi from './CalismaBasligi';
+import BirimPenceresi, { type BirimTespiti } from './BirimPenceresi';
+import CizimAracCubugu from './CizimAracCubugu';
+import { CizimLejanti, DurumBildirimi, IpucuHapi, type Bildirim } from './CizimUstu';
+import KatmanlarPaneli, { type KatmanHesapDurumu } from './KatmanlarPaneli';
+import Adim1BoruLayer, { type CalisilanLayer } from './Adim1BoruLayer';
+import Adim2CapAta from './Adim2CapAta';
+import Adim3Onay from './Adim3Onay';
 
 interface DwgProjectWorkspaceProps {
   fileId: string;
@@ -49,600 +74,480 @@ interface DwgProjectWorkspaceProps {
   fileHash?: string | null;
   onReset: () => void;
   onApproved: (metraj: MetrajResult, fileName: string) => void;
+  /** Sunucunun otomatik birim tespiti (yoksa null). */
+  birimTespiti?: BirimTespiti | null;
+  /** Kullanici birimi elle secti ya da dogruladi mi? */
+  birimElle?: boolean;
+  /** Tespit zayif: birim penceresi acik baslar. */
+  birimPenceresiAcikBaslasin?: boolean;
+  /** Birim penceresinde "Kaydet". */
+  onBirimDegistir?: (scale: number) => void;
 }
 
-/** Metre carpanini insan-okunur birim adina cevirir (bant metni icin). */
-const BIRIM_ADI = (scale: number): string => {
-  const t: [number, string][] = [[0.001, 'mm'], [0.01, 'cm'], [0.1, 'dm'],
-                                 [1, 'm'], [0.0254, 'inch'], [0.3048, 'ft']];
-  const bulunan = t.find(([m]) => Math.abs(scale - m) / m < 1e-6);
-  return bulunan ? bulunan[1] : `x${scale}`;
-};
+const bosSet = new Set<string>();
 
 export default function DwgProjectWorkspace({
   fileId, scale, fileName, fileHash = null, onReset, onApproved,
+  birimTespiti = null, birimElle = false, birimPenceresiAcikBaslasin = false, onBirimDegistir,
 }: DwgProjectWorkspaceProps) {
+  const ws = useWorkspaceState(fileId, scale, fileHash);
   const {
-    state,
-    restoredWork,
-    birimDegisimi,
-    resetFileState,
-    selectLayer,
-    focusLayer,
-    addCalculatedLayer, approveLayer, unapproveLayer, removeCalculatedLayer,
-    updateEdgeSegmentDiameter,
-    removeSprinklerLayer, toggleSprinklerLayer,
-    toggleLayerVisibility, showAllLayers,
-    toggleLayerDimmed, showAllDimmed,
-  } = useWorkspaceState(fileId, scale, fileHash);
+    state, restoredWork, resetFileState, sonIslem, islemTepedeMi,
+    geriEtiketi, ileriEtiketi, geriAl, yinele,
+    secLayer, hesapSonucu, hesabiKaldir, capAta, onayla, onayiKaldir, olcekle,
+    toggleSprinklerLayer, toggleLayerVisibility, toggleLayerDimmed, tumunuGoster, yalnizGoster,
+  } = ws;
+  const secili = state.selectedLayer;
+  const seciliHesap = secili ? state.calculatedLayers[secili] ?? null : null;
 
-  /** Geometry'den cikan layer isimleri — DxfCanvasViewer onLayersAvailable
-   *  callback'inden gelir. Layer goruntusu paneli icin kullanilir. */
-  const [availableLayers, setAvailableLayers] = useState<string[]>([]);
-  const hiddenLayersSet = useMemo(() => new Set(state.hiddenLayers), [state.hiddenLayers]);
-  const dimmedLayersSet = useMemo(() => new Set(state.dimmedLayers), [state.dimmedLayers]);
-  // PERF: inline `new Set(...)` her render'da YENI identity uretir → viewer'in
-  // render effect'i tetiklenir → 706K cizgilik sahne bosuna yeniden cizilirdi.
-  const sprinklerLayersSet = useMemo(() => new Set(state.sprinklerLayers), [state.sprinklerLayers]);
+  const viewerRef = useRef<CizimKontrolleri>(null);
+  const [bilgi, setBilgi] = useState<GeometriBilgisi | null>(null);
+  const [yontem, setYontem] = useState<'t' | 'none'>('t');
+  const [katmanlarAcik, setKatmanlarAcik] = useState(false);
+  const [birimAcik, setBirimAcik] = useState(birimPenceresiAcikBaslasin);
+  const [silgi, setSilgi] = useState(false);
+  const [capsizOdak, setCapsizOdak] = useState(false);
+  const [capSorgu, setCapSorgu] = useState('');
+  const [tagFlash, setTagFlash] = useState<(ParcaKimligi & { color: string; at: number }) | null>(null);
+  const [bildirim, setBildirim] = useState<Bildirim | null>(null);
+  /** Cap satirindan gezinme: odak PARCA NUMARASIYLA (indeksle degil — bkz.
+   *  `sonrakiParca`); `surum` her istekte artar, kamerayi yalniz o oynatir. */
+  const [gezinme, setGezinme] = useState<{ cap: string; parca: number; surum: number } | null>(null);
+  const [yenidenAyirma, setYenidenAyirma] = useState<{ sira: number; toplam: number } | null>(null);
+  const [geriYuklemeBandiKapali, setGeriYuklemeBandiKapali] = useState(false);
 
-  /** BOLME MODU (kullanici istegi 11.08): 't' = T noktalarinda bol (varsayilan),
-   *  'none' = bolme yok, her cizim entity'si bastan sona tek parca. Secim
-   *  sidebar radiosundan; hesap kaydina (CalculatedLayer.splitMode) yazilir. */
-  const [splitMode, setSplitMode] = useState<'t' | 'none'>('t');
-
-  /** AutoCAD-vari "Layer Gizle Modu". Toolbar'daki goz-kapali butonu ile toggle.
-   *  Aktif iken cizimde tikla = o layer'i cizimden cikar. Geri getirmek icin
-   *  sag panel "Layer Goruntusu" listesinden goz ikonuyla gosterirsin. */
-  const [hideMode, setHideMode] = useState(false);
-
-  /** SILGI MODU — AutoCAD'in Erase komutu mantigi.
-   *  Aktif iken: tik = entity sil, drag = marquee select + sil.
-   *  Silinen entity'ler hidden* set'lerinde tutulur, render skip eder.
-   *  hesaplama yapilirken backend'e gonderilir (excluded_lines), metraj
-   *  hesabindan da cikar. */
-  const [eraseMode, setEraseMode] = useState(false);
-  /** "x1,y1,x2,y2" formatinda LINE key set (round 1dp) */
-  const [hiddenLineKeys, setHiddenLineKeys] = useState<Set<string>>(new Set());
-  /** insert_index set (geometry.inserts array index) */
-  const [hiddenInsertKeys, setHiddenInsertKeys] = useState<Set<number>>(new Set());
-  /** geometry.texts[] array index set */
-  const [hiddenTextKeys, setHiddenTextKeys] = useState<Set<number>>(new Set());
-
-  /** PENDING ERASE — kullanici tikladi/marquee yapti ama henuz silmedi.
-   *  "Sil (Enter)" butonuna basinca veya Enter tuşuna basinca hidden'a aktarilir.
-   *  Esc veya "Iptal" ile temizlenir. AutoCAD'in seç-onayla-sil flow'u. */
-  const [pendingErase, setPendingErase] = useState<{
-    lines: string[];
-    inserts: number[];
-    texts: number[];
-  } | null>(null);
-
-  /** Undo history — son N erase action'i (her action = ne silindi) */
-  const [eraseHistory, setEraseHistory] = useState<
-    Array<{ lines: string[]; inserts: number[]; texts: number[] }>
-  >([]);
-  const MAX_ERASE_HISTORY = 10;
-
-  /** Marquee'de tespit edilen veya tek tikla secilen entity'leri PENDING'e ekle.
-   *  Hala silmiyor — confirm aksiyonu bekliyor. */
-  const handleSelectForErase = useCallback(
-    (lines: string[], inserts: number[], texts: number[]) => {
-      if (lines.length === 0 && inserts.length === 0 && texts.length === 0) return;
-      setPendingErase((prev) => {
-        if (!prev) return { lines, inserts, texts };
-        // Birikme — eski pending'e ekle (multi-select)
-        return {
-          lines: Array.from(new Set([...prev.lines, ...lines])),
-          inserts: Array.from(new Set([...prev.inserts, ...inserts])),
-          texts: Array.from(new Set([...prev.texts, ...texts])),
-        };
-      });
-    },
-    [],
-  );
-
-  /** Pending'i onayla — hidden'a aktar + history'e ekle. Enter veya "Sil" butonu. */
-  const handleConfirmErase = useCallback(() => {
-    if (!pendingErase) return;
-    const { lines, inserts, texts } = pendingErase;
-    setHiddenLineKeys((prev) => {
-      const next = new Set(prev);
-      for (const k of lines) next.add(k);
-      return next;
-    });
-    setHiddenInsertKeys((prev) => {
-      const next = new Set(prev);
-      for (const k of inserts) next.add(k);
-      return next;
-    });
-    setHiddenTextKeys((prev) => {
-      const next = new Set(prev);
-      for (const k of texts) next.add(k);
-      return next;
-    });
-    setEraseHistory((prev) => {
-      const next = [...prev, { lines, inserts, texts }];
-      return next.length > MAX_ERASE_HISTORY ? next.slice(-MAX_ERASE_HISTORY) : next;
-    });
-    setPendingErase(null);
-  }, [pendingErase]);
-
-  /** Pending'i iptal et — secimi sifirla (silme yapilmaz). Esc veya "Iptal" butonu. */
-  const handleCancelPendingErase = useCallback(() => {
-    setPendingErase(null);
-  }, []);
-
-  const handleUndoErase = useCallback(() => {
-    setEraseHistory((prev) => {
-      if (prev.length === 0) return prev;
-      const last = prev[prev.length - 1];
-      setHiddenLineKeys((s) => {
-        const next = new Set(s);
-        for (const k of last.lines) next.delete(k);
-        return next;
-      });
-      setHiddenInsertKeys((s) => {
-        const next = new Set(s);
-        for (const k of last.inserts) next.delete(k);
-        return next;
-      });
-      setHiddenTextKeys((s) => {
-        const next = new Set(s);
-        for (const k of last.texts) next.delete(k);
-        return next;
-      });
-      return prev.slice(0, -1);
-    });
-  }, []);
-
-  const handleRestoreAllErased = useCallback(() => {
-    setHiddenLineKeys(new Set());
-    setHiddenInsertKeys(new Set());
-    setHiddenTextKeys(new Set());
-    setEraseHistory([]);
-    setPendingErase(null);
-  }, []);
-
-  const [calculating, setCalculating] = useState(false);
-
-  // ── MANUEL ETIKETLEME AKISI (operasyon: otomatik proximity KALDIRILDI) ──
-  // useLayerCalc: tek layer icin SAF geometri+uzunluk hesabi (/parse — cap
-  // atamasi YOK, tum segmentler capsiz/neon gelir).
-  // useOriginalColorState: save sonrasi viewer'da cap-renk kapat (PRD §5).
   const { useDiameterColors, enableDiameterColors, restoreOriginalColors } = useOriginalColorState();
-  const { calculatingLayer, calculateLayer } = useLayerCalc({
-    fileId,
-    scale,
-    sprinklerLayers: state.sprinklerLayers,
-    onResult: ({ calculated }) => {
-      addCalculatedLayer(calculated);
-      enableDiameterColors();  // Yeni hesaplama -> cap renkleri aktif (capsizlar neon)
-    },
-    // Engine cache resetlendiginde (TTL 15dk / deploy): localStorage'daki
-    // file_id gecersiz. Parent onReset() ile DwgUploader'a doner.
-    onFileIdInvalid: () => {
-      onReset();
-    },
-  });
+  const aktifKalem = useActiveBucket();
+  const kalemler = useTaggingStore((s) => s.buckets);
+  const kalemEkle = useTaggingStore((s) => s.addBucket);
+  const kalemSil = useTaggingStore((s) => s.removeBucket);
+  const kalemSec = useTaggingStore((s) => s.toggleActiveBucket);
+  const kalemiBirak = useTaggingStore((s) => s.clearActiveBucket);
 
-  // ── TIKLA-ETIKETLE (bucket) ─────────────────────────────────────────────
-  // Aktif kalem varken cizimde boruya tik = capi dogrudan ata. Cap atamanin
-  // TEK yolu sag paneldeki Cap Kalemleri'dir (kalem yokken tik: onSegmentClick).
-  // tagFlash: SEGMENT IZOLASYONU teyidi — tiklanan run ~900ms kalem rengiyle
-  // parlar, uc noktalari (T-noktalari arasi sinirlar) vurgulanir.
-  const activeBucket = useActiveBucket();
-  // UX #4 (state bulasmasi): yeni layer hesaplamasi / tamamlama aninda aktif
-  // kalem deaktive edilir — sonraki layer'a yanlislikla cap bulasmasin.
-  const clearActiveBucket = useTaggingStore((s) => s.clearActiveBucket);
-  const [tagFlash, setTagFlash] = useState<{ segmentId: number; color: string; at: number } | null>(null);
-
-  // Cap Renkleri legend'i SADECE onaysiz layer'larin caplarini gosterir.
-  // Onaylanan layer kullanici icin "bitti" sayilir; cap listesi karismasin.
-  // Hesaplanmis Metraj panelinde gerekirse o layer'a tiklayinca onay kalkar
-  // ve renkler geri gelir (revize modu).
-  const pendingCalculatedLayers = useMemo(() => {
-    const map: Record<string, CalculatedLayer> = {};
-    for (const [layer, cl] of Object.entries(state.calculatedLayers)) {
-      if (!cl.approved) map[layer] = cl;
-    }
-    return map;
-  }, [state.calculatedLayers]);
-
-  // ── SPRINKLER ISARETI BAYATLIGI (PANOVA vakasi) ─────────────────────────
-  // Isaret yalniz hesap ANINDA motora gider. Kullanici once hesaplayip sonra
-  // 💧 isaretlerse mevcut hesap sprinkler'da BOLUNMEMIS haliyle kalir ve bunu
-  // hicbir sey soylemezdi. Motor isareti alinca 494→1474 segmente boluyordu
-  // (gercek dosyada olculdu) — kopukluk motorda degil, bu sessizlikteydi.
-  const bayatSprinklerLayerlari = useMemo(
-    () => Object.values(state.calculatedLayers)
-      .filter((cl) => sprinklerIsaretiBayat(cl, state.sprinklerLayers))
-      .map((cl) => cl.layer),
-    [state.calculatedLayers, state.sprinklerLayers],
-  );
-
-  /** Bayat layer'lari simdiki isaretlemeyle YENIDEN hesapla.
-   *  ⚠ Yeniden hesap cap etiketlerini ve onayi SIFIRLAR (motor taze segment
-   *  doner) — bu yuzden once onay sorulur, sessiz kayip yok. */
-  const bayatlariYenidenHesapla = async () => {
-    const etiketli = Object.values(state.calculatedLayers)
-      .filter((cl) => bayatSprinklerLayerlari.includes(cl.layer))
-      .reduce((n, cl) => n + cl.edgeSegments.filter((es) => !isUnassignedDiameter(es.diameter)).length, 0);
-    const ok = await confirm({
-      title: `${bayatSprinklerLayerlari.length} layer yeniden hesaplansın mı?`,
-      // YON-NOTR metin: isaret EKLENMIS de olabilir KALDIRILMIS da — "bolunecek"
-      // demek kaldirma yonunde yalan olurdu. Gercek: hesap guncel isaretlemeyle
-      // yenilenir; isaret varsa sprinkler'da bolunur, yoksa bolunmez.
-      description:
-        'Sprinkler işaretlemesi değişti — hesap güncel işaretlemeyle yenilenecek '
-        + '(işaretli layer varsa sprinkler noktalarında bölünür, yoksa bölünmez).' +
-        (etiketli > 0
-          ? ` DİKKAT: bu layer'lardaki ${etiketli} çap etiketi ve onaylar sıfırlanır.`
-          : ' Çap etiketi atanmamış — kayıp yok.'),
-      confirmText: 'Yeniden Hesapla',
-    });
-    if (!ok) return;
-    for (const cl of Object.values(state.calculatedLayers)) {
-      if (!bayatSprinklerLayerlari.includes(cl.layer)) continue;
-      // Sirali koş — calculateLayer kendi state'ini yonetiyor, paralel kosum
-      // calculatingLayer gostergesini ezerdi.
-      // eslint-disable-next-line no-await-in-loop
-      await calculateLayer(cl.layer, {
-        hatIsmi: cl.hatIsmi,
-        materialType: cl.materialType,
-        // Bolme modu AYNEN korunur — bayatlik sprinkler isaretinden, moddan degil.
-        splitMode: cl.splitMode ?? 't',
-      });
-    }
-  };
-
-  // EKSIK PARCA TESPITI: bekleyen layer'lardaki capsiz segment sayisi.
-  // Viewer bunlari NEON cizer; BucketPanel rozet + toplu-uygula gosterir.
-  const unassignedPendingCount = useMemo(() => {
-    let n = 0;
-    for (const cl of Object.values(pendingCalculatedLayers)) {
-      for (const es of cl.edgeSegments) {
-        if (isUnassignedDiameter(es.diameter)) n += 1;
-      }
-    }
-    return n;
-  }, [pendingCalculatedLayers]);
-
-  /** Aktif kalemi TUM capsiz segmentlere toplu uygula. Secili layer hesaplanmis
-   *  ve onaysizsa yalniz ona; degilse tum bekleyen layer'lara. (Eski backend
-   *  layer-default fallback'inin kullanici-tetikli karsiligi.) */
-  const applyBucketToUnassigned = useCallback((diameter: string) => {
-    const selCl = state.selectedLayer ? state.calculatedLayers[state.selectedLayer] : null;
-    const targets = selCl && !selCl.approved ? [selCl] : Object.values(pendingCalculatedLayers);
-    let n = 0;
-    for (const cl of targets) {
-      for (const es of cl.edgeSegments) {
-        if (isUnassignedDiameter(es.diameter)) {
-          updateEdgeSegmentDiameter(cl.layer, es.segment_id, diameter);
-          n += 1;
-        }
-      }
-    }
-    toast({
-      title: 'Toplu çap uygulandı',
-      description: `${n} çapsız segment → ${diameter}${selCl && !selCl.approved ? ` (${selCl.layer})` : ' (tüm bekleyen layerlar)'}`,
-    });
-  }, [state.selectedLayer, state.calculatedLayers, pendingCalculatedLayers, updateEdgeSegmentDiameter]);
-
-  // ── CAP RENKLERI LISTE NAVIGATION ──────────────────────────────────────
-  // Legend'da bir cap'e tiklayinca o cap'in segment'leri arasinda dolas.
-  // activeDiameter: aktif cap key ("Ø50", "Belirtilmemis", ...). null = kapali.
-  // activeIndex: o cap icin gecerli segment index (0-based, modulo segment sayisi).
-  // focusVersion: ayni segment'e tekrar basildiginda zoom+halo'yu yeniden tetikleme
-  //   icin monoton artan token. Parent her cycle tikinda increment eder.
-  const [activeDiameter, setActiveDiameter] = useState<string | null>(null);
-  const [activeIndex, setActiveIndex] = useState<number>(0);
-  const [focusVersion, setFocusVersion] = useState<number>(0);
-
-  // Aktif cap icin onaysiz layer'lardaki eslesen segment'leri duzlestir.
-  // Onayli layer'lar Cap Renkleri'nde gozukmuyor; cycle'da da olmamali.
-  const activeDiameterSegments = useMemo<EdgeSegment[]>(() => {
-    if (!activeDiameter) return [];
-    const out: EdgeSegment[] = [];
-    for (const cl of Object.values(pendingCalculatedLayers)) {
-      for (const seg of cl.edgeSegments) {
-        const segKey = seg.diameter || 'Belirtilmemis';
-        if (segKey === activeDiameter) out.push(seg);
-      }
-    }
-    out.sort((a, b) => a.segment_id - b.segment_id);
-    return out;
-  }, [activeDiameter, pendingCalculatedLayers]);
-
-  // Tiklanan cap segment listesi degisirse (cap eklendi/silindi/duzeltildi) index'i
-  // guvenle clamp et — out-of-bounds focus'u onler.
+  // Zaman uyumsuz yollar (motor sonucu, sirali yeniden ayirma) GUNCEL degeri okur.
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const scaleRef = useRef(scale);
+  scaleRef.current = scale;
+  const iptalRef = useRef(false);
   useEffect(() => {
-    if (activeDiameter && activeIndex >= activeDiameterSegments.length) {
-      setActiveIndex(activeDiameterSegments.length > 0 ? 0 : 0);
-    }
-  }, [activeDiameter, activeIndex, activeDiameterSegments.length]);
-
-  const handleCycleDiameter = useCallback((diameter: string) => {
-    if (activeDiameter !== diameter) {
-      // Yeni cap'e gec — basa al
-      setActiveDiameter(diameter);
-      setActiveIndex(0);
-    } else {
-      // Ayni cap'e tekrar tikla — sonraki segmente atla (modulo cycle)
-      setActiveIndex((prev) => {
-        const count = activeDiameterSegments.length;
-        if (count <= 1) return 0;
-        return (prev + 1) % count;
-      });
-    }
-    setFocusVersion((v) => v + 1);  // Tek-segment cap'lerde bile zoom + halo yeniden tetiklensin
-  }, [activeDiameter, activeDiameterSegments.length]);
-
-  const handleClearActiveDiameter = useCallback(() => {
-    setActiveDiameter(null);
-    setActiveIndex(0);
+    iptalRef.current = false;
+    return () => { iptalRef.current = true; };
   }, []);
 
-  // Aktif segment ve halo rengini DxfCanvasViewer'a propagate et
-  const focusedSegmentId = activeDiameter && activeDiameterSegments.length > 0
-    ? activeDiameterSegments[Math.min(activeIndex, activeDiameterSegments.length - 1)].segment_id
-    : null;
-  const focusedHaloColor = activeDiameter ? diameterToColor(activeDiameter) : null;
-
-  // selectedConfig KALDIRILDI (UX #3): hat ismi / malzeme / varsayilan cap
-  // form alanlari silindi — cap bilgisi Cap Kalemleri modulunden geliyor.
-
-  // ─── Global Esc: en ust katmandan baslayip tek tek geri al ─────────
-  // Priority: bekleyen silme > silgi modu > cap odagi > secim/mod. Her Esc tek
-  // katman geri gider — kullanici uretici akisi kaybetmez.
-  // Input'a focus iken Esc form temizleme yapsin (preventDefault yok).
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase();
-      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
-
-      // Pending erase silgi modundan ONCE — Esc bir kademe geri gider:
-      // pending varsa once pending iptal, sonraki Esc silgi modunu kapatir.
-      if (pendingErase) { handleCancelPendingErase(); return; }
-      if (eraseMode) { setEraseMode(false); return; }  // silgi modunu kapat
-      if (activeDiameter) { handleClearActiveDiameter(); return; }  // cap-focus halo'yu kapat
-      if (state.selectedLayer) { selectLayer(state.selectedLayer); return; }  // toggle off
-      if (hideMode) { setHideMode(false); return; }
-    };
-    // Ctrl+Z undo erase
-    const onUndoKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && eraseHistory.length > 0) {
-        e.preventDefault();
-        handleUndoErase();
-      }
-    };
-    // Enter → pending erase'i onayla (AutoCAD-style: sec sonra Enter)
-    // Input/textarea focus iken Enter form submit edebilir → atla.
-    const onEnterKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Enter' || !pendingErase) return;
-      const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase();
-      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
-      e.preventDefault();
-      handleConfirmErase();
-    };
-    window.addEventListener('keydown', onKey);
-    window.addEventListener('keydown', onUndoKey);
-    window.addEventListener('keydown', onEnterKey);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      window.removeEventListener('keydown', onUndoKey);
-      window.removeEventListener('keydown', onEnterKey);
-    };
-  }, [state.selectedLayer, hideMode, eraseMode, eraseHistory.length, pendingErase, activeDiameter, selectLayer, handleUndoErase, handleConfirmErase, handleCancelPendingErase, handleClearActiveDiameter]);
-
-  // Pending erase Set'leri — viewer turuncu highlight icin (immutable Set)
-  const pendingLineKeysSet = useMemo(
-    () => (pendingErase ? new Set(pendingErase.lines) : undefined),
-    [pendingErase],
-  );
-  const pendingInsertKeysSet = useMemo(
-    () => (pendingErase ? new Set(pendingErase.inserts) : undefined),
-    [pendingErase],
-  );
-  const pendingTextKeysSet = useMemo(
-    () => (pendingErase ? new Set(pendingErase.texts) : undefined),
-    [pendingErase],
-  );
-
-  // Onayli layer'lar cap-renkli edge listesinden DUSER — viewer onlara dokunmaz,
-  // layer orijinal AutoCAD rengiyle kalir. Kullanici kurali: "onayla = bu layer
-  // bitti, dikkati basa cek". T-junction marker'lari da onayli layer'larda gizli.
-  // ⚠ KARAR TEK YERDE: "cap renkli gorunur mu" sorusu `onay-revizyon.ts`de
-  // yasar ve testle kilitlidir. Eskiden bu iki blokta `if (cl.approved)
-  // continue` elle TEKRARLANIYORDU; testin olctugu sey uretimde kullanilmayan
-  // bir kopya olurdu (projenin "proxy olcut yasak" dersi).
-  const calculatedEdgesByLayer = useMemo(() => {
-    const map: Record<string, EdgeSegment[]> = {};
-    for (const [layer, cl] of Object.entries(state.calculatedLayers)) {
-      if (!capRenkliGorunur({ hesaplandi: true, onayli: cl.approved })) continue;
-      map[layer] = cl.edgeSegments;
-    }
-    return map;
-  }, [state.calculatedLayers]);
-
-  const calculatedJunctionsByLayer = useMemo(() => {
-    const map: Record<string, [number, number][]> = {};
-    for (const [layer, cl] of Object.entries(state.calculatedLayers)) {
-      // T-junction marker'lari cap renkleriyle AYNI kurala tabi.
-      if (!capRenkliGorunur({ hesaplandi: true, onayli: cl.approved })) continue;
-      if (cl.junctionPoints && cl.junctionPoints.length > 0) {
-        map[layer] = cl.junctionPoints;
-      }
-    }
-    return map;
-  }, [state.calculatedLayers]);
-
-  /** Layer panelinde her layer adının yanında atanmış çapı rozet olarak
-   *  göstermek için lookup map. */
-  const layerDiametersMap = useMemo(() => {
-    const m: Record<string, string> = {};
-    for (const [layer, cfg] of Object.entries(state.layerConfigs)) {
-      if (cfg.defaultDiameter?.trim()) m[layer] = cfg.defaultDiameter;
-    }
-    return m;
-  }, [state.layerConfigs]);
-
-  const calculatedLayerNames = useMemo(
-    () => new Set(Object.keys(state.calculatedLayers)),
-    [state.calculatedLayers],
-  );
-
-  // BULK auto-calc KALDIRILDI: Kullanici 142 layer'in hepsini hesaplama
-  // istemiyor. Yeni akis: kullanici layer'a tikla, sag panel acilir, "Hesapla"
-  // butonuna basinca SADECE o layer parse edilir. Engine load minimize, kontrol
-  // kullanicida.
-
-
-  /** Layer secimi degisikligini onaysiz-hesaplama korumasiyla yap.
-   *  Mevcut secili layer hesaplandi ama onaylanmadi ise uyari ver, secimi
-   *  degistirme. Ayni layer'a tekrar tiklama (toggle off) serbest.
-   *  Returns: true -> secim degisti, false -> bloklandi. */
-  const tryChangeLayer = (target: string): boolean => {
-    const prev = state.selectedLayer;
-    if (prev && prev !== target) {
-      const cl = state.calculatedLayers[prev];
-      if (cl && !cl.approved) {
-        toast({
-          title: 'Once mevcut layer\'i onaylayin',
-          description: `"${prev}" hesaplandi ama onaylanmadi. Onayla butonuna basip sonra baska layer'a gec.`,
-          variant: 'destructive',
-        });
-        return false;
-      }
-    }
-    selectLayer(target);
-    return true;
-  };
-
-  /**
-   * REVIZYONA DON — onayi kaldir + layer'i calisilir hale getir (07.08 istegi:
-   * "onaylandi butonunu bozabilmeli ve parcalanmis segmentler geri gelmeli").
-   *
-   * UC ADIM BIRLIKTE olmali; biri eksik kalirsa kullanici yine calisamaz:
-   *  1. `unapproveLayer` — layer cap-renkli listelere geri girer
-   *     (`calculatedEdgesByLayer` onaylilari eler), T-noktalari geri gelir ve
-   *     segmentler yeniden TIKLANABILIR olur (viewer onaylilari raw LINE olarak
-   *     indeksliyordu, o yuzden cap duzeltilemiyordu).
-   *  2. `focusLayer` — secim ACIK kalir. `selectLayer` bir TOGGLE'dir ve layer
-   *     zaten seciliyken cagrildiginda secimi NULL'a cekiyordu; sag panel
-   *     bosalinca revizyon yine mumkun olmuyordu (fix oncesi ikinci kusur).
-   *  3. `enableDiameterColors` — "Fiyatlandirmaya Gec" akisi cikarken
-   *     `restoreOriginalColors()` cagirip cap renklerini GLOBAL kapatiyor
-   *     (PRD §5). Bayrak kapali kalirsa onay kalksa bile ekranda hicbir sey
-   *     degismez; kullanici "yine olmadi" der. Bayrak burada geri acilir.
-   */
-  const revizyonaDon = useCallback((layer: string) => {
-    unapproveLayer(layer);
-    focusLayer(layer);
+  // ── Motor ────────────────────────────────────────────────────────────────
+  /** Sirali yeniden ayirma oturumu (birden cok layer) — sonuclar tek
+   *  bildirimde toplanir. Oturum disinda `undefined`. */
+  const oturumRef = useRef<number | undefined>(undefined);
+  const oturumSayaciRef = useRef(0);
+  const hesapGeldi = useCallback(({ calculated }: LayerCalcResult) => {
+    // Aktarim payi indirgeyicide layer'in kendi verisinden hesaplanir
+    // (`belge-islemleri.hesapSonucuUygula`) — cizimin tamami KULLANILMAZ.
+    hesapSonucu(calculated, oturumRef.current);
     enableDiameterColors();
-    // AKTIF KALEM TEMIZLENIR — onay yollarinin (approveLayer + onComplete)
-    // hepsi bunu yapiyor; revizyon girisi de ayni sozlesmede olmali. Yoksa
-    // onceki layer'dan kalan bayat cap kalemi aktif kalir ve kullanicinin
-    // revize edilen layer'a ilk tiklamasi YANLIS capi yazar.
-    clearActiveBucket();
-    toast({
-      title: 'Revize modu açıldı',
-      description: `${layer} — onay kaldırıldı, segmentler ve çap renkleri geri geldi. Düzeltip tekrar onaylayın (onaylamazsanız teklife girmez).`,
+  }, [hesapSonucu, enableDiameterColors]);
+
+  const dosyaGecersiz = useCallback(() => {
+    iptalRef.current = true;
+    onReset();
+  }, [onReset]);
+
+  const { calculatingLayer, calculateLayer } = useLayerCalc({ fileId, onResult: hesapGeldi, onFileIdInvalid: dosyaGecersiz });
+  /** Motor calisirken gecmis ve birim kilitli. */
+  const kilit = !!calculatingLayer || !!yenidenAyirma;
+
+  const adim = adimDurumu({ seciliLayer: secili, hesap: seciliHesap, scale, sprinklerLayers: state.sprinklerLayers });
+
+  // ── Katman bilgisi ───────────────────────────────────────────────────────
+  const katmanRenk = useMemo(() => {
+    const m = new Map<string, { renk: string; cizgi: number }>();
+    for (const k of bilgi?.katmanlar ?? []) m.set(k.ad, { renk: k.renk, cizgi: k.cizgi });
+    return m;
+  }, [bilgi]);
+  const layerRengi = useCallback((ad: string | null) => (ad && katmanRenk.get(ad)?.renk) || '#94a3b8', [katmanRenk]);
+  const adaylar = useMemo(() => boruAdaylari(bilgi?.katmanlar ?? []), [bilgi]);
+  const adayAdlari = useMemo(
+    () => (bilgi?.katmanlar ?? []).filter((k) => k.cizgi > 0 && boruAdayiMi(k.ad)).map((k) => k.ad),
+    [bilgi],
+  );
+
+  // ── Secim degisince kalem / silgi / gezinme sifirlanir ───────────────────
+  // UX #4: onceki layer'in kalemi sonrakine bulasmasin. Secim, Degistir,
+  // geri al ve yinele HEPSI bu yoldan gecer.
+  const oncekiSecimRef = useRef(secili);
+  useEffect(() => {
+    if (oncekiSecimRef.current === secili) return;
+    oncekiSecimRef.current = secili;
+    kalemiBirak();
+    setSilgi(false);
+    setCapsizOdak(false);
+    setGezinme(null);
+    setCapSorgu('');
+  }, [secili, kalemiBirak]);
+
+  // ── Bildirim: gecmise yazilan son islem ──────────────────────────────────
+  useEffect(() => {
+    if (sonIslem?.bildirim) setBildirim({ id: sonIslem.id, metin: sonIslem.bildirim });
+  }, [sonIslem]);
+  const bildirimKapat = useCallback(() => setBildirim(null), []);
+
+  // ── Viewer girdileri (kimlikleri kararli: sahne onbellegi bunlara bakar) ─
+  const tumParcalar = useMemo(() => {
+    const m: Record<string, EdgeSegment[]> = {};
+    Object.keys(state.calculatedLayers).forEach((ad) => { m[ad] = state.calculatedLayers[ad].edgeSegments; });
+    return m;
+  }, [state.calculatedLayers]);
+  const hamSet = useMemo(() => {
+    const s = new Set<string>();
+    Object.keys(state.calculatedLayers).forEach((ad) => {
+      const cl = state.calculatedLayers[ad];
+      if (!capRenkliGorunur({ hesaplandi: true, onayli: cl.approved, secili: ad === secili })) s.add(ad);
     });
-  }, [unapproveLayer, focusLayer, enableDiameterColors, clearActiveBucket]);
+    return s;
+  }, [state.calculatedLayers, secili]);
+  const hesapAdlari = Object.keys(state.calculatedLayers).sort().join('\u0000');
+  const solukSet = useMemo(() => {
+    if (!secili) return bosSet;
+    const s = new Set<string>();
+    for (const ad of adayAdlari) if (ad !== secili) s.add(ad);
+    for (const ad of hesapAdlari ? hesapAdlari.split('\u0000') : []) if (ad !== secili) s.add(ad);
+    return s;
+  }, [secili, adayAdlari, hesapAdlari]);
+  const seciliJunctions = useMemo(
+    () => (seciliHesap && seciliHesap.junctionPoints.length > 0 ? { [seciliHesap.layer]: seciliHesap.junctionPoints } : undefined),
+    [seciliHesap],
+  );
+  const hiddenSet = useMemo(() => new Set(state.hiddenLayers), [state.hiddenLayers]);
+  const dimmedSet = useMemo(() => new Set(state.dimmedLayers), [state.dimmedLayers]);
+  const sprinklerSet = useMemo(() => new Set(state.sprinklerLayers), [state.sprinklerLayers]);
 
-  const handleLineClick = (line: { layer: string; index: number; shiftKey: boolean; screenX: number; screenY: number }) => {
-    // LINE click -> SADECE layer secimi. Hesaplama "Hesapla" butonuyla manuel
-    // tetiklenir (LayerInfoSidebar'da).
-    if (hideMode || line.shiftKey) {
-      toggleLayerVisibility(line.layer);
-      toast({
-        title: state.hiddenLayers.includes(line.layer) ? 'Layer gosterildi' : 'Layer gizlendi',
-        description: line.layer,
-      });
-      return;
-    }
-    tryChangeLayer(line.layer);
+  // ── Cap listesi + gezinme ────────────────────────────────────────────────
+  const seciliParcalar = seciliHesap?.edgeSegments;
+  const tumSatirlar = useMemo(() => capSatirlari(kalemler, seciliParcalar ?? []), [kalemler, seciliParcalar]);
+  const gruplar = useMemo(() => capGruplari(capAra(tumSatirlar, capSorgu)), [tumSatirlar, capSorgu]);
+  const ilerleme = useMemo(() => capIlerlemesi(seciliParcalar ?? []), [seciliParcalar]);
+  const aktifCap = aktifKalem ? canonicalizeDiameter(aktifKalem.diameter) : null;
+
+  const capaAit = useCallback((s: EdgeSegment, cap: string) => (
+    cap === '' ? isUnassignedDiameter(s.diameter) : !isUnassignedDiameter(s.diameter) && canonicalizeDiameter(s.diameter) === cap
+  ), []);
+  /** O capin parcalarinin numaralari, artan sirada. */
+  const capKimlikleri = useCallback(
+    (cap: string) => (seciliParcalar ?? []).filter((s) => capaAit(s, cap)).map((s) => s.segment_id).sort((a, b) => a - b),
+    [seciliParcalar, capaAit],
+  );
+  // Odak KIMLIKLE bulunur: etiketleme listeyi kisaltsa da odak ayni parcada kalir.
+  const odakParca = gezinme && seciliParcalar
+    ? seciliParcalar.find((s) => s.segment_id === gezinme.parca) ?? null
+    : null;
+  const gezinmeYeri = useMemo(
+    () => (gezinme ? gezinmeKonumu(capKimlikleri(gezinme.cap), gezinme.parca) : null),
+    [gezinme, capKimlikleri],
+  );
+  // Surum TEKDUZE artar (gezinme sifirlansa da): viewer kamerayi yalniz yeni
+  // surumde oynatir; 1'den yeniden baslasaydi eski surumle cakisip atlanirdi.
+  const gezinmeSurumuRef = useRef(0);
+  const capGoster = useCallback((cap: string) => {
+    const sonraki = sonrakiParca(capKimlikleri(cap), gezinme && gezinme.cap === cap ? gezinme.parca : null);
+    if (sonraki === null) return;
+    gezinmeSurumuRef.current += 1;
+    setGezinme({ cap, parca: sonraki, surum: gezinmeSurumuRef.current });
+  }, [capKimlikleri, gezinme]);
+  // Parcalama degisti (yeniden ayirma, ayirmanin geri alinmasi): numaralar
+  // yeni parcalamada baska parcalari gosterir — gezinme sifirlanir.
+  const parcalamaSurumu = seciliHesap?.computedAt ?? null;
+  useEffect(() => {
+    setGezinme(null);
+  }, [parcalamaSurumu]);
+
+  // ── Tiklamalar ───────────────────────────────────────────────────────────
+  /** Boru layer'i secimi. Secilen layer gizli ya da soluksa GORUNUR yapilir:
+   *  yoksa Adim 2'de parcalari cizilmez ve tiklanamaz (25.09 inceleme —
+   *  "Yalnız boruyu göster" sonrasi "Değiştir" ile baska layer secmek). */
+  const layerSec = useCallback((ad: string | null) => {
+    if (ad && hiddenSet.has(ad)) toggleLayerVisibility(ad);
+    if (ad && dimmedSet.has(ad)) toggleLayerDimmed(ad);
+    secLayer(ad);
+  }, [secLayer, hiddenSet, dimmedSet, toggleLayerVisibility, toggleLayerDimmed]);
+  /** Secili boru layer'i gizlenemez / soluklastirilamaz (Adim 2 kilitlenirdi);
+   *  gorunur yapmak (geri acmak) her zaman serbest. */
+  const gizleDegistir = useCallback((ad: string) => {
+    if (ad === secili && !hiddenSet.has(ad)) return;
+    toggleLayerVisibility(ad);
+  }, [secili, hiddenSet, toggleLayerVisibility]);
+  const soluklastirDegistir = useCallback((ad: string) => {
+    if (ad === secili && !dimmedSet.has(ad)) return;
+    toggleLayerDimmed(ad);
+  }, [secili, dimmedSet, toggleLayerDimmed]);
+
+  const sembolTiklandi = (ad: string) => {
+    if (adim.adim2Acik) return;
+    layerSec(ad);
   };
 
-  // ── SEMBOL (INSERT / CIRCLE) TIKLAMASI = LAYER SECIMI ──────────────────
-  // Ekipman isaretleme ozelligi kaldirildi (kullanici karari 10.08). Bu iki
-  // dal SILINMEDI, cunku viewer sembolleri hala tiklanabilir hedef olarak
-  // indeksliyor: handler kaldirilsaydi tiklama sessizce YUTULURDU (altindaki
-  // boruya da gecmez) — kullanici "tikliyorum bir sey olmuyor" yasardi.
-  // Artik boru tiklamasiyla AYNI isi yapar: gizleme modunda layer'i gizler,
-  // aksi halde layer'i secer.
-  const handleSymbolClick = (layer: string) => {
-    if (hideMode) {
-      toggleLayerVisibility(layer);
-      toast({
-        title: state.hiddenLayers.includes(layer) ? 'Layer gosterildi' : 'Layer gizlendi',
-        description: layer,
-      });
+  const parcaTiklandi = (seg: EdgeSegment) => {
+    // Baska bir hesaplanmis layer'in parcasi (yalniz Adim 1'de tiklanabilir): o layer'a gec.
+    if (seg.layer !== secili || !seciliHesap) {
+      layerSec(seg.layer);
       return;
     }
-    tryChangeLayer(layer);
+    // `seciliHesap.computedAt`: kullanicinin GORDUGU parcalamanin surumu — tik
+    // yeni bir parcalamaya yeniden oynatilirsa indirgeyici reddeder.
+    if (silgi) {
+      if (isUnassignedDiameter(seg.diameter)) return;
+      capAta(seg.layer, [seg.segment_id], '', seciliHesap.computedAt);
+      setTagFlash({ layer: seg.layer, segmentId: seg.segment_id, color: CAPSIZ_RENGI, at: Date.now() });
+      return;
+    }
+    // Kalem yokken tiklama capi DEGISTIRMEZ: viewer bilgi kutusunu sabitler.
+    if (!aktifKalem) return;
+    // TOGGLE (UX #2): ayni capa tekrar tik capi kaldirir; farkli/bos ise yazar.
+    const ayni = !isUnassignedDiameter(seg.diameter) && canonicalizeDiameter(seg.diameter) === aktifCap;
+    capAta(seg.layer, [seg.segment_id], ayni ? '' : aktifKalem.diameter, seciliHesap.computedAt);
+    setTagFlash({
+      layer: seg.layer,
+      segmentId: seg.segment_id,
+      color: ayni ? CAPSIZ_RENGI : diameterToColor(aktifKalem.diameter),
+      at: Date.now(),
+    });
   };
-  const handleInsertClick = (ins: { layer: string }) => handleSymbolClick(ins.layer);
-  const handleCircleClick = (c: { layer: string }) => handleSymbolClick(c.layer);
 
-  const handleConfirmAll = async () => {
-    const allLayers = Object.values(state.calculatedLayers);
-    const approvedLayers = allLayers.filter((l) => l.approved);
+  // ── Parcalara ayirma / yeniden ayirma ───────────────────────────────────
+  /** Motorun su an uyguladigi yontem — ipucu ve Adim 1 "Hatlar çıkarılıyor…" /
+   *  "Parçalara ayrılıyor…" metnini buna gore yazar. */
+  const [ayrilanYontem, setAyrilanYontem] = useState<'t' | 'none'>('t');
+  const ayir = () => {
+    if (!secili || calculatingLayer) return;
+    kalemiBirak();
+    setSilgi(false);
+    setAyrilanYontem(yontem);
+    void calculateLayer(secili, { splitMode: yontem, scale, sprinklerLayers: state.sprinklerLayers });
+  };
 
-    if (approvedLayers.length === 0) {
+  /** Bayat layer'lari SIRAYLA yeniden ayirir; etiketler aktarilir. "Bölmeden"
+   *  layer'da birim degisimi motora gitmez — yerelde olceklenir. Birden cok
+   *  layer bir OTURUMDUR: bildirimleri tek ozette toplanir (kayiplar adiyla). */
+  const yenidenAyir = useCallback(async (layerlar: string[]) => {
+    if (layerlar.length === 0) return;
+    kalemiBirak();
+    setSilgi(false);
+    oturumSayaciRef.current += 1;
+    const oturum = layerlar.length > 1 ? oturumSayaciRef.current : undefined;
+    oturumRef.current = oturum;
+    setYenidenAyirma({ sira: 0, toplam: layerlar.length });
+    try {
+      for (let i = 0; i < layerlar.length; i++) {
+        if (iptalRef.current) break;
+        const cl = stateRef.current.calculatedLayers[layerlar[i]];
+        if (!cl) continue;
+        setYenidenAyirma({ sira: i + 1, toplam: layerlar.length });
+        if (birimBayatMi(cl, scaleRef.current) && yerelOlceklenebilir(cl)) {
+          olcekle(cl.layer, scaleRef.current, oturum);
+          continue;
+        }
+        setAyrilanYontem(cl.splitMode ?? 't');
+        // eslint-disable-next-line no-await-in-loop
+        const tamam = await calculateLayer(cl.layer, {
+          splitMode: cl.splitMode ?? 't',
+          scale: scaleRef.current,
+          sprinklerLayers: stateRef.current.sprinklerLayers,
+          hatIsmi: cl.hatIsmi,
+          materialType: cl.materialType,
+        });
+        if (!tamam) break;
+      }
+    } finally {
+      oturumRef.current = undefined;
+      if (!iptalRef.current) setYenidenAyirma(null);
+    }
+  }, [calculateLayer, kalemiBirak, olcekle]);
+
+  // Birim penceresinde Kaydet → ust bilesen birimi degistirir → yeni birim
+  // gelince bayat layer'lar sirayla yeniden ayrilir (pencere metni boyle vaat
+  // ediyor: "hesaplanan layer'lar yeniden parçalara ayrılır").
+  const birimSonrasiAyirRef = useRef(false);
+  const birimKaydet = (yeni: number) => {
+    setBirimAcik(false);
+    if (!ayniOlcek(yeni, scale)) birimSonrasiAyirRef.current = true;
+    onBirimDegistir?.(yeni);
+  };
+  useEffect(() => {
+    if (!birimSonrasiAyirRef.current) return;
+    birimSonrasiAyirRef.current = false;
+    const bayat = Object.values(stateRef.current.calculatedLayers)
+      .filter((cl) => birimBayatMi(cl, scale))
+      .map((cl) => cl.layer);
+    void yenidenAyir(bayat);
+    // Yalniz birim degisimine tepki verilir.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scale]);
+
+  // ── Onay / kaldirma / toplu atama ────────────────────────────────────────
+  const onayEngel = onayEngeli({ hesap: seciliHesap, scale, ayriliyor: kilit });
+  const metrajiOnayla = () => {
+    if (!seciliHesap || onayEngel) return;
+    onayla(seciliHesap.layer);
+    kalemiBirak();
+    setSilgi(false);
+  };
+  const onayiGeriAl = () => {
+    if (!seciliHesap) return;
+    onayiKaldir(seciliHesap.layer);
+    enableDiameterColors();
+  };
+  const ayirmayiKaldir = async () => {
+    if (!seciliHesap || kilit) return;
+    const etiketli = seciliHesap.edgeSegments.filter((es) => !isUnassignedDiameter(es.diameter)).length;
+    if (etiketli > 0) {
+      const ok = await confirm({
+        title: `“${seciliHesap.layer}” ayırması kaldırılsın mı?`,
+        description:
+          `${seciliHesap.edgeSegments.length} parça ve ${etiketli} çap etiketi kaldırılır. ` +
+          'Araç çubuğundaki “Geri al” ile geri getirebilirsiniz; sayfayı kapatırsanız geri gelmez.',
+        confirmText: 'Kaldır',
+      });
+      if (!ok) return;
+    }
+    hesabiKaldir(seciliHesap.layer);
+    kalemiBirak();
+    setSilgi(false);
+  };
+  const topluAta = () => {
+    if (!seciliHesap || !aktifKalem) return;
+    const idler = capsizParcalar(seciliHesap);
+    if (idler.length > 0) capAta(seciliHesap.layer, idler, aktifKalem.diameter, seciliHesap.computedAt, true);
+  };
+
+  // ── Cap listesi eylemleri ────────────────────────────────────────────────
+  const capSec = (s: CapSatiri) => {
+    setSilgi(false);
+    if (s.kalemId) {
+      kalemSec(s.kalemId);
+      return;
+    }
+    // Kalemi silinmis ama parcada duran cap: yeniden kalem olur (ve secilir).
+    const r = kalemEkle(s.cap);
+    if (!r.ok) toast({ title: 'Çap eklenemedi', description: r.reason, variant: 'destructive' });
+  };
+  const capEkle = () => {
+    const metin = capSorgu.trim();
+    if (!metin) return;
+    const var_ = tumSatirlar.find((s) => s.cap === canonicalizeDiameter(metin));
+    if (var_) {
+      // Zaten listede: sec (secili ise kapatma).
+      if (var_.cap !== aktifCap) capSec(var_);
+      setCapSorgu('');
+      return;
+    }
+    const r = kalemEkle(metin);
+    if (!r.ok) {
+      toast({ title: 'Çap eklenemedi', description: r.reason, variant: 'destructive' });
+      return;
+    }
+    setSilgi(false);
+    setCapSorgu('');
+  };
+  const silgiDegistir = () => {
+    const acik = !silgi;
+    setSilgi(acik);
+    if (acik) kalemiBirak();
+  };
+
+  // ── Klavye: geri al / yinele + Esc zinciri ──────────────────────────────
+  useEffect(() => {
+    const tus = (e: KeyboardEvent) => {
+      // Onay kutusu acikken klavye ONA aittir (Esc/Enter onu kapatir).
+      if (onayKutusuAcikMi(typeof document === 'undefined' ? null : document)) return;
+      const k = kisayolEylemi(e);
+      if (k) {
+        // Yazi alaninda Ctrl+Z metnin kendi geri almasidir.
+        if (yaziAlaniMi(e.target as HTMLElement | null)) return;
+        e.preventDefault();
+        if (kilit) return;
+        if (k === 'geri') geriAl();
+        else yinele();
+        return;
+      }
+      // Esc yazi alaninda da calisir: "Katman ara"dan paneli kapatir, "Çap ara"dan
+      // kalemi birakir (25.09 inceleme: kutuda odak varken Esc hicbir sey yapmiyordu).
+      if (e.key !== 'Escape') return;
+      // Her Esc bir kat geri gider; layer secimi Esc ile DUSMEZ ("Değiştir" var).
+      if (birimAcik) setBirimAcik(false);
+      else if (katmanlarAcik) setKatmanlarAcik(false);
+      else if (silgi) setSilgi(false);
+      else if (aktifKalem) kalemiBirak();
+      else if (gezinme) setGezinme(null);
+      else if (capsizOdak) setCapsizOdak(false);
+    };
+    window.addEventListener('keydown', tus);
+    return () => window.removeEventListener('keydown', tus);
+  }, [kilit, birimAcik, katmanlarAcik, silgi, aktifKalem, gezinme, capsizOdak, geriAl, yinele, kalemiBirak]);
+
+  // ── Fiyatlandirma (baslik dugmesi ile AYNI yuklem) ───────────────────────
+  const fiyat = useMemo(
+    () => fiyatlandirmaDurumu(Object.values(state.calculatedLayers), scale),
+    [state.calculatedLayers, scale],
+  );
+  const fiyatlandirmayaGec = async () => {
+    if (fiyat.hazir.length === 0) {
       toast({
-        title: 'Onayli layer yok',
-        description: 'Once hesaplanan layer\'lari "Onayla" butonuyla onayla, sonra finallestir.',
+        title: 'Onaylı layer yok',
+        description: 'Önce en az bir layer’ın metrajını onaylayın.',
         variant: 'destructive',
       });
       return;
     }
-
-    // EKSIK PARCA GUARD: onayli layer'larda capsiz segment kaldiysa kullanici
-    // bilerek onaylasin — neon vurgu gozden kacmis olabilir (operasyon madde 1).
-    const unassignedInApproved = approvedLayers.reduce(
+    if (fiyat.bayatOnayli.length > 0) {
+      const ok = await confirm({
+        title: `${fiyat.bayatOnayli.length} layer'ın çizim birimi değişti — teklife GİRMEYECEK`,
+        description:
+          `${fiyat.bayatOnayli.map((l) => l.layer).join(', ')}. Bu layer'lar yeni birimle yeniden ayrılmadan ` +
+          'fiyatlandırmaya alınmaz (uzunlukları eski birimle hesaplandı).',
+        confirmText: 'Yine de devam et',
+      });
+      if (!ok) return;
+    }
+    const capsizOnayli = fiyat.hazir.reduce(
       (n, cl) => n + cl.edgeSegments.filter((es) => isUnassignedDiameter(es.diameter)).length,
       0,
     );
-    if (unassignedInApproved > 0) {
+    if (capsizOnayli > 0) {
       const ok = await confirm({
-        title: `${unassignedInApproved} boru parçasının çapı atanmamış`,
-        description: 'Çizimde neon görünüyor. Bunlar fiyatlandırmada "Belirtilmemiş" olarak görünecek. Yine de devam edilsin mi?',
+        title: `${capsizOnayli} boru parçasının çapı atanmamış`,
+        description: 'Çizimde turuncu görünüyor. Teklifte “Belirtilmemiş” olarak görünecek. Yine de devam edilsin mi?',
         confirmText: 'Devam et',
       });
       if (!ok) return;
     }
-
-    // ── ONAYSIZ LAYER = TEKLIFE GIRMEYEN LAYER (BLOKLAYAN UYARI) ───────────
-    // Eskiden burada yalniz bir toast vardi ve hemen ardindan gelen "Excel
-    // olusturuldu" toast'i onu EZIYORDU: layer sessizce teklif disinda
-    // kaliyordu. Revizyon yolu acildigi icin bu artik SIK bir senaryo —
-    // kullanici revize etmek icin onayi kaldirir, duzeltir, yeniden
-    // onaylamayi unutur. Onay sorusu, kullaniciyi durdurup adini soyluyor.
-    const pendingLayers = allLayers.filter((l) => !l.approved);
-    if (pendingLayers.length > 0) {
-      const adlar = pendingLayers.map((l) => l.hatIsmi || l.layer).join(', ');
+    // ONAYSIZ LAYER = TEKLIFE GIRMEYEN LAYER: kullanici revize edip yeniden
+    // onaylamayi unutabilir; adiyla durdurulur.
+    if (fiyat.onaysiz.length > 0) {
       const ok = await confirm({
-        title: `${pendingLayers.length} layer onaylanmadı — teklife GİRMEYECEK`,
+        title: `${fiyat.onaysiz.length} layer onaylanmadı — teklife GİRMEYECEK`,
         description:
-          `Onaysız: ${adlar}. Bu layer'lar fiyatlandırmaya dahil edilmez. ` +
-          'Revize ettiyseniz önce "Hesaplamayı Tamamla" ile yeniden onaylayın.',
+          `Onaysız: ${fiyat.onaysiz.map((l) => l.hatIsmi || l.layer).join(', ')}. Bu layer'lar fiyatlandırmaya ` +
+          'dahil edilmez. Revize ettiyseniz önce metrajı yeniden onaylayın.',
         confirmText: 'Yine de devam et',
       });
       if (!ok) return;
     }
 
-    // NOT (11.08 kullanici istegi): buradaki OTOMATIK Excel indirmesi
-    // KALDIRILDI. "Tumunu Onayla & Fiyatlandirmaya Gec" artik yalnizca
-    // fiyatlandirmaya gecer — istem disi dosya indirmesi kafa karistiriyordu.
+    // Onay kutulari beklerken durum degismis olabilir (motor sonucu geldi,
+    // onay kalkti): teklif GUNCEL durumdan kurulur; kullanicinin onayladigi
+    // kume degistiyse durulur (25.09 inceleme: bayat `fiyat` ile devam ediyordu).
+    const guncel = fiyatlandirmaDurumu(Object.values(stateRef.current.calculatedLayers), scaleRef.current);
+    const ayniKume = guncel.hazir.length === fiyat.hazir.length && guncel.hazir.every((cl, i) => cl === fiyat.hazir[i]);
+    if (!ayniKume) {
+      toast({
+        title: 'Metraj değişti',
+        description: 'Onay beklerken onaylı layer’lar değişti. Güncel durumu kontrol edip yeniden deneyin.',
+        variant: 'destructive',
+      });
+      return;
+    }
 
-    // FinalMetraj sadece ONAYLI layer'lardan, ONAY SIRASINDA kurulur — teklif
-    // grup bantlari kullanicinin onayladigi sirada dizilir. `approvedAt`in
-    // tuketicisi budur: eski Excel sheet siralamasinin (11.08'de kaldirilan
-    // buildExcelSheets) fiyatlandirma yolundaki ikizi (onay-revizyon.test.ts).
-    const layers = onaySirasi(approvedLayers);
-
+    // Grup bantlari kullanicinin ONAYLADIGI sirada (onay-revizyon.ts).
+    const layers = onaySirasi(guncel.hazir);
     const finalMetraj: MetrajResult = {
       layers: layers.map((cl) => ({
         layer: cl.hatIsmi || cl.layer,
@@ -662,375 +567,283 @@ export default function DwgProjectWorkspace({
       total_layers: layers.length,
       warnings: [],
     };
-
     onApproved(finalMetraj, fileName);
-    // UX #4: final sonrasi etiketleme ekrani da sifirlansin
-    clearActiveBucket();
-    // PRD §5: Save sonrasi viewer'da cap renkleri kaldirilir, layer orijinal
-    // ACI rengine donulur. calculatedLayers state'i SAKLI tutulur (kullanici
-    // dondukten sonra cap duzeltmesi yapabilsin). Sadece RENDER bayragi false.
+    kalemiBirak();
+    // PRD §5: kaydet sonrasi cap renkleri kalkar, layer'lar ACI rengine doner.
     restoreOriginalColors();
-    // Cap-renkleri legend navigation halo'su da kapansin — kaydet sonrasi cizim
-    // orijinal goruntuye doner, halo'nun kalmasi gorsel kirlilik olur.
-    handleClearActiveDiameter();
+    setGezinme(null);
   };
 
-  /** "Onceki calismaniz geri yuklendi" bandi kapatildi mi? (oturumluk) */
-  const [geriYuklemeBandiKapali, setGeriYuklemeBandiKapali] = useState(false);
+  // ── Onceki calisma bandi ─────────────────────────────────────────────────
   const geriYuklemeBandi = restoredWork.layers > 0 && !geriYuklemeBandiKapali;
-
-  /** Bu dosyanin kayitli calismasini sil — GERI DONUSU YOK, onay sart. */
-  const handleResetThisFile = async () => {
-    // ⚠ SAYIM GUNCEL DURUMDAN: `restoredWork` mount anindaki fotograftir.
-    // Kullanici bu oturumda yeni layer hesapladiysa onay penceresi SILINECEK
-    // isi EKSIK gosterirdi ("1 layer silinecek" deyip 4 layer silmek).
-    const silinecekLayer = Object.keys(state.calculatedLayers).length;
+  const dosyayiSifirla = async () => {
+    const silinecek = Object.keys(state.calculatedLayers).length;
     const ok = await confirm({
       title: 'Bu dosyanın kayıtlı çalışması silinsin mi?',
       description:
-        `${silinecekLayer} hesaplanmış layer (çap etiketleriyle birlikte) silinecek, çizim sıfırdan başlayacak. ` +
+        `${silinecek} hesaplanmış layer (çap etiketleriyle birlikte) silinecek, çizim sıfırdan başlayacak. ` +
         'Bu işlemin geri dönüşü yoktur (kayıt yalnız bu tarayıcıda tutulur). Diğer projeleriniz etkilenmez.',
       confirmText: 'Sıfırla',
     });
     if (!ok) return;
     resetFileState();
-    clearActiveBucket();
-    // "Sifirdan baslar" sozu SILGI icin de gecerli olmali — silinen cizgiler
-    // workspace state'inde DEGIL, bu bilesenin kendi state'inde yasiyor.
-    setHiddenLineKeys(new Set());
-    setHiddenInsertKeys(new Set());
-    setHiddenTextKeys(new Set());
-    setPendingErase(null);
-    setEraseHistory([]);
+    kalemiBirak();
     setGeriYuklemeBandiKapali(true);
     toast({ title: 'Sıfırlandı', description: `${fileName} — temiz başlangıç.` });
   };
 
+  // ── Turetilmis gorunum verisi ────────────────────────────────────────────
+  const calisilanlar: CalisilanLayer[] = useMemo(
+    () => Object.values(state.calculatedLayers)
+      .sort((a, b) => a.computedAt - b.computedAt)
+      .map((cl) => ({
+        ad: cl.layer,
+        renk: layerRengi(cl.layer),
+        parca: cl.edgeSegments.length,
+        bolmeden: cl.splitMode === 'none',
+        metre: cl.totalLength,
+        capsiz: cl.edgeSegments.filter((es) => isUnassignedDiameter(es.diameter)).length,
+        durum: birimBayatMi(cl, scale) ? 'bayat' : cl.approved ? 'onayli' : 'bekliyor',
+      })),
+    [state.calculatedLayers, scale, layerRengi],
+  );
+  const hesapDurumu = useMemo(() => {
+    const m: Record<string, KatmanHesapDurumu> = {};
+    for (const c of calisilanlar) m[c.ad] = c.durum === 'bayat' ? 'bayat' : c.durum === 'onayli' ? 'onayli' : 'hesaplandi';
+    return m;
+  }, [calisilanlar]);
+
+  const ipucu = ipucuHesapla({
+    adim,
+    seciliLayer: secili,
+    layerRengi: secili ? layerRengi(secili) : null,
+    yontem,
+    kalem: aktifKalem ? { cap: aktifCap ?? aktifKalem.diameter, renk: diameterToColor(aktifKalem.diameter) } : null,
+    silgi,
+    ayriliyor: calculatingLayer,
+    ayrilanYontem,
+  });
+  const fiyatEngeli = fiyatlandirmaEngeli(fiyat, kilit);
+
+  const sprinklerIpucu =
+    seciliHesap && seciliHesap.splitMode !== 'none' && state.sprinklerLayers.length === 0
+      ? seciliHesap.sprinklerAdaylari?.[0] ?? null
+      : null;
+
+  const birimTuruncu = !birimElle && !guvenilirMi(birimTespiti?.confidence);
+
   return (
-    <div>
-      {/* Ust bar */}
-      <div className="mb-3 flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-semibold">Proje: {fileName}</h3>
-          <p className="text-xs text-muted-foreground">
-            {Object.keys(state.calculatedLayers).length} layer hesaplandı ·{' '}
-            {Object.values(state.calculatedLayers).filter((l) => l.approved).length} onaylı
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {/* Final buton: en az 1 onayli layer varsa enabled */}
-          <button
-            onClick={handleConfirmAll}
-            disabled={!Object.values(state.calculatedLayers).some((l) => l.approved)}
-            className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed"
-            title="Fiyatlandirmaya gec (sadece onayli layer'lar dahil)"
-          >
-            Tümünü Onayla & Fiyatlandırmaya Geç
-          </button>
-          <button
-            onClick={onReset}
-            className="rounded-lg border px-3 py-1.5 text-xs text-muted-foreground hover:bg-slate-50"
-          >
-            Yeni DWG Yükle
-          </button>
-        </div>
-      </div>
+    <div className="-m-4 flex flex-col gap-3 lg:h-[calc(100vh-84px)] lg:min-h-[620px]">
+      <CalismaBasligi
+        dosyaAdi={fileName}
+        sayaclar={bilgi ? { layer: bilgi.katmanlar.length, cizgi: bilgi.cizgi, blok: bilgi.blok } : null}
+        onayOzeti={calisilanlar.length > 0 ? { onayli: fiyat.hazir.length, toplam: calisilanlar.length } : null}
+        birimKisa={birimKisa(scale)}
+        birimDogrulanmali={birimTuruncu}
+        birimAcik={birimAcik}
+        onBirimTikla={() => setBirimAcik((v) => !v)}
+        birimPenceresi={birimAcik ? (
+          <BirimPenceresi
+            scale={scale}
+            tespit={birimTespiti}
+            elle={birimElle}
+            kilitli={kilit}
+            dogrulanmali={birimTuruncu}
+            onKapat={() => setBirimAcik(false)}
+            onKaydet={birimKaydet}
+          />
+        ) : null}
+        onYeniDwg={onReset}
+        fiyatlandirmaEngeli={fiyatEngeli}
+        onFiyatlandirmayaGec={fiyatlandirmayaGec}
+      />
 
-      {/* BIRIM DEGISTI BANDI — kayitli metraj FARKLI cizim birimiyle
-          hesaplanmisti, bu yuzden YUKLENMEDI. Sessizce silmek de sessizce
-          10x farkla karistirmak kadar kotudur; ne oldugu YAZILIR. */}
-      {birimDegisimi && (
-        <div className="mb-3 rounded-lg border border-red-300 bg-red-50 px-3 py-2">
-          <span className="text-xs text-red-900">
-            <strong>Çizim birimi değişti</strong> — bu dosyanın kayıtlı{' '}
-            {birimDegisimi.dusenLayer} hesaplanmış layer&apos;ı{' '}
-            <strong>{BIRIM_ADI(birimDegisimi.eskiScale)}</strong> ile üretilmişti, şimdi{' '}
-            <strong>{BIRIM_ADI(birimDegisimi.yeniScale)}</strong> kullanılıyor. Eski metrajlar
-            geçersiz olduğu için yüklenmedi — layer&apos;ları yeniden hesaplayın.
-            (Etiketleme ve görünürlük tercihleriniz korundu.)
-          </span>
-        </div>
-      )}
-
-      {/* SPRINKLER ISARETI DEGISTI BANDI — PANOVA vakasi: isaret hesaptan
-          SONRA konunca mevcut hesap sprinkler'da BOLUNMEMIS kaliyordu ve
-          hicbir sey soylemiyordu. Sessiz bayatlik yasak. */}
-      {bayatSprinklerLayerlari.length > 0 && (
-        <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-orange-300 bg-orange-50 px-3 py-2">
-          <span className="text-xs text-orange-900">
-            <strong>Sprinkler işaretlemesi değişti</strong> — {bayatSprinklerLayerlari.length} hesaplanmış
-            layer eski işaretlemeyle hesaplandı ({bayatSprinklerLayerlari.join(', ')}). Borular yeni
-            sprinkler noktalarında <strong>bölünmüş değil</strong>; metraj doğru ama segment sınırları eski.
-          </span>
-          <button
-            onClick={bayatlariYenidenHesapla}
-            disabled={calculatingLayer !== null}
-            className="ml-auto shrink-0 rounded-md border border-orange-400 bg-white px-2.5 py-1 text-[11px] font-medium text-orange-800 hover:bg-orange-100 disabled:opacity-50"
-          >
-            {calculatingLayer ? 'Hesaplanıyor...' : 'Yeniden Hesapla'}
-          </button>
-        </div>
-      )}
-
-      {/* GERI YUKLEME BANDI — bu geri yukleme bugune kadar SESSIZDI: kullanici
-          ayni dosyayi tekrar yukluyor, ekrana onceki calismasi geliyor ve
-          "yeni yukledim ama segmentlerine ayiramiyorum" diye yasiyordu
-          (onayli layer'lar icin "Segmentlerine Ayir" dugmesi hic cikmaz).
-          Artik ne oldugu YAZIYOR ve iki cikis birden veriliyor. */}
       {geriYuklemeBandi && (
-        <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
-          <span className="text-xs text-amber-900">
+        <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-[#fde68a] bg-[#fffbeb] px-3 py-2 text-xs text-[#92400e]">
+          <span>
             <strong>Bu dosya daha önce yüklenmişti</strong> — önceki çalışmanız geri yüklendi:{' '}
-            {restoredWork.layers} layer hesaplanmış
+            {restoredWork.layers} layer
             {restoredWork.approved > 0 && <> · {restoredWork.approved} onaylı</>}.
-            {restoredWork.approved > 0 && (
-              <> Revize etmek için ilgili layer&apos;ın <strong>onayını kaldırın</strong> — segmentler geri gelir.</>
-            )}
           </span>
           <div className="ml-auto flex items-center gap-2">
             <button
-              onClick={handleResetThisFile}
-              className="rounded-md border border-amber-300 bg-white px-2 py-1 text-[11px] font-medium text-amber-800 hover:bg-amber-100"
+              type="button"
+              onClick={dosyayiSifirla}
               title="Bu dosyanın kayıtlı çalışmasını sil, sıfırdan başla (geri dönüşü yok)"
+              className="rounded-md border border-[#fcd34d] bg-white px-2 py-1 text-[11px] font-semibold text-[#92400e] hover:bg-[#fef3c7]"
             >
               Bu dosyayı sıfırla
             </button>
-            <button
-              onClick={() => setGeriYuklemeBandiKapali(true)}
-              className="text-[11px] text-amber-700 hover:underline"
-            >
+            <button type="button" onClick={() => setGeriYuklemeBandiKapali(true)} className="text-[11px] font-semibold text-[#92400e] hover:underline">
               Tamam
             </button>
           </div>
         </div>
       )}
 
-      {/* Ana grid: sol buyuk cizim + sag panel */}
-      <div className="grid grid-cols-1 lg:grid-cols-[3fr_1fr] gap-3">
-        {/* Sol: Canvas2D Viewer */}
-        <div className="lg:sticky lg:top-4 lg:self-start">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
+        <section
+          aria-label="Çizim"
+          className="relative h-[62vh] min-h-[420px] min-w-0 flex-1 overflow-hidden rounded-xl bg-[#0b1220] lg:h-auto"
+        >
+          {/* Tuval kabi: viewer kendi kokunde `relative h-full w-full` —
+              konum sinifi bu sarmalayicida (ayni ogede `relative` ile
+              `absolute` carpisiyor, tuval 150 px'lik varsayilan boyda kaliyordu). */}
+          <div className="absolute inset-0">
           <DxfCanvasViewer
+            ref={viewerRef}
             fileId={fileId}
-            calculatedEdgesByLayer={calculatedEdgesByLayer}
-            calculatedJunctionsByLayer={calculatedJunctionsByLayer}
-            selectedLayer={state.selectedLayer}
-            sprinklerLayers={sprinklerLayersSet}
-            onLineClick={handleLineClick}
-            onInsertClick={handleInsertClick}
-            onCircleClick={handleCircleClick}
-            onSegmentClick={(seg) => {
-              // TIKLA-ETIKETLE (UX #2 toggle mantigi):
-              //  - Ayni cap zaten atanmissa  → SIL (capsiz/neon'a don) = geri alma
-              //  - Farkli veya bos ise       → aktif kalemin capini yaz = uzerine yazma
-              // Kalem yokken cap DEGISMEZ: viewer segmenti secip bilgi kutusunu
-              // (layer, uzunluk, cap) sabitler — tiklama yutulmaz. Eskiden burada
-              // cap popup'i aciliyordu; kullanici istegiyle kaldirildi (25.09),
-              // cap secimi zaten sag paneldeki Cap Kalemleri'nden yapiliyor.
-              if (!activeBucket) return;
-              const current = (seg.diameter || '').trim();
-              const sameAsBucket =
-                !isUnassignedDiameter(current) &&
-                canonicalizeDiameter(current) === activeBucket.diameter;
-              if (sameAsBucket) {
-                updateEdgeSegmentDiameter(seg.layer, seg.segment_id, '');
-                // Geri alma teyidi: NEON flash (capsiz durumunun rengi)
-                setTagFlash({ segmentId: seg.segment_id, color: '#39ff14', at: Date.now() });
-              } else {
-                updateEdgeSegmentDiameter(seg.layer, seg.segment_id, activeBucket.diameter);
-                setTagFlash({ segmentId: seg.segment_id, color: activeBucket.color, at: Date.now() });
-              }
-            }}
-            onClearSelection={() => {
-              // selectLayer ayni layer ile cagrilinca toggle off yapiyor
-              if (state.selectedLayer) selectLayer(state.selectedLayer);
-            }}
-            onLayersAvailable={setAvailableLayers}
-            hiddenLayers={hiddenLayersSet}
-            dimmedLayers={dimmedLayersSet}
+            calculatedEdgesByLayer={tumParcalar}
+            calculatedJunctionsByLayer={seciliJunctions}
+            selectedLayer={secili}
+            sprinklerLayers={sprinklerSet}
+            hiddenLayers={hiddenSet}
+            dimmedLayers={dimmedSet}
+            hamCizilenLayerlar={hamSet}
+            soluklasanLayerlar={solukSet}
+            capsizOdak={capsizOdak && adim.adim2Acik}
+            kilitliLayer={adim.adim2Acik ? secili : null}
+            etkilesimModu={adim.adim2Acik ? 'cap-ata' : 'layer-sec'}
             scale={scale}
-            // SILGI MODU props
-            eraseMode={eraseMode}
-            onToggleEraseMode={() => setEraseMode((v) => !v)}
-            hiddenLineKeys={hiddenLineKeys}
-            hiddenInsertKeys={hiddenInsertKeys}
-            hiddenTextKeys={hiddenTextKeys}
-            // Tek tik / marquee → pending'e ekler (henuz silmez); confirm gerekir
-            onEraseEntities={(lines, inserts, texts) => handleSelectForErase(lines, inserts, texts)}
-            onUndoErase={handleUndoErase}
-            canUndoErase={eraseHistory.length > 0}
-            onRestoreAllErased={handleRestoreAllErased}
-            // PENDING ERASE — viewer turuncu highlight + sag-ust onay/iptal toolbar
-            pendingLineKeys={pendingLineKeysSet}
-            pendingInsertKeys={pendingInsertKeysSet}
-            pendingTextKeys={pendingTextKeysSet}
-            onConfirmPendingErase={handleConfirmErase}
-            onCancelPendingErase={handleCancelPendingErase}
-            // PRD §3 + §5: cap-bazli dinamik renk; save sonrasi false -> layer ACI
             useDiameterColors={useDiameterColors}
-            // TIKLA-ETIKETLE: hover vurgusu aktif kalem rengine boyanir
-            // (tiklamadan once hangi rengin atanacagi gorunur — izolasyon onizleme)
-            activeTagColor={activeBucket?.color ?? null}
-            // SEGMENT IZOLASYONU: tiklanan run ~900ms parlar (secim teyidi)
+            activeTagColor={silgi ? CAPSIZ_RENGI : aktifKalem ? diameterToColor(aktifKalem.diameter) : null}
             flashSegment={tagFlash}
-            // Cap renkleri legend tiklama navigation
-            focusedSegmentId={focusedSegmentId}
-            focusedHaloColor={focusedHaloColor}
-            focusVersion={focusVersion}
-            className="h-[600px] lg:h-[calc(100vh-150px)]"
+            focusedSegment={odakParca ? { layer: odakParca.layer, segmentId: odakParca.segment_id } : null}
+            focusedHaloColor={gezinme ? (gezinme.cap === '' ? CAPSIZ_RENGI : diameterToColor(gezinme.cap)) : null}
+            focusVersion={gezinme?.surum ?? 0}
+            onLineClick={(l) => {
+              // Shift+tik: layer'i gizle (Adim 1). Adim 2'de baska layer'a gecilmez.
+              if (l.shiftKey) {
+                gizleDegistir(l.layer);
+                return;
+              }
+              sembolTiklandi(l.layer);
+            }}
+            onInsertClick={(i) => sembolTiklandi(i.layer)}
+            onCircleClick={(c) => sembolTiklandi(c.layer)}
+            onSegmentClick={parcaTiklandi}
+            onGeometriBilgisi={setBilgi}
           />
-
-          {/* Ipucu */}
-          <div className="mt-2 flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-            <AlertCircle className="h-3.5 w-3.5 shrink-0 text-slate-500 mt-0.5" />
-            <p className="text-[11px] text-slate-600">
-              <strong>1. Hesapla:</strong> Layer seç + &quot;Hesapla&quot; → borular çıkar (hepsi <span className="font-semibold text-lime-600">neon = çapsız</span>).
-              <strong className="ml-2">2. Etiketle:</strong> Çap Kalemi seç → çizimde boruya tıkla, çap atanır.
-              <strong className="ml-2">Kalem yokken:</strong> tıklama yalnız segment bilgisini gösterir.
-            </p>
           </div>
-        </div>
+          {/* Ust katman: arac cubugu + ipucu hapi TEK satir (sigmazsa hap alta
+              iner — ust uste binmez), altinda Katmanlar paneli. 25.09 inceleme:
+              hap sabit 372 px payla arac cubugunun ustune biniyordu. */}
+          <div className="pointer-events-none absolute inset-x-3.5 bottom-11 top-3.5 z-20 flex flex-col items-start gap-2">
+            <div className="flex w-full flex-wrap items-start justify-between gap-2">
+              <CizimAracCubugu
+                katmanlarAcik={katmanlarAcik}
+                gizliSayisi={state.hiddenLayers.length}
+                onKatmanlar={() => setKatmanlarAcik((v) => !v)}
+                onYakinlas={() => viewerRef.current?.zoomIn()}
+                onUzaklas={() => viewerRef.current?.zoomOut()}
+                onSigdir={() => viewerRef.current?.fitView()}
+                silgiGoster={adim.adim2Acik}
+                silgiAcik={silgi}
+                onSilgi={silgiDegistir}
+                geriEtiketi={geriEtiketi}
+                ileriEtiketi={ileriEtiketi}
+                gecmisKilitli={kilit}
+                onGeriAl={geriAl}
+                onYinele={yinele}
+              />
+              <IpucuHapi ipucu={ipucu} />
+            </div>
+            {katmanlarAcik && (
+              <KatmanlarPaneli
+                katmanlar={bilgi?.katmanlar ?? []}
+                gizliler={hiddenSet}
+                solukler={dimmedSet}
+                sprinklerlar={sprinklerSet}
+                seciliLayer={secili}
+                hesapDurumu={hesapDurumu}
+                onKapat={() => setKatmanlarAcik(false)}
+                onGizle={gizleDegistir}
+                onSoluklastir={soluklastirDegistir}
+                onSprinkler={toggleSprinklerLayer}
+                onSec={(ad) => {
+                  layerSec(ad);
+                  setKatmanlarAcik(false);
+                }}
+                onTumunuGoster={tumunuGoster}
+                onYalnizBoru={() => {
+                  if (secili) yalnizGoster(secili, (bilgi?.katmanlar ?? []).map((k) => k.ad));
+                }}
+              />
+            )}
+          </div>
+          {adim.adim2Acik && <CizimLejanti />}
+          <DurumBildirimi
+            bildirim={bildirim}
+            panelAcik={katmanlarAcik}
+            geriAlinabilir={!!bildirim && !kilit && islemTepedeMi(bildirim.id)}
+            onGeriAl={() => {
+              geriAl();
+              setBildirim(null);
+            }}
+            onKapan={bildirimKapat}
+          />
+        </section>
 
-        {/* Sag: cap kalemleri + aktif layer formu + cap renk legend + ozet */}
-        <div className="space-y-3">
-          {/* MANUEL ETIKETLEME: cap kalemi tanimla -> sec -> boruya tikla.
-              Rozet: capsiz (neon) segment sayisi. */}
-          <BucketPanel
-            unassignedCount={unassignedPendingCount}
-            onApplyToUnassigned={applyBucketToUnassigned}
+        <aside
+          aria-label="Metraj adımları"
+          className="flex w-full shrink-0 flex-col overflow-hidden rounded-xl border border-[#e5e7eb] bg-white lg:w-[392px]"
+        >
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <Adim1BoruLayer
+              durum={adim.adim1}
+              seciliLayer={secili}
+              layerRengi={layerRengi(secili)}
+              layerCizgi={secili ? katmanRenk.get(secili)?.cizgi ?? null : null}
+              hesap={seciliHesap}
+              adaylar={adaylar}
+              katmanSayisi={bilgi?.katmanlar.length ?? 0}
+              calisilanlar={calisilanlar}
+              yontem={yontem}
+              onYontem={setYontem}
+              ayrilanLayer={calculatingLayer}
+              ayrilanYontem={ayrilanYontem}
+              birimBayat={adim.birimBayat}
+              sprinklerBayat={adim.sprinklerBayat}
+              yenidenAyirma={yenidenAyirma}
+              onSec={(ad) => layerSec(ad)}
+              onDegistir={() => layerSec(null)}
+              onKatmanlariAc={() => setKatmanlarAcik(true)}
+              onAyir={ayir}
+              onAyirmayiKaldir={ayirmayiKaldir}
+              onYenidenAyir={() => { if (secili) void yenidenAyir([secili]); }}
+            />
+            <Adim2CapAta
+              acik={adim.adim2Acik}
+              ilerleme={ilerleme}
+              gruplar={gruplar}
+              sorgu={capSorgu}
+              onSorgu={setCapSorgu}
+              aktifCap={aktifCap}
+              capsizOdak={capsizOdak}
+              onCapsizOdak={() => setCapsizOdak((v) => !v)}
+              onCapSec={capSec}
+              onEkle={capEkle}
+              onKalemSil={kalemSil}
+              onGoster={capGoster}
+              gosterilen={gezinme && gezinmeYeri ? { cap: gezinme.cap, sira: gezinmeYeri.sira, toplam: gezinmeYeri.toplam } : null}
+              onTopluAta={topluAta}
+              sprinklerIpucu={sprinklerIpucu}
+              onKatmanlariAc={() => setKatmanlarAcik(true)}
+              onayli={adim.adim3 === 'onayli' || adim.adim3 === 'onayli-bayat'}
+            />
+          </div>
+          <Adim3Onay
+            durum={adim.adim3}
+            layer={secili}
+            toplamMetre={seciliHesap?.totalLength ?? 0}
+            capsiz={ilerleme.capsiz}
+            engel={adim.adim3 === 'onayla' ? onayEngel : null}
+            ayriliyor={kilit}
+            onOnayla={metrajiOnayla}
+            onOnayiKaldir={onayiGeriAl}
+            onYenidenAyir={() => { if (secili) void yenidenAyir([secili]); }}
           />
-          {/* PRD §3: Dinamik renk legend — cizimle birebir esles
-              Cap satirina tikla -> o cap'in segment'leri arasinda cycle */}
-          <DiameterLegendPanel
-            calculatedLayers={pendingCalculatedLayers}
-            diameterColorsActive={useDiameterColors}
-            activeDiameter={activeDiameter}
-            activeIndex={activeDiameter ? activeIndex : 0}
-            activeCount={activeDiameterSegments.length}
-            onDiameterClick={handleCycleDiameter}
-            onClearActive={handleClearActiveDiameter}
-          />
-          <LayerInfoSidebar
-            selectedLayer={state.selectedLayer}
-            calculating={calculating || (!!state.selectedLayer && calculatingLayer === state.selectedLayer)}
-            calculatedLayer={state.selectedLayer ? state.calculatedLayers[state.selectedLayer] ?? null : null}
-            splitMode={splitMode}
-            onSplitModeChange={setSplitMode}
-            onCalculate={(layer) => {
-              if (calculating || calculatingLayer === layer) {
-                toast({ title: 'Devam eden hesaplama var', description: 'Bitince tekrar dene.', variant: 'destructive' });
-                return;
-              }
-              if (state.calculatedLayers[layer]) {
-                toast({ title: 'Zaten hesaplandi', description: layer });
-                return;
-              }
-              // UX #4: yeni layer hesaplamasi TERTEMIZ baslar — onceki layer'in
-              // aktif kalemi bulasmasin diye kalem deaktive edilir.
-              clearActiveBucket();
-              // "Segmentlerine Ayir" = SAF geometri+uzunluk cikarimi. Cap
-              // atamasi YOK — segmentler capsiz (neon) gelir; hat ismi/malzeme
-              // alanlari kaldirildi (UX #3), cap bilgisi Cap Kalemleri'nden.
-              // splitMode: kullanicinin sidebar'daki bolme modu secimi.
-              calculateLayer(layer, { splitMode });
-            }}
-            onComplete={async (layer) => {
-              // UX #4: "Hesaplamayi Tamamla" — layer onaylanir, etiketleme
-              // ekrani sifirlanir (aktif kalem + secim reset).
-              const cl = state.calculatedLayers[layer];
-              if (!cl) return;
-              const empty = cl.edgeSegments.filter((es) => isUnassignedDiameter(es.diameter)).length;
-              if (empty > 0) {
-                const ok = await confirm({
-                  title: `${empty} segment hâlâ çapsız`,
-                  description: 'Çizimde neon görünüyor. Yine de bu layer tamamlansın mı?',
-                  confirmText: 'Tamamla',
-                });
-                if (!ok) return;
-              }
-              approveLayer(layer);
-              clearActiveBucket();
-              if (state.selectedLayer === layer) selectLayer(layer); // toggle off — secim temizlenir
-              toast({
-                title: 'Layer tamamlandı ✓',
-                description: `${layer} onaylandı. Etiketleme ekranı yeni layer için sıfırlandı.`,
-              });
-            }}
-            onUnapprove={(layer) => revizyonaDon(layer)}
-            onClearSelection={() => selectLayer(state.selectedLayer!)}
-            onHideLayer={() => {
-              if (!state.selectedLayer) return;
-              const layer = state.selectedLayer;
-              toggleLayerVisibility(layer);
-              toast({ title: 'Layer gizlendi', description: layer });
-              selectLayer(layer);
-            }}
-          />
-
-          <LayerVisibilityPanel
-            availableLayers={availableLayers}
-            hiddenLayers={state.hiddenLayers}
-            dimmedLayers={state.dimmedLayers}
-            selectedLayer={state.selectedLayer}
-            calculatedLayers={calculatedLayerNames}
-            layerDiameters={layerDiametersMap}
-            sprinklerLayers={state.sprinklerLayers}
-            onToggle={toggleLayerVisibility}
-            onToggleDimmed={toggleLayerDimmed}
-            onToggleSprinkler={toggleSprinklerLayer}
-            onShowAll={showAllLayers}
-            onShowAllDimmed={showAllDimmed}
-            onLayerSelect={(layer, _x, _y) => {
-              // Layer panel'den layer adina tikla = SADECE sec.
-              // tryChangeLayer onaysiz-hesaplama korumasi yapar.
-              tryChangeLayer(layer);
-            }}
-          />
-
-          <MetrajSummaryPanel
-            calculatedLayers={state.calculatedLayers}
-            onRemoveLayer={async (layer) => {
-              // ⚠ YIKICI VE GERI DONUSU YOK: segmentler + TUM cap etiketleri
-              // gider (yeniden hesaplamak sadece segmentleri geri getirir,
-              // etiketleme emegini DEGIL). Onaysiz calisiyordu; revizyon
-              // dugmesi bunun hemen ustune geldigi icin yanlis tikta
-              // kullanicinin saatlerce sureni tek hamlede silinebilirdi.
-              const cl = state.calculatedLayers[layer];
-              const segment = cl?.edgeSegments.length ?? 0;
-              const etiketli = cl?.edgeSegments.filter((es) => !isUnassignedDiameter(es.diameter)).length ?? 0;
-              const ok = await confirm({
-                title: `"${cl?.hatIsmi || layer}" hesaplaması silinsin mi?`,
-                description:
-                  `${segment} segment ve ${etiketli} çap etiketi silinecek. Geri dönüşü yok — ` +
-                  'yeniden hesaplarsanız segmentler geri gelir ama çap etiketlerini tekrar yapmanız gerekir. ' +
-                  'Sadece revize etmek istiyorsanız "Onayı Kaldır" yeterlidir.',
-                confirmText: 'Sil',
-              });
-              if (!ok) return;
-              removeCalculatedLayer(layer);
-              toast({ title: 'Hesaplama silindi', description: layer });
-            }}
-            onApproveLayer={(layer) => {
-              // UX #4: ozet panelinden onay da etiketleme ekranini sifirlar
-              approveLayer(layer);
-              clearActiveBucket();
-            }}
-            onUnapproveLayer={(layer) => revizyonaDon(layer)}
-            onSelectLayerCard={(layer) => {
-              // Hesaplanmis Metraj kartina tikla:
-              //  - Layer onayli ise revizyona don (onay kalkar, segmentler doner)
-              //  - Onaysiz ise sadece o layer'i calisilir hale getir
-              // ⚠ `selectLayer` DEGIL `focusLayer`: kart tiklamasi bir toggle
-              // degildir, "bu layer'da calis" demektir. Eskiden selectLayer
-              // cagriliyordu ve layer zaten seciliyse secim kapaniyordu.
-              const cl = state.calculatedLayers[layer];
-              if (cl?.approved) {
-                revizyonaDon(layer);
-                return;
-              }
-              focusLayer(layer);
-            }}
-          />
-        </div>
+        </aside>
       </div>
     </div>
   );

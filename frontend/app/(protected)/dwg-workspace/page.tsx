@@ -68,6 +68,13 @@ export default function DwgWorkspacePage() {
     router.push('/quotes/new?from=dwg-workspace');
   }
 
+  // Kapi acikken sayfa CERCEVE CIZMEZ: yukleyici yukleme ekranlarinda kendi
+  // cercevesini (Geri + "DWG Analiz") cizer; calisma alani acilinca 25.09
+  // tasarimindaki baslik satiri ve tam ekran cizim gelir.
+  if (dwgDurum === 'acik') {
+    return <DwgUploader onMetrajApproved={handleMetrajApproved} />;
+  }
+
   return (
     <div className="container mx-auto px-4 py-6 max-w-[1800px]">
       <div className="mb-4 flex items-center gap-2">
@@ -103,9 +110,7 @@ export default function DwgWorkspacePage() {
             </Link>
           </div>
         </div>
-      ) : (
-        <DwgUploader onMetrajApproved={handleMetrajApproved} />
-      )}
+      ) : null}
     </div>
   );
 }
