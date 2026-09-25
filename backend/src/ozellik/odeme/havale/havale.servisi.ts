@@ -7,6 +7,7 @@ import { EpostaServisi } from '../eposta/eposta.servisi';
 import { tarihYaz, tutarYaz } from '../dunning/dunning.metinleri';
 import { etkinHesapKosulu } from '../../firma/uyelik-kurallari';
 import { koltukEtkisi } from '../abonelik/yonetici/yonetici-islemi';
+import { kartUyarisiOku, teklifSonrasiKartCekimleri } from './havale-kart-penceresi';
 
 /** Düşürmenin koltuk etkisi — sayım `etkinHesapKosulu`, kural `koltukEtkisi`. */
 export interface HavaleKoltukEtkisi {
@@ -101,6 +102,16 @@ export function koltukEpostaCumlesi(k: Pick<HavaleKoltukEtkisi, 'yeniHak' | 'top
  *  onay e-postası müşteriye kaç kişinin durduğunu ve nasıl açılacağını
  *  söyler. Yalnız BU değişimin durdurduğu biri varsa — yükseltme ve aynı
  *  paket uyarı üretmez (`koltukEtkisi`). Kapısı aynı dosya, S bloğu.
+ *
+ *  ⚠ KART ABONELİĞİ AÇIKKEN HAVALE (25.09.2026 — Emre kararı: "uyar + onayda
+ *  bildir"): teklif ile onay arasında (havale günlerce sürer) kart aboneliği
+ *  iyzico'da açıktır; yenileme o pencereye düşerse satır hâlâ KART olduğu
+ *  için webhook onu OLAĞAN yenileme sayar — kart sessizce bir dönem daha
+ *  çekiliyor, kimseye söylenmiyordu (ölçüldü: AKTIF, DENEME, UNPAID). Teklif
+ *  iyzico'dan canlı durumu okur ve `kartUyarisi` döner (REDDETMEZ); onay,
+ *  tekliften sonra karttan çekim olduysa yöneticiye e-posta + olay yazar ve
+ *  yanıtında `kartCekimleri` taşır. Kural `havale-kart-penceresi.ts`; kapısı
+ *  aynı test dosyası, C bloğu.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
@@ -171,8 +182,37 @@ export class HavaleServisi {
     // açılmadan ÖNCE okunur: satırı olmayan firmada koltuk kuralı işlemiyordu.
     const bugunku = await this.prisma.abonelik.findUnique({
       where: { firmaId: p.firmaId },
-      select: { paketSurumu: { select: { paket: { select: { kullaniciHakki: true } } } } },
+      select: {
+        durum: true,
+        erisimSonu: true,
+        denemeSonu: true,
+        iyzicoAbonelikKodu: true,
+        iyzicoKokKodu: true,
+        iyzicoMusteriKodu: true,
+        iyzicoDurum: true,
+        iptalTalebi: true,
+        planliPaketSurumuId: true,
+        paketSurumu: {
+          select: {
+            tutar: true,
+            paraBirimi: true,
+            periyot: true,
+            periyotAdedi: true,
+            paket: { select: { kullaniciHakki: true } },
+          },
+        },
+      },
     });
+    // ⚠ 25.09 — KART ABONELİĞİ AÇIK MI (Emre kararı: "uyar + onayda bildir"):
+    // teklif ile onay arasında kart aboneliği iyzico'da açık kalır; yenileme
+    // o pencereye düşerse satır hâlâ KART olduğu için webhook onu olağan
+    // yenileme sayar ve kart SESSİZCE bir dönem daha çekilir (ölçüldü).
+    // Yanıt yöneticiyi önceden uyarır; teklif REDDEDİLMEZ.
+    const kartUyarisi = await kartUyarisiOku(
+      { prisma: this.prisma, abonelik: this.abonelik, logger: this.logger },
+      bugunku,
+      new Date(),
+    );
     const koltuk = await this.koltukEtkisiOku(
       p.firmaId,
       bugunku?.paketSurumu?.paket?.kullaniciHakki ?? null,
@@ -217,12 +257,24 @@ export class HavaleServisi {
         paketSurumuId: surum.id,
         // Yöneticiye yapılan koltuk uyarısının izi (içerik değil sayı).
         ...(uyari ? { durdurulacakUye: uyari.durdurulacakUyeSayisi } : {}),
+        // Kart uyarısının izi: teklif anında iyzico ne diyordu.
+        ...(kartUyarisi
+          ? {
+              kart: {
+                iyzicoDurum: kartUyarisi.iyzicoDurum,
+                dogrulandi: kartUyarisi.dogrulandi,
+                sonrakiCekim: kartUyarisi.sonrakiCekim,
+                sonrakiCekimKaynagi: kartUyarisi.sonrakiCekimKaynagi,
+              },
+            }
+          : {}),
       },
     });
 
     // Yanıt teklifin paketini taşır: yönetici NEYİ teklif ettiğini görür
-    // (eskiden yanıtta paket yoktu). `uyari` null = kimse durmaz.
-    return { ...kayit, paketSurumu: surum, uyari };
+    // (eskiden yanıtta paket yoktu). `uyari` null = kimse durmaz;
+    // `kartUyarisi` null = kart aboneliği yok ya da kapalı.
+    return { ...kayit, paketSurumu: surum, uyari, kartUyarisi };
   }
 
   /**
@@ -427,18 +479,38 @@ export class HavaleServisi {
     // günlüğünü izleyin.
     // Kodu olmayan (havalenin kendi açtığı) ya da zaten kapalı abonelikte
     // iyzico'ya gidilmez.
-    await this.abonelik
+    const kapatma = await this.abonelik
       .havaleIcinKartAboneliginiKapat(mevcut.abonelikId, {
         aktor: p.onaylayanId,
         neden: `Havale onayı — ${mevcut.teklifNo ?? p.havaleId}`,
       })
-      .catch((e) =>
+      .catch((e) => {
         this.logger.error(
           `Kart aboneliği kapatılamadı (abonelik=${mevcut.abonelikId}): ` +
             `${e instanceof Error ? e.message : String(e)}`,
-        ),
-      );
-    return sonuc;
+        );
+        return null;
+      });
+
+    // ⚠ 25.09 — ONAYDA BİLDİR (Emre kararı): teklif ile onay arasında kart
+    // çekildiyse (yenileme / ilk çekim / başarılı yeniden deneme — satır o an
+    // KART olduğu için çift tahsilat dalı görmez) yöneticiye e-posta + olay;
+    // yanıt da taşır (`null` = olay kaydı okunamadı, "çekim yok" DEĞİL). Kart
+    // kapatma sonucu aynı e-postada söylenir.
+    const kartCekimleri = await teklifSonrasiKartCekimleri(
+      { prisma: this.prisma, abonelik: this.abonelik, eposta: this.eposta, logger: this.logger },
+      {
+        id: mevcut.id,
+        abonelikId: mevcut.abonelikId,
+        teklifNo: mevcut.teklifNo,
+        olusturuldu: mevcut.olusturuldu,
+        firmaId: mevcut.abonelik.firmaId,
+      },
+      sonuc.abonelik.erisimSonu,
+      p.onaylayanId,
+      kapatma,
+    );
+    return { ...sonuc, kartCekimleri };
   }
 
   async iptalEt(havaleId: string, aktorId: string, neden?: string) {
