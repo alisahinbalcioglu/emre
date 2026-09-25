@@ -1,34 +1,40 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
-import type {
-  WorkspaceState,
-  LayerConfig,
-  CalculatedLayer,
-} from './types';
-import { secimSonrasi } from './onay-revizyon';
-
-const emptyConfig = (): LayerConfig => ({
-  hatIsmi: '',
-  materialType: '',
-  defaultDiameter: '',
-});
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { toast } from '@/ortak/hooks/use-toast';
+import type { CalculatedLayer, WorkspaceState } from './types';
+import {
+  bosDurum,
+  calismaKaydiIndirgeyici,
+  kayitliDurumuCoz,
+  tepedeMi,
+  yeniKayit,
+} from './calisma-kaydi';
+import { tepedekiAdim, yinelenecekAdim } from './gecmis';
 
 /**
- * Workspace state yonetimi — layer secimleri, hesaplanmis metrajlar,
- * isaretlenmis ekipmanlar.
+ * Workspace state yonetimi — layer secimi, hesaplanmis metrajlar, cap
+ * etiketleri, gorunum tercihleri + GERI AL / YINELE (25.09 DWG tasarimi).
  *
- * EMEK KAYBI SIGORTASI (UX/TTL): state artik oncelikle DOSYA ICERIK HASH'i
- * ile anahtarlanir (fileHash = sha256 ilk 16 hex, DwgUploader hesaplar).
- * Sunucu cache'i dusse ve ayni dosya YENIDEN yuklense bile (yeni file_id!)
- * kullanicinin tum etiketlemeleri hash key'inden geri gelir — saatlerce
- * suren manuel etiketleme emegi file_id omrune bagli degildir.
+ * Durum makinesi saf bir indirgeyicidir (`calisma-kaydi.ts`); bu kanca yalniz
+ * yukleme, kalicilik ve eylem kimliklerini yonetir.
+ *
+ * EMEK KAYBI SIGORTASI (UX/TTL): state oncelikle DOSYA ICERIK HASH'i ile
+ * anahtarlanir (fileHash = sha256 ilk 16 hex, DwgUploader hesaplar). Sunucu
+ * cache'i dusse ve ayni dosya YENIDEN yuklense bile (yeni file_id!)
+ * kullanicinin tum etiketlemeleri hash key'inden geri gelir.
  * fileHash yoksa (eski oturum / hash hesaplanamadi) file_id key'ine duser.
+ *
+ * KALICILIK: yalniz BELGE + gorunum yazilir (gecmis bellek icindedir) ve
+ * yazim GECIKMELIDIR — binlerce parcalik JSON her tiklamada yazilmasin.
+ * Bekleyen yazim sayfa kapanirken / bilesen kalkarken bosaltilir.
  */
 /** fileId bazli LEGACY storage key — geriye uyum icin okunur. */
 const STORAGE_KEY_PREFIX = 'metaprice_dwg_ws_';
 /** Icerik-hash bazli KALICI storage key — birincil. */
 const HASH_KEY_PREFIX = 'metaprice_dwg_ws_h_';
+/** Kalici yazimin gecikmesi (ms). */
+const YAZIM_GECIKMESI = 400;
 
 function _storageKey(fileId: string, fileHash?: string | null): string {
   return fileHash ? HASH_KEY_PREFIX + fileHash : STORAGE_KEY_PREFIX + fileId;
@@ -50,65 +56,21 @@ export function clearWorkspaceState(fileId: string, fileHash?: string | null): v
   } catch { /* storage kapali — sifirlama sessizce atlanir */ }
 }
 
-function _emptyState(fileId: string, scale: number): WorkspaceState {
-  return {
-    fileId,
-    scale,
-    selectedLayer: null,
-    layerConfigs: {},
-    calculatedLayers: {},
-    sprinklerLayers: [],
-    hiddenLayers: [],
-    dimmedLayers: [],
-  };
-}
-
-/** Kayitli calisma FARKLI bir cizim birimiyle hesaplanmissa bilgisi. */
-export interface BirimDegisimi {
-  eskiScale: number;
-  yeniScale: number;
-  dusenLayer: number;
-}
-
-let _sonBirimDegisimi: BirimDegisimi | null = null;
-
 function _loadState(fileId: string, scale: number, fileHash?: string | null): WorkspaceState {
-  _sonBirimDegisimi = null;
-  if (typeof window === 'undefined') return _emptyState(fileId, scale);
+  if (typeof window === 'undefined') return bosDurum(fileId, scale);
   try {
     // 1) Birincil: hash key (ayni dosya = ayni state, file_id degisse bile)
     let raw = fileHash ? window.localStorage.getItem(HASH_KEY_PREFIX + fileHash) : null;
-    let hashKeyed = !!raw;
+    let hashAnahtarli = !!raw;
     // 2) Legacy: file_id key (hash'ten onceki kayitlar — migrasyon okumasi)
     if (!raw) {
       raw = window.localStorage.getItem(STORAGE_KEY_PREFIX + fileId);
-      hashKeyed = false;
+      hashAnahtarli = false;
     }
-    if (!raw) return _emptyState(fileId, scale);
-    const parsed = JSON.parse(raw);
-    // Hash-keyed kayitta fileId FARKLI olabilir (sunucu yeni id verdi) — state
-    // gecerlidir, fileId guncellenir. Legacy kayitta eski sanity korunur.
-    if (!hashKeyed && parsed?.fileId !== fileId) return _emptyState(fileId, scale);
-
-    // ── BIRIM DEGISTIYSE ESKI METRAJ GECERSIZDIR ───────────────────
-    // calculatedLayers.totalLength METRE cinsinden DONDURULMUS sayilardir ve
-    // hangi scale ile uretildikleri satirda yazmaz. Birim degisince (or. elle
-    // cm secilmisken otomatik tespit dm buldu) eski satirlar ile yenileri ayni
-    // teklifte 10x farkla, UYARISIZ toplanirdi. Bu yuzden birim uyusmuyorsa
-    // hesaplanmis layer'lar YUKLENMEZ; etiketleme/gizleme gibi birimden
-    // BAGIMSIZ tercihler korunur.
-    const eski = typeof parsed?.scale === 'number' && parsed.scale > 0 ? parsed.scale : null;
-    if (eski !== null && Math.abs(eski - scale) / scale > 1e-6) {
-      const dusen = Object.keys(parsed?.calculatedLayers ?? {}).length;
-      if (dusen > 0) {
-        _sonBirimDegisimi = { eskiScale: eski, yeniScale: scale, dusenLayer: dusen };
-      }
-      return { ..._emptyState(fileId, scale), ...parsed, calculatedLayers: {}, fileId, scale };
-    }
-
-    return { ..._emptyState(fileId, scale), ...parsed, fileId, scale };
+    if (!raw) return bosDurum(fileId, scale);
+    return kayitliDurumuCoz(JSON.parse(raw), fileId, scale, hashAnahtarli);
   } catch {
-    return _emptyState(fileId, scale);
+    return bosDurum(fileId, scale);
   }
 }
 
@@ -116,7 +78,7 @@ function _loadState(fileId: string, scale: number, fileHash?: string | null): Wo
 export interface GeriYuklenenCalisma {
   /** Diskten gelen hesaplanmis layer sayisi (0 = temiz baslangic). */
   layers: number;
-  /** Bunlarin kaci onayli (yani revize edilmek icin once onayi kalkmali). */
+  /** Bunlarin kaci onayli. */
   approved: number;
 }
 
@@ -126,231 +88,187 @@ function _ozetle(s: WorkspaceState): GeriYuklenenCalisma {
 }
 
 export function useWorkspaceState(fileId: string, scale: number, fileHash?: string | null) {
-  // Mount'ta localStorage'dan restore et — sayfa yenilenmesi VEYA ayni
-  // dosyanin yeniden yuklenmesi (yeni file_id) sonrasi hesaplanmis layer'lar,
-  // etiketler, ekipmanlar korunur. Kullanici metraji yeniden yapmaz.
-  const [state, setState] = useState<WorkspaceState>(() => _loadState(fileId, scale, fileHash));
+  const [kayit, dispatch] = useReducer(
+    calismaKaydiIndirgeyici,
+    undefined,
+    () => yeniKayit(_loadState(fileId, scale, fileHash)),
+  );
+  const state = kayit.state;
 
   /** DISKTEN gelen calismanin ozeti (o anki state degil — yuklendigi andaki).
    *  Kullanici "yeni yukledim ama eski hali geldi" sasirmasini yasamasin diye
-   *  ekranda acikca gosterilir; bugune kadar bu geri yukleme SESSIZDI. */
-  const [restoredWork, setRestoredWork] = useState<GeriYuklenenCalisma>(() => _ozetle(state));
+   *  ekranda acikca gosterilir. */
+  const [restoredWork, setRestoredWork] = useState<GeriYuklenenCalisma>(() => _ozetle(kayit.state));
 
-  /** Kayitli metraj FARKLI birimle hesaplandigi icin dusuruldu mu?
-   *  UI bunu bir bantla soylemeli — sessizce silmek de sessizce karistirmak
-   *  kadar kotudur. */
-  const [birimDegisimi, setBirimDegisimi] = useState<BirimDegisimi | null>(() => _sonBirimDegisimi);
+  /** Eylem kimligi — indirgeyici saf kalsin diye kimlik DISARIDA uretilir. */
+  const idRef = useRef(0);
+  const yeniId = () => {
+    idRef.current += 1;
+    return idRef.current;
+  };
 
-  // fileId/hash degistiginde ilgili kayittan yukle (yoksa bos baslat).
+  // ── KALICILIK (gecikmeli; sayfa kapanirken bosaltilir) ──────────────────
+  // Yazim anahtari, state'in YUKLENDIGI dosyanin anahtaridir — prop'tan degil.
+  // 25.09 inceleme: dosya kimligi bilesen sokulmeden degisirse ayni commit'te
+  // ESKI state YENI anahtara kuyruga giriyordu (bugun DwgUploader bileseni
+  // soktugu icin erisilemez; sigorta).
+  const kayitAnahtariRef = useRef(_storageKey(fileId, fileHash));
+  const bekleyenRef = useRef<{ anahtar: string; veri: WorkspaceState } | null>(null);
+  const zamanlayiciRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hataBildirildiRef = useRef(false);
+
+  const bosalt = useCallback(() => {
+    if (zamanlayiciRef.current) {
+      clearTimeout(zamanlayiciRef.current);
+      zamanlayiciRef.current = null;
+    }
+    const b = bekleyenRef.current;
+    bekleyenRef.current = null;
+    if (!b || typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(b.anahtar, JSON.stringify(b.veri));
+    } catch (e) {
+      // Kota dolu / depolama kapali: calisma KAYDEDILEMIYOR. Eskiden
+      // `catch {}` bunu yutuyordu ve kayit sessizce duruyordu.
+      console.warn('[dwg] calisma kaydedilemedi:', e);
+      if (!hataBildirildiRef.current) {
+        hataBildirildiRef.current = true;
+        toast({
+          title: 'Çalışma bu tarayıcıya kaydedilemedi',
+          description: 'Tarayıcı depolaması dolu ya da kapalı. Sayfayı kapatırsanız son değişiklikler kaybolabilir.',
+          variant: 'destructive',
+        });
+      }
+    }
+  }, []);
+
+  // ── Dosya degisince ilgili kayittan yukle (birim degisimi YUKLEME DEGIL) ──
+  const scaleRef = useRef(scale);
+  scaleRef.current = scale;
+  const yukluRef = useRef({ fileId, fileHash: fileHash ?? null });
   useEffect(() => {
-    const yuklenen = _loadState(fileId, scale, fileHash);
-    setState(yuklenen);
+    const y = yukluRef.current;
+    if (y.fileId === fileId && y.fileHash === (fileHash ?? null)) return;
+    // Onceki dosyanin bekleyen yazimi ONCE kendi anahtarina gider.
+    bosalt();
+    yukluRef.current = { fileId, fileHash: fileHash ?? null };
+    kayitAnahtariRef.current = _storageKey(fileId, fileHash);
+    const yuklenen = _loadState(fileId, scaleRef.current, fileHash);
+    dispatch({ tur: 'yukle', state: yuklenen });
     setRestoredWork(_ozetle(yuklenen));
-    setBirimDegisimi(_sonBirimDegisimi);
-  }, [fileId, scale, fileHash]);
+  }, [fileId, fileHash, bosalt]);
+
+  // Birim degisti: hesaplar KORUNUR, her layer kendi `scaleUsed`iyla bayat
+  // gorunur (25.09'a dek burada layer'lar dusuruluyor, etiketler siliniyordu).
+  useEffect(() => {
+    dispatch({ tur: 'birim', scale });
+  }, [scale]);
+
+  // Yalniz STATE degisince yazilir; anahtar yuklenen dosyanindir.
+  useEffect(() => {
+    if (!state.fileId) return;
+    bekleyenRef.current = { anahtar: kayitAnahtariRef.current, veri: state };
+    if (zamanlayiciRef.current) clearTimeout(zamanlayiciRef.current);
+    zamanlayiciRef.current = setTimeout(bosalt, YAZIM_GECIKMESI);
+  }, [state, bosalt]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    window.addEventListener('pagehide', bosalt);
+    window.addEventListener('beforeunload', bosalt);
+    return () => {
+      window.removeEventListener('pagehide', bosalt);
+      window.removeEventListener('beforeunload', bosalt);
+      bosalt();
+    };
+  }, [bosalt]);
 
   /** "Bu dosyayi sifirla" — SADECE bu dosyanin kayitli calismasini siler ve
    *  ekrani temiz baslangica alir. Diger projelerin kayitlarina DOKUNMAZ.
    *  ⚠ Geri donusu yoktur (tek kopya, sunucuda yedegi yok) — cagiran taraf
    *  MUTLAKA onay sormali. */
   const resetFileState = useCallback(() => {
+    // Bekleyen yazim eski calismayi geri yazmasin.
+    if (zamanlayiciRef.current) clearTimeout(zamanlayiciRef.current);
+    zamanlayiciRef.current = null;
+    bekleyenRef.current = null;
     clearWorkspaceState(fileId, fileHash);
-    setState(_emptyState(fileId, scale));
+    dispatch({ tur: 'yukle', state: bosDurum(fileId, scaleRef.current) });
     setRestoredWork({ layers: 0, approved: 0 });
-  }, [fileId, fileHash, scale]);
+  }, [fileId, fileHash]);
 
-  // State degisince localStorage'a kaydet (hash key birincil).
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (!state.fileId) return;
-    try {
-      window.localStorage.setItem(
-        _storageKey(state.fileId, fileHash),
-        JSON.stringify(state),
-      );
-    } catch {
-      // QuotaExceededError veya disabled storage — sessizce gec
-    }
-  }, [state, fileHash]);
-
-  /** Kullanici tiklamasi — ayni layer'a tekrar tiklamak secimi KAPATIR (toggle).
-   *  "Secimi kaldir" dugmesi de bu davranisi kullanir. */
-  const selectLayer = useCallback((layer: string) => {
-    setState((s) => {
-      const sonraki = secimSonrasi(s.selectedLayer, layer, 'toggle');
-      if (sonraki === null) return { ...s, selectedLayer: null };
-      // Ilk kez tikliyorsa config bas
-      const configs = s.layerConfigs[layer] ? s.layerConfigs : { ...s.layerConfigs, [layer]: emptyConfig() };
-      return { ...s, selectedLayer: sonraki, layerConfigs: configs };
-    });
+  // ── BELGE ISLEMLERI (gecmise yazilir) ────────────────────────────────────
+  const secLayer = useCallback((layer: string | null) => {
+    dispatch({ tur: 'sec', id: yeniId(), layer });
   }, []);
 
-  /** ODAKLA — layer'i calisilir hale getir; secim ASLA kapanmaz.
-   *
-   *  Revizyon yolunun (onayi kaldir → hemen duzenle) tek dogru secim yolu.
-   *  Eskiden burada da `selectLayer` cagriliyordu; layer revizyona girerken
-   *  cogu zaman ZATEN secili oldugu icin toggle onu disari atiyor, sag panel
-   *  bosaliyordu — kullanicinin "revize edemiyorum" dedigi ikinci kusur.
-   *  Kilit: `onay-revizyon.test.ts` → "odakla: layer ZATEN seciliyken bile
-   *  secim ACIK kalir". */
-  const focusLayer = useCallback((layer: string) => {
-    setState((s) => {
-      const sonraki = secimSonrasi(s.selectedLayer, layer, 'odakla');
-      const configs = s.layerConfigs[layer] ? s.layerConfigs : { ...s.layerConfigs, [layer]: emptyConfig() };
-      return { ...s, selectedLayer: sonraki, layerConfigs: configs };
-    });
+  /** Motor sonucu: yeni ayirma ya da (layer zaten varsa) yeniden ayirma —
+   *  aktarim payi indirgeyicide VERIDEN hesaplanir. `oturum`: birim
+   *  degisimi sonrasi sirali yeniden ayirma (bildirimler toplanir). */
+  const hesapSonucu = useCallback((hesap: CalculatedLayer, oturum?: number) => {
+    dispatch({ tur: 'hesap', id: yeniId(), hesap, oturum });
   }, []);
 
-  const updateLayerConfig = useCallback((layer: string, patch: Partial<LayerConfig>) => {
-    setState((s) => ({
-      ...s,
-      layerConfigs: {
-        ...s.layerConfigs,
-        [layer]: { ...(s.layerConfigs[layer] ?? emptyConfig()), ...patch },
-      },
-    }));
+  const hesabiKaldir = useCallback((layer: string) => {
+    dispatch({ tur: 'kaldir', id: yeniId(), layer });
   }, []);
 
-  const addCalculatedLayer = useCallback((calculated: CalculatedLayer) => {
-    // Yeni hesaplanan layer her zaman onaysiz baslar — kullanici "Onayla"yi bilerek tiklamali
-    const withApproval: CalculatedLayer = { ...calculated, approved: false };
-    setState((s) => ({
-      ...s,
-      calculatedLayers: { ...s.calculatedLayers, [calculated.layer]: withApproval },
-      // selectedLayer'i KORU — kullanici onayla butonuna basabilsin. Eskiden null'lanyordu.
-    }));
+  /** `surum`: tiklanan parcalamanin `computedAt`'i — tutmazsa eylem reddedilir. */
+  const capAta = useCallback((layer: string, idler: number[], cap: string, surum: number, toplu = false) => {
+    dispatch({ tur: 'cap', id: yeniId(), layer, idler, cap, surum, toplu });
   }, []);
 
-  const removeCalculatedLayer = useCallback((layer: string) => {
-    setState((s) => {
-      const { [layer]: _, ...rest } = s.calculatedLayers;
-      return { ...s, calculatedLayers: rest };
-    });
+  const onayla = useCallback((layer: string) => {
+    dispatch({ tur: 'onayla', id: yeniId(), layer, zaman: Date.now() });
   }, []);
 
-  /** Hesaplanmis bir layer'i onayla — Excel'e dahil olur, baska layer'a gecilebilir. */
-  const approveLayer = useCallback((layer: string) => {
-    setState((s) => {
-      const cl = s.calculatedLayers[layer];
-      if (!cl || cl.approved) return s;
-      return {
-        ...s,
-        calculatedLayers: {
-          ...s.calculatedLayers,
-          [layer]: { ...cl, approved: true, approvedAt: Date.now() },
-        },
-      };
-    });
+  const onayiKaldir = useCallback((layer: string) => {
+    dispatch({ tur: 'onayiKaldir', id: yeniId(), layer });
   }, []);
 
-  /** Onayli bir layer'in onayini geri al — revize moduna gec.
-   *  Cap renkleri tekrar gozukur, viewer renklendirir, Excel/finalMetraj'a
-   *  dahil edilmez (yeniden onaylanana kadar). */
-  const unapproveLayer = useCallback((layer: string) => {
-    setState((s) => {
-      const cl = s.calculatedLayers[layer];
-      if (!cl || !cl.approved) return s;
-      return {
-        ...s,
-        calculatedLayers: {
-          ...s.calculatedLayers,
-          [layer]: { ...cl, approved: false, approvedAt: undefined },
-        },
-      };
-    });
+  const olcekle = useCallback((layer: string, yeniScale: number, oturum?: number) => {
+    dispatch({ tur: 'olcekle', id: yeniId(), layer, scale: yeniScale, oturum });
   }, []);
 
-  const updateEdgeSegmentDiameter = useCallback((layer: string, segmentId: number, newDiameter: string) => {
-    setState((s) => {
-      const cl = s.calculatedLayers[layer];
-      if (!cl) return s;
-      return {
-        ...s,
-        calculatedLayers: {
-          ...s.calculatedLayers,
-          [layer]: {
-            ...cl,
-            edgeSegments: cl.edgeSegments.map((es) =>
-              es.segment_id === segmentId ? { ...es, diameter: newDiameter } : es
-            ),
-          },
-        },
-      };
-    });
-  }, []);
+  const geriAl = useCallback(() => dispatch({ tur: 'geri' }), []);
+  const yinele = useCallback(() => dispatch({ tur: 'ileri' }), []);
 
-  /** Belirli bir sprinkler layer'i listeden kaldir. */
-  const removeSprinklerLayer = useCallback((layer: string) => {
-    setState((s) => ({ ...s, sprinklerLayers: s.sprinklerLayers.filter((l) => l !== layer) }));
-  }, []);
+  // ── GORUNUM (gecmise yazilmaz) ───────────────────────────────────────────
+  const toggleSprinklerLayer = useCallback((layer: string) => dispatch({ tur: 'sprinkler', layer }), []);
+  const toggleLayerVisibility = useCallback((layer: string) => dispatch({ tur: 'gizle', layer }), []);
+  const toggleLayerDimmed = useCallback((layer: string) => dispatch({ tur: 'soluklastir', layer }), []);
+  const tumunuGoster = useCallback(() => dispatch({ tur: 'tumunuGoster' }), []);
+  const yalnizGoster = useCallback(
+    (layer: string, katmanlar: string[]) => dispatch({ tur: 'yalnizGoster', layer, katmanlar }),
+    [],
+  );
 
-  /** Layer'i sprinkler listesinde toggle et (panel'den dogrudan, sembol tiklamadan). */
-  const toggleSprinklerLayer = useCallback((layer: string) => {
-    setState((s) => {
-      const has = s.sprinklerLayers.includes(layer);
-      return {
-        ...s,
-        sprinklerLayers: has
-          ? s.sprinklerLayers.filter((l) => l !== layer)
-          : [...s.sprinklerLayers, layer],
-      };
-    });
-  }, []);
-
-  /** Layer'i gosterimden cikar/geri al. Sadece viewer goruntusunu etkiler;
-   *  hesaplanmis metrajlar ve config korunur. */
-  const toggleLayerVisibility = useCallback((layer: string) => {
-    setState((s) => {
-      const has = s.hiddenLayers.includes(layer);
-      return {
-        ...s,
-        hiddenLayers: has ? s.hiddenLayers.filter((l) => l !== layer) : [...s.hiddenLayers, layer],
-      };
-    });
-  }, []);
-
-  /** Tum layer'lari geri goster (filtre temizle). */
-  const showAllLayers = useCallback(() => {
-    setState((s) => (s.hiddenLayers.length === 0 ? s : { ...s, hiddenLayers: [] }));
-  }, []);
-
-  /** Layer'i soluk/normal arasinda toggle et. Soluk layer'lar viewer'da
-   *  %25 opacity + gri renkte gosterilir, tiklanamaz. Hidden ile bagimsiz. */
-  const toggleLayerDimmed = useCallback((layer: string) => {
-    setState((s) => {
-      const has = s.dimmedLayers.includes(layer);
-      return {
-        ...s,
-        dimmedLayers: has ? s.dimmedLayers.filter((l) => l !== layer) : [...s.dimmedLayers, layer],
-      };
-    });
-  }, []);
-
-  /** Tum soluklugu kaldir. */
-  const showAllDimmed = useCallback(() => {
-    setState((s) => (s.dimmedLayers.length === 0 ? s : { ...s, dimmedLayers: [] }));
-  }, []);
+  const geriAdim = tepedekiAdim(kayit.gecmis);
+  const ileriAdim = yinelenecekAdim(kayit.gecmis);
 
   return {
     state,
     restoredWork,
-    /** null degilse: kayitli metraj FARKLI cizim birimiyle hesaplanmisti ve
-     *  yuklenmedi. UI kullaniciya soylemeli, sessizce yutmamali. */
-    birimDegisimi,
     resetFileState,
-    selectLayer,
-    focusLayer,
-    updateLayerConfig,
-    addCalculatedLayer,
-    approveLayer,
-    unapproveLayer,
-    removeCalculatedLayer,
-    updateEdgeSegmentDiameter,
-    removeSprinklerLayer,
+    /** Gecmise yazilan son islem (bildirim bunu gosterir). */
+    sonIslem: kayit.son,
+    /** Bildirimdeki "Geri al" bu islemi mi geri alir? */
+    islemTepedeMi: (id: number) => tepedeMi(kayit, id),
+    geriEtiketi: geriAdim?.etiket ?? null,
+    ileriEtiketi: ileriAdim?.etiket ?? null,
+    geriAl,
+    yinele,
+    secLayer,
+    hesapSonucu,
+    hesabiKaldir,
+    capAta,
+    onayla,
+    onayiKaldir,
+    olcekle,
     toggleSprinklerLayer,
     toggleLayerVisibility,
-    showAllLayers,
     toggleLayerDimmed,
-    showAllDimmed,
+    tumunuGoster,
+    yalnizGoster,
   };
 }

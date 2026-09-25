@@ -18,6 +18,18 @@ interface UseViewportOpts {
 }
 
 /**
+ * Ekrandaki (mx, my) noktasinin ALTINDAKI dunya noktasi yerinde kalarak
+ * olcekler (saf). Tekerlek imlecin, yakinlastir/uzaklastir dugmeleri kap
+ * merkezinin etrafinda bu formulu kullanir. Y ekseni ters (ekran asagi +).
+ */
+export function noktaEtrafindaOlcekle(v: Viewport, carpan: number, mx: number, my: number): Viewport {
+  const newZoom = v.zoom * carpan;
+  const worldX = (mx - v.panX) / v.zoom;
+  const worldY = (v.panY - my) / v.zoom;
+  return { zoom: newZoom, panX: mx - worldX * newZoom, panY: my + worldY * newZoom };
+}
+
+/**
  * Canvas2D viewer icin zoom/pan state yonetimi.
  * - Wheel: zoom (mouse pozisyonu etrafinda)
  * - Drag: pan
@@ -134,16 +146,7 @@ export function useViewport({ bounds, containerRef, autoFit = true, fitKey = nul
     const my = clientY - rect.top;
     const factor = deltaY < 0 ? 1.15 : 1 / 1.15;
 
-    setViewport((v) => {
-      const newZoom = v.zoom * factor;
-      const worldX = (mx - v.panX) / v.zoom;
-      const worldY = (v.panY - my) / v.zoom; // Y ters
-      return {
-        zoom: newZoom,
-        panX: mx - worldX * newZoom,
-        panY: my + worldY * newZoom,
-      };
-    });
+    setViewport((v) => noktaEtrafindaOlcekle(v, factor, mx, my));
   }, [containerRef]);
 
   // Native wheel listener — React synthetic event'in passive problemine karsi yedek
@@ -215,8 +218,21 @@ export function useViewport({ bounds, containerRef, autoFit = true, fitKey = nul
    *  icin (706K cizgide her frame rbush sorgusu + state update israfi). */
   const isDragging = useCallback(() => dragStateRef.current.capturing, []);
 
-  const zoomIn = useCallback(() => setViewport((v) => ({ ...v, zoom: v.zoom * 1.3 })), []);
-  const zoomOut = useCallback(() => setViewport((v) => ({ ...v, zoom: v.zoom / 1.3 })), []);
+  /** Dugmeyle yakinlastirma KAP MERKEZI etrafinda (tekerlekle ayni formul).
+   *  25.09 inceleme: yalniz `zoom` degisiyordu, pan sabit kaldigi icin dunya
+   *  orijini (0,0) yerinde duruyordu — koordinatlari ~150 000 mm olan cizim
+   *  bir tikta ekranin disina kayiyordu. */
+  const merkezdenOlcekle = useCallback((carpan: number) => {
+    const el = containerRef.current;
+    if (!el) {
+      setViewport((v) => ({ ...v, zoom: v.zoom * carpan }));
+      return;
+    }
+    const rect = el.getBoundingClientRect();
+    setViewport((v) => noktaEtrafindaOlcekle(v, carpan, rect.width / 2, rect.height / 2));
+  }, [containerRef]);
+  const zoomIn = useCallback(() => merkezdenOlcekle(1.3), [merkezdenOlcekle]);
+  const zoomOut = useCallback(() => merkezdenOlcekle(1 / 1.3), [merkezdenOlcekle]);
 
   return {
     viewport,

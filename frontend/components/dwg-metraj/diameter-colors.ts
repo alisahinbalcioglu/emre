@@ -31,8 +31,10 @@ const PALETTE_12 = [
 /** Numeric cap -> palette index. Inch (1/2", 1 1/4") cinsindeyse mm'e cevirir.
  *  KRITIK SIRA: kompleks pattern (inch, kesir) ONCE, basit (Ø/DN) SONRA.
  *  Aksi takdirde '2 1/2"' -> '2' rakami leftmost match olur -> 2mm yanlis sonuc.
+ *  Disa acik: DWG cap listesi satirlari nominal capa gore siralanir
+ *  (dwg-workspace/cap-gruplari.ts) — renk ile sira AYNI olcuden gelsin.
  */
-function diameterToNumeric(d: string): number | null {
+export function diameterToNumeric(d: string): number | null {
   const s = d.trim();
 
   // 1) INCH map ONCE — "2 1/2\"", "1 1/4\"", "1/2\"" gibi tam string eslesmesi
@@ -89,16 +91,23 @@ function hashToPaletteIndex(s: string): number {
 }
 
 /**
+ * Capsiz (atanmamis) parcanin rengi — 25.09 DWG tasarimi: TURUNCU #F59E0B.
+ * Eskiden neon yesildi (#39ff14). Paletteki <=20 mm turuncusu (#f97316) ile
+ * karismasin diye cizimde capsiz parca ayrica KESIKLI + haleli cizilir.
+ */
+export const CAPSIZ_RENGI = '#f59e0b';
+
+/**
  * Cap string'inden renk don.
- * Atanmamis (bos, 'Belirtilmemis', UNASSIGNED_LABEL) -> NEON yesil.
+ * Atanmamis (bos, 'Belirtilmemis', UNASSIGNED_LABEL) -> CAPSIZ_RENGI.
  * O50, DN50, 50, 2" hepsi AYNI renge denk gelir (nominal mm bazli).
  */
 export function diameterToColor(diameter: string): string {
   if (isUnassignedDiameter(diameter) || diameter === UNASSIGNED_LABEL) {
-    // EKSIK PARCA TESPITI (operasyon madde 1): atanmamis cap NEON — eskiden
-    // notr griydi, gozden kaciyordu. Artik lejant + viewer ayni neon'u
+    // EKSIK PARCA TESPITI (operasyon madde 1): atanmamis cap belirgin renkte —
+    // eskiden notr griydi, gozden kaciyordu. Lejant + viewer ayni rengi
     // gosterir; kullanici rapor oncesi eksik parcayi ANINDA fark eder.
-    return '#39ff14';
+    return CAPSIZ_RENGI;
   }
   const normalized = diameter.trim();
   const mm = diameterToNumeric(normalized);

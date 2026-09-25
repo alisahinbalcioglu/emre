@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 790
-Toplam satir: 210384
+Kod dosyasi: 814
+Toplam satir: 213900
 Uc nokta: 237
 test:* scripti: 130
 
@@ -429,7 +429,7 @@ test:* scripti: 130
 | `frontend/app/(protected)/abonelik/donus/page.tsx` | 138 |
 | `frontend/app/(protected)/abonelik/page.tsx` | 857 |
 | `frontend/app/(protected)/dashboard/page.tsx` | 241 |
-| `frontend/app/(protected)/dwg-workspace/page.tsx` | 112 |
+| `frontend/app/(protected)/dwg-workspace/page.tsx` | 117 |
 | `frontend/app/(protected)/firma/ekip/kurumsal-giris/page.tsx` | 576 |
 | `frontend/app/(protected)/firma/ekip/page.tsx` | 416 |
 | `frontend/app/(protected)/koltuk-durduruldu/page.tsx` | 129 |
@@ -476,42 +476,66 @@ test:* scripti: 130
 | `frontend/app/sitemap.ts` | 13 |
 | `frontend/app/sso/tamam/page.tsx` | 225 |
 | `frontend/app/verify-email/page.tsx` | 94 |
-| `frontend/components/dwg-diameter-engine/DiameterLegendPanel.tsx` | 151 |
 | `frontend/components/dwg-diameter-engine/index.ts` | 16 |
-| `frontend/components/dwg-diameter-engine/types.ts` | 79 |
-| `frontend/components/dwg-diameter-engine/useLayerCalc.ts` | 152 |
+| `frontend/components/dwg-diameter-engine/types.ts` | 28 |
+| `frontend/components/dwg-diameter-engine/useLayerCalc.ts` | 167 |
 | `frontend/components/dwg-diameter-engine/useOriginalColorState.ts` | 36 |
-| `frontend/components/dwg-metraj/DwgUploader.tsx` | 643 |
+| `frontend/components/dwg-metraj/DwgSayfaCercevesi.tsx` | 31 |
+| `frontend/components/dwg-metraj/DwgUploader.tsx` | 646 |
 | `frontend/components/dwg-metraj/MetrajEditor.tsx` | 484 |
 | `frontend/components/dwg-metraj/constants.ts` | 28 |
-| `frontend/components/dwg-metraj/diameter-colors.ts` | 169 |
+| `frontend/components/dwg-metraj/diameter-colors.ts` | 178 |
 | `frontend/components/dwg-metraj/index.ts` | 11 |
 | `frontend/components/dwg-metraj/types.ts` | 59 |
 | `frontend/components/dwg-metraj/unit-detection.test.ts` | 118 |
 | `frontend/components/dwg-metraj/unit-detection.ts` | 79 |
-| `frontend/components/dwg-tagging/BucketPanel.tsx` | 144 |
-| `frontend/components/dwg-tagging/index.ts` | 12 |
+| `frontend/components/dwg-tagging/index.ts` | 14 |
 | `frontend/components/dwg-tagging/useTaggingStore.ts` | 110 |
-| `frontend/components/dwg-viewer/DxfCanvasViewer.tsx` | 2003 |
+| `frontend/components/dwg-viewer/DxfCanvasViewer.tsx` | 1545 |
 | `frontend/components/dwg-viewer/aci-colors.ts` | 38 |
 | `frontend/components/dwg-viewer/canli-cap.test.ts` | 288 |
 | `frontend/components/dwg-viewer/canli-cap.ts` | 97 |
-| `frontend/components/dwg-viewer/index.ts` | 6 |
+| `frontend/components/dwg-viewer/gorunum-olcek.test.ts` | 41 |
+| `frontend/components/dwg-viewer/index.ts` | 7 |
 | `frontend/components/dwg-viewer/segment-length.test.ts` | 54 |
 | `frontend/components/dwg-viewer/segment-length.ts` | 48 |
 | `frontend/components/dwg-viewer/types.ts` | 76 |
-| `frontend/components/dwg-viewer/useViewport.ts` | 233 |
-| `frontend/components/dwg-workspace/DwgProjectWorkspace.tsx` | 1038 |
-| `frontend/components/dwg-workspace/LayerInfoSidebar.tsx` | 213 |
-| `frontend/components/dwg-workspace/LayerVisibilityPanel.tsx` | 229 |
-| `frontend/components/dwg-workspace/MetrajSummaryPanel.tsx` | 153 |
+| `frontend/components/dwg-viewer/useViewport.ts` | 249 |
+| `frontend/components/dwg-workspace/Adim1BoruLayer.tsx` | 331 |
+| `frontend/components/dwg-workspace/Adim2CapAta.tsx` | 271 |
+| `frontend/components/dwg-workspace/Adim3Onay.tsx` | 118 |
+| `frontend/components/dwg-workspace/BirimPenceresi.tsx` | 217 |
+| `frontend/components/dwg-workspace/CalismaBasligi.tsx` | 116 |
+| `frontend/components/dwg-workspace/CizimAracCubugu.tsx` | 114 |
+| `frontend/components/dwg-workspace/CizimUstu.tsx` | 129 |
+| `frontend/components/dwg-workspace/DwgProjectWorkspace.tsx` | 851 |
+| `frontend/components/dwg-workspace/KatmanlarPaneli.tsx` | 270 |
+| `frontend/components/dwg-workspace/adim-durumu.test.ts` | 240 |
+| `frontend/components/dwg-workspace/adim-durumu.ts` | 186 |
+| `frontend/components/dwg-workspace/adim-parcalari.tsx` | 101 |
+| `frontend/components/dwg-workspace/belge-islemleri.ts` | 198 |
+| `frontend/components/dwg-workspace/birim-bayatlik.test.ts` | 54 |
+| `frontend/components/dwg-workspace/birim-bayatlik.ts` | 31 |
+| `frontend/components/dwg-workspace/birimler.test.ts` | 65 |
+| `frontend/components/dwg-workspace/birimler.ts` | 57 |
+| `frontend/components/dwg-workspace/boru-adaylari.test.ts` | 72 |
+| `frontend/components/dwg-workspace/boru-adaylari.ts` | 86 |
+| `frontend/components/dwg-workspace/calisma-alani-baglanti.test.ts` | 679 |
+| `frontend/components/dwg-workspace/calisma-kaydi.test.ts` | 498 |
+| `frontend/components/dwg-workspace/calisma-kaydi.ts` | 289 |
+| `frontend/components/dwg-workspace/cap-gruplari.test.ts` | 163 |
+| `frontend/components/dwg-workspace/cap-gruplari.ts` | 181 |
+| `frontend/components/dwg-workspace/etiket-aktarimi.test.ts` | 295 |
+| `frontend/components/dwg-workspace/etiket-aktarimi.ts` | 292 |
+| `frontend/components/dwg-workspace/gecmis.test.ts` | 65 |
+| `frontend/components/dwg-workspace/gecmis.ts` | 95 |
 | `frontend/components/dwg-workspace/index.ts` | 6 |
-| `frontend/components/dwg-workspace/onay-revizyon.test.ts` | 217 |
-| `frontend/components/dwg-workspace/onay-revizyon.ts` | 114 |
+| `frontend/components/dwg-workspace/onay-revizyon.test.ts` | 110 |
+| `frontend/components/dwg-workspace/onay-revizyon.ts` | 57 |
 | `frontend/components/dwg-workspace/sprinkler-bayatlik.test.ts` | 64 |
 | `frontend/components/dwg-workspace/sprinkler-bayatlik.ts` | 51 |
-| `frontend/components/dwg-workspace/types.ts` | 71 |
-| `frontend/components/dwg-workspace/useWorkspaceState.ts` | 357 |
+| `frontend/components/dwg-workspace/types.ts` | 80 |
+| `frontend/components/dwg-workspace/useWorkspaceState.ts` | 275 |
 | `frontend/lib/gs6b-golge-kurali.test.ts` | 60 |
 | `frontend/lib/indeks-sagligi.test.ts` | 75 |
 | `frontend/lib/indeks-sagligi.ts` | 64 |
@@ -545,7 +569,7 @@ test:* scripti: 130
 | `frontend/ortak/kabuk/components/landing/nasil-calisir-yukleme.test.ts` | 206 |
 | `frontend/ortak/kabuk/components/landing/telefon-menusu.test.ts` | 232 |
 | `frontend/ortak/kabuk/components/layout/Altbilgi.tsx` | 77 |
-| `frontend/ortak/kabuk/components/layout/Breadcrumb.tsx` | 93 |
+| `frontend/ortak/kabuk/components/layout/Breadcrumb.tsx` | 96 |
 | `frontend/ortak/kabuk/components/layout/DepolamaSeridi.tsx` | 82 |
 | `frontend/ortak/kabuk/components/layout/EpostaDogrulamaSeridi.tsx` | 83 |
 | `frontend/ortak/kabuk/components/layout/KapaliHesapSeridi.tsx` | 106 |
@@ -1233,29 +1257,49 @@ test:* scripti: 130
 | `frontend/app/sitemap.ts` | `@/ortak/seo/arama-paylasim` |
 | `frontend/app/sso/tamam/page.tsx` | `react` `next/navigation` `next/link` `@/ortak/lib/api` `@/ortak/lib/oturum` `@/ortak/lib/kimlik-hata-metinleri` `@/ozellik/kimlik/kurumsal-baslat` `@/ozellik/kimlik/MfaKodAdimi` |
 | `frontend/app/verify-email/page.tsx` | `react` `next/link` `@/ortak/lib/api` `@/ortak/ui/kimlik-kabugu` |
-| `frontend/components/dwg-diameter-engine/DiameterLegendPanel.tsx` | `react` `lucide-react` `@/components/dwg-metraj/diameter-colors` `./types` |
-| `frontend/components/dwg-diameter-engine/types.ts` | `@/components/dwg-metraj/types` `@/components/dwg-workspace/types` `@/components/dwg-metraj/diameter-colors` `@/components/dwg-metraj/constants` |
+| `frontend/components/dwg-diameter-engine/types.ts` | `@/components/dwg-metraj/types` `@/components/dwg-workspace/types` |
 | `frontend/components/dwg-diameter-engine/useLayerCalc.ts` | `react` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/components/dwg-metraj` `@/components/dwg-workspace/types` `./types` |
 | `frontend/components/dwg-diameter-engine/useOriginalColorState.ts` | `react` |
-| `frontend/components/dwg-metraj/DwgUploader.tsx` | `react` `lucide-react` `@/ortak/lib/utils` `@/ortak/hooks/use-toast` `@/ortak/lib/api` `./types` `./unit-detection` `@/components/dwg-workspace` |
+| `frontend/components/dwg-metraj/DwgSayfaCercevesi.tsx` | `react` `next/link` `lucide-react` |
+| `frontend/components/dwg-metraj/DwgUploader.tsx` | `react` `lucide-react` `@/ortak/lib/utils` `@/ortak/hooks/use-toast` `@/ortak/lib/api` `./types` `./unit-detection` `@/components/dwg-workspace` `./DwgSayfaCercevesi` |
 | `frontend/components/dwg-metraj/MetrajEditor.tsx` | `react` `lucide-react` `@/ortak/lib/utils` `@/ortak/hooks/use-toast` `@/ozellik/fiyat/sayi-alani` `./types` |
 | `frontend/components/dwg-metraj/diameter-colors.ts` | `./constants` |
 | `frontend/components/dwg-metraj/unit-detection.test.ts` | `vitest` |
-| `frontend/components/dwg-tagging/BucketPanel.tsx` | `react` `lucide-react` `@/ortak/lib/utils` `@/ortak/hooks/use-toast` `./useTaggingStore` |
 | `frontend/components/dwg-tagging/useTaggingStore.ts` | `zustand` `zustand/middleware` `@/components/dwg-metraj/diameter-colors` |
-| `frontend/components/dwg-viewer/DxfCanvasViewer.tsx` | `react` `rbush` `lucide-react` `@/ortak/lib/api` `./types` `@/components/dwg-metraj/types` `@/components/dwg-metraj/diameter-colors` `@/components/dwg-metraj/constants` `./segment-length` `./canli-cap` `./useViewport` `./aci-colors` |
+| `frontend/components/dwg-viewer/DxfCanvasViewer.tsx` | `rbush` `lucide-react` `@/ortak/lib/api` `./types` `@/components/dwg-metraj/types` `@/components/dwg-metraj/diameter-colors` `@/components/dwg-metraj/constants` `./segment-length` `./canli-cap` `./useViewport` `./aci-colors` |
 | `frontend/components/dwg-viewer/canli-cap.test.ts` | `node:fs` `node:path` `typescript` `vitest` `./canli-cap` `../dwg-metraj/constants` `../dwg-metraj/types` |
 | `frontend/components/dwg-viewer/canli-cap.ts` | `../dwg-metraj/types` |
+| `frontend/components/dwg-viewer/gorunum-olcek.test.ts` | `vitest` `./useViewport` `./types` |
 | `frontend/components/dwg-viewer/segment-length.test.ts` | `vitest` `./segment-length` |
 | `frontend/components/dwg-viewer/useViewport.ts` | `react` `./types` |
-| `frontend/components/dwg-workspace/DwgProjectWorkspace.tsx` | `react` `lucide-react` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `@/ortak/lib/api` `@/components/dwg-viewer` `@/components/dwg-metraj` `@/components/dwg-metraj/types` `./LayerInfoSidebar` `./LayerVisibilityPanel` `./MetrajSummaryPanel` `./useWorkspaceState` `./onay-revizyon` `./sprinkler-bayatlik` `./types` `@/components/dwg-tagging` `@/components/dwg-metraj/diameter-colors` `@/components/dwg-metraj/constants` |
-| `frontend/components/dwg-workspace/LayerInfoSidebar.tsx` | `react` `lucide-react` `./types` `@/components/dwg-metraj/constants` `./onay-revizyon` |
-| `frontend/components/dwg-workspace/LayerVisibilityPanel.tsx` | `react` `lucide-react` `@/ortak/lib/utils` |
-| `frontend/components/dwg-workspace/MetrajSummaryPanel.tsx` | `react` `lucide-react` `./types` `./onay-revizyon` `@/components/dwg-metraj/diameter-colors` `@/components/dwg-metraj/constants` |
-| `frontend/components/dwg-workspace/onay-revizyon.test.ts` | `vitest` `./types` |
+| `frontend/components/dwg-workspace/Adim1BoruLayer.tsx` | `react` `lucide-react` `./types` `./adim-durumu` `./boru-adaylari` `./adim-parcalari` |
+| `frontend/components/dwg-workspace/Adim2CapAta.tsx` | `react` `lucide-react` `./cap-gruplari` `./adim-parcalari` `../dwg-metraj/diameter-colors` |
+| `frontend/components/dwg-workspace/Adim3Onay.tsx` | `react` `lucide-react` `./adim-durumu` `./adim-parcalari` |
+| `frontend/components/dwg-workspace/BirimPenceresi.tsx` | `react` `lucide-react` `./birimler` `./adim-parcalari` |
+| `frontend/components/dwg-workspace/CalismaBasligi.tsx` | `react` `next/link` `lucide-react` |
+| `frontend/components/dwg-workspace/CizimAracCubugu.tsx` | `react` `lucide-react` |
+| `frontend/components/dwg-workspace/CizimUstu.tsx` | `react` `lucide-react` `./adim-durumu` `../dwg-metraj/diameter-colors` |
+| `frontend/components/dwg-workspace/DwgProjectWorkspace.tsx` | `react` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `@/components/dwg-viewer` `@/components/dwg-metraj/types` `@/components/dwg-diameter-engine` `@/components/dwg-tagging` `@/components/dwg-metraj/diameter-colors` `@/components/dwg-metraj/constants` `./useWorkspaceState` `./onay-revizyon` `./birim-bayatlik` `./boru-adaylari` `./belge-islemleri` `./birimler` `./CalismaBasligi` `./BirimPenceresi` `./CizimAracCubugu` `./CizimUstu` `./KatmanlarPaneli` `./Adim1BoruLayer` `./Adim2CapAta` `./Adim3Onay` |
+| `frontend/components/dwg-workspace/KatmanlarPaneli.tsx` | `react` `./boru-adaylari` `./adim-parcalari` |
+| `frontend/components/dwg-workspace/adim-durumu.test.ts` | `vitest` `./types` |
+| `frontend/components/dwg-workspace/adim-durumu.ts` | `./types` `./birim-bayatlik` `./sprinkler-bayatlik` |
+| `frontend/components/dwg-workspace/adim-parcalari.tsx` | `react` `lucide-react` |
+| `frontend/components/dwg-workspace/belge-islemleri.ts` | `./types` `../dwg-metraj/constants` `../dwg-metraj/diameter-colors` `./etiket-aktarimi` `./birim-bayatlik` |
+| `frontend/components/dwg-workspace/birim-bayatlik.test.ts` | `vitest` `./birim-bayatlik` |
+| `frontend/components/dwg-workspace/birimler.test.ts` | `vitest` `./birimler` |
+| `frontend/components/dwg-workspace/boru-adaylari.test.ts` | `vitest` `./boru-adaylari` |
+| `frontend/components/dwg-workspace/calisma-alani-baglanti.test.ts` | `node:fs` `node:path` `typescript` `vitest` |
+| `frontend/components/dwg-workspace/calisma-kaydi.test.ts` | `vitest` `../dwg-metraj/types` `./types` `./birim-bayatlik` `./belge-islemleri` |
+| `frontend/components/dwg-workspace/calisma-kaydi.ts` | `./types` `./gecmis` `./birim-bayatlik` |
+| `frontend/components/dwg-workspace/cap-gruplari.test.ts` | `vitest` `../dwg-metraj/types` |
+| `frontend/components/dwg-workspace/cap-gruplari.ts` | `../dwg-metraj/types` `../dwg-metraj/constants` `../dwg-metraj/diameter-colors` `../../ozellik/tablo/parse-material-text` `./boru-adaylari` |
+| `frontend/components/dwg-workspace/etiket-aktarimi.test.ts` | `vitest` `../dwg-metraj/types` `./etiket-aktarimi` |
+| `frontend/components/dwg-workspace/etiket-aktarimi.ts` | `rbush` `../dwg-metraj/types` `../dwg-metraj/constants` `../dwg-metraj/diameter-colors` |
+| `frontend/components/dwg-workspace/gecmis.test.ts` | `vitest` |
+| `frontend/components/dwg-workspace/onay-revizyon.test.ts` | `vitest` `./onay-revizyon` `./types` |
 | `frontend/components/dwg-workspace/sprinkler-bayatlik.test.ts` | `vitest` `./sprinkler-bayatlik` |
 | `frontend/components/dwg-workspace/types.ts` | `@/components/dwg-metraj` |
-| `frontend/components/dwg-workspace/useWorkspaceState.ts` | `react` `./onay-revizyon` |
+| `frontend/components/dwg-workspace/useWorkspaceState.ts` | `react` `@/ortak/hooks/use-toast` `./types` `./gecmis` |
 | `frontend/lib/gs6b-golge-kurali.test.ts` | `vitest` `fs` `path` |
 | `frontend/lib/indeks-sagligi.test.ts` | `vitest` `./indeks-sagligi` |
 | `frontend/lib/kar-degisimi.test.ts` | `vitest` |

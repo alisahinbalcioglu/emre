@@ -8,6 +8,7 @@ import api from '@/ortak/lib/api';
 import { MetrajResult } from './types';
 import { gecerliOlcek } from './unit-detection';
 import { DwgProjectWorkspace } from '@/components/dwg-workspace';
+import DwgSayfaCercevesi from './DwgSayfaCercevesi';
 
 interface DwgUploaderProps {
   onMetrajApproved: (metraj: MetrajResult, fileName: string) => void;
@@ -452,15 +453,13 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
     extractLayers(f);
   };
 
-  /** Kullanici otomatik tespiti eziyor. Metraj yeniden hesaplanmali. */
+  /** Kullanici birimi secti ya da otomatik tespiti DOGRULADI (ayni birimle
+   *  Kaydet). Calisma alani bayat layer'lari kendisi yeniden ayirir ve
+   *  ilerlemeyi Adim 1'de gosterir — burada ayrica bildirim yok. */
   const birimiDegistir = (yeniScale: number) => {
     setSelectedUnit(yeniScale);
     setBirimElle(true);
     setBirimPaneli(false);
-    toast({
-      title: 'Birim değiştirildi',
-      description: `Çizim birimi elle ${BIRIM_SECENEKLERI.find((b) => b.value === yeniScale)?.label ?? yeniScale} olarak ayarlandı — hesaplanan metrajları yenileyin.`,
-    });
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -557,49 +556,53 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
   // file objesi olabilir (yeni upload) veya restoredFileName (session restore)
   const effectiveFileName = file?.name || restoredFileName;
   if (fileId && effectiveFileName) {
-    // ⚠ BIRIM BANDI BURADA DA RENDER EDILMELI. Ilk surumde bant yalniz
-    // asagidaki (yukleme ekrani) JSX'ine konmustu; bu erken donus yuzunden
-    // workspace acilinca ASLA gorunmuyordu — yani kullanicinin tespiti gorme
-    // ve duzeltme yolu yoktu. Tam da "ozelligi acmak = yolu acmaktir" hatasi.
+    // ⚠ BIRIM workspace'e GIDER. Ilk surumde birim bandi yalniz yukleme
+    // ekranina konmustu ve workspace acilinca ASLA gorunmuyordu ("ozelligi
+    // acmak = yolu acmaktir"). 25.09 tasarimi: bant yerine basliktaki
+    // "Birim: dm" dugmesi + pencere; tespit, elle secim ve dusuk guvende
+    // otomatik acilma aynen tasinir.
     return (
-      <div>
-        {birimBandi}
-        <DwgProjectWorkspace
-          fileId={fileId}
-          scale={selectedUnit}
-          fileName={effectiveFileName}
-          fileHash={fileHash}
-          onReset={resetAll}
-          onApproved={onMetrajApproved}
-        />
-      </div>
+      <DwgProjectWorkspace
+        fileId={fileId}
+        scale={selectedUnit}
+        fileName={effectiveFileName}
+        fileHash={fileHash}
+        onReset={resetAll}
+        onApproved={onMetrajApproved}
+        birimTespiti={tespit}
+        birimElle={birimElle}
+        birimPenceresiAcikBaslasin={birimPaneli}
+        onBirimDegistir={birimiDegistir}
+      />
     );
   }
 
   // ── RENDER: Layer listesi cikariliyor (loading) ──
   if (extractingLayers) {
     return (
-      <div className="flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-blue-300 bg-blue-50/50 py-16">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-        <p className="text-sm font-medium text-blue-700">Proje hazirlaniyor...</p>
-        <p className="text-xs text-blue-400">{elapsed} saniye · {file?.name || restoredFileName}</p>
-        {/* Cikis kapisi: deploy/restart sirasinda cache TTL gectiyse 422 ile takilabilir,
-            ya da kullanici farkli dosya yuklemek isteyebilir. Loading'den her zaman
-            cikabilsin. resetAll state'i + localStorage'i temizler. */}
-        <button
-          type="button"
-          onClick={resetAll}
-          className="mt-2 rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50"
-        >
-          Iptal — yeniden yukle
-        </button>
-      </div>
+      <DwgSayfaCercevesi>
+        <div className="flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-blue-300 bg-blue-50/50 py-16">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+          <p className="text-sm font-medium text-blue-700">Proje hazırlanıyor…</p>
+          <p className="text-xs text-blue-400">{elapsed} saniye · {file?.name || restoredFileName}</p>
+          {/* Cikis kapisi: deploy/restart sirasinda cache TTL gectiyse 422 ile takilabilir,
+              ya da kullanici farkli dosya yuklemek isteyebilir. Loading'den her zaman
+              cikabilsin. resetAll state'i + localStorage'i temizler. */}
+          <button
+            type="button"
+            onClick={resetAll}
+            className="mt-2 rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50"
+          >
+            İptal — yeniden yükle
+          </button>
+        </div>
+      </DwgSayfaCercevesi>
     );
   }
 
   // ── RENDER: Upload zone (baslangic) ──
   return (
-    <div>
+    <DwgSayfaCercevesi>
       <div
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragEnter={(e) => { e.preventDefault(); setDragOver(true); }}
@@ -637,6 +640,6 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
       )}
 
     {birimBandi}
-    </div>
+    </DwgSayfaCercevesi>
   );
 }
